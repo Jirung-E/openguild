@@ -1,7 +1,11 @@
 mod db;
 mod error;
 mod guild_file;
+mod models;
 mod routes;
+
+#[cfg(test)]
+mod tests;
 
 use anyhow::Result;
 use std::net::SocketAddr;
