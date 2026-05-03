@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/stores';
+	import QuestList from '$lib/components/QuestList.svelte';
 
 	type View = 'board' | 'list';
 	let currentView: View = $derived(
@@ -7,24 +8,18 @@
 	);
 </script>
 
-<div class="container">
-	{#if currentView === 'board'}
-		<div class="placeholder">Quest Board — 준비 중</div>
-	{:else}
-		<div class="placeholder">Quest List — 준비 중</div>
-	{/if}
-</div>
+{#if currentView === 'board'}
+	<div class="placeholder">Quest Board — 준비 중</div>
+{:else}
+	<QuestList />
+{/if}
 
 <style>
-	.container {
-		padding: 1.5rem;
-	}
-
 	.placeholder {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		height: 60vh;
+		height: calc(100vh - 52px);
 		color: #484f58;
 		font-size: 1rem;
 	}
