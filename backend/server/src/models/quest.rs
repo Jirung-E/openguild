@@ -55,7 +55,24 @@ pub struct UpdateQuestRequest {
     pub title: Option<String>,
     pub description: Option<String>,
     pub urgency: Option<i64>,
+}
+
+/// 부모 변경 전용 요청. `parent_quest_id: null`로 분리(detach) 가능.
+#[derive(Debug, Deserialize)]
+pub struct ChangeParentRequest {
     pub parent_quest_id: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CandidatesQuery {
+    /// "parent" | "sub" | "prereq"
+    pub relation: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DeleteQuestQuery {
+    /// "1,2,3" 형식의 cascade 삭제 대상 직계 자식 ID 목록
+    pub cascade: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -72,4 +89,10 @@ pub struct AddPrerequisiteRequest {
 pub struct UpdatePositionRequest {
     pub x: f64,
     pub y: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+pub struct QuestDependency {
+    pub quest_id: i64,
+    pub prerequisite_id: i64,
 }

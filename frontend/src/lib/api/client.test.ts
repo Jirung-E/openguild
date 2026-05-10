@@ -1,13 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { api } from './client';
 
-// fetch 모킹 헬퍼
+// fetch 모킹 헬퍼 (실제 Response 와 유사하게: headers, text 포함)
 function mockFetch(status: number, body: unknown) {
+	const text = body === undefined || body === null ? '' : JSON.stringify(body);
 	vi.stubGlobal(
 		'fetch',
 		vi.fn().mockResolvedValue({
 			ok: status >= 200 && status < 300,
 			status,
+			headers: new Headers({ 'content-type': 'application/json' }),
+			text: () => Promise.resolve(text),
 			json: () => Promise.resolve(body),
 			statusText: status === 404 ? 'Not Found' : 'Error'
 		})
@@ -65,9 +68,47 @@ describe('api.delete', () => {
 	it('sends DELETE and handles 204', async () => {
 		vi.stubGlobal(
 			'fetch',
-			vi.fn().mockResolvedValue({ ok: true, status: 204, json: () => Promise.resolve(null) })
+			vi.fn().mockResolvedValue({
+				ok: true,
+				status: 204,
+				headers: new Headers(),
+				text: () => Promise.resolve(''),
+				json: () => Promise.resolve(null)
+			})
 		);
 		const result = await api.delete('/api/quests/1');
+		expect(result).toBeUndefined();
+	});
+});
+
+describe('empty body handling', () => {
+	it('handles 201 Created with empty body (선행퀘 추가 케이스)', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn().mockResolvedValue({
+				ok: true,
+				status: 201,
+				headers: new Headers({ 'content-length': '0' }),
+				text: () => Promise.resolve(''),
+				json: () => Promise.reject(new Error('should not be called'))
+			})
+		);
+		const result = await api.post('/api/quests/1/prerequisites', { prerequisite_id: 2 });
+		expect(result).toBeUndefined();
+	});
+
+	it('handles 200 with empty text body', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn().mockResolvedValue({
+				ok: true,
+				status: 200,
+				headers: new Headers(),
+				text: () => Promise.resolve(''),
+				json: () => Promise.reject(new Error('should not be called'))
+			})
+		);
+		const result = await api.get('/api/whatever');
 		expect(result).toBeUndefined();
 	});
 });

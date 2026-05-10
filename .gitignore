@@ -25,3 +25,6 @@ Thumbs.db
 .idea/
 *.suo
 *.user
+
+# Claude Code 로컬 설정
+.claude/

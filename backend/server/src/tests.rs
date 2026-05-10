@@ -65,6 +65,17 @@ async fn delete(app: Router, uri: &str) -> StatusCode {
         .status()
 }
 
+async fn delete_with_body(app: Router, uri: &str) -> (StatusCode, Value) {
+    let res = app
+        .oneshot(Request::delete(uri).body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    let status = res.status();
+    let bytes = res.into_body().collect().await.unwrap().to_bytes();
+    let body: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+    (status, body)
+}
+
 async fn put(app: Router, uri: &str, payload: Value) -> (StatusCode, Value) {
     let res = app
         .oneshot(
@@ -307,4 +318,555 @@ async fn test_update_position() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["x"], 120.5);
     assert_eq!(body["y"], 300.0);
+}
+
+// --- 7단계: 신규 / 사이클 검증 / cascade / candidates 테스트 ---
+
+/// 헬퍼: 빠르게 퀘스트 생성하고 id 반환
+async fn mk_quest(app: Router, title: &str, parent: Option<i64>) -> i64 {
+    let mut payload = json!({
+        "quest_type_id": 1,
+        "title": title,
+        "status_id": 1
+    });
+    if let Some(pid) = parent {
+        payload["parent_quest_id"] = json!(pid);
+    }
+    let (_, body) = post(app, "/api/quests", payload).await;
+    body["id"].as_i64().unwrap()
+}
+
+// === 선행 퀘스트 사이클 ===
+
+#[tokio::test]
+async fn test_prereq_self_rejected() {
+    let app = setup().await;
+    let id = mk_quest(app.clone(), "self", None).await;
+
+    let (status, body) = post(
+        app,
+        &format!("/api/quests/{id}/prerequisites"),
+        json!({ "prerequisite_id": id }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body["error"]
+        .as_str()
+        .unwrap()
+        .contains("its own prerequisite"));
+}
+
+#[tokio::test]
+async fn test_prereq_cycle_rejected() {
+    let app = setup().await;
+    let a = mk_quest(app.clone(), "A", None).await;
+    let b = mk_quest(app.clone(), "B", None).await;
+
+    // A 의 선행으로 B 추가 (성공)
+    let (s1, _) = post(
+        app.clone(),
+        &format!("/api/quests/{a}/prerequisites"),
+        json!({ "prerequisite_id": b }),
+    )
+    .await;
+    assert_eq!(s1, StatusCode::CREATED);
+
+    // B 의 선행으로 A 추가 시도 → 사이클 → 거부
+    let (s2, body) = post(
+        app,
+        &format!("/api/quests/{b}/prerequisites"),
+        json!({ "prerequisite_id": a }),
+    )
+    .await;
+    assert_eq!(s2, StatusCode::BAD_REQUEST);
+    assert!(body["error"].as_str().unwrap().contains("cycle"));
+}
+
+#[tokio::test]
+async fn test_prereq_transitive_cycle_rejected() {
+    let app = setup().await;
+    let a = mk_quest(app.clone(), "A", None).await;
+    let b = mk_quest(app.clone(), "B", None).await;
+    let c = mk_quest(app.clone(), "C", None).await;
+
+    // A → B (B 가 A 의 선행)
+    post(
+        app.clone(),
+        &format!("/api/quests/{a}/prerequisites"),
+        json!({ "prerequisite_id": b }),
+    )
+    .await;
+    // B → C
+    post(
+        app.clone(),
+        &format!("/api/quests/{b}/prerequisites"),
+        json!({ "prerequisite_id": c }),
+    )
+    .await;
+
+    // C 의 선행으로 A 시도 → 사이클(A→B→C→A)
+    let (status, _) = post(
+        app,
+        &format!("/api/quests/{c}/prerequisites"),
+        json!({ "prerequisite_id": a }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+// === 부모 변경 (change_parent) ===
+
+#[tokio::test]
+async fn test_change_parent_basic() {
+    let app = setup().await;
+    let parent = mk_quest(app.clone(), "parent", None).await;
+    let child = mk_quest(app.clone(), "child", None).await;
+
+    let (status, body) = patch(
+        app.clone(),
+        &format!("/api/quests/{child}/parent"),
+        json!({ "parent_quest_id": parent }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["parent_quest_id"], parent);
+}
+
+#[tokio::test]
+async fn test_change_parent_detach() {
+    let app = setup().await;
+    let parent = mk_quest(app.clone(), "p", None).await;
+    let child = mk_quest(app.clone(), "c", Some(parent)).await;
+
+    // null 보내서 분리
+    let (status, body) = patch(
+        app,
+        &format!("/api/quests/{child}/parent"),
+        json!({ "parent_quest_id": null }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body["parent_quest_id"].is_null());
+}
+
+#[tokio::test]
+async fn test_change_parent_self_rejected() {
+    let app = setup().await;
+    let id = mk_quest(app.clone(), "self", None).await;
+    let (status, _) = patch(
+        app,
+        &format!("/api/quests/{id}/parent"),
+        json!({ "parent_quest_id": id }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_change_parent_cycle_rejected() {
+    let app = setup().await;
+    let a = mk_quest(app.clone(), "A", None).await;
+    let b = mk_quest(app.clone(), "B", Some(a)).await; // B 는 A 의 자식
+
+    // A 의 부모를 B 로 → 사이클(A→B→A)
+    let (status, body) = patch(
+        app,
+        &format!("/api/quests/{a}/parent"),
+        json!({ "parent_quest_id": b }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body["error"].as_str().unwrap().contains("cycle"));
+}
+
+// === Candidates ===
+
+#[tokio::test]
+async fn test_candidates_sub_excludes_orphans_with_parent() {
+    let app = setup().await;
+    let a = mk_quest(app.clone(), "A", None).await;
+    let _b = mk_quest(app.clone(), "B-sub-of-A", Some(a)).await;
+    let c = mk_quest(app.clone(), "C-free", None).await;
+
+    // A 의 sub 후보: 부모 없는 것 중 자기/조상 제외 → C 만 OK
+    let (status, body) =
+        get(app, &format!("/api/quests/{a}/candidates?relation=sub")).await;
+    assert_eq!(status, StatusCode::OK);
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0]["id"], c);
+}
+
+#[tokio::test]
+async fn test_candidates_parent_excludes_descendants() {
+    let app = setup().await;
+    let a = mk_quest(app.clone(), "A", None).await;
+    let b = mk_quest(app.clone(), "B", Some(a)).await; // A→B
+    let c = mk_quest(app.clone(), "C", None).await;
+
+    // A 의 parent 후보: 자기/자손 제외 → C, B 제외 → C 만
+    let (_, body) = get(
+        app.clone(),
+        &format!("/api/quests/{a}/candidates?relation=parent"),
+    )
+    .await;
+    let ids: Vec<i64> = body
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|q| q["id"].as_i64().unwrap())
+        .collect();
+    assert!(ids.contains(&c));
+    assert!(!ids.contains(&a));
+    assert!(!ids.contains(&b));
+}
+
+#[tokio::test]
+async fn test_candidates_prereq_excludes_cycles() {
+    let app = setup().await;
+    let a = mk_quest(app.clone(), "A", None).await;
+    let b = mk_quest(app.clone(), "B", None).await;
+    let c = mk_quest(app.clone(), "C", None).await;
+
+    // A→B (A 가 B 의 선행)... 즉 B 의 선행으로 A 추가
+    post(
+        app.clone(),
+        &format!("/api/quests/{b}/prerequisites"),
+        json!({ "prerequisite_id": a }),
+    )
+    .await;
+
+    // A 의 prereq 후보: A 의 선행으로 B 를 넣으면 사이클(B→A→B)이므로 B 제외
+    let (_, body) =
+        get(app, &format!("/api/quests/{a}/candidates?relation=prereq")).await;
+    let ids: Vec<i64> = body
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|q| q["id"].as_i64().unwrap())
+        .collect();
+    assert!(ids.contains(&c));
+    assert!(!ids.contains(&a));
+    assert!(!ids.contains(&b));
+}
+
+#[tokio::test]
+async fn test_candidates_invalid_relation() {
+    let app = setup().await;
+    let id = mk_quest(app.clone(), "x", None).await;
+    let (status, _) = get(
+        app,
+        &format!("/api/quests/{id}/candidates?relation=foo"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+// === Cascade 삭제 ===
+
+#[tokio::test]
+async fn test_delete_with_no_children() {
+    let app = setup().await;
+    let id = mk_quest(app.clone(), "lonely", None).await;
+    let status = delete(app.clone(), &format!("/api/quests/{id}")).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn test_delete_parent_detaches_children_by_default() {
+    let app = setup().await;
+    let p = mk_quest(app.clone(), "P", None).await;
+    let c1 = mk_quest(app.clone(), "C1", Some(p)).await;
+    let c2 = mk_quest(app.clone(), "C2", Some(p)).await;
+
+    let status = delete(app.clone(), &format!("/api/quests/{p}")).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    // 자식들은 살아있고 parent_quest_id == null
+    let (_, c1_body) = get(app.clone(), &format!("/api/quests/{c1}")).await;
+    assert!(c1_body["parent_quest_id"].is_null());
+    let (_, c2_body) = get(app, &format!("/api/quests/{c2}")).await;
+    assert!(c2_body["parent_quest_id"].is_null());
+}
+
+#[tokio::test]
+async fn test_delete_with_cascade() {
+    let app = setup().await;
+    let p = mk_quest(app.clone(), "P", None).await;
+    let c1 = mk_quest(app.clone(), "C1", Some(p)).await;
+    let c2 = mk_quest(app.clone(), "C2", Some(p)).await;
+
+    // c1 만 같이 삭제, c2 는 분리
+    let status = delete(
+        app.clone(),
+        &format!("/api/quests/{p}?cascade={c1}"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    let (s1, _) = get(app.clone(), &format!("/api/quests/{c1}")).await;
+    assert_eq!(s1, StatusCode::NOT_FOUND);
+
+    let (s2, c2_body) = get(app, &format!("/api/quests/{c2}")).await;
+    assert_eq!(s2, StatusCode::OK);
+    assert!(c2_body["parent_quest_id"].is_null());
+}
+
+#[tokio::test]
+async fn test_delete_cascade_rejects_non_child() {
+    let app = setup().await;
+    let p = mk_quest(app.clone(), "P", None).await;
+    let other = mk_quest(app.clone(), "Other", None).await;
+
+    // other 는 P 의 자식이 아니므로 cascade 거부
+    let (status, body) = delete_with_body(
+        app,
+        &format!("/api/quests/{p}?cascade={other}"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body["error"].as_str().unwrap().contains("not a direct child"));
+}
+
+// === 선행 영향 격리 ===
+
+#[tokio::test]
+async fn test_prereq_quest_unaffected_when_dependent_deleted() {
+    let app = setup().await;
+    let prereq = mk_quest(app.clone(), "prereq", None).await;
+    let dep = mk_quest(app.clone(), "dep", None).await;
+
+    // dep 의 선행으로 prereq 추가
+    post(
+        app.clone(),
+        &format!("/api/quests/{dep}/prerequisites"),
+        json!({ "prerequisite_id": prereq }),
+    )
+    .await;
+
+    // dep 삭제
+    let s = delete(app.clone(), &format!("/api/quests/{dep}")).await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+
+    // prereq 자체는 그대로 존재
+    let (status, body) = get(app.clone(), &format!("/api/quests/{prereq}")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["id"], prereq);
+
+    // dependencies 테이블에서도 관계는 사라짐
+    let (_, deps) = get(app, "/api/quest-dependencies").await;
+    assert_eq!(deps.as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn test_dependent_quest_unaffected_when_prereq_deleted() {
+    let app = setup().await;
+    let prereq = mk_quest(app.clone(), "prereq", None).await;
+    let dep = mk_quest(app.clone(), "dep", None).await;
+
+    post(
+        app.clone(),
+        &format!("/api/quests/{dep}/prerequisites"),
+        json!({ "prerequisite_id": prereq }),
+    )
+    .await;
+
+    delete(app.clone(), &format!("/api/quests/{prereq}")).await;
+
+    // dep 자체는 그대로
+    let (status, body) = get(app, &format!("/api/quests/{dep}")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["id"], dep);
+    // 관계는 정리됨
+    assert_eq!(body["prerequisites"].as_array().unwrap().len(), 0);
+}
+
+// === sub / prereq 상호 배제 ===
+
+#[tokio::test]
+async fn test_cannot_add_prereq_if_already_sub() {
+    let app = setup().await;
+    let parent = mk_quest(app.clone(), "P", None).await;
+    let child = mk_quest(app.clone(), "C", Some(parent)).await;
+
+    // P 의 선행으로 C 추가 시도 → C 는 이미 P 의 sub 이므로 거부
+    let (status, body) = post(
+        app,
+        &format!("/api/quests/{parent}/prerequisites"),
+        json!({ "prerequisite_id": child }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body["error"].as_str().unwrap().contains("sub-quest"));
+}
+
+#[tokio::test]
+async fn test_cannot_make_sub_if_already_prereq() {
+    let app = setup().await;
+    let p = mk_quest(app.clone(), "P", None).await;
+    let q = mk_quest(app.clone(), "Q", None).await;
+    // Q 를 P 의 선행으로 추가
+    post(
+        app.clone(),
+        &format!("/api/quests/{p}/prerequisites"),
+        json!({ "prerequisite_id": q }),
+    )
+    .await;
+
+    // Q 의 부모를 P 로 변경 시도 → 거부 (prereq + sub 동시 불가)
+    let (status, body) = patch(
+        app,
+        &format!("/api/quests/{q}/parent"),
+        json!({ "parent_quest_id": p }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body["error"].as_str().unwrap().contains("prerequisite"));
+}
+
+#[tokio::test]
+async fn test_candidates_sub_excludes_existing_prereqs() {
+    let app = setup().await;
+    let p = mk_quest(app.clone(), "P", None).await;
+    let q = mk_quest(app.clone(), "Q", None).await;
+    let r = mk_quest(app.clone(), "R", None).await;
+
+    // Q 를 P 의 선행으로 추가
+    post(
+        app.clone(),
+        &format!("/api/quests/{p}/prerequisites"),
+        json!({ "prerequisite_id": q }),
+    )
+    .await;
+
+    // P 의 sub 후보에서 Q 제외, R 만 포함
+    let (_, body) = get(app, &format!("/api/quests/{p}/candidates?relation=sub")).await;
+    let ids: Vec<i64> = body
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|x| x["id"].as_i64().unwrap())
+        .collect();
+    assert!(ids.contains(&r));
+    assert!(!ids.contains(&q));
+}
+
+#[tokio::test]
+async fn test_cannot_add_parent_as_prereq() {
+    let app = setup().await;
+    let parent = mk_quest(app.clone(), "P", None).await;
+    let child = mk_quest(app.clone(), "C", Some(parent)).await;
+
+    // C 의 prereq 로 P (C 의 부모) 추가 시도 → 거부
+    let (status, body) = post(
+        app,
+        &format!("/api/quests/{child}/prerequisites"),
+        json!({ "prerequisite_id": parent }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body["error"].as_str().unwrap().contains("parent"));
+}
+
+#[tokio::test]
+async fn test_candidates_prereq_excludes_parent() {
+    let app = setup().await;
+    let parent = mk_quest(app.clone(), "P", None).await;
+    let child = mk_quest(app.clone(), "C", Some(parent)).await;
+    let other = mk_quest(app.clone(), "O", None).await;
+
+    // C 의 prereq 후보 — P 는 부모이므로 제외, other 는 포함
+    let (_, body) =
+        get(app, &format!("/api/quests/{child}/candidates?relation=prereq")).await;
+    let ids: Vec<i64> = body
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|q| q["id"].as_i64().unwrap())
+        .collect();
+    assert!(ids.contains(&other));
+    assert!(!ids.contains(&parent));
+}
+
+#[tokio::test]
+async fn test_candidates_prereq_excludes_existing_subs() {
+    let app = setup().await;
+    let p = mk_quest(app.clone(), "P", None).await;
+    let s = mk_quest(app.clone(), "S", Some(p)).await; // P 의 sub
+    let r = mk_quest(app.clone(), "R", None).await;
+
+    // P 의 prereq 후보에서 S 제외, R 만 포함
+    let (_, body) =
+        get(app, &format!("/api/quests/{p}/candidates?relation=prereq")).await;
+    let ids: Vec<i64> = body
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|x| x["id"].as_i64().unwrap())
+        .collect();
+    assert!(ids.contains(&r));
+    assert!(!ids.contains(&s));
+}
+
+// === 마이그레이션 0002 데이터 보존 검증 ===
+//
+// 0002 가 데이터를 날리는 회귀를 막는다. 0001 적용 후 데이터를 직접 INSERT 하고,
+// 0002 가 모두 적용된 시점에서 parent_quest_id / quest_dependencies / quest_positions
+// 가 그대로 살아있는지 확인. (`setup()` 은 모든 마이그레이션이 한 번에 적용된 풀을
+// 주므로 동일 흐름이지만, 데이터를 0001 직후가 아닌 마이그레이션 이후에 넣더라도
+// 결과적으로 새 스키마 + 데이터가 보존되어 있어야 한다.)
+
+#[tokio::test]
+async fn test_migration_preserves_subquest_dep_position() {
+    let app = setup().await;
+    let parent = mk_quest(app.clone(), "P", None).await;
+    let child = mk_quest(app.clone(), "C", Some(parent)).await;
+    let other = mk_quest(app.clone(), "O", None).await;
+
+    // 선행 + 위치 추가
+    post(
+        app.clone(),
+        &format!("/api/quests/{child}/prerequisites"),
+        json!({ "prerequisite_id": other }),
+    )
+    .await;
+    put(
+        app.clone(),
+        &format!("/api/quests/{child}/position"),
+        json!({ "x": 10.0, "y": 20.0 }),
+    )
+    .await;
+
+    // 부모-자식, 선행, 위치 모두 살아있는지
+    let (_, child_detail) = get(app.clone(), &format!("/api/quests/{child}")).await;
+    assert_eq!(child_detail["parent_quest_id"], parent);
+    assert_eq!(child_detail["prerequisites"].as_array().unwrap().len(), 1);
+    assert_eq!(child_detail["position"]["x"], 10.0);
+    assert_eq!(child_detail["position"]["y"], 20.0);
+
+    let (_, deps) = get(app.clone(), "/api/quest-dependencies").await;
+    assert_eq!(deps.as_array().unwrap().len(), 1);
+
+    let (_, positions) = get(app, "/api/quest-positions").await;
+    assert_eq!(positions.as_array().unwrap().len(), 1);
+}
+
+// === 서브퀘스트 생성 시 부모 검증 ===
+
+#[tokio::test]
+async fn test_create_subquest_invalid_parent() {
+    let app = setup().await;
+    let (status, body) = post(
+        app,
+        "/api/quests",
+        json!({
+            "quest_type_id": 1,
+            "title": "orphan",
+            "status_id": 1,
+            "parent_quest_id": 999
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body["error"].as_str().unwrap().contains("parent quest"));
 }

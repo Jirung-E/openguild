@@ -14,8 +14,14 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 		throw new Error((err as { error?: string }).error ?? 'request failed');
 	}
 
+	// 204 No Content 또는 빈 body 응답 처리
+	// (예: 201 Created with empty body)
 	if (res.status === 204) return undefined as T;
-	return res.json() as Promise<T>;
+	const contentLength = res.headers.get('content-length');
+	if (contentLength === '0') return undefined as T;
+	const text = await res.text();
+	if (!text) return undefined as T;
+	return JSON.parse(text) as T;
 }
 
 export const api = {
