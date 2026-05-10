@@ -1,9 +1,15 @@
 # Rust
 backend/target/
+tools/cli/target/
 
 # 테스트용 guild 파일 (build.rs 자동 생성)
 backend/test.guild
 backend/*.db
+
+# DB 자동 백업 (server backup task)
+backend/backups/
+# audit log (mutation HTTP 요청 기록)
+backend/audit.log
 
 # Node.js / Svelte
 frontend/node_modules/

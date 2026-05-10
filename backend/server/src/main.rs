@@ -1,3 +1,5 @@
+mod audit;
+mod backup;
 mod db;
 mod error;
 mod guild_file;
@@ -32,8 +34,16 @@ async fn main() -> Result<()> {
     db::run_migrations(&pool).await?;
     tracing::info!("database ready: {db_url}");
 
-    // 라우터
+    // 자동 백업 백그라운드 task — startup 시 1회 + 1시간마다 + 7일 보관
+    backup::spawn_backup_task(pool.clone(), guild_path.clone());
+
+    // 라우터 + audit middleware (mutation HTTP 요청 기록)
+    let audit_state = audit::AuditState::new(&guild_path);
     let app = routes::create_router(pool)
+        .layer(axum::middleware::from_fn_with_state(
+            audit_state,
+            audit::audit_layer,
+        ))
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive());
 

@@ -808,6 +808,93 @@ async fn test_candidates_prereq_excludes_existing_subs() {
     assert!(!ids.contains(&s));
 }
 
+// === Soft delete / restore ===
+
+#[tokio::test]
+async fn test_soft_delete_hides_from_list() {
+    let app = setup().await;
+    let id = mk_quest(app.clone(), "to-soft", None).await;
+    let s = delete(app.clone(), &format!("/api/quests/{id}")).await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+
+    // alive list 에서 빠짐
+    let (_, body) = get(app.clone(), "/api/quests").await;
+    assert_eq!(body.as_array().unwrap().len(), 0);
+
+    // deleted list 에는 나타남
+    let (_, deleted) = get(app, "/api/deleted-quests").await;
+    let arr = deleted.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0]["id"], id);
+}
+
+#[tokio::test]
+async fn test_restore_quest() {
+    let app = setup().await;
+    let id = mk_quest(app.clone(), "to-restore", None).await;
+    delete(app.clone(), &format!("/api/quests/{id}")).await;
+
+    // restore 호출
+    let (status, body) = patch(
+        app.clone(),
+        &format!("/api/quests/{id}/restore"),
+        json!({}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["id"], id);
+
+    // alive list 에 다시 나타남
+    let (_, alive) = get(app.clone(), "/api/quests").await;
+    assert_eq!(alive.as_array().unwrap().len(), 1);
+
+    // deleted list 에서 빠짐
+    let (_, deleted) = get(app, "/api/deleted-quests").await;
+    assert_eq!(deleted.as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn test_restore_alive_returns_404() {
+    let app = setup().await;
+    let id = mk_quest(app.clone(), "alive", None).await;
+    // 살아있는 quest 를 restore 시도 → 404 (이미 alive)
+    let (status, _) = patch(
+        app,
+        &format!("/api/quests/{id}/restore"),
+        json!({}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_soft_delete_preserves_dependencies_table_but_filters_out() {
+    let app = setup().await;
+    let prereq = mk_quest(app.clone(), "p", None).await;
+    let dep = mk_quest(app.clone(), "d", None).await;
+    post(
+        app.clone(),
+        &format!("/api/quests/{dep}/prerequisites"),
+        json!({ "prerequisite_id": prereq }),
+    )
+    .await;
+    delete(app.clone(), &format!("/api/quests/{dep}")).await;
+
+    // dependencies 응답에선 join 필터로 빠짐
+    let (_, deps) = get(app.clone(), "/api/quest-dependencies").await;
+    assert_eq!(deps.as_array().unwrap().len(), 0);
+
+    // restore 하면 다시 나타남 (dependency 행은 보존되어 있었음)
+    patch(
+        app.clone(),
+        &format!("/api/quests/{dep}/restore"),
+        json!({}),
+    )
+    .await;
+    let (_, deps) = get(app, "/api/quest-dependencies").await;
+    assert_eq!(deps.as_array().unwrap().len(), 1);
+}
+
 // === 마이그레이션 0002 데이터 보존 검증 ===
 //
 // 0002 가 데이터를 날리는 회귀를 막는다. 0001 적용 후 데이터를 직접 INSERT 하고,

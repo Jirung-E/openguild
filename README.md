@@ -42,28 +42,46 @@ Default quest types:
 ### Quest Board
 Quests are displayed as nodes arranged in swim lanes by status. Drag a node to a different lane to change its status. Arrows between nodes indicate prerequisite or sub-quest relationships.
 
+The board has a grid-snap toggle (G key) and an Arrange action with two modes (`Group` / `All`) — both per-lane and globally. Group mode separates connected components into rectangular regions.
+
 ### Quest List
 All quests are shown in a flat list. Sub-quests appear as a collapsible tree under their parent. Status cannot be changed from this view — use the Quest Board or Quest Detail page.
 
+### CLI (`og`)
+A console client for agents and automation. Calls the same HTTP API as the web frontend.
+
+```bash
+og ping                                    # check the server
+og quest list --json                       # list all quests as JSON
+og quest new --type DEV --title "..." --json
+og quest start DEV-001                     # transition to In Progress
+og quest done DEV-001                      # transition to Done
+og quest show DEV-001                      # detail view (sub/prereq included)
+```
+
+See [`AGENTS.md`](./AGENTS.md) for the full command list.
+
 
 ## Development
-**Backend**
+**Backend (HTTP server)**
 ```bash
 cd backend
 cargo run -p server
 ```
 
-**Frontend**
+**Frontend (Svelte)**
 ```bash
 cd frontend
 npm run dev
 ```
 
-
+**CLI**
+```bash
+cd tools/cli
+cargo build --release       # → tools/cli/target/release/og
+```
 
 ---
-
-
 
 # OpenGuild
 프로젝트 이슈 트래커.
@@ -109,19 +127,41 @@ GUI에서 디렉터리를 직접 선택하거나 최근 길드 목록에서 열 
 ### Quest Board
 퀘스트가 노드로 표시되며, 상태별 레인으로 배치된다. 노드를 다른 레인으로 드래그하면 상태가 변경된다. 노드 간 화살표는 선행 퀘스트 또는 서브퀘스트 관계를 나타낸다.
 
+보드에는 그리드 스냅 토글(G 키)과 정렬 액션(`Group` / `All` 모드)이 있다. Group 모드는 연관된 노드 그룹을 직사각형 영역으로 분리해서 정렬한다. 정렬은 보드 전체 단위와 레인 단위 둘 다 가능.
+
 ### Quest List
 모든 퀘스트를 단일 리스트로 표시한다. 서브퀘스트는 부모 퀘스트 하위에 접기/펼치기 트리로 나타난다. 이 뷰에서는 상태를 변경할 수 없으며, Quest Board 또는 Quest Detail 페이지에서 변경한다.
 
+### CLI (`og`)
+agent / 자동화용 콘솔 클라이언트. 웹 프론트엔드와 같은 HTTP API 를 호출한다.
+
+```bash
+og ping                                    # 서버 상태 확인
+og quest list --json                       # 전체 퀘스트 JSON 출력
+og quest new --type DEV --title "..." --json
+og quest start DEV-001                     # In Progress 로
+og quest done DEV-001                      # Done 으로
+og quest show DEV-001                      # 상세 (서브/선행 포함)
+```
+
+전체 명령 목록은 [`AGENTS.md`](./AGENTS.md) 참조.
+
 
 ## 개발 환경 실행
-**백엔드**
+**백엔드 (HTTP 서버)**
 ```bash
 cd backend
 cargo run -p server
 ```
 
-**프론트엔드**
+**프론트엔드 (Svelte)**
 ```bash
 cd frontend
 npm run dev
+```
+
+**CLI**
+```bash
+cd tools/cli
+cargo build --release       # → tools/cli/target/release/og
 ```

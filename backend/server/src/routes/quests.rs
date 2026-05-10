@@ -42,7 +42,7 @@ const QUEST_SELECT: &str = r#"
 // --- 퀘스트 목록 ---
 
 pub async fn list_quests(State(pool): State<SqlitePool>) -> AppResult<Json<Vec<QuestRow>>> {
-    let sql = format!("{QUEST_SELECT} ORDER BY q.id DESC");
+    let sql = format!("{QUEST_SELECT} WHERE q.deleted_at IS NULL ORDER BY q.id DESC");
     let quests = sqlx::query_as::<_, QuestRow>(&sql)
         .fetch_all(&pool)
         .await?;
@@ -55,13 +55,14 @@ pub async fn create_quest(
     State(pool): State<SqlitePool>,
     Json(body): Json<CreateQuestRequest>,
 ) -> AppResult<(StatusCode, Json<QuestRow>)> {
-    // parent_quest_id가 지정된 경우, 해당 부모가 존재하는지 검증
+    // parent_quest_id가 지정된 경우, 해당 부모가 존재(alive)하는지 검증
     if let Some(pid) = body.parent_quest_id {
-        let exists: bool =
-            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM quests WHERE id = ?)")
-                .bind(pid)
-                .fetch_one(&pool)
-                .await?;
+        let exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM quests WHERE id = ? AND deleted_at IS NULL)",
+        )
+        .bind(pid)
+        .fetch_one(&pool)
+        .await?;
         if !exists {
             return Err(AppError::BadRequest(format!(
                 "parent quest {pid} not found"
@@ -231,10 +232,10 @@ pub async fn delete_quest(
 
     let mut tx = pool.begin().await?;
 
-    // cascade로 명시된 ID들이 실제 직계 자식인지 검증
+    // cascade 로 명시된 ID 들이 실제 alive 직계 자식인지 검증
     for cid in &cascade_ids {
         let is_child: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM quests WHERE id = ? AND parent_quest_id = ?)",
+            "SELECT EXISTS(SELECT 1 FROM quests WHERE id = ? AND parent_quest_id = ? AND deleted_at IS NULL)",
         )
         .bind(cid)
         .bind(id)
@@ -247,21 +248,47 @@ pub async fn delete_quest(
         }
     }
 
-    // 명시된 자식들 먼저 삭제 (직계 자식만 — 손자 이하는 손주의 parent_quest_id가
-    //   ON DELETE SET NULL 로 분리됨)
+    // cascade 안 한 alive 직계 자식들 → parent_quest_id = NULL (분리)
+    let cascade_filter = if cascade_ids.is_empty() {
+        String::new()
+    } else {
+        format!(
+            " AND id NOT IN ({})",
+            cascade_ids
+                .iter()
+                .map(|i| i.to_string())
+                .collect::<Vec<_>>()
+                .join(",")
+        )
+    };
+    sqlx::query(&format!(
+        "UPDATE quests SET parent_quest_id = NULL, updated_at = datetime('now')
+         WHERE parent_quest_id = ? AND deleted_at IS NULL{cascade_filter}"
+    ))
+    .bind(id)
+    .execute(&mut *tx)
+    .await?;
+
+    // 명시된 자식들 soft delete
     for cid in &cascade_ids {
-        sqlx::query("DELETE FROM quests WHERE id = ?")
-            .bind(cid)
-            .execute(&mut *tx)
-            .await?;
+        sqlx::query(
+            "UPDATE quests SET deleted_at = datetime('now'), updated_at = datetime('now')
+             WHERE id = ? AND deleted_at IS NULL",
+        )
+        .bind(cid)
+        .execute(&mut *tx)
+        .await?;
     }
 
-    // 본 퀘스트 삭제. 명시 안 한 자식은 ON DELETE SET NULL 로 분리됨.
-    let rows = sqlx::query("DELETE FROM quests WHERE id = ?")
-        .bind(id)
-        .execute(&mut *tx)
-        .await?
-        .rows_affected();
+    // 본 퀘스트 soft delete
+    let rows = sqlx::query(
+        "UPDATE quests SET deleted_at = datetime('now'), updated_at = datetime('now')
+         WHERE id = ? AND deleted_at IS NULL",
+    )
+    .bind(id)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected();
 
     if rows == 0 {
         return Err(AppError::NotFound(format!("quest {id} not found")));
@@ -269,6 +296,44 @@ pub async fn delete_quest(
 
     tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+// --- soft deleted 퀘스트 목록 ---
+
+pub async fn list_deleted_quests(
+    State(pool): State<SqlitePool>,
+) -> AppResult<Json<Vec<QuestRow>>> {
+    let sql = format!(
+        "{QUEST_SELECT} WHERE q.deleted_at IS NOT NULL ORDER BY q.deleted_at DESC"
+    );
+    let quests = sqlx::query_as::<_, QuestRow>(&sql)
+        .fetch_all(&pool)
+        .await?;
+    Ok(Json(quests))
+}
+
+// --- 퀘스트 복원 (soft delete 취소) ---
+
+pub async fn restore_quest(
+    State(pool): State<SqlitePool>,
+    Path(id): Path<i64>,
+) -> AppResult<Json<QuestRow>> {
+    let rows = sqlx::query(
+        "UPDATE quests SET deleted_at = NULL, updated_at = datetime('now')
+         WHERE id = ? AND deleted_at IS NOT NULL",
+    )
+    .bind(id)
+    .execute(&pool)
+    .await?
+    .rows_affected();
+
+    if rows == 0 {
+        return Err(AppError::NotFound(format!(
+            "quest {id} is not deleted (or does not exist)"
+        )));
+    }
+    let quest = fetch_quest_by_id(&pool, id).await?;
+    Ok(Json(quest))
 }
 
 // --- 상태 변경 ---
@@ -370,7 +435,9 @@ pub async fn list_candidates(
     Query(q): Query<CandidatesQuery>,
 ) -> AppResult<Json<Vec<QuestRow>>> {
     let target = fetch_quest_by_id(&pool, id).await?;
-    let all = sqlx::query_as::<_, QuestRow>(&format!("{QUEST_SELECT} ORDER BY q.id DESC"))
+    let all = sqlx::query_as::<_, QuestRow>(&format!(
+        "{QUEST_SELECT} WHERE q.deleted_at IS NULL ORDER BY q.id DESC"
+    ))
         .fetch_all(&pool)
         .await?;
 
@@ -385,7 +452,9 @@ pub async fn list_candidates(
     .collect();
 
     let direct_subs: HashSet<i64> =
-        sqlx::query_scalar("SELECT id FROM quests WHERE parent_quest_id = ?")
+        sqlx::query_scalar(
+            "SELECT id FROM quests WHERE parent_quest_id = ? AND deleted_at IS NULL",
+        )
             .bind(id)
             .fetch_all(&pool)
             .await?
@@ -493,7 +562,9 @@ pub async fn get_quest_by_slug(
         .parse()
         .map_err(|_| AppError::BadRequest(format!("invalid quest number: {num_str}")))?;
 
-    let sql = format!("{QUEST_SELECT} WHERE qt.prefix = ? AND q.number = ?");
+    let sql = format!(
+        "{QUEST_SELECT} WHERE q.deleted_at IS NULL AND qt.prefix = ? AND q.number = ?"
+    );
     let quest = sqlx::query_as::<_, QuestRow>(&sql)
         .bind(prefix.to_uppercase())
         .bind(number)
@@ -517,18 +588,28 @@ pub async fn get_quest_by_slug(
 pub async fn list_positions(
     State(pool): State<SqlitePool>,
 ) -> AppResult<Json<Vec<QuestPosition>>> {
-    let positions =
-        sqlx::query_as::<_, QuestPosition>("SELECT quest_id, x, y FROM quest_positions")
-            .fetch_all(&pool)
-            .await?;
+    // soft-deleted quest 의 position 은 응답에서 제외 — frontend 가 stale 노드를 그리지 않도록
+    let positions = sqlx::query_as::<_, QuestPosition>(
+        "SELECT p.quest_id, p.x, p.y
+         FROM quest_positions p
+         JOIN quests q ON q.id = p.quest_id
+         WHERE q.deleted_at IS NULL",
+    )
+    .fetch_all(&pool)
+    .await?;
     Ok(Json(positions))
 }
 
 pub async fn list_dependencies(
     State(pool): State<SqlitePool>,
 ) -> AppResult<Json<Vec<QuestDependency>>> {
+    // 양 끝 quest 가 모두 alive 인 dependency 만
     let deps = sqlx::query_as::<_, QuestDependency>(
-        "SELECT quest_id, prerequisite_id FROM quest_dependencies",
+        "SELECT d.quest_id, d.prerequisite_id
+         FROM quest_dependencies d
+         JOIN quests q1 ON q1.id = d.quest_id
+         JOIN quests q2 ON q2.id = d.prerequisite_id
+         WHERE q1.deleted_at IS NULL AND q2.deleted_at IS NULL",
     )
     .fetch_all(&pool)
     .await?;
@@ -538,7 +619,7 @@ pub async fn list_dependencies(
 // --- 공통 헬퍼 ---
 
 async fn fetch_quest_by_id(pool: &SqlitePool, id: i64) -> AppResult<QuestRow> {
-    let sql = format!("{QUEST_SELECT} WHERE q.id = ?");
+    let sql = format!("{QUEST_SELECT} WHERE q.deleted_at IS NULL AND q.id = ?");
     sqlx::query_as::<_, QuestRow>(&sql)
         .bind(id)
         .fetch_optional(pool)
@@ -550,7 +631,9 @@ async fn fetch_relations(
     pool: &SqlitePool,
     id: i64,
 ) -> AppResult<(Vec<QuestRow>, Vec<QuestRow>, Option<QuestPosition>)> {
-    let sub_sql = format!("{QUEST_SELECT} WHERE q.parent_quest_id = ? ORDER BY q.id");
+    let sub_sql = format!(
+        "{QUEST_SELECT} WHERE q.deleted_at IS NULL AND q.parent_quest_id = ? ORDER BY q.id"
+    );
     let sub_quests = sqlx::query_as::<_, QuestRow>(&sub_sql)
         .bind(id)
         .fetch_all(pool)
@@ -559,7 +642,7 @@ async fn fetch_relations(
     let prereq_sql = format!(
         "{QUEST_SELECT}
          JOIN quest_dependencies dep ON q.id = dep.prerequisite_id
-         WHERE dep.quest_id = ? ORDER BY q.id"
+         WHERE q.deleted_at IS NULL AND dep.quest_id = ? ORDER BY q.id"
     );
     let prerequisites = sqlx::query_as::<_, QuestRow>(&prereq_sql)
         .bind(id)
@@ -594,7 +677,9 @@ async fn is_descendant_of(
             return Ok(true);
         }
         let parent: Option<Option<i64>> =
-            sqlx::query_scalar("SELECT parent_quest_id FROM quests WHERE id = ?")
+            sqlx::query_scalar(
+                "SELECT parent_quest_id FROM quests WHERE id = ? AND deleted_at IS NULL",
+            )
                 .bind(cid)
                 .fetch_optional(pool)
                 .await?;

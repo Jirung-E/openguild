@@ -23,6 +23,7 @@ pub fn create_router(pool: SqlitePool) -> Router {
         )
         .route("/api/quests/{id}/status", patch(quests::change_status))
         .route("/api/quests/{id}/parent", patch(quests::change_parent))
+        .route("/api/quests/{id}/restore", patch(quests::restore_quest))
         .route("/api/quests/{id}/candidates", get(quests::list_candidates))
         .route("/api/quests/{id}/prerequisites", post(quests::add_prerequisite))
         .route(
@@ -33,6 +34,7 @@ pub fn create_router(pool: SqlitePool) -> Router {
         .route("/api/quests/by/{slug}", get(quests::get_quest_by_slug))
         .route("/api/quest-positions", get(quests::list_positions))
         .route("/api/quest-dependencies", get(quests::list_dependencies))
+        .route("/api/deleted-quests", get(quests::list_deleted_quests))
         .with_state(pool)
 }
 
