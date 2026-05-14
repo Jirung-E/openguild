@@ -47,38 +47,48 @@ The board has a grid-snap toggle (G key) and an Arrange action with two modes (`
 ### Quest List
 All quests are shown in a flat list. Sub-quests appear as a collapsible tree under their parent. Status cannot be changed from this view — use the Quest Board or Quest Detail page.
 
-### CLI (`og`)
+### CLI (`openguild`)
 A console client for agents and automation. Calls the same HTTP API as the web frontend.
 
 ```bash
-og ping                                    # check the server
-og quest list --json                       # list all quests as JSON
-og quest new --type DEV --title "..." --json
-og quest start DEV-001                     # transition to In Progress
-og quest done DEV-001                      # transition to Done
-og quest show DEV-001                      # detail view (sub/prereq included)
+openguild ping                                    # check the server
+openguild quest list --json                       # list all quests as JSON
+openguild quest new --type DEV --title "..." --json
+openguild quest start DEV-001                     # transition to In Progress
+openguild quest done DEV-001                      # transition to Done
+openguild quest show DEV-001                      # detail view (sub/prereq included)
 ```
 
-See [`AGENTS.md`](./AGENTS.md) for the full command list.
+## Documentation
+
+| File | Audience | Purpose |
+|---|---|---|
+| [`AGENTS.md`](./AGENTS.md) | AI agent | Index — points to other docs |
+| [`docs/AGENTS_OPENGUILD_USAGE.md`](./docs/AGENTS_OPENGUILD_USAGE.md) | AI agent | How an agent uses OpenGuild as a task management tool (CLI guide) |
+| [`docs/architecture.md`](./docs/architecture.md) | Developers | System architecture, API endpoints, data model |
+| [`docs/dev-plan.md`](./docs/dev-plan.md) | Developers | Roadmap, progress |
+| [`docs/planning.md`](./docs/planning.md) | Developers | Design decisions, terminology, MVP scope |
+| [`docs/guild-rules.md`](./docs/guild-rules.md) | Developers | Coding / commit / branch conventions |
 
 
 ## Development
 **Backend (HTTP server)**
 ```bash
-cd backend
-cargo run -p server
+cargo run --bin openguild-server
+# or: just dev-server
 ```
 
 **Frontend (Svelte)**
 ```bash
-cd frontend
+cd gui/frontend
 npm run dev
+# or from repo root: just dev-frontend
 ```
 
 **CLI**
 ```bash
-cd tools/cli
-cargo build --release       # → tools/cli/target/release/og
+cargo build --release --bin openguild   # → target/release/openguild
+# or: cargo run --bin openguild -- --help
 ```
 
 ---
@@ -132,36 +142,47 @@ GUI에서 디렉터리를 직접 선택하거나 최근 길드 목록에서 열 
 ### Quest List
 모든 퀘스트를 단일 리스트로 표시한다. 서브퀘스트는 부모 퀘스트 하위에 접기/펼치기 트리로 나타난다. 이 뷰에서는 상태를 변경할 수 없으며, Quest Board 또는 Quest Detail 페이지에서 변경한다.
 
-### CLI (`og`)
+### CLI (`openguild`)
 agent / 자동화용 콘솔 클라이언트. 웹 프론트엔드와 같은 HTTP API 를 호출한다.
 
 ```bash
-og ping                                    # 서버 상태 확인
-og quest list --json                       # 전체 퀘스트 JSON 출력
-og quest new --type DEV --title "..." --json
-og quest start DEV-001                     # In Progress 로
-og quest done DEV-001                      # Done 으로
-og quest show DEV-001                      # 상세 (서브/선행 포함)
+openguild ping                                    # 서버 상태 확인
+openguild quest list --json                       # 전체 퀘스트 JSON 출력
+openguild quest new --type DEV --title "..." --json
+openguild quest start DEV-001                     # In Progress 로
+openguild quest done DEV-001                      # Done 으로
+openguild quest show DEV-001                      # 상세 (서브/선행 포함)
 ```
 
-전체 명령 목록은 [`AGENTS.md`](./AGENTS.md) 참조.
+## 문서
+
+| 파일 | 대상 | 내용 |
+|---|---|---|
+| [`AGENTS.md`](./AGENTS.md) | AI agent | 인덱스 — 다른 문서로 가는 진입점 |
+| [`docs/AGENTS_OPENGUILD_USAGE.md`](./docs/AGENTS_OPENGUILD_USAGE.md) | AI agent | agent 가 OpenGuild 를 작업 관리 도구로 사용하는 방법 (CLI 가이드) |
+| [`docs/architecture.md`](./docs/architecture.md) | 개발자 | 시스템 구조, API 엔드포인트, 데이터 모델 |
+| [`docs/dev-plan.md`](./docs/dev-plan.md) | 개발자 | 단계별 개발 계획 + 진행 상태 |
+| [`docs/planning.md`](./docs/planning.md) | 개발자 | 기획 결정, 용어, MVP 범위 |
+| [`docs/guild-rules.md`](./docs/guild-rules.md) | 개발자 | 커밋·브랜치·코드 컨벤션 |
 
 
 ## 개발 환경 실행
+모든 명령은 repo root 에서 실행. `justfile` 의 단축 명령 사용 가능 (`just --list`).
+
 **백엔드 (HTTP 서버)**
 ```bash
-cd backend
-cargo run -p server
+cargo run --bin openguild-server
+# or: just dev-server
 ```
 
 **프론트엔드 (Svelte)**
 ```bash
-cd frontend
-npm run dev
+cd gui/frontend && npm run dev
+# or: just dev-frontend
 ```
 
 **CLI**
 ```bash
-cd tools/cli
-cargo build --release       # → tools/cli/target/release/og
+cargo build --release --bin openguild   # → target/release/openguild
+# or: cargo run --bin openguild -- --help
 ```

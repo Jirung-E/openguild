@@ -55,7 +55,7 @@
 - ✅ New Quest 후 보드 머무름 + 펄스 (flashQuestId store)
 
 ## 8단계 — Agent / 자동화 인터페이스 ✅
-- ✅ CLI `og` (tools/cli) — clap + reqwest blocking
+- ✅ CLI `openguild` (`cli/`) — clap + reqwest blocking
 - ✅ Quest CRUD / 상태 / 부모 / prereq 명령
 - ✅ JSON 출력 옵션 (`--json`)
 - ✅ slug → id 자동 변환, 상태/타입 이름 resolve
@@ -65,7 +65,7 @@
 - ✅ Audit log middleware — 모든 mutation HTTP 요청 timestamped 기록 (`audit.log`)
 - ✅ CLI delete `--yes` 강제 + `--dry-run` 미리보기
 - ✅ CLI update `--dry-run`
-- ✅ Soft delete (migration 0003 `deleted_at`) + `og quest restore` + `og quest deleted`
+- ✅ Soft delete (migration 0003 `deleted_at`) + `openguild quest restore` + `openguild quest deleted`
 
 ## 9단계 — CI/CD + 배포 ⚪
 - ⚪ GitHub Actions: PR 시 cargo check / cargo test / npm check / npm test
@@ -83,3 +83,29 @@
 - 길드 규칙 (Guild Rules) 기능
 - 다음 퀘스트(Successor) / 부모 퀘스트 직접 변경 UI
 - core crate 분리 (server / cli 공유)
+
+## 보류 결정 (재검토 가능)
+
+### CLI REPL 모드 — `openguild` 진입 후 프롬프트 입력
+
+검토 후 **보류**. 이유:
+
+- 단발 호출 + lock/pid 파일 기반 서버 재사용으로 cold start 비용이 충분히 작을 것으로 예상
+- REPL 추가 시 비용:
+  - 의존성 추가 (`rustyline` 등)
+  - 단발 / REPL 두 모드 분기로 코드 복잡도 ↑
+  - 안전장치 (`--yes` / `--dry-run` 등) 가 REPL 안에서도 일관 동작하도록 추가 처리
+- agent 호출 패턴은 대부분 "process spawn → 단발 명령 → exit code" — REPL 메리트 작음
+
+**재검토 시점**:
+- 단발 호출 cold start 가 실 사용에서 느리다고 판명되거나
+- agent / 사용자가 interactive 세션을 요구하는 시나리오가 빈번해지면
+
+### Desktop 설치 위치 / Recent guild 저장 위치 — portable app 스타일
+
+`openguild-desktop` 의 Recent guild 목록 및 사용자별 설정을 OS 표준 위치 (`~/.config/...` 등) 가 아닌
+**앱 설치 시 사용자가 선택한 디렉토리** 에 저장. portable app 형태 (USB 등에서 동작).
+
+지금은 보류 — 데스크톱 앱 골격 잡힌 후 결정.
+
+**재검토 시점**: Tauri desktop 빌드 / 설치관리자 작업 진입 시.

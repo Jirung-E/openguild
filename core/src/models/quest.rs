@@ -96,3 +96,70 @@ pub struct QuestDependency {
     pub quest_id: i64,
     pub prerequisite_id: i64,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn quest_row_serde_roundtrip() {
+        let q = QuestRow {
+            id: 1,
+            quest_id: "DEV-001".into(),
+            quest_type_id: 1,
+            type_prefix: "DEV".into(),
+            type_color: "#4A90D9".into(),
+            number: 1,
+            title: "test".into(),
+            description: Some("body".into()),
+            status_id: 1,
+            status_name_en: "Open".into(),
+            status_name_ko: "게시됨".into(),
+            status_color: "#8B95A1".into(),
+            urgency: 3,
+            parent_quest_id: None,
+            created_at: "".into(),
+            updated_at: "".into(),
+        };
+        let json = serde_json::to_string(&q).unwrap();
+        let back: QuestRow = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.quest_id, "DEV-001");
+        assert_eq!(back.description.as_deref(), Some("body"));
+    }
+
+    #[test]
+    fn create_quest_request_deserialize() {
+        let body = r##"{
+            "quest_type_id": 1,
+            "title": "t",
+            "status_id": 1
+        }"##;
+        let req: CreateQuestRequest = serde_json::from_str(body).unwrap();
+        assert_eq!(req.quest_type_id, 1);
+        assert_eq!(req.title, "t");
+        assert!(req.description.is_none());
+        assert!(req.urgency.is_none());
+    }
+
+    #[test]
+    fn change_parent_request_accepts_null() {
+        let body = r##"{ "parent_quest_id": null }"##;
+        let req: ChangeParentRequest = serde_json::from_str(body).unwrap();
+        assert!(req.parent_quest_id.is_none());
+
+        let body2 = r##"{ "parent_quest_id": 42 }"##;
+        let req2: ChangeParentRequest = serde_json::from_str(body2).unwrap();
+        assert_eq!(req2.parent_quest_id, Some(42));
+    }
+
+    #[test]
+    fn quest_dependency_serde() {
+        let d = QuestDependency {
+            quest_id: 5,
+            prerequisite_id: 3,
+        };
+        let json = serde_json::to_string(&d).unwrap();
+        assert!(json.contains("\"quest_id\":5"));
+        assert!(json.contains("\"prerequisite_id\":3"));
+    }
+}

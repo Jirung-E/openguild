@@ -1,0 +1,24 @@
+[package]
+name = "openguild-core"
+version = "0.1.0"
+edition = "2024"
+description = "OpenGuild core — 비즈니스 로직, sqlx, 모델. server / cli / desktop 공유."
+
+[dependencies]
+# DB
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "migrate"] }
+tokio = { version = "1", features = ["full"] }
+
+# 직렬화
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# guild 파일 파싱
+toml = "0.8"
+
+# 에러 처리
+anyhow = "1"
+thiserror = "2"
+
+# 로깅
+tracing = "0.1"

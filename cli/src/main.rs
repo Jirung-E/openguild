@@ -1,4 +1,4 @@
-//! OpenGuild CLI (`og`)
+//! OpenGuild CLI (`openguild`)
 //!
 //! 백엔드 HTTP API 의 agent / 사람용 콘솔 클라이언트.
 //! frontend (Svelte) 와 같은 endpoint 를 호출. 서버는 별도로 띄워둬야 한다.
@@ -20,7 +20,7 @@ const DEFAULT_URL: &str = "http://localhost:3000";
 
 #[derive(Parser)]
 #[command(
-    name = "og",
+    name = "openguild",
     version,
     about = "OpenGuild CLI — HTTP client for the OpenGuild server"
 )]
@@ -39,6 +39,12 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// 현재 디렉토리를 길드로 초기화 (.guild 마커 파일 생성)
+    Init {
+        /// 길드 이름. 미지정 시 현재 디렉토리 이름 사용.
+        #[arg(long)]
+        name: Option<String>,
+    },
     /// 퀘스트 관련 명령
     Quest {
         #[command(subcommand)]
@@ -500,6 +506,9 @@ fn run() -> Result<()> {
     let c = Client::new(url);
 
     match cli.command {
+        Command::Init { name } => {
+            init_guild(name, cli.json)?;
+        }
         Command::Ping => {
             let s = c.ping()?;
             if cli.json {
@@ -870,6 +879,123 @@ fn run() -> Result<()> {
     Ok(())
 }
 
+// ─────────────────────────── init ───────────────────────────
+
+/// 현재 디렉토리를 길드로 초기화. `<name>.guild` 마커 파일 생성.
+fn init_guild(name_arg: Option<String>, json: bool) -> Result<()> {
+    let cwd = std::env::current_dir().context("현재 디렉토리를 확인할 수 없음")?;
+    let (guild_path, name) = init_guild_at(&cwd, name_arg)?;
+
+    if json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "ok": true,
+                "guild_path": guild_path.to_string_lossy(),
+                "name": name,
+                "next": "GUILD_PATH=. cargo run --bin openguild-server"
+            })
+        );
+    } else {
+        println!("✓ guild created: {}", guild_path.display());
+        println!("▸ start the server:");
+        println!("    GUILD_PATH={} cargo run --bin openguild-server", cwd.display());
+    }
+    Ok(())
+}
+
+/// 순수 로직 — 디렉토리 경로를 받아 `.guild` 파일 작성. (작성된 경로, 길드 이름) 반환.
+/// 단위 테스트에서 tempdir 로 직접 호출 가능 (cwd 의존성 없음).
+fn init_guild_at(
+    cwd: &std::path::Path,
+    name_arg: Option<String>,
+) -> Result<(std::path::PathBuf, String)> {
+    let name = match name_arg {
+        Some(n) => n,
+        None => cwd
+            .file_name()
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| anyhow!("현재 디렉토리 이름을 추출할 수 없음. --name 으로 지정하세요."))?
+            .to_string(),
+    };
+
+    // 기존에 .guild 파일이 있는지 확인 (어떤 이름이든)
+    let existing = std::fs::read_dir(cwd)
+        .context("디렉토리 읽기 실패")?
+        .filter_map(|e| e.ok())
+        .find(|e| {
+            e.file_name()
+                .to_string_lossy()
+                .to_lowercase()
+                .ends_with(".guild")
+        });
+    if let Some(e) = existing {
+        return Err(anyhow!(
+            "이미 길드가 초기화되어 있습니다: {}",
+            e.file_name().to_string_lossy()
+        ));
+    }
+
+    let guild_path = cwd.join(format!("{name}.guild"));
+    let today = today_date();
+    let content = format!(
+        "name = \"{}\"\nversion = \"1.0\"\ncreated_at = \"{}\"\n",
+        name.replace('\\', "\\\\").replace('"', "\\\""),
+        today
+    );
+    std::fs::write(&guild_path, content)
+        .with_context(|| format!("길드 파일 작성 실패: {}", guild_path.display()))?;
+
+    Ok((guild_path, name))
+}
+
+/// 오늘 날짜 (YYYY-MM-DD, UTC). chrono 의존 없이 epoch → 분해.
+fn today_date() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let mut days = (secs / 86400) as i64;
+    let mut year: i64 = 1970;
+    loop {
+        let dy = if is_leap_init(year) { 366 } else { 365 };
+        if days >= dy {
+            days -= dy;
+            year += 1;
+        } else {
+            break;
+        }
+    }
+    let dim = days_in_months_init(year);
+    let mut month = 0usize;
+    while month < 12 && days >= dim[month] as i64 {
+        days -= dim[month] as i64;
+        month += 1;
+    }
+    format!("{:04}-{:02}-{:02}", year, month + 1, days + 1)
+}
+
+fn is_leap_init(y: i64) -> bool {
+    (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
+}
+fn days_in_months_init(y: i64) -> [u32; 12] {
+    [
+        31,
+        if is_leap_init(y) { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ]
+}
+
 fn main() {
     if let Err(e) = run() {
         eprintln!("error: {e:#}");
@@ -949,7 +1075,7 @@ mod tests {
 
     #[test]
     fn cli_parse_quest_list() {
-        let cli = Cli::try_parse_from(["og", "quest", "list"]).unwrap();
+        let cli = Cli::try_parse_from(["openguild", "quest", "list"]).unwrap();
         assert!(matches!(
             cli.command,
             Command::Quest {
@@ -963,7 +1089,7 @@ mod tests {
     #[test]
     fn cli_parse_global_json_and_url() {
         let cli = Cli::try_parse_from([
-            "og",
+            "openguild",
             "--json",
             "--url",
             "http://example.com",
@@ -978,7 +1104,7 @@ mod tests {
     #[test]
     fn cli_parse_quest_new_minimal() {
         let cli =
-            Cli::try_parse_from(["og", "quest", "new", "--type", "DEV", "--title", "test"])
+            Cli::try_parse_from(["openguild", "quest", "new", "--type", "DEV", "--title", "test"])
                 .unwrap();
         match cli.command {
             Command::Quest {
@@ -1004,7 +1130,7 @@ mod tests {
     #[test]
     fn cli_parse_quest_new_full() {
         let cli = Cli::try_parse_from([
-            "og", "quest", "new",
+            "openguild", "quest", "new",
             "--type", "BUG",
             "--title", "fix",
             "--description", "details",
@@ -1036,7 +1162,7 @@ mod tests {
     #[test]
     fn cli_parse_quest_delete_with_cascade() {
         let cli = Cli::try_parse_from([
-            "og",
+            "openguild",
             "quest",
             "delete",
             "DEV-001",
@@ -1066,7 +1192,7 @@ mod tests {
 
     #[test]
     fn cli_parse_quest_delete_dry_run() {
-        let cli = Cli::try_parse_from(["og", "quest", "delete", "DEV-001", "--dry-run"]).unwrap();
+        let cli = Cli::try_parse_from(["openguild", "quest", "delete", "DEV-001", "--dry-run"]).unwrap();
         match cli.command {
             Command::Quest {
                 sub: QuestCmd::Delete { dry_run, yes, .. },
@@ -1081,7 +1207,7 @@ mod tests {
     #[test]
     fn cli_parse_quest_delete_default_no_yes_no_dryrun() {
         // 안전장치 검증: 기본값에서 yes / dry_run 모두 false 여야 한다
-        let cli = Cli::try_parse_from(["og", "quest", "delete", "DEV-001"]).unwrap();
+        let cli = Cli::try_parse_from(["openguild", "quest", "delete", "DEV-001"]).unwrap();
         match cli.command {
             Command::Quest {
                 sub: QuestCmd::Delete { dry_run, yes, .. },
@@ -1098,7 +1224,7 @@ mod tests {
     fn cli_parse_parent_with_detach_flag() {
         // 파서 단계에선 detach + parent 동시 허용. 의미 검증은 run() 에서.
         let cli =
-            Cli::try_parse_from(["og", "quest", "parent", "DEV-001", "--detach"]).unwrap();
+            Cli::try_parse_from(["openguild", "quest", "parent", "DEV-001", "--detach"]).unwrap();
         match cli.command {
             Command::Quest {
                 sub:
@@ -1119,7 +1245,7 @@ mod tests {
     #[test]
     fn cli_parse_prereq_subcommand() {
         let cli = Cli::try_parse_from([
-            "og", "quest", "prereq", "add", "DEV-001", "DEV-002",
+            "openguild", "quest", "prereq", "add", "DEV-001", "DEV-002",
         ])
         .unwrap();
         match cli.command {
@@ -1194,5 +1320,83 @@ mod tests {
         let v: Vec<QuestStatus> = serde_json::from_str(json).unwrap();
         assert_eq!(v.len(), 2);
         assert_eq!(v[1].name_en, "In Progress");
+    }
+
+    // ───────── init_guild_at — tempdir 기반 ─────────
+
+    fn fresh_tmp(label: &str) -> std::path::PathBuf {
+        let ns = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let p = std::env::temp_dir().join(format!("og-cli-{label}-{ns}"));
+        std::fs::create_dir_all(&p).unwrap();
+        p
+    }
+
+    #[test]
+    fn init_creates_guild_file_with_default_name() {
+        let dir = fresh_tmp("default");
+        // 디렉토리 이름이 default name 으로 쓰이도록 하위 디렉토리 사용
+        let sub = dir.join("monitor");
+        std::fs::create_dir_all(&sub).unwrap();
+
+        let (path, name) = init_guild_at(&sub, None).unwrap();
+        assert_eq!(name, "monitor");
+        assert!(path.exists());
+        assert_eq!(path.file_name().unwrap(), "monitor.guild");
+
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("name = \"monitor\""));
+        assert!(content.contains("version = \"1.0\""));
+        assert!(content.contains("created_at = "));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn init_uses_name_arg_when_provided() {
+        let dir = fresh_tmp("named");
+        let (path, name) = init_guild_at(&dir, Some("커스텀이름".into())).unwrap();
+        assert_eq!(name, "커스텀이름");
+        assert_eq!(path.file_name().unwrap(), "커스텀이름.guild");
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("name = \"커스텀이름\""));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn init_refuses_when_guild_already_exists() {
+        let dir = fresh_tmp("dup");
+        // 사전 .guild 파일 생성
+        std::fs::write(
+            dir.join("existing.guild"),
+            "name = \"X\"\nversion = \"1.0\"\ncreated_at = \"2026-01-01\"\n",
+        )
+        .unwrap();
+
+        let err = init_guild_at(&dir, Some("new".into())).unwrap_err();
+        assert!(err.to_string().contains("이미 길드가 초기화"));
+        // 새 파일이 생기지 않았음
+        assert!(!dir.join("new.guild").exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn init_writes_parsable_toml() {
+        let dir = fresh_tmp("toml");
+        let (path, _) = init_guild_at(&dir, Some("길드 이름".into())).unwrap();
+        let content = std::fs::read_to_string(&path).unwrap();
+        // toml 파싱 가능 + 정확한 값
+        let parsed: toml::Value = toml::from_str(&content).unwrap();
+        assert_eq!(parsed["name"].as_str().unwrap(), "길드 이름");
+        assert_eq!(parsed["version"].as_str().unwrap(), "1.0");
+        // created_at 은 YYYY-MM-DD 형식
+        let date = parsed["created_at"].as_str().unwrap();
+        assert_eq!(date.len(), 10);
+        assert_eq!(&date[4..5], "-");
+        assert_eq!(&date[7..8], "-");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

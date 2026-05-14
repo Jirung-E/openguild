@@ -6,13 +6,11 @@ use axum::{
 use sqlx::SqlitePool;
 use std::collections::HashSet;
 
-use crate::{
-    error::{AppError, AppResult},
-    models::{
-        AddPrerequisiteRequest, CandidatesQuery, ChangeParentRequest, ChangeStatusRequest,
-        CreateQuestRequest, DeleteQuestQuery, QuestDependency, QuestDetail, QuestPosition,
-        QuestRow, UpdatePositionRequest, UpdateQuestRequest,
-    },
+use crate::error::{AppError, AppResult};
+use openguild_core::models::{
+    AddPrerequisiteRequest, CandidatesQuery, ChangeParentRequest, ChangeStatusRequest,
+    CreateQuestRequest, DeleteQuestQuery, QuestDependency, QuestDetail, QuestPosition,
+    QuestRow, UpdatePositionRequest, UpdateQuestRequest,
 };
 
 /// type, status를 JOIN해서 QuestRow를 가져오는 공통 SELECT
@@ -66,7 +64,7 @@ pub async fn create_quest(
         if !exists {
             return Err(AppError::BadRequest(format!(
                 "parent quest {pid} not found"
-            )));
+            )).into());
         }
     }
 
@@ -170,13 +168,13 @@ pub async fn change_parent(
         if new_pid == id {
             return Err(AppError::BadRequest(
                 "a quest cannot be its own parent".to_string(),
-            ));
+            ).into());
         }
         // 새 부모가 자기 자신의 자손이면 사이클
         if is_descendant_of(&pool, new_pid, id).await? {
             return Err(AppError::BadRequest(
                 "would create a parent cycle".to_string(),
-            ));
+            ).into());
         }
         // 상호 배제: 이 퀘스트가 새 부모의 직접 선행이면 sub 으로 들어갈 수 없음.
         // (즉 P 의 선행에 C 가 있는데 C 의 부모를 P 로 만들면 sub 과 prereq 동시 점유)
@@ -192,7 +190,7 @@ pub async fn change_parent(
             return Err(AppError::BadRequest(
                 "this quest is already a prerequisite of the target — cannot also be its sub-quest"
                     .to_string(),
-            ));
+            ).into());
         }
     }
 
@@ -227,7 +225,7 @@ pub async fn delete_quest(
     if cascade_ids.len() > 100 {
         return Err(AppError::BadRequest(
             "too many cascade ids (max 100)".to_string(),
-        ));
+        ).into());
     }
 
     let mut tx = pool.begin().await?;
@@ -244,7 +242,7 @@ pub async fn delete_quest(
         if !is_child {
             return Err(AppError::BadRequest(format!(
                 "quest {cid} is not a direct child of {id}"
-            )));
+            )).into());
         }
     }
 
@@ -291,7 +289,7 @@ pub async fn delete_quest(
     .rows_affected();
 
     if rows == 0 {
-        return Err(AppError::NotFound(format!("quest {id} not found")));
+        return Err(AppError::NotFound(format!("quest {id} not found")).into());
     }
 
     tx.commit().await?;
@@ -330,7 +328,8 @@ pub async fn restore_quest(
     if rows == 0 {
         return Err(AppError::NotFound(format!(
             "quest {id} is not deleted (or does not exist)"
-        )));
+        ))
+        .into());
     }
     let quest = fetch_quest_by_id(&pool, id).await?;
     Ok(Json(quest))
@@ -353,7 +352,7 @@ pub async fn change_status(
     .rows_affected();
 
     if rows == 0 {
-        return Err(AppError::NotFound(format!("quest {id} not found")));
+        return Err(AppError::NotFound(format!("quest {id} not found")).into());
     }
 
     let quest = fetch_quest_by_id(&pool, id).await?;
@@ -370,7 +369,7 @@ pub async fn add_prerequisite(
     if id == body.prerequisite_id {
         return Err(AppError::BadRequest(
             "a quest cannot be its own prerequisite".to_string(),
-        ));
+        ).into());
     }
     // 둘 다 존재 검증
     let target = fetch_quest_by_id(&pool, id).await?;
@@ -380,20 +379,20 @@ pub async fn add_prerequisite(
     if prereq.parent_quest_id == Some(id) {
         return Err(AppError::BadRequest(
             "target is already a sub-quest — cannot also be a prerequisite".to_string(),
-        ));
+        ).into());
     }
     // 직계 부모는 prereq 로 추가 불가 — 부모-자식 관계는 의존(선행) 관계와 별개.
     if target.parent_quest_id == Some(prereq.id) {
         return Err(AppError::BadRequest(
             "parent quest cannot be added as a prerequisite".to_string(),
-        ));
+        ).into());
     }
 
     // 사이클 방지: prereq의 선행 체인에 id가 있으면 사이클
     if has_prerequisite_path(&pool, body.prerequisite_id, id).await? {
         return Err(AppError::BadRequest(
             "would create a dependency cycle".to_string(),
-        ));
+        ).into());
     }
 
     sqlx::query(
@@ -517,7 +516,8 @@ pub async fn list_candidates(
         other => {
             return Err(AppError::BadRequest(format!(
                 "invalid relation: {other} (expected parent|sub|prereq)"
-            )));
+            ))
+            .into());
         }
     }
 
@@ -624,7 +624,7 @@ async fn fetch_quest_by_id(pool: &SqlitePool, id: i64) -> AppResult<QuestRow> {
         .bind(id)
         .fetch_optional(pool)
         .await?
-        .ok_or_else(|| AppError::NotFound(format!("quest {id} not found")))
+        .ok_or_else(|| AppError::NotFound(format!("quest {id} not found")).into())
 }
 
 async fn fetch_relations(

@@ -6,7 +6,7 @@
 graph TB
     subgraph Clients["클라이언트"]
         WEB[웹 브라우저 - Svelte 프론트]
-        CLI[CLI 'og' - agent / 자동화]
+        CLI[CLI 'openguild' - agent / 자동화]
     end
 
     subgraph Frontend["프론트엔드 (Svelte 5 + Vite)"]
@@ -67,35 +67,47 @@ graph TB
 ## Cargo Workspace 구조 (현재)
 
 ```
-backend/
-├── Cargo.toml                    ← workspace, members = ["server"]
-├── migrations/                   ← sqlx 마이그레이션
-│   ├── 0001_initial.sql
-│   └── 0002_parent_on_delete_set_null.sql
-├── seed.sql                      ← 개발용 시드 데이터
-└── server/                       ← Axum HTTP 서버 (단일 binary)
-    └── src/
-        ├── main.rs
-        ├── db.rs                 ← sqlx pool, 마이그레이션 실행
-        ├── error.rs              ← AppError → HTTP 응답
-        ├── guild_file.rs         ← {name}.guild TOML 파싱
-        ├── tests.rs              ← 통합 테스트
-        ├── models/
-        │   ├── meta.rs
-        │   └── quest.rs          ← QuestRow, QuestDetail, 요청 타입
-        └── routes/
-            ├── mod.rs            ← Router 조립
-            ├── meta.rs           ← /api/quest-types, /api/quest-statuses
-            └── quests.rs         ← /api/quests/* (CRUD + 관계 + cascade)
-
-tools/
-└── cli/                          ← Rust CLI (workspace 외부, 독립 crate)
-    ├── Cargo.toml
-    └── src/main.rs               ← clap + reqwest blocking
+openguild/
+├── Cargo.toml                    ← workspace, members = ["core", "cli", "server"]
+├── core/                         ← lib: 도메인 로직 단일 진리원
+│   ├── migrations/               ← sqlx 마이그레이션 (DB 스키마와 짝)
+│   │   ├── 0001_initial.sql
+│   │   ├── 0002_parent_on_delete_set_null.sql
+│   │   └── 0003_soft_delete.sql
+│   ├── seed.sql                  ← 개발용 시드
+│   └── src/
+│       ├── lib.rs
+│       ├── db.rs                 ← sqlx pool, 마이그레이션 실행
+│       ├── error.rs              ← AppError (plain Rust)
+│       ├── guild_file.rs         ← {name}.guild TOML 파싱
+│       ├── backup.rs             ← VACUUM INTO 자동 백업
+│       └── models/
+│           ├── meta.rs
+│           └── quest.rs          ← QuestRow, QuestDetail, 요청 타입
+├── cli/                          ← bin `openguild` (clap + reqwest)
+│   ├── Cargo.toml                ← path = "../core"
+│   └── src/main.rs
+├── server/                       ← bin Axum HTTP API
+│   ├── Cargo.toml                ← path = "../core"
+│   ├── build.rs                  ← test.guild 자동 생성
+│   └── src/
+│       ├── main.rs
+│       ├── audit.rs              ← mutation HTTP 요청 audit log
+│       ├── error.rs              ← HttpError(AppError) — IntoResponse newtype
+│       ├── tests.rs              ← 통합 테스트
+│       └── routes/
+│           ├── mod.rs
+│           ├── meta.rs
+│           └── quests.rs
+├── gui/                          ← Tauri desktop (Phase 4 예정)
+│   └── frontend/                 ← Svelte 5 + Vite
+├── docs/
+├── justfile                      ← dev/build/test 단축 명령
+└── README.md
 ```
 
-> **참고**: `core` / `tools` Rust crate 분리는 planning.md 에 언급되어 있으나 미구현.
-> 현재는 server 단일 crate 안에 모든 백엔드 로직이 있음. 멀티유저/대규모 확장 단계에서 service / repository 레이어 분리 검토.
+> **변경 이력**: 2026-05-14 — server 단일 crate → core/cli/server 분리, `backend/` 폴더 제거, frontend → gui/frontend/ 이동.
+> 자세한 설계 근거는 `docs/architecture-refactor.md`.
 
 ## API 엔드포인트 (현재 구현)
 
@@ -142,19 +154,19 @@ tools/
 
 | 장치 | 위치 | 효과 |
 |---|---|---|
-| **자동 백업** | `backend/server/src/backup.rs` | startup + 1h 주기로 `VACUUM INTO`, `<guild>/backups/` 에 7일 보관 |
-| **Audit log** | `backend/server/src/audit.rs` | 모든 POST/PATCH/PUT/DELETE 호출을 `<guild>/audit.log` 에 timestamped tab-separated 로 기록 |
+| **자동 백업** | `core/src/backup.rs` | startup + 1h 주기로 `VACUUM INTO`, `<guild>/backups/` 에 7일 보관 |
+| **Audit log** | `server/src/audit.rs` | 모든 POST/PATCH/PUT/DELETE 호출을 `<guild>/audit.log` 에 timestamped tab-separated 로 기록 |
 | **Soft delete** | migration 0003 `deleted_at` | 실 삭제 X, 복원 가능. 영구 삭제는 별도 (미구현) |
-| **CLI `--yes` 강제** | `tools/cli` | `og quest delete` 는 `--yes` 없으면 거부 |
-| **CLI `--dry-run`** | `tools/cli` | `delete` / `update` 의 영향 미리보기, 실제 호출 X |
+| **CLI `--yes` 강제** | `cli/` | `openguild quest delete` 는 `--yes` 없으면 거부 |
+| **CLI `--dry-run`** | `cli/` | `delete` / `update` 의 영향 미리보기, 실제 호출 X |
 
 ## 클라이언트 비교
 
-| | Frontend (Svelte) | CLI (`og`) |
+| | Frontend (Svelte) | CLI (`openguild`) |
 |---|---|---|
 | 형태 | 웹 GUI | 콘솔 stdin/stdout |
 | HTTP | `fetch` | `reqwest` blocking |
-| 모델 | TypeScript types (`src/lib/types/index.ts`) | Rust struct (`tools/cli/src/main.rs`) inline |
+| 모델 | TypeScript types (`gui/frontend/src/lib/types/index.ts`) | Rust struct (`cli/src/main.rs`) inline |
 | 서버 의존 | 동일 백엔드 | 동일 백엔드 |
 | 주 사용자 | 사람 | AI agent / 스크립트 |
 

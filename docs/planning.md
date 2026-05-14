@@ -262,24 +262,25 @@ quests  -- type → quest_type_id
 
 ---
 
-## 프로젝트 구조 (확정)
+## 프로젝트 구조 (2026-05-14 갱신)
 
 ```
 openguild/
-├── backend/
-│   ├── Cargo.toml        ← Cargo workspace 루트
-│   ├── server/           ← 메인 API 서버 (Axum)
-│   ├── core/             ← 공통 모델/로직 (server, tools 공유)
-│   ├── tools/            ← 각종 툴 (로그 분석 등)
-│   └── migrations/       ← DB 마이그레이션
-├── frontend/             ← Svelte + Vite
+├── Cargo.toml            ← workspace, members = ["core", "cli", "server"]
+├── core/                 ← lib: 도메인 로직 + sqlx + migrations
+├── cli/                  ← bin `openguild` (로컬/원격)
+├── server/               ← bin Axum API 서버
+├── gui/                  ← Tauri desktop (Phase 4 예정)
+│   └── frontend/         ← Svelte + Vite
 ├── docs/                 ← 기획/설계 문서
+├── justfile              ← 개발 단축 명령
 └── README.md
 ```
 
-- 모노레포 (단일 저장소, 백엔드/프론트엔드 동시 수정 용이)
-- 백엔드/프론트엔드 배포는 분리
-- Cargo workspace로 server/core/tools 크레이트 관리
+- 모노레포 (단일 저장소, Rust/JS 동시 수정 용이)
+- 컴포넌트 배포는 분리 (server, gui/frontend 별도 배포 가능)
+- Cargo workspace 로 core/cli/server 관리. gui 는 Phase 4 진입 시 멤버 추가.
+- 상세 설계 근거: `docs/architecture-refactor.md`
 
 ---
 

@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
 fn main() {
-    // CARGO_MANIFEST_DIR = backend/server/
-    // 한 단계 위 = backend/  ← cargo run의 CWD
+    // CARGO_MANIFEST_DIR = <repo>/server/
+    // 한 단계 위 = <repo>/  ← cargo run의 CWD (workspace root)
     let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
     let workspace_dir = manifest_dir.parent().unwrap();
 

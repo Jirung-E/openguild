@@ -1,21 +1,20 @@
 # Rust
-backend/target/
-tools/cli/target/
+target/
 
-# 테스트용 guild 파일 (build.rs 자동 생성)
-backend/test.guild
-backend/*.db
+# 테스트용 guild 파일 (server/build.rs 자동 생성, repo root 에 작성됨)
+/test.guild
+/*.db
 
-# DB 자동 백업 (server backup task)
-backend/backups/
+# DB 자동 백업 (server backup task, repo root 기준)
+/backups/
 # audit log (mutation HTTP 요청 기록)
-backend/audit.log
+/audit.log
 
-# Node.js / Svelte
-frontend/node_modules/
-frontend/.svelte-kit/
-frontend/build/
-frontend/dist/
+# Node.js / Svelte (gui/frontend/)
+gui/frontend/node_modules/
+gui/frontend/.svelte-kit/
+gui/frontend/build/
+gui/frontend/dist/
 
 # 환경 변수
 .env

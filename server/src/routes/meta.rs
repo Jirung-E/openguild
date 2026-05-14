@@ -1,10 +1,8 @@
 use axum::{extract::State, Json};
 use sqlx::SqlitePool;
 
-use crate::{
-    error::AppResult,
-    models::{QuestStatus, QuestType},
-};
+use crate::error::AppResult;
+use openguild_core::models::{QuestStatus, QuestType};
 
 pub async fn list_quest_types(State(pool): State<SqlitePool>) -> AppResult<Json<Vec<QuestType>>> {
     let types = sqlx::query_as::<_, QuestType>("SELECT * FROM quest_types ORDER BY id")

@@ -130,3 +130,85 @@ fn days_in_months(y: i64) -> [u32; 12] {
         31,
     ]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fresh_tmp(label: &str) -> std::path::PathBuf {
+        let ns = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let p = std::env::temp_dir().join(format!("og-audit-{label}-{ns}"));
+        std::fs::create_dir_all(&p).unwrap();
+        p
+    }
+
+    #[test]
+    fn now_iso_format_is_zulu_iso8601() {
+        let s = now_iso();
+        // "YYYY-MM-DDTHH:MM:SSZ" — 20 글자
+        assert_eq!(s.len(), 20, "got {s:?}");
+        assert_eq!(&s[4..5], "-");
+        assert_eq!(&s[7..8], "-");
+        assert_eq!(&s[10..11], "T");
+        assert_eq!(&s[13..14], ":");
+        assert_eq!(&s[16..17], ":");
+        assert_eq!(&s[19..20], "Z");
+    }
+
+    #[test]
+    fn epoch_to_ymdhms_known_dates() {
+        // 2024-02-29 12:34:56 UTC = 1709210096
+        assert_eq!(epoch_to_ymdhms(1709210096), (2024, 2, 29, 12, 34, 56));
+        // 1970-01-01 00:00:00 UTC = 0
+        assert_eq!(epoch_to_ymdhms(0), (1970, 1, 1, 0, 0, 0));
+    }
+
+    #[test]
+    fn append_creates_log_and_writes_line() {
+        let dir = fresh_tmp("write");
+        let guild_path = dir.to_str().unwrap();
+        let state = AuditState::new(guild_path);
+
+        state.append("hello");
+        state.append("world");
+
+        let log = std::fs::read_to_string(dir.join("audit.log")).unwrap();
+        assert!(log.contains("hello"));
+        assert!(log.contains("world"));
+        // 두 줄
+        assert_eq!(log.lines().count(), 2);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn append_is_concurrent_safe() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let dir = fresh_tmp("concurrent");
+        let state = Arc::new(AuditState::new(dir.to_str().unwrap()));
+
+        let mut handles = vec![];
+        for i in 0..16 {
+            let s = state.clone();
+            handles.push(thread::spawn(move || {
+                for j in 0..10 {
+                    s.append(&format!("t{i}-{j}"));
+                }
+            }));
+        }
+        for h in handles {
+            h.join().unwrap();
+        }
+
+        let log = std::fs::read_to_string(dir.join("audit.log")).unwrap();
+        // 모든 라인이 손상 없이 기록되었는지 (160 lines)
+        assert_eq!(log.lines().count(), 160);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
