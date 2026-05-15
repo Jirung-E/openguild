@@ -3,20 +3,14 @@ use sqlx::SqlitePool;
 
 use crate::error::AppResult;
 use openguild_core::models::{QuestStatus, QuestType};
+use openguild_core::services::meta as svc;
 
 pub async fn list_quest_types(State(pool): State<SqlitePool>) -> AppResult<Json<Vec<QuestType>>> {
-    let types = sqlx::query_as::<_, QuestType>("SELECT * FROM quest_types ORDER BY id")
-        .fetch_all(&pool)
-        .await?;
-    Ok(Json(types))
+    Ok(Json(svc::list_quest_types(&pool).await?))
 }
 
 pub async fn list_quest_statuses(
     State(pool): State<SqlitePool>,
 ) -> AppResult<Json<Vec<QuestStatus>>> {
-    let statuses =
-        sqlx::query_as::<_, QuestStatus>("SELECT * FROM quest_statuses ORDER BY sort_order")
-            .fetch_all(&pool)
-            .await?;
-    Ok(Json(statuses))
+    Ok(Json(svc::list_quest_statuses(&pool).await?))
 }

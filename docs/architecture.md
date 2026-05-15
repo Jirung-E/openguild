@@ -5,64 +5,59 @@
 ```mermaid
 graph TB
     subgraph Clients["클라이언트"]
-        WEB[웹 브라우저 - Svelte 프론트]
-        CLI[CLI 'openguild' - agent / 자동화]
+        WEB[웹 브라우저 - Svelte]
+        CLI["CLI 'openguild' - agent / 자동화 (로컬·원격)"]
     end
 
-    subgraph Frontend["프론트엔드 (Svelte 5 + Vite)"]
-        subgraph Pages["Pages / Routes"]
-            P1["/  - Quest Board / List 탭"]
-            P2["/quests/[id] - Quest Detail"]
-        end
-        subgraph Components["Components"]
-            C1[QuestBoard - Cytoscape.js]
-            C2[QuestList / QuestListItem]
-            C3[QuestCombobox - 후보 검색]
-            C4[NewQuestModal]
-            C5[Nav]
-        end
-        subgraph ApiLayer["api/"]
-            A1[client.ts - fetch wrapper]
-            A2[quests.ts - quest endpoints]
-            A3[meta.ts - types/statuses]
-        end
-        STORES[stores.ts - flashQuestId]
+    subgraph Frontend["gui/frontend (Svelte 5 + Vite)"]
+        FE_COMP[Components - Board / List / Detail / Combobox]
+        FE_API["api/ - client.ts (VITE_API_URL or relative)"]
     end
 
-    subgraph Backend["백엔드 (Rust + Axum) - SQLite 단일 파일"]
-        subgraph Middleware["Middleware"]
-            MW1[CORS]
-            MW2[tracing]
-        end
-        subgraph Routes["routes/"]
-            R1[meta.rs - 타입/상태]
-            R2["quests.rs - CRUD + 관계 + cascade"]
-        end
-        subgraph Models["models/"]
-            M1[QuestRow / QuestDetail]
-            M2[QuestType / QuestStatus]
-        end
-        DB_LAYER[db.rs - sqlx pool]
-        GUILD[guild_file.rs - .guild TOML 파싱]
-        ERR[error.rs - AppError → HTTP]
+    subgraph Server["server crate (Axum HTTP)"]
+        SRV_CLI["CLI: host / backup / info"]
+        SRV_ROUTES["routes/ - 얇은 HTTP 어댑터"]
+        SRV_MW["middleware: CORS · tracing · audit"]
+        SRV_ERR["HttpError - IntoResponse wrapper"]
+    end
+
+    subgraph CliCrate["cli crate (openguild bin)"]
+        CLI_BACKEND["Backend enum - Http | Local"]
+        CLI_HTTP["HttpClient (reqwest blocking)"]
+        CLI_LOCAL["LocalBackend (tokio rt + SqlitePool)"]
+    end
+
+    subgraph Core["core crate (lib) - 단일 진리원"]
+        CORE_SVC["services/ - quests · meta"]
+        CORE_DB["db.rs - sqlx pool + migrations"]
+        CORE_GUILD["guild_file.rs - .guild TOML + find_from_cwd"]
+        CORE_BACKUP["backup.rs - VACUUM INTO + prune"]
+        CORE_ERR["AppError (plain Rust)"]
+        CORE_MODELS["models/ - QuestRow / QuestDetail / requests"]
     end
 
     subgraph Storage["스토리지"]
         DB[(SQLite - guild.db)]
         GF["{name}.guild - TOML 마커"]
+        BAK["backups/ - 시간별 스냅샷"]
+        AUDIT["audit.log - mutation HTTP 기록"]
     end
 
-    WEB --> Frontend
-    Frontend --> ApiLayer
-    ApiLayer -->|HTTP REST + JSON| Middleware
-    CLI -->|HTTP REST + JSON| Middleware
-    Middleware --> Routes
-    Routes --> Models
-    Models --> DB_LAYER
-    DB_LAYER --> DB
-    GF -->|시작 시 읽기| GUILD
-    GUILD --> Backend
+    WEB --> FE_COMP --> FE_API
+    FE_API -->|HTTP| SRV_MW
+    CLI --> CLI_BACKEND
+    CLI_BACKEND -->|--remote| CLI_HTTP -->|HTTP| SRV_MW
+    CLI_BACKEND -->|.guild auto-detect| CLI_LOCAL
+    SRV_MW --> SRV_ROUTES --> CORE_SVC
+    CLI_LOCAL --> CORE_SVC
+    CORE_SVC --> CORE_MODELS
+    CORE_SVC --> CORE_DB --> DB
+    CORE_GUILD --> GF
+    CORE_BACKUP --> BAK
+    SRV_MW -.->|mutation| AUDIT
 ```
+
+**핵심 원칙**: `core` 가 모든 SQL · 검증 · 사이클 체크의 단일 진리원. server route 와 cli local 모드가 동일 함수 호출. 자세한 이전 경위는 [`architecture-refactor.md`](./architecture-refactor.md).
 
 ## Cargo Workspace 구조 (현재)
 
@@ -165,16 +160,16 @@ openguild/
 | | Frontend (Svelte) | CLI (`openguild`) |
 |---|---|---|
 | 형태 | 웹 GUI | 콘솔 stdin/stdout |
-| HTTP | `fetch` | `reqwest` blocking |
-| 모델 | TypeScript types (`gui/frontend/src/lib/types/index.ts`) | Rust struct (`cli/src/main.rs`) inline |
-| 서버 의존 | 동일 백엔드 | 동일 백엔드 |
+| 통신 | `fetch` (HTTP) | Backend enum: Local 모드는 `core::services::*` 직접 호출, Remote 모드는 `reqwest` blocking |
+| 모델 | TypeScript types (`gui/frontend/src/lib/types/index.ts`) | `openguild_core::models::*` 재사용 |
+| 서버 의존 | 필수 | 로컬 모드 = 없음 / 원격 모드 = 동일 백엔드 |
 | 주 사용자 | 사람 | AI agent / 스크립트 |
 
-CLI 는 frontend 와 같은 endpoint 를 호출. 백엔드 코드 수정 없이 추가됨.
+Backend 추상화는 `cli/src/main.rs` 의 `Backend` enum. 로컬은 `--guild` 또는 cwd `.guild` 자동탐색
+(`core::guild_file::find_from_cwd`), 원격은 `--remote URL` 또는 env `OPENGUILD_REMOTE`.
 
 ## 향후 계획 (미구현)
 
-- `core` crate 분리: 모델 / 검증 / 서비스 로직을 server / cli / 다른 도구가 공유
 - 멀티유저 인증 (JWT)
 - Campaign / Comment / Memo / Quest History
 - 길드 다중 동시 접속 (현재 SQLite 단일 파일 가정)

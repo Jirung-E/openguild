@@ -52,7 +52,7 @@ mod tests {
 
     #[test]
     fn from_io_error() {
-        let io = std::io::Error::new(std::io::ErrorKind::Other, "boom");
+        let io = std::io::Error::other("boom");
         let app: AppError = io.into();
         assert!(matches!(app, AppError::Internal(_)));
     }

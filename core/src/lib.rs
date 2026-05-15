@@ -13,5 +13,6 @@ pub mod db;
 pub mod error;
 pub mod guild_file;
 pub mod models;
+pub mod services;
 
 pub use error::{AppError, AppResult};

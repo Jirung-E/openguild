@@ -67,6 +67,15 @@
 - ✅ CLI update `--dry-run`
 - ✅ Soft delete (migration 0003 `deleted_at`) + `openguild quest restore` + `openguild quest deleted`
 
+## 8.6단계 — core 분리 + CLI 로컬 모드 ✅ (2026-05-15)
+- ✅ Phase 1.0: `core` crate 신설, models/db/guild_file/backup/error 이동
+- ✅ Phase 1.1: 디렉토리 재구성 (`backend/` 제거, `gui/frontend/` 신설, 루트 평탄화)
+- ✅ Phase 1.3: `core::services::{quests, meta}` 추출, server routes 는 얇은 HTTP 어댑터
+- ✅ Phase 2: CLI Backend enum (Http/Local), `--remote URL`, cwd `.guild` 자동 탐색
+  - 단일 사용자는 서버 띄울 필요 없이 `cargo run --bin openguild -- quest list` 로 바로 사용
+- ✅ 테스트: Rust 99 (core 23 + cli 25 + server 51) + frontend 41 = **140 통과**
+- 📌 상세 설계: `docs/architecture-refactor.md`
+
 ## 9단계 — CI/CD + 배포 ⚪
 - ⚪ GitHub Actions: PR 시 cargo check / cargo test / npm check / npm test
 - ⚪ AWS EC2 배포 (백엔드)

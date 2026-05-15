@@ -81,7 +81,7 @@ mod tests {
     fn from_appshorthand_compiles_for_app_error_and_io_and_sqlx() {
         // 컴파일만 통과해도 의도 검증
         let _: HttpError = AppError::NotFound("x".into()).into();
-        let io_err = std::io::Error::new(std::io::ErrorKind::Other, "boom");
+        let io_err = std::io::Error::other("boom");
         let _: HttpError = io_err.into();
         let sqlx_err = sqlx::Error::RowNotFound;
         let _: HttpError = sqlx_err.into();

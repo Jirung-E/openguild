@@ -111,14 +111,19 @@ openguild/
   - `backend/`, `tools/` 폴더 삭제
   - 루트 Cargo.toml 신설, `core/src/db.rs` 의 `sqlx::migrate!("./migrations")` 로 경로 갱신
   - `.gitignore` 경로 갱신, `justfile` 신설 (dev/build/test 단축)
-- ⚪ services 레이어 추출 (Phase 1.3) — routes/quests.rs 의 DB 조작 로직을 `core::services::quests` 로 이동
+- ✅ services 레이어 추출 (Phase 1.3, 2026-05-15) — `core::services::quests` / `core::services::meta` 신설.
+  routes/quests.rs (715 라인) 의 SQL · 검증 · 사이클 체크 로직이 전부 core 로 이동.
+  server routes 는 axum extractor → service → JSON 직렬화만 하는 얇은 어댑터.
 
-### Phase 2 — CLI 로컬 모드 ⚪
+### Phase 2 — CLI 로컬 모드 ✅ (2026-05-15)
 
-- ⚪ `cli` 에 `--remote URL` flag 추가, 없으면 로컬 모드
-- ⚪ 로컬 모드: cwd 부터 `.guild` 탐색 → core::db::open_pool → core::services 호출
-- ⚪ 원격 모드: 현재 reqwest 코드 유지
-- ⚪ 같은 명령 / 같은 출력, 인터페이스만 분기
+- ✅ `cli` 에 `--remote URL` flag 추가, env `OPENGUILD_REMOTE` 도 지원. 기본은 로컬 모드.
+- ✅ 로컬 모드: `--guild PATH` 또는 cwd 부터 `.guild` 자동 탐색 (`core::guild_file::find_from_cwd`).
+  → `core::db::create_pool` + `run_migrations` → `core::services::*` 직접 호출.
+- ✅ `Backend` enum (Http / Local) 으로 dispatch — call site 는 모드 인지 없이 동일 메서드 호출.
+- ✅ CLI 의 local DTO 제거 → `openguild_core::models::*` 직접 사용 (중복 제거).
+- ✅ 스모크 테스트: init → ping → types → list → new → show 전부 서버 없이 동작.
+- ✅ 변경 사항: `--url` → `--remote`, env `OPENGUILD_URL` → `OPENGUILD_REMOTE` (pre-1.0 breaking).
 
 ### Phase 3 — Frontend api 어댑터 ⚪
 

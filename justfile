@@ -21,7 +21,7 @@ dev-desktop:
 
 # API 서버 dev 모드 (cwd 의 .guild 사용)
 dev-server:
-    cargo run --bin openguild-server
+    cargo run --bin openguild-server -- host
 
 # CLI dev 빌드 후 실행 (인자 전달: just dev-cli quest list)
 dev-cli *args:

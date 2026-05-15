@@ -48,7 +48,7 @@ openguild/
 
 | 영역 | 위치 | 실행 |
 |---|---|---|
-| 백엔드 | (repo root) | `cargo run --bin openguild-server`, `cargo test --workspace` (또는 `just dev-server`) |
+| 백엔드 | (repo root) | `cargo run --bin openguild-server -- host`, `cargo test --workspace` (또는 `just dev-server`). 관리: `openguild-server backup` / `info` |
 | 프론트 | `gui/frontend/` | `npm run dev`, `npm run check`, `npm test` (또는 `just dev-frontend`) |
 | CLI    | (repo root) | `cargo run --bin openguild -- --help` (또는 `cargo build --release` → `target/release/openguild`) |
 

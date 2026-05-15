@@ -22,14 +22,20 @@ A project issue tracker.
 ### Opening a Guild
 Each guild is stored as an independent directory. A guild is identified by a `{name}.guild` file inside the directory.
 
-```
-# Open an existing guild
-openguild.exe ./my-project
+```bash
+# Initialize the current directory as a guild
+openguild init [--name "My Project"]
 
-# If no .guild file is found, an initialization prompt will appear
+# Local mode: CLI auto-detects .guild in cwd (or ancestors)
+cd ./my-project
+openguild quest list
+openguild --guild ./other-project quest list
+
+# Remote mode: HTTP to a hosted server
+openguild --remote https://openguild.io/alice/monitor quest list
 ```
 
-You can also open a guild from the GUI by selecting a directory or choosing from the recent guilds list.
+The GUI (in development) provides directory selection and a recent guilds list.
 
 ### Creating a Quest
 Quests are created within a guild. Each quest has a type prefix and an auto-incremented ID (e.g., `DEV-001`, `BUG-003`).
@@ -48,10 +54,12 @@ The board has a grid-snap toggle (G key) and an Arrange action with two modes (`
 All quests are shown in a flat list. Sub-quests appear as a collapsible tree under their parent. Status cannot be changed from this view — use the Quest Board or Quest Detail page.
 
 ### CLI (`openguild`)
-A console client for agents and automation. Calls the same HTTP API as the web frontend.
+A console client for agents and automation. Two modes:
+- **Local (default)**: auto-detects `.guild` from cwd, calls `core` services directly. No server needed.
+- **Remote**: `--remote URL` or env `OPENGUILD_REMOTE` for HTTP-hosted guilds.
 
 ```bash
-openguild ping                                    # check the server
+openguild ping                                    # confirm backend / show mode
 openguild quest list --json                       # list all quests as JSON
 openguild quest new --type DEV --title "..." --json
 openguild quest start DEV-001                     # transition to In Progress
@@ -74,7 +82,9 @@ openguild quest show DEV-001                      # detail view (sub/prereq incl
 ## Development
 **Backend (HTTP server)**
 ```bash
-cargo run --bin openguild-server
+cargo run --bin openguild-server -- host          # start server
+cargo run --bin openguild-server -- info          # guild meta + db stats
+cargo run --bin openguild-server -- backup        # one-shot snapshot
 # or: just dev-server
 ```
 
@@ -117,14 +127,20 @@ cargo build --release --bin openguild   # → target/release/openguild
 ### 길드 열기
 각 길드는 독립된 디렉터리로 저장된다. 디렉터리 안의 `{이름}.guild` 파일로 길드를 식별한다.
 
-```
-# 기존 길드 열기
-openguild.exe ./my-project
+```bash
+# 현재 디렉토리를 길드로 초기화
+openguild init [--name "내 프로젝트"]
 
-# .guild 파일이 없으면 초기화 프롬프트가 표시됨
+# 로컬 모드: cwd 또는 그 상위에서 .guild 자동 탐색
+cd ./my-project
+openguild quest list
+openguild --guild ./other-project quest list
+
+# 원격 모드: 호스팅된 서버에 HTTP 로 접속
+openguild --remote https://openguild.io/alice/monitor quest list
 ```
 
-GUI에서 디렉터리를 직접 선택하거나 최근 길드 목록에서 열 수도 있다.
+GUI (개발 중) 는 디렉터리 선택 + 최근 길드 목록 제공 예정.
 
 ### 퀘스트 생성
 퀘스트는 길드 내에서 생성된다. 각 퀘스트는 타입 prefix와 자동 증가 ID를 가진다 (예: `DEV-001`, `BUG-003`).
@@ -143,7 +159,9 @@ GUI에서 디렉터리를 직접 선택하거나 최근 길드 목록에서 열 
 모든 퀘스트를 단일 리스트로 표시한다. 서브퀘스트는 부모 퀘스트 하위에 접기/펼치기 트리로 나타난다. 이 뷰에서는 상태를 변경할 수 없으며, Quest Board 또는 Quest Detail 페이지에서 변경한다.
 
 ### CLI (`openguild`)
-agent / 자동화용 콘솔 클라이언트. 웹 프론트엔드와 같은 HTTP API 를 호출한다.
+agent / 자동화용 콘솔 클라이언트. 두 모드:
+- **로컬 (기본)**: cwd `.guild` 자동 탐색 → core 직접 호출. 서버 불필요.
+- **원격**: `--remote URL` 또는 env `OPENGUILD_REMOTE` 로 호스팅 서버 HTTP 호출.
 
 ```bash
 openguild ping                                    # 서버 상태 확인
@@ -169,9 +187,11 @@ openguild quest show DEV-001                      # 상세 (서브/선행 포함
 ## 개발 환경 실행
 모든 명령은 repo root 에서 실행. `justfile` 의 단축 명령 사용 가능 (`just --list`).
 
-**백엔드 (HTTP 서버)**
+**백엔드 (HTTP 서버 + 관리 CLI)**
 ```bash
-cargo run --bin openguild-server
+cargo run --bin openguild-server -- host          # 서버 시작
+cargo run --bin openguild-server -- info          # 길드 / DB / 백업 현황
+cargo run --bin openguild-server -- backup        # 즉시 1회 백업
 # or: just dev-server
 ```
 

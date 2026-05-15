@@ -28,7 +28,7 @@
 - API 추가/변경 시 `docs/dev-plan.md` 또는 변경 이력에 **이유를 기록**한다
 - 라우터 등록(`routes/mod.rs`)과 핸들러 구현은 항상 함께 커밋
 - DB 스키마 변경은 반드시 migration 파일로 관리 (직접 ALTER 금지)
-- 응답 타입 변경 시 프론트엔드 타입(`src/lib/types/index.ts`)도 함께 수정
+- 응답 타입 변경 시 프론트엔드 타입(`gui/frontend/src/lib/types/index.ts`)도 함께 수정. 추가로 `core::models` 가 진리원이므로 그쪽 우선 갱신
 
 ---
 

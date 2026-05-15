@@ -17,26 +17,45 @@ openguild init                            # 디렉토리 이름이 길드명
 openguild init --name "내 프로젝트"       # 길드명 지정
 ```
 
-### 1.2 백엔드 서버 띄우기
+### 1.2 동작 모드
 
-CLI 는 HTTP 클라이언트. 사전에 서버가 떠 있어야 한다.
+**로컬 모드 (기본, 권장)** — 서버 불필요. cwd 부터 `.guild` 자동 탐색해 core 직접 호출.
 
 ```bash
-GUILD_PATH=/path/to/your-project cargo run --bin openguild-server
+cd /path/to/your-project    # .guild 있는 디렉토리
+openguild quest list        # 바로 사용 가능
+openguild --guild ./other-project quest list   # 다른 길드 명시
 ```
 
-서버가 떠 있는지 확인:
+**원격 모드** — 호스팅된 서버에 HTTP 로 접속.
 
 ```bash
-openguild ping
+openguild --remote https://openguild.io/alice/monitor quest list
+# 또는
+export OPENGUILD_REMOTE=https://openguild.io/alice/monitor
+openguild quest list
+```
+
+자체 서버를 띄우고 싶을 때:
+```bash
+GUILD_PATH=/path/to/your-project cargo run --bin openguild-server -- host
+# 다른 터미널에서:
+openguild --remote http://localhost:3000 ping
+```
+
+서버 관리 명령 (서버를 띄우지 않고 실행):
+```bash
+openguild-server backup     # 즉시 1회 백업
+openguild-server info       # 길드 메타 / DB 크기 / 백업 현황
 ```
 
 ### 1.3 환경변수 / 옵션
 
 | 항목 | 기본값 | 설명 |
 |---|---|---|
-| env `OPENGUILD_URL` | `http://localhost:3000` | 서버 base URL |
-| 전역 `--url <URL>` | env 보다 우선 | |
+| env `OPENGUILD_REMOTE` | (미설정) | 원격 서버 URL. 설정 시 원격 모드 |
+| 전역 `--remote <URL>` | env 보다 우선 | 원격 모드 강제 |
+| 전역 `--guild <PATH>` | (미설정) | 로컬 모드의 길드 경로. 미설정 시 cwd 부터 자동 탐색 |
 | 전역 `--json` | 끔 | agent stdout 파싱용 |
 
 ---
@@ -183,16 +202,16 @@ $ openguild quest delete DEV-047 --cascade DEV-048,DEV-049 --yes
 
 - **exit code 0**: 성공
 - **exit code 1**: 실패. stderr 에 `error: ...` 메시지 출력
-- 서버 다운 시: `openguild ping` 으로 사전 확인
+- 로컬 모드 — `.guild` 없을 시: stderr 안내 + exit 1. `openguild init` 으로 초기화.
+- 원격 모드 — 서버 다운 시: HTTP error + exit 1. `openguild ping` 으로 사전 확인.
 
 ```bash
+# 사용 가능 여부 확인 (모드 자동 감지)
 if ! openguild ping >/dev/null 2>&1; then
-    echo "OpenGuild 서버가 떠 있지 않습니다" >&2
+    echo "OpenGuild 가 동작하지 않습니다 (로컬 모드면 .guild 없음, 원격 모드면 서버 다운)" >&2
     exit 1
 fi
 ```
-
-서버 자동 spawn 등의 동작은 미지원 (추후 추가 예정).
 
 ---
 

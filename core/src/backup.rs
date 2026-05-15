@@ -21,7 +21,7 @@ fn backup_dir(guild_path: &str) -> PathBuf {
 }
 
 /// 1회 백업: guild.db → backups/guild.db.<timestamp>
-async fn backup_once(pool: &SqlitePool, guild_path: &str) -> Result<PathBuf> {
+pub async fn backup_once(pool: &SqlitePool, guild_path: &str) -> Result<PathBuf> {
     let dir = backup_dir(guild_path);
     std::fs::create_dir_all(&dir).context("failed to create backup dir")?;
 

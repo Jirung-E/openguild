@@ -1,20 +1,26 @@
 //! OpenGuild CLI (`openguild`)
 //!
-//! 백엔드 HTTP API 의 agent / 사람용 콘솔 클라이언트.
-//! frontend (Svelte) 와 같은 endpoint 를 호출. 서버는 별도로 띄워둬야 한다.
+//! 두 모드 지원:
+//!   - **로컬 (기본)**: cwd 부터 `.guild` 탐색 → core 직접 호출. 서버 불필요.
+//!   - **원격**: `--remote URL` 또는 env `OPENGUILD_REMOTE` 지정 시 HTTP 호출.
 //!
 //! 환경변수:
-//!   OPENGUILD_URL   서버 base URL (기본: http://localhost:3000)
+//!   OPENGUILD_REMOTE   원격 서버 base URL. 지정 시 원격 모드.
 //!
 //! 글로벌 옵션:
-//!   --url            서버 URL (env 보다 우선)
+//!   --remote URL     원격 모드 강제 (env 보다 우선)
+//!   --guild PATH     로컬 모드에서 .guild 가 있는 디렉토리 직접 지정 (cwd 자동탐색 대체)
 //!   --json           JSON 출력 (agent 용)
 
 use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand};
+use openguild_core::models::{
+    AddPrerequisiteRequest, ChangeParentRequest, ChangeStatusRequest, CreateQuestRequest,
+    QuestDetail, QuestRow as Quest, QuestStatus, QuestType, UpdateQuestRequest,
+};
+use openguild_core::services::{meta as meta_svc, quests as quest_svc};
 use serde::{Deserialize, Serialize};
-
-const DEFAULT_URL: &str = "http://localhost:3000";
+use sqlx::SqlitePool;
 
 // ─────────────────────────── CLI 정의 ───────────────────────────
 
@@ -22,12 +28,16 @@ const DEFAULT_URL: &str = "http://localhost:3000";
 #[command(
     name = "openguild",
     version,
-    about = "OpenGuild CLI — HTTP client for the OpenGuild server"
+    about = "OpenGuild CLI — local + remote guild operations"
 )]
 struct Cli {
-    /// 서버 URL (env: OPENGUILD_URL, 기본: http://localhost:3000)
-    #[arg(long, global = true)]
-    url: Option<String>,
+    /// 원격 모드 — 서버 URL 지정 (env: OPENGUILD_REMOTE). 미지정 시 로컬 모드.
+    #[arg(long, global = true, value_name = "URL")]
+    remote: Option<String>,
+
+    /// 로컬 모드에서 사용할 길드 경로. 미지정 시 cwd 부터 .guild 자동 탐색.
+    #[arg(long, global = true, value_name = "PATH")]
+    guild: Option<String>,
 
     /// JSON 출력 (agent 가 stdout 파싱용)
     #[arg(long, global = true)]
@@ -142,61 +152,16 @@ enum PrereqCmd {
     Rm { slug: String, prereq: String },
 }
 
-// ─────────────────────────── DTO ───────────────────────────
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-struct Quest {
-    id: i64,
-    quest_id: String,
-    quest_type_id: i64,
-    type_prefix: String,
-    type_color: String,
-    number: i64,
-    title: String,
-    description: Option<String>,
-    status_id: i64,
-    status_name_en: String,
-    status_name_ko: String,
-    status_color: String,
-    urgency: i64,
-    parent_quest_id: Option<i64>,
-    created_at: String,
-    updated_at: String,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct QuestDetail {
-    #[serde(flatten)]
-    quest: Quest,
-    sub_quests: Vec<Quest>,
-    prerequisites: Vec<Quest>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct QuestType {
-    id: i64,
-    prefix: String,
-    color: String,
-    description: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct QuestStatus {
-    id: i64,
-    name_en: String,
-    name_ko: String,
-    color: String,
-    sort_order: i64,
-}
+// DTO 는 `openguild_core::models` 에서 직접 사용. 위 use 문 참고.
 
 // ─────────────────────────── HTTP 클라이언트 ───────────────────────────
 
-struct Client {
+struct HttpClient {
     base: String,
     http: reqwest::blocking::Client,
 }
 
-impl Client {
+impl HttpClient {
     fn new(base: String) -> Self {
         Self {
             base,
@@ -216,10 +181,10 @@ impl Client {
         let status = res.status();
         let body = res.text().unwrap_or_default();
         if !status.is_success() {
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&body) {
-                if let Some(err) = v.get("error").and_then(|e| e.as_str()) {
-                    return Err(anyhow!("{}: {}", status, err));
-                }
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&body)
+                && let Some(err) = v.get("error").and_then(|e| e.as_str())
+            {
+                return Err(anyhow!("{}: {}", status, err));
             }
             return Err(anyhow!("{}: {}", status, body));
         }
@@ -259,10 +224,10 @@ impl Client {
         let status = res.status();
         if !status.is_success() {
             let body = res.text().unwrap_or_default();
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&body) {
-                if let Some(err) = v.get("error").and_then(|e| e.as_str()) {
-                    return Err(anyhow!("{}: {}", status, err));
-                }
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&body)
+                && let Some(err) = v.get("error").and_then(|e| e.as_str())
+            {
+                return Err(anyhow!("{}: {}", status, err));
             }
             return Err(anyhow!("{}: {}", status, body));
         }
@@ -300,11 +265,11 @@ impl Client {
         self.get("/api/quest-statuses")
     }
 
-    fn create_quest(&self, body: &serde_json::Value) -> Result<Quest> {
+    fn create_quest(&self, body: &CreateQuestRequest) -> Result<Quest> {
         self.post("/api/quests", body)
     }
 
-    fn update_quest(&self, id: i64, body: &serde_json::Value) -> Result<Quest> {
+    fn update_quest(&self, id: i64, body: &UpdateQuestRequest) -> Result<Quest> {
         self.patch(&format!("/api/quests/{id}"), body)
     }
 
@@ -349,10 +314,10 @@ impl Client {
         let status = res.status();
         if !status.is_success() {
             let body = res.text().unwrap_or_default();
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&body) {
-                if let Some(err) = v.get("error").and_then(|e| e.as_str()) {
-                    return Err(anyhow!("{}: {}", status, err));
-                }
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&body)
+                && let Some(err) = v.get("error").and_then(|e| e.as_str())
+            {
+                return Err(anyhow!("{}: {}", status, err));
             }
             return Err(anyhow!("{}: {}", status, body));
         }
@@ -361,6 +326,201 @@ impl Client {
 
     fn remove_prerequisite(&self, id: i64, prereq_id: i64) -> Result<()> {
         self.delete_no_body(&format!("/api/quests/{id}/prerequisites/{prereq_id}"))
+    }
+}
+
+// ─────────────────────────── Backend (Http / Local) ───────────────────────────
+
+/// 백엔드 추상화. 같은 메서드 시그니처로 HTTP / Local 양쪽 지원.
+///
+/// - Http: 기존 reqwest blocking 클라이언트 위임
+/// - Local: tokio runtime 으로 `core::services::*` 직접 호출
+enum Backend {
+    Http(HttpClient),
+    Local(LocalBackend),
+}
+
+struct LocalBackend {
+    pool: SqlitePool,
+    rt: tokio::runtime::Runtime,
+    /// 호스트 길드 경로 (info 출력용)
+    guild_path: std::path::PathBuf,
+}
+
+impl Backend {
+    /// `--remote` / `OPENGUILD_REMOTE` 지정 시 Http, 그 외 로컬 모드.
+    /// 로컬 모드: `--guild PATH` 또는 cwd 부터 `.guild` 자동 탐색.
+    fn new(remote: Option<String>, guild_arg: Option<String>) -> Result<Self> {
+        let remote = remote.or_else(|| std::env::var("OPENGUILD_REMOTE").ok());
+        if let Some(url) = remote {
+            return Ok(Backend::Http(HttpClient::new(url)));
+        }
+
+        // 로컬 모드 — 길드 경로 결정
+        let guild_path = if let Some(p) = guild_arg {
+            let pb = std::path::PathBuf::from(p);
+            if openguild_core::guild_file::find_from(&pb).is_none_or(|f| f != pb) {
+                return Err(anyhow!(
+                    "no .guild file at {} (use `openguild init` first)",
+                    pb.display()
+                ));
+            }
+            pb
+        } else {
+            openguild_core::guild_file::find_from_cwd().ok_or_else(|| {
+                anyhow!(
+                    "no .guild found in cwd or its ancestors.\n\
+                     로컬 모드: `openguild init` 으로 길드를 만드세요.\n\
+                     원격 모드: `--remote URL` 또는 env OPENGUILD_REMOTE 지정."
+                )
+            })?
+        };
+
+        // sqlx pool 생성 + 마이그레이션 (read-only 로 열 수도 있지만 안전을 위해 RW)
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .context("failed to start tokio runtime")?;
+        let db_url = format!(
+            "sqlite:{}/guild.db?mode=rwc",
+            guild_path.to_string_lossy().replace('\\', "/")
+        );
+        let pool = rt.block_on(async {
+            let pool = openguild_core::db::create_pool(&db_url).await?;
+            openguild_core::db::run_migrations(&pool).await?;
+            Ok::<_, anyhow::Error>(pool)
+        })?;
+
+        Ok(Backend::Local(LocalBackend {
+            pool,
+            rt,
+            guild_path,
+        }))
+    }
+
+    /// AppError → anyhow::Error 변환.
+    fn map_err<T>(r: openguild_core::AppResult<T>) -> Result<T> {
+        r.map_err(|e| anyhow!("{}", e))
+    }
+
+    // ── 도메인 메서드 ──────────────────────────────────────
+
+    fn ping(&self) -> Result<String> {
+        match self {
+            Backend::Http(c) => c.ping(),
+            Backend::Local(l) => Ok(format!("local mode ({})", l.guild_path.display())),
+        }
+    }
+
+    fn list_quests(&self) -> Result<Vec<Quest>> {
+        match self {
+            Backend::Http(c) => c.list_quests(),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(quest_svc::list(&l.pool))),
+        }
+    }
+
+    fn list_deleted_quests(&self) -> Result<Vec<Quest>> {
+        match self {
+            Backend::Http(c) => c.list_deleted_quests(),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(quest_svc::list_deleted(&l.pool))),
+        }
+    }
+
+    fn quest_by_slug(&self, slug: &str) -> Result<QuestDetail> {
+        match self {
+            Backend::Http(c) => c.quest_by_slug(slug),
+            Backend::Local(l) => {
+                Self::map_err(l.rt.block_on(quest_svc::get_by_slug(&l.pool, slug)))
+            }
+        }
+    }
+
+    fn quest_types(&self) -> Result<Vec<QuestType>> {
+        match self {
+            Backend::Http(c) => c.quest_types(),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(meta_svc::list_quest_types(&l.pool))),
+        }
+    }
+
+    fn quest_statuses(&self) -> Result<Vec<QuestStatus>> {
+        match self {
+            Backend::Http(c) => c.quest_statuses(),
+            Backend::Local(l) => {
+                Self::map_err(l.rt.block_on(meta_svc::list_quest_statuses(&l.pool)))
+            }
+        }
+    }
+
+    fn create_quest(&self, body: CreateQuestRequest) -> Result<Quest> {
+        match self {
+            Backend::Http(c) => c.create_quest(&body),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(quest_svc::create(&l.pool, body))),
+        }
+    }
+
+    fn update_quest(&self, id: i64, body: UpdateQuestRequest) -> Result<Quest> {
+        match self {
+            Backend::Http(c) => c.update_quest(id, &body),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(quest_svc::update(&l.pool, id, body))),
+        }
+    }
+
+    fn delete_quest(&self, id: i64, cascade_ids: &[i64]) -> Result<()> {
+        match self {
+            Backend::Http(c) => c.delete_quest(id, cascade_ids),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(quest_svc::delete(&l.pool, id, cascade_ids))),
+        }
+    }
+
+    fn restore_quest(&self, id: i64) -> Result<Quest> {
+        match self {
+            Backend::Http(c) => c.restore_quest(id),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(quest_svc::restore(&l.pool, id))),
+        }
+    }
+
+    fn change_status(&self, id: i64, status_id: i64) -> Result<Quest> {
+        match self {
+            Backend::Http(c) => c.change_status(id, status_id),
+            Backend::Local(l) => Self::map_err(
+                l.rt.block_on(quest_svc::change_status(&l.pool, id, ChangeStatusRequest { status_id })),
+            ),
+        }
+    }
+
+    fn change_parent(&self, id: i64, parent_id: Option<i64>) -> Result<Quest> {
+        match self {
+            Backend::Http(c) => c.change_parent(id, parent_id),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(quest_svc::change_parent(
+                &l.pool,
+                id,
+                ChangeParentRequest {
+                    parent_quest_id: parent_id,
+                },
+            ))),
+        }
+    }
+
+    fn add_prerequisite(&self, id: i64, prereq_id: i64) -> Result<()> {
+        match self {
+            Backend::Http(c) => c.add_prerequisite(id, prereq_id),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(quest_svc::add_prerequisite(
+                &l.pool,
+                id,
+                AddPrerequisiteRequest {
+                    prerequisite_id: prereq_id,
+                },
+            ))),
+        }
+    }
+
+    fn remove_prerequisite(&self, id: i64, prereq_id: i64) -> Result<()> {
+        match self {
+            Backend::Http(c) => c.remove_prerequisite(id, prereq_id),
+            Backend::Local(l) => Self::map_err(
+                l.rt.block_on(quest_svc::remove_prerequisite(&l.pool, id, prereq_id)),
+            ),
+        }
     }
 
     // ── 슬러그 → ID 헬퍼 ─────────────────────────────────
@@ -440,10 +600,10 @@ fn print_quest(q: &Quest, json: bool) {
         "{:<10} [{}] {} (urgency {})",
         q.quest_id, q.status_name_en, q.title, q.urgency
     );
-    if let Some(d) = &q.description {
-        if !d.is_empty() {
-            println!("           {}", d.lines().next().unwrap_or(""));
-        }
+    if let Some(d) = &q.description
+        && !d.is_empty()
+    {
+        println!("           {}", d.lines().next().unwrap_or(""));
     }
 }
 
@@ -473,12 +633,12 @@ fn print_quest_detail(d: &QuestDetail, json: bool) {
     if let Some(p) = q.parent_quest_id {
         println!("  parent   : id={p}");
     }
-    if let Some(desc) = &q.description {
-        if !desc.is_empty() {
-            println!("  description:");
-            for line in desc.lines() {
-                println!("    {line}");
-            }
+    if let Some(desc) = &q.description
+        && !desc.is_empty()
+    {
+        println!("  description:");
+        for line in desc.lines() {
+            println!("    {line}");
         }
     }
     if !d.sub_quests.is_empty() {
@@ -499,16 +659,16 @@ fn print_quest_detail(d: &QuestDetail, json: bool) {
 
 fn run() -> Result<()> {
     let cli = Cli::parse();
-    let url = cli
-        .url
-        .or_else(|| std::env::var("OPENGUILD_URL").ok())
-        .unwrap_or_else(|| DEFAULT_URL.to_string());
-    let c = Client::new(url);
+
+    // Init 은 길드 자체를 만드는 명령 — 백엔드 연결 불필요. 먼저 처리.
+    if let Command::Init { name } = &cli.command {
+        return init_guild(name.clone(), cli.json);
+    }
+
+    let c = Backend::new(cli.remote.clone(), cli.guild.clone())?;
 
     match cli.command {
-        Command::Init { name } => {
-            init_guild(name, cli.json)?;
-        }
+        Command::Init { .. } => unreachable!("handled above"),
         Command::Ping => {
             let s = c.ping()?;
             if cli.json {
@@ -563,15 +723,15 @@ fn run() -> Result<()> {
                     Some(p) => Some(c.id_of(&p)?),
                     None => None,
                 };
-                let body = serde_json::json!({
-                    "quest_type_id": type_id,
-                    "title": title,
-                    "description": description,
-                    "status_id": open_status.id,
-                    "urgency": urgency,
-                    "parent_quest_id": parent_id,
-                });
-                let q = c.create_quest(&body)?;
+                let body = CreateQuestRequest {
+                    quest_type_id: type_id,
+                    title,
+                    description,
+                    status_id: open_status.id,
+                    urgency: Some(urgency),
+                    parent_quest_id: parent_id,
+                };
+                let q = c.create_quest(body)?;
                 print_quest(&q, cli.json);
             }
             QuestCmd::Update {
@@ -635,17 +795,12 @@ fn run() -> Result<()> {
                     return Ok(());
                 }
 
-                let mut body = serde_json::Map::new();
-                if let Some(t) = title {
-                    body.insert("title".into(), serde_json::Value::String(t));
-                }
-                if let Some(d) = description {
-                    body.insert("description".into(), serde_json::Value::String(d));
-                }
-                if let Some(u) = urgency {
-                    body.insert("urgency".into(), serde_json::Value::from(u));
-                }
-                let q = c.update_quest(id, &serde_json::Value::Object(body))?;
+                let body = UpdateQuestRequest {
+                    title,
+                    description,
+                    urgency,
+                };
+                let q = c.update_quest(id, body)?;
                 print_quest(&q, cli.json);
             }
             QuestCmd::Delete {
@@ -893,13 +1048,12 @@ fn init_guild(name_arg: Option<String>, json: bool) -> Result<()> {
                 "ok": true,
                 "guild_path": guild_path.to_string_lossy(),
                 "name": name,
-                "next": "GUILD_PATH=. cargo run --bin openguild-server"
             })
         );
     } else {
+        // 서버 / gui 안내는 출력 X — cli 의 책임 범위 밖.
         println!("✓ guild created: {}", guild_path.display());
-        println!("▸ start the server:");
-        println!("    GUILD_PATH={} cargo run --bin openguild-server", cwd.display());
+        println!("  name: {name}");
     }
     Ok(())
 }
@@ -1083,22 +1237,31 @@ mod tests {
             }
         ));
         assert!(!cli.json);
-        assert!(cli.url.is_none());
+        assert!(cli.remote.is_none());
+        assert!(cli.guild.is_none());
     }
 
     #[test]
-    fn cli_parse_global_json_and_url() {
+    fn cli_parse_global_json_and_remote() {
         let cli = Cli::try_parse_from([
             "openguild",
             "--json",
-            "--url",
+            "--remote",
             "http://example.com",
             "quest",
             "list",
         ])
         .unwrap();
         assert!(cli.json);
-        assert_eq!(cli.url.as_deref(), Some("http://example.com"));
+        assert_eq!(cli.remote.as_deref(), Some("http://example.com"));
+    }
+
+    #[test]
+    fn cli_parse_guild_flag() {
+        let cli =
+            Cli::try_parse_from(["openguild", "--guild", "./monitor", "quest", "list"]).unwrap();
+        assert_eq!(cli.guild.as_deref(), Some("./monitor"));
+        assert!(cli.remote.is_none());
     }
 
     #[test]

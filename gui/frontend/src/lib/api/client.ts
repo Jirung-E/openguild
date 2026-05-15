@@ -1,4 +1,14 @@
-const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3000';
+/**
+ * API base URL.
+ *
+ * 우선순위:
+ *   1. `VITE_API_URL` env (build 시점). 설정 시 그 URL 사용.
+ *   2. 미설정 시 빈 문자열 → 모든 fetch 가 상대경로 (`/api/...`) 로 발사 → 같은 origin 의 서버.
+ *
+ * 개발: `gui/frontend/.env.development` 에서 `VITE_API_URL=http://localhost:3000` 설정.
+ * 프로덕션: 별도 정적 호스팅이면 build 시 env 지정 / 서버가 정적 자산까지 서빙하면 미설정으로 OK.
+ */
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
 	const res = await fetch(`${API_BASE}${path}`, {

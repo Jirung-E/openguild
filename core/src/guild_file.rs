@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use serde::Deserialize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Deserialize)]
 pub struct GuildFile {
@@ -25,6 +25,39 @@ pub fn load(guild_path: &str) -> Result<GuildFile> {
 
     toml::from_str(&content)
         .with_context(|| format!("failed to parse: {}", guild_file.display()))
+}
+
+/// `start` 에서 시작해 부모 방향으로 거슬러 올라가며 `.guild` 가 있는 첫 디렉토리를 반환.
+/// git 의 `.git` 탐색과 동일 패턴. 못 찾으면 None.
+pub fn find_from(start: &Path) -> Option<PathBuf> {
+    let mut current = if start.is_absolute() {
+        start.to_path_buf()
+    } else {
+        std::env::current_dir().ok()?.join(start)
+    };
+    loop {
+        if has_guild_file(&current) {
+            return Some(current);
+        }
+        if !current.pop() {
+            return None;
+        }
+    }
+}
+
+/// cwd 부터 부모 방향 탐색. 못 찾으면 None.
+pub fn find_from_cwd() -> Option<PathBuf> {
+    let cwd = std::env::current_dir().ok()?;
+    find_from(&cwd)
+}
+
+fn has_guild_file(dir: &Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return false;
+    };
+    entries
+        .filter_map(|e| e.ok())
+        .any(|e| e.path().extension().and_then(|x| x.to_str()) == Some("guild"))
 }
 
 #[cfg(test)]
@@ -95,6 +128,53 @@ mod tests {
         fs::write(dir.join("broken.guild"), "this is not toml === ").unwrap();
         let err = load(dir.to_str().unwrap()).unwrap_err();
         assert!(err.to_string().contains("failed to parse"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn find_from_finds_in_same_dir() {
+        let dir = tmp_dir();
+        fs::write(
+            dir.join("monitor.guild"),
+            "name = \"M\"\nversion = \"1.0\"\ncreated_at = \"2026-01-01\"\n",
+        )
+        .unwrap();
+        let found = find_from(&dir).expect("should find guild");
+        assert_eq!(found, dir);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn find_from_walks_up_to_parent() {
+        let root = tmp_dir();
+        fs::write(
+            root.join("monitor.guild"),
+            "name = \"M\"\nversion = \"1.0\"\ncreated_at = \"2026-01-01\"\n",
+        )
+        .unwrap();
+        let nested = root.join("a/b/c");
+        fs::create_dir_all(&nested).unwrap();
+
+        let found = find_from(&nested).expect("should walk up");
+        assert_eq!(found, root);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn find_from_returns_none_when_no_guild_anywhere() {
+        // 임시 디렉토리 하위에서만 검사 — 부모(시스템 temp)에 .guild 가 없다고 가정
+        let dir = tmp_dir();
+        let nested = dir.join("x/y");
+        fs::create_dir_all(&nested).unwrap();
+        // 결과: 부모로 거슬러 올라가며 시스템 root 까지 갈 수 있음. 매우 드물게 시스템 어딘가에
+        // .guild 가 있을 수 있으나 일반 환경에선 None. 발견 시엔 우리 dir 위가 아닌 곳이어야 함.
+        let found = find_from(&nested);
+        if let Some(p) = &found {
+            assert!(
+                !p.starts_with(&dir),
+                "false positive — our tmp tree had no .guild"
+            );
+        }
         let _ = fs::remove_dir_all(&dir);
     }
 }

@@ -22,7 +22,7 @@ pub struct QuestRow {
 }
 
 /// 퀘스트 상세 응답 (서브퀘스트, 선행퀘스트, 위치 포함)
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct QuestDetail {
     #[serde(flatten)]
     pub quest: QuestRow,
@@ -40,7 +40,7 @@ pub struct QuestPosition {
 
 // --- 요청 바디 ---
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CreateQuestRequest {
     pub quest_type_id: i64,
     pub title: String,
@@ -50,7 +50,7 @@ pub struct CreateQuestRequest {
     pub parent_quest_id: Option<i64>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct UpdateQuestRequest {
     pub title: Option<String>,
     pub description: Option<String>,

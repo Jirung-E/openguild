@@ -23,9 +23,9 @@ OpenGuild (앱)
 
 - 각 길드는 사용자가 원하는 경로에 독립 저장 (VS Solution 단위와 동일)
 - 마커 파일: `{길드명}.guild` (TOML 형식)
-- 더블클릭으로 OpenGuild 실행 (파일 연결)
-- CLI: `openguild.exe ./monitor` (`.guild` 파일 있으면 바로 오픈, 없으면 초기화 프롬프트)
-- GUI에서도 동일하게 경로 선택 또는 최근 길드 목록에서 열기
+- 더블클릭으로 OpenGuild 실행 (파일 연결, 데스크톱 단계 예정)
+- CLI: cwd 자동 탐색 또는 `openguild --guild ./monitor ...` (`.guild` 없으면 `openguild init` 안내)
+- GUI: 디렉토리 선택 또는 최근 길드 목록 (데스크톱 단계 예정)
 
 ### {name}.guild 파일 내용 (TOML)
 ```toml

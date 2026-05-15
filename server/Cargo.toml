@@ -10,6 +10,9 @@ description = "OpenGuild HTTP API 서버"
 [dependencies]
 openguild-core = { path = "../core" }
 
+# CLI 파싱
+clap = { version = "4", features = ["derive"] }
+
 # 웹 프레임워크
 axum = "0.8"
 tokio = { version = "1", features = ["full"] }
