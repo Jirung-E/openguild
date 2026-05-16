@@ -20,7 +20,7 @@ use std::time::Duration;
 use crate::repo::GuildPaths;
 use crate::store::{journal, Store};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SnapshotInfo {
     pub timestamp: String, // "YYYYMMDD-HHMMSS"
     pub path: PathBuf,

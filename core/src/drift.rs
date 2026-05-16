@@ -17,7 +17,7 @@ use std::time::SystemTime;
 use crate::repo::{fs as repo_fs, GuildPaths};
 use crate::store::Store;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct DriftReport {
     pub fresh_files: Vec<String>, // quest_id slug 들
     pub missing_in_index: Vec<String>, // 파일은 있는데 index 에 없음

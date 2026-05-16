@@ -91,6 +91,24 @@ export interface QuestDependency {
 	prerequisite_id: number;
 }
 
+// --- admin (백업 / drift) ---
+
+export interface SnapshotInfo {
+	timestamp: string;
+	path: string;
+	size_bytes: number;
+}
+
+export interface DriftReport {
+	fresh_files: string[];
+	missing_in_index: string[];
+	stale_in_index: string[];
+}
+
+export interface RestoreResponse {
+	restored_to: string;
+}
+
 export const URGENCY_COLOR: Record<number, string> = {
 	1: '#E94F4F',
 	2: '#F5A623',

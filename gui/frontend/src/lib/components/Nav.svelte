@@ -29,6 +29,7 @@
 	<nav>
 		<a href="/?view=board" class:active={currentView === 'board'}>Quest Board</a>
 		<a href="/?view=list" class:active={currentView === 'list'}>Quest List</a>
+		<a href="/admin" class:active={$page.url.pathname.startsWith('/admin')}>Admin</a>
 	</nav>
 
 	<div class="nav-right">

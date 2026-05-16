@@ -1,3 +1,4 @@
+pub mod admin;
 pub mod meta;
 pub mod quests;
 
@@ -35,6 +36,12 @@ pub fn create_router(store: Store) -> Router {
         .route("/api/quest-positions", get(quests::list_positions))
         .route("/api/quest-dependencies", get(quests::list_dependencies))
         .route("/api/deleted-quests", get(quests::list_deleted_quests))
+        // admin
+        .route("/api/admin/snapshot", post(admin::create_snapshot))
+        .route("/api/admin/snapshots", get(admin::list_snapshots))
+        .route("/api/admin/restore", post(admin::restore))
+        .route("/api/admin/drift", get(admin::check_drift))
+        .route("/api/admin/reindex", post(admin::run_reindex))
         .with_state(store)
 }
 

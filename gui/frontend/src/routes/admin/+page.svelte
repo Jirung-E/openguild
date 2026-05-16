@@ -1,0 +1,340 @@
+<script lang="ts">
+	import { onMount } from 'svelte';
+	import { adminApi } from '$lib/api/admin';
+	import type { DriftReport, SnapshotInfo } from '$lib/types';
+
+	let snapshots = $state<SnapshotInfo[]>([]);
+	let drift = $state<DriftReport | null>(null);
+	let busy = $state(false);
+	let message = $state<{ kind: 'info' | 'success' | 'error'; text: string } | null>(null);
+
+	onMount(async () => {
+		await refresh();
+	});
+
+	async function refresh() {
+		try {
+			snapshots = await adminApi.listSnapshots();
+		} catch (e) {
+			showError(`목록 조회 실패: ${e}`);
+		}
+	}
+
+	function formatSize(bytes: number): string {
+		if (bytes < 1024) return `${bytes} B`;
+		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+		return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+	}
+
+	function formatTimestamp(ts: string): string {
+		// "20260516-103341" → "2026-05-16 10:33:41"
+		if (ts.length !== 15 || ts[8] !== '-') return ts;
+		return `${ts.slice(0, 4)}-${ts.slice(4, 6)}-${ts.slice(6, 8)} ${ts.slice(9, 11)}:${ts.slice(11, 13)}:${ts.slice(13, 15)}`;
+	}
+
+	function showSuccess(text: string) {
+		message = { kind: 'success', text };
+		setTimeout(() => (message = null), 4000);
+	}
+	function showInfo(text: string) {
+		message = { kind: 'info', text };
+		setTimeout(() => (message = null), 4000);
+	}
+	function showError(text: string) {
+		message = { kind: 'error', text };
+		setTimeout(() => (message = null), 6000);
+	}
+
+	async function onCreateSnapshot() {
+		busy = true;
+		try {
+			const info = await adminApi.createSnapshot();
+			showSuccess(`백업 생성: ${formatTimestamp(info.timestamp)}`);
+			await refresh();
+		} catch (e) {
+			showError(`백업 생성 실패: ${e}`);
+		} finally {
+			busy = false;
+		}
+	}
+
+	async function onRestore(ts?: string) {
+		const label = ts ? formatTimestamp(ts) : '최신';
+		if (!confirm(`정말 "${label}" 백업으로 복원하시겠습니까?\n\n현재 상태가 덮어써집니다 (직전 .pre-restore.db 로 자동 백업됨).`)) {
+			return;
+		}
+		busy = true;
+		try {
+			const res = await adminApi.restore(ts);
+			showSuccess(`복원 완료: ${formatTimestamp(res.restored_to)}. 파일 동기화를 위해 'reindex' 가 필요할 수 있습니다.`);
+		} catch (e) {
+			showError(`복원 실패: ${e}`);
+		} finally {
+			busy = false;
+		}
+	}
+
+	async function onCheckDrift() {
+		busy = true;
+		try {
+			drift = await adminApi.checkDrift();
+			const total =
+				drift.fresh_files.length + drift.missing_in_index.length + drift.stale_in_index.length;
+			if (total === 0) {
+				showSuccess('drift 없음 — 파일과 캐시 일치');
+			} else {
+				showInfo(`${total} 항목 drift 발견 — 아래 보고서 확인`);
+			}
+		} catch (e) {
+			showError(`drift 검사 실패: ${e}`);
+		} finally {
+			busy = false;
+		}
+	}
+
+	async function onReindex() {
+		if (!confirm('파일들로부터 index.db 를 재구축합니다. 계속할까요?')) return;
+		busy = true;
+		try {
+			await adminApi.reindex();
+			showSuccess('reindex 완료');
+			drift = null;
+		} catch (e) {
+			showError(`reindex 실패: ${e}`);
+		} finally {
+			busy = false;
+		}
+	}
+</script>
+
+<svelte:head>
+	<title>Admin · OpenGuild</title>
+</svelte:head>
+
+<div class="page">
+	<h1>관리자 (Admin)</h1>
+	<p class="note">
+		⚠ 인증 없음 — MVP 단계. 멀티유저로 확장 시 보호 필요.
+	</p>
+
+	{#if message}
+		<div class="message {message.kind}">{message.text}</div>
+	{/if}
+
+	<section>
+		<div class="section-header">
+			<h2>백업 (Snapshots)</h2>
+			<div class="actions">
+				<button onclick={onCreateSnapshot} disabled={busy}>+ 새 백업</button>
+				<button onclick={refresh} disabled={busy}>새로고침</button>
+			</div>
+		</div>
+
+		{#if snapshots.length === 0}
+			<p class="empty">백업 없음. "+ 새 백업" 을 눌러 첫 백업을 생성하세요.</p>
+		{:else}
+			<table>
+				<thead>
+					<tr>
+						<th>시간</th>
+						<th>크기</th>
+						<th></th>
+					</tr>
+				</thead>
+				<tbody>
+					{#each snapshots.slice().reverse() as s (s.timestamp)}
+						<tr>
+							<td><code>{formatTimestamp(s.timestamp)}</code></td>
+							<td>{formatSize(s.size_bytes)}</td>
+							<td>
+								<button class="restore" onclick={() => onRestore(s.timestamp)} disabled={busy}
+									>복원</button
+								>
+							</td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+			<p class="hint">
+				자동 백업: 매 mutation 후 정책 검사 (ops 50 회 OR 24 시간 도달 시).
+			</p>
+		{/if}
+	</section>
+
+	<section>
+		<div class="section-header">
+			<h2>Drift 검사</h2>
+			<div class="actions">
+				<button onclick={onCheckDrift} disabled={busy}>검사</button>
+				<button onclick={onReindex} disabled={busy}>Reindex</button>
+			</div>
+		</div>
+
+		{#if drift === null}
+			<p class="empty">파일 vs index.db 일치성 검사. 외부 편집 / git pull 후 활용.</p>
+		{:else}
+			{@const total =
+				drift.fresh_files.length + drift.missing_in_index.length + drift.stale_in_index.length}
+			{#if total === 0}
+				<p class="ok">✓ drift 없음</p>
+			{:else}
+				<div class="drift-report">
+					{#if drift.missing_in_index.length > 0}
+						<div>
+							<h3>파일은 있는데 index 에 없음 ({drift.missing_in_index.length})</h3>
+							<ul>
+								{#each drift.missing_in_index as slug}<li><code>{slug}</code></li>{/each}
+							</ul>
+						</div>
+					{/if}
+					{#if drift.stale_in_index.length > 0}
+						<div>
+							<h3>index 에 있는데 파일이 없음 ({drift.stale_in_index.length})</h3>
+							<ul>
+								{#each drift.stale_in_index as slug}<li><code>{slug}</code></li>{/each}
+							</ul>
+						</div>
+					{/if}
+					{#if drift.fresh_files.length > 0}
+						<div>
+							<h3>파일이 index 보다 새것 ({drift.fresh_files.length})</h3>
+							<ul>
+								{#each drift.fresh_files as slug}<li><code>{slug}</code></li>{/each}
+							</ul>
+						</div>
+					{/if}
+					<p class="hint">Reindex 버튼으로 캐시를 파일 기준으로 재구축할 수 있습니다.</p>
+				</div>
+			{/if}
+		{/if}
+	</section>
+</div>
+
+<style>
+	.page {
+		max-width: 900px;
+		margin: 0 auto;
+		padding: 2rem 1.5rem;
+		color: #c9d1d9;
+	}
+	h1 {
+		margin: 0 0 0.5rem 0;
+		font-size: 1.4rem;
+	}
+	h2 {
+		margin: 0;
+		font-size: 1.1rem;
+	}
+	h3 {
+		margin: 0.75rem 0 0.25rem;
+		font-size: 0.95rem;
+		color: #8b949e;
+	}
+	.note {
+		color: #8b949e;
+		font-size: 0.85rem;
+		margin-bottom: 1.5rem;
+	}
+	section {
+		margin-bottom: 2.5rem;
+		padding: 1.25rem;
+		background: #1a1a2e;
+		border: 1px solid #2a2a4a;
+		border-radius: 8px;
+	}
+	.section-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin-bottom: 1rem;
+	}
+	.actions {
+		display: flex;
+		gap: 0.5rem;
+	}
+	button {
+		padding: 0.4rem 0.9rem;
+		background: #2a2a4a;
+		border: 1px solid #3a3a5a;
+		border-radius: 6px;
+		color: #c9d1d9;
+		font-size: 0.85rem;
+		cursor: pointer;
+		transition: background 0.15s;
+	}
+	button:hover:not(:disabled) {
+		background: #3a3a5a;
+	}
+	button:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+	button.restore {
+		background: #533f00;
+		border-color: #7a6020;
+	}
+	button.restore:hover:not(:disabled) {
+		background: #7a6020;
+	}
+	table {
+		width: 100%;
+		border-collapse: collapse;
+	}
+	th,
+	td {
+		padding: 0.5rem 0.75rem;
+		text-align: left;
+		border-bottom: 1px solid #2a2a4a;
+	}
+	th {
+		color: #8b949e;
+		font-weight: 500;
+		font-size: 0.85rem;
+	}
+	td code {
+		font-family: 'Cascadia Code', 'Courier New', monospace;
+		font-size: 0.85rem;
+	}
+	.empty {
+		color: #8b949e;
+		font-size: 0.875rem;
+		margin: 0;
+	}
+	.ok {
+		color: #2ea043;
+		font-weight: 500;
+	}
+	.hint {
+		color: #8b949e;
+		font-size: 0.825rem;
+		margin-top: 0.75rem;
+	}
+	.drift-report ul {
+		margin: 0.25rem 0 0.75rem 1.25rem;
+		padding: 0;
+	}
+	.drift-report li {
+		font-family: 'Cascadia Code', 'Courier New', monospace;
+		font-size: 0.85rem;
+		color: #c9d1d9;
+		list-style: disc;
+	}
+	.message {
+		padding: 0.75rem 1rem;
+		margin-bottom: 1rem;
+		border-radius: 6px;
+		font-size: 0.875rem;
+	}
+	.message.info {
+		background: #1a3a5a;
+		border: 1px solid #2a5a7a;
+	}
+	.message.success {
+		background: #0f3a1a;
+		border: 1px solid #2a6a3a;
+	}
+	.message.error {
+		background: #3a0f0f;
+		border: 1px solid #6a2a2a;
+	}
+</style>

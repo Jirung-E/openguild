@@ -336,6 +336,35 @@ impl HttpClient {
     fn remove_prerequisite(&self, id: i64, prereq_id: i64) -> Result<()> {
         self.delete_no_body(&format!("/api/quests/{id}/prerequisites/{prereq_id}"))
     }
+
+    fn create_snapshot(&self) -> Result<openguild_core::snapshot::SnapshotInfo> {
+        self.post("/api/admin/snapshot", &serde_json::json!({}))
+    }
+
+    fn list_snapshots(&self) -> Result<Vec<openguild_core::snapshot::SnapshotInfo>> {
+        self.get("/api/admin/snapshots")
+    }
+
+    fn restore_snapshot(
+        &self,
+        to: Option<String>,
+    ) -> Result<openguild_core::snapshot::SnapshotInfo> {
+        let body = match to {
+            Some(ts) => serde_json::json!({ "to": ts }),
+            None => serde_json::json!({}),
+        };
+        let resp: serde_json::Value = self.post("/api/admin/restore", &body)?;
+        // 응답에는 timestamp 만 있음 — list 에서 size 채우기 위해 한 번 더 조회.
+        let ts = resp
+            .get("restored_to")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("server 응답에 restored_to 누락"))?
+            .to_string();
+        let list = self.list_snapshots()?;
+        list.into_iter()
+            .find(|s| s.timestamp == ts)
+            .ok_or_else(|| anyhow!("복원된 snapshot 정보 누락"))
+    }
 }
 
 // ─────────────────────────── Backend (Http / Local) ───────────────────────────
@@ -552,9 +581,7 @@ impl Backend {
 
     fn create_backup(&self) -> Result<openguild_core::snapshot::SnapshotInfo> {
         match self {
-            Backend::Http(_) => Err(anyhow!(
-                "원격 모드 백업 미지원 — server 측에서 `openguild-server snapshot` 실행 필요"
-            )),
+            Backend::Http(c) => c.create_snapshot(),
             Backend::Local(l) => {
                 l.rt.block_on(openguild_core::snapshot::create_snapshot(&l.store))
             }
@@ -563,14 +590,14 @@ impl Backend {
 
     fn list_backups(&self) -> Result<Vec<openguild_core::snapshot::SnapshotInfo>> {
         match self {
-            Backend::Http(_) => Err(anyhow!("원격 모드 백업 목록 미지원")),
+            Backend::Http(c) => c.list_snapshots(),
             Backend::Local(l) => openguild_core::snapshot::list_snapshots(&l.store.paths),
         }
     }
 
     fn restore_backup(&self, to: Option<String>) -> Result<openguild_core::snapshot::SnapshotInfo> {
         match self {
-            Backend::Http(_) => Err(anyhow!("원격 모드 복원 미지원")),
+            Backend::Http(c) => c.restore_snapshot(to),
             Backend::Local(l) => {
                 let snapshots = openguild_core::snapshot::list_snapshots(&l.store.paths)?;
                 let target = if let Some(ts) = to {
