@@ -5,9 +5,9 @@ use axum::{
     routing::{delete, get, patch, post, put},
     Router,
 };
-use sqlx::SqlitePool;
+use openguild_core::Store;
 
-pub fn create_router(pool: SqlitePool) -> Router {
+pub fn create_router(store: Store) -> Router {
     Router::new()
         .route("/health", get(health))
         // meta
@@ -35,7 +35,7 @@ pub fn create_router(pool: SqlitePool) -> Router {
         .route("/api/quest-positions", get(quests::list_positions))
         .route("/api/quest-dependencies", get(quests::list_dependencies))
         .route("/api/deleted-quests", get(quests::list_deleted_quests))
-        .with_state(pool)
+        .with_state(store)
 }
 
 async fn health() -> &'static str {

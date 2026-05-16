@@ -127,14 +127,15 @@ async fn open_pool(ctx: &GuildCtx) -> Result<sqlx::SqlitePool> {
 
 async fn run_host(port_arg: Option<u16>) -> Result<()> {
     let ctx = load_guild()?;
-    let pool = open_pool(&ctx).await?;
+    // Store 는 .guild/index.db + journal.db 둘 다 자동 마이그레이션.
+    let store = openguild_core::Store::open(&ctx.guild_path).await?;
 
-    // 자동 백업 백그라운드 task
-    backup::spawn_backup_task(pool.clone(), ctx.guild_path.clone());
+    // 자동 백업 백그라운드 task (legacy guild.db 백업) — F11 에서 제거 예정.
+    backup::spawn_backup_task(store.index_pool.clone(), ctx.guild_path.clone());
 
     // 라우터 + audit middleware
     let audit_state = audit::AuditState::new(&ctx.guild_path);
-    let mut app = routes::create_router(pool).layer(axum::middleware::from_fn_with_state(
+    let mut app = routes::create_router(store).layer(axum::middleware::from_fn_with_state(
         audit_state,
         audit::audit_layer,
     ));

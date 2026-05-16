@@ -14,6 +14,7 @@ pub mod error;
 pub mod guild_file;
 pub mod migrate;
 pub mod models;
+pub mod ops;
 pub mod repo;
 pub mod services;
 pub mod store;

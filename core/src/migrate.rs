@@ -11,13 +11,12 @@
 //! 5. `.guild/index.db` 가 비어있으면 legacy guild.db 를 복사 (캐시 즉시 정상 상태).
 
 use anyhow::{Context, Result};
-use sqlx::SqlitePool;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::db;
 use crate::repo::{
-    auto, GuildPaths, QuestFile, QuestFrontmatter, QuestRef, QuestRelations, StatusFile, TypeFile,
+    auto, GuildPaths, QuestFile, QuestFrontmatter, QuestRef, QuestRelations, TypeFile,
 };
 
 /// 진행 결과 보고.

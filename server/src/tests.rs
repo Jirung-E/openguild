@@ -4,15 +4,22 @@ use http_body_util::BodyExt;
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
-use crate::{db, routes};
+use crate::routes;
 
 // --- 테스트 헬퍼 ---
 
+/// 각 테스트마다 독립 temp dir + 시드 + Store + 라우터 생성.
+/// 디렉토리 정리는 OS 기본 temp 정리에 위임 (테스트 결정성 우선).
 async fn setup() -> Router {
-    // 테스트마다 독립된 in-memory DB 사용
-    let pool = db::create_pool("sqlite::memory:").await.unwrap();
-    db::run_migrations(&pool).await.unwrap();
-    routes::create_router(pool)
+    let ns = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!("og-test-{ns}"));
+    std::fs::create_dir_all(&dir).unwrap();
+    openguild_core::repo::seed_guild_dir(&dir).unwrap();
+    let store = openguild_core::Store::open(&dir).await.unwrap();
+    routes::create_router(store)
 }
 
 async fn get(app: Router, uri: &str) -> (StatusCode, Value) {

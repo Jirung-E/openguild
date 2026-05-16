@@ -20,7 +20,6 @@ use openguild_core::models::{
 };
 use openguild_core::services::{meta as meta_svc, quests as quest_svc};
 use serde::{Deserialize, Serialize};
-use sqlx::SqlitePool;
 
 // ─────────────────────────── CLI 정의 ───────────────────────────
 
@@ -341,7 +340,7 @@ enum Backend {
 }
 
 struct LocalBackend {
-    pool: SqlitePool,
+    store: openguild_core::Store,
     rt: tokio::runtime::Runtime,
     /// 호스트 길드 경로 (info 출력용)
     guild_path: std::path::PathBuf,
@@ -376,23 +375,15 @@ impl Backend {
             })?
         };
 
-        // sqlx pool 생성 + 마이그레이션 (read-only 로 열 수도 있지만 안전을 위해 RW)
+        // Store 가 .guild/index.db + journal.db 자동 마이그레이션 + 시드.
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .context("failed to start tokio runtime")?;
-        let db_url = format!(
-            "sqlite:{}/guild.db?mode=rwc",
-            guild_path.to_string_lossy().replace('\\', "/")
-        );
-        let pool = rt.block_on(async {
-            let pool = openguild_core::db::create_pool(&db_url).await?;
-            openguild_core::db::run_migrations(&pool).await?;
-            Ok::<_, anyhow::Error>(pool)
-        })?;
+        let store = rt.block_on(openguild_core::Store::open(&guild_path))?;
 
         Ok(Backend::Local(LocalBackend {
-            pool,
+            store,
             rt,
             guild_path,
         }))
@@ -415,111 +406,135 @@ impl Backend {
     fn list_quests(&self) -> Result<Vec<Quest>> {
         match self {
             Backend::Http(c) => c.list_quests(),
-            Backend::Local(l) => Self::map_err(l.rt.block_on(quest_svc::list(&l.pool))),
+            Backend::Local(l) => {
+                Self::map_err(l.rt.block_on(quest_svc::list(&l.store.index_pool)))
+            }
         }
     }
 
     fn list_deleted_quests(&self) -> Result<Vec<Quest>> {
         match self {
             Backend::Http(c) => c.list_deleted_quests(),
-            Backend::Local(l) => Self::map_err(l.rt.block_on(quest_svc::list_deleted(&l.pool))),
+            Backend::Local(l) => {
+                Self::map_err(l.rt.block_on(quest_svc::list_deleted(&l.store.index_pool)))
+            }
         }
     }
 
     fn quest_by_slug(&self, slug: &str) -> Result<QuestDetail> {
         match self {
             Backend::Http(c) => c.quest_by_slug(slug),
-            Backend::Local(l) => {
-                Self::map_err(l.rt.block_on(quest_svc::get_by_slug(&l.pool, slug)))
-            }
+            Backend::Local(l) => Self::map_err(
+                l.rt.block_on(quest_svc::get_by_slug(&l.store.index_pool, slug)),
+            ),
         }
     }
 
     fn quest_types(&self) -> Result<Vec<QuestType>> {
         match self {
             Backend::Http(c) => c.quest_types(),
-            Backend::Local(l) => Self::map_err(l.rt.block_on(meta_svc::list_quest_types(&l.pool))),
+            Backend::Local(l) => Self::map_err(
+                l.rt.block_on(meta_svc::list_quest_types(&l.store.index_pool)),
+            ),
         }
     }
 
     fn quest_statuses(&self) -> Result<Vec<QuestStatus>> {
         match self {
             Backend::Http(c) => c.quest_statuses(),
-            Backend::Local(l) => {
-                Self::map_err(l.rt.block_on(meta_svc::list_quest_statuses(&l.pool)))
-            }
+            Backend::Local(l) => Self::map_err(
+                l.rt.block_on(meta_svc::list_quest_statuses(&l.store.index_pool)),
+            ),
         }
     }
+
+    // ── mutations: ops::* (파일 + journal + auto block) ──
 
     fn create_quest(&self, body: CreateQuestRequest) -> Result<Quest> {
         match self {
             Backend::Http(c) => c.create_quest(&body),
-            Backend::Local(l) => Self::map_err(l.rt.block_on(quest_svc::create(&l.pool, body))),
+            Backend::Local(l) => Self::map_err(
+                l.rt.block_on(openguild_core::ops::create_quest(&l.store, body)),
+            ),
         }
     }
 
     fn update_quest(&self, id: i64, body: UpdateQuestRequest) -> Result<Quest> {
         match self {
             Backend::Http(c) => c.update_quest(id, &body),
-            Backend::Local(l) => Self::map_err(l.rt.block_on(quest_svc::update(&l.pool, id, body))),
+            Backend::Local(l) => Self::map_err(
+                l.rt.block_on(openguild_core::ops::update_quest(&l.store, id, body)),
+            ),
         }
     }
 
     fn delete_quest(&self, id: i64, cascade_ids: &[i64]) -> Result<()> {
         match self {
             Backend::Http(c) => c.delete_quest(id, cascade_ids),
-            Backend::Local(l) => Self::map_err(l.rt.block_on(quest_svc::delete(&l.pool, id, cascade_ids))),
+            Backend::Local(l) => Self::map_err(
+                l.rt.block_on(openguild_core::ops::delete_quest(&l.store, id, cascade_ids)),
+            ),
         }
     }
 
     fn restore_quest(&self, id: i64) -> Result<Quest> {
         match self {
             Backend::Http(c) => c.restore_quest(id),
-            Backend::Local(l) => Self::map_err(l.rt.block_on(quest_svc::restore(&l.pool, id))),
+            Backend::Local(l) => Self::map_err(
+                l.rt.block_on(openguild_core::ops::restore_quest(&l.store, id)),
+            ),
         }
     }
 
     fn change_status(&self, id: i64, status_id: i64) -> Result<Quest> {
         match self {
             Backend::Http(c) => c.change_status(id, status_id),
-            Backend::Local(l) => Self::map_err(
-                l.rt.block_on(quest_svc::change_status(&l.pool, id, ChangeStatusRequest { status_id })),
-            ),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::change_status(
+                    &l.store,
+                    id,
+                    ChangeStatusRequest { status_id },
+                ),
+            )),
         }
     }
 
     fn change_parent(&self, id: i64, parent_id: Option<i64>) -> Result<Quest> {
         match self {
             Backend::Http(c) => c.change_parent(id, parent_id),
-            Backend::Local(l) => Self::map_err(l.rt.block_on(quest_svc::change_parent(
-                &l.pool,
-                id,
-                ChangeParentRequest {
-                    parent_quest_id: parent_id,
-                },
-            ))),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::change_parent(
+                    &l.store,
+                    id,
+                    ChangeParentRequest {
+                        parent_quest_id: parent_id,
+                    },
+                ),
+            )),
         }
     }
 
     fn add_prerequisite(&self, id: i64, prereq_id: i64) -> Result<()> {
         match self {
             Backend::Http(c) => c.add_prerequisite(id, prereq_id),
-            Backend::Local(l) => Self::map_err(l.rt.block_on(quest_svc::add_prerequisite(
-                &l.pool,
-                id,
-                AddPrerequisiteRequest {
-                    prerequisite_id: prereq_id,
-                },
-            ))),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::add_prerequisite(
+                    &l.store,
+                    id,
+                    AddPrerequisiteRequest {
+                        prerequisite_id: prereq_id,
+                    },
+                ),
+            )),
         }
     }
 
     fn remove_prerequisite(&self, id: i64, prereq_id: i64) -> Result<()> {
         match self {
             Backend::Http(c) => c.remove_prerequisite(id, prereq_id),
-            Backend::Local(l) => Self::map_err(
-                l.rt.block_on(quest_svc::remove_prerequisite(&l.pool, id, prereq_id)),
-            ),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::remove_prerequisite(&l.store, id, prereq_id),
+            )),
         }
     }
 
