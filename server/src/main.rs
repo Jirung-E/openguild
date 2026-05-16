@@ -49,6 +49,8 @@ enum Command {
     Backup,
     /// 길드 메타 / DB 경로 / 백업 현황
     Info,
+    /// legacy guild.db → .guild/quests/*.md 파일 진리원 구조로 일회성 이전
+    MigrateToFiles,
 }
 
 fn main() -> Result<()> {
@@ -69,6 +71,7 @@ fn main() -> Result<()> {
         Command::Host { port } => rt.block_on(run_host(port)),
         Command::Backup => rt.block_on(run_backup()),
         Command::Info => rt.block_on(run_info()),
+        Command::MigrateToFiles => rt.block_on(run_migrate_to_files()),
     }
 }
 
@@ -190,6 +193,62 @@ async fn run_backup() -> Result<()> {
 //
 // TODO: 출력 양 조절 옵션 — `--brief` (1줄 요약), `--detailed` (마이그레이션 이력 /
 //       audit log 통계 / DB integrity_check 등 추가) 차후 검토.
+
+// ─────────────────────── migrate-to-files ───────────────────────
+
+async fn run_migrate_to_files() -> Result<()> {
+    let ctx = load_guild()?;
+
+    // .guild/ 가 시드되어 있는지 확인 — 없으면 안내.
+    let dot_guild = ctx.abs_path.join(".guild");
+    if !dot_guild.join("types").exists() {
+        eprintln!();
+        eprintln!("✗ .guild/ 구조가 시드되지 않았습니다.");
+        eprintln!("  먼저 `openguild init` 을 한 번 더 실행하면 자동 업그레이드됩니다.");
+        eprintln!();
+        std::process::exit(2);
+    }
+
+    // 기존 .guild/quests/ 에 파일이 있는지 확인 — 있으면 안내 후 중단.
+    let quests_dir = dot_guild.join("quests");
+    let existing: Vec<_> = std::fs::read_dir(&quests_dir)
+        .ok()
+        .into_iter()
+        .flatten()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("md"))
+        .collect();
+    if !existing.is_empty() {
+        eprintln!();
+        eprintln!("✗ .guild/quests/ 에 이미 {} 개 quest 파일이 있습니다.", existing.len());
+        eprintln!("  마이그레이션은 한 번만 실행해야 합니다.");
+        eprintln!("  덮어쓰려면 quests/ 를 직접 비운 뒤 재시도하세요.");
+        eprintln!();
+        std::process::exit(2);
+    }
+
+    println!("▸ 마이그레이션 시작: {}", ctx.abs_path.display());
+    let report = openguild_core::migrate::migrate_to_files(&ctx.abs_path).await?;
+
+    println!();
+    println!("✓ 마이그레이션 완료");
+    println!("  legacy DB    : {}", report.legacy_db_path.display());
+    println!("  quests 작성  : {}", report.quests_written);
+    println!("  - alive      : {}", report.quests_written - report.deleted_quests_included);
+    println!("  - soft-deleted: {}", report.deleted_quests_included);
+    println!("  types 갱신   : {} (counter)", report.types_updated);
+    println!(
+        "  index.db     : {}",
+        if report.index_db_copied { "복사됨" } else { "이미 존재 — 건드리지 않음" }
+    );
+    println!();
+    println!("다음 단계:");
+    println!("  1. .guild/quests/ 를 열어 quest 파일이 정상인지 확인");
+    println!("  2. 만족하면 legacy guild.db 와 backups/ 삭제 (gitignored 라 commit 영향 없음)");
+    println!();
+
+    Ok(())
+}
 
 async fn run_info() -> Result<()> {
     let ctx = load_guild()?;

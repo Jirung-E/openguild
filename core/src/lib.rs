@@ -12,6 +12,7 @@ pub mod backup;
 pub mod db;
 pub mod error;
 pub mod guild_file;
+pub mod migrate;
 pub mod models;
 pub mod repo;
 pub mod services;
