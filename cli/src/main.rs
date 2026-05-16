@@ -1058,47 +1058,74 @@ fn init_guild(name_arg: Option<String>, json: bool) -> Result<()> {
     Ok(())
 }
 
-/// 순수 로직 — 디렉토리 경로를 받아 `.guild` 파일 작성. (작성된 경로, 길드 이름) 반환.
+/// 순수 로직 — 디렉토리 경로를 받아 `.guild` 파일 + `.guild/` 디렉토리 구조 작성.
+/// (마커 파일 경로, 길드 이름) 반환.
+///
+/// idempotent:
+/// - 마커 (`{name}.guild`) 가 이미 있으면 건드리지 않고 기존 이름 사용.
+/// - `.guild/` 와 시드 (types/statuses) 가 있으면 건드리지 않음.
+/// - 둘 다 있으면 essentially no-op (성공 반환).
+/// - 부분 상태 (마커만 있고 `.guild/` 없음) 자동 업그레이드.
+///
 /// 단위 테스트에서 tempdir 로 직접 호출 가능 (cwd 의존성 없음).
 fn init_guild_at(
     cwd: &std::path::Path,
     name_arg: Option<String>,
 ) -> Result<(std::path::PathBuf, String)> {
-    let name = match name_arg {
-        Some(n) => n,
-        None => cwd
-            .file_name()
-            .and_then(|s| s.to_str())
-            .ok_or_else(|| anyhow!("현재 디렉토리 이름을 추출할 수 없음. --name 으로 지정하세요."))?
-            .to_string(),
-    };
-
-    // 기존에 .guild 파일이 있는지 확인 (어떤 이름이든)
-    let existing = std::fs::read_dir(cwd)
+    // 기존 마커 검색.
+    let existing_marker = std::fs::read_dir(cwd)
         .context("디렉토리 읽기 실패")?
         .filter_map(|e| e.ok())
         .find(|e| {
-            e.file_name()
-                .to_string_lossy()
-                .to_lowercase()
-                .ends_with(".guild")
+            e.path().is_file()
+                && e.file_name()
+                    .to_string_lossy()
+                    .to_lowercase()
+                    .ends_with(".guild")
         });
-    if let Some(e) = existing {
-        return Err(anyhow!(
-            "이미 길드가 초기화되어 있습니다: {}",
-            e.file_name().to_string_lossy()
-        ));
-    }
 
-    let guild_path = cwd.join(format!("{name}.guild"));
-    let today = today_date();
-    let content = format!(
-        "name = \"{}\"\nversion = \"1.0\"\ncreated_at = \"{}\"\n",
-        name.replace('\\', "\\\\").replace('"', "\\\""),
-        today
-    );
-    std::fs::write(&guild_path, content)
-        .with_context(|| format!("길드 파일 작성 실패: {}", guild_path.display()))?;
+    let (guild_path, name) = if let Some(entry) = existing_marker {
+        // 이미 마커 있음 — 그대로 사용 (--name 지정해도 무시, 기존 이름 보존).
+        let path = entry.path();
+        let parsed = openguild_core::guild_file::load(cwd.to_str().ok_or_else(|| {
+            anyhow!("디렉토리 경로 인코딩 오류: {}", cwd.display())
+        })?)
+        .with_context(|| format!("기존 마커 파싱 실패: {}", path.display()))?;
+        if let Some(arg) = &name_arg
+            && arg != &parsed.name
+        {
+            eprintln!(
+                "ℹ︎ 기존 길드 이름 보존: \"{}\" (--name \"{}\" 무시)",
+                parsed.name, arg
+            );
+        }
+        (path, parsed.name)
+    } else {
+        // 새 마커 생성.
+        let name = match name_arg {
+            Some(n) => n,
+            None => cwd
+                .file_name()
+                .and_then(|s| s.to_str())
+                .ok_or_else(|| anyhow!("현재 디렉토리 이름을 추출할 수 없음. --name 으로 지정하세요."))?
+                .to_string(),
+        };
+        let guild_path = cwd.join(format!("{name}.guild"));
+        let today = today_date();
+        let content = format!(
+            "name = \"{}\"\nversion = \"1.0\"\ncreated_at = \"{}\"\n",
+            name.replace('\\', "\\\\").replace('"', "\\\""),
+            today
+        );
+        std::fs::write(&guild_path, content)
+            .with_context(|| format!("길드 파일 작성 실패: {}", guild_path.display()))?;
+        (guild_path, name)
+    };
+
+    // .guild/ 디렉토리 + 기본 시드 (types/statuses) + .gitignore.
+    // idempotent — 이미 있는 파일은 건드리지 않음.
+    openguild_core::repo::seed_guild_dir(cwd)
+        .with_context(|| format!(".guild/ 시드 실패: {}", cwd.display()))?;
 
     Ok((guild_path, name))
 }
@@ -1529,19 +1556,59 @@ mod tests {
     }
 
     #[test]
-    fn init_refuses_when_guild_already_exists() {
-        let dir = fresh_tmp("dup");
-        // 사전 .guild 파일 생성
+    fn init_preserves_existing_guild_name() {
+        // 기존 마커 보존 + --name 인자 무시 (안내 stderr).
+        let dir = fresh_tmp("preserve");
         std::fs::write(
             dir.join("existing.guild"),
             "name = \"X\"\nversion = \"1.0\"\ncreated_at = \"2026-01-01\"\n",
         )
         .unwrap();
 
-        let err = init_guild_at(&dir, Some("new".into())).unwrap_err();
-        assert!(err.to_string().contains("이미 길드가 초기화"));
-        // 새 파일이 생기지 않았음
+        let (path, name) = init_guild_at(&dir, Some("new".into())).unwrap();
+        assert_eq!(name, "X", "기존 이름 보존");
+        assert_eq!(path.file_name().unwrap(), "existing.guild");
+        // "new" 라는 새 파일 안 생김
         assert!(!dir.join("new.guild").exists());
+        // .guild/ 시드가 추가됨 (idempotent upgrade)
+        assert!(dir.join(".guild/types/DEV.toml").exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn init_idempotent_on_full_state() {
+        let dir = fresh_tmp("idem");
+        let first = init_guild_at(&dir, Some("alpha".into())).unwrap();
+        let second = init_guild_at(&dir, None).unwrap();
+        assert_eq!(first, second, "두 번째 호출도 같은 결과");
+        // 한 마커만 존재
+        let guild_files: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                e.path().is_file()
+                    && e.file_name().to_string_lossy().ends_with(".guild")
+            })
+            .collect();
+        assert_eq!(guild_files.len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn init_creates_dot_guild_structure() {
+        let dir = fresh_tmp("dotguild");
+        init_guild_at(&dir, Some("test".into())).unwrap();
+
+        assert!(dir.join("test.guild").is_file());
+        assert!(dir.join(".guild").is_dir());
+        assert!(dir.join(".guild/quests").is_dir());
+        assert!(dir.join(".guild/types").is_dir());
+        assert!(dir.join(".guild/statuses").is_dir());
+        assert!(dir.join(".guild/backups").is_dir());
+        assert!(dir.join(".guild/.gitignore").is_file());
+        assert!(dir.join(".guild/types/DEV.toml").is_file());
+        assert!(dir.join(".guild/statuses/1-open.toml").is_file());
 
         let _ = std::fs::remove_dir_all(&dir);
     }

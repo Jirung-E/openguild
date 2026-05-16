@@ -19,6 +19,7 @@ use sqlx::SqlitePool;
 use crate::db;
 use crate::repo::GuildPaths;
 
+#[derive(Clone)]
 pub struct Store {
     pub paths: GuildPaths,
     pub index_pool: SqlitePool,

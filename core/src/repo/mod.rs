@@ -22,6 +22,7 @@ pub use type_def::{Counter, TypeFile};
 use std::path::{Path, PathBuf};
 
 /// `.guild/` 디렉토리 경로 계산.
+#[derive(Clone)]
 pub struct GuildPaths {
     pub guild_root: PathBuf,
 }

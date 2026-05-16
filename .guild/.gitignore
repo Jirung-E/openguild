@@ -1,0 +1,5 @@
+# OpenGuild — 내부 캐시 / UI 상태 / 백업 (git 추적 X)
+index.db
+positions.json
+backups/
+.lock
