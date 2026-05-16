@@ -10,9 +10,28 @@ use crate::models::{
 };
 use crate::repo::{auto, QuestFile, QuestFrontmatter, QuestRef, QuestRelations};
 use crate::services::quests as sql;
+use crate::snapshot;
 use crate::store::{journal, Store};
 use serde_json::json;
 use sqlx::SqlitePool;
+
+/// 매 mutation 끝에 호출 — 자동 백업 정책 검토 + 필요시 snapshot.
+/// snapshot 실패해도 mutation 결과엔 영향 X (stderr 경고만).
+async fn after_mutation(store: &Store) {
+    let policy = snapshot::AutoSnapshotPolicy::from_env();
+    match snapshot::maybe_auto_snapshot(store, policy).await {
+        Ok(Some(info)) => {
+            eprintln!(
+                "[auto-backup] snapshot 생성됨: {} ({} bytes)",
+                info.timestamp, info.size_bytes
+            );
+        }
+        Ok(None) => {}
+        Err(e) => {
+            eprintln!("[auto-backup] snapshot 실패 (mutation 자체는 성공): {e:#}");
+        }
+    }
+}
 
 /// 새 quest 생성. 영향:
 /// - 새 파일 `.guild/quests/{slug}.md` 생성.
@@ -41,6 +60,7 @@ pub async fn create_quest(store: &Store, body: CreateQuestRequest) -> AppResult<
         write_quest_file(store, &parent).await?;
     }
 
+    after_mutation(store).await;
     Ok(quest)
 }
 
@@ -61,6 +81,7 @@ pub async fn update_quest(
 
     let quest = sql::update(&store.index_pool, id, body).await?;
     write_quest_file(store, &quest).await?;
+    after_mutation(store).await;
     Ok(quest)
 }
 
@@ -81,6 +102,7 @@ pub async fn change_status(
 
     let quest = sql::change_status(&store.index_pool, id, body).await?;
     write_quest_file(store, &quest).await?;
+    after_mutation(store).await;
     Ok(quest)
 }
 
@@ -122,6 +144,7 @@ pub async fn change_parent(
             write_quest_file(store, &q).await?;
         }
     }
+    after_mutation(store).await;
     Ok(quest)
 }
 
@@ -210,6 +233,7 @@ pub async fn delete_quest(
             write_quest_file(store, &q).await?;
         }
     }
+    after_mutation(store).await;
     Ok(())
 }
 
@@ -227,11 +251,12 @@ pub async fn restore_quest(store: &Store, id: i64) -> AppResult<QuestRow> {
     let quest = sql::restore(&store.index_pool, id).await?;
     write_quest_file(store, &quest).await?;
     // 부모 / dependent 영향 — restore 가 alive 상태로 되돌리므로 부모의 sub 목록에 다시 포함됨.
-    if let Some(pid) = parent_id_of(&store.index_pool, id).await? {
-        if let Ok(p) = sql::fetch_by_id(&store.index_pool, pid).await {
-            write_quest_file(store, &p).await?;
-        }
+    if let Some(pid) = parent_id_of(&store.index_pool, id).await?
+        && let Ok(p) = sql::fetch_by_id(&store.index_pool, pid).await
+    {
+        write_quest_file(store, &p).await?;
     }
+    after_mutation(store).await;
     Ok(quest)
 }
 
@@ -253,6 +278,7 @@ pub async fn add_prerequisite(
     // 본인 파일만 갱신 (frontmatter prerequisites 배열 추가).
     let quest = sql::fetch_by_id(&store.index_pool, id).await?;
     write_quest_file(store, &quest).await?;
+    after_mutation(store).await;
     Ok(())
 }
 
@@ -270,6 +296,7 @@ pub async fn remove_prerequisite(store: &Store, id: i64, prereq_id: i64) -> AppR
     if let Ok(q) = sql::fetch_by_id(&store.index_pool, id).await {
         write_quest_file(store, &q).await?;
     }
+    after_mutation(store).await;
     Ok(())
 }
 

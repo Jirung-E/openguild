@@ -114,6 +114,21 @@ openguild quest prereq add <slug> <prereq-slug>
 openguild quest prereq rm  <slug> <prereq-slug>
 ```
 
+### 2.5 백업 / 복원
+
+```bash
+openguild backup                       # 즉시 snapshot 생성
+openguild backups                      # 사용 가능 snapshot 목록
+openguild restore [--to <TIMESTAMP>]   # 최신 (또는 지정) snapshot 으로 복원
+```
+
+자동 백업: 매 mutation 이후 정책 검토 (ops 50회 OR 24시간 경과 시 자동 snapshot).
+env 로 임계치 조정 가능:
+- `OPENGUILD_AUTO_BACKUP_OPS=N` (기본 50)
+- `OPENGUILD_AUTO_BACKUP_HOURS=N` (기본 24)
+
+자동 백업 시 stderr 에 알림: `[auto-backup] snapshot 생성됨: 20260516-103341 (...)`.
+
 ---
 
 ## 3. Agent 워크플로 패턴

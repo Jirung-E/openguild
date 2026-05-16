@@ -15,6 +15,7 @@
 
 use anyhow::{Context, Result};
 use std::path::PathBuf;
+use std::time::Duration;
 
 use crate::repo::GuildPaths;
 use crate::store::{journal, Store};
@@ -24,6 +25,43 @@ pub struct SnapshotInfo {
     pub timestamp: String, // "YYYYMMDD-HHMMSS"
     pub path: PathBuf,
     pub size_bytes: u64,
+}
+
+/// 자동 백업 정책. 둘 중 **하나라도** 도달하면 snapshot 실행.
+///
+/// 기본값: ops 50 OR 24 시간. env `OPENGUILD_AUTO_BACKUP_OPS`,
+/// `OPENGUILD_AUTO_BACKUP_HOURS` 로 override.
+#[derive(Debug, Clone, Copy)]
+pub struct AutoSnapshotPolicy {
+    pub max_ops_since_last: i64,
+    pub max_age_hours: u64,
+}
+
+impl Default for AutoSnapshotPolicy {
+    fn default() -> Self {
+        Self {
+            max_ops_since_last: 50,
+            max_age_hours: 24,
+        }
+    }
+}
+
+impl AutoSnapshotPolicy {
+    /// env override 적용된 기본값.
+    pub fn from_env() -> Self {
+        let mut p = Self::default();
+        if let Ok(v) = std::env::var("OPENGUILD_AUTO_BACKUP_OPS")
+            && let Ok(n) = v.parse()
+        {
+            p.max_ops_since_last = n;
+        }
+        if let Ok(v) = std::env::var("OPENGUILD_AUTO_BACKUP_HOURS")
+            && let Ok(n) = v.parse()
+        {
+            p.max_age_hours = n;
+        }
+        p
+    }
 }
 
 /// 현재 `.guild/index.db` 를 `.guild/backups/snapshots/{ts}.db` 로 복사 +
@@ -63,6 +101,88 @@ pub async fn create_snapshot(store: &Store) -> Result<SnapshotInfo> {
         path: target,
         size_bytes,
     })
+}
+
+/// 정책에 따른 자동 snapshot.
+/// 임계치 도달 안 했으면 None 반환 (정상 — no-op).
+/// 도달 했으면 snapshot 생성 + journal truncate + Some(SnapshotInfo) 반환.
+///
+/// 호출자 책임: 결과가 Some 이면 사용자에게 알림 (stderr 출력 등).
+pub async fn maybe_auto_snapshot(
+    store: &Store,
+    policy: AutoSnapshotPolicy,
+) -> Result<Option<SnapshotInfo>> {
+    // 1. journal ops 수 확인
+    let ops_count = journal::count(&store.journal_pool)
+        .await
+        .context("journal count 조회 실패")?;
+    let ops_trigger = ops_count >= policy.max_ops_since_last;
+
+    // 2. age trigger: 마지막 snapshot 으로부터 N 시간 + ops > 0 이면 fire.
+    //    snapshot 한 번도 없는 경우엔 age trigger 안 함 — ops 임계치 도달까지 대기
+    //    (사용자가 첫 mutation 마다 즉시 snapshot 생기는 게 아닌, 의미 있는 양 쌓인 뒤에).
+    let latest = latest_snapshot(&store.paths)?;
+    let age_trigger = match &latest {
+        None => false,
+        Some(s) => {
+            let age = std::time::SystemTime::now()
+                .duration_since(snapshot_time(&s.timestamp).unwrap_or(std::time::UNIX_EPOCH))
+                .unwrap_or(Duration::ZERO);
+            age >= Duration::from_secs(policy.max_age_hours * 3600) && ops_count > 0
+        }
+    };
+
+    if !ops_trigger && !age_trigger {
+        return Ok(None);
+    }
+
+    let info = create_snapshot(store).await?;
+    Ok(Some(info))
+}
+
+/// "YYYYMMDD-HHMMSS" → SystemTime (UTC).
+fn snapshot_time(timestamp: &str) -> Option<std::time::SystemTime> {
+    // 형식: YYYYMMDD-HHMMSS (15글자)
+    if timestamp.len() != 15 || &timestamp[8..9] != "-" {
+        return None;
+    }
+    let y: u64 = timestamp[0..4].parse().ok()?;
+    let mo: u64 = timestamp[4..6].parse().ok()?;
+    let d: u64 = timestamp[6..8].parse().ok()?;
+    let h: u64 = timestamp[9..11].parse().ok()?;
+    let mi: u64 = timestamp[11..13].parse().ok()?;
+    let s: u64 = timestamp[13..15].parse().ok()?;
+
+    // UTC 기준 epoch 변환 (단순 — 윤년 처리 정확).
+    let secs = ymdhms_to_epoch(y, mo, d, h, mi, s)?;
+    Some(std::time::UNIX_EPOCH + Duration::from_secs(secs))
+}
+
+fn ymdhms_to_epoch(y: u64, mo: u64, d: u64, h: u64, mi: u64, s: u64) -> Option<u64> {
+    if y < 1970 || mo < 1 || mo > 12 || d < 1 || d > 31 {
+        return None;
+    }
+    let mut days: u64 = 0;
+    for yr in 1970..y {
+        days += if is_leap_y(yr as i64) { 366 } else { 365 };
+    }
+    let months = days_in_months_y(y as i64);
+    for m in 0..(mo - 1) as usize {
+        days += months[m] as u64;
+    }
+    days += d - 1;
+    Some(days * 86400 + h * 3600 + mi * 60 + s)
+}
+
+fn is_leap_y(y: i64) -> bool {
+    (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
+}
+fn days_in_months_y(y: i64) -> [u32; 12] {
+    [
+        31,
+        if is_leap_y(y) { 29 } else { 28 },
+        31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
+    ]
 }
 
 /// 사용 가능한 snapshot 목록 (오래된 순부터).
@@ -296,6 +416,108 @@ mod tests {
             ]
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn maybe_auto_snapshot_noop_when_no_ops() {
+        let dir = fresh_tmp("auto-noop");
+        let store = setup(&dir).await;
+        // ops 0 → trigger 안 함
+        let result = maybe_auto_snapshot(&store, AutoSnapshotPolicy::default())
+            .await
+            .unwrap();
+        assert!(result.is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn maybe_auto_snapshot_fires_on_ops_threshold() {
+        let dir = fresh_tmp("auto-fire");
+        let store = setup(&dir).await;
+        // 임계치 낮춰서 빠르게 trigger
+        let policy = AutoSnapshotPolicy {
+            max_ops_since_last: 2,
+            max_age_hours: 24,
+        };
+        // ops 1 — 아직 trigger 안 함
+        journal::append(
+            &store.journal_pool,
+            "t",
+            &serde_json::json!({"i": 1}),
+            None::<&serde_json::Value>,
+        )
+        .await
+        .unwrap();
+        assert!(maybe_auto_snapshot(&store, policy).await.unwrap().is_none());
+
+        // ops 2 — trigger
+        journal::append(
+            &store.journal_pool,
+            "t",
+            &serde_json::json!({"i": 2}),
+            None::<&serde_json::Value>,
+        )
+        .await
+        .unwrap();
+        let snap = maybe_auto_snapshot(&store, policy).await.unwrap();
+        assert!(snap.is_some());
+
+        // snapshot 후 journal truncate 됐는지
+        assert_eq!(journal::count(&store.journal_pool).await.unwrap(), 0);
+
+        // 다음 호출은 다시 trigger 안 함 (ops 0)
+        assert!(maybe_auto_snapshot(&store, policy).await.unwrap().is_none());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn maybe_auto_snapshot_no_fire_on_first_ops_alone() {
+        // snapshot 없는 상태에서 첫 ops 만으로는 fire 안 함 — ops 임계치 도달까지 대기.
+        // (사용자가 매 mutation 마다 snapshot 쌓이는 것 방지)
+        let dir = fresh_tmp("auto-first");
+        let store = setup(&dir).await;
+        let policy = AutoSnapshotPolicy {
+            max_ops_since_last: 1000,
+            max_age_hours: 1,
+        };
+        journal::append(
+            &store.journal_pool,
+            "t",
+            &serde_json::json!({"i": 1}),
+            None::<&serde_json::Value>,
+        )
+        .await
+        .unwrap();
+        let snap = maybe_auto_snapshot(&store, policy).await.unwrap();
+        assert!(snap.is_none(), "첫 ops 만으로는 fire 안 함");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn policy_from_env_uses_default_when_unset() {
+        // SAFETY: 테스트 단일 스레드. env 직접 set/unset.
+        unsafe {
+            std::env::remove_var("OPENGUILD_AUTO_BACKUP_OPS");
+            std::env::remove_var("OPENGUILD_AUTO_BACKUP_HOURS");
+        }
+        let p = AutoSnapshotPolicy::from_env();
+        assert_eq!(p.max_ops_since_last, 50);
+        assert_eq!(p.max_age_hours, 24);
+    }
+
+    #[test]
+    fn snapshot_time_parses_format() {
+        let t = snapshot_time("20260516-103341").unwrap();
+        // 2026-05-16 10:33:41 UTC = unknown exact secs without lookup, but check it's after 1970
+        assert!(t > std::time::UNIX_EPOCH);
+    }
+
+    #[test]
+    fn snapshot_time_rejects_bad_format() {
+        assert!(snapshot_time("invalid").is_none());
+        assert!(snapshot_time("20260516_103341").is_none()); // _ instead of -
+        assert!(snapshot_time("2026-05-16T10:33:41").is_none()); // ISO format
     }
 
     #[tokio::test]

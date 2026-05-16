@@ -65,6 +65,16 @@ enum Command {
     Statuses,
     /// 서버 상태 확인 (health)
     Ping,
+    /// 백업 (snapshot) 즉시 생성
+    Backup,
+    /// 사용 가능한 백업 목록
+    Backups,
+    /// 백업으로 복원
+    Restore {
+        /// 특정 timestamp (`YYYYMMDD-HHMMSS`). 미지정 시 최신 사용.
+        #[arg(long)]
+        to: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -538,6 +548,51 @@ impl Backend {
         }
     }
 
+    // ── 백업 / 복원 ──────────────────────────────────────
+
+    fn create_backup(&self) -> Result<openguild_core::snapshot::SnapshotInfo> {
+        match self {
+            Backend::Http(_) => Err(anyhow!(
+                "원격 모드 백업 미지원 — server 측에서 `openguild-server snapshot` 실행 필요"
+            )),
+            Backend::Local(l) => {
+                l.rt.block_on(openguild_core::snapshot::create_snapshot(&l.store))
+            }
+        }
+    }
+
+    fn list_backups(&self) -> Result<Vec<openguild_core::snapshot::SnapshotInfo>> {
+        match self {
+            Backend::Http(_) => Err(anyhow!("원격 모드 백업 목록 미지원")),
+            Backend::Local(l) => openguild_core::snapshot::list_snapshots(&l.store.paths),
+        }
+    }
+
+    fn restore_backup(&self, to: Option<String>) -> Result<openguild_core::snapshot::SnapshotInfo> {
+        match self {
+            Backend::Http(_) => Err(anyhow!("원격 모드 복원 미지원")),
+            Backend::Local(l) => {
+                let snapshots = openguild_core::snapshot::list_snapshots(&l.store.paths)?;
+                let target = if let Some(ts) = to {
+                    snapshots
+                        .iter()
+                        .find(|s| s.timestamp == ts)
+                        .cloned()
+                        .ok_or_else(|| anyhow!("snapshot 없음: {ts}"))?
+                } else {
+                    snapshots
+                        .last()
+                        .cloned()
+                        .ok_or_else(|| anyhow!("사용 가능한 snapshot 이 없습니다"))?
+                };
+                l.rt.block_on(openguild_core::snapshot::restore_snapshot(
+                    &l.store, &target,
+                ))?;
+                Ok(target)
+            }
+        }
+    }
+
     // ── 슬러그 → ID 헬퍼 ─────────────────────────────────
 
     fn id_of(&self, slug: &str) -> Result<i64> {
@@ -710,6 +765,65 @@ fn run() -> Result<()> {
                 for s in &statuses {
                     println!("{:<14} {}", s.name_en, s.name_ko);
                 }
+            }
+        }
+        Command::Backup => {
+            let info = c.create_backup()?;
+            if cli.json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "ok": true,
+                        "timestamp": info.timestamp,
+                        "size_bytes": info.size_bytes,
+                        "path": info.path.to_string_lossy(),
+                    })
+                );
+            } else {
+                println!("✓ snapshot 생성: {} ({} bytes)", info.timestamp, info.size_bytes);
+                println!("  path: {}", info.path.display());
+            }
+        }
+        Command::Backups => {
+            let list = c.list_backups()?;
+            if cli.json {
+                let arr: Vec<_> = list
+                    .iter()
+                    .map(|s| {
+                        serde_json::json!({
+                            "timestamp": s.timestamp,
+                            "size_bytes": s.size_bytes,
+                            "path": s.path.to_string_lossy(),
+                        })
+                    })
+                    .collect();
+                println!("{}", serde_json::to_string_pretty(&arr)?);
+            } else if list.is_empty() {
+                println!("(사용 가능한 백업 없음)");
+                println!();
+                println!("`openguild backup` 으로 생성하세요.");
+            } else {
+                println!("백업 목록 (오래된 순):");
+                for s in &list {
+                    println!("  {} — {} bytes", s.timestamp, s.size_bytes);
+                }
+            }
+        }
+        Command::Restore { to } => {
+            let info = c.restore_backup(to)?;
+            if cli.json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "ok": true,
+                        "restored_to": info.timestamp,
+                    })
+                );
+            } else {
+                println!("✓ 복원 완료: {}", info.timestamp);
+                println!();
+                println!("주의: 파일 시스템 (`.guild/quests/*.md`) 자동 갱신 안 됨.");
+                println!("      필요시 `openguild-server reindex`.");
             }
         }
         Command::Quest { sub } => match sub {

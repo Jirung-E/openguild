@@ -338,7 +338,7 @@ openguild migrate-to-files
 | **F4** | auto 블록 렌더러 + 영향 범위 추적 (parent 변경 시 옛/새 부모 갱신) | ✅ |
 | **F5** | `reindex` — 파일들로부터 index.db 재구축 | ✅ |
 | **F6** | snapshot / restore CLI 명령 | ✅ |
-| **F7** | external 편집 감지 + 부분 reindex | ⚪ (수동 `reindex` 로 대체 가능) |
+| **F7** | external 편집 감지 (`core::drift`, `check-drift [--resync]`) | ✅ |
 | **F8** | lock 파일 메커니즘 | ✅ |
 | **F9** | counter 검증 + 자동 보정 (`check-counters`) | ✅ |
 | **F10** | `migrate-to-files` 명령 | ✅ |
@@ -346,7 +346,26 @@ openguild migrate-to-files
 | **F12** | `openguild init` 이 `.guild/` 디렉토리 + 시드 + gitignore 생성 | ✅ |
 | **F13** | 테스트 갱신 — 각 새 모듈마다 unit tests | ✅ |
 
-**12 / 13 완료**. F7 은 자동화 편의 기능 — 수동 `openguild-server reindex` 로 동일 효과.
+**13 / 13 완료** 🎉 — 저장소 설계 모든 단계 구현 완료 (2026-05-16).
+
+운영 시 추가 보호: `openguild-server check-drift --resync` 로 외부 편집 / git pull 후
+캐시 동기화 가능. mutation 진행 전 `LockGuard` 로 single-writer 보장.
+
+## 자동 백업 정책 (2026-05-17)
+
+매 mutation 직후 `core::snapshot::maybe_auto_snapshot` 자동 호출 (`core::ops::*` 내장).
+정책 (`AutoSnapshotPolicy`):
+- `max_ops_since_last` — journal ops 수. 기본 50.
+- `max_age_hours` — 마지막 snapshot 으로부터 경과 시간. 기본 24.
+
+**둘 중 하나라도 도달** 시 snapshot 자동 생성 + journal truncate. stderr 에 알림.
+사용자별 조정: env `OPENGUILD_AUTO_BACKUP_OPS` / `OPENGUILD_AUTO_BACKUP_HOURS`.
+
+수동 명령:
+- `openguild backup` / `backups` / `restore [--to TS]` — 사용자 CLI (local mode)
+- `openguild-server snapshot` / `restore [--to TS] [--list]` — server admin CLI
+
+원격 HTTP / GUI 통합 — 추후 (REST `POST /api/admin/snapshot` 등).
 
 ---
 

@@ -64,6 +64,12 @@ enum Command {
         #[arg(long)]
         fix: bool,
     },
+    /// 외부 편집 / 손상으로 index.db 가 파일과 어긋났는지 검사 + 자동 resync
+    CheckDrift {
+        /// 발견된 drift 를 자동으로 reindex 로 해소 (기본: 보고만)
+        #[arg(long)]
+        resync: bool,
+    },
     /// snapshot 으로 index.db 복원
     Restore {
         /// 특정 snapshot 의 타임스탬프 (`YYYYMMDD-HHMMSS`). 미지정 시 최신 사용.
@@ -98,6 +104,7 @@ fn main() -> Result<()> {
         Command::Snapshot => rt.block_on(run_snapshot()),
         Command::Restore { to, list } => rt.block_on(run_restore(to, list)),
         Command::CheckCounters { fix } => run_check_counters(fix),
+        Command::CheckDrift { resync } => rt.block_on(run_check_drift(resync)),
     }
 }
 
@@ -259,6 +266,53 @@ async fn run_migrate_to_files() -> Result<()> {
     println!("  2. 만족하면 legacy guild.db 와 backups/ 삭제 (gitignored 라 commit 영향 없음)");
     println!();
 
+    Ok(())
+}
+
+// ─────────────────────── drift check ───────────────────────
+
+async fn run_check_drift(resync: bool) -> Result<()> {
+    let ctx = load_guild()?;
+    let store = openguild_core::Store::open(&ctx.guild_path).await?;
+    let report = openguild_core::drift::detect_drift(&store).await?;
+
+    if report.is_clean() {
+        println!("✓ index.db 가 파일과 일치 (drift 없음)");
+        return Ok(());
+    }
+
+    println!("⚠ drift 발견:");
+    if !report.missing_in_index.is_empty() {
+        println!();
+        println!("  파일은 있는데 index 에 없음 ({}):", report.missing_in_index.len());
+        for s in &report.missing_in_index {
+            println!("    - {s}");
+        }
+    }
+    if !report.stale_in_index.is_empty() {
+        println!();
+        println!("  index 에 있는데 파일이 없음 ({}):", report.stale_in_index.len());
+        for s in &report.stale_in_index {
+            println!("    - {s}");
+        }
+    }
+    if !report.fresh_files.is_empty() {
+        println!();
+        println!("  파일 mtime > index.db mtime ({}):", report.fresh_files.len());
+        for s in &report.fresh_files {
+            println!("    - {s}");
+        }
+    }
+
+    if resync {
+        println!();
+        println!("▸ reindex 실행 중...");
+        let _ = openguild_core::reindex::reindex(&store).await?;
+        println!("✓ resync 완료");
+    } else {
+        println!();
+        println!("(--resync 로 자동 reindex 가능)");
+    }
     Ok(())
 }
 
