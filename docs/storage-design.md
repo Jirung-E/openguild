@@ -327,25 +327,26 @@ openguild migrate-to-files
 
 ---
 
-## 구현 단계
+## 구현 단계 — 완료 현황 (2026-05-16)
 
-| 단계 | 작업 | 의존 | 소요 |
-|---|---|---|---|
-| **F1** | `core::repo` 모듈 — 파일 read/write + frontmatter parser/serializer | — | 반나절 |
-| **F2** | quest / type / status 시드 파일 포맷 정의 + 시드 데이터 | F1 | 1시간 |
-| **F3** | `core::services::*` 재작성 — 파일 IO + index UPDATE + journal INSERT | F1 | 1일 |
-| **F4** | auto 블록 렌더러 + 영향 범위 추적 (parent 변경 시 옛/새 부모 갱신) | F3 | 2시간 |
-| **F5** | `reindex` — 파일들로부터 index.db 재구축 | F1, F2 | 2시간 |
-| **F6** | snapshot / restore CLI 명령 | F3 | 반나절 |
-| **F7** | external 편집 감지 + 부분 reindex | F5 | 2시간 |
-| **F8** | lock 파일 메커니즘 | F3 | 1시간 |
-| **F9** | counter 검증 + 자동 보정 | F2, F5 | 1시간 |
-| **F10** | `migrate-to-files` 명령 | F1~F9 | 2시간 |
-| **F11** | 기존 audit / auto-backup 코드 제거 | F3, F6 | 1시간 |
-| **F12** | `openguild init` 이 `.guild/` 디렉토리 + 시드 + gitignore 생성 | F2 | 1시간 |
-| **F13** | 테스트 갱신 — 기존 services 테스트들이 파일 IO 도 검증하도록 | 전부 | 반나절 |
+| 단계 | 작업 | 상태 |
+|---|---|---|
+| **F1** | `core::repo` 모듈 — 파일 read/write + frontmatter parser/serializer | ✅ |
+| **F2** | quest / type / status 시드 파일 포맷 정의 + 시드 데이터 | ✅ |
+| **F3** | `core::ops::*` (orchestration) — 파일 IO + index UPDATE + journal INSERT | ✅ |
+| **F3 consumer** | server routes + CLI Backend 가 `ops::*` 호출 | ✅ |
+| **F4** | auto 블록 렌더러 + 영향 범위 추적 (parent 변경 시 옛/새 부모 갱신) | ✅ |
+| **F5** | `reindex` — 파일들로부터 index.db 재구축 | ✅ |
+| **F6** | snapshot / restore CLI 명령 | ✅ |
+| **F7** | external 편집 감지 + 부분 reindex | ⚪ (수동 `reindex` 로 대체 가능) |
+| **F8** | lock 파일 메커니즘 | ✅ |
+| **F9** | counter 검증 + 자동 보정 (`check-counters`) | ✅ |
+| **F10** | `migrate-to-files` 명령 | ✅ |
+| **F11** | 기존 audit / auto-backup 코드 제거 | ✅ |
+| **F12** | `openguild init` 이 `.guild/` 디렉토리 + 시드 + gitignore 생성 | ✅ |
+| **F13** | 테스트 갱신 — 각 새 모듈마다 unit tests | ✅ |
 
-**총 3-4일** (단일 작업자 기준).
+**12 / 13 완료**. F7 은 자동화 편의 기능 — 수동 `openguild-server reindex` 로 동일 효과.
 
 ---
 

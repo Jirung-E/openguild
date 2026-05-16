@@ -11,9 +11,11 @@
   - 작업 완료 후 자동 커밋 금지. amend / reset / force push 도 명시 요청 필요.
   - 변경 사항이 stage 되어 있어도 사용자가 다음 행동을 결정하게 둘 것.
 - **메이저 버전 1은 사용자 명시적 승인 전까지 사용 금지.** 현재 `0.x.x`.
-- **개발 작업 관리 도구**: 본 프로젝트의 차기 저장소 설계 (`docs/storage-design.md`) 가
-  구현 완료된 시점부터, 앞으로 할 일 / 진행 상태 추적은 **OpenGuild 자체 (CLI / GUI) 로**
-  관리한다. dogfood. 외부 todo 도구 / GitHub Issues 보조 사용 X (전환 결정 시 재검토).
+- **개발 작업 관리 도구**: 저장소 설계 (`docs/storage-design.md`) 구현이 거의 완료됨 (2026-05-16, F7 제외).
+  앞으로 할 일 / 진행 상태 추적은 **OpenGuild 자체 (CLI) 로** 관리.
+  - `.guild/quests/*.md` 가 진리원 (git tracked).
+  - `openguild quest new/start/done/...` 으로 mutation — 파일 자동 갱신.
+  - 외부 todo 도구 / GitHub Issues 보조 사용 X.
 
 ## 한 줄 요약
 

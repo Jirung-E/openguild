@@ -1,13 +1,10 @@
 # Rust
 target/
 
-# 테스트용 guild 파일 (server/build.rs 자동 생성, repo root 에 작성됨)
+# Legacy artifacts (migrate-to-files 이전 단계의 잔재 — 새 구조에선 .guild/ 내부)
 /test.guild
 /*.db
-
-# DB 자동 백업 (server backup task, repo root 기준)
 /backups/
-# audit log (mutation HTTP 요청 기록)
 /audit.log
 
 # Node.js / Svelte (gui/frontend/)

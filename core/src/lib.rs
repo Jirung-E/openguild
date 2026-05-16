@@ -8,15 +8,18 @@
 //! 이 crate 는 HTTP / stdin/stdout / GUI 인터페이스 어느 것도 모른다 —
 //! 순수히 도메인 로직 + 저장소.
 
-pub mod backup;
+pub mod counter;
 pub mod db;
 pub mod error;
 pub mod guild_file;
+pub mod lock;
 pub mod migrate;
 pub mod models;
 pub mod ops;
+pub mod reindex;
 pub mod repo;
 pub mod services;
+pub mod snapshot;
 pub mod store;
 
 pub use error::{AppError, AppResult};

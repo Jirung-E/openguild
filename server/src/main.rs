@@ -1,24 +1,27 @@
 //! OpenGuild HTTP API 서버 + 관리 CLI.
 //!
 //! 서브커맨드:
-//!   host        HTTP 서버 시작 (기본 명령 — 인자 없이 호출 시 도움말 안내)
-//!   backup      수동 스냅샷 1회 (VACUUM INTO)
-//!   info        길드 메타 / DB 경로 / 백업 현황
+//!   host             HTTP 서버 시작
+//!   info             길드 메타 / DB 경로 / 스냅샷 현황
+//!   snapshot         `.guild/backups/snapshots/{ts}.db` 신설 + journal 절단
+//!   restore [--to]   snapshot 으로 index.db 복원
+//!   reindex          파일 → index.db 캐시 재구축
+//!   migrate-to-files legacy guild.db → .guild/quests/*.md
+//!   check-counters   type counter 무결성 검증
+//!   backup           snapshot 의 alias (호환성)
 //!
 //! 환경변수:
-//!   GUILD_PATH  대상 길드 디렉토리 (기본: `.`)
-//!   PORT        host 바인드 포트 (기본: 3000)
-//!   DATABASE_URL  override (기본: sqlite:{guild_path}/guild.db)
-//!   FRONTEND_DIST  정적 자산 폴더 (기본: gui/frontend/dist)
+//!   GUILD_PATH    대상 길드 디렉토리 (기본: `.`)
+//!   PORT          host 바인드 포트 (기본: 3000)
+//!   FRONTEND_DIST 정적 자산 폴더 (기본: gui/frontend/dist)
 
-mod audit;
 mod error;
 mod routes;
 
 #[cfg(test)]
 mod tests;
 
-use openguild_core::{backup, db, guild_file};
+use openguild_core::guild_file;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
@@ -45,12 +48,31 @@ enum Command {
         #[arg(long)]
         port: Option<u16>,
     },
-    /// 수동 백업 1회 (VACUUM INTO → `<guild>/backups/guild.db.<ts>`)
+    /// 수동 snapshot 1회 (snapshot 의 alias, 호환성 유지)
     Backup,
     /// 길드 메타 / DB 경로 / 백업 현황
     Info,
     /// legacy guild.db → .guild/quests/*.md 파일 진리원 구조로 일회성 이전
     MigrateToFiles,
+    /// .guild/quests/*.md 파일들로부터 index.db 캐시 재구축 (외부 편집 / 손상 후 복구)
+    Reindex,
+    /// `.guild/backups/snapshots/{ts}.db` 신설 + journal 절단 (RDB)
+    Snapshot,
+    /// type 의 last_number 가 실제 max quest 번호와 일치하는지 확인 + 자동 보정
+    CheckCounters {
+        /// 발견된 불일치를 type 파일에 직접 기록 (기본: 보고만)
+        #[arg(long)]
+        fix: bool,
+    },
+    /// snapshot 으로 index.db 복원
+    Restore {
+        /// 특정 snapshot 의 타임스탬프 (`YYYYMMDD-HHMMSS`). 미지정 시 최신 사용.
+        #[arg(long)]
+        to: Option<String>,
+        /// 사용 가능한 snapshot 목록 출력만 (복원 X)
+        #[arg(long)]
+        list: bool,
+    },
 }
 
 fn main() -> Result<()> {
@@ -72,6 +94,10 @@ fn main() -> Result<()> {
         Command::Backup => rt.block_on(run_backup()),
         Command::Info => rt.block_on(run_info()),
         Command::MigrateToFiles => rt.block_on(run_migrate_to_files()),
+        Command::Reindex => rt.block_on(run_reindex()),
+        Command::Snapshot => rt.block_on(run_snapshot()),
+        Command::Restore { to, list } => rt.block_on(run_restore(to, list)),
+        Command::CheckCounters { fix } => run_check_counters(fix),
     }
 }
 
@@ -115,13 +141,6 @@ fn load_guild() -> Result<GuildCtx> {
     })
 }
 
-async fn open_pool(ctx: &GuildCtx) -> Result<sqlx::SqlitePool> {
-    let db_url = std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| format!("sqlite:{}/guild.db", ctx.guild_path));
-    let pool = db::create_pool(&db_url).await?;
-    db::run_migrations(&pool).await?;
-    Ok(pool)
-}
 
 // ─────────────────────── host ───────────────────────
 
@@ -130,15 +149,9 @@ async fn run_host(port_arg: Option<u16>) -> Result<()> {
     // Store 는 .guild/index.db + journal.db 둘 다 자동 마이그레이션.
     let store = openguild_core::Store::open(&ctx.guild_path).await?;
 
-    // 자동 백업 백그라운드 task (legacy guild.db 백업) — F11 에서 제거 예정.
-    backup::spawn_backup_task(store.index_pool.clone(), ctx.guild_path.clone());
-
-    // 라우터 + audit middleware
-    let audit_state = audit::AuditState::new(&ctx.guild_path);
-    let mut app = routes::create_router(store).layer(axum::middleware::from_fn_with_state(
-        audit_state,
-        audit::audit_layer,
-    ));
+    // 라우터. (audit middleware 폐기 — journal.db 의 ops 가 그 역할.
+    //          auto-backup task 폐기 — snapshot/restore 명령으로 명시적 실행.)
+    let mut app = routes::create_router(store);
 
     // frontend 정적 서빙 (선택)
     let dist_path = std::env::var("FRONTEND_DIST")
@@ -168,7 +181,7 @@ async fn run_host(port_arg: Option<u16>) -> Result<()> {
     println!("  path   : {}", ctx.abs_path.display());
     println!("  bind   : http://{addr}");
     println!("  static : {}", if serves_static { dist_path.as_str() } else { "(none — API only)" });
-    println!("  backup : every 1h → {}/backups/", ctx.abs_path.display());
+    println!("  backup : on-demand (`openguild-server snapshot`)");
     println!();
     println!("Press Ctrl+C to stop.");
     println!();
@@ -178,13 +191,11 @@ async fn run_host(port_arg: Option<u16>) -> Result<()> {
 }
 
 // ─────────────────────── backup ───────────────────────
+//
+// `backup` 은 새 모델의 `snapshot` 의 alias. 호환성 유지용.
 
 async fn run_backup() -> Result<()> {
-    let ctx = load_guild()?;
-    let pool = open_pool(&ctx).await?;
-    let target = backup::backup_once(&pool, &ctx.guild_path).await?;
-    println!("✓ backup created: {}", target.display());
-    Ok(())
+    run_snapshot().await
 }
 
 // ─────────────────────── info ───────────────────────
@@ -251,6 +262,108 @@ async fn run_migrate_to_files() -> Result<()> {
     Ok(())
 }
 
+// ─────────────────────── counter check ───────────────────────
+
+fn run_check_counters(fix: bool) -> Result<()> {
+    let ctx = load_guild()?;
+    let paths = openguild_core::repo::GuildPaths::new(&ctx.abs_path);
+    let report = openguild_core::counter::check_counters(&paths, fix)?;
+
+    println!("✓ counter 검증 완료");
+    println!("  검사된 type 수 : {}", report.types_checked);
+    println!("  발견 이슈     : {}", report.issues.len());
+    for issue in &report.issues {
+        println!();
+        println!("  • type {}:", issue.prefix);
+        println!("    저장된 last_number   : {}", issue.stored_last_number);
+        println!("    실제 max quest 번호  : {}", issue.actual_max_number);
+        if fix {
+            println!("    → {} 으로 보정됨", issue.corrected_to);
+        } else {
+            println!("    (--fix 로 자동 보정 가능)");
+        }
+    }
+    Ok(())
+}
+
+// ─────────────────────── snapshot / restore ───────────────────────
+
+async fn run_snapshot() -> Result<()> {
+    let ctx = load_guild()?;
+    let store = openguild_core::Store::open(&ctx.guild_path).await?;
+    let info = openguild_core::snapshot::create_snapshot(&store).await?;
+    println!("✓ snapshot 생성");
+    println!("  timestamp : {}", info.timestamp);
+    println!("  path      : {}", info.path.display());
+    println!("  size      : {} bytes", info.size_bytes);
+    println!();
+    println!("journal.db 의 ops 가 절단되었습니다 (RDB 패턴).");
+    Ok(())
+}
+
+async fn run_restore(to: Option<String>, list_only: bool) -> Result<()> {
+    let ctx = load_guild()?;
+    let store = openguild_core::Store::open(&ctx.guild_path).await?;
+    let snapshots = openguild_core::snapshot::list_snapshots(&store.paths)?;
+
+    if list_only || snapshots.is_empty() {
+        if snapshots.is_empty() {
+            println!("(사용 가능한 snapshot 없음)");
+            println!();
+            println!("`openguild-server snapshot` 으로 생성하세요.");
+            return Ok(());
+        }
+        println!("사용 가능한 snapshots (오래된 순):");
+        for s in &snapshots {
+            println!("  {} — {} bytes", s.timestamp, s.size_bytes);
+        }
+        if list_only {
+            return Ok(());
+        }
+    }
+
+    let target = if let Some(ts) = to {
+        snapshots
+            .iter()
+            .find(|s| s.timestamp == ts)
+            .with_context(|| format!("snapshot 없음: {ts}"))?
+            .clone()
+    } else {
+        snapshots.last().cloned().context("snapshot 이 없습니다")?
+    };
+
+    println!("▸ snapshot 으로 복원: {}", target.timestamp);
+    openguild_core::snapshot::restore_snapshot(&store, &target).await?;
+    println!("✓ index.db 복원 완료");
+    println!();
+    println!("주의: 파일 시스템 (`.guild/quests/*.md`) 은 자동 갱신 안 됨.");
+    println!("      필요시 `openguild-server reindex` 또는 export (추후 명령) 사용.");
+    Ok(())
+}
+
+// ─────────────────────── reindex ───────────────────────
+
+async fn run_reindex() -> Result<()> {
+    let ctx = load_guild()?;
+    let store = openguild_core::Store::open(&ctx.guild_path).await?;
+    let report = openguild_core::reindex::reindex(&store).await?;
+
+    println!("✓ index.db 재구축 완료");
+    println!("  types        : {}", report.types_loaded);
+    println!("  statuses     : {}", report.statuses_loaded);
+    println!("  quests       : {}", report.quests_loaded);
+    println!("  dependencies : {}", report.dependencies_loaded);
+    if !report.skipped.is_empty() {
+        println!();
+        println!("⚠ {} 개 파일 skip 됨 (파싱 / 무결성 실패):", report.skipped.len());
+        for (path, reason) in &report.skipped {
+            println!("  - {path}");
+            println!("    → {reason}");
+        }
+    }
+    Ok(())
+}
+
 async fn run_info() -> Result<()> {
     let ctx = load_guild()?;
 
@@ -268,70 +381,68 @@ async fn run_info() -> Result<()> {
         format!("{dist_path} (missing — host 시 API only)")
     };
 
-    let db_file = ctx.abs_path.join("guild.db");
+    let dot_guild_paths = openguild_core::repo::GuildPaths::new(&ctx.abs_path);
+    let db_file = dot_guild_paths.index_db();
     let db_size = std::fs::metadata(&db_file).map(|m| m.len()).unwrap_or(0);
 
     // DB 통계: quest 수 + 마지막 마이그레이션 버전
     let (quests_alive, quests_deleted, schema_version): (i64, i64, Option<String>) =
         if db_file.exists() {
-            let pool = open_pool(&ctx).await?;
+            let store = openguild_core::Store::open(&ctx.guild_path).await?;
+            let pool = &store.index_pool;
             let alive: i64 =
                 sqlx::query_scalar("SELECT COUNT(*) FROM quests WHERE deleted_at IS NULL")
-                    .fetch_one(&pool)
+                    .fetch_one(pool)
                     .await
                     .unwrap_or(0);
             let dead: i64 =
                 sqlx::query_scalar("SELECT COUNT(*) FROM quests WHERE deleted_at IS NOT NULL")
-                    .fetch_one(&pool)
+                    .fetch_one(pool)
                     .await
                     .unwrap_or(0);
-            // sqlx migration history — `_sqlx_migrations` 의 가장 큰 version 행의 description.
             let last_mig: Option<(i64, String)> = sqlx::query_as(
                 "SELECT version, description FROM _sqlx_migrations \
                  WHERE success = 1 ORDER BY version DESC LIMIT 1",
             )
-            .fetch_optional(&pool)
+            .fetch_optional(pool)
             .await
             .unwrap_or(None);
-            pool.close().await;
             let mig_str = last_mig.map(|(v, d)| format!("{v:04} {d}"));
             (alive, dead, mig_str)
         } else {
             (0, 0, None)
         };
 
-    // 백업 디렉토리
-    let backups_dir = ctx.abs_path.join("backups");
-    let (backup_count, latest_backup, backup_total_size): (usize, Option<String>, u64) =
-        match std::fs::read_dir(&backups_dir) {
-            Ok(rd) => {
-                let mut entries: Vec<_> = rd
-                    .filter_map(|e| e.ok())
-                    .filter(|e| e.file_name().to_string_lossy().starts_with("guild.db."))
-                    .collect();
-                entries.sort_by_key(|e| e.file_name());
-                let total: u64 = entries
-                    .iter()
-                    .filter_map(|e| e.metadata().ok().map(|m| m.len()))
-                    .sum();
-                let latest = entries
-                    .last()
-                    .map(|e| e.file_name().to_string_lossy().to_string());
-                (entries.len(), latest, total)
-            }
-            Err(_) => (0, None, 0),
-        };
+    // 새 snapshots 디렉토리
+    let dot_guild_paths = openguild_core::repo::GuildPaths::new(&ctx.abs_path);
+    let snapshots = openguild_core::snapshot::list_snapshots(&dot_guild_paths)
+        .unwrap_or_default();
+    let snapshot_count = snapshots.len();
+    let snapshot_total_size: u64 = snapshots.iter().map(|s| s.size_bytes).sum();
+    let latest_snapshot = snapshots.last().map(|s| s.timestamp.clone());
 
-    // audit log
-    let audit_file = ctx.abs_path.join("audit.log");
-    let (audit_lines, audit_size) = if audit_file.exists() {
-        let size = std::fs::metadata(&audit_file).map(|m| m.len()).unwrap_or(0);
-        let lines = std::fs::read_to_string(&audit_file)
-            .map(|s| s.lines().count())
-            .unwrap_or(0);
-        (lines, size)
+    // journal.db ops 수
+    let journal_count: i64 = if dot_guild_paths.journal_db().exists() {
+        let url = format!(
+            "sqlite:{}?mode=ro",
+            dot_guild_paths
+                .journal_db()
+                .to_string_lossy()
+                .trim_start_matches(r"\\?\")
+                .replace('\\', "/")
+        );
+        if let Ok(pool) = openguild_core::db::create_pool(&url).await {
+            let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM ops")
+                .fetch_one(&pool)
+                .await
+                .unwrap_or(0);
+            pool.close().await;
+            n
+        } else {
+            0
+        }
     } else {
-        (0, 0)
+        0
     };
 
     // ── 출력 ──
@@ -340,7 +451,6 @@ async fn run_info() -> Result<()> {
     println!();
     println!("server  : {bind}");
     println!("static  : {static_state}");
-    println!("backup  : every 1h, keep 7d");
     println!();
     println!("db      : {} ({} bytes)", db_file.display(), db_size);
     if let Some(mig) = schema_version {
@@ -351,12 +461,12 @@ async fn run_info() -> Result<()> {
     println!("quests  : {quests_alive} alive, {quests_deleted} deleted");
     println!();
     println!(
-        "backups : {} file(s), {} bytes total (latest: {})",
-        backup_count,
-        backup_total_size,
-        latest_backup.as_deref().unwrap_or("(none)")
+        "snapshots: {} file(s), {} bytes total (latest: {})",
+        snapshot_count,
+        snapshot_total_size,
+        latest_snapshot.as_deref().unwrap_or("(none)")
     );
-    println!("audit   : {audit_lines} entries, {audit_size} bytes");
+    println!("journal : {journal_count} ops since last snapshot");
 
     Ok(())
 }
@@ -462,8 +572,11 @@ mod helper_tests {
     }
 
     #[test]
-    fn run_backup_creates_file() {
+    fn run_backup_creates_snapshot_file() {
         let dir = make_guild_dir("backup");
+        // backup 는 snapshot 의 alias — `.guild/backups/snapshots/{ts}.db` 생성.
+        // .guild/ 시드 필요.
+        openguild_core::repo::seed_guild_dir(&dir).unwrap();
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -471,17 +584,16 @@ mod helper_tests {
         with_guild_env(&dir, || {
             rt.block_on(run_backup()).expect("backup ok");
         });
-        // backups/guild.db.* 가 1개 이상 생겼는지
-        let backup_dir = dir.join("backups");
-        let count = std::fs::read_dir(&backup_dir)
+        let snapshot_dir = dir.join(".guild/backups/snapshots");
+        let count = std::fs::read_dir(&snapshot_dir)
             .unwrap()
             .filter(|e| {
                 e.as_ref()
-                    .map(|e| e.file_name().to_string_lossy().starts_with("guild.db."))
+                    .map(|e| e.path().extension().and_then(|s| s.to_str()) == Some("db"))
                     .unwrap_or(false)
             })
             .count();
-        assert!(count >= 1, "backup file should be created");
+        assert!(count >= 1, "snapshot file should be created");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
