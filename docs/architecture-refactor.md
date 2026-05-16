@@ -95,6 +95,9 @@ openguild/
 
 ---
 
+> ⚠️ **2026-05-16 추가**: 저장소 모델 전환 결정 — SQLite 진리원 → 파일 진리원 + SQLite 캐시.
+> 자세한 설계: [`storage-design.md`](./storage-design.md). 구현 대기.
+
 ## 이전 단계 (Phases)
 
 ### Phase 1 — core crate 분리 + 디렉토리 재구성 ✅

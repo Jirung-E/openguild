@@ -6,8 +6,14 @@
 
 ## 절대 규칙
 
-- **git commit 은 사용자가 명시적으로 요청할 때만.**
+- **git commit / git push 는 사용자가 명시적으로 요청할 때만.**
+  - "커밋해" / "push 해" 같은 직접 지시가 있을 때만 실행.
+  - 작업 완료 후 자동 커밋 금지. amend / reset / force push 도 명시 요청 필요.
+  - 변경 사항이 stage 되어 있어도 사용자가 다음 행동을 결정하게 둘 것.
 - **메이저 버전 1은 사용자 명시적 승인 전까지 사용 금지.** 현재 `0.x.x`.
+- **개발 작업 관리 도구**: 본 프로젝트의 차기 저장소 설계 (`docs/storage-design.md`) 가
+  구현 완료된 시점부터, 앞으로 할 일 / 진행 상태 추적은 **OpenGuild 자체 (CLI / GUI) 로**
+  관리한다. dogfood. 외부 todo 도구 / GitHub Issues 보조 사용 X (전환 결정 시 재검토).
 
 ## 한 줄 요약
 
@@ -34,6 +40,8 @@ openguild/
 | 문서 | 내용 |
 |---|---|
 | `docs/architecture.md` | 시스템 구조 / API 엔드포인트 / 데이터 모델 / 안전장치 |
+| `docs/architecture-refactor.md` | core 분리 + CLI 로컬 모드 등 구조 변경 이력 / 미래 계획 |
+| `docs/storage-design.md` | 파일 진리원 + SQLite 캐시/저널 — 차기 저장소 설계 (구현 대기) |
 | `docs/dev-plan.md` | 단계별 개발 계획 + 진행 상태 |
 | `docs/planning.md` | 기획 결정 (용어, MVP 범위, 향후 기능) |
 | `docs/guild-rules.md` | 개발 규칙 (커밋·브랜치·백/프론트 컨벤션) |
