@@ -67,18 +67,20 @@ guild-root/
 
 ### Quest (`.guild/quests/{quest_id}.md`)
 
+Frontmatter 는 **TOML `+++`** 형식 — 프로젝트 다른 메타 파일 (`{name}.guild`, `types/`, `statuses/`) 과 일관.
+
 ```markdown
----
-quest_id: DEV-001
-title: "Tauri desktop 앱 (gui/ crate)"
-status: open
-urgency: 2
-parent: null
-prerequisites: []
-created_at: 2026-05-16T15:00:00Z
-updated_at: 2026-05-16T15:01:00Z
-deleted: false
----
++++
+quest_id = "DEV-001"
+title = "Tauri desktop 앱 (gui/ crate)"
+status = "open"
+urgency = 2
+prerequisites = []
+created_at = 2026-05-16T15:00:00Z
+updated_at = 2026-05-16T15:01:00Z
+deleted = false
+# parent 는 키 자체 생략 = root quest
++++
 
 Tauri Rust shell + frontend api 어댑터 + 파일 연결
 
@@ -97,15 +99,17 @@ Tauri Rust shell + frontend api 어댑터 + 파일 연결
 
 자식 quest 예시 (선행 있음):
 ```markdown
----
-quest_id: DEV-004
-title: "Tauri invoke 핸들러 — core 직접 호출"
-status: open
-urgency: 3
-parent: DEV-001
-prerequisites: [DEV-002, DEV-003]
-...
----
++++
+quest_id = "DEV-004"
+title = "Tauri invoke 핸들러 — core 직접 호출"
+status = "open"
+urgency = 3
+parent = "DEV-001"
+prerequisites = ["DEV-002", "DEV-003"]
+created_at = 2026-05-16T15:00:00Z
+updated_at = 2026-05-16T15:01:00Z
+deleted = false
++++
 
 frontend 의 api 호출이 invoke 로 → core::services::* 직접 실행
 
@@ -127,13 +131,13 @@ frontend 의 api 호출이 invoke 로 → core::services::* 직접 실행
 | 필드 | 타입 | 설명 |
 |---|---|---|
 | `quest_id` | string | slug 형식 (`DEV-001`). 파일명과 일치. 변경 불가 |
-| `title` | string | 한 줄 제목. 따옴표 escape 필요 |
-| `status` | string | status 파일명의 slug (`open` / `in_progress` / `done` / ...). statuses/ 의 파일 참조 |
+| `title` | string | 한 줄 제목. TOML escape 규칙 적용 |
+| `status` | string | status 파일명의 slug (`open` / `in_progress` / `done` / ...) |
 | `urgency` | int | 1=Critical / 2=High / 3=Medium / 4=Low |
-| `parent` | string \| null | 부모 quest_id 또는 null |
-| `prerequisites` | string[] | 선행 quest_id 배열 |
-| `created_at` | ISO 8601 | 생성 시각 (UTC) |
-| `updated_at` | ISO 8601 | 마지막 mutation 시각 |
+| `parent` | string (optional) | 부모 quest_id. 없으면 키 자체 생략 (root quest) |
+| `prerequisites` | string[] | 선행 quest_id 배열 (비었으면 `[]`) |
+| `created_at` | RFC 3339 datetime | TOML native datetime (UTC) |
+| `updated_at` | RFC 3339 datetime | 마지막 mutation 시각 |
 | `deleted` | bool | soft delete flag. true 면 list 에서 숨김 |
 
 **모든 참조는 slug 사용** (`DEV-001`), numeric ID 폐지.
