@@ -36,6 +36,15 @@
     ],
     "category": "DeveloperTool",
     "shortDescription": "Quest 기반 프로젝트 관리 데스크탑 앱",
-    "longDescription": "OpenGuild — Guild / Quest 모델로 개인·팀 작업을 추적하는 로컬-퍼스트 데스크탑 앱."
+    "longDescription": "OpenGuild — Guild / Quest 모델로 개인·팀 작업을 추적하는 로컬-퍼스트 데스크탑 앱.",
+    "fileAssociations": [
+      {
+        "ext": ["guild"],
+        "name": "OpenGuild Guild File",
+        "description": "OpenGuild 길드 마커 파일 — 더블클릭하면 OpenGuild 데스크탑 앱이 그 길드를 엽니다.",
+        "role": "Editor",
+        "mimeType": "application/x-openguild"
+      }
+    ]
   }
 }
