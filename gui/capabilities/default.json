@@ -1,0 +1,9 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "OpenGuild desktop 기본 capability — 메인 윈도우에 core 핸들러 허용.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default"
+  ]
+}

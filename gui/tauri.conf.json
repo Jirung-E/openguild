@@ -1,0 +1,41 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "OpenGuild",
+  "version": "0.1.0",
+  "identifier": "io.openguild.desktop",
+  "build": {
+    "beforeDevCommand": "npm --prefix ./frontend run dev",
+    "beforeBuildCommand": "npm --prefix ./frontend run build",
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "./frontend/build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "OpenGuild",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 800,
+        "minHeight": 600,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "category": "DeveloperTool",
+    "shortDescription": "Quest 기반 프로젝트 관리 데스크탑 앱",
+    "longDescription": "OpenGuild — Guild / Quest 모델로 개인·팀 작업을 추적하는 로컬-퍼스트 데스크탑 앱."
+  }
+}
