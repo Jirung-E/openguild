@@ -284,33 +284,47 @@ openguild/
 
 ---
 
-## 프로젝트 관리 (확정)
+## 프로젝트 관리 (확정 / 2026-05-17 갱신)
 
 **저장소**: GitHub (모노레포)
 
-> 📌 OpenGuild의 기본 기능이 완성되는 시점부터 GitHub Issues 대신 OpenGuild로 프로젝트를 관리할 예정 (dogfood). 브랜치명/이슈 ID 규칙은 동일하게 유지되므로 전환 시 혼란 없음.
-
-**이슈 트래킹**: GitHub Issues
-- Labels: `DEV`, `BUG`, `REQ` 로 타입 구분 (제목 형식 강제 없음)
-- 브랜치명: `DEV-123`, `BUG-45` (OpenGuild prefix + GitHub 이슈 번호)
+**이슈 트래킹**: OpenGuild 자체 dogfood (2026-05-17 전환 완료)
+- `.guild/quests/*.md` 가 진리원 (git tracked).
+- 새 작업 = `openguild quest new` → `.guild/quests/{ID}.md` 자동 생성.
+- GitHub Issues 보조 사용 X. 외부 todo 도구 X.
 
 **브랜치 전략**
 ```
-main      ← 릴리즈 전용 (버전 태그)
-develop   ← 개발 통합
-  └─ DEV-123  ← 기능/작업별 브랜치
+master    ← 릴리즈 전용 (태그 v0.x.y, 직접 push 금지)
+develop   ← 통합 / 검증 (default 작업 분기)
+  └─ DEV-123 ← feature 브랜치 (quest_id 직접, `feature/` prefix 없음)
   └─ BUG-45
 ```
+
+- `master` 유지 (rename 안 함).
+- 모든 새 작업은 develop 에서 분기 (`git checkout -b DEV-N`).
+- 머지: feature → develop (squash 권장) → master (릴리즈 시점).
+
+**커밋 메시지 형식**
+```
+[{QUEST_ID}][{CATEGORY?}] 한 줄 요약
+
+본문 (선택). what 보다 why.
+```
+
+- `[QUEST_ID]` 필수 (branch 의 quest_id 와 일치).
+- `[CATEGORY]` 선택: `gui/desktop` / `gui/frontend` / `core` / `cli` / `server` / `docs` / `chore` 등.
+- 메타 변경 (브랜치 전략 같이 quest 없음) 은 `[chore][docs] ...` 일회성 예외.
 
 **버전 관리**
 - `MAJOR.MINOR.PATCH` (예: `0.1.0`)
 - `0.x.x`부터 시작, 메이저 1은 명시적 승인 필요
 - Git 태그: `v0.1.0`, GitHub Releases에 변경사항 기록
 
-**CI/CD (GitHub Actions)**
-- PR 시: `cargo check` (백엔드), `npm run build` (프론트엔드)
+**CI/CD (GitHub Actions)** — 미구현 (DEV-008 quest)
+- PR 시: `cargo test --workspace` + clippy + `npm run check` + `npm test`
 - `~/.cargo/registry`만 캐시 (target/ 제외)
-- 배포: main 머지 시 AWS EC2 자동 배포
+- 배포: master 머지 시 자동 배포 검토
 
 **배포**
 - 백엔드: AWS EC2 t3.micro (Linux), MVP 이후 ECS Fargate 고려
@@ -319,7 +333,7 @@ develop   ← 개발 통합
 **개발 도구**
 - MCP: `plugin:engineering:github` (Issues/PR 관리)
 - Skills: `engineering:code-review`, `engineering:debug`, `engineering:testing-strategy`, `engineering:deploy-checklist`
-- CLAUDE.md: 프로젝트 구조, 주요 명령어, 브랜치 규칙, 아키텍처 메모
+- AGENTS.md: 절대 규칙 (commit / 브랜치 / commit 메시지) + 문서 인덱스
 
 ---
 
