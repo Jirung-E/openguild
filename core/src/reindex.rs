@@ -26,6 +26,8 @@ pub struct ReindexReport {
     pub statuses_loaded: usize,
     pub quests_loaded: usize,
     pub dependencies_loaded: usize,
+    /// reindex 전후로 살아남은 quest 의 board 위치 복원 수.
+    pub positions_restored: usize,
     /// 파싱 / 무결성 실패로 skip 된 파일 (경로 + 사유).
     pub skipped: Vec<(String, String)>,
 }
@@ -35,6 +37,19 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
     let mut report = ReindexReport::default();
     let pool = &store.index_pool;
     let paths = &store.paths;
+
+    // 0. position 백업 — reindex 가 quest 정수 id 를 재배정하므로 slug 기준으로 보관.
+    //    position 은 UI 상태라 파일에 저장 안 함 → reindex 가 wipe 하면 그대로 사라짐.
+    //    quest 자체가 (slug 기준으로) 살아남으면 position 도 보존되어야 함.
+    let position_backup: Vec<(String, f64, f64)> = sqlx::query_as(
+        "SELECT t.prefix || '-' || printf('%03d', q.number) AS slug, p.x, p.y
+           FROM quest_positions p
+           JOIN quests q ON q.id = p.quest_id
+           JOIN quest_types t ON t.id = q.quest_type_id",
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
 
     // 1. 기존 내용 비움 (트랜잭션 안에서 — partial 실패 시 rollback).
     let mut tx = pool.begin().await?;
@@ -209,6 +224,22 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
         }
     }
 
+    // 5b. position 복원 — 0 단계에서 백업한 slug → 새 quest id 로 재INSERT.
+    //     slug 가 reindex 후에도 살아있는 quest 만 복원.
+    let mut positions_restored = 0usize;
+    for (slug, x, y) in &position_backup {
+        if let Some(&qid) = slug_to_id.get(slug) {
+            sqlx::query("INSERT INTO quest_positions (quest_id, x, y) VALUES (?, ?, ?)")
+                .bind(qid)
+                .bind(x)
+                .bind(y)
+                .execute(&mut *tx)
+                .await?;
+            positions_restored += 1;
+        }
+    }
+    report.positions_restored = positions_restored;
+
     tx.commit().await?;
 
     // 6. auto 블록을 SQL 기준으로 다시 그려서 파일에 쓰기 — 외부 편집 결과
@@ -367,6 +398,115 @@ mod tests {
         assert_eq!(report.quests_loaded, 1);
         assert_eq!(report.skipped.len(), 1);
         assert!(report.skipped[0].1.contains("opening"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn reindex_preserves_positions_across_rebuild() {
+        // BUG-002 regression — reindex 는 quest_positions 를 wipe 한 뒤
+        // 동일 slug 의 quest 가 살아남으면 위치를 복원해야 한다.
+        let dir = fresh_tmp("positions");
+        let store = setup_store(&dir).await;
+        let paths = GuildPaths::new(&dir);
+
+        let q1 = QuestFile {
+            frontmatter: QuestFrontmatter {
+                quest_id: "DEV-001".into(),
+                title: "p1".into(),
+                status: "open".into(),
+                urgency: 3,
+                parent: None,
+                prerequisites: vec![],
+                created_at: "x".into(),
+                updated_at: "x".into(),
+                deleted: false,
+            },
+            description: String::new(),
+            auto_block: String::new(),
+        };
+        q1.write(paths.quest_path("DEV-001")).unwrap();
+
+        // 첫 reindex → DEV-001 이 SQL 에 들어옴
+        let r1 = reindex(&store).await.unwrap();
+        assert_eq!(r1.quests_loaded, 1);
+        assert_eq!(r1.positions_restored, 0, "처음엔 보존할 position 없음");
+
+        // position 수동 INSERT (실제 update_position 호출과 동등)
+        let qid: i64 =
+            sqlx::query_scalar("SELECT id FROM quests WHERE deleted_at IS NULL LIMIT 1")
+                .fetch_one(&store.index_pool)
+                .await
+                .unwrap();
+        sqlx::query("INSERT INTO quest_positions (quest_id, x, y) VALUES (?, 162.0, 108.0)")
+            .bind(qid)
+            .execute(&store.index_pool)
+            .await
+            .unwrap();
+
+        // 두번째 reindex → position 이 살아남아야 함
+        let r2 = reindex(&store).await.unwrap();
+        assert_eq!(r2.quests_loaded, 1);
+        assert_eq!(r2.positions_restored, 1, "DEV-001 의 position 1건 복원");
+
+        let row: (f64, f64) = sqlx::query_as(
+            "SELECT x, y FROM quest_positions
+             JOIN quests ON quests.id = quest_positions.quest_id
+             WHERE quests.deleted_at IS NULL",
+        )
+        .fetch_one(&store.index_pool)
+        .await
+        .unwrap();
+        assert!((row.0 - 162.0).abs() < 1e-6);
+        assert!((row.1 - 108.0).abs() < 1e-6);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn reindex_drops_position_for_deleted_quest() {
+        // quest 가 파일에서 사라지면 (slug 일치 안 함) 그 position 도 자연스럽게 제거.
+        let dir = fresh_tmp("position-drop");
+        let store = setup_store(&dir).await;
+        let paths = GuildPaths::new(&dir);
+
+        let q1 = QuestFile {
+            frontmatter: QuestFrontmatter {
+                quest_id: "DEV-001".into(),
+                title: "doomed".into(),
+                status: "open".into(),
+                urgency: 3,
+                parent: None,
+                prerequisites: vec![],
+                created_at: "x".into(),
+                updated_at: "x".into(),
+                deleted: false,
+            },
+            description: String::new(),
+            auto_block: String::new(),
+        };
+        q1.write(paths.quest_path("DEV-001")).unwrap();
+        reindex(&store).await.unwrap();
+        let qid: i64 = sqlx::query_scalar("SELECT id FROM quests LIMIT 1")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO quest_positions (quest_id, x, y) VALUES (?, 50.0, 60.0)")
+            .bind(qid)
+            .execute(&store.index_pool)
+            .await
+            .unwrap();
+
+        // 파일 제거 후 reindex
+        std::fs::remove_file(paths.quest_path("DEV-001")).unwrap();
+        let r = reindex(&store).await.unwrap();
+        assert_eq!(r.quests_loaded, 0);
+        assert_eq!(r.positions_restored, 0);
+        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM quest_positions")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(n, 0);
 
         let _ = std::fs::remove_dir_all(&dir);
     }

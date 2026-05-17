@@ -407,6 +407,7 @@ async fn run_reindex() -> Result<()> {
     println!("  statuses     : {}", report.statuses_loaded);
     println!("  quests       : {}", report.quests_loaded);
     println!("  dependencies : {}", report.dependencies_loaded);
+    println!("  positions    : {} 복원 (board UI 상태)", report.positions_restored);
     if !report.skipped.is_empty() {
         println!();
         println!("⚠ {} 개 파일 skip 됨 (파싱 / 무결성 실패):", report.skipped.len());
