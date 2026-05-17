@@ -1088,7 +1088,17 @@
 			if (!quest) return;
 			const li = laneOf.get(quest.status_id) ?? 0;
 			const laneLeft = li * LANE_STRIDE;
-			const x = p.x >= laneLeft && p.x < laneLeft + LANE_W ? p.x : laneLeft + LANE_W / 2;
+			// 저장된 x 가 현재 lane 범위 밖이면 (status 변경 또는 lane 순서 변경 후)
+			// 가장 가까운 lane 내부 좌표로 평행이동 — 가로 위치 (lane 내부 col) 는 보존.
+			// 기존 코드는 lane 중앙으로 강제 → 여러 노드가 한 열로 겹치는 BUG-002.
+			let x = p.x;
+			if (x < laneLeft || x >= laneLeft + LANE_W) {
+				const oldLaneLeft = Math.floor(x / LANE_STRIDE) * LANE_STRIDE;
+				const offsetInOldLane = x - oldLaneLeft;
+				// 새 lane 의 동일 offset 으로. lane 폭을 넘어서면 lane 내부로 clamp.
+				const clamped = Math.max(0, Math.min(LANE_W - 1, offsetInOldLane));
+				x = laneLeft + clamped;
+			}
 			posMap.set(p.quest_id, { x, y: p.y });
 		});
 
@@ -1104,13 +1114,26 @@
 		const autoCount = new Map<number, number>();
 		const elements: cytoscape.ElementDefinition[] = [];
 
+		// lane 안의 3개 열 (col 0/1/2) 중심 x — 자동 배치 시 골고루 채워 1열 stacking 방지.
+		const COL_OFFSETS = [
+			LANE_PAD_X + NODE_W / 2,
+			LANE_PAD_X + NODE_W + NODE_GAP + NODE_W / 2,
+			LANE_PAD_X + 2 * (NODE_W + NODE_GAP) + NODE_W / 2
+		];
+
 		quests.forEach((q) => {
 			const li = laneOf.get(q.status_id) ?? 0;
 			let pos = posMap.get(q.id);
 			if (!pos) {
 				const n = autoCount.get(q.status_id) ?? 0;
 				const startY = laneNextY.get(q.status_id) ?? LANE_TOP + 20;
-				pos = { x: li * LANE_STRIDE + LANE_W / 2, y: startY + n * (NODE_H + NODE_GAP) };
+				const col = n % 3;
+				const row = Math.floor(n / 3);
+				const laneLeft = li * LANE_STRIDE;
+				pos = {
+					x: laneLeft + COL_OFFSETS[col],
+					y: startY + row * (NODE_H + NODE_GAP)
+				};
 				autoCount.set(q.status_id, n + 1);
 			}
 			elements.push({
