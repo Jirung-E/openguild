@@ -26,6 +26,8 @@ DEV-001, DEV-002, BUG-045, ...    ─── feature 브랜치 (quest_id 직접)
 - **default 작업 분기는 `develop`**. 새 작업은 `git checkout develop && git checkout -b {QUEST_ID}`.
 - **branch 이름 = quest_id**. `DEV-001`, `BUG-045` 직접 사용. `feature/` 같은 prefix 금지.
 - **master 직접 commit / push 금지**. develop 에서 release 시점 머지만.
+- **머지된 feature 브랜치 삭제 금지**. 사용자가 명시적으로 삭제 요청할 때까지 보존.
+  히스토리/기록 목적 — `git branch -d` 자동 호출 금지.
 
 ### Commit 메시지 형식
 

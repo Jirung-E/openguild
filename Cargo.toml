@@ -3,5 +3,6 @@ members = [
     "core",
     "server",
     "cli",
+    "gui",
 ]
 resolver = "2"
