@@ -1262,6 +1262,9 @@
 			layout: { name: 'preset' },
 			minZoom: 0.25,
 			maxZoom: 2,
+			// wheel zoom 속도 — 기본 1 이 너무 느림 (사용자 피드백).
+			// cytoscape 권장 범위 [1, ~3]. 2.5 면 한 번 휠 클릭에 체감 ~2x 빠름.
+			wheelSensitivity: 2.5,
 			boxSelectionEnabled: false
 		});
 
