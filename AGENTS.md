@@ -70,6 +70,19 @@ Co-Authored-By: ... (해당 시)
 > (자동 테스트 통과 시 done OK, 수동 검증 필요 시 testing 으로 보내고 본문에
 > 테스트 방법 첨부) 을 숙지할 것.
 
+### 🚨 `.guild/` 파일을 직접 편집 금지 (drift 방지)
+
+agent (Claude / 다른 LLM) 가 `Write` / `Edit` 도구로 `.guild/quests/*.md` 의
+**frontmatter (status / urgency / parent / prerequisites / deleted)** 를 직접
+갈아끼우면 SQL 캐시 / 저널과 drift 발생 → GUI 와 파일 다르게 보임.
+
+- **status / urgency / parent / prereq / delete 변경 = 반드시 CLI**
+  (`openguild quest status / update / parent / prereq / delete`).
+- **description 본문만** 부득이 직접 편집 가능 (BUG-001 우회). 그 경우 직후
+  `openguild-server reindex` 필수.
+- 자세한 표 + 우회 절차는 [`docs/AGENTS_OPENGUILD_USAGE.md` § 4](./docs/AGENTS_OPENGUILD_USAGE.md) 의
+  "🚨 `.guild/` 파일을 직접 편집하지 말 것" 절 참조.
+
 ## 한 줄 요약
 
 RPG 테마 프로젝트 이슈 트래커. Rust(Axum) 백엔드 + Svelte 프론트엔드 + Rust CLI (`openguild`).

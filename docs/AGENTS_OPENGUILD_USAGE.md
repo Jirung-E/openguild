@@ -241,6 +241,52 @@ $ openguild quest prereq add DEV-049 DEV-048
 - 한 번에 다수 quest 삭제 금지 (loop 안 됨)
 - `--json` 으로 출력 캡처 후 후속 호출에 슬러그 사용
 
+### 🚨 `.guild/` 파일을 직접 편집하지 말 것 (drift 방지)
+
+OpenGuild 는 **파일 = truth, `.guild/index.db` = SQL 캐시** 구조. mutation 은
+모두 **`openguild` CLI / `openguild-server` HTTP / Tauri invoke** 를 거쳐
+저널 + 파일 + SQL 셋을 원자적으로 갱신.
+
+`.guild/quests/*.md` / `.guild/types/*.toml` / `.guild/statuses/*.toml` 을
+에디터 / `Write` 도구로 직접 갈아끼우면 **drift** 발생:
+- SQL 캐시는 옛 값을 들고 있어 GUI / `list` 가 다른 상태 보임.
+- 저널에 의도 기록 안 됨 → snapshot/restore 로 못 되돌림.
+- 카운터 어긋날 수 있음 (BUG-003 류 재현).
+
+#### 필드별 대응 명령
+
+| 변경할 것                | 정식 경로 |
+|--------------------------|-------------------------------------------------|
+| status                   | `openguild quest status <slug> <STATUS>` (`start` / `done` / `reopen` 도 가능) |
+| title                    | `openguild quest update <slug> --title <T>` |
+| description              | `openguild quest update <slug> --description <D>` (multi-line 제약은 BUG-001 참고) |
+| urgency                  | `openguild quest update <slug> --urgency 1-4` |
+| parent                   | `openguild quest parent <slug> <parent>` / `--detach` |
+| prerequisites            | `openguild quest prereq add/rm <slug> <other>` |
+| 삭제 / 복원              | `openguild quest delete/restore <slug>` |
+| type / status 메타       | (현재 CLI 미지원 — 직접 편집 후 reindex 의 유일한 예외) |
+
+#### 부득이하게 직접 편집해야 한다면
+
+1. agent 가 `.md` / `.toml` 을 편집한 직후 **반드시** `openguild-server reindex`
+   실행 (SQL 캐시 재구축).
+2. 변경 후 `openguild-server check-drift` 로 drift 0 확인.
+3. journal 에 의도 기록은 자동 안 됨 — commit 메시지 / quest 본문에 사유 명시.
+
+#### BUG-001 우회 (multi-line description) 의 경우
+
+`openguild quest update --description "$(cat <<'EOF' ... EOF)"` 가 multi-line
+에서 첫 줄만 저장하는 결함 (BUG-001) 우회 시:
+
+```bash
+# 1) 파일 직접 편집 (frontmatter 의 description 본문만!)
+# 2) reindex 로 SQL 동기화
+openguild-server reindex
+```
+
+**frontmatter 의 status / urgency / parent / prerequisites 는 절대 직접 안 건드림.**
+그건 위의 명령으로 해야 함. 본문 (description) 만 직접 편집 OK.
+
 ### 안전한 삭제 예시
 
 ```bash
