@@ -63,10 +63,10 @@ Co-Authored-By: ... (해당 시)
 - 외부 todo 도구 / GitHub Issues 보조 사용 X.
 - 새 작업 → 새 quest → 같은 quest_id 의 branch → commit 메시지에 그 ID.
 
-> 🚨 **반드시 [`docs/AGENTS_OPENGUILD_USAGE.md`](./docs/AGENTS_OPENGUILD_USAGE.md)
-> 에서 시킨대로 할 것.** 특히 quest 상태 흐름 (`open → in_progress → testing →
-> done`) 과 "testing 단계로 보낼 때 본문에 테스트 방법 첨부" 규칙은 위반 금지.
-> agent 가 자체 판단으로 `done` 처리 금지 — 사용자가 검증한 후에만.
+> 📌 **[`docs/AGENTS_OPENGUILD_USAGE.md`](./docs/AGENTS_OPENGUILD_USAGE.md) 의
+> 워크플로 / 규칙을 따를 것.** 특히 quest 상태 흐름과 testing 단계 처리 방식
+> (자동 테스트 통과 시 done OK, 수동 검증 필요 시 testing 으로 보내고 본문에
+> 테스트 방법 첨부) 을 숙지할 것.
 
 ## 한 줄 요약
 

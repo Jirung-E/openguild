@@ -104,7 +104,7 @@ openguild quest reopen <slug>            # → Open
 상태명은 대소문자 / 공백 / `_` / `-` 모두 허용:
 `In Progress`, `in progress`, `in_progress`, `in-progress` 모두 같은 상태.
 
-#### 상태 흐름 (필수 워크플로)
+#### 상태 흐름 (권장 워크플로)
 
 ```
 open → in_progress → testing → done
@@ -114,11 +114,13 @@ open → in_progress → testing → done
             on_hold (필요 시 분기)
 ```
 
-- **`done` 으로 직행 금지.** 작업 완료 시 `testing` 으로 보낸 뒤,
-  사용자가 검증한 후에만 `done`.
-- 단순 메타 변경 (오타 수정, 주석 등) 도 동일 — 사용자 검증을 거쳐야 함.
-- `done` 으로 옮기는 명령 (`openguild quest done`) 은 사용자가 직접 호출하는
-  것이 원칙. agent 가 마음대로 `done` 처리 금지.
+- **자동 테스트로 검증 가능한 변경**: agent 가 가능한 테스트
+  (`cargo test --workspace`, `npm test`, `npm run check` 등) 를 수행하고
+  통과하면 바로 `done` 으로 보내도 OK. 문제가 발견되면 추가 커밋으로 수정.
+- **수동 검증이 필요한 변경** (UI / UX / 외부 통합 등): `testing` 으로 보낸 뒤
+  사용자가 검증한 후에 `done`. 이 경우 본문에 테스트 방법 첨부 필수 (아래 참고).
+- agent 가 무엇이 자동 테스트로 커버되는지 판단하고 둘 중 선택.
+  애매하면 `testing` 으로 보내는 쪽이 안전.
 
 #### 테스트 단계로 보낼 때 — 본문에 테스트 방법 첨부 **필수**
 
