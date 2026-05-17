@@ -128,26 +128,29 @@ openguild/
 - ✅ 스모크 테스트: init → ping → types → list → new → show 전부 서버 없이 동작.
 - ✅ 변경 사항: `--url` → `--remote`, env `OPENGUILD_URL` → `OPENGUILD_REMOTE` (pre-1.0 breaking).
 
-### Phase 3 — Frontend api 어댑터 ⚪
+### Phase 3 — Frontend api 어댑터 ✅ (2026-05-17, DEV-002)
 
-- ⚪ `frontend/src/lib/api/` 에 `tauri.ts`, `http.ts` 분리
-- ⚪ `client.ts` 가 `window.__TAURI__` 감지하여 한쪽 export
-- ⚪ 컴포넌트는 그대로
+- ✅ `gui/frontend/src/lib/api/transport.ts` — `detectEnvironment()` + `HttpTransport` + `TauriTransport`.
+- ✅ `client.ts` 가 transport 인스턴스를 통해 환경 무지 호출.
+- ✅ 컴포넌트는 그대로 — `questsApi.list()` 등 같은 코드가 양쪽 동작.
 
-### Phase 4 — Desktop (Tauri) 신설 ⚪
+### Phase 4 — Desktop (Tauri) 신설 🟡 (DEV-006 남음)
 
-- ⚪ `gui/` 를 Tauri Rust crate 로 초기화 (`gui/src/`, `gui/Cargo.toml`, `gui/tauri.conf.json`)
-- ⚪ workspace `members` 에 `"gui"` 추가
-- ⚪ `tauri.conf.json` 의 `frontendDist = "./frontend/dist"`, `beforeDevCommand = "cd frontend && npm run dev"`, `beforeBuildCommand = "cd frontend && npm run build"`
-- ⚪ invoke 핸들러: core 직접 호출 (HTTP X)
-- ⚪ Recent guild / 파일 연결 (`.guild` 더블클릭)
+- ✅ `gui/` 를 Tauri v2 Rust crate 로 초기화 — `gui/{Cargo.toml, src/lib.rs, src/main.rs,
+  src/commands.rs, build.rs, tauri.conf.json, capabilities/, icons/}` (DEV-003).
+- ✅ workspace `members` 에 `"gui"` 추가.
+- ✅ `tauri.conf.json` 의 `frontendDist = "./frontend/build"` (SvelteKit adapter-static),
+  `devUrl = "http://localhost:5173"`, `beforeDevCommand`/`beforeBuildCommand` 설정.
+- ✅ invoke 핸들러 23개 — meta / quests CRUD / position / admin 전부 (DEV-004).
+- ✅ 파일 연결 (`.guild` 더블클릭): argv 처리 + tauri bundle.fileAssociations 등록 (DEV-005).
+- ⚪ Recent guild 목록 (DEV-006) — 시작 화면 UI + 영속 저장.
 
-### Phase 5 — 전체 검증 ⚪
+### Phase 5 — 전체 검증 🟡
 
-- ⚪ 3 binary 모두 빌드 확인
-- ⚪ frontend Tauri / 브라우저 양쪽 동작
-- ⚪ `cargo test --workspace` + `npm test` 통과
-- ⚪ 회귀 체크리스트 수동 검증
+- ✅ 4 binary 모두 빌드 확인 (core lib + openguild + openguild-server + openguild-gui).
+- ✅ frontend HTTP / Tauri 양쪽 동작 (DEV-002 + DEV-004 검증).
+- ✅ `cargo test --workspace` (205) + `npm test` (63) 통과.
+- ⚪ 회귀 체크리스트 수동 검증 (각 quest 의 "사용자 검증 필요" 절은 quest 별 통과).
 
 ---
 

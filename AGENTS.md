@@ -91,7 +91,7 @@ RPG 테마 프로젝트 이슈 트래커. Rust(Axum) 백엔드 + Svelte 프론�
 
 ```
 openguild/
-├── Cargo.toml          ← workspace = ["core", "cli", "server"]
+├── Cargo.toml          ← workspace = ["core", "cli", "server", "gui"]
 ├── openguild.guild     ← 본 repo dogfood 마커
 ├── .guild/             ← 본 repo 의 quests / 캐시 (dogfood — 일부 gitignored)
 ├── core/               ← lib: 도메인 + 저장소 추상화
@@ -99,8 +99,12 @@ openguild/
 │                          drift / counter / lock / migrate
 ├── cli/                ← bin `openguild` (Backend = Http | Local)
 ├── server/             ← bin `openguild-server` (HTTP + 관리 CLI)
-├── gui/
-│   └── frontend/       ← Svelte 5 + Vite (현재 web. Tauri 추후 DEV-001 등)
+├── gui/                ← bin `openguild-gui` (Tauri v2, DEV-001 트리)
+│   ├── src/            ← Rust shell + invoke 핸들러 23개 (commands.rs)
+│   ├── tauri.conf.json
+│   ├── capabilities/
+│   ├── icons/          ← placeholder (PowerShell 생성)
+│   └── frontend/       ← Svelte 5 + SvelteKit static (HTTP / Tauri 양쪽)
 ├── justfile            ← dev/build/test 단축
 └── docs/               ← 기획·설계·사용 문서
 ```

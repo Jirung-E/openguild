@@ -266,12 +266,13 @@ quests  -- type → quest_type_id
 
 ```
 openguild/
-├── Cargo.toml            ← workspace, members = ["core", "cli", "server"]
+├── Cargo.toml            ← workspace, members = ["core", "cli", "server", "gui"]
 ├── core/                 ← lib: 도메인 로직 + sqlx + migrations
 ├── cli/                  ← bin `openguild` (로컬/원격)
 ├── server/               ← bin Axum API 서버
-├── gui/                  ← Tauri desktop (Phase 4 예정)
-│   └── frontend/         ← Svelte + Vite
+├── gui/                  ← Tauri v2 desktop (DEV-003 ~ DEV-005 완료, DEV-006 남음)
+│   ├── src/              ← Rust shell + invoke 핸들러
+│   └── frontend/         ← Svelte + Vite (SvelteKit static)
 ├── docs/                 ← 기획/설계 문서
 ├── justfile              ← 개발 단축 명령
 └── README.md
@@ -279,7 +280,7 @@ openguild/
 
 - 모노레포 (단일 저장소, Rust/JS 동시 수정 용이)
 - 컴포넌트 배포는 분리 (server, gui/frontend 별도 배포 가능)
-- Cargo workspace 로 core/cli/server 관리. gui 는 Phase 4 진입 시 멤버 추가.
+- Cargo workspace 로 core/cli/server/gui 관리.
 - 상세 설계 근거: `docs/architecture-refactor.md`
 
 ---
