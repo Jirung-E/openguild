@@ -83,26 +83,144 @@ export class HttpTransport implements Transport {
 // ─────────────────────── Tauri transport (stub) ───────────────────────
 
 /**
- * Tauri desktop 환경에서 사용. 현재는 stub — DEV-004 에서 invoke 연결.
+ * Tauri desktop 환경에서 사용. `@tauri-apps/api` 의 `invoke` 로 Rust 측 핸들러 호출.
  *
- * 매핑 규칙 (DEV-004 진입 시 확정):
- *   - `GET /api/quests` → `invoke('quests_list')`
- *   - `GET /api/quests/123` → `invoke('quests_get', { id: 123 })`
- *   - `POST /api/quests` → `invoke('quests_create', body)`
- *   - 등등. server 의 route → command 명 1:1.
+ * 라우팅 (DEV-004 확정):
+ * HTTP path / method → Tauri invoke 명 + arg 매핑 — `routeToInvoke` 참조.
+ * server 의 axum route 정의와 1:1 (cmd 명만 다름). 새 route 추가 시 양쪽 동시 갱신.
  *
- * 본 stub 의 목적: Tauri 환경이 감지됐는데 invoke 미구현 시 명확한 에러로
- * 디버깅 가능하게.
+ * 에러 처리:
+ * - Tauri invoke 가 throw 한 문자열을 `Error` 로 감싸 던짐.
+ * - frontend 상위 (api 모듈) 는 환경 무지하게 try/catch.
  */
+import { invoke } from '@tauri-apps/api/core';
+
+/** path + method → (invoke 명, args). 매칭 실패 시 null. */
+function routeToInvoke(
+	req: ApiCall
+): { cmd: string; args: Record<string, unknown> } | null {
+	const { method, path, body } = req;
+
+	// query string 분리
+	const qIdx = path.indexOf('?');
+	const pathOnly = qIdx >= 0 ? path.slice(0, qIdx) : path;
+	const query = qIdx >= 0 ? new URLSearchParams(path.slice(qIdx + 1)) : new URLSearchParams();
+	const parts = pathOnly.replace(/^\/+/, '').split('/');
+	// parts[0] === 'api'
+
+	// ───── meta ─────
+	if (method === 'GET' && pathOnly === '/api/quest-types') {
+		return { cmd: 'list_quest_types', args: {} };
+	}
+	if (method === 'GET' && pathOnly === '/api/quest-statuses') {
+		return { cmd: 'list_quest_statuses', args: {} };
+	}
+
+	// ───── list level ─────
+	if (method === 'GET' && pathOnly === '/api/quests') {
+		return { cmd: 'list_quests', args: {} };
+	}
+	if (method === 'POST' && pathOnly === '/api/quests') {
+		return { cmd: 'create_quest', args: { body } };
+	}
+	if (method === 'GET' && pathOnly === '/api/quest-positions') {
+		return { cmd: 'list_quest_positions', args: {} };
+	}
+	if (method === 'GET' && pathOnly === '/api/quest-dependencies') {
+		return { cmd: 'list_quest_dependencies', args: {} };
+	}
+	if (method === 'GET' && pathOnly === '/api/deleted-quests') {
+		return { cmd: 'list_deleted_quests', args: {} };
+	}
+
+	// ───── /api/quests/by/{slug} ─────
+	if (method === 'GET' && parts[0] === 'api' && parts[1] === 'quests' && parts[2] === 'by' && parts[3]) {
+		return { cmd: 'get_quest_by_slug', args: { slug: decodeURIComponent(parts[3]) } };
+	}
+
+	// ───── /api/quests/{id}/... ─────
+	if (parts[0] === 'api' && parts[1] === 'quests' && parts[2] && /^\d+$/.test(parts[2])) {
+		const id = Number(parts[2]);
+		const sub = parts[3];
+		if (!sub) {
+			if (method === 'GET') return { cmd: 'get_quest', args: { id } };
+			if (method === 'PATCH') return { cmd: 'update_quest', args: { id, body } };
+			if (method === 'DELETE') {
+				const cascadeStr = query.get('cascade');
+				const cascade = cascadeStr
+					? cascadeStr.split(',').map((s) => Number(s.trim())).filter((n) => Number.isFinite(n))
+					: undefined;
+				return { cmd: 'delete_quest', args: { id, cascade } };
+			}
+		}
+		if (sub === 'status' && method === 'PATCH') {
+			return { cmd: 'change_quest_status', args: { id, body } };
+		}
+		if (sub === 'parent' && method === 'PATCH') {
+			return { cmd: 'change_quest_parent', args: { id, body } };
+		}
+		if (sub === 'restore' && method === 'PATCH') {
+			return { cmd: 'restore_quest', args: { id } };
+		}
+		if (sub === 'candidates' && method === 'GET') {
+			return { cmd: 'list_quest_candidates', args: { id, relation: query.get('relation') ?? '' } };
+		}
+		if (sub === 'prerequisites' && method === 'POST') {
+			return { cmd: 'add_prerequisite', args: { id, body } };
+		}
+		if (sub === 'prerequisites' && parts[4] && /^\d+$/.test(parts[4]) && method === 'DELETE') {
+			return { cmd: 'remove_prerequisite', args: { id, prereqId: Number(parts[4]) } };
+		}
+		if (sub === 'position' && method === 'PUT') {
+			return { cmd: 'update_quest_position', args: { id, body } };
+		}
+	}
+
+	// ───── admin ─────
+	if (method === 'POST' && pathOnly === '/api/admin/snapshot') {
+		return { cmd: 'admin_create_snapshot', args: {} };
+	}
+	if (method === 'GET' && pathOnly === '/api/admin/snapshots') {
+		return { cmd: 'admin_list_snapshots', args: {} };
+	}
+	if (method === 'POST' && pathOnly === '/api/admin/restore') {
+		return { cmd: 'admin_restore', args: { args: body ?? {} } };
+	}
+	if (method === 'GET' && pathOnly === '/api/admin/drift') {
+		return { cmd: 'admin_check_drift', args: {} };
+	}
+	if (method === 'POST' && pathOnly === '/api/admin/reindex') {
+		return { cmd: 'admin_reindex', args: {} };
+	}
+
+	return null;
+}
+
 export class TauriTransport implements Transport {
 	readonly kind = 'tauri' as const;
 
-	async call<T>(_req: ApiCall): Promise<T> {
-		throw new Error(
-			'Tauri transport not yet implemented. DEV-003 (gui/ crate) + DEV-004 (invoke 핸들러) 완료 후 활성화.'
-		);
+	async call<T>(req: ApiCall): Promise<T> {
+		const mapped = routeToInvoke(req);
+		if (!mapped) {
+			throw new Error(
+				`TauriTransport: ${req.method} ${req.path} 에 매핑된 invoke 핸들러 없음. ` +
+					`transport.ts 의 routeToInvoke 와 gui/src/commands.rs 둘 다 갱신 필요.`
+			);
+		}
+		try {
+			// invoke 가 unit (`()`) 반환 시 null. T 로 그대로 캐스팅.
+			const result = await invoke<T>(mapped.cmd, mapped.args);
+			return result as T;
+		} catch (e) {
+			// Tauri 가 throw 한 메시지는 보통 string. Error 로 감싸기.
+			const msg = typeof e === 'string' ? e : (e as { message?: string }).message ?? String(e);
+			throw new Error(msg);
+		}
 	}
 }
+
+/** 테스트용 export — routeToInvoke 매핑이 server route 와 일치하는지 검증. */
+export const __test_only = { routeToInvoke };
 
 // ─────────────────────── default ───────────────────────
 
