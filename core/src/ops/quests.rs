@@ -134,10 +134,10 @@ pub async fn change_parent(
     if let Some(p) = old_parent_id {
         touched.push(p);
     }
-    if let Some(p) = new_parent_id {
-        if !touched.contains(&p) {
-            touched.push(p);
-        }
+    if let Some(p) = new_parent_id
+        && !touched.contains(&p)
+    {
+        touched.push(p);
     }
     for pid in touched {
         if let Ok(q) = sql::fetch_by_id(&store.index_pool, pid).await {
@@ -328,10 +328,11 @@ async fn write_quest_file_as_deleted(
     };
     let qf = QuestFile {
         frontmatter,
-        description: existing_description
-            .is_empty()
-            .then(|| quest.description.clone().unwrap_or_default())
-            .unwrap_or(existing_description),
+        description: if existing_description.is_empty() {
+            quest.description.clone().unwrap_or_default()
+        } else {
+            existing_description
+        },
         auto_block: String::new(),
     };
     qf.write(&path).map_err(crate::error::AppError::Internal)?;
@@ -373,10 +374,11 @@ async fn write_quest_file(store: &Store, quest: &QuestRow) -> AppResult<()> {
 
     let qf = QuestFile {
         frontmatter,
-        description: existing_description
-            .is_empty()
-            .then(|| quest.description.clone().unwrap_or_default())
-            .unwrap_or(existing_description),
+        description: if existing_description.is_empty() {
+            quest.description.clone().unwrap_or_default()
+        } else {
+            existing_description
+        },
         auto_block,
     };
 

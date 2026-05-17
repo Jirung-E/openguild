@@ -76,12 +76,18 @@
 - ✅ 테스트: Rust 99 (core 23 + cli 25 + server 51) + frontend 41 = **140 통과**
 - 📌 상세 설계: `docs/architecture-refactor.md`
 
-## 8.7단계 — 파일 진리원 + SQLite 캐시 전환 ⚪ (설계 완료 2026-05-16)
-- ⚪ `.guild/quests/{slug}.md` 가 진리원, SQLite 는 index 캐시로 격하
-- ⚪ types/statuses 도 파일로
-- ⚪ AOF journal + RDB snapshot 으로 git 모르는 사용자도 안전
-- ⚪ auto 블록으로 sub/parent/prereq 사람 가독성
+## 8.7단계 — 파일 진리원 + SQLite 캐시 전환 ✅ (2026-05-16 / 17)
+- ✅ `.guild/quests/{slug}.md` 가 진리원, SQLite 는 index 캐시
+- ✅ types/statuses 도 파일로 (`.guild/types/`, `.guild/statuses/`)
+- ✅ AOF journal (`backups/journal.db`) + RDB snapshot 으로 git 모르는 사용자도 안전
+- ✅ auto 블록으로 sub/parent/prereq 사람 가독성
+- ✅ `core::ops` (mutation orchestration), `repo`, `store`, `snapshot`, `reindex`, `drift`, `counter`, `lock`, `migrate` 신설
+- ✅ 자동 백업 정책 (`maybe_auto_snapshot` — ops 50 / 24h)
+- ✅ CLI `backup` / `backups` / `restore` 명령 (Http + Local 둘 다)
+- ✅ server admin endpoints (`/api/admin/*`) + frontend `/admin` UI
+- ✅ 옛 audit middleware / VACUUM backup 코드 제거
 - 📌 상세 설계: [`docs/storage-design.md`](./storage-design.md)
+- 테스트: Rust 191 (core 110 + cli 25 + server 56) + frontend 41 = **232 통과**
 
 ## 9단계 — CI/CD + 배포 ⚪
 - ⚪ GitHub Actions: PR 시 cargo check / cargo test / npm check / npm test

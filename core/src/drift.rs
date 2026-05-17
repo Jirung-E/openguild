@@ -10,11 +10,10 @@
 //! 호출 시점: Store::open 직후 (또는 server / cli 시작 hook).
 
 use anyhow::{Context, Result};
-use sqlx::SqlitePool;
 use std::collections::HashMap;
 use std::time::SystemTime;
 
-use crate::repo::{fs as repo_fs, GuildPaths};
+use crate::repo::fs as repo_fs;
 use crate::store::Store;
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -236,7 +235,3 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
-
-// 사용하지 않은 dead helper 회피
-#[allow(dead_code)]
-fn _keep_paths_used(_p: &GuildPaths, _pool: &SqlitePool) {}

@@ -74,17 +74,23 @@ openguild quest show DEV-001                      # detail view (sub/prereq incl
 | [`AGENTS.md`](./AGENTS.md) | AI agent | Index — points to other docs |
 | [`docs/AGENTS_OPENGUILD_USAGE.md`](./docs/AGENTS_OPENGUILD_USAGE.md) | AI agent | How an agent uses OpenGuild as a task management tool (CLI guide) |
 | [`docs/architecture.md`](./docs/architecture.md) | Developers | System architecture, API endpoints, data model |
+| [`docs/storage-design.md`](./docs/storage-design.md) | Developers | File-as-truth + SQLite cache + AOF/RDB design |
 | [`docs/dev-plan.md`](./docs/dev-plan.md) | Developers | Roadmap, progress |
 | [`docs/planning.md`](./docs/planning.md) | Developers | Design decisions, terminology, MVP scope |
 | [`docs/guild-rules.md`](./docs/guild-rules.md) | Developers | Coding / commit / branch conventions |
 
 
 ## Development
-**Backend (HTTP server)**
+**Backend (HTTP server + admin CLI)**
 ```bash
-cargo run --bin openguild-server -- host          # start server
-cargo run --bin openguild-server -- info          # guild meta + db stats
-cargo run --bin openguild-server -- backup        # one-shot snapshot
+cargo run --bin openguild-server -- host            # start HTTP server
+cargo run --bin openguild-server -- info            # guild meta + cache + snapshot stats
+cargo run --bin openguild-server -- snapshot        # manual backup (RDB)
+cargo run --bin openguild-server -- restore [--to TS] [--list]
+cargo run --bin openguild-server -- reindex         # rebuild .guild/index.db from files
+cargo run --bin openguild-server -- migrate-to-files  # one-shot: legacy guild.db → .guild/quests/*.md
+cargo run --bin openguild-server -- check-counters [--fix]
+cargo run --bin openguild-server -- check-drift [--resync]
 # or: just dev-server
 ```
 
@@ -179,6 +185,7 @@ openguild quest show DEV-001                      # 상세 (서브/선행 포함
 | [`AGENTS.md`](./AGENTS.md) | AI agent | 인덱스 — 다른 문서로 가는 진입점 |
 | [`docs/AGENTS_OPENGUILD_USAGE.md`](./docs/AGENTS_OPENGUILD_USAGE.md) | AI agent | agent 가 OpenGuild 를 작업 관리 도구로 사용하는 방법 (CLI 가이드) |
 | [`docs/architecture.md`](./docs/architecture.md) | 개발자 | 시스템 구조, API 엔드포인트, 데이터 모델 |
+| [`docs/storage-design.md`](./docs/storage-design.md) | 개발자 | 파일 진리원 + SQLite 캐시 + AOF/RDB 설계 |
 | [`docs/dev-plan.md`](./docs/dev-plan.md) | 개발자 | 단계별 개발 계획 + 진행 상태 |
 | [`docs/planning.md`](./docs/planning.md) | 개발자 | 기획 결정, 용어, MVP 범위 |
 | [`docs/guild-rules.md`](./docs/guild-rules.md) | 개발자 | 커밋·브랜치·코드 컨벤션 |
@@ -189,9 +196,14 @@ openguild quest show DEV-001                      # 상세 (서브/선행 포함
 
 **백엔드 (HTTP 서버 + 관리 CLI)**
 ```bash
-cargo run --bin openguild-server -- host          # 서버 시작
-cargo run --bin openguild-server -- info          # 길드 / DB / 백업 현황
-cargo run --bin openguild-server -- backup        # 즉시 1회 백업
+cargo run --bin openguild-server -- host            # 서버 시작
+cargo run --bin openguild-server -- info            # 길드 / 캐시 / snapshot 현황
+cargo run --bin openguild-server -- snapshot        # 즉시 백업 (RDB)
+cargo run --bin openguild-server -- restore [--to TS] [--list]
+cargo run --bin openguild-server -- reindex         # 파일 → index.db 재구축
+cargo run --bin openguild-server -- migrate-to-files  # 1회: legacy guild.db → .guild/quests/*.md
+cargo run --bin openguild-server -- check-counters [--fix]
+cargo run --bin openguild-server -- check-drift [--resync]
 # or: just dev-server
 ```
 

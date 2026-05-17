@@ -10,7 +10,7 @@
 //! - read-only 작업은 lock 안 잡음 (충돌 없음).
 //!
 //! 사용 예:
-//! ```ignore
+//! ```text
 //! let _lock = LockGuard::acquire(&store.paths)?;
 //! // ... mutation 수행 ...
 //! // _lock 이 drop 되면 자동 release

@@ -159,7 +159,7 @@ fn snapshot_time(timestamp: &str) -> Option<std::time::SystemTime> {
 }
 
 fn ymdhms_to_epoch(y: u64, mo: u64, d: u64, h: u64, mi: u64, s: u64) -> Option<u64> {
-    if y < 1970 || mo < 1 || mo > 12 || d < 1 || d > 31 {
+    if y < 1970 || !(1..=12).contains(&mo) || !(1..=31).contains(&d) {
         return None;
     }
     let mut days: u64 = 0;
@@ -167,8 +167,8 @@ fn ymdhms_to_epoch(y: u64, mo: u64, d: u64, h: u64, mi: u64, s: u64) -> Option<u
         days += if is_leap_y(yr as i64) { 366 } else { 365 };
     }
     let months = days_in_months_y(y as i64);
-    for m in 0..(mo - 1) as usize {
-        days += months[m] as u64;
+    for &m in months.iter().take((mo - 1) as usize) {
+        days += m as u64;
     }
     days += d - 1;
     Some(days * 86400 + h * 3600 + mi * 60 + s)
