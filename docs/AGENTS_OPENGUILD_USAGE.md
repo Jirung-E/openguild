@@ -104,6 +104,53 @@ openguild quest reopen <slug>            # → Open
 상태명은 대소문자 / 공백 / `_` / `-` 모두 허용:
 `In Progress`, `in progress`, `in_progress`, `in-progress` 모두 같은 상태.
 
+#### 상태 흐름 (권장 워크플로)
+
+```
+open → in_progress → testing → done
+                ↓        ↑
+            (반복 가능)
+            cancelled
+            on_hold (필요 시 분기)
+```
+
+- **자동 테스트로 검증 가능한 변경**: agent 가 가능한 테스트
+  (`cargo test --workspace`, `npm test`, `npm run check` 등) 를 수행하고
+  통과하면 바로 `done` 으로 보내도 OK. 문제가 발견되면 추가 커밋으로 수정.
+- **수동 검증이 필요한 변경** (UI / UX / 외부 통합 등): `testing` 으로 보낸 뒤
+  사용자가 검증한 후에 `done`. 이 경우 본문에 테스트 방법 첨부 필수 (아래 참고).
+- agent 가 무엇이 자동 테스트로 커버되는지 판단하고 둘 중 선택.
+  애매하면 `testing` 으로 보내는 쪽이 안전.
+
+#### 테스트 단계로 보낼 때 — 본문에 테스트 방법 첨부 **필수**
+
+`openguild quest status <slug> testing` 호출 직전 또는 직후에, quest 본문
+(description) 에 **"## 테스트 방법"** 섹션을 추가한다.
+
+예시:
+```bash
+openguild quest update DEV-002 --description "$(cat <<'EOF'
+window.__TAURI__ 감지 → invoke 또는 fetch. Tauri 작업의 선행.
+
+## 테스트 방법
+- `cd gui/frontend && npm test -- --run` → transport.test.ts 10 tests 통과
+- `cd gui/frontend && npm run check` → 0 errors
+- 브라우저에서 GUI 정상 동작 (fetch 경로) — `npm run dev` 후 quest list 표시
+- SSR / Node 환경에서 detectEnvironment() 가 'http' 반환 (Node 의 globalThis 에 window 없음)
+EOF
+)"
+openguild quest status DEV-002 testing
+```
+
+테스트 방법 항목 작성 가이드:
+- **자동 테스트**: 실행할 명령 + 기대 결과
+- **수동 검증**: 어떤 화면 / 어떤 동작을 확인할지
+- **회귀**: 본 변경이 깨뜨릴 수 있는 기존 기능 (수동 확인)
+- **예상 출력 / 파일**: 무엇이 어디에 생겨야 하는지
+
+이 정보가 있어야 사용자가 무엇을 검증해야 할지 명확하고, 미래의 본인 / 다른
+agent 가 같은 quest 재방문 시 맥락을 잃지 않는다.
+
 ### 2.4 관계
 
 ```bash

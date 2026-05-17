@@ -63,6 +63,11 @@ Co-Authored-By: ... (해당 시)
 - 외부 todo 도구 / GitHub Issues 보조 사용 X.
 - 새 작업 → 새 quest → 같은 quest_id 의 branch → commit 메시지에 그 ID.
 
+> 📌 **[`docs/AGENTS_OPENGUILD_USAGE.md`](./docs/AGENTS_OPENGUILD_USAGE.md) 의
+> 워크플로 / 규칙을 따를 것.** 특히 quest 상태 흐름과 testing 단계 처리 방식
+> (자동 테스트 통과 시 done OK, 수동 검증 필요 시 testing 으로 보내고 본문에
+> 테스트 방법 첨부) 을 숙지할 것.
+
 ## 한 줄 요약
 
 RPG 테마 프로젝트 이슈 트래커. Rust(Axum) 백엔드 + Svelte 프론트엔드 + Rust CLI (`openguild`).
