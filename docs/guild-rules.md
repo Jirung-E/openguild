@@ -7,11 +7,56 @@
 
 ## 커밋 & 브랜치
 
-- 커밋은 **사용자가 명시적으로 "커밋해줘"라고 요청할 때만** 한다
-- 브랜치명: `{PREFIX}-{이슈번호}` (예: `DEV-12`, `BUG-03`)
-  - 제목 포함하지 않음
-- main 브랜치 직접 push 금지 — 반드시 develop → PR → main
-- 커밋 메시지: 무엇을 했는가(what)보다 **왜 했는가(why)** 중심
+### 권한
+- 커밋 / push 는 **사용자가 명시적으로 요청할 때만** 실행. amend / reset / force push 도 명시 요청 필요.
+
+### 브랜치 전략
+
+```
+master       ─── 릴리즈 전용 (태그 v0.x.y)
+  ↑ release merge only
+develop      ─── 통합 / 검증 단계
+  ↑ feature merge
+DEV-001, DEV-002, BUG-045, REQ-007, ...  ─── feature 브랜치 (develop 기반)
+```
+
+- **master**: 릴리즈 전용. 직접 commit / push 금지. develop 에서 release 머지만 받음.
+- **develop**: 통합 분기. 모든 feature 가 여기 모임. 일상적 작업의 기준 분기.
+- **feature 분기**: `{PREFIX}-{N}` 형식. quest_id 를 그대로 사용 (예: `DEV-001`, `BUG-045`).
+  - prefix 없음 (`feature/` 따위 금지).
+  - 작업 시작: `git checkout develop && git pull && git checkout -b DEV-001`.
+  - 작업 완료: PR → develop. 단일 개발자 단계엔 self-merge 허용 (squash 권장).
+
+### 브랜치 ↔ Quest 연동
+
+- branch 명 = quest_id (예: `DEV-001`).
+- `openguild quest show DEV-001` 의 "권장 브랜치" 표시 (DEV-017 quest 의 목표) 도 이 규칙 따름.
+- 추후 자동화 (보류): quest start → 자동 branch 생성 / branch push → quest in_progress.
+
+### 커밋 메시지 형식
+
+```
+[{QUEST_ID}][{CATEGORY?}] 요약 한 줄
+
+본문 (선택) — 무엇이 아니라 왜.
+```
+
+- `[QUEST_ID]` 필수. branch 의 quest_id 와 일치.
+- `[CATEGORY]` 선택. 변경의 큰 분류 — `gui/desktop`, `gui/frontend`, `core`, `cli`, `server`, `docs`, `chore` 등.
+- 예시:
+  - `[DEV-002][gui/frontend] Tauri 환경 감지 어댑터`
+  - `[DEV-002][core] invoke 핸들러 wiring`
+  - `[BUG-045] --remote env override 무시되던 문제 수정`
+  - `[DEV-019][server] check-drift 명령 추가`
+- 본문 첫 줄 — 70자 이내. 본문은 빈 줄로 구분.
+- 다중 카테고리는 별도 commit 으로 분리 권장 (각 commit 의 영역 명확).
+- 무엇(what) 보다 **왜(why)** 중심 — diff 가 what 은 보여주므로.
+
+### 릴리즈
+
+- develop 가 안정된 시점에 `master` 로 머지 — fast-forward 또는 merge commit.
+- master 에 태그: `v0.x.y` (semver, 0.x.x 부터 시작. 메이저 1 은 사용자 승인 필요).
+- GitHub Releases 에 changelog 기록.
 
 ---
 
