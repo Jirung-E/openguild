@@ -8,24 +8,85 @@
 mod commands;
 
 use openguild_core::Store;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-/// guild 디렉토리 해결.
+/// CLI argv[1] 을 guild 디렉토리로 해석.
+///
+/// 사용자가 `openguild-gui path/to/foo.guild` (파일 더블클릭) 또는
+/// `openguild-gui path/to/dir` 로 실행할 때:
+/// - `.guild` 확장자 파일이면 그 파일의 부모 디렉토리를 guild 로.
+/// - 디렉토리면 그대로 (안의 `.guild` 파일은 Store::open 이 검증).
+///
+/// 잘못된 경로 (존재 안 함 / 권한 없음) 면 `None` 반환해 폴백.
+pub(crate) fn arg_to_guild_path(arg: &Path) -> Option<PathBuf> {
+    if !arg.exists() {
+        return None;
+    }
+    if arg.is_file() {
+        // .guild 파일이면 부모 디렉토리. 다른 파일은 무시.
+        if arg.extension().and_then(|e| e.to_str()) == Some("guild") {
+            return arg.parent().map(|p| p.to_path_buf());
+        }
+        return None;
+    }
+    if arg.is_dir() {
+        return Some(arg.to_path_buf());
+    }
+    None
+}
+
+/// guild 디렉토리 해결 — 내부 구현, 환경 의존성 명시.
 ///
 /// 우선순위:
-/// 1. `OPENGUILD_GUILD` env (테스트 / 명시 지정)
-/// 2. cwd 부터 부모 방향 탐색 (`.guild` 파일 찾기)
-/// 3. cwd 자체 — `.guild` 없어도 Store::open 이 알아서 만든다 (빈 길드 부트스트랩).
-///
-/// DEV-005 (`.guild` 파일 연결) / DEV-006 (Recent guild) 진입 시 OS args 처리 추가 예정.
-fn resolve_guild_path() -> PathBuf {
-    if let Ok(env_path) = std::env::var("OPENGUILD_GUILD") {
-        return PathBuf::from(env_path);
+/// 1. **CLI argv** — `openguild-gui foo.guild` 또는 `openguild-gui /path/to/guild-dir`.
+///    .guild 파일 더블클릭 (OS file association, DEV-005) 도 이 경로로 들어옴.
+/// 2. `OPENGUILD_GUILD` env — 테스트 / 명시 지정.
+/// 3. cwd 부터 부모 방향 탐색 (`.guild` 파일 찾기) — git 방식.
+/// 4. cwd 자체 — fallback. `.guild` 없어도 Store::open 이 빈 길드 부트스트랩.
+pub(crate) fn resolve_guild_path_inner<I, S>(
+    args: I,
+    env_guild: Option<String>,
+    cwd_search: impl FnOnce() -> Option<PathBuf>,
+    cwd: impl FnOnce() -> PathBuf,
+) -> PathBuf
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<std::ffi::OsStr>,
+{
+    // 1. CLI args — 프로그램명 다음 첫 유효한 path
+    for arg in args.into_iter().skip(1) {
+        let p = Path::new(arg.as_ref());
+        if let Some(resolved) = arg_to_guild_path(p) {
+            return resolved;
+        }
     }
-    if let Some(found) = openguild_core::guild_file::find_from_cwd() {
+
+    // 2. env
+    if let Some(path) = env_guild {
+        let p = PathBuf::from(path);
+        if p.exists() {
+            return p;
+        }
+    }
+
+    // 3. cwd 부터 부모 방향
+    if let Some(found) = cwd_search() {
         return found;
     }
-    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+
+    // 4. cwd fallback
+    cwd()
+}
+
+/// 외부에서 호출하는 wrapper — 실제 env / cwd 사용.
+/// DEV-006 (Recent guild) 진입 시 이 함수보다 위에 "사용자 선택 UI" 가 들어올 예정.
+fn resolve_guild_path() -> PathBuf {
+    resolve_guild_path_inner(
+        std::env::args_os(),
+        std::env::var("OPENGUILD_GUILD").ok(),
+        openguild_core::guild_file::find_from_cwd,
+        || std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+    )
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -70,4 +131,153 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fresh_tmp(label: &str) -> PathBuf {
+        let ns = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let p = std::env::temp_dir().join(format!("og-gui-{label}-{ns}"));
+        std::fs::create_dir_all(&p).unwrap();
+        p
+    }
+
+    #[test]
+    fn arg_to_guild_path_dir_passes_through() {
+        let dir = fresh_tmp("dir");
+        let got = arg_to_guild_path(&dir).unwrap();
+        assert_eq!(std::fs::canonicalize(got).unwrap(), std::fs::canonicalize(&dir).unwrap());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn arg_to_guild_path_dot_guild_file_returns_parent() {
+        let dir = fresh_tmp("file");
+        let guild_file = dir.join("test.guild");
+        std::fs::write(&guild_file, "name = \"x\"\nversion = \"1.0\"\ncreated_at = \"\"\n")
+            .unwrap();
+        let got = arg_to_guild_path(&guild_file).unwrap();
+        assert_eq!(
+            std::fs::canonicalize(got).unwrap(),
+            std::fs::canonicalize(&dir).unwrap()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn arg_to_guild_path_non_guild_file_rejected() {
+        let dir = fresh_tmp("non-guild");
+        let other = dir.join("readme.txt");
+        std::fs::write(&other, "x").unwrap();
+        assert!(arg_to_guild_path(&other).is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn arg_to_guild_path_missing_returns_none() {
+        let phantom = std::env::temp_dir().join("og-gui-does-not-exist-xyz");
+        assert!(arg_to_guild_path(&phantom).is_none());
+    }
+
+    fn fallback_cwd_for_test() -> PathBuf {
+        PathBuf::from("/unreachable-cwd-fallback-for-test")
+    }
+    fn none_search() -> Option<PathBuf> {
+        None
+    }
+
+    #[test]
+    fn resolve_argv_dir_wins_over_env_and_cwd() {
+        let dir = fresh_tmp("argv-priority");
+        let argv: Vec<std::ffi::OsString> = vec!["program".into(), dir.as_os_str().into()];
+        let got = resolve_guild_path_inner(
+            argv,
+            Some("/nonexistent/path-for-test".into()),
+            none_search,
+            fallback_cwd_for_test,
+        );
+        assert_eq!(
+            std::fs::canonicalize(got).unwrap(),
+            std::fs::canonicalize(&dir).unwrap()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resolve_argv_guild_file_wins() {
+        // .guild 파일 더블클릭 시나리오 — argv[1] 이 파일 경로, 부모가 길드.
+        let dir = fresh_tmp("argv-guild-file");
+        let guild_file = dir.join("test.guild");
+        std::fs::write(&guild_file, "name = \"x\"\nversion = \"1.0\"\ncreated_at = \"\"\n")
+            .unwrap();
+        let argv: Vec<std::ffi::OsString> =
+            vec!["program".into(), guild_file.as_os_str().into()];
+        let got = resolve_guild_path_inner(argv, None, none_search, fallback_cwd_for_test);
+        assert_eq!(
+            std::fs::canonicalize(got).unwrap(),
+            std::fs::canonicalize(&dir).unwrap()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resolve_falls_through_to_env_when_argv_empty() {
+        let dir = fresh_tmp("env-fallback");
+        let argv: Vec<std::ffi::OsString> = vec!["program".into()];
+        let got = resolve_guild_path_inner(
+            argv,
+            Some(dir.to_string_lossy().into_owned()),
+            none_search,
+            fallback_cwd_for_test,
+        );
+        assert_eq!(got, dir);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resolve_skips_invalid_argv_then_env() {
+        let dir = fresh_tmp("env-after-bad-argv");
+        let argv: Vec<std::ffi::OsString> =
+            vec!["program".into(), "/does/not/exist/argv-test".into()];
+        let got = resolve_guild_path_inner(
+            argv,
+            Some(dir.to_string_lossy().into_owned()),
+            none_search,
+            fallback_cwd_for_test,
+        );
+        assert_eq!(got, dir);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resolve_skips_invalid_env_falls_to_cwd_search() {
+        let dir = fresh_tmp("cwd-search");
+        let dir_for_closure = dir.clone();
+        let argv: Vec<std::ffi::OsString> = vec!["program".into()];
+        let got = resolve_guild_path_inner(
+            argv,
+            Some("/nonexistent/env".into()),
+            move || Some(dir_for_closure.clone()),
+            fallback_cwd_for_test,
+        );
+        assert_eq!(got, dir);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resolve_final_fallback_is_cwd() {
+        let argv: Vec<std::ffi::OsString> = vec!["program".into()];
+        let got = resolve_guild_path_inner(
+            argv,
+            None,
+            none_search,
+            fallback_cwd_for_test,
+        );
+        assert_eq!(got, PathBuf::from("/unreachable-cwd-fallback-for-test"));
+    }
 }
