@@ -687,6 +687,50 @@ fn match_type_id(prefix: &str, types: &[QuestType]) -> Option<i64> {
 
 // ─────────────────────────── 출력 ───────────────────────────
 
+use std::io::IsTerminal;
+
+/// 색깔 적용 여부 — TTY + NO_COLOR 미설정일 때만.
+/// NO_COLOR 컨벤션: https://no-color.org/
+fn use_color() -> bool {
+    if std::env::var_os("NO_COLOR").is_some() {
+        return false;
+    }
+    std::io::stdout().is_terminal()
+}
+
+fn hex_rgb(hex: &str) -> Option<(u8, u8, u8)> {
+    let s = hex.trim_start_matches('#');
+    if s.len() != 6 {
+        return None;
+    }
+    let r = u8::from_str_radix(&s[0..2], 16).ok()?;
+    let g = u8::from_str_radix(&s[2..4], 16).ok()?;
+    let b = u8::from_str_radix(&s[4..6], 16).ok()?;
+    Some((r, g, b))
+}
+
+/// ANSI 24-bit truecolor — `#RRGGBB` → "\x1b[38;2;r;g;bm{text}\x1b[0m".
+/// 비-TTY / NO_COLOR 일 땐 plain 반환.
+fn colorize(text: &str, hex: &str) -> String {
+    if !use_color() {
+        return text.to_string();
+    }
+    let Some((r, g, b)) = hex_rgb(hex) else {
+        return text.to_string();
+    };
+    format!("\x1b[38;2;{r};{g};{b}m{text}\x1b[0m")
+}
+
+/// urgency 등급별 색 — GUI 의 URGENCY_COLOR 와 동일.
+fn urgency_color(urgency: i64) -> &'static str {
+    match urgency {
+        1 => "#E94F4F", // Critical
+        2 => "#F5A623", // High
+        3 => "#F5D623", // Medium
+        _ => "#8B95A1", // Low (4 또는 그 외)
+    }
+}
+
 /// 기본 포맷 — 제목 한 줄만. list / status / parent 등에서 사용.
 /// description 은 안 보임 (자세히는 `quest show <slug>`).
 fn print_quest(q: &Quest, json: bool) {
@@ -694,10 +738,7 @@ fn print_quest(q: &Quest, json: bool) {
         println!("{}", serde_json::to_string_pretty(q).unwrap());
         return;
     }
-    println!(
-        "{:<10} [{}] {} (urgency {})",
-        q.quest_id, q.status_name_en, q.title, q.urgency
-    );
+    print_quest_line(q);
 }
 
 /// new / update 직후 — description 변경 결과를 사용자가 즉시 확인할 수 있도록
@@ -707,10 +748,7 @@ fn print_quest_full(q: &Quest, json: bool) {
         println!("{}", serde_json::to_string_pretty(q).unwrap());
         return;
     }
-    println!(
-        "{:<10} [{}] {} (urgency {})",
-        q.quest_id, q.status_name_en, q.title, q.urgency
-    );
+    print_quest_line(q);
     if let Some(d) = &q.description
         && !d.is_empty()
     {
@@ -718,6 +756,17 @@ fn print_quest_full(q: &Quest, json: bool) {
             println!("           {line}");
         }
     }
+}
+
+/// 한 줄 출력 공통 — 색깔 적용 시 truecolor 사용.
+/// `DEV-005 [Testing] title (urgency 3)` 형태, 각 부분 색 분리.
+fn print_quest_line(q: &Quest) {
+    let id = colorize(&format!("{:<10}", q.quest_id), &q.type_color);
+    let status_label = format!("[{}]", q.status_name_en);
+    let status = colorize(&status_label, &q.status_color);
+    let urg_color = urgency_color(q.urgency);
+    let urgency = colorize(&format!("(urgency {})", q.urgency), urg_color);
+    println!("{id} {status} {} {urgency}", q.title);
 }
 
 fn print_quest_list(quests: &[Quest], json: bool) {

@@ -28,6 +28,9 @@ DEV-001, DEV-002, BUG-045, ...    ─── feature 브랜치 (quest_id 직접)
 - **master 직접 commit / push 금지**. develop 에서 release 시점 머지만.
 - **머지된 feature 브랜치 삭제 금지**. 사용자가 명시적으로 삭제 요청할 때까지 보존.
   히스토리/기록 목적 — `git branch -d` 자동 호출 금지.
+- **머지는 fast-forward 허용** (2026-05-18 변경). 기본 `git merge {QUEST_ID}` —
+  linear 히스토리면 FF, 충돌/분기 시에만 자동 merge commit. `--no-ff` 강제 사용 금지
+  — log 가 머지 커밋으로 너무 지저분해짐. (기존 `--no-ff` 머지 커밋들은 그대로 유지.)
 
 ### Commit 메시지 형식
 
