@@ -55,7 +55,7 @@
     font-family="system-ui,sans-serif">${x(ul)}</text>
   <text x="10" y="${titleY}" fill="#c9d1d9" font-size="12"
     font-family="system-ui,-apple-system,sans-serif">${x(line1)}</text>
-  ${line2 ? `<text x="10" y="${titleY + 16}" fill="#8b949e" font-size="11"
+  ${line2 ? `<text x="10" y="${titleY + 16}" fill="#c9d1d9" font-size="12"
     font-family="system-ui,-apple-system,sans-serif">${x(line2)}</text>` : ''}
 </svg>`;
 		return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
