@@ -40,6 +40,9 @@
 	 * s 를 maxPx 픽셀 폭 안에 맞게 [head, tail] 로 분할.
 	 * binary search 로 가장 긴 prefix 찾음 — O(log n) measureText 호출.
 	 * SSR / canvas 미지원 시 폴백 (char 기반 휴리스틱).
+	 *
+	 * **단어 경계 미고려** — mid-word 에서 자름. 사용자 친화 분할은
+	 * `splitByPixelWidthAtWord` 사용.
 	 */
 	function splitByPixelWidth(s: string, maxPx: number): [string, string] {
 		const ctx = getMeasureCtx();
@@ -78,6 +81,34 @@
 		return [s.slice(0, lo), s.slice(lo)];
 	}
 
+	/**
+	 * 단어 경계 우선 분할 — `splitByPixelWidth` 결과를 받아 마지막 whitespace 까지
+	 * 되돌려 word-break 유도. 단일 단어가 maxPx 보다 길면 어쩔 수 없이 mid-word.
+	 *
+	 * 한글 등 공백 없는 텍스트는 fallback 으로 mid-char 분할 (동작 동일).
+	 * 영문 / 혼합 텍스트는 단어 단위로 끊김.
+	 */
+	function splitByPixelWidthAtWord(s: string, maxPx: number): [string, string] {
+		const [hardHead, hardTail] = splitByPixelWidth(s, maxPx);
+		if (!hardTail) return [hardHead, '']; // 전체 fit
+
+		// 경계가 이미 공백이면 OK — 공백은 head 끝에 두고 tail 의 leading 공백 제거.
+		if (/^\s/.test(hardTail)) {
+			return [hardHead.replace(/\s+$/, ''), hardTail.replace(/^\s+/, '')];
+		}
+
+		// hardHead 가 단어 중간에서 잘림 — 직전 공백까지 백오프.
+		const lastWs = hardHead.search(/\s\S*$/);
+		if (lastWs > 0) {
+			const head = hardHead.slice(0, lastWs);
+			const tail = hardHead.slice(lastWs + 1) + hardTail; // +1: 공백 자체는 버림
+			return [head.replace(/\s+$/, ''), tail];
+		}
+
+		// hardHead 에 공백이 전혀 없음 — 한글 또는 단어 하나가 너무 김. mid-char 유지.
+		return [hardHead, hardTail];
+	}
+
 	function makeSvgUrl(quest: Quest): string {
 		const W = NODE_W, H = NODE_H;
 		const uc = URGENCY_COLOR[quest.urgency];
@@ -91,12 +122,13 @@
 		const ulX  = 10 + qidW + 6;
 
 		// 제목 가용 폭: NODE_W - 좌 padding(10) - 우 minimum margin(14) = 260px.
-		// 실제 폭을 measureText 로 측정 — font / char 종류 무관 정확.
+		// 단어 경계 우선 — 공백 있는 텍스트는 단어 단위로, 한글 / 긴 단어는 mid-char.
 		const full = quest.title;
 		const MAX_PX = 260;
-		const [line1, rest1] = splitByPixelWidth(full, MAX_PX);
-		const [rawL2, rest2] = splitByPixelWidth(rest1, MAX_PX);
-		// rest2 가 남았으면 2줄도 넘침 → ellipsis 가 들어갈 자리만큼 줄여 자름.
+		const [line1, rest1] = splitByPixelWidthAtWord(full, MAX_PX);
+		const [rawL2, rest2] = splitByPixelWidthAtWord(rest1, MAX_PX);
+		// rest2 가 남았으면 2줄도 넘침 → ellipsis 자리만큼 줄여 자름.
+		// 여긴 어차피 잘림 표시이므로 word-break 강제 안 함 (mid-char OK).
 		const line2 = rest2.length > 0
 			? splitByPixelWidth(rawL2, MAX_PX - 10)[0] + '…'
 			: rawL2;
