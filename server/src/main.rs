@@ -321,21 +321,38 @@ async fn run_check_drift(resync: bool) -> Result<()> {
 async fn run_check_counters(fix: bool) -> Result<()> {
     let ctx = load_guild()?;
     // ops::check_and_fix_counters 가 file 과 SQL (quest_counters) 둘 다 보정.
-    // BUG-003 — 기존 file-only 보정은 SQL 캐시와 drift 일으켜 다음 quest 생성 차단.
+    // BUG-003 — 두 가지 drift 처리:
+    //   1) file last_number < max  → 기존 동작 (file 도 함께 fix).
+    //   2) SQL last_number ≠ file  → file 을 truth 로 SQL 동기화 (사용자 보고 케이스).
     // guild_path 사용 (abs_path 는 Windows canonicalize 가 \\?\ UNC 붙여 sqlite URL 깨짐).
     let store = openguild_core::Store::open(&ctx.guild_path).await?;
     let report = openguild_core::ops::check_and_fix_counters(&store, fix).await?;
 
     println!("✓ counter 검증 완료");
-    println!("  검사된 type 수 : {}", report.types_checked);
-    println!("  발견 이슈     : {}", report.issues.len());
-    for issue in &report.issues {
+    println!("  검사된 type 수 : {}", report.file_report.types_checked);
+    println!(
+        "  발견 이슈     : {} (file) + {} (SQL)",
+        report.file_report.issues.len(),
+        report.sql_drift.len()
+    );
+    for issue in &report.file_report.issues {
         println!();
-        println!("  • type {}:", issue.prefix);
+        println!("  • type {} [file drift]:", issue.prefix);
         println!("    저장된 last_number   : {}", issue.stored_last_number);
         println!("    실제 max quest 번호  : {}", issue.actual_max_number);
         if fix {
             println!("    → {} 으로 보정됨 (file + SQL)", issue.corrected_to);
+        } else {
+            println!("    (--fix 로 자동 보정 가능)");
+        }
+    }
+    for drift in &report.sql_drift {
+        println!();
+        println!("  • type {} [SQL drift]:", drift.prefix);
+        println!("    file last_number     : {}", drift.file_last_number);
+        println!("    SQL  last_number     : {}", drift.sql_last_number);
+        if fix {
+            println!("    → {} 으로 보정됨 (SQL ← file)", drift.synced_to);
         } else {
             println!("    (--fix 로 자동 보정 가능)");
         }
