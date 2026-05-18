@@ -12,8 +12,10 @@
 //!
 //! crash 시: journal 에 기록된 op 는 다음 시작에서 replay 또는 reindex 시 정합 복구.
 
+pub mod counter;
 pub mod quests;
 
+pub use counter::check_and_fix_counters;
 pub use quests::{
     add_prerequisite, change_parent, change_status, create_quest, delete_quest,
     remove_prerequisite, restore_quest, update_quest,
