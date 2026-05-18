@@ -687,28 +687,22 @@ fn match_type_id(prefix: &str, types: &[QuestType]) -> Option<i64> {
 
 // ─────────────────────────── 출력 ───────────────────────────
 
-/// description 표시 모드.
-/// - `Preview`: 첫 줄만 (list 출력용).
-/// - `Full`: 전체 줄 (new / update / status 직후 — multi-line description 이 잘린
-///   것처럼 보이는 BUG-001 류 오해 방지).
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-enum DescMode {
-    Preview,
-    Full,
-}
-
-/// JSON 옵션이면 JSON, 아니면 사람용 포맷터로 — description 은 preview 1줄.
+/// 기본 포맷 — 제목 한 줄만. list / status / parent 등에서 사용.
+/// description 은 안 보임 (자세히는 `quest show <slug>`).
 fn print_quest(q: &Quest, json: bool) {
-    print_quest_with_desc(q, json, DescMode::Preview);
+    if json {
+        println!("{}", serde_json::to_string_pretty(q).unwrap());
+        return;
+    }
+    println!(
+        "{:<10} [{}] {} (urgency {})",
+        q.quest_id, q.status_name_en, q.title, q.urgency
+    );
 }
 
-/// new / update 직후 호출 — description 이 multi-line 이어도 전체를 보여 사용자가
-/// "잘렸다" 오해하지 않게.
+/// new / update 직후 — description 변경 결과를 사용자가 즉시 확인할 수 있도록
+/// 전체 multi-line 표시.
 fn print_quest_full(q: &Quest, json: bool) {
-    print_quest_with_desc(q, json, DescMode::Full);
-}
-
-fn print_quest_with_desc(q: &Quest, json: bool, mode: DescMode) {
     if json {
         println!("{}", serde_json::to_string_pretty(q).unwrap());
         return;
@@ -720,15 +714,8 @@ fn print_quest_with_desc(q: &Quest, json: bool, mode: DescMode) {
     if let Some(d) = &q.description
         && !d.is_empty()
     {
-        match mode {
-            DescMode::Preview => {
-                println!("           {}", d.lines().next().unwrap_or(""));
-            }
-            DescMode::Full => {
-                for line in d.lines() {
-                    println!("           {line}");
-                }
-            }
+        for line in d.lines() {
+            println!("           {line}");
         }
     }
 }
