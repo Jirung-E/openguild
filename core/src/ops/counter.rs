@@ -1,68 +1,142 @@
 //! Counter 정합성 보정 — file (type.toml) + SQL (index.db.quest_counters) 동시 갱신.
 //!
-//! `core::counter::check_counters` 는 file 만 검사/수정한다. 본 모듈은 그 위에
-//! SQL `quest_counters` 동기화를 얹어, drift 보정 후 즉시 새 quest 생성이 막히지
-//! 않도록 보장.
+//! 두 가지 drift 를 모두 잡는다 (BUG-003 시나리오):
+//! 1. **file drift** — `type.toml [counter] last_number < 실제 max quest number`.
+//!    `core::counter::check_counters` 가 검사 + auto_fix 시 파일 갱신.
+//! 2. **SQL drift** — `quest_counters.last_number ≠ type.toml [counter] last_number`.
+//!    본 모듈이 직접 검사 + auto_fix 시 SQL 갱신 (file 을 source of truth 로).
+//!
+//! file 만 OK 인데 SQL 만 깨진 경우 (외부 수동 SQL 편집 / migration 실수 / 옛
+//! check-counters 실행 흔적) — 기존 check_counters 는 검사 안 함 → 다음 quest new
+//! 가 UNIQUE constraint 실패. 본 모듈이 그 격차를 메움.
 //!
 //! 호출자: `openguild-server check-counters --fix` (server CLI).
 
 use anyhow::{Context, Result};
+use std::collections::HashMap;
 
 use crate::counter::{check_counters, CheckReport};
+use crate::repo::{fs as repo_fs, TypeFile};
 use crate::Store;
+
+/// SQL 단독 drift 보고.
+#[derive(Debug, Clone)]
+pub struct SqlDriftIssue {
+    pub prefix: String,
+    pub file_last_number: i64,
+    pub sql_last_number: i64,
+    pub synced_to: i64,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct CombinedReport {
+    /// file-level (last_number < actual max).
+    pub file_report: CheckReport,
+    /// SQL drift (SQL last_number ≠ file last_number) — file-level 보정과 무관.
+    pub sql_drift: Vec<SqlDriftIssue>,
+}
+
+impl CombinedReport {
+    pub fn has_any_issue(&self) -> bool {
+        !self.file_report.issues.is_empty() || !self.sql_drift.is_empty()
+    }
+}
 
 /// file + SQL 보정 결합.
 ///
-/// `auto_fix=false` 면 file-only `check_counters` 와 동일 (보고만).
-/// `auto_fix=true` 면 추가로 각 issue 의 prefix → quest_type_id 조회 후
-/// `UPDATE quest_counters SET last_number = ? WHERE quest_type_id = ?` 실행.
+/// 1. file-only `check_counters` — 파일 카운터가 실제 max 보다 낮은 케이스 처리.
+/// 2. 각 type 파일의 last_number 와 SQL `quest_counters.last_number` 비교. 다르면
+///    SQL drift 로 보고. `auto_fix=true` 시 file 값을 truth 로 SQL 갱신.
 ///
-/// 다음 `create_quest` 가 `UPDATE ... last_number = last_number + 1 RETURNING ...`
-/// 로 next number 를 받아 INSERT 시도할 때 file 의 max 와 충돌하지 않게 됨
-/// (BUG-003 핵심 시나리오).
-pub async fn check_and_fix_counters(store: &Store, auto_fix: bool) -> Result<CheckReport> {
-    let report = check_counters(&store.paths, auto_fix)
+/// 두 단계 모두 dry-run (auto_fix=false) 시 보고만.
+pub async fn check_and_fix_counters(
+    store: &Store,
+    auto_fix: bool,
+) -> Result<CombinedReport> {
+    let mut combined = CombinedReport::default();
+
+    // ── 1. file drift (기존 동작) ──
+    combined.file_report = check_counters(&store.paths, auto_fix)
         .context("counter file 검사 실패")?;
 
-    if !auto_fix {
-        return Ok(report);
+    // 1.1 file fix 가 발생했으면 SQL 도 같이 갱신 (BUG-003 한방향 사례).
+    if auto_fix {
+        for issue in &combined.file_report.issues {
+            sync_sql_counter(store, &issue.prefix, issue.corrected_to).await?;
+        }
     }
 
-    // SQL 동기화 — auto_fix 일 때만 (검사만 한 경우엔 변경 없음).
-    for issue in &report.issues {
-        let type_id: Option<i64> = sqlx::query_scalar(
-            "SELECT id FROM quest_types WHERE prefix = ?",
-        )
-        .bind(&issue.prefix)
-        .fetch_optional(&store.index_pool)
-        .await
-        .with_context(|| format!("quest_types prefix={} 조회 실패", issue.prefix))?;
+    // ── 2. SQL drift ──
+    // 모든 type 파일을 다시 읽어 (방금 fix 한 결과 반영된 값) SQL 과 비교.
+    let type_paths = repo_fs::list_with_extension(store.paths.types_dir(), "toml")
+        .context("types 디렉토리 읽기 실패")?;
 
-        let Some(type_id) = type_id else {
-            // index.db 에 type 이 없으면 (reindex 미실행 등) skip — 다음 reindex 시 정합.
+    // 한 번에 SQL counter 들을 받아 prefix → SQL last_number 맵 구성.
+    let sql_rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT t.prefix, c.last_number FROM quest_counters c
+         JOIN quest_types t ON t.id = c.quest_type_id",
+    )
+    .fetch_all(&store.index_pool)
+    .await
+    .context("quest_counters 조회 실패")?;
+    let sql_by_prefix: HashMap<String, i64> = sql_rows.into_iter().collect();
+
+    for tp in &type_paths {
+        let tf = match TypeFile::read(tp) {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+        let file_n = tf.counter.last_number;
+        // index.db 에 type 이 없으면 (reindex 안 한 새 type) skip — 다음 reindex 가 동기화.
+        let Some(&sql_n) = sql_by_prefix.get(&tf.prefix) else {
             tracing::warn!(
-                "counter SQL 동기화: type {} 가 index.db 에 없음 — skip",
-                issue.prefix
+                "SQL drift 검사: type {} 가 index.db 에 없음 — reindex 후 재시도 권장",
+                tf.prefix
             );
             continue;
         };
+        if file_n == sql_n {
+            continue;
+        }
+        // file 을 truth 로 SQL 동기화.
+        let issue = SqlDriftIssue {
+            prefix: tf.prefix.clone(),
+            file_last_number: file_n,
+            sql_last_number: sql_n,
+            synced_to: file_n,
+        };
+        tracing::warn!(
+            "SQL counter drift: type {} file={}, sql={}",
+            issue.prefix, file_n, sql_n
+        );
+        if auto_fix {
+            sync_sql_counter(store, &tf.prefix, file_n).await?;
+        }
+        combined.sql_drift.push(issue);
+    }
 
-        sqlx::query(
-            "UPDATE quest_counters SET last_number = ? WHERE quest_type_id = ?",
-        )
-        .bind(issue.corrected_to)
+    Ok(combined)
+}
+
+/// `quest_counters.last_number` 를 prefix 의 type id 로 UPDATE.
+async fn sync_sql_counter(store: &Store, prefix: &str, value: i64) -> Result<()> {
+    let type_id: Option<i64> =
+        sqlx::query_scalar("SELECT id FROM quest_types WHERE prefix = ?")
+            .bind(prefix)
+            .fetch_optional(&store.index_pool)
+            .await
+            .with_context(|| format!("quest_types prefix={prefix} 조회 실패"))?;
+    let Some(type_id) = type_id else {
+        tracing::warn!("SQL 동기화: type {prefix} 가 index.db 에 없음 — skip");
+        return Ok(());
+    };
+    sqlx::query("UPDATE quest_counters SET last_number = ? WHERE quest_type_id = ?")
+        .bind(value)
         .bind(type_id)
         .execute(&store.index_pool)
         .await
-        .with_context(|| {
-            format!(
-                "quest_counters UPDATE 실패 (type {}, last_number → {})",
-                issue.prefix, issue.corrected_to
-            )
-        })?;
-    }
-
-    Ok(report)
+        .with_context(|| format!("quest_counters UPDATE 실패 (type {prefix}, → {value})"))?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -100,138 +174,145 @@ mod tests {
         qf.write(paths.quest_path(slug)).unwrap();
     }
 
-    /// 핵심 시나리오: file 에 DEV-005 가 있고 SQL counter 는 0 인 drift 상태에서
-    /// check_and_fix_counters(--fix) → file + SQL 모두 5 로 정합.
+    async fn sql_counter(store: &Store, prefix: &str) -> i64 {
+        sqlx::query_scalar(
+            "SELECT c.last_number FROM quest_counters c
+             JOIN quest_types t ON t.id = c.quest_type_id
+             WHERE t.prefix = ?",
+        )
+        .bind(prefix)
+        .fetch_one(&store.index_pool)
+        .await
+        .unwrap()
+    }
+
+    /// 시나리오 1 — file < max (legacy BUG-003). file + SQL 둘 다 보정.
     #[tokio::test]
-    async fn fix_propagates_to_sql_counter() {
-        let dir = fresh_tmp("propagate");
+    async fn file_below_max_fixes_both() {
+        let dir = fresh_tmp("file-low");
         seed_guild_dir(&dir).unwrap();
         let store = Store::open(&dir).await.unwrap();
-
-        // SQL 의 quest_counters 에 row 가 있는지 (Store::open 직후엔 비어있음 — reindex
-        // 가 채움). 본 테스트는 reindex 후 시작.
-        // dogfood 와 같은 시나리오: 파일을 외부에서 만들고 reindex 안 한 경우는
-        // 다른 테스트로. 여기는 reindex 한 뒤 새 파일이 추가된 시나리오를 모사.
-
-        // 1. reindex 로 SQL 초기 동기화 (현재 file 의 max=0, counter=0 정합).
         crate::reindex::reindex(&store).await.unwrap();
 
-        // 2. 외부에서 파일 추가 — DEV-005 (number=5).
         write_quest_file(&store.paths, "DEV-005");
-        // file counter 도 0 → 5 로 직접 수정해야 file-side 가 drift.
-        // 단순화를 위해 ops 가 보는 입력은 "file 에 DEV-005 있고 counter 는 0 인 상태".
-        // 그래서 counter file 은 그대로 (0 유지).
+        // file counter 는 그대로 (0).
 
-        // 3. SQL 도 0 (reindex 후 그대로).
-        let pre_sql: i64 = sqlx::query_scalar(
-            "SELECT last_number FROM quest_counters WHERE quest_type_id = (SELECT id FROM quest_types WHERE prefix = 'DEV')",
-        )
-        .fetch_one(&store.index_pool)
-        .await
-        .unwrap();
-        assert_eq!(pre_sql, 0);
-
-        // 4. check_and_fix_counters(--fix) 실행.
         let report = check_and_fix_counters(&store, true).await.unwrap();
-        assert_eq!(report.issues.len(), 1, "DEV drift 1건 보고");
-        assert_eq!(report.issues[0].prefix, "DEV");
-        assert_eq!(report.issues[0].actual_max_number, 5);
-
-        // 5. SQL 도 5 로 갱신됐는지.
-        let post_sql: i64 = sqlx::query_scalar(
-            "SELECT last_number FROM quest_counters WHERE quest_type_id = (SELECT id FROM quest_types WHERE prefix = 'DEV')",
-        )
-        .fetch_one(&store.index_pool)
-        .await
-        .unwrap();
-        assert_eq!(post_sql, 5, "SQL counter 도 보정되어야 함 (BUG-003 핵심)");
-
-        // 6. file 도 보정됐는지 (기존 check_counters 동작 확인).
-        let tf = crate::repo::TypeFile::read(store.paths.type_path("DEV")).unwrap();
-        assert_eq!(tf.counter.last_number, 5);
+        assert_eq!(report.file_report.issues.len(), 1);
+        assert_eq!(sql_counter(&store, "DEV").await, 5);
+        assert_eq!(
+            TypeFile::read(store.paths.type_path("DEV"))
+                .unwrap()
+                .counter
+                .last_number,
+            5
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// 시나리오 2 — file 은 OK, SQL 만 깨짐. file 을 truth 로 SQL 갱신.
+    /// (사용자가 dogfood 에서 보고한 정확한 케이스.)
     #[tokio::test]
-    async fn no_fix_means_no_sql_update() {
-        let dir = fresh_tmp("noop");
+    async fn sql_drift_only_synced_from_file() {
+        let dir = fresh_tmp("sql-only");
         seed_guild_dir(&dir).unwrap();
         let store = Store::open(&dir).await.unwrap();
+
+        // file counter 를 6 으로 (실제 quest 없어도 단조 증가만 보장이라 OK).
+        let mut tf = TypeFile::read(store.paths.type_path("BUG")).unwrap();
+        tf.counter.last_number = 6;
+        tf.write(store.paths.type_path("BUG")).unwrap();
         crate::reindex::reindex(&store).await.unwrap();
-        write_quest_file(&store.paths, "DEV-003");
+        // reindex 직후엔 SQL counter 가 file 값 6.
+        assert_eq!(sql_counter(&store, "BUG").await, 6);
 
-        let pre: i64 = sqlx::query_scalar(
-            "SELECT last_number FROM quest_counters WHERE quest_type_id = (SELECT id FROM quest_types WHERE prefix = 'DEV')",
-        )
-        .fetch_one(&store.index_pool)
-        .await
-        .unwrap();
-
-        let report = check_and_fix_counters(&store, false).await.unwrap();
-        assert_eq!(report.issues.len(), 1);
-
-        let post: i64 = sqlx::query_scalar(
-            "SELECT last_number FROM quest_counters WHERE quest_type_id = (SELECT id FROM quest_types WHERE prefix = 'DEV')",
-        )
-        .fetch_one(&store.index_pool)
-        .await
-        .unwrap();
-        assert_eq!(post, pre, "auto_fix=false 면 SQL 그대로");
-
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[tokio::test]
-    async fn fix_then_create_quest_succeeds() {
-        // BUG-003 의 핵심 사용자 시나리오 재현:
-        // drift 상태 → check-counters --fix → 즉시 quest 새로 만들기 → 성공해야 함.
-        let dir = fresh_tmp("create-after-fix");
-        seed_guild_dir(&dir).unwrap();
-        let store = Store::open(&dir).await.unwrap();
-        crate::reindex::reindex(&store).await.unwrap();
-
-        // 외부 파일로 BUG-001 가 생긴 상황 (사용자가 직접 만들었거나 import).
-        write_quest_file(&store.paths, "BUG-001");
-        // 이 상태에서 ops::create_quest 호출하면 UNIQUE constraint fail (BUG-003 증상).
-        // fix 후엔 성공해야 함.
-
-        // 먼저 reindex 로 BUG-001 을 index 에 넣음 (file → SQL).
-        crate::reindex::reindex(&store).await.unwrap();
-        // reindex 가 counter 도 max=1 로 동기화해주는지? — 확인 필요.
-        // (만약 그렇다면 BUG-003 은 reindex 직후엔 발생 안 함 — 외부 파일을 만들고
-        // reindex 안 한 경우만 문제.)
-        // 본 테스트는 단순화 — fix 후 create 가 동작하는지만 검증.
-
-        // 일부러 SQL counter 를 0 으로 되돌려 drift 만들기.
+        // 외부에서 SQL 만 망가뜨림 (수동 UPDATE / 옛 fix 실수 등).
         sqlx::query(
-            "UPDATE quest_counters SET last_number = 0 WHERE quest_type_id = (SELECT id FROM quest_types WHERE prefix = 'BUG')",
+            "UPDATE quest_counters SET last_number = 0
+             WHERE quest_type_id = (SELECT id FROM quest_types WHERE prefix = 'BUG')",
         )
         .execute(&store.index_pool)
         .await
         .unwrap();
-        // file counter 도 0 으로 (직접 편집 시뮬).
-        let mut tf = crate::repo::TypeFile::read(store.paths.type_path("BUG")).unwrap();
-        tf.counter.last_number = 0;
+        assert_eq!(sql_counter(&store, "BUG").await, 0);
+
+        // 파일은 OK 라 check_counters 는 issue 없다고 보고.
+        let dry = check_and_fix_counters(&store, false).await.unwrap();
+        assert!(dry.file_report.issues.is_empty(), "file 은 정상");
+        assert_eq!(dry.sql_drift.len(), 1, "SQL drift 1건 보고");
+        assert_eq!(dry.sql_drift[0].prefix, "BUG");
+        assert_eq!(dry.sql_drift[0].file_last_number, 6);
+        assert_eq!(dry.sql_drift[0].sql_last_number, 0);
+
+        // dry-run 은 SQL 안 건드림.
+        assert_eq!(sql_counter(&store, "BUG").await, 0);
+
+        // fix 실행 → SQL 도 6 으로.
+        let fix = check_and_fix_counters(&store, true).await.unwrap();
+        assert!(fix.file_report.issues.is_empty());
+        assert_eq!(fix.sql_drift.len(), 1);
+        assert_eq!(sql_counter(&store, "BUG").await, 6);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 시나리오 3 — fix 후 즉시 create_quest 성공 (BUG-003 사용자 검증).
+    #[tokio::test]
+    async fn fix_then_create_quest_succeeds_when_only_sql_drifted() {
+        let dir = fresh_tmp("create-after-sql-fix");
+        seed_guild_dir(&dir).unwrap();
+        let store = Store::open(&dir).await.unwrap();
+
+        // BUG-001 ~ 006 파일 + counter file 6 까지 모두 정상. reindex 동기화.
+        for n in 1..=6 {
+            write_quest_file(&store.paths, &format!("BUG-{n:03}"));
+        }
+        let mut tf = TypeFile::read(store.paths.type_path("BUG")).unwrap();
+        tf.counter.last_number = 6;
         tf.write(store.paths.type_path("BUG")).unwrap();
+        crate::reindex::reindex(&store).await.unwrap();
+        assert_eq!(sql_counter(&store, "BUG").await, 6);
 
-        // check_and_fix 실행.
-        let report = check_and_fix_counters(&store, true).await.unwrap();
-        assert_eq!(report.issues.len(), 1);
-
-        // 이제 새 BUG quest 생성 시도 — BUG-002 가 되어야 함.
-        let bug_type_id: i64 = sqlx::query_scalar(
-            "SELECT id FROM quest_types WHERE prefix = 'BUG'",
+        // 외부에서 SQL 만 0 으로 망가뜨림.
+        sqlx::query(
+            "UPDATE quest_counters SET last_number = 0
+             WHERE quest_type_id = (SELECT id FROM quest_types WHERE prefix = 'BUG')",
         )
-        .fetch_one(&store.index_pool)
+        .execute(&store.index_pool)
         .await
         .unwrap();
 
+        // 이 상태에서 create_quest 는 실패해야 함 (UNIQUE constraint).
+        let bug_type_id: i64 =
+            sqlx::query_scalar("SELECT id FROM quest_types WHERE prefix = 'BUG'")
+                .fetch_one(&store.index_pool)
+                .await
+                .unwrap();
+        let fail = crate::ops::create_quest(
+            &store,
+            crate::models::CreateQuestRequest {
+                quest_type_id: bug_type_id,
+                title: "before-fix".into(),
+                description: None,
+                status_id: 1,
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await;
+        assert!(fail.is_err(), "drift 상태에선 실패해야 함");
+
+        // fix 실행.
+        let _ = check_and_fix_counters(&store, true).await.unwrap();
+        assert_eq!(sql_counter(&store, "BUG").await, 6);
+
+        // 이제 성공.
         let new = crate::ops::create_quest(
             &store,
             crate::models::CreateQuestRequest {
                 quest_type_id: bug_type_id,
-                title: "후속".into(),
+                title: "after-fix".into(),
                 description: None,
                 status_id: 1,
                 urgency: Some(3),
@@ -239,9 +320,38 @@ mod tests {
             },
         )
         .await
-        .expect("BUG-003 fix 후엔 create 가 성공해야 함");
+        .expect("fix 후엔 성공");
+        assert_eq!(new.quest_id, "BUG-007");
 
-        assert_eq!(new.quest_id, "BUG-002");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn dry_run_no_writes() {
+        let dir = fresh_tmp("dry");
+        seed_guild_dir(&dir).unwrap();
+        let store = Store::open(&dir).await.unwrap();
+        crate::reindex::reindex(&store).await.unwrap();
+
+        write_quest_file(&store.paths, "DEV-003");
+        // file counter 도 깨끗하게 두기 (실제 max=3, file=0).
+
+        let pre_sql = sql_counter(&store, "DEV").await;
+        let pre_file = TypeFile::read(store.paths.type_path("DEV"))
+            .unwrap()
+            .counter
+            .last_number;
+
+        let report = check_and_fix_counters(&store, false).await.unwrap();
+        assert!(report.has_any_issue());
+
+        let post_sql = sql_counter(&store, "DEV").await;
+        let post_file = TypeFile::read(store.paths.type_path("DEV"))
+            .unwrap()
+            .counter
+            .last_number;
+        assert_eq!(post_sql, pre_sql, "dry-run 은 SQL 안 건드림");
+        assert_eq!(post_file, pre_file, "dry-run 은 file 안 건드림");
 
         let _ = std::fs::remove_dir_all(&dir);
     }
