@@ -20,6 +20,64 @@
 	const NODE_W = 284;
 	const NODE_H = 80;
 
+	// 노드 제목 줄바꿈을 실제 픽셀 폭 기준으로 — Canvas measureText API 사용.
+	// SVG 의 font 와 동일한 설정으로 ctx.font 잡고 substring 폭 측정.
+	const TITLE_FONT = '12px system-ui, -apple-system, sans-serif';
+	let _measureCtx: CanvasRenderingContext2D | null = null;
+
+	function getMeasureCtx(): CanvasRenderingContext2D | null {
+		if (_measureCtx) return _measureCtx;
+		if (typeof document === 'undefined') return null; // SSR
+		const c = document.createElement('canvas');
+		const ctx = c.getContext('2d');
+		if (!ctx) return null;
+		ctx.font = TITLE_FONT;
+		_measureCtx = ctx;
+		return ctx;
+	}
+
+	/**
+	 * s 를 maxPx 픽셀 폭 안에 맞게 [head, tail] 로 분할.
+	 * binary search 로 가장 긴 prefix 찾음 — O(log n) measureText 호출.
+	 * SSR / canvas 미지원 시 폴백 (char 기반 휴리스틱).
+	 */
+	function splitByPixelWidth(s: string, maxPx: number): [string, string] {
+		const ctx = getMeasureCtx();
+		if (!ctx) {
+			// 폴백: ASCII=6.5px, CJK=12px 추정
+			const maxUnits = Math.floor(maxPx / 6.5);
+			let acc = 0;
+			for (let i = 0; i < s.length; i++) {
+				const code = s.charCodeAt(i);
+				const w =
+					(code >= 0x1100 && code <= 0x11ff) ||
+					(code >= 0x2e80 && code <= 0x9fff) ||
+					(code >= 0xa960 && code <= 0xa97f) ||
+					(code >= 0xac00 && code <= 0xd7af) ||
+					(code >= 0xf900 && code <= 0xfaff) ||
+					(code >= 0xff00 && code <= 0xff60)
+						? 2
+						: 1;
+				if (acc + w > maxUnits) return [s.slice(0, i), s.slice(i)];
+				acc += w;
+			}
+			return [s, ''];
+		}
+		if (ctx.measureText(s).width <= maxPx) return [s, ''];
+		// 가장 긴 prefix 가 maxPx 안에 들어가는지 binary search.
+		let lo = 0;
+		let hi = s.length;
+		while (lo < hi) {
+			const mid = (lo + hi + 1) >> 1;
+			if (ctx.measureText(s.slice(0, mid)).width <= maxPx) {
+				lo = mid;
+			} else {
+				hi = mid - 1;
+			}
+		}
+		return [s.slice(0, lo), s.slice(lo)];
+	}
+
 	function makeSvgUrl(quest: Quest): string {
 		const W = NODE_W, H = NODE_H;
 		const uc = URGENCY_COLOR[quest.urgency];
@@ -32,12 +90,16 @@
 		const ulW  = Math.ceil(ul.length  * 5.6) + 14;
 		const ulX  = 10 + qidW + 6;
 
-		// 제목 2줄 처리 (한 줄 ~36자)
+		// 제목 가용 폭: NODE_W - 좌 padding(10) - 우 minimum margin(14) = 260px.
+		// 실제 폭을 measureText 로 측정 — font / char 종류 무관 정확.
 		const full = quest.title;
-		const CPL = 36;
-		const line1 = full.slice(0, CPL);
-		const rawL2 = full.length > CPL ? full.slice(CPL, CPL * 2) : '';
-		const line2 = full.length > CPL * 2 ? rawL2.slice(0, CPL - 1) + '…' : rawL2;
+		const MAX_PX = 260;
+		const [line1, rest1] = splitByPixelWidth(full, MAX_PX);
+		const [rawL2, rest2] = splitByPixelWidth(rest1, MAX_PX);
+		// rest2 가 남았으면 2줄도 넘침 → ellipsis 가 들어갈 자리만큼 줄여 자름.
+		const line2 = rest2.length > 0
+			? splitByPixelWidth(rawL2, MAX_PX - 10)[0] + '…'
+			: rawL2;
 
 		const titleY = line2 ? 44 : 52;
 
