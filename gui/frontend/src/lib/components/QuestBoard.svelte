@@ -267,7 +267,8 @@
 	let allQuests: Quest[] = [];
 	let allDependencies: QuestDependency[] = [];
 	let busy = false;
-	let arranging = false;
+	// 자동 정렬 진행 중 — 정렬 버튼의 disabled 반응성 위해 $state 필요 (BUG-006).
+	let arranging = $state(false);
 	let ctrlHeld = false;
 	let ctrlClickNode: NodeSingular | null = null;
 	let boxDragEl: HTMLDivElement | null = null;
