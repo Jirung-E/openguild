@@ -9,7 +9,7 @@ use std::collections::HashSet;
 use crate::error::{AppError, AppResult};
 use crate::models::{
     AddPrerequisiteRequest, ChangeParentRequest, ChangeStatusRequest, CreateQuestRequest,
-    QuestDependency, QuestDetail, QuestPosition, QuestRow, UpdatePositionRequest,
+    ListQuery, QuestDependency, QuestDetail, QuestPosition, QuestRow, UpdatePositionRequest,
     UpdateQuestRequest,
 };
 
@@ -39,9 +39,55 @@ pub const QUEST_SELECT: &str = r#"
 
 // ─────────────────────── 조회 ───────────────────────
 
-pub async fn list(pool: &SqlitePool) -> AppResult<Vec<QuestRow>> {
-    let sql = format!("{QUEST_SELECT} WHERE q.deleted_at IS NULL ORDER BY q.id DESC");
-    let quests = sqlx::query_as::<_, QuestRow>(&sql).fetch_all(pool).await?;
+/// 필터 / 정렬 / 제한 모두 옵션. 미지정 시 기존 동작 (전체 alive, id DESC).
+///
+/// **fuzzy match** (`quest_statuses` 에 slug 컬럼 없음):
+/// - type: `qt.prefix` 와 대소문자 무시 비교.
+/// - status: `qs.name_en` 을 lower + space/dash → underscore 정규화 후 비교.
+///   (`"open"` / `"Open"` / `"in progress"` / `"in-progress"` / `"in_progress"`
+///   전부 매칭.)
+///
+/// 정렬은 화이트리스트 매핑 — SQL injection 방어.
+pub async fn list(pool: &SqlitePool, query: &ListQuery) -> AppResult<Vec<QuestRow>> {
+    let mut sql = format!("{QUEST_SELECT} WHERE q.deleted_at IS NULL");
+
+    if query.r#type.is_some() {
+        sql.push_str(" AND UPPER(qt.prefix) = UPPER(?)");
+    }
+    if query.status.is_some() {
+        sql.push_str(
+            " AND REPLACE(REPLACE(LOWER(qs.name_en), ' ', '_'), '-', '_') \
+             = REPLACE(REPLACE(LOWER(?), ' ', '_'), '-', '_')",
+        );
+    }
+
+    // 정렬: 화이트리스트.
+    let order = match query.sort.as_deref() {
+        Some("urgency") => " ORDER BY q.urgency ASC, q.id DESC",
+        Some("id") | None => " ORDER BY q.id DESC",
+        Some(other) => {
+            return Err(AppError::BadRequest(format!(
+                "unsupported sort key '{other}' — expected 'id' or 'urgency'"
+            )));
+        }
+    };
+    sql.push_str(order);
+
+    if let Some(limit) = query.limit {
+        if limit < 0 {
+            return Err(AppError::BadRequest("limit must be non-negative".into()));
+        }
+        sql.push_str(&format!(" LIMIT {limit}"));
+    }
+
+    let mut q = sqlx::query_as::<_, QuestRow>(&sql);
+    if let Some(t) = &query.r#type {
+        q = q.bind(t);
+    }
+    if let Some(s) = &query.status {
+        q = q.bind(s);
+    }
+    let quests = q.fetch_all(pool).await?;
     Ok(quests)
 }
 

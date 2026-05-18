@@ -12,15 +12,18 @@ use axum::{
 use crate::error::AppResult;
 use openguild_core::models::{
     AddPrerequisiteRequest, CandidatesQuery, ChangeParentRequest, ChangeStatusRequest,
-    CreateQuestRequest, DeleteQuestQuery, QuestDependency, QuestDetail, QuestPosition,
-    QuestRow, UpdatePositionRequest, UpdateQuestRequest,
+    CreateQuestRequest, DeleteQuestQuery, ListQuery, QuestDependency, QuestDetail,
+    QuestPosition, QuestRow, UpdatePositionRequest, UpdateQuestRequest,
 };
 use openguild_core::ops::quests as ops;
 use openguild_core::services::quests as read;
 use openguild_core::Store;
 
-pub async fn list_quests(State(store): State<Store>) -> AppResult<Json<Vec<QuestRow>>> {
-    Ok(Json(read::list(&store.index_pool).await?))
+pub async fn list_quests(
+    State(store): State<Store>,
+    Query(q): Query<ListQuery>,
+) -> AppResult<Json<Vec<QuestRow>>> {
+    Ok(Json(read::list(&store.index_pool, &q).await?))
 }
 
 pub async fn create_quest(

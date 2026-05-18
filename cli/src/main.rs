@@ -16,7 +16,7 @@ use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand};
 use openguild_core::models::{
     AddPrerequisiteRequest, ChangeParentRequest, ChangeStatusRequest, CreateQuestRequest,
-    QuestDetail, QuestRow as Quest, QuestStatus, QuestType, UpdateQuestRequest,
+    ListQuery, QuestDetail, QuestRow as Quest, QuestStatus, QuestType, UpdateQuestRequest,
 };
 use openguild_core::services::{meta as meta_svc, quests as quest_svc};
 use serde::{Deserialize, Serialize};
@@ -79,8 +79,22 @@ enum Command {
 
 #[derive(Subcommand)]
 enum QuestCmd {
-    /// 전체 퀘스트 목록
-    List,
+    /// 퀘스트 목록 (인자 없으면 전체, alive, id DESC).
+    List {
+        /// 타입 prefix 필터 — `DEV` / `BUG` / `REQ`. 대소문자 무시.
+        #[arg(long = "type", value_name = "PREFIX")]
+        type_prefix: Option<String>,
+        /// 상태 필터 — name_en (`Open` / `In Progress` / ...) 또는 slug (`open` /
+        /// `in_progress` / `in-progress`). 대소문자 / 공백 / `_` / `-` 무시.
+        #[arg(long)]
+        status: Option<String>,
+        /// 정렬 키 — `id` (기본, 최신 먼저) 또는 `urgency` (1=Critical 먼저).
+        #[arg(long)]
+        sort: Option<String>,
+        /// 결과 최대 행 수.
+        #[arg(long)]
+        limit: Option<i64>,
+    },
     /// 퀘스트 상세 (슬러그: DEV-001)
     Show { slug: String },
     /// 새 퀘스트 생성
@@ -254,8 +268,14 @@ impl HttpClient {
         Ok(res.text().unwrap_or_else(|_| "ok".to_string()))
     }
 
-    fn list_quests(&self) -> Result<Vec<Quest>> {
-        self.get("/api/quests")
+    fn list_quests(&self, q: &ListQuery) -> Result<Vec<Quest>> {
+        let qs = list_query_to_querystring(q);
+        let path = if qs.is_empty() {
+            "/api/quests".to_string()
+        } else {
+            format!("/api/quests?{qs}")
+        };
+        self.get(&path)
     }
 
     fn list_deleted_quests(&self) -> Result<Vec<Quest>> {
@@ -442,11 +462,11 @@ impl Backend {
         }
     }
 
-    fn list_quests(&self) -> Result<Vec<Quest>> {
+    fn list_quests(&self, q: &ListQuery) -> Result<Vec<Quest>> {
         match self {
-            Backend::Http(c) => c.list_quests(),
+            Backend::Http(c) => c.list_quests(q),
             Backend::Local(l) => {
-                Self::map_err(l.rt.block_on(quest_svc::list(&l.store.index_pool)))
+                Self::map_err(l.rt.block_on(quest_svc::list(&l.store.index_pool, q)))
             }
         }
     }
@@ -674,6 +694,41 @@ fn match_status_id(input: &str, statuses: &[QuestStatus]) -> Option<i64> {
             en == want || en.replace(' ', "_") == want || en.replace(' ', "-") == want
         })
         .map(|s| s.id)
+}
+
+/// `ListQuery` → `?type=DEV&status=open&sort=urgency&limit=5` 형태의
+/// urlencoded querystring. 모든 필드 None 이면 빈 문자열 반환.
+fn list_query_to_querystring(q: &ListQuery) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    if let Some(t) = &q.r#type {
+        parts.push(format!("type={}", urlencode(t)));
+    }
+    if let Some(s) = &q.status {
+        parts.push(format!("status={}", urlencode(s)));
+    }
+    if let Some(s) = &q.sort {
+        parts.push(format!("sort={}", urlencode(s)));
+    }
+    if let Some(l) = q.limit {
+        parts.push(format!("limit={l}"));
+    }
+    parts.join("&")
+}
+
+/// 최소 URL encoding — `quest list` 옵션은 ASCII / 일부 한글 정도. 영문/숫자/`-_.~`
+/// 제외하고 모두 percent-encode. reqwest 의 url builder 쓰는 게 정석이지만 deps
+/// 추가 피하려 직접 구현.
+fn urlencode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for byte in s.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(byte as char);
+            }
+            _ => out.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    out
 }
 
 /// 타입 prefix (대소문자 무시) → type_id.
@@ -919,8 +974,19 @@ fn run() -> Result<()> {
             }
         }
         Command::Quest { sub } => match sub {
-            QuestCmd::List => {
-                let quests = c.list_quests()?;
+            QuestCmd::List {
+                type_prefix,
+                status,
+                sort,
+                limit,
+            } => {
+                let q = ListQuery {
+                    r#type: type_prefix,
+                    status,
+                    sort,
+                    limit,
+                };
+                let quests = c.list_quests(&q)?;
                 print_quest_list(&quests, cli.json);
             }
             QuestCmd::Show { slug } => {
@@ -1480,15 +1546,114 @@ mod tests {
     #[test]
     fn cli_parse_quest_list() {
         let cli = Cli::try_parse_from(["openguild", "quest", "list"]).unwrap();
-        assert!(matches!(
-            cli.command,
+        match cli.command {
             Command::Quest {
-                sub: QuestCmd::List
+                sub: QuestCmd::List {
+                    type_prefix,
+                    status,
+                    sort,
+                    limit,
+                },
+            } => {
+                assert!(type_prefix.is_none());
+                assert!(status.is_none());
+                assert!(sort.is_none());
+                assert!(limit.is_none());
             }
-        ));
+            _ => panic!("expected QuestCmd::List"),
+        }
         assert!(!cli.json);
         assert!(cli.remote.is_none());
         assert!(cli.guild.is_none());
+    }
+
+    // === DEV-027: quest list 필터 / 정렬 / limit ===
+
+    #[test]
+    fn cli_parse_list_type_filter() {
+        let cli = Cli::try_parse_from([
+            "openguild", "quest", "list", "--type", "DEV",
+        ]).unwrap();
+        match cli.command {
+            Command::Quest { sub: QuestCmd::List { type_prefix, .. } } => {
+                assert_eq!(type_prefix.as_deref(), Some("DEV"));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn cli_parse_list_all_options() {
+        let cli = Cli::try_parse_from([
+            "openguild", "quest", "list",
+            "--type", "BUG",
+            "--status", "in_progress",
+            "--sort", "urgency",
+            "--limit", "5",
+        ]).unwrap();
+        match cli.command {
+            Command::Quest {
+                sub: QuestCmd::List { type_prefix, status, sort, limit },
+            } => {
+                assert_eq!(type_prefix.as_deref(), Some("BUG"));
+                assert_eq!(status.as_deref(), Some("in_progress"));
+                assert_eq!(sort.as_deref(), Some("urgency"));
+                assert_eq!(limit, Some(5));
+            }
+            _ => panic!(),
+        }
+    }
+
+    // === querystring 빌더 ===
+
+    #[test]
+    fn querystring_empty_when_no_fields() {
+        let q = ListQuery::default();
+        assert_eq!(list_query_to_querystring(&q), "");
+    }
+
+    #[test]
+    fn querystring_single_type() {
+        let q = ListQuery {
+            r#type: Some("DEV".into()),
+            ..Default::default()
+        };
+        assert_eq!(list_query_to_querystring(&q), "type=DEV");
+    }
+
+    #[test]
+    fn querystring_combined() {
+        let q = ListQuery {
+            r#type: Some("BUG".into()),
+            status: Some("in_progress".into()),
+            sort: Some("urgency".into()),
+            limit: Some(5),
+        };
+        let qs = list_query_to_querystring(&q);
+        // 순서는 결정적 — type → status → sort → limit.
+        assert_eq!(qs, "type=BUG&status=in_progress&sort=urgency&limit=5");
+    }
+
+    #[test]
+    fn querystring_special_chars_encoded() {
+        let q = ListQuery {
+            status: Some("In Progress".into()),
+            ..Default::default()
+        };
+        assert_eq!(list_query_to_querystring(&q), "status=In%20Progress");
+    }
+
+    #[test]
+    fn urlencode_alphanum_unchanged() {
+        assert_eq!(urlencode("DEV-001"), "DEV-001");
+        assert_eq!(urlencode("abc.123_xyz~"), "abc.123_xyz~");
+    }
+
+    #[test]
+    fn urlencode_special_chars() {
+        assert_eq!(urlencode(" "), "%20");
+        assert_eq!(urlencode("&="), "%26%3D");
+        assert_eq!(urlencode("In Progress"), "In%20Progress");
     }
 
     #[test]

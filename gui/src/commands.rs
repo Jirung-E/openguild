@@ -8,7 +8,7 @@
 
 use openguild_core::models::{
     AddPrerequisiteRequest, ChangeParentRequest, ChangeStatusRequest, CreateQuestRequest,
-    QuestDependency, QuestDetail, QuestPosition, QuestRow, QuestStatus, QuestType,
+    ListQuery, QuestDependency, QuestDetail, QuestPosition, QuestRow, QuestStatus, QuestType,
     UpdatePositionRequest, UpdateQuestRequest,
 };
 use openguild_core::ops::quests as ops;
@@ -37,8 +37,12 @@ pub async fn list_quest_statuses(store: State<'_, Store>) -> Result<Vec<QuestSta
 // ─────────────────────── quests (read) ───────────────────────
 
 #[tauri::command]
-pub async fn list_quests(store: State<'_, Store>) -> Result<Vec<QuestRow>, String> {
-    read::list(&store.index_pool).await.map_err(err)
+pub async fn list_quests(
+    store: State<'_, Store>,
+    query: Option<ListQuery>,
+) -> Result<Vec<QuestRow>, String> {
+    let q = query.unwrap_or_default();
+    read::list(&store.index_pool, &q).await.map_err(err)
 }
 
 #[tauri::command]

@@ -69,6 +69,32 @@ pub struct CandidatesQuery {
     pub relation: String,
 }
 
+/// `quest list` 필터 / 정렬 / 제한.
+///
+/// 모든 필드 Option — 미지정 시 기존 동작 (전체 alive quest, id DESC).
+/// 필드 추가 시 server / cli / gui 셋 다 동시 갱신.
+#[derive(Debug, Deserialize, Default, Clone)]
+#[serde(default)]
+pub struct ListQuery {
+    /// type prefix 필터 — `"DEV"` / `"BUG"` / `"REQ"` 등.
+    pub r#type: Option<String>,
+    /// status slug 필터 — `"open"` / `"in_progress"` / `"testing"` / `"done"` 등.
+    pub status: Option<String>,
+    /// 정렬 키 — `"id"` (기본) / `"urgency"`.
+    pub sort: Option<String>,
+    /// 결과 최대 행 수.
+    pub limit: Option<i64>,
+}
+
+impl ListQuery {
+    pub fn is_empty(&self) -> bool {
+        self.r#type.is_none()
+            && self.status.is_none()
+            && self.sort.is_none()
+            && self.limit.is_none()
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct DeleteQuestQuery {
     /// "1,2,3" 형식의 cascade 삭제 대상 직계 자식 ID 목록

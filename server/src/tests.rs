@@ -178,6 +178,164 @@ async fn test_list_quests() {
     assert_eq!(body.as_array().unwrap().len(), 2);
 }
 
+// ─────────────── DEV-027: quest list 필터 / 정렬 / limit ───────────────
+
+/// quest 3종 (DEV-001 open / BUG-001 open / DEV-002 done) 미리 만들어 둠.
+async fn setup_with_mixed_quests() -> Router {
+    let app = setup().await;
+    // DEV-001 (urgency 2 — high)
+    post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "dev-open", "status_id": 1, "urgency": 2 })
+    ).await;
+    // DEV-002 (urgency 4 — low, 곧 done 으로 옮김)
+    let (_, dev2) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "dev-done", "status_id": 1, "urgency": 4 })
+    ).await;
+    let dev2_id = dev2["id"].as_i64().unwrap();
+    // status_id 3 = Done (migration 시드)
+    patch(app.clone(), &format!("/api/quests/{dev2_id}/status"),
+        json!({ "status_id": 3 })
+    ).await;
+    // BUG-001 (urgency 1 — critical)
+    post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 2, "title": "bug-open", "status_id": 1, "urgency": 1 })
+    ).await;
+    app
+}
+
+#[tokio::test]
+async fn test_list_filter_by_type_prefix() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests?type=DEV").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 2);
+    for q in arr {
+        assert_eq!(q["type_prefix"], "DEV");
+    }
+}
+
+#[tokio::test]
+async fn test_list_filter_type_case_insensitive() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests?type=bug").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0]["quest_id"], "BUG-001");
+}
+
+#[tokio::test]
+async fn test_list_filter_by_status_name_en() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests?status=Open").await;
+    assert_eq!(body.as_array().unwrap().len(), 2); // DEV-001 + BUG-001
+}
+
+#[tokio::test]
+async fn test_list_filter_status_slug() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests?status=open").await;
+    assert_eq!(body.as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn test_list_filter_status_underscore_or_dash() {
+    // 'in_progress' / 'in-progress' / 'In Progress' 동일 매칭.
+    let app = setup().await;
+    let (_, created) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "wip", "status_id": 1 })
+    ).await;
+    let id = created["id"].as_i64().unwrap();
+    patch(app.clone(), &format!("/api/quests/{id}/status"),
+        json!({ "status_id": 2 })  // In Progress
+    ).await;
+
+    for variant in ["In Progress", "in progress", "in_progress", "in-progress", "IN_PROGRESS"] {
+        let url = format!("/api/quests?status={}", urlencode_test(variant));
+        let (_, body) = get(app.clone(), &url).await;
+        assert_eq!(
+            body.as_array().unwrap().len(),
+            1,
+            "variant {variant:?} 가 in_progress 1개 매칭해야 함"
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_list_filter_combined_type_and_status() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests?type=DEV&status=Done").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0]["quest_id"], "DEV-002");
+}
+
+#[tokio::test]
+async fn test_list_sort_by_urgency() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests?sort=urgency").await;
+    let arr = body.as_array().unwrap();
+    // urgency ASC — 1 (BUG-001) 먼저, 2 (DEV-001), 4 (DEV-002)
+    assert_eq!(arr[0]["quest_id"], "BUG-001");
+    assert_eq!(arr[1]["quest_id"], "DEV-001");
+    assert_eq!(arr[2]["quest_id"], "DEV-002");
+}
+
+#[tokio::test]
+async fn test_list_sort_default_is_id_desc() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests").await;
+    let arr = body.as_array().unwrap();
+    // id DESC — 마지막에 만든 BUG-001 가 id 가장 큼.
+    assert_eq!(arr[0]["quest_id"], "BUG-001");
+}
+
+#[tokio::test]
+async fn test_list_sort_invalid_returns_bad_request() {
+    let app = setup_with_mixed_quests().await;
+    let (status, _) = get(app, "/api/quests?sort=titlexyz").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_list_limit() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests?limit=2").await;
+    assert_eq!(body.as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn test_list_limit_zero_returns_empty() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests?limit=0").await;
+    assert_eq!(body.as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn test_list_limit_negative_bad_request() {
+    let app = setup_with_mixed_quests().await;
+    let (status, _) = get(app, "/api/quests?limit=-1").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_list_filter_returns_empty_when_no_match() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests?type=REQ").await;
+    assert_eq!(body.as_array().unwrap().len(), 0);
+}
+
+/// 테스트 전용 minimal URL encoding (공백 → %20).
+fn urlencode_test(s: &str) -> String {
+    s.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                (b as char).to_string()
+            }
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
+}
+
 #[tokio::test]
 async fn test_get_quest_detail() {
     let app = setup().await;
