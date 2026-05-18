@@ -687,8 +687,28 @@ fn match_type_id(prefix: &str, types: &[QuestType]) -> Option<i64> {
 
 // ─────────────────────────── 출력 ───────────────────────────
 
-/// JSON 옵션이면 JSON, 아니면 사람용 포맷터로.
+/// description 표시 모드.
+/// - `Preview`: 첫 줄만 (list 출력용).
+/// - `Full`: 전체 줄 (new / update / status 직후 — multi-line description 이 잘린
+///   것처럼 보이는 BUG-001 류 오해 방지).
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum DescMode {
+    Preview,
+    Full,
+}
+
+/// JSON 옵션이면 JSON, 아니면 사람용 포맷터로 — description 은 preview 1줄.
 fn print_quest(q: &Quest, json: bool) {
+    print_quest_with_desc(q, json, DescMode::Preview);
+}
+
+/// new / update 직후 호출 — description 이 multi-line 이어도 전체를 보여 사용자가
+/// "잘렸다" 오해하지 않게.
+fn print_quest_full(q: &Quest, json: bool) {
+    print_quest_with_desc(q, json, DescMode::Full);
+}
+
+fn print_quest_with_desc(q: &Quest, json: bool, mode: DescMode) {
     if json {
         println!("{}", serde_json::to_string_pretty(q).unwrap());
         return;
@@ -700,7 +720,16 @@ fn print_quest(q: &Quest, json: bool) {
     if let Some(d) = &q.description
         && !d.is_empty()
     {
-        println!("           {}", d.lines().next().unwrap_or(""));
+        match mode {
+            DescMode::Preview => {
+                println!("           {}", d.lines().next().unwrap_or(""));
+            }
+            DescMode::Full => {
+                for line in d.lines() {
+                    println!("           {line}");
+                }
+            }
+        }
     }
 }
 
@@ -888,7 +917,8 @@ fn run() -> Result<()> {
                     parent_quest_id: parent_id,
                 };
                 let q = c.create_quest(body)?;
-                print_quest(&q, cli.json);
+                // multi-line description 도 그대로 보여줘 사용자가 "잘렸다" 오해 방지.
+                print_quest_full(&q, cli.json);
             }
             QuestCmd::Update {
                 slug,
@@ -957,7 +987,8 @@ fn run() -> Result<()> {
                     urgency,
                 };
                 let q = c.update_quest(id, body)?;
-                print_quest(&q, cli.json);
+                // description 변경 가능성 있음 → multi-line 전체 표시.
+                print_quest_full(&q, cli.json);
             }
             QuestCmd::Delete {
                 slug,
