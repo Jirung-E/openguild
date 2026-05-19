@@ -121,6 +121,11 @@ pub fn run() {
     let store = tauri::async_runtime::block_on(Store::open(&guild_path))
         .expect("Store::open 실패 — guild 디렉토리 손상 또는 권한 없음");
 
+    // Recent guild 자동 등록 (DEV-006).
+    if let Err(e) = openguild_core::recents::add(&guild_path) {
+        eprintln!("[openguild-gui] warn: recents 갱신 실패 — {e:#}");
+    }
+
     tauri::Builder::default()
         .manage(store)
         .invoke_handler(tauri::generate_handler![
@@ -151,6 +156,9 @@ pub fn run() {
             commands::admin_restore,
             commands::admin_check_drift,
             commands::admin_reindex,
+            // recents (DEV-006)
+            commands::list_recents,
+            commands::clear_recents,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

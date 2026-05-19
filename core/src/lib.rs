@@ -17,6 +17,7 @@ pub mod lock;
 pub mod migrate;
 pub mod models;
 pub mod ops;
+pub mod recents;
 pub mod reindex;
 pub mod repo;
 pub mod services;

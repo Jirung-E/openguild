@@ -262,3 +262,17 @@ pub async fn admin_reindex(store: State<'_, Store>) -> Result<ReindexResult, Str
             .collect(),
     })
 }
+
+// ─────────────────────── recents (DEV-006) ───────────────────────
+
+use openguild_core::recents;
+
+#[tauri::command]
+pub async fn list_recents() -> Result<Vec<recents::Recent>, String> {
+    recents::list().map_err(|e| format!("{e:#}"))
+}
+
+#[tauri::command]
+pub async fn clear_recents() -> Result<(), String> {
+    recents::clear().map_err(|e| format!("{e:#}"))
+}

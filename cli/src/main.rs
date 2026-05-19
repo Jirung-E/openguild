@@ -469,6 +469,11 @@ impl Backend {
             .context("failed to start tokio runtime")?;
         let store = rt.block_on(openguild_core::Store::open(&guild_path))?;
 
+        // Recent guild 자동 등록 — 실패해도 ops 자체엔 영향 없음 (warn 만).
+        if let Err(e) = openguild_core::recents::add(&guild_path) {
+            eprintln!("[openguild] warn: recents 갱신 실패 — {e:#}");
+        }
+
         Ok(Backend::Local(LocalBackend {
             store,
             rt,
