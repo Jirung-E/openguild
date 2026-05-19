@@ -71,28 +71,35 @@ pub struct CandidatesQuery {
 
 /// `quest list` 필터 / 정렬 / 제한.
 ///
-/// 모든 필드 Option — 미지정 시 기존 동작 (전체 alive quest, id DESC).
+/// 모든 필드 Option / bool default — 미지정 시 기존 동작 (전체 alive, id DESC).
 /// 필드 추가 시 server / cli / gui 셋 다 동시 갱신.
+///
+/// 다중 값은 콤마 구분 string — `?type=DEV,BUG`. service 에서 split.
 #[derive(Debug, Deserialize, Default, Clone)]
 #[serde(default)]
 pub struct ListQuery {
-    /// type prefix 필터 — `"DEV"` / `"BUG"` / `"REQ"` 등.
+    /// type prefix 필터 — `"DEV"` 또는 다중 `"DEV,BUG"`. 대소문자 무시.
     pub r#type: Option<String>,
-    /// status slug 필터 — `"open"` / `"in_progress"` / `"testing"` / `"done"` 등.
+    /// status 필터 — `"open"` 또는 다중 `"open,testing"`.
+    /// name_en / slug 양쪽 매칭 (대소문자 / 공백 / `_` / `-` 무시).
     pub status: Option<String>,
-    /// 정렬 키 — `"id"` (기본) / `"urgency"`.
+    /// urgency 필터 — 단일 정수 (`1`=Critical ~ `4`=Low).
+    pub urgency: Option<i64>,
+    /// **자식 quest 들** 을 보여줌 — 지정 slug 가 parent 인 직계 자식.
+    /// `--no-parent` 와 상호배타.
+    pub child_of: Option<String>,
+    /// top-level 만 (`parent_quest_id IS NULL`). `--child-of` 와 상호배타.
+    pub no_parent: bool,
+    /// 정렬 키 — 콤마 구분 다중 키 (`"urgency,id"`). 각 키마다 기본 방향
+    /// (urgency / status = ASC, updated / created / id = DESC).
+    /// 화이트리스트: id / urgency / status / updated / created. 대소문자 무시.
     pub sort: Option<String>,
+    /// 정렬 방향 전체 토글 — 모든 sort 키의 기본 방향 뒤집음.
+    pub reverse: bool,
     /// 결과 최대 행 수.
     pub limit: Option<i64>,
-}
-
-impl ListQuery {
-    pub fn is_empty(&self) -> bool {
-        self.r#type.is_none()
-            && self.status.is_none()
-            && self.sort.is_none()
-            && self.limit.is_none()
-    }
+    /// 페이지네이션 — `limit` 와 같이 사용.
+    pub offset: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]

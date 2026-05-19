@@ -324,6 +324,224 @@ async fn test_list_filter_returns_empty_when_no_match() {
     assert_eq!(body.as_array().unwrap().len(), 0);
 }
 
+// === DEV-027 보강: 빈 문자열 / sort case / multi-value / urgency / parent / no_parent / reverse / offset ===
+
+#[tokio::test]
+async fn test_list_empty_type_param_returns_all() {
+    let app = setup_with_mixed_quests().await;
+    // ?type= (빈 값) 은 필터 미지정으로 취급 → 전체.
+    let (_, body) = get(app, "/api/quests?type=").await;
+    assert_eq!(body.as_array().unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn test_list_empty_status_param_returns_all() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests?status=").await;
+    assert_eq!(body.as_array().unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn test_list_sort_case_insensitive() {
+    let app = setup_with_mixed_quests().await;
+    // ?sort=ID, ?sort=Urgency 도 통과해야 함.
+    let (s1, _) = get(app.clone(), "/api/quests?sort=ID").await;
+    assert_eq!(s1, StatusCode::OK);
+    let (s2, _) = get(app, "/api/quests?sort=URGENCY").await;
+    assert_eq!(s2, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_list_multi_type() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests?type=DEV,BUG").await;
+    assert_eq!(body.as_array().unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn test_list_multi_type_one_unknown() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests?type=DEV,REQ").await;
+    // DEV 2개만 매칭 (REQ 는 quest 없음).
+    assert_eq!(body.as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn test_list_multi_status() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests?status=open,done").await;
+    assert_eq!(body.as_array().unwrap().len(), 3); // 전부 open or done
+}
+
+#[tokio::test]
+async fn test_list_urgency_single() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests?urgency=1").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0]["quest_id"], "BUG-001"); // urgency 1 = critical
+}
+
+#[tokio::test]
+async fn test_list_urgency_out_of_range() {
+    let app = setup_with_mixed_quests().await;
+    let (s, _) = get(app, "/api/quests?urgency=5").await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_list_no_parent_filter() {
+    let app = setup_with_mixed_quests().await;
+    // DEV-002 의 sub 로 DEV-003 만들기.
+    let dev2: i64 = {
+        let (_, b) = get(app.clone(), "/api/quests?type=DEV&sort=id").await;
+        // sort=id default DESC, DEV-002 가 첫 (마지막 만든 BUG-001 제외).
+        // 더 명확히: 'dev-done' title 찾기.
+        b.as_array().unwrap()
+            .iter()
+            .find(|q| q["title"] == "dev-done")
+            .unwrap()["id"]
+            .as_i64()
+            .unwrap()
+    };
+    post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "sub-of-dev2", "status_id": 1, "parent_quest_id": dev2 })
+    ).await;
+
+    // ?no_parent=true → sub 제외, 원래 3개만.
+    let (_, body) = get(app, "/api/quests?no_parent=true").await;
+    assert_eq!(body.as_array().unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn test_list_child_of_slug() {
+    let app = setup_with_mixed_quests().await;
+    let parent_id: i64 = {
+        let (_, b) = get(app.clone(), "/api/quests").await;
+        b.as_array().unwrap()
+            .iter()
+            .find(|q| q["title"] == "dev-open")
+            .unwrap()["id"]
+            .as_i64()
+            .unwrap()
+    };
+    // dev-open 밑에 sub 추가.
+    post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "sub-A", "status_id": 1, "parent_quest_id": parent_id })
+    ).await;
+    post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "sub-B", "status_id": 1, "parent_quest_id": parent_id })
+    ).await;
+
+    // dev-open 의 slug 는 DEV-001 (mixed setup 의 첫 quest).
+    let (_, body) = get(app, "/api/quests?child_of=DEV-001").await;
+    assert_eq!(body.as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn test_list_child_of_slug_not_found() {
+    let app = setup_with_mixed_quests().await;
+    let (s, _) = get(app, "/api/quests?child_of=DEV-999").await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_list_child_of_and_no_parent_mutually_exclusive() {
+    let app = setup_with_mixed_quests().await;
+    let (s, _) = get(app, "/api/quests?child_of=DEV-001&no_parent=true").await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_list_reverse_default_sort() {
+    let app = setup_with_mixed_quests().await;
+    // 기본 id DESC. reverse → id ASC.
+    let (_, body) = get(app, "/api/quests?reverse=true").await;
+    let arr = body.as_array().unwrap();
+    // 첫 quest 가 가장 먼저 만든 dev-open (id 1).
+    assert_eq!(arr[0]["title"], "dev-open");
+}
+
+#[tokio::test]
+async fn test_list_reverse_urgency_sort() {
+    let app = setup_with_mixed_quests().await;
+    // sort=urgency default ASC (1 먼저). reverse → DESC (4 먼저).
+    let (_, body) = get(app, "/api/quests?sort=urgency&reverse=true").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr[0]["urgency"], 4);
+}
+
+#[tokio::test]
+async fn test_list_sort_status() {
+    let app = setup_with_mixed_quests().await;
+    let (s, _) = get(app, "/api/quests?sort=status").await;
+    assert_eq!(s, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_list_sort_updated() {
+    let app = setup_with_mixed_quests().await;
+    let (s, _) = get(app, "/api/quests?sort=updated").await;
+    assert_eq!(s, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_list_sort_created() {
+    let app = setup_with_mixed_quests().await;
+    let (s, _) = get(app, "/api/quests?sort=created").await;
+    assert_eq!(s, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_list_sort_multi_csv() {
+    let app = setup_with_mixed_quests().await;
+    // urgency,id — urgency ASC 우선, 동일 urgency 내 id DESC tiebreaker.
+    let (_, body) = get(app, "/api/quests?sort=urgency,id").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr[0]["quest_id"], "BUG-001"); // urgency=1
+    assert_eq!(arr[1]["quest_id"], "DEV-001"); // urgency=2
+    assert_eq!(arr[2]["quest_id"], "DEV-002"); // urgency=4
+}
+
+#[tokio::test]
+async fn test_list_sort_multi_with_reverse() {
+    let app = setup_with_mixed_quests().await;
+    // urgency,id + reverse → urgency DESC, id ASC.
+    let (_, body) = get(app, "/api/quests?sort=urgency,id&reverse=true").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr[0]["urgency"], 4);
+    assert_eq!(arr[2]["urgency"], 1);
+}
+
+#[tokio::test]
+async fn test_list_sort_invalid_key_in_multi() {
+    let app = setup_with_mixed_quests().await;
+    let (s, _) = get(app, "/api/quests?sort=urgency,badkey").await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_list_offset() {
+    let app = setup_with_mixed_quests().await;
+    // 3개 quest, offset 1 → 2개 반환.
+    let (_, body) = get(app, "/api/quests?offset=1").await;
+    assert_eq!(body.as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn test_list_offset_with_limit() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests?limit=1&offset=1").await;
+    assert_eq!(body.as_array().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn test_list_offset_negative_bad_request() {
+    let app = setup_with_mixed_quests().await;
+    let (s, _) = get(app, "/api/quests?offset=-1").await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+}
+
 /// 테스트 전용 minimal URL encoding (공백 → %20).
 fn urlencode_test(s: &str) -> String {
     s.bytes()

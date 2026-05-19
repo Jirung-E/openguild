@@ -79,21 +79,49 @@ enum Command {
 
 #[derive(Subcommand)]
 enum QuestCmd {
-    /// 퀘스트 목록 (인자 없으면 전체, alive, id DESC).
+    /// 퀘스트 목록 (인자 없으면 전체 alive, id DESC).
     List {
-        /// 타입 prefix 필터 — `DEV` / `BUG` / `REQ`. 대소문자 무시.
-        #[arg(long = "type", value_name = "PREFIX")]
-        type_prefix: Option<String>,
-        /// 상태 필터 — name_en (`Open` / `In Progress` / ...) 또는 slug (`open` /
-        /// `in_progress` / `in-progress`). 대소문자 / 공백 / `_` / `-` 무시.
+        /// 타입 prefix 필터 — `DEV` / `BUG` / `REQ`. 다중 입력 가능:
+        ///   `--type DEV BUG` (공백), `--type DEV,BUG` (콤마), `--type DEV --type BUG`.
+        /// 대소문자 무시.
+        #[arg(long = "type", value_name = "PREFIX",
+              value_delimiter = ',', num_args = 1..)]
+        type_prefix: Vec<String>,
+        /// 상태 필터 — name_en (`Open` / `In Progress`) 또는 slug (`open` /
+        /// `in_progress` / `in-progress`). 다중 입력: 공백 / 콤마 / 반복.
+        /// 대소문자 / 공백 / `_` / `-` 무시.
+        #[arg(long, value_delimiter = ',', num_args = 1..)]
+        status: Vec<String>,
+        /// urgency 필터 — 1=Critical, 4=Low.
         #[arg(long)]
-        status: Option<String>,
-        /// 정렬 키 — `id` (기본, 최신 먼저) 또는 `urgency` (1=Critical 먼저).
+        urgency: Option<i64>,
+        /// **자식** 표시 — 지정 quest slug 가 parent 인 직계 자식들만 보여줌.
+        /// (`--no-parent` 와 상호배타.)
+        #[arg(long = "child-of", value_name = "SLUG", conflicts_with = "no_parent")]
+        child_of: Option<String>,
+        /// top-level (parent 없는) quest 만.
         #[arg(long)]
-        sort: Option<String>,
+        no_parent: bool,
+        /// 정렬 키 — `id` (기본) / `urgency` / `status` / `updated` / `created`.
+        /// 다중 입력 가능 (`--sort urgency,id` 또는 `--sort urgency id`). 대소문자 무시.
+        #[arg(long, value_delimiter = ',', num_args = 1..)]
+        sort: Vec<String>,
+        /// 정렬 방향 전체 토글 — 모든 sort 키의 기본 방향 뒤집음.
+        #[arg(long)]
+        reverse: bool,
         /// 결과 최대 행 수.
         #[arg(long)]
         limit: Option<i64>,
+        /// 페이지네이션 offset.
+        #[arg(long)]
+        offset: Option<i64>,
+        /// quest_id (slug) 만 한 줄씩 출력 — `xargs` / pipe 친화.
+        /// `--count` 와 상호배타. `--json` 과는 무시되고 정상 JSON 출력.
+        #[arg(long, conflicts_with = "count")]
+        id_only: bool,
+        /// 매칭 개수만 정수로 출력. `--id-only` 와 상호배타.
+        #[arg(long)]
+        count: bool,
     },
     /// 퀘스트 상세 (슬러그: DEV-001)
     Show { slug: String },
@@ -696,8 +724,17 @@ fn match_status_id(input: &str, statuses: &[QuestStatus]) -> Option<i64> {
         .map(|s| s.id)
 }
 
-/// `ListQuery` → `?type=DEV&status=open&sort=urgency&limit=5` 형태의
-/// urlencoded querystring. 모든 필드 None 이면 빈 문자열 반환.
+/// `Vec<String>` (clap 다중 값) → `Some("a,b,c")` 또는 빈 Vec 이면 None.
+fn vec_to_csv(v: Vec<String>) -> Option<String> {
+    if v.is_empty() {
+        None
+    } else {
+        Some(v.join(","))
+    }
+}
+
+/// `ListQuery` → `?type=DEV,BUG&status=open&urgency=2&...` urlencoded querystring.
+/// 모든 필드 미지정이면 빈 문자열 반환.
 fn list_query_to_querystring(q: &ListQuery) -> String {
     let mut parts: Vec<String> = Vec::new();
     if let Some(t) = &q.r#type {
@@ -706,11 +743,26 @@ fn list_query_to_querystring(q: &ListQuery) -> String {
     if let Some(s) = &q.status {
         parts.push(format!("status={}", urlencode(s)));
     }
+    if let Some(u) = q.urgency {
+        parts.push(format!("urgency={u}"));
+    }
+    if let Some(c) = &q.child_of {
+        parts.push(format!("child_of={}", urlencode(c)));
+    }
+    if q.no_parent {
+        parts.push("no_parent=true".into());
+    }
     if let Some(s) = &q.sort {
         parts.push(format!("sort={}", urlencode(s)));
     }
+    if q.reverse {
+        parts.push("reverse=true".into());
+    }
     if let Some(l) = q.limit {
         parts.push(format!("limit={l}"));
+    }
+    if let Some(o) = q.offset {
+        parts.push(format!("offset={o}"));
     }
     parts.join("&")
 }
@@ -977,17 +1029,37 @@ fn run() -> Result<()> {
             QuestCmd::List {
                 type_prefix,
                 status,
+                urgency,
+                child_of,
+                no_parent,
                 sort,
+                reverse,
                 limit,
+                offset,
+                id_only,
+                count,
             } => {
                 let q = ListQuery {
-                    r#type: type_prefix,
-                    status,
-                    sort,
+                    r#type: vec_to_csv(type_prefix),
+                    status: vec_to_csv(status),
+                    urgency,
+                    child_of,
+                    no_parent,
+                    sort: vec_to_csv(sort),
+                    reverse,
                     limit,
+                    offset,
                 };
                 let quests = c.list_quests(&q)?;
-                print_quest_list(&quests, cli.json);
+                if count {
+                    println!("{}", quests.len());
+                } else if id_only {
+                    for q in &quests {
+                        println!("{}", q.quest_id);
+                    }
+                } else {
+                    print_quest_list(&quests, cli.json);
+                }
             }
             QuestCmd::Show { slug } => {
                 let d = c.quest_by_slug(&slug)?;
@@ -1551,57 +1623,168 @@ mod tests {
                 sub: QuestCmd::List {
                     type_prefix,
                     status,
+                    urgency,
+                    child_of,
+                    no_parent,
                     sort,
+                    reverse,
                     limit,
+                    offset,
+                    id_only,
+                    count,
                 },
             } => {
-                assert!(type_prefix.is_none());
-                assert!(status.is_none());
-                assert!(sort.is_none());
+                assert!(type_prefix.is_empty());
+                assert!(status.is_empty());
+                assert!(urgency.is_none());
+                assert!(child_of.is_none());
+                assert!(!no_parent);
+                assert!(sort.is_empty());
+                assert!(!reverse);
                 assert!(limit.is_none());
+                assert!(offset.is_none());
+                assert!(!id_only);
+                assert!(!count);
             }
             _ => panic!("expected QuestCmd::List"),
         }
         assert!(!cli.json);
-        assert!(cli.remote.is_none());
-        assert!(cli.guild.is_none());
     }
 
     // === DEV-027: quest list 필터 / 정렬 / limit ===
 
     #[test]
-    fn cli_parse_list_type_filter() {
+    fn cli_parse_list_type_single() {
         let cli = Cli::try_parse_from([
             "openguild", "quest", "list", "--type", "DEV",
         ]).unwrap();
         match cli.command {
             Command::Quest { sub: QuestCmd::List { type_prefix, .. } } => {
-                assert_eq!(type_prefix.as_deref(), Some("DEV"));
+                assert_eq!(type_prefix, vec!["DEV"]);
             }
             _ => panic!(),
         }
     }
 
     #[test]
-    fn cli_parse_list_all_options() {
+    fn cli_parse_list_type_multi_repeated() {
+        // --type DEV --type BUG (repeated)
+        let cli = Cli::try_parse_from([
+            "openguild", "quest", "list", "--type", "DEV", "--type", "BUG",
+        ]).unwrap();
+        match cli.command {
+            Command::Quest { sub: QuestCmd::List { type_prefix, .. } } => {
+                assert_eq!(type_prefix, vec!["DEV", "BUG"]);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn cli_parse_list_type_multi_csv() {
+        // --type DEV,BUG (comma-delimited)
+        let cli = Cli::try_parse_from([
+            "openguild", "quest", "list", "--type", "DEV,BUG",
+        ]).unwrap();
+        match cli.command {
+            Command::Quest { sub: QuestCmd::List { type_prefix, .. } } => {
+                assert_eq!(type_prefix, vec!["DEV", "BUG"]);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn cli_parse_list_type_multi_whitespace() {
+        // --type DEV BUG (공백 구분, num_args(1..)).
+        let cli = Cli::try_parse_from([
+            "openguild", "quest", "list", "--type", "DEV", "BUG",
+        ]).unwrap();
+        match cli.command {
+            Command::Quest { sub: QuestCmd::List { type_prefix, .. } } => {
+                assert_eq!(type_prefix, vec!["DEV", "BUG"]);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn cli_parse_list_sort_multi_csv() {
+        let cli = Cli::try_parse_from([
+            "openguild", "quest", "list", "--sort", "urgency,id",
+        ]).unwrap();
+        match cli.command {
+            Command::Quest { sub: QuestCmd::List { sort, .. } } => {
+                assert_eq!(sort, vec!["urgency", "id"]);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn cli_parse_list_sort_multi_whitespace() {
+        let cli = Cli::try_parse_from([
+            "openguild", "quest", "list", "--sort", "urgency", "id",
+        ]).unwrap();
+        match cli.command {
+            Command::Quest { sub: QuestCmd::List { sort, .. } } => {
+                assert_eq!(sort, vec!["urgency", "id"]);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn cli_parse_list_all_new_options() {
         let cli = Cli::try_parse_from([
             "openguild", "quest", "list",
             "--type", "BUG",
             "--status", "in_progress",
+            "--urgency", "2",
+            "--child-of", "DEV-001",
             "--sort", "urgency",
+            "--reverse",
             "--limit", "5",
+            "--offset", "10",
         ]).unwrap();
         match cli.command {
             Command::Quest {
-                sub: QuestCmd::List { type_prefix, status, sort, limit },
+                sub: QuestCmd::List {
+                    type_prefix, status, urgency, child_of, no_parent,
+                    sort, reverse, limit, offset, id_only, count,
+                },
             } => {
-                assert_eq!(type_prefix.as_deref(), Some("BUG"));
-                assert_eq!(status.as_deref(), Some("in_progress"));
-                assert_eq!(sort.as_deref(), Some("urgency"));
+                assert_eq!(type_prefix, vec!["BUG"]);
+                assert_eq!(status, vec!["in_progress"]);
+                assert_eq!(urgency, Some(2));
+                assert_eq!(child_of.as_deref(), Some("DEV-001"));
+                assert!(!no_parent);
+                assert_eq!(sort, vec!["urgency"]);
+                assert!(reverse);
                 assert_eq!(limit, Some(5));
+                assert_eq!(offset, Some(10));
+                assert!(!id_only);
+                assert!(!count);
             }
             _ => panic!(),
         }
+    }
+
+    #[test]
+    fn cli_parse_list_child_of_and_no_parent_conflict() {
+        // clap 가 conflicts_with 로 자동 에러.
+        let res = Cli::try_parse_from([
+            "openguild", "quest", "list", "--child-of", "DEV-001", "--no-parent",
+        ]);
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn cli_parse_list_id_only_and_count_conflict() {
+        let res = Cli::try_parse_from([
+            "openguild", "quest", "list", "--id-only", "--count",
+        ]);
+        assert!(res.is_err());
     }
 
     // === querystring 빌더 ===
@@ -1622,16 +1805,48 @@ mod tests {
     }
 
     #[test]
-    fn querystring_combined() {
+    fn querystring_multi_type_csv() {
+        let q = ListQuery {
+            r#type: Some("DEV,BUG".into()),
+            ..Default::default()
+        };
+        assert_eq!(list_query_to_querystring(&q), "type=DEV%2CBUG");
+    }
+
+    #[test]
+    fn querystring_multi_sort_csv() {
+        let q = ListQuery {
+            sort: Some("urgency,id".into()),
+            ..Default::default()
+        };
+        assert_eq!(list_query_to_querystring(&q), "sort=urgency%2Cid");
+    }
+
+    #[test]
+    fn querystring_all_new_fields() {
         let q = ListQuery {
             r#type: Some("BUG".into()),
             status: Some("in_progress".into()),
+            urgency: Some(2),
+            child_of: Some("DEV-001".into()),
+            no_parent: false,
             sort: Some("urgency".into()),
+            reverse: true,
             limit: Some(5),
+            offset: Some(10),
         };
         let qs = list_query_to_querystring(&q);
-        // 순서는 결정적 — type → status → sort → limit.
-        assert_eq!(qs, "type=BUG&status=in_progress&sort=urgency&limit=5");
+        assert_eq!(
+            qs,
+            "type=BUG&status=in_progress&urgency=2&child_of=DEV-001\
+             &sort=urgency&reverse=true&limit=5&offset=10"
+        );
+    }
+
+    #[test]
+    fn querystring_no_parent_flag() {
+        let q = ListQuery { no_parent: true, ..Default::default() };
+        assert_eq!(list_query_to_querystring(&q), "no_parent=true");
     }
 
     #[test]
@@ -1641,6 +1856,16 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(list_query_to_querystring(&q), "status=In%20Progress");
+    }
+
+    #[test]
+    fn vec_to_csv_empty() {
+        assert_eq!(vec_to_csv(Vec::new()), None);
+    }
+
+    #[test]
+    fn vec_to_csv_joins() {
+        assert_eq!(vec_to_csv(vec!["DEV".into(), "BUG".into()]), Some("DEV,BUG".into()));
     }
 
     #[test]

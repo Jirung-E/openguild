@@ -39,39 +39,117 @@ pub const QUEST_SELECT: &str = r#"
 
 // ─────────────────────── 조회 ───────────────────────
 
-/// 필터 / 정렬 / 제한 모두 옵션. 미지정 시 기존 동작 (전체 alive, id DESC).
+/// 필터 / 정렬 / 제한 옵션. 미지정 시 기존 동작 (전체 alive, id DESC).
 ///
 /// **fuzzy match** (`quest_statuses` 에 slug 컬럼 없음):
 /// - type: `qt.prefix` 와 대소문자 무시 비교.
 /// - status: `qs.name_en` 을 lower + space/dash → underscore 정규화 후 비교.
-///   (`"open"` / `"Open"` / `"in progress"` / `"in-progress"` / `"in_progress"`
-///   전부 매칭.)
 ///
-/// 정렬은 화이트리스트 매핑 — SQL injection 방어.
+/// 다중 값: 콤마 구분 (`"DEV,BUG"`). 빈 문자열은 필터 미지정으로 취급.
+/// 정렬 / 방향은 화이트리스트 매핑 — SQL injection 방어.
 pub async fn list(pool: &SqlitePool, query: &ListQuery) -> AppResult<Vec<QuestRow>> {
     let mut sql = format!("{QUEST_SELECT} WHERE q.deleted_at IS NULL");
 
-    if query.r#type.is_some() {
-        sql.push_str(" AND UPPER(qt.prefix) = UPPER(?)");
+    // ── 다중 값 필터: 콤마 split, 빈 entry 제거 ──
+    let types = split_csv(&query.r#type);
+    let statuses = split_csv(&query.status);
+
+    if !types.is_empty() {
+        let placeholders = vec!["UPPER(?)"; types.len()].join(", ");
+        sql.push_str(&format!(" AND UPPER(qt.prefix) IN ({placeholders})"));
     }
-    if query.status.is_some() {
-        sql.push_str(
-            " AND REPLACE(REPLACE(LOWER(qs.name_en), ' ', '_'), '-', '_') \
-             = REPLACE(REPLACE(LOWER(?), ' ', '_'), '-', '_')",
-        );
+    if !statuses.is_empty() {
+        let one = "REPLACE(REPLACE(LOWER(?), ' ', '_'), '-', '_')";
+        let placeholders = vec![one; statuses.len()].join(", ");
+        sql.push_str(&format!(
+            " AND REPLACE(REPLACE(LOWER(qs.name_en), ' ', '_'), '-', '_') IN ({placeholders})"
+        ));
     }
 
-    // 정렬: 화이트리스트.
-    let order = match query.sort.as_deref() {
-        Some("urgency") => " ORDER BY q.urgency ASC, q.id DESC",
-        Some("id") | None => " ORDER BY q.id DESC",
-        Some(other) => {
+    if let Some(u) = query.urgency {
+        if !(1..=4).contains(&u) {
             return Err(AppError::BadRequest(format!(
-                "unsupported sort key '{other}' — expected 'id' or 'urgency'"
+                "urgency must be 1..=4, got {u}"
             )));
         }
+        sql.push_str(" AND q.urgency = ?");
+    }
+
+    // child_of / no_parent 상호배타
+    if query.child_of.is_some() && query.no_parent {
+        return Err(AppError::BadRequest(
+            "--child-of and --no-parent are mutually exclusive".into(),
+        ));
+    }
+    if query.no_parent {
+        sql.push_str(" AND q.parent_quest_id IS NULL");
+    }
+    let parent_id: Option<i64> = if let Some(slug) = trimmed_opt(&query.child_of) {
+        // slug → id 조회 (그 quest 가 parent 인 자식들 검색).
+        let (prefix, num_str) = slug
+            .split_once('-')
+            .ok_or_else(|| AppError::BadRequest(format!("invalid --child-of slug: {slug}")))?;
+        let number: i64 = num_str
+            .parse()
+            .map_err(|_| AppError::BadRequest(format!("invalid --child-of slug: {slug}")))?;
+        let id: Option<i64> = sqlx::query_scalar(
+            "SELECT q.id FROM quests q JOIN quest_types qt ON q.quest_type_id = qt.id
+             WHERE UPPER(qt.prefix) = UPPER(?) AND q.number = ? AND q.deleted_at IS NULL",
+        )
+        .bind(prefix)
+        .bind(number)
+        .fetch_optional(pool)
+        .await?;
+        let id = id.ok_or_else(|| AppError::NotFound(format!("quest {slug} not found")))?;
+        sql.push_str(" AND q.parent_quest_id = ?");
+        Some(id)
+    } else {
+        None
     };
-    sql.push_str(order);
+
+    // ── 정렬: 화이트리스트, 다중 키 지원, 방향 전체 토글 ──
+    let sort_keys = split_csv(&query.sort);
+    let resolved_keys: Vec<(&'static str, bool)> = if sort_keys.is_empty() {
+        vec![("id", false)] // default
+    } else {
+        sort_keys
+            .iter()
+            .map(|k| match k.to_lowercase().as_str() {
+                "urgency" => Ok(("urgency", true)),
+                "status" => Ok(("status", true)),
+                "updated" => Ok(("updated", false)),
+                "created" => Ok(("created", false)),
+                "id" => Ok(("id", false)),
+                other => Err(AppError::BadRequest(format!(
+                    "unsupported sort key '{other}' — expected one of id/urgency/status/updated/created"
+                ))),
+            })
+            .collect::<AppResult<Vec<_>>>()?
+    };
+
+    let order_parts: Vec<String> = resolved_keys
+        .iter()
+        .map(|(key, asc_default)| {
+            let asc = if query.reverse { !asc_default } else { *asc_default };
+            let dir = if asc { "ASC" } else { "DESC" };
+            let col = match *key {
+                "urgency" => "q.urgency",
+                "status" => "qs.sort_order",
+                "updated" => "q.updated_at",
+                "created" => "q.created_at",
+                _ => "q.id",
+            };
+            format!("{col} {dir}")
+        })
+        .collect();
+    // 마지막 tiebreaker 로 q.id (안정 정렬). 이미 sort key 에 id 있으면 중복 안 함.
+    let has_id = resolved_keys.iter().any(|(k, _)| *k == "id");
+    let order = if has_id {
+        order_parts.join(", ")
+    } else {
+        format!("{}, q.id DESC", order_parts.join(", "))
+    };
+    sql.push_str(&format!(" ORDER BY {order}"));
 
     if let Some(limit) = query.limit {
         if limit < 0 {
@@ -79,16 +157,48 @@ pub async fn list(pool: &SqlitePool, query: &ListQuery) -> AppResult<Vec<QuestRo
         }
         sql.push_str(&format!(" LIMIT {limit}"));
     }
+    if let Some(offset) = query.offset {
+        if offset < 0 {
+            return Err(AppError::BadRequest("offset must be non-negative".into()));
+        }
+        if query.limit.is_none() {
+            // SQLite 의 LIMIT 없는 OFFSET 지원 위해 큰 LIMIT 부여.
+            sql.push_str(" LIMIT -1");
+        }
+        sql.push_str(&format!(" OFFSET {offset}"));
+    }
 
     let mut q = sqlx::query_as::<_, QuestRow>(&sql);
-    if let Some(t) = &query.r#type {
+    for t in &types {
         q = q.bind(t);
     }
-    if let Some(s) = &query.status {
+    for s in &statuses {
         q = q.bind(s);
+    }
+    if let Some(u) = query.urgency {
+        q = q.bind(u);
+    }
+    if let Some(pid) = parent_id {
+        q = q.bind(pid);
     }
     let quests = q.fetch_all(pool).await?;
     Ok(quests)
+}
+
+/// 콤마 구분 string → Vec — 빈 entry / whitespace-only 제거.
+/// 빈 문자열 (`?type=`) 또는 None 둘 다 빈 Vec 반환 (= 필터 미지정).
+fn split_csv(s: &Option<String>) -> Vec<String> {
+    let Some(raw) = s else { return Vec::new() };
+    raw.split(',')
+        .map(|p| p.trim())
+        .filter(|p| !p.is_empty())
+        .map(|p| p.to_string())
+        .collect()
+}
+
+/// Option<String> 의 trim 후 빈 문자열 → None.
+fn trimmed_opt(s: &Option<String>) -> Option<&str> {
+    s.as_deref().map(str::trim).filter(|s| !s.is_empty())
 }
 
 pub async fn list_deleted(pool: &SqlitePool) -> AppResult<Vec<QuestRow>> {
