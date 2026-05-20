@@ -469,6 +469,83 @@ async fn test_list_urgency_empty_string_no_filter() {
     assert_eq!(body.as_array().unwrap().len(), 3); // 미지정 동일
 }
 
+// === DEV-029: 관계 필터 (has-prereq / has-sub) ===
+
+async fn setup_with_relations() -> Router {
+    let app = setup().await;
+    // q1, q2 만 생성. q2 의 parent = q1. q3 추가 후 q3 prereq q1.
+    let (_, q1) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "q1-leaf-parent", "status_id": 1 })).await;
+    let q1_id = q1["id"].as_i64().unwrap();
+    let (_, _q2) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "q2-child", "status_id": 1, "parent_quest_id": q1_id })).await;
+    let (_, q3) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "q3-has-prereq", "status_id": 1 })).await;
+    let q3_id = q3["id"].as_i64().unwrap();
+    post(app.clone(),
+        &format!("/api/quests/{q3_id}/prerequisites"),
+        json!({ "prerequisite_id": q1_id })).await;
+    app
+}
+
+#[tokio::test]
+async fn test_list_has_prereq() {
+    let app = setup_with_relations().await;
+    let (_, body) = get(app, "/api/quests?has_prereq=true").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0]["title"], "q3-has-prereq");
+}
+
+#[tokio::test]
+async fn test_list_no_prereq() {
+    let app = setup_with_relations().await;
+    let (_, body) = get(app, "/api/quests?no_prereq=true").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 2); // q1, q2
+}
+
+#[tokio::test]
+async fn test_list_has_sub() {
+    let app = setup_with_relations().await;
+    let (_, body) = get(app, "/api/quests?has_sub=true").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0]["title"], "q1-leaf-parent");
+}
+
+#[tokio::test]
+async fn test_list_no_sub() {
+    let app = setup_with_relations().await;
+    let (_, body) = get(app, "/api/quests?no_sub=true").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 2); // q2, q3 (둘 다 sub 없음)
+}
+
+#[tokio::test]
+async fn test_list_no_prereq_and_no_sub_combined() {
+    let app = setup_with_relations().await;
+    // q2: parent 있지만 prereq 없음, sub 없음
+    let (_, body) = get(app, "/api/quests?no_prereq=true&no_sub=true").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0]["title"], "q2-child");
+}
+
+#[tokio::test]
+async fn test_list_has_prereq_and_no_prereq_mutually_exclusive() {
+    let app = setup_with_relations().await;
+    let (s, _) = get(app, "/api/quests?has_prereq=true&no_prereq=true").await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_list_has_sub_and_no_sub_mutually_exclusive() {
+    let app = setup_with_relations().await;
+    let (s, _) = get(app, "/api/quests?has_sub=true&no_sub=true").await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+}
+
 #[tokio::test]
 async fn test_list_no_parent_filter() {
     let app = setup_with_mixed_quests().await;

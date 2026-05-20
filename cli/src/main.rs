@@ -114,6 +114,18 @@ enum QuestCmd {
         /// top-level (parent 없는) quest 만.
         #[arg(long)]
         no_parent: bool,
+        /// 선행 quest 가 1개 이상 있는 quest 만.
+        #[arg(long = "has-prereq", conflicts_with = "no_prereq")]
+        has_prereq: bool,
+        /// 선행 quest 가 없는 quest 만.
+        #[arg(long = "no-prereq")]
+        no_prereq: bool,
+        /// 서브 quest 가 1개 이상 있는 quest 만.
+        #[arg(long = "has-sub", conflicts_with = "no_sub")]
+        has_sub: bool,
+        /// 서브 quest 가 없는 leaf quest 만.
+        #[arg(long = "no-sub")]
+        no_sub: bool,
         /// 정렬 키 — `id` (기본) / `urgency` / `status` / `updated` / `created`.
         /// 다중 입력 가능 (`--sort urgency,id` 또는 `--sort urgency id`). 대소문자 무시.
         #[arg(long, value_delimiter = ',', num_args = 1..)]
@@ -781,6 +793,18 @@ fn list_query_to_querystring(q: &ListQuery) -> String {
     if q.no_parent {
         parts.push("no_parent=true".into());
     }
+    if q.has_prereq {
+        parts.push("has_prereq=true".into());
+    }
+    if q.no_prereq {
+        parts.push("no_prereq=true".into());
+    }
+    if q.has_sub {
+        parts.push("has_sub=true".into());
+    }
+    if q.no_sub {
+        parts.push("no_sub=true".into());
+    }
     if let Some(s) = &q.sort {
         parts.push(format!("sort={}", urlencode(s)));
     }
@@ -1065,6 +1089,10 @@ fn run() -> Result<()> {
                 updated_before,
                 child_of,
                 no_parent,
+                has_prereq,
+                no_prereq,
+                has_sub,
+                no_sub,
                 sort,
                 reverse,
                 limit,
@@ -1082,6 +1110,10 @@ fn run() -> Result<()> {
                     updated_before,
                     child_of,
                     no_parent,
+                    has_prereq,
+                    no_prereq,
+                    has_sub,
+                    no_sub,
                     sort: vec_to_csv(sort),
                     reverse,
                     limit,
@@ -1667,6 +1699,10 @@ mod tests {
                     updated_before,
                     child_of,
                     no_parent,
+                    has_prereq,
+                    no_prereq,
+                    has_sub,
+                    no_sub,
                     sort,
                     reverse,
                     limit,
@@ -1684,6 +1720,10 @@ mod tests {
                 assert!(updated_before.is_none());
                 assert!(child_of.is_none());
                 assert!(!no_parent);
+                assert!(!has_prereq);
+                assert!(!no_prereq);
+                assert!(!has_sub);
+                assert!(!no_sub);
                 assert!(sort.is_empty());
                 assert!(!reverse);
                 assert!(limit.is_none());
@@ -1798,6 +1838,7 @@ mod tests {
                     type_prefix, status, urgency,
                     created_after, created_before, updated_after, updated_before,
                     child_of, no_parent,
+                    has_prereq, no_prereq, has_sub, no_sub,
                     sort, reverse, limit, offset, id_only, count,
                 },
             } => {
@@ -1810,6 +1851,10 @@ mod tests {
                 assert!(updated_before.is_none());
                 assert_eq!(child_of.as_deref(), Some("DEV-001"));
                 assert!(!no_parent);
+                assert!(!has_prereq);
+                assert!(!no_prereq);
+                assert!(!has_sub);
+                assert!(!no_sub);
                 assert_eq!(sort, vec!["urgency"]);
                 assert!(reverse);
                 assert_eq!(limit, Some(5));
@@ -1885,6 +1930,10 @@ mod tests {
             updated_before: None,
             child_of: Some("DEV-001".into()),
             no_parent: false,
+            has_prereq: false,
+            no_prereq: false,
+            has_sub: false,
+            no_sub: false,
             sort: Some("urgency".into()),
             reverse: true,
             limit: Some(5),

@@ -87,6 +87,38 @@ pub async fn list(pool: &SqlitePool, query: &ListQuery) -> AppResult<Vec<QuestRo
         sql.push_str(" AND q.updated_at <= ?");
     }
 
+    // 관계 필터 — 상호배타 검증.
+    if query.has_prereq && query.no_prereq {
+        return Err(AppError::BadRequest(
+            "--has-prereq and --no-prereq are mutually exclusive".into(),
+        ));
+    }
+    if query.has_sub && query.no_sub {
+        return Err(AppError::BadRequest(
+            "--has-sub and --no-sub are mutually exclusive".into(),
+        ));
+    }
+    if query.has_prereq {
+        sql.push_str(
+            " AND EXISTS (SELECT 1 FROM quest_dependencies d WHERE d.quest_id = q.id)",
+        );
+    }
+    if query.no_prereq {
+        sql.push_str(
+            " AND NOT EXISTS (SELECT 1 FROM quest_dependencies d WHERE d.quest_id = q.id)",
+        );
+    }
+    if query.has_sub {
+        sql.push_str(
+            " AND EXISTS (SELECT 1 FROM quests s WHERE s.parent_quest_id = q.id AND s.deleted_at IS NULL)",
+        );
+    }
+    if query.no_sub {
+        sql.push_str(
+            " AND NOT EXISTS (SELECT 1 FROM quests s WHERE s.parent_quest_id = q.id AND s.deleted_at IS NULL)",
+        );
+    }
+
     // child_of / no_parent 상호배타
     if query.child_of.is_some() && query.no_parent {
         return Err(AppError::BadRequest(

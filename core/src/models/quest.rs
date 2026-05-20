@@ -94,6 +94,14 @@ pub struct ListQuery {
     pub updated_after: Option<String>,
     /// `updated_at <= ?`.
     pub updated_before: Option<String>,
+    /// 선행 quest 가 1개 이상 있는 quest 만. `no_prereq` 와 상호배타.
+    pub has_prereq: bool,
+    /// 선행 quest 가 없는 quest 만. `has_prereq` 와 상호배타.
+    pub no_prereq: bool,
+    /// 서브 quest 가 1개 이상 있는 quest 만. `no_sub` 와 상호배타.
+    pub has_sub: bool,
+    /// 서브 quest 가 없는 leaf quest 만. `has_sub` 와 상호배타.
+    pub no_sub: bool,
     /// **자식 quest 들** 을 보여줌 — 지정 slug 가 parent 인 직계 자식.
     /// `--no-parent` 와 상호배타.
     pub child_of: Option<String>,
