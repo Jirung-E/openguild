@@ -140,6 +140,7 @@ pub fn run() {
             commands::list_quest_candidates,
             commands::list_quest_positions,
             commands::list_quest_dependencies,
+            commands::list_quest_history,
             // quests (mutation)
             commands::create_quest,
             commands::update_quest,

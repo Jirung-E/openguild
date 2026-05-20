@@ -9,8 +9,8 @@ use std::collections::HashSet;
 use crate::error::{AppError, AppResult};
 use crate::models::{
     AddPrerequisiteRequest, ChangeParentRequest, ChangeStatusRequest, CreateQuestRequest,
-    ListQuery, QuestDependency, QuestDetail, QuestPosition, QuestRow, UpdatePositionRequest,
-    UpdateQuestRequest,
+    ListQuery, QuestDependency, QuestDetail, QuestHistoryEntry, QuestPosition, QuestRow,
+    UpdatePositionRequest, UpdateQuestRequest,
 };
 
 /// type / status 를 JOIN 한 공통 SELECT.
@@ -387,6 +387,18 @@ pub async fn list_positions(pool: &SqlitePool) -> AppResult<Vec<QuestPosition>> 
     .fetch_all(pool)
     .await?;
     Ok(positions)
+}
+
+/// DEV-013: quest 의 변경 이력 (최신 → 과거 순).
+pub async fn list_history(pool: &SqlitePool, quest_id: i64) -> AppResult<Vec<QuestHistoryEntry>> {
+    let rows = sqlx::query_as::<_, QuestHistoryEntry>(
+        "SELECT id, quest_id, ts, op, old_value, new_value, actor
+         FROM quest_history WHERE quest_id = ? ORDER BY ts DESC, id DESC",
+    )
+    .bind(quest_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
 }
 
 pub async fn list_dependencies(pool: &SqlitePool) -> AppResult<Vec<QuestDependency>> {

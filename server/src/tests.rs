@@ -625,6 +625,69 @@ async fn test_list_search_empty_no_filter() {
     assert_eq!(body.as_array().unwrap().len(), 3);
 }
 
+// === DEV-013: Quest history ===
+
+#[tokio::test]
+async fn test_history_empty_initially() {
+    let app = setup().await;
+    let (_, q) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "h-empty", "status_id": 1 })).await;
+    let id = q["id"].as_i64().unwrap();
+    let (s, body) = get(app, &format!("/api/quests/{id}/history")).await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(body.as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn test_history_change_status_recorded() {
+    let app = setup().await;
+    let (_, q) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "h-status", "status_id": 1 })).await;
+    let id = q["id"].as_i64().unwrap();
+    patch(app.clone(), &format!("/api/quests/{id}/status"),
+        json!({ "status_id": 2 })).await;
+    let (_, body) = get(app, &format!("/api/quests/{id}/history")).await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0]["op"], "change_status");
+    assert_eq!(arr[0]["old_value"], "1");
+    assert_eq!(arr[0]["new_value"], "2");
+}
+
+#[tokio::test]
+async fn test_history_multiple_status_changes_ordered_desc() {
+    let app = setup().await;
+    let (_, q) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "h-multi", "status_id": 1 })).await;
+    let id = q["id"].as_i64().unwrap();
+    patch(app.clone(), &format!("/api/quests/{id}/status"), json!({ "status_id": 2 })).await;
+    patch(app.clone(), &format!("/api/quests/{id}/status"), json!({ "status_id": 3 })).await;
+    patch(app.clone(), &format!("/api/quests/{id}/status"), json!({ "status_id": 1 })).await;
+    let (_, body) = get(app, &format!("/api/quests/{id}/history")).await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 3);
+    // 최신 → 과거.
+    assert_eq!(arr[0]["new_value"], "1");
+    assert_eq!(arr[1]["new_value"], "3");
+    assert_eq!(arr[2]["new_value"], "2");
+}
+
+#[tokio::test]
+async fn test_history_isolated_per_quest() {
+    let app = setup().await;
+    let (_, q1) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "h-iso-1", "status_id": 1 })).await;
+    let (_, q2) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "h-iso-2", "status_id": 1 })).await;
+    let id1 = q1["id"].as_i64().unwrap();
+    let id2 = q2["id"].as_i64().unwrap();
+    patch(app.clone(), &format!("/api/quests/{id1}/status"), json!({ "status_id": 2 })).await;
+    let (_, body1) = get(app.clone(), &format!("/api/quests/{id1}/history")).await;
+    let (_, body2) = get(app, &format!("/api/quests/{id2}/history")).await;
+    assert_eq!(body1.as_array().unwrap().len(), 1);
+    assert_eq!(body2.as_array().unwrap().len(), 0);
+}
+
 #[tokio::test]
 async fn test_list_no_parent_filter() {
     let app = setup_with_mixed_quests().await;

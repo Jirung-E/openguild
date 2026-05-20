@@ -109,6 +109,17 @@ export interface RestoreResponse {
 	restored_to: string;
 }
 
+// DEV-013: Quest 변경 이력 한 행.
+export interface QuestHistoryEntry {
+	id: number;
+	quest_id: number;
+	ts: string;
+	op: string;
+	old_value: string | null;
+	new_value: string | null;
+	actor: string | null;
+}
+
 export const URGENCY_COLOR: Record<number, string> = {
 	1: '#E94F4F',
 	2: '#F5A623',

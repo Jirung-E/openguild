@@ -13,7 +13,7 @@ use crate::error::AppResult;
 use openguild_core::models::{
     AddPrerequisiteRequest, CandidatesQuery, ChangeParentRequest, ChangeStatusRequest,
     CreateQuestRequest, DeleteQuestQuery, ListQuery, QuestDependency, QuestDetail,
-    QuestPosition, QuestRow, UpdatePositionRequest, UpdateQuestRequest,
+    QuestHistoryEntry, QuestPosition, QuestRow, UpdatePositionRequest, UpdateQuestRequest,
 };
 use openguild_core::ops::quests as ops;
 use openguild_core::services::quests as read;
@@ -148,4 +148,12 @@ pub async fn list_dependencies(
     State(store): State<Store>,
 ) -> AppResult<Json<Vec<QuestDependency>>> {
     Ok(Json(read::list_dependencies(&store.index_pool).await?))
+}
+
+/// DEV-013: GET /api/quests/{id}/history
+pub async fn list_history(
+    State(store): State<Store>,
+    Path(id): Path<i64>,
+) -> AppResult<Json<Vec<QuestHistoryEntry>>> {
+    Ok(Json(read::list_history(&store.index_pool, id).await?))
 }

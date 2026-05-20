@@ -8,8 +8,8 @@
 
 use openguild_core::models::{
     AddPrerequisiteRequest, ChangeParentRequest, ChangeStatusRequest, CreateQuestRequest,
-    ListQuery, QuestDependency, QuestDetail, QuestPosition, QuestRow, QuestStatus, QuestType,
-    UpdatePositionRequest, UpdateQuestRequest,
+    ListQuery, QuestDependency, QuestDetail, QuestHistoryEntry, QuestPosition, QuestRow,
+    QuestStatus, QuestType, UpdatePositionRequest, UpdateQuestRequest,
 };
 use openguild_core::ops::quests as ops;
 use openguild_core::services::{meta as meta_svc, quests as read};
@@ -86,6 +86,15 @@ pub async fn list_quest_dependencies(
     store: State<'_, Store>,
 ) -> Result<Vec<QuestDependency>, String> {
     read::list_dependencies(&store.index_pool).await.map_err(err)
+}
+
+/// DEV-013: quest 의 변경 이력.
+#[tauri::command]
+pub async fn list_quest_history(
+    store: State<'_, Store>,
+    id: i64,
+) -> Result<Vec<QuestHistoryEntry>, String> {
+    read::list_history(&store.index_pool, id).await.map_err(err)
 }
 
 // ─────────────────────── quests (mutation) ───────────────────────

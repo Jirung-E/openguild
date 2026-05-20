@@ -7,6 +7,7 @@ import type {
 	Quest,
 	QuestDependency,
 	QuestDetail,
+	QuestHistoryEntry,
 	QuestPosition,
 	UpdatePositionRequest,
 	UpdateQuestRequest
@@ -54,5 +55,7 @@ export const questsApi = {
 
 	listPositions: () => api.get<QuestPosition[]>('/api/quest-positions'),
 
-	listDependencies: () => api.get<QuestDependency[]>('/api/quest-dependencies')
+	listDependencies: () => api.get<QuestDependency[]>('/api/quest-dependencies'),
+
+	listHistory: (id: number) => api.get<QuestHistoryEntry[]>(`/api/quests/${id}/history`)
 };

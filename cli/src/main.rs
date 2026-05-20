@@ -152,6 +152,8 @@ enum QuestCmd {
     },
     /// 퀘스트 상세 (슬러그: DEV-001)
     Show { slug: String },
+    /// quest 의 변경 이력 (DEV-013) — 최신 → 과거 순.
+    History { slug: String },
     /// 새 퀘스트 생성
     New {
         /// 타입 prefix (DEV / BUG / REQ ...)
@@ -339,6 +341,10 @@ impl HttpClient {
 
     fn quest_by_slug(&self, slug: &str) -> Result<QuestDetail> {
         self.get(&format!("/api/quests/by/{slug}"))
+    }
+
+    fn list_quest_history(&self, id: i64) -> Result<Vec<openguild_core::models::QuestHistoryEntry>> {
+        self.get(&format!("/api/quests/{id}/history"))
     }
 
     fn quest_types(&self) -> Result<Vec<QuestType>> {
@@ -545,6 +551,15 @@ impl Backend {
             Backend::Http(c) => c.quest_by_slug(slug),
             Backend::Local(l) => Self::map_err(
                 l.rt.block_on(quest_svc::get_by_slug(&l.store.index_pool, slug)),
+            ),
+        }
+    }
+
+    fn list_quest_history(&self, id: i64) -> Result<Vec<openguild_core::models::QuestHistoryEntry>> {
+        match self {
+            Backend::Http(c) => c.list_quest_history(id),
+            Backend::Local(l) => Self::map_err(
+                l.rt.block_on(quest_svc::list_history(&l.store.index_pool, id)),
             ),
         }
     }
@@ -1141,6 +1156,21 @@ fn run() -> Result<()> {
             QuestCmd::Show { slug } => {
                 let d = c.quest_by_slug(&slug)?;
                 print_quest_detail(&d, cli.json);
+            }
+            QuestCmd::History { slug } => {
+                let d = c.quest_by_slug(&slug)?;
+                let history = c.list_quest_history(d.quest.id)?;
+                if cli.json {
+                    println!("{}", serde_json::to_string_pretty(&history).unwrap());
+                } else if history.is_empty() {
+                    println!("(이력 없음)");
+                } else {
+                    for h in &history {
+                        let old = h.old_value.as_deref().unwrap_or("∅");
+                        let new = h.new_value.as_deref().unwrap_or("∅");
+                        println!("{}  {:<14} {} → {}", h.ts, h.op, old, new);
+                    }
+                }
             }
             QuestCmd::New {
                 type_prefix,

@@ -32,6 +32,7 @@ pub fn create_router(store: Store) -> Router {
             delete(quests::remove_prerequisite),
         )
         .route("/api/quests/{id}/position", put(quests::update_position))
+        .route("/api/quests/{id}/history", get(quests::list_history))
         .route("/api/quests/by/{slug}", get(quests::get_quest_by_slug))
         .route("/api/quest-positions", get(quests::list_positions))
         .route("/api/quest-dependencies", get(quests::list_dependencies))

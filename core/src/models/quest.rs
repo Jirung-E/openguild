@@ -128,6 +128,18 @@ pub struct DeleteQuestQuery {
     pub cascade: Option<String>,
 }
 
+/// DEV-013: Quest 변경 이력 한 행.
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow, Clone)]
+pub struct QuestHistoryEntry {
+    pub id: i64,
+    pub quest_id: i64,
+    pub ts: String,
+    pub op: String,
+    pub old_value: Option<String>,
+    pub new_value: Option<String>,
+    pub actor: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct ChangeStatusRequest {
     pub status_id: i64,

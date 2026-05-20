@@ -174,6 +174,9 @@ function routeToInvoke(
 		if (sub === 'position' && method === 'PUT') {
 			return { cmd: 'update_quest_position', args: { id, body } };
 		}
+		if (sub === 'history' && method === 'GET') {
+			return { cmd: 'list_quest_history', args: { id } };
+		}
 	}
 
 	// ───── admin ─────

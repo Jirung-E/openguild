@@ -100,7 +100,28 @@ pub async fn change_status(
     .await
     .map_err(crate::error::AppError::Internal)?;
 
+    // 변경 전 status (history old_value).
+    let old_status_id: Option<i64> = sqlx::query_scalar(
+        "SELECT status_id FROM quests WHERE id = ?",
+    )
+    .bind(id)
+    .fetch_optional(&store.index_pool)
+    .await?;
+
+    let new_status_id = body.status_id;
     let quest = sql::change_status(&store.index_pool, id, body).await?;
+
+    // DEV-013: history 기록.
+    sqlx::query(
+        "INSERT INTO quest_history (quest_id, op, old_value, new_value) VALUES (?, ?, ?, ?)",
+    )
+    .bind(id)
+    .bind("change_status")
+    .bind(old_status_id.map(|n| n.to_string()))
+    .bind(new_status_id.to_string())
+    .execute(&store.index_pool)
+    .await?;
+
     write_quest_file(store, &quest).await?;
     after_mutation(store).await;
     Ok(quest)
