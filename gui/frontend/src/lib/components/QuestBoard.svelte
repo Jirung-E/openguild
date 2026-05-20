@@ -19,6 +19,9 @@
 
 	const NODE_W = 284;
 	const NODE_H = 80;
+	/// 정렬 animate 의 duration (ms). 가드 (`arranging`) 가 이 시간만큼 유지되어
+	/// 빠른 더블클릭이 진행 중 animate 중간에 새 animate 를 trigger 하지 않도록.
+	const ARRANGE_ANIM_MS = 200;
 
 	// 노드 제목 줄바꿈을 실제 픽셀 폭 기준으로 — Canvas measureText API 사용.
 	// SVG 의 font 와 동일한 설정으로 ctx.font 잡고 substring 폭 측정.
@@ -780,7 +783,11 @@
 				if (undoStack.length > MAX_HISTORY) undoStack.shift();
 				redoStack.length = 0;
 			}
-			await Promise.all(savePromises);
+			// animate 완료 + SQL 저장 둘 다 끝날 때까지 보호.
+			await Promise.all([
+				Promise.all(savePromises),
+				new Promise<void>((r) => setTimeout(r, ARRANGE_ANIM_MS))
+			]);
 			syncExpandedPos();
 		} finally {
 			arranging = false;
@@ -850,7 +857,11 @@
 			if (undoStack.length > MAX_HISTORY) undoStack.shift();
 			redoStack.length = 0;
 		}
-		await Promise.all(savePromises);
+		// animate 완료 + SQL 저장 둘 다 끝날 때까지 보호 (BUG-008).
+		await Promise.all([
+			Promise.all(savePromises),
+			new Promise<void>((r) => setTimeout(r, ARRANGE_ANIM_MS))
+		]);
 		syncExpandedPos();
 		arranging = false;
 	}
