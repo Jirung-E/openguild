@@ -102,6 +102,9 @@ pub struct ListQuery {
     pub has_sub: bool,
     /// 서브 quest 가 없는 leaf quest 만. `has_sub` 와 상호배타.
     pub no_sub: bool,
+    /// 검색 키워드 — title / description 부분 일치 (대소문자 무시).
+    /// 공백 split 후 AND (모든 토큰 포함).
+    pub search: Option<String>,
     /// **자식 quest 들** 을 보여줌 — 지정 slug 가 parent 인 직계 자식.
     /// `--no-parent` 와 상호배타.
     pub child_of: Option<String>,

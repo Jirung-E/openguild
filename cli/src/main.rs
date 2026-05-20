@@ -126,6 +126,9 @@ enum QuestCmd {
         /// 서브 quest 가 없는 leaf quest 만.
         #[arg(long = "no-sub")]
         no_sub: bool,
+        /// title / description 부분 일치 검색. 공백 split AND.
+        #[arg(long)]
+        search: Option<String>,
         /// 정렬 키 — `id` (기본) / `urgency` / `status` / `updated` / `created`.
         /// 다중 입력 가능 (`--sort urgency,id` 또는 `--sort urgency id`). 대소문자 무시.
         #[arg(long, value_delimiter = ',', num_args = 1..)]
@@ -805,6 +808,9 @@ fn list_query_to_querystring(q: &ListQuery) -> String {
     if q.no_sub {
         parts.push("no_sub=true".into());
     }
+    if let Some(s) = &q.search {
+        parts.push(format!("search={}", urlencode(s)));
+    }
     if let Some(s) = &q.sort {
         parts.push(format!("sort={}", urlencode(s)));
     }
@@ -1093,6 +1099,7 @@ fn run() -> Result<()> {
                 no_prereq,
                 has_sub,
                 no_sub,
+                search,
                 sort,
                 reverse,
                 limit,
@@ -1114,6 +1121,7 @@ fn run() -> Result<()> {
                     no_prereq,
                     has_sub,
                     no_sub,
+                    search,
                     sort: vec_to_csv(sort),
                     reverse,
                     limit,
@@ -1703,6 +1711,7 @@ mod tests {
                     no_prereq,
                     has_sub,
                     no_sub,
+                    search,
                     sort,
                     reverse,
                     limit,
@@ -1724,6 +1733,7 @@ mod tests {
                 assert!(!no_prereq);
                 assert!(!has_sub);
                 assert!(!no_sub);
+                assert!(search.is_none());
                 assert!(sort.is_empty());
                 assert!(!reverse);
                 assert!(limit.is_none());
@@ -1839,6 +1849,7 @@ mod tests {
                     created_after, created_before, updated_after, updated_before,
                     child_of, no_parent,
                     has_prereq, no_prereq, has_sub, no_sub,
+                    search,
                     sort, reverse, limit, offset, id_only, count,
                 },
             } => {
@@ -1855,6 +1866,7 @@ mod tests {
                 assert!(!no_prereq);
                 assert!(!has_sub);
                 assert!(!no_sub);
+                assert!(search.is_none());
                 assert_eq!(sort, vec!["urgency"]);
                 assert!(reverse);
                 assert_eq!(limit, Some(5));
@@ -1934,6 +1946,7 @@ mod tests {
             no_prereq: false,
             has_sub: false,
             no_sub: false,
+            search: None,
             sort: Some("urgency".into()),
             reverse: true,
             limit: Some(5),

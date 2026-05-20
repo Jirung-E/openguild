@@ -546,6 +546,85 @@ async fn test_list_has_sub_and_no_sub_mutually_exclusive() {
     assert_eq!(s, StatusCode::BAD_REQUEST);
 }
 
+// === DEV-030: --search 검색 ===
+
+async fn setup_for_search() -> Router {
+    let app = setup().await;
+    post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "Tauri invoke handler",
+                "description": "Rust 측 commands.rs 작성", "status_id": 1 })).await;
+    post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "Frontend transport adapter",
+                "description": "HTTP / Tauri 자동 분기", "status_id": 1 })).await;
+    post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 2, "title": "Quest list 검색",
+                "description": "title / description 부분 일치", "status_id": 1 })).await;
+    app
+}
+
+#[tokio::test]
+async fn test_list_search_in_title() {
+    let app = setup_for_search().await;
+    let (_, body) = get(app, "/api/quests?search=Tauri").await;
+    let arr = body.as_array().unwrap();
+    // title 또는 description 둘 다 검사 → "Tauri invoke handler"
+    // + "Frontend transport adapter" (description 에 Tauri 포함) = 2.
+    assert_eq!(arr.len(), 2);
+}
+
+#[tokio::test]
+async fn test_list_search_in_description_only() {
+    let app = setup_for_search().await;
+    let (_, body) = get(app, "/api/quests?search=commands.rs").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0]["title"], "Tauri invoke handler");
+}
+
+#[tokio::test]
+async fn test_list_search_case_insensitive() {
+    let app = setup_for_search().await;
+    let (_, body1) = get(app.clone(), "/api/quests?search=TAURI").await;
+    let (_, body2) = get(app, "/api/quests?search=tauri").await;
+    assert_eq!(
+        body1.as_array().unwrap().len(),
+        body2.as_array().unwrap().len()
+    );
+}
+
+#[tokio::test]
+async fn test_list_search_multi_token_and() {
+    let app = setup_for_search().await;
+    // 두 토큰 모두 매치 → "title / description" 가 description 에 있는 1개.
+    let (_, body) = get(app, "/api/quests?search=title%20description").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0]["title"], "Quest list 검색");
+}
+
+#[tokio::test]
+async fn test_list_search_no_match() {
+    let app = setup_for_search().await;
+    let (_, body) = get(app, "/api/quests?search=NonexistentKeyword").await;
+    assert_eq!(body.as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn test_list_search_korean() {
+    let app = setup_for_search().await;
+    let (_, body) = get(app, "/api/quests?search=%EA%B2%80%EC%83%89").await; // "검색"
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0]["title"], "Quest list 검색");
+}
+
+#[tokio::test]
+async fn test_list_search_empty_no_filter() {
+    let app = setup_for_search().await;
+    let (_, body) = get(app, "/api/quests?search=").await;
+    assert_eq!(body.as_array().unwrap().len(), 3);
+}
+
 #[tokio::test]
 async fn test_list_no_parent_filter() {
     let app = setup_with_mixed_quests().await;

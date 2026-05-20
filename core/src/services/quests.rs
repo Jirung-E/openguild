@@ -119,6 +119,21 @@ pub async fn list(pool: &SqlitePool, query: &ListQuery) -> AppResult<Vec<QuestRo
         );
     }
 
+    // search — 공백 split AND. 각 토큰이 title 또는 description 중 하나엔 LIKE 매치.
+    let search_tokens: Vec<String> = trimmed_opt(&query.search)
+        .map(|s| {
+            s.split_whitespace()
+                .filter(|t| !t.is_empty())
+                .map(|t| t.to_string())
+                .collect()
+        })
+        .unwrap_or_default();
+    for _ in &search_tokens {
+        sql.push_str(
+            " AND (LOWER(q.title) LIKE LOWER(?) OR LOWER(COALESCE(q.description, '')) LIKE LOWER(?))",
+        );
+    }
+
     // child_of / no_parent 상호배타
     if query.child_of.is_some() && query.no_parent {
         return Err(AppError::BadRequest(
@@ -237,6 +252,12 @@ pub async fn list(pool: &SqlitePool, query: &ListQuery) -> AppResult<Vec<QuestRo
     }
     if let Some(pid) = parent_id {
         q = q.bind(pid);
+    }
+    // search tokens — 각 토큰마다 (title, description) 두 번 bind.
+    for token in &search_tokens {
+        let pat = format!("%{token}%");
+        q = q.bind(pat.clone());
+        q = q.bind(pat);
     }
     let quests = q.fetch_all(pool).await?;
     Ok(quests)
