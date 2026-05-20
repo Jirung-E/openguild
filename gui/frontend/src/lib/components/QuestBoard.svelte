@@ -635,17 +635,16 @@
 	async function arrangeNodesGrouped(nodesToArrange: NodeSingular[], _cols: number) {
 		void _cols;
 		if (!cy || arranging) return;
+		// 빈 배열 시 no-op — 빈 lane 의 정렬 버튼이 전체 정렬을 trigger 하지 않도록.
+		// 전체 정렬을 원하면 호출자가 명시적으로 모든 노드 전달 (toolbar 의 전체 정렬 버튼처럼).
+		if (nodesToArrange.length === 0) return;
 		arranging = true;
 		try {
 			const cellW = NODE_W + NODE_GAP;
 			const cellH = NODE_H + NODE_GAP;
 			const baseY = LANE_TOP + 16 + NODE_H / 2;
 
-			const allNodes =
-				nodesToArrange.length > 0
-					? nodesToArrange
-					: (cy!.nodes('[questId]').toArray() as NodeSingular[]);
-			if (allNodes.length === 0) return;
+			const allNodes = nodesToArrange;
 			const allIds = new Set(allNodes.map((n) => n.data('questId') as number));
 
 			// 1) 인접 리스트 — allIds 안에 있는 edge 만 사용
