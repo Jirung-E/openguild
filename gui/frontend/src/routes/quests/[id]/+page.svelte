@@ -322,18 +322,27 @@
 
 		{#if editMode}
 			<div class="edit-form">
-				<label class="field-label">제목</label>
-				<input class="edit-title" type="text" bind:value={editTitle} />
+				<label class="field-label">
+					<span>제목</span>
+					<input class="edit-title" type="text" bind:value={editTitle} />
+				</label>
 
-				<label class="field-label">긴급도</label>
-				<select class="edit-select" bind:value={editUrgency}>
-					{#each [1, 2, 3, 4] as u}
-						<option value={u}>{URGENCY_LABEL[u]}</option>
-					{/each}
-				</select>
+				<label class="field-label">
+					<span>긴급도</span>
+					<select class="edit-select" bind:value={editUrgency}>
+						{#each [1, 2, 3, 4] as u}
+							<option value={u}>{URGENCY_LABEL[u]}</option>
+						{/each}
+					</select>
+				</label>
 
-				<label class="field-label">설명 (Markdown)</label>
-				<div class="editor-wrap" bind:this={editorContainer}></div>
+				<!-- CodeMirror 가 div 안에 textarea 를 동적으로 생성 — svelte 가 정적
+				     분석으로는 control 미포함으로 판단. ignore. -->
+				<!-- svelte-ignore a11y_label_has_associated_control -->
+				<label class="field-label">
+					<span>설명 (Markdown)</span>
+					<div class="editor-wrap" bind:this={editorContainer}></div>
+				</label>
 
 				{#if saveError}<p class="save-error">{saveError}</p>{/if}
 

@@ -28,6 +28,10 @@
 	let saving = $state(false);
 	let saveError = $state<string | null>(null);
 
+	// 제목 input 자동 focus — autofocus 속성 대신 명시적 .focus() 호출
+	// (a11y_autofocus 경고 회피 + 같은 UX).
+	let titleInput: HTMLInputElement | undefined = $state();
+
 	onMount(async () => {
 		try {
 			const [t, s] = await Promise.all([metaApi.getQuestTypes(), metaApi.getQuestStatuses()]);
@@ -42,6 +46,8 @@
 			}
 		} finally {
 			loading = false;
+			// Loading 끝나고 input 이 DOM 에 마운트되면 focus.
+			queueMicrotask(() => titleInput?.focus());
 		}
 	});
 
@@ -89,20 +95,24 @@
 			<div class="form">
 				<div class="field-row">
 					<div class="field">
-						<label class="field-label">타입</label>
-						<select class="sel" bind:value={typeId}>
-							{#each types as t}
-								<option value={t.id} style:color={t.color}>{t.prefix}</option>
-							{/each}
-						</select>
+						<label class="field-label">
+							<span>타입</span>
+							<select class="sel" bind:value={typeId}>
+								{#each types as t}
+									<option value={t.id} style:color={t.color}>{t.prefix}</option>
+								{/each}
+							</select>
+						</label>
 					</div>
 					<div class="field" style="flex:1">
-						<label class="field-label">긴급도</label>
-						<select class="sel" bind:value={urgency}>
-							{#each [1, 2, 3, 4] as u}
-								<option value={u}>{URGENCY_LABEL[u]}</option>
-							{/each}
-						</select>
+						<label class="field-label">
+							<span>긴급도</span>
+							<select class="sel" bind:value={urgency}>
+								{#each [1, 2, 3, 4] as u}
+									<option value={u}>{URGENCY_LABEL[u]}</option>
+								{/each}
+							</select>
+						</label>
 					</div>
 					<div class="field" style="flex:1">
 						<span class="field-label">상태</span>
@@ -111,24 +121,28 @@
 				</div>
 
 				<div class="field">
-					<label class="field-label">제목 *</label>
-					<input
-						class="inp"
-						type="text"
-						placeholder="퀘스트 제목을 입력하세요"
-						bind:value={title}
-						autofocus
-					/>
+					<label class="field-label">
+						<span>제목 *</span>
+						<input
+							bind:this={titleInput}
+							class="inp"
+							type="text"
+							placeholder="퀘스트 제목을 입력하세요"
+							bind:value={title}
+						/>
+					</label>
 				</div>
 
 				<div class="field">
-					<label class="field-label">설명 (선택)</label>
-					<textarea
-						class="ta"
-						rows="5"
-						placeholder="Markdown 형식으로 작성할 수 있습니다"
-						bind:value={description}
-					></textarea>
+					<label class="field-label">
+						<span>설명 (선택)</span>
+						<textarea
+							class="ta"
+							rows="5"
+							placeholder="Markdown 형식으로 작성할 수 있습니다"
+							bind:value={description}
+						></textarea>
+					</label>
 				</div>
 
 				{#if saveError}
