@@ -197,11 +197,60 @@
 	let error = $state<string | null>(null);
 	let undoStack = $state<HistoryRecord[]>([]);
 	let redoStack = $state<HistoryRecord[]>([]);
+	// ── lane cols 영속화 헬퍼 (BUG-009) ─────────────────────────
+	// status slug 를 키로 — sort_order / id 가 reindex / 시드 변경 시 흔들리므로.
+	const LANE_COLS_KEY = 'openguild.laneCols';
+	const GLOBAL_COLS_KEY = 'openguild.globalCols';
+
+	function statusSlug(nameEn: string): string {
+		return nameEn.toLowerCase().replace(/ /g, '_').replace(/-/g, '_');
+	}
+
+	function loadLaneColsMap(): Record<string, number> {
+		try {
+			const raw = localStorage.getItem(LANE_COLS_KEY);
+			if (!raw) return {};
+			const parsed = JSON.parse(raw);
+			if (parsed && typeof parsed === 'object') return parsed as Record<string, number>;
+		} catch {
+			/* 무시 */
+		}
+		return {};
+	}
+
+	function saveLaneColsMap(map: Record<string, number>) {
+		try {
+			localStorage.setItem(LANE_COLS_KEY, JSON.stringify(map));
+		} catch {
+			/* 무시 */
+		}
+	}
+
+	function loadGlobalCols(): number {
+		try {
+			const raw = localStorage.getItem(GLOBAL_COLS_KEY);
+			const n = raw ? parseInt(raw, 10) : NaN;
+			if (Number.isFinite(n) && [1, 2, 3].includes(n)) return n;
+		} catch {
+			/* 무시 */
+		}
+		return 2;
+	}
+
+	function saveGlobalCols(n: number) {
+		try {
+			localStorage.setItem(GLOBAL_COLS_KEY, String(n));
+		} catch {
+			/* 무시 */
+		}
+	}
+
 	let expandedQuest = $state<Quest | null>(null);
 	let expandedPos = $state({ x: 0, y: 0 });
 	let cardPinned = false; // 사용자가 카드를 드래그하면 true, 새 노드 클릭 시 false
 	let activeHighlights = $state(new Set<HighlightType>());
-	let globalCols = $state(2);
+	// globalCols — toolbar 의 Arrange cols. localStorage 영속 (BUG-009).
+	let globalCols = $state(loadGlobalCols());
 
 	// 전역 정렬 모드 (toolbar Arrange 버튼).
 	//   'all'   = 단순 wrap (왼쪽 위부터 채움)
@@ -952,8 +1001,15 @@
 	/** Toolbar 의 1/2/3열 select 변경 핸들러 — 모든 레인의 그리드만 즉시 갱신. */
 	function setGlobalCols(cols: number) {
 		globalCols = cols;
+		saveGlobalCols(cols);
 		if (!cy) return;
 		laneCols = laneCols.map(() => cols);
+		// 모든 lane 의 status slug 에 같은 값으로 영속.
+		const map: Record<string, number> = {};
+		sorted.forEach((s) => {
+			map[statusSlug(s.name_en)] = cols;
+		});
+		saveLaneColsMap(map);
 		headersEl?.querySelectorAll<HTMLSelectElement>('.lane-cols-sel').forEach((sel) => {
 			sel.value = String(cols);
 		});
@@ -1051,8 +1107,10 @@
 			lanesEl.appendChild(col);
 		});
 		headersEl.innerHTML = '';
-		// laneCols 초기값: 모두 2열, laneArrangeModes 초기값: 전역 모드
-		laneCols = sorted.map(() => 2);
+		// laneCols / laneArrangeModes 초기값.
+		// laneCols: localStorage 의 status slug 별 저장값 (BUG-009). 없으면 globalCols.
+		const savedLaneCols = loadLaneColsMap();
+		laneCols = sorted.map((s) => savedLaneCols[statusSlug(s.name_en)] ?? globalCols);
 		laneArrangeModes = sorted.map(() => arrangeMode);
 		sorted.forEach((s, li) => {
 			const hdr = document.createElement('div');
@@ -1064,17 +1122,22 @@
 			const sel = document.createElement('select');
 			sel.className = 'lane-cols-sel';
 			sel.title = '이 레인 정렬 열 수';
+			const initialCols = laneCols[li];
 			[1, 2, 3].forEach((n) => {
 				const opt = document.createElement('option');
 				opt.value = String(n);
 				opt.textContent = `${n}열`;
-				if (n === 2) opt.selected = true;
+				if (n === initialCols) opt.selected = true;
 				sel.appendChild(opt);
 			});
-			// select 변경 시 laneCols 즉시 업데이트 — snap grid 가 따라옴
+			// select 변경 시 laneCols 즉시 업데이트 + localStorage 영속 (BUG-009).
 			sel.onchange = () => {
-				laneCols[li] = parseInt(sel.value);
+				const cols = parseInt(sel.value);
+				laneCols[li] = cols;
 				laneCols = [...laneCols]; // reactive trigger
+				const map = loadLaneColsMap();
+				map[statusSlug(s.name_en)] = cols;
+				saveLaneColsMap(map);
 				syncLanes(); // grid 시각화 재계산
 			};
 			const btn = document.createElement('button');
