@@ -66,13 +66,25 @@ pub async fn list(pool: &SqlitePool, query: &ListQuery) -> AppResult<Vec<QuestRo
         ));
     }
 
-    if let Some(u) = query.urgency {
-        if !(1..=4).contains(&u) {
-            return Err(AppError::BadRequest(format!(
-                "urgency must be 1..=4, got {u}"
-            )));
-        }
-        sql.push_str(" AND q.urgency = ?");
+    // urgency — single / CSV / "a-b" 범위 (모두 1..=4).
+    let urgency_values: Vec<i64> = parse_urgency(&query.urgency)?;
+    if !urgency_values.is_empty() {
+        let placeholders = vec!["?"; urgency_values.len()].join(", ");
+        sql.push_str(&format!(" AND q.urgency IN ({placeholders})"));
+    }
+
+    // 시간 범위 — ISO 8601 string 비교. SQLite 의 datetime 비교는 lexicographic OK.
+    if trimmed_opt(&query.created_after).is_some() {
+        sql.push_str(" AND q.created_at >= ?");
+    }
+    if trimmed_opt(&query.created_before).is_some() {
+        sql.push_str(" AND q.created_at <= ?");
+    }
+    if trimmed_opt(&query.updated_after).is_some() {
+        sql.push_str(" AND q.updated_at >= ?");
+    }
+    if trimmed_opt(&query.updated_before).is_some() {
+        sql.push_str(" AND q.updated_at <= ?");
     }
 
     // child_of / no_parent 상호배타
@@ -175,14 +187,76 @@ pub async fn list(pool: &SqlitePool, query: &ListQuery) -> AppResult<Vec<QuestRo
     for s in &statuses {
         q = q.bind(s);
     }
-    if let Some(u) = query.urgency {
-        q = q.bind(u);
+    for u in &urgency_values {
+        q = q.bind(*u);
+    }
+    // 시간 범위 — bind 순서는 SQL 의 ? 순서와 동일.
+    if let Some(v) = trimmed_opt(&query.created_after) {
+        q = q.bind(v.to_string());
+    }
+    if let Some(v) = trimmed_opt(&query.created_before) {
+        q = q.bind(v.to_string());
+    }
+    if let Some(v) = trimmed_opt(&query.updated_after) {
+        q = q.bind(v.to_string());
+    }
+    if let Some(v) = trimmed_opt(&query.updated_before) {
+        q = q.bind(v.to_string());
     }
     if let Some(pid) = parent_id {
         q = q.bind(pid);
     }
     let quests = q.fetch_all(pool).await?;
     Ok(quests)
+}
+
+/// urgency string 파싱 — single / CSV / "a-b" 범위. 모두 1..=4 검증.
+fn parse_urgency(s: &Option<String>) -> AppResult<Vec<i64>> {
+    let Some(raw) = trimmed_opt(s) else { return Ok(Vec::new()) };
+    let mut result: Vec<i64> = Vec::new();
+    if let Some((lo_s, hi_s)) = raw.split_once('-') {
+        // "a-b" 범위 — 양쪽 끝 inclusive.
+        let lo: i64 = lo_s.trim().parse().map_err(|_| {
+            AppError::BadRequest(format!("invalid urgency range start: {lo_s}"))
+        })?;
+        let hi: i64 = hi_s.trim().parse().map_err(|_| {
+            AppError::BadRequest(format!("invalid urgency range end: {hi_s}"))
+        })?;
+        if !(1..=4).contains(&lo) || !(1..=4).contains(&hi) {
+            return Err(AppError::BadRequest(format!(
+                "urgency range out of bounds: {raw} (must be 1..=4)"
+            )));
+        }
+        if lo > hi {
+            return Err(AppError::BadRequest(format!(
+                "urgency range start > end: {raw}"
+            )));
+        }
+        for u in lo..=hi {
+            result.push(u);
+        }
+    } else {
+        // CSV 또는 단일.
+        for part in raw.split(',') {
+            let p = part.trim();
+            if p.is_empty() {
+                continue;
+            }
+            let u: i64 = p
+                .parse()
+                .map_err(|_| AppError::BadRequest(format!("invalid urgency: {p}")))?;
+            if !(1..=4).contains(&u) {
+                return Err(AppError::BadRequest(format!(
+                    "urgency must be 1..=4, got {u}"
+                )));
+            }
+            result.push(u);
+        }
+    }
+    // 중복 제거.
+    result.sort_unstable();
+    result.dedup();
+    Ok(result)
 }
 
 /// 콤마 구분 string → Vec — 빈 entry / whitespace-only 제거.

@@ -83,8 +83,17 @@ pub struct ListQuery {
     /// status 필터 — `"open"` 또는 다중 `"open,testing"`.
     /// name_en / slug 양쪽 매칭 (대소문자 / 공백 / `_` / `-` 무시).
     pub status: Option<String>,
-    /// urgency 필터 — 단일 정수 (`1`=Critical ~ `4`=Low).
-    pub urgency: Option<i64>,
+    /// urgency 필터 — 단일 `"2"`, 다중 CSV `"1,2"`, 범위 `"1-3"`.
+    /// 모두 1..=4 범위 안.
+    pub urgency: Option<String>,
+    /// `created_at >= ?` (ISO 8601, `YYYY-MM-DD` 또는 `YYYY-MM-DDTHH:MM:SSZ`).
+    pub created_after: Option<String>,
+    /// `created_at <= ?` (inclusive).
+    pub created_before: Option<String>,
+    /// `updated_at >= ?`.
+    pub updated_after: Option<String>,
+    /// `updated_at <= ?`.
+    pub updated_before: Option<String>,
     /// **자식 quest 들** 을 보여줌 — 지정 slug 가 parent 인 직계 자식.
     /// `--no-parent` 와 상호배타.
     pub child_of: Option<String>,

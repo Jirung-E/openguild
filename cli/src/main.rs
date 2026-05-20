@@ -92,9 +92,21 @@ enum QuestCmd {
         /// 대소문자 / 공백 / `_` / `-` 무시.
         #[arg(long, value_delimiter = ',', num_args = 1..)]
         status: Vec<String>,
-        /// urgency 필터 — 1=Critical, 4=Low.
+        /// urgency 필터 — 단일 (`2`), 다중 CSV (`1,2`), 범위 (`1-3`). 1=Critical, 4=Low.
         #[arg(long)]
-        urgency: Option<i64>,
+        urgency: Option<String>,
+        /// 생성 시점 ≥ ISO date (`2026-05-15` 또는 `2026-05-15T10:00:00Z`).
+        #[arg(long = "created-after", value_name = "ISO")]
+        created_after: Option<String>,
+        /// 생성 시점 ≤ ISO date.
+        #[arg(long = "created-before", value_name = "ISO")]
+        created_before: Option<String>,
+        /// 갱신 시점 ≥ ISO date.
+        #[arg(long = "updated-after", value_name = "ISO")]
+        updated_after: Option<String>,
+        /// 갱신 시점 ≤ ISO date.
+        #[arg(long = "updated-before", value_name = "ISO")]
+        updated_before: Option<String>,
         /// **자식** 표시 — 지정 quest slug 가 parent 인 직계 자식들만 보여줌.
         /// (`--no-parent` 와 상호배타.)
         #[arg(long = "child-of", value_name = "SLUG", conflicts_with = "no_parent")]
@@ -748,8 +760,20 @@ fn list_query_to_querystring(q: &ListQuery) -> String {
     if let Some(s) = &q.status {
         parts.push(format!("status={}", urlencode(s)));
     }
-    if let Some(u) = q.urgency {
-        parts.push(format!("urgency={u}"));
+    if let Some(u) = &q.urgency {
+        parts.push(format!("urgency={}", urlencode(u)));
+    }
+    if let Some(v) = &q.created_after {
+        parts.push(format!("created_after={}", urlencode(v)));
+    }
+    if let Some(v) = &q.created_before {
+        parts.push(format!("created_before={}", urlencode(v)));
+    }
+    if let Some(v) = &q.updated_after {
+        parts.push(format!("updated_after={}", urlencode(v)));
+    }
+    if let Some(v) = &q.updated_before {
+        parts.push(format!("updated_before={}", urlencode(v)));
     }
     if let Some(c) = &q.child_of {
         parts.push(format!("child_of={}", urlencode(c)));
@@ -1035,6 +1059,10 @@ fn run() -> Result<()> {
                 type_prefix,
                 status,
                 urgency,
+                created_after,
+                created_before,
+                updated_after,
+                updated_before,
                 child_of,
                 no_parent,
                 sort,
@@ -1048,6 +1076,10 @@ fn run() -> Result<()> {
                     r#type: vec_to_csv(type_prefix),
                     status: vec_to_csv(status),
                     urgency,
+                    created_after,
+                    created_before,
+                    updated_after,
+                    updated_before,
                     child_of,
                     no_parent,
                     sort: vec_to_csv(sort),
@@ -1629,6 +1661,10 @@ mod tests {
                     type_prefix,
                     status,
                     urgency,
+                    created_after,
+                    created_before,
+                    updated_after,
+                    updated_before,
                     child_of,
                     no_parent,
                     sort,
@@ -1642,6 +1678,10 @@ mod tests {
                 assert!(type_prefix.is_empty());
                 assert!(status.is_empty());
                 assert!(urgency.is_none());
+                assert!(created_after.is_none());
+                assert!(created_before.is_none());
+                assert!(updated_after.is_none());
+                assert!(updated_before.is_none());
                 assert!(child_of.is_none());
                 assert!(!no_parent);
                 assert!(sort.is_empty());
@@ -1755,13 +1795,19 @@ mod tests {
         match cli.command {
             Command::Quest {
                 sub: QuestCmd::List {
-                    type_prefix, status, urgency, child_of, no_parent,
+                    type_prefix, status, urgency,
+                    created_after, created_before, updated_after, updated_before,
+                    child_of, no_parent,
                     sort, reverse, limit, offset, id_only, count,
                 },
             } => {
                 assert_eq!(type_prefix, vec!["BUG"]);
                 assert_eq!(status, vec!["in_progress"]);
-                assert_eq!(urgency, Some(2));
+                assert_eq!(urgency.as_deref(), Some("2"));
+                assert!(created_after.is_none());
+                assert!(created_before.is_none());
+                assert!(updated_after.is_none());
+                assert!(updated_before.is_none());
                 assert_eq!(child_of.as_deref(), Some("DEV-001"));
                 assert!(!no_parent);
                 assert_eq!(sort, vec!["urgency"]);
@@ -1832,7 +1878,11 @@ mod tests {
         let q = ListQuery {
             r#type: Some("BUG".into()),
             status: Some("in_progress".into()),
-            urgency: Some(2),
+            urgency: Some("2".into()),
+            created_after: None,
+            created_before: None,
+            updated_after: None,
+            updated_before: None,
             child_of: Some("DEV-001".into()),
             no_parent: false,
             sort: Some("urgency".into()),

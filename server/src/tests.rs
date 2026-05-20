@@ -389,6 +389,86 @@ async fn test_list_urgency_out_of_range() {
     assert_eq!(s, StatusCode::BAD_REQUEST);
 }
 
+// === DEV-028: urgency CSV / 범위 + 시간 범위 ===
+
+#[tokio::test]
+async fn test_list_urgency_csv() {
+    let app = setup_with_mixed_quests().await;
+    // mixed: BUG (urgency=1), DEV-1 (urgency=2), DEV-2 (urgency=4)
+    let (_, body) = get(app, "/api/quests?urgency=1,2").await;
+    assert_eq!(body.as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn test_list_urgency_range() {
+    let app = setup_with_mixed_quests().await;
+    // 1..=2 → 2개 (BUG + DEV-1).
+    let (_, body) = get(app, "/api/quests?urgency=1-2").await;
+    assert_eq!(body.as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn test_list_urgency_range_full() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests?urgency=1-4").await;
+    assert_eq!(body.as_array().unwrap().len(), 3); // 전체
+}
+
+#[tokio::test]
+async fn test_list_urgency_range_invalid() {
+    let app = setup_with_mixed_quests().await;
+    // hi < lo
+    let (s, _) = get(app, "/api/quests?urgency=3-1").await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_list_urgency_range_out_of_bounds() {
+    let app = setup_with_mixed_quests().await;
+    let (s, _) = get(app, "/api/quests?urgency=1-5").await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_list_created_after_filters() {
+    let app = setup_with_mixed_quests().await;
+    // 모두 방금 생성 → 미래 시점이면 0개.
+    let (_, body) = get(app, "/api/quests?created_after=2099-01-01").await;
+    assert_eq!(body.as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn test_list_created_after_includes_all() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests?created_after=2000-01-01").await;
+    assert_eq!(body.as_array().unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn test_list_updated_before_filters() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests?updated_before=2000-01-01").await;
+    assert_eq!(body.as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn test_list_created_range_combined() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(
+        app,
+        "/api/quests?created_after=2000-01-01&created_before=2099-01-01",
+    )
+    .await;
+    assert_eq!(body.as_array().unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn test_list_urgency_empty_string_no_filter() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests?urgency=").await;
+    assert_eq!(body.as_array().unwrap().len(), 3); // 미지정 동일
+}
+
 #[tokio::test]
 async fn test_list_no_parent_filter() {
     let app = setup_with_mixed_quests().await;
