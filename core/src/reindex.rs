@@ -176,10 +176,14 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
             .as_ref()
             .and_then(|s| slug_to_id.get(s).copied());
 
+        // DEV-041: legacy ".md" 의 공백-구분 timestamp 는 migration 0005 와 일관되게
+        // ISO 8601 UTC 로 normalize 한 뒤 db 에 기록. 새 format 은 그대로 통과.
+        let created_at = crate::time::normalize_legacy_ts(&qf.frontmatter.created_at);
+        let updated_at = crate::time::normalize_legacy_ts(&qf.frontmatter.updated_at);
         let deleted_at: Option<String> = qf
             .frontmatter
             .deleted
-            .then(|| qf.frontmatter.updated_at.clone());
+            .then(|| updated_at.clone());
 
         sqlx::query(
             "INSERT INTO quests
@@ -195,8 +199,8 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
         .bind(status_id)
         .bind(qf.frontmatter.urgency)
         .bind(parent_id)
-        .bind(&qf.frontmatter.created_at)
-        .bind(&qf.frontmatter.updated_at)
+        .bind(&created_at)
+        .bind(&updated_at)
         .bind(deleted_at)
         .execute(&mut *tx)
         .await?;

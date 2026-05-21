@@ -111,11 +111,13 @@ pub async fn change_status(
     let new_status_id = body.status_id;
     let quest = sql::change_status(&store.index_pool, id, body).await?;
 
-    // DEV-013: history 기록.
+    // DEV-013: history 기록. DEV-041: ts 명시 bind (로컬 시각 + TZ offset).
+    let ts = crate::time::now_local_iso8601();
     sqlx::query(
-        "INSERT INTO quest_history (quest_id, op, old_value, new_value) VALUES (?, ?, ?, ?)",
+        "INSERT INTO quest_history (quest_id, ts, op, old_value, new_value) VALUES (?, ?, ?, ?, ?)",
     )
     .bind(id)
+    .bind(&ts)
     .bind("change_status")
     .bind(old_status_id.map(|n| n.to_string()))
     .bind(new_status_id.to_string())

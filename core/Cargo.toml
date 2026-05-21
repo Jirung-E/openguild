@@ -25,3 +25,7 @@ thiserror = "2"
 
 # 로깅
 tracing = "0.1"
+
+# DEV-041: 타임스탬프 ISO 8601 + TZ offset 포맷.
+# default-features=false 로 wasm/시간 외 기능 제거 — std + clock 만.
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }

@@ -23,6 +23,7 @@ pub mod repo;
 pub mod services;
 pub mod snapshot;
 pub mod store;
+pub mod time;
 
 pub use error::{AppError, AppResult};
 pub use store::Store;

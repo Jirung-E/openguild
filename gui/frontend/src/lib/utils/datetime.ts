@@ -1,16 +1,33 @@
 /**
- * DB 의 ISO-like 타임스탬프 ("2026-05-15 16:13:09" 또는 "2026-05-15T16:13:09Z") 를
- * 표시용으로 정리.
+ * DB / 파일 타임스탬프를 표시용으로 정리.
  *
- * - 공백 구분자 → `T` 로 정규화 후 Date 파싱.
- * - 잘못된 형식이면 원본 그대로 반환.
- * - 출력은 로컬 시간대의 `YYYY-MM-DD HH:mm` (초 생략 — 표시 영역 절약).
+ * 지원하는 입력 형식:
+ * - Git 식 ISO 8601 + offset: `2026-05-22T13:41:10+09:00` (DEV-041 이후 새 데이터)
+ * - ISO 8601 UTC: `2026-05-22T04:41:10Z`
+ * - Legacy SQLite (공백 구분자, TZ 마커 없음): `2026-05-22 04:41:10`
+ *   → UTC 로 가정 (SQLite `datetime('now')` 가 UTC 라서).
+ *
+ * 출력은 로컬 시간대의 `YYYY-MM-DD HH:mm` (초 생략).
  */
+
+/**
+ * 어떤 입력이든 JS Date 가 명확히 파싱할 수 있는 형식으로 정규화.
+ *
+ * - 이미 TZ 마커 (Z / ±HH:MM / ±HHMM) 있으면 그대로.
+ * - 없으면 UTC 로 가정하고 `T` + `Z` 부여.
+ */
+function normalize(s: string): string {
+	// "Z" 또는 ISO 끝에 "+HH:MM"/"-HH:MM"/"+HHMM"/"-HHMM" 가 붙어있는지.
+	const hasTz = /(?:Z|[+-]\d{2}:?\d{2})$/.test(s);
+	let body = s;
+	if (!body.includes('T')) body = body.replace(' ', 'T');
+	if (!hasTz) body = `${body}Z`; // 마커 없으면 UTC 가정.
+	return body;
+}
+
 export function formatTs(s: string | null | undefined): string {
 	if (!s) return '';
-	// "2026-05-15 16:13:09" → "2026-05-15T16:13:09" (Z 없으면 로컬 해석)
-	const normalized = s.includes('T') ? s : s.replace(' ', 'T');
-	const d = new Date(normalized);
+	const d = new Date(normalize(s));
 	if (Number.isNaN(d.getTime())) return s;
 
 	const yyyy = d.getFullYear();
@@ -29,8 +46,7 @@ export function formatTs(s: string | null | undefined): string {
  */
 export function formatRelative(s: string | null | undefined, now: Date = new Date()): string {
 	if (!s) return '';
-	const normalized = s.includes('T') ? s : s.replace(' ', 'T');
-	const d = new Date(normalized);
+	const d = new Date(normalize(s));
 	if (Number.isNaN(d.getTime())) return s;
 
 	const diffMs = now.getTime() - d.getTime();

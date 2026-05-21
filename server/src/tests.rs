@@ -768,6 +768,53 @@ async fn test_history_isolated_per_quest() {
     assert_eq!(body2.as_array().unwrap().len(), 0);
 }
 
+// === DEV-041: 타임스탬프 ISO 8601 + TZ offset 형식 ===
+
+/// 새로 INSERT 된 행의 ts / created_at 가 `YYYY-MM-DDTHH:MM:SS±HH:MM` 패턴
+/// (또는 Z) 인지 확인. 절대 시각 자체는 검증하지 않음 (실행 시점 의존).
+fn assert_iso8601_with_tz(ts: &str, field: &str) {
+    // 길이 20 (Z) 또는 25 (+HH:MM).
+    let ok = (ts.len() == 20 && ts.ends_with('Z'))
+        || (ts.len() == 25 && (ts.as_bytes()[19] == b'+' || ts.as_bytes()[19] == b'-'));
+    assert!(ok, "{field} = {ts:?} — ISO 8601 with TZ marker 기대");
+    assert_eq!(&ts[4..5], "-", "{field}: year-month sep");
+    assert_eq!(&ts[7..8], "-", "{field}: month-day sep");
+    assert_eq!(&ts[10..11], "T", "{field}: date-time sep");
+}
+
+#[tokio::test]
+async fn test_create_quest_timestamps_have_tz_marker() {
+    let app = setup().await;
+    let (_, q) = post(app, "/api/quests",
+        json!({ "quest_type_id": 1, "title": "ts-test", "status_id": 1 })).await;
+    let created = q["created_at"].as_str().expect("created_at must be string");
+    let updated = q["updated_at"].as_str().expect("updated_at must be string");
+    assert_iso8601_with_tz(created, "created_at");
+    assert_iso8601_with_tz(updated, "updated_at");
+}
+
+#[tokio::test]
+async fn test_history_ts_has_tz_marker() {
+    let app = setup().await;
+    let (_, q) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "hist-ts", "status_id": 1 })).await;
+    let id = q["id"].as_i64().unwrap();
+    patch(app.clone(), &format!("/api/quests/{id}/status"), json!({ "status_id": 2 })).await;
+    let (_, body) = get(app, &format!("/api/quests/{id}/history")).await;
+    let ts = body[0]["ts"].as_str().expect("ts must be string");
+    assert_iso8601_with_tz(ts, "history.ts");
+}
+
+#[tokio::test]
+async fn test_update_quest_bumps_updated_at_to_new_format() {
+    let app = setup().await;
+    let (_, q) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "upd-ts", "status_id": 1 })).await;
+    let id = q["id"].as_i64().unwrap();
+    let (_, updated) = patch(app, &format!("/api/quests/{id}"), json!({ "title": "upd-ts-new" })).await;
+    assert_iso8601_with_tz(updated["updated_at"].as_str().unwrap(), "updated_at after PATCH");
+}
+
 #[tokio::test]
 async fn test_list_no_parent_filter() {
     let app = setup_with_mixed_quests().await;

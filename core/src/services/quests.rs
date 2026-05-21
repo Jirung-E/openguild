@@ -459,9 +459,12 @@ pub async fn create(pool: &SqlitePool, body: CreateQuestRequest) -> AppResult<Qu
     .await?
     .ok_or_else(|| AppError::BadRequest("invalid quest_type_id".to_string()))?;
 
+    // DEV-041: 로컬 시각 + TZ offset 으로 명시 bind. SQL DEFAULT (datetime('now'))
+    // 는 UTC w/o-marker 라서 그대로 두면 새 행도 legacy 형식이 됨 — 회피.
+    let now = crate::time::now_local_iso8601();
     let id = sqlx::query_scalar::<_, i64>(
-        "INSERT INTO quests (quest_type_id, number, title, description, status_id, urgency, parent_quest_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id",
+        "INSERT INTO quests (quest_type_id, number, title, description, status_id, urgency, parent_quest_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
     )
     .bind(body.quest_type_id)
     .bind(number)
@@ -470,6 +473,8 @@ pub async fn create(pool: &SqlitePool, body: CreateQuestRequest) -> AppResult<Qu
     .bind(body.status_id)
     .bind(body.urgency.unwrap_or(3))
     .bind(body.parent_quest_id)
+    .bind(&now)
+    .bind(&now)
     .fetch_one(&mut *tx)
     .await?;
 
@@ -481,25 +486,27 @@ pub async fn create(pool: &SqlitePool, body: CreateQuestRequest) -> AppResult<Qu
 pub async fn update(pool: &SqlitePool, id: i64, body: UpdateQuestRequest) -> AppResult<QuestRow> {
     fetch_by_id(pool, id).await?;
 
+    let now = crate::time::now_local_iso8601();
     if let Some(title) = &body.title {
-        sqlx::query("UPDATE quests SET title = ?, updated_at = datetime('now') WHERE id = ?")
+        sqlx::query("UPDATE quests SET title = ?, updated_at = ? WHERE id = ?")
             .bind(title)
+            .bind(&now)
             .bind(id)
             .execute(pool)
             .await?;
     }
     if body.description.is_some() {
-        sqlx::query(
-            "UPDATE quests SET description = ?, updated_at = datetime('now') WHERE id = ?",
-        )
-        .bind(&body.description)
-        .bind(id)
-        .execute(pool)
-        .await?;
+        sqlx::query("UPDATE quests SET description = ?, updated_at = ? WHERE id = ?")
+            .bind(&body.description)
+            .bind(&now)
+            .bind(id)
+            .execute(pool)
+            .await?;
     }
     if let Some(urgency) = body.urgency {
-        sqlx::query("UPDATE quests SET urgency = ?, updated_at = datetime('now') WHERE id = ?")
+        sqlx::query("UPDATE quests SET urgency = ?, updated_at = ? WHERE id = ?")
             .bind(urgency)
+            .bind(&now)
             .bind(id)
             .execute(pool)
             .await?;
@@ -544,8 +551,10 @@ pub async fn change_parent(
         }
     }
 
-    sqlx::query("UPDATE quests SET parent_quest_id = ?, updated_at = datetime('now') WHERE id = ?")
+    let now = crate::time::now_local_iso8601();
+    sqlx::query("UPDATE quests SET parent_quest_id = ?, updated_at = ? WHERE id = ?")
         .bind(body.parent_quest_id)
+        .bind(&now)
         .bind(id)
         .execute(pool)
         .await?;
@@ -558,14 +567,14 @@ pub async fn change_status(
     id: i64,
     body: ChangeStatusRequest,
 ) -> AppResult<QuestRow> {
-    let rows = sqlx::query(
-        "UPDATE quests SET status_id = ?, updated_at = datetime('now') WHERE id = ?",
-    )
-    .bind(body.status_id)
-    .bind(id)
-    .execute(pool)
-    .await?
-    .rows_affected();
+    let now = crate::time::now_local_iso8601();
+    let rows = sqlx::query("UPDATE quests SET status_id = ?, updated_at = ? WHERE id = ?")
+        .bind(body.status_id)
+        .bind(&now)
+        .bind(id)
+        .execute(pool)
+        .await?
+        .rows_affected();
 
     if rows == 0 {
         return Err(AppError::NotFound(format!("quest {id} not found")));
@@ -605,6 +614,8 @@ pub async fn delete(
         }
     }
 
+    let now = crate::time::now_local_iso8601();
+
     // cascade 안 한 alive 직계 자식들 → parent_quest_id = NULL (분리)
     let cascade_filter = if cascade_ids.is_empty() {
         String::new()
@@ -619,9 +630,10 @@ pub async fn delete(
         )
     };
     sqlx::query(&format!(
-        "UPDATE quests SET parent_quest_id = NULL, updated_at = datetime('now')
+        "UPDATE quests SET parent_quest_id = NULL, updated_at = ?
          WHERE parent_quest_id = ? AND deleted_at IS NULL{cascade_filter}"
     ))
+    .bind(&now)
     .bind(id)
     .execute(&mut *tx)
     .await?;
@@ -629,9 +641,11 @@ pub async fn delete(
     // 명시된 자식들 soft delete
     for cid in cascade_ids {
         sqlx::query(
-            "UPDATE quests SET deleted_at = datetime('now'), updated_at = datetime('now')
+            "UPDATE quests SET deleted_at = ?, updated_at = ?
              WHERE id = ? AND deleted_at IS NULL",
         )
+        .bind(&now)
+        .bind(&now)
         .bind(cid)
         .execute(&mut *tx)
         .await?;
@@ -639,9 +653,11 @@ pub async fn delete(
 
     // 본 퀘스트 soft delete
     let rows = sqlx::query(
-        "UPDATE quests SET deleted_at = datetime('now'), updated_at = datetime('now')
+        "UPDATE quests SET deleted_at = ?, updated_at = ?
          WHERE id = ? AND deleted_at IS NULL",
     )
+    .bind(&now)
+    .bind(&now)
     .bind(id)
     .execute(&mut *tx)
     .await?
@@ -656,10 +672,12 @@ pub async fn delete(
 }
 
 pub async fn restore(pool: &SqlitePool, id: i64) -> AppResult<QuestRow> {
+    let now = crate::time::now_local_iso8601();
     let rows = sqlx::query(
-        "UPDATE quests SET deleted_at = NULL, updated_at = datetime('now')
+        "UPDATE quests SET deleted_at = NULL, updated_at = ?
          WHERE id = ? AND deleted_at IS NOT NULL",
     )
+    .bind(&now)
     .bind(id)
     .execute(pool)
     .await?
