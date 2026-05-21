@@ -46,6 +46,9 @@ struct Cli {
     command: Command,
 }
 
+// QuestCmd 가 ListQuery 등 큰 필터 구조체를 포함하므로 다른 variant 와 크기 차가
+// 크지만, CLI 는 한 번 실행되고 끝 — 메모리 영향 무시 가능. 박싱 회피.
+#[allow(clippy::large_enum_variant)]
 #[derive(Subcommand)]
 enum Command {
     /// 현재 디렉토리를 길드로 초기화 (.guild 마커 파일 생성)

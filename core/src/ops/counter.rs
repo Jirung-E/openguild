@@ -53,11 +53,13 @@ pub async fn check_and_fix_counters(
     store: &Store,
     auto_fix: bool,
 ) -> Result<CombinedReport> {
-    let mut combined = CombinedReport::default();
-
     // ── 1. file drift (기존 동작) ──
-    combined.file_report = check_counters(&store.paths, auto_fix)
+    let file_report = check_counters(&store.paths, auto_fix)
         .context("counter file 검사 실패")?;
+    let mut combined = CombinedReport {
+        file_report,
+        ..Default::default()
+    };
 
     // 1.1 file fix 가 발생했으면 SQL 도 같이 갱신 (BUG-003 한방향 사례).
     if auto_fix {

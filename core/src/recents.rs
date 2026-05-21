@@ -109,10 +109,10 @@ fn guess_name(dir: &Path) -> String {
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.flatten() {
             let p = entry.path();
-            if p.extension().and_then(|e| e.to_str()) == Some("guild") {
-                if let Some(stem) = p.file_stem().and_then(|s| s.to_str()) {
-                    return stem.to_string();
-                }
+            if p.extension().and_then(|e| e.to_str()) == Some("guild")
+                && let Some(stem) = p.file_stem().and_then(|s| s.to_str())
+            {
+                return stem.to_string();
             }
         }
     }

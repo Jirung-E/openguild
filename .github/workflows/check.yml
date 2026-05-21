@@ -1,0 +1,85 @@
+name: check
+
+# DEV-008: PR / push 시 자동 검증 — backend cargo / frontend npm.
+#
+# 트리거:
+# - main / develop 으로의 PR
+# - main / develop 직접 push (드물지만 hotfix 등)
+#
+# 두 job 병렬 실행 (backend / frontend). 둘 다 통과해야 merge 가능.
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  backend:
+    name: backend (cargo)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      # ~/.cargo/registry 만 캐시 — target/ 은 PR 마다 깨끗하게.
+      # (CLAUDE.md 의 정책과 일치.)
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      # NOTE: cargo fmt --check 는 의도적으로 빠짐 — 기존 코드베이스 일괄 정렬은
+      # 별도 quest (대규모 diff). 추후 추가 예정.
+
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: cargo test
+        # --test-threads=1 — env 변수 공유 테스트가 병렬에서 충돌하므로
+        # 직렬 실행. AGENTS.md / 각 quest 의 검증 절차와 동일.
+        run: cargo test --workspace -- --test-threads=1
+
+  frontend:
+    name: frontend (npm)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: gui/frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: gui/frontend/package-lock.json
+
+      - name: npm ci
+        run: npm ci
+
+      - name: svelte-kit sync
+        run: npx svelte-kit sync
+
+      - name: svelte-check
+        run: npm run check
+
+      - name: vitest
+        run: npm test -- --run
+
+      - name: vite build
+        run: npm run build
