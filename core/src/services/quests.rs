@@ -73,18 +73,30 @@ pub async fn list(pool: &SqlitePool, query: &ListQuery) -> AppResult<Vec<QuestRo
         sql.push_str(&format!(" AND q.urgency IN ({placeholders})"));
     }
 
-    // 시간 범위 — ISO 8601 string 비교. SQLite 의 datetime 비교는 lexicographic OK.
+    // 시간 범위 — SQLite 의 `datetime()` 으로 양쪽을 UTC space-form
+    // ("YYYY-MM-DD HH:MM:SS") 으로 변환 후 lex 비교.
+    //
+    // 이유 (DEV-028 후속): DEV-041 부터 stored ts 는 mixed format —
+    //   legacy: "2026-05-21T15:26:39Z" (length 20)
+    //   new:    "2026-05-22T00:43:40+09:00" (length 25)
+    // lex 비교는 ASCII 차로 깨짐 ('+' < 'Z').
+    //
+    // `datetime(timestring)` 은 입력에 `Z` / `+HH:MM` 가 있으면 UTC 변환,
+    // 없으면 UTC 로 간주. 출력은 항상 "YYYY-MM-DD HH:MM:SS" 동일 형식 → 안전.
+    //
+    // user 입력 ("2026-05-22T00:00:00") 은 normalize_filter_ts 가 사용자의
+    // 로컬 TZ 부착 → SQLite 가 UTC 로 잘못 해석하는 것 방지.
     if trimmed_opt(&query.created_after).is_some() {
-        sql.push_str(" AND q.created_at >= ?");
+        sql.push_str(" AND datetime(q.created_at) >= datetime(?)");
     }
     if trimmed_opt(&query.created_before).is_some() {
-        sql.push_str(" AND q.created_at <= ?");
+        sql.push_str(" AND datetime(q.created_at) <= datetime(?)");
     }
     if trimmed_opt(&query.updated_after).is_some() {
-        sql.push_str(" AND q.updated_at >= ?");
+        sql.push_str(" AND datetime(q.updated_at) >= datetime(?)");
     }
     if trimmed_opt(&query.updated_before).is_some() {
-        sql.push_str(" AND q.updated_at <= ?");
+        sql.push_str(" AND datetime(q.updated_at) <= datetime(?)");
     }
 
     // 관계 필터 — 상호배타 검증.
@@ -246,17 +258,18 @@ pub async fn list(pool: &SqlitePool, query: &ListQuery) -> AppResult<Vec<QuestRo
         q = q.bind(*u);
     }
     // 시간 범위 — bind 순서는 SQL 의 ? 순서와 동일.
+    // normalize_filter_ts: TZ 마커 없으면 사용자의 로컬 TZ 부착 (DEV-028 후속).
     if let Some(v) = trimmed_opt(&query.created_after) {
-        q = q.bind(v.to_string());
+        q = q.bind(crate::time::normalize_filter_ts(v));
     }
     if let Some(v) = trimmed_opt(&query.created_before) {
-        q = q.bind(v.to_string());
+        q = q.bind(crate::time::normalize_filter_ts(v));
     }
     if let Some(v) = trimmed_opt(&query.updated_after) {
-        q = q.bind(v.to_string());
+        q = q.bind(crate::time::normalize_filter_ts(v));
     }
     if let Some(v) = trimmed_opt(&query.updated_before) {
-        q = q.bind(v.to_string());
+        q = q.bind(crate::time::normalize_filter_ts(v));
     }
     if let Some(pid) = parent_id {
         q = q.bind(pid);

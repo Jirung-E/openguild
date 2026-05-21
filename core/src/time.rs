@@ -44,6 +44,69 @@ pub fn normalize_legacy_ts(s: &str) -> String {
     }
 }
 
+/// DEV-028 후속 버그 수정: `--created-after 2026-05-22T00:00:00` 같은 TZ 없는
+/// 입력을 사용자의 로컬 TZ 기준으로 해석. 그래야 KST 사용자가 "오늘 00시 이후"
+/// 라고 자연스럽게 입력했을 때 의도대로 동작.
+///
+/// 변환:
+/// - 이미 TZ 마커 (`Z` / `±HH:MM` / `±HHMM`) 있으면 → 그대로.
+/// - date-only (`YYYY-MM-DD`, 길이 10) → `YYYY-MM-DDT00:00:00<local_offset>`.
+/// - datetime w/o TZ (`YYYY-MM-DDTHH:MM:SS`, 길이 19, T 포함) → `<input><local_offset>`.
+/// - 그 외 (legacy 공백 구분 포함) → 그대로 (SQLite 가 UTC 로 해석).
+pub fn normalize_filter_ts(input: &str) -> String {
+    let s = input.trim();
+    if s.is_empty() {
+        return s.to_string();
+    }
+
+    // TZ 마커 검출 — 끝에 Z 또는 +/-HH(:?)MM.
+    if has_tz_marker(s) {
+        return s.to_string();
+    }
+
+    let local_offset = Local::now().offset().to_string(); // 예: "+09:00"
+
+    // date-only.
+    if s.len() == 10 && s.as_bytes().get(4) == Some(&b'-') && s.as_bytes().get(7) == Some(&b'-') {
+        return format!("{s}T00:00:00{local_offset}");
+    }
+    // datetime w/o TZ.
+    if s.len() == 19 && s.contains('T') {
+        return format!("{s}{local_offset}");
+    }
+    s.to_string()
+}
+
+fn has_tz_marker(s: &str) -> bool {
+    if s.ends_with('Z') {
+        return true;
+    }
+    // `+HH:MM` / `-HH:MM` / `+HHMM` / `-HHMM` — 마지막 5~6자 검사.
+    let bytes = s.as_bytes();
+    let n = bytes.len();
+    if n < 5 {
+        return false;
+    }
+    // 끝에서 5자: `±HHMM` 또는 `±HH:M` (M 의 짝). 6자: `±HH:MM`.
+    let last5_sign_pos = n - 5;
+    let last6_sign_pos = n.checked_sub(6);
+    let is_sign = |b: u8| b == b'+' || b == b'-';
+    if is_sign(bytes[last5_sign_pos])
+        && bytes[last5_sign_pos + 1..].iter().all(|b| b.is_ascii_digit())
+    {
+        return true;
+    }
+    if let Some(p) = last6_sign_pos
+        && is_sign(bytes[p])
+        && bytes[p + 3] == b':'
+        && bytes[p + 1..p + 3].iter().all(|b| b.is_ascii_digit())
+        && bytes[p + 4..].iter().all(|b| b.is_ascii_digit())
+    {
+        return true;
+    }
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -90,5 +153,56 @@ mod tests {
     #[test]
     fn normalize_legacy_passes_through_empty() {
         assert_eq!(normalize_legacy_ts(""), "");
+    }
+
+    // --- normalize_filter_ts ---
+
+    #[test]
+    fn filter_ts_passes_through_z() {
+        assert_eq!(normalize_filter_ts("2026-05-22T00:00:00Z"), "2026-05-22T00:00:00Z");
+    }
+
+    #[test]
+    fn filter_ts_passes_through_offset() {
+        let s = "2026-05-22T00:00:00+09:00";
+        assert_eq!(normalize_filter_ts(s), s);
+    }
+
+    #[test]
+    fn filter_ts_passes_through_compact_offset() {
+        let s = "2026-05-22T00:00:00+0900";
+        assert_eq!(normalize_filter_ts(s), s);
+    }
+
+    #[test]
+    fn filter_ts_date_only_appends_midnight_local() {
+        let out = normalize_filter_ts("2026-05-22");
+        // 어느 환경이든 "2026-05-22T00:00:00<offset>" 형식.
+        assert!(out.starts_with("2026-05-22T00:00:00"));
+        assert!(out.len() >= 20);
+    }
+
+    #[test]
+    fn filter_ts_naked_datetime_appends_local_offset() {
+        let out = normalize_filter_ts("2026-05-22T00:00:00");
+        assert!(out.starts_with("2026-05-22T00:00:00"));
+        // append 후 25자 (with `+HH:MM`).
+        assert_eq!(out.len(), 25);
+    }
+
+    #[test]
+    fn filter_ts_empty_returns_empty() {
+        assert_eq!(normalize_filter_ts(""), "");
+        assert_eq!(normalize_filter_ts("   "), "");
+    }
+
+    #[test]
+    fn has_tz_marker_detects_forms() {
+        assert!(has_tz_marker("2026-05-22T00:00:00Z"));
+        assert!(has_tz_marker("2026-05-22T00:00:00+09:00"));
+        assert!(has_tz_marker("2026-05-22T00:00:00-05:30"));
+        assert!(has_tz_marker("2026-05-22T00:00:00+0900"));
+        assert!(!has_tz_marker("2026-05-22T00:00:00"));
+        assert!(!has_tz_marker("2026-05-22"));
     }
 }

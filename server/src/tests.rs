@@ -462,6 +462,76 @@ async fn test_list_created_range_combined() {
     assert_eq!(body.as_array().unwrap().len(), 3);
 }
 
+// === DEV-028 후속: TZ-aware 시간 비교 ===
+// DEV-041 후 stored ts 는 mixed format ("...Z" 와 "...+09:00"). lex 비교가
+// 깨지는 회귀 시나리오를 strftime 변환으로 해결했는지 확인.
+
+#[tokio::test]
+async fn test_list_created_after_tz_aware_finds_recent_with_offset_format() {
+    let app = setup().await;
+    // setup() 직후 INSERT 되는 quest 들은 새 format (로컬 TZ +offset) 으로 저장.
+    let (_, q) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "recent", "status_id": 1 })).await;
+    let created = q["created_at"].as_str().unwrap().to_string();
+    // created_at 직전 1분 → "after" 로 검색.
+    // 단순 lex 라면 stored ("...+09:00") 가 input ("...Z") 보다 작게 비교될 수 있음
+    // ('+' < 'Z' ASCII). strftime 사용 시 절대 시각 기반 → 정상 매치.
+    let one_min_before = subtract_one_minute(&created);
+    let (_, body) = get(app, &format!("/api/quests?created_after={}", url_encode(&one_min_before))).await;
+    let arr = body.as_array().unwrap();
+    assert!(arr.iter().any(|x| x["title"] == "recent"),
+        "방금 만든 quest 가 'after one minute ago' 검색에 포함되어야 함. \
+         stored={created:?}, query={one_min_before:?}, results={arr:?}");
+}
+
+/// "2026-05-22T13:41:10+09:00" 같은 입력에서 분 부분만 -1.
+/// 매우 간단한 변환 — 초과 / 일자 경계는 무시 (이 테스트 시나리오에선 안 발생).
+fn subtract_one_minute(s: &str) -> String {
+    // 분은 14..16 위치.
+    let mut chars: Vec<char> = s.chars().collect();
+    let minute_str: String = chars[14..16].iter().collect();
+    let mut m: i32 = minute_str.parse().unwrap_or(0);
+    m -= 1;
+    if m < 0 {
+        m += 60;
+        // 시간을 -1 — 시 위치 11..13.
+        let hour_str: String = chars[11..13].iter().collect();
+        let mut h: i32 = hour_str.parse().unwrap_or(0);
+        h -= 1;
+        if h < 0 { h += 24; }
+        let h_s = format!("{h:02}");
+        chars[11] = h_s.chars().next().unwrap();
+        chars[12] = h_s.chars().nth(1).unwrap();
+    }
+    let m_s = format!("{m:02}");
+    chars[14] = m_s.chars().next().unwrap();
+    chars[15] = m_s.chars().nth(1).unwrap();
+    chars.iter().collect()
+}
+
+fn url_encode(s: &str) -> String {
+    // 최소: `:` `+` 만 인코딩 (queryString 에서 `+` 는 공백으로 해석되므로).
+    s.replace('+', "%2B").replace(':', "%3A")
+}
+
+#[tokio::test]
+async fn test_list_created_after_with_naked_iso_uses_local_tz() {
+    let app = setup().await;
+    let (_, q) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "naked-tz", "status_id": 1 })).await;
+    // created_at 의 날짜 추출 (앞 10자, "YYYY-MM-DD").
+    let created = q["created_at"].as_str().unwrap();
+    let date_part = &created[..10];
+
+    // 입력 "YYYY-MM-DDT00:00:00" (TZ 없음) — normalize_filter_ts 가 로컬 TZ 부착.
+    let query_str = format!("{date_part}T00:00:00");
+    let (_, body) = get(app, &format!("/api/quests?created_after={}", url_encode(&query_str))).await;
+    let arr = body.as_array().unwrap();
+    assert!(arr.iter().any(|x| x["title"] == "naked-tz"),
+        "naked datetime input 이 로컬 TZ 로 해석되어야 함. \
+         stored={created:?}, query={query_str:?}");
+}
+
 #[tokio::test]
 async fn test_list_urgency_empty_string_no_filter() {
     let app = setup_with_mixed_quests().await;
