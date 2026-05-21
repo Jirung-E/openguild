@@ -280,7 +280,7 @@ mod tests {
 
         let report = reindex(&store).await.unwrap();
         assert_eq!(report.types_loaded, 3);
-        assert_eq!(report.statuses_loaded, 6);
+        assert_eq!(report.statuses_loaded, 7);
         assert_eq!(report.quests_loaded, 0);
         assert!(report.skipped.is_empty());
 
@@ -289,7 +289,7 @@ mod tests {
             sqlx::query_scalar("SELECT COUNT(*) FROM quest_types").fetch_one(&store.index_pool).await.unwrap();
         assert_eq!(n_types, 3);
         let n_statuses: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM quest_statuses").fetch_one(&store.index_pool).await.unwrap();
-        assert_eq!(n_statuses, 6);
+        assert_eq!(n_statuses, 7);
 
         let _ = std::fs::remove_dir_all(&dir);
     }
