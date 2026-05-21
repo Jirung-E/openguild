@@ -745,9 +745,15 @@
 	}
 
 	.edit-form { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1.5rem; }
+	/* BUG-010: text-transform / letter-spacing 을 label 전체가 아닌 라벨 텍스트
+	   span 에만 적용 — 그렇지 않으면 자식 input / CodeMirror 까지 캐스케이드
+	   되어 입력값이 대문자로 보임. */
 	.field-label {
 		font-size: 0.75rem; font-weight: 600; color: #8b949e;
-		text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.5rem;
+		margin-top: 0.5rem;
+	}
+	.field-label > span:first-child {
+		text-transform: uppercase; letter-spacing: 0.05em;
 	}
 	.edit-title {
 		padding: 0.5rem 0.75rem;

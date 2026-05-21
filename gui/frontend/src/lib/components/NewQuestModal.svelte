@@ -236,10 +236,15 @@
 		flex-direction: column;
 		gap: 0.3rem;
 	}
+	/* BUG-010: uppercase / letter-spacing 은 라벨 텍스트 span 에만 적용 —
+	   label 전체에 두면 자식 input / textarea / select 까지 대문자로 표시됨. */
 	.field-label {
 		font-size: 0.72rem;
 		font-weight: 600;
 		color: #8b949e;
+	}
+	.field-label > span:first-child,
+	span.field-label {
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 	}
