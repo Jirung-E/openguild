@@ -19,6 +19,7 @@
 	} from '$lib/types';
 	import NewQuestModal from '$lib/components/NewQuestModal.svelte';
 	import QuestCombobox from '$lib/components/QuestCombobox.svelte';
+	import { formatTs, formatRelative } from '$lib/utils/datetime';
 
 	let slug = $derived($page.params.id ?? '');
 	let detail = $state<QuestDetail | null>(null);
@@ -320,6 +321,33 @@
 			{/key}
 		</div>
 
+		<!-- 생성 / 변경 시각 -->
+		<div class="meta-times">
+			<span class="meta-item">
+				<span class="meta-label">생성</span>
+				<time
+					class="meta-val"
+					datetime={detail.created_at}
+					title={formatTs(detail.created_at)}
+					data-testid="created-at"
+				>
+					{formatTs(detail.created_at)}
+				</time>
+			</span>
+			<span class="meta-sep">·</span>
+			<span class="meta-item">
+				<span class="meta-label">변경</span>
+				<time
+					class="meta-val"
+					datetime={detail.updated_at}
+					title={formatTs(detail.updated_at)}
+					data-testid="updated-at"
+				>
+					{formatRelative(detail.updated_at)}
+				</time>
+			</span>
+		</div>
+
 		{#if editMode}
 			<div class="edit-form">
 				<label class="field-label">
@@ -587,6 +615,17 @@
 		display: flex; gap: 0.5rem; flex-wrap: wrap;
 		margin-bottom: 0.75rem;
 	}
+
+	.meta-times {
+		display: flex; align-items: center; flex-wrap: wrap;
+		gap: 0.4rem;
+		font-size: 0.72rem; color: #6e7681;
+		margin-bottom: 0.85rem;
+	}
+	.meta-item { display: inline-flex; gap: 0.3rem; align-items: baseline; }
+	.meta-label { color: #484f58; text-transform: uppercase; letter-spacing: 0.05em; }
+	.meta-val { color: #8b949e; font-variant-numeric: tabular-nums; }
+	.meta-sep { color: #30363d; }
 
 	.title {
 		font-size: 1.4rem; font-weight: 600; color: #e6edf3;
