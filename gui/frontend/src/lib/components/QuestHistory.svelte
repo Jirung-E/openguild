@@ -17,8 +17,9 @@
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 
-	// statuses 는 부모에서 받은 메타. id → status 매핑.
+	// statuses 는 부모에서 받은 메타. id → status / slug → status 매핑.
 	let statusById = $derived(new Map(statuses.map((s) => [s.id, s])));
+	let statusBySlug = $derived(new Map(statuses.map((s) => [s.slug, s])));
 
 	// questId 가 바뀔 때마다 (다른 quest 페이지로 navigate) 다시 로드.
 	$effect(() => {
@@ -39,20 +40,31 @@
 			});
 	});
 
-	/** status_id 문자열 → 표시명. 매핑 없으면 ID 그대로. */
-	function statusLabel(idStr: string | null): string {
-		if (!idStr) return '(없음)';
-		const id = Number(idStr);
-		if (!Number.isFinite(id)) return idStr;
-		const s = statusById.get(id);
-		return s ? s.name_en : `#${idStr}`;
+	/**
+	 * DEV-042: history 값은 slug (예 "open", "testing"). 표시 시 status name_en 으로 변환.
+	 * 폴백: 숫자로 보이면 legacy (DEV-042 이전 기록) — id 로 lookup, 표기에 (legacy) 부착.
+	 */
+	function statusLabel(value: string | null): string {
+		if (!value) return '(없음)';
+		const bySlug = statusBySlug.get(value);
+		if (bySlug) return bySlug.name_en;
+		if (/^\d+$/.test(value)) {
+			const id = Number(value);
+			const s = statusById.get(id);
+			if (s) return `${s.name_en} (legacy)`;
+		}
+		return value;
 	}
 
-	function statusColor(idStr: string | null): string {
-		if (!idStr) return '#484f58';
-		const id = Number(idStr);
-		const s = statusById.get(id);
-		return s?.color ?? '#484f58';
+	function statusColor(value: string | null): string {
+		if (!value) return '#484f58';
+		const bySlug = statusBySlug.get(value);
+		if (bySlug) return bySlug.color;
+		if (/^\d+$/.test(value)) {
+			const s = statusById.get(Number(value));
+			if (s) return s.color;
+		}
+		return '#484f58';
 	}
 
 	/** op 별 변경 표현. 후속 op 추가 시 case 추가. */

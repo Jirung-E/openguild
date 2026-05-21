@@ -86,6 +86,18 @@ agent (Claude / 다른 LLM) 가 `Write` / `Edit` 도구로 `.guild/quests/*.md` 
 - 자세한 표 + 우회 절차는 [`docs/AGENTS_OPENGUILD_USAGE.md` § 4](./docs/AGENTS_OPENGUILD_USAGE.md) 의
   "🚨 `.guild/` 파일을 직접 편집하지 말 것" 절 참조.
 
+### status / type slug 는 stable identifier (DEV-042)
+
+`.guild/statuses/*.toml` 와 `.guild/types/*.toml` 의 **파일명 prefix 가 slug**
+(예: `5-returned.toml` → slug `returned`). 이 slug 는 quest_history,
+`.md` frontmatter, 그리고 DB join 의 stable identifier.
+
+- 상태/타입 **추가**: 새 파일 만들고 reindex — 안전.
+- 상태/타입 **순서 변경**: 파일명의 sort_order prefix 만 변경 (slug 는 유지).
+- 상태/타입 **slug rename**: 위험 — quest_history.old/new_value 와 .md
+  frontmatter 의 status 필드도 동시 갱신 필요. 가급적 피하고, 어쩔 수 없다면
+  helper 가 생기기 전까진 수동 일괄 변경 + reindex.
+
 ## 한 줄 요약
 
 RPG 테마 프로젝트 이슈 트래커. Rust(Axum) 백엔드 + Svelte 프론트엔드 + Rust CLI (`openguild`).

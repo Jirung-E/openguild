@@ -107,15 +107,17 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
         let slug = StatusFile::slug_from_filename(filename).unwrap_or(filename);
         match StatusFile::read(path) {
             Ok(s) => {
+                // DEV-042: slug 컬럼도 함께 INSERT — quest_history 가 slug 기반.
                 sqlx::query(
-                    "INSERT INTO quest_statuses (id, name_en, name_ko, color, sort_order)
-                     VALUES (?, ?, ?, ?, ?)",
+                    "INSERT INTO quest_statuses (id, name_en, name_ko, color, sort_order, slug)
+                     VALUES (?, ?, ?, ?, ?, ?)",
                 )
                 .bind(id)
                 .bind(&s.name_en)
                 .bind(&s.name_ko)
                 .bind(&s.color)
                 .bind(s.sort_order)
+                .bind(slug)
                 .execute(&mut *tx)
                 .await?;
                 slug_to_status_id.insert(slug.to_string(), id);

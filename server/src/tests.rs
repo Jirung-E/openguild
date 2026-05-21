@@ -800,8 +800,9 @@ async fn test_history_change_status_recorded() {
     let arr = body.as_array().unwrap();
     assert_eq!(arr.len(), 1);
     assert_eq!(arr[0]["op"], "change_status");
-    assert_eq!(arr[0]["old_value"], "1");
-    assert_eq!(arr[0]["new_value"], "2");
+    // DEV-042: slug 기반. migration 0001 seed: id 1=Open, id 2=In Progress.
+    assert_eq!(arr[0]["old_value"], "open");
+    assert_eq!(arr[0]["new_value"], "in_progress");
 }
 
 #[tokio::test]
@@ -816,10 +817,46 @@ async fn test_history_multiple_status_changes_ordered_desc() {
     let (_, body) = get(app, &format!("/api/quests/{id}/history")).await;
     let arr = body.as_array().unwrap();
     assert_eq!(arr.len(), 3);
-    // 최신 → 과거.
-    assert_eq!(arr[0]["new_value"], "1");
-    assert_eq!(arr[1]["new_value"], "3");
-    assert_eq!(arr[2]["new_value"], "2");
+    // 최신 → 과거. DEV-042: slug. migration 0001: 1=Open, 2=In Progress, 3=Done.
+    assert_eq!(arr[0]["new_value"], "open");
+    assert_eq!(arr[1]["new_value"], "done");
+    assert_eq!(arr[2]["new_value"], "in_progress");
+}
+
+// === DEV-042: slug 기반 history ===
+
+#[tokio::test]
+async fn test_history_records_slugs_not_ids() {
+    let app = setup().await;
+    let (_, q) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "slug-hist", "status_id": 1 })).await;
+    let id = q["id"].as_i64().unwrap();
+    // migration 0001 seed 의 id 5 = "On Hold" → slug "on_hold".
+    patch(app.clone(), &format!("/api/quests/{id}/status"), json!({ "status_id": 5 })).await;
+    let (_, body) = get(app, &format!("/api/quests/{id}/history")).await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr[0]["old_value"], "open");
+    assert_eq!(arr[0]["new_value"], "on_hold");
+    // 숫자 문자열이 아니어야 함.
+    assert!(arr[0]["new_value"].as_str().unwrap().parse::<i64>().is_err(),
+        "new_value 가 숫자면 안 됨: {:?}", arr[0]["new_value"]);
+}
+
+#[tokio::test]
+async fn test_status_endpoint_exposes_slug() {
+    let app = setup().await;
+    let (_, body) = get(app, "/api/quest-statuses").await;
+    let arr = body.as_array().unwrap();
+    // 모든 행이 slug 필드 + non-empty.
+    for s in arr {
+        let slug = s["slug"].as_str().expect("slug must be string");
+        assert!(!slug.is_empty(), "empty slug in {s:?}");
+    }
+    // migration 0001 seed 의 5개 slug (name_en 에서 파생).
+    let slugs: Vec<&str> = arr.iter().map(|s| s["slug"].as_str().unwrap()).collect();
+    for expected in ["open", "in_progress", "done", "cancelled", "on_hold"] {
+        assert!(slugs.contains(&expected), "missing slug {expected} in {slugs:?}");
+    }
 }
 
 #[tokio::test]

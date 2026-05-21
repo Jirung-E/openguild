@@ -100,9 +100,11 @@ pub async fn change_status(
     .await
     .map_err(crate::error::AppError::Internal)?;
 
-    // 변경 전 status (history old_value).
-    let old_status_id: Option<i64> = sqlx::query_scalar(
-        "SELECT status_id FROM quests WHERE id = ?",
+    // 변경 전/후 status 의 slug (DEV-042: 숫자 id 가 아닌 stable slug 기록).
+    let old_status_slug: Option<String> = sqlx::query_scalar(
+        "SELECT s.slug
+         FROM quests q JOIN quest_statuses s ON s.id = q.status_id
+         WHERE q.id = ?",
     )
     .bind(id)
     .fetch_optional(&store.index_pool)
@@ -111,7 +113,14 @@ pub async fn change_status(
     let new_status_id = body.status_id;
     let quest = sql::change_status(&store.index_pool, id, body).await?;
 
-    // DEV-013: history 기록. DEV-041: ts 명시 bind (로컬 시각 + TZ offset).
+    let new_status_slug: Option<String> = sqlx::query_scalar(
+        "SELECT slug FROM quest_statuses WHERE id = ?",
+    )
+    .bind(new_status_id)
+    .fetch_optional(&store.index_pool)
+    .await?;
+
+    // DEV-013: history 기록. DEV-041: ts 명시 bind. DEV-042: slug 저장.
     let ts = crate::time::now_local_iso8601();
     sqlx::query(
         "INSERT INTO quest_history (quest_id, ts, op, old_value, new_value) VALUES (?, ?, ?, ?, ?)",
@@ -119,8 +128,8 @@ pub async fn change_status(
     .bind(id)
     .bind(&ts)
     .bind("change_status")
-    .bind(old_status_id.map(|n| n.to_string()))
-    .bind(new_status_id.to_string())
+    .bind(&old_status_slug)
+    .bind(&new_status_slug)
     .execute(&store.index_pool)
     .await?;
 

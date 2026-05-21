@@ -7,6 +7,8 @@ export interface QuestType {
 
 export interface QuestStatus {
 	id: number;
+	/** DEV-042: stable identifier (예: "open", "testing"). quest_history 와 .md frontmatter 참조용. */
+	slug: string;
 	name_en: string;
 	name_ko: string;
 	color: string;

@@ -1176,9 +1176,26 @@ fn run() -> Result<()> {
                 } else if history.is_empty() {
                     println!("(이력 없음)");
                 } else {
+                    // DEV-042: change_status 의 old/new value 는 slug —
+                    // 사용자에게는 name_en 으로 표시. 모르는 slug 면 그대로.
+                    // 숫자 (migration 누락 / legacy) 가 들어오면 폴백 lookup.
+                    let statuses = c.quest_statuses().unwrap_or_default();
+                    let display = |raw: Option<&str>| -> String {
+                        let Some(v) = raw else { return "∅".into() };
+                        if let Some(s) = statuses.iter().find(|s| s.slug == v) {
+                            return s.name_en.clone();
+                        }
+                        // legacy numeric fallback (pre-DEV-042 history 행).
+                        if let Ok(id) = v.parse::<i64>()
+                            && let Some(s) = statuses.iter().find(|s| s.id == id)
+                        {
+                            return format!("{} (legacy id)", s.name_en);
+                        }
+                        v.to_string()
+                    };
                     for h in &history {
-                        let old = h.old_value.as_deref().unwrap_or("∅");
-                        let new = h.new_value.as_deref().unwrap_or("∅");
+                        let old = display(h.old_value.as_deref());
+                        let new = display(h.new_value.as_deref());
                         println!("{}  {:<14} {} → {}", h.ts, h.op, old, new);
                     }
                 }
@@ -1672,6 +1689,7 @@ mod tests {
     fn st(id: i64, en: &str) -> QuestStatus {
         QuestStatus {
             id,
+            slug: en.to_lowercase().replace(' ', "_"),
             name_en: en.into(),
             name_ko: "".into(),
             color: "".into(),
@@ -2289,12 +2307,13 @@ mod tests {
     #[test]
     fn quest_status_dto_deserialize() {
         let json = r##"[
-            {"id":1,"name_en":"Open","name_ko":"게시됨","color":"#8B95A1","sort_order":0},
-            {"id":2,"name_en":"In Progress","name_ko":"진행 중","color":"#4A90D9","sort_order":1}
+            {"id":1,"slug":"open","name_en":"Open","name_ko":"게시됨","color":"#8B95A1","sort_order":0},
+            {"id":2,"slug":"in_progress","name_en":"In Progress","name_ko":"진행 중","color":"#4A90D9","sort_order":1}
         ]"##;
         let v: Vec<QuestStatus> = serde_json::from_str(json).unwrap();
         assert_eq!(v.len(), 2);
         assert_eq!(v[1].name_en, "In Progress");
+        assert_eq!(v[1].slug, "in_progress");
     }
 
     // ───────── init_guild_at — tempdir 기반 ─────────
