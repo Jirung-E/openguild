@@ -19,6 +19,7 @@
 	} from '$lib/types';
 	import NewQuestModal from '$lib/components/NewQuestModal.svelte';
 	import QuestCombobox from '$lib/components/QuestCombobox.svelte';
+	import QuestHistory from '$lib/components/QuestHistory.svelte';
 	import { formatTs, formatRelative } from '$lib/utils/datetime';
 
 	let slug = $derived($page.params.id ?? '');
@@ -42,6 +43,9 @@
 	let statusFlashId = $state<number | null>(null); // 방금 변경된 상태 버튼 (체크 아이콘)
 	let badgePulse = $state(0); // 헤더 상태 뱃지 펄스 트리거 (값이 바뀌면 한 번 펄스)
 	let changingStatus = $state(false);
+
+	// 변경이력 — 상태 변경 후 새로고침 트리거 (DEV-038).
+	let historyVersion = $state(0);
 
 	// 콤보박스 / 후보
 	type ComboMode = 'sub' | 'prereq';
@@ -171,6 +175,8 @@
 			// 피드백: 버튼 체크 + 헤더 뱃지 펄스
 			statusFlashId = statusId;
 			badgePulse += 1;
+			// 새 history 행을 보이도록 reload 트리거.
+			historyVersion += 1;
 			setTimeout(() => { if (statusFlashId === statusId) statusFlashId = null; }, 600);
 		} catch (e) {
 			alert(e instanceof Error ? e.message : 'status change failed');
@@ -479,6 +485,11 @@
 				<p class="no-desc">선행 퀘스트 없음.</p>
 			{/if}
 		</section>
+
+		<!-- 변경 이력 (DEV-038) -->
+		{#key `${detail.id}:${historyVersion}`}
+			<QuestHistory questId={detail.id} {statuses} />
+		{/key}
 	{/if}
 </div>
 
