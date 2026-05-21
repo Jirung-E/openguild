@@ -663,6 +663,48 @@ async fn test_list_search_title_only_multi_token_and() {
     assert_eq!(arr[0]["title"], "Quest list 검색");
 }
 
+// === DEV-040: slug (quest_id) 검색 ===
+
+#[tokio::test]
+async fn test_list_search_full_slug() {
+    let app = setup_for_search().await;
+    // 첫 quest 의 slug 는 DEV-001 (test type seed 의 DEV).
+    let (_, body) = get(app, "/api/quests?search=DEV-001").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0]["quest_id"], "DEV-001");
+}
+
+#[tokio::test]
+async fn test_list_search_partial_number() {
+    let app = setup_for_search().await;
+    // "002" 는 DEV-002 의 slug 만 매치 (title / description 에 002 없음).
+    let (_, body) = get(app, "/api/quests?search=002").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0]["quest_id"], "DEV-002");
+}
+
+#[tokio::test]
+async fn test_list_search_prefix_matches_all_of_type() {
+    let app = setup_for_search().await;
+    // "BUG-" 는 prefix BUG 전체 (1건 — setup 에서 BUG 1개 만듦).
+    let (_, body) = get(app, "/api/quests?search=BUG-").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert!(arr[0]["quest_id"].as_str().unwrap().starts_with("BUG-"));
+}
+
+#[tokio::test]
+async fn test_list_search_slug_with_title_only_still_matches() {
+    let app = setup_for_search().await;
+    // title_only=true 여도 slug 는 매치 (slug 는 메타 정보).
+    let (_, body) = get(app, "/api/quests?search=DEV-001&title_only=true").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0]["quest_id"], "DEV-001");
+}
+
 // === DEV-013: Quest history ===
 
 #[tokio::test]

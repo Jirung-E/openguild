@@ -128,14 +128,17 @@ pub async fn list(pool: &SqlitePool, query: &ListQuery) -> AppResult<Vec<QuestRo
                 .collect()
         })
         .unwrap_or_default();
+    // DEV-040: slug (quest_id 형식 "DEV-037") 도 검색 대상. title_only 와 무관 —
+    // slug 는 메타 정보이지 본문이 아니므로 항상 매칭. "037" 같은 부분 입력도 매치.
+    const SLUG_EXPR: &str = "LOWER(qt.prefix || '-' || printf('%03d', q.number)) LIKE LOWER(?)";
     for _ in &search_tokens {
         if query.title_only {
-            // DEV-037: title 만 검사.
-            sql.push_str(" AND LOWER(q.title) LIKE LOWER(?)");
+            // DEV-037: title + slug.
+            sql.push_str(&format!(" AND (LOWER(q.title) LIKE LOWER(?) OR {SLUG_EXPR})"));
         } else {
-            sql.push_str(
-                " AND (LOWER(q.title) LIKE LOWER(?) OR LOWER(COALESCE(q.description, '')) LIKE LOWER(?))",
-            );
+            sql.push_str(&format!(
+                " AND (LOWER(q.title) LIKE LOWER(?) OR LOWER(COALESCE(q.description, '')) LIKE LOWER(?) OR {SLUG_EXPR})"
+            ));
         }
     }
 
@@ -259,14 +262,16 @@ pub async fn list(pool: &SqlitePool, query: &ListQuery) -> AppResult<Vec<QuestRo
         q = q.bind(pid);
     }
     // search tokens — 각 토큰마다 bind.
-    // title_only=true → 1번 (title), false → 2번 (title + description).
+    // title_only=true → 2번 (title + slug), false → 3번 (title + description + slug).
     for token in &search_tokens {
         let pat = format!("%{token}%");
         if query.title_only {
-            q = q.bind(pat);
+            q = q.bind(pat.clone()); // title
+            q = q.bind(pat); // slug
         } else {
-            q = q.bind(pat.clone());
-            q = q.bind(pat);
+            q = q.bind(pat.clone()); // title
+            q = q.bind(pat.clone()); // description
+            q = q.bind(pat); // slug
         }
     }
     let quests = q.fetch_all(pool).await?;

@@ -198,3 +198,56 @@ describe('filterQuests search', () => {
 		expect(r.map((x) => x.id).sort()).toEqual([1, 2]);
 	});
 });
+
+// --- DEV-040: slug 검색 ---
+
+describe('filterQuests slug search', () => {
+	function withSlug(id: number, slug: string, title: string): Quest {
+		const [prefix, numStr] = slug.split('-');
+		return {
+			...q(id),
+			quest_id: slug,
+			type_prefix: prefix,
+			number: Number(numStr),
+			title
+		};
+	}
+
+	const quests: Quest[] = [
+		withSlug(1, 'DEV-001', '로그인 구현'),
+		withSlug(2, 'DEV-037', 'GUI 검색'),
+		withSlug(3, 'BUG-005', '오타 수정'),
+		withSlug(4, 'DEV-002', 'API adapter')
+	];
+
+	it('전체 slug 매치', () => {
+		const r = filterQuests(quests, new Set(), new Set(), 'DEV-037');
+		expect(r.map((x) => x.quest_id)).toEqual(['DEV-037']);
+	});
+
+	it('부분 number "002" 매치 — zero-padded slug 안에 포함', () => {
+		const r = filterQuests(quests, new Set(), new Set(), '002');
+		expect(r.map((x) => x.quest_id)).toEqual(['DEV-002']);
+	});
+
+	it('prefix "BUG-" → 해당 type 의 quest 들 매치', () => {
+		const r = filterQuests(quests, new Set(), new Set(), 'BUG-');
+		expect(r.map((x) => x.quest_id)).toEqual(['BUG-005']);
+	});
+
+	it('대소문자 무시 — "dev-037" 도 매치', () => {
+		const r = filterQuests(quests, new Set(), new Set(), 'dev-037');
+		expect(r.map((x) => x.quest_id)).toEqual(['DEV-037']);
+	});
+
+	it('titleOnly=true 여도 slug 는 매치 — 메타 정보이므로', () => {
+		const r = filterQuests(quests, new Set(), new Set(), 'DEV-037', true);
+		expect(r.map((x) => x.quest_id)).toEqual(['DEV-037']);
+	});
+
+	it('title + slug 모두 매치할 때 중복 없이 1건', () => {
+		// "DEV" 토큰 → title 에 "DEV" 없지만 slug 에 매치 → DEV-* 3건.
+		const r = filterQuests(quests, new Set(), new Set(), 'DEV');
+		expect(r.map((x) => x.quest_id).sort()).toEqual(['DEV-001', 'DEV-002', 'DEV-037']);
+	});
+});
