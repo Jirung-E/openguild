@@ -131,3 +131,70 @@ describe('filterQuests', () => {
 		expect(result).toHaveLength(0);
 	});
 });
+
+// --- DEV-037: search + title_only ---
+
+describe('filterQuests search', () => {
+	function withDesc(id: number, title: string, description: string | null): Quest {
+		return { ...q(id), title, description };
+	}
+
+	const quests: Quest[] = [
+		withDesc(1, 'Tauri invoke handler', 'Rust 측 commands.rs 작성'),
+		withDesc(2, 'Frontend transport adapter', 'HTTP / Tauri 자동 분기'),
+		withDesc(3, 'Quest list 검색', 'title / description 부분 일치'),
+		withDesc(4, '단순 노트', null)
+	];
+
+	it('빈 search → 모든 항목', () => {
+		expect(filterQuests(quests, new Set(), new Set(), '')).toHaveLength(4);
+	});
+
+	it('title 매치', () => {
+		const r = filterQuests(quests, new Set(), new Set(), 'Quest');
+		expect(r.map((x) => x.id).sort()).toEqual([3]);
+	});
+
+	it('description 만 매치 (default = title+desc)', () => {
+		const r = filterQuests(quests, new Set(), new Set(), 'commands.rs');
+		expect(r).toHaveLength(1);
+		expect(r[0].id).toBe(1);
+	});
+
+	it('대소문자 무시', () => {
+		const a = filterQuests(quests, new Set(), new Set(), 'TAURI');
+		const b = filterQuests(quests, new Set(), new Set(), 'tauri');
+		expect(a.length).toBe(b.length);
+		expect(a.length).toBe(2); // title 1 + description 1
+	});
+
+	it('여러 토큰 AND', () => {
+		const r = filterQuests(quests, new Set(), new Set(), 'title description');
+		expect(r).toHaveLength(1);
+		expect(r[0].id).toBe(3);
+	});
+
+	it('description 이 null 이어도 안전', () => {
+		const r = filterQuests(quests, new Set(), new Set(), '노트');
+		expect(r).toHaveLength(1);
+		expect(r[0].id).toBe(4);
+	});
+
+	it('titleOnly=true → description 제외', () => {
+		// "Tauri" 가 title 에 있는 1건만.
+		const r = filterQuests(quests, new Set(), new Set(), 'Tauri', true);
+		expect(r).toHaveLength(1);
+		expect(r[0].id).toBe(1);
+	});
+
+	it('titleOnly=true 에서 description-only 키워드 → 0', () => {
+		const r = filterQuests(quests, new Set(), new Set(), 'commands.rs', true);
+		expect(r).toHaveLength(0);
+	});
+
+	it('search + type 필터 조합', () => {
+		// type 1 (id 1,2) AND search "Tauri" (title 또는 desc 매치 → 1, 2)
+		const r = filterQuests(quests, new Set([1]), new Set(), 'Tauri');
+		expect(r.map((x) => x.id).sort()).toEqual([1, 2]);
+	});
+});

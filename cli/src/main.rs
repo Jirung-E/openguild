@@ -132,6 +132,9 @@ enum QuestCmd {
         /// title / description 부분 일치 검색. 공백 split AND.
         #[arg(long)]
         search: Option<String>,
+        /// `search` 검색을 title 만으로 제한 (DEV-037). description 제외.
+        #[arg(long = "title-only")]
+        title_only: bool,
         /// 정렬 키 — `id` (기본) / `urgency` / `status` / `updated` / `created`.
         /// 다중 입력 가능 (`--sort urgency,id` 또는 `--sort urgency id`). 대소문자 무시.
         #[arg(long, value_delimiter = ',', num_args = 1..)]
@@ -829,6 +832,9 @@ fn list_query_to_querystring(q: &ListQuery) -> String {
     if let Some(s) = &q.search {
         parts.push(format!("search={}", urlencode(s)));
     }
+    if q.title_only {
+        parts.push("title_only=true".into());
+    }
     if let Some(s) = &q.sort {
         parts.push(format!("sort={}", urlencode(s)));
     }
@@ -1118,6 +1124,7 @@ fn run() -> Result<()> {
                 has_sub,
                 no_sub,
                 search,
+                title_only,
                 sort,
                 reverse,
                 limit,
@@ -1140,6 +1147,7 @@ fn run() -> Result<()> {
                     has_sub,
                     no_sub,
                     search,
+                    title_only,
                     sort: vec_to_csv(sort),
                     reverse,
                     limit,
@@ -1745,6 +1753,7 @@ mod tests {
                     has_sub,
                     no_sub,
                     search,
+                    title_only,
                     sort,
                     reverse,
                     limit,
@@ -1764,6 +1773,7 @@ mod tests {
                 assert!(!no_parent);
                 assert!(!has_prereq);
                 assert!(!no_prereq);
+                assert!(!title_only);
                 assert!(!has_sub);
                 assert!(!no_sub);
                 assert!(search.is_none());
@@ -1882,7 +1892,7 @@ mod tests {
                     created_after, created_before, updated_after, updated_before,
                     child_of, no_parent,
                     has_prereq, no_prereq, has_sub, no_sub,
-                    search,
+                    search, title_only,
                     sort, reverse, limit, offset, id_only, count,
                 },
             } => {
@@ -1900,6 +1910,7 @@ mod tests {
                 assert!(!has_sub);
                 assert!(!no_sub);
                 assert!(search.is_none());
+                assert!(!title_only);
                 assert_eq!(sort, vec!["urgency"]);
                 assert!(reverse);
                 assert_eq!(limit, Some(5));
@@ -1980,6 +1991,7 @@ mod tests {
             has_sub: false,
             no_sub: false,
             search: None,
+            title_only: false,
             sort: Some("urgency".into()),
             reverse: true,
             limit: Some(5),
@@ -2006,6 +2018,16 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(list_query_to_querystring(&q), "status=In%20Progress");
+    }
+
+    #[test]
+    fn querystring_title_only_flag() {
+        let q = ListQuery {
+            search: Some("foo".into()),
+            title_only: true,
+            ..Default::default()
+        };
+        assert_eq!(list_query_to_querystring(&q), "search=foo&title_only=true");
     }
 
     #[test]

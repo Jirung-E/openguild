@@ -129,9 +129,14 @@ pub async fn list(pool: &SqlitePool, query: &ListQuery) -> AppResult<Vec<QuestRo
         })
         .unwrap_or_default();
     for _ in &search_tokens {
-        sql.push_str(
-            " AND (LOWER(q.title) LIKE LOWER(?) OR LOWER(COALESCE(q.description, '')) LIKE LOWER(?))",
-        );
+        if query.title_only {
+            // DEV-037: title 만 검사.
+            sql.push_str(" AND LOWER(q.title) LIKE LOWER(?)");
+        } else {
+            sql.push_str(
+                " AND (LOWER(q.title) LIKE LOWER(?) OR LOWER(COALESCE(q.description, '')) LIKE LOWER(?))",
+            );
+        }
     }
 
     // child_of / no_parent 상호배타
@@ -253,11 +258,16 @@ pub async fn list(pool: &SqlitePool, query: &ListQuery) -> AppResult<Vec<QuestRo
     if let Some(pid) = parent_id {
         q = q.bind(pid);
     }
-    // search tokens — 각 토큰마다 (title, description) 두 번 bind.
+    // search tokens — 각 토큰마다 bind.
+    // title_only=true → 1번 (title), false → 2번 (title + description).
     for token in &search_tokens {
         let pat = format!("%{token}%");
-        q = q.bind(pat.clone());
-        q = q.bind(pat);
+        if query.title_only {
+            q = q.bind(pat);
+        } else {
+            q = q.bind(pat.clone());
+            q = q.bind(pat);
+        }
     }
     let quests = q.fetch_all(pool).await?;
     Ok(quests)

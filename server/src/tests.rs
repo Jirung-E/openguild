@@ -625,6 +625,44 @@ async fn test_list_search_empty_no_filter() {
     assert_eq!(body.as_array().unwrap().len(), 3);
 }
 
+// === DEV-037: title_only 옵션 ===
+
+#[tokio::test]
+async fn test_list_search_title_only_excludes_description() {
+    let app = setup_for_search().await;
+    // "Tauri" 는 title 1건 + description 1건. title_only=true → 1건.
+    let (_, body) = get(app, "/api/quests?search=Tauri&title_only=true").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0]["title"], "Tauri invoke handler");
+}
+
+#[tokio::test]
+async fn test_list_search_title_only_description_keyword_no_match() {
+    let app = setup_for_search().await;
+    // "commands.rs" 는 description 에만. title_only=true → 0건.
+    let (_, body) = get(app, "/api/quests?search=commands.rs&title_only=true").await;
+    assert_eq!(body.as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn test_list_search_title_only_false_default_behavior() {
+    let app = setup_for_search().await;
+    // title_only=false 명시 → 기본 동작 (title + description).
+    let (_, body) = get(app, "/api/quests?search=Tauri&title_only=false").await;
+    assert_eq!(body.as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn test_list_search_title_only_multi_token_and() {
+    let app = setup_for_search().await;
+    // "Quest" + "검색" 둘 다 title 에 있어야 매치 → 1건.
+    let (_, body) = get(app, "/api/quests?search=Quest%20%EA%B2%80%EC%83%89&title_only=true").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0]["title"], "Quest list 검색");
+}
+
 // === DEV-013: Quest history ===
 
 #[tokio::test]
