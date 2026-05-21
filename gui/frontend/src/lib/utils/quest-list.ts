@@ -65,3 +65,52 @@ export function filterQuests(
 		return true;
 	});
 }
+
+/**
+ * DEV-040 후속 버그 수정: filterQuests 가 sub-quest 를 매치해도, 그 부모가
+ * 매치 결과에 없으면 buildTree(filtered, null) 가 그 sub-quest 로 닿지 못함
+ * (parent_quest_id 가 결과에 없는 id 를 가리키므로). 결과: 사용자에게
+ * sub-quest 가 안 보임.
+ *
+ * 해결: 매치된 항목들의 모든 조상을 결과에 포함 — 트리 구조 유지하면서
+ * sub-quest 도 노출.
+ *
+ * 매개변수 `matched` 의 항목 순서는 보존; 조상이 새로 추가되면 `all` 의 원본
+ * 순서를 따름 (sort 가 외부에서 이미 적용된 가정).
+ */
+export function includeAncestors(matched: Quest[], all: Quest[]): Quest[] {
+	const matchedIds = new Set(matched.map((q) => q.id));
+	const byId = new Map(all.map((q) => [q.id, q]));
+
+	for (const m of matched) {
+		let pid: number | null = m.parent_quest_id;
+		while (pid != null) {
+			if (matchedIds.has(pid)) break; // 이미 포함됨 → 더 위는 처리됐을 것.
+			matchedIds.add(pid);
+			const p = byId.get(pid);
+			if (!p) break;
+			pid = p.parent_quest_id;
+		}
+	}
+
+	return all.filter((q) => matchedIds.has(q.id));
+}
+
+/**
+ * 검색 시 매치된 항목의 부모들을 자동 펼침. 검색 결과의 sub-quest 가 펼침
+ * 상태와 무관하게 보이도록.
+ */
+export function ancestorIdsOf(matched: Quest[], all: Quest[]): Set<number> {
+	const byId = new Map(all.map((q) => [q.id, q]));
+	const ancestors = new Set<number>();
+	for (const m of matched) {
+		let pid: number | null = m.parent_quest_id;
+		while (pid != null && !ancestors.has(pid)) {
+			ancestors.add(pid);
+			const p = byId.get(pid);
+			if (!p) break;
+			pid = p.parent_quest_id;
+		}
+	}
+	return ancestors;
+}

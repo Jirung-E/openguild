@@ -5,7 +5,13 @@
 	import { questsApi } from '$lib/api/quests';
 	import { metaApi } from '$lib/api/meta';
 	import type { Quest, QuestStatus, QuestType } from '$lib/types';
-	import { buildTree, filterQuests, flattenTree } from '$lib/utils/quest-list';
+	import {
+		ancestorIdsOf,
+		buildTree,
+		filterQuests,
+		flattenTree,
+		includeAncestors
+	} from '$lib/utils/quest-list';
 	import QuestListFilter from './QuestListFilter.svelte';
 	import QuestListItem from './QuestListItem.svelte';
 
@@ -62,16 +68,24 @@
 	});
 
 	// --- 필터 + 트리 ---
+	// DEV-040 후속 버그 수정: 검색이 sub-quest 를 매치해도, 그 부모가 결과에
+	// 없으면 buildTree 가 그 sub-quest 에 닿지 못함 → 안 보임. 검색 활성화 시
+	// 매치된 항목의 조상을 결과에 포함 + 자동 펼침.
 	let flatList = $derived.by(() => {
-		const filtered = filterQuests(
+		const matched = filterQuests(
 			quests,
 			filterTypeIds,
 			filterStatusIds,
 			search,
 			titleOnly
 		);
+		const hasSearch = search.trim().length > 0;
+		const filtered = hasSearch ? includeAncestors(matched, quests) : matched;
+		const effectiveExpanded = hasSearch
+			? new Set([...expanded, ...ancestorIdsOf(matched, quests)])
+			: expanded;
 		const tree = buildTree(filtered, null);
-		return flattenTree(tree, expanded);
+		return flattenTree(tree, effectiveExpanded);
 	});
 
 	function toggle(id: number) {
