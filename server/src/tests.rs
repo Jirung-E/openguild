@@ -895,6 +895,38 @@ async fn test_change_status_actual_change_still_records() {
     assert_eq!(hist.as_array().unwrap().len(), 1);
 }
 
+// === DEV-047: QuestDetail.parent 노출 ===
+
+#[tokio::test]
+async fn test_quest_detail_includes_parent_row() {
+    let app = setup().await;
+    let (_, parent) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "parent-q", "status_id": 1 })).await;
+    let parent_id = parent["id"].as_i64().unwrap();
+    let (_, child) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "child-q", "status_id": 1, "parent_quest_id": parent_id })).await;
+    let child_id = child["id"].as_i64().unwrap();
+
+    let (_, body) = get(app, &format!("/api/quests/{child_id}")).await;
+    let parent_obj = body.get("parent").expect("parent field must exist");
+    assert!(parent_obj.is_object(), "parent 는 객체여야 함: {parent_obj}");
+    assert_eq!(parent_obj["title"], "parent-q");
+    assert_eq!(parent_obj["id"], parent_id);
+}
+
+#[tokio::test]
+async fn test_quest_detail_parent_omitted_or_null_for_root() {
+    let app = setup().await;
+    let (_, q) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "root", "status_id": 1 })).await;
+    let id = q["id"].as_i64().unwrap();
+    let (_, body) = get(app, &format!("/api/quests/{id}")).await;
+    // serde skip_serializing_if=Option::is_none — root 는 parent 키 없음 또는 null.
+    let p = body.get("parent");
+    assert!(p.is_none() || p.unwrap().is_null(),
+        "root quest 의 parent 는 null/생략 이어야 함: {body}");
+}
+
 #[tokio::test]
 async fn test_history_isolated_per_quest() {
     let app = setup().await;

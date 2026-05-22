@@ -366,13 +366,23 @@ pub async fn list_deleted(pool: &SqlitePool) -> AppResult<Vec<QuestRow>> {
 
 pub async fn get(pool: &SqlitePool, id: i64) -> AppResult<QuestDetail> {
     let quest = fetch_by_id(pool, id).await?;
+    let parent = fetch_parent(pool, &quest).await?;
     let (sub_quests, prerequisites, position) = fetch_relations(pool, id).await?;
     Ok(QuestDetail {
         quest,
+        parent,
         sub_quests,
         prerequisites,
         position,
     })
+}
+
+/// DEV-047: 부모 quest 한 row 조회 (있으면). parent_quest_id 가 None / 부모
+/// soft-deleted 면 None.
+async fn fetch_parent(pool: &SqlitePool, q: &QuestRow) -> AppResult<Option<QuestRow>> {
+    let Some(pid) = q.parent_quest_id else { return Ok(None) };
+    let sql = format!("{QUEST_SELECT} WHERE q.id = ? AND q.deleted_at IS NULL");
+    Ok(sqlx::query_as::<_, QuestRow>(&sql).bind(pid).fetch_optional(pool).await?)
 }
 
 pub async fn get_by_slug(pool: &SqlitePool, slug: &str) -> AppResult<QuestDetail> {
@@ -395,10 +405,12 @@ pub async fn get_by_slug(pool: &SqlitePool, slug: &str) -> AppResult<QuestDetail
         .ok_or_else(|| AppError::NotFound(format!("quest {slug} not found")))?;
 
     let id = quest.id;
+    let parent = fetch_parent(pool, &quest).await?;
     let (sub_quests, prerequisites, position) = fetch_relations(pool, id).await?;
 
     Ok(QuestDetail {
         quest,
+        parent,
         sub_quests,
         prerequisites,
         position,

@@ -1068,9 +1068,17 @@ fn print_quest_detail(d: &QuestDetail, json: bool) {
     // DEV-043: 기본 출력에 생성일 / 변경일 표시. (시각은 색 X — 정보)
     println!("  created  : {}", q.created_at);
     println!("  updated  : {}", q.updated_at);
-    if let Some(p) = q.parent_quest_id {
-        // 현재 parent_quest_id 만 노출됨. slug + 색은 DEV-047 에서.
-        println!("  parent   : id={p}");
+    // DEV-047: parent 표기 slug + 색 (이전엔 raw id 만 노출).
+    if let Some(parent) = &d.parent {
+        println!(
+            "  parent   : {} [{}] {}",
+            colorize(&parent.quest_id, &parent.type_color),
+            colorize(&parent.status_name_en, &parent.status_color),
+            parent.title
+        );
+    } else if let Some(p) = q.parent_quest_id {
+        // parent_quest_id 는 있는데 detail.parent 가 None — soft-deleted 부모 등 비정상 case 대비 fallback.
+        println!("  parent   : id={p} (불러올 수 없음)");
     }
     if let Some(desc) = &q.description
         && !desc.is_empty()
@@ -2539,6 +2547,7 @@ mod tests {
         };
         QuestDetail {
             quest: q,
+            parent: None,
             sub_quests: vec![],
             prerequisites: vec![],
             position: None,

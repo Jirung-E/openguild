@@ -30,6 +30,9 @@ pub struct QuestRow {
 pub struct QuestDetail {
     #[serde(flatten)]
     pub quest: QuestRow,
+    /// DEV-047: parent row 전체 (slug + 색 + 제목 표시용). None 이면 root.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<QuestRow>,
     pub sub_quests: Vec<QuestRow>,
     pub prerequisites: Vec<QuestRow>,
     pub position: Option<QuestPosition>,

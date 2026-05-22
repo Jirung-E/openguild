@@ -37,6 +37,8 @@ export interface Quest {
 }
 
 export interface QuestDetail extends Quest {
+	/** DEV-047: 부모 quest row (slug + 색 + 제목 표시용). 없으면 null/undefined. */
+	parent?: Quest | null;
 	sub_quests: Quest[];
 	prerequisites: Quest[];
 	position: QuestPosition | null;
