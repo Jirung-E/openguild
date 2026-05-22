@@ -1,7 +1,8 @@
 <!--
   DEV-038: Quest Detail 의 변경이력 섹션.
 
-  현재는 op="change_status" 만 기록되므로 status_id 매핑 처리에 집중.
+  현재는 op="change_status" 만 기록되므로 slug 매핑 처리에 집중
+  (DEV-042 부터 history 의 old/new_value 는 status slug).
   후속 op (update_title / change_parent / add_prereq / ...) 추가 시
   formatChange() 에 case 만 추가.
 -->

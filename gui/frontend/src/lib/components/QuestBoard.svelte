@@ -358,14 +358,14 @@
 	function applyStatusChange(questId: number, statusId: number) {
 		const s = sorted.find((st) => st.id === statusId);
 		if (!s) return;
-		// 확장 카드 동기화
+		// 확장 카드 동기화 — DEV-046 후속: status_slug 도 함께 갱신 (일관성).
 		if (expandedQuest?.id === questId) {
-			expandedQuest = { ...expandedQuest, status_id: s.id, status_name_en: s.name_en, status_name_ko: s.name_ko, status_color: s.color };
+			expandedQuest = { ...expandedQuest, status_id: s.id, status_slug: s.slug, status_name_en: s.name_en, status_name_ko: s.name_ko, status_color: s.color };
 		}
 		// allQuests 캐시 동기화 (tap으로 확장 시 최신 상태 반영)
 		const idx = allQuests.findIndex((q) => q.id === questId);
 		if (idx !== -1) {
-			allQuests[idx] = { ...allQuests[idx], status_id: s.id, status_name_en: s.name_en, status_name_ko: s.name_ko, status_color: s.color };
+			allQuests[idx] = { ...allQuests[idx], status_id: s.id, status_slug: s.slug, status_name_en: s.name_en, status_name_ko: s.name_ko, status_color: s.color };
 		}
 	}
 
