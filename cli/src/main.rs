@@ -1368,10 +1368,14 @@ fn run() -> Result<()> {
                 } else if history.is_empty() {
                     println!("(이력 없음)");
                 } else {
-                    // DEV-038 후속: GUI Quest Detail 의 변경이력과 동일한 의미로 출력.
-                    // - op 라벨 번역 (change_status → "상태"). GUI 의 opLabel() 과 일치.
-                    // - 상대 시각도 함께 (GUI 의 formatRelative — "방금" / "5분 전").
-                    // - status 값은 slug → name_en + status.color (DEV-042 부터).
+                    // DEV-038 follow-up:
+                    // - status 값은 slug → name_en + status.color (DEV-042+).
+                    // - 절대 ts + 상대 ts (script 친화 + 가독성).
+                    // - change_status 는 op 라벨 생략 — old → new pill 이 이미
+                    //   "상태 변경" 의미를 시각적으로 나타냄 (이전 "상태" 라벨은
+                    //   매 줄마다 동일해서 노이즈). 다른 op (update_title 등)
+                    //   추가 시엔 `[op]` 형태로 표시.
+                    // - 끝에 총 항목 수 (`-- N entries`) — 절단 의심 방지.
                     let statuses = c.quest_statuses().unwrap_or_default();
                     let display = |raw: Option<&str>| -> String {
                         let Some(v) = raw else { return "∅".into() };
@@ -1385,25 +1389,20 @@ fn run() -> Result<()> {
                         }
                         v.to_string()
                     };
-                    let op_label = |op: &str| -> &'static str {
-                        match op {
-                            "change_status" => "상태",
-                            _ => "",
-                        }
-                    };
                     for h in &history {
                         let old = display(h.old_value.as_deref());
                         let new = display(h.new_value.as_deref());
                         let rel = openguild_core::time::format_relative(&h.ts)
                             .unwrap_or_else(|| "—".into());
-                        let label = op_label(&h.op);
-                        // op 가 알려진 경우엔 한국어 라벨, 아니면 raw op.
-                        let op_text = if label.is_empty() { h.op.clone() } else { label.to_string() };
-                        println!(
-                            "{}  {:<10} {:<14} {} → {}",
-                            h.ts, rel, op_text, old, new
-                        );
+                        if h.op == "change_status" {
+                            println!("{}  {:<10} {} → {}", h.ts, rel, old, new);
+                        } else {
+                            // 미래의 다른 op — raw op 를 `[op]` 형태로.
+                            println!("{}  {:<10} [{}] {} → {}", h.ts, rel, h.op, old, new);
+                        }
                     }
+                    let n = history.len();
+                    println!("-- {n} entries");
                 }
             }
             QuestCmd::New {

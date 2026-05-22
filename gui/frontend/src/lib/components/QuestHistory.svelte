@@ -68,11 +68,14 @@
 		return '#484f58';
 	}
 
-	/** op 별 변경 표현. 후속 op 추가 시 case 추가. */
+	/**
+	 * op 라벨. change_status 는 visual change (old → new pill) 가 의미를 이미
+	 * 전달하므로 생략 (DEV-038 후속). 다른 op 만 표시.
+	 */
 	function opLabel(op: string): string {
 		switch (op) {
 			case 'change_status':
-				return '상태';
+				return '';
 			default:
 				return op;
 		}
@@ -100,7 +103,12 @@
 					<time class="qh-ts" datetime={e.ts} title={formatTs(e.ts)}>
 						{formatRelative(e.ts)}
 					</time>
-					<span class="qh-op">{opLabel(e.op)}</span>
+					{#if opLabel(e.op)}
+						<span class="qh-op">{opLabel(e.op)}</span>
+					{:else}
+						<!-- grid 컬럼 자리 유지 (op 라벨 없을 때 빈 placeholder) -->
+						<span class="qh-op-empty" aria-hidden="true"></span>
+					{/if}
 					{#if e.op === 'change_status'}
 						<span class="qh-change">
 							<span class="qh-status" style:--c={statusColor(e.old_value)}>
@@ -172,6 +180,7 @@
 		background: #161b22; border: 1px solid #21262d;
 		border-radius: 10px;
 	}
+	.qh-op-empty { width: 0; }
 	.qh-change {
 		display: inline-flex; align-items: center; gap: 0.45rem;
 		flex-wrap: wrap;
