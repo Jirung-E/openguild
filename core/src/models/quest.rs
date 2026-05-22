@@ -12,6 +12,10 @@ pub struct QuestRow {
     pub title: String,
     pub description: Option<String>,
     pub status_id: i64,
+    /// DEV-046: stable identifier (예: "open", "testing"). status_id 와 달리
+    /// status 추가/순서 변경에도 안전. 사용자 / 외부 클라이언트가 참조하기
+    /// 좋은 키.
+    pub status_slug: String,
     pub status_name_en: String,
     pub status_name_ko: String,
     pub status_color: String,
@@ -181,6 +185,7 @@ mod tests {
             title: "test".into(),
             description: Some("body".into()),
             status_id: 1,
+            status_slug: "open".into(),
             status_name_en: "Open".into(),
             status_name_ko: "게시됨".into(),
             status_color: "#8B95A1".into(),

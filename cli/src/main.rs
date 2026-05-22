@@ -1052,13 +1052,24 @@ fn print_quest_detail(d: &QuestDetail, json: bool) {
         return;
     }
     let q = &d.quest;
-    println!("{}  {}", q.quest_id, q.title);
-    println!("  status   : {} ({})", q.status_name_en, q.status_name_ko);
-    println!("  urgency  : {}", q.urgency);
-    // DEV-043: 기본 출력에 생성일 / 변경일 표시.
+    // DEV-046: 헤더 quest_id 에 type.color.
+    println!("{}  {}", colorize(&q.quest_id, &q.type_color), q.title);
+    // status name 에 status.color.
+    println!(
+        "  status   : {} ({})",
+        colorize(&q.status_name_en, &q.status_color),
+        q.status_name_ko
+    );
+    // urgency 숫자에 urgency_color.
+    println!(
+        "  urgency  : {}",
+        colorize(&q.urgency.to_string(), urgency_color(q.urgency))
+    );
+    // DEV-043: 기본 출력에 생성일 / 변경일 표시. (시각은 색 X — 정보)
     println!("  created  : {}", q.created_at);
     println!("  updated  : {}", q.updated_at);
     if let Some(p) = q.parent_quest_id {
+        // 현재 parent_quest_id 만 노출됨. slug + 색은 DEV-047 에서.
         println!("  parent   : id={p}");
     }
     if let Some(desc) = &q.description
@@ -1072,13 +1083,23 @@ fn print_quest_detail(d: &QuestDetail, json: bool) {
     if !d.sub_quests.is_empty() {
         println!("  sub-quests ({}):", d.sub_quests.len());
         for s in &d.sub_quests {
-            println!("    - {} {}", s.quest_id, s.title);
+            println!(
+                "    - {} [{}] {}",
+                colorize(&s.quest_id, &s.type_color),
+                colorize(&s.status_name_en, &s.status_color),
+                s.title
+            );
         }
     }
     if !d.prerequisites.is_empty() {
         println!("  prerequisites ({}):", d.prerequisites.len());
         for p in &d.prerequisites {
-            println!("    - {} {}", p.quest_id, p.title);
+            println!(
+                "    - {} [{}] {}",
+                colorize(&p.quest_id, &p.type_color),
+                colorize(&p.status_name_en, &p.status_color),
+                p.title
+            );
         }
     }
 }
@@ -1147,7 +1168,9 @@ fn run() -> Result<()> {
                 println!("{}", serde_json::to_string_pretty(&types)?);
             } else {
                 for t in &types {
-                    println!("{:<6} {}", t.prefix, t.description.as_deref().unwrap_or(""));
+                    // DEV-046: prefix 에 type.color.
+                    let prefix_colored = colorize(&format!("{:<6}", t.prefix), &t.color);
+                    println!("{prefix_colored} {}", t.description.as_deref().unwrap_or(""));
                 }
             }
         }
@@ -1157,7 +1180,9 @@ fn run() -> Result<()> {
                 println!("{}", serde_json::to_string_pretty(&statuses)?);
             } else {
                 for s in &statuses {
-                    println!("{:<14} {}", s.name_en, s.name_ko);
+                    // DEV-046: name_en 에 status.color.
+                    let name_colored = colorize(&format!("{:<14}", s.name_en), &s.color);
+                    println!("{name_colored} {}", s.name_ko);
                 }
             }
         }
@@ -1429,7 +1454,12 @@ fn run() -> Result<()> {
                             println!("  description: {:?} → {:?}", from, d);
                         }
                         if let Some(u) = urgency {
-                            println!("  urgency:     {} → {}", detail.quest.urgency, u);
+                            // DEV-046: urgency 색 적용 (양쪽).
+                            println!(
+                                "  urgency:     {} → {}",
+                                colorize(&detail.quest.urgency.to_string(), urgency_color(detail.quest.urgency)),
+                                colorize(&u.to_string(), urgency_color(u))
+                            );
                         }
                         if title.is_none() && description.is_none() && urgency.is_none() {
                             println!("  (no fields to change)");
@@ -1607,11 +1637,13 @@ fn run() -> Result<()> {
                     change_status_with_noop_notice(&c, &slug, &target, cli.json)?;
                 } else {
                     // 출력 전용 — 현재 상태만.
+                    // DEV-046: JSON 에서 status_id 제거 (positional id 는 외부
+                    // 클라이언트가 참조하면 안 됨). slug 가 stable identifier.
                     let d = c.quest_by_slug(&slug)?;
                     if cli.json {
                         let payload = serde_json::json!({
                             "quest_id": d.quest.quest_id,
-                            "status_id": d.quest.status_id,
+                            "status_slug": d.quest.status_slug,
                             "status_name_en": d.quest.status_name_en,
                             "status_name_ko": d.quest.status_name_ko,
                         });
@@ -1619,7 +1651,7 @@ fn run() -> Result<()> {
                     } else {
                         println!(
                             "{}  {} ({})",
-                            d.quest.quest_id,
+                            colorize(&d.quest.quest_id, &d.quest.type_color),
                             colorize(&d.quest.status_name_en, &d.quest.status_color),
                             d.quest.status_name_ko
                         );
@@ -2432,6 +2464,7 @@ mod tests {
             "title": "test",
             "description": null,
             "status_id": 1,
+            "status_slug": "open",
             "status_name_en": "Open",
             "status_name_ko": "게시됨",
             "status_color": "#8B95A1",
@@ -2451,13 +2484,13 @@ mod tests {
         let json = r##"{
             "id": 1, "quest_id": "DEV-001", "quest_type_id": 1, "type_prefix": "DEV",
             "type_color": "#4A90D9", "number": 1, "title": "p", "description": null,
-            "status_id": 1, "status_name_en": "Open", "status_name_ko": "게시됨",
+            "status_id": 1, "status_slug": "open", "status_name_en": "Open", "status_name_ko": "게시됨",
             "status_color": "#8B95A1", "urgency": 3, "parent_quest_id": null,
             "created_at": "", "updated_at": "",
             "sub_quests": [{
                 "id": 2, "quest_id": "DEV-002", "quest_type_id": 1, "type_prefix": "DEV",
                 "type_color": "#4A90D9", "number": 2, "title": "child", "description": null,
-                "status_id": 1, "status_name_en": "Open", "status_name_ko": "게시됨",
+                "status_id": 1, "status_slug": "open", "status_name_en": "Open", "status_name_ko": "게시됨",
                 "status_color": "#8B95A1", "urgency": 3, "parent_quest_id": 1,
                 "created_at": "", "updated_at": ""
             }],
@@ -2495,6 +2528,7 @@ mod tests {
             title: "CI/CD + 배포 인프라".into(),
             description: Some("multi-line\nbody".into()),
             status_id: 1,
+            status_slug: "open".into(),
             status_name_en: "Open".into(),
             status_name_ko: "게시됨".into(),
             status_color: "#8B95A1".into(),

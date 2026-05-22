@@ -25,6 +25,8 @@ export interface Quest {
 	title: string;
 	description: string | null;
 	status_id: number;
+	/** DEV-046: stable identifier (예: "open", "testing"). status_id 와 달리 reorder 안전. */
+	status_slug: string;
 	status_name_en: string;
 	status_name_ko: string;
 	status_color: string;

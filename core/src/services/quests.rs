@@ -25,6 +25,7 @@ pub const QUEST_SELECT: &str = r#"
         q.title,
         q.description,
         q.status_id,
+        qs.slug    AS status_slug,
         qs.name_en AS status_name_en,
         qs.name_ko AS status_name_ko,
         qs.color   AS status_color,
