@@ -1069,16 +1069,19 @@ fn print_quest_detail(d: &QuestDetail, json: bool) {
     println!("  created  : {}", q.created_at);
     println!("  updated  : {}", q.updated_at);
     // DEV-047: parent 표기 slug + 색 (이전엔 raw id 만 노출).
+    // 섹션 라벨 색은 gui QuestBoard 의 다중-선택 하이라이트 팔레트와 일치
+    // (parent=#7ee787 초록 / sub=#3dc9b0 청록 / pre=#a371f7 보라).
     if let Some(parent) = &d.parent {
         println!(
-            "  parent   : {} [{}] {}",
+            "  {} : {} [{}] {}",
+            colorize("parent", "#7ee787"),
             colorize(&parent.quest_id, &parent.type_color),
             colorize(&parent.status_name_en, &parent.status_color),
             parent.title
         );
     } else if let Some(p) = q.parent_quest_id {
         // parent_quest_id 는 있는데 detail.parent 가 None — soft-deleted 부모 등 비정상 case 대비 fallback.
-        println!("  parent   : id={p} (불러올 수 없음)");
+        println!("  {} : id={p} (불러올 수 없음)", colorize("parent", "#7ee787"));
     }
     if let Some(desc) = &q.description
         && !desc.is_empty()
@@ -1089,7 +1092,11 @@ fn print_quest_detail(d: &QuestDetail, json: bool) {
         }
     }
     if !d.sub_quests.is_empty() {
-        println!("  sub-quests ({}):", d.sub_quests.len());
+        println!(
+            "  {} ({}):",
+            colorize("sub-quests", "#3dc9b0"),
+            d.sub_quests.len()
+        );
         for s in &d.sub_quests {
             println!(
                 "    - {} [{}] {}",
@@ -1100,7 +1107,11 @@ fn print_quest_detail(d: &QuestDetail, json: bool) {
         }
     }
     if !d.prerequisites.is_empty() {
-        println!("  prerequisites ({}):", d.prerequisites.len());
+        println!(
+            "  {} ({}):",
+            colorize("prerequisites", "#a371f7"),
+            d.prerequisites.len()
+        );
         for p in &d.prerequisites {
             println!(
                 "    - {} [{}] {}",
