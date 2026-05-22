@@ -233,8 +233,16 @@ enum QuestCmd {
     Deleted,
     /// 삭제된 퀘스트 복원
     Restore { slug: String },
-    /// 상태 변경 (status: name_en 또는 ID)
-    Status { slug: String, status: String },
+    /// 현재 상태 출력 (DEV-044). status 인자 지정 시 변경도 가능 — deprecated,
+    /// `move` 사용 권장.
+    Status {
+        slug: String,
+        /// (deprecated) 상태 변경 — 새 명령 `quest move <slug> <status>` 사용.
+        /// 인자 미지정 시 현재 상태만 출력.
+        status: Option<String>,
+    },
+    /// 상태 변경 (DEV-044). status: name_en / slug / ID.
+    Move { slug: String, status: String },
     /// 상태를 In Progress 로 변경
     Start { slug: String },
     /// 상태를 Done 으로 변경
@@ -1590,6 +1598,36 @@ fn run() -> Result<()> {
                 print_quest(&restored, cli.json);
             }
             QuestCmd::Status { slug, status } => {
+                if let Some(target) = status {
+                    // DEV-044: deprecated 변경 호출 — `move` 권장 알림.
+                    eprintln!(
+                        "warning: `quest status <slug> <status>` 는 deprecated. \
+                         앞으로는 `quest move <slug> <status>` 사용 (혼란 방지)."
+                    );
+                    change_status_with_noop_notice(&c, &slug, &target, cli.json)?;
+                } else {
+                    // 출력 전용 — 현재 상태만.
+                    let d = c.quest_by_slug(&slug)?;
+                    if cli.json {
+                        let payload = serde_json::json!({
+                            "quest_id": d.quest.quest_id,
+                            "status_id": d.quest.status_id,
+                            "status_name_en": d.quest.status_name_en,
+                            "status_name_ko": d.quest.status_name_ko,
+                        });
+                        println!("{}", serde_json::to_string_pretty(&payload).unwrap());
+                    } else {
+                        println!(
+                            "{}  {} ({})",
+                            d.quest.quest_id,
+                            colorize(&d.quest.status_name_en, &d.quest.status_color),
+                            d.quest.status_name_ko
+                        );
+                    }
+                }
+            }
+            QuestCmd::Move { slug, status } => {
+                // DEV-044: 변경 전용. status 와 동일한 helper 사용.
                 change_status_with_noop_notice(&c, &slug, &status, cli.json)?;
             }
             QuestCmd::Start { slug } => {
@@ -2606,6 +2644,50 @@ mod tests {
             "openguild", "quest", "search", "x", "--id-only", "--count",
         ]);
         assert!(r.is_err(), "id-only + count 동시 사용은 에러여야 함");
+    }
+
+    // === DEV-044: status 출력 전용 + move 신설 ===
+
+    #[test]
+    fn status_with_only_slug_parses_status_arg_as_none() {
+        let cli = Cli::try_parse_from(["openguild", "quest", "status", "DEV-001"]).unwrap();
+        match cli.command {
+            Command::Quest { sub: QuestCmd::Status { slug, status } } => {
+                assert_eq!(slug, "DEV-001");
+                assert!(status.is_none(), "status 인자 미지정 시 None 이어야 함");
+            }
+            _ => panic!("expected QuestCmd::Status"),
+        }
+    }
+
+    #[test]
+    fn status_with_slug_and_status_arg_keeps_status_some() {
+        let cli = Cli::try_parse_from(["openguild", "quest", "status", "DEV-001", "testing"]).unwrap();
+        match cli.command {
+            Command::Quest { sub: QuestCmd::Status { slug, status } } => {
+                assert_eq!(slug, "DEV-001");
+                assert_eq!(status.as_deref(), Some("testing"));
+            }
+            _ => panic!("expected QuestCmd::Status"),
+        }
+    }
+
+    #[test]
+    fn move_requires_slug_and_status() {
+        let cli = Cli::try_parse_from(["openguild", "quest", "move", "DEV-001", "testing"]).unwrap();
+        match cli.command {
+            Command::Quest { sub: QuestCmd::Move { slug, status } } => {
+                assert_eq!(slug, "DEV-001");
+                assert_eq!(status, "testing");
+            }
+            _ => panic!("expected QuestCmd::Move"),
+        }
+    }
+
+    #[test]
+    fn move_without_status_errors() {
+        let r = Cli::try_parse_from(["openguild", "quest", "move", "DEV-001"]);
+        assert!(r.is_err(), "move 는 status 인자 필수");
     }
 
     // ───────── init_guild_at — tempdir 기반 ─────────
