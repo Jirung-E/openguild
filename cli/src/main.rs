@@ -931,6 +931,44 @@ fn print_quest(q: &Quest, json: bool) {
     print_quest_line(q);
 }
 
+/// BUG-011 후속: 상태 변경 명령이 no-op (현재 상태와 동일) 일 때 사용자에게
+/// 명시적으로 알림. 정상 변경이면 기존 동작 그대로.
+///
+/// 대상: `quest status` / `quest start` / `quest done` / `quest reopen` —
+/// 모두 같은 패턴이라 한 곳에 묶음.
+fn change_status_with_noop_notice(
+    c: &Backend,
+    slug: &str,
+    status_input: &str,
+    json: bool,
+) -> Result<()> {
+    let detail = c.quest_by_slug(slug)?;
+    let target_status_id = c.resolve_status_id(status_input)?;
+
+    if detail.quest.status_id == target_status_id {
+        // 이미 그 상태. backend 호출 생략.
+        if json {
+            // JSON 모드는 agent 파싱용 — quest 그대로 출력 + 마커 한 줄 stderr.
+            eprintln!(
+                r#"{{"noop":true,"reason":"already in status","status_id":{},"status":{:?}}}"#,
+                target_status_id, detail.quest.status_name_en
+            );
+            println!("{}", serde_json::to_string_pretty(&detail.quest).unwrap());
+        } else {
+            println!(
+                "(이미 {} 상태입니다 — 변경 없음)",
+                colorize(&detail.quest.status_name_en, &detail.quest.status_color)
+            );
+            print_quest_line(&detail.quest);
+        }
+        return Ok(());
+    }
+
+    let q = c.change_status(detail.quest.id, target_status_id)?;
+    print_quest(&q, json);
+    Ok(())
+}
+
 /// new / update 직후 — description 변경 결과를 사용자가 즉시 확인할 수 있도록
 /// 전체 multi-line 표시.
 fn print_quest_full(q: &Quest, json: bool) {
@@ -1450,28 +1488,16 @@ fn run() -> Result<()> {
                 print_quest(&restored, cli.json);
             }
             QuestCmd::Status { slug, status } => {
-                let id = c.id_of(&slug)?;
-                let status_id = c.resolve_status_id(&status)?;
-                let q = c.change_status(id, status_id)?;
-                print_quest(&q, cli.json);
+                change_status_with_noop_notice(&c, &slug, &status, cli.json)?;
             }
             QuestCmd::Start { slug } => {
-                let id = c.id_of(&slug)?;
-                let status_id = c.resolve_status_id("In Progress")?;
-                let q = c.change_status(id, status_id)?;
-                print_quest(&q, cli.json);
+                change_status_with_noop_notice(&c, &slug, "In Progress", cli.json)?;
             }
             QuestCmd::Done { slug } => {
-                let id = c.id_of(&slug)?;
-                let status_id = c.resolve_status_id("Done")?;
-                let q = c.change_status(id, status_id)?;
-                print_quest(&q, cli.json);
+                change_status_with_noop_notice(&c, &slug, "Done", cli.json)?;
             }
             QuestCmd::Reopen { slug } => {
-                let id = c.id_of(&slug)?;
-                let status_id = c.resolve_status_id("Open")?;
-                let q = c.change_status(id, status_id)?;
-                print_quest(&q, cli.json);
+                change_status_with_noop_notice(&c, &slug, "Open", cli.json)?;
             }
             QuestCmd::Parent {
                 slug,
