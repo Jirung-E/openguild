@@ -139,7 +139,7 @@ mod tests {
                 quest_type_id: 1,
                 title: "t".into(),
                 description: None,
-                status_id: 1,
+                status_slug: "open".into(),
                 urgency: Some(3),
                 parent_quest_id: None,
             },

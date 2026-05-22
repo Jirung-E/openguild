@@ -16,7 +16,8 @@
 	} = $props();
 
 	let types = $state<QuestType[]>([]);
-	let openStatusId = $state(0); // sort_order 가 가장 작은 상태 (신규 퀘스트는 항상 이 상태로)
+	// DEV-048: API 가 slug 전용. 표시용 라벨만 별도 보관.
+	let openStatusSlug = $state('');
 	let openStatusLabel = $state('');
 	let loading = $state(true);
 
@@ -41,7 +42,7 @@
 			// 이름 짓든 그게 "신규 진입점" 역할.
 			const sorted = [...s].sort((a: QuestStatus, b: QuestStatus) => a.sort_order - b.sort_order);
 			if (sorted.length > 0) {
-				openStatusId = sorted[0].id;
+				openStatusSlug = sorted[0].slug;
 				openStatusLabel = sorted[0].name_en;
 			}
 		} finally {
@@ -53,7 +54,7 @@
 
 	async function create() {
 		if (!title.trim()) { saveError = '제목을 입력해주세요.'; return; }
-		if (!typeId || !openStatusId) { saveError = '타입을 선택해주세요.'; return; }
+		if (!typeId || !openStatusSlug) { saveError = '타입을 선택해주세요.'; return; }
 		saving = true;
 		saveError = null;
 		try {
@@ -61,7 +62,7 @@
 				quest_type_id: typeId,
 				title: title.trim(),
 				description: description.trim() || undefined,
-				status_id: openStatusId,
+				status_slug: openStatusSlug,
 				urgency,
 				parent_quest_id: parentQuestId
 			});

@@ -58,7 +58,8 @@ export interface CreateQuestRequest {
 	quest_type_id: number;
 	title: string;
 	description?: string;
-	status_id: number;
+	/** DEV-048: stable identifier (예: "open"). */
+	status_slug: string;
 	urgency?: number;
 	parent_quest_id?: number;
 }
@@ -71,7 +72,8 @@ export interface UpdateQuestRequest {
 }
 
 export interface ChangeStatusRequest {
-	status_id: number;
+	/** DEV-048: stable identifier (예: "in_progress"). status_id 의 positional 문제 회피. */
+	status_slug: string;
 }
 
 export interface ChangeParentRequest {

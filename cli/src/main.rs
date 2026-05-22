@@ -422,10 +422,11 @@ impl HttpClient {
         self.patch(&format!("/api/quests/{id}/restore"), &serde_json::json!({}))
     }
 
-    fn change_status(&self, id: i64, status_id: i64) -> Result<Quest> {
+    fn change_status(&self, id: i64, status_slug: &str) -> Result<Quest> {
+        // DEV-048: status_slug 전용.
         self.patch(
             &format!("/api/quests/{id}/status"),
-            &serde_json::json!({ "status_id": status_id }),
+            &serde_json::json!({ "status_slug": status_slug }),
         )
     }
 
@@ -661,14 +662,14 @@ impl Backend {
         }
     }
 
-    fn change_status(&self, id: i64, status_id: i64) -> Result<Quest> {
+    fn change_status(&self, id: i64, status_slug: &str) -> Result<Quest> {
         match self {
-            Backend::Http(c) => c.change_status(id, status_id),
+            Backend::Http(c) => c.change_status(id, status_slug),
             Backend::Local(l) => Self::map_err(l.rt.block_on(
                 openguild_core::ops::change_status(
                     &l.store,
                     id,
-                    ChangeStatusRequest { status_id },
+                    ChangeStatusRequest { status_slug: status_slug.to_string() },
                 ),
             )),
         }
@@ -762,22 +763,32 @@ impl Backend {
         Ok(self.quest_by_slug(slug)?.quest.id)
     }
 
-    /// 상태 인자(이름 또는 ID) → status_id
-    fn resolve_status_id(&self, input: &str) -> Result<i64> {
-        if let Ok(n) = input.parse::<i64>() {
-            return Ok(n);
-        }
+    /// DEV-048: 상태 인자(이름 / slug / id) → status_slug. API 가 slug 전용.
+    fn resolve_status_slug(&self, input: &str) -> Result<String> {
         let statuses = self.quest_statuses()?;
-        match_status_id(input, &statuses).ok_or_else(|| {
-            anyhow!(
-                "unknown status '{input}'. available: {}",
-                statuses
-                    .iter()
-                    .map(|s| s.name_en.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )
-        })
+        // 직접 slug 일치.
+        let want = input.to_lowercase().replace([' ', '-'], "_");
+        if let Some(s) = statuses.iter().find(|s| s.slug == want) {
+            return Ok(s.slug.clone());
+        }
+        // name_en / id 도 허용 (사용자 친화).
+        if let Ok(n) = input.parse::<i64>()
+            && let Some(s) = statuses.iter().find(|s| s.id == n)
+        {
+            return Ok(s.slug.clone());
+        }
+        if let Some(s) = statuses.iter().find(|s| s.name_en.to_lowercase() == input.to_lowercase())
+        {
+            return Ok(s.slug.clone());
+        }
+        Err(anyhow!(
+            "unknown status '{input}'. available: {}",
+            statuses
+                .iter()
+                .map(|s| s.slug.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))
     }
 
     fn resolve_type_id(&self, prefix: &str) -> Result<i64> {
@@ -798,6 +809,9 @@ impl Backend {
 // ─────────────────────────── 순수 매칭 헬퍼 ───────────────────────────
 
 /// 상태 이름(name_en, 대소문자/공백 무시) 또는 ID → status_id.
+/// DEV-048 이후 production 경로는 `resolve_status_slug` 사용 — 본 helper 는
+/// 매칭 알고리즘 unit-test 용으로만 유지.
+#[allow(dead_code)]
 fn match_status_id(input: &str, statuses: &[QuestStatus]) -> Option<i64> {
     if let Ok(n) = input.parse::<i64>() {
         return Some(n);
@@ -978,15 +992,15 @@ fn change_status_with_noop_notice(
     json: bool,
 ) -> Result<()> {
     let detail = c.quest_by_slug(slug)?;
-    let target_status_id = c.resolve_status_id(status_input)?;
+    // DEV-048: slug 전용 API → resolve to slug.
+    let target_slug = c.resolve_status_slug(status_input)?;
 
-    if detail.quest.status_id == target_status_id {
+    if detail.quest.status_slug == target_slug {
         // 이미 그 상태. backend 호출 생략.
         if json {
-            // JSON 모드는 agent 파싱용 — quest 그대로 출력 + 마커 한 줄 stderr.
             eprintln!(
-                r#"{{"noop":true,"reason":"already in status","status_id":{},"status":{:?}}}"#,
-                target_status_id, detail.quest.status_name_en
+                r#"{{"noop":true,"reason":"already in status","status_slug":{:?},"status":{:?}}}"#,
+                target_slug, detail.quest.status_name_en
             );
             println!("{}", serde_json::to_string_pretty(&detail.quest).unwrap());
         } else {
@@ -999,7 +1013,7 @@ fn change_status_with_noop_notice(
         return Ok(());
     }
 
-    let q = c.change_status(detail.quest.id, target_status_id)?;
+    let q = c.change_status(detail.quest.id, &target_slug)?;
     print_quest(&q, json);
     Ok(())
 }
@@ -1426,7 +1440,8 @@ fn run() -> Result<()> {
                     quest_type_id: type_id,
                     title,
                     description,
-                    status_id: open_status.id,
+                    // DEV-048: slug 전용.
+                    status_slug: open_status.slug.clone(),
                     urgency: Some(urgency),
                     parent_quest_id: parent_id,
                 };

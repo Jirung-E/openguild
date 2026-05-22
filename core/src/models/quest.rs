@@ -55,7 +55,9 @@ pub struct CreateQuestRequest {
     pub quest_type_id: i64,
     pub title: String,
     pub description: Option<String>,
-    pub status_id: i64,
+    /// DEV-048: stable identifier (예: "open"). status_id 의 positional 문제
+    /// (status 추가/순서 변경 시 silent corruption) 회피를 위해 slug 전용.
+    pub status_slug: String,
     pub urgency: Option<i64>, // default: 3 (Medium)
     pub parent_quest_id: Option<i64>,
 }
@@ -158,7 +160,9 @@ pub struct QuestHistoryEntry {
 
 #[derive(Debug, Deserialize)]
 pub struct ChangeStatusRequest {
-    pub status_id: i64,
+    /// DEV-048: stable identifier (예: "in_progress"). 자세한 사유는
+    /// `CreateQuestRequest.status_slug` 주석 참고.
+    pub status_slug: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -214,11 +218,12 @@ mod tests {
         let body = r##"{
             "quest_type_id": 1,
             "title": "t",
-            "status_id": 1
+            "status_slug": "open"
         }"##;
         let req: CreateQuestRequest = serde_json::from_str(body).unwrap();
         assert_eq!(req.quest_type_id, 1);
         assert_eq!(req.title, "t");
+        assert_eq!(req.status_slug, "open");
         assert!(req.description.is_none());
         assert!(req.urgency.is_none());
     }

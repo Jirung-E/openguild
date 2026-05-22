@@ -166,11 +166,13 @@
 
 	// --- 상태 변경 (다이얼로그 없음, 시각 피드백) ---
 
-	async function changeStatus(statusId: number) {
+	// DEV-048: status 변경 API 가 slug 전용. statusId (number) 는 UI feedback 용,
+	// statusSlug (string) 은 backend 전송용.
+	async function changeStatus(statusId: number, statusSlug: string) {
 		if (!detail || statusId === detail.status_id || changingStatus) return;
 		changingStatus = true;
 		try {
-			await questsApi.changeStatus(detail.id, { status_id: statusId });
+			await questsApi.changeStatus(detail.id, { status_slug: statusSlug });
 			detail = await questsApi.getBySlug(slug);
 			// 피드백: 버튼 체크 + 헤더 뱃지 펄스
 			statusFlashId = statusId;
@@ -407,7 +409,7 @@
 							class:active={s.id === detail.status_id}
 							class:flash={s.id === statusFlashId}
 							style:--c={s.color}
-							onclick={() => changeStatus(s.id)}
+							onclick={() => changeStatus(s.id, s.slug)}
 							disabled={changingStatus || s.id === detail.status_id}
 							data-testid="status-btn-{s.id}"
 						>

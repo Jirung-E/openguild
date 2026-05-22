@@ -92,22 +92,18 @@ pub async fn change_status(
     body: ChangeStatusRequest,
 ) -> AppResult<QuestRow> {
     // BUG-011: no-op (현재 상태 == 요청 상태) 면 일찍 반환 — journal/history/
-    // updated_at 모두 변동 없음. 사용자가 같은 상태를 재지정해도 의미 있는
-    // 이력이 남지 않도록.
-    let current: Option<(i64, Option<String>)> = sqlx::query_as(
-        "SELECT q.status_id, s.slug
+    // updated_at 모두 변동 없음.
+    // DEV-048: slug 기반 비교로 변경 — body.status_slug 와 현재 status.slug 직접 비교.
+    let old_status_slug: Option<String> = sqlx::query_scalar(
+        "SELECT s.slug
          FROM quests q JOIN quest_statuses s ON s.id = q.status_id
          WHERE q.id = ?",
     )
     .bind(id)
     .fetch_optional(&store.index_pool)
     .await?;
-    let (current_status_id, old_status_slug) = match current {
-        Some((sid, slug)) => (Some(sid), slug),
-        None => (None, None),
-    };
 
-    if current_status_id == Some(body.status_id) {
+    if old_status_slug.as_deref() == Some(body.status_slug.as_str()) {
         // 이미 그 상태 — 그대로 반환. quest_history 기록 X.
         return sql::fetch_by_id(&store.index_pool, id).await;
     }
@@ -115,24 +111,17 @@ pub async fn change_status(
     let _ = journal::append(
         &store.journal_pool,
         "change_status",
-        &json!({ "id": id, "status_id": body.status_id }),
+        &json!({ "id": id, "status_slug": body.status_slug }),
         None::<&serde_json::Value>,
     )
     .await
     .map_err(crate::error::AppError::Internal)?;
 
-    let new_status_id = body.status_id;
+    let new_status_slug = body.status_slug.clone();
     let quest = sql::change_status(&store.index_pool, id, body).await?;
 
-    let new_status_slug: Option<String> = sqlx::query_scalar(
-        "SELECT slug FROM quest_statuses WHERE id = ?",
-    )
-    .bind(new_status_id)
-    .fetch_optional(&store.index_pool)
-    .await?;
-
     // DEV-013: history 기록. DEV-041: ts 명시 bind. DEV-042: status slug 저장.
-    // DEV-049: quest_slug 도 함께 저장 (stable identifier — quests.id 재할당 안전).
+    // DEV-049: quest_slug 도 함께 저장. DEV-048: new_status_slug 는 body 에서 그대로.
     let ts = crate::time::now_local_iso8601();
     sqlx::query(
         "INSERT INTO quest_history (quest_id, quest_slug, ts, op, old_value, new_value) VALUES (?, ?, ?, ?, ?, ?)",
@@ -523,7 +512,7 @@ mod tests {
             quest_type_id: 1, // DEV
             title: "first quest".into(),
             description: Some("body text".into()),
-            status_id: 1, // Open
+            status_slug: "open".into(),
             urgency: Some(2),
             parent_quest_id: None,
         };
@@ -566,7 +555,7 @@ mod tests {
                 quest_type_id: 1,
                 title: "parent".into(),
                 description: None,
-                status_id: 1,
+                status_slug: "open".into(),
                 urgency: Some(3),
                 parent_quest_id: None,
             },
@@ -581,7 +570,7 @@ mod tests {
                 quest_type_id: 1,
                 title: "child".into(),
                 description: None,
-                status_id: 1,
+                status_slug: "open".into(),
                 urgency: Some(3),
                 parent_quest_id: Some(parent.id),
             },
@@ -622,7 +611,7 @@ mod tests {
                 quest_type_id: 1,
                 title: "t".into(),
                 description: None,
-                status_id: 1,
+                status_slug: "open".into(),
                 urgency: Some(3),
                 parent_quest_id: None,
             },
@@ -630,7 +619,7 @@ mod tests {
         .await
         .unwrap();
 
-        change_status(&store, q.id, ChangeStatusRequest { status_id: 2 })
+        change_status(&store, q.id, ChangeStatusRequest { status_slug: "in_progress".into() })
             .await
             .unwrap();
 
@@ -650,7 +639,7 @@ mod tests {
                 quest_type_id: 1,
                 title: "old".into(),
                 description: None,
-                status_id: 1,
+                status_slug: "open".into(),
                 urgency: Some(3),
                 parent_quest_id: None,
             },
@@ -807,7 +796,7 @@ mod tests {
             quest_type_id: 1,
             title: title.into(),
             description: None,
-            status_id: 1,
+            status_slug: "open".into(),
             urgency: Some(3),
             parent_quest_id: parent,
         }
@@ -828,7 +817,7 @@ mod tests {
                 quest_type_id: 1,
                 title: "x".into(),
                 description: Some("custom body".into()),
-                status_id: 1,
+                status_slug: "open".into(),
                 urgency: Some(3),
                 parent_quest_id: None,
             },

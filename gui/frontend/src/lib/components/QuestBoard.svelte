@@ -189,6 +189,11 @@
 	let sorted: QuestStatus[] = [];
 	let laneOf = new Map<number, number>();
 
+	// DEV-048: status_id (number) → status_slug (string). API 는 slug 전용.
+	function slugOf(statusId: number): string {
+		return sorted.find((s) => s.id === statusId)?.slug ?? '';
+	}
+
 	// ── 반응형 상태 ──────────────────────────────────────────────
 
 	type HighlightType = 'pre' | 'sub' | 'next' | 'parent';
@@ -378,7 +383,7 @@
 			if (node.length === 0) { busy = false; return; }
 			if (record.from.statusId !== record.to.statusId) {
 				try {
-					await questsApi.changeStatus(record.questId, { status_id: target.statusId });
+					await questsApi.changeStatus(record.questId, { status_slug: slugOf(target.statusId) });
 					node.data('statusId', target.statusId);
 					applyStatusChange(record.questId, target.statusId);
 				} catch { busy = false; return; }
@@ -393,7 +398,7 @@
 				const target = direction === 'undo' ? item.from : item.to;
 				if (item.from.statusId !== item.to.statusId) {
 					try {
-						await questsApi.changeStatus(item.questId, { status_id: target.statusId });
+						await questsApi.changeStatus(item.questId, { status_slug: slugOf(target.statusId) });
 						node.data('statusId', target.statusId);
 						applyStatusChange(item.questId, target.statusId);
 					} catch { continue; }
@@ -1530,7 +1535,7 @@
 
 				if (laneChanged && confirmedLanes.has(toLaneIdx)) {
 					try {
-						await questsApi.changeStatus(questId, { status_id: newStatus.id });
+						await questsApi.changeStatus(questId, { status_slug: newStatus.slug });
 						node.data('statusId', newStatus.id);
 						applyStatusChange(questId, newStatus.id);
 					} catch {

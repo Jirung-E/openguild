@@ -122,10 +122,10 @@ describe('TauriTransport', () => {
 		await new TauriTransport().call({
 			method: 'POST',
 			path: '/api/quests',
-			body: { title: 'x', quest_type_id: 1, status_id: 1 }
+			body: { title: 'x', quest_type_id: 1, status_slug: "open" }
 		});
 		expect(mockInvoke).toHaveBeenCalledWith('create_quest', {
-			body: { title: 'x', quest_type_id: 1, status_id: 1 }
+			body: { title: 'x', quest_type_id: 1, status_slug: "open" }
 		});
 	});
 
@@ -134,11 +134,11 @@ describe('TauriTransport', () => {
 		await new TauriTransport().call({
 			method: 'PATCH',
 			path: '/api/quests/3/status',
-			body: { status_id: 2 }
+			body: { status_slug: "in_progress" }
 		});
 		expect(mockInvoke).toHaveBeenCalledWith('change_quest_status', {
 			id: 3,
-			body: { status_id: 2 }
+			body: { status_slug: "in_progress" }
 		});
 	});
 

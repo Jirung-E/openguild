@@ -130,7 +130,7 @@ async fn test_create_quest() {
     let (status, body) = post(
         setup().await,
         "/api/quests",
-        json!({ "quest_type_id": 1, "title": "implement login", "status_id": 1 }),
+        json!({ "quest_type_id": 1, "title": "implement login", "status_slug": "open" }),
     )
     .await;
     assert_eq!(status, StatusCode::CREATED);
@@ -146,19 +146,19 @@ async fn test_quest_id_increments_per_type() {
     let (_, q1) = post(
         app.clone(),
         "/api/quests",
-        json!({ "quest_type_id": 1, "title": "first", "status_id": 1 }),
+        json!({ "quest_type_id": 1, "title": "first", "status_slug": "open" }),
     )
     .await;
     let (_, q2) = post(
         app.clone(),
         "/api/quests",
-        json!({ "quest_type_id": 1, "title": "second", "status_id": 1 }),
+        json!({ "quest_type_id": 1, "title": "second", "status_slug": "open" }),
     )
     .await;
     let (_, q3) = post(
         app.clone(),
         "/api/quests",
-        json!({ "quest_type_id": 2, "title": "bug", "status_id": 1 }),
+        json!({ "quest_type_id": 2, "title": "bug", "status_slug": "open" }),
     )
     .await;
 
@@ -170,8 +170,8 @@ async fn test_quest_id_increments_per_type() {
 #[tokio::test]
 async fn test_list_quests() {
     let app = setup().await;
-    post(app.clone(), "/api/quests", json!({ "quest_type_id": 1, "title": "q1", "status_id": 1 })).await;
-    post(app.clone(), "/api/quests", json!({ "quest_type_id": 1, "title": "q2", "status_id": 1 })).await;
+    post(app.clone(), "/api/quests", json!({ "quest_type_id": 1, "title": "q1", "status_slug": "open" })).await;
+    post(app.clone(), "/api/quests", json!({ "quest_type_id": 1, "title": "q2", "status_slug": "open" })).await;
 
     let (status, body) = get(app, "/api/quests").await;
     assert_eq!(status, StatusCode::OK);
@@ -185,20 +185,20 @@ async fn setup_with_mixed_quests() -> Router {
     let app = setup().await;
     // DEV-001 (urgency 2 — high)
     post(app.clone(), "/api/quests",
-        json!({ "quest_type_id": 1, "title": "dev-open", "status_id": 1, "urgency": 2 })
+        json!({ "quest_type_id": 1, "title": "dev-open", "status_slug": "open", "urgency": 2 })
     ).await;
     // DEV-002 (urgency 4 — low, 곧 done 으로 옮김)
     let (_, dev2) = post(app.clone(), "/api/quests",
-        json!({ "quest_type_id": 1, "title": "dev-done", "status_id": 1, "urgency": 4 })
+        json!({ "quest_type_id": 1, "title": "dev-done", "status_slug": "open", "urgency": 4 })
     ).await;
     let dev2_id = dev2["id"].as_i64().unwrap();
     // status_id 3 = Done (migration 시드)
     patch(app.clone(), &format!("/api/quests/{dev2_id}/status"),
-        json!({ "status_id": 3 })
+        json!({ "status_slug": "done" })
     ).await;
     // BUG-001 (urgency 1 — critical)
     post(app.clone(), "/api/quests",
-        json!({ "quest_type_id": 2, "title": "bug-open", "status_id": 1, "urgency": 1 })
+        json!({ "quest_type_id": 2, "title": "bug-open", "status_slug": "open", "urgency": 1 })
     ).await;
     app
 }
@@ -242,11 +242,11 @@ async fn test_list_filter_status_underscore_or_dash() {
     // 'in_progress' / 'in-progress' / 'In Progress' 동일 매칭.
     let app = setup().await;
     let (_, created) = post(app.clone(), "/api/quests",
-        json!({ "quest_type_id": 1, "title": "wip", "status_id": 1 })
+        json!({ "quest_type_id": 1, "title": "wip", "status_slug": "open" })
     ).await;
     let id = created["id"].as_i64().unwrap();
     patch(app.clone(), &format!("/api/quests/{id}/status"),
-        json!({ "status_id": 2 })  // In Progress
+        json!({ "status_slug": "in_progress" })  // In Progress
     ).await;
 
     for variant in ["In Progress", "in progress", "in_progress", "in-progress", "IN_PROGRESS"] {
@@ -471,7 +471,7 @@ async fn test_list_created_after_tz_aware_finds_recent_with_offset_format() {
     let app = setup().await;
     // setup() 직후 INSERT 되는 quest 들은 새 format (로컬 TZ +offset) 으로 저장.
     let (_, q) = post(app.clone(), "/api/quests",
-        json!({ "quest_type_id": 1, "title": "recent", "status_id": 1 })).await;
+        json!({ "quest_type_id": 1, "title": "recent", "status_slug": "open" })).await;
     let created = q["created_at"].as_str().unwrap().to_string();
     // created_at 직전 1분 → "after" 로 검색.
     // 단순 lex 라면 stored ("...+09:00") 가 input ("...Z") 보다 작게 비교될 수 있음
@@ -518,7 +518,7 @@ fn url_encode(s: &str) -> String {
 async fn test_list_created_after_with_naked_iso_uses_local_tz() {
     let app = setup().await;
     let (_, q) = post(app.clone(), "/api/quests",
-        json!({ "quest_type_id": 1, "title": "naked-tz", "status_id": 1 })).await;
+        json!({ "quest_type_id": 1, "title": "naked-tz", "status_slug": "open" })).await;
     // created_at 의 날짜 추출 (앞 10자, "YYYY-MM-DD").
     let created = q["created_at"].as_str().unwrap();
     let date_part = &created[..10];
@@ -545,12 +545,12 @@ async fn setup_with_relations() -> Router {
     let app = setup().await;
     // q1, q2 만 생성. q2 의 parent = q1. q3 추가 후 q3 prereq q1.
     let (_, q1) = post(app.clone(), "/api/quests",
-        json!({ "quest_type_id": 1, "title": "q1-leaf-parent", "status_id": 1 })).await;
+        json!({ "quest_type_id": 1, "title": "q1-leaf-parent", "status_slug": "open" })).await;
     let q1_id = q1["id"].as_i64().unwrap();
     let (_, _q2) = post(app.clone(), "/api/quests",
-        json!({ "quest_type_id": 1, "title": "q2-child", "status_id": 1, "parent_quest_id": q1_id })).await;
+        json!({ "quest_type_id": 1, "title": "q2-child", "status_slug": "open", "parent_quest_id": q1_id })).await;
     let (_, q3) = post(app.clone(), "/api/quests",
-        json!({ "quest_type_id": 1, "title": "q3-has-prereq", "status_id": 1 })).await;
+        json!({ "quest_type_id": 1, "title": "q3-has-prereq", "status_slug": "open" })).await;
     let q3_id = q3["id"].as_i64().unwrap();
     post(app.clone(),
         &format!("/api/quests/{q3_id}/prerequisites"),
@@ -622,13 +622,13 @@ async fn setup_for_search() -> Router {
     let app = setup().await;
     post(app.clone(), "/api/quests",
         json!({ "quest_type_id": 1, "title": "Tauri invoke handler",
-                "description": "Rust 측 commands.rs 작성", "status_id": 1 })).await;
+                "description": "Rust 측 commands.rs 작성", "status_slug": "open" })).await;
     post(app.clone(), "/api/quests",
         json!({ "quest_type_id": 1, "title": "Frontend transport adapter",
-                "description": "HTTP / Tauri 자동 분기", "status_id": 1 })).await;
+                "description": "HTTP / Tauri 자동 분기", "status_slug": "open" })).await;
     post(app.clone(), "/api/quests",
         json!({ "quest_type_id": 2, "title": "Quest list 검색",
-                "description": "title / description 부분 일치", "status_id": 1 })).await;
+                "description": "title / description 부분 일치", "status_slug": "open" })).await;
     app
 }
 
@@ -781,7 +781,7 @@ async fn test_list_search_slug_with_title_only_still_matches() {
 async fn test_history_empty_initially() {
     let app = setup().await;
     let (_, q) = post(app.clone(), "/api/quests",
-        json!({ "quest_type_id": 1, "title": "h-empty", "status_id": 1 })).await;
+        json!({ "quest_type_id": 1, "title": "h-empty", "status_slug": "open" })).await;
     let id = q["id"].as_i64().unwrap();
     let (s, body) = get(app, &format!("/api/quests/{id}/history")).await;
     assert_eq!(s, StatusCode::OK);
@@ -792,10 +792,10 @@ async fn test_history_empty_initially() {
 async fn test_history_change_status_recorded() {
     let app = setup().await;
     let (_, q) = post(app.clone(), "/api/quests",
-        json!({ "quest_type_id": 1, "title": "h-status", "status_id": 1 })).await;
+        json!({ "quest_type_id": 1, "title": "h-status", "status_slug": "open" })).await;
     let id = q["id"].as_i64().unwrap();
     patch(app.clone(), &format!("/api/quests/{id}/status"),
-        json!({ "status_id": 2 })).await;
+        json!({ "status_slug": "in_progress" })).await;
     let (_, body) = get(app, &format!("/api/quests/{id}/history")).await;
     let arr = body.as_array().unwrap();
     assert_eq!(arr.len(), 1);
@@ -809,11 +809,11 @@ async fn test_history_change_status_recorded() {
 async fn test_history_multiple_status_changes_ordered_desc() {
     let app = setup().await;
     let (_, q) = post(app.clone(), "/api/quests",
-        json!({ "quest_type_id": 1, "title": "h-multi", "status_id": 1 })).await;
+        json!({ "quest_type_id": 1, "title": "h-multi", "status_slug": "open" })).await;
     let id = q["id"].as_i64().unwrap();
-    patch(app.clone(), &format!("/api/quests/{id}/status"), json!({ "status_id": 2 })).await;
-    patch(app.clone(), &format!("/api/quests/{id}/status"), json!({ "status_id": 3 })).await;
-    patch(app.clone(), &format!("/api/quests/{id}/status"), json!({ "status_id": 1 })).await;
+    patch(app.clone(), &format!("/api/quests/{id}/status"), json!({ "status_slug": "in_progress" })).await;
+    patch(app.clone(), &format!("/api/quests/{id}/status"), json!({ "status_slug": "done" })).await;
+    patch(app.clone(), &format!("/api/quests/{id}/status"), json!({ "status_slug": "open" })).await;
     let (_, body) = get(app, &format!("/api/quests/{id}/history")).await;
     let arr = body.as_array().unwrap();
     assert_eq!(arr.len(), 3);
@@ -829,10 +829,10 @@ async fn test_history_multiple_status_changes_ordered_desc() {
 async fn test_history_records_slugs_not_ids() {
     let app = setup().await;
     let (_, q) = post(app.clone(), "/api/quests",
-        json!({ "quest_type_id": 1, "title": "slug-hist", "status_id": 1 })).await;
+        json!({ "quest_type_id": 1, "title": "slug-hist", "status_slug": "open" })).await;
     let id = q["id"].as_i64().unwrap();
     // migration 0001 seed 의 id 5 = "On Hold" → slug "on_hold".
-    patch(app.clone(), &format!("/api/quests/{id}/status"), json!({ "status_id": 5 })).await;
+    patch(app.clone(), &format!("/api/quests/{id}/status"), json!({ "status_slug": "on_hold" })).await;
     let (_, body) = get(app, &format!("/api/quests/{id}/history")).await;
     let arr = body.as_array().unwrap();
     assert_eq!(arr[0]["old_value"], "open");
@@ -865,13 +865,13 @@ async fn test_status_endpoint_exposes_slug() {
 async fn test_change_status_to_same_does_not_record_history() {
     let app = setup().await;
     let (_, q) = post(app.clone(), "/api/quests",
-        json!({ "quest_type_id": 1, "title": "noop-status", "status_id": 1 })).await;
+        json!({ "quest_type_id": 1, "title": "noop-status", "status_slug": "open" })).await;
     let id = q["id"].as_i64().unwrap();
     let original_updated = q["updated_at"].as_str().unwrap().to_string();
 
     // 같은 상태 (1=Open) 로 재요청 — 변화 없어야 함.
     let (s, body) = patch(app.clone(), &format!("/api/quests/{id}/status"),
-        json!({ "status_id": 1 })).await;
+        json!({ "status_slug": "open" })).await;
     assert_eq!(s, StatusCode::OK);
     // updated_at 도 변경 없음.
     assert_eq!(body["updated_at"].as_str().unwrap(), original_updated,
@@ -888,9 +888,9 @@ async fn test_change_status_actual_change_still_records() {
     // 회귀: BUG-011 수정 후 정상 변경은 여전히 기록되는지.
     let app = setup().await;
     let (_, q) = post(app.clone(), "/api/quests",
-        json!({ "quest_type_id": 1, "title": "real-change", "status_id": 1 })).await;
+        json!({ "quest_type_id": 1, "title": "real-change", "status_slug": "open" })).await;
     let id = q["id"].as_i64().unwrap();
-    patch(app.clone(), &format!("/api/quests/{id}/status"), json!({ "status_id": 2 })).await;
+    patch(app.clone(), &format!("/api/quests/{id}/status"), json!({ "status_slug": "in_progress" })).await;
     let (_, hist) = get(app, &format!("/api/quests/{id}/history")).await;
     assert_eq!(hist.as_array().unwrap().len(), 1);
 }
@@ -901,10 +901,10 @@ async fn test_change_status_actual_change_still_records() {
 async fn test_quest_detail_includes_parent_row() {
     let app = setup().await;
     let (_, parent) = post(app.clone(), "/api/quests",
-        json!({ "quest_type_id": 1, "title": "parent-q", "status_id": 1 })).await;
+        json!({ "quest_type_id": 1, "title": "parent-q", "status_slug": "open" })).await;
     let parent_id = parent["id"].as_i64().unwrap();
     let (_, child) = post(app.clone(), "/api/quests",
-        json!({ "quest_type_id": 1, "title": "child-q", "status_id": 1, "parent_quest_id": parent_id })).await;
+        json!({ "quest_type_id": 1, "title": "child-q", "status_slug": "open", "parent_quest_id": parent_id })).await;
     let child_id = child["id"].as_i64().unwrap();
 
     let (_, body) = get(app, &format!("/api/quests/{child_id}")).await;
@@ -918,7 +918,7 @@ async fn test_quest_detail_includes_parent_row() {
 async fn test_quest_detail_parent_omitted_or_null_for_root() {
     let app = setup().await;
     let (_, q) = post(app.clone(), "/api/quests",
-        json!({ "quest_type_id": 1, "title": "root", "status_id": 1 })).await;
+        json!({ "quest_type_id": 1, "title": "root", "status_slug": "open" })).await;
     let id = q["id"].as_i64().unwrap();
     let (_, body) = get(app, &format!("/api/quests/{id}")).await;
     // serde skip_serializing_if=Option::is_none — root 는 parent 키 없음 또는 null.
@@ -933,10 +933,10 @@ async fn test_quest_detail_parent_omitted_or_null_for_root() {
 async fn test_history_row_has_quest_slug() {
     let app = setup().await;
     let (_, q) = post(app.clone(), "/api/quests",
-        json!({ "quest_type_id": 1, "title": "slug-hist", "status_id": 1 })).await;
+        json!({ "quest_type_id": 1, "title": "slug-hist", "status_slug": "open" })).await;
     let id = q["id"].as_i64().unwrap();
     let slug = q["quest_id"].as_str().unwrap().to_string();
-    patch(app.clone(), &format!("/api/quests/{id}/status"), json!({ "status_id": 2 })).await;
+    patch(app.clone(), &format!("/api/quests/{id}/status"), json!({ "status_slug": "in_progress" })).await;
     // history 의 raw DB 확인은 안 되지만 fetch 한 응답에 quest_slug 가 있는지 확인.
     let (_, body) = get(app, &format!("/api/quests/{id}/history")).await;
     let arr = body.as_array().unwrap();
@@ -951,7 +951,7 @@ async fn test_history_row_has_quest_slug() {
 async fn test_position_row_has_quest_slug() {
     let app = setup().await;
     let (_, q) = post(app.clone(), "/api/quests",
-        json!({ "quest_type_id": 1, "title": "slug-pos", "status_id": 1 })).await;
+        json!({ "quest_type_id": 1, "title": "slug-pos", "status_slug": "open" })).await;
     let id = q["id"].as_i64().unwrap();
     let slug = q["quest_id"].as_str().unwrap().to_string();
     // position 업데이트.
@@ -970,12 +970,12 @@ async fn test_position_row_has_quest_slug() {
 async fn test_history_isolated_per_quest() {
     let app = setup().await;
     let (_, q1) = post(app.clone(), "/api/quests",
-        json!({ "quest_type_id": 1, "title": "h-iso-1", "status_id": 1 })).await;
+        json!({ "quest_type_id": 1, "title": "h-iso-1", "status_slug": "open" })).await;
     let (_, q2) = post(app.clone(), "/api/quests",
-        json!({ "quest_type_id": 1, "title": "h-iso-2", "status_id": 1 })).await;
+        json!({ "quest_type_id": 1, "title": "h-iso-2", "status_slug": "open" })).await;
     let id1 = q1["id"].as_i64().unwrap();
     let id2 = q2["id"].as_i64().unwrap();
-    patch(app.clone(), &format!("/api/quests/{id1}/status"), json!({ "status_id": 2 })).await;
+    patch(app.clone(), &format!("/api/quests/{id1}/status"), json!({ "status_slug": "in_progress" })).await;
     let (_, body1) = get(app.clone(), &format!("/api/quests/{id1}/history")).await;
     let (_, body2) = get(app, &format!("/api/quests/{id2}/history")).await;
     assert_eq!(body1.as_array().unwrap().len(), 1);
@@ -1000,7 +1000,7 @@ fn assert_iso8601_with_tz(ts: &str, field: &str) {
 async fn test_create_quest_timestamps_have_tz_marker() {
     let app = setup().await;
     let (_, q) = post(app, "/api/quests",
-        json!({ "quest_type_id": 1, "title": "ts-test", "status_id": 1 })).await;
+        json!({ "quest_type_id": 1, "title": "ts-test", "status_slug": "open" })).await;
     let created = q["created_at"].as_str().expect("created_at must be string");
     let updated = q["updated_at"].as_str().expect("updated_at must be string");
     assert_iso8601_with_tz(created, "created_at");
@@ -1011,9 +1011,9 @@ async fn test_create_quest_timestamps_have_tz_marker() {
 async fn test_history_ts_has_tz_marker() {
     let app = setup().await;
     let (_, q) = post(app.clone(), "/api/quests",
-        json!({ "quest_type_id": 1, "title": "hist-ts", "status_id": 1 })).await;
+        json!({ "quest_type_id": 1, "title": "hist-ts", "status_slug": "open" })).await;
     let id = q["id"].as_i64().unwrap();
-    patch(app.clone(), &format!("/api/quests/{id}/status"), json!({ "status_id": 2 })).await;
+    patch(app.clone(), &format!("/api/quests/{id}/status"), json!({ "status_slug": "in_progress" })).await;
     let (_, body) = get(app, &format!("/api/quests/{id}/history")).await;
     let ts = body[0]["ts"].as_str().expect("ts must be string");
     assert_iso8601_with_tz(ts, "history.ts");
@@ -1023,7 +1023,7 @@ async fn test_history_ts_has_tz_marker() {
 async fn test_update_quest_bumps_updated_at_to_new_format() {
     let app = setup().await;
     let (_, q) = post(app.clone(), "/api/quests",
-        json!({ "quest_type_id": 1, "title": "upd-ts", "status_id": 1 })).await;
+        json!({ "quest_type_id": 1, "title": "upd-ts", "status_slug": "open" })).await;
     let id = q["id"].as_i64().unwrap();
     let (_, updated) = patch(app, &format!("/api/quests/{id}"), json!({ "title": "upd-ts-new" })).await;
     assert_iso8601_with_tz(updated["updated_at"].as_str().unwrap(), "updated_at after PATCH");
@@ -1045,7 +1045,7 @@ async fn test_list_no_parent_filter() {
             .unwrap()
     };
     post(app.clone(), "/api/quests",
-        json!({ "quest_type_id": 1, "title": "sub-of-dev2", "status_id": 1, "parent_quest_id": dev2 })
+        json!({ "quest_type_id": 1, "title": "sub-of-dev2", "status_slug": "open", "parent_quest_id": dev2 })
     ).await;
 
     // ?no_parent=true → sub 제외, 원래 3개만.
@@ -1067,10 +1067,10 @@ async fn test_list_child_of_slug() {
     };
     // dev-open 밑에 sub 추가.
     post(app.clone(), "/api/quests",
-        json!({ "quest_type_id": 1, "title": "sub-A", "status_id": 1, "parent_quest_id": parent_id })
+        json!({ "quest_type_id": 1, "title": "sub-A", "status_slug": "open", "parent_quest_id": parent_id })
     ).await;
     post(app.clone(), "/api/quests",
-        json!({ "quest_type_id": 1, "title": "sub-B", "status_id": 1, "parent_quest_id": parent_id })
+        json!({ "quest_type_id": 1, "title": "sub-B", "status_slug": "open", "parent_quest_id": parent_id })
     ).await;
 
     // dev-open 의 slug 는 DEV-001 (mixed setup 의 첫 quest).
@@ -1200,7 +1200,7 @@ async fn test_get_quest_detail() {
     let (_, created) = post(
         app.clone(),
         "/api/quests",
-        json!({ "quest_type_id": 1, "title": "detail test", "status_id": 1 }),
+        json!({ "quest_type_id": 1, "title": "detail test", "status_slug": "open" }),
     )
     .await;
     let id = created["id"].as_i64().unwrap();
@@ -1224,7 +1224,7 @@ async fn test_update_quest() {
     let (_, created) = post(
         app.clone(),
         "/api/quests",
-        json!({ "quest_type_id": 1, "title": "original", "status_id": 1 }),
+        json!({ "quest_type_id": 1, "title": "original", "status_slug": "open" }),
     )
     .await;
     let id = created["id"].as_i64().unwrap();
@@ -1246,7 +1246,7 @@ async fn test_change_status() {
     let (_, created) = post(
         app.clone(),
         "/api/quests",
-        json!({ "quest_type_id": 1, "title": "status test", "status_id": 1 }),
+        json!({ "quest_type_id": 1, "title": "status test", "status_slug": "open" }),
     )
     .await;
     let id = created["id"].as_i64().unwrap();
@@ -1254,7 +1254,7 @@ async fn test_change_status() {
     let (status, body) = patch(
         app,
         &format!("/api/quests/{id}/status"),
-        json!({ "status_id": 2 }),
+        json!({ "status_slug": "in_progress" }),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
@@ -1267,7 +1267,7 @@ async fn test_delete_quest() {
     let (_, created) = post(
         app.clone(),
         "/api/quests",
-        json!({ "quest_type_id": 1, "title": "to delete", "status_id": 1 }),
+        json!({ "quest_type_id": 1, "title": "to delete", "status_slug": "open" }),
     )
     .await;
     let id = created["id"].as_i64().unwrap();
@@ -1282,8 +1282,8 @@ async fn test_delete_quest() {
 #[tokio::test]
 async fn test_prerequisites() {
     let app = setup().await;
-    let (_, q1) = post(app.clone(), "/api/quests", json!({ "quest_type_id": 1, "title": "q1", "status_id": 1 })).await;
-    let (_, q2) = post(app.clone(), "/api/quests", json!({ "quest_type_id": 1, "title": "q2", "status_id": 1 })).await;
+    let (_, q1) = post(app.clone(), "/api/quests", json!({ "quest_type_id": 1, "title": "q1", "status_slug": "open" })).await;
+    let (_, q2) = post(app.clone(), "/api/quests", json!({ "quest_type_id": 1, "title": "q2", "status_slug": "open" })).await;
     let id1 = q1["id"].as_i64().unwrap();
     let id2 = q2["id"].as_i64().unwrap();
 
@@ -1307,14 +1307,14 @@ async fn test_sub_quests() {
     let (_, parent) = post(
         app.clone(),
         "/api/quests",
-        json!({ "quest_type_id": 1, "title": "parent", "status_id": 1 }),
+        json!({ "quest_type_id": 1, "title": "parent", "status_slug": "open" }),
     )
     .await;
     let parent_id = parent["id"].as_i64().unwrap();
 
     // 서브퀘스트 2개 생성
-    post(app.clone(), "/api/quests", json!({ "quest_type_id": 1, "title": "sub 1", "status_id": 1, "parent_quest_id": parent_id })).await;
-    post(app.clone(), "/api/quests", json!({ "quest_type_id": 1, "title": "sub 2", "status_id": 1, "parent_quest_id": parent_id })).await;
+    post(app.clone(), "/api/quests", json!({ "quest_type_id": 1, "title": "sub 1", "status_slug": "open", "parent_quest_id": parent_id })).await;
+    post(app.clone(), "/api/quests", json!({ "quest_type_id": 1, "title": "sub 2", "status_slug": "open", "parent_quest_id": parent_id })).await;
 
     let (status, detail) = get(app, &format!("/api/quests/{parent_id}")).await;
     assert_eq!(status, StatusCode::OK);
@@ -1327,7 +1327,7 @@ async fn test_update_position() {
     let (_, created) = post(
         app.clone(),
         "/api/quests",
-        json!({ "quest_type_id": 1, "title": "position test", "status_id": 1 }),
+        json!({ "quest_type_id": 1, "title": "position test", "status_slug": "open" }),
     )
     .await;
     let id = created["id"].as_i64().unwrap();
@@ -1350,7 +1350,7 @@ async fn mk_quest(app: Router, title: &str, parent: Option<i64>) -> i64 {
     let mut payload = json!({
         "quest_type_id": 1,
         "title": title,
-        "status_id": 1
+        "status_slug": "open"
     });
     if let Some(pid) = parent {
         payload["parent_quest_id"] = json!(pid);
@@ -1972,7 +1972,7 @@ async fn test_create_subquest_invalid_parent() {
         json!({
             "quest_type_id": 1,
             "title": "orphan",
-            "status_id": 1,
+            "status_slug": "open",
             "parent_quest_id": 999
         }),
     )

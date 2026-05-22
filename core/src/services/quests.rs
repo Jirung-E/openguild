@@ -478,6 +478,17 @@ pub async fn create(pool: &SqlitePool, body: CreateQuestRequest) -> AppResult<Qu
 
     let mut tx = pool.begin().await?;
 
+    // DEV-048: API 가 status_slug 전용 → 내부에서 id 로 resolve.
+    let status_id: i64 = sqlx::query_scalar(
+        "SELECT id FROM quest_statuses WHERE slug = ?",
+    )
+    .bind(&body.status_slug)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or_else(|| {
+        AppError::BadRequest(format!("unknown status slug: '{}'", body.status_slug))
+    })?;
+
     let number = sqlx::query_scalar::<_, i64>(
         "UPDATE quest_counters SET last_number = last_number + 1
          WHERE quest_type_id = ? RETURNING last_number",
@@ -487,8 +498,7 @@ pub async fn create(pool: &SqlitePool, body: CreateQuestRequest) -> AppResult<Qu
     .await?
     .ok_or_else(|| AppError::BadRequest("invalid quest_type_id".to_string()))?;
 
-    // DEV-041: 로컬 시각 + TZ offset 으로 명시 bind. SQL DEFAULT (datetime('now'))
-    // 는 UTC w/o-marker 라서 그대로 두면 새 행도 legacy 형식이 됨 — 회피.
+    // DEV-041: 로컬 시각 + TZ offset 으로 명시 bind.
     let now = crate::time::now_local_iso8601();
     let id = sqlx::query_scalar::<_, i64>(
         "INSERT INTO quests (quest_type_id, number, title, description, status_id, urgency, parent_quest_id, created_at, updated_at)
@@ -498,7 +508,7 @@ pub async fn create(pool: &SqlitePool, body: CreateQuestRequest) -> AppResult<Qu
     .bind(number)
     .bind(&body.title)
     .bind(&body.description)
-    .bind(body.status_id)
+    .bind(status_id)
     .bind(body.urgency.unwrap_or(3))
     .bind(body.parent_quest_id)
     .bind(&now)
@@ -595,9 +605,20 @@ pub async fn change_status(
     id: i64,
     body: ChangeStatusRequest,
 ) -> AppResult<QuestRow> {
+    // DEV-048: slug → id resolve.
+    let status_id: i64 = sqlx::query_scalar(
+        "SELECT id FROM quest_statuses WHERE slug = ?",
+    )
+    .bind(&body.status_slug)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| {
+        AppError::BadRequest(format!("unknown status slug: '{}'", body.status_slug))
+    })?;
+
     let now = crate::time::now_local_iso8601();
     let rows = sqlx::query("UPDATE quests SET status_id = ?, updated_at = ? WHERE id = ?")
-        .bind(body.status_id)
+        .bind(status_id)
         .bind(&now)
         .bind(id)
         .execute(pool)
