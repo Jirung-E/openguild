@@ -156,6 +156,25 @@ enum QuestCmd {
         #[arg(long)]
         count: bool,
     },
+    /// 퀘스트 검색 — title / description / slug 부분 일치 (공백 split AND).
+    /// 사실상 `list --search` 의 별칭이지만 발견성을 위해 단독 명령으로 노출.
+    Search {
+        /// 검색 키워드. 다중 토큰은 공백 구분 (AND).
+        query: String,
+        /// title 만 검사 (description / slug 도 매치하는 기본 동작 비활성).
+        /// 단 slug 매치는 항상 유지 (메타 정보).
+        #[arg(long = "title-only")]
+        title_only: bool,
+        /// 결과 최대 행 수.
+        #[arg(long)]
+        limit: Option<i64>,
+        /// id (slug) 만 출력 — script 친화.
+        #[arg(long = "id-only", conflicts_with = "count")]
+        id_only: bool,
+        /// 매칭 개수만 정수로 출력.
+        #[arg(long)]
+        count: bool,
+    },
     /// 퀘스트 상세 (슬러그: DEV-001)
     Show {
         slug: String,
@@ -1244,6 +1263,32 @@ fn run() -> Result<()> {
                 } else if id_only {
                     for q in &quests {
                         println!("{}", q.quest_id);
+                    }
+                } else {
+                    print_quest_list(&quests, cli.json);
+                }
+            }
+            QuestCmd::Search { query, title_only, limit, id_only, count } => {
+                // DEV-045: list --search 의 발견성을 위한 alias.
+                // 동일 백엔드 호출. 사용자 친화적인 단일 인자만 받아 ListQuery 로 변환.
+                let q = ListQuery {
+                    search: Some(query),
+                    title_only,
+                    limit,
+                    ..Default::default()
+                };
+                let quests = c.list_quests(&q)?;
+                if count {
+                    println!("{}", quests.len());
+                } else if id_only {
+                    if cli.json {
+                        println!("{}", serde_json::to_string_pretty(
+                            &quests.iter().map(|q| q.quest_id.clone()).collect::<Vec<_>>()
+                        )?);
+                    } else {
+                        for q in &quests {
+                            println!("{}", q.quest_id);
+                        }
                     }
                 } else {
                     print_quest_list(&quests, cli.json);
@@ -2509,6 +2554,58 @@ mod tests {
         let d = sample_detail();
         let err = quest_field_value(&d, "nonexistent").unwrap_err();
         assert!(format!("{err}").contains("unknown field"));
+    }
+
+    // === DEV-045: quest search ===
+
+    #[test]
+    fn search_parses_query_arg() {
+        let cli = Cli::try_parse_from(["openguild", "quest", "search", "foo bar"]).unwrap();
+        match cli.command {
+            Command::Quest { sub: QuestCmd::Search { query, title_only, limit, id_only, count } } => {
+                assert_eq!(query, "foo bar");
+                assert!(!title_only);
+                assert!(limit.is_none());
+                assert!(!id_only);
+                assert!(!count);
+            }
+            _ => panic!("expected QuestCmd::Search"),
+        }
+    }
+
+    #[test]
+    fn search_with_title_only_flag() {
+        let cli = Cli::try_parse_from(["openguild", "quest", "search", "x", "--title-only"]).unwrap();
+        match cli.command {
+            Command::Quest { sub: QuestCmd::Search { title_only, .. } } => {
+                assert!(title_only);
+            }
+            _ => panic!("expected QuestCmd::Search"),
+        }
+    }
+
+    #[test]
+    fn search_with_limit_and_id_only() {
+        let cli = Cli::try_parse_from([
+            "openguild", "quest", "search", "DEV", "--limit", "5", "--id-only",
+        ]).unwrap();
+        match cli.command {
+            Command::Quest { sub: QuestCmd::Search { query, limit, id_only, count, .. } } => {
+                assert_eq!(query, "DEV");
+                assert_eq!(limit, Some(5));
+                assert!(id_only);
+                assert!(!count);
+            }
+            _ => panic!("expected QuestCmd::Search"),
+        }
+    }
+
+    #[test]
+    fn search_id_only_and_count_mutually_exclusive() {
+        let r = Cli::try_parse_from([
+            "openguild", "quest", "search", "x", "--id-only", "--count",
+        ]);
+        assert!(r.is_err(), "id-only + count 동시 사용은 에러여야 함");
     }
 
     // ───────── init_guild_at — tempdir 기반 ─────────
