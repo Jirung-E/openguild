@@ -419,8 +419,9 @@ pub async fn get_by_slug(pool: &SqlitePool, slug: &str) -> AppResult<QuestDetail
 
 pub async fn list_positions(pool: &SqlitePool) -> AppResult<Vec<QuestPosition>> {
     // soft-deleted quest 의 position 은 응답에서 제외 — frontend 가 stale 노드를 그리지 않도록
+    // DEV-049: quest_slug 도 함께 SELECT.
     let positions = sqlx::query_as::<_, QuestPosition>(
-        "SELECT p.quest_id, p.x, p.y
+        "SELECT p.quest_id, p.quest_slug, p.x, p.y
          FROM quest_positions p
          JOIN quests q ON q.id = p.quest_id
          WHERE q.deleted_at IS NULL",
@@ -432,8 +433,9 @@ pub async fn list_positions(pool: &SqlitePool) -> AppResult<Vec<QuestPosition>> 
 
 /// DEV-013: quest 의 변경 이력 (최신 → 과거 순).
 pub async fn list_history(pool: &SqlitePool, quest_id: i64) -> AppResult<Vec<QuestHistoryEntry>> {
+    // DEV-049: quest_slug 도 SELECT — stable identifier 노출.
     let rows = sqlx::query_as::<_, QuestHistoryEntry>(
-        "SELECT id, quest_id, ts, op, old_value, new_value, actor
+        "SELECT id, quest_id, quest_slug, ts, op, old_value, new_value, actor
          FROM quest_history WHERE quest_id = ? ORDER BY ts DESC, id DESC",
     )
     .bind(quest_id)
@@ -866,11 +868,22 @@ pub async fn update_position(
     id: i64,
     body: UpdatePositionRequest,
 ) -> AppResult<QuestPosition> {
-    sqlx::query(
-        "INSERT INTO quest_positions (quest_id, x, y) VALUES (?, ?, ?)
-         ON CONFLICT(quest_id) DO UPDATE SET x = excluded.x, y = excluded.y",
+    // DEV-049: quest_slug 도 함께 INSERT — quests.id 재할당 시에도 정상 매핑.
+    let slug: String = sqlx::query_scalar(
+        "SELECT qt.prefix || '-' || printf('%03d', q.number)
+         FROM quests q JOIN quest_types qt ON q.quest_type_id = qt.id
+         WHERE q.id = ?",
     )
     .bind(id)
+    .fetch_one(pool)
+    .await?;
+
+    sqlx::query(
+        "INSERT INTO quest_positions (quest_id, quest_slug, x, y) VALUES (?, ?, ?, ?)
+         ON CONFLICT(quest_id) DO UPDATE SET x = excluded.x, y = excluded.y, quest_slug = excluded.quest_slug",
+    )
+    .bind(id)
+    .bind(&slug)
     .bind(body.x)
     .bind(body.y)
     .execute(pool)
@@ -878,6 +891,7 @@ pub async fn update_position(
 
     Ok(QuestPosition {
         quest_id: id,
+        quest_slug: Some(slug),
         x: body.x,
         y: body.y,
     })
@@ -918,7 +932,7 @@ async fn fetch_relations(
         .await?;
 
     let position = sqlx::query_as::<_, QuestPosition>(
-        "SELECT quest_id, x, y FROM quest_positions WHERE quest_id = ?",
+        "SELECT quest_id, quest_slug, x, y FROM quest_positions WHERE quest_id = ?",
     )
     .bind(id)
     .fetch_optional(pool)

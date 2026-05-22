@@ -232,19 +232,39 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
 
     // 5b. position 복원 — 0 단계에서 백업한 slug → 새 quest id 로 재INSERT.
     //     slug 가 reindex 후에도 살아있는 quest 만 복원.
+    //     DEV-049: quest_slug 도 함께 INSERT (stable identifier).
     let mut positions_restored = 0usize;
     for (slug, x, y) in &position_backup {
         if let Some(&qid) = slug_to_id.get(slug) {
-            sqlx::query("INSERT INTO quest_positions (quest_id, x, y) VALUES (?, ?, ?)")
-                .bind(qid)
-                .bind(x)
-                .bind(y)
-                .execute(&mut *tx)
-                .await?;
+            sqlx::query(
+                "INSERT INTO quest_positions (quest_id, quest_slug, x, y) VALUES (?, ?, ?, ?)",
+            )
+            .bind(qid)
+            .bind(slug)
+            .bind(x)
+            .bind(y)
+            .execute(&mut *tx)
+            .await?;
             positions_restored += 1;
         }
     }
     report.positions_restored = positions_restored;
+
+    // 5c. quest_history 의 quest_id 재정렬 (DEV-049).
+    //     이전 reindex 가 id 를 재할당했어도 quest_slug 컬럼이 stable identifier
+    //     로 살아있음. quest_id 컬럼은 새 매핑으로 갱신.
+    sqlx::query(
+        "UPDATE quest_history
+         SET quest_id = (
+             SELECT q.id
+             FROM quests q
+             JOIN quest_types qt ON q.quest_type_id = qt.id
+             WHERE qt.prefix || '-' || printf('%03d', q.number) = quest_history.quest_slug
+         )
+         WHERE quest_slug IS NOT NULL",
+    )
+    .execute(&mut *tx)
+    .await?;
 
     tx.commit().await?;
 
@@ -444,11 +464,13 @@ mod tests {
                 .fetch_one(&store.index_pool)
                 .await
                 .unwrap();
-        sqlx::query("INSERT INTO quest_positions (quest_id, x, y) VALUES (?, 162.0, 108.0)")
-            .bind(qid)
-            .execute(&store.index_pool)
-            .await
-            .unwrap();
+        sqlx::query(
+            "INSERT INTO quest_positions (quest_id, quest_slug, x, y) VALUES (?, 'DEV-001', 162.0, 108.0)",
+        )
+        .bind(qid)
+        .execute(&store.index_pool)
+        .await
+        .unwrap();
 
         // 두번째 reindex → position 이 살아남아야 함
         let r2 = reindex(&store).await.unwrap();
@@ -465,6 +487,111 @@ mod tests {
         .unwrap();
         assert!((row.0 - 162.0).abs() < 1e-6);
         assert!((row.1 - 108.0).abs() < 1e-6);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-049 회귀: quest 추가 후 reindex 가 quests.id 를 시프트해도
+    /// quest_history 와 quest_positions 가 정확한 quest 를 가리키는지.
+    #[tokio::test]
+    async fn reindex_preserves_history_and_position_across_id_shift() {
+        let dir = fresh_tmp("id-shift");
+        let store = setup_store(&dir).await;
+        let paths = GuildPaths::new(&dir);
+
+        // 처음: DEV-001 만 존재 → id 알맞게 부여 (예: 1).
+        let dev1 = QuestFile {
+            frontmatter: QuestFrontmatter {
+                quest_id: "DEV-001".into(),
+                title: "dev one".into(),
+                status: "open".into(),
+                urgency: 3,
+                parent: None,
+                prerequisites: vec![],
+                created_at: "x".into(),
+                updated_at: "x".into(),
+                deleted: false,
+            },
+            description: String::new(),
+            auto_block: String::new(),
+        };
+        dev1.write(paths.quest_path("DEV-001")).unwrap();
+        reindex(&store).await.unwrap();
+
+        // DEV-001 의 id 와 position / history INSERT.
+        let dev1_id: i64 = sqlx::query_scalar(
+            "SELECT id FROM quests WHERE deleted_at IS NULL LIMIT 1",
+        )
+        .fetch_one(&store.index_pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO quest_positions (quest_id, quest_slug, x, y) VALUES (?, 'DEV-001', 11.0, 22.0)",
+        )
+        .bind(dev1_id)
+        .execute(&store.index_pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO quest_history (quest_id, quest_slug, ts, op, old_value, new_value)
+             VALUES (?, 'DEV-001', '2026-05-22T10:00:00+09:00', 'change_status', 'open', 'in_progress')",
+        )
+        .bind(dev1_id)
+        .execute(&store.index_pool)
+        .await
+        .unwrap();
+
+        // 새 quest BUG-001 추가 — alphabetic 정렬 시 DEV-001 보다 앞이라
+        // 다음 reindex 에서 DEV-001 의 id 가 시프트됨 (1 → 2).
+        let bug1 = QuestFile {
+            frontmatter: QuestFrontmatter {
+                quest_id: "BUG-001".into(),
+                title: "bug one".into(),
+                status: "open".into(),
+                urgency: 3,
+                parent: None,
+                prerequisites: vec![],
+                created_at: "x".into(),
+                updated_at: "x".into(),
+                deleted: false,
+            },
+            description: String::new(),
+            auto_block: String::new(),
+        };
+        bug1.write(paths.quest_path("BUG-001")).unwrap();
+        reindex(&store).await.unwrap();
+
+        // 새 id 확인 (DEV-001 의 id 가 바뀜).
+        let dev1_new_id: i64 = sqlx::query_scalar(
+            "SELECT q.id FROM quests q JOIN quest_types qt ON q.quest_type_id = qt.id
+             WHERE qt.prefix = 'DEV' AND q.number = 1",
+        )
+        .fetch_one(&store.index_pool)
+        .await
+        .unwrap();
+        assert_ne!(dev1_new_id, dev1_id, "BUG-001 추가로 DEV-001 의 id 가 시프트되어야 함");
+
+        // position: quest_id 와 quest_slug 둘 다 새 id 와 슬러그 가리켜야.
+        let (p_qid, p_slug, p_x, p_y): (i64, String, f64, f64) = sqlx::query_as(
+            "SELECT quest_id, quest_slug, x, y FROM quest_positions",
+        )
+        .fetch_one(&store.index_pool)
+        .await
+        .unwrap();
+        assert_eq!(p_qid, dev1_new_id, "position.quest_id 가 새 id 로 갱신");
+        assert_eq!(p_slug, "DEV-001");
+        assert!((p_x - 11.0).abs() < 1e-6);
+        assert!((p_y - 22.0).abs() < 1e-6);
+
+        // history: quest_id 도 새 id 로 갱신, slug 는 그대로.
+        let (h_qid, h_slug): (i64, String) = sqlx::query_as(
+            "SELECT quest_id, quest_slug FROM quest_history",
+        )
+        .fetch_one(&store.index_pool)
+        .await
+        .unwrap();
+        assert_eq!(h_qid, dev1_new_id, "history.quest_id 가 새 id 로 갱신");
+        assert_eq!(h_slug, "DEV-001");
 
         let _ = std::fs::remove_dir_all(&dir);
     }

@@ -927,6 +927,45 @@ async fn test_quest_detail_parent_omitted_or_null_for_root() {
         "root quest 의 parent 는 null/생략 이어야 함: {body}");
 }
 
+// === DEV-049: history/position 이 quest_slug 로 stable identifier ===
+
+#[tokio::test]
+async fn test_history_row_has_quest_slug() {
+    let app = setup().await;
+    let (_, q) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "slug-hist", "status_id": 1 })).await;
+    let id = q["id"].as_i64().unwrap();
+    let slug = q["quest_id"].as_str().unwrap().to_string();
+    patch(app.clone(), &format!("/api/quests/{id}/status"), json!({ "status_id": 2 })).await;
+    // history 의 raw DB 확인은 안 되지만 fetch 한 응답에 quest_slug 가 있는지 확인.
+    let (_, body) = get(app, &format!("/api/quests/{id}/history")).await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    // QuestHistoryEntry 가 quest_slug 필드를 노출하는지.
+    let qs = arr[0].get("quest_slug").and_then(|v| v.as_str());
+    assert_eq!(qs, Some(slug.as_str()),
+        "history row 의 quest_slug 가 quest 슬러그와 일치해야 함: {body}");
+}
+
+#[tokio::test]
+async fn test_position_row_has_quest_slug() {
+    let app = setup().await;
+    let (_, q) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "slug-pos", "status_id": 1 })).await;
+    let id = q["id"].as_i64().unwrap();
+    let slug = q["quest_id"].as_str().unwrap().to_string();
+    // position 업데이트.
+    let (s, _) = put(app.clone(), &format!("/api/quests/{id}/position"),
+        json!({ "x": 100.0, "y": 200.0 })).await;
+    assert_eq!(s, StatusCode::OK);
+    // 전체 position 목록에서 해당 slug 의 위치 확인 — API 응답에 quest_slug 노출 여부.
+    let (_, positions) = get(app, "/api/quest-positions").await;
+    let arr = positions.as_array().unwrap();
+    let found = arr.iter().find(|p| p.get("quest_slug").and_then(|v| v.as_str()) == Some(&slug));
+    assert!(found.is_some(),
+        "position 응답에 quest_slug 가 노출되어야 함: {positions}");
+}
+
 #[tokio::test]
 async fn test_history_isolated_per_quest() {
     let app = setup().await;

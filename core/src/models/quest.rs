@@ -41,6 +41,9 @@ pub struct QuestDetail {
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct QuestPosition {
     pub quest_id: i64,
+    /// DEV-049: stable identifier — quests.id 재할당 안전. quest_id 와 양립.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quest_slug: Option<String>,
     pub x: f64,
     pub y: f64,
 }
@@ -143,6 +146,9 @@ pub struct DeleteQuestQuery {
 pub struct QuestHistoryEntry {
     pub id: i64,
     pub quest_id: i64,
+    /// DEV-049: stable identifier — quests.id 재할당 안전.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quest_slug: Option<String>,
     pub ts: String,
     pub op: String,
     pub old_value: Option<String>,

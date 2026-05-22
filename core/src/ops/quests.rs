@@ -131,12 +131,14 @@ pub async fn change_status(
     .fetch_optional(&store.index_pool)
     .await?;
 
-    // DEV-013: history 기록. DEV-041: ts 명시 bind. DEV-042: slug 저장.
+    // DEV-013: history 기록. DEV-041: ts 명시 bind. DEV-042: status slug 저장.
+    // DEV-049: quest_slug 도 함께 저장 (stable identifier — quests.id 재할당 안전).
     let ts = crate::time::now_local_iso8601();
     sqlx::query(
-        "INSERT INTO quest_history (quest_id, ts, op, old_value, new_value) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO quest_history (quest_id, quest_slug, ts, op, old_value, new_value) VALUES (?, ?, ?, ?, ?, ?)",
     )
     .bind(id)
+    .bind(&quest.quest_id)
     .bind(&ts)
     .bind("change_status")
     .bind(&old_status_slug)

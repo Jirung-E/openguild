@@ -46,6 +46,8 @@ export interface QuestDetail extends Quest {
 
 export interface QuestPosition {
 	quest_id: number;
+	/** DEV-049: stable identifier — quests.id 재할당 안전. */
+	quest_slug?: string | null;
 	x: number;
 	y: number;
 }
@@ -119,6 +121,8 @@ export interface RestoreResponse {
 export interface QuestHistoryEntry {
 	id: number;
 	quest_id: number;
+	/** DEV-049: stable identifier — quests.id 재할당 안전. */
+	quest_slug?: string | null;
 	ts: string;
 	op: string;
 	old_value: string | null;
