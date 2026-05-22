@@ -1177,19 +1177,19 @@ fn run() -> Result<()> {
                     println!("(이력 없음)");
                 } else {
                     // DEV-042: change_status 의 old/new value 는 slug —
-                    // 사용자에게는 name_en 으로 표시. 모르는 slug 면 그대로.
-                    // 숫자 (migration 누락 / legacy) 가 들어오면 폴백 lookup.
+                    // 사용자에게는 name_en + status color 로 표시. 모르는 slug
+                    // 면 그대로. 숫자 (migration 누락 / legacy) 면 id 폴백.
                     let statuses = c.quest_statuses().unwrap_or_default();
                     let display = |raw: Option<&str>| -> String {
                         let Some(v) = raw else { return "∅".into() };
                         if let Some(s) = statuses.iter().find(|s| s.slug == v) {
-                            return s.name_en.clone();
+                            return colorize(&s.name_en, &s.color);
                         }
                         // legacy numeric fallback (pre-DEV-042 history 행).
                         if let Ok(id) = v.parse::<i64>()
                             && let Some(s) = statuses.iter().find(|s| s.id == id)
                         {
-                            return format!("{} (legacy id)", s.name_en);
+                            return colorize(&format!("{} (legacy id)", s.name_en), &s.color);
                         }
                         v.to_string()
                     };
