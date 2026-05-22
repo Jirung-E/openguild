@@ -426,10 +426,30 @@
 			{/if}
 		{/if}
 
+		<!-- 부모 퀘스트 (DEV-050) -->
+		{#if detail.parent}
+			<section>
+				<div class="section-head">
+					<h2 class="section-title parent-label">Parent</h2>
+				</div>
+				<ul class="quest-list">
+					<li>
+						<div class="prereq-row">
+							<a href="/quests/{detail.parent.quest_id}" class="prereq-link">
+								<span class="badge type" style:--c={detail.parent.type_color}>{detail.parent.quest_id}</span>
+								<span class="ql-title">{detail.parent.title}</span>
+								<span class="badge status" style:--c={detail.parent.status_color}>{detail.parent.status_name_en}</span>
+							</a>
+						</div>
+					</li>
+				</ul>
+			</section>
+		{/if}
+
 		<!-- 서브퀘스트 -->
 		<section>
 			<div class="section-head">
-				<h2 class="section-title">Sub-Quests</h2>
+				<h2 class="section-title sub-label">Sub-Quests</h2>
 				{#if !editMode}
 					<button class="sec-add-btn" onclick={() => (showNewSubQuest = true)}>+ 신규</button>
 					<button class="sec-add-btn" onclick={() => openCombo('sub')}>+ 기존 지정</button>
@@ -460,7 +480,7 @@
 		<!-- 선행 퀘스트 -->
 		<section>
 			<div class="section-head">
-				<h2 class="section-title">Prerequisites</h2>
+				<h2 class="section-title prereq-label">Prerequisites</h2>
 				{#if !editMode}
 					<button class="sec-add-btn" onclick={() => openCombo('prereq')}>+ 추가</button>
 				{/if}
@@ -800,6 +820,10 @@
 		font-size: 0.8rem; font-weight: 600; color: #8b949e;
 		text-transform: uppercase; letter-spacing: 0.05em; margin: 0;
 	}
+	/* DEV-050: 라벨별 색 — QuestBoard 하이라이트 / CLI 의 quest show 와 일치. */
+	.section-title.parent-label { color: #7ee787; }
+	.section-title.sub-label { color: #3dc9b0; }
+	.section-title.prereq-label { color: #a371f7; }
 	.sec-add-btn {
 		padding: 0.15rem 0.6rem;
 		border: 1px solid #30363d; border-radius: 4px;
