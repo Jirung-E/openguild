@@ -157,7 +157,15 @@ enum QuestCmd {
         count: bool,
     },
     /// 퀘스트 상세 (슬러그: DEV-001)
-    Show { slug: String },
+    Show {
+        slug: String,
+        /// 단일 필드만 출력 (script / pipe 친화).
+        /// 사용 가능: id / title / status / status_slug / urgency / description /
+        /// type / parent / created_at / updated_at.
+        /// 미지정 시 기본 멀티라인 형식.
+        #[arg(long, value_name = "FIELD")]
+        field: Option<String>,
+    },
     /// quest 의 변경 이력 (DEV-013) — 최신 → 과거 순.
     History { slug: String },
     /// 새 퀘스트 생성
@@ -1020,6 +1028,9 @@ fn print_quest_detail(d: &QuestDetail, json: bool) {
     println!("{}  {}", q.quest_id, q.title);
     println!("  status   : {} ({})", q.status_name_en, q.status_name_ko);
     println!("  urgency  : {}", q.urgency);
+    // DEV-043: 기본 출력에 생성일 / 변경일 표시.
+    println!("  created  : {}", q.created_at);
+    println!("  updated  : {}", q.updated_at);
     if let Some(p) = q.parent_quest_id {
         println!("  parent   : id={p}");
     }
@@ -1043,6 +1054,42 @@ fn print_quest_detail(d: &QuestDetail, json: bool) {
             println!("    - {} {}", p.quest_id, p.title);
         }
     }
+}
+
+/// DEV-043: `quest show --field <name>` — 단일 필드 raw 값 출력 (pipe 친화).
+/// 모르는 필드명이면 Err.
+fn quest_field_value(d: &QuestDetail, field: &str) -> Result<String> {
+    let q = &d.quest;
+    let v = match field {
+        "id" | "slug" => q.quest_id.clone(),
+        "title" => q.title.clone(),
+        "status" | "status_name_en" => q.status_name_en.clone(),
+        "status_ko" | "status_name_ko" => q.status_name_ko.clone(),
+        "status_slug" => {
+            // DEV-042 의 slug 매핑은 QuestStatus 메타에 있음. 여기선 name_en →
+            // slug 동일 규칙 (LOWER + space→_) 으로 간이 도출. 호출자가 정확한
+            // slug 필요하면 statuses endpoint 별도 호출 권장.
+            q.status_name_en
+                .to_lowercase()
+                .replace([' ', '-'], "_")
+        }
+        "urgency" => q.urgency.to_string(),
+        "description" | "body" => q.description.clone().unwrap_or_default(),
+        "type" | "type_prefix" => q.type_prefix.clone(),
+        "parent" => match q.parent_quest_id {
+            Some(p) => p.to_string(),
+            None => String::new(),
+        },
+        "created_at" | "created" => q.created_at.clone(),
+        "updated_at" | "updated" => q.updated_at.clone(),
+        other => {
+            return Err(anyhow!(
+                "unknown field '{other}'. available: id title status status_slug \
+                 urgency description type parent created_at updated_at"
+            ));
+        }
+    };
+    Ok(v)
 }
 
 // ─────────────────────────── 명령 처리 ───────────────────────────
@@ -1202,9 +1249,19 @@ fn run() -> Result<()> {
                     print_quest_list(&quests, cli.json);
                 }
             }
-            QuestCmd::Show { slug } => {
+            QuestCmd::Show { slug, field } => {
                 let d = c.quest_by_slug(&slug)?;
-                print_quest_detail(&d, cli.json);
+                if let Some(name) = field {
+                    let v = quest_field_value(&d, &name)?;
+                    if cli.json {
+                        println!("{}", serde_json::to_string(&v).unwrap());
+                    } else {
+                        // raw — multi-line (description 등) 그대로.
+                        println!("{v}");
+                    }
+                } else {
+                    print_quest_detail(&d, cli.json);
+                }
             }
             QuestCmd::History { slug } => {
                 let d = c.quest_by_slug(&slug)?;
@@ -2340,6 +2397,118 @@ mod tests {
         assert_eq!(v.len(), 2);
         assert_eq!(v[1].name_en, "In Progress");
         assert_eq!(v[1].slug, "in_progress");
+    }
+
+    // === DEV-043: quest show --field ===
+
+    fn sample_detail() -> QuestDetail {
+        let q = Quest {
+            id: 7,
+            quest_id: "DEV-007".into(),
+            quest_type_id: 1,
+            type_prefix: "DEV".into(),
+            type_color: "#4A90D9".into(),
+            number: 7,
+            title: "CI/CD + 배포 인프라".into(),
+            description: Some("multi-line\nbody".into()),
+            status_id: 1,
+            status_name_en: "Open".into(),
+            status_name_ko: "게시됨".into(),
+            status_color: "#8B95A1".into(),
+            urgency: 3,
+            parent_quest_id: None,
+            created_at: "2026-05-15T16:12:48+09:00".into(),
+            updated_at: "2026-05-22T01:09:30+09:00".into(),
+        };
+        QuestDetail {
+            quest: q,
+            sub_quests: vec![],
+            prerequisites: vec![],
+            position: None,
+        }
+    }
+
+    #[test]
+    fn field_id_returns_slug_form() {
+        let d = sample_detail();
+        assert_eq!(quest_field_value(&d, "id").unwrap(), "DEV-007");
+        assert_eq!(quest_field_value(&d, "slug").unwrap(), "DEV-007");
+    }
+
+    #[test]
+    fn field_title_returns_title() {
+        let d = sample_detail();
+        assert_eq!(quest_field_value(&d, "title").unwrap(), "CI/CD + 배포 인프라");
+    }
+
+    #[test]
+    fn field_status_name_or_slug() {
+        let d = sample_detail();
+        assert_eq!(quest_field_value(&d, "status").unwrap(), "Open");
+        assert_eq!(quest_field_value(&d, "status_slug").unwrap(), "open");
+        assert_eq!(quest_field_value(&d, "status_ko").unwrap(), "게시됨");
+    }
+
+    #[test]
+    fn field_status_slug_multi_word() {
+        let mut d = sample_detail();
+        d.quest.status_name_en = "In Progress".into();
+        assert_eq!(quest_field_value(&d, "status_slug").unwrap(), "in_progress");
+    }
+
+    #[test]
+    fn field_urgency_as_string() {
+        let d = sample_detail();
+        assert_eq!(quest_field_value(&d, "urgency").unwrap(), "3");
+    }
+
+    #[test]
+    fn field_description_multiline() {
+        let d = sample_detail();
+        assert_eq!(quest_field_value(&d, "description").unwrap(), "multi-line\nbody");
+        assert_eq!(quest_field_value(&d, "body").unwrap(), "multi-line\nbody");
+    }
+
+    #[test]
+    fn field_description_empty_when_none() {
+        let mut d = sample_detail();
+        d.quest.description = None;
+        assert_eq!(quest_field_value(&d, "description").unwrap(), "");
+    }
+
+    #[test]
+    fn field_type_returns_prefix() {
+        let d = sample_detail();
+        assert_eq!(quest_field_value(&d, "type").unwrap(), "DEV");
+    }
+
+    #[test]
+    fn field_parent_empty_when_none() {
+        let d = sample_detail();
+        assert_eq!(quest_field_value(&d, "parent").unwrap(), "");
+    }
+
+    #[test]
+    fn field_parent_returns_id_when_set() {
+        let mut d = sample_detail();
+        d.quest.parent_quest_id = Some(42);
+        assert_eq!(quest_field_value(&d, "parent").unwrap(), "42");
+    }
+
+    #[test]
+    fn field_timestamps() {
+        let d = sample_detail();
+        assert_eq!(quest_field_value(&d, "created_at").unwrap(), "2026-05-15T16:12:48+09:00");
+        assert_eq!(quest_field_value(&d, "created").unwrap(), "2026-05-15T16:12:48+09:00");
+        assert_eq!(quest_field_value(&d, "updated_at").unwrap(), "2026-05-22T01:09:30+09:00");
+        assert_eq!(quest_field_value(&d, "updated").unwrap(), "2026-05-22T01:09:30+09:00");
+    }
+
+    #[test]
+    fn field_unknown_returns_err() {
+        let d = sample_detail();
+        let err = quest_field_value(&d, "nonexistent").unwrap_err();
+        assert!(format!("{err}").contains("unknown field"));
     }
 
     // ───────── init_guild_at — tempdir 기반 ─────────
