@@ -17,7 +17,7 @@
 //! `DEFAULT (datetime('now'))` 는 유지 (safety net). 새 코드 경로는 항상
 //! Rust 에서 명시적으로 bind 하여 새 format 으로 기록.
 
-use chrono::{Local, SecondsFormat};
+use chrono::{DateTime, Local, SecondsFormat};
 
 /// 현재 로컬 시각을 `YYYY-MM-DDTHH:MM:SS±HH:MM` 형식으로 반환.
 ///
@@ -105,6 +105,41 @@ fn has_tz_marker(s: &str) -> bool {
         return true;
     }
     false
+}
+
+/// Relative time label for a stored timestamp.
+///
+/// DEV-038 follow-up. Possible outputs: `"방금"`, `"X분 전"`, `"X시간 전"`, `"X일 전"`.
+/// Returns `None` when the difference exceeds 7 days or the ts is in the future
+/// (caller should fall back to an absolute representation).
+///
+/// Mirrors `formatRelative` in `gui/frontend/src/lib/utils/datetime.ts` so that
+/// CLI and GUI history views stay in sync.
+pub fn format_relative(ts: &str) -> Option<String> {
+    let parsed: DateTime<chrono::FixedOffset> =
+        DateTime::parse_from_rfc3339(&normalize_legacy_ts(ts)).ok()?;
+    let now = Local::now();
+    let diff = now.signed_duration_since(parsed);
+    let sec = diff.num_seconds();
+    if sec < 0 {
+        return None; // 미래 — 호출자에서 절대값 폴백.
+    }
+    if sec < 60 {
+        return Some("방금".into());
+    }
+    let min = sec / 60;
+    if min < 60 {
+        return Some(format!("{min}분 전"));
+    }
+    let hr = min / 60;
+    if hr < 24 {
+        return Some(format!("{hr}시간 전"));
+    }
+    let day = hr / 24;
+    if day < 7 {
+        return Some(format!("{day}일 전"));
+    }
+    None
 }
 
 #[cfg(test)]
@@ -204,5 +239,37 @@ mod tests {
         assert!(has_tz_marker("2026-05-22T00:00:00+0900"));
         assert!(!has_tz_marker("2026-05-22T00:00:00"));
         assert!(!has_tz_marker("2026-05-22"));
+    }
+
+    // --- format_relative ---
+
+    #[test]
+    fn format_relative_recent_is_some() {
+        // 방금 인 ts.
+        let now = Local::now().to_rfc3339_opts(SecondsFormat::Secs, false);
+        let out = format_relative(&now).expect("recent should produce some label");
+        assert!(out == "방금" || out.ends_with("분 전"),
+            "recent label unexpected: {out:?}");
+    }
+
+    #[test]
+    fn format_relative_old_returns_none() {
+        // 1년 전 — 7일 초과.
+        let out = format_relative("2024-01-01T00:00:00+09:00");
+        assert!(out.is_none(), "오래된 ts → None 으로 absolute fallback 유도");
+    }
+
+    #[test]
+    fn format_relative_future_returns_none() {
+        // 미래 시각 — None (호출자가 absolute 폴백).
+        let out = format_relative("2099-01-01T00:00:00+09:00");
+        assert!(out.is_none());
+    }
+
+    #[test]
+    fn format_relative_legacy_space_format() {
+        // legacy "YYYY-MM-DD HH:MM:SS" 도 normalize_legacy_ts 통과해서 처리됨.
+        let out = format_relative("2024-01-01 00:00:00");
+        assert!(out.is_none(), "1년 이상 전 → None");
     }
 }

@@ -1357,16 +1357,16 @@ fn run() -> Result<()> {
                 } else if history.is_empty() {
                     println!("(이력 없음)");
                 } else {
-                    // DEV-042: change_status 의 old/new value 는 slug —
-                    // 사용자에게는 name_en + status color 로 표시. 모르는 slug
-                    // 면 그대로. 숫자 (migration 누락 / legacy) 면 id 폴백.
+                    // DEV-038 후속: GUI Quest Detail 의 변경이력과 동일한 의미로 출력.
+                    // - op 라벨 번역 (change_status → "상태"). GUI 의 opLabel() 과 일치.
+                    // - 상대 시각도 함께 (GUI 의 formatRelative — "방금" / "5분 전").
+                    // - status 값은 slug → name_en + status.color (DEV-042 부터).
                     let statuses = c.quest_statuses().unwrap_or_default();
                     let display = |raw: Option<&str>| -> String {
                         let Some(v) = raw else { return "∅".into() };
                         if let Some(s) = statuses.iter().find(|s| s.slug == v) {
                             return colorize(&s.name_en, &s.color);
                         }
-                        // legacy numeric fallback (pre-DEV-042 history 행).
                         if let Ok(id) = v.parse::<i64>()
                             && let Some(s) = statuses.iter().find(|s| s.id == id)
                         {
@@ -1374,10 +1374,24 @@ fn run() -> Result<()> {
                         }
                         v.to_string()
                     };
+                    let op_label = |op: &str| -> &'static str {
+                        match op {
+                            "change_status" => "상태",
+                            _ => "",
+                        }
+                    };
                     for h in &history {
                         let old = display(h.old_value.as_deref());
                         let new = display(h.new_value.as_deref());
-                        println!("{}  {:<14} {} → {}", h.ts, h.op, old, new);
+                        let rel = openguild_core::time::format_relative(&h.ts)
+                            .unwrap_or_else(|| "—".into());
+                        let label = op_label(&h.op);
+                        // op 가 알려진 경우엔 한국어 라벨, 아니면 raw op.
+                        let op_text = if label.is_empty() { h.op.clone() } else { label.to_string() };
+                        println!(
+                            "{}  {:<10} {:<14} {} → {}",
+                            h.ts, rel, op_text, old, new
+                        );
                     }
                 }
             }
