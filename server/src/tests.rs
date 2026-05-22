@@ -859,6 +859,42 @@ async fn test_status_endpoint_exposes_slug() {
     }
 }
 
+// === BUG-011: no-op status change 는 history 에 기록 안 함 ===
+
+#[tokio::test]
+async fn test_change_status_to_same_does_not_record_history() {
+    let app = setup().await;
+    let (_, q) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "noop-status", "status_id": 1 })).await;
+    let id = q["id"].as_i64().unwrap();
+    let original_updated = q["updated_at"].as_str().unwrap().to_string();
+
+    // 같은 상태 (1=Open) 로 재요청 — 변화 없어야 함.
+    let (s, body) = patch(app.clone(), &format!("/api/quests/{id}/status"),
+        json!({ "status_id": 1 })).await;
+    assert_eq!(s, StatusCode::OK);
+    // updated_at 도 변경 없음.
+    assert_eq!(body["updated_at"].as_str().unwrap(), original_updated,
+        "no-op 시 updated_at 변경되면 안 됨");
+
+    // history 0건.
+    let (_, hist) = get(app, &format!("/api/quests/{id}/history")).await;
+    assert_eq!(hist.as_array().unwrap().len(), 0,
+        "no-op 시 history 가 기록되면 안 됨: {hist}");
+}
+
+#[tokio::test]
+async fn test_change_status_actual_change_still_records() {
+    // 회귀: BUG-011 수정 후 정상 변경은 여전히 기록되는지.
+    let app = setup().await;
+    let (_, q) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "real-change", "status_id": 1 })).await;
+    let id = q["id"].as_i64().unwrap();
+    patch(app.clone(), &format!("/api/quests/{id}/status"), json!({ "status_id": 2 })).await;
+    let (_, hist) = get(app, &format!("/api/quests/{id}/history")).await;
+    assert_eq!(hist.as_array().unwrap().len(), 1);
+}
+
 #[tokio::test]
 async fn test_history_isolated_per_quest() {
     let app = setup().await;

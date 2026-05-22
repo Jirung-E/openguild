@@ -91,6 +91,27 @@ pub async fn change_status(
     id: i64,
     body: ChangeStatusRequest,
 ) -> AppResult<QuestRow> {
+    // BUG-011: no-op (현재 상태 == 요청 상태) 면 일찍 반환 — journal/history/
+    // updated_at 모두 변동 없음. 사용자가 같은 상태를 재지정해도 의미 있는
+    // 이력이 남지 않도록.
+    let current: Option<(i64, Option<String>)> = sqlx::query_as(
+        "SELECT q.status_id, s.slug
+         FROM quests q JOIN quest_statuses s ON s.id = q.status_id
+         WHERE q.id = ?",
+    )
+    .bind(id)
+    .fetch_optional(&store.index_pool)
+    .await?;
+    let (current_status_id, old_status_slug) = match current {
+        Some((sid, slug)) => (Some(sid), slug),
+        None => (None, None),
+    };
+
+    if current_status_id == Some(body.status_id) {
+        // 이미 그 상태 — 그대로 반환. quest_history 기록 X.
+        return sql::fetch_by_id(&store.index_pool, id).await;
+    }
+
     let _ = journal::append(
         &store.journal_pool,
         "change_status",
@@ -99,16 +120,6 @@ pub async fn change_status(
     )
     .await
     .map_err(crate::error::AppError::Internal)?;
-
-    // 변경 전/후 status 의 slug (DEV-042: 숫자 id 가 아닌 stable slug 기록).
-    let old_status_slug: Option<String> = sqlx::query_scalar(
-        "SELECT s.slug
-         FROM quests q JOIN quest_statuses s ON s.id = q.status_id
-         WHERE q.id = ?",
-    )
-    .bind(id)
-    .fetch_optional(&store.index_pool)
-    .await?;
 
     let new_status_id = body.status_id;
     let quest = sql::change_status(&store.index_pool, id, body).await?;
