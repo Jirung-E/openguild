@@ -1,8 +1,22 @@
 import { api } from './client';
-import type { DriftReport, RestoreResponse, SnapshotInfo } from '../types';
+import type {
+	DriftReport,
+	QuestStatus,
+	QuestType,
+	RestoreResponse,
+	SnapshotInfo
+} from '../types';
+
+/** DEV-014: count flatten — UI 에서 "삭제 가능?" 판단. */
+export interface QuestTypeWithCount extends QuestType {
+	quest_count: number;
+}
+export interface QuestStatusWithCount extends QuestStatus {
+	quest_count: number;
+}
 
 /**
- * 백업 / drift 등 관리자 작업.
+ * 백업 / drift / type-status 관리.
  * 인증 없음 — 향후 멀티유저 단계에서 토큰 / role 가드 추가.
  */
 export const adminApi = {
@@ -20,5 +34,36 @@ export const adminApi = {
 	checkDrift: () => api.get<DriftReport>('/api/admin/drift'),
 
 	/** 파일 → index.db 재구축. */
-	reindex: () => api.post<unknown>('/api/admin/reindex', {})
+	reindex: () => api.post<unknown>('/api/admin/reindex', {}),
+
+	// ─── DEV-014: types ───
+	listTypes: () => api.get<QuestTypeWithCount[]>('/api/admin/types'),
+	createType: (body: { prefix: string; color: string; description?: string | null }) =>
+		api.post<QuestType>('/api/admin/types', body),
+	updateType: (
+		prefix: string,
+		body: { color?: string; description?: string | null }
+	) => api.patch<QuestType>(`/api/admin/types/${encodeURIComponent(prefix)}`, body),
+	deleteType: (prefix: string) =>
+		api.delete(`/api/admin/types/${encodeURIComponent(prefix)}`),
+
+	// ─── DEV-014: statuses ───
+	listStatuses: () => api.get<QuestStatusWithCount[]>('/api/admin/statuses'),
+	createStatus: (body: {
+		name_en: string;
+		name_ko: string;
+		color: string;
+		sort_order?: number;
+	}) => api.post<QuestStatus>('/api/admin/statuses', body),
+	updateStatus: (
+		slug: string,
+		body: {
+			name_en?: string;
+			name_ko?: string;
+			color?: string;
+			sort_order?: number;
+		}
+	) => api.patch<QuestStatus>(`/api/admin/statuses/${encodeURIComponent(slug)}`, body),
+	deleteStatus: (slug: string) =>
+		api.delete(`/api/admin/statuses/${encodeURIComponent(slug)}`)
 };

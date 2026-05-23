@@ -2,11 +2,23 @@
 	import { onMount } from 'svelte';
 	import { adminApi } from '$lib/api/admin';
 	import type { DriftReport, SnapshotInfo } from '$lib/types';
+	// DEV-014: Quest type / status 커스터마이즈 섹션.
+	import AdminTypesSection from '$lib/components/admin/AdminTypesSection.svelte';
+	import AdminStatusesSection from '$lib/components/admin/AdminStatusesSection.svelte';
 
 	let snapshots = $state<SnapshotInfo[]>([]);
 	let drift = $state<DriftReport | null>(null);
 	let busy = $state(false);
 	let message = $state<{ kind: 'info' | 'success' | 'error'; text: string } | null>(null);
+
+	function onSectionMessage(
+		m: { kind: 'info' | 'success' | 'error'; text: string } | null
+	) {
+		if (!m) return;
+		if (m.kind === 'success') showSuccess(m.text);
+		else if (m.kind === 'info') showInfo(m.text);
+		else showError(m.text);
+	}
 
 	onMount(async () => {
 		await refresh();
@@ -120,6 +132,9 @@
 	{#if message}
 		<div class="message {message.kind}">{message.text}</div>
 	{/if}
+
+	<AdminTypesSection onmessage={onSectionMessage} />
+	<AdminStatusesSection onmessage={onSectionMessage} />
 
 	<section>
 		<div class="section-header">

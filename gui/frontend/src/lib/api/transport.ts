@@ -196,6 +196,31 @@ function routeToInvoke(
 		return { cmd: 'admin_reindex', args: {} };
 	}
 
+	// ───── admin meta (DEV-014) — types ─────
+	if (method === 'GET' && pathOnly === '/api/admin/types') {
+		return { cmd: 'admin_list_types', args: {} };
+	}
+	if (method === 'POST' && pathOnly === '/api/admin/types') {
+		return { cmd: 'admin_create_type', args: { body } };
+	}
+	if (parts[0] === 'api' && parts[1] === 'admin' && parts[2] === 'types' && parts[3]) {
+		const prefix = decodeURIComponent(parts[3]);
+		if (method === 'PATCH') return { cmd: 'admin_update_type', args: { prefix, body } };
+		if (method === 'DELETE') return { cmd: 'admin_delete_type', args: { prefix } };
+	}
+	// ───── admin meta (DEV-014) — statuses ─────
+	if (method === 'GET' && pathOnly === '/api/admin/statuses') {
+		return { cmd: 'admin_list_statuses', args: {} };
+	}
+	if (method === 'POST' && pathOnly === '/api/admin/statuses') {
+		return { cmd: 'admin_create_status', args: { body } };
+	}
+	if (parts[0] === 'api' && parts[1] === 'admin' && parts[2] === 'statuses' && parts[3]) {
+		const slug = decodeURIComponent(parts[3]);
+		if (method === 'PATCH') return { cmd: 'admin_update_status', args: { slug, body } };
+		if (method === 'DELETE') return { cmd: 'admin_delete_status', args: { slug } };
+	}
+
 	return null;
 }
 

@@ -191,6 +191,66 @@ describe('TauriTransport', () => {
 		expect(mockInvoke).toHaveBeenCalledWith('admin_reindex', {});
 	});
 
+	// DEV-014: admin meta — types / statuses.
+	it('GET /api/admin/types → admin_list_types', async () => {
+		mockInvoke.mockResolvedValue([]);
+		await new TauriTransport().call({ method: 'GET', path: '/api/admin/types' });
+		expect(mockInvoke).toHaveBeenCalledWith('admin_list_types', {});
+	});
+	it('POST /api/admin/types → admin_create_type', async () => {
+		mockInvoke.mockResolvedValue({});
+		await new TauriTransport().call({
+			method: 'POST',
+			path: '/api/admin/types',
+			body: { prefix: 'FOO', color: '#000' }
+		});
+		expect(mockInvoke).toHaveBeenCalledWith('admin_create_type', {
+			body: { prefix: 'FOO', color: '#000' }
+		});
+	});
+	it('PATCH /api/admin/types/DEV → admin_update_type', async () => {
+		mockInvoke.mockResolvedValue({});
+		await new TauriTransport().call({
+			method: 'PATCH',
+			path: '/api/admin/types/DEV',
+			body: { color: '#abc' }
+		});
+		expect(mockInvoke).toHaveBeenCalledWith('admin_update_type', {
+			prefix: 'DEV',
+			body: { color: '#abc' }
+		});
+	});
+	it('DELETE /api/admin/types/REQ → admin_delete_type', async () => {
+		mockInvoke.mockResolvedValue(undefined);
+		await new TauriTransport().call({ method: 'DELETE', path: '/api/admin/types/REQ' });
+		expect(mockInvoke).toHaveBeenCalledWith('admin_delete_type', { prefix: 'REQ' });
+	});
+	it('GET /api/admin/statuses → admin_list_statuses', async () => {
+		mockInvoke.mockResolvedValue([]);
+		await new TauriTransport().call({ method: 'GET', path: '/api/admin/statuses' });
+		expect(mockInvoke).toHaveBeenCalledWith('admin_list_statuses', {});
+	});
+	it('PATCH /api/admin/statuses/open → admin_update_status', async () => {
+		mockInvoke.mockResolvedValue({});
+		await new TauriTransport().call({
+			method: 'PATCH',
+			path: '/api/admin/statuses/open',
+			body: { name_ko: '게시' }
+		});
+		expect(mockInvoke).toHaveBeenCalledWith('admin_update_status', {
+			slug: 'open',
+			body: { name_ko: '게시' }
+		});
+	});
+	it('DELETE /api/admin/statuses/on_hold → admin_delete_status', async () => {
+		mockInvoke.mockResolvedValue(undefined);
+		await new TauriTransport().call({
+			method: 'DELETE',
+			path: '/api/admin/statuses/on_hold'
+		});
+		expect(mockInvoke).toHaveBeenCalledWith('admin_delete_status', { slug: 'on_hold' });
+	});
+
 	it('미매핑 path 는 명확한 에러', async () => {
 		await expect(
 			new TauriTransport().call({ method: 'GET', path: '/api/no-such-thing' })
