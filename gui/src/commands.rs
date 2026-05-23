@@ -285,3 +285,11 @@ pub async fn list_recents() -> Result<Vec<recents::Recent>, String> {
 pub async fn clear_recents() -> Result<(), String> {
     recents::clear().map_err(|e| format!("{e:#}"))
 }
+
+// ─────────────────────── launch (DEV-052) ───────────────────────
+
+/// DEV-052: frontend 가 첫 진입 URL 결정용. "guild" 또는 "welcome".
+#[tauri::command]
+pub fn launch_mode(state: State<'_, crate::LaunchInfo>) -> &'static str {
+    state.mode
+}
