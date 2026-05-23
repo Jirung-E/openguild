@@ -343,12 +343,8 @@ async fn write_quest_file_as_deleted(
     store: &Store,
     quest: &QuestRow,
 ) -> AppResult<()> {
+    // BUG-012 와 동일 — DB 의 description 이 truth. 기존 파일 fallback 제거.
     let path = store.paths.quest_path(&quest.quest_id);
-    let existing_description = QuestFile::read(&path)
-        .ok()
-        .map(|f| f.description)
-        .unwrap_or_default();
-
     let frontmatter = QuestFrontmatter {
         quest_id: quest.quest_id.clone(),
         title: quest.title.clone(),
@@ -362,11 +358,7 @@ async fn write_quest_file_as_deleted(
     };
     let qf = QuestFile {
         frontmatter,
-        description: if existing_description.is_empty() {
-            quest.description.clone().unwrap_or_default()
-        } else {
-            existing_description
-        },
+        description: quest.description.clone().unwrap_or_default(),
         auto_block: String::new(),
     };
     qf.write(&path).map_err(crate::error::AppError::Internal)?;
@@ -381,12 +373,19 @@ async fn write_quest_file(store: &Store, quest: &QuestRow) -> AppResult<()> {
     let pool = &store.index_pool;
     let path = store.paths.quest_path(&quest.quest_id);
 
-    // 기존 파일에서 description 보존.
-    let existing_description = QuestFile::read(&path)
-        .ok()
-        .map(|f| f.description)
-        .unwrap_or_default();
-
+    // BUG-012: 예전엔 "기존 파일 description 보존" fallback 이 있었지만
+    // (file 의 description 이 비어있지 않으면 그것을 그대로 사용),
+    // 그 결과 GUI 에서 description 을 수정해도 파일이 갱신 안 되어
+    // reindex 후 옛 값으로 되돌아가는 회귀가 발생.
+    //
+    // DB 의 quest.description 은 항상 최신 truth (모든 mutation 이 SQL update
+    // 후 fetch_by_id 로 재조회) — 그대로 파일에 반영해야 함. description 을
+    // 안 건드리는 mutation (change_status / change_parent 등) 도 SQL 의
+    // description 컬럼은 unchanged → 자동 보존됨.
+    //
+    // 외부 편집 시나리오 (사용자가 .md 를 직접 편집한 뒤 reindex 안 한 채로
+    // GUI 에서 다른 필드 수정) 에서 외부 편집을 잃는 trade-off 가 있지만,
+    // 그 경우 reindex 가 사용자 책임 (AGENTS.md 정책).
     let relations = fetch_relations(pool, quest.id).await?;
     let auto_block = auto::render(&relations).trim().to_string();
 
@@ -408,11 +407,7 @@ async fn write_quest_file(store: &Store, quest: &QuestRow) -> AppResult<()> {
 
     let qf = QuestFile {
         frontmatter,
-        description: if existing_description.is_empty() {
-            quest.description.clone().unwrap_or_default()
-        } else {
-            existing_description
-        },
+        description: quest.description.clone().unwrap_or_default(),
         auto_block,
     };
 
@@ -662,6 +657,80 @@ mod tests {
         let content = std::fs::read_to_string(dir.join(".guild/quests/DEV-001.md")).unwrap();
         assert!(content.contains("title = \"new title\""));
         assert!(content.contains("urgency = 1"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-012: GUI 에서 description 수정 → 파일에도 반영되어야 함.
+    /// 이전엔 write_quest_file 의 "기존 파일 description 보존" fallback 이
+    /// DB 의 새 description 을 덮어써서 파일이 옛 값 그대로 유지됐음.
+    #[tokio::test]
+    async fn update_quest_description_writes_to_file() {
+        let dir = fresh_tmp("upd-desc");
+        let store = setup_store(&dir).await;
+        let q = create_quest(
+            &store,
+            CreateQuestRequest {
+                quest_type_id: 1,
+                title: "x".into(),
+                description: Some("original body".into()),
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        // 1차 수정: original → new body.
+        update_quest(
+            &store,
+            q.id,
+            UpdateQuestRequest {
+                title: None,
+                description: Some("new body".into()),
+                urgency: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        let content = std::fs::read_to_string(dir.join(".guild/quests/DEV-001.md")).unwrap();
+        assert!(content.contains("new body"), "새 description 이 파일에 반영");
+        assert!(!content.contains("original body"), "옛 description 은 사라져야");
+
+        // 2차 수정: new → newer.
+        update_quest(
+            &store,
+            q.id,
+            UpdateQuestRequest {
+                title: None,
+                description: Some("newer body".into()),
+                urgency: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        let content = std::fs::read_to_string(dir.join(".guild/quests/DEV-001.md")).unwrap();
+        assert!(content.contains("newer body"));
+        assert!(!content.contains("new body\n")); // 'new body' substring 은 'newer body' 안에도 있으니 newline 으로 정확 매칭.
+
+        // 3차: description 안 건드리는 mutation 은 description 보존.
+        update_quest(
+            &store,
+            q.id,
+            UpdateQuestRequest {
+                title: Some("renamed".into()),
+                description: None,
+                urgency: None,
+            },
+        )
+        .await
+        .unwrap();
+        let content = std::fs::read_to_string(dir.join(".guild/quests/DEV-001.md")).unwrap();
+        assert!(content.contains("renamed"));
+        assert!(content.contains("newer body"), "description 안 건드린 mutation 에선 보존");
 
         let _ = std::fs::remove_dir_all(&dir);
     }
