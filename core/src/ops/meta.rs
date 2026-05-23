@@ -203,12 +203,12 @@ pub async fn create_status(
     color: String,
     sort_order: Option<i64>,
 ) -> AppResult<QuestStatus> {
+    // DEV-014 후속: name_ko 는 선택 — 빈 문자열 허용. (frontend 가 표시 시
+    // 빈 ko 면 name_en 으로 fallback.)
     let name_en = name_en.trim().to_string();
     let name_ko = name_ko.trim().to_string();
-    if name_en.is_empty() || name_ko.is_empty() {
-        return Err(AppError::BadRequest(
-            "status 이름 (en / ko) 둘 다 필수".into(),
-        ));
+    if name_en.is_empty() {
+        return Err(AppError::BadRequest("name_en 은 필수".into()));
     }
     validate_color(&color)?;
 
@@ -307,10 +307,8 @@ pub async fn update_status(
         file.name_en = n;
     }
     if let Some(n) = name_ko {
+        // DEV-014 후속: name_ko 는 선택 — 빈 문자열 허용.
         let n = n.trim().to_string();
-        if n.is_empty() {
-            return Err(AppError::BadRequest("name_ko 비울 수 없음".into()));
-        }
         row.name_ko = n.clone();
         file.name_ko = n;
     }
@@ -617,6 +615,48 @@ mod tests {
         let row = fetch_status_by_slug(&store.index_pool, "open").await.unwrap();
         assert_eq!(row.slug, "open");
         assert_eq!(row.name_en, "Reopened");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-014 후속: name_ko 는 선택 — 빈 문자열 허용.
+    #[tokio::test]
+    async fn create_status_allows_empty_name_ko() {
+        let (dir, store) = fresh_store("st-ko-empty").await;
+        let s = create_status(
+            &store,
+            "Triaged".into(),
+            "".into(), // ko 비움.
+            "#aabbcc".into(),
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(s.name_en, "Triaged");
+        assert_eq!(s.name_ko, "");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn update_status_can_clear_name_ko() {
+        let (dir, store) = fresh_store("st-ko-clear").await;
+        // seed 의 'open' (name_ko='게시됨') 을 빈 ko 로 갱신.
+        let updated = update_status(
+            &store,
+            "open".into(),
+            None,
+            Some("".into()),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(updated.name_en, "Open");
+        assert_eq!(updated.name_ko, "");
+        // name_en 빈 값은 여전히 거부.
+        let err = update_status(&store, "open".into(), Some("".into()), None, None, None)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, AppError::BadRequest(_)));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -69,8 +69,9 @@
 	async function doCreate() {
 		const en = newNameEn.trim();
 		const ko = newNameKo.trim();
-		if (!en || !ko) {
-			onmessage({ kind: 'error', text: 'name_en / name_ko 둘 다 필수.' });
+		// DEV-014 후속: name_ko 는 선택 (한국어 입력 없어도 추가 가능).
+		if (!en) {
+			onmessage({ kind: 'error', text: 'name_en 은 필수.' });
 			return;
 		}
 		busy = true;
@@ -150,7 +151,7 @@
 						{:else}
 							<td><code>{s.slug}</code></td>
 							<td>{s.name_en}</td>
-							<td>{s.name_ko}</td>
+							<td>{s.name_ko || '—'}</td>
 							<td>
 								<span class="swatch" style="background: {s.color}"></span>
 								<code class="hex">{s.color}</code>
@@ -199,7 +200,7 @@
 					<input
 						type="text"
 						bind:value={newNameKo}
-						placeholder="막힘 / 리뷰 중 등"
+						placeholder="(선택) 막힘 / 리뷰 중 등"
 						disabled={busy}
 					/>
 				</label>
