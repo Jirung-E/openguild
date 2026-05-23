@@ -205,10 +205,13 @@ pub fn run() {
     }
 
     tauri::Builder::default()
+        // DEV-053: 디렉토리 선택 dialog — Welcome 의 "폴더 열기".
+        .plugin(tauri_plugin_dialog::init())
         .manage(store)
         .manage(launch_info)
         .invoke_handler(tauri::generate_handler![
             commands::launch_mode,
+            commands::inspect_guild_path,
             commands::open_guild_in_current_window,
             commands::init_and_open_guild,
             // meta

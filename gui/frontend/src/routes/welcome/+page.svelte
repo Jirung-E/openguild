@@ -17,6 +17,9 @@
 	let initErr: string | null = $state(null);
 	// DEV-052 후속 (4회차): 길드 이름 input. 기본값은 디렉토리명.
 	let initName = $state('');
+	// DEV-053: "폴더 열기" 진행 상태.
+	let pickRunning = $state(false);
+	let pickErr: string | null = $state(null);
 
 	const env = detectEnvironment();
 
@@ -91,6 +94,60 @@
 		}
 	}
 
+	// DEV-053: OS 파일 탐색기로 길드 폴더 선택.
+	// - 마커 있는 디렉토리 → 그대로 open_guild_in_current_window.
+	// - 마커 없는 디렉토리 → uninit prompt 활성화 (initName = basename).
+	// - dialog 취소 → no-op.
+	async function pickFolder() {
+		if (pickRunning) return;
+		if (env !== 'tauri') {
+			pickErr = 'Tauri 데스크톱 앱에서만 동작합니다.';
+			return;
+		}
+		pickRunning = true;
+		pickErr = null;
+		try {
+			const { open } = await import('@tauri-apps/plugin-dialog');
+			const selected = await open({
+				directory: true,
+				multiple: false,
+				title: '길드 폴더 선택'
+			});
+			if (!selected) return; // 취소.
+			const path = typeof selected === 'string' ? selected : selected[0];
+			if (!path) return;
+
+			const { invoke } = await import('@tauri-apps/api/core');
+			const info = await invoke<{
+				exists: boolean;
+				is_dir: boolean;
+				has_marker: boolean;
+				resolved_path: string;
+			}>('inspect_guild_path', { path });
+
+			if (!info.exists || !info.is_dir) {
+				pickErr = `선택된 경로가 유효한 디렉토리가 아닙니다: ${path}`;
+				return;
+			}
+
+			if (info.has_marker) {
+				// 정상 길드 → 바로 진입.
+				await invoke('open_guild_in_current_window', { path: info.resolved_path });
+				goto('/');
+			} else {
+				// Uninit prompt 활성화 (사용자가 dialog 닫은 뒤 본 페이지에서 입력).
+				uninitPath = info.resolved_path;
+				const parts = info.resolved_path.split(/[\\/]/).filter(Boolean);
+				initName = parts[parts.length - 1] ?? 'guild';
+				initErr = null;
+			}
+		} catch (e) {
+			pickErr = e instanceof Error ? e.message : String(e);
+		} finally {
+			pickRunning = false;
+		}
+	}
+
 	// DEV-052 후속 (5회차): 단일 항목 제거 — 모든 항목에 × 버튼.
 	// 확인 모달 거쳐서 실수 방지.
 	let confirmRemove: Recent | null = $state(null);
@@ -151,6 +208,21 @@
 		<h1>OpenGuild</h1>
 		<p class="sub">최근 작업한 길드</p>
 	</header>
+
+	{#if env === 'tauri'}
+		<!-- DEV-053: 파일 탐색기로 임의 위치의 길드 열기. -->
+		<section class="picker">
+			<button class="btn-pick" onclick={pickFolder} disabled={pickRunning}>
+				{pickRunning ? '여는 중…' : '📁 폴더에서 열기'}
+			</button>
+			<span class="picker-hint">
+				기존 길드 폴더를 선택하면 바로 열고, 길드가 아닌 폴더면 초기화 안내가 표시됩니다.
+			</span>
+			{#if pickErr}
+				<p class="err">{pickErr}</p>
+			{/if}
+		</section>
+	{/if}
 
 	{#if uninitPath}
 		<!-- DEV-052 후속: 길드 마커 없는 디렉토리에서 시작 → 초기화 prompt. -->
@@ -418,6 +490,45 @@
 		padding-top: 1rem;
 		border-top: 1px solid #30363d;
 		color: #8b95a1;
+		font-size: 0.85rem;
+	}
+
+	/* --- DEV-053: 폴더 열기 picker --- */
+	.picker {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 0.85rem;
+		margin: 0 0 1.25rem;
+		padding: 0.85rem 1rem;
+		background: #161b22;
+		border: 1px solid #30363d;
+		border-radius: 8px;
+	}
+	.btn-pick {
+		padding: 0.5rem 1rem;
+		background: #1f6feb;
+		border: 1px solid #2f81f7;
+		border-radius: 6px;
+		color: #fff;
+		font-size: 0.9rem;
+		font-weight: 500;
+		cursor: pointer;
+		transition: background 0.12s;
+		flex: 0 0 auto;
+	}
+	.btn-pick:hover:not(:disabled) { background: #2f81f7; }
+	.btn-pick:disabled { opacity: 0.6; cursor: default; }
+	.picker-hint {
+		flex: 1 1 auto;
+		min-width: 200px;
+		color: #8b95a1;
+		font-size: 0.825rem;
+	}
+	.picker .err {
+		flex: 1 0 100%;
+		margin: 0;
+		padding: 0.5rem 0.75rem;
 		font-size: 0.85rem;
 	}
 

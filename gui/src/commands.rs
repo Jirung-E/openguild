@@ -329,6 +329,57 @@ pub struct LaunchInfoDto {
     pub uninit_path: Option<String>,
 }
 
+/// DEV-053: dialog 로 선택한 디렉토리가 유효한 길드인지 (마커 존재 여부) 검사.
+///
+/// 반환:
+/// - `exists`: path 가 존재 (디렉토리 / 파일).
+/// - `is_dir`: 디렉토리 여부 (`*.guild` 파일을 골랐을 수도 있음 — 부모 디렉토리).
+/// - `has_marker`: `.guild/` 폴더 또는 `*.guild` 파일이 있는지.
+/// - `resolved_path`: `*.guild` 파일이면 부모 디렉토리, 디렉토리면 그대로
+///   (절대경로 + Windows `\\?\` 제거).
+///
+/// frontend 가 이 응답을 보고:
+/// - `has_marker == true` → `open_guild_in_current_window(resolved_path)`.
+/// - `has_marker == false` → uninit prompt 활성화 (`uninitPath = resolved_path`).
+#[derive(Serialize)]
+pub struct GuildPathInspect {
+    pub exists: bool,
+    pub is_dir: bool,
+    pub has_marker: bool,
+    pub resolved_path: String,
+}
+
+#[tauri::command]
+pub fn inspect_guild_path(path: String) -> GuildPathInspect {
+    let p = std::path::Path::new(&path);
+    let exists = p.exists();
+    if !exists {
+        return GuildPathInspect {
+            exists: false,
+            is_dir: false,
+            has_marker: false,
+            resolved_path: path,
+        };
+    }
+    // `.guild` 파일이면 parent 를 길드 root 로.
+    let resolved = if p.is_file()
+        && p.extension().and_then(|e| e.to_str()) == Some("guild")
+    {
+        p.parent().map(|x| x.to_path_buf()).unwrap_or_else(|| p.to_path_buf())
+    } else {
+        p.to_path_buf()
+    };
+    // 절대화 + Windows `\\?\` 제거.
+    let abs = openguild_core::recents::normalize_abs(&resolved);
+    let abs_path = std::path::Path::new(&abs);
+    GuildPathInspect {
+        exists: true,
+        is_dir: abs_path.is_dir(),
+        has_marker: abs_path.is_dir() && crate::has_guild_marker(abs_path),
+        resolved_path: abs,
+    }
+}
+
 /// DEV-052: frontend 가 첫 진입 URL 결정용 — { mode, uninit_path }.
 #[tauri::command]
 pub fn launch_mode(state: State<'_, crate::LaunchInfo>) -> LaunchInfoDto {
