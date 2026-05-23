@@ -16,6 +16,8 @@ export interface Recent {
 	path: string;
 	name: string;
 	last_opened: string;
+	/** DEV-052 후속 (4회차): path 가 더 이상 존재하지 않으면 true. */
+	missing: boolean;
 }
 
 export const recentsApi = {
@@ -29,5 +31,11 @@ export const recentsApi = {
 	clear: async (): Promise<void> => {
 		if (detectEnvironment() !== 'tauri') return;
 		await invoke<void>('clear_recents');
+	},
+
+	/** 단일 항목 제거 (path 기준). HTTP 모드면 no-op. */
+	remove: async (path: string): Promise<void> => {
+		if (detectEnvironment() !== 'tauri') return;
+		await invoke<void>('remove_recent', { path });
 	}
 };

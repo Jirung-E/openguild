@@ -15,6 +15,8 @@
 	let uninitPath: string | null = $state(null);
 	let initRunning = $state(false);
 	let initErr: string | null = $state(null);
+	// DEV-052 후속 (4회차): 길드 이름 input. 기본값은 디렉토리명.
+	let initName = $state('');
 
 	const env = detectEnvironment();
 
@@ -36,6 +38,10 @@
 				);
 				if (info.mode === 'uninit' && info.uninit_path) {
 					uninitPath = info.uninit_path;
+					// 기본 길드 이름 = path 의 마지막 component (디렉토리명).
+					// Windows / POSIX 모두에서 동작하도록 둘 다 split.
+					const parts = info.uninit_path.split(/[\\/]/).filter(Boolean);
+					initName = parts[parts.length - 1] ?? 'guild';
 				}
 			} catch {
 				// invoke 실패 시 무시.
@@ -66,17 +72,31 @@
 
 	async function initUninit() {
 		if (!uninitPath || initRunning) return;
+		const name = initName.trim();
+		if (!name) {
+			initErr = '길드 이름을 입력하세요.';
+			return;
+		}
 		initRunning = true;
 		initErr = null;
 		try {
 			const { invoke } = await import('@tauri-apps/api/core');
-			await invoke('init_and_open_guild', { path: uninitPath });
+			await invoke('init_and_open_guild', { path: uninitPath, name });
 			// 성공: store swap 됨. 보드로.
 			goto('/');
 		} catch (e) {
 			initErr = e instanceof Error ? e.message : String(e);
 		} finally {
 			initRunning = false;
+		}
+	}
+
+	async function removeRecent(path: string) {
+		try {
+			await recentsApi.remove(path);
+			recents = recents.filter((r) => r.path !== path);
+		} catch (e) {
+			openErr = e instanceof Error ? e.message : String(e);
 		}
 	}
 
@@ -126,6 +146,15 @@
 				지정한 디렉토리에 OpenGuild 마커 (<code>.guild/</code> 폴더 + 시드)가 없습니다.
 				초기화하면 빈 길드가 생성되어 바로 작업할 수 있습니다.
 			</p>
+			<label class="uninit-name">
+				<span>길드 이름</span>
+				<input
+					type="text"
+					bind:value={initName}
+					placeholder="guild"
+					disabled={initRunning}
+				/>
+			</label>
 			{#if initErr}
 				<p class="err">{initErr}</p>
 			{/if}
@@ -156,23 +185,39 @@
 	{:else}
 		<ul class="recent-list">
 			{#each recents as r (r.path)}
-				<li>
+				<li class="recent-row" class:missing={r.missing}>
 					<button
 						class="recent-btn"
 						type="button"
 						onclick={() => openRecent(r.path)}
-						disabled={opening !== null}
-						title="새 창에서 이 길드를 엽니다"
+						disabled={opening !== null || r.missing}
+						title={r.missing
+							? '경로를 찾을 수 없습니다 — 이동 / 삭제됐을 수 있음'
+							: '현재 창에서 이 길드를 엽니다'}
 					>
 						<div class="row">
 							<span class="name">{r.name}</span>
 							<span class="last">{fmtDate(r.last_opened)}</span>
 						</div>
 						<div class="path">{r.path}</div>
+						{#if r.missing}
+							<div class="missing-label">⚠ 경로를 찾을 수 없습니다</div>
+						{/if}
 						{#if opening === r.path}
-							<div class="opening">새 창에서 여는 중…</div>
+							<div class="opening">길드 여는 중…</div>
 						{/if}
 					</button>
+					{#if r.missing}
+						<button
+							class="recent-remove"
+							type="button"
+							onclick={() => removeRecent(r.path)}
+							title="목록에서 제거 (디스크 데이터는 건드리지 않음)"
+							aria-label="목록에서 제거"
+						>
+							×
+						</button>
+					{/if}
 				</li>
 			{/each}
 		</ul>
@@ -227,7 +272,37 @@
 		flex-direction: column;
 		gap: 0.5rem;
 	}
-	.recent-list li { display: contents; }
+	.recent-list .recent-row {
+		display: flex;
+		gap: 0.5rem;
+		align-items: stretch;
+	}
+	.recent-list .recent-row.missing .recent-btn {
+		opacity: 0.55;
+		cursor: not-allowed;
+	}
+	.recent-remove {
+		flex: 0 0 auto;
+		padding: 0 0.85rem;
+		background: transparent;
+		border: 1px solid #30363d;
+		border-radius: 6px;
+		color: #8b95a1;
+		font-size: 1.2rem;
+		line-height: 1;
+		cursor: pointer;
+		transition: border-color 0.12s, color 0.12s, background 0.12s;
+	}
+	.recent-remove:hover {
+		border-color: #e94f4f;
+		color: #e94f4f;
+		background: rgba(233, 79, 79, 0.08);
+	}
+	.recent-btn { flex: 1 1 auto; }
+	.missing-label {
+		color: #e9a04f;
+		font-size: 0.8rem;
+	}
 	.recent-btn {
 		width: 100%;
 		text-align: left;
@@ -243,7 +318,7 @@
 		gap: 0.25rem;
 		transition: border-color 0.12s, background 0.12s;
 	}
-	.recent-btn:hover:not(:disabled) {
+	.recent-list .recent-row:not(.missing) .recent-btn:hover:not(:disabled) {
 		border-color: #58a6ff;
 		background: #1a212a;
 	}
@@ -341,6 +416,32 @@
 		margin: 0 0 0.85rem;
 		color: #c9d1d9;
 		font-size: 0.875rem;
+	}
+	.uninit-name {
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+		margin: 0 0 0.85rem;
+		font-size: 0.875rem;
+		color: #c9d1d9;
+	}
+	.uninit-name > span {
+		flex: 0 0 auto;
+		color: #8b95a1;
+	}
+	.uninit-name input {
+		flex: 1 1 auto;
+		padding: 0.4rem 0.6rem;
+		background: #0d1117;
+		border: 1px solid #30363d;
+		border-radius: 4px;
+		color: #c9d1d9;
+		font: inherit;
+		font-family: 'SFMono-Regular', Consolas, monospace;
+	}
+	.uninit-name input:focus {
+		outline: none;
+		border-color: #58a6ff;
 	}
 	.uninit-actions {
 		display: flex;

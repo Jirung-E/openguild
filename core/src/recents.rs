@@ -82,10 +82,7 @@ pub fn write(recents: &[Recent]) -> Result<()> {
 /// `guild_path` 는 canonicalize 시도 (상대 / `..` 정리). 실패 시 그대로 사용.
 pub fn add<P: AsRef<Path>>(guild_path: P) -> Result<()> {
     let path = guild_path.as_ref();
-    let abs = std::fs::canonicalize(path)
-        .unwrap_or_else(|_| path.to_path_buf())
-        .to_string_lossy()
-        .to_string();
+    let abs = normalize_abs(path);
 
     // 길드 이름 — `{name}.guild` 파일 또는 디렉토리명.
     let name = guess_name(path);
@@ -102,6 +99,31 @@ pub fn add<P: AsRef<Path>>(guild_path: P) -> Result<()> {
 /// 전체 비우기.
 pub fn clear() -> Result<()> {
     write(&[])
+}
+
+/// 한 항목 제거 (path 기준). 없으면 no-op (Ok).
+pub fn remove(path: &str) -> Result<()> {
+    let mut list = list().unwrap_or_default();
+    let before = list.len();
+    list.retain(|r| r.path != path);
+    if list.len() != before {
+        write(&list)?;
+    }
+    Ok(())
+}
+
+/// path 를 절대 + 사용자 친화 형태로 정규화.
+///
+/// Windows: `canonicalize` 결과의 `\\?\` extended-length prefix 제거 — 그
+/// 형태로 화면에 표시 / sqlite URL 에 쓰면 양쪽 모두 깨짐. canonicalize
+/// 실패 시 (path 가 없거나 권한 부족 등) 원본 반환.
+pub fn normalize_abs(path: &Path) -> String {
+    let abs = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let raw = abs.to_string_lossy().to_string();
+    // Windows extended-length prefix 제거.
+    raw.trim_start_matches(r"\\?\")
+        .trim_start_matches(r"\\\\?\\")
+        .to_string()
 }
 
 /// 길드 디렉토리에서 이름 추측 — `*.guild` 파일이 있으면 그 stem, 아니면 디렉토리명.

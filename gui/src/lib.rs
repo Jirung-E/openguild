@@ -100,6 +100,9 @@ where
                 p.display()
             )
         })?;
+        // DEV-052 후속 (4회차): `.` / 상대경로 → 절대경로 정규화.
+        // Uninit prompt 에서 `.` 그대로 표시되면 어딘지 알 수 없음.
+        let resolved = absolutize(&resolved);
         return Ok(if has_guild_marker(&resolved) {
             LaunchMode::Guild(resolved)
         } else {
@@ -111,6 +114,7 @@ where
     if let Some(path) = env_guild {
         let p = PathBuf::from(path);
         if p.exists() {
+            let p = absolutize(&p);
             return Ok(if has_guild_marker(&p) {
                 LaunchMode::Guild(p)
             } else {
@@ -122,6 +126,18 @@ where
 
     // 3. argv / env 모두 없으면 Welcome 으로 진입.
     Ok(LaunchMode::Welcome)
+}
+
+/// 상대 경로 (`.` / `..` / `foo` 등) → 절대 + Windows `\\?\` prefix 제거.
+/// `canonicalize` 실패 시 원본 그대로 (방어적).
+fn absolutize(p: &Path) -> PathBuf {
+    let abs = std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+    // Windows: `\\?\C:\…` → `C:\…`.
+    let s = abs.to_string_lossy().to_string();
+    let cleaned = s
+        .trim_start_matches(r"\\?\")
+        .trim_start_matches(r"\\\\?\\");
+    PathBuf::from(cleaned)
 }
 
 /// DEV-052: managed state — frontend 가 invoke 로 조회하여 첫 진입 URL 결정.
@@ -226,6 +242,7 @@ pub fn run() {
             // recents (DEV-006)
             commands::list_recents,
             commands::clear_recents,
+            commands::remove_recent,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

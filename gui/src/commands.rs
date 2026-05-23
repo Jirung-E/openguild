@@ -276,14 +276,41 @@ pub async fn admin_reindex(store: State<'_, Store>) -> Result<ReindexResult, Str
 
 use openguild_core::recents;
 
+/// DEV-052 후속 (4회차): 존재 여부를 enrichment 해서 frontend 가 사라진
+/// 길드를 회색 처리 / 제거 액션을 제공할 수 있게.
+#[derive(Serialize)]
+pub struct RecentDto {
+    pub path: String,
+    pub name: String,
+    pub last_opened: String,
+    /// path 가 더 이상 존재하지 않으면 `true`. 외장 드라이브 일시적 unmount
+    /// 일 수도 있으므로 자동 제거는 안 함.
+    pub missing: bool,
+}
+
 #[tauri::command]
-pub async fn list_recents() -> Result<Vec<recents::Recent>, String> {
-    recents::list().map_err(|e| format!("{e:#}"))
+pub async fn list_recents() -> Result<Vec<RecentDto>, String> {
+    let raw = recents::list().map_err(|e| format!("{e:#}"))?;
+    Ok(raw
+        .into_iter()
+        .map(|r| RecentDto {
+            missing: !std::path::Path::new(&r.path).exists(),
+            path: r.path,
+            name: r.name,
+            last_opened: r.last_opened,
+        })
+        .collect())
 }
 
 #[tauri::command]
 pub async fn clear_recents() -> Result<(), String> {
     recents::clear().map_err(|e| format!("{e:#}"))
+}
+
+/// DEV-052 후속 (4회차): 단일 항목 제거 — "사라진 길드" 목록 정리용.
+#[tauri::command]
+pub async fn remove_recent(path: String) -> Result<(), String> {
+    recents::remove(&path).map_err(|e| format!("{e:#}"))
 }
 
 // ─────────────────────── launch (DEV-052) ───────────────────────
