@@ -259,14 +259,18 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// 시나리오 3 — fix 후 즉시 create_quest 성공 (BUG-003 사용자 검증).
+    /// 시나리오 3 — create_quest 가 SQL drift 를 self-heal (BUG-003 + 외부 편집 시나리오).
+    ///
+    /// 이전에는 drift 상태에서 create 가 UNIQUE 충돌로 실패했지만, 그 후
+    /// `services::quests::create` 에 counter self-heal SQL 한 줄 추가 → 명시적
+    /// `check-counters --fix` 없어도 create 가 max(actual)+1 부여. file 의
+    /// last_number 자체는 별도 (admin reindex / check-counters 가 책임).
     #[tokio::test]
-    async fn fix_then_create_quest_succeeds_when_only_sql_drifted() {
+    async fn create_self_heals_sql_drift_without_explicit_fix() {
         let dir = fresh_tmp("create-after-sql-fix");
         seed_guild_dir(&dir).unwrap();
         let store = Store::open(&dir).await.unwrap();
 
-        // BUG-001 ~ 006 파일 + counter file 6 까지 모두 정상. reindex 동기화.
         for n in 1..=6 {
             write_quest_file(&store.paths, &format!("BUG-{n:03}"));
         }
@@ -285,36 +289,18 @@ mod tests {
         .await
         .unwrap();
 
-        // 이 상태에서 create_quest 는 실패해야 함 (UNIQUE constraint).
         let bug_type_id: i64 =
             sqlx::query_scalar("SELECT id FROM quest_types WHERE prefix = 'BUG'")
                 .fetch_one(&store.index_pool)
                 .await
                 .unwrap();
-        let fail = crate::ops::create_quest(
-            &store,
-            crate::models::CreateQuestRequest {
-                quest_type_id: bug_type_id,
-                title: "before-fix".into(),
-                description: None,
-                status_slug: "open".into(),
-                urgency: Some(3),
-                parent_quest_id: None,
-            },
-        )
-        .await;
-        assert!(fail.is_err(), "drift 상태에선 실패해야 함");
 
-        // fix 실행.
-        let _ = check_and_fix_counters(&store, true).await.unwrap();
-        assert_eq!(sql_counter(&store, "BUG").await, 6);
-
-        // 이제 성공.
+        // self-heal 덕분에 명시적 fix 없이도 create 가 성공.
         let new = crate::ops::create_quest(
             &store,
             crate::models::CreateQuestRequest {
                 quest_type_id: bug_type_id,
-                title: "after-fix".into(),
+                title: "self-healed".into(),
                 description: None,
                 status_slug: "open".into(),
                 urgency: Some(3),
@@ -322,8 +308,16 @@ mod tests {
             },
         )
         .await
-        .expect("fix 후엔 성공");
+        .expect("self-heal 후 create 성공해야 함");
         assert_eq!(new.quest_id, "BUG-007");
+        assert_eq!(sql_counter(&store, "BUG").await, 7);
+
+        // 새 quest 파일 (BUG-007.md) 도 디스크에 생겼으므로 check-counters
+        // 가 file last_number=6 < actual max=7 을 잡아 file 도 7 로 보정 →
+        // file + SQL 둘 다 7 로 정합 (sql_drift 0건).
+        let fix = check_and_fix_counters(&store, true).await.unwrap();
+        assert_eq!(fix.file_report.issues.len(), 1);
+        assert_eq!(fix.sql_drift.len(), 0);
 
         let _ = std::fs::remove_dir_all(&dir);
     }

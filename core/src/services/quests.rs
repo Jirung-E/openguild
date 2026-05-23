@@ -489,6 +489,23 @@ pub async fn create(pool: &SqlitePool, body: CreateQuestRequest) -> AppResult<Qu
         AppError::BadRequest(format!("unknown status slug: '{}'", body.status_slug))
     })?;
 
+    // 외부 편집 / git pull 로 .guild/quests 에 새 .md 가 직접 들어와도 counter
+    // 가 안 올라가는 경우 (BUG: UNIQUE 충돌) self-heal — counter 가 실제 max(number)
+    // 보다 뒤떨어졌으면 그 max 로 끌어올린 뒤 +1. `.guild/types/<P>.toml` 의
+    // last_number 파일 sync 는 별도 (admin reindex / check-counters 로).
+    sqlx::query(
+        "UPDATE quest_counters
+            SET last_number = MAX(
+                last_number,
+                COALESCE((SELECT MAX(number) FROM quests WHERE quest_type_id = ?), 0)
+            )
+          WHERE quest_type_id = ?",
+    )
+    .bind(body.quest_type_id)
+    .bind(body.quest_type_id)
+    .execute(&mut *tx)
+    .await?;
+
     let number = sqlx::query_scalar::<_, i64>(
         "UPDATE quest_counters SET last_number = last_number + 1
          WHERE quest_type_id = ? RETURNING last_number",

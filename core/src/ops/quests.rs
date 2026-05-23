@@ -828,5 +828,66 @@ mod tests {
         assert!(content.contains("custom body"));
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// BUG: 외부 편집으로 quests 테이블의 max(number) 가 counter 보다 커진 경우
+    /// (ef010d5 같은 사용자 직접 추가), 다음 create_quest 가 counter+1 로 INSERT 시도
+    /// → `UNIQUE (quest_type_id, number)` 충돌. self-heal 이 자동 보정해야 함.
+    #[tokio::test]
+    async fn create_self_heals_when_counter_lags_behind_actual_max() {
+        let dir = fresh_tmp("counter-lag");
+        let store = setup_store(&dir).await;
+
+        // 1) 정상 경로로 DEV-001 만들고,
+        let q1 = create_quest(
+            &store,
+            CreateQuestRequest {
+                quest_type_id: 1,
+                title: "first".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(q1.number, 1);
+
+        // 2) 외부 편집을 시뮬레이션 — quests 에 DEV-005 직접 INSERT (counter 는 안 건드림).
+        sqlx::query(
+            "INSERT INTO quests
+               (id, quest_type_id, number, title, status_id, urgency, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))",
+        )
+        .bind(100)
+        .bind(1)
+        .bind(5)
+        .bind("external")
+        .bind(1)
+        .bind(3)
+        .execute(&store.index_pool)
+        .await
+        .unwrap();
+        // 이 시점 counter.last_number = 1 (DEV-001 으로 +1 만 됨), max(number) = 5.
+
+        // 3) 새 quest 만들면 self-heal 이 counter 를 5 로 끌어올린 뒤 +1 → DEV-006.
+        let q2 = create_quest(
+            &store,
+            CreateQuestRequest {
+                quest_type_id: 1,
+                title: "after heal".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(q2.number, 6, "self-heal 이 max(actual)+1 부여해야");
+        assert_eq!(q2.quest_id, "DEV-006");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
 
