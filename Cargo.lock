@@ -2604,6 +2604,7 @@ name = "openguild-gui"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "openguild-core",
  "serde",
  "serde_json",

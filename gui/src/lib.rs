@@ -35,14 +35,33 @@ pub(crate) fn arg_to_guild_path(arg: &Path) -> Option<PathBuf> {
     None
 }
 
+/// DEV-052 후속: 디렉토리에 길드 마커 (`.guild` 파일 또는 `.guild/` 디렉토리)
+/// 가 있는지. 없으면 "이 위치 초기화?" 흐름 (`LaunchMode::Uninit`) 으로 진입.
+pub(crate) fn has_guild_marker(dir: &Path) -> bool {
+    // (a) `.guild` 파일 (TOML 메타) — `<name>.guild` 같은 형태 등.
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for e in entries.flatten() {
+            let p = e.path();
+            if p.extension().and_then(|x| x.to_str()) == Some("guild") {
+                return true;
+            }
+        }
+    }
+    // (b) `.guild/` 디렉토리 (quests/types/statuses 보관). init 후엔 항상 존재.
+    dir.join(".guild").is_dir()
+}
+
 /// DEV-052: `openguild-gui` 시작 모드.
 ///
 /// - `Guild(path)` — 특정 guild 의 보드 / 디테일 페이지로 진입.
 /// - `Welcome` — guild 인자 없이 시작. recents 표시 화면 (`/welcome`).
+/// - `Uninit(path)` — argv 로 디렉토리는 받았지만 `.guild` 파일이 없음.
+///   "이 위치를 길드로 초기화할지" 확인 UI 가 떠야 함 (DEV-052 후속).
 #[derive(Debug, Clone)]
 pub(crate) enum LaunchMode {
     Guild(PathBuf),
     Welcome,
+    Uninit(PathBuf),
 }
 
 /// guild 디렉토리 해결 — 내부 구현, 환경 의존성 명시.
@@ -70,15 +89,21 @@ where
         .filter(|s| !s.as_ref().to_string_lossy().starts_with("--"))
         .collect();
 
-    // 1. argv 있으면 해석 결과가 곧 답. 실패 시 에러.
+    // 1. argv 있으면 해석 결과가 곧 답.
+    //    DEV-052 후속: 디렉토리는 있는데 .guild 가 없으면 → Uninit (확인 UI).
     if let Some(first) = user_args.first() {
         let p = Path::new(first.as_ref());
-        return arg_to_guild_path(p).map(LaunchMode::Guild).ok_or_else(|| {
+        let resolved = arg_to_guild_path(p).ok_or_else(|| {
             format!(
                 "'{}' 는 올바른 guild 경로가 아닙니다. \
-                 .guild 파일이 있는 디렉토리 또는 .guild 파일 자체를 지정하세요.",
+                 디렉토리 또는 .guild 파일을 지정하세요.",
                 p.display()
             )
+        })?;
+        return Ok(if has_guild_marker(&resolved) {
+            LaunchMode::Guild(resolved)
+        } else {
+            LaunchMode::Uninit(resolved)
         });
     }
 
@@ -86,7 +111,11 @@ where
     if let Some(path) = env_guild {
         let p = PathBuf::from(path);
         if p.exists() {
-            return Ok(LaunchMode::Guild(p));
+            return Ok(if has_guild_marker(&p) {
+                LaunchMode::Guild(p)
+            } else {
+                LaunchMode::Uninit(p)
+            });
         }
         // env 가 잘못된 경우는 자동 폴백.
     }
@@ -97,7 +126,10 @@ where
 
 /// DEV-052: managed state — frontend 가 invoke 로 조회하여 첫 진입 URL 결정.
 pub struct LaunchInfo {
-    pub mode: &'static str, // "guild" | "welcome"
+    pub mode: &'static str, // "guild" | "welcome" | "uninit"
+    /// Uninit 모드일 때 사용자가 원하는 길드 path. "이 위치 초기화?" 확인 후
+    /// `init_and_open_guild(path)` 호출에 사용.
+    pub uninit_path: Option<PathBuf>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -113,14 +145,30 @@ pub fn run() {
         }
     };
 
-    // Welcome 모드는 OS temp 디렉토리에 빈 길드 부트스트랩 — Store / Tauri
-    // commands 가 항상 valid 한 store 가정해서. recents 자동 등록은 건너뜀.
+    // Welcome / Uninit 모드는 OS temp 디렉토리에 빈 길드 부트스트랩 — Store /
+    // Tauri commands 가 항상 valid 한 store 가정해서. 사용자가 길드 선택 /
+    // 초기화하면 commands::open_guild_in_current_window / init_and_open_guild
+    // 가 store 를 swap.
     let (guild_path, launch_info) = match &launch_mode {
-        LaunchMode::Guild(p) => (p.clone(), LaunchInfo { mode: "guild" }),
+        LaunchMode::Guild(p) => (
+            p.clone(),
+            LaunchInfo { mode: "guild", uninit_path: None },
+        ),
         LaunchMode::Welcome => {
             let tmp = std::env::temp_dir().join("openguild-welcome-placeholder");
             std::fs::create_dir_all(&tmp).ok();
-            (tmp, LaunchInfo { mode: "welcome" })
+            (tmp, LaunchInfo { mode: "welcome", uninit_path: None })
+        }
+        LaunchMode::Uninit(p) => {
+            let tmp = std::env::temp_dir().join("openguild-welcome-placeholder");
+            std::fs::create_dir_all(&tmp).ok();
+            (
+                tmp,
+                LaunchInfo {
+                    mode: "uninit",
+                    uninit_path: Some(p.clone()),
+                },
+            )
         }
     };
     eprintln!(
@@ -133,7 +181,7 @@ pub fn run() {
     let store = tauri::async_runtime::block_on(Store::open(&guild_path))
         .expect("Store::open 실패 — guild 디렉토리 손상 또는 권한 없음");
 
-    // Recent guild 자동 등록 (DEV-006). Welcome 모드는 placeholder 라 등록 안 함.
+    // Recent guild 자동 등록 (DEV-006). Welcome / Uninit 은 placeholder 라 등록 안 함.
     if matches!(launch_mode, LaunchMode::Guild(_))
         && let Err(e) = openguild_core::recents::add(&guild_path)
     {
@@ -145,7 +193,8 @@ pub fn run() {
         .manage(launch_info)
         .invoke_handler(tauri::generate_handler![
             commands::launch_mode,
-            commands::open_guild_in_new_window,
+            commands::open_guild_in_current_window,
+            commands::init_and_open_guild,
             // meta
             commands::list_quest_types,
             commands::list_quest_statuses,
@@ -238,9 +287,15 @@ mod tests {
         matches!(mode, LaunchMode::Guild(_))
     }
 
+    /// 디렉토리에 길드 마커 (`.guild` 디렉토리) 시드 — 테스트용 헬퍼.
+    fn init_marker(dir: &Path) {
+        std::fs::create_dir_all(dir.join(".guild")).unwrap();
+    }
+
     #[test]
-    fn resolve_argv_dir_wins_over_env() {
+    fn resolve_argv_dir_with_marker_is_guild() {
         let dir = fresh_tmp("argv-priority");
+        init_marker(&dir);
         let argv: Vec<std::ffi::OsString> = vec!["program".into(), dir.as_os_str().into()];
         let got = resolve_launch_mode(argv, Some("/nonexistent/path-for-test".into())).unwrap();
         match got {
@@ -249,6 +304,23 @@ mod tests {
                 std::fs::canonicalize(&dir).unwrap()
             ),
             _ => panic!("expected Guild"),
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resolve_argv_dir_without_marker_is_uninit() {
+        // DEV-052 후속: .guild 마커가 없는 디렉토리는 Uninit — 사용자에게
+        // "초기화?" 확인 UI.
+        let dir = fresh_tmp("argv-uninit");
+        let argv: Vec<std::ffi::OsString> = vec!["program".into(), dir.as_os_str().into()];
+        let got = resolve_launch_mode(argv, None).unwrap();
+        match got {
+            LaunchMode::Uninit(p) => assert_eq!(
+                std::fs::canonicalize(p).unwrap(),
+                std::fs::canonicalize(&dir).unwrap()
+            ),
+            other => panic!("expected Uninit, got {other:?}"),
         }
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -275,6 +347,7 @@ mod tests {
     #[test]
     fn resolve_env_used_when_argv_empty() {
         let dir = fresh_tmp("env-fallback");
+        init_marker(&dir);
         let argv: Vec<std::ffi::OsString> = vec!["program".into()];
         let got = resolve_launch_mode(argv, Some(dir.to_string_lossy().into_owned())).unwrap();
         match got {
@@ -332,10 +405,29 @@ mod tests {
     #[test]
     fn resolve_argv_helper_categorizes_guild_vs_welcome() {
         let dir = fresh_tmp("helper");
+        init_marker(&dir);
         let argv: Vec<std::ffi::OsString> = vec!["program".into(), dir.as_os_str().into()];
         assert!(is_guild(&resolve_launch_mode(argv, None).unwrap()));
         let argv_empty: Vec<std::ffi::OsString> = vec!["program".into()];
         assert!(!is_guild(&resolve_launch_mode(argv_empty, None).unwrap()));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn has_guild_marker_detects_dot_guild_dir() {
+        let dir = fresh_tmp("marker-dir");
+        assert!(!has_guild_marker(&dir));
+        std::fs::create_dir_all(dir.join(".guild")).unwrap();
+        assert!(has_guild_marker(&dir));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn has_guild_marker_detects_dot_guild_file() {
+        let dir = fresh_tmp("marker-file");
+        assert!(!has_guild_marker(&dir));
+        std::fs::write(dir.join("my.guild"), "name=\"x\"").unwrap();
+        assert!(has_guild_marker(&dir));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

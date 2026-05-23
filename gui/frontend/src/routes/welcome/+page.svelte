@@ -1,17 +1,25 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { recentsApi, type Recent } from '$lib/api/recents';
 	import { detectEnvironment } from '$lib/api/transport';
 
 	let recents: Recent[] = $state([]);
 	let loading = $state(true);
 	let err: string | null = $state(null);
-	let confirmOpen = $state(false); // DEV-052 후속: 브라우저 confirm 대신 커스텀 모달.
-	let opening: string | null = $state(null); // 현재 spawn 중인 path (UI 깜빡임 방지).
+	let confirmOpen = $state(false); // 브라우저 confirm 대신 커스텀 모달.
+	let opening: string | null = $state(null); // 진행 중인 path (UI 비활성화).
 	let openErr: string | null = $state(null);
+
+	// DEV-052 후속 (2회차): 길드 미초기화 디렉토리에서 시작했을 때의 prompt.
+	let uninitPath: string | null = $state(null);
+	let initRunning = $state(false);
+	let initErr: string | null = $state(null);
+
 	const env = detectEnvironment();
 
 	onMount(async () => {
+		// recents 먼저 로드.
 		try {
 			recents = await recentsApi.list();
 		} catch (e) {
@@ -19,21 +27,36 @@
 		} finally {
 			loading = false;
 		}
+		// launch_mode 가 'uninit' 이면 prompt 활성화.
+		if (env === 'tauri') {
+			try {
+				const { invoke } = await import('@tauri-apps/api/core');
+				const info = await invoke<{ mode: string; uninit_path: string | null }>(
+					'launch_mode'
+				);
+				if (info.mode === 'uninit' && info.uninit_path) {
+					uninitPath = info.uninit_path;
+				}
+			} catch {
+				// invoke 실패 시 무시.
+			}
+		}
 	});
 
 	async function openRecent(path: string) {
-		// DEV-052 후속: recent 항목 클릭 → 새 openguild-gui 프로세스를 그 path 로 spawn.
-		// Tauri 환경에서만 동작.
-		if (env !== 'tauri') return;
+		// DEV-052 후속 (2회차): 현재 창에서 store swap (새 창 spawn 안 함).
+		// Tauri 환경 외에서 호출되면 에러 표시.
 		if (opening) return;
 		opening = path;
 		openErr = null;
 		try {
+			if (env !== 'tauri') {
+				throw new Error('Tauri 데스크톱 앱에서만 동작합니다.');
+			}
 			const { invoke } = await import('@tauri-apps/api/core');
-			await invoke('open_guild_in_new_window', { path });
-			// 성공: 새 창이 떴음. 현재 welcome 창은 사용자가 닫게 둠.
-			//   spawn 후 자동 종료를 원하면 tauri-plugin-process 의 exit() 호출,
-			//   현재는 한 화면에 머무를 수 있도록 자동 종료 안 함.
+			await invoke('open_guild_in_current_window', { path });
+			// 성공: 현재 process 의 Store 가 swap 됐음. 보드로 이동.
+			goto('/');
 		} catch (e) {
 			openErr = e instanceof Error ? e.message : String(e);
 		} finally {
@@ -41,8 +64,28 @@
 		}
 	}
 
+	async function initUninit() {
+		if (!uninitPath || initRunning) return;
+		initRunning = true;
+		initErr = null;
+		try {
+			const { invoke } = await import('@tauri-apps/api/core');
+			await invoke('init_and_open_guild', { path: uninitPath });
+			// 성공: store swap 됨. 보드로.
+			goto('/');
+		} catch (e) {
+			initErr = e instanceof Error ? e.message : String(e);
+		} finally {
+			initRunning = false;
+		}
+	}
+
+	function declineUninit() {
+		// 사용자가 "초기화 안 함" 선택 → uninitPath 만 비워 prompt 닫음 (welcome 으로 머묾).
+		uninitPath = null;
+	}
+
 	function askClear() {
-		// DEV-052 후속: 브라우저 confirm() 은 OS 스타일 — 어울리지 않음. 커스텀 모달.
 		confirmOpen = true;
 	}
 
@@ -73,6 +116,27 @@
 		<h1>OpenGuild</h1>
 		<p class="sub">최근 작업한 길드</p>
 	</header>
+
+	{#if uninitPath}
+		<!-- DEV-052 후속: 길드 마커 없는 디렉토리에서 시작 → 초기화 prompt. -->
+		<section class="uninit">
+			<h2>이 위치를 길드로 초기화할까요?</h2>
+			<p class="uninit-path">{uninitPath}</p>
+			<p class="uninit-desc">
+				지정한 디렉토리에 OpenGuild 마커 (<code>.guild/</code> 폴더 + 시드)가 없습니다.
+				초기화하면 빈 길드가 생성되어 바로 작업할 수 있습니다.
+			</p>
+			{#if initErr}
+				<p class="err">{initErr}</p>
+			{/if}
+			<div class="uninit-actions">
+				<button class="btn-yes" onclick={initUninit} disabled={initRunning}>
+					{initRunning ? '초기화 중…' : '초기화하고 열기'}
+				</button>
+				<button class="btn-no" onclick={declineUninit} disabled={initRunning}>아니요</button>
+			</div>
+		</section>
+	{/if}
 
 	{#if loading}
 		<p class="loading">불러오는 중...</p>
@@ -120,7 +184,7 @@
 
 	<footer class="hint">
 		<p>
-			항목을 클릭하면 새 OpenGuild 창이 그 길드로 열립니다. (현재 welcome 창은 직접 닫아 주세요.)
+			항목을 클릭하면 현재 창에서 그 길드를 엽니다.
 		</p>
 	</footer>
 </main>
@@ -248,6 +312,40 @@
 		border-top: 1px solid #30363d;
 		color: #8b95a1;
 		font-size: 0.85rem;
+	}
+
+	/* --- uninit prompt (DEV-052 후속 2회차) --- */
+	.uninit {
+		margin-bottom: 1.5rem;
+		padding: 1rem 1.25rem;
+		background: #1a212a;
+		border: 1px solid #58a6ff;
+		border-radius: 8px;
+	}
+	.uninit h2 {
+		margin: 0 0 0.5rem;
+		font-size: 1.05rem;
+		color: #58a6ff;
+	}
+	.uninit-path {
+		margin: 0 0 0.5rem;
+		padding: 0.4rem 0.6rem;
+		background: #0d1117;
+		border-radius: 4px;
+		font-family: 'SFMono-Regular', Consolas, monospace;
+		font-size: 0.85rem;
+		color: #c9d1d9;
+		word-break: break-all;
+	}
+	.uninit-desc {
+		margin: 0 0 0.85rem;
+		color: #c9d1d9;
+		font-size: 0.875rem;
+	}
+	.uninit-actions {
+		display: flex;
+		gap: 0.5rem;
+		justify-content: flex-end;
 	}
 
 	/* --- 커스텀 confirm 모달 --- */

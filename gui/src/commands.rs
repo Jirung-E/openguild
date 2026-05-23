@@ -288,30 +288,131 @@ pub async fn clear_recents() -> Result<(), String> {
 
 // ─────────────────────── launch (DEV-052) ───────────────────────
 
-/// DEV-052: frontend 가 첫 진입 URL 결정용. "guild" 또는 "welcome".
-#[tauri::command]
-pub fn launch_mode(state: State<'_, crate::LaunchInfo>) -> &'static str {
-    state.mode
+#[derive(Serialize)]
+pub struct LaunchInfoDto {
+    pub mode: &'static str, // "guild" | "welcome" | "uninit"
+    pub uninit_path: Option<String>,
 }
 
-/// DEV-052 후속: Welcome 페이지의 recent 클릭 → 새 openguild-gui 프로세스를
-/// 그 path 인자로 spawn. 현재 process 의 Store 는 swap 안 함 (Tauri State 가
-/// 런타임 교체를 안전하게 지원 안 함) — 사용자가 새 창으로 그 길드 작업하고
-/// 기존 welcome 창은 닫으면 됨.
-///
-/// Tauri 가 closure 캡처를 통해 invoke 응답 후 현재 창 종료까지 처리하면
-/// 깔끔하지만 일단 detached spawn 만 제공. exit 은 frontend 가 별도 호출 가능.
+/// DEV-052: frontend 가 첫 진입 URL 결정용 — { mode, uninit_path }.
 #[tauri::command]
-pub fn open_guild_in_new_window(path: String) -> Result<(), String> {
+pub fn launch_mode(state: State<'_, crate::LaunchInfo>) -> LaunchInfoDto {
+    LaunchInfoDto {
+        mode: state.mode,
+        uninit_path: state
+            .uninit_path
+            .as_ref()
+            .map(|p| p.display().to_string()),
+    }
+}
+
+/// DEV-052 후속: 길드 마커 없는 디렉토리에서 사용자가 "초기화" 승인 시
+/// 호출. .guild 시드 생성 + Store::open + recents 등록 + Store / LaunchInfo
+/// 를 swap. `unmanage` 의 deprecation 이유는 open_guild_in_current_window 주석 참고.
+#[tauri::command]
+#[allow(deprecated)]
+pub fn init_and_open_guild(
+    app: tauri::AppHandle,
+    path: String,
+    name: Option<String>,
+) -> Result<(), String> {
+    use tauri::Manager;
+
     let p = std::path::Path::new(&path);
     if !p.exists() {
         return Err(format!("path 가 존재하지 않습니다: {path}"));
     }
-    let current_exe = std::env::current_exe()
-        .map_err(|e| format!("current_exe 조회 실패: {e}"))?;
-    std::process::Command::new(current_exe)
-        .arg(&path)
-        .spawn()
-        .map_err(|e| format!("spawn 실패: {e}"))?;
+
+    // 1. .guild 디렉토리 시드. seed_guild_dir 는 idempotent 이라 안전.
+    openguild_core::repo::seed_guild_dir(p)
+        .map_err(|e| format!("seed_guild_dir 실패: {e:#}"))?;
+
+    // 2. <name>.guild 마커 파일 생성 (없으면). 이름은 인자 또는 디렉토리명.
+    let guild_name = name
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("guild")
+                .to_string()
+        });
+    let marker = p.join(format!("{guild_name}.guild"));
+    if !marker.exists() {
+        let today = chrono::Local::now().format("%Y-%m-%d");
+        let toml = format!(
+            "name = \"{guild_name}\"\nversion = \"1.0\"\ncreated_at = \"{today}\"\n"
+        );
+        std::fs::write(&marker, toml).map_err(|e| format!("marker 파일 생성 실패: {e}"))?;
+    }
+
+    // 3. Store 열고 swap.
+    let store = tauri::async_runtime::block_on(openguild_core::Store::open(p))
+        .map_err(|e| format!("Store::open 실패: {e:#}"))?;
+    if let Err(e) = openguild_core::recents::add(p) {
+        eprintln!("[openguild-gui] warn: recents 갱신 실패 — {e:#}");
+    }
+    app.unmanage::<openguild_core::Store>();
+    app.manage(store);
+    app.unmanage::<crate::LaunchInfo>();
+    app.manage(crate::LaunchInfo {
+        mode: "guild",
+        uninit_path: None,
+    });
+
+    Ok(())
+}
+
+/// DEV-052 후속 (2회차): Welcome 의 recent 클릭 → 현재 프로세스의 Store 를
+/// 새 path 로 교체 (Tauri 의 `unmanage` → `manage` 패턴). 새 창 spawn 안 함.
+///
+/// 동작:
+/// 1. 새 path 의 Store 생성 (sqlx pool 등 미리 확보).
+/// 2. recents 자동 등록.
+/// 3. `unmanage::<Store>()` 로 기존 store 해제 (사용 중인 reference 는 Arc
+///    refcount 로 자연 종료).
+/// 4. `manage(new_store)` 로 새 store 등록.
+/// 5. `LaunchInfo.mode` 도 "guild" 로 갱신.
+///
+/// frontend 는 응답 받은 직후 `goto('/')` 로 보드 진입.
+///
+/// `unmanage` 는 Tauri 2 에서 deprecated (dangling ref 우려) 지만 본 앱은
+/// 단일 사용자 + swap 이 사용자 명시 액션이라 다른 command 와 동시 실행이
+/// 사실상 없음. 차후 Mutex<Store> 리팩터 시 제거.
+#[tauri::command]
+#[allow(deprecated)]
+pub fn open_guild_in_current_window(
+    app: tauri::AppHandle,
+    path: String,
+) -> Result<(), String> {
+    use tauri::Manager;
+
+    let p = std::path::Path::new(&path);
+    if !p.exists() {
+        return Err(format!("path 가 존재하지 않습니다: {path}"));
+    }
+
+    // 1. 새 Store 미리 열기 (실패 시 swap 안 함).
+    let new_store = tauri::async_runtime::block_on(openguild_core::Store::open(p))
+        .map_err(|e| format!("Store::open 실패: {e:#}"))?;
+
+    // 2. recents 등록 (실패해도 swap 진행).
+    if let Err(e) = openguild_core::recents::add(p) {
+        eprintln!("[openguild-gui] warn: recents 갱신 실패 — {e:#}");
+    }
+
+    // 3-4. 기존 store 해제 + 새 store 등록.
+    app.unmanage::<openguild_core::Store>();
+    app.manage(new_store);
+
+    // 5. launch mode → guild. unmanage/manage 동일 패턴.
+    app.unmanage::<crate::LaunchInfo>();
+    app.manage(crate::LaunchInfo {
+        mode: "guild",
+        uninit_path: None,
+    });
+
     Ok(())
 }

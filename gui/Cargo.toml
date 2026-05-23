@@ -24,6 +24,9 @@ anyhow = "1"
 # core 비즈니스 로직 — Tauri invoke 핸들러가 직접 호출 (DEV-004 에서 사용 확대)
 openguild-core = { path = "../core" }
 
+# DEV-052 후속: init_and_open_guild 의 .guild marker 파일 created_at 작성용.
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+
 [features]
 # Production: 미리 빌드된 frontend 자산 임베드
 default = ["custom-protocol"]
