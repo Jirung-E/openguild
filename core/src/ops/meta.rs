@@ -178,6 +178,61 @@ fn validate_prefix(prefix: &str) -> AppResult<()> {
     Ok(())
 }
 
+/// status `name_en` validation — slug / 파일명 안전성 확보.
+///
+/// 규칙: 영문 시작 + (영문 / 숫자 / 공백 / `-` / `_`) 최대 32자. 한글 / 특수
+/// 문자 거부. slugify 결과의 안정성과 파일명 / URL 친화성 둘 다 만족.
+fn validate_status_name_en(s: &str) -> AppResult<()> {
+    if s.is_empty() {
+        return Err(AppError::BadRequest("name_en 은 필수".into()));
+    }
+    if s.chars().count() > 32 {
+        return Err(AppError::BadRequest(
+            "name_en 은 최대 32자".into(),
+        ));
+    }
+    let first = s.chars().next().unwrap();
+    if !first.is_ascii_alphabetic() {
+        return Err(AppError::BadRequest(
+            "name_en 은 영문자로 시작해야 함 (한글 / 숫자 / 특수문자 불가)".into(),
+        ));
+    }
+    for c in s.chars() {
+        let ok = c.is_ascii_alphanumeric() || c == ' ' || c == '-' || c == '_';
+        if !ok {
+            return Err(AppError::BadRequest(format!(
+                "name_en 에 허용되지 않은 문자 '{c}'. \
+                 영문 / 숫자 / 공백 / '-' / '_' 만 사용 가능."
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// status `name_ko` validation — 빈 값 OK (선택), control char / 파일 위험
+/// 문자 거부. 한글 / 영문 / 숫자 / 공백 / 일반 punctuation 은 OK.
+fn validate_status_name_ko(s: &str) -> AppResult<()> {
+    if s.chars().count() > 32 {
+        return Err(AppError::BadRequest(
+            "name_ko 는 최대 32자".into(),
+        ));
+    }
+    for c in s.chars() {
+        if c.is_control() {
+            return Err(AppError::BadRequest(
+                "name_ko 에 control character 사용 불가".into(),
+            ));
+        }
+        // Windows 예약 문자 거부 (파일명 / 표시 안전).
+        if matches!(c, '/' | '\\' | '<' | '>' | ':' | '*' | '?' | '"' | '|') {
+            return Err(AppError::BadRequest(format!(
+                "name_ko 에 허용되지 않은 문자 '{c}' (파일명 예약 문자)"
+            )));
+        }
+    }
+    Ok(())
+}
+
 fn validate_color(color: &str) -> AppResult<()> {
     let s = color.trim();
     if !s.starts_with('#') || (s.len() != 4 && s.len() != 7) {
@@ -207,15 +262,15 @@ pub async fn create_status(
     // 빈 ko 면 name_en 으로 fallback.)
     let name_en = name_en.trim().to_string();
     let name_ko = name_ko.trim().to_string();
-    if name_en.is_empty() {
-        return Err(AppError::BadRequest("name_en 은 필수".into()));
-    }
+    validate_status_name_en(&name_en)?;
+    validate_status_name_ko(&name_ko)?;
     validate_color(&color)?;
 
     let slug = slugify(&name_en);
     if slug.is_empty() {
+        // validate_status_name_en 통과 후엔 사실상 도달 불가 — 방어적.
         return Err(AppError::BadRequest(format!(
-            "name_en '{name_en}' 에서 slug 를 추출할 수 없음 (영문/숫자 포함 필요)"
+            "name_en '{name_en}' 에서 slug 를 추출할 수 없음"
         )));
     }
 
@@ -300,15 +355,18 @@ pub async fn update_status(
 
     if let Some(n) = name_en {
         let n = n.trim().to_string();
-        if n.is_empty() {
-            return Err(AppError::BadRequest("name_en 비울 수 없음".into()));
-        }
+        // DEV-014 후속 (fix4): create 와 동일 validation — update 가 우회 경로로
+        // 한글 / 특수문자 들어가던 회귀 차단. slug 자체는 frozen 이지만 표시명에
+        // 한글 들어가면 사용자 혼란.
+        validate_status_name_en(&n)?;
         row.name_en = n.clone();
         file.name_en = n;
     }
     if let Some(n) = name_ko {
-        // DEV-014 후속: name_ko 는 선택 — 빈 문자열 허용.
+        // DEV-014 후속: name_ko 는 선택 — 빈 문자열 허용. control / 파일 위험
+        // 문자만 거부.
         let n = n.trim().to_string();
+        validate_status_name_ko(&n)?;
         row.name_ko = n.clone();
         file.name_ko = n;
     }
@@ -657,6 +715,123 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, AppError::BadRequest(_)));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-014 fix4: name_en validation 일관성 — create / update 양쪽에서
+    /// 한글 / 특수문자 거부.
+    #[tokio::test]
+    async fn name_en_rejects_korean_and_special_chars() {
+        let (dir, store) = fresh_store("name-en-bad").await;
+        // create — 한글 거부.
+        let err = create_status(&store, "한국어".into(), "".into(), "#000".into(), None)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, AppError::BadRequest(_)));
+        // create — 특수문자 거부.
+        for bad in &["Open!", "On/Off", "v1.0", "Done?", "<x>", "a:b"] {
+            let err = create_status(&store, (*bad).into(), "".into(), "#000".into(), None)
+                .await
+                .unwrap_err();
+            assert!(matches!(err, AppError::BadRequest(_)), "bad={bad}");
+        }
+        // create — 영문 안 시작 거부.
+        let err = create_status(&store, "1Foo".into(), "".into(), "#000".into(), None)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, AppError::BadRequest(_)));
+        // create — 너무 김.
+        let long = "a".repeat(33);
+        let err = create_status(&store, long, "".into(), "#000".into(), None)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, AppError::BadRequest(_)));
+
+        // update — 같은 규칙. open status (seed) 의 name_en 을 한글로 바꾸려 하면 거부.
+        let err = update_status(
+            &store,
+            "open".into(),
+            Some("한국어".into()),
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, AppError::BadRequest(_)));
+        let err = update_status(
+            &store,
+            "open".into(),
+            Some("Open!".into()),
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, AppError::BadRequest(_)));
+
+        // 합법 케이스 — 영문/숫자/공백/-/_ OK.
+        let ok = create_status(
+            &store,
+            "In Review".into(),
+            "".into(),
+            "#000".into(),
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(ok.name_en, "In Review");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// name_ko 의 파일명 위험 문자 거부 + control char 거부 + 길이 제한.
+    #[tokio::test]
+    async fn name_ko_rejects_path_specials_and_control() {
+        let (dir, store) = fresh_store("name-ko-bad").await;
+        for bad in &["a/b", "a\\b", "x:y", "<tag>", "a*b", "a|b", "\"x\""] {
+            let err = create_status(
+                &store,
+                "Valid".into(),
+                (*bad).into(),
+                "#000".into(),
+                None,
+            )
+            .await
+            .unwrap_err();
+            assert!(matches!(err, AppError::BadRequest(_)), "bad={bad}");
+        }
+        // control char.
+        let err = create_status(
+            &store,
+            "Valid2".into(),
+            "a\nb".into(),
+            "#000".into(),
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, AppError::BadRequest(_)));
+        // 길이 초과.
+        let long_ko: String = std::iter::repeat('가').take(33).collect();
+        let err = create_status(&store, "Valid3".into(), long_ko, "#000".into(), None)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, AppError::BadRequest(_)));
+
+        // 합법: 한글 + 일반 punctuation OK.
+        let ok = create_status(
+            &store,
+            "Valid4".into(),
+            "리뷰 중 (대기)".into(),
+            "#000".into(),
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(ok.name_ko, "리뷰 중 (대기)");
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 

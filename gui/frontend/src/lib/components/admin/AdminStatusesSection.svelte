@@ -140,8 +140,19 @@
 					<tr>
 						{#if editing === s.slug}
 							<td><code class="frozen">{s.slug}</code></td>
-							<td><input type="text" bind:value={editNameEn} disabled={busy} /></td>
-							<td><input type="text" bind:value={editNameKo} disabled={busy} /></td>
+							<td>
+								<input
+									type="text"
+									bind:value={editNameEn}
+									maxlength="32"
+									pattern="[A-Za-z][A-Za-z0-9 _\-]*"
+									title="영문자로 시작 + 영문 / 숫자 / 공백 / '-' / '_' 만, 최대 32자"
+									disabled={busy}
+								/>
+							</td>
+							<td>
+								<input type="text" bind:value={editNameKo} maxlength="32" disabled={busy} />
+							</td>
 							<td><input type="color" bind:value={editColor} disabled={busy} /></td>
 							<td class="count">{s.quest_count}</td>
 							<td class="row-actions">
@@ -192,6 +203,9 @@
 						type="text"
 						bind:value={newNameEn}
 						placeholder="Blocked / In Review 등"
+						maxlength="32"
+						pattern="[A-Za-z][A-Za-z0-9 _\-]*"
+						title="영문자로 시작 + 영문 / 숫자 / 공백 / '-' / '_' 만, 최대 32자"
 						disabled={busy}
 					/>
 				</label>
@@ -201,6 +215,7 @@
 						type="text"
 						bind:value={newNameKo}
 						placeholder="(선택) 막힘 / 리뷰 중 등"
+						maxlength="32"
 						disabled={busy}
 					/>
 				</label>
