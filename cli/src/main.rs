@@ -132,7 +132,7 @@ enum QuestCmd {
         /// title / description 부분 일치 검색. 공백 split AND.
         #[arg(long)]
         search: Option<String>,
-        /// `search` 검색을 title 만으로 제한 (DEV-037). description 제외.
+        /// `search` 검색을 title 만으로 제한. description 제외.
         #[arg(long = "title-only")]
         title_only: bool,
         /// 정렬 키 — `id` (기본) / `urgency` / `status` / `updated` / `created`.
@@ -175,7 +175,7 @@ enum QuestCmd {
         #[arg(long)]
         count: bool,
     },
-    /// 퀘스트 상세 (슬러그: DEV-001)
+    /// 퀘스트 상세 (슬러그로 조회).
     Show {
         slug: String,
         /// 단일 필드만 출력 (script / pipe 친화).
@@ -185,7 +185,7 @@ enum QuestCmd {
         #[arg(long, value_name = "FIELD")]
         field: Option<String>,
     },
-    /// quest 의 변경 이력 (DEV-013) — 최신 → 과거 순.
+    /// quest 의 변경 이력 — 최신 → 과거 순.
     History { slug: String },
     /// 새 퀘스트 생성
     New {
@@ -233,7 +233,7 @@ enum QuestCmd {
     Deleted,
     /// 삭제된 퀘스트 복원
     Restore { slug: String },
-    /// 현재 상태 출력 (DEV-044). status 인자 지정 시 변경도 가능 — deprecated,
+    /// 현재 상태 출력. status 인자 지정 시 변경도 가능 — deprecated,
     /// `move` 사용 권장.
     Status {
         slug: String,
@@ -241,7 +241,7 @@ enum QuestCmd {
         /// 인자 미지정 시 현재 상태만 출력.
         status: Option<String>,
     },
-    /// 상태 변경 (DEV-044). status: name_en / slug / ID.
+    /// 상태 변경. status: name_en / slug / ID.
     Move { slug: String, status: String },
     /// 상태를 In Progress 로 변경
     Start { slug: String },
@@ -2871,6 +2871,81 @@ mod tests {
         assert!(dir.join(".guild/statuses/1-open.toml").is_file());
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-016: clap doc comment (`/// ...`) 에 적힌 quest 번호가 사용자
+    /// 노출되는 help 출력에 leak 한 적 있음. 회귀 방지 — 모든 subcommand 의
+    /// about / long_about / help 출력에 `<PREFIX>-<숫자>` 패턴 0건 보장.
+    #[test]
+    fn help_output_has_no_quest_id_leaks() {
+        use clap::CommandFactory;
+        let cmd = Cli::command();
+        let mut violations: Vec<String> = Vec::new();
+        check_help_recursive(&cmd, cmd.get_name(), &mut violations);
+        assert!(
+            violations.is_empty(),
+            "quest id 가 help 출력에 leak:\n{}",
+            violations.join("\n")
+        );
+    }
+
+    fn check_help_recursive(
+        cmd: &clap::Command,
+        path: &str,
+        violations: &mut Vec<String>,
+    ) {
+        let mut owned = cmd.clone();
+        let help = owned.render_long_help().to_string();
+        if let Some(found) = find_quest_id(&help) {
+            violations.push(format!("[{path}] '{found}' in help"));
+        }
+        for sub in cmd.get_subcommands() {
+            let sub_path = format!("{path} {}", sub.get_name());
+            check_help_recursive(sub, &sub_path, violations);
+        }
+    }
+
+    /// 처음 발견된 `<PREFIX>-<숫자>` substring (PREFIX 는 ASCII 대문자 2~5).
+    fn find_quest_id(s: &str) -> Option<&str> {
+        let bytes = s.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() {
+            // dash 위치 찾기.
+            let Some(dash_rel) = s[i..].find('-') else { break };
+            let dash = i + dash_rel;
+            // dash 앞 — ASCII 대문자 2~5자.
+            let prefix_end = dash;
+            let mut prefix_start = prefix_end;
+            while prefix_start > 0
+                && bytes[prefix_start - 1].is_ascii_uppercase()
+                && prefix_end - prefix_start < 5
+            {
+                prefix_start -= 1;
+            }
+            let prefix_len = prefix_end - prefix_start;
+            // dash 뒤 — ASCII 숫자 1자 이상.
+            let after = dash + 1;
+            let mut digits = after;
+            while digits < bytes.len() && bytes[digits].is_ascii_digit() {
+                digits += 1;
+            }
+            if prefix_len >= 2 && digits > after {
+                return Some(&s[prefix_start..digits]);
+            }
+            i = dash + 1;
+        }
+        None
+    }
+
+    #[test]
+    fn find_quest_id_detects_patterns() {
+        assert!(find_quest_id("foo (DEV-001) bar").is_some());
+        assert!(find_quest_id("BUG-44 trailing").is_some());
+        assert!(find_quest_id("REQ-7").is_some());
+        assert!(find_quest_id("no quest id here").is_none());
+        assert!(find_quest_id("D-1").is_none()); // prefix 너무 짧음.
+        assert!(find_quest_id("DEV-").is_none()); // 숫자 없음.
+        assert!(find_quest_id("dev-001").is_none()); // 소문자.
     }
 
     #[test]
