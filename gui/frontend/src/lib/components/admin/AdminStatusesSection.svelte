@@ -11,7 +11,6 @@
 	let editNameEn = $state('');
 	let editNameKo = $state('');
 	let editColor = $state('');
-	let editSortOrder = $state(0);
 
 	let creating = $state(false);
 	let newNameEn = $state('');
@@ -36,7 +35,6 @@
 		editNameEn = s.name_en;
 		editNameKo = s.name_ko;
 		editColor = s.color;
-		editSortOrder = s.sort_order;
 	}
 	function cancelEdit() {
 		editing = null;
@@ -49,8 +47,7 @@
 			await adminApi.updateStatus(editing, {
 				name_en: editNameEn,
 				name_ko: editNameKo,
-				color: editColor,
-				sort_order: editSortOrder
+				color: editColor
 			});
 			onmessage({ kind: 'success', text: `'${editing}' 갱신됨` });
 			editing = null;
@@ -129,7 +126,6 @@
 		<table>
 			<thead>
 				<tr>
-					<th style="width: 4ch">#</th>
 					<th style="width: 12ch">slug</th>
 					<th>name_en</th>
 					<th>name_ko</th>
@@ -142,14 +138,6 @@
 				{#each statuses as s (s.id)}
 					<tr>
 						{#if editing === s.slug}
-							<td>
-								<input
-									type="number"
-									bind:value={editSortOrder}
-									disabled={busy}
-									class="num"
-								/>
-							</td>
 							<td><code class="frozen">{s.slug}</code></td>
 							<td><input type="text" bind:value={editNameEn} disabled={busy} /></td>
 							<td><input type="text" bind:value={editNameKo} disabled={busy} /></td>
@@ -160,7 +148,6 @@
 								<button onclick={cancelEdit} disabled={busy}>취소</button>
 							</td>
 						{:else}
-							<td class="num">{s.sort_order}</td>
 							<td><code>{s.slug}</code></td>
 							<td>{s.name_en}</td>
 							<td>{s.name_ko}</td>
@@ -189,7 +176,6 @@
 		</table>
 		<p class="hint">
 			slug 는 frozen — history / 파일 frontmatter 가 참조하므로 rename 안 됨.
-			sort_order 변경 시 파일명도 자동 rename.
 		</p>
 	{/if}
 </section>
@@ -224,7 +210,7 @@
 				</label>
 			</div>
 			<p class="form-note">
-				sort_order 는 현재 max + 1 로 자동 부여. 만든 뒤 수정 가능.
+				새 status 는 목록 맨 뒤에 추가됩니다.
 			</p>
 			<div class="modal-actions">
 				<button class="btn-yes" onclick={doCreate} disabled={busy}>추가</button>
@@ -241,8 +227,7 @@
 			<p class="modal-msg">
 				<strong>{confirmDelete.name_en}</strong> (<code>{confirmDelete.slug}</code>) 을 삭제할까요?
 				<br />
-				디스크의 <code>.guild/statuses/{confirmDelete.sort_order}-{confirmDelete.slug}.toml</code>
-				파일도 함께 제거됩니다.
+				디스크의 <code>.guild/statuses/</code> 내 파일도 함께 제거됩니다.
 			</p>
 			<div class="modal-actions">
 				<button class="btn-yes danger" onclick={doDelete} disabled={busy}>삭제</button>
@@ -344,10 +329,6 @@
 		vertical-align: middle;
 		border: 1px solid #2a2a4a;
 	}
-	.num {
-		text-align: center;
-		color: #8b949e;
-	}
 	.count {
 		color: #8b949e;
 	}
@@ -356,8 +337,7 @@
 		gap: 0.3rem;
 		justify-content: flex-end;
 	}
-	input[type='text'],
-	input[type='number'] {
+	input[type='text'] {
 		width: 100%;
 		padding: 0.3rem 0.5rem;
 		background: #0d1117;
@@ -366,13 +346,7 @@
 		color: #c9d1d9;
 		font: inherit;
 	}
-	input[type='number'].num {
-		width: 4ch;
-		padding: 0.3rem 0.3rem;
-		text-align: center;
-	}
-	input[type='text']:focus,
-	input[type='number']:focus {
+	input[type='text']:focus {
 		outline: none;
 		border-color: #58a6ff;
 	}
