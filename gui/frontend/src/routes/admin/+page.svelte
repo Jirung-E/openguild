@@ -123,15 +123,19 @@
 	<title>Admin · OpenGuild</title>
 </svelte:head>
 
+<!-- DEV-014 후속 (fix5): toast 메시지 — 모달이 떠 있어도 위에 표시되도록
+     page 컨테이너 밖 + fixed positioning + 모달보다 높은 z-index. -->
+{#if message}
+	<div class="toast-wrap" role="status" aria-live="polite">
+		<div class="message {message.kind}">{message.text}</div>
+	</div>
+{/if}
+
 <div class="page">
 	<h1>관리자 (Admin)</h1>
 	<p class="note">
 		⚠ 인증 없음 — MVP 단계. 멀티유저로 확장 시 보호 필요.
 	</p>
-
-	{#if message}
-		<div class="message {message.kind}">{message.text}</div>
-	{/if}
 
 	<AdminTypesSection onmessage={onSectionMessage} />
 	<AdminStatusesSection onmessage={onSectionMessage} />
@@ -334,11 +338,28 @@
 		color: #c9d1d9;
 		list-style: disc;
 	}
+	/* DEV-014 후속 (fix5): toast wrapper — 화면 우상단 고정.
+	   모달 (.ov z-index 100) 보다 높은 z-index 로 가려지지 않게. */
+	.toast-wrap {
+		position: fixed;
+		top: 1rem;
+		right: 1rem;
+		z-index: 1000;
+		max-width: 420px;
+		pointer-events: none;
+	}
 	.message {
 		padding: 0.75rem 1rem;
-		margin-bottom: 1rem;
 		border-radius: 6px;
 		font-size: 0.875rem;
+		color: #e6edf3;
+		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+		pointer-events: auto;
+		animation: toast-in 0.18s ease-out;
+	}
+	@keyframes toast-in {
+		from { opacity: 0; transform: translateY(-8px); }
+		to   { opacity: 1; transform: translateY(0); }
 	}
 	.message.info {
 		background: #1a3a5a;

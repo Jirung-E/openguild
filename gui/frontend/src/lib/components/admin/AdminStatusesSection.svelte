@@ -18,6 +18,20 @@
 	let newColor = $state('#8b95a1');
 	// sort_order 는 backend 가 max+1 로 자동.
 
+	// DEV-014 후속 (fix5): 추가 시 기본 색 다양화 — 사용 중 색 회피.
+	const COLOR_PALETTE = [
+		'#8b95a1', '#4a90d9', '#7bb87f', '#f5a623',
+		'#e94f4f', '#8e4ec6', '#1abc9c', '#e91e63',
+		'#34495e', '#16a085', '#d35400', '#2c3e50'
+	];
+	function pickNextColor(): string {
+		const used = new Set(statuses.map((s) => s.color.toLowerCase()));
+		for (const c of COLOR_PALETTE) {
+			if (!used.has(c.toLowerCase())) return c;
+		}
+		return COLOR_PALETTE[statuses.length % COLOR_PALETTE.length];
+	}
+
 	let confirmDelete: QuestStatusWithCount | null = $state(null);
 
 	onMount(refresh);
@@ -62,7 +76,7 @@
 	function openCreate() {
 		newNameEn = '';
 		newNameKo = '';
-		newColor = '#8b95a1';
+		newColor = pickNextColor();
 		creating = true;
 	}
 

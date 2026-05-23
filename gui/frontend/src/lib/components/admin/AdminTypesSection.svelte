@@ -17,6 +17,22 @@
 	let newColor = $state('#4a90d9');
 	let newDesc = $state('');
 
+	// DEV-014 후속 (fix5): 추가 시 기본 색을 매번 다르게.
+	// 기존 사용 중인 색을 피한 다음 palette 색을 고름.
+	const COLOR_PALETTE = [
+		'#4a90d9', '#e94f4f', '#7bb87f', '#f5a623',
+		'#8e4ec6', '#1abc9c', '#e91e63', '#34495e',
+		'#16a085', '#d35400', '#2c3e50', '#c0392b'
+	];
+	function pickNextColor(): string {
+		const used = new Set(types.map((t) => t.color.toLowerCase()));
+		for (const c of COLOR_PALETTE) {
+			if (!used.has(c.toLowerCase())) return c;
+		}
+		// 모두 사용 중이면 길이 기반 cycle.
+		return COLOR_PALETTE[types.length % COLOR_PALETTE.length];
+	}
+
 	// 삭제 확인 모달.
 	let confirmDelete: QuestTypeWithCount | null = $state(null);
 
@@ -59,7 +75,7 @@
 
 	function openCreate() {
 		newPrefix = '';
-		newColor = '#4a90d9';
+		newColor = pickNextColor();
 		newDesc = '';
 		creating = true;
 	}

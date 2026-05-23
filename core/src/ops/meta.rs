@@ -209,8 +209,11 @@ fn validate_status_name_en(s: &str) -> AppResult<()> {
     Ok(())
 }
 
-/// status `name_ko` validation — 빈 값 OK (선택), control char / 파일 위험
-/// 문자 거부. 한글 / 영문 / 숫자 / 공백 / 일반 punctuation 은 OK.
+/// status `name_ko` validation — 빈 값 OK (선택). 허용 문자는 영문 (`name_en`)
+/// 규칙을 그대로 확장: 한글 + 영문 + 숫자 + 공백 + `-` + `_`. 시작 글자
+/// 제약은 없음 (한글 시작 OK).
+///
+/// 향후 다른 언어 (일본어 등) 추가 시 같은 규칙 — 해당 언어 글자 추가.
 fn validate_status_name_ko(s: &str) -> AppResult<()> {
     if s.chars().count() > 32 {
         return Err(AppError::BadRequest(
@@ -218,19 +221,30 @@ fn validate_status_name_ko(s: &str) -> AppResult<()> {
         ));
     }
     for c in s.chars() {
-        if c.is_control() {
-            return Err(AppError::BadRequest(
-                "name_ko 에 control character 사용 불가".into(),
-            ));
-        }
-        // Windows 예약 문자 거부 (파일명 / 표시 안전).
-        if matches!(c, '/' | '\\' | '<' | '>' | ':' | '*' | '?' | '"' | '|') {
+        let ok = is_hangul(c)
+            || c.is_ascii_alphanumeric()
+            || c == ' '
+            || c == '-'
+            || c == '_';
+        if !ok {
             return Err(AppError::BadRequest(format!(
-                "name_ko 에 허용되지 않은 문자 '{c}' (파일명 예약 문자)"
+                "name_ko 에 허용되지 않은 문자 '{c}'. \
+                 한글 / 영문 / 숫자 / 공백 / '-' / '_' 만 사용 가능."
             )));
         }
     }
     Ok(())
+}
+
+/// 한글 음절 + 자모 범위. IME 입력 호환 위해 자모 단독도 허용.
+fn is_hangul(c: char) -> bool {
+    matches!(c as u32,
+        0xAC00..=0xD7A3   // 완성형 한글 음절
+        | 0x1100..=0x11FF // 자모 (초/중/종성)
+        | 0x3130..=0x318F // 호환 자모
+        | 0xA960..=0xA97F // 확장 A
+        | 0xD7B0..=0xD7FF // 확장 B
+    )
 }
 
 fn validate_color(color: &str) -> AppResult<()> {
@@ -786,11 +800,19 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// name_ko 의 파일명 위험 문자 거부 + control char 거부 + 길이 제한.
+    /// name_ko 허용 문자: 한글 + 영문 + 숫자 + 공백 + `-` + `_` 만 (영어와
+    /// 동일 정책). 그 외 — control / 파일 위험 문자 / 일반 punctuation 까지
+    /// 모두 거부.
     #[tokio::test]
-    async fn name_ko_rejects_path_specials_and_control() {
+    async fn name_ko_rejects_disallowed_chars() {
         let (dir, store) = fresh_store("name-ko-bad").await;
-        for bad in &["a/b", "a\\b", "x:y", "<tag>", "a*b", "a|b", "\"x\""] {
+        let cases = &[
+            "a/b", "a\\b", "x:y", "<tag>", "a*b", "a|b", "\"x\"", // 파일 위험
+            "a.b", "a,b", "a!b", "a?b", "a(b)", "a;b",            // 일반 punctuation
+            "가/나", "가.나", "리뷰 중 (대기)",                       // 한글 + 거부 문자 혼합
+            "a\nb", "a\tb",                                       // control
+        ];
+        for bad in cases {
             let err = create_status(
                 &store,
                 "Valid".into(),
@@ -802,17 +824,6 @@ mod tests {
             .unwrap_err();
             assert!(matches!(err, AppError::BadRequest(_)), "bad={bad}");
         }
-        // control char.
-        let err = create_status(
-            &store,
-            "Valid2".into(),
-            "a\nb".into(),
-            "#000".into(),
-            None,
-        )
-        .await
-        .unwrap_err();
-        assert!(matches!(err, AppError::BadRequest(_)));
         // 길이 초과.
         let long_ko: String = std::iter::repeat('가').take(33).collect();
         let err = create_status(&store, "Valid3".into(), long_ko, "#000".into(), None)
@@ -820,17 +831,19 @@ mod tests {
             .unwrap_err();
         assert!(matches!(err, AppError::BadRequest(_)));
 
-        // 합법: 한글 + 일반 punctuation OK.
-        let ok = create_status(
-            &store,
-            "Valid4".into(),
-            "리뷰 중 (대기)".into(),
-            "#000".into(),
-            None,
-        )
-        .await
-        .unwrap();
-        assert_eq!(ok.name_ko, "리뷰 중 (대기)");
+        // 합법: 한글 / 영문 / 숫자 / 공백 / - / _ 만.
+        let ok_names = ["리뷰", "리뷰 중", "in_progress 한글", "Test-2024", "ㄱㄴㄷ"];
+        for (i, ok_name) in ok_names.iter().enumerate() {
+            let result = create_status(
+                &store,
+                format!("Valid name {i}"),
+                (*ok_name).into(),
+                "#000".into(),
+                None,
+            )
+            .await;
+            assert!(result.is_ok(), "should accept '{ok_name}': {result:?}");
+        }
 
         let _ = std::fs::remove_dir_all(&dir);
     }
