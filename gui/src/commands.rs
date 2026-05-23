@@ -293,11 +293,19 @@ pub async fn list_recents() -> Result<Vec<RecentDto>, String> {
     let raw = recents::list().map_err(|e| format!("{e:#}"))?;
     Ok(raw
         .into_iter()
-        .map(|r| RecentDto {
-            missing: !std::path::Path::new(&r.path).exists(),
-            path: r.path,
-            name: r.name,
-            last_opened: r.last_opened,
+        .map(|r| {
+            let p = std::path::Path::new(&r.path);
+            // DEV-052 후속 (5회차): path 가 살아있어도 `.guild` 마커가 없으면
+            // 더 이상 유효한 길드 아님 (사용자가 .guild 폴더만 삭제했거나
+            // 디렉토리 자체를 재활용한 경우). missing 으로 취급해서 자동
+            // 초기화 (실수로 빈 길드 생성) 방지.
+            let missing = !p.exists() || !crate::has_guild_marker(p);
+            RecentDto {
+                missing,
+                path: r.path,
+                name: r.name,
+                last_opened: r.last_opened,
+            }
         })
         .collect())
 }
@@ -419,6 +427,15 @@ pub fn open_guild_in_current_window(
     let p = std::path::Path::new(&path);
     if !p.exists() {
         return Err(format!("path 가 존재하지 않습니다: {path}"));
+    }
+    // DEV-052 후속 (5회차): `.guild` 마커가 없으면 Store::open 이 빈 길드를
+    // 새로 만들어버림 → 사용자 실수로 보일 수 있음. 명시적 에러로 막고,
+    // "이 위치 초기화" 흐름 (init_and_open_guild) 을 거치게 유도.
+    if !crate::has_guild_marker(p) {
+        return Err(format!(
+            "'{path}' 에 길드 마커 (.guild/ 폴더 또는 *.guild 파일) 가 없습니다. \
+             목록에서 제거하거나 새 위치를 지정하세요."
+        ));
     }
 
     // 1. 새 Store 미리 열기 (실패 시 swap 안 함).

@@ -91,10 +91,25 @@
 		}
 	}
 
-	async function removeRecent(path: string) {
+	// DEV-052 후속 (5회차): 단일 항목 제거 — 모든 항목에 × 버튼.
+	// 확인 모달 거쳐서 실수 방지.
+	let confirmRemove: Recent | null = $state(null);
+
+	function askRemove(r: Recent) {
+		confirmRemove = r;
+	}
+
+	function cancelRemove() {
+		confirmRemove = null;
+	}
+
+	async function doRemove() {
+		const target = confirmRemove;
+		if (!target) return;
+		confirmRemove = null;
 		try {
-			await recentsApi.remove(path);
-			recents = recents.filter((r) => r.path !== path);
+			await recentsApi.remove(target.path);
+			recents = recents.filter((r) => r.path !== target.path);
 		} catch (e) {
 			openErr = e instanceof Error ? e.message : String(e);
 		}
@@ -207,17 +222,16 @@
 							<div class="opening">길드 여는 중…</div>
 						{/if}
 					</button>
-					{#if r.missing}
-						<button
-							class="recent-remove"
-							type="button"
-							onclick={() => removeRecent(r.path)}
-							title="목록에서 제거 (디스크 데이터는 건드리지 않음)"
-							aria-label="목록에서 제거"
-						>
-							×
-						</button>
-					{/if}
+					<!-- DEV-052 후속 (5회차): 모든 항목에 × — 단일 삭제 + 확인 모달. -->
+					<button
+						class="recent-remove"
+						type="button"
+						onclick={() => askRemove(r)}
+						title="목록에서 제거 (디스크 데이터는 건드리지 않음)"
+						aria-label="목록에서 제거"
+					>
+						×
+					</button>
 				</li>
 			{/each}
 		</ul>
@@ -243,6 +257,24 @@
 			<div class="modal-actions">
 				<button class="btn-yes" onclick={doClear}>비우기</button>
 				<button class="btn-no" onclick={cancelClear}>취소</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+{#if confirmRemove}
+	<!-- DEV-052 후속 (5회차): 단일 항목 제거 확인. -->
+	<div class="ov" role="presentation">
+		<div class="modal" role="dialog" aria-modal="true" tabindex="-1">
+			<h3 class="modal-title">최근 길드에서 제거</h3>
+			<p class="modal-msg">
+				<strong>{confirmRemove.name}</strong> 을 최근 목록에서 제거할까요?
+			</p>
+			<p class="modal-path">{confirmRemove.path}</p>
+			<p class="modal-msg modal-note">디스크의 길드 파일은 그대로 두고, Recent 목록에서만 빠집니다.</p>
+			<div class="modal-actions">
+				<button class="btn-yes" onclick={doRemove}>제거</button>
+				<button class="btn-no" onclick={cancelRemove}>취소</button>
 			</div>
 		</div>
 	</div>
@@ -472,6 +504,23 @@
 	.modal-msg {
 		margin: 0 0 1rem;
 		font-size: 0.875rem; color: #c9d1d9;
+	}
+	.modal-msg strong {
+		color: #e6edf3;
+	}
+	.modal-path {
+		margin: -0.5rem 0 0.85rem;
+		padding: 0.4rem 0.6rem;
+		background: #0d1117;
+		border-radius: 4px;
+		font-family: 'SFMono-Regular', Consolas, monospace;
+		font-size: 0.8rem;
+		color: #8b95a1;
+		word-break: break-all;
+	}
+	.modal-note {
+		font-size: 0.8rem;
+		color: #8b95a1;
 	}
 	.modal-actions {
 		display: flex; gap: 0.5rem; justify-content: flex-end;
