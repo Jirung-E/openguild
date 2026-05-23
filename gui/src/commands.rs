@@ -11,7 +11,7 @@ use openguild_core::models::{
     ListQuery, QuestDependency, QuestDetail, QuestHistoryEntry, QuestPosition, QuestRow,
     QuestStatus, QuestType, UpdatePositionRequest, UpdateQuestRequest,
 };
-use openguild_core::ops::quests as ops;
+use openguild_core::ops::{meta as meta_ops, quests as ops};
 use openguild_core::services::{meta as meta_svc, quests as read};
 use openguild_core::{drift, reindex, snapshot, Store};
 use serde::{Deserialize, Serialize};
@@ -270,6 +270,181 @@ pub async fn admin_reindex(store: State<'_, Store>) -> Result<ReindexResult, Str
             .map(|(path, reason)| SkippedFile { path, reason })
             .collect(),
     })
+}
+
+// ─────────────────────── admin meta (DEV-014) ───────────────────────
+
+/// 사용 중 quest 수를 포함한 type DTO — UI 의 "삭제 가능?" 판단 용도.
+#[derive(Debug, Serialize)]
+pub struct QuestTypeWithCount {
+    #[serde(flatten)]
+    pub row: QuestType,
+    pub quest_count: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct QuestStatusWithCount {
+    #[serde(flatten)]
+    pub row: QuestStatus,
+    pub quest_count: i64,
+}
+
+#[tauri::command]
+pub async fn admin_list_types(
+    store: State<'_, Store>,
+) -> Result<Vec<QuestTypeWithCount>, String> {
+    let rows = meta_svc::list_quest_types(&store.index_pool)
+        .await
+        .map_err(err)?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        let quest_count = meta_ops::count_quests_by_type(&store.index_pool, row.id)
+            .await
+            .map_err(err)?;
+        out.push(QuestTypeWithCount { row, quest_count });
+    }
+    Ok(out)
+}
+
+#[tauri::command]
+pub async fn admin_list_statuses(
+    store: State<'_, Store>,
+) -> Result<Vec<QuestStatusWithCount>, String> {
+    let rows = meta_svc::list_quest_statuses(&store.index_pool)
+        .await
+        .map_err(err)?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        let quest_count = meta_ops::count_quests_by_status(&store.index_pool, row.id)
+            .await
+            .map_err(err)?;
+        out.push(QuestStatusWithCount { row, quest_count });
+    }
+    Ok(out)
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateTypeBody {
+    pub prefix: String,
+    pub color: String,
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+#[tauri::command]
+pub async fn admin_create_type(
+    store: State<'_, Store>,
+    body: CreateTypeBody,
+) -> Result<QuestType, String> {
+    meta_ops::create_type(&store, body.prefix, body.color, body.description)
+        .await
+        .map_err(err)
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateTypeBody {
+    #[serde(default)]
+    pub color: Option<String>,
+    /// `null` outer = 변경 없음, `null` inner (= JS `null` 명시) 는 unset.
+    /// JSON 으로는 `{"description": null}` vs 필드 자체 생략 으로 구분.
+    #[serde(default, with = "double_option")]
+    pub description: Option<Option<String>>,
+}
+
+#[tauri::command]
+pub async fn admin_update_type(
+    store: State<'_, Store>,
+    prefix: String,
+    body: UpdateTypeBody,
+) -> Result<QuestType, String> {
+    meta_ops::update_type(&store, prefix, body.color, body.description)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn admin_delete_type(
+    store: State<'_, Store>,
+    prefix: String,
+) -> Result<(), String> {
+    meta_ops::delete_type(&store, prefix).await.map_err(err)
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateStatusBody {
+    pub name_en: String,
+    pub name_ko: String,
+    pub color: String,
+    #[serde(default)]
+    pub sort_order: Option<i64>,
+}
+
+#[tauri::command]
+pub async fn admin_create_status(
+    store: State<'_, Store>,
+    body: CreateStatusBody,
+) -> Result<QuestStatus, String> {
+    meta_ops::create_status(
+        &store,
+        body.name_en,
+        body.name_ko,
+        body.color,
+        body.sort_order,
+    )
+    .await
+    .map_err(err)
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateStatusBody {
+    #[serde(default)]
+    pub name_en: Option<String>,
+    #[serde(default)]
+    pub name_ko: Option<String>,
+    #[serde(default)]
+    pub color: Option<String>,
+    #[serde(default)]
+    pub sort_order: Option<i64>,
+}
+
+#[tauri::command]
+pub async fn admin_update_status(
+    store: State<'_, Store>,
+    slug: String,
+    body: UpdateStatusBody,
+) -> Result<QuestStatus, String> {
+    meta_ops::update_status(
+        &store,
+        slug,
+        body.name_en,
+        body.name_ko,
+        body.color,
+        body.sort_order,
+    )
+    .await
+    .map_err(err)
+}
+
+#[tauri::command]
+pub async fn admin_delete_status(
+    store: State<'_, Store>,
+    slug: String,
+) -> Result<(), String> {
+    meta_ops::delete_status(&store, slug).await.map_err(err)
+}
+
+/// serde: `Option<Option<T>>` 필드 생략 vs `null` 구분 — `update_type`
+/// 의 `description` 이 unset (None) 인지 변경 없음 (Option::None) 인지
+/// 구분하기 위함.
+mod double_option {
+    use serde::{Deserialize, Deserializer};
+    pub fn deserialize<'de, T, D>(d: D) -> Result<Option<Option<T>>, D::Error>
+    where
+        T: Deserialize<'de>,
+        D: Deserializer<'de>,
+    {
+        Option::<T>::deserialize(d).map(Some)
+    }
 }
 
 // ─────────────────────── recents (DEV-006) ───────────────────────

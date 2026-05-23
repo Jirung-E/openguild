@@ -242,6 +242,15 @@ pub fn run() {
             commands::admin_restore,
             commands::admin_check_drift,
             commands::admin_reindex,
+            // admin meta (DEV-014)
+            commands::admin_list_types,
+            commands::admin_create_type,
+            commands::admin_update_type,
+            commands::admin_delete_type,
+            commands::admin_list_statuses,
+            commands::admin_create_status,
+            commands::admin_update_status,
+            commands::admin_delete_status,
             // recents (DEV-006)
             commands::list_recents,
             commands::clear_recents,
