@@ -145,6 +145,7 @@ pub fn run() {
         .manage(launch_info)
         .invoke_handler(tauri::generate_handler![
             commands::launch_mode,
+            commands::open_guild_in_new_window,
             // meta
             commands::list_quest_types,
             commands::list_quest_statuses,

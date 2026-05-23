@@ -12,12 +12,11 @@
 	);
 
 	// DEV-052: Tauri 가 인자 없이 시작되면 launch_mode === "welcome".
-	// 첫 진입 (root) 일 때만 /welcome 으로 redirect (사용자가 명시적으로
-	// 다시 / 로 navigate 한 경우엔 redirect 안 함 — sessionStorage 마커).
+	// 길드 컨텍스트가 없으므로 / (board) 진입 시 항상 /welcome 으로 bounce.
+	// (이전에 sessionStorage 마커로 첫 회만 redirect 했지만, Nav 로고 클릭 등
+	// 으로 다시 / 진입 시 빈 보드가 노출되는 버그가 있어서 제거.)
 	onMount(async () => {
 		if (detectEnvironment() !== 'tauri') return;
-		if (sessionStorage.getItem('og-launch-handled') === '1') return;
-		sessionStorage.setItem('og-launch-handled', '1');
 		try {
 			const { invoke } = await import('@tauri-apps/api/core');
 			const mode = await invoke<string>('launch_mode');

@@ -293,3 +293,25 @@ pub async fn clear_recents() -> Result<(), String> {
 pub fn launch_mode(state: State<'_, crate::LaunchInfo>) -> &'static str {
     state.mode
 }
+
+/// DEV-052 후속: Welcome 페이지의 recent 클릭 → 새 openguild-gui 프로세스를
+/// 그 path 인자로 spawn. 현재 process 의 Store 는 swap 안 함 (Tauri State 가
+/// 런타임 교체를 안전하게 지원 안 함) — 사용자가 새 창으로 그 길드 작업하고
+/// 기존 welcome 창은 닫으면 됨.
+///
+/// Tauri 가 closure 캡처를 통해 invoke 응답 후 현재 창 종료까지 처리하면
+/// 깔끔하지만 일단 detached spawn 만 제공. exit 은 frontend 가 별도 호출 가능.
+#[tauri::command]
+pub fn open_guild_in_new_window(path: String) -> Result<(), String> {
+    let p = std::path::Path::new(&path);
+    if !p.exists() {
+        return Err(format!("path 가 존재하지 않습니다: {path}"));
+    }
+    let current_exe = std::env::current_exe()
+        .map_err(|e| format!("current_exe 조회 실패: {e}"))?;
+    std::process::Command::new(current_exe)
+        .arg(&path)
+        .spawn()
+        .map_err(|e| format!("spawn 실패: {e}"))?;
+    Ok(())
+}
