@@ -47,6 +47,18 @@ export const adminApi = {
 	deleteType: (prefix: string) =>
 		api.delete(`/api/admin/types/${encodeURIComponent(prefix)}`),
 
+	/**
+	 * DEV-061: type prefix rename.
+	 * 그 type 의 모든 quest 의 slug 가 cascade — 파일명 / frontmatter
+	 * quest_id / DB history.quest_slug / positions.quest_slug 모두 갱신.
+	 * 관련 다른 quest 의 auto-block 도 재생성.
+	 * 본문 안 자유 텍스트 mention 은 사용자 책임.
+	 */
+	renameType: (prefix: string, newPrefix: string) =>
+		api.post<QuestType>(`/api/admin/types/${encodeURIComponent(prefix)}/rename`, {
+			new_prefix: newPrefix
+		}),
+
 	// ─── DEV-014: statuses ───
 	listStatuses: () => api.get<QuestStatusWithCount[]>('/api/admin/statuses'),
 	createStatus: (body: {
@@ -65,5 +77,15 @@ export const adminApi = {
 		}
 	) => api.patch<QuestStatus>(`/api/admin/statuses/${encodeURIComponent(slug)}`, body),
 	deleteStatus: (slug: string) =>
-		api.delete(`/api/admin/statuses/${encodeURIComponent(slug)}`)
+		api.delete(`/api/admin/statuses/${encodeURIComponent(slug)}`),
+
+	/**
+	 * DEV-061: status slug rename.
+	 * quest_history / 모든 quest .md frontmatter cascade.
+	 */
+	renameStatusSlug: (slug: string, newSlug: string) =>
+		api.post<QuestStatus>(
+			`/api/admin/statuses/${encodeURIComponent(slug)}/rename`,
+			{ new_slug: newSlug }
+		)
 };

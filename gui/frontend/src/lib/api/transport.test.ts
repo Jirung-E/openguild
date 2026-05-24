@@ -256,6 +256,32 @@ describe('TauriTransport', () => {
 			body: { name_ko: '게시' }
 		});
 	});
+	// DEV-061: rename
+	it('POST /api/admin/types/DEV/rename → admin_rename_type', async () => {
+		mockInvoke.mockResolvedValue({});
+		await new TauriTransport().call({
+			method: 'POST',
+			path: '/api/admin/types/DEV/rename',
+			body: { new_prefix: 'CORE' }
+		});
+		expect(mockInvoke).toHaveBeenCalledWith('admin_rename_type', {
+			prefix: 'DEV',
+			body: { new_prefix: 'CORE' }
+		});
+	});
+	it('POST /api/admin/statuses/open/rename → admin_rename_status_slug', async () => {
+		mockInvoke.mockResolvedValue({});
+		await new TauriTransport().call({
+			method: 'POST',
+			path: '/api/admin/statuses/open/rename',
+			body: { new_slug: 'backlog' }
+		});
+		expect(mockInvoke).toHaveBeenCalledWith('admin_rename_status_slug', {
+			slug: 'open',
+			body: { new_slug: 'backlog' }
+		});
+	});
+
 	it('DELETE /api/admin/statuses/on_hold → admin_delete_status', async () => {
 		mockInvoke.mockResolvedValue(undefined);
 		await new TauriTransport().call({

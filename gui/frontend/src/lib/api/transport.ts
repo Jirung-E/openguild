@@ -209,6 +209,10 @@ function routeToInvoke(
 	}
 	if (parts[0] === 'api' && parts[1] === 'admin' && parts[2] === 'types' && parts[3]) {
 		const prefix = decodeURIComponent(parts[3]);
+		// DEV-061: rename 은 별도 sub-resource (PATCH 의 의미 충돌 회피).
+		if (parts[4] === 'rename' && method === 'POST') {
+			return { cmd: 'admin_rename_type', args: { prefix, body } };
+		}
 		if (method === 'PATCH') return { cmd: 'admin_update_type', args: { prefix, body } };
 		if (method === 'DELETE') return { cmd: 'admin_delete_type', args: { prefix } };
 	}
@@ -221,6 +225,10 @@ function routeToInvoke(
 	}
 	if (parts[0] === 'api' && parts[1] === 'admin' && parts[2] === 'statuses' && parts[3]) {
 		const slug = decodeURIComponent(parts[3]);
+		// DEV-061: slug rename.
+		if (parts[4] === 'rename' && method === 'POST') {
+			return { cmd: 'admin_rename_status_slug', args: { slug, body } };
+		}
 		if (method === 'PATCH') return { cmd: 'admin_update_status', args: { slug, body } };
 		if (method === 'DELETE') return { cmd: 'admin_delete_status', args: { slug } };
 	}

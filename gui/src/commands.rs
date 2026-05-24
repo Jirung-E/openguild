@@ -381,6 +381,23 @@ pub async fn admin_delete_type(
 }
 
 #[derive(Debug, Deserialize)]
+pub struct RenameTypeBody {
+    pub new_prefix: String,
+}
+
+/// DEV-061: type prefix rename — 그 type 의 모든 quest slug cascade.
+#[tauri::command]
+pub async fn admin_rename_type(
+    store: State<'_, Store>,
+    prefix: String,
+    body: RenameTypeBody,
+) -> Result<QuestType, String> {
+    meta_ops::rename_type(&store, prefix, body.new_prefix)
+        .await
+        .map_err(err)
+}
+
+#[derive(Debug, Deserialize)]
 pub struct CreateStatusBody {
     pub name_en: String,
     pub name_ko: String,
@@ -441,6 +458,24 @@ pub async fn admin_delete_status(
     slug: String,
 ) -> Result<(), String> {
     meta_ops::delete_status(&store, slug).await.map_err(err)
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RenameStatusSlugBody {
+    pub new_slug: String,
+}
+
+/// DEV-061: status slug rename — quest_history / 모든 quest .md frontmatter
+/// cascade.
+#[tauri::command]
+pub async fn admin_rename_status_slug(
+    store: State<'_, Store>,
+    slug: String,
+    body: RenameStatusSlugBody,
+) -> Result<QuestStatus, String> {
+    meta_ops::rename_status_slug(&store, slug, body.new_slug)
+        .await
+        .map_err(err)
 }
 
 /// serde: `Option<Option<T>>` 필드 생략 vs `null` 구분 — `update_type`
