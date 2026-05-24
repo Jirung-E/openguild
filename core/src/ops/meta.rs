@@ -825,7 +825,7 @@ mod tests {
             assert!(matches!(err, AppError::BadRequest(_)), "bad={bad}");
         }
         // 길이 초과.
-        let long_ko: String = std::iter::repeat('가').take(33).collect();
+        let long_ko: String = "가".repeat(33);
         let err = create_status(&store, "Valid3".into(), long_ko, "#000".into(), None)
             .await
             .unwrap_err();
