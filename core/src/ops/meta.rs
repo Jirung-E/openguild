@@ -18,10 +18,46 @@
 
 use crate::error::{AppError, AppResult};
 use crate::models::{QuestStatus, QuestType};
-use crate::repo::{StatusFile, TypeFile};
+use crate::repo::{GuildPaths, StatusFile, TypeFile};
 use crate::store::Store;
 use anyhow::Context;
 use sqlx::SqlitePool;
+use std::path::PathBuf;
+
+/// BUG-018: slug 로 `.guild/statuses/<order>-<slug>.toml` 파일 찾기.
+///
+/// 이전엔 `StatusFile::filename(row.sort_order, slug)` 로 파일 경로를 추정
+/// 했는데, 사용자가 외부 편집 / 마이그레이션 / 옛 길드 등으로 file 의
+/// sort_order 와 파일명 prefix 가 어긋난 경우 (drift) 모든 mutation 이
+/// 'failed to read' 실패. 디렉토리에서 `*-<slug>.toml` 패턴으로 search.
+fn find_status_file_by_slug(
+    paths: &GuildPaths,
+    slug: &str,
+) -> AppResult<Option<PathBuf>> {
+    let dir = paths.statuses_dir();
+    let entries = match std::fs::read_dir(&dir) {
+        Ok(e) => e,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(AppError::Internal(anyhow::anyhow!(e))),
+    };
+    for e in entries.flatten() {
+        let path = e.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("toml") {
+            continue;
+        }
+        let stem = match path.file_stem().and_then(|s| s.to_str()) {
+            Some(s) => s,
+            None => continue,
+        };
+        // pattern: `<order>-<slug>` — 첫 `-` 이후가 slug.
+        if let Some(dash) = stem.find('-')
+            && &stem[dash + 1..] == slug
+        {
+            return Ok(Some(path));
+        }
+    }
+    Ok(None)
+}
 
 // ─────────────────────── Quest types ───────────────────────
 
@@ -364,16 +400,15 @@ pub async fn rename_status_slug(
     tx.commit().await?;
 
     // ── 파일 IO ──
-    // 1. statuses/<order>-<old>.toml → <order>-<new>.toml rename.
-    //    파일 내용은 unchanged (slug 가 파일 이름에만 존재).
-    let dir = store.paths.statuses_dir();
-    let old_filename = StatusFile::filename(old_row.sort_order, &old_slug);
-    let new_filename = StatusFile::filename(old_row.sort_order, &new_slug);
-    let old_path = dir.join(&old_filename);
-    let new_path = dir.join(&new_filename);
-    if old_path.exists() && old_path != new_path {
-        std::fs::rename(&old_path, &new_path)
-            .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
+    // 1. statuses 의 파일 rename. BUG-018: file 의 sort_order 와 DB 의 값이
+    //    drift 한 길드에서도 동작하도록 디렉토리 search 사용.
+    if let Some(old_path) = find_status_file_by_slug(&store.paths, &old_slug)? {
+        let new_filename = StatusFile::filename(old_row.sort_order, &new_slug);
+        let new_path = store.paths.statuses_dir().join(&new_filename);
+        if old_path != new_path {
+            std::fs::rename(&old_path, &new_path)
+                .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
+        }
     }
 
     // 2. 그 status 의 모든 quest .md frontmatter 의 `status` 필드 rewrite.
@@ -624,9 +659,17 @@ pub async fn update_status(
     }
 
     let mut row = fetch_status_by_slug(&store.index_pool, &slug).await?;
-    let old_filename = StatusFile::filename(row.sort_order, &slug);
-    let old_path = store.paths.statuses_dir().join(&old_filename);
+    // BUG-018: 파일 경로는 디렉토리 search (DB sort_order 추정 X).
+    let old_path = find_status_file_by_slug(&store.paths, &slug)?.ok_or_else(|| {
+        AppError::Internal(anyhow::anyhow!(
+            "status 파일 못 찾음: '{slug}'. reindex 권장."
+        ))
+    })?;
     let mut file = StatusFile::read(&old_path).map_err(AppError::Internal)?;
+    // file 의 sort_order 도 DB 와 sync (drift 보정).
+    if file.sort_order != row.sort_order {
+        file.sort_order = row.sort_order;
+    }
 
     if let Some(n) = name_en {
         let n = n.trim().to_string();
@@ -691,8 +734,10 @@ pub async fn delete_status(store: &Store, slug: String) -> AppResult<()> {
         )));
     }
 
-    let filename = StatusFile::filename(row.sort_order, &slug);
-    let _ = std::fs::remove_file(store.paths.statuses_dir().join(&filename));
+    // BUG-018: 디렉토리 search.
+    if let Some(p) = find_status_file_by_slug(&store.paths, &slug)? {
+        let _ = std::fs::remove_file(p);
+    }
     sqlx::query("DELETE FROM quest_statuses WHERE id = ?")
         .bind(row.id)
         .execute(&store.index_pool)
@@ -1121,6 +1166,69 @@ mod tests {
         .await
         .unwrap();
         assert!(row.is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ─── BUG-018: status 파일 sort_order drift ───
+
+    /// 파일명 prefix (예 `0-open.toml`) 와 file 안의 `sort_order` 필드 / DB
+    /// `sort_order` 가 어긋난 길드에서도 update / rename / delete 가 동작해야.
+    /// 이전엔 DB 의 sort_order 추정으로 파일 경로를 만들어서 'failed to read'.
+    #[tokio::test]
+    async fn status_mutations_work_when_file_prefix_drifts() {
+        let (dir, store) = fresh_store("st-drift").await;
+
+        // open status 의 실제 파일을 `99-open.toml` 로 강제 rename — drift 시뮬레이션.
+        // DB 의 sort_order 는 그대로 (1).
+        let row =
+            fetch_status_by_slug(&store.index_pool, "open").await.unwrap();
+        let dir_path = store.paths.statuses_dir();
+        let old_real_filename = StatusFile::filename(row.sort_order, "open");
+        let drift_filename = "99-open.toml";
+        std::fs::rename(
+            dir_path.join(&old_real_filename),
+            dir_path.join(drift_filename),
+        )
+        .unwrap();
+
+        // 이전 코드라면 `<row.sort_order>-open.toml` 못 찾아 실패. 이제는 search 로 OK.
+        let updated = update_status(
+            &store,
+            "open".into(),
+            None,
+            Some("게시".into()),
+            Some("#888888".into()),
+            None,
+        )
+        .await
+        .expect("drift 상태에서도 update 성공해야");
+        assert_eq!(updated.name_ko, "게시");
+        assert_eq!(updated.color, "#888888");
+
+        // rename 도 OK (drift 파일을 찾아서 새 slug 로 rename).
+        let renamed =
+            rename_status_slug(&store, "open".into(), "backlog".into())
+                .await
+                .expect("drift 상태에서도 rename 성공해야");
+        assert_eq!(renamed.slug, "backlog");
+        // 새 파일 — drift 의 order (99) 유지 안 함; DB 의 sort_order (1) 가 truth.
+        let renamed_path =
+            dir_path.join(StatusFile::filename(row.sort_order, "backlog"));
+        assert!(renamed_path.exists(), "new file: {renamed_path:?}");
+        assert!(
+            !dir_path.join(drift_filename).exists(),
+            "drift 파일 사라져야"
+        );
+
+        // delete 도 OK.
+        let row2 = fetch_status_by_slug(&store.index_pool, "on_hold").await.unwrap();
+        let on_hold_path = dir_path.join(StatusFile::filename(row2.sort_order, "on_hold"));
+        std::fs::rename(&on_hold_path, dir_path.join("77-on_hold.toml")).unwrap();
+        delete_status(&store, "on_hold".into())
+            .await
+            .expect("drift 상태에서도 delete 성공해야");
+        assert!(!dir_path.join("77-on_hold.toml").exists());
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 

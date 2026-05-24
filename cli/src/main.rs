@@ -1469,8 +1469,9 @@ fn run() -> Result<()> {
                 } else {
                     for s in &statuses {
                         // DEV-046: name_en 에 status.color.
+                        // BUG-018: slug 도 같이 표시 — rename 결과 사용자 확인 가능.
                         let name_colored = colorize(&format!("{:<14}", s.name_en), &s.color);
-                        println!("{name_colored} {}", s.name_ko);
+                        println!("{name_colored} ({:<14}) {}", s.slug, s.name_ko);
                     }
                 }
             }
