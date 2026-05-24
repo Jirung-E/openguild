@@ -12,7 +12,7 @@
 //!   --guild PATH     로컬 모드에서 .guild 가 있는 디렉토리 직접 지정 (cwd 자동탐색 대체)
 //!   --json           JSON 출력 (agent 용)
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use clap::{Parser, Subcommand};
 use openguild_core::models::{
     AddPrerequisiteRequest, ChangeParentRequest, ChangeStatusRequest, CreateQuestRequest,
@@ -62,10 +62,16 @@ enum Command {
         #[command(subcommand)]
         sub: QuestCmd,
     },
-    /// 퀘스트 타입 목록
-    Types,
-    /// 퀘스트 상태 목록
-    Statuses,
+    /// 퀘스트 타입 — 목록 / 추가 / 수정 / 삭제 / 이름 변경
+    Types {
+        #[command(subcommand)]
+        sub: Option<TypesCmd>,
+    },
+    /// 퀘스트 상태 — 목록 / 추가 / 수정 / 삭제 / 이름 변경
+    Statuses {
+        #[command(subcommand)]
+        sub: Option<StatusesCmd>,
+    },
     /// 서버 상태 확인 (health)
     Ping,
     /// 백업 (snapshot) 즉시 생성
@@ -271,6 +277,78 @@ enum PrereqCmd {
     Add { slug: String, prereq: String },
     /// 선행 퀘스트 제거
     Rm { slug: String, prereq: String },
+}
+
+/// DEV-062: type 관리. sub 미지정 시 List.
+#[derive(Subcommand)]
+enum TypesCmd {
+    /// 목록 (기본 동작)
+    List,
+    /// 새 type 추가
+    Add {
+        /// 대문자/숫자 1~6자 (예: DEV / BUG / REQ)
+        prefix: String,
+        /// 색 (#RGB 또는 #RRGGBB)
+        #[arg(long)]
+        color: String,
+        /// 설명 (선택)
+        #[arg(long)]
+        description: Option<String>,
+    },
+    /// 기존 type 수정 (color / description)
+    Update {
+        prefix: String,
+        #[arg(long)]
+        color: Option<String>,
+        #[arg(long)]
+        description: Option<String>,
+        /// description 을 비움 (--description 과 동시 사용 불가)
+        #[arg(long)]
+        clear_description: bool,
+    },
+    /// 사용 중 quest 없는 type 삭제
+    Delete { prefix: String },
+    /// prefix 변경 — 그 type 의 모든 quest slug cascade
+    Rename { prefix: String, new_prefix: String },
+}
+
+/// DEV-062: status 관리. sub 미지정 시 List.
+#[derive(Subcommand)]
+enum StatusesCmd {
+    /// 목록 (기본 동작)
+    List,
+    /// 새 status 추가. slug 는 name_en 에서 자동 생성.
+    Add {
+        /// 영문 이름 (영문자 시작 + 영문/숫자/공백/-/_, 최대 32자).
+        name_en: String,
+        #[arg(long)]
+        color: String,
+        /// 한국어 이름 (선택). 한글/영문/숫자/공백/-/_ 만, 최대 32자.
+        #[arg(long = "name-ko")]
+        name_ko: Option<String>,
+        /// 미지정 시 max(sort_order)+1.
+        #[arg(long = "sort-order")]
+        sort_order: Option<i64>,
+    },
+    /// 기존 status 수정. slug 자체는 frozen (rename 으로 분리).
+    Update {
+        slug: String,
+        #[arg(long = "name-en")]
+        name_en: Option<String>,
+        #[arg(long = "name-ko")]
+        name_ko: Option<String>,
+        #[arg(long)]
+        color: Option<String>,
+        #[arg(long = "sort-order")]
+        sort_order: Option<i64>,
+        /// name_ko 를 비움.
+        #[arg(long = "clear-name-ko")]
+        clear_name_ko: bool,
+    },
+    /// 사용 중 quest 없는 status 삭제
+    Delete { slug: String },
+    /// slug 변경 — quest_history / 모든 quest .md frontmatter cascade
+    Rename { slug: String, new_slug: String },
 }
 
 // DTO 는 `openguild_core::models` 에서 직접 사용. 위 use 문 참고.
@@ -710,6 +788,122 @@ impl Backend {
             Backend::Http(c) => c.remove_prerequisite(id, prereq_id),
             Backend::Local(l) => Self::map_err(l.rt.block_on(
                 openguild_core::ops::remove_prerequisite(&l.store, id, prereq_id),
+            )),
+        }
+    }
+
+    // ── DEV-062: type / status 관리 (local 전용) ──
+    //
+    // remote (HTTP) backend 는 별도 quest — 본 quest 범위는 local 모드.
+    // Backend::Http 호출 시 명시적 에러로 사용자 안내.
+
+    fn http_unsupported_meta() -> anyhow::Error {
+        anyhow::anyhow!(
+            "remote 모드에서는 type/status 관리 미지원 (별도 quest). \
+             local 모드 (--guild 또는 cwd 의 .guild) 에서 사용하세요."
+        )
+    }
+
+    fn create_type(
+        &self,
+        prefix: String,
+        color: String,
+        description: Option<String>,
+    ) -> Result<QuestType> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::create_type(&l.store, prefix, color, description),
+            )),
+        }
+    }
+
+    fn update_type(
+        &self,
+        prefix: String,
+        color: Option<String>,
+        description: Option<Option<String>>,
+    ) -> Result<QuestType> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::update_type(&l.store, prefix, color, description),
+            )),
+        }
+    }
+
+    fn delete_type(&self, prefix: String) -> Result<()> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => Self::map_err(
+                l.rt.block_on(openguild_core::ops::delete_type(&l.store, prefix)),
+            ),
+        }
+    }
+
+    fn rename_type(&self, old_prefix: String, new_prefix: String) -> Result<QuestType> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::rename_type(&l.store, old_prefix, new_prefix),
+            )),
+        }
+    }
+
+    fn create_status(
+        &self,
+        name_en: String,
+        name_ko: String,
+        color: String,
+        sort_order: Option<i64>,
+    ) -> Result<QuestStatus> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::create_status(
+                    &l.store, name_en, name_ko, color, sort_order,
+                ),
+            )),
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn update_status(
+        &self,
+        slug: String,
+        name_en: Option<String>,
+        name_ko: Option<String>,
+        color: Option<String>,
+        sort_order: Option<i64>,
+    ) -> Result<QuestStatus> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::update_status(
+                    &l.store, slug, name_en, name_ko, color, sort_order,
+                ),
+            )),
+        }
+    }
+
+    fn delete_status(&self, slug: String) -> Result<()> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => Self::map_err(
+                l.rt.block_on(openguild_core::ops::delete_status(&l.store, slug)),
+            ),
+        }
+    }
+
+    fn rename_status_slug(
+        &self,
+        old_slug: String,
+        new_slug: String,
+    ) -> Result<QuestStatus> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::rename_status_slug(&l.store, old_slug, new_slug),
             )),
         }
     }
@@ -1195,30 +1389,158 @@ fn run() -> Result<()> {
                 println!("ok ({s})");
             }
         }
-        Command::Types => {
-            let types = c.quest_types()?;
-            if cli.json {
-                println!("{}", serde_json::to_string_pretty(&types)?);
-            } else {
-                for t in &types {
-                    // DEV-046: prefix 에 type.color.
-                    let prefix_colored = colorize(&format!("{:<6}", t.prefix), &t.color);
-                    println!("{prefix_colored} {}", t.description.as_deref().unwrap_or(""));
+        Command::Types { sub } => match sub.unwrap_or(TypesCmd::List) {
+            TypesCmd::List => {
+                let types = c.quest_types()?;
+                if cli.json {
+                    println!("{}", serde_json::to_string_pretty(&types)?);
+                } else {
+                    for t in &types {
+                        // DEV-046: prefix 에 type.color.
+                        let prefix_colored = colorize(&format!("{:<6}", t.prefix), &t.color);
+                        println!(
+                            "{prefix_colored} {}",
+                            t.description.as_deref().unwrap_or("")
+                        );
+                    }
                 }
             }
-        }
-        Command::Statuses => {
-            let statuses = c.quest_statuses()?;
-            if cli.json {
-                println!("{}", serde_json::to_string_pretty(&statuses)?);
-            } else {
-                for s in &statuses {
-                    // DEV-046: name_en 에 status.color.
-                    let name_colored = colorize(&format!("{:<14}", s.name_en), &s.color);
-                    println!("{name_colored} {}", s.name_ko);
+            TypesCmd::Add { prefix, color, description } => {
+                let prefix_uc = prefix.trim().to_uppercase();
+                let row = c.create_type(prefix_uc, color, description)?;
+                if cli.json {
+                    println!("{}", serde_json::to_string_pretty(&row)?);
+                } else {
+                    let p = colorize(&format!("{:<6}", row.prefix), &row.color);
+                    println!("{p} 추가됨 — {}", row.description.as_deref().unwrap_or(""));
                 }
             }
-        }
+            TypesCmd::Update {
+                prefix,
+                color,
+                description,
+                clear_description,
+            } => {
+                if clear_description && description.is_some() {
+                    bail!("--description 과 --clear-description 동시 사용 불가");
+                }
+                // 'unset vs no-change' 구분 — clear 면 Some(None), 값 주면 Some(Some(v)),
+                // 둘 다 미지정이면 None (변경 없음).
+                let desc_arg: Option<Option<String>> = if clear_description {
+                    Some(None)
+                } else {
+                    description.map(Some)
+                };
+                let row = c.update_type(prefix.trim().to_string(), color, desc_arg)?;
+                if cli.json {
+                    println!("{}", serde_json::to_string_pretty(&row)?);
+                } else {
+                    let p = colorize(&format!("{:<6}", row.prefix), &row.color);
+                    println!("{p} 갱신됨 — {}", row.description.as_deref().unwrap_or(""));
+                }
+            }
+            TypesCmd::Delete { prefix } => {
+                c.delete_type(prefix.trim().to_string())?;
+                if cli.json {
+                    println!("{}", serde_json::json!({ "ok": true }));
+                } else {
+                    println!("'{}' 삭제됨", prefix.trim());
+                }
+            }
+            TypesCmd::Rename { prefix, new_prefix } => {
+                let new_uc = new_prefix.trim().to_uppercase();
+                let row = c.rename_type(prefix.trim().to_string(), new_uc)?;
+                if cli.json {
+                    println!("{}", serde_json::to_string_pretty(&row)?);
+                } else {
+                    println!(
+                        "'{}' → '{}' rename 완료 (관련 quest slug cascade)",
+                        prefix.trim(),
+                        row.prefix
+                    );
+                }
+            }
+        },
+        Command::Statuses { sub } => match sub.unwrap_or(StatusesCmd::List) {
+            StatusesCmd::List => {
+                let statuses = c.quest_statuses()?;
+                if cli.json {
+                    println!("{}", serde_json::to_string_pretty(&statuses)?);
+                } else {
+                    for s in &statuses {
+                        // DEV-046: name_en 에 status.color.
+                        let name_colored = colorize(&format!("{:<14}", s.name_en), &s.color);
+                        println!("{name_colored} {}", s.name_ko);
+                    }
+                }
+            }
+            StatusesCmd::Add {
+                name_en,
+                color,
+                name_ko,
+                sort_order,
+            } => {
+                let row = c.create_status(
+                    name_en,
+                    name_ko.unwrap_or_default(),
+                    color,
+                    sort_order,
+                )?;
+                if cli.json {
+                    println!("{}", serde_json::to_string_pretty(&row)?);
+                } else {
+                    let n = colorize(&format!("{:<14}", row.name_en), &row.color);
+                    println!(
+                        "{n} (slug={}) 추가됨 — {}",
+                        row.slug,
+                        if row.name_ko.is_empty() { "-" } else { &row.name_ko }
+                    );
+                }
+            }
+            StatusesCmd::Update {
+                slug,
+                name_en,
+                name_ko,
+                color,
+                sort_order,
+                clear_name_ko,
+            } => {
+                if clear_name_ko && name_ko.is_some() {
+                    bail!("--name-ko 와 --clear-name-ko 동시 사용 불가");
+                }
+                let ko_arg = if clear_name_ko {
+                    Some(String::new())
+                } else {
+                    name_ko
+                };
+                let row = c.update_status(slug, name_en, ko_arg, color, sort_order)?;
+                if cli.json {
+                    println!("{}", serde_json::to_string_pretty(&row)?);
+                } else {
+                    let n = colorize(&format!("{:<14}", row.name_en), &row.color);
+                    println!("{n} (slug={}) 갱신됨", row.slug);
+                }
+            }
+            StatusesCmd::Delete { slug } => {
+                c.delete_status(slug.clone())?;
+                if cli.json {
+                    println!("{}", serde_json::json!({ "ok": true }));
+                } else {
+                    println!("'{slug}' 삭제됨");
+                }
+            }
+            StatusesCmd::Rename { slug, new_slug } => {
+                let row = c.rename_status_slug(slug.clone(), new_slug.clone())?;
+                if cli.json {
+                    println!("{}", serde_json::to_string_pretty(&row)?);
+                } else {
+                    println!(
+                        "'{slug}' → '{}' rename 완료 (history / 모든 quest frontmatter cascade)",
+                        row.slug
+                    );
+                }
+            }
+        },
         Command::Backup => {
             let info = c.create_backup()?;
             if cli.json {
@@ -2963,5 +3285,124 @@ mod tests {
         assert_eq!(&date[4..5], "-");
         assert_eq!(&date[7..8], "-");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ─── DEV-062: types / statuses subcommand 파싱 ───
+
+    #[test]
+    fn cli_types_no_sub_defaults_to_list() {
+        // 호환성: 기존 `openguild types` 는 list 동작 유지.
+        let cli = Cli::try_parse_from(["openguild", "types"]).unwrap();
+        match cli.command {
+            Command::Types { sub } => assert!(sub.is_none()),
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn cli_types_add() {
+        let cli = Cli::try_parse_from([
+            "openguild", "types", "add", "FOO", "--color", "#abcdef", "--description", "x",
+        ])
+        .unwrap();
+        match cli.command {
+            Command::Types {
+                sub: Some(TypesCmd::Add { prefix, color, description }),
+            } => {
+                assert_eq!(prefix, "FOO");
+                assert_eq!(color, "#abcdef");
+                assert_eq!(description.as_deref(), Some("x"));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn cli_types_update_with_clear() {
+        let cli = Cli::try_parse_from([
+            "openguild",
+            "types",
+            "update",
+            "DEV",
+            "--clear-description",
+        ])
+        .unwrap();
+        match cli.command {
+            Command::Types {
+                sub:
+                    Some(TypesCmd::Update {
+                        prefix,
+                        clear_description,
+                        description,
+                        color,
+                    }),
+            } => {
+                assert_eq!(prefix, "DEV");
+                assert!(clear_description);
+                assert!(description.is_none());
+                assert!(color.is_none());
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn cli_types_rename() {
+        let cli =
+            Cli::try_parse_from(["openguild", "types", "rename", "DEV", "CORE"]).unwrap();
+        match cli.command {
+            Command::Types {
+                sub: Some(TypesCmd::Rename { prefix, new_prefix }),
+            } => {
+                assert_eq!(prefix, "DEV");
+                assert_eq!(new_prefix, "CORE");
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn cli_statuses_add_with_name_ko_and_sort_order() {
+        let cli = Cli::try_parse_from([
+            "openguild",
+            "statuses",
+            "add",
+            "Blocked",
+            "--color",
+            "#ff0000",
+            "--name-ko",
+            "막힘",
+            "--sort-order",
+            "9",
+        ])
+        .unwrap();
+        match cli.command {
+            Command::Statuses {
+                sub: Some(StatusesCmd::Add { name_en, color, name_ko, sort_order }),
+            } => {
+                assert_eq!(name_en, "Blocked");
+                assert_eq!(color, "#ff0000");
+                assert_eq!(name_ko.as_deref(), Some("막힘"));
+                assert_eq!(sort_order, Some(9));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn cli_statuses_rename() {
+        let cli = Cli::try_parse_from([
+            "openguild", "statuses", "rename", "open", "backlog",
+        ])
+        .unwrap();
+        match cli.command {
+            Command::Statuses {
+                sub: Some(StatusesCmd::Rename { slug, new_slug }),
+            } => {
+                assert_eq!(slug, "open");
+                assert_eq!(new_slug, "backlog");
+            }
+            _ => panic!(),
+        }
     }
 }
