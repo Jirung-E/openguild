@@ -898,6 +898,8 @@
 	async function arrangeNodesGrouped(nodesToArrange: NodeSingular[], _cols: number) {
 		void _cols;
 		if (!cy || arranging) return;
+		// DEV-056 fix1: hidden 노드 제외 — 정렬 시 자리 안 차지하도록.
+		nodesToArrange = nodesToArrange.filter((n) => n.style('display') !== 'none');
 		// 빈 배열 시 no-op — 빈 lane 의 정렬 버튼이 전체 정렬을 trigger 하지 않도록.
 		// 전체 정렬을 원하면 호출자가 명시적으로 모든 노드 전달 (toolbar 의 전체 정렬 버튼처럼).
 		if (nodesToArrange.length === 0) return;
@@ -1091,7 +1093,10 @@
 			// 이 lane 의 cols 도 인자로 받은 cols 로 동기화 (snap grid 와 일치)
 			laneCols[li] = cols;
 			const firstX = laneFirstCellX(li, cols);
-			const nodes = cy.nodes(`[statusId = ${statusId}]`);
+			// DEV-056 fix1: hidden 노드 제외 — 정렬 시 자리 안 차지하도록.
+			const nodes = cy.nodes(`[statusId = ${statusId}]`).filter(
+				(n) => (n as NodeSingular).style('display') !== 'none'
+			);
 			if (nodes.length === 0) continue;
 			const sortedNodes = nodes.toArray().sort((a, b) => {
 				const sa = (a as NodeSingular).data('questSlug') as string;
@@ -1834,6 +1839,7 @@
 		} else {
 			cy.fit(undefined, 60);
 		}
+
 		syncLanes();
 
 		// DEV-056: hide settings 적용. computeGroups → applyHideSettings.
