@@ -287,6 +287,46 @@
 		}
 	}
 
+	// ── DEV-058: Board viewport (pan + zoom) 영속화 ─────────────
+	// 길드 → board 진입 시마다 fit() 이 화면 전체 보기로 reset 하던 동작 →
+	// 사용자가 보고 있던 위치/확대율을 localStorage 에 저장 후 복원.
+	const VIEWPORT_KEY = 'openguild.boardViewport';
+	interface BoardViewport {
+		pan: { x: number; y: number };
+		zoom: number;
+	}
+	function loadViewport(): BoardViewport | null {
+		try {
+			const raw = localStorage.getItem(VIEWPORT_KEY);
+			if (!raw) return null;
+			const v = JSON.parse(raw) as BoardViewport;
+			if (
+				v &&
+				typeof v.zoom === 'number' &&
+				v.pan &&
+				typeof v.pan.x === 'number' &&
+				typeof v.pan.y === 'number'
+			)
+				return v;
+		} catch {
+			/* 무시 */
+		}
+		return null;
+	}
+	let viewportSaveTimer: ReturnType<typeof setTimeout> | null = null;
+	function scheduleViewportSave() {
+		if (viewportSaveTimer) clearTimeout(viewportSaveTimer);
+		viewportSaveTimer = setTimeout(() => {
+			if (!cy) return;
+			try {
+				const v: BoardViewport = { pan: cy.pan(), zoom: cy.zoom() };
+				localStorage.setItem(VIEWPORT_KEY, JSON.stringify(v));
+			} catch {
+				/* 무시 */
+			}
+		}, 250); // debounce 250ms — 연속 pan/zoom 시 저장 폭주 방지.
+	}
+
 	function defaultHideSetting(): HideSetting {
 		return { laneHidden: false, hideGroup: false, hideSolo: false };
 	}
@@ -1607,7 +1647,10 @@
 			boxSelectionEnabled: false
 		});
 
-		cy.on('pan zoom', () => syncLanes());
+		cy.on('pan zoom', () => {
+			syncLanes();
+			scheduleViewportSave(); // DEV-058
+		});
 
 		// ── 드래그 이벤트 (다중선택 배치 처리) ─────────────────────
 
@@ -1784,7 +1827,13 @@
 			}
 		});
 
-		cy.fit(undefined, 60);
+		// DEV-058: 저장된 viewport 가 있으면 복원, 없으면 fit().
+		const savedViewport = loadViewport();
+		if (savedViewport) {
+			cy.viewport({ pan: savedViewport.pan, zoom: savedViewport.zoom });
+		} else {
+			cy.fit(undefined, 60);
+		}
 		syncLanes();
 
 		// DEV-056: hide settings 적용. computeGroups → applyHideSettings.
