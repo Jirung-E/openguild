@@ -6,6 +6,7 @@
 	import { goto } from '$app/navigation';
 	import { questsApi } from '$lib/api/quests';
 	import { metaApi } from '$lib/api/meta';
+	import { detectEnvironment } from '$lib/api/transport';
 	import { flashQuestId } from '$lib/stores';
 	import {
 		URGENCY_COLOR,
@@ -202,10 +203,28 @@
 	let error = $state<string | null>(null);
 	let undoStack = $state<HistoryRecord[]>([]);
 	let redoStack = $state<HistoryRecord[]>([]);
+	// ── BUG-019: localStorage 길드별 namespace prefix ─────────────
+	// hideSettings / lane cols / viewport / gridSnap 은 길드 데이터에 종속
+	// (status slug 키, board 좌표 등) — 길드 A 의 설정이 B 로 누수되면 안 됨.
+	// 활성 길드 경로의 FNV-1a 32-bit 해시 (8 hex) 를 prefix 로 사용.
+	// 길드 경로 로드 전에는 ''. 모든 load/save 는 prefix 설정 후 호출 (init).
+	let guildKeyPrefix = '';
+	function fnv1a32(s: string): string {
+		let h = 0x811c9dc5;
+		for (let i = 0; i < s.length; i++) {
+			h ^= s.charCodeAt(i);
+			h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+		}
+		return h.toString(16).padStart(8, '0');
+	}
+	function gk(suffix: string): string {
+		return guildKeyPrefix
+			? `openguild.${guildKeyPrefix}.${suffix}`
+			: `openguild.${suffix}`;
+	}
+
 	// ── lane cols 영속화 헬퍼 (BUG-009) ─────────────────────────
 	// status slug 를 키로 — sort_order / id 가 reindex / 시드 변경 시 흔들리므로.
-	const LANE_COLS_KEY = 'openguild.laneCols';
-	const GLOBAL_COLS_KEY = 'openguild.globalCols';
 
 	function statusSlug(nameEn: string): string {
 		return nameEn.toLowerCase().replace(/ /g, '_').replace(/-/g, '_');
@@ -213,7 +232,7 @@
 
 	function loadLaneColsMap(): Record<string, number> {
 		try {
-			const raw = localStorage.getItem(LANE_COLS_KEY);
+			const raw = localStorage.getItem(gk('laneCols'));
 			if (!raw) return {};
 			const parsed = JSON.parse(raw);
 			if (parsed && typeof parsed === 'object') return parsed as Record<string, number>;
@@ -225,7 +244,7 @@
 
 	function saveLaneColsMap(map: Record<string, number>) {
 		try {
-			localStorage.setItem(LANE_COLS_KEY, JSON.stringify(map));
+			localStorage.setItem(gk('laneCols'), JSON.stringify(map));
 		} catch {
 			/* 무시 */
 		}
@@ -233,7 +252,7 @@
 
 	function loadGlobalCols(): number {
 		try {
-			const raw = localStorage.getItem(GLOBAL_COLS_KEY);
+			const raw = localStorage.getItem(gk('globalCols'));
 			const n = raw ? parseInt(raw, 10) : NaN;
 			if (Number.isFinite(n) && [1, 2, 3].includes(n)) return n;
 		} catch {
@@ -244,7 +263,7 @@
 
 	function saveGlobalCols(n: number) {
 		try {
-			localStorage.setItem(GLOBAL_COLS_KEY, String(n));
+			localStorage.setItem(gk('globalCols'), String(n));
 		} catch {
 			/* 무시 */
 		}
@@ -264,11 +283,9 @@
 		hideGroup: boolean;
 		hideSolo: boolean;
 	}
-	const HIDE_SETTINGS_KEY = 'openguild.hideSettings';
-
 	function loadHideSettings(): Record<string, HideSetting> {
 		try {
-			const raw = localStorage.getItem(HIDE_SETTINGS_KEY);
+			const raw = localStorage.getItem(gk('hideSettings'));
 			if (!raw) return {};
 			const parsed = JSON.parse(raw);
 			if (parsed && typeof parsed === 'object')
@@ -281,7 +298,7 @@
 
 	function saveHideSettings(map: Record<string, HideSetting>) {
 		try {
-			localStorage.setItem(HIDE_SETTINGS_KEY, JSON.stringify(map));
+			localStorage.setItem(gk('hideSettings'), JSON.stringify(map));
 		} catch {
 			/* 무시 */
 		}
@@ -290,14 +307,13 @@
 	// ── DEV-058: Board viewport (pan + zoom) 영속화 ─────────────
 	// 길드 → board 진입 시마다 fit() 이 화면 전체 보기로 reset 하던 동작 →
 	// 사용자가 보고 있던 위치/확대율을 localStorage 에 저장 후 복원.
-	const VIEWPORT_KEY = 'openguild.boardViewport';
 	interface BoardViewport {
 		pan: { x: number; y: number };
 		zoom: number;
 	}
 	function loadViewport(): BoardViewport | null {
 		try {
-			const raw = localStorage.getItem(VIEWPORT_KEY);
+			const raw = localStorage.getItem(gk('boardViewport'));
 			if (!raw) return null;
 			const v = JSON.parse(raw) as BoardViewport;
 			if (
@@ -320,7 +336,7 @@
 			if (!cy) return;
 			try {
 				const v: BoardViewport = { pan: cy.pan(), zoom: cy.zoom() };
-				localStorage.setItem(VIEWPORT_KEY, JSON.stringify(v));
+				localStorage.setItem(gk('boardViewport'), JSON.stringify(v));
 			} catch {
 				/* 무시 */
 			}
@@ -335,7 +351,9 @@
 		return hideSettings[slug] ?? defaultHideSetting();
 	}
 
-	let hideSettings = $state<Record<string, HideSetting>>(loadHideSettings());
+	// BUG-019: guildKeyPrefix 가 아직 비어있어 load 가 무의미 — onMount 에서
+	// guild path 확정 후 loadHideSettings() 결과로 대체.
+	let hideSettings = $state<Record<string, HideSetting>>({});
 	let showHideModal = $state(false);
 
 	/** questId → 그룹 멤버 set (자기 자신 포함). cluster 와 동일 의미. */
@@ -538,8 +556,9 @@
 	let expandedPos = $state({ x: 0, y: 0 });
 	let cardPinned = false; // 사용자가 카드를 드래그하면 true, 새 노드 클릭 시 false
 	let activeHighlights = $state(new Set<HighlightType>());
-	// globalCols — toolbar 의 Arrange cols. localStorage 영속 (BUG-009).
-	let globalCols = $state(loadGlobalCols());
+	// globalCols — toolbar 의 Arrange cols. localStorage 영속 (BUG-009 / BUG-019).
+	// 초기값은 default — onMount 의 guild prefix 확정 후 loadGlobalCols() 결과로 덮어씀.
+	let globalCols = $state(2);
 
 	// 전역 정렬 모드 (toolbar Arrange 버튼).
 	//   'all'   = 단순 wrap (왼쪽 위부터 채움)
@@ -558,7 +577,7 @@
 	function toggleGridSnap() {
 		gridSnap = !gridSnap;
 		try {
-			localStorage.setItem('openguild.gridSnap', String(gridSnap));
+			localStorage.setItem(gk('gridSnap'), String(gridSnap));
 		} catch {
 			/* 무시 */
 		}
@@ -1257,11 +1276,8 @@
 	// ── 초기화 ──────────────────────────────────────────────────
 
 	onMount(() => {
-		try {
-			gridSnap = localStorage.getItem('openguild.gridSnap') === 'true';
-		} catch {
-			/* 무시 */
-		}
+		// gridSnap 은 guildKeyPrefix 가 두 번째 onMount 에서 set 된 직후 다시
+		// loadGridSnap 호출. 여기서는 listener 만.
 		window.addEventListener('keydown', handleKeydown);
 		window.addEventListener('keyup', handleKeyup);
 		window.addEventListener('blur', onCtrlUp);
@@ -1280,6 +1296,28 @@
 
 	onMount(async () => {
 		try {
+			// BUG-019: 길드별 localStorage namespace — guildKeyPrefix 를 fetch 후
+			// 모든 localStorage 의존 상태 (hideSettings / globalCols / gridSnap /
+			// viewport / laneCols) 가 그 prefix 로 접근. detect Tauri 안 되면
+			// (web GUI) prefix 빈 채로 두어 기존 단일 namespace 유지.
+			try {
+				if (detectEnvironment() === 'tauri') {
+					const { invoke } = await import('@tauri-apps/api/core');
+					const path = await invoke<string>('current_guild_path');
+					if (path) guildKeyPrefix = fnv1a32(path);
+				}
+			} catch {
+				/* 무시 — prefix 빈 채로 fallback */
+			}
+			// prefix 확정 후 가벼운 영속 상태 즉시 로드 (init 이전 — UI 깜빡임 최소화).
+			hideSettings = loadHideSettings();
+			globalCols = loadGlobalCols();
+			try {
+				gridSnap = localStorage.getItem(gk('gridSnap')) === 'true';
+			} catch {
+				/* 무시 */
+			}
+
 			const [quests, statuses, positions, dependencies] = await Promise.all([
 				questsApi.list(),
 				metaApi.getQuestStatuses(),

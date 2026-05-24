@@ -211,6 +211,7 @@ pub fn run() {
         .manage(launch_info)
         .invoke_handler(tauri::generate_handler![
             commands::launch_mode,
+            commands::current_guild_path,
             commands::inspect_guild_path,
             commands::open_guild_in_current_window,
             commands::init_and_open_guild,

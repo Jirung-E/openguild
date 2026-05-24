@@ -590,6 +590,15 @@ pub fn launch_mode(state: State<'_, crate::LaunchInfo>) -> LaunchInfoDto {
     }
 }
 
+/// BUG-019: 현재 활성 길드 경로 (절대 경로). frontend 의 localStorage
+/// namespace 분리 / 길드별 UI 상태 키 prefix 에 사용. Welcome / Uninit
+/// 모드일 땐 placeholder 경로가 그대로 반환되므로 frontend 는
+/// `launch_mode.mode === "guild"` 일 때만 의미 있게 사용해야 함.
+#[tauri::command]
+pub fn current_guild_path(store: State<'_, Store>) -> String {
+    store.paths.guild_root.display().to_string()
+}
+
 /// DEV-052 후속: 길드 마커 없는 디렉토리에서 사용자가 "초기화" 승인 시
 /// 호출. .guild 시드 생성 + Store::open + recents 등록 + Store / LaunchInfo
 /// 를 swap. `unmanage` 의 deprecation 이유는 open_guild_in_current_window 주석 참고.
