@@ -170,6 +170,13 @@ pub struct AddPrerequisiteRequest {
     pub prerequisite_id: i64,
 }
 
+/// DEV-055: quest 의 type 변경 — slug 가 바뀜 (DEV-001 → BUG-013 같은 식).
+#[derive(Debug, Deserialize)]
+pub struct ChangeTypeRequest {
+    /// 새 type 의 prefix (대소문자 무시). 예: "BUG".
+    pub new_type_prefix: String,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct UpdatePositionRequest {
     pub x: f64,

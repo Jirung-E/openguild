@@ -5,8 +5,8 @@
 
 use crate::error::AppResult;
 use crate::models::{
-    AddPrerequisiteRequest, ChangeParentRequest, ChangeStatusRequest, CreateQuestRequest,
-    QuestRow, UpdateQuestRequest,
+    AddPrerequisiteRequest, ChangeParentRequest, ChangeStatusRequest, ChangeTypeRequest,
+    CreateQuestRequest, QuestRow, UpdateQuestRequest,
 };
 use crate::repo::{auto, QuestFile, QuestFrontmatter, QuestRef, QuestRelations};
 use crate::services::quests as sql;
@@ -136,6 +136,97 @@ pub async fn change_status(
     .await?;
 
     write_quest_file(store, &quest).await?;
+    after_mutation(store).await;
+    Ok(quest)
+}
+
+/// DEV-055: quest 의 type 변경.
+///
+/// slug 가 바뀌므로 (예 `DEV-001` → `BUG-013`) cascade 가 필요:
+/// 1. SQL: `quests.quest_type_id` / `number` 갱신, `quest_history.quest_slug`,
+///    `quest_positions.quest_slug` 도 cascade (services::change_type 가 담당).
+/// 2. 본 함수가 추가로:
+///    - quest_history INSERT — op="change_type", old_slug → new_slug 기록.
+///    - 파일: `.guild/quests/<old_slug>.md` → `<new_slug>.md` rename.
+///    - 관련 quest 들 (parent / sub / prereq / dependent) 의 .md 파일 auto-block
+///      재생성 — 그쪽이 본인을 mention 하던 게 새 slug 로 갱신되어야.
+///
+/// **본문 안 자유 텍스트 mention** (예 다른 quest 의 description 에 "DEV-001
+/// 참조" 같은 게 적힌 것) 은 자동 갱신 X — 사용자 결정 (DEV-055 본문 정책).
+/// 사용자가 grep + replace 필요 시 직접.
+pub async fn change_quest_type(
+    store: &Store,
+    id: i64,
+    body: ChangeTypeRequest,
+) -> AppResult<QuestRow> {
+    let _ = journal::append(
+        &store.journal_pool,
+        "change_quest_type",
+        &json!({ "id": id, "new_type_prefix": &body.new_type_prefix }),
+        None::<&serde_json::Value>,
+    )
+    .await
+    .map_err(crate::error::AppError::Internal)?;
+
+    let (quest, old_slug, new_slug) =
+        sql::change_type(&store.index_pool, id, &body.new_type_prefix).await?;
+
+    // NoOp (같은 type) — 추가 작업 없이 반환.
+    if old_slug == new_slug {
+        return Ok(quest);
+    }
+
+    // history INSERT — type 변경 자체를 audit.
+    let ts = crate::time::now_local_iso8601();
+    sqlx::query(
+        "INSERT INTO quest_history (quest_id, quest_slug, ts, op, old_value, new_value)
+         VALUES (?, ?, ?, ?, ?, ?)",
+    )
+    .bind(id)
+    .bind(&new_slug)
+    .bind(&ts)
+    .bind("change_type")
+    .bind(&old_slug)
+    .bind(&new_slug)
+    .execute(&store.index_pool)
+    .await?;
+
+    // 파일: 새 slug 로 새 파일 쓰고 옛 파일 삭제.
+    let old_path = store.paths.quest_path(&old_slug);
+    let new_path = store.paths.quest_path(&new_slug);
+    write_quest_file(store, &quest).await?; // new_path (quest.quest_id = new_slug)
+    if old_path != new_path {
+        let _ = std::fs::remove_file(&old_path);
+    }
+
+    // 관련 quest 파일 갱신 — auto-block 안 sub-quests / prerequisites / parent
+    // 표기에 본인 slug 가 들어가므로 새 slug 로 갱신되어야.
+    let related_ids: Vec<i64> = sqlx::query_scalar(
+        r#"
+        SELECT DISTINCT q.id FROM quests q
+        WHERE q.deleted_at IS NULL
+          AND (
+            -- 본인의 parent
+            q.id = (SELECT parent_quest_id FROM quests WHERE id = ?1)
+            -- 본인의 sub-quest 들
+            OR q.parent_quest_id = ?1
+            -- 본인의 prereq 들
+            OR q.id IN (SELECT prerequisite_id FROM quest_dependencies WHERE quest_id = ?1)
+            -- 본인을 prereq 으로 갖는 quest 들 (dependent)
+            OR q.id IN (SELECT quest_id FROM quest_dependencies WHERE prerequisite_id = ?1)
+          )
+        "#,
+    )
+    .bind(id)
+    .fetch_all(&store.index_pool)
+    .await?;
+
+    for rid in related_ids {
+        if let Ok(q) = sql::fetch_by_id(&store.index_pool, rid).await {
+            write_quest_file(store, &q).await?;
+        }
+    }
+
     after_mutation(store).await;
     Ok(quest)
 }
@@ -855,6 +946,160 @@ mod tests {
         remove_prerequisite(&store, q1.id, q2.id).await.unwrap();
         let q1_after = std::fs::read_to_string(dir.join(".guild/quests/DEV-001.md")).unwrap();
         assert!(q1_after.contains("prerequisites = []"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ─── DEV-055: change_quest_type ───
+
+    #[tokio::test]
+    async fn change_quest_type_renames_file_and_cascades_slug() {
+        let dir = fresh_tmp("type-rename");
+        let store = setup_store(&dir).await;
+
+        let q = create_quest(&store, mk("first", None)).await.unwrap();
+        assert_eq!(q.quest_id, "DEV-001");
+        assert!(dir.join(".guild/quests/DEV-001.md").exists());
+
+        // status 한 번 바꿔서 history row 1개 만들기.
+        let _ = change_status(
+            &store,
+            q.id,
+            ChangeStatusRequest { status_slug: "in_progress".into() },
+        )
+        .await
+        .unwrap();
+
+        // type 변경: DEV → BUG.
+        let updated = change_quest_type(
+            &store,
+            q.id,
+            ChangeTypeRequest { new_type_prefix: "BUG".into() },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(updated.quest_id, "BUG-001", "새 slug 부여 (BUG counter=0+1)");
+        assert_eq!(updated.type_prefix, "BUG");
+        assert_eq!(updated.number, 1);
+
+        // 파일 rename 확인.
+        assert!(!dir.join(".guild/quests/DEV-001.md").exists(), "옛 파일 삭제");
+        assert!(dir.join(".guild/quests/BUG-001.md").exists(), "새 파일 생성");
+        let content = std::fs::read_to_string(dir.join(".guild/quests/BUG-001.md")).unwrap();
+        assert!(content.contains("quest_id = \"BUG-001\""));
+
+        // quest_history.quest_slug 가 cascade.
+        let slugs: Vec<String> = sqlx::query_scalar(
+            "SELECT quest_slug FROM quest_history WHERE quest_id = ?",
+        )
+        .bind(q.id)
+        .fetch_all(&store.index_pool)
+        .await
+        .unwrap();
+        assert!(slugs.iter().all(|s| s == "BUG-001"), "history slug cascade: {slugs:?}");
+
+        // change_type 자체도 history 에 기록됨.
+        let ops: Vec<String> = sqlx::query_scalar(
+            "SELECT op FROM quest_history WHERE quest_id = ? ORDER BY id",
+        )
+        .bind(q.id)
+        .fetch_all(&store.index_pool)
+        .await
+        .unwrap();
+        assert!(ops.contains(&"change_type".to_string()), "ops: {ops:?}");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn change_quest_type_same_type_is_noop() {
+        let dir = fresh_tmp("type-noop");
+        let store = setup_store(&dir).await;
+
+        let q = create_quest(&store, mk("x", None)).await.unwrap();
+        let before_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM quest_history WHERE quest_id = ?")
+                .bind(q.id)
+                .fetch_one(&store.index_pool)
+                .await
+                .unwrap();
+
+        let result = change_quest_type(
+            &store,
+            q.id,
+            ChangeTypeRequest { new_type_prefix: "dev".into() }, // 대소문자 무시.
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result.quest_id, "DEV-001");
+        let after_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM quest_history WHERE quest_id = ?")
+                .bind(q.id)
+                .fetch_one(&store.index_pool)
+                .await
+                .unwrap();
+        assert_eq!(before_count, after_count, "NoOp — history 변화 없음");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn change_quest_type_rejects_unknown_type() {
+        let dir = fresh_tmp("type-unknown");
+        let store = setup_store(&dir).await;
+        let q = create_quest(&store, mk("x", None)).await.unwrap();
+
+        let err = change_quest_type(
+            &store,
+            q.id,
+            ChangeTypeRequest { new_type_prefix: "NOPE".into() },
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, crate::AppError::BadRequest(_)));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn change_quest_type_updates_related_quest_files() {
+        // 부모 / 자식 / 선행 관계 — 그쪽 파일들의 auto-block 안 slug 도 갱신.
+        let dir = fresh_tmp("type-related");
+        let store = setup_store(&dir).await;
+
+        let parent = create_quest(&store, mk("p", None)).await.unwrap(); // DEV-001
+        let child = create_quest(&store, mk("c", Some(parent.id))).await.unwrap(); // DEV-002
+        let prereq = create_quest(&store, mk("pre", None)).await.unwrap(); // DEV-003
+
+        // child 에 prereq 추가.
+        add_prerequisite(
+            &store,
+            child.id,
+            AddPrerequisiteRequest { prerequisite_id: prereq.id },
+        )
+        .await
+        .unwrap();
+
+        // child (DEV-002) 의 type 을 BUG 로 변경 → BUG-001.
+        let updated = change_quest_type(
+            &store,
+            child.id,
+            ChangeTypeRequest { new_type_prefix: "BUG".into() },
+        )
+        .await
+        .unwrap();
+        assert_eq!(updated.quest_id, "BUG-001");
+
+        // 부모 파일의 sub-quest 목록에 새 slug (BUG-001) 표시.
+        let parent_content =
+            std::fs::read_to_string(dir.join(".guild/quests/DEV-001.md")).unwrap();
+        assert!(parent_content.contains("BUG-001"), "parent.sub 갱신:\n{parent_content}");
+        assert!(!parent_content.contains("DEV-002"), "옛 slug 사라져야");
+
+        // prereq 파일의 (dependent 표기는 auto-block 에 없을 수도 — render 확인).
+        // 본 테스트는 parent 만 핵심으로 검증.
 
         let _ = std::fs::remove_dir_all(&dir);
     }

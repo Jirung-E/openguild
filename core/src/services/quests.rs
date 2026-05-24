@@ -617,6 +617,112 @@ pub async fn change_parent(
     fetch_by_id(pool, id).await
 }
 
+/// DEV-055: quest 의 type 변경 — slug 바뀜. 호출자 (ops::change_quest_type)
+/// 가 파일 rename + history INSERT + related quest 파일 갱신을 책임.
+///
+/// 반환: (변경된 quest row, old_slug, new_slug). 같은 type 이면 old/new 동일.
+pub async fn change_type(
+    pool: &SqlitePool,
+    id: i64,
+    new_type_prefix: &str,
+) -> AppResult<(QuestRow, String, String)> {
+    let old = fetch_by_id(pool, id).await?;
+    let old_slug = old.quest_id.clone();
+
+    // 같은 type 이면 NoOp.
+    if old.type_prefix.eq_ignore_ascii_case(new_type_prefix) {
+        return Ok((old, old_slug.clone(), old_slug));
+    }
+
+    let new_type_id: i64 = sqlx::query_scalar(
+        "SELECT id FROM quest_types WHERE UPPER(prefix) = UPPER(?)",
+    )
+    .bind(new_type_prefix)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| {
+        AppError::BadRequest(format!("unknown type prefix: '{new_type_prefix}'"))
+    })?;
+
+    let mut tx = pool.begin().await?;
+
+    // counter self-heal (BUG-counter-self-heal 와 동일 패턴) — 외부 편집으로
+    // counter 가 실제 max 보다 뒤떨어졌어도 안전.
+    sqlx::query(
+        "UPDATE quest_counters
+            SET last_number = MAX(
+                last_number,
+                COALESCE((SELECT MAX(number) FROM quests WHERE quest_type_id = ?), 0)
+            )
+          WHERE quest_type_id = ?",
+    )
+    .bind(new_type_id)
+    .bind(new_type_id)
+    .execute(&mut *tx)
+    .await?;
+
+    // 새 number 부여 — target type counter +1.
+    let new_number: i64 = sqlx::query_scalar(
+        "UPDATE quest_counters SET last_number = last_number + 1
+         WHERE quest_type_id = ? RETURNING last_number",
+    )
+    .bind(new_type_id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or_else(|| {
+        AppError::Internal(anyhow::anyhow!(
+            "target type 의 counter row 없음: {new_type_prefix}"
+        ))
+    })?;
+
+    let now = crate::time::now_local_iso8601();
+    sqlx::query(
+        "UPDATE quests SET quest_type_id = ?, number = ?, updated_at = ? WHERE id = ?",
+    )
+    .bind(new_type_id)
+    .bind(new_number)
+    .bind(&now)
+    .bind(id)
+    .execute(&mut *tx)
+    .await?;
+
+    // DEV-049: quest_history / quest_positions 의 quest_slug cascade.
+    // 새 slug 는 type 의 prefix + zero-padded number — sql 안에서 직접 compose.
+    sqlx::query(
+        "UPDATE quest_history
+            SET quest_slug = (
+                SELECT qt.prefix || '-' || printf('%03d', q.number)
+                  FROM quests q JOIN quest_types qt ON qt.id = q.quest_type_id
+                 WHERE q.id = ?
+            )
+          WHERE quest_id = ?",
+    )
+    .bind(id)
+    .bind(id)
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query(
+        "UPDATE quest_positions
+            SET quest_slug = (
+                SELECT qt.prefix || '-' || printf('%03d', q.number)
+                  FROM quests q JOIN quest_types qt ON qt.id = q.quest_type_id
+                 WHERE q.id = ?
+            )
+          WHERE quest_id = ?",
+    )
+    .bind(id)
+    .bind(id)
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+
+    let updated = fetch_by_id(pool, id).await?;
+    let new_slug = updated.quest_id.clone();
+    Ok((updated, old_slug, new_slug))
+}
+
 pub async fn change_status(
     pool: &SqlitePool,
     id: i64,
