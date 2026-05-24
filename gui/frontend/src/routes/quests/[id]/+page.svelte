@@ -121,9 +121,38 @@
 		initEditor();
 	}
 
+	// DEV-057: 편집창 사용자 크기 영속화.
+	const EDITOR_HEIGHT_KEY = 'openguild.questEditorHeight';
+	let editorHeightSaveTimer: ReturnType<typeof setTimeout> | null = null;
+	function loadEditorHeight(): number {
+		try {
+			const raw = localStorage.getItem(EDITOR_HEIGHT_KEY);
+			const n = raw ? parseInt(raw, 10) : NaN;
+			// 합리적 범위만 — 200~2000px.
+			if (Number.isFinite(n) && n >= 200 && n <= 2000) return n;
+		} catch {
+			/* 무시 */
+		}
+		return 480;
+	}
+	function scheduleEditorHeightSave(px: number) {
+		if (editorHeightSaveTimer) clearTimeout(editorHeightSaveTimer);
+		editorHeightSaveTimer = setTimeout(() => {
+			try {
+				localStorage.setItem(EDITOR_HEIGHT_KEY, String(Math.round(px)));
+			} catch {
+				/* 무시 */
+			}
+		}, 250);
+	}
+	let editorResizeObserver: ResizeObserver | null = null;
+
 	function initEditor() {
 		if (!editorContainer) return;
 		if (editorView) { editorView.destroy(); editorView = null; }
+		// DEV-057: parent (.editor-wrap) 가 height 결정. cm-scroller 는 fill.
+		// 이전엔 cm-scroller maxHeight 480px 가 고정 한계 — parent resize 시 의미 없음.
+		editorContainer.style.height = `${loadEditorHeight()}px`;
 		editorView = new EditorView({
 			doc: editDescription,
 			extensions: [
@@ -131,18 +160,28 @@
 				markdown(),
 				oneDark,
 				EditorView.theme({
-					'&': { fontSize: '0.875rem', borderRadius: '6px', overflow: 'hidden' },
-					'.cm-editor': { borderRadius: '6px' },
-					'.cm-scroller': { minHeight: '200px', maxHeight: '480px', overflow: 'auto' }
+					'&': { fontSize: '0.875rem', borderRadius: '6px', height: '100%' },
+					'.cm-editor': { borderRadius: '6px', height: '100%' },
+					'.cm-scroller': { overflow: 'auto' }
 				})
 			],
 			parent: editorContainer
 		});
+		// 사용자가 resize 핸들로 크기 바꿀 때마다 영속화.
+		editorResizeObserver?.disconnect();
+		editorResizeObserver = new ResizeObserver((entries) => {
+			for (const entry of entries) {
+				scheduleEditorHeightSave(entry.contentRect.height);
+			}
+		});
+		editorResizeObserver.observe(editorContainer);
 	}
 
 	function exitEditMode() {
 		editorView?.destroy();
 		editorView = null;
+		editorResizeObserver?.disconnect();
+		editorResizeObserver = null;
 		editMode = false;
 		saveError = null;
 	}
@@ -874,8 +913,12 @@
 	}
 	.edit-select:focus { border-color: #58a6ff; }
 	.editor-wrap {
+		/* DEV-057: 사용자 drag 로 height 조절. CodeMirror 의 cm-scroller 는
+		   parent height 100% 따라가서 늘어남. ResizeObserver 가 변경 감지 →
+		   localStorage 영속. */
 		border: 1px solid #30363d; border-radius: 6px;
-		overflow: hidden; min-height: 200px;
+		overflow: hidden; min-height: 200px; max-height: 90vh;
+		resize: vertical;
 	}
 	.editor-wrap :global(.cm-editor) { outline: none; }
 	.editor-wrap :global(.cm-editor.cm-focused) { outline: none; border: none; }
