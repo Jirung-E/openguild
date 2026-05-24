@@ -250,6 +250,170 @@
 		}
 	}
 
+	// ── DEV-056: 레인 / 노드 숨김 설정 (status slug 키로 영속) ─────
+	//
+	// 각 lane (status) 마다:
+	//   - laneHidden: true 면 lane 전체 숨김 (그 status 의 모든 노드 + lane DIV).
+	//   - hideGroup:  그룹의 모든 멤버가 이 lane 에 있을 때만 그 그룹 노드들 숨김.
+	//                 (한 그룹이 여러 lane 에 걸치면 어느 lane 에서도 안 숨김.)
+	//   - hideSolo:   그룹에 속하지 않은 단독 노드 (연관관계 없음) 숨김.
+	//
+	// 그룹: parent/child + prerequisite/dependent 관계를 따라간 연결 컴포넌트.
+	interface HideSetting {
+		laneHidden: boolean;
+		hideGroup: boolean;
+		hideSolo: boolean;
+	}
+	const HIDE_SETTINGS_KEY = 'openguild.hideSettings';
+
+	function loadHideSettings(): Record<string, HideSetting> {
+		try {
+			const raw = localStorage.getItem(HIDE_SETTINGS_KEY);
+			if (!raw) return {};
+			const parsed = JSON.parse(raw);
+			if (parsed && typeof parsed === 'object')
+				return parsed as Record<string, HideSetting>;
+		} catch {
+			/* 무시 */
+		}
+		return {};
+	}
+
+	function saveHideSettings(map: Record<string, HideSetting>) {
+		try {
+			localStorage.setItem(HIDE_SETTINGS_KEY, JSON.stringify(map));
+		} catch {
+			/* 무시 */
+		}
+	}
+
+	function defaultHideSetting(): HideSetting {
+		return { laneHidden: false, hideGroup: false, hideSolo: false };
+	}
+
+	function getHideSetting(slug: string): HideSetting {
+		return hideSettings[slug] ?? defaultHideSetting();
+	}
+
+	let hideSettings = $state<Record<string, HideSetting>>(loadHideSettings());
+	let showHideModal = $state(false);
+
+	/** questId → 그룹 멤버 set (자기 자신 포함). cluster 와 동일 의미. */
+	let groupOf: Map<number, Set<number>> = new Map();
+
+	/** quests + dependencies 로부터 connected component (그룹) 계산. */
+	function computeGroups(
+		quests: Quest[],
+		deps: QuestDependency[]
+	): Map<number, Set<number>> {
+		const adj = new Map<number, Set<number>>();
+		const ensure = (id: number) => {
+			if (!adj.has(id)) adj.set(id, new Set());
+			return adj.get(id)!;
+		};
+		quests.forEach((q) => {
+			ensure(q.id);
+			if (q.parent_quest_id != null) {
+				ensure(q.parent_quest_id).add(q.id);
+				ensure(q.id).add(q.parent_quest_id);
+			}
+		});
+		deps.forEach((d) => {
+			ensure(d.prerequisite_id).add(d.quest_id);
+			ensure(d.quest_id).add(d.prerequisite_id);
+		});
+		const result = new Map<number, Set<number>>();
+		const visited = new Set<number>();
+		quests.forEach((q) => {
+			if (visited.has(q.id)) return;
+			// BFS
+			const group = new Set<number>();
+			const queue = [q.id];
+			while (queue.length > 0) {
+				const cur = queue.shift()!;
+				if (group.has(cur)) continue;
+				group.add(cur);
+				visited.add(cur);
+				adj.get(cur)?.forEach((n) => {
+					if (!group.has(n)) queue.push(n);
+				});
+			}
+			group.forEach((id) => result.set(id, group));
+		});
+		return result;
+	}
+
+	/**
+	 * hideSettings 와 groupOf 를 보고 각 quest 의 hidden 여부 결정.
+	 * - laneHidden true 인 lane 의 모든 노드 → hidden.
+	 * - hideGroup true 인 lane: 같은 그룹의 모든 멤버가 이 lane 에 있는 경우만 hidden.
+	 * - hideSolo true 인 lane: 그룹 크기 1 인 노드 hidden.
+	 */
+	function computeHiddenIds(): Set<number> {
+		const hidden = new Set<number>();
+		const statusById = new Map<number, string>(); // quest_id → status_slug
+		allQuests.forEach((q) => statusById.set(q.id, q.status_slug));
+		allQuests.forEach((q) => {
+			const setting = getHideSetting(q.status_slug);
+			if (setting.laneHidden) {
+				hidden.add(q.id);
+				return;
+			}
+			const group = groupOf.get(q.id);
+			if (!group) return;
+			if (group.size === 1) {
+				if (setting.hideSolo) hidden.add(q.id);
+				return;
+			}
+			if (setting.hideGroup) {
+				// 그룹의 모든 멤버가 이 lane (같은 status) 에 있는가?
+				let allSame = true;
+				group.forEach((mid) => {
+					if (statusById.get(mid) !== q.status_slug) allSame = false;
+				});
+				if (allSame) hidden.add(q.id);
+			}
+		});
+		return hidden;
+	}
+
+	/**
+	 * 결정된 hidden set 을 cytoscape + lane DIV 에 적용.
+	 * cytoscape display: 'none' 노드는 자동으로 연결된 edge 도 안 보임.
+	 */
+	function applyHideSettings() {
+		const c = cy;
+		if (!c) return;
+		const hidden = computeHiddenIds();
+		c.batch(() => {
+			c.nodes('[questId]').forEach((n) => {
+				const qid = n.data('questId') as number;
+				n.style('display', hidden.has(qid) ? 'none' : 'element');
+			});
+		});
+		// lane DIV: laneHidden true 인 lane 의 col + header 시각 처리.
+		applyLaneVisibility();
+	}
+
+	function applyLaneVisibility() {
+		if (!lanesEl || !headersEl) return;
+		sorted.forEach((s, li) => {
+			const setting = getHideSetting(s.slug);
+			const col = lanesEl.children[li] as HTMLDivElement | undefined;
+			const hdr = headersEl.children[li] as HTMLDivElement | undefined;
+			if (col) col.style.display = setting.laneHidden ? 'none' : '';
+			if (hdr) hdr.style.display = setting.laneHidden ? 'none' : '';
+		});
+	}
+
+	function toggleHideSetting(slug: string, key: keyof HideSetting) {
+		const cur = getHideSetting(slug);
+		const next = { ...cur, [key]: !cur[key] };
+		hideSettings = { ...hideSettings, [slug]: next };
+		saveHideSettings(hideSettings);
+		applyHideSettings();
+	}
+
 	let expandedQuest = $state<Quest | null>(null);
 	let expandedPos = $state({ x: 0, y: 0 });
 	let cardPinned = false; // 사용자가 카드를 드래그하면 true, 새 노드 클릭 시 false
@@ -372,6 +536,8 @@
 		if (idx !== -1) {
 			allQuests[idx] = { ...allQuests[idx], status_id: s.id, status_slug: s.slug, status_name_en: s.name_en, status_name_ko: s.name_ko, status_color: s.color };
 		}
+		// DEV-056: status 가 바뀌면 그룹 분포 / hideGroup 평가 결과가 달라질 수 있음.
+		applyHideSettings();
 	}
 
 	async function applyRecord(record: HistoryRecord, direction: 'undo' | 'redo') {
@@ -1620,6 +1786,10 @@
 
 		cy.fit(undefined, 60);
 		syncLanes();
+
+		// DEV-056: hide settings 적용. computeGroups → applyHideSettings.
+		groupOf = computeGroups(allQuests, allDependencies);
+		applyHideSettings();
 	}
 </script>
 
@@ -1732,6 +1902,18 @@
 			<option value={3}>3열</option>
 		</select>
 		<div class="tb-sep"></div>
+		<!-- DEV-056: 숨김 설정 모달 토글. -->
+		<button
+			class="tb-btn"
+			class:tb-on={Object.values(hideSettings).some(
+				(s) => s.laneHidden || s.hideGroup || s.hideSolo
+			)}
+			onclick={() => (showHideModal = true)}
+			title="레인 / 노드 숨김 설정"
+		>
+			<span class="icon">👁</span><span>숨김</span>
+		</button>
+		<div class="tb-sep"></div>
 		<!-- arrange 버튼 + mode select 는 하나의 컨트롤처럼 시각적으로 묶음 -->
 		<div class="tb-arrange-group">
 			<button
@@ -1772,6 +1954,77 @@
 				<button class="dialog-ok" onclick={() => confirmDialogResolve(true)}>변경</button>
 				<button class="dialog-cancel" onclick={() => confirmDialogResolve(false)}>취소</button>
 			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- DEV-056: 숨김 설정 모달 -->
+{#if showHideModal}
+	<div
+		class="dialog-backdrop"
+		role="presentation"
+		onclick={(e) => {
+			if (e.target === e.currentTarget) showHideModal = false;
+		}}
+	>
+		<div class="hide-modal" role="dialog" aria-modal="true" tabindex="-1">
+			<div class="hide-head">
+				<h3 class="hide-title">숨김 설정</h3>
+				<button
+					class="hide-close"
+					onclick={() => (showHideModal = false)}
+					aria-label="닫기"
+				>×</button>
+			</div>
+			<p class="hide-help">
+				각 레인을 숨기거나, 그룹 / 단독 노드 단위로 가릴 수 있습니다.
+				그룹 숨김은 그 그룹의 모든 노드가 같은 레인에 있을 때만 적용됩니다.
+			</p>
+			<table class="hide-table">
+				<thead>
+					<tr>
+						<th style="width: 14ch">레인</th>
+						<th>표시</th>
+						<th>그룹 숨김</th>
+						<th>단독 노드 숨김</th>
+					</tr>
+				</thead>
+				<tbody>
+					{#each sorted as s (s.id)}
+						{@const setting = getHideSetting(s.slug)}
+						{@const laneVisible = !setting.laneHidden}
+						<tr class:lane-off={!laneVisible}>
+							<td>
+								<span class="hide-lane-name" style:color={s.color}>{s.name_en}</span>
+							</td>
+							<td>
+								<input
+									type="checkbox"
+									checked={laneVisible}
+									onchange={() => toggleHideSetting(s.slug, 'laneHidden')}
+									title="레인 표시 (체크 해제 시 레인 전체 숨김)"
+								/>
+							</td>
+							<td>
+								<input
+									type="checkbox"
+									checked={setting.hideGroup}
+									disabled={!laneVisible}
+									onchange={() => toggleHideSetting(s.slug, 'hideGroup')}
+								/>
+							</td>
+							<td>
+								<input
+									type="checkbox"
+									checked={setting.hideSolo}
+									disabled={!laneVisible}
+									onchange={() => toggleHideSetting(s.slug, 'hideSolo')}
+								/>
+							</td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
 		</div>
 	</div>
 {/if}
@@ -2096,4 +2349,53 @@
 		color: #8b949e; font-size: 0.875rem; cursor: pointer;
 	}
 	.dialog-cancel:hover { background: #21262d; }
+
+	/* DEV-056: 숨김 설정 모달 */
+	.hide-modal {
+		background: #161b22;
+		border: 1px solid #30363d;
+		border-radius: 10px;
+		padding: 1.25rem 1.5rem 1.25rem;
+		min-width: 480px; max-width: 640px;
+		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
+		display: flex; flex-direction: column; gap: 0.75rem;
+		color: #c9d1d9;
+	}
+	.hide-head {
+		display: flex; align-items: center; justify-content: space-between;
+	}
+	.hide-title {
+		margin: 0; font-size: 1rem; font-weight: 600; color: #e6edf3;
+	}
+	.hide-close {
+		background: transparent; border: none; color: #8b949e;
+		font-size: 1.4rem; line-height: 1; cursor: pointer; padding: 0 0.3rem;
+	}
+	.hide-close:hover { color: #c9d1d9; }
+	.hide-help {
+		margin: 0; font-size: 0.825rem; color: #8b949e; line-height: 1.45;
+	}
+	.hide-table {
+		width: 100%; border-collapse: collapse; font-size: 0.875rem;
+	}
+	.hide-table th, .hide-table td {
+		text-align: left; padding: 0.5rem 0.6rem;
+		border-bottom: 1px solid #21262d;
+	}
+	.hide-table th { color: #8b949e; font-weight: 500; font-size: 0.8rem; }
+	.hide-table tr.lane-off .hide-lane-name {
+		opacity: 0.45;
+		text-decoration: line-through;
+	}
+	.hide-lane-name {
+		font-weight: 500;
+	}
+	.hide-table input[type='checkbox'] {
+		cursor: pointer;
+		accent-color: #58a6ff;
+	}
+	.hide-table input[type='checkbox']:disabled {
+		cursor: not-allowed;
+		opacity: 0.35;
+	}
 </style>
