@@ -1,12 +1,13 @@
 name: check
 
-# DEV-008: PR / push 시 자동 검증 — backend cargo / frontend npm.
+# DEV-008: PR / push 시 자동 검증.
+# BUG-017: Linux deps 추가 + Node 24 전환 + job 이름 정정 (cargo / gui-frontend).
 #
 # 트리거:
 # - main / develop 으로의 PR
 # - main / develop 직접 push (드물지만 hotfix 등)
 #
-# 두 job 병렬 실행 (backend / frontend). 둘 다 통과해야 merge 가능.
+# 두 job 병렬 실행 (cargo / gui-frontend). 둘 다 통과해야 merge 가능.
 
 on:
   pull_request:
@@ -17,13 +18,31 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  # BUG-017: 2026-06-02 부터 GitHub Actions 가 Node 24 강제 전환 — 미리 옵트인.
+  # actions/checkout@v4 / setup-node@v4 / cache@v4 의 Node 20 deprecation 경고
+  # 제거. 추후 action v5 (Node 24 default) 가 나오면 이 env 제거.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
 jobs:
-  backend:
-    name: backend (cargo)
+  cargo:
+    name: cargo (core + cli + server + gui)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # BUG-017: gui crate 가 Tauri/wry transitive dep — Linux 에선 GTK / webkit
+      # 시스템 라이브러리 필요. 없으면 gio-sys build-script 가 pkg-config 단계
+      # 에서 실패. 목록은 Tauri v2 공식 문서.
+      - name: Install Tauri Linux deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            build-essential
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -53,8 +72,8 @@ jobs:
         # 직렬 실행. AGENTS.md / 각 quest 의 검증 절차와 동일.
         run: cargo test --workspace -- --test-threads=1
 
-  frontend:
-    name: frontend (npm)
+  gui-frontend:
+    name: gui/frontend (svelte-kit)
     runs-on: ubuntu-latest
     defaults:
       run:
