@@ -295,9 +295,13 @@ enum TypesCmd {
         #[arg(long)]
         description: Option<String>,
     },
-    /// 기존 type 수정 (color / description)
+    /// 기존 type 수정 — color / description / prefix 통합.
+    /// `--prefix` 가 현재와 다르면 그 type 의 모든 quest slug cascade.
     Update {
         prefix: String,
+        /// 새 prefix — 지정 시 rename + cascade (파일명 / frontmatter / DB slug).
+        #[arg(long = "prefix")]
+        new_prefix: Option<String>,
         #[arg(long)]
         color: Option<String>,
         #[arg(long)]
@@ -308,8 +312,6 @@ enum TypesCmd {
     },
     /// 사용 중 quest 없는 type 삭제
     Delete { prefix: String },
-    /// prefix 변경 — 그 type 의 모든 quest slug cascade
-    Rename { prefix: String, new_prefix: String },
 }
 
 /// DEV-062: status 관리. sub 미지정 시 List.
@@ -330,9 +332,13 @@ enum StatusesCmd {
         #[arg(long = "sort-order")]
         sort_order: Option<i64>,
     },
-    /// 기존 status 수정. slug 자체는 frozen (rename 으로 분리).
+    /// 기존 status 수정 — name_en / name_ko / color / sort_order / slug 통합.
+    /// `--slug` 가 현재와 다르면 rename + cascade (history / 모든 quest frontmatter).
     Update {
         slug: String,
+        /// 새 slug — 지정 시 rename + cascade (a-z0-9_, 1~32자).
+        #[arg(long = "slug")]
+        new_slug: Option<String>,
         #[arg(long = "name-en")]
         name_en: Option<String>,
         #[arg(long = "name-ko")]
@@ -347,8 +353,6 @@ enum StatusesCmd {
     },
     /// 사용 중 quest 없는 status 삭제
     Delete { slug: String },
-    /// slug 변경 — quest_history / 모든 quest .md frontmatter cascade
-    Rename { slug: String, new_slug: String },
 }
 
 // DTO 는 `openguild_core::models` 에서 직접 사용. 위 use 문 참고.
@@ -821,13 +825,20 @@ impl Backend {
     fn update_type(
         &self,
         prefix: String,
+        new_prefix: Option<String>,
         color: Option<String>,
         description: Option<Option<String>>,
     ) -> Result<QuestType> {
         match self {
             Backend::Http(_) => Err(Self::http_unsupported_meta()),
             Backend::Local(l) => Self::map_err(l.rt.block_on(
-                openguild_core::ops::update_type(&l.store, prefix, color, description),
+                openguild_core::ops::update_type(
+                    &l.store,
+                    prefix,
+                    new_prefix,
+                    color,
+                    description,
+                ),
             )),
         }
     }
@@ -838,15 +849,6 @@ impl Backend {
             Backend::Local(l) => Self::map_err(
                 l.rt.block_on(openguild_core::ops::delete_type(&l.store, prefix)),
             ),
-        }
-    }
-
-    fn rename_type(&self, old_prefix: String, new_prefix: String) -> Result<QuestType> {
-        match self {
-            Backend::Http(_) => Err(Self::http_unsupported_meta()),
-            Backend::Local(l) => Self::map_err(l.rt.block_on(
-                openguild_core::ops::rename_type(&l.store, old_prefix, new_prefix),
-            )),
         }
     }
 
@@ -871,6 +873,7 @@ impl Backend {
     fn update_status(
         &self,
         slug: String,
+        new_slug: Option<String>,
         name_en: Option<String>,
         name_ko: Option<String>,
         color: Option<String>,
@@ -880,7 +883,7 @@ impl Backend {
             Backend::Http(_) => Err(Self::http_unsupported_meta()),
             Backend::Local(l) => Self::map_err(l.rt.block_on(
                 openguild_core::ops::update_status(
-                    &l.store, slug, name_en, name_ko, color, sort_order,
+                    &l.store, slug, new_slug, name_en, name_ko, color, sort_order,
                 ),
             )),
         }
@@ -892,19 +895,6 @@ impl Backend {
             Backend::Local(l) => Self::map_err(
                 l.rt.block_on(openguild_core::ops::delete_status(&l.store, slug)),
             ),
-        }
-    }
-
-    fn rename_status_slug(
-        &self,
-        old_slug: String,
-        new_slug: String,
-    ) -> Result<QuestStatus> {
-        match self {
-            Backend::Http(_) => Err(Self::http_unsupported_meta()),
-            Backend::Local(l) => Self::map_err(l.rt.block_on(
-                openguild_core::ops::rename_status_slug(&l.store, old_slug, new_slug),
-            )),
         }
     }
 
@@ -1417,6 +1407,7 @@ fn run() -> Result<()> {
             }
             TypesCmd::Update {
                 prefix,
+                new_prefix,
                 color,
                 description,
                 clear_description,
@@ -1424,19 +1415,36 @@ fn run() -> Result<()> {
                 if clear_description && description.is_some() {
                     bail!("--description 과 --clear-description 동시 사용 불가");
                 }
-                // 'unset vs no-change' 구분 — clear 면 Some(None), 값 주면 Some(Some(v)),
-                // 둘 다 미지정이면 None (변경 없음).
                 let desc_arg: Option<Option<String>> = if clear_description {
                     Some(None)
                 } else {
                     description.map(Some)
                 };
-                let row = c.update_type(prefix.trim().to_string(), color, desc_arg)?;
+                let old_prefix = prefix.trim().to_string();
+                let new_prefix_uc = new_prefix
+                    .map(|s| s.trim().to_uppercase())
+                    .filter(|s| !s.is_empty() && s != &old_prefix);
+                let renamed = new_prefix_uc.is_some();
+                let row = c.update_type(
+                    old_prefix.clone(),
+                    new_prefix_uc,
+                    color,
+                    desc_arg,
+                )?;
                 if cli.json {
                     println!("{}", serde_json::to_string_pretty(&row)?);
                 } else {
                     let p = colorize(&format!("{:<6}", row.prefix), &row.color);
-                    println!("{p} 갱신됨 — {}", row.description.as_deref().unwrap_or(""));
+                    if renamed {
+                        println!(
+                            "{p} 갱신됨 (rename: '{}' → '{}', 관련 quest slug cascade) — {}",
+                            old_prefix,
+                            row.prefix,
+                            row.description.as_deref().unwrap_or("")
+                        );
+                    } else {
+                        println!("{p} 갱신됨 — {}", row.description.as_deref().unwrap_or(""));
+                    }
                 }
             }
             TypesCmd::Delete { prefix } => {
@@ -1445,19 +1453,6 @@ fn run() -> Result<()> {
                     println!("{}", serde_json::json!({ "ok": true }));
                 } else {
                     println!("'{}' 삭제됨", prefix.trim());
-                }
-            }
-            TypesCmd::Rename { prefix, new_prefix } => {
-                let new_uc = new_prefix.trim().to_uppercase();
-                let row = c.rename_type(prefix.trim().to_string(), new_uc)?;
-                if cli.json {
-                    println!("{}", serde_json::to_string_pretty(&row)?);
-                } else {
-                    println!(
-                        "'{}' → '{}' rename 완료 (관련 quest slug cascade)",
-                        prefix.trim(),
-                        row.prefix
-                    );
                 }
             }
         },
@@ -1500,6 +1495,7 @@ fn run() -> Result<()> {
             }
             StatusesCmd::Update {
                 slug,
+                new_slug,
                 name_en,
                 name_ko,
                 color,
@@ -1514,12 +1510,31 @@ fn run() -> Result<()> {
                 } else {
                     name_ko
                 };
-                let row = c.update_status(slug, name_en, ko_arg, color, sort_order)?;
+                let new_slug_norm = new_slug
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty() && s != &slug);
+                let renamed = new_slug_norm.is_some();
+                let old_slug = slug.clone();
+                let row = c.update_status(
+                    slug,
+                    new_slug_norm,
+                    name_en,
+                    ko_arg,
+                    color,
+                    sort_order,
+                )?;
                 if cli.json {
                     println!("{}", serde_json::to_string_pretty(&row)?);
                 } else {
                     let n = colorize(&format!("{:<14}", row.name_en), &row.color);
-                    println!("{n} (slug={}) 갱신됨", row.slug);
+                    if renamed {
+                        println!(
+                            "{n} (slug={}) 갱신됨 (rename: '{}' → '{}', history / 모든 quest frontmatter cascade)",
+                            row.slug, old_slug, row.slug
+                        );
+                    } else {
+                        println!("{n} (slug={}) 갱신됨", row.slug);
+                    }
                 }
             }
             StatusesCmd::Delete { slug } => {
@@ -1528,17 +1543,6 @@ fn run() -> Result<()> {
                     println!("{}", serde_json::json!({ "ok": true }));
                 } else {
                     println!("'{slug}' 삭제됨");
-                }
-            }
-            StatusesCmd::Rename { slug, new_slug } => {
-                let row = c.rename_status_slug(slug.clone(), new_slug.clone())?;
-                if cli.json {
-                    println!("{}", serde_json::to_string_pretty(&row)?);
-                } else {
-                    println!(
-                        "'{slug}' → '{}' rename 완료 (history / 모든 quest frontmatter cascade)",
-                        row.slug
-                    );
                 }
             }
         },
@@ -3333,12 +3337,14 @@ mod tests {
                 sub:
                     Some(TypesCmd::Update {
                         prefix,
+                        new_prefix,
                         clear_description,
                         description,
                         color,
                     }),
             } => {
                 assert_eq!(prefix, "DEV");
+                assert!(new_prefix.is_none());
                 assert!(clear_description);
                 assert!(description.is_none());
                 assert!(color.is_none());
@@ -3347,16 +3353,17 @@ mod tests {
         }
     }
 
+    /// BUG-018: 'types update --prefix' 가 rename 트리거.
     #[test]
-    fn cli_types_rename() {
-        let cli =
-            Cli::try_parse_from(["openguild", "types", "rename", "DEV", "CORE"]).unwrap();
+    fn cli_types_update_with_prefix_triggers_rename() {
+        let cli = Cli::try_parse_from(["openguild", "types", "update", "DEV", "--prefix", "CORE"])
+            .unwrap();
         match cli.command {
             Command::Types {
-                sub: Some(TypesCmd::Rename { prefix, new_prefix }),
+                sub: Some(TypesCmd::Update { prefix, new_prefix, .. }),
             } => {
                 assert_eq!(prefix, "DEV");
-                assert_eq!(new_prefix, "CORE");
+                assert_eq!(new_prefix.as_deref(), Some("CORE"));
             }
             _ => panic!(),
         }
@@ -3390,18 +3397,19 @@ mod tests {
         }
     }
 
+    /// BUG-018: 'statuses update --slug' 가 rename 트리거.
     #[test]
-    fn cli_statuses_rename() {
+    fn cli_statuses_update_with_slug_triggers_rename() {
         let cli = Cli::try_parse_from([
-            "openguild", "statuses", "rename", "open", "backlog",
+            "openguild", "statuses", "update", "open", "--slug", "backlog",
         ])
         .unwrap();
         match cli.command {
             Command::Statuses {
-                sub: Some(StatusesCmd::Rename { slug, new_slug }),
+                sub: Some(StatusesCmd::Update { slug, new_slug, .. }),
             } => {
                 assert_eq!(slug, "open");
-                assert_eq!(new_slug, "backlog");
+                assert_eq!(new_slug.as_deref(), Some("backlog"));
             }
             _ => panic!(),
         }

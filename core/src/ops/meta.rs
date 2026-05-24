@@ -119,11 +119,16 @@ pub async fn create_type(
     })
 }
 
-/// type 수정 — color / description 만. prefix rename 은 별도 (quest slug
-/// cascade 발생).
+/// type 수정 — color / description / **prefix (rename)** 통합.
+///
+/// `new_prefix` 가 현재와 다르면 rename cascade (그 type 의 모든 quest 의
+/// slug 가 바뀜). slug 가 stable identifier 라 사용자 시각엔 보이지 않지만
+/// 파일명 / frontmatter / quest_history.quest_slug / positions.quest_slug
+/// 모두 cascade.
 pub async fn update_type(
     store: &Store,
     prefix: String,
+    new_prefix: Option<String>, // BUG-018: rename 통합 — 다르면 cascade.
     color: Option<String>,
     description: Option<Option<String>>, // outer None = 변경 없음, inner None = clear.
 ) -> AppResult<QuestType> {
@@ -132,8 +137,21 @@ pub async fn update_type(
         validate_color(c)?;
     }
 
-    let mut row = fetch_type_by_prefix(&store.index_pool, &prefix).await?;
-    let path = store.paths.type_path(&prefix);
+    // prefix 변경 요청 시 먼저 rename — 그 후 다른 필드 update 는 새 prefix 기준.
+    let working_prefix = if let Some(np) = new_prefix {
+        let np = np.trim().to_string();
+        if np.is_empty() || np.eq_ignore_ascii_case(&prefix) {
+            prefix
+        } else {
+            rename_type(store, prefix, np.clone()).await?;
+            np
+        }
+    } else {
+        prefix
+    };
+
+    let mut row = fetch_type_by_prefix(&store.index_pool, &working_prefix).await?;
+    let path = store.paths.type_path(&working_prefix);
     let mut file = TypeFile::read(&path).map_err(AppError::Internal)?;
 
     if let Some(c) = color {
@@ -644,11 +662,14 @@ pub async fn create_status(
     })
 }
 
-/// status 수정 — name_en / name_ko / color / sort_order. slug 자체는 frozen
-/// (history / frontmatter 호환). sort_order 변경 시 파일명 rename.
+/// status 수정 — name_en / name_ko / color / sort_order / **slug (rename)** 통합.
+///
+/// `new_slug` 가 현재와 다르면 rename cascade (history.quest_slug + 모든
+/// quest .md frontmatter + 파일명).
 pub async fn update_status(
     store: &Store,
     slug: String,
+    new_slug: Option<String>, // BUG-018: rename 통합.
     name_en: Option<String>,
     name_ko: Option<String>,
     color: Option<String>,
@@ -658,13 +679,27 @@ pub async fn update_status(
         validate_color(c)?;
     }
 
-    let mut row = fetch_status_by_slug(&store.index_pool, &slug).await?;
+    // slug 변경 요청 시 먼저 rename — 그 후 다른 필드는 새 slug 기준.
+    let working_slug = if let Some(ns) = new_slug {
+        let ns = ns.trim().to_string();
+        if ns.is_empty() || ns == slug {
+            slug
+        } else {
+            rename_status_slug(store, slug, ns.clone()).await?;
+            ns
+        }
+    } else {
+        slug
+    };
+
+    let mut row = fetch_status_by_slug(&store.index_pool, &working_slug).await?;
     // BUG-018: 파일 경로는 디렉토리 search (DB sort_order 추정 X).
-    let old_path = find_status_file_by_slug(&store.paths, &slug)?.ok_or_else(|| {
-        AppError::Internal(anyhow::anyhow!(
-            "status 파일 못 찾음: '{slug}'. reindex 권장."
-        ))
-    })?;
+    let old_path = find_status_file_by_slug(&store.paths, &working_slug)?
+        .ok_or_else(|| {
+            AppError::Internal(anyhow::anyhow!(
+                "status 파일 못 찾음: '{working_slug}'. reindex 권장."
+            ))
+        })?;
     let mut file = StatusFile::read(&old_path).map_err(AppError::Internal)?;
     // file 의 sort_order 도 DB 와 sync (drift 보정).
     if file.sort_order != row.sort_order {
@@ -700,7 +735,7 @@ pub async fn update_status(
 
     // 파일 — sort_order 가 바뀌었으면 rename, 아니면 in-place rewrite.
     if order_changed {
-        let new_filename = StatusFile::filename(row.sort_order, &slug);
+        let new_filename = StatusFile::filename(row.sort_order, &working_slug);
         let new_path = store.paths.statuses_dir().join(&new_filename);
         file.write(&new_path).map_err(AppError::Internal)?;
         if new_path != old_path {
@@ -873,6 +908,7 @@ mod tests {
         let _ = update_type(
             &store,
             "DEV".into(),
+            None,
             Some("#123456".into()),
             Some(Some("changed".into())),
         )
@@ -962,6 +998,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             Some(row.sort_order + 100),
         )
         .await
@@ -983,6 +1020,7 @@ mod tests {
         let _ = update_status(
             &store,
             "open".into(),
+            None,
             Some("Reopened".into()),
             None,
             None,
@@ -1022,6 +1060,7 @@ mod tests {
             &store,
             "open".into(),
             None,
+            None,
             Some("".into()),
             None,
             None,
@@ -1031,7 +1070,7 @@ mod tests {
         assert_eq!(updated.name_en, "Open");
         assert_eq!(updated.name_ko, "");
         // name_en 빈 값은 여전히 거부.
-        let err = update_status(&store, "open".into(), Some("".into()), None, None, None)
+        let err = update_status(&store, "open".into(), None, Some("".into()), None, None, None)
             .await
             .unwrap_err();
         assert!(matches!(err, AppError::BadRequest(_)));
@@ -1071,6 +1110,7 @@ mod tests {
         let err = update_status(
             &store,
             "open".into(),
+            None,
             Some("한국어".into()),
             None,
             None,
@@ -1082,6 +1122,7 @@ mod tests {
         let err = update_status(
             &store,
             "open".into(),
+            None,
             Some("Open!".into()),
             None,
             None,
@@ -1195,6 +1236,7 @@ mod tests {
         let updated = update_status(
             &store,
             "open".into(),
+            None,
             None,
             Some("게시".into()),
             Some("#888888".into()),

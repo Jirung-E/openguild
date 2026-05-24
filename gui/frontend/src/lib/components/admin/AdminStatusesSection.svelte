@@ -7,7 +7,8 @@
 
 	let statuses = $state<QuestStatusWithCount[]>([]);
 	let busy = $state(false);
-	let editing: string | null = $state(null); // slug.
+	let editing: string | null = $state(null); // 원래 slug.
+	let editSlug = $state(''); // BUG-018: slug rename inline.
 	let editNameEn = $state('');
 	let editNameKo = $state('');
 	let editColor = $state('');
@@ -34,9 +35,6 @@
 
 	let confirmDelete: QuestStatusWithCount | null = $state(null);
 
-	// DEV-061: slug rename.
-	let renaming: QuestStatusWithCount | null = $state(null);
-	let renameTo = $state('');
 
 	onMount(refresh);
 
@@ -50,6 +48,7 @@
 
 	function startEdit(s: QuestStatusWithCount) {
 		editing = s.slug;
+		editSlug = s.slug;
 		editNameEn = s.name_en;
 		editNameKo = s.name_ko;
 		editColor = s.color;
@@ -60,14 +59,32 @@
 
 	async function saveEdit() {
 		if (!editing) return;
+		const newSlug = editSlug.trim();
+		const renaming = newSlug && newSlug !== editing;
+		// BUG-018: slug 변경 시 cascade 확인.
+		if (renaming) {
+			const count = statuses.find((s) => s.slug === editing)?.quest_count ?? 0;
+			const ok = window.confirm(
+				`'${editing}' → '${newSlug}' 로 slug 변경.\n\n` +
+					`${count}개 quest 의 frontmatter status + history 의 old/new value + ` +
+					`statuses 파일명 모두 cascade.\n\n계속할까요?`
+			);
+			if (!ok) return;
+		}
 		busy = true;
 		try {
 			await adminApi.updateStatus(editing, {
+				new_slug: renaming ? newSlug : undefined,
 				name_en: editNameEn,
 				name_ko: editNameKo,
 				color: editColor
 			});
-			onmessage({ kind: 'success', text: `'${editing}' 갱신됨` });
+			onmessage({
+				kind: 'success',
+				text: renaming
+					? `'${editing}' → '${newSlug}' 갱신 완료 (cascade)`
+					: `'${editing}' 갱신됨`
+			});
 			editing = null;
 			await refresh();
 		} catch (e) {
@@ -128,35 +145,6 @@
 			busy = false;
 		}
 	}
-
-	// DEV-061: slug rename.
-	function askRename(s: QuestStatusWithCount) {
-		renaming = s;
-		renameTo = s.slug;
-	}
-	async function doRename() {
-		if (!renaming) return;
-		const target = renaming;
-		const newSlug = renameTo.trim().toLowerCase();
-		if (!newSlug || newSlug === target.slug) {
-			renaming = null;
-			return;
-		}
-		renaming = null;
-		busy = true;
-		try {
-			await adminApi.renameStatusSlug(target.slug, newSlug);
-			onmessage({
-				kind: 'success',
-				text: `'${target.slug}' → '${newSlug}' rename 완료 (${target.quest_count}개 quest cascade)`
-			});
-			await refresh();
-		} catch (e) {
-			onmessage({ kind: 'error', text: `rename 실패: ${e}` });
-		} finally {
-			busy = false;
-		}
-	}
 </script>
 
 <section>
@@ -186,7 +174,18 @@
 				{#each statuses as s (s.id)}
 					<tr>
 						{#if editing === s.slug}
-							<td><code class="frozen">{s.slug}</code></td>
+							<!-- BUG-018: slug 도 inline 편집 가능. 변경 시 cascade confirm. -->
+							<td>
+								<input
+									type="text"
+									bind:value={editSlug}
+									maxlength="32"
+									pattern="[a-z0-9_]+"
+									title="소문자/숫자/'_' 만, 최대 32자"
+									disabled={busy}
+									class="slug-input"
+								/>
+							</td>
 							<td>
 								<input
 									type="text"
@@ -217,13 +216,6 @@
 							<td class="count">{s.quest_count}</td>
 							<td class="row-actions">
 								<button onclick={() => startEdit(s)} disabled={busy}>수정</button>
-								<button
-									onclick={() => askRename(s)}
-									disabled={busy}
-									title="slug 변경 — quest_history / 모든 quest 의 status frontmatter cascade"
-								>
-									이름
-								</button>
 								<button
 									class="danger"
 									onclick={() => askDelete(s)}
@@ -307,38 +299,6 @@
 	</div>
 {/if}
 
-<!-- DEV-061: slug rename 모달 -->
-{#if renaming}
-	<div class="ov" role="presentation">
-		<div class="modal" role="dialog" aria-modal="true" tabindex="-1">
-			<h3 class="modal-title">Status 이름 변경</h3>
-			<p class="modal-msg">
-				<strong>{renaming.name_en}</strong> 의 slug <code>{renaming.slug}</code> 를
-				바꾸면 모든 quest ({renaming.quest_count}개) 의 frontmatter
-				<code>status</code> 가 함께 변경되고, history 의 old/new value 도 cascade 됩니다.
-				파일명 (<code>.guild/statuses/&lt;순서&gt;-{renaming.slug}.toml</code>) 도 rename.
-			</p>
-			<div class="form">
-				<label>
-					<span>새 slug</span>
-					<input
-						type="text"
-						bind:value={renameTo}
-						placeholder="소문자 / 숫자 / '_' 만 (예: backlog, in_review)"
-						maxlength="32"
-						pattern="[a-z0-9_]+"
-						title="소문자 / 숫자 / '_' 만, 최대 32자"
-						disabled={busy}
-					/>
-				</label>
-			</div>
-			<div class="modal-actions">
-				<button class="btn-yes" onclick={doRename} disabled={busy}>변경</button>
-				<button class="btn-no" onclick={() => (renaming = null)} disabled={busy}>취소</button>
-			</div>
-		</div>
-	</div>
-{/if}
 
 <style>
 	section {
@@ -417,9 +377,6 @@
 		padding: 0.05rem 0.3rem;
 		border-radius: 3px;
 	}
-	code.frozen {
-		color: #8b949e;
-	}
 	.hex {
 		color: #8b949e;
 		margin-left: 0.4rem;
@@ -452,6 +409,11 @@
 	input[type='text']:focus {
 		outline: none;
 		border-color: #58a6ff;
+	}
+	input[type='text'].slug-input {
+		width: 14ch;
+		font-family: 'SFMono-Regular', Consolas, monospace;
+		text-transform: lowercase;
 	}
 	input[type='color'] {
 		width: 2.2rem;

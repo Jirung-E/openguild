@@ -248,12 +248,10 @@ pub fn run() {
             commands::admin_create_type,
             commands::admin_update_type,
             commands::admin_delete_type,
-            commands::admin_rename_type,
             commands::admin_list_statuses,
             commands::admin_create_status,
             commands::admin_update_status,
             commands::admin_delete_status,
-            commands::admin_rename_status_slug,
             // recents (DEV-006)
             commands::list_recents,
             commands::clear_recents,

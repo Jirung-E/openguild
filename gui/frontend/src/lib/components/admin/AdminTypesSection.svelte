@@ -7,7 +7,8 @@
 
 	let types = $state<QuestTypeWithCount[]>([]);
 	let busy = $state(false);
-	let editing: string | null = $state(null); // prefix.
+	let editing: string | null = $state(null); // 원래 prefix (key).
+	let editPrefix = $state(''); // BUG-018: rename 도 inline.
 	let editColor = $state('');
 	let editDesc = $state('');
 
@@ -36,9 +37,6 @@
 	// 삭제 확인 모달.
 	let confirmDelete: QuestTypeWithCount | null = $state(null);
 
-	// DEV-061: prefix rename 확인 모달.
-	let renaming: QuestTypeWithCount | null = $state(null);
-	let renameTo = $state('');
 
 	onMount(refresh);
 
@@ -52,6 +50,7 @@
 
 	function startEdit(t: QuestTypeWithCount) {
 		editing = t.prefix;
+		editPrefix = t.prefix;
 		editColor = t.color;
 		editDesc = t.description ?? '';
 	}
@@ -61,13 +60,33 @@
 
 	async function saveEdit() {
 		if (!editing) return;
+		const newPrefix = editPrefix.trim().toUpperCase();
+		const renaming = newPrefix && newPrefix !== editing;
+		// BUG-018: prefix 변경 시 cascade 확인.
+		if (renaming) {
+			const count = types.find((t) => t.prefix === editing)?.quest_count ?? 0;
+			const ok = window.confirm(
+				`'${editing}' → '${newPrefix}' 로 이름 변경.\n\n` +
+					`이 type 의 모든 quest (${count}개) 의 slug 가 cascade 됩니다 ` +
+					`(파일명 / frontmatter / DB history).\n\n` +
+					`다른 quest 본문 안의 '${editing}-NNN' mention 은 자동 갱신되지 않습니다 ` +
+					`— 직접 검색/수정 필요.\n\n계속할까요?`
+			);
+			if (!ok) return;
+		}
 		busy = true;
 		try {
 			await adminApi.updateType(editing, {
+				new_prefix: renaming ? newPrefix : undefined,
 				color: editColor,
 				description: editDesc.trim() === '' ? null : editDesc
 			});
-			onmessage({ kind: 'success', text: `'${editing}' 갱신됨` });
+			onmessage({
+				kind: 'success',
+				text: renaming
+					? `'${editing}' → '${newPrefix}' 갱신 완료 (cascade)`
+					: `'${editing}' 갱신됨`
+			});
 			editing = null;
 			await refresh();
 		} catch (e) {
@@ -127,34 +146,6 @@
 		}
 	}
 
-	// DEV-061: prefix rename.
-	function askRename(t: QuestTypeWithCount) {
-		renaming = t;
-		renameTo = t.prefix;
-	}
-	async function doRename() {
-		if (!renaming) return;
-		const target = renaming;
-		const newPrefix = renameTo.trim().toUpperCase();
-		if (!newPrefix || newPrefix === target.prefix) {
-			renaming = null;
-			return;
-		}
-		renaming = null;
-		busy = true;
-		try {
-			await adminApi.renameType(target.prefix, newPrefix);
-			onmessage({
-				kind: 'success',
-				text: `'${target.prefix}' → '${newPrefix}' rename 완료 (${target.quest_count}개 quest cascade)`
-			});
-			await refresh();
-		} catch (e) {
-			onmessage({ kind: 'error', text: `rename 실패: ${e}` });
-		} finally {
-			busy = false;
-		}
-	}
 </script>
 
 <section>
@@ -182,8 +173,19 @@
 			<tbody>
 				{#each types as t (t.id)}
 					<tr>
-						<td><code>{t.prefix}</code></td>
 						{#if editing === t.prefix}
+							<!-- BUG-018: prefix 도 inline 편집 가능. 변경 시 cascade confirm. -->
+							<td>
+								<input
+									type="text"
+									bind:value={editPrefix}
+									maxlength="6"
+									pattern="[A-Z0-9]+"
+									title="대문자/숫자 1~6자"
+									disabled={busy}
+									class="prefix-input"
+								/>
+							</td>
 							<td>
 								<input type="color" bind:value={editColor} disabled={busy} />
 							</td>
@@ -201,6 +203,7 @@
 								<button onclick={cancelEdit} disabled={busy}>취소</button>
 							</td>
 						{:else}
+							<td><code>{t.prefix}</code></td>
 							<td>
 								<span class="swatch" style="background: {t.color}"></span>
 								<code class="hex">{t.color}</code>
@@ -209,13 +212,6 @@
 							<td class="count">{t.quest_count}</td>
 							<td class="row-actions">
 								<button onclick={() => startEdit(t)} disabled={busy}>수정</button>
-								<button
-									onclick={() => askRename(t)}
-									disabled={busy}
-									title="prefix 변경 — 모든 quest slug cascade"
-								>
-									이름
-								</button>
 								<button
 									class="danger"
 									onclick={() => askDelete(t)}
@@ -290,36 +286,6 @@
 	</div>
 {/if}
 
-<!-- DEV-061: prefix rename 모달 -->
-{#if renaming}
-	<div class="ov" role="presentation">
-		<div class="modal" role="dialog" aria-modal="true" tabindex="-1">
-			<h3 class="modal-title">Type 이름 변경</h3>
-			<p class="modal-msg">
-				<strong>{renaming.prefix}</strong> 의 prefix 를 바꾸면 이 type 의 모든 quest
-				({renaming.quest_count}개) 의 slug 가 함께 변경됩니다 (예 <code>{renaming.prefix}-001</code>
-				→ <code>새prefix-001</code>). 파일명 / frontmatter / DB history 모두 자동 cascade.
-				본문 안 자유 텍스트 mention 은 자동 갱신 안 됨 — 직접 검색/수정 필요.
-			</p>
-			<div class="form">
-				<label>
-					<span>새 prefix</span>
-					<input
-						type="text"
-						bind:value={renameTo}
-						placeholder="DEV / BUG 같은 1~6자"
-						maxlength="6"
-						disabled={busy}
-					/>
-				</label>
-			</div>
-			<div class="modal-actions">
-				<button class="btn-yes" onclick={doRename} disabled={busy}>변경</button>
-				<button class="btn-no" onclick={() => (renaming = null)} disabled={busy}>취소</button>
-			</div>
-		</div>
-	</div>
-{/if}
 
 <style>
 	section {
@@ -433,6 +399,11 @@
 	input[type='text']:focus {
 		outline: none;
 		border-color: #58a6ff;
+	}
+	input[type='text'].prefix-input {
+		width: 7ch;
+		text-transform: uppercase;
+		font-family: 'SFMono-Regular', Consolas, monospace;
 	}
 	input[type='color'] {
 		width: 2.2rem;

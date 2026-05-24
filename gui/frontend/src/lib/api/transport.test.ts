@@ -256,33 +256,21 @@ describe('TauriTransport', () => {
 			body: { name_ko: '게시' }
 		});
 	});
-	// DEV-061: rename
-	it('POST /api/admin/types/DEV/rename → admin_rename_type', async () => {
+	// BUG-018: update 가 prefix/slug rename 도 통합 — body 안에 new_prefix / new_slug.
+	it('PATCH /api/admin/types/DEV (with new_prefix) → admin_update_type', async () => {
 		mockInvoke.mockResolvedValue({});
 		await new TauriTransport().call({
-			method: 'POST',
-			path: '/api/admin/types/DEV/rename',
-			body: { new_prefix: 'CORE' }
+			method: 'PATCH',
+			path: '/api/admin/types/DEV',
+			body: { new_prefix: 'CORE', color: '#abc' }
 		});
-		expect(mockInvoke).toHaveBeenCalledWith('admin_rename_type', {
+		expect(mockInvoke).toHaveBeenCalledWith('admin_update_type', {
 			prefix: 'DEV',
-			body: { new_prefix: 'CORE' }
-		});
-	});
-	it('POST /api/admin/statuses/open/rename → admin_rename_status_slug', async () => {
-		mockInvoke.mockResolvedValue({});
-		await new TauriTransport().call({
-			method: 'POST',
-			path: '/api/admin/statuses/open/rename',
-			body: { new_slug: 'backlog' }
-		});
-		expect(mockInvoke).toHaveBeenCalledWith('admin_rename_status_slug', {
-			slug: 'open',
-			body: { new_slug: 'backlog' }
+			body: { new_prefix: 'CORE', color: '#abc' }
 		});
 	});
 
-	it('DELETE /api/admin/statuses/on_hold → admin_delete_status', async () => {
+it('DELETE /api/admin/statuses/on_hold → admin_delete_status', async () => {
 		mockInvoke.mockResolvedValue(undefined);
 		await new TauriTransport().call({
 			method: 'DELETE',
