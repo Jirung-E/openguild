@@ -185,6 +185,20 @@ describe('TauriTransport', () => {
 		});
 	});
 
+	// DEV-055: quest type 변경.
+	it('PATCH /api/quests/42/type → change_quest_type', async () => {
+		mockInvoke.mockResolvedValue({});
+		await new TauriTransport().call({
+			method: 'PATCH',
+			path: '/api/quests/42/type',
+			body: { new_type_prefix: 'BUG' }
+		});
+		expect(mockInvoke).toHaveBeenCalledWith('change_quest_type', {
+			id: 42,
+			body: { new_type_prefix: 'BUG' }
+		});
+	});
+
 	it('POST /api/admin/reindex → admin_reindex', async () => {
 		mockInvoke.mockResolvedValue({});
 		await new TauriTransport().call({ method: 'POST', path: '/api/admin/reindex' });

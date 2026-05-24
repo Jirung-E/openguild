@@ -134,6 +134,16 @@ pub async fn change_quest_parent(
     ops::change_parent(&store, id, body).await.map_err(err)
 }
 
+/// DEV-055: quest 의 type 변경 — slug 가 바뀜.
+#[tauri::command]
+pub async fn change_quest_type(
+    store: State<'_, Store>,
+    id: i64,
+    body: openguild_core::models::ChangeTypeRequest,
+) -> Result<QuestRow, String> {
+    ops::change_quest_type(&store, id, body).await.map_err(err)
+}
+
 #[tauri::command]
 pub async fn delete_quest(
     store: State<'_, Store>,

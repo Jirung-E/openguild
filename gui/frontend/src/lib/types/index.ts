@@ -80,6 +80,11 @@ export interface ChangeParentRequest {
 	parent_quest_id: number | null;
 }
 
+/** DEV-055: quest 의 type 변경 — slug 가 바뀜. */
+export interface ChangeTypeRequest {
+	new_type_prefix: string;
+}
+
 export type CandidateRelation = 'parent' | 'sub' | 'prereq';
 
 export interface UpdatePositionRequest {

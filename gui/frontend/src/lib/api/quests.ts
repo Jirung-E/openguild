@@ -3,6 +3,7 @@ import type {
 	CandidateRelation,
 	ChangeParentRequest,
 	ChangeStatusRequest,
+	ChangeTypeRequest,
 	CreateQuestRequest,
 	Quest,
 	QuestDependency,
@@ -39,6 +40,17 @@ export const questsApi = {
 	/** 부모 변경 / 분리 (parent_quest_id: null로 분리). */
 	changeParent: (id: number, body: ChangeParentRequest) =>
 		api.patch<Quest>(`/api/quests/${id}/parent`, body),
+
+	/**
+	 * DEV-055: type 변경 (slug 가 바뀜).
+	 *
+	 * cascade: 본인 파일 rename, frontmatter / DB / history.quest_slug /
+	 * positions.quest_slug, 관련 quest 파일들의 auto-block 자동 갱신.
+	 * 다른 quest 본문 안 자유 텍스트 mention 은 사용자 책임 (false positive
+	 * 방지).
+	 */
+	changeType: (id: number, body: ChangeTypeRequest) =>
+		api.patch<Quest>(`/api/quests/${id}/type`, body),
 
 	/** 후보 조회 — 사이클/자기/이미 부모 있는 것 등 자동 제외. */
 	candidates: (id: number, relation: CandidateRelation) =>

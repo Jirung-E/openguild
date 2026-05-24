@@ -24,9 +24,8 @@
 
 	let slug = $derived($page.params.id ?? '');
 	let detail = $state<QuestDetail | null>(null);
-	// types/statuses 는 헤더 메타에 직접 쓰이진 않지만 레퍼런스로 두면 추후 메타 표시 용이.
-	// 현재는 statuses 만 상태변경 버튼에 사용.
-	let _types = $state<QuestType[]>([]);
+	// DEV-055: types 도 노출 — type 변경 UI 에서 사용.
+	let types = $state<QuestType[]>([]);
 	let statuses = $state<QuestStatus[]>([]);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
@@ -43,6 +42,10 @@
 	let statusFlashId = $state<number | null>(null); // 방금 변경된 상태 버튼 (체크 아이콘)
 	let badgePulse = $state(0); // 헤더 상태 뱃지 펄스 트리거 (값이 바뀌면 한 번 펄스)
 	let changingStatus = $state(false);
+
+	// DEV-055: type 변경.
+	let confirmTypeChange = $state<QuestType | null>(null);
+	let changingType = $state(false);
 
 	// 변경이력 — 상태 변경 후 새로고침 트리거 (DEV-038).
 	let historyVersion = $state(0);
@@ -72,7 +75,7 @@
 	onMount(async () => {
 		try {
 			const [t, s] = await Promise.all([metaApi.getQuestTypes(), metaApi.getQuestStatuses()]);
-			_types = t;
+			types = t;
 			statuses = s;
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'failed to load';
@@ -184,6 +187,34 @@
 			alert(e instanceof Error ? e.message : 'status change failed');
 		} finally {
 			changingStatus = false;
+		}
+	}
+
+	// --- DEV-055: type 변경 ---
+	//
+	// slug 가 바뀌어서 URL 도 새 slug 로 navigate. 다른 quest 본문의 mention 은
+	// 자동 갱신 안 됨 (사용자 책임) — confirm 모달에서 안내.
+
+	function askChangeType(t: QuestType) {
+		if (!detail || t.id === detail.quest_type_id) return;
+		confirmTypeChange = t;
+	}
+
+	async function doChangeType() {
+		const target = confirmTypeChange;
+		if (!detail || !target || changingType) return;
+		confirmTypeChange = null;
+		changingType = true;
+		try {
+			const updated = await questsApi.changeType(detail.id, {
+				new_type_prefix: target.prefix
+			});
+			// slug 바뀜 → 새 slug 의 URL 로 navigate.
+			await goto(`/quests/${updated.quest_id}`, { replaceState: true });
+		} catch (e) {
+			alert(e instanceof Error ? e.message : 'type change failed');
+		} finally {
+			changingType = false;
 		}
 	}
 
@@ -419,6 +450,27 @@
 				</div>
 			</div>
 
+			<!-- DEV-055: type 변경 (slug 가 바뀜, confirm 모달 후 진행) -->
+			<div class="status-row">
+				<span class="branch-label">타입 변경</span>
+				<div class="status-btns">
+					{#each types as t}
+						<button
+							class="status-btn"
+							class:active={t.id === detail.quest_type_id}
+							style:--c={t.color}
+							onclick={() => askChangeType(t)}
+							disabled={changingType || t.id === detail.quest_type_id}
+							title={t.id === detail.quest_type_id
+								? '현재 타입'
+								: `${t.prefix} 로 변경 — slug 바뀜`}
+						>
+							{t.prefix}
+						</button>
+					{/each}
+				</div>
+			</div>
+
 			{#if detail.description}
 				<div class="md-body">{@html renderMarkdown(detail.description)}</div>
 			{:else}
@@ -545,6 +597,37 @@
 		onclose={() => (showNewSubQuest = false)}
 		oncreated={onSubQuestCreated}
 	/>
+{/if}
+
+<!-- DEV-055: type 변경 확인 모달 -->
+{#if confirmTypeChange && detail}
+	{@const target = confirmTypeChange}
+	<div class="ov" role="presentation">
+		<div class="modal-sm" role="dialog" aria-modal="true" tabindex="-1">
+			<div class="modal-head">
+				<h3 class="del-title">타입 변경</h3>
+				<button class="x" onclick={() => (confirmTypeChange = null)} disabled={changingType}>×</button>
+			</div>
+			<p class="del-msg">
+				<code>{detail.quest_id}</code> 의 타입을 <strong>{target.prefix}</strong> 로
+				변경합니다. 슬러그(quest_id) 가 바뀌어
+				<code>{target.prefix}-NNN</code> 형태의 새 번호가 부여됩니다.
+			</p>
+			<p class="del-prereq">
+				⚠ 다른 퀘스트 본문 안에 <code>{detail.quest_id}</code> 를 직접 언급(예 "참조") 한 부분은
+				자동으로 갱신되지 않습니다. 필요하면 검색해서 직접 수정하세요.
+				부모/자식/선행 관계의 auto-block 메타는 자동 갱신됩니다.
+			</p>
+			<div class="del-actions">
+				<button class="btn-del-yes" onclick={doChangeType} disabled={changingType}>
+					{changingType ? '변경 중…' : '변경'}
+				</button>
+				<button class="btn-del-no" onclick={() => (confirmTypeChange = null)} disabled={changingType}>
+					취소
+				</button>
+			</div>
+		</div>
+	</div>
 {/if}
 
 <!-- 삭제 모달 -->

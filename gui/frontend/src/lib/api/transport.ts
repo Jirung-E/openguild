@@ -159,6 +159,10 @@ function routeToInvoke(
 		if (sub === 'parent' && method === 'PATCH') {
 			return { cmd: 'change_quest_parent', args: { id, body } };
 		}
+		// DEV-055: quest type 변경 (slug 가 바뀜, 다른 quest 파일들도 cascade).
+		if (sub === 'type' && method === 'PATCH') {
+			return { cmd: 'change_quest_type', args: { id, body } };
+		}
 		if (sub === 'restore' && method === 'PATCH') {
 			return { cmd: 'restore_quest', args: { id } };
 		}

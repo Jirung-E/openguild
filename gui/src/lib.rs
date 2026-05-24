@@ -231,6 +231,7 @@ pub fn run() {
             commands::update_quest,
             commands::change_quest_status,
             commands::change_quest_parent,
+            commands::change_quest_type,
             commands::delete_quest,
             commands::restore_quest,
             commands::add_prerequisite,
