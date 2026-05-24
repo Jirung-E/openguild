@@ -145,6 +145,267 @@ pub async fn delete_type(store: &Store, prefix: String) -> AppResult<()> {
     Ok(())
 }
 
+/// DEV-061: type prefix rename — 그 type 의 모든 quest 의 slug cascade.
+///
+/// 영향:
+/// - `.guild/types/<old>.toml` → `.guild/types/<new>.toml` (파일 + 안의 prefix 필드).
+/// - 그 type 의 모든 `.guild/quests/<old>-NNN.md` → `<new>-NNN.md` rename +
+///   frontmatter `quest_id` 갱신.
+/// - DB: `quest_types.prefix` UPDATE + `quest_history.quest_slug` /
+///   `quest_positions.quest_slug` cascade (DEV-049 의 slug 컬럼).
+/// - 영향받는 다른 quest (parent / sub / prereq / dependent) 파일들의
+///   auto-block 재생성 — 그쪽에서 본인을 mention 하던 게 새 slug 로 반영.
+///
+/// **본문 안 자유 텍스트 mention** 은 자동 갱신 X — DEV-055 와 동일 정책.
+pub async fn rename_type(
+    store: &Store,
+    old_prefix: String,
+    new_prefix: String,
+) -> AppResult<QuestType> {
+    let old_prefix = old_prefix.trim().to_string();
+    let new_prefix = new_prefix.trim().to_string();
+    validate_prefix(&new_prefix)?;
+
+    // 같은 prefix (대소문자 무시) 면 NoOp — case 변경만 원해도 새 row 가
+    // 동일 prefix 충돌 → 따로 처리 안 함 (현재는 거부).
+    if old_prefix.eq_ignore_ascii_case(&new_prefix) {
+        return fetch_type_by_prefix(&store.index_pool, &old_prefix).await;
+    }
+
+    // 중복 검사 — new 가 이미 다른 type 의 prefix 면 거부.
+    let exists: Option<i64> = sqlx::query_scalar(
+        "SELECT id FROM quest_types WHERE UPPER(prefix) = UPPER(?)",
+    )
+    .bind(&new_prefix)
+    .fetch_optional(&store.index_pool)
+    .await?;
+    if exists.is_some() {
+        return Err(AppError::BadRequest(format!(
+            "이미 존재하는 type prefix: {new_prefix}"
+        )));
+    }
+
+    let old_row = fetch_type_by_prefix(&store.index_pool, &old_prefix).await?;
+
+    // 영향받는 quest id 들 미리 수집 — auto-block 재생성 대상 결정용.
+    // (그 type 의 모든 quest + 그 quest 들을 parent / sub / prereq 로 가진 quest)
+    let own_ids: Vec<i64> = sqlx::query_scalar(
+        "SELECT id FROM quests WHERE quest_type_id = ? AND deleted_at IS NULL",
+    )
+    .bind(old_row.id)
+    .fetch_all(&store.index_pool)
+    .await?;
+
+    // (own_ids 와 관계된 다른 alive quest)
+    let related_ids: Vec<i64> = if own_ids.is_empty() {
+        Vec::new()
+    } else {
+        let placeholders = own_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql_str = format!(
+            r#"
+            SELECT DISTINCT q.id FROM quests q
+             WHERE q.deleted_at IS NULL
+               AND q.id NOT IN ({placeholders})
+               AND (
+                 q.parent_quest_id IN ({placeholders})
+                 OR q.id IN (
+                   SELECT quest_id FROM quest_dependencies
+                    WHERE prerequisite_id IN ({placeholders})
+                 )
+               )
+            "#
+        );
+        let mut q = sqlx::query_scalar(&sql_str);
+        for _ in 0..3 {
+            for id in &own_ids {
+                q = q.bind(*id);
+            }
+        }
+        q.fetch_all(&store.index_pool).await?
+    };
+
+    // ── DB UPDATE (transaction) ──
+    let mut tx = store.index_pool.begin().await?;
+    sqlx::query("UPDATE quest_types SET prefix = ? WHERE id = ?")
+        .bind(&new_prefix)
+        .bind(old_row.id)
+        .execute(&mut *tx)
+        .await?;
+    // quest_history.quest_slug — 그 type 의 모든 quest 에 대해 새 slug 로 갱신.
+    sqlx::query(
+        "UPDATE quest_history
+            SET quest_slug = (
+              SELECT qt.prefix || '-' || printf('%03d', q.number)
+                FROM quests q JOIN quest_types qt ON qt.id = q.quest_type_id
+               WHERE q.id = quest_history.quest_id
+            )
+          WHERE quest_id IN (SELECT id FROM quests WHERE quest_type_id = ?)",
+    )
+    .bind(old_row.id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        "UPDATE quest_positions
+            SET quest_slug = (
+              SELECT qt.prefix || '-' || printf('%03d', q.number)
+                FROM quests q JOIN quest_types qt ON qt.id = q.quest_type_id
+               WHERE q.id = quest_positions.quest_id
+            )
+          WHERE quest_id IN (SELECT id FROM quests WHERE quest_type_id = ?)",
+    )
+    .bind(old_row.id)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    // ── 파일 IO ──
+    // 1. types/<old>.toml → <new>.toml (파일 안 prefix 필드도 갱신).
+    let old_type_path = store.paths.type_path(&old_prefix);
+    let new_type_path = store.paths.type_path(&new_prefix);
+    if old_type_path.exists() {
+        let mut tf =
+            TypeFile::read(&old_type_path).map_err(AppError::Internal)?;
+        tf.prefix = new_prefix.clone();
+        tf.write(&new_type_path).map_err(AppError::Internal)?;
+        if old_type_path != new_type_path {
+            let _ = std::fs::remove_file(&old_type_path);
+        }
+    }
+
+    // 2. 그 type 의 모든 quest 파일 rename + auto-block 재생성.
+    //    write_quest_file 가 새 slug (quest.quest_id) path 에 씀.
+    use crate::services::quests as sql;
+    for qid in &own_ids {
+        let quest = sql::fetch_by_id(&store.index_pool, *qid).await?;
+        // 옛 slug path 계산 — old_prefix + 같은 number.
+        let old_slug = format!("{}-{:03}", old_prefix, quest.number);
+        let old_quest_path = store.paths.quest_path(&old_slug);
+        crate::ops::quests::write_quest_file(store, &quest).await?;
+        if old_quest_path != store.paths.quest_path(&quest.quest_id)
+            && old_quest_path.exists()
+        {
+            let _ = std::fs::remove_file(&old_quest_path);
+        }
+    }
+
+    // 3. 관련 다른 quest 의 auto-block 재생성 (parent / sub / prereq mention).
+    for rid in &related_ids {
+        if let Ok(q) = sql::fetch_by_id(&store.index_pool, *rid).await {
+            crate::ops::quests::write_quest_file(store, &q).await?;
+        }
+    }
+
+    fetch_type_by_prefix(&store.index_pool, &new_prefix).await
+}
+
+/// DEV-061: status slug rename — `.guild/quests/*.md` frontmatter 의
+/// `status` + `.guild/statuses/<order>-<slug>.toml` 파일명 + DB
+/// `quest_statuses.slug` + `quest_history.old/new_value` cascade.
+///
+/// auto-block 변화 없음 (status 는 auto-block 에 표시 안 됨).
+pub async fn rename_status_slug(
+    store: &Store,
+    old_slug: String,
+    new_slug: String,
+) -> AppResult<QuestStatus> {
+    let old_slug = old_slug.trim().to_string();
+    let new_slug = new_slug.trim().to_string();
+    validate_status_slug(&new_slug)?;
+
+    if old_slug == new_slug {
+        return fetch_status_by_slug(&store.index_pool, &old_slug).await;
+    }
+
+    // 중복 검사.
+    let exists: Option<i64> = sqlx::query_scalar(
+        "SELECT id FROM quest_statuses WHERE slug = ?",
+    )
+    .bind(&new_slug)
+    .fetch_optional(&store.index_pool)
+    .await?;
+    if exists.is_some() {
+        return Err(AppError::BadRequest(format!(
+            "이미 존재하는 status slug: {new_slug}"
+        )));
+    }
+
+    let old_row = fetch_status_by_slug(&store.index_pool, &old_slug).await?;
+
+    // 영향받는 quest id 들 미리 수집 (frontmatter rewrite 대상).
+    let affected_quest_ids: Vec<i64> = sqlx::query_scalar(
+        "SELECT id FROM quests WHERE status_id = ? AND deleted_at IS NULL",
+    )
+    .bind(old_row.id)
+    .fetch_all(&store.index_pool)
+    .await?;
+
+    // ── DB UPDATE (transaction) ──
+    let mut tx = store.index_pool.begin().await?;
+    sqlx::query("UPDATE quest_statuses SET slug = ? WHERE id = ?")
+        .bind(&new_slug)
+        .bind(old_row.id)
+        .execute(&mut *tx)
+        .await?;
+    // history 의 change_status op 에서 old / new value 가 old_slug 면 갱신.
+    sqlx::query(
+        "UPDATE quest_history SET old_value = ? WHERE op = 'change_status' AND old_value = ?",
+    )
+    .bind(&new_slug)
+    .bind(&old_slug)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        "UPDATE quest_history SET new_value = ? WHERE op = 'change_status' AND new_value = ?",
+    )
+    .bind(&new_slug)
+    .bind(&old_slug)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    // ── 파일 IO ──
+    // 1. statuses/<order>-<old>.toml → <order>-<new>.toml rename.
+    //    파일 내용은 unchanged (slug 가 파일 이름에만 존재).
+    let dir = store.paths.statuses_dir();
+    let old_filename = StatusFile::filename(old_row.sort_order, &old_slug);
+    let new_filename = StatusFile::filename(old_row.sort_order, &new_slug);
+    let old_path = dir.join(&old_filename);
+    let new_path = dir.join(&new_filename);
+    if old_path.exists() && old_path != new_path {
+        std::fs::rename(&old_path, &new_path)
+            .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
+    }
+
+    // 2. 그 status 의 모든 quest .md frontmatter 의 `status` 필드 rewrite.
+    use crate::services::quests as sql;
+    for qid in &affected_quest_ids {
+        if let Ok(q) = sql::fetch_by_id(&store.index_pool, *qid).await {
+            crate::ops::quests::write_quest_file(store, &q).await?;
+        }
+    }
+
+    fetch_status_by_slug(&store.index_pool, &new_slug).await
+}
+
+/// status slug validation — `slugify` 가 만드는 형식과 동일하게 강제.
+fn validate_status_slug(slug: &str) -> AppResult<()> {
+    if slug.is_empty() || slug.chars().count() > 32 {
+        return Err(AppError::BadRequest(
+            "status slug 는 1~32자".into(),
+        ));
+    }
+    for c in slug.chars() {
+        let ok = c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_';
+        if !ok {
+            return Err(AppError::BadRequest(format!(
+                "status slug 에 허용되지 않은 문자 '{c}'. \
+                 소문자 / 숫자 / '_' 만 사용."
+            )));
+        }
+    }
+    Ok(())
+}
+
 /// 특정 type 을 사용하는 alive quest 수.
 pub async fn count_quests_by_type(pool: &SqlitePool, type_id: i64) -> AppResult<i64> {
     let n: i64 = sqlx::query_scalar(
@@ -860,6 +1121,243 @@ mod tests {
         .await
         .unwrap();
         assert!(row.is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ─── DEV-061: rename_type ───
+
+    /// 빈 type (quest 0개) rename — 파일 + DB 만 갱신.
+    #[tokio::test]
+    async fn rename_type_empty() {
+        let (dir, store) = fresh_store("rename-type-empty").await;
+        // BUG type 은 seed 에 있고 quest 0.
+        let updated = rename_type(&store, "BUG".into(), "FIX".into())
+            .await
+            .unwrap();
+        assert_eq!(updated.prefix, "FIX");
+        assert!(!store.paths.type_path("BUG").exists(), "옛 type 파일 삭제");
+        assert!(store.paths.type_path("FIX").exists(), "새 type 파일 생성");
+        // 파일 내용도 prefix 갱신됐는지.
+        let f = TypeFile::read(store.paths.type_path("FIX")).unwrap();
+        assert_eq!(f.prefix, "FIX");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// quest 가 있는 type rename — quest 파일들 + slug + frontmatter cascade.
+    #[tokio::test]
+    async fn rename_type_with_quests_cascades() {
+        let (dir, store) = fresh_store("rename-type-cascade").await;
+
+        let dev_id: i64 =
+            sqlx::query_scalar("SELECT id FROM quest_types WHERE prefix = 'DEV'")
+                .fetch_one(&store.index_pool)
+                .await
+                .unwrap();
+        let open_id: i64 =
+            sqlx::query_scalar("SELECT id FROM quest_statuses WHERE slug = 'open'")
+                .fetch_one(&store.index_pool)
+                .await
+                .unwrap();
+
+        // DEV-001, DEV-002 직접 INSERT (test 단순화).
+        for n in 1..=2 {
+            sqlx::query(
+                "INSERT INTO quests (quest_type_id, number, title, status_id, urgency, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, 3, datetime('now'), datetime('now'))",
+            )
+            .bind(dev_id)
+            .bind(n)
+            .bind(format!("dev quest {n}"))
+            .bind(open_id)
+            .execute(&store.index_pool)
+            .await
+            .unwrap();
+        }
+        sqlx::query(
+            "UPDATE quest_counters SET last_number = 2 WHERE quest_type_id = ?",
+        )
+        .bind(dev_id)
+        .execute(&store.index_pool)
+        .await
+        .unwrap();
+
+        // .md 파일도 만들어 두기 (write_quest_file 가 호출되어 cascade 되는지 확인).
+        for n in 1..=2 {
+            let id: i64 = sqlx::query_scalar(
+                "SELECT id FROM quests WHERE quest_type_id = ? AND number = ?",
+            )
+            .bind(dev_id)
+            .bind(n)
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+            let q =
+                crate::services::quests::fetch_by_id(&store.index_pool, id)
+                    .await
+                    .unwrap();
+            crate::ops::quests::write_quest_file(&store, &q).await.unwrap();
+        }
+        assert!(dir.join(".guild/quests/DEV-001.md").exists());
+        assert!(dir.join(".guild/quests/DEV-002.md").exists());
+
+        // 한 quest 의 history 도 만들어 두기 (slug cascade 확인).
+        sqlx::query(
+            "INSERT INTO quest_history (quest_id, quest_slug, ts, op, old_value, new_value)
+             VALUES ((SELECT id FROM quests WHERE quest_type_id = ? AND number = 1),
+                     'DEV-001', datetime('now'), 'change_status', 'open', 'in_progress')",
+        )
+        .bind(dev_id)
+        .execute(&store.index_pool)
+        .await
+        .unwrap();
+
+        // rename DEV → CORE.
+        let updated = rename_type(&store, "DEV".into(), "CORE".into())
+            .await
+            .unwrap();
+        assert_eq!(updated.prefix, "CORE");
+
+        // 파일 rename 확인.
+        assert!(!dir.join(".guild/quests/DEV-001.md").exists());
+        assert!(!dir.join(".guild/quests/DEV-002.md").exists());
+        assert!(dir.join(".guild/quests/CORE-001.md").exists());
+        assert!(dir.join(".guild/quests/CORE-002.md").exists());
+        assert!(!store.paths.type_path("DEV").exists());
+        assert!(store.paths.type_path("CORE").exists());
+
+        // frontmatter quest_id 갱신.
+        let c1 = std::fs::read_to_string(dir.join(".guild/quests/CORE-001.md")).unwrap();
+        assert!(c1.contains("quest_id = \"CORE-001\""));
+
+        // history quest_slug cascade.
+        let slug: String = sqlx::query_scalar(
+            "SELECT quest_slug FROM quest_history WHERE op = 'change_status' LIMIT 1",
+        )
+        .fetch_one(&store.index_pool)
+        .await
+        .unwrap();
+        assert_eq!(slug, "CORE-001");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn rename_type_rejects_duplicate() {
+        let (dir, store) = fresh_store("rename-type-dup").await;
+        // BUG → DEV (이미 존재).
+        let err = rename_type(&store, "BUG".into(), "DEV".into())
+            .await
+            .unwrap_err();
+        assert!(matches!(err, AppError::BadRequest(_)));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn rename_type_rejects_invalid_prefix() {
+        let (dir, store) = fresh_store("rename-type-bad").await;
+        for bad in &["dev", "TOOLONG", ""] {
+            let err = rename_type(&store, "BUG".into(), (*bad).into())
+                .await
+                .unwrap_err();
+            assert!(matches!(err, AppError::BadRequest(_)), "bad={bad}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ─── DEV-061: rename_status_slug ───
+
+    #[tokio::test]
+    async fn rename_status_slug_renames_file_and_cascades() {
+        let (dir, store) = fresh_store("rename-status").await;
+
+        // 한 quest 추가 + history 한 줄.
+        let dev_id: i64 =
+            sqlx::query_scalar("SELECT id FROM quest_types WHERE prefix = 'DEV'")
+                .fetch_one(&store.index_pool)
+                .await
+                .unwrap();
+        let open_id: i64 =
+            sqlx::query_scalar("SELECT id FROM quest_statuses WHERE slug = 'open'")
+                .fetch_one(&store.index_pool)
+                .await
+                .unwrap();
+        sqlx::query(
+            "INSERT INTO quests (quest_type_id, number, title, status_id, urgency, created_at, updated_at)
+             VALUES (?, 1, 'q', ?, 3, datetime('now'), datetime('now'))",
+        )
+        .bind(dev_id)
+        .bind(open_id)
+        .execute(&store.index_pool)
+        .await
+        .unwrap();
+        let qid: i64 = sqlx::query_scalar(
+            "SELECT id FROM quests WHERE quest_type_id = ? AND number = 1",
+        )
+        .bind(dev_id)
+        .fetch_one(&store.index_pool)
+        .await
+        .unwrap();
+        let q = crate::services::quests::fetch_by_id(&store.index_pool, qid)
+            .await
+            .unwrap();
+        crate::ops::quests::write_quest_file(&store, &q).await.unwrap();
+
+        sqlx::query(
+            "INSERT INTO quest_history (quest_id, quest_slug, ts, op, old_value, new_value)
+             VALUES (?, 'DEV-001', datetime('now'), 'change_status', 'open', 'in_progress')",
+        )
+        .bind(qid)
+        .execute(&store.index_pool)
+        .await
+        .unwrap();
+
+        // rename open → backlog.
+        let updated = rename_status_slug(&store, "open".into(), "backlog".into())
+            .await
+            .unwrap();
+        assert_eq!(updated.slug, "backlog");
+
+        // 파일 rename.
+        let old_path = store.paths.statuses_dir().join("1-open.toml");
+        let new_path = store.paths.statuses_dir().join("1-backlog.toml");
+        assert!(!old_path.exists(), "옛 status 파일 삭제");
+        assert!(new_path.exists(), "새 status 파일 생성");
+
+        // quest frontmatter status 갱신.
+        let content = std::fs::read_to_string(dir.join(".guild/quests/DEV-001.md")).unwrap();
+        assert!(content.contains("status = \"backlog\""));
+
+        // history old_value 'open' → 'backlog'.
+        let old_value: String = sqlx::query_scalar(
+            "SELECT old_value FROM quest_history WHERE op = 'change_status'",
+        )
+        .fetch_one(&store.index_pool)
+        .await
+        .unwrap();
+        assert_eq!(old_value, "backlog");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn rename_status_slug_rejects_duplicate() {
+        let (dir, store) = fresh_store("rename-st-dup").await;
+        let err = rename_status_slug(&store, "open".into(), "in_progress".into())
+            .await
+            .unwrap_err();
+        assert!(matches!(err, AppError::BadRequest(_)));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn rename_status_slug_rejects_invalid_slug() {
+        let (dir, store) = fresh_store("rename-st-bad").await;
+        for bad in &["Open", "with space", "with-dash", ""] {
+            let err = rename_status_slug(&store, "on_hold".into(), (*bad).into())
+                .await
+                .unwrap_err();
+            assert!(matches!(err, AppError::BadRequest(_)), "bad={bad}");
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

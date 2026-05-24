@@ -439,7 +439,7 @@ async fn write_quest_file_as_deleted(
     let frontmatter = QuestFrontmatter {
         quest_id: quest.quest_id.clone(),
         title: quest.title.clone(),
-        status: status_name_to_slug(&quest.status_name_en),
+        status: quest.status_slug.clone(),
         urgency: quest.urgency,
         parent: None, // soft-deleted 는 parent 표시 X (sub 관계 끊긴 것으로 간주)
         prerequisites: vec![],
@@ -460,7 +460,10 @@ async fn write_quest_file_as_deleted(
 /// frontmatter / description / auto 블록 모두 fresh 하게 구성.
 ///
 /// 기존 파일이 있으면 description (사용자 작성 본문) 만 보존.
-async fn write_quest_file(store: &Store, quest: &QuestRow) -> AppResult<()> {
+pub(crate) async fn write_quest_file(
+    store: &Store,
+    quest: &QuestRow,
+) -> AppResult<()> {
     let pool = &store.index_pool;
     let path = store.paths.quest_path(&quest.quest_id);
 
@@ -483,7 +486,7 @@ async fn write_quest_file(store: &Store, quest: &QuestRow) -> AppResult<()> {
     let frontmatter = QuestFrontmatter {
         quest_id: quest.quest_id.clone(),
         title: quest.title.clone(),
-        status: status_name_to_slug(&quest.status_name_en),
+        status: quest.status_slug.clone(),
         urgency: quest.urgency,
         parent: relations.parent.as_ref().map(|r| r.quest_id.clone()),
         prerequisites: relations
@@ -561,12 +564,6 @@ async fn parent_id_of(pool: &SqlitePool, id: i64) -> AppResult<Option<i64>> {
     .fetch_optional(pool)
     .await?;
     Ok(row.flatten())
-}
-
-/// status name_en → slug (`In Progress` → `in_progress`).
-/// migrate.rs 와 같은 변환. 추후 statuses/ 파일 룩업 기반으로 바뀔 수 있음.
-fn status_name_to_slug(name_en: &str) -> String {
-    name_en.to_lowercase().replace(' ', "_")
 }
 
 #[cfg(test)]
