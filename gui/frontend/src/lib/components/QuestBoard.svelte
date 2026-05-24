@@ -452,6 +452,86 @@
 		hideSettings = { ...hideSettings, [slug]: next };
 		saveHideSettings(hideSettings);
 		applyHideSettings();
+		// DEV-067: laneHidden 변경 시 시각 lane 압축 (모든 노드 visualX 재계산 + lane DOM left).
+		if (key === 'laneHidden') {
+			applyLaneVisualCompression();
+			syncLanes();
+		}
+	}
+
+	// ── DEV-067: lane 시각 압축 (laneHidden 인 lane 자리 회수) ────
+	//
+	// 두 좌표계:
+	// - **absolute X** = DB positions.x. laneOf 기반 absolute lane left + offset.
+	// - **visual X**   = cytoscape position.x. visible lane left + offset.
+	//
+	// hideSettings 없을 땐 둘이 같음. laneHidden lane 이 생기면 visible 압축
+	// 으로 그 lane 뒤의 노드 X 가 STRIDE 만큼 왼쪽으로 시프트.
+	//
+	// 변환:
+	//   visualX = absX - absoluteLaneLeftOfStatus(sid) + visibleLaneLeftOfStatus(sid)
+	//   absX    = visualX + absoluteLaneLeftOfStatus(sid) - visibleLaneLeftOfStatus(sid)
+	//
+	// 모든 사이트 (init / drag dragfree / arrange / DB save / snapToGrid /
+	// flashToQuest 의 새 노드 추가) 가 이 변환 사용.
+
+	function absoluteLaneLeftOfStatus(statusId: number): number {
+		return (laneOf.get(statusId) ?? 0) * LANE_STRIDE;
+	}
+
+	function visibleLaneLeftOfStatus(statusId: number): number {
+		let visIdx = 0;
+		let lastLeft = 0;
+		for (const s of sorted) {
+			const setting = getHideSetting(s.slug);
+			if (s.id === statusId) {
+				return setting.laneHidden ? lastLeft : visIdx * LANE_STRIDE;
+			}
+			if (!setting.laneHidden) {
+				lastLeft = visIdx * LANE_STRIDE;
+				visIdx++;
+			}
+		}
+		return 0;
+	}
+
+	function absToVisualX(absX: number, statusId: number): number {
+		return absX - absoluteLaneLeftOfStatus(statusId) + visibleLaneLeftOfStatus(statusId);
+	}
+
+	function visualToAbsX(visualX: number, statusId: number): number {
+		return visualX + absoluteLaneLeftOfStatus(statusId) - visibleLaneLeftOfStatus(statusId);
+	}
+
+	/** visible lane index (drag drop 시 사용자 시각 위치) → status_id. */
+	function statusIdAtVisibleIdx(visIdx: number): number | null {
+		let i = 0;
+		for (const s of sorted) {
+			if (getHideSetting(s.slug).laneHidden) continue;
+			if (i === visIdx) return s.id;
+			i++;
+		}
+		return null;
+	}
+
+	function visibleLaneCount(): number {
+		return sorted.filter((s) => !getHideSetting(s.slug).laneHidden).length;
+	}
+
+	/** 모든 노드의 visual position 을 현재 hide settings 기준으로 재계산.
+	 * 노드 data.absX 가 진리원 (DB 와 같은 좌표계). */
+	function applyLaneVisualCompression() {
+		const c = cy;
+		if (!c) return;
+		c.batch(() => {
+			c.nodes('[questId]').forEach((n) => {
+				const sid = n.data('statusId') as number;
+				const absX = (n.data('absX') as number | undefined) ?? n.position().x;
+				const newX = absToVisualX(absX, sid);
+				const p = n.position();
+				if (newX !== p.x) n.position({ x: newX, y: p.y });
+			});
+		});
 	}
 
 	let expandedQuest = $state<Quest | null>(null);
@@ -495,14 +575,19 @@
 		return laneCenterX - totalW / 2 + NODE_W / 2;
 	}
 
-	/** 보드 좌표를 NODE_W+GAP / NODE_H+GAP 단위 그리드의 가장 가까운 셀 중앙으로 스냅. */
+	/** 보드 좌표 (visual) 를 NODE_W+GAP / NODE_H+GAP 단위 그리드의 가장 가까운 셀 중앙으로 스냅. */
 	function snapToGrid(x: number, y: number): { x: number; y: number } {
 		const cellW = NODE_W + NODE_GAP;
 		const cellH = NODE_H + NODE_GAP;
-		// X 그리드 기준: 해당 lane 의 cols 에 따라 firstX 가 결정 (lane 중앙 기준 균등)
-		const li = Math.max(0, Math.min((sorted?.length ?? 1) - 1, Math.floor(x / LANE_STRIDE)));
+		// DEV-067: input x 는 visual. visible lane idx → status → absolute lane idx.
+		const visCount = Math.max(1, visibleLaneCount());
+		const visIdx = Math.max(0, Math.min(visCount - 1, Math.floor(x / LANE_STRIDE)));
+		const statusId = statusIdAtVisibleIdx(visIdx);
+		const li = statusId !== null ? (laneOf.get(statusId) ?? 0) : 0;
 		const cols = laneCols[li] ?? 2;
-		const firstX = laneFirstCellX(li, cols);
+		// laneFirstCellX(li, cols) 는 absolute X. visible 압축 적용해서 visual X 로 변환.
+		const firstX =
+			statusId !== null ? absToVisualX(laneFirstCellX(li, cols), statusId) : laneFirstCellX(li, cols);
 		const localX = x - firstX;
 		const colIdx = Math.round(localX / cellW);
 		const sx = firstX + colIdx * cellW;
@@ -595,7 +680,10 @@
 				} catch { busy = false; return; }
 			}
 			node.animate({ position: { x: target.x, y: target.y }, duration: 120 });
-			questsApi.updatePosition(record.questId, { x: target.x, y: target.y }).catch(() => {});
+			// DEV-067: record.to.x 는 visual. DB 는 absolute.
+			const absX = visualToAbsX(target.x, target.statusId);
+			node.data('absX', absX);
+			questsApi.updatePosition(record.questId, { x: absX, y: target.y }).catch(() => {});
 		} else {
 			const promises: Promise<unknown>[] = [];
 			for (const item of record.items) {
@@ -610,7 +698,10 @@
 					} catch { continue; }
 				}
 				node.animate({ position: { x: target.x, y: target.y }, duration: 200 });
-				promises.push(questsApi.updatePosition(item.questId, { x: target.x, y: target.y }).catch(() => {}));
+				// DEV-067: target.x 는 visual. DB 는 absolute.
+				const absX = visualToAbsX(target.x, target.statusId);
+				node.data('absX', absX);
+				promises.push(questsApi.updatePosition(item.questId, { x: absX, y: target.y }).catch(() => {}));
 			}
 			await Promise.all(promises);
 		}
@@ -967,17 +1058,20 @@
 				const li = laneOf.get(sid) ?? 0;
 				const lcols = laneCols[li] ?? 2;
 				const firstX = laneFirstCellX(li, lcols);
-				const x = firstX + col * cellW;
+				// DEV-067: absolute → visual 변환.
+				const absX = firstX + col * cellW;
+				const visX = absToVisualX(absX, sid);
 				const y = baseY + row * cellH;
 				const fromPos = { ...node.position() };
-				if (Math.abs(fromPos.x - x) < 0.5 && Math.abs(fromPos.y - y) < 0.5) return;
+				if (Math.abs(fromPos.x - visX) < 0.5 && Math.abs(fromPos.y - y) < 0.5) return;
+				node.data('absX', absX);
 				batchItems.push({
 					questId: qid,
 					from: { ...fromPos, statusId: sid },
-					to: { x, y, statusId: sid }
+					to: { x: visX, y, statusId: sid }
 				});
-				node.animate({ position: { x, y }, duration: 200 });
-				savePromises.push(questsApi.updatePosition(qid, { x, y }).catch(() => {}));
+				node.animate({ position: { x: visX, y }, duration: 200 });
+				savePromises.push(questsApi.updatePosition(qid, { x: absX, y }).catch(() => {}));
 			};
 
 			// 3) isolated 를 lane 별로 묶어서 row 0 부터 채움
@@ -1107,12 +1201,15 @@
 				const node = n as NodeSingular;
 				const fromPos = { ...node.position() };
 				const col = idx % cols, row = Math.floor(idx / cols);
-				const x = firstX + col * cellW;
-				const y = startY + row * cellH;
+				// DEV-067: x = firstX(absolute) → visual 변환. DB save 는 absolute.
+				const absX = firstX + col * cellW;
 				const sid = node.data('statusId') as number;
-				batchItems.push({ questId: node.data('questId') as number, from: { ...fromPos, statusId: sid }, to: { x, y, statusId: sid } });
-				node.animate({ position: { x, y }, duration: 200 });
-				savePromises.push(questsApi.updatePosition(node.data('questId') as number, { x, y }).catch(() => {}));
+				const visX = absToVisualX(absX, sid);
+				const y = startY + row * cellH;
+				node.data('absX', absX);
+				batchItems.push({ questId: node.data('questId') as number, from: { ...fromPos, statusId: sid }, to: { x: visX, y, statusId: sid } });
+				node.animate({ position: { x: visX, y }, duration: 200 });
+				savePromises.push(questsApi.updatePosition(node.data('questId') as number, { x: absX, y }).catch(() => {}));
 			});
 		}
 		// laneCols 가 바뀌었으므로 trigger
@@ -1261,7 +1358,9 @@
 					(m, n) => Math.max(m, (n as NodeSingular).position().y),
 					LANE_TOP + NODE_H / 2
 				);
-				const x = li * LANE_STRIDE + LANE_W / 2;
+				// DEV-067: absX = absolute, visualX = absolute → visual 변환.
+				const absX = li * LANE_STRIDE + LANE_W / 2;
+				const visX = absToVisualX(absX, quest.status_id);
 				const y = maxY + NODE_H + NODE_GAP;
 
 				cy.add({
@@ -1277,9 +1376,10 @@
 						typeColor: quest.type_color,
 						nodeBg: makeSvgUrl(quest),
 						highlightType: '',
-						active: false
+						active: false,
+						absX
 					},
-					position: { x, y }
+					position: { x: visX, y }
 				});
 				if (quest.parent_quest_id) {
 					cy.add({
@@ -1292,7 +1392,8 @@
 						}
 					});
 				}
-				questsApi.updatePosition(qid, { x, y }).catch(() => {});
+				// DEV-067: DB 는 absolute X.
+				questsApi.updatePosition(qid, { x: absX, y }).catch(() => {});
 				node = cy.getElementById(`q-${qid}`) as NodeSingular;
 			}
 
@@ -1414,9 +1515,21 @@
 		const cellHPx = (NODE_H + NODE_GAP) * zoom;
 		const dotR = Math.max(1, 1.5 * zoom);
 
+		// DEV-067: laneHidden 인 lane 의 col 은 display:none + 위치 skip.
+		// visible lane 만 contiguous visible index 로 압축 배치 — 노드의 visualX 와
+		// alignment 일치.
+		let visIdx = 0;
 		lanesEl.querySelectorAll<HTMLElement>('.lane-col').forEach((col, i) => {
-			col.style.left = `${i * LANE_STRIDE * zoom + pan.x}px`;
+			const s = sorted[i];
+			const laneHidden = s ? getHideSetting(s.slug).laneHidden : false;
+			if (laneHidden) {
+				col.style.display = 'none';
+				return;
+			}
+			col.style.display = '';
+			col.style.left = `${visIdx * LANE_STRIDE * zoom + pan.x}px`;
 			col.style.width = `${LANE_W * zoom}px`;
+			visIdx++;
 			if (gridSnap) {
 				const cols = laneCols[i] ?? 2;
 				// 첫 dot center (lane-col local X) = laneFirstCellX - i*LANE_STRIDE (보드→local 변환 후 zoom)
@@ -1446,9 +1559,19 @@
 				col.style.backgroundImage = '';
 			}
 		});
+		// DEV-067: header 도 visible 압축.
+		let hdrVisIdx = 0;
 		headersEl.querySelectorAll<HTMLElement>('.lane-hdr').forEach((hdr, i) => {
-			hdr.style.left = `${i * LANE_STRIDE * zoom + pan.x}px`;
+			const s = sorted[i];
+			const laneHidden = s ? getHideSetting(s.slug).laneHidden : false;
+			if (laneHidden) {
+				hdr.style.display = 'none';
+				return;
+			}
+			hdr.style.display = '';
+			hdr.style.left = `${hdrVisIdx * LANE_STRIDE * zoom + pan.x}px`;
 			hdr.style.width = `${LANE_W * zoom}px`;
+			hdrVisIdx++;
 		});
 		syncExpandedPos();
 	}
@@ -1520,6 +1643,9 @@
 				};
 				autoCount.set(q.status_id, n + 1);
 			}
+			// DEV-067: pos.x 는 absolute (DB positions.x). data.absX 진리원으로
+			// 저장. cytoscape position 은 visual 좌표 — applyLaneVisualCompression
+			// 이 init 끝에서 일관 변환.
 			elements.push({
 				data: {
 					id: `q-${q.id}`,
@@ -1532,9 +1658,10 @@
 					typeColor: q.type_color,
 					nodeBg: makeSvgUrl(q),
 					highlightType: '',
-					active: false
+					active: false,
+					absX: pos.x
 				},
-				position: pos
+				position: pos // 초기엔 absolute 그대로. applyLaneVisualCompression 이 visual 변환.
 			});
 		});
 
@@ -1683,7 +1810,12 @@
 				const n = cy!.getElementById(`q-${qid}`) as NodeSingular;
 				if (n.length === 0) continue;
 				const pos = n.position();
-				const li = Math.max(0, Math.min(Math.floor(pos.x / LANE_STRIDE), sorted.length - 1));
+				// DEV-067: visual idx → status_id → absolute lane idx.
+				// pos.x 는 visual 좌표 — visible lane 기준 idx 가 사용자 시각의 lane.
+				const visMax = Math.max(0, visibleLaneCount() - 1);
+				const visIdx = Math.max(0, Math.min(Math.floor(pos.x / LANE_STRIDE), visMax));
+				const targetStatusId = statusIdAtVisibleIdx(visIdx) ?? fromState.statusId;
+				const li = laneOf.get(targetStatusId) ?? 0;
 				pendingDragBatch.push({
 					node: n, questId: qid,
 					fromPos: { x: fromState.x, y: fromState.y },
@@ -1767,25 +1899,29 @@
 					snappedX = s.x;
 					snappedY = s.y;
 				}
-				// X축 클램프 (스냅이 레인 경계를 넘으면 다시 안으로). Y 는 자유.
-				const laneLeft = toLaneIdx * LANE_STRIDE;
-				const minX = laneLeft + LANE_PAD_X + NODE_W / 2;
-				const maxX = laneLeft + LANE_W - LANE_PAD_X - NODE_W / 2;
+				// DEV-067: clamp 는 visual 좌표 기준 (cytoscape position 이 visual).
+				// laneLeft = visibleLaneLeftOfStatus(targetStatusId).
+				const finalStatusId = laneChanged && confirmedLanes.has(toLaneIdx) ? newStatus.id : fromStatus;
+				const laneLeftVis = visibleLaneLeftOfStatus(finalStatusId);
+				const minX = laneLeftVis + LANE_PAD_X + NODE_W / 2;
+				const maxX = laneLeftVis + LANE_W - LANE_PAD_X - NODE_W / 2;
 				const clampedX = Math.max(minX, Math.min(maxX, snappedX));
 				const finalY = snappedY;
 				if (clampedX !== toPos.x || finalY !== toPos.y) {
 					node.position({ x: clampedX, y: finalY });
 				}
 
-				const finalStatusId = laneChanged && confirmedLanes.has(toLaneIdx) ? newStatus.id : fromStatus;
 				const moved = fromPos.x !== clampedX || fromPos.y !== finalY || fromStatus !== finalStatusId;
 				if (moved) {
+					// DB save 는 absolute X. node.data.absX 도 동기화.
+					const absX = visualToAbsX(clampedX, finalStatusId);
+					node.data('absX', absX);
 					historyItems.push({
 						questId,
 						from: { x: fromPos.x, y: fromPos.y, statusId: fromStatus },
 						to: { x: clampedX, y: finalY, statusId: finalStatusId }
 					});
-					posUpdates.push(questsApi.updatePosition(questId, { x: clampedX, y: finalY }).catch(() => {}));
+					posUpdates.push(questsApi.updatePosition(questId, { x: absX, y: finalY }).catch(() => {}));
 				}
 			}
 
@@ -1840,11 +1976,13 @@
 			cy.fit(undefined, 60);
 		}
 
-		syncLanes();
-
 		// DEV-056: hide settings 적용. computeGroups → applyHideSettings.
 		groupOf = computeGroups(allQuests, allDependencies);
 		applyHideSettings();
+		// DEV-067: visible lane 압축 (laneHidden 자리 회수). 노드 visual 좌표
+		// 일관 재계산. syncLanes 도 visible 압축 반영.
+		applyLaneVisualCompression();
+		syncLanes();
 	}
 </script>
 
