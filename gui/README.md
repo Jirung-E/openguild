@@ -120,5 +120,16 @@ xdg-mime default openguild-gui.desktop application/x-openguild
 - `android/` / `ios/` — 모바일 자산 (현재 빌드 대상 아니지만 자동 생성).
 
 재생성: source.png 만 교체 후 `cd gui && cargo tauri icon ./icons/source.png`.
-빌드 시 incremental 캐시가 icon.ico 변경을 못 잡는 경우 있음 — release 빌드 전
-`cargo clean -p openguild-gui` 1회 권장.
+
+**빌드 캐시 함정** (debug / release 둘 다): tauri-build 의 build script 가
+icon resource 를 `target/{debug,release}/build/openguild-gui-*/out/` 에
+캐시함. icon.ico 변경 후 그냥 `cargo build` 하면 옛 아이콘 그대로 임베드.
+`cargo clean -p openguild-gui` 도 이 디렉토리는 안 지움 — 수동 삭제 필수:
+```bash
+cargo clean -p openguild-gui
+rm -rf target/debug/build/openguild-gui-* target/release/build/openguild-gui-*
+cargo build --release -p openguild-gui
+```
+Windows Explorer 가 같은 경로의 exe 아이콘을 또 캐시함 — 갱신 안 되면
+`ie4uinit.exe -show` 또는 `%LocalAppData%\IconCache.db` 삭제 + explorer
+재시작.
