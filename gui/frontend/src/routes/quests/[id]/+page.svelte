@@ -23,6 +23,12 @@
 	import { formatTs, formatRelative } from '$lib/utils/datetime';
 
 	let slug = $derived($page.params.id ?? '');
+	// BUG-015 fix1: parent / sub / prereq link 가 같은 origin 을 propagate 해서
+	// 같은 quest 안에서 다른 quest 클릭 후 back 도 list/board 로 가게 함.
+	let fromSuffix = $derived.by(() => {
+		const f = $page.url.searchParams.get('from');
+		return f ? `?from=${f}` : '';
+	});
 	let detail = $state<QuestDetail | null>(null);
 	// DEV-055: types 도 노출 — type 변경 UI 에서 사용.
 	let types = $state<QuestType[]>([]);
@@ -248,8 +254,8 @@
 			const updated = await questsApi.changeType(detail.id, {
 				new_type_prefix: target.prefix
 			});
-			// slug 바뀜 → 새 slug 의 URL 로 navigate.
-			await goto(`/quests/${updated.quest_id}`, { replaceState: true });
+			// slug 바뀜 → 새 slug 의 URL 로 navigate. BUG-015 fix1: from 보존.
+			await goto(`/quests/${updated.quest_id}${fromSuffix}`, { replaceState: true });
 		} catch (e) {
 			alert(e instanceof Error ? e.message : 'type change failed');
 		} finally {
@@ -365,13 +371,20 @@
 		}
 	}
 
-	// BUG-015: 사용자가 List 에서 Detail 로 들어왔으면 List 로 돌아가야 함.
-	// history.back() 으로 직전 페이지 (= List 또는 Board). 직접 link 로 진입
-	// 한 경우 (length <= 1) Board 로 fallback.
+	// BUG-015 (fix1): history.back() 만으로는 SvelteKit / Tauri WebView 의
+	// history stack 동작이 신뢰되지 않음 (사용자 테스트에서 여전히 Board 로
+	// 감). query parameter `?from=list|board` 로 명시 origin 추적.
+	//
+	// QuestListItem / QuestBoard 의 card-goto button 이 진입 시 from 을 set.
+	// from 이 없으면 Board 로 fallback.
 	function goBack() {
-		if (typeof window !== 'undefined' && window.history.length > 1) {
-			window.history.back();
+		const from = $page.url.searchParams.get('from');
+		if (from === 'list') {
+			goto('/?view=list');
+		} else if (from === 'board') {
+			goto('/?view=board');
 		} else {
+			// 외부 link 직접 진입 / parent 추적 안 된 경우 — Board 로.
 			goto('/');
 		}
 	}
@@ -539,7 +552,7 @@
 				<ul class="quest-list">
 					<li>
 						<div class="prereq-row">
-							<a href="/quests/{detail.parent.quest_id}" class="prereq-link">
+							<a href="/quests/{detail.parent.quest_id}{fromSuffix}" class="prereq-link">
 								<span class="badge type" style:--c={detail.parent.type_color}>{detail.parent.quest_id}</span>
 								<span class="ql-title">{detail.parent.title}</span>
 								<span class="badge status" style:--c={detail.parent.status_color}>{detail.parent.status_name_en}</span>
@@ -564,7 +577,7 @@
 					{#each detail.sub_quests as sq (sq.id)}
 						<li>
 							<div class="prereq-row">
-								<a href="/quests/{sq.quest_id}" class="prereq-link">
+								<a href="/quests/{sq.quest_id}{fromSuffix}" class="prereq-link">
 									<span class="badge type" style:--c={sq.type_color}>{sq.quest_id}</span>
 									<span class="ql-title">{sq.title}</span>
 									<span class="badge status" style:--c={sq.status_color}>{sq.status_name_en}</span>
@@ -595,7 +608,7 @@
 					{#each detail.prerequisites as pq (pq.id)}
 						<li>
 							<div class="prereq-row">
-								<a href="/quests/{pq.quest_id}" class="prereq-link">
+								<a href="/quests/{pq.quest_id}{fromSuffix}" class="prereq-link">
 									<span class="badge type" style:--c={pq.type_color}>{pq.quest_id}</span>
 									<span class="ql-title">{pq.title}</span>
 									<span class="badge status" style:--c={pq.status_color}>{pq.status_name_en}</span>

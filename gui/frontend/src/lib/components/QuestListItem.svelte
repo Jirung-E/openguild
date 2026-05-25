@@ -22,8 +22,8 @@
 	style:padding-left={`${depth * 1.5 + 1}rem`}
 	role="button"
 	tabindex="0"
-	onclick={() => goto(`/quests/${quest.quest_id}`)}
-	onkeydown={(e) => e.key === 'Enter' && goto(`/quests/${quest.quest_id}`)}
+	onclick={() => goto(`/quests/${quest.quest_id}?from=list`)}
+	onkeydown={(e) => e.key === 'Enter' && goto(`/quests/${quest.quest_id}?from=list`)}
 >
 	<!-- 접기/펼치기 -->
 	<button

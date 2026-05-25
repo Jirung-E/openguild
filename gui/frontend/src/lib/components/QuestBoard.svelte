@@ -2057,7 +2057,7 @@
 			<code class="bname">{expandedQuest.type_prefix}-{String(expandedQuest.number).padStart(3, '0')}</code>
 		</div>
 
-		<button class="card-goto" onclick={() => goto(`/quests/${expandedQuest!.quest_id}`)}>
+		<button class="card-goto" onclick={() => goto(`/quests/${expandedQuest!.quest_id}?from=board`)}>
 			퀘스트 상세 페이지로 이동 →
 		</button>
 
