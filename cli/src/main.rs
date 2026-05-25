@@ -72,6 +72,11 @@ enum Command {
         #[command(subcommand)]
         sub: Option<StatusesCmd>,
     },
+    /// 캠페인 관련 명령
+    Campaign {
+        #[command(subcommand)]
+        sub: CampaignCmd,
+    },
     /// 서버 상태 확인 (health)
     Ping,
     /// 백업 (snapshot) 즉시 생성
@@ -353,6 +358,80 @@ enum StatusesCmd {
     },
     /// 사용 중 quest 없는 status 삭제
     Delete { slug: String },
+}
+
+// ─────────────────────────── Campaign 서브명령 (DEV-011) ───────────────────────────
+
+#[derive(Subcommand)]
+enum CampaignCmd {
+    /// 새 캠페인 생성 (자동 C-NNN slug)
+    New {
+        #[arg(long)]
+        title: String,
+        /// ISO 날짜 (YYYY-MM-DD)
+        #[arg(long = "start")]
+        started_at: Option<String>,
+        #[arg(long = "end")]
+        ended_at: Option<String>,
+    },
+    /// 캠페인 목록
+    List {
+        /// 필터: active | done
+        #[arg(long)]
+        status: Option<String>,
+    },
+    /// 캠페인 상세
+    Show { slug: String },
+    /// 상태 변경 → active
+    Start { slug: String },
+    /// 상태 변경 → done
+    End { slug: String },
+    /// 캠페인에 quest 연결
+    Link {
+        campaign_slug: String,
+        quest_slug: String,
+    },
+    /// 캠페인에서 quest 연결 해제
+    Unlink {
+        campaign_slug: String,
+        quest_slug: String,
+    },
+    /// 캠페인 삭제 (soft)
+    Delete {
+        slug: String,
+        /// 안전장치 — 없으면 거부
+        #[arg(long)]
+        yes: bool,
+    },
+    /// 체크리스트 명령
+    Checklist {
+        #[command(subcommand)]
+        sub: CampaignChecklistCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum CampaignChecklistCmd {
+    /// 항목 추가 (캠페인 파일 본문 끝에 `- [ ] {text}` 한 줄 append)
+    Add {
+        campaign_slug: String,
+        text: String,
+    },
+    /// N번째 (1-based) 항목 체크
+    Check {
+        campaign_slug: String,
+        index: usize,
+    },
+    /// N번째 (1-based) 항목 언체크
+    Uncheck {
+        campaign_slug: String,
+        index: usize,
+    },
+    /// N번째 (1-based) 항목 삭제
+    Rm {
+        campaign_slug: String,
+        index: usize,
+    },
 }
 
 // DTO 는 `openguild_core::models` 에서 직접 사용. 위 use 문 참고.
@@ -898,6 +977,190 @@ impl Backend {
         }
     }
 
+    // ── Campaign (DEV-011) ───────────────────────────────
+    // HTTP 는 commit 3 에서 server endpoints 추가 후 채움. 본 commit 은 local.
+
+    fn http_unsupported_campaign() -> anyhow::Error {
+        anyhow::anyhow!(
+            "remote 모드에서 campaign 명령은 아직 미지원 (DEV-011 commit 3 에서 추가). \
+             local 모드에서 사용하세요."
+        )
+    }
+
+    fn campaign_create(
+        &self,
+        body: openguild_core::models::CreateCampaignRequest,
+    ) -> Result<openguild_core::models::CampaignRow> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_campaign()),
+            Backend::Local(l) => Self::map_err(
+                l.rt.block_on(openguild_core::ops::campaigns::create_campaign(&l.store, body)),
+            ),
+        }
+    }
+
+    fn campaign_list(
+        &self,
+        status: Option<String>,
+    ) -> Result<Vec<openguild_core::models::CampaignRow>> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_campaign()),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(async {
+                match status.as_deref() {
+                    Some(s) => openguild_core::services::campaigns::list_by_status(
+                        &l.store.index_pool,
+                        s,
+                    )
+                    .await,
+                    None => openguild_core::services::campaigns::list_alive(&l.store.index_pool).await,
+                }
+            })),
+        }
+    }
+
+    fn campaign_show(
+        &self,
+        slug: &str,
+    ) -> Result<openguild_core::models::CampaignDetail> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_campaign()),
+            Backend::Local(l) => Self::map_err(
+                l.rt.block_on(openguild_core::ops::campaigns::fetch_detail(&l.store, slug)),
+            ),
+        }
+    }
+
+    fn campaign_set_status(
+        &self,
+        slug: &str,
+        new_status: &str,
+    ) -> Result<openguild_core::models::CampaignRow> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_campaign()),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(async {
+                let row = openguild_core::services::campaigns::fetch_by_slug(
+                    &l.store.index_pool,
+                    slug,
+                )
+                .await?;
+                openguild_core::ops::campaigns::update_campaign(
+                    &l.store,
+                    row.id,
+                    openguild_core::models::UpdateCampaignRequest {
+                        status: Some(new_status.to_string()),
+                        ..Default::default()
+                    },
+                )
+                .await
+            })),
+        }
+    }
+
+    fn campaign_link(&self, campaign_slug: &str, quest_slug: &str) -> Result<()> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_campaign()),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(async {
+                let row = openguild_core::services::campaigns::fetch_by_slug(
+                    &l.store.index_pool,
+                    campaign_slug,
+                )
+                .await?;
+                openguild_core::ops::campaigns::link_quest_by_slug(
+                    &l.store, row.id, quest_slug,
+                )
+                .await
+            })),
+        }
+    }
+
+    fn campaign_unlink(&self, campaign_slug: &str, quest_slug: &str) -> Result<()> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_campaign()),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(async {
+                let row = openguild_core::services::campaigns::fetch_by_slug(
+                    &l.store.index_pool,
+                    campaign_slug,
+                )
+                .await?;
+                openguild_core::ops::campaigns::unlink_quest_by_slug(
+                    &l.store, row.id, quest_slug,
+                )
+                .await
+            })),
+        }
+    }
+
+    fn campaign_delete(&self, slug: &str) -> Result<()> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_campaign()),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(async {
+                let row = openguild_core::services::campaigns::fetch_by_slug(
+                    &l.store.index_pool,
+                    slug,
+                )
+                .await?;
+                openguild_core::ops::campaigns::delete_campaign(&l.store, row.id).await
+            })),
+        }
+    }
+
+    fn campaign_checklist_add(
+        &self,
+        campaign_slug: &str,
+        text: &str,
+    ) -> Result<openguild_core::models::CampaignChecklistItem> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_campaign()),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(async {
+                let row = openguild_core::services::campaigns::fetch_by_slug(
+                    &l.store.index_pool,
+                    campaign_slug,
+                )
+                .await?;
+                openguild_core::ops::campaigns::add_checklist_line(&l.store, row.id, text).await
+            })),
+        }
+    }
+
+    fn campaign_checklist_set(
+        &self,
+        campaign_slug: &str,
+        index: usize,
+        checked: bool,
+    ) -> Result<()> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_campaign()),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(async {
+                let row = openguild_core::services::campaigns::fetch_by_slug(
+                    &l.store.index_pool,
+                    campaign_slug,
+                )
+                .await?;
+                openguild_core::ops::campaigns::set_checklist_checked_by_index(
+                    &l.store, row.id, index, checked,
+                )
+                .await
+            })),
+        }
+    }
+
+    fn campaign_checklist_rm(&self, campaign_slug: &str, index: usize) -> Result<()> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_campaign()),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(async {
+                let row = openguild_core::services::campaigns::fetch_by_slug(
+                    &l.store.index_pool,
+                    campaign_slug,
+                )
+                .await?;
+                openguild_core::ops::campaigns::remove_checklist_by_index(
+                    &l.store, row.id, index,
+                )
+                .await
+            })),
+        }
+    }
+
     // ── 백업 / 복원 ──────────────────────────────────────
 
     fn create_backup(&self) -> Result<openguild_core::snapshot::SnapshotInfo> {
@@ -1237,6 +1500,210 @@ fn print_quest_line(q: &Quest) {
     let urg_color = urgency_color(q.urgency);
     let urgency = colorize(&format!("(urgency {})", q.urgency), urg_color);
     println!("{id} {status} {} {urgency}", q.title);
+}
+
+// ─────────────────────────── Campaign handler (DEV-011) ───────────────────────────
+
+fn handle_campaign(c: &Backend, json: bool, sub: CampaignCmd) -> Result<()> {
+    use openguild_core::models::{CampaignDetail, CampaignRow, CreateCampaignRequest};
+
+    fn print_row(r: &CampaignRow, json: bool) {
+        if json {
+            println!("{}", serde_json::to_string_pretty(r).unwrap());
+            return;
+        }
+        let period = match (&r.started_at, &r.ended_at) {
+            (Some(s), Some(e)) if !s.is_empty() && !e.is_empty() => format!(" [{s} ~ {e}]"),
+            (Some(s), _) if !s.is_empty() => format!(" [{s} ~]"),
+            (_, Some(e)) if !e.is_empty() => format!(" [~ {e}]"),
+            _ => String::new(),
+        };
+        println!(
+            "{}  [{}] {}{}",
+            r.campaign_slug, r.status, r.title, period
+        );
+    }
+
+    fn print_detail(d: &CampaignDetail, json: bool) {
+        if json {
+            println!("{}", serde_json::to_string_pretty(d).unwrap());
+            return;
+        }
+        print_row(&d.campaign, false);
+        if !d.linked_quests.is_empty() {
+            println!("  linked quests:");
+            for q in &d.linked_quests {
+                println!(
+                    "    - {} [{}] {}",
+                    q.quest_id, q.status_name_en, q.title
+                );
+            }
+        }
+        if !d.checklists.is_empty() {
+            println!("  checklist:");
+            for (i, item) in d.checklists.iter().enumerate() {
+                let mark = if item.checked { "[x]" } else { "[ ]" };
+                println!("    {}. {} {}", i + 1, mark, item.text);
+            }
+        }
+    }
+
+    match sub {
+        CampaignCmd::New {
+            title,
+            started_at,
+            ended_at,
+        } => {
+            let row = c.campaign_create(CreateCampaignRequest {
+                title,
+                description: None,
+                started_at,
+                ended_at,
+            })?;
+            print_row(&row, json);
+        }
+        CampaignCmd::List { status } => {
+            // 잘못된 --status 값은 silent fail 방지 — active | done 만 허용.
+            if let Some(s) = &status
+                && s != "active"
+                && s != "done"
+            {
+                return Err(anyhow!(
+                    "invalid --status '{s}' (expected 'active' or 'done')"
+                ));
+            }
+            let rows = c.campaign_list(status)?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&rows).unwrap());
+            } else if rows.is_empty() {
+                println!("(no campaigns)");
+            } else {
+                for r in &rows {
+                    print_row(r, false);
+                }
+            }
+        }
+        CampaignCmd::Show { slug } => {
+            let d = c.campaign_show(&slug)?;
+            print_detail(&d, json);
+        }
+        CampaignCmd::Start { slug } => {
+            let r = c.campaign_set_status(&slug, "active")?;
+            print_row(&r, json);
+        }
+        CampaignCmd::End { slug } => {
+            let r = c.campaign_set_status(&slug, "done")?;
+            print_row(&r, json);
+        }
+        CampaignCmd::Link {
+            campaign_slug,
+            quest_slug,
+        } => {
+            c.campaign_link(&campaign_slug, &quest_slug)?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "ok": true,
+                        "linked": { "campaign": campaign_slug, "quest": quest_slug }
+                    })
+                );
+            } else {
+                println!("✓ linked: {campaign_slug} ← {quest_slug}");
+            }
+        }
+        CampaignCmd::Unlink {
+            campaign_slug,
+            quest_slug,
+        } => {
+            c.campaign_unlink(&campaign_slug, &quest_slug)?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "ok": true,
+                        "unlinked": { "campaign": campaign_slug, "quest": quest_slug }
+                    })
+                );
+            } else {
+                println!("✓ unlinked: {campaign_slug} ↛ {quest_slug}");
+            }
+        }
+        CampaignCmd::Delete { slug, yes } => {
+            if !yes {
+                return Err(anyhow!(
+                    "삭제하려면 --yes 를 명시하세요 (안전장치). 예: campaign delete {slug} --yes"
+                ));
+            }
+            c.campaign_delete(&slug)?;
+            if json {
+                println!("{}", serde_json::json!({ "ok": true, "deleted": slug }));
+            } else {
+                println!("✓ deleted: {slug}");
+            }
+        }
+        CampaignCmd::Checklist { sub } => match sub {
+            CampaignChecklistCmd::Add {
+                campaign_slug,
+                text,
+            } => {
+                let item = c.campaign_checklist_add(&campaign_slug, &text)?;
+                if json {
+                    println!("{}", serde_json::to_string_pretty(&item).unwrap());
+                } else {
+                    println!(
+                        "✓ added [{}] {}: {}",
+                        item.order_idx + 1,
+                        campaign_slug,
+                        item.text
+                    );
+                }
+            }
+            CampaignChecklistCmd::Check {
+                campaign_slug,
+                index,
+            } => {
+                c.campaign_checklist_set(&campaign_slug, index, true)?;
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::json!({ "ok": true, "checked": index, "campaign": campaign_slug })
+                    );
+                } else {
+                    println!("✓ [{index}] {campaign_slug} checked");
+                }
+            }
+            CampaignChecklistCmd::Uncheck {
+                campaign_slug,
+                index,
+            } => {
+                c.campaign_checklist_set(&campaign_slug, index, false)?;
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::json!({ "ok": true, "unchecked": index, "campaign": campaign_slug })
+                    );
+                } else {
+                    println!("✓ [{index}] {campaign_slug} unchecked");
+                }
+            }
+            CampaignChecklistCmd::Rm {
+                campaign_slug,
+                index,
+            } => {
+                c.campaign_checklist_rm(&campaign_slug, index)?;
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::json!({ "ok": true, "removed": index, "campaign": campaign_slug })
+                    );
+                } else {
+                    println!("✓ [{index}] {campaign_slug} removed");
+                }
+            }
+        },
+    }
+    Ok(())
 }
 
 fn print_quest_list(quests: &[Quest], json: bool) {
@@ -1626,6 +2093,7 @@ fn run() -> Result<()> {
                 println!("      필요시 `openguild-server reindex`.");
             }
         }
+        Command::Campaign { sub } => handle_campaign(&c, cli.json, sub)?,
         Command::Quest { sub } => match sub {
             QuestCmd::List {
                 type_prefix,
