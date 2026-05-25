@@ -758,11 +758,14 @@ Section /o "HTTP Server (openguild-server)" SecServer
 SectionEnd
 
 ; DEV-034: Section "Add to PATH" — default checked.
-; Uses PowerShell to update the System PATH (HKLM\Environment). No plugin needed.
+; Uses PowerShell to update the User PATH (HKCU\Environment). No plugin needed.
+; Note: "User" scope (not "Machine") — installer runs as currentUser without
+; admin privileges, so HKLM PATH writes silently fail. Per-user PATH is
+; consistent with INSTALLMODE = "currentUser".
 ; The append-if-not-present logic prevents duplicate entries on reinstall.
 Section "Add to PATH" SecPath
-  DetailPrint "Adding $INSTDIR to system PATH..."
-  nsExec::ExecToLog 'powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$p = [Environment]::GetEnvironmentVariable(\"Path\", \"Machine\"); if ($p -notlike \"*$INSTDIR*\") { [Environment]::SetEnvironmentVariable(\"Path\", ($p.TrimEnd(\";\") + \";$INSTDIR\"), \"Machine\") }"'
+  DetailPrint "Adding $INSTDIR to user PATH..."
+  nsExec::ExecToLog 'powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$p = [Environment]::GetEnvironmentVariable(\"Path\", \"User\"); if ($null -eq $p) { $p = \"\" }; if ($p -notlike \"*$INSTDIR*\") { [Environment]::SetEnvironmentVariable(\"Path\", ($p.TrimEnd(\";\") + \";$INSTDIR\").TrimStart(\";\"), \"User\") }"'
   ; Marker registry so uninstall knows to remove PATH entry
   WriteRegDWORD SHCTX "${UNINSTKEY}" "PathEnvSet" 1
 SectionEnd
@@ -833,11 +836,11 @@ Section Uninstall
 
   !insertmacro CheckIfAppIsRunning "${MAINBINARYNAME}.exe" "${PRODUCTNAME}"
 
-  ; DEV-034: Remove from PATH if marker exists
+  ; DEV-034: Remove from PATH if marker exists. "User" scope matches install.
   ReadRegDWORD $0 SHCTX "${UNINSTKEY}" "PathEnvSet"
   ${If} $0 = 1
-    DetailPrint "Removing $INSTDIR from system PATH..."
-    nsExec::ExecToLog 'powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$p = [Environment]::GetEnvironmentVariable(\"Path\", \"Machine\"); $new = ($p -split \";\" | Where-Object { $_ -ne \"$INSTDIR\" }) -join \";\"; [Environment]::SetEnvironmentVariable(\"Path\", $new, \"Machine\")"'
+    DetailPrint "Removing $INSTDIR from user PATH..."
+    nsExec::ExecToLog 'powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$p = [Environment]::GetEnvironmentVariable(\"Path\", \"User\"); if ($null -ne $p) { $new = ($p -split \";\" | Where-Object { $_ -ne \"$INSTDIR\" -and $_ -ne \"\" }) -join \";\"; [Environment]::SetEnvironmentVariable(\"Path\", $new, \"User\") }"'
   ${EndIf}
 
   ; Delete the app directory and its content from disk
