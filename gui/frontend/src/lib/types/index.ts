@@ -137,6 +137,78 @@ export interface QuestHistoryEntry {
 	actor: string | null;
 }
 
+// ─── DEV-011: Campaign ──────────────────────────────────
+
+export type CampaignStatus = 'active' | 'done';
+
+export interface Campaign {
+	id: number;
+	campaign_slug: string; // "C-001"
+	title: string;
+	description: string | null;
+	status: CampaignStatus | string;
+	started_at: string | null;
+	ended_at: string | null;
+	display_order: number;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface CampaignChecklistItem {
+	id: number;
+	campaign_id: number;
+	text: string;
+	checked: boolean;
+	order_idx: number;
+}
+
+export interface CampaignLinkedQuest {
+	id: number;
+	quest_id: string;
+	title: string;
+	type_prefix: string;
+	type_color: string;
+	status_slug: string;
+	status_name_en: string;
+	status_color: string;
+}
+
+export interface CampaignDetail extends Campaign {
+	checklists: CampaignChecklistItem[];
+	linked_quests: CampaignLinkedQuest[];
+}
+
+export interface CampaignSummary {
+	id: number;
+	campaign_slug: string;
+	title: string;
+	status: string;
+	started_at: string | null;
+	ended_at: string | null;
+	display_order: number;
+	created_at: string;
+	/** 0.0 ~ 1.0 — 체크리스트 완료율. */
+	progress: number;
+	checklist_total: number;
+	checklist_checked: number;
+}
+
+export interface CreateCampaignRequest {
+	title: string;
+	description?: string | null;
+	started_at?: string | null;
+	ended_at?: string | null;
+}
+
+export interface UpdateCampaignRequest {
+	title?: string;
+	description?: string;
+	status?: CampaignStatus | string;
+	started_at?: string;
+	ended_at?: string;
+	display_order?: number;
+}
+
 export const URGENCY_COLOR: Record<number, string> = {
 	1: '#E94F4F',
 	2: '#F5A623',

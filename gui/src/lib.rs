@@ -257,6 +257,19 @@ pub fn run() {
             commands::list_recents,
             commands::clear_recents,
             commands::remove_recent,
+            // campaigns (DEV-011)
+            commands::list_campaigns,
+            commands::create_campaign,
+            commands::get_campaign,
+            commands::update_campaign,
+            commands::delete_campaign,
+            commands::campaign_link_quest,
+            commands::campaign_unlink_quest,
+            commands::campaign_checklist_add,
+            commands::campaign_checklist_set,
+            commands::campaign_checklist_rm,
+            commands::list_campaign_active_summaries,
+            commands::list_campaign_upcoming_summaries,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

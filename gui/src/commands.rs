@@ -7,12 +7,16 @@
 //! Tauri 가 frontend 로 JSON 직렬화.
 
 use openguild_core::models::{
-    AddPrerequisiteRequest, ChangeParentRequest, ChangeStatusRequest, CreateQuestRequest,
-    ListQuery, QuestDependency, QuestDetail, QuestHistoryEntry, QuestPosition, QuestRow,
-    QuestStatus, QuestType, UpdatePositionRequest, UpdateQuestRequest,
+    AddChecklistRequest, AddPrerequisiteRequest, CampaignChecklistItem, CampaignDetail,
+    CampaignRow, CampaignSummary, ChangeParentRequest, ChangeStatusRequest,
+    CreateCampaignRequest, CreateQuestRequest, LinkQuestRequest, ListQuery, QuestDependency,
+    QuestDetail, QuestHistoryEntry, QuestPosition, QuestRow, QuestStatus, QuestType,
+    UpdateCampaignRequest, UpdatePositionRequest, UpdateQuestRequest,
 };
-use openguild_core::ops::{meta as meta_ops, quests as ops};
-use openguild_core::services::{meta as meta_svc, quests as read};
+use openguild_core::ops::{campaigns as camp_ops, meta as meta_ops, quests as ops};
+use openguild_core::services::{
+    campaigns as camp_svc, meta as meta_svc, quests as read,
+};
 use openguild_core::{drift, reindex, snapshot, Store};
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -717,4 +721,159 @@ pub fn open_guild_in_current_window(
     });
 
     Ok(())
+}
+
+// ─────────────────────── Campaign (DEV-011) ───────────────────────
+
+#[tauri::command]
+pub async fn list_campaigns(
+    store: State<'_, Store>,
+    status: Option<String>,
+) -> Result<Vec<CampaignRow>, String> {
+    match status.as_deref() {
+        Some(s) => {
+            if s != "active" && s != "done" {
+                return Err(format!(
+                    "invalid status '{s}' (expected 'active' or 'done')"
+                ));
+            }
+            camp_svc::list_by_status(&store.index_pool, s)
+                .await
+                .map_err(err)
+        }
+        None => camp_svc::list_alive(&store.index_pool).await.map_err(err),
+    }
+}
+
+#[tauri::command]
+pub async fn create_campaign(
+    store: State<'_, Store>,
+    body: CreateCampaignRequest,
+) -> Result<CampaignRow, String> {
+    camp_ops::create_campaign(&store, body).await.map_err(err)
+}
+
+#[tauri::command]
+pub async fn get_campaign(
+    store: State<'_, Store>,
+    slug: String,
+) -> Result<CampaignDetail, String> {
+    camp_ops::fetch_detail(&store, &slug).await.map_err(err)
+}
+
+#[tauri::command]
+pub async fn update_campaign(
+    store: State<'_, Store>,
+    slug: String,
+    body: UpdateCampaignRequest,
+) -> Result<CampaignRow, String> {
+    let row = camp_svc::fetch_by_slug(&store.index_pool, &slug)
+        .await
+        .map_err(err)?;
+    camp_ops::update_campaign(&store, row.id, body)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn delete_campaign(
+    store: State<'_, Store>,
+    slug: String,
+) -> Result<(), String> {
+    let row = camp_svc::fetch_by_slug(&store.index_pool, &slug)
+        .await
+        .map_err(err)?;
+    camp_ops::delete_campaign(&store, row.id).await.map_err(err)
+}
+
+#[tauri::command]
+pub async fn campaign_link_quest(
+    store: State<'_, Store>,
+    slug: String,
+    body: LinkQuestRequest,
+) -> Result<(), String> {
+    let row = camp_svc::fetch_by_slug(&store.index_pool, &slug)
+        .await
+        .map_err(err)?;
+    camp_ops::link_quest_by_slug(&store, row.id, &body.quest_slug)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn campaign_unlink_quest(
+    store: State<'_, Store>,
+    slug: String,
+    quest_slug: String,
+) -> Result<(), String> {
+    let row = camp_svc::fetch_by_slug(&store.index_pool, &slug)
+        .await
+        .map_err(err)?;
+    camp_ops::unlink_quest_by_slug(&store, row.id, &quest_slug)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn campaign_checklist_add(
+    store: State<'_, Store>,
+    slug: String,
+    body: AddChecklistRequest,
+) -> Result<CampaignChecklistItem, String> {
+    let row = camp_svc::fetch_by_slug(&store.index_pool, &slug)
+        .await
+        .map_err(err)?;
+    camp_ops::add_checklist_line(&store, row.id, &body.text)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn campaign_checklist_set(
+    store: State<'_, Store>,
+    slug: String,
+    index: usize,
+    checked: bool,
+) -> Result<(), String> {
+    let row = camp_svc::fetch_by_slug(&store.index_pool, &slug)
+        .await
+        .map_err(err)?;
+    camp_ops::set_checklist_checked_by_index(&store, row.id, index, checked)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn campaign_checklist_rm(
+    store: State<'_, Store>,
+    slug: String,
+    index: usize,
+) -> Result<(), String> {
+    let row = camp_svc::fetch_by_slug(&store.index_pool, &slug)
+        .await
+        .map_err(err)?;
+    camp_ops::remove_checklist_by_index(&store, row.id, index)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn list_campaign_active_summaries(
+    store: State<'_, Store>,
+) -> Result<Vec<CampaignSummary>, String> {
+    camp_svc::list_active_summaries(&store.index_pool)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn list_campaign_upcoming_summaries(
+    store: State<'_, Store>,
+    days: Option<i64>,
+) -> Result<Vec<CampaignSummary>, String> {
+    let today = openguild_core::time::today_local_iso_date();
+    let d = days.unwrap_or(7);
+    camp_svc::list_upcoming_summaries(&store.index_pool, &today, d)
+        .await
+        .map_err(err)
 }

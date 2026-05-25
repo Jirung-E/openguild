@@ -227,6 +227,69 @@ function routeToInvoke(
 		if (method === 'DELETE') return { cmd: 'admin_delete_status', args: { slug } };
 	}
 
+	// ───── campaigns (DEV-011) ─────
+	// summaries — list 보다 먼저 매칭 (slug 자리에 'summaries' 가 옴).
+	if (method === 'GET' && pathOnly === '/api/campaigns/summaries/active') {
+		return { cmd: 'list_campaign_active_summaries', args: {} };
+	}
+	if (method === 'GET' && pathOnly === '/api/campaigns/summaries/upcoming') {
+		const daysStr = query.get('days');
+		const days = daysStr ? Number(daysStr) : undefined;
+		return {
+			cmd: 'list_campaign_upcoming_summaries',
+			args: days !== undefined ? { days } : {}
+		};
+	}
+	if (method === 'GET' && pathOnly === '/api/campaigns') {
+		const status = query.get('status');
+		return {
+			cmd: 'list_campaigns',
+			args: status ? { status } : {}
+		};
+	}
+	if (method === 'POST' && pathOnly === '/api/campaigns') {
+		return { cmd: 'create_campaign', args: { body } };
+	}
+	if (parts[0] === 'api' && parts[1] === 'campaigns' && parts[2] && parts[2] !== 'summaries') {
+		const slug = decodeURIComponent(parts[2]);
+		const sub = parts[3];
+		if (!sub) {
+			if (method === 'GET') return { cmd: 'get_campaign', args: { slug } };
+			if (method === 'PATCH') return { cmd: 'update_campaign', args: { slug, body } };
+			if (method === 'DELETE') return { cmd: 'delete_campaign', args: { slug } };
+		}
+		// .../quests  → link / unlink
+		if (sub === 'quests') {
+			if (method === 'POST') return { cmd: 'campaign_link_quest', args: { slug, body } };
+			if (parts[4] && method === 'DELETE') {
+				return {
+					cmd: 'campaign_unlink_quest',
+					args: { slug, questSlug: decodeURIComponent(parts[4]) }
+				};
+			}
+		}
+		// .../checklist  → add / set / rm
+		if (sub === 'checklist') {
+			if (!parts[4] && method === 'POST') {
+				return { cmd: 'campaign_checklist_add', args: { slug, body } };
+			}
+			if (parts[4] && /^\d+$/.test(parts[4])) {
+				const index = Number(parts[4]);
+				if (method === 'PATCH') {
+					// body: { checked: bool }
+					const b = (body as { checked?: boolean } | undefined) ?? {};
+					return {
+						cmd: 'campaign_checklist_set',
+						args: { slug, index, checked: b.checked ?? false }
+					};
+				}
+				if (method === 'DELETE') {
+					return { cmd: 'campaign_checklist_rm', args: { slug, index } };
+				}
+			}
+		}
+	}
+
 	return null;
 }
 

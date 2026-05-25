@@ -5,11 +5,15 @@
 	import { flashQuestId } from '$lib/stores';
 	import type { Quest } from '$lib/types';
 
-	type View = 'board' | 'list';
+	// DEV-011: Home 탭 추가. URL `/` 가 ?view 없으면 home 기본.
+	type View = 'home' | 'board' | 'list';
 
 	let currentView: View = $derived(
-		($page.url.searchParams.get('view') as View | null) ?? 'board'
+		($page.url.searchParams.get('view') as View | null) ?? 'home'
 	);
+
+	let onAdminPath = $derived($page.url.pathname.startsWith('/admin'));
+	let onRootPath = $derived($page.url.pathname === '/');
 
 	let showNewQuest = $state(false);
 
@@ -28,9 +32,10 @@
 	<a href="/welcome" class="logo">openguild</a>
 
 	<nav>
-		<a href="/?view=board" class:active={currentView === 'board'}>Quest Board</a>
-		<a href="/?view=list" class:active={currentView === 'list'}>Quest List</a>
-		<a href="/admin" class:active={$page.url.pathname.startsWith('/admin')}>Admin</a>
+		<a href="/" class:active={onRootPath && currentView === 'home'}>Home</a>
+		<a href="/?view=board" class:active={onRootPath && currentView === 'board'}>Quest Board</a>
+		<a href="/?view=list" class:active={onRootPath && currentView === 'list'}>Quest List</a>
+		<a href="/admin" class:active={onAdminPath}>Admin</a>
 	</nav>
 
 	<div class="nav-right">

@@ -2,13 +2,15 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
+	import Home from '$lib/components/Home.svelte';
 	import QuestBoard from '$lib/components/QuestBoard.svelte';
 	import QuestList from '$lib/components/QuestList.svelte';
 	import { detectEnvironment } from '$lib/api/transport';
 
-	type View = 'board' | 'list';
+	// DEV-011: Home 추가. ?view 없으면 home 기본.
+	type View = 'home' | 'board' | 'list';
 	let currentView: View = $derived(
-		($page.url.searchParams.get('view') as View | null) ?? 'board'
+		($page.url.searchParams.get('view') as View | null) ?? 'home'
 	);
 
 	// DEV-052: Tauri 가 인자 없이 시작되면 launch_mode === "welcome".
@@ -36,8 +38,10 @@
 
 {#if currentView === 'board'}
 	<QuestBoard />
-{:else}
+{:else if currentView === 'list'}
 	<QuestList />
+{:else}
+	<Home />
 {/if}
 
 <style>
