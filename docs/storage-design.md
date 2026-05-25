@@ -1,4 +1,4 @@
-# OpenGuild 저장소 설계 — 파일 진리원 + SQLite 캐시/저널
+# openguild 저장소 설계 — 파일 진리원 + SQLite 캐시/저널
 
 > 상태: **설계 확정, 구현 대기**
 > 작성: 2026-05-16
@@ -416,7 +416,7 @@ openguild migrate-to-files
 
 ## ⚠️ 구현 완료 후 — dogfood 전환 (필수)
 
-본 설계가 완료되면 OpenGuild 자체 프로젝트의 **앞으로 할 일 관리는 OpenGuild 로**.
+본 설계가 완료되면 openguild 자체 프로젝트의 **앞으로 할 일 관리는 openguild 로**.
 별도 todo 도구 / GitHub Issues 보조 사용 안 함.
 
 전환 절차:
@@ -425,5 +425,5 @@ openguild migrate-to-files
 3. `AGENTS.md` 의 "절대 규칙" 섹션이 이미 이 사실을 명시.
 4. `docs/dev-plan.md` 의 향후 로드맵 항목들도 점진적으로 quest 로 이전 (대단위는 docs 유지, 세부는 quest).
 
-이는 OpenGuild 의 단순한 self-test 가 아니라 **본 도구의 차별점을 직접 체험** 하기 위한 의도적
+이는 openguild 의 단순한 self-test 가 아니라 **본 도구의 차별점을 직접 체험** 하기 위한 의도적
 선택. git native + 파일 기반 issue tracker 라는 가치를 매일 사용하며 검증.

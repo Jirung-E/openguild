@@ -1,7 +1,7 @@
-# AGENTS — OpenGuild 사용 가이드
+# AGENTS — openguild 사용 가이드
 
-AI agent / 자동화 스크립트가 OpenGuild 를 **자기 작업 관리 도구** 로 사용할 때 참조하는 문서.
-(OpenGuild **를 개발** 할 때 참조는 `AGENTS.md` 의 "개발" 인덱스 따라갈 것.)
+AI agent / 자동화 스크립트가 openguild 를 **자기 작업 관리 도구** 로 사용할 때 참조하는 문서.
+(openguild **를 개발** 할 때 참조는 `AGENTS.md` 의 "개발" 인덱스 따라갈 것.)
 
 ---
 
@@ -243,7 +243,7 @@ $ openguild quest prereq add DEV-049 DEV-048
 
 ### 🚨 `.guild/` 파일을 직접 편집하지 말 것 (drift 방지)
 
-OpenGuild 는 **파일 = truth, `.guild/index.db` = SQL 캐시** 구조. mutation 은
+openguild 는 **파일 = truth, `.guild/index.db` = SQL 캐시** 구조. mutation 은
 모두 **`openguild` CLI / `openguild-server` HTTP / Tauri invoke** 를 거쳐
 저널 + 파일 + SQL 셋을 원자적으로 갱신.
 
@@ -316,7 +316,7 @@ $ openguild quest delete DEV-047 --cascade DEV-048,DEV-049 --yes
 ```bash
 # 사용 가능 여부 확인 (모드 자동 감지)
 if ! openguild ping >/dev/null 2>&1; then
-    echo "OpenGuild 가 동작하지 않습니다 (로컬 모드면 .guild 없음, 원격 모드면 서버 다운)" >&2
+    echo "openguild 가 동작하지 않습니다 (로컬 모드면 .guild 없음, 원격 모드면 서버 다운)" >&2
     exit 1
 fi
 ```

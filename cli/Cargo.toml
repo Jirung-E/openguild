@@ -2,7 +2,7 @@
 name = "openguild-cli"
 version = "0.1.0"
 edition = "2024"
-description = "OpenGuild CLI — local + remote guild operations"
+description = "openguild CLI — local + remote guild operations"
 
 [[bin]]
 name = "openguild"

@@ -84,7 +84,7 @@ impl GuildPaths {
 
     /// `.guild/.gitignore` 의 표준 내용.
     pub fn gitignore_content() -> &'static str {
-        "# OpenGuild — 내부 캐시 / UI 상태 / 백업 (git 추적 X)\n\
+        "# openguild — 내부 캐시 / UI 상태 / 백업 (git 추적 X)\n\
          index.db\n\
          positions.json\n\
          backups/\n\

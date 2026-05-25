@@ -1,4 +1,4 @@
-//! OpenGuild CLI (`openguild`)
+//! openguild CLI (`openguild`)
 //!
 //! 두 모드 지원:
 //!   - **로컬 (기본)**: cwd 부터 `.guild` 탐색 → core 직접 호출. 서버 불필요.
@@ -27,7 +27,7 @@ use serde::{Deserialize, Serialize};
 #[command(
     name = "openguild",
     version,
-    about = "OpenGuild CLI — local + remote guild operations"
+    about = "openguild CLI — local + remote guild operations"
 )]
 struct Cli {
     /// 원격 모드 — 서버 URL 지정 (env: OPENGUILD_REMOTE). 미지정 시 로컬 모드.

@@ -1,4 +1,4 @@
-//! OpenGuild desktop (Tauri v2) — library entry point.
+//! openguild desktop (Tauri v2) — library entry point.
 //!
 //! `run()` 은 Tauri 앱을 빌드/실행한다. `main.rs` 가 이를 호출.
 //! lib.rs 로 분리해두는 이유:

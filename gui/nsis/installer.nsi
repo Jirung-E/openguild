@@ -780,10 +780,10 @@ Section "-PostInstall" SecPostInstall
 SectionEnd
 
 ; ─── Section descriptions (shown in MUI_PAGE_COMPONENTS) ───
-LangString DESC_SecGui ${LANG_ENGLISH} "OpenGuild desktop window, .guild file association, and shortcuts."
+LangString DESC_SecGui ${LANG_ENGLISH} "openguild desktop window, .guild file association, and shortcuts."
 LangString DESC_SecCli ${LANG_ENGLISH} "openguild CLI for quest CRUD / move / etc. from terminal."
 LangString DESC_SecServer ${LANG_ENGLISH} "openguild-server for multi-user / remote setups. Default off."
-LangString DESC_SecPath ${LANG_ENGLISH} "Add OpenGuild install dir to system PATH (recommended for CLI / Server use)."
+LangString DESC_SecPath ${LANG_ENGLISH} "Add openguild install dir to system PATH (recommended for CLI / Server use)."
 
 !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
   !insertmacro MUI_DESCRIPTION_TEXT ${SecGui} $(DESC_SecGui)

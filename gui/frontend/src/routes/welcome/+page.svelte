@@ -200,12 +200,12 @@
 </script>
 
 <svelte:head>
-	<title>Welcome — OpenGuild</title>
+	<title>Welcome — openguild</title>
 </svelte:head>
 
 <main class="welcome">
 	<header>
-		<h1>OpenGuild</h1>
+		<h1>openguild</h1>
 		<p class="sub">최근 작업한 길드</p>
 	</header>
 
@@ -230,7 +230,7 @@
 			<h2>이 위치를 길드로 초기화할까요?</h2>
 			<p class="uninit-path">{uninitPath}</p>
 			<p class="uninit-desc">
-				지정한 디렉토리에 OpenGuild 마커 (<code>.guild/</code> 폴더 + 시드)가 없습니다.
+				지정한 디렉토리에 openguild 마커 (<code>.guild/</code> 폴더 + 시드)가 없습니다.
 				초기화하면 빈 길드가 생성되어 바로 작업할 수 있습니다.
 			</p>
 			<label class="uninit-name">

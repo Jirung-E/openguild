@@ -1,4 +1,4 @@
-# gui — OpenGuild Desktop (Tauri v2)
+# gui — openguild Desktop (Tauri v2)
 
 Tauri v2 데스크탑 앱. Rust shell + Svelte (SvelteKit static) 프론트엔드.
 
@@ -11,7 +11,7 @@ gui/
 ├── tauri.conf.json      ← Tauri v2 설정 (fileAssociations 포함)
 ├── capabilities/
 │   └── default.json     ← v2 capability (메인 윈도우 권한)
-├── icons/               ← OpenGuild 아이콘 (32/64/128/128@2x/icns/ico + Windows Store / Android / iOS)
+├── icons/               ← openguild 아이콘 (32/64/128/128@2x/icns/ico + Windows Store / Android / iOS)
 ├── src/
 │   ├── lib.rs           ← Tauri Builder + invoke 핸들러 + resolve_guild_path
 │   ├── commands.rs      ← invoke 핸들러 23개 (DEV-004)
@@ -74,24 +74,24 @@ OPENGUILD_GUILD=/path/to/my-project cargo run -p openguild-gui
 개발 중 (`cargo run`) 에는 PowerShell 로 수동 등록:
 
 ```powershell
-# 1. .guild 확장자를 ProgID OpenGuildFile 에 연결
+# 1. .guild 확장자를 ProgID openguildFile 에 연결
 New-Item -Path "HKCU:\Software\Classes\.guild" -Force | Out-Null
-Set-ItemProperty -Path "HKCU:\Software\Classes\.guild" -Name "(Default)" -Value "OpenGuildFile"
+Set-ItemProperty -Path "HKCU:\Software\Classes\.guild" -Name "(Default)" -Value "openguildFile"
 
 # 2. ProgID 의 실행 명령 — debug 빌드 절대 경로 사용
 $exe = (Resolve-Path .\target\debug\openguild-gui.exe).Path
-New-Item -Path "HKCU:\Software\Classes\OpenGuildFile\shell\open\command" -Force | Out-Null
-Set-ItemProperty -Path "HKCU:\Software\Classes\OpenGuildFile\shell\open\command" `
+New-Item -Path "HKCU:\Software\Classes\openguildFile\shell\open\command" -Force | Out-Null
+Set-ItemProperty -Path "HKCU:\Software\Classes\openguildFile\shell\open\command" `
   -Name "(Default)" -Value "`"$exe`" `"%1`""
 
 # 3. 아이콘 (선택)
-New-Item -Path "HKCU:\Software\Classes\OpenGuildFile\DefaultIcon" -Force | Out-Null
-Set-ItemProperty -Path "HKCU:\Software\Classes\OpenGuildFile\DefaultIcon" `
+New-Item -Path "HKCU:\Software\Classes\openguildFile\DefaultIcon" -Force | Out-Null
+Set-ItemProperty -Path "HKCU:\Software\Classes\openguildFile\DefaultIcon" `
   -Name "(Default)" -Value "`"$((Resolve-Path .\gui\icons\icon.ico).Path)`""
 ```
 
 해제: `Remove-Item -Path "HKCU:\Software\Classes\.guild" -Recurse;
-Remove-Item -Path "HKCU:\Software\Classes\OpenGuildFile" -Recurse`.
+Remove-Item -Path "HKCU:\Software\Classes\openguildFile" -Recurse`.
 
 ### macOS
 
@@ -110,7 +110,7 @@ xdg-mime default openguild-gui.desktop application/x-openguild
 
 ## 아이콘
 
-`gui/icons/*` 는 OpenGuild 아이콘 (DEV-035, 2026-05-25). `source.png` (1254×1254)
+`gui/icons/*` 는 openguild 아이콘 (DEV-035, 2026-05-25). `source.png` (1254×1254)
 를 source 로 `cargo tauri icon ./icons/source.png` 한 번에 전체 세트 생성:
 - `icon.ico` — Windows 멀티사이즈 (6-size RGBA), exe / 파일 탐색기 / 작업표시줄.
 - `icon.icns` — macOS 멀티사이즈 (1.1MB), .app 번들.
@@ -150,7 +150,7 @@ cargo build --release -p openguild-cli -p openguild-server
 
 # 3) NSIS 빌드 — tauri-cli 가 frontend build → release build → makensis.
 cd gui && cargo tauri build
-#   → target/release/bundle/nsis/OpenGuild_<ver>_x64-setup.exe (~9.2 MB)
+#   → target/release/bundle/nsis/openguild_<ver>_x64-setup.exe (~9.2 MB)
 ```
 
 setup.exe / uninstall.exe 의 파일 아이콘은 `tauri.conf.json::bundle.windows.nsis.installerIcon`

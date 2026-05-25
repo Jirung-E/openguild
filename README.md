@@ -1,4 +1,4 @@
-# OpenGuild
+# openguild
 A project issue tracker.
 
 ## Terminology
@@ -72,7 +72,7 @@ openguild quest show DEV-001                      # detail view (sub/prereq incl
 | File | Audience | Purpose |
 |---|---|---|
 | [`AGENTS.md`](./AGENTS.md) | AI agent | Index — points to other docs |
-| [`docs/AGENTS_OPENGUILD_USAGE.md`](./docs/AGENTS_OPENGUILD_USAGE.md) | AI agent | How an agent uses OpenGuild as a task management tool (CLI guide) |
+| [`docs/AGENTS_OPENGUILD_USAGE.md`](./docs/AGENTS_OPENGUILD_USAGE.md) | AI agent | How an agent uses openguild as a task management tool (CLI guide) |
 | [`docs/architecture.md`](./docs/architecture.md) | Developers | System architecture, API endpoints, data model |
 | [`docs/storage-design.md`](./docs/storage-design.md) | Developers | File-as-truth + SQLite cache + AOF/RDB design |
 | [`docs/dev-plan.md`](./docs/dev-plan.md) | Developers | Roadmap, progress |
@@ -109,7 +109,7 @@ cargo build --release --bin openguild   # → target/release/openguild
 
 ---
 
-# OpenGuild
+# openguild
 프로젝트 이슈 트래커.
 
 ## 용어 설명
@@ -183,7 +183,7 @@ openguild quest show DEV-001                      # 상세 (서브/선행 포함
 | 파일 | 대상 | 내용 |
 |---|---|---|
 | [`AGENTS.md`](./AGENTS.md) | AI agent | 인덱스 — 다른 문서로 가는 진입점 |
-| [`docs/AGENTS_OPENGUILD_USAGE.md`](./docs/AGENTS_OPENGUILD_USAGE.md) | AI agent | agent 가 OpenGuild 를 작업 관리 도구로 사용하는 방법 (CLI 가이드) |
+| [`docs/AGENTS_OPENGUILD_USAGE.md`](./docs/AGENTS_OPENGUILD_USAGE.md) | AI agent | agent 가 openguild 를 작업 관리 도구로 사용하는 방법 (CLI 가이드) |
 | [`docs/architecture.md`](./docs/architecture.md) | 개발자 | 시스템 구조, API 엔드포인트, 데이터 모델 |
 | [`docs/storage-design.md`](./docs/storage-design.md) | 개발자 | 파일 진리원 + SQLite 캐시 + AOF/RDB 설계 |
 | [`docs/dev-plan.md`](./docs/dev-plan.md) | 개발자 | 단계별 개발 계획 + 진행 상태 |

@@ -1,4 +1,4 @@
-# OpenGuild 개발 순서 계획 (MVP)
+# openguild 개발 순서 계획 (MVP)
 
 진행 표기: ✅ 완료 · 🟡 진행 중 · ⚪ 대기
 

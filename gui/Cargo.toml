@@ -2,7 +2,7 @@
 name = "openguild-gui"
 version = "0.1.0"
 edition = "2024"
-description = "OpenGuild desktop 앱 — Tauri v2 shell + Svelte frontend (gui/frontend)."
+description = "openguild desktop 앱 — Tauri v2 shell + Svelte frontend (gui/frontend)."
 
 [lib]
 name = "openguild_gui_lib"

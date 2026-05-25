@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "OpenGuild",
+  "productName": "openguild",
   "version": "0.1.0",
   "identifier": "io.openguild.desktop",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "OpenGuild",
+        "title": "openguild",
         "width": 1280,
         "height": 800,
         "minWidth": 800,
@@ -43,12 +43,12 @@
     },
     "category": "DeveloperTool",
     "shortDescription": "Quest-based local-first project tracker",
-    "longDescription": "OpenGuild — a local-first desktop app that tracks personal and team work using a Guild / Quest model.",
+    "longDescription": "openguild — a local-first desktop app that tracks personal and team work using a Guild / Quest model.",
     "fileAssociations": [
       {
         "ext": ["guild"],
-        "name": "OpenGuild Guild File",
-        "description": "OpenGuild guild marker file. Double-click to open the guild in OpenGuild.",
+        "name": "openguild Guild File",
+        "description": "openguild guild marker file. Double-click to open the guild in openguild.",
         "role": "Editor",
         "mimeType": "application/x-openguild"
       }

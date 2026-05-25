@@ -1,9 +1,9 @@
-# OpenGuild 기획 논의 요약
+# openguild 기획 논의 요약
 
 ## 구조 (확정)
 
 ```
-OpenGuild (앱)
+openguild (앱)
   └─ Guild (최상위 단위, 예: "모니터 길드")
        ├─ Campaign (기획+목표, 다음 업데이트 목표)
        │    └─ Quest 연결 (선택적)
@@ -23,7 +23,7 @@ OpenGuild (앱)
 
 - 각 길드는 사용자가 원하는 경로에 독립 저장 (VS Solution 단위와 동일)
 - 마커 파일: `{길드명}.guild` (TOML 형식)
-- 더블클릭으로 OpenGuild 실행 (파일 연결, 데스크톱 단계 예정)
+- 더블클릭으로 openguild 실행 (파일 연결, 데스크톱 단계 예정)
 - CLI: cwd 자동 탐색 또는 `openguild --guild ./monitor ...` (`.guild` 없으면 `openguild init` 안내)
 - GUI: 디렉토리 선택 또는 최근 길드 목록 (데스크톱 단계 예정)
 
@@ -41,7 +41,7 @@ created_at = "2026-05-01"
 
 | 일반 용어 | EN | KO |
 |---|---|---|
-| 앱 | OpenGuild | 오픈길드 |
+| 앱 | openguild | 오픈길드 |
 | 프로젝트 단위 | Guild | 길드 |
 | 기획+목표 | Campaign | 캠페인 |
 | 이슈 | Quest | 퀘스트 |
@@ -75,7 +75,7 @@ created_at = "2026-05-01"
 
 ## Jira 대응표
 
-| Jira | OpenGuild |
+| Jira | openguild |
 |---|---|
 | Project | Guild |
 | Version / Release | Campaign |
@@ -289,7 +289,7 @@ openguild/
 
 **저장소**: GitHub (모노레포)
 
-**이슈 트래킹**: OpenGuild 자체 dogfood (2026-05-17 전환 완료)
+**이슈 트래킹**: openguild 자체 dogfood (2026-05-17 전환 완료)
 - `.guild/quests/*.md` 가 진리원 (git tracked).
 - 새 작업 = `openguild quest new` → `.guild/quests/{ID}.md` 자동 생성.
 - GitHub Issues 보조 사용 X. 외부 todo 도구 X.
@@ -340,7 +340,7 @@ develop   ← 통합 / 검증 (default 작업 분기)
 
 ## 추후 기능 (미논의)
 
-- GitHub Issues ↔ OpenGuild 연동 (Webhook 기반 Quest 자동 생성)
+- GitHub Issues ↔ openguild 연동 (Webhook 기반 Quest 자동 생성)
 
 ---
 

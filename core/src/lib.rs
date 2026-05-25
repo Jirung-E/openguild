@@ -1,4 +1,4 @@
-//! OpenGuild core — 모든 비즈니스 로직과 sqlx 접근의 단일 진실 소스.
+//! openguild core — 모든 비즈니스 로직과 sqlx 접근의 단일 진실 소스.
 //!
 //! 사용자:
 //! - `server` (HTTP wrapper)

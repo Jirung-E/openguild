@@ -1,4 +1,4 @@
-# OpenGuild — Agent 인덱스
+# openguild — Agent 인덱스
 
 > AI agent 가 세션 시작 시 가장 먼저 읽는 파일.
 > 이 파일은 **최소 정보 + 다른 문서로의 인덱스** 역할.
@@ -58,10 +58,10 @@ Co-Authored-By: ... (해당 시)
 - **메이저 버전 1은 사용자 명시적 승인 전까지 사용 금지.** 현재 `0.x.x`.
 - 릴리즈 = develop → master 머지 + `v0.x.y` 태그.
 
-### Dogfood — OpenGuild 자체로 작업 관리
+### Dogfood — openguild 자체로 작업 관리
 
 저장소 설계 (`docs/storage-design.md`) 13/13 완료 (2026-05-17).
-앞으로 할 일 / 진행 상태 추적은 **OpenGuild 자체 (CLI / GUI) 로** 관리.
+앞으로 할 일 / 진행 상태 추적은 **openguild 자체 (CLI / GUI) 로** 관리.
 
 - `.guild/quests/*.md` 가 진리원 (git tracked).
 - `openguild quest new/start/done/...` 으로 mutation — 파일 자동 갱신.
@@ -126,7 +126,7 @@ openguild/
 
 ## 문서 인덱스
 
-### Agent 가 OpenGuild **를 개발** 할 때 (코드 수정)
+### Agent 가 openguild **를 개발** 할 때 (코드 수정)
 
 | 문서 | 내용 |
 |---|---|
@@ -137,7 +137,7 @@ openguild/
 | `docs/planning.md` | 기획 결정 (용어, MVP 범위, 향후 기능) |
 | `docs/guild-rules.md` | 개발 규칙 (커밋·브랜치·백/프론트 컨벤션) |
 
-### Agent 가 OpenGuild **를 사용** 할 때 (도구로 작업 관리)
+### Agent 가 openguild **를 사용** 할 때 (도구로 작업 관리)
 
 | 문서 | 내용 |
 |---|---|

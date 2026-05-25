@@ -1,4 +1,4 @@
-# Guild Rules — OpenGuild 개발 규칙
+# Guild Rules — openguild 개발 규칙
 
 > 이 프로젝트를 진행하면서 지켜야 할 규칙 모음.
 > 구현 중 발견된 것들을 지속적으로 추가할 것.

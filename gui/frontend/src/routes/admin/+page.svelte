@@ -120,7 +120,7 @@
 </script>
 
 <svelte:head>
-	<title>Admin · OpenGuild</title>
+	<title>Admin · openguild</title>
 </svelte:head>
 
 <!-- DEV-014 후속 (fix5): toast 메시지 — 모달이 떠 있어도 위에 표시되도록

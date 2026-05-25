@@ -1,4 +1,4 @@
-# OpenGuild 아키텍처 리팩토링 계획
+# openguild 아키텍처 리팩토링 계획
 
 > 작성일: 2026-05-14
 > 상태: Phase 1 진행 중 (core crate 분리 완료)

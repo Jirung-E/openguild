@@ -1,4 +1,4 @@
-//! OpenGuild HTTP API 서버 + 관리 CLI.
+//! openguild HTTP API 서버 + 관리 CLI.
 //!
 //! 서브커맨드:
 //!   host             HTTP 서버 시작
@@ -33,7 +33,7 @@ use tower_http::{cors::CorsLayer, services::ServeDir, trace::TraceLayer};
 #[command(
     name = "openguild-server",
     version,
-    about = "OpenGuild HTTP API server + 관리 CLI"
+    about = "openguild HTTP API server + 관리 CLI"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -131,7 +131,7 @@ fn load_guild() -> Result<GuildCtx> {
                     .map(|p| p.display().to_string())
                     .unwrap_or_else(|_| guild_path.clone());
                 eprintln!();
-                eprintln!("✗ not an OpenGuild project: no `.guild` file in {abs}");
+                eprintln!("✗ not an openguild project: no `.guild` file in {abs}");
                 eprintln!("  hint: set GUILD_PATH env var to point at a directory with a `.guild`.");
                 eprintln!();
                 std::process::exit(2);
@@ -183,7 +183,7 @@ async fn run_host(port_arg: Option<u16>) -> Result<()> {
 
     // 떴다는 알림 — tracing 이 아닌 stdout 으로 명시적 안내 (사용자가 바로 확인할 수 있게)
     println!();
-    println!("✓ OpenGuild server listening");
+    println!("✓ openguild server listening");
     println!("  guild  : {}  (v{})", ctx.guild.name, ctx.guild.version);
     println!("  path   : {}", ctx.abs_path.display());
     println!("  bind   : http://{addr}");

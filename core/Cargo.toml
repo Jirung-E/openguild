@@ -2,7 +2,7 @@
 name = "openguild-core"
 version = "0.1.0"
 edition = "2024"
-description = "OpenGuild core — 비즈니스 로직, sqlx, 모델. server / cli / desktop 공유."
+description = "openguild core — 비즈니스 로직, sqlx, 모델. server / cli / desktop 공유."
 
 [dependencies]
 # DB

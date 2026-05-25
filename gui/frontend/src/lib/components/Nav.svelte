@@ -25,7 +25,7 @@
 
 <header>
 	<!-- DEV-052 후속 (4회차): 로고 클릭 → Welcome (다른 길드로 전환 / recent 관리). -->
-	<a href="/welcome" class="logo">OpenGuild</a>
+	<a href="/welcome" class="logo">openguild</a>
 
 	<nav>
 		<a href="/?view=board" class:active={currentView === 'board'}>Quest Board</a>
