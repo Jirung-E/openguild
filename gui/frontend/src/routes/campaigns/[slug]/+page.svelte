@@ -15,6 +15,8 @@
 	// BUG-021 fix1: 공유 컴포넌트로 Quest Detail / Campaign Detail 의 markdown
 	// 프리뷰 통일.
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
+	// BUG-023: Quest Detail 의 QuestCombobox 와 같은 UI 로 통일.
+	import QuestCombobox from '$lib/components/QuestCombobox.svelte';
 	// BUG-021: Quest Detail 과 동일한 CodeMirror editor (라인 번호 + markdown
 	// syntax highlighting) 로 통일.
 	import { EditorView, basicSetup } from 'codemirror';
@@ -103,7 +105,8 @@
 
 	// quest 연결
 	let allQuests = $state<Quest[]>([]);
-	let linkInput = $state('');
+	// BUG-023: datalist input → QuestCombobox 모달.
+	let comboOpen = $state(false);
 
 	async function load() {
 		loading = true;
@@ -236,14 +239,19 @@
 		}
 	}
 
-	// ── Quest 연결 ──
-	async function linkQuest() {
+	// ── Quest 연결 (BUG-023: QuestCombobox 모달) ──
+	let linkableQuests = $derived(
+		allQuests.filter(
+			(q) => !(detail?.linked_quests ?? []).some((lq) => lq.id === q.id)
+		)
+	);
+	async function pickQuestToLink(questId: number) {
 		if (!detail) return;
-		const qs = linkInput.trim().toUpperCase();
-		if (!qs) return;
+		const q = allQuests.find((x) => x.id === questId);
+		if (!q) return;
 		try {
-			await campaignsApi.linkQuest(detail.campaign_slug, qs);
-			linkInput = '';
+			await campaignsApi.linkQuest(detail.campaign_slug, q.quest_id);
+			comboOpen = false;
 			await load();
 		} catch (e) {
 			alert(e instanceof Error ? e.message : 'failed');
@@ -389,23 +397,30 @@
 				</ul>
 			{/if}
 			<div class="add-row">
-				<input
-					type="text"
-					bind:value={linkInput}
-					placeholder="quest slug (예: DEV-001)"
-					list="quest-options"
-					onkeydown={(e) => e.key === 'Enter' && linkQuest()}
-				/>
-				<datalist id="quest-options">
-					{#each allQuests as q (q.id)}
-						<option value={q.quest_id}>{q.title}</option>
-					{/each}
-				</datalist>
-				<button onclick={linkQuest} disabled={!linkInput.trim()}>연결</button>
+				<!-- BUG-023: QuestCombobox 모달 (Quest Detail 과 동일 UI) -->
+				<button class="link-add-btn" onclick={() => (comboOpen = true)}>+ 퀘스트 연결</button>
 			</div>
 		</section>
 	{/if}
 </div>
+
+<!-- BUG-023: Quest 연결 콤보 모달 (Quest Detail 패턴 그대로) -->
+{#if comboOpen && detail}
+	<div class="ov" role="presentation">
+		<div class="modal-sm" role="dialog" aria-modal="true" tabindex="-1">
+			<div class="modal-head">
+				<h3>퀘스트 연결</h3>
+				<button class="x" onclick={() => (comboOpen = false)}>×</button>
+			</div>
+			<QuestCombobox
+				quests={linkableQuests}
+				placeholder="ID 또는 제목으로 검색"
+				onselect={pickQuestToLink}
+				oncancel={() => (comboOpen = false)}
+			/>
+		</div>
+	</div>
+{/if}
 
 <style>
 	.page { padding: 1.25rem 1.5rem; max-width: 880px; margin: 0 auto; }
@@ -576,6 +591,44 @@
 	}
 	.add-row button:disabled { opacity: 0.5; cursor: not-allowed; }
 	.add-row button:hover:not(:disabled) { background: #2a2a4a; }
+
+	/* BUG-023: 모달 (Quest Detail 패턴) */
+	.ov {
+		position: fixed; inset: 0;
+		background: rgba(0, 0, 0, 0.6);
+		z-index: 100;
+		display: flex; align-items: center; justify-content: center;
+		padding: 1rem;
+	}
+	.modal-sm {
+		background: #161b22;
+		border: 1px solid #30363d; border-radius: 10px;
+		width: 100%; max-width: 480px;
+		padding: 1rem 1.25rem 1rem;
+		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
+	}
+	.modal-head {
+		display: flex; align-items: center; justify-content: space-between;
+		margin-bottom: 0.85rem;
+	}
+	.modal-head h3 {
+		margin: 0; font-size: 0.95rem; font-weight: 600; color: #e6edf3;
+	}
+	.x {
+		background: none; border: none; color: #484f58;
+		font-size: 1.2rem; line-height: 1; cursor: pointer; padding: 0 4px;
+	}
+	.x:hover { color: #c9d1d9; }
+	.link-add-btn {
+		padding: 0.35rem 0.85rem;
+		background: #21262d;
+		border: 1px solid #30363d;
+		color: #c9d1d9;
+		border-radius: 6px;
+		cursor: pointer;
+		font-size: 0.825rem;
+	}
+	.link-add-btn:hover { background: #2a2a4a; }
 
 	/* BUG-021: linked quest 의 type/status badge 도 Quest List pill 패턴. */
 	.badge {
