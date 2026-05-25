@@ -365,6 +365,17 @@
 		}
 	}
 
+	// BUG-015: 사용자가 List 에서 Detail 로 들어왔으면 List 로 돌아가야 함.
+	// history.back() 으로 직전 페이지 (= List 또는 Board). 직접 link 로 진입
+	// 한 경우 (length <= 1) Board 로 fallback.
+	function goBack() {
+		if (typeof window !== 'undefined' && window.history.length > 1) {
+			window.history.back();
+		} else {
+			goto('/');
+		}
+	}
+
 	function renderMarkdown(src: string): string {
 		return marked(src, { async: false }) as string;
 	}
@@ -372,7 +383,9 @@
 
 <div class="container">
 	<div class="top-bar">
-		<a href="/" class="back">← Back</a>
+		<!-- BUG-015: history.back() 으로 직전 페이지 (List 또는 Board) 복귀.
+		     history 가 비어있으면 (외부 link 직접 진입) Board 로 fallback. -->
+		<button class="back" type="button" onclick={goBack}>← Back</button>
 		{#if detail && !editMode}
 			<div class="top-actions">
 				<button class="btn-edit" onclick={enterEditMode}>✎ Edit</button>
@@ -737,7 +750,17 @@
 		margin-bottom: 1.5rem;
 	}
 
-	.back { font-size: 0.875rem; color: #8b949e; text-decoration: none; }
+	/* BUG-015: anchor → button 으로 변경. button 기본 스타일 제거. */
+	.back {
+		font-size: 0.875rem;
+		color: #8b949e;
+		text-decoration: none;
+		background: none;
+		border: none;
+		padding: 0;
+		cursor: pointer;
+		font-family: inherit;
+	}
 	.back:hover { color: #c9d1d9; }
 
 	.top-actions { display: flex; align-items: center; gap: 0.5rem; }
