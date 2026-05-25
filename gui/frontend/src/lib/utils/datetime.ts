@@ -61,3 +61,46 @@ export function formatRelative(s: string | null | undefined, now: Date = new Dat
 	if (day < 7) return `${day}일 전`;
 	return formatTs(s);
 }
+
+/**
+ * BUG-024: 미래의 한 시점 (ISO date "YYYY-MM-DD" 또는 datetime) 까지의
+ * 남은 시간을 단위 자동 전환으로 표시.
+ *
+ * - 하루 이상 → `n일 남음`
+ * - 1시간 ~ 1일 → `n시간 남음`
+ * - 1분 ~ 1시간 → `n분 남음`
+ * - 1분 미만 → `n초 남음`
+ * - 이미 지나간 시점 → 빈 문자열.
+ *
+ * 날짜만 (`YYYY-MM-DD`) 주어지면 그 날 23:59:59 (로컬) 까지로 해석 —
+ * "종료일까지" 의 자연스러운 의미.
+ *
+ * @param target ISO date 또는 datetime
+ * @param now    현재 시각 (테스트 / 매초 갱신용). 기본 `Date.now()`.
+ * @param mode   'until-end' 면 날짜에 23:59:59 붙임. 'until-start' 면 00:00:00.
+ */
+export function formatRemaining(
+	target: string,
+	now: number = Date.now(),
+	mode: 'until-start' | 'until-end' = 'until-end'
+): string {
+	if (!target) return '';
+	let iso = target.trim();
+	if (!iso) return '';
+	// date-only → end of day (until-end) 또는 start of day (until-start)
+	if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+		iso += mode === 'until-end' ? 'T23:59:59' : 'T00:00:00';
+	}
+	const t = new Date(iso).getTime();
+	if (Number.isNaN(t)) return '';
+	const ms = t - now;
+	if (ms <= 0) return '';
+	const sec = Math.floor(ms / 1000);
+	if (sec < 60) return `${sec}초 남음`;
+	const min = Math.floor(sec / 60);
+	if (min < 60) return `${min}분 남음`;
+	const hr = Math.floor(min / 60);
+	if (hr < 24) return `${hr}시간 남음`;
+	const day = Math.floor(hr / 24);
+	return `${day}일 남음`;
+}

@@ -440,25 +440,14 @@ pub async fn resolve_quest_id(pool: &SqlitePool, quest_slug: &str) -> AppResult<
 
 // ─────────────────────── Home / Summary ───────────────────────
 
-/// Home 카드용 — 현재 진행 중 캠페인 (status='active' + 현재 날짜가
-/// `started_at` ~ `ended_at` 사이에 포함). BUG-023:
-/// - status='active' 만으로는 부족 — 시작 전 / 종료 후도 active 인 경우 있음.
-/// - 시작일이 비어있으면 "언제든 시작" (오늘 포함), 종료일이 비어있으면
-///   "무기한 진행" (오늘 포함). 둘 다 명시되면 그 범위에 오늘이 포함되어야 함.
+/// Home 카드용 — 모든 active 캠페인 summary. BUG-024:
+/// 기간 필터링 (시작 전 / 진행 중 / 종료 후 분류) 은 frontend 가 매초
+/// 시계로 처리 — 페이지 reload 없이 카드 자동 이동 + 카운트다운 표시.
+/// SQL 은 단순히 status='active' alive 만 반환.
 pub async fn list_active_summaries(pool: &SqlitePool) -> AppResult<Vec<CampaignSummary>> {
-    let sql = format!(
-        "{CAMPAIGN_SELECT}
-          WHERE deleted_at IS NULL
-            AND status = 'active'
-            AND (started_at IS NULL OR started_at = ''
-                 OR date(started_at) <= date('now', 'localtime'))
-            AND (ended_at IS NULL OR ended_at = ''
-                 OR date(ended_at) >= date('now', 'localtime'))
-          ORDER BY display_order ASC, datetime(created_at) DESC, id DESC"
-    );
-    let rows: Vec<CampaignRow> = sqlx::query_as(&sql).fetch_all(pool).await?;
-    let mut out = Vec::with_capacity(rows.len());
-    for c in rows {
+    let active = list_by_status(pool, "active").await?;
+    let mut out = Vec::with_capacity(active.len());
+    for c in active {
         out.push(summarize(pool, c).await?);
     }
     Ok(out)

@@ -6,7 +6,7 @@
    - 최근 추가된 퀘스트 10개
 -->
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { campaignsApi } from '$lib/api/campaigns';
 	import { questsApi } from '$lib/api/quests';
@@ -20,27 +20,28 @@
 	import { metaApi } from '$lib/api/meta';
 
 	const RECENT_QUEST_LIMIT = 10;
+	const UPCOMING_WINDOW_DAYS = 7;
 
-	let activeSummaries = $state<CampaignSummary[]>([]);
-	let upcomingSummaries = $state<CampaignSummary[]>([]);
+	// BUG-024: backend 는 모든 active summary 반환. 분류 / 카운트다운은 frontend
+	// 가 매초 시계로 처리. 페이지 보고 있는 동안 카드 자동 이동.
+	let allActive = $state<CampaignSummary[]>([]);
 	let recentQuests = $state<Quest[]>([]);
 	let types = $state<QuestType[]>([]);
 	let statuses = $state<QuestStatus[]>([]);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
+	let now = $state(Date.now());
+	let tickHandle: ReturnType<typeof setInterval> | null = null;
 
 	onMount(async () => {
 		try {
-			const [a, u, q, t, s] = await Promise.all([
+			const [a, q, t, s] = await Promise.all([
 				campaignsApi.activeSummaries(),
-				campaignsApi.upcomingSummaries(7),
 				questsApi.list(),
 				metaApi.getQuestTypes(),
 				metaApi.getQuestStatuses()
 			]);
-			activeSummaries = a;
-			upcomingSummaries = u;
-			// 최근 추가 순 정렬 — id DESC 가 quest 의 자연 순서.
+			allActive = a;
 			recentQuests = q.slice(0, RECENT_QUEST_LIMIT);
 			types = t;
 			statuses = s;
@@ -49,6 +50,69 @@
 		} finally {
 			loading = false;
 		}
+		// BUG-024: 매초 now 갱신 — 카드 분류 / 카운트다운 자동 reactive.
+		tickHandle = setInterval(() => {
+			now = Date.now();
+		}, 1000);
+	});
+	onDestroy(() => {
+		if (tickHandle) clearInterval(tickHandle);
+		tickHandle = null;
+	});
+
+	// ── BUG-024: 분류 (now 변할 때마다 자동 재계산) ───────────────────
+	// 시작일 / 종료일은 'YYYY-MM-DD' (또는 빈 문자열). 빈 문자열 = "무기한".
+	function dateStartMs(d: string | null | undefined): number | null {
+		if (!d?.trim()) return null;
+		const t = new Date(`${d}T00:00:00`).getTime();
+		return Number.isNaN(t) ? null : t;
+	}
+	function dateEndMs(d: string | null | undefined): number | null {
+		if (!d?.trim()) return null;
+		const t = new Date(`${d}T23:59:59`).getTime();
+		return Number.isNaN(t) ? null : t;
+	}
+
+	let currentActive = $derived.by(() => {
+		const t = now;
+		return allActive.filter((c) => {
+			const start = dateStartMs(c.started_at);
+			const end = dateEndMs(c.ended_at);
+			// 시작 전이면 진행 중 아님.
+			if (start !== null && t < start) return false;
+			// 종료 후면 진행 중 아님.
+			if (end !== null && t > end) return false;
+			return true;
+		});
+	});
+
+	let upcomingSummaries = $derived.by(() => {
+		const t = now;
+		const winEnd = t + UPCOMING_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+		// 1주 이내 시작 예정.
+		const within = allActive
+			.filter((c) => {
+				const start = dateStartMs(c.started_at);
+				return start !== null && start > t && start <= winEnd;
+			})
+			.sort((a, b) => {
+				const sa = dateStartMs(a.started_at) ?? Infinity;
+				const sb = dateStartMs(b.started_at) ?? Infinity;
+				return sa - sb;
+			});
+		if (within.length > 0) return within;
+		// fallback: 1주 윈도우에 없으면 가장 빠른 미래 시작 1개.
+		const futureSorted = allActive
+			.filter((c) => {
+				const start = dateStartMs(c.started_at);
+				return start !== null && start > t;
+			})
+			.sort((a, b) => {
+				const sa = dateStartMs(a.started_at) ?? Infinity;
+				const sb = dateStartMs(b.started_at) ?? Infinity;
+				return sa - sb;
+			});
+		return futureSorted.slice(0, 1);
 	});
 
 	function typeColor(prefix: string): string {
@@ -72,8 +136,9 @@
 		<section class="block">
 			<h2>진행 중 캠페인</h2>
 			<CampaignCardSlider
-				summaries={activeSummaries}
-				size="lg"
+				summaries={currentActive}
+				mode="active"
+				{now}
 				emptyText="진행 중인 캠페인이 없습니다."
 			/>
 
@@ -81,7 +146,8 @@
 			<h3>곧 시작되는 캠페인</h3>
 			<CampaignCardSlider
 				summaries={upcomingSummaries}
-				size="sm"
+				mode="upcoming"
+				{now}
 				emptyText="곧 시작 예정인 캠페인이 없습니다."
 			/>
 

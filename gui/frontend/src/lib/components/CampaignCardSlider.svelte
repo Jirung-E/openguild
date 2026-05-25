@@ -1,21 +1,29 @@
 <!--
-  DEV-011: 캠페인 가로 카드 슬라이드.
+  DEV-011 + BUG-024: 캠페인 가로 카드 슬라이드.
 
-  Home 의 "진행 중 캠페인" / "곧 시작되는 캠페인" 두 섹션 공통 사용.
-  카드: 제목 / 기간 / 체크리스트 완료율. 클릭 시 캠페인 detail 로 이동.
+  Home 의 "진행 중 캠페인" / "곧 시작되는 캠페인" 두 섹션 공통.
+  mode 별 표시 차이:
+   - 'active' (진행 중): 슬러그 + 제목 + 기간 (+ 종료 임박 시 카운트다운 빨강) + 진행률.
+   - 'upcoming' (곧 시작): 슬러그/진행률 없음. 제목 + "x일 남음 (YYYY-MM-DD)".
+
+  카운트다운: 일/시간/분/초 단위 자동 전환 (formatRemaining).
+  매초 갱신은 부모 (Home) 가 `now` prop 매초 update.
 -->
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import type { CampaignSummary } from '$lib/types';
+	import { formatRemaining } from '$lib/utils/datetime';
 
 	let {
 		summaries,
-		size = 'lg',
+		mode,
+		now,
 		emptyText = '캠페인 없음'
 	}: {
 		summaries: CampaignSummary[];
-		/** 'lg' = 진행중 메인 카드, 'sm' = 곧 시작 보조 카드. */
-		size?: 'lg' | 'sm';
+		mode: 'active' | 'upcoming';
+		/** 매초 갱신되는 부모의 시계. */
+		now: number;
 		emptyText?: string;
 	} = $props();
 
@@ -28,10 +36,22 @@
 		return `${a} ~ ${b}`;
 	}
 
-	function fmtProgress(s: CampaignSummary): string {
+	function progressText(s: CampaignSummary): string {
 		if (s.checklist_total === 0) return '체크리스트 없음';
 		const pct = Math.round(s.progress * 100);
 		return `${s.checklist_checked}/${s.checklist_total} (${pct}%)`;
+	}
+
+	/** 'active' 모드에서 종료가 임박했을 때 표시할 카운트다운. 없으면 빈 문자열. */
+	function activeRemainingLabel(s: CampaignSummary): string {
+		if (!s.ended_at?.trim()) return '';
+		return formatRemaining(s.ended_at, now, 'until-end');
+	}
+
+	/** 'upcoming' 모드 — 시작일까지 카운트다운. */
+	function upcomingRemainingLabel(s: CampaignSummary): string {
+		if (!s.started_at?.trim()) return '';
+		return formatRemaining(s.started_at, now, 'until-start');
 	}
 
 	function open(slug: string) {
@@ -39,23 +59,44 @@
 	}
 </script>
 
-<div class="slider {size}">
+<div class="slider {mode}">
 	{#if summaries.length === 0}
 		<div class="empty">{emptyText}</div>
 	{:else}
 		{#each summaries as s (s.id)}
 			<button class="card" type="button" onclick={() => open(s.campaign_slug)}>
-				<div class="slug">{s.campaign_slug}</div>
-				<div class="title">{s.title}</div>
-				<div class="meta">
-					<div class="period">{fmtPeriod(s)}</div>
-					<div class="progress-row">
-						<div class="progress-bar">
-							<div class="progress-fill" style:width={`${Math.round(s.progress * 100)}%`}></div>
+				{#if mode === 'active'}
+					<div class="slug">{s.campaign_slug}</div>
+					<div class="title">{s.title}</div>
+					<div class="meta">
+						<div class="period">
+							{fmtPeriod(s)}
+							{#if activeRemainingLabel(s)}
+								<span class="remaining">({activeRemainingLabel(s)})</span>
+							{/if}
 						</div>
-						<div class="progress-text">{fmtProgress(s)}</div>
+						<div class="progress-row">
+							<div class="progress-bar">
+								<div
+									class="progress-fill"
+									style:width={`${Math.round(s.progress * 100)}%`}
+								></div>
+							</div>
+							<div class="progress-text">{progressText(s)}</div>
+						</div>
 					</div>
-				</div>
+				{:else}
+					<!-- upcoming: 슬러그 / 진행률 없음, 시작까지 카운트다운만. -->
+					<div class="title">{s.title}</div>
+					<div class="meta">
+						<div class="period">
+							<span class="remaining accent">{upcomingRemainingLabel(s)}</span>
+							{#if s.started_at?.trim()}
+								<span class="start-date">({s.started_at})</span>
+							{/if}
+						</div>
+					</div>
+				{/if}
 			</button>
 		{/each}
 	{/if}
@@ -93,8 +134,8 @@
 	}
 	.card:hover { background: #1c2128; border-color: #484f58; }
 
-	.slider.lg .card { width: 280px; }
-	.slider.sm .card { width: 200px; padding: 0.65rem 0.8rem; gap: 0.35rem; }
+	.slider.active .card { width: 280px; }
+	.slider.upcoming .card { width: 200px; padding: 0.65rem 0.8rem; gap: 0.35rem; }
 
 	.slug {
 		font-size: 0.7rem;
@@ -108,11 +149,23 @@
 		color: #c9d1d9;
 		line-height: 1.3;
 	}
-	.slider.sm .title { font-size: 0.85rem; }
+	.slider.upcoming .title { font-size: 0.85rem; }
 
 	.meta { margin-top: auto; display: flex; flex-direction: column; gap: 0.3rem; }
 
-	.period { font-size: 0.75rem; color: #8b949e; }
+	.period {
+		font-size: 0.75rem;
+		color: #8b949e;
+		display: flex;
+		gap: 0.35rem;
+		align-items: center;
+		flex-wrap: wrap;
+	}
+	/* BUG-024: 종료 임박 카운트다운 빨강 강조 (active mode). */
+	.remaining { color: #f85149; font-weight: 600; }
+	/* BUG-024: upcoming 의 시작 카운트다운은 accent 컬러 (파랑). */
+	.remaining.accent { color: #58a6ff; font-weight: 600; }
+	.start-date { color: #6e7681; }
 
 	.progress-row { display: flex; align-items: center; gap: 0.5rem; }
 	.progress-bar {
