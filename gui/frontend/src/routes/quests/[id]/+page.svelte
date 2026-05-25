@@ -1084,12 +1084,22 @@
 	.section-title.prereq-label { color: #a371f7; }
 	/* DEV-011: Campaign section */
 	.section-title.campaign-label { color: #4a9eff; }
+	/* BUG-021: campaign slug badge — quest type badge 와 동일 pill 패턴 (color-mix). */
 	.campaign-badge {
-		color: #4a9eff !important;
-		border-color: #4a9eff !important;
+		--c: #4a9eff;
 	}
-	.badge.status.status-active { color: #56d364; border-color: #2ea043; }
-	.badge.status.status-done { color: #8b949e; border-color: #444; }
+	.badge.status.status-active {
+		--c: #56d364;
+		background: color-mix(in srgb, var(--c) 18%, transparent);
+		color: var(--c);
+		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
+	}
+	.badge.status.status-done {
+		--c: #8b949e;
+		background: color-mix(in srgb, var(--c) 18%, transparent);
+		color: var(--c);
+		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
+	}
 	.campaign-add {
 		display: flex;
 		gap: 0.4rem;

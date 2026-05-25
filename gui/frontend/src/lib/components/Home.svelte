@@ -199,18 +199,18 @@
 	}
 	.quest-row:hover { border-color: #484f58; background: #1c2128; }
 
+	/* BUG-021: Quest List 의 pill 스타일 통일 (color-mix bg + border). */
 	.badge {
-		font-size: 0.7rem;
-		padding: 0.1rem 0.45rem;
-		border-radius: 4px;
-		font-family: 'JetBrains Mono', ui-monospace, monospace;
-		color: var(--c);
-		border: 1px solid var(--c);
 		flex-shrink: 0;
+		padding: 0.15rem 0.55rem;
+		border-radius: 20px;
+		font-size: 0.75rem;
+		font-weight: 500;
+		background: color-mix(in srgb, var(--c) 18%, transparent);
+		color: var(--c);
+		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
 	}
 	.badge.status {
-		font-family: inherit;
-		font-size: 0.7rem;
 		margin-left: auto;
 	}
 	.title {

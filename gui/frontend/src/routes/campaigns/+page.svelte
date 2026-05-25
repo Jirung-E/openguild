@@ -197,14 +197,27 @@
 		font-family: 'JetBrains Mono', ui-monospace, monospace;
 	}
 	.title { color: #c9d1d9; font-size: 0.9rem; }
+	/* BUG-021: Quest List 의 pill 스타일 통일. */
 	.status {
-		font-size: 0.7rem;
-		padding: 0.1rem 0.5rem;
-		border-radius: 4px;
+		flex-shrink: 0;
+		padding: 0.15rem 0.55rem;
+		border-radius: 20px;
+		font-size: 0.75rem;
+		font-weight: 500;
 		text-transform: uppercase;
 	}
-	.status-active { background: #102a18; color: #56d364; border: 1px solid #2ea043; }
-	.status-done { background: #2a2a2a; color: #8b949e; border: 1px solid #444; }
+	.status-active {
+		--c: #56d364;
+		background: color-mix(in srgb, var(--c) 18%, transparent);
+		color: var(--c);
+		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
+	}
+	.status-done {
+		--c: #8b949e;
+		background: color-mix(in srgb, var(--c) 18%, transparent);
+		color: var(--c);
+		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
+	}
 	.period { font-size: 0.75rem; color: #8b949e; }
 
 	.reorder {

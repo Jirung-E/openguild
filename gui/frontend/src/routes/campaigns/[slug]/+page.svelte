@@ -6,13 +6,18 @@
    - 연결된 quest 표시 + 추가 / 제거
 -->
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { campaignsApi } from '$lib/api/campaigns';
 	import { questsApi } from '$lib/api/quests';
 	import type { CampaignDetail, Quest } from '$lib/types';
 	import { marked } from 'marked';
+	// BUG-021: Quest Detail 과 동일한 CodeMirror editor (라인 번호 + markdown
+	// syntax highlighting) 로 통일.
+	import { EditorView, basicSetup } from 'codemirror';
+	import { markdown } from '@codemirror/lang-markdown';
+	import { oneDark } from '@codemirror/theme-one-dark';
 
 	let slug = $derived($page.params.slug ?? '');
 	let detail = $state<CampaignDetail | null>(null);
@@ -27,6 +32,69 @@
 	let endedEdit = $state('');
 	let bodyEdit = $state('');
 	let saving = $state(false);
+
+	// BUG-021: CodeMirror editor (Quest Detail 패턴 그대로).
+	// EDITOR_HEIGHT_KEY 는 Quest Detail 과 공유 — 일관 사용자 경험.
+	const EDITOR_HEIGHT_KEY = 'openguild.questEditorHeight';
+	let editorContainer: HTMLDivElement | undefined = $state(undefined);
+	let editorView: EditorView | null = null;
+	let editorResizeObserver: ResizeObserver | null = null;
+	let editorHeightSaveTimer: ReturnType<typeof setTimeout> | null = null;
+	function loadEditorHeight(): number {
+		try {
+			const raw = localStorage.getItem(EDITOR_HEIGHT_KEY);
+			const n = raw ? parseInt(raw, 10) : NaN;
+			if (Number.isFinite(n) && n >= 200 && n <= 2000) return n;
+		} catch {
+			/* 무시 */
+		}
+		return 480;
+	}
+	function scheduleEditorHeightSave(px: number) {
+		if (editorHeightSaveTimer) clearTimeout(editorHeightSaveTimer);
+		editorHeightSaveTimer = setTimeout(() => {
+			try {
+				localStorage.setItem(EDITOR_HEIGHT_KEY, String(Math.round(px)));
+			} catch {
+				/* 무시 */
+			}
+		}, 250);
+	}
+	function initEditor() {
+		if (!editorContainer) return;
+		if (editorView) {
+			editorView.destroy();
+			editorView = null;
+		}
+		editorContainer.style.height = `${loadEditorHeight()}px`;
+		editorView = new EditorView({
+			doc: bodyEdit,
+			extensions: [
+				basicSetup,
+				markdown(),
+				oneDark,
+				EditorView.theme({
+					'&': { fontSize: '0.875rem', borderRadius: '6px', height: '100%' },
+					'.cm-editor': { borderRadius: '6px', height: '100%' },
+					'.cm-scroller': { overflow: 'auto' }
+				})
+			],
+			parent: editorContainer
+		});
+		editorResizeObserver?.disconnect();
+		editorResizeObserver = new ResizeObserver((entries) => {
+			for (const entry of entries) {
+				scheduleEditorHeightSave(entry.contentRect.height);
+			}
+		});
+		editorResizeObserver.observe(editorContainer);
+	}
+	function destroyEditor() {
+		editorView?.destroy();
+		editorView = null;
+		editorResizeObserver?.disconnect();
+		editorResizeObserver = null;
+	}
 
 	// 체크리스트 추가 입력
 	let newChecklistText = $state('');
@@ -93,19 +161,27 @@
 		}
 	}
 
-	function startEditBody() {
+	async function startEditBody() {
 		if (!detail) return;
 		bodyEdit = detail.description ?? '';
 		editBody = true;
+		// editorContainer 는 {#if editBody} 가 true 되어야 mount → tick 후 init.
+		await tick();
+		initEditor();
+	}
+	function exitEditBody() {
+		destroyEditor();
+		editBody = false;
 	}
 	async function saveBody() {
 		if (!detail) return;
 		saving = true;
 		try {
+			const desc = editorView ? editorView.state.doc.toString() : bodyEdit;
 			await campaignsApi.update(detail.campaign_slug, {
-				description: bodyEdit
+				description: desc
 			});
-			editBody = false;
+			exitEditBody();
 			await load();
 		} catch (e) {
 			alert(e instanceof Error ? e.message : 'failed');
@@ -248,12 +324,12 @@
 				{/if}
 			</div>
 			{#if editBody}
-				<textarea bind:value={bodyEdit} rows="12" disabled={saving}></textarea>
+				<div class="editor-wrap" bind:this={editorContainer}></div>
 				<div class="actions">
 					<button class="btn-save" onclick={saveBody} disabled={saving}>
 						{saving ? '저장…' : '저장'}
 					</button>
-					<button class="btn-cancel" onclick={() => (editBody = false)} disabled={saving}>취소</button>
+					<button class="btn-cancel" onclick={exitEditBody} disabled={saving}>취소</button>
 				</div>
 			{:else if detail.description && detail.description.trim()}
 				<div class="md">{@html renderMd(detail.description)}</div>
@@ -355,9 +431,24 @@
 	.btn-delete { margin-left: auto; color: #f85149; border-color: #5a2424; }
 	.btn-delete:hover { background: #2d0f0f; }
 
-	.status-badge { text-transform: uppercase; font-weight: 600; }
-	.status-badge.status-active { background: #102a18; color: #56d364; border-color: #2ea043; }
-	.status-badge.status-done { background: #2a2a2a; color: #8b949e; }
+	/* BUG-021: pill 스타일 통일 (Quest List 패턴). */
+	.status-badge {
+		text-transform: uppercase;
+		font-weight: 600;
+		border-radius: 20px !important;
+	}
+	.status-badge.status-active {
+		--c: #56d364;
+		background: color-mix(in srgb, var(--c) 18%, transparent);
+		color: var(--c);
+		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
+	}
+	.status-badge.status-done {
+		--c: #8b949e;
+		background: color-mix(in srgb, var(--c) 18%, transparent);
+		color: var(--c);
+		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
+	}
 
 	.state { color: #6e7681; padding: 1.5rem 0; font-size: 0.875rem; }
 	.state.error { color: #f85149; }
@@ -416,17 +507,19 @@
 		font-size: 0.825rem;
 	}
 
-	textarea {
-		background: #0d1117;
+	/* BUG-021: textarea 는 CodeMirror 로 교체. CSS 미사용 selector 정리. */
+
+	/* BUG-021: CodeMirror editor (Quest Detail 패턴 — DEV-057 의 height 영속). */
+	.editor-wrap {
 		border: 1px solid #30363d;
-		color: #c9d1d9;
 		border-radius: 6px;
-		padding: 0.5rem 0.7rem;
-		font-family: 'JetBrains Mono', ui-monospace, monospace;
-		font-size: 0.875rem;
-		width: 100%;
+		overflow: hidden;
+		min-height: 200px;
+		max-height: 90vh;
 		resize: vertical;
 	}
+	.editor-wrap :global(.cm-editor) { outline: none; }
+	.editor-wrap :global(.cm-editor.cm-focused) { outline: none; border: none; }
 
 	.md {
 		background: #0d1117;
@@ -497,13 +590,15 @@
 	.add-row button:disabled { opacity: 0.5; cursor: not-allowed; }
 	.add-row button:hover:not(:disabled) { background: #2a2a4a; }
 
+	/* BUG-021: linked quest 의 type/status badge 도 Quest List pill 패턴. */
 	.badge {
-		font-size: 0.7rem;
-		padding: 0.1rem 0.45rem;
-		border-radius: 4px;
+		flex-shrink: 0;
+		padding: 0.15rem 0.55rem;
+		border-radius: 20px;
+		font-size: 0.75rem;
+		font-weight: 500;
+		background: color-mix(in srgb, var(--c) 18%, transparent);
 		color: var(--c);
-		border: 1px solid var(--c);
-		font-family: 'JetBrains Mono', ui-monospace, monospace;
+		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
 	}
-	.badge.status { font-family: inherit; }
 </style>
