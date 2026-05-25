@@ -133,3 +133,31 @@ cargo build --release -p openguild-gui
 Windows Explorer 가 같은 경로의 exe 아이콘을 또 캐시함 — 갱신 안 되면
 `ie4uinit.exe -show` 또는 `%LocalAppData%\IconCache.db` 삭제 + explorer
 재시작.
+
+## Installer 빌드 (Windows NSIS — DEV-034)
+
+`bundle.targets = ["nsis"]`. `gui/nsis/installer.nsi` 가 default
+template 을 확장한 custom version (MUI_PAGE_COMPONENTS + Section 분리).
+사용자가 설치 마법사에서 GUI / CLI / Server / Add-to-PATH 를 체크박스로
+선택 가능. Server 만 기본 unchecked.
+
+```bash
+# 1) CLI / Server release 빌드 — NSIS template 이 target/release/openguild.exe
+#    와 openguild-server.exe 를 ..\..\ 상대경로로 참조하므로 미리 있어야 함.
+cargo build --release -p openguild-cli -p openguild-server
+
+# 2) (필요 시) icon / build-script 캐시 정리 — 위 "빌드 캐시 함정" 참고.
+
+# 3) NSIS 빌드 — tauri-cli 가 frontend build → release build → makensis.
+cd gui && cargo tauri build
+#   → target/release/bundle/nsis/OpenGuild_<ver>_x64-setup.exe (~9.2 MB)
+```
+
+setup.exe / uninstall.exe 의 파일 아이콘은 `tauri.conf.json::bundle.windows.nsis.installerIcon`
++ `uninstallerIcon` 으로 지정 (안 하면 NSIS 기본 다운로드 아이콘 남음).
+custom template 에 `Icon` / `UninstallIcon` 명령 명시.
+
+PATH 추가는 PowerShell 로 HKLM `Environment\PATH` 갱신 — 별도 NSIS plugin
+없이 됨. 중복 추가 방지 검사 포함, uninstall 시 자동 제거.
+
+자동 배포 (tag push → GitHub Release) 는 별도 quest **DEV-071**.

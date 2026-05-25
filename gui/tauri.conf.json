@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "identifier": "io.openguild.desktop",
   "build": {
-    "beforeDevCommand": "npm --prefix ./frontend run dev",
-    "beforeBuildCommand": "npm --prefix ./frontend run build",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
     "devUrl": "http://localhost:5173",
     "frontendDist": "./frontend/build"
   },
@@ -26,7 +26,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -34,14 +34,21 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "windows": {
+      "nsis": {
+        "template": "nsis/installer.nsi",
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico"
+      }
+    },
     "category": "DeveloperTool",
-    "shortDescription": "Quest 기반 프로젝트 관리 데스크탑 앱",
-    "longDescription": "OpenGuild — Guild / Quest 모델로 개인·팀 작업을 추적하는 로컬-퍼스트 데스크탑 앱.",
+    "shortDescription": "Quest-based local-first project tracker",
+    "longDescription": "OpenGuild — a local-first desktop app that tracks personal and team work using a Guild / Quest model.",
     "fileAssociations": [
       {
         "ext": ["guild"],
         "name": "OpenGuild Guild File",
-        "description": "OpenGuild 길드 마커 파일 — 더블클릭하면 OpenGuild 데스크탑 앱이 그 길드를 엽니다.",
+        "description": "OpenGuild guild marker file. Double-click to open the guild in OpenGuild.",
         "role": "Editor",
         "mimeType": "application/x-openguild"
       }
