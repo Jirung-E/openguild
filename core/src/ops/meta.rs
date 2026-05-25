@@ -334,7 +334,21 @@ pub async fn rename_type(
         // 옛 slug path 계산 — old_prefix + 같은 number.
         let old_slug = format!("{}-{:03}", old_prefix, quest.number);
         let old_quest_path = store.paths.quest_path(&old_slug);
-        crate::ops::quests::write_quest_file(store, &quest).await?;
+        // DEV-066: rename 시 옛 파일에서 description 미리 보존 + DB sync.
+        if let Ok(old_qf) = crate::repo::QuestFile::read(&old_quest_path)
+            && !old_qf.description.trim().is_empty()
+        {
+            let db_desc = quest.description.as_deref().unwrap_or("");
+            if old_qf.description != db_desc {
+                sqlx::query("UPDATE quests SET description = ? WHERE id = ?")
+                    .bind(&old_qf.description)
+                    .bind(quest.id)
+                    .execute(&store.index_pool)
+                    .await?;
+            }
+        }
+        let quest = sql::fetch_by_id(&store.index_pool, *qid).await?;
+        crate::ops::quests::write_quest_file(store, &quest, true).await?;
         if old_quest_path != store.paths.quest_path(&quest.quest_id)
             && old_quest_path.exists()
         {
@@ -345,7 +359,7 @@ pub async fn rename_type(
     // 3. 관련 다른 quest 의 auto-block 재생성 (parent / sub / prereq mention).
     for rid in &related_ids {
         if let Ok(q) = sql::fetch_by_id(&store.index_pool, *rid).await {
-            crate::ops::quests::write_quest_file(store, &q).await?;
+            crate::ops::quests::write_quest_file(store, &q, false).await?;
         }
     }
 
@@ -430,10 +444,12 @@ pub async fn rename_status_slug(
     }
 
     // 2. 그 status 의 모든 quest .md frontmatter 의 `status` 필드 rewrite.
+    // DEV-066: status rename 은 frontmatter 만 바꿈, description 은 안 건드림.
+    // false 로 호출하여 파일 본문이 있으면 보존 + DB sync.
     use crate::services::quests as sql;
     for qid in &affected_quest_ids {
         if let Ok(q) = sql::fetch_by_id(&store.index_pool, *qid).await {
-            crate::ops::quests::write_quest_file(store, &q).await?;
+            crate::ops::quests::write_quest_file(store, &q, false).await?;
         }
     }
 
@@ -1345,7 +1361,7 @@ mod tests {
                 crate::services::quests::fetch_by_id(&store.index_pool, id)
                     .await
                     .unwrap();
-            crate::ops::quests::write_quest_file(&store, &q).await.unwrap();
+            crate::ops::quests::write_quest_file(&store, &q, true).await.unwrap();
         }
         assert!(dir.join(".guild/quests/DEV-001.md").exists());
         assert!(dir.join(".guild/quests/DEV-002.md").exists());
@@ -1450,7 +1466,7 @@ mod tests {
         let q = crate::services::quests::fetch_by_id(&store.index_pool, qid)
             .await
             .unwrap();
-        crate::ops::quests::write_quest_file(&store, &q).await.unwrap();
+        crate::ops::quests::write_quest_file(&store, &q, true).await.unwrap();
 
         sqlx::query(
             "INSERT INTO quest_history (quest_id, quest_slug, ts, op, old_value, new_value)
