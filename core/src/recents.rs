@@ -1,9 +1,14 @@
 //! Recent guild 목록 — desktop / CLI 가 사용자 친화 진입 시 사용.
 //!
-//! 저장 위치 (OS 별, `directories` crate 가 결정):
+//! 저장 위치 (OS 별, `directories` crate 의 `data_local_dir` 기반).
+//! BUG-014 (2026-05-25): Windows 에서 Roaming → Local 로 이동. Linux /
+//! macOS 는 둘이 같은 경로라 영향 없음.
 //! - Linux:   `~/.local/share/openguild/recents.json` 또는 `$XDG_DATA_HOME/openguild/`
 //! - macOS:   `~/Library/Application Support/openguild/recents.json`
-//! - Windows: `%APPDATA%\openguild\openguild\data\recents.json`
+//! - Windows: `%LOCALAPPDATA%\openguild\openguild\data\recents.json`
+//!   (이전 BUG-014: `%APPDATA%\...` = Roaming. 도메인 환경에서 다른 PC 로
+//!   sync 되어 부적절. 마이그레이션 없이 새 경로에서 신규 파일로 시작 —
+//!   옛 Roaming 의 파일은 그대로 둠.)
 //!
 //! 형식: JSON array, LRU 순서 (최근 = 0번째).
 //! ```json
@@ -44,7 +49,9 @@ pub fn recents_path() -> Result<PathBuf> {
     }
     let dirs = directories::ProjectDirs::from("io", "openguild", "openguild")
         .context("ProjectDirs::from failed — HOME / APPDATA 환경변수 미설정?")?;
-    let data_dir = dirs.data_dir();
+    // BUG-014: data_dir() → data_local_dir(). Windows 에서 Roaming →
+    // Local. Linux / macOS 는 두 메서드가 같은 경로라 영향 없음.
+    let data_dir = dirs.data_local_dir();
     std::fs::create_dir_all(data_dir)
         .with_context(|| format!("create recents dir: {}", data_dir.display()))?;
     Ok(data_dir.join("recents.json"))
