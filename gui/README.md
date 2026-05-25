@@ -11,7 +11,7 @@ gui/
 ├── tauri.conf.json      ← Tauri v2 설정 (fileAssociations 포함)
 ├── capabilities/
 │   └── default.json     ← v2 capability (메인 윈도우 권한)
-├── icons/               ← placeholder 아이콘 (32/128/icns/ico)
+├── icons/               ← OpenGuild 아이콘 (32/64/128/128@2x/icns/ico + Windows Store / Android / iOS)
 ├── src/
 │   ├── lib.rs           ← Tauri Builder + invoke 핸들러 + resolve_guild_path
 │   ├── commands.rs      ← invoke 핸들러 23개 (DEV-004)
@@ -110,5 +110,15 @@ xdg-mime default openguild-gui.desktop application/x-openguild
 
 ## 아이콘
 
-`gui/icons/*` 는 placeholder (PowerShell 생성, 32×32 단색). 실제 아이콘 디자인 후
-교체 필요 — 별도 quest 로 추적할 것.
+`gui/icons/*` 는 OpenGuild 아이콘 (DEV-035, 2026-05-25). `source.png` (1254×1254)
+를 source 로 `cargo tauri icon ./icons/source.png` 한 번에 전체 세트 생성:
+- `icon.ico` — Windows 멀티사이즈 (6-size RGBA), exe / 파일 탐색기 / 작업표시줄.
+- `icon.icns` — macOS 멀티사이즈 (1.1MB), .app 번들.
+- `32x32.png` / `64x64.png` / `128x128.png` / `128x128@2x.png` — Linux / 일반.
+- `icon.png` — 512×512 master.
+- `Square*Logo.png` / `StoreLogo.png` — Windows Store 자산.
+- `android/` / `ios/` — 모바일 자산 (현재 빌드 대상 아니지만 자동 생성).
+
+재생성: source.png 만 교체 후 `cd gui && cargo tauri icon ./icons/source.png`.
+빌드 시 incremental 캐시가 icon.ico 변경을 못 잡는 경우 있음 — release 빌드 전
+`cargo clean -p openguild-gui` 1회 권장.
