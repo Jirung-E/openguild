@@ -17,7 +17,7 @@
 use std::collections::HashMap;
 
 use crate::error::AppResult;
-use crate::repo::{auto, fs as repo_fs, QuestFile, StatusFile, TypeFile};
+use crate::repo::{auto, fs as repo_fs, CampaignFile, QuestFile, StatusFile, TypeFile};
 use crate::store::Store;
 
 #[derive(Debug, Default, Clone)]
@@ -28,6 +28,8 @@ pub struct ReindexReport {
     pub dependencies_loaded: usize,
     /// reindex 전후로 살아남은 quest 의 board 위치 복원 수.
     pub positions_restored: usize,
+    /// DEV-011: campaign 파일 로드 수.
+    pub campaigns_loaded: usize,
     /// 파싱 / 무결성 실패로 skip 된 파일 (경로 + 사유).
     pub skipped: Vec<(String, String)>,
 }
@@ -59,6 +61,15 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
     sqlx::query("DELETE FROM quest_counters").execute(&mut *tx).await?;
     sqlx::query("DELETE FROM quest_statuses").execute(&mut *tx).await?;
     sqlx::query("DELETE FROM quest_types").execute(&mut *tx).await?;
+    // DEV-011: campaigns 관련 — 마이그레이션 0008 적용 후에만 존재.
+    // 테이블이 아직 없는 환경 (구 DB) 대비 IF EXISTS 안 됨 → migration 으로
+    // 보장된 후에만 reindex 실행되도록. 트랜잭션 안에서 안전.
+    sqlx::query("DELETE FROM campaign_quests").execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM campaign_checklists").execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM campaigns").execute(&mut *tx).await?;
+    sqlx::query("UPDATE campaign_counters SET last_number = 0 WHERE id = 1")
+        .execute(&mut *tx)
+        .await?;
 
     // 2. types — id 는 파일 정렬 순.
     let type_paths = repo_fs::list_with_extension(paths.types_dir(), "toml")
@@ -266,9 +277,106 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
     .execute(&mut *tx)
     .await?;
 
+    // 6. DEV-011: campaigns — `.guild/campaigns/*.md` 파일 정렬 순.
+    let campaigns_dir = paths.campaigns_dir();
+    let mut max_camp_num: i64 = 0;
+    if campaigns_dir.exists() {
+        let camp_paths = repo_fs::list_with_extension(&campaigns_dir, "md")
+            .map_err(crate::error::AppError::Internal)?;
+        for (i, path) in camp_paths.iter().enumerate() {
+            let id = (i + 1) as i64;
+            let cf = match CampaignFile::read(path) {
+                Ok(c) => c,
+                Err(e) => {
+                    report.skipped.push((path.display().to_string(), format!("{e:#}")));
+                    continue;
+                }
+            };
+            if cf.frontmatter.deleted {
+                // soft-deleted 는 reindex 에서 스킵 (alive 만 캐싱).
+                continue;
+            }
+            sqlx::query(
+                "INSERT INTO campaigns
+                    (id, campaign_slug, title, description, status,
+                     started_at, ended_at, display_order, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            )
+            .bind(id)
+            .bind(&cf.frontmatter.campaign_id)
+            .bind(&cf.frontmatter.title)
+            .bind(&cf.body)
+            .bind(&cf.frontmatter.status)
+            .bind(if cf.frontmatter.started_at.is_empty() {
+                None
+            } else {
+                Some(&cf.frontmatter.started_at)
+            })
+            .bind(if cf.frontmatter.ended_at.is_empty() {
+                None
+            } else {
+                Some(&cf.frontmatter.ended_at)
+            })
+            .bind(cf.frontmatter.display_order)
+            .bind(&cf.frontmatter.created_at)
+            .bind(&cf.frontmatter.updated_at)
+            .execute(&mut *tx)
+            .await?;
+
+            // 체크리스트
+            let items = crate::repo::extract_checklist_items(&cf.body);
+            for line in &items {
+                sqlx::query(
+                    "INSERT INTO campaign_checklists (campaign_id, text, checked, order_idx)
+                     VALUES (?, ?, ?, ?)",
+                )
+                .bind(id)
+                .bind(&line.text)
+                .bind(if line.checked { 1 } else { 0 })
+                .bind(line.order_idx)
+                .execute(&mut *tx)
+                .await?;
+            }
+
+            // linked_quests: slug → quest id resolve.
+            for qslug in &cf.frontmatter.linked_quests {
+                if let Some(&qid) = slug_to_id.get(qslug) {
+                    sqlx::query(
+                        "INSERT OR IGNORE INTO campaign_quests (campaign_id, quest_id) VALUES (?, ?)",
+                    )
+                    .bind(id)
+                    .bind(qid)
+                    .execute(&mut *tx)
+                    .await?;
+                }
+                // unresolved slug 는 silent skip — quest 가 삭제됐을 수도.
+            }
+
+            // campaign slug 의 숫자 부분 max 추적 (counter self-heal).
+            if let Some(num_str) = cf.frontmatter.campaign_id.strip_prefix("C-")
+                && let Ok(n) = num_str.parse::<i64>()
+            {
+                max_camp_num = max_camp_num.max(n);
+            }
+
+            report.campaigns_loaded += 1;
+        }
+    }
+    // campaign_counters self-heal — alive campaign 의 최대 번호로.
+    if max_camp_num > 0 {
+        sqlx::query(
+            "UPDATE campaign_counters
+                SET last_number = MAX(last_number, ?)
+              WHERE id = 1",
+        )
+        .bind(max_camp_num)
+        .execute(&mut *tx)
+        .await?;
+    }
+
     tx.commit().await?;
 
-    // 6. auto 블록을 SQL 기준으로 다시 그려서 파일에 쓰기 — 외부 편집 결과
+    // 7. auto 블록을 SQL 기준으로 다시 그려서 파일에 쓰기 — 외부 편집 결과
     //    auto 블록이 stale 일 수 있음. write_consistent_auto_blocks 가 옵션.
     //    (현재 turn 에선 단순 reindex 만, auto 갱신은 호출자가 별도 호출 가능)
     let _ = auto::render; // keep import alive
