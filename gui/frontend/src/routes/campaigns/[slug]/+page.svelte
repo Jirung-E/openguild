@@ -12,7 +12,9 @@
 	import { campaignsApi } from '$lib/api/campaigns';
 	import { questsApi } from '$lib/api/quests';
 	import type { CampaignDetail, Quest } from '$lib/types';
-	import { marked } from 'marked';
+	// BUG-021 fix1: 공유 컴포넌트로 Quest Detail / Campaign Detail 의 markdown
+	// 프리뷰 통일.
+	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	// BUG-021: Quest Detail 과 동일한 CodeMirror editor (라인 번호 + markdown
 	// syntax highlighting) 로 통일.
 	import { EditorView, basicSetup } from 'codemirror';
@@ -268,10 +270,6 @@
 		}
 	}
 
-	function renderMd(s: string | null | undefined): string {
-		if (!s) return '';
-		return marked(s, { async: false }) as string;
-	}
 </script>
 
 <div class="page">
@@ -332,7 +330,7 @@
 					<button class="btn-cancel" onclick={exitEditBody} disabled={saving}>취소</button>
 				</div>
 			{:else if detail.description && detail.description.trim()}
-				<div class="md">{@html renderMd(detail.description)}</div>
+				<MarkdownView source={detail.description ?? ''} />
 			{:else}
 				<div class="empty">본문 없음. <button class="link" onclick={startEditBody}>본문 추가</button></div>
 			{/if}
@@ -521,18 +519,7 @@
 	.editor-wrap :global(.cm-editor) { outline: none; }
 	.editor-wrap :global(.cm-editor.cm-focused) { outline: none; border: none; }
 
-	.md {
-		background: #0d1117;
-		border: 1px solid #21262d;
-		border-radius: 6px;
-		padding: 0.85rem 1rem;
-		color: #c9d1d9;
-		font-size: 0.9rem;
-		line-height: 1.55;
-	}
-	.md :global(h1), .md :global(h2), .md :global(h3) { color: #c9d1d9; }
-	.md :global(code) { background: #161b22; padding: 0.1rem 0.3rem; border-radius: 3px; }
-	.md :global(input[type="checkbox"]) { margin-right: 0.4rem; }
+	/* BUG-021 fix1: .md CSS 는 공유 컴포넌트 MarkdownView 로 이동. */
 
 	.empty { color: #6e7681; font-size: 0.875rem; }
 	.link { background: none; border: none; color: #58a6ff; cursor: pointer; padding: 0; }

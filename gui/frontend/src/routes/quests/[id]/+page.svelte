@@ -5,7 +5,8 @@
 	import { questsApi } from '$lib/api/quests';
 	import { metaApi } from '$lib/api/meta';
 	import { campaignsApi } from '$lib/api/campaigns';
-	import { marked } from 'marked';
+	// BUG-021 fix1: marked 직접 호출 대신 공유 컴포넌트 MarkdownView 사용.
+	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	import { EditorView, basicSetup } from 'codemirror';
 	import { markdown } from '@codemirror/lang-markdown';
 	import { oneDark } from '@codemirror/theme-one-dark';
@@ -410,9 +411,7 @@
 		}
 	}
 
-	function renderMarkdown(src: string): string {
-		return marked(src, { async: false }) as string;
-	}
+	/* BUG-021 fix1: renderMarkdown 직접 호출 제거 — MarkdownView 컴포넌트 사용. */
 
 	// DEV-011: Campaign 연결 / 해제
 	async function linkCampaign() {
@@ -586,7 +585,7 @@
 			</div>
 
 			{#if detail.description}
-				<div class="md-body">{@html renderMarkdown(detail.description)}</div>
+				<MarkdownView source={detail.description} />
 			{:else}
 				<p class="no-desc">No description. <button class="link-btn" onclick={enterEditMode}>설명 추가하기</button></p>
 			{/if}
@@ -978,40 +977,8 @@
 		100% { box-shadow: 0 0 0 0 transparent; }
 	}
 
-	.md-body {
-		font-size: 0.9rem; color: #c9d1d9; line-height: 1.7;
-		margin: 0 0 1.5rem; padding: 1rem 1.25rem;
-		background: #161b22; border: 1px solid #21262d; border-radius: 6px;
-	}
-	.md-body :global(h1), .md-body :global(h2), .md-body :global(h3) {
-		color: #e6edf3; margin: 1em 0 0.4em;
-	}
-	.md-body :global(h1) { font-size: 1.2rem; }
-	.md-body :global(h2) { font-size: 1.05rem; }
-	.md-body :global(h3) { font-size: 0.95rem; }
-	.md-body :global(p) { margin: 0.5em 0; }
-	.md-body :global(ul), .md-body :global(ol) { padding-left: 1.5rem; margin: 0.4em 0; }
-	.md-body :global(code) {
-		font-family: 'SFMono-Regular', Consolas, monospace;
-		font-size: 0.85em; background: #0d1117;
-		padding: 0.1em 0.35em; border-radius: 3px; color: #79c0ff;
-	}
-	.md-body :global(pre) {
-		background: #0d1117; border: 1px solid #21262d; border-radius: 6px;
-		padding: 0.75rem 1rem; overflow-x: auto;
-	}
-	.md-body :global(pre code) { background: none; padding: 0; color: #c9d1d9; }
-	.md-body :global(blockquote) {
-		border-left: 3px solid #30363d; margin: 0.5em 0;
-		padding: 0.25em 0.75em; color: #8b949e;
-	}
-	.md-body :global(a) { color: #58a6ff; }
-	.md-body :global(hr) { border: none; border-top: 1px solid #21262d; margin: 1em 0; }
-	.md-body :global(table) { border-collapse: collapse; width: 100%; font-size: 0.875rem; }
-	.md-body :global(th), .md-body :global(td) {
-		border: 1px solid #21262d; padding: 0.4em 0.7em; text-align: left;
-	}
-	.md-body :global(th) { background: #0d1117; color: #8b949e; font-weight: 600; }
+	/* BUG-021 fix1: .md-body CSS 는 공유 컴포넌트 MarkdownView 로 이동.
+	   캠페인과 동일 스타일 — 헤더 사이즈 = 브라우저 기본 (헤더 명확 구분). */
 
 	.no-desc { color: #484f58; font-size: 0.9rem; margin: 0 0 1.5rem; }
 	.link-btn {
