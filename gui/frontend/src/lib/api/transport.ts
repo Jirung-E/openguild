@@ -181,6 +181,10 @@ function routeToInvoke(
 		if (sub === 'history' && method === 'GET') {
 			return { cmd: 'list_quest_history', args: { id } };
 		}
+		// DEV-011: quest 가 속한 캠페인 목록.
+		if (sub === 'campaigns' && method === 'GET') {
+			return { cmd: 'list_campaigns_for_quest', args: { questId: id } };
+		}
 	}
 
 	// ───── admin ─────

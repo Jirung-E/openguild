@@ -877,3 +877,13 @@ pub async fn list_campaign_upcoming_summaries(
         .await
         .map_err(err)
 }
+
+#[tauri::command]
+pub async fn list_campaigns_for_quest(
+    store: State<'_, Store>,
+    quest_id: i64,
+) -> Result<Vec<CampaignRow>, String> {
+    camp_svc::list_for_quest(&store.index_pool, quest_id)
+        .await
+        .map_err(err)
+}

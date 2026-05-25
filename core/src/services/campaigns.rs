@@ -394,6 +394,35 @@ pub async fn unlink_quest(pool: &SqlitePool, campaign_id: i64, quest_id: i64) ->
     Ok(())
 }
 
+/// 특정 quest 에 연결된 모든 캠페인 (alive only). Quest Detail 의 Campaign
+/// 섹션 표시용. 최근 연결 순서 보장은 안 함 — display_order / created_at.
+pub async fn list_for_quest(
+    pool: &SqlitePool,
+    quest_id: i64,
+) -> AppResult<Vec<CampaignRow>> {
+    let sql = format!(
+        "{CAMPAIGN_SELECT}
+          JOIN campaign_quests cq ON c.id = cq.campaign_id
+         WHERE cq.quest_id = ? AND c.deleted_at IS NULL
+         ORDER BY c.display_order ASC, datetime(c.created_at) DESC, c.id DESC"
+    );
+    // CAMPAIGN_SELECT 의 from 절이 'FROM campaigns' 라 alias 가 필요 — 별도 query 사용.
+    let _ = sql;
+    let rows = sqlx::query_as::<_, CampaignRow>(
+        "SELECT c.id, c.campaign_slug, c.title, c.description, c.status,
+                c.started_at, c.ended_at, c.display_order,
+                c.created_at, c.updated_at
+           FROM campaigns c
+           JOIN campaign_quests cq ON c.id = cq.campaign_id
+          WHERE cq.quest_id = ? AND c.deleted_at IS NULL
+          ORDER BY c.display_order ASC, datetime(c.created_at) DESC, c.id DESC",
+    )
+    .bind(quest_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
 /// quest 의 slug 로 id resolve.
 pub async fn resolve_quest_id(pool: &SqlitePool, quest_slug: &str) -> AppResult<i64> {
     let id: Option<(i64,)> = sqlx::query_as(

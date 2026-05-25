@@ -56,5 +56,9 @@ export const campaignsApi = {
 		api.get<CampaignSummary[]>('/api/campaigns/summaries/active'),
 
 	upcomingSummaries: (days = 7) =>
-		api.get<CampaignSummary[]>(`/api/campaigns/summaries/upcoming?days=${days}`)
+		api.get<CampaignSummary[]>(`/api/campaigns/summaries/upcoming?days=${days}`),
+
+	/** Quest 가 속한 캠페인 목록 — Quest Detail 의 Campaigns 섹션. */
+	forQuest: (questId: number) =>
+		api.get<Campaign[]>(`/api/quests/${questId}/campaigns`)
 };

@@ -4,6 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { questsApi } from '$lib/api/quests';
 	import { metaApi } from '$lib/api/meta';
+	import { campaignsApi } from '$lib/api/campaigns';
 	import { marked } from 'marked';
 	import { EditorView, basicSetup } from 'codemirror';
 	import { markdown } from '@codemirror/lang-markdown';
@@ -33,6 +34,10 @@
 	// DEV-055: types 도 노출 — type 변경 UI 에서 사용.
 	let types = $state<QuestType[]>([]);
 	let statuses = $state<QuestStatus[]>([]);
+	// DEV-011: 이 quest 가 속한 캠페인 목록.
+	let linkedCampaigns = $state<import('$lib/types').Campaign[]>([]);
+	let allCampaigns = $state<import('$lib/types').Campaign[]>([]);
+	let campaignLinkInput = $state('');
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 
@@ -102,9 +107,23 @@
 		error = null;
 		questsApi
 			.getBySlug(currentSlug)
-			.then((d) => {
+			.then(async (d) => {
 				// 효과 실행 도중 다시 slug 가 바뀌었을 수 있으므로 ID 비교 후 적용
-				if (slug === currentSlug) detail = d;
+				if (slug !== currentSlug) return;
+				detail = d;
+				// DEV-011: 연결된 캠페인 + 전체 캠페인 (link UI 자동완성용) 동시 로드.
+				try {
+					const [linked, all] = await Promise.all([
+						campaignsApi.forQuest(d.id),
+						campaignsApi.list()
+					]);
+					if (slug === currentSlug) {
+						linkedCampaigns = linked;
+						allCampaigns = all;
+					}
+				} catch {
+					/* 무시 — 캠페인 없거나 backend 미지원이어도 detail 자체는 표시 */
+				}
 			})
 			.catch((e) => {
 				if (slug === currentSlug)
@@ -371,26 +390,56 @@
 		}
 	}
 
-	// BUG-015 (fix1): history.back() 만으로는 SvelteKit / Tauri WebView 의
-	// history stack 동작이 신뢰되지 않음 (사용자 테스트에서 여전히 Board 로
-	// 감). query parameter `?from=list|board` 로 명시 origin 추적.
-	//
-	// QuestListItem / QuestBoard 의 card-goto button 이 진입 시 from 을 set.
-	// from 이 없으면 Board 로 fallback.
+	// BUG-015 (fix1) + DEV-011: query parameter `?from=list|board|home|campaign:<slug>`
+	// 로 명시 origin 추적. SvelteKit / Tauri WebView 의 history stack 동작
+	// 불확실 → URL query 가 신뢰 가능.
 	function goBack() {
 		const from = $page.url.searchParams.get('from');
 		if (from === 'list') {
 			goto('/?view=list');
 		} else if (from === 'board') {
 			goto('/?view=board');
+		} else if (from === 'home') {
+			goto('/');
+		} else if (from && from.startsWith('campaign:')) {
+			const slug = from.slice('campaign:'.length);
+			goto(`/campaigns/${encodeURIComponent(slug)}`);
 		} else {
-			// 외부 link 직접 진입 / parent 추적 안 된 경우 — Board 로.
+			// 외부 link 직접 진입 / parent 추적 안 된 경우 — Home 으로.
 			goto('/');
 		}
 	}
 
 	function renderMarkdown(src: string): string {
 		return marked(src, { async: false }) as string;
+	}
+
+	// DEV-011: Campaign 연결 / 해제
+	async function linkCampaign() {
+		if (!detail) return;
+		const raw = campaignLinkInput.trim();
+		if (!raw) return;
+		// 사용자가 "C-001" 또는 캠페인 제목 입력 가능. datalist value 가 slug.
+		const slug = raw.toUpperCase().startsWith('C-')
+			? raw.toUpperCase()
+			: (allCampaigns.find((c) => c.title === raw)?.campaign_slug ?? raw);
+		try {
+			await campaignsApi.linkQuest(slug, detail.quest_id);
+			campaignLinkInput = '';
+			linkedCampaigns = await campaignsApi.forQuest(detail.id);
+		} catch (e) {
+			alert(e instanceof Error ? e.message : 'campaign 연결 실패');
+		}
+	}
+
+	async function unlinkCampaign(campaignSlug: string) {
+		if (!detail) return;
+		try {
+			await campaignsApi.unlinkQuest(campaignSlug, detail.quest_id);
+			linkedCampaigns = await campaignsApi.forQuest(detail.id);
+		} catch (e) {
+			alert(e instanceof Error ? e.message : 'campaign 연결 해제 실패');
+		}
 	}
 </script>
 
@@ -622,6 +671,53 @@
 				</ul>
 			{:else}
 				<p class="no-desc">선행 퀘스트 없음.</p>
+			{/if}
+		</section>
+
+		<!-- DEV-011: 연결된 캠페인 -->
+		<section>
+			<div class="section-head">
+				<h2 class="section-title campaign-label">Campaigns</h2>
+			</div>
+			{#if linkedCampaigns.length > 0}
+				<ul class="quest-list">
+					{#each linkedCampaigns as c (c.id)}
+						<li>
+							<div class="prereq-row">
+								<a href={`/campaigns/${encodeURIComponent(c.campaign_slug)}`} class="prereq-link">
+									<span class="badge type campaign-badge">{c.campaign_slug}</span>
+									<span class="ql-title">{c.title}</span>
+									<span class="badge status status-{c.status}">{c.status}</span>
+								</a>
+								{#if !editMode}
+									<button
+										class="prereq-rm"
+										title="캠페인 연결 해제"
+										onclick={() => unlinkCampaign(c.campaign_slug)}>×</button>
+								{/if}
+							</div>
+						</li>
+					{/each}
+				</ul>
+			{:else}
+				<p class="no-desc">연결된 캠페인 없음.</p>
+			{/if}
+			{#if !editMode}
+				<div class="campaign-add">
+					<input
+						type="text"
+						bind:value={campaignLinkInput}
+						placeholder="C-001 또는 캠페인 제목"
+						list="campaign-options"
+						onkeydown={(e) => e.key === 'Enter' && linkCampaign()}
+					/>
+					<datalist id="campaign-options">
+						{#each allCampaigns as c (c.id)}
+							<option value={c.campaign_slug}>{c.title}</option>
+						{/each}
+					</datalist>
+					<button onclick={linkCampaign} disabled={!campaignLinkInput.trim()}>+ 연결</button>
+				</div>
 			{/if}
 		</section>
 
@@ -986,6 +1082,39 @@
 	.section-title.parent-label { color: #7ee787; }
 	.section-title.sub-label { color: #3dc9b0; }
 	.section-title.prereq-label { color: #a371f7; }
+	/* DEV-011: Campaign section */
+	.section-title.campaign-label { color: #4a9eff; }
+	.campaign-badge {
+		color: #4a9eff !important;
+		border-color: #4a9eff !important;
+	}
+	.badge.status.status-active { color: #56d364; border-color: #2ea043; }
+	.badge.status.status-done { color: #8b949e; border-color: #444; }
+	.campaign-add {
+		display: flex;
+		gap: 0.4rem;
+		margin-top: 0.5rem;
+	}
+	.campaign-add input {
+		flex: 1;
+		background: #0d1117;
+		border: 1px solid #30363d;
+		color: #c9d1d9;
+		border-radius: 6px;
+		padding: 0.35rem 0.6rem;
+		font-size: 0.875rem;
+	}
+	.campaign-add button {
+		padding: 0.35rem 0.85rem;
+		background: #21262d;
+		border: 1px solid #30363d;
+		color: #c9d1d9;
+		border-radius: 6px;
+		cursor: pointer;
+		font-size: 0.825rem;
+	}
+	.campaign-add button:disabled { opacity: 0.5; cursor: not-allowed; }
+	.campaign-add button:hover:not(:disabled) { background: #2a2a4a; }
 	.sec-add-btn {
 		padding: 0.15rem 0.6rem;
 		border: 1px solid #30363d; border-radius: 4px;

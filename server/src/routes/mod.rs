@@ -35,6 +35,8 @@ pub fn create_router(store: Store) -> Router {
         .route("/api/quests/{id}/position", put(quests::update_position))
         .route("/api/quests/{id}/history", get(quests::list_history))
         .route("/api/quests/by/{slug}", get(quests::get_quest_by_slug))
+        // DEV-011: quest 가 속한 campaigns 목록 — Quest Detail UI 의 Campaigns 섹션.
+        .route("/api/quests/{id}/campaigns", get(campaigns::list_for_quest))
         .route("/api/quest-positions", get(quests::list_positions))
         .route("/api/quest-dependencies", get(quests::list_dependencies))
         .route("/api/deleted-quests", get(quests::list_deleted_quests))

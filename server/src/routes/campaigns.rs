@@ -164,3 +164,13 @@ pub async fn list_upcoming_summaries(
         svc::list_upcoming_summaries(&store.index_pool, &today, days).await?,
     ))
 }
+
+/// Quest 가 속한 모든 캠페인. Quest Detail 의 Campaign 섹션 표시용.
+/// id 는 quest 의 numeric id (DEV-049: slug 가 stable identifier 지만 quest
+/// routes 가 이미 id 기반이라 일관 유지).
+pub async fn list_for_quest(
+    State(store): State<Store>,
+    Path(quest_id): Path<i64>,
+) -> AppResult<Json<Vec<CampaignRow>>> {
+    Ok(Json(svc::list_for_quest(&store.index_pool, quest_id).await?))
+}

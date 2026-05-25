@@ -270,6 +270,7 @@ pub fn run() {
             commands::campaign_checklist_rm,
             commands::list_campaign_active_summaries,
             commands::list_campaign_upcoming_summaries,
+            commands::list_campaigns_for_quest,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
