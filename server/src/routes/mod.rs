@@ -1,4 +1,5 @@
 pub mod admin;
+pub mod campaigns;
 pub mod meta;
 pub mod quests;
 
@@ -37,6 +38,32 @@ pub fn create_router(store: Store) -> Router {
         .route("/api/quest-positions", get(quests::list_positions))
         .route("/api/quest-dependencies", get(quests::list_dependencies))
         .route("/api/deleted-quests", get(quests::list_deleted_quests))
+        // campaigns (DEV-011)
+        .route(
+            "/api/campaigns",
+            get(campaigns::list_campaigns).post(campaigns::create_campaign),
+        )
+        .route("/api/campaigns/summaries/active", get(campaigns::list_active_summaries))
+        .route(
+            "/api/campaigns/summaries/upcoming",
+            get(campaigns::list_upcoming_summaries),
+        )
+        .route(
+            "/api/campaigns/{slug}",
+            get(campaigns::get_campaign)
+                .patch(campaigns::update_campaign)
+                .delete(campaigns::delete_campaign),
+        )
+        .route("/api/campaigns/{slug}/quests", post(campaigns::link_quest))
+        .route(
+            "/api/campaigns/{slug}/quests/{quest_slug}",
+            delete(campaigns::unlink_quest),
+        )
+        .route("/api/campaigns/{slug}/checklist", post(campaigns::add_checklist))
+        .route(
+            "/api/campaigns/{slug}/checklist/{index}",
+            patch(campaigns::set_checklist).delete(campaigns::remove_checklist),
+        )
         // admin
         .route("/api/admin/snapshot", post(admin::create_snapshot))
         .route("/api/admin/snapshots", get(admin::list_snapshots))

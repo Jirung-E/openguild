@@ -28,6 +28,11 @@ pub fn now_local_iso8601() -> String {
     Local::now().to_rfc3339_opts(SecondsFormat::Secs, false)
 }
 
+/// 오늘 날짜 (로컬) `YYYY-MM-DD` 형식. DEV-011 의 캠페인 기간 계산용.
+pub fn today_local_iso_date() -> String {
+    Local::now().format("%Y-%m-%d").to_string()
+}
+
 /// Legacy SQLite 형식 (`YYYY-MM-DD HH:MM:SS`, TZ 마커 없음) 을 ISO 8601 UTC
 /// (`YYYY-MM-DDTHH:MM:SSZ`) 로 변환. 이미 변환된 형식이면 그대로 반환.
 ///

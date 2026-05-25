@@ -649,6 +649,95 @@ impl HttpClient {
             .find(|s| s.timestamp == ts)
             .ok_or_else(|| anyhow!("복원된 snapshot 정보 누락"))
     }
+
+    // ── Campaign (DEV-011 commit 3) ───────────────────────
+
+    fn campaign_create(
+        &self,
+        body: &openguild_core::models::CreateCampaignRequest,
+    ) -> Result<openguild_core::models::CampaignRow> {
+        self.post("/api/campaigns", body)
+    }
+
+    fn campaign_list(
+        &self,
+        status: Option<&str>,
+    ) -> Result<Vec<openguild_core::models::CampaignRow>> {
+        let path = match status {
+            Some(s) => format!("/api/campaigns?status={s}"),
+            None => "/api/campaigns".to_string(),
+        };
+        self.get(&path)
+    }
+
+    fn campaign_show(
+        &self,
+        slug: &str,
+    ) -> Result<openguild_core::models::CampaignDetail> {
+        self.get(&format!("/api/campaigns/{slug}"))
+    }
+
+    fn campaign_update(
+        &self,
+        slug: &str,
+        body: &openguild_core::models::UpdateCampaignRequest,
+    ) -> Result<openguild_core::models::CampaignRow> {
+        self.patch(&format!("/api/campaigns/{slug}"), body)
+    }
+
+    fn campaign_delete(&self, slug: &str) -> Result<()> {
+        self.delete_no_body(&format!("/api/campaigns/{slug}"))
+    }
+
+    fn campaign_link(&self, campaign_slug: &str, quest_slug: &str) -> Result<()> {
+        let body = openguild_core::models::LinkQuestRequest {
+            quest_slug: quest_slug.to_string(),
+        };
+        let _: serde_json::Value =
+            self.post(&format!("/api/campaigns/{campaign_slug}/quests"), &body)?;
+        Ok(())
+    }
+
+    fn campaign_unlink(&self, campaign_slug: &str, quest_slug: &str) -> Result<()> {
+        self.delete_no_body(&format!(
+            "/api/campaigns/{campaign_slug}/quests/{quest_slug}"
+        ))
+    }
+
+    fn campaign_checklist_add(
+        &self,
+        campaign_slug: &str,
+        text: &str,
+    ) -> Result<openguild_core::models::CampaignChecklistItem> {
+        let body = openguild_core::models::AddChecklistRequest {
+            text: text.to_string(),
+        };
+        self.post(&format!("/api/campaigns/{campaign_slug}/checklist"), &body)
+    }
+
+    fn campaign_checklist_set(
+        &self,
+        campaign_slug: &str,
+        index: usize,
+        checked: bool,
+    ) -> Result<()> {
+        let body = openguild_core::models::UpdateChecklistRequest {
+            text: None,
+            checked: Some(checked),
+            order_idx: None,
+        };
+        let _: serde_json::Value = self.patch(
+            &format!("/api/campaigns/{campaign_slug}/checklist/{index}"),
+            &body,
+        )?;
+        Ok(())
+    }
+
+    fn campaign_checklist_rm(&self, campaign_slug: &str, index: usize) -> Result<()> {
+        self.delete_no_body(&format!(
+            "/api/campaigns/{campaign_slug}/checklist/{index}"
+        ))
+    }
 }
 
 // ─────────────────────────── Backend (Http / Local) ───────────────────────────
@@ -978,21 +1067,13 @@ impl Backend {
     }
 
     // ── Campaign (DEV-011) ───────────────────────────────
-    // HTTP 는 commit 3 에서 server endpoints 추가 후 채움. 본 commit 은 local.
-
-    fn http_unsupported_campaign() -> anyhow::Error {
-        anyhow::anyhow!(
-            "remote 모드에서 campaign 명령은 아직 미지원 (DEV-011 commit 3 에서 추가). \
-             local 모드에서 사용하세요."
-        )
-    }
 
     fn campaign_create(
         &self,
         body: openguild_core::models::CreateCampaignRequest,
     ) -> Result<openguild_core::models::CampaignRow> {
         match self {
-            Backend::Http(_) => Err(Self::http_unsupported_campaign()),
+            Backend::Http(c) => c.campaign_create(&body),
             Backend::Local(l) => Self::map_err(
                 l.rt.block_on(openguild_core::ops::campaigns::create_campaign(&l.store, body)),
             ),
@@ -1004,7 +1085,7 @@ impl Backend {
         status: Option<String>,
     ) -> Result<Vec<openguild_core::models::CampaignRow>> {
         match self {
-            Backend::Http(_) => Err(Self::http_unsupported_campaign()),
+            Backend::Http(c) => c.campaign_list(status.as_deref()),
             Backend::Local(l) => Self::map_err(l.rt.block_on(async {
                 match status.as_deref() {
                     Some(s) => openguild_core::services::campaigns::list_by_status(
@@ -1023,7 +1104,7 @@ impl Backend {
         slug: &str,
     ) -> Result<openguild_core::models::CampaignDetail> {
         match self {
-            Backend::Http(_) => Err(Self::http_unsupported_campaign()),
+            Backend::Http(c) => c.campaign_show(slug),
             Backend::Local(l) => Self::map_err(
                 l.rt.block_on(openguild_core::ops::campaigns::fetch_detail(&l.store, slug)),
             ),
@@ -1036,7 +1117,13 @@ impl Backend {
         new_status: &str,
     ) -> Result<openguild_core::models::CampaignRow> {
         match self {
-            Backend::Http(_) => Err(Self::http_unsupported_campaign()),
+            Backend::Http(c) => c.campaign_update(
+                slug,
+                &openguild_core::models::UpdateCampaignRequest {
+                    status: Some(new_status.to_string()),
+                    ..Default::default()
+                },
+            ),
             Backend::Local(l) => Self::map_err(l.rt.block_on(async {
                 let row = openguild_core::services::campaigns::fetch_by_slug(
                     &l.store.index_pool,
@@ -1058,7 +1145,7 @@ impl Backend {
 
     fn campaign_link(&self, campaign_slug: &str, quest_slug: &str) -> Result<()> {
         match self {
-            Backend::Http(_) => Err(Self::http_unsupported_campaign()),
+            Backend::Http(c) => c.campaign_link(campaign_slug, quest_slug),
             Backend::Local(l) => Self::map_err(l.rt.block_on(async {
                 let row = openguild_core::services::campaigns::fetch_by_slug(
                     &l.store.index_pool,
@@ -1075,7 +1162,7 @@ impl Backend {
 
     fn campaign_unlink(&self, campaign_slug: &str, quest_slug: &str) -> Result<()> {
         match self {
-            Backend::Http(_) => Err(Self::http_unsupported_campaign()),
+            Backend::Http(c) => c.campaign_unlink(campaign_slug, quest_slug),
             Backend::Local(l) => Self::map_err(l.rt.block_on(async {
                 let row = openguild_core::services::campaigns::fetch_by_slug(
                     &l.store.index_pool,
@@ -1092,7 +1179,7 @@ impl Backend {
 
     fn campaign_delete(&self, slug: &str) -> Result<()> {
         match self {
-            Backend::Http(_) => Err(Self::http_unsupported_campaign()),
+            Backend::Http(c) => c.campaign_delete(slug),
             Backend::Local(l) => Self::map_err(l.rt.block_on(async {
                 let row = openguild_core::services::campaigns::fetch_by_slug(
                     &l.store.index_pool,
@@ -1110,7 +1197,7 @@ impl Backend {
         text: &str,
     ) -> Result<openguild_core::models::CampaignChecklistItem> {
         match self {
-            Backend::Http(_) => Err(Self::http_unsupported_campaign()),
+            Backend::Http(c) => c.campaign_checklist_add(campaign_slug, text),
             Backend::Local(l) => Self::map_err(l.rt.block_on(async {
                 let row = openguild_core::services::campaigns::fetch_by_slug(
                     &l.store.index_pool,
@@ -1129,7 +1216,7 @@ impl Backend {
         checked: bool,
     ) -> Result<()> {
         match self {
-            Backend::Http(_) => Err(Self::http_unsupported_campaign()),
+            Backend::Http(c) => c.campaign_checklist_set(campaign_slug, index, checked),
             Backend::Local(l) => Self::map_err(l.rt.block_on(async {
                 let row = openguild_core::services::campaigns::fetch_by_slug(
                     &l.store.index_pool,
@@ -1146,7 +1233,7 @@ impl Backend {
 
     fn campaign_checklist_rm(&self, campaign_slug: &str, index: usize) -> Result<()> {
         match self {
-            Backend::Http(_) => Err(Self::http_unsupported_campaign()),
+            Backend::Http(c) => c.campaign_checklist_rm(campaign_slug, index),
             Backend::Local(l) => Self::map_err(l.rt.block_on(async {
                 let row = openguild_core::services::campaigns::fetch_by_slug(
                     &l.store.index_pool,
