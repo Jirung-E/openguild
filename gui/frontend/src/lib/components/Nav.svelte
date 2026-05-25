@@ -14,6 +14,11 @@
 
 	let onAdminPath = $derived($page.url.pathname.startsWith('/admin'));
 	let onRootPath = $derived($page.url.pathname === '/');
+	// BUG-022: + New Quest 버튼은 Quest Board / Quest List 컨텍스트에서만.
+	// Home / Admin / Campaigns / Quest Detail 등에서는 숨김.
+	let showNewQuestButton = $derived(
+		onRootPath && (currentView === 'board' || currentView === 'list')
+	);
 
 	let showNewQuest = $state(false);
 
@@ -39,7 +44,9 @@
 	</nav>
 
 	<div class="nav-right">
-		<button class="btn-new" onclick={() => (showNewQuest = true)}>+ New Quest</button>
+		{#if showNewQuestButton}
+			<button class="btn-new" onclick={() => (showNewQuest = true)}>+ New Quest</button>
+		{/if}
 	</div>
 </header>
 
