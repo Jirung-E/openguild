@@ -7,6 +7,8 @@
 	import { questsApi } from '$lib/api/quests';
 	import { metaApi } from '$lib/api/meta';
 	import { detectEnvironment } from '$lib/api/transport';
+	// BUG-034: 유효 기한 (퀘스트 required_due vs 연결 캠페인 ended_at) 계산 헬퍼.
+	import { effectiveQuestDue } from '$lib/utils/quest-node-svg';
 	import { flashQuestId } from '$lib/stores';
 	import {
 		URGENCY_COLOR,
@@ -137,13 +139,13 @@
 			? splitByPixelWidth(rawL2, MAX_PX - 10)[0] + '…'
 			: rawL2;
 
-		// BUG-034: required_due 가 설정된 퀘스트는 노드 우하단에 기한 표시.
-		// urgent (지남 / ≤ 7일) 은 색 강조. desired_due 는 표시 X.
-		const due = quest.required_due ?? null;
+		// BUG-034: 유효 기한 (= min(required_due, earliest_campaign_due)) 표시.
+		// source='campaign' 이면 prefix '⛺' — 캠페인이 더 가까워 그게 우세함을 시각 단서로.
+		const { date: due, source: dueSrc } = effectiveQuestDue(quest);
 		let dueText = '';
 		let dueColor = '#8b949e';
 		if (due) {
-			dueText = due;
+			dueText = dueSrc === 'campaign' ? `⛺ ${due}` : due;
 			const dueMs = new Date(`${due}T23:59:59`).getTime();
 			if (!Number.isNaN(dueMs)) {
 				const daysLeft = Math.floor((dueMs - Date.now()) / (24 * 60 * 60 * 1000));

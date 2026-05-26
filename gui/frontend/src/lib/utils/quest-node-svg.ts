@@ -78,6 +78,29 @@ export const QUEST_NODE_W = NODE_W;
 export const QUEST_NODE_H = NODE_H;
 
 /**
+ * BUG-034: "유효 기한" — 퀘스트의 required_due 와 연결된 active 캠페인의
+ * earliest ended_at 중 더 빠른 날짜.
+ *
+ * 의미: 캠페인 안에 속한 퀘스트는 그 캠페인이 끝나기 전에 끝나야 함. 즉
+ * 퀘스트가 명시한 기한이 캠페인 기한보다 늦으면 캠페인 기한이 사실상 마감.
+ *
+ * @returns 'YYYY-MM-DD' 또는 null (둘 다 미설정).
+ *          `source` 도 함께 — 'quest' / 'campaign' / 'none'.
+ */
+export function effectiveQuestDue(quest: Quest): {
+	date: string | null;
+	source: 'quest' | 'campaign' | 'none';
+} {
+	const q = quest.required_due?.trim() || null;
+	const c = quest.earliest_campaign_due?.trim() || null;
+	if (!q && !c) return { date: null, source: 'none' };
+	if (q && !c) return { date: q, source: 'quest' };
+	if (!q && c) return { date: c, source: 'campaign' };
+	// 둘 다 있음 — lex 비교 ('YYYY-MM-DD' 는 lex == 시간순).
+	return q! <= c! ? { date: q!, source: 'quest' } : { date: c!, source: 'campaign' };
+}
+
+/**
  * Quest Board 의 노드와 동일한 모양으로 quest 를 SVG data URL 로 렌더링.
  *
  * @param overlayColor 옵션. 'overdue' = 빨간 외곽선 강조, undefined = 기본.
@@ -102,13 +125,14 @@ export function makeQuestNodeSvgUrl(quest: Quest, overlayColor?: string): string
 	const [rawL2, rest2] = splitByPixelWidthAtWord(rest1, MAX_PX);
 	const line2 = rest2.length > 0 ? splitByPixelWidth(rawL2, MAX_PX - 10)[0] + '…' : rawL2;
 
-	// BUG-034: required_due 가 있으면 노드 우하단에 작은 텍스트로 표시.
-	// 색은 urgent (≤ 7일) 빨강, 그 외 회색. desired_due 는 표시 X.
-	const due = quest.required_due ?? null;
+	// BUG-034: 유효 기한 (= min(required_due, earliest_campaign_due)) 표시.
+	// 색은 지남=빨강 / ≤ 7일=주황 / 그 외=회색. source='campaign' 이면 prefix
+	// '⛺' 아이콘 — 캠페인 기한이 더 가까워서 그게 표시되고 있다는 시각 단서.
+	const { date: due, source } = effectiveQuestDue(quest);
 	let dueText = '';
 	let dueColor = '#8b949e';
 	if (due) {
-		dueText = due;
+		dueText = source === 'campaign' ? `⛺ ${due}` : due;
 		const dueMs = new Date(`${due}T23:59:59`).getTime();
 		if (!Number.isNaN(dueMs)) {
 			const daysLeft = Math.floor((dueMs - Date.now()) / (24 * 60 * 60 * 1000));

@@ -14,6 +14,10 @@ use crate::models::{
 };
 
 /// type / status 를 JOIN 한 공통 SELECT.
+///
+/// BUG-034: `earliest_campaign_due` — 이 퀘스트가 연결된 active 캠페인 중
+/// 가장 가까운 ended_at. 프론트엔드는 `min(required_due, earliest_campaign_due)`
+/// 를 "유효 기한" 으로 표시. 캠페인 끝나기 전에 퀘스트도 끝나야 한다는 의미.
 pub const QUEST_SELECT: &str = r#"
     SELECT
         q.id,
@@ -34,7 +38,16 @@ pub const QUEST_SELECT: &str = r#"
         q.created_at,
         q.updated_at,
         q.desired_due,
-        q.required_due
+        q.required_due,
+        (
+            SELECT MIN(c.ended_at)
+            FROM campaign_quests cq
+            JOIN campaigns c ON c.id = cq.campaign_id
+            WHERE cq.quest_id = q.id
+              AND c.status = 'active'
+              AND c.ended_at IS NOT NULL
+              AND c.ended_at != ''
+        ) AS earliest_campaign_due
     FROM quests q
     JOIN quest_types   qt ON q.quest_type_id = qt.id
     JOIN quest_statuses qs ON q.status_id    = qs.id

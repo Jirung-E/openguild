@@ -122,11 +122,15 @@
 	const IMMINENT_DAYS: Record<number, number> = { 1: 30, 2: 14, 3: 7, 4: 3 };
 	const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
+	// BUG-034: 유효 기한 ms — required_due 와 earliest_campaign_due 중 더 빠른 것.
+	// 같은 helper 를 SVG 도 사용 (lib/utils/quest-node-svg::effectiveQuestDue).
 	function requiredDueMs(q: Quest): number | null {
-		const d = q.required_due?.trim();
-		if (!d) return null;
+		const q_due = q.required_due?.trim() || null;
+		const c_due = q.earliest_campaign_due?.trim() || null;
+		const earliest = q_due && c_due ? (q_due <= c_due ? q_due : c_due) : (q_due || c_due);
+		if (!earliest) return null;
 		// 자정 비교가 자연스러움: 만료 == 그 날 끝.
-		const t = new Date(`${d}T23:59:59`).getTime();
+		const t = new Date(`${earliest}T23:59:59`).getTime();
 		return Number.isNaN(t) ? null : t;
 	}
 	function isDoneLike(q: Quest): boolean {

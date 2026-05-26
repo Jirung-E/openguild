@@ -38,6 +38,12 @@ export interface Quest {
 	desired_due?: string | null;
 	/** DEV-076: 필수 기한 (YYYY-MM-DD). null = 미설정. Home "마감 임박" / "Overdue" 기준. */
 	required_due?: string | null;
+	/**
+	 * BUG-034: SQL 계산 필드. 이 퀘스트가 연결된 active 캠페인 중 가장 가까운
+	 * ended_at. 파일에는 저장 X. 클라이언트는 `min(required_due, earliest_campaign_due)`
+	 * 를 "유효 기한" 으로 표시.
+	 */
+	earliest_campaign_due?: string | null;
 }
 
 export interface QuestDetail extends Quest {

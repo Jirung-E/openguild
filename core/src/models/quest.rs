@@ -29,6 +29,12 @@ pub struct QuestRow {
     pub desired_due: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub required_due: Option<String>,
+    // BUG-034: SQL 계산 필드. 이 퀘스트가 연결된 active 캠페인 중 가장 가까운
+    // ended_at. None = 연결된 active 캠페인 없거나 그 캠페인의 ended_at 미설정.
+    // 파일에는 저장 X (DB-only). 클라이언트는 `min(required_due, earliest_campaign_due)`
+    // 를 "유효 기한" 으로 표시.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub earliest_campaign_due: Option<String>,
 }
 
 /// 퀘스트 상세 응답 (서브퀘스트, 선행퀘스트, 위치 포함)
@@ -221,6 +227,7 @@ mod tests {
             updated_at: "".into(),
             desired_due: None,
             required_due: None,
+            earliest_campaign_due: None,
         };
         let json = serde_json::to_string(&q).unwrap();
         let back: QuestRow = serde_json::from_str(&json).unwrap();
