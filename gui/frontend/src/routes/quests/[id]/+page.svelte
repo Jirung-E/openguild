@@ -21,6 +21,8 @@
 	} from '$lib/types';
 	import NewQuestModal from '$lib/components/NewQuestModal.svelte';
 	import QuestCombobox from '$lib/components/QuestCombobox.svelte';
+	// BUG-030: 캠페인 연결 콤보박스 (QuestCombobox 와 동일 톤).
+	import CampaignCombobox from '$lib/components/CampaignCombobox.svelte';
 	import QuestHistory from '$lib/components/QuestHistory.svelte';
 	import { formatTs, formatRelative } from '$lib/utils/datetime';
 
@@ -38,7 +40,9 @@
 	// DEV-011: 이 quest 가 속한 캠페인 목록.
 	let linkedCampaigns = $state<import('$lib/types').Campaign[]>([]);
 	let allCampaigns = $state<import('$lib/types').Campaign[]>([]);
-	let campaignLinkInput = $state('');
+	// BUG-030: 콤보박스 모달 표시 여부. true 면 모달 노출.
+	let showCampaignCombo = $state(false);
+	let campaignLinkError = $state<string | null>(null);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 
@@ -432,20 +436,29 @@
 	/* BUG-021 fix1: renderMarkdown 직접 호출 제거 — MarkdownView 컴포넌트 사용. */
 
 	// DEV-011: Campaign 연결 / 해제
-	async function linkCampaign() {
+	// BUG-030: native datalist 입력 → 콤보박스 모달 (sub/prereq 와 동일 패턴).
+	function openCampaignCombo() {
+		campaignLinkError = null;
+		showCampaignCombo = true;
+	}
+	function closeCampaignCombo() {
+		showCampaignCombo = false;
+		campaignLinkError = null;
+	}
+	// 콤보박스 후보 — 이미 연결된 캠페인은 제외 (선택해도 의미 없음).
+	let campaignCandidates = $derived.by(() => {
+		const linkedIds = new Set(linkedCampaigns.map((c) => c.id));
+		return allCampaigns.filter((c) => !linkedIds.has(c.id));
+	});
+
+	async function linkCampaign(slug: string) {
 		if (!detail) return;
-		const raw = campaignLinkInput.trim();
-		if (!raw) return;
-		// 사용자가 "C-001" 또는 캠페인 제목 입력 가능. datalist value 가 slug.
-		const slug = raw.toUpperCase().startsWith('C-')
-			? raw.toUpperCase()
-			: (allCampaigns.find((c) => c.title === raw)?.campaign_slug ?? raw);
 		try {
 			await campaignsApi.linkQuest(slug, detail.quest_id);
-			campaignLinkInput = '';
 			linkedCampaigns = await campaignsApi.forQuest(detail.id);
+			closeCampaignCombo();
 		} catch (e) {
-			alert(e instanceof Error ? e.message : 'campaign 연결 실패');
+			campaignLinkError = e instanceof Error ? e.message : 'campaign 연결 실패';
 		}
 	}
 
@@ -756,20 +769,16 @@
 				<p class="no-desc">연결된 캠페인 없음.</p>
 			{/if}
 			{#if !editMode}
+				<!-- BUG-030: native datalist 폐기. sub/prereq 와 동일한 콤보박스 모달. -->
 				<div class="campaign-add">
-					<input
-						type="text"
-						bind:value={campaignLinkInput}
-						placeholder="C-001 또는 캠페인 제목"
-						list="campaign-options"
-						onkeydown={(e) => e.key === 'Enter' && linkCampaign()}
-					/>
-					<datalist id="campaign-options">
-						{#each allCampaigns as c (c.id)}
-							<option value={c.campaign_slug}>{c.title}</option>
-						{/each}
-					</datalist>
-					<button onclick={linkCampaign} disabled={!campaignLinkInput.trim()}>+ 연결</button>
+					<button
+						class="sec-add-btn"
+						onclick={openCampaignCombo}
+						disabled={campaignCandidates.length === 0}
+						title={campaignCandidates.length === 0
+							? '연결 가능한 캠페인이 없습니다'
+							: '캠페인 선택'}
+					>+ 캠페인 연결</button>
 				</div>
 			{/if}
 		</section>
@@ -800,6 +809,25 @@
 				/>
 			{/if}
 			{#if comboError}<p class="combo-err">{comboError}</p>{/if}
+		</div>
+	</div>
+{/if}
+
+<!-- BUG-030: 캠페인 연결 콤보박스 모달 (sub/prereq 와 동일 패턴) -->
+{#if showCampaignCombo && detail}
+	<div class="ov" role="presentation">
+		<div class="modal-sm" role="dialog" aria-modal="true" tabindex="-1">
+			<div class="modal-head">
+				<h3>캠페인 연결</h3>
+				<button class="x" onclick={closeCampaignCombo}>×</button>
+			</div>
+			<CampaignCombobox
+				campaigns={campaignCandidates}
+				placeholder="C-NNN 또는 캠페인 제목"
+				onselect={linkCampaign}
+				oncancel={closeCampaignCombo}
+			/>
+			{#if campaignLinkError}<p class="combo-err">{campaignLinkError}</p>{/if}
 		</div>
 	</div>
 {/if}
@@ -1135,31 +1163,9 @@
 		color: var(--c);
 		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
 	}
-	.campaign-add {
-		display: flex;
-		gap: 0.4rem;
-		margin-top: 0.5rem;
-	}
-	.campaign-add input {
-		flex: 1;
-		background: #0d1117;
-		border: 1px solid #30363d;
-		color: #c9d1d9;
-		border-radius: 6px;
-		padding: 0.35rem 0.6rem;
-		font-size: 0.875rem;
-	}
-	.campaign-add button {
-		padding: 0.35rem 0.85rem;
-		background: #21262d;
-		border: 1px solid #30363d;
-		color: #c9d1d9;
-		border-radius: 6px;
-		cursor: pointer;
-		font-size: 0.825rem;
-	}
-	.campaign-add button:disabled { opacity: 0.5; cursor: not-allowed; }
-	.campaign-add button:hover:not(:disabled) { background: #2a2a4a; }
+	/* BUG-030: campaign-add 의 입력 / 버튼 인라인 스타일 제거 — 콤보박스 모달로
+	   교체되어 .campaign-add input 셀렉터는 unused. wrapper 만 남김. */
+	.campaign-add { margin-top: 0.5rem; }
 	.sec-add-btn {
 		padding: 0.15rem 0.6rem;
 		border: 1px solid #30363d; border-radius: 4px;
