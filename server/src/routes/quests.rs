@@ -57,6 +57,35 @@ pub async fn change_parent(
     Ok(Json(ops::change_parent(&store, id, body).await?))
 }
 
+/// DEV-076: 희망 / 필수 기한 설정 / 해제.
+///
+/// JSON body: 키 존재 여부로 변경 의도 구분.
+///   { "desired_due": "2026-06-15" }  → 설정
+///   { "desired_due": null }          → 해제
+///   {}                                → 변경 없음 (no-op)
+/// 두 필드 동시 가능.
+pub async fn set_due_dates(
+    State(store): State<Store>,
+    Path(id): Path<i64>,
+    Json(body): Json<serde_json::Value>,
+) -> AppResult<Json<QuestRow>> {
+    use serde_json::Value;
+    fn parse_field(body: &Value, key: &str) -> Option<Option<String>> {
+        // 키가 없으면 None (no-op). 있고 null 이면 Some(None) (해제).
+        // 있고 string 이면 Some(Some(s)).
+        let obj = body.as_object()?;
+        let v = obj.get(key)?;
+        Some(match v {
+            Value::Null => None,
+            Value::String(s) => Some(s.clone()),
+            _ => return None, // 타입 오류면 그냥 무시 (no-op) — 엄밀한 검증은 service.
+        })
+    }
+    let desired = parse_field(&body, "desired_due");
+    let required = parse_field(&body, "required_due");
+    Ok(Json(ops::set_due_dates(&store, id, desired, required).await?))
+}
+
 pub async fn delete_quest(
     State(store): State<Store>,
     Path(id): Path<i64>,

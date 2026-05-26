@@ -32,7 +32,9 @@ pub const QUEST_SELECT: &str = r#"
         q.urgency,
         q.parent_quest_id,
         q.created_at,
-        q.updated_at
+        q.updated_at,
+        q.desired_due,
+        q.required_due
     FROM quests q
     JOIN quest_types   qt ON q.quest_type_id = qt.id
     JOIN quest_statuses qs ON q.status_id    = qs.id
@@ -567,6 +569,71 @@ pub async fn update(pool: &SqlitePool, id: i64, body: UpdateQuestRequest) -> App
             .await?;
     }
 
+    fetch_by_id(pool, id).await
+}
+
+// ─────────────────── DEV-076: 기한 변경 ───────────────────
+
+/// 희망 / 필수 기한 변경.
+///
+/// 각 필드는 `Some(Some("YYYY-MM-DD"))` = 설정, `Some(None)` = 해제,
+/// `None` = 변경 없음. 빈 문자열은 None 으로 정규화.
+///
+/// 날짜 형식 (YYYY-MM-DD) 은 가벼운 길이/숫자 검증만 — strict 파싱 X.
+/// 잘못된 형식은 GUI / CLI 가 사전 차단.
+pub async fn set_due_dates(
+    pool: &SqlitePool,
+    id: i64,
+    desired_due: Option<Option<String>>,
+    required_due: Option<Option<String>>,
+) -> AppResult<QuestRow> {
+    fetch_by_id(pool, id).await?;
+    fn normalize(o: Option<String>) -> Option<String> {
+        o.and_then(|s| {
+            let t = s.trim();
+            if t.is_empty() { None } else { Some(t.to_string()) }
+        })
+    }
+    fn validate(o: &Option<String>, field: &str) -> AppResult<()> {
+        let Some(s) = o else { return Ok(()); };
+        // YYYY-MM-DD: 10자, 4-2-2 숫자/대시.
+        if s.len() != 10 || s.as_bytes()[4] != b'-' || s.as_bytes()[7] != b'-' {
+            return Err(AppError::BadRequest(format!(
+                "{field}: 'YYYY-MM-DD' 형식이어야 합니다 (got: {s:?})"
+            )));
+        }
+        for (i, b) in s.as_bytes().iter().enumerate() {
+            if i == 4 || i == 7 { continue; }
+            if !b.is_ascii_digit() {
+                return Err(AppError::BadRequest(format!(
+                    "{field}: 'YYYY-MM-DD' 형식이어야 합니다 (got: {s:?})"
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    let now = crate::time::now_local_iso8601();
+    if let Some(desired) = desired_due {
+        let v = normalize(desired);
+        validate(&v, "desired_due")?;
+        sqlx::query("UPDATE quests SET desired_due = ?, updated_at = ? WHERE id = ?")
+            .bind(v.as_deref())
+            .bind(&now)
+            .bind(id)
+            .execute(pool)
+            .await?;
+    }
+    if let Some(required) = required_due {
+        let v = normalize(required);
+        validate(&v, "required_due")?;
+        sqlx::query("UPDATE quests SET required_due = ?, updated_at = ? WHERE id = ?")
+            .bind(v.as_deref())
+            .bind(&now)
+            .bind(id)
+            .execute(pool)
+            .await?;
+    }
     fetch_by_id(pool, id).await
 }
 

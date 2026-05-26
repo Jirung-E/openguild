@@ -47,6 +47,9 @@
 	let editTitle = $state('');
 	let editUrgency = $state(3);
 	let editDescription = $state('');
+	// DEV-076: 기한 — YYYY-MM-DD 또는 빈 문자열 (= 미설정 / 해제).
+	let editDesiredDue = $state('');
+	let editRequiredDue = $state('');
 	let saving = $state(false);
 	let saveError = $state<string | null>(null);
 
@@ -142,6 +145,9 @@
 		editTitle = detail.title;
 		editUrgency = detail.urgency;
 		editDescription = detail.description ?? '';
+		// DEV-076: null / undefined → 빈 문자열 (input value).
+		editDesiredDue = detail.desired_due ?? '';
+		editRequiredDue = detail.required_due ?? '';
 		editMode = true;
 		await tick();
 		initEditor();
@@ -223,6 +229,18 @@
 				description: desc || undefined,
 				urgency: editUrgency
 			});
+			// DEV-076: 기한 — 빈 문자열 → null (해제), 값 → 설정.
+			// 변경 사항이 있을 때만 PATCH 호출 (no-op 절약).
+			const wantDesired = editDesiredDue.trim() || null;
+			const wantRequired = editRequiredDue.trim() || null;
+			const haveDesired = detail.desired_due ?? null;
+			const haveRequired = detail.required_due ?? null;
+			if (wantDesired !== haveDesired || wantRequired !== haveRequired) {
+				const body: { desired_due?: string | null; required_due?: string | null } = {};
+				if (wantDesired !== haveDesired) body.desired_due = wantDesired;
+				if (wantRequired !== haveRequired) body.required_due = wantRequired;
+				await questsApi.setDueDates(detail.id, body);
+			}
 			detail = await questsApi.getBySlug(slug);
 			exitEditMode();
 		} catch (e) {
@@ -498,6 +516,22 @@
 					{formatRelative(detail.updated_at)}
 				</time>
 			</span>
+			{#if detail.desired_due || detail.required_due}
+				<span class="meta-sep">·</span>
+				<!-- DEV-076: 기한 표시 — desired / required 둘 다 있으면 둘 다 -->
+				{#if detail.required_due}
+					<span class="meta-item">
+						<span class="meta-label">필수 기한</span>
+						<span class="meta-val due-required">{detail.required_due}</span>
+					</span>
+				{/if}
+				{#if detail.desired_due}
+					<span class="meta-item">
+						<span class="meta-label">희망 기한</span>
+						<span class="meta-val due-desired">{detail.desired_due}</span>
+					</span>
+				{/if}
+			{/if}
 		</div>
 
 		{#if editMode}
@@ -515,6 +549,26 @@
 						{/each}
 					</select>
 				</label>
+
+				<!-- DEV-076: 희망 / 필수 기한. 빈 값 = 미설정 / 해제. -->
+				<div class="due-row">
+					<label class="field-label">
+						<span>희망 기한 <span class="hint">(정보성)</span></span>
+						<input
+							class="edit-date"
+							type="date"
+							bind:value={editDesiredDue}
+						/>
+					</label>
+					<label class="field-label">
+						<span>필수 기한 <span class="hint">(임박 / Overdue 기준)</span></span>
+						<input
+							class="edit-date"
+							type="date"
+							bind:value={editRequiredDue}
+						/>
+					</label>
+				</div>
 
 				<!-- CodeMirror 가 div 안에 textarea 를 동적으로 생성 — svelte 가 정적
 				     분석으로는 control 미포함으로 판단. ignore. -->
@@ -1011,6 +1065,20 @@
 		color: #c9d1d9; font-size: 0.875rem; outline: none; width: 160px;
 	}
 	.edit-select:focus { border-color: #58a6ff; }
+	/* DEV-076: 기한 입력. select 와 동일 스타일. */
+	.due-row { display: flex; gap: 1rem; flex-wrap: wrap; }
+	.due-row .field-label { flex: 1 1 200px; }
+	.edit-date {
+		padding: 0.4rem 0.6rem;
+		background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+		color: #c9d1d9; font-size: 0.875rem; outline: none;
+		font-family: inherit;
+		color-scheme: dark;
+	}
+	.edit-date:focus { border-color: #58a6ff; }
+	.field-label .hint { color: #6e7681; font-weight: 400; font-size: 0.8em; }
+	.due-required { color: #f0883e; font-weight: 600; }
+	.due-desired { color: #58a6ff; font-weight: 500; }
 	.editor-wrap {
 		/* DEV-057: 사용자 drag 로 height 조절. CodeMirror 의 cm-scroller 는
 		   parent height 100% 따라가서 늘어남. ResizeObserver 가 변경 감지 →

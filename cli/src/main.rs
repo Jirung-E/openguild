@@ -274,6 +274,24 @@ enum QuestCmd {
         #[command(subcommand)]
         sub: PrereqCmd,
     },
+    /// DEV-076: 희망 / 필수 기한 조회 / 설정 / 해제.
+    /// 인자 없으면 현재 상태 출력. `--desired` / `--required` 로 설정.
+    /// `--clear-desired` / `--clear-required` 로 해제.
+    Due {
+        slug: String,
+        /// 희망 기한 — YYYY-MM-DD. 정보성 (Home 임박 판단에는 사용 안 함).
+        #[arg(long, value_name = "YYYY-MM-DD", conflicts_with = "clear_desired")]
+        desired: Option<String>,
+        /// 필수 기한 — YYYY-MM-DD. Home "마감 임박" / "Overdue" 섹션의 기준.
+        #[arg(long, value_name = "YYYY-MM-DD", conflicts_with = "clear_required")]
+        required: Option<String>,
+        /// 희망 기한 해제 (NULL).
+        #[arg(long = "clear-desired")]
+        clear_desired: bool,
+        /// 필수 기한 해제 (NULL).
+        #[arg(long = "clear-required")]
+        clear_required: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -621,6 +639,26 @@ impl HttpClient {
         self.delete_no_body(&format!("/api/quests/{id}/prerequisites/{prereq_id}"))
     }
 
+    /// DEV-076: 희망 / 필수 기한 설정 / 해제.
+    /// 각 인자: `Some(Some(d))` = 설정, `Some(None)` = 해제, `None` = 변경 없음.
+    fn set_due_dates(
+        &self,
+        id: i64,
+        desired_due: Option<Option<String>>,
+        required_due: Option<Option<String>>,
+    ) -> Result<Quest> {
+        // serde_json 은 Option<Option<T>> 를 직접 표현 못 함 — 명시적 키 존재만
+        // 제어. server 가 키 존재 여부로 "변경 의도" 구분.
+        let mut body = serde_json::Map::new();
+        if let Some(v) = desired_due {
+            body.insert("desired_due".into(), serde_json::to_value(v).unwrap());
+        }
+        if let Some(v) = required_due {
+            body.insert("required_due".into(), serde_json::to_value(v).unwrap());
+        }
+        self.patch(&format!("/api/quests/{id}/due"), &serde_json::Value::Object(body))
+    }
+
     fn create_snapshot(&self) -> Result<openguild_core::snapshot::SnapshotInfo> {
         self.post("/api/admin/snapshot", &serde_json::json!({}))
     }
@@ -960,6 +998,21 @@ impl Backend {
             Backend::Http(c) => c.remove_prerequisite(id, prereq_id),
             Backend::Local(l) => Self::map_err(l.rt.block_on(
                 openguild_core::ops::remove_prerequisite(&l.store, id, prereq_id),
+            )),
+        }
+    }
+
+    /// DEV-076: 희망 / 필수 기한.
+    fn set_due_dates(
+        &self,
+        id: i64,
+        desired_due: Option<Option<String>>,
+        required_due: Option<Option<String>>,
+    ) -> Result<Quest> {
+        match self {
+            Backend::Http(c) => c.set_due_dates(id, desired_due, required_due),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::set_due_dates(&l.store, id, desired_due, required_due),
             )),
         }
     }
@@ -2644,6 +2697,65 @@ fn run() -> Result<()> {
                 };
                 let q = c.change_parent(id, parent_id)?;
                 print_quest(&q, cli.json);
+            }
+            QuestCmd::Due {
+                slug,
+                desired,
+                required,
+                clear_desired,
+                clear_required,
+            } => {
+                let id = c.id_of(&slug)?;
+                let any_change =
+                    desired.is_some() || required.is_some() || clear_desired || clear_required;
+                if !any_change {
+                    // 조회만.
+                    let d = c.quest_by_slug(&slug)?;
+                    let q = d.quest;
+                    if cli.json {
+                        let payload = serde_json::json!({
+                            "quest_id": q.quest_id,
+                            "desired_due": q.desired_due,
+                            "required_due": q.required_due,
+                        });
+                        println!("{}", serde_json::to_string_pretty(&payload).unwrap());
+                    } else {
+                        println!(
+                            "{}  desired_due: {}  required_due: {}",
+                            colorize(&q.quest_id, &q.type_color),
+                            q.desired_due.as_deref().unwrap_or("(없음)"),
+                            q.required_due.as_deref().unwrap_or("(없음)"),
+                        );
+                    }
+                } else {
+                    // DEV-076: Some(Some(d)) = 설정, Some(None) = 해제, None = no-op.
+                    let desired_arg: Option<Option<String>> = if clear_desired {
+                        Some(None)
+                    } else {
+                        desired.map(Some)
+                    };
+                    let required_arg: Option<Option<String>> = if clear_required {
+                        Some(None)
+                    } else {
+                        required.map(Some)
+                    };
+                    let q = c.set_due_dates(id, desired_arg, required_arg)?;
+                    if cli.json {
+                        let payload = serde_json::json!({
+                            "quest_id": q.quest_id,
+                            "desired_due": q.desired_due,
+                            "required_due": q.required_due,
+                        });
+                        println!("{}", serde_json::to_string_pretty(&payload).unwrap());
+                    } else {
+                        println!(
+                            "{}  desired_due: {}  required_due: {}",
+                            colorize(&q.quest_id, &q.type_color),
+                            q.desired_due.as_deref().unwrap_or("(없음)"),
+                            q.required_due.as_deref().unwrap_or("(없음)"),
+                        );
+                    }
+                }
             }
             QuestCmd::Prereq { sub } => match sub {
                 PrereqCmd::Add { slug, prereq } => {

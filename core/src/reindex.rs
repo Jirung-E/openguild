@@ -1,4 +1,4 @@
-//! `.guild/quests/*.md` + `.guild/types/*.toml` + `.guild/statuses/*.toml` 파일들로부터
+﻿//! `.guild/quests/*.md` + `.guild/types/*.toml` + `.guild/statuses/*.toml` 파일들로부터
 //! `.guild/index.db` 의 캐시 내용을 재구축.
 //!
 //! 사용 시나리오:
@@ -198,11 +198,12 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
             .deleted
             .then(|| updated_at.clone());
 
+        // DEV-076: desired_due / required_due 도 함께 적재 (file → DB sync).
         sqlx::query(
             "INSERT INTO quests
              (id, quest_type_id, number, title, description, status_id, urgency, parent_quest_id,
-              created_at, updated_at, deleted_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              created_at, updated_at, deleted_at, desired_due, required_due)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(id)
         .bind(type_id)
@@ -215,6 +216,8 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
         .bind(&created_at)
         .bind(&updated_at)
         .bind(deleted_at)
+        .bind(qf.frontmatter.desired_due.as_deref())
+        .bind(qf.frontmatter.required_due.as_deref())
         .execute(&mut *tx)
         .await?;
 
@@ -442,6 +445,8 @@ mod tests {
                 created_at: "2026-05-16T15:00:00Z".into(),
                 updated_at: "2026-05-16T15:00:00Z".into(),
                 deleted: false,
+                desired_due: None,
+                required_due: None,
             },
             description: "body".into(),
             auto_block: String::new(),
@@ -459,6 +464,8 @@ mod tests {
                 created_at: "2026-05-16T15:01:00Z".into(),
                 updated_at: "2026-05-16T15:01:00Z".into(),
                 deleted: false,
+                desired_due: None,
+                required_due: None,
             },
             description: String::new(),
             auto_block: String::new(),
@@ -521,6 +528,8 @@ mod tests {
                 created_at: "x".into(),
                 updated_at: "x".into(),
                 deleted: false,
+                desired_due: None,
+                required_due: None,
             },
             description: String::new(),
             auto_block: String::new(),
@@ -555,6 +564,8 @@ mod tests {
                 created_at: "x".into(),
                 updated_at: "x".into(),
                 deleted: false,
+                desired_due: None,
+                required_due: None,
             },
             description: String::new(),
             auto_block: String::new(),
@@ -619,6 +630,8 @@ mod tests {
                 created_at: "x".into(),
                 updated_at: "x".into(),
                 deleted: false,
+                desired_due: None,
+                required_due: None,
             },
             description: String::new(),
             auto_block: String::new(),
@@ -662,6 +675,8 @@ mod tests {
                 created_at: "x".into(),
                 updated_at: "x".into(),
                 deleted: false,
+                desired_due: None,
+                required_due: None,
             },
             description: String::new(),
             auto_block: String::new(),
@@ -722,6 +737,8 @@ mod tests {
                 created_at: "x".into(),
                 updated_at: "x".into(),
                 deleted: false,
+                desired_due: None,
+                required_due: None,
             },
             description: String::new(),
             auto_block: String::new(),
@@ -769,6 +786,8 @@ mod tests {
                 created_at: "x".into(),
                 updated_at: "x".into(),
                 deleted: false,
+                desired_due: None,
+                required_due: None,
             },
             description: String::new(),
             auto_block: String::new(),
@@ -786,6 +805,8 @@ mod tests {
                 created_at: "x".into(),
                 updated_at: "x".into(),
                 deleted: false,
+                desired_due: None,
+                required_due: None,
             },
             description: String::new(),
             auto_block: String::new(),

@@ -1,4 +1,4 @@
-//! Quest mutation orchestration — SQL + file + journal.
+﻿//! Quest mutation orchestration — SQL + file + journal.
 //!
 //! 각 함수는 `&Store` 받고 `AppResult<T>` 반환.
 //! 호출자 (server routes / cli Backend::Local) 가 사용.
@@ -83,6 +83,30 @@ pub async fn update_quest(
     let description_explicit = body.description.is_some();
     let quest = sql::update(&store.index_pool, id, body).await?;
     write_quest_file(store, &quest, description_explicit).await?;
+    after_mutation(store).await;
+    Ok(quest)
+}
+
+/// DEV-076: 희망 / 필수 기한 변경 — DB 갱신 + 파일 sync.
+///
+/// 각 인자: `Some(Some(date))` = 설정, `Some(None)` = 해제, `None` = 변경 없음.
+pub async fn set_due_dates(
+    store: &Store,
+    id: i64,
+    desired_due: Option<Option<String>>,
+    required_due: Option<Option<String>>,
+) -> AppResult<QuestRow> {
+    let _ = journal::append(
+        &store.journal_pool,
+        "set_due_dates",
+        &json!({ "id": id, "desired_due": desired_due, "required_due": required_due }),
+        None::<&serde_json::Value>,
+    )
+    .await
+    .map_err(crate::error::AppError::Internal)?;
+
+    let quest = sql::set_due_dates(&store.index_pool, id, desired_due, required_due).await?;
+    write_quest_file(store, &quest, false).await?;
     after_mutation(store).await;
     Ok(quest)
 }
@@ -465,6 +489,8 @@ async fn write_quest_file_as_deleted(
         created_at: quest.created_at.clone(),
         updated_at: quest.updated_at.clone(),
         deleted: true,
+        desired_due: None,
+        required_due: None,
     };
     let qf = QuestFile {
         frontmatter,
@@ -543,6 +569,9 @@ pub(crate) async fn write_quest_file(
         created_at: quest.created_at.clone(),
         updated_at: quest.updated_at.clone(),
         deleted: false, // 본 함수는 alive quest 만 다룸; soft-delete 는 별도 ops
+        // DEV-076: DB → 파일 sync. quest 의 due 필드 그대로 propagate.
+        desired_due: quest.desired_due.clone(),
+        required_due: quest.required_due.clone(),
     };
 
     let qf = QuestFile {
