@@ -153,10 +153,19 @@
 </script>
 
 {#if quests.length > 0}
+	<!-- BUG-036: class:marquee 가 일부 환경에서 반영 안 됨 (Vite HMR cache?).
+	     인라인 style 로 mask + cursor 직접 — class 의존성 제거. -->
 	<div
 		class="conveyor"
 		class:dragging={isDragging}
 		class:marquee={needsMarquee}
+		style:cursor={needsMarquee ? 'grab' : 'default'}
+		style:-webkit-mask-image={needsMarquee
+			? 'linear-gradient(90deg, transparent 0, #000 32px, #000 calc(100% - 32px), transparent 100%)'
+			: 'none'}
+		style:mask-image={needsMarquee
+			? 'linear-gradient(90deg, transparent 0, #000 32px, #000 calc(100% - 32px), transparent 100%)'
+			: 'none'}
 		bind:this={viewportEl}
 		onmouseenter={() => (hoverPause = true)}
 		onmouseleave={() => (hoverPause = false)}
@@ -236,26 +245,8 @@
 		padding: 0.25rem 0 0.5rem 0;
 		user-select: none;
 	}
-	/* BUG-035: fade mask 와 grab 커서는 marquee 가 실제로 돌고 있을 때만.
-	   카드가 한 화면에 다 들어가는 경우엔 fade 가 좌측 시작 부분을 가려 거슬림.
-	   (CampaignConveyor 와 동일 패턴.) */
-	.conveyor.marquee {
-		cursor: grab;
-		-webkit-mask-image: linear-gradient(
-			90deg,
-			transparent 0,
-			#000 32px,
-			#000 calc(100% - 32px),
-			transparent 100%
-		);
-		mask-image: linear-gradient(
-			90deg,
-			transparent 0,
-			#000 32px,
-			#000 calc(100% - 32px),
-			transparent 100%
-		);
-	}
+	/* BUG-036: fade mask / cursor 는 인라인 style 로 직접 적용 (위 div 참조).
+	   .marquee class 는 .dragging combinator (drag 중 슬롯 click 차단) 용으로만 유지. */
 	.conveyor.marquee.dragging { cursor: grabbing; }
 
 	.track {
