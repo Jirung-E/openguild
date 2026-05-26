@@ -241,7 +241,9 @@
 
 		<!-- ── 최근 추가된 퀘스트 ─────────────────────── -->
 		<section class="block">
-			<h2>최근 추가된 퀘스트 <span class="count">({recentQuests.length})</span></h2>
+			<!-- BUG-029: 최근은 최대 RECENT_QUEST_LIMIT (10) 으로 항상 잘림.
+			     숫자 표시는 정보성 0 — 사용자 요청대로 제거. -->
+			<h2>최근 추가된 퀘스트</h2>
 			{#if recentQuests.length === 0}
 				<div class="empty">아직 퀘스트가 없습니다.</div>
 			{:else}
