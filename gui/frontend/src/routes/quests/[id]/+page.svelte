@@ -744,6 +744,17 @@
 		<section>
 			<div class="section-head">
 				<h2 class="section-title campaign-label">Campaigns</h2>
+				<!-- BUG-031: 버튼 배치를 sub-quest / prereq 와 동일하게 — title 옆 -->
+				{#if !editMode}
+					<button
+						class="sec-add-btn"
+						onclick={openCampaignCombo}
+						disabled={campaignCandidates.length === 0}
+						title={campaignCandidates.length === 0
+							? '연결 가능한 캠페인이 없습니다'
+							: '캠페인 선택'}
+					>+ 연결</button>
+				{/if}
 			</div>
 			{#if linkedCampaigns.length > 0}
 				<ul class="quest-list">
@@ -767,19 +778,6 @@
 				</ul>
 			{:else}
 				<p class="no-desc">연결된 캠페인 없음.</p>
-			{/if}
-			{#if !editMode}
-				<!-- BUG-030: native datalist 폐기. sub/prereq 와 동일한 콤보박스 모달. -->
-				<div class="campaign-add">
-					<button
-						class="sec-add-btn"
-						onclick={openCampaignCombo}
-						disabled={campaignCandidates.length === 0}
-						title={campaignCandidates.length === 0
-							? '연결 가능한 캠페인이 없습니다'
-							: '캠페인 선택'}
-					>+ 캠페인 연결</button>
-				</div>
 			{/if}
 		</section>
 
@@ -1101,7 +1099,10 @@
 		background: #161b22; border: 1px solid #30363d; border-radius: 6px;
 		color: #c9d1d9; font-size: 0.875rem; outline: none;
 		font-family: inherit;
-		color-scheme: dark;
+		/* BUG-031: color-scheme: dark 를 추가하면 picker icon 이 흰색 렌더 →
+		   global.css 의 filter:invert(0.85) 가 다시 검정으로 invert 함. 즉
+		   글로벌 fix 와 충돌. 어두운 입력 배경은 background 색만으로 충분 — 별도
+		   color-scheme 지정 금지. */
 	}
 	.edit-date:focus { border-color: #58a6ff; }
 	.field-label .hint { color: #6e7681; font-weight: 400; font-size: 0.8em; }
@@ -1163,9 +1164,8 @@
 		color: var(--c);
 		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
 	}
-	/* BUG-030: campaign-add 의 입력 / 버튼 인라인 스타일 제거 — 콤보박스 모달로
-	   교체되어 .campaign-add input 셀렉터는 unused. wrapper 만 남김. */
-	.campaign-add { margin-top: 0.5rem; }
+	/* BUG-030 + BUG-031: campaign-add wrapper 도 제거됨 — 버튼은 .section-head
+	   안으로 이동 (sub-quest / prereq 와 동일 배치). */
 	.sec-add-btn {
 		padding: 0.15rem 0.6rem;
 		border: 1px solid #30363d; border-radius: 4px;
