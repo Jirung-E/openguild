@@ -149,11 +149,11 @@
 	{:else}
 		<!-- ── 진행 중 캠페인 ─────────────────────────── -->
 		<section class="block">
-			<h2>진행 중 캠페인</h2>
+			<h2>진행 중 캠페인 <span class="count">({currentActive.length})</span></h2>
 			<CampaignCarousel summaries={currentActive} {now} />
 
 			<!-- ── 곧 시작 ─────────────────────────────── -->
-			<h3>곧 시작되는 캠페인</h3>
+			<h3>곧 시작되는 캠페인 <span class="count">({upcomingSummaries.length})</span></h3>
 			<CampaignConveyor summaries={upcomingSummaries} {now} />
 
 			<div class="actions">
@@ -168,7 +168,7 @@
 
 		<!-- ── 최근 추가된 퀘스트 ─────────────────────── -->
 		<section class="block">
-			<h2>최근 추가된 퀘스트</h2>
+			<h2>최근 추가된 퀘스트 <span class="count">({recentQuests.length})</span></h2>
 			{#if recentQuests.length === 0}
 				<div class="empty">아직 퀘스트가 없습니다.</div>
 			{:else}
@@ -218,6 +218,13 @@
 		margin: 1rem 0 0.2rem 0;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
+	}
+	/* BUG-028: 섹션 제목의 (n) 개수 — 흐릿한 회색. */
+	.count {
+		color: #6e7681;
+		font-weight: 400;
+		font-size: 0.85em;
+		margin-left: 0.25rem;
 	}
 
 	.actions {

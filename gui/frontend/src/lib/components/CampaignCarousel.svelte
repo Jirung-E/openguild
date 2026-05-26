@@ -7,7 +7,6 @@
   - 카드 1개면 화살표 / dots 숨김.
 -->
 <script lang="ts">
-	import { onDestroy } from 'svelte';
 	import type { CampaignSummary } from '$lib/types';
 	import CampaignCard from './CampaignCard.svelte';
 
@@ -27,25 +26,23 @@
 	let hoverPause = $state(false);
 	// BUG-027: 사용자가 명시적으로 정지/재생 토글. hover pause 와 독립.
 	let userPaused = $state(false);
-	let paused = $derived(hoverPause || userPaused);
-	let rotateHandle: ReturnType<typeof setInterval> | null = null;
 
 	// summaries 갯수가 변하면 idx clamp.
 	$effect(() => {
 		if (idx >= summaries.length) idx = Math.max(0, summaries.length - 1);
 	});
 
-	// 자동 회전. summaries 가 2개 미만이면 의미 없음.
+	// BUG-028: 자동 회전 — 명시 의존성 + cleanup return. 이전엔 effect 가
+	// summaries 변화 시 재실행되지 않거나 closure stale 로 안 도는 케이스 있었음.
 	$effect(() => {
-		if (rotateHandle) clearInterval(rotateHandle);
-		rotateHandle = null;
-		if (summaries.length < 2) return;
-		rotateHandle = setInterval(() => {
-			if (!paused) idx = (idx + 1) % summaries.length;
-		}, autoRotateMs);
-	});
-	onDestroy(() => {
-		if (rotateHandle) clearInterval(rotateHandle);
+		const count = summaries.length;
+		const interval = autoRotateMs;
+		if (count < 2) return;
+		const handle = setInterval(() => {
+			if (hoverPause || userPaused) return;
+			idx = (idx + 1) % count;
+		}, interval);
+		return () => clearInterval(handle);
 	});
 
 	function prev() {
