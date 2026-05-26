@@ -11,13 +11,25 @@
 	import { campaignsApi } from '$lib/api/campaigns';
 	import type { Campaign } from '$lib/types';
 
-	type Sort = 'recent' | 'remaining' | 'manual';
+	// BUG-025: sort 옵션을 localStorage 에 저장 (lib/utils/campaign-sort) →
+	// Home 의 카드 정렬도 같은 값 적용.
+	import {
+		loadCampaignSort,
+		saveCampaignSort,
+		sortCampaigns,
+		type CampaignSortMode
+	} from '$lib/utils/campaign-sort';
 
 	let all = $state<Campaign[]>([]);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
-	let sort = $state<Sort>('recent');
+	let sort = $state<CampaignSortMode>(loadCampaignSort());
 	let statusFilter = $state<'all' | 'active' | 'done'>('all');
+
+	// sort 변경마다 localStorage 저장.
+	$effect(() => {
+		saveCampaignSort(sort);
+	});
 
 	onMount(async () => {
 		try {
@@ -32,25 +44,7 @@
 	let filtered = $derived.by(() => {
 		const base =
 			statusFilter === 'all' ? all : all.filter((c) => c.status === statusFilter);
-		const arr = [...base];
-		if (sort === 'recent') {
-			arr.sort((a, b) => b.created_at.localeCompare(a.created_at));
-		} else if (sort === 'remaining') {
-			// 남은 날짜: ended_at 까지 (없으면 매우 큰 값으로 뒤로)
-			const days = (c: Campaign): number => {
-				if (!c.ended_at) return Number.MAX_SAFE_INTEGER;
-				const end = new Date(c.ended_at).getTime();
-				return (end - Date.now()) / (1000 * 60 * 60 * 24);
-			};
-			arr.sort((a, b) => days(a) - days(b));
-		} else {
-			arr.sort(
-				(a, b) =>
-					a.display_order - b.display_order ||
-					b.created_at.localeCompare(a.created_at)
-			);
-		}
-		return arr;
+		return sortCampaigns(base, sort);
 	});
 
 	async function moveOrder(c: Campaign, delta: number) {

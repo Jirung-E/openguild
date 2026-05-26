@@ -346,7 +346,12 @@
 
 		<!-- 체크리스트 -->
 		<section>
-			<h2>체크리스트 ({detail.checklists.filter((c) => c.checked).length}/{detail.checklists.length})</h2>
+			<h2 class:done={detail.checklists.length > 0 && detail.checklists.every((c) => c.checked)}>
+				체크리스트 ({detail.checklists.filter((c) => c.checked).length}/{detail.checklists.length})
+				{#if detail.checklists.length > 0 && detail.checklists.every((c) => c.checked)}
+					<span class="done-mark"> ✓ 완료</span>
+				{/if}
+			</h2>
 			{#if detail.checklists.length === 0}
 				<p class="empty">항목 없음.</p>
 			{:else}
@@ -470,6 +475,9 @@
 	.section-head { display: flex; align-items: baseline; gap: 0.75rem; margin-bottom: 0.4rem; }
 	h1 { font-size: 1.4rem; color: #c9d1d9; margin: 0; }
 	h2 { font-size: 1rem; color: #c9d1d9; margin: 0 0 0.4rem 0; }
+	/* BUG-025: 체크리스트 100% 달성 시 헤더 초록 */
+	h2.done { color: #56d364; }
+	h2 .done-mark { font-weight: 700; color: #56d364; font-size: 0.85rem; margin-left: 0.25rem; }
 
 	.title-row { display: flex; align-items: baseline; gap: 0.75rem; }
 	.title-row .btn-edit { margin-left: auto; }

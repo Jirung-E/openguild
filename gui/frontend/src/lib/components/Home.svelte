@@ -10,7 +10,10 @@
 	import { goto } from '$app/navigation';
 	import { campaignsApi } from '$lib/api/campaigns';
 	import { questsApi } from '$lib/api/quests';
-	import CampaignCardSlider from './CampaignCardSlider.svelte';
+	// BUG-025: 진행 중 = carousel (좌우 꽉, 1개씩 자동 회전),
+	//          곧 시작 = conveyor (멈춤 없이 흐름).
+	import CampaignCarousel from './CampaignCarousel.svelte';
+	import CampaignConveyor from './CampaignConveyor.svelte';
 	import type {
 		CampaignSummary,
 		Quest,
@@ -18,6 +21,12 @@
 		QuestType
 	} from '$lib/types';
 	import { metaApi } from '$lib/api/meta';
+	// BUG-025: 캠페인 목록 페이지의 sort 옵션을 Home 카드에도 적용.
+	import {
+		loadCampaignSort,
+		sortCampaigns,
+		type CampaignSortMode
+	} from '$lib/utils/campaign-sort';
 
 	const RECENT_QUEST_LIMIT = 10;
 	const UPCOMING_WINDOW_DAYS = 7;
@@ -32,6 +41,9 @@
 	let error = $state<string | null>(null);
 	let now = $state(Date.now());
 	let tickHandle: ReturnType<typeof setInterval> | null = null;
+	// BUG-025: 캠페인 목록의 sort 와 sync. mount 후 load + 매번 새로 읽음
+	// (목록 페이지 다녀와도 즉시 반영).
+	let sort = $state<CampaignSortMode>('recent');
 
 	onMount(async () => {
 		try {
@@ -50,6 +62,9 @@
 		} finally {
 			loading = false;
 		}
+		// BUG-025: localStorage 의 sort 옵션 적용 (캠페인 목록 페이지에서 변경
+		// 했을 수 있음). 매번 mount 마다 새로 읽음.
+		sort = loadCampaignSort();
 		// BUG-024: 매초 now 갱신 — 카드 분류 / 카운트다운 자동 reactive.
 		tickHandle = setInterval(() => {
 			now = Date.now();
@@ -75,15 +90,15 @@
 
 	let currentActive = $derived.by(() => {
 		const t = now;
-		return allActive.filter((c) => {
+		const inRange = allActive.filter((c) => {
 			const start = dateStartMs(c.started_at);
 			const end = dateEndMs(c.ended_at);
-			// 시작 전이면 진행 중 아님.
 			if (start !== null && t < start) return false;
-			// 종료 후면 진행 중 아님.
 			if (end !== null && t > end) return false;
 			return true;
 		});
+		// BUG-025: 캠페인 목록의 sort 옵션 적용.
+		return sortCampaigns(inRange, sort, t);
 	});
 
 	let upcomingSummaries = $derived.by(() => {
@@ -135,21 +150,11 @@
 		<!-- ── 진행 중 캠페인 ─────────────────────────── -->
 		<section class="block">
 			<h2>진행 중 캠페인</h2>
-			<CampaignCardSlider
-				summaries={currentActive}
-				mode="active"
-				{now}
-				emptyText="진행 중인 캠페인이 없습니다."
-			/>
+			<CampaignCarousel summaries={currentActive} {now} />
 
 			<!-- ── 곧 시작 ─────────────────────────────── -->
 			<h3>곧 시작되는 캠페인</h3>
-			<CampaignCardSlider
-				summaries={upcomingSummaries}
-				mode="upcoming"
-				{now}
-				emptyText="곧 시작 예정인 캠페인이 없습니다."
-			/>
+			<CampaignConveyor summaries={upcomingSummaries} {now} />
 
 			<div class="actions">
 				<button class="btn-link" type="button" onclick={() => goto('/campaigns')}>
