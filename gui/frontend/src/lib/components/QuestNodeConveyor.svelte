@@ -93,25 +93,52 @@
 		if (rafHandle !== null) cancelAnimationFrame(rafHandle);
 	});
 
+	// BUG-035: 드래그 임계값 — CampaignConveyor 와 동일 패턴. 임계값 미만은
+	// capture 미루어 카드 click 자연 발화 보장.
+	const DRAG_THRESHOLD_PX = 5;
+	let pointerDownX = $state(0);
+	let pointerActive = $state(false);
+	let captured = $state(false);
+	let suppressNextClick = false;
 	function onPointerDown(e: PointerEvent) {
 		if (!needsMarquee) return;
-		isDragging = true;
+		pointerActive = true;
+		pointerDownX = e.clientX;
 		dragStartX = e.clientX;
 		dragStartScroll = scrollX;
-		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
 	}
 	function onPointerMove(e: PointerEvent) {
-		if (!isDragging) return;
-		const dx = e.clientX - dragStartX;
-		let next = dragStartScroll - dx;
+		if (!pointerActive) return;
+		const totalDx = e.clientX - pointerDownX;
+		if (!isDragging) {
+			if (Math.abs(totalDx) < DRAG_THRESHOLD_PX) return;
+			isDragging = true;
+			(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+			captured = true;
+		}
+		let next = dragStartScroll - (e.clientX - dragStartX);
 		next = ((next % seqWidth) + seqWidth) % seqWidth;
 		scrollX = next;
 	}
 	function onPointerUp(e: PointerEvent) {
-		if (!isDragging) return;
+		const wasDragging = isDragging;
+		pointerActive = false;
 		isDragging = false;
-		(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-		dragPauseUntil = performance.now() + 2000;
+		if (captured) {
+			(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+			captured = false;
+		}
+		if (wasDragging) {
+			dragPauseUntil = performance.now() + 2000;
+			suppressNextClick = true;
+		}
+	}
+	function onClickCapture(e: MouseEvent) {
+		if (suppressNextClick) {
+			e.preventDefault();
+			e.stopPropagation();
+			suppressNextClick = false;
+		}
 	}
 
 	// overdue 모드에서는 빨간 stroke overlay.
@@ -129,6 +156,7 @@
 	<div
 		class="conveyor"
 		class:dragging={isDragging}
+		class:marquee={needsMarquee}
 		bind:this={viewportEl}
 		onmouseenter={() => (hoverPause = true)}
 		onmouseleave={() => (hoverPause = false)}
@@ -136,6 +164,7 @@
 		onpointermove={onPointerMove}
 		onpointerup={onPointerUp}
 		onpointercancel={onPointerUp}
+		onclickcapture={onClickCapture}
 		role="region"
 		aria-label={mode === 'overdue' ? '마감 지남 퀘스트' : '마감 임박 퀘스트'}
 	>
@@ -144,11 +173,14 @@
 			bind:this={trackEl}
 			style:transform={needsMarquee ? `translateX(${-scrollX}px)` : ''}
 		>
+			<!-- BUG-035: SVG 노드 우하단에 이미 기한 표시 — 별도 .due-label 제거
+			     (중복으로 두 번 보이던 문제). tooltip 의 기한도 SVG 와 동일하게
+			     "유효 기한" (campaign / quest 중 더 가까운) 으로 표기. -->
 			{#each quests as q (q.id)}
 				<button
 					type="button"
 					class="slot"
-					title={`${q.quest_id}  ${q.title}\n필수 기한: ${q.required_due ?? '-'}`}
+					title={`${q.quest_id}  ${q.title}`}
 					onclick={() => openQuest(q)}
 				>
 					<img
@@ -158,11 +190,6 @@
 						height={QUEST_NODE_H}
 						draggable="false"
 					/>
-					<div class="due-label" class:overdue={mode === 'overdue'}>
-						{#if q.required_due}
-							{q.required_due}
-						{/if}
-					</div>
 				</button>
 			{/each}
 			{#if needsMarquee}
@@ -182,9 +209,6 @@
 							height={QUEST_NODE_H}
 							draggable="false"
 						/>
-						<div class="due-label" class:overdue={mode === 'overdue'}>
-							{#if q.required_due}{q.required_due}{/if}
-						</div>
 					</button>
 				{/each}
 				<div class="spacer" aria-hidden="true"></div>
@@ -210,8 +234,13 @@
 	.conveyor {
 		overflow: hidden;
 		padding: 0.25rem 0 0.5rem 0;
-		cursor: grab;
 		user-select: none;
+	}
+	/* BUG-035: fade mask 와 grab 커서는 marquee 가 실제로 돌고 있을 때만.
+	   카드가 한 화면에 다 들어가는 경우엔 fade 가 좌측 시작 부분을 가려 거슬림.
+	   (CampaignConveyor 와 동일 패턴.) */
+	.conveyor.marquee {
+		cursor: grab;
 		-webkit-mask-image: linear-gradient(
 			90deg,
 			transparent 0,
@@ -227,7 +256,7 @@
 			transparent 100%
 		);
 	}
-	.conveyor.dragging { cursor: grabbing; }
+	.conveyor.marquee.dragging { cursor: grabbing; }
 
 	.track {
 		display: flex;
@@ -248,20 +277,14 @@
 		align-items: stretch;
 	}
 	.spacer { flex: 0 0 284px; }
-	.conveyor.dragging .slot { pointer-events: none; }
+	/* BUG-035: 실제 드래그 중 슬롯 클릭 차단. marquee 가 아닐 땐 자연스러운 click. */
+	.conveyor.marquee.dragging .slot { pointer-events: none; }
 
 	.slot img {
 		display: block;
 		border-radius: 6px;
 	}
-	.due-label {
-		text-align: right;
-		font-size: 0.7rem;
-		color: #f0883e;
-		font-weight: 600;
-		padding: 0.15rem 0.25rem 0 0;
-	}
-	.due-label.overdue { color: #f85149; }
+	/* BUG-035: due-label 제거 — SVG 노드 우하단에 이미 동일 정보 표시. */
 
 	.controls {
 		display: flex;

@@ -271,7 +271,13 @@
 			<button class="status-badge status-{detail.status}" onclick={toggleStatus} title="클릭하여 상태 토글">
 				{detail.status}
 			</button>
-			<button class="btn-delete" onclick={deleteCampaign}>🗑 삭제</button>
+			<!-- BUG-035: Quest Detail 의 top-bar 패턴 — 우측에 편집/삭제 묶음. -->
+			{#if !editMode}
+				<div class="top-actions">
+					<button class="btn-edit" onclick={enterEditMode}>✎ 편집</button>
+					<button class="btn-delete" onclick={deleteCampaign}>🗑 삭제</button>
+				</div>
+			{/if}
 		{/if}
 	</div>
 
@@ -283,13 +289,13 @@
 		<!-- BUG-033: 메타 + 본문 통합 편집 (Quest Detail 패턴). 단일 편집 버튼,
 		     단일 저장 / 취소. -->
 		<section class="meta">
+			<!-- BUG-035: 편집 버튼은 top-bar 로 이동 — title-row 에서 제거. -->
 			<div class="title-row">
 				<span class="slug">{detail.campaign_slug}</span>
 				{#if editMode}
 					<input class="title-input" bind:value={titleEdit} disabled={saving} />
 				{:else}
 					<h1>{detail.title}</h1>
-					<button class="btn-edit" onclick={enterEditMode}>✎ 편집</button>
 				{/if}
 			</div>
 			{#if editMode}
@@ -454,8 +460,14 @@
 		font-family: inherit;
 	}
 	.back:hover, .btn-edit:hover { background: #21262d; }
-	.btn-delete { margin-left: auto; color: #f85149; border-color: #5a2424; }
+	/* BUG-035: 단독 margin-left 제거 — top-actions wrapper 가 push right. */
+	.btn-delete { color: #f85149; border-color: #5a2424; }
 	.btn-delete:hover { background: #2d0f0f; }
+	.top-actions {
+		display: flex;
+		gap: 0.4rem;
+		margin-left: auto;
+	}
 
 	/* BUG-021: pill 스타일 통일 (Quest List 패턴). */
 	.status-badge {
@@ -488,7 +500,7 @@
 	h2 .done-mark { font-weight: 700; color: #56d364; font-size: 0.85rem; margin-left: 0.25rem; }
 
 	.title-row { display: flex; align-items: baseline; gap: 0.75rem; }
-	.title-row .btn-edit { margin-left: auto; }
+	/* BUG-035: title-row 안 편집 버튼 제거 — top-bar 로 이동. */
 	.slug {
 		font-size: 0.8rem;
 		font-family: 'JetBrains Mono', ui-monospace, monospace;
