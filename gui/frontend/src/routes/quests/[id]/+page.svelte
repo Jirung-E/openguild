@@ -651,11 +651,16 @@
 				</div>
 			</div>
 
-			{#if detail.description}
-				<MarkdownView source={detail.description} />
-			{:else}
-				<p class="no-desc">No description. <button class="link-btn" onclick={enterEditMode}>설명 추가하기</button></p>
-			{/if}
+			<!-- BUG-031: description 블록 / no-desc 와 아래 sections (Parent /
+			     Sub / Prereq / Campaigns) 사이가 너무 좁아 시각적으로 겹쳐 보임.
+			     wrapper 로 명확한 간격 부여. -->
+			<div class="description-block">
+				{#if detail.description}
+					<MarkdownView source={detail.description} />
+				{:else}
+					<p class="no-desc">No description. <button class="link-btn" onclick={enterEditMode}>설명 추가하기</button></p>
+				{/if}
+			</div>
 		{/if}
 
 		<!-- 부모 퀘스트 (DEV-050) -->
@@ -1175,6 +1180,8 @@
 	.sec-add-btn:hover { background: #21262d; color: #c9d1d9; }
 
 	section { margin-bottom: 1.5rem; }
+	/* BUG-031: 본문과 첫 section (Parent / Sub-Quests) 사이 여유. */
+	.description-block { margin-bottom: 2rem; }
 
 	.quest-list {
 		list-style: none; padding: 0; margin: 0;

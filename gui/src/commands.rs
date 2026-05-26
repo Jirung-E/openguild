@@ -138,6 +138,36 @@ pub async fn change_quest_parent(
     ops::change_parent(&store, id, body).await.map_err(err)
 }
 
+/// DEV-076 / BUG-031: 희망 / 필수 기한 설정 / 해제.
+///
+/// body JSON 키 존재 여부로 변경 의도 구분:
+///   { "desired_due": "2026-06-15" }  → 설정
+///   { "desired_due": null }          → 해제
+///   {}                                → no-op
+/// (서버 routes/quests.rs::set_due_dates 와 동일 contract.)
+#[tauri::command]
+pub async fn set_quest_due_dates(
+    store: State<'_, Store>,
+    id: i64,
+    body: serde_json::Value,
+) -> Result<QuestRow, String> {
+    use serde_json::Value;
+    fn parse_field(body: &Value, key: &str) -> Option<Option<String>> {
+        let obj = body.as_object()?;
+        let v = obj.get(key)?;
+        Some(match v {
+            Value::Null => None,
+            Value::String(s) => Some(s.clone()),
+            _ => return None,
+        })
+    }
+    let desired = parse_field(&body, "desired_due");
+    let required = parse_field(&body, "required_due");
+    ops::set_due_dates(&store, id, desired, required)
+        .await
+        .map_err(err)
+}
+
 /// DEV-055: quest 의 type 변경 — slug 가 바뀜.
 #[tauri::command]
 pub async fn change_quest_type(

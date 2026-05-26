@@ -102,26 +102,43 @@
 		if (rafHandle !== null) cancelAnimationFrame(rafHandle);
 	});
 
-	// 드래그.
+	// BUG-031: 드래그 — 일정 거리 (DRAG_THRESHOLD_PX) 이상 이동 전까지는
+	// setPointerCapture 를 미루어 카드의 click 이벤트가 정상 디스패치되게.
+	// (capture 가 활성화되면 click 이 캡처 element 로 가버려 카드 navigate X.)
+	const DRAG_THRESHOLD_PX = 5;
+	let pointerDownX = $state(0);
+	let pointerActive = $state(false);
+	let captured = $state(false);
 	function onPointerDown(e: PointerEvent) {
 		if (!needsMarquee) return;
-		isDragging = true;
+		pointerActive = true;
+		pointerDownX = e.clientX;
 		dragStartX = e.clientX;
 		dragStartScroll = scrollX;
-		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
 	}
 	function onPointerMove(e: PointerEvent) {
-		if (!isDragging) return;
-		const dx = e.clientX - dragStartX;
-		let next = dragStartScroll - dx;
+		if (!pointerActive) return;
+		const totalDx = e.clientX - pointerDownX;
+		if (!isDragging) {
+			if (Math.abs(totalDx) < DRAG_THRESHOLD_PX) return;
+			// 임계값 초과 — 드래그로 확정. 이 시점에 capture.
+			isDragging = true;
+			(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+			captured = true;
+		}
+		let next = dragStartScroll - (e.clientX - dragStartX);
 		next = ((next % seqWidth) + seqWidth) % seqWidth;
 		scrollX = next;
 	}
 	function onPointerUp(e: PointerEvent) {
-		if (!isDragging) return;
+		const wasDragging = isDragging;
+		pointerActive = false;
 		isDragging = false;
-		(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-		dragPauseUntil = performance.now() + 2000;
+		if (captured) {
+			(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+			captured = false;
+		}
+		if (wasDragging) dragPauseUntil = performance.now() + 2000;
 	}
 </script>
 
@@ -131,6 +148,7 @@
 	<div
 		class="conveyor"
 		class:dragging={isDragging}
+		class:marquee={needsMarquee}
 		bind:this={viewportEl}
 		onmouseenter={() => (hoverPause = true)}
 		onmouseleave={() => (hoverPause = false)}
@@ -186,8 +204,12 @@
 	.conveyor {
 		overflow: hidden;
 		padding: 0.25rem 0 0.5rem 0;
-		cursor: grab;
 		user-select: none;
+	}
+	/* BUG-031: fade mask 와 grab 커서는 marquee 가 실제로 돌고 있을 때만 적용.
+	   카드가 한 화면에 다 들어가는 경우엔 fade 가 좌측을 가려 방해됨. */
+	.conveyor.marquee {
+		cursor: grab;
 		-webkit-mask-image: linear-gradient(
 			90deg,
 			transparent 0,
@@ -203,7 +225,7 @@
 			transparent 100%
 		);
 	}
-	.conveyor.dragging { cursor: grabbing; }
+	.conveyor.marquee.dragging { cursor: grabbing; }
 
 	.track {
 		display: flex;
@@ -214,7 +236,9 @@
 	.slot { flex: 0 0 200px; }
 	.spacer { flex: 0 0 200px; }
 
-	.conveyor.dragging .slot { pointer-events: none; }
+	/* BUG-031: 실제 드래그 중에만 슬롯 클릭 막음 (capture 이후). 임계값 미만은
+	   click 으로 분기되어 자연스럽게 카드 navigate. */
+	.conveyor.marquee.dragging .slot { pointer-events: none; }
 
 	.controls {
 		display: flex;

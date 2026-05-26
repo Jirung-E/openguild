@@ -48,6 +48,19 @@
 		return formatRemaining(summary.ended_at, now, 'until-end');
 	}
 
+	// BUG-031: '진행 중' 카드의 남은 기간을 빨강 강조하는 임계값 (≤ 7일).
+	// 그 이상 남았으면 평이한 회색 — 한참 남은 캠페인에도 빨강 표시되는 게
+	// 피로감을 줌. 7일 이내가 되는 시점부터 시각 경고.
+	const ACTIVE_URGENT_DAYS = 7;
+	let activeRemainingIsUrgent = $derived.by(() => {
+		const e = summary.ended_at?.trim();
+		if (!e) return false;
+		const endMs = new Date(`${e}T23:59:59`).getTime();
+		if (Number.isNaN(endMs)) return false;
+		const remaining = endMs - now;
+		return remaining > 0 && remaining <= ACTIVE_URGENT_DAYS * 24 * 60 * 60 * 1000;
+	});
+
 	function upcomingRemainingLabel(): string {
 		if (!summary.started_at?.trim()) return '';
 		return formatRemaining(summary.started_at, now, 'until-start');
@@ -69,7 +82,10 @@
 			<div class="period">
 				{fmtPeriod()}
 				{#if activeRemainingLabel()}
-					<span class="remaining">({activeRemainingLabel()})</span>
+					<!-- BUG-031: 7일 이내만 빨간 강조. 그 외는 평이한 회색. -->
+					<span class="remaining" class:urgent={activeRemainingIsUrgent}
+						>({activeRemainingLabel()})</span
+					>
 				{/if}
 			</div>
 			<div class="progress-row">
@@ -159,7 +175,10 @@
 		align-items: center;
 		flex-wrap: wrap;
 	}
-	.remaining { color: #f85149; font-weight: 600; }
+	/* BUG-031: 기본은 회색 (한참 남은 캠페인에도 빨강 X). 7일 이내만 urgent
+	   modifier 로 빨강. upcoming 의 accent 는 종전대로 파랑. */
+	.remaining { color: #8b949e; font-weight: 500; }
+	.remaining.urgent { color: #f85149; font-weight: 600; }
 	.remaining.accent { color: #58a6ff; font-weight: 600; }
 	.start-date { color: #6e7681; }
 

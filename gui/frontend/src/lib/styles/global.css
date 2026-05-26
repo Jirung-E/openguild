@@ -26,20 +26,18 @@ button {
 	font-family: inherit;
 }
 
-/* BUG-026: <input type="date"> 의 캘린더 아이콘이 어두운 테마에서 검은색 →
-   안 보임. filter invert + 약간 흐리게. Edge / Chrome / Tauri WebView2
-   webkit prefix 만 필요 (Firefox 는 기본 아이콘 없음).
+/* BUG-026 → BUG-031: <input type="date"> picker icon 처리.
+   변경 이력:
+   - BUG-026: filter:invert(0.85) — 라이트 테마의 검정 아이콘을 invert 해서
+     밝게 보이게. 그러나 OS 또는 WebView2 가 다크 테마로 native picker 를 이미
+     흰색 렌더하는 환경에서는 invert 가 다시 검정으로 만들어버려 (BUG-031)
+     특정 환경에서 보이지 않음.
+   - BUG-031 (현재): `color-scheme: dark` 를 input 에 직접 명시 — 환경 무관
+     하게 native picker 를 dark theme 으로 렌더. invert filter 는 제거. 모든
+     환경에서 아이콘이 light 색으로 일관 표시.
 
-   ⚠ BUG-031: 이 규칙은 input 의 picker icon 이 "기본 검정" 임을 전제로 한다.
-   - 컴포넌트별 스타일에 `color-scheme: dark` 를 추가하지 말 것 — 그러면 native
-     icon 이 흰색 렌더 → invert 후 검정 → 다시 안 보임 (BUG-031 의 정확한 원인).
-   - 어두운 입력 배경은 `background` 속성으로만. picker icon 색은 이 global
-     규칙이 일관 처리. */
-input[type='date']::-webkit-calendar-picker-indicator {
-	filter: invert(0.85);
-	opacity: 0.7;
-	cursor: pointer;
-}
-input[type='date']::-webkit-calendar-picker-indicator:hover {
-	opacity: 1;
+   ⚠ 컴포넌트별 스타일에 `color-scheme` 을 다른 값으로 override 하지 말 것 —
+      이 규칙이 모든 date input 의 picker 색을 일관 처리. */
+input[type='date'] {
+	color-scheme: dark;
 }
