@@ -7,6 +7,7 @@
   - 카드 1개면 화살표 / dots 숨김.
 -->
 <script lang="ts">
+	import { onMount, onDestroy } from 'svelte';
 	import type { CampaignSummary } from '$lib/types';
 	import CampaignCard from './CampaignCard.svelte';
 
@@ -32,17 +33,30 @@
 		if (idx >= summaries.length) idx = Math.max(0, summaries.length - 1);
 	});
 
-	// BUG-028: 자동 회전 — 명시 의존성 + cleanup return. 이전엔 effect 가
-	// summaries 변화 시 재실행되지 않거나 closure stale 로 안 도는 케이스 있었음.
-	$effect(() => {
-		const count = summaries.length;
-		const interval = autoRotateMs;
-		if (count < 2) return;
-		const handle = setInterval(() => {
+	// BUG-029: 자동 회전 — onMount 로 한 번만 등록.
+	//
+	// 이전 (BUG-028) 은 `$effect` 로 setInterval 을 만들고 cleanup 으로 정리
+	// 했는데 — 부모 Home 의 `currentActive` 가 `now` 매초 갱신으로 재derive
+	// 되며 summaries prop 참조가 매초 새로 바뀜. `$effect` 가 `summaries.length`
+	// 를 읽어 의존성으로 잡고 있어 매초 cleanup + 재등록 → 3초 타이머가 절대
+	// 만료 안 함.
+	//
+	// 해결: onMount 로 1회만 setInterval 등록. 콜백 안에서 summaries.length /
+	// hoverPause / userPaused 를 fire 시점에 읽음 — 참조 안정성 무관.
+	let rotateHandle: ReturnType<typeof setInterval> | null = null;
+	onMount(() => {
+		rotateHandle = setInterval(() => {
 			if (hoverPause || userPaused) return;
+			const count = summaries.length;
+			if (count < 2) return;
 			idx = (idx + 1) % count;
-		}, interval);
-		return () => clearInterval(handle);
+		}, autoRotateMs);
+	});
+	onDestroy(() => {
+		if (rotateHandle) {
+			clearInterval(rotateHandle);
+			rotateHandle = null;
+		}
 	});
 
 	function prev() {
