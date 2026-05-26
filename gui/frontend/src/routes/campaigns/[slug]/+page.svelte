@@ -15,6 +15,8 @@
 	// BUG-021 fix1: 공유 컴포넌트로 Quest Detail / Campaign Detail 의 markdown
 	// 프리뷰 통일.
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
+	// BUG-033: 생성 / 변경 시각 표시용 — Quest Detail 과 동일 헬퍼.
+	import { formatTs, formatRelative } from '$lib/utils/datetime';
 	// BUG-023: Quest Detail 의 QuestCombobox 와 같은 UI 로 통일.
 	import QuestCombobox from '$lib/components/QuestCombobox.svelte';
 	// BUG-021: Quest Detail 과 동일한 CodeMirror editor (라인 번호 + markdown
@@ -28,9 +30,9 @@
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 
-	// edit mode (메타 + 본문)
-	let editMeta = $state(false);
-	let editBody = $state(false);
+	// BUG-033: edit mode 통합 — Quest Detail 과 동일하게 단일 editMode 가
+	// 제목 / 기간 / 본문 모두 묶음. 이전엔 editMeta / editBody 분리되어 통일감 X.
+	let editMode = $state(false);
 	let titleEdit = $state('');
 	let startedEdit = $state('');
 	let endedEdit = $state('');
@@ -141,52 +143,34 @@
 		return `${a} ~ ${b}`;
 	}
 
-	function startEditMeta() {
+	// BUG-033: editMeta + editBody → 단일 editMode. Quest Detail 패턴 그대로.
+	async function enterEditMode() {
 		if (!detail) return;
 		titleEdit = detail.title;
 		startedEdit = detail.started_at ?? '';
 		endedEdit = detail.ended_at ?? '';
-		editMeta = true;
-	}
-	async function saveMeta() {
-		if (!detail) return;
-		saving = true;
-		try {
-			await campaignsApi.update(detail.campaign_slug, {
-				title: titleEdit.trim(),
-				started_at: startedEdit,
-				ended_at: endedEdit
-			});
-			editMeta = false;
-			await load();
-		} catch (e) {
-			alert(e instanceof Error ? e.message : 'failed');
-		} finally {
-			saving = false;
-		}
-	}
-
-	async function startEditBody() {
-		if (!detail) return;
 		bodyEdit = detail.description ?? '';
-		editBody = true;
-		// editorContainer 는 {#if editBody} 가 true 되어야 mount → tick 후 init.
+		editMode = true;
+		// CodeMirror 컨테이너는 {#if editMode} 가 true 되어야 mount → tick 후 init.
 		await tick();
 		initEditor();
 	}
-	function exitEditBody() {
+	function exitEditMode() {
 		destroyEditor();
-		editBody = false;
+		editMode = false;
 	}
-	async function saveBody() {
+	async function saveEdit() {
 		if (!detail) return;
 		saving = true;
 		try {
 			const desc = editorView ? editorView.state.doc.toString() : bodyEdit;
 			await campaignsApi.update(detail.campaign_slug, {
+				title: titleEdit.trim() || detail.title,
+				started_at: startedEdit,
+				ended_at: endedEdit,
 				description: desc
 			});
-			exitEditBody();
+			exitEditMode();
 			await load();
 		} catch (e) {
 			alert(e instanceof Error ? e.message : 'failed');
@@ -296,51 +280,75 @@
 	{:else if error || !detail}
 		<div class="state error">{error ?? '캠페인 없음'}</div>
 	{:else}
-		<!-- 메타 -->
+		<!-- BUG-033: 메타 + 본문 통합 편집 (Quest Detail 패턴). 단일 편집 버튼,
+		     단일 저장 / 취소. -->
 		<section class="meta">
-			{#if editMeta}
-				<input class="title-input" bind:value={titleEdit} disabled={saving} />
-				<div class="period-row">
-					<input type="date" bind:value={startedEdit} disabled={saving} />
-					<span>~</span>
-					<input type="date" bind:value={endedEdit} disabled={saving} />
-				</div>
-				<div class="actions">
-					<button class="btn-save" onclick={saveMeta} disabled={saving || !titleEdit.trim()}>
-						{saving ? '저장…' : '저장'}
-					</button>
-					<button class="btn-cancel" onclick={() => (editMeta = false)} disabled={saving}>취소</button>
-				</div>
-			{:else}
-				<div class="title-row">
-					<span class="slug">{detail.campaign_slug}</span>
+			<div class="title-row">
+				<span class="slug">{detail.campaign_slug}</span>
+				{#if editMode}
+					<input class="title-input" bind:value={titleEdit} disabled={saving} />
+				{:else}
 					<h1>{detail.title}</h1>
-					<button class="btn-edit" onclick={startEditMeta}>✎ 편집</button>
-				</div>
-				<div class="period">{fmtPeriod()}</div>
-			{/if}
-		</section>
-
-		<!-- 본문 markdown -->
-		<section class="body">
-			<div class="section-head">
-				<h2>본문</h2>
-				{#if !editBody}
-					<button class="btn-edit" onclick={startEditBody}>✎ 편집</button>
+					<button class="btn-edit" onclick={enterEditMode}>✎ 편집</button>
 				{/if}
 			</div>
-			{#if editBody}
-				<div class="editor-wrap" bind:this={editorContainer}></div>
+			{#if editMode}
+				<div class="period-row">
+					<label>
+						<span class="lbl">시작</span>
+						<input type="date" bind:value={startedEdit} disabled={saving} />
+					</label>
+					<span class="dash">~</span>
+					<label>
+						<span class="lbl">종료</span>
+						<input type="date" bind:value={endedEdit} disabled={saving} />
+					</label>
+				</div>
+			{:else}
+				<div class="period">{fmtPeriod()}</div>
+			{/if}
+			<!-- BUG-033: 캠페인도 생성 / 변경 시각 표시 (Quest Detail 과 동일). -->
+			<div class="meta-times">
+				<span class="meta-item">
+					<span class="meta-label">생성</span>
+					<time
+						class="meta-val"
+						datetime={detail.created_at}
+						title={formatTs(detail.created_at)}
+					>{formatTs(detail.created_at)}</time>
+				</span>
+				<span class="meta-sep">·</span>
+				<span class="meta-item">
+					<span class="meta-label">변경</span>
+					<time
+						class="meta-val"
+						datetime={detail.updated_at}
+						title={formatTs(detail.updated_at)}
+					>{formatRelative(detail.updated_at)}</time>
+				</span>
+			</div>
+		</section>
+
+		<!-- 본문 markdown — editMode 면 같은 form 안의 editor. -->
+		<section class="body">
+			{#if editMode}
+				<!-- CodeMirror 가 div 안에 textarea 를 동적 생성 — svelte 정적
+				     분석으로는 label 의 associated control 미확인. ignore. -->
+				<!-- svelte-ignore a11y_label_has_associated_control -->
+				<label class="field-label">
+					<span>본문 (Markdown)</span>
+					<div class="editor-wrap" bind:this={editorContainer}></div>
+				</label>
 				<div class="actions">
-					<button class="btn-save" onclick={saveBody} disabled={saving}>
+					<button class="btn-save" onclick={saveEdit} disabled={saving || !titleEdit.trim()}>
 						{saving ? '저장…' : '저장'}
 					</button>
-					<button class="btn-cancel" onclick={exitEditBody} disabled={saving}>취소</button>
+					<button class="btn-cancel" onclick={exitEditMode} disabled={saving}>취소</button>
 				</div>
 			{:else if detail.description && detail.description.trim()}
 				<MarkdownView source={detail.description ?? ''} />
 			{:else}
-				<div class="empty">본문 없음. <button class="link" onclick={startEditBody}>본문 추가</button></div>
+				<div class="empty">본문 없음. <button class="link" onclick={enterEditMode}>본문 추가</button></div>
 			{/if}
 		</section>
 
@@ -487,6 +495,29 @@
 		color: #8b949e;
 	}
 	.period { color: #8b949e; font-size: 0.875rem; }
+
+	/* BUG-033: 생성 / 변경 시각 표시 — Quest Detail 의 .meta-times 와 동일 톤. */
+	.meta-times {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.4rem;
+		margin-top: 0.4rem;
+		font-size: 0.75rem;
+		color: #6e7681;
+	}
+	.meta-times .meta-label { color: #8b949e; margin-right: 0.25rem; }
+	.meta-times .meta-val { color: #c9d1d9; }
+	.meta-times .meta-sep { color: #30363d; }
+
+	/* BUG-033: editMode 에 묶인 기간 입력에 라벨 추가. */
+	.period-row label { display: flex; align-items: center; gap: 0.35rem; }
+	.period-row .lbl { font-size: 0.75rem; color: #8b949e; }
+	.period-row .dash { color: #6e7681; }
+
+	/* BUG-033: 본문 editor 라벨 (Quest Detail .field-label 와 동일 스타일). */
+	.field-label { display: flex; flex-direction: column; gap: 0.4rem; margin-top: 0.5rem; }
+	.field-label > span { font-size: 0.8rem; color: #8b949e; }
 
 	.title-input {
 		background: #0d1117;

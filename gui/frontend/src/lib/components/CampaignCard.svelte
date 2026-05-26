@@ -9,7 +9,7 @@
   width 는 부모가 결정 (carousel = 100%, conveyor = 200px 등).
 -->
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	// BUG-033: goto 제거 — anchor href 로 native navigate.
 	import type { CampaignSummary } from '$lib/types';
 	import { formatRemaining } from '$lib/utils/datetime';
 
@@ -66,12 +66,20 @@
 		return formatRemaining(summary.started_at, now, 'until-start');
 	}
 
-	function open() {
-		goto(`/campaigns/${encodeURIComponent(summary.campaign_slug)}`);
-	}
+	// BUG-033: `<button onclick={goto}>` 대신 native `<a href>` 사용. button +
+	// JS handler 는 conveyor 의 pointer 이벤트와 미묘하게 충돌해 click 이 발화
+	// 안 되는 경우가 있음. anchor 의 native href 는 conveyor 가 e.preventDefault()
+	// 를 호출하지 않는 한 무조건 navigate.
+	let href = $derived(`/campaigns/${encodeURIComponent(summary.campaign_slug)}`);
 </script>
 
-<button class="card {mode}" class:completed type="button" onclick={open}>
+<a
+	class="card {mode}"
+	class:completed
+	{href}
+	draggable="false"
+	data-sveltekit-preload-data="hover"
+>
 	{#if mode === 'active'}
 		<div class="head">
 			<span class="slug">{summary.campaign_slug}</span>
@@ -112,9 +120,11 @@
 			</div>
 		</div>
 	{/if}
-</button>
+</a>
 
 <style>
+	/* BUG-033: `<a>` 로 변경. button 의 default 스타일 / focus outline 제거 +
+	   anchor 의 underline 제거. 시각은 종전과 동일. */
 	.card {
 		width: 100%;
 		background: #161b22;
@@ -129,6 +139,8 @@
 		gap: 0.5rem;
 		color: inherit;
 		font: inherit;
+		text-decoration: none;
+		box-sizing: border-box;
 	}
 	.card:hover { background: #1c2128; border-color: #484f58; }
 	/* BUG-027: active 카드 세로 길이 늘림 (사용자 피드백 — 너무 짧음). */

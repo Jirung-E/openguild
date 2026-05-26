@@ -138,7 +138,24 @@
 			(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
 			captured = false;
 		}
-		if (wasDragging) dragPauseUntil = performance.now() + 2000;
+		if (wasDragging) {
+			dragPauseUntil = performance.now() + 2000;
+			// BUG-033: 드래그 직후 발화되는 click 은 카드 anchor 의 navigate 를
+			// 막아야 함 (드래그 의도였는데 navigate 되면 UX 망함). 다음 click
+			// 한 번만 swallow.
+			suppressNextClick = true;
+		}
+	}
+
+	// BUG-033: 드래그 종료 직후 한 번의 click 을 막기 위한 flag.
+	// click 이벤트는 pointerup 직후 발화 — capture 단계에서 잡아 preventDefault.
+	let suppressNextClick = false;
+	function onClickCapture(e: MouseEvent) {
+		if (suppressNextClick) {
+			e.preventDefault();
+			e.stopPropagation();
+			suppressNextClick = false;
+		}
 	}
 </script>
 
@@ -156,6 +173,7 @@
 		onpointermove={onPointerMove}
 		onpointerup={onPointerUp}
 		onpointercancel={onPointerUp}
+		onclickcapture={onClickCapture}
 		role="region"
 		aria-label="곧 시작 캠페인"
 	>

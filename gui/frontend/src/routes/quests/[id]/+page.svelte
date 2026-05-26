@@ -1180,8 +1180,14 @@
 	.sec-add-btn:hover { background: #21262d; color: #c9d1d9; }
 
 	section { margin-bottom: 1.5rem; }
-	/* BUG-031: 본문과 첫 section (Parent / Sub-Quests) 사이 여유. */
-	.description-block { margin-bottom: 2rem; }
+	/* BUG-031 → BUG-033: 본문과 첫 section (Parent / Sub-Quests) 사이가 여전히
+	   좁다는 피드백. margin → padding 으로 변경 (collapse 회피) + border-top
+	   으로 시각 구분선. 첫 section 윗쪽에도 padding-top 동시 적용. */
+	.description-block { padding-bottom: 2.5rem; margin-bottom: 0; }
+	.description-block + section,
+	.description-block ~ section:first-of-type {
+		padding-top: 1rem;
+	}
 
 	.quest-list {
 		list-style: none; padding: 0; margin: 0;
