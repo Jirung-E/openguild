@@ -15,7 +15,7 @@
 		summaries,
 		now,
 		emptyText = '진행 중인 캠페인이 없습니다.',
-		autoRotateMs = 5000
+		autoRotateMs = 3000
 	}: {
 		summaries: CampaignSummary[];
 		now: number;
@@ -24,7 +24,10 @@
 	} = $props();
 
 	let idx = $state(0);
-	let paused = $state(false);
+	let hoverPause = $state(false);
+	// BUG-027: 사용자가 명시적으로 정지/재생 토글. hover pause 와 독립.
+	let userPaused = $state(false);
+	let paused = $derived(hoverPause || userPaused);
 	let rotateHandle: ReturnType<typeof setInterval> | null = null;
 
 	// summaries 갯수가 변하면 idx clamp.
@@ -57,8 +60,8 @@
 	class="carousel"
 	role="region"
 	aria-label="진행 중 캠페인"
-	onmouseenter={() => (paused = true)}
-	onmouseleave={() => (paused = false)}
+	onmouseenter={() => (hoverPause = true)}
+	onmouseleave={() => (hoverPause = false)}
 >
 	{#if summaries.length === 0}
 		<div class="empty">{emptyText}</div>
@@ -91,6 +94,16 @@
 					{/each}
 				</div>
 				<button class="arrow" type="button" onclick={next} aria-label="다음">›</button>
+				<!-- BUG-027: 자동 회전 정지/재생 토글. -->
+				<button
+					class="play-pause"
+					type="button"
+					onclick={() => (userPaused = !userPaused)}
+					aria-label={userPaused ? '재생' : '정지'}
+					title={userPaused ? '자동 회전 재생' : '자동 회전 정지'}
+				>
+					{userPaused ? '▶' : '⏸'}
+				</button>
 			</div>
 		{/if}
 	{/if}
@@ -158,4 +171,20 @@
 		background: #58a6ff;
 		transform: scale(1.4);
 	}
+
+	/* BUG-027: 정지/재생 토글 — 화살표와 같은 스타일 + 위치는 dots 우측. */
+	.play-pause {
+		background: #21262d;
+		border: 1px solid #30363d;
+		color: #c9d1d9;
+		border-radius: 50%;
+		width: 1.8rem;
+		height: 1.8rem;
+		font-size: 0.85rem;
+		line-height: 1;
+		cursor: pointer;
+		transition: background 0.15s;
+		margin-left: 0.4rem;
+	}
+	.play-pause:hover { background: #2a2a4a; }
 </style>

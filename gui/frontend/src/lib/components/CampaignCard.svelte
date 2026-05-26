@@ -115,6 +115,12 @@
 		font: inherit;
 	}
 	.card:hover { background: #1c2128; border-color: #484f58; }
+	/* BUG-027: active 카드 세로 길이 늘림 (사용자 피드백 — 너무 짧음). */
+	.card.active {
+		min-height: 180px;
+		padding: 1.1rem 1.4rem;
+		gap: 0.85rem;
+	}
 	.card.upcoming { padding: 0.65rem 0.8rem; gap: 0.35rem; }
 	/* BUG-025: 100% 달성 카드 — 초록 border 강조 */
 	.card.completed {
@@ -141,6 +147,8 @@
 	}
 	.title { font-size: 0.95rem; font-weight: 600; color: #c9d1d9; line-height: 1.3; }
 	.title.small { font-size: 0.85rem; }
+	/* BUG-027: active 카드의 title 도 더 크게. */
+	.card.active .title { font-size: 1.1rem; line-height: 1.4; }
 
 	.meta { margin-top: auto; display: flex; flex-direction: column; gap: 0.3rem; }
 	.period {
