@@ -23,6 +23,12 @@ pub struct QuestRow {
     pub parent_quest_id: Option<i64>,
     pub created_at: String,
     pub updated_at: String,
+    // DEV-076: 기한 (YYYY-MM-DD). 둘 다 nullable. 파일 frontmatter 의
+    // 동명 필드와 1:1. None = 미설정.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub desired_due: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required_due: Option<String>,
 }
 
 /// 퀘스트 상세 응답 (서브퀘스트, 선행퀘스트, 위치 포함)
@@ -213,6 +219,8 @@ mod tests {
             parent_quest_id: None,
             created_at: "".into(),
             updated_at: "".into(),
+            desired_due: None,
+            required_due: None,
         };
         let json = serde_json::to_string(&q).unwrap();
         let back: QuestRow = serde_json::from_str(&json).unwrap();

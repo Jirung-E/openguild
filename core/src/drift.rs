@@ -1,4 +1,4 @@
-//! 외부 편집 감지 — `.guild/quests/*.md` 의 mtime 과 `index.db` 의 `updated_at` 비교.
+﻿//! 외부 편집 감지 — `.guild/quests/*.md` 의 mtime 과 `index.db` 의 `updated_at` 비교.
 //!
 //! 사용자가 CLI / GUI 없이 파일을 직접 편집한 경우 (또는 git pull 후 파일이 갱신된 경우)
 //! 캐시 (`index.db`) 가 stale.
@@ -174,6 +174,8 @@ mod tests {
                 created_at: "2026-01-01T00:00:00Z".into(),
                 updated_at: "2026-01-01T00:00:00Z".into(),
                 deleted: false,
+                desired_due: None,
+                required_due: None,
             },
             description: String::new(),
             auto_block: String::new(),
@@ -212,6 +214,8 @@ mod tests {
                 created_at: "2026-01-01T00:00:00Z".into(),
                 updated_at: "2026-01-01T00:00:00Z".into(),
                 deleted: false,
+                desired_due: None,
+                required_due: None,
             },
             description: String::new(),
             auto_block: String::new(),

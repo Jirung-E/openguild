@@ -1,4 +1,4 @@
-//! Quest 파일 — `.guild/quests/{slug}.md`.
+﻿//! Quest 파일 — `.guild/quests/{slug}.md`.
 //!
 //! 구조:
 //! ```text
@@ -63,6 +63,14 @@ pub struct QuestFrontmatter {
     /// soft delete flag.
     #[serde(default)]
     pub deleted: bool,
+    // DEV-076: 기한 필드. 둘 다 optional (대부분의 퀘스트는 기한 없음).
+    // YYYY-MM-DD. 누락 시 None — frontmatter 에 키 자체 미존재.
+    /// 희망 기한. 정보성 — Home 임박 판단에는 사용하지 않음.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub desired_due: Option<String>,
+    /// 필수 기한. Home "마감 임박" / "Overdue" 섹션의 기준.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required_due: Option<String>,
 }
 
 impl QuestFile {
@@ -201,6 +209,8 @@ mod tests {
             created_at: "2026-05-16T15:00:00Z".into(),
             updated_at: "2026-05-16T15:00:00Z".into(),
             deleted: false,
+            desired_due: None,
+            required_due: None,
         }
     }
 
