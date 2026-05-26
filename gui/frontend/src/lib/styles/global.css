@@ -25,3 +25,15 @@ button {
 	cursor: pointer;
 	font-family: inherit;
 }
+
+/* BUG-026: <input type="date"> 의 캘린더 아이콘이 어두운 테마에서 검은색 →
+   안 보임. filter invert + 약간 흐리게. Edge / Chrome / Tauri WebView2
+   webkit prefix 만 필요 (Firefox 는 기본 아이콘 없음). */
+input[type='date']::-webkit-calendar-picker-indicator {
+	filter: invert(0.85);
+	opacity: 0.7;
+	cursor: pointer;
+}
+input[type='date']::-webkit-calendar-picker-indicator:hover {
+	opacity: 1;
+}
