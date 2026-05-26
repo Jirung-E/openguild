@@ -3,7 +3,7 @@
    - 진행 중 캠페인 (전부) 가로 카드 슬라이드
    - "곧 시작되는 캠페인" (1주일 이내, 없으면 가장 빠른 다음) 작은 슬라이드
    - 캠페인 목록 / 캠페인 추가 버튼
-   - 최근 추가된 퀘스트 10개
+   - 최근 추가/수정된 퀘스트 10개 (updated_at DESC)
 -->
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
@@ -36,10 +36,15 @@
 	// BUG-024: backend 는 모든 active summary 반환. 분류 / 카운트다운은 frontend
 	// 가 매초 시계로 처리. 페이지 보고 있는 동안 카드 자동 이동.
 	let allActive = $state<CampaignSummary[]>([]);
-	// DEV-076: 전체 alive quest. 임박/Overdue 는 전체에서 필터, 최근 추가
-	// 목록은 앞에서 RECENT_QUEST_LIMIT 만 자름.
+	// DEV-076: 전체 alive quest. 임박/Overdue 는 전체에서 필터.
 	let allQuests = $state<Quest[]>([]);
-	let recentQuests = $derived(allQuests.slice(0, RECENT_QUEST_LIMIT));
+	// DEV-078: '최근 추가된' → '최근 추가/수정된' 으로 변경. updated_at DESC 정렬
+	// (신규 = updated_at == created_at, 수정 = updated_at 갱신 → 자연스럽게 위로).
+	let recentQuests = $derived(
+		[...allQuests]
+			.sort((a, b) => (b.updated_at < a.updated_at ? -1 : 1))
+			.slice(0, RECENT_QUEST_LIMIT)
+	);
 	let types = $state<QuestType[]>([]);
 	let statuses = $state<QuestStatus[]>([]);
 	let loading = $state(true);
@@ -251,11 +256,11 @@
 			</section>
 		{/if}
 
-		<!-- ── 최근 추가된 퀘스트 ─────────────────────── -->
+		<!-- ── 최근 추가/수정된 퀘스트 (DEV-078) ─────────────────────── -->
 		<section class="block">
-			<!-- BUG-029: 최근은 최대 RECENT_QUEST_LIMIT (10) 으로 항상 잘림.
-			     숫자 표시는 정보성 0 — 사용자 요청대로 제거. -->
-			<h2>최근 추가된 퀘스트</h2>
+			<!-- BUG-029: 최근은 최대 RECENT_QUEST_LIMIT (10) 으로 항상 잘림. 숫자 표시 X.
+			     DEV-078: '추가된' → '추가/수정된'. updated_at DESC 정렬로 수정된 것도 위로. -->
+			<h2>최근 추가/수정된 퀘스트</h2>
 			{#if recentQuests.length === 0}
 				<div class="empty">아직 퀘스트가 없습니다.</div>
 			{:else}
