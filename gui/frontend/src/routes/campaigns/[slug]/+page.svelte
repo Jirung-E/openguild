@@ -16,7 +16,7 @@
 	// 프리뷰 통일.
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	// BUG-033: 생성 / 변경 시각 표시용 — Quest Detail 과 동일 헬퍼.
-	import { formatTs, formatRelative } from '$lib/utils/datetime';
+	import { formatTs, formatRelative, isDateOverdue } from '$lib/utils/datetime';
 	// BUG-023: Quest Detail 의 QuestCombobox 와 같은 UI 로 통일.
 	import QuestCombobox from '$lib/components/QuestCombobox.svelte';
 	// BUG-021: Quest Detail 과 동일한 CodeMirror editor (라인 번호 + markdown
@@ -311,7 +311,11 @@
 					</label>
 				</div>
 			{:else}
-				<div class="period">{fmtPeriod()}</div>
+				<!-- DEV-079: 종료 기한 지난 캠페인 (status != done) 이면 period 빨강. -->
+				<div
+					class="period"
+					class:overdue={isDateOverdue(detail.ended_at, detail.status === 'done' ? 'done' : null)}
+				>{fmtPeriod()}</div>
 			{/if}
 			<!-- BUG-033: 캠페인도 생성 / 변경 시각 표시 (Quest Detail 과 동일). -->
 			<div class="meta-times">
@@ -507,6 +511,8 @@
 		color: #8b949e;
 	}
 	.period { color: #8b949e; font-size: 0.875rem; }
+	/* DEV-079: 종료 기한 지난 캠페인 (status != done) 의 period 빨강 강조. */
+	.period.overdue { color: #f85149; font-weight: 600; }
 
 	/* BUG-033: 생성 / 변경 시각 표시 — Quest Detail 의 .meta-times 와 동일 톤. */
 	.meta-times {

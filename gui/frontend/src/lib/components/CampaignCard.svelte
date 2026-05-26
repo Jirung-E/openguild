@@ -48,9 +48,12 @@
 		return formatRemaining(summary.ended_at, now, 'until-end');
 	}
 
-	// BUG-031: '진행 중' 카드의 남은 기간을 빨강 강조하는 임계값 (≤ 7일).
-	// 그 이상 남았으면 평이한 회색 — 한참 남은 캠페인에도 빨강 표시되는 게
-	// 피로감을 줌. 7일 이내가 되는 시점부터 시각 경고.
+	// BUG-031 → DEV-079: 진행중 카드의 남은 기간 색.
+	// - ≤ 7일 남음: urgent (빨강)
+	// - 기한 지남: urgent (빨강, 동일)
+	// - 그 외: 회색
+	// 이전엔 overdue (remaining < 0) 도 회색으로 처리되어 한참 지난 카드가
+	// 일반처럼 보이던 문제 — overdue 도 시각 경고로.
 	const ACTIVE_URGENT_DAYS = 7;
 	let activeRemainingIsUrgent = $derived.by(() => {
 		const e = summary.ended_at?.trim();
@@ -58,7 +61,8 @@
 		const endMs = new Date(`${e}T23:59:59`).getTime();
 		if (Number.isNaN(endMs)) return false;
 		const remaining = endMs - now;
-		return remaining > 0 && remaining <= ACTIVE_URGENT_DAYS * 24 * 60 * 60 * 1000;
+		// 지남 (remaining < 0) 또는 7일 이내 남음.
+		return remaining <= ACTIVE_URGENT_DAYS * 24 * 60 * 60 * 1000;
 	});
 
 	function upcomingRemainingLabel(): string {

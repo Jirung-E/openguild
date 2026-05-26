@@ -24,7 +24,7 @@
 	// BUG-030: 캠페인 연결 콤보박스 (QuestCombobox 와 동일 톤).
 	import CampaignCombobox from '$lib/components/CampaignCombobox.svelte';
 	import QuestHistory from '$lib/components/QuestHistory.svelte';
-	import { formatTs, formatRelative } from '$lib/utils/datetime';
+	import { formatTs, formatRelative, isDateOverdue } from '$lib/utils/datetime';
 
 	let slug = $derived($page.params.id ?? '');
 	// BUG-015 fix1: parent / sub / prereq link 가 같은 origin 을 propagate 해서
@@ -531,17 +531,24 @@
 			</span>
 			{#if detail.desired_due || detail.required_due}
 				<span class="meta-sep">·</span>
-				<!-- DEV-076: 기한 표시 — desired / required 둘 다 있으면 둘 다 -->
+				<!-- DEV-076: 기한 표시 — desired / required 둘 다 있으면 둘 다. -->
+				<!-- DEV-079: 기한 지났으면 빨강 강조 (done/cancelled 제외). -->
 				{#if detail.required_due}
 					<span class="meta-item">
 						<span class="meta-label">필수 기한</span>
-						<span class="meta-val due-required">{detail.required_due}</span>
+						<span
+							class="meta-val due-required"
+							class:overdue={isDateOverdue(detail.required_due, detail.status_slug)}
+						>{detail.required_due}</span>
 					</span>
 				{/if}
 				{#if detail.desired_due}
 					<span class="meta-item">
 						<span class="meta-label">희망 기한</span>
-						<span class="meta-val due-desired">{detail.desired_due}</span>
+						<span
+							class="meta-val due-desired"
+							class:overdue={isDateOverdue(detail.desired_due, detail.status_slug)}
+						>{detail.desired_due}</span>
 					</span>
 				{/if}
 			{/if}
@@ -1113,6 +1120,9 @@
 	.field-label .hint { color: #6e7681; font-weight: 400; font-size: 0.8em; }
 	.due-required { color: #f0883e; font-weight: 600; }
 	.due-desired { color: #58a6ff; font-weight: 500; }
+	/* DEV-079: overdue 는 강한 빨강 + 굵게. desired / required 공통. */
+	.due-required.overdue,
+	.due-desired.overdue { color: #f85149; font-weight: 700; }
 	.editor-wrap {
 		/* DEV-057: 사용자 drag 로 height 조절. CodeMirror 의 cm-scroller 는
 		   parent height 100% 따라가서 늘어남. ResizeObserver 가 변경 감지 →

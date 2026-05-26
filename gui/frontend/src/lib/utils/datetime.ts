@@ -104,3 +104,24 @@ export function formatRemaining(
 	const day = Math.floor(hr / 24);
 	return `${day}일 남음`;
 }
+
+/**
+ * DEV-079: 'YYYY-MM-DD' 가 오늘 끝 (23:59:59) 기준으로 지났는지.
+ *
+ * @param date 'YYYY-MM-DD' 또는 null/undefined/빈 문자열.
+ * @param status 현재 status_slug. done / cancelled 면 overdue 의미 없음 → false.
+ * @returns date 가 유효한 YYYY-MM-DD 이고 그 날의 끝이 지났으며 status 가
+ *          진행 가능 상태면 true.
+ */
+export function isDateOverdue(
+	date: string | null | undefined,
+	status?: string | null
+): boolean {
+	if (!date) return false;
+	const d = date.trim();
+	if (!d) return false;
+	if (status === 'done' || status === 'cancelled') return false;
+	const t = new Date(`${d}T23:59:59`).getTime();
+	if (Number.isNaN(t)) return false;
+	return t < Date.now();
+}

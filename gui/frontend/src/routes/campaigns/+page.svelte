@@ -10,6 +10,7 @@
 	import { goto } from '$app/navigation';
 	import { campaignsApi } from '$lib/api/campaigns';
 	import type { Campaign } from '$lib/types';
+	import { isDateOverdue } from '$lib/utils/datetime';
 
 	// BUG-025: sort 옵션을 localStorage 에 저장 (lib/utils/campaign-sort) →
 	// Home 의 카드 정렬도 같은 값 적용.
@@ -106,7 +107,11 @@
 						<span class="slug">{c.campaign_slug}</span>
 						<span class="title">{c.title}</span>
 						<span class="status status-{c.status}">{c.status}</span>
-						<span class="period">{fmtPeriod(c)}</span>
+						<!-- DEV-079: 종료 기한 지났는데 status != done 이면 period 빨강. -->
+						<span
+							class="period"
+							class:overdue={isDateOverdue(c.ended_at, c.status)}
+						>{fmtPeriod(c)}</span>
 					</a>
 					{#if sort === 'manual'}
 						<div class="reorder">
@@ -213,6 +218,8 @@
 		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
 	}
 	.period { font-size: 0.75rem; color: #8b949e; }
+	/* DEV-079: 기한 지남 + status != done — 빨강. */
+	.period.overdue { color: #f85149; font-weight: 600; }
 
 	.reorder {
 		display: flex;
