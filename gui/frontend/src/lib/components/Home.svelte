@@ -14,6 +14,8 @@
 	//          곧 시작 = conveyor (멈춤 없이 흐름).
 	import CampaignCarousel from './CampaignCarousel.svelte';
 	import CampaignConveyor from './CampaignConveyor.svelte';
+	// DEV-076: 마감 임박 / Overdue 퀘스트 (Quest Board 노드 모양 carousel).
+	import QuestNodeConveyor from './QuestNodeConveyor.svelte';
 	import type {
 		CampaignSummary,
 		Quest,
@@ -34,7 +36,10 @@
 	// BUG-024: backend 는 모든 active summary 반환. 분류 / 카운트다운은 frontend
 	// 가 매초 시계로 처리. 페이지 보고 있는 동안 카드 자동 이동.
 	let allActive = $state<CampaignSummary[]>([]);
-	let recentQuests = $state<Quest[]>([]);
+	// DEV-076: 전체 alive quest. 임박/Overdue 는 전체에서 필터, 최근 추가
+	// 목록은 앞에서 RECENT_QUEST_LIMIT 만 자름.
+	let allQuests = $state<Quest[]>([]);
+	let recentQuests = $derived(allQuests.slice(0, RECENT_QUEST_LIMIT));
 	let types = $state<QuestType[]>([]);
 	let statuses = $state<QuestStatus[]>([]);
 	let loading = $state(true);
@@ -54,7 +59,7 @@
 				metaApi.getQuestStatuses()
 			]);
 			allActive = a;
-			recentQuests = q.slice(0, RECENT_QUEST_LIMIT);
+			allQuests = q;
 			types = t;
 			statuses = s;
 		} catch (e) {
@@ -99,6 +104,52 @@
 		});
 		// BUG-025: 캠페인 목록의 sort 옵션 적용.
 		return sortCampaigns(inRange, sort, t);
+	});
+
+	// DEV-076: 마감 임박 / Overdue 퀘스트 분류.
+	//
+	// 임박 임계값 (urgency 별): 1=Critical 7일, 2=High 4일, 3/4=Medium/Low 1일.
+	// 기준은 required_due (필수 기한) 만. desired_due 는 정보성.
+	// status ∈ {done, cancelled} 는 제외.
+	const IMMINENT_DAYS: Record<number, number> = { 1: 7, 2: 4, 3: 1, 4: 1 };
+	const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+	function requiredDueMs(q: Quest): number | null {
+		const d = q.required_due?.trim();
+		if (!d) return null;
+		// 자정 비교가 자연스러움: 만료 == 그 날 끝.
+		const t = new Date(`${d}T23:59:59`).getTime();
+		return Number.isNaN(t) ? null : t;
+	}
+	function isDoneLike(q: Quest): boolean {
+		return q.status_slug === 'done' || q.status_slug === 'cancelled';
+	}
+
+	let imminentQuests = $derived.by(() => {
+		const t = now;
+		const rows = allQuests
+			.filter((q) => !isDoneLike(q))
+			.filter((q) => {
+				const due = requiredDueMs(q);
+				if (due === null) return false;
+				if (due < t) return false; // overdue 는 별도
+				const window = (IMMINENT_DAYS[q.urgency] ?? 1) * MS_PER_DAY;
+				return due - t <= window;
+			});
+		rows.sort((a, b) => (requiredDueMs(a) ?? 0) - (requiredDueMs(b) ?? 0));
+		return rows;
+	});
+
+	let overdueQuests = $derived.by(() => {
+		const t = now;
+		const rows = allQuests
+			.filter((q) => !isDoneLike(q))
+			.filter((q) => {
+				const due = requiredDueMs(q);
+				return due !== null && due < t;
+			});
+		rows.sort((a, b) => (requiredDueMs(a) ?? 0) - (requiredDueMs(b) ?? 0));
+		return rows;
 	});
 
 	let upcomingSummaries = $derived.by(() => {
@@ -166,6 +217,28 @@
 			</div>
 		</section>
 
+		<!-- DEV-076: 마감 지난 퀘스트 (있을 때만) ──────── -->
+		{#if overdueQuests.length > 0}
+			<section class="block">
+				<h2>
+					마감 지난 퀘스트
+					<span class="count overdue">({overdueQuests.length})</span>
+				</h2>
+				<QuestNodeConveyor quests={overdueQuests} mode="overdue" />
+			</section>
+		{/if}
+
+		<!-- DEV-076: 마감 임박 퀘스트 ─────────────────── -->
+		{#if imminentQuests.length > 0}
+			<section class="block">
+				<h2>
+					마감 임박 퀘스트
+					<span class="count">({imminentQuests.length})</span>
+				</h2>
+				<QuestNodeConveyor quests={imminentQuests} mode="imminent" />
+			</section>
+		{/if}
+
 		<!-- ── 최근 추가된 퀘스트 ─────────────────────── -->
 		<section class="block">
 			<h2>최근 추가된 퀘스트 <span class="count">({recentQuests.length})</span></h2>
@@ -226,6 +299,8 @@
 		font-size: 0.85em;
 		margin-left: 0.25rem;
 	}
+	/* DEV-076: overdue 개수는 빨간색으로 강조 (시급한 시각 경고). */
+	.count.overdue { color: #f85149; font-weight: 600; }
 
 	.actions {
 		display: flex;

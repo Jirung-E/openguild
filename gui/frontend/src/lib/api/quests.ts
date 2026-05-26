@@ -69,5 +69,20 @@ export const questsApi = {
 
 	listDependencies: () => api.get<QuestDependency[]>('/api/quest-dependencies'),
 
-	listHistory: (id: number) => api.get<QuestHistoryEntry[]>(`/api/quests/${id}/history`)
+	listHistory: (id: number) => api.get<QuestHistoryEntry[]>(`/api/quests/${id}/history`),
+
+	/**
+	 * DEV-076: 희망 / 필수 기한 설정 / 해제.
+	 *
+	 * body 의 키 존재 여부로 변경 의도를 구분:
+	 *   { desired_due: "2026-06-15" } → 설정
+	 *   { desired_due: null }         → 해제 (NULL 로 UPDATE)
+	 *   키 없음                         → 변경 없음 (no-op)
+	 *
+	 * 두 필드 동시 가능. 유효성 검사 (YYYY-MM-DD) 는 server 가 수행.
+	 */
+	setDueDates: (
+		id: number,
+		body: { desired_due?: string | null; required_due?: string | null }
+	) => api.patch<Quest>(`/api/quests/${id}/due`, body)
 };

@@ -34,6 +34,10 @@ export interface Quest {
 	parent_quest_id: number | null;
 	created_at: string;
 	updated_at: string;
+	/** DEV-076: 희망 기한 (YYYY-MM-DD). null = 미설정. 정보성 (Home 임박 판단 X). */
+	desired_due?: string | null;
+	/** DEV-076: 필수 기한 (YYYY-MM-DD). null = 미설정. Home "마감 임박" / "Overdue" 기준. */
+	required_due?: string | null;
 }
 
 export interface QuestDetail extends Quest {
