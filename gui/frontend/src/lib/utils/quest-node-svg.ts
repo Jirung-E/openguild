@@ -102,7 +102,26 @@ export function makeQuestNodeSvgUrl(quest: Quest, overlayColor?: string): string
 	const [rawL2, rest2] = splitByPixelWidthAtWord(rest1, MAX_PX);
 	const line2 = rest2.length > 0 ? splitByPixelWidth(rawL2, MAX_PX - 10)[0] + '…' : rawL2;
 
-	const titleY = line2 ? 44 : 52;
+	// BUG-034: required_due 가 있으면 노드 우하단에 작은 텍스트로 표시.
+	// 색은 urgent (≤ 7일) 빨강, 그 외 회색. desired_due 는 표시 X.
+	const due = quest.required_due ?? null;
+	let dueText = '';
+	let dueColor = '#8b949e';
+	if (due) {
+		dueText = due;
+		const dueMs = new Date(`${due}T23:59:59`).getTime();
+		if (!Number.isNaN(dueMs)) {
+			const daysLeft = Math.floor((dueMs - Date.now()) / (24 * 60 * 60 * 1000));
+			if (daysLeft < 0) {
+				dueColor = '#f85149'; // 지남 — 빨강
+			} else if (daysLeft <= 7) {
+				dueColor = '#f0883e'; // ≤ 7일 — 주황
+			}
+		}
+	}
+	// due 가 있으면 title 영역을 좁혀 우측에 자리 양보.
+	// (간단히 titleY 만 위로 살짝 올림.)
+	const titleY = dueText ? (line2 ? 40 : 46) : line2 ? 44 : 52;
 
 	// overlay (overdue 표시 등) — border + glow.
 	const overlay = overlayColor
@@ -127,6 +146,11 @@ export function makeQuestNodeSvgUrl(quest: Quest, overlayColor?: string): string
     font-family="system-ui,-apple-system,sans-serif">${xEsc(line1)}</text>
   ${line2 ? `<text x="10" y="${titleY + 16}" fill="#c9d1d9" font-size="12"
     font-family="system-ui,-apple-system,sans-serif">${xEsc(line2)}</text>` : ''}
+  ${dueText
+		? `<text x="${W - 10}" y="${H - 8}" text-anchor="end"
+       fill="${dueColor}" font-size="10" font-weight="500"
+       font-family="system-ui,sans-serif">⏱ ${xEsc(dueText)}</text>`
+		: ''}
   ${overlay}
 </svg>`;
 	return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);

@@ -106,12 +106,20 @@
 		return sortCampaigns(inRange, sort, t);
 	});
 
-	// DEV-076: 마감 임박 / Overdue 퀘스트 분류.
+	// DEV-076 → BUG-034: 마감 임박 / Overdue 퀘스트 분류.
 	//
-	// 임박 임계값 (urgency 별): 1=Critical 7일, 2=High 4일, 3/4=Medium/Low 1일.
 	// 기준은 required_due (필수 기한) 만. desired_due 는 정보성.
 	// status ∈ {done, cancelled} 는 제외.
-	const IMMINENT_DAYS: Record<number, number> = { 1: 7, 2: 4, 3: 1, 4: 1 };
+	//
+	// **임박 임계값 (urgency 별)** — 사용자 피드백 반영, 초기 안보다 lenient:
+	//   1=Critical: 30일 이내 (장기 critical 일정도 항상 노출)
+	//   2=High:     14일 이내
+	//   3=Medium:    7일 이내
+	//   4=Low:       3일 이내
+	// 이전 (Critical=7/High=4/Medium=1/Low=1) 은 너무 엄격해서 19일 후 medium
+	// 마감 퀘스트가 표시 안 되는 케이스 발생 — 사용자가 "왜 안 보이지" 라고
+	// 의문 갖는 빈도가 높음. lenient 가 사용성 ↑.
+	const IMMINENT_DAYS: Record<number, number> = { 1: 30, 2: 14, 3: 7, 4: 3 };
 	const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 	function requiredDueMs(q: Quest): number | null {

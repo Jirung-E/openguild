@@ -137,7 +137,21 @@
 			? splitByPixelWidth(rawL2, MAX_PX - 10)[0] + '…'
 			: rawL2;
 
-		const titleY = line2 ? 44 : 52;
+		// BUG-034: required_due 가 설정된 퀘스트는 노드 우하단에 기한 표시.
+		// urgent (지남 / ≤ 7일) 은 색 강조. desired_due 는 표시 X.
+		const due = quest.required_due ?? null;
+		let dueText = '';
+		let dueColor = '#8b949e';
+		if (due) {
+			dueText = due;
+			const dueMs = new Date(`${due}T23:59:59`).getTime();
+			if (!Number.isNaN(dueMs)) {
+				const daysLeft = Math.floor((dueMs - Date.now()) / (24 * 60 * 60 * 1000));
+				if (daysLeft < 0) dueColor = '#f85149';
+				else if (daysLeft <= 7) dueColor = '#f0883e';
+			}
+		}
+		const titleY = dueText ? (line2 ? 40 : 46) : line2 ? 44 : 52;
 
 		const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
   <rect x="0" y="0" width="3" height="${H}" rx="1.5" fill="${uc}" opacity="0.9"/>
@@ -155,6 +169,11 @@
     font-family="system-ui,-apple-system,sans-serif">${x(line1)}</text>
   ${line2 ? `<text x="10" y="${titleY + 16}" fill="#c9d1d9" font-size="12"
     font-family="system-ui,-apple-system,sans-serif">${x(line2)}</text>` : ''}
+  ${dueText
+		? `<text x="${W - 10}" y="${H - 8}" text-anchor="end"
+       fill="${dueColor}" font-size="10" font-weight="500"
+       font-family="system-ui,sans-serif">⏱ ${x(dueText)}</text>`
+		: ''}
 </svg>`;
 		return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
 	}
