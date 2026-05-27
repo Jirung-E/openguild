@@ -3598,6 +3598,10 @@ mod tests {
             parent_quest_id: None,
             created_at: "2026-05-15T16:12:48+09:00".into(),
             updated_at: "2026-05-22T01:09:30+09:00".into(),
+            // DEV-076 / BUG-034: 기한 + 캠페인 유효 기한 — 테스트 데이터엔 모두 None.
+            desired_due: None,
+            required_due: None,
+            earliest_campaign_due: None,
         };
         QuestDetail {
             quest: q,
