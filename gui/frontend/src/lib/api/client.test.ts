@@ -42,7 +42,7 @@ describe('api.post', () => {
 		const result = await api.post('/api/quests', {
 			quest_type_id: 1,
 			title: 'test quest',
-			status_id: 1
+			status_slug: "open"
 		});
 
 		expect(result).toEqual(created);
@@ -56,8 +56,8 @@ describe('api.post', () => {
 
 describe('api.patch', () => {
 	it('sends PATCH request', async () => {
-		mockFetch(200, { id: 1, status_id: 2 });
-		await api.patch('/api/quests/1/status', { status_id: 2 });
+		mockFetch(200, { id: 1, status_slug: "in_progress" });
+		await api.patch('/api/quests/1/status', { status_slug: "in_progress" });
 
 		const options = vi.mocked(fetch).mock.calls[0][1] as RequestInit;
 		expect(options.method).toBe('PATCH');

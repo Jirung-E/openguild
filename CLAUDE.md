@@ -1,4 +1,4 @@
-# OpenGuild — Claude 컨텍스트
+# openguild — Claude 컨텍스트
 
 프로젝트 규칙 및 컨텍스트는 **AGENTS.md**를 참조할 것.
 

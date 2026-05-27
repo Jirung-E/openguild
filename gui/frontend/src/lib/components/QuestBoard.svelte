@@ -6,6 +6,9 @@
 	import { goto } from '$app/navigation';
 	import { questsApi } from '$lib/api/quests';
 	import { metaApi } from '$lib/api/meta';
+	import { detectEnvironment } from '$lib/api/transport';
+	// BUG-034: 유효 기한 (퀘스트 required_due vs 연결 캠페인 ended_at) 계산 헬퍼.
+	import { effectiveQuestDue } from '$lib/utils/quest-node-svg';
 	import { flashQuestId } from '$lib/stores';
 	import {
 		URGENCY_COLOR,
@@ -19,6 +22,98 @@
 
 	const NODE_W = 284;
 	const NODE_H = 80;
+	/// 정렬 animate 의 duration (ms). 가드 (`arranging`) 가 이 시간만큼 유지되어
+	/// 빠른 더블클릭이 진행 중 animate 중간에 새 animate 를 trigger 하지 않도록.
+	const ARRANGE_ANIM_MS = 200;
+
+	// 노드 제목 줄바꿈을 실제 픽셀 폭 기준으로 — Canvas measureText API 사용.
+	// SVG 의 font 와 동일한 설정으로 ctx.font 잡고 substring 폭 측정.
+	const TITLE_FONT = '12px system-ui, -apple-system, sans-serif';
+	let _measureCtx: CanvasRenderingContext2D | null = null;
+
+	function getMeasureCtx(): CanvasRenderingContext2D | null {
+		if (_measureCtx) return _measureCtx;
+		if (typeof document === 'undefined') return null; // SSR
+		const c = document.createElement('canvas');
+		const ctx = c.getContext('2d');
+		if (!ctx) return null;
+		ctx.font = TITLE_FONT;
+		_measureCtx = ctx;
+		return ctx;
+	}
+
+	/**
+	 * s 를 maxPx 픽셀 폭 안에 맞게 [head, tail] 로 분할.
+	 * binary search 로 가장 긴 prefix 찾음 — O(log n) measureText 호출.
+	 * SSR / canvas 미지원 시 폴백 (char 기반 휴리스틱).
+	 *
+	 * **단어 경계 미고려** — mid-word 에서 자름. 사용자 친화 분할은
+	 * `splitByPixelWidthAtWord` 사용.
+	 */
+	function splitByPixelWidth(s: string, maxPx: number): [string, string] {
+		const ctx = getMeasureCtx();
+		if (!ctx) {
+			// 폴백: ASCII=6.5px, CJK=12px 추정
+			const maxUnits = Math.floor(maxPx / 6.5);
+			let acc = 0;
+			for (let i = 0; i < s.length; i++) {
+				const code = s.charCodeAt(i);
+				const w =
+					(code >= 0x1100 && code <= 0x11ff) ||
+					(code >= 0x2e80 && code <= 0x9fff) ||
+					(code >= 0xa960 && code <= 0xa97f) ||
+					(code >= 0xac00 && code <= 0xd7af) ||
+					(code >= 0xf900 && code <= 0xfaff) ||
+					(code >= 0xff00 && code <= 0xff60)
+						? 2
+						: 1;
+				if (acc + w > maxUnits) return [s.slice(0, i), s.slice(i)];
+				acc += w;
+			}
+			return [s, ''];
+		}
+		if (ctx.measureText(s).width <= maxPx) return [s, ''];
+		// 가장 긴 prefix 가 maxPx 안에 들어가는지 binary search.
+		let lo = 0;
+		let hi = s.length;
+		while (lo < hi) {
+			const mid = (lo + hi + 1) >> 1;
+			if (ctx.measureText(s.slice(0, mid)).width <= maxPx) {
+				lo = mid;
+			} else {
+				hi = mid - 1;
+			}
+		}
+		return [s.slice(0, lo), s.slice(lo)];
+	}
+
+	/**
+	 * 단어 경계 우선 분할 — `splitByPixelWidth` 결과를 받아 마지막 whitespace 까지
+	 * 되돌려 word-break 유도. 단일 단어가 maxPx 보다 길면 어쩔 수 없이 mid-word.
+	 *
+	 * 한글 등 공백 없는 텍스트는 fallback 으로 mid-char 분할 (동작 동일).
+	 * 영문 / 혼합 텍스트는 단어 단위로 끊김.
+	 */
+	function splitByPixelWidthAtWord(s: string, maxPx: number): [string, string] {
+		const [hardHead, hardTail] = splitByPixelWidth(s, maxPx);
+		if (!hardTail) return [hardHead, '']; // 전체 fit
+
+		// 경계가 이미 공백이면 OK — 공백은 head 끝에 두고 tail 의 leading 공백 제거.
+		if (/^\s/.test(hardTail)) {
+			return [hardHead.replace(/\s+$/, ''), hardTail.replace(/^\s+/, '')];
+		}
+
+		// hardHead 가 단어 중간에서 잘림 — 직전 공백까지 백오프.
+		const lastWs = hardHead.search(/\s\S*$/);
+		if (lastWs > 0) {
+			const head = hardHead.slice(0, lastWs);
+			const tail = hardHead.slice(lastWs + 1) + hardTail; // +1: 공백 자체는 버림
+			return [head.replace(/\s+$/, ''), tail];
+		}
+
+		// hardHead 에 공백이 전혀 없음 — 한글 또는 단어 하나가 너무 김. mid-char 유지.
+		return [hardHead, hardTail];
+	}
 
 	function makeSvgUrl(quest: Quest): string {
 		const W = NODE_W, H = NODE_H;
@@ -32,17 +127,37 @@
 		const ulW  = Math.ceil(ul.length  * 5.6) + 14;
 		const ulX  = 10 + qidW + 6;
 
-		// 제목 2줄 처리 (한 줄 ~36자)
+		// 제목 가용 폭: NODE_W - 좌 padding(10) - 우 minimum margin(14) = 260px.
+		// 단어 경계 우선 — 공백 있는 텍스트는 단어 단위로, 한글 / 긴 단어는 mid-char.
 		const full = quest.title;
-		const CPL = 36;
-		const line1 = full.slice(0, CPL);
-		const rawL2 = full.length > CPL ? full.slice(CPL, CPL * 2) : '';
-		const line2 = full.length > CPL * 2 ? rawL2.slice(0, CPL - 1) + '…' : rawL2;
+		const MAX_PX = 260;
+		const [line1, rest1] = splitByPixelWidthAtWord(full, MAX_PX);
+		const [rawL2, rest2] = splitByPixelWidthAtWord(rest1, MAX_PX);
+		// rest2 가 남았으면 2줄도 넘침 → ellipsis 자리만큼 줄여 자름.
+		// 여긴 어차피 잘림 표시이므로 word-break 강제 안 함 (mid-char OK).
+		const line2 = rest2.length > 0
+			? splitByPixelWidth(rawL2, MAX_PX - 10)[0] + '…'
+			: rawL2;
 
-		const titleY = line2 ? 44 : 52;
+		// BUG-034: 유효 기한 (= min(required_due, earliest_campaign_due)) 표시.
+		// source='campaign' 이면 prefix '⛺' — 캠페인이 더 가까워 그게 우세함을 시각 단서로.
+		const { date: due, source: dueSrc } = effectiveQuestDue(quest);
+		let dueText = '';
+		let dueColor = '#8b949e';
+		if (due) {
+			dueText = dueSrc === 'campaign' ? `⛺ ${due}` : due;
+			const dueMs = new Date(`${due}T23:59:59`).getTime();
+			if (!Number.isNaN(dueMs)) {
+				const daysLeft = Math.floor((dueMs - Date.now()) / (24 * 60 * 60 * 1000));
+				if (daysLeft < 0) dueColor = '#f85149';
+				else if (daysLeft <= 7) dueColor = '#f0883e';
+			}
+		}
+		const titleY = dueText ? (line2 ? 40 : 46) : line2 ? 44 : 52;
 
+		// DEV-081: 좌측 urgency 색 strip 제거 — cytoscape 의 node border (urgencyColor)
+		// 만으로 강조 충분. 카드 안쪽 strip 은 중복 시각 노이즈.
 		const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
-  <rect x="0" y="0" width="3" height="${H}" rx="1.5" fill="${uc}" opacity="0.9"/>
   <rect x="10" y="9" width="${qidW}" height="17" rx="8.5"
     fill="${tc}" fill-opacity="0.16" stroke="${tc}" stroke-opacity="0.55" stroke-width="1"/>
   <text x="${10 + qidW / 2}" y="21.5" text-anchor="middle"
@@ -55,8 +170,13 @@
     font-family="system-ui,sans-serif">${x(ul)}</text>
   <text x="10" y="${titleY}" fill="#c9d1d9" font-size="12"
     font-family="system-ui,-apple-system,sans-serif">${x(line1)}</text>
-  ${line2 ? `<text x="10" y="${titleY + 16}" fill="#8b949e" font-size="11"
+  ${line2 ? `<text x="10" y="${titleY + 16}" fill="#c9d1d9" font-size="12"
     font-family="system-ui,-apple-system,sans-serif">${x(line2)}</text>` : ''}
+  ${dueText
+		? `<text x="${W - 10}" y="${H - 8}" text-anchor="end"
+       fill="${dueColor}" font-size="10" font-weight="500"
+       font-family="system-ui,sans-serif">⏱ ${x(dueText)}</text>`
+		: ''}
 </svg>`;
 		return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
 	}
@@ -92,6 +212,11 @@
 	let sorted: QuestStatus[] = [];
 	let laneOf = new Map<number, number>();
 
+	// DEV-048: status_id (number) → status_slug (string). API 는 slug 전용.
+	function slugOf(statusId: number): string {
+		return sorted.find((s) => s.id === statusId)?.slug ?? '';
+	}
+
 	// ── 반응형 상태 ──────────────────────────────────────────────
 
 	type HighlightType = 'pre' | 'sub' | 'next' | 'parent';
@@ -100,10 +225,361 @@
 	let error = $state<string | null>(null);
 	let undoStack = $state<HistoryRecord[]>([]);
 	let redoStack = $state<HistoryRecord[]>([]);
+	// ── BUG-019: localStorage 길드별 namespace prefix ─────────────
+	// hideSettings / lane cols / viewport / gridSnap 은 길드 데이터에 종속
+	// (status slug 키, board 좌표 등) — 길드 A 의 설정이 B 로 누수되면 안 됨.
+	// 활성 길드 경로의 FNV-1a 32-bit 해시 (8 hex) 를 prefix 로 사용.
+	// 길드 경로 로드 전에는 ''. 모든 load/save 는 prefix 설정 후 호출 (init).
+	let guildKeyPrefix = '';
+	function fnv1a32(s: string): string {
+		let h = 0x811c9dc5;
+		for (let i = 0; i < s.length; i++) {
+			h ^= s.charCodeAt(i);
+			h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+		}
+		return h.toString(16).padStart(8, '0');
+	}
+	function gk(suffix: string): string {
+		return guildKeyPrefix
+			? `openguild.${guildKeyPrefix}.${suffix}`
+			: `openguild.${suffix}`;
+	}
+
+	// ── lane cols 영속화 헬퍼 (BUG-009) ─────────────────────────
+	// status slug 를 키로 — sort_order / id 가 reindex / 시드 변경 시 흔들리므로.
+
+	function statusSlug(nameEn: string): string {
+		return nameEn.toLowerCase().replace(/ /g, '_').replace(/-/g, '_');
+	}
+
+	function loadLaneColsMap(): Record<string, number> {
+		try {
+			const raw = localStorage.getItem(gk('laneCols'));
+			if (!raw) return {};
+			const parsed = JSON.parse(raw);
+			if (parsed && typeof parsed === 'object') return parsed as Record<string, number>;
+		} catch {
+			/* 무시 */
+		}
+		return {};
+	}
+
+	function saveLaneColsMap(map: Record<string, number>) {
+		try {
+			localStorage.setItem(gk('laneCols'), JSON.stringify(map));
+		} catch {
+			/* 무시 */
+		}
+	}
+
+	function loadGlobalCols(): number {
+		try {
+			const raw = localStorage.getItem(gk('globalCols'));
+			const n = raw ? parseInt(raw, 10) : NaN;
+			if (Number.isFinite(n) && [1, 2, 3].includes(n)) return n;
+		} catch {
+			/* 무시 */
+		}
+		return 2;
+	}
+
+	function saveGlobalCols(n: number) {
+		try {
+			localStorage.setItem(gk('globalCols'), String(n));
+		} catch {
+			/* 무시 */
+		}
+	}
+
+	// ── DEV-056: 레인 / 노드 숨김 설정 (status slug 키로 영속) ─────
+	//
+	// 각 lane (status) 마다:
+	//   - laneHidden: true 면 lane 전체 숨김 (그 status 의 모든 노드 + lane DIV).
+	//   - hideGroup:  그룹의 모든 멤버가 이 lane 에 있을 때만 그 그룹 노드들 숨김.
+	//                 (한 그룹이 여러 lane 에 걸치면 어느 lane 에서도 안 숨김.)
+	//   - hideSolo:   그룹에 속하지 않은 단독 노드 (연관관계 없음) 숨김.
+	//
+	// 그룹: parent/child + prerequisite/dependent 관계를 따라간 연결 컴포넌트.
+	interface HideSetting {
+		laneHidden: boolean;
+		hideGroup: boolean;
+		hideSolo: boolean;
+	}
+	function loadHideSettings(): Record<string, HideSetting> {
+		try {
+			const raw = localStorage.getItem(gk('hideSettings'));
+			if (!raw) return {};
+			const parsed = JSON.parse(raw);
+			if (parsed && typeof parsed === 'object')
+				return parsed as Record<string, HideSetting>;
+		} catch {
+			/* 무시 */
+		}
+		return {};
+	}
+
+	function saveHideSettings(map: Record<string, HideSetting>) {
+		try {
+			localStorage.setItem(gk('hideSettings'), JSON.stringify(map));
+		} catch {
+			/* 무시 */
+		}
+	}
+
+	// ── DEV-058: Board viewport (pan + zoom) 영속화 ─────────────
+	// 길드 → board 진입 시마다 fit() 이 화면 전체 보기로 reset 하던 동작 →
+	// 사용자가 보고 있던 위치/확대율을 localStorage 에 저장 후 복원.
+	interface BoardViewport {
+		pan: { x: number; y: number };
+		zoom: number;
+	}
+	function loadViewport(): BoardViewport | null {
+		try {
+			const raw = localStorage.getItem(gk('boardViewport'));
+			if (!raw) return null;
+			const v = JSON.parse(raw) as BoardViewport;
+			if (
+				v &&
+				typeof v.zoom === 'number' &&
+				v.pan &&
+				typeof v.pan.x === 'number' &&
+				typeof v.pan.y === 'number'
+			)
+				return v;
+		} catch {
+			/* 무시 */
+		}
+		return null;
+	}
+	let viewportSaveTimer: ReturnType<typeof setTimeout> | null = null;
+	function scheduleViewportSave() {
+		if (viewportSaveTimer) clearTimeout(viewportSaveTimer);
+		viewportSaveTimer = setTimeout(() => {
+			if (!cy) return;
+			try {
+				const v: BoardViewport = { pan: cy.pan(), zoom: cy.zoom() };
+				localStorage.setItem(gk('boardViewport'), JSON.stringify(v));
+			} catch {
+				/* 무시 */
+			}
+		}, 250); // debounce 250ms — 연속 pan/zoom 시 저장 폭주 방지.
+	}
+
+	function defaultHideSetting(): HideSetting {
+		return { laneHidden: false, hideGroup: false, hideSolo: false };
+	}
+
+	function getHideSetting(slug: string): HideSetting {
+		return hideSettings[slug] ?? defaultHideSetting();
+	}
+
+	// BUG-019: guildKeyPrefix 가 아직 비어있어 load 가 무의미 — onMount 에서
+	// guild path 확정 후 loadHideSettings() 결과로 대체.
+	let hideSettings = $state<Record<string, HideSetting>>({});
+	let showHideModal = $state(false);
+
+	/** questId → 그룹 멤버 set (자기 자신 포함). cluster 와 동일 의미. */
+	let groupOf: Map<number, Set<number>> = new Map();
+
+	/** quests + dependencies 로부터 connected component (그룹) 계산. */
+	function computeGroups(
+		quests: Quest[],
+		deps: QuestDependency[]
+	): Map<number, Set<number>> {
+		const adj = new Map<number, Set<number>>();
+		const ensure = (id: number) => {
+			if (!adj.has(id)) adj.set(id, new Set());
+			return adj.get(id)!;
+		};
+		quests.forEach((q) => {
+			ensure(q.id);
+			if (q.parent_quest_id != null) {
+				ensure(q.parent_quest_id).add(q.id);
+				ensure(q.id).add(q.parent_quest_id);
+			}
+		});
+		deps.forEach((d) => {
+			ensure(d.prerequisite_id).add(d.quest_id);
+			ensure(d.quest_id).add(d.prerequisite_id);
+		});
+		const result = new Map<number, Set<number>>();
+		const visited = new Set<number>();
+		quests.forEach((q) => {
+			if (visited.has(q.id)) return;
+			// BFS
+			const group = new Set<number>();
+			const queue = [q.id];
+			while (queue.length > 0) {
+				const cur = queue.shift()!;
+				if (group.has(cur)) continue;
+				group.add(cur);
+				visited.add(cur);
+				adj.get(cur)?.forEach((n) => {
+					if (!group.has(n)) queue.push(n);
+				});
+			}
+			group.forEach((id) => result.set(id, group));
+		});
+		return result;
+	}
+
+	/**
+	 * hideSettings 와 groupOf 를 보고 각 quest 의 hidden 여부 결정.
+	 * - laneHidden true 인 lane 의 모든 노드 → hidden.
+	 * - hideGroup true 인 lane: 같은 그룹의 모든 멤버가 이 lane 에 있는 경우만 hidden.
+	 * - hideSolo true 인 lane: 그룹 크기 1 인 노드 hidden.
+	 */
+	function computeHiddenIds(): Set<number> {
+		const hidden = new Set<number>();
+		const statusById = new Map<number, string>(); // quest_id → status_slug
+		allQuests.forEach((q) => statusById.set(q.id, q.status_slug));
+		allQuests.forEach((q) => {
+			const setting = getHideSetting(q.status_slug);
+			if (setting.laneHidden) {
+				hidden.add(q.id);
+				return;
+			}
+			const group = groupOf.get(q.id);
+			if (!group) return;
+			if (group.size === 1) {
+				if (setting.hideSolo) hidden.add(q.id);
+				return;
+			}
+			if (setting.hideGroup) {
+				// 그룹의 모든 멤버가 이 lane (같은 status) 에 있는가?
+				let allSame = true;
+				group.forEach((mid) => {
+					if (statusById.get(mid) !== q.status_slug) allSame = false;
+				});
+				if (allSame) hidden.add(q.id);
+			}
+		});
+		return hidden;
+	}
+
+	/**
+	 * 결정된 hidden set 을 cytoscape + lane DIV 에 적용.
+	 * cytoscape display: 'none' 노드는 자동으로 연결된 edge 도 안 보임.
+	 */
+	function applyHideSettings() {
+		const c = cy;
+		if (!c) return;
+		const hidden = computeHiddenIds();
+		c.batch(() => {
+			c.nodes('[questId]').forEach((n) => {
+				const qid = n.data('questId') as number;
+				n.style('display', hidden.has(qid) ? 'none' : 'element');
+			});
+		});
+		// lane DIV: laneHidden true 인 lane 의 col + header 시각 처리.
+		applyLaneVisibility();
+	}
+
+	function applyLaneVisibility() {
+		if (!lanesEl || !headersEl) return;
+		sorted.forEach((s, li) => {
+			const setting = getHideSetting(s.slug);
+			const col = lanesEl.children[li] as HTMLDivElement | undefined;
+			const hdr = headersEl.children[li] as HTMLDivElement | undefined;
+			if (col) col.style.display = setting.laneHidden ? 'none' : '';
+			if (hdr) hdr.style.display = setting.laneHidden ? 'none' : '';
+		});
+	}
+
+	function toggleHideSetting(slug: string, key: keyof HideSetting) {
+		const cur = getHideSetting(slug);
+		const next = { ...cur, [key]: !cur[key] };
+		hideSettings = { ...hideSettings, [slug]: next };
+		saveHideSettings(hideSettings);
+		applyHideSettings();
+		// DEV-067: laneHidden 변경 시 시각 lane 압축 (모든 노드 visualX 재계산 + lane DOM left).
+		if (key === 'laneHidden') {
+			applyLaneVisualCompression();
+			syncLanes();
+		}
+	}
+
+	// ── DEV-067: lane 시각 압축 (laneHidden 인 lane 자리 회수) ────
+	//
+	// 두 좌표계:
+	// - **absolute X** = DB positions.x. laneOf 기반 absolute lane left + offset.
+	// - **visual X**   = cytoscape position.x. visible lane left + offset.
+	//
+	// hideSettings 없을 땐 둘이 같음. laneHidden lane 이 생기면 visible 압축
+	// 으로 그 lane 뒤의 노드 X 가 STRIDE 만큼 왼쪽으로 시프트.
+	//
+	// 변환:
+	//   visualX = absX - absoluteLaneLeftOfStatus(sid) + visibleLaneLeftOfStatus(sid)
+	//   absX    = visualX + absoluteLaneLeftOfStatus(sid) - visibleLaneLeftOfStatus(sid)
+	//
+	// 모든 사이트 (init / drag dragfree / arrange / DB save / snapToGrid /
+	// flashToQuest 의 새 노드 추가) 가 이 변환 사용.
+
+	function absoluteLaneLeftOfStatus(statusId: number): number {
+		return (laneOf.get(statusId) ?? 0) * LANE_STRIDE;
+	}
+
+	function visibleLaneLeftOfStatus(statusId: number): number {
+		let visIdx = 0;
+		let lastLeft = 0;
+		for (const s of sorted) {
+			const setting = getHideSetting(s.slug);
+			if (s.id === statusId) {
+				return setting.laneHidden ? lastLeft : visIdx * LANE_STRIDE;
+			}
+			if (!setting.laneHidden) {
+				lastLeft = visIdx * LANE_STRIDE;
+				visIdx++;
+			}
+		}
+		return 0;
+	}
+
+	function absToVisualX(absX: number, statusId: number): number {
+		return absX - absoluteLaneLeftOfStatus(statusId) + visibleLaneLeftOfStatus(statusId);
+	}
+
+	function visualToAbsX(visualX: number, statusId: number): number {
+		return visualX + absoluteLaneLeftOfStatus(statusId) - visibleLaneLeftOfStatus(statusId);
+	}
+
+	/** visible lane index (drag drop 시 사용자 시각 위치) → status_id. */
+	function statusIdAtVisibleIdx(visIdx: number): number | null {
+		let i = 0;
+		for (const s of sorted) {
+			if (getHideSetting(s.slug).laneHidden) continue;
+			if (i === visIdx) return s.id;
+			i++;
+		}
+		return null;
+	}
+
+	function visibleLaneCount(): number {
+		return sorted.filter((s) => !getHideSetting(s.slug).laneHidden).length;
+	}
+
+	/** 모든 노드의 visual position 을 현재 hide settings 기준으로 재계산.
+	 * 노드 data.absX 가 진리원 (DB 와 같은 좌표계). */
+	function applyLaneVisualCompression() {
+		const c = cy;
+		if (!c) return;
+		c.batch(() => {
+			c.nodes('[questId]').forEach((n) => {
+				const sid = n.data('statusId') as number;
+				const absX = (n.data('absX') as number | undefined) ?? n.position().x;
+				const newX = absToVisualX(absX, sid);
+				const p = n.position();
+				if (newX !== p.x) n.position({ x: newX, y: p.y });
+			});
+		});
+	}
+
 	let expandedQuest = $state<Quest | null>(null);
 	let expandedPos = $state({ x: 0, y: 0 });
 	let cardPinned = false; // 사용자가 카드를 드래그하면 true, 새 노드 클릭 시 false
 	let activeHighlights = $state(new Set<HighlightType>());
+	// globalCols — toolbar 의 Arrange cols. localStorage 영속 (BUG-009 / BUG-019).
+	// 초기값은 default — onMount 의 guild prefix 확정 후 loadGlobalCols() 결과로 덮어씀.
 	let globalCols = $state(2);
 
 	// 전역 정렬 모드 (toolbar Arrange 버튼).
@@ -123,7 +599,7 @@
 	function toggleGridSnap() {
 		gridSnap = !gridSnap;
 		try {
-			localStorage.setItem('openguild.gridSnap', String(gridSnap));
+			localStorage.setItem(gk('gridSnap'), String(gridSnap));
 		} catch {
 			/* 무시 */
 		}
@@ -140,14 +616,19 @@
 		return laneCenterX - totalW / 2 + NODE_W / 2;
 	}
 
-	/** 보드 좌표를 NODE_W+GAP / NODE_H+GAP 단위 그리드의 가장 가까운 셀 중앙으로 스냅. */
+	/** 보드 좌표 (visual) 를 NODE_W+GAP / NODE_H+GAP 단위 그리드의 가장 가까운 셀 중앙으로 스냅. */
 	function snapToGrid(x: number, y: number): { x: number; y: number } {
 		const cellW = NODE_W + NODE_GAP;
 		const cellH = NODE_H + NODE_GAP;
-		// X 그리드 기준: 해당 lane 의 cols 에 따라 firstX 가 결정 (lane 중앙 기준 균등)
-		const li = Math.max(0, Math.min((sorted?.length ?? 1) - 1, Math.floor(x / LANE_STRIDE)));
+		// DEV-067: input x 는 visual. visible lane idx → status → absolute lane idx.
+		const visCount = Math.max(1, visibleLaneCount());
+		const visIdx = Math.max(0, Math.min(visCount - 1, Math.floor(x / LANE_STRIDE)));
+		const statusId = statusIdAtVisibleIdx(visIdx);
+		const li = statusId !== null ? (laneOf.get(statusId) ?? 0) : 0;
 		const cols = laneCols[li] ?? 2;
-		const firstX = laneFirstCellX(li, cols);
+		// laneFirstCellX(li, cols) 는 absolute X. visible 압축 적용해서 visual X 로 변환.
+		const firstX =
+			statusId !== null ? absToVisualX(laneFirstCellX(li, cols), statusId) : laneFirstCellX(li, cols);
 		const localX = x - firstX;
 		const colIdx = Math.round(localX / cellW);
 		const sx = firstX + colIdx * cellW;
@@ -173,7 +654,8 @@
 	let allQuests: Quest[] = [];
 	let allDependencies: QuestDependency[] = [];
 	let busy = false;
-	let arranging = false;
+	// 자동 정렬 진행 중 — 정렬 버튼의 disabled 반응성 위해 $state 필요 (BUG-006).
+	let arranging = $state(false);
 	let ctrlHeld = false;
 	let ctrlClickNode: NodeSingular | null = null;
 	let boxDragEl: HTMLDivElement | null = null;
@@ -211,15 +693,17 @@
 	function applyStatusChange(questId: number, statusId: number) {
 		const s = sorted.find((st) => st.id === statusId);
 		if (!s) return;
-		// 확장 카드 동기화
+		// 확장 카드 동기화 — DEV-046 후속: status_slug 도 함께 갱신 (일관성).
 		if (expandedQuest?.id === questId) {
-			expandedQuest = { ...expandedQuest, status_id: s.id, status_name_en: s.name_en, status_name_ko: s.name_ko, status_color: s.color };
+			expandedQuest = { ...expandedQuest, status_id: s.id, status_slug: s.slug, status_name_en: s.name_en, status_name_ko: s.name_ko, status_color: s.color };
 		}
 		// allQuests 캐시 동기화 (tap으로 확장 시 최신 상태 반영)
 		const idx = allQuests.findIndex((q) => q.id === questId);
 		if (idx !== -1) {
-			allQuests[idx] = { ...allQuests[idx], status_id: s.id, status_name_en: s.name_en, status_name_ko: s.name_ko, status_color: s.color };
+			allQuests[idx] = { ...allQuests[idx], status_id: s.id, status_slug: s.slug, status_name_en: s.name_en, status_name_ko: s.name_ko, status_color: s.color };
 		}
+		// DEV-056: status 가 바뀌면 그룹 분포 / hideGroup 평가 결과가 달라질 수 있음.
+		applyHideSettings();
 	}
 
 	async function applyRecord(record: HistoryRecord, direction: 'undo' | 'redo') {
@@ -231,13 +715,16 @@
 			if (node.length === 0) { busy = false; return; }
 			if (record.from.statusId !== record.to.statusId) {
 				try {
-					await questsApi.changeStatus(record.questId, { status_id: target.statusId });
+					await questsApi.changeStatus(record.questId, { status_slug: slugOf(target.statusId) });
 					node.data('statusId', target.statusId);
 					applyStatusChange(record.questId, target.statusId);
 				} catch { busy = false; return; }
 			}
 			node.animate({ position: { x: target.x, y: target.y }, duration: 120 });
-			questsApi.updatePosition(record.questId, { x: target.x, y: target.y }).catch(() => {});
+			// DEV-067: record.to.x 는 visual. DB 는 absolute.
+			const absX = visualToAbsX(target.x, target.statusId);
+			node.data('absX', absX);
+			questsApi.updatePosition(record.questId, { x: absX, y: target.y }).catch(() => {});
 		} else {
 			const promises: Promise<unknown>[] = [];
 			for (const item of record.items) {
@@ -246,13 +733,16 @@
 				const target = direction === 'undo' ? item.from : item.to;
 				if (item.from.statusId !== item.to.statusId) {
 					try {
-						await questsApi.changeStatus(item.questId, { status_id: target.statusId });
+						await questsApi.changeStatus(item.questId, { status_slug: slugOf(target.statusId) });
 						node.data('statusId', target.statusId);
 						applyStatusChange(item.questId, target.statusId);
 					} catch { continue; }
 				}
 				node.animate({ position: { x: target.x, y: target.y }, duration: 200 });
-				promises.push(questsApi.updatePosition(item.questId, { x: target.x, y: target.y }).catch(() => {}));
+				// DEV-067: target.x 는 visual. DB 는 absolute.
+				const absX = visualToAbsX(target.x, target.statusId);
+				node.data('absX', absX);
+				promises.push(questsApi.updatePosition(item.questId, { x: absX, y: target.y }).catch(() => {}));
 			}
 			await Promise.all(promises);
 		}
@@ -540,17 +1030,18 @@
 	async function arrangeNodesGrouped(nodesToArrange: NodeSingular[], _cols: number) {
 		void _cols;
 		if (!cy || arranging) return;
+		// DEV-056 fix1: hidden 노드 제외 — 정렬 시 자리 안 차지하도록.
+		nodesToArrange = nodesToArrange.filter((n) => n.style('display') !== 'none');
+		// 빈 배열 시 no-op — 빈 lane 의 정렬 버튼이 전체 정렬을 trigger 하지 않도록.
+		// 전체 정렬을 원하면 호출자가 명시적으로 모든 노드 전달 (toolbar 의 전체 정렬 버튼처럼).
+		if (nodesToArrange.length === 0) return;
 		arranging = true;
 		try {
 			const cellW = NODE_W + NODE_GAP;
 			const cellH = NODE_H + NODE_GAP;
 			const baseY = LANE_TOP + 16 + NODE_H / 2;
 
-			const allNodes =
-				nodesToArrange.length > 0
-					? nodesToArrange
-					: (cy!.nodes('[questId]').toArray() as NodeSingular[]);
-			if (allNodes.length === 0) return;
+			const allNodes = nodesToArrange;
 			const allIds = new Set(allNodes.map((n) => n.data('questId') as number));
 
 			// 1) 인접 리스트 — allIds 안에 있는 edge 만 사용
@@ -608,17 +1099,20 @@
 				const li = laneOf.get(sid) ?? 0;
 				const lcols = laneCols[li] ?? 2;
 				const firstX = laneFirstCellX(li, lcols);
-				const x = firstX + col * cellW;
+				// DEV-067: absolute → visual 변환.
+				const absX = firstX + col * cellW;
+				const visX = absToVisualX(absX, sid);
 				const y = baseY + row * cellH;
 				const fromPos = { ...node.position() };
-				if (Math.abs(fromPos.x - x) < 0.5 && Math.abs(fromPos.y - y) < 0.5) return;
+				if (Math.abs(fromPos.x - visX) < 0.5 && Math.abs(fromPos.y - y) < 0.5) return;
+				node.data('absX', absX);
 				batchItems.push({
 					questId: qid,
 					from: { ...fromPos, statusId: sid },
-					to: { x, y, statusId: sid }
+					to: { x: visX, y, statusId: sid }
 				});
-				node.animate({ position: { x, y }, duration: 200 });
-				savePromises.push(questsApi.updatePosition(qid, { x, y }).catch(() => {}));
+				node.animate({ position: { x: visX, y }, duration: 200 });
+				savePromises.push(questsApi.updatePosition(qid, { x: absX, y }).catch(() => {}));
 			};
 
 			// 3) isolated 를 lane 별로 묶어서 row 0 부터 채움
@@ -686,7 +1180,11 @@
 				if (undoStack.length > MAX_HISTORY) undoStack.shift();
 				redoStack.length = 0;
 			}
-			await Promise.all(savePromises);
+			// animate 완료 + SQL 저장 둘 다 끝날 때까지 보호.
+			await Promise.all([
+				Promise.all(savePromises),
+				new Promise<void>((r) => setTimeout(r, ARRANGE_ANIM_MS))
+			]);
 			syncExpandedPos();
 		} finally {
 			arranging = false;
@@ -730,7 +1228,10 @@
 			// 이 lane 의 cols 도 인자로 받은 cols 로 동기화 (snap grid 와 일치)
 			laneCols[li] = cols;
 			const firstX = laneFirstCellX(li, cols);
-			const nodes = cy.nodes(`[statusId = ${statusId}]`);
+			// DEV-056 fix1: hidden 노드 제외 — 정렬 시 자리 안 차지하도록.
+			const nodes = cy.nodes(`[statusId = ${statusId}]`).filter(
+				(n) => (n as NodeSingular).style('display') !== 'none'
+			);
 			if (nodes.length === 0) continue;
 			const sortedNodes = nodes.toArray().sort((a, b) => {
 				const sa = (a as NodeSingular).data('questSlug') as string;
@@ -741,12 +1242,15 @@
 				const node = n as NodeSingular;
 				const fromPos = { ...node.position() };
 				const col = idx % cols, row = Math.floor(idx / cols);
-				const x = firstX + col * cellW;
-				const y = startY + row * cellH;
+				// DEV-067: x = firstX(absolute) → visual 변환. DB save 는 absolute.
+				const absX = firstX + col * cellW;
 				const sid = node.data('statusId') as number;
-				batchItems.push({ questId: node.data('questId') as number, from: { ...fromPos, statusId: sid }, to: { x, y, statusId: sid } });
-				node.animate({ position: { x, y }, duration: 200 });
-				savePromises.push(questsApi.updatePosition(node.data('questId') as number, { x, y }).catch(() => {}));
+				const visX = absToVisualX(absX, sid);
+				const y = startY + row * cellH;
+				node.data('absX', absX);
+				batchItems.push({ questId: node.data('questId') as number, from: { ...fromPos, statusId: sid }, to: { x: visX, y, statusId: sid } });
+				node.animate({ position: { x: visX, y }, duration: 200 });
+				savePromises.push(questsApi.updatePosition(node.data('questId') as number, { x: absX, y }).catch(() => {}));
 			});
 		}
 		// laneCols 가 바뀌었으므로 trigger
@@ -756,7 +1260,11 @@
 			if (undoStack.length > MAX_HISTORY) undoStack.shift();
 			redoStack.length = 0;
 		}
-		await Promise.all(savePromises);
+		// animate 완료 + SQL 저장 둘 다 끝날 때까지 보호 (BUG-008).
+		await Promise.all([
+			Promise.all(savePromises),
+			new Promise<void>((r) => setTimeout(r, ARRANGE_ANIM_MS))
+		]);
 		syncExpandedPos();
 		arranging = false;
 	}
@@ -790,11 +1298,8 @@
 	// ── 초기화 ──────────────────────────────────────────────────
 
 	onMount(() => {
-		try {
-			gridSnap = localStorage.getItem('openguild.gridSnap') === 'true';
-		} catch {
-			/* 무시 */
-		}
+		// gridSnap 은 guildKeyPrefix 가 두 번째 onMount 에서 set 된 직후 다시
+		// loadGridSnap 호출. 여기서는 listener 만.
 		window.addEventListener('keydown', handleKeydown);
 		window.addEventListener('keyup', handleKeyup);
 		window.addEventListener('blur', onCtrlUp);
@@ -813,6 +1318,28 @@
 
 	onMount(async () => {
 		try {
+			// BUG-019: 길드별 localStorage namespace — guildKeyPrefix 를 fetch 후
+			// 모든 localStorage 의존 상태 (hideSettings / globalCols / gridSnap /
+			// viewport / laneCols) 가 그 prefix 로 접근. detect Tauri 안 되면
+			// (web GUI) prefix 빈 채로 두어 기존 단일 namespace 유지.
+			try {
+				if (detectEnvironment() === 'tauri') {
+					const { invoke } = await import('@tauri-apps/api/core');
+					const path = await invoke<string>('current_guild_path');
+					if (path) guildKeyPrefix = fnv1a32(path);
+				}
+			} catch {
+				/* 무시 — prefix 빈 채로 fallback */
+			}
+			// prefix 확정 후 가벼운 영속 상태 즉시 로드 (init 이전 — UI 깜빡임 최소화).
+			hideSettings = loadHideSettings();
+			globalCols = loadGlobalCols();
+			try {
+				gridSnap = localStorage.getItem(gk('gridSnap')) === 'true';
+			} catch {
+				/* 무시 */
+			}
+
 			const [quests, statuses, positions, dependencies] = await Promise.all([
 				questsApi.list(),
 				metaApi.getQuestStatuses(),
@@ -847,8 +1374,15 @@
 	/** Toolbar 의 1/2/3열 select 변경 핸들러 — 모든 레인의 그리드만 즉시 갱신. */
 	function setGlobalCols(cols: number) {
 		globalCols = cols;
+		saveGlobalCols(cols);
 		if (!cy) return;
 		laneCols = laneCols.map(() => cols);
+		// 모든 lane 의 status slug 에 같은 값으로 영속.
+		const map: Record<string, number> = {};
+		sorted.forEach((s) => {
+			map[statusSlug(s.name_en)] = cols;
+		});
+		saveLaneColsMap(map);
 		headersEl?.querySelectorAll<HTMLSelectElement>('.lane-cols-sel').forEach((sel) => {
 			sel.value = String(cols);
 		});
@@ -884,7 +1418,9 @@
 					(m, n) => Math.max(m, (n as NodeSingular).position().y),
 					LANE_TOP + NODE_H / 2
 				);
-				const x = li * LANE_STRIDE + LANE_W / 2;
+				// DEV-067: absX = absolute, visualX = absolute → visual 변환.
+				const absX = li * LANE_STRIDE + LANE_W / 2;
+				const visX = absToVisualX(absX, quest.status_id);
 				const y = maxY + NODE_H + NODE_GAP;
 
 				cy.add({
@@ -900,9 +1436,10 @@
 						typeColor: quest.type_color,
 						nodeBg: makeSvgUrl(quest),
 						highlightType: '',
-						active: false
+						active: false,
+						absX
 					},
-					position: { x, y }
+					position: { x: visX, y }
 				});
 				if (quest.parent_quest_id) {
 					cy.add({
@@ -915,7 +1452,8 @@
 						}
 					});
 				}
-				questsApi.updatePosition(qid, { x, y }).catch(() => {});
+				// DEV-067: DB 는 absolute X.
+				questsApi.updatePosition(qid, { x: absX, y }).catch(() => {});
 				node = cy.getElementById(`q-${qid}`) as NodeSingular;
 			}
 
@@ -946,8 +1484,10 @@
 			lanesEl.appendChild(col);
 		});
 		headersEl.innerHTML = '';
-		// laneCols 초기값: 모두 2열, laneArrangeModes 초기값: 전역 모드
-		laneCols = sorted.map(() => 2);
+		// laneCols / laneArrangeModes 초기값.
+		// laneCols: localStorage 의 status slug 별 저장값 (BUG-009). 없으면 globalCols.
+		const savedLaneCols = loadLaneColsMap();
+		laneCols = sorted.map((s) => savedLaneCols[statusSlug(s.name_en)] ?? globalCols);
 		laneArrangeModes = sorted.map(() => arrangeMode);
 		sorted.forEach((s, li) => {
 			const hdr = document.createElement('div');
@@ -959,17 +1499,22 @@
 			const sel = document.createElement('select');
 			sel.className = 'lane-cols-sel';
 			sel.title = '이 레인 정렬 열 수';
+			const initialCols = laneCols[li];
 			[1, 2, 3].forEach((n) => {
 				const opt = document.createElement('option');
 				opt.value = String(n);
 				opt.textContent = `${n}열`;
-				if (n === 2) opt.selected = true;
+				if (n === initialCols) opt.selected = true;
 				sel.appendChild(opt);
 			});
-			// select 변경 시 laneCols 즉시 업데이트 — snap grid 가 따라옴
+			// select 변경 시 laneCols 즉시 업데이트 + localStorage 영속 (BUG-009).
 			sel.onchange = () => {
-				laneCols[li] = parseInt(sel.value);
+				const cols = parseInt(sel.value);
+				laneCols[li] = cols;
 				laneCols = [...laneCols]; // reactive trigger
+				const map = loadLaneColsMap();
+				map[statusSlug(s.name_en)] = cols;
+				saveLaneColsMap(map);
 				syncLanes(); // grid 시각화 재계산
 			};
 			const btn = document.createElement('button');
@@ -1030,9 +1575,21 @@
 		const cellHPx = (NODE_H + NODE_GAP) * zoom;
 		const dotR = Math.max(1, 1.5 * zoom);
 
+		// DEV-067: laneHidden 인 lane 의 col 은 display:none + 위치 skip.
+		// visible lane 만 contiguous visible index 로 압축 배치 — 노드의 visualX 와
+		// alignment 일치.
+		let visIdx = 0;
 		lanesEl.querySelectorAll<HTMLElement>('.lane-col').forEach((col, i) => {
-			col.style.left = `${i * LANE_STRIDE * zoom + pan.x}px`;
+			const s = sorted[i];
+			const laneHidden = s ? getHideSetting(s.slug).laneHidden : false;
+			if (laneHidden) {
+				col.style.display = 'none';
+				return;
+			}
+			col.style.display = '';
+			col.style.left = `${visIdx * LANE_STRIDE * zoom + pan.x}px`;
 			col.style.width = `${LANE_W * zoom}px`;
+			visIdx++;
 			if (gridSnap) {
 				const cols = laneCols[i] ?? 2;
 				// 첫 dot center (lane-col local X) = laneFirstCellX - i*LANE_STRIDE (보드→local 변환 후 zoom)
@@ -1062,9 +1619,19 @@
 				col.style.backgroundImage = '';
 			}
 		});
+		// DEV-067: header 도 visible 압축.
+		let hdrVisIdx = 0;
 		headersEl.querySelectorAll<HTMLElement>('.lane-hdr').forEach((hdr, i) => {
-			hdr.style.left = `${i * LANE_STRIDE * zoom + pan.x}px`;
+			const s = sorted[i];
+			const laneHidden = s ? getHideSetting(s.slug).laneHidden : false;
+			if (laneHidden) {
+				hdr.style.display = 'none';
+				return;
+			}
+			hdr.style.display = '';
+			hdr.style.left = `${hdrVisIdx * LANE_STRIDE * zoom + pan.x}px`;
 			hdr.style.width = `${LANE_W * zoom}px`;
+			hdrVisIdx++;
 		});
 		syncExpandedPos();
 	}
@@ -1088,7 +1655,17 @@
 			if (!quest) return;
 			const li = laneOf.get(quest.status_id) ?? 0;
 			const laneLeft = li * LANE_STRIDE;
-			const x = p.x >= laneLeft && p.x < laneLeft + LANE_W ? p.x : laneLeft + LANE_W / 2;
+			// 저장된 x 가 현재 lane 범위 밖이면 (status 변경 또는 lane 순서 변경 후)
+			// 가장 가까운 lane 내부 좌표로 평행이동 — 가로 위치 (lane 내부 col) 는 보존.
+			// 기존 코드는 lane 중앙으로 강제 → 여러 노드가 한 열로 겹치는 BUG-002.
+			let x = p.x;
+			if (x < laneLeft || x >= laneLeft + LANE_W) {
+				const oldLaneLeft = Math.floor(x / LANE_STRIDE) * LANE_STRIDE;
+				const offsetInOldLane = x - oldLaneLeft;
+				// 새 lane 의 동일 offset 으로. lane 폭을 넘어서면 lane 내부로 clamp.
+				const clamped = Math.max(0, Math.min(LANE_W - 1, offsetInOldLane));
+				x = laneLeft + clamped;
+			}
 			posMap.set(p.quest_id, { x, y: p.y });
 		});
 
@@ -1104,15 +1681,31 @@
 		const autoCount = new Map<number, number>();
 		const elements: cytoscape.ElementDefinition[] = [];
 
+		// lane 안의 3개 열 (col 0/1/2) 중심 x — 자동 배치 시 골고루 채워 1열 stacking 방지.
+		const COL_OFFSETS = [
+			LANE_PAD_X + NODE_W / 2,
+			LANE_PAD_X + NODE_W + NODE_GAP + NODE_W / 2,
+			LANE_PAD_X + 2 * (NODE_W + NODE_GAP) + NODE_W / 2
+		];
+
 		quests.forEach((q) => {
 			const li = laneOf.get(q.status_id) ?? 0;
 			let pos = posMap.get(q.id);
 			if (!pos) {
 				const n = autoCount.get(q.status_id) ?? 0;
 				const startY = laneNextY.get(q.status_id) ?? LANE_TOP + 20;
-				pos = { x: li * LANE_STRIDE + LANE_W / 2, y: startY + n * (NODE_H + NODE_GAP) };
+				const col = n % 3;
+				const row = Math.floor(n / 3);
+				const laneLeft = li * LANE_STRIDE;
+				pos = {
+					x: laneLeft + COL_OFFSETS[col],
+					y: startY + row * (NODE_H + NODE_GAP)
+				};
 				autoCount.set(q.status_id, n + 1);
 			}
+			// DEV-067: pos.x 는 absolute (DB positions.x). data.absX 진리원으로
+			// 저장. cytoscape position 은 visual 좌표 — applyLaneVisualCompression
+			// 이 init 끝에서 일관 변환.
 			elements.push({
 				data: {
 					id: `q-${q.id}`,
@@ -1125,9 +1718,10 @@
 					typeColor: q.type_color,
 					nodeBg: makeSvgUrl(q),
 					highlightType: '',
-					active: false
+					active: false,
+					absX: pos.x
 				},
-				position: pos
+				position: pos // 초기엔 absolute 그대로. applyLaneVisualCompression 이 visual 변환.
 			});
 		});
 
@@ -1239,10 +1833,16 @@
 			layout: { name: 'preset' },
 			minZoom: 0.25,
 			maxZoom: 2,
+			// wheel zoom 속도 — 기본 1 이 너무 느림 (사용자 피드백).
+			// cytoscape 권장 범위 [1, ~3]. 2.5 면 한 번 휠 클릭에 체감 ~2x 빠름.
+			wheelSensitivity: 2.5,
 			boxSelectionEnabled: false
 		});
 
-		cy.on('pan zoom', () => syncLanes());
+		cy.on('pan zoom', () => {
+			syncLanes();
+			scheduleViewportSave(); // DEV-058
+		});
 
 		// ── 드래그 이벤트 (다중선택 배치 처리) ─────────────────────
 
@@ -1270,7 +1870,12 @@
 				const n = cy!.getElementById(`q-${qid}`) as NodeSingular;
 				if (n.length === 0) continue;
 				const pos = n.position();
-				const li = Math.max(0, Math.min(Math.floor(pos.x / LANE_STRIDE), sorted.length - 1));
+				// DEV-067: visual idx → status_id → absolute lane idx.
+				// pos.x 는 visual 좌표 — visible lane 기준 idx 가 사용자 시각의 lane.
+				const visMax = Math.max(0, visibleLaneCount() - 1);
+				const visIdx = Math.max(0, Math.min(Math.floor(pos.x / LANE_STRIDE), visMax));
+				const targetStatusId = statusIdAtVisibleIdx(visIdx) ?? fromState.statusId;
+				const li = laneOf.get(targetStatusId) ?? 0;
 				pendingDragBatch.push({
 					node: n, questId: qid,
 					fromPos: { x: fromState.x, y: fromState.y },
@@ -1336,7 +1941,7 @@
 
 				if (laneChanged && confirmedLanes.has(toLaneIdx)) {
 					try {
-						await questsApi.changeStatus(questId, { status_id: newStatus.id });
+						await questsApi.changeStatus(questId, { status_slug: newStatus.slug });
 						node.data('statusId', newStatus.id);
 						applyStatusChange(questId, newStatus.id);
 					} catch {
@@ -1354,25 +1959,29 @@
 					snappedX = s.x;
 					snappedY = s.y;
 				}
-				// X축 클램프 (스냅이 레인 경계를 넘으면 다시 안으로). Y 는 자유.
-				const laneLeft = toLaneIdx * LANE_STRIDE;
-				const minX = laneLeft + LANE_PAD_X + NODE_W / 2;
-				const maxX = laneLeft + LANE_W - LANE_PAD_X - NODE_W / 2;
+				// DEV-067: clamp 는 visual 좌표 기준 (cytoscape position 이 visual).
+				// laneLeft = visibleLaneLeftOfStatus(targetStatusId).
+				const finalStatusId = laneChanged && confirmedLanes.has(toLaneIdx) ? newStatus.id : fromStatus;
+				const laneLeftVis = visibleLaneLeftOfStatus(finalStatusId);
+				const minX = laneLeftVis + LANE_PAD_X + NODE_W / 2;
+				const maxX = laneLeftVis + LANE_W - LANE_PAD_X - NODE_W / 2;
 				const clampedX = Math.max(minX, Math.min(maxX, snappedX));
 				const finalY = snappedY;
 				if (clampedX !== toPos.x || finalY !== toPos.y) {
 					node.position({ x: clampedX, y: finalY });
 				}
 
-				const finalStatusId = laneChanged && confirmedLanes.has(toLaneIdx) ? newStatus.id : fromStatus;
 				const moved = fromPos.x !== clampedX || fromPos.y !== finalY || fromStatus !== finalStatusId;
 				if (moved) {
+					// DB save 는 absolute X. node.data.absX 도 동기화.
+					const absX = visualToAbsX(clampedX, finalStatusId);
+					node.data('absX', absX);
 					historyItems.push({
 						questId,
 						from: { x: fromPos.x, y: fromPos.y, statusId: fromStatus },
 						to: { x: clampedX, y: finalY, statusId: finalStatusId }
 					});
-					posUpdates.push(questsApi.updatePosition(questId, { x: clampedX, y: finalY }).catch(() => {}));
+					posUpdates.push(questsApi.updatePosition(questId, { x: absX, y: finalY }).catch(() => {}));
 				}
 			}
 
@@ -1419,7 +2028,20 @@
 			}
 		});
 
-		cy.fit(undefined, 60);
+		// DEV-058: 저장된 viewport 가 있으면 복원, 없으면 fit().
+		const savedViewport = loadViewport();
+		if (savedViewport) {
+			cy.viewport({ pan: savedViewport.pan, zoom: savedViewport.zoom });
+		} else {
+			cy.fit(undefined, 60);
+		}
+
+		// DEV-056: hide settings 적용. computeGroups → applyHideSettings.
+		groupOf = computeGroups(allQuests, allDependencies);
+		applyHideSettings();
+		// DEV-067: visible lane 압축 (laneHidden 자리 회수). 노드 visual 좌표
+		// 일관 재계산. syncLanes 도 visible 압축 반영.
+		applyLaneVisualCompression();
 		syncLanes();
 	}
 </script>
@@ -1457,7 +2079,7 @@
 			<code class="bname">{expandedQuest.type_prefix}-{String(expandedQuest.number).padStart(3, '0')}</code>
 		</div>
 
-		<button class="card-goto" onclick={() => goto(`/quests/${expandedQuest!.quest_id}`)}>
+		<button class="card-goto" onclick={() => goto(`/quests/${expandedQuest!.quest_id}?from=board`)}>
 			퀘스트 상세 페이지로 이동 →
 		</button>
 
@@ -1533,6 +2155,18 @@
 			<option value={3}>3열</option>
 		</select>
 		<div class="tb-sep"></div>
+		<!-- DEV-056: 숨김 설정 모달 토글. -->
+		<button
+			class="tb-btn"
+			class:tb-on={Object.values(hideSettings).some(
+				(s) => s.laneHidden || s.hideGroup || s.hideSolo
+			)}
+			onclick={() => (showHideModal = true)}
+			title="레인 / 노드 숨김 설정"
+		>
+			<span class="icon">👁</span><span>숨김</span>
+		</button>
+		<div class="tb-sep"></div>
 		<!-- arrange 버튼 + mode select 는 하나의 컨트롤처럼 시각적으로 묶음 -->
 		<div class="tb-arrange-group">
 			<button
@@ -1573,6 +2207,77 @@
 				<button class="dialog-ok" onclick={() => confirmDialogResolve(true)}>변경</button>
 				<button class="dialog-cancel" onclick={() => confirmDialogResolve(false)}>취소</button>
 			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- DEV-056: 숨김 설정 모달 -->
+{#if showHideModal}
+	<div
+		class="dialog-backdrop"
+		role="presentation"
+		onclick={(e) => {
+			if (e.target === e.currentTarget) showHideModal = false;
+		}}
+	>
+		<div class="hide-modal" role="dialog" aria-modal="true" tabindex="-1">
+			<div class="hide-head">
+				<h3 class="hide-title">숨김 설정</h3>
+				<button
+					class="hide-close"
+					onclick={() => (showHideModal = false)}
+					aria-label="닫기"
+				>×</button>
+			</div>
+			<p class="hide-help">
+				각 레인을 숨기거나, 그룹 / 단독 노드 단위로 가릴 수 있습니다.
+				그룹 숨김은 그 그룹의 모든 노드가 같은 레인에 있을 때만 적용됩니다.
+			</p>
+			<table class="hide-table">
+				<thead>
+					<tr>
+						<th style="width: 14ch">레인</th>
+						<th>표시</th>
+						<th>그룹 숨김</th>
+						<th>단독 노드 숨김</th>
+					</tr>
+				</thead>
+				<tbody>
+					{#each sorted as s (s.id)}
+						{@const setting = getHideSetting(s.slug)}
+						{@const laneVisible = !setting.laneHidden}
+						<tr class:lane-off={!laneVisible}>
+							<td>
+								<span class="hide-lane-name" style:color={s.color}>{s.name_en}</span>
+							</td>
+							<td>
+								<input
+									type="checkbox"
+									checked={laneVisible}
+									onchange={() => toggleHideSetting(s.slug, 'laneHidden')}
+									title="레인 표시 (체크 해제 시 레인 전체 숨김)"
+								/>
+							</td>
+							<td>
+								<input
+									type="checkbox"
+									checked={setting.hideGroup}
+									disabled={!laneVisible}
+									onchange={() => toggleHideSetting(s.slug, 'hideGroup')}
+								/>
+							</td>
+							<td>
+								<input
+									type="checkbox"
+									checked={setting.hideSolo}
+									disabled={!laneVisible}
+									onchange={() => toggleHideSetting(s.slug, 'hideSolo')}
+								/>
+							</td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
 		</div>
 	</div>
 {/if}
@@ -1897,4 +2602,53 @@
 		color: #8b949e; font-size: 0.875rem; cursor: pointer;
 	}
 	.dialog-cancel:hover { background: #21262d; }
+
+	/* DEV-056: 숨김 설정 모달 */
+	.hide-modal {
+		background: #161b22;
+		border: 1px solid #30363d;
+		border-radius: 10px;
+		padding: 1.25rem 1.5rem 1.25rem;
+		min-width: 480px; max-width: 640px;
+		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
+		display: flex; flex-direction: column; gap: 0.75rem;
+		color: #c9d1d9;
+	}
+	.hide-head {
+		display: flex; align-items: center; justify-content: space-between;
+	}
+	.hide-title {
+		margin: 0; font-size: 1rem; font-weight: 600; color: #e6edf3;
+	}
+	.hide-close {
+		background: transparent; border: none; color: #8b949e;
+		font-size: 1.4rem; line-height: 1; cursor: pointer; padding: 0 0.3rem;
+	}
+	.hide-close:hover { color: #c9d1d9; }
+	.hide-help {
+		margin: 0; font-size: 0.825rem; color: #8b949e; line-height: 1.45;
+	}
+	.hide-table {
+		width: 100%; border-collapse: collapse; font-size: 0.875rem;
+	}
+	.hide-table th, .hide-table td {
+		text-align: left; padding: 0.5rem 0.6rem;
+		border-bottom: 1px solid #21262d;
+	}
+	.hide-table th { color: #8b949e; font-weight: 500; font-size: 0.8rem; }
+	.hide-table tr.lane-off .hide-lane-name {
+		opacity: 0.45;
+		text-decoration: line-through;
+	}
+	.hide-lane-name {
+		font-weight: 500;
+	}
+	.hide-table input[type='checkbox'] {
+		cursor: pointer;
+		accent-color: #58a6ff;
+	}
+	.hide-table input[type='checkbox']:disabled {
+		cursor: not-allowed;
+		opacity: 0.35;
+	}
 </style>

@@ -12,6 +12,10 @@ pub struct QuestRow {
     pub title: String,
     pub description: Option<String>,
     pub status_id: i64,
+    /// DEV-046: stable identifier (예: "open", "testing"). status_id 와 달리
+    /// status 추가/순서 변경에도 안전. 사용자 / 외부 클라이언트가 참조하기
+    /// 좋은 키.
+    pub status_slug: String,
     pub status_name_en: String,
     pub status_name_ko: String,
     pub status_color: String,
@@ -19,6 +23,18 @@ pub struct QuestRow {
     pub parent_quest_id: Option<i64>,
     pub created_at: String,
     pub updated_at: String,
+    // DEV-076: 기한 (YYYY-MM-DD). 둘 다 nullable. 파일 frontmatter 의
+    // 동명 필드와 1:1. None = 미설정.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub desired_due: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required_due: Option<String>,
+    // BUG-034: SQL 계산 필드. 이 퀘스트가 연결된 active 캠페인 중 가장 가까운
+    // ended_at. None = 연결된 active 캠페인 없거나 그 캠페인의 ended_at 미설정.
+    // 파일에는 저장 X (DB-only). 클라이언트는 `min(required_due, earliest_campaign_due)`
+    // 를 "유효 기한" 으로 표시.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub earliest_campaign_due: Option<String>,
 }
 
 /// 퀘스트 상세 응답 (서브퀘스트, 선행퀘스트, 위치 포함)
@@ -26,6 +42,9 @@ pub struct QuestRow {
 pub struct QuestDetail {
     #[serde(flatten)]
     pub quest: QuestRow,
+    /// DEV-047: parent row 전체 (slug + 색 + 제목 표시용). None 이면 root.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<QuestRow>,
     pub sub_quests: Vec<QuestRow>,
     pub prerequisites: Vec<QuestRow>,
     pub position: Option<QuestPosition>,
@@ -34,6 +53,9 @@ pub struct QuestDetail {
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct QuestPosition {
     pub quest_id: i64,
+    /// DEV-049: stable identifier — quests.id 재할당 안전. quest_id 와 양립.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quest_slug: Option<String>,
     pub x: f64,
     pub y: f64,
 }
@@ -45,7 +67,9 @@ pub struct CreateQuestRequest {
     pub quest_type_id: i64,
     pub title: String,
     pub description: Option<String>,
-    pub status_id: i64,
+    /// DEV-048: stable identifier (예: "open"). status_id 의 positional 문제
+    /// (status 추가/순서 변경 시 silent corruption) 회피를 위해 slug 전용.
+    pub status_slug: String,
     pub urgency: Option<i64>, // default: 3 (Medium)
     pub parent_quest_id: Option<i64>,
 }
@@ -69,20 +93,100 @@ pub struct CandidatesQuery {
     pub relation: String,
 }
 
+/// `quest list` 필터 / 정렬 / 제한.
+///
+/// 모든 필드 Option / bool default — 미지정 시 기존 동작 (전체 alive, id DESC).
+/// 필드 추가 시 server / cli / gui 셋 다 동시 갱신.
+///
+/// 다중 값은 콤마 구분 string — `?type=DEV,BUG`. service 에서 split.
+#[derive(Debug, Deserialize, Default, Clone)]
+#[serde(default)]
+pub struct ListQuery {
+    /// type prefix 필터 — `"DEV"` 또는 다중 `"DEV,BUG"`. 대소문자 무시.
+    pub r#type: Option<String>,
+    /// status 필터 — `"open"` 또는 다중 `"open,testing"`.
+    /// name_en / slug 양쪽 매칭 (대소문자 / 공백 / `_` / `-` 무시).
+    pub status: Option<String>,
+    /// urgency 필터 — 단일 `"2"`, 다중 CSV `"1,2"`, 범위 `"1-3"`.
+    /// 모두 1..=4 범위 안.
+    pub urgency: Option<String>,
+    /// `created_at >= ?` (ISO 8601, `YYYY-MM-DD` 또는 `YYYY-MM-DDTHH:MM:SSZ`).
+    pub created_after: Option<String>,
+    /// `created_at <= ?` (inclusive).
+    pub created_before: Option<String>,
+    /// `updated_at >= ?`.
+    pub updated_after: Option<String>,
+    /// `updated_at <= ?`.
+    pub updated_before: Option<String>,
+    /// 선행 quest 가 1개 이상 있는 quest 만. `no_prereq` 와 상호배타.
+    pub has_prereq: bool,
+    /// 선행 quest 가 없는 quest 만. `has_prereq` 와 상호배타.
+    pub no_prereq: bool,
+    /// 서브 quest 가 1개 이상 있는 quest 만. `no_sub` 와 상호배타.
+    pub has_sub: bool,
+    /// 서브 quest 가 없는 leaf quest 만. `has_sub` 와 상호배타.
+    pub no_sub: bool,
+    /// 검색 키워드 — title / description 부분 일치 (대소문자 무시).
+    /// 공백 split 후 AND (모든 토큰 포함).
+    pub search: Option<String>,
+    /// `search` 토큰을 title 만 검사 — description 제외 (DEV-037).
+    /// default false (title + description 둘 다).
+    pub title_only: bool,
+    /// **자식 quest 들** 을 보여줌 — 지정 slug 가 parent 인 직계 자식.
+    /// `--no-parent` 와 상호배타.
+    pub child_of: Option<String>,
+    /// top-level 만 (`parent_quest_id IS NULL`). `--child-of` 와 상호배타.
+    pub no_parent: bool,
+    /// 정렬 키 — 콤마 구분 다중 키 (`"urgency,id"`). 각 키마다 기본 방향
+    /// (urgency / status = ASC, updated / created / id = DESC).
+    /// 화이트리스트: id / urgency / status / updated / created. 대소문자 무시.
+    pub sort: Option<String>,
+    /// 정렬 방향 전체 토글 — 모든 sort 키의 기본 방향 뒤집음.
+    pub reverse: bool,
+    /// 결과 최대 행 수.
+    pub limit: Option<i64>,
+    /// 페이지네이션 — `limit` 와 같이 사용.
+    pub offset: Option<i64>,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct DeleteQuestQuery {
     /// "1,2,3" 형식의 cascade 삭제 대상 직계 자식 ID 목록
     pub cascade: Option<String>,
 }
 
+/// DEV-013: Quest 변경 이력 한 행.
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow, Clone)]
+pub struct QuestHistoryEntry {
+    pub id: i64,
+    pub quest_id: i64,
+    /// DEV-049: stable identifier — quests.id 재할당 안전.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quest_slug: Option<String>,
+    pub ts: String,
+    pub op: String,
+    pub old_value: Option<String>,
+    pub new_value: Option<String>,
+    pub actor: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct ChangeStatusRequest {
-    pub status_id: i64,
+    /// DEV-048: stable identifier (예: "in_progress"). 자세한 사유는
+    /// `CreateQuestRequest.status_slug` 주석 참고.
+    pub status_slug: String,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct AddPrerequisiteRequest {
     pub prerequisite_id: i64,
+}
+
+/// DEV-055: quest 의 type 변경 — slug 가 바뀜 (DEV-001 → BUG-013 같은 식).
+#[derive(Debug, Deserialize)]
+pub struct ChangeTypeRequest {
+    /// 새 type 의 prefix (대소문자 무시). 예: "BUG".
+    pub new_type_prefix: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -113,6 +217,7 @@ mod tests {
             title: "test".into(),
             description: Some("body".into()),
             status_id: 1,
+            status_slug: "open".into(),
             status_name_en: "Open".into(),
             status_name_ko: "게시됨".into(),
             status_color: "#8B95A1".into(),
@@ -120,6 +225,9 @@ mod tests {
             parent_quest_id: None,
             created_at: "".into(),
             updated_at: "".into(),
+            desired_due: None,
+            required_due: None,
+            earliest_campaign_due: None,
         };
         let json = serde_json::to_string(&q).unwrap();
         let back: QuestRow = serde_json::from_str(&json).unwrap();
@@ -132,11 +240,12 @@ mod tests {
         let body = r##"{
             "quest_type_id": 1,
             "title": "t",
-            "status_id": 1
+            "status_slug": "open"
         }"##;
         let req: CreateQuestRequest = serde_json::from_str(body).unwrap();
         assert_eq!(req.quest_type_id, 1);
         assert_eq!(req.title, "t");
+        assert_eq!(req.status_slug, "open");
         assert!(req.description.is_none());
         assert!(req.urgency.is_none());
     }

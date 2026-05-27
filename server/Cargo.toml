@@ -1,8 +1,8 @@
 [package]
 name = "openguild-server"
-version = "0.1.0"
+version = "0.1.0-beta"
 edition = "2024"
-description = "OpenGuild HTTP API 서버"
+description = "openguild HTTP API 서버"
 
 # 폴더는 `server/` 이지만 crate / binary 이름은 `openguild-server`.
 # `cargo run --bin openguild-server` 로 실행.

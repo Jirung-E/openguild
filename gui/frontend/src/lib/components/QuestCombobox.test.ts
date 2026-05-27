@@ -14,6 +14,7 @@ function q(id: number, slug: string, title: string): Quest {
 		title,
 		description: null,
 		status_id: 1,
+		status_slug: 'open',
 		status_name_en: 'Open',
 		status_name_ko: '게시됨',
 		status_color: '#8B95A1',

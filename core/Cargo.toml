@@ -1,13 +1,16 @@
 [package]
 name = "openguild-core"
-version = "0.1.0"
+version = "0.1.0-beta"
 edition = "2024"
-description = "OpenGuild core — 비즈니스 로직, sqlx, 모델. server / cli / desktop 공유."
+description = "openguild core — 비즈니스 로직, sqlx, 모델. server / cli / desktop 공유."
 
 [dependencies]
 # DB
 sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "migrate"] }
 tokio = { version = "1", features = ["full"] }
+
+# OS 별 user config / data 경로 (recents.json 등)
+directories = "5"
 
 # 직렬화
 serde = { version = "1", features = ["derive"] }
@@ -22,3 +25,7 @@ thiserror = "2"
 
 # 로깅
 tracing = "0.1"
+
+# DEV-041: 타임스탬프 ISO 8601 + TZ offset 포맷.
+# default-features=false 로 wasm/시간 외 기능 제거 — std + clock 만.
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }

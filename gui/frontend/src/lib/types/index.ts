@@ -7,6 +7,8 @@ export interface QuestType {
 
 export interface QuestStatus {
 	id: number;
+	/** DEV-042: stable identifier (예: "open", "testing"). quest_history 와 .md frontmatter 참조용. */
+	slug: string;
 	name_en: string;
 	name_ko: string;
 	color: string;
@@ -23,6 +25,8 @@ export interface Quest {
 	title: string;
 	description: string | null;
 	status_id: number;
+	/** DEV-046: stable identifier (예: "open", "testing"). status_id 와 달리 reorder 안전. */
+	status_slug: string;
 	status_name_en: string;
 	status_name_ko: string;
 	status_color: string;
@@ -30,9 +34,21 @@ export interface Quest {
 	parent_quest_id: number | null;
 	created_at: string;
 	updated_at: string;
+	/** DEV-076: 희망 기한 (YYYY-MM-DD). null = 미설정. 정보성 (Home 임박 판단 X). */
+	desired_due?: string | null;
+	/** DEV-076: 필수 기한 (YYYY-MM-DD). null = 미설정. Home "마감 임박" / "Overdue" 기준. */
+	required_due?: string | null;
+	/**
+	 * BUG-034: SQL 계산 필드. 이 퀘스트가 연결된 active 캠페인 중 가장 가까운
+	 * ended_at. 파일에는 저장 X. 클라이언트는 `min(required_due, earliest_campaign_due)`
+	 * 를 "유효 기한" 으로 표시.
+	 */
+	earliest_campaign_due?: string | null;
 }
 
 export interface QuestDetail extends Quest {
+	/** DEV-047: 부모 quest row (slug + 색 + 제목 표시용). 없으면 null/undefined. */
+	parent?: Quest | null;
 	sub_quests: Quest[];
 	prerequisites: Quest[];
 	position: QuestPosition | null;
@@ -40,6 +56,8 @@ export interface QuestDetail extends Quest {
 
 export interface QuestPosition {
 	quest_id: number;
+	/** DEV-049: stable identifier — quests.id 재할당 안전. */
+	quest_slug?: string | null;
 	x: number;
 	y: number;
 }
@@ -50,7 +68,8 @@ export interface CreateQuestRequest {
 	quest_type_id: number;
 	title: string;
 	description?: string;
-	status_id: number;
+	/** DEV-048: stable identifier (예: "open"). */
+	status_slug: string;
 	urgency?: number;
 	parent_quest_id?: number;
 }
@@ -63,11 +82,17 @@ export interface UpdateQuestRequest {
 }
 
 export interface ChangeStatusRequest {
-	status_id: number;
+	/** DEV-048: stable identifier (예: "in_progress"). status_id 의 positional 문제 회피. */
+	status_slug: string;
 }
 
 export interface ChangeParentRequest {
 	parent_quest_id: number | null;
+}
+
+/** DEV-055: quest 의 type 변경 — slug 가 바뀜. */
+export interface ChangeTypeRequest {
+	new_type_prefix: string;
 }
 
 export type CandidateRelation = 'parent' | 'sub' | 'prereq';
@@ -107,6 +132,91 @@ export interface DriftReport {
 
 export interface RestoreResponse {
 	restored_to: string;
+}
+
+// DEV-013: Quest 변경 이력 한 행.
+export interface QuestHistoryEntry {
+	id: number;
+	quest_id: number;
+	/** DEV-049: stable identifier — quests.id 재할당 안전. */
+	quest_slug?: string | null;
+	ts: string;
+	op: string;
+	old_value: string | null;
+	new_value: string | null;
+	actor: string | null;
+}
+
+// ─── DEV-011: Campaign ──────────────────────────────────
+
+export type CampaignStatus = 'active' | 'done';
+
+export interface Campaign {
+	id: number;
+	campaign_slug: string; // "C-001"
+	title: string;
+	description: string | null;
+	status: CampaignStatus | string;
+	started_at: string | null;
+	ended_at: string | null;
+	display_order: number;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface CampaignChecklistItem {
+	id: number;
+	campaign_id: number;
+	text: string;
+	checked: boolean;
+	order_idx: number;
+}
+
+export interface CampaignLinkedQuest {
+	id: number;
+	quest_id: string;
+	title: string;
+	type_prefix: string;
+	type_color: string;
+	status_slug: string;
+	status_name_en: string;
+	status_color: string;
+}
+
+export interface CampaignDetail extends Campaign {
+	checklists: CampaignChecklistItem[];
+	linked_quests: CampaignLinkedQuest[];
+}
+
+export interface CampaignSummary {
+	id: number;
+	campaign_slug: string;
+	title: string;
+	status: string;
+	started_at: string | null;
+	ended_at: string | null;
+	display_order: number;
+	created_at: string;
+	/** 0.0 ~ 1.0 — 체크리스트 완료율. */
+	progress: number;
+	checklist_total: number;
+	checklist_checked: number;
+}
+
+export interface CreateCampaignRequest {
+	title: string;
+	description?: string | null;
+	started_at?: string | null;
+	ended_at?: string | null;
+}
+
+export interface UpdateCampaignRequest {
+	title?: string;
+	description?: string;
+	status?: CampaignStatus | string;
+	started_at?: string;
+	ended_at?: string;
+	display_order?: number;
 }
 
 export const URGENCY_COLOR: Record<number, string> = {

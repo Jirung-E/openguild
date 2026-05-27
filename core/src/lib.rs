@@ -1,4 +1,4 @@
-//! OpenGuild core — 모든 비즈니스 로직과 sqlx 접근의 단일 진실 소스.
+//! openguild core — 모든 비즈니스 로직과 sqlx 접근의 단일 진실 소스.
 //!
 //! 사용자:
 //! - `server` (HTTP wrapper)
@@ -17,11 +17,13 @@ pub mod lock;
 pub mod migrate;
 pub mod models;
 pub mod ops;
+pub mod recents;
 pub mod reindex;
 pub mod repo;
 pub mod services;
 pub mod snapshot;
 pub mod store;
+pub mod time;
 
 pub use error::{AppError, AppResult};
 pub use store::Store;

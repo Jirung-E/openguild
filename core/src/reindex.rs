@@ -1,4 +1,4 @@
-//! `.guild/quests/*.md` + `.guild/types/*.toml` + `.guild/statuses/*.toml` 파일들로부터
+﻿//! `.guild/quests/*.md` + `.guild/types/*.toml` + `.guild/statuses/*.toml` 파일들로부터
 //! `.guild/index.db` 의 캐시 내용을 재구축.
 //!
 //! 사용 시나리오:
@@ -17,7 +17,7 @@
 use std::collections::HashMap;
 
 use crate::error::AppResult;
-use crate::repo::{auto, fs as repo_fs, QuestFile, StatusFile, TypeFile};
+use crate::repo::{auto, fs as repo_fs, CampaignFile, QuestFile, StatusFile, TypeFile};
 use crate::store::Store;
 
 #[derive(Debug, Default, Clone)]
@@ -26,6 +26,10 @@ pub struct ReindexReport {
     pub statuses_loaded: usize,
     pub quests_loaded: usize,
     pub dependencies_loaded: usize,
+    /// reindex 전후로 살아남은 quest 의 board 위치 복원 수.
+    pub positions_restored: usize,
+    /// DEV-011: campaign 파일 로드 수.
+    pub campaigns_loaded: usize,
     /// 파싱 / 무결성 실패로 skip 된 파일 (경로 + 사유).
     pub skipped: Vec<(String, String)>,
 }
@@ -36,6 +40,19 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
     let pool = &store.index_pool;
     let paths = &store.paths;
 
+    // 0. position 백업 — reindex 가 quest 정수 id 를 재배정하므로 slug 기준으로 보관.
+    //    position 은 UI 상태라 파일에 저장 안 함 → reindex 가 wipe 하면 그대로 사라짐.
+    //    quest 자체가 (slug 기준으로) 살아남으면 position 도 보존되어야 함.
+    let position_backup: Vec<(String, f64, f64)> = sqlx::query_as(
+        "SELECT t.prefix || '-' || printf('%03d', q.number) AS slug, p.x, p.y
+           FROM quest_positions p
+           JOIN quests q ON q.id = p.quest_id
+           JOIN quest_types t ON t.id = q.quest_type_id",
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
     // 1. 기존 내용 비움 (트랜잭션 안에서 — partial 실패 시 rollback).
     let mut tx = pool.begin().await?;
     sqlx::query("DELETE FROM quest_dependencies").execute(&mut *tx).await?;
@@ -44,6 +61,15 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
     sqlx::query("DELETE FROM quest_counters").execute(&mut *tx).await?;
     sqlx::query("DELETE FROM quest_statuses").execute(&mut *tx).await?;
     sqlx::query("DELETE FROM quest_types").execute(&mut *tx).await?;
+    // DEV-011: campaigns 관련 — 마이그레이션 0008 적용 후에만 존재.
+    // 테이블이 아직 없는 환경 (구 DB) 대비 IF EXISTS 안 됨 → migration 으로
+    // 보장된 후에만 reindex 실행되도록. 트랜잭션 안에서 안전.
+    sqlx::query("DELETE FROM campaign_quests").execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM campaign_checklists").execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM campaigns").execute(&mut *tx).await?;
+    sqlx::query("UPDATE campaign_counters SET last_number = 0 WHERE id = 1")
+        .execute(&mut *tx)
+        .await?;
 
     // 2. types — id 는 파일 정렬 순.
     let type_paths = repo_fs::list_with_extension(paths.types_dir(), "toml")
@@ -92,15 +118,17 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
         let slug = StatusFile::slug_from_filename(filename).unwrap_or(filename);
         match StatusFile::read(path) {
             Ok(s) => {
+                // DEV-042: slug 컬럼도 함께 INSERT — quest_history 가 slug 기반.
                 sqlx::query(
-                    "INSERT INTO quest_statuses (id, name_en, name_ko, color, sort_order)
-                     VALUES (?, ?, ?, ?, ?)",
+                    "INSERT INTO quest_statuses (id, name_en, name_ko, color, sort_order, slug)
+                     VALUES (?, ?, ?, ?, ?, ?)",
                 )
                 .bind(id)
                 .bind(&s.name_en)
                 .bind(&s.name_ko)
                 .bind(&s.color)
                 .bind(s.sort_order)
+                .bind(slug)
                 .execute(&mut *tx)
                 .await?;
                 slug_to_status_id.insert(slug.to_string(), id);
@@ -161,16 +189,21 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
             .as_ref()
             .and_then(|s| slug_to_id.get(s).copied());
 
+        // DEV-041: legacy ".md" 의 공백-구분 timestamp 는 migration 0005 와 일관되게
+        // ISO 8601 UTC 로 normalize 한 뒤 db 에 기록. 새 format 은 그대로 통과.
+        let created_at = crate::time::normalize_legacy_ts(&qf.frontmatter.created_at);
+        let updated_at = crate::time::normalize_legacy_ts(&qf.frontmatter.updated_at);
         let deleted_at: Option<String> = qf
             .frontmatter
             .deleted
-            .then(|| qf.frontmatter.updated_at.clone());
+            .then(|| updated_at.clone());
 
+        // DEV-076: desired_due / required_due 도 함께 적재 (file → DB sync).
         sqlx::query(
             "INSERT INTO quests
              (id, quest_type_id, number, title, description, status_id, urgency, parent_quest_id,
-              created_at, updated_at, deleted_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              created_at, updated_at, deleted_at, desired_due, required_due)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(id)
         .bind(type_id)
@@ -180,9 +213,11 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
         .bind(status_id)
         .bind(qf.frontmatter.urgency)
         .bind(parent_id)
-        .bind(&qf.frontmatter.created_at)
-        .bind(&qf.frontmatter.updated_at)
+        .bind(&created_at)
+        .bind(&updated_at)
         .bind(deleted_at)
+        .bind(qf.frontmatter.desired_due.as_deref())
+        .bind(qf.frontmatter.required_due.as_deref())
         .execute(&mut *tx)
         .await?;
 
@@ -209,9 +244,142 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
         }
     }
 
+    // 5b. position 복원 — 0 단계에서 백업한 slug → 새 quest id 로 재INSERT.
+    //     slug 가 reindex 후에도 살아있는 quest 만 복원.
+    //     DEV-049: quest_slug 도 함께 INSERT (stable identifier).
+    let mut positions_restored = 0usize;
+    for (slug, x, y) in &position_backup {
+        if let Some(&qid) = slug_to_id.get(slug) {
+            sqlx::query(
+                "INSERT INTO quest_positions (quest_id, quest_slug, x, y) VALUES (?, ?, ?, ?)",
+            )
+            .bind(qid)
+            .bind(slug)
+            .bind(x)
+            .bind(y)
+            .execute(&mut *tx)
+            .await?;
+            positions_restored += 1;
+        }
+    }
+    report.positions_restored = positions_restored;
+
+    // 5c. quest_history 의 quest_id 재정렬 (DEV-049).
+    //     이전 reindex 가 id 를 재할당했어도 quest_slug 컬럼이 stable identifier
+    //     로 살아있음. quest_id 컬럼은 새 매핑으로 갱신.
+    sqlx::query(
+        "UPDATE quest_history
+         SET quest_id = (
+             SELECT q.id
+             FROM quests q
+             JOIN quest_types qt ON q.quest_type_id = qt.id
+             WHERE qt.prefix || '-' || printf('%03d', q.number) = quest_history.quest_slug
+         )
+         WHERE quest_slug IS NOT NULL",
+    )
+    .execute(&mut *tx)
+    .await?;
+
+    // 6. DEV-011: campaigns — `.guild/campaigns/*.md` 파일 정렬 순.
+    let campaigns_dir = paths.campaigns_dir();
+    let mut max_camp_num: i64 = 0;
+    if campaigns_dir.exists() {
+        let camp_paths = repo_fs::list_with_extension(&campaigns_dir, "md")
+            .map_err(crate::error::AppError::Internal)?;
+        for (i, path) in camp_paths.iter().enumerate() {
+            let id = (i + 1) as i64;
+            let cf = match CampaignFile::read(path) {
+                Ok(c) => c,
+                Err(e) => {
+                    report.skipped.push((path.display().to_string(), format!("{e:#}")));
+                    continue;
+                }
+            };
+            if cf.frontmatter.deleted {
+                // soft-deleted 는 reindex 에서 스킵 (alive 만 캐싱).
+                continue;
+            }
+            sqlx::query(
+                "INSERT INTO campaigns
+                    (id, campaign_slug, title, description, status,
+                     started_at, ended_at, display_order, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            )
+            .bind(id)
+            .bind(&cf.frontmatter.campaign_id)
+            .bind(&cf.frontmatter.title)
+            .bind(&cf.body)
+            .bind(&cf.frontmatter.status)
+            .bind(if cf.frontmatter.started_at.is_empty() {
+                None
+            } else {
+                Some(&cf.frontmatter.started_at)
+            })
+            .bind(if cf.frontmatter.ended_at.is_empty() {
+                None
+            } else {
+                Some(&cf.frontmatter.ended_at)
+            })
+            .bind(cf.frontmatter.display_order)
+            .bind(&cf.frontmatter.created_at)
+            .bind(&cf.frontmatter.updated_at)
+            .execute(&mut *tx)
+            .await?;
+
+            // 체크리스트
+            let items = crate::repo::extract_checklist_items(&cf.body);
+            for line in &items {
+                sqlx::query(
+                    "INSERT INTO campaign_checklists (campaign_id, text, checked, order_idx)
+                     VALUES (?, ?, ?, ?)",
+                )
+                .bind(id)
+                .bind(&line.text)
+                .bind(if line.checked { 1 } else { 0 })
+                .bind(line.order_idx)
+                .execute(&mut *tx)
+                .await?;
+            }
+
+            // linked_quests: slug → quest id resolve.
+            for qslug in &cf.frontmatter.linked_quests {
+                if let Some(&qid) = slug_to_id.get(qslug) {
+                    sqlx::query(
+                        "INSERT OR IGNORE INTO campaign_quests (campaign_id, quest_id) VALUES (?, ?)",
+                    )
+                    .bind(id)
+                    .bind(qid)
+                    .execute(&mut *tx)
+                    .await?;
+                }
+                // unresolved slug 는 silent skip — quest 가 삭제됐을 수도.
+            }
+
+            // campaign slug 의 숫자 부분 max 추적 (counter self-heal).
+            if let Some(num_str) = cf.frontmatter.campaign_id.strip_prefix("C-")
+                && let Ok(n) = num_str.parse::<i64>()
+            {
+                max_camp_num = max_camp_num.max(n);
+            }
+
+            report.campaigns_loaded += 1;
+        }
+    }
+    // campaign_counters self-heal — alive campaign 의 최대 번호로.
+    if max_camp_num > 0 {
+        sqlx::query(
+            "UPDATE campaign_counters
+                SET last_number = MAX(last_number, ?)
+              WHERE id = 1",
+        )
+        .bind(max_camp_num)
+        .execute(&mut *tx)
+        .await?;
+    }
+
     tx.commit().await?;
 
-    // 6. auto 블록을 SQL 기준으로 다시 그려서 파일에 쓰기 — 외부 편집 결과
+    // 7. auto 블록을 SQL 기준으로 다시 그려서 파일에 쓰기 — 외부 편집 결과
     //    auto 블록이 stale 일 수 있음. write_consistent_auto_blocks 가 옵션.
     //    (현재 turn 에선 단순 reindex 만, auto 갱신은 호출자가 별도 호출 가능)
     let _ = auto::render; // keep import alive
@@ -245,7 +413,7 @@ mod tests {
 
         let report = reindex(&store).await.unwrap();
         assert_eq!(report.types_loaded, 3);
-        assert_eq!(report.statuses_loaded, 5);
+        assert_eq!(report.statuses_loaded, 7);
         assert_eq!(report.quests_loaded, 0);
         assert!(report.skipped.is_empty());
 
@@ -254,7 +422,7 @@ mod tests {
             sqlx::query_scalar("SELECT COUNT(*) FROM quest_types").fetch_one(&store.index_pool).await.unwrap();
         assert_eq!(n_types, 3);
         let n_statuses: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM quest_statuses").fetch_one(&store.index_pool).await.unwrap();
-        assert_eq!(n_statuses, 5);
+        assert_eq!(n_statuses, 7);
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -277,6 +445,8 @@ mod tests {
                 created_at: "2026-05-16T15:00:00Z".into(),
                 updated_at: "2026-05-16T15:00:00Z".into(),
                 deleted: false,
+                desired_due: None,
+                required_due: None,
             },
             description: "body".into(),
             auto_block: String::new(),
@@ -294,6 +464,8 @@ mod tests {
                 created_at: "2026-05-16T15:01:00Z".into(),
                 updated_at: "2026-05-16T15:01:00Z".into(),
                 deleted: false,
+                desired_due: None,
+                required_due: None,
             },
             description: String::new(),
             auto_block: String::new(),
@@ -356,6 +528,8 @@ mod tests {
                 created_at: "x".into(),
                 updated_at: "x".into(),
                 deleted: false,
+                desired_due: None,
+                required_due: None,
             },
             description: String::new(),
             auto_block: String::new(),
@@ -367,6 +541,230 @@ mod tests {
         assert_eq!(report.quests_loaded, 1);
         assert_eq!(report.skipped.len(), 1);
         assert!(report.skipped[0].1.contains("opening"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn reindex_preserves_positions_across_rebuild() {
+        // BUG-002 regression — reindex 는 quest_positions 를 wipe 한 뒤
+        // 동일 slug 의 quest 가 살아남으면 위치를 복원해야 한다.
+        let dir = fresh_tmp("positions");
+        let store = setup_store(&dir).await;
+        let paths = GuildPaths::new(&dir);
+
+        let q1 = QuestFile {
+            frontmatter: QuestFrontmatter {
+                quest_id: "DEV-001".into(),
+                title: "p1".into(),
+                status: "open".into(),
+                urgency: 3,
+                parent: None,
+                prerequisites: vec![],
+                created_at: "x".into(),
+                updated_at: "x".into(),
+                deleted: false,
+                desired_due: None,
+                required_due: None,
+            },
+            description: String::new(),
+            auto_block: String::new(),
+        };
+        q1.write(paths.quest_path("DEV-001")).unwrap();
+
+        // 첫 reindex → DEV-001 이 SQL 에 들어옴
+        let r1 = reindex(&store).await.unwrap();
+        assert_eq!(r1.quests_loaded, 1);
+        assert_eq!(r1.positions_restored, 0, "처음엔 보존할 position 없음");
+
+        // position 수동 INSERT (실제 update_position 호출과 동등)
+        let qid: i64 =
+            sqlx::query_scalar("SELECT id FROM quests WHERE deleted_at IS NULL LIMIT 1")
+                .fetch_one(&store.index_pool)
+                .await
+                .unwrap();
+        sqlx::query(
+            "INSERT INTO quest_positions (quest_id, quest_slug, x, y) VALUES (?, 'DEV-001', 162.0, 108.0)",
+        )
+        .bind(qid)
+        .execute(&store.index_pool)
+        .await
+        .unwrap();
+
+        // 두번째 reindex → position 이 살아남아야 함
+        let r2 = reindex(&store).await.unwrap();
+        assert_eq!(r2.quests_loaded, 1);
+        assert_eq!(r2.positions_restored, 1, "DEV-001 의 position 1건 복원");
+
+        let row: (f64, f64) = sqlx::query_as(
+            "SELECT x, y FROM quest_positions
+             JOIN quests ON quests.id = quest_positions.quest_id
+             WHERE quests.deleted_at IS NULL",
+        )
+        .fetch_one(&store.index_pool)
+        .await
+        .unwrap();
+        assert!((row.0 - 162.0).abs() < 1e-6);
+        assert!((row.1 - 108.0).abs() < 1e-6);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-049 회귀: quest 추가 후 reindex 가 quests.id 를 시프트해도
+    /// quest_history 와 quest_positions 가 정확한 quest 를 가리키는지.
+    #[tokio::test]
+    async fn reindex_preserves_history_and_position_across_id_shift() {
+        let dir = fresh_tmp("id-shift");
+        let store = setup_store(&dir).await;
+        let paths = GuildPaths::new(&dir);
+
+        // 처음: DEV-001 만 존재 → id 알맞게 부여 (예: 1).
+        let dev1 = QuestFile {
+            frontmatter: QuestFrontmatter {
+                quest_id: "DEV-001".into(),
+                title: "dev one".into(),
+                status: "open".into(),
+                urgency: 3,
+                parent: None,
+                prerequisites: vec![],
+                created_at: "x".into(),
+                updated_at: "x".into(),
+                deleted: false,
+                desired_due: None,
+                required_due: None,
+            },
+            description: String::new(),
+            auto_block: String::new(),
+        };
+        dev1.write(paths.quest_path("DEV-001")).unwrap();
+        reindex(&store).await.unwrap();
+
+        // DEV-001 의 id 와 position / history INSERT.
+        let dev1_id: i64 = sqlx::query_scalar(
+            "SELECT id FROM quests WHERE deleted_at IS NULL LIMIT 1",
+        )
+        .fetch_one(&store.index_pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO quest_positions (quest_id, quest_slug, x, y) VALUES (?, 'DEV-001', 11.0, 22.0)",
+        )
+        .bind(dev1_id)
+        .execute(&store.index_pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO quest_history (quest_id, quest_slug, ts, op, old_value, new_value)
+             VALUES (?, 'DEV-001', '2026-05-22T10:00:00+09:00', 'change_status', 'open', 'in_progress')",
+        )
+        .bind(dev1_id)
+        .execute(&store.index_pool)
+        .await
+        .unwrap();
+
+        // 새 quest BUG-001 추가 — alphabetic 정렬 시 DEV-001 보다 앞이라
+        // 다음 reindex 에서 DEV-001 의 id 가 시프트됨 (1 → 2).
+        let bug1 = QuestFile {
+            frontmatter: QuestFrontmatter {
+                quest_id: "BUG-001".into(),
+                title: "bug one".into(),
+                status: "open".into(),
+                urgency: 3,
+                parent: None,
+                prerequisites: vec![],
+                created_at: "x".into(),
+                updated_at: "x".into(),
+                deleted: false,
+                desired_due: None,
+                required_due: None,
+            },
+            description: String::new(),
+            auto_block: String::new(),
+        };
+        bug1.write(paths.quest_path("BUG-001")).unwrap();
+        reindex(&store).await.unwrap();
+
+        // 새 id 확인 (DEV-001 의 id 가 바뀜).
+        let dev1_new_id: i64 = sqlx::query_scalar(
+            "SELECT q.id FROM quests q JOIN quest_types qt ON q.quest_type_id = qt.id
+             WHERE qt.prefix = 'DEV' AND q.number = 1",
+        )
+        .fetch_one(&store.index_pool)
+        .await
+        .unwrap();
+        assert_ne!(dev1_new_id, dev1_id, "BUG-001 추가로 DEV-001 의 id 가 시프트되어야 함");
+
+        // position: quest_id 와 quest_slug 둘 다 새 id 와 슬러그 가리켜야.
+        let (p_qid, p_slug, p_x, p_y): (i64, String, f64, f64) = sqlx::query_as(
+            "SELECT quest_id, quest_slug, x, y FROM quest_positions",
+        )
+        .fetch_one(&store.index_pool)
+        .await
+        .unwrap();
+        assert_eq!(p_qid, dev1_new_id, "position.quest_id 가 새 id 로 갱신");
+        assert_eq!(p_slug, "DEV-001");
+        assert!((p_x - 11.0).abs() < 1e-6);
+        assert!((p_y - 22.0).abs() < 1e-6);
+
+        // history: quest_id 도 새 id 로 갱신, slug 는 그대로.
+        let (h_qid, h_slug): (i64, String) = sqlx::query_as(
+            "SELECT quest_id, quest_slug FROM quest_history",
+        )
+        .fetch_one(&store.index_pool)
+        .await
+        .unwrap();
+        assert_eq!(h_qid, dev1_new_id, "history.quest_id 가 새 id 로 갱신");
+        assert_eq!(h_slug, "DEV-001");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn reindex_drops_position_for_deleted_quest() {
+        // quest 가 파일에서 사라지면 (slug 일치 안 함) 그 position 도 자연스럽게 제거.
+        let dir = fresh_tmp("position-drop");
+        let store = setup_store(&dir).await;
+        let paths = GuildPaths::new(&dir);
+
+        let q1 = QuestFile {
+            frontmatter: QuestFrontmatter {
+                quest_id: "DEV-001".into(),
+                title: "doomed".into(),
+                status: "open".into(),
+                urgency: 3,
+                parent: None,
+                prerequisites: vec![],
+                created_at: "x".into(),
+                updated_at: "x".into(),
+                deleted: false,
+                desired_due: None,
+                required_due: None,
+            },
+            description: String::new(),
+            auto_block: String::new(),
+        };
+        q1.write(paths.quest_path("DEV-001")).unwrap();
+        reindex(&store).await.unwrap();
+        let qid: i64 = sqlx::query_scalar("SELECT id FROM quests LIMIT 1")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO quest_positions (quest_id, x, y) VALUES (?, 50.0, 60.0)")
+            .bind(qid)
+            .execute(&store.index_pool)
+            .await
+            .unwrap();
+
+        // 파일 제거 후 reindex
+        std::fs::remove_file(paths.quest_path("DEV-001")).unwrap();
+        let r = reindex(&store).await.unwrap();
+        assert_eq!(r.quests_loaded, 0);
+        assert_eq!(r.positions_restored, 0);
+        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM quest_positions")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(n, 0);
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -388,6 +786,8 @@ mod tests {
                 created_at: "x".into(),
                 updated_at: "x".into(),
                 deleted: false,
+                desired_due: None,
+                required_due: None,
             },
             description: String::new(),
             auto_block: String::new(),
@@ -405,6 +805,8 @@ mod tests {
                 created_at: "x".into(),
                 updated_at: "x".into(),
                 deleted: false,
+                desired_due: None,
+                required_due: None,
             },
             description: String::new(),
             auto_block: String::new(),

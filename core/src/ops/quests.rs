@@ -1,12 +1,12 @@
-//! Quest mutation orchestration — SQL + file + journal.
+﻿//! Quest mutation orchestration — SQL + file + journal.
 //!
 //! 각 함수는 `&Store` 받고 `AppResult<T>` 반환.
 //! 호출자 (server routes / cli Backend::Local) 가 사용.
 
 use crate::error::AppResult;
 use crate::models::{
-    AddPrerequisiteRequest, ChangeParentRequest, ChangeStatusRequest, CreateQuestRequest,
-    QuestRow, UpdateQuestRequest,
+    AddPrerequisiteRequest, ChangeParentRequest, ChangeStatusRequest, ChangeTypeRequest,
+    CreateQuestRequest, QuestRow, UpdateQuestRequest,
 };
 use crate::repo::{auto, QuestFile, QuestFrontmatter, QuestRef, QuestRelations};
 use crate::services::quests as sql;
@@ -51,13 +51,13 @@ pub async fn create_quest(store: &Store, body: CreateQuestRequest) -> AppResult<
     let parent_id = body.parent_quest_id;
     let quest = sql::create(&store.index_pool, body).await?;
 
-    // 3. 새 파일 작성.
-    write_quest_file(store, &quest).await?;
+    // 3. 새 파일 작성. description 은 create body 가 명시 (Some 또는 None).
+    write_quest_file(store, &quest, true).await?;
 
-    // 4. parent 있으면 부모 파일의 auto 블록 갱신.
+    // 4. parent 있으면 부모 파일의 auto 블록 갱신. parent description 은 안 건드림.
     if let Some(pid) = parent_id {
         let parent = sql::fetch_by_id(&store.index_pool, pid).await?;
-        write_quest_file(store, &parent).await?;
+        write_quest_file(store, &parent, false).await?;
     }
 
     after_mutation(store).await;
@@ -79,8 +79,34 @@ pub async fn update_quest(
     .await
     .map_err(crate::error::AppError::Internal)?;
 
+    // DEV-066: description 이 mutation 의 명시적 대상인지 (file→DB sync 분기용).
+    let description_explicit = body.description.is_some();
     let quest = sql::update(&store.index_pool, id, body).await?;
-    write_quest_file(store, &quest).await?;
+    write_quest_file(store, &quest, description_explicit).await?;
+    after_mutation(store).await;
+    Ok(quest)
+}
+
+/// DEV-076: 희망 / 필수 기한 변경 — DB 갱신 + 파일 sync.
+///
+/// 각 인자: `Some(Some(date))` = 설정, `Some(None)` = 해제, `None` = 변경 없음.
+pub async fn set_due_dates(
+    store: &Store,
+    id: i64,
+    desired_due: Option<Option<String>>,
+    required_due: Option<Option<String>>,
+) -> AppResult<QuestRow> {
+    let _ = journal::append(
+        &store.journal_pool,
+        "set_due_dates",
+        &json!({ "id": id, "desired_due": desired_due, "required_due": required_due }),
+        None::<&serde_json::Value>,
+    )
+    .await
+    .map_err(crate::error::AppError::Internal)?;
+
+    let quest = sql::set_due_dates(&store.index_pool, id, desired_due, required_due).await?;
+    write_quest_file(store, &quest, false).await?;
     after_mutation(store).await;
     Ok(quest)
 }
@@ -91,17 +117,159 @@ pub async fn change_status(
     id: i64,
     body: ChangeStatusRequest,
 ) -> AppResult<QuestRow> {
+    // BUG-011: no-op (현재 상태 == 요청 상태) 면 일찍 반환 — journal/history/
+    // updated_at 모두 변동 없음.
+    // DEV-048: slug 기반 비교로 변경 — body.status_slug 와 현재 status.slug 직접 비교.
+    let old_status_slug: Option<String> = sqlx::query_scalar(
+        "SELECT s.slug
+         FROM quests q JOIN quest_statuses s ON s.id = q.status_id
+         WHERE q.id = ?",
+    )
+    .bind(id)
+    .fetch_optional(&store.index_pool)
+    .await?;
+
+    if old_status_slug.as_deref() == Some(body.status_slug.as_str()) {
+        // 이미 그 상태 — 그대로 반환. quest_history 기록 X.
+        return sql::fetch_by_id(&store.index_pool, id).await;
+    }
+
     let _ = journal::append(
         &store.journal_pool,
         "change_status",
-        &json!({ "id": id, "status_id": body.status_id }),
+        &json!({ "id": id, "status_slug": body.status_slug }),
         None::<&serde_json::Value>,
     )
     .await
     .map_err(crate::error::AppError::Internal)?;
 
+    let new_status_slug = body.status_slug.clone();
     let quest = sql::change_status(&store.index_pool, id, body).await?;
-    write_quest_file(store, &quest).await?;
+
+    // DEV-013: history 기록. DEV-041: ts 명시 bind. DEV-042: status slug 저장.
+    // DEV-049: quest_slug 도 함께 저장. DEV-048: new_status_slug 는 body 에서 그대로.
+    let ts = crate::time::now_local_iso8601();
+    sqlx::query(
+        "INSERT INTO quest_history (quest_id, quest_slug, ts, op, old_value, new_value) VALUES (?, ?, ?, ?, ?, ?)",
+    )
+    .bind(id)
+    .bind(&quest.quest_id)
+    .bind(&ts)
+    .bind("change_status")
+    .bind(&old_status_slug)
+    .bind(&new_status_slug)
+    .execute(&store.index_pool)
+    .await?;
+
+    write_quest_file(store, &quest, false).await?;
+    after_mutation(store).await;
+    Ok(quest)
+}
+
+/// DEV-055: quest 의 type 변경.
+///
+/// slug 가 바뀌므로 (예 `DEV-001` → `BUG-013`) cascade 가 필요:
+/// 1. SQL: `quests.quest_type_id` / `number` 갱신, `quest_history.quest_slug`,
+///    `quest_positions.quest_slug` 도 cascade (services::change_type 가 담당).
+/// 2. 본 함수가 추가로:
+///    - quest_history INSERT — op="change_type", old_slug → new_slug 기록.
+///    - 파일: `.guild/quests/<old_slug>.md` → `<new_slug>.md` rename.
+///    - 관련 quest 들 (parent / sub / prereq / dependent) 의 .md 파일 auto-block
+///      재생성 — 그쪽이 본인을 mention 하던 게 새 slug 로 갱신되어야.
+///
+/// **본문 안 자유 텍스트 mention** (예 다른 quest 의 description 에 "DEV-001
+/// 참조" 같은 게 적힌 것) 은 자동 갱신 X — 사용자 결정 (DEV-055 본문 정책).
+/// 사용자가 grep + replace 필요 시 직접.
+pub async fn change_quest_type(
+    store: &Store,
+    id: i64,
+    body: ChangeTypeRequest,
+) -> AppResult<QuestRow> {
+    let _ = journal::append(
+        &store.journal_pool,
+        "change_quest_type",
+        &json!({ "id": id, "new_type_prefix": &body.new_type_prefix }),
+        None::<&serde_json::Value>,
+    )
+    .await
+    .map_err(crate::error::AppError::Internal)?;
+
+    let (quest, old_slug, new_slug) =
+        sql::change_type(&store.index_pool, id, &body.new_type_prefix).await?;
+
+    // NoOp (같은 type) — 추가 작업 없이 반환.
+    if old_slug == new_slug {
+        return Ok(quest);
+    }
+
+    // history INSERT — type 변경 자체를 audit.
+    let ts = crate::time::now_local_iso8601();
+    sqlx::query(
+        "INSERT INTO quest_history (quest_id, quest_slug, ts, op, old_value, new_value)
+         VALUES (?, ?, ?, ?, ?, ?)",
+    )
+    .bind(id)
+    .bind(&new_slug)
+    .bind(&ts)
+    .bind("change_type")
+    .bind(&old_slug)
+    .bind(&new_slug)
+    .execute(&store.index_pool)
+    .await?;
+
+    // 파일: 새 slug 로 새 파일 쓰고 옛 파일 삭제.
+    let old_path = store.paths.quest_path(&old_slug);
+    let new_path = store.paths.quest_path(&new_slug);
+    // DEV-066: rename 이라 path 도 새 경로 — 파일 본문이 옛 경로에 있으므로
+    // 옛 파일에서 description 을 미리 읽어 보존. 옛 파일 삭제 직전.
+    // 새 경로엔 파일이 없으니 false 모드로는 file→DB sync 가 안 됨.
+    // 미리 보존된 description 을 직접 DB sync 후 write.
+    if let Ok(old_qf) = QuestFile::read(&old_path)
+        && !old_qf.description.trim().is_empty()
+    {
+        let db_desc = quest.description.as_deref().unwrap_or("");
+        if old_qf.description != db_desc {
+            sqlx::query("UPDATE quests SET description = ? WHERE id = ?")
+                .bind(&old_qf.description)
+                .bind(quest.id)
+                .execute(&store.index_pool)
+                .await?;
+        }
+    }
+    let quest = sql::fetch_by_id(&store.index_pool, quest.id).await?;
+    write_quest_file(store, &quest, true).await?; // new_path (description 이미 sync 됨)
+    if old_path != new_path {
+        let _ = std::fs::remove_file(&old_path);
+    }
+
+    // 관련 quest 파일 갱신 — auto-block 안 sub-quests / prerequisites / parent
+    // 표기에 본인 slug 가 들어가므로 새 slug 로 갱신되어야.
+    let related_ids: Vec<i64> = sqlx::query_scalar(
+        r#"
+        SELECT DISTINCT q.id FROM quests q
+        WHERE q.deleted_at IS NULL
+          AND (
+            -- 본인의 parent
+            q.id = (SELECT parent_quest_id FROM quests WHERE id = ?1)
+            -- 본인의 sub-quest 들
+            OR q.parent_quest_id = ?1
+            -- 본인의 prereq 들
+            OR q.id IN (SELECT prerequisite_id FROM quest_dependencies WHERE quest_id = ?1)
+            -- 본인을 prereq 으로 갖는 quest 들 (dependent)
+            OR q.id IN (SELECT quest_id FROM quest_dependencies WHERE prerequisite_id = ?1)
+          )
+        "#,
+    )
+    .bind(id)
+    .fetch_all(&store.index_pool)
+    .await?;
+
+    for rid in related_ids {
+        if let Ok(q) = sql::fetch_by_id(&store.index_pool, rid).await {
+            write_quest_file(store, &q, false).await?;
+        }
+    }
+
     after_mutation(store).await;
     Ok(quest)
 }
@@ -127,7 +295,7 @@ pub async fn change_parent(
     let new_parent_id = body.parent_quest_id;
 
     let quest = sql::change_parent(&store.index_pool, id, body).await?;
-    write_quest_file(store, &quest).await?;
+    write_quest_file(store, &quest, false).await?;
 
     // 옛 부모 / 새 부모 파일 갱신 (서로 다른 경우만 별개로).
     let mut touched: Vec<i64> = Vec::new();
@@ -141,7 +309,7 @@ pub async fn change_parent(
     }
     for pid in touched {
         if let Ok(q) = sql::fetch_by_id(&store.index_pool, pid).await {
-            write_quest_file(store, &q).await?;
+            write_quest_file(store, &q, false).await?;
         }
     }
     after_mutation(store).await;
@@ -224,13 +392,13 @@ pub async fn delete_quest(
     // 분리된 자식 파일 갱신 (Parent 섹션 제거)
     for cid in detached_children {
         if let Ok(q) = sql::fetch_by_id(&store.index_pool, cid).await {
-            write_quest_file(store, &q).await?;
+            write_quest_file(store, &q, false).await?;
         }
     }
     // 본인 / 자식들을 prereq 으로 가진 quest 들의 auto 블록 갱신.
     for did in dependents {
         if let Ok(q) = sql::fetch_by_id(&store.index_pool, did).await {
-            write_quest_file(store, &q).await?;
+            write_quest_file(store, &q, false).await?;
         }
     }
     after_mutation(store).await;
@@ -249,12 +417,12 @@ pub async fn restore_quest(store: &Store, id: i64) -> AppResult<QuestRow> {
     .map_err(crate::error::AppError::Internal)?;
 
     let quest = sql::restore(&store.index_pool, id).await?;
-    write_quest_file(store, &quest).await?;
+    write_quest_file(store, &quest, false).await?;
     // 부모 / dependent 영향 — restore 가 alive 상태로 되돌리므로 부모의 sub 목록에 다시 포함됨.
     if let Some(pid) = parent_id_of(&store.index_pool, id).await?
         && let Ok(p) = sql::fetch_by_id(&store.index_pool, pid).await
     {
-        write_quest_file(store, &p).await?;
+        write_quest_file(store, &p, false).await?;
     }
     after_mutation(store).await;
     Ok(quest)
@@ -277,7 +445,7 @@ pub async fn add_prerequisite(
     sql::add_prerequisite(&store.index_pool, id, body).await?;
     // 본인 파일만 갱신 (frontmatter prerequisites 배열 추가).
     let quest = sql::fetch_by_id(&store.index_pool, id).await?;
-    write_quest_file(store, &quest).await?;
+    write_quest_file(store, &quest, false).await?;
     after_mutation(store).await;
     Ok(())
 }
@@ -294,7 +462,7 @@ pub async fn remove_prerequisite(store: &Store, id: i64, prereq_id: i64) -> AppR
 
     sql::remove_prerequisite(&store.index_pool, id, prereq_id).await?;
     if let Ok(q) = sql::fetch_by_id(&store.index_pool, id).await {
-        write_quest_file(store, &q).await?;
+        write_quest_file(store, &q, false).await?;
     }
     after_mutation(store).await;
     Ok(())
@@ -309,30 +477,24 @@ async fn write_quest_file_as_deleted(
     store: &Store,
     quest: &QuestRow,
 ) -> AppResult<()> {
+    // BUG-012 와 동일 — DB 의 description 이 truth. 기존 파일 fallback 제거.
     let path = store.paths.quest_path(&quest.quest_id);
-    let existing_description = QuestFile::read(&path)
-        .ok()
-        .map(|f| f.description)
-        .unwrap_or_default();
-
     let frontmatter = QuestFrontmatter {
         quest_id: quest.quest_id.clone(),
         title: quest.title.clone(),
-        status: status_name_to_slug(&quest.status_name_en),
+        status: quest.status_slug.clone(),
         urgency: quest.urgency,
         parent: None, // soft-deleted 는 parent 표시 X (sub 관계 끊긴 것으로 간주)
         prerequisites: vec![],
         created_at: quest.created_at.clone(),
         updated_at: quest.updated_at.clone(),
         deleted: true,
+        desired_due: None,
+        required_due: None,
     };
     let qf = QuestFile {
         frontmatter,
-        description: if existing_description.is_empty() {
-            quest.description.clone().unwrap_or_default()
-        } else {
-            existing_description
-        },
+        description: quest.description.clone().unwrap_or_default(),
         auto_block: String::new(),
     };
     qf.write(&path).map_err(crate::error::AppError::Internal)?;
@@ -342,24 +504,61 @@ async fn write_quest_file_as_deleted(
 /// 한 quest 의 파일을 현재 SQL 상태로 재작성.
 /// frontmatter / description / auto 블록 모두 fresh 하게 구성.
 ///
-/// 기존 파일이 있으면 description (사용자 작성 본문) 만 보존.
-async fn write_quest_file(store: &Store, quest: &QuestRow) -> AppResult<()> {
+/// `description_explicit` 의 의미 (DEV-066):
+/// - `true` — 호출자가 description 을 명시적으로 mutation 한 경우
+///   (`update_quest` 가 `body.description = Some(...)` 받았을 때). DB 의
+///   description 을 그대로 파일에 반영 → GUI / CLI 편집이 파일에 정확히 적용.
+/// - `false` — description 을 안 건드리는 mutation (`change_status` /
+///   `change_parent` / `add_prerequisite` 등). 이때:
+///     - 기존 파일이 있고 description 본문이 비어있지 않으면 **파일의 본문을
+///       truth 로 사용** + DB 도 그것으로 sync (`UPDATE quests SET description`).
+///       → BUG-012 가 의도적으로 제거한 fallback 의 안전한 재도입: 사용자가
+///       파일을 외부 편집한 뒤 reindex 없이 status/parent 등을 mutation 해도
+///       외부 편집이 보존되고 DB 도 점진적으로 정합.
+///     - 파일이 없거나 본문이 비어있으면 DB 값 사용 (현재 동작).
+///
+/// 외부 편집 보존은 description 본문만 — frontmatter (status/urgency/parent/
+/// prereq) 는 항상 DB 가 truth (AGENTS.md 정책: 사용자가 frontmatter 직접
+/// 수정 금지).
+pub(crate) async fn write_quest_file(
+    store: &Store,
+    quest: &QuestRow,
+    description_explicit: bool,
+) -> AppResult<()> {
     let pool = &store.index_pool;
     let path = store.paths.quest_path(&quest.quest_id);
-
-    // 기존 파일에서 description 보존.
-    let existing_description = QuestFile::read(&path)
-        .ok()
-        .map(|f| f.description)
-        .unwrap_or_default();
 
     let relations = fetch_relations(pool, quest.id).await?;
     let auto_block = auto::render(&relations).trim().to_string();
 
+    // DEV-066: description 본문 결정.
+    //   - description_explicit=true → DB 값 그대로 (BUG-012 의 의도).
+    //   - false + 파일 존재 + 파일 본문 non-empty → 파일 본문 사용 + DB sync.
+    //   - 그 외 → DB 값.
+    let description = if description_explicit {
+        quest.description.clone().unwrap_or_default()
+    } else {
+        match QuestFile::read(&path) {
+            Ok(existing) if !existing.description.trim().is_empty() => {
+                // 파일 본문이 DB 와 다르면 DB 도 sync.
+                let db_desc = quest.description.as_deref().unwrap_or("");
+                if existing.description != db_desc {
+                    sqlx::query("UPDATE quests SET description = ? WHERE id = ?")
+                        .bind(&existing.description)
+                        .bind(quest.id)
+                        .execute(pool)
+                        .await?;
+                }
+                existing.description
+            }
+            _ => quest.description.clone().unwrap_or_default(),
+        }
+    };
+
     let frontmatter = QuestFrontmatter {
         quest_id: quest.quest_id.clone(),
         title: quest.title.clone(),
-        status: status_name_to_slug(&quest.status_name_en),
+        status: quest.status_slug.clone(),
         urgency: quest.urgency,
         parent: relations.parent.as_ref().map(|r| r.quest_id.clone()),
         prerequisites: relations
@@ -370,15 +569,14 @@ async fn write_quest_file(store: &Store, quest: &QuestRow) -> AppResult<()> {
         created_at: quest.created_at.clone(),
         updated_at: quest.updated_at.clone(),
         deleted: false, // 본 함수는 alive quest 만 다룸; soft-delete 는 별도 ops
+        // DEV-076: DB → 파일 sync. quest 의 due 필드 그대로 propagate.
+        desired_due: quest.desired_due.clone(),
+        required_due: quest.required_due.clone(),
     };
 
     let qf = QuestFile {
         frontmatter,
-        description: if existing_description.is_empty() {
-            quest.description.clone().unwrap_or_default()
-        } else {
-            existing_description
-        },
+        description,
         auto_block,
     };
 
@@ -443,12 +641,6 @@ async fn parent_id_of(pool: &SqlitePool, id: i64) -> AppResult<Option<i64>> {
     Ok(row.flatten())
 }
 
-/// status name_en → slug (`In Progress` → `in_progress`).
-/// migrate.rs 와 같은 변환. 추후 statuses/ 파일 룩업 기반으로 바뀔 수 있음.
-fn status_name_to_slug(name_en: &str) -> String {
-    name_en.to_lowercase().replace(' ', "_")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -478,7 +670,7 @@ mod tests {
             quest_type_id: 1, // DEV
             title: "first quest".into(),
             description: Some("body text".into()),
-            status_id: 1, // Open
+            status_slug: "open".into(),
             urgency: Some(2),
             parent_quest_id: None,
         };
@@ -521,7 +713,7 @@ mod tests {
                 quest_type_id: 1,
                 title: "parent".into(),
                 description: None,
-                status_id: 1,
+                status_slug: "open".into(),
                 urgency: Some(3),
                 parent_quest_id: None,
             },
@@ -536,7 +728,7 @@ mod tests {
                 quest_type_id: 1,
                 title: "child".into(),
                 description: None,
-                status_id: 1,
+                status_slug: "open".into(),
                 urgency: Some(3),
                 parent_quest_id: Some(parent.id),
             },
@@ -577,7 +769,7 @@ mod tests {
                 quest_type_id: 1,
                 title: "t".into(),
                 description: None,
-                status_id: 1,
+                status_slug: "open".into(),
                 urgency: Some(3),
                 parent_quest_id: None,
             },
@@ -585,7 +777,7 @@ mod tests {
         .await
         .unwrap();
 
-        change_status(&store, q.id, ChangeStatusRequest { status_id: 2 })
+        change_status(&store, q.id, ChangeStatusRequest { status_slug: "in_progress".into() })
             .await
             .unwrap();
 
@@ -605,7 +797,7 @@ mod tests {
                 quest_type_id: 1,
                 title: "old".into(),
                 description: None,
-                status_id: 1,
+                status_slug: "open".into(),
                 urgency: Some(3),
                 parent_quest_id: None,
             },
@@ -628,6 +820,149 @@ mod tests {
         let content = std::fs::read_to_string(dir.join(".guild/quests/DEV-001.md")).unwrap();
         assert!(content.contains("title = \"new title\""));
         assert!(content.contains("urgency = 1"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-012: GUI 에서 description 수정 → 파일에도 반영되어야 함.
+    /// 이전엔 write_quest_file 의 "기존 파일 description 보존" fallback 이
+    /// DB 의 새 description 을 덮어써서 파일이 옛 값 그대로 유지됐음.
+    #[tokio::test]
+    async fn update_quest_description_writes_to_file() {
+        let dir = fresh_tmp("upd-desc");
+        let store = setup_store(&dir).await;
+        let q = create_quest(
+            &store,
+            CreateQuestRequest {
+                quest_type_id: 1,
+                title: "x".into(),
+                description: Some("original body".into()),
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        // 1차 수정: original → new body.
+        update_quest(
+            &store,
+            q.id,
+            UpdateQuestRequest {
+                title: None,
+                description: Some("new body".into()),
+                urgency: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        let content = std::fs::read_to_string(dir.join(".guild/quests/DEV-001.md")).unwrap();
+        assert!(content.contains("new body"), "새 description 이 파일에 반영");
+        assert!(!content.contains("original body"), "옛 description 은 사라져야");
+
+        // 2차 수정: new → newer.
+        update_quest(
+            &store,
+            q.id,
+            UpdateQuestRequest {
+                title: None,
+                description: Some("newer body".into()),
+                urgency: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        let content = std::fs::read_to_string(dir.join(".guild/quests/DEV-001.md")).unwrap();
+        assert!(content.contains("newer body"));
+        assert!(!content.contains("new body\n")); // 'new body' substring 은 'newer body' 안에도 있으니 newline 으로 정확 매칭.
+
+        // 3차: description 안 건드리는 mutation 은 description 보존.
+        update_quest(
+            &store,
+            q.id,
+            UpdateQuestRequest {
+                title: Some("renamed".into()),
+                description: None,
+                urgency: None,
+            },
+        )
+        .await
+        .unwrap();
+        let content = std::fs::read_to_string(dir.join(".guild/quests/DEV-001.md")).unwrap();
+        assert!(content.contains("renamed"));
+        assert!(content.contains("newer body"), "description 안 건드린 mutation 에선 보존");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-066: 외부 편집한 description 이 description 안 건드리는 mutation
+    /// (change_status) 호출 시 보존되고 DB 에도 sync 되어야 함.
+    /// BUG-012 이후 의도된 trade-off (외부 편집 → DB 옛 값으로 덮어쓰기) 의 해결.
+    #[tokio::test]
+    async fn change_status_preserves_external_description_and_syncs_db() {
+        let dir = fresh_tmp("dev066-ext-edit");
+        let store = setup_store(&dir).await;
+        let q = create_quest(
+            &store,
+            CreateQuestRequest {
+                quest_type_id: 1,
+                title: "x".into(),
+                description: Some("initial body".into()),
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        let path = dir.join(".guild/quests/DEV-001.md");
+
+        // 외부 편집 시뮬: 파일을 직접 열어 description 본문을 새로 씀.
+        // (reindex 호출 안 함 — 사용자가 의도적으로 skip 한 시나리오.)
+        let raw = std::fs::read_to_string(&path).unwrap();
+        let edited = raw.replace("initial body", "EXTERNALLY EDITED BODY");
+        std::fs::write(&path, edited).unwrap();
+
+        // description 안 건드리는 mutation 호출 (status 변경).
+        change_status(
+            &store,
+            q.id,
+            ChangeStatusRequest {
+                status_slug: "in_progress".into(),
+            },
+        )
+        .await
+        .unwrap();
+
+        // 1) 외부 편집한 본문이 파일에서 보존되어야 함.
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            content.contains("EXTERNALLY EDITED BODY"),
+            "외부 편집 보존. 실제: {}",
+            content
+        );
+        assert!(
+            !content.contains("initial body"),
+            "옛 DB 값으로 덮어쓰지 않음. 실제: {}",
+            content
+        );
+
+        // 2) status 변경은 정상 반영.
+        assert!(content.contains("status = \"in_progress\""));
+
+        // 3) DB 도 외부 편집 값으로 sync 되어야 함.
+        let q2 = crate::services::quests::fetch_by_id(&store.index_pool, q.id)
+            .await
+            .unwrap();
+        assert_eq!(
+            q2.description.as_deref().unwrap_or(""),
+            "EXTERNALLY EDITED BODY",
+            "DB description 이 파일 본문으로 sync 됨"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -756,13 +1091,167 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    // ─── DEV-055: change_quest_type ───
+
+    #[tokio::test]
+    async fn change_quest_type_renames_file_and_cascades_slug() {
+        let dir = fresh_tmp("type-rename");
+        let store = setup_store(&dir).await;
+
+        let q = create_quest(&store, mk("first", None)).await.unwrap();
+        assert_eq!(q.quest_id, "DEV-001");
+        assert!(dir.join(".guild/quests/DEV-001.md").exists());
+
+        // status 한 번 바꿔서 history row 1개 만들기.
+        let _ = change_status(
+            &store,
+            q.id,
+            ChangeStatusRequest { status_slug: "in_progress".into() },
+        )
+        .await
+        .unwrap();
+
+        // type 변경: DEV → BUG.
+        let updated = change_quest_type(
+            &store,
+            q.id,
+            ChangeTypeRequest { new_type_prefix: "BUG".into() },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(updated.quest_id, "BUG-001", "새 slug 부여 (BUG counter=0+1)");
+        assert_eq!(updated.type_prefix, "BUG");
+        assert_eq!(updated.number, 1);
+
+        // 파일 rename 확인.
+        assert!(!dir.join(".guild/quests/DEV-001.md").exists(), "옛 파일 삭제");
+        assert!(dir.join(".guild/quests/BUG-001.md").exists(), "새 파일 생성");
+        let content = std::fs::read_to_string(dir.join(".guild/quests/BUG-001.md")).unwrap();
+        assert!(content.contains("quest_id = \"BUG-001\""));
+
+        // quest_history.quest_slug 가 cascade.
+        let slugs: Vec<String> = sqlx::query_scalar(
+            "SELECT quest_slug FROM quest_history WHERE quest_id = ?",
+        )
+        .bind(q.id)
+        .fetch_all(&store.index_pool)
+        .await
+        .unwrap();
+        assert!(slugs.iter().all(|s| s == "BUG-001"), "history slug cascade: {slugs:?}");
+
+        // change_type 자체도 history 에 기록됨.
+        let ops: Vec<String> = sqlx::query_scalar(
+            "SELECT op FROM quest_history WHERE quest_id = ? ORDER BY id",
+        )
+        .bind(q.id)
+        .fetch_all(&store.index_pool)
+        .await
+        .unwrap();
+        assert!(ops.contains(&"change_type".to_string()), "ops: {ops:?}");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn change_quest_type_same_type_is_noop() {
+        let dir = fresh_tmp("type-noop");
+        let store = setup_store(&dir).await;
+
+        let q = create_quest(&store, mk("x", None)).await.unwrap();
+        let before_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM quest_history WHERE quest_id = ?")
+                .bind(q.id)
+                .fetch_one(&store.index_pool)
+                .await
+                .unwrap();
+
+        let result = change_quest_type(
+            &store,
+            q.id,
+            ChangeTypeRequest { new_type_prefix: "dev".into() }, // 대소문자 무시.
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result.quest_id, "DEV-001");
+        let after_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM quest_history WHERE quest_id = ?")
+                .bind(q.id)
+                .fetch_one(&store.index_pool)
+                .await
+                .unwrap();
+        assert_eq!(before_count, after_count, "NoOp — history 변화 없음");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn change_quest_type_rejects_unknown_type() {
+        let dir = fresh_tmp("type-unknown");
+        let store = setup_store(&dir).await;
+        let q = create_quest(&store, mk("x", None)).await.unwrap();
+
+        let err = change_quest_type(
+            &store,
+            q.id,
+            ChangeTypeRequest { new_type_prefix: "NOPE".into() },
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, crate::AppError::BadRequest(_)));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn change_quest_type_updates_related_quest_files() {
+        // 부모 / 자식 / 선행 관계 — 그쪽 파일들의 auto-block 안 slug 도 갱신.
+        let dir = fresh_tmp("type-related");
+        let store = setup_store(&dir).await;
+
+        let parent = create_quest(&store, mk("p", None)).await.unwrap(); // DEV-001
+        let child = create_quest(&store, mk("c", Some(parent.id))).await.unwrap(); // DEV-002
+        let prereq = create_quest(&store, mk("pre", None)).await.unwrap(); // DEV-003
+
+        // child 에 prereq 추가.
+        add_prerequisite(
+            &store,
+            child.id,
+            AddPrerequisiteRequest { prerequisite_id: prereq.id },
+        )
+        .await
+        .unwrap();
+
+        // child (DEV-002) 의 type 을 BUG 로 변경 → BUG-001.
+        let updated = change_quest_type(
+            &store,
+            child.id,
+            ChangeTypeRequest { new_type_prefix: "BUG".into() },
+        )
+        .await
+        .unwrap();
+        assert_eq!(updated.quest_id, "BUG-001");
+
+        // 부모 파일의 sub-quest 목록에 새 slug (BUG-001) 표시.
+        let parent_content =
+            std::fs::read_to_string(dir.join(".guild/quests/DEV-001.md")).unwrap();
+        assert!(parent_content.contains("BUG-001"), "parent.sub 갱신:\n{parent_content}");
+        assert!(!parent_content.contains("DEV-002"), "옛 slug 사라져야");
+
+        // prereq 파일의 (dependent 표기는 auto-block 에 없을 수도 — render 확인).
+        // 본 테스트는 parent 만 핵심으로 검증.
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// 간단한 CreateQuestRequest 빌더.
     fn mk(title: &str, parent: Option<i64>) -> CreateQuestRequest {
         CreateQuestRequest {
             quest_type_id: 1,
             title: title.into(),
             description: None,
-            status_id: 1,
+            status_slug: "open".into(),
             urgency: Some(3),
             parent_quest_id: parent,
         }
@@ -783,7 +1272,7 @@ mod tests {
                 quest_type_id: 1,
                 title: "x".into(),
                 description: Some("custom body".into()),
-                status_id: 1,
+                status_slug: "open".into(),
                 urgency: Some(3),
                 parent_quest_id: None,
             },
@@ -792,6 +1281,67 @@ mod tests {
         .unwrap();
         let content = std::fs::read_to_string(dir.join(".guild/quests/DEV-001.md")).unwrap();
         assert!(content.contains("custom body"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG: 외부 편집으로 quests 테이블의 max(number) 가 counter 보다 커진 경우
+    /// (ef010d5 같은 사용자 직접 추가), 다음 create_quest 가 counter+1 로 INSERT 시도
+    /// → `UNIQUE (quest_type_id, number)` 충돌. self-heal 이 자동 보정해야 함.
+    #[tokio::test]
+    async fn create_self_heals_when_counter_lags_behind_actual_max() {
+        let dir = fresh_tmp("counter-lag");
+        let store = setup_store(&dir).await;
+
+        // 1) 정상 경로로 DEV-001 만들고,
+        let q1 = create_quest(
+            &store,
+            CreateQuestRequest {
+                quest_type_id: 1,
+                title: "first".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(q1.number, 1);
+
+        // 2) 외부 편집을 시뮬레이션 — quests 에 DEV-005 직접 INSERT (counter 는 안 건드림).
+        sqlx::query(
+            "INSERT INTO quests
+               (id, quest_type_id, number, title, status_id, urgency, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))",
+        )
+        .bind(100)
+        .bind(1)
+        .bind(5)
+        .bind("external")
+        .bind(1)
+        .bind(3)
+        .execute(&store.index_pool)
+        .await
+        .unwrap();
+        // 이 시점 counter.last_number = 1 (DEV-001 으로 +1 만 됨), max(number) = 5.
+
+        // 3) 새 quest 만들면 self-heal 이 counter 를 5 로 끌어올린 뒤 +1 → DEV-006.
+        let q2 = create_quest(
+            &store,
+            CreateQuestRequest {
+                quest_type_id: 1,
+                title: "after heal".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(q2.number, 6, "self-heal 이 max(actual)+1 부여해야");
+        assert_eq!(q2.quest_id, "DEV-006");
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -12,9 +12,17 @@
 //!
 //! crash 시: journal 에 기록된 op 는 다음 시작에서 replay 또는 reindex 시 정합 복구.
 
+pub mod campaigns;
+pub mod counter;
+pub mod meta;
 pub mod quests;
 
+pub use counter::check_and_fix_counters;
+pub use meta::{
+    count_quests_by_status, count_quests_by_type, create_status, create_type, delete_status,
+    delete_type, rename_status_slug, rename_type, update_status, update_type,
+};
 pub use quests::{
-    add_prerequisite, change_parent, change_status, create_quest, delete_quest,
-    remove_prerequisite, restore_quest, update_quest,
+    add_prerequisite, change_parent, change_quest_type, change_status, create_quest,
+    delete_quest, remove_prerequisite, restore_quest, set_due_dates, update_quest,
 };

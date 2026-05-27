@@ -130,7 +130,7 @@ async fn test_create_quest() {
     let (status, body) = post(
         setup().await,
         "/api/quests",
-        json!({ "quest_type_id": 1, "title": "implement login", "status_id": 1 }),
+        json!({ "quest_type_id": 1, "title": "implement login", "status_slug": "open" }),
     )
     .await;
     assert_eq!(status, StatusCode::CREATED);
@@ -146,19 +146,19 @@ async fn test_quest_id_increments_per_type() {
     let (_, q1) = post(
         app.clone(),
         "/api/quests",
-        json!({ "quest_type_id": 1, "title": "first", "status_id": 1 }),
+        json!({ "quest_type_id": 1, "title": "first", "status_slug": "open" }),
     )
     .await;
     let (_, q2) = post(
         app.clone(),
         "/api/quests",
-        json!({ "quest_type_id": 1, "title": "second", "status_id": 1 }),
+        json!({ "quest_type_id": 1, "title": "second", "status_slug": "open" }),
     )
     .await;
     let (_, q3) = post(
         app.clone(),
         "/api/quests",
-        json!({ "quest_type_id": 2, "title": "bug", "status_id": 1 }),
+        json!({ "quest_type_id": 2, "title": "bug", "status_slug": "open" }),
     )
     .await;
 
@@ -170,12 +170,1028 @@ async fn test_quest_id_increments_per_type() {
 #[tokio::test]
 async fn test_list_quests() {
     let app = setup().await;
-    post(app.clone(), "/api/quests", json!({ "quest_type_id": 1, "title": "q1", "status_id": 1 })).await;
-    post(app.clone(), "/api/quests", json!({ "quest_type_id": 1, "title": "q2", "status_id": 1 })).await;
+    post(app.clone(), "/api/quests", json!({ "quest_type_id": 1, "title": "q1", "status_slug": "open" })).await;
+    post(app.clone(), "/api/quests", json!({ "quest_type_id": 1, "title": "q2", "status_slug": "open" })).await;
 
     let (status, body) = get(app, "/api/quests").await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body.as_array().unwrap().len(), 2);
+}
+
+// ─────────────── DEV-027: quest list 필터 / 정렬 / limit ───────────────
+
+/// quest 3종 (DEV-001 open / BUG-001 open / DEV-002 done) 미리 만들어 둠.
+async fn setup_with_mixed_quests() -> Router {
+    let app = setup().await;
+    // DEV-001 (urgency 2 — high)
+    post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "dev-open", "status_slug": "open", "urgency": 2 })
+    ).await;
+    // DEV-002 (urgency 4 — low, 곧 done 으로 옮김)
+    let (_, dev2) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "dev-done", "status_slug": "open", "urgency": 4 })
+    ).await;
+    let dev2_id = dev2["id"].as_i64().unwrap();
+    // status_id 3 = Done (migration 시드)
+    patch(app.clone(), &format!("/api/quests/{dev2_id}/status"),
+        json!({ "status_slug": "done" })
+    ).await;
+    // BUG-001 (urgency 1 — critical)
+    post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 2, "title": "bug-open", "status_slug": "open", "urgency": 1 })
+    ).await;
+    app
+}
+
+#[tokio::test]
+async fn test_list_filter_by_type_prefix() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests?type=DEV").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 2);
+    for q in arr {
+        assert_eq!(q["type_prefix"], "DEV");
+    }
+}
+
+#[tokio::test]
+async fn test_list_filter_type_case_insensitive() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests?type=bug").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0]["quest_id"], "BUG-001");
+}
+
+#[tokio::test]
+async fn test_list_filter_by_status_name_en() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests?status=Open").await;
+    assert_eq!(body.as_array().unwrap().len(), 2); // DEV-001 + BUG-001
+}
+
+#[tokio::test]
+async fn test_list_filter_status_slug() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests?status=open").await;
+    assert_eq!(body.as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn test_list_filter_status_underscore_or_dash() {
+    // 'in_progress' / 'in-progress' / 'In Progress' 동일 매칭.
+    let app = setup().await;
+    let (_, created) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "wip", "status_slug": "open" })
+    ).await;
+    let id = created["id"].as_i64().unwrap();
+    patch(app.clone(), &format!("/api/quests/{id}/status"),
+        json!({ "status_slug": "in_progress" })  // In Progress
+    ).await;
+
+    for variant in ["In Progress", "in progress", "in_progress", "in-progress", "IN_PROGRESS"] {
+        let url = format!("/api/quests?status={}", urlencode_test(variant));
+        let (_, body) = get(app.clone(), &url).await;
+        assert_eq!(
+            body.as_array().unwrap().len(),
+            1,
+            "variant {variant:?} 가 in_progress 1개 매칭해야 함"
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_list_filter_combined_type_and_status() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests?type=DEV&status=Done").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0]["quest_id"], "DEV-002");
+}
+
+#[tokio::test]
+async fn test_list_sort_by_urgency() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests?sort=urgency").await;
+    let arr = body.as_array().unwrap();
+    // urgency ASC — 1 (BUG-001) 먼저, 2 (DEV-001), 4 (DEV-002)
+    assert_eq!(arr[0]["quest_id"], "BUG-001");
+    assert_eq!(arr[1]["quest_id"], "DEV-001");
+    assert_eq!(arr[2]["quest_id"], "DEV-002");
+}
+
+#[tokio::test]
+async fn test_list_sort_default_is_id_desc() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests").await;
+    let arr = body.as_array().unwrap();
+    // id DESC — 마지막에 만든 BUG-001 가 id 가장 큼.
+    assert_eq!(arr[0]["quest_id"], "BUG-001");
+}
+
+#[tokio::test]
+async fn test_list_sort_invalid_returns_bad_request() {
+    let app = setup_with_mixed_quests().await;
+    let (status, _) = get(app, "/api/quests?sort=titlexyz").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_list_limit() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests?limit=2").await;
+    assert_eq!(body.as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn test_list_limit_zero_returns_empty() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests?limit=0").await;
+    assert_eq!(body.as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn test_list_limit_negative_bad_request() {
+    let app = setup_with_mixed_quests().await;
+    let (status, _) = get(app, "/api/quests?limit=-1").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_list_filter_returns_empty_when_no_match() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests?type=REQ").await;
+    assert_eq!(body.as_array().unwrap().len(), 0);
+}
+
+// === DEV-027 보강: 빈 문자열 / sort case / multi-value / urgency / parent / no_parent / reverse / offset ===
+
+#[tokio::test]
+async fn test_list_empty_type_param_returns_all() {
+    let app = setup_with_mixed_quests().await;
+    // ?type= (빈 값) 은 필터 미지정으로 취급 → 전체.
+    let (_, body) = get(app, "/api/quests?type=").await;
+    assert_eq!(body.as_array().unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn test_list_empty_status_param_returns_all() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests?status=").await;
+    assert_eq!(body.as_array().unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn test_list_sort_case_insensitive() {
+    let app = setup_with_mixed_quests().await;
+    // ?sort=ID, ?sort=Urgency 도 통과해야 함.
+    let (s1, _) = get(app.clone(), "/api/quests?sort=ID").await;
+    assert_eq!(s1, StatusCode::OK);
+    let (s2, _) = get(app, "/api/quests?sort=URGENCY").await;
+    assert_eq!(s2, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_list_multi_type() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests?type=DEV,BUG").await;
+    assert_eq!(body.as_array().unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn test_list_multi_type_one_unknown() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests?type=DEV,REQ").await;
+    // DEV 2개만 매칭 (REQ 는 quest 없음).
+    assert_eq!(body.as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn test_list_multi_status() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests?status=open,done").await;
+    assert_eq!(body.as_array().unwrap().len(), 3); // 전부 open or done
+}
+
+#[tokio::test]
+async fn test_list_urgency_single() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests?urgency=1").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0]["quest_id"], "BUG-001"); // urgency 1 = critical
+}
+
+#[tokio::test]
+async fn test_list_urgency_out_of_range() {
+    let app = setup_with_mixed_quests().await;
+    let (s, _) = get(app, "/api/quests?urgency=5").await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+}
+
+// === DEV-028: urgency CSV / 범위 + 시간 범위 ===
+
+#[tokio::test]
+async fn test_list_urgency_csv() {
+    let app = setup_with_mixed_quests().await;
+    // mixed: BUG (urgency=1), DEV-1 (urgency=2), DEV-2 (urgency=4)
+    let (_, body) = get(app, "/api/quests?urgency=1,2").await;
+    assert_eq!(body.as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn test_list_urgency_range() {
+    let app = setup_with_mixed_quests().await;
+    // 1..=2 → 2개 (BUG + DEV-1).
+    let (_, body) = get(app, "/api/quests?urgency=1-2").await;
+    assert_eq!(body.as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn test_list_urgency_range_full() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests?urgency=1-4").await;
+    assert_eq!(body.as_array().unwrap().len(), 3); // 전체
+}
+
+#[tokio::test]
+async fn test_list_urgency_range_invalid() {
+    let app = setup_with_mixed_quests().await;
+    // hi < lo
+    let (s, _) = get(app, "/api/quests?urgency=3-1").await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_list_urgency_range_out_of_bounds() {
+    let app = setup_with_mixed_quests().await;
+    let (s, _) = get(app, "/api/quests?urgency=1-5").await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_list_created_after_filters() {
+    let app = setup_with_mixed_quests().await;
+    // 모두 방금 생성 → 미래 시점이면 0개.
+    let (_, body) = get(app, "/api/quests?created_after=2099-01-01").await;
+    assert_eq!(body.as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn test_list_created_after_includes_all() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests?created_after=2000-01-01").await;
+    assert_eq!(body.as_array().unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn test_list_updated_before_filters() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests?updated_before=2000-01-01").await;
+    assert_eq!(body.as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn test_list_created_range_combined() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(
+        app,
+        "/api/quests?created_after=2000-01-01&created_before=2099-01-01",
+    )
+    .await;
+    assert_eq!(body.as_array().unwrap().len(), 3);
+}
+
+// === DEV-028 후속: TZ-aware 시간 비교 ===
+// DEV-041 후 stored ts 는 mixed format ("...Z" 와 "...+09:00"). lex 비교가
+// 깨지는 회귀 시나리오를 strftime 변환으로 해결했는지 확인.
+
+#[tokio::test]
+async fn test_list_created_after_tz_aware_finds_recent_with_offset_format() {
+    let app = setup().await;
+    // setup() 직후 INSERT 되는 quest 들은 새 format (로컬 TZ +offset) 으로 저장.
+    let (_, q) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "recent", "status_slug": "open" })).await;
+    let created = q["created_at"].as_str().unwrap().to_string();
+    // created_at 직전 1분 → "after" 로 검색.
+    // 단순 lex 라면 stored ("...+09:00") 가 input ("...Z") 보다 작게 비교될 수 있음
+    // ('+' < 'Z' ASCII). strftime 사용 시 절대 시각 기반 → 정상 매치.
+    let one_min_before = subtract_one_minute(&created);
+    let (_, body) = get(app, &format!("/api/quests?created_after={}", url_encode(&one_min_before))).await;
+    let arr = body.as_array().unwrap();
+    assert!(arr.iter().any(|x| x["title"] == "recent"),
+        "방금 만든 quest 가 'after one minute ago' 검색에 포함되어야 함. \
+         stored={created:?}, query={one_min_before:?}, results={arr:?}");
+}
+
+/// "2026-05-22T13:41:10+09:00" 같은 입력에서 분 부분만 -1.
+/// 매우 간단한 변환 — 초과 / 일자 경계는 무시 (이 테스트 시나리오에선 안 발생).
+fn subtract_one_minute(s: &str) -> String {
+    // 분은 14..16 위치.
+    let mut chars: Vec<char> = s.chars().collect();
+    let minute_str: String = chars[14..16].iter().collect();
+    let mut m: i32 = minute_str.parse().unwrap_or(0);
+    m -= 1;
+    if m < 0 {
+        m += 60;
+        // 시간을 -1 — 시 위치 11..13.
+        let hour_str: String = chars[11..13].iter().collect();
+        let mut h: i32 = hour_str.parse().unwrap_or(0);
+        h -= 1;
+        if h < 0 { h += 24; }
+        let h_s = format!("{h:02}");
+        chars[11] = h_s.chars().next().unwrap();
+        chars[12] = h_s.chars().nth(1).unwrap();
+    }
+    let m_s = format!("{m:02}");
+    chars[14] = m_s.chars().next().unwrap();
+    chars[15] = m_s.chars().nth(1).unwrap();
+    chars.iter().collect()
+}
+
+fn url_encode(s: &str) -> String {
+    // 최소: `:` `+` 만 인코딩 (queryString 에서 `+` 는 공백으로 해석되므로).
+    s.replace('+', "%2B").replace(':', "%3A")
+}
+
+#[tokio::test]
+async fn test_list_created_after_with_naked_iso_uses_local_tz() {
+    let app = setup().await;
+    let (_, q) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "naked-tz", "status_slug": "open" })).await;
+    // created_at 의 날짜 추출 (앞 10자, "YYYY-MM-DD").
+    let created = q["created_at"].as_str().unwrap();
+    let date_part = &created[..10];
+
+    // 입력 "YYYY-MM-DDT00:00:00" (TZ 없음) — normalize_filter_ts 가 로컬 TZ 부착.
+    let query_str = format!("{date_part}T00:00:00");
+    let (_, body) = get(app, &format!("/api/quests?created_after={}", url_encode(&query_str))).await;
+    let arr = body.as_array().unwrap();
+    assert!(arr.iter().any(|x| x["title"] == "naked-tz"),
+        "naked datetime input 이 로컬 TZ 로 해석되어야 함. \
+         stored={created:?}, query={query_str:?}");
+}
+
+#[tokio::test]
+async fn test_list_urgency_empty_string_no_filter() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests?urgency=").await;
+    assert_eq!(body.as_array().unwrap().len(), 3); // 미지정 동일
+}
+
+// === DEV-029: 관계 필터 (has-prereq / has-sub) ===
+
+async fn setup_with_relations() -> Router {
+    let app = setup().await;
+    // q1, q2 만 생성. q2 의 parent = q1. q3 추가 후 q3 prereq q1.
+    let (_, q1) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "q1-leaf-parent", "status_slug": "open" })).await;
+    let q1_id = q1["id"].as_i64().unwrap();
+    let (_, _q2) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "q2-child", "status_slug": "open", "parent_quest_id": q1_id })).await;
+    let (_, q3) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "q3-has-prereq", "status_slug": "open" })).await;
+    let q3_id = q3["id"].as_i64().unwrap();
+    post(app.clone(),
+        &format!("/api/quests/{q3_id}/prerequisites"),
+        json!({ "prerequisite_id": q1_id })).await;
+    app
+}
+
+#[tokio::test]
+async fn test_list_has_prereq() {
+    let app = setup_with_relations().await;
+    let (_, body) = get(app, "/api/quests?has_prereq=true").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0]["title"], "q3-has-prereq");
+}
+
+#[tokio::test]
+async fn test_list_no_prereq() {
+    let app = setup_with_relations().await;
+    let (_, body) = get(app, "/api/quests?no_prereq=true").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 2); // q1, q2
+}
+
+#[tokio::test]
+async fn test_list_has_sub() {
+    let app = setup_with_relations().await;
+    let (_, body) = get(app, "/api/quests?has_sub=true").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0]["title"], "q1-leaf-parent");
+}
+
+#[tokio::test]
+async fn test_list_no_sub() {
+    let app = setup_with_relations().await;
+    let (_, body) = get(app, "/api/quests?no_sub=true").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 2); // q2, q3 (둘 다 sub 없음)
+}
+
+#[tokio::test]
+async fn test_list_no_prereq_and_no_sub_combined() {
+    let app = setup_with_relations().await;
+    // q2: parent 있지만 prereq 없음, sub 없음
+    let (_, body) = get(app, "/api/quests?no_prereq=true&no_sub=true").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0]["title"], "q2-child");
+}
+
+#[tokio::test]
+async fn test_list_has_prereq_and_no_prereq_mutually_exclusive() {
+    let app = setup_with_relations().await;
+    let (s, _) = get(app, "/api/quests?has_prereq=true&no_prereq=true").await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_list_has_sub_and_no_sub_mutually_exclusive() {
+    let app = setup_with_relations().await;
+    let (s, _) = get(app, "/api/quests?has_sub=true&no_sub=true").await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+}
+
+// === DEV-030: --search 검색 ===
+
+async fn setup_for_search() -> Router {
+    let app = setup().await;
+    post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "Tauri invoke handler",
+                "description": "Rust 측 commands.rs 작성", "status_slug": "open" })).await;
+    post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "Frontend transport adapter",
+                "description": "HTTP / Tauri 자동 분기", "status_slug": "open" })).await;
+    post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 2, "title": "Quest list 검색",
+                "description": "title / description 부분 일치", "status_slug": "open" })).await;
+    app
+}
+
+#[tokio::test]
+async fn test_list_search_in_title() {
+    let app = setup_for_search().await;
+    let (_, body) = get(app, "/api/quests?search=Tauri").await;
+    let arr = body.as_array().unwrap();
+    // title 또는 description 둘 다 검사 → "Tauri invoke handler"
+    // + "Frontend transport adapter" (description 에 Tauri 포함) = 2.
+    assert_eq!(arr.len(), 2);
+}
+
+#[tokio::test]
+async fn test_list_search_in_description_only() {
+    let app = setup_for_search().await;
+    let (_, body) = get(app, "/api/quests?search=commands.rs").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0]["title"], "Tauri invoke handler");
+}
+
+#[tokio::test]
+async fn test_list_search_case_insensitive() {
+    let app = setup_for_search().await;
+    let (_, body1) = get(app.clone(), "/api/quests?search=TAURI").await;
+    let (_, body2) = get(app, "/api/quests?search=tauri").await;
+    assert_eq!(
+        body1.as_array().unwrap().len(),
+        body2.as_array().unwrap().len()
+    );
+}
+
+#[tokio::test]
+async fn test_list_search_multi_token_and() {
+    let app = setup_for_search().await;
+    // 두 토큰 모두 매치 → "title / description" 가 description 에 있는 1개.
+    let (_, body) = get(app, "/api/quests?search=title%20description").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0]["title"], "Quest list 검색");
+}
+
+#[tokio::test]
+async fn test_list_search_no_match() {
+    let app = setup_for_search().await;
+    let (_, body) = get(app, "/api/quests?search=NonexistentKeyword").await;
+    assert_eq!(body.as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn test_list_search_korean() {
+    let app = setup_for_search().await;
+    let (_, body) = get(app, "/api/quests?search=%EA%B2%80%EC%83%89").await; // "검색"
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0]["title"], "Quest list 검색");
+}
+
+#[tokio::test]
+async fn test_list_search_empty_no_filter() {
+    let app = setup_for_search().await;
+    let (_, body) = get(app, "/api/quests?search=").await;
+    assert_eq!(body.as_array().unwrap().len(), 3);
+}
+
+// === DEV-037: title_only 옵션 ===
+
+#[tokio::test]
+async fn test_list_search_title_only_excludes_description() {
+    let app = setup_for_search().await;
+    // "Tauri" 는 title 1건 + description 1건. title_only=true → 1건.
+    let (_, body) = get(app, "/api/quests?search=Tauri&title_only=true").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0]["title"], "Tauri invoke handler");
+}
+
+#[tokio::test]
+async fn test_list_search_title_only_description_keyword_no_match() {
+    let app = setup_for_search().await;
+    // "commands.rs" 는 description 에만. title_only=true → 0건.
+    let (_, body) = get(app, "/api/quests?search=commands.rs&title_only=true").await;
+    assert_eq!(body.as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn test_list_search_title_only_false_default_behavior() {
+    let app = setup_for_search().await;
+    // title_only=false 명시 → 기본 동작 (title + description).
+    let (_, body) = get(app, "/api/quests?search=Tauri&title_only=false").await;
+    assert_eq!(body.as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn test_list_search_title_only_multi_token_and() {
+    let app = setup_for_search().await;
+    // "Quest" + "검색" 둘 다 title 에 있어야 매치 → 1건.
+    let (_, body) = get(app, "/api/quests?search=Quest%20%EA%B2%80%EC%83%89&title_only=true").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0]["title"], "Quest list 검색");
+}
+
+// === DEV-040: slug (quest_id) 검색 ===
+
+#[tokio::test]
+async fn test_list_search_full_slug() {
+    let app = setup_for_search().await;
+    // 첫 quest 의 slug 는 DEV-001 (test type seed 의 DEV).
+    let (_, body) = get(app, "/api/quests?search=DEV-001").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0]["quest_id"], "DEV-001");
+}
+
+#[tokio::test]
+async fn test_list_search_partial_number() {
+    let app = setup_for_search().await;
+    // "002" 는 DEV-002 의 slug 만 매치 (title / description 에 002 없음).
+    let (_, body) = get(app, "/api/quests?search=002").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0]["quest_id"], "DEV-002");
+}
+
+#[tokio::test]
+async fn test_list_search_prefix_matches_all_of_type() {
+    let app = setup_for_search().await;
+    // "BUG-" 는 prefix BUG 전체 (1건 — setup 에서 BUG 1개 만듦).
+    let (_, body) = get(app, "/api/quests?search=BUG-").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert!(arr[0]["quest_id"].as_str().unwrap().starts_with("BUG-"));
+}
+
+#[tokio::test]
+async fn test_list_search_slug_with_title_only_still_matches() {
+    let app = setup_for_search().await;
+    // title_only=true 여도 slug 는 매치 (slug 는 메타 정보).
+    let (_, body) = get(app, "/api/quests?search=DEV-001&title_only=true").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0]["quest_id"], "DEV-001");
+}
+
+// === DEV-013: Quest history ===
+
+#[tokio::test]
+async fn test_history_empty_initially() {
+    let app = setup().await;
+    let (_, q) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "h-empty", "status_slug": "open" })).await;
+    let id = q["id"].as_i64().unwrap();
+    let (s, body) = get(app, &format!("/api/quests/{id}/history")).await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(body.as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn test_history_change_status_recorded() {
+    let app = setup().await;
+    let (_, q) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "h-status", "status_slug": "open" })).await;
+    let id = q["id"].as_i64().unwrap();
+    patch(app.clone(), &format!("/api/quests/{id}/status"),
+        json!({ "status_slug": "in_progress" })).await;
+    let (_, body) = get(app, &format!("/api/quests/{id}/history")).await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0]["op"], "change_status");
+    // DEV-042: slug 기반. migration 0001 seed: id 1=Open, id 2=In Progress.
+    assert_eq!(arr[0]["old_value"], "open");
+    assert_eq!(arr[0]["new_value"], "in_progress");
+}
+
+#[tokio::test]
+async fn test_history_multiple_status_changes_ordered_desc() {
+    let app = setup().await;
+    let (_, q) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "h-multi", "status_slug": "open" })).await;
+    let id = q["id"].as_i64().unwrap();
+    patch(app.clone(), &format!("/api/quests/{id}/status"), json!({ "status_slug": "in_progress" })).await;
+    patch(app.clone(), &format!("/api/quests/{id}/status"), json!({ "status_slug": "done" })).await;
+    patch(app.clone(), &format!("/api/quests/{id}/status"), json!({ "status_slug": "open" })).await;
+    let (_, body) = get(app, &format!("/api/quests/{id}/history")).await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 3);
+    // 최신 → 과거. DEV-042: slug. migration 0001: 1=Open, 2=In Progress, 3=Done.
+    assert_eq!(arr[0]["new_value"], "open");
+    assert_eq!(arr[1]["new_value"], "done");
+    assert_eq!(arr[2]["new_value"], "in_progress");
+}
+
+// === DEV-042: slug 기반 history ===
+
+#[tokio::test]
+async fn test_history_records_slugs_not_ids() {
+    let app = setup().await;
+    let (_, q) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "slug-hist", "status_slug": "open" })).await;
+    let id = q["id"].as_i64().unwrap();
+    // migration 0001 seed 의 id 5 = "On Hold" → slug "on_hold".
+    patch(app.clone(), &format!("/api/quests/{id}/status"), json!({ "status_slug": "on_hold" })).await;
+    let (_, body) = get(app, &format!("/api/quests/{id}/history")).await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr[0]["old_value"], "open");
+    assert_eq!(arr[0]["new_value"], "on_hold");
+    // 숫자 문자열이 아니어야 함.
+    assert!(arr[0]["new_value"].as_str().unwrap().parse::<i64>().is_err(),
+        "new_value 가 숫자면 안 됨: {:?}", arr[0]["new_value"]);
+}
+
+#[tokio::test]
+async fn test_status_endpoint_exposes_slug() {
+    let app = setup().await;
+    let (_, body) = get(app, "/api/quest-statuses").await;
+    let arr = body.as_array().unwrap();
+    // 모든 행이 slug 필드 + non-empty.
+    for s in arr {
+        let slug = s["slug"].as_str().expect("slug must be string");
+        assert!(!slug.is_empty(), "empty slug in {s:?}");
+    }
+    // migration 0001 seed 의 5개 slug (name_en 에서 파생).
+    let slugs: Vec<&str> = arr.iter().map(|s| s["slug"].as_str().unwrap()).collect();
+    for expected in ["open", "in_progress", "done", "cancelled", "on_hold"] {
+        assert!(slugs.contains(&expected), "missing slug {expected} in {slugs:?}");
+    }
+}
+
+// === BUG-011: no-op status change 는 history 에 기록 안 함 ===
+
+#[tokio::test]
+async fn test_change_status_to_same_does_not_record_history() {
+    let app = setup().await;
+    let (_, q) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "noop-status", "status_slug": "open" })).await;
+    let id = q["id"].as_i64().unwrap();
+    let original_updated = q["updated_at"].as_str().unwrap().to_string();
+
+    // 같은 상태 (1=Open) 로 재요청 — 변화 없어야 함.
+    let (s, body) = patch(app.clone(), &format!("/api/quests/{id}/status"),
+        json!({ "status_slug": "open" })).await;
+    assert_eq!(s, StatusCode::OK);
+    // updated_at 도 변경 없음.
+    assert_eq!(body["updated_at"].as_str().unwrap(), original_updated,
+        "no-op 시 updated_at 변경되면 안 됨");
+
+    // history 0건.
+    let (_, hist) = get(app, &format!("/api/quests/{id}/history")).await;
+    assert_eq!(hist.as_array().unwrap().len(), 0,
+        "no-op 시 history 가 기록되면 안 됨: {hist}");
+}
+
+#[tokio::test]
+async fn test_change_status_actual_change_still_records() {
+    // 회귀: BUG-011 수정 후 정상 변경은 여전히 기록되는지.
+    let app = setup().await;
+    let (_, q) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "real-change", "status_slug": "open" })).await;
+    let id = q["id"].as_i64().unwrap();
+    patch(app.clone(), &format!("/api/quests/{id}/status"), json!({ "status_slug": "in_progress" })).await;
+    let (_, hist) = get(app, &format!("/api/quests/{id}/history")).await;
+    assert_eq!(hist.as_array().unwrap().len(), 1);
+}
+
+// === DEV-047: QuestDetail.parent 노출 ===
+
+#[tokio::test]
+async fn test_quest_detail_includes_parent_row() {
+    let app = setup().await;
+    let (_, parent) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "parent-q", "status_slug": "open" })).await;
+    let parent_id = parent["id"].as_i64().unwrap();
+    let (_, child) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "child-q", "status_slug": "open", "parent_quest_id": parent_id })).await;
+    let child_id = child["id"].as_i64().unwrap();
+
+    let (_, body) = get(app, &format!("/api/quests/{child_id}")).await;
+    let parent_obj = body.get("parent").expect("parent field must exist");
+    assert!(parent_obj.is_object(), "parent 는 객체여야 함: {parent_obj}");
+    assert_eq!(parent_obj["title"], "parent-q");
+    assert_eq!(parent_obj["id"], parent_id);
+}
+
+#[tokio::test]
+async fn test_quest_detail_parent_omitted_or_null_for_root() {
+    let app = setup().await;
+    let (_, q) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "root", "status_slug": "open" })).await;
+    let id = q["id"].as_i64().unwrap();
+    let (_, body) = get(app, &format!("/api/quests/{id}")).await;
+    // serde skip_serializing_if=Option::is_none — root 는 parent 키 없음 또는 null.
+    let p = body.get("parent");
+    assert!(p.is_none() || p.unwrap().is_null(),
+        "root quest 의 parent 는 null/생략 이어야 함: {body}");
+}
+
+// === DEV-049: history/position 이 quest_slug 로 stable identifier ===
+
+#[tokio::test]
+async fn test_history_row_has_quest_slug() {
+    let app = setup().await;
+    let (_, q) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "slug-hist", "status_slug": "open" })).await;
+    let id = q["id"].as_i64().unwrap();
+    let slug = q["quest_id"].as_str().unwrap().to_string();
+    patch(app.clone(), &format!("/api/quests/{id}/status"), json!({ "status_slug": "in_progress" })).await;
+    // history 의 raw DB 확인은 안 되지만 fetch 한 응답에 quest_slug 가 있는지 확인.
+    let (_, body) = get(app, &format!("/api/quests/{id}/history")).await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    // QuestHistoryEntry 가 quest_slug 필드를 노출하는지.
+    let qs = arr[0].get("quest_slug").and_then(|v| v.as_str());
+    assert_eq!(qs, Some(slug.as_str()),
+        "history row 의 quest_slug 가 quest 슬러그와 일치해야 함: {body}");
+}
+
+#[tokio::test]
+async fn test_position_row_has_quest_slug() {
+    let app = setup().await;
+    let (_, q) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "slug-pos", "status_slug": "open" })).await;
+    let id = q["id"].as_i64().unwrap();
+    let slug = q["quest_id"].as_str().unwrap().to_string();
+    // position 업데이트.
+    let (s, _) = put(app.clone(), &format!("/api/quests/{id}/position"),
+        json!({ "x": 100.0, "y": 200.0 })).await;
+    assert_eq!(s, StatusCode::OK);
+    // 전체 position 목록에서 해당 slug 의 위치 확인 — API 응답에 quest_slug 노출 여부.
+    let (_, positions) = get(app, "/api/quest-positions").await;
+    let arr = positions.as_array().unwrap();
+    let found = arr.iter().find(|p| p.get("quest_slug").and_then(|v| v.as_str()) == Some(&slug));
+    assert!(found.is_some(),
+        "position 응답에 quest_slug 가 노출되어야 함: {positions}");
+}
+
+#[tokio::test]
+async fn test_history_isolated_per_quest() {
+    let app = setup().await;
+    let (_, q1) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "h-iso-1", "status_slug": "open" })).await;
+    let (_, q2) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "h-iso-2", "status_slug": "open" })).await;
+    let id1 = q1["id"].as_i64().unwrap();
+    let id2 = q2["id"].as_i64().unwrap();
+    patch(app.clone(), &format!("/api/quests/{id1}/status"), json!({ "status_slug": "in_progress" })).await;
+    let (_, body1) = get(app.clone(), &format!("/api/quests/{id1}/history")).await;
+    let (_, body2) = get(app, &format!("/api/quests/{id2}/history")).await;
+    assert_eq!(body1.as_array().unwrap().len(), 1);
+    assert_eq!(body2.as_array().unwrap().len(), 0);
+}
+
+// === DEV-041: 타임스탬프 ISO 8601 + TZ offset 형식 ===
+
+/// 새로 INSERT 된 행의 ts / created_at 가 `YYYY-MM-DDTHH:MM:SS±HH:MM` 패턴
+/// (또는 Z) 인지 확인. 절대 시각 자체는 검증하지 않음 (실행 시점 의존).
+fn assert_iso8601_with_tz(ts: &str, field: &str) {
+    // 길이 20 (Z) 또는 25 (+HH:MM).
+    let ok = (ts.len() == 20 && ts.ends_with('Z'))
+        || (ts.len() == 25 && (ts.as_bytes()[19] == b'+' || ts.as_bytes()[19] == b'-'));
+    assert!(ok, "{field} = {ts:?} — ISO 8601 with TZ marker 기대");
+    assert_eq!(&ts[4..5], "-", "{field}: year-month sep");
+    assert_eq!(&ts[7..8], "-", "{field}: month-day sep");
+    assert_eq!(&ts[10..11], "T", "{field}: date-time sep");
+}
+
+#[tokio::test]
+async fn test_create_quest_timestamps_have_tz_marker() {
+    let app = setup().await;
+    let (_, q) = post(app, "/api/quests",
+        json!({ "quest_type_id": 1, "title": "ts-test", "status_slug": "open" })).await;
+    let created = q["created_at"].as_str().expect("created_at must be string");
+    let updated = q["updated_at"].as_str().expect("updated_at must be string");
+    assert_iso8601_with_tz(created, "created_at");
+    assert_iso8601_with_tz(updated, "updated_at");
+}
+
+#[tokio::test]
+async fn test_history_ts_has_tz_marker() {
+    let app = setup().await;
+    let (_, q) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "hist-ts", "status_slug": "open" })).await;
+    let id = q["id"].as_i64().unwrap();
+    patch(app.clone(), &format!("/api/quests/{id}/status"), json!({ "status_slug": "in_progress" })).await;
+    let (_, body) = get(app, &format!("/api/quests/{id}/history")).await;
+    let ts = body[0]["ts"].as_str().expect("ts must be string");
+    assert_iso8601_with_tz(ts, "history.ts");
+}
+
+#[tokio::test]
+async fn test_update_quest_bumps_updated_at_to_new_format() {
+    let app = setup().await;
+    let (_, q) = post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "upd-ts", "status_slug": "open" })).await;
+    let id = q["id"].as_i64().unwrap();
+    let (_, updated) = patch(app, &format!("/api/quests/{id}"), json!({ "title": "upd-ts-new" })).await;
+    assert_iso8601_with_tz(updated["updated_at"].as_str().unwrap(), "updated_at after PATCH");
+}
+
+#[tokio::test]
+async fn test_list_no_parent_filter() {
+    let app = setup_with_mixed_quests().await;
+    // DEV-002 의 sub 로 DEV-003 만들기.
+    let dev2: i64 = {
+        let (_, b) = get(app.clone(), "/api/quests?type=DEV&sort=id").await;
+        // sort=id default DESC, DEV-002 가 첫 (마지막 만든 BUG-001 제외).
+        // 더 명확히: 'dev-done' title 찾기.
+        b.as_array().unwrap()
+            .iter()
+            .find(|q| q["title"] == "dev-done")
+            .unwrap()["id"]
+            .as_i64()
+            .unwrap()
+    };
+    post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "sub-of-dev2", "status_slug": "open", "parent_quest_id": dev2 })
+    ).await;
+
+    // ?no_parent=true → sub 제외, 원래 3개만.
+    let (_, body) = get(app, "/api/quests?no_parent=true").await;
+    assert_eq!(body.as_array().unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn test_list_child_of_slug() {
+    let app = setup_with_mixed_quests().await;
+    let parent_id: i64 = {
+        let (_, b) = get(app.clone(), "/api/quests").await;
+        b.as_array().unwrap()
+            .iter()
+            .find(|q| q["title"] == "dev-open")
+            .unwrap()["id"]
+            .as_i64()
+            .unwrap()
+    };
+    // dev-open 밑에 sub 추가.
+    post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "sub-A", "status_slug": "open", "parent_quest_id": parent_id })
+    ).await;
+    post(app.clone(), "/api/quests",
+        json!({ "quest_type_id": 1, "title": "sub-B", "status_slug": "open", "parent_quest_id": parent_id })
+    ).await;
+
+    // dev-open 의 slug 는 DEV-001 (mixed setup 의 첫 quest).
+    let (_, body) = get(app, "/api/quests?child_of=DEV-001").await;
+    assert_eq!(body.as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn test_list_child_of_slug_not_found() {
+    let app = setup_with_mixed_quests().await;
+    let (s, _) = get(app, "/api/quests?child_of=DEV-999").await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_list_child_of_and_no_parent_mutually_exclusive() {
+    let app = setup_with_mixed_quests().await;
+    let (s, _) = get(app, "/api/quests?child_of=DEV-001&no_parent=true").await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_list_reverse_default_sort() {
+    let app = setup_with_mixed_quests().await;
+    // 기본 id DESC. reverse → id ASC.
+    let (_, body) = get(app, "/api/quests?reverse=true").await;
+    let arr = body.as_array().unwrap();
+    // 첫 quest 가 가장 먼저 만든 dev-open (id 1).
+    assert_eq!(arr[0]["title"], "dev-open");
+}
+
+#[tokio::test]
+async fn test_list_reverse_urgency_sort() {
+    let app = setup_with_mixed_quests().await;
+    // sort=urgency default ASC (1 먼저). reverse → DESC (4 먼저).
+    let (_, body) = get(app, "/api/quests?sort=urgency&reverse=true").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr[0]["urgency"], 4);
+}
+
+#[tokio::test]
+async fn test_list_sort_status() {
+    let app = setup_with_mixed_quests().await;
+    let (s, _) = get(app, "/api/quests?sort=status").await;
+    assert_eq!(s, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_list_sort_updated() {
+    let app = setup_with_mixed_quests().await;
+    let (s, _) = get(app, "/api/quests?sort=updated").await;
+    assert_eq!(s, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_list_sort_created() {
+    let app = setup_with_mixed_quests().await;
+    let (s, _) = get(app, "/api/quests?sort=created").await;
+    assert_eq!(s, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_list_sort_multi_csv() {
+    let app = setup_with_mixed_quests().await;
+    // urgency,id — urgency ASC 우선, 동일 urgency 내 id DESC tiebreaker.
+    let (_, body) = get(app, "/api/quests?sort=urgency,id").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr[0]["quest_id"], "BUG-001"); // urgency=1
+    assert_eq!(arr[1]["quest_id"], "DEV-001"); // urgency=2
+    assert_eq!(arr[2]["quest_id"], "DEV-002"); // urgency=4
+}
+
+#[tokio::test]
+async fn test_list_sort_multi_with_reverse() {
+    let app = setup_with_mixed_quests().await;
+    // urgency,id + reverse → urgency DESC, id ASC.
+    let (_, body) = get(app, "/api/quests?sort=urgency,id&reverse=true").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr[0]["urgency"], 4);
+    assert_eq!(arr[2]["urgency"], 1);
+}
+
+#[tokio::test]
+async fn test_list_sort_invalid_key_in_multi() {
+    let app = setup_with_mixed_quests().await;
+    let (s, _) = get(app, "/api/quests?sort=urgency,badkey").await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_list_offset() {
+    let app = setup_with_mixed_quests().await;
+    // 3개 quest, offset 1 → 2개 반환.
+    let (_, body) = get(app, "/api/quests?offset=1").await;
+    assert_eq!(body.as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn test_list_offset_with_limit() {
+    let app = setup_with_mixed_quests().await;
+    let (_, body) = get(app, "/api/quests?limit=1&offset=1").await;
+    assert_eq!(body.as_array().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn test_list_offset_negative_bad_request() {
+    let app = setup_with_mixed_quests().await;
+    let (s, _) = get(app, "/api/quests?offset=-1").await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+}
+
+/// 테스트 전용 minimal URL encoding (공백 → %20).
+fn urlencode_test(s: &str) -> String {
+    s.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                (b as char).to_string()
+            }
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
 }
 
 #[tokio::test]
@@ -184,7 +1200,7 @@ async fn test_get_quest_detail() {
     let (_, created) = post(
         app.clone(),
         "/api/quests",
-        json!({ "quest_type_id": 1, "title": "detail test", "status_id": 1 }),
+        json!({ "quest_type_id": 1, "title": "detail test", "status_slug": "open" }),
     )
     .await;
     let id = created["id"].as_i64().unwrap();
@@ -208,7 +1224,7 @@ async fn test_update_quest() {
     let (_, created) = post(
         app.clone(),
         "/api/quests",
-        json!({ "quest_type_id": 1, "title": "original", "status_id": 1 }),
+        json!({ "quest_type_id": 1, "title": "original", "status_slug": "open" }),
     )
     .await;
     let id = created["id"].as_i64().unwrap();
@@ -230,7 +1246,7 @@ async fn test_change_status() {
     let (_, created) = post(
         app.clone(),
         "/api/quests",
-        json!({ "quest_type_id": 1, "title": "status test", "status_id": 1 }),
+        json!({ "quest_type_id": 1, "title": "status test", "status_slug": "open" }),
     )
     .await;
     let id = created["id"].as_i64().unwrap();
@@ -238,7 +1254,7 @@ async fn test_change_status() {
     let (status, body) = patch(
         app,
         &format!("/api/quests/{id}/status"),
-        json!({ "status_id": 2 }),
+        json!({ "status_slug": "in_progress" }),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
@@ -251,7 +1267,7 @@ async fn test_delete_quest() {
     let (_, created) = post(
         app.clone(),
         "/api/quests",
-        json!({ "quest_type_id": 1, "title": "to delete", "status_id": 1 }),
+        json!({ "quest_type_id": 1, "title": "to delete", "status_slug": "open" }),
     )
     .await;
     let id = created["id"].as_i64().unwrap();
@@ -266,8 +1282,8 @@ async fn test_delete_quest() {
 #[tokio::test]
 async fn test_prerequisites() {
     let app = setup().await;
-    let (_, q1) = post(app.clone(), "/api/quests", json!({ "quest_type_id": 1, "title": "q1", "status_id": 1 })).await;
-    let (_, q2) = post(app.clone(), "/api/quests", json!({ "quest_type_id": 1, "title": "q2", "status_id": 1 })).await;
+    let (_, q1) = post(app.clone(), "/api/quests", json!({ "quest_type_id": 1, "title": "q1", "status_slug": "open" })).await;
+    let (_, q2) = post(app.clone(), "/api/quests", json!({ "quest_type_id": 1, "title": "q2", "status_slug": "open" })).await;
     let id1 = q1["id"].as_i64().unwrap();
     let id2 = q2["id"].as_i64().unwrap();
 
@@ -291,14 +1307,14 @@ async fn test_sub_quests() {
     let (_, parent) = post(
         app.clone(),
         "/api/quests",
-        json!({ "quest_type_id": 1, "title": "parent", "status_id": 1 }),
+        json!({ "quest_type_id": 1, "title": "parent", "status_slug": "open" }),
     )
     .await;
     let parent_id = parent["id"].as_i64().unwrap();
 
     // 서브퀘스트 2개 생성
-    post(app.clone(), "/api/quests", json!({ "quest_type_id": 1, "title": "sub 1", "status_id": 1, "parent_quest_id": parent_id })).await;
-    post(app.clone(), "/api/quests", json!({ "quest_type_id": 1, "title": "sub 2", "status_id": 1, "parent_quest_id": parent_id })).await;
+    post(app.clone(), "/api/quests", json!({ "quest_type_id": 1, "title": "sub 1", "status_slug": "open", "parent_quest_id": parent_id })).await;
+    post(app.clone(), "/api/quests", json!({ "quest_type_id": 1, "title": "sub 2", "status_slug": "open", "parent_quest_id": parent_id })).await;
 
     let (status, detail) = get(app, &format!("/api/quests/{parent_id}")).await;
     assert_eq!(status, StatusCode::OK);
@@ -311,7 +1327,7 @@ async fn test_update_position() {
     let (_, created) = post(
         app.clone(),
         "/api/quests",
-        json!({ "quest_type_id": 1, "title": "position test", "status_id": 1 }),
+        json!({ "quest_type_id": 1, "title": "position test", "status_slug": "open" }),
     )
     .await;
     let id = created["id"].as_i64().unwrap();
@@ -334,7 +1350,7 @@ async fn mk_quest(app: Router, title: &str, parent: Option<i64>) -> i64 {
     let mut payload = json!({
         "quest_type_id": 1,
         "title": title,
-        "status_id": 1
+        "status_slug": "open"
     });
     if let Some(pid) = parent {
         payload["parent_quest_id"] = json!(pid);
@@ -956,7 +1972,7 @@ async fn test_create_subquest_invalid_parent() {
         json!({
             "quest_type_id": 1,
             "title": "orphan",
-            "status_id": 1,
+            "status_slug": "open",
             "parent_quest_id": 999
         }),
     )

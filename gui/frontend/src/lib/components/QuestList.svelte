@@ -1,9 +1,17 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { page } from '$app/stores';
+	import { goto } from '$app/navigation';
 	import { questsApi } from '$lib/api/quests';
 	import { metaApi } from '$lib/api/meta';
 	import type { Quest, QuestStatus, QuestType } from '$lib/types';
-	import { buildTree, filterQuests, flattenTree } from '$lib/utils/quest-list';
+	import {
+		ancestorIdsOf,
+		buildTree,
+		filterQuests,
+		flattenTree,
+		includeAncestors
+	} from '$lib/utils/quest-list';
 	import QuestListFilter from './QuestListFilter.svelte';
 	import QuestListItem from './QuestListItem.svelte';
 
@@ -18,6 +26,10 @@
 	let filterStatusIds = $state(new Set<number>());
 	let expanded = $state(new Set<number>());
 
+	// DEV-037: 검색 — URL ?search= 와 ?title_only= 양방향 동기화.
+	let search = $state('');
+	let titleOnly = $state(false);
+
 	// --- 데이터 ---
 	onMount(async () => {
 		try {
@@ -31,13 +43,49 @@
 		} finally {
 			loading = false;
 		}
+
+		// URL → state (초기 로드).
+		const params = $page.url.searchParams;
+		search = params.get('search') ?? '';
+		titleOnly = params.get('title_only') === 'true';
+	});
+
+	// state → URL (변경 시).
+	// `replaceState=true` 로 history 폭증 방지.
+	$effect(() => {
+		// 최초 onMount 전에는 무시.
+		if (loading) return;
+		const url = new URL($page.url);
+		if (search.trim()) url.searchParams.set('search', search.trim());
+		else url.searchParams.delete('search');
+		if (titleOnly) url.searchParams.set('title_only', 'true');
+		else url.searchParams.delete('title_only');
+		const next = `${url.pathname}${url.search}`;
+		const current = `${$page.url.pathname}${$page.url.search}`;
+		if (next !== current) {
+			goto(next, { replaceState: true, keepFocus: true, noScroll: true });
+		}
 	});
 
 	// --- 필터 + 트리 ---
+	// DEV-040 후속 버그 수정: 검색이 sub-quest 를 매치해도, 그 부모가 결과에
+	// 없으면 buildTree 가 그 sub-quest 에 닿지 못함 → 안 보임. 검색 활성화 시
+	// 매치된 항목의 조상을 결과에 포함 + 자동 펼침.
 	let flatList = $derived.by(() => {
-		const filtered = filterQuests(quests, filterTypeIds, filterStatusIds);
+		const matched = filterQuests(
+			quests,
+			filterTypeIds,
+			filterStatusIds,
+			search,
+			titleOnly
+		);
+		const hasSearch = search.trim().length > 0;
+		const filtered = hasSearch ? includeAncestors(matched, quests) : matched;
+		const effectiveExpanded = hasSearch
+			? new Set([...expanded, ...ancestorIdsOf(matched, quests)])
+			: expanded;
 		const tree = buildTree(filtered, null);
-		return flattenTree(tree, expanded);
+		return flattenTree(tree, effectiveExpanded);
 	});
 
 	function toggle(id: number) {
@@ -49,14 +97,27 @@
 </script>
 
 <div class="quest-list">
-	<QuestListFilter {types} {statuses} bind:typeIds={filterTypeIds} bind:statusIds={filterStatusIds} />
+	<QuestListFilter
+		{types}
+		{statuses}
+		bind:typeIds={filterTypeIds}
+		bind:statusIds={filterStatusIds}
+		bind:search
+		bind:titleOnly
+	/>
 
 	{#if loading}
 		<div class="state-msg">Loading...</div>
 	{:else if error}
 		<div class="state-msg error">{error}</div>
 	{:else if flatList.length === 0}
-		<div class="state-msg">No quests found.</div>
+		<div class="state-msg">
+			{#if search.trim()}
+				"{search}" 와 일치하는 퀘스트가 없습니다.
+			{:else}
+				No quests found.
+			{/if}
+		</div>
 	{:else}
 		<div class="list">
 			{#each flatList as node (node.quest.id)}

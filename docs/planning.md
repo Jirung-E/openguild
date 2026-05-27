@@ -1,9 +1,9 @@
-# OpenGuild 기획 논의 요약
+# openguild 기획 논의 요약
 
 ## 구조 (확정)
 
 ```
-OpenGuild (앱)
+openguild (앱)
   └─ Guild (최상위 단위, 예: "모니터 길드")
        ├─ Campaign (기획+목표, 다음 업데이트 목표)
        │    └─ Quest 연결 (선택적)
@@ -23,7 +23,7 @@ OpenGuild (앱)
 
 - 각 길드는 사용자가 원하는 경로에 독립 저장 (VS Solution 단위와 동일)
 - 마커 파일: `{길드명}.guild` (TOML 형식)
-- 더블클릭으로 OpenGuild 실행 (파일 연결, 데스크톱 단계 예정)
+- 더블클릭으로 openguild 실행 (파일 연결, 데스크톱 단계 예정)
 - CLI: cwd 자동 탐색 또는 `openguild --guild ./monitor ...` (`.guild` 없으면 `openguild init` 안내)
 - GUI: 디렉토리 선택 또는 최근 길드 목록 (데스크톱 단계 예정)
 
@@ -41,7 +41,7 @@ created_at = "2026-05-01"
 
 | 일반 용어 | EN | KO |
 |---|---|---|
-| 앱 | OpenGuild | 오픈길드 |
+| 앱 | openguild | 오픈길드 |
 | 프로젝트 단위 | Guild | 길드 |
 | 기획+목표 | Campaign | 캠페인 |
 | 이슈 | Quest | 퀘스트 |
@@ -75,7 +75,7 @@ created_at = "2026-05-01"
 
 ## Jira 대응표
 
-| Jira | OpenGuild |
+| Jira | openguild |
 |---|---|
 | Project | Guild |
 | Version / Release | Campaign |
@@ -266,12 +266,13 @@ quests  -- type → quest_type_id
 
 ```
 openguild/
-├── Cargo.toml            ← workspace, members = ["core", "cli", "server"]
+├── Cargo.toml            ← workspace, members = ["core", "cli", "server", "gui"]
 ├── core/                 ← lib: 도메인 로직 + sqlx + migrations
 ├── cli/                  ← bin `openguild` (로컬/원격)
 ├── server/               ← bin Axum API 서버
-├── gui/                  ← Tauri desktop (Phase 4 예정)
-│   └── frontend/         ← Svelte + Vite
+├── gui/                  ← Tauri v2 desktop (DEV-003 ~ DEV-005 완료, DEV-006 남음)
+│   ├── src/              ← Rust shell + invoke 핸들러
+│   └── frontend/         ← Svelte + Vite (SvelteKit static)
 ├── docs/                 ← 기획/설계 문서
 ├── justfile              ← 개발 단축 명령
 └── README.md
@@ -279,38 +280,52 @@ openguild/
 
 - 모노레포 (단일 저장소, Rust/JS 동시 수정 용이)
 - 컴포넌트 배포는 분리 (server, gui/frontend 별도 배포 가능)
-- Cargo workspace 로 core/cli/server 관리. gui 는 Phase 4 진입 시 멤버 추가.
+- Cargo workspace 로 core/cli/server/gui 관리.
 - 상세 설계 근거: `docs/architecture-refactor.md`
 
 ---
 
-## 프로젝트 관리 (확정)
+## 프로젝트 관리 (확정 / 2026-05-17 갱신)
 
 **저장소**: GitHub (모노레포)
 
-> 📌 OpenGuild의 기본 기능이 완성되는 시점부터 GitHub Issues 대신 OpenGuild로 프로젝트를 관리할 예정 (dogfood). 브랜치명/이슈 ID 규칙은 동일하게 유지되므로 전환 시 혼란 없음.
-
-**이슈 트래킹**: GitHub Issues
-- Labels: `DEV`, `BUG`, `REQ` 로 타입 구분 (제목 형식 강제 없음)
-- 브랜치명: `DEV-123`, `BUG-45` (OpenGuild prefix + GitHub 이슈 번호)
+**이슈 트래킹**: openguild 자체 dogfood (2026-05-17 전환 완료)
+- `.guild/quests/*.md` 가 진리원 (git tracked).
+- 새 작업 = `openguild quest new` → `.guild/quests/{ID}.md` 자동 생성.
+- GitHub Issues 보조 사용 X. 외부 todo 도구 X.
 
 **브랜치 전략**
 ```
-main      ← 릴리즈 전용 (버전 태그)
-develop   ← 개발 통합
-  └─ DEV-123  ← 기능/작업별 브랜치
+master    ← 릴리즈 전용 (태그 v0.x.y, 직접 push 금지)
+develop   ← 통합 / 검증 (default 작업 분기)
+  └─ DEV-123 ← feature 브랜치 (quest_id 직접, `feature/` prefix 없음)
   └─ BUG-45
 ```
+
+- `master` 유지 (rename 안 함).
+- 모든 새 작업은 develop 에서 분기 (`git checkout -b DEV-N`).
+- 머지: feature → develop (squash 권장) → master (릴리즈 시점).
+
+**커밋 메시지 형식**
+```
+[{QUEST_ID}][{CATEGORY?}] 한 줄 요약
+
+본문 (선택). what 보다 why.
+```
+
+- `[QUEST_ID]` 필수 (branch 의 quest_id 와 일치).
+- `[CATEGORY]` 선택: `gui/desktop` / `gui/frontend` / `core` / `cli` / `server` / `docs` / `chore` 등.
+- 메타 변경 (브랜치 전략 같이 quest 없음) 은 `[chore][docs] ...` 일회성 예외.
 
 **버전 관리**
 - `MAJOR.MINOR.PATCH` (예: `0.1.0`)
 - `0.x.x`부터 시작, 메이저 1은 명시적 승인 필요
 - Git 태그: `v0.1.0`, GitHub Releases에 변경사항 기록
 
-**CI/CD (GitHub Actions)**
-- PR 시: `cargo check` (백엔드), `npm run build` (프론트엔드)
+**CI/CD (GitHub Actions)** — 미구현 (DEV-008 quest)
+- PR 시: `cargo test --workspace` + clippy + `npm run check` + `npm test`
 - `~/.cargo/registry`만 캐시 (target/ 제외)
-- 배포: main 머지 시 AWS EC2 자동 배포
+- 배포: master 머지 시 자동 배포 검토
 
 **배포**
 - 백엔드: AWS EC2 t3.micro (Linux), MVP 이후 ECS Fargate 고려
@@ -319,13 +334,13 @@ develop   ← 개발 통합
 **개발 도구**
 - MCP: `plugin:engineering:github` (Issues/PR 관리)
 - Skills: `engineering:code-review`, `engineering:debug`, `engineering:testing-strategy`, `engineering:deploy-checklist`
-- CLAUDE.md: 프로젝트 구조, 주요 명령어, 브랜치 규칙, 아키텍처 메모
+- AGENTS.md: 절대 규칙 (commit / 브랜치 / commit 메시지) + 문서 인덱스
 
 ---
 
 ## 추후 기능 (미논의)
 
-- GitHub Issues ↔ OpenGuild 연동 (Webhook 기반 Quest 자동 생성)
+- GitHub Issues ↔ openguild 연동 (Webhook 기반 Quest 자동 생성)
 
 ---
 

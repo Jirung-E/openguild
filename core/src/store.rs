@@ -19,6 +19,22 @@ use sqlx::SqlitePool;
 use crate::db;
 use crate::repo::GuildPaths;
 
+/// Path 를 SQLite URL (`sqlite:<path>?mode=<mode>`) 로 변환.
+///
+/// Windows 의 `\\?\C:\…` extended-length prefix 를 제거해야 함:
+/// `recents::add` 가 `canonicalize` 한 path 를 저장하는데, Windows 에선 그
+/// 결과가 `\\?\` 로 시작 → `replace('\\', '/')` 후 `//?/C:/…` 가 되고,
+/// SQLite URL 파서가 첫 `?` 를 query string 시작으로 오인해서 깨짐.
+/// (`migrate.rs` 에 동일한 처리가 이미 있음 — DEV-052 후속 4회차에 공통화.)
+fn sqlite_file_url(path: &std::path::Path, mode: &str) -> String {
+    let raw = path.to_string_lossy();
+    let cleaned = raw
+        .trim_start_matches(r"\\?\")
+        .trim_start_matches(r"\\\\?\\")
+        .replace('\\', "/");
+    format!("sqlite:{cleaned}?mode={mode}")
+}
+
 #[derive(Clone)]
 pub struct Store {
     pub paths: GuildPaths,
@@ -37,10 +53,7 @@ impl Store {
         std::fs::create_dir_all(paths.backups_dir())?;
 
         // index.db
-        let index_url = format!(
-            "sqlite:{}?mode=rwc",
-            paths.index_db().to_string_lossy().replace('\\', "/")
-        );
+        let index_url = sqlite_file_url(&paths.index_db(), "rwc");
         let index_pool = db::create_pool(&index_url)
             .await
             .with_context(|| format!("failed to open index db: {index_url}"))?;
@@ -49,10 +62,7 @@ impl Store {
             .context("failed to migrate index db")?;
 
         // journal.db
-        let journal_url = format!(
-            "sqlite:{}?mode=rwc",
-            paths.journal_db().to_string_lossy().replace('\\', "/")
-        );
+        let journal_url = sqlite_file_url(&paths.journal_db(), "rwc");
         let journal_pool = db::create_pool(&journal_url)
             .await
             .with_context(|| format!("failed to open journal db: {journal_url}"))?;

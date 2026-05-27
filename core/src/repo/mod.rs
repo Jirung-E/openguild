@@ -7,6 +7,7 @@
 //! 설계 근거: `docs/storage-design.md`.
 
 pub mod auto;
+pub mod campaign;
 pub mod fs;
 pub mod quest;
 pub mod seed;
@@ -14,6 +15,7 @@ pub mod status_def;
 pub mod type_def;
 
 pub use auto::{QuestRef, QuestRelations};
+pub use campaign::{extract_checklist_items, CampaignFile, CampaignFrontmatter, ChecklistLine};
 pub use quest::{QuestFile, QuestFrontmatter, AUTO_BEGIN, AUTO_END};
 pub use seed::{default_statuses, default_types, seed_guild_dir, SeedReport};
 pub use status_def::StatusFile;
@@ -40,6 +42,14 @@ impl GuildPaths {
 
     pub fn quests_dir(&self) -> PathBuf {
         self.dot_guild().join("quests")
+    }
+
+    pub fn campaigns_dir(&self) -> PathBuf {
+        self.dot_guild().join("campaigns")
+    }
+
+    pub fn campaign_path(&self, slug: &str) -> PathBuf {
+        self.campaigns_dir().join(format!("{slug}.md"))
     }
 
     pub fn types_dir(&self) -> PathBuf {
@@ -84,7 +94,7 @@ impl GuildPaths {
 
     /// `.guild/.gitignore` 의 표준 내용.
     pub fn gitignore_content() -> &'static str {
-        "# OpenGuild — 내부 캐시 / UI 상태 / 백업 (git 추적 X)\n\
+        "# openguild — 내부 캐시 / UI 상태 / 백업 (git 추적 X)\n\
          index.db\n\
          positions.json\n\
          backups/\n\

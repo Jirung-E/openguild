@@ -1,4 +1,4 @@
-//! OpenGuild HTTP API 서버 + 관리 CLI.
+//! openguild HTTP API 서버 + 관리 CLI.
 //!
 //! 서브커맨드:
 //!   host             HTTP 서버 시작
@@ -33,7 +33,7 @@ use tower_http::{cors::CorsLayer, services::ServeDir, trace::TraceLayer};
 #[command(
     name = "openguild-server",
     version,
-    about = "OpenGuild HTTP API server + 관리 CLI"
+    about = "openguild HTTP API server + 관리 CLI"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -103,7 +103,7 @@ fn main() -> Result<()> {
         Command::Reindex => rt.block_on(run_reindex()),
         Command::Snapshot => rt.block_on(run_snapshot()),
         Command::Restore { to, list } => rt.block_on(run_restore(to, list)),
-        Command::CheckCounters { fix } => run_check_counters(fix),
+        Command::CheckCounters { fix } => rt.block_on(run_check_counters(fix)),
         Command::CheckDrift { resync } => rt.block_on(run_check_drift(resync)),
     }
 }
@@ -131,7 +131,7 @@ fn load_guild() -> Result<GuildCtx> {
                     .map(|p| p.display().to_string())
                     .unwrap_or_else(|_| guild_path.clone());
                 eprintln!();
-                eprintln!("✗ not an OpenGuild project: no `.guild` file in {abs}");
+                eprintln!("✗ not an openguild project: no `.guild` file in {abs}");
                 eprintln!("  hint: set GUILD_PATH env var to point at a directory with a `.guild`.");
                 eprintln!();
                 std::process::exit(2);
@@ -183,7 +183,7 @@ async fn run_host(port_arg: Option<u16>) -> Result<()> {
 
     // 떴다는 알림 — tracing 이 아닌 stdout 으로 명시적 안내 (사용자가 바로 확인할 수 있게)
     println!();
-    println!("✓ OpenGuild server listening");
+    println!("✓ openguild server listening");
     println!("  guild  : {}  (v{})", ctx.guild.name, ctx.guild.version);
     println!("  path   : {}", ctx.abs_path.display());
     println!("  bind   : http://{addr}");
@@ -318,21 +318,41 @@ async fn run_check_drift(resync: bool) -> Result<()> {
 
 // ─────────────────────── counter check ───────────────────────
 
-fn run_check_counters(fix: bool) -> Result<()> {
+async fn run_check_counters(fix: bool) -> Result<()> {
     let ctx = load_guild()?;
-    let paths = openguild_core::repo::GuildPaths::new(&ctx.abs_path);
-    let report = openguild_core::counter::check_counters(&paths, fix)?;
+    // ops::check_and_fix_counters 가 file 과 SQL (quest_counters) 둘 다 보정.
+    // BUG-003 — 두 가지 drift 처리:
+    //   1) file last_number < max  → 기존 동작 (file 도 함께 fix).
+    //   2) SQL last_number ≠ file  → file 을 truth 로 SQL 동기화 (사용자 보고 케이스).
+    // guild_path 사용 (abs_path 는 Windows canonicalize 가 \\?\ UNC 붙여 sqlite URL 깨짐).
+    let store = openguild_core::Store::open(&ctx.guild_path).await?;
+    let report = openguild_core::ops::check_and_fix_counters(&store, fix).await?;
 
     println!("✓ counter 검증 완료");
-    println!("  검사된 type 수 : {}", report.types_checked);
-    println!("  발견 이슈     : {}", report.issues.len());
-    for issue in &report.issues {
+    println!("  검사된 type 수 : {}", report.file_report.types_checked);
+    println!(
+        "  발견 이슈     : {} (file) + {} (SQL)",
+        report.file_report.issues.len(),
+        report.sql_drift.len()
+    );
+    for issue in &report.file_report.issues {
         println!();
-        println!("  • type {}:", issue.prefix);
+        println!("  • type {} [file drift]:", issue.prefix);
         println!("    저장된 last_number   : {}", issue.stored_last_number);
         println!("    실제 max quest 번호  : {}", issue.actual_max_number);
         if fix {
-            println!("    → {} 으로 보정됨", issue.corrected_to);
+            println!("    → {} 으로 보정됨 (file + SQL)", issue.corrected_to);
+        } else {
+            println!("    (--fix 로 자동 보정 가능)");
+        }
+    }
+    for drift in &report.sql_drift {
+        println!();
+        println!("  • type {} [SQL drift]:", drift.prefix);
+        println!("    file last_number     : {}", drift.file_last_number);
+        println!("    SQL  last_number     : {}", drift.sql_last_number);
+        if fix {
+            println!("    → {} 으로 보정됨 (SQL ← file)", drift.synced_to);
         } else {
             println!("    (--fix 로 자동 보정 가능)");
         }
@@ -407,6 +427,7 @@ async fn run_reindex() -> Result<()> {
     println!("  statuses     : {}", report.statuses_loaded);
     println!("  quests       : {}", report.quests_loaded);
     println!("  dependencies : {}", report.dependencies_loaded);
+    println!("  positions    : {} 복원 (board UI 상태)", report.positions_restored);
     if !report.skipped.is_empty() {
         println!();
         println!("⚠ {} 개 파일 skip 됨 (파싱 / 무결성 실패):", report.skipped.len());

@@ -1,0 +1,116 @@
+name: check
+
+# DEV-008: PR / push 시 자동 검증.
+# BUG-017: Linux deps + Node 24 + job 이름.
+# BUG-017 후속 (fix1):
+#   - cargo job 이 frontend build 결과 (gui/frontend/build) 를 필요로 함
+#     (`tauri::generate_context!` proc macro 가 frontendDist 검증). cargo
+#     job 안에서 먼저 frontend build 후 cargo test.
+#   - actions/* v4 → v5 (Node 24 default 라 deprecation 경고 사라짐).
+#     v5 가 없으면 GitHub 가 v4 로 resolve 함 — 안전.
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  cargo:
+    name: cargo (core + cli + server + gui)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # BUG-017: gui crate 가 Tauri/wry transitive dep — Linux 에선 GTK/webkit
+      # 시스템 라이브러리 필요. 없으면 gio-sys build-script 가 pkg-config 단계
+      # 에서 실패. 목록은 Tauri v2 공식 문서.
+      - name: Install Tauri Linux deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            build-essential
+
+      # BUG-017 fix1: gui crate compile 이 frontendDist (gui/frontend/build)
+      # 를 요구 — tauri::generate_context! proc macro 가 그 path 의 존재를
+      # build time 에 검증. cargo test 전에 frontend 를 먼저 build.
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: gui/frontend/package-lock.json
+
+      - name: Frontend build (gui crate 가 의존)
+        working-directory: gui/frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      # ~/.cargo/registry 만 캐시 — target/ 은 PR 마다 깨끗하게.
+      # (CLAUDE.md 의 정책과 일치.)
+      - name: Cache cargo registry
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      # NOTE: cargo fmt --check 는 의도적으로 빠짐 — 기존 코드베이스 일괄 정렬은
+      # 별도 quest (대규모 diff). 추후 추가 예정.
+
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: cargo test
+        # --test-threads=1 — env 변수 공유 테스트가 병렬에서 충돌하므로
+        # 직렬 실행. AGENTS.md / 각 quest 의 검증 절차와 동일.
+        run: cargo test --workspace -- --test-threads=1
+
+  gui-frontend:
+    name: gui/frontend (svelte-kit)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: gui/frontend
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: gui/frontend/package-lock.json
+
+      - name: npm ci
+        run: npm ci
+
+      - name: svelte-kit sync
+        run: npx svelte-kit sync
+
+      - name: svelte-check
+        run: npm run check
+
+      - name: vitest
+        run: npm test -- --run
+
+      - name: vite build
+        run: npm run build

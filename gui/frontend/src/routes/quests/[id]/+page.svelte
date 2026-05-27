@@ -4,7 +4,9 @@
 	import { goto } from '$app/navigation';
 	import { questsApi } from '$lib/api/quests';
 	import { metaApi } from '$lib/api/meta';
-	import { marked } from 'marked';
+	import { campaignsApi } from '$lib/api/campaigns';
+	// BUG-021 fix1: marked 직접 호출 대신 공유 컴포넌트 MarkdownView 사용.
+	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	import { EditorView, basicSetup } from 'codemirror';
 	import { markdown } from '@codemirror/lang-markdown';
 	import { oneDark } from '@codemirror/theme-one-dark';
@@ -19,13 +21,28 @@
 	} from '$lib/types';
 	import NewQuestModal from '$lib/components/NewQuestModal.svelte';
 	import QuestCombobox from '$lib/components/QuestCombobox.svelte';
+	// BUG-030: 캠페인 연결 콤보박스 (QuestCombobox 와 동일 톤).
+	import CampaignCombobox from '$lib/components/CampaignCombobox.svelte';
+	import QuestHistory from '$lib/components/QuestHistory.svelte';
+	import { formatTs, formatRelative, isDateOverdue } from '$lib/utils/datetime';
 
 	let slug = $derived($page.params.id ?? '');
+	// BUG-015 fix1: parent / sub / prereq link 가 같은 origin 을 propagate 해서
+	// 같은 quest 안에서 다른 quest 클릭 후 back 도 list/board 로 가게 함.
+	let fromSuffix = $derived.by(() => {
+		const f = $page.url.searchParams.get('from');
+		return f ? `?from=${f}` : '';
+	});
 	let detail = $state<QuestDetail | null>(null);
-	// types/statuses 는 헤더 메타에 직접 쓰이진 않지만 레퍼런스로 두면 추후 메타 표시 용이.
-	// 현재는 statuses 만 상태변경 버튼에 사용.
-	let _types = $state<QuestType[]>([]);
+	// DEV-055: types 도 노출 — type 변경 UI 에서 사용.
+	let types = $state<QuestType[]>([]);
 	let statuses = $state<QuestStatus[]>([]);
+	// DEV-011: 이 quest 가 속한 캠페인 목록.
+	let linkedCampaigns = $state<import('$lib/types').Campaign[]>([]);
+	let allCampaigns = $state<import('$lib/types').Campaign[]>([]);
+	// BUG-030: 콤보박스 모달 표시 여부. true 면 모달 노출.
+	let showCampaignCombo = $state(false);
+	let campaignLinkError = $state<string | null>(null);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 
@@ -34,6 +51,9 @@
 	let editTitle = $state('');
 	let editUrgency = $state(3);
 	let editDescription = $state('');
+	// DEV-076: 기한 — YYYY-MM-DD 또는 빈 문자열 (= 미설정 / 해제).
+	let editDesiredDue = $state('');
+	let editRequiredDue = $state('');
 	let saving = $state(false);
 	let saveError = $state<string | null>(null);
 
@@ -41,6 +61,13 @@
 	let statusFlashId = $state<number | null>(null); // 방금 변경된 상태 버튼 (체크 아이콘)
 	let badgePulse = $state(0); // 헤더 상태 뱃지 펄스 트리거 (값이 바뀌면 한 번 펄스)
 	let changingStatus = $state(false);
+
+	// DEV-055: type 변경.
+	let confirmTypeChange = $state<QuestType | null>(null);
+	let changingType = $state(false);
+
+	// 변경이력 — 상태 변경 후 새로고침 트리거 (DEV-038).
+	let historyVersion = $state(0);
 
 	// 콤보박스 / 후보
 	type ComboMode = 'sub' | 'prereq';
@@ -67,7 +94,7 @@
 	onMount(async () => {
 		try {
 			const [t, s] = await Promise.all([metaApi.getQuestTypes(), metaApi.getQuestStatuses()]);
-			_types = t;
+			types = t;
 			statuses = s;
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'failed to load';
@@ -88,9 +115,23 @@
 		error = null;
 		questsApi
 			.getBySlug(currentSlug)
-			.then((d) => {
+			.then(async (d) => {
 				// 효과 실행 도중 다시 slug 가 바뀌었을 수 있으므로 ID 비교 후 적용
-				if (slug === currentSlug) detail = d;
+				if (slug !== currentSlug) return;
+				detail = d;
+				// DEV-011: 연결된 캠페인 + 전체 캠페인 (link UI 자동완성용) 동시 로드.
+				try {
+					const [linked, all] = await Promise.all([
+						campaignsApi.forQuest(d.id),
+						campaignsApi.list()
+					]);
+					if (slug === currentSlug) {
+						linkedCampaigns = linked;
+						allCampaigns = all;
+					}
+				} catch {
+					/* 무시 — 캠페인 없거나 backend 미지원이어도 detail 자체는 표시 */
+				}
 			})
 			.catch((e) => {
 				if (slug === currentSlug)
@@ -108,14 +149,46 @@
 		editTitle = detail.title;
 		editUrgency = detail.urgency;
 		editDescription = detail.description ?? '';
+		// DEV-076: null / undefined → 빈 문자열 (input value).
+		editDesiredDue = detail.desired_due ?? '';
+		editRequiredDue = detail.required_due ?? '';
 		editMode = true;
 		await tick();
 		initEditor();
 	}
 
+	// DEV-057: 편집창 사용자 크기 영속화.
+	const EDITOR_HEIGHT_KEY = 'openguild.questEditorHeight';
+	let editorHeightSaveTimer: ReturnType<typeof setTimeout> | null = null;
+	function loadEditorHeight(): number {
+		try {
+			const raw = localStorage.getItem(EDITOR_HEIGHT_KEY);
+			const n = raw ? parseInt(raw, 10) : NaN;
+			// 합리적 범위만 — 200~2000px.
+			if (Number.isFinite(n) && n >= 200 && n <= 2000) return n;
+		} catch {
+			/* 무시 */
+		}
+		return 480;
+	}
+	function scheduleEditorHeightSave(px: number) {
+		if (editorHeightSaveTimer) clearTimeout(editorHeightSaveTimer);
+		editorHeightSaveTimer = setTimeout(() => {
+			try {
+				localStorage.setItem(EDITOR_HEIGHT_KEY, String(Math.round(px)));
+			} catch {
+				/* 무시 */
+			}
+		}, 250);
+	}
+	let editorResizeObserver: ResizeObserver | null = null;
+
 	function initEditor() {
 		if (!editorContainer) return;
 		if (editorView) { editorView.destroy(); editorView = null; }
+		// DEV-057: parent (.editor-wrap) 가 height 결정. cm-scroller 는 fill.
+		// 이전엔 cm-scroller maxHeight 480px 가 고정 한계 — parent resize 시 의미 없음.
+		editorContainer.style.height = `${loadEditorHeight()}px`;
 		editorView = new EditorView({
 			doc: editDescription,
 			extensions: [
@@ -123,18 +196,28 @@
 				markdown(),
 				oneDark,
 				EditorView.theme({
-					'&': { fontSize: '0.875rem', borderRadius: '6px', overflow: 'hidden' },
-					'.cm-editor': { borderRadius: '6px' },
-					'.cm-scroller': { minHeight: '200px', maxHeight: '480px', overflow: 'auto' }
+					'&': { fontSize: '0.875rem', borderRadius: '6px', height: '100%' },
+					'.cm-editor': { borderRadius: '6px', height: '100%' },
+					'.cm-scroller': { overflow: 'auto' }
 				})
 			],
 			parent: editorContainer
 		});
+		// 사용자가 resize 핸들로 크기 바꿀 때마다 영속화.
+		editorResizeObserver?.disconnect();
+		editorResizeObserver = new ResizeObserver((entries) => {
+			for (const entry of entries) {
+				scheduleEditorHeightSave(entry.contentRect.height);
+			}
+		});
+		editorResizeObserver.observe(editorContainer);
 	}
 
 	function exitEditMode() {
 		editorView?.destroy();
 		editorView = null;
+		editorResizeObserver?.disconnect();
+		editorResizeObserver = null;
 		editMode = false;
 		saveError = null;
 	}
@@ -150,6 +233,18 @@
 				description: desc || undefined,
 				urgency: editUrgency
 			});
+			// DEV-076: 기한 — 빈 문자열 → null (해제), 값 → 설정.
+			// 변경 사항이 있을 때만 PATCH 호출 (no-op 절약).
+			const wantDesired = editDesiredDue.trim() || null;
+			const wantRequired = editRequiredDue.trim() || null;
+			const haveDesired = detail.desired_due ?? null;
+			const haveRequired = detail.required_due ?? null;
+			if (wantDesired !== haveDesired || wantRequired !== haveRequired) {
+				const body: { desired_due?: string | null; required_due?: string | null } = {};
+				if (wantDesired !== haveDesired) body.desired_due = wantDesired;
+				if (wantRequired !== haveRequired) body.required_due = wantRequired;
+				await questsApi.setDueDates(detail.id, body);
+			}
 			detail = await questsApi.getBySlug(slug);
 			exitEditMode();
 		} catch (e) {
@@ -161,20 +256,52 @@
 
 	// --- 상태 변경 (다이얼로그 없음, 시각 피드백) ---
 
-	async function changeStatus(statusId: number) {
+	// DEV-048: status 변경 API 가 slug 전용. statusId (number) 는 UI feedback 용,
+	// statusSlug (string) 은 backend 전송용.
+	async function changeStatus(statusId: number, statusSlug: string) {
 		if (!detail || statusId === detail.status_id || changingStatus) return;
 		changingStatus = true;
 		try {
-			await questsApi.changeStatus(detail.id, { status_id: statusId });
+			await questsApi.changeStatus(detail.id, { status_slug: statusSlug });
 			detail = await questsApi.getBySlug(slug);
 			// 피드백: 버튼 체크 + 헤더 뱃지 펄스
 			statusFlashId = statusId;
 			badgePulse += 1;
+			// 새 history 행을 보이도록 reload 트리거.
+			historyVersion += 1;
 			setTimeout(() => { if (statusFlashId === statusId) statusFlashId = null; }, 600);
 		} catch (e) {
 			alert(e instanceof Error ? e.message : 'status change failed');
 		} finally {
 			changingStatus = false;
+		}
+	}
+
+	// --- DEV-055: type 변경 ---
+	//
+	// slug 가 바뀌어서 URL 도 새 slug 로 navigate. 다른 quest 본문의 mention 은
+	// 자동 갱신 안 됨 (사용자 책임) — confirm 모달에서 안내.
+
+	function askChangeType(t: QuestType) {
+		if (!detail || t.id === detail.quest_type_id) return;
+		confirmTypeChange = t;
+	}
+
+	async function doChangeType() {
+		const target = confirmTypeChange;
+		if (!detail || !target || changingType) return;
+		confirmTypeChange = null;
+		changingType = true;
+		try {
+			const updated = await questsApi.changeType(detail.id, {
+				new_type_prefix: target.prefix
+			});
+			// slug 바뀜 → 새 slug 의 URL 로 navigate. BUG-015 fix1: from 보존.
+			await goto(`/quests/${updated.quest_id}${fromSuffix}`, { replaceState: true });
+		} catch (e) {
+			alert(e instanceof Error ? e.message : 'type change failed');
+		} finally {
+			changingType = false;
 		}
 	}
 
@@ -286,14 +413,71 @@
 		}
 	}
 
-	function renderMarkdown(src: string): string {
-		return marked(src, { async: false }) as string;
+	// BUG-015 (fix1) + DEV-011: query parameter `?from=list|board|home|campaign:<slug>`
+	// 로 명시 origin 추적. SvelteKit / Tauri WebView 의 history stack 동작
+	// 불확실 → URL query 가 신뢰 가능.
+	function goBack() {
+		const from = $page.url.searchParams.get('from');
+		if (from === 'list') {
+			goto('/?view=list');
+		} else if (from === 'board') {
+			goto('/?view=board');
+		} else if (from === 'home') {
+			goto('/');
+		} else if (from && from.startsWith('campaign:')) {
+			const slug = from.slice('campaign:'.length);
+			goto(`/campaigns/${encodeURIComponent(slug)}`);
+		} else {
+			// 외부 link 직접 진입 / parent 추적 안 된 경우 — Home 으로.
+			goto('/');
+		}
+	}
+
+	/* BUG-021 fix1: renderMarkdown 직접 호출 제거 — MarkdownView 컴포넌트 사용. */
+
+	// DEV-011: Campaign 연결 / 해제
+	// BUG-030: native datalist 입력 → 콤보박스 모달 (sub/prereq 와 동일 패턴).
+	function openCampaignCombo() {
+		campaignLinkError = null;
+		showCampaignCombo = true;
+	}
+	function closeCampaignCombo() {
+		showCampaignCombo = false;
+		campaignLinkError = null;
+	}
+	// 콤보박스 후보 — 이미 연결된 캠페인은 제외 (선택해도 의미 없음).
+	let campaignCandidates = $derived.by(() => {
+		const linkedIds = new Set(linkedCampaigns.map((c) => c.id));
+		return allCampaigns.filter((c) => !linkedIds.has(c.id));
+	});
+
+	async function linkCampaign(slug: string) {
+		if (!detail) return;
+		try {
+			await campaignsApi.linkQuest(slug, detail.quest_id);
+			linkedCampaigns = await campaignsApi.forQuest(detail.id);
+			closeCampaignCombo();
+		} catch (e) {
+			campaignLinkError = e instanceof Error ? e.message : 'campaign 연결 실패';
+		}
+	}
+
+	async function unlinkCampaign(campaignSlug: string) {
+		if (!detail) return;
+		try {
+			await campaignsApi.unlinkQuest(campaignSlug, detail.quest_id);
+			linkedCampaigns = await campaignsApi.forQuest(detail.id);
+		} catch (e) {
+			alert(e instanceof Error ? e.message : 'campaign 연결 해제 실패');
+		}
 	}
 </script>
 
 <div class="container">
 	<div class="top-bar">
-		<a href="/" class="back">← Back</a>
+		<!-- BUG-015: history.back() 으로 직전 페이지 (List 또는 Board) 복귀.
+		     history 가 비어있으면 (외부 link 직접 진입) Board 로 fallback. -->
+		<button class="back" type="button" onclick={goBack}>← Back</button>
 		{#if detail && !editMode}
 			<div class="top-actions">
 				<button class="btn-edit" onclick={enterEditMode}>✎ Edit</button>
@@ -320,20 +504,99 @@
 			{/key}
 		</div>
 
+		<!-- 생성 / 변경 시각 -->
+		<div class="meta-times">
+			<span class="meta-item">
+				<span class="meta-label">생성</span>
+				<time
+					class="meta-val"
+					datetime={detail.created_at}
+					title={formatTs(detail.created_at)}
+					data-testid="created-at"
+				>
+					{formatTs(detail.created_at)}
+				</time>
+			</span>
+			<span class="meta-sep">·</span>
+			<span class="meta-item">
+				<span class="meta-label">변경</span>
+				<time
+					class="meta-val"
+					datetime={detail.updated_at}
+					title={formatTs(detail.updated_at)}
+					data-testid="updated-at"
+				>
+					{formatRelative(detail.updated_at)}
+				</time>
+			</span>
+			{#if detail.desired_due || detail.required_due}
+				<span class="meta-sep">·</span>
+				<!-- DEV-076: 기한 표시 — desired / required 둘 다 있으면 둘 다. -->
+				<!-- DEV-079: 기한 지났으면 빨강 강조 (done/cancelled 제외). -->
+				{#if detail.required_due}
+					<span class="meta-item">
+						<span class="meta-label">필수 기한</span>
+						<span
+							class="meta-val due-required"
+							class:overdue={isDateOverdue(detail.required_due, detail.status_slug)}
+						>{detail.required_due}</span>
+					</span>
+				{/if}
+				{#if detail.desired_due}
+					<span class="meta-item">
+						<span class="meta-label">희망 기한</span>
+						<span
+							class="meta-val due-desired"
+							class:overdue={isDateOverdue(detail.desired_due, detail.status_slug)}
+						>{detail.desired_due}</span>
+					</span>
+				{/if}
+			{/if}
+		</div>
+
 		{#if editMode}
 			<div class="edit-form">
-				<label class="field-label">제목</label>
-				<input class="edit-title" type="text" bind:value={editTitle} />
+				<label class="field-label">
+					<span>제목</span>
+					<input class="edit-title" type="text" bind:value={editTitle} />
+				</label>
 
-				<label class="field-label">긴급도</label>
-				<select class="edit-select" bind:value={editUrgency}>
-					{#each [1, 2, 3, 4] as u}
-						<option value={u}>{URGENCY_LABEL[u]}</option>
-					{/each}
-				</select>
+				<label class="field-label">
+					<span>긴급도</span>
+					<select class="edit-select" bind:value={editUrgency}>
+						{#each [1, 2, 3, 4] as u}
+							<option value={u}>{URGENCY_LABEL[u]}</option>
+						{/each}
+					</select>
+				</label>
 
-				<label class="field-label">설명 (Markdown)</label>
-				<div class="editor-wrap" bind:this={editorContainer}></div>
+				<!-- DEV-076: 희망 / 필수 기한. 빈 값 = 미설정 / 해제. -->
+				<div class="due-row">
+					<label class="field-label">
+						<span>희망 기한 <span class="hint">(정보성)</span></span>
+						<input
+							class="edit-date"
+							type="date"
+							bind:value={editDesiredDue}
+						/>
+					</label>
+					<label class="field-label">
+						<span>필수 기한 <span class="hint">(임박 / Overdue 기준)</span></span>
+						<input
+							class="edit-date"
+							type="date"
+							bind:value={editRequiredDue}
+						/>
+					</label>
+				</div>
+
+				<!-- CodeMirror 가 div 안에 textarea 를 동적으로 생성 — svelte 가 정적
+				     분석으로는 control 미포함으로 판단. ignore. -->
+				<!-- svelte-ignore a11y_label_has_associated_control -->
+				<label class="field-label">
+					<span>설명 (Markdown)</span>
+					<div class="editor-wrap" bind:this={editorContainer}></div>
+				</label>
 
 				{#if saveError}<p class="save-error">{saveError}</p>{/if}
 
@@ -364,7 +627,7 @@
 							class:active={s.id === detail.status_id}
 							class:flash={s.id === statusFlashId}
 							style:--c={s.color}
-							onclick={() => changeStatus(s.id)}
+							onclick={() => changeStatus(s.id, s.slug)}
 							disabled={changingStatus || s.id === detail.status_id}
 							data-testid="status-btn-{s.id}"
 						>
@@ -374,17 +637,63 @@
 				</div>
 			</div>
 
-			{#if detail.description}
-				<div class="md-body">{@html renderMarkdown(detail.description)}</div>
-			{:else}
-				<p class="no-desc">No description. <button class="link-btn" onclick={enterEditMode}>설명 추가하기</button></p>
-			{/if}
+			<!-- DEV-055: type 변경 (slug 가 바뀜, confirm 모달 후 진행) -->
+			<div class="status-row">
+				<span class="branch-label">타입 변경</span>
+				<div class="status-btns">
+					{#each types as t}
+						<button
+							class="status-btn"
+							class:active={t.id === detail.quest_type_id}
+							style:--c={t.color}
+							onclick={() => askChangeType(t)}
+							disabled={changingType || t.id === detail.quest_type_id}
+							title={t.id === detail.quest_type_id
+								? '현재 타입'
+								: `${t.prefix} 로 변경 — slug 바뀜`}
+						>
+							{t.prefix}
+						</button>
+					{/each}
+				</div>
+			</div>
+
+			<!-- BUG-031: description 블록 / no-desc 와 아래 sections (Parent /
+			     Sub / Prereq / Campaigns) 사이가 너무 좁아 시각적으로 겹쳐 보임.
+			     wrapper 로 명확한 간격 부여. -->
+			<div class="description-block">
+				{#if detail.description}
+					<MarkdownView source={detail.description} />
+				{:else}
+					<p class="no-desc">No description. <button class="link-btn" onclick={enterEditMode}>설명 추가하기</button></p>
+				{/if}
+			</div>
+		{/if}
+
+		<!-- 부모 퀘스트 (DEV-050) -->
+		{#if detail.parent}
+			<section>
+				<div class="section-head">
+					<h2 class="section-title parent-label">Parent</h2>
+				</div>
+				<ul class="quest-list">
+					<li>
+						<div class="prereq-row">
+							<a href="/quests/{detail.parent.quest_id}{fromSuffix}" class="prereq-link">
+								<span class="badge type" style:--c={detail.parent.type_color}>{detail.parent.quest_id}</span>
+								<span class="ql-title">{detail.parent.title}</span>
+								<span class="badge status" style:--c={detail.parent.status_color}>{detail.parent.status_name_en}</span>
+							</a>
+						</div>
+					</li>
+				</ul>
+			</section>
 		{/if}
 
 		<!-- 서브퀘스트 -->
 		<section>
 			<div class="section-head">
-				<h2 class="section-title">Sub-Quests</h2>
+				<h2 class="section-title sub-label">Sub-Quests</h2>
 				{#if !editMode}
 					<button class="sec-add-btn" onclick={() => (showNewSubQuest = true)}>+ 신규</button>
 					<button class="sec-add-btn" onclick={() => openCombo('sub')}>+ 기존 지정</button>
@@ -395,7 +704,7 @@
 					{#each detail.sub_quests as sq (sq.id)}
 						<li>
 							<div class="prereq-row">
-								<a href="/quests/{sq.quest_id}" class="prereq-link">
+								<a href="/quests/{sq.quest_id}{fromSuffix}" class="prereq-link">
 									<span class="badge type" style:--c={sq.type_color}>{sq.quest_id}</span>
 									<span class="ql-title">{sq.title}</span>
 									<span class="badge status" style:--c={sq.status_color}>{sq.status_name_en}</span>
@@ -415,7 +724,7 @@
 		<!-- 선행 퀘스트 -->
 		<section>
 			<div class="section-head">
-				<h2 class="section-title">Prerequisites</h2>
+				<h2 class="section-title prereq-label">Prerequisites</h2>
 				{#if !editMode}
 					<button class="sec-add-btn" onclick={() => openCombo('prereq')}>+ 추가</button>
 				{/if}
@@ -426,7 +735,7 @@
 					{#each detail.prerequisites as pq (pq.id)}
 						<li>
 							<div class="prereq-row">
-								<a href="/quests/{pq.quest_id}" class="prereq-link">
+								<a href="/quests/{pq.quest_id}{fromSuffix}" class="prereq-link">
 									<span class="badge type" style:--c={pq.type_color}>{pq.quest_id}</span>
 									<span class="ql-title">{pq.title}</span>
 									<span class="badge status" style:--c={pq.status_color}>{pq.status_name_en}</span>
@@ -442,6 +751,52 @@
 				<p class="no-desc">선행 퀘스트 없음.</p>
 			{/if}
 		</section>
+
+		<!-- DEV-011: 연결된 캠페인 -->
+		<section>
+			<div class="section-head">
+				<h2 class="section-title campaign-label">Campaigns</h2>
+				<!-- BUG-031: 버튼 배치를 sub-quest / prereq 와 동일하게 — title 옆 -->
+				{#if !editMode}
+					<button
+						class="sec-add-btn"
+						onclick={openCampaignCombo}
+						disabled={campaignCandidates.length === 0}
+						title={campaignCandidates.length === 0
+							? '연결 가능한 캠페인이 없습니다'
+							: '캠페인 선택'}
+					>+ 연결</button>
+				{/if}
+			</div>
+			{#if linkedCampaigns.length > 0}
+				<ul class="quest-list">
+					{#each linkedCampaigns as c (c.id)}
+						<li>
+							<div class="prereq-row">
+								<a href={`/campaigns/${encodeURIComponent(c.campaign_slug)}`} class="prereq-link">
+									<span class="badge type campaign-badge">{c.campaign_slug}</span>
+									<span class="ql-title">{c.title}</span>
+									<span class="badge status status-{c.status}">{c.status}</span>
+								</a>
+								{#if !editMode}
+									<button
+										class="prereq-rm"
+										title="캠페인 연결 해제"
+										onclick={() => unlinkCampaign(c.campaign_slug)}>×</button>
+								{/if}
+							</div>
+						</li>
+					{/each}
+				</ul>
+			{:else}
+				<p class="no-desc">연결된 캠페인 없음.</p>
+			{/if}
+		</section>
+
+		<!-- 변경 이력 (DEV-038) -->
+		{#key `${detail.id}:${historyVersion}`}
+			<QuestHistory questId={detail.id} {statuses} />
+		{/key}
 	{/if}
 </div>
 
@@ -468,6 +823,25 @@
 	</div>
 {/if}
 
+<!-- BUG-030: 캠페인 연결 콤보박스 모달 (sub/prereq 와 동일 패턴) -->
+{#if showCampaignCombo && detail}
+	<div class="ov" role="presentation">
+		<div class="modal-sm" role="dialog" aria-modal="true" tabindex="-1">
+			<div class="modal-head">
+				<h3>캠페인 연결</h3>
+				<button class="x" onclick={closeCampaignCombo}>×</button>
+			</div>
+			<CampaignCombobox
+				campaigns={campaignCandidates}
+				placeholder="C-NNN 또는 캠페인 제목"
+				onselect={linkCampaign}
+				oncancel={closeCampaignCombo}
+			/>
+			{#if campaignLinkError}<p class="combo-err">{campaignLinkError}</p>{/if}
+		</div>
+	</div>
+{/if}
+
 <!-- 서브퀘스트 신규 생성 모달 -->
 {#if showNewSubQuest && detail}
 	<NewQuestModal
@@ -475,6 +849,37 @@
 		onclose={() => (showNewSubQuest = false)}
 		oncreated={onSubQuestCreated}
 	/>
+{/if}
+
+<!-- DEV-055: type 변경 확인 모달 -->
+{#if confirmTypeChange && detail}
+	{@const target = confirmTypeChange}
+	<div class="ov" role="presentation">
+		<div class="modal-sm" role="dialog" aria-modal="true" tabindex="-1">
+			<div class="modal-head">
+				<h3 class="del-title">타입 변경</h3>
+				<button class="x" onclick={() => (confirmTypeChange = null)} disabled={changingType}>×</button>
+			</div>
+			<p class="del-msg">
+				<code>{detail.quest_id}</code> 의 타입을 <strong>{target.prefix}</strong> 로
+				변경합니다. 슬러그(quest_id) 가 바뀌어
+				<code>{target.prefix}-NNN</code> 형태의 새 번호가 부여됩니다.
+			</p>
+			<p class="del-prereq">
+				⚠ 다른 퀘스트 본문 안에 <code>{detail.quest_id}</code> 를 직접 언급(예 "참조") 한 부분은
+				자동으로 갱신되지 않습니다. 필요하면 검색해서 직접 수정하세요.
+				부모/자식/선행 관계의 auto-block 메타는 자동 갱신됩니다.
+			</p>
+			<div class="del-actions">
+				<button class="btn-del-yes" onclick={doChangeType} disabled={changingType}>
+					{changingType ? '변경 중…' : '변경'}
+				</button>
+				<button class="btn-del-no" onclick={() => (confirmTypeChange = null)} disabled={changingType}>
+					취소
+				</button>
+			</div>
+		</div>
+	</div>
 {/if}
 
 <!-- 삭제 모달 -->
@@ -545,7 +950,17 @@
 		margin-bottom: 1.5rem;
 	}
 
-	.back { font-size: 0.875rem; color: #8b949e; text-decoration: none; }
+	/* BUG-015: anchor → button 으로 변경. button 기본 스타일 제거. */
+	.back {
+		font-size: 0.875rem;
+		color: #8b949e;
+		text-decoration: none;
+		background: none;
+		border: none;
+		padding: 0;
+		cursor: pointer;
+		font-family: inherit;
+	}
 	.back:hover { color: #c9d1d9; }
 
 	.top-actions { display: flex; align-items: center; gap: 0.5rem; }
@@ -578,6 +993,17 @@
 		display: flex; gap: 0.5rem; flex-wrap: wrap;
 		margin-bottom: 0.75rem;
 	}
+
+	.meta-times {
+		display: flex; align-items: center; flex-wrap: wrap;
+		gap: 0.4rem;
+		font-size: 0.72rem; color: #6e7681;
+		margin-bottom: 0.85rem;
+	}
+	.meta-item { display: inline-flex; gap: 0.3rem; align-items: baseline; }
+	.meta-label { color: #484f58; text-transform: uppercase; letter-spacing: 0.05em; }
+	.meta-val { color: #8b949e; font-variant-numeric: tabular-nums; }
+	.meta-sep { color: #30363d; }
 
 	.title {
 		font-size: 1.4rem; font-weight: 600; color: #e6edf3;
@@ -643,40 +1069,8 @@
 		100% { box-shadow: 0 0 0 0 transparent; }
 	}
 
-	.md-body {
-		font-size: 0.9rem; color: #c9d1d9; line-height: 1.7;
-		margin: 0 0 1.5rem; padding: 1rem 1.25rem;
-		background: #161b22; border: 1px solid #21262d; border-radius: 6px;
-	}
-	.md-body :global(h1), .md-body :global(h2), .md-body :global(h3) {
-		color: #e6edf3; margin: 1em 0 0.4em;
-	}
-	.md-body :global(h1) { font-size: 1.2rem; }
-	.md-body :global(h2) { font-size: 1.05rem; }
-	.md-body :global(h3) { font-size: 0.95rem; }
-	.md-body :global(p) { margin: 0.5em 0; }
-	.md-body :global(ul), .md-body :global(ol) { padding-left: 1.5rem; margin: 0.4em 0; }
-	.md-body :global(code) {
-		font-family: 'SFMono-Regular', Consolas, monospace;
-		font-size: 0.85em; background: #0d1117;
-		padding: 0.1em 0.35em; border-radius: 3px; color: #79c0ff;
-	}
-	.md-body :global(pre) {
-		background: #0d1117; border: 1px solid #21262d; border-radius: 6px;
-		padding: 0.75rem 1rem; overflow-x: auto;
-	}
-	.md-body :global(pre code) { background: none; padding: 0; color: #c9d1d9; }
-	.md-body :global(blockquote) {
-		border-left: 3px solid #30363d; margin: 0.5em 0;
-		padding: 0.25em 0.75em; color: #8b949e;
-	}
-	.md-body :global(a) { color: #58a6ff; }
-	.md-body :global(hr) { border: none; border-top: 1px solid #21262d; margin: 1em 0; }
-	.md-body :global(table) { border-collapse: collapse; width: 100%; font-size: 0.875rem; }
-	.md-body :global(th), .md-body :global(td) {
-		border: 1px solid #21262d; padding: 0.4em 0.7em; text-align: left;
-	}
-	.md-body :global(th) { background: #0d1117; color: #8b949e; font-weight: 600; }
+	/* BUG-021 fix1: .md-body CSS 는 공유 컴포넌트 MarkdownView 로 이동.
+	   캠페인과 동일 스타일 — 헤더 사이즈 = 브라우저 기본 (헤더 명확 구분). */
 
 	.no-desc { color: #484f58; font-size: 0.9rem; margin: 0 0 1.5rem; }
 	.link-btn {
@@ -686,9 +1080,15 @@
 	}
 
 	.edit-form { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1.5rem; }
+	/* BUG-010: text-transform / letter-spacing 을 label 전체가 아닌 라벨 텍스트
+	   span 에만 적용 — 그렇지 않으면 자식 input / CodeMirror 까지 캐스케이드
+	   되어 입력값이 대문자로 보임. */
 	.field-label {
 		font-size: 0.75rem; font-weight: 600; color: #8b949e;
-		text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.5rem;
+		margin-top: 0.5rem;
+	}
+	.field-label > span:first-child {
+		text-transform: uppercase; letter-spacing: 0.05em;
 	}
 	.edit-title {
 		padding: 0.5rem 0.75rem;
@@ -703,9 +1103,33 @@
 		color: #c9d1d9; font-size: 0.875rem; outline: none; width: 160px;
 	}
 	.edit-select:focus { border-color: #58a6ff; }
+	/* DEV-076: 기한 입력. select 와 동일 스타일. */
+	.due-row { display: flex; gap: 1rem; flex-wrap: wrap; }
+	.due-row .field-label { flex: 1 1 200px; }
+	.edit-date {
+		padding: 0.4rem 0.6rem;
+		background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+		color: #c9d1d9; font-size: 0.875rem; outline: none;
+		font-family: inherit;
+		/* BUG-031: color-scheme: dark 를 추가하면 picker icon 이 흰색 렌더 →
+		   global.css 의 filter:invert(0.85) 가 다시 검정으로 invert 함. 즉
+		   글로벌 fix 와 충돌. 어두운 입력 배경은 background 색만으로 충분 — 별도
+		   color-scheme 지정 금지. */
+	}
+	.edit-date:focus { border-color: #58a6ff; }
+	.field-label .hint { color: #6e7681; font-weight: 400; font-size: 0.8em; }
+	.due-required { color: #f0883e; font-weight: 600; }
+	.due-desired { color: #58a6ff; font-weight: 500; }
+	/* DEV-079: overdue 는 강한 빨강 + 굵게. desired / required 공통. */
+	.due-required.overdue,
+	.due-desired.overdue { color: #f85149; font-weight: 700; }
 	.editor-wrap {
+		/* DEV-057: 사용자 drag 로 height 조절. CodeMirror 의 cm-scroller 는
+		   parent height 100% 따라가서 늘어남. ResizeObserver 가 변경 감지 →
+		   localStorage 영속. */
 		border: 1px solid #30363d; border-radius: 6px;
-		overflow: hidden; min-height: 200px;
+		overflow: hidden; min-height: 200px; max-height: 90vh;
+		resize: vertical;
 	}
 	.editor-wrap :global(.cm-editor) { outline: none; }
 	.editor-wrap :global(.cm-editor.cm-focused) { outline: none; border: none; }
@@ -733,6 +1157,30 @@
 		font-size: 0.8rem; font-weight: 600; color: #8b949e;
 		text-transform: uppercase; letter-spacing: 0.05em; margin: 0;
 	}
+	/* DEV-050: 라벨별 색 — QuestBoard 하이라이트 / CLI 의 quest show 와 일치. */
+	.section-title.parent-label { color: #7ee787; }
+	.section-title.sub-label { color: #3dc9b0; }
+	.section-title.prereq-label { color: #a371f7; }
+	/* DEV-011: Campaign section */
+	.section-title.campaign-label { color: #4a9eff; }
+	/* BUG-021: campaign slug badge — quest type badge 와 동일 pill 패턴 (color-mix). */
+	.campaign-badge {
+		--c: #4a9eff;
+	}
+	.badge.status.status-active {
+		--c: #56d364;
+		background: color-mix(in srgb, var(--c) 18%, transparent);
+		color: var(--c);
+		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
+	}
+	.badge.status.status-done {
+		--c: #8b949e;
+		background: color-mix(in srgb, var(--c) 18%, transparent);
+		color: var(--c);
+		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
+	}
+	/* BUG-030 + BUG-031: campaign-add wrapper 도 제거됨 — 버튼은 .section-head
+	   안으로 이동 (sub-quest / prereq 와 동일 배치). */
 	.sec-add-btn {
 		padding: 0.15rem 0.6rem;
 		border: 1px solid #30363d; border-radius: 4px;
@@ -742,6 +1190,14 @@
 	.sec-add-btn:hover { background: #21262d; color: #c9d1d9; }
 
 	section { margin-bottom: 1.5rem; }
+	/* BUG-031 → BUG-033: 본문과 첫 section (Parent / Sub-Quests) 사이가 여전히
+	   좁다는 피드백. margin → padding 으로 변경 (collapse 회피) + border-top
+	   으로 시각 구분선. 첫 section 윗쪽에도 padding-top 동시 적용. */
+	.description-block { padding-bottom: 2.5rem; margin-bottom: 0; }
+	.description-block + section,
+	.description-block ~ section:first-of-type {
+		padding-top: 1rem;
+	}
 
 	.quest-list {
 		list-style: none; padding: 0; margin: 0;

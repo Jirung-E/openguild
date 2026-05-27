@@ -30,7 +30,7 @@ pub fn default_types() -> Vec<TypeFile> {
     ]
 }
 
-/// 기본 quest 상태 5개. (sort_order, slug, file)
+/// 기본 quest 상태 7개. (sort_order, slug, file)
 pub fn default_statuses() -> Vec<(&'static str, StatusFile)> {
     vec![
         (
@@ -52,18 +52,36 @@ pub fn default_statuses() -> Vec<(&'static str, StatusFile)> {
             },
         ),
         (
-            "done",
+            "testing",
             StatusFile {
                 sort_order: 3,
+                name_en: "Testing".into(),
+                name_ko: "테스트 중".into(),
+                color: "#A47AE2".into(),
+            },
+        ),
+        (
+            "done",
+            StatusFile {
+                sort_order: 4,
                 name_en: "Done".into(),
                 name_ko: "완료".into(),
                 color: "#7BB87F".into(),
             },
         ),
         (
+            "returned",
+            StatusFile {
+                sort_order: 5,
+                name_en: "Returned".into(),
+                name_ko: "반려".into(),
+                color: "#D97757".into(),
+            },
+        ),
+        (
             "cancelled",
             StatusFile {
-                sort_order: 4,
+                sort_order: 6,
                 name_en: "Cancelled".into(),
                 name_ko: "취소됨".into(),
                 color: "#E94F4F".into(),
@@ -72,7 +90,7 @@ pub fn default_statuses() -> Vec<(&'static str, StatusFile)> {
         (
             "on_hold",
             StatusFile {
-                sort_order: 5,
+                sort_order: 7,
                 name_en: "On Hold".into(),
                 name_ko: "보류".into(),
                 color: "#F5A623".into(),
@@ -174,12 +192,15 @@ mod tests {
     }
 
     #[test]
-    fn default_statuses_has_five() {
+    fn default_statuses_has_seven() {
         let statuses = default_statuses();
-        assert_eq!(statuses.len(), 5);
+        assert_eq!(statuses.len(), 7);
         let slugs: Vec<_> = statuses.iter().map(|(s, _)| *s).collect();
-        assert_eq!(slugs, vec!["open", "in_progress", "done", "cancelled", "on_hold"]);
-        // sort_order 가 1..=5
+        assert_eq!(
+            slugs,
+            vec!["open", "in_progress", "testing", "done", "returned", "cancelled", "on_hold"]
+        );
+        // sort_order 가 1..=7
         for (i, (_, st)) in statuses.iter().enumerate() {
             assert_eq!(st.sort_order, (i + 1) as i64);
         }
@@ -192,7 +213,7 @@ mod tests {
 
         assert!(report.gitignore_created);
         assert_eq!(report.types_created.len(), 3);
-        assert_eq!(report.statuses_created.len(), 5);
+        assert_eq!(report.statuses_created.len(), 7);
 
         let paths = GuildPaths::new(&dir);
         assert!(paths.dot_guild().is_dir());
@@ -207,7 +228,9 @@ mod tests {
         assert!(paths.type_path("BUG").is_file());
         assert!(paths.type_path("REQ").is_file());
         assert!(paths.statuses_dir().join("1-open.toml").is_file());
-        assert!(paths.statuses_dir().join("5-on_hold.toml").is_file());
+        assert!(paths.statuses_dir().join("3-testing.toml").is_file());
+        assert!(paths.statuses_dir().join("5-returned.toml").is_file());
+        assert!(paths.statuses_dir().join("7-on_hold.toml").is_file());
 
         // 파일 내용 검증
         let dev = TypeFile::read(paths.type_path("DEV")).unwrap();

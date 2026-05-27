@@ -1,13 +1,14 @@
-# OpenGuild 개발 순서 계획 (MVP)
+# openguild 개발 순서 계획 (MVP)
 
 진행 표기: ✅ 완료 · 🟡 진행 중 · ⚪ 대기
 
 ## 1단계 — 프로젝트 초기 설정 ✅
-- ✅ GitHub 저장소 + main/develop 브랜치
+- ✅ GitHub 저장소 (master 단일 시작)
 - ✅ Cargo workspace 초기화 (backend)
 - ✅ Svelte 프로젝트 초기화 (frontend)
 - ✅ AGENTS.md / CLAUDE.md 작성
 - ✅ .gitignore, README
+- 📌 2026-05-17 — `develop` 브랜치 추가, master/develop/feature 분리 (`docs/guild-rules.md`)
 
 ## 2단계 — 백엔드 기반 ✅
 - ✅ DB 스키마 설계 + 마이그레이션 (0001 initial, 0002 parent ON DELETE SET NULL)

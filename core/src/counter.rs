@@ -1,4 +1,4 @@
-//! Counter (type 의 last_number) 무결성 검증 + 자동 보정.
+﻿//! Counter (type 의 last_number) 무결성 검증 + 자동 보정.
 //!
 //! 모든 type 의 `[counter].last_number` 가 그 type 의 실제 max quest 번호
 //! 보다 작으면 ID 중복 위험 → 자동 보정 + 경고.
@@ -116,6 +116,8 @@ mod tests {
                 created_at: "2026-01-01T00:00:00Z".into(),
                 updated_at: "2026-01-01T00:00:00Z".into(),
                 deleted: false,
+                desired_due: None,
+                required_due: None,
             },
             description: String::new(),
             auto_block: String::new(),

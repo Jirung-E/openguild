@@ -9,11 +9,15 @@ use std::collections::HashSet;
 use crate::error::{AppError, AppResult};
 use crate::models::{
     AddPrerequisiteRequest, ChangeParentRequest, ChangeStatusRequest, CreateQuestRequest,
-    QuestDependency, QuestDetail, QuestPosition, QuestRow, UpdatePositionRequest,
-    UpdateQuestRequest,
+    ListQuery, QuestDependency, QuestDetail, QuestHistoryEntry, QuestPosition, QuestRow,
+    UpdatePositionRequest, UpdateQuestRequest,
 };
 
 /// type / status 를 JOIN 한 공통 SELECT.
+///
+/// BUG-034: `earliest_campaign_due` — 이 퀘스트가 연결된 active 캠페인 중
+/// 가장 가까운 ended_at. 프론트엔드는 `min(required_due, earliest_campaign_due)`
+/// 를 "유효 기한" 으로 표시. 캠페인 끝나기 전에 퀘스트도 끝나야 한다는 의미.
 pub const QUEST_SELECT: &str = r#"
     SELECT
         q.id,
@@ -25,13 +29,25 @@ pub const QUEST_SELECT: &str = r#"
         q.title,
         q.description,
         q.status_id,
+        qs.slug    AS status_slug,
         qs.name_en AS status_name_en,
         qs.name_ko AS status_name_ko,
         qs.color   AS status_color,
         q.urgency,
         q.parent_quest_id,
         q.created_at,
-        q.updated_at
+        q.updated_at,
+        q.desired_due,
+        q.required_due,
+        (
+            SELECT MIN(c.ended_at)
+            FROM campaign_quests cq
+            JOIN campaigns c ON c.id = cq.campaign_id
+            WHERE cq.quest_id = q.id
+              AND c.status = 'active'
+              AND c.ended_at IS NOT NULL
+              AND c.ended_at != ''
+        ) AS earliest_campaign_due
     FROM quests q
     JOIN quest_types   qt ON q.quest_type_id = qt.id
     JOIN quest_statuses qs ON q.status_id    = qs.id
@@ -39,10 +55,321 @@ pub const QUEST_SELECT: &str = r#"
 
 // ─────────────────────── 조회 ───────────────────────
 
-pub async fn list(pool: &SqlitePool) -> AppResult<Vec<QuestRow>> {
-    let sql = format!("{QUEST_SELECT} WHERE q.deleted_at IS NULL ORDER BY q.id DESC");
-    let quests = sqlx::query_as::<_, QuestRow>(&sql).fetch_all(pool).await?;
+/// 필터 / 정렬 / 제한 옵션. 미지정 시 기존 동작 (전체 alive, id DESC).
+///
+/// **fuzzy match** (`quest_statuses` 에 slug 컬럼 없음):
+/// - type: `qt.prefix` 와 대소문자 무시 비교.
+/// - status: `qs.name_en` 을 lower + space/dash → underscore 정규화 후 비교.
+///
+/// 다중 값: 콤마 구분 (`"DEV,BUG"`). 빈 문자열은 필터 미지정으로 취급.
+/// 정렬 / 방향은 화이트리스트 매핑 — SQL injection 방어.
+pub async fn list(pool: &SqlitePool, query: &ListQuery) -> AppResult<Vec<QuestRow>> {
+    let mut sql = format!("{QUEST_SELECT} WHERE q.deleted_at IS NULL");
+
+    // ── 다중 값 필터: 콤마 split, 빈 entry 제거 ──
+    let types = split_csv(&query.r#type);
+    let statuses = split_csv(&query.status);
+
+    if !types.is_empty() {
+        let placeholders = vec!["UPPER(?)"; types.len()].join(", ");
+        sql.push_str(&format!(" AND UPPER(qt.prefix) IN ({placeholders})"));
+    }
+    if !statuses.is_empty() {
+        let one = "REPLACE(REPLACE(LOWER(?), ' ', '_'), '-', '_')";
+        let placeholders = vec![one; statuses.len()].join(", ");
+        sql.push_str(&format!(
+            " AND REPLACE(REPLACE(LOWER(qs.name_en), ' ', '_'), '-', '_') IN ({placeholders})"
+        ));
+    }
+
+    // urgency — single / CSV / "a-b" 범위 (모두 1..=4).
+    let urgency_values: Vec<i64> = parse_urgency(&query.urgency)?;
+    if !urgency_values.is_empty() {
+        let placeholders = vec!["?"; urgency_values.len()].join(", ");
+        sql.push_str(&format!(" AND q.urgency IN ({placeholders})"));
+    }
+
+    // 시간 범위 — SQLite 의 `datetime()` 으로 양쪽을 UTC space-form
+    // ("YYYY-MM-DD HH:MM:SS") 으로 변환 후 lex 비교.
+    //
+    // 이유 (DEV-028 후속): DEV-041 부터 stored ts 는 mixed format —
+    //   legacy: "2026-05-21T15:26:39Z" (length 20)
+    //   new:    "2026-05-22T00:43:40+09:00" (length 25)
+    // lex 비교는 ASCII 차로 깨짐 ('+' < 'Z').
+    //
+    // `datetime(timestring)` 은 입력에 `Z` / `+HH:MM` 가 있으면 UTC 변환,
+    // 없으면 UTC 로 간주. 출력은 항상 "YYYY-MM-DD HH:MM:SS" 동일 형식 → 안전.
+    //
+    // user 입력 ("2026-05-22T00:00:00") 은 normalize_filter_ts 가 사용자의
+    // 로컬 TZ 부착 → SQLite 가 UTC 로 잘못 해석하는 것 방지.
+    if trimmed_opt(&query.created_after).is_some() {
+        sql.push_str(" AND datetime(q.created_at) >= datetime(?)");
+    }
+    if trimmed_opt(&query.created_before).is_some() {
+        sql.push_str(" AND datetime(q.created_at) <= datetime(?)");
+    }
+    if trimmed_opt(&query.updated_after).is_some() {
+        sql.push_str(" AND datetime(q.updated_at) >= datetime(?)");
+    }
+    if trimmed_opt(&query.updated_before).is_some() {
+        sql.push_str(" AND datetime(q.updated_at) <= datetime(?)");
+    }
+
+    // 관계 필터 — 상호배타 검증.
+    if query.has_prereq && query.no_prereq {
+        return Err(AppError::BadRequest(
+            "--has-prereq and --no-prereq are mutually exclusive".into(),
+        ));
+    }
+    if query.has_sub && query.no_sub {
+        return Err(AppError::BadRequest(
+            "--has-sub and --no-sub are mutually exclusive".into(),
+        ));
+    }
+    if query.has_prereq {
+        sql.push_str(
+            " AND EXISTS (SELECT 1 FROM quest_dependencies d WHERE d.quest_id = q.id)",
+        );
+    }
+    if query.no_prereq {
+        sql.push_str(
+            " AND NOT EXISTS (SELECT 1 FROM quest_dependencies d WHERE d.quest_id = q.id)",
+        );
+    }
+    if query.has_sub {
+        sql.push_str(
+            " AND EXISTS (SELECT 1 FROM quests s WHERE s.parent_quest_id = q.id AND s.deleted_at IS NULL)",
+        );
+    }
+    if query.no_sub {
+        sql.push_str(
+            " AND NOT EXISTS (SELECT 1 FROM quests s WHERE s.parent_quest_id = q.id AND s.deleted_at IS NULL)",
+        );
+    }
+
+    // search — 공백 split AND. 각 토큰이 title 또는 description 중 하나엔 LIKE 매치.
+    let search_tokens: Vec<String> = trimmed_opt(&query.search)
+        .map(|s| {
+            s.split_whitespace()
+                .filter(|t| !t.is_empty())
+                .map(|t| t.to_string())
+                .collect()
+        })
+        .unwrap_or_default();
+    // DEV-040: slug (quest_id 형식 "DEV-037") 도 검색 대상. title_only 와 무관 —
+    // slug 는 메타 정보이지 본문이 아니므로 항상 매칭. "037" 같은 부분 입력도 매치.
+    const SLUG_EXPR: &str = "LOWER(qt.prefix || '-' || printf('%03d', q.number)) LIKE LOWER(?)";
+    for _ in &search_tokens {
+        if query.title_only {
+            // DEV-037: title + slug.
+            sql.push_str(&format!(" AND (LOWER(q.title) LIKE LOWER(?) OR {SLUG_EXPR})"));
+        } else {
+            sql.push_str(&format!(
+                " AND (LOWER(q.title) LIKE LOWER(?) OR LOWER(COALESCE(q.description, '')) LIKE LOWER(?) OR {SLUG_EXPR})"
+            ));
+        }
+    }
+
+    // child_of / no_parent 상호배타
+    if query.child_of.is_some() && query.no_parent {
+        return Err(AppError::BadRequest(
+            "--child-of and --no-parent are mutually exclusive".into(),
+        ));
+    }
+    if query.no_parent {
+        sql.push_str(" AND q.parent_quest_id IS NULL");
+    }
+    let parent_id: Option<i64> = if let Some(slug) = trimmed_opt(&query.child_of) {
+        // slug → id 조회 (그 quest 가 parent 인 자식들 검색).
+        let (prefix, num_str) = slug
+            .split_once('-')
+            .ok_or_else(|| AppError::BadRequest(format!("invalid --child-of slug: {slug}")))?;
+        let number: i64 = num_str
+            .parse()
+            .map_err(|_| AppError::BadRequest(format!("invalid --child-of slug: {slug}")))?;
+        let id: Option<i64> = sqlx::query_scalar(
+            "SELECT q.id FROM quests q JOIN quest_types qt ON q.quest_type_id = qt.id
+             WHERE UPPER(qt.prefix) = UPPER(?) AND q.number = ? AND q.deleted_at IS NULL",
+        )
+        .bind(prefix)
+        .bind(number)
+        .fetch_optional(pool)
+        .await?;
+        let id = id.ok_or_else(|| AppError::NotFound(format!("quest {slug} not found")))?;
+        sql.push_str(" AND q.parent_quest_id = ?");
+        Some(id)
+    } else {
+        None
+    };
+
+    // ── 정렬: 화이트리스트, 다중 키 지원, 방향 전체 토글 ──
+    let sort_keys = split_csv(&query.sort);
+    let resolved_keys: Vec<(&'static str, bool)> = if sort_keys.is_empty() {
+        vec![("id", false)] // default
+    } else {
+        sort_keys
+            .iter()
+            .map(|k| match k.to_lowercase().as_str() {
+                "urgency" => Ok(("urgency", true)),
+                "status" => Ok(("status", true)),
+                "updated" => Ok(("updated", false)),
+                "created" => Ok(("created", false)),
+                "id" => Ok(("id", false)),
+                other => Err(AppError::BadRequest(format!(
+                    "unsupported sort key '{other}' — expected one of id/urgency/status/updated/created"
+                ))),
+            })
+            .collect::<AppResult<Vec<_>>>()?
+    };
+
+    let order_parts: Vec<String> = resolved_keys
+        .iter()
+        .map(|(key, asc_default)| {
+            let asc = if query.reverse { !asc_default } else { *asc_default };
+            let dir = if asc { "ASC" } else { "DESC" };
+            let col = match *key {
+                "urgency" => "q.urgency",
+                "status" => "qs.sort_order",
+                "updated" => "q.updated_at",
+                "created" => "q.created_at",
+                _ => "q.id",
+            };
+            format!("{col} {dir}")
+        })
+        .collect();
+    // 마지막 tiebreaker 로 q.id (안정 정렬). 이미 sort key 에 id 있으면 중복 안 함.
+    let has_id = resolved_keys.iter().any(|(k, _)| *k == "id");
+    let order = if has_id {
+        order_parts.join(", ")
+    } else {
+        format!("{}, q.id DESC", order_parts.join(", "))
+    };
+    sql.push_str(&format!(" ORDER BY {order}"));
+
+    if let Some(limit) = query.limit {
+        if limit < 0 {
+            return Err(AppError::BadRequest("limit must be non-negative".into()));
+        }
+        sql.push_str(&format!(" LIMIT {limit}"));
+    }
+    if let Some(offset) = query.offset {
+        if offset < 0 {
+            return Err(AppError::BadRequest("offset must be non-negative".into()));
+        }
+        if query.limit.is_none() {
+            // SQLite 의 LIMIT 없는 OFFSET 지원 위해 큰 LIMIT 부여.
+            sql.push_str(" LIMIT -1");
+        }
+        sql.push_str(&format!(" OFFSET {offset}"));
+    }
+
+    let mut q = sqlx::query_as::<_, QuestRow>(&sql);
+    for t in &types {
+        q = q.bind(t);
+    }
+    for s in &statuses {
+        q = q.bind(s);
+    }
+    for u in &urgency_values {
+        q = q.bind(*u);
+    }
+    // 시간 범위 — bind 순서는 SQL 의 ? 순서와 동일.
+    // normalize_filter_ts: TZ 마커 없으면 사용자의 로컬 TZ 부착 (DEV-028 후속).
+    if let Some(v) = trimmed_opt(&query.created_after) {
+        q = q.bind(crate::time::normalize_filter_ts(v));
+    }
+    if let Some(v) = trimmed_opt(&query.created_before) {
+        q = q.bind(crate::time::normalize_filter_ts(v));
+    }
+    if let Some(v) = trimmed_opt(&query.updated_after) {
+        q = q.bind(crate::time::normalize_filter_ts(v));
+    }
+    if let Some(v) = trimmed_opt(&query.updated_before) {
+        q = q.bind(crate::time::normalize_filter_ts(v));
+    }
+    if let Some(pid) = parent_id {
+        q = q.bind(pid);
+    }
+    // search tokens — 각 토큰마다 bind.
+    // title_only=true → 2번 (title + slug), false → 3번 (title + description + slug).
+    for token in &search_tokens {
+        let pat = format!("%{token}%");
+        if query.title_only {
+            q = q.bind(pat.clone()); // title
+            q = q.bind(pat); // slug
+        } else {
+            q = q.bind(pat.clone()); // title
+            q = q.bind(pat.clone()); // description
+            q = q.bind(pat); // slug
+        }
+    }
+    let quests = q.fetch_all(pool).await?;
     Ok(quests)
+}
+
+/// urgency string 파싱 — single / CSV / "a-b" 범위. 모두 1..=4 검증.
+fn parse_urgency(s: &Option<String>) -> AppResult<Vec<i64>> {
+    let Some(raw) = trimmed_opt(s) else { return Ok(Vec::new()) };
+    let mut result: Vec<i64> = Vec::new();
+    if let Some((lo_s, hi_s)) = raw.split_once('-') {
+        // "a-b" 범위 — 양쪽 끝 inclusive.
+        let lo: i64 = lo_s.trim().parse().map_err(|_| {
+            AppError::BadRequest(format!("invalid urgency range start: {lo_s}"))
+        })?;
+        let hi: i64 = hi_s.trim().parse().map_err(|_| {
+            AppError::BadRequest(format!("invalid urgency range end: {hi_s}"))
+        })?;
+        if !(1..=4).contains(&lo) || !(1..=4).contains(&hi) {
+            return Err(AppError::BadRequest(format!(
+                "urgency range out of bounds: {raw} (must be 1..=4)"
+            )));
+        }
+        if lo > hi {
+            return Err(AppError::BadRequest(format!(
+                "urgency range start > end: {raw}"
+            )));
+        }
+        for u in lo..=hi {
+            result.push(u);
+        }
+    } else {
+        // CSV 또는 단일.
+        for part in raw.split(',') {
+            let p = part.trim();
+            if p.is_empty() {
+                continue;
+            }
+            let u: i64 = p
+                .parse()
+                .map_err(|_| AppError::BadRequest(format!("invalid urgency: {p}")))?;
+            if !(1..=4).contains(&u) {
+                return Err(AppError::BadRequest(format!(
+                    "urgency must be 1..=4, got {u}"
+                )));
+            }
+            result.push(u);
+        }
+    }
+    // 중복 제거.
+    result.sort_unstable();
+    result.dedup();
+    Ok(result)
+}
+
+/// 콤마 구분 string → Vec — 빈 entry / whitespace-only 제거.
+/// 빈 문자열 (`?type=`) 또는 None 둘 다 빈 Vec 반환 (= 필터 미지정).
+fn split_csv(s: &Option<String>) -> Vec<String> {
+    let Some(raw) = s else { return Vec::new() };
+    raw.split(',')
+        .map(|p| p.trim())
+        .filter(|p| !p.is_empty())
+        .map(|p| p.to_string())
+        .collect()
+}
+
+/// Option<String> 의 trim 후 빈 문자열 → None.
+fn trimmed_opt(s: &Option<String>) -> Option<&str> {
+    s.as_deref().map(str::trim).filter(|s| !s.is_empty())
 }
 
 pub async fn list_deleted(pool: &SqlitePool) -> AppResult<Vec<QuestRow>> {
@@ -54,13 +381,23 @@ pub async fn list_deleted(pool: &SqlitePool) -> AppResult<Vec<QuestRow>> {
 
 pub async fn get(pool: &SqlitePool, id: i64) -> AppResult<QuestDetail> {
     let quest = fetch_by_id(pool, id).await?;
+    let parent = fetch_parent(pool, &quest).await?;
     let (sub_quests, prerequisites, position) = fetch_relations(pool, id).await?;
     Ok(QuestDetail {
         quest,
+        parent,
         sub_quests,
         prerequisites,
         position,
     })
+}
+
+/// DEV-047: 부모 quest 한 row 조회 (있으면). parent_quest_id 가 None / 부모
+/// soft-deleted 면 None.
+async fn fetch_parent(pool: &SqlitePool, q: &QuestRow) -> AppResult<Option<QuestRow>> {
+    let Some(pid) = q.parent_quest_id else { return Ok(None) };
+    let sql = format!("{QUEST_SELECT} WHERE q.id = ? AND q.deleted_at IS NULL");
+    Ok(sqlx::query_as::<_, QuestRow>(&sql).bind(pid).fetch_optional(pool).await?)
 }
 
 pub async fn get_by_slug(pool: &SqlitePool, slug: &str) -> AppResult<QuestDetail> {
@@ -83,10 +420,12 @@ pub async fn get_by_slug(pool: &SqlitePool, slug: &str) -> AppResult<QuestDetail
         .ok_or_else(|| AppError::NotFound(format!("quest {slug} not found")))?;
 
     let id = quest.id;
+    let parent = fetch_parent(pool, &quest).await?;
     let (sub_quests, prerequisites, position) = fetch_relations(pool, id).await?;
 
     Ok(QuestDetail {
         quest,
+        parent,
         sub_quests,
         prerequisites,
         position,
@@ -95,8 +434,9 @@ pub async fn get_by_slug(pool: &SqlitePool, slug: &str) -> AppResult<QuestDetail
 
 pub async fn list_positions(pool: &SqlitePool) -> AppResult<Vec<QuestPosition>> {
     // soft-deleted quest 의 position 은 응답에서 제외 — frontend 가 stale 노드를 그리지 않도록
+    // DEV-049: quest_slug 도 함께 SELECT.
     let positions = sqlx::query_as::<_, QuestPosition>(
-        "SELECT p.quest_id, p.x, p.y
+        "SELECT p.quest_id, p.quest_slug, p.x, p.y
          FROM quest_positions p
          JOIN quests q ON q.id = p.quest_id
          WHERE q.deleted_at IS NULL",
@@ -104,6 +444,19 @@ pub async fn list_positions(pool: &SqlitePool) -> AppResult<Vec<QuestPosition>> 
     .fetch_all(pool)
     .await?;
     Ok(positions)
+}
+
+/// DEV-013: quest 의 변경 이력 (최신 → 과거 순).
+pub async fn list_history(pool: &SqlitePool, quest_id: i64) -> AppResult<Vec<QuestHistoryEntry>> {
+    // DEV-049: quest_slug 도 SELECT — stable identifier 노출.
+    let rows = sqlx::query_as::<_, QuestHistoryEntry>(
+        "SELECT id, quest_id, quest_slug, ts, op, old_value, new_value, actor
+         FROM quest_history WHERE quest_id = ? ORDER BY ts DESC, id DESC",
+    )
+    .bind(quest_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
 }
 
 pub async fn list_dependencies(pool: &SqlitePool) -> AppResult<Vec<QuestDependency>> {
@@ -140,6 +493,34 @@ pub async fn create(pool: &SqlitePool, body: CreateQuestRequest) -> AppResult<Qu
 
     let mut tx = pool.begin().await?;
 
+    // DEV-048: API 가 status_slug 전용 → 내부에서 id 로 resolve.
+    let status_id: i64 = sqlx::query_scalar(
+        "SELECT id FROM quest_statuses WHERE slug = ?",
+    )
+    .bind(&body.status_slug)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or_else(|| {
+        AppError::BadRequest(format!("unknown status slug: '{}'", body.status_slug))
+    })?;
+
+    // 외부 편집 / git pull 로 .guild/quests 에 새 .md 가 직접 들어와도 counter
+    // 가 안 올라가는 경우 (BUG: UNIQUE 충돌) self-heal — counter 가 실제 max(number)
+    // 보다 뒤떨어졌으면 그 max 로 끌어올린 뒤 +1. `.guild/types/<P>.toml` 의
+    // last_number 파일 sync 는 별도 (admin reindex / check-counters 로).
+    sqlx::query(
+        "UPDATE quest_counters
+            SET last_number = MAX(
+                last_number,
+                COALESCE((SELECT MAX(number) FROM quests WHERE quest_type_id = ?), 0)
+            )
+          WHERE quest_type_id = ?",
+    )
+    .bind(body.quest_type_id)
+    .bind(body.quest_type_id)
+    .execute(&mut *tx)
+    .await?;
+
     let number = sqlx::query_scalar::<_, i64>(
         "UPDATE quest_counters SET last_number = last_number + 1
          WHERE quest_type_id = ? RETURNING last_number",
@@ -149,17 +530,21 @@ pub async fn create(pool: &SqlitePool, body: CreateQuestRequest) -> AppResult<Qu
     .await?
     .ok_or_else(|| AppError::BadRequest("invalid quest_type_id".to_string()))?;
 
+    // DEV-041: 로컬 시각 + TZ offset 으로 명시 bind.
+    let now = crate::time::now_local_iso8601();
     let id = sqlx::query_scalar::<_, i64>(
-        "INSERT INTO quests (quest_type_id, number, title, description, status_id, urgency, parent_quest_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id",
+        "INSERT INTO quests (quest_type_id, number, title, description, status_id, urgency, parent_quest_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
     )
     .bind(body.quest_type_id)
     .bind(number)
     .bind(&body.title)
     .bind(&body.description)
-    .bind(body.status_id)
+    .bind(status_id)
     .bind(body.urgency.unwrap_or(3))
     .bind(body.parent_quest_id)
+    .bind(&now)
+    .bind(&now)
     .fetch_one(&mut *tx)
     .await?;
 
@@ -171,30 +556,97 @@ pub async fn create(pool: &SqlitePool, body: CreateQuestRequest) -> AppResult<Qu
 pub async fn update(pool: &SqlitePool, id: i64, body: UpdateQuestRequest) -> AppResult<QuestRow> {
     fetch_by_id(pool, id).await?;
 
+    let now = crate::time::now_local_iso8601();
     if let Some(title) = &body.title {
-        sqlx::query("UPDATE quests SET title = ?, updated_at = datetime('now') WHERE id = ?")
+        sqlx::query("UPDATE quests SET title = ?, updated_at = ? WHERE id = ?")
             .bind(title)
+            .bind(&now)
             .bind(id)
             .execute(pool)
             .await?;
     }
     if body.description.is_some() {
-        sqlx::query(
-            "UPDATE quests SET description = ?, updated_at = datetime('now') WHERE id = ?",
-        )
-        .bind(&body.description)
-        .bind(id)
-        .execute(pool)
-        .await?;
+        sqlx::query("UPDATE quests SET description = ?, updated_at = ? WHERE id = ?")
+            .bind(&body.description)
+            .bind(&now)
+            .bind(id)
+            .execute(pool)
+            .await?;
     }
     if let Some(urgency) = body.urgency {
-        sqlx::query("UPDATE quests SET urgency = ?, updated_at = datetime('now') WHERE id = ?")
+        sqlx::query("UPDATE quests SET urgency = ?, updated_at = ? WHERE id = ?")
             .bind(urgency)
+            .bind(&now)
             .bind(id)
             .execute(pool)
             .await?;
     }
 
+    fetch_by_id(pool, id).await
+}
+
+// ─────────────────── DEV-076: 기한 변경 ───────────────────
+
+/// 희망 / 필수 기한 변경.
+///
+/// 각 필드는 `Some(Some("YYYY-MM-DD"))` = 설정, `Some(None)` = 해제,
+/// `None` = 변경 없음. 빈 문자열은 None 으로 정규화.
+///
+/// 날짜 형식 (YYYY-MM-DD) 은 가벼운 길이/숫자 검증만 — strict 파싱 X.
+/// 잘못된 형식은 GUI / CLI 가 사전 차단.
+pub async fn set_due_dates(
+    pool: &SqlitePool,
+    id: i64,
+    desired_due: Option<Option<String>>,
+    required_due: Option<Option<String>>,
+) -> AppResult<QuestRow> {
+    fetch_by_id(pool, id).await?;
+    fn normalize(o: Option<String>) -> Option<String> {
+        o.and_then(|s| {
+            let t = s.trim();
+            if t.is_empty() { None } else { Some(t.to_string()) }
+        })
+    }
+    fn validate(o: &Option<String>, field: &str) -> AppResult<()> {
+        let Some(s) = o else { return Ok(()); };
+        // YYYY-MM-DD: 10자, 4-2-2 숫자/대시.
+        if s.len() != 10 || s.as_bytes()[4] != b'-' || s.as_bytes()[7] != b'-' {
+            return Err(AppError::BadRequest(format!(
+                "{field}: 'YYYY-MM-DD' 형식이어야 합니다 (got: {s:?})"
+            )));
+        }
+        for (i, b) in s.as_bytes().iter().enumerate() {
+            if i == 4 || i == 7 { continue; }
+            if !b.is_ascii_digit() {
+                return Err(AppError::BadRequest(format!(
+                    "{field}: 'YYYY-MM-DD' 형식이어야 합니다 (got: {s:?})"
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    let now = crate::time::now_local_iso8601();
+    if let Some(desired) = desired_due {
+        let v = normalize(desired);
+        validate(&v, "desired_due")?;
+        sqlx::query("UPDATE quests SET desired_due = ?, updated_at = ? WHERE id = ?")
+            .bind(v.as_deref())
+            .bind(&now)
+            .bind(id)
+            .execute(pool)
+            .await?;
+    }
+    if let Some(required) = required_due {
+        let v = normalize(required);
+        validate(&v, "required_due")?;
+        sqlx::query("UPDATE quests SET required_due = ?, updated_at = ? WHERE id = ?")
+            .bind(v.as_deref())
+            .bind(&now)
+            .bind(id)
+            .execute(pool)
+            .await?;
+    }
     fetch_by_id(pool, id).await
 }
 
@@ -234,8 +686,10 @@ pub async fn change_parent(
         }
     }
 
-    sqlx::query("UPDATE quests SET parent_quest_id = ?, updated_at = datetime('now') WHERE id = ?")
+    let now = crate::time::now_local_iso8601();
+    sqlx::query("UPDATE quests SET parent_quest_id = ?, updated_at = ? WHERE id = ?")
         .bind(body.parent_quest_id)
+        .bind(&now)
         .bind(id)
         .execute(pool)
         .await?;
@@ -243,19 +697,136 @@ pub async fn change_parent(
     fetch_by_id(pool, id).await
 }
 
+/// DEV-055: quest 의 type 변경 — slug 바뀜. 호출자 (ops::change_quest_type)
+/// 가 파일 rename + history INSERT + related quest 파일 갱신을 책임.
+///
+/// 반환: (변경된 quest row, old_slug, new_slug). 같은 type 이면 old/new 동일.
+pub async fn change_type(
+    pool: &SqlitePool,
+    id: i64,
+    new_type_prefix: &str,
+) -> AppResult<(QuestRow, String, String)> {
+    let old = fetch_by_id(pool, id).await?;
+    let old_slug = old.quest_id.clone();
+
+    // 같은 type 이면 NoOp.
+    if old.type_prefix.eq_ignore_ascii_case(new_type_prefix) {
+        return Ok((old, old_slug.clone(), old_slug));
+    }
+
+    let new_type_id: i64 = sqlx::query_scalar(
+        "SELECT id FROM quest_types WHERE UPPER(prefix) = UPPER(?)",
+    )
+    .bind(new_type_prefix)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| {
+        AppError::BadRequest(format!("unknown type prefix: '{new_type_prefix}'"))
+    })?;
+
+    let mut tx = pool.begin().await?;
+
+    // counter self-heal (BUG-counter-self-heal 와 동일 패턴) — 외부 편집으로
+    // counter 가 실제 max 보다 뒤떨어졌어도 안전.
+    sqlx::query(
+        "UPDATE quest_counters
+            SET last_number = MAX(
+                last_number,
+                COALESCE((SELECT MAX(number) FROM quests WHERE quest_type_id = ?), 0)
+            )
+          WHERE quest_type_id = ?",
+    )
+    .bind(new_type_id)
+    .bind(new_type_id)
+    .execute(&mut *tx)
+    .await?;
+
+    // 새 number 부여 — target type counter +1.
+    let new_number: i64 = sqlx::query_scalar(
+        "UPDATE quest_counters SET last_number = last_number + 1
+         WHERE quest_type_id = ? RETURNING last_number",
+    )
+    .bind(new_type_id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or_else(|| {
+        AppError::Internal(anyhow::anyhow!(
+            "target type 의 counter row 없음: {new_type_prefix}"
+        ))
+    })?;
+
+    let now = crate::time::now_local_iso8601();
+    sqlx::query(
+        "UPDATE quests SET quest_type_id = ?, number = ?, updated_at = ? WHERE id = ?",
+    )
+    .bind(new_type_id)
+    .bind(new_number)
+    .bind(&now)
+    .bind(id)
+    .execute(&mut *tx)
+    .await?;
+
+    // DEV-049: quest_history / quest_positions 의 quest_slug cascade.
+    // 새 slug 는 type 의 prefix + zero-padded number — sql 안에서 직접 compose.
+    sqlx::query(
+        "UPDATE quest_history
+            SET quest_slug = (
+                SELECT qt.prefix || '-' || printf('%03d', q.number)
+                  FROM quests q JOIN quest_types qt ON qt.id = q.quest_type_id
+                 WHERE q.id = ?
+            )
+          WHERE quest_id = ?",
+    )
+    .bind(id)
+    .bind(id)
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query(
+        "UPDATE quest_positions
+            SET quest_slug = (
+                SELECT qt.prefix || '-' || printf('%03d', q.number)
+                  FROM quests q JOIN quest_types qt ON qt.id = q.quest_type_id
+                 WHERE q.id = ?
+            )
+          WHERE quest_id = ?",
+    )
+    .bind(id)
+    .bind(id)
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+
+    let updated = fetch_by_id(pool, id).await?;
+    let new_slug = updated.quest_id.clone();
+    Ok((updated, old_slug, new_slug))
+}
+
 pub async fn change_status(
     pool: &SqlitePool,
     id: i64,
     body: ChangeStatusRequest,
 ) -> AppResult<QuestRow> {
-    let rows = sqlx::query(
-        "UPDATE quests SET status_id = ?, updated_at = datetime('now') WHERE id = ?",
+    // DEV-048: slug → id resolve.
+    let status_id: i64 = sqlx::query_scalar(
+        "SELECT id FROM quest_statuses WHERE slug = ?",
     )
-    .bind(body.status_id)
-    .bind(id)
-    .execute(pool)
+    .bind(&body.status_slug)
+    .fetch_optional(pool)
     .await?
-    .rows_affected();
+    .ok_or_else(|| {
+        AppError::BadRequest(format!("unknown status slug: '{}'", body.status_slug))
+    })?;
+
+    let now = crate::time::now_local_iso8601();
+    let rows = sqlx::query("UPDATE quests SET status_id = ?, updated_at = ? WHERE id = ?")
+        .bind(status_id)
+        .bind(&now)
+        .bind(id)
+        .execute(pool)
+        .await?
+        .rows_affected();
 
     if rows == 0 {
         return Err(AppError::NotFound(format!("quest {id} not found")));
@@ -295,6 +866,8 @@ pub async fn delete(
         }
     }
 
+    let now = crate::time::now_local_iso8601();
+
     // cascade 안 한 alive 직계 자식들 → parent_quest_id = NULL (분리)
     let cascade_filter = if cascade_ids.is_empty() {
         String::new()
@@ -309,9 +882,10 @@ pub async fn delete(
         )
     };
     sqlx::query(&format!(
-        "UPDATE quests SET parent_quest_id = NULL, updated_at = datetime('now')
+        "UPDATE quests SET parent_quest_id = NULL, updated_at = ?
          WHERE parent_quest_id = ? AND deleted_at IS NULL{cascade_filter}"
     ))
+    .bind(&now)
     .bind(id)
     .execute(&mut *tx)
     .await?;
@@ -319,9 +893,11 @@ pub async fn delete(
     // 명시된 자식들 soft delete
     for cid in cascade_ids {
         sqlx::query(
-            "UPDATE quests SET deleted_at = datetime('now'), updated_at = datetime('now')
+            "UPDATE quests SET deleted_at = ?, updated_at = ?
              WHERE id = ? AND deleted_at IS NULL",
         )
+        .bind(&now)
+        .bind(&now)
         .bind(cid)
         .execute(&mut *tx)
         .await?;
@@ -329,9 +905,11 @@ pub async fn delete(
 
     // 본 퀘스트 soft delete
     let rows = sqlx::query(
-        "UPDATE quests SET deleted_at = datetime('now'), updated_at = datetime('now')
+        "UPDATE quests SET deleted_at = ?, updated_at = ?
          WHERE id = ? AND deleted_at IS NULL",
     )
+    .bind(&now)
+    .bind(&now)
     .bind(id)
     .execute(&mut *tx)
     .await?
@@ -346,10 +924,12 @@ pub async fn delete(
 }
 
 pub async fn restore(pool: &SqlitePool, id: i64) -> AppResult<QuestRow> {
+    let now = crate::time::now_local_iso8601();
     let rows = sqlx::query(
-        "UPDATE quests SET deleted_at = NULL, updated_at = datetime('now')
+        "UPDATE quests SET deleted_at = NULL, updated_at = ?
          WHERE id = ? AND deleted_at IS NOT NULL",
     )
+    .bind(&now)
     .bind(id)
     .execute(pool)
     .await?
@@ -512,11 +1092,22 @@ pub async fn update_position(
     id: i64,
     body: UpdatePositionRequest,
 ) -> AppResult<QuestPosition> {
-    sqlx::query(
-        "INSERT INTO quest_positions (quest_id, x, y) VALUES (?, ?, ?)
-         ON CONFLICT(quest_id) DO UPDATE SET x = excluded.x, y = excluded.y",
+    // DEV-049: quest_slug 도 함께 INSERT — quests.id 재할당 시에도 정상 매핑.
+    let slug: String = sqlx::query_scalar(
+        "SELECT qt.prefix || '-' || printf('%03d', q.number)
+         FROM quests q JOIN quest_types qt ON q.quest_type_id = qt.id
+         WHERE q.id = ?",
     )
     .bind(id)
+    .fetch_one(pool)
+    .await?;
+
+    sqlx::query(
+        "INSERT INTO quest_positions (quest_id, quest_slug, x, y) VALUES (?, ?, ?, ?)
+         ON CONFLICT(quest_id) DO UPDATE SET x = excluded.x, y = excluded.y, quest_slug = excluded.quest_slug",
+    )
+    .bind(id)
+    .bind(&slug)
     .bind(body.x)
     .bind(body.y)
     .execute(pool)
@@ -524,6 +1115,7 @@ pub async fn update_position(
 
     Ok(QuestPosition {
         quest_id: id,
+        quest_slug: Some(slug),
         x: body.x,
         y: body.y,
     })
@@ -564,7 +1156,7 @@ async fn fetch_relations(
         .await?;
 
     let position = sqlx::query_as::<_, QuestPosition>(
-        "SELECT quest_id, x, y FROM quest_positions WHERE quest_id = ?",
+        "SELECT quest_id, quest_slug, x, y FROM quest_positions WHERE quest_id = ?",
     )
     .bind(id)
     .fetch_optional(pool)
@@ -624,4 +1216,174 @@ async fn has_prerequisite_path(
         to_visit.extend(prereqs);
     }
     Ok(false)
+}
+
+// ─────────────────────── tests ───────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::CreateQuestRequest;
+    use crate::store::Store;
+
+    fn fresh_tmp(label: &str) -> std::path::PathBuf {
+        let ns = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let p = std::env::temp_dir().join(format!("og-svc-quests-{label}-{ns}"));
+        std::fs::create_dir_all(&p).unwrap();
+        p
+    }
+
+    async fn fresh_store(label: &str) -> (std::path::PathBuf, Store) {
+        let dir = fresh_tmp(label);
+        crate::repo::seed_guild_dir(&dir).unwrap();
+        let store = Store::open(&dir).await.unwrap();
+        crate::reindex::reindex(&store).await.unwrap();
+        (dir, store)
+    }
+
+    async fn make_quest(store: &Store) -> i64 {
+        let q = create(
+            &store.index_pool,
+            CreateQuestRequest {
+                quest_type_id: 1, // DEV (seed)
+                title: "t".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        q.id
+    }
+
+    // ─── DEV-076: set_due_dates ───
+
+    #[tokio::test]
+    async fn set_due_dates_sets_both() {
+        let (dir, store) = fresh_store("set-both").await;
+        let id = make_quest(&store).await;
+        let q = set_due_dates(
+            &store.index_pool,
+            id,
+            Some(Some("2026-06-01".into())),
+            Some(Some("2026-06-15".into())),
+        )
+        .await
+        .unwrap();
+        assert_eq!(q.desired_due.as_deref(), Some("2026-06-01"));
+        assert_eq!(q.required_due.as_deref(), Some("2026-06-15"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn set_due_dates_clear_via_some_none() {
+        let (dir, store) = fresh_store("set-clear").await;
+        let id = make_quest(&store).await;
+        set_due_dates(
+            &store.index_pool,
+            id,
+            Some(Some("2026-06-01".into())),
+            None,
+        )
+        .await
+        .unwrap();
+        // 이제 None 으로 해제.
+        let q = set_due_dates(&store.index_pool, id, Some(None), None).await.unwrap();
+        assert!(q.desired_due.is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn set_due_dates_outer_none_is_noop() {
+        let (dir, store) = fresh_store("set-noop").await;
+        let id = make_quest(&store).await;
+        set_due_dates(
+            &store.index_pool,
+            id,
+            Some(Some("2026-06-01".into())),
+            Some(Some("2026-06-15".into())),
+        )
+        .await
+        .unwrap();
+        // outer None = 변경 없음 — 기존값 보존.
+        let q = set_due_dates(&store.index_pool, id, None, None).await.unwrap();
+        assert_eq!(q.desired_due.as_deref(), Some("2026-06-01"));
+        assert_eq!(q.required_due.as_deref(), Some("2026-06-15"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn set_due_dates_empty_string_normalized_to_none() {
+        let (dir, store) = fresh_store("set-empty").await;
+        let id = make_quest(&store).await;
+        let q = set_due_dates(
+            &store.index_pool,
+            id,
+            Some(Some("   ".into())),
+            Some(Some("".into())),
+        )
+        .await
+        .unwrap();
+        assert!(q.desired_due.is_none());
+        assert!(q.required_due.is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn set_due_dates_rejects_bad_format() {
+        let (dir, store) = fresh_store("set-bad").await;
+        let id = make_quest(&store).await;
+        for bad in &["bad-date", "2026/06/15", "2026-6-15", "26-06-15", "2026-13-45-extra"] {
+            let err = set_due_dates(
+                &store.index_pool,
+                id,
+                Some(Some((*bad).into())),
+                None,
+            )
+            .await
+            .unwrap_err();
+            assert!(
+                matches!(err, AppError::BadRequest(_)),
+                "expected BadRequest for {bad:?}, got {err:?}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn set_due_dates_missing_quest_id_is_not_found() {
+        let (dir, store) = fresh_store("set-missing").await;
+        let err = set_due_dates(
+            &store.index_pool,
+            999_999,
+            Some(Some("2026-06-15".into())),
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, AppError::NotFound(_)));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ─── BUG-034: earliest_campaign_due 계산 (QUEST_SELECT subquery) ───
+    //
+    // 캠페인 연결 안 된 퀘스트는 None — 계산 식 정확성만 빠르게 확인.
+    // 캠페인 연결 케이스는 server/ops 통합 테스트가 필요하므로 여기선 생략.
+
+    #[tokio::test]
+    async fn earliest_campaign_due_is_none_for_unlinked_quest() {
+        let (dir, store) = fresh_store("ecd-unlinked").await;
+        let id = make_quest(&store).await;
+        let q = fetch_by_id(&store.index_pool, id).await.unwrap();
+        assert!(
+            q.earliest_campaign_due.is_none(),
+            "unlinked quest 의 earliest_campaign_due 는 None 이어야 함"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

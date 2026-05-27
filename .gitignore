@@ -13,6 +13,9 @@ gui/frontend/.svelte-kit/
 gui/frontend/build/
 gui/frontend/dist/
 
+# Tauri (gui/) — tauri-build 자동 생성 (capabilities ACL, schemas)
+gui/gen/
+
 # 환경 변수
 .env
 .env.local

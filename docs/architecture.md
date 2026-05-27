@@ -1,4 +1,4 @@
-# OpenGuild 소프트웨어 아키텍처
+# openguild 소프트웨어 아키텍처
 
 ## 전체 구조
 
