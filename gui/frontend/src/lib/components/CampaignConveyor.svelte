@@ -16,12 +16,15 @@
 		summaries,
 		now,
 		emptyText = '곧 시작 예정인 캠페인이 없습니다.',
-		secondsPerCard = 6
+		secondsPerCard = 6,
+		// DEV-080: CampaignCard 의 모드 — 기본 'upcoming'. 'overdue' 도 동일 동작.
+		mode = 'upcoming'
 	}: {
 		summaries: CampaignSummary[];
 		now: number;
 		emptyText?: string;
 		secondsPerCard?: number;
+		mode?: 'upcoming' | 'overdue';
 	} = $props();
 
 	const CARD_W = 200;
@@ -175,7 +178,7 @@
 		onpointercancel={onPointerUp}
 		onclickcapture={onClickCapture}
 		role="region"
-		aria-label="곧 시작 캠페인"
+		aria-label={mode === 'overdue' ? '마감 지난 캠페인' : '곧 시작 캠페인'}
 	>
 		<div
 			class="track"
@@ -184,7 +187,7 @@
 		>
 			{#each summaries as s (s.id)}
 				<div class="slot">
-					<CampaignCard summary={s} mode="upcoming" {now} />
+					<CampaignCard summary={s} {mode} {now} />
 				</div>
 			{/each}
 			{#if needsMarquee}
@@ -192,7 +195,7 @@
 				<div class="spacer" aria-hidden="true"></div>
 				{#each summaries as s, i (`dup-${i}`)}
 					<div class="slot" aria-hidden="true">
-						<CampaignCard summary={s} mode="upcoming" {now} />
+						<CampaignCard summary={s} {mode} {now} />
 					</div>
 				{/each}
 				<!-- 두번째 시퀀스 뒤에도 동일 spacer — 사이클 균형. -->

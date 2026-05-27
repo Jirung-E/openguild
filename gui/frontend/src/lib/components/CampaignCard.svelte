@@ -19,7 +19,9 @@
 		now
 	}: {
 		summary: CampaignSummary;
-		mode: 'active' | 'upcoming';
+		// DEV-080: 'overdue' 모드 추가 — 마감 지난 / 미완료 캠페인.
+		// upcoming 과 시각/크기 동일, 라벨만 "n일 지남" + 빨강.
+		mode: 'active' | 'upcoming' | 'overdue';
 		now: number;
 	} = $props();
 
@@ -70,6 +72,22 @@
 		return formatRemaining(summary.started_at, now, 'until-start');
 	}
 
+	// DEV-080: 'overdue' 모드용 — "n일 지남". ended_at 기준.
+	function overdueElapsedLabel(): string {
+		const e = summary.ended_at?.trim();
+		if (!e) return '';
+		const endMs = new Date(`${e}T23:59:59`).getTime();
+		if (Number.isNaN(endMs)) return '';
+		const elapsedMs = now - endMs;
+		if (elapsedMs <= 0) return '';
+		const days = Math.floor(elapsedMs / (24 * 60 * 60 * 1000));
+		if (days < 1) {
+			const hr = Math.floor(elapsedMs / (60 * 60 * 1000));
+			return hr < 1 ? '방금 지남' : `${hr}시간 지남`;
+		}
+		return `${days}일 지남`;
+	}
+
 	// BUG-033: `<button onclick={goto}>` 대신 native `<a href>` 사용. button +
 	// JS handler 는 conveyor 의 pointer 이벤트와 미묘하게 충돌해 click 이 발화
 	// 안 되는 경우가 있음. anchor 의 native href 는 conveyor 가 e.preventDefault()
@@ -113,13 +131,24 @@
 				</div>
 			</div>
 		</div>
-	{:else}
+	{:else if mode === 'upcoming'}
 		<div class="title small">{summary.title}</div>
 		<div class="meta">
 			<div class="period">
 				<span class="remaining accent">{upcomingRemainingLabel()}</span>
 				{#if summary.started_at?.trim()}
 					<span class="start-date">({summary.started_at})</span>
+				{/if}
+			</div>
+		</div>
+	{:else}
+		<!-- DEV-080: overdue 모드 — upcoming 과 동일 size, 라벨만 "n일 지남" 빨강. -->
+		<div class="title small">{summary.title}</div>
+		<div class="meta">
+			<div class="period">
+				<span class="remaining urgent">{overdueElapsedLabel()}</span>
+				{#if summary.ended_at?.trim()}
+					<span class="start-date">({summary.ended_at})</span>
 				{/if}
 			</div>
 		</div>
@@ -154,6 +183,12 @@
 		gap: 0.85rem;
 	}
 	.card.upcoming { padding: 0.65rem 0.8rem; gap: 0.35rem; }
+	/* DEV-080: overdue 카드 — upcoming 과 동일 패딩, 좌측 빨간 strip 으로 강조. */
+	.card.overdue {
+		padding: 0.65rem 0.8rem;
+		gap: 0.35rem;
+		border-left: 3px solid #f85149;
+	}
 	/* BUG-025: 100% 달성 카드 — 초록 border 강조 */
 	.card.completed {
 		border-color: #2ea043;

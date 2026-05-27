@@ -198,6 +198,20 @@
 		return futureSorted.slice(0, 1);
 	});
 
+	// DEV-080: 마감 지난 캠페인 — 진행률 < 100% 이면서 ended_at 이 지난 active 캠페인.
+	// 위치는 곧 시작 아래. 카드 모양 / 동작은 upcoming 과 동일 (CampaignConveyor 재사용).
+	let overdueCampaigns = $derived.by(() => {
+		const t = now;
+		const rows = allActive.filter((c) => {
+			if (c.progress >= 1.0) return false; // 100% 달성한 건 제외 (실질적으로 끝)
+			const end = dateEndMs(c.ended_at);
+			return end !== null && end < t;
+		});
+		// 가장 오래 지난 것부터 (= ended_at ASC). 가장 시급한 게 위로.
+		rows.sort((a, b) => (dateEndMs(a.ended_at) ?? 0) - (dateEndMs(b.ended_at) ?? 0));
+		return rows;
+	});
+
 	function typeColor(prefix: string): string {
 		return types.find((t) => t.prefix === prefix)?.color ?? '#666';
 	}
@@ -223,6 +237,20 @@
 			<!-- ── 곧 시작 ─────────────────────────────── -->
 			<h3>곧 시작되는 캠페인 <span class="count">({upcomingSummaries.length})</span></h3>
 			<CampaignConveyor summaries={upcomingSummaries} {now} />
+
+			<!-- ── DEV-080: 마감 지난 캠페인 (있을 때만). 모양 / 동작은 곧 시작과 동일. ── -->
+			{#if overdueCampaigns.length > 0}
+				<h3>
+					마감 지난 캠페인
+					<span class="count overdue">({overdueCampaigns.length})</span>
+				</h3>
+				<CampaignConveyor
+					summaries={overdueCampaigns}
+					{now}
+					mode="overdue"
+					emptyText="마감 지난 캠페인 없음."
+				/>
+			{/if}
 
 			<div class="actions">
 				<button class="btn-link" type="button" onclick={() => goto('/campaigns')}>
