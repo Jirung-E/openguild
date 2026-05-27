@@ -153,9 +153,9 @@ export function makeQuestNodeSvgUrl(quest: Quest, overlayColor?: string): string
        fill="none" stroke="${overlayColor}" stroke-width="2.5"/>`
 		: '';
 
+	// DEV-081: 좌측 urgency 색 strip 제거 — border (stroke) 만으로도 충분히 강조.
 	const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
   <rect x="0" y="0" width="${W}" height="${H}" rx="6" ry="6" fill="#0d1117" stroke="${uc}" stroke-width="1.5" stroke-opacity="0.9"/>
-  <rect x="0" y="0" width="3" height="${H}" rx="1.5" fill="${uc}" opacity="0.9"/>
   <rect x="10" y="9" width="${qidW}" height="17" rx="8.5"
     fill="${tc}" fill-opacity="0.16" stroke="${tc}" stroke-opacity="0.55" stroke-width="1"/>
   <text x="${10 + qidW / 2}" y="21.5" text-anchor="middle"

@@ -183,11 +183,13 @@
 		gap: 0.85rem;
 	}
 	.card.upcoming { padding: 0.65rem 0.8rem; gap: 0.35rem; }
-	/* DEV-080: overdue 카드 — upcoming 과 동일 패딩, 좌측 빨간 strip 으로 강조. */
+	/* DEV-080 → DEV-081: overdue 카드 — upcoming 과 동일 패딩 + completed 와
+	   동일 패턴의 빨강 그라데이션 + border (완료와 시각 대칭, 색만 빨강). */
 	.card.overdue {
 		padding: 0.65rem 0.8rem;
 		gap: 0.35rem;
-		border-left: 3px solid #f85149;
+		border-color: #f85149;
+		background: linear-gradient(180deg, #2a1010 0%, #161b22 60%);
 	}
 	/* BUG-025: 100% 달성 카드 — 초록 border 강조 */
 	.card.completed {

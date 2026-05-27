@@ -198,12 +198,18 @@
 		return futureSorted.slice(0, 1);
 	});
 
-	// DEV-080: 마감 지난 캠페인 — 진행률 < 100% 이면서 ended_at 이 지난 active 캠페인.
-	// 위치는 곧 시작 아래. 카드 모양 / 동작은 upcoming 과 동일 (CampaignConveyor 재사용).
+	// DEV-080 → DEV-081: 마감 지난 캠페인 — 체크리스트가 있고 미완료이며 ended_at 이 지난 active 캠페인.
+	//
+	// 필터:
+	//   - checklist_total > 0  (체크리스트 비어있는 캠페인은 "달성" 개념 자체가 모호 → 제외)
+	//   - progress < 1.0       (100% 달성한 건 실질적으로 끝)
+	//   - ended_at 지남
+	// 위치는 곧 시작 아래. 모양 / 동작은 upcoming 과 동일 (CampaignConveyor 재사용).
 	let overdueCampaigns = $derived.by(() => {
 		const t = now;
 		const rows = allActive.filter((c) => {
-			if (c.progress >= 1.0) return false; // 100% 달성한 건 제외 (실질적으로 끝)
+			if (c.checklist_total === 0) return false;
+			if (c.progress >= 1.0) return false;
 			const end = dateEndMs(c.ended_at);
 			return end !== null && end < t;
 		});

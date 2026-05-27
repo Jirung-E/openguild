@@ -155,8 +155,9 @@
 		}
 		const titleY = dueText ? (line2 ? 40 : 46) : line2 ? 44 : 52;
 
+		// DEV-081: 좌측 urgency 색 strip 제거 — cytoscape 의 node border (urgencyColor)
+		// 만으로 강조 충분. 카드 안쪽 strip 은 중복 시각 노이즈.
 		const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
-  <rect x="0" y="0" width="3" height="${H}" rx="1.5" fill="${uc}" opacity="0.9"/>
   <rect x="10" y="9" width="${qidW}" height="17" rx="8.5"
     fill="${tc}" fill-opacity="0.16" stroke="${tc}" stroke-opacity="0.55" stroke-width="1"/>
   <text x="${10 + qidW / 2}" y="21.5" text-anchor="middle"
