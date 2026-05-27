@@ -274,7 +274,9 @@ enum QuestCmd {
         #[command(subcommand)]
         sub: PrereqCmd,
     },
-    /// DEV-076: 희망 / 필수 기한 조회 / 설정 / 해제.
+    // BUG-037: doc comment 의 quest id (DEV-076) 가 clap help 로 leak — 외부에
+    // 노출되면 안 됨. 일반 doc comment 는 plain 코멘트로 변경.
+    /// 희망 / 필수 기한 조회 / 설정 / 해제.
     /// 인자 없으면 현재 상태 출력. `--desired` / `--required` 로 설정.
     /// `--clear-desired` / `--clear-required` 로 해제.
     Due {

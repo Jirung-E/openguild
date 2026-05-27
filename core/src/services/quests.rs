@@ -1217,3 +1217,173 @@ async fn has_prerequisite_path(
     }
     Ok(false)
 }
+
+// ─────────────────────── tests ───────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::CreateQuestRequest;
+    use crate::store::Store;
+
+    fn fresh_tmp(label: &str) -> std::path::PathBuf {
+        let ns = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let p = std::env::temp_dir().join(format!("og-svc-quests-{label}-{ns}"));
+        std::fs::create_dir_all(&p).unwrap();
+        p
+    }
+
+    async fn fresh_store(label: &str) -> (std::path::PathBuf, Store) {
+        let dir = fresh_tmp(label);
+        crate::repo::seed_guild_dir(&dir).unwrap();
+        let store = Store::open(&dir).await.unwrap();
+        crate::reindex::reindex(&store).await.unwrap();
+        (dir, store)
+    }
+
+    async fn make_quest(store: &Store) -> i64 {
+        let q = create(
+            &store.index_pool,
+            CreateQuestRequest {
+                quest_type_id: 1, // DEV (seed)
+                title: "t".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        q.id
+    }
+
+    // ─── DEV-076: set_due_dates ───
+
+    #[tokio::test]
+    async fn set_due_dates_sets_both() {
+        let (dir, store) = fresh_store("set-both").await;
+        let id = make_quest(&store).await;
+        let q = set_due_dates(
+            &store.index_pool,
+            id,
+            Some(Some("2026-06-01".into())),
+            Some(Some("2026-06-15".into())),
+        )
+        .await
+        .unwrap();
+        assert_eq!(q.desired_due.as_deref(), Some("2026-06-01"));
+        assert_eq!(q.required_due.as_deref(), Some("2026-06-15"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn set_due_dates_clear_via_some_none() {
+        let (dir, store) = fresh_store("set-clear").await;
+        let id = make_quest(&store).await;
+        set_due_dates(
+            &store.index_pool,
+            id,
+            Some(Some("2026-06-01".into())),
+            None,
+        )
+        .await
+        .unwrap();
+        // 이제 None 으로 해제.
+        let q = set_due_dates(&store.index_pool, id, Some(None), None).await.unwrap();
+        assert!(q.desired_due.is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn set_due_dates_outer_none_is_noop() {
+        let (dir, store) = fresh_store("set-noop").await;
+        let id = make_quest(&store).await;
+        set_due_dates(
+            &store.index_pool,
+            id,
+            Some(Some("2026-06-01".into())),
+            Some(Some("2026-06-15".into())),
+        )
+        .await
+        .unwrap();
+        // outer None = 변경 없음 — 기존값 보존.
+        let q = set_due_dates(&store.index_pool, id, None, None).await.unwrap();
+        assert_eq!(q.desired_due.as_deref(), Some("2026-06-01"));
+        assert_eq!(q.required_due.as_deref(), Some("2026-06-15"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn set_due_dates_empty_string_normalized_to_none() {
+        let (dir, store) = fresh_store("set-empty").await;
+        let id = make_quest(&store).await;
+        let q = set_due_dates(
+            &store.index_pool,
+            id,
+            Some(Some("   ".into())),
+            Some(Some("".into())),
+        )
+        .await
+        .unwrap();
+        assert!(q.desired_due.is_none());
+        assert!(q.required_due.is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn set_due_dates_rejects_bad_format() {
+        let (dir, store) = fresh_store("set-bad").await;
+        let id = make_quest(&store).await;
+        for bad in &["bad-date", "2026/06/15", "2026-6-15", "26-06-15", "2026-13-45-extra"] {
+            let err = set_due_dates(
+                &store.index_pool,
+                id,
+                Some(Some((*bad).into())),
+                None,
+            )
+            .await
+            .unwrap_err();
+            assert!(
+                matches!(err, AppError::BadRequest(_)),
+                "expected BadRequest for {bad:?}, got {err:?}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn set_due_dates_missing_quest_id_is_not_found() {
+        let (dir, store) = fresh_store("set-missing").await;
+        let err = set_due_dates(
+            &store.index_pool,
+            999_999,
+            Some(Some("2026-06-15".into())),
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, AppError::NotFound(_)));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ─── BUG-034: earliest_campaign_due 계산 (QUEST_SELECT subquery) ───
+    //
+    // 캠페인 연결 안 된 퀘스트는 None — 계산 식 정확성만 빠르게 확인.
+    // 캠페인 연결 케이스는 server/ops 통합 테스트가 필요하므로 여기선 생략.
+
+    #[tokio::test]
+    async fn earliest_campaign_due_is_none_for_unlinked_quest() {
+        let (dir, store) = fresh_store("ecd-unlinked").await;
+        let id = make_quest(&store).await;
+        let q = fetch_by_id(&store.index_pool, id).await.unwrap();
+        assert!(
+            q.earliest_campaign_due.is_none(),
+            "unlinked quest 의 earliest_campaign_due 는 None 이어야 함"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

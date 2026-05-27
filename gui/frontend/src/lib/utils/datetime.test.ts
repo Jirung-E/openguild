@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { formatTs, formatRelative } from './datetime';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { formatTs, formatRelative, isDateOverdue } from './datetime';
 
 describe('formatTs', () => {
 	it('legacy SQLite 형식 (공백 + TZ 마커 없음) → UTC 가정', () => {
@@ -80,5 +80,58 @@ describe('formatRelative', () => {
 		expect(formatRelative(null)).toBe('');
 		expect(formatRelative(undefined)).toBe('');
 		expect(formatRelative('')).toBe('');
+	});
+});
+
+// DEV-079: 기한 지난 여부 (오늘 끝 23:59:59 기준).
+describe('isDateOverdue', () => {
+	// Date.now() 를 고정해 환경 / 시각 영향 제거.
+	const FIXED_NOW = new Date('2026-06-15T12:00:00Z').getTime();
+
+	beforeEach(() => {
+		vi.useFakeTimers();
+		vi.setSystemTime(FIXED_NOW);
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it('null / undefined / 빈 문자열 → false', () => {
+		expect(isDateOverdue(null)).toBe(false);
+		expect(isDateOverdue(undefined)).toBe(false);
+		expect(isDateOverdue('')).toBe(false);
+		expect(isDateOverdue('   ')).toBe(false);
+	});
+
+	it('과거 날짜 (status 미지정) → true', () => {
+		// 오늘 = 2026-06-15. 어제 23:59:59 는 지남.
+		expect(isDateOverdue('2026-06-14')).toBe(true);
+	});
+
+	it('오늘 → 오늘 끝 (23:59:59) 까지는 false', () => {
+		expect(isDateOverdue('2026-06-15')).toBe(false);
+	});
+
+	it('미래 날짜 → false', () => {
+		expect(isDateOverdue('2026-12-31')).toBe(false);
+	});
+
+	it('status = done — 과거여도 false (이미 끝남)', () => {
+		expect(isDateOverdue('2026-06-14', 'done')).toBe(false);
+	});
+
+	it('status = cancelled — 과거여도 false', () => {
+		expect(isDateOverdue('2026-06-14', 'cancelled')).toBe(false);
+	});
+
+	it('status = open / in_progress 등 — 과거면 true', () => {
+		expect(isDateOverdue('2026-06-14', 'open')).toBe(true);
+		expect(isDateOverdue('2026-06-14', 'in_progress')).toBe(true);
+		expect(isDateOverdue('2026-06-14', 'testing')).toBe(true);
+	});
+
+	it('잘못된 형식 → false (NaN 가드)', () => {
+		expect(isDateOverdue('not-a-date')).toBe(false);
+		expect(isDateOverdue('2026-13-45')).toBe(false);
 	});
 });
