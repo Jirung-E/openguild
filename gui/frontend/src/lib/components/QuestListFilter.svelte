@@ -7,9 +7,7 @@
 		typeIds = $bindable(new Set<number>()),
 		statusIds = $bindable(new Set<number>()),
 		search = $bindable(''),
-		titleOnly = $bindable(false),
-		// DEV-084: New Quest 버튼 콜백 — 있으면 filter-bar 우측 끝에 버튼 렌더.
-		onNewQuest
+		titleOnly = $bindable(false)
 	}: {
 		types: QuestType[];
 		statuses: QuestStatus[];
@@ -17,7 +15,6 @@
 		statusIds: Set<number>;
 		search?: string;
 		titleOnly?: boolean;
-		onNewQuest?: () => void;
 	} = $props();
 
 	function toggle(set: Set<number>, id: number): Set<number> {
@@ -89,11 +86,6 @@
 			<span>제목만</span>
 		</label>
 	</div>
-
-	{#if onNewQuest}
-		<!-- DEV-084: New Quest — filter-bar 제일 오른쪽 (margin-left:auto 로 push). -->
-		<button class="btn-new" onclick={onNewQuest} title="새 퀘스트">+ New Quest</button>
-	{/if}
 </div>
 
 <style>
@@ -101,27 +93,13 @@
 		display: flex;
 		align-items: center;
 		gap: 0.75rem;
-		padding: 0.75rem 1.5rem;
+		/* DEV-086: 우측 New Quest 플로팅 버튼 자리 확보 (보드 toolbar 와 동일
+		   위치). 필터가 wrap 돼도 버튼 밑으로 안 들어가게 padding-right 예약. */
+		padding: 0.75rem 130px 0.75rem 1.5rem;
 		background: #161b22;
 		border-bottom: 1px solid #21262d;
 		flex-wrap: wrap;
 	}
-
-	/* DEV-084: New Quest — filter-bar 우측 끝 primary 버튼. */
-	.btn-new {
-		margin-left: auto;
-		padding: 0.35rem 0.85rem;
-		background: #238636;
-		border: 1px solid #2ea043;
-		border-radius: 6px;
-		color: #fff;
-		font-size: 0.8rem;
-		font-weight: 600;
-		cursor: pointer;
-		white-space: nowrap;
-		transition: background 0.15s;
-	}
-	.btn-new:hover { background: #2ea043; }
 
 	.filter-group {
 		display: flex;

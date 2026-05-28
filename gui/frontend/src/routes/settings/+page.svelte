@@ -20,9 +20,6 @@
 	// floating toast 닫기 — updateState 를 idle 로.
 	const dismissCheck = () => dismissUpdate();
 
-	type Tab = 'info' | 'update';
-	let tab = $state<Tab>('info');
-
 	const isTauri = detectEnvironment() === 'tauri';
 
 	// 앱 메타 — Tauri 에서는 실제 버전 (tauri.conf.json), 브라우저는 placeholder.
@@ -49,57 +46,40 @@
 	<aside class="side">
 		<h1>설정</h1>
 		<nav>
-			<button class="tab" class:active={tab === 'info'} onclick={() => (tab = 'info')}>
-				정보
-			</button>
-			<button class="tab" class:active={tab === 'update'} onclick={() => (tab = 'update')}>
-				업데이트
-			</button>
-			<!-- 추후: 테마 / 언어 / 길드 규칙 등 여기에 추가. -->
+			<!-- DEV-086: '업데이트' 탭 제거 — 버튼은 정보 탭의 버전 아래로. 현재는
+			     '정보' 만. 추후 테마 / 언어 / 길드 규칙 등 추가 시 여기 나열. -->
+			<button class="tab active">정보</button>
 		</nav>
 	</aside>
 
 	<section class="panel">
-		{#if tab === 'info'}
-			<h2>정보</h2>
-			<dl class="info-grid">
-				<dt>앱 이름</dt>
-				<dd>{appName}</dd>
-				<dt>버전</dt>
-				<dd>{appVersion}</dd>
-				<dt>저장소</dt>
-				<dd><a href={repoUrl} target="_blank" rel="noreferrer noopener">{repoUrl}</a></dd>
-			</dl>
-		{:else if tab === 'update'}
-			<h2>업데이트</h2>
-			{#if !isTauri}
-				<p class="note">업데이트 기능은 데스크탑 앱에서만 사용할 수 있습니다.</p>
-			{:else}
-				<p class="note">현재 버전: <strong>{appVersion}</strong></p>
-
-				<div class="upd-row">
+		<h2>정보</h2>
+		<dl class="info-grid">
+			<dt>앱 이름</dt>
+			<dd>{appName}</dd>
+			<dt>버전</dt>
+			<dd>
+				<span>{appVersion}</span>
+				{#if isTauri}
+					<!-- DEV-086: 버전 아래 '슬쩍' 업데이트 확인. 결과는 floating toast. -->
 					<button
-						class="btn-primary"
+						class="btn-check-upd"
 						onclick={() => checkForUpdate()}
 						disabled={$updateState.status === 'checking' ||
 							$updateState.status === 'downloading'}
 					>
 						{$updateState.status === 'checking' ? '확인 중…' : '업데이트 확인'}
 					</button>
-				</div>
-
-				<p class="note dim">
-					앱은 시작 시 + 실행 중 주기적으로 자동 확인하며, 새 버전이 있으면 상단에
-					알림 배너를 표시합니다. 설치는 항상 사용자가 직접 선택합니다.
-				</p>
-			{/if}
-		{/if}
+				{/if}
+			</dd>
+			<dt>저장소</dt>
+			<dd><a href={repoUrl} target="_blank" rel="noreferrer noopener">{repoUrl}</a></dd>
+		</dl>
 	</section>
 </div>
 
-<!-- DEV-085: 업데이트 확인 결과 — floating toast (fixed). 이전엔 인라인이라
-     컨텐츠를 아래로 밀어 보기 불편했음. 우하단에 떠서 레이아웃 영향 X. -->
-{#if isTauri && tab === 'update' && $updateState.status !== 'idle'}
+<!-- DEV-085: 업데이트 확인 결과 — floating toast (fixed). 우하단에 떠서 레이아웃 영향 X. -->
+{#if isTauri && $updateState.status !== 'idle'}
 	<div class="upd-toast" class:err={$updateState.status === 'error'} role="status">
 		<button class="upd-toast-x" title="닫기" onclick={dismissCheck}>×</button>
 		{#if $updateState.status === 'checking'}
@@ -178,13 +158,23 @@
 		font-size: 0.875rem;
 	}
 	.info-grid dt { color: #8b949e; }
-	.info-grid dd { margin: 0; color: #c9d1d9; }
+	.info-grid dd { margin: 0; color: #c9d1d9; display: flex; flex-direction: column; gap: 0.35rem; align-items: flex-start; }
 	.info-grid a { color: #58a6ff; }
 
-	.note { font-size: 0.85rem; color: #8b949e; line-height: 1.5; }
-	.note.dim { color: #6e7681; margin-top: 1rem; }
+	/* DEV-086: 버전 아래 '슬쩍' 업데이트 확인 — subtle outline 버튼. */
+	.btn-check-upd {
+		padding: 0.2rem 0.6rem;
+		background: transparent;
+		border: 1px solid #30363d;
+		border-radius: 6px;
+		color: #8b949e;
+		font-size: 0.75rem;
+		cursor: pointer;
+		transition: background 0.15s, color 0.15s;
+	}
+	.btn-check-upd:hover:not(:disabled) { background: #21262d; color: #c9d1d9; }
+	.btn-check-upd:disabled { opacity: 0.5; cursor: not-allowed; }
 
-	.upd-row { margin: 1rem 0; }
 	.btn-primary {
 		padding: 0.4rem 0.9rem;
 		background: #238636;

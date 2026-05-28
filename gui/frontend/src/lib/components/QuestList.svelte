@@ -15,7 +15,8 @@
 	import QuestListFilter from './QuestListFilter.svelte';
 	import QuestListItem from './QuestListItem.svelte';
 
-	// DEV-084: New Quest 버튼 — filter-bar 우측 끝. 클릭 시 부모 (+page) 모달.
+	// DEV-086: New Quest 버튼 — Board toolbar 와 동일 좌표/크기로 우상단 고정.
+	// 클릭 시 부모 (+page) 모달 오픈.
 	let { onNewQuest }: { onNewQuest?: () => void } = $props();
 
 	// --- 상태 ---
@@ -100,10 +101,18 @@
 </script>
 
 <div class="quest-list">
+	<!-- DEV-086: New Quest — Quest Board toolbar 와 동일 좌표 (top:10px right:14px)
+	     + 동일 크기. 페이지 전환 시 버튼이 안 흔들리도록. filter-bar 위에 떠 있되
+	     filter-bar 가 우측 130px padding 으로 자리 비워둠. -->
+	{#if onNewQuest}
+		<button class="qb-new" onclick={onNewQuest} title="새 퀘스트">
+			<span class="qb-new-icon">+</span><span>New Quest</span>
+		</button>
+	{/if}
+
 	<QuestListFilter
 		{types}
 		{statuses}
-		{onNewQuest}
 		bind:typeIds={filterTypeIds}
 		bind:statusIds={filterStatusIds}
 		bind:search
@@ -142,7 +151,32 @@
 		display: flex;
 		flex-direction: column;
 		height: calc(100vh - 52px);
+		position: relative; /* DEV-086: New Quest 절대배치 기준. */
 	}
+
+	/* DEV-086: New Quest — Quest Board 의 .tb-btn.tb-new 와 px 단위까지 동일
+	   (padding 4px 10px / font 0.8rem / radius 6px / 초록). 위치도 동일
+	   (top:10px right:14px) — 보드↔리스트 전환 시 안 흔들림. */
+	.qb-new {
+		position: absolute;
+		top: 10px;
+		right: 14px;
+		z-index: 10;
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		padding: 4px 10px;
+		background: #238636;
+		border: 1px solid #2ea043;
+		border-radius: 6px;
+		color: #fff;
+		font-size: 0.8rem;
+		font-weight: 600;
+		cursor: pointer;
+		transition: background 0.1s, border-color 0.1s;
+	}
+	.qb-new:hover { background: #2ea043; border-color: #3fb950; }
+	.qb-new-icon { font-size: 0.95rem; line-height: 1; }
 
 	.list {
 		flex: 1;
