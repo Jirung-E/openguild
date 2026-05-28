@@ -1,14 +1,16 @@
 <!--
-  DEV-063: 자동 업데이트 배너 + 수동 체크 버튼.
+  DEV-063: 업데이트 알림 배너 + 수동 체크 버튼.
 
-  - 앱 시작 시 background 로 조용히 체크 (silent) — 새 버전 있을 때만 배너.
+  방식 (완전 자동 X — 알림 후 사용자 선택):
+  - 앱 시작 시 background silent 체크 — 새 버전 있을 때만 배너.
+  - DEV-083: 켜져 있는 동안 주기적 (6시간) 재확인 — 장시간 실행 세션도 감지.
   - 사용자가 직접 "업데이트 확인" 도 가능 (Nav 에서 호출).
   - 새 버전: release notes + "지금 업데이트" / "나중에".
-  - 다운로드 중: progress.
-  - 설치 완료: 재시작 안내 (relaunch 는 자동 트리거됨).
+  - 다운로드/설치/재시작은 사용자가 "지금 업데이트" 누를 때만.
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { get } from 'svelte/store';
 	import {
 		updateState,
 		checkForUpdate,
@@ -16,9 +18,22 @@
 		dismissUpdate
 	} from '$lib/api/updater';
 
-	// 앱 mount 시 1회 silent 체크 — 최신이면 아무 것도 안 뜸.
+	// DEV-083: 주기적 재확인 간격. 너무 짧으면 GitHub rate / 노이즈, 너무 길면
+	// 장시간 켜둔 세션이 새 버전 놓침. 6시간이 타협점.
+	const PERIODIC_CHECK_MS = 6 * 60 * 60 * 1000;
+
 	onMount(() => {
+		// 시작 시 1회 silent 체크 — 최신이면 아무 것도 안 뜸.
 		checkForUpdate({ silent: true });
+
+		// 켜져 있는 동안 주기적 재확인. 단, 이미 안내 중 / 다운로드 중이면
+		// 사용자 흐름 방해하지 않게 skip.
+		const handle = setInterval(() => {
+			const s = get(updateState).status;
+			if (s === 'available' || s === 'downloading' || s === 'ready') return;
+			checkForUpdate({ silent: true });
+		}, PERIODIC_CHECK_MS);
+		return () => clearInterval(handle);
 	});
 </script>
 
