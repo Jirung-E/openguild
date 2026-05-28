@@ -27,6 +27,7 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -53,5 +54,13 @@
         "mimeType": "application/x-openguild"
       }
     ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/Jirung-E/openguild/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDhCOUM3NkFEQUMwOTk3Q0QKUldUTmx3bXNyWGFjaTB1cGZUREtwbVc2eDUrZVBhcG5ieWZ3WEdQcU9yVEdPTFFlQ2dPb2xnZzMK"
+    }
   }
 }

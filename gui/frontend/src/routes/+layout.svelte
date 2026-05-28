@@ -2,6 +2,7 @@
 	import { page } from '$app/stores';
 	import { onMount } from 'svelte';
 	import Nav from '$lib/components/Nav.svelte';
+	import UpdateBanner from '$lib/components/UpdateBanner.svelte';
 	import { detectEnvironment } from '$lib/api/transport';
 	import '$lib/styles/global.css';
 
@@ -34,6 +35,9 @@
 	});
 </script>
 
+<!-- DEV-063: 업데이트 배너 — Nav 아래, 새 버전 있을 때만 노출. 모든 라우트
+     (welcome 포함) 공통. -->
+<UpdateBanner />
 {#if showNav}
 	<Nav />
 {/if}

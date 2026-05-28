@@ -207,6 +207,9 @@ pub fn run() {
     tauri::Builder::default()
         // DEV-053: 디렉토리 선택 dialog — Welcome 의 "폴더 열기".
         .plugin(tauri_plugin_dialog::init())
+        // DEV-063: auto-update — updater (체크/다운로드/설치) + process (relaunch).
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(store)
         .manage(launch_info)
         .invoke_handler(tauri::generate_handler![

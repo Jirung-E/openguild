@@ -4,6 +4,12 @@
 	import NewQuestModal from './NewQuestModal.svelte';
 	import { flashQuestId } from '$lib/stores';
 	import type { Quest } from '$lib/types';
+	// DEV-063: 수동 업데이트 확인.
+	import { detectEnvironment } from '$lib/api/transport';
+	import { checkForUpdate } from '$lib/api/updater';
+
+	// 업데이트 확인 버튼은 데스크탑 (Tauri) 에서만 의미 있음.
+	const isTauri = detectEnvironment() === 'tauri';
 
 	// DEV-011: Home 탭 추가. URL `/` 가 ?view 없으면 home 기본.
 	type View = 'home' | 'board' | 'list';
@@ -44,6 +50,13 @@
 	</nav>
 
 	<div class="nav-right">
+		{#if isTauri}
+			<button
+				class="btn-upd"
+				title="업데이트 확인"
+				onclick={() => checkForUpdate()}
+			>⟳ 업데이트</button>
+		{/if}
 		{#if showNewQuestButton}
 			<button class="btn-new" onclick={() => (showNewQuest = true)}>+ New Quest</button>
 		{/if}
@@ -108,8 +121,23 @@
 	.nav-right {
 		display: flex;
 		align-items: center;
+		gap: 0.5rem;
 		margin-left: auto;
 	}
+
+	/* DEV-063: 업데이트 확인 — 보조 버튼 톤 (New Quest 보다 약하게). */
+	.btn-upd {
+		padding: 0.35rem 0.75rem;
+		background: transparent;
+		border: 1px solid #30363d;
+		border-radius: 6px;
+		color: #8b949e;
+		font-size: 0.8rem;
+		cursor: pointer;
+		white-space: nowrap;
+		transition: background 0.15s, color 0.15s;
+	}
+	.btn-upd:hover { background: #21262d; color: #c9d1d9; }
 
 	.btn-new {
 		padding: 0.35rem 1rem;
