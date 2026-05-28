@@ -69,6 +69,12 @@ jobs:
       - name: Tauri build (NSIS)
         working-directory: gui
         # beforeBuildCommand 가 npm run build 호출 (frontend dist 생성).
+        # DEV-063: createUpdaterArtifacts:true + signing key env 가 있으면
+        # *-setup.exe 와 함께 *-setup.exe.sig (서명) 도 생성.
+        # secret 미설정 시 (포크 / 초기) signing 은 skip — 일반 installer 만.
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: cargo tauri build
 
       # Artifact 는 항상 업로드 (workflow_dispatch dry-run 도 검증 가능).
@@ -76,18 +82,63 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: openguild-windows-x64-installer
-          path: target/release/bundle/nsis/*-setup.exe
+          path: |
+            target/release/bundle/nsis/*-setup.exe
+            target/release/bundle/nsis/*-setup.exe.sig
           if-no-files-found: error
           retention-days: 7
 
+      # DEV-063: updater 가 fetch 하는 latest.json 생성.
+      # setup.exe.sig 의 내용 (서명) + release asset download URL 을 조합.
+      # tag push 일 때만 (URL 에 tag 필요). signing secret 없으면 .sig 가
+      # 없어 skip — 그 경우 updater 비활성 release (일반 installer 만).
+      - name: Generate latest.json
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $version = $tag -replace '^v', ''
+          $nsisDir = "target/release/bundle/nsis"
+          $exe = Get-ChildItem "$nsisDir/*-setup.exe" | Select-Object -First 1
+          if (-not $exe) { throw "setup.exe 없음" }
+          $sigFile = "$($exe.FullName).sig"
+          if (-not (Test-Path $sigFile)) {
+            Write-Host "::warning::*.sig 없음 — signing secret 미설정. latest.json skip (updater 비활성)."
+            exit 0
+          }
+          $sig = Get-Content $sigFile -Raw
+          $repo = "${{ github.repository }}"
+          $url = "https://github.com/$repo/releases/download/$tag/$($exe.Name)"
+          $json = [ordered]@{
+            version   = $version
+            notes     = "See the release page for details."
+            pub_date  = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+            platforms = [ordered]@{
+              "windows-x86_64" = [ordered]@{
+                signature = $sig.Trim()
+                url       = $url
+              }
+            }
+          }
+          $out = "$nsisDir/latest.json"
+          $json | ConvertTo-Json -Depth 5 | Set-Content $out -Encoding utf8
+          Write-Host "latest.json 생성:"
+          Get-Content $out
+
       # tag push 일 때만 GitHub Release 생성 + 첨부.
       # workflow_dispatch (dry-run) 는 위의 artifact 까지만.
+      # DEV-063: latest.json + *.sig 도 첨부 (updater endpoint 가 fetch).
+      # fail_on_unmatched_files:false — signing secret 없는 환경에서 .sig /
+      # latest.json 이 없어도 release 는 성공 (일반 installer 만 첨부).
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: target/release/bundle/nsis/*-setup.exe
+          files: |
+            target/release/bundle/nsis/*-setup.exe
+            target/release/bundle/nsis/*-setup.exe.sig
+            target/release/bundle/nsis/latest.json
           generate_release_notes: true
           draft: false
           prerelease: false
-          fail_on_unmatched_files: true
+          fail_on_unmatched_files: false
