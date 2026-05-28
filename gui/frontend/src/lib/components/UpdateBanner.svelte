@@ -1,4 +1,4 @@
-<!--
+﻿<!--
   DEV-063: 업데이트 알림 배너 + 수동 체크 버튼.
 
   방식 (완전 자동 X — 알림 후 사용자 선택):
@@ -75,28 +75,12 @@
 			<span class="upd-title">업데이트 설치 완료 — 재시작 중…</span>
 		</div>
 	</div>
-{:else if $updateState.status === 'checking'}
-	<div class="upd-banner subtle" role="status">
-		<div class="upd-main"><span class="upd-title">업데이트 확인 중…</span></div>
-	</div>
-{:else if $updateState.status === 'uptodate'}
-	<div class="upd-banner subtle" role="status">
-		<div class="upd-main"><span class="upd-title">최신 버전입니다.</span></div>
-		<div class="upd-actions">
-			<button class="upd-btn" onclick={() => dismissUpdate()}>닫기</button>
-		</div>
-	</div>
-{:else if $updateState.status === 'error'}
-	<div class="upd-banner error" role="alert">
-		<div class="upd-main">
-			<span class="upd-title">업데이트 확인 실패</span>
-			<span class="upd-err">{$updateState.message}</span>
-		</div>
-		<div class="upd-actions">
-			<button class="upd-btn" onclick={() => dismissUpdate()}>닫기</button>
-		</div>
-	</div>
 {/if}
+
+<!-- DEV-085: checking / uptodate / error 같은 transient (수동 체크 피드백) 는
+     전역 배너에서 제거 — 상단 배너가 레이아웃을 밀어내는 문제. 그 상태들은
+     설정 페이지의 floating toast 가 담당. 전역 배너는 actionable / 진행 중
+     (available / downloading / ready) 만 — 어디서든 봐야 하는 것. -->
 
 <style>
 	.upd-banner {
@@ -110,12 +94,8 @@
 		color: #c9d1d9;
 		font-size: 0.85rem;
 	}
-	.upd-banner.subtle { background: #161b22; border-bottom-color: #30363d; color: #8b949e; }
-	.upd-banner.error { background: #2a1010; border-bottom-color: #f85149; }
-
 	.upd-main { display: flex; align-items: center; gap: 0.75rem; flex: 1; min-width: 0; }
 	.upd-title { font-weight: 600; white-space: nowrap; }
-	.upd-err { color: #f85149; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 	.upd-notes { font-size: 0.8rem; color: #8b949e; }
 	.upd-notes summary { cursor: pointer; }
