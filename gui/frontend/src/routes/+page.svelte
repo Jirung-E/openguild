@@ -1,10 +1,13 @@
-<script lang="ts">
+﻿<script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import Home from '$lib/components/Home.svelte';
 	import QuestBoard from '$lib/components/QuestBoard.svelte';
 	import QuestList from '$lib/components/QuestList.svelte';
+	import NewQuestModal from '$lib/components/NewQuestModal.svelte';
+	import { flashQuestId } from '$lib/stores';
+	import type { Quest } from '$lib/types';
 	import { detectEnvironment } from '$lib/api/transport';
 
 	// DEV-011: Home 추가. ?view 없으면 home 기본.
@@ -12,6 +15,20 @@
 	let currentView: View = $derived(
 		($page.url.searchParams.get('view') as View | null) ?? 'home'
 	);
+
+	// DEV-084: New Quest 를 상단 nav 에서 각 뷰의 기존 상단 바/툴바 우측 끝으로
+	// 이동 (QuestBoard toolbar / QuestList filter-bar). 모달 + 생성 로직은 여기
+	// (+page) 에서 소유, 콜백으로 버튼 클릭만 위임.
+	let showNewQuest = $state(false);
+
+	async function onCreated(quest: Quest) {
+		// 보드 뷰가 아니면 보드로 이동 후 펄스 (생성 결과 위치 확인 편의).
+		if (currentView !== 'board') {
+			await goto('/?view=board');
+		}
+		flashQuestId.set(quest.id);
+		showNewQuest = false;
+	}
 
 	// DEV-052: Tauri 가 인자 없이 시작되면 launch_mode === "welcome".
 	// 길드 컨텍스트가 없으므로 / (board) 진입 시 항상 /welcome 으로 bounce.
@@ -37,12 +54,13 @@
 </script>
 
 {#if currentView === 'board'}
-	<QuestBoard />
+	<QuestBoard onNewQuest={() => (showNewQuest = true)} />
 {:else if currentView === 'list'}
-	<QuestList />
+	<QuestList onNewQuest={() => (showNewQuest = true)} />
 {:else}
 	<Home />
 {/if}
 
-<style>
-</style>
+{#if showNewQuest}
+	<NewQuestModal onclose={() => (showNewQuest = false)} oncreated={onCreated} />
+{/if}

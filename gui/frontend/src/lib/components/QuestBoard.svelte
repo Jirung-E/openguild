@@ -1,4 +1,4 @@
-<script lang="ts">
+﻿<script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import { get } from 'svelte/store';
 	import cytoscape from 'cytoscape';
@@ -19,6 +19,9 @@
 		type QuestPosition,
 		type QuestStatus
 	} from '$lib/types';
+
+	// DEV-084: New Quest 버튼이 toolbar 로 이동 — 클릭 시 부모 (+page) 의 모달 오픈.
+	let { onNewQuest }: { onNewQuest?: () => void } = $props();
 
 	const NODE_W = 284;
 	const NODE_H = 80;
@@ -2190,6 +2193,14 @@
 				<option value="all">All</option>
 			</select>
 		</div>
+		{#if onNewQuest}
+			<div class="tb-sep"></div>
+			<!-- DEV-084: New Quest — toolbar 제일 오른쪽. 다른 tb-btn 과 동일 톤이되
+			     primary 강조 (생성 액션). -->
+			<button class="tb-btn tb-new" onclick={onNewQuest} title="새 퀘스트">
+				<span class="icon">+</span><span>New Quest</span>
+			</button>
+		{/if}
 	</div>
 </div>
 
@@ -2533,6 +2544,13 @@
 	.tb-btn .icon { font-size: 0.95rem; line-height: 1; }
 	.tb-btn .count { font-size: 0.7rem; color: #484f58; min-width: 10px; text-align: right; }
 	.tb-btn:hover:not(:disabled) .count { color: #8b949e; }
+	/* DEV-084: New Quest — toolbar 안 primary 강조 (초록). */
+	.tb-btn.tb-new {
+		background: #238636; border-color: #2ea043; color: #fff; font-weight: 600;
+	}
+	.tb-btn.tb-new:hover:not(:disabled) {
+		background: #2ea043; border-color: #3fb950; color: #fff;
+	}
 	.tb-sep { width: 1px; background: #30363d; align-self: stretch; margin: 2px 0; }
 	.tb-select {
 		padding: 3px 6px;

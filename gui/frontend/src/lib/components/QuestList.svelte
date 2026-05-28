@@ -1,4 +1,4 @@
-<script lang="ts">
+﻿<script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
@@ -14,6 +14,9 @@
 	} from '$lib/utils/quest-list';
 	import QuestListFilter from './QuestListFilter.svelte';
 	import QuestListItem from './QuestListItem.svelte';
+
+	// DEV-084: New Quest 버튼 — filter-bar 우측 끝. 클릭 시 부모 (+page) 모달.
+	let { onNewQuest }: { onNewQuest?: () => void } = $props();
 
 	// --- 상태 ---
 	let quests = $state<Quest[]>([]);
@@ -100,6 +103,7 @@
 	<QuestListFilter
 		{types}
 		{statuses}
+		{onNewQuest}
 		bind:typeIds={filterTypeIds}
 		bind:statusIds={filterStatusIds}
 		bind:search

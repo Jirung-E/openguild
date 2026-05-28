@@ -1,17 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/stores';
-	import { goto } from '$app/navigation';
-	import NewQuestModal from './NewQuestModal.svelte';
-	import { flashQuestId } from '$lib/stores';
-	import type { Quest } from '$lib/types';
-	// DEV-063: 수동 업데이트 확인.
-	import { detectEnvironment } from '$lib/api/transport';
-	import { checkForUpdate } from '$lib/api/updater';
 
-	// 업데이트 확인 버튼은 데스크탑 (Tauri) 에서만 의미 있음.
-	const isTauri = detectEnvironment() === 'tauri';
-
-	// DEV-011: Home 탭 추가. URL `/` 가 ?view 없으면 home 기본.
+	// DEV-011: Home 탭. URL `/` 가 ?view 없으면 home 기본.
 	type View = 'home' | 'board' | 'list';
 
 	let currentView: View = $derived(
@@ -20,22 +10,7 @@
 
 	let onAdminPath = $derived($page.url.pathname.startsWith('/admin'));
 	let onRootPath = $derived($page.url.pathname === '/');
-	// BUG-022: + New Quest 버튼은 Quest Board / Quest List 컨텍스트에서만.
-	// Home / Admin / Campaigns / Quest Detail 등에서는 숨김.
-	let showNewQuestButton = $derived(
-		onRootPath && (currentView === 'board' || currentView === 'list')
-	);
-
-	let showNewQuest = $state(false);
-
-	async function onCreated(quest: Quest) {
-		// 보드 뷰가 아니면(목록 뷰 등) 보드로 이동시킨 뒤 펄스
-		if ($page.url.pathname !== '/' || currentView !== 'board') {
-			await goto('/?view=board');
-		}
-		// QuestBoard 가 store 구독해서 해당 노드로 panTo + 펄스
-		flashQuestId.set(quest.id);
-	}
+	let onSettingsPath = $derived($page.url.pathname.startsWith('/settings'));
 </script>
 
 <header>
@@ -50,25 +25,17 @@
 	</nav>
 
 	<div class="nav-right">
-		{#if isTauri}
-			<button
-				class="btn-upd"
-				title="업데이트 확인"
-				onclick={() => checkForUpdate()}
-			>⟳ 업데이트</button>
-		{/if}
-		{#if showNewQuestButton}
-			<button class="btn-new" onclick={() => (showNewQuest = true)}>+ New Quest</button>
-		{/if}
+		<!-- DEV-084: New Quest / 업데이트 버튼은 본문 / 설정 페이지로 이동.
+		     우상단엔 ⚙ 설정 진입만 (정보 / 업데이트 등 비자주 기능 묶음). -->
+		<a
+			href="/settings"
+			class="btn-settings"
+			class:active={onSettingsPath}
+			title="설정"
+			aria-label="설정"
+		>⚙</a>
 	</div>
 </header>
-
-{#if showNewQuest}
-	<NewQuestModal
-		onclose={() => (showNewQuest = false)}
-		oncreated={onCreated}
-	/>
-{/if}
 
 <style>
 	header {
@@ -114,8 +81,7 @@
 
 	nav a.active {
 		background: #2a2a4a;
-		color: #ffffff;
-		font-weight: 500;
+		color: #c9d1d9;
 	}
 
 	.nav-right {
@@ -125,31 +91,27 @@
 		margin-left: auto;
 	}
 
-	/* DEV-063: 업데이트 확인 — 보조 버튼 톤 (New Quest 보다 약하게). */
-	.btn-upd {
-		padding: 0.35rem 0.75rem;
-		background: transparent;
-		border: 1px solid #30363d;
+	/* DEV-084: 설정 진입 — 톱니바퀴 아이콘. 우상단 (New Quest 가 있던 자리). */
+	.btn-settings {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 2rem;
+		height: 2rem;
 		border-radius: 6px;
+		font-size: 1.1rem;
+		line-height: 1;
 		color: #8b949e;
-		font-size: 0.8rem;
-		cursor: pointer;
-		white-space: nowrap;
-		transition: background 0.15s, color 0.15s;
+		text-decoration: none;
+		transition: background 0.15s, color 0.15s, transform 0.2s;
 	}
-	.btn-upd:hover { background: #21262d; color: #c9d1d9; }
-
-	.btn-new {
-		padding: 0.35rem 1rem;
-		background: #238636;
-		border: 1px solid #2ea043;
-		border-radius: 6px;
-		color: #fff;
-		font-size: 0.825rem;
-		font-weight: 500;
-		cursor: pointer;
-		transition: background 0.15s;
-		white-space: nowrap;
+	.btn-settings:hover {
+		background: #2a2a4a;
+		color: #c9d1d9;
+		transform: rotate(45deg);
 	}
-	.btn-new:hover { background: #2ea043; }
+	.btn-settings.active {
+		background: #2a2a4a;
+		color: #c9d1d9;
+	}
 </style>
