@@ -36,6 +36,9 @@ guild-root/
     │   ├── DEV-001.md
     │   ├── DEV-002.md
     │   └── ...
+    ├── campaigns/                   ← DEV-011: 진리원: 캠페인 (md, B3 형식)
+    │   ├── C-001.md
+    │   └── ...
     ├── types/                       ← 진리원: quest 타입 정의 (toml)
     │   ├── DEV.toml
     │   ├── BUG.toml
@@ -56,7 +59,7 @@ guild-root/
             └── ...
 ```
 
-**git tracked**: `openguild.guild`, `.guild/quests/`, `.guild/types/`, `.guild/statuses/`
+**git tracked**: `openguild.guild`, `.guild/quests/`, `.guild/campaigns/`, `.guild/types/`, `.guild/statuses/`
 **git ignored**: `.guild/index.db`, `.guild/positions.json`, `.guild/backups/`
 
 `.guild/.gitignore` 가 자동 생성되어 위 규칙 적용.
@@ -139,6 +142,8 @@ frontend 의 api 호출이 invoke 로 → core::services::* 직접 실행
 | `created_at` | RFC 3339 datetime | TOML native datetime (UTC) |
 | `updated_at` | RFC 3339 datetime | 마지막 mutation 시각 |
 | `deleted` | bool | soft delete flag. true 면 list 에서 숨김 |
+| `desired_due` | string (optional, DEV-076) | 희망 기한 (`YYYY-MM-DD`). 정보성 — Home 임박 판단에는 사용 X. 미설정 시 키 자체 생략 |
+| `required_due` | string (optional, DEV-076) | 필수 기한 (`YYYY-MM-DD`). Home "마감 임박" / "Overdue" 섹션의 기준. 미설정 시 키 자체 생략 |
 
 **모든 참조는 slug 사용** (`DEV-001`), numeric ID 폐지.
 
@@ -195,15 +200,86 @@ name_ko = "게시됨"
 color = "#8B95A1"
 ```
 
+### Campaign (`.guild/campaigns/{slug}.md`) — DEV-011
+
+캠페인은 "다음 마일스톤" 계획서. quest 와 다대다 링크 + 자체 체크리스트 +
+기간(`started_at` / `ended_at`). slug 는 `C-001` ~ `C-NNN` (3자리 zero-pad, 단일 카운터).
+
+**파일 형식 (B3)**: TOML `+++` frontmatter + Markdown body. body 안 어디든 등장하는
+GFM task list (`- [ ]` / `- [x]`) 는 단방향으로 (파일 → DB) 체크리스트 항목으로 추출 ·
+동기화됨. 본문 prose 와 체크리스트가 한 파일에 공존 가능.
+
+```markdown
++++
+campaign_id = "C-001"
+title = "베타 1.0.0"
+status = "active"
+started_at = ""
+ended_at = "2026-06-30"
+linked_quests = [
+    "DEV-012",
+    "DEV-015",
+    "DEV-087",
+]
+display_order = 0
+created_at = "2026-05-29T01:06:32+09:00"
+updated_at = "2026-05-29T01:07:20+09:00"
+deleted = false
++++
+
+## 베타 1.0.0
+
+openguild 의 첫 베타 마일스톤.
+
+- [ ] DEV-087 홈 캠페인 배너 이미지
+- [x] DEV-012 댓글/메모
+- [ ] DEV-015 다국어 (영/한)
+```
+
+#### Frontmatter 필드
+
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `campaign_id` | string | slug 형식 (`C-001`). 파일명과 일치. 변경 불가 |
+| `title` | string | 캠페인 제목 |
+| `status` | string | `active` / `done` / `planned` |
+| `started_at` | string (optional) | `YYYY-MM-DD`. 빈 문자열 = 미정 (무기한 시작) |
+| `ended_at` | string (optional) | `YYYY-MM-DD`. 빈 문자열 = 미정 (무기한 종료) |
+| `linked_quests` | string[] | 링크된 quest_id 배열 |
+| `display_order` | int | 정렬 인덱스 (수동 정렬 시 사용) |
+| `created_at` / `updated_at` | RFC 3339 datetime | |
+| `deleted` | bool | soft delete flag |
+
+#### 본문 체크리스트 (단방향 sync)
+
+- 파일이 진리원 — `campaign checklist add/check/uncheck/rm` 가 body 의 `- [ ]` 줄을 수정.
+- reindex 시 body 의 모든 `- [ ]` / `- [x]` 줄을 순서대로 `campaign_checklists` 테이블에 적재.
+- 본문 prose 와 자유롭게 섞을 수 있음 (heading / paragraph / list / 체크리스트 혼재 가능).
+- 진행률 = `checked / total` (Home 카드 progress bar).
+
+#### linked_quests
+
+- 캠페인 ↔ quest 다대다 관계 (`campaign_quests` 테이블).
+- 한 quest 가 여러 캠페인에 속할 수 있음. 한 캠페인은 여러 quest 링크.
+- Quest Detail UI 의 "Campaigns" 섹션 (`/api/quests/:id/campaigns`) 으로 역참조 조회.
+
+#### Counter (`campaign_counters`)
+
+- 단일 row (`id=1`) — `last_number` 단조 증가. quest counter 패턴과 동일.
+- 새 캠페인 = `last_number + 1` → `C-NNN`.
+
 ---
 
 ## SQLite 두 종류
 
 ### `index.db` (캐시)
 
-- 스키마: 현재 SQLite 스키마 동일 (`quests`, `quest_types`, `quest_statuses`, `quest_dependencies`, `quest_positions`, `quest_counters`).
-- 역할: 빠른 쿼리 — cycle check / candidates / list 정렬 / 통계.
-- 손실되어도 OK — 파일에서 재구축 (`openguild reindex`).
+- 스키마: quest 계열 6 테이블 + DEV-013 `quest_history` + **DEV-011 campaign 계열 4
+  테이블** (`campaigns` / `campaign_checklists` / `campaign_quests` /
+  `campaign_counters`). migration 0001~0009.
+- 역할: 빠른 쿼리 — cycle check / candidates / list 정렬 / 통계 / 캠페인 진행률 /
+  Home 임박 분류 (DEV-076).
+- 손실되어도 OK — 파일에서 재구축 (서버 `openguild-server reindex`).
 - 시작 시 검증: 파일 mtime 과 index 행의 updated_at 비교 → 불일치 시 부분 reindex.
 
 ### `backups/journal.db` (AOF)

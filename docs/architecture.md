@@ -81,36 +81,44 @@ graph TB
 
 ```
 openguild/
-├── Cargo.toml                       ← workspace, members = ["core", "cli", "server"]
+├── Cargo.toml                       ← workspace, members = ["core", "cli", "server", "gui"]
 ├── openguild.guild                  ← 본 repo 의 마커 (dogfood)
-├── .guild/                          ← 본 repo 의 quests / 캐시 (dogfood)
+├── .guild/                          ← 본 repo 의 quests / campaigns / 캐시 (dogfood)
 ├── core/                            ← lib: 도메인 + 저장소 추상화
-│   ├── migrations/                  ← sqlx 마이그레이션
+│   ├── migrations/                  ← sqlx 마이그레이션 (0001~0009)
 │   └── src/
 │       ├── lib.rs
 │       ├── db.rs                    ← sqlx pool 생성
 │       ├── error.rs                 ← AppError (plain Rust)
 │       ├── guild_file.rs            ← {name}.guild TOML + find_from_cwd
 │       ├── store.rs                 ← Store { index_pool, journal_pool, paths }
-│       ├── models/                  ← QuestRow / QuestDetail / 요청 타입
+│       ├── models/                  ← QuestRow / QuestDetail / Campaign / 요청 타입
 │       ├── repo/                    ← 파일 IO 진리원 ⭐
 │       │   ├── quest.rs             ← .md frontmatter (TOML) + body + auto block
+│       │   ├── campaign.rs          ← DEV-011: .md frontmatter + body GFM 체크리스트
 │       │   ├── type_def.rs          ← {prefix}.toml + [counter]
 │       │   ├── status_def.rs        ← {n}-{slug}.toml
 │       │   ├── auto.rs              ← Parent / Sub-quests / Prerequisites 렌더
 │       │   ├── seed.rs              ← 기본 시드 + seed_guild_dir
 │       │   └── fs.rs                ← atomic write 등
 │       ├── services/                ← SQL queries (read 위주)
+│       │   ├── quests.rs
+│       │   ├── campaigns.rs         ← DEV-011: 캠페인 CRUD / 체크리스트 / 링크
+│       │   └── meta.rs
 │       ├── ops/                     ← mutation orchestration ⭐
-│       │   └── quests.rs            ← journal + SQL + file + auto block
+│       │   ├── quests.rs            ← journal + SQL + file + auto block
+│       │   ├── campaigns.rs         ← DEV-011: 캠페인 mutation orchestration
+│       │   ├── meta.rs
+│       │   └── counter.rs
 │       ├── snapshot.rs              ← RDB + AutoSnapshotPolicy
 │       ├── reindex.rs               ← 파일 → index.db 재구축
 │       ├── drift.rs                 ← 외부 편집 감지 + auto_resync
 │       ├── counter.rs               ← type counter 무결성 검증
 │       ├── lock.rs                  ← .guild/.lock single-writer
+│       ├── recents.rs               ← DEV-006: GUI 최근 길드 목록 (per-OS data dir)
 │       └── migrate.rs               ← legacy guild.db → 파일
 ├── cli/                             ← bin `openguild`
-│   └── src/main.rs                  ← Backend { Http | Local }
+│   └── src/main.rs                  ← Backend { Http | Local } — campaign / quest due 포함
 ├── server/                          ← bin `openguild-server`
 │   └── src/
 │       ├── main.rs                  ← host / info / snapshot / restore /
@@ -121,14 +129,38 @@ openguild/
 │       └── routes/
 │           ├── mod.rs
 │           ├── meta.rs              ← /api/quest-types · /api/quest-statuses
-│           ├── quests.rs            ← /api/quests/*
+│           ├── quests.rs            ← /api/quests/* (CRUD / 관계 / status / type / due)
+│           ├── campaigns.rs         ← DEV-011: /api/campaigns/* (CRUD / 체크리스트 / 링크)
 │           └── admin.rs             ← /api/admin/{snapshot,restore,drift,reindex}
-├── gui/
-│   └── frontend/                    ← Svelte 5 + Vite (web + 추후 Tauri)
-│       └── src/routes/
-│           ├── +page.svelte         ← Board / List
-│           ├── quests/[id]          ← Quest Detail
-│           └── admin/               ← 백업 / drift / reindex UI
+├── gui/                             ← bin `openguild-gui` — Tauri 2 desktop app
+│   ├── Cargo.toml                   ← tauri / tauri-plugin-{dialog,updater,process} + core
+│   ├── build.rs                     ← tauri-build (icon / capabilities ACL 생성)
+│   ├── tauri.conf.json              ← productName / bundle (NSIS) / plugins.updater
+│   ├── capabilities/
+│   │   └── default.json             ← core / dialog / updater / process 권한
+│   ├── icons/                       ← 아이콘 세트 (32 / 128 / @2x / ico / icns / ios / android)
+│   ├── nsis/installer.nsi           ← DEV-034: 멀티 컴포넌트 (GUI / CLI / Server / PATH)
+│   ├── gen/                         ← gitignored — tauri-build 자동 생성
+│   ├── src/
+│   │   ├── main.rs / lib.rs         ← winit + invoke handler 등록
+│   │   └── commands.rs              ← Tauri commands (core::ops 호출)
+│   └── frontend/                    ← Svelte 5 + Vite (web + Tauri 양쪽 동작)
+│       └── src/
+│           ├── routes/
+│           │   ├── +page.svelte         ← Home / Board / List (?view)
+│           │   ├── quests/[id]          ← Quest Detail
+│           │   ├── campaigns/           ← Campaign 목록 / 신규 / 상세
+│           │   ├── settings/            ← DEV-084: 정보 / 업데이트 등
+│           │   ├── welcome/             ← DEV-052: 길드 선택 화면
+│           │   └── admin/               ← 백업 / drift / reindex UI
+│           └── lib/
+│               ├── api/                 ← client.ts + transport (HTTP / Tauri invoke)
+│               ├── components/          ← Home / QuestBoard / QuestList / Campaign* /
+│               │                          QuestNodeConveyor / UpdateBanner / ...
+│               └── utils/               ← datetime / quest-node-svg / quest-list /
+│                                          campaign-sort
+├── scripts/
+│   └── seed-test-data.ps1           ← DEV-075: 테스트 데이터 자동 주입
 ├── docs/
 ├── justfile
 └── README.md
@@ -138,6 +170,15 @@ openguild/
 > - 2026-05-14 server 단일 crate → core/cli/server 분리, `backend/` 폴더 제거.
 > - 2026-05-16/17 저장소 모델 전환 — SQLite 진리원 → 파일 진리원 + SQLite 캐시.
 >   `core::repo` (파일) + `core::ops` (orchestration) + `core::store` (Store) 신설.
+> - 2026-05-21+ `gui/` crate 추가 — Tauri 2 desktop app (DEV-001~006).
+> - 2026-05-25 DEV-011 Campaign entity 추가 — 파일 형식 B3 (frontmatter + GFM
+>   task list 본문) + 4 테이블 (campaigns / campaign_checklists / campaign_quests
+>   / campaign_counters) + CLI / server / GUI 전체.
+> - 2026-05-26 DEV-034 멀티 컴포넌트 NSIS installer (GUI / CLI / Server / PATH).
+> - 2026-05-27 DEV-076 Quest desired_due / required_due 필드 + Home 임박 / Overdue
+>   섹션.
+> - 2026-05-28 DEV-063 Tauri 자동 업데이트 (updater + process plugin + 서명
+>   파이프라인) + DEV-084 설정 페이지 (`/settings`).
 >
 > 자세한 설계 근거: `docs/architecture-refactor.md`, `docs/storage-design.md`.
 
@@ -166,6 +207,26 @@ openguild/
 | GET    | `/api/quest-dependencies` | 모든 선행 관계 (양 끝 alive 만) |
 | GET    | `/api/deleted-quests` | soft deleted 퀘스트 목록 |
 | PATCH  | `/api/quests/:id/restore` | soft delete 취소 (alive 복원) |
+| GET    | `/api/quests/:id/history` | DEV-013: 상태 / 타입 변경 이력 |
+| PATCH  | `/api/quests/:id/type` | DEV-055: type 변경 (slug 바뀜, 관련 파일 cascade) |
+| PATCH  | `/api/quests/:id/due` | DEV-076: desired_due / required_due 설정·해제 |
+| GET    | `/api/quests/:id/campaigns` | DEV-011: 이 quest 가 속한 캠페인 목록 |
+
+### Campaign (DEV-011)
+
+| Method | Path | 설명 |
+|---|---|---|
+| GET    | `/api/campaigns` | 목록 (옵션 `?status=active\|done\|planned`) |
+| POST   | `/api/campaigns` | 새 캠페인 (자동 C-NNN slug) |
+| GET    | `/api/campaigns/:slug` | 상세 (체크리스트 + linked quests 포함) |
+| PATCH  | `/api/campaigns/:slug` | 메타 수정 (title / period / status / description / display_order) |
+| DELETE | `/api/campaigns/:slug` | soft delete |
+| POST   | `/api/campaigns/:slug/checklist` | 항목 추가 (body 끝에 `- [ ]` append) |
+| PATCH  | `/api/campaigns/:slug/checklist/:idx` | 1-based 인덱스 항목 체크/언체크 |
+| DELETE | `/api/campaigns/:slug/checklist/:idx` | 항목 삭제 |
+| POST   | `/api/campaigns/:slug/quests/:quest_id` | quest 링크 |
+| DELETE | `/api/campaigns/:slug/quests/:quest_id` | quest 링크 해제 |
+| GET    | `/api/campaigns/active-summaries` | Home carousel 용 — 진행 중 캠페인 + 진행률 |
 
 ### Admin (백업 / drift)
 
@@ -186,11 +247,12 @@ openguild/
 | 자료 | 위치 | 형식 |
 |---|---|---|
 | Quest 한 건 | `.guild/quests/{slug}.md` | TOML `+++` frontmatter + Markdown body + auto block |
+| Campaign 한 건 (DEV-011) | `.guild/campaigns/{slug}.md` | TOML `+++` frontmatter + Markdown body (GFM task list `- [ ]` / `- [x]` 는 어디서든 체크리스트로 추출됨, B3 format) |
 | Type 정의 | `.guild/types/{prefix}.toml` | `prefix / color / description / [counter].last_number` |
 | Status 정의 | `.guild/statuses/{order}-{slug}.toml` | `sort_order / name_en / name_ko / color` |
 | Board 위치 | `.guild/positions.json` | gitignored (UI 상태) |
 
-Quest frontmatter 필드: `quest_id` / `title` / `status` (slug) / `urgency` / `parent` (slug, optional) / `prerequisites` (slug 배열) / `created_at` / `updated_at` / `deleted`. 자세한 포맷은 [`storage-design.md`](./storage-design.md).
+Quest frontmatter 필드: `quest_id` / `title` / `status` (slug) / `urgency` / `parent` (slug, optional) / `prerequisites` (slug 배열) / `created_at` / `updated_at` / `deleted` / **DEV-076: `desired_due` / `required_due`** (YYYY-MM-DD, optional). Campaign frontmatter 필드: `campaign_id` (`C-NNN`) / `title` / `status` (`active` / `done` / `planned`) / `started_at` / `ended_at` / `linked_quests` (slug 배열) / `display_order` / `created_at` / `updated_at` / `deleted`. 자세한 포맷은 [`storage-design.md`](./storage-design.md).
 
 ### 캐시 — `.guild/index.db` (SQLite, gitignored)
 
@@ -198,12 +260,17 @@ Quest frontmatter 필드: `quest_id` / `title` / `status` (slug) / `urgency` / `
 
 | 테이블 | 핵심 컬럼 |
 |---|---|
-| `quests` | id, quest_type_id, number, title, description, status_id, urgency, parent_quest_id, created_at, updated_at, **deleted_at** |
+| `quests` | id, quest_type_id, number, title, description, status_id, urgency, parent_quest_id, created_at, updated_at, **deleted_at**, **DEV-076: `desired_due` / `required_due`** (TEXT, YYYY-MM-DD, nullable) |
 | `quest_types` | id, prefix, color, description |
-| `quest_statuses` | id, name_en, name_ko, color, sort_order |
+| `quest_statuses` | id, name_en, name_ko, color, sort_order, **slug** (DEV-046) |
 | `quest_counters` | quest_type_id (PK), last_number |
 | `quest_dependencies` | quest_id, prerequisite_id, PK(quest_id, prerequisite_id) |
-| `quest_positions` | quest_id (PK), x, y |
+| `quest_positions` | quest_id (PK), x, y, **quest_slug** (DEV-049) |
+| `quest_history` (DEV-013) | id, quest_id, **quest_slug** (DEV-049), ts, op, old_value, new_value, actor |
+| **`campaigns`** (DEV-011) | id, campaign_slug (`C-NNN`), title, description, status (`active`/`done`/`planned`), started_at, ended_at, display_order, created_at, updated_at, deleted_at |
+| **`campaign_checklists`** | id, campaign_id, text, checked (bool), order_idx |
+| **`campaign_quests`** | campaign_id, quest_id, PK(campaign_id, quest_id) |
+| **`campaign_counters`** | id (PK, single row=1), last_number |
 
 ### Journal — `.guild/backups/journal.db` (AOF)
 
