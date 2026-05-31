@@ -75,7 +75,17 @@ openguild statuses               # 상태 목록 (Open / In Progress / Done / ..
 
 ```bash
 openguild quest list [--json]
-openguild quest show <slug>                          # 예: DEV-001 (서브/선행 포함)
+openguild quest list --type DEV,BUG --status open,in_progress --urgency 1-2
+                    --has-prereq --no-sub --child-of <slug> --no-parent
+                    --created-after 2026-05-01 --updated-before 2026-06-01
+                    --search "키워드" --title-only
+                    --sort urgency,id --reverse --limit 20 --offset 0
+                    --id-only | --count                # script 친화 출력
+
+openguild quest search "<keyword>" [--title-only] [--limit N]
+                       [--id-only | --count]          # `list --search` 의 단축
+
+openguild quest show <slug> [--field <NAME>]          # NAME: id/title/status/description/urgency/type/parent/created_at/updated_at
 
 openguild quest new --type <PREFIX> --title <T>      # 상태는 자동으로 Open
                   [--description <DESC>]
@@ -95,10 +105,13 @@ openguild quest deleted          # soft deleted 목록
 ### 2.3 상태 변경
 
 ```bash
-openguild quest status <slug> <STATUS>   # 임의 상태 (이름 또는 ID)
-openguild quest start  <slug>            # → In Progress
-openguild quest done   <slug>            # → Done
-openguild quest reopen <slug>            # → Open
+openguild quest move   <slug> <STATUS>   # ⭐ 정식 — 임의 상태 (이름 또는 slug, ID)
+openguild quest start  <slug>            # → In Progress (shortcut)
+openguild quest done   <slug>            # → Done       (shortcut)
+openguild quest reopen <slug>            # → Open       (shortcut)
+
+openguild quest status <slug>            # 현재 상태만 출력 (조회 전용)
+openguild quest status <slug> <STATUS>   # ⚠ deprecated — `move` 사용 권장
 ```
 
 상태명은 대소문자 / 공백 / `_` / `-` 모두 허용:
@@ -161,7 +174,65 @@ openguild quest prereq add <slug> <prereq-slug>
 openguild quest prereq rm  <slug> <prereq-slug>
 ```
 
-### 2.5 백업 / 복원
+### 2.5 기한 (DEV-076)
+
+quest 에 희망 / 필수 기한 (`YYYY-MM-DD`) 지정. **필수 기한 (`required_due`)**
+은 Home 의 "마감 임박" / "Overdue" 섹션 분류 기준. 희망 기한 (`desired_due`)
+은 정보성.
+
+```bash
+openguild quest due <slug>                       # 현재 두 기한 출력
+openguild quest due <slug> --desired  2026-06-15 # 희망 기한 설정
+openguild quest due <slug> --required 2026-06-30 # 필수 기한 설정
+openguild quest due <slug> --clear-desired       # 희망 기한 해제 (null)
+openguild quest due <slug> --clear-required      # 필수 기한 해제 (null)
+```
+
+- 형식은 `YYYY-MM-DD` 만 허용. 잘못된 형식은 `BadRequest`.
+- `--desired` / `--required` 와 대응 `--clear-*` 는 상호배타.
+- 빈 문자열 / 공백은 자동으로 None 으로 정규화.
+
+### 2.6 변경 이력 (DEV-013)
+
+```bash
+openguild quest history <slug>         # 최신 → 과거 순. status / type 변경 등.
+openguild quest history <slug> --json
+```
+
+각 row 는 op (e.g. `change_status`, `change_type`), old_value, new_value, ts,
+quest_slug 포함.
+
+### 2.7 Campaign (DEV-011)
+
+캠페인 = "다음 마일스톤" 계획서. quest 와 다대다 링크 + 자체 체크리스트 +
+기간. slug 는 `C-001` ~ `C-NNN`.
+
+```bash
+openguild campaign list [--status active|done|planned] [--json]
+openguild campaign show <slug> [--json]      # 체크리스트 + linked quests 포함
+
+openguild campaign new --title <T>
+                      [--start <YYYY-MM-DD>] [--end <YYYY-MM-DD>]
+openguild campaign delete <slug>             # soft delete
+
+openguild campaign start <slug>              # status → active
+openguild campaign end   <slug>              # status → done
+
+# Quest 연결 (다대다)
+openguild campaign link   <slug> <quest-slug>
+openguild campaign unlink <slug> <quest-slug>
+
+# 체크리스트 (1-based 인덱스, body 의 `- [ ]` / `- [x]` 줄과 양방향)
+openguild campaign checklist add     <slug> "<text>"
+openguild campaign checklist check   <slug> <N>
+openguild campaign checklist uncheck <slug> <N>
+openguild campaign checklist rm      <slug> <N>
+```
+
+진행률 = `checked / total`. Home 의 active 캠페인 carousel 카드 progress bar
+가 이 값을 표시. 100% 달성 시 카드 초록 강조.
+
+### 2.8 백업 / 복원
 
 ```bash
 openguild backup                       # 즉시 snapshot 생성
