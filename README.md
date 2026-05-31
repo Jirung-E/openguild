@@ -1,6 +1,9 @@
 # openguild
 A project issue tracker.
 
+> **Status: Beta 1.0.0 (in progress)** — Active milestone tracked in
+> campaign `C-001`. See [`docs/dev-plan.md`](./docs/dev-plan.md) for roadmap.
+
 ## Terminology
 | Term | Description |
 |---|---|
@@ -8,9 +11,12 @@ A project issue tracker.
 | **Quest** | An individual issue or task within a guild. |
 | **Sub-Quest** | A child task that belongs to a parent quest. |
 | **Prerequisite Quest** | A quest that must be completed before another quest can begin. |
-| **Campaign** | A planning document that groups quests toward a release or milestone. |
+| **Quest Due** | Optional deadline per quest — `desired_due` (informational) and `required_due` (drives Home "imminent" / "overdue" sections). |
+| **Campaign** | A planning document that groups quests toward a release or milestone. Has its own GFM task-list checklist + many-to-many quest links. |
 | **Quest Board** | A node-based board where quests are arranged by status in swim lanes. |
 | **Quest List** | A list view of all quests, with sub-quests shown as a collapsible tree. |
+| **Home** | Dashboard: active campaigns carousel, upcoming / overdue campaigns, imminent / overdue quests, recently added or updated quests. |
+| **Settings** | Per-app preferences page (`⚙` icon, top-right). Currently: app info + manual update check. |
 | **Guild Master** | The administrator of a guild. |
 | **Quest Holder** | The person assigned to a quest. |
 | **Requester** | The person who created the quest. |
@@ -35,7 +41,7 @@ openguild --guild ./other-project quest list
 openguild --remote https://openguild.io/alice/monitor quest list
 ```
 
-The GUI (in development) provides directory selection and a recent guilds list.
+The GUI (Tauri desktop app, Windows NSIS installer) provides directory selection and a recent guilds list. Build artifacts are attached to each GitHub Release as `openguild_{version}_x64-setup.exe` — the installer offers per-component selection (GUI / CLI / Server) and an optional PATH registration. Installed app auto-checks for updates on startup and every 6 hours (notification only — install requires user click).
 
 ### Creating a Quest
 Quests are created within a guild. Each quest has a type prefix and an auto-incremented ID (e.g., `DEV-001`, `BUG-003`).
@@ -65,7 +71,17 @@ openguild quest new --type DEV --title "..." --json
 openguild quest start DEV-001                     # transition to In Progress
 openguild quest done DEV-001                      # transition to Done
 openguild quest show DEV-001                      # detail view (sub/prereq included)
+openguild quest due DEV-001 --required 2026-06-30 # set required deadline
+openguild quest history DEV-001                   # status / type change audit
+
+# Campaigns (release / milestone planning)
+openguild campaign new --title "v1.0" --end 2026-06-30
+openguild campaign link C-001 DEV-001             # attach quest
+openguild campaign checklist add C-001 "Smoke test installer"
+openguild campaign checklist check C-001 1
 ```
+
+Full CLI reference: [`docs/AGENTS_OPENGUILD_USAGE.md`](./docs/AGENTS_OPENGUILD_USAGE.md).
 
 ## Documentation
 
@@ -112,6 +128,9 @@ cargo build --release --bin openguild   # → target/release/openguild
 # openguild
 프로젝트 이슈 트래커.
 
+> **상태: Beta 1.0.0 (진행 중)** — 활성 마일스톤은 캠페인 `C-001` 으로 추적.
+> 로드맵은 [`docs/dev-plan.md`](./docs/dev-plan.md).
+
 ## 용어 설명
 | 용어 | 설명 |
 |---|---|
@@ -119,9 +138,12 @@ cargo build --release --bin openguild   # → target/release/openguild
 | **Quest (퀘스트)** | 길드 내 개별 이슈 또는 작업. |
 | **Sub-Quest (서브퀘스트)** | 부모 퀘스트에 속하는 하위 작업. |
 | **Prerequisite Quest (선행 퀘스트)** | 특정 퀘스트를 시작하기 전에 완료되어야 하는 퀘스트. |
-| **Campaign (캠페인)** | 릴리즈 또는 마일스톤을 향해 퀘스트를 묶는 기획 문서. |
+| **Quest Due (퀘스트 기한)** | 퀘스트별 선택 마감 — `desired_due` (정보성), `required_due` (Home 의 "마감 임박" / "Overdue" 분류 기준). |
+| **Campaign (캠페인)** | 릴리즈 또는 마일스톤을 향해 퀘스트를 묶는 기획 문서. 자체 GFM task-list 체크리스트 + 퀘스트 다대다 링크. |
 | **Quest Board (의뢰게시판)** | 퀘스트를 상태별 레인으로 배치하는 노드 기반 보드. |
 | **Quest List (퀘스트 목록)** | 모든 퀘스트를 리스트로 보여주는 뷰. 서브퀘스트는 접기/펼치기 트리로 표시. |
+| **Home (홈)** | 대시보드: 진행 중 캠페인 carousel, 곧 시작 / 마감 지난 캠페인, 마감 임박 / 지난 퀘스트, 최근 추가·수정된 퀘스트. |
+| **Settings (설정)** | 앱 설정 페이지 (`⚙` 아이콘, 우상단). 현재: 앱 정보 + 수동 업데이트 확인. |
 | **Guild Master (길드마스터)** | 길드 관리자. |
 | **Quest Holder (담당자)** | 퀘스트를 담당하는 사람. |
 | **Requester (의뢰인)** | 퀘스트를 생성한 사람. |
@@ -146,7 +168,7 @@ openguild --guild ./other-project quest list
 openguild --remote https://openguild.io/alice/monitor quest list
 ```
 
-GUI (개발 중) 는 디렉터리 선택 + 최근 길드 목록 제공 예정.
+GUI (Tauri 데스크탑 앱, Windows NSIS installer) 는 디렉터리 선택 + 최근 길드 목록을 제공. 빌드 결과물은 매 GitHub Release 에 `openguild_{version}_x64-setup.exe` 로 첨부됨 — installer 는 컴포넌트 선택 (GUI / CLI / Server) + PATH 등록 옵션 제공. 설치된 앱은 시작 시 + 6시간 간격으로 업데이트 자동 확인 (알림만; 설치는 사용자 클릭).
 
 ### 퀘스트 생성
 퀘스트는 길드 내에서 생성된다. 각 퀘스트는 타입 prefix와 자동 증가 ID를 가진다 (예: `DEV-001`, `BUG-003`).
@@ -176,7 +198,17 @@ openguild quest new --type DEV --title "..." --json
 openguild quest start DEV-001                     # In Progress 로
 openguild quest done DEV-001                      # Done 으로
 openguild quest show DEV-001                      # 상세 (서브/선행 포함)
+openguild quest due DEV-001 --required 2026-06-30 # 필수 기한 설정
+openguild quest history DEV-001                   # status / type 변경 audit
+
+# 캠페인 (릴리즈 / 마일스톤 기획)
+openguild campaign new --title "v1.0" --end 2026-06-30
+openguild campaign link C-001 DEV-001             # quest 링크
+openguild campaign checklist add C-001 "설치본 smoke test"
+openguild campaign checklist check C-001 1
 ```
+
+전체 CLI 가이드: [`docs/AGENTS_OPENGUILD_USAGE.md`](./docs/AGENTS_OPENGUILD_USAGE.md).
 
 ## 문서
 
