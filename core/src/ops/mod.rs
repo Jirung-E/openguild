@@ -16,6 +16,7 @@ pub mod campaigns;
 pub mod counter;
 pub mod meta;
 pub mod quests;
+pub mod rules;
 
 pub use counter::check_and_fix_counters;
 pub use meta::{

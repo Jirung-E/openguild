@@ -109,6 +109,17 @@ function routeToInvoke(
 	// parts[0] === 'api'
 
 	// ───── meta ─────
+	// DEV-016: 길드 규칙. GET 은 { content: string|null } wrap 으로 invoke 반환을 맞춤.
+	if (pathOnly === '/api/rules') {
+		if (method === 'GET') {
+			return { cmd: 'get_rules', args: {} };
+		}
+		if (method === 'PUT') {
+			const content = (body as { content?: string } | undefined)?.content ?? '';
+			return { cmd: 'set_rules', args: { content } };
+		}
+	}
+
 	if (method === 'GET' && pathOnly === '/api/quest-types') {
 		return { cmd: 'list_quest_types', args: {} };
 	}

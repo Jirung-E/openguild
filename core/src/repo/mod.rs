@@ -10,6 +10,7 @@ pub mod auto;
 pub mod campaign;
 pub mod fs;
 pub mod quest;
+pub mod rules;
 pub mod seed;
 pub mod status_def;
 pub mod type_def;
@@ -90,6 +91,12 @@ impl GuildPaths {
 
     pub fn type_path(&self, prefix: &str) -> PathBuf {
         self.types_dir().join(format!("{prefix}.toml"))
+    }
+
+    /// DEV-016: 길드 규칙 (`.guild/rules.md`). 자유 markdown — frontmatter 없음.
+    /// 파일 부재 시 "규칙 미설정" 상태. git tracked.
+    pub fn rules_path(&self) -> PathBuf {
+        self.dot_guild().join("rules.md")
     }
 
     /// `.guild/.gitignore` 의 표준 내용.

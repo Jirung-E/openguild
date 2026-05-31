@@ -276,6 +276,9 @@ pub fn run() {
             commands::list_campaign_active_summaries,
             commands::list_campaign_upcoming_summaries,
             commands::list_campaigns_for_quest,
+            // DEV-016: 길드 규칙.
+            commands::get_rules,
+            commands::set_rules,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

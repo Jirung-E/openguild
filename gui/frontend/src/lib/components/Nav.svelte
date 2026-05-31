@@ -11,6 +11,8 @@
 	let onAdminPath = $derived($page.url.pathname.startsWith('/admin'));
 	let onRootPath = $derived($page.url.pathname === '/');
 	let onSettingsPath = $derived($page.url.pathname.startsWith('/settings'));
+	// DEV-016: 길드 규칙 페이지.
+	let onRulesPath = $derived($page.url.pathname.startsWith('/rules'));
 </script>
 
 <header>
@@ -22,6 +24,8 @@
 		<a href="/?view=board" class:active={onRootPath && currentView === 'board'}>Quest Board</a>
 		<a href="/?view=list" class:active={onRootPath && currentView === 'list'}>Quest List</a>
 		<a href="/admin" class:active={onAdminPath}>Admin</a>
+		<!-- DEV-016: 길드 규칙 — 팀 컨벤션 / 그라운드 룰. -->
+		<a href="/rules" class:active={onRulesPath}>Rules</a>
 	</nav>
 
 	<div class="nav-right">

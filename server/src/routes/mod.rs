@@ -2,6 +2,7 @@ pub mod admin;
 pub mod campaigns;
 pub mod meta;
 pub mod quests;
+pub mod rules;
 
 use axum::{
     routing::{delete, get, patch, post, put},
@@ -15,6 +16,8 @@ pub fn create_router(store: Store) -> Router {
         // meta
         .route("/api/quest-types", get(meta::list_quest_types))
         .route("/api/quest-statuses", get(meta::list_quest_statuses))
+        // DEV-016: 길드 규칙 (`.guild/rules.md`).
+        .route("/api/rules", get(rules::get_rules).put(rules::set_rules))
         // quests
         .route("/api/quests", get(quests::list_quests).post(quests::create_quest))
         .route(

@@ -917,3 +917,31 @@ pub async fn list_campaigns_for_quest(
         .await
         .map_err(err)
 }
+
+// ─────────────────────── DEV-016: 길드 규칙 ───────────────────────
+
+/// HTTP 의 `RulesResponse` 와 동일 shape — frontend `rulesApi` 가 두 transport
+/// 모두 동일하게 `{ content: string | null }` 으로 받음.
+#[derive(serde::Serialize)]
+pub struct RulesResponse {
+    pub content: Option<String>,
+}
+
+#[tauri::command]
+pub fn get_rules(store: State<'_, Store>) -> Result<RulesResponse, String> {
+    let content = openguild_core::ops::rules::get_rules(&store).map_err(err)?;
+    Ok(RulesResponse { content })
+}
+
+#[tauri::command]
+pub async fn set_rules(
+    store: State<'_, Store>,
+    content: String,
+) -> Result<RulesResponse, String> {
+    openguild_core::ops::rules::set_rules(&store, content.clone())
+        .await
+        .map_err(err)?;
+    Ok(RulesResponse {
+        content: Some(content),
+    })
+}
