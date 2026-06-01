@@ -1,5 +1,6 @@
 pub mod admin;
 pub mod campaigns;
+pub mod comments;
 pub mod meta;
 pub mod quests;
 pub mod rules;
@@ -18,6 +19,15 @@ pub fn create_router(store: Store) -> Router {
         .route("/api/quest-statuses", get(meta::list_quest_statuses))
         // DEV-016: 길드 규칙 (`.guild/rules.md`).
         .route("/api/rules", get(rules::get_rules).put(rules::set_rules))
+        // DEV-012: Quest 별 댓글 (공개, tracked) / 메모 (비공개, gitignored).
+        .route(
+            "/api/quests/by/{slug}/comments",
+            get(comments::get_comments).put(comments::set_comments),
+        )
+        .route(
+            "/api/quests/by/{slug}/memo",
+            get(comments::get_memo).put(comments::set_memo),
+        )
         // quests
         .route("/api/quests", get(quests::list_quests).post(quests::create_quest))
         .route(

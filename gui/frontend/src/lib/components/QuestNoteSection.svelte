@@ -1,0 +1,239 @@
+<!--
+  DEV-012: Quest Detail 의 댓글 / 메모 섹션 (공용).
+
+  공개 댓글 (.guild/quests/{slug}.comments.md, tracked) 과
+  비공개 메모 (.guild/quests/{slug}.memo.md, gitignored) 양쪽이 동일 UX —
+  본 컴포넌트로 통일. mode + 라벨 / 안내문만 다름.
+
+  - 부재 / 비어있음: "[작성] / [메모 작성]" 안내.
+  - 읽기: MarkdownView.
+  - 편집: CodeMirror (markdown + oneDark). Quest Detail editor height 키 공유.
+-->
+<script lang="ts">
+	import { onMount, tick } from 'svelte';
+	import MarkdownView from './MarkdownView.svelte';
+	import { commentsApi } from '$lib/api/comments';
+	import { EditorView, basicSetup } from 'codemirror';
+	import { markdown } from '@codemirror/lang-markdown';
+	import { oneDark } from '@codemirror/theme-one-dark';
+
+	let {
+		slug,
+		mode
+	}: {
+		slug: string;
+		mode: 'comments' | 'memo';
+	} = $props();
+
+	const labels = {
+		comments: {
+			heading: '댓글 (Comments)',
+			emptyAction: '댓글 작성',
+			emptyHint: '팀이 공유하는 토론. git tracked.',
+			help: '팀이 함께 보는 공개 토론 (`.guild/quests/{slug}.comments.md`).'
+		},
+		memo: {
+			heading: '메모 (Memo)',
+			emptyAction: '메모 작성',
+			emptyHint: '개인 메모. gitignored (팀 공유 X).',
+			help: '본인만 보는 비공개 메모 (`.guild/quests/{slug}.memo.md`, gitignored).'
+		}
+	} as const;
+	let label = $derived(labels[mode]);
+
+	let loading = $state(true);
+	let loadError = $state<string | null>(null);
+	let content = $state<string | null>(null);
+
+	let editMode = $state(false);
+	let editText = $state('');
+	let saving = $state(false);
+	let saveError = $state<string | null>(null);
+
+	let editorContainer: HTMLDivElement | undefined = $state(undefined);
+	let editorView: EditorView | null = null;
+
+	const EDITOR_HEIGHT_KEY = 'openguild.questEditorHeight';
+	function loadEditorHeight(): number {
+		try {
+			const raw = localStorage.getItem(EDITOR_HEIGHT_KEY);
+			const n = raw ? parseInt(raw, 10) : NaN;
+			if (Number.isFinite(n) && n >= 200 && n <= 2000) return n;
+		} catch {
+			/* ignore */
+		}
+		return 360;
+	}
+
+	async function load() {
+		loading = true;
+		loadError = null;
+		try {
+			const res =
+				mode === 'comments'
+					? await commentsApi.getComments(slug)
+					: await commentsApi.getMemo(slug);
+			content = res.content;
+		} catch (e) {
+			loadError = e instanceof Error ? e.message : 'load failed';
+		} finally {
+			loading = false;
+		}
+	}
+
+	// slug / mode 변경 시 reload.
+	$effect(() => {
+		void slug;
+		void mode;
+		load();
+	});
+
+	async function enterEdit() {
+		editText = content ?? '';
+		editMode = true;
+		saveError = null;
+		await tick();
+		initEditor();
+	}
+
+	function initEditor() {
+		if (!editorContainer) return;
+		if (editorView) {
+			editorView.destroy();
+			editorView = null;
+		}
+		editorContainer.style.height = `${loadEditorHeight()}px`;
+		editorView = new EditorView({
+			doc: editText,
+			extensions: [
+				basicSetup,
+				markdown(),
+				oneDark,
+				EditorView.theme({
+					'&': { fontSize: '0.875rem', borderRadius: '6px', height: '100%' },
+					'.cm-editor': { borderRadius: '6px', height: '100%' },
+					'.cm-scroller': { overflow: 'auto' }
+				})
+			],
+			parent: editorContainer
+		});
+	}
+
+	function cancelEdit() {
+		editorView?.destroy();
+		editorView = null;
+		editMode = false;
+		saveError = null;
+	}
+
+	async function save() {
+		saving = true;
+		saveError = null;
+		try {
+			const text = editorView ? editorView.state.doc.toString() : editText;
+			const res =
+				mode === 'comments'
+					? await commentsApi.setComments(slug, text)
+					: await commentsApi.setMemo(slug, text);
+			content = res.content;
+			cancelEdit();
+		} catch (e) {
+			saveError = e instanceof Error ? e.message : 'save failed';
+		} finally {
+			saving = false;
+		}
+	}
+</script>
+
+<section class="note-sec">
+	<div class="section-head">
+		<h2 class="section-title note-{mode}">{label.heading}</h2>
+		{#if !editMode && !loading && !loadError}
+			<button class="sec-add-btn" onclick={enterEdit}>
+				{content && content.trim() ? '✎ 편집' : `+ ${label.emptyAction}`}
+			</button>
+		{/if}
+	</div>
+
+	{#if loading}
+		<p class="state">Loading…</p>
+	{:else if loadError}
+		<p class="state err">{loadError}</p>
+	{:else if editMode}
+		<!-- svelte-ignore a11y_label_has_associated_control -->
+		<label class="field-label">
+			<span>{label.help}</span>
+			<div class="editor-wrap" bind:this={editorContainer}></div>
+		</label>
+		<div class="actions">
+			<button class="btn-save" onclick={save} disabled={saving}>
+				{saving ? '저장…' : '저장'}
+			</button>
+			<button class="btn-cancel" onclick={cancelEdit} disabled={saving}>취소</button>
+		</div>
+		{#if saveError}<p class="state err">{saveError}</p>{/if}
+	{:else if content && content.trim()}
+		<MarkdownView source={content} />
+	{:else}
+		<p class="no-desc">
+			{label.emptyHint}
+			<button class="link-btn" onclick={enterEdit}>{label.emptyAction}</button>
+		</p>
+	{/if}
+</section>
+
+<style>
+	.note-sec { margin-bottom: 1.5rem; }
+	.section-head {
+		display: flex; align-items: center; gap: 0.75rem;
+		margin-bottom: 0.5rem;
+	}
+	.section-title {
+		font-size: 0.8rem; font-weight: 600;
+		text-transform: uppercase; letter-spacing: 0.05em; margin: 0;
+	}
+	.section-title.note-comments { color: #79c0ff; }
+	.section-title.note-memo { color: #f0883e; }
+
+	.sec-add-btn {
+		padding: 0.15rem 0.6rem;
+		border: 1px solid #30363d; border-radius: 4px;
+		background: transparent; color: #8b949e;
+		font-size: 0.72rem; cursor: pointer;
+		margin-left: auto;
+	}
+	.sec-add-btn:hover { background: #21262d; color: #c9d1d9; }
+
+	.state { color: #8b949e; font-size: 0.825rem; margin: 0.25rem 0; }
+	.state.err { color: #f85149; }
+
+	.no-desc { color: #6e7681; font-size: 0.825rem; margin: 0.25rem 0; }
+	.link-btn {
+		background: none; border: none; color: #58a6ff;
+		cursor: pointer; padding: 0; font: inherit; text-decoration: underline;
+		margin-left: 0.35rem;
+	}
+
+	.field-label { display: flex; flex-direction: column; gap: 0.35rem; }
+	.field-label > span { font-size: 0.75rem; color: #8b949e; }
+	.editor-wrap {
+		border: 1px solid #30363d; border-radius: 6px;
+		overflow: hidden; min-height: 180px; max-height: 90vh;
+		resize: vertical;
+	}
+
+	.actions { display: flex; gap: 0.4rem; margin-top: 0.5rem; }
+	.btn-save {
+		padding: 0.35rem 0.85rem;
+		background: #238636; border: 1px solid #2ea043;
+		color: #fff; border-radius: 6px; cursor: pointer; font-size: 0.825rem;
+	}
+	.btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
+	.btn-save:hover:not(:disabled) { background: #2ea043; }
+	.btn-cancel {
+		padding: 0.35rem 0.85rem;
+		background: transparent; border: 1px solid #30363d;
+		color: #c9d1d9; border-radius: 6px; cursor: pointer; font-size: 0.825rem;
+	}
+	.btn-cancel:hover:not(:disabled) { background: #21262d; }
+</style>

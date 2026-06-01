@@ -8,6 +8,7 @@
 
 pub mod auto;
 pub mod campaign;
+pub mod comments;
 pub mod fs;
 pub mod quest;
 pub mod rules;
@@ -99,13 +100,28 @@ impl GuildPaths {
         self.dot_guild().join("rules.md")
     }
 
+    /// DEV-012: Quest 별 공개 댓글 (`.guild/quests/{slug}.comments.md`).
+    /// frontmatter 없는 plain markdown. git tracked.
+    pub fn comments_path(&self, slug: &str) -> PathBuf {
+        self.quests_dir().join(format!("{slug}.comments.md"))
+    }
+
+    /// DEV-012: Quest 별 비공개 메모 (`.guild/quests/{slug}.memo.md`).
+    /// frontmatter 없는 plain markdown. **gitignored** (개인 노트).
+    pub fn memo_path(&self, slug: &str) -> PathBuf {
+        self.quests_dir().join(format!("{slug}.memo.md"))
+    }
+
     /// `.guild/.gitignore` 의 표준 내용.
+    /// DEV-012: `quests/*.memo.md` 추가 — 비공개 메모 (개인 노트, 팀 공유 X).
     pub fn gitignore_content() -> &'static str {
         "# openguild — 내부 캐시 / UI 상태 / 백업 (git 추적 X)\n\
          index.db\n\
          positions.json\n\
          backups/\n\
-         .lock\n"
+         .lock\n\
+         # DEV-012: 비공개 메모 (개인 노트)\n\
+         quests/*.memo.md\n"
     }
 }
 

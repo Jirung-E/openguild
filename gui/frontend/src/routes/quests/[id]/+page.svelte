@@ -24,6 +24,8 @@
 	// BUG-030: 캠페인 연결 콤보박스 (QuestCombobox 와 동일 톤).
 	import CampaignCombobox from '$lib/components/CampaignCombobox.svelte';
 	import QuestHistory from '$lib/components/QuestHistory.svelte';
+	// DEV-012: 공개 댓글 + 비공개 메모 섹션.
+	import QuestNoteSection from '$lib/components/QuestNoteSection.svelte';
 	import { formatTs, formatRelative, isDateOverdue } from '$lib/utils/datetime';
 
 	let slug = $derived($page.params.id ?? '');
@@ -792,6 +794,10 @@
 				<p class="no-desc">연결된 캠페인 없음.</p>
 			{/if}
 		</section>
+
+		<!-- DEV-012: 공개 댓글 + 비공개 메모. quest slug 기준. -->
+		<QuestNoteSection slug={detail.quest_id} mode="comments" />
+		<QuestNoteSection slug={detail.quest_id} mode="memo" />
 
 		<!-- 변경 이력 (DEV-038) -->
 		{#key `${detail.id}:${historyVersion}`}

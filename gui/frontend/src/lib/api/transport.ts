@@ -145,8 +145,27 @@ function routeToInvoke(
 	}
 
 	// ───── /api/quests/by/{slug} ─────
-	if (method === 'GET' && parts[0] === 'api' && parts[1] === 'quests' && parts[2] === 'by' && parts[3]) {
-		return { cmd: 'get_quest_by_slug', args: { slug: decodeURIComponent(parts[3]) } };
+	if (parts[0] === 'api' && parts[1] === 'quests' && parts[2] === 'by' && parts[3]) {
+		const slug = decodeURIComponent(parts[3]);
+		// DEV-012: /api/quests/by/{slug}/comments | memo
+		if (parts[4] === 'comments') {
+			if (method === 'GET') return { cmd: 'get_comments', args: { slug } };
+			if (method === 'PUT') {
+				const content = (body as { content?: string } | undefined)?.content ?? '';
+				return { cmd: 'set_comments', args: { slug, content } };
+			}
+		}
+		if (parts[4] === 'memo') {
+			if (method === 'GET') return { cmd: 'get_memo', args: { slug } };
+			if (method === 'PUT') {
+				const content = (body as { content?: string } | undefined)?.content ?? '';
+				return { cmd: 'set_memo', args: { slug, content } };
+			}
+		}
+		// 기본 — quest detail by slug.
+		if (method === 'GET' && !parts[4]) {
+			return { cmd: 'get_quest_by_slug', args: { slug } };
+		}
 	}
 
 	// ───── /api/quests/{id}/... ─────

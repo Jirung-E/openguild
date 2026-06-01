@@ -918,14 +918,17 @@ pub async fn list_campaigns_for_quest(
         .map_err(err)
 }
 
-// ─────────────────────── DEV-016: 길드 규칙 ───────────────────────
+// ─────────────────────── DEV-012/016: content 응답 공용 shape ───────────────────────
 
-/// HTTP 의 `RulesResponse` 와 동일 shape — frontend `rulesApi` 가 두 transport
-/// 모두 동일하게 `{ content: string | null }` 으로 받음.
+/// `.guild/rules.md` / `.guild/quests/{slug}.{comments,memo}.md` 의 GET 응답.
+/// 파일 부재 시 `content: null`.
 #[derive(serde::Serialize)]
-pub struct RulesResponse {
+pub struct ContentResponse {
     pub content: Option<String>,
 }
+
+// DEV-016 호환 alias.
+pub type RulesResponse = ContentResponse;
 
 #[tauri::command]
 pub fn get_rules(store: State<'_, Store>) -> Result<RulesResponse, String> {
@@ -942,6 +945,54 @@ pub async fn set_rules(
         .await
         .map_err(err)?;
     Ok(RulesResponse {
+        content: Some(content),
+    })
+}
+
+// ─────────────────────── DEV-012: 댓글 / 메모 ───────────────────────
+
+#[tauri::command]
+pub fn get_comments(
+    store: State<'_, Store>,
+    slug: String,
+) -> Result<ContentResponse, String> {
+    let content = openguild_core::ops::comments::get_comments(&store, &slug).map_err(err)?;
+    Ok(ContentResponse { content })
+}
+
+#[tauri::command]
+pub async fn set_comments(
+    store: State<'_, Store>,
+    slug: String,
+    content: String,
+) -> Result<ContentResponse, String> {
+    openguild_core::ops::comments::set_comments(&store, &slug, content.clone())
+        .await
+        .map_err(err)?;
+    Ok(ContentResponse {
+        content: Some(content),
+    })
+}
+
+#[tauri::command]
+pub fn get_memo(
+    store: State<'_, Store>,
+    slug: String,
+) -> Result<ContentResponse, String> {
+    let content = openguild_core::ops::comments::get_memo(&store, &slug).map_err(err)?;
+    Ok(ContentResponse { content })
+}
+
+#[tauri::command]
+pub async fn set_memo(
+    store: State<'_, Store>,
+    slug: String,
+    content: String,
+) -> Result<ContentResponse, String> {
+    openguild_core::ops::comments::set_memo(&store, &slug, content.clone())
+        .await
+        .map_err(err)?;
+    Ok(ContentResponse {
         content: Some(content),
     })
 }

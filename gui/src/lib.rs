@@ -279,6 +279,11 @@ pub fn run() {
             // DEV-016: 길드 규칙.
             commands::get_rules,
             commands::set_rules,
+            // DEV-012: Quest 별 댓글 / 메모.
+            commands::get_comments,
+            commands::set_comments,
+            commands::get_memo,
+            commands::set_memo,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
