@@ -370,6 +370,13 @@ pub fn run() {
             // DEV-016: 길드 규칙.
             commands::get_rules,
             commands::set_rules,
+            // DEV-016 (multi-file): 다중 규칙 CRUD.
+            commands::list_rules,
+            commands::get_rule,
+            commands::set_rule,
+            commands::create_rule,
+            commands::delete_rule,
+            commands::rename_rule,
             // DEV-012: Quest 별 댓글 / 메모.
             commands::get_comments,
             commands::set_comments,

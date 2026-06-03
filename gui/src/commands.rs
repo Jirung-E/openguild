@@ -971,6 +971,87 @@ pub async fn set_rules(
     })
 }
 
+// ─── DEV-016 (multi-file): 다중 길드 규칙 ───
+
+use openguild_core::repo::rules::RuleEntry;
+
+#[derive(serde::Serialize)]
+pub struct RulesListResponse {
+    pub entries: Vec<RuleEntry>,
+}
+
+#[derive(serde::Serialize)]
+pub struct RuleResponse {
+    pub slug: String,
+    pub content: Option<String>,
+}
+
+#[tauri::command]
+pub fn list_rules(store: State<'_, Store>) -> Result<RulesListResponse, String> {
+    let entries = openguild_core::ops::rules::list_rules(&store).map_err(err)?;
+    Ok(RulesListResponse { entries })
+}
+
+#[tauri::command]
+pub fn get_rule(store: State<'_, Store>, slug: String) -> Result<RuleResponse, String> {
+    let content = openguild_core::ops::rules::get_rule(&store, &slug).map_err(err)?;
+    Ok(RuleResponse { slug, content })
+}
+
+#[tauri::command]
+pub async fn set_rule(
+    store: State<'_, Store>,
+    slug: String,
+    content: String,
+) -> Result<RuleResponse, String> {
+    openguild_core::ops::rules::set_rule(&store, &slug, content.clone())
+        .await
+        .map_err(err)?;
+    Ok(RuleResponse {
+        slug,
+        content: Some(content),
+    })
+}
+
+#[tauri::command]
+pub async fn create_rule(
+    store: State<'_, Store>,
+    slug: String,
+    content: Option<String>,
+) -> Result<RuleResponse, String> {
+    let c = content.unwrap_or_default();
+    openguild_core::ops::rules::create_rule(&store, &slug, c.clone())
+        .await
+        .map_err(err)?;
+    Ok(RuleResponse {
+        slug,
+        content: Some(c),
+    })
+}
+
+#[tauri::command]
+pub async fn delete_rule(store: State<'_, Store>, slug: String) -> Result<(), String> {
+    openguild_core::ops::rules::delete_rule(&store, &slug)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn rename_rule(
+    store: State<'_, Store>,
+    slug: String,
+    new_slug: String,
+) -> Result<RuleResponse, String> {
+    openguild_core::ops::rules::rename_rule(&store, &slug, &new_slug)
+        .await
+        .map_err(err)?;
+    let content = openguild_core::ops::rules::get_rule(&store, &new_slug).map_err(err)?;
+    Ok(RuleResponse {
+        slug: new_slug,
+        content,
+    })
+}
+
 // ─────────────────────── DEV-012: 댓글 / 메모 ───────────────────────
 
 #[tauri::command]

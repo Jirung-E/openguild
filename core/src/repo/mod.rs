@@ -94,10 +94,22 @@ impl GuildPaths {
         self.types_dir().join(format!("{prefix}.toml"))
     }
 
-    /// DEV-016: 길드 규칙 (`.guild/rules.md`). 자유 markdown — frontmatter 없음.
-    /// 파일 부재 시 "규칙 미설정" 상태. git tracked.
+    /// DEV-016: 길드 규칙 — **legacy 단일 파일** (`.guild/rules.md`).
+    /// DEV-016 후속 (multi-file) 부터는 `.guild/rules/{slug}.md` 가 권장. 본
+    /// 단일 파일은 backward compat — 첫 list_rules 호출 시 `.guild/rules/general.md`
+    /// 로 자동 마이그레이션됨.
     pub fn rules_path(&self) -> PathBuf {
         self.dot_guild().join("rules.md")
+    }
+
+    /// DEV-016 multi-file: 규칙 디렉토리 (`.guild/rules/`).
+    pub fn rules_dir(&self) -> PathBuf {
+        self.dot_guild().join("rules")
+    }
+
+    /// DEV-016 multi-file: 한 규칙 파일 (`.guild/rules/{slug}.md`).
+    pub fn rule_path(&self, slug: &str) -> PathBuf {
+        self.rules_dir().join(format!("{slug}.md"))
     }
 
     /// DEV-012: Quest 별 공개 댓글 (`.guild/quests/{slug}.comments.md`).

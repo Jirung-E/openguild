@@ -109,11 +109,37 @@ function routeToInvoke(
 	// parts[0] === 'api'
 
 	// ───── meta ─────
-	// DEV-016: 길드 규칙. GET 은 { content: string|null } wrap 으로 invoke 반환을 맞춤.
+	// DEV-016 (multi-file): 다중 길드 규칙.
 	if (pathOnly === '/api/rules') {
-		if (method === 'GET') {
-			return { cmd: 'get_rules', args: {} };
+		if (method === 'GET') return { cmd: 'list_rules', args: {} };
+		if (method === 'POST') {
+			const b =
+				(body as { slug?: string; content?: string } | undefined) ?? {};
+			return {
+				cmd: 'create_rule',
+				args: { slug: b.slug ?? '', content: b.content ?? '' }
+			};
 		}
+	}
+	if (parts[0] === 'api' && parts[1] === 'rules' && parts[2]) {
+		const slug = decodeURIComponent(parts[2]);
+		if (method === 'GET') return { cmd: 'get_rule', args: { slug } };
+		if (method === 'PUT') {
+			const content = (body as { content?: string } | undefined)?.content ?? '';
+			return { cmd: 'set_rule', args: { slug, content } };
+		}
+		if (method === 'PATCH') {
+			const newSlug =
+				(body as { new_slug?: string } | undefined)?.new_slug ?? '';
+			return { cmd: 'rename_rule', args: { slug, newSlug } };
+		}
+		if (method === 'DELETE') {
+			return { cmd: 'delete_rule', args: { slug } };
+		}
+	}
+	// DEV-016 legacy 단일 — backward compat.
+	if (pathOnly === '/api/rules-single') {
+		if (method === 'GET') return { cmd: 'get_rules', args: {} };
 		if (method === 'PUT') {
 			const content = (body as { content?: string } | undefined)?.content ?? '';
 			return { cmd: 'set_rules', args: { content } };

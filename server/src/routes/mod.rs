@@ -17,8 +17,24 @@ pub fn create_router(store: Store) -> Router {
         // meta
         .route("/api/quest-types", get(meta::list_quest_types))
         .route("/api/quest-statuses", get(meta::list_quest_statuses))
-        // DEV-016: 길드 규칙 (`.guild/rules.md`).
-        .route("/api/rules", get(rules::get_rules).put(rules::set_rules))
+        // DEV-016 (multi-file): 길드 규칙 — `.guild/rules/{slug}.md`.
+        // 단일 (legacy) endpoint 도 backward compat 으로 다른 경로에 유지.
+        .route(
+            "/api/rules",
+            get(rules::list_rules).post(rules::create_rule),
+        )
+        .route(
+            "/api/rules/{slug}",
+            get(rules::get_rule)
+                .put(rules::set_rule)
+                .patch(rules::rename_rule)
+                .delete(rules::delete_rule),
+        )
+        // DEV-016 legacy 단일 파일 — 기존 호출자 호환.
+        .route(
+            "/api/rules-single",
+            get(rules::get_rules).put(rules::set_rules),
+        )
         // DEV-012: Quest 별 댓글 (공개, tracked) / 메모 (비공개, gitignored).
         .route(
             "/api/quests/by/{slug}/comments",
