@@ -377,11 +377,13 @@ pub fn run() {
             commands::create_rule,
             commands::delete_rule,
             commands::rename_rule,
-            // DEV-012: Quest 별 댓글 / 메모.
-            commands::get_comments,
-            commands::set_comments,
+            // DEV-012 / DEV-094: 메모 (단일 텍스트) + 댓글 (entry 단위).
             commands::get_memo,
             commands::set_memo,
+            commands::list_comments,
+            commands::add_comment,
+            commands::update_comment,
+            commands::delete_comment,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

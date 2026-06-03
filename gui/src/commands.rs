@@ -639,7 +639,8 @@ pub fn current_guild_path(store: State<'_, Store>) -> String {
 /// - `is_ahead`: true 면 frontend 가 "업데이트 필요" 알림 표시.
 /// - `ahead_versions`: DB 의 `_sqlx_migrations` 중 binary 가 모르는 version 목록.
 ///
-/// Welcome/Uninit 모드 (in-memory) 는 항상 `is_ahead: false`.
+/// frontend 의 banner / modal 이 이 값을 보고 UI 표시. Welcome/Uninit 모드 (in-memory)
+/// 는 항상 `is_ahead: false`.
 #[derive(serde::Serialize)]
 pub struct DbSchemaStatus {
     pub is_ahead: bool,
@@ -1052,31 +1053,9 @@ pub async fn rename_rule(
     })
 }
 
-// ─────────────────────── DEV-012: 댓글 / 메모 ───────────────────────
+// ─────────────────────── DEV-012 / DEV-094: 댓글 / 메모 ───────────────────────
 
-#[tauri::command]
-pub fn get_comments(
-    store: State<'_, Store>,
-    slug: String,
-) -> Result<ContentResponse, String> {
-    let content = openguild_core::ops::comments::get_comments(&store, &slug).map_err(err)?;
-    Ok(ContentResponse { content })
-}
-
-#[tauri::command]
-pub async fn set_comments(
-    store: State<'_, Store>,
-    slug: String,
-    content: String,
-) -> Result<ContentResponse, String> {
-    openguild_core::ops::comments::set_comments(&store, &slug, content.clone())
-        .await
-        .map_err(err)?;
-    Ok(ContentResponse {
-        content: Some(content),
-    })
-}
-
+// 메모는 단일 텍스트 그대로 (DEV-012).
 #[tauri::command]
 pub fn get_memo(
     store: State<'_, Store>,
@@ -1098,4 +1077,64 @@ pub async fn set_memo(
     Ok(ContentResponse {
         content: Some(content),
     })
+}
+
+// DEV-094: 댓글은 entry 단위. 응답은 항상 `{ entries: [...] }` 또는 단일 entry.
+use openguild_core::repo::comments::CommentEntry;
+
+#[derive(serde::Serialize)]
+pub struct CommentsListResponse {
+    pub entries: Vec<CommentEntry>,
+}
+
+#[tauri::command]
+pub fn list_comments(
+    store: State<'_, Store>,
+    slug: String,
+) -> Result<CommentsListResponse, String> {
+    let entries =
+        openguild_core::ops::comments::list_comment_entries(&store, &slug).map_err(err)?;
+    Ok(CommentsListResponse { entries })
+}
+
+#[tauri::command]
+pub async fn add_comment(
+    store: State<'_, Store>,
+    slug: String,
+    author: Option<String>,
+    body: String,
+    parent_id: Option<u64>,
+) -> Result<CommentEntry, String> {
+    openguild_core::ops::comments::add_comment_entry(
+        &store,
+        &slug,
+        author.unwrap_or_default(),
+        body,
+        parent_id,
+    )
+    .await
+    .map_err(err)
+}
+
+#[tauri::command]
+pub async fn update_comment(
+    store: State<'_, Store>,
+    slug: String,
+    id: u64,
+    body: String,
+) -> Result<CommentEntry, String> {
+    openguild_core::ops::comments::update_comment_entry(&store, &slug, id, body)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn delete_comment(
+    store: State<'_, Store>,
+    slug: String,
+    id: u64,
+) -> Result<(), String> {
+    openguild_core::ops::comments::delete_comment_entry(&store, &slug, id)
+        .await
+        .map_err(err)
 }

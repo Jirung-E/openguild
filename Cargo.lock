@@ -2675,6 +2675,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "directories",
+ "regex",
  "serde",
  "serde_json",
  "sqlx",

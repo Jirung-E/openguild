@@ -1,13 +1,15 @@
 <!--
-  DEV-012: Quest Detail 의 댓글 / 메모 섹션 (공용).
+  DEV-012: Quest Detail 의 메모 섹션 (개인용, gitignored).
 
-  공개 댓글 (.guild/quests/{slug}.comments.md, tracked) 과
-  비공개 메모 (.guild/quests/{slug}.memo.md, gitignored) 양쪽이 동일 UX —
-  본 컴포넌트로 통일. mode + 라벨 / 안내문만 다름.
-
-  - 부재 / 비어있음: "[작성] / [메모 작성]" 안내.
+  파일: .guild/quests/{slug}.memo.md — 본인만 보는 단일 markdown.
+  - 부재 / 비어있음: "메모 작성" 안내.
   - 읽기: MarkdownView.
   - 편집: CodeMirror (markdown + oneDark). Quest Detail editor height 키 공유.
+
+  DEV-094 이후 댓글 (공개) 은 entry 단위 — `QuestCommentsSection` 별도.
+  본 컴포넌트는 메모 (개인 노트) 전용 — entry 단위 불필요한 freeform 텍스트.
+
+  `mode` prop 은 호환을 위해 받지만 무시 — 항상 memo 동작.
 -->
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
@@ -17,29 +19,16 @@
 	import { markdown } from '@codemirror/lang-markdown';
 	import { oneDark } from '@codemirror/theme-one-dark';
 
-	let {
-		slug,
-		mode
-	}: {
-		slug: string;
-		mode: 'comments' | 'memo';
-	} = $props();
+	// `mode` prop 은 호환성을 위해 받지만 동작 분기 X — 항상 memo.
+	// svelte 가 "초기값만 캡쳐" 경고 안 내도록 destructure 에서 제외.
+	let { slug }: { slug: string; mode?: 'memo' | 'comments' } = $props();
 
-	const labels = {
-		comments: {
-			heading: '댓글 (Comments)',
-			emptyAction: '댓글 작성',
-			emptyHint: '팀이 공유하는 토론. git tracked.',
-			help: '팀이 함께 보는 공개 토론 (`.guild/quests/{slug}.comments.md`).'
-		},
-		memo: {
-			heading: '메모 (Memo)',
-			emptyAction: '메모 작성',
-			emptyHint: '개인 메모. gitignored (팀 공유 X).',
-			help: '본인만 보는 비공개 메모 (`.guild/quests/{slug}.memo.md`, gitignored).'
-		}
-	} as const;
-	let label = $derived(labels[mode]);
+	const label = {
+		heading: '메모 (Memo)',
+		emptyAction: '메모 작성',
+		emptyHint: '개인 메모. gitignored (팀 공유 X).',
+		help: '본인만 보는 비공개 메모 (`.guild/quests/{slug}.memo.md`, gitignored).'
+	};
 
 	let loading = $state(true);
 	let loadError = $state<string | null>(null);
@@ -69,10 +58,7 @@
 		loading = true;
 		loadError = null;
 		try {
-			const res =
-				mode === 'comments'
-					? await commentsApi.getComments(slug)
-					: await commentsApi.getMemo(slug);
+			const res = await commentsApi.getMemo(slug);
 			content = res.content;
 		} catch (e) {
 			loadError = e instanceof Error ? e.message : 'load failed';
@@ -81,10 +67,8 @@
 		}
 	}
 
-	// slug / mode 변경 시 reload.
 	$effect(() => {
 		void slug;
-		void mode;
 		load();
 	});
 
@@ -131,10 +115,7 @@
 		saveError = null;
 		try {
 			const text = editorView ? editorView.state.doc.toString() : editText;
-			const res =
-				mode === 'comments'
-					? await commentsApi.setComments(slug, text)
-					: await commentsApi.setMemo(slug, text);
+			const res = await commentsApi.setMemo(slug, text);
 			content = res.content;
 			cancelEdit();
 		} catch (e) {
@@ -143,11 +124,15 @@
 			saving = false;
 		}
 	}
+
+	onMount(() => {
+		return () => editorView?.destroy();
+	});
 </script>
 
 <section class="note-sec">
 	<div class="section-head">
-		<h2 class="section-title note-{mode}">{label.heading}</h2>
+		<h2 class="section-title note-memo">{label.heading}</h2>
 		{#if !editMode && !loading && !loadError}
 			<button class="sec-add-btn" onclick={enterEdit}>
 				{content && content.trim() ? '✎ 편집' : `+ ${label.emptyAction}`}
@@ -192,7 +177,6 @@
 		font-size: 0.8rem; font-weight: 600;
 		text-transform: uppercase; letter-spacing: 0.05em; margin: 0;
 	}
-	.section-title.note-comments { color: #79c0ff; }
 	.section-title.note-memo { color: #f0883e; }
 
 	.sec-add-btn {

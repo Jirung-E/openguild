@@ -35,10 +35,15 @@ pub fn create_router(store: Store) -> Router {
             "/api/rules-single",
             get(rules::get_rules).put(rules::set_rules),
         )
-        // DEV-012: Quest 별 댓글 (공개, tracked) / 메모 (비공개, gitignored).
+        // DEV-012 / DEV-094: Quest 댓글 (entry 단위, tracked) + 메모 (단일, gitignored).
+        // GET = entries 목록, POST = 새 entry 추가.
         .route(
             "/api/quests/by/{slug}/comments",
-            get(comments::get_comments).put(comments::set_comments),
+            get(comments::list_comments).post(comments::add_comment),
+        )
+        .route(
+            "/api/quests/by/{slug}/comments/{id}",
+            patch(comments::update_comment).delete(comments::delete_comment),
         )
         .route(
             "/api/quests/by/{slug}/memo",

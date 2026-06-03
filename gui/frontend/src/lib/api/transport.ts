@@ -173,12 +173,40 @@ function routeToInvoke(
 	// ───── /api/quests/by/{slug} ─────
 	if (parts[0] === 'api' && parts[1] === 'quests' && parts[2] === 'by' && parts[3]) {
 		const slug = decodeURIComponent(parts[3]);
-		// DEV-012: /api/quests/by/{slug}/comments | memo
+		// DEV-094: /api/quests/by/{slug}/comments — entry 단위 CRUD.
 		if (parts[4] === 'comments') {
-			if (method === 'GET') return { cmd: 'get_comments', args: { slug } };
-			if (method === 'PUT') {
-				const content = (body as { content?: string } | undefined)?.content ?? '';
-				return { cmd: 'set_comments', args: { slug, content } };
+			// /comments (목록 / 추가)
+			if (!parts[5]) {
+				if (method === 'GET') return { cmd: 'list_comments', args: { slug } };
+				if (method === 'POST') {
+					const b =
+						(body as {
+							author?: string;
+							body?: string;
+							parent_id?: number | null;
+						} | undefined) ?? {};
+					return {
+						cmd: 'add_comment',
+						args: {
+							slug,
+							author: b.author ?? '',
+							body: b.body ?? '',
+							// Tauri 의 parent_id 인자 — Option<u64>. null / undefined 둘 다 None.
+							parentId: b.parent_id ?? null
+						}
+					};
+				}
+			}
+			// /comments/{id} (수정 / 삭제)
+			if (parts[5] && /^\d+$/.test(parts[5])) {
+				const id = Number(parts[5]);
+				if (method === 'PATCH') {
+					const bodyText = (body as { body?: string } | undefined)?.body ?? '';
+					return { cmd: 'update_comment', args: { slug, id, body: bodyText } };
+				}
+				if (method === 'DELETE') {
+					return { cmd: 'delete_comment', args: { slug, id } };
+				}
 			}
 		}
 		if (parts[4] === 'memo') {

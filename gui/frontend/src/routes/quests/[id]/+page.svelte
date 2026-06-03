@@ -26,6 +26,8 @@
 	import QuestHistory from '$lib/components/QuestHistory.svelte';
 	// DEV-012: 공개 댓글 + 비공개 메모 섹션.
 	import QuestNoteSection from '$lib/components/QuestNoteSection.svelte';
+	// DEV-094: 댓글은 entry 단위 컴포넌트.
+	import QuestCommentsSection from '$lib/components/QuestCommentsSection.svelte';
 	import { formatTs, formatRelative, isDateOverdue } from '$lib/utils/datetime';
 
 	let slug = $derived($page.params.id ?? '');
@@ -796,7 +798,7 @@
 		</section>
 
 		<!-- DEV-012: 공개 댓글 + 비공개 메모. quest slug 기준. -->
-		<QuestNoteSection slug={detail.quest_id} mode="comments" />
+		<QuestCommentsSection slug={detail.quest_id} />
 		<QuestNoteSection slug={detail.quest_id} mode="memo" />
 
 		<!-- 변경 이력 (DEV-038) -->
