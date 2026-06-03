@@ -77,7 +77,9 @@ enum Command {
         #[command(subcommand)]
         sub: CampaignCmd,
     },
-    /// DEV-016 (multi-file): 길드 규칙 — `.guild/rules/{slug}.md` CRUD.
+    // BUG-016: doc comment 의 quest id 가 clap help 로 leak — 외부 사용자에게
+    // internal quest 번호 노출 금지. 기능 설명만 plain `///` 으로.
+    /// 길드 규칙 — `.guild/rules/{slug}.md` 다중 파일 CRUD.
     Rules {
         #[command(subcommand)]
         sub: RulesCmd,
@@ -299,13 +301,14 @@ enum QuestCmd {
         #[arg(long = "clear-required")]
         clear_required: bool,
     },
-    /// DEV-099: 댓글 (entry 단위, 공개) — list / show / add / edit / rm.
+    // BUG-016: quest_id leak 방지 — about 에는 기능 설명만.
+    /// 댓글 (entry 단위, 공개) — list / show / add / edit / rm.
     /// 진리원: `.guild/quests/{slug}.comments.md` (git tracked).
     Comment {
         #[command(subcommand)]
         sub: CommentCmd,
     },
-    /// DEV-099: 메모 (단일 텍스트, 비공개) — show / set / clear.
+    /// 메모 (단일 텍스트, 비공개) — show / set / clear.
     /// 진리원: `.guild/quests/{slug}.memo.md` (gitignored).
     Memo {
         #[command(subcommand)]
