@@ -36,6 +36,38 @@ pub fn mtime<P: AsRef<Path>>(path: P) -> Option<SystemTime> {
     std::fs::metadata(path.as_ref()).ok()?.modified().ok()
 }
 
+/// BUG-047: quest 본문 파일인지 — `.guild/quests/{slug}.md` 만 true.
+/// sibling 파일 `.comments.md` / `.memo.md` (DEV-012 / DEV-094) 는 false.
+///
+/// 기준: file stem 이 `.` 을 포함하지 않음 (slug 자체엔 `.` 없음;
+/// `DEV-094.comments` 같은 stem 은 sibling).
+pub fn is_quest_body_file(path: &Path) -> bool {
+    if path.extension().and_then(|s| s.to_str()) != Some("md") {
+        return false;
+    }
+    let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+        return false;
+    };
+    !stem.contains('.')
+}
+
+/// 디렉토리 안의 quest 본문 파일만 (sibling `.comments.md` / `.memo.md` 제외).
+/// BUG-047: drift / reindex 의 false positive 제거 + skip 경고 제거.
+pub fn list_quest_body_files<P: AsRef<Path>>(dir: P) -> Result<Vec<std::path::PathBuf>> {
+    let dir = dir.as_ref();
+    if !dir.exists() {
+        return Ok(Vec::new());
+    }
+    let mut paths: Vec<_> = std::fs::read_dir(dir)
+        .with_context(|| format!("failed to read dir: {}", dir.display()))?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| is_quest_body_file(p))
+        .collect();
+    paths.sort();
+    Ok(paths)
+}
+
 /// 디렉토리 안의 특정 확장자 파일 경로 나열 (정렬).
 pub fn list_with_extension<P: AsRef<Path>>(dir: P, ext: &str) -> Result<Vec<std::path::PathBuf>> {
     let dir = dir.as_ref();
@@ -135,5 +167,39 @@ mod tests {
     fn list_with_extension_missing_dir_returns_empty() {
         let paths = list_with_extension("/nonexistent/xyz/abc", "md").unwrap();
         assert!(paths.is_empty());
+    }
+
+    /// BUG-047: list_quest_body_files 가 sibling 파일을 제외하는지.
+    #[test]
+    fn list_quest_body_files_excludes_siblings() {
+        let dir = fresh_tmp("quest-body-filter");
+        write_atomic(dir.join("DEV-001.md"), "").unwrap();
+        write_atomic(dir.join("DEV-002.md"), "").unwrap();
+        write_atomic(dir.join("DEV-001.comments.md"), "").unwrap();
+        write_atomic(dir.join("DEV-001.memo.md"), "").unwrap();
+        write_atomic(dir.join("DEV-002.comments.md"), "").unwrap();
+        write_atomic(dir.join("README.md"), "").unwrap(); // hidden quest_id 없음? — stem README, dot 없음
+        write_atomic(dir.join("ignored.txt"), "").unwrap();
+
+        let names: Vec<String> = list_quest_body_files(&dir)
+            .unwrap()
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
+            .collect();
+        // sibling (`.comments.md` / `.memo.md`) 는 제외 — stem 에 `.` 포함.
+        // README.md / DEV-001.md / DEV-002.md 만 (sorted).
+        assert_eq!(names, vec!["DEV-001.md", "DEV-002.md", "README.md"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn is_quest_body_file_recognizes_patterns() {
+        use std::path::PathBuf;
+        assert!(is_quest_body_file(&PathBuf::from("DEV-001.md")));
+        assert!(is_quest_body_file(&PathBuf::from("BUG-099.md")));
+        assert!(!is_quest_body_file(&PathBuf::from("DEV-001.comments.md")));
+        assert!(!is_quest_body_file(&PathBuf::from("DEV-001.memo.md")));
+        assert!(!is_quest_body_file(&PathBuf::from("DEV-001.txt"))); // 잘못된 확장
+        assert!(!is_quest_body_file(&PathBuf::from("DEV-001"))); // 확장 없음
     }
 }

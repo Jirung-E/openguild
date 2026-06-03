@@ -150,7 +150,9 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
     }
 
     // 4. quests — 파일 한 번 로드해서 모두 메모리에. id 는 파일 정렬 순.
-    let quest_paths = repo_fs::list_with_extension(paths.quests_dir(), "md")
+    // BUG-047: sibling `.comments.md` / `.memo.md` 제외 — 이전엔 quest 본문으로
+    // 오인해서 매 reindex 마다 "frontmatter 없음" skip 경고 발생.
+    let quest_paths = repo_fs::list_quest_body_files(paths.quests_dir())
         .map_err(crate::error::AppError::Internal)?;
     let mut quest_files: Vec<(std::path::PathBuf, QuestFile)> = Vec::new();
     for path in &quest_paths {

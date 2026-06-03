@@ -45,7 +45,9 @@ pub async fn detect_drift(store: &Store) -> Result<DriftReport> {
     let index_mtime = repo_fs::mtime(paths.index_db()).unwrap_or(SystemTime::UNIX_EPOCH);
 
     // 파일 → mtime 맵
-    let quest_paths = repo_fs::list_with_extension(paths.quests_dir(), "md")?;
+    // BUG-047: sibling `.comments.md` / `.memo.md` 제외 — 매번 missing_in_index
+    // 로 잡혀서 reindex 후에도 drift 가 사라지지 않는 false positive.
+    let quest_paths = repo_fs::list_quest_body_files(paths.quests_dir())?;
     let mut file_slugs: HashMap<String, SystemTime> = HashMap::new();
     let mut fresh_files = Vec::new();
 
