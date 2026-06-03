@@ -158,6 +158,50 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// BUG-047 regression: sibling `.comments.md` / `.memo.md` 가 있어도
+    /// `missing_in_index` 에 안 들어가야 함. 이전엔 quest 본문으로 오인해서
+    /// 매번 false positive.
+    #[tokio::test]
+    async fn detect_drift_excludes_sibling_files() {
+        let dir = fresh_tmp("siblings");
+        let store = setup(&dir).await;
+
+        // 1) 정상 quest 하나 — ops 경로로 만들어 index 와 정합.
+        let q = ops::create_quest(
+            &store,
+            crate::models::CreateQuestRequest {
+                quest_type_id: 1,
+                title: "with siblings".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        // 2) sibling 파일 작성 — quest_id slug 옆에 직접.
+        // (DEV-012 / DEV-094 / DEV-099 가 사용자 작업으로 만들어 둘 만한 패턴.)
+        let slug = &q.quest_id;
+        let comments = store.paths.quests_dir().join(format!("{slug}.comments.md"));
+        let memo = store.paths.quests_dir().join(format!("{slug}.memo.md"));
+        std::fs::write(&comments, "<!-- og-comment id=\"1\" ts=\"\" author=\"\" -->\n사용자 댓글\n").unwrap();
+        std::fs::write(&memo, "personal note").unwrap();
+
+        let report = detect_drift(&store).await.unwrap();
+        // sibling 들은 file_slugs 에 안 들어가야 하므로 missing_in_index 비어야.
+        assert!(
+            report.missing_in_index.is_empty(),
+            "sibling 이 missing_in_index 에 누적되면 안 됨: {:?}",
+            report.missing_in_index
+        );
+        // stale_in_index 도 비어야 (위에서 만든 quest 는 index 에 있음).
+        assert!(report.stale_in_index.is_empty());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[tokio::test]
     async fn detects_file_not_in_index() {
         let dir = fresh_tmp("missing");

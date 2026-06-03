@@ -430,6 +430,52 @@ mod tests {
         Store::open(dir).await.unwrap()
     }
 
+    /// BUG-047 regression: sibling `.comments.md` / `.memo.md` 파일이 있어도
+    /// reindex 가 `skipped` 에 누적하지 않아야 함 (이전엔 frontmatter 없는 파일
+    /// 로 인식해 매번 "missing opening +++ delimiter" 경고).
+    #[tokio::test]
+    async fn reindex_ignores_sibling_comment_and_memo_files() {
+        let dir = fresh_tmp("siblings");
+        let store = setup_store(&dir).await;
+
+        // 정상 quest 파일 + sibling 두 종류 직접 작성.
+        let paths = store.paths.clone();
+        let qf = QuestFile {
+            frontmatter: QuestFrontmatter {
+                quest_id: "DEV-001".into(),
+                title: "with siblings".into(),
+                status: "open".into(),
+                urgency: 3,
+                parent: None,
+                prerequisites: vec![],
+                created_at: "2026-01-01T00:00:00Z".into(),
+                updated_at: "2026-01-01T00:00:00Z".into(),
+                deleted: false,
+                desired_due: None,
+                required_due: None,
+            },
+            description: String::new(),
+            auto_block: String::new(),
+        };
+        qf.write(paths.quest_path("DEV-001")).unwrap();
+
+        // sibling — frontmatter 없는 plain markdown (DEV-012 / DEV-094 패턴).
+        let comments = paths.quests_dir().join("DEV-001.comments.md");
+        let memo = paths.quests_dir().join("DEV-001.memo.md");
+        std::fs::write(&comments, "<!-- og-comment id=\"1\" ts=\"\" author=\"\" -->\ntest comment\n").unwrap();
+        std::fs::write(&memo, "personal scratch").unwrap();
+
+        let report = reindex(&store).await.unwrap();
+        assert_eq!(report.quests_loaded, 1, "정상 quest 1 개만 로드되어야");
+        assert!(
+            report.skipped.is_empty(),
+            "sibling 파일들이 skipped 에 안 들어가야: {:?}",
+            report.skipped
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[tokio::test]
     async fn reindex_seeded_guild_no_quests() {
         let dir = fresh_tmp("empty");
