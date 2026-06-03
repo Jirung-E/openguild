@@ -1049,14 +1049,24 @@
 
 			// 1) 인접 리스트 — allIds 안에 있는 edge 만 사용
 			//    (lane 한정 호출 시: lane 안 노드 사이 edge 만 → cross-lane 무시)
+			// BUG-020: cross-lane edge 가 있는 노드도 추적 — lane 내 다른 노드와
+			// 연결이 없어도 "외부 그룹의 일부" 이므로 isolated 가 아닌 cluster
+			// (single-member) 로 분류해서 시각적으로 분리.
 			const adj = new Map<number, Set<number>>();
 			allIds.forEach((id) => adj.set(id, new Set()));
+			const hasExternalEdge = new Set<number>();
 			cy!.edges().forEach((e) => {
 				const s = e.source().data('questId') as number;
 				const t = e.target().data('questId') as number;
-				if (allIds.has(s) && allIds.has(t)) {
+				const sIn = allIds.has(s);
+				const tIn = allIds.has(t);
+				if (sIn && tIn) {
 					adj.get(s)!.add(t);
 					adj.get(t)!.add(s);
+				} else if (sIn && !tIn) {
+					hasExternalEdge.add(s);
+				} else if (!sIn && tIn) {
+					hasExternalEdge.add(t);
 				}
 			});
 
@@ -1084,8 +1094,14 @@
 			const isolated: number[] = [];
 			const clusters: number[][] = [];
 			for (const c of components) {
-				if (c.length === 1) isolated.push(c[0]);
-				else clusters.push(c);
+				// BUG-020: 진짜 isolated (외부 연결도 없는 단독) 만 위쪽으로.
+				// cross-lane edge 가 있는 single-member 는 cluster 로 — 시각적
+				// 으로 다른 lane 의 그룹의 일부임을 분리 표시.
+				if (c.length === 1 && !hasExternalEdge.has(c[0])) {
+					isolated.push(c[0]);
+				} else {
+					clusters.push(c);
+				}
 			}
 
 			const slugOf = (qid: number) =>
