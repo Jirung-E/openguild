@@ -299,6 +299,72 @@ enum QuestCmd {
         #[arg(long = "clear-required")]
         clear_required: bool,
     },
+    /// DEV-099: 댓글 (entry 단위, 공개) — list / show / add / edit / rm.
+    /// 진리원: `.guild/quests/{slug}.comments.md` (git tracked).
+    Comment {
+        #[command(subcommand)]
+        sub: CommentCmd,
+    },
+    /// DEV-099: 메모 (단일 텍스트, 비공개) — show / set / clear.
+    /// 진리원: `.guild/quests/{slug}.memo.md` (gitignored).
+    Memo {
+        #[command(subcommand)]
+        sub: MemoCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum CommentCmd {
+    /// entry 목록 (id / ts / author / body 요약 1줄).
+    List { slug: String },
+    /// entry 본문 전체 또는 단일.
+    Show {
+        slug: String,
+        /// 특정 entry id 만 출력. 미지정 시 모든 entry.
+        #[arg(long)]
+        id: Option<u64>,
+    },
+    /// 새 댓글 entry 추가. 본문은 `--file PATH` 또는 stdin.
+    Add {
+        slug: String,
+        /// 작성자 (자유 문자열, 빈 값 허용).
+        #[arg(long)]
+        author: Option<String>,
+        /// 답글인 경우 부모 entry id.
+        #[arg(long = "parent-id")]
+        parent_id: Option<u64>,
+        /// 본문 파일. 미지정 시 stdin.
+        #[arg(long)]
+        file: Option<std::path::PathBuf>,
+    },
+    /// 기존 entry 의 body 교체. ts / author 보존.
+    Edit {
+        slug: String,
+        id: u64,
+        #[arg(long)]
+        file: Option<std::path::PathBuf>,
+    },
+    /// entry 삭제. `--force` 없으면 prompt.
+    Rm {
+        slug: String,
+        id: u64,
+        #[arg(long)]
+        force: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum MemoCmd {
+    /// 메모 본문 stdout. 파일 없으면 "(메모 없음)".
+    Show { slug: String },
+    /// 메모 본문 교체. 본문은 `--file PATH` 또는 stdin.
+    Set {
+        slug: String,
+        #[arg(long)]
+        file: Option<std::path::PathBuf>,
+    },
+    /// 메모 본문 비움 (빈 문자열로 교체 — 파일은 남음).
+    Clear { slug: String },
 }
 
 #[derive(Subcommand)]
@@ -1413,6 +1479,80 @@ impl Backend {
             Backend::Http(_) => Err(Self::http_unsupported_meta()),
             Backend::Local(l) => Self::map_err(l.rt.block_on(
                 openguild_core::ops::rules::rename_rule(&l.store, old_slug, new_slug),
+            )),
+        }
+    }
+
+    // ── DEV-099: 댓글 / 메모 — local 전용 (HTTP 미지원 우선) ──
+
+    fn comments_list(
+        &self,
+        slug: &str,
+    ) -> Result<Vec<openguild_core::repo::comments::CommentEntry>> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => Self::map_err(Ok::<_, openguild_core::error::AppError>(
+                openguild_core::ops::comments::list_comment_entries(&l.store, slug)?,
+            )),
+        }
+    }
+
+    fn comments_add(
+        &self,
+        slug: &str,
+        author: String,
+        body: String,
+        parent_id: Option<u64>,
+    ) -> Result<openguild_core::repo::comments::CommentEntry> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::comments::add_comment_entry(
+                    &l.store, slug, author, body, parent_id,
+                ),
+            )),
+        }
+    }
+
+    fn comments_edit(
+        &self,
+        slug: &str,
+        id: u64,
+        body: String,
+    ) -> Result<openguild_core::repo::comments::CommentEntry> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::comments::update_comment_entry(
+                    &l.store, slug, id, body,
+                ),
+            )),
+        }
+    }
+
+    fn comments_delete(&self, slug: &str, id: u64) -> Result<()> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::comments::delete_comment_entry(&l.store, slug, id),
+            )),
+        }
+    }
+
+    fn memo_get(&self, slug: &str) -> Result<Option<String>> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => Self::map_err(Ok::<_, openguild_core::error::AppError>(
+                openguild_core::ops::comments::get_memo(&l.store, slug)?,
+            )),
+        }
+    }
+
+    fn memo_set(&self, slug: &str, content: String) -> Result<()> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::comments::set_memo(&l.store, slug, content),
             )),
         }
     }
@@ -2970,6 +3110,205 @@ fn run() -> Result<()> {
                     }
                 }
             }
+            QuestCmd::Comment { sub } => match sub {
+                CommentCmd::List { slug } => {
+                    let entries = c.comments_list(&slug)?;
+                    if cli.json {
+                        println!(
+                            "{}",
+                            serde_json::json!({
+                                "entries": entries.iter().map(|e| serde_json::json!({
+                                    "id": e.id,
+                                    "ts": e.ts,
+                                    "author": e.author,
+                                    "parent_id": e.parent_id,
+                                    "body_len": e.body.len(),
+                                })).collect::<Vec<_>>(),
+                            })
+                        );
+                    } else if entries.is_empty() {
+                        println!("(댓글 없음)");
+                    } else {
+                        for e in &entries {
+                            let summary = e
+                                .body
+                                .lines()
+                                .next()
+                                .unwrap_or("")
+                                .chars()
+                                .take(60)
+                                .collect::<String>();
+                            let reply = e
+                                .parent_id
+                                .map(|p| format!(" ↩ #{p}"))
+                                .unwrap_or_default();
+                            let author = if e.author.is_empty() {
+                                "(이름 없음)".to_string()
+                            } else {
+                                e.author.clone()
+                            };
+                            let ts = if e.ts.is_empty() {
+                                "(시각 미상)".to_string()
+                            } else {
+                                e.ts.clone()
+                            };
+                            println!("#{}  {}  {}{}  {}", e.id, ts, author, reply, summary);
+                        }
+                    }
+                }
+                CommentCmd::Show { slug, id } => {
+                    let entries = c.comments_list(&slug)?;
+                    let selected: Vec<_> = match id {
+                        Some(target) => {
+                            let only = entries
+                                .into_iter()
+                                .find(|e| e.id == target)
+                                .ok_or_else(|| {
+                                    anyhow::anyhow!("entry #{target} 없음 (quest {slug})")
+                                })?;
+                            vec![only]
+                        }
+                        None => entries,
+                    };
+                    if cli.json {
+                        println!(
+                            "{}",
+                            serde_json::json!({
+                                "entries": selected.iter().map(|e| serde_json::json!({
+                                    "id": e.id,
+                                    "ts": e.ts,
+                                    "author": e.author,
+                                    "parent_id": e.parent_id,
+                                    "body": e.body,
+                                })).collect::<Vec<_>>(),
+                            })
+                        );
+                    } else if selected.is_empty() {
+                        println!("(댓글 없음)");
+                    } else {
+                        for (i, e) in selected.iter().enumerate() {
+                            if i > 0 {
+                                println!("\n---\n");
+                            }
+                            let reply = e
+                                .parent_id
+                                .map(|p| format!(" (↩ #{p})"))
+                                .unwrap_or_default();
+                            let author = if e.author.is_empty() {
+                                "(이름 없음)".to_string()
+                            } else {
+                                e.author.clone()
+                            };
+                            println!("#{}  {}  {}{}", e.id, e.ts, author, reply);
+                            println!();
+                            print!("{}", e.body);
+                            if !e.body.ends_with('\n') {
+                                println!();
+                            }
+                        }
+                    }
+                }
+                CommentCmd::Add {
+                    slug,
+                    author,
+                    parent_id,
+                    file,
+                } => {
+                    let body = read_content(file.as_deref())?;
+                    let entry =
+                        c.comments_add(&slug, author.unwrap_or_default(), body, parent_id)?;
+                    if cli.json {
+                        println!(
+                            "{}",
+                            serde_json::json!({
+                                "ok": true,
+                                "id": entry.id,
+                                "ts": entry.ts,
+                                "parent_id": entry.parent_id,
+                            })
+                        );
+                    } else {
+                        let reply = entry
+                            .parent_id
+                            .map(|p| format!(" ↩ #{p}"))
+                            .unwrap_or_default();
+                        println!("✓ 댓글 추가: #{} ({}{})", entry.id, entry.ts, reply);
+                    }
+                }
+                CommentCmd::Edit { slug, id, file } => {
+                    let body = read_content(file.as_deref())?;
+                    let entry = c.comments_edit(&slug, id, body)?;
+                    if cli.json {
+                        println!(
+                            "{}",
+                            serde_json::json!({ "ok": true, "id": entry.id })
+                        );
+                    } else {
+                        println!("✓ 댓글 #{} 본문 갱신됨", entry.id);
+                    }
+                }
+                CommentCmd::Rm { slug, id, force } => {
+                    if !force {
+                        eprint!("댓글 #{id} (quest {slug}) 을 삭제할까요? (y/N) ");
+                        use std::io::Write;
+                        std::io::stderr().flush().ok();
+                        let mut buf = String::new();
+                        std::io::stdin().read_line(&mut buf)?;
+                        if !matches!(buf.trim(), "y" | "Y" | "yes") {
+                            println!("(취소)");
+                            return Ok(());
+                        }
+                    }
+                    c.comments_delete(&slug, id)?;
+                    if cli.json {
+                        println!(
+                            "{}",
+                            serde_json::json!({ "ok": true, "id": id })
+                        );
+                    } else {
+                        println!("✓ 댓글 #{id} 삭제됨");
+                    }
+                }
+            },
+            QuestCmd::Memo { sub } => match sub {
+                MemoCmd::Show { slug } => {
+                    let content = c.memo_get(&slug)?;
+                    if cli.json {
+                        println!(
+                            "{}",
+                            serde_json::json!({ "slug": slug, "content": content })
+                        );
+                    } else if let Some(s) = content {
+                        if s.is_empty() {
+                            println!("(메모 비어있음)");
+                        } else {
+                            print!("{s}");
+                            if !s.ends_with('\n') {
+                                println!();
+                            }
+                        }
+                    } else {
+                        println!("(메모 없음)");
+                    }
+                }
+                MemoCmd::Set { slug, file } => {
+                    let content = read_content(file.as_deref())?;
+                    c.memo_set(&slug, content)?;
+                    if cli.json {
+                        println!("{}", serde_json::json!({ "ok": true, "slug": slug }));
+                    } else {
+                        println!("✓ 메모 저장됨 (quest {slug})");
+                    }
+                }
+                MemoCmd::Clear { slug } => {
+                    c.memo_set(&slug, String::new())?;
+                    if cli.json {
+                        println!("{}", serde_json::json!({ "ok": true, "slug": slug }));
+                    } else {
+                        println!("✓ 메모 비움 (quest {slug})");
+                    }
+                }
+            },
             QuestCmd::Prereq { sub } => match sub {
                 PrereqCmd::Add { slug, prereq } => {
                     let id = c.id_of(&slug)?;
