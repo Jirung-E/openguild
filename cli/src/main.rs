@@ -77,6 +77,11 @@ enum Command {
         #[command(subcommand)]
         sub: CampaignCmd,
     },
+    /// DEV-016 (multi-file): 길드 규칙 — `.guild/rules/{slug}.md` CRUD.
+    Rules {
+        #[command(subcommand)]
+        sub: RulesCmd,
+    },
     /// 서버 상태 확인 (health)
     Ping,
     /// 백업 (snapshot) 즉시 생성
@@ -378,6 +383,57 @@ enum StatusesCmd {
     },
     /// 사용 중 quest 없는 status 삭제
     Delete { slug: String },
+}
+
+/// `--file PATH` 또는 stdin 에서 본문 읽기 — Rules / 향후 description set 등 공용.
+fn read_content(path: Option<&std::path::Path>) -> Result<String> {
+    if let Some(p) = path {
+        std::fs::read_to_string(p)
+            .with_context(|| format!("파일 읽기 실패: {}", p.display()))
+    } else {
+        use std::io::Read;
+        let mut s = String::new();
+        std::io::stdin().read_to_string(&mut s)?;
+        Ok(s)
+    }
+}
+
+// ─────────────────────────── Rules 서브명령 (DEV-016 multi-file) ───────────────────────────
+
+#[derive(Subcommand)]
+enum RulesCmd {
+    /// 모든 규칙 slug 목록 (legacy `.guild/rules.md` 가 있으면 자동 마이그레이션).
+    List,
+    /// 한 규칙의 본문 출력 (stdout). slug 없으면 NotFound.
+    Show { slug: String },
+    /// 한 규칙 본문 교체 (멱등). 파일이 없으면 만들고 / 있으면 덮어씀.
+    /// 본문은 `--file <PATH>` 또는 stdin (인자 없을 때).
+    Set {
+        slug: String,
+        /// 본문이 들어있는 파일. 미지정 시 stdin.
+        #[arg(long)]
+        file: Option<std::path::PathBuf>,
+    },
+    /// 신규 규칙 생성 — 같은 slug 이미 있으면 에러. 본문은 `--file` / stdin.
+    /// `--empty` 시 본문 없이 빈 규칙 생성.
+    Create {
+        slug: String,
+        #[arg(long)]
+        file: Option<std::path::PathBuf>,
+        #[arg(long)]
+        empty: bool,
+    },
+    /// 규칙 삭제. `--force` 없으면 prompt.
+    Delete {
+        slug: String,
+        #[arg(long)]
+        force: bool,
+    },
+    /// 규칙 slug 변경.
+    Rename {
+        slug: String,
+        new_slug: String,
+    },
 }
 
 // ─────────────────────────── Campaign 서브명령 (DEV-011) ───────────────────────────
@@ -1305,6 +1361,62 @@ impl Backend {
 
     // ── 백업 / 복원 ──────────────────────────────────────
 
+    // ── DEV-016 (multi-file): 길드 규칙 — local 전용 (HTTP 미지원 우선) ──
+
+    fn rules_list(&self) -> Result<Vec<openguild_core::repo::rules::RuleEntry>> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => Self::map_err(Ok::<_, openguild_core::error::AppError>(
+                openguild_core::ops::rules::list_rules(&l.store)?,
+            )),
+        }
+    }
+
+    fn rules_get(&self, slug: &str) -> Result<Option<String>> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => Self::map_err(Ok::<_, openguild_core::error::AppError>(
+                openguild_core::ops::rules::get_rule(&l.store, slug)?,
+            )),
+        }
+    }
+
+    fn rules_set(&self, slug: &str, content: String) -> Result<()> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::rules::set_rule(&l.store, slug, content),
+            )),
+        }
+    }
+
+    fn rules_create(&self, slug: &str, content: String) -> Result<()> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::rules::create_rule(&l.store, slug, content),
+            )),
+        }
+    }
+
+    fn rules_delete(&self, slug: &str) -> Result<()> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::rules::delete_rule(&l.store, slug),
+            )),
+        }
+    }
+
+    fn rules_rename(&self, old_slug: &str, new_slug: &str) -> Result<()> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::rules::rename_rule(&l.store, old_slug, new_slug),
+            )),
+        }
+    }
+
     fn create_backup(&self) -> Result<openguild_core::snapshot::SnapshotInfo> {
         match self {
             Backend::Http(c) => c.create_snapshot(),
@@ -2173,6 +2285,105 @@ fn run() -> Result<()> {
                     println!("{}", serde_json::json!({ "ok": true }));
                 } else {
                     println!("'{display}' 삭제됨");
+                }
+            }
+        },
+        Command::Rules { sub } => match sub {
+            RulesCmd::List => {
+                let entries = c.rules_list()?;
+                if cli.json {
+                    println!(
+                        "{}",
+                        serde_json::json!({
+                            "entries": entries.iter().map(|e| serde_json::json!({
+                                "slug": e.slug,
+                                "len": e.content.len(),
+                            })).collect::<Vec<_>>(),
+                        })
+                    );
+                } else if entries.is_empty() {
+                    println!("(규칙 없음)");
+                } else {
+                    println!("Slug                  Lines  Size");
+                    for e in &entries {
+                        let lines = e.content.lines().count();
+                        println!(
+                            "{:<22}{:>5}  {} bytes",
+                            e.slug,
+                            lines,
+                            e.content.len()
+                        );
+                    }
+                }
+            }
+            RulesCmd::Show { slug } => {
+                let content = c
+                    .rules_get(&slug)?
+                    .ok_or_else(|| anyhow::anyhow!("규칙 '{slug}' 없음"))?;
+                if cli.json {
+                    println!(
+                        "{}",
+                        serde_json::json!({ "slug": slug, "content": content })
+                    );
+                } else {
+                    print!("{content}");
+                    if !content.ends_with('\n') {
+                        println!();
+                    }
+                }
+            }
+            RulesCmd::Set { slug, file } => {
+                let content = read_content(file.as_deref())?;
+                c.rules_set(&slug, content)?;
+                if cli.json {
+                    println!("{}", serde_json::json!({ "ok": true, "slug": slug }));
+                } else {
+                    println!("✓ 규칙 '{slug}' 저장됨");
+                }
+            }
+            RulesCmd::Create { slug, file, empty } => {
+                let content = if empty {
+                    String::new()
+                } else {
+                    read_content(file.as_deref())?
+                };
+                c.rules_create(&slug, content)?;
+                if cli.json {
+                    println!("{}", serde_json::json!({ "ok": true, "slug": slug }));
+                } else {
+                    println!("✓ 규칙 '{slug}' 생성됨");
+                }
+            }
+            RulesCmd::Delete { slug, force } => {
+                if !force {
+                    eprint!("규칙 '{slug}' 을 삭제할까요? (y/N) ");
+                    use std::io::Write;
+                    std::io::stderr().flush().ok();
+                    let mut buf = String::new();
+                    std::io::stdin().read_line(&mut buf)?;
+                    if !matches!(buf.trim(), "y" | "Y" | "yes") {
+                        println!("(취소)");
+                        return Ok(());
+                    }
+                }
+                c.rules_delete(&slug)?;
+                if cli.json {
+                    println!("{}", serde_json::json!({ "ok": true, "slug": slug }));
+                } else {
+                    println!("✓ 규칙 '{slug}' 삭제됨");
+                }
+            }
+            RulesCmd::Rename { slug, new_slug } => {
+                c.rules_rename(&slug, &new_slug)?;
+                if cli.json {
+                    println!(
+                        "{}",
+                        serde_json::json!({
+                            "ok": true, "from": slug, "to": new_slug,
+                        })
+                    );
+                } else {
+                    println!("✓ '{slug}' → '{new_slug}' 이름 변경");
                 }
             }
         },
