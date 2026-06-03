@@ -276,6 +276,14 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
     // 5c. quest_history 의 quest_id 재정렬 (DEV-049).
     //     이전 reindex 가 id 를 재할당했어도 quest_slug 컬럼이 stable identifier
     //     로 살아있음. quest_id 컬럼은 새 매핑으로 갱신.
+    //
+    // BUG-043: WHERE 절에 EXISTS 추가. 사용자가 quest 파일을 hard-delete 하면
+    // 그 slug 에 해당하는 row 가 quests 에 없음 → subselect 가 NULL → NOT NULL
+    // 컬럼에 NULL UPDATE → "NOT NULL constraint failed: quest_history.quest_id"
+    // (sqlite 1299). 매칭 안 되는 history 행은 기존 quest_id 유지 (stale 가능,
+    // 단 NULL 안 됨). 그 history 가 가리키던 quest 가 진짜로 사라졌다면 stale
+    // FK 이지만 quest_history 에는 FK constraint 없으므로 dangling reference 로
+    // 남아도 read-only 표시용 데이터라 무해.
     sqlx::query(
         "UPDATE quest_history
          SET quest_id = (
@@ -284,7 +292,12 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
              JOIN quest_types qt ON q.quest_type_id = qt.id
              WHERE qt.prefix || '-' || printf('%03d', q.number) = quest_history.quest_slug
          )
-         WHERE quest_slug IS NOT NULL",
+         WHERE quest_slug IS NOT NULL
+           AND EXISTS (
+             SELECT 1 FROM quests q
+             JOIN quest_types qt ON q.quest_type_id = qt.id
+             WHERE qt.prefix || '-' || printf('%03d', q.number) = quest_history.quest_slug
+           )",
     )
     .execute(&mut *tx)
     .await?;
