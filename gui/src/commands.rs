@@ -633,6 +633,28 @@ pub fn current_guild_path(store: State<'_, Store>) -> String {
     store.paths.guild_root.display().to_string()
 }
 
+/// BUG-041: DB schema 가 현재 binary 가 모르는 migration 까지 적용된 상태인지.
+///
+/// 응답:
+/// - `is_ahead`: true 면 frontend 가 "업데이트 필요" 알림 표시.
+/// - `ahead_versions`: DB 의 `_sqlx_migrations` 중 binary 가 모르는 version 목록.
+///
+/// Welcome/Uninit 모드 (in-memory) 는 항상 `is_ahead: false`.
+#[derive(serde::Serialize)]
+pub struct DbSchemaStatus {
+    pub is_ahead: bool,
+    pub ahead_versions: Vec<i64>,
+}
+
+#[tauri::command]
+pub fn get_db_schema_status(store: State<'_, Store>) -> DbSchemaStatus {
+    let ahead = store.db_ahead_versions.clone();
+    DbSchemaStatus {
+        is_ahead: !ahead.is_empty(),
+        ahead_versions: ahead,
+    }
+}
+
 /// DEV-052 후속: 길드 마커 없는 디렉토리에서 사용자가 "초기화" 승인 시
 /// 호출. .guild 시드 생성 + Store::open + recents 등록 + Store / LaunchInfo
 /// 를 swap. `unmanage` 의 deprecation 이유는 open_guild_in_current_window 주석 참고.

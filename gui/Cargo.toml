@@ -32,6 +32,19 @@ openguild-core = { path = "../core" }
 # DEV-052 후속: init_and_open_guild 의 .guild marker 파일 created_at 작성용.
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
+# BUG-041 후속: Windows release 는 `windows_subsystem = "windows"` 로 빌드되어
+# `--version` / `--help` 같은 console 출력이 부모 콘솔에서 안 보임 (cmd 가
+# detach). `AttachConsole(ATTACH_PARENT_PROCESS)` + `SetStdHandle(CONOUT$)` 로
+# 부모 콘솔에 attach 후 stdout/stderr 를 그쪽에 redirect.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_System_Console",
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+    # CreateFileW 의 SECURITY_ATTRIBUTES 인자 타입 때문에 Win32_Security 도 필요.
+    "Win32_Security",
+] }
+
 [features]
 # Production: 미리 빌드된 frontend 자산 임베드
 default = ["custom-protocol"]

@@ -148,8 +148,98 @@ pub struct LaunchInfo {
     pub uninit_path: Option<PathBuf>,
 }
 
+/// BUG-041 후속: Windows release 의 `windows_subsystem = "windows"` 빌드는
+/// stdout/stderr 이 부모 콘솔에서 분리됨. `AttachConsole(ATTACH_PARENT_PROCESS)`
+/// 만으로는 부족 — Rust 의 stdout 핸들이 invalid 인 채라 println! 이 어디로도
+/// 안 감. `CONOUT$` 파일을 열어 `SetStdHandle` 로 STDOUT/STDERR 를 redirect
+/// 까지 해야 println!/eprintln! 이 콘솔에 보임.
+///
+/// 이미 stdout handle 이 valid (`>`/`|` 로 redirect / pipe 된 경우) 면 noop —
+/// 그쪽으로 정상 흐름.
+///
+/// debug 빌드 / non-Windows / 부모 콘솔 없는 환경 (GUI launcher 더블클릭) 시 noop.
+fn attach_parent_console() {
+    #[cfg(windows)]
+    unsafe {
+        use std::ptr;
+        use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
+        use windows_sys::Win32::Storage::FileSystem::{
+            CreateFileW, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
+        };
+        use windows_sys::Win32::System::Console::{
+            AttachConsole, GetStdHandle, SetStdHandle, ATTACH_PARENT_PROCESS,
+            STD_ERROR_HANDLE, STD_OUTPUT_HANDLE,
+        };
+
+        // stdout 이 이미 valid (redirect 등) 면 그대로 — 건드리면 그쪽으로 안 감.
+        let cur = GetStdHandle(STD_OUTPUT_HANDLE);
+        if !cur.is_null() && cur != INVALID_HANDLE_VALUE {
+            return;
+        }
+        if AttachConsole(ATTACH_PARENT_PROCESS) == 0 {
+            return; // 부모 콘솔 없음 — GUI launcher 등.
+        }
+        // `CONOUT$` (콘솔 출력 파일) 을 GENERIC_WRITE 로 open → handle 을
+        // STD_OUTPUT_HANDLE / STD_ERROR_HANDLE 로 SetStdHandle.
+        // GENERIC_WRITE = 0x4000_0000.
+        const GENERIC_WRITE: u32 = 0x4000_0000;
+        let name: Vec<u16> = "CONOUT$\0".encode_utf16().collect();
+        let h = CreateFileW(
+            name.as_ptr(),
+            GENERIC_WRITE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            ptr::null(),
+            OPEN_EXISTING,
+            0,
+            ptr::null_mut(),
+        );
+        if h.is_null() || h == INVALID_HANDLE_VALUE {
+            return;
+        }
+        SetStdHandle(STD_OUTPUT_HANDLE, h);
+        SetStdHandle(STD_ERROR_HANDLE, h);
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // BUG-041 후속: `--version` / `--help` 짧은 flag 처리.
+    // Tauri 시동 전에 stdout 으로 답하고 종료 — launcher / 스크립트 친화.
+    //
+    // Windows release 는 windows_subsystem="windows" 로 빌드되어 cmd 에서 직접
+    // 실행 시 stdout 이 부모 콘솔에서 detach (cmd 가 즉시 prompt 복귀).
+    // `attach_parent_console()` 로 부모 콘솔 attach 후 stdout/stderr redirect.
+    for a in std::env::args().skip(1) {
+        match a.as_str() {
+            "--version" | "-V" => {
+                attach_parent_console();
+                println!("openguild-gui {}", env!("CARGO_PKG_VERSION"));
+                std::process::exit(0);
+            }
+            "--help" | "-h" => {
+                attach_parent_console();
+                println!(
+                    "openguild-gui — desktop GUI\n\
+                     \n\
+                     Usage:\n  \
+                       openguild-gui [GUILD_PATH]\n\
+                     \n\
+                     GUILD_PATH 가 디렉토리 / `.guild` 파일이면 해당 길드로 시동.\n\
+                     미지정 시 welcome 화면.\n\
+                     \n\
+                     Env:\n  \
+                       OPENGUILD_GUILD=PATH  argv 대신 환경변수로 길드 지정.\n\
+                     \n\
+                     Flags:\n  \
+                       -V, --version   버전 출력 후 종료\n  \
+                       -h, --help      이 도움말 출력 후 종료"
+                );
+                std::process::exit(0);
+            }
+            _ => {}
+        }
+    }
+
     let launch_mode = match resolve_launch_mode(
         std::env::args_os(),
         std::env::var("OPENGUILD_GUILD").ok(),
@@ -161,45 +251,44 @@ pub fn run() {
         }
     };
 
-    // Welcome / Uninit 모드는 OS temp 디렉토리에 빈 길드 부트스트랩 — Store /
-    // Tauri commands 가 항상 valid 한 store 가정해서. 사용자가 길드 선택 /
-    // 초기화하면 commands::open_guild_in_current_window / init_and_open_guild
-    // 가 store 를 swap.
-    let (guild_path, launch_info) = match &launch_mode {
-        LaunchMode::Guild(p) => (
-            p.clone(),
-            LaunchInfo { mode: "guild", uninit_path: None },
-        ),
-        LaunchMode::Welcome => {
-            let tmp = std::env::temp_dir().join("openguild-welcome-placeholder");
-            std::fs::create_dir_all(&tmp).ok();
-            (tmp, LaunchInfo { mode: "welcome", uninit_path: None })
-        }
-        LaunchMode::Uninit(p) => {
-            let tmp = std::env::temp_dir().join("openguild-welcome-placeholder");
-            std::fs::create_dir_all(&tmp).ok();
-            (
-                tmp,
-                LaunchInfo {
-                    mode: "uninit",
-                    uninit_path: Some(p.clone()),
-                },
-            )
-        }
+    // BUG-041: Welcome / Uninit 모드는 진짜 길드 없이 시동 — 디스크에 placeholder
+    // DB 를 만들면 그 DB 가 binary 의 schema 만큼 migrate 된 채 영구 남아, 이후
+    // 더 이전 (mig 모르는) binary 가 같은 placeholder 를 열면 brick. → Welcome
+    // /Uninit 은 **in-memory DB** 로 시동, 디스크 placeholder 안 만듦. 사용자가
+    // 실제 길드를 선택하면 commands 가 file-backed Store 로 swap.
+    let (mode_label, store_path, uninit_path) = match &launch_mode {
+        LaunchMode::Guild(p) => ("guild", Some(p.clone()), None),
+        LaunchMode::Welcome => ("welcome", None, None),
+        LaunchMode::Uninit(p) => ("uninit", None, Some(p.clone())),
     };
+    let launch_info = LaunchInfo { mode: mode_label, uninit_path };
     eprintln!(
         "[openguild-gui] launch mode: {} (path: {})",
         launch_info.mode,
-        guild_path.display()
+        store_path
+            .as_ref()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "<in-memory>".into())
     );
 
     // Store::open 은 async — Tauri 의 async runtime 으로 동기 실행.
-    let store = tauri::async_runtime::block_on(Store::open(&guild_path))
-        .expect("Store::open 실패 — guild 디렉토리 손상 또는 권한 없음");
+    let store = tauri::async_runtime::block_on(async {
+        match &store_path {
+            Some(p) => Store::open(p).await,
+            // BUG-041: Welcome / Uninit 은 in-memory — paths 인자는 임시
+            // placeholder (디렉토리 만들기 위함이지만 in-memory pool 은 디스크
+            // 에 안 씀).
+            None => {
+                let tmp = std::env::temp_dir().join("openguild-welcome-placeholder");
+                Store::open_in_memory(&tmp).await
+            }
+        }
+    })
+    .expect("Store::open 실패 — guild 디렉토리 손상 또는 권한 없음");
 
     // Recent guild 자동 등록 (DEV-006). Welcome / Uninit 은 placeholder 라 등록 안 함.
-    if matches!(launch_mode, LaunchMode::Guild(_))
-        && let Err(e) = openguild_core::recents::add(&guild_path)
+    if let Some(p) = &store_path
+        && let Err(e) = openguild_core::recents::add(p)
     {
         eprintln!("[openguild-gui] warn: recents 갱신 실패 — {e:#}");
     }
@@ -215,6 +304,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::launch_mode,
             commands::current_guild_path,
+            // BUG-041: DB schema 가 binary 보다 새로운지 — banner 표시용.
+            commands::get_db_schema_status,
             commands::inspect_guild_path,
             commands::open_guild_in_current_window,
             commands::init_and_open_guild,

@@ -40,6 +40,15 @@ pub struct Store {
     pub paths: GuildPaths,
     pub index_pool: SqlitePool,
     pub journal_pool: SqlitePool,
+    /// BUG-041: DB schema 가 binary 가 모르는 migration 까지 적용된 경우의
+    /// version 목록 (오름차순). 비어있으면 정상 — binary 의 schema 가 DB 와
+    /// 같거나 더 최신.
+    ///
+    /// 비어있지 않으면 GUI 는 "현재 GUI 가 DB schema 보다 뒤처짐 — 최신
+    /// openguild 로 업데이트하세요" banner 를 표시 (Tauri command
+    /// `get_db_schema_status`). in-memory (welcome 모드) 는 항상 빈 vec —
+    /// 매 시동마다 fresh DB.
+    pub db_ahead_versions: Vec<i64>,
 }
 
 impl Store {
@@ -57,7 +66,7 @@ impl Store {
         let index_pool = db::create_pool(&index_url)
             .await
             .with_context(|| format!("failed to open index db: {index_url}"))?;
-        db::run_migrations(&index_pool)
+        let db_ahead_versions = db::run_migrations(&index_pool)
             .await
             .context("failed to migrate index db")?;
 
@@ -74,27 +83,47 @@ impl Store {
             paths,
             index_pool,
             journal_pool,
+            db_ahead_versions,
         })
     }
 
-    /// Test 용 — 메모리 풀로 생성 (실제 디스크 IO 없음).
-    /// 단, paths 는 실제 경로 (파일 IO 테스트 시 사용).
-    #[cfg(test)]
+    /// 메모리 풀로 생성 — 실제 디스크 IO 없음.
+    ///
+    /// 용도:
+    /// - **BUG-041**: GUI 의 Welcome / Uninit 모드. 사용자가 진짜 길드를 선택
+    ///   하지 않은 상태에서도 Tauri State 가 valid Store 를 요구 → placeholder
+    ///   DB 를 디스크에 만드는 대신 in-memory 사용. 매 시동마다 fresh → 이전
+    ///   빌드가 미래 migration 을 적용해둔 상태로 brick 되는 사고 방지.
+    /// - **tests**: 빠른 격리.
+    ///
+    /// `paths` 는 인자대로 — 파일 IO 테스트 / 디렉토리 흉내가 필요한 경우 위해.
+    /// 매 호출마다 unique URI (`?cache=shared` + 나노초) 로 multi-conn pool 이
+    /// 같은 in-memory DB 를 공유.
     pub async fn open_in_memory<P: AsRef<std::path::Path>>(guild_root: P) -> Result<Self> {
         let paths = GuildPaths::new(guild_root.as_ref());
-        std::fs::create_dir_all(paths.dot_guild())?;
-        std::fs::create_dir_all(paths.backups_dir())?;
+        std::fs::create_dir_all(paths.dot_guild()).ok();
+        std::fs::create_dir_all(paths.backups_dir()).ok();
 
-        let index_pool = db::create_pool("sqlite::memory:").await?;
-        db::run_migrations(&index_pool).await?;
+        let ns = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let index_url =
+            format!("sqlite:file:og-mem-index-{ns}?mode=memory&cache=shared");
+        let journal_url =
+            format!("sqlite:file:og-mem-journal-{ns}?mode=memory&cache=shared");
 
-        let journal_pool = db::create_pool("sqlite::memory:").await?;
+        let index_pool = db::create_pool(&index_url).await?;
+        let db_ahead_versions = db::run_migrations(&index_pool).await?;
+
+        let journal_pool = db::create_pool(&journal_url).await?;
         journal::ensure_schema(&journal_pool).await?;
 
         Ok(Self {
             paths,
             index_pool,
             journal_pool,
+            db_ahead_versions,
         })
     }
 }

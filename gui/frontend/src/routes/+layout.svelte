@@ -3,6 +3,7 @@
 	import { onMount } from 'svelte';
 	import Nav from '$lib/components/Nav.svelte';
 	import UpdateBanner from '$lib/components/UpdateBanner.svelte';
+	import SchemaAheadBanner from '$lib/components/SchemaAheadBanner.svelte';
 	import { detectEnvironment } from '$lib/api/transport';
 	import '$lib/styles/global.css';
 
@@ -35,6 +36,8 @@
 	});
 </script>
 
+<!-- BUG-041: DB schema 가 binary 보다 새로운 경우 알림 (Tauri 만). 항상 최상단. -->
+<SchemaAheadBanner />
 <!-- DEV-063: 업데이트 배너 — Nav 아래, 새 버전 있을 때만 노출. 모든 라우트
      (welcome 포함) 공통. -->
 <UpdateBanner />
