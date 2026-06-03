@@ -65,11 +65,15 @@
 		}
 	}
 
-	// 외부 링크 — window.open 으로 시스템 브라우저. Tauri shell plugin 은 별도
-	// 의존이 필요 (BUG-040 의 정착 quest 대상). 현재는 webview 의 fallback 으로
-	// 처리: Tauri 가 navigation 을 intercept 하지 않으면 새 webview 창이 뜸.
-	function openRelease() {
-		window.open(RELEASE_URL, '_blank');
+	// BUG-040: 외부 링크 → 시스템 브라우저. layout 의 anchor intercept 가 일반
+	// `<a>` 는 자동 처리하지만 본 banner 는 button 이라 명시적으로 openUrl 호출.
+	async function openRelease() {
+		try {
+			const { openUrl } = await import('@tauri-apps/plugin-opener');
+			await openUrl(RELEASE_URL);
+		} catch {
+			window.open(RELEASE_URL, '_blank');
+		}
 	}
 
 	onMount(() => {

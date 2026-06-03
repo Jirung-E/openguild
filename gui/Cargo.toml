@@ -22,6 +22,9 @@ tauri-plugin-dialog = "2"
 # DEV-063: auto-update. updater = 체크 / 다운로드 / 설치, process = 재시작 (relaunch).
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+# BUG-040: 외부 링크 (`https://...`) 를 시스템 브라우저로 — `tauri-plugin-opener`.
+# webview 안에서 navigate 되면 SPA 가 사라지는 문제 차단.
+tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 anyhow = "1"

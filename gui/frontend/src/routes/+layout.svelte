@@ -29,9 +29,39 @@
 		// capture: true — bubbling 단계가 아닌 capture 단계에서 즉시 차단.
 		document.addEventListener('contextmenu', block, { capture: true });
 		window.addEventListener('contextmenu', block, { capture: true });
+
+		// BUG-040: 외부 링크 (`http://...` / `https://...`) 클릭 시 webview 안에서
+		// navigate 되면 SPA 가 사라짐 → 시스템 브라우저로 강제. 내부 anchor
+		// (`/quests/...`) 와 빈 / # / javascript: 는 그대로 통과.
+		const interceptExternalLink = async (e: MouseEvent) => {
+			// 가장 가까운 a 찾기 — 자식 element 클릭에도 동작.
+			const path = e.composedPath() as Element[];
+			const anchor = path.find(
+				(el) => el instanceof HTMLAnchorElement
+			) as HTMLAnchorElement | undefined;
+			if (!anchor) return;
+			const href = anchor.getAttribute('href') ?? '';
+			if (!/^https?:\/\//i.test(href)) return; // internal / hash / javascript: → pass
+			e.preventDefault();
+			e.stopPropagation();
+			try {
+				const { openUrl } = await import('@tauri-apps/plugin-opener');
+				await openUrl(href);
+			} catch (err) {
+				console.error('[opener] failed', err);
+				// fallback — 마지막 안전망. window.open 은 webview 안 새 창이지만
+				// 적어도 SPA 가 사라지진 않음.
+				window.open(href, '_blank');
+			}
+		};
+		document.addEventListener('click', interceptExternalLink, { capture: true });
+
 		return () => {
 			document.removeEventListener('contextmenu', block, { capture: true });
 			window.removeEventListener('contextmenu', block, { capture: true });
+			document.removeEventListener('click', interceptExternalLink, {
+				capture: true
+			});
 		};
 	});
 </script>

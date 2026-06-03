@@ -299,6 +299,8 @@ pub fn run() {
         // DEV-063: auto-update — updater (체크/다운로드/설치) + process (relaunch).
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        // BUG-040: 외부 링크 시스템 브라우저로.
+        .plugin(tauri_plugin_opener::init())
         .manage(store)
         .manage(launch_info)
         .invoke_handler(tauri::generate_handler![
