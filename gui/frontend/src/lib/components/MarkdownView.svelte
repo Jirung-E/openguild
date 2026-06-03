@@ -24,6 +24,9 @@
 		color: #c9d1d9;
 		font-size: 0.9rem;
 		line-height: 1.55;
+		/* BUG-039: 자식 (긴 링크 / inline code 등) 이 컨테이너 폭을 못 넘게. */
+		max-width: 100%;
+		overflow-wrap: anywhere;
 	}
 
 	/* 헤더 — 캠페인 spirit (브라우저 기본 사이즈로 명확 구분, 컬러만 통일). */
@@ -60,7 +63,14 @@
 		padding: 0.25em 0.75em;
 		color: #8b949e;
 	}
-	.md :global(a) { color: #58a6ff; }
+	/* BUG-039: 긴 URL 이 본문 폭을 넘어 가로 스크롤 발생하던 문제 — anywhere
+	   으로 break (`word-break: break-word` 는 deprecated 대안 — 둘 다 적용해서
+	   브라우저 지원 폭 확보). */
+	.md :global(a) {
+		color: #58a6ff;
+		overflow-wrap: anywhere;
+		word-break: break-word;
+	}
 	.md :global(hr) {
 		border: none;
 		border-top: 1px solid #21262d;
