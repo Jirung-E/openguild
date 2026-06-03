@@ -638,21 +638,31 @@ pub fn current_guild_path(store: State<'_, Store>) -> String {
 /// 응답:
 /// - `is_ahead`: true 면 frontend 가 "업데이트 필요" 알림 표시.
 /// - `ahead_versions`: DB 의 `_sqlx_migrations` 중 binary 가 모르는 version 목록.
+/// - `binary_version`: 이 binary 의 CARGO_PKG_VERSION — 사용자가 "내 GUI 가
+///   몇 버전" 인지 한 눈에 확인용.
+/// - `latest_known_migration`: 이 binary 가 알고 있는 가장 큰 migration version
+///   (= 빌드 시 `core/migrations` 의 max). DB 가 이보다 앞서 있으면 banner.
 ///
-/// frontend 의 banner / modal 이 이 값을 보고 UI 표시. Welcome/Uninit 모드 (in-memory)
-/// 는 항상 `is_ahead: false`.
+/// frontend 의 banner 가 이 값으로 사용자 행동 가이드 표시. Welcome/Uninit 모드
+/// (in-memory) 는 항상 `is_ahead: false`.
 #[derive(serde::Serialize)]
 pub struct DbSchemaStatus {
     pub is_ahead: bool,
     pub ahead_versions: Vec<i64>,
+    pub binary_version: String,
+    pub latest_known_migration: Option<i64>,
 }
 
 #[tauri::command]
 pub fn get_db_schema_status(store: State<'_, Store>) -> DbSchemaStatus {
     let ahead = store.db_ahead_versions.clone();
+    // binary 가 알고 있는 max migration — core 가 expose.
+    let latest_known = openguild_core::db::latest_known_migration_version();
     DbSchemaStatus {
         is_ahead: !ahead.is_empty(),
         ahead_versions: ahead,
+        binary_version: env!("CARGO_PKG_VERSION").to_string(),
+        latest_known_migration: latest_known,
     }
 }
 

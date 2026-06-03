@@ -286,6 +286,43 @@ mod tests {
         assert!(store.paths.backups_dir().is_dir());
         assert!(store.paths.index_db().is_file());
         assert!(store.paths.journal_db().is_file());
+        // BUG-041: 정상 시동 시 ahead 는 빈 vec — schema 정합.
+        assert!(store.db_ahead_versions.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-041: Welcome 모드 in-memory store — 매 호출마다 isolated DB.
+    /// 한 store 에 sqlx INSERT 한 데이터가 다른 store 에 누수되면 안 됨.
+    #[tokio::test]
+    async fn open_in_memory_instances_are_isolated() {
+        let dir = fresh_tmp("mem-isolated");
+        let s1 = Store::open_in_memory(&dir).await.unwrap();
+        let s2 = Store::open_in_memory(&dir).await.unwrap();
+
+        // s1 에 schema-less ad-hoc 테이블 — FK 등 schema constraint 우회.
+        // 같은 in-memory DB 라면 s2 가 그 테이블을 볼 것, 격리되어 있으면 못 봄.
+        sqlx::query("CREATE TABLE og_isolation_test (id INTEGER PRIMARY KEY)")
+            .execute(&s1.index_pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO og_isolation_test (id) VALUES (42)")
+            .execute(&s1.index_pool)
+            .await
+            .unwrap();
+
+        // s2 에서 그 테이블 조회 시 "no such table" 에러여야 함.
+        let res = sqlx::query_scalar::<_, i64>("SELECT id FROM og_isolation_test")
+            .fetch_optional(&s2.index_pool)
+            .await;
+        assert!(
+            res.is_err(),
+            "s2 should not see s1's ad-hoc table — instead got: {res:?}"
+        );
+
+        // 둘 다 ahead 가 빈 vec — fresh in-memory.
+        assert!(s1.db_ahead_versions.is_empty());
+        assert!(s2.db_ahead_versions.is_empty());
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 

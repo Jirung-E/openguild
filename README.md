@@ -123,6 +123,23 @@ cargo build --release --bin openguild   # → target/release/openguild
 # or: cargo run --bin openguild -- --help
 ```
 
+### Recovery — older binary refuses to open a guild (BUG-041)
+
+A binary built before some migration `N` was added refuses to open a guild DB
+that already has migration `N` recorded (sqlx's `VersionMissing(N)` panic).
+**openguild-gui v0.1.0-beta and later** tolerate this automatically
+(`set_ignore_missing(true)`), so just **update to the latest release**.
+
+If you must use an older binary anyway, manually delete the unknown-version row:
+
+```bash
+sqlite3 .guild/index.db "DELETE FROM _sqlx_migrations WHERE version = N;"
+```
+
+(Replace `N` with the version reported in the panic message.) The schema change
+itself stays in the DB but is no longer tracked — safe because the older binary
+doesn't use that table.
+
 ---
 
 # openguild
@@ -250,3 +267,19 @@ cd gui/frontend && npm run dev
 cargo build --release --bin openguild   # → target/release/openguild
 # or: cargo run --bin openguild -- --help
 ```
+
+### 복구 — 이전 binary 가 길드를 못 열 때 (BUG-041)
+
+이전 release 의 binary 가 (그 시점에 없던) migration `N` 이 적용된 길드 DB 를
+열 때 sqlx 가 `VersionMissing(N)` panic 으로 거부. **v0.1.0-beta 이후 빌드**
+는 자동으로 통과 (`set_ignore_missing(true)`) — 그냥 **최신 release 로 업데이트**
+권장.
+
+부득이하게 옛 binary 로 열어야 한다면 unknown version row 를 수동 삭제:
+
+```bash
+sqlite3 .guild/index.db "DELETE FROM _sqlx_migrations WHERE version = N;"
+```
+
+(`N` 은 panic 메시지의 version 으로 교체.) Schema 변경 자체는 DB 에 남되 추적이
+끊기는 것 — 옛 binary 는 그 테이블을 사용하지 않으니 안전.
