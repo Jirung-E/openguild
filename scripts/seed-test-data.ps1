@@ -1,5 +1,7 @@
 ﻿# DEV-075: 테스트 데이터 자동 주입 스크립트.
 #
+# 운영 규칙: `.guild/rules/test-data-script.md` 참조.
+#
 # 사용:
 #   cd <빈 폴더>
 #   pwsh -File <openguild repo>/scripts/seed-test-data.ps1
@@ -9,6 +11,9 @@
 #   2. openguild init 실행.
 #   3. 다양한 시간대 / 진행률 / 타입의 campaign + quest 데이터 주입.
 #      Home 페이지의 carousel / conveyor / 최근 퀘스트 UI 를 한 번에 검증.
+#   4. DEV-076: 일부 quest 에 희망/필수 기한 설정 — Home 의 "마감 임박" / Overdue
+#      뱃지 검증.
+#   5. DEV-016 (multi-file): sample 길드 규칙 생성 — Rules 페이지 검증.
 #
 # 환경:
 #   - $env:OPENGUILD_BIN 으로 바이너리 경로 override 가능.
@@ -74,11 +79,11 @@ function Invoke-Og {
 function Day { param([int]$Offset) (Get-Date).AddDays($Offset).ToString("yyyy-MM-dd") }
 
 # ── 1) init ─────────────────────────────────────────────────
-Write-Host "`n=== [1/5] init ===" -ForegroundColor Green
+Write-Host "`n=== [1/7] init ===" -ForegroundColor Green
 Invoke-Og init --name $Name
 
 # ── 2) Quest 생성 (다양한 타입 / 상태) ────────────────────────
-Write-Host "`n=== [2/5] Quests ===" -ForegroundColor Green
+Write-Host "`n=== [2/7] Quests ===" -ForegroundColor Green
 
 # 최근 추가된 퀘스트 목록 (Home 하단) 검증용. 10개 이상 만들어
 # slice(0, 10) 잘림 확인.
@@ -104,7 +109,7 @@ foreach ($q in $questPlan) {
 }
 
 # 일부는 상태 변경해서 다양성 확보.
-Write-Host "`n=== [3/5] Quest 상태 전환 ===" -ForegroundColor Green
+Write-Host "`n=== [3/7] Quest 상태 전환 ===" -ForegroundColor Green
 # 가장 최신 슬러그를 모르므로 list 로 가져옴.
 $listOut = & $bin quest list --json 2>$null
 $quests = $listOut | ConvertFrom-Json
@@ -115,8 +120,32 @@ if ($quests.Count -ge 3) {
     Invoke-Og quest move $quests[2].quest_id on_hold
 }
 
-# ── 3) Campaign 생성 (Home carousel / conveyor 모두 검증) ────
-Write-Host "`n=== [4/5] Campaigns ===" -ForegroundColor Green
+# ── 4) DEV-076: 희망 / 필수 기한 (Home 임박 / Overdue 검증) ────
+Write-Host "`n=== [4/7] Quest 기한 설정 (DEV-076) ===" -ForegroundColor Green
+# Home 의 "마감 임박" 뱃지 / Overdue 표시 / 정렬 검증.
+# - 과거 일자 (Overdue) 1개
+# - 1~3일 내 (Critical 임박) 2개
+# - 1주 이내 (Warning 임박) 2개
+# - 미래 (정보성) 일부
+if ($quests.Count -ge 6) {
+    # Overdue — 어제까지 필수.
+    Invoke-Og quest due $quests[3].quest_id --required (Day -1)
+    # Critical 임박 — 내일 / 모레.
+    Invoke-Og quest due $quests[4].quest_id --required (Day 1)
+    Invoke-Og quest due $quests[5].quest_id --required (Day 2)
+    # Warning 임박 — 1주 이내.
+    if ($quests.Count -ge 8) {
+        Invoke-Og quest due $quests[6].quest_id --required (Day 5)
+        Invoke-Og quest due $quests[7].quest_id --desired (Day 6) --required (Day 10)
+    }
+    # 정보성 — 희망만 멀리.
+    if ($quests.Count -ge 10) {
+        Invoke-Og quest due $quests[9].quest_id --desired (Day 30)
+    }
+}
+
+# ── 5) Campaign 생성 (Home carousel / conveyor 모두 검증) ────
+Write-Host "`n=== [5/7] Campaigns ===" -ForegroundColor Green
 
 # 진행 중 캠페인 (carousel): 5개 — 자동 회전 + dots / 화살표 검증.
 $activeCampaigns = @(
@@ -174,8 +203,8 @@ foreach ($c in $upcomingCampaigns) {
 }
 New-CampaignWithChecklist -Title $futureCampaign.title -Start $futureCampaign.start -End $futureCampaign.end -Progress 0.0 -Items 3 | Out-Null
 
-# ── 4) 캠페인 ↔ 퀘스트 연결 (Quest Detail 의 Campaigns 섹션 검증) ──
-Write-Host "`n=== [5/5] Campaign ↔ Quest 연결 ===" -ForegroundColor Green
+# ── 6) 캠페인 ↔ 퀘스트 연결 (Quest Detail 의 Campaigns 섹션 검증) ──
+Write-Host "`n=== [6/7] Campaign ↔ Quest 연결 ===" -ForegroundColor Green
 $campList = & $bin campaign list --status active --json 2>$null | ConvertFrom-Json
 $questList = & $bin quest list --json 2>$null | ConvertFrom-Json
 
@@ -185,6 +214,25 @@ if ($campList.Count -ge 2 -and $questList.Count -ge 3) {
     Invoke-Og campaign link $campList[1].campaign_slug $questList[2].quest_id
 }
 
+# ── 7) DEV-016 (multi-file): sample 길드 규칙 (Rules 페이지 검증) ──
+Write-Host "`n=== [7/7] 길드 규칙 (DEV-016 multi-file) ===" -ForegroundColor Green
+
+# 짧은 sample 들 — 다중 파일 sidebar / 선택 / 편집 / 신규 / 이름변경 / 삭제
+# 의 좌측 목록 정렬 / 선택 동작 검증. 본문은 의미 있는 minimal markdown 으로.
+$ruleSamples = @{
+    "branch-policy"   = "# 브랜치 정책`n`n- branch 이름 = quest_id.`n- ``feature/`` 같은 prefix 금지.`n- 머지된 feature 브랜치 삭제 금지 (히스토리 보존).`n- FF 가능하면 FF (``git merge`` 기본). ``--no-ff`` 강제 금지.`n"
+    "code-review"     = "# 코드 리뷰 체크리스트`n`n- [ ] 새 quest 의 본문에 작업 의도 / 변경 사항 / 검증 명시.`n- [ ] ``cargo test`` / ``npm test`` / ``npm run check`` 통과.`n- [ ] 신규 migration 시 backward-compat 고려 (BUG-041 참조).`n- [ ] 사용자 노출 message 의 영/한 wording 확인.`n"
+    "release-checklist" = "# 릴리즈 짧은 체크리스트`n`n자세한 절차는 ``release-process`` 참조.`n`n1. develop 의 testing → done 정리.`n2. 버전 동기화 6 파일.`n3. ``cargo tauri build`` 통과 확인.`n4. tag + GitHub release + ``latest.json`` attach.`n"
+}
+
+foreach ($slug in $ruleSamples.Keys) {
+    # CLI 가 stdin 으로 본문 읽음.
+    $body = $ruleSamples[$slug]
+    Write-Host "[og] rules create $slug" -ForegroundColor DarkGray
+    $body | & $bin rules create $slug
+    if ($LASTEXITCODE -ne 0) { throw "rules create 실패: $slug" }
+}
+
 # ── 완료 요약 ────────────────────────────────────────────────
 Write-Host "`n=== 완료 ===" -ForegroundColor Green
 Write-Host "Guild   : $Name ($(Get-Location))"
@@ -192,8 +240,10 @@ Write-Host "Quests  : $($quests.Count + 0) 개 (목록 첫 10개만 Home 에 표
 Write-Host "Active  : $($activeCampaigns.Count) 개 캠페인 (carousel 회전)"
 Write-Host "Upcoming: $($upcomingCampaigns.Count) 개 (1주 내 시작 — marquee 임계값 테스트)"
 Write-Host "Future  : 1개 (1주 이후 fallback — 위 set 가 채우므로 노출은 안 됨)"
+Write-Host "Due     : 일부 quest 에 과거/임박/미래 기한 — Home 임박 뱃지 / Overdue 검증."
+Write-Host "Rules   : $($ruleSamples.Count) 개 sample (branch-policy / code-review / release-checklist)"
 Write-Host ""
-Write-Host "GUI 열어서 Home 페이지 확인:"
+Write-Host "GUI 열어서 Home / Rules 페이지 확인:"
 Write-Host "  cd `"$(Get-Location)`""
 Write-Host "  openguild-gui  # 또는 설치된 OpenGuild 앱"
 
