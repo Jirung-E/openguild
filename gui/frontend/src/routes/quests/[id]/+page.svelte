@@ -410,7 +410,9 @@
 		try {
 			const ids = Array.from(cascadeSet);
 			await questsApi.delete(detail.id, ids.length > 0 ? ids : undefined);
-			goto('/');
+			// BUG-044: origin 으로 복귀 — 하드코딩된 '/' 대신 goBack() 이 ?from
+			// query param 분기 (list / board / home / campaign).
+			goBack();
 		} catch (e) {
 			alert(e instanceof Error ? e.message : '삭제 실패');
 			deleting = false;
