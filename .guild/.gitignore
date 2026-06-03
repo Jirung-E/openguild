@@ -1,5 +1,7 @@
-# OpenGuild — 내부 캐시 / UI 상태 / 백업 (git 추적 X)
+# openguild — 내부 캐시 / UI 상태 / 백업 (git 추적 X)
 index.db
 positions.json
 backups/
 .lock
+# DEV-012: 비공개 메모 (개인 노트, 팀 공유 X)
+quests/*.memo.md
