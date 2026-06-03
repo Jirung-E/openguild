@@ -55,7 +55,7 @@
 	// (목록 페이지 다녀와도 즉시 반영).
 	let sort = $state<CampaignSortMode>('recent');
 
-	onMount(async () => {
+	async function loadHomeData() {
 		try {
 			const [a, q, t, s] = await Promise.all([
 				campaignsApi.activeSummaries(),
@@ -72,6 +72,22 @@
 		} finally {
 			loading = false;
 		}
+	}
+
+	// DEV-095: Nav reindex 후 데이터 reload — store-bump subscribe.
+	import { reindexBump } from '$lib/stores/reindex';
+	let lastBump = $state(0);
+	$effect(() => {
+		const bump = $reindexBump;
+		if (bump !== lastBump && bump > 0) {
+			lastBump = bump;
+			loading = true;
+			loadHomeData();
+		}
+	});
+
+	onMount(async () => {
+		await loadHomeData();
 		// BUG-025: localStorage 의 sort 옵션 적용 (캠페인 목록 페이지에서 변경
 		// 했을 수 있음). 매번 mount 마다 새로 읽음.
 		sort = loadCampaignSort();

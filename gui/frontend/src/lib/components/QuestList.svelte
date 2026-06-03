@@ -35,7 +35,7 @@
 	let titleOnly = $state(false);
 
 	// --- 데이터 ---
-	onMount(async () => {
+	async function loadData() {
 		try {
 			[quests, types, statuses] = await Promise.all([
 				questsApi.list(),
@@ -47,11 +47,27 @@
 		} finally {
 			loading = false;
 		}
+	}
 
+	onMount(async () => {
+		await loadData();
 		// URL → state (초기 로드).
 		const params = $page.url.searchParams;
 		search = params.get('search') ?? '';
 		titleOnly = params.get('title_only') === 'true';
+	});
+
+	// DEV-095: Nav 의 Reindex 버튼이 bump 한 store 를 subscribe — 값 변할 때마다
+	// loadData() 재호출 → quest 목록 갱신.
+	import { reindexBump } from '$lib/stores/reindex';
+	let lastBump = $state(0);
+	$effect(() => {
+		const bump = $reindexBump;
+		if (bump !== lastBump && bump > 0) {
+			lastBump = bump;
+			loading = true;
+			loadData();
+		}
 	});
 
 	// state → URL (변경 시).

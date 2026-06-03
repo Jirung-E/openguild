@@ -1343,21 +1343,43 @@
 				/* 무시 */
 			}
 
-			const [quests, statuses, positions, dependencies] = await Promise.all([
-				questsApi.list(),
-				metaApi.getQuestStatuses(),
-				questsApi.listPositions(),
-				questsApi.listDependencies()
-			]);
-			init(quests, statuses, positions, dependencies);
-			// init 직후 store 에 flash id 가 이미 있으면 즉시 처리
-			//  (Nav 의 New Quest 모달 → goto → 보드 페이지 도착 흐름)
-			const pending = get(flashQuestId);
-			if (pending) handleFlash(pending);
+			await loadBoardData();
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'failed to load';
 		} finally {
 			loading = false;
+		}
+	});
+
+	async function loadBoardData() {
+		const [quests, statuses, positions, dependencies] = await Promise.all([
+			questsApi.list(),
+			metaApi.getQuestStatuses(),
+			questsApi.listPositions(),
+			questsApi.listDependencies()
+		]);
+		init(quests, statuses, positions, dependencies);
+		// init 직후 store 에 flash id 가 이미 있으면 즉시 처리
+		//  (Nav 의 New Quest 모달 → goto → 보드 페이지 도착 흐름)
+		const pending = get(flashQuestId);
+		if (pending) handleFlash(pending);
+	}
+
+	// DEV-095: Nav reindex → board 데이터 reload.
+	import { reindexBump } from '$lib/stores/reindex';
+	let lastReindexBump = $state(0);
+	$effect(() => {
+		const bump = $reindexBump;
+		if (bump !== lastReindexBump && bump > 0) {
+			lastReindexBump = bump;
+			loading = true;
+			loadBoardData()
+				.catch((e) => {
+					error = e instanceof Error ? e.message : 'failed to reload';
+				})
+				.finally(() => {
+					loading = false;
+				});
 		}
 	});
 

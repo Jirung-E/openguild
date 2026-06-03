@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { adminApi } from '$lib/api/admin';
-	import { invalidateAll } from '$app/navigation';
+	import { bumpReindex } from '$lib/stores/reindex';
 
 	// DEV-011: Home 탭. URL `/` 가 ?view 없으면 home 기본.
 	type View = 'home' | 'board' | 'list';
@@ -30,8 +30,10 @@
 		reindexState = { status: 'running' };
 		try {
 			await adminApi.reindex();
-			// 페이지 데이터 invalidate — quest list / board / home 자동 갱신.
-			await invalidateAll();
+			// DEV-095 fix: invalidateAll() 은 +page.ts 의 load() 만 트리거 — 우리
+			// 페이지들은 onMount 직접 fetch 라 안 먹음. store-bump 패턴으로 페이지
+			// 가 reactive subscribe.
+			bumpReindex();
 			reindexState = { status: 'done', ts: Date.now() };
 			// 3 초 후 idle 로 — 사용자 noise 최소화.
 			setTimeout(() => {
