@@ -55,6 +55,15 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
 
     // 1. 기존 내용 비움 (트랜잭션 안에서 — partial 실패 시 rollback).
     let mut tx = pool.begin().await?;
+
+    // BUG-042: FK 위반 (787) 회피. reindex 의 quest INSERT 는 파일 정렬 순이라
+    // parent_quest_id 가 자기보다 뒤에 들어갈 quest 를 가리키면 즉시 FK 검증에서
+    // 실패. `PRAGMA defer_foreign_keys = 1` 로 transaction commit 시점에만 검증.
+    // 이 PRAGMA 는 transaction 범위 — commit 후 자동 해제.
+    sqlx::query("PRAGMA defer_foreign_keys = 1")
+        .execute(&mut *tx)
+        .await?;
+
     sqlx::query("DELETE FROM quest_dependencies").execute(&mut *tx).await?;
     sqlx::query("DELETE FROM quest_positions").execute(&mut *tx).await?;
     sqlx::query("DELETE FROM quests").execute(&mut *tx).await?;
