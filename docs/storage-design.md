@@ -509,14 +509,23 @@ openguild migrate-to-files
 - **메모** `.guild/quests/{slug}.memo.md` — plain text. gitignored. 현재 DB
   캐시 안 들어감.
 
-### 한계 + 향후 (DEV-102)
+### DB 캐시 + snapshot 백업 (DEV-102, 구현 완료)
 
-- 현재 file-only 라 `snapshots/*.db` (index.db binary copy) 에 안 들어감 →
-  메모 (gitignored) 는 어떤 백업에도 없음. **PC 손실 / 디스크 장애 시 손실**.
-- 댓글은 git tracked 라 git 사용자에겐 보호되지만, "git 선택사항" 원칙 위배.
-- DEV-102 에서 `quest_comments` / `quest_memos` 테이블 추가 (migration 0011)
-  + file ↔ DB sync → snapshot 자동 포함. 메모의 "사적" = multi-user 시
-  user_id 격리이지 "백업 안 됨" 아님.
+- migration 0011: `quest_comments` / `quest_memos` 테이블 추가.
+- file 진리원 유지 + DB 캐시 sync:
+  - `ops/comments.rs` 의 mutation (`add/update/delete_comment_entry`,
+    `set_memo`) 모두 file write 후 cache UPSERT.
+  - `reindex` 가 sibling 파일들 (`{slug}.comments.md` / `{slug}.memo.md`) 을
+    `quest_comments` / `quest_memos` 에 적재 (file mtime → updated_at 근사).
+  - `drift::detect_drift` 의 `fresh_siblings` 가 sibling 파일이 캐시보다 새것일
+    때 감지 → `auto_resync` 가 reindex.
+- snapshot 자동 포함 — `index.db` binary copy 라 cache 테이블 그대로.
+- 메모 `user_id`:
+  - single-user 단계 = `0` sentinel (모든 row 동일).
+  - multi-user (DEV-021 JWT) 진입 시 실제 user_id 격리 활성.
+  - "사적" = 다른 사용자에게 안 보임 (multi-user), **백업 안 됨이 아님**.
+- 회귀: snapshot 만든 후 cache 행 의도적 wipe → restore → 댓글/메모 살아남음
+  (snapshot.rs 의 `snapshot_preserves_comments_and_memos` 테스트).
 
 ---
 

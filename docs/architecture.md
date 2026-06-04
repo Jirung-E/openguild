@@ -192,8 +192,10 @@ openguild/
 >   직렬화 (사용자 머신 recents 오염 위험 해결).
 > - 2026-06-04 BUG-049 GUI 시동 시 자동 reindex — `drift::auto_resync` 가
 >   server / cli 와 동일하게 호출됨.
-> - 2026-06-04 DEV-094 (댓글) / DEV-099 (메모) — 현재 file-only. DEV-102 에서
->   DB 캐시 + snapshot 백업 합류 예정.
+> - 2026-06-04 DEV-094 (댓글) / DEV-099 (메모) — file 진리원 + DEV-102 로 DB 캐시
+>   (`quest_comments` / `quest_memos`) + snapshot 백업 합류 (migration 0011).
+>   메모의 `user_id=0` sentinel — multi-user (DEV-021) 진입 시 격리 활성.
+>   drift::detect_drift 가 sibling 파일도 fresh 감지 (auto reindex 트리거).
 >
 > 자세한 설계 근거: `docs/architecture-refactor.md`, `docs/storage-design.md`.
 
@@ -331,7 +333,8 @@ Backend 추상화는 `cli/src/main.rs` 의 `Backend` enum. 로컬은 `--guild` �
 ## 향후 계획 (미구현)
 
 - 멀티유저 인증 (JWT) — DEV-021. 메모의 user_id 격리 (DEV-102) 트리거.
-- 댓글 / 메모 DB 캐시 + snapshot 백업 (DEV-102) — 현재 file-only.
+- ✅ 댓글 / 메모 DB 캐시 + snapshot 백업 (DEV-102) — migration 0011 + reindex /
+  drift / ops 캐시 sync 완료. 메모 user_id 격리는 DEV-021 진입 시.
 - 캠페인 댓글 / 메모 (DEV-100) — quest 와 동일 패턴.
 - 길드 다중 동시 접속 (현재 SQLite 단일 파일 가정).
 - AWS EC2 배포 — CI 는 GitHub Actions 로 일부 구축됨 (`.github/workflows/check.yml`).

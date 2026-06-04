@@ -238,8 +238,8 @@ quests  -- type → quest_type_id
 | 다국어 | 추후 |
 | Campaign | ✅ 구현 (DEV-011) |
 | 타입/상태 커스텀 | ✅ 구현 (DEV-014 / DEV-046) |
-| Comment (`{slug}.comments.md`) | ✅ file-only 구현 (DEV-094). DB 백업은 DEV-102. |
-| Memo (`{slug}.memo.md`) | ✅ file-only 구현 (DEV-099). DB 백업은 DEV-102. |
+| Comment (`{slug}.comments.md`) | ✅ DEV-094 (file) + DEV-102 (DB 캐시 + snapshot 백업). |
+| Memo (`{slug}.memo.md`) | ✅ DEV-099 (file) + DEV-102 (DB 캐시 + snapshot 백업, user_id=0 sentinel). |
 | Quest History | ✅ 구현 (DEV-013) |
 | 브랜치명 표시 | ✅ Quest Detail 헤더에 표시 |
 | 길드 규칙 | ✅ `.guild/rules/*.md` + CLI |

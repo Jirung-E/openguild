@@ -560,4 +560,95 @@ mod tests {
         let _ = initial_size;
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// DEV-102: 댓글 / 메모가 snapshot 에 살아남고 restore 후에도 그대로인지.
+    /// 이게 본 quest 의 핵심 목적 — git 없이도 댓글 / 메모를 잃지 않음.
+    #[tokio::test]
+    async fn snapshot_preserves_comments_and_memos() {
+        use crate::models::CreateQuestRequest;
+        use crate::ops::{comments as comments_ops, quests as quest_ops};
+
+        let dir = fresh_tmp("snap-c-m");
+        let store = setup(&dir).await;
+
+        // 1. quest 1 개 생성.
+        let q = quest_ops::create_quest(
+            &store,
+            CreateQuestRequest {
+                quest_type_id: 1,
+                title: "for backup".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        // 2. 댓글 + 메모 작성 (file + DB 양쪽 sync).
+        let entry = comments_ops::add_comment_entry(
+            &store,
+            &q.quest_id,
+            "alice".into(),
+            "hello".into(),
+            None,
+        )
+        .await
+        .unwrap();
+        comments_ops::set_memo(&store, &q.quest_id, "private note".into())
+            .await
+            .unwrap();
+
+        // 3. snapshot 생성.
+        let snap = create_snapshot(&store).await.unwrap();
+        assert!(snap.path.exists());
+
+        // 4. file 진리원도 같이 살린다는 시나리오 가정 — DB 캐시만 손실 시나리오 시뮬레이션:
+        //    quest_comments / quest_memos 행을 의도적으로 비우고, restore 가 살리는지.
+        sqlx::query("DELETE FROM quest_comments")
+            .execute(&store.index_pool)
+            .await
+            .unwrap();
+        sqlx::query("DELETE FROM quest_memos")
+            .execute(&store.index_pool)
+            .await
+            .unwrap();
+        let c_after_wipe: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM quest_comments")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(c_after_wipe, 0);
+
+        // 5. snapshot 으로 restore.
+        restore_snapshot(&store, &snap).await.unwrap();
+
+        // 6. 새 store 로 열어서 댓글 / 메모 복원 확인.
+        let store2 = Store::open(&dir).await.unwrap();
+        let c_after_restore: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM quest_comments")
+            .fetch_one(&store2.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(c_after_restore, 1, "댓글이 snapshot 에서 복원되어야");
+
+        let (entry_id, author, body): (i64, String, String) = sqlx::query_as(
+            "SELECT entry_id, author, body FROM quest_comments",
+        )
+        .fetch_one(&store2.index_pool)
+        .await
+        .unwrap();
+        assert_eq!(entry_id, entry.id as i64);
+        assert_eq!(author, "alice");
+        assert_eq!(body, "hello");
+
+        let memo_content: String = sqlx::query_scalar(
+            "SELECT content FROM quest_memos WHERE user_id = 0",
+        )
+        .fetch_one(&store2.index_pool)
+        .await
+        .unwrap();
+        assert_eq!(memo_content, "private note");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

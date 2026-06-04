@@ -105,7 +105,9 @@
 - 멀티유저 인증 (JWT) — DEV-021.
 - ✅ Campaign — DEV-011 구현됨.
 - ✅ Comment / Memo (file-only) — DEV-094 / DEV-099.
-- 🟡 Comment / Memo DB 백업 (캐시 + snapshot) — DEV-102 설계 완료, 구현 대기.
+- ✅ Comment / Memo DB 백업 (캐시 + snapshot) — DEV-102 구현 완료.
+  migration 0011 + reindex / drift / ops cache sync + snapshot end-to-end 회귀.
+  메모 user_id 격리는 DEV-021 JWT 진입 시 활성.
 - ✅ Quest History — DEV-013.
 - ✅ Quest 타입 / 상태 커스텀 — DEV-014 / DEV-046 등.
 - ✅ 길드 규칙 (Guild Rules) — `.guild/rules/*.md` + CLI 구현됨.

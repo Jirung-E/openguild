@@ -83,10 +83,12 @@ agent (Claude / 다른 LLM) 가 `Write` / `Edit` 도구로 `.guild/quests/*.md` 
   (`openguild quest status / update / parent / prereq / delete`).
 - **description 본문만** 부득이 직접 편집 가능 (BUG-001 우회). 그 경우 직후
   `openguild-server reindex` 필수 (GUI 는 BUG-049 후 시동 시 자동).
-- **댓글 (`{slug}.comments.md`) / 메모 (`{slug}.memo.md`)** 은 현재 file-only 라
-  drift 검사 대상 아님 (BUG-047). 단 댓글은 HTML 마커 (`<!-- og-comment id=N ts=... -->`)
-  포맷을 깨면 parser 실패 — CLI (`openguild quest comment add` 등) 사용 권장.
-  DEV-102 후엔 DB 캐시도 sync 되므로 직접 편집 시 reindex 필요.
+- **댓글 (`{slug}.comments.md`) / 메모 (`{slug}.memo.md`)** 도 **DEV-102 부터 DB
+  캐시 (`quest_comments` / `quest_memos`) sync** + snapshot 백업. 직접 편집 후엔
+  `drift::auto_resync` 가 자동 reindex (GUI 시동 + server / cli 진입 hook —
+  BUG-049). 단 즉시 일관시키려면 명시적으로 `openguild quest comment add /
+  edit / rm` 또는 `openguild quest memo set` 사용 권장. HTML 마커 (`<!-- og-comment
+  id=N ts=... -->`) 포맷 깨면 parser 실패.
 - 자세한 표 + 우회 절차는 [`docs/AGENTS_OPENGUILD_USAGE.md` § 4](./docs/AGENTS_OPENGUILD_USAGE.md) 의
   "🚨 `.guild/` 파일을 직접 편집하지 말 것" 절 참조.
 
