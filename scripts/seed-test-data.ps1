@@ -13,7 +13,9 @@
 #      Home 페이지의 carousel / conveyor / 최근 퀘스트 UI 를 한 번에 검증.
 #   4. DEV-076: 일부 quest 에 희망/필수 기한 설정 — Home 의 "마감 임박" / Overdue
 #      뱃지 검증.
-#   5. DEV-016 (multi-file): sample 길드 규칙 생성 — Rules 페이지 검증.
+#   5. DEV-094/099/102: 첫 quest 에 댓글 (top + reply) + 메모 — DB 캐시 sync
+#      + snapshot 백업 회귀.
+#   6. DEV-016 (multi-file): sample 길드 규칙 생성 — Rules 페이지 검증.
 #
 # 환경:
 #   - $env:OPENGUILD_BIN 으로 바이너리 경로 override 가능.
@@ -79,11 +81,11 @@ function Invoke-Og {
 function Day { param([int]$Offset) (Get-Date).AddDays($Offset).ToString("yyyy-MM-dd") }
 
 # ── 1) init ─────────────────────────────────────────────────
-Write-Host "`n=== [1/7] init ===" -ForegroundColor Green
+Write-Host "`n=== [1/8] init ===" -ForegroundColor Green
 Invoke-Og init --name $Name
 
 # ── 2) Quest 생성 (다양한 타입 / 상태) ────────────────────────
-Write-Host "`n=== [2/7] Quests ===" -ForegroundColor Green
+Write-Host "`n=== [2/8] Quests ===" -ForegroundColor Green
 
 # 최근 추가된 퀘스트 목록 (Home 하단) 검증용. 10개 이상 만들어
 # slice(0, 10) 잘림 확인.
@@ -109,7 +111,7 @@ foreach ($q in $questPlan) {
 }
 
 # 일부는 상태 변경해서 다양성 확보.
-Write-Host "`n=== [3/7] Quest 상태 전환 ===" -ForegroundColor Green
+Write-Host "`n=== [3/8] Quest 상태 전환 ===" -ForegroundColor Green
 # 가장 최신 슬러그를 모르므로 list 로 가져옴.
 $listOut = & $bin quest list --json 2>$null
 $quests = $listOut | ConvertFrom-Json
@@ -121,7 +123,7 @@ if ($quests.Count -ge 3) {
 }
 
 # ── 4) DEV-076: 희망 / 필수 기한 (Home 임박 / Overdue 검증) ────
-Write-Host "`n=== [4/7] Quest 기한 설정 (DEV-076) ===" -ForegroundColor Green
+Write-Host "`n=== [4/8] Quest 기한 설정 (DEV-076) ===" -ForegroundColor Green
 # Home 의 "마감 임박" 뱃지 / Overdue 표시 / 정렬 검증.
 # - 과거 일자 (Overdue) 1개
 # - 1~3일 내 (Critical 임박) 2개
@@ -145,7 +147,7 @@ if ($quests.Count -ge 6) {
 }
 
 # ── 5) Campaign 생성 (Home carousel / conveyor 모두 검증) ────
-Write-Host "`n=== [5/7] Campaigns ===" -ForegroundColor Green
+Write-Host "`n=== [5/8] Campaigns ===" -ForegroundColor Green
 
 # 진행 중 캠페인 (carousel): 5개 — 자동 회전 + dots / 화살표 검증.
 $activeCampaigns = @(
@@ -204,7 +206,7 @@ foreach ($c in $upcomingCampaigns) {
 New-CampaignWithChecklist -Title $futureCampaign.title -Start $futureCampaign.start -End $futureCampaign.end -Progress 0.0 -Items 3 | Out-Null
 
 # ── 6) 캠페인 ↔ 퀘스트 연결 (Quest Detail 의 Campaigns 섹션 검증) ──
-Write-Host "`n=== [6/7] Campaign ↔ Quest 연결 ===" -ForegroundColor Green
+Write-Host "`n=== [6/8] Campaign ↔ Quest 연결 ===" -ForegroundColor Green
 $campList = & $bin campaign list --status active --json 2>$null | ConvertFrom-Json
 $questList = & $bin quest list --json 2>$null | ConvertFrom-Json
 
