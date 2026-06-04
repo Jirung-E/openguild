@@ -20,8 +20,10 @@
 설계 원칙:
 1. 사람이 텍스트 에디터로 quest 읽고 이해 가능 (Markdown + YAML frontmatter).
 2. git 사용자는 file diff / blame / branch / PR 자연스럽게 활용.
-3. git 안 쓰는 사용자는 자체 backup + journal 시스템으로 안전 보장.
-4. SQLite 는 보이지 않는 캐시. 손실되어도 무해 (재구축 가능).
+3. git 은 **사용자 선택사항** — 안 써도 자체 backup + journal 시스템으로 안전 보장.
+4. SQLite 두 종류 분리:
+   - **`index.db`** = 쿼리 캐시 (gitignored, 재구축 가능, 손실되어도 무해).
+   - **`backups/journal.db` + `snapshots/*.db`** = 정식 백업 시스템 (gitignored, 시점 복원 보장).
 5. 길드 루트는 깨끗 — `.guild/` 폴더 하나에 모든 내부 자료.
 
 ---
@@ -276,11 +278,21 @@ openguild 의 첫 베타 마일스톤.
 
 - 스키마: quest 계열 6 테이블 + DEV-013 `quest_history` + **DEV-011 campaign 계열 4
   테이블** (`campaigns` / `campaign_checklists` / `campaign_quests` /
-  `campaign_counters`). migration 0001~0009.
+  `campaign_counters`) + DEV-068 `quest_tags`. migration 0001~0010.
+  `set_ignore_missing(true)` 로 더 새로운 binary 의 마이그레이션을 적용 후, 옛
+  binary 로 열어도 brick 안 되도록 backward compat (BUG-041).
 - 역할: 빠른 쿼리 — cycle check / candidates / list 정렬 / 통계 / 캠페인 진행률 /
   Home 임박 분류 (DEV-076).
-- 손실되어도 OK — 파일에서 재구축 (서버 `openguild-server reindex`).
-- 시작 시 검증: 파일 mtime 과 index 행의 updated_at 비교 → 불일치 시 부분 reindex.
+- 손실되어도 OK — 파일에서 재구축 (서버 `openguild-server reindex` 또는 GUI 상단
+  reindex 버튼 — DEV-095).
+- 시작 시 검증: `drift::detect_drift` 가 quest 본문 파일 mtime 과 index.db mtime
+  비교. 불일치 시 `drift::auto_resync` 가 자동 reindex (server / cli / gui 모두
+  Store::open 직후 호출 — BUG-049).
+- **BUG-047**: drift / reindex 가 보는 quest 본문 파일은 `{slug}.md` 만. sibling
+  `{slug}.comments.md` (DEV-094) / `{slug}.memo.md` (DEV-099) 는 별개 파일 —
+  현재는 DB 캐시 안 들어가므로 비교 대상 아님 (`repo::fs::list_quest_body_files`).
+  DEV-102 (댓글/메모 DB 백업) 후엔 별도 `quest_comments` / `quest_memos` 테이블
+  ↔ sibling 파일 비교 추가 예정.
 
 ### `backups/journal.db` (AOF)
 
@@ -482,11 +494,29 @@ openguild migrate-to-files
 ## 핵심 원칙 요약
 
 1. **파일 진리원**. `.guild/quests/{slug}.md` 등이 source of truth.
-2. **SQLite 는 보이지 않는 인프라**. `index.db` (캐시) + `journal.db` (AOF) + `snapshots/*.db` (RDB).
+2. **SQLite 두 역할 분리**:
+   - `index.db` = 캐시 (gitignored, 손실되어도 무해, reindex 로 복구).
+   - `backups/journal.db` + `snapshots/*.db` = **정식 백업** (gitignored, 시점 복원).
 3. **루트 깨끗**. `openguild.guild` + `.guild/` 만.
-4. **git 선택사항**. 사용하면 좋고, 안 써도 자체 백업으로 안전.
+4. **git 은 사용자 선택사항**. 사용하면 좋고, 안 써도 자체 백업으로 안전.
 5. **자동 vs 수동 명확히**. `[counter]` 같은 자동 필드엔 경고. auto 블록엔 명시적 마커.
 6. **사람이 읽을 수 있는 포맷**. Markdown + YAML/TOML — IDE / GitHub web / Obsidian 등에서 자연스러움.
+
+## 댓글 / 메모 (DEV-094 / DEV-099 — 현재 file-only)
+
+- **댓글** `.guild/quests/{slug}.comments.md` — HTML 마커 (`<!-- og-comment id=N
+  ts=... author=... reply_to=N -->`). git tracked. 현재 DB 캐시 안 들어감.
+- **메모** `.guild/quests/{slug}.memo.md` — plain text. gitignored. 현재 DB
+  캐시 안 들어감.
+
+### 한계 + 향후 (DEV-102)
+
+- 현재 file-only 라 `snapshots/*.db` (index.db binary copy) 에 안 들어감 →
+  메모 (gitignored) 는 어떤 백업에도 없음. **PC 손실 / 디스크 장애 시 손실**.
+- 댓글은 git tracked 라 git 사용자에겐 보호되지만, "git 선택사항" 원칙 위배.
+- DEV-102 에서 `quest_comments` / `quest_memos` 테이블 추가 (migration 0011)
+  + file ↔ DB sync → snapshot 자동 포함. 메모의 "사적" = multi-user 시
+  user_id 격리이지 "백업 안 됨" 아님.
 
 ---
 

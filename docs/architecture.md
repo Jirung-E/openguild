@@ -39,12 +39,15 @@ graph TB
 
     subgraph DotGuild[".guild/ (per project)"]
         QF["{name}.guild - TOML 마커 (git tracked)"]
-        QM[".guild/quests/*.md - 진리원 (git tracked)"]
+        QM[".guild/quests/{slug}.md - 진리원 (git tracked)"]
+        QC[".guild/quests/{slug}.comments.md - 댓글 (git tracked, DEV-094)"]
+        QMM[".guild/quests/{slug}.memo.md - 메모 (gitignored, DEV-099)"]
         TM[".guild/types/*.toml - 진리원 (git tracked)"]
         SM[".guild/statuses/*.toml - 진리원 (git tracked)"]
+        RL[".guild/rules/*.md - 길드 규칙 (git tracked)"]
         IDX[".guild/index.db - 쿼리 캐시 (gitignored)"]
         JRN[".guild/backups/journal.db - AOF (gitignored)"]
-        SNP[".guild/backups/snapshots/*.db - RDB (gitignored)"]
+        SNP[".guild/backups/snapshots/*.db - RDB 시점 백업 (gitignored)"]
         LCK[".guild/.lock - single-writer (gitignored)"]
     end
 
@@ -71,9 +74,11 @@ graph TB
 
 **핵심 원칙**:
 - `.guild/quests/*.md` 등 **파일이 진리원**. SQLite (`.guild/index.db`) 는 쿼리 캐시 — 손실 시 `reindex` 로 복구.
+- **DB 두 종류 분리**: `index.db` 는 쿼리 캐시 (gitignored, 재구축 가능). `backups/journal.db` + `snapshots/*.db` 가 **정식 백업** — git 없어도 시점 복원 보장.
 - 모든 mutation 은 `core::ops::*` 통과: journal append → SQL → 파일 atomic write → auto block 갱신.
 - 자동 백업: `core::snapshot::maybe_auto_snapshot` 이 ops 끝에서 정책 검사 (ops 50 / 24h).
-- git 사용자 + git 모르는 사용자 둘 다 안전: snapshot/journal 이 git 과 독립.
+- git 은 **사용자 선택사항** — git 없이도 snapshot/journal 로 안전 보장.
+- drift 자동 복구: `Store::open` 직후 `drift::auto_resync` 가 외부 편집 감지 시 reindex (server / cli / gui 동일, BUG-049).
 
 자세한 이전 경위 / 설계 근거: [`architecture-refactor.md`](./architecture-refactor.md), [`storage-design.md`](./storage-design.md).
 
@@ -85,7 +90,7 @@ openguild/
 ├── openguild.guild                  ← 본 repo 의 마커 (dogfood)
 ├── .guild/                          ← 본 repo 의 quests / campaigns / 캐시 (dogfood)
 ├── core/                            ← lib: 도메인 + 저장소 추상화
-│   ├── migrations/                  ← sqlx 마이그레이션 (0001~0009)
+│   ├── migrations/                  ← sqlx 마이그레이션 (0001~0010, set_ignore_missing 로 backward compat)
 │   └── src/
 │       ├── lib.rs
 │       ├── db.rs                    ← sqlx pool 생성
@@ -96,11 +101,13 @@ openguild/
 │       ├── repo/                    ← 파일 IO 진리원 ⭐
 │       │   ├── quest.rs             ← .md frontmatter (TOML) + body + auto block
 │       │   ├── campaign.rs          ← DEV-011: .md frontmatter + body GFM 체크리스트
+│       │   ├── comments.rs          ← DEV-094/099: {slug}.comments.md (HTML 마커) + {slug}.memo.md
+│       │   ├── rules.rs             ← 길드 규칙 {slug}.md (rules/)
 │       │   ├── type_def.rs          ← {prefix}.toml + [counter]
 │       │   ├── status_def.rs        ← {n}-{slug}.toml
 │       │   ├── auto.rs              ← Parent / Sub-quests / Prerequisites 렌더
 │       │   ├── seed.rs              ← 기본 시드 + seed_guild_dir
-│       │   └── fs.rs                ← atomic write 등
+│       │   └── fs.rs                ← atomic write + list_quest_body_files (BUG-047 sibling 제외)
 │       ├── services/                ← SQL queries (read 위주)
 │       │   ├── quests.rs
 │       │   ├── campaigns.rs         ← DEV-011: 캠페인 CRUD / 체크리스트 / 링크
@@ -179,6 +186,14 @@ openguild/
 >   섹션.
 > - 2026-05-28 DEV-063 Tauri 자동 업데이트 (updater + process plugin + 서명
 >   파이프라인) + DEV-084 설정 페이지 (`/settings`).
+> - 2026-06-04 BUG-047 drift / reindex 가 sibling `.comments.md` / `.memo.md` 를
+>   quest 본문으로 오인 — `repo::fs::list_quest_body_files` 로 좁힘.
+> - 2026-06-04 BUG-048 recents 테스트 env race — `static OnceLock<Mutex<()>>`
+>   직렬화 (사용자 머신 recents 오염 위험 해결).
+> - 2026-06-04 BUG-049 GUI 시동 시 자동 reindex — `drift::auto_resync` 가
+>   server / cli 와 동일하게 호출됨.
+> - 2026-06-04 DEV-094 (댓글) / DEV-099 (메모) — 현재 file-only. DEV-102 에서
+>   DB 캐시 + snapshot 백업 합류 예정.
 >
 > 자세한 설계 근거: `docs/architecture-refactor.md`, `docs/storage-design.md`.
 
@@ -315,7 +330,8 @@ Backend 추상화는 `cli/src/main.rs` 의 `Backend` enum. 로컬은 `--guild` �
 
 ## 향후 계획 (미구현)
 
-- 멀티유저 인증 (JWT)
-- Campaign / Comment / Memo / Quest History
-- 길드 다중 동시 접속 (현재 SQLite 단일 파일 가정)
-- AWS EC2 배포 + GitHub Actions CI/CD
+- 멀티유저 인증 (JWT) — DEV-021. 메모의 user_id 격리 (DEV-102) 트리거.
+- 댓글 / 메모 DB 캐시 + snapshot 백업 (DEV-102) — 현재 file-only.
+- 캠페인 댓글 / 메모 (DEV-100) — quest 와 동일 패턴.
+- 길드 다중 동시 접속 (현재 SQLite 단일 파일 가정).
+- AWS EC2 배포 — CI 는 GitHub Actions 로 일부 구축됨 (`.github/workflows/check.yml`).

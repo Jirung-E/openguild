@@ -90,22 +90,28 @@
 - 📌 상세 설계: [`docs/storage-design.md`](./storage-design.md)
 - 테스트: Rust 191 (core 110 + cli 25 + server 56) + frontend 41 = **232 통과**
 
-## 9단계 — CI/CD + 배포 ⚪
-- ⚪ GitHub Actions: PR 시 cargo check / cargo test / npm check / npm test
-- ⚪ AWS EC2 배포 (백엔드)
-- ⚪ 프론트엔드 정적 호스팅 (Vercel / Netlify 등)
+## 9단계 — CI/CD + 배포 🟡
+- ✅ GitHub Actions (`.github/workflows/check.yml`) — cargo clippy `-D warnings` +
+  cargo test (직렬) + frontend `svelte-check` / `vitest` / `vite build`.
+  BUG-050 (clippy needless_borrows 4건) 으로 안정화.
+- ✅ Release 워크플로 (`.github/workflows/release.yml`) — Tauri bundle + 자동 업데이트 서명.
+- ⚪ AWS EC2 배포 (백엔드) — 보류.
+- ⚪ 프론트엔드 정적 호스팅 — desktop GUI 가 주 진입점이 되어 우선순위 낮음.
 
 ---
 
 ## 추후 (MVP 외)
 
-- 멀티유저 인증 (JWT)
-- Campaign / Comment / Memo / Quest History UI
-- Quest 타입 / 상태 커스텀
-- 다국어
-- 길드 규칙 (Guild Rules) 기능
-- 다음 퀘스트(Successor) / 부모 퀘스트 직접 변경 UI
-- core crate 분리 (server / cli 공유)
+- 멀티유저 인증 (JWT) — DEV-021.
+- ✅ Campaign — DEV-011 구현됨.
+- ✅ Comment / Memo (file-only) — DEV-094 / DEV-099.
+- 🟡 Comment / Memo DB 백업 (캐시 + snapshot) — DEV-102 설계 완료, 구현 대기.
+- ✅ Quest History — DEV-013.
+- ✅ Quest 타입 / 상태 커스텀 — DEV-014 / DEV-046 등.
+- ✅ 길드 규칙 (Guild Rules) — `.guild/rules/*.md` + CLI 구현됨.
+- 캠페인 댓글 / 메모 — DEV-100 (대기).
+- 다국어 — 미진행.
+- 다음 퀘스트(Successor) / 부모 퀘스트 직접 변경 UI — 미진행.
 
 ## 보류 결정 (재검토 가능)
 

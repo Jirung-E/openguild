@@ -232,16 +232,18 @@ quests  -- type → quest_type_id
 | guild.guild 마커 파일 | |
 | 단일 사용자 | |
 
-**이후 ❌**
-| 항목 | 단계 |
+**이후 (대부분 구현됨)**
+| 항목 | 상태 |
 |---|---|
 | 다국어 | 추후 |
-| Campaign | 추후 |
-| 타입/상태 커스텀 | 추후 |
-| Comment / Memo | 추후 |
-| Quest History | 추후 |
-| 브랜치명 표시 | 추후 |
-| 등급/파티/멀티유저 | v1.1 이후 |
+| Campaign | ✅ 구현 (DEV-011) |
+| 타입/상태 커스텀 | ✅ 구현 (DEV-014 / DEV-046) |
+| Comment (`{slug}.comments.md`) | ✅ file-only 구현 (DEV-094). DB 백업은 DEV-102. |
+| Memo (`{slug}.memo.md`) | ✅ file-only 구현 (DEV-099). DB 백업은 DEV-102. |
+| Quest History | ✅ 구현 (DEV-013) |
+| 브랜치명 표시 | ✅ Quest Detail 헤더에 표시 |
+| 길드 규칙 | ✅ `.guild/rules/*.md` + CLI |
+| 등급/파티/멀티유저 (JWT) | v1.1 이후 — DEV-021 |
 
 ---
 

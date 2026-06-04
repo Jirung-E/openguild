@@ -82,7 +82,11 @@ agent (Claude / 다른 LLM) 가 `Write` / `Edit` 도구로 `.guild/quests/*.md` 
 - **status / urgency / parent / prereq / delete 변경 = 반드시 CLI**
   (`openguild quest status / update / parent / prereq / delete`).
 - **description 본문만** 부득이 직접 편집 가능 (BUG-001 우회). 그 경우 직후
-  `openguild-server reindex` 필수.
+  `openguild-server reindex` 필수 (GUI 는 BUG-049 후 시동 시 자동).
+- **댓글 (`{slug}.comments.md`) / 메모 (`{slug}.memo.md`)** 은 현재 file-only 라
+  drift 검사 대상 아님 (BUG-047). 단 댓글은 HTML 마커 (`<!-- og-comment id=N ts=... -->`)
+  포맷을 깨면 parser 실패 — CLI (`openguild quest comment add` 등) 사용 권장.
+  DEV-102 후엔 DB 캐시도 sync 되므로 직접 편집 시 reindex 필요.
 - 자세한 표 + 우회 절차는 [`docs/AGENTS_OPENGUILD_USAGE.md` § 4](./docs/AGENTS_OPENGUILD_USAGE.md) 의
   "🚨 `.guild/` 파일을 직접 편집하지 말 것" 절 참조.
 
@@ -132,7 +136,7 @@ openguild/
 |---|---|
 | `docs/architecture.md` | 시스템 구조 / API 엔드포인트 / 데이터 모델 / 안전장치 |
 | `docs/architecture-refactor.md` | core 분리 + CLI 로컬 모드 등 구조 변경 이력 / 미래 계획 |
-| `docs/storage-design.md` | 파일 진리원 + SQLite 캐시/저널 — 차기 저장소 설계 (구현 대기) |
+| `docs/storage-design.md` | 파일 진리원 + SQLite 캐시(`index.db`)/백업(`journal.db` + `snapshots/`) 구조 |
 | `docs/dev-plan.md` | 단계별 개발 계획 + 진행 상태 |
 | `docs/planning.md` | 기획 결정 (용어, MVP 범위, 향후 기능) |
 | `docs/guild-rules.md` | 개발 규칙 (커밋·브랜치·백/프론트 컨벤션) |

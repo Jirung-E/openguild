@@ -50,7 +50,19 @@ DEV-001, DEV-002, BUG-045, REQ-007, ...  ─── feature 브랜치 (develop �
   - `[DEV-019][server] check-drift 명령 추가`
 - 본문 첫 줄 — 70자 이내. 본문은 빈 줄로 구분.
 - 다중 카테고리는 별도 commit 으로 분리 권장 (각 commit 의 영역 명확).
+- **한 commit 에 다른 quest 변경 섞지 말 것** (BUG-016 정책). 다른 quest 의
+  파일이 stage 됐다면 `git reset HEAD <path>` 또는 별도 branch 로 분리.
 - 무엇(what) 보다 **왜(why)** 중심 — diff 가 what 은 보여주므로.
+- **Co-Authored-By 표기**: AI agent 가 작성한 commit 은 trailer 에
+  `Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>` 추가.
+
+### 머지 (2026-05-18 변경, BUG-016 강조)
+
+- 기본 `git merge {QUEST_ID}` — linear 면 FF, 분기 시에만 자동 merge commit.
+- `--no-ff` 강제 금지 (log 가 머지 커밋으로 지저분해짐).
+- **머지된 feature 브랜치 삭제 금지** — 사용자가 명시적으로 삭제 요청할 때까지 보존.
+- rebase 가 필요하면 (develop 이 앞서 갔을 때) feature → develop 위로 rebase 후
+  FF merge — develop 의 linear 히스토리 유지.
 
 ### 릴리즈
 
