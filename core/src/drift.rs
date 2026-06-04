@@ -21,6 +21,11 @@ pub struct DriftReport {
     pub fresh_files: Vec<String>, // quest_id slug 들
     pub missing_in_index: Vec<String>, // 파일은 있는데 index 에 없음
     pub stale_in_index: Vec<String>, // index 에 있는데 파일이 없음
+    /// DEV-102: sibling 파일 (`{slug}.comments.md` / `{slug}.memo.md`) 의 mtime
+    /// 이 index.db 보다 새것 — 캐시 (`quest_comments` / `quest_memos`) 가 stale.
+    /// 항목 형식: `{slug}.comments.md` / `{slug}.memo.md` 로 file_name 그대로.
+    #[serde(default)]
+    pub fresh_siblings: Vec<String>,
 }
 
 impl DriftReport {
@@ -28,6 +33,7 @@ impl DriftReport {
         self.fresh_files.is_empty()
             && self.missing_in_index.is_empty()
             && self.stale_in_index.is_empty()
+            && self.fresh_siblings.is_empty()
     }
 }
 
@@ -86,10 +92,29 @@ pub async fn detect_drift(store: &Store) -> Result<DriftReport> {
         .collect();
     stale_in_index.sort();
 
+    // DEV-102: sibling 파일도 캐시 (`quest_comments` / `quest_memos`) 를 가지므로
+    // 외부 편집 감지 대상. file mtime > index.db mtime 이면 fresh_siblings 에 추가.
+    // missing/stale 은 sibling 에 대해선 따로 다루지 않음 — reindex 가 DELETE +
+    // INSERT 이므로 fresh 한 번 표기 → auto_resync 가 일괄 갱신.
+    let mut fresh_siblings = Vec::new();
+    for path in repo_fs::list_quest_comment_files(paths.quests_dir())?
+        .into_iter()
+        .chain(repo_fs::list_quest_memo_files(paths.quests_dir())?)
+    {
+        let mtime = repo_fs::mtime(&path).unwrap_or(SystemTime::UNIX_EPOCH);
+        if mtime > index_mtime
+            && let Some(name) = path.file_name().and_then(|n| n.to_str())
+        {
+            fresh_siblings.push(name.to_string());
+        }
+    }
+    fresh_siblings.sort();
+
     Ok(DriftReport {
         fresh_files,
         missing_in_index,
         stale_in_index,
+        fresh_siblings,
     })
 }
 
@@ -101,10 +126,11 @@ pub async fn auto_resync(store: &Store) -> Result<Option<crate::reindex::Reindex
         return Ok(None);
     }
     tracing::info!(
-        "drift detected — fresh {} / missing {} / stale {}. Running reindex...",
+        "drift detected — fresh {} / missing {} / stale {} / fresh siblings {}. Running reindex...",
         drift.fresh_files.len(),
         drift.missing_in_index.len(),
-        drift.stale_in_index.len()
+        drift.stale_in_index.len(),
+        drift.fresh_siblings.len()
     );
     let report = crate::reindex::reindex(store).await?;
     Ok(Some(report))
@@ -240,6 +266,55 @@ mod tests {
         let store = setup(&dir).await;
         let result = auto_resync(&store).await.unwrap();
         assert!(result.is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-102: sibling 파일이 캐시보다 새것이면 fresh_siblings 에 잡힘.
+    /// (BUG-047 의 sibling 제외 회귀와 별개 — 본문 vs sibling 의 역할 분리.)
+    #[tokio::test]
+    async fn detect_drift_picks_up_fresh_sibling_files() {
+        let dir = fresh_tmp("sibling-fresh");
+        let store = setup(&dir).await;
+
+        // 정상 quest 생성 + DB 적재.
+        let q = ops::create_quest(
+            &store,
+            crate::models::CreateQuestRequest {
+                quest_type_id: 1,
+                title: "for sibling drift".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        // index.db 의 mtime 보다 sibling 파일이 새것이 되도록, 잠시 후 sibling 작성.
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let slug = &q.quest_id;
+        let comments = store.paths.quests_dir().join(format!("{slug}.comments.md"));
+        let memo = store.paths.quests_dir().join(format!("{slug}.memo.md"));
+        std::fs::write(&comments, "<!-- og-comment id=\"1\" ts=\"\" author=\"\" -->\nx\n").unwrap();
+        std::fs::write(&memo, "private").unwrap();
+
+        let report = detect_drift(&store).await.unwrap();
+        // sibling 두 파일이 fresh_siblings 에 잡혀야.
+        assert!(
+            report.fresh_siblings.iter().any(|n| n.ends_with(".comments.md")),
+            "comments sibling not in fresh: {:?}",
+            report.fresh_siblings
+        );
+        assert!(
+            report.fresh_siblings.iter().any(|n| n.ends_with(".memo.md")),
+            "memo sibling not in fresh: {:?}",
+            report.fresh_siblings
+        );
+        // 기존 missing/stale 검사는 깨끗해야.
+        assert!(report.missing_in_index.is_empty());
+        assert!(report.stale_in_index.is_empty());
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -3,8 +3,13 @@
 //! DEV-094 부터 **댓글은 entry 단위** — `services::comments::{add/update/delete}_entry`.
 //! 메모는 그대로 단일 텍스트.
 //!
+//! 흐름 (DEV-102 부터):
 //! 1. journal::append (의도 기록).
 //! 2. service 호출 (파일 read → mutate → atomic write).
+//! 3. DB cache sync (`quest_comments` / `quest_memos`) — snapshot 백업 대상.
+//!
+//! 파일이 진리원, DB 는 snapshot 백업 + 빠른 쿼리용 캐시. quest 가 index.db 에
+//! 없으면 (drift 상태) DB UPSERT 는 silently skip — 다음 reindex 가 일관시킴.
 
 use serde_json::json;
 
@@ -14,6 +19,124 @@ use crate::services::comments as svc;
 use crate::store::{journal, Store};
 
 pub use crate::repo::comments::CommentEntry;
+
+/// DEV-102: slug → quests.id 매핑. drift 상태에선 None.
+async fn lookup_quest_id(store: &Store, slug: &str) -> AppResult<Option<i64>> {
+    sqlx::query_scalar::<_, i64>(
+        "SELECT q.id FROM quests q
+           JOIN quest_types t ON t.id = q.quest_type_id
+          WHERE t.prefix || '-' || printf('%03d', q.number) = ?",
+    )
+    .bind(slug)
+    .fetch_optional(&store.index_pool)
+    .await
+    .map_err(|e| AppError::Internal(anyhow::anyhow!("lookup quest id by slug: {e}")))
+}
+
+/// DEV-102: 한 댓글 entry 를 `quest_comments` 에 UPSERT. drift 상태 (quest 없음)
+/// 면 skip — 다음 reindex 시 일관.
+async fn upsert_comment_entry_db(
+    store: &Store,
+    slug: &str,
+    entry: &CommentEntry,
+) -> AppResult<()> {
+    let Some(qid) = lookup_quest_id(store, slug).await? else {
+        return Ok(());
+    };
+    sqlx::query(
+        "INSERT INTO quest_comments (quest_id, entry_id, ts, author, body, parent_id)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(quest_id, entry_id) DO UPDATE SET
+             ts        = excluded.ts,
+             author    = excluded.author,
+             body      = excluded.body,
+             parent_id = excluded.parent_id",
+    )
+    .bind(qid)
+    .bind(entry.id as i64)
+    .bind(&entry.ts)
+    .bind(&entry.author)
+    .bind(&entry.body)
+    .bind(entry.parent_id.map(|n| n as i64))
+    .execute(&store.index_pool)
+    .await
+    .map_err(|e| AppError::Internal(anyhow::anyhow!("upsert quest_comments: {e}")))?;
+    Ok(())
+}
+
+/// DEV-102: 한 댓글 entry 를 `quest_comments` 에서 삭제.
+async fn delete_comment_entry_db(store: &Store, slug: &str, id: u64) -> AppResult<()> {
+    let Some(qid) = lookup_quest_id(store, slug).await? else {
+        return Ok(());
+    };
+    sqlx::query("DELETE FROM quest_comments WHERE quest_id = ? AND entry_id = ?")
+        .bind(qid)
+        .bind(id as i64)
+        .execute(&store.index_pool)
+        .await
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("delete quest_comments: {e}")))?;
+    Ok(())
+}
+
+/// DEV-102: 메모를 `quest_memos` 에 UPSERT (single-user user_id=0).
+async fn upsert_memo_db(store: &Store, slug: &str, content: &str) -> AppResult<()> {
+    let Some(qid) = lookup_quest_id(store, slug).await? else {
+        return Ok(());
+    };
+    let ts = crate::time::now_local_iso8601();
+    sqlx::query(
+        "INSERT INTO quest_memos (quest_id, user_id, content, updated_at)
+         VALUES (?, 0, ?, ?)
+         ON CONFLICT(quest_id, user_id) DO UPDATE SET
+             content    = excluded.content,
+             updated_at = excluded.updated_at",
+    )
+    .bind(qid)
+    .bind(content)
+    .bind(&ts)
+    .execute(&store.index_pool)
+    .await
+    .map_err(|e| AppError::Internal(anyhow::anyhow!("upsert quest_memos: {e}")))?;
+    Ok(())
+}
+
+/// DEV-102: legacy 전체-텍스트 댓글 sync — 파일의 entry 들을 한 번에 적재.
+/// quest_comments 의 기존 row 는 DELETE 후 INSERT.
+async fn replace_comments_db(store: &Store, slug: &str) -> AppResult<()> {
+    let Some(qid) = lookup_quest_id(store, slug).await? else {
+        return Ok(());
+    };
+    let entries = svc::list_entries(store, slug)?;
+    let mut tx = store
+        .index_pool
+        .begin()
+        .await
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("begin tx: {e}")))?;
+    sqlx::query("DELETE FROM quest_comments WHERE quest_id = ?")
+        .bind(qid)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("clear quest_comments: {e}")))?;
+    for entry in &entries {
+        sqlx::query(
+            "INSERT INTO quest_comments (quest_id, entry_id, ts, author, body, parent_id)
+             VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind(qid)
+        .bind(entry.id as i64)
+        .bind(&entry.ts)
+        .bind(&entry.author)
+        .bind(&entry.body)
+        .bind(entry.parent_id.map(|n| n as i64))
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("insert quest_comments: {e}")))?;
+    }
+    tx.commit()
+        .await
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("commit tx: {e}")))?;
+    Ok(())
+}
 
 // ─── DEV-012 legacy: 단일 텍스트 댓글 API (호환용, deprecated) ───
 // DEV-094 의 entry API 가 권장. 본 함수는 frontend / CLI 가 아직 호출하지 않으면
@@ -33,7 +156,9 @@ pub async fn set_comments(store: &Store, slug: &str, content: String) -> AppResu
     )
     .await
     .map_err(AppError::Internal)?;
-    repo::write_comments(&store.paths, slug, &content).map_err(AppError::Internal)
+    repo::write_comments(&store.paths, slug, &content).map_err(AppError::Internal)?;
+    // DEV-102: 파일을 통째로 갈았으므로 캐시도 전체 재적재.
+    replace_comments_db(store, slug).await
 }
 
 // ─── DEV-094: entry 단위 ───
@@ -64,7 +189,10 @@ pub async fn add_comment_entry(
     )
     .await
     .map_err(AppError::Internal)?;
-    svc::add_entry(store, slug, author, body, parent_id)
+    let entry = svc::add_entry(store, slug, author, body, parent_id)?;
+    // DEV-102: file 진리원 갱신 후 DB 캐시 UPSERT.
+    upsert_comment_entry_db(store, slug, &entry).await?;
+    Ok(entry)
 }
 
 /// 댓글 entry 본문 수정 (ts / author 보존).
@@ -82,7 +210,10 @@ pub async fn update_comment_entry(
     )
     .await
     .map_err(AppError::Internal)?;
-    svc::update_entry(store, slug, id, body)
+    let updated = svc::update_entry(store, slug, id, body)?;
+    // DEV-102: 같은 entry_id 의 row 를 UPSERT (body 만 변경됨).
+    upsert_comment_entry_db(store, slug, &updated).await?;
+    Ok(updated)
 }
 
 /// 댓글 entry 삭제.
@@ -95,7 +226,9 @@ pub async fn delete_comment_entry(store: &Store, slug: &str, id: u64) -> AppResu
     )
     .await
     .map_err(AppError::Internal)?;
-    svc::delete_entry(store, slug, id)
+    svc::delete_entry(store, slug, id)?;
+    // DEV-102: 같은 entry_id 의 cache row 도 삭제.
+    delete_comment_entry_db(store, slug, id).await
 }
 
 pub fn get_memo(store: &Store, slug: &str) -> AppResult<Option<String>> {
@@ -111,5 +244,139 @@ pub async fn set_memo(store: &Store, slug: &str, content: String) -> AppResult<(
     )
     .await
     .map_err(AppError::Internal)?;
-    repo::write_memo(&store.paths, slug, &content).map_err(AppError::Internal)
+    repo::write_memo(&store.paths, slug, &content).map_err(AppError::Internal)?;
+    // DEV-102: snapshot 백업 대상이 되도록 DB 캐시도 갱신.
+    upsert_memo_db(store, slug, &content).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::CreateQuestRequest;
+    use crate::ops::quests as quest_ops;
+    use crate::repo::seed_guild_dir;
+
+    async fn fresh(label: &str) -> (std::path::PathBuf, Store, String) {
+        let ns = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("og-ops-comments-{label}-{ns}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        seed_guild_dir(&dir).unwrap();
+        let store = Store::open(&dir).await.unwrap();
+        // 정상 quest 1 개 생성 — DB에도 들어가야 lookup_quest_id 가 Some 반환.
+        let q = quest_ops::create_quest(
+            &store,
+            CreateQuestRequest {
+                quest_type_id: 1,
+                title: "t".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        (dir, store, q.quest_id)
+    }
+
+    /// DEV-102: add_comment_entry 후 quest_comments 캐시에 row 생긴다.
+    #[tokio::test]
+    async fn add_comment_entry_syncs_db_cache() {
+        let (dir, store, slug) = fresh("add").await;
+        let e = add_comment_entry(&store, &slug, "alice".into(), "hello".into(), None)
+            .await
+            .unwrap();
+        let row: (String, String, Option<i64>) = sqlx::query_as(
+            "SELECT author, body, parent_id FROM quest_comments WHERE entry_id = ?",
+        )
+        .bind(e.id as i64)
+        .fetch_one(&store.index_pool)
+        .await
+        .unwrap();
+        assert_eq!(row.0, "alice");
+        assert_eq!(row.1, "hello");
+        assert_eq!(row.2, None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-102: update_comment_entry 가 body 만 캐시에서도 갱신, ts/author 보존.
+    #[tokio::test]
+    async fn update_comment_entry_syncs_db_cache() {
+        let (dir, store, slug) = fresh("upd").await;
+        let e = add_comment_entry(&store, &slug, "alice".into(), "v1".into(), None)
+            .await
+            .unwrap();
+        let _ = update_comment_entry(&store, &slug, e.id, "v2".into()).await.unwrap();
+        let body: String = sqlx::query_scalar(
+            "SELECT body FROM quest_comments WHERE entry_id = ?",
+        )
+        .bind(e.id as i64)
+        .fetch_one(&store.index_pool)
+        .await
+        .unwrap();
+        assert_eq!(body, "v2");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-102: delete_comment_entry 후 캐시 row 도 삭제됨.
+    #[tokio::test]
+    async fn delete_comment_entry_removes_from_db_cache() {
+        let (dir, store, slug) = fresh("del").await;
+        let e = add_comment_entry(&store, &slug, "".into(), "x".into(), None)
+            .await
+            .unwrap();
+        delete_comment_entry(&store, &slug, e.id).await.unwrap();
+        let n: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM quest_comments WHERE entry_id = ?",
+        )
+        .bind(e.id as i64)
+        .fetch_one(&store.index_pool)
+        .await
+        .unwrap();
+        assert_eq!(n, 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-102: set_memo 가 user_id=0 row UPSERT — 두 번 호출해도 PK 충돌 없이
+    /// content 갱신.
+    #[tokio::test]
+    async fn set_memo_upserts_db_cache() {
+        let (dir, store, slug) = fresh("memo").await;
+        set_memo(&store, &slug, "v1".into()).await.unwrap();
+        set_memo(&store, &slug, "v2".into()).await.unwrap();
+        let rows: Vec<(i64, String)> = sqlx::query_as(
+            "SELECT user_id, content FROM quest_memos",
+        )
+        .fetch_all(&store.index_pool)
+        .await
+        .unwrap();
+        assert_eq!(rows.len(), 1, "single-user 단계 — row 1 개");
+        assert_eq!(rows[0].0, 0);
+        assert_eq!(rows[0].1, "v2");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-102: 답글 추가 시 parent_id 컬럼이 정확히 세팅.
+    #[tokio::test]
+    async fn reply_comment_persists_parent_id_in_db() {
+        let (dir, store, slug) = fresh("reply").await;
+        let top = add_comment_entry(&store, &slug, "a".into(), "1".into(), None)
+            .await
+            .unwrap();
+        let r = add_comment_entry(&store, &slug, "b".into(), "2".into(), Some(top.id))
+            .await
+            .unwrap();
+        let parent_id: Option<i64> = sqlx::query_scalar(
+            "SELECT parent_id FROM quest_comments WHERE entry_id = ?",
+        )
+        .bind(r.id as i64)
+        .fetch_one(&store.index_pool)
+        .await
+        .unwrap();
+        assert_eq!(parent_id, Some(top.id as i64));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
