@@ -168,7 +168,7 @@ pub fn write_entries(
     entries: &[CommentEntry],
 ) -> Result<()> {
     let text = serialize_entries(entries);
-    write_atomic(&paths.comments_path(slug), &text)
+    write_atomic(paths.comments_path(slug), &text)
 }
 
 /// 공개 댓글 파일 읽기. 부재 시 `Ok(None)`.
@@ -184,7 +184,7 @@ pub fn read_comments(paths: &GuildPaths, slug: &str) -> Result<Option<String>> {
 
 /// 공개 댓글 파일 쓰기 (atomic).
 pub fn write_comments(paths: &GuildPaths, slug: &str, content: &str) -> Result<()> {
-    write_atomic(&paths.comments_path(slug), content)
+    write_atomic(paths.comments_path(slug), content)
 }
 
 /// 비공개 메모 파일 읽기. 부재 시 `Ok(None)`.
@@ -200,7 +200,7 @@ pub fn read_memo(paths: &GuildPaths, slug: &str) -> Result<Option<String>> {
 
 /// 비공개 메모 파일 쓰기 (atomic).
 pub fn write_memo(paths: &GuildPaths, slug: &str, content: &str) -> Result<()> {
-    write_atomic(&paths.memo_path(slug), content)
+    write_atomic(paths.memo_path(slug), content)
 }
 
 #[cfg(test)]

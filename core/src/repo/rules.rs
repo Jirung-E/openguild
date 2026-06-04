@@ -141,7 +141,7 @@ pub fn write_rule(paths: &GuildPaths, slug: &str, content: &str) -> Result<()> {
     let dir = paths.rules_dir();
     std::fs::create_dir_all(&dir)
         .with_context(|| format!("failed to create rules dir: {}", dir.display()))?;
-    write_atomic(&paths.rule_path(slug), content)
+    write_atomic(paths.rule_path(slug), content)
 }
 
 /// 신규 규칙 — 같은 slug 가 이미 있으면 Err. (`write_rule` 은 멱등 덮어쓰기.)
