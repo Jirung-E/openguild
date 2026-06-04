@@ -293,6 +293,20 @@ pub fn run() {
         eprintln!("[openguild-gui] warn: recents 갱신 실패 — {e:#}");
     }
 
+    // BUG-049: 시동 시 자동 reindex — 사용자가 CLI / 외부 편집으로 파일을
+    // 바꿨다면 index.db 가 stale. server / cli 는 이미 같은 패턴.
+    // Welcome / Uninit 은 in-memory 라 drift 없음 — 건너뜀.
+    if store_path.is_some() {
+        match tauri::async_runtime::block_on(openguild_core::drift::auto_resync(&store)) {
+            Ok(Some(rep)) => eprintln!(
+                "[openguild-gui] drift detected → auto reindex: {} quests / {} deps / {} campaigns",
+                rep.quests_loaded, rep.dependencies_loaded, rep.campaigns_loaded
+            ),
+            Ok(None) => {}
+            Err(e) => eprintln!("[openguild-gui] warn: auto_resync 실패 — {e:#}"),
+        }
+    }
+
     tauri::Builder::default()
         // DEV-053: 디렉토리 선택 dialog — Welcome 의 "폴더 열기".
         .plugin(tauri_plugin_dialog::init())
