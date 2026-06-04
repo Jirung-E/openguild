@@ -30,6 +30,10 @@ pub struct ReindexReport {
     pub positions_restored: usize,
     /// DEV-011: campaign 파일 로드 수.
     pub campaigns_loaded: usize,
+    /// DEV-102: sibling `{slug}.comments.md` 의 entry 수 (모든 quest 합산).
+    pub comments_loaded: usize,
+    /// DEV-102: sibling `{slug}.memo.md` 의 quest 수 (file 하나당 row 1개).
+    pub memos_loaded: usize,
     /// 파싱 / 무결성 실패로 skip 된 파일 (경로 + 사유).
     pub skipped: Vec<(String, String)>,
 }
@@ -79,6 +83,9 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
     sqlx::query("UPDATE campaign_counters SET last_number = 0 WHERE id = 1")
         .execute(&mut *tx)
         .await?;
+    // DEV-102: 댓글 / 메모 캐시도 wipe — sibling 파일로부터 재구축.
+    sqlx::query("DELETE FROM quest_comments").execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM quest_memos").execute(&mut *tx).await?;
 
     // 2. types — id 는 파일 정렬 순.
     let type_paths = repo_fs::list_with_extension(paths.types_dir(), "toml")
@@ -274,6 +281,82 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
         }
     }
     report.positions_restored = positions_restored;
+
+    // 5b'. DEV-102: sibling 파일 (`{slug}.comments.md` / `{slug}.memo.md`) →
+    //      `quest_comments` / `quest_memos` 캐시 sync. 파일이 진리원, 캐시는
+    //      snapshot 백업 대상. quest 가 존재하지 않는 sibling 은 skip + 경고.
+    let comment_paths = repo_fs::list_quest_comment_files(paths.quests_dir())
+        .map_err(crate::error::AppError::Internal)?;
+    for path in &comment_paths {
+        let Some(slug) = repo_fs::quest_slug_from_sibling_path(path) else {
+            continue;
+        };
+        let Some(&qid) = slug_to_id.get(&slug) else {
+            report.skipped.push((
+                path.display().to_string(),
+                format!("no matching quest for comment sibling slug={slug}"),
+            ));
+            continue;
+        };
+        let raw = match std::fs::read_to_string(path) {
+            Ok(s) => s,
+            Err(e) => {
+                report.skipped.push((path.display().to_string(), e.to_string()));
+                continue;
+            }
+        };
+        let entries = crate::repo::comments::parse_entries(&raw);
+        for entry in entries {
+            sqlx::query(
+                "INSERT INTO quest_comments (quest_id, entry_id, ts, author, body, parent_id)
+                 VALUES (?, ?, ?, ?, ?, ?)",
+            )
+            .bind(qid)
+            .bind(entry.id as i64)
+            .bind(&entry.ts)
+            .bind(&entry.author)
+            .bind(&entry.body)
+            .bind(entry.parent_id.map(|n| n as i64))
+            .execute(&mut *tx)
+            .await?;
+            report.comments_loaded += 1;
+        }
+    }
+
+    let memo_paths = repo_fs::list_quest_memo_files(paths.quests_dir())
+        .map_err(crate::error::AppError::Internal)?;
+    for path in &memo_paths {
+        let Some(slug) = repo_fs::quest_slug_from_sibling_path(path) else {
+            continue;
+        };
+        let Some(&qid) = slug_to_id.get(&slug) else {
+            report.skipped.push((
+                path.display().to_string(),
+                format!("no matching quest for memo sibling slug={slug}"),
+            ));
+            continue;
+        };
+        let content = match std::fs::read_to_string(path) {
+            Ok(s) => s,
+            Err(e) => {
+                report.skipped.push((path.display().to_string(), e.to_string()));
+                continue;
+            }
+        };
+        // updated_at — file mtime 으로 근사. mutation 경로는 services 가
+        // now_local_iso8601() 로 정확히 설정. single-user 단계라 user_id=0.
+        let updated_at = repo_fs::mtime_iso8601(path).unwrap_or_default();
+        sqlx::query(
+            "INSERT INTO quest_memos (quest_id, user_id, content, updated_at)
+             VALUES (?, 0, ?, ?)",
+        )
+        .bind(qid)
+        .bind(&content)
+        .bind(&updated_at)
+        .execute(&mut *tx)
+        .await?;
+        report.memos_loaded += 1;
+    }
 
     // 5c. quest_history 의 quest_id 재정렬 (DEV-049).
     //     이전 reindex 가 id 를 재할당했어도 quest_slug 컬럼이 stable identifier
@@ -472,6 +555,170 @@ mod tests {
             "sibling 파일들이 skipped 에 안 들어가야: {:?}",
             report.skipped
         );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-102: sibling 파일이 `quest_comments` / `quest_memos` 캐시로
+    /// 적재되는지. snapshot 의 백업 대상이 되도록 (snapshot 은 index.db binary
+    /// copy 라 cache 테이블만 보장).
+    #[tokio::test]
+    async fn reindex_loads_sibling_files_into_cache_tables() {
+        let dir = fresh_tmp("sibling-cache");
+        let store = setup_store(&dir).await;
+        let paths = store.paths.clone();
+
+        // 두 개 quest — 첫째는 댓글 2개 (top-level + reply) + 메모, 둘째는 메모만.
+        for slug in ["DEV-001", "DEV-002"] {
+            let qf = QuestFile {
+                frontmatter: QuestFrontmatter {
+                    quest_id: slug.into(),
+                    title: "t".into(),
+                    status: "open".into(),
+                    urgency: 3,
+                    parent: None,
+                    prerequisites: vec![],
+                    created_at: "2026-01-01T00:00:00Z".into(),
+                    updated_at: "2026-01-01T00:00:00Z".into(),
+                    deleted: false,
+                    desired_due: None,
+                    required_due: None,
+                },
+                description: String::new(),
+                auto_block: String::new(),
+            };
+            qf.write(paths.quest_path(slug)).unwrap();
+        }
+
+        let comments_001 = paths.quests_dir().join("DEV-001.comments.md");
+        std::fs::write(
+            &comments_001,
+            "<!-- og-comment id=\"1\" ts=\"2026-06-01T10:00:00+09:00\" author=\"alice\" -->\n\
+             top-level\n\
+             <!-- og-comment id=\"2\" ts=\"2026-06-01T11:00:00+09:00\" author=\"bob\" reply_to=\"1\" -->\n\
+             answer\n",
+        )
+        .unwrap();
+        let memo_001 = paths.quests_dir().join("DEV-001.memo.md");
+        std::fs::write(&memo_001, "scratch one").unwrap();
+        let memo_002 = paths.quests_dir().join("DEV-002.memo.md");
+        std::fs::write(&memo_002, "scratch two").unwrap();
+
+        let report = reindex(&store).await.unwrap();
+        assert_eq!(report.comments_loaded, 2, "DEV-001 의 댓글 2개");
+        assert_eq!(report.memos_loaded, 2, "DEV-001 + DEV-002 메모 각 1");
+        assert!(report.skipped.is_empty(), "skipped 비어야: {:?}", report.skipped);
+
+        // DB 확인: 댓글 row 들 정확히 들어갔는지.
+        let rows: Vec<(i64, i64, String, String, String, Option<i64>)> = sqlx::query_as(
+            "SELECT quest_id, entry_id, ts, author, body, parent_id
+             FROM quest_comments
+             ORDER BY quest_id, entry_id",
+        )
+        .fetch_all(&store.index_pool)
+        .await
+        .unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].1, 1);
+        assert_eq!(rows[0].3, "alice");
+        assert_eq!(rows[0].4, "top-level");
+        assert_eq!(rows[0].5, None);
+        assert_eq!(rows[1].1, 2);
+        assert_eq!(rows[1].3, "bob");
+        assert_eq!(rows[1].5, Some(1));
+
+        // memo row 들 — user_id 모두 0 (single-user sentinel).
+        let memo_rows: Vec<(i64, i64, String)> = sqlx::query_as(
+            "SELECT quest_id, user_id, content FROM quest_memos ORDER BY quest_id",
+        )
+        .fetch_all(&store.index_pool)
+        .await
+        .unwrap();
+        assert_eq!(memo_rows.len(), 2);
+        assert!(memo_rows.iter().all(|r| r.1 == 0));
+        assert_eq!(memo_rows[0].2, "scratch one");
+        assert_eq!(memo_rows[1].2, "scratch two");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-102: sibling 파일이 가리키는 quest 가 없으면 skip + 경고 — DELETE 도
+    /// 실패하지 않고 다른 sync 와 격리.
+    #[tokio::test]
+    async fn reindex_skips_orphan_sibling_files() {
+        let dir = fresh_tmp("sibling-orphan");
+        let store = setup_store(&dir).await;
+        let paths = store.paths.clone();
+
+        // quest 파일 0개. sibling 파일만 존재 — 정상 quest 없으니 orphan.
+        std::fs::write(
+            paths.quests_dir().join("ZZZ-999.comments.md"),
+            "<!-- og-comment id=\"1\" ts=\"\" author=\"\" -->\norphan\n",
+        )
+        .unwrap();
+        std::fs::write(
+            paths.quests_dir().join("ZZZ-999.memo.md"),
+            "orphan memo",
+        )
+        .unwrap();
+
+        let report = reindex(&store).await.unwrap();
+        assert_eq!(report.comments_loaded, 0);
+        assert_eq!(report.memos_loaded, 0);
+        // 둘 다 skipped 에 경고로.
+        assert_eq!(report.skipped.len(), 2, "orphan sibling 2 건: {:?}", report.skipped);
+        assert!(report.skipped.iter().all(|(_, msg)| msg.contains("no matching quest")));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-102: 두 번 reindex 해도 quest_comments / quest_memos 가 중복되지
+    /// 않아야 (DELETE 가 정상 동작).
+    #[tokio::test]
+    async fn reindex_twice_is_idempotent_for_siblings() {
+        let dir = fresh_tmp("sibling-idem");
+        let store = setup_store(&dir).await;
+        let paths = store.paths.clone();
+
+        let qf = QuestFile {
+            frontmatter: QuestFrontmatter {
+                quest_id: "DEV-001".into(),
+                title: "t".into(),
+                status: "open".into(),
+                urgency: 3,
+                parent: None,
+                prerequisites: vec![],
+                created_at: "2026-01-01T00:00:00Z".into(),
+                updated_at: "2026-01-01T00:00:00Z".into(),
+                deleted: false,
+                desired_due: None,
+                required_due: None,
+            },
+            description: String::new(),
+            auto_block: String::new(),
+        };
+        qf.write(paths.quest_path("DEV-001")).unwrap();
+        std::fs::write(
+            paths.quests_dir().join("DEV-001.comments.md"),
+            "<!-- og-comment id=\"1\" ts=\"\" author=\"\" -->\nbody\n",
+        )
+        .unwrap();
+        std::fs::write(paths.quests_dir().join("DEV-001.memo.md"), "memo").unwrap();
+
+        let r1 = reindex(&store).await.unwrap();
+        let r2 = reindex(&store).await.unwrap();
+        assert_eq!(r1.comments_loaded, 1);
+        assert_eq!(r2.comments_loaded, 1, "재실행도 1 (중복 없음)");
+        let n_c: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM quest_comments")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        let n_m: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM quest_memos")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(n_c, 1);
+        assert_eq!(n_m, 1);
 
         let _ = std::fs::remove_dir_all(&dir);
     }
