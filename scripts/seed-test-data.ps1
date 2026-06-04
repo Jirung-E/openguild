@@ -214,8 +214,30 @@ if ($campList.Count -ge 2 -and $questList.Count -ge 3) {
     Invoke-Og campaign link $campList[1].campaign_slug $questList[2].quest_id
 }
 
-# ── 7) DEV-016 (multi-file): sample 길드 규칙 (Rules 페이지 검증) ──
-Write-Host "`n=== [7/7] 길드 규칙 (DEV-016 multi-file) ===" -ForegroundColor Green
+# ── 7) DEV-099 / DEV-102: 댓글 + 메모 (CLI + DB cache sync) ──
+Write-Host "`n=== [7/8] 댓글 / 메모 (DEV-094/099/102) ===" -ForegroundColor Green
+
+# DEV-094 entry 단위 댓글 + 답글, DEV-099 CLI, DEV-102 DB 캐시 + snapshot 백업.
+# Quest Detail 의 댓글 섹션 / 답글 / 메모 영역 + drift::auto_resync 도 검증.
+$questForComments = ($questList | Select-Object -First 1).quest_id
+if ($questForComments) {
+    Write-Host "[og] quest comment add $questForComments (alice / 최상위)" -ForegroundColor DarkGray
+    "이 캠페인의 진행 흐름 정리해보자." | & $bin quest comment add $questForComments --author alice
+    if ($LASTEXITCODE -ne 0) { throw "quest comment add 실패" }
+
+    # 답글 — add 직후라 부모 entry id 가 1.
+    Write-Host "[og] quest comment add (bob / 답글)" -ForegroundColor DarkGray
+    "동의. 다음 마일스톤 후 다시 보자." | & $bin quest comment add $questForComments --author bob --parent-id 1
+    if ($LASTEXITCODE -ne 0) { throw "quest comment add (reply) 실패" }
+
+    # 메모 — set 으로 한 번에 본문 교체.
+    Write-Host "[og] quest memo set $questForComments" -ForegroundColor DarkGray
+    "본인 한정 메모 — 검토 시 참고용." | & $bin quest memo set $questForComments
+    if ($LASTEXITCODE -ne 0) { throw "quest memo set 실패" }
+}
+
+# ── 8) DEV-016 (multi-file): sample 길드 규칙 (Rules 페이지 검증) ──
+Write-Host "`n=== [8/8] 길드 규칙 (DEV-016 multi-file) ===" -ForegroundColor Green
 
 # 짧은 sample 들 — 다중 파일 sidebar / 선택 / 편집 / 신규 / 이름변경 / 삭제
 # 의 좌측 목록 정렬 / 선택 동작 검증. 본문은 의미 있는 minimal markdown 으로.
@@ -241,6 +263,7 @@ Write-Host "Active  : $($activeCampaigns.Count) 개 캠페인 (carousel 회전)"
 Write-Host "Upcoming: $($upcomingCampaigns.Count) 개 (1주 내 시작 — marquee 임계값 테스트)"
 Write-Host "Future  : 1개 (1주 이후 fallback — 위 set 가 채우므로 노출은 안 됨)"
 Write-Host "Due     : 일부 quest 에 과거/임박/미래 기한 — Home 임박 뱃지 / Overdue 검증."
+Write-Host "Comments: 첫 quest 에 댓글 2 (top + reply) + 메모 1 — DB 캐시 sync (DEV-102)."
 Write-Host "Rules   : $($ruleSamples.Count) 개 sample (branch-policy / code-review / release-checklist)"
 Write-Host ""
 Write-Host "GUI 열어서 Home / Rules 페이지 확인:"

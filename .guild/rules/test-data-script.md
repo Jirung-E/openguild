@@ -25,7 +25,7 @@ pwsh -File <openguild repo>/scripts/seed-test-data.ps1
 `OPENGUILD_BIN` > `target/release/openguild.exe` > `target/debug/openguild.exe`
 > PATH 의 `openguild`.
 
-## 검증 단계 (= 스크립트의 7 단계)
+## 검증 단계 (= 스크립트의 8 단계)
 
 | 단계 | 내용 | 검증 대상 UI |
 |------|------|--------------|
@@ -35,7 +35,8 @@ pwsh -File <openguild repo>/scripts/seed-test-data.ps1
 | 4 | **DEV-076** 일부 quest 에 due date (과거/임박/미래) | Home 의 "마감 임박" / Overdue 뱃지 |
 | 5 | 12 campaign 생성 (active 5 + upcoming 7 + future 1) + 체크리스트 / 진행률 | Home carousel / conveyor / marquee 임계값 |
 | 6 | campaign ↔ quest 연결 | Quest Detail 의 Campaigns 섹션 / Campaign Detail 의 Quests |
-| 7 | **DEV-016 multi-file** sample 규칙 3 개 (branch-policy / code-review / release-checklist) | Rules 페이지 sidebar / 선택 / 편집 |
+| 7 | **DEV-094/099/102** 첫 quest 에 댓글 2 (top + reply) + 메모 1 | Quest Detail 댓글/메모 섹션 + DB 캐시 sync (snapshot 안 살아남는지) |
+| 8 | **DEV-016 multi-file** sample 규칙 3 개 (branch-policy / code-review / release-checklist) | Rules 페이지 sidebar / 선택 / 편집 |
 
 ## 갱신 절차 — 신규 기능 추가 시
 
@@ -65,16 +66,22 @@ pwsh -File <openguild repo>/scripts/seed-test-data.ps1
 
 스크립트가 다루지 **않는** 기능 — 별도 절차 또는 수동 확인:
 
-- **댓글 / 메모 (DEV-012, DEV-094)** — CLI 없음. GUI 에서 수동 확인.
+- **댓글 답글의 본격 threading** — top + 1 reply 만 주입. 다단 / 답글의 답글
+  flatten 동작은 수동 확인.
 - **태그 (DEV-068)** — open 상태 / CLI 없음.
 - **첨부파일 (DEV-097)** — open 상태 / 기능 미구현.
-- **외부 편집 후 자동 reindex (DEV-095)** — 본 스크립트 후 `openguild-server
-  reindex` 로 cache 정합 확인.
+- **외부 편집 후 자동 reindex (BUG-049)** — GUI 가 Store::open 직후 자동
+  `drift::auto_resync`. 본 스크립트 후엔 별도 호출 불필요.
 - **schema ahead banner (BUG-041)** — 같은 binary 가 만든 DB 라 ahead 안 됨;
   수동 시뮬레이션 필요 (`_sqlx_migrations` 에 fake row INSERT).
 - **updater (BUG-045)** — release 가 있어야 의미; production binary 만 동작.
+- **메모 user_id 격리 (DEV-021)** — single-user 단계 user_id=0 sentinel만
+  검증. multi-user JWT 진입 시 별도 시드 필요.
 
 ## 최근 변경
 
 - 2026-06-03: DEV-076 due date / DEV-016 multi-file rules 단계 추가.
   스크립트 단계 5 → 7 로 확장. 본 규칙 신설 (DEV-075 quest 본문은 그대로).
+- 2026-06-05 (DEV-104): DEV-099 의 댓글/메모 CLI 단계 추가 (단계 7) →
+  스크립트 7 → 8 로 확장. DEV-102 의 DB 캐시 sync 도 함께 검증 (snapshot
+  안 살아남음). 한계 절 stale 항목 (댓글/메모 "CLI 없음") 제거.
