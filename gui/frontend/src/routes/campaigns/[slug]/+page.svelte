@@ -196,29 +196,46 @@
 		const t = newChecklistText.trim();
 		if (!t) return;
 		try {
-			await campaignsApi.addChecklist(detail.campaign_slug, t);
+			// BUG-046: load() 대신 응답 row 만 push — scroll 보존.
+			const added = await campaignsApi.addChecklist(detail.campaign_slug, t);
+			detail.checklists.push(added);
 			newChecklistText = '';
-			await load();
 		} catch (e) {
 			alert(e instanceof Error ? e.message : 'failed');
 		}
 	}
+	// BUG-046: 체크리스트 토글 / 삭제 시 `load()` 전체 reload 가 detail 객체를
+	// 새로 만들어 `{#each ...}` 모든 item 의 DOM 참조가 swap → 브라우저가 scroll
+	// anchor 잃고 페이지 최상단으로 점프. optimistic update 로 scroll 보존 +
+	// 즉시 반응. 실패 시 revert.
 	async function toggleChecklist(idx: number, currentlyChecked: boolean) {
 		if (!detail) return;
+		const next = !currentlyChecked;
+		const target = detail.checklists[idx];
+		if (!target) return;
+		// 즉시 UI 갱신 — Svelte 5 의 deep reactivity 가 prop 변경 감지.
+		target.checked = next;
 		try {
-			await campaignsApi.setChecklist(detail.campaign_slug, idx + 1, !currentlyChecked);
-			await load();
+			await campaignsApi.setChecklist(detail.campaign_slug, idx + 1, next);
 		} catch (e) {
+			// 실패 시 원복 — 사용자에게 알림.
+			target.checked = currentlyChecked;
 			alert(e instanceof Error ? e.message : 'failed');
 		}
 	}
 	async function removeChecklist(idx: number) {
 		if (!detail) return;
 		if (!confirm('이 체크리스트 항목을 삭제할까요?')) return;
+		// BUG-046: load() 대신 splice — 같은 array 안 단일 row 제거라 다른 item
+		// 의 (item.id) key 가 안정. scroll 보존.
+		const removed = detail.checklists[idx];
+		if (!removed) return;
+		detail.checklists.splice(idx, 1);
 		try {
 			await campaignsApi.removeChecklist(detail.campaign_slug, idx + 1);
-			await load();
 		} catch (e) {
+			// 실패 시 원복 — 같은 위치에 다시.
+			detail.checklists.splice(idx, 0, removed);
 			alert(e instanceof Error ? e.message : 'failed');
 		}
 	}
