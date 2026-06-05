@@ -35,6 +35,10 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "resources": {
+      "../README.md": "docs/README.md",
+      "../docs/USAGE.md": "docs/USAGE.md"
+    },
     "windows": {
       "nsis": {
         "template": "nsis/installer.nsi",
