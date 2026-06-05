@@ -4163,6 +4163,7 @@ mod tests {
             parent: None,
             sub_quests: vec![],
             prerequisites: vec![],
+            successors: vec![],
             position: None,
         }
     }

@@ -758,6 +758,30 @@
 			{/if}
 		</section>
 
+		<!-- DEV-070: 후속 퀘스트 — 본 quest 를 선행으로 가진 quest 들 (역방향
+			참조). 편집은 그 quest 의 detail 에서 prereq 추가/제거로. -->
+		{#if (detail.successors ?? []).length > 0}
+			<section>
+				<div class="section-head">
+					<h2 class="section-title prereq-label">Successors</h2>
+					<span class="sec-hint">이 퀘스트를 선행으로 가진 퀘스트</span>
+				</div>
+				<ul class="quest-list">
+					{#each (detail.successors ?? []) as sq (sq.id)}
+						<li>
+							<div class="prereq-row">
+								<a href="/quests/{sq.quest_id}{fromSuffix}" class="prereq-link">
+									<span class="badge type" style:--c={sq.type_color}>{sq.quest_id}</span>
+									<span class="ql-title">{sq.title}</span>
+									<span class="badge status" style:--c={sq.status_color}>{sq.status_name_en}</span>
+								</a>
+							</div>
+						</li>
+					{/each}
+				</ul>
+			</section>
+		{/if}
+
 		<!-- DEV-011: 연결된 캠페인 -->
 		<section>
 			<div class="section-head">
@@ -1171,6 +1195,10 @@
 	.section-title.parent-label { color: #7ee787; }
 	.section-title.sub-label { color: #3dc9b0; }
 	.section-title.prereq-label { color: #a371f7; }
+	/* DEV-070: section header 옆의 부가 설명 hint. */
+	.sec-hint {
+		font-size: 0.75rem; color: #6e7681; font-style: italic;
+	}
 	/* DEV-011: Campaign section */
 	.section-title.campaign-label { color: #4a9eff; }
 	/* BUG-021: campaign slug badge — quest type badge 와 동일 pill 패턴 (color-mix). */

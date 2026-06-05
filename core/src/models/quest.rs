@@ -47,6 +47,11 @@ pub struct QuestDetail {
     pub parent: Option<QuestRow>,
     pub sub_quests: Vec<QuestRow>,
     pub prerequisites: Vec<QuestRow>,
+    /// DEV-070: 본 quest 를 선행으로 가지는 quest 들 (= 후속 / successor).
+    /// `quest_dependencies` 의 역방향. alive 만. 빈 vec 이면 후속 없음 — Quest
+    /// Detail 의 "후속 퀘스트" 섹션 conditional 표시.
+    #[serde(default)]
+    pub successors: Vec<QuestRow>,
     pub position: Option<QuestPosition>,
 }
 

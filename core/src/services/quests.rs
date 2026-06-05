@@ -383,11 +383,14 @@ pub async fn get(pool: &SqlitePool, id: i64) -> AppResult<QuestDetail> {
     let quest = fetch_by_id(pool, id).await?;
     let parent = fetch_parent(pool, &quest).await?;
     let (sub_quests, prerequisites, position) = fetch_relations(pool, id).await?;
+    // DEV-070: 후속 (이 quest 를 선행으로 갖는 quest 들).
+    let successors = fetch_successors(pool, id).await?;
     Ok(QuestDetail {
         quest,
         parent,
         sub_quests,
         prerequisites,
+        successors,
         position,
     })
 }
@@ -422,14 +425,31 @@ pub async fn get_by_slug(pool: &SqlitePool, slug: &str) -> AppResult<QuestDetail
     let id = quest.id;
     let parent = fetch_parent(pool, &quest).await?;
     let (sub_quests, prerequisites, position) = fetch_relations(pool, id).await?;
+    let successors = fetch_successors(pool, id).await?;
 
     Ok(QuestDetail {
         quest,
         parent,
         sub_quests,
         prerequisites,
+        successors,
         position,
     })
+}
+
+/// DEV-070: 본 quest 를 선행으로 가지는 alive quest 들.
+/// `quest_dependencies (quest_id, prerequisite_id)` 에서 prerequisite_id = id
+/// 인 row 의 quest_id 들. 사이클은 BFS 검증으로 막혀 있어 self / 조상 안 들어옴.
+pub async fn fetch_successors(pool: &SqlitePool, id: i64) -> AppResult<Vec<QuestRow>> {
+    let sql = format!(
+        "{QUEST_SELECT}
+         JOIN quest_dependencies dep ON q.id = dep.quest_id
+         WHERE q.deleted_at IS NULL AND dep.prerequisite_id = ? ORDER BY q.id"
+    );
+    Ok(sqlx::query_as::<_, QuestRow>(&sql)
+        .bind(id)
+        .fetch_all(pool)
+        .await?)
 }
 
 pub async fn list_positions(pool: &SqlitePool) -> AppResult<Vec<QuestPosition>> {
@@ -1384,6 +1404,84 @@ mod tests {
             q.earliest_campaign_due.is_none(),
             "unlinked quest 의 earliest_campaign_due 는 None 이어야 함"
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ─── DEV-070: successors ───
+
+    /// 후속 quest 없으면 빈 vec.
+    #[tokio::test]
+    async fn successors_empty_when_no_dependent() {
+        let (dir, store) = fresh_store("succ-empty").await;
+        let id = make_quest(&store).await;
+        let succ = fetch_successors(&store.index_pool, id).await.unwrap();
+        assert!(succ.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A 가 B 의 선행이면 B 는 A 의 후속.
+    #[tokio::test]
+    async fn successor_contains_dependent_quest() {
+        let (dir, store) = fresh_store("succ-one").await;
+        let a = make_quest(&store).await;
+        let b = make_quest(&store).await;
+        crate::ops::add_prerequisite(
+            &store,
+            b,
+            crate::models::AddPrerequisiteRequest { prerequisite_id: a },
+        )
+        .await
+        .unwrap();
+
+        // A 의 successors = [B].
+        let succ_a = fetch_successors(&store.index_pool, a).await.unwrap();
+        assert_eq!(succ_a.len(), 1);
+        assert_eq!(succ_a[0].id, b);
+
+        // B 의 successors = []. (A 만 갖고 있으므로.)
+        let succ_b = fetch_successors(&store.index_pool, b).await.unwrap();
+        assert!(succ_b.is_empty());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 후속 quest 가 soft-delete 되면 successors 에서 빠진다.
+    #[tokio::test]
+    async fn successors_excludes_deleted_quests() {
+        let (dir, store) = fresh_store("succ-del").await;
+        let a = make_quest(&store).await;
+        let b = make_quest(&store).await;
+        crate::ops::add_prerequisite(
+            &store,
+            b,
+            crate::models::AddPrerequisiteRequest { prerequisite_id: a },
+        )
+        .await
+        .unwrap();
+        crate::ops::delete_quest(&store, b, &[]).await.unwrap();
+
+        let succ = fetch_successors(&store.index_pool, a).await.unwrap();
+        assert!(succ.is_empty(), "deleted 후속은 제외");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// QuestDetail 의 successors 필드가 채워지는지 (E2E).
+    #[tokio::test]
+    async fn get_quest_detail_includes_successors() {
+        let (dir, store) = fresh_store("detail-succ").await;
+        let a = make_quest(&store).await;
+        let b = make_quest(&store).await;
+        crate::ops::add_prerequisite(
+            &store,
+            b,
+            crate::models::AddPrerequisiteRequest { prerequisite_id: a },
+        )
+        .await
+        .unwrap();
+        let detail = get(&store.index_pool, a).await.unwrap();
+        assert_eq!(detail.successors.len(), 1);
+        assert_eq!(detail.successors[0].id, b);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

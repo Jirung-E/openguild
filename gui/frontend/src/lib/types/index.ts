@@ -51,6 +51,12 @@ export interface QuestDetail extends Quest {
 	parent?: Quest | null;
 	sub_quests: Quest[];
 	prerequisites: Quest[];
+	/**
+	 * DEV-070: 본 quest 를 선행으로 가지는 quest 들 (= 후속 / successor).
+	 * 빈 배열이면 후속 없음 — Quest Detail 의 "후속 퀘스트" 섹션 conditional 표시.
+	 * 서버 미배포 환경 대비 optional (undefined → 빈 배열로 fallback).
+	 */
+	successors?: Quest[];
 	position: QuestPosition | null;
 }
 
