@@ -1466,6 +1466,208 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    // ─── DEV-068: tags ───
+
+    /// set_quest_tags 가 DB 캐시 + 파일 frontmatter 둘 다 갱신.
+    #[tokio::test]
+    async fn set_quest_tags_syncs_db_and_file() {
+        let (dir, store) = fresh_store("tags-sync").await;
+        let q0 = crate::ops::create_quest(
+            &store,
+            CreateQuestRequest {
+                quest_type_id: 1,
+                title: "t".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        let id = q0.id;
+        let quest = fetch_by_id(&store.index_pool, id).await.unwrap();
+
+        crate::ops::set_quest_tags(
+            &store,
+            id,
+            vec!["backend".into(), "performance".into()],
+        )
+        .await
+        .unwrap();
+
+        // DB: 두 row.
+        let rows: Vec<(String,)> =
+            sqlx::query_as("SELECT tag FROM quest_tags WHERE quest_id = ? ORDER BY tag")
+                .bind(id)
+                .fetch_all(&store.index_pool)
+                .await
+                .unwrap();
+        let tags: Vec<String> = rows.into_iter().map(|(t,)| t).collect();
+        assert_eq!(tags, vec!["backend".to_string(), "performance".into()]);
+
+        // File frontmatter.
+        let qf = crate::repo::QuestFile::read(store.paths.quest_path(&quest.quest_id))
+            .unwrap();
+        assert_eq!(qf.frontmatter.tags, vec!["backend".to_string(), "performance".into()]);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 중복 / 빈 / 공백 tags 가 정규화됨.
+    #[tokio::test]
+    async fn set_quest_tags_normalizes_input() {
+        let (dir, store) = fresh_store("tags-norm").await;
+        let q = crate::ops::create_quest(
+            &store,
+            CreateQuestRequest {
+                quest_type_id: 1,
+                title: "t".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        let id = q.id;
+        crate::ops::set_quest_tags(
+            &store,
+            id,
+            vec![
+                "  backend  ".into(),
+                "".into(),
+                "BACKEND".into(), // 다른 case — 중복 아님 (자유 문자열).
+                "   ".into(),
+                "backend".into(), // 중복.
+            ],
+        )
+        .await
+        .unwrap();
+        let rows: Vec<(String,)> = sqlx::query_as(
+            "SELECT tag FROM quest_tags WHERE quest_id = ? ORDER BY tag",
+        )
+        .bind(id)
+        .fetch_all(&store.index_pool)
+        .await
+        .unwrap();
+        let tags: Vec<String> = rows.into_iter().map(|(t,)| t).collect();
+        assert_eq!(tags, vec!["BACKEND".to_string(), "backend".into()]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// set_quest_tags(vec![]) 호출 시 모든 tag 삭제 + frontmatter 의 키 자체 생략.
+    #[tokio::test]
+    async fn set_quest_tags_empty_clears_all() {
+        let (dir, store) = fresh_store("tags-clear").await;
+        let q = crate::ops::create_quest(
+            &store,
+            CreateQuestRequest {
+                quest_type_id: 1,
+                title: "t".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        let id = q.id;
+        crate::ops::set_quest_tags(&store, id, vec!["foo".into()])
+            .await
+            .unwrap();
+        crate::ops::set_quest_tags(&store, id, vec![]).await.unwrap();
+        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM quest_tags WHERE quest_id = ?")
+            .bind(id)
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(n, 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 다른 mutation (status 변경 등) 후에도 tags 보존.
+    #[tokio::test]
+    async fn other_mutations_preserve_tags() {
+        let (dir, store) = fresh_store("tags-preserve").await;
+        let q = crate::ops::create_quest(
+            &store,
+            CreateQuestRequest {
+                quest_type_id: 1,
+                title: "t".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        let id = q.id;
+        crate::ops::set_quest_tags(&store, id, vec!["x".into(), "y".into()])
+            .await
+            .unwrap();
+        // 상태 변경.
+        crate::ops::change_status(
+            &store,
+            id,
+            crate::models::ChangeStatusRequest {
+                status_slug: "in_progress".into(),
+            },
+        )
+        .await
+        .unwrap();
+        // tags 가 DB / 파일 양쪽에 살아있어야.
+        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM quest_tags WHERE quest_id = ?")
+            .bind(id)
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(n, 2);
+        let q = fetch_by_id(&store.index_pool, id).await.unwrap();
+        let qf = crate::repo::QuestFile::read(store.paths.quest_path(&q.quest_id)).unwrap();
+        assert_eq!(qf.frontmatter.tags.len(), 2);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// reindex 가 frontmatter tags → quest_tags 적재.
+    #[tokio::test]
+    async fn reindex_loads_tags_from_frontmatter() {
+        let (dir, store) = fresh_store("tags-reindex").await;
+        let q = crate::ops::create_quest(
+            &store,
+            CreateQuestRequest {
+                quest_type_id: 1,
+                title: "t".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        let id = q.id;
+        crate::ops::set_quest_tags(&store, id, vec!["foo".into(), "bar".into()])
+            .await
+            .unwrap();
+        // cache wipe + reindex.
+        sqlx::query("DELETE FROM quest_tags")
+            .execute(&store.index_pool)
+            .await
+            .unwrap();
+        let report = crate::reindex::reindex(&store).await.unwrap();
+        assert_eq!(report.tags_loaded, 2);
+        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM quest_tags")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(n, 2);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// QuestDetail 의 successors 필드가 채워지는지 (E2E).
     #[tokio::test]
     async fn get_quest_detail_includes_successors() {

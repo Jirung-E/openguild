@@ -1,4 +1,4 @@
-﻿//! Quest 파일 — `.guild/quests/{slug}.md`.
+//! Quest 파일 — `.guild/quests/{slug}.md`.
 //!
 //! 구조:
 //! ```text
@@ -71,6 +71,11 @@ pub struct QuestFrontmatter {
     /// 필수 기한. Home "마감 임박" / "Overdue" 섹션의 기준.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub required_due: Option<String>,
+    /// DEV-068: 자유 태그 — 검색 / 필터링 키워드. 소문자 / kebab-case 권장
+    /// (자유 문자열, 영문 / 한글 모두 허용). 빈 vec / 미존재 시 frontmatter
+    /// 에서 키 자체 생략. 진리원은 본 필드, DB 의 `quest_tags` 는 캐시.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
 }
 
 impl QuestFile {
@@ -211,6 +216,7 @@ mod tests {
             deleted: false,
             desired_due: None,
             required_due: None,
+            tags: vec![],
         }
     }
 

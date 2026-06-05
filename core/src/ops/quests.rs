@@ -1,4 +1,4 @@
-﻿//! Quest mutation orchestration — SQL + file + journal.
+//! Quest mutation orchestration — SQL + file + journal.
 //!
 //! 각 함수는 `&Store` 받고 `AppResult<T>` 반환.
 //! 호출자 (server routes / cli Backend::Local) 가 사용.
@@ -107,6 +107,79 @@ pub async fn set_due_dates(
 
     let quest = sql::set_due_dates(&store.index_pool, id, desired_due, required_due).await?;
     write_quest_file(store, &quest, false).await?;
+    after_mutation(store).await;
+    Ok(quest)
+}
+
+/// DEV-068: 한 quest 의 tags 전체 교체. file frontmatter + DB 캐시 모두 갱신.
+///
+/// 입력 tags 는 trim + 빈 문자열 제거 + 중복 제거 후 stable order 보존
+/// (들어온 순서대로, 같은 tag 의 첫 등장만). 새 tags 가 비면 frontmatter
+/// 에서 키 자체 생략.
+pub async fn set_quest_tags(
+    store: &Store,
+    id: i64,
+    tags: Vec<String>,
+) -> AppResult<QuestRow> {
+    use std::collections::HashSet;
+
+    // 정규화: trim + 빈 거 제거 + 중복 제거 (순서 보존).
+    let mut seen: HashSet<String> = HashSet::new();
+    let normalized: Vec<String> = tags
+        .into_iter()
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+        .filter(|t| seen.insert(t.clone()))
+        .collect();
+
+    let _ = journal::append(
+        &store.journal_pool,
+        "set_quest_tags",
+        &json!({ "id": id, "tags": &normalized }),
+        None::<&serde_json::Value>,
+    )
+    .await
+    .map_err(crate::error::AppError::Internal)?;
+
+    let quest = sql::fetch_by_id(&store.index_pool, id).await?;
+
+    // 1) DB 캐시 갱신 — 트랜잭션 안에서 wipe + INSERT.
+    let mut tx = store
+        .index_pool
+        .begin()
+        .await
+        .map_err(|e| crate::error::AppError::Internal(anyhow::anyhow!("begin tx: {e}")))?;
+    sqlx::query("DELETE FROM quest_tags WHERE quest_id = ?")
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| crate::error::AppError::Internal(anyhow::anyhow!("clear quest_tags: {e}")))?;
+    for tag in &normalized {
+        sqlx::query("INSERT INTO quest_tags (quest_id, tag) VALUES (?, ?)")
+            .bind(id)
+            .bind(tag)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| {
+                crate::error::AppError::Internal(anyhow::anyhow!("insert quest_tags: {e}"))
+            })?;
+    }
+    tx.commit()
+        .await
+        .map_err(|e| crate::error::AppError::Internal(anyhow::anyhow!("commit tx: {e}")))?;
+
+    // 2) 파일 frontmatter 갱신 — write_quest_file 이 existing tags 보존하므로
+    //    여기선 직접 frontmatter 갱신 후 다시 read 해서 강제 sync.
+    //    가장 단순: write_quest_file 한 번 호출하기 전 파일의 tags 를 새 값으로
+    //    덮어쓰기 — 파일 한 번 더 read + write.
+    let path = store.paths.quest_path(&quest.quest_id);
+    if let Ok(mut qf) = crate::repo::QuestFile::read(&path) {
+        qf.frontmatter.tags = normalized.clone();
+        qf.write(&path).map_err(crate::error::AppError::Internal)?;
+    }
+
+    // set_quest_tags 에선 sql:: 함수가 따로 없어 write_quest_file 만으로는
+    // tags 갱신 안 됨 (existing 보존). 그래서 위에서 직접 frontmatter 수정.
     after_mutation(store).await;
     Ok(quest)
 }
@@ -491,6 +564,7 @@ async fn write_quest_file_as_deleted(
         deleted: true,
         desired_due: None,
         required_due: None,
+        tags: vec![],
     };
     let qf = QuestFile {
         frontmatter,
@@ -535,11 +609,20 @@ pub(crate) async fn write_quest_file(
     //   - description_explicit=true → DB 값 그대로 (BUG-012 의 의도).
     //   - false + 파일 존재 + 파일 본문 non-empty → 파일 본문 사용 + DB sync.
     //   - 그 외 → DB 값.
+    // DEV-068: tags 는 frontmatter 가 진리원. write_quest_file 이 매 mutation
+    // 마다 호출되므로 기존 파일의 tags 를 보존 (없으면 빈 vec). description
+    // 보존 패턴과 동일.
+    let existing_file = QuestFile::read(&path).ok();
+    let existing_tags: Vec<String> = existing_file
+        .as_ref()
+        .map(|q| q.frontmatter.tags.clone())
+        .unwrap_or_default();
+
     let description = if description_explicit {
         quest.description.clone().unwrap_or_default()
     } else {
-        match QuestFile::read(&path) {
-            Ok(existing) if !existing.description.trim().is_empty() => {
+        match &existing_file {
+            Some(existing) if !existing.description.trim().is_empty() => {
                 // 파일 본문이 DB 와 다르면 DB 도 sync.
                 let db_desc = quest.description.as_deref().unwrap_or("");
                 if existing.description != db_desc {
@@ -549,7 +632,7 @@ pub(crate) async fn write_quest_file(
                         .execute(pool)
                         .await?;
                 }
-                existing.description
+                existing.description.clone()
             }
             _ => quest.description.clone().unwrap_or_default(),
         }
@@ -572,6 +655,8 @@ pub(crate) async fn write_quest_file(
         // DEV-076: DB → 파일 sync. quest 의 due 필드 그대로 propagate.
         desired_due: quest.desired_due.clone(),
         required_due: quest.required_due.clone(),
+        // DEV-068: 기존 frontmatter 의 tags 그대로 보존. set_tags 는 별도 함수.
+        tags: existing_tags,
     };
 
     let qf = QuestFile {

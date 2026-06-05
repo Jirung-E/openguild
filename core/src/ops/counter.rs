@@ -1,4 +1,4 @@
-﻿//! Counter 정합성 보정 — file (type.toml) + SQL (index.db.quest_counters) 동시 갱신.
+//! Counter 정합성 보정 — file (type.toml) + SQL (index.db.quest_counters) 동시 갱신.
 //!
 //! 두 가지 drift 를 모두 잡는다 (BUG-003 시나리오):
 //! 1. **file drift** — `type.toml [counter] last_number < 실제 max quest number`.
@@ -171,6 +171,7 @@ mod tests {
                 deleted: false,
                 desired_due: None,
                 required_due: None,
+                tags: vec![],
             },
             description: String::new(),
             auto_block: String::new(),

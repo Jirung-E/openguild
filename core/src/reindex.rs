@@ -1,4 +1,4 @@
-﻿//! `.guild/quests/*.md` + `.guild/types/*.toml` + `.guild/statuses/*.toml` 파일들로부터
+//! `.guild/quests/*.md` + `.guild/types/*.toml` + `.guild/statuses/*.toml` 파일들로부터
 //! `.guild/index.db` 의 캐시 내용을 재구축.
 //!
 //! 사용 시나리오:
@@ -34,6 +34,8 @@ pub struct ReindexReport {
     pub comments_loaded: usize,
     /// DEV-102: sibling `{slug}.memo.md` 의 quest 수 (file 하나당 row 1개).
     pub memos_loaded: usize,
+    /// DEV-068: frontmatter tags 에서 적재된 tag 수 (quest 전체 합산, 중복 dedupe 후).
+    pub tags_loaded: usize,
     /// 파싱 / 무결성 실패로 skip 된 파일 (경로 + 사유).
     pub skipped: Vec<(String, String)>,
 }
@@ -86,6 +88,8 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
     // DEV-102: 댓글 / 메모 캐시도 wipe — sibling 파일로부터 재구축.
     sqlx::query("DELETE FROM quest_comments").execute(&mut *tx).await?;
     sqlx::query("DELETE FROM quest_memos").execute(&mut *tx).await?;
+    // DEV-068: 태그 캐시도 wipe — frontmatter 의 tags 배열로부터 재구축.
+    sqlx::query("DELETE FROM quest_tags").execute(&mut *tx).await?;
 
     // 2. types — id 는 파일 정렬 순.
     let type_paths = repo_fs::list_with_extension(paths.types_dir(), "toml")
@@ -242,11 +246,31 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
         report.quests_loaded += 1;
     }
 
-    // 5. dependencies — 각 quest 의 prerequisites 에서.
+    // 5. dependencies — 각 quest 의 prerequisites 에서. DEV-068: 같은 loop 에서
+    //    tags 도 적재 (per-quest 작업 묶음).
     for (_, qf) in &quest_files {
         let Some(qid) = slug_to_id.get(&qf.frontmatter.quest_id).copied() else {
             continue;
         };
+
+        // DEV-068: tags — frontmatter 의 tags 배열 → quest_tags. 중복은
+        // PRIMARY KEY (quest_id, tag) 가 막아주지만 정렬 안정성 위해
+        // dedupe 후 INSERT OR IGNORE.
+        for tag in &qf.frontmatter.tags {
+            let normalized = tag.trim();
+            if normalized.is_empty() {
+                continue;
+            }
+            sqlx::query(
+                "INSERT OR IGNORE INTO quest_tags (quest_id, tag) VALUES (?, ?)",
+            )
+            .bind(qid)
+            .bind(normalized)
+            .execute(&mut *tx)
+            .await?;
+            report.tags_loaded += 1;
+        }
+
         for pslug in &qf.frontmatter.prerequisites {
             let Some(pid) = slug_to_id.get(pslug).copied() else {
                 continue;
@@ -536,6 +560,7 @@ mod tests {
                 deleted: false,
                 desired_due: None,
                 required_due: None,
+                tags: vec![],
             },
             description: String::new(),
             auto_block: String::new(),
@@ -583,6 +608,7 @@ mod tests {
                     deleted: false,
                     desired_due: None,
                     required_due: None,
+                    tags: vec![],
                 },
                 description: String::new(),
                 auto_block: String::new(),
@@ -693,6 +719,7 @@ mod tests {
                 deleted: false,
                 desired_due: None,
                 required_due: None,
+                tags: vec![],
             },
             description: String::new(),
             auto_block: String::new(),
@@ -764,6 +791,7 @@ mod tests {
                 deleted: false,
                 desired_due: None,
                 required_due: None,
+                tags: vec![],
             },
             description: "body".into(),
             auto_block: String::new(),
@@ -783,6 +811,7 @@ mod tests {
                 deleted: false,
                 desired_due: None,
                 required_due: None,
+                tags: vec![],
             },
             description: String::new(),
             auto_block: String::new(),
@@ -847,6 +876,7 @@ mod tests {
                 deleted: false,
                 desired_due: None,
                 required_due: None,
+                tags: vec![],
             },
             description: String::new(),
             auto_block: String::new(),
@@ -883,6 +913,7 @@ mod tests {
                 deleted: false,
                 desired_due: None,
                 required_due: None,
+                tags: vec![],
             },
             description: String::new(),
             auto_block: String::new(),
@@ -949,6 +980,7 @@ mod tests {
                 deleted: false,
                 desired_due: None,
                 required_due: None,
+                tags: vec![],
             },
             description: String::new(),
             auto_block: String::new(),
@@ -994,6 +1026,7 @@ mod tests {
                 deleted: false,
                 desired_due: None,
                 required_due: None,
+                tags: vec![],
             },
             description: String::new(),
             auto_block: String::new(),
@@ -1056,6 +1089,7 @@ mod tests {
                 deleted: false,
                 desired_due: None,
                 required_due: None,
+                tags: vec![],
             },
             description: String::new(),
             auto_block: String::new(),
@@ -1105,6 +1139,7 @@ mod tests {
                 deleted: false,
                 desired_due: None,
                 required_due: None,
+                tags: vec![],
             },
             description: String::new(),
             auto_block: String::new(),
@@ -1124,6 +1159,7 @@ mod tests {
                 deleted: false,
                 desired_due: None,
                 required_due: None,
+                tags: vec![],
             },
             description: String::new(),
             auto_block: String::new(),

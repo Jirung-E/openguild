@@ -26,5 +26,6 @@ pub use meta::{
 };
 pub use quests::{
     add_prerequisite, change_parent, change_quest_type, change_status, create_quest,
-    delete_quest, remove_prerequisite, restore_quest, set_due_dates, update_quest,
+    delete_quest, remove_prerequisite, restore_quest, set_due_dates, set_quest_tags,
+    update_quest,
 };
