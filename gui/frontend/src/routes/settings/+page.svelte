@@ -16,6 +16,14 @@
 		downloadAndRelaunch,
 		dismissUpdate
 	} from '$lib/api/updater';
+	import {
+		uiScale,
+		setUiScale,
+		resetUiScale,
+		MIN_SCALE,
+		MAX_SCALE,
+		DEFAULT_SCALE
+	} from '$lib/stores/uiScale';
 
 	// floating toast 닫기 — updateState 를 idle 로.
 	const dismissCheck = () => dismissUpdate();
@@ -47,8 +55,9 @@
 		<h1>설정</h1>
 		<nav>
 			<!-- DEV-086: '업데이트' 탭 제거 — 버튼은 정보 탭의 버전 아래로. 현재는
-			     '정보' 만. 추후 테마 / 언어 / 길드 규칙 등 추가 시 여기 나열. -->
-			<button class="tab active">정보</button>
+			     '정보' 만. 추후 테마 / 언어 / 길드 규칙 등 추가 시 여기 나열.
+			     DEV-101: 단일 페이지 내 섹션 (탭 분리 X). -->
+			<button class="tab active">정보 / 표시</button>
 		</nav>
 	</aside>
 
@@ -74,6 +83,33 @@
 			</dd>
 			<dt>저장소</dt>
 			<dd><a href={repoUrl} target="_blank" rel="noreferrer noopener">{repoUrl}</a></dd>
+		</dl>
+
+		<!-- DEV-101: UI 크기 (rem scale) — 슬라이더 변경 시 즉시 반영. -->
+		<h2 class="section">표시</h2>
+		<dl class="info-grid">
+			<dt>UI 크기</dt>
+			<dd class="ui-scale">
+				<div class="scale-row">
+					<input
+						type="range"
+						min={MIN_SCALE}
+						max={MAX_SCALE}
+						step="0.1"
+						value={$uiScale}
+						oninput={(e) => setUiScale(Number.parseFloat(e.currentTarget.value))}
+						aria-label="UI 크기"
+					/>
+					<span class="scale-val">{Math.round($uiScale * 100)}%</span>
+					<button
+						class="btn-reset"
+						onclick={resetUiScale}
+						disabled={$uiScale === DEFAULT_SCALE}
+						title="100% 로 초기화"
+					>초기화</button>
+				</div>
+				<p class="scale-hint">전체 UI 의 텍스트 / 여백이 비례 확대·축소됩니다 (50%~200%). 즉시 반영 + 자동 저장.</p>
+			</dd>
 		</dl>
 	</section>
 </div>
@@ -232,4 +268,50 @@
 		margin: 0.4rem 0 0;
 	}
 	.upd-toast .btn-primary { margin-top: 0.5rem; }
+
+	/* DEV-101: 표시 섹션 — UI 크기 슬라이더. */
+	.panel h2.section {
+		margin: 1.75rem 0 1rem;
+		padding-top: 1rem;
+		border-top: 1px solid #21262d;
+	}
+	.ui-scale .scale-row {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		width: 100%;
+		max-width: 24rem;
+	}
+	.ui-scale input[type='range'] {
+		flex: 1;
+		accent-color: #58a6ff;
+	}
+	.ui-scale .scale-val {
+		min-width: 3.5rem;
+		font-variant-numeric: tabular-nums;
+		color: #c9d1d9;
+		font-size: 0.875rem;
+	}
+	.ui-scale .btn-reset {
+		padding: 0.2rem 0.6rem;
+		background: transparent;
+		border: 1px solid #30363d;
+		border-radius: 6px;
+		color: #c9d1d9;
+		font-size: 0.8rem;
+		cursor: pointer;
+	}
+	.ui-scale .btn-reset:hover:not(:disabled) {
+		background: #161b22;
+		border-color: #6e7681;
+	}
+	.ui-scale .btn-reset:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+	.ui-scale .scale-hint {
+		font-size: 0.75rem;
+		color: #6e7681;
+		margin: 0.5rem 0 0;
+	}
 </style>

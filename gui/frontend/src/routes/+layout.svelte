@@ -5,6 +5,7 @@
 	import UpdateBanner from '$lib/components/UpdateBanner.svelte';
 	import SchemaAheadBanner from '$lib/components/SchemaAheadBanner.svelte';
 	import { detectEnvironment } from '$lib/api/transport';
+	import { uiScale, applyUiScaleToDocument } from '$lib/stores/uiScale';
 	import '$lib/styles/global.css';
 
 	let { children } = $props();
@@ -12,6 +13,14 @@
 	// DEV-052 후속: /welcome 라우트에선 Nav (Board/List/Admin/+New Quest) 숨김.
 	// 길드 컨텍스트가 없는 상태에서 의미 없는 액션 노출 방지.
 	let showNav = $derived($page.url.pathname !== '/welcome');
+
+	// DEV-101: UI 크기 — root font-size scale 영속 store 의 현재 값을 매 변경마다
+	// `<html>` 에 반영. HTTP / Tauri 양쪽 동일 (rem 기반 layout).
+	onMount(() => {
+		const unsub = uiScale.subscribe(applyUiScaleToDocument);
+		// 첫 mount 시 한 번 더 — onMount 보다 store 가 먼저 init 됐다면 noop.
+		return () => unsub();
+	});
 
 	// BUG-031 / BUG-033: Tauri 데스크탑 앱에서 웹 기본 우클릭 메뉴
 	// (Inspect / Reload / Back / Forward) 노출 차단.
