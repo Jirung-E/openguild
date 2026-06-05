@@ -51,7 +51,15 @@ enum Command {
     /// 수동 snapshot 1회 (snapshot 의 alias, 호환성 유지)
     Backup,
     /// 길드 메타 / DB 경로 / 백업 현황
-    Info,
+    Info {
+        // DEV-018: doc 에 quest_id prefix 누출 금지 (BUG-016).
+        /// 1 줄 요약만 (`guild | quests | schema | snapshots`).
+        #[arg(long, conflicts_with = "detailed")]
+        brief: bool,
+        /// 추가 진단 — 마이그레이션 history + integrity_check + drift.
+        #[arg(long)]
+        detailed: bool,
+    },
     /// legacy guild.db → .guild/quests/*.md 파일 진리원 구조로 일회성 이전
     MigrateToFiles,
     /// .guild/quests/*.md 파일들로부터 index.db 캐시 재구축 (외부 편집 / 손상 후 복구)
@@ -98,7 +106,7 @@ fn main() -> Result<()> {
     match cli.command {
         Command::Host { port } => rt.block_on(run_host(port)),
         Command::Backup => rt.block_on(run_backup()),
-        Command::Info => rt.block_on(run_info()),
+        Command::Info { brief, detailed } => rt.block_on(run_info(brief, detailed)),
         Command::MigrateToFiles => rt.block_on(run_migrate_to_files()),
         Command::Reindex => rt.block_on(run_reindex()),
         Command::Snapshot => rt.block_on(run_snapshot()),
@@ -439,7 +447,7 @@ async fn run_reindex() -> Result<()> {
     Ok(())
 }
 
-async fn run_info() -> Result<()> {
+async fn run_info(brief: bool, detailed: bool) -> Result<()> {
     let ctx = load_guild()?;
 
     let port: u16 = std::env::var("PORT")
@@ -520,7 +528,21 @@ async fn run_info() -> Result<()> {
         0
     };
 
-    // ── 출력 ──
+    // DEV-018: --brief 는 1 줄 요약 (스크립트 / status bar 친화).
+    if brief {
+        println!(
+            "guild={} quests={}/{} schema={} snapshots={} journal={}",
+            ctx.guild.name,
+            quests_alive,
+            quests_alive + quests_deleted,
+            schema_version.as_deref().unwrap_or("(none)"),
+            snapshot_count,
+            journal_count,
+        );
+        return Ok(());
+    }
+
+    // ── 출력 (기본) ──
     println!("guild   : {}  (v{}, created {})", ctx.guild.name, ctx.guild.version, ctx.guild.created_at);
     println!("path    : {}", ctx.abs_path.display());
     println!();
@@ -528,7 +550,7 @@ async fn run_info() -> Result<()> {
     println!("static  : {static_state}");
     println!();
     println!("db      : {} ({} bytes)", db_file.display(), db_size);
-    if let Some(mig) = schema_version {
+    if let Some(mig) = schema_version.as_deref() {
         println!("schema  : {mig}");
     } else {
         println!("schema  : (db not initialized)");
@@ -542,6 +564,78 @@ async fn run_info() -> Result<()> {
         latest_snapshot.as_deref().unwrap_or("(none)")
     );
     println!("journal : {journal_count} ops since last snapshot");
+
+    // DEV-018: --detailed 는 추가 진단 — 마이그레이션 history + integrity_check
+    // + drift 검사. host 시작 전 systemd timer / cron 으로 정기 점검 시 활용.
+    if detailed {
+        println!();
+        println!("=== migrations (history) ===");
+        if db_file.exists() {
+            let store = openguild_core::Store::open(&ctx.guild_path).await?;
+            let pool = &store.index_pool;
+            let migs: Vec<(i64, String, i64)> = sqlx::query_as(
+                "SELECT version, description, success
+                 FROM _sqlx_migrations ORDER BY version",
+            )
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default();
+            for (v, desc, ok) in &migs {
+                let mark = if *ok == 1 { "✓" } else { "✗" };
+                println!("  {mark} {v:04} {desc}");
+            }
+            if migs.is_empty() {
+                println!("  (none — db not migrated)");
+            }
+
+            println!();
+            println!("=== integrity_check ===");
+            let check: Vec<(String,)> = sqlx::query_as("PRAGMA integrity_check")
+                .fetch_all(pool)
+                .await
+                .unwrap_or_default();
+            for (row,) in &check {
+                println!("  {row}");
+            }
+            if check.is_empty() {
+                println!("  (no output)");
+            }
+
+            println!();
+            println!("=== drift ===");
+            match openguild_core::drift::detect_drift(&store).await {
+                Ok(report) => {
+                    println!(
+                        "  fresh files     : {} ({:?})",
+                        report.fresh_files.len(),
+                        report.fresh_files
+                    );
+                    println!(
+                        "  missing in index: {} ({:?})",
+                        report.missing_in_index.len(),
+                        report.missing_in_index
+                    );
+                    println!(
+                        "  stale in index  : {} ({:?})",
+                        report.stale_in_index.len(),
+                        report.stale_in_index
+                    );
+                    println!(
+                        "  fresh siblings  : {} ({:?})",
+                        report.fresh_siblings.len(),
+                        report.fresh_siblings
+                    );
+                    println!(
+                        "  clean           : {}",
+                        if report.is_clean() { "yes" } else { "no — run check-drift --resync" }
+                    );
+                }
+                Err(e) => println!("  drift 검사 실패: {e:#}"),
+            }
+        } else {
+            println!("  (db not initialized)");
+        }
+    }
 
     Ok(())
 }
@@ -578,7 +672,40 @@ mod cli_tests {
     #[test]
     fn parse_info() {
         let cli = Cli::try_parse_from(["openguild-server", "info"]).unwrap();
-        assert!(matches!(cli.command, Command::Info));
+        match cli.command {
+            Command::Info { brief, detailed } => {
+                assert!(!brief);
+                assert!(!detailed);
+            }
+            _ => panic!("expected Info"),
+        }
+    }
+
+    /// DEV-018: --brief 와 --detailed 가 각각 인식, conflicts 동작.
+    #[test]
+    fn parse_info_with_brief_and_detailed_flags() {
+        let cli = Cli::try_parse_from(["openguild-server", "info", "--brief"]).unwrap();
+        match cli.command {
+            Command::Info { brief, detailed } => {
+                assert!(brief);
+                assert!(!detailed);
+            }
+            _ => panic!("expected Info"),
+        }
+
+        let cli = Cli::try_parse_from(["openguild-server", "info", "--detailed"]).unwrap();
+        match cli.command {
+            Command::Info { brief, detailed } => {
+                assert!(!brief);
+                assert!(detailed);
+            }
+            _ => panic!("expected Info"),
+        }
+
+        // 두 flag 동시 지정 — conflicts_with 로 에러.
+        let err = Cli::try_parse_from(["openguild-server", "info", "--brief", "--detailed"])
+            .unwrap_err();
+        assert!(err.kind() == clap::error::ErrorKind::ArgumentConflict);
     }
 
     #[test]
@@ -680,7 +807,10 @@ mod helper_tests {
             .build()
             .unwrap();
         with_guild_env(&dir, || {
-            rt.block_on(run_info()).expect("info ok");
+            // DEV-018: 세 가지 mode 모두 panic 안 해야.
+            rt.block_on(run_info(false, false)).expect("info default ok");
+            rt.block_on(run_info(true, false)).expect("info --brief ok");
+            rt.block_on(run_info(false, true)).expect("info --detailed ok");
         });
         let _ = std::fs::remove_dir_all(&dir);
     }
