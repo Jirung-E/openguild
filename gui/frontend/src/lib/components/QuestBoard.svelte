@@ -1174,11 +1174,15 @@
 			clusters.forEach((c) => c.sort((a, b) => slugOf(a).localeCompare(slugOf(b))));
 			clusters.sort((a, b) => slugOf(a[0]).localeCompare(slugOf(b[0])));
 
-			// 5) cluster 별 배치 — lane 별 최소 직사각형
-			//   cluster 의 노드를 lane 별로 묶고, 각 lane 안에서 lane cols 가로로 wrap
-			//   cluster 가 차지하는 row 수 = max over lanes (ceil(N_lane / lane cols))
-			//   → cluster AABB 영역 = (참여 lane 들의 X 범위) × (cluster height)
-			//   → cluster 사이 1 row gap 으로 Y 분리
+			// 5) cluster 별 배치 — DEV-077: lane 겹침 없으면 같은 y 공유 가능.
+			//
+			// 이전: globalRow 가 순차 증가 — cluster A 가 lane 1,2 만 써도 cluster B
+			//       는 무조건 그 아래 row 부터. 빈 공간 낭비.
+			// 이후: laneNextRow[li] 로 각 lane 의 "다음 빈 row" 추적. cluster 시작 row
+			//       = max(laneNextRow[참여 lane 들]). 다른 lane 만 사용하면 더 위에 들어감.
+			//
+			// 모든 lane 의 초기 row = globalRow (isolated 가 차지한 영역 다음).
+			const laneNextRow = new Map<number, number>();
 			clusters.forEach((cluster, ci) => {
 				const byLane = new Map<number, number[]>();
 				for (const qid of cluster) {
@@ -1188,22 +1192,29 @@
 					arr.push(qid);
 					byLane.set(li, arr);
 				}
+				// cluster 시작 row = 참여 lane 들의 next-row 의 max.
+				let startRow = globalRow;
+				for (const li of byLane.keys()) {
+					startRow = Math.max(startRow, laneNextRow.get(li) ?? globalRow);
+				}
+				// 각 lane 안 cluster height.
 				let clusterHeight = 1;
 				for (const [li, ids] of byLane) {
 					const lcols = laneCols[li] ?? 2;
 					clusterHeight = Math.max(clusterHeight, Math.ceil(ids.length / lcols));
 				}
+				// 배치 + 참여 lane 들의 next-row 갱신 (+1 row gap 으로 시각 분리).
 				for (const [li, ids] of byLane) {
 					ids.sort((a, b) => slugOf(a).localeCompare(slugOf(b)));
 					const lcols = laneCols[li] ?? 2;
 					ids.forEach((qid, i) => {
 						const col = i % lcols;
-						const r = globalRow + Math.floor(i / lcols);
+						const r = startRow + Math.floor(i / lcols);
 						place(qid, col, r);
 					});
+					laneNextRow.set(li, startRow + clusterHeight + 1);
 				}
-				globalRow += clusterHeight;
-				if (ci < clusters.length - 1) globalRow += 1;
+				void ci; // ci 는 더 이상 순차 globalRow 증가에 사용 안 함.
 			});
 
 			if (batchItems.length > 0) {
