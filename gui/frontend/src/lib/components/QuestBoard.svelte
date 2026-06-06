@@ -1631,6 +1631,9 @@
 			// prefix 확정 후 가벼운 영속 상태 즉시 로드 (init 이전 — UI 깜빡임 최소화).
 			hideSettings = loadHideSettings();
 			globalCols = loadGlobalCols();
+			// DEV-105 fix4: collapsed lane 상태 복원이 누락되어 새로고침 시
+			// 모든 lane 이 펼쳐진 상태로 초기화되던 버그.
+			collapsedLanes = loadCollapsedLanes();
 			try {
 				gridSnap = localStorage.getItem(gk('gridSnap')) === 'true';
 				// DEV-073: 같이 복원.
@@ -2627,11 +2630,16 @@
 		transition: opacity 0.15s;
 	}
 	:global(.lane-label:hover) { opacity: 0.75; }
-	/* DEV-105: collapsed 시 90도 회전 (세로) + 글자 한 줄 압축. */
+	/* DEV-105: collapsed 시 90도 회전 (세로) + 글자 한 줄 압축.
+	   DEV-105 fix4: max-height 60px 가 lane-hdr (38px) 보다 커서 긴 이름이 위로
+	   삐져나가 잘림. 헤더 안에 들어가도록 28px 로 축소 + ellipsis. */
 	:global(.lane-label.collapsed) {
 		writing-mode: vertical-rl;
 		text-orientation: mixed;
-		max-height: 60px;
+		max-height: 28px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	:global(.lane-cols-sel) {
 		flex-shrink: 0; pointer-events: auto;
