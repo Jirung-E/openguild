@@ -97,9 +97,9 @@
 	--btn-warning-border: #d4a72c;
 	--btn-warning-text: #6f5400;
 
-	/* DEV-074 fix8: 라이트는 base 가 거의 흰색이라 22% 면 분홍이 두드러져 묵직.
-	   tint 10% + base 를 --bg (#ffffff) 로 fade — 깨끗한 흰 카드에 옅은 wash. */
-	--card-hl-strength: 10%;
+	/* DEV-074 fix8 / fix9: 라이트 — 흰 base 에 wash. fix8 의 10% 가 너무 옅음
+	   사용자 피드백 → 20% 로 ↑. base 는 그대로 --bg (#ffffff). */
+	--card-hl-strength: 20%;
 	--card-hl-base: var(--bg);
 	--card-hl-fade: 70%;
 }
