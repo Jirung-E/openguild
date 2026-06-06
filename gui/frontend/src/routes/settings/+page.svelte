@@ -24,14 +24,29 @@
 		MAX_SCALE,
 		DEFAULT_SCALE
 	} from '$lib/stores/uiScale';
+	import {
+		contentWidth,
+		setContentWidth,
+		resetContentWidth,
+		MIN_CONTENT_WIDTH,
+		MAX_CONTENT_WIDTH,
+		DEFAULT_CONTENT_WIDTH
+	} from '$lib/stores/contentWidth';
 	import { theme, setTheme, type ThemeChoice } from '$lib/stores/theme';
+	// DEV-101 fix2: native input[type=range] 의 drag 문제 (값 재바인딩 →
+	// thumb 튐, UI scale 의 자기 자신 변형 → 손 놓침) 회피한 델타 기반 슬라이더.
+	import CustomSlider from '$lib/components/CustomSlider.svelte';
 
-	// DEV-101 fix: drag 중에 font-size 변경되면 슬라이더 자체 위치 / 크기가
-	// 따라 변해 사용자 마우스가 thumb 을 놓침. oninput 은 미리보기 % 만 갱신,
-	// onchange (mouseup) 에서 실 적용. previewScale 이 store 와 분리.
+	// DEV-101 fix2: 슬라이더는 이제 CustomSlider 가 내부에서 preview 관리.
+	// onInput 마다 미리보기 % 만 갱신, onChange (pointerup) 에서 store 반영.
 	let previewScale = $state<number | null>(null);
 	function displayScale(): number {
 		return previewScale ?? $uiScale;
+	}
+
+	let previewContentWidth = $state<number | null>(null);
+	function displayContentWidth(): number {
+		return previewContentWidth ?? $contentWidth;
 	}
 
 	// floating toast 닫기 — updateState 를 idle 로.
@@ -100,19 +115,17 @@
 			<dt>UI 크기</dt>
 			<dd class="ui-scale">
 				<div class="scale-row">
-					<input
-						type="range"
+					<CustomSlider
+						value={$uiScale}
 						min={MIN_SCALE}
 						max={MAX_SCALE}
-						step="0.1"
-						value={$uiScale}
-						oninput={(e) => (previewScale = Number.parseFloat(e.currentTarget.value))}
-						onchange={(e) => {
-							const v = Number.parseFloat(e.currentTarget.value);
+						step={0.05}
+						ariaLabel="UI 크기"
+						onInput={(v) => (previewScale = v)}
+						onChange={(v) => {
 							previewScale = null;
 							setUiScale(v);
 						}}
-						aria-label="UI 크기"
 					/>
 					<span class="scale-val">{Math.round(displayScale() * 100)}%</span>
 					<button
@@ -122,7 +135,36 @@
 						title="100% 로 초기화"
 					>초기화</button>
 				</div>
-				<p class="scale-hint">전체 UI 의 텍스트 / 여백이 비례 확대·축소됩니다 (50%~200%). 슬라이더에서 손을 떼면 적용 (drag 중엔 미리보기 %만).</p>
+				<p class="scale-hint">전체 UI 의 텍스트 / 여백이 비례 확대·축소됩니다 (50%~200%). drag 중에는 미리보기만, 손 떼면 적용.</p>
+			</dd>
+
+			<!-- DEV-101 fix2: 컨텐츠 표시 영역 폭 — UI scale 과 별개. -->
+			<dt>컨텐츠 폭</dt>
+			<dd class="ui-scale">
+				<div class="scale-row">
+					<CustomSlider
+						value={$contentWidth}
+						min={MIN_CONTENT_WIDTH}
+						max={MAX_CONTENT_WIDTH}
+						step={20}
+						ariaLabel="컨텐츠 폭"
+						onInput={(v) => (previewContentWidth = v)}
+						onChange={(v) => {
+							previewContentWidth = null;
+							setContentWidth(v);
+						}}
+					/>
+					<span class="scale-val">{displayContentWidth()} px</span>
+					<button
+						class="btn-reset"
+						onclick={resetContentWidth}
+						disabled={$contentWidth === DEFAULT_CONTENT_WIDTH}
+						title="기본 ({DEFAULT_CONTENT_WIDTH}px) 으로 초기화"
+					>초기화</button>
+				</div>
+				<p class="scale-hint">
+					페이지의 좌우 안전 영역 — 와이드 모니터에서 더 넓게 사용. 범위 {MIN_CONTENT_WIDTH}~{MAX_CONTENT_WIDTH}px.
+				</p>
 			</dd>
 
 			<!-- DEV-074: 테마 (Dark / Light / System). -->
@@ -315,10 +357,6 @@
 		gap: 0.75rem;
 		width: 100%;
 		max-width: 24rem;
-	}
-	.ui-scale input[type='range'] {
-		flex: 1;
-		accent-color: var(--accent);
 	}
 	.ui-scale .scale-val {
 		min-width: 3.5rem;

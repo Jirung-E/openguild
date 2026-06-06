@@ -347,7 +347,7 @@
 <style>
 	.page {
 		padding: 1.25rem 1.5rem 2rem;
-		max-width: 1200px;
+		max-width: var(--content-max-width, 1200px);
 		margin: 0 auto;
 	}
 	.layout {

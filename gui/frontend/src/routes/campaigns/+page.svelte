@@ -126,7 +126,7 @@
 </div>
 
 <style>
-	.page { padding: 1.25rem 1.5rem; max-width: 1100px; margin: 0 auto; }
+	.page { padding: 1.25rem 1.5rem; max-width: var(--content-max-width, 1100px); margin: 0 auto; }
 	.header {
 		display: flex;
 		align-items: center;

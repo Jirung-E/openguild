@@ -483,7 +483,7 @@
 {/if}
 
 <style>
-	.page { padding: 1.25rem 1.5rem; max-width: 880px; margin: 0 auto; }
+	.page { padding: 1.25rem 1.5rem; max-width: var(--content-max-width, 880px); margin: 0 auto; }
 	.top {
 		display: flex;
 		align-items: center;

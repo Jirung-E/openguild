@@ -6,6 +6,7 @@
 	import SchemaAheadBanner from '$lib/components/SchemaAheadBanner.svelte';
 	import { detectEnvironment } from '$lib/api/transport';
 	import { uiScale, applyUiScaleToDocument } from '$lib/stores/uiScale';
+	import { contentWidth } from '$lib/stores/contentWidth';
 	import {
 		theme,
 		applyThemeToDocument,
@@ -26,6 +27,17 @@
 	onMount(() => {
 		const unsub = uiScale.subscribe(applyUiScaleToDocument);
 		// 첫 mount 시 한 번 더 — onMount 보다 store 가 먼저 init 됐다면 noop.
+		return () => unsub();
+	});
+
+	// DEV-101 fix2: 컨텐츠 영역 폭 — `<html>` 의 `--content-max-width` 토큰 갱신.
+	// 페이지 max-width: var(--content-max-width, …) 사용처가 자동 반응.
+	onMount(() => {
+		const unsub = contentWidth.subscribe((w) => {
+			if (typeof document !== 'undefined') {
+				document.documentElement.style.setProperty('--content-max-width', `${w}px`);
+			}
+		});
 		return () => unsub();
 	});
 

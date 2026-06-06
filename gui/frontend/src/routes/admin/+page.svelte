@@ -234,7 +234,7 @@
 
 <style>
 	.page {
-		max-width: 900px;
+		max-width: var(--content-max-width, 900px);
 		margin: 0 auto;
 		padding: 2rem 1.5rem;
 		color: var(--text);

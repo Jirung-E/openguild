@@ -350,7 +350,7 @@
 <style>
 	.home {
 		padding: 1.25rem 1.5rem 2rem;
-		max-width: 1100px;
+		max-width: var(--content-max-width, 1100px);
 		margin: 0 auto;
 	}
 	.state { padding: 2rem 0; color: var(--text-muted); font-size: 0.875rem; }

@@ -1082,7 +1082,7 @@
 
 <style>
 	.container {
-		max-width: 800px;
+		max-width: var(--content-max-width, 800px);
 		margin: 0 auto;
 		padding: 1.5rem;
 	}
