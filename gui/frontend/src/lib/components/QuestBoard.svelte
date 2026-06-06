@@ -621,6 +621,46 @@
 		}
 	}
 
+	// DEV-105 (partial): lane 접기 — collapsed 시 그 lane 의 노드 hide + label
+	// 90도 회전. lane 폭 자체 축소는 미지원 (LANE_W 상수 retrofit 필요 — 별도).
+	let collapsedLanes = $state(new Set<string>());
+	function loadCollapsedLanes(): Set<string> {
+		try {
+			const raw = localStorage.getItem(gk('collapsedLanes'));
+			if (!raw) return new Set();
+			const arr = JSON.parse(raw);
+			return new Set(Array.isArray(arr) ? arr.filter((s) => typeof s === 'string') : []);
+		} catch {
+			return new Set();
+		}
+	}
+	function saveCollapsedLanes() {
+		try {
+			localStorage.setItem(gk('collapsedLanes'), JSON.stringify([...collapsedLanes]));
+		} catch {
+			/* 무시 */
+		}
+	}
+	function toggleLaneCollapsed(slug: string) {
+		const next = new Set(collapsedLanes);
+		if (next.has(slug)) next.delete(slug);
+		else next.add(slug);
+		collapsedLanes = next;
+		saveCollapsedLanes();
+		// 그 lane 의 노드 hide/show.
+		if (cy) {
+			const isCollapsed = next.has(slug);
+			cy.nodes().forEach((n) => {
+				const sid = n.data('statusId') as number;
+				if (!sid) return;
+				const s = sorted.find((x) => x.id === sid);
+				if (s?.slug === slug) {
+					n.style('display', isCollapsed ? 'none' : 'element');
+				}
+			});
+		}
+	}
+
 	// DEV-059: 사용자 정의 lane 순서 — '보여지는 순서' 만. 파일 / DB / 다른 quest
 	// 영향 X. status 추가/삭제는 sort_order 따라 자동 끝에 append (loadFromData
 	// 의 ordered + remaining 패턴).
@@ -1602,10 +1642,18 @@
 		sorted.forEach((s, li) => {
 			const hdr = document.createElement('div');
 			hdr.className = 'lane-hdr';
-			const label = document.createElement('span');
+			const label = document.createElement('button');
 			label.className = 'lane-label';
 			label.textContent = s.name_en;
 			label.style.color = s.color;
+			// DEV-105: 클릭으로 collapse 토글. label 이 button — keyboard / 접근성 OK.
+			label.type = 'button';
+			label.title = '레인 접기/펼치기';
+			if (collapsedLanes.has(s.slug)) label.classList.add('collapsed');
+			label.onclick = () => {
+				toggleLaneCollapsed(s.slug);
+				label.classList.toggle('collapsed', collapsedLanes.has(s.slug));
+			};
 			const sel = document.createElement('select');
 			sel.className = 'lane-cols-sel';
 			sel.title = '이 레인 정렬 열 수';
@@ -2474,7 +2522,18 @@
 	:global(.lane-label) {
 		flex: 1; font-size: 12px; font-weight: bold;
 		white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-		pointer-events: none;
+		/* DEV-105: button 으로 변경 — 기본 button 스타일 reset. */
+		background: none; border: none; padding: 0; cursor: pointer;
+		text-align: left;
+		pointer-events: auto;
+		transition: opacity 0.15s;
+	}
+	:global(.lane-label:hover) { opacity: 0.75; }
+	/* DEV-105: collapsed 시 90도 회전 (세로) + 글자 한 줄 압축. */
+	:global(.lane-label.collapsed) {
+		writing-mode: vertical-rl;
+		text-orientation: mixed;
+		max-height: 60px;
 	}
 	:global(.lane-cols-sel) {
 		flex-shrink: 0; pointer-events: auto;
