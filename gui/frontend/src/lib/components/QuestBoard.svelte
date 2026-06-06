@@ -212,7 +212,8 @@
 	let lanesEl: HTMLDivElement;
 	let headersEl: HTMLDivElement;
 	let cy: Core | null = null;
-	let sorted: QuestStatus[] = [];
+	// BUG: sorted 가 일반 let — svelte 5 reactive 안 됨 (npm check warning). $state 로.
+	let sorted: QuestStatus[] = $state([]);
 	let laneOf = new Map<number, number>();
 
 	// DEV-048: status_id (number) → status_slug (string). API 는 slug 전용.
