@@ -344,6 +344,8 @@ pub fn run() {
             commands::change_quest_parent,
             // DEV-076 / BUG-031: 희망 / 필수 기한 — Tauri transport invoke.
             commands::set_quest_due_dates,
+            // DEV-068: tag 전체 교체.
+            commands::set_quest_tags,
             commands::change_quest_type,
             commands::delete_quest,
             commands::restore_quest,

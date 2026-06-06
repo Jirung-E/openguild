@@ -61,6 +61,8 @@ pub fn create_router(store: Store) -> Router {
         .route("/api/quests/{id}/parent", patch(quests::change_parent))
         // DEV-076: 희망 / 필수 기한 설정 / 해제.
         .route("/api/quests/{id}/due", patch(quests::set_due_dates))
+        // DEV-068: 태그 전체 교체. body: { "tags": [...] }
+        .route("/api/quests/{id}/tags", patch(quests::set_tags))
         .route("/api/quests/{id}/restore", patch(quests::restore_quest))
         .route("/api/quests/{id}/candidates", get(quests::list_candidates))
         .route("/api/quests/{id}/prerequisites", post(quests::add_prerequisite))

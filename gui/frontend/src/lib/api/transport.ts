@@ -247,6 +247,11 @@ function routeToInvoke(
 		if (sub === 'due' && method === 'PATCH') {
 			return { cmd: 'set_quest_due_dates', args: { id, body } };
 		}
+		// DEV-068: tag 전체 교체. body: { tags: string[] }.
+		if (sub === 'tags' && method === 'PATCH') {
+			const tags = (body as { tags?: string[] } | undefined)?.tags ?? [];
+			return { cmd: 'set_quest_tags', args: { id, tags } };
+		}
 		// DEV-055: quest type 변경 (slug 가 바뀜, 다른 quest 파일들도 cascade).
 		if (sub === 'type' && method === 'PATCH') {
 			return { cmd: 'change_quest_type', args: { id, body } };

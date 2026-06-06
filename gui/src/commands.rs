@@ -168,6 +168,16 @@ pub async fn set_quest_due_dates(
         .map_err(err)
 }
 
+/// DEV-068: tag 전체 교체. 정규화 (trim + dedupe + 빈 제거) 는 service 위임.
+#[tauri::command]
+pub async fn set_quest_tags(
+    store: State<'_, Store>,
+    id: i64,
+    tags: Vec<String>,
+) -> Result<QuestRow, String> {
+    ops::set_quest_tags(&store, id, tags).await.map_err(err)
+}
+
 /// DEV-055: quest 의 type 변경 — slug 가 바뀜.
 #[tauri::command]
 pub async fn change_quest_type(

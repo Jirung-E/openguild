@@ -84,5 +84,12 @@ export const questsApi = {
 	setDueDates: (
 		id: number,
 		body: { desired_due?: string | null; required_due?: string | null }
-	) => api.patch<Quest>(`/api/quests/${id}/due`, body)
+	) => api.patch<Quest>(`/api/quests/${id}/due`, body),
+
+	/**
+	 * DEV-068: tag 전체 교체. 정규화 (trim + dedupe + 빈 제거) 는 backend.
+	 * 빈 배열 = 전체 삭제.
+	 */
+	setTags: (id: number, tags: string[]) =>
+		api.patch<Quest>(`/api/quests/${id}/tags`, { tags })
 };
