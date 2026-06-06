@@ -343,33 +343,33 @@
 		max-width: 1100px;
 		margin: 0 auto;
 	}
-	.state { padding: 2rem 0; color: #8b949e; font-size: 0.875rem; }
-	.state.error { color: #f85149; }
+	.state { padding: 2rem 0; color: var(--text-muted); font-size: 0.875rem; }
+	.state.error { color: var(--danger); }
 
 	.block { margin-bottom: 2rem; }
 	.block h2 {
 		font-size: 1.05rem;
 		font-weight: 600;
-		color: #c9d1d9;
+		color: var(--text);
 		margin: 0 0 0.4rem 0;
 	}
 	.block h3 {
 		font-size: 0.8rem;
 		font-weight: 500;
-		color: #8b949e;
+		color: var(--text-muted);
 		margin: 1rem 0 0.2rem 0;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 	}
 	/* BUG-028: 섹션 제목의 (n) 개수 — 흐릿한 회색. */
 	.count {
-		color: #6e7681;
+		color: var(--text-faint);
 		font-weight: 400;
 		font-size: 0.85em;
 		margin-left: 0.25rem;
 	}
 	/* DEV-076: overdue 개수는 빨간색으로 강조 (시급한 시각 경고). */
-	.count.overdue { color: #f85149; font-weight: 600; }
+	.count.overdue { color: var(--danger); font-weight: 600; }
 
 	.actions {
 		display: flex;
@@ -379,25 +379,25 @@
 	.btn-link {
 		padding: 0.35rem 0.85rem;
 		background: transparent;
-		border: 1px solid #30363d;
+		border: 1px solid var(--border);
 		border-radius: 6px;
-		color: #c9d1d9;
+		color: var(--text);
 		font-size: 0.825rem;
 		cursor: pointer;
 	}
-	.btn-link:hover { background: #21262d; }
+	.btn-link:hover { background: var(--bg-subtle); }
 	.btn-primary {
 		padding: 0.35rem 0.85rem;
-		background: #238636;
-		border: 1px solid #2ea043;
+		background: var(--success-strong);
+		border: 1px solid var(--success-strong);
 		border-radius: 6px;
 		color: #fff;
 		font-size: 0.825rem;
 		cursor: pointer;
 	}
-	.btn-primary:hover { background: #2ea043; }
+	.btn-primary:hover { background: var(--success-strong); }
 
-	.empty { color: #6e7681; font-size: 0.875rem; padding: 0.75rem 0; }
+	.empty { color: var(--text-faint); font-size: 0.875rem; padding: 0.75rem 0; }
 
 	.quest-list {
 		list-style: none;
@@ -412,14 +412,14 @@
 		align-items: center;
 		gap: 0.6rem;
 		padding: 0.5rem 0.75rem;
-		background: #161b22;
-		border: 1px solid #21262d;
+		background: var(--bg-elevated);
+		border: 1px solid var(--bg-subtle);
 		border-radius: 6px;
 		color: inherit;
 		text-decoration: none;
 		transition: border-color 0.15s, background 0.15s;
 	}
-	.quest-row:hover { border-color: #484f58; background: #1c2128; }
+	.quest-row:hover { border-color: var(--text-faint); background: var(--bg-subtle); }
 
 	/* BUG-021: Quest List 의 pill 스타일 통일 (color-mix bg + border). */
 	.badge {
@@ -438,7 +438,7 @@
 	.title {
 		flex: 1;
 		font-size: 0.875rem;
-		color: #c9d1d9;
+		color: var(--text);
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;

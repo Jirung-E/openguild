@@ -1067,7 +1067,7 @@
 	/* BUG-015: anchor → button 으로 변경. button 기본 스타일 제거. */
 	.back {
 		font-size: 0.875rem;
-		color: #8b949e;
+		color: var(--text-muted);
 		text-decoration: none;
 		background: none;
 		border: none;
@@ -1075,23 +1075,23 @@
 		cursor: pointer;
 		font-family: inherit;
 	}
-	.back:hover { color: #c9d1d9; }
+	.back:hover { color: var(--text); }
 
 	.top-actions { display: flex; align-items: center; gap: 0.5rem; }
 
 	.btn-edit {
 		padding: 0.3rem 0.9rem;
-		border: 1px solid #30363d; border-radius: 6px;
-		background: #21262d; color: #8b949e;
+		border: 1px solid var(--border); border-radius: 6px;
+		background: var(--bg-subtle); color: var(--text-muted);
 		font-size: 0.8rem; cursor: pointer;
 		transition: background 0.1s, color 0.1s;
 	}
-	.btn-edit:hover { background: #30363d; color: #c9d1d9; }
+	.btn-edit:hover { background: var(--border); color: var(--text); }
 
 	.btn-delete {
 		padding: 0.3rem 0.9rem;
 		border: 1px solid #3a1f22; border-radius: 6px;
-		background: transparent; color: #e94f4f;
+		background: transparent; color: var(--danger);
 		font-size: 0.8rem; cursor: pointer;
 		transition: background 0.1s;
 	}
@@ -1099,9 +1099,9 @@
 
 	.state-msg {
 		display: flex; align-items: center; justify-content: center;
-		height: 60vh; color: #484f58; font-size: 0.9rem;
+		height: 60vh; color: var(--text-faint); font-size: 0.9rem;
 	}
-	.state-msg.error { color: #e94f4f; }
+	.state-msg.error { color: var(--danger); }
 
 	.header {
 		display: flex; gap: 0.5rem; flex-wrap: wrap;
@@ -1111,16 +1111,16 @@
 	.meta-times {
 		display: flex; align-items: center; flex-wrap: wrap;
 		gap: 0.4rem;
-		font-size: 0.72rem; color: #6e7681;
+		font-size: 0.72rem; color: var(--text-faint);
 		margin-bottom: 0.85rem;
 	}
 	.meta-item { display: inline-flex; gap: 0.3rem; align-items: baseline; }
-	.meta-label { color: #484f58; text-transform: uppercase; letter-spacing: 0.05em; }
-	.meta-val { color: #8b949e; font-variant-numeric: tabular-nums; }
-	.meta-sep { color: #30363d; }
+	.meta-label { color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.05em; }
+	.meta-val { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+	.meta-sep { color: var(--border); }
 
 	.title {
-		font-size: 1.4rem; font-weight: 600; color: #e6edf3;
+		font-size: 1.4rem; font-weight: 600; color: var(--text-strong);
 		margin: 0 0 1rem; line-height: 1.4;
 	}
 
@@ -1128,27 +1128,27 @@
 		display: flex; align-items: center; gap: 0.75rem;
 		margin-bottom: 0.75rem;
 		padding: 0.5rem 0.75rem;
-		background: #161b22; border: 1px solid #21262d; border-radius: 6px;
+		background: var(--bg-elevated); border: 1px solid var(--bg-subtle); border-radius: 6px;
 	}
-	.branch-label { font-size: 0.75rem; color: #8b949e; flex-shrink: 0; }
+	.branch-label { font-size: 0.75rem; color: var(--text-muted); flex-shrink: 0; }
 	.branch-name {
 		font-family: 'SFMono-Regular', Consolas, monospace;
 		font-size: 0.85rem; color: #79c0ff; flex: 1;
 	}
 	.copy-btn {
 		padding: 0.15rem 0.6rem;
-		border: 1px solid #30363d; border-radius: 4px;
-		background: transparent; color: #8b949e;
+		border: 1px solid var(--border); border-radius: 4px;
+		background: transparent; color: var(--text-muted);
 		font-size: 0.72rem; cursor: pointer;
 		transition: background 0.1s, color 0.1s;
 	}
-	.copy-btn:hover { background: #21262d; color: #c9d1d9; }
+	.copy-btn:hover { background: var(--bg-subtle); color: var(--text); }
 
 	.status-row {
 		display: flex; align-items: center; gap: 0.75rem;
 		flex-wrap: wrap; margin-bottom: 1.25rem;
 		padding: 0.5rem 0.75rem;
-		background: #161b22; border: 1px solid #21262d; border-radius: 6px;
+		background: var(--bg-elevated); border: 1px solid var(--bg-subtle); border-radius: 6px;
 	}
 	.status-btns { display: flex; gap: 0.4rem; flex-wrap: wrap; }
 	.status-btn {
@@ -1156,7 +1156,7 @@
 		border-radius: 20px;
 		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
 		background: transparent;
-		color: color-mix(in srgb, var(--c) 70%, #8b949e);
+		color: color-mix(in srgb, var(--c) 70%, var(--text-muted));
 		font-size: 0.75rem; cursor: pointer;
 		transition: background 0.12s, color 0.12s, transform 0.12s;
 	}
@@ -1186,9 +1186,9 @@
 	/* BUG-021 fix1: .md-body CSS 는 공유 컴포넌트 MarkdownView 로 이동.
 	   캠페인과 동일 스타일 — 헤더 사이즈 = 브라우저 기본 (헤더 명확 구분). */
 
-	.no-desc { color: #484f58; font-size: 0.9rem; margin: 0 0 1.5rem; }
+	.no-desc { color: var(--text-faint); font-size: 0.9rem; margin: 0 0 1.5rem; }
 	.link-btn {
-		background: none; border: none; color: #58a6ff;
+		background: none; border: none; color: var(--accent);
 		font-size: 0.9rem; cursor: pointer; padding: 0;
 		text-decoration: underline;
 	}
@@ -1198,7 +1198,7 @@
 	   span 에만 적용 — 그렇지 않으면 자식 input / CodeMirror 까지 캐스케이드
 	   되어 입력값이 대문자로 보임. */
 	.field-label {
-		font-size: 0.75rem; font-weight: 600; color: #8b949e;
+		font-size: 0.75rem; font-weight: 600; color: var(--text-muted);
 		margin-top: 0.5rem;
 	}
 	.field-label > span:first-child {
@@ -1206,78 +1206,78 @@
 	}
 	.edit-title {
 		padding: 0.5rem 0.75rem;
-		background: #161b22; border: 1px solid #30363d; border-radius: 6px;
-		color: #e6edf3; font-size: 1rem; outline: none;
+		background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 6px;
+		color: var(--text-strong); font-size: 1rem; outline: none;
 		width: 100%; box-sizing: border-box;
 	}
-	.edit-title:focus { border-color: #58a6ff; }
+	.edit-title:focus { border-color: var(--accent); }
 	.edit-select {
 		padding: 0.4rem 0.6rem;
-		background: #161b22; border: 1px solid #30363d; border-radius: 6px;
-		color: #c9d1d9; font-size: 0.875rem; outline: none; width: 160px;
+		background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 6px;
+		color: var(--text); font-size: 0.875rem; outline: none; width: 160px;
 	}
-	.edit-select:focus { border-color: #58a6ff; }
+	.edit-select:focus { border-color: var(--accent); }
 	/* DEV-076: 기한 입력. select 와 동일 스타일. */
 	.due-row { display: flex; gap: 1rem; flex-wrap: wrap; }
 	.due-row .field-label { flex: 1 1 200px; }
 	.edit-date {
 		padding: 0.4rem 0.6rem;
-		background: #161b22; border: 1px solid #30363d; border-radius: 6px;
-		color: #c9d1d9; font-size: 0.875rem; outline: none;
+		background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 6px;
+		color: var(--text); font-size: 0.875rem; outline: none;
 		font-family: inherit;
 		/* BUG-031: color-scheme: dark 를 추가하면 picker icon 이 흰색 렌더 →
 		   global.css 의 filter:invert(0.85) 가 다시 검정으로 invert 함. 즉
 		   글로벌 fix 와 충돌. 어두운 입력 배경은 background 색만으로 충분 — 별도
 		   color-scheme 지정 금지. */
 	}
-	.edit-date:focus { border-color: #58a6ff; }
-	.field-label .hint { color: #6e7681; font-weight: 400; font-size: 0.8em; }
+	.edit-date:focus { border-color: var(--accent); }
+	.field-label .hint { color: var(--text-faint); font-weight: 400; font-size: 0.8em; }
 	.due-required { color: #f0883e; font-weight: 600; }
-	.due-desired { color: #58a6ff; font-weight: 500; }
+	.due-desired { color: var(--accent); font-weight: 500; }
 	/* DEV-079: overdue 는 강한 빨강 + 굵게. desired / required 공통. */
 	.due-required.overdue,
-	.due-desired.overdue { color: #f85149; font-weight: 700; }
+	.due-desired.overdue { color: var(--danger); font-weight: 700; }
 	.editor-wrap {
 		/* DEV-057: 사용자 drag 로 height 조절. CodeMirror 의 cm-scroller 는
 		   parent height 100% 따라가서 늘어남. ResizeObserver 가 변경 감지 →
 		   localStorage 영속. */
-		border: 1px solid #30363d; border-radius: 6px;
+		border: 1px solid var(--border); border-radius: 6px;
 		overflow: hidden; min-height: 200px; max-height: 90vh;
 		resize: vertical;
 	}
 	.editor-wrap :global(.cm-editor) { outline: none; }
 	.editor-wrap :global(.cm-editor.cm-focused) { outline: none; border: none; }
-	.save-error { color: #e94f4f; font-size: 0.8rem; margin: 0; }
+	.save-error { color: var(--danger); font-size: 0.8rem; margin: 0; }
 	.edit-actions { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
 	.btn-save {
 		padding: 0.4rem 1.2rem;
-		background: #238636; border: 1px solid #2ea043; border-radius: 6px;
+		background: var(--success-strong); border: 1px solid var(--success-strong); border-radius: 6px;
 		color: #fff; font-size: 0.875rem; cursor: pointer;
 	}
-	.btn-save:hover:not(:disabled) { background: #2ea043; }
+	.btn-save:hover:not(:disabled) { background: var(--success-strong); }
 	.btn-save:disabled { opacity: 0.5; cursor: default; }
 	.btn-cancel {
 		padding: 0.4rem 1rem;
-		background: transparent; border: 1px solid #30363d; border-radius: 6px;
-		color: #8b949e; font-size: 0.875rem; cursor: pointer;
+		background: transparent; border: 1px solid var(--border); border-radius: 6px;
+		color: var(--text-muted); font-size: 0.875rem; cursor: pointer;
 	}
-	.btn-cancel:hover:not(:disabled) { background: #21262d; }
+	.btn-cancel:hover:not(:disabled) { background: var(--bg-subtle); }
 
 	.section-head {
 		display: flex; align-items: center; gap: 0.75rem;
 		margin-bottom: 0.5rem;
 	}
 	.section-title {
-		font-size: 0.8rem; font-weight: 600; color: #8b949e;
+		font-size: 0.8rem; font-weight: 600; color: var(--text-muted);
 		text-transform: uppercase; letter-spacing: 0.05em; margin: 0;
 	}
 	/* DEV-050: 라벨별 색 — QuestBoard 하이라이트 / CLI 의 quest show 와 일치. */
-	.section-title.parent-label { color: #7ee787; }
+	.section-title.parent-label { color: var(--success); }
 	.section-title.sub-label { color: #3dc9b0; }
 	.section-title.prereq-label { color: #a371f7; }
 	/* DEV-070: section header 옆의 부가 설명 hint. */
 	.sec-hint {
-		font-size: 0.75rem; color: #6e7681; font-style: italic;
+		font-size: 0.75rem; color: var(--text-faint); font-style: italic;
 	}
 
 	/* DEV-068: 태그 섹션. */
@@ -1298,39 +1298,39 @@
 		letter-spacing: 0.02em;
 	}
 	.tag-rm {
-		border: none; background: none; color: #8b949e;
+		border: none; background: none; color: var(--text-muted);
 		cursor: pointer; font-size: 1rem; line-height: 1; padding: 0 0 0 2px;
 	}
-	.tag-rm:hover { color: #f85149; }
+	.tag-rm:hover { color: var(--danger); }
 	.tag-add-form {
 		display: flex; gap: 0.4rem; margin-top: 0.5rem;
 	}
 	.tag-add-form input {
 		flex: 1; padding: 0.3rem 0.6rem;
-		background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
-		color: #c9d1d9; font-size: 0.85rem;
+		background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+		color: var(--text); font-size: 0.85rem;
 	}
 	.tag-add-form button {
 		padding: 0.3rem 0.85rem;
-		background: #21262d; border: 1px solid #30363d; border-radius: 6px;
-		color: #c9d1d9; font-size: 0.8rem; cursor: pointer;
+		background: var(--bg-subtle); border: 1px solid var(--border); border-radius: 6px;
+		color: var(--text); font-size: 0.8rem; cursor: pointer;
 	}
 	.tag-add-form button:disabled { opacity: 0.4; cursor: not-allowed; }
-	.tag-add-form button:hover:not(:disabled) { background: #30363d; }
+	.tag-add-form button:hover:not(:disabled) { background: var(--border); }
 	/* DEV-011: Campaign section */
-	.section-title.campaign-label { color: #4a9eff; }
+	.section-title.campaign-label { color: var(--accent); }
 	/* BUG-021: campaign slug badge — quest type badge 와 동일 pill 패턴 (color-mix). */
 	.campaign-badge {
-		--c: #4a9eff;
+		--c: var(--accent);
 	}
 	.badge.status.status-active {
-		--c: #56d364;
+		--c: var(--success);
 		background: color-mix(in srgb, var(--c) 18%, transparent);
 		color: var(--c);
 		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
 	}
 	.badge.status.status-done {
-		--c: #8b949e;
+		--c: var(--text-muted);
 		background: color-mix(in srgb, var(--c) 18%, transparent);
 		color: var(--c);
 		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
@@ -1339,11 +1339,11 @@
 	   안으로 이동 (sub-quest / prereq 와 동일 배치). */
 	.sec-add-btn {
 		padding: 0.15rem 0.6rem;
-		border: 1px solid #30363d; border-radius: 4px;
-		background: transparent; color: #8b949e;
+		border: 1px solid var(--border); border-radius: 4px;
+		background: transparent; color: var(--text-muted);
 		font-size: 0.72rem; cursor: pointer;
 	}
-	.sec-add-btn:hover { background: #21262d; color: #c9d1d9; }
+	.sec-add-btn:hover { background: var(--bg-subtle); color: var(--text); }
 
 	section { margin-bottom: 1.5rem; }
 	/* BUG-031 → BUG-033: 본문과 첫 section (Parent / Sub-Quests) 사이가 여전히
@@ -1357,9 +1357,9 @@
 
 	.quest-list {
 		list-style: none; padding: 0; margin: 0;
-		border: 1px solid #21262d; border-radius: 6px; overflow: hidden;
+		border: 1px solid var(--bg-subtle); border-radius: 6px; overflow: hidden;
 	}
-	.quest-list li + li { border-top: 1px solid #21262d; }
+	.quest-list li + li { border-top: 1px solid var(--bg-subtle); }
 
 	.prereq-row { display: flex; align-items: center; padding: 0; }
 	.prereq-link {
@@ -1368,17 +1368,17 @@
 		text-decoration: none;
 		transition: background 0.1s;
 	}
-	.prereq-link:hover { background: #161b22; }
+	.prereq-link:hover { background: var(--bg-elevated); }
 	.prereq-rm {
 		padding: 0.35rem 0.75rem;
-		background: none; border: none; color: #484f58;
+		background: none; border: none; color: var(--text-faint);
 		font-size: 1rem; cursor: pointer;
 		transition: color 0.1s; flex-shrink: 0;
 	}
-	.prereq-rm:hover { color: #e94f4f; }
+	.prereq-rm:hover { color: var(--danger); }
 
 	.ql-title {
-		flex: 1; font-size: 0.875rem; color: #c9d1d9;
+		flex: 1; font-size: 0.875rem; color: var(--text);
 		white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 	}
 
@@ -1400,8 +1400,8 @@
 		padding: 1rem;
 	}
 	.modal-sm {
-		background: #161b22;
-		border: 1px solid #30363d; border-radius: 10px;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border); border-radius: 10px;
 		width: 100%; max-width: 480px;
 		padding: 1rem 1.25rem 1rem;
 		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
@@ -1411,21 +1411,21 @@
 		margin-bottom: 0.85rem;
 	}
 	.modal-head h3 {
-		margin: 0; font-size: 0.95rem; font-weight: 600; color: #e6edf3;
+		margin: 0; font-size: 0.95rem; font-weight: 600; color: var(--text-strong);
 	}
 	.x {
-		background: none; border: none; color: #484f58;
+		background: none; border: none; color: var(--text-faint);
 		font-size: 1.2rem; line-height: 1; cursor: pointer; padding: 0 4px;
 	}
-	.x:hover { color: #c9d1d9; }
+	.x:hover { color: var(--text); }
 
-	.combo-state { color: #484f58; font-size: 0.85rem; padding: 0.6rem 0; }
-	.combo-err { color: #e94f4f; font-size: 0.8rem; margin: 0.5rem 0 0; }
+	.combo-state { color: var(--text-faint); font-size: 0.85rem; padding: 0.6rem 0; }
+	.combo-err { color: var(--danger); font-size: 0.8rem; margin: 0.5rem 0 0; }
 
-	.del-title { color: #e94f4f; }
-	.del-msg { color: #c9d1d9; font-size: 0.875rem; margin: 0 0 0.85rem; }
+	.del-title { color: var(--danger); }
+	.del-msg { color: var(--text); font-size: 0.875rem; margin: 0 0 0.85rem; }
 	.del-sub {
-		background: #0d1117; border: 1px solid #21262d; border-radius: 6px;
+		background: var(--bg); border: 1px solid var(--bg-subtle); border-radius: 6px;
 		padding: 0.6rem 0.8rem; margin-bottom: 0.85rem;
 	}
 	.del-sub-head {
@@ -1434,33 +1434,33 @@
 	}
 	.del-sub-all {
 		display: flex; align-items: center; gap: 0.3rem;
-		font-size: 0.75rem; color: #8b949e; cursor: pointer;
+		font-size: 0.75rem; color: var(--text-muted); cursor: pointer;
 	}
-	.del-sub-all:hover { color: #c9d1d9; }
-	.del-sub-title { margin: 0; font-size: 0.8rem; color: #c9d1d9; font-weight: 600; }
-	.del-sub-help { margin: 0 0 0.5rem; font-size: 0.75rem; color: #8b949e; }
+	.del-sub-all:hover { color: var(--text); }
+	.del-sub-title { margin: 0; font-size: 0.8rem; color: var(--text); font-weight: 600; }
+	.del-sub-help { margin: 0 0 0.5rem; font-size: 0.75rem; color: var(--text-muted); }
 	.del-sub-list { list-style: none; padding: 0; margin: 0; max-height: 180px; overflow-y: auto; }
 	.del-sub-list li { padding: 0.25rem 0; }
 	.del-sub-list label {
 		display: flex; align-items: center; gap: 0.45rem;
-		cursor: pointer; font-size: 0.85rem; color: #c9d1d9;
+		cursor: pointer; font-size: 0.85rem; color: var(--text);
 	}
 	.del-sub-list .badge { padding: 0.05rem 0.45rem; font-size: 0.7rem; }
 	.del-sub-title-text { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-	.del-prereq { font-size: 0.75rem; color: #8b949e; margin: 0 0 0.85rem; font-style: italic; }
+	.del-prereq { font-size: 0.75rem; color: var(--text-muted); margin: 0 0 0.85rem; font-style: italic; }
 	.del-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
 	.btn-del-yes {
 		padding: 0.4rem 1.1rem;
 		background: rgba(233,79,79,0.15);
-		border: 1px solid #e94f4f; border-radius: 6px;
-		color: #e94f4f; font-size: 0.875rem; cursor: pointer;
+		border: 1px solid var(--danger); border-radius: 6px;
+		color: var(--danger); font-size: 0.875rem; cursor: pointer;
 	}
 	.btn-del-yes:hover:not(:disabled) { background: rgba(233,79,79,0.25); }
 	.btn-del-yes:disabled { opacity: 0.5; cursor: default; }
 	.btn-del-no {
 		padding: 0.4rem 1rem;
-		background: transparent; border: 1px solid #30363d; border-radius: 6px;
-		color: #8b949e; font-size: 0.875rem; cursor: pointer;
+		background: transparent; border: 1px solid var(--border); border-radius: 6px;
+		color: var(--text-muted); font-size: 0.875rem; cursor: pointer;
 	}
-	.btn-del-no:hover:not(:disabled) { background: #21262d; }
+	.btn-del-no:hover:not(:disabled) { background: var(--bg-subtle); }
 </style>

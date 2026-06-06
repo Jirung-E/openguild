@@ -189,8 +189,8 @@
 	   anchor 의 underline 제거. 시각은 종전과 동일. */
 	.card {
 		width: 100%;
-		background: #161b22;
-		border: 1px solid #30363d;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
 		border-radius: 8px;
 		padding: 0.85rem 1rem;
 		text-align: left;
@@ -204,7 +204,7 @@
 		text-decoration: none;
 		box-sizing: border-box;
 	}
-	.card:hover { background: #1c2128; border-color: #484f58; }
+	.card:hover { background: var(--bg-subtle); border-color: var(--text-faint); }
 	/* BUG-027: active 카드 세로 길이 늘림 (사용자 피드백 — 너무 짧음). */
 	.card.active {
 		min-height: 180px;
@@ -217,13 +217,13 @@
 	.card.overdue {
 		padding: 0.65rem 0.8rem;
 		gap: 0.35rem;
-		border-color: #f85149;
-		background: linear-gradient(180deg, #2a1010 0%, #161b22 60%);
+		border-color: var(--danger);
+		background: linear-gradient(180deg, #2a1010 0%, var(--bg-elevated) 60%);
 	}
 	/* BUG-025: 100% 달성 카드 — 초록 border 강조 */
 	.card.completed {
-		border-color: #2ea043;
-		background: linear-gradient(180deg, #102a18 0%, #161b22 60%);
+		border-color: var(--success-strong);
+		background: linear-gradient(180deg, #102a18 0%, var(--bg-elevated) 60%);
 	}
 
 	.head {
@@ -233,17 +233,17 @@
 	}
 	.slug {
 		font-size: 0.7rem;
-		color: #8b949e;
+		color: var(--text-muted);
 		letter-spacing: 0.04em;
 		font-family: 'JetBrains Mono', ui-monospace, monospace;
 	}
 	.done-mark {
 		font-size: 0.7rem;
 		font-weight: 700;
-		color: #56d364;
+		color: var(--success);
 		letter-spacing: 0.02em;
 	}
-	.title { font-size: 0.95rem; font-weight: 600; color: #c9d1d9; line-height: 1.3; }
+	.title { font-size: 0.95rem; font-weight: 600; color: var(--text); line-height: 1.3; }
 	.title.small { font-size: 0.85rem; }
 	/* BUG-027: active 카드의 title 도 더 크게. */
 	.card.active .title { font-size: 1.1rem; line-height: 1.4; }
@@ -251,7 +251,7 @@
 	.meta { margin-top: auto; display: flex; flex-direction: column; gap: 0.3rem; }
 	.period {
 		font-size: 0.75rem;
-		color: #8b949e;
+		color: var(--text-muted);
 		display: flex;
 		gap: 0.35rem;
 		align-items: center;
@@ -259,16 +259,16 @@
 	}
 	/* BUG-031: 기본은 회색 (한참 남은 캠페인에도 빨강 X). 7일 이내만 urgent
 	   modifier 로 빨강. upcoming 의 accent 는 종전대로 파랑. */
-	.remaining { color: #8b949e; font-weight: 500; }
-	.remaining.urgent { color: #f85149; font-weight: 600; }
-	.remaining.accent { color: #58a6ff; font-weight: 600; }
-	.start-date { color: #6e7681; }
+	.remaining { color: var(--text-muted); font-weight: 500; }
+	.remaining.urgent { color: var(--danger); font-weight: 600; }
+	.remaining.accent { color: var(--accent); font-weight: 600; }
+	.start-date { color: var(--text-faint); }
 
 	.progress-row { display: flex; align-items: center; gap: 0.5rem; }
 	/* DEV-093: progress 종류 라벨 (체크 / 퀘스트) — 짧은 모노스페이스. */
 	.progress-label {
 		font-size: 0.65rem;
-		color: #6e7681;
+		color: var(--text-faint);
 		min-width: 2.4rem;
 		font-family: 'JetBrains Mono', ui-monospace, monospace;
 		letter-spacing: 0.02em;
@@ -276,17 +276,17 @@
 	.progress-bar {
 		flex: 1;
 		height: 4px;
-		background: #21262d;
+		background: var(--bg-subtle);
 		border-radius: 2px;
 		overflow: hidden;
 	}
 	.progress-fill {
 		height: 100%;
-		background: #4a9eff;
+		background: var(--accent);
 		transition: width 0.2s, background 0.2s;
 	}
 	/* BUG-025: 100% 시 초록 */
-	.progress-fill.done { background: #2ea043; }
-	.progress-text { font-size: 0.7rem; color: #8b949e; white-space: nowrap; }
-	.progress-text.done-text { color: #56d364; font-weight: 600; }
+	.progress-fill.done { background: var(--success-strong); }
+	.progress-text { font-size: 0.7rem; color: var(--text-muted); white-space: nowrap; }
+	.progress-text.done-text { color: var(--success); font-weight: 600; }
 </style>

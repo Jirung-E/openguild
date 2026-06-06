@@ -1,4 +1,4 @@
-﻿<script lang="ts">
+<script lang="ts">
 	import type { QuestStatus, QuestType } from '$lib/types';
 
 	let {
@@ -96,8 +96,8 @@
 		/* DEV-086: 우측 New Quest 플로팅 버튼 자리 확보 (보드 toolbar 와 동일
 		   위치). 필터가 wrap 돼도 버튼 밑으로 안 들어가게 padding-right 예약. */
 		padding: 0.75rem 130px 0.75rem 1.5rem;
-		background: #161b22;
-		border-bottom: 1px solid #21262d;
+		background: var(--bg-elevated);
+		border-bottom: 1px solid var(--bg-subtle);
 		flex-wrap: wrap;
 	}
 
@@ -110,23 +110,23 @@
 	.divider {
 		width: 1px;
 		height: 20px;
-		background: #21262d;
+		background: var(--bg-subtle);
 	}
 
 	button {
 		padding: 0.25rem 0.65rem;
-		border: 1px solid #30363d;
+		border: 1px solid var(--border);
 		border-radius: 20px;
 		background: transparent;
-		color: #8b949e;
+		color: var(--text-muted);
 		font-size: 0.8rem;
 		cursor: pointer;
 		transition: all 0.15s;
 	}
 
 	button:hover {
-		border-color: #8b949e;
-		color: #c9d1d9;
+		border-color: var(--text-muted);
+		color: var(--text);
 	}
 
 	button.active {
@@ -154,16 +154,16 @@
 	}
 	.search-input {
 		padding: 0.3rem 1.8rem 0.3rem 0.7rem;
-		background: #0d1117;
-		border: 1px solid #30363d;
+		background: var(--bg);
+		border: 1px solid var(--border);
 		border-radius: 6px;
-		color: #c9d1d9;
+		color: var(--text);
 		font-size: 0.8rem;
 		min-width: 200px;
 		outline: none;
 		transition: border-color 0.15s;
 	}
-	.search-input:focus { border-color: #58a6ff; }
+	.search-input:focus { border-color: var(--accent); }
 	.search-input::-webkit-search-cancel-button { display: none; }
 	.search-clear {
 		position: absolute;
@@ -172,21 +172,21 @@
 		border: none;
 		border-radius: 12px;
 		background: transparent;
-		color: #6e7681;
+		color: var(--text-faint);
 		font-size: 1rem;
 		line-height: 1;
 		cursor: pointer;
 	}
-	.search-clear:hover { color: #e94f4f; background: transparent; }
+	.search-clear:hover { color: var(--danger); background: transparent; }
 	.search-opt {
 		display: inline-flex;
 		align-items: center;
 		gap: 0.3rem;
 		font-size: 0.8rem;
-		color: #8b949e;
+		color: var(--text-muted);
 		cursor: pointer;
 		user-select: none;
 	}
 	.search-opt input { cursor: pointer; }
-	.search-opt:hover { color: #c9d1d9; }
+	.search-opt:hover { color: var(--text); }
 </style>

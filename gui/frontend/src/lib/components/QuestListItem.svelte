@@ -63,13 +63,13 @@
 		padding-top: 0.55rem;
 		padding-bottom: 0.55rem;
 		padding-right: 1.5rem;
-		border-bottom: 1px solid #21262d;
+		border-bottom: 1px solid var(--bg-subtle);
 		cursor: pointer;
 		transition: background 0.1s;
 	}
 
 	.item:hover {
-		background: #161b22;
+		background: var(--bg-elevated);
 	}
 
 	.toggle {
@@ -77,7 +77,7 @@
 		flex-shrink: 0;
 		background: none;
 		border: none;
-		color: #8b949e;
+		color: var(--text-muted);
 		font-size: 0.75rem;
 		padding: 0;
 		cursor: pointer;
@@ -90,7 +90,7 @@
 	.title {
 		flex: 1;
 		font-size: 0.9rem;
-		color: #c9d1d9;
+		color: var(--text);
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;

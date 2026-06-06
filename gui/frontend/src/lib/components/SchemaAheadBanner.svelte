@@ -150,7 +150,7 @@
 	}
 	.btn-update {
 		background: #f0883e;
-		color: #0d1117;
+		color: var(--bg);
 		border: none;
 		border-radius: 4px;
 		padding: 0.25rem 0.75rem;

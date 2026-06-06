@@ -1,4 +1,4 @@
-﻿<script lang="ts">
+<script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
@@ -281,8 +281,8 @@
 		align-items: center;
 		gap: 4px;
 		padding: 4px 10px;
-		background: #238636;
-		border: 1px solid #2ea043;
+		background: var(--success-strong);
+		border: 1px solid var(--success-strong);
 		border-radius: 6px;
 		color: #fff;
 		font-size: 0.8rem;
@@ -290,7 +290,7 @@
 		cursor: pointer;
 		transition: background 0.1s, border-color 0.1s;
 	}
-	.qb-new:hover { background: #2ea043; border-color: #3fb950; }
+	.qb-new:hover { background: var(--success-strong); border-color: var(--success); }
 	.qb-new-icon { font-size: 0.95rem; line-height: 1; }
 
 	.list {
@@ -301,12 +301,12 @@
 	.state-msg {
 		padding: 4rem;
 		text-align: center;
-		color: #484f58;
+		color: var(--text-faint);
 		font-size: 0.9rem;
 	}
 
 	.state-msg.error {
-		color: #e94f4f;
+		color: var(--danger);
 	}
 
 	/* DEV-065: 뷰 모드 토글 — segmented 컨트롤. */
@@ -346,18 +346,18 @@
 	.tag-clear {
 		padding: 0.15rem 0.55rem;
 		background: transparent;
-		border: 1px solid #30363d;
+		border: 1px solid var(--border);
 		border-radius: 20px;
-		color: #8b949e;
+		color: var(--text-muted);
 		font-size: 0.7rem;
 		cursor: pointer;
 	}
-	.tag-clear:hover { background: #21262d; color: #c9d1d9; }
+	.tag-clear:hover { background: var(--bg-subtle); color: var(--text); }
 	.view-toggle {
 		display: inline-flex;
 		gap: 0;
-		background: #161b22;
-		border: 1px solid #30363d;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
 		border-radius: 6px;
 		padding: 2px;
 	}
@@ -369,15 +369,15 @@
 		background: transparent;
 		border: none;
 		border-radius: 4px;
-		color: #8b949e;
+		color: var(--text-muted);
 		font-size: 0.8rem;
 		cursor: pointer;
 		transition: background 0.1s, color 0.1s;
 	}
-	.vt-btn:hover { color: #c9d1d9; }
+	.vt-btn:hover { color: var(--text); }
 	.vt-btn.active {
-		background: #21262d;
-		color: #c9d1d9;
+		background: var(--bg-subtle);
+		color: var(--text);
 	}
 	.vt-icon { font-size: 0.95rem; line-height: 1; }
 </style>

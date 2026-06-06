@@ -1,4 +1,4 @@
-﻿<!--
+<!--
   DEV-063: 업데이트 알림 배너 + 수동 체크 버튼.
 
   방식 (완전 자동 X — 알림 후 사용자 선택):
@@ -90,22 +90,22 @@
 		gap: 1rem;
 		padding: 0.5rem 1.5rem;
 		background: #16301f;
-		border-bottom: 1px solid #2ea043;
-		color: #c9d1d9;
+		border-bottom: 1px solid var(--success-strong);
+		color: var(--text);
 		font-size: 0.85rem;
 	}
 	.upd-main { display: flex; align-items: center; gap: 0.75rem; flex: 1; min-width: 0; }
 	.upd-title { font-weight: 600; white-space: nowrap; }
 
-	.upd-notes { font-size: 0.8rem; color: #8b949e; }
+	.upd-notes { font-size: 0.8rem; color: var(--text-muted); }
 	.upd-notes summary { cursor: pointer; }
 	.upd-notes pre {
 		margin: 0.4rem 0 0;
 		white-space: pre-wrap;
 		max-height: 8rem;
 		overflow-y: auto;
-		background: #0d1117;
-		border: 1px solid #21262d;
+		background: var(--bg);
+		border: 1px solid var(--bg-subtle);
 		border-radius: 6px;
 		padding: 0.5rem 0.75rem;
 	}
@@ -113,13 +113,13 @@
 	.upd-progress {
 		width: 180px;
 		height: 6px;
-		background: #21262d;
+		background: var(--bg-subtle);
 		border-radius: 3px;
 		overflow: hidden;
 	}
 	.upd-progress-fill {
 		height: 100%;
-		background: #2ea043;
+		background: var(--success-strong);
 		transition: width 0.2s;
 	}
 	/* contentLength 미상 시 — 좌우 왕복 애니메이션. */
@@ -131,19 +131,19 @@
 		0% { margin-left: -35%; }
 		100% { margin-left: 100%; }
 	}
-	.upd-pct { font-variant-numeric: tabular-nums; color: #8b949e; }
+	.upd-pct { font-variant-numeric: tabular-nums; color: var(--text-muted); }
 
 	.upd-actions { display: flex; gap: 0.4rem; flex-shrink: 0; }
 	.upd-btn {
 		padding: 0.3rem 0.75rem;
 		border-radius: 6px;
-		border: 1px solid #30363d;
+		border: 1px solid var(--border);
 		background: transparent;
-		color: #c9d1d9;
+		color: var(--text);
 		font-size: 0.8rem;
 		cursor: pointer;
 	}
-	.upd-btn:hover { background: #21262d; }
-	.upd-btn.primary { background: #238636; border-color: #2ea043; color: #fff; }
-	.upd-btn.primary:hover { background: #2ea043; }
+	.upd-btn:hover { background: var(--bg-subtle); }
+	.upd-btn.primary { background: var(--success-strong); border-color: var(--success-strong); color: #fff; }
+	.upd-btn.primary:hover { background: var(--success-strong); }
 </style>

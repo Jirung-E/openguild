@@ -496,13 +496,13 @@
 		border-radius: 6px;
 		cursor: pointer;
 		background: transparent;
-		border: 1px solid #30363d;
-		color: #c9d1d9;
+		border: 1px solid var(--border);
+		color: var(--text);
 		font-family: inherit;
 	}
-	.back:hover, .btn-edit:hover { background: #21262d; }
+	.back:hover, .btn-edit:hover { background: var(--bg-subtle); }
 	/* BUG-035: 단독 margin-left 제거 — top-actions wrapper 가 push right. */
-	.btn-delete { color: #f85149; border-color: #5a2424; }
+	.btn-delete { color: var(--danger); border-color: #5a2424; }
 	.btn-delete:hover { background: #2d0f0f; }
 	.top-actions {
 		display: flex;
@@ -517,39 +517,39 @@
 		border-radius: 20px !important;
 	}
 	.status-badge.status-active {
-		--c: #56d364;
+		--c: var(--success);
 		background: color-mix(in srgb, var(--c) 18%, transparent);
 		color: var(--c);
 		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
 	}
 	.status-badge.status-done {
-		--c: #8b949e;
+		--c: var(--text-muted);
 		background: color-mix(in srgb, var(--c) 18%, transparent);
 		color: var(--c);
 		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
 	}
 
-	.state { color: #6e7681; padding: 1.5rem 0; font-size: 0.875rem; }
-	.state.error { color: #f85149; }
+	.state { color: var(--text-faint); padding: 1.5rem 0; font-size: 0.875rem; }
+	.state.error { color: var(--danger); }
 
 	section { margin-bottom: 1.75rem; }
 	.section-head { display: flex; align-items: baseline; gap: 0.75rem; margin-bottom: 0.4rem; }
-	h1 { font-size: 1.4rem; color: #c9d1d9; margin: 0; }
-	h2 { font-size: 1rem; color: #c9d1d9; margin: 0 0 0.4rem 0; }
+	h1 { font-size: 1.4rem; color: var(--text); margin: 0; }
+	h2 { font-size: 1rem; color: var(--text); margin: 0 0 0.4rem 0; }
 	/* BUG-025: 체크리스트 100% 달성 시 헤더 초록 */
-	h2.done { color: #56d364; }
-	h2 .done-mark { font-weight: 700; color: #56d364; font-size: 0.85rem; margin-left: 0.25rem; }
+	h2.done { color: var(--success); }
+	h2 .done-mark { font-weight: 700; color: var(--success); font-size: 0.85rem; margin-left: 0.25rem; }
 
 	.title-row { display: flex; align-items: baseline; gap: 0.75rem; }
 	/* BUG-035: title-row 안 편집 버튼 제거 — top-bar 로 이동. */
 	.slug {
 		font-size: 0.8rem;
 		font-family: 'JetBrains Mono', ui-monospace, monospace;
-		color: #8b949e;
+		color: var(--text-muted);
 	}
-	.period { color: #8b949e; font-size: 0.875rem; }
+	.period { color: var(--text-muted); font-size: 0.875rem; }
 	/* DEV-079: 종료 기한 지난 캠페인 (status != done) 의 period 빨강 강조. */
-	.period.overdue { color: #f85149; font-weight: 600; }
+	.period.overdue { color: var(--danger); font-weight: 600; }
 
 	/* BUG-033: 생성 / 변경 시각 표시 — Quest Detail 의 .meta-times 와 동일 톤. */
 	.meta-times {
@@ -559,25 +559,25 @@
 		gap: 0.4rem;
 		margin-top: 0.4rem;
 		font-size: 0.75rem;
-		color: #6e7681;
+		color: var(--text-faint);
 	}
-	.meta-times .meta-label { color: #8b949e; margin-right: 0.25rem; }
-	.meta-times .meta-val { color: #c9d1d9; }
-	.meta-times .meta-sep { color: #30363d; }
+	.meta-times .meta-label { color: var(--text-muted); margin-right: 0.25rem; }
+	.meta-times .meta-val { color: var(--text); }
+	.meta-times .meta-sep { color: var(--border); }
 
 	/* BUG-033: editMode 에 묶인 기간 입력에 라벨 추가. */
 	.period-row label { display: flex; align-items: center; gap: 0.35rem; }
-	.period-row .lbl { font-size: 0.75rem; color: #8b949e; }
-	.period-row .dash { color: #6e7681; }
+	.period-row .lbl { font-size: 0.75rem; color: var(--text-muted); }
+	.period-row .dash { color: var(--text-faint); }
 
 	/* BUG-033: 본문 editor 라벨 (Quest Detail .field-label 와 동일 스타일). */
 	.field-label { display: flex; flex-direction: column; gap: 0.4rem; margin-top: 0.5rem; }
-	.field-label > span { font-size: 0.8rem; color: #8b949e; }
+	.field-label > span { font-size: 0.8rem; color: var(--text-muted); }
 
 	.title-input {
-		background: #0d1117;
-		border: 1px solid #30363d;
-		color: #c9d1d9;
+		background: var(--bg);
+		border: 1px solid var(--border);
+		color: var(--text);
 		border-radius: 6px;
 		padding: 0.4rem 0.6rem;
 		font-size: 1.2rem;
@@ -586,9 +586,9 @@
 	}
 	.period-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
 	.period-row input {
-		background: #0d1117;
-		border: 1px solid #30363d;
-		color: #c9d1d9;
+		background: var(--bg);
+		border: 1px solid var(--border);
+		color: var(--text);
 		border-radius: 6px;
 		padding: 0.3rem 0.5rem;
 	}
@@ -596,8 +596,8 @@
 	.actions { display: flex; gap: 0.4rem; margin-top: 0.5rem; }
 	.btn-save {
 		padding: 0.35rem 0.85rem;
-		background: #238636;
-		border: 1px solid #2ea043;
+		background: var(--success-strong);
+		border: 1px solid var(--success-strong);
 		color: #fff;
 		border-radius: 6px;
 		cursor: pointer;
@@ -607,8 +607,8 @@
 	.btn-cancel {
 		padding: 0.35rem 0.85rem;
 		background: transparent;
-		border: 1px solid #30363d;
-		color: #c9d1d9;
+		border: 1px solid var(--border);
+		color: var(--text);
 		border-radius: 6px;
 		cursor: pointer;
 		font-size: 0.825rem;
@@ -618,7 +618,7 @@
 
 	/* BUG-021: CodeMirror editor (Quest Detail 패턴 — DEV-057 의 height 영속). */
 	.editor-wrap {
-		border: 1px solid #30363d;
+		border: 1px solid var(--border);
 		border-radius: 6px;
 		overflow: hidden;
 		min-height: 200px;
@@ -630,8 +630,8 @@
 
 	/* BUG-021 fix1: .md CSS 는 공유 컴포넌트 MarkdownView 로 이동. */
 
-	.empty { color: #6e7681; font-size: 0.875rem; }
-	.link { background: none; border: none; color: #58a6ff; cursor: pointer; padding: 0; }
+	.empty { color: var(--text-faint); font-size: 0.875rem; }
+	.link { background: none; border: none; color: var(--accent); cursor: pointer; padding: 0; }
 
 	.checklist, .linked { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 2px; }
 	.checklist li, .linked li {
@@ -639,26 +639,26 @@
 		align-items: center;
 		gap: 0.5rem;
 		padding: 0.45rem 0.7rem;
-		background: #161b22;
-		border: 1px solid #21262d;
+		background: var(--bg-elevated);
+		border: 1px solid var(--bg-subtle);
 		border-radius: 6px;
 	}
 	.checklist li label { display: flex; align-items: center; gap: 0.5rem; flex: 1; cursor: pointer; }
-	.checklist li span.checked { text-decoration: line-through; color: #8b949e; }
+	.checklist li span.checked { text-decoration: line-through; color: var(--text-muted); }
 
 	.linked li a { display: flex; align-items: center; gap: 0.5rem; flex: 1; text-decoration: none; color: inherit; }
-	.qtitle { color: #c9d1d9; flex: 1; }
+	.qtitle { color: var(--text); flex: 1; }
 
 	.rm {
 		background: transparent;
 		border: 1px solid transparent;
-		color: #8b949e;
+		color: var(--text-muted);
 		cursor: pointer;
 		border-radius: 4px;
 		width: 1.5rem;
 		height: 1.5rem;
 	}
-	.rm:hover { color: #f85149; border-color: #5a2424; }
+	.rm:hover { color: var(--danger); border-color: #5a2424; }
 
 	.add-row {
 		display: flex;
@@ -667,18 +667,18 @@
 	}
 	.add-row input {
 		flex: 1;
-		background: #0d1117;
-		border: 1px solid #30363d;
-		color: #c9d1d9;
+		background: var(--bg);
+		border: 1px solid var(--border);
+		color: var(--text);
 		border-radius: 6px;
 		padding: 0.35rem 0.6rem;
 		font-size: 0.875rem;
 	}
 	.add-row button {
 		padding: 0.35rem 0.85rem;
-		background: #21262d;
-		border: 1px solid #30363d;
-		color: #c9d1d9;
+		background: var(--bg-subtle);
+		border: 1px solid var(--border);
+		color: var(--text);
 		border-radius: 6px;
 		cursor: pointer;
 		font-size: 0.825rem;
@@ -695,8 +695,8 @@
 		padding: 1rem;
 	}
 	.modal-sm {
-		background: #161b22;
-		border: 1px solid #30363d; border-radius: 10px;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border); border-radius: 10px;
 		width: 100%; max-width: 480px;
 		padding: 1rem 1.25rem 1rem;
 		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
@@ -706,18 +706,18 @@
 		margin-bottom: 0.85rem;
 	}
 	.modal-head h3 {
-		margin: 0; font-size: 0.95rem; font-weight: 600; color: #e6edf3;
+		margin: 0; font-size: 0.95rem; font-weight: 600; color: var(--text-strong);
 	}
 	.x {
-		background: none; border: none; color: #484f58;
+		background: none; border: none; color: var(--text-faint);
 		font-size: 1.2rem; line-height: 1; cursor: pointer; padding: 0 4px;
 	}
-	.x:hover { color: #c9d1d9; }
+	.x:hover { color: var(--text); }
 	.link-add-btn {
 		padding: 0.35rem 0.85rem;
-		background: #21262d;
-		border: 1px solid #30363d;
-		color: #c9d1d9;
+		background: var(--bg-subtle);
+		border: 1px solid var(--border);
+		color: var(--text);
 		border-radius: 6px;
 		cursor: pointer;
 		font-size: 0.825rem;
@@ -739,17 +739,17 @@
 	/* DEV-093: 연결된 퀘스트 진행률 bar — CampaignCard 의 progress-bar 와 같은 패턴. */
 	.quest-progress-bar {
 		height: 6px;
-		background: #21262d;
+		background: var(--bg-subtle);
 		border-radius: 3px;
 		overflow: hidden;
 		margin: 0 0 0.75rem;
 	}
 	.quest-progress-fill {
 		height: 100%;
-		background: #4a9eff;
+		background: var(--accent);
 		transition: width 0.2s, background 0.2s;
 	}
 	.quest-progress-fill.done {
-		background: #2ea043;
+		background: var(--success-strong);
 	}
 </style>
