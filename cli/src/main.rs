@@ -173,6 +173,11 @@ enum QuestCmd {
         /// 매칭 개수만 정수로 출력. `--id-only` 와 상호배타.
         #[arg(long)]
         count: bool,
+        // BUG-016: doc 에 quest_id prefix 누출 금지.
+        /// tree 모드 — root quest 부터 들여쓰기로 자식 표시. 기본 flat.
+        /// `--id-only` / `--count` / `--json` 과 함께 쓰면 무시 (구조화 출력 우선).
+        #[arg(long)]
+        tree: bool,
     },
     /// 퀘스트 검색 — title / description / slug 부분 일치 (공백 split AND).
     /// 사실상 `list --search` 의 별칭이지만 발견성을 위해 단독 명령으로 노출.
@@ -2177,6 +2182,66 @@ fn print_quest_list(quests: &[Quest], json: bool) {
     }
 }
 
+/// DEV-065 (CLI tree mode): 부모 → 자식 들여쓰기로 한 화면에 트리 출력.
+/// 결과 안의 quest 가 부모 link 자식인데 부모가 결과 안에 없으면 (필터 등)
+/// root 로 표시.
+fn print_quest_tree(quests: &[Quest]) {
+    use std::collections::HashMap;
+    if quests.is_empty() {
+        println!("(no quests)");
+        return;
+    }
+    // id → quest 매핑 (참조).
+    let by_id: HashMap<i64, &Quest> = quests.iter().map(|q| (q.id, q)).collect();
+    // id → 자식들 (직계).
+    let mut children: HashMap<i64, Vec<i64>> = HashMap::new();
+    let mut roots: Vec<i64> = Vec::new();
+    for q in quests {
+        match q.parent_quest_id {
+            Some(pid) if by_id.contains_key(&pid) => {
+                children.entry(pid).or_default().push(q.id);
+            }
+            _ => roots.push(q.id),
+        }
+    }
+    // 자식 정렬 — slug 알파벳 순으로 일관.
+    for v in children.values_mut() {
+        v.sort_by(|a, b| {
+            let qa = by_id.get(a).map(|q| q.quest_id.as_str()).unwrap_or("");
+            let qb = by_id.get(b).map(|q| q.quest_id.as_str()).unwrap_or("");
+            qa.cmp(qb)
+        });
+    }
+    roots.sort_by(|a, b| {
+        let qa = by_id.get(a).map(|q| q.quest_id.as_str()).unwrap_or("");
+        let qb = by_id.get(b).map(|q| q.quest_id.as_str()).unwrap_or("");
+        qa.cmp(qb)
+    });
+    fn walk(
+        id: i64,
+        depth: usize,
+        by_id: &HashMap<i64, &Quest>,
+        children: &HashMap<i64, Vec<i64>>,
+    ) {
+        let Some(q) = by_id.get(&id) else { return };
+        let prefix = if depth == 0 {
+            String::new()
+        } else {
+            format!("{}└─ ", "   ".repeat(depth - 1))
+        };
+        print!("{prefix}");
+        print_quest(q, false);
+        if let Some(kids) = children.get(&id) {
+            for &kid in kids {
+                walk(kid, depth + 1, by_id, children);
+            }
+        }
+    }
+    for r in roots {
+        walk(r, 0, &by_id, &children);
+    }
+}
+
 fn print_quest_detail(d: &QuestDetail, json: bool) {
     if json {
         println!("{}", serde_json::to_string_pretty(d).unwrap());
@@ -2673,6 +2738,7 @@ fn run() -> Result<()> {
                 offset,
                 id_only,
                 count,
+                tree,
             } => {
                 let q = ListQuery {
                     r#type: vec_to_csv(type_prefix),
@@ -2702,6 +2768,9 @@ fn run() -> Result<()> {
                     for q in &quests {
                         println!("{}", q.quest_id);
                     }
+                } else if tree && !cli.json {
+                    // DEV-065 (CLI tree mode): 부모 → 자식 들여쓰기 출력.
+                    print_quest_tree(&quests);
                 } else {
                     print_quest_list(&quests, cli.json);
                 }
@@ -3721,6 +3790,7 @@ mod tests {
                     offset,
                     id_only,
                     count,
+                    tree,
                 },
             } => {
                 assert!(type_prefix.is_empty());
@@ -3730,6 +3800,7 @@ mod tests {
                 assert!(created_before.is_none());
                 assert!(updated_after.is_none());
                 assert!(updated_before.is_none());
+                assert!(!tree);
                 assert!(child_of.is_none());
                 assert!(!no_parent);
                 assert!(!has_prereq);
@@ -3854,9 +3925,10 @@ mod tests {
                     child_of, no_parent,
                     has_prereq, no_prereq, has_sub, no_sub,
                     search, title_only,
-                    sort, reverse, limit, offset, id_only, count,
+                    sort, reverse, limit, offset, id_only, count, tree,
                 },
             } => {
+                assert!(!tree);
                 assert_eq!(type_prefix, vec!["BUG"]);
                 assert_eq!(status, vec!["in_progress"]);
                 assert_eq!(urgency.as_deref(), Some("2"));
