@@ -1463,7 +1463,115 @@
 
 	// ── 초기화 ──────────────────────────────────────────────────
 
+	// DEV-074 fix3: Cytoscape style 의 색 값 — theme 별 hex 직접 명시.
+	// `var(--bg)` 같은 CSS 변수는 Cytoscape style 시스템이 컴퓨팅 못 함 (DEV-074
+	// 코멘트 참조) → 모든 색을 명시 hex 로 지정 + theme 변경 시 cy.style() 교체.
+	function buildCyStyle(eff: 'dark' | 'light'): cytoscape.StylesheetJson {
+		// 토큰 미러 (global.css 와 동기 — 변경 시 둘 다 갱신).
+		const bg = eff === 'light' ? '#ffffff' : '#0d1117';
+		const accent = eff === 'light' ? '#0969da' : '#58a6ff';
+		const success = eff === 'light' ? '#1a7f37' : '#56d364';
+		const textFaint = eff === 'light' ? '#8b949e' : '#484f58';
+		// highlight 톤 — dark 는 깊은, light 는 옅은 동일 hue.
+		const preBg = eff === 'light' ? '#f3eafe' : '#190d33';
+		const preBorder = eff === 'light' ? '#8250df' : '#a371f7';
+		const subBg = eff === 'light' ? '#dbf6ee' : '#062220';
+		const subBorder = eff === 'light' ? '#1a7f64' : '#3dc9b0';
+		const nextBg = eff === 'light' ? '#fde6cf' : '#2a1200';
+		const nextBorder = eff === 'light' ? '#bc4c00' : '#f0883e';
+		const parentBg = eff === 'light' ? '#dafbe1' : '#0a2914';
+		const selectedBg = eff === 'light' ? '#ddf4ff' : '#112240';
+		const flashBorder = eff === 'light' ? '#0969da' : '#79c0ff';
+		const edgePre = eff === 'light' ? '#0969da' : '#4a90d9';
+		return [
+			{
+				selector: 'node[questId]',
+				style: {
+					'background-color': bg,
+					'background-image': 'data(nodeBg)',
+					'background-fit': 'cover',
+					'background-image-opacity': 1,
+					'border-color': 'data(urgencyColor)',
+					'border-width': 2,
+					width: NODE_W, height: NODE_H,
+					shape: 'round-rectangle',
+					label: '',
+					'z-index': 10
+				}
+			},
+			{ selector: 'node[questId]:active', style: { 'overlay-opacity': 0 } },
+			{
+				selector: 'node[questId][?active]',
+				style: {
+					'background-color': 'data(urgencyBg)',
+					'border-color': 'data(urgencyColor)',
+					'border-width': 3,
+					'shadow-blur': 18,
+					'shadow-color': 'data(urgencyColor)',
+					'shadow-opacity': 0.85,
+					'shadow-offset-x': 0,
+					'shadow-offset-y': 0
+				} as cytoscape.Css.Node
+			},
+			{
+				selector: 'node[questId][highlightType = "pre"]',
+				style: { 'background-color': preBg, 'border-color': preBorder, 'border-width': 3, 'shadow-blur': 12, 'shadow-color': preBorder, 'shadow-opacity': 0.65, 'shadow-offset-x': 0, 'shadow-offset-y': 0 } as cytoscape.Css.Node
+			},
+			{
+				selector: 'node[questId][highlightType = "sub"]',
+				style: { 'background-color': subBg, 'border-color': subBorder, 'border-width': 3, 'shadow-blur': 12, 'shadow-color': subBorder, 'shadow-opacity': 0.65, 'shadow-offset-x': 0, 'shadow-offset-y': 0 } as cytoscape.Css.Node
+			},
+			{
+				selector: 'node[questId][highlightType = "next"]',
+				style: { 'background-color': nextBg, 'border-color': nextBorder, 'border-width': 3, 'shadow-blur': 12, 'shadow-color': nextBorder, 'shadow-opacity': 0.65, 'shadow-offset-x': 0, 'shadow-offset-y': 0 } as cytoscape.Css.Node
+			},
+			{
+				selector: 'node[questId][highlightType = "parent"]',
+				style: { 'background-color': parentBg, 'border-color': success, 'border-width': 3, 'shadow-blur': 12, 'shadow-color': success, 'shadow-opacity': 0.65, 'shadow-offset-x': 0, 'shadow-offset-y': 0 } as cytoscape.Css.Node
+			},
+			{
+				selector: 'node[questId][highlightType = "dim"]',
+				style: { opacity: 0.15 } as cytoscape.Css.Node
+			},
+			{
+				selector: 'node[questId]:selected',
+				style: {
+					'background-color': selectedBg,
+					'border-color': accent,
+					'border-width': 3,
+					'shadow-blur': 14,
+					'shadow-color': accent,
+					'shadow-opacity': 0.65,
+					'shadow-offset-x': 0,
+					'shadow-offset-y': 0
+				} as cytoscape.Css.Node
+			},
+			{
+				selector: 'node[questId][?flash]',
+				style: {
+					'border-color': flashBorder,
+					'border-width': 5,
+					'shadow-blur': 28,
+					'shadow-color': flashBorder,
+					'shadow-opacity': 1,
+					'shadow-offset-x': 0,
+					'shadow-offset-y': 0
+				} as cytoscape.Css.Node
+			},
+			{ selector: 'edge[?dimmed]', style: { opacity: 0.07 } },
+			{
+				selector: 'edge[etype = "pre"]',
+				style: { 'line-color': edgePre, 'target-arrow-color': edgePre, 'target-arrow-shape': 'triangle', 'line-style': 'solid', 'curve-style': 'bezier', width: 2 }
+			},
+			{
+				selector: 'edge[etype = "sub"]',
+				style: { 'line-color': textFaint, 'target-arrow-color': textFaint, 'target-arrow-shape': 'vee', 'line-style': 'dashed', 'line-dash-pattern': [6, 3], 'curve-style': 'bezier', width: 1.5 }
+			}
+		];
+	}
+
 	// DEV-074 fix: theme 변경 시 모든 노드의 urgencyBg + nodeBg (SVG) 재생성.
+	// DEV-074 fix3: cy.style() 전체 교체 — Cytoscape 자체 색 값도 theme 반영.
 	function refreshNodeBgForTheme() {
 		if (!cy) return;
 		const eff = currentEffectiveTheme();
@@ -1479,7 +1587,8 @@
 				if (q) n.data('nodeBg', makeSvgUrl(q));
 			}
 		});
-		cy.style().update();
+		// stylesheet 자체 교체 — base / highlight / selected 의 hardcoded hex 까지 반영.
+		cy.style().fromJson(buildCyStyle(eff)).update();
 	}
 
 	onMount(() => {
@@ -1986,101 +2095,7 @@
 		cy = cytoscape({
 			container,
 			elements,
-			style: [
-				{
-					selector: 'node[questId]',
-					style: {
-						'background-color': 'var(--bg)',
-						'background-image': 'data(nodeBg)',
-						'background-fit': 'cover',
-						'background-image-opacity': 1,
-						'border-color': 'data(urgencyColor)',
-						'border-width': 2,
-						width: NODE_W, height: NODE_H,
-						shape: 'round-rectangle',
-						label: '',
-						'z-index': 10
-					}
-				},
-				{ selector: 'node[questId]:active', style: { 'overlay-opacity': 0 } },
-				// 확장 카드에 열린 노드 — 긴급도 색 glow
-				// (뒤에 오는 :selected가 이기므로 이동용 선택 시 파란 하이라이트로 전환됨)
-				{
-					selector: 'node[questId][?active]',
-					style: {
-						'background-color': 'data(urgencyBg)',
-						'border-color': 'data(urgencyColor)',
-						'border-width': 3,
-						'shadow-blur': 18,
-						'shadow-color': 'data(urgencyColor)',
-						'shadow-opacity': 0.85,
-						'shadow-offset-x': 0,
-						'shadow-offset-y': 0
-					} as cytoscape.Css.Node
-				},
-				// 선행 퀘스트 (보라)
-				{
-					selector: 'node[questId][highlightType = "pre"]',
-					style: { 'background-color': '#190d33', 'border-color': '#a371f7', 'border-width': 3, 'shadow-blur': 12, 'shadow-color': '#a371f7', 'shadow-opacity': 0.65, 'shadow-offset-x': 0, 'shadow-offset-y': 0 } as cytoscape.Css.Node
-				},
-				// 서브 퀘스트 (청록)
-				{
-					selector: 'node[questId][highlightType = "sub"]',
-					style: { 'background-color': '#062220', 'border-color': '#3dc9b0', 'border-width': 3, 'shadow-blur': 12, 'shadow-color': '#3dc9b0', 'shadow-opacity': 0.65, 'shadow-offset-x': 0, 'shadow-offset-y': 0 } as cytoscape.Css.Node
-				},
-				// 후속 퀘스트 (주황)
-				{
-					selector: 'node[questId][highlightType = "next"]',
-					style: { 'background-color': '#2a1200', 'border-color': '#f0883e', 'border-width': 3, 'shadow-blur': 12, 'shadow-color': '#f0883e', 'shadow-opacity': 0.65, 'shadow-offset-x': 0, 'shadow-offset-y': 0 } as cytoscape.Css.Node
-				},
-				// 부모 퀘스트 (초록)
-				{
-					selector: 'node[questId][highlightType = "parent"]',
-					style: { 'background-color': '#0a2914', 'border-color': 'var(--success)', 'border-width': 3, 'shadow-blur': 12, 'shadow-color': 'var(--success)', 'shadow-opacity': 0.65, 'shadow-offset-x': 0, 'shadow-offset-y': 0 } as cytoscape.Css.Node
-				},
-				// 연관 없음: 흐림
-				{
-					selector: 'node[questId][highlightType = "dim"]',
-					style: { opacity: 0.15 } as cytoscape.Css.Node
-				},
-				// 이동용 선택 — 가장 뒤에 위치해야 [?active] 포함 모든 상태보다 우선함
-				{
-					selector: 'node[questId]:selected',
-					style: {
-						'background-color': '#112240',
-						'border-color': 'var(--accent)',
-						'border-width': 3,
-						'shadow-blur': 14,
-						'shadow-color': 'var(--accent)',
-						'shadow-opacity': 0.65,
-						'shadow-offset-x': 0,
-						'shadow-offset-y': 0
-					} as cytoscape.Css.Node
-				},
-				// New Quest 직후 강조 — 모든 상태 위에 덮어쓰기
-				{
-					selector: 'node[questId][?flash]',
-					style: {
-						'border-color': '#79c0ff',
-						'border-width': 5,
-						'shadow-blur': 28,
-						'shadow-color': '#79c0ff',
-						'shadow-opacity': 1,
-						'shadow-offset-x': 0,
-						'shadow-offset-y': 0
-					} as cytoscape.Css.Node
-				},
-				// 엣지 흐림
-				{ selector: 'edge[?dimmed]', style: { opacity: 0.07 } },
-				{
-					selector: 'edge[etype = "pre"]',
-					style: { 'line-color': '#4a90d9', 'target-arrow-color': '#4a90d9', 'target-arrow-shape': 'triangle', 'line-style': 'solid', 'curve-style': 'bezier', width: 2 }
-				},
-				{
-					selector: 'edge[etype = "sub"]',
-					style: { 'line-color': 'var(--text-faint)', 'target-arrow-color': 'var(--text-faint)', 'target-arrow-shape': 'vee', 'line-style': 'dashed', 'line-dash-pattern': [6, 3], 'curve-style': 'bezier', width: 1.5 }
-				}
-			],
+			style: buildCyStyle(currentEffectiveTheme()),
 			layout: { name: 'preset' },
 			minZoom: 0.25,
 			maxZoom: 2,

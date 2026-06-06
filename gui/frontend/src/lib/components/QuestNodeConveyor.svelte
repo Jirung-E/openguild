@@ -16,6 +16,9 @@
 		QUEST_NODE_W,
 		QUEST_NODE_H
 	} from '$lib/utils/quest-node-svg';
+	// DEV-074 fix3: theme 별 노드 색 — store 변경 시 reactive.
+	import { theme, resolveTheme } from '$lib/stores/theme';
+	let effectiveTheme = $derived(resolveTheme($theme));
 
 	let {
 		quests,
@@ -193,7 +196,7 @@
 					onclick={() => openQuest(q)}
 				>
 					<img
-						src={makeQuestNodeSvgUrl(q, overlayFor(q))}
+						src={makeQuestNodeSvgUrl(q, overlayFor(q), effectiveTheme)}
 						alt={`${q.quest_id} ${q.title}`}
 						width={CARD_W}
 						height={QUEST_NODE_H}
@@ -212,7 +215,7 @@
 						onclick={() => openQuest(q)}
 					>
 						<img
-							src={makeQuestNodeSvgUrl(q, overlayFor(q))}
+							src={makeQuestNodeSvgUrl(q, overlayFor(q), effectiveTheme)}
 							alt=""
 							width={CARD_W}
 							height={QUEST_NODE_H}
