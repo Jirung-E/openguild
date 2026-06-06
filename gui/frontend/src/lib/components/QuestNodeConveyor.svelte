@@ -294,5 +294,5 @@
 		cursor: pointer;
 		transition: background 0.15s;
 	}
-	.play-pause:hover { background: #2a2a4a; }
+	.play-pause:hover { background: var(--nav-border); }
 </style>

@@ -357,7 +357,7 @@
 		min-height: 70vh;
 	}
 	.sidebar {
-		border-right: 1px solid #21262d;
+		border-right: 1px solid var(--bg-subtle);
 		padding-right: 1rem;
 		display: flex;
 		flex-direction: column;
@@ -374,22 +374,22 @@
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
-		color: #8b949e;
+		color: var(--text-muted);
 		margin: 0;
 	}
 	.btn-new {
 		margin-left: auto;
 		padding: 0.15rem 0.55rem;
 		background: transparent;
-		border: 1px solid #30363d;
+		border: 1px solid var(--border);
 		border-radius: 4px;
-		color: #8b949e;
+		color: var(--text-muted);
 		font-size: 0.72rem;
 		cursor: pointer;
 	}
 	.btn-new:hover {
-		background: #21262d;
-		color: #c9d1d9;
+		background: var(--bg-subtle);
+		color: var(--text);
 	}
 	.empty-list {
 		color: #6e7681;
@@ -411,12 +411,12 @@
 		background: transparent;
 		border: none;
 		border-radius: 4px;
-		color: #c9d1d9;
+		color: var(--text);
 		font-size: 0.85rem;
 		cursor: pointer;
 	}
 	.rule-item:hover {
-		background: #161b22;
+		background: var(--bg-elevated);
 	}
 	.rule-item.active {
 		background: #1f6feb1f;
@@ -436,7 +436,7 @@
 	.slug-title {
 		font-size: 1.1rem;
 		font-weight: 600;
-		color: #c9d1d9;
+		color: var(--text);
 		margin: 0;
 	}
 	.top-actions {
@@ -447,14 +447,14 @@
 	.btn-edit {
 		padding: 0.3rem 0.7rem;
 		background: transparent;
-		border: 1px solid #30363d;
+		border: 1px solid var(--border);
 		border-radius: 6px;
-		color: #c9d1d9;
+		color: var(--text);
 		font-size: 0.825rem;
 		cursor: pointer;
 	}
 	.btn-edit:hover {
-		background: #21262d;
+		background: var(--bg-subtle);
 	}
 	.btn-edit.danger {
 		color: #f85149;
@@ -469,22 +469,22 @@
 		flex-direction: column;
 		gap: 0.4rem;
 		padding: 0.6rem;
-		background: #0d1117;
-		border: 1px dashed #30363d;
+		background: var(--bg);
+		border: 1px dashed var(--border);
 		border-radius: 6px;
 		margin: 0.5rem 0;
 	}
 	.text-input {
 		padding: 0.35rem 0.55rem;
-		background: #0d1117;
-		border: 1px solid #30363d;
-		color: #c9d1d9;
+		background: var(--bg);
+		border: 1px solid var(--border);
+		color: var(--text);
 		border-radius: 4px;
 		font-size: 0.85rem;
 	}
 
 	.state {
-		color: #8b949e;
+		color: var(--text-muted);
 		padding: 1rem 0;
 		font-size: 0.875rem;
 	}
@@ -505,7 +505,7 @@
 	.empty .link {
 		background: none;
 		border: none;
-		color: #58a6ff;
+		color: var(--accent);
 		cursor: pointer;
 		font: inherit;
 		text-decoration: underline;
@@ -523,10 +523,10 @@
 	}
 	.field-label > span {
 		font-size: 0.8rem;
-		color: #8b949e;
+		color: var(--text-muted);
 	}
 	.editor-wrap {
-		border: 1px solid #30363d;
+		border: 1px solid var(--border);
 		border-radius: 6px;
 		overflow: hidden;
 		min-height: 200px;
@@ -558,13 +558,13 @@
 	.btn-cancel {
 		padding: 0.35rem 0.85rem;
 		background: transparent;
-		border: 1px solid #30363d;
-		color: #c9d1d9;
+		border: 1px solid var(--border);
+		color: var(--text);
 		border-radius: 6px;
 		cursor: pointer;
 		font-size: 0.825rem;
 	}
 	.btn-cancel:hover:not(:disabled) {
-		background: #21262d;
+		background: var(--bg-subtle);
 	}
 </style>

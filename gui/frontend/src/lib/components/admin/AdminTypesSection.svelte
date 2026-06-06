@@ -291,8 +291,8 @@
 	section {
 		margin-bottom: 2.5rem;
 		padding: 1.25rem;
-		background: #1a1a2e;
-		border: 1px solid #2a2a4a;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
 		border-radius: 8px;
 	}
 	.section-header {
@@ -311,34 +311,34 @@
 	}
 	button {
 		padding: 0.35rem 0.85rem;
-		background: #2a2a4a;
-		border: 1px solid #3a3a6a;
+		background: var(--bg-subtle);
+		border: 1px solid var(--border);
 		border-radius: 4px;
-		color: #c9d1d9;
+		color: var(--text);
 		font-size: 0.85rem;
 		cursor: pointer;
 	}
 	button:hover:not(:disabled) {
-		background: #3a3a6a;
+		background: var(--border);
 	}
 	button:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
 	}
 	button.danger {
-		color: #e94f4f;
-		border-color: #5a2a2a;
+		color: var(--danger);
+		border-color: var(--danger);
 	}
 	button.danger:hover:not(:disabled) {
 		background: rgba(233, 79, 79, 0.18);
 	}
 	button.save {
-		background: #1f6feb;
-		border-color: #2f81f7;
-		color: #fff;
+		background: var(--accent-strong);
+		border-color: var(--accent);
+		color: var(--text-strong);
 	}
 	button.save:hover:not(:disabled) {
-		background: #2f81f7;
+		background: var(--accent);
 	}
 	table {
 		width: 100%;
@@ -349,23 +349,23 @@
 	td {
 		text-align: left;
 		padding: 0.5rem 0.6rem;
-		border-bottom: 1px solid #2a2a4a;
+		border-bottom: 1px solid var(--border);
 		vertical-align: middle;
 	}
 	th {
-		color: #8b949e;
+		color: var(--text-muted);
 		font-weight: 500;
 		font-size: 0.8rem;
 	}
 	code {
 		font-family: 'SFMono-Regular', Consolas, monospace;
 		font-size: 0.85em;
-		background: #0d1117;
+		background: var(--bg);
 		padding: 0.05rem 0.3rem;
 		border-radius: 3px;
 	}
 	.hex {
-		color: #8b949e;
+		color: var(--text-muted);
 		margin-left: 0.4rem;
 	}
 	.swatch {
@@ -374,13 +374,13 @@
 		height: 1rem;
 		border-radius: 3px;
 		vertical-align: middle;
-		border: 1px solid #2a2a4a;
+		border: 1px solid var(--border);
 	}
 	.desc {
-		color: #c9d1d9;
+		color: var(--text);
 	}
 	.count {
-		color: #8b949e;
+		color: var(--text-muted);
 	}
 	.row-actions {
 		display: flex;
@@ -390,15 +390,15 @@
 	input[type='text'] {
 		width: 100%;
 		padding: 0.3rem 0.5rem;
-		background: #0d1117;
-		border: 1px solid #30363d;
+		background: var(--bg);
+		border: 1px solid var(--border);
 		border-radius: 4px;
-		color: #c9d1d9;
+		color: var(--text);
 		font: inherit;
 	}
 	input[type='text']:focus {
 		outline: none;
-		border-color: #58a6ff;
+		border-color: var(--accent);
 	}
 	input[type='text'].prefix-input {
 		width: 7ch;
@@ -409,18 +409,18 @@
 		width: 2.2rem;
 		height: 1.6rem;
 		padding: 0;
-		border: 1px solid #30363d;
+		border: 1px solid var(--border);
 		border-radius: 4px;
-		background: #0d1117;
+		background: var(--bg);
 		cursor: pointer;
 	}
 	.empty {
-		color: #8b95a1;
+		color: var(--text-muted);
 		font-size: 0.875rem;
 	}
 	.hint {
 		margin-top: 0.75rem;
-		color: #8b949e;
+		color: var(--text-muted);
 		font-size: 0.8rem;
 	}
 
@@ -436,28 +436,28 @@
 		padding: 1rem;
 	}
 	.modal {
-		background: #161b22;
-		border: 1px solid #30363d;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
 		border-radius: 10px;
 		width: 100%;
 		max-width: 460px;
 		padding: 1.2rem 1.4rem;
 		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
-		color: #c9d1d9;
+		color: var(--text);
 	}
 	.modal-title {
 		margin: 0 0 0.85rem;
 		font-size: 1rem;
 		font-weight: 600;
-		color: #e6edf3;
+		color: var(--text-strong);
 	}
 	.modal-msg {
 		margin: 0 0 1rem;
 		font-size: 0.875rem;
-		color: #c9d1d9;
+		color: var(--text);
 	}
 	.modal-msg strong {
-		color: #e6edf3;
+		color: var(--text-strong);
 	}
 	.form {
 		display: flex;
@@ -473,7 +473,7 @@
 	}
 	.form label > span {
 		flex: 0 0 4rem;
-		color: #8b949e;
+		color: var(--text-muted);
 	}
 	.modal-actions {
 		display: flex;
@@ -483,9 +483,9 @@
 	.btn-yes {
 		padding: 0.4rem 1.1rem;
 		background: rgba(31, 111, 235, 0.18);
-		border: 1px solid #2f81f7;
+		border: 1px solid var(--accent);
 		border-radius: 6px;
-		color: #58a6ff;
+		color: var(--accent);
 		font-size: 0.875rem;
 		cursor: pointer;
 	}
@@ -494,8 +494,8 @@
 	}
 	.btn-yes.danger {
 		background: rgba(233, 79, 79, 0.18);
-		border-color: #e94f4f;
-		color: #e94f4f;
+		border-color: var(--danger);
+		color: var(--danger);
 	}
 	.btn-yes.danger:hover:not(:disabled) {
 		background: rgba(233, 79, 79, 0.32);
@@ -503,9 +503,9 @@
 	.btn-no {
 		padding: 0.4rem 1rem;
 		background: transparent;
-		border: 1px solid #30363d;
+		border: 1px solid var(--border);
 		border-radius: 6px;
-		color: #8b949e;
+		color: var(--text-muted);
 		font-size: 0.875rem;
 		cursor: pointer;
 	}

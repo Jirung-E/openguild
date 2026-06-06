@@ -83,6 +83,9 @@ html {
 	font-size: 16px;
 	color: var(--text);
 	background: var(--bg);
+	/* DEV-074 fix2: 스크롤바 폭을 항상 예약 → 페이지가 길어지면서 스크롤바가
+	   생겨도 컨텐츠 폭이 흔들리지 않음 (layout shift 회피). */
+	scrollbar-gutter: stable;
 }
 
 body {
@@ -104,3 +107,61 @@ button {
    - dark theme: native picker dark, light theme: native picker light.
 
    ⚠ 컴포넌트별 스타일에 `color-scheme` 을 다른 값으로 override 하지 말 것. */
+
+/*
+ * DEV-074 fix2: 전역 커스텀 스크롤바.
+ *
+ * 동기: 기본 OS / 브라우저 스크롤바가 (1) 컨텐츠 폭을 밀어내서 layout shift 유발,
+ * (2) 다크/라이트 어울리지 않음, (3) overlay 가 아니어서 시각적 무게 큼.
+ *
+ * 전략: WebKit (Chrome / Tauri WebView2) 의 `::-webkit-scrollbar` 커스텀 +
+ * Firefox 의 `scrollbar-width: thin` + `scrollbar-color`. 기본 thumb 은 반투명,
+ * hover 시 진해짐. track 은 transparent → 컨텐츠 영역을 밀어내지 않음.
+ *
+ * 한계: WebKit 의 ::-webkit-scrollbar 는 여전히 컨텐츠 폭을 차지함 (overlay 아님).
+ * 회피: html / body / scroll container 에 `scrollbar-gutter: stable both-edges` 대신
+ * 폭 자체를 좁게 (8px) + 반투명. CodeMirror / textarea 도 동일 룰.
+ */
+
+* {
+	scrollbar-width: thin;
+	scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+:root {
+	--scrollbar-thumb: rgba(139, 148, 158, 0.35);
+	--scrollbar-thumb-hover: rgba(139, 148, 158, 0.6);
+}
+
+[data-theme='light'] {
+	--scrollbar-thumb: rgba(89, 99, 110, 0.3);
+	--scrollbar-thumb-hover: rgba(89, 99, 110, 0.55);
+}
+
+::-webkit-scrollbar {
+	width: 10px;
+	height: 10px;
+	background: transparent;
+}
+
+::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+	background: var(--scrollbar-thumb);
+	border-radius: 8px;
+	/* border 가 track 의 일부를 가려서 thumb 가 실제보다 얇게 보이는 트릭 */
+	border: 2px solid transparent;
+	background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: var(--scrollbar-thumb-hover);
+	background-clip: content-box;
+}
+
+::-webkit-scrollbar-corner {
+	background: transparent;
+}
+

@@ -351,7 +351,7 @@
 	.section-title {
 		font-size: 0.8rem; font-weight: 600;
 		text-transform: uppercase; letter-spacing: 0.05em; margin: 0;
-		color: #79c0ff;
+		color: var(--accent);
 	}
 	.count {
 		font-size: 0.8rem;
@@ -377,7 +377,7 @@
 		padding: 0.6rem 0.85rem;
 	}
 	.entry.reply {
-		background: #11161d;
+		background: var(--bg);
 	}
 	.thread {
 		list-style: none;
@@ -435,9 +435,9 @@
 		padding: 0; font: inherit; font-size: 0.78rem;
 		text-decoration: underline;
 	}
-	.link-btn:hover { color: #79c0ff; }
+	.link-btn:hover { color: var(--accent); }
 	.link-btn.danger { color: var(--danger); }
-	.link-btn.danger:hover { color: #ff7b72; }
+	.link-btn.danger:hover { color: var(--danger); }
 
 	.entry-body :global(p) { margin: 0.25rem 0; }
 

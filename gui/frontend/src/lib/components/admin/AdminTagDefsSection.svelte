@@ -242,8 +242,8 @@
 	section {
 		margin-bottom: 2.5rem;
 		padding: 1.25rem;
-		background: #1a1a2e;
-		border: 1px solid #2a2a4a;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
 		border-radius: 8px;
 	}
 	.section-header {
@@ -267,15 +267,15 @@
 	}
 	button {
 		padding: 0.35rem 0.85rem;
-		background: #2a2a4a;
-		border: 1px solid #3a3a6a;
+		background: var(--bg-subtle);
+		border: 1px solid var(--border);
 		border-radius: 4px;
 		color: var(--text);
 		font-size: 0.85rem;
 		cursor: pointer;
 	}
 	button:hover:not(:disabled) {
-		background: #3a3a6a;
+		background: var(--border);
 	}
 	button:disabled {
 		opacity: 0.5;
@@ -283,18 +283,18 @@
 	}
 	button.danger {
 		color: var(--danger);
-		border-color: #5a2a2a;
+		border-color: var(--danger);
 	}
 	button.danger:hover:not(:disabled) {
 		background: rgba(233, 79, 79, 0.18);
 	}
 	button.save {
-		background: #1f6feb;
-		border-color: #2f81f7;
-		color: #fff;
+		background: var(--accent-strong);
+		border-color: var(--accent);
+		color: var(--text-strong);
 	}
 	button.save:hover:not(:disabled) {
-		background: #2f81f7;
+		background: var(--accent);
 	}
 	table {
 		width: 100%;
@@ -305,7 +305,7 @@
 	td {
 		text-align: left;
 		padding: 0.5rem 0.6rem;
-		border-bottom: 1px solid #2a2a4a;
+		border-bottom: 1px solid var(--border);
 		vertical-align: middle;
 	}
 	th {
@@ -330,7 +330,7 @@
 		height: 1rem;
 		border-radius: 3px;
 		vertical-align: middle;
-		border: 1px solid #2a2a4a;
+		border: 1px solid var(--border);
 	}
 	.dim {
 		color: var(--text-muted);
@@ -363,7 +363,7 @@
 		cursor: pointer;
 	}
 	.empty {
-		color: #8b95a1;
+		color: var(--text-muted);
 		font-size: 0.875rem;
 	}
 
@@ -428,7 +428,7 @@
 	.btn-yes {
 		padding: 0.4rem 1.1rem;
 		background: rgba(31, 111, 235, 0.18);
-		border: 1px solid #2f81f7;
+		border: 1px solid var(--accent);
 		border-radius: 6px;
 		color: var(--accent);
 		font-size: 0.875rem;

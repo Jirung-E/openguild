@@ -260,8 +260,8 @@
 	section {
 		margin-bottom: 2.5rem;
 		padding: 1.25rem;
-		background: #1a1a2e;
-		border: 1px solid #2a2a4a;
+		background: var(--nav-bg);
+		border: 1px solid var(--nav-border);
 		border-radius: 8px;
 	}
 	.section-header {
@@ -276,8 +276,8 @@
 	}
 	button {
 		padding: 0.4rem 0.9rem;
-		background: #2a2a4a;
-		border: 1px solid #3a3a5a;
+		background: var(--nav-border);
+		border: 1px solid var(--border);
 		border-radius: 6px;
 		color: var(--text);
 		font-size: 0.85rem;
@@ -285,7 +285,7 @@
 		transition: background 0.15s;
 	}
 	button:hover:not(:disabled) {
-		background: #3a3a5a;
+		background: var(--border);
 	}
 	button:disabled {
 		opacity: 0.5;
@@ -306,7 +306,7 @@
 	td {
 		padding: 0.5rem 0.75rem;
 		text-align: left;
-		border-bottom: 1px solid #2a2a4a;
+		border-bottom: 1px solid var(--nav-border);
 	}
 	th {
 		color: var(--text-muted);
