@@ -419,7 +419,27 @@
 
 		<!-- 연결된 Quest -->
 		<section>
-			<h2>연결된 퀘스트 ({detail.linked_quests.length})</h2>
+			<h2 class:done={(detail.quest_total ?? 0) > 0 && detail.quest_done === detail.quest_total}>
+				연결된 퀘스트
+				{#if (detail.quest_total ?? 0) > 0}
+					({detail.quest_done}/{detail.quest_total}, {Math.round((detail.quest_progress ?? 0) * 100)}%)
+				{:else}
+					({detail.linked_quests.length})
+				{/if}
+				{#if (detail.quest_total ?? 0) > 0 && detail.quest_done === detail.quest_total}
+					<span class="done-mark"> ✓ 완료</span>
+				{/if}
+			</h2>
+			{#if (detail.quest_total ?? 0) > 0}
+				<!-- DEV-093: progress bar — 체크리스트 옆 같은 시각. -->
+				<div class="quest-progress-bar">
+					<div
+						class="quest-progress-fill"
+						class:done={detail.quest_done === detail.quest_total}
+						style:width={`${Math.round((detail.quest_progress ?? 0) * 100)}%`}
+					></div>
+				</div>
+			{/if}
 			{#if detail.linked_quests.length === 0}
 				<p class="empty">연결된 퀘스트 없음.</p>
 			{:else}
@@ -714,5 +734,22 @@
 		background: color-mix(in srgb, var(--c) 18%, transparent);
 		color: var(--c);
 		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
+	}
+
+	/* DEV-093: 연결된 퀘스트 진행률 bar — CampaignCard 의 progress-bar 와 같은 패턴. */
+	.quest-progress-bar {
+		height: 6px;
+		background: #21262d;
+		border-radius: 3px;
+		overflow: hidden;
+		margin: 0 0 0.75rem;
+	}
+	.quest-progress-fill {
+		height: 100%;
+		background: #4a9eff;
+		transition: width 0.2s, background 0.2s;
+	}
+	.quest-progress-fill.done {
+		background: #2ea043;
 	}
 </style>

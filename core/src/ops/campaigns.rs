@@ -24,10 +24,34 @@ pub async fn fetch_detail(store: &Store, slug: &str) -> AppResult<CampaignDetail
     let row = sql::fetch_by_slug(&store.index_pool, slug).await?;
     let checklists = sql::list_checklists(&store.index_pool, row.id).await?;
     let linked_quests = sql::list_linked_quests(&store.index_pool, row.id).await?;
+    // DEV-093: linked_quests 의 status_slug 기반으로 done 카운트 계산.
+    // service 의 list_linked_quests 는 alive only — total = linked_quests.len().
+    let quest_total = linked_quests.len() as i64;
+    // counts_as_done = 1 인 status_id 들 fetch.
+    let done_slugs: Vec<String> = sqlx::query_scalar(
+        "SELECT slug FROM quest_statuses WHERE counts_as_done = 1",
+    )
+    .fetch_all(&store.index_pool)
+    .await
+    .map_err(|e| AppError::Internal(anyhow::anyhow!("done slug fetch: {e}")))?;
+    let done_set: std::collections::HashSet<&str> =
+        done_slugs.iter().map(|s| s.as_str()).collect();
+    let quest_done = linked_quests
+        .iter()
+        .filter(|q| done_set.contains(q.status_slug.as_str()))
+        .count() as i64;
+    let quest_progress = if quest_total > 0 {
+        quest_done as f64 / quest_total as f64
+    } else {
+        0.0
+    };
     Ok(CampaignDetail {
         campaign: row,
         checklists,
         linked_quests,
+        quest_total,
+        quest_done,
+        quest_progress,
     })
 }
 

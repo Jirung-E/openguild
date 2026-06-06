@@ -13,6 +13,8 @@ export interface QuestStatus {
 	name_ko: string;
 	color: string;
 	sort_order: number;
+	/** DEV-093: "완료" 로 카운트되는 status — 캠페인 진행률 계산용. 서버 미배포 환경 fallback 위해 optional. */
+	counts_as_done?: boolean;
 }
 
 export interface Quest {
@@ -192,6 +194,12 @@ export interface CampaignLinkedQuest {
 export interface CampaignDetail extends Campaign {
 	checklists: CampaignChecklistItem[];
 	linked_quests: CampaignLinkedQuest[];
+	/** DEV-093: 링크된 alive quest 수. 서버 미배포 환경 fallback 위해 optional. */
+	quest_total?: number;
+	/** DEV-093: 위 중 status.counts_as_done = true 인 수. */
+	quest_done?: number;
+	/** DEV-093: quest_done / quest_total. */
+	quest_progress?: number;
 }
 
 export interface CampaignSummary {

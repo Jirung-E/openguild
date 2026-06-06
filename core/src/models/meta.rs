@@ -18,4 +18,8 @@ pub struct QuestStatus {
     pub name_ko: String,
     pub color: String,
     pub sort_order: i64,
+    /// DEV-093: 이 status 가 "완료" 로 카운트되는지 — 캠페인 진행률 계산용.
+    /// migration 0012 의 backfill 로 done / cancelled 가 자동 1.
+    #[serde(default)]
+    pub counts_as_done: bool,
 }

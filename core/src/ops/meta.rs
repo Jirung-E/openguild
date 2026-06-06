@@ -678,6 +678,8 @@ pub async fn create_status(
         name_ko,
         color,
         sort_order,
+        // DEV-093: 새 status 의 기본 — 사용자가 추후 토글.
+        counts_as_done: false,
     })
 }
 

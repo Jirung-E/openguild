@@ -80,6 +80,15 @@ pub struct CampaignDetail {
     pub campaign: CampaignRow,
     pub checklists: Vec<CampaignChecklistItem>,
     pub linked_quests: Vec<CampaignLinkedQuest>,
+    /// DEV-093: 링크된 quest 중 alive (= linked_quests.len() — 이미 service 가 alive filter).
+    #[serde(default)]
+    pub quest_total: i64,
+    /// DEV-093: 위 중 status.counts_as_done = true 인 수.
+    #[serde(default)]
+    pub quest_done: i64,
+    /// DEV-093: quest_done / quest_total. 0 일 때 0.0.
+    #[serde(default)]
+    pub quest_progress: f64,
 }
 
 /// Home / 카드 표시용 압축 요약.

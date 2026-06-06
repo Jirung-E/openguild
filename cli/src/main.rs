@@ -3635,6 +3635,7 @@ mod tests {
             name_ko: "".into(),
             color: "".into(),
             sort_order: 0,
+            counts_as_done: false,
         }
     }
     fn ty(id: i64, prefix: &str) -> QuestType {
@@ -4785,6 +4786,7 @@ mod tests {
                 name_ko: "게시됨".into(),
                 color: "".into(),
                 sort_order: 1,
+                counts_as_done: false,
             },
             QuestStatus {
                 id: 2,
@@ -4793,6 +4795,7 @@ mod tests {
                 name_ko: "진행 중".into(),
                 color: "".into(),
                 sort_order: 2,
+                counts_as_done: false,
             },
         ];
         // 기존 match_status_id 가 name_en 만. 본 quest 가 추가한 name_ko fallback
