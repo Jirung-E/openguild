@@ -5,6 +5,9 @@
 	import { questsApi } from '$lib/api/quests';
 	import { metaApi } from '$lib/api/meta';
 	import { campaignsApi } from '$lib/api/campaigns';
+	// DEV-068: `.guild/tags/{slug}.toml` 정의 — Tag pill 색칠용.
+	import { adminApi } from '$lib/api/admin';
+	import type { QuestTagDef } from '$lib/types';
 	// BUG-021 fix1: marked 직접 호출 대신 공유 컴포넌트 MarkdownView 사용.
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	import { EditorView, basicSetup } from 'codemirror';
@@ -94,12 +97,39 @@
 
 	let sortedStatuses = $derived([...statuses].sort((a, b) => a.sort_order - b.sort_order));
 
+	// DEV-068: tag 정의 — slug → (color, description) lookup.
+	let tagDefs = $state<QuestTagDef[]>([]);
+	let tagDefMap = $derived(new Map(tagDefs.map((d) => [d.slug, d])));
+
+	function tagStyle(t: string): string {
+		const d = tagDefMap.get(t);
+		if (!d || !d.color) return '';
+		// hex → rgba 변환 (배경 12% / 테두리 40%).
+		const c = d.color.trim();
+		const hex = c.startsWith('#') ? c.slice(1) : c;
+		if (!/^[0-9a-fA-F]{6}$/.test(hex)) return `color: ${c}`;
+		const r = parseInt(hex.slice(0, 2), 16);
+		const g = parseInt(hex.slice(2, 4), 16);
+		const b = parseInt(hex.slice(4, 6), 16);
+		return `background: rgba(${r},${g},${b},0.12); border-color: rgba(${r},${g},${b},0.4); color: ${c};`;
+	}
+
+	function tagTitle(t: string): string {
+		const d = tagDefMap.get(t);
+		return d?.description || t;
+	}
+
 	// 메타(타입/상태)는 마운트 시 한 번만
 	onMount(async () => {
 		try {
-			const [t, s] = await Promise.all([metaApi.getQuestTypes(), metaApi.getQuestStatuses()]);
+			const [t, s, td] = await Promise.all([
+				metaApi.getQuestTypes(),
+				metaApi.getQuestStatuses(),
+				adminApi.listTagDefs().catch(() => [] as QuestTagDef[])
+			]);
 			types = t;
 			statuses = s;
+			tagDefs = td;
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'failed to load';
 		}
@@ -808,7 +838,7 @@
 				<ul class="tag-pills">
 					{#each (detail.tags ?? []) as t (t)}
 						<li>
-							<span class="tag-pill">
+							<span class="tag-pill" style={tagStyle(t)} title={tagTitle(t)}>
 								{t}
 								{#if !editMode}
 									<button

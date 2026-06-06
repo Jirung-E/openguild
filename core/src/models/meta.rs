@@ -8,6 +8,15 @@ pub struct QuestType {
     pub description: Option<String>,
 }
 
+/// DEV-068: 사용자 정의 tag — color / description. 파일 진리원.
+/// `quest_tags` 의 사용 tag 가 def 없어도 정상 (UI 기본 색 fallback).
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct QuestTagDef {
+    pub slug: String,
+    pub color: String,
+    pub description: String,
+}
+
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct QuestStatus {
     pub id: i64,

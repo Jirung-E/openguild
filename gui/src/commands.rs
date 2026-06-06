@@ -10,7 +10,7 @@ use openguild_core::models::{
     AddChecklistRequest, AddPrerequisiteRequest, CampaignChecklistItem, CampaignDetail,
     CampaignRow, CampaignSummary, ChangeParentRequest, ChangeStatusRequest,
     CreateCampaignRequest, CreateQuestRequest, LinkQuestRequest, ListQuery, QuestDependency,
-    QuestDetail, QuestHistoryEntry, QuestPosition, QuestRow, QuestStatus, QuestType,
+    QuestDetail, QuestHistoryEntry, QuestPosition, QuestRow, QuestStatus, QuestTagDef, QuestType,
     UpdateCampaignRequest, UpdatePositionRequest, UpdateQuestRequest,
 };
 use openguild_core::ops::{campaigns as camp_ops, meta as meta_ops, quests as ops};
@@ -502,6 +502,44 @@ pub async fn admin_delete_status(
     slug: String,
 ) -> Result<(), String> {
     meta_ops::delete_status(&store, slug).await.map_err(err)
+}
+
+// ─────────────────────── tag defs (DEV-068) ───────────────────────
+
+#[tauri::command]
+pub async fn admin_list_tag_defs(
+    store: State<'_, Store>,
+) -> Result<Vec<QuestTagDef>, String> {
+    meta_svc::list_quest_tag_defs(&store.index_pool)
+        .await
+        .map_err(err)
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpsertTagDefBody {
+    pub slug: String,
+    #[serde(default)]
+    pub color: String,
+    #[serde(default)]
+    pub description: String,
+}
+
+#[tauri::command]
+pub async fn admin_upsert_tag_def(
+    store: State<'_, Store>,
+    body: UpsertTagDefBody,
+) -> Result<QuestTagDef, String> {
+    meta_ops::upsert_tag_def(&store, body.slug, body.color, body.description)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn admin_delete_tag_def(
+    store: State<'_, Store>,
+    slug: String,
+) -> Result<(), String> {
+    meta_ops::delete_tag_def(&store, slug).await.map_err(err)
 }
 
 /// serde: `Option<Option<T>>` 필드 생략 vs `null` 구분 — `update_type`

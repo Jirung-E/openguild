@@ -2,6 +2,7 @@ import { api } from './client';
 import type {
 	DriftReport,
 	QuestStatus,
+	QuestTagDef,
 	QuestType,
 	RestoreResponse,
 	SnapshotInfo
@@ -79,5 +80,15 @@ export const adminApi = {
 		}
 	) => api.patch<QuestStatus>(`/api/admin/statuses/${encodeURIComponent(slug)}`, body),
 	deleteStatus: (slug: string) =>
-		api.delete(`/api/admin/statuses/${encodeURIComponent(slug)}`)
+		api.delete(`/api/admin/statuses/${encodeURIComponent(slug)}`),
+
+	// ─── DEV-068: tag defs (`.guild/tags/{slug}.toml`) ───
+	/** 모든 tag 정의 (slug ASC). */
+	listTagDefs: () => api.get<QuestTagDef[]>('/api/tag-defs'),
+	/** upsert — 같은 slug 면 갱신. color = '#RRGGBB' 또는 빈 문자열. */
+	upsertTagDef: (body: { slug: string; color?: string; description?: string }) =>
+		api.post<QuestTagDef>('/api/tag-defs', body),
+	/** 정의만 삭제 — quest frontmatter 의 tag 사용은 보존 (fallback 색으로 표시). */
+	deleteTagDef: (slug: string) =>
+		api.delete(`/api/tag-defs/${encodeURIComponent(slug)}`)
 };

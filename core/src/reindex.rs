@@ -90,6 +90,8 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
     sqlx::query("DELETE FROM quest_memos").execute(&mut *tx).await?;
     // DEV-068: 태그 캐시도 wipe — frontmatter 의 tags 배열로부터 재구축.
     sqlx::query("DELETE FROM quest_tags").execute(&mut *tx).await?;
+    // DEV-068 (tag defs): `.guild/tags/*.toml` 정의도 wipe + 재적재.
+    sqlx::query("DELETE FROM quest_tag_defs").execute(&mut *tx).await?;
 
     // 2. types — id 는 파일 정렬 순.
     let type_paths = repo_fs::list_with_extension(paths.types_dir(), "toml")
@@ -317,6 +319,32 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
         }
     }
     report.positions_restored = positions_restored;
+
+    // 5b''. DEV-068 (tag defs): `.guild/tags/{slug}.toml` 파일들을 quest_tag_defs
+    //       에 적재. file 진리원, DB 는 캐시.
+    let tag_paths = repo_fs::list_with_extension(paths.tags_dir(), "toml")
+        .map_err(crate::error::AppError::Internal)?;
+    for path in &tag_paths {
+        let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        match crate::repo::TagFile::read(path) {
+            Ok(tf) => {
+                sqlx::query(
+                    "INSERT INTO quest_tag_defs (slug, color, description) VALUES (?, ?, ?)
+                     ON CONFLICT(slug) DO UPDATE SET color = excluded.color, description = excluded.description",
+                )
+                .bind(stem)
+                .bind(&tf.color)
+                .bind(&tf.description)
+                .execute(&mut *tx)
+                .await?;
+            }
+            Err(e) => {
+                report.skipped.push((path.display().to_string(), format!("{e:#}")));
+            }
+        }
+    }
 
     // 5b'. DEV-102: sibling 파일 (`{slug}.comments.md` / `{slug}.memo.md`) →
     //      `quest_comments` / `quest_memos` 캐시 sync. 파일이 진리원, 캐시는

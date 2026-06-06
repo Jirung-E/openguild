@@ -14,6 +14,7 @@ pub mod quest;
 pub mod rules;
 pub mod seed;
 pub mod status_def;
+pub mod tag_def;
 pub mod type_def;
 
 pub use auto::{QuestRef, QuestRelations};
@@ -21,6 +22,7 @@ pub use campaign::{extract_checklist_items, CampaignFile, CampaignFrontmatter, C
 pub use quest::{QuestFile, QuestFrontmatter, AUTO_BEGIN, AUTO_END};
 pub use seed::{default_statuses, default_types, seed_guild_dir, SeedReport};
 pub use status_def::StatusFile;
+pub use tag_def::TagFile;
 pub use type_def::{Counter, TypeFile};
 
 use std::path::{Path, PathBuf};
@@ -110,6 +112,17 @@ impl GuildPaths {
     /// DEV-016 multi-file: 한 규칙 파일 (`.guild/rules/{slug}.md`).
     pub fn rule_path(&self, slug: &str) -> PathBuf {
         self.rules_dir().join(format!("{slug}.md"))
+    }
+
+    /// DEV-068: tag 정의 디렉토리 (`.guild/tags/`). git tracked.
+    /// quest_tags 의 사용 tag 와 별개 — 사용자가 color / description 정의.
+    pub fn tags_dir(&self) -> PathBuf {
+        self.dot_guild().join("tags")
+    }
+
+    /// DEV-068: 한 tag 정의 파일 (`.guild/tags/{slug}.toml`).
+    pub fn tag_path(&self, slug: &str) -> PathBuf {
+        self.tags_dir().join(format!("{slug}.toml"))
     }
 
     /// DEV-012: Quest 별 공개 댓글 (`.guild/quests/{slug}.comments.md`).

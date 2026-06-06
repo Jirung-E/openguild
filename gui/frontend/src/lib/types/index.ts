@@ -17,6 +17,13 @@ export interface QuestStatus {
 	counts_as_done?: boolean;
 }
 
+/** DEV-068: 사용자 정의 tag. `.guild/tags/{slug}.toml` 진리원. */
+export interface QuestTagDef {
+	slug: string;
+	color: string;
+	description: string;
+}
+
 export interface Quest {
 	id: number;
 	quest_id: string; // e.g. "DEV-001"

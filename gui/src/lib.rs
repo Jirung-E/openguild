@@ -367,6 +367,10 @@ pub fn run() {
             commands::admin_create_status,
             commands::admin_update_status,
             commands::admin_delete_status,
+            // DEV-068: tag defs
+            commands::admin_list_tag_defs,
+            commands::admin_upsert_tag_def,
+            commands::admin_delete_tag_def,
             // recents (DEV-006)
             commands::list_recents,
             commands::clear_recents,

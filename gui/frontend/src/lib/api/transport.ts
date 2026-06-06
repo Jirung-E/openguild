@@ -323,6 +323,17 @@ function routeToInvoke(
 		if (method === 'PATCH') return { cmd: 'admin_update_status', args: { slug, body } };
 		if (method === 'DELETE') return { cmd: 'admin_delete_status', args: { slug } };
 	}
+	// DEV-068: tag defs.
+	if (method === 'GET' && pathOnly === '/api/tag-defs') {
+		return { cmd: 'admin_list_tag_defs', args: {} };
+	}
+	if (method === 'POST' && pathOnly === '/api/tag-defs') {
+		return { cmd: 'admin_upsert_tag_def', args: { body } };
+	}
+	if (parts[0] === 'api' && parts[1] === 'tag-defs' && parts[2]) {
+		const slug = decodeURIComponent(parts[2]);
+		if (method === 'DELETE') return { cmd: 'admin_delete_tag_def', args: { slug } };
+	}
 
 	// ───── campaigns (DEV-011) ─────
 	// summaries — list 보다 먼저 매칭 (slug 자리에 'summaries' 가 옴).

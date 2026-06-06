@@ -17,6 +17,12 @@ pub fn create_router(store: Store) -> Router {
         // meta
         .route("/api/quest-types", get(meta::list_quest_types))
         .route("/api/quest-statuses", get(meta::list_quest_statuses))
+        // DEV-068: tag defs — `.guild/tags/{slug}.toml` 진리원.
+        .route(
+            "/api/tag-defs",
+            get(meta::list_tag_defs).post(meta::upsert_tag_def),
+        )
+        .route("/api/tag-defs/{slug}", delete(meta::delete_tag_def))
         // DEV-016 (multi-file): 길드 규칙 — `.guild/rules/{slug}.md`.
         // 단일 (legacy) endpoint 도 backward compat 으로 다른 경로에 유지.
         .route(

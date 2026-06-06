@@ -831,6 +831,82 @@ async fn fetch_status_by_slug(pool: &SqlitePool, slug: &str) -> AppResult<QuestS
         .ok_or_else(|| AppError::NotFound(format!("status 없음: {slug}")))
 }
 
+// ─────────────────────── DEV-068: Tag defs ───────────────────────
+
+/// tag slug 검증 — 소문자/숫자/`-`/`_` 만, 1-32자.
+fn validate_tag_slug(slug: &str) -> AppResult<()> {
+    if slug.is_empty() || slug.len() > 32 {
+        return Err(AppError::BadRequest(format!(
+            "tag slug 길이 1-32 만 (입력: {slug:?})"
+        )));
+    }
+    if !slug
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
+    {
+        return Err(AppError::BadRequest(format!(
+            "tag slug 는 소문자/숫자/`-`/`_` 만 (입력: {slug:?})"
+        )));
+    }
+    Ok(())
+}
+
+/// tag 정의 생성 또는 갱신 (upsert). color 빈 문자열 = 미정의.
+pub async fn upsert_tag_def(
+    store: &Store,
+    slug: String,
+    color: String,
+    description: String,
+) -> AppResult<crate::models::QuestTagDef> {
+    let slug = slug.trim().to_string();
+    validate_tag_slug(&slug)?;
+    let color = color.trim().to_string();
+    if !color.is_empty() {
+        validate_color(&color)?;
+    }
+    let description = description.trim().to_string();
+
+    // file write — `.guild/tags/{slug}.toml`.
+    std::fs::create_dir_all(store.paths.tags_dir())
+        .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
+    let file = crate::repo::TagFile {
+        color: color.clone(),
+        description: description.clone(),
+    };
+    file.write(store.paths.tag_path(&slug))
+        .map_err(AppError::Internal)?;
+
+    // DB upsert.
+    sqlx::query(
+        "INSERT INTO quest_tag_defs (slug, color, description) VALUES (?, ?, ?)
+         ON CONFLICT(slug) DO UPDATE SET color = excluded.color, description = excluded.description",
+    )
+    .bind(&slug)
+    .bind(&color)
+    .bind(&description)
+    .execute(&store.index_pool)
+    .await?;
+
+    Ok(crate::models::QuestTagDef {
+        slug,
+        color,
+        description,
+    })
+}
+
+/// tag 정의 삭제 — 파일 + DB. quest 의 frontmatter 의 tag string 자체는 보존
+/// (def 없어도 사용 가능). 사용자가 의도적으로 quest tag 도 제거하려면 별도.
+pub async fn delete_tag_def(store: &Store, slug: String) -> AppResult<()> {
+    let slug = slug.trim().to_string();
+    validate_tag_slug(&slug)?;
+    let _ = std::fs::remove_file(store.paths.tag_path(&slug));
+    sqlx::query("DELETE FROM quest_tag_defs WHERE slug = ?")
+        .bind(&slug)
+        .execute(&store.index_pool)
+        .await?;
+    Ok(())
+}
+
 /// `name_en` → snake_case slug ([a-z0-9_]+).
 fn slugify(s: &str) -> String {
     let mut out = String::with_capacity(s.len());

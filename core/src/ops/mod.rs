@@ -22,7 +22,8 @@ pub mod rules;
 pub use counter::check_and_fix_counters;
 pub use meta::{
     count_quests_by_status, count_quests_by_type, create_status, create_type, delete_status,
-    delete_type, rename_status_slug, rename_type, update_status, update_type,
+    delete_tag_def, delete_type, rename_status_slug, rename_type, update_status, update_type,
+    upsert_tag_def,
 };
 pub use quests::{
     add_prerequisite, change_parent, change_quest_type, change_status, create_quest,

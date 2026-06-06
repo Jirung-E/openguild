@@ -5,6 +5,8 @@
 	// DEV-014: Quest type / status 커스터마이즈 섹션.
 	import AdminTypesSection from '$lib/components/admin/AdminTypesSection.svelte';
 	import AdminStatusesSection from '$lib/components/admin/AdminStatusesSection.svelte';
+	// DEV-068: `.guild/tags/{slug}.toml` 정의 (색 / 설명).
+	import AdminTagDefsSection from '$lib/components/admin/AdminTagDefsSection.svelte';
 
 	let snapshots = $state<SnapshotInfo[]>([]);
 	let drift = $state<DriftReport | null>(null);
@@ -139,6 +141,7 @@
 
 	<AdminTypesSection onmessage={onSectionMessage} />
 	<AdminStatusesSection onmessage={onSectionMessage} />
+	<AdminTagDefsSection onmessage={onSectionMessage} />
 
 	<section>
 		<div class="section-header">
