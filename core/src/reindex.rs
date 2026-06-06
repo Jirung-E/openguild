@@ -140,6 +140,16 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
             Ok(s) => {
                 // DEV-042: slug 컬럼도 함께 INSERT — quest_history 가 slug 기반.
                 // DEV-093: counts_as_done 도 file → DB sync.
+                //
+                // DEV-093 fix (사용자 보고: '연결 quest done 3 인데 진척도 0'):
+                // 기존 길드의 status file 에 counts_as_done 키 자체가 없음 (옛 형식).
+                // TOML 의 default false 가 들어가 migration 0012 의 backfill 가 reindex
+                // 직후 사라짐. file 에 키 누락 + slug 가 done/cancelled 면 자동 true
+                // (직관 일치 — '완료된 상태는 진행도 카운트'). file 에 명시 false 가
+                // 들어와 있으면 그대로 false (사용자 의도 보존 — 단 TOML default
+                // false 와 명시 false 를 구분 못해 best-effort).
+                let counts_as_done = s.counts_as_done
+                    || matches!(slug, "done" | "cancelled");
                 sqlx::query(
                     "INSERT INTO quest_statuses (id, name_en, name_ko, color, sort_order, slug, counts_as_done)
                      VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -150,7 +160,7 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
                 .bind(&s.color)
                 .bind(s.sort_order)
                 .bind(slug)
-                .bind(s.counts_as_done as i64)
+                .bind(counts_as_done as i64)
                 .execute(&mut *tx)
                 .await?;
                 slug_to_status_id.insert(slug.to_string(), id);
