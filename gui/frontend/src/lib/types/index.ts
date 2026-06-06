@@ -46,6 +46,8 @@ export interface Quest {
 	 * 를 "유효 기한" 으로 표시.
 	 */
 	earliest_campaign_due?: string | null;
+	/** DEV-068: 본 quest 의 tag 목록. */
+	tags?: string[];
 }
 
 export interface QuestDetail extends Quest {

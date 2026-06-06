@@ -35,6 +35,11 @@ pub struct QuestRow {
     // 를 "유효 기한" 으로 표시.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub earliest_campaign_due: Option<String>,
+    /// DEV-068: 본 quest 의 tag 목록. `quest_tags` 별도 테이블에서 service 가
+    /// 채움 (sqlx::FromRow 자동 매핑 X — Vec 매핑 안 됨).
+    #[sqlx(skip)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
 }
 
 /// 퀘스트 상세 응답 (서브퀘스트, 선행퀘스트, 위치 포함)
@@ -236,6 +241,7 @@ mod tests {
             desired_due: None,
             required_due: None,
             earliest_campaign_due: None,
+            tags: vec![],
         };
         let json = serde_json::to_string(&q).unwrap();
         let back: QuestRow = serde_json::from_str(&json).unwrap();

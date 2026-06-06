@@ -303,7 +303,30 @@ pub async fn list(pool: &SqlitePool, query: &ListQuery) -> AppResult<Vec<QuestRo
             q = q.bind(pat); // slug
         }
     }
-    let quests = q.fetch_all(pool).await?;
+    let mut quests = q.fetch_all(pool).await?;
+    // DEV-068: tags 채움 — 한 query 로 quest_tags 전체 fetch 후 매핑.
+    if !quests.is_empty() {
+        let ids: Vec<i64> = quests.iter().map(|q| q.id).collect();
+        let placeholders = vec!["?"; ids.len()].join(",");
+        let sql_tags = format!(
+            "SELECT quest_id, tag FROM quest_tags WHERE quest_id IN ({placeholders}) ORDER BY tag"
+        );
+        let mut q_tags = sqlx::query_as::<_, (i64, String)>(&sql_tags);
+        for id in &ids {
+            q_tags = q_tags.bind(id);
+        }
+        let rows = q_tags.fetch_all(pool).await?;
+        let mut map: std::collections::HashMap<i64, Vec<String>> =
+            std::collections::HashMap::new();
+        for (qid, tag) in rows {
+            map.entry(qid).or_default().push(tag);
+        }
+        for q in &mut quests {
+            if let Some(tags) = map.remove(&q.id) {
+                q.tags = tags;
+            }
+        }
+    }
     Ok(quests)
 }
 

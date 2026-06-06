@@ -42,7 +42,8 @@ export function filterQuests(
 	typeIds: Set<number>,
 	statusIds: Set<number>,
 	search = '',
-	titleOnly = false
+	titleOnly = false,
+	tagFilter: Set<string> = new Set()
 ): Quest[] {
 	const tokens = search
 		.toLowerCase()
@@ -52,12 +53,26 @@ export function filterQuests(
 	return quests.filter((q) => {
 		if (typeIds.size > 0 && !typeIds.has(q.quest_type_id)) return false;
 		if (statusIds.size > 0 && !statusIds.has(q.status_id)) return false;
+		// DEV-068: tag 필터 — 선택된 tag 모두 가져야 매치 (AND).
+		if (tagFilter.size > 0) {
+			const qTags = new Set(q.tags ?? []);
+			for (const t of tagFilter) {
+				if (!qTags.has(t)) return false;
+			}
+		}
 		if (tokens.length > 0) {
 			const title = q.title.toLowerCase();
 			const desc = titleOnly ? '' : (q.description ?? '').toLowerCase();
 			const slug = q.quest_id.toLowerCase();
+			// DEV-068: 검색에 tag 도 포함.
+			const tagText = (q.tags ?? []).join(' ').toLowerCase();
 			for (const t of tokens) {
-				if (!title.includes(t) && !desc.includes(t) && !slug.includes(t)) {
+				if (
+					!title.includes(t) &&
+					!desc.includes(t) &&
+					!slug.includes(t) &&
+					!tagText.includes(t)
+				) {
 					return false;
 				}
 			}

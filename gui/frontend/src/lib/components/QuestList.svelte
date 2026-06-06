@@ -29,6 +29,8 @@
 	let filterTypeIds = $state(new Set<number>());
 	let filterStatusIds = $state(new Set<number>());
 	let expanded = $state(new Set<number>());
+	// DEV-068: tag 필터 — 선택된 tag 모두 가져야 매치 (AND).
+	let filterTags = $state(new Set<string>());
 
 	// DEV-037: 검색 — URL ?search= 와 ?title_only= 양방향 동기화.
 	let search = $state('');
@@ -128,7 +130,8 @@
 			filterTypeIds,
 			filterStatusIds,
 			search,
-			titleOnly
+			titleOnly,
+			filterTags
 		);
 		const hasSearch = search.trim().length > 0;
 		// DEV-065: 'list' 모드 — 부모 그룹 X. 매칭된 quest 만 평면. ancestor
@@ -151,6 +154,21 @@
 		else next.add(id);
 		expanded = next;
 	}
+
+	// DEV-068: 모든 quest 의 unique tag 목록 — 필터 chip 옵션.
+	let allTagOptions = $derived.by(() => {
+		const set = new Set<string>();
+		for (const q of quests) {
+			for (const t of q.tags ?? []) set.add(t);
+		}
+		return Array.from(set).sort();
+	});
+	function toggleTagFilter(t: string) {
+		const next = new Set(filterTags);
+		if (next.has(t)) next.delete(t);
+		else next.add(t);
+		filterTags = next;
+	}
 </script>
 
 <div class="quest-list">
@@ -172,7 +190,7 @@
 		bind:titleOnly
 	/>
 
-	<!-- DEV-065: 뷰 모드 토글 — filter-bar 아래 별도 줄. 좌측에 [Tree | List] 세그멘티드. -->
+	<!-- DEV-065 / DEV-068: 뷰 모드 토글 + tag 필터 chip 들 — filter-bar 아래. -->
 	<div class="view-toggle-row">
 		<div class="view-toggle" role="group" aria-label="뷰 모드">
 			<button
@@ -194,6 +212,26 @@
 				<span class="vt-icon">≡</span><span>List</span>
 			</button>
 		</div>
+		<!-- DEV-068: 모든 quest 의 unique tag 들. 클릭으로 필터 토글 (AND). -->
+		{#if allTagOptions.length > 0}
+			<div class="tag-filter-row" aria-label="태그 필터">
+				{#each allTagOptions as t (t)}
+					<button
+						class="tag-filter-chip"
+						class:active={filterTags.has(t)}
+						onclick={() => toggleTagFilter(t)}
+						title={filterTags.has(t) ? `${t} 필터 해제` : `${t} 필터 추가`}
+					>
+						{t}
+					</button>
+				{/each}
+				{#if filterTags.size > 0}
+					<button class="tag-clear" onclick={() => (filterTags = new Set())} title="태그 필터 모두 해제">
+						× 전체 해제
+					</button>
+				{/if}
+			</div>
+		{/if}
 	</div>
 
 	{#if loading}
@@ -275,8 +313,46 @@
 	.view-toggle-row {
 		display: flex;
 		justify-content: flex-start;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 0.75rem;
 		margin: 0.4rem 0 0.75rem;
 	}
+
+	/* DEV-068: tag filter chip 들 — view-toggle 옆 inline. */
+	.tag-filter-row {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.3rem;
+		align-items: center;
+	}
+	.tag-filter-chip {
+		padding: 0.15rem 0.65rem;
+		background: rgba(198, 144, 38, 0.08);
+		border: 1px solid rgba(198, 144, 38, 0.3);
+		border-radius: 20px;
+		color: #d4a44a;
+		font-size: 0.72rem;
+		font-family: 'JetBrains Mono', ui-monospace, monospace;
+		cursor: pointer;
+		transition: background 0.1s, border-color 0.1s;
+	}
+	.tag-filter-chip:hover { background: rgba(198, 144, 38, 0.18); }
+	.tag-filter-chip.active {
+		background: rgba(198, 144, 38, 0.28);
+		border-color: rgba(198, 144, 38, 0.7);
+		color: #ffd58a;
+	}
+	.tag-clear {
+		padding: 0.15rem 0.55rem;
+		background: transparent;
+		border: 1px solid #30363d;
+		border-radius: 20px;
+		color: #8b949e;
+		font-size: 0.7rem;
+		cursor: pointer;
+	}
+	.tag-clear:hover { background: #21262d; color: #c9d1d9; }
 	.view-toggle {
 		display: inline-flex;
 		gap: 0;

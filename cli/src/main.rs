@@ -4285,6 +4285,7 @@ mod tests {
             desired_due: None,
             required_due: None,
             earliest_campaign_due: None,
+            tags: vec![],
         };
         QuestDetail {
             quest: q,
