@@ -705,11 +705,21 @@
 		// (collapsed lane 가 좁아져 뒷 lane 이 왼쪽으로 당겨짐).
 		if (cy) {
 			const isCollapsed = next.has(slug);
+			// DEV-105 fix7: 펼침 시 그 lane 의 모든 노드를 'element' 로 일괄
+			// 복구하면 hideGroup / hideSolo 같은 hide 설정이 무시되는 버그.
+			// 펼침일 때는 computeHiddenIds 기반으로 결정해야 함. 접힘 일 때만
+			// 그 lane 의 노드 전부 hide.
+			const hidden = isCollapsed ? null : computeHiddenIds();
 			cy.nodes('[questId]').forEach((n) => {
 				const sid = n.data('statusId') as number;
 				const s = sorted.find((x) => x.id === sid);
 				if (s?.slug === slug) {
-					n.style('display', isCollapsed ? 'none' : 'element');
+					if (isCollapsed) {
+						n.style('display', 'none');
+					} else {
+						const qid = n.data('questId') as number;
+						n.style('display', hidden!.has(qid) ? 'none' : 'element');
+					}
 				}
 				// 모든 노드의 visualX 재계산 — collapsed 변경이 lane left 누적에 영향.
 				const absX = (n.data('absX') as number | undefined) ?? n.position().x;
