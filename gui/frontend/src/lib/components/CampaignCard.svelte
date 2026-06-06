@@ -45,6 +45,17 @@
 		return `${summary.checklist_checked}/${summary.checklist_total} (${pct}%)`;
 	}
 
+	// DEV-093: 링크된 quest 의 진행률 — 두 번째 progress bar.
+	let questTotal = $derived(summary.quest_total ?? 0);
+	let questDone = $derived(summary.quest_done ?? 0);
+	let questPct = $derived(summary.quest_progress ?? 0);
+	let questFull = $derived(questTotal > 0 && questDone === questTotal);
+	function questProgressText(): string {
+		if (questTotal === 0) return '링크된 퀘스트 없음';
+		const pct = Math.round(questPct * 100);
+		return `${questDone}/${questTotal} (${pct}%)`;
+	}
+
 	function activeRemainingLabel(): string {
 		if (!summary.ended_at?.trim()) return '';
 		return formatRemaining(summary.ended_at, now, 'until-end');
@@ -118,7 +129,9 @@
 					>
 				{/if}
 			</div>
-			<div class="progress-row">
+			<!-- 체크리스트 progress -->
+			<div class="progress-row" title="체크리스트 진행률">
+				<span class="progress-label">체크</span>
 				<div class="progress-bar">
 					<div
 						class="progress-fill"
@@ -130,6 +143,22 @@
 					{progressText()}
 				</div>
 			</div>
+			<!-- DEV-093: 링크 퀘스트 progress (있을 때만). -->
+			{#if questTotal > 0}
+				<div class="progress-row" title="링크된 퀘스트의 완료 비율 (status.counts_as_done)">
+					<span class="progress-label">퀘스트</span>
+					<div class="progress-bar">
+						<div
+							class="progress-fill"
+							class:done={questFull}
+							style:width={`${Math.round(questPct * 100)}%`}
+						></div>
+					</div>
+					<div class="progress-text" class:done-text={questFull}>
+						{questProgressText()}
+					</div>
+				</div>
+			{/if}
 		</div>
 	{:else if mode === 'upcoming'}
 		<div class="title small">{summary.title}</div>
@@ -236,6 +265,14 @@
 	.start-date { color: #6e7681; }
 
 	.progress-row { display: flex; align-items: center; gap: 0.5rem; }
+	/* DEV-093: progress 종류 라벨 (체크 / 퀘스트) — 짧은 모노스페이스. */
+	.progress-label {
+		font-size: 0.65rem;
+		color: #6e7681;
+		min-width: 2.4rem;
+		font-family: 'JetBrains Mono', ui-monospace, monospace;
+		letter-spacing: 0.02em;
+	}
 	.progress-bar {
 		flex: 1;
 		height: 4px;

@@ -207,6 +207,15 @@ export interface CampaignSummary {
 	progress: number;
 	checklist_total: number;
 	checklist_checked: number;
+	/**
+	 * DEV-093: 링크된 quest 중 alive (soft delete 제외) 개수.
+	 * 서버 미배포 환경 대비 optional.
+	 */
+	quest_total?: number;
+	/** DEV-093: 위 중 status.counts_as_done = true 인 수. */
+	quest_done?: number;
+	/** DEV-093: quest_done / quest_total. */
+	quest_progress?: number;
 }
 
 export interface CreateCampaignRequest {
