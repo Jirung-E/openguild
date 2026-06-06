@@ -223,16 +223,16 @@
 	.card.upcoming { padding: 0.65rem 0.8rem; gap: 0.35rem; }
 	/* DEV-080 → DEV-081: overdue 카드 — upcoming 과 동일 패딩 + completed 와
 	   동일 패턴의 빨강 그라데이션 + border (완료와 시각 대칭, 색만 빨강).
-	   DEV-074 fix7: hardcoded dark hex (#2a1010) → color-mix(--danger, --bg-elevated)
-	   로 라이트모드에서도 자연스러운 옅은 톤. */
+	   DEV-074 fix8: tint 강도 + base 색을 토큰 (--card-hl-strength / --card-hl-base)
+	   으로 추상화 → global.css 에서 theme 별로 분리 정의. */
 	.card.overdue {
 		padding: 0.65rem 0.8rem;
 		gap: 0.35rem;
 		border-color: var(--danger);
 		background: linear-gradient(
 			180deg,
-			color-mix(in srgb, var(--danger) 22%, var(--bg-elevated)) 0%,
-			var(--bg-elevated) 60%
+			color-mix(in srgb, var(--danger) var(--card-hl-strength), var(--card-hl-base)) 0%,
+			var(--card-hl-base) var(--card-hl-fade)
 		);
 	}
 	/* BUG-025: 100% 달성 카드 — 초록 border 강조. */
@@ -240,8 +240,8 @@
 		border-color: var(--success-strong);
 		background: linear-gradient(
 			180deg,
-			color-mix(in srgb, var(--success) 22%, var(--bg-elevated)) 0%,
-			var(--bg-elevated) 60%
+			color-mix(in srgb, var(--success) var(--card-hl-strength), var(--card-hl-base)) 0%,
+			var(--card-hl-base) var(--card-hl-fade)
 		);
 	}
 

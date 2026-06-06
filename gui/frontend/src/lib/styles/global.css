@@ -51,6 +51,14 @@
 	--btn-warning-border: color-mix(in srgb, var(--warning) 55%, transparent);
 	--btn-warning-text: var(--warning);
 
+	/* DEV-074 fix8: 카드 상단 하이라이트 그라데이션 (overdue / completed).
+	   다크: 22% tint + bg-elevated base, 60% 에서 base 도달.
+	   라이트: 옅게 (10%) + bg (흰) base, 70% 에서 fade — 분홍/민트가 너무
+	   두드러지지 않게. */
+	--card-hl-strength: 22%;
+	--card-hl-base: var(--bg-elevated);
+	--card-hl-fade: 60%;
+
 	/* date input picker — 환경 무관 dark picker. */
 	color-scheme: dark;
 }
@@ -89,7 +97,11 @@
 	--btn-warning-border: #d4a72c;
 	--btn-warning-text: #6f5400;
 
-	color-scheme: light;
+	/* DEV-074 fix8: 라이트는 base 가 거의 흰색이라 22% 면 분홍이 두드러져 묵직.
+	   tint 10% + base 를 --bg (#ffffff) 로 fade — 깨끗한 흰 카드에 옅은 wash. */
+	--card-hl-strength: 10%;
+	--card-hl-base: var(--bg);
+	--card-hl-fade: 70%;
 }
 
 [data-theme='dark'] {
