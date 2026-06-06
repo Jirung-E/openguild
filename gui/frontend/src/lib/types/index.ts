@@ -262,3 +262,20 @@ export const URGENCY_BG: Record<number, string> = {
 	3: '#2a2100',
 	4: '#181c22'
 };
+
+/**
+ * DEV-074 fix: light theme 의 urgency bg — Cytoscape 가 CSS var 인식 못 해
+ * data() 로 전달해야 함. theme 전환 시 QuestBoard 가 모든 노드의
+ * urgencyBg data 를 이쪽 값으로 갱신.
+ */
+export const URGENCY_BG_LIGHT: Record<number, string> = {
+	1: '#fdecec', // 옅은 빨강.
+	2: '#fef2dc', // 옅은 주황.
+	3: '#fdf6cc', // 옅은 노랑.
+	4: '#eef0f3' // 옅은 회색.
+};
+
+export function urgencyBgFor(urgency: number, theme: 'dark' | 'light'): string {
+	const map = theme === 'light' ? URGENCY_BG_LIGHT : URGENCY_BG;
+	return map[urgency] ?? map[4] ?? '#888';
+}

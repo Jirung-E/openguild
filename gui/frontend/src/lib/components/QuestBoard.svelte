@@ -14,6 +14,7 @@
 		URGENCY_COLOR,
 		URGENCY_BG,
 		URGENCY_LABEL,
+		urgencyBgFor,
 		type Quest,
 		type QuestDependency,
 		type QuestPosition,
@@ -124,6 +125,11 @@
 		const tc = quest.type_color;
 		const ul = URGENCY_LABEL[quest.urgency];
 		const qid = quest.quest_id;
+		// DEV-074 fix: SVG data URL 안에선 CSS var() 컴퓨팅 X — 명시 색.
+		const eff = currentEffectiveTheme();
+		const textFill = eff === 'light' ? '#1f2328' : '#c9d1d9';
+		const dueMutedFill = eff === 'light' ? '#59636e' : '#8b949e';
+		const dangerFill = eff === 'light' ? '#cf222e' : '#f85149';
 
 		const x = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 		const qidW = Math.ceil(qid.length * 6.4) + 16;
@@ -146,13 +152,13 @@
 		// source='campaign' 이면 prefix '⛺' — 캠페인이 더 가까워 그게 우세함을 시각 단서로.
 		const { date: due, source: dueSrc } = effectiveQuestDue(quest);
 		let dueText = '';
-		let dueColor = 'var(--text-muted)';
+		let dueColor = dueMutedFill;
 		if (due) {
 			dueText = dueSrc === 'campaign' ? `⛺ ${due}` : due;
 			const dueMs = new Date(`${due}T23:59:59`).getTime();
 			if (!Number.isNaN(dueMs)) {
 				const daysLeft = Math.floor((dueMs - Date.now()) / (24 * 60 * 60 * 1000));
-				if (daysLeft < 0) dueColor = 'var(--danger)';
+				if (daysLeft < 0) dueColor = dangerFill;
 				else if (daysLeft <= 7) dueColor = '#f0883e';
 			}
 		}
@@ -171,9 +177,9 @@
   <text x="${ulX + ulW / 2}" y="21.5" text-anchor="middle"
     fill="${uc}" font-size="10" font-weight="500"
     font-family="system-ui,sans-serif">${x(ul)}</text>
-  <text x="10" y="${titleY}" fill="var(--text)" font-size="12"
+  <text x="10" y="${titleY}" fill="${textFill}" font-size="12"
     font-family="system-ui,-apple-system,sans-serif">${x(line1)}</text>
-  ${line2 ? `<text x="10" y="${titleY + 16}" fill="var(--text)" font-size="12"
+  ${line2 ? `<text x="10" y="${titleY + 16}" fill="${textFill}" font-size="12"
     font-family="system-ui,-apple-system,sans-serif">${x(line2)}</text>` : ''}
   ${dueText
 		? `<text x="${W - 10}" y="${H - 8}" text-anchor="end"
@@ -620,6 +626,15 @@
 			/* 무시 */
 		}
 	}
+
+	// DEV-074 fix: light theme 시 노드 bg 색 light tone 으로. theme store
+	// subscribe — 변경 시 모든 노드 의 urgencyBg data 갱신 + cy.style 적용.
+	import { theme, resolveTheme } from '$lib/stores/theme';
+	function currentEffectiveTheme(): 'dark' | 'light' {
+		return resolveTheme(getStore(theme));
+	}
+	// svelte/store get 임포트 alias.
+	import { get as getStore } from 'svelte/store';
 
 	// DEV-105 (partial): lane 접기 — collapsed 시 그 lane 의 노드 hide + label
 	// 90도 회전. lane 폭 자체 축소는 미지원 (LANE_W 상수 retrofit 필요 — 별도).
@@ -1423,7 +1438,28 @@
 
 	// ── 초기화 ──────────────────────────────────────────────────
 
+	// DEV-074 fix: theme 변경 시 모든 노드의 urgencyBg + nodeBg (SVG) 재생성.
+	function refreshNodeBgForTheme() {
+		if (!cy) return;
+		const eff = currentEffectiveTheme();
+		cy.nodes('[questId]').forEach((n) => {
+			const urgency = n.data('urgency') as number | undefined;
+			if (urgency != null) {
+				n.data('urgencyBg', urgencyBgFor(urgency, eff));
+			}
+			// nodeBg SVG 도 theme 색 hardcoded — 다시 생성. quest 데이터 추출.
+			const qid = n.data('questId') as number | undefined;
+			if (qid != null) {
+				const q = allQuests.find((x) => x.id === qid);
+				if (q) n.data('nodeBg', makeSvgUrl(q));
+			}
+		});
+		cy.style().update();
+	}
+
 	onMount(() => {
+		const unsubTheme = theme.subscribe(() => refreshNodeBgForTheme());
+
 		// gridSnap 은 guildKeyPrefix 가 두 번째 onMount 에서 set 된 직후 다시
 		// loadGridSnap 호출. 여기서는 listener 만.
 		window.addEventListener('keydown', handleKeydown);
@@ -1433,6 +1469,7 @@
 		window.addEventListener('mouseup', onBoxMouseUp);
 		container.addEventListener('mousedown', onBoxMouseDown, { capture: true });
 		return () => {
+			unsubTheme();
 			window.removeEventListener('keydown', handleKeydown);
 			window.removeEventListener('keyup', handleKeyup);
 			window.removeEventListener('blur', onCtrlUp);
@@ -1582,7 +1619,7 @@
 						questSlug: quest.quest_id,
 						statusId: quest.status_id,
 						urgencyColor: URGENCY_COLOR[quest.urgency],
-						urgencyBg: URGENCY_BG[quest.urgency],
+						urgencyBg: urgencyBgFor(quest.urgency, currentEffectiveTheme()),
 						typeColor: quest.type_color,
 						nodeBg: makeSvgUrl(quest),
 						highlightType: '',
@@ -1902,7 +1939,7 @@
 					questSlug: q.quest_id,
 					statusId: q.status_id,
 					urgencyColor: URGENCY_COLOR[q.urgency],
-					urgencyBg: URGENCY_BG[q.urgency],
+					urgencyBg: urgencyBgFor(q.urgency, currentEffectiveTheme()),
 					typeColor: q.type_color,
 					nodeBg: makeSvgUrl(q),
 					highlightType: '',
