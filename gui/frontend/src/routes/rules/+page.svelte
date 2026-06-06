@@ -541,9 +541,9 @@
 	}
 	.btn-save {
 		padding: 0.35rem 0.85rem;
-		background: var(--success-strong);
-		border: 1px solid #2ea043;
-		color: #fff;
+		background: var(--btn-primary-bg);
+		border: 1px solid var(--btn-primary-border);
+		color: var(--btn-primary-text);
 		border-radius: 6px;
 		cursor: pointer;
 		font-size: 0.825rem;
@@ -553,7 +553,8 @@
 		cursor: not-allowed;
 	}
 	.btn-save:hover:not(:disabled) {
-		background: var(--success);
+		background: var(--btn-primary-bg-hover);
+		border-color: var(--btn-primary-border-hover);
 	}
 	.btn-cancel {
 		padding: 0.35rem 0.85rem;

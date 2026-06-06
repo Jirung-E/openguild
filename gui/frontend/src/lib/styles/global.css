@@ -37,6 +37,20 @@
 	--nav-border: #2a2a4a;
 	--nav-hover-bg: #2a2a4a;
 
+	/* DEV-074 fix6: primary action 버튼 (초록) 의 명도 — dark / light 분리.
+	   기존 `var(--success-strong)` 직접 사용은 라이트모드에서 너무 어두움
+	   (#116329). 본 토큰으로 모든 primary 버튼 통일. */
+	--btn-primary-bg: var(--success-strong);
+	--btn-primary-bg-hover: var(--success-strong);
+	--btn-primary-border: var(--success-strong);
+	--btn-primary-border-hover: var(--success);
+	--btn-primary-text: #fff;
+	/* DEV-074 fix6: warning 버튼 (admin '복원' 등). */
+	--btn-warning-bg: color-mix(in srgb, var(--warning) 18%, transparent);
+	--btn-warning-bg-hover: color-mix(in srgb, var(--warning) 32%, transparent);
+	--btn-warning-border: color-mix(in srgb, var(--warning) 55%, transparent);
+	--btn-warning-text: var(--warning);
+
 	/* date input picker — 환경 무관 dark picker. */
 	color-scheme: dark;
 }
@@ -62,6 +76,18 @@
 	--nav-bg: #f6f8fa;
 	--nav-border: #d0d7de;
 	--nav-hover-bg: #eaeef2;
+
+	/* DEV-074 fix6: 라이트 — 한 단계 밝은 초록 (#1a7f37) + hover 는 한 단계 더. */
+	--btn-primary-bg: var(--success);
+	--btn-primary-bg-hover: color-mix(in srgb, var(--success) 85%, white);
+	--btn-primary-border: var(--success);
+	--btn-primary-border-hover: var(--success);
+	--btn-primary-text: #fff;
+	/* DEV-074 fix6: 라이트 — 옅은 노랑 카드 + 진한 글자. */
+	--btn-warning-bg: #fff8d6;
+	--btn-warning-bg-hover: #ffefa8;
+	--btn-warning-border: #d4a72c;
+	--btn-warning-text: #6f5400;
 
 	color-scheme: light;
 }

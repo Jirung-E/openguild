@@ -394,15 +394,15 @@
 	}
 	.btn-create {
 		padding: 0.45rem 1.25rem;
-		background: var(--success-strong);
-		border: 1px solid var(--success-strong);
+		background: var(--btn-primary-bg);
+		border: 1px solid var(--btn-primary-border);
 		border-radius: 6px;
-		color: #fff;
+		color: var(--btn-primary-text);
 		font-size: 0.875rem;
 		cursor: pointer;
-		transition: background 0.1s;
+		transition: background 0.1s, border-color 0.1s;
 	}
-	.btn-create:hover:not(:disabled) { background: var(--success-strong); }
+	.btn-create:hover:not(:disabled) { background: var(--btn-primary-bg-hover); border-color: var(--btn-primary-border-hover); }
 	.btn-create:disabled { opacity: 0.5; cursor: default; }
 	.btn-cancel {
 		padding: 0.45rem 1rem;

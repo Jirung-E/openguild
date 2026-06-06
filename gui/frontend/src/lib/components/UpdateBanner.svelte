@@ -144,6 +144,6 @@
 		cursor: pointer;
 	}
 	.upd-btn:hover { background: var(--bg-subtle); }
-	.upd-btn.primary { background: var(--success-strong); border-color: var(--success-strong); color: #fff; }
-	.upd-btn.primary:hover { background: var(--success-strong); }
+	.upd-btn.primary { background: var(--btn-primary-bg); border-color: var(--btn-primary-border); color: var(--btn-primary-text); }
+	.upd-btn.primary:hover { background: var(--btn-primary-bg-hover); border-color: var(--btn-primary-border-hover); }
 </style>

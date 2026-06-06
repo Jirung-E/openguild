@@ -136,14 +136,14 @@
 	.header h1 { font-size: 1.25rem; color: var(--text); margin: 0; }
 	.btn-primary {
 		padding: 0.4rem 0.85rem;
-		background: var(--success-strong);
-		border: 1px solid #2ea043;
+		background: var(--btn-primary-bg);
+		border: 1px solid var(--btn-primary-border);
 		border-radius: 6px;
-		color: #fff;
+		color: var(--btn-primary-text);
 		font-size: 0.875rem;
 		cursor: pointer;
 	}
-	.btn-primary:hover { background: var(--success); }
+	.btn-primary:hover { background: var(--btn-primary-bg-hover); border-color: var(--btn-primary-border-hover); }
 
 	.controls {
 		display: flex;

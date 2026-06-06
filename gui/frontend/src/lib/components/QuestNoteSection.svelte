@@ -221,11 +221,11 @@
 	.actions { display: flex; gap: 0.4rem; margin-top: 0.5rem; }
 	.btn-save {
 		padding: 0.35rem 0.85rem;
-		background: var(--success-strong); border: 1px solid var(--success-strong);
-		color: #fff; border-radius: 6px; cursor: pointer; font-size: 0.825rem;
+		background: var(--btn-primary-bg); border: 1px solid var(--btn-primary-border);
+		color: var(--btn-primary-text); border-radius: 6px; cursor: pointer; font-size: 0.825rem;
 	}
 	.btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
-	.btn-save:hover:not(:disabled) { background: var(--success-strong); }
+	.btn-save:hover:not(:disabled) { background: var(--btn-primary-bg-hover); border-color: var(--btn-primary-border-hover); }
 	.btn-cancel {
 		padding: 0.35rem 0.85rem;
 		background: transparent; border: 1px solid var(--border);

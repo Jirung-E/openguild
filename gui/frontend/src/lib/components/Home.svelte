@@ -398,14 +398,14 @@
 	.btn-link:hover { background: var(--bg-subtle); }
 	.btn-primary {
 		padding: 0.35rem 0.85rem;
-		background: var(--success-strong);
-		border: 1px solid var(--success-strong);
+		background: var(--btn-primary-bg);
+		border: 1px solid var(--btn-primary-border);
 		border-radius: 6px;
-		color: #fff;
+		color: var(--btn-primary-text);
 		font-size: 0.825rem;
 		cursor: pointer;
 	}
-	.btn-primary:hover { background: var(--success-strong); }
+	.btn-primary:hover { background: var(--btn-primary-bg-hover); border-color: var(--btn-primary-border-hover); }
 
 	.empty { color: var(--text-faint); font-size: 0.875rem; padding: 0.75rem 0; }
 

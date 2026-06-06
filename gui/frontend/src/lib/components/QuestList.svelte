@@ -306,24 +306,16 @@
 		align-items: center;
 		gap: 4px;
 		padding: 4px 10px;
-		background: var(--success-strong);
-		border: 1px solid var(--success-strong);
+		background: var(--btn-primary-bg);
+		border: 1px solid var(--btn-primary-border);
 		border-radius: 6px;
-		color: #fff;
+		color: var(--btn-primary-text);
 		font-size: 0.8rem;
 		font-weight: 600;
 		cursor: pointer;
 		transition: background 0.1s, border-color 0.1s;
 	}
-	/* DEV-074 fix5: 라이트모드 — 한 단계 밝은 초록. */
-	:global([data-theme='light']) .qb-new {
-		background: var(--success); border-color: var(--success);
-	}
-	.qb-new:hover { background: var(--success-strong); border-color: var(--success); }
-	:global([data-theme='light']) .qb-new:hover {
-		background: color-mix(in srgb, var(--success) 85%, white);
-		border-color: var(--success);
-	}
+	.qb-new:hover { background: var(--btn-primary-bg-hover); border-color: var(--btn-primary-border-hover); }
 	.qb-new-icon { font-size: 0.95rem; line-height: 1; }
 
 	.list {

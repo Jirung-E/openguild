@@ -2876,20 +2876,13 @@
 	.tb-btn .count { font-size: 0.7rem; color: var(--text-faint); min-width: 10px; text-align: right; }
 	.tb-btn:hover:not(:disabled) .count { color: var(--text-muted); }
 	/* DEV-084: New Quest — toolbar 안 primary 강조 (초록).
-	   DEV-074 fix5: 라이트모드에선 --success-strong (#116329) 가 너무 어둡고 주변
-	   배경 대비 묵직 → 한 단계 밝은 --success (#1a7f37) 로 명도 올림. */
+	   DEV-074 fix6: --btn-primary-* 토큰으로 통일 (dark/light 자동). */
 	.tb-btn.tb-new {
-		background: var(--success-strong); border-color: var(--success-strong); color: #fff; font-weight: 600;
-	}
-	:global([data-theme='light']) .tb-btn.tb-new {
-		background: var(--success); border-color: var(--success);
+		background: var(--btn-primary-bg); border-color: var(--btn-primary-border);
+		color: var(--btn-primary-text); font-weight: 600;
 	}
 	.tb-btn.tb-new:hover:not(:disabled) {
-		background: var(--success-strong); border-color: var(--success); color: #fff;
-	}
-	:global([data-theme='light']) .tb-btn.tb-new:hover:not(:disabled) {
-		background: color-mix(in srgb, var(--success) 85%, white);
-		border-color: var(--success);
+		background: var(--btn-primary-bg-hover); border-color: var(--btn-primary-border-hover);
 	}
 	.tb-sep { width: 1px; background: var(--border); align-self: stretch; margin: 2px 0; }
 	.tb-select {
@@ -2949,11 +2942,11 @@
 	}
 	.dialog-ok {
 		padding: 0.4rem 1.1rem;
-		background: var(--success-strong); border: 1px solid var(--success-strong); border-radius: 6px;
-		color: #fff; font-size: 0.875rem; cursor: pointer;
-		transition: background 0.1s;
+		background: var(--btn-primary-bg); border: 1px solid var(--btn-primary-border); border-radius: 6px;
+		color: var(--btn-primary-text); font-size: 0.875rem; cursor: pointer;
+		transition: background 0.1s, border-color 0.1s;
 	}
-	.dialog-ok:hover { background: var(--success-strong); }
+	.dialog-ok:hover { background: var(--btn-primary-bg-hover); border-color: var(--btn-primary-border-hover); }
 	.dialog-cancel {
 		padding: 0.4rem 1rem;
 		background: transparent; border: 1px solid var(--border); border-radius: 6px;

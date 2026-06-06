@@ -1294,10 +1294,10 @@
 	.edit-actions { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
 	.btn-save {
 		padding: 0.4rem 1.2rem;
-		background: var(--success-strong); border: 1px solid var(--success-strong); border-radius: 6px;
-		color: #fff; font-size: 0.875rem; cursor: pointer;
+		background: var(--btn-primary-bg); border: 1px solid var(--btn-primary-border); border-radius: 6px;
+		color: var(--btn-primary-text); font-size: 0.875rem; cursor: pointer;
 	}
-	.btn-save:hover:not(:disabled) { background: var(--success-strong); }
+	.btn-save:hover:not(:disabled) { background: var(--btn-primary-bg-hover); border-color: var(--btn-primary-border-hover); }
 	.btn-save:disabled { opacity: 0.5; cursor: default; }
 	.btn-cancel {
 		padding: 0.4rem 1rem;

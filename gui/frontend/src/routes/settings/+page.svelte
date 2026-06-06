@@ -289,14 +289,14 @@
 
 	.btn-primary {
 		padding: 0.4rem 0.9rem;
-		background: var(--success-strong);
-		border: 1px solid var(--success-strong);
+		background: var(--btn-primary-bg);
+		border: 1px solid var(--btn-primary-border);
 		border-radius: 6px;
-		color: #fff;
+		color: var(--btn-primary-text);
 		font-size: 0.85rem;
 		cursor: pointer;
 	}
-	.btn-primary:hover { background: var(--success-strong); }
+	.btn-primary:hover { background: var(--btn-primary-bg-hover); border-color: var(--btn-primary-border-hover); }
 	.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
 	/* DEV-085: 업데이트 결과 floating toast — fixed, 우하단. 레이아웃 안 밀어냄. */

@@ -143,9 +143,9 @@
 		font-size: 0.875rem;
 		cursor: pointer;
 	}
-	.btn-cancel { background: transparent; border: 1px solid #30363d; color: #c9d1d9; }
+	.btn-cancel { background: transparent; border: 1px solid var(--border); color: var(--text); }
 	.btn-cancel:hover { background: var(--bg-subtle); }
-	.btn-primary { background: #238636; border: 1px solid #2ea043; color: #fff; }
-	.btn-primary:hover:not(:disabled) { background: var(--success); }
+	.btn-primary { background: var(--btn-primary-bg); border: 1px solid var(--btn-primary-border); color: var(--btn-primary-text); }
+	.btn-primary:hover:not(:disabled) { background: var(--btn-primary-bg-hover); border-color: var(--btn-primary-border-hover); }
 	.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>
