@@ -706,16 +706,25 @@
 		sorted = next;
 		laneOf = new Map(sorted.map((s, i) => [s.id, i]));
 		saveLaneOrder(sorted.map((s) => s.slug));
-		// Cytoscape 재배치 — 모든 노드의 lane index 변경.
+		// DEV-059 fix: lane 배경 / header div + 노드 모두 재배치.
+		// 이전: 노드만 position() — 단 lane bg / header 의 left 는 옛 자리 → 시각상 안 바뀐 듯.
+		// 지금: buildLaneDivs 가 새 sorted 순서대로 lane-col / lane-hdr 재구성. syncLanes 로 좌표.
 		if (cy) {
+			buildLaneDivs(sorted);
+			// 모든 노드 의 lane 의 새 좌표로 animate (즉시 jump 가 아니라 부드러운 이동 — 사용자가 이동 인지).
 			cy.nodes('[questId]').forEach((n) => {
 				const sid = n.data('statusId') as number;
 				const newLi = laneOf.get(sid) ?? 0;
 				const absX = (n.data('absX') as number) ?? n.position().x;
-				const laneLeft = newLi * LANE_STRIDE;
-				const visX = laneLeft + (absX - Math.floor(absX / LANE_STRIDE) * LANE_STRIDE);
-				n.position({ x: visX, y: n.position().y });
+				const oldX = n.position().x;
+				// absX 의 lane-local X 를 새 lane 의 left 로.
+				const oldLaneLeft = Math.floor(oldX / LANE_STRIDE) * LANE_STRIDE;
+				const localX = oldX - oldLaneLeft;
+				const newVisX = newLi * LANE_STRIDE + localX;
+				n.animate({ position: { x: newVisX, y: n.position().y }, duration: 200 });
+				n.data('absX', newLi * LANE_STRIDE + (absX - Math.floor(absX / LANE_STRIDE) * LANE_STRIDE));
 			});
+			syncLanes();
 		}
 	}
 	/**
