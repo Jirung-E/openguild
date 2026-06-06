@@ -385,14 +385,27 @@ pub async fn get(pool: &SqlitePool, id: i64) -> AppResult<QuestDetail> {
     let (sub_quests, prerequisites, position) = fetch_relations(pool, id).await?;
     // DEV-070: 후속 (이 quest 를 선행으로 갖는 quest 들).
     let successors = fetch_successors(pool, id).await?;
+    // DEV-068: tag 들 — quest_tags 캐시 (file frontmatter sync 됨).
+    let tags = fetch_quest_tags(pool, id).await?;
     Ok(QuestDetail {
         quest,
         parent,
         sub_quests,
         prerequisites,
         successors,
+        tags,
         position,
     })
+}
+
+/// DEV-068: 본 quest 의 tag 목록. quest_tags 캐시 read.
+pub async fn fetch_quest_tags(pool: &SqlitePool, id: i64) -> AppResult<Vec<String>> {
+    Ok(sqlx::query_scalar::<_, String>(
+        "SELECT tag FROM quest_tags WHERE quest_id = ? ORDER BY tag",
+    )
+    .bind(id)
+    .fetch_all(pool)
+    .await?)
 }
 
 /// DEV-047: 부모 quest 한 row 조회 (있으면). parent_quest_id 가 None / 부모
@@ -426,6 +439,7 @@ pub async fn get_by_slug(pool: &SqlitePool, slug: &str) -> AppResult<QuestDetail
     let parent = fetch_parent(pool, &quest).await?;
     let (sub_quests, prerequisites, position) = fetch_relations(pool, id).await?;
     let successors = fetch_successors(pool, id).await?;
+    let tags = fetch_quest_tags(pool, id).await?;
 
     Ok(QuestDetail {
         quest,
@@ -433,6 +447,7 @@ pub async fn get_by_slug(pool: &SqlitePool, slug: &str) -> AppResult<QuestDetail
         sub_quests,
         prerequisites,
         successors,
+        tags,
         position,
     })
 }

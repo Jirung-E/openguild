@@ -59,6 +59,11 @@ export interface QuestDetail extends Quest {
 	 * 서버 미배포 환경 대비 optional (undefined → 빈 배열로 fallback).
 	 */
 	successors?: Quest[];
+	/**
+	 * DEV-068: 본 quest 의 tag 목록. frontmatter 가 진리원.
+	 * 서버 미배포 환경 대비 optional.
+	 */
+	tags?: string[];
 	position: QuestPosition | null;
 }
 

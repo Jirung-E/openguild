@@ -380,6 +380,42 @@
 		}
 	}
 
+	// --- DEV-068: 태그 ---
+	let tagInputOpen = $state(false);
+	let newTagText = $state('');
+	async function addTagFromInput(e: Event) {
+		e.preventDefault();
+		if (!detail) return;
+		const tokens = newTagText
+			.split(/\s+/)
+			.map((s) => s.trim())
+			.filter((s) => s.length > 0);
+		if (tokens.length === 0) return;
+		const existing = detail.tags ?? [];
+		const merged = [...existing];
+		for (const t of tokens) {
+			if (!merged.includes(t)) merged.push(t);
+		}
+		try {
+			await questsApi.setTags(detail.id, merged);
+			detail = await questsApi.getBySlug(slug);
+			newTagText = '';
+			tagInputOpen = false;
+		} catch (err) {
+			alert(err instanceof Error ? err.message : 'failed');
+		}
+	}
+	async function removeTag(t: string) {
+		if (!detail) return;
+		const after = (detail.tags ?? []).filter((x) => x !== t);
+		try {
+			await questsApi.setTags(detail.id, after);
+			detail = await questsApi.getBySlug(slug);
+		} catch (err) {
+			alert(err instanceof Error ? err.message : 'failed');
+		}
+	}
+
 	// --- 삭제 모달 ---
 
 	function openDeleteModal() {
@@ -755,6 +791,50 @@
 				</ul>
 			{:else}
 				<p class="no-desc">선행 퀘스트 없음.</p>
+			{/if}
+		</section>
+
+		<!-- DEV-068: 태그 — frontmatter 가 진리원. inline 편집 가능. -->
+		<section>
+			<div class="section-head">
+				<h2 class="section-title tag-label">Tags</h2>
+				{#if !editMode}
+					<button class="sec-add-btn" onclick={() => (tagInputOpen = !tagInputOpen)}>
+						{tagInputOpen ? '취소' : '+ 추가'}
+					</button>
+				{/if}
+			</div>
+			{#if (detail.tags ?? []).length > 0}
+				<ul class="tag-pills">
+					{#each (detail.tags ?? []) as t (t)}
+						<li>
+							<span class="tag-pill">
+								{t}
+								{#if !editMode}
+									<button
+										class="tag-rm"
+										title="태그 제거"
+										onclick={() => removeTag(t)}
+										aria-label={`${t} 제거`}
+									>×</button>
+								{/if}
+							</span>
+						</li>
+					{/each}
+				</ul>
+			{:else if !tagInputOpen}
+				<p class="no-desc">태그 없음.</p>
+			{/if}
+			{#if tagInputOpen && !editMode}
+				<form class="tag-add-form" onsubmit={addTagFromInput}>
+					<input
+						type="text"
+						bind:value={newTagText}
+						placeholder="새 태그 (공백 구분으로 여러 개)"
+						aria-label="새 태그"
+					/>
+					<button type="submit" disabled={!newTagText.trim()}>추가</button>
+				</form>
 			{/if}
 		</section>
 
@@ -1199,6 +1279,44 @@
 	.sec-hint {
 		font-size: 0.75rem; color: #6e7681; font-style: italic;
 	}
+
+	/* DEV-068: 태그 섹션. */
+	.section-title.tag-label { color: #c69026; }
+	.tag-pills {
+		list-style: none; padding: 0; margin: 0;
+		display: flex; flex-wrap: wrap; gap: 0.35rem;
+	}
+	.tag-pill {
+		display: inline-flex; align-items: center; gap: 0.25rem;
+		padding: 0.15rem 0.6rem;
+		background: rgba(198, 144, 38, 0.12);
+		border: 1px solid rgba(198, 144, 38, 0.4);
+		border-radius: 20px;
+		font-size: 0.75rem;
+		color: #d4a44a;
+		font-family: 'JetBrains Mono', ui-monospace, monospace;
+		letter-spacing: 0.02em;
+	}
+	.tag-rm {
+		border: none; background: none; color: #8b949e;
+		cursor: pointer; font-size: 1rem; line-height: 1; padding: 0 0 0 2px;
+	}
+	.tag-rm:hover { color: #f85149; }
+	.tag-add-form {
+		display: flex; gap: 0.4rem; margin-top: 0.5rem;
+	}
+	.tag-add-form input {
+		flex: 1; padding: 0.3rem 0.6rem;
+		background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
+		color: #c9d1d9; font-size: 0.85rem;
+	}
+	.tag-add-form button {
+		padding: 0.3rem 0.85rem;
+		background: #21262d; border: 1px solid #30363d; border-radius: 6px;
+		color: #c9d1d9; font-size: 0.8rem; cursor: pointer;
+	}
+	.tag-add-form button:disabled { opacity: 0.4; cursor: not-allowed; }
+	.tag-add-form button:hover:not(:disabled) { background: #30363d; }
 	/* DEV-011: Campaign section */
 	.section-title.campaign-label { color: #4a9eff; }
 	/* BUG-021: campaign slug badge — quest type badge 와 동일 pill 패턴 (color-mix). */

@@ -4291,6 +4291,7 @@ mod tests {
             sub_quests: vec![],
             prerequisites: vec![],
             successors: vec![],
+            tags: vec![],
             position: None,
         }
     }

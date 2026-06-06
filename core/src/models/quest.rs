@@ -52,6 +52,9 @@ pub struct QuestDetail {
     /// Detail 의 "후속 퀘스트" 섹션 conditional 표시.
     #[serde(default)]
     pub successors: Vec<QuestRow>,
+    /// DEV-068: 본 quest 의 tag 목록 (frontmatter 가 진리원). 검색 / 필터링용.
+    #[serde(default)]
+    pub tags: Vec<String>,
     pub position: Option<QuestPosition>,
 }
 
