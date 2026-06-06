@@ -90,7 +90,7 @@ openguild/
 ├── openguild.guild                  ← 본 repo 의 마커 (dogfood)
 ├── .guild/                          ← 본 repo 의 quests / campaigns / 캐시 (dogfood)
 ├── core/                            ← lib: 도메인 + 저장소 추상화
-│   ├── migrations/                  ← sqlx 마이그레이션 (0001~0010, set_ignore_missing 로 backward compat)
+│   ├── migrations/                  ← sqlx 마이그레이션 (0001~0012, set_ignore_missing 로 backward compat)
 │   └── src/
 │       ├── lib.rs
 │       ├── db.rs                    ← sqlx pool 생성
@@ -196,6 +196,28 @@ openguild/
 >   (`quest_comments` / `quest_memos`) + snapshot 백업 합류 (migration 0011).
 >   메모의 `user_id=0` sentinel — multi-user (DEV-021) 진입 시 격리 활성.
 >   drift::detect_drift 가 sibling 파일도 fresh 감지 (auto reindex 트리거).
+> - 2026-06-05 DEV-098 installer NSIS resources 에 README + USAGE 동봉
+>   (사용자 친화 시작 가이드).
+> - 2026-06-05 DEV-018 `openguild-server info` 에 `--brief` / `--detailed` 모드.
+> - 2026-06-05 DEV-070 Quest Detail "Successors" 섹션 — quest_dependencies 역방향.
+> - 2026-06-05 BUG-046 Campaign 체크리스트 클릭 시 페이지 최상단 점프 — optimistic
+>   update 로 fix.
+> - 2026-06-05 DEV-101 UI 크기 슬라이더 + localStorage (rem scale).
+> - 2026-06-05 DEV-068 태그 풀스택 — migration 0010 + ops::set_quest_tags +
+>   CLI (`quest tag add/rm/list/set`) + HTTP `/api/quests/:id/tags` + Tauri command
+>   + Quest Detail tag pill UI + Quest List tag chip 필터 (AND).
+> - 2026-06-06 DEV-074 다크 / 라이트 / 시스템 테마 — CSS variable token + store +
+>   `<html data-theme>` + 25+ component 의 hardcoded color → var() 마이그레이션.
+> - 2026-06-06 DEV-093 캠페인 quest 진행도 — migration 0012 `quest_statuses.
+>   counts_as_done` + Home active 카드 progress 2 줄 + Campaign Detail 진행도
+>   + Admin Statuses 의 토글 UI.
+> - 2026-06-06 DEV-073 Quest Board toolbar 접기 토글 — lane 라벨 가림 해소.
+> - 2026-06-06 DEV-065 QuestList Tree / List 뷰 모드 토글 (URL + localStorage).
+> - 2026-06-06 DEV-077 arrangeNodesGrouped — cluster 의 y 좌표 lane 별 분리
+>   (lane 안 겹침 없으면 같은 row 공유).
+> - 2026-06-06 DEV-023 server CLI `vacuum` + `journal-tail` 추가.
+> - 2026-06-06 BUG-054 QuestBoard.sorted → $state — long-standing npm check
+>   warning 제거 (0 warnings).
 >
 > 자세한 설계 근거: `docs/architecture-refactor.md`, `docs/storage-design.md`.
 
@@ -227,6 +249,7 @@ openguild/
 | GET    | `/api/quests/:id/history` | DEV-013: 상태 / 타입 변경 이력 |
 | PATCH  | `/api/quests/:id/type` | DEV-055: type 변경 (slug 바뀜, 관련 파일 cascade) |
 | PATCH  | `/api/quests/:id/due` | DEV-076: desired_due / required_due 설정·해제 |
+| PATCH  | `/api/quests/:id/tags` | DEV-068: 태그 전체 교체 (body `{tags: string[]}`) |
 | GET    | `/api/quests/:id/campaigns` | DEV-011: 이 quest 가 속한 캠페인 목록 |
 
 ### Campaign (DEV-011)
@@ -335,6 +358,16 @@ Backend 추상화는 `cli/src/main.rs` 의 `Backend` enum. 로컬은 `--guild` �
 - 멀티유저 인증 (JWT) — DEV-021. 메모의 user_id 격리 (DEV-102) 트리거.
 - ✅ 댓글 / 메모 DB 캐시 + snapshot 백업 (DEV-102) — migration 0011 + reindex /
   drift / ops 캐시 sync 완료. 메모 user_id 격리는 DEV-021 진입 시.
+- ✅ 태그 (DEV-068) — frontmatter + DB cache + 풀스택 (CLI / HTTP / GUI).
+- ✅ 캠페인 quest 진행도 (DEV-093) — status.counts_as_done + 모든 layer.
+- ✅ 다크 / 라이트 / 시스템 테마 (DEV-074) — CSS variable backbone + 마이그레이션.
+- ✅ Quest List Tree / List 토글 (DEV-065).
+- ✅ Quest Detail 후속 퀘스트 (DEV-070).
+- ✅ Quest Board toolbar 접기 (DEV-073), arrangeNodesGrouped 개선 (DEV-077).
 - 캠페인 댓글 / 메모 (DEV-100) — quest 와 동일 패턴.
+- 다국어 (DEV-015) — i18n backbone 부터.
+- 첨부파일 (DEV-069) — 새 기능.
+- 레인 접기 (DEV-105) / 레인 순서 (DEV-059) — Cytoscape.
+- Journal replay (DEV-022) — 시점 복원.
 - 길드 다중 동시 접속 (현재 SQLite 단일 파일 가정).
 - AWS EC2 배포 — CI 는 GitHub Actions 로 일부 구축됨 (`.github/workflows/check.yml`).

@@ -111,9 +111,20 @@
 - ✅ Quest History — DEV-013.
 - ✅ Quest 타입 / 상태 커스텀 — DEV-014 / DEV-046 등.
 - ✅ 길드 규칙 (Guild Rules) — `.guild/rules/*.md` + CLI 구현됨.
+- ✅ 태그 (DEV-068) — 풀스택 (frontmatter + DB + CLI + HTTP + Tauri + Detail UI + List 필터).
+- ✅ 후속 퀘스트 (DEV-070) — Quest Detail. 부모 직접 변경 UI 는 별도.
+- ✅ 다크 / 라이트 모드 (DEV-074) — CSS variable backbone + 25+ component 마이그레이션.
+- ✅ UI 크기 조절 (DEV-101) — Settings 슬라이더 + rem scale.
+- ✅ Quest List Tree / List 토글 (DEV-065).
+- ✅ Quest Board toolbar 접기 (DEV-073), 그룹 정렬 개선 (DEV-077).
+- ✅ 캠페인 quest 진행도 (DEV-093) — status.counts_as_done + Home + Detail + Admin.
+- ✅ installer 사용 가이드 동봉 (DEV-098).
+- ✅ server CLI 강화 (DEV-018 brief/detailed, DEV-023 vacuum/journal-tail).
 - 캠페인 댓글 / 메모 — DEV-100 (대기).
-- 다국어 — 미진행.
-- 다음 퀘스트(Successor) / 부모 퀘스트 직접 변경 UI — 미진행.
+- 다국어 — DEV-015 (i18n backbone 필요).
+- 첨부파일 — DEV-069 (새 기능).
+- 레인 접기 / 순서 — DEV-105 / DEV-059 (Cytoscape).
+- Journal replay — DEV-022 (시점 복원).
 
 ## 보류 결정 (재검토 가능)
 
