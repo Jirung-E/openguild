@@ -22,8 +22,8 @@
 
 	// DEV-014 후속 (fix5): 추가 시 기본 색 다양화 — 사용 중 색 회피.
 	const COLOR_PALETTE = [
-		'#8b95a1', '#4a90d9', '#7bb87f', '#f5a623',
-		'#e94f4f', '#8e4ec6', '#1abc9c', '#e91e63',
+		'#8b95a1', '#4a90d9', '#7bb87f', 'var(--warning)',
+		'var(--danger)', '#8e4ec6', '#1abc9c', '#e91e63',
 		'#34495e', '#16a085', '#d35400', '#2c3e50'
 	];
 	function pickNextColor(): string {
@@ -347,7 +347,7 @@
 		background: #2a2a4a;
 		border: 1px solid #3a3a6a;
 		border-radius: 4px;
-		color: #c9d1d9;
+		color: var(--text);
 		font-size: 0.85rem;
 		cursor: pointer;
 	}
@@ -359,7 +359,7 @@
 		cursor: not-allowed;
 	}
 	button.danger {
-		color: #e94f4f;
+		color: var(--danger);
 		border-color: #5a2a2a;
 	}
 	button.danger:hover:not(:disabled) {
@@ -386,19 +386,19 @@
 		vertical-align: middle;
 	}
 	th {
-		color: #8b949e;
+		color: var(--text-muted);
 		font-weight: 500;
 		font-size: 0.8rem;
 	}
 	code {
 		font-family: 'SFMono-Regular', Consolas, monospace;
 		font-size: 0.85em;
-		background: #0d1117;
+		background: var(--bg);
 		padding: 0.05rem 0.3rem;
 		border-radius: 3px;
 	}
 	.hex {
-		color: #8b949e;
+		color: var(--text-muted);
 		margin-left: 0.4rem;
 	}
 	.swatch {
@@ -410,7 +410,7 @@
 		border: 1px solid #2a2a4a;
 	}
 	.count {
-		color: #8b949e;
+		color: var(--text-muted);
 	}
 	.row-actions {
 		display: flex;
@@ -420,15 +420,15 @@
 	input[type='text'] {
 		width: 100%;
 		padding: 0.3rem 0.5rem;
-		background: #0d1117;
-		border: 1px solid #30363d;
+		background: var(--bg);
+		border: 1px solid var(--border);
 		border-radius: 4px;
-		color: #c9d1d9;
+		color: var(--text);
 		font: inherit;
 	}
 	input[type='text']:focus {
 		outline: none;
-		border-color: #58a6ff;
+		border-color: var(--accent);
 	}
 	input[type='text'].slug-input {
 		width: 14ch;
@@ -439,9 +439,9 @@
 		width: 2.2rem;
 		height: 1.6rem;
 		padding: 0;
-		border: 1px solid #30363d;
+		border: 1px solid var(--border);
 		border-radius: 4px;
-		background: #0d1117;
+		background: var(--bg);
 		cursor: pointer;
 	}
 	.empty {
@@ -450,7 +450,7 @@
 	}
 	.hint {
 		margin-top: 0.75rem;
-		color: #8b949e;
+		color: var(--text-muted);
 		font-size: 0.8rem;
 	}
 
@@ -466,28 +466,28 @@
 		padding: 1rem;
 	}
 	.modal {
-		background: #161b22;
-		border: 1px solid #30363d;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
 		border-radius: 10px;
 		width: 100%;
 		max-width: 460px;
 		padding: 1.2rem 1.4rem;
 		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
-		color: #c9d1d9;
+		color: var(--text);
 	}
 	.modal-title {
 		margin: 0 0 0.85rem;
 		font-size: 1rem;
 		font-weight: 600;
-		color: #e6edf3;
+		color: var(--text-strong);
 	}
 	.modal-msg {
 		margin: 0 0 1rem;
 		font-size: 0.875rem;
-		color: #c9d1d9;
+		color: var(--text);
 	}
 	.modal-msg strong {
-		color: #e6edf3;
+		color: var(--text-strong);
 	}
 	.form {
 		display: flex;
@@ -503,12 +503,12 @@
 	}
 	.form label > span {
 		flex: 0 0 5rem;
-		color: #8b949e;
+		color: var(--text-muted);
 	}
 	.form-note {
 		margin: 0 0 1rem;
 		font-size: 0.8rem;
-		color: #8b949e;
+		color: var(--text-muted);
 	}
 	.modal-actions {
 		display: flex;
@@ -520,7 +520,7 @@
 		background: rgba(31, 111, 235, 0.18);
 		border: 1px solid #2f81f7;
 		border-radius: 6px;
-		color: #58a6ff;
+		color: var(--accent);
 		font-size: 0.875rem;
 		cursor: pointer;
 	}
@@ -529,8 +529,8 @@
 	}
 	.btn-yes.danger {
 		background: rgba(233, 79, 79, 0.18);
-		border-color: #e94f4f;
-		color: #e94f4f;
+		border-color: var(--danger);
+		color: var(--danger);
 	}
 	.btn-yes.danger:hover:not(:disabled) {
 		background: rgba(233, 79, 79, 0.32);
@@ -538,13 +538,13 @@
 	.btn-no {
 		padding: 0.4rem 1rem;
 		background: transparent;
-		border: 1px solid #30363d;
+		border: 1px solid var(--border);
 		border-radius: 6px;
-		color: #8b949e;
+		color: var(--text-muted);
 		font-size: 0.875rem;
 		cursor: pointer;
 	}
 	.btn-no:hover:not(:disabled) {
-		background: #21262d;
+		background: var(--bg-subtle);
 	}
 </style>

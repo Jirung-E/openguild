@@ -181,27 +181,27 @@
 
 	.sec-add-btn {
 		padding: 0.15rem 0.6rem;
-		border: 1px solid #30363d; border-radius: 4px;
-		background: transparent; color: #8b949e;
+		border: 1px solid var(--border); border-radius: 4px;
+		background: transparent; color: var(--text-muted);
 		font-size: 0.72rem; cursor: pointer;
 		margin-left: auto;
 	}
-	.sec-add-btn:hover { background: #21262d; color: #c9d1d9; }
+	.sec-add-btn:hover { background: var(--bg-subtle); color: var(--text); }
 
-	.state { color: #8b949e; font-size: 0.825rem; margin: 0.25rem 0; }
-	.state.err { color: #f85149; }
+	.state { color: var(--text-muted); font-size: 0.825rem; margin: 0.25rem 0; }
+	.state.err { color: var(--danger); }
 
-	.no-desc { color: #6e7681; font-size: 0.825rem; margin: 0.25rem 0; }
+	.no-desc { color: var(--text-faint); font-size: 0.825rem; margin: 0.25rem 0; }
 	.link-btn {
-		background: none; border: none; color: #58a6ff;
+		background: none; border: none; color: var(--accent);
 		cursor: pointer; padding: 0; font: inherit; text-decoration: underline;
 		margin-left: 0.35rem;
 	}
 
 	.field-label { display: flex; flex-direction: column; gap: 0.35rem; }
-	.field-label > span { font-size: 0.75rem; color: #8b949e; }
+	.field-label > span { font-size: 0.75rem; color: var(--text-muted); }
 	.editor-wrap {
-		border: 1px solid #30363d; border-radius: 6px;
+		border: 1px solid var(--border); border-radius: 6px;
 		overflow: hidden; min-height: 180px; max-height: 90vh;
 		resize: vertical;
 	}
@@ -209,15 +209,15 @@
 	.actions { display: flex; gap: 0.4rem; margin-top: 0.5rem; }
 	.btn-save {
 		padding: 0.35rem 0.85rem;
-		background: #238636; border: 1px solid #2ea043;
+		background: var(--success-strong); border: 1px solid var(--success-strong);
 		color: #fff; border-radius: 6px; cursor: pointer; font-size: 0.825rem;
 	}
 	.btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
-	.btn-save:hover:not(:disabled) { background: #2ea043; }
+	.btn-save:hover:not(:disabled) { background: var(--success-strong); }
 	.btn-cancel {
 		padding: 0.35rem 0.85rem;
-		background: transparent; border: 1px solid #30363d;
-		color: #c9d1d9; border-radius: 6px; cursor: pointer; font-size: 0.825rem;
+		background: transparent; border: 1px solid var(--border);
+		color: var(--text); border-radius: 6px; cursor: pointer; font-size: 0.825rem;
 	}
-	.btn-cancel:hover:not(:disabled) { background: #21262d; }
+	.btn-cancel:hover:not(:disabled) { background: var(--bg-subtle); }
 </style>

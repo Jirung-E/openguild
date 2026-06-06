@@ -234,7 +234,7 @@
 		max-width: 900px;
 		margin: 0 auto;
 		padding: 2rem 1.5rem;
-		color: #c9d1d9;
+		color: var(--text);
 	}
 	h1 {
 		margin: 0 0 0.5rem 0;
@@ -247,10 +247,10 @@
 	h3 {
 		margin: 0.75rem 0 0.25rem;
 		font-size: 0.95rem;
-		color: #8b949e;
+		color: var(--text-muted);
 	}
 	.note {
-		color: #8b949e;
+		color: var(--text-muted);
 		font-size: 0.85rem;
 		margin-bottom: 1.5rem;
 	}
@@ -276,7 +276,7 @@
 		background: #2a2a4a;
 		border: 1px solid #3a3a5a;
 		border-radius: 6px;
-		color: #c9d1d9;
+		color: var(--text);
 		font-size: 0.85rem;
 		cursor: pointer;
 		transition: background 0.15s;
@@ -306,7 +306,7 @@
 		border-bottom: 1px solid #2a2a4a;
 	}
 	th {
-		color: #8b949e;
+		color: var(--text-muted);
 		font-weight: 500;
 		font-size: 0.85rem;
 	}
@@ -315,16 +315,16 @@
 		font-size: 0.85rem;
 	}
 	.empty {
-		color: #8b949e;
+		color: var(--text-muted);
 		font-size: 0.875rem;
 		margin: 0;
 	}
 	.ok {
-		color: #2ea043;
+		color: var(--success-strong);
 		font-weight: 500;
 	}
 	.hint {
-		color: #8b949e;
+		color: var(--text-muted);
 		font-size: 0.825rem;
 		margin-top: 0.75rem;
 	}
@@ -335,7 +335,7 @@
 	.drift-report li {
 		font-family: 'Cascadia Code', 'Courier New', monospace;
 		font-size: 0.85rem;
-		color: #c9d1d9;
+		color: var(--text);
 		list-style: disc;
 	}
 	/* DEV-014 후속 (fix5): toast wrapper — 화면 우상단 고정.
@@ -352,7 +352,7 @@
 		padding: 0.75rem 1rem;
 		border-radius: 6px;
 		font-size: 0.875rem;
-		color: #e6edf3;
+		color: var(--text-strong);
 		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
 		pointer-events: auto;
 		animation: toast-in 0.18s ease-out;

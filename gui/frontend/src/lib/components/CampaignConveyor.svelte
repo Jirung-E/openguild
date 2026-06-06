@@ -220,7 +220,7 @@
 {/if}
 
 <style>
-	.empty { color: #6e7681; font-size: 0.875rem; padding: 1rem 0; }
+	.empty { color: var(--text-faint); font-size: 0.875rem; padding: 1rem 0; }
 
 	.conveyor {
 		overflow: hidden;
@@ -267,9 +267,9 @@
 		margin-top: 0.25rem;
 	}
 	.play-pause {
-		background: #21262d;
-		border: 1px solid #30363d;
-		color: #c9d1d9;
+		background: var(--bg-subtle);
+		border: 1px solid var(--border);
+		color: var(--text);
 		border-radius: 50%;
 		width: 1.8rem;
 		height: 1.8rem;

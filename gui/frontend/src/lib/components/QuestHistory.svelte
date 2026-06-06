@@ -58,14 +58,14 @@
 	}
 
 	function statusColor(value: string | null): string {
-		if (!value) return '#484f58';
+		if (!value) return 'var(--text-faint)';
 		const bySlug = statusBySlug.get(value);
 		if (bySlug) return bySlug.color;
 		if (/^\d+$/.test(value)) {
 			const s = statusById.get(Number(value));
 			if (s) return s.color;
 		}
-		return '#484f58';
+		return 'var(--text-faint)';
 	}
 
 	/**
@@ -137,25 +137,25 @@
 		margin-bottom: 0.5rem;
 	}
 	.section-title {
-		font-size: 0.8rem; font-weight: 600; color: #8b949e;
+		font-size: 0.8rem; font-weight: 600; color: var(--text-muted);
 		text-transform: uppercase; letter-spacing: 0.05em; margin: 0;
 	}
 	.qh-count {
-		font-size: 0.72rem; color: #484f58;
+		font-size: 0.72rem; color: var(--text-faint);
 		padding: 0.05rem 0.4rem; border-radius: 10px;
-		background: #21262d;
+		background: var(--bg-subtle);
 	}
 
 	.qh-state {
-		font-size: 0.85rem; color: #484f58; margin: 0;
+		font-size: 0.85rem; color: var(--text-faint); margin: 0;
 		padding: 0.6rem 0.8rem;
-		background: #0d1117; border: 1px solid #21262d; border-radius: 6px;
+		background: var(--bg); border: 1px solid var(--bg-subtle); border-radius: 6px;
 	}
-	.qh-state.error { color: #e94f4f; }
+	.qh-state.error { color: var(--danger); }
 
 	.qh-list {
 		list-style: none; padding: 0; margin: 0;
-		border: 1px solid #21262d; border-radius: 6px; overflow: hidden;
+		border: 1px solid var(--bg-subtle); border-radius: 6px; overflow: hidden;
 	}
 	.qh-item {
 		display: grid;
@@ -164,20 +164,20 @@
 		align-items: baseline;
 		padding: 0.55rem 0.85rem;
 		font-size: 0.82rem;
-		color: #c9d1d9;
+		color: var(--text);
 	}
-	.qh-item + .qh-item { border-top: 1px solid #21262d; }
+	.qh-item + .qh-item { border-top: 1px solid var(--bg-subtle); }
 
 	.qh-ts {
 		font-variant-numeric: tabular-nums;
-		color: #6e7681; font-size: 0.75rem;
+		color: var(--text-faint); font-size: 0.75rem;
 		min-width: 5rem;
 	}
 	.qh-op {
-		color: #8b949e; font-size: 0.72rem;
+		color: var(--text-muted); font-size: 0.72rem;
 		text-transform: uppercase; letter-spacing: 0.04em;
 		padding: 0.05rem 0.45rem;
-		background: #161b22; border: 1px solid #21262d;
+		background: var(--bg-elevated); border: 1px solid var(--bg-subtle);
 		border-radius: 10px;
 	}
 	.qh-op-empty { width: 0; }
@@ -192,5 +192,5 @@
 		color: var(--c);
 		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
 	}
-	.qh-arrow { color: #484f58; }
+	.qh-arrow { color: var(--text-faint); }
 </style>

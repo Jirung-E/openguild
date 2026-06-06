@@ -250,8 +250,8 @@
 	}
 
 	.modal {
-		background: #161b22;
-		border: 1px solid #30363d;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
 		border-radius: 12px;
 		width: 100%;
 		max-width: 560px;
@@ -269,30 +269,30 @@
 		align-items: center;
 		justify-content: space-between;
 		padding: 1rem 1.25rem 0.75rem;
-		border-bottom: 1px solid #21262d;
+		border-bottom: 1px solid var(--bg-subtle);
 	}
 	.modal-title {
 		margin: 0;
 		font-size: 1rem;
 		font-weight: 600;
-		color: #e6edf3;
+		color: var(--text-strong);
 	}
 	.close-btn {
 		background: none;
 		border: none;
-		color: #484f58;
+		color: var(--text-faint);
 		font-size: 1.3rem;
 		line-height: 1;
 		cursor: pointer;
 		padding: 0 4px;
 		transition: color 0.1s;
 	}
-	.close-btn:hover { color: #c9d1d9; }
+	.close-btn:hover { color: var(--text); }
 
 	.loading {
 		padding: 2rem;
 		text-align: center;
-		color: #484f58;
+		color: var(--text-faint);
 		font-size: 0.9rem;
 	}
 
@@ -318,7 +318,7 @@
 	.field-label {
 		font-size: 0.72rem;
 		font-weight: 600;
-		color: #8b949e;
+		color: var(--text-muted);
 	}
 	.field-label > span:first-child,
 	span.field-label {
@@ -328,24 +328,24 @@
 
 	.sel {
 		padding: 0.4rem 0.6rem;
-		background: #0d1117;
-		border: 1px solid #30363d;
+		background: var(--bg);
+		border: 1px solid var(--border);
 		border-radius: 6px;
-		color: #c9d1d9;
+		color: var(--text);
 		font-size: 0.875rem;
 		outline: none;
 		min-width: 80px;
 	}
-	.sel:focus { border-color: #58a6ff; }
+	.sel:focus { border-color: var(--accent); }
 
 	.status-fixed {
 		display: inline-flex;
 		align-items: center;
 		padding: 0.4rem 0.6rem;
-		background: #0d1117;
-		border: 1px solid #21262d;
+		background: var(--bg);
+		border: 1px solid var(--bg-subtle);
 		border-radius: 6px;
-		color: #8b949e;
+		color: var(--text-muted);
 		font-size: 0.875rem;
 		min-width: 80px;
 		min-height: calc(0.875rem + 0.8rem + 2px);
@@ -354,23 +354,23 @@
 
 	.inp {
 		padding: 0.5rem 0.75rem;
-		background: #0d1117;
-		border: 1px solid #30363d;
+		background: var(--bg);
+		border: 1px solid var(--border);
 		border-radius: 6px;
-		color: #e6edf3;
+		color: var(--text-strong);
 		font-size: 0.9rem;
 		outline: none;
 		width: 100%;
 		box-sizing: border-box;
 	}
-	.inp:focus { border-color: #58a6ff; }
+	.inp:focus { border-color: var(--accent); }
 
 	.ta {
 		padding: 0.5rem 0.75rem;
-		background: #0d1117;
-		border: 1px solid #30363d;
+		background: var(--bg);
+		border: 1px solid var(--border);
 		border-radius: 6px;
-		color: #c9d1d9;
+		color: var(--text);
 		font-size: 0.85rem;
 		outline: none;
 		width: 100%;
@@ -379,10 +379,10 @@
 		font-family: 'SFMono-Regular', Consolas, monospace;
 		line-height: 1.5;
 	}
-	.ta:focus { border-color: #58a6ff; }
+	.ta:focus { border-color: var(--accent); }
 
 	.save-error {
-		color: #e94f4f;
+		color: var(--danger);
 		font-size: 0.8rem;
 		margin: 0;
 	}
@@ -394,26 +394,26 @@
 	}
 	.btn-create {
 		padding: 0.45rem 1.25rem;
-		background: #238636;
-		border: 1px solid #2ea043;
+		background: var(--success-strong);
+		border: 1px solid var(--success-strong);
 		border-radius: 6px;
 		color: #fff;
 		font-size: 0.875rem;
 		cursor: pointer;
 		transition: background 0.1s;
 	}
-	.btn-create:hover:not(:disabled) { background: #2ea043; }
+	.btn-create:hover:not(:disabled) { background: var(--success-strong); }
 	.btn-create:disabled { opacity: 0.5; cursor: default; }
 	.btn-cancel {
 		padding: 0.45rem 1rem;
 		background: transparent;
-		border: 1px solid #30363d;
+		border: 1px solid var(--border);
 		border-radius: 6px;
-		color: #8b949e;
+		color: var(--text-muted);
 		font-size: 0.875rem;
 		cursor: pointer;
 	}
-	.btn-cancel:hover:not(:disabled) { background: #21262d; }
+	.btn-cancel:hover:not(:disabled) { background: var(--bg-subtle); }
 
 	/* DEV-014 후속: empty-state — type / status 가 0개일 때 폼 대신 안내. */
 	.empty-state {
@@ -426,15 +426,15 @@
 		margin: 0;
 		font-size: 1.05rem;
 		font-weight: 600;
-		color: #e6edf3;
+		color: var(--text-strong);
 	}
 	.empty-msg {
 		margin: 0;
 		font-size: 0.9rem;
 		line-height: 1.5;
-		color: #c9d1d9;
+		color: var(--text);
 	}
-	.empty-msg strong { color: #e6edf3; }
+	.empty-msg strong { color: var(--text-strong); }
 	/* href 인 .btn-create / .btn-cancel 도 동일 패딩. */
 	a.btn-create,
 	a.btn-cancel {

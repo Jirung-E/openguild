@@ -142,7 +142,7 @@
 	}
 
 	// overdue 모드에서는 빨간 stroke overlay.
-	const OVERLAY_COLOR = '#f85149';
+	const OVERLAY_COLOR = 'var(--danger)';
 	function overlayFor(_q: Quest): string | undefined {
 		return mode === 'overdue' ? OVERLAY_COLOR : undefined;
 	}
@@ -283,9 +283,9 @@
 		margin-top: 0.25rem;
 	}
 	.play-pause {
-		background: #21262d;
-		border: 1px solid #30363d;
-		color: #c9d1d9;
+		background: var(--bg-subtle);
+		border: 1px solid var(--border);
+		color: var(--text);
 		border-radius: 50%;
 		width: 1.8rem;
 		height: 1.8rem;
