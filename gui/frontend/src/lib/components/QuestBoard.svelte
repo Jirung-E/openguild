@@ -1704,6 +1704,9 @@
 		sorted.forEach((s, li) => {
 			const hdr = document.createElement('div');
 			hdr.className = 'lane-hdr';
+			// DEV-105 fix2: collapsed 상태 시 lane-hdr 도 같이 마킹 → CSS 가
+			// label 외 자식 (cols-sel, arrange-group) 숨김.
+			if (collapsedLanes.has(s.slug)) hdr.classList.add('collapsed');
 			const label = document.createElement('button');
 			label.className = 'lane-label';
 			label.textContent = s.name_en;
@@ -1714,7 +1717,9 @@
 			if (collapsedLanes.has(s.slug)) label.classList.add('collapsed');
 			label.onclick = () => {
 				toggleLaneCollapsed(s.slug);
-				label.classList.toggle('collapsed', collapsedLanes.has(s.slug));
+				const on = collapsedLanes.has(s.slug);
+				label.classList.toggle('collapsed', on);
+				hdr.classList.toggle('collapsed', on);
 			};
 			const sel = document.createElement('select');
 			sel.className = 'lane-cols-sel';
@@ -1778,23 +1783,9 @@
 			arrangeWrap.appendChild(btn);
 			arrangeWrap.appendChild(modeSel);
 
-			// DEV-059: lane 순서 변경 — ◀ ▶ 버튼 (label 양 끝).
-			const moveLeft = document.createElement('button');
-			moveLeft.className = 'lane-move-btn';
-			moveLeft.title = '한 칸 왼쪽으로';
-			moveLeft.textContent = '◀';
-			moveLeft.disabled = li === 0;
-			moveLeft.onclick = () => swapLane(li, -1);
-			const moveRight = document.createElement('button');
-			moveRight.className = 'lane-move-btn';
-			moveRight.title = '한 칸 오른쪽으로';
-			moveRight.textContent = '▶';
-			moveRight.disabled = li === sorted.length - 1;
-			moveRight.onclick = () => swapLane(li, 1);
-
-			hdr.appendChild(moveLeft);
+			// DEV-059 fix2: lane 순서 변경은 '보드 설정' 모달로 이전 — 헤더에 ◀ ▶ 안 둠.
+			// 헤더 폭이 좁아질 때 라벨이 가려지는 문제 회피.
 			hdr.appendChild(label);
-			hdr.appendChild(moveRight);
 			hdr.appendChild(sel); // cols select 는 별개 (그리드만 갱신)
 			hdr.appendChild(arrangeWrap);
 			headersEl.appendChild(hdr);
@@ -1856,7 +1847,11 @@
 			}
 		});
 		// DEV-067: header 도 visible 압축. DEV-105: collapsed lane 폭 적용.
+		// DEV-105 fix2: 보드 확대/축소 시 lane 헤더의 글자 / 컨트롤 크기도 zoom 비례.
+		// 이전엔 width / left 만 scale 돼서 zoom 차이 시 노드 영역과 시각 불일치.
 		let hdrLeft = 0;
+		const baseFontPx = 12;
+		const headerHeightPx = 38;
 		headersEl.querySelectorAll<HTMLElement>('.lane-hdr').forEach((hdr, i) => {
 			const s = sorted[i];
 			const laneHidden = s ? getHideSetting(s.slug).laneHidden : false;
@@ -1868,6 +1863,11 @@
 			hdr.style.display = '';
 			hdr.style.left = `${hdrLeft * zoom + pan.x}px`;
 			hdr.style.width = `${w * zoom}px`;
+			hdr.style.height = `${headerHeightPx * zoom}px`;
+			hdr.style.fontSize = `${baseFontPx * zoom}px`;
+			// 자식 label 의 font-size 도 비례 (그 외 select / button 도 em 단위라 cascade).
+			const label = hdr.querySelector<HTMLElement>('.lane-label');
+			if (label) label.style.fontSize = `${baseFontPx * zoom}px`;
 			hdrLeft += w + LANE_GAP;
 		});
 		syncExpandedPos();
@@ -2416,16 +2416,16 @@
 				<option value={3}>3열</option>
 			</select>
 			<div class="tb-sep"></div>
-			<!-- DEV-056: 숨김 설정 모달 토글. -->
+			<!-- DEV-056 → DEV-059 fix2: 숨김 + 순서 변경 통합 → '보드 설정'. -->
 			<button
 				class="tb-btn"
 				class:tb-on={Object.values(hideSettings).some(
 					(s) => s.laneHidden || s.hideGroup || s.hideSolo
 				)}
 				onclick={() => (showHideModal = true)}
-				title="레인 / 노드 숨김 설정"
+				title="레인 순서 / 숨김 / 그룹·단독 노드 가리기"
 			>
-				<span class="icon">👁</span><span>숨김</span>
+				<span class="icon">⚙</span><span>보드 설정</span>
 			</button>
 			<div class="tb-sep"></div>
 			<!-- arrange 버튼 + mode select 는 하나의 컨트롤처럼 시각적으로 묶음 -->
@@ -2492,7 +2492,7 @@
 	>
 		<div class="hide-modal" role="dialog" aria-modal="true" tabindex="-1">
 			<div class="hide-head">
-				<h3 class="hide-title">숨김 설정</h3>
+				<h3 class="hide-title">보드 설정</h3>
 				<button
 					class="hide-close"
 					onclick={() => (showHideModal = false)}
@@ -2500,12 +2500,12 @@
 				>×</button>
 			</div>
 			<p class="hide-help">
-				각 레인을 숨기거나, 그룹 / 단독 노드 단위로 가릴 수 있습니다.
-				그룹 숨김은 그 그룹의 모든 노드가 같은 레인에 있을 때만 적용됩니다.
+				레인 순서 변경 + 숨김 + 그룹·단독 노드 가리기. ◀ / ▶ 로 좌우 이동, 표시 해제 시 그 레인 전체 숨김.
 			</p>
 			<table class="hide-table">
 				<thead>
 					<tr>
+						<th style="width: 6ch">순서</th>
 						<th style="width: 14ch">레인</th>
 						<th>표시</th>
 						<th>그룹 숨김</th>
@@ -2513,10 +2513,26 @@
 					</tr>
 				</thead>
 				<tbody>
-					{#each sorted as s (s.id)}
+					{#each sorted as s, li (s.id)}
 						{@const setting = getHideSetting(s.slug)}
 						{@const laneVisible = !setting.laneHidden}
 						<tr class:lane-off={!laneVisible}>
+							<td class="reorder-cell">
+								<button
+									class="reorder-btn"
+									onclick={() => swapLane(li, -1)}
+									disabled={li === 0}
+									title="왼쪽으로"
+									aria-label="왼쪽으로"
+								>◀</button>
+								<button
+									class="reorder-btn"
+									onclick={() => swapLane(li, 1)}
+									disabled={li === sorted.length - 1}
+									title="오른쪽으로"
+									aria-label="오른쪽으로"
+								>▶</button>
+							</td>
 							<td>
 								<span class="hide-lane-name" style:color={s.color}>{s.name_en}</span>
 							</td>
@@ -2581,6 +2597,15 @@
 		box-sizing: border-box;
 		background: var(--bg-elevated);
 		pointer-events: none;
+	}
+	/* DEV-105 fix2: 접혔을 때 label 만 표시 — 다른 컨트롤 (cols-sel, arrange-group)
+	   은 좁은 폭에서 시각적으로 깨지고 label 을 가려서 다시 펼치기가 어려워짐. */
+	:global(.lane-hdr.collapsed > :not(.lane-label)) {
+		display: none !important;
+	}
+	:global(.lane-hdr.collapsed) {
+		padding: 0 4px;
+		justify-content: center;
 	}
 	:global(.lane-label) {
 		flex: 1; font-size: 12px; font-weight: bold;
@@ -2959,5 +2984,29 @@
 	.hide-table input[type='checkbox']:disabled {
 		cursor: not-allowed;
 		opacity: 0.35;
+	}
+	/* DEV-059 fix2: 보드 설정 모달의 lane 순서 변경 버튼. */
+	.hide-table .reorder-cell {
+		display: flex;
+		gap: 0.2rem;
+		align-items: center;
+	}
+	.hide-table .reorder-btn {
+		padding: 0.1rem 0.4rem;
+		font-size: 0.75rem;
+		background: var(--bg-subtle);
+		border: 1px solid var(--border);
+		border-radius: 4px;
+		color: var(--text-muted);
+		cursor: pointer;
+		transition: background 0.1s, color 0.1s;
+	}
+	.hide-table .reorder-btn:hover:not(:disabled) {
+		background: var(--border);
+		color: var(--text);
+	}
+	.hide-table .reorder-btn:disabled {
+		opacity: 0.3;
+		cursor: not-allowed;
 	}
 </style>
