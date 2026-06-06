@@ -667,6 +667,34 @@
 			/* 무시 */
 		}
 	}
+
+	// DEV-105 fix5: lane 별 설정 (cols-sel, arrange 그룹) 접기. 기본 접힘 — 자주
+	// 안 쓰면서 영역만 차지하므로. 사용자가 ⚙ 버튼으로 펼침. slug 별 영속.
+	let lanesSettingsOpen = $state(new Set<string>());
+	function loadLanesSettingsOpen(): Set<string> {
+		try {
+			const raw = localStorage.getItem(gk('lanesSettingsOpen'));
+			if (!raw) return new Set();
+			const arr = JSON.parse(raw);
+			return new Set(Array.isArray(arr) ? arr.filter((s) => typeof s === 'string') : []);
+		} catch {
+			return new Set();
+		}
+	}
+	function saveLanesSettingsOpen() {
+		try {
+			localStorage.setItem(gk('lanesSettingsOpen'), JSON.stringify([...lanesSettingsOpen]));
+		} catch {
+			/* 무시 */
+		}
+	}
+	function toggleLaneSettings(slug: string) {
+		const next = new Set(lanesSettingsOpen);
+		if (next.has(slug)) next.delete(slug);
+		else next.add(slug);
+		lanesSettingsOpen = next;
+		saveLanesSettingsOpen();
+	}
 	function toggleLaneCollapsed(slug: string) {
 		const next = new Set(collapsedLanes);
 		if (next.has(slug)) next.delete(slug);
@@ -1634,6 +1662,8 @@
 			// DEV-105 fix4: collapsed lane 상태 복원이 누락되어 새로고침 시
 			// 모든 lane 이 펼쳐진 상태로 초기화되던 버그.
 			collapsedLanes = loadCollapsedLanes();
+			// DEV-105 fix5: 레인별 설정 영역 열림 상태 복원.
+			lanesSettingsOpen = loadLanesSettingsOpen();
 			try {
 				gridSnap = localStorage.getItem(gk('gridSnap')) === 'true';
 				// DEV-073: 같이 복원.
@@ -1895,9 +1925,28 @@
 			arrangeWrap.appendChild(btn);
 			arrangeWrap.appendChild(modeSel);
 
+			// DEV-105 fix5: 레인별 설정 (cols-sel + arrange-group) 토글 ⚙.
+			// 자주 안 쓰는데 영역만 차지하므로 기본 접힘 — 사용자가 펼침.
+			const settingsBtn = document.createElement('button');
+			settingsBtn.className = 'lane-settings-btn';
+			settingsBtn.type = 'button';
+			settingsBtn.textContent = '⚙';
+			const setOpenAttrs = () => {
+				const open = lanesSettingsOpen.has(s.slug);
+				settingsBtn.title = open ? '레인 설정 접기' : '레인 설정 펼치기';
+				settingsBtn.setAttribute('aria-expanded', String(open));
+				hdr.classList.toggle('settings-open', open);
+			};
+			setOpenAttrs();
+			settingsBtn.onclick = () => {
+				toggleLaneSettings(s.slug);
+				setOpenAttrs();
+			};
+
 			// DEV-059 fix2: lane 순서 변경은 '보드 설정' 모달로 이전 — 헤더에 ◀ ▶ 안 둠.
 			// 헤더 폭이 좁아질 때 라벨이 가려지는 문제 회피.
 			hdr.appendChild(label);
+			hdr.appendChild(settingsBtn);
 			hdr.appendChild(sel); // cols select 는 별개 (그리드만 갱신)
 			hdr.appendChild(arrangeWrap);
 			headersEl.appendChild(hdr);
@@ -2640,6 +2689,25 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+	/* DEV-105 fix5: 레인별 설정 토글 ⚙ — 항상 보임, 작은 라벨 옆 버튼. */
+	:global(.lane-settings-btn) {
+		flex-shrink: 0; pointer-events: auto;
+		background: none; border: 1px solid transparent; border-radius: 4px;
+		color: var(--text-faint); font-size: 0.85rem; padding: 0 4px;
+		cursor: pointer; line-height: 1.2;
+		transition: background 0.1s, color 0.1s, border-color 0.1s;
+	}
+	:global(.lane-settings-btn:hover) {
+		background: var(--bg-subtle); color: var(--text-muted); border-color: var(--border);
+	}
+	:global(.lane-hdr.settings-open .lane-settings-btn) {
+		color: var(--text); background: var(--bg-subtle); border-color: var(--border);
+	}
+	/* settings 가 닫혀 있으면 cols-sel + arrange-group 숨김. */
+	:global(.lane-hdr:not(.settings-open) .lane-cols-sel),
+	:global(.lane-hdr:not(.settings-open) .lane-arrange-group) {
+		display: none !important;
 	}
 	:global(.lane-cols-sel) {
 		flex-shrink: 0; pointer-events: auto;
