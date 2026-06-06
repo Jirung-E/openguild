@@ -620,6 +620,49 @@
 			/* 무시 */
 		}
 	}
+
+	// DEV-059: 사용자 정의 lane 순서 — '보여지는 순서' 만. 파일 / DB / 다른 quest
+	// 영향 X. status 추가/삭제는 sort_order 따라 자동 끝에 append (loadFromData
+	// 의 ordered + remaining 패턴).
+	function loadLaneOrder(): string[] {
+		try {
+			const raw = localStorage.getItem(gk('laneOrder'));
+			if (!raw) return [];
+			const arr = JSON.parse(raw);
+			return Array.isArray(arr) ? arr.filter((s) => typeof s === 'string') : [];
+		} catch {
+			return [];
+		}
+	}
+	function saveLaneOrder(slugs: string[]) {
+		try {
+			localStorage.setItem(gk('laneOrder'), JSON.stringify(slugs));
+		} catch {
+			/* 무시 */
+		}
+	}
+	// li (lane index) 의 lane 을 한 칸 좌/우 swap. 모든 노드를 새 lane 좌표로
+	// 다시 그려야 하므로 cy reload.
+	function swapLane(li: number, dir: -1 | 1) {
+		const target = li + dir;
+		if (target < 0 || target >= sorted.length) return;
+		const next = [...sorted];
+		[next[li], next[target]] = [next[target], next[li]];
+		sorted = next;
+		laneOf = new Map(sorted.map((s, i) => [s.id, i]));
+		saveLaneOrder(sorted.map((s) => s.slug));
+		// Cytoscape 재배치 — 모든 노드의 lane index 변경.
+		if (cy) {
+			cy.nodes('[questId]').forEach((n) => {
+				const sid = n.data('statusId') as number;
+				const newLi = laneOf.get(sid) ?? 0;
+				const absX = (n.data('absX') as number) ?? n.position().x;
+				const laneLeft = newLi * LANE_STRIDE;
+				const visX = laneLeft + (absX - Math.floor(absX / LANE_STRIDE) * LANE_STRIDE);
+				n.position({ x: visX, y: n.position().y });
+			});
+		}
+	}
 	/**
 	 * 주어진 lane 의 그리드 첫 셀 X(보드 좌표). lane cols 에 맞춰 lane 중앙 기준 좌우 균등 배치.
 	 *  - 1열: lane 중앙
@@ -1625,7 +1668,23 @@
 			arrangeWrap.appendChild(btn);
 			arrangeWrap.appendChild(modeSel);
 
+			// DEV-059: lane 순서 변경 — ◀ ▶ 버튼 (label 양 끝).
+			const moveLeft = document.createElement('button');
+			moveLeft.className = 'lane-move-btn';
+			moveLeft.title = '한 칸 왼쪽으로';
+			moveLeft.textContent = '◀';
+			moveLeft.disabled = li === 0;
+			moveLeft.onclick = () => swapLane(li, -1);
+			const moveRight = document.createElement('button');
+			moveRight.className = 'lane-move-btn';
+			moveRight.title = '한 칸 오른쪽으로';
+			moveRight.textContent = '▶';
+			moveRight.disabled = li === sorted.length - 1;
+			moveRight.onclick = () => swapLane(li, 1);
+
+			hdr.appendChild(moveLeft);
 			hdr.appendChild(label);
+			hdr.appendChild(moveRight);
 			hdr.appendChild(sel); // cols select 는 별개 (그리드만 갱신)
 			hdr.appendChild(arrangeWrap);
 			headersEl.appendChild(hdr);
@@ -1711,7 +1770,21 @@
 		positions: QuestPosition[],
 		dependencies: QuestDependency[]
 	) {
-		sorted = [...statuses].sort((a, b) => a.sort_order - b.sort_order);
+		// DEV-059: 사용자가 lane 순서 바꾼 결과 (localStorage) 가 있으면 그것 우선,
+		// 없는 status (새로 추가됨) 는 sort_order 기준으로 뒤에 append.
+		const userOrder = loadLaneOrder();
+		const bySlug = new Map(statuses.map((s) => [s.slug, s]));
+		const ordered: QuestStatus[] = [];
+		for (const slug of userOrder) {
+			const s = bySlug.get(slug);
+			if (s) {
+				ordered.push(s);
+				bySlug.delete(slug);
+			}
+		}
+		// 미저장 (새 status / 첫 진입) 는 sort_order 기본 순.
+		const remaining = [...bySlug.values()].sort((a, b) => a.sort_order - b.sort_order);
+		sorted = [...ordered, ...remaining];
 		laneOf = new Map(sorted.map((s, i) => [s.id, i]));
 		allQuests = quests;
 		allDependencies = dependencies;
@@ -2417,6 +2490,17 @@
 		transition: background 0.1s, color 0.1s, border-color 0.1s;
 	}
 	:global(.lane-arrange-btn:hover) { background: var(--bg-subtle); border-color: var(--border); color: var(--text-muted); }
+
+	/* DEV-059: lane 순서 변경 — label 양 끝 ◀ ▶. */
+	:global(.lane-move-btn) {
+		flex-shrink: 0; pointer-events: auto;
+		background: none; border: none; border-radius: 4px;
+		color: var(--text-faint); font-size: 0.7rem; padding: 0 4px;
+		cursor: pointer; line-height: 1;
+		transition: background 0.1s, color 0.1s;
+	}
+	:global(.lane-move-btn:hover:not(:disabled)) { background: var(--bg-subtle); color: var(--text); }
+	:global(.lane-move-btn:disabled) { opacity: 0.25; cursor: not-allowed; }
 
 	/* lane header 의 mode select (Group / All) — lane-cols-sel 과 비슷한 비주얼 */
 	:global(.lane-mode-sel) {
