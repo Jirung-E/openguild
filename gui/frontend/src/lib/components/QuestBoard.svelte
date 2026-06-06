@@ -1956,11 +1956,10 @@
 			}
 		});
 		// DEV-067: header 도 visible 압축. DEV-105: collapsed lane 폭 적용.
-		// DEV-105 fix2: 보드 확대/축소 시 lane 헤더의 글자 / 컨트롤 크기도 zoom 비례.
-		// 이전엔 width / left 만 scale 돼서 zoom 차이 시 노드 영역과 시각 불일치.
+		// DEV-105 fix3: 사용자 피드백 — 보드 확대 시 lane 제목 / 제목바도 같이
+		// 커지는 게 부자연스러움. 폭 / 좌표만 board 좌표계 반영 (가로 정렬 OK),
+		// 높이 / 글자 / 컨트롤 크기는 zoom 무관 (UI overlay).
 		let hdrLeft = 0;
-		const baseFontPx = 12;
-		const headerHeightPx = 38;
 		headersEl.querySelectorAll<HTMLElement>('.lane-hdr').forEach((hdr, i) => {
 			const s = sorted[i];
 			const laneHidden = s ? getHideSetting(s.slug).laneHidden : false;
@@ -1972,11 +1971,7 @@
 			hdr.style.display = '';
 			hdr.style.left = `${hdrLeft * zoom + pan.x}px`;
 			hdr.style.width = `${w * zoom}px`;
-			hdr.style.height = `${headerHeightPx * zoom}px`;
-			hdr.style.fontSize = `${baseFontPx * zoom}px`;
-			// 자식 label 의 font-size 도 비례 (그 외 select / button 도 em 단위라 cascade).
-			const label = hdr.querySelector<HTMLElement>('.lane-label');
-			if (label) label.style.fontSize = `${baseFontPx * zoom}px`;
+			// 높이 / 글자 크기 inline 설정 제거 — CSS 의 고정값 사용.
 			hdrLeft += w + LANE_GAP;
 		});
 		syncExpandedPos();
@@ -2587,7 +2582,7 @@
 	.board-wrap {
 		position: relative;
 		width: 100%;
-		height: calc(100vh - 52px);
+		height: calc(100vh - 3.25rem);
 		background: var(--bg);
 		overflow: hidden;
 	}
@@ -2910,7 +2905,7 @@
 	}
 
 	.overlay {
-		position: fixed; inset: 52px 0 0 0;
+		position: fixed; inset: 3.25rem 0 0 0;
 		display: flex; align-items: center; justify-content: center;
 		color: var(--text-faint); font-size: 0.9rem; pointer-events: none; z-index: 2;
 	}

@@ -103,12 +103,14 @@
 
 <style>
 	/* DEV-074: hardcoded color → var() 마이그레이션. */
+	/* DEV-101 fix5: height 52px → 3.25rem — UI scale 반영. 안 그러면 버튼 (rem) 만
+	   확대돼 nav 가 자식보다 작아짐. */
 	header {
 		display: flex;
 		align-items: center;
 		gap: 2rem;
 		padding: 0 1.5rem;
-		height: 52px;
+		height: 3.25rem;
 		background: var(--nav-bg);
 		border-bottom: 1px solid var(--nav-border);
 		position: sticky;

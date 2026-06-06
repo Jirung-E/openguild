@@ -124,7 +124,7 @@
 
 <style>
 	main {
-		min-height: calc(100vh - 52px);
+		min-height: calc(100vh - 3.25rem);
 		background: var(--bg);
 	}
 	main.no-nav {
