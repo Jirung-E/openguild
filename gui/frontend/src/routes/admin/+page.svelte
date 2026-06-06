@@ -294,9 +294,20 @@
 	button.restore {
 		background: color-mix(in srgb, var(--warning) 18%, transparent);
 		border-color: color-mix(in srgb, var(--warning) 55%, transparent);
+		color: var(--warning);
 	}
 	button.restore:hover:not(:disabled) {
 		background: color-mix(in srgb, var(--warning) 32%, transparent);
+	}
+	/* DEV-074 fix5: 라이트모드 — warning (#9a6700) 의 옅은 mix 가 묵직해 보임.
+	   더 밝은 톤으로: 채도 같은 옅은 노랑 배경 + 진한 warning 글자. */
+	:global([data-theme='light']) button.restore {
+		background: #fff8d6;
+		border-color: #d4a72c;
+		color: #6f5400;
+	}
+	:global([data-theme='light']) button.restore:hover:not(:disabled) {
+		background: #ffefa8;
 	}
 	table {
 		width: 100%;

@@ -315,7 +315,15 @@
 		cursor: pointer;
 		transition: background 0.1s, border-color 0.1s;
 	}
+	/* DEV-074 fix5: 라이트모드 — 한 단계 밝은 초록. */
+	:global([data-theme='light']) .qb-new {
+		background: var(--success); border-color: var(--success);
+	}
 	.qb-new:hover { background: var(--success-strong); border-color: var(--success); }
+	:global([data-theme='light']) .qb-new:hover {
+		background: color-mix(in srgb, var(--success) 85%, white);
+		border-color: var(--success);
+	}
 	.qb-new-icon { font-size: 0.95rem; line-height: 1; }
 
 	.list {

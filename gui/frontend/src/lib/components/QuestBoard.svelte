@@ -2875,12 +2875,21 @@
 	.tb-btn .icon { font-size: 0.95rem; line-height: 1; }
 	.tb-btn .count { font-size: 0.7rem; color: var(--text-faint); min-width: 10px; text-align: right; }
 	.tb-btn:hover:not(:disabled) .count { color: var(--text-muted); }
-	/* DEV-084: New Quest — toolbar 안 primary 강조 (초록). */
+	/* DEV-084: New Quest — toolbar 안 primary 강조 (초록).
+	   DEV-074 fix5: 라이트모드에선 --success-strong (#116329) 가 너무 어둡고 주변
+	   배경 대비 묵직 → 한 단계 밝은 --success (#1a7f37) 로 명도 올림. */
 	.tb-btn.tb-new {
 		background: var(--success-strong); border-color: var(--success-strong); color: #fff; font-weight: 600;
 	}
+	:global([data-theme='light']) .tb-btn.tb-new {
+		background: var(--success); border-color: var(--success);
+	}
 	.tb-btn.tb-new:hover:not(:disabled) {
 		background: var(--success-strong); border-color: var(--success); color: #fff;
+	}
+	:global([data-theme='light']) .tb-btn.tb-new:hover:not(:disabled) {
+		background: color-mix(in srgb, var(--success) 85%, white);
+		border-color: var(--success);
 	}
 	.tb-sep { width: 1px; background: var(--border); align-self: stretch; margin: 2px 0; }
 	.tb-select {
