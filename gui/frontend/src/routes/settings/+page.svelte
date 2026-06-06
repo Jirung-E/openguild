@@ -26,6 +26,14 @@
 	} from '$lib/stores/uiScale';
 	import { theme, setTheme, type ThemeChoice } from '$lib/stores/theme';
 
+	// DEV-101 fix: drag 중에 font-size 변경되면 슬라이더 자체 위치 / 크기가
+	// 따라 변해 사용자 마우스가 thumb 을 놓침. oninput 은 미리보기 % 만 갱신,
+	// onchange (mouseup) 에서 실 적용. previewScale 이 store 와 분리.
+	let previewScale = $state<number | null>(null);
+	function displayScale(): number {
+		return previewScale ?? $uiScale;
+	}
+
 	// floating toast 닫기 — updateState 를 idle 로.
 	const dismissCheck = () => dismissUpdate();
 
@@ -98,10 +106,15 @@
 						max={MAX_SCALE}
 						step="0.1"
 						value={$uiScale}
-						oninput={(e) => setUiScale(Number.parseFloat(e.currentTarget.value))}
+						oninput={(e) => (previewScale = Number.parseFloat(e.currentTarget.value))}
+						onchange={(e) => {
+							const v = Number.parseFloat(e.currentTarget.value);
+							previewScale = null;
+							setUiScale(v);
+						}}
 						aria-label="UI 크기"
 					/>
-					<span class="scale-val">{Math.round($uiScale * 100)}%</span>
+					<span class="scale-val">{Math.round(displayScale() * 100)}%</span>
 					<button
 						class="btn-reset"
 						onclick={resetUiScale}
@@ -109,7 +122,7 @@
 						title="100% 로 초기화"
 					>초기화</button>
 				</div>
-				<p class="scale-hint">전체 UI 의 텍스트 / 여백이 비례 확대·축소됩니다 (50%~200%). 즉시 반영 + 자동 저장.</p>
+				<p class="scale-hint">전체 UI 의 텍스트 / 여백이 비례 확대·축소됩니다 (50%~200%). 슬라이더에서 손을 떼면 적용 (drag 중엔 미리보기 %만).</p>
 			</dd>
 
 			<!-- DEV-074: 테마 (Dark / Light / System). -->
