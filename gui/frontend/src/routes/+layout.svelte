@@ -125,7 +125,7 @@
 <style>
 	main {
 		min-height: calc(100vh - 52px);
-		background: #0d1117;
+		background: var(--bg);
 	}
 	main.no-nav {
 		min-height: 100vh;

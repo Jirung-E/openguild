@@ -392,7 +392,7 @@
 		color: var(--text);
 	}
 	.empty-list {
-		color: #6e7681;
+		color: var(--text-muted);
 		font-size: 0.78rem;
 		padding: 0.5rem 0;
 	}
@@ -419,7 +419,7 @@
 		background: var(--bg-elevated);
 	}
 	.rule-item.active {
-		background: #1f6feb1f;
+		background: color-mix(in srgb, var(--accent) 12%, transparent);
 		color: #79c0ff;
 	}
 
@@ -458,10 +458,10 @@
 	}
 	.btn-edit.danger {
 		color: #f85149;
-		border-color: #5a1d1d;
+		border-color: color-mix(in srgb, var(--danger) 45%, transparent);
 	}
 	.btn-edit.danger:hover {
-		background: #2c0d0d;
+		background: color-mix(in srgb, var(--danger) 18%, transparent);
 	}
 
 	.modal-inline {
@@ -497,7 +497,7 @@
 		margin: 0.25rem 0 0;
 	}
 	.empty {
-		color: #6e7681;
+		color: var(--text-muted);
 		font-size: 0.9rem;
 		padding: 2rem 0;
 		text-align: center;
@@ -541,7 +541,7 @@
 	}
 	.btn-save {
 		padding: 0.35rem 0.85rem;
-		background: #238636;
+		background: var(--success-strong);
 		border: 1px solid #2ea043;
 		color: #fff;
 		border-radius: 6px;
@@ -553,7 +553,7 @@
 		cursor: not-allowed;
 	}
 	.btn-save:hover:not(:disabled) {
-		background: #2ea043;
+		background: var(--success);
 	}
 	.btn-cancel {
 		padding: 0.35rem 0.85rem;

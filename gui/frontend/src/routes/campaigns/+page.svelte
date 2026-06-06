@@ -136,14 +136,14 @@
 	.header h1 { font-size: 1.25rem; color: var(--text); margin: 0; }
 	.btn-primary {
 		padding: 0.4rem 0.85rem;
-		background: #238636;
+		background: var(--success-strong);
 		border: 1px solid #2ea043;
 		border-radius: 6px;
 		color: #fff;
 		font-size: 0.875rem;
 		cursor: pointer;
 	}
-	.btn-primary:hover { background: #2ea043; }
+	.btn-primary:hover { background: var(--success); }
 
 	.controls {
 		display: flex;
@@ -166,7 +166,7 @@
 		font-size: 0.825rem;
 	}
 
-	.state { color: #6e7681; padding: 1.5rem 0; font-size: 0.875rem; }
+	.state { color: var(--text-muted); padding: 1.5rem 0; font-size: 0.875rem; }
 	.state.error { color: #f85149; }
 
 	.list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }

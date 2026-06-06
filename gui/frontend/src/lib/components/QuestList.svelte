@@ -356,7 +356,7 @@
 		background: rgba(198, 144, 38, 0.08);
 		border: 1px solid rgba(198, 144, 38, 0.3);
 		border-radius: 20px;
-		color: #d4a44a;
+		color: var(--warning);
 		font-size: 0.72rem;
 		font-family: 'JetBrains Mono', ui-monospace, monospace;
 		cursor: pointer;
@@ -366,7 +366,7 @@
 	.tag-filter-chip.active {
 		background: rgba(198, 144, 38, 0.28);
 		border-color: rgba(198, 144, 38, 0.7);
-		color: #ffd58a;
+		color: color-mix(in srgb, var(--warning) 60%, white);
 	}
 	.tag-chip-count {
 		display: inline-block;

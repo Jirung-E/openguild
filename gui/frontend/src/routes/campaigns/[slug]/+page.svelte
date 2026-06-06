@@ -503,7 +503,7 @@
 	.back:hover, .btn-edit:hover { background: var(--bg-subtle); }
 	/* BUG-035: 단독 margin-left 제거 — top-actions wrapper 가 push right. */
 	.btn-delete { color: var(--danger); border-color: #5a2424; }
-	.btn-delete:hover { background: #2d0f0f; }
+	.btn-delete:hover { background: color-mix(in srgb, var(--danger) 18%, transparent); }
 	.top-actions {
 		display: flex;
 		gap: 0.4rem;
@@ -684,7 +684,7 @@
 		font-size: 0.825rem;
 	}
 	.add-row button:disabled { opacity: 0.5; cursor: not-allowed; }
-	.add-row button:hover:not(:disabled) { background: #2a2a4a; }
+	.add-row button:hover:not(:disabled) { background: var(--nav-border); }
 
 	/* BUG-023: 모달 (Quest Detail 패턴) */
 	.ov {
@@ -722,7 +722,7 @@
 		cursor: pointer;
 		font-size: 0.825rem;
 	}
-	.link-add-btn:hover { background: #2a2a4a; }
+	.link-add-btn:hover { background: var(--nav-border); }
 
 	/* BUG-021: linked quest 의 type/status badge 도 Quest List pill 패턴. */
 	.badge {

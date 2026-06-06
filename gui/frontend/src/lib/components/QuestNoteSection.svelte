@@ -18,6 +18,8 @@
 	import { EditorView, basicSetup } from 'codemirror';
 	import { markdown } from '@codemirror/lang-markdown';
 	import { oneDark } from '@codemirror/theme-one-dark';
+	// DEV-074 fix4: light theme 에선 oneDark 안 적용.
+	import { theme, resolveTheme } from '$lib/stores/theme';
 
 	// `mode` prop 은 호환성을 위해 받지만 동작 분기 X — 항상 memo.
 	// svelte 가 "초기값만 캡쳐" 경고 안 내도록 destructure 에서 제외.
@@ -87,12 +89,13 @@
 			editorView = null;
 		}
 		editorContainer.style.height = `${loadEditorHeight()}px`;
+		const eff = resolveTheme($theme);
 		editorView = new EditorView({
 			doc: editText,
 			extensions: [
 				basicSetup,
 				markdown(),
-				oneDark,
+				...(eff === 'dark' ? [oneDark] : []),
 				EditorView.theme({
 					'&': { fontSize: '0.875rem', borderRadius: '6px', height: '100%' },
 					'.cm-editor': { borderRadius: '6px', height: '100%' },
@@ -102,6 +105,15 @@
 			parent: editorContainer
 		});
 	}
+
+	// DEV-074 fix4: theme 변경 시 편집 중이면 editor 재생성.
+	$effect(() => {
+		const _ = $theme;
+		if (editMode && editorView) {
+			editText = editorView.state.doc.toString();
+			initEditor();
+		}
+	});
 
 	function cancelEdit() {
 		editorView?.destroy();

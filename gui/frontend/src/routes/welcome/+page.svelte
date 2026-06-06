@@ -366,7 +366,7 @@
 	}
 	header .sub {
 		margin: 0.25rem 0 1.5rem;
-		color: #8b95a1;
+		color: var(--text-muted);
 	}
 	.recent-list {
 		list-style: none;
@@ -391,7 +391,7 @@
 		background: transparent;
 		border: 1px solid var(--border);
 		border-radius: 6px;
-		color: #8b95a1;
+		color: var(--text-muted);
 		font-size: 1.2rem;
 		line-height: 1;
 		cursor: pointer;
@@ -404,7 +404,7 @@
 	}
 	.recent-btn { flex: 1 1 auto; }
 	.missing-label {
-		color: #e9a04f;
+		color: var(--warning);
 		font-size: 0.8rem;
 	}
 	.recent-btn {
@@ -424,7 +424,7 @@
 	}
 	.recent-list .recent-row:not(.missing) .recent-btn:hover:not(:disabled) {
 		border-color: var(--accent);
-		background: #1a212a;
+		background: var(--bg-subtle);
 	}
 	.recent-btn:disabled {
 		opacity: 0.6;
@@ -441,12 +441,12 @@
 		font-size: 1.05rem;
 	}
 	.recent-btn .last {
-		color: #8b95a1;
+		color: var(--text-muted);
 		font-size: 0.85rem;
 		font-family: 'SFMono-Regular', Consolas, monospace;
 	}
 	.recent-btn .path {
-		color: #8b95a1;
+		color: var(--text-muted);
 		font-size: 0.85rem;
 		font-family: 'SFMono-Regular', Consolas, monospace;
 		word-break: break-all;
@@ -472,7 +472,7 @@
 		padding: 1rem;
 		background: var(--bg-elevated);
 		border-radius: 6px;
-		color: #8b95a1;
+		color: var(--text-muted);
 	}
 	.err {
 		color: var(--danger);
@@ -489,7 +489,7 @@
 		margin-top: 2rem;
 		padding-top: 1rem;
 		border-top: 1px solid var(--border);
-		color: #8b95a1;
+		color: var(--text-muted);
 		font-size: 0.85rem;
 	}
 
@@ -507,7 +507,7 @@
 	}
 	.btn-pick {
 		padding: 0.5rem 1rem;
-		background: #1f6feb;
+		background: var(--accent-strong);
 		border: 1px solid #2f81f7;
 		border-radius: 6px;
 		color: #fff;
@@ -517,12 +517,12 @@
 		transition: background 0.12s;
 		flex: 0 0 auto;
 	}
-	.btn-pick:hover:not(:disabled) { background: #2f81f7; }
+	.btn-pick:hover:not(:disabled) { background: var(--accent); }
 	.btn-pick:disabled { opacity: 0.6; cursor: default; }
 	.picker-hint {
 		flex: 1 1 auto;
 		min-width: 200px;
-		color: #8b95a1;
+		color: var(--text-muted);
 		font-size: 0.825rem;
 	}
 	.picker .err {
@@ -536,7 +536,7 @@
 	.uninit {
 		margin-bottom: 1.5rem;
 		padding: 1rem 1.25rem;
-		background: #1a212a;
+		background: var(--bg-subtle);
 		border: 1px solid var(--accent);
 		border-radius: 8px;
 	}
@@ -570,7 +570,7 @@
 	}
 	.uninit-name > span {
 		flex: 0 0 auto;
-		color: #8b95a1;
+		color: var(--text-muted);
 	}
 	.uninit-name input {
 		flex: 1 1 auto;
@@ -626,12 +626,12 @@
 		border-radius: 4px;
 		font-family: 'SFMono-Regular', Consolas, monospace;
 		font-size: 0.8rem;
-		color: #8b95a1;
+		color: var(--text-muted);
 		word-break: break-all;
 	}
 	.modal-note {
 		font-size: 0.8rem;
-		color: #8b95a1;
+		color: var(--text-muted);
 	}
 	.modal-actions {
 		display: flex; gap: 0.5rem; justify-content: flex-end;

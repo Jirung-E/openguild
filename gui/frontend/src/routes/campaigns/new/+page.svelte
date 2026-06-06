@@ -108,13 +108,13 @@
 		font-size: 0.825rem;
 		cursor: pointer;
 	}
-	.back:hover { background: #21262d; }
+	.back:hover { background: var(--bg-subtle); }
 
 	form { display: flex; flex-direction: column; gap: 0.85rem; }
 	label { display: flex; flex-direction: column; gap: 0.3rem; }
 	.lab { font-size: 0.825rem; color: #8b949e; }
 	input, textarea {
-		background: #0d1117;
+		background: var(--bg);
 		border: 1px solid #30363d;
 		color: #c9d1d9;
 		border-radius: 6px;
@@ -128,7 +128,7 @@
 	.period-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
 
 	.error {
-		background: #2d0f0f;
+		background: color-mix(in srgb, var(--danger) 18%, transparent);
 		border: 1px solid #f85149;
 		color: #ff7b72;
 		padding: 0.4rem 0.65rem;
@@ -144,8 +144,8 @@
 		cursor: pointer;
 	}
 	.btn-cancel { background: transparent; border: 1px solid #30363d; color: #c9d1d9; }
-	.btn-cancel:hover { background: #21262d; }
+	.btn-cancel:hover { background: var(--bg-subtle); }
 	.btn-primary { background: #238636; border: 1px solid #2ea043; color: #fff; }
-	.btn-primary:hover:not(:disabled) { background: #2ea043; }
+	.btn-primary:hover:not(:disabled) { background: var(--success); }
 	.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>

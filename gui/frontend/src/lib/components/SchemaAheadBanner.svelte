@@ -134,7 +134,7 @@
 	}
 	.detail {
 		font-size: 0.78rem;
-		color: #d29363;
+		color: var(--warning);
 	}
 	.detail code {
 		background: rgba(0, 0, 0, 0.15);
@@ -149,7 +149,7 @@
 		gap: 0.4rem;
 	}
 	.btn-update {
-		background: #f0883e;
+		background: var(--warning);
 		color: var(--bg);
 		border: none;
 		border-radius: 4px;
@@ -159,7 +159,7 @@
 		cursor: pointer;
 	}
 	.btn-update:hover {
-		background: #ffb070;
+		background: color-mix(in srgb, var(--warning) 80%, white);
 	}
 	.btn-dismiss {
 		background: none;
@@ -171,6 +171,6 @@
 		padding: 0 0.3rem;
 	}
 	.btn-dismiss:hover {
-		color: #ffb070;
+		color: color-mix(in srgb, var(--warning) 80%, white);
 	}
 </style>

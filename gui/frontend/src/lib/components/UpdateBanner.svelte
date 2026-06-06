@@ -89,7 +89,7 @@
 		justify-content: space-between;
 		gap: 1rem;
 		padding: 0.5rem 1.5rem;
-		background: #16301f;
+		background: color-mix(in srgb, var(--success) 18%, var(--bg-elevated));
 		border-bottom: 1px solid var(--success-strong);
 		color: var(--text);
 		font-size: 0.85rem;

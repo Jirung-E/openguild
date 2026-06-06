@@ -510,6 +510,6 @@
 		cursor: pointer;
 	}
 	.btn-no:hover:not(:disabled) {
-		background: #21262d;
+		background: var(--bg-subtle);
 	}
 </style>

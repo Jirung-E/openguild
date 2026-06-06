@@ -8,6 +8,8 @@
 	// DEV-068: `.guild/tags/{slug}.toml` 정의 — Tag pill 색칠용.
 	import { adminApi } from '$lib/api/admin';
 	import type { QuestTagDef } from '$lib/types';
+	// DEV-074 fix4: CodeMirror oneDark 는 라이트모드에 부적합 — theme 따라 분기.
+	import { theme, resolveTheme } from '$lib/stores/theme';
 	// BUG-021 fix1: marked 직접 호출 대신 공유 컴포넌트 MarkdownView 사용.
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	import { EditorView, basicSetup } from 'codemirror';
@@ -216,6 +218,15 @@
 		}, 250);
 	}
 	let editorResizeObserver: ResizeObserver | null = null;
+	// DEV-074 fix4: theme 변경 시 편집 중이면 editor 재생성 (oneDark on/off).
+	$effect(() => {
+		const _ = $theme;
+		if (editMode && editorView) {
+			// 현재 내용 보존.
+			editDescription = editorView.state.doc.toString();
+			initEditor();
+		}
+	});
 
 	function initEditor() {
 		if (!editorContainer) return;
@@ -223,12 +234,14 @@
 		// DEV-057: parent (.editor-wrap) 가 height 결정. cm-scroller 는 fill.
 		// 이전엔 cm-scroller maxHeight 480px 가 고정 한계 — parent resize 시 의미 없음.
 		editorContainer.style.height = `${loadEditorHeight()}px`;
+		const eff = resolveTheme($theme);
 		editorView = new EditorView({
 			doc: editDescription,
 			extensions: [
 				basicSetup,
 				markdown(),
-				oneDark,
+				// DEV-074 fix4: dark 일 때만 oneDark — light 면 기본 light 테마 사용.
+				...(eff === 'dark' ? [oneDark] : []),
 				EditorView.theme({
 					'&': { fontSize: '0.875rem', borderRadius: '6px', height: '100%' },
 					'.cm-editor': { borderRadius: '6px', height: '100%' },
@@ -1311,7 +1324,7 @@
 	}
 
 	/* DEV-068: 태그 섹션. */
-	.section-title.tag-label { color: #c69026; }
+	.section-title.tag-label { color: var(--warning); }
 	.tag-pills {
 		list-style: none; padding: 0; margin: 0;
 		display: flex; flex-wrap: wrap; gap: 0.35rem;
@@ -1323,7 +1336,7 @@
 		border: 1px solid rgba(198, 144, 38, 0.4);
 		border-radius: 20px;
 		font-size: 0.75rem;
-		color: #d4a44a;
+		color: var(--warning);
 		font-family: 'JetBrains Mono', ui-monospace, monospace;
 		letter-spacing: 0.02em;
 	}

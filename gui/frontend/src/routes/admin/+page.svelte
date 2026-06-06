@@ -292,11 +292,11 @@
 		cursor: not-allowed;
 	}
 	button.restore {
-		background: #533f00;
-		border-color: #7a6020;
+		background: color-mix(in srgb, var(--warning) 18%, transparent);
+		border-color: color-mix(in srgb, var(--warning) 55%, transparent);
 	}
 	button.restore:hover:not(:disabled) {
-		background: #7a6020;
+		background: color-mix(in srgb, var(--warning) 32%, transparent);
 	}
 	table {
 		width: 100%;
@@ -365,15 +365,15 @@
 		to   { opacity: 1; transform: translateY(0); }
 	}
 	.message.info {
-		background: #1a3a5a;
-		border: 1px solid #2a5a7a;
+		background: color-mix(in srgb, var(--accent) 18%, transparent);
+		border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
 	}
 	.message.success {
-		background: #0f3a1a;
-		border: 1px solid #2a6a3a;
+		background: color-mix(in srgb, var(--success) 18%, transparent);
+		border: 1px solid color-mix(in srgb, var(--success) 45%, transparent);
 	}
 	.message.error {
-		background: #3a0f0f;
-		border: 1px solid #6a2a2a;
+		background: color-mix(in srgb, var(--danger) 18%, transparent);
+		border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
 	}
 </style>
