@@ -2989,9 +2989,43 @@
 	.hide-lane-name {
 		font-weight: 500;
 	}
+	/* DEV-074 fix10: native unchecked checkbox 가 라이트모드에서도 어두운 회색
+	   배경으로 보이는 문제. accent-color 는 checked 상태만 영향 → 언체크 상태도
+	   theme 따라 보이도록 custom 스타일. */
 	.hide-table input[type='checkbox'] {
+		appearance: none;
+		-webkit-appearance: none;
+		width: 1rem;
+		height: 1rem;
+		border: 1px solid var(--border);
+		border-radius: 3px;
+		background: var(--bg);
 		cursor: pointer;
-		accent-color: var(--accent);
+		position: relative;
+		vertical-align: middle;
+		transition: background 0.1s, border-color 0.1s;
+	}
+	.hide-table input[type='checkbox']:hover:not(:disabled) {
+		border-color: var(--accent);
+	}
+	.hide-table input[type='checkbox']:checked {
+		background: var(--accent);
+		border-color: var(--accent);
+	}
+	.hide-table input[type='checkbox']:checked::after {
+		content: '';
+		position: absolute;
+		left: 0.28rem;
+		top: 0.1rem;
+		width: 0.28rem;
+		height: 0.55rem;
+		border: solid var(--btn-primary-text);
+		border-width: 0 2px 2px 0;
+		transform: rotate(45deg);
+	}
+	.hide-table input[type='checkbox']:focus-visible {
+		outline: 2px solid color-mix(in srgb, var(--accent) 50%, transparent);
+		outline-offset: 1px;
 	}
 	.hide-table input[type='checkbox']:disabled {
 		cursor: not-allowed;
