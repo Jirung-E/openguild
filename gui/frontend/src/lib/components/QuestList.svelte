@@ -34,6 +34,12 @@
 	let search = $state('');
 	let titleOnly = $state(false);
 
+	// DEV-065: 뷰 모드 — 'tree' (부모 그룹 + 들여쓰기, 기본) / 'list' (모든 quest
+	// 평면). URL ?mode= 와 localStorage 동시 영속.
+	type ViewMode = 'tree' | 'list';
+	const VIEW_MODE_KEY = 'openguild.questListMode';
+	let viewMode = $state<ViewMode>('tree');
+
 	// --- 데이터 ---
 	async function loadData() {
 		try {
@@ -55,6 +61,18 @@
 		const params = $page.url.searchParams;
 		search = params.get('search') ?? '';
 		titleOnly = params.get('title_only') === 'true';
+		// DEV-065: URL 의 ?mode= 우선, 없으면 localStorage, 없으면 'tree'.
+		const urlMode = params.get('mode');
+		if (urlMode === 'list' || urlMode === 'tree') {
+			viewMode = urlMode;
+		} else {
+			try {
+				const saved = localStorage.getItem(VIEW_MODE_KEY);
+				if (saved === 'list' || saved === 'tree') viewMode = saved;
+			} catch {
+				/* 무시 */
+			}
+		}
 	});
 
 	// DEV-095: Nav 의 Reindex 버튼이 bump 한 store 를 subscribe — 값 변할 때마다
@@ -80,10 +98,23 @@
 		else url.searchParams.delete('search');
 		if (titleOnly) url.searchParams.set('title_only', 'true');
 		else url.searchParams.delete('title_only');
+		// DEV-065: mode 동기화. 'tree' 는 기본이므로 URL 에서 생략.
+		if (viewMode === 'list') url.searchParams.set('mode', 'list');
+		else url.searchParams.delete('mode');
 		const next = `${url.pathname}${url.search}`;
 		const current = `${$page.url.pathname}${$page.url.search}`;
 		if (next !== current) {
 			goto(next, { replaceState: true, keepFocus: true, noScroll: true });
+		}
+	});
+
+	// DEV-065: mode 변경 시 localStorage 영속.
+	$effect(() => {
+		if (loading) return;
+		try {
+			localStorage.setItem(VIEW_MODE_KEY, viewMode);
+		} catch {
+			/* 무시 */
 		}
 	});
 
@@ -100,6 +131,12 @@
 			titleOnly
 		);
 		const hasSearch = search.trim().length > 0;
+		// DEV-065: 'list' 모드 — 부모 그룹 X. 매칭된 quest 만 평면. ancestor
+		// 자동 포함 안 함 (검색 결과 정확).
+		if (viewMode === 'list') {
+			return matched.map((q) => ({ quest: q, depth: 0, hasChildren: false }));
+		}
+		// 'tree' 모드 — 기존 동작.
 		const filtered = hasSearch ? includeAncestors(matched, quests) : matched;
 		const effectiveExpanded = hasSearch
 			? new Set([...expanded, ...ancestorIdsOf(matched, quests)])
@@ -134,6 +171,30 @@
 		bind:search
 		bind:titleOnly
 	/>
+
+	<!-- DEV-065: 뷰 모드 토글 — filter-bar 아래 별도 줄. 좌측에 [Tree | List] 세그멘티드. -->
+	<div class="view-toggle-row">
+		<div class="view-toggle" role="group" aria-label="뷰 모드">
+			<button
+				class="vt-btn"
+				class:active={viewMode === 'tree'}
+				onclick={() => (viewMode = 'tree')}
+				title="트리 — 부모 아래로 자식 들여쓰기"
+				aria-pressed={viewMode === 'tree'}
+			>
+				<span class="vt-icon">⇲</span><span>Tree</span>
+			</button>
+			<button
+				class="vt-btn"
+				class:active={viewMode === 'list'}
+				onclick={() => (viewMode = 'list')}
+				title="리스트 — 모든 퀘스트 평면"
+				aria-pressed={viewMode === 'list'}
+			>
+				<span class="vt-icon">≡</span><span>List</span>
+			</button>
+		</div>
+	</div>
 
 	{#if loading}
 		<div class="state-msg">Loading...</div>
@@ -209,4 +270,38 @@
 	.state-msg.error {
 		color: #e94f4f;
 	}
+
+	/* DEV-065: 뷰 모드 토글 — segmented 컨트롤. */
+	.view-toggle-row {
+		display: flex;
+		justify-content: flex-start;
+		margin: 0.4rem 0 0.75rem;
+	}
+	.view-toggle {
+		display: inline-flex;
+		gap: 0;
+		background: #161b22;
+		border: 1px solid #30363d;
+		border-radius: 6px;
+		padding: 2px;
+	}
+	.vt-btn {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		padding: 3px 10px;
+		background: transparent;
+		border: none;
+		border-radius: 4px;
+		color: #8b949e;
+		font-size: 0.8rem;
+		cursor: pointer;
+		transition: background 0.1s, color 0.1s;
+	}
+	.vt-btn:hover { color: #c9d1d9; }
+	.vt-btn.active {
+		background: #21262d;
+		color: #c9d1d9;
+	}
+	.vt-icon { font-size: 0.95rem; line-height: 1; }
 </style>
