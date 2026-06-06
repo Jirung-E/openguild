@@ -87,6 +87,15 @@ enum Command {
         #[arg(long)]
         list: bool,
     },
+    // DEV-023: server CLI 추가.
+    /// SQLite VACUUM — index.db 의 dead row 제거 + 파일 크기 정리.
+    Vacuum,
+    /// journal.db 의 최근 N 개 op 출력 (debug / audit 용).
+    JournalTail {
+        /// 출력할 row 수 (default 50).
+        #[arg(short = 'n', long, default_value_t = 50)]
+        count: i64,
+    },
 }
 
 fn main() -> Result<()> {
@@ -111,6 +120,8 @@ fn main() -> Result<()> {
         Command::Reindex => rt.block_on(run_reindex()),
         Command::Snapshot => rt.block_on(run_snapshot()),
         Command::Restore { to, list } => rt.block_on(run_restore(to, list)),
+        Command::Vacuum => rt.block_on(run_vacuum()),
+        Command::JournalTail { count } => rt.block_on(run_journal_tail(count)),
         Command::CheckCounters { fix } => rt.block_on(run_check_counters(fix)),
         Command::CheckDrift { resync } => rt.block_on(run_check_drift(resync)),
     }
@@ -444,6 +455,101 @@ async fn run_reindex() -> Result<()> {
             println!("    → {reason}");
         }
     }
+    Ok(())
+}
+
+// DEV-023: VACUUM — SQLite 가 deleted row 의 공간을 회수 + 파일 크기 정리.
+// snapshot 만들기 직전 / 큰 reindex 후 권장.
+async fn run_vacuum() -> Result<()> {
+    let ctx = load_guild()?;
+    let store = openguild_core::Store::open(&ctx.guild_path).await?;
+    let before = std::fs::metadata(store.paths.index_db())
+        .map(|m| m.len())
+        .unwrap_or(0);
+
+    println!("VACUUM 실행 중...");
+    sqlx::query("VACUUM").execute(&store.index_pool).await?;
+
+    // VACUUM 은 transaction 안에서 못 함. WAL checkpoint 으로 사이즈 안정화.
+    sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
+        .execute(&store.index_pool)
+        .await
+        .ok();
+
+    let after = std::fs::metadata(store.paths.index_db())
+        .map(|m| m.len())
+        .unwrap_or(0);
+    let saved = before.saturating_sub(after);
+    println!("✓ VACUUM 완료");
+    println!("  before : {before} bytes");
+    println!("  after  : {after} bytes");
+    if saved > 0 {
+        println!("  saved  : {saved} bytes ({:.1}%)", (saved as f64 / before as f64) * 100.0);
+    } else {
+        println!("  saved  : 0 bytes (이미 dense)");
+    }
+    Ok(())
+}
+
+// DEV-023: journal.db 의 최근 N row 출력. audit / debug 용.
+async fn run_journal_tail(count: i64) -> Result<()> {
+    let ctx = load_guild()?;
+    let dot_guild_paths = openguild_core::repo::GuildPaths::new(&ctx.abs_path);
+
+    if !dot_guild_paths.journal_db().exists() {
+        println!("(journal.db 없음 — 아직 mutation 안 됐거나 snapshot 직후)");
+        return Ok(());
+    }
+
+    let url = format!(
+        "sqlite:{}?mode=ro",
+        dot_guild_paths
+            .journal_db()
+            .to_string_lossy()
+            .trim_start_matches(r"\\?\")
+            .replace('\\', "/")
+    );
+    let pool = openguild_core::db::create_pool(&url).await?;
+
+    let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM ops")
+        .fetch_one(&pool)
+        .await
+        .unwrap_or(0);
+    println!("journal.db: {n} row(s) total — showing last {}", count.min(n));
+    println!();
+
+    let rows: Vec<(i64, String, String, String, Option<String>)> = sqlx::query_as(
+        "SELECT id, ts, op, args, result FROM ops ORDER BY id DESC LIMIT ?",
+    )
+    .bind(count)
+    .fetch_all(&pool)
+    .await?;
+
+    // ID ascending 으로 다시 정렬 (오래된 → 최신 자연 read).
+    let mut rows = rows;
+    rows.reverse();
+
+    for (id, ts, op, args, result) in rows {
+        println!("#{id:>6}  {ts}  {op}");
+        // args / result 는 한 줄에 적당히 truncate.
+        let args_trunc = if args.len() > 100 {
+            format!("{}…", &args[..100])
+        } else {
+            args
+        };
+        println!("         args   : {args_trunc}");
+        if let Some(r) = result {
+            let r_trunc = if r.len() > 100 {
+                format!("{}…", &r[..100])
+            } else {
+                r
+            };
+            println!("         result : {r_trunc}");
+        }
+        println!();
+    }
+
+    pool.close().await;
     Ok(())
 }
 
