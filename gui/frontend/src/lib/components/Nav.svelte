@@ -102,14 +102,15 @@
 </header>
 
 <style>
+	/* DEV-074: hardcoded color → var() 마이그레이션. */
 	header {
 		display: flex;
 		align-items: center;
 		gap: 2rem;
 		padding: 0 1.5rem;
 		height: 52px;
-		background: #1a1a2e;
-		border-bottom: 1px solid #2a2a4a;
+		background: var(--nav-bg);
+		border-bottom: 1px solid var(--nav-border);
 		position: sticky;
 		top: 0;
 		z-index: 100;
@@ -118,7 +119,7 @@
 	.logo {
 		font-size: 1.1rem;
 		font-weight: 700;
-		color: #c9d1d9;
+		color: var(--text);
 		text-decoration: none;
 		letter-spacing: 0.02em;
 	}
@@ -133,19 +134,19 @@
 		padding: 0.35rem 0.85rem;
 		border-radius: 6px;
 		font-size: 0.875rem;
-		color: #8b949e;
+		color: var(--text-muted);
 		text-decoration: none;
 		transition: background 0.15s, color 0.15s;
 	}
 
 	nav a:hover {
-		background: #2a2a4a;
-		color: #c9d1d9;
+		background: var(--nav-hover-bg);
+		color: var(--text);
 	}
 
 	nav a.active {
-		background: #2a2a4a;
-		color: #c9d1d9;
+		background: var(--nav-hover-bg);
+		color: var(--text);
 	}
 
 	.nav-right {
@@ -165,18 +166,18 @@
 		border-radius: 6px;
 		font-size: 1.1rem;
 		line-height: 1;
-		color: #8b949e;
+		color: var(--text-muted);
 		text-decoration: none;
 		transition: background 0.15s, color 0.15s, transform 0.2s;
 	}
 	.btn-settings:hover {
-		background: #2a2a4a;
-		color: #c9d1d9;
+		background: var(--nav-hover-bg);
+		color: var(--text);
 		transform: rotate(45deg);
 	}
 	.btn-settings.active {
-		background: #2a2a4a;
-		color: #c9d1d9;
+		background: var(--nav-hover-bg);
+		color: var(--text);
 	}
 
 	/* DEV-095: Reindex 버튼 — 설정 옆. */
@@ -189,28 +190,28 @@
 		border-radius: 6px;
 		font-size: 1.05rem;
 		line-height: 1;
-		color: #8b949e;
+		color: var(--text-muted);
 		background: transparent;
 		border: none;
 		cursor: pointer;
 		transition: background 0.15s, color 0.15s, transform 0.4s;
 	}
 	.btn-reindex:hover:not(:disabled) {
-		background: #2a2a4a;
-		color: #c9d1d9;
+		background: var(--nav-hover-bg);
+		color: var(--text);
 	}
 	.btn-reindex:disabled {
 		cursor: wait;
 	}
 	.btn-reindex.running {
-		color: #58a6ff;
+		color: var(--accent);
 		animation: spin 1.2s linear infinite;
 	}
 	.btn-reindex.done {
-		color: #3fb950;
+		color: var(--success);
 	}
 	.btn-reindex.error {
-		color: #f85149;
+		color: var(--danger);
 	}
 	@keyframes spin {
 		from { transform: rotate(0deg); }

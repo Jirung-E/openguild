@@ -32,6 +32,10 @@
 	--warning: #f5a623;
 	--danger: #f85149;
 	--shadow: rgba(0, 0, 0, 0.5);
+	/* DEV-074: Nav 전용 token (#1a1a2e 의 보라/네이비 톤 — 일반 bg 와 시각 분리). */
+	--nav-bg: #1a1a2e;
+	--nav-border: #2a2a4a;
+	--nav-hover-bg: #2a2a4a;
 
 	/* date input picker — 환경 무관 dark picker. */
 	color-scheme: dark;
@@ -54,6 +58,10 @@
 	--warning: #9a6700;
 	--danger: #cf222e;
 	--shadow: rgba(140, 149, 159, 0.3);
+	/* DEV-074: light theme Nav — 부드러운 light gray (GitHub 스타일). */
+	--nav-bg: #f6f8fa;
+	--nav-border: #d0d7de;
+	--nav-hover-bg: #eaeef2;
 
 	color-scheme: light;
 }
