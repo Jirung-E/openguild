@@ -65,9 +65,56 @@ export async function checkForUpdate(opts: { silent?: boolean } = {}): Promise<v
 		}
 	} catch (e) {
 		const message = e instanceof Error ? e.message : String(e);
+		const friendly = humanizeUpdaterError(message);
 		if (silent) updateState.set({ status: 'idle' });
-		else updateState.set({ status: 'error', message });
+		else updateState.set({ status: 'error', message: friendly });
 	}
+}
+
+/**
+ * BUG-045: updater 의 raw error → 사용자 친화 메시지.
+ *
+ * 주요 케이스:
+ * - 404 / not found: 첫 릴리즈가 아직 없거나 endpoint 잘못됨.
+ * - network / fetch / timeout: 연결 문제.
+ * - signature / signing: release 의 signature 검증 실패 (잘못된 public key 등).
+ * - dev / debug: dev 빌드라 plugin 동작 X (실 production binary 만).
+ *
+ * 매치 안 되면 원본 메시지에 짧은 안내 prefix 만.
+ */
+export function humanizeUpdaterError(raw: string): string {
+	const m = raw.toLowerCase();
+	if (m.includes('404') || m.includes('not found')) {
+		return (
+			'릴리즈가 아직 없거나 endpoint URL 이 잘못됐습니다. ' +
+			'(GitHub Releases 에 latest.json 이 attach 되어 있어야 합니다.)\n\n원본: ' +
+			raw
+		);
+	}
+	if (
+		m.includes('network') ||
+		m.includes('fetch') ||
+		m.includes('timeout') ||
+		m.includes('connection') ||
+		m.includes('dns')
+	) {
+		return '네트워크 연결을 확인해 주세요.\n\n원본: ' + raw;
+	}
+	if (m.includes('signature') || m.includes('signing') || m.includes('pubkey')) {
+		return (
+			'릴리즈의 서명 검증에 실패했습니다. ' +
+			'(public key 가 잘못됐거나 release 의 .sig 파일이 누락 / 손상.)\n\n원본: ' +
+			raw
+		);
+	}
+	if (m.includes('debug') || m.includes('dev') || m.includes('untagged')) {
+		return (
+			'개발 빌드에서는 자동 업데이트가 동작하지 않습니다 ' +
+			'(서명된 production binary 만 지원).\n\n원본: ' +
+			raw
+		);
+	}
+	return '업데이트 확인 실패.\n\n원본: ' + raw;
 }
 
 /**
