@@ -94,10 +94,20 @@ pub struct CampaignSummary {
     pub display_order: i64,
     pub created_at: String,
     /// 체크리스트 완료율 (체크된 항목 / 전체 항목). 항목이 0개면 0.0.
+    /// = `checklist_progress` 의 별칭 (frontend 호환).
     pub progress: f64,
     /// 전체 체크리스트 항목 수 (UI 가 "3/10" 처럼 표시 가능).
     pub checklist_total: i64,
     pub checklist_checked: i64,
+    /// DEV-093: 링크된 quest 중 alive (soft delete 제외) 개수.
+    #[serde(default)]
+    pub quest_total: i64,
+    /// DEV-093: 위 중 status.counts_as_done = true 인 quest 수.
+    #[serde(default)]
+    pub quest_done: i64,
+    /// DEV-093: quest_done / quest_total. quest_total = 0 이면 0.0.
+    #[serde(default)]
+    pub quest_progress: f64,
 }
 
 // --- 요청 바디 ---

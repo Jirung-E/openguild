@@ -650,6 +650,9 @@ pub async fn create_status(
         name_en: name_en.clone(),
         name_ko: name_ko.clone(),
         color: color.clone(),
+        // DEV-093: 신규 생성 status 의 기본 counts_as_done — false. 사용자가
+        // 추후 statuses update 로 토글.
+        counts_as_done: false,
     };
     let filename = StatusFile::filename(sort_order, &slug);
     file.write(store.paths.statuses_dir().join(&filename))

@@ -139,9 +139,10 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
         match StatusFile::read(path) {
             Ok(s) => {
                 // DEV-042: slug 컬럼도 함께 INSERT — quest_history 가 slug 기반.
+                // DEV-093: counts_as_done 도 file → DB sync.
                 sqlx::query(
-                    "INSERT INTO quest_statuses (id, name_en, name_ko, color, sort_order, slug)
-                     VALUES (?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO quest_statuses (id, name_en, name_ko, color, sort_order, slug, counts_as_done)
+                     VALUES (?, ?, ?, ?, ?, ?, ?)",
                 )
                 .bind(id)
                 .bind(&s.name_en)
@@ -149,6 +150,7 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
                 .bind(&s.color)
                 .bind(s.sort_order)
                 .bind(slug)
+                .bind(s.counts_as_done as i64)
                 .execute(&mut *tx)
                 .await?;
                 slug_to_status_id.insert(slug.to_string(), id);

@@ -519,6 +519,25 @@ async fn summarize(pool: &SqlitePool, c: CampaignRow) -> AppResult<CampaignSumma
     } else {
         0.0
     };
+    // DEV-093: 링크된 quest 중 alive + status.counts_as_done = true 인 수.
+    let q_stats: (i64, i64) = sqlx::query_as(
+        "SELECT COUNT(*),
+                SUM(CASE WHEN qs.counts_as_done = 1 THEN 1 ELSE 0 END)
+           FROM campaign_quests cq
+           JOIN quests q ON q.id = cq.quest_id
+           JOIN quest_statuses qs ON qs.id = q.status_id
+          WHERE cq.campaign_id = ? AND q.deleted_at IS NULL",
+    )
+    .bind(c.id)
+    .fetch_one(pool)
+    .await?;
+    let quest_total = q_stats.0;
+    let quest_done = q_stats.1;
+    let quest_progress = if quest_total > 0 {
+        quest_done as f64 / quest_total as f64
+    } else {
+        0.0
+    };
     Ok(CampaignSummary {
         id: c.id,
         campaign_slug: c.campaign_slug,
@@ -531,5 +550,8 @@ async fn summarize(pool: &SqlitePool, c: CampaignRow) -> AppResult<CampaignSumma
         progress,
         checklist_total: total,
         checklist_checked: checked,
+        quest_total,
+        quest_done,
+        quest_progress,
     })
 }
