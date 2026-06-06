@@ -2685,10 +2685,12 @@
 	:global(.lane-label.collapsed) {
 		writing-mode: vertical-rl;
 		text-orientation: mixed;
-		max-height: 28px;
-		overflow: hidden;
-		text-overflow: ellipsis;
 		white-space: nowrap;
+		/* DEV-105 fix6: 사용자 피드백 — 위로 짤리는것만 방지. flex 부모의
+		   align-items:center 무시하고 위에 붙여, 긴 이름은 아래로 자연스럽게
+		   넘어가게 (lane-hdrs 가 board 전체를 덮어 아래 overflow 는 보임). */
+		align-self: flex-start;
+		padding-top: 4px;
 	}
 	/* DEV-105 fix5: 레인별 설정 토글 ⚙ — 항상 보임, 작은 라벨 옆 버튼. */
 	:global(.lane-settings-btn) {
