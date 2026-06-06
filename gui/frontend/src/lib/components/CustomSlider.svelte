@@ -1,24 +1,22 @@
 <!--
-  DEV-101 fix2: 델타 드래그 슬라이더.
+  DEV-101 fix3: 단일 onChange 즉시 적용 슬라이더.
 
-  네이티브 `<input type="range">` 는 두 문제:
-   1. value 가 store/prop 와 양방향 바인딩 안 되면 drag 중 thumb 가 외부 reactivity
-      때마다 원래 자리로 튕김.
-   2. drag 중 페이지 layout 이 바뀌면 (UI scale 슬라이더처럼 자기 자신을 움직이게
-      하는 경우) thumb 좌표가 마우스에서 벗어남 → 손 놓침.
+  네이티브 `<input type="range">` 의 문제:
+   - UI scale 슬라이더처럼 자기 자신을 움직이면 절대 위치 매핑이 깨짐.
+   - value 가 외부 store 와 단방향 바인딩되어 reactive cascade 가 thumb 을 튕김.
 
   본 컴포넌트:
-   - 트랙 click → thumb 이 그 위치로 점프 (직관적).
-   - thumb 잡고 drag → 매 pointermove 의 movementX (델타) 만 누적하여 값 변경.
-     마우스의 절대 위치가 아닌 델타라서 페이지가 변형돼도 사용자 입력 그대로 반영.
+   - 트랙 click → thumb 이 그 위치로 점프 (즉시 commit).
+   - thumb 잡고 drag → 매 pointermove 의 movementX (델타) 만 누적해 값 변경
+     (즉시 commit). 마우스 절대 위치가 아닌 델타라서 페이지가 변형돼도
+     사용자 입력 그대로 반영.
    - pointer capture 로 트랙 밖에서도 drag 유지.
-   - 키보드 ← / → / Home / End 도 지원.
+   - 키보드 ← / → / Home / End / PageUp / PageDown.
 
   Props:
-   - value: number   (현재 값)
+   - value: number       (현재 값 — 외부 source of truth)
    - min / max / step
-   - onInput(v):  drag 도중 매 step 마다 호출 (preview)
-   - onChange(v): pointerup / blur 에서 한 번 (commit)
+   - onChange(v): 값이 한 step 이상 변할 때마다 호출 (drag 중에도 매번)
    - ariaLabel
    - disabled
 -->
@@ -28,7 +26,6 @@
 		min: number;
 		max: number;
 		step?: number;
-		onInput?: (v: number) => void;
 		onChange?: (v: number) => void;
 		ariaLabel?: string;
 		disabled?: boolean;
@@ -39,7 +36,6 @@
 		min,
 		max,
 		step = 1,
-		onInput,
 		onChange,
 		ariaLabel,
 		disabled = false
@@ -47,18 +43,14 @@
 
 	let track: HTMLDivElement | undefined = $state(undefined);
 	let dragging = $state(false);
-	// drag 중인 미리보기 값. null 이면 외부 value 사용.
-	let preview = $state<number | null>(null);
-
-	function effective(): number {
-		return preview ?? value;
-	}
+	// drag 시작 시점의 값 — movementX 누적 베이스. drag 중 외부 value 가
+	// 즉시 commit 으로 갱신되더라도 본 값을 기준으로 정확히 누적.
+	let dragAcc = 0;
+	let pixelsPerUnit = 1;
 
 	function clampToStep(v: number): number {
 		const clamped = Math.max(min, Math.min(max, v));
-		// step 격자에 스냅.
 		const stepped = Math.round((clamped - min) / step) * step + min;
-		// 부동소수 누적 오차 정리.
 		const decimals = (step.toString().split('.')[1] ?? '').length;
 		return Number(stepped.toFixed(decimals));
 	}
@@ -70,30 +62,34 @@
 		return clampToStep(min + ratio * (max - min));
 	}
 
+	function commit(v: number) {
+		const next = clampToStep(v);
+		if (next !== value) {
+			onChange?.(next);
+		}
+	}
+
 	function startDrag(e: PointerEvent) {
-		if (disabled) return;
+		if (disabled || !track) return;
 		const target = e.currentTarget as HTMLElement;
 		target.setPointerCapture(e.pointerId);
-		// 트랙 click 위치로 바로 점프 (사용자 요구사항).
+		// 트랙 click 위치로 바로 점프.
+		const r = track.getBoundingClientRect();
+		pixelsPerUnit = r.width / (max - min);
 		const v = valueFromTrackX(e.clientX);
-		preview = v;
+		dragAcc = v;
 		dragging = true;
-		onInput?.(v);
+		commit(v);
 		e.preventDefault();
 	}
 
 	function onMove(e: PointerEvent) {
 		if (!dragging || !track) return;
-		// 델타 기반 — `movementX` 는 OS / 브라우저 가속 / 페이지 zoom 무관한
-		// raw pixel delta. UI scale 슬라이더가 자기 자신을 움직여도 사용자가
-		// 손에 느끼는 그대로.
-		const r = track.getBoundingClientRect();
-		const range = max - min;
-		const dxRatio = e.movementX / r.width;
-		const next = clampToStep((preview ?? value) + dxRatio * range);
-		if (next !== preview) {
-			preview = next;
-			onInput?.(next);
+		// 델타 — movementX 가 페이지 zoom / UI scale 변화와 무관.
+		dragAcc = Math.max(min, Math.min(max, dragAcc + e.movementX / pixelsPerUnit));
+		const stepped = clampToStep(dragAcc);
+		if (stepped !== value) {
+			commit(stepped);
 		}
 	}
 
@@ -105,10 +101,7 @@
 		} catch {
 			/* 이미 해제됐을 수 있음 */
 		}
-		const commit = preview ?? value;
 		dragging = false;
-		preview = null;
-		onChange?.(commit);
 	}
 
 	function onKey(e: KeyboardEvent) {
@@ -139,11 +132,10 @@
 				return;
 		}
 		e.preventDefault();
-		onInput?.(next);
-		onChange?.(next);
+		commit(next);
 	}
 
-	let fillPct = $derived(((effective() - min) / (max - min)) * 100);
+	let fillPct = $derived(((value - min) / (max - min)) * 100);
 </script>
 
 <div
@@ -154,7 +146,7 @@
 	tabindex={disabled ? -1 : 0}
 	aria-valuemin={min}
 	aria-valuemax={max}
-	aria-valuenow={effective()}
+	aria-valuenow={value}
 	aria-label={ariaLabel}
 	aria-disabled={disabled}
 	onkeydown={onKey}

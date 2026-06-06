@@ -37,17 +37,8 @@
 	// thumb 튐, UI scale 의 자기 자신 변형 → 손 놓침) 회피한 델타 기반 슬라이더.
 	import CustomSlider from '$lib/components/CustomSlider.svelte';
 
-	// DEV-101 fix2: 슬라이더는 이제 CustomSlider 가 내부에서 preview 관리.
-	// onInput 마다 미리보기 % 만 갱신, onChange (pointerup) 에서 store 반영.
-	let previewScale = $state<number | null>(null);
-	function displayScale(): number {
-		return previewScale ?? $uiScale;
-	}
-
-	let previewContentWidth = $state<number | null>(null);
-	function displayContentWidth(): number {
-		return previewContentWidth ?? $contentWidth;
-	}
+	// DEV-101 fix3: 즉시 반영 — store 가 source of truth, drag 중에도 매 step 적용.
+	// preview / displayScale wrapper 제거.
 
 	// floating toast 닫기 — updateState 를 idle 로.
 	const dismissCheck = () => dismissUpdate();
@@ -121,13 +112,9 @@
 						max={MAX_SCALE}
 						step={0.05}
 						ariaLabel="UI 크기"
-						onInput={(v) => (previewScale = v)}
-						onChange={(v) => {
-							previewScale = null;
-							setUiScale(v);
-						}}
+						onChange={setUiScale}
 					/>
-					<span class="scale-val">{Math.round(displayScale() * 100)}%</span>
+					<span class="scale-val">{Math.round($uiScale * 100)}%</span>
 					<button
 						class="btn-reset"
 						onclick={resetUiScale}
@@ -135,7 +122,7 @@
 						title="100% 로 초기화"
 					>초기화</button>
 				</div>
-				<p class="scale-hint">전체 UI 의 텍스트 / 여백이 비례 확대·축소됩니다 (50%~200%). drag 중에는 미리보기만, 손 떼면 적용.</p>
+				<p class="scale-hint">전체 UI 의 텍스트 / 여백이 비례 확대·축소됩니다 (50%~200%). drag 하는 동안 즉시 적용.</p>
 			</dd>
 
 			<!-- DEV-101 fix2: 컨텐츠 표시 영역 폭 — UI scale 과 별개. -->
@@ -148,13 +135,9 @@
 						max={MAX_CONTENT_WIDTH}
 						step={20}
 						ariaLabel="컨텐츠 폭"
-						onInput={(v) => (previewContentWidth = v)}
-						onChange={(v) => {
-							previewContentWidth = null;
-							setContentWidth(v);
-						}}
+						onChange={setContentWidth}
 					/>
-					<span class="scale-val">{displayContentWidth()} px</span>
+					<span class="scale-val">{$contentWidth} px</span>
 					<button
 						class="btn-reset"
 						onclick={resetContentWidth}
@@ -221,7 +204,7 @@
 	.settings {
 		display: flex;
 		gap: 1.5rem;
-		max-width: 900px;
+		max-width: var(--content-max-width, 900px);
 		margin: 0 auto;
 		padding: 1.5rem;
 	}
