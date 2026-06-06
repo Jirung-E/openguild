@@ -218,6 +218,27 @@ openguild/
 > - 2026-06-06 DEV-023 server CLI `vacuum` + `journal-tail` 추가.
 > - 2026-06-06 BUG-054 QuestBoard.sorted → $state — long-standing npm check
 >   warning 제거 (0 warnings).
+> - 2026-06-07 DEV-068 `.guild/tags/{slug}.toml` 색·설명 — migration 0013
+>   `quest_tag_defs` + repo TagFile + Admin UI + Quest Detail tag pill 색.
+> - 2026-06-07 DEV-068 fix2: Tree 모드 + tag/type/status 필터 — child 매치 시
+>   `includeAncestors` 로 부모 트리 보존 (이전엔 검색만 처리).
+> - 2026-06-07 DEV-093 fix2: 캠페인 완료 판정 — 체크리스트 + 연결 quest 양쪽
+>   100% 일 때만 완료.
+> - 2026-06-07 DEV-074 fix2~10 라이트모드 마무리: 전역 커스텀 스크롤바
+>   (`scrollbar-gutter: stable`) + `<main>` bg → `var(--bg)` + Cytoscape style
+>   theme별 hex (`var()` 컴퓨팅 안 됨) + CodeMirror oneDark 조건부 +
+>   `--btn-primary-* / --btn-warning-* / --card-hl-* / --scrollbar-*` 토큰
+>   도입 + primary 버튼 11곳 sweep + 보드 설정 모달 체크박스 custom.
+> - 2026-06-07 DEV-101 fix2~5 슬라이더 리빌드: `CustomSlider` (델타 드래그 +
+>   click-jump + 즉시 적용 + 직접 숫자 입력) + `contentWidth` store +
+>   `--content-max-width` 토큰 (Home/Campaigns/Rules/Quest/Admin/Settings) +
+>   Nav 높이 `52px → 3.25rem` (UI scale 반영).
+> - 2026-06-07 DEV-105 fix2~7 lane 헤더 정리: 보드설정 모달에 lane reorder
+>   통합 + lane 헤더 zoom 무관 (UI overlay) + collapsed 영속 복원 + 긴 이름
+>   위 정렬 (overflow 아래로) + 레인별 설정 `⚙` 토글 + 펼침 시
+>   hideGroup/hideSolo 회귀 fix.
+> - 2026-06-07 DEV-113 등록: `[gui] 원격 서버 모드` (DEV-088 하위).
+> - 2026-06-07 DEV-114 등록: `[gui] 커스텀 테마` (사용자 토큰 색 자유 정의).
 >
 > 자세한 설계 근거: `docs/architecture-refactor.md`, `docs/storage-design.md`.
 
@@ -361,13 +382,23 @@ Backend 추상화는 `cli/src/main.rs` 의 `Backend` enum. 로컬은 `--guild` �
 - ✅ 태그 (DEV-068) — frontmatter + DB cache + 풀스택 (CLI / HTTP / GUI).
 - ✅ 캠페인 quest 진행도 (DEV-093) — status.counts_as_done + 모든 layer.
 - ✅ 다크 / 라이트 / 시스템 테마 (DEV-074) — CSS variable backbone + 마이그레이션.
+  본 라운드 (fix2~10) 에서 토큰 확장: `--btn-primary-*` (primary 액션 버튼 통일,
+  light 명도 ↑), `--btn-warning-*` (admin 복원), `--card-hl-*` (Home 의 overdue /
+  completed 카드 그라데이션), `--scrollbar-thumb*` (전역 thin 스크롤바),
+  `--content-max-width` (DEV-101 컨텐츠 폭 슬라이더). 신규 컴포넌트는 토큰만 참조 —
+  `:global([data-theme='light']) .x` 직접 override 금지.
 - ✅ Quest List Tree / List 토글 (DEV-065).
 - ✅ Quest Detail 후속 퀘스트 (DEV-070).
 - ✅ Quest Board toolbar 접기 (DEV-073), arrangeNodesGrouped 개선 (DEV-077).
 - 캠페인 댓글 / 메모 (DEV-100) — quest 와 동일 패턴.
 - 다국어 (DEV-015) — i18n backbone 부터.
 - 첨부파일 (DEV-069) — 새 기능.
-- 레인 접기 (DEV-105) / 레인 순서 (DEV-059) — Cytoscape.
+- ✅ 레인 접기 (DEV-105) / 레인 순서 (DEV-059) — 본 라운드 (DEV-105 fix2~7)
+  에서 통합 '보드 설정' 모달 + ⚙ 토글로 헤더 정리 + collapsed 영속 + hide
+  설정 회귀 fix.
+- 커스텀 테마 (DEV-114) — 사용자가 토큰 색 자유 정의 + 프리셋 저장 (DEV-074
+  토대 활용).
+- GUI 원격 모드 (DEV-113) — `openguild-server` URL 모드. DEV-021 (JWT) 권장.
 - Journal replay (DEV-022) — 시점 복원.
 - 길드 다중 동시 접속 (현재 SQLite 단일 파일 가정).
 - AWS EC2 배포 — CI 는 GitHub Actions 로 일부 구축됨 (`.github/workflows/check.yml`).
