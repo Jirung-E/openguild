@@ -110,11 +110,26 @@
 						value={$uiScale}
 						min={MIN_SCALE}
 						max={MAX_SCALE}
-						step={0.05}
+						step={0.01}
 						ariaLabel="UI 크기"
 						onChange={setUiScale}
 					/>
-					<span class="scale-val">{Math.round($uiScale * 100)}%</span>
+					<!-- DEV-101 fix4: 직접 숫자 입력. % 단위 (50~200). -->
+					<div class="num-input">
+						<input
+							type="number"
+							min={Math.round(MIN_SCALE * 100)}
+							max={Math.round(MAX_SCALE * 100)}
+							step="1"
+							value={Math.round($uiScale * 100)}
+							oninput={(e) => {
+								const n = Number.parseInt(e.currentTarget.value, 10);
+								if (Number.isFinite(n)) setUiScale(n / 100);
+							}}
+							aria-label="UI 크기 (퍼센트)"
+						/>
+						<span class="unit">%</span>
+					</div>
 					<button
 						class="btn-reset"
 						onclick={resetUiScale}
@@ -122,7 +137,7 @@
 						title="100% 로 초기화"
 					>초기화</button>
 				</div>
-				<p class="scale-hint">전체 UI 의 텍스트 / 여백이 비례 확대·축소됩니다 (50%~200%). drag 하는 동안 즉시 적용.</p>
+				<p class="scale-hint">전체 UI 의 텍스트 / 여백이 비례 확대·축소됩니다 ({Math.round(MIN_SCALE * 100)}%~{Math.round(MAX_SCALE * 100)}%, 1% 단위). 슬라이더 / 숫자 입력 모두 즉시 적용.</p>
 			</dd>
 
 			<!-- DEV-101 fix2: 컨텐츠 표시 영역 폭 — UI scale 과 별개. -->
@@ -133,11 +148,26 @@
 						value={$contentWidth}
 						min={MIN_CONTENT_WIDTH}
 						max={MAX_CONTENT_WIDTH}
-						step={20}
+						step={5}
 						ariaLabel="컨텐츠 폭"
 						onChange={setContentWidth}
 					/>
-					<span class="scale-val">{$contentWidth} px</span>
+					<!-- DEV-101 fix4: 직접 숫자 입력. px 단위. -->
+					<div class="num-input">
+						<input
+							type="number"
+							min={MIN_CONTENT_WIDTH}
+							max={MAX_CONTENT_WIDTH}
+							step="5"
+							value={$contentWidth}
+							oninput={(e) => {
+								const n = Number.parseInt(e.currentTarget.value, 10);
+								if (Number.isFinite(n)) setContentWidth(n);
+							}}
+							aria-label="컨텐츠 폭 (픽셀)"
+						/>
+						<span class="unit">px</span>
+					</div>
 					<button
 						class="btn-reset"
 						onclick={resetContentWidth}
@@ -146,7 +176,7 @@
 					>초기화</button>
 				</div>
 				<p class="scale-hint">
-					페이지의 좌우 안전 영역 — 와이드 모니터에서 더 넓게 사용. 범위 {MIN_CONTENT_WIDTH}~{MAX_CONTENT_WIDTH}px.
+					페이지의 좌우 안전 영역 — 와이드 모니터에서 더 넓게 사용. 범위 {MIN_CONTENT_WIDTH}~{MAX_CONTENT_WIDTH}px, 5px 단위.
 				</p>
 			</dd>
 
@@ -341,11 +371,41 @@
 		width: 100%;
 		max-width: 24rem;
 	}
-	.ui-scale .scale-val {
-		min-width: 3.5rem;
-		font-variant-numeric: tabular-nums;
+	/* DEV-101 fix4: 직접 숫자 입력. */
+	.ui-scale .num-input {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+		padding: 0.15rem 0.4rem;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-radius: 6px;
+	}
+	.ui-scale .num-input:focus-within {
+		border-color: var(--accent);
+	}
+	.ui-scale .num-input input[type='number'] {
+		min-width: 3ch;
+		width: 4.5ch;
+		background: transparent;
+		border: none;
 		color: var(--text);
+		font: inherit;
 		font-size: 0.875rem;
+		font-variant-numeric: tabular-nums;
+		text-align: right;
+		outline: none;
+		-moz-appearance: textfield;
+		appearance: textfield;
+	}
+	.ui-scale .num-input input[type='number']::-webkit-inner-spin-button,
+	.ui-scale .num-input input[type='number']::-webkit-outer-spin-button {
+		-webkit-appearance: none;
+		margin: 0;
+	}
+	.ui-scale .num-input .unit {
+		color: var(--text-muted);
+		font-size: 0.8rem;
 	}
 	.ui-scale .btn-reset {
 		padding: 0.2rem 0.6rem;
