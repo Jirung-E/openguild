@@ -607,6 +607,18 @@
 			/* 무시 */
 		}
 	}
+
+	// DEV-073: toolbar 접기 — 우상단 toolbar 가 첫 lane 의 header 라벨을 가리는
+	// 문제. 접으면 ⊟ 한 버튼만 남고 나머지 숨김. localStorage 영구화.
+	let toolbarCollapsed = $state(false);
+	function toggleToolbarCollapsed() {
+		toolbarCollapsed = !toolbarCollapsed;
+		try {
+			localStorage.setItem(gk('toolbarCollapsed'), String(toolbarCollapsed));
+		} catch {
+			/* 무시 */
+		}
+	}
 	/**
 	 * 주어진 lane 의 그리드 첫 셀 X(보드 좌표). lane cols 에 맞춰 lane 중앙 기준 좌우 균등 배치.
 	 *  - 1열: lane 중앙
@@ -1355,6 +1367,8 @@
 			globalCols = loadGlobalCols();
 			try {
 				gridSnap = localStorage.getItem(gk('gridSnap')) === 'true';
+				// DEV-073: 같이 복원.
+				toolbarCollapsed = localStorage.getItem(gk('toolbarCollapsed')) === 'true';
 			} catch {
 				/* 무시 */
 			}
@@ -2163,81 +2177,92 @@
 	</div>
 	{/if}
 
-	<!-- 툴바 -->
-	<div class="toolbar">
-		<button class="tb-btn" onclick={fitView} title="Fit view (F)"><span class="icon">⊞</span></button>
-		<div class="tb-sep"></div>
-		<button class="tb-btn" onclick={undo} disabled={undoStack.length === 0} title="Undo (Ctrl+Z)">
-			<span class="icon">↩</span>
-			{#if undoStack.length > 0}<span class="count">{undoStack.length}</span>{/if}
-		</button>
-		<button class="tb-btn" onclick={redo} disabled={redoStack.length === 0} title="Redo (Ctrl+Shift+Z)">
-			<span class="icon">↪</span>
-			{#if redoStack.length > 0}<span class="count">{redoStack.length}</span>{/if}
-		</button>
-		<div class="tb-sep"></div>
+	<!-- 툴바 — DEV-073: collapsed 시 ⊟ 토글만 보이고 나머지 숨김 (lane header 안 가림). -->
+	<div class="toolbar" class:collapsed={toolbarCollapsed}>
 		<button
-			class="tb-btn"
-			class:tb-on={gridSnap}
-			onclick={toggleGridSnap}
-			title="그리드 스냅 — 드래그 종료 시 격자에 정렬 (G)"
+			class="tb-btn tb-collapse"
+			onclick={toggleToolbarCollapsed}
+			title={toolbarCollapsed ? '도구바 펼치기' : '도구바 접기 — 레인 라벨이 가려질 때'}
+			aria-label={toolbarCollapsed ? '도구바 펼치기' : '도구바 접기'}
 		>
-			<span class="icon">⊞</span><span>Snap</span>
+			<span class="icon">{toolbarCollapsed ? '☰' : '⇥'}</span>
 		</button>
-		<div class="tb-sep"></div>
-		<select
-			class="tb-select"
-			value={globalCols}
-			onchange={(e) => setGlobalCols(parseInt((e.currentTarget as HTMLSelectElement).value))}
-			title="레인 그리드 열 수 (그리드만 갱신)"
-		>
-			<option value={1}>1열</option>
-			<option value={2}>2열</option>
-			<option value={3}>3열</option>
-		</select>
-		<div class="tb-sep"></div>
-		<!-- DEV-056: 숨김 설정 모달 토글. -->
-		<button
-			class="tb-btn"
-			class:tb-on={Object.values(hideSettings).some(
-				(s) => s.laneHidden || s.hideGroup || s.hideSolo
-			)}
-			onclick={() => (showHideModal = true)}
-			title="레인 / 노드 숨김 설정"
-		>
-			<span class="icon">👁</span><span>숨김</span>
-		</button>
-		<div class="tb-sep"></div>
-		<!-- arrange 버튼 + mode select 는 하나의 컨트롤처럼 시각적으로 묶음 -->
-		<div class="tb-arrange-group">
-			<button
-				class="tb-btn tb-arrange"
-				onclick={() => {
-					if (!cy) return;
-					if (arrangeMode === 'group') {
-						arrangeNodesGrouped(cy.nodes('[questId]').toArray() as NodeSingular[], globalCols);
-					} else {
-						arrangeNodes(null, globalCols);
-					}
-				}}
-				title={arrangeMode === 'group'
-					? '모든 노드 정렬 — 연관 그룹은 직사각형 영역으로 묶고, isolated 는 위쪽에 배치'
-					: '모든 노드 정렬 — 슬러그 순으로 lane 안에서 왼쪽 위부터 채움'}
-			>
-				<span class="icon">⊟</span><span>Arrange</span>
-			</button>
-			<select class="tb-select tb-mode" bind:value={arrangeMode} title="정렬 모드">
-				<option value="group">Group</option>
-				<option value="all">All</option>
-			</select>
-		</div>
-		{#if onNewQuest}
+		{#if !toolbarCollapsed}
 			<div class="tb-sep"></div>
-			<!-- DEV-084: New Quest — toolbar 제일 오른쪽. 다른 tb-btn 과 동일 톤이되
-			     primary 강조 (생성 액션). -->
-			<button class="tb-btn tb-new" onclick={onNewQuest} title="새 퀘스트">
-				<span class="icon">+</span><span>New Quest</span>
+			<button class="tb-btn" onclick={fitView} title="Fit view (F)"><span class="icon">⊞</span></button>
+			<div class="tb-sep"></div>
+			<button class="tb-btn" onclick={undo} disabled={undoStack.length === 0} title="Undo (Ctrl+Z)">
+				<span class="icon">↩</span>
+				{#if undoStack.length > 0}<span class="count">{undoStack.length}</span>{/if}
 			</button>
+			<button class="tb-btn" onclick={redo} disabled={redoStack.length === 0} title="Redo (Ctrl+Shift+Z)">
+				<span class="icon">↪</span>
+				{#if redoStack.length > 0}<span class="count">{redoStack.length}</span>{/if}
+			</button>
+			<div class="tb-sep"></div>
+			<button
+				class="tb-btn"
+				class:tb-on={gridSnap}
+				onclick={toggleGridSnap}
+				title="그리드 스냅 — 드래그 종료 시 격자에 정렬 (G)"
+			>
+				<span class="icon">⊞</span><span>Snap</span>
+			</button>
+			<div class="tb-sep"></div>
+			<select
+				class="tb-select"
+				value={globalCols}
+				onchange={(e) => setGlobalCols(parseInt((e.currentTarget as HTMLSelectElement).value))}
+				title="레인 그리드 열 수 (그리드만 갱신)"
+			>
+				<option value={1}>1열</option>
+				<option value={2}>2열</option>
+				<option value={3}>3열</option>
+			</select>
+			<div class="tb-sep"></div>
+			<!-- DEV-056: 숨김 설정 모달 토글. -->
+			<button
+				class="tb-btn"
+				class:tb-on={Object.values(hideSettings).some(
+					(s) => s.laneHidden || s.hideGroup || s.hideSolo
+				)}
+				onclick={() => (showHideModal = true)}
+				title="레인 / 노드 숨김 설정"
+			>
+				<span class="icon">👁</span><span>숨김</span>
+			</button>
+			<div class="tb-sep"></div>
+			<!-- arrange 버튼 + mode select 는 하나의 컨트롤처럼 시각적으로 묶음 -->
+			<div class="tb-arrange-group">
+				<button
+					class="tb-btn tb-arrange"
+					onclick={() => {
+						if (!cy) return;
+						if (arrangeMode === 'group') {
+							arrangeNodesGrouped(cy.nodes('[questId]').toArray() as NodeSingular[], globalCols);
+						} else {
+							arrangeNodes(null, globalCols);
+						}
+					}}
+					title={arrangeMode === 'group'
+						? '모든 노드 정렬 — 연관 그룹은 직사각형 영역으로 묶고, isolated 는 위쪽에 배치'
+						: '모든 노드 정렬 — 슬러그 순으로 lane 안에서 왼쪽 위부터 채움'}
+				>
+					<span class="icon">⊟</span><span>Arrange</span>
+				</button>
+				<select class="tb-select tb-mode" bind:value={arrangeMode} title="정렬 모드">
+					<option value="group">Group</option>
+					<option value="all">All</option>
+				</select>
+			</div>
+			{#if onNewQuest}
+				<div class="tb-sep"></div>
+				<!-- DEV-084: New Quest — toolbar 제일 오른쪽. 다른 tb-btn 과 동일 톤이되
+				     primary 강조 (생성 액션). -->
+				<button class="tb-btn tb-new" onclick={onNewQuest} title="새 퀘스트">
+					<span class="icon">+</span><span>New Quest</span>
+				</button>
+			{/if}
 		{/if}
 	</div>
 </div>
@@ -2560,6 +2585,16 @@
 		z-index: 10; display: flex; align-items: center; gap: 4px;
 		pointer-events: auto;
 	}
+	/* DEV-073: collapsed 시 ⊟ 한 버튼만. 배경 / 그림자도 최소화해서 lane 영역 가림 최소. */
+	.toolbar.collapsed {
+		gap: 0;
+	}
+	/* DEV-073: 접기 토글 — 항상 표시. */
+	.tb-btn.tb-collapse {
+		opacity: 0.7;
+		padding: 4px 8px;
+	}
+	.tb-btn.tb-collapse:hover { opacity: 1; }
 	.tb-btn {
 		display: flex; align-items: center; gap: 4px;
 		padding: 4px 10px;
