@@ -75,6 +75,16 @@
 				/* 무시 */
 			}
 		}
+		// DEV-068: URL 의 ?tags=foo,bar → filterTags 초기화 (공유 / bookmark 친화).
+		const urlTags = params.get('tags');
+		if (urlTags) {
+			filterTags = new Set(
+				urlTags
+					.split(',')
+					.map((t) => t.trim())
+					.filter((t) => t.length > 0)
+			);
+		}
 	});
 
 	// DEV-095: Nav 의 Reindex 버튼이 bump 한 store 를 subscribe — 값 변할 때마다
@@ -103,6 +113,12 @@
 		// DEV-065: mode 동기화. 'tree' 는 기본이므로 URL 에서 생략.
 		if (viewMode === 'list') url.searchParams.set('mode', 'list');
 		else url.searchParams.delete('mode');
+		// DEV-068: tag filter → URL ?tags=foo,bar. 빈 set 면 키 제거.
+		if (filterTags.size > 0) {
+			url.searchParams.set('tags', [...filterTags].sort().join(','));
+		} else {
+			url.searchParams.delete('tags');
+		}
 		const next = `${url.pathname}${url.search}`;
 		const current = `${$page.url.pathname}${$page.url.search}`;
 		if (next !== current) {
@@ -162,6 +178,14 @@
 			for (const t of q.tags ?? []) set.add(t);
 		}
 		return Array.from(set).sort();
+	});
+	// DEV-068 후속: 각 tag 별 quest 개수 (현재 filter 무관 — 전체 count).
+	let tagCounts = $derived.by(() => {
+		const m = new Map<string, number>();
+		for (const q of quests) {
+			for (const t of q.tags ?? []) m.set(t, (m.get(t) ?? 0) + 1);
+		}
+		return m;
 	});
 	function toggleTagFilter(t: string) {
 		const next = new Set(filterTags);
@@ -223,6 +247,7 @@
 						title={filterTags.has(t) ? `${t} 필터 해제` : `${t} 필터 추가`}
 					>
 						{t}
+						<span class="tag-chip-count">{tagCounts.get(t) ?? 0}</span>
 					</button>
 				{/each}
 				{#if filterTags.size > 0}
@@ -342,6 +367,17 @@
 		background: rgba(198, 144, 38, 0.28);
 		border-color: rgba(198, 144, 38, 0.7);
 		color: #ffd58a;
+	}
+	.tag-chip-count {
+		display: inline-block;
+		margin-left: 0.4rem;
+		padding: 0 0.4rem;
+		min-width: 1.1rem;
+		text-align: center;
+		font-size: 0.65rem;
+		color: var(--text-muted);
+		background: var(--bg-subtle);
+		border-radius: 10px;
 	}
 	.tag-clear {
 		padding: 0.15rem 0.55rem;
