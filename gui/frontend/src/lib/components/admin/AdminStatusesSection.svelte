@@ -12,6 +12,7 @@
 	let editNameEn = $state('');
 	let editNameKo = $state('');
 	let editColor = $state('');
+	let editCountsAsDone = $state(false); // DEV-093
 
 	let creating = $state(false);
 	let newNameEn = $state('');
@@ -52,6 +53,7 @@
 		editNameEn = s.name_en;
 		editNameKo = s.name_ko;
 		editColor = s.color;
+		editCountsAsDone = s.counts_as_done ?? false; // DEV-093
 	}
 	function cancelEdit() {
 		editing = null;
@@ -77,7 +79,8 @@
 				new_slug: renaming ? newSlug : undefined,
 				name_en: editNameEn,
 				name_ko: editNameKo,
-				color: editColor
+				color: editColor,
+				counts_as_done: editCountsAsDone // DEV-093
 			});
 			onmessage({
 				kind: 'success',
@@ -166,6 +169,8 @@
 					<th>name_en</th>
 					<th>name_ko</th>
 					<th style="width: 5ch">색</th>
+					<!-- DEV-093: 캠페인 진행도용 "완료" 카운트 토글. -->
+					<th style="width: 7ch" title="캠페인 진행도 계산 시 '완료' 로 카운트되는 status">완료</th>
 					<th style="width: 8ch">사용 중</th>
 					<th style="width: 14ch"></th>
 				</tr>
@@ -200,6 +205,14 @@
 								<input type="text" bind:value={editNameKo} maxlength="32" disabled={busy} />
 							</td>
 							<td><input type="color" bind:value={editColor} disabled={busy} /></td>
+							<td style="text-align: center;">
+								<input
+									type="checkbox"
+									bind:checked={editCountsAsDone}
+									disabled={busy}
+									title="캠페인 진행도 계산 시 '완료' 로 카운트"
+								/>
+							</td>
 							<td class="count">{s.quest_count}</td>
 							<td class="row-actions">
 								<button class="save" onclick={saveEdit} disabled={busy}>저장</button>
@@ -212,6 +225,13 @@
 							<td>
 								<span class="swatch" style="background: {s.color}"></span>
 								<code class="hex">{s.color}</code>
+							</td>
+							<td style="text-align: center;">
+								{#if s.counts_as_done}
+									<span class="done-mark" title="이 status 는 완료로 카운트">✓</span>
+								{:else}
+									<span class="dim">—</span>
+								{/if}
 							</td>
 							<td class="count">{s.quest_count}</td>
 							<td class="row-actions">

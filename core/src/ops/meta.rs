@@ -687,6 +687,7 @@ pub async fn create_status(
 ///
 /// `new_slug` 가 현재와 다르면 rename cascade (history.quest_slug + 모든
 /// quest .md frontmatter + 파일명).
+#[allow(clippy::too_many_arguments)] // 단순 field-by-field optional patch — request DTO 만들 정도는 아님.
 pub async fn update_status(
     store: &Store,
     slug: String,
@@ -695,6 +696,8 @@ pub async fn update_status(
     name_ko: Option<String>,
     color: Option<String>,
     sort_order: Option<i64>,
+    // DEV-093: 캠페인 진행도 계산용 "완료" 카운트 여부.
+    counts_as_done: Option<bool>,
 ) -> AppResult<QuestStatus> {
     if let Some(c) = &color {
         validate_color(c)?;
@@ -753,6 +756,11 @@ pub async fn update_status(
         row.sort_order = n;
         file.sort_order = n;
     }
+    // DEV-093: counts_as_done toggle.
+    if let Some(b) = counts_as_done {
+        row.counts_as_done = b;
+        file.counts_as_done = b;
+    }
 
     // 파일 — sort_order 가 바뀌었으면 rename, 아니면 in-place rewrite.
     if order_changed {
@@ -767,12 +775,13 @@ pub async fn update_status(
     }
 
     sqlx::query(
-        "UPDATE quest_statuses SET name_en = ?, name_ko = ?, color = ?, sort_order = ? WHERE id = ?",
+        "UPDATE quest_statuses SET name_en = ?, name_ko = ?, color = ?, sort_order = ?, counts_as_done = ? WHERE id = ?",
     )
     .bind(&row.name_en)
     .bind(&row.name_ko)
     .bind(&row.color)
     .bind(row.sort_order)
+    .bind(row.counts_as_done as i64)
     .bind(row.id)
     .execute(&store.index_pool)
     .await?;
@@ -1021,6 +1030,7 @@ mod tests {
             None,
             None,
             Some(row.sort_order + 100),
+            None,
         )
         .await
         .unwrap();
@@ -1043,6 +1053,7 @@ mod tests {
             "open".into(),
             None,
             Some("Reopened".into()),
+            None,
             None,
             None,
             None,
@@ -1085,13 +1096,14 @@ mod tests {
             Some("".into()),
             None,
             None,
+            None,
         )
         .await
         .unwrap();
         assert_eq!(updated.name_en, "Open");
         assert_eq!(updated.name_ko, "");
         // name_en 빈 값은 여전히 거부.
-        let err = update_status(&store, "open".into(), None, Some("".into()), None, None, None)
+        let err = update_status(&store, "open".into(), None, Some("".into()), None, None, None, None)
             .await
             .unwrap_err();
         assert!(matches!(err, AppError::BadRequest(_)));
@@ -1136,6 +1148,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .unwrap_err();
@@ -1145,6 +1158,7 @@ mod tests {
             "open".into(),
             None,
             Some("Open!".into()),
+            None,
             None,
             None,
             None,
@@ -1261,6 +1275,7 @@ mod tests {
             None,
             Some("게시".into()),
             Some("#888888".into()),
+            None,
             None,
         )
         .await

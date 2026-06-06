@@ -74,6 +74,8 @@ export const adminApi = {
 			name_ko?: string;
 			color?: string;
 			sort_order?: number;
+			/** DEV-093: 캠페인 진행도용 "완료" 카운트 토글. */
+			counts_as_done?: boolean;
 		}
 	) => api.patch<QuestStatus>(`/api/admin/statuses/${encodeURIComponent(slug)}`, body),
 	deleteStatus: (slug: string) =>

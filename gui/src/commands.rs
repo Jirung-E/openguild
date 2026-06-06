@@ -471,6 +471,9 @@ pub struct UpdateStatusBody {
     pub color: Option<String>,
     #[serde(default)]
     pub sort_order: Option<i64>,
+    // DEV-093: 캠페인 진행도용 "완료" 카운트 토글.
+    #[serde(default)]
+    pub counts_as_done: Option<bool>,
 }
 
 #[tauri::command]
@@ -487,6 +490,7 @@ pub async fn admin_update_status(
         body.name_ko,
         body.color,
         body.sort_order,
+        body.counts_as_done,
     )
     .await
     .map_err(err)

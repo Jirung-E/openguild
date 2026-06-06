@@ -1264,6 +1264,7 @@ impl Backend {
             Backend::Local(l) => Self::map_err(l.rt.block_on(
                 openguild_core::ops::update_status(
                     &l.store, slug, new_slug, name_en, name_ko, color, sort_order,
+                    None, // DEV-093: CLI 는 본 패치에서 counts_as_done 미노출.
                 ),
             )),
         }
