@@ -137,9 +137,10 @@
 	});
 
 	// --- 필터 + 트리 ---
-	// DEV-040 후속 버그 수정: 검색이 sub-quest 를 매치해도, 그 부모가 결과에
-	// 없으면 buildTree 가 그 sub-quest 에 닿지 못함 → 안 보임. 검색 활성화 시
-	// 매치된 항목의 조상을 결과에 포함 + 자동 펼침.
+	// DEV-040 후속 버그 수정: filter (검색 / tag / type / status) 가 sub-quest 를
+	// 매치해도, 그 부모가 결과에 없으면 buildTree 가 그 sub-quest 로 닿지 못함
+	// → 안 보임. filter 활성화 시 매치된 항목의 조상을 결과에 포함 + 자동 펼침.
+	// DEV-068 fix: 이전엔 검색만 처리했지만 tag / type / status 필터도 같은 문제 발생.
 	let flatList = $derived.by(() => {
 		const matched = filterQuests(
 			quests,
@@ -149,15 +150,19 @@
 			titleOnly,
 			filterTags
 		);
-		const hasSearch = search.trim().length > 0;
 		// DEV-065: 'list' 모드 — 부모 그룹 X. 매칭된 quest 만 평면. ancestor
 		// 자동 포함 안 함 (검색 결과 정확).
 		if (viewMode === 'list') {
 			return matched.map((q) => ({ quest: q, depth: 0, hasChildren: false }));
 		}
-		// 'tree' 모드 — 기존 동작.
-		const filtered = hasSearch ? includeAncestors(matched, quests) : matched;
-		const effectiveExpanded = hasSearch
+		// 'tree' 모드.
+		const hasFilters =
+			search.trim().length > 0 ||
+			filterTags.size > 0 ||
+			filterTypeIds.size > 0 ||
+			filterStatusIds.size > 0;
+		const filtered = hasFilters ? includeAncestors(matched, quests) : matched;
+		const effectiveExpanded = hasFilters
 			? new Set([...expanded, ...ancestorIdsOf(matched, quests)])
 			: expanded;
 		const tree = buildTree(filtered, null);

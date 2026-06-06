@@ -343,4 +343,24 @@ describe('DEV-040 회귀: sub-quest 검색', () => {
 		expect(tree[0].children).toHaveLength(1);
 		expect(tree[0].children[0].id).toBe(2);
 	});
+
+	// DEV-068 fix: tag 필터로 child 가 매치돼도 includeAncestors 가 부모 포함해야
+	// Tree 모드에서 buildTree 가 child 노드를 표시 가능.
+	it('tag 필터의 child 매치 → includeAncestors 후 tree 에서 표시됨', () => {
+		const parent: Quest = { ...quest(1, null, 'parent'), tags: ['x'] };
+		const child: Quest = { ...quest(2, 1, 'child'), tags: ['target'] };
+		const sibling: Quest = { ...quest(3, null, 'sibling'), tags: ['unrelated'] };
+		const tagged = [parent, child, sibling];
+		const matched = filterQuests(tagged, new Set(), new Set(), '', false, new Set(['target']));
+		expect(matched.map((m) => m.id)).toEqual([2]);
+		// 직접 buildTree 는 child 못 보임 (parent 가 매치 안 됨).
+		expect(buildTree(matched, null)).toHaveLength(0);
+		// includeAncestors 적용 후 child 가 부모 아래에 표시.
+		const withAncestors = includeAncestors(matched, tagged);
+		const tree = buildTree(withAncestors, null);
+		expect(tree).toHaveLength(1);
+		expect(tree[0].id).toBe(1);
+		expect(tree[0].children).toHaveLength(1);
+		expect(tree[0].children[0].id).toBe(2);
+	});
 });
