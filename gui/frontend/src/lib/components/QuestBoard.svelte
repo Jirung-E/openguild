@@ -194,6 +194,8 @@
 	const LANE_W = NODE_W * 3 + NODE_GAP * 2 + LANE_PAD_X * 2; // 948px
 	const LANE_GAP = 36;   // lane 사이 시각적 간격
 	const LANE_STRIDE = LANE_W + LANE_GAP; // 한 lane 의 X 단위 (다음 lane 시작점까지)
+	// DEV-105: collapsed lane 의 좁은 폭 — 세로 라벨 한 줄 들어갈 정도.
+	const LANE_COLLAPSED_W = 40;
 	const LANE_TOP = 52;
 	const CARD_W = 300;
 	const MAX_HISTORY = 50;
@@ -529,17 +531,26 @@
 		return (laneOf.get(statusId) ?? 0) * LANE_STRIDE;
 	}
 
+	// DEV-105: lane 별 width / stride — collapsed lane 는 좁게.
+	function laneWidth(slug: string): number {
+		return collapsedLanes.has(slug) ? LANE_COLLAPSED_W : LANE_W;
+	}
+	function laneStride(slug: string): number {
+		return laneWidth(slug) + LANE_GAP;
+	}
+
 	function visibleLaneLeftOfStatus(statusId: number): number {
-		let visIdx = 0;
+		// DEV-105: collapsed lane 는 좁은 폭으로 누적. laneHidden 은 0 폭.
+		let left = 0;
 		let lastLeft = 0;
 		for (const s of sorted) {
 			const setting = getHideSetting(s.slug);
 			if (s.id === statusId) {
-				return setting.laneHidden ? lastLeft : visIdx * LANE_STRIDE;
+				return setting.laneHidden ? lastLeft : left;
 			}
 			if (!setting.laneHidden) {
-				lastLeft = visIdx * LANE_STRIDE;
-				visIdx++;
+				lastLeft = left;
+				left += laneStride(s.slug);
 			}
 		}
 		return 0;
@@ -662,17 +673,22 @@
 		else next.add(slug);
 		collapsedLanes = next;
 		saveCollapsedLanes();
-		// 그 lane 의 노드 hide/show.
+		// DEV-105: lane 폭 축소 + 노드 hide/show + 다른 lane 의 visualX 도 재계산
+		// (collapsed lane 가 좁아져 뒷 lane 이 왼쪽으로 당겨짐).
 		if (cy) {
 			const isCollapsed = next.has(slug);
-			cy.nodes().forEach((n) => {
+			cy.nodes('[questId]').forEach((n) => {
 				const sid = n.data('statusId') as number;
-				if (!sid) return;
 				const s = sorted.find((x) => x.id === sid);
 				if (s?.slug === slug) {
 					n.style('display', isCollapsed ? 'none' : 'element');
 				}
+				// 모든 노드의 visualX 재계산 — collapsed 변경이 lane left 누적에 영향.
+				const absX = (n.data('absX') as number | undefined) ?? n.position().x;
+				const visX = absToVisualX(absX, sid);
+				n.animate({ position: { x: visX, y: n.position().y }, duration: 150 });
 			});
+			syncLanes();
 		}
 	}
 
@@ -1796,9 +1812,8 @@
 		const dotR = Math.max(1, 1.5 * zoom);
 
 		// DEV-067: laneHidden 인 lane 의 col 은 display:none + 위치 skip.
-		// visible lane 만 contiguous visible index 로 압축 배치 — 노드의 visualX 와
-		// alignment 일치.
-		let visIdx = 0;
+		// DEV-105: collapsed lane 은 좁은 폭으로 표시.
+		let curLeft = 0;
 		lanesEl.querySelectorAll<HTMLElement>('.lane-col').forEach((col, i) => {
 			const s = sorted[i];
 			const laneHidden = s ? getHideSetting(s.slug).laneHidden : false;
@@ -1806,10 +1821,11 @@
 				col.style.display = 'none';
 				return;
 			}
+			const w = s ? laneWidth(s.slug) : LANE_W;
 			col.style.display = '';
-			col.style.left = `${visIdx * LANE_STRIDE * zoom + pan.x}px`;
-			col.style.width = `${LANE_W * zoom}px`;
-			visIdx++;
+			col.style.left = `${curLeft * zoom + pan.x}px`;
+			col.style.width = `${w * zoom}px`;
+			curLeft += w + LANE_GAP;
 			if (gridSnap) {
 				const cols = laneCols[i] ?? 2;
 				// 첫 dot center (lane-col local X) = laneFirstCellX - i*LANE_STRIDE (보드→local 변환 후 zoom)
@@ -1839,8 +1855,8 @@
 				col.style.backgroundImage = '';
 			}
 		});
-		// DEV-067: header 도 visible 압축.
-		let hdrVisIdx = 0;
+		// DEV-067: header 도 visible 압축. DEV-105: collapsed lane 폭 적용.
+		let hdrLeft = 0;
 		headersEl.querySelectorAll<HTMLElement>('.lane-hdr').forEach((hdr, i) => {
 			const s = sorted[i];
 			const laneHidden = s ? getHideSetting(s.slug).laneHidden : false;
@@ -1848,10 +1864,11 @@
 				hdr.style.display = 'none';
 				return;
 			}
+			const w = s ? laneWidth(s.slug) : LANE_W;
 			hdr.style.display = '';
-			hdr.style.left = `${hdrVisIdx * LANE_STRIDE * zoom + pan.x}px`;
-			hdr.style.width = `${LANE_W * zoom}px`;
-			hdrVisIdx++;
+			hdr.style.left = `${hdrLeft * zoom + pan.x}px`;
+			hdr.style.width = `${w * zoom}px`;
+			hdrLeft += w + LANE_GAP;
 		});
 		syncExpandedPos();
 	}
