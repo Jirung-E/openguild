@@ -24,6 +24,7 @@
 		MAX_SCALE,
 		DEFAULT_SCALE
 	} from '$lib/stores/uiScale';
+	import { theme, setTheme, type ThemeChoice } from '$lib/stores/theme';
 
 	// floating toast 닫기 — updateState 를 idle 로.
 	const dismissCheck = () => dismissUpdate();
@@ -109,6 +110,26 @@
 					>초기화</button>
 				</div>
 				<p class="scale-hint">전체 UI 의 텍스트 / 여백이 비례 확대·축소됩니다 (50%~200%). 즉시 반영 + 자동 저장.</p>
+			</dd>
+
+			<!-- DEV-074: 테마 (Dark / Light / System). -->
+			<dt>테마</dt>
+			<dd class="theme-row">
+				<div class="theme-toggle" role="group" aria-label="테마">
+					{#each ['dark', 'light', 'system'] as opt (opt)}
+						<button
+							class="th-btn"
+							class:active={$theme === opt}
+							onclick={() => setTheme(opt as ThemeChoice)}
+							aria-pressed={$theme === opt}
+						>
+							{opt === 'dark' ? '다크' : opt === 'light' ? '라이트' : '시스템'}
+						</button>
+					{/each}
+				</div>
+				<p class="scale-hint">
+					CSS 토큰 기반 — 일부 컴포넌트는 hardcoded 색이라 점진 마이그레이션 중. 시스템 모드는 OS 설정 따라 자동 전환.
+				</p>
 			</dd>
 		</dl>
 	</section>
@@ -313,5 +334,30 @@
 		font-size: 0.75rem;
 		color: #6e7681;
 		margin: 0.5rem 0 0;
+	}
+
+	/* DEV-074: 테마 토글 — segmented (QuestList 의 view-toggle 과 같은 패턴). */
+	.theme-toggle {
+		display: inline-flex;
+		gap: 0;
+		background: #161b22;
+		border: 1px solid #30363d;
+		border-radius: 6px;
+		padding: 2px;
+	}
+	.th-btn {
+		padding: 4px 12px;
+		background: transparent;
+		border: none;
+		border-radius: 4px;
+		color: #8b949e;
+		font-size: 0.8rem;
+		cursor: pointer;
+		transition: background 0.1s, color 0.1s;
+	}
+	.th-btn:hover { color: #c9d1d9; }
+	.th-btn.active {
+		background: #21262d;
+		color: #c9d1d9;
 	}
 </style>

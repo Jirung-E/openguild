@@ -1,3 +1,67 @@
+/*
+ * DEV-074: 다크 / 라이트 테마 토큰.
+ *
+ * CSS custom property 로 색을 정의. 컴포넌트들은 `var(--bg)` / `var(--text)`
+ * 등을 사용해 자동으로 테마 전환에 반응.
+ *
+ * 본 라운드는 토큰 + global.css 의 root 만 var() 화. 각 컴포넌트의 hardcoded
+ * color 는 점진 retrofit (별도 sub-quest 권장).
+ *
+ * 사용 방식:
+ *   - 기본 (data-theme 없음 / dark) = dark tokens.
+ *   - `<html data-theme="light">` = light tokens.
+ *   - `<html data-theme="dark">` = dark tokens (명시).
+ *   - 토글 store 는 lib/stores/theme.ts.
+ */
+
+:root {
+	/* Dark tokens — 기본. */
+	--bg: #0d1117;
+	--bg-elevated: #161b22;
+	--bg-subtle: #21262d;
+	--border: #30363d;
+	--border-muted: #21262d;
+	--text: #c9d1d9;
+	--text-strong: #e6edf3;
+	--text-muted: #8b949e;
+	--text-faint: #484f58;
+	--accent: #58a6ff;
+	--accent-strong: #1f6feb;
+	--success: #56d364;
+	--success-strong: #238636;
+	--warning: #f5a623;
+	--danger: #f85149;
+	--shadow: rgba(0, 0, 0, 0.5);
+
+	/* date input picker — 환경 무관 dark picker. */
+	color-scheme: dark;
+}
+
+[data-theme='light'] {
+	--bg: #ffffff;
+	--bg-elevated: #f6f8fa;
+	--bg-subtle: #eaeef2;
+	--border: #d0d7de;
+	--border-muted: #d8dee4;
+	--text: #1f2328;
+	--text-strong: #0a0c10;
+	--text-muted: #59636e;
+	--text-faint: #8b949e;
+	--accent: #0969da;
+	--accent-strong: #0550ae;
+	--success: #1a7f37;
+	--success-strong: #116329;
+	--warning: #9a6700;
+	--danger: #cf222e;
+	--shadow: rgba(140, 149, 159, 0.3);
+
+	color-scheme: light;
+}
+
+[data-theme='dark'] {
+	color-scheme: dark;
+}
+
 *,
 *::before,
 *::after {
@@ -9,8 +73,8 @@
 html {
 	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 	font-size: 16px;
-	color: #c9d1d9;
-	background: #0d1117;
+	color: var(--text);
+	background: var(--bg);
 }
 
 body {
@@ -26,18 +90,9 @@ button {
 	font-family: inherit;
 }
 
-/* BUG-026 → BUG-031: <input type="date"> picker icon 처리.
-   변경 이력:
-   - BUG-026: filter:invert(0.85) — 라이트 테마의 검정 아이콘을 invert 해서
-     밝게 보이게. 그러나 OS 또는 WebView2 가 다크 테마로 native picker 를 이미
-     흰색 렌더하는 환경에서는 invert 가 다시 검정으로 만들어버려 (BUG-031)
-     특정 환경에서 보이지 않음.
-   - BUG-031 (현재): `color-scheme: dark` 를 input 에 직접 명시 — 환경 무관
-     하게 native picker 를 dark theme 으로 렌더. invert filter 는 제거. 모든
-     환경에서 아이콘이 light 색으로 일관 표시.
+/* BUG-026 → BUG-031 → DEV-074: <input type="date"> picker icon.
+   - BUG-031 의 `color-scheme: dark` 직접 명시는 제거됨.
+   - 대신 :root / [data-theme=light] 의 `color-scheme` 토큰을 따름.
+   - dark theme: native picker dark, light theme: native picker light.
 
-   ⚠ 컴포넌트별 스타일에 `color-scheme` 을 다른 값으로 override 하지 말 것 —
-      이 규칙이 모든 date input 의 picker 색을 일관 처리. */
-input[type='date'] {
-	color-scheme: dark;
-}
+   ⚠ 컴포넌트별 스타일에 `color-scheme` 을 다른 값으로 override 하지 말 것. */

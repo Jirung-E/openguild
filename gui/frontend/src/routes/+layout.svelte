@@ -6,6 +6,13 @@
 	import SchemaAheadBanner from '$lib/components/SchemaAheadBanner.svelte';
 	import { detectEnvironment } from '$lib/api/transport';
 	import { uiScale, applyUiScaleToDocument } from '$lib/stores/uiScale';
+	import {
+		theme,
+		applyThemeToDocument,
+		watchSystemPreference,
+		resolveTheme
+	} from '$lib/stores/theme';
+	import { get } from 'svelte/store';
 	import '$lib/styles/global.css';
 
 	let { children } = $props();
@@ -20,6 +27,22 @@
 		const unsub = uiScale.subscribe(applyUiScaleToDocument);
 		// 첫 mount 시 한 번 더 — onMount 보다 store 가 먼저 init 됐다면 noop.
 		return () => unsub();
+	});
+
+	// DEV-074: 테마 — store 변경 시 `<html data-theme>` 갱신. 'system' 일 때
+	// OS preference 변경도 listener 로 즉시 반영.
+	onMount(() => {
+		const unsubTheme = theme.subscribe(applyThemeToDocument);
+		const unwatchSys = watchSystemPreference(() => {
+			// system 모드일 때만 재적용 (다른 모드는 사용자가 명시 — OS 변경 무시).
+			if (get(theme) === 'system') {
+				applyThemeToDocument('system');
+			}
+		});
+		return () => {
+			unsubTheme();
+			unwatchSys();
+		};
 	});
 
 	// BUG-031 / BUG-033: Tauri 데스크탑 앱에서 웹 기본 우클릭 메뉴
