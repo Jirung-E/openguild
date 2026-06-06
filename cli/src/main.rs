@@ -314,6 +314,38 @@ enum QuestCmd {
         #[command(subcommand)]
         sub: MemoCmd,
     },
+    // BUG-016: doc 에 quest_id prefix 누출 X.
+    /// 태그 — list / add / rm / set. frontmatter 가 진리원.
+    Tag {
+        #[command(subcommand)]
+        sub: TagCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum TagCmd {
+    /// 현재 quest 의 tag 목록 (공백 구분 1줄).
+    List { slug: String },
+    /// tag 1개 또는 여러 개 추가 (기존과 합쳐 dedupe).
+    Add {
+        slug: String,
+        /// 추가할 tag 들. 공백 구분 또는 여러 인자.
+        #[arg(required = true, num_args = 1..)]
+        tags: Vec<String>,
+    },
+    /// tag 1개 또는 여러 개 제거 (없는 건 무시).
+    Rm {
+        slug: String,
+        /// 제거할 tag 들.
+        #[arg(required = true, num_args = 1..)]
+        tags: Vec<String>,
+    },
+    /// tag 전체 교체 (기존 모두 삭제 후 인자만). 인자 0 개 = 전체 삭제.
+    Set {
+        slug: String,
+        /// 새 tag 들 (공백 구분 또는 여러 인자).
+        tags: Vec<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1557,6 +1589,33 @@ impl Backend {
             Backend::Local(l) => Self::map_err(l.rt.block_on(
                 openguild_core::ops::comments::set_memo(&l.store, slug, content),
             )),
+        }
+    }
+
+    // DEV-068: tag — frontmatter 에서 read, ops::set_quest_tags 로 write.
+    fn tag_list(&self, slug: &str) -> Result<Vec<String>> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => {
+                // frontmatter 의 tags 가 진리원. file 직접 read.
+                let path = l.store.paths.quest_path(slug);
+                let qf = openguild_core::repo::QuestFile::read(&path)
+                    .map_err(|e| anyhow::anyhow!("quest {slug} 본문 읽기 실패: {e:#}"))?;
+                Ok(qf.frontmatter.tags.clone())
+            }
+        }
+    }
+
+    fn tag_set(&self, slug: &str, tags: Vec<String>) -> Result<()> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => {
+                let id = self.id_of(slug)?;
+                Self::map_err(l.rt.block_on(
+                    openguild_core::ops::set_quest_tags(&l.store, id, tags),
+                ))?;
+                Ok(())
+            }
         }
     }
 
@@ -3309,6 +3368,73 @@ fn run() -> Result<()> {
                         println!("{}", serde_json::json!({ "ok": true, "slug": slug }));
                     } else {
                         println!("✓ 메모 비움 (quest {slug})");
+                    }
+                }
+            },
+            QuestCmd::Tag { sub } => match sub {
+                TagCmd::List { slug } => {
+                    let tags = c.tag_list(&slug)?;
+                    if cli.json {
+                        println!(
+                            "{}",
+                            serde_json::json!({ "slug": slug, "tags": tags })
+                        );
+                    } else if tags.is_empty() {
+                        println!("(태그 없음)");
+                    } else {
+                        println!("{}", tags.join(" "));
+                    }
+                }
+                TagCmd::Add { slug, tags: new_tags } => {
+                    let mut existing = c.tag_list(&slug)?;
+                    for t in new_tags {
+                        // 공백 split — 공백 구분 한 인자도 지원.
+                        for token in t.split_whitespace() {
+                            let s = token.to_string();
+                            if !existing.contains(&s) {
+                                existing.push(s);
+                            }
+                        }
+                    }
+                    c.tag_set(&slug, existing.clone())?;
+                    if cli.json {
+                        println!("{}", serde_json::json!({ "ok": true, "slug": slug, "tags": existing }));
+                    } else {
+                        println!("✓ {slug} tags: {}", existing.join(" "));
+                    }
+                }
+                TagCmd::Rm { slug, tags: remove } => {
+                    let existing = c.tag_list(&slug)?;
+                    let to_remove: std::collections::HashSet<String> = remove
+                        .iter()
+                        .flat_map(|t| t.split_whitespace().map(|s| s.to_string()))
+                        .collect();
+                    let after: Vec<String> = existing
+                        .into_iter()
+                        .filter(|t| !to_remove.contains(t))
+                        .collect();
+                    c.tag_set(&slug, after.clone())?;
+                    if cli.json {
+                        println!("{}", serde_json::json!({ "ok": true, "slug": slug, "tags": after }));
+                    } else if after.is_empty() {
+                        println!("✓ {slug} tags: (없음)");
+                    } else {
+                        println!("✓ {slug} tags: {}", after.join(" "));
+                    }
+                }
+                TagCmd::Set { slug, tags: new_tags } => {
+                    // 공백 구분 인자도 split.
+                    let flat: Vec<String> = new_tags
+                        .iter()
+                        .flat_map(|t| t.split_whitespace().map(|s| s.to_string()))
+                        .collect();
+                    c.tag_set(&slug, flat.clone())?;
+                    if cli.json {
+                        println!("{}", serde_json::json!({ "ok": true, "slug": slug, "tags": flat }));
+                    } else if flat.is_empty() {
+                        println!("✓ {slug} tags: (모두 제거)");
+                    } else {
+                        println!("✓ {slug} tags: {}", flat.join(" "));
                     }
                 }
             },
