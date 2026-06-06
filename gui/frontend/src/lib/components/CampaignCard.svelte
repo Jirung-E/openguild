@@ -25,10 +25,19 @@
 		now: number;
 	} = $props();
 
-	let completed = $derived(
-		summary.checklist_total > 0 &&
-			summary.checklist_checked === summary.checklist_total
-	);
+	// DEV-093 fix2: 캠페인 "완료" 는 체크리스트 + 연결 quest 양쪽 모두 100% 일 때만.
+	// 이전엔 체크리스트 100% 만으로 완료 표시 → 연결 quest 가 아직 done 이 아닌데도
+	// 카드가 "✓ 완료" 로 표시되는 문제. 한쪽만 있을 땐 그쪽 기준.
+	let completed = $derived.by(() => {
+		const hasChecklist = summary.checklist_total > 0;
+		const hasQuests = (summary.quest_total ?? 0) > 0;
+		const checklistDone = hasChecklist && summary.checklist_checked === summary.checklist_total;
+		const questsDone = hasQuests && (summary.quest_done ?? 0) === (summary.quest_total ?? 0);
+		if (hasChecklist && hasQuests) return checklistDone && questsDone;
+		if (hasChecklist) return checklistDone;
+		if (hasQuests) return questsDone;
+		return false;
+	});
 
 	function fmtPeriod(): string {
 		const a = summary.started_at?.trim() || '';

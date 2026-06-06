@@ -214,18 +214,28 @@
 		return futureSorted.slice(0, 1);
 	});
 
-	// DEV-080 → DEV-081: 마감 지난 캠페인 — 체크리스트가 있고 미완료이며 ended_at 이 지난 active 캠페인.
+	// DEV-080 → DEV-081 → DEV-093 fix2: 마감 지난 캠페인.
 	//
 	// 필터:
-	//   - checklist_total > 0  (체크리스트 비어있는 캠페인은 "달성" 개념 자체가 모호 → 제외)
-	//   - progress < 1.0       (100% 달성한 건 실질적으로 끝)
+	//   - 체크리스트 또는 연결 quest 중 적어도 하나가 있음 (둘 다 없으면 "달성" 모호 → 제외)
+	//   - "완료" 상태가 아님 (체크리스트 + quest 양쪽 다 100% 가 아님)
 	//   - ended_at 지남
-	// 위치는 곧 시작 아래. 모양 / 동작은 upcoming 과 동일 (CampaignConveyor 재사용).
+	// 이전엔 체크리스트만 100% 면 overdue 에서 제외 → quest 가 미완료여도 사라지는 문제.
 	let overdueCampaigns = $derived.by(() => {
 		const t = now;
 		const rows = allActive.filter((c) => {
-			if (c.checklist_total === 0) return false;
-			if (c.progress >= 1.0) return false;
+			const hasChecklist = c.checklist_total > 0;
+			const hasQuests = (c.quest_total ?? 0) > 0;
+			if (!hasChecklist && !hasQuests) return false;
+			const checklistDone = hasChecklist && c.checklist_checked === c.checklist_total;
+			const questsDone = hasQuests && (c.quest_done ?? 0) === (c.quest_total ?? 0);
+			const fullyDone =
+				hasChecklist && hasQuests
+					? checklistDone && questsDone
+					: hasChecklist
+						? checklistDone
+						: questsDone;
+			if (fullyDone) return false;
 			const end = dateEndMs(c.ended_at);
 			return end !== null && end < t;
 		});
