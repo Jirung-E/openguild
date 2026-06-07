@@ -2545,18 +2545,13 @@
 			</button>
 		</div>
 	{/if}
-	<!-- 툴바 — DEV-073: collapsed 시 ⊟ 토글만 보이고 나머지 숨김 (lane header 안 가림). -->
+	<!-- 툴바 — DEV-073: collapsed 시 ⊟ 토글만 보이고 나머지 숨김 (lane header 안 가림).
+		 fix4: 사용자 피드백 — 토글 버튼이 펴진 도구바의 왼쪽 끝에 있으니 다시 접을
+		 때 마우스를 멀리 이동해야 함. 펴는 / 접는 위치를 동일하게 (우측 끝) 유지하기
+		 위해 토글 버튼을 markup 의 마지막에 두고 나머지 버튼들이 그 왼쪽에 배치되게
+		 함. flex 의 자연스러운 row 순서로 우측 anchor + 토글 항상 우측 끝. -->
 	<div class="toolbar" class:collapsed={toolbarCollapsed} class:has-newquest={!!onNewQuest}>
-		<button
-			class="tb-btn tb-collapse"
-			onclick={toggleToolbarCollapsed}
-			title={toolbarCollapsed ? '도구바 펼치기' : '도구바 접기 — 레인 라벨이 가려질 때'}
-			aria-label={toolbarCollapsed ? '도구바 펼치기' : '도구바 접기'}
-		>
-			<span class="icon">{toolbarCollapsed ? '☰' : '⇥'}</span>
-		</button>
 		{#if !toolbarCollapsed}
-			<div class="tb-sep"></div>
 			<button class="tb-btn" onclick={fitView} title="Fit view (F)"><span class="icon">⊞</span></button>
 			<div class="tb-sep"></div>
 			<button class="tb-btn" onclick={undo} disabled={undoStack.length === 0} title="Undo (Ctrl+Z)">
@@ -2623,7 +2618,17 @@
 					<option value="all">All</option>
 				</select>
 			</div>
+			<div class="tb-sep"></div>
 		{/if}
+		<!-- 토글 버튼 — 항상 우측 끝 (collapsed / expanded 동일 위치, 사용자 피드백). -->
+		<button
+			class="tb-btn tb-collapse"
+			onclick={toggleToolbarCollapsed}
+			title={toolbarCollapsed ? '도구바 펼치기' : '도구바 접기 — 레인 라벨이 가려질 때'}
+			aria-label={toolbarCollapsed ? '도구바 펼치기' : '도구바 접기'}
+		>
+			<span class="icon">{toolbarCollapsed ? '☰' : '⇥'}</span>
+		</button>
 	</div>
 </div>
 
