@@ -7,11 +7,16 @@
 	import AdminStatusesSection from '$lib/components/admin/AdminStatusesSection.svelte';
 	// DEV-068: `.guild/tags/{slug}.toml` 정의 (색 / 설명).
 	import AdminTagDefsSection from '$lib/components/admin/AdminTagDefsSection.svelte';
+	// DEV-119: window.confirm() 대신 인앱 모달 (Tauri 에서 native confirm silent return).
+	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 
 	let snapshots = $state<SnapshotInfo[]>([]);
 	let drift = $state<DriftReport | null>(null);
 	let busy = $state(false);
 	let message = $state<{ kind: 'info' | 'success' | 'error'; text: string } | null>(null);
+	// DEV-119: 복원 확인 — 인앱 모달. null = 닫힘, 객체 = 열림 ({ts} 는 undefined 면 최신).
+	// reindex 는 사용자 지시로 sweep 제외 (idempotent, 파일 truth 불변).
+	let confirmRestore = $state<{ ts: string | undefined } | null>(null);
 
 	function onSectionMessage(
 		m: { kind: 'info' | 'success' | 'error'; text: string } | null
@@ -72,11 +77,12 @@
 		}
 	}
 
-	async function onRestore(ts?: string) {
-		const label = ts ? formatTimestamp(ts) : '최신';
-		if (!confirm(`정말 "${label}" 백업으로 복원하시겠습니까?\n\n현재 상태가 덮어써집니다 (직전 .pre-restore.db 로 자동 백업됨).`)) {
-			return;
-		}
+	function onRestore(ts?: string) {
+		// DEV-119: native confirm 대신 인앱 모달 — onconfirm 에서 doRestore.
+		confirmRestore = { ts };
+	}
+
+	async function doRestore(ts: string | undefined) {
 		busy = true;
 		try {
 			const res = await adminApi.restore(ts);
@@ -231,6 +237,24 @@
 		{/if}
 	</section>
 </div>
+
+<!-- DEV-119: backup 복원 확인 — 인앱 모달. -->
+<ConfirmDialog
+	open={confirmRestore !== null}
+	title="백업 복원"
+	message={confirmRestore
+		? `정말 "${confirmRestore.ts ? formatTimestamp(confirmRestore.ts) : '최신'}" 백업으로 복원하시겠습니까?\n\n` +
+			`현재 상태가 덮어써집니다 (직전 .pre-restore.db 로 자동 백업됨).`
+		: ''}
+	confirmLabel="복원"
+	danger
+	onconfirm={() => {
+		const r = confirmRestore;
+		confirmRestore = null;
+		if (r) doRestore(r.ts);
+	}}
+	oncancel={() => (confirmRestore = null)}
+/>
 
 <style>
 	.page {

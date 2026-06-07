@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { adminApi, type QuestTypeWithCount } from '$lib/api/admin';
+	// DEV-119: window.confirm() 대신 인앱 ConfirmDialog.
+	import ConfirmDialog from '../ConfirmDialog.svelte';
 
 	type Msg = { kind: 'info' | 'success' | 'error'; text: string } | null;
 	let { onmessage }: { onmessage: (m: Msg) => void } = $props();
@@ -36,6 +38,8 @@
 
 	// 삭제 확인 모달.
 	let confirmDelete: QuestTypeWithCount | null = $state(null);
+	// DEV-119: rename cascade 확인 — 이전엔 window.confirm() (Tauri 에서 silent return).
+	let confirmRename = $state<{ oldPrefix: string; newPrefix: string; count: number } | null>(null);
 
 
 	onMount(refresh);
@@ -61,19 +65,18 @@
 	async function saveEdit() {
 		if (!editing) return;
 		const newPrefix = editPrefix.trim().toUpperCase();
-		const renaming = newPrefix && newPrefix !== editing;
-		// BUG-018: prefix 변경 시 cascade 확인.
+		const renaming = !!newPrefix && newPrefix !== editing;
+		// BUG-018 / DEV-119: prefix rename cascade 확인 — 인앱 모달.
 		if (renaming) {
 			const count = types.find((t) => t.prefix === editing)?.quest_count ?? 0;
-			const ok = window.confirm(
-				`'${editing}' → '${newPrefix}' 로 이름 변경.\n\n` +
-					`이 type 의 모든 quest (${count}개) 의 slug 가 cascade 됩니다 ` +
-					`(파일명 / frontmatter / DB history).\n\n` +
-					`다른 quest 본문 안의 '${editing}-NNN' mention 은 자동 갱신되지 않습니다 ` +
-					`— 직접 검색/수정 필요.\n\n계속할까요?`
-			);
-			if (!ok) return;
+			confirmRename = { oldPrefix: editing, newPrefix, count };
+			return; // 모달 onconfirm 이 doSaveEdit 호출.
 		}
+		await doSaveEdit(false, '');
+	}
+
+	async function doSaveEdit(renaming: boolean, newPrefix: string) {
+		if (!editing) return;
 		busy = true;
 		try {
 			await adminApi.updateType(editing, {
@@ -285,6 +288,27 @@
 		</div>
 	</div>
 {/if}
+
+<!-- DEV-119: prefix rename cascade 확인 — 인앱 모달. -->
+<ConfirmDialog
+	open={confirmRename !== null}
+	title="Type prefix 변경 (cascade)"
+	message={confirmRename
+		? `'${confirmRename.oldPrefix}' → '${confirmRename.newPrefix}' 로 이름 변경.\n\n` +
+			`이 type 의 모든 quest (${confirmRename.count}개) 의 slug 가 cascade 됩니다 ` +
+			`(파일명 / frontmatter / DB history).\n\n` +
+			`다른 quest 본문 안의 '${confirmRename.oldPrefix}-NNN' mention 은 자동 갱신되지 않습니다 ` +
+			`— 직접 검색/수정 필요.\n\n계속할까요?`
+		: ''}
+	confirmLabel="변경"
+	danger
+	onconfirm={() => {
+		const r = confirmRename;
+		confirmRename = null;
+		if (r) doSaveEdit(true, r.newPrefix);
+	}}
+	oncancel={() => (confirmRename = null)}
+/>
 
 
 <style>

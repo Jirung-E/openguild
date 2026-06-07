@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { adminApi, type QuestStatusWithCount } from '$lib/api/admin';
+	// DEV-119: window.confirm() 대신 인앱 ConfirmDialog.
+	import ConfirmDialog from '../ConfirmDialog.svelte';
 
 	type Msg = { kind: 'info' | 'success' | 'error'; text: string } | null;
 	let { onmessage }: { onmessage: (m: Msg) => void } = $props();
@@ -35,6 +37,9 @@
 	}
 
 	let confirmDelete: QuestStatusWithCount | null = $state(null);
+	// DEV-119: rename cascade 확인 — 이전엔 window.confirm() 사용했으나 Tauri
+	// WebView 에서 silent return → 클릭 한 번에 영구 cascade. 인앱 모달로 교체.
+	let confirmRename = $state<{ oldSlug: string; newSlug: string; count: number } | null>(null);
 
 
 	onMount(refresh);
@@ -62,17 +67,18 @@
 	async function saveEdit() {
 		if (!editing) return;
 		const newSlug = editSlug.trim();
-		const renaming = newSlug && newSlug !== editing;
-		// BUG-018: slug 변경 시 cascade 확인.
+		const renaming = !!newSlug && newSlug !== editing;
+		// BUG-018 / DEV-119: slug 변경 시 cascade 확인 — 인앱 모달.
 		if (renaming) {
 			const count = statuses.find((s) => s.slug === editing)?.quest_count ?? 0;
-			const ok = window.confirm(
-				`'${editing}' → '${newSlug}' 로 slug 변경.\n\n` +
-					`${count}개 quest 의 frontmatter status + history 의 old/new value + ` +
-					`statuses 파일명 모두 cascade.\n\n계속할까요?`
-			);
-			if (!ok) return;
+			confirmRename = { oldSlug: editing, newSlug, count };
+			return; // 모달 onconfirm 이 doSaveEdit 호출.
 		}
+		await doSaveEdit(false, '');
+	}
+
+	async function doSaveEdit(renaming: boolean, newSlug: string) {
+		if (!editing) return;
 		busy = true;
 		try {
 			await adminApi.updateStatus(editing, {
@@ -318,6 +324,25 @@
 		</div>
 	</div>
 {/if}
+
+<!-- DEV-119: slug rename cascade 확인 — 인앱 모달. -->
+<ConfirmDialog
+	open={confirmRename !== null}
+	title="Status slug 변경 (cascade)"
+	message={confirmRename
+		? `'${confirmRename.oldSlug}' → '${confirmRename.newSlug}' 로 slug 변경.\n\n` +
+			`${confirmRename.count}개 quest 의 frontmatter status + history 의 old/new value + ` +
+			`statuses 파일명 모두 cascade.\n\n계속할까요?`
+		: ''}
+	confirmLabel="변경"
+	danger
+	onconfirm={() => {
+		const r = confirmRename;
+		confirmRename = null;
+		if (r) doSaveEdit(true, r.newSlug);
+	}}
+	oncancel={() => (confirmRename = null)}
+/>
 
 
 <style>

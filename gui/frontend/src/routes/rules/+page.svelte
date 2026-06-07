@@ -88,11 +88,23 @@
 		loadList();
 	});
 
+	// DEV-119: 편집중 다른 slug 선택 시 native confirm 대신 인앱 모달.
+	let confirmDiscardSlug = $state<string | null>(null);
+
 	function select(slug: string) {
 		if (editMode) {
-			if (!confirm('편집 중인 변경 사항이 있습니다. 버리고 이동할까요?')) return;
-			cancelEdit();
+			confirmDiscardSlug = slug;
+			return;
 		}
+		selectedSlug = slug;
+		refreshSelectedContent();
+	}
+
+	function applyPendingSelect() {
+		const slug = confirmDiscardSlug;
+		confirmDiscardSlug = null;
+		if (!slug) return;
+		cancelEdit();
 		selectedSlug = slug;
 		refreshSelectedContent();
 	}
@@ -362,6 +374,17 @@
 	danger
 	onconfirm={deleteSelected}
 	oncancel={() => (confirmDeleteSlug = null)}
+/>
+
+<!-- DEV-119: 편집중 다른 slug 선택 시 미저장 확인 모달. -->
+<ConfirmDialog
+	open={confirmDiscardSlug !== null}
+	title="편집중 이동"
+	message="편집 중인 변경 사항이 있습니다. 버리고 이동할까요?"
+	confirmLabel="버리고 이동"
+	danger
+	onconfirm={applyPendingSelect}
+	oncancel={() => (confirmDiscardSlug = null)}
 />
 
 <style>
