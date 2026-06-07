@@ -38,23 +38,11 @@
 	let loadError = $state<string | null>(null);
 	let content = $state<string | null>(null);
 
-	// DEV-107: 섹션 접기 (메모). localStorage 영속.
-	const COLLAPSE_KEY = 'openguild.memoSectionCollapsed';
-	function loadCollapsed(): boolean {
-		try {
-			return localStorage.getItem(COLLAPSE_KEY) === 'true';
-		} catch {
-			return false;
-		}
-	}
-	let collapsed = $state(loadCollapsed());
+	// DEV-107 fix1: 섹션 접기 (메모) — 사용자 피드백 반영해 localStorage 영속
+	// 제거. 매 진입 시 펼침 기본.
+	let collapsed = $state(false);
 	function toggleCollapsed() {
 		collapsed = !collapsed;
-		try {
-			localStorage.setItem(COLLAPSE_KEY, String(collapsed));
-		} catch {
-			/* 무시 */
-		}
 	}
 
 	let editMode = $state(false);

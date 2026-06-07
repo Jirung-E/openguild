@@ -21,23 +21,21 @@
 	let loadError = $state<string | null>(null);
 	let entries = $state<CommentEntry[]>([]);
 
-	// DEV-107: 섹션 접기. 기본 펼침, 사용자 선택 localStorage 영속 (전역 선호).
-	const COLLAPSE_KEY = 'openguild.commentsSectionCollapsed';
-	function loadCollapsed(): boolean {
-		try {
-			return localStorage.getItem(COLLAPSE_KEY) === 'true';
-		} catch {
-			return false;
-		}
-	}
-	let collapsed = $state(loadCollapsed());
+	// DEV-107 fix1: 섹션 접기 — 사용자 피드백 반영해 localStorage 영속 제거.
+	// 매 진입 시 펼침 기본. 일회성 토글.
+	let collapsed = $state(false);
 	function toggleCollapsed() {
 		collapsed = !collapsed;
-		try {
-			localStorage.setItem(COLLAPSE_KEY, String(collapsed));
-		} catch {
-			/* 무시 */
-		}
+	}
+
+	// DEV-107 fix1: root entry (top-level 댓글) 별 답글 접기.
+	// 클릭 시 그 root 의 답글 전체 숨김 (들여쓰기 손실 없음 — 그냥 표시 안 함).
+	let collapsedRoots = $state(new Set<number>());
+	function toggleRootCollapsed(rootId: number) {
+		const next = new Set(collapsedRoots);
+		if (next.has(rootId)) next.delete(rootId);
+		else next.add(rootId);
+		collapsedRoots = next;
 	}
 
 	// 신규 top-level 작성 폼
@@ -285,13 +283,33 @@
 		{:else}
 			<ul class="entry-list">
 				{#each groups.roots as root (root.id)}
+					{@const childCount = (groups.childrenByRoot.get(root.id) ?? []).length}
+					{@const isCollapsed = collapsedRoots.has(root.id)}
 					{@render entryView(root, false)}
-					{#if (groups.childrenByRoot.get(root.id) ?? []).length > 0 || replyingTo === root.id}
+					<!-- DEV-107 fix1: 답글이 있으면 root 댓글 아래에 토글 버튼. 클릭 시 그 root 의
+						 답글 전체 (하위 답글 포함) 접힘. -->
+					{#if childCount > 0}
+						<li class="thread-toggle-row">
+							<button
+								type="button"
+								class="thread-toggle"
+								onclick={() => toggleRootCollapsed(root.id)}
+								aria-expanded={!isCollapsed}
+								title={isCollapsed ? '답글 펼치기' : '답글 접기'}
+							>
+								<span class="thread-toggle-icon" class:collapsed={isCollapsed}>▼</span>
+								{isCollapsed ? `답글 ${childCount}개 펼치기` : `답글 ${childCount}개 접기`}
+							</button>
+						</li>
+					{/if}
+					{#if (childCount > 0 && !isCollapsed) || replyingTo === root.id}
 						<li class="thread">
 							<ul class="reply-list">
-								{#each groups.childrenByRoot.get(root.id) ?? [] as r (r.id)}
-									{@render entryView(r, true)}
-								{/each}
+								{#if !isCollapsed}
+									{#each groups.childrenByRoot.get(root.id) ?? [] as r (r.id)}
+										{@render entryView(r, true)}
+									{/each}
+								{/if}
 								{#if replyingTo === root.id}
 									<li class="reply-form">
 										<div class="reply-author">
@@ -431,6 +449,37 @@
 		list-style: none;
 		margin: 0;
 		padding: 0;
+	}
+	/* DEV-107 fix1: 답글 토글 라인 — root 와 reply-list 사이. */
+	.thread-toggle-row {
+		list-style: none;
+		margin: 0.2rem 0 0.2rem 1.5rem;
+	}
+	.thread-toggle {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.35rem;
+		padding: 0.1rem 0.5rem;
+		background: transparent;
+		border: 1px solid transparent;
+		border-radius: 4px;
+		color: var(--text-muted);
+		font-size: 0.72rem;
+		cursor: pointer;
+		transition: background 0.1s, color 0.1s, border-color 0.1s;
+	}
+	.thread-toggle:hover {
+		background: var(--bg-subtle);
+		color: var(--text);
+		border-color: var(--border);
+	}
+	.thread-toggle-icon {
+		font-size: 0.55rem;
+		transition: transform 0.12s;
+		display: inline-block;
+	}
+	.thread-toggle-icon.collapsed {
+		transform: rotate(-90deg);
 	}
 	.reply-list {
 		list-style: none;
