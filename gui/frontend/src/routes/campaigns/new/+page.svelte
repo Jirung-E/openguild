@@ -98,11 +98,11 @@
 <style>
 	.page { padding: 1.25rem 1.5rem; max-width: 760px; margin: 0 auto; }
 	.header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; }
-	.header h1 { font-size: 1.2rem; color: #c9d1d9; margin: 0; }
+	.header h1 { font-size: 1.2rem; color: var(--text); margin: 0; }
 	.back {
 		background: transparent;
-		border: 1px solid #30363d;
-		color: #c9d1d9;
+		border: 1px solid var(--border);
+		color: var(--text);
 		border-radius: 6px;
 		padding: 0.3rem 0.7rem;
 		font-size: 0.825rem;
@@ -112,25 +112,25 @@
 
 	form { display: flex; flex-direction: column; gap: 0.85rem; }
 	label { display: flex; flex-direction: column; gap: 0.3rem; }
-	.lab { font-size: 0.825rem; color: #8b949e; }
+	.lab { font-size: 0.825rem; color: var(--text-muted); }
 	input, textarea {
 		background: var(--bg);
-		border: 1px solid #30363d;
-		color: #c9d1d9;
+		border: 1px solid var(--border);
+		color: var(--text);
 		border-radius: 6px;
 		padding: 0.45rem 0.6rem;
 		font-size: 0.9rem;
 		font-family: inherit;
 	}
-	input:focus, textarea:focus { outline: none; border-color: #58a6ff; }
+	input:focus, textarea:focus { outline: none; border-color: var(--accent); }
 	textarea { font-family: 'JetBrains Mono', ui-monospace, monospace; resize: vertical; min-height: 120px; }
 
 	.period-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
 
 	.error {
 		background: color-mix(in srgb, var(--danger) 18%, transparent);
-		border: 1px solid #f85149;
-		color: #ff7b72;
+		border: 1px solid var(--danger);
+		color: var(--danger);
 		padding: 0.4rem 0.65rem;
 		border-radius: 4px;
 		font-size: 0.825rem;
