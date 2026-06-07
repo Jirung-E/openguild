@@ -874,6 +874,8 @@
 	const dragStartMap = new Map<number, { x: number; y: number; statusId: number }>();
 	// DEV-105 fix11: 드래그 중인 노드가 놓일 예정인 lane 의 slug — UI 하이라이트용.
 	let dragHighlightSlug = $state<string | null>(null);
+	// DEV-115: 최근 움직인 노드를 위로 — 단조 증가 카운터. 기본 z-index 는 10 (cy.style()).
+	let recentMoveZ = 10;
 	// slug 변경 시 lane-col DOM 에 `.drag-target` 토글. lanesEl 의 children 순서
 	// 가 sorted 와 동일 (buildLaneDivs).
 	$effect(() => {
@@ -950,6 +952,9 @@
 			const absX = visualToAbsX(target.x, target.statusId);
 			node.data('absX', absX);
 			questsApi.updatePosition(record.questId, { x: absX, y: target.y }).catch(() => {});
+			// DEV-115: undo/redo 로 움직인 노드도 위로.
+			recentMoveZ += 1;
+			node.style('z-index', recentMoveZ);
 		} else {
 			const promises: Promise<unknown>[] = [];
 			for (const item of record.items) {
@@ -968,6 +973,9 @@
 				const absX = visualToAbsX(target.x, target.statusId);
 				node.data('absX', absX);
 				promises.push(questsApi.updatePosition(item.questId, { x: absX, y: target.y }).catch(() => {}));
+				// DEV-115: 배치 undo/redo 도 위로.
+				recentMoveZ += 1;
+				node.style('z-index', recentMoveZ);
 			}
 			await Promise.all(promises);
 		}
@@ -2311,6 +2319,9 @@
 					toPos: { ...pos },
 					toLaneIdx: li
 				});
+				// DEV-115: 방금 움직인 노드 위로. 단조 증가 z-index 로 최근성 보존.
+				recentMoveZ += 1;
+				n.style('z-index', recentMoveZ);
 			}
 			dragStartMap.clear();
 
