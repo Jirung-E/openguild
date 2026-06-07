@@ -36,6 +36,10 @@
 	// DEV-101 fix2: native input[type=range] 의 drag 문제 (값 재바인딩 →
 	// thumb 튐, UI scale 의 자기 자신 변형 → 손 놓침) 회피한 델타 기반 슬라이더.
 	import CustomSlider from '$lib/components/CustomSlider.svelte';
+	// DEV-074 fix17: release notes <pre> overlay scrollbar.
+	import OverlayScrollbar from '$lib/components/OverlayScrollbar.svelte';
+
+	let upToastNotesEl: HTMLPreElement | undefined = $state(undefined);
 
 	// DEV-101 fix3: 즉시 반영 — store 가 source of truth, drag 중에도 매 step 적용.
 	// preview / displayScale wrapper 제거.
@@ -230,7 +234,13 @@
 		{:else if $updateState.status === 'available'}
 			<p class="t-title">새 버전 <strong>{$updateState.version}</strong> 사용 가능</p>
 			{#if $updateState.notes}
-				<details><summary>릴리즈 노트</summary><pre>{$updateState.notes}</pre></details>
+				<details>
+					<summary>릴리즈 노트</summary>
+					<pre bind:this={upToastNotesEl}>{$updateState.notes}</pre>
+					{#if upToastNotesEl}
+						<OverlayScrollbar target={upToastNotesEl} />
+					{/if}
+				</details>
 			{/if}
 			<button class="btn-primary" onclick={() => downloadAndRelaunch()}>
 				지금 업데이트 (다운로드 + 재시작)
@@ -371,6 +381,11 @@
 		max-height: 8rem;
 		overflow-y: auto;
 		margin: 0.4rem 0 0;
+		/* DEV-074 fix17: native scrollbar 숨김 — OverlayScrollbar 가 대신 그림. */
+		scrollbar-width: none;
+	}
+	.upd-toast pre::-webkit-scrollbar {
+		display: none;
 	}
 	.upd-toast .btn-primary { margin-top: 0.5rem; }
 

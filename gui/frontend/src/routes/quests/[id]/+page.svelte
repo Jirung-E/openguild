@@ -100,6 +100,8 @@
 	let editorView: EditorView | null = null;
 	// DEV-074 fix15: `.cm-scroller` 의 OverlayScrollbar target.
 	let cmScroller: HTMLElement | null = $state(null);
+	// DEV-074 fix17: 삭제 cascade 모달의 sub-quest list overlay scrollbar.
+	let delSubListEl: HTMLUListElement | undefined = $state(undefined);
 
 	let sortedStatuses = $derived([...statuses].sort((a, b) => a.sort_order - b.sort_order));
 
@@ -1075,7 +1077,7 @@
 						</label>
 					</div>
 					<p class="del-sub-help">체크한 항목은 함께 삭제됩니다. 체크하지 않은 항목은 부모에서 분리됩니다.</p>
-					<ul class="del-sub-list">
+					<ul class="del-sub-list" bind:this={delSubListEl}>
 						{#each detail.sub_quests as sq (sq.id)}
 							<li>
 								<label>
@@ -1091,6 +1093,9 @@
 							</li>
 						{/each}
 					</ul>
+					{#if delSubListEl}
+						<OverlayScrollbar target={delSubListEl} />
+					{/if}
 				</div>
 			{/if}
 			<p class="del-prereq">선행 퀘스트들은 별도의 퀘스트이므로 영향받지 않습니다.</p>
@@ -1496,7 +1501,12 @@
 	.del-sub-all:hover { color: var(--text); }
 	.del-sub-title { margin: 0; font-size: 0.8rem; color: var(--text); font-weight: 600; }
 	.del-sub-help { margin: 0 0 0.5rem; font-size: 0.75rem; color: var(--text-muted); }
-	.del-sub-list { list-style: none; padding: 0; margin: 0; max-height: 180px; overflow-y: auto; }
+	/* DEV-074 fix17: native scrollbar 숨김 — OverlayScrollbar 가 대신 그림. */
+	.del-sub-list {
+		list-style: none; padding: 0; margin: 0; max-height: 180px; overflow-y: auto;
+		scrollbar-width: none;
+	}
+	.del-sub-list::-webkit-scrollbar { display: none; }
 	.del-sub-list li { padding: 0.25rem 0; }
 	.del-sub-list label {
 		display: flex; align-items: center; gap: 0.45rem;

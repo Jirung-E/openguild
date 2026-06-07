@@ -17,6 +17,10 @@
 		downloadAndRelaunch,
 		dismissUpdate
 	} from '$lib/api/updater';
+	// DEV-074 fix17: release notes <pre> 도 overlay.
+	import OverlayScrollbar from './OverlayScrollbar.svelte';
+
+	let notesEl: HTMLPreElement | undefined = $state(undefined);
 
 	// DEV-083: 주기적 재확인 간격. 너무 짧으면 GitHub rate / 노이즈, 너무 길면
 	// 장시간 켜둔 세션이 새 버전 놓침. 6시간이 타협점.
@@ -44,7 +48,10 @@
 			{#if $updateState.notes}
 				<details class="upd-notes">
 					<summary>릴리즈 노트</summary>
-					<pre>{$updateState.notes}</pre>
+					<pre bind:this={notesEl}>{$updateState.notes}</pre>
+					{#if notesEl}
+						<OverlayScrollbar target={notesEl} />
+					{/if}
 				</details>
 			{/if}
 		</div>
@@ -108,6 +115,11 @@
 		border: 1px solid var(--bg-subtle);
 		border-radius: 6px;
 		padding: 0.5rem 0.75rem;
+		/* DEV-074 fix17: native scrollbar 숨김 — OverlayScrollbar 가 대신 그림. */
+		scrollbar-width: none;
+	}
+	.upd-notes pre::-webkit-scrollbar {
+		display: none;
 	}
 
 	.upd-progress {
