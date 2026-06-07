@@ -21,6 +21,13 @@
    - disabled
 -->
 <script lang="ts">
+	// DEV-101 / DEV-093 후속: pure math 는 lib/utils/slider 로 추출 + vitest 회귀.
+	import {
+		clampToStep as clampToStepUtil,
+		valueFromTrackPx,
+		pixelsPerUnit as pixelsPerUnitUtil
+	} from '$lib/utils/slider';
+
 	type Props = {
 		value: number;
 		min: number;
@@ -46,20 +53,16 @@
 	// drag 시작 시점의 값 — movementX 누적 베이스. drag 중 외부 value 가
 	// 즉시 commit 으로 갱신되더라도 본 값을 기준으로 정확히 누적.
 	let dragAcc = 0;
-	let pixelsPerUnit = 1;
+	let pxPerUnit = 1;
 
 	function clampToStep(v: number): number {
-		const clamped = Math.max(min, Math.min(max, v));
-		const stepped = Math.round((clamped - min) / step) * step + min;
-		const decimals = (step.toString().split('.')[1] ?? '').length;
-		return Number(stepped.toFixed(decimals));
+		return clampToStepUtil(v, min, max, step);
 	}
 
 	function valueFromTrackX(clientX: number): number {
 		if (!track) return value;
 		const r = track.getBoundingClientRect();
-		const ratio = Math.max(0, Math.min(1, (clientX - r.left) / r.width));
-		return clampToStep(min + ratio * (max - min));
+		return valueFromTrackPx(clientX - r.left, r.width, min, max, step);
 	}
 
 	function commit(v: number) {
@@ -75,7 +78,7 @@
 		target.setPointerCapture(e.pointerId);
 		// 트랙 click 위치로 바로 점프.
 		const r = track.getBoundingClientRect();
-		pixelsPerUnit = r.width / (max - min);
+		pxPerUnit = pixelsPerUnitUtil(r.width, min, max);
 		const v = valueFromTrackX(e.clientX);
 		dragAcc = v;
 		dragging = true;
@@ -86,7 +89,7 @@
 	function onMove(e: PointerEvent) {
 		if (!dragging || !track) return;
 		// 델타 — movementX 가 페이지 zoom / UI scale 변화와 무관.
-		dragAcc = Math.max(min, Math.min(max, dragAcc + e.movementX / pixelsPerUnit));
+		dragAcc = Math.max(min, Math.min(max, dragAcc + e.movementX / pxPerUnit));
 		const stepped = clampToStep(dragAcc);
 		if (stepped !== value) {
 			commit(stepped);
