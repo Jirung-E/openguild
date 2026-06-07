@@ -996,10 +996,14 @@ impl Backend {
             .context("failed to start tokio runtime")?;
         let store = rt.block_on(openguild_core::Store::open(&guild_path))?;
 
-        // Recent guild 자동 등록 — 실패해도 ops 자체엔 영향 없음 (warn 만).
-        if let Err(e) = openguild_core::recents::add(&guild_path) {
-            eprintln!("[openguild] warn: recents 갱신 실패 — {e:#}");
-        }
+        // DEV-117: 여기서 `recents::add` 를 호출하지 않는다.
+        //
+        // 과거엔 매 CLI 호출 (e.g. `openguild quest comment add ...`) 마다
+        // recents 가 갱신되어 사용자가 다른 길드에서 GUI 작업 중이어도
+        // CLI 활동을 한 길드가 Welcome 의 '최근 연 길드' 최상단으로 올라가
+        // 사용자에게 "왜 내가 안 연 길드가 최상단에 있나" 라는 혼란을 줬다.
+        // recents 의 의미는 'GUI 로 사용자가 직접 연 길드' — CLI 활동은 X.
+        // GUI 의 `recents::add` 호출 (gui/src/lib.rs) 만 유지.
 
         Ok(Backend::Local(LocalBackend {
             store,
