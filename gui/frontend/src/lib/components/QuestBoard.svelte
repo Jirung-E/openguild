@@ -1539,9 +1539,12 @@
 				selector: 'node[questId]',
 				style: {
 					'background-color': bg,
+					// DEV-112: 노드 위치가 자유로워 겹칠 수 있음 — 뒤 노드 윤곽이
+					// 비치도록 살짝 투명. border (urgency 색) 는 fully opaque 유지.
+					'background-opacity': 0.92,
 					'background-image': 'data(nodeBg)',
 					'background-fit': 'cover',
-					'background-image-opacity': 1,
+					'background-image-opacity': 0.88,
 					'border-color': 'data(urgencyColor)',
 					'border-width': 2,
 					width: NODE_W, height: NODE_H,
