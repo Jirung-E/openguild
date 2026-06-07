@@ -10,6 +10,8 @@
 <script lang="ts">
 	import type { Quest } from '$lib/types';
 	import { onMount, tick } from 'svelte';
+	// DEV-074 fix16: 검색 결과 list 도 overlay scrollbar.
+	import OverlayScrollbar from './OverlayScrollbar.svelte';
 
 	let {
 		quests,
@@ -26,6 +28,7 @@
 	let query = $state('');
 	let highlightIdx = $state(0);
 	let inputEl: HTMLInputElement | undefined = $state(undefined);
+	let listEl: HTMLUListElement | undefined = $state(undefined);
 
 	const filtered = $derived(() => {
 		const q = query.trim().toLowerCase();
@@ -86,7 +89,7 @@
 	{#if filtered().length === 0}
 		<div class="cb-empty">결과 없음</div>
 	{:else}
-		<ul class="cb-list" role="listbox">
+		<ul class="cb-list" role="listbox" bind:this={listEl}>
 			{#each filtered() as q, i (q.id)}
 				<li
 					role="option"
@@ -107,6 +110,9 @@
 				</li>
 			{/each}
 		</ul>
+		{#if listEl}
+			<OverlayScrollbar target={listEl} />
+		{/if}
 	{/if}
 </div>
 
@@ -142,9 +148,14 @@
 		padding: 0;
 		max-height: 220px;
 		overflow-y: auto;
+		/* DEV-074 fix16: native scrollbar 숨김 — OverlayScrollbar 가 대신 그림. */
+		scrollbar-width: none;
 		border: 1px solid var(--bg-subtle);
 		border-radius: 6px;
 		background: var(--bg);
+	}
+	.cb-list::-webkit-scrollbar {
+		display: none;
 	}
 	.cb-list li { border-bottom: 1px solid var(--bg-elevated); }
 	.cb-list li:last-child { border-bottom: none; }
