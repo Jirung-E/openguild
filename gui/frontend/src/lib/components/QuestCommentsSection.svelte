@@ -21,6 +21,25 @@
 	let loadError = $state<string | null>(null);
 	let entries = $state<CommentEntry[]>([]);
 
+	// DEV-107: 섹션 접기. 기본 펼침, 사용자 선택 localStorage 영속 (전역 선호).
+	const COLLAPSE_KEY = 'openguild.commentsSectionCollapsed';
+	function loadCollapsed(): boolean {
+		try {
+			return localStorage.getItem(COLLAPSE_KEY) === 'true';
+		} catch {
+			return false;
+		}
+	}
+	let collapsed = $state(loadCollapsed());
+	function toggleCollapsed() {
+		collapsed = !collapsed;
+		try {
+			localStorage.setItem(COLLAPSE_KEY, String(collapsed));
+		} catch {
+			/* 무시 */
+		}
+	}
+
 	// 신규 top-level 작성 폼
 	let newAuthor = $state('');
 	let newBody = $state('');
@@ -241,10 +260,21 @@
 
 <section class="comments-sec">
 	<div class="section-head">
-		<h2 class="section-title">댓글 (Comments)</h2>
+		<!-- DEV-107: 섹션 토글 — title 전체 클릭 가능. -->
+		<button
+			type="button"
+			class="section-toggle"
+			onclick={toggleCollapsed}
+			aria-expanded={!collapsed}
+			title={collapsed ? '댓글 펼치기' : '댓글 접기'}
+		>
+			<span class="toggle-icon" class:collapsed>▼</span>
+			<h2 class="section-title">댓글 (Comments)</h2>
+		</button>
 		<span class="count">{entries.length}</span>
 	</div>
 
+	{#if !collapsed}
 	{#if loading}
 		<p class="state">Loading…</p>
 	{:else if loadError}
@@ -340,18 +370,36 @@
 			</div>
 		</div>
 	{/if}
+	{/if}
 </section>
 
 <style>
 	.comments-sec { margin-bottom: 1.5rem; }
 	.section-head {
-		display: flex; align-items: baseline; gap: 0.5rem;
+		display: flex; align-items: center; gap: 0.5rem;
 		margin-bottom: 0.5rem;
+	}
+	/* DEV-107: 섹션 토글 — title 자체를 button 으로 만들어 클릭 가능. */
+	.section-toggle {
+		display: flex; align-items: center; gap: 0.4rem;
+		background: none; border: none; padding: 0; cursor: pointer;
+		color: inherit; font: inherit;
+	}
+	.section-toggle:hover .section-title { color: var(--text); }
+	.toggle-icon {
+		font-size: 0.65rem;
+		color: var(--text-muted);
+		transition: transform 0.12s;
+		display: inline-block;
+	}
+	.toggle-icon.collapsed {
+		transform: rotate(-90deg);
 	}
 	.section-title {
 		font-size: 0.8rem; font-weight: 600;
 		text-transform: uppercase; letter-spacing: 0.05em; margin: 0;
 		color: var(--accent);
+		transition: color 0.12s;
 	}
 	.count {
 		font-size: 0.8rem;

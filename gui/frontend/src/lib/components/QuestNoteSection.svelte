@@ -38,6 +38,25 @@
 	let loadError = $state<string | null>(null);
 	let content = $state<string | null>(null);
 
+	// DEV-107: 섹션 접기 (메모). localStorage 영속.
+	const COLLAPSE_KEY = 'openguild.memoSectionCollapsed';
+	function loadCollapsed(): boolean {
+		try {
+			return localStorage.getItem(COLLAPSE_KEY) === 'true';
+		} catch {
+			return false;
+		}
+	}
+	let collapsed = $state(loadCollapsed());
+	function toggleCollapsed() {
+		collapsed = !collapsed;
+		try {
+			localStorage.setItem(COLLAPSE_KEY, String(collapsed));
+		} catch {
+			/* 무시 */
+		}
+	}
+
 	let editMode = $state(false);
 	let editText = $state('');
 	let saving = $state(false);
@@ -151,14 +170,25 @@
 
 <section class="note-sec">
 	<div class="section-head">
-		<h2 class="section-title note-memo">{label.heading}</h2>
-		{#if !editMode && !loading && !loadError}
+		<!-- DEV-107: 섹션 토글. -->
+		<button
+			type="button"
+			class="section-toggle"
+			onclick={toggleCollapsed}
+			aria-expanded={!collapsed}
+			title={collapsed ? '메모 펼치기' : '메모 접기'}
+		>
+			<span class="toggle-icon" class:collapsed>▼</span>
+			<h2 class="section-title note-memo">{label.heading}</h2>
+		</button>
+		{#if !collapsed && !editMode && !loading && !loadError}
 			<button class="sec-add-btn" onclick={enterEdit}>
 				{content && content.trim() ? '✎ 편집' : `+ ${label.emptyAction}`}
 			</button>
 		{/if}
 	</div>
 
+	{#if !collapsed}
 	{#if loading}
 		<p class="state">Loading…</p>
 	{:else if loadError}
@@ -188,6 +218,7 @@
 			<button class="link-btn" onclick={enterEdit}>{label.emptyAction}</button>
 		</p>
 	{/if}
+	{/if}
 </section>
 
 <style>
@@ -196,11 +227,27 @@
 		display: flex; align-items: center; gap: 0.75rem;
 		margin-bottom: 0.5rem;
 	}
+	/* DEV-107: 섹션 토글. */
+	.section-toggle {
+		display: flex; align-items: center; gap: 0.4rem;
+		background: none; border: none; padding: 0; cursor: pointer;
+		color: inherit; font: inherit;
+	}
+	.toggle-icon {
+		font-size: 0.65rem;
+		color: var(--text-muted);
+		transition: transform 0.12s;
+		display: inline-block;
+	}
+	.toggle-icon.collapsed {
+		transform: rotate(-90deg);
+	}
 	.section-title {
 		font-size: 0.8rem; font-weight: 600;
 		text-transform: uppercase; letter-spacing: 0.05em; margin: 0;
+		transition: color 0.12s;
 	}
-	.section-title.note-memo { color: #f0883e; }
+	.section-title.note-memo { color: var(--warning); }
 
 	.sec-add-btn {
 		padding: 0.15rem 0.6rem;
