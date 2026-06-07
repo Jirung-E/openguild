@@ -12,6 +12,7 @@
   flatten (GitHub PR 댓글 모델). frontend 가 자유롭게 indent / 시각화 가능.
 -->
 <script lang="ts">
+	import { tick } from 'svelte';
 	import MarkdownView from './MarkdownView.svelte';
 	import { commentsApi, type CommentEntry } from '$lib/api/comments';
 	// DEV-118: native confirm() 대신 인앱 모달.
@@ -197,10 +198,25 @@
 		}
 	}
 
-	function enterReply(parentId: number) {
+	// DEV-120: 답글 폼 자동 focus + scroll.
+	// 원 댓글이 길면 폼이 화면 밖에 나타나서 "↩ 답글" 클릭 후 아무 일도 안 일어난
+	// 것처럼 보임. 폼이 mount 된 후 textarea focus + 화면 중앙으로 scroll.
+	async function enterReply(parentId: number) {
 		replyingTo = parentId;
 		replyBody = '';
 		replyError = null;
+		await tick();
+		// 새로 mount 된 .reply-form 의 textarea — 한 번에 한 폼만 떠 있음.
+		const form = document.querySelector<HTMLElement>('.reply-form');
+		const ta = form?.querySelector<HTMLTextAreaElement>('textarea.body-input');
+		if (!ta) return;
+		try {
+			ta.scrollIntoView({ behavior: 'smooth', block: 'center' });
+		} catch {
+			// 일부 환경에서 옵션 미지원 — fallback.
+			ta.scrollIntoView();
+		}
+		ta.focus({ preventScroll: true });
 	}
 	function cancelReply() {
 		replyingTo = null;
