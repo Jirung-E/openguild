@@ -18,6 +18,9 @@
 	import { EditorView, basicSetup } from 'codemirror';
 	import { markdown } from '@codemirror/lang-markdown';
 	import { oneDark } from '@codemirror/theme-one-dark';
+	// DEV-117: Windows 표준 redo (Ctrl+Shift+Z) keymap.
+	import { keymap } from '@codemirror/view';
+	import { redo } from '@codemirror/commands';
 	// DEV-074 fix4: light theme 에선 oneDark 안 적용.
 	import { theme, resolveTheme } from '$lib/stores/theme';
 	// DEV-074 fix15: CodeMirror native scrollbar 대신 overlay.
@@ -107,6 +110,8 @@
 				basicSetup,
 				markdown(),
 				...(eff === 'dark' ? [oneDark] : []),
+				// DEV-117: Windows 표준 redo (Ctrl+Shift+Z) 추가.
+				keymap.of([{ key: 'Mod-Shift-z', run: redo, preventDefault: true }]),
 				EditorView.theme({
 					'&': { fontSize: '0.875rem', borderRadius: '6px', height: '100%' },
 					'.cm-editor': { borderRadius: '6px', height: '100%' },

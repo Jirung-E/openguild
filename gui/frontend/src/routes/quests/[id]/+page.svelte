@@ -17,6 +17,10 @@
 	import { EditorView, basicSetup } from 'codemirror';
 	import { markdown } from '@codemirror/lang-markdown';
 	import { oneDark } from '@codemirror/theme-one-dark';
+	// DEV-117: CodeMirror 의 기본 historyKeymap 은 Windows 에서 Ctrl+Y 만 redo —
+	// Ctrl+Shift+Z 는 Mac 전용. 양쪽 모두 지원하려면 keymap 추가.
+	import { keymap } from '@codemirror/view';
+	import { redo } from '@codemirror/commands';
 	import {
 		URGENCY_COLOR,
 		URGENCY_LABEL,
@@ -287,6 +291,9 @@
 				markdown(),
 				// DEV-074 fix4: dark 일 때만 oneDark — light 면 기본 light 테마 사용.
 				...(eff === 'dark' ? [oneDark] : []),
+				// DEV-117: Windows 표준 redo (Ctrl+Shift+Z) 추가 — 기본 historyKeymap 은
+				// Ctrl+Y 만. basicSetup 다음에 두어 우선 적용.
+				keymap.of([{ key: 'Mod-Shift-z', run: redo, preventDefault: true }]),
 				EditorView.theme({
 					'&': { fontSize: '0.875rem', borderRadius: '6px', height: '100%' },
 					'.cm-editor': { borderRadius: '6px', height: '100%' },
