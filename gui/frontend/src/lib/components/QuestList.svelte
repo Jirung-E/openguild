@@ -14,6 +14,8 @@
 	} from '$lib/utils/quest-list';
 	import QuestListFilter from './QuestListFilter.svelte';
 	import QuestListItem from './QuestListItem.svelte';
+	// DEV-074 fix14: 내부 스크롤 컨테이너용 overlay 스크롤바.
+	import OverlayScrollbar from './OverlayScrollbar.svelte';
 
 	// DEV-086: New Quest 버튼 — Board toolbar 와 동일 좌표/크기로 우상단 고정.
 	// 클릭 시 부모 (+page) 모달 오픈.
@@ -25,6 +27,8 @@
 	let statuses = $state<QuestStatus[]>([]);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
+	// DEV-074 fix14: 내부 .list 의 ref — OverlayScrollbar target 으로 전달.
+	let listEl: HTMLDivElement | undefined = $state(undefined);
 
 	let filterTypeIds = $state(new Set<number>());
 	let filterStatusIds = $state(new Set<number>());
@@ -277,7 +281,7 @@
 			{/if}
 		</div>
 	{:else}
-		<div class="list">
+		<div class="list" bind:this={listEl}>
 			{#each flatList as node (node.quest.id)}
 				<QuestListItem
 					quest={node.quest}
@@ -288,6 +292,10 @@
 				/>
 			{/each}
 		</div>
+	{/if}
+	<!-- DEV-074 fix14: 내부 overflow 컨테이너에도 overlay scrollbar. -->
+	{#if listEl}
+		<OverlayScrollbar target={listEl} />
 	{/if}
 </div>
 
@@ -326,6 +334,11 @@
 	.list {
 		flex: 1;
 		overflow-y: auto;
+		/* DEV-074 fix14: native scrollbar 숨김 — OverlayScrollbar 가 대신 그림. */
+		scrollbar-width: none;
+	}
+	.list::-webkit-scrollbar {
+		display: none;
 	}
 
 	.state-msg {
