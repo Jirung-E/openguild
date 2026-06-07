@@ -2081,14 +2081,23 @@
 					dotsEl.style.backgroundImage = dataUri;
 					dotsEl.style.backgroundSize = `${svgW}px ${svgH}px`;
 					dotsEl.style.backgroundRepeat = 'repeat-y';
-					// 가로 위치 = bgX 는 zoom 만 의존 → 한 번만 설정. left/top 으로 두면 transform
-					// 은 순수 translateY 만 — 합성기가 GPU layer 유지.
+					// 가로 위치 = bgX 는 zoom 만 의존 → 한 번만 설정.
 					dotsEl.style.left = `${bgX}px`;
+					dotsEl.style.width = `${svgW}px`;
+					// DEV-105 fix14: dotsEl 을 cellH 만큼 위로 빼서 wrappedBgY ∈ [0, cellH)
+					// 만으로 정확한 정렬 가능 (pattern 의 cellH 주기성 활용). 이전 fix13 의
+					// top: -200vh 는 200vh 가 cellH 의 정수배가 아니라 fractional 잔여만큼
+					// dot 위치 어긋남 — 노드 snap 위치와 불일치 원인.
+					dotsEl.style.top = `${-cellHPx}px`;
+					dotsEl.style.bottom = '0';
 				}
 				// pan 매 프레임 — transform: translateY 만 변경 (composite-only, no paint).
+				// bgY 를 cellHPx 로 modulo → wrappedBgY ∈ [0, cellH). pattern 주기성
+				// (repeat-y 매 cellH) 으로 정수 cellH 시프트는 시각 동일.
 				const localCyPx = (LANE_TOP + 16 + NODE_H / 2) * zoom + pan.y;
 				const bgY = localCyPx - cellHPx / 2;
-				dotsEl.style.transform = `translateY(${bgY}px)`;
+				const wrappedBgY = ((bgY % cellHPx) + cellHPx) % cellHPx;
+				dotsEl.style.transform = `translateY(${wrappedBgY}px)`;
 			} else if (dotsEl) {
 				dotsEl.style.display = 'none';
 				gridBgCache.delete(i);
@@ -2761,14 +2770,13 @@
 		transition: background 0.12s, box-shadow 0.12s;
 		overflow: hidden;
 	}
-	/* DEV-105 fix13: grid snap dot 표시. lane-col 의 background-position 변경은
-	   매 frame paint → 느림. 자식 div 의 transform: translateY 로 전환 → GPU
-	   composite-only, 빠른 pan 추적 가능. */
+	/* DEV-105 fix13/fix14: grid snap dot 표시. background-position 변경은 매
+	   frame paint → 느림. 자식 div 의 transform: translateY (modulo cellH) 로
+	   전환 → GPU composite + pattern 주기성으로 정확한 정렬.
+	   top / left / width / bottom 은 JS 에서 zoom 기반 동적 설정 (cellHPx 만큼
+	   위로). */
 	:global(.lane-dots) {
 		position: absolute;
-		top: -200vh;
-		bottom: -200vh;
-		width: 100%;
 		pointer-events: none;
 		background-repeat: repeat-y;
 		will-change: transform;
