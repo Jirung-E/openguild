@@ -14,6 +14,8 @@
 <script lang="ts">
 	import MarkdownView from './MarkdownView.svelte';
 	import { commentsApi, type CommentEntry } from '$lib/api/comments';
+	// DEV-118: native confirm() 대신 인앱 모달.
+	import ConfirmDialog from './ConfirmDialog.svelte';
 
 	let { slug }: { slug: string } = $props();
 
@@ -178,8 +180,15 @@
 		}
 	}
 
-	async function remove(id: number) {
-		if (!confirm('이 댓글을 삭제할까요? (답글이 있다면 그대로 남고 안내가 표시됩니다)')) return;
+	// DEV-118: 인앱 confirm 모달용 state.
+	let confirmDeleteId = $state<number | null>(null);
+	function askRemove(id: number) {
+		confirmDeleteId = id;
+	}
+	async function remove() {
+		const id = confirmDeleteId;
+		if (id === null) return;
+		confirmDeleteId = null;
 		try {
 			await commentsApi.deleteComment(slug, id);
 			entries = entries.filter((e) => e.id !== id);
@@ -244,7 +253,7 @@
 						{/if}
 					{/if}
 					<button class="link-btn" onclick={() => enterEdit(e)}>✎ 편집</button>
-					<button class="link-btn danger" onclick={() => remove(e.id)}>× 삭제</button>
+					<button class="link-btn danger" onclick={() => askRemove(e.id)}>× 삭제</button>
 				</div>
 			{/if}
 		</div>
@@ -389,6 +398,17 @@
 	{/if}
 	{/if}
 </section>
+
+<!-- DEV-118: 댓글 삭제 확인 모달. -->
+<ConfirmDialog
+	open={confirmDeleteId !== null}
+	title="댓글 삭제"
+	message="이 댓글을 삭제할까요? (답글이 있다면 그대로 남고 안내가 표시됩니다)"
+	confirmLabel="삭제"
+	danger
+	onconfirm={remove}
+	oncancel={() => (confirmDeleteId = null)}
+/>
 
 <style>
 	.comments-sec { margin-bottom: 1.5rem; }

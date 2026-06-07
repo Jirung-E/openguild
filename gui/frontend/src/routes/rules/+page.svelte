@@ -12,6 +12,7 @@
 	import { onMount, tick } from 'svelte';
 	import { rulesApi, type RuleEntry } from '$lib/api/rules';
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
+	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { EditorView, basicSetup } from 'codemirror';
 	import { markdown } from '@codemirror/lang-markdown';
 	import { oneDark } from '@codemirror/theme-one-dark';
@@ -181,14 +182,22 @@
 		}
 	}
 
-	// ─── 삭제 ───
-	async function deleteSelected() {
+	// ─── 삭제 (DEV-118: 인앱 확인 모달) ───
+	let confirmDeleteSlug = $state<string | null>(null);
+	function askDeleteSelected() {
 		if (!selectedSlug) return;
-		if (!confirm(`'${selectedSlug}' 규칙을 삭제할까요?`)) return;
+		confirmDeleteSlug = selectedSlug;
+	}
+	async function deleteSelected() {
+		const target = confirmDeleteSlug;
+		confirmDeleteSlug = null;
+		if (!target) return;
 		try {
-			await rulesApi.delete(selectedSlug);
-			selectedSlug = null;
-			selectedContent = null;
+			await rulesApi.delete(target);
+			if (selectedSlug === target) {
+				selectedSlug = null;
+				selectedContent = null;
+			}
 			await loadList();
 		} catch (e) {
 			alert(e instanceof Error ? e.message : '삭제 실패');
@@ -291,7 +300,7 @@
 									{selectedContent && selectedContent.trim() ? '✎ 편집' : '+ 작성'}
 								</button>
 								<button class="btn-edit" onclick={openRename}>이름 변경</button>
-								<button class="btn-edit danger" onclick={deleteSelected}>삭제</button>
+								<button class="btn-edit danger" onclick={askDeleteSelected}>삭제</button>
 							</div>
 						{/if}
 					</div>
@@ -343,6 +352,17 @@
 		</div>
 	{/if}
 </div>
+
+<!-- DEV-118: 규칙 삭제 확인 모달. -->
+<ConfirmDialog
+	open={confirmDeleteSlug !== null}
+	title="규칙 삭제"
+	message={`'${confirmDeleteSlug ?? ''}' 규칙을 삭제할까요?`}
+	confirmLabel="삭제"
+	danger
+	onconfirm={deleteSelected}
+	oncancel={() => (confirmDeleteSlug = null)}
+/>
 
 <style>
 	.page {

@@ -15,6 +15,7 @@
 	// BUG-021 fix1: 공유 컴포넌트로 Quest Detail / Campaign Detail 의 markdown
 	// 프리뷰 통일.
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
+	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	// BUG-033: 생성 / 변경 시각 표시용 — Quest Detail 과 동일 헬퍼.
 	import { formatTs, formatRelative, isDateOverdue } from '$lib/utils/datetime';
 	// BUG-023: Quest Detail 의 QuestCombobox 와 같은 UI 로 통일.
@@ -223,9 +224,16 @@
 			alert(e instanceof Error ? e.message : 'failed');
 		}
 	}
-	async function removeChecklist(idx: number) {
-		if (!detail) return;
-		if (!confirm('이 체크리스트 항목을 삭제할까요?')) return;
+	// DEV-118: 인앱 확인 모달. 체크리스트 항목 삭제 / 캠페인 삭제.
+	let confirmDeleteChecklistIdx = $state<number | null>(null);
+	let confirmDeleteCampaign = $state(false);
+	function askRemoveChecklist(idx: number) {
+		confirmDeleteChecklistIdx = idx;
+	}
+	async function removeChecklist() {
+		const idx = confirmDeleteChecklistIdx;
+		confirmDeleteChecklistIdx = null;
+		if (idx === null || !detail) return;
 		// BUG-046: load() 대신 splice — 같은 array 안 단일 row 제거라 다른 item
 		// 의 (item.id) key 가 안정. scroll 보존.
 		const removed = detail.checklists[idx];
@@ -268,9 +276,13 @@
 		}
 	}
 
-	async function deleteCampaign() {
+	function askDeleteCampaign() {
 		if (!detail) return;
-		if (!confirm(`캠페인 "${detail.title}" 삭제할까요? (soft delete)`)) return;
+		confirmDeleteCampaign = true;
+	}
+	async function deleteCampaign() {
+		confirmDeleteCampaign = false;
+		if (!detail) return;
 		try {
 			await campaignsApi.delete(detail.campaign_slug);
 			goto('/campaigns');
@@ -292,7 +304,7 @@
 			{#if !editMode}
 				<div class="top-actions">
 					<button class="btn-edit" onclick={enterEditMode}>✎ 편집</button>
-					<button class="btn-delete" onclick={deleteCampaign}>🗑 삭제</button>
+					<button class="btn-delete" onclick={askDeleteCampaign}>🗑 삭제</button>
 				</div>
 			{/if}
 		{/if}
@@ -401,7 +413,7 @@
 								/>
 								<span class:checked={item.checked}>{item.text}</span>
 							</label>
-							<button class="rm" title="삭제" onclick={() => removeChecklist(idx)}>×</button>
+							<button class="rm" title="삭제" onclick={() => askRemoveChecklist(idx)}>×</button>
 						</li>
 					{/each}
 				</ul>
@@ -481,6 +493,26 @@
 		</div>
 	</div>
 {/if}
+
+<!-- DEV-118: 캠페인 / 체크리스트 삭제 확인 모달. -->
+<ConfirmDialog
+	open={confirmDeleteCampaign}
+	title="캠페인 삭제"
+	message={detail ? `캠페인 "${detail.title}" 을(를) 삭제할까요?\n(soft delete — restore 가능)` : ''}
+	confirmLabel="삭제"
+	danger
+	onconfirm={deleteCampaign}
+	oncancel={() => (confirmDeleteCampaign = false)}
+/>
+<ConfirmDialog
+	open={confirmDeleteChecklistIdx !== null}
+	title="체크리스트 항목 삭제"
+	message="이 체크리스트 항목을 삭제할까요?"
+	confirmLabel="삭제"
+	danger
+	onconfirm={removeChecklist}
+	oncancel={() => (confirmDeleteChecklistIdx = null)}
+/>
 
 <style>
 	.page { padding: 1.25rem 1.5rem; max-width: var(--content-max-width, 880px); margin: 0 auto; }
