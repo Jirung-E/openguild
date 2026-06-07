@@ -7,13 +7,59 @@
 -->
 <script lang="ts">
 	import { marked } from 'marked';
+	import { tick } from 'svelte';
+	// DEV-111: mermaid 다이어그램 렌더링 — lazy import (~700KB), 블록 있을 때만.
+	import { theme, resolveTheme } from '$lib/stores/theme';
 
 	let { source }: { source: string } = $props();
 
 	let html = $derived(marked(source ?? '', { async: false }) as string);
+	let container: HTMLDivElement | undefined = $state(undefined);
+
+	// 매 effect 실행 시 mermaid 블록 탐지 + 렌더. id 충돌 방지용 counter.
+	let renderCounter = 0;
+
+	async function renderMermaidBlocks() {
+		if (!container) return;
+		const blocks = container.querySelectorAll<HTMLElement>('pre > code.language-mermaid');
+		if (blocks.length === 0) return;
+		const { default: mermaid } = await import('mermaid');
+		const eff = resolveTheme($theme);
+		mermaid.initialize({
+			startOnLoad: false,
+			theme: eff === 'dark' ? 'dark' : 'default',
+			securityLevel: 'loose',
+			fontFamily: 'inherit'
+		});
+		for (const block of Array.from(blocks)) {
+			const pre = block.parentElement;
+			if (!pre) continue;
+			const code = block.innerText;
+			try {
+				const id = `mm-${++renderCounter}-${Math.random().toString(36).slice(2, 8)}`;
+				const { svg } = await mermaid.render(id, code);
+				const wrap = document.createElement('div');
+				wrap.className = 'mermaid-rendered';
+				wrap.innerHTML = svg;
+				pre.replaceWith(wrap);
+			} catch (e) {
+				const err = document.createElement('div');
+				err.className = 'mermaid-error';
+				err.textContent = `mermaid 렌더 실패: ${(e as Error).message}`;
+				pre.replaceWith(err);
+			}
+		}
+	}
+
+	$effect(() => {
+		// html / theme 변경 시 재렌더.
+		void html;
+		void $theme;
+		tick().then(renderMermaidBlocks);
+	});
 </script>
 
-<div class="md">{@html html}</div>
+<div class="md" bind:this={container}>{@html html}</div>
 
 <style>
 	.md {
@@ -87,4 +133,25 @@
 		padding: 0.35rem 0.6rem;
 	}
 	.md :global(th) { background: var(--bg-elevated); }
+	/* DEV-111: mermaid 다이어그램 렌더 영역. */
+	.md :global(.mermaid-rendered) {
+		display: flex;
+		justify-content: center;
+		padding: 0.5rem 0;
+		margin: 0.5em 0;
+	}
+	.md :global(.mermaid-rendered svg) {
+		max-width: 100%;
+		height: auto;
+	}
+	.md :global(.mermaid-error) {
+		padding: 0.5rem 0.75rem;
+		background: color-mix(in srgb, var(--danger) 12%, transparent);
+		border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+		border-radius: 6px;
+		color: var(--danger);
+		font-size: 0.8rem;
+		font-family: 'SFMono-Regular', Consolas, monospace;
+		white-space: pre-wrap;
+	}
 </style>
