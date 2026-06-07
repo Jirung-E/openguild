@@ -472,6 +472,10 @@
 	/**
 	 * 결정된 hidden set 을 cytoscape + lane DIV 에 적용.
 	 * cytoscape display: 'none' 노드는 자동으로 연결된 edge 도 안 보임.
+	 *
+	 * DEV-105 fix9: collapsed lane 의 노드도 자동 hide. 이전엔 status 변경 후
+	 * applyHideSettings 가 호출되면 그 노드가 다시 'element' 로 표시되어 접힌
+	 * lane 안 노드가 갑자기 보이는 버그.
 	 */
 	function applyHideSettings() {
 		const c = cy;
@@ -480,7 +484,13 @@
 		c.batch(() => {
 			c.nodes('[questId]').forEach((n) => {
 				const qid = n.data('questId') as number;
-				n.style('display', hidden.has(qid) ? 'none' : 'element');
+				let shouldHide = hidden.has(qid);
+				if (!shouldHide && collapsedLanes.size > 0) {
+					const sid = n.data('statusId') as number;
+					const s = sorted.find((x) => x.id === sid);
+					if (s && collapsedLanes.has(s.slug)) shouldHide = true;
+				}
+				n.style('display', shouldHide ? 'none' : 'element');
 			});
 		});
 		// lane DIV: laneHidden true 인 lane 의 col + header 시각 처리.
@@ -880,7 +890,10 @@
 			allQuests[idx] = { ...allQuests[idx], status_id: s.id, status_slug: s.slug, status_name_en: s.name_en, status_name_ko: s.name_ko, status_color: s.color };
 		}
 		// DEV-056: status 가 바뀌면 그룹 분포 / hideGroup 평가 결과가 달라질 수 있음.
+		// DEV-105 fix9: 새 lane 이 collapsed 면 visualX 도 재계산 필요.
 		applyHideSettings();
+		applyLaneVisualCompression();
+		syncLanes();
 	}
 
 	async function applyRecord(record: HistoryRecord, direction: 'undo' | 'redo') {
@@ -2360,21 +2373,10 @@
 		}
 
 		// DEV-056: hide settings 적용. computeGroups → applyHideSettings.
+		// DEV-105 fix8/9: applyHideSettings 가 이제 collapsedLanes 도 인식 — 별도
+		// 코드 불필요.
 		groupOf = computeGroups(allQuests, allDependencies);
 		applyHideSettings();
-		// DEV-105 fix8: 영속에서 복원된 collapsedLanes 의 노드도 초기화 시 hide.
-		// 이전엔 영속 복원 후에도 init 이 노드 display 를 'element' 로 두어
-		// (Cytoscape 기본) collapsed lane 의 노드가 보드 진입 시 그대로 보임.
-		// applyHideSettings 이후에 명시적으로 collapse 노드 'none'.
-		if (collapsedLanes.size > 0) {
-			cy.nodes('[questId]').forEach((n) => {
-				const sid = n.data('statusId') as number;
-				const s = sorted.find((x) => x.id === sid);
-				if (s && collapsedLanes.has(s.slug)) {
-					n.style('display', 'none');
-				}
-			});
-		}
 		// DEV-067: visible lane 압축 (laneHidden 자리 회수). 노드 visual 좌표
 		// 일관 재계산. syncLanes 도 visible 압축 반영.
 		applyLaneVisualCompression();
