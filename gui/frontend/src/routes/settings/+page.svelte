@@ -40,6 +40,10 @@
 	// DEV-101 fix3: 즉시 반영 — store 가 source of truth, drag 중에도 매 step 적용.
 	// preview / displayScale wrapper 제거.
 
+	// DEV-052 / DEV-101 fix6: 탭 분리 — '정보' / '표시'.
+	type Tab = 'info' | 'display';
+	let activeTab = $state<Tab>('info');
+
 	// floating toast 닫기 — updateState 를 idle 로.
 	const dismissCheck = () => dismissUpdate();
 
@@ -69,14 +73,24 @@
 	<aside class="side">
 		<h1>설정</h1>
 		<nav>
-			<!-- DEV-086: '업데이트' 탭 제거 — 버튼은 정보 탭의 버전 아래로. 현재는
-			     '정보' 만. 추후 테마 / 언어 / 길드 규칙 등 추가 시 여기 나열.
-			     DEV-101: 단일 페이지 내 섹션 (탭 분리 X). -->
-			<button class="tab active">정보 / 표시</button>
+			<!-- DEV-052 / DEV-101 fix6: 탭 분리 — '정보' / '표시'. -->
+			<button
+				class="tab"
+				class:active={activeTab === 'info'}
+				onclick={() => (activeTab = 'info')}
+				aria-pressed={activeTab === 'info'}
+			>정보</button>
+			<button
+				class="tab"
+				class:active={activeTab === 'display'}
+				onclick={() => (activeTab = 'display')}
+				aria-pressed={activeTab === 'display'}
+			>표시</button>
 		</nav>
 	</aside>
 
 	<section class="panel">
+		{#if activeTab === 'info'}
 		<h2>정보</h2>
 		<dl class="info-grid">
 			<dt>앱 이름</dt>
@@ -99,9 +113,10 @@
 			<dt>저장소</dt>
 			<dd><a href={repoUrl} target="_blank" rel="noreferrer noopener">{repoUrl}</a></dd>
 		</dl>
+		{:else}
 
 		<!-- DEV-101: UI 크기 (rem scale) — 슬라이더 변경 시 즉시 반영. -->
-		<h2 class="section">표시</h2>
+		<h2>표시</h2>
 		<dl class="info-grid">
 			<dt>UI 크기</dt>
 			<dd class="ui-scale">
@@ -196,10 +211,11 @@
 					{/each}
 				</div>
 				<p class="scale-hint">
-					CSS 토큰 기반 — 일부 컴포넌트는 hardcoded 색이라 점진 마이그레이션 중. 시스템 모드는 OS 설정 따라 자동 전환.
+					CSS 토큰 기반 — 시스템 모드는 OS 설정 따라 자동 전환.
 				</p>
 			</dd>
 		</dl>
+		{/if}
 	</section>
 </div>
 
@@ -358,12 +374,7 @@
 	}
 	.upd-toast .btn-primary { margin-top: 0.5rem; }
 
-	/* DEV-101: 표시 섹션 — UI 크기 슬라이더. */
-	.panel h2.section {
-		margin: 1.75rem 0 1rem;
-		padding-top: 1rem;
-		border-top: 1px solid var(--bg-subtle);
-	}
+	/* DEV-101 fix6: 탭 분리 후 h2.section 구분선 불필요 — 비워둠. */
 	.ui-scale .scale-row {
 		display: flex;
 		align-items: center;
