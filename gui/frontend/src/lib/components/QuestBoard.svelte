@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import { get } from 'svelte/store';
-	import cytoscape from 'cytoscape';
-	import type { Core, NodeSingular } from 'cytoscape';
+	// DEV-026: cytoscape 는 ~600KB 청크 — board route 진입 시 동적 import.
+	// 타입은 erased 라 정적 import 유지, 런타임은 lazy. 반복 호출 시 Vite 가
+	// Promise 캐싱하므로 별도 캐시 불필요.
+	import type { Core, NodeSingular, Css, StylesheetJson } from 'cytoscape';
 	import { goto } from '$app/navigation';
 	import { questsApi } from '$lib/api/quests';
 	import { metaApi } from '$lib/api/meta';
@@ -1517,7 +1519,7 @@
 	// DEV-074 fix3: Cytoscape style 의 색 값 — theme 별 hex 직접 명시.
 	// `var(--bg)` 같은 CSS 변수는 Cytoscape style 시스템이 컴퓨팅 못 함 (DEV-074
 	// 코멘트 참조) → 모든 색을 명시 hex 로 지정 + theme 변경 시 cy.style() 교체.
-	function buildCyStyle(eff: 'dark' | 'light'): cytoscape.StylesheetJson {
+	function buildCyStyle(eff: 'dark' | 'light'): StylesheetJson {
 		// 토큰 미러 (global.css 와 동기 — 변경 시 둘 다 갱신).
 		const bg = eff === 'light' ? '#ffffff' : '#0d1117';
 		const accent = eff === 'light' ? '#0969da' : '#58a6ff';
@@ -1565,27 +1567,27 @@
 					'shadow-opacity': 0.85,
 					'shadow-offset-x': 0,
 					'shadow-offset-y': 0
-				} as cytoscape.Css.Node
+				} as Css.Node
 			},
 			{
 				selector: 'node[questId][highlightType = "pre"]',
-				style: { 'background-color': preBg, 'border-color': preBorder, 'border-width': 3, 'shadow-blur': 12, 'shadow-color': preBorder, 'shadow-opacity': 0.65, 'shadow-offset-x': 0, 'shadow-offset-y': 0 } as cytoscape.Css.Node
+				style: { 'background-color': preBg, 'border-color': preBorder, 'border-width': 3, 'shadow-blur': 12, 'shadow-color': preBorder, 'shadow-opacity': 0.65, 'shadow-offset-x': 0, 'shadow-offset-y': 0 } as Css.Node
 			},
 			{
 				selector: 'node[questId][highlightType = "sub"]',
-				style: { 'background-color': subBg, 'border-color': subBorder, 'border-width': 3, 'shadow-blur': 12, 'shadow-color': subBorder, 'shadow-opacity': 0.65, 'shadow-offset-x': 0, 'shadow-offset-y': 0 } as cytoscape.Css.Node
+				style: { 'background-color': subBg, 'border-color': subBorder, 'border-width': 3, 'shadow-blur': 12, 'shadow-color': subBorder, 'shadow-opacity': 0.65, 'shadow-offset-x': 0, 'shadow-offset-y': 0 } as Css.Node
 			},
 			{
 				selector: 'node[questId][highlightType = "next"]',
-				style: { 'background-color': nextBg, 'border-color': nextBorder, 'border-width': 3, 'shadow-blur': 12, 'shadow-color': nextBorder, 'shadow-opacity': 0.65, 'shadow-offset-x': 0, 'shadow-offset-y': 0 } as cytoscape.Css.Node
+				style: { 'background-color': nextBg, 'border-color': nextBorder, 'border-width': 3, 'shadow-blur': 12, 'shadow-color': nextBorder, 'shadow-opacity': 0.65, 'shadow-offset-x': 0, 'shadow-offset-y': 0 } as Css.Node
 			},
 			{
 				selector: 'node[questId][highlightType = "parent"]',
-				style: { 'background-color': parentBg, 'border-color': success, 'border-width': 3, 'shadow-blur': 12, 'shadow-color': success, 'shadow-opacity': 0.65, 'shadow-offset-x': 0, 'shadow-offset-y': 0 } as cytoscape.Css.Node
+				style: { 'background-color': parentBg, 'border-color': success, 'border-width': 3, 'shadow-blur': 12, 'shadow-color': success, 'shadow-opacity': 0.65, 'shadow-offset-x': 0, 'shadow-offset-y': 0 } as Css.Node
 			},
 			{
 				selector: 'node[questId][highlightType = "dim"]',
-				style: { opacity: 0.15 } as cytoscape.Css.Node
+				style: { opacity: 0.15 } as Css.Node
 			},
 			{
 				selector: 'node[questId]:selected',
@@ -1598,7 +1600,7 @@
 					'shadow-opacity': 0.65,
 					'shadow-offset-x': 0,
 					'shadow-offset-y': 0
-				} as cytoscape.Css.Node
+				} as Css.Node
 			},
 			{
 				selector: 'node[questId][?flash]',
@@ -1610,7 +1612,7 @@
 					'shadow-opacity': 1,
 					'shadow-offset-x': 0,
 					'shadow-offset-y': 0
-				} as cytoscape.Css.Node
+				} as Css.Node
 			},
 			{ selector: 'edge[?dimmed]', style: { opacity: 0.07 } },
 			{
@@ -1713,7 +1715,7 @@
 			questsApi.listPositions(),
 			questsApi.listDependencies()
 		]);
-		init(quests, statuses, positions, dependencies);
+		await init(quests, statuses, positions, dependencies);
 		// init 직후 store 에 flash id 가 이미 있으면 즉시 처리
 		//  (Nav 의 New Quest 모달 → goto → 보드 페이지 도착 흐름)
 		const pending = get(flashQuestId);
@@ -2057,12 +2059,14 @@
 
 	// ── Cytoscape 초기화 ────────────────────────────────────────
 
-	function init(
+	async function init(
 		quests: Quest[],
 		statuses: QuestStatus[],
 		positions: QuestPosition[],
 		dependencies: QuestDependency[]
 	) {
+		// DEV-026: cytoscape 동적 import — board 진입 시점에 fetch.
+		const { default: cytoscape } = await import('cytoscape');
 		// DEV-059: 사용자가 lane 순서 바꾼 결과 (localStorage) 가 있으면 그것 우선,
 		// 없는 status (새로 추가됨) 는 sort_order 기준으로 뒤에 append.
 		const userOrder = loadLaneOrder();
