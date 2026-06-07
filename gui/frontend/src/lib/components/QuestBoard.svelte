@@ -591,6 +591,25 @@
 		return sorted.filter((s) => !getHideSetting(s.slug).laneHidden).length;
 	}
 
+	/**
+	 * DEV-105 fix10: 가변 폭 (collapsed lane) 인식하는 visual X → visible lane idx.
+	 * 이전엔 `Math.floor(x / LANE_STRIDE)` 균등 stride 가정 → collapsed lane 의
+	 * 시각 영역 (40px) 뒤로 클릭/드롭해도 같은 lane 으로 잡혀 "실제 영역은
+	 * 그대로 차지" 현상.
+	 */
+	function visibleLaneIdxAtVisualX(visualX: number): number {
+		let left = 0;
+		let visIdx = 0;
+		for (const s of sorted) {
+			if (getHideSetting(s.slug).laneHidden) continue;
+			const stride = laneStride(s.slug);
+			if (visualX < left + stride) return visIdx;
+			left += stride;
+			visIdx++;
+		}
+		return Math.max(0, visIdx - 1);
+	}
+
 	/** 모든 노드의 visual position 을 현재 hide settings 기준으로 재계산.
 	 * 노드 data.absX 가 진리원 (DB 와 같은 좌표계). */
 	function applyLaneVisualCompression() {
@@ -810,8 +829,9 @@
 		const cellW = NODE_W + NODE_GAP;
 		const cellH = NODE_H + NODE_GAP;
 		// DEV-067: input x 는 visual. visible lane idx → status → absolute lane idx.
+		// DEV-105 fix10: 가변 폭 collapsed lane 인식 — 균등 LANE_STRIDE 가정 제거.
 		const visCount = Math.max(1, visibleLaneCount());
-		const visIdx = Math.max(0, Math.min(visCount - 1, Math.floor(x / LANE_STRIDE)));
+		const visIdx = Math.max(0, Math.min(visCount - 1, visibleLaneIdxAtVisualX(x)));
 		const statusId = statusIdAtVisibleIdx(visIdx);
 		const li = statusId !== null ? (laneOf.get(statusId) ?? 0) : 0;
 		const cols = laneCols[li] ?? 2;
@@ -2215,8 +2235,9 @@
 				const pos = n.position();
 				// DEV-067: visual idx → status_id → absolute lane idx.
 				// pos.x 는 visual 좌표 — visible lane 기준 idx 가 사용자 시각의 lane.
+				// DEV-105 fix10: 가변 폭 collapsed lane 인식.
 				const visMax = Math.max(0, visibleLaneCount() - 1);
-				const visIdx = Math.max(0, Math.min(Math.floor(pos.x / LANE_STRIDE), visMax));
+				const visIdx = Math.max(0, Math.min(visibleLaneIdxAtVisualX(pos.x), visMax));
 				const targetStatusId = statusIdAtVisibleIdx(visIdx) ?? fromState.statusId;
 				const li = laneOf.get(targetStatusId) ?? 0;
 				pendingDragBatch.push({
@@ -2467,8 +2488,17 @@
 	</div>
 	{/if}
 
+	<!-- DEV-073 fix3: New Quest 는 상단 우측 고정 (항상 노출), 나머지 도구바는
+	     그 아래로 내림 (사용자 피드백). 접기 토글로 도구만 숨길 수 있음. -->
+	{#if onNewQuest}
+		<div class="tb-newquest-wrap">
+			<button class="tb-btn tb-new" onclick={onNewQuest} title="새 퀘스트">
+				<span class="icon">+</span><span>New Quest</span>
+			</button>
+		</div>
+	{/if}
 	<!-- 툴바 — DEV-073: collapsed 시 ⊟ 토글만 보이고 나머지 숨김 (lane header 안 가림). -->
-	<div class="toolbar" class:collapsed={toolbarCollapsed}>
+	<div class="toolbar" class:collapsed={toolbarCollapsed} class:has-newquest={!!onNewQuest}>
 		<button
 			class="tb-btn tb-collapse"
 			onclick={toggleToolbarCollapsed}
@@ -2545,14 +2575,6 @@
 					<option value="all">All</option>
 				</select>
 			</div>
-			{#if onNewQuest}
-				<div class="tb-sep"></div>
-				<!-- DEV-084: New Quest — toolbar 제일 오른쪽. 다른 tb-btn 과 동일 톤이되
-				     primary 강조 (생성 액션). -->
-				<button class="tb-btn tb-new" onclick={onNewQuest} title="새 퀘스트">
-					<span class="icon">+</span><span>New Quest</span>
-				</button>
-			{/if}
 		{/if}
 	</div>
 </div>
@@ -2943,26 +2965,24 @@
 	}
 
 	/* ── 툴바 (z:10) ── */
-	.toolbar {
+	/* DEV-073 fix3: New Quest 는 상단 고정, 나머지 도구바는 그 아래로. */
+	.tb-newquest-wrap {
 		position: absolute; top: 10px; right: 14px;
-		z-index: 10; display: flex; align-items: flex-end; gap: 4px;
+		z-index: 10;
 		pointer-events: auto;
 	}
-	/* DEV-073: collapsed 시 ⊟ 한 버튼만. */
+	.toolbar {
+		position: absolute; top: 10px; right: 14px;
+		z-index: 10; display: flex; align-items: center; gap: 4px;
+		pointer-events: auto;
+	}
+	/* New Quest 가 있으면 도구바를 그 아래로 내림 — 새 퀘스트 버튼 높이 (~32px) + 여백. */
+	.toolbar.has-newquest {
+		top: 50px;
+	}
+	/* DEV-073: collapsed 시 ⊟ 한 버튼만. 배경 / 그림자도 최소화해서 lane 영역 가림 최소. */
 	.toolbar.collapsed {
 		gap: 0;
-	}
-	/* DEV-073 fix2: 펼친 도구바 — 세로 배치. 가로로 펼쳐지면 레인 라벨과 겹쳐
-	   시인성 안 좋다는 사용자 피드백 → column 방향 + 패널 배경. */
-	.toolbar:not(.collapsed) {
-		flex-direction: column;
-		align-items: stretch;
-		padding: 4px;
-		background: color-mix(in srgb, var(--bg-elevated) 95%, transparent);
-		border: 1px solid var(--border);
-		border-radius: 8px;
-		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
-		max-width: 13rem;
 	}
 	/* DEV-073: 접기 토글 — 항상 표시. */
 	.tb-btn.tb-collapse {
@@ -3001,8 +3021,7 @@
 	.tb-btn.tb-new:hover:not(:disabled) {
 		background: var(--btn-primary-bg-hover); border-color: var(--btn-primary-border-hover);
 	}
-	/* DEV-073 fix2: column 도구바에선 가로 구분선. */
-	.tb-sep { height: 1px; background: var(--border); align-self: stretch; margin: 2px 0; }
+	.tb-sep { width: 1px; background: var(--border); align-self: stretch; margin: 2px 0; }
 	.tb-select {
 		padding: 3px 6px;
 		background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 6px;
