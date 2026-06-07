@@ -239,6 +239,36 @@ openguild/
 >   hideGroup/hideSolo 회귀 fix.
 > - 2026-06-07 DEV-113 등록: `[gui] 원격 서버 모드` (DEV-088 하위).
 > - 2026-06-07 DEV-114 등록: `[gui] 커스텀 테마` (사용자 토큰 색 자유 정의).
+> - 2026-06-07 DEV-052 fix: welcome 페이지 우상단 ⚙ 설정 링크 (Nav 숨김 상태).
+> - 2026-06-07 DEV-101 fix6~8: 설정 페이지 탭 분리 / 슬라이더 step 세분화 + 직접
+>   숫자 입력 / Nav height rem 화 / lane 헤더 내부 폰트·padding rem.
+> - 2026-06-07 DEV-074 fix11~17: 전역 체크박스 custom (`appearance:none`) /
+>   `<main>` 배경 / Welcome `--content-max-width` / window 진짜 overlay
+>   scrollbar (`OverlayScrollbar` 컴포넌트, html scrollbar 숨김 + transform 기반
+>   GPU composite) / QuestList / CodeMirror / Combobox / UpdateBanner / Settings
+>   toast / Quest 삭제 모달 list 에 overlay scrollbar.
+> - 2026-06-07 DEV-073 fix2~3: Quest Board 도구바 — New Quest 상단 고정 + 나머지
+>   는 그 아래 (가로) + 접을 수 있음.
+> - 2026-06-07 DEV-093 fix2-test: 캠페인 완료 판정 로직 `lib/utils/campaign-progress`
+>   로 추출 + vitest 회귀 10건.
+> - 2026-06-07 DEV-105 fix8~14: 보드 진입 시 collapsed lane 노드 hide / 가변 폭
+>   visual lane idx (collapsed 영역 클릭/드롭 회귀 fix) / drag 중 lane 강조 /
+>   grid snap SVG zoom·cols 캐시 / 세로 pan 추적 transform 기반 / wrappedBgY
+>   modulo cellH 로 dot 위치 정확도.
+> - 2026-06-07 DEV-026: cytoscape 동적 import — board route node chunk 646KB → 45KB.
+> - 2026-06-07 DEV-111: markdown 안 mermaid 다이어그램 렌더 (lazy import) — theme
+>   별 dark/default 분기.
+> - 2026-06-07 DEV-112: Quest Board 노드 배경 투명도 — `background-opacity: 0.92`
+>   + `background-image-opacity: 0.88` (border 는 opaque).
+> - 2026-06-07 DEV-115 등록 + 구현: Quest Board 의 최근 움직인 노드를 위로
+>   (z-index 단조 증가, drag / undo / redo 모두).
+> - 2026-06-07 DEV-109: Quest Detail 본문이 길 때 우하단 floating `↓ 댓글` 점프
+>   버튼 (anchor 의 viewport 위치 추적).
+> - 2026-06-07 DEV-107 fix1: 댓글 / 메모 섹션 접기 — 사용자 피드백 반영 영속
+>   localStorage 제거 + 답글 단위 접기 (root 별 `collapsedRoots: Set<number>`).
+> - 2026-06-07 BUG-020 fix2: arrangeNodesGrouped 의 cluster 식별을 lane-local BFS
+>   가 아닌 GLOBAL `groupOf` (cross-lane 포함 전체 의존 그래프) 기반으로 변경.
+>   같은 외부 그룹의 lane 멤버가 같은 cluster 직사각형 공유.
 >
 > 자세한 설계 근거: `docs/architecture-refactor.md`, `docs/storage-design.md`.
 
@@ -382,14 +412,23 @@ Backend 추상화는 `cli/src/main.rs` 의 `Backend` enum. 로컬은 `--guild` �
 - ✅ 태그 (DEV-068) — frontmatter + DB cache + 풀스택 (CLI / HTTP / GUI).
 - ✅ 캠페인 quest 진행도 (DEV-093) — status.counts_as_done + 모든 layer.
 - ✅ 다크 / 라이트 / 시스템 테마 (DEV-074) — CSS variable backbone + 마이그레이션.
-  본 라운드 (fix2~10) 에서 토큰 확장: `--btn-primary-*` (primary 액션 버튼 통일,
-  light 명도 ↑), `--btn-warning-*` (admin 복원), `--card-hl-*` (Home 의 overdue /
-  completed 카드 그라데이션), `--scrollbar-thumb*` (전역 thin 스크롤바),
-  `--content-max-width` (DEV-101 컨텐츠 폭 슬라이더). 신규 컴포넌트는 토큰만 참조 —
+  fix2~10 에서 토큰 확장: `--btn-primary-*` (primary 액션 버튼 통일, light 명도 ↑),
+  `--btn-warning-*` (admin 복원), `--card-hl-*` (Home 의 overdue / completed 카드
+  그라데이션), `--scrollbar-thumb*` (전역 thin 스크롤바), `--content-max-width`
+  (DEV-101 컨텐츠 폭 슬라이더). fix11~17 에서 전역 체크박스 custom +
+  `OverlayScrollbar` 컴포넌트 (window / 임의 컨테이너 양쪽 지원, transform 기반
+  GPU composite, `target?: HTMLElement` prop). 신규 컴포넌트는 토큰만 참조 —
   `:global([data-theme='light']) .x` 직접 override 금지.
 - ✅ Quest List Tree / List 토글 (DEV-065).
 - ✅ Quest Detail 후속 퀘스트 (DEV-070).
-- ✅ Quest Board toolbar 접기 (DEV-073), arrangeNodesGrouped 개선 (DEV-077).
+- ✅ Quest Board toolbar 접기 (DEV-073, fix2~3: New Quest 상단 고정 + 도구바 그
+  아래), arrangeNodesGrouped 개선 (DEV-077 + BUG-020 fix2: GLOBAL groupOf 기반
+  cluster 식별 — 같은 외부 그룹의 lane 멤버는 같은 cluster 직사각형 공유).
+- ✅ 노드 시각 polish: 배경 alpha 0.92 (DEV-112) + 최근 움직인 노드 z-index ↑
+  (DEV-115) + drag 중 lane 강조 (DEV-105 fix11).
+- ✅ Quest Detail 댓글 / 메모 (DEV-107 fix1): 섹션 접기 + 답글 단위 접기 (영속 X).
+  본문이 길 때 우하단 floating `↓ 댓글` 점프 버튼 (DEV-109).
+- ✅ Markdown 안 mermaid 다이어그램 (DEV-111) — lazy import, theme dark / default.
 - 캠페인 댓글 / 메모 (DEV-100) — quest 와 동일 패턴.
 - 다국어 (DEV-015) — i18n backbone 부터.
 - 첨부파일 (DEV-069) — 새 기능.
