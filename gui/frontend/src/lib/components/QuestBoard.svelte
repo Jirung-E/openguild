@@ -2014,6 +2014,14 @@
 		});
 	}
 
+	// DEV-105 fix12: grid snap SVG 의 zoom/cols 별 캐시 — pan 도중엔 재생성 안 함.
+	// 이전엔 매 pan 이벤트마다 lane 마다 encodeURIComponent + setBackgroundImage 발생 →
+	// snap dot 표시가 빠른 pan 을 못 따라옴. 캐시는 (laneIdx → {zoom, cols, dataUri, svgW, svgH, bgX}).
+	const gridBgCache = new Map<
+		number,
+		{ zoom: number; cols: number; dataUri: string; svgW: number; svgH: number; bgX: number }
+	>();
+
 	function syncLanes() {
 		if (!cy) return;
 		const pan = cy.pan(), zoom = cy.zoom();
@@ -2041,31 +2049,38 @@
 			curLeft += w + LANE_GAP;
 			if (gridSnap) {
 				const cols = laneCols[i] ?? 2;
-				// 첫 dot center (lane-col local X) = laneFirstCellX - i*LANE_STRIDE (보드→local 변환 후 zoom)
-				const firstCxLocal = (laneFirstCellX(i, cols) - i * LANE_STRIDE) * zoom;
 				const cellWPx = (NODE_W + NODE_GAP) * zoom;
-				// SVG 너비 = cols * cellW (각 dot 셀 가로폭). 첫 dot 은 셀 0 의 중앙.
-				const svgW = cellWPx * cols;
-				const svgH = cellHPx;
-				const dots = Array.from({ length: cols }, (_, c) => {
-					const cx = c * cellWPx + cellWPx / 2;
-					const cy = cellHPx / 2;
-					return `<circle cx="${cx}" cy="${cy}" r="${dotR}" fill="rgba(245,166,35,0.55)"/>`;
-				}).join('');
-				const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${svgW}' height='${svgH}'>${dots}</svg>`;
-				const dataUri = `url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}")`;
-
-				// background-position: SVG 의 좌상단 = 첫 dot center - cellW/2 (가로), 첫 dot center Y - cellH/2 (세로)
+				const cached = gridBgCache.get(i);
+				let entry: typeof cached;
+				if (cached && cached.zoom === zoom && cached.cols === cols) {
+					entry = cached;
+				} else {
+					// zoom 또는 cols 변경 — SVG 재생성. 첫 dot center (lane-col local X) =
+					// laneFirstCellX - i*LANE_STRIDE (보드→local 변환 후 zoom).
+					const firstCxLocal = (laneFirstCellX(i, cols) - i * LANE_STRIDE) * zoom;
+					const svgW = cellWPx * cols;
+					const svgH = cellHPx;
+					const dots = Array.from({ length: cols }, (_, c) => {
+						const cx = c * cellWPx + cellWPx / 2;
+						const cy = cellHPx / 2;
+						return `<circle cx="${cx}" cy="${cy}" r="${dotR}" fill="rgba(245,166,35,0.55)"/>`;
+					}).join('');
+					const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${svgW}' height='${svgH}'>${dots}</svg>`;
+					const dataUri = `url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}")`;
+					const bgX = firstCxLocal - cellWPx / 2;
+					entry = { zoom, cols, dataUri, svgW, svgH, bgX };
+					gridBgCache.set(i, entry);
+					col.style.backgroundImage = dataUri;
+					col.style.backgroundSize = `${svgW}px ${svgH}px`;
+					col.style.backgroundRepeat = 'repeat-y';
+				}
+				// pan 만 변해도 backgroundPosition 의 Y 갱신 — 캐시된 svg/size 그대로.
 				const localCyPx = (LANE_TOP + 16 + NODE_H / 2) * zoom + pan.y;
-				const bgX = firstCxLocal - cellWPx / 2;
 				const bgY = localCyPx - cellHPx / 2;
-				col.style.backgroundImage = dataUri;
-				col.style.backgroundSize = `${svgW}px ${svgH}px`;
-				col.style.backgroundPosition = `${bgX}px ${bgY}px`;
-				// 가로는 한 번만, 세로는 반복
-				col.style.backgroundRepeat = 'repeat-y';
+				col.style.backgroundPosition = `${entry.bgX}px ${bgY}px`;
 			} else {
 				col.style.backgroundImage = '';
+				gridBgCache.delete(i);
 			}
 		});
 		// DEV-067: header 도 visible 압축. DEV-105: collapsed lane 폭 적용.
