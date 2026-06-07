@@ -10,6 +10,8 @@
 	import type { QuestTagDef } from '$lib/types';
 	// DEV-074 fix4: CodeMirror oneDark 는 라이트모드에 부적합 — theme 따라 분기.
 	import { theme, resolveTheme } from '$lib/stores/theme';
+	// DEV-074 fix15: 편집창 native scrollbar 대신 overlay.
+	import OverlayScrollbar from '$lib/components/OverlayScrollbar.svelte';
 	// BUG-021 fix1: marked 직접 호출 대신 공유 컴포넌트 MarkdownView 사용.
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	import { EditorView, basicSetup } from 'codemirror';
@@ -96,6 +98,8 @@
 	// CodeMirror
 	let editorContainer: HTMLDivElement | undefined = $state(undefined);
 	let editorView: EditorView | null = null;
+	// DEV-074 fix15: `.cm-scroller` 의 OverlayScrollbar target.
+	let cmScroller: HTMLElement | null = $state(null);
 
 	let sortedStatuses = $derived([...statuses].sort((a, b) => a.sort_order - b.sort_order));
 
@@ -250,6 +254,8 @@
 			],
 			parent: editorContainer
 		});
+		// DEV-074 fix15: .cm-scroller ref → OverlayScrollbar target.
+		cmScroller = editorContainer.querySelector('.cm-scroller') as HTMLElement | null;
 		// 사용자가 resize 핸들로 크기 바꿀 때마다 영속화.
 		editorResizeObserver?.disconnect();
 		editorResizeObserver = new ResizeObserver((entries) => {
@@ -261,6 +267,7 @@
 	}
 
 	function exitEditMode() {
+		cmScroller = null;
 		editorView?.destroy();
 		editorView = null;
 		editorResizeObserver?.disconnect();
@@ -681,6 +688,10 @@
 				<label class="field-label">
 					<span>설명 (Markdown)</span>
 					<div class="editor-wrap" bind:this={editorContainer}></div>
+					<!-- DEV-074 fix15: CodeMirror native scrollbar 대신 overlay. -->
+					{#if cmScroller}
+						<OverlayScrollbar target={cmScroller} />
+					{/if}
 				</label>
 
 				{#if saveError}<p class="save-error">{saveError}</p>{/if}
@@ -1290,6 +1301,9 @@
 	}
 	.editor-wrap :global(.cm-editor) { outline: none; }
 	.editor-wrap :global(.cm-editor.cm-focused) { outline: none; border: none; }
+	/* DEV-074 fix15: native scrollbar 숨김 — OverlayScrollbar 가 대신 그림. */
+	.editor-wrap :global(.cm-scroller) { scrollbar-width: none; }
+	.editor-wrap :global(.cm-scroller::-webkit-scrollbar) { display: none; }
 	.save-error { color: var(--danger); font-size: 0.8rem; margin: 0; }
 	.edit-actions { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
 	.btn-save {

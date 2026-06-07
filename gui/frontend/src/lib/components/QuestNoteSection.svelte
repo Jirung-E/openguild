@@ -20,6 +20,8 @@
 	import { oneDark } from '@codemirror/theme-one-dark';
 	// DEV-074 fix4: light theme 에선 oneDark 안 적용.
 	import { theme, resolveTheme } from '$lib/stores/theme';
+	// DEV-074 fix15: CodeMirror native scrollbar 대신 overlay.
+	import OverlayScrollbar from './OverlayScrollbar.svelte';
 
 	// `mode` prop 은 호환성을 위해 받지만 동작 분기 X — 항상 memo.
 	// svelte 가 "초기값만 캡쳐" 경고 안 내도록 destructure 에서 제외.
@@ -43,6 +45,8 @@
 
 	let editorContainer: HTMLDivElement | undefined = $state(undefined);
 	let editorView: EditorView | null = null;
+	// DEV-074 fix15: `.cm-scroller` ref.
+	let cmScroller: HTMLElement | null = $state(null);
 
 	const EDITOR_HEIGHT_KEY = 'openguild.questEditorHeight';
 	function loadEditorHeight(): number {
@@ -104,6 +108,8 @@
 			],
 			parent: editorContainer
 		});
+		// DEV-074 fix15: .cm-scroller ref → OverlayScrollbar target.
+		cmScroller = editorContainer.querySelector('.cm-scroller') as HTMLElement | null;
 	}
 
 	// DEV-074 fix4: theme 변경 시 편집 중이면 editor 재생성.
@@ -116,6 +122,7 @@
 	});
 
 	function cancelEdit() {
+		cmScroller = null;
 		editorView?.destroy();
 		editorView = null;
 		editMode = false;
@@ -161,6 +168,10 @@
 		<label class="field-label">
 			<span>{label.help}</span>
 			<div class="editor-wrap" bind:this={editorContainer}></div>
+			<!-- DEV-074 fix15: CodeMirror native scrollbar 대신 overlay. -->
+			{#if cmScroller}
+				<OverlayScrollbar target={cmScroller} />
+			{/if}
 		</label>
 		<div class="actions">
 			<button class="btn-save" onclick={save} disabled={saving}>
@@ -217,6 +228,9 @@
 		overflow: hidden; min-height: 180px; max-height: 90vh;
 		resize: vertical;
 	}
+	/* DEV-074 fix15: native scrollbar 숨김 — OverlayScrollbar 가 대신 그림. */
+	.editor-wrap :global(.cm-scroller) { scrollbar-width: none; }
+	.editor-wrap :global(.cm-scroller::-webkit-scrollbar) { display: none; }
 
 	.actions { display: flex; gap: 0.4rem; margin-top: 0.5rem; }
 	.btn-save {
