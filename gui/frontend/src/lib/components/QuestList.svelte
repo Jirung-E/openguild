@@ -352,7 +352,9 @@
 		color: var(--danger);
 	}
 
-	/* DEV-065: 뷰 모드 토글 — segmented 컨트롤. */
+	/* DEV-065: 뷰 모드 토글 — segmented 컨트롤.
+	   DEV-065 fix: padding 추가 — filter-bar (`padding-left: 1.5rem`) /
+	   QuestListItem (`padding-left: 1rem+depth`) 와 시각 정렬. */
 	.view-toggle-row {
 		display: flex;
 		justify-content: flex-start;
@@ -360,6 +362,7 @@
 		flex-wrap: wrap;
 		gap: 0.75rem;
 		margin: 0.4rem 0 0.75rem;
+		padding: 0 1.5rem;
 	}
 
 	/* DEV-068: tag filter chip 들 — view-toggle 옆 inline. */
