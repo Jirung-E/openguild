@@ -205,8 +205,15 @@
 
 <main class="welcome">
 	<header>
-		<h1>openguild</h1>
-		<p class="sub">최근 작업한 길드</p>
+		<div class="title-row">
+			<div>
+				<h1>openguild</h1>
+				<p class="sub">최근 작업한 길드</p>
+			</div>
+			<!-- DEV-052 fix: welcome 에서도 설정 (테마 / UI 크기 등) 접근 가능해야 함.
+				 Nav 가 가려져 있으므로 페이지 자체에 톱니바퀴. -->
+			<a class="settings-link" href="/settings" title="설정" aria-label="설정">⚙</a>
+		</div>
 	</header>
 
 	{#if env === 'tauri'}
@@ -362,11 +369,37 @@
 	header h1 {
 		margin: 0;
 		font-size: 2rem;
-		color: #4a90d9;
+		color: var(--accent);
 	}
 	header .sub {
 		margin: 0.25rem 0 1.5rem;
 		color: var(--text-muted);
+	}
+	/* DEV-052 fix: welcome 의 설정 진입 — 우상단 톱니바퀴. */
+	header .title-row {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 1rem;
+	}
+	.settings-link {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 2.25rem;
+		height: 2.25rem;
+		border-radius: 8px;
+		text-decoration: none;
+		color: var(--text-muted);
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		font-size: 1.1rem;
+		transition: background 0.1s, color 0.1s, border-color 0.1s;
+	}
+	.settings-link:hover {
+		color: var(--text);
+		background: var(--bg-subtle);
+		border-color: var(--text-faint);
 	}
 	.recent-list {
 		list-style: none;
