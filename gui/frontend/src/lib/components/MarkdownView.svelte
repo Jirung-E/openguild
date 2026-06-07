@@ -19,6 +19,18 @@
 	// 매 effect 실행 시 mermaid 블록 탐지 + 렌더. id 충돌 방지용 counter.
 	let renderCounter = 0;
 
+	// DEV-111 fix1: mermaid.render() 는 임시 컨테이너를 body 에 만들어 SVG 를
+	// 그리는데, syntax error 시 그 임시 div 에 bomb 아이콘 + "Syntax error in
+	// text mermaid version X.Y.Z" 를 그려놓고 throw 한다. 우리 catch 는 throw
+	// 만 잡고 댓글 안의 <pre> 만 교체하므로 body 끝의 leftover 가 남아
+	// 페이지 최하단에 폭탄이 계속 보임. SPA 라우트 전환에도 사라지지 않아
+	// markdown preview 없는 페이지에서도 보였음.
+	//
+	// 수정:
+	//   (A) mermaid.parse(code, { suppressErrors: true }) 로 render 전 검증.
+	//       false 면 render 자체를 부르지 않음 — DOM 오염 X.
+	//   (B) 안전망: render 실패 시 mermaid 가 만들었을 수 있는 임시 노드를
+	//       id 기준으로 직접 제거.
 	async function renderMermaidBlocks() {
 		if (!container) return;
 		const blocks = container.querySelectorAll<HTMLElement>('pre > code.language-mermaid');
@@ -35,20 +47,44 @@
 			const pre = block.parentElement;
 			if (!pre) continue;
 			const code = block.innerText;
+			const id = `mm-${++renderCounter}-${Math.random().toString(36).slice(2, 8)}`;
+			// (A) parse pre-check — syntax error 시 render 안 부름.
+			let parseOk = true;
+			let parseErr: unknown = null;
 			try {
-				const id = `mm-${++renderCounter}-${Math.random().toString(36).slice(2, 8)}`;
+				const res = await mermaid.parse(code, { suppressErrors: true });
+				parseOk = res !== false;
+			} catch (e) {
+				// suppressErrors:true 면 throw 안 하지만 방어.
+				parseOk = false;
+				parseErr = e;
+			}
+			if (!parseOk) {
+				showInlineError(pre, parseErr ?? new Error('syntax error'));
+				continue;
+			}
+			try {
 				const { svg } = await mermaid.render(id, code);
 				const wrap = document.createElement('div');
 				wrap.className = 'mermaid-rendered';
 				wrap.innerHTML = svg;
 				pre.replaceWith(wrap);
 			} catch (e) {
-				const err = document.createElement('div');
-				err.className = 'mermaid-error';
-				err.textContent = `mermaid 렌더 실패: ${(e as Error).message}`;
-				pre.replaceWith(err);
+				showInlineError(pre, e);
+				// (B) 혹시 모를 leftover 정리. mermaid 가 만드는 임시 컨테이너 후보:
+				//   - `<svg id="${id}">` (render 호출 시 전달한 id)
+				//   - `<div id="d${id}">` (mermaid v11 의 hidden 임시 div)
+				document.getElementById(id)?.remove();
+				document.getElementById(`d${id}`)?.remove();
 			}
 		}
+	}
+
+	function showInlineError(pre: HTMLElement, e: unknown) {
+		const err = document.createElement('div');
+		err.className = 'mermaid-error';
+		err.textContent = `mermaid 렌더 실패: ${(e as Error)?.message ?? String(e)}`;
+		pre.replaceWith(err);
 	}
 
 	$effect(() => {

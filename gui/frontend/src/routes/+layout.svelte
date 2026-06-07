@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/stores';
+	import { afterNavigate } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import Nav from '$lib/components/Nav.svelte';
 	import UpdateBanner from '$lib/components/UpdateBanner.svelte';
@@ -23,6 +24,25 @@
 	// DEV-052 후속: /welcome 라우트에선 Nav (Board/List/Admin/+New Quest) 숨김.
 	// 길드 컨텍스트가 없는 상태에서 의미 없는 액션 노출 방지.
 	let showNav = $derived($page.url.pathname !== '/welcome');
+
+	// DEV-111 fix1: mermaid 가 render() 중 실패하면 body 끝에 leftover 임시
+	// 컨테이너 (bomb 아이콘 + "Syntax error in text mermaid version X.Y.Z") 가
+	// 남는다. SPA 라 라우트 전환에도 안 사라져 markdown preview 없는 페이지
+	// 에서도 보임. MarkdownView 의 parse pre-check 로 신규 leftover 는 막지만,
+	// 이전 코드에서 발생한 / 다른 경로로 생긴 leftover 까지 청소하기 위해
+	// 매 navigation 후 sweep.
+	function sweepMermaidLeftovers() {
+		if (typeof document === 'undefined') return;
+		// MarkdownView 가 발급한 id 패턴 = `mm-<n>-<rand>`.
+		// mermaid v11 가 만드는 임시 노드 후보: 같은 id 의 svg, `d` 프리픽스 div.
+		document
+			.querySelectorAll<HTMLElement>(
+				'body > svg[id^="mm-"], body > div[id^="dmm-"]'
+			)
+			.forEach((el) => el.remove());
+	}
+	onMount(sweepMermaidLeftovers);
+	afterNavigate(sweepMermaidLeftovers);
 
 	// DEV-101: UI 크기 — root font-size scale 영속 store 의 현재 값을 매 변경마다
 	// `<html>` 에 반영. HTTP / Tauri 양쪽 동일 (rem 기반 layout).
