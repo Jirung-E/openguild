@@ -361,7 +361,7 @@
 
 <style>
 	.welcome {
-		max-width: 720px;
+		max-width: var(--content-max-width, 720px);
 		margin: 0 auto;
 		padding: 2rem 1.5rem;
 		color: var(--text);
