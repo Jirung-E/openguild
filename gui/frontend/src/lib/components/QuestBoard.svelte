@@ -2938,12 +2938,24 @@
 	/* ── 툴바 (z:10) ── */
 	.toolbar {
 		position: absolute; top: 10px; right: 14px;
-		z-index: 10; display: flex; align-items: center; gap: 4px;
+		z-index: 10; display: flex; align-items: flex-end; gap: 4px;
 		pointer-events: auto;
 	}
-	/* DEV-073: collapsed 시 ⊟ 한 버튼만. 배경 / 그림자도 최소화해서 lane 영역 가림 최소. */
+	/* DEV-073: collapsed 시 ⊟ 한 버튼만. */
 	.toolbar.collapsed {
 		gap: 0;
+	}
+	/* DEV-073 fix2: 펼친 도구바 — 세로 배치. 가로로 펼쳐지면 레인 라벨과 겹쳐
+	   시인성 안 좋다는 사용자 피드백 → column 방향 + 패널 배경. */
+	.toolbar:not(.collapsed) {
+		flex-direction: column;
+		align-items: stretch;
+		padding: 4px;
+		background: color-mix(in srgb, var(--bg-elevated) 95%, transparent);
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+		max-width: 13rem;
 	}
 	/* DEV-073: 접기 토글 — 항상 표시. */
 	.tb-btn.tb-collapse {
@@ -2982,7 +2994,8 @@
 	.tb-btn.tb-new:hover:not(:disabled) {
 		background: var(--btn-primary-bg-hover); border-color: var(--btn-primary-border-hover);
 	}
-	.tb-sep { width: 1px; background: var(--border); align-self: stretch; margin: 2px 0; }
+	/* DEV-073 fix2: column 도구바에선 가로 구분선. */
+	.tb-sep { height: 1px; background: var(--border); align-self: stretch; margin: 2px 0; }
 	.tb-select {
 		padding: 3px 6px;
 		background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 6px;
