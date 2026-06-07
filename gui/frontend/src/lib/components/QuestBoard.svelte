@@ -872,6 +872,19 @@
 
 	// 드래그 시작 상태 (노드별 Map)
 	const dragStartMap = new Map<number, { x: number; y: number; statusId: number }>();
+	// DEV-105 fix11: 드래그 중인 노드가 놓일 예정인 lane 의 slug — UI 하이라이트용.
+	let dragHighlightSlug = $state<string | null>(null);
+	// slug 변경 시 lane-col DOM 에 `.drag-target` 토글. lanesEl 의 children 순서
+	// 가 sorted 와 동일 (buildLaneDivs).
+	$effect(() => {
+		const slug = dragHighlightSlug;
+		if (!lanesEl) return;
+		sorted.forEach((s, i) => {
+			const col = lanesEl.children[i] as HTMLDivElement | undefined;
+			if (!col) return;
+			col.classList.toggle('drag-target', slug !== null && s.slug === slug);
+		});
+	});
 	// 배치 dragfree 수집
 	type PendingDragItem = {
 		node: NodeSingular; questId: number;
@@ -2223,11 +2236,27 @@
 			});
 		});
 
+		// DEV-105 fix11: 드래그 중인 노드의 현재 visual 위치를 기반으로 놓일 lane
+		// 미리보기 — slug 설정 → CSS 가 `.lane-col.drag-target` 으로 강조.
+		cy.on('drag', 'node[questId]', (e) => {
+			if (dragStartMap.size === 0) return;
+			const n = e.target as NodeSingular;
+			const pos = n.position();
+			const visIdx = visibleLaneIdxAtVisualX(pos.x);
+			const sid = statusIdAtVisibleIdx(visIdx);
+			if (sid === null) return;
+			const s = sorted.find((x) => x.id === sid);
+			const slug = s?.slug ?? null;
+			if (slug !== dragHighlightSlug) dragHighlightSlug = slug;
+		});
+
 		cy.on('dragfree', 'node[questId]', () => {
 			// dragStartMap은 단일 source of truth.
 			// 첫 dragfree 이벤트 때 모든 항목을 일괄 처리하고 비운다.
 			// 이후 co-dragged 노드의 dragfree 이벤트가 추가로 와도 size===0이라 무시.
 			if (dragStartMap.size === 0) return;
+			// DEV-105 fix11: 드래그 끝 — 하이라이트 해제.
+			dragHighlightSlug = null;
 
 			for (const [qid, fromState] of dragStartMap) {
 				const n = cy!.getElementById(`q-${qid}`) as NodeSingular;
@@ -2703,6 +2732,12 @@
 		border-right: 1px solid var(--bg-subtle);
 		box-sizing: border-box;
 		pointer-events: none;
+		transition: background 0.12s, box-shadow 0.12s;
+	}
+	/* DEV-105 fix11: 드래그 중 노드가 놓일 lane 강조. */
+	:global(.lane-col.drag-target) {
+		background: color-mix(in srgb, var(--accent) 14%, var(--bg-elevated));
+		box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
 	}
 	:global(.lane-hdr) {
 		position: absolute; top: 0; height: 38px;
