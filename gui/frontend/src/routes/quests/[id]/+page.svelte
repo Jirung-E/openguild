@@ -103,6 +103,25 @@
 	// DEV-074 fix17: 삭제 cascade 모달의 sub-quest list overlay scrollbar.
 	let delSubListEl: HTMLUListElement | undefined = $state(undefined);
 
+	// DEV-109: 본문이 길 때 댓글로 점프하는 floating 버튼.
+	// commentsAnchorEl 의 viewport 내 위치를 onscroll 마다 체크 — viewport 아래
+	// (사용자가 댓글에 아직 안 닿음) 일 때만 버튼 노출.
+	let commentsAnchorEl: HTMLDivElement | undefined = $state(undefined);
+	let showCommentsJump = $state(false);
+	function checkCommentsJumpVisibility() {
+		if (!commentsAnchorEl) {
+			showCommentsJump = false;
+			return;
+		}
+		const rect = commentsAnchorEl.getBoundingClientRect();
+		// 앵커의 top 이 viewport 하단보다 아래 → 사용자가 아직 댓글까지 스크롤 안 함.
+		// 또 본문이 충분히 길어야 (앵커가 viewport 한 화면 만큼 아래) 의미 있음.
+		showCommentsJump = rect.top > window.innerHeight * 1.1;
+	}
+	function jumpToComments() {
+		commentsAnchorEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+	}
+
 	let sortedStatuses = $derived([...statuses].sort((a, b) => a.sort_order - b.sort_order));
 
 	// DEV-068: tag 정의 — slug → (color, description) lookup.
@@ -141,6 +160,26 @@
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'failed to load';
 		}
+	});
+
+	// DEV-109: window 스크롤 / resize 추적 → '댓글로' 버튼 노출 여부.
+	onMount(() => {
+		const handler = () => checkCommentsJumpVisibility();
+		window.addEventListener('scroll', handler, { passive: true });
+		window.addEventListener('resize', handler);
+		// 초기 1회.
+		checkCommentsJumpVisibility();
+		return () => {
+			window.removeEventListener('scroll', handler);
+			window.removeEventListener('resize', handler);
+		};
+	});
+
+	// detail 이 로드되거나 변경되면 (다른 quest 로 이동 등) 다시 측정.
+	$effect(() => {
+		void detail;
+		// tick 후 DOM 안정화 — anchor 위치 정확.
+		queueMicrotask(() => checkCommentsJumpVisibility());
 	});
 
 	// slug 가 바뀌면(다른 quest 페이지로 navigate) detail 을 다시 로드.
@@ -960,6 +999,8 @@
 		</section>
 
 		<!-- DEV-012: 공개 댓글 + 비공개 메모. quest slug 기준. -->
+		<!-- DEV-109: 본문이 길 때 floating 버튼이 이 anchor 로 점프. -->
+		<div bind:this={commentsAnchorEl} id="comments-anchor"></div>
 		<QuestCommentsSection slug={detail.quest_id} />
 		<QuestNoteSection slug={detail.quest_id} mode="memo" />
 
@@ -1107,6 +1148,19 @@
 			</div>
 		</div>
 	</div>
+{/if}
+
+<!-- DEV-109: 본문이 길 때 댓글로 점프하는 floating 버튼. 우하단 fixed. -->
+{#if showCommentsJump && detail}
+	<button
+		class="comments-jump"
+		onclick={jumpToComments}
+		title="댓글로 이동"
+		aria-label="댓글로 이동"
+	>
+		<span class="cj-icon">↓</span>
+		<span class="cj-label">댓글</span>
+	</button>
 {/if}
 
 <style>
@@ -1530,4 +1584,38 @@
 		color: var(--text-muted); font-size: 0.875rem; cursor: pointer;
 	}
 	.btn-del-no:hover:not(:disabled) { background: var(--bg-subtle); }
+
+	/* DEV-109: 댓글로 점프 floating 버튼. 우하단 fixed, 작고 둥근 pill. */
+	.comments-jump {
+		position: fixed;
+		right: 1.5rem;
+		bottom: 1.5rem;
+		z-index: 80;
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		padding: 0.55rem 1rem;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-radius: 999px;
+		color: var(--text);
+		font-size: 0.85rem;
+		font-weight: 500;
+		cursor: pointer;
+		box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+		transition: background 0.12s, border-color 0.12s, transform 0.12s;
+	}
+	.comments-jump:hover {
+		background: var(--bg-subtle);
+		border-color: var(--accent);
+		transform: translateY(-2px);
+	}
+	.comments-jump .cj-icon {
+		font-size: 1rem;
+		line-height: 1;
+		color: var(--accent);
+	}
+	.comments-jump .cj-label {
+		line-height: 1;
+	}
 </style>
