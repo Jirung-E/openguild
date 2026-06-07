@@ -227,7 +227,21 @@
 			{#if editingId !== e.id}
 				<div class="entry-actions">
 					{#if !isReply}
+						{@const childCount = (groups.childrenByRoot.get(e.id) ?? []).length}
+						{@const isThreadCollapsed = collapsedRoots.has(e.id)}
 						<button class="link-btn" onclick={() => enterReply(e.id)}>↩ 답글</button>
+						<!-- DEV-107 fix2: 답글 토글을 root entry 의 actions 안으로. 별도 row 제거. -->
+						{#if childCount > 0}
+							<button
+								class="link-btn thread-toggle-inline"
+								onclick={() => toggleRootCollapsed(e.id)}
+								aria-expanded={!isThreadCollapsed}
+								title={isThreadCollapsed ? '답글 펼치기' : '답글 접기'}
+							>
+								<span class="thread-toggle-icon" class:collapsed={isThreadCollapsed}>▼</span>
+								답글 {childCount}
+							</button>
+						{/if}
 					{/if}
 					<button class="link-btn" onclick={() => enterEdit(e)}>✎ 편집</button>
 					<button class="link-btn danger" onclick={() => remove(e.id)}>× 삭제</button>
@@ -286,22 +300,7 @@
 					{@const childCount = (groups.childrenByRoot.get(root.id) ?? []).length}
 					{@const isCollapsed = collapsedRoots.has(root.id)}
 					{@render entryView(root, false)}
-					<!-- DEV-107 fix1: 답글이 있으면 root 댓글 아래에 토글 버튼. 클릭 시 그 root 의
-						 답글 전체 (하위 답글 포함) 접힘. -->
-					{#if childCount > 0}
-						<li class="thread-toggle-row">
-							<button
-								type="button"
-								class="thread-toggle"
-								onclick={() => toggleRootCollapsed(root.id)}
-								aria-expanded={!isCollapsed}
-								title={isCollapsed ? '답글 펼치기' : '답글 접기'}
-							>
-								<span class="thread-toggle-icon" class:collapsed={isCollapsed}>▼</span>
-								{isCollapsed ? `답글 ${childCount}개 펼치기` : `답글 ${childCount}개 접기`}
-							</button>
-						</li>
-					{/if}
+					<!-- DEV-107 fix2: 토글은 root entry 의 actions 안으로 이동 (별도 row 제거). -->
 					{#if (childCount > 0 && !isCollapsed) || replyingTo === root.id}
 						<li class="thread">
 							<ul class="reply-list">
@@ -450,28 +449,11 @@
 		margin: 0;
 		padding: 0;
 	}
-	/* DEV-107 fix1: 답글 토글 라인 — root 와 reply-list 사이. */
-	.thread-toggle-row {
-		list-style: none;
-		margin: 0.2rem 0 0.2rem 1.5rem;
-	}
-	.thread-toggle {
+	/* DEV-107 fix2: 답글 토글 — root entry 의 .link-btn 들 옆 inline. */
+	.thread-toggle-inline {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.35rem;
-		padding: 0.1rem 0.5rem;
-		background: transparent;
-		border: 1px solid transparent;
-		border-radius: 4px;
-		color: var(--text-muted);
-		font-size: 0.72rem;
-		cursor: pointer;
-		transition: background 0.1s, color 0.1s, border-color 0.1s;
-	}
-	.thread-toggle:hover {
-		background: var(--bg-subtle);
-		color: var(--text);
-		border-color: var(--border);
+		gap: 0.3rem;
 	}
 	.thread-toggle-icon {
 		font-size: 0.55rem;
