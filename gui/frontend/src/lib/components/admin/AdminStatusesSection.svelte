@@ -365,13 +365,16 @@
 	button.danger:hover:not(:disabled) {
 		background: rgba(233, 79, 79, 0.18);
 	}
+	/* DEV-074 fix6 / DEV-116 fix: 다른 save 버튼과 동일 패턴 — `--btn-primary-*`
+	   토큰. 라이트모드에서도 명도 적정 (success 기반, fix5 의 #1a7f37). */
 	button.save {
-		background: var(--accent-strong);
-		border-color: var(--accent);
-		color: var(--text-strong);
+		background: var(--btn-primary-bg);
+		border-color: var(--btn-primary-border);
+		color: var(--btn-primary-text);
 	}
 	button.save:hover:not(:disabled) {
-		background: var(--accent);
+		background: var(--btn-primary-bg-hover);
+		border-color: var(--btn-primary-border-hover);
 	}
 	table {
 		width: 100%;
