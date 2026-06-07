@@ -1277,62 +1277,35 @@
 			const allNodes = nodesToArrange;
 			const allIds = new Set(allNodes.map((n) => n.data('questId') as number));
 
-			// 1) 인접 리스트 — allIds 안에 있는 edge 만 사용
-			//    (lane 한정 호출 시: lane 안 노드 사이 edge 만 → cross-lane 무시)
-			// BUG-020: cross-lane edge 가 있는 노드도 추적 — lane 내 다른 노드와
-			// 연결이 없어도 "외부 그룹의 일부" 이므로 isolated 가 아닌 cluster
-			// (single-member) 로 분류해서 시각적으로 분리.
-			const adj = new Map<number, Set<number>>();
-			allIds.forEach((id) => adj.set(id, new Set()));
-			const hasExternalEdge = new Set<number>();
-			cy!.edges().forEach((e) => {
-				const s = e.source().data('questId') as number;
-				const t = e.target().data('questId') as number;
-				const sIn = allIds.has(s);
-				const tIn = allIds.has(t);
-				if (sIn && tIn) {
-					adj.get(s)!.add(t);
-					adj.get(t)!.add(s);
-				} else if (sIn && !tIn) {
-					hasExternalEdge.add(s);
-				} else if (!sIn && tIn) {
-					hasExternalEdge.add(t);
-				}
-			});
-
-			// 2) BFS 로 components
-			const visited = new Set<number>();
-			const components: number[][] = [];
-			for (const id of allIds) {
-				if (visited.has(id)) continue;
-				const comp: number[] = [];
-				const queue = [id];
-				visited.add(id);
-				while (queue.length > 0) {
-					const cur = queue.shift()!;
-					comp.push(cur);
-					for (const nb of adj.get(cur) ?? new Set<number>()) {
-						if (!visited.has(nb)) {
-							visited.add(nb);
-							queue.push(nb);
-						}
-					}
-				}
-				components.push(comp);
-			}
-
+			// BUG-020 fix2: 사용자 피드백 — lane 한정 BFS 는 cross-lane 만으로 연결된
+			// 같은 그룹의 노드 (lane 내엔 직접 edge 없음) 를 별도 cluster 로 쪼개버려
+			// 같은 y 에 정렬할 수 있는데도 다른 y 에 배치됨.
+			// → cluster 식별을 lane-local BFS 가 아닌 GLOBAL `groupOf` (cross-lane 포함
+			//   전체 의존 그래프의 connected component) 기반으로 변경.
+			//
+			// 알고리즘:
+			//   1) 각 lane-내 노드의 groupOf set 의 canonical 키 (min id) 로 묶음.
+			//   2) 같은 키 = 같은 cluster.
+			//   3) lane 안에 1 개 뿐인 group 이지만 외부 그룹과 연결 — cluster 처리
+			//      (size 1, hasExternalEdge 와 같은 의미 — 자동 포함됨).
+			const clusterMap = new Map<number, number[]>();
 			const isolated: number[] = [];
-			const clusters: number[][] = [];
-			for (const c of components) {
-				// BUG-020: 진짜 isolated (외부 연결도 없는 단독) 만 위쪽으로.
-				// cross-lane edge 가 있는 single-member 는 cluster 로 — 시각적
-				// 으로 다른 lane 의 그룹의 일부임을 분리 표시.
-				if (c.length === 1 && !hasExternalEdge.has(c[0])) {
-					isolated.push(c[0]);
-				} else {
-					clusters.push(c);
+			for (const id of allIds) {
+				const fullGroup = groupOf.get(id);
+				if (!fullGroup || fullGroup.size === 1) {
+					// 진짜 단독 — 외부 연결도 없음 → isolated 위쪽.
+					isolated.push(id);
+					continue;
 				}
+				// canonical 키 = group 전체 (cross-lane 포함) 의 최소 id. 같은 그룹의
+				// 모든 노드 (어느 lane 에 있든) 가 같은 키 → 같은 cluster.
+				let key = Number.POSITIVE_INFINITY;
+				for (const m of fullGroup) if (m < key) key = m;
+				const arr = clusterMap.get(key);
+				if (arr) arr.push(id);
+				else clusterMap.set(key, [id]);
 			}
+			const clusters: number[][] = Array.from(clusterMap.values());
 
 			const slugOf = (qid: number) =>
 				(cy!.getElementById(`q-${qid}`) as NodeSingular).data('questSlug') as string;
