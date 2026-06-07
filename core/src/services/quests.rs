@@ -47,7 +47,10 @@ pub const QUEST_SELECT: &str = r#"
               AND c.status = 'active'
               AND c.ended_at IS NOT NULL
               AND c.ended_at != ''
-        ) AS earliest_campaign_due
+        ) AS earliest_campaign_due,
+        (
+            SELECT COUNT(*) FROM quest_comments WHERE quest_id = q.id
+        ) AS comment_count
     FROM quests q
     JOIN quest_types   qt ON q.quest_type_id = qt.id
     JOIN quest_statuses qs ON q.status_id    = qs.id

@@ -4358,6 +4358,7 @@ mod tests {
             required_due: None,
             earliest_campaign_due: None,
             tags: vec![],
+            comment_count: 0,
         };
         QuestDetail {
             quest: q,

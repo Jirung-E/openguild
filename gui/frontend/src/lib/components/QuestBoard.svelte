@@ -138,6 +138,13 @@
 		const ulW  = Math.ceil(ul.length  * 5.6) + 14;
 		const ulX  = 10 + qidW + 6;
 
+		// DEV-116: 댓글 개수 badge — 상단 우측. 0 이면 표시 X.
+		const cc = quest.comment_count ?? 0;
+		const ccText = cc > 0 ? `💬 ${cc}` : '';
+		const ccW = ccText ? Math.ceil(ccText.length * 6.0) + 14 : 0;
+		const ccX = W - 10 - ccW;
+		const ccFill = dueMutedFill;
+
 		// 제목 가용 폭: NODE_W - 좌 padding(10) - 우 minimum margin(14) = 260px.
 		// 단어 경계 우선 — 공백 있는 텍스트는 단어 단위로, 한글 / 긴 단어는 mid-char.
 		const full = quest.title;
@@ -179,6 +186,9 @@
   <text x="${ulX + ulW / 2}" y="21.5" text-anchor="middle"
     fill="${uc}" font-size="10" font-weight="500"
     font-family="system-ui,sans-serif">${x(ul)}</text>
+  ${ccText ? `<text x="${ccX + ccW / 2}" y="21.5" text-anchor="middle"
+    fill="${ccFill}" font-size="10" font-weight="500"
+    font-family="system-ui,sans-serif">${x(ccText)}</text>` : ''}
   <text x="10" y="${titleY}" fill="${textFill}" font-size="12"
     font-family="system-ui,-apple-system,sans-serif">${x(line1)}</text>
   ${line2 ? `<text x="10" y="${titleY + 16}" fill="${textFill}" font-size="12"

@@ -55,6 +55,11 @@ export interface Quest {
 	earliest_campaign_due?: string | null;
 	/** DEV-068: 본 quest 의 tag 목록. */
 	tags?: string[];
+	/**
+	 * DEV-116: 본 quest 의 댓글 수 — `quest_comments` 의 COUNT subquery.
+	 * QuestBoard 노드 / QuestList row 에 배지로 표시. 0 이면 표시 X.
+	 */
+	comment_count?: number;
 }
 
 export interface QuestDetail extends Quest {

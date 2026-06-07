@@ -44,6 +44,13 @@
 	<!-- 제목 -->
 	<span class="title">{quest.title}</span>
 
+	<!-- DEV-116: 댓글 개수 — 0 이면 표시 X. -->
+	{#if (quest.comment_count ?? 0) > 0}
+		<span class="comment-count" title={`댓글 ${quest.comment_count}개`}>
+			<span class="cc-icon">💬</span><span>{quest.comment_count}</span>
+		</span>
+	{/if}
+
 	<!-- 긴급도 -->
 	<span class="badge urgency" style:--c={URGENCY_COLOR[quest.urgency]}>
 		{URGENCY_LABEL[quest.urgency]}
@@ -106,4 +113,18 @@
 		color: var(--c);
 		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
 	}
+	/* DEV-116: 댓글 개수 — 작은 회색 pill. */
+	.comment-count {
+		flex-shrink: 0;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.2rem;
+		padding: 0.1rem 0.45rem;
+		border-radius: 20px;
+		font-size: 0.72rem;
+		color: var(--text-muted);
+		background: var(--bg-subtle);
+		border: 1px solid var(--border);
+	}
+	.cc-icon { font-size: 0.7rem; line-height: 1; }
 </style>

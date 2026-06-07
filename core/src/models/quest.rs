@@ -40,6 +40,10 @@ pub struct QuestRow {
     #[sqlx(skip)]
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<String>,
+    /// DEV-116: 본 quest 의 댓글 수 — `quest_comments` 의 COUNT subquery.
+    /// QuestBoard 노드 / QuestList row 에 표시.
+    #[serde(default)]
+    pub comment_count: i64,
 }
 
 /// 퀘스트 상세 응답 (서브퀘스트, 선행퀘스트, 위치 포함)
@@ -242,6 +246,7 @@ mod tests {
             required_due: None,
             earliest_campaign_due: None,
             tags: vec![],
+            comment_count: 0,
         };
         let json = serde_json::to_string(&q).unwrap();
         let back: QuestRow = serde_json::from_str(&json).unwrap();
