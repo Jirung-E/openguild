@@ -23,6 +23,7 @@
 		QuestType
 	} from '$lib/types';
 	import { metaApi } from '$lib/api/meta';
+	import { isCampaignDone } from '$lib/utils/campaign-progress';
 	// BUG-025: 캠페인 목록 페이지의 sort 옵션을 Home 카드에도 적용.
 	import {
 		loadCampaignSort,
@@ -218,24 +219,15 @@
 	//
 	// 필터:
 	//   - 체크리스트 또는 연결 quest 중 적어도 하나가 있음 (둘 다 없으면 "달성" 모호 → 제외)
-	//   - "완료" 상태가 아님 (체크리스트 + quest 양쪽 다 100% 가 아님)
+	//   - "완료" 상태가 아님 (`isCampaignDone` — 체크리스트 + quest 양쪽 다 100% 가 아님)
 	//   - ended_at 지남
-	// 이전엔 체크리스트만 100% 면 overdue 에서 제외 → quest 가 미완료여도 사라지는 문제.
 	let overdueCampaigns = $derived.by(() => {
 		const t = now;
 		const rows = allActive.filter((c) => {
 			const hasChecklist = c.checklist_total > 0;
 			const hasQuests = (c.quest_total ?? 0) > 0;
 			if (!hasChecklist && !hasQuests) return false;
-			const checklistDone = hasChecklist && c.checklist_checked === c.checklist_total;
-			const questsDone = hasQuests && (c.quest_done ?? 0) === (c.quest_total ?? 0);
-			const fullyDone =
-				hasChecklist && hasQuests
-					? checklistDone && questsDone
-					: hasChecklist
-						? checklistDone
-						: questsDone;
-			if (fullyDone) return false;
+			if (isCampaignDone(c)) return false;
 			const end = dateEndMs(c.ended_at);
 			return end !== null && end < t;
 		});
