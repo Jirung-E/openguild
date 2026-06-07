@@ -2362,6 +2362,19 @@
 		// DEV-056: hide settings 적용. computeGroups → applyHideSettings.
 		groupOf = computeGroups(allQuests, allDependencies);
 		applyHideSettings();
+		// DEV-105 fix8: 영속에서 복원된 collapsedLanes 의 노드도 초기화 시 hide.
+		// 이전엔 영속 복원 후에도 init 이 노드 display 를 'element' 로 두어
+		// (Cytoscape 기본) collapsed lane 의 노드가 보드 진입 시 그대로 보임.
+		// applyHideSettings 이후에 명시적으로 collapse 노드 'none'.
+		if (collapsedLanes.size > 0) {
+			cy.nodes('[questId]').forEach((n) => {
+				const sid = n.data('statusId') as number;
+				const s = sorted.find((x) => x.id === sid);
+				if (s && collapsedLanes.has(s.slug)) {
+					n.style('display', 'none');
+				}
+			});
+		}
 		// DEV-067: visible lane 압축 (laneHidden 자리 회수). 노드 visual 좌표
 		// 일관 재계산. syncLanes 도 visible 압축 반영.
 		applyLaneVisualCompression();
