@@ -2797,10 +2797,13 @@
 		background: color-mix(in srgb, var(--accent) 14%, var(--bg-elevated));
 		box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
 	}
+	/* DEV-101 fix8: 헤더 height 는 cytoscape `LANE_TOP=52` 와 정렬 위해 px 고정
+	   (스케일하면 노드와 겹침). 내부 padding/gap/font 만 rem 으로 — UI 크기에
+	   비례해 컨텐츠가 자연스럽게 자람 (max 2x 까지 38px 안에 fit). */
 	:global(.lane-hdr) {
 		position: absolute; top: 0; height: 38px;
-		display: flex; align-items: center; gap: 6px;
-		padding: 0 8px 0 14px;
+		display: flex; align-items: center; gap: 0.375rem;
+		padding: 0 0.5rem 0 0.875rem;
 		border-right: 1px solid var(--bg-subtle);
 		border-bottom: 1px solid var(--bg-subtle);
 		box-sizing: border-box;
@@ -2813,11 +2816,11 @@
 		display: none !important;
 	}
 	:global(.lane-hdr.collapsed) {
-		padding: 0 4px;
+		padding: 0 0.25rem;
 		justify-content: center;
 	}
 	:global(.lane-label) {
-		flex: 1; font-size: 12px; font-weight: bold;
+		flex: 1; font-size: 0.75rem; font-weight: bold;
 		white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 		/* DEV-105: button 으로 변경 — 기본 button 스타일 reset. */
 		background: none; border: none; padding: 0; cursor: pointer;
