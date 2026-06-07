@@ -1896,6 +1896,12 @@
 		sorted.forEach(() => {
 			const col = document.createElement('div');
 			col.className = 'lane-col';
+			// DEV-105 fix13: grid snap dot 표시를 lane-col 의 background 에서 자식
+			// `.lane-dots` 의 transform 으로 분리. background-position 변경은 매
+			// frame paint → 빠른 pan 추적 안 됨. transform 은 GPU composite.
+			const dots = document.createElement('div');
+			dots.className = 'lane-dots';
+			col.appendChild(dots);
 			lanesEl.appendChild(col);
 		});
 		headersEl.innerHTML = '';
@@ -2047,7 +2053,8 @@
 			col.style.left = `${curLeft * zoom + pan.x}px`;
 			col.style.width = `${w * zoom}px`;
 			curLeft += w + LANE_GAP;
-			if (gridSnap) {
+			const dotsEl = col.firstElementChild as HTMLElement | null;
+			if (gridSnap && dotsEl) {
 				const cols = laneCols[i] ?? 2;
 				const cellWPx = (NODE_W + NODE_GAP) * zoom;
 				const cached = gridBgCache.get(i);
@@ -2070,16 +2077,20 @@
 					const bgX = firstCxLocal - cellWPx / 2;
 					entry = { zoom, cols, dataUri, svgW, svgH, bgX };
 					gridBgCache.set(i, entry);
-					col.style.backgroundImage = dataUri;
-					col.style.backgroundSize = `${svgW}px ${svgH}px`;
-					col.style.backgroundRepeat = 'repeat-y';
+					dotsEl.style.display = '';
+					dotsEl.style.backgroundImage = dataUri;
+					dotsEl.style.backgroundSize = `${svgW}px ${svgH}px`;
+					dotsEl.style.backgroundRepeat = 'repeat-y';
+					// 가로 위치 = bgX 는 zoom 만 의존 → 한 번만 설정. left/top 으로 두면 transform
+					// 은 순수 translateY 만 — 합성기가 GPU layer 유지.
+					dotsEl.style.left = `${bgX}px`;
 				}
-				// pan 만 변해도 backgroundPosition 의 Y 갱신 — 캐시된 svg/size 그대로.
+				// pan 매 프레임 — transform: translateY 만 변경 (composite-only, no paint).
 				const localCyPx = (LANE_TOP + 16 + NODE_H / 2) * zoom + pan.y;
 				const bgY = localCyPx - cellHPx / 2;
-				col.style.backgroundPosition = `${entry.bgX}px ${bgY}px`;
-			} else {
-				col.style.backgroundImage = '';
+				dotsEl.style.transform = `translateY(${bgY}px)`;
+			} else if (dotsEl) {
+				dotsEl.style.display = 'none';
 				gridBgCache.delete(i);
 			}
 		});
@@ -2748,6 +2759,19 @@
 		box-sizing: border-box;
 		pointer-events: none;
 		transition: background 0.12s, box-shadow 0.12s;
+		overflow: hidden;
+	}
+	/* DEV-105 fix13: grid snap dot 표시. lane-col 의 background-position 변경은
+	   매 frame paint → 느림. 자식 div 의 transform: translateY 로 전환 → GPU
+	   composite-only, 빠른 pan 추적 가능. */
+	:global(.lane-dots) {
+		position: absolute;
+		top: -200vh;
+		bottom: -200vh;
+		width: 100%;
+		pointer-events: none;
+		background-repeat: repeat-y;
+		will-change: transform;
 	}
 	/* DEV-105 fix11: 드래그 중 노드가 놓일 lane 강조. */
 	:global(.lane-col.drag-target) {
