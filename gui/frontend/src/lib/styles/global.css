@@ -121,10 +121,14 @@ html {
 	font-size: 16px;
 	color: var(--text);
 	background: var(--bg);
-	/* DEV-074 fix12: scrollbar-gutter: stable 제거 — 스크롤 필요 없는 짧은 화면
-	   에서도 스크롤바 자리가 항상 예약되는 게 불쾌하다는 사용자 피드백.
-	   스크롤바는 필요한 순간에만 나타나고 그때만 10px 차지 (얇아서 layout shift
-	   영향 최소). */
+	/* DEV-074 fix13: window native scrollbar 숨김. wheel / touch / 키보드 스크롤
+	   은 정상 작동. OverlayScrollbar 컴포넌트가 우측에 position: fixed thumb 만
+	   그려 진짜 overlay 구현 (컨텐츠 폭 0px 차지). 내부 overflow 컨테이너 (모달
+	   리스트, CodeMirror) 는 기존 `* { scrollbar-width: thin }` 그대로. */
+	scrollbar-width: none;
+}
+html::-webkit-scrollbar {
+	display: none;
 }
 
 body {

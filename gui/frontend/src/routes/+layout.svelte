@@ -4,6 +4,8 @@
 	import Nav from '$lib/components/Nav.svelte';
 	import UpdateBanner from '$lib/components/UpdateBanner.svelte';
 	import SchemaAheadBanner from '$lib/components/SchemaAheadBanner.svelte';
+	// DEV-074 fix13: window 스크롤 overlay — 컨텐츠 폭 차지 X.
+	import OverlayScrollbar from '$lib/components/OverlayScrollbar.svelte';
 	import { detectEnvironment } from '$lib/api/transport';
 	import { uiScale, applyUiScaleToDocument } from '$lib/stores/uiScale';
 	import { contentWidth } from '$lib/stores/contentWidth';
@@ -121,6 +123,7 @@
 <main class:no-nav={!showNav}>
 	{@render children()}
 </main>
+<OverlayScrollbar />
 
 <style>
 	main {
