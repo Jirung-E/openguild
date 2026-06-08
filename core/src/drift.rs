@@ -71,11 +71,15 @@ pub async fn detect_drift(store: &Store) -> Result<DriftReport> {
     // BUG-059: 시간 기준은 `app_meta.last_indexed_at` (= 마지막 reindex 의 ISO 시각).
     // 이전엔 `index.db` 파일 mtime 을 썼는데 SQLite WAL checkpoint / Store::open
     // 의 초기 write 등으로 mtime 이 NOW 로 튀어 외부 편집을 못 잡는 false negative
-    // 발생. 마커 없으면 기존 동작 (index.db mtime) 으로 fallback (legacy DB).
-    let index_mtime = match fetch_last_indexed_at(pool).await {
-        Some(t) => t,
-        None => repo_fs::mtime(paths.index_db()).unwrap_or(SystemTime::UNIX_EPOCH),
-    };
+    // 발생.
+    //
+    // 마커 없음 / 빈 값 → **epoch 으로 처리**해서 모든 파일을 fresh 로 판정 →
+    // auto_resync 가 첫 reindex 를 강제. (이전엔 fallback 으로 index.db mtime
+    // 을 다시 썼는데 그건 똑같이 버그 경로 — 첫 startup 마다 'clean' 잘못 판정
+    // → reindex skip → 마커 영원히 빈 값 → bootstrap 실패.)
+    let index_mtime = fetch_last_indexed_at(pool)
+        .await
+        .unwrap_or(SystemTime::UNIX_EPOCH);
 
     // 파일 → mtime 맵
     // BUG-047: sibling `.comments.md` / `.memo.md` 제외 — 매번 missing_in_index
@@ -403,16 +407,49 @@ mod tests {
         );
     }
 
-    /// BUG-059: 마커가 비어있을 때 (신규 길드 / migration 직후) 도 panic 안 하고
-    /// fallback (index.db mtime) 으로 동작.
+    /// BUG-059 (fix2): 마커가 비어있으면 epoch 으로 fallback → 모든 기존 파일이
+    /// fresh 로 잡혀 첫 부트스트랩 reindex 가 강제되어야 한다. 이전 fix1 은 빈
+    /// 마커일 때 index.db mtime 으로 fallback 해서 동일한 false negative 가
+    /// 재발 → reindex skip → 마커 영원히 empty 의 데드락.
     #[tokio::test]
-    async fn drift_falls_back_when_marker_empty() {
-        let dir = fresh_tmp("bug-059-empty");
+    async fn drift_with_empty_marker_treats_all_files_as_fresh() {
+        let dir = fresh_tmp("bug-059-bootstrap");
         let store = setup(&dir).await;
 
-        // setup 직후엔 migration 의 INSERT OR IGNORE 로 마커가 빈 문자열로 존재.
-        // 호출 자체가 panic 안 하면 OK.
-        let _ = detect_drift(&store).await.unwrap();
+        // setup 직후 — 마커는 빈 값 (migration seed), index.db mtime ≈ NOW.
+        // quest 파일을 하나 작성 (외부 편집 시뮬레이션). mtime 도 NOW.
+        let qf = QuestFile {
+            frontmatter: QuestFrontmatter {
+                quest_id: "DEV-001".into(),
+                title: "first run".into(),
+                status: "open".into(),
+                urgency: 3,
+                parent: None,
+                prerequisites: vec![],
+                created_at: "2026-01-01T00:00:00Z".into(),
+                updated_at: "2026-01-01T00:00:00Z".into(),
+                deleted: false,
+                desired_due: None,
+                required_due: None,
+                tags: vec![],
+            },
+            description: String::new(),
+            auto_block: String::new(),
+        };
+        qf.write(store.paths.quest_path("DEV-001")).unwrap();
+
+        // fix1 같으면: 빈 마커 → index.db mtime fallback → file_mtime ≈ index_mtime
+        // → strict > false → fresh_files 비어있음 → drift clean → reindex skip.
+        // fix2: 빈 마커 → epoch → file_mtime > epoch → fresh 잡힘.
+        let report = detect_drift(&store).await.unwrap();
+        let detected = report.fresh_files.iter().any(|s| s == "DEV-001")
+            || report.missing_in_index.iter().any(|s| s == "DEV-001");
+        assert!(
+            detected,
+            "빈 마커일 때 첫 startup 에서 모든 파일이 fresh 로 잡혀야 (부트스트랩): \
+             fresh={:?}, missing={:?}",
+            report.fresh_files, report.missing_in_index
+        );
     }
 
     #[tokio::test]
