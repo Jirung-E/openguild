@@ -90,7 +90,7 @@ openguild/
 ├── openguild.guild                  ← 본 repo 의 마커 (dogfood)
 ├── .guild/                          ← 본 repo 의 quests / campaigns / 캐시 (dogfood)
 ├── core/                            ← lib: 도메인 + 저장소 추상화
-│   ├── migrations/                  ← sqlx 마이그레이션 (0001~0012, set_ignore_missing 로 backward compat)
+│   ├── migrations/                  ← sqlx 마이그레이션 (0001~0014, set_ignore_missing 로 backward compat)
 │   └── src/
 │       ├── lib.rs
 │       ├── db.rs                    ← sqlx pool 생성
@@ -269,6 +269,38 @@ openguild/
 > - 2026-06-07 BUG-020 fix2: arrangeNodesGrouped 의 cluster 식별을 lane-local BFS
 >   가 아닌 GLOBAL `groupOf` (cross-lane 포함 전체 의존 그래프) 기반으로 변경.
 >   같은 외부 그룹의 lane 멤버가 같은 cluster 직사각형 공유.
+> - 2026-06-08 DEV-111 fix1: mermaid syntax error 시 body 끝 leftover bomb SVG
+>   제거 — `mermaid.parse(code, {suppressErrors:true})` pre-check + 안전망 cleanup
+>   + `+layout.svelte` 의 `afterNavigate` sweep (`body > svg[id^="mm-"]` /
+>   `body > div[id^="dmm-"]`).
+> - 2026-06-08 BUG-056 / DEV-119: 인앱 `ConfirmDialog` 컴포넌트 (Esc/Enter +
+>   theme 토큰 + danger 변형) 도입 후 8 사이트의 native `window.confirm()` 교체
+>   — 댓글/규칙/캠페인/체크리스트 삭제 + admin status·type rename cascade +
+>   backup 복원 + rules nav-away. reindex 만 사용자 지시로 sweep 제외.
+> - 2026-06-08 DEV-117: CLI 의 `recents::add` 호출 제거 — CLI 활동이 Welcome
+>   '최근 연 길드' 를 오염시키던 문제. recents 의미를 GUI open 시점으로 한정.
+> - 2026-06-08 DEV-118: 댓글 답글 폼 자동 focus + scrollIntoView (긴 댓글이라
+>   폼이 화면 밖에 mount 되어 못 보던 케이스).
+> - 2026-06-08 DEV-120: admin reindex 후 600ms 토스트 → `window.location.reload()`
+>   — 모든 페이지 / store 가 fresh 데이터로.
+> - 2026-06-08 BUG-058: light 테마 date picker 아이콘 흰색 — `[data-theme='light']`
+>   에 `color-scheme: light` 누락. 1 line fix.
+> - 2026-06-08 BUG-059: drift detection 의 시간 임계값을 `index.db` 파일 mtime
+>   → `app_meta.last_indexed_at` ISO 마커로 교체 (migration 0014). SQLite WAL /
+>   Store::open 의 mtime 부작용으로 외부 편집을 못 잡던 false negative 해소.
+>   fix1 의 빈 마커 → fallback 이 같은 버그 경로였던 부트스트랩 결함을 fix2 에서
+>   epoch fallback 으로 정정.
+> - 2026-06-08 BUG-060: invalid urgency (범위 1..=4 밖) 데이터가 들어오면
+>   `URGENCY_LABEL[u]` undefined → `.length` 폭발로 보드 mount 실패. `types/index.ts`
+>   에 `urgencyLabel(u)` / `urgencyColor(u)` 헬퍼 (4 fallback) 추가 + QuestBoard
+>   4곳 + QuestListItem + quest detail 의 bare access 교체.
+> - 2026-06-09 DEV-074 fix20~22 (sweep A+B+C): semantic 토큰 (`--accent-secondary`,
+>   `--orange`, `--hl-pre/sub/next` + bg, `--hl-parent-bg`, `--selected-bg`,
+>   `--edge-pre`) 도입 + `theme.ts::themePalette(eff)` 단일 JS source +
+>   QuestBoard / quest detail / rules / campaigns / welcome / SchemaAheadBanner /
+>   QuestList / quest-node-svg 의 hex 와 `eff === 'light' ? ...` 분기 모두 정리.
+>   `src` 안 색 hex 0개. 재발 방지 규칙은 `docs/guild-rules.md` / `.guild/rules/
+>   frontend-theme-tokens.md` / DEV-074 본문 3곳에 명시.
 >
 > 자세한 설계 근거: `docs/architecture-refactor.md`, `docs/storage-design.md`.
 

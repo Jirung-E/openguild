@@ -285,9 +285,13 @@ openguild 의 첫 베타 마일스톤.
   Home 임박 분류 (DEV-076).
 - 손실되어도 OK — 파일에서 재구축 (서버 `openguild-server reindex` 또는 GUI 상단
   reindex 버튼 — DEV-095).
-- 시작 시 검증: `drift::detect_drift` 가 quest 본문 파일 mtime 과 index.db mtime
-  비교. 불일치 시 `drift::auto_resync` 가 자동 reindex (server / cli / gui 모두
-  Store::open 직후 호출 — BUG-049).
+- 시작 시 검증: `drift::detect_drift` 가 quest 본문 파일 mtime 과
+  `app_meta.last_indexed_at` (마지막 reindex 의 ISO 시각) 비교. 불일치 시
+  `drift::auto_resync` 가 자동 reindex (server / cli / gui 모두 Store::open 직후
+  호출 — BUG-049). 마커 없거나 빈 값이면 epoch fallback → 첫 부트스트랩 reindex
+  강제 (BUG-059). 이전엔 `index.db` 파일 mtime 을 임계값으로 썼는데 SQLite WAL
+  checkpoint / Store::open 의 부작용으로 mtime 이 NOW 로 튀어 외부 편집을 못
+  잡는 false negative 가 있었음.
 - **BUG-047**: drift / reindex 가 보는 quest 본문 파일은 `{slug}.md` 만. sibling
   `{slug}.comments.md` (DEV-094) / `{slug}.memo.md` (DEV-099) 는 별개 파일 —
   현재는 DB 캐시 안 들어가므로 비교 대상 아님 (`repo::fs::list_quest_body_files`).
@@ -526,6 +530,19 @@ openguild migrate-to-files
   - "사적" = 다른 사용자에게 안 보임 (multi-user), **백업 안 됨이 아님**.
 - 회귀: snapshot 만든 후 cache 행 의도적 wipe → restore → 댓글/메모 살아남음
   (snapshot.rs 의 `snapshot_preserves_comments_and_memos` 테스트).
+
+### `app_meta` — BUG-059 (구현 완료)
+
+- migration 0014: `app_meta(key TEXT PK, value TEXT)` 단순 key-value 테이블.
+- `reindex()` 가 transaction commit 직전 `('last_indexed_at', NOW_ISO)` UPSERT.
+- `detect_drift` 가 그 값을 SystemTime 으로 파싱해 임계값으로 사용 — file mtime
+  > last_indexed_at 이면 fresh. 마커 없거나 빈 값이면 epoch fallback → 첫
+  부트스트랩 reindex 강제.
+- 이전엔 `index.db` 파일 mtime 을 임계값으로 썼는데 SQLite WAL checkpoint /
+  Store::open 의 부작용으로 NOW 로 튀어 외부 편집을 못 잡는 false negative
+  발생. ops 의 모든 mutation 경로를 건드리지 않고 reindex 한 곳만 갱신 —
+  ops 활동 후 첫 startup 은 false-positive drift 한 번 (idempotent reindex
+  추가) 가능하지만 실 영향 없음.
 
 ---
 
