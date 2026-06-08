@@ -463,7 +463,7 @@
 	}
 	.rule-item.active {
 		background: color-mix(in srgb, var(--accent) 12%, transparent);
-		color: #79c0ff;
+		color: var(--accent-secondary);
 	}
 
 	.panel {
@@ -500,7 +500,7 @@
 		background: var(--bg-subtle);
 	}
 	.btn-edit.danger {
-		color: #f85149;
+		color: var(--danger);
 		border-color: color-mix(in srgb, var(--danger) 45%, transparent);
 	}
 	.btn-edit.danger:hover {
@@ -532,10 +532,10 @@
 		font-size: 0.875rem;
 	}
 	.state.err {
-		color: #f85149;
+		color: var(--danger);
 	}
 	.err {
-		color: #f85149;
+		color: var(--danger);
 		font-size: 0.825rem;
 		margin: 0.25rem 0 0;
 	}

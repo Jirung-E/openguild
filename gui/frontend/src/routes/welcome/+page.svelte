@@ -541,9 +541,9 @@
 	.btn-pick {
 		padding: 0.5rem 1rem;
 		background: var(--accent-strong);
-		border: 1px solid #2f81f7;
+		border: 1px solid var(--accent);
 		border-radius: 6px;
-		color: #fff;
+		color: var(--btn-primary-text);
 		font-size: 0.9rem;
 		font-weight: 500;
 		cursor: pointer;

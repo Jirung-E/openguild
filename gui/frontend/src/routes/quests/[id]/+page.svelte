@@ -1254,7 +1254,7 @@
 	.branch-label { font-size: 0.75rem; color: var(--text-muted); flex-shrink: 0; }
 	.branch-name {
 		font-family: 'SFMono-Regular', Consolas, monospace;
-		font-size: 0.85rem; color: #79c0ff; flex: 1;
+		font-size: 0.85rem; color: var(--accent-secondary); flex: 1;
 	}
 	.copy-btn {
 		padding: 0.15rem 0.6rem;
@@ -1353,7 +1353,7 @@
 	}
 	.edit-date:focus { border-color: var(--accent); }
 	.field-label .hint { color: var(--text-faint); font-weight: 400; font-size: 0.8em; }
-	.due-required { color: #f0883e; font-weight: 600; }
+	.due-required { color: var(--orange); font-weight: 600; }
 	.due-desired { color: var(--accent); font-weight: 500; }
 	/* DEV-079: overdue 는 강한 빨강 + 굵게. desired / required 공통. */
 	.due-required.overdue,
@@ -1397,8 +1397,8 @@
 	}
 	/* DEV-050: 라벨별 색 — QuestBoard 하이라이트 / CLI 의 quest show 와 일치. */
 	.section-title.parent-label { color: var(--success); }
-	.section-title.sub-label { color: #3dc9b0; }
-	.section-title.prereq-label { color: #a371f7; }
+	.section-title.sub-label { color: var(--hl-sub); }
+	.section-title.prereq-label { color: var(--hl-pre); }
 	/* DEV-070: section header 옆의 부가 설명 hint. */
 	.sec-hint {
 		font-size: 0.75rem; color: var(--text-faint); font-style: italic;

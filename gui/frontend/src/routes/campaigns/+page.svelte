@@ -167,7 +167,7 @@
 	}
 
 	.state { color: var(--text-muted); padding: 1.5rem 0; font-size: 0.875rem; }
-	.state.error { color: #f85149; }
+	.state.error { color: var(--danger); }
 
 	.list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
 	.row {
@@ -206,7 +206,7 @@
 		text-transform: uppercase;
 	}
 	.status-active {
-		--c: #56d364;
+		--c: var(--success);
 		background: color-mix(in srgb, var(--c) 18%, transparent);
 		color: var(--c);
 		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
@@ -219,7 +219,7 @@
 	}
 	.period { font-size: 0.75rem; color: var(--text-muted); }
 	/* DEV-079: 기한 지남 + status != done — 빨강. */
-	.period.overdue { color: #f85149; font-weight: 600; }
+	.period.overdue { color: var(--danger); font-weight: 600; }
 
 	.reorder {
 		display: flex;

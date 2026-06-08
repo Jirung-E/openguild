@@ -534,7 +534,7 @@
 	}
 	.back:hover, .btn-edit:hover { background: var(--bg-subtle); }
 	/* BUG-035: 단독 margin-left 제거 — top-actions wrapper 가 push right. */
-	.btn-delete { color: var(--danger); border-color: #5a2424; }
+	.btn-delete { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
 	.btn-delete:hover { background: color-mix(in srgb, var(--danger) 18%, transparent); }
 	.top-actions {
 		display: flex;
@@ -691,7 +691,7 @@
 		width: 1.5rem;
 		height: 1.5rem;
 	}
-	.rm:hover { color: var(--danger); border-color: #5a2424; }
+	.rm:hover { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
 
 	.add-row {
 		display: flex;

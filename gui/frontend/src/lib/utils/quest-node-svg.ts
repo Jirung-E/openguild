@@ -8,6 +8,7 @@
 // 결과: data:image/svg+xml URL. `<img src={url} />` 로 표시.
 
 import { URGENCY_COLOR, URGENCY_LABEL, type Quest } from '../types';
+import { themePalette } from '../stores/theme';
 
 const NODE_W = 284;
 const NODE_H = 80;
@@ -111,10 +112,11 @@ export function makeQuestNodeSvgUrl(
 	overlayColor?: string,
 	theme: 'dark' | 'light' = 'dark'
 ): string {
-	// DEV-074: theme 별 색.
-	const bgFill = theme === 'light' ? '#ffffff' : '#0d1117';
-	const titleFill = theme === 'light' ? '#1f2328' : '#c9d1d9';
-	const defaultDueColor = theme === 'light' ? '#59636e' : '#8b949e';
+	// DEV-074 fix20: themePalette 단일 source 사용. 이전엔 inline 분기.
+	const palette = themePalette(theme);
+	const bgFill = palette.bg;
+	const titleFill = palette.text;
+	const defaultDueColor = palette.textMuted;
 	const W = NODE_W;
 	const H = NODE_H;
 	const uc = URGENCY_COLOR[quest.urgency as 1 | 2 | 3 | 4] ?? '#666';

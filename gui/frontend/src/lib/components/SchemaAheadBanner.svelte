@@ -118,9 +118,9 @@
 		align-items: center;
 		gap: 0.75rem;
 		padding: 0.5rem 1rem;
-		background: color-mix(in srgb, #f0883e 18%, transparent);
-		border-bottom: 1px solid #f0883e;
-		color: #f0883e;
+		background: color-mix(in srgb, var(--orange) 18%, transparent);
+		border-bottom: 1px solid var(--orange);
+		color: var(--orange);
 		font-size: 0.85rem;
 	}
 	.msg {
@@ -141,7 +141,7 @@
 		padding: 0 0.25rem;
 		border-radius: 3px;
 		font-size: 0.85em;
-		color: #f0883e;
+		color: var(--orange);
 	}
 	.actions {
 		display: flex;
@@ -164,7 +164,7 @@
 	.btn-dismiss {
 		background: none;
 		border: none;
-		color: #f0883e;
+		color: var(--orange);
 		cursor: pointer;
 		font-size: 1.1rem;
 		line-height: 1;

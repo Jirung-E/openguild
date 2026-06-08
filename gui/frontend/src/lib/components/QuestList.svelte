@@ -374,8 +374,8 @@
 	}
 	.tag-filter-chip {
 		padding: 0.15rem 0.65rem;
-		background: rgba(198, 144, 38, 0.08);
-		border: 1px solid rgba(198, 144, 38, 0.3);
+		background: color-mix(in srgb, var(--warning) 8%, transparent);
+		border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
 		border-radius: 20px;
 		color: var(--warning);
 		font-size: 0.72rem;
@@ -383,10 +383,10 @@
 		cursor: pointer;
 		transition: background 0.1s, border-color 0.1s;
 	}
-	.tag-filter-chip:hover { background: rgba(198, 144, 38, 0.18); }
+	.tag-filter-chip:hover { background: color-mix(in srgb, var(--warning) 18%, transparent); }
 	.tag-filter-chip.active {
-		background: rgba(198, 144, 38, 0.28);
-		border-color: rgba(198, 144, 38, 0.7);
+		background: color-mix(in srgb, var(--warning) 28%, transparent);
+		border-color: color-mix(in srgb, var(--warning) 70%, transparent);
 		color: color-mix(in srgb, var(--warning) 60%, white);
 	}
 	.tag-chip-count {
