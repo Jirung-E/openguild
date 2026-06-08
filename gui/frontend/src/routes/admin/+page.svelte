@@ -117,8 +117,13 @@
 		busy = true;
 		try {
 			await adminApi.reindex();
-			showSuccess('reindex 완료');
+			showSuccess('reindex 완료 — 데이터 새로고침');
 			drift = null;
+			// DEV-120: reindex 후 자동 새로고침. 사용자가 변경된 데이터를 즉시
+			// 보길 기대. snapshots 등 admin 페이지 자체 데이터 + 사용자가 다른
+			// 페이지 (Board/List/Detail) 로 돌아갈 때 stale 캐시 잡지 않도록
+			// full reload. 토스트가 잠깐 보이도록 짧은 지연 후.
+			setTimeout(() => window.location.reload(), 600);
 		} catch (e) {
 			showError(`reindex 실패: ${e}`);
 		} finally {
