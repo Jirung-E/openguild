@@ -51,6 +51,25 @@
 	--btn-warning-border: color-mix(in srgb, var(--warning) 55%, transparent);
 	--btn-warning-text: var(--warning);
 
+	/* DEV-074 fix20 (sweep): semantic 색 — 이전엔 컴포넌트마다 hex 산재.
+	   - accent-secondary: --accent (#58a6ff) 와 별도, 한 단계 옅은 blue.
+	     코드 / 링크 등 secondary 강조. flash border 도 이쪽.
+	   - orange: due/warning 텍스트 강조 (--warning 보다 더 채도 높음).
+	   - hl-pre/sub/next + bg: Quest Board 의 highlight type. parent 는
+	     --success 재사용 (이미 일관) + --hl-parent-bg 만 추가.
+	   - selected-bg: cytoscape 노드 selected 배경. */
+	--accent-secondary: #79c0ff;
+	--orange: #f0883e;
+	--hl-pre: #a371f7;
+	--hl-pre-bg: #190d33;
+	--hl-sub: #3dc9b0;
+	--hl-sub-bg: #062220;
+	--hl-next: #f0883e;
+	--hl-next-bg: #2a1200;
+	--hl-parent-bg: #0a2914;
+	--selected-bg: #112240;
+	--edge-pre: #4a90d9;
+
 	/* DEV-074 fix8: 카드 상단 하이라이트 그라데이션 (overdue / completed).
 	   다크: 22% tint + bg-elevated base, 60% 에서 base 도달.
 	   라이트: 옅게 (10%) + bg (흰) base, 70% 에서 fade — 분홍/민트가 너무
@@ -100,6 +119,19 @@
 	--btn-warning-bg-hover: #ffefa8;
 	--btn-warning-border: #d4a72c;
 	--btn-warning-text: #6f5400;
+
+	/* DEV-074 fix20 (sweep): semantic 색 light 대응. 자세한 건 :root 참조. */
+	--accent-secondary: #0969da;
+	--orange: #bc4c00;
+	--hl-pre: #8250df;
+	--hl-pre-bg: #f3eafe;
+	--hl-sub: #1a7f64;
+	--hl-sub-bg: #dbf6ee;
+	--hl-next: #bc4c00;
+	--hl-next-bg: #fde6cf;
+	--hl-parent-bg: #dafbe1;
+	--selected-bg: #ddf4ff;
+	--edge-pre: #0969da;
 
 	/* DEV-074 fix8 / fix9: 라이트 — 흰 base 에 wash. fix8 의 10% 가 너무 옅음
 	   사용자 피드백 → 20% 로 ↑. base 는 그대로 --bg (#ffffff). */
