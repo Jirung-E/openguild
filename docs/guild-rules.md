@@ -97,6 +97,18 @@ DEV-001, DEV-002, BUG-045, REQ-007, ...  ─── feature 브랜치 (develop �
 - `$state` / `$derived` Svelte 5 문법 사용, Svelte 4 방식(`writable` store 등) 혼용 금지
 - 타입 에러 0개 유지 (`npm run check`)
 
+### 테마 색 — DEV-074 (재발 방지)
+
+- **컴포넌트 CSS 의 색은 토큰 (`var(--xxx)`) 만 사용.** hex (`#79c0ff` 등) 직접 작성 금지.
+  토큰이 없는 색은 `lib/styles/global.css` 의 `:root` + `[data-theme='light']`
+  양쪽에 신설 후 사용.
+- **JS 가 색을 필요로 하는 경우** (Cytoscape canvas / SVG data URL — CSS `var()`
+  컴퓨팅 못 함) `lib/stores/theme.ts` 의 `themePalette(eff)` 단일 source 사용.
+  컴포넌트 안에서 `eff === 'light' ? '#x' : '#y'` 분기 작성 금지 — 중복 정의 /
+  drift 의 원인.
+- 새 색 추가 시 dark / light 양쪽 모두 정의. 한쪽만 정의하면 다른 테마에서 깨짐.
+- 사용자가 보는 in-app rule 은 `.guild/rules/frontend-theme-tokens.md` 참조.
+
 ---
 
 ## 테스트
