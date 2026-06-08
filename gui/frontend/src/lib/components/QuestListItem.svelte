@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { URGENCY_COLOR, URGENCY_LABEL, type Quest } from '$lib/types';
+	import { urgencyColor, urgencyLabel, type Quest } from '$lib/types';
 
 	let {
 		quest,
@@ -52,8 +52,8 @@
 	{/if}
 
 	<!-- 긴급도 -->
-	<span class="badge urgency" style:--c={URGENCY_COLOR[quest.urgency]}>
-		{URGENCY_LABEL[quest.urgency]}
+	<span class="badge urgency" style:--c={urgencyColor(quest.urgency)}>
+		{urgencyLabel(quest.urgency)}
 	</span>
 
 	<!-- 상태 -->

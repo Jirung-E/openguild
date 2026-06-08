@@ -22,8 +22,9 @@
 	import { keymap } from '@codemirror/view';
 	import { redo } from '@codemirror/commands';
 	import {
-		URGENCY_COLOR,
 		URGENCY_LABEL,
+		urgencyColor,
+		urgencyLabel,
 		type CandidateRelation,
 		type Quest,
 		type QuestDetail,
@@ -634,8 +635,8 @@
 		<!-- 헤더 뱃지 -->
 		<div class="header">
 			<span class="badge type" style:--c={detail.type_color}>{detail.quest_id}</span>
-			<span class="badge urgency" style:--c={URGENCY_COLOR[detail.urgency]}>
-				{URGENCY_LABEL[detail.urgency]}
+			<span class="badge urgency" style:--c={urgencyColor(detail.urgency)}>
+				{urgencyLabel(detail.urgency)}
 			</span>
 			{#key badgePulse}
 				<span class="badge status pulsing" style:--c={detail.status_color}>

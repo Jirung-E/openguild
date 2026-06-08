@@ -14,6 +14,8 @@
 	import { flashQuestId } from '$lib/stores';
 	import {
 		URGENCY_COLOR,
+		urgencyColor,
+		urgencyLabel,
 		URGENCY_BG,
 		URGENCY_LABEL,
 		urgencyBgFor,
@@ -123,9 +125,12 @@
 
 	function makeSvgUrl(quest: Quest): string {
 		const W = NODE_W, H = NODE_H;
-		const uc = URGENCY_COLOR[quest.urgency];
+		// BUG-060: 유효 범위 밖 데이터에도 안전한 헬퍼 사용 — 이전엔 bare access
+		// 로 인해 urgency=5 같은 invalid row 가 들어오면 ul/uc 가 undefined →
+		// 아래 .length 에서 폭발 (보드 mount 실패).
+		const uc = urgencyColor(quest.urgency);
 		const tc = quest.type_color;
-		const ul = URGENCY_LABEL[quest.urgency];
+		const ul = urgencyLabel(quest.urgency);
 		const qid = quest.quest_id;
 		// DEV-074 fix: SVG data URL 안에선 CSS var() 컴퓨팅 X — 명시 색.
 		const eff = currentEffectiveTheme();
@@ -1837,7 +1842,7 @@
 						questId: qid,
 						questSlug: quest.quest_id,
 						statusId: quest.status_id,
-						urgencyColor: URGENCY_COLOR[quest.urgency],
+						urgencyColor: urgencyColor(quest.urgency),
 						urgencyBg: urgencyBgFor(quest.urgency, currentEffectiveTheme()),
 						typeColor: quest.type_color,
 						nodeBg: makeSvgUrl(quest),
@@ -2209,7 +2214,7 @@
 					questId: q.id,
 					questSlug: q.quest_id,
 					statusId: q.status_id,
-					urgencyColor: URGENCY_COLOR[q.urgency],
+					urgencyColor: urgencyColor(q.urgency),
 					urgencyBg: urgencyBgFor(q.urgency, currentEffectiveTheme()),
 					typeColor: q.type_color,
 					nodeBg: makeSvgUrl(q),
@@ -2490,7 +2495,7 @@
 			<span class="drag-hint" title="드래그하여 이동">⠿</span>
 			<div class="card-badges">
 				<span class="badge" style:--c={expandedQuest.type_color}>{expandedQuest.quest_id}</span>
-				<span class="badge" style:--c={URGENCY_COLOR[expandedQuest.urgency]}>{URGENCY_LABEL[expandedQuest.urgency]}</span>
+				<span class="badge" style:--c={urgencyColor(expandedQuest.urgency)}>{urgencyLabel(expandedQuest.urgency)}</span>
 				<span class="badge" style:--c={expandedQuest.status_color}>{expandedQuest.status_name_en}</span>
 			</div>
 			<button class="card-close" onclick={closeExpanded} title="닫기 (Esc)">×</button>

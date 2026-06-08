@@ -291,3 +291,20 @@ export function urgencyBgFor(urgency: number, theme: 'dark' | 'light'): string {
 	const map = theme === 'light' ? URGENCY_BG_LIGHT : URGENCY_BG;
 	return map[urgency] ?? map[4] ?? '#888';
 }
+
+/**
+ * BUG-060: URGENCY_LABEL / URGENCY_COLOR 의 안전 접근 헬퍼.
+ *
+ * 이전엔 `URGENCY_LABEL[quest.urgency]` 같은 bare access 였는데, 데이터가
+ * 유효 범위 (1..=4) 를 벗어나면 `undefined` 가 반환. 호출 측에서 `.length`
+ * 같은 접근 시 "Cannot read properties of undefined" 로 보드 전체 폭발.
+ * (사용자 보고 — reindex 후 보드 중앙에 그 메시지가 떠 board mount 실패.)
+ *
+ * 범위 밖이면 4 (Low) 로 fallback — 시각적 노이즈 최소 + 데이터 정정 유도.
+ */
+export function urgencyLabel(u: number): string {
+	return URGENCY_LABEL[u] ?? URGENCY_LABEL[4];
+}
+export function urgencyColor(u: number): string {
+	return URGENCY_COLOR[u] ?? URGENCY_COLOR[4];
+}
