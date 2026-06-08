@@ -16,6 +16,27 @@ use std::time::SystemTime;
 use crate::repo::fs as repo_fs;
 use crate::store::Store;
 
+/// BUG-059: `app_meta.last_indexed_at` (ISO 8601) 을 `SystemTime` 으로 변환.
+/// 마커가 비어있거나 파싱 실패 / 컬럼 미존재 (legacy DB) 면 `None` —
+/// 호출자가 기존 동작 (index.db mtime) 으로 fallback.
+async fn fetch_last_indexed_at(pool: &sqlx::SqlitePool) -> Option<SystemTime> {
+    let raw: Option<String> = sqlx::query_scalar(
+        "SELECT value FROM app_meta WHERE key = 'last_indexed_at'",
+    )
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+    let s = raw?;
+    if s.is_empty() {
+        return None;
+    }
+    // ISO 8601 with offset — chrono 가 RFC 3339 로 파싱.
+    chrono::DateTime::parse_from_rfc3339(&s)
+        .ok()
+        .map(|dt| SystemTime::from(dt))
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct DriftReport {
     pub fresh_files: Vec<String>, // quest_id slug 들
@@ -47,8 +68,14 @@ pub async fn detect_drift(store: &Store) -> Result<DriftReport> {
     let paths = &store.paths;
     let pool = &store.index_pool;
 
-    // index.db 자체 mtime — 마지막 mutation 이 SQL 통해 적용된 시각의 lower bound.
-    let index_mtime = repo_fs::mtime(paths.index_db()).unwrap_or(SystemTime::UNIX_EPOCH);
+    // BUG-059: 시간 기준은 `app_meta.last_indexed_at` (= 마지막 reindex 의 ISO 시각).
+    // 이전엔 `index.db` 파일 mtime 을 썼는데 SQLite WAL checkpoint / Store::open
+    // 의 초기 write 등으로 mtime 이 NOW 로 튀어 외부 편집을 못 잡는 false negative
+    // 발생. 마커 없으면 기존 동작 (index.db mtime) 으로 fallback (legacy DB).
+    let index_mtime = match fetch_last_indexed_at(pool).await {
+        Some(t) => t,
+        None => repo_fs::mtime(paths.index_db()).unwrap_or(SystemTime::UNIX_EPOCH),
+    };
 
     // 파일 → mtime 맵
     // BUG-047: sibling `.comments.md` / `.memo.md` 제외 — 매번 missing_in_index
@@ -247,7 +274,7 @@ mod tests {
                 updated_at: "2026-01-01T00:00:00Z".into(),
                 deleted: false,
                 desired_due: None,
-                required_due: None,
+                required_due: None,
                 tags: vec![],
             },
             description: String::new(),
@@ -319,6 +346,75 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// BUG-059: `last_indexed_at` 마커를 명시적으로 과거 시각으로 설정하고
+    /// 파일은 그 이후에 작성 → `fresh_files` 에 잡혀야. (이전엔 index.db
+    /// mtime 만 봤기 때문에 sqlite 가 NOW 로 mtime 을 튕기면 false negative.)
+    #[tokio::test]
+    async fn drift_uses_last_indexed_at_marker_not_index_db_mtime() {
+        let dir = fresh_tmp("bug-059");
+        let store = setup(&dir).await;
+
+        // 1) reindex 한 번 → 정상적으로 last_indexed_at 마커 기록.
+        crate::reindex::reindex(&store).await.unwrap();
+
+        // 2) 마커를 일부러 24h 이전 ISO 시각으로 덮어씀 — "오래된 reindex" 시뮬레이션.
+        let yesterday = (chrono::Local::now() - chrono::Duration::hours(24))
+            .to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        sqlx::query(
+            "INSERT INTO app_meta (key, value) VALUES ('last_indexed_at', ?)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        )
+        .bind(&yesterday)
+        .execute(&store.index_pool)
+        .await
+        .unwrap();
+
+        // 3) 그 후 quest 파일 작성 — mtime = NOW > yesterday.
+        let qf = QuestFile {
+            frontmatter: QuestFrontmatter {
+                quest_id: "DEV-001".into(),
+                title: "external edit".into(),
+                status: "open".into(),
+                urgency: 3,
+                parent: None,
+                prerequisites: vec![],
+                created_at: "2026-01-01T00:00:00Z".into(),
+                updated_at: "2026-01-01T00:00:00Z".into(),
+                deleted: false,
+                desired_due: None,
+                required_due: None,
+                tags: vec![],
+            },
+            description: String::new(),
+            auto_block: String::new(),
+        };
+        qf.write(store.paths.quest_path("DEV-001")).unwrap();
+
+        // 4) detect_drift: yesterday < file_mtime → fresh 또는 missing 에 잡혀야.
+        //    (file 은 index 에 없으므로 missing_in_index 에도 잡힘.)
+        let report = detect_drift(&store).await.unwrap();
+        let detected = report.fresh_files.iter().any(|s| s == "DEV-001")
+            || report.missing_in_index.iter().any(|s| s == "DEV-001");
+        assert!(
+            detected,
+            "DEV-001 이 fresh 또는 missing_in_index 에 잡혀야 — 마커 기반 비교: \
+             fresh={:?}, missing={:?}",
+            report.fresh_files, report.missing_in_index
+        );
+    }
+
+    /// BUG-059: 마커가 비어있을 때 (신규 길드 / migration 직후) 도 panic 안 하고
+    /// fallback (index.db mtime) 으로 동작.
+    #[tokio::test]
+    async fn drift_falls_back_when_marker_empty() {
+        let dir = fresh_tmp("bug-059-empty");
+        let store = setup(&dir).await;
+
+        // setup 직후엔 migration 의 INSERT OR IGNORE 로 마커가 빈 문자열로 존재.
+        // 호출 자체가 panic 안 하면 OK.
+        let _ = detect_drift(&store).await.unwrap();
+    }
+
     #[tokio::test]
     async fn auto_resync_fixes_drift() {
         let dir = fresh_tmp("resync-fix");
@@ -337,7 +433,7 @@ mod tests {
                 updated_at: "2026-01-01T00:00:00Z".into(),
                 deleted: false,
                 desired_due: None,
-                required_due: None,
+                required_due: None,
                 tags: vec![],
             },
             description: String::new(),

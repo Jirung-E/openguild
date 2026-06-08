@@ -548,6 +548,18 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
         .await?;
     }
 
+    // BUG-059: drift detection 의 신뢰 가능한 시간 기준 — reindex 종료 시점을
+    // ISO 타임스탬프로 app_meta 에 기록. 다음 startup 의 detect_drift 가 이 값과
+    // file mtime 을 비교 → SQLite WAL / Store::open 의 mtime 부작용에 영향 없음.
+    let last_indexed_at = crate::time::now_local_iso8601();
+    sqlx::query(
+        "INSERT INTO app_meta (key, value) VALUES ('last_indexed_at', ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    )
+    .bind(&last_indexed_at)
+    .execute(&mut *tx)
+    .await?;
+
     tx.commit().await?;
 
     // 7. auto 블록을 SQL 기준으로 다시 그려서 파일에 쓰기 — 외부 편집 결과
