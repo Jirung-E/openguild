@@ -64,6 +64,10 @@
 }
 
 [data-theme='light'] {
+	/* BUG-058: native date picker icon — `:root` 가 dark 라 light 테마에서도
+	   picker icon 이 흰색 → 흰 배경에 묻혀 안 보임. light 일 땐 명시적으로
+	   `light` 로 override. */
+	color-scheme: light;
 	--bg: #ffffff;
 	--bg-elevated: #f6f8fa;
 	--bg-subtle: #eaeef2;
