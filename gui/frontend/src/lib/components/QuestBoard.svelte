@@ -133,10 +133,11 @@
 		const ul = urgencyLabel(quest.urgency);
 		const qid = quest.quest_id;
 		// DEV-074 fix: SVG data URL 안에선 CSS var() 컴퓨팅 X — 명시 색.
-		const eff = currentEffectiveTheme();
-		const textFill = eff === 'light' ? '#1f2328' : '#c9d1d9';
-		const dueMutedFill = eff === 'light' ? '#59636e' : '#8b949e';
-		const dangerFill = eff === 'light' ? '#cf222e' : '#f85149';
+		// DEV-074 fix20: themePalette 단일 source 사용.
+		const palette = themePalette(currentEffectiveTheme());
+		const textFill = palette.text;
+		const dueMutedFill = palette.textMuted;
+		const dangerFill = palette.danger;
 
 		const x = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 		const qidW = Math.ceil(qid.length * 6.4) + 16;
@@ -686,7 +687,7 @@
 
 	// DEV-074 fix: light theme 시 노드 bg 색 light tone 으로. theme store
 	// subscribe — 변경 시 모든 노드 의 urgencyBg data 갱신 + cy.style 적용.
-	import { theme, resolveTheme } from '$lib/stores/theme';
+	import { theme, resolveTheme, themePalette } from '$lib/stores/theme';
 	function currentEffectiveTheme(): 'dark' | 'light' {
 		return resolveTheme(getStore(theme));
 	}
@@ -1070,10 +1071,13 @@
 		}
 		e.preventDefault();
 		cy?.panningEnabled(false);
+		// DEV-074 fix20: themePalette 사용 — 이전엔 #4a90d9 hardcoded (다크 전용).
+		const ePal = themePalette(currentEffectiveTheme());
 		boxDragEl = document.createElement('div');
 		boxDragEl.style.cssText =
 			`position:absolute;left:${sx}px;top:${sy}px;width:0;height:0;` +
-			`border:1.5px dashed #4a90d9;background:rgba(74,144,217,0.1);` +
+			`border:1.5px dashed ${ePal.edgePre};` +
+			`background:color-mix(in srgb, ${ePal.edgePre} 10%, transparent);` +
 			`pointer-events:none;z-index:100;box-sizing:border-box;`;
 		container.appendChild(boxDragEl);
 		boxDragStart = { x: sx, y: sy };
@@ -1549,22 +1553,22 @@
 	// `var(--bg)` 같은 CSS 변수는 Cytoscape style 시스템이 컴퓨팅 못 함 (DEV-074
 	// 코멘트 참조) → 모든 색을 명시 hex 로 지정 + theme 변경 시 cy.style() 교체.
 	function buildCyStyle(eff: 'dark' | 'light'): StylesheetJson {
-		// 토큰 미러 (global.css 와 동기 — 변경 시 둘 다 갱신).
-		const bg = eff === 'light' ? '#ffffff' : '#0d1117';
-		const accent = eff === 'light' ? '#0969da' : '#58a6ff';
-		const success = eff === 'light' ? '#1a7f37' : '#56d364';
-		const textFaint = eff === 'light' ? '#8b949e' : '#484f58';
-		// highlight 톤 — dark 는 깊은, light 는 옅은 동일 hue.
-		const preBg = eff === 'light' ? '#f3eafe' : '#190d33';
-		const preBorder = eff === 'light' ? '#8250df' : '#a371f7';
-		const subBg = eff === 'light' ? '#dbf6ee' : '#062220';
-		const subBorder = eff === 'light' ? '#1a7f64' : '#3dc9b0';
-		const nextBg = eff === 'light' ? '#fde6cf' : '#2a1200';
-		const nextBorder = eff === 'light' ? '#bc4c00' : '#f0883e';
-		const parentBg = eff === 'light' ? '#dafbe1' : '#0a2914';
-		const selectedBg = eff === 'light' ? '#ddf4ff' : '#112240';
-		const flashBorder = eff === 'light' ? '#0969da' : '#79c0ff';
-		const edgePre = eff === 'light' ? '#0969da' : '#4a90d9';
+		// DEV-074 fix20: themePalette 단일 source. 이전엔 컴포넌트별 inline 분기.
+		const p = themePalette(eff);
+		const bg = p.bg;
+		const accent = p.accent;
+		const success = p.success;
+		const textFaint = p.textFaint;
+		const preBg = p.hlPreBg;
+		const preBorder = p.hlPre;
+		const subBg = p.hlSubBg;
+		const subBorder = p.hlSub;
+		const nextBg = p.hlNextBg;
+		const nextBorder = p.hlNext;
+		const parentBg = p.hlParentBg;
+		const selectedBg = p.selectedBg;
+		const flashBorder = p.accentSecondary;
+		const edgePre = p.edgePre;
 		return [
 			{
 				selector: 'node[questId]',
@@ -1674,6 +1678,10 @@
 		});
 		// stylesheet 자체 교체 — base / highlight / selected 의 hardcoded hex 까지 반영.
 		cy.style().fromJson(buildCyStyle(eff)).update();
+		// DEV-074 fix20: grid snap SVG 의 dot 색도 palette 의존이라 theme 변경 시
+		// 캐시 무효화 → 다음 syncLanes 가 새 색으로 재생성.
+		gridBgCache.clear();
+		syncLanes();
 	}
 
 	onMount(() => {
@@ -2063,10 +2071,15 @@
 					const firstCxLocal = (laneFirstCellX(i, cols) - i * LANE_STRIDE) * zoom;
 					const svgW = cellWPx * cols;
 					const svgH = cellHPx;
+					// DEV-074 fix20: dot 색은 palette.warning. 이전엔 rgba(245,166,35,...)
+					// 다크 전용. 캐시는 zoom/cols 외에 theme 변경 시 buildCyStyle 가
+					// gridBgCache.clear() 호출 (아래 cy.style 갱신 직후) — 즉시 다시 그림.
+					const palette = themePalette(currentEffectiveTheme());
+					const dotFill = `color-mix(in srgb, ${palette.warning} 55%, transparent)`;
 					const dots = Array.from({ length: cols }, (_, c) => {
 						const cx = c * cellWPx + cellWPx / 2;
 						const cy = cellHPx / 2;
-						return `<circle cx="${cx}" cy="${cy}" r="${dotR}" fill="rgba(245,166,35,0.55)"/>`;
+						return `<circle cx="${cx}" cy="${cy}" r="${dotR}" fill="${dotFill}"/>`;
 					}).join('');
 					const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${svgW}' height='${svgH}'>${dots}</svg>`;
 					const dataUri = `url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}")`;
@@ -2974,7 +2987,7 @@
 		background: var(--bg); border: 1px solid var(--bg-subtle); border-radius: 5px;
 	}
 	.blabel { font-size: 0.7rem; color: var(--text-faint); }
-	.bname { font-family: 'SFMono-Regular', Consolas, monospace; font-size: 0.78rem; color: #79c0ff; }
+	.bname { font-family: 'SFMono-Regular', Consolas, monospace; font-size: 0.78rem; color: var(--accent-secondary); }
 
 	.card-goto {
 		margin: 0 12px 10px;
@@ -3015,19 +3028,20 @@
 		border: 1px solid transparent;
 		background: var(--bg);
 	}
-	/* 색상 정의 */
-	.hl-btn.pre    { color: #a371f7; border-color: rgba(163,113,247,0.25); }
-	.hl-btn.sub    { color: #3dc9b0; border-color: rgba(61,201,176,0.25); }
-	.hl-btn.next   { color: #f0883e; border-color: rgba(240,136,62,0.25); }
-	.hl-btn.parent { color: var(--success); border-color: rgba(126,231,135,0.25); }
+	/* DEV-074 fix20 (sweep): 토큰 + color-mix 로 통일.
+	   이전엔 hex 와 rgba() 직접 — 라이트모드에서 색 안 변함. */
+	.hl-btn.pre    { color: var(--hl-pre); border-color: color-mix(in srgb, var(--hl-pre) 25%, transparent); }
+	.hl-btn.sub    { color: var(--hl-sub); border-color: color-mix(in srgb, var(--hl-sub) 25%, transparent); }
+	.hl-btn.next   { color: var(--hl-next); border-color: color-mix(in srgb, var(--hl-next) 25%, transparent); }
+	.hl-btn.parent { color: var(--success); border-color: color-mix(in srgb, var(--success) 25%, transparent); }
 	.hl-btn.all    { color: var(--text); border-color: var(--border); }
 
 	.hl-btn:hover { background: var(--bg-subtle); }
-	.hl-btn.pre.on    { background: rgba(163,113,247,0.15); border-color: #a371f7; }
-	.hl-btn.sub.on    { background: rgba(61,201,176,0.15);  border-color: #3dc9b0; }
-	.hl-btn.next.on   { background: rgba(240,136,62,0.15);  border-color: #f0883e; }
-	.hl-btn.parent.on { background: rgba(126,231,135,0.15); border-color: var(--success); }
-	.hl-btn.all.on    { background: rgba(201,209,217,0.1);  border-color: var(--text-muted); }
+	.hl-btn.pre.on    { background: color-mix(in srgb, var(--hl-pre) 15%, transparent); border-color: var(--hl-pre); }
+	.hl-btn.sub.on    { background: color-mix(in srgb, var(--hl-sub) 15%, transparent); border-color: var(--hl-sub); }
+	.hl-btn.next.on   { background: color-mix(in srgb, var(--hl-next) 15%, transparent); border-color: var(--hl-next); }
+	.hl-btn.parent.on { background: color-mix(in srgb, var(--success) 15%, transparent); border-color: var(--success); }
+	.hl-btn.all.on    { background: color-mix(in srgb, var(--text-muted) 10%, transparent); border-color: var(--text-muted); }
 
 	.hl-actions {
 		margin: 6px 12px 0;
@@ -3042,10 +3056,10 @@
 	}
 	.hl-act:hover:not(:disabled) { background: var(--bg-subtle); color: var(--text); }
 	.hl-act:disabled { opacity: 0.4; cursor: default; }
-	.hl-act.sel { color: var(--accent); border-color: rgba(88,166,255,0.3); }
-	.hl-act.sel:hover:not(:disabled) { background: rgba(88,166,255,0.1); color: #79c0ff; }
-	.hl-act.arr { color: var(--warning); border-color: rgba(245,166,35,0.3); }
-	.hl-act.arr:hover:not(:disabled) { background: rgba(245,166,35,0.1); color: #ffb84d; }
+	.hl-act.sel { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+	.hl-act.sel:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent-secondary); }
+	.hl-act.arr { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 30%, transparent); }
+	.hl-act.arr:hover:not(:disabled) { background: color-mix(in srgb, var(--warning) 10%, transparent); color: var(--orange); }
 	.hl-act.clear { color: var(--text-faint); }
 
 	.card-note {
@@ -3089,14 +3103,14 @@
 	.tb-btn:hover:not(:disabled) { background: var(--bg-subtle); border-color: var(--text-faint); color: var(--text); }
 	.tb-btn:disabled { opacity: 0.35; cursor: default; }
 	.tb-btn.tb-on {
-		background: rgba(245,166,35,0.12);
-		border-color: rgba(245,166,35,0.55);
+		background: color-mix(in srgb, var(--warning) 12%, transparent);
+		border-color: color-mix(in srgb, var(--warning) 55%, transparent);
 		color: var(--warning);
 	}
 	.tb-btn.tb-on:hover:not(:disabled) {
-		background: rgba(245,166,35,0.18);
+		background: color-mix(in srgb, var(--warning) 18%, transparent);
 		border-color: var(--warning);
-		color: #ffb84d;
+		color: var(--orange);
 	}
 	.tb-btn .icon { font-size: 0.95rem; line-height: 1; }
 	.tb-btn .count { font-size: 0.7rem; color: var(--text-faint); min-width: 10px; text-align: right; }
