@@ -108,23 +108,28 @@
 	// DEV-074 fix17: 삭제 cascade 모달의 sub-quest list overlay scrollbar.
 	let delSubListEl: HTMLUListElement | undefined = $state(undefined);
 
-	// DEV-109: 본문이 길 때 댓글로 점프하는 floating 버튼.
-	// commentsAnchorEl 의 viewport 내 위치를 onscroll 마다 체크 — viewport 아래
-	// (사용자가 댓글에 아직 안 닿음) 일 때만 버튼 노출.
+	// DEV-109 / DEV-127: floating button cluster — 본문이 길 때 점프.
+	// 각 anchor 의 viewport 위치 기준으로 노출 결정.
 	let commentsAnchorEl: HTMLDivElement | undefined = $state(undefined);
 	let showCommentsJump = $state(false);
-	function checkCommentsJumpVisibility() {
-		if (!commentsAnchorEl) {
+	let showTopJump = $state(false);
+	function checkJumpVisibility() {
+		const vh = window.innerHeight;
+		// 댓글: anchor 가 viewport 아래쪽이면 표시.
+		if (commentsAnchorEl) {
+			const r = commentsAnchorEl.getBoundingClientRect();
+			showCommentsJump = r.top > vh * 1.1;
+		} else {
 			showCommentsJump = false;
-			return;
 		}
-		const rect = commentsAnchorEl.getBoundingClientRect();
-		// 앵커의 top 이 viewport 하단보다 아래 → 사용자가 아직 댓글까지 스크롤 안 함.
-		// 또 본문이 충분히 길어야 (앵커가 viewport 한 화면 만큼 아래) 의미 있음.
-		showCommentsJump = rect.top > window.innerHeight * 1.1;
+		// 맨 위로 (DEV-127): 스크롤이 한 화면 이상 내려가 있으면 표시.
+		showTopJump = window.scrollY > vh * 0.8;
 	}
 	function jumpToComments() {
 		commentsAnchorEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+	}
+	function jumpToTop() {
+		window.scrollTo({ top: 0, behavior: 'smooth' });
 	}
 
 	let sortedStatuses = $derived([...statuses].sort((a, b) => a.sort_order - b.sort_order));
@@ -167,13 +172,13 @@
 		}
 	});
 
-	// DEV-109: window 스크롤 / resize 추적 → '댓글로' 버튼 노출 여부.
+	// DEV-109/123/127: window 스크롤 / resize 추적 → 점프 버튼 cluster 노출.
 	onMount(() => {
-		const handler = () => checkCommentsJumpVisibility();
+		const handler = () => checkJumpVisibility();
 		window.addEventListener('scroll', handler, { passive: true });
 		window.addEventListener('resize', handler);
 		// 초기 1회.
-		checkCommentsJumpVisibility();
+		checkJumpVisibility();
 		return () => {
 			window.removeEventListener('scroll', handler);
 			window.removeEventListener('resize', handler);
@@ -184,7 +189,7 @@
 	$effect(() => {
 		void detail;
 		// tick 후 DOM 안정화 — anchor 위치 정확.
-		queueMicrotask(() => checkCommentsJumpVisibility());
+		queueMicrotask(() => checkJumpVisibility());
 	});
 
 	// slug 가 바뀌면(다른 quest 페이지로 navigate) detail 을 다시 로드.
@@ -1158,17 +1163,22 @@
 	</div>
 {/if}
 
-<!-- DEV-109: 본문이 길 때 댓글로 점프하는 floating 버튼. 우하단 fixed. -->
-{#if showCommentsJump && detail}
-	<button
-		class="comments-jump"
-		onclick={jumpToComments}
-		title="댓글로 이동"
-		aria-label="댓글로 이동"
-	>
-		<span class="cj-icon">↓</span>
-		<span class="cj-label">댓글</span>
-	</button>
+<!-- DEV-109/127: 우하단 floating 점프 버튼 cluster. -->
+{#if detail && (showTopJump || showCommentsJump)}
+	<div class="jump-cluster">
+		{#if showTopJump}
+			<button class="jump-btn" onclick={jumpToTop} title="맨 위로" aria-label="맨 위로">
+				<span class="jb-icon">↑</span>
+				<span class="jb-label">위</span>
+			</button>
+		{/if}
+		{#if showCommentsJump}
+			<button class="jump-btn" onclick={jumpToComments} title="댓글로 이동" aria-label="댓글로 이동">
+				<span class="jb-icon">💬</span>
+				<span class="jb-label">댓글</span>
+			</button>
+		{/if}
+	</div>
 {/if}
 
 <style>
@@ -1593,12 +1603,18 @@
 	}
 	.btn-del-no:hover:not(:disabled) { background: var(--bg-subtle); }
 
-	/* DEV-109: 댓글로 점프 floating 버튼. 우하단 fixed, 작고 둥근 pill. */
-	.comments-jump {
+	/* DEV-109/123/127: 우하단 floating 점프 cluster — 위/댓글/메모. */
+	.jump-cluster {
 		position: fixed;
 		right: 1.5rem;
 		bottom: 1.5rem;
 		z-index: 80;
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		align-items: flex-end;
+	}
+	.jump-btn {
 		display: flex;
 		align-items: center;
 		gap: 0.4rem;
@@ -1613,17 +1629,17 @@
 		box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
 		transition: background 0.12s, border-color 0.12s, transform 0.12s;
 	}
-	.comments-jump:hover {
+	.jump-btn:hover {
 		background: var(--bg-subtle);
 		border-color: var(--accent);
 		transform: translateY(-2px);
 	}
-	.comments-jump .cj-icon {
+	.jump-btn .jb-icon {
 		font-size: 1rem;
 		line-height: 1;
 		color: var(--accent);
 	}
-	.comments-jump .cj-label {
+	.jump-btn .jb-label {
 		line-height: 1;
 	}
 </style>
