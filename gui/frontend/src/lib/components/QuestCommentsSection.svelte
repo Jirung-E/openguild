@@ -244,8 +244,13 @@
 </script>
 
 {#snippet entryView(e: CommentEntry, isReply: boolean)}
-	<li class="entry" class:reply={isReply}>
+	<li class="entry" class:reply={isReply} id={`comment-${e.id}`}>
 		<div class="entry-head">
+			<!-- DEV-128: 댓글 번호 — CLI / 본문 참조 (예: '#3 참조') 와 일관. -->
+			<a class="entry-no" href={`#comment-${e.id}`} title={`댓글 #${e.id} 로 링크`}>#{e.id}</a>
+			{#if e.parent_id != null}
+				<a class="reply-to" href={`#comment-${e.parent_id}`} title={`#${e.parent_id} 댓글로 이동`}>↩ #{e.parent_id}</a>
+			{/if}
 			<span class="author">{e.author || '(이름 없음)'}</span>
 			<span class="sep">·</span>
 			<time class="ts" datetime={e.ts}>{formatTs(e.ts)}</time>
@@ -539,6 +544,24 @@
 	.author { font-weight: 600; color: var(--text); }
 	.sep { color: var(--text-faint); }
 	.ts { color: var(--text-faint); }
+	/* DEV-128: 댓글 번호 — anchor 링크 + 미묘한 monospace 강조. */
+	.entry-no {
+		font-family: 'SFMono-Regular', Consolas, monospace;
+		font-size: 0.72rem;
+		color: var(--text-faint);
+		text-decoration: none;
+		padding: 0.05rem 0.35rem;
+		border-radius: 4px;
+		border: 1px solid var(--border-muted);
+	}
+	.entry-no:hover { color: var(--accent); border-color: var(--accent); }
+	.reply-to {
+		font-family: 'SFMono-Regular', Consolas, monospace;
+		font-size: 0.7rem;
+		color: var(--text-muted);
+		text-decoration: none;
+	}
+	.reply-to:hover { color: var(--accent); }
 	.entry-actions {
 		margin-left: auto;
 		display: flex;
