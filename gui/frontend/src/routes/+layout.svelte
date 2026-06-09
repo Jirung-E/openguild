@@ -44,6 +44,65 @@
 	onMount(sweepMermaidLeftovers);
 	afterNavigate(sweepMermaidLeftovers);
 
+	// DEV-126: 페이지 새로고침 후 스크롤 위치 유지.
+	// SvelteKit 의 SPA navigation 은 자동으로 위치 관리 (afterNavigate 가 history
+	// state 따라 복원) 하지만, F5 / window.location.reload() / DEV-120 의 admin
+	// reindex 후 reload 는 page 자체 reload — 항상 top 으로. sessionStorage 에
+	// path 별 scrollY 를 저장해서 reload 시 복원.
+	const SCROLL_KEY_PREFIX = 'openguild.scroll.';
+	function saveScrollPosition() {
+		if (typeof window === 'undefined') return;
+		try {
+			sessionStorage.setItem(
+				SCROLL_KEY_PREFIX + window.location.pathname + window.location.search,
+				String(window.scrollY)
+			);
+		} catch {
+			/* quota / disabled — ignore */
+		}
+	}
+	function restoreScrollPosition() {
+		if (typeof window === 'undefined') return;
+		try {
+			const raw = sessionStorage.getItem(
+				SCROLL_KEY_PREFIX + window.location.pathname + window.location.search
+			);
+			if (raw === null) return;
+			const y = parseInt(raw, 10);
+			if (Number.isFinite(y) && y > 0) {
+				// 다음 tick — 컨텐츠 mount 끝나야 정확. requestAnimationFrame 두 번
+				// (DOM + layout) 후가 가장 안정.
+				requestAnimationFrame(() => {
+					requestAnimationFrame(() => window.scrollTo({ top: y, left: 0 }));
+				});
+			}
+		} catch {
+			/* ignore */
+		}
+	}
+	onMount(() => {
+		// reload 직전 / 페이지 떠나기 직전에 저장.
+		const onBeforeUnload = () => saveScrollPosition();
+		// 주기적 저장 (throttled scroll listener) — 강제 종료 / 크래시 대비.
+		let lastSave = 0;
+		const onScroll = () => {
+			const now = Date.now();
+			if (now - lastSave < 200) return;
+			lastSave = now;
+			saveScrollPosition();
+		};
+		window.addEventListener('beforeunload', onBeforeUnload);
+		window.addEventListener('pagehide', onBeforeUnload);
+		window.addEventListener('scroll', onScroll, { passive: true });
+		// 첫 mount 시 — 마지막 저장값 있으면 복원.
+		restoreScrollPosition();
+		return () => {
+			window.removeEventListener('beforeunload', onBeforeUnload);
+			window.removeEventListener('pagehide', onBeforeUnload);
+			window.removeEventListener('scroll', onScroll);
+		};
+	});
+
 	// DEV-101: UI 크기 — root font-size scale 영속 store 의 현재 값을 매 변경마다
 	// `<html>` 에 반영. HTTP / Tauri 양쪽 동일 (rem 기반 layout).
 	onMount(() => {
