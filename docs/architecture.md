@@ -90,7 +90,7 @@ openguild/
 ├── openguild.guild                  ← 본 repo 의 마커 (dogfood)
 ├── .guild/                          ← 본 repo 의 quests / campaigns / 캐시 (dogfood)
 ├── core/                            ← lib: 도메인 + 저장소 추상화
-│   ├── migrations/                  ← sqlx 마이그레이션 (0001~0014, set_ignore_missing 로 backward compat)
+│   ├── migrations/                  ← sqlx 마이그레이션 (0001~0015, set_ignore_missing 로 backward compat)
 │   └── src/
 │       ├── lib.rs
 │       ├── db.rs                    ← sqlx pool 생성
@@ -301,6 +301,32 @@ openguild/
 >   QuestList / quest-node-svg 의 hex 와 `eff === 'light' ? ...` 분기 모두 정리.
 >   `src` 안 색 hex 0개. 재발 방지 규칙은 `docs/guild-rules.md` / `.guild/rules/
 >   frontend-theme-tokens.md` / DEV-074 본문 3곳에 명시.
+> - 2026-06-09 DEV-128: 댓글 #N 표시 + anchor 점프 — CommentEntry.id 는 이미
+>   있어 표시만, `<li id="comment-N">` + 답글은 `↩ #parent`.
+> - 2026-06-09 DEV-127 / DEV-123: Quest Detail floating cluster — '맨 위로' / '댓글로'
+>   / '메모로' 점프. DEV-109 의 단일 버튼을 `.jump-cluster` 로 refactor.
+> - 2026-06-09 DEV-125: Nav 에 테마 토글 (system → light → dark 순환) — system
+>   모드는 우하단 accent 도트로 표시. Settings 라디오는 그대로 유지.
+> - 2026-06-09 DEV-126: 페이지 새로고침 후 스크롤 위치 유지 — sessionStorage
+>   path 별 scrollY, scroll throttle 200ms + beforeunload 저장 + mount 시 rAF 2회
+>   후 복원. DEV-120 admin reindex 후 reload 와 결합.
+> - 2026-06-09 DEV-124: Quest Detail 의 Successors 섹션에 '+ 추가' 버튼 +
+>   core::services::list_candidates 에 'succ' relation 추가 (prereq mirror —
+>   has_prerequisite_path(id, c.id) 가 false). pickCandidate 는 succ 면
+>   addPrerequisite(candidate, id) (방향 반대).
+> - 2026-06-09 BUG-057: Quest Board 노드 흐림 — (A) cytoscape({pixelRatio:
+>   clamp(devicePixelRatio,1,3)}) 명시 + (B) makeSvgUrl / quest-node-svg 의 SVG
+>   width/height 를 dpr 배 px 로 발급 (viewBox 로 좌표 logical 보존). 보더 /
+>   그림자 / 텍스트 모두 또렷.
+> - 2026-06-09 DEV-121 Phase 1: startup incremental sync — migration 0015
+>   `quests.cached_mtime` (Unix nanoseconds, timezone-independent). 신규
+>   `core::incremental::sync_changed_quest_files` 가 각 .md 파일 stat() →
+>   DB cached_mtime 비교 → 변경된 것만 UPDATE. 신규/삭제는 needs_full_reindex
+>   flag → fallback `drift::auto_resync`. `Store::open_with_sync` helper +
+>   GUI startup hook 교체 (`drift::auto_resync` → `incremental::sync_on_open`).
+>   CLI / server 는 변경 없음 (CLI: stale 사용자 책임, server: DEV-122 분리).
+> - 2026-06-09 DEV-122 등록 (open): server long-running 의 startup + mid-runtime
+>   sync 전략. prerequisite DEV-121. (S1 startup + M1~M4 mid-runtime 옵션.)
 >
 > 자세한 설계 근거: `docs/architecture-refactor.md`, `docs/storage-design.md`.
 

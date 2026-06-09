@@ -543,6 +543,41 @@ openguild migrate-to-files
   발생. ops 의 모든 mutation 경로를 건드리지 않고 reindex 한 곳만 갱신 —
   ops 활동 후 첫 startup 은 false-positive drift 한 번 (idempotent reindex
   추가) 가능하지만 실 영향 없음.
+- **DEV-121 Phase 1 이후 역할 축소**: `incremental::sync_on_open` 이 변경
+  감지의 주 경로. `drift::auto_resync` 는 신규/삭제 / 다른 테이블 변경 시
+  fallback. `app_meta.last_indexed_at` 자체는 그대로 유지 (다른 용도 확장
+  가능).
+
+### `quests.cached_mtime` — DEV-121 Phase 1 (구현 완료)
+
+- migration 0015: `ALTER TABLE quests ADD COLUMN cached_mtime INTEGER NOT NULL DEFAULT 0`.
+- 단위 = Unix nanoseconds — `SystemTime::duration_since(UNIX_EPOCH).as_nanos()`
+  → `i64`. timezone-independent. parse 불필요 — INTEGER 직접 비교.
+- `reindex()` 가 INSERT 시 `mtime_unix_nanos(path)` 함께 적재.
+- `incremental::sync_changed_quest_files` 가 각 `.guild/quests/{slug}.md` 의
+  `stat()` mtime 을 cached_mtime 과 비교 — 변경된 것만 re-parse + UPDATE.
+  cached_mtime 도 함께 갱신해 다음 startup 부턴 비교만으로 통과.
+- 신규/삭제는 본 경로가 안 처리 — `needs_full_reindex` flag 만 set → 호출자
+  (`sync_on_open`) 가 `drift::auto_resync` fallback.
+- **Phase 1 scope**: `quests` 테이블만. statuses / types / tags / campaigns /
+  sibling 은 양이 적어 (수~수십개) 기존 reindex 경로 유지. Phase 1b 에서 확장
+  가능.
+
+#### timezone 안전성
+
+- File mtime 획득: Rust `std::fs::metadata(path)?.modified()?` → `SystemTime`.
+  epoch 기준 절대 시각 — local time / TZ / DST / 길드 이동에 무관.
+- DB 비교: INTEGER nanos 직접. parse 불필요.
+- naive ISO string 은 절대 사용 X — RFC 3339 with offset 만 허용 (다른 컬럼들
+  `created_at` / `updated_at` 은 이미 RFC 3339 with offset).
+
+#### 엣지 케이스
+
+- clock skew (시계 변경): backward → 불필요 re-parse 한 번 (harmless),
+  forward → 모든 row stale 처럼 → 한 번 풀 re-parse.
+- FAT32 2초 정밀도: 같은 초 안 편집은 못 잡음 — admin "Reindex" 우회.
+- mtime 보존 복사 (git checkout, rsync -t): 가장 위험. admin Reindex 로 우회
+  필요. 추후 `cached_size` 컬럼 추가 검토.
 
 ---
 

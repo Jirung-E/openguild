@@ -1,6 +1,6 @@
 [package]
 name = "openguild-core"
-version = "0.1.0-beta"
+version = "0.2.0-beta"
 edition = "2024"
 description = "openguild core — 비즈니스 로직, sqlx, 모델. server / cli / desktop 공유."
 
