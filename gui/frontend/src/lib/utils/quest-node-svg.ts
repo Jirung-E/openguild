@@ -119,6 +119,14 @@ export function makeQuestNodeSvgUrl(
 	const defaultDueColor = palette.textMuted;
 	const W = NODE_W;
 	const H = NODE_H;
+	// BUG-057: HiDPI — SVG 를 dpr 배 사이즈로 발급 + viewBox 로 좌표 보존.
+	// Cytoscape / `<img src>` 가 그 사이즈 raster cache → 표시 사이즈로 다운샘플 → 선명.
+	const dpr =
+		typeof window !== 'undefined'
+			? Math.max(1, Math.min(3, window.devicePixelRatio || 1))
+			: 1;
+	const Wpx = Math.round(W * dpr);
+	const Hpx = Math.round(H * dpr);
 	const uc = URGENCY_COLOR[quest.urgency as 1 | 2 | 3 | 4] ?? '#666';
 	const tc = quest.type_color;
 	const ul = URGENCY_LABEL[quest.urgency as 1 | 2 | 3 | 4] ?? '?';
@@ -165,7 +173,7 @@ export function makeQuestNodeSvgUrl(
 		: '';
 
 	// DEV-081: 좌측 urgency 색 strip 제거 — border (stroke) 만으로도 충분히 강조.
-	const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
+	const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${Wpx}" height="${Hpx}" viewBox="0 0 ${W} ${H}">
   <rect x="0" y="0" width="${W}" height="${H}" rx="6" ry="6" fill="${bgFill}" stroke="${uc}" stroke-width="1.5" stroke-opacity="0.9"/>
   <rect x="10" y="9" width="${qidW}" height="17" rx="8.5"
     fill="${tc}" fill-opacity="0.16" stroke="${tc}" stroke-opacity="0.55" stroke-width="1"/>

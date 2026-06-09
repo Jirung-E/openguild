@@ -123,8 +123,16 @@
 		return [hardHead, hardTail];
 	}
 
+	// BUG-057: HiDPI 노드 — SVG 를 dpr 배 사이즈로 발급 (viewBox 로 좌표계 보존).
+	// Cytoscape 가 background-image 를 그 사이즈로 raster cache 하므로 표시 시
+	// (cover fit, NODE_W × NODE_H) 다운샘플 → 텍스트 또렷.
 	function makeSvgUrl(quest: Quest): string {
 		const W = NODE_W, H = NODE_H;
+		// devicePixelRatio 한도 — 과한 사이즈는 메모리 낭비. 1.0 / 1.5 / 2.0 / 3.0
+		// 같은 일반 값을 그대로 사용. 1 미만이면 1 로.
+		const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+		const Wpx = Math.round(W * dpr);
+		const Hpx = Math.round(H * dpr);
 		// BUG-060: 유효 범위 밖 데이터에도 안전한 헬퍼 사용 — 이전엔 bare access
 		// 로 인해 urgency=5 같은 invalid row 가 들어오면 ul/uc 가 undefined →
 		// 아래 .length 에서 폭발 (보드 mount 실패).
@@ -181,7 +189,8 @@
 
 		// DEV-081: 좌측 urgency 색 strip 제거 — cytoscape 의 node border (urgencyColor)
 		// 만으로 강조 충분. 카드 안쪽 strip 은 중복 시각 노이즈.
-		const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
+		// BUG-057: width/height = px (dpr 배), viewBox = logical (W × H) — 좌표 그대로 사용.
+		const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${Wpx}" height="${Hpx}" viewBox="0 0 ${W} ${H}">
   <rect x="10" y="9" width="${qidW}" height="17" rx="8.5"
     fill="${tc}" fill-opacity="0.16" stroke="${tc}" stroke-opacity="0.55" stroke-width="1"/>
   <text x="${10 + qidW / 2}" y="21.5" text-anchor="middle"
@@ -2256,7 +2265,11 @@
 			// wheel zoom 속도 — 기본 1 이 너무 느림 (사용자 피드백).
 			// cytoscape 권장 범위 [1, ~3]. 2.5 면 한 번 휠 클릭에 체감 ~2x 빠름.
 			wheelSensitivity: 2.5,
-			boxSelectionEnabled: false
+			boxSelectionEnabled: false,
+			// BUG-057: HiDPI 캔버스. 기본 'auto' 가 WebView2 에서 1 로 떨어지는
+			// 사례 있어 명시. 노드 SVG 도 dpr 배 사이즈로 발급 (makeSvgUrl) →
+			// 보더 / 그림자 / 텍스트 모두 또렷.
+			pixelRatio: Math.max(1, Math.min(3, window.devicePixelRatio || 1))
 		});
 
 		cy.on('pan zoom', () => {
