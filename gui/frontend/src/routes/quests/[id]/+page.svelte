@@ -108,25 +108,36 @@
 	// DEV-074 fix17: 삭제 cascade 모달의 sub-quest list overlay scrollbar.
 	let delSubListEl: HTMLUListElement | undefined = $state(undefined);
 
-	// DEV-109 / DEV-127: floating button cluster — 본문이 길 때 점프.
+	// DEV-109 / DEV-123 / DEV-127: floating button cluster — 본문이 길 때 점프.
 	// 각 anchor 의 viewport 위치 기준으로 노출 결정.
 	let commentsAnchorEl: HTMLDivElement | undefined = $state(undefined);
+	let memoAnchorEl: HTMLDivElement | undefined = $state(undefined);
 	let showCommentsJump = $state(false);
+	let showMemoJump = $state(false);
 	let showTopJump = $state(false);
 	function checkJumpVisibility() {
 		const vh = window.innerHeight;
-		// 댓글: anchor 가 viewport 아래쪽이면 표시.
 		if (commentsAnchorEl) {
 			const r = commentsAnchorEl.getBoundingClientRect();
 			showCommentsJump = r.top > vh * 1.1;
 		} else {
 			showCommentsJump = false;
 		}
+		// 메모 (DEV-123): anchor 가 viewport 아래쪽이면 표시.
+		if (memoAnchorEl) {
+			const r = memoAnchorEl.getBoundingClientRect();
+			showMemoJump = r.top > vh * 1.1;
+		} else {
+			showMemoJump = false;
+		}
 		// 맨 위로 (DEV-127): 스크롤이 한 화면 이상 내려가 있으면 표시.
 		showTopJump = window.scrollY > vh * 0.8;
 	}
 	function jumpToComments() {
 		commentsAnchorEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+	}
+	function jumpToMemo() {
+		memoAnchorEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 	}
 	function jumpToTop() {
 		window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1015,6 +1026,8 @@
 		<!-- DEV-109: 본문이 길 때 floating 버튼이 이 anchor 로 점프. -->
 		<div bind:this={commentsAnchorEl} id="comments-anchor"></div>
 		<QuestCommentsSection slug={detail.quest_id} />
+		<!-- DEV-123: 메모 점프 anchor. -->
+		<div bind:this={memoAnchorEl} id="memo-anchor"></div>
 		<QuestNoteSection slug={detail.quest_id} mode="memo" />
 
 		<!-- 변경 이력 (DEV-038) -->
@@ -1163,8 +1176,8 @@
 	</div>
 {/if}
 
-<!-- DEV-109/127: 우하단 floating 점프 버튼 cluster. -->
-{#if detail && (showTopJump || showCommentsJump)}
+<!-- DEV-109/123/127: 우하단 floating 점프 버튼 cluster. -->
+{#if detail && (showTopJump || showCommentsJump || showMemoJump)}
 	<div class="jump-cluster">
 		{#if showTopJump}
 			<button class="jump-btn" onclick={jumpToTop} title="맨 위로" aria-label="맨 위로">
@@ -1176,6 +1189,12 @@
 			<button class="jump-btn" onclick={jumpToComments} title="댓글로 이동" aria-label="댓글로 이동">
 				<span class="jb-icon">💬</span>
 				<span class="jb-label">댓글</span>
+			</button>
+		{/if}
+		{#if showMemoJump}
+			<button class="jump-btn" onclick={jumpToMemo} title="메모로 이동" aria-label="메모로 이동">
+				<span class="jb-icon">📝</span>
+				<span class="jb-label">메모</span>
 			</button>
 		{/if}
 	</div>
