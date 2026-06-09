@@ -87,6 +87,22 @@ impl Store {
         })
     }
 
+    /// DEV-121: `open` + 외부 편집 incremental sync. GUI startup hook 권장.
+    ///
+    /// 흐름: `Store::open` → `incremental::sync_on_open` (변경 file 만 cheap
+    /// UPDATE + 필요 시 풀 reindex fallback).
+    ///
+    /// CLI 는 매 호출 비용을 피하기 위해 `Store::open` 만 사용 — stale 가능
+    /// (사용자 책임). 자세한 정책은 DEV-121 본문.
+    pub async fn open_with_sync<P: AsRef<std::path::Path>>(guild_root: P) -> Result<Self> {
+        let store = Self::open(guild_root).await?;
+        if let Err(e) = crate::incremental::sync_on_open(&store).await {
+            // sync 실패는 fatal X — 사용자에게 stale 표시되더라도 GUI 는 열림.
+            tracing::warn!("incremental sync on open 실패 — {e:#}");
+        }
+        Ok(store)
+    }
+
     /// 메모리 풀로 생성 — 실제 디스크 IO 없음.
     ///
     /// 용도:

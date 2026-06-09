@@ -293,17 +293,23 @@ pub fn run() {
         eprintln!("[openguild-gui] warn: recents 갱신 실패 — {e:#}");
     }
 
-    // BUG-049: 시동 시 자동 reindex — 사용자가 CLI / 외부 편집으로 파일을
-    // 바꿨다면 index.db 가 stale. server / cli 는 이미 같은 패턴.
-    // Welcome / Uninit 은 in-memory 라 drift 없음 — 건너뜀.
+    // BUG-049 / DEV-121: 시동 시 외부 편집 sync. 사용자가 CLI / 외부 편집으로
+    // 파일을 바꿨다면 index.db 가 stale.
+    //
+    // DEV-121: `incremental::sync_on_open` — modified file 들 cheap UPDATE +
+    // 필요 시 풀 reindex fallback. 대부분 case 가 빠름 (stat() 만으로 감지).
+    // Welcome / Uninit 은 in-memory 라 sync 없음.
     if store_path.is_some() {
-        match tauri::async_runtime::block_on(openguild_core::drift::auto_resync(&store)) {
-            Ok(Some(rep)) => eprintln!(
-                "[openguild-gui] drift detected → auto reindex: {} quests / {} deps / {} campaigns",
-                rep.quests_loaded, rep.dependencies_loaded, rep.campaigns_loaded
+        match tauri::async_runtime::block_on(openguild_core::incremental::sync_on_open(&store)) {
+            Ok((inc, Some(rep))) => eprintln!(
+                "[openguild-gui] incremental {} + full reindex: {} quests / {} deps / {} campaigns",
+                inc.updated, rep.quests_loaded, rep.dependencies_loaded, rep.campaigns_loaded
             ),
-            Ok(None) => {}
-            Err(e) => eprintln!("[openguild-gui] warn: auto_resync 실패 — {e:#}"),
+            Ok((inc, None)) if inc.updated > 0 => {
+                eprintln!("[openguild-gui] incremental sync: {} quests updated", inc.updated)
+            }
+            Ok(_) => {}
+            Err(e) => eprintln!("[openguild-gui] warn: sync_on_open 실패 — {e:#}"),
         }
     }
 

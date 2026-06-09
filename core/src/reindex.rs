@@ -235,11 +235,13 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
             .then(|| updated_at.clone());
 
         // DEV-076: desired_due / required_due 도 함께 적재 (file → DB sync).
+        // DEV-121: cached_mtime 도 함께 — 이후 incremental sync 가 정확히 비교.
+        let cached_mtime = crate::repo::fs::mtime_unix_nanos(path);
         sqlx::query(
             "INSERT INTO quests
              (id, quest_type_id, number, title, description, status_id, urgency, parent_quest_id,
-              created_at, updated_at, deleted_at, desired_due, required_due)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              created_at, updated_at, deleted_at, desired_due, required_due, cached_mtime)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(id)
         .bind(type_id)
@@ -254,6 +256,7 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
         .bind(deleted_at)
         .bind(qf.frontmatter.desired_due.as_deref())
         .bind(qf.frontmatter.required_due.as_deref())
+        .bind(cached_mtime)
         .execute(&mut *tx)
         .await?;
 

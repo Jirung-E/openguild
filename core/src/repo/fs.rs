@@ -36,6 +36,16 @@ pub fn mtime<P: AsRef<Path>>(path: P) -> Option<SystemTime> {
     std::fs::metadata(path.as_ref()).ok()?.modified().ok()
 }
 
+/// DEV-121: 파일 mtime 을 Unix nanoseconds (i64) 로. timezone-independent
+/// absolute time — SQLite INTEGER 와 직접 비교. 없거나 epoch 이전이면 0.
+pub fn mtime_unix_nanos<P: AsRef<Path>>(path: P) -> i64 {
+    let Some(t) = mtime(path) else { return 0 };
+    t.duration_since(SystemTime::UNIX_EPOCH)
+        .ok()
+        .and_then(|d| i64::try_from(d.as_nanos()).ok())
+        .unwrap_or(0)
+}
+
 /// BUG-047: quest 본문 파일인지 — `.guild/quests/{slug}.md` 만 true.
 /// sibling 파일 `.comments.md` / `.memo.md` (DEV-012 / DEV-094) 는 false.
 ///
