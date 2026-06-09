@@ -122,7 +122,7 @@ export interface ChangeTypeRequest {
 	new_type_prefix: string;
 }
 
-export type CandidateRelation = 'parent' | 'sub' | 'prereq';
+export type CandidateRelation = 'parent' | 'sub' | 'prereq' | 'succ';
 
 export interface UpdatePositionRequest {
 	x: number;

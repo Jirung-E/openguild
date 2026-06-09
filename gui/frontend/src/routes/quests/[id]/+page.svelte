@@ -85,8 +85,8 @@
 	// 변경이력 — 상태 변경 후 새로고침 트리거 (DEV-038).
 	let historyVersion = $state(0);
 
-	// 콤보박스 / 후보
-	type ComboMode = 'sub' | 'prereq';
+	// 콤보박스 / 후보 (DEV-124: succ 추가)
+	type ComboMode = 'sub' | 'prereq' | 'succ';
 	let comboMode = $state<ComboMode | null>(null);
 	let candidates = $state<Quest[]>([]);
 	let candidatesLoading = $state(false);
@@ -433,7 +433,8 @@
 		candidatesLoading = true;
 		candidates = [];
 		try {
-			const relation: CandidateRelation = mode === 'sub' ? 'sub' : 'prereq';
+			// DEV-124: succ 도 동일 API endpoint (server / Tauri 가 그대로 통과).
+			const relation: CandidateRelation = mode;
 			candidates = await questsApi.candidates(detail.id, relation);
 		} catch (e) {
 			comboError = e instanceof Error ? e.message : '후보 조회 실패';
@@ -455,8 +456,11 @@
 			if (mode === 'sub') {
 				// 기존 퀘스트를 이 퀘스트의 서브로 지정 = 그 퀘스트의 부모를 이 퀘스트로
 				await questsApi.changeParent(questId, { parent_quest_id: detail.id });
-			} else {
+			} else if (mode === 'prereq') {
 				await questsApi.addPrerequisite(detail.id, questId);
+			} else {
+				// DEV-124: succ — 이 quest 를 candidate 의 prereq 로 추가.
+				await questsApi.addPrerequisite(questId, detail.id);
 			}
 			detail = await questsApi.getBySlug(slug);
 			closeCombo();
@@ -958,13 +962,18 @@
 		</section>
 
 		<!-- DEV-070: 후속 퀘스트 — 본 quest 를 선행으로 가진 quest 들 (역방향
-			참조). 편집은 그 quest 의 detail 에서 prereq 추가/제거로. -->
-		{#if (detail.successors ?? []).length > 0}
-			<section>
-				<div class="section-head">
-					<h2 class="section-title prereq-label">Successors</h2>
-					<span class="sec-hint">이 퀘스트를 선행으로 가진 퀘스트</span>
-				</div>
+			참조). DEV-124: 추가 버튼. -->
+		<section>
+			<div class="section-head">
+				<h2 class="section-title prereq-label">Successors</h2>
+				<span class="sec-hint">이 퀘스트를 선행으로 가진 퀘스트</span>
+				{#if !editMode}
+					<button class="sec-add-btn" onclick={() => openCombo('succ')} title="후속 퀘스트 추가">
+						+ 추가
+					</button>
+				{/if}
+			</div>
+			{#if (detail.successors ?? []).length > 0}
 				<ul class="quest-list">
 					{#each (detail.successors ?? []) as sq (sq.id)}
 						<li>
@@ -978,8 +987,10 @@
 						</li>
 					{/each}
 				</ul>
-			</section>
-		{/if}
+			{:else}
+				<p class="no-desc">후속 퀘스트 없음.</p>
+			{/if}
+		</section>
 
 		<!-- DEV-011: 연결된 캠페인 -->
 		<section>
@@ -1042,7 +1053,9 @@
 	<div class="ov" role="presentation">
 		<div class="modal-sm" role="dialog" aria-modal="true" tabindex="-1">
 			<div class="modal-head">
-				<h3>{comboMode === 'sub' ? '기존 퀘스트를 서브퀘스트로 지정' : '선행 퀘스트 추가'}</h3>
+				<h3>
+					{#if comboMode === 'sub'}기존 퀘스트를 서브퀘스트로 지정{:else if comboMode === 'prereq'}선행 퀘스트 추가{:else}후속 퀘스트 추가{/if}
+				</h3>
 				<button class="x" onclick={closeCombo}>×</button>
 			</div>
 			{#if candidatesLoading}

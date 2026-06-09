@@ -1138,9 +1138,43 @@ pub async fn list_candidates(
                 result.push(c);
             }
         }
+        // DEV-124: successors — `id` 가 candidate 의 prereq 로 추가될 수 있는
+        // quest 들. prereq 의 mirror — has_prerequisite_path(id, c.id) 가 false.
+        // 또한 candidate 가 id 의 직계 sub / parent 면 그 관계가 본질이지
+        // prereq 관계가 아니라 제외 (prereq 와 같은 정책).
+        "succ" => {
+            // direct successors — `id` 를 prereq 로 이미 가진 quest 들.
+            let direct_succs: HashSet<i64> = sqlx::query_scalar(
+                "SELECT quest_id FROM quest_dependencies WHERE prerequisite_id = ?",
+            )
+            .bind(id)
+            .fetch_all(pool)
+            .await?
+            .into_iter()
+            .collect();
+            for c in all {
+                if c.id == id {
+                    continue;
+                }
+                if direct_succs.contains(&c.id) {
+                    continue;
+                }
+                if direct_subs.contains(&c.id) {
+                    continue;
+                }
+                if c.parent_quest_id == Some(id) {
+                    continue;
+                }
+                // cycle 차단 — id 가 이미 c.id 의 prereq path 위에 있으면 의미 X.
+                if has_prerequisite_path(pool, id, c.id).await? {
+                    continue;
+                }
+                result.push(c);
+            }
+        }
         other => {
             return Err(AppError::BadRequest(format!(
-                "invalid relation: {other} (expected parent|sub|prereq)"
+                "invalid relation: {other} (expected parent|sub|prereq|succ)"
             )));
         }
     }
