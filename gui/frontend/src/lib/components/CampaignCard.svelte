@@ -104,12 +104,29 @@
 	// 안 되는 경우가 있음. anchor 의 native href 는 conveyor 가 e.preventDefault()
 	// 를 호출하지 않는 한 무조건 navigate.
 	let href = $derived(`/campaigns/${encodeURIComponent(summary.campaign_slug)}`);
+
+	// DEV-087: 배너 이미지 — 좌측 (글자 영역) 불투명 → 우측 투명 fade.
+	import { campaignBannerUrl } from '$lib/utils/banner';
+	let bannerUrl = $state<string | null>(null);
+	$effect(() => {
+		const slug = summary.campaign_slug;
+		const img = summary.image_path;
+		campaignBannerUrl(slug, img)
+			.then((u) => (bannerUrl = u))
+			.catch(() => (bannerUrl = null));
+	});
+	let bannerStyle = $derived(
+		bannerUrl
+			? `background-image: linear-gradient(90deg, var(--bg-elevated) 0%, var(--bg-elevated) 35%, color-mix(in srgb, var(--bg-elevated) 35%, transparent) 70%, transparent 100%), url("${bannerUrl}"); background-size: cover; background-position: right center; background-repeat: no-repeat;`
+			: ''
+	);
 </script>
 
 <a
 	class="card {mode}"
 	class:completed
 	{href}
+	style={bannerStyle}
 	draggable="false"
 	data-sveltekit-preload-data="hover"
 >

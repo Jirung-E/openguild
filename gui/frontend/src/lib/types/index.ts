@@ -187,6 +187,8 @@ export interface Campaign {
 	started_at: string | null;
 	ended_at: string | null;
 	display_order: number;
+	/** DEV-087: 배너 이미지 (`.guild/` 상대 경로). null = 없음. */
+	image_path?: string | null;
 	created_at: string;
 	updated_at: string;
 }
@@ -229,6 +231,8 @@ export interface CampaignSummary {
 	started_at: string | null;
 	ended_at: string | null;
 	display_order: number;
+	/** DEV-087: 배너 이미지 (`.guild/` 상대 경로) — 카드 배경. */
+	image_path?: string | null;
 	created_at: string;
 	/** 0.0 ~ 1.0 — 체크리스트 완료율. */
 	progress: number;

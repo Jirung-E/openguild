@@ -46,6 +46,9 @@ pub struct CampaignRow {
     pub started_at: Option<String>,
     pub ended_at: Option<String>,
     pub display_order: i64,
+    /// DEV-087: 배너 이미지 (`.guild/` 상대 경로). None = 없음.
+    #[serde(default)]
+    pub image_path: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -101,6 +104,9 @@ pub struct CampaignSummary {
     pub started_at: Option<String>,
     pub ended_at: Option<String>,
     pub display_order: i64,
+    /// DEV-087: 배너 이미지 (`.guild/` 상대 경로) — Home carousel 배경.
+    #[serde(default)]
+    pub image_path: Option<String>,
     pub created_at: String,
     /// 체크리스트 완료율 (체크된 항목 / 전체 항목). 항목이 0개면 0.0.
     /// = `checklist_progress` 의 별칭 (frontend 호환).

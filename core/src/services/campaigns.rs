@@ -17,7 +17,7 @@ use crate::models::{
 
 const CAMPAIGN_SELECT: &str = r#"
     SELECT id, campaign_slug, title, description, status,
-           started_at, ended_at, display_order,
+           started_at, ended_at, display_order, image_path,
            created_at, updated_at
       FROM campaigns
 "#;
@@ -410,7 +410,7 @@ pub async fn list_for_quest(
     let _ = sql;
     let rows = sqlx::query_as::<_, CampaignRow>(
         "SELECT c.id, c.campaign_slug, c.title, c.description, c.status,
-                c.started_at, c.ended_at, c.display_order,
+                c.started_at, c.ended_at, c.display_order, c.image_path,
                 c.created_at, c.updated_at
            FROM campaigns c
            JOIN campaign_quests cq ON c.id = cq.campaign_id
@@ -546,6 +546,7 @@ async fn summarize(pool: &SqlitePool, c: CampaignRow) -> AppResult<CampaignSumma
         started_at: c.started_at,
         ended_at: c.ended_at,
         display_order: c.display_order,
+        image_path: c.image_path,
         created_at: c.created_at,
         progress,
         checklist_total: total,

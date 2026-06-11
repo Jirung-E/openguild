@@ -313,6 +313,9 @@ pub fn run() {
         }
     }
 
+    // DEV-087: setup closure 로 넘길 asset scope 대상 — 길드 root.
+    let asset_scope_path = store_path.clone();
+
     tauri::Builder::default()
         // DEV-053: 디렉토리 선택 dialog — Welcome 의 "폴더 열기".
         .plugin(tauri_plugin_dialog::init())
@@ -421,7 +424,23 @@ pub fn run() {
             commands::toggle_campaign_comment_reaction,
             commands::get_campaign_memo,
             commands::set_campaign_memo,
+            // DEV-087: 캠페인 배너 이미지 (파일 선택은 frontend dialog plugin).
+            commands::set_campaign_banner,
+            commands::clear_campaign_banner,
         ])
+        // DEV-087: asset protocol scope — 길드 경로가 동적이라 (사용자가 임의
+        // 폴더 open) config scope 대신 런타임 allow. `.guild/assets/` 의 배너
+        // 이미지와 (DEV-069) 본문 로컬 이미지를 convertFileSrc 로 표시 가능.
+        .setup(move |app| {
+            if let Some(p) = &asset_scope_path {
+                use tauri::Manager;
+                let scope = app.asset_protocol_scope();
+                if let Err(e) = scope.allow_directory(p, true) {
+                    eprintln!("[openguild-gui] warn: asset scope allow 실패 — {e:#}");
+                }
+            }
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -199,6 +199,45 @@
 		}
 	}
 
+	// ── DEV-087: 배너 이미지 (Tauri 전용 — 파일 picker + assets/ 복사) ──
+	import { detectEnvironment } from '$lib/api/transport';
+	const isTauri = detectEnvironment() === 'tauri';
+	let bannerBusy = $state(false);
+
+	async function pickBanner() {
+		if (!detail) return;
+		bannerBusy = true;
+		try {
+			const { open } = await import('@tauri-apps/plugin-dialog');
+			const picked = await open({
+				multiple: false,
+				directory: false,
+				filters: [{ name: '이미지', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] }]
+			});
+			if (typeof picked === 'string' && picked) {
+				await campaignsApi.setBanner(detail.campaign_slug, picked);
+				await load();
+			}
+		} catch (e) {
+			alert(e instanceof Error ? e.message : '배너 설정 실패');
+		} finally {
+			bannerBusy = false;
+		}
+	}
+
+	async function removeBanner() {
+		if (!detail) return;
+		bannerBusy = true;
+		try {
+			await campaignsApi.clearBanner(detail.campaign_slug);
+			await load();
+		} catch (e) {
+			alert(e instanceof Error ? e.message : '배너 제거 실패');
+		} finally {
+			bannerBusy = false;
+		}
+	}
+
 	// ── 체크리스트 ──
 	async function addChecklist() {
 		if (!detail) return;
@@ -311,6 +350,17 @@
 			<!-- BUG-035: Quest Detail 의 top-bar 패턴 — 우측에 편집/삭제 묶음. -->
 			{#if !editMode}
 				<div class="top-actions">
+					{#if isTauri}
+						<!-- DEV-087: 배너 이미지 — Tauri 전용 (파일 picker). -->
+						<button class="btn-edit" onclick={pickBanner} disabled={bannerBusy}>
+							🖼 배너
+						</button>
+						{#if detail.image_path}
+							<button class="btn-edit" onclick={removeBanner} disabled={bannerBusy} title="배너 제거">
+								🖼 ×
+							</button>
+						{/if}
+					{/if}
 					<button class="btn-edit" onclick={enterEditMode}>✎ 편집</button>
 					<button class="btn-delete" onclick={askDeleteCampaign}>🗑 삭제</button>
 				</div>

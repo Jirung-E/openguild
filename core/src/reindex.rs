@@ -493,8 +493,8 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
             sqlx::query(
                 "INSERT INTO campaigns
                     (id, campaign_slug, title, description, status,
-                     started_at, ended_at, display_order, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     started_at, ended_at, display_order, image_path, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(id)
             .bind(&cf.frontmatter.campaign_id)
@@ -512,6 +512,8 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
                 Some(&cf.frontmatter.ended_at)
             })
             .bind(cf.frontmatter.display_order)
+            // DEV-087: 배너 이미지 — frontmatter 가 진리원.
+            .bind(cf.frontmatter.image.as_deref())
             .bind(&cf.frontmatter.created_at)
             .bind(&cf.frontmatter.updated_at)
             .execute(&mut *tx)

@@ -78,6 +78,11 @@ pub fn create_router(store: Store) -> Router {
             "/api/campaigns/{slug}/memo",
             get(comments::camp_get_memo).put(comments::camp_set_memo),
         )
+        // DEV-087: 배너 이미지 bytes (브라우저 모드 표시).
+        .route(
+            "/api/campaigns/{slug}/image",
+            get(campaigns::get_banner_image),
+        )
         // quests
         .route("/api/quests", get(quests::list_quests).post(quests::create_quest))
         .route(

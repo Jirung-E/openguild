@@ -1290,6 +1290,35 @@ pub fn get_campaign_memo(
     Ok(ContentResponse { content })
 }
 
+// ─── DEV-087: 캠페인 배너 이미지 ───
+
+/// source 파일을 `.guild/assets/` 로 복사 + frontmatter / DB 갱신.
+/// 갱신된 campaign row 반환 (image_path 포함).
+#[tauri::command]
+pub async fn set_campaign_banner(
+    store: State<'_, Store>,
+    slug: String,
+    source_path: String,
+) -> Result<openguild_core::models::CampaignRow, String> {
+    openguild_core::ops::campaigns::set_banner_image(
+        &store,
+        &slug,
+        std::path::Path::new(&source_path),
+    )
+    .await
+    .map_err(err)
+}
+
+#[tauri::command]
+pub async fn clear_campaign_banner(
+    store: State<'_, Store>,
+    slug: String,
+) -> Result<openguild_core::models::CampaignRow, String> {
+    openguild_core::ops::campaigns::clear_banner_image(&store, &slug)
+        .await
+        .map_err(err)
+}
+
 #[tauri::command]
 pub async fn set_campaign_memo(
     store: State<'_, Store>,

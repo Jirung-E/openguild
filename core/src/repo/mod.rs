@@ -122,6 +122,12 @@ impl GuildPaths {
         self.dot_guild().join("tags")
     }
 
+    /// DEV-087: 길드 자산 디렉토리 (`.guild/assets/`). git tracked.
+    /// 캠페인 배너 등 이미지가 길드 폴더와 함께 이동하도록 복사 보관.
+    pub fn assets_dir(&self) -> PathBuf {
+        self.dot_guild().join("assets")
+    }
+
     /// DEV-060: quest 템플릿 디렉토리 (`.guild/templates/`). git tracked.
     /// `{name}.md` — quest 파일과 동일한 `+++` TOML frontmatter (필드 모두
     /// 선택) + 기본 본문.

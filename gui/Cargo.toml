@@ -16,7 +16,8 @@ path = "src/main.rs"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+# DEV-087: protocol-asset — 배너 / 본문 로컬 이미지를 asset:// 로 서빙.
+tauri = { version = "2", features = ["protocol-asset"] }
 # DEV-053: native file dialog (디렉토리 선택) — Welcome 에서 "폴더 열기".
 tauri-plugin-dialog = "2"
 # DEV-063: auto-update. updater = 체크 / 다운로드 / 설치, process = 재시작 (relaunch).
