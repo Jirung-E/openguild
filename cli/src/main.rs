@@ -4315,13 +4315,17 @@ mod tests {
                         urgency,
                         parent,
                         description,
+                        template,
                     },
             } => {
-                assert_eq!(type_prefix, "DEV");
-                assert_eq!(title, "test");
-                assert_eq!(urgency, 3); // default
+                // DEV-060: --type / --title 은 Option (템플릿으로 대체 가능),
+                // urgency 도 Option (merge 후 기본 3) — 핸들러에서 결정.
+                assert_eq!(type_prefix.as_deref(), Some("DEV"));
+                assert_eq!(title.as_deref(), Some("test"));
+                assert!(urgency.is_none()); // 기본값은 핸들러 merge 에서
                 assert!(parent.is_none());
                 assert!(description.is_none());
+                assert!(template.is_none());
             }
             _ => panic!("expected quest new"),
         }
@@ -4336,6 +4340,7 @@ mod tests {
             "--description", "details",
             "--urgency", "1",
             "--parent", "DEV-007",
+            "--template", "bug-report",
         ])
         .unwrap();
         match cli.command {
@@ -4347,13 +4352,15 @@ mod tests {
                         urgency,
                         parent,
                         description,
+                        template,
                     },
             } => {
-                assert_eq!(type_prefix, "BUG");
-                assert_eq!(title, "fix");
-                assert_eq!(urgency, 1);
+                assert_eq!(type_prefix.as_deref(), Some("BUG"));
+                assert_eq!(title.as_deref(), Some("fix"));
+                assert_eq!(urgency, Some(1));
                 assert_eq!(parent.as_deref(), Some("DEV-007"));
                 assert_eq!(description.as_deref(), Some("details"));
+                assert_eq!(template.as_deref(), Some("bug-report"));
             }
             _ => panic!("expected quest new"),
         }
