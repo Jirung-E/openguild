@@ -16,6 +16,7 @@
 //! 비교 양쪽이 모두 Unix nanoseconds (절대 시각).
 //! - File mtime: `SystemTime::duration_since(UNIX_EPOCH).as_nanos()`.
 //! - DB: `INTEGER cached_mtime` (Unix nanos 저장).
+//!
 //! → local time / TZ / DST / 길드 이동에 무관.
 //!
 //! ## 알고리즘
