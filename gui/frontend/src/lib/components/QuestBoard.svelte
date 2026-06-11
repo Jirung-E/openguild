@@ -1631,6 +1631,11 @@
 				selector: 'node[questId][highlightType = "dim"]',
 				style: { opacity: 0.15 } as Css.Node
 			},
+			// DEV-033: List 필터 미스매치 dim — relation highlight 의 dim 과 독립.
+			{
+				selector: 'node[questId][?fdim]',
+				style: { opacity: 0.12 } as Css.Node
+			},
 			{
 				selector: 'node[questId]:selected',
 				style: {
@@ -1767,6 +1772,42 @@
 		const pending = get(flashQuestId);
 		if (pending) handleFlash(pending);
 	}
+
+	// DEV-033: List 필터 → Board 반영. 매치 안 되는 노드 dim (fdim data).
+	// UX 는 'dim' (hide 가 아니라) — 위치 관계 (edge / lane 맥락) 보존.
+	import { questFilters, isFilterActive } from '$lib/stores/quest-filter';
+	import { filterQuests as filterQuestsForBoard } from '$lib/utils/quest-list';
+	$effect(() => {
+		const f = $questFilters;
+		if (!cy) return;
+		if (!isFilterActive(f)) {
+			cy.nodes('[questId]').forEach((n) => {
+				n.data('fdim', false);
+			});
+			return;
+		}
+		const prereqQuestIds = new Set(allDependencies.map((d) => d.quest_id));
+		const parentIds = new Set(
+			allQuests.map((q) => q.parent_quest_id).filter((p): p is number => p != null)
+		);
+		const matched = new Set(
+			filterQuestsForBoard(allQuests, f.typeIds, f.statusIds, f.search, f.titleOnly, f.tags, {
+				urgencies: f.urgencies,
+				prereq: f.prereq,
+				sub: f.sub,
+				createdAfter: f.createdAfter,
+				createdBefore: f.createdBefore,
+				updatedAfter: f.updatedAfter,
+				updatedBefore: f.updatedBefore,
+				prereqQuestIds,
+				parentIds
+			}).map((q) => q.id)
+		);
+		cy.nodes('[questId]').forEach((n) => {
+			const qid = n.data('questId') as number;
+			n.data('fdim', !matched.has(qid));
+		});
+	});
 
 	// DEV-095: Nav reindex → board 데이터 reload.
 	import { reindexBump } from '$lib/stores/reindex';

@@ -12,7 +12,8 @@
 		flattenTree,
 		includeAncestors,
 		sortQuests,
-		type SortKey
+		type SortKey,
+		type TriState
 	} from '$lib/utils/quest-list';
 	import QuestListFilter from './QuestListFilter.svelte';
 	import QuestListItem from './QuestListItem.svelte';
@@ -37,6 +38,20 @@
 	let expanded = $state(new Set<number>());
 	// DEV-068: tag 필터 — 선택된 tag 모두 가져야 매치 (AND).
 	let filterTags = $state(new Set<string>());
+	// DEV-033: 고급 필터.
+	let filterUrgencies = $state(new Set<number>());
+	let filterPrereq = $state<TriState>('any');
+	let filterSub = $state<TriState>('any');
+	let createdAfter = $state('');
+	let createdBefore = $state('');
+	let updatedAfter = $state('');
+	let updatedBefore = $state('');
+	// 선행 quest 가 있는 quest id 들 (dependencies 산출) — tri-state 용.
+	let prereqQuestIds = $state(new Set<number>());
+	// 자식이 있는 quest id 들 — quests 의 parent_quest_id 역산.
+	let parentIds = $derived(
+		new Set(quests.map((q) => q.parent_quest_id).filter((p): p is number => p != null))
+	);
 
 	// DEV-037: 검색 — URL ?search= 와 ?title_only= 양방향 동기화.
 	let search = $state('');
@@ -66,11 +81,17 @@
 	// --- 데이터 ---
 	async function loadData() {
 		try {
-			[quests, types, statuses] = await Promise.all([
+			const [q, t, s, deps] = await Promise.all([
 				questsApi.list(),
 				metaApi.getQuestTypes(),
-				metaApi.getQuestStatuses()
+				metaApi.getQuestStatuses(),
+				// DEV-033: 선행 tri-state 용. 실패해도 목록 자체는 OK.
+				questsApi.listDependencies().catch(() => [])
 			]);
+			quests = q;
+			types = t;
+			statuses = s;
+			prereqQuestIds = new Set(deps.map((d) => d.quest_id));
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'failed to load';
 		} finally {
@@ -175,6 +196,25 @@
 		}
 	});
 
+	// DEV-033: 필터 상태를 Board 공유 store 로 mirror (List 가 truth).
+	import { questFilters } from '$lib/stores/quest-filter';
+	$effect(() => {
+		questFilters.set({
+			typeIds: filterTypeIds,
+			statusIds: filterStatusIds,
+			search,
+			titleOnly,
+			tags: filterTags,
+			urgencies: filterUrgencies,
+			prereq: filterPrereq,
+			sub: filterSub,
+			createdAfter,
+			createdBefore,
+			updatedAfter,
+			updatedBefore
+		});
+	});
+
 	// DEV-033: 정렬 선택 localStorage 영속.
 	$effect(() => {
 		if (loading) return;
@@ -207,7 +247,19 @@
 			filterStatusIds,
 			search,
 			titleOnly,
-			filterTags
+			filterTags,
+			// DEV-033: 고급 필터.
+			{
+				urgencies: filterUrgencies,
+				prereq: filterPrereq,
+				sub: filterSub,
+				createdAfter,
+				createdBefore,
+				updatedAfter,
+				updatedBefore,
+				prereqQuestIds,
+				parentIds
+			}
 		);
 		// DEV-065: 'list' 모드 — 부모 그룹 X. 매칭된 quest 만 평면. ancestor
 		// 자동 포함 안 함 (검색 결과 정확).
@@ -225,7 +277,15 @@
 			search.trim().length > 0 ||
 			filterTags.size > 0 ||
 			filterTypeIds.size > 0 ||
-			filterStatusIds.size > 0;
+			filterStatusIds.size > 0 ||
+			// DEV-033: 고급 필터도 ancestor 포함 트리거.
+			filterUrgencies.size > 0 ||
+			filterPrereq !== 'any' ||
+			filterSub !== 'any' ||
+			createdAfter !== '' ||
+			createdBefore !== '' ||
+			updatedAfter !== '' ||
+			updatedBefore !== '';
 		const filtered = hasFilters ? includeAncestors(matched, quests) : matched;
 		const effectiveExpanded = hasFilters
 			? new Set([...expanded, ...ancestorIdsOf(matched, quests)])
@@ -282,6 +342,13 @@
 		bind:statusIds={filterStatusIds}
 		bind:search
 		bind:titleOnly
+		bind:urgencies={filterUrgencies}
+		bind:prereqState={filterPrereq}
+		bind:subState={filterSub}
+		bind:createdAfter
+		bind:createdBefore
+		bind:updatedAfter
+		bind:updatedBefore
 	/>
 
 	<!-- DEV-065 / DEV-068: 뷰 모드 토글 + tag 필터 chip 들 — filter-bar 아래. -->

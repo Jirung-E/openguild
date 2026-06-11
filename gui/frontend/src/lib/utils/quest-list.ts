@@ -37,13 +37,42 @@ export function flattenTree(nodes: QuestNode[], expanded: Set<number>, depth = 0
  *
  * 빈 문자열 / 공백만 입력 → 검색 필터 무시.
  */
+/** DEV-033: 고급 필터 — 모두 AND. 'any' = 필터 미적용. */
+export type TriState = 'any' | 'has' | 'none';
+export interface ExtraFilters {
+	/** urgency 다중 선택 (빈 set = 전체). */
+	urgencies?: Set<number>;
+	/** 선행 quest 보유 여부. `prereqQuestIds` 필요. */
+	prereq?: TriState;
+	/** 서브 quest 보유 여부. `parentIds` 필요. */
+	sub?: TriState;
+	/** 생성/갱신 날짜 범위 — `YYYY-MM-DD` (포함). 빈 문자열 = 미적용. */
+	createdAfter?: string;
+	createdBefore?: string;
+	updatedAfter?: string;
+	updatedBefore?: string;
+	/** 선행 quest 가 1개 이상인 quest id 집합 (dependencies 에서 산출). */
+	prereqQuestIds?: Set<number>;
+	/** 자식이 1개 이상인 quest id 집합 (parent_quest_id 역산). */
+	parentIds?: Set<number>;
+}
+
+/** ISO ts (`2026-06-09T...`) 의 날짜 부분과 `YYYY-MM-DD` 경계 비교 (포함). */
+function dateInRange(ts: string, after?: string, before?: string): boolean {
+	const d = ts.slice(0, 10);
+	if (after && d < after) return false;
+	if (before && d > before) return false;
+	return true;
+}
+
 export function filterQuests(
 	quests: Quest[],
 	typeIds: Set<number>,
 	statusIds: Set<number>,
 	search = '',
 	titleOnly = false,
-	tagFilter: Set<string> = new Set()
+	tagFilter: Set<string> = new Set(),
+	extra: ExtraFilters = {}
 ): Quest[] {
 	const tokens = search
 		.toLowerCase()
@@ -53,6 +82,25 @@ export function filterQuests(
 	return quests.filter((q) => {
 		if (typeIds.size > 0 && !typeIds.has(q.quest_type_id)) return false;
 		if (statusIds.size > 0 && !statusIds.has(q.status_id)) return false;
+		// DEV-033: urgency 다중 선택.
+		if (extra.urgencies && extra.urgencies.size > 0 && !extra.urgencies.has(q.urgency))
+			return false;
+		// DEV-033: prereq / sub tri-state.
+		if (extra.prereq && extra.prereq !== 'any') {
+			const has = extra.prereqQuestIds?.has(q.id) ?? false;
+			if (extra.prereq === 'has' && !has) return false;
+			if (extra.prereq === 'none' && has) return false;
+		}
+		if (extra.sub && extra.sub !== 'any') {
+			const has = extra.parentIds?.has(q.id) ?? false;
+			if (extra.sub === 'has' && !has) return false;
+			if (extra.sub === 'none' && has) return false;
+		}
+		// DEV-033: 날짜 범위 (date prefix 비교).
+		if (!dateInRange(q.created_at ?? '', extra.createdAfter, extra.createdBefore))
+			return false;
+		if (!dateInRange(q.updated_at ?? '', extra.updatedAfter, extra.updatedBefore))
+			return false;
 		// DEV-068: tag 필터 — 선택된 tag 모두 가져야 매치 (AND).
 		if (tagFilter.size > 0) {
 			const qTags = new Set(q.tags ?? []);

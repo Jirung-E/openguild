@@ -418,3 +418,52 @@ describe('sortQuests', () => {
 		expect(list.map((x) => x.id)).toEqual([2, 1]);
 	});
 });
+
+// --- DEV-033: ExtraFilters ---
+
+describe('filterQuests extra', () => {
+	const none = new Set<number>();
+	it('urgency 다중 선택', () => {
+		const list = [qs(1, { urgency: 1 }), qs(2, { urgency: 3 }), qs(3, { urgency: 4 })];
+		const out = filterQuests(list, none, none, '', false, new Set(), {
+			urgencies: new Set([1, 4])
+		});
+		expect(out.map((x) => x.id)).toEqual([1, 3]);
+	});
+
+	it('prereq tri-state — has / none', () => {
+		const list = [qs(1), qs(2), qs(3)];
+		const prereqQuestIds = new Set([2]);
+		expect(
+			filterQuests(list, none, none, '', false, new Set(), { prereq: 'has', prereqQuestIds }).map((x) => x.id)
+		).toEqual([2]);
+		expect(
+			filterQuests(list, none, none, '', false, new Set(), { prereq: 'none', prereqQuestIds }).map((x) => x.id)
+		).toEqual([1, 3]);
+		// any = 미적용.
+		expect(
+			filterQuests(list, none, none, '', false, new Set(), { prereq: 'any', prereqQuestIds })
+		).toHaveLength(3);
+	});
+
+	it('sub tri-state', () => {
+		const list = [qs(1), qs(2)];
+		const parentIds = new Set([1]);
+		expect(
+			filterQuests(list, none, none, '', false, new Set(), { sub: 'has', parentIds }).map((x) => x.id)
+		).toEqual([1]);
+	});
+
+	it('날짜 범위 — created (포함 경계)', () => {
+		const list = [
+			qs(1, { created: '2026-06-01T10:00:00+09:00' }),
+			qs(2, { created: '2026-06-05T10:00:00+09:00' }),
+			qs(3, { created: '2026-06-09T10:00:00+09:00' })
+		];
+		const out = filterQuests(list, none, none, '', false, new Set(), {
+			createdAfter: '2026-06-05',
+			createdBefore: '2026-06-09'
+		});
+		expect(out.map((x) => x.id)).toEqual([2, 3]);
+	});
+});
