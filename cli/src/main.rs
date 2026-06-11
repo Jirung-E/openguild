@@ -1943,6 +1943,33 @@ fn hex_rgb(hex: &str) -> Option<(u8, u8, u8)> {
     Some((r, g, b))
 }
 
+/// DEV-060: `quest new` 의 템플릿 merge — 명시 옵션 > 템플릿 값 > 기본.
+///
+/// 반환: (type_prefix, title, description, urgency, template_tags).
+/// type / title 은 양쪽 모두 없으면 에러. urgency 기본 3.
+#[allow(clippy::type_complexity)]
+fn merge_new_quest_inputs(
+    type_prefix: Option<String>,
+    title: Option<String>,
+    description: Option<String>,
+    urgency: Option<i64>,
+    tpl: Option<&openguild_core::repo::TemplateFile>,
+) -> Result<(String, String, Option<String>, i64, Vec<String>)> {
+    let type_prefix = type_prefix
+        .or_else(|| tpl.and_then(|t| t.frontmatter.type_prefix.clone()))
+        .ok_or_else(|| anyhow!("--type 필요 (또는 type 을 정의한 --template 지정)"))?;
+    let title = title
+        .or_else(|| tpl.and_then(|t| t.frontmatter.title.clone()))
+        .ok_or_else(|| anyhow!("--title 필요 (또는 title 을 정의한 --template 지정)"))?;
+    let description =
+        description.or_else(|| tpl.map(|t| t.body.clone()).filter(|b| !b.is_empty()));
+    let urgency = urgency
+        .or_else(|| tpl.and_then(|t| t.frontmatter.urgency))
+        .unwrap_or(3);
+    let tags = tpl.map(|t| t.frontmatter.tags.clone()).unwrap_or_default();
+    Ok((type_prefix, title, description, urgency, tags))
+}
+
 /// ANSI 24-bit truecolor — `#RRGGBB` → "\x1b[38;2;r;g;bm{text}\x1b[0m".
 /// 비-TTY / NO_COLOR 일 땐 plain 반환.
 fn colorize(text: &str, hex: &str) -> String {
@@ -3011,26 +3038,9 @@ fn run() -> Result<()> {
                     Some(name) => Some(c.template_load(name)?),
                     None => None,
                 };
-                let type_prefix = type_prefix
-                    .or_else(|| tpl.as_ref().and_then(|t| t.frontmatter.type_prefix.clone()))
-                    .ok_or_else(|| {
-                        anyhow!("--type 필요 (또는 type 을 정의한 --template 지정)")
-                    })?;
-                let title = title
-                    .or_else(|| tpl.as_ref().and_then(|t| t.frontmatter.title.clone()))
-                    .ok_or_else(|| {
-                        anyhow!("--title 필요 (또는 title 을 정의한 --template 지정)")
-                    })?;
-                let description = description.or_else(|| {
-                    tpl.as_ref()
-                        .map(|t| t.body.clone())
-                        .filter(|b| !b.is_empty())
-                });
-                let urgency = urgency
-                    .or_else(|| tpl.as_ref().and_then(|t| t.frontmatter.urgency))
-                    .unwrap_or(3);
-                let tpl_tags: Vec<String> =
-                    tpl.as_ref().map(|t| t.frontmatter.tags.clone()).unwrap_or_default();
+                let merged =
+                    merge_new_quest_inputs(type_prefix, title, description, urgency, tpl.as_ref())?;
+                let (type_prefix, title, description, urgency, tpl_tags) = merged;
 
                 let type_id = c.resolve_type_id(&type_prefix)?;
                 let statuses = c.quest_statuses()?;
@@ -4363,6 +4373,46 @@ mod tests {
             }
             _ => panic!("expected quest new"),
         }
+    }
+
+    /// 템플릿 merge — 명시 옵션 > 템플릿 > 기본 우선순위.
+    #[test]
+    fn merge_new_quest_inputs_priority() {
+        use openguild_core::repo::TemplateFile;
+        let tpl = TemplateFile::parse(
+            "t",
+            "+++\ntitle = \"tpl title\"\ntype = \"BUG\"\nurgency = 2\ntags = [\"x\"]\n+++\ntpl body",
+        )
+        .unwrap();
+
+        // 명시값이 템플릿보다 우선.
+        let (ty, ti, desc, u, tags) = merge_new_quest_inputs(
+            Some("DEV".into()),
+            Some("explicit".into()),
+            Some("explicit body".into()),
+            Some(1),
+            Some(&tpl),
+        )
+        .unwrap();
+        assert_eq!((ty.as_str(), ti.as_str(), u), ("DEV", "explicit", 1));
+        assert_eq!(desc.as_deref(), Some("explicit body"));
+        assert_eq!(tags, vec!["x"]); // tags 는 템플릿 제공분 그대로.
+
+        // 명시값 없으면 템플릿 값.
+        let (ty, ti, desc, u, _) =
+            merge_new_quest_inputs(None, None, None, None, Some(&tpl)).unwrap();
+        assert_eq!((ty.as_str(), ti.as_str(), u), ("BUG", "tpl title", 2));
+        assert_eq!(desc.as_deref(), Some("tpl body"));
+
+        // 템플릿도 없으면 type / title 은 에러, urgency 는 기본 3.
+        assert!(merge_new_quest_inputs(None, Some("t".into()), None, None, None).is_err());
+        assert!(merge_new_quest_inputs(Some("DEV".into()), None, None, None, None).is_err());
+        let (_, _, desc, u, tags) =
+            merge_new_quest_inputs(Some("DEV".into()), Some("t".into()), None, None, None)
+                .unwrap();
+        assert!(desc.is_none());
+        assert_eq!(u, 3);
+        assert!(tags.is_empty());
     }
 
     /// 댓글 list 필터 — 5개 flag 파싱 + --top-only / --reply-to 상호배타.
