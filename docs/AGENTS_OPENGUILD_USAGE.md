@@ -247,6 +247,24 @@ env 로 임계치 조정 가능:
 
 자동 백업 시 stderr 에 알림: `[auto-backup] snapshot 생성됨: 20260516-103341 (...)`.
 
+### 2.9 댓글 / 메모 (DEV-094 / DEV-099)
+
+```bash
+openguild quest comment list <SLUG>                       # entry 목록
+openguild quest comment show <SLUG> [--id N]              # 본문
+openguild quest comment add <SLUG> --author <NAME> --file <PATH>   # 추가 (stdin 도 가능)
+openguild quest comment add <SLUG> --author <NAME> --parent-id N --file <PATH>  # 답글
+openguild quest comment edit <SLUG> --id N --file <PATH>  # body 교체
+openguild quest comment rm <SLUG> --id N [--force]        # 삭제
+openguild quest memo set <SLUG> --file <PATH>             # 비공개 메모 (사용자당 1개)
+```
+
+**🚨 `--author` 필수 규칙**: agent 가 댓글을 쓸 때는 반드시 `--author` 에 자기
+식별자를 명시할 것 (예: `--author claude`). 작성자 없는 댓글은 GUI 에서
+"(이름 없음)" 으로 표시되어 사용자 댓글과 구분이 안 됨 — 누가 쓴 건지 추적
+불가. 사용자 / 여러 agent 가 한 quest 에서 대화하는 구조이므로 작성자는
+대화의 전제 조건.
+
 ---
 
 ## 3. Agent 워크플로 패턴
