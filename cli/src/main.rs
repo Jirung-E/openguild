@@ -373,8 +373,7 @@ enum TemplateCmd {
 
 #[derive(Subcommand)]
 enum CommentCmd {
-    /// entry 목록 (id / ts / author / body 요약 1줄).
-    /// DEV-110: 필터 옵션 — 모두 AND 결합.
+    /// entry 목록 (id / ts / author / body 요약 1줄). 필터 옵션은 모두 AND 결합.
     List {
         slug: String,
         /// 작성자 일치 (대소문자 무시 정확 일치).
