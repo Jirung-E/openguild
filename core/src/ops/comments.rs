@@ -400,6 +400,31 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// DEV-108: 이모지 반응 토글 — 추가 / 제거 + 파일 roundtrip + validation.
+    #[tokio::test]
+    async fn toggle_reaction_roundtrip_and_validation() {
+        let (dir, store, slug) = fresh("react").await;
+        add_comment_entry(&store, &slug, "a".into(), "x".into(), None)
+            .await
+            .unwrap();
+
+        let on = toggle_comment_reaction(&store, &slug, 1, "👍").await.unwrap();
+        assert_eq!(on.reactions, vec!["👍"]);
+        // 파일에 attr 로 남아 재파싱에도 살아있어야.
+        let listed = list_comment_entries(&store, &slug).unwrap();
+        assert_eq!(listed[0].reactions, vec!["👍"]);
+
+        let off = toggle_comment_reaction(&store, &slug, 1, "👍").await.unwrap();
+        assert!(off.reactions.is_empty());
+
+        // validation — 빈 값 / 콤마 / 따옴표 거부, 없는 entry NotFound.
+        assert!(toggle_comment_reaction(&store, &slug, 1, " ").await.is_err());
+        assert!(toggle_comment_reaction(&store, &slug, 1, "a,b").await.is_err());
+        assert!(toggle_comment_reaction(&store, &slug, 99, "👍").await.is_err());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// DEV-102: 답글 추가 시 parent_id 컬럼이 정확히 세팅.
     #[tokio::test]
     async fn reply_comment_persists_parent_id_in_db() {
