@@ -3063,10 +3063,10 @@ fn run() -> Result<()> {
                 };
                 let q = c.create_quest(body)?;
                 // DEV-060: 템플릿의 기본 tags 적용 (생성 직후 set).
-                if !tpl_tags.is_empty() {
-                    if let Err(e) = c.tag_set(&q.quest_id, tpl_tags) {
-                        eprintln!("[openguild] warn: 템플릿 tags 적용 실패 — {e:#}");
-                    }
+                if !tpl_tags.is_empty()
+                    && let Err(e) = c.tag_set(&q.quest_id, tpl_tags)
+                {
+                    eprintln!("[openguild] warn: 템플릿 tags 적용 실패 — {e:#}");
                 }
                 // multi-line description 도 그대로 보여줘 사용자가 "잘렸다" 오해 방지.
                 print_quest_full(&q, cli.json);
