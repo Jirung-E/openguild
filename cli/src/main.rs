@@ -4365,6 +4365,37 @@ mod tests {
         }
     }
 
+    /// 댓글 list 필터 — 5개 flag 파싱 + --top-only / --reply-to 상호배타.
+    #[test]
+    fn cli_parse_comment_list_filters() {
+        let cli = Cli::try_parse_from([
+            "openguild", "quest", "comment", "list", "DEV-001",
+            "--author", "claude",
+            "--since", "2026-06-01",
+            "--top-only",
+            "--grep", "needle",
+        ])
+        .unwrap();
+        match cli.command {
+            Command::Quest { sub: QuestCmd::Comment { sub: CommentCmd::List { slug, author, since, top_only, reply_to, grep } } } => {
+                assert_eq!(slug, "DEV-001");
+                assert_eq!(author.as_deref(), Some("claude"));
+                assert_eq!(since.as_deref(), Some("2026-06-01"));
+                assert!(top_only);
+                assert!(reply_to.is_none());
+                assert_eq!(grep.as_deref(), Some("needle"));
+            }
+            _ => panic!("expected comment list"),
+        }
+
+        // --top-only 와 --reply-to 동시 지정은 clap 이 거부.
+        assert!(Cli::try_parse_from([
+            "openguild", "quest", "comment", "list", "DEV-001",
+            "--top-only", "--reply-to", "3",
+        ])
+        .is_err());
+    }
+
     #[test]
     fn cli_parse_quest_delete_with_cascade() {
         let cli = Cli::try_parse_from([
