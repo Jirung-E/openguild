@@ -34,7 +34,7 @@ async fn fetch_last_indexed_at(pool: &sqlx::SqlitePool) -> Option<SystemTime> {
     // ISO 8601 with offset — chrono 가 RFC 3339 로 파싱.
     chrono::DateTime::parse_from_rfc3339(&s)
         .ok()
-        .map(|dt| SystemTime::from(dt))
+        .map(SystemTime::from)
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
