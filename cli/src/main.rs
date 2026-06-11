@@ -84,6 +84,11 @@ enum Command {
         #[command(subcommand)]
         sub: RulesCmd,
     },
+    /// 퀘스트 템플릿 — `.guild/templates/{name}.md`. `quest new --template` 으로 사용.
+    Template {
+        #[command(subcommand)]
+        sub: TemplateCmd,
+    },
     /// 서버 상태 확인 (health)
     Ping,
     /// 백업 (snapshot) 즉시 생성
@@ -212,19 +217,23 @@ enum QuestCmd {
     History { slug: String },
     /// 새 퀘스트 생성
     New {
-        /// 타입 prefix (DEV / BUG / REQ ...)
+        /// 타입 prefix (DEV / BUG / REQ ...). --template 의 type 으로 대체 가능.
         #[arg(long = "type", value_name = "PREFIX")]
-        type_prefix: String,
+        type_prefix: Option<String>,
+        /// 제목. --template 의 title 로 대체 가능.
         #[arg(long)]
-        title: String,
+        title: Option<String>,
         #[arg(long)]
         description: Option<String>,
-        /// 1=Critical 2=High 3=Medium 4=Low (기본 3)
-        #[arg(long, default_value_t = 3)]
-        urgency: i64,
+        /// 1=Critical 2=High 3=Medium 4=Low (기본 3, 템플릿이 있으면 그 값)
+        #[arg(long)]
+        urgency: Option<i64>,
         /// 부모 퀘스트 슬러그 (서브퀘스트로 생성)
         #[arg(long)]
         parent: Option<String>,
+        /// 템플릿 이름 (`.guild/templates/{name}.md`). 명시 옵션이 템플릿보다 우선.
+        #[arg(long)]
+        template: Option<String>,
     },
     /// 수정 (제공된 필드만)
     Update {
@@ -351,6 +360,15 @@ enum TagCmd {
         /// 새 tag 들 (공백 구분 또는 여러 인자).
         tags: Vec<String>,
     },
+}
+
+/// DEV-060: 퀘스트 템플릿.
+#[derive(Subcommand)]
+enum TemplateCmd {
+    /// 템플릿 목록 (이름 / 기본값 요약).
+    List,
+    /// 템플릿 본문 출력.
+    Show { name: String },
 }
 
 #[derive(Subcommand)]
@@ -1546,6 +1564,44 @@ impl Backend {
         }
     }
 
+    // ── DEV-060: 템플릿 — local 전용 (HTTP 미지원 우선) ──
+
+    fn templates_list(&self) -> Result<Vec<openguild_core::repo::TemplateFile>> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => {
+                openguild_core::repo::list_templates(&l.store.paths)
+            }
+        }
+    }
+
+    fn template_load(&self, name: &str) -> Result<openguild_core::repo::TemplateFile> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => {
+                let path = l.store.paths.template_path(name);
+                if !path.exists() {
+                    let available: Vec<String> =
+                        openguild_core::repo::list_templates(&l.store.paths)
+                            .unwrap_or_default()
+                            .into_iter()
+                            .map(|t| t.name)
+                            .collect();
+                    return Err(anyhow!(
+                        "템플릿 '{name}' 없음 ({}). 사용 가능: {}",
+                        path.display(),
+                        if available.is_empty() {
+                            "(없음 — .guild/templates/ 에 {name}.md 작성)".to_string()
+                        } else {
+                            available.join(", ")
+                        }
+                    ));
+                }
+                openguild_core::repo::TemplateFile::read(&path)
+            }
+        }
+    }
+
     // ── DEV-099: 댓글 / 메모 — local 전용 (HTTP 미지원 우선) ──
 
     fn comments_list(
@@ -2578,6 +2634,67 @@ fn run() -> Result<()> {
                 }
             }
         },
+        // DEV-060: 퀘스트 템플릿.
+        Command::Template { sub } => match sub {
+            TemplateCmd::List => {
+                let templates = c.templates_list()?;
+                if cli.json {
+                    println!(
+                        "{}",
+                        serde_json::json!({
+                            "templates": templates.iter().map(|t| serde_json::json!({
+                                "name": t.name,
+                                "title": t.frontmatter.title,
+                                "type": t.frontmatter.type_prefix,
+                                "urgency": t.frontmatter.urgency,
+                                "tags": t.frontmatter.tags,
+                                "body_len": t.body.len(),
+                            })).collect::<Vec<_>>(),
+                        })
+                    );
+                } else if templates.is_empty() {
+                    println!("(템플릿 없음 — .guild/templates/{{name}}.md 작성)");
+                } else {
+                    for t in &templates {
+                        let mut meta = Vec::new();
+                        if let Some(ty) = &t.frontmatter.type_prefix {
+                            meta.push(format!("type={ty}"));
+                        }
+                        if let Some(u) = t.frontmatter.urgency {
+                            meta.push(format!("urgency={u}"));
+                        }
+                        if !t.frontmatter.tags.is_empty() {
+                            meta.push(format!("tags={}", t.frontmatter.tags.join(",")));
+                        }
+                        println!(
+                            "{}  {}  {}",
+                            t.name,
+                            t.frontmatter.title.as_deref().unwrap_or("(제목 없음)"),
+                            meta.join(" ")
+                        );
+                    }
+                }
+            }
+            TemplateCmd::Show { name } => {
+                let t = c.template_load(&name)?;
+                if cli.json {
+                    println!(
+                        "{}",
+                        serde_json::json!({
+                            "name": t.name,
+                            "title": t.frontmatter.title,
+                            "type": t.frontmatter.type_prefix,
+                            "urgency": t.frontmatter.urgency,
+                            "tags": t.frontmatter.tags,
+                            "body": t.body,
+                        })
+                    );
+                } else {
+                    println!("# {} — {}", t.name, t.frontmatter.title.as_deref().unwrap_or("(제목 없음)"));
+                    println!("{}", t.body);
+                }
+            }
+        },
         Command::Rules { sub } => match sub {
             RulesCmd::List => {
                 let entries = c.rules_list()?;
@@ -2888,7 +3005,34 @@ fn run() -> Result<()> {
                 description,
                 urgency,
                 parent,
+                template,
             } => {
+                // DEV-060: 템플릿 merge — 명시 옵션 > 템플릿 값 > 기본.
+                let tpl = match &template {
+                    Some(name) => Some(c.template_load(name)?),
+                    None => None,
+                };
+                let type_prefix = type_prefix
+                    .or_else(|| tpl.as_ref().and_then(|t| t.frontmatter.type_prefix.clone()))
+                    .ok_or_else(|| {
+                        anyhow!("--type 필요 (또는 type 을 정의한 --template 지정)")
+                    })?;
+                let title = title
+                    .or_else(|| tpl.as_ref().and_then(|t| t.frontmatter.title.clone()))
+                    .ok_or_else(|| {
+                        anyhow!("--title 필요 (또는 title 을 정의한 --template 지정)")
+                    })?;
+                let description = description.or_else(|| {
+                    tpl.as_ref()
+                        .map(|t| t.body.clone())
+                        .filter(|b| !b.is_empty())
+                });
+                let urgency = urgency
+                    .or_else(|| tpl.as_ref().and_then(|t| t.frontmatter.urgency))
+                    .unwrap_or(3);
+                let tpl_tags: Vec<String> =
+                    tpl.as_ref().map(|t| t.frontmatter.tags.clone()).unwrap_or_default();
+
                 let type_id = c.resolve_type_id(&type_prefix)?;
                 let statuses = c.quest_statuses()?;
                 let open_status = statuses
@@ -2909,6 +3053,12 @@ fn run() -> Result<()> {
                     parent_quest_id: parent_id,
                 };
                 let q = c.create_quest(body)?;
+                // DEV-060: 템플릿의 기본 tags 적용 (생성 직후 set).
+                if !tpl_tags.is_empty() {
+                    if let Err(e) = c.tag_set(&q.quest_id, tpl_tags) {
+                        eprintln!("[openguild] warn: 템플릿 tags 적용 실패 — {e:#}");
+                    }
+                }
                 // multi-line description 도 그대로 보여줘 사용자가 "잘렸다" 오해 방지.
                 print_quest_full(&q, cli.json);
             }

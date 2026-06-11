@@ -15,6 +15,7 @@ pub mod rules;
 pub mod seed;
 pub mod status_def;
 pub mod tag_def;
+pub mod template;
 pub mod type_def;
 
 pub use auto::{QuestRef, QuestRelations};
@@ -23,6 +24,7 @@ pub use quest::{QuestFile, QuestFrontmatter, AUTO_BEGIN, AUTO_END};
 pub use seed::{default_statuses, default_types, seed_guild_dir, SeedReport};
 pub use status_def::StatusFile;
 pub use tag_def::TagFile;
+pub use template::{list_templates, TemplateFile, TemplateFrontmatter};
 pub use type_def::{Counter, TypeFile};
 
 use std::path::{Path, PathBuf};
@@ -118,6 +120,18 @@ impl GuildPaths {
     /// quest_tags 의 사용 tag 와 별개 — 사용자가 color / description 정의.
     pub fn tags_dir(&self) -> PathBuf {
         self.dot_guild().join("tags")
+    }
+
+    /// DEV-060: quest 템플릿 디렉토리 (`.guild/templates/`). git tracked.
+    /// `{name}.md` — quest 파일과 동일한 `+++` TOML frontmatter (필드 모두
+    /// 선택) + 기본 본문.
+    pub fn templates_dir(&self) -> PathBuf {
+        self.dot_guild().join("templates")
+    }
+
+    /// DEV-060: 한 템플릿 파일 (`.guild/templates/{name}.md`).
+    pub fn template_path(&self, name: &str) -> PathBuf {
+        self.templates_dir().join(format!("{name}.md"))
     }
 
     /// DEV-068: 한 tag 정의 파일 (`.guild/tags/{slug}.toml`).
