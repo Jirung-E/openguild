@@ -2,7 +2,7 @@
 //!
 //! **인증 없음** (현 MVP). 멀티유저 단계 진입 시 토큰 / role 가드 필요.
 
-use axum::{extract::State, Json};
+use axum::{extract::{Path, State}, Json};
 use serde::Deserialize;
 use serde_json::json;
 
@@ -87,4 +87,40 @@ pub async fn run_reindex(
         "dependencies_loaded": report.dependencies_loaded,
         "skipped": report.skipped.iter().map(|(p, r)| json!({ "path": p, "reason": r })).collect::<Vec<_>>(),
     })))
+}
+
+// ─── DEV-069: 본문 첨부 / 자산 파일 서빙 (브라우저 모드) ───
+
+/// `.guild/attachments/**` / `.guild/assets/**` 만 서빙. 그 외 prefix /
+/// path traversal (`..`) 거부 — quests `.md` 등 내부 파일 노출 방지.
+pub async fn get_guild_file(
+    State(store): State<Store>,
+    Path(rel): Path<String>,
+) -> AppResult<axum::response::Response> {
+    use axum::response::IntoResponse;
+    let rel = rel.replace('\\', "/");
+    let allowed = rel.starts_with("attachments/") || rel.starts_with("assets/");
+    if !allowed || rel.split('/').any(|seg| seg == ".." || seg.is_empty()) {
+        return Err(openguild_core::error::AppError::BadRequest(format!(
+            "허용되지 않은 경로: {rel} (attachments/ 또는 assets/ 하위만)"
+        ))
+        .into());
+    }
+    let path = store.paths.dot_guild().join(&rel);
+    let bytes = std::fs::read(&path).map_err(|_| {
+        openguild_core::error::AppError::NotFound(format!("파일 없음: {rel}"))
+    })?;
+    let mime = match path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).as_deref() {
+        Some("png") => "image/png",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        Some("bmp") => "image/bmp",
+        Some("svg") => "image/svg+xml",
+        Some("mp4") => "video/mp4",
+        Some("webm") => "video/webm",
+        Some("pdf") => "application/pdf",
+        _ => "application/octet-stream",
+    };
+    Ok(([(axum::http::header::CONTENT_TYPE, mime)], bytes).into_response())
 }

@@ -128,6 +128,12 @@ impl GuildPaths {
         self.dot_guild().join("assets")
     }
 
+    /// DEV-069: 본문 첨부 디렉토리 (`.guild/attachments/`). git tracked.
+    /// markdown 본문이 `![](attachments/foo.png)` 로 참조.
+    pub fn attachments_dir(&self) -> PathBuf {
+        self.dot_guild().join("attachments")
+    }
+
     /// DEV-060: quest 템플릿 디렉토리 (`.guild/templates/`). git tracked.
     /// `{name}.md` — quest 파일과 동일한 `+++` TOML frontmatter (필드 모두
     /// 선택) + 기본 본문.

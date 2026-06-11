@@ -34,3 +34,17 @@ export async function campaignBannerUrl(
 	}
 	return `/api/campaigns/${encodeURIComponent(slug)}/image`;
 }
+
+/**
+ * DEV-069: `.guild/` 상대 경로 (`attachments/foo.png` / `assets/...`) → 표시
+ * 가능 URL. markdown 본문의 로컬 이미지 / 동영상 참조 해석용.
+ */
+export async function guildFileUrl(relPath: string): Promise<string> {
+	if (detectEnvironment() === 'tauri') {
+		const { convertFileSrc } = await import('@tauri-apps/api/core');
+		const root = await guildPath();
+		return convertFileSrc(`${root}/.guild/${relPath}`);
+	}
+	// 브라우저 모드 — 서버가 attachments/ + assets/ 만 서빙.
+	return `/api/guild-files/${relPath}`;
+}

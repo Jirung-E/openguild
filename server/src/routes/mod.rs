@@ -83,6 +83,8 @@ pub fn create_router(store: Store) -> Router {
             "/api/campaigns/{slug}/image",
             get(campaigns::get_banner_image),
         )
+        // DEV-069: 본문 첨부 / 자산 — attachments/ + assets/ 한정 서빙.
+        .route("/api/guild-files/{*rel}", get(admin::get_guild_file))
         // quests
         .route("/api/quests", get(quests::list_quests).post(quests::create_quest))
         .route(

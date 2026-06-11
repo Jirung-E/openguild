@@ -91,8 +91,41 @@
 		// html / theme 변경 시 재렌더.
 		void html;
 		void $theme;
-		tick().then(renderMermaidBlocks);
+		tick().then(() => {
+			renderMermaidBlocks();
+			rewriteLocalMedia();
+		});
 	});
+
+	// DEV-069: markdown 본문의 로컬 이미지 / 동영상 참조 해석.
+	//
+	// WebView 는 raw 파일 경로 / file:// 로드를 차단 (frontend origin 이
+	// http://tauri.localhost) — `![](attachments/foo.png)` 같은 `.guild/` 상대
+	// 참조를 asset URL (Tauri convertFileSrc) / 서버 endpoint (브라우저) 로
+	// 재작성. 웹 URL (http/https/data/asset) 은 그대로 통과.
+	import { guildFileUrl } from '$lib/utils/banner';
+	function isExternalSrc(src: string): boolean {
+		return /^(https?:|data:|asset:|blob:|\/api\/)/i.test(src) || src.startsWith('//');
+	}
+	async function rewriteLocalMedia() {
+		if (!container) return;
+		const targets = container.querySelectorAll<HTMLElement>('img, video, source');
+		for (const el of Array.from(targets)) {
+			const src = el.getAttribute('src');
+			if (!src || isExternalSrc(src) || el.dataset.ogRewritten) continue;
+			// 절대 OS 경로 (`C:\...` / `/home/...`) 는 보안상 미지원 — `.guild/`
+			// 상대 (attachments/ / assets/) 만. 그 외는 그대로 (깨진 이미지 표시).
+			const rel = src.replace(/^\.\//, '');
+			if (!rel.startsWith('attachments/') && !rel.startsWith('assets/')) continue;
+			try {
+				const url = await guildFileUrl(rel);
+				el.setAttribute('src', url);
+				el.dataset.ogRewritten = '1';
+			} catch {
+				/* 해석 실패 — 원본 유지 */
+			}
+		}
+	}
 </script>
 
 <div class="md" bind:this={container}>{@html html}</div>
