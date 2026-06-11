@@ -28,36 +28,42 @@ export interface CommentsListResponse {
 	entries: CommentEntry[];
 }
 
-export const commentsApi = {
-	// ─── DEV-094: 댓글 entry CRUD ───
-	listComments: (slug: string) =>
-		api.get<CommentsListResponse>(
-			`/api/quests/by/${encodeURIComponent(slug)}/comments`
-		),
-	addComment: (slug: string, body: string, author = '', parentId: number | null = null) =>
-		api.post<CommentEntry>(
-			`/api/quests/by/${encodeURIComponent(slug)}/comments`,
-			{ author, body, parent_id: parentId }
-		),
-	updateComment: (slug: string, id: number, body: string) =>
-		api.patch<CommentEntry>(
-			`/api/quests/by/${encodeURIComponent(slug)}/comments/${id}`,
-			{ body }
-		),
-	deleteComment: (slug: string, id: number) =>
-		api.delete(`/api/quests/by/${encodeURIComponent(slug)}/comments/${id}`),
-	// DEV-108: 이모지 반응 토글 — 갱신된 entry 반환.
-	toggleReaction: (slug: string, id: number, emoji: string) =>
-		api.post<CommentEntry>(
-			`/api/quests/by/${encodeURIComponent(slug)}/comments/${id}/reactions`,
-			{ emoji }
-		),
+/**
+ * DEV-100: quest / campaign 공용 댓글·메모 API 팩토리.
+ * 엔드포인트 base 만 다르고 요청/응답 형식 동일.
+ */
+function makeCommentsApi(base: (slug: string) => string) {
+	return {
+		// ─── DEV-094: 댓글 entry CRUD ───
+		listComments: (slug: string) =>
+			api.get<CommentsListResponse>(`${base(slug)}/comments`),
+		addComment: (slug: string, body: string, author = '', parentId: number | null = null) =>
+			api.post<CommentEntry>(`${base(slug)}/comments`, {
+				author,
+				body,
+				parent_id: parentId
+			}),
+		updateComment: (slug: string, id: number, body: string) =>
+			api.patch<CommentEntry>(`${base(slug)}/comments/${id}`, { body }),
+		deleteComment: (slug: string, id: number) =>
+			api.delete(`${base(slug)}/comments/${id}`),
+		// DEV-108: 이모지 반응 토글 — 갱신된 entry 반환.
+		toggleReaction: (slug: string, id: number, emoji: string) =>
+			api.post<CommentEntry>(`${base(slug)}/comments/${id}/reactions`, { emoji }),
 
-	// ─── DEV-012: 메모 (단일 텍스트) ───
-	getMemo: (slug: string) =>
-		api.get<ContentResponse>(`/api/quests/by/${encodeURIComponent(slug)}/memo`),
-	setMemo: (slug: string, content: string) =>
-		api.put<ContentResponse>(`/api/quests/by/${encodeURIComponent(slug)}/memo`, {
-			content
-		})
-};
+		// ─── DEV-012: 메모 (단일 텍스트) ───
+		getMemo: (slug: string) => api.get<ContentResponse>(`${base(slug)}/memo`),
+		setMemo: (slug: string, content: string) =>
+			api.put<ContentResponse>(`${base(slug)}/memo`, { content })
+	};
+}
+
+export type CommentsApi = ReturnType<typeof makeCommentsApi>;
+
+export const commentsApi = makeCommentsApi(
+	(slug) => `/api/quests/by/${encodeURIComponent(slug)}`
+);
+/** DEV-100: 캠페인 댓글 / 메모 — 경로는 기존 campaign 패턴. */
+export const campaignCommentsApi = makeCommentsApi(
+	(slug) => `/api/campaigns/${encodeURIComponent(slug)}`
+);

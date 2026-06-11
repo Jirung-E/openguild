@@ -14,13 +14,19 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import MarkdownView from './MarkdownView.svelte';
-	import { commentsApi, type CommentEntry } from '$lib/api/comments';
+	import {
+		commentsApi as questCommentsApi,
+		campaignCommentsApi,
+		type CommentEntry
+	} from '$lib/api/comments';
 	// DEV-118: native confirm() 대신 인앱 모달.
 	import ConfirmDialog from './ConfirmDialog.svelte';
 	// DEV-130: Tab = tab 문자 삽입 (focus 이동 X).
 	import { tabInsert } from '$lib/actions/tab-insert';
 
-	let { slug }: { slug: string } = $props();
+	// DEV-100: scope — quest (기본) / campaign. API base 만 다름.
+	let { slug, scope = 'quest' }: { slug: string; scope?: 'quest' | 'campaign' } = $props();
+	const commentsApi = $derived(scope === 'campaign' ? campaignCommentsApi : questCommentsApi);
 
 	let loading = $state(true);
 	let loadError = $state<string | null>(null);

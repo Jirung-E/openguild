@@ -1213,3 +1213,93 @@ pub async fn toggle_comment_reaction(
         .await
         .map_err(err)
 }
+
+// ─── DEV-100: Campaign 댓글 / 메모 — quest 패턴 미러 ───
+
+#[tauri::command]
+pub fn list_campaign_comments(
+    store: State<'_, Store>,
+    slug: String,
+) -> Result<CommentsListResponse, String> {
+    let entries =
+        openguild_core::ops::campaign_comments::list_entries(&store, &slug).map_err(err)?;
+    Ok(CommentsListResponse { entries })
+}
+
+#[tauri::command]
+pub async fn add_campaign_comment(
+    store: State<'_, Store>,
+    slug: String,
+    author: Option<String>,
+    body: String,
+    parent_id: Option<u64>,
+) -> Result<CommentEntry, String> {
+    openguild_core::ops::campaign_comments::add_entry(
+        &store,
+        &slug,
+        author.unwrap_or_default(),
+        body,
+        parent_id,
+    )
+    .await
+    .map_err(err)
+}
+
+#[tauri::command]
+pub async fn update_campaign_comment(
+    store: State<'_, Store>,
+    slug: String,
+    id: u64,
+    body: String,
+) -> Result<CommentEntry, String> {
+    openguild_core::ops::campaign_comments::update_entry(&store, &slug, id, body)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn delete_campaign_comment(
+    store: State<'_, Store>,
+    slug: String,
+    id: u64,
+) -> Result<(), String> {
+    openguild_core::ops::campaign_comments::delete_entry(&store, &slug, id)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn toggle_campaign_comment_reaction(
+    store: State<'_, Store>,
+    slug: String,
+    id: u64,
+    emoji: String,
+) -> Result<CommentEntry, String> {
+    openguild_core::ops::campaign_comments::toggle_reaction(&store, &slug, id, &emoji)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+pub fn get_campaign_memo(
+    store: State<'_, Store>,
+    slug: String,
+) -> Result<ContentResponse, String> {
+    let content =
+        openguild_core::ops::campaign_comments::get_memo(&store, &slug).map_err(err)?;
+    Ok(ContentResponse { content })
+}
+
+#[tauri::command]
+pub async fn set_campaign_memo(
+    store: State<'_, Store>,
+    slug: String,
+    content: String,
+) -> Result<ContentResponse, String> {
+    openguild_core::ops::campaign_comments::set_memo(&store, &slug, content.clone())
+        .await
+        .map_err(err)?;
+    Ok(ContentResponse {
+        content: Some(content),
+    })
+}

@@ -60,6 +60,24 @@ pub fn create_router(store: Store) -> Router {
             "/api/quests/by/{slug}/memo",
             get(comments::get_memo).put(comments::set_memo),
         )
+        // DEV-100: Campaign 댓글 / 메모 — 응답 형식은 quest 와 동일,
+        // 경로는 기존 campaign 라우트 패턴 (`/api/campaigns/{slug}/...`) 따름.
+        .route(
+            "/api/campaigns/{slug}/comments",
+            get(comments::camp_list_comments).post(comments::camp_add_comment),
+        )
+        .route(
+            "/api/campaigns/{slug}/comments/{id}",
+            patch(comments::camp_update_comment).delete(comments::camp_delete_comment),
+        )
+        .route(
+            "/api/campaigns/{slug}/comments/{id}/reactions",
+            post(comments::camp_toggle_reaction),
+        )
+        .route(
+            "/api/campaigns/{slug}/memo",
+            get(comments::camp_get_memo).put(comments::camp_set_memo),
+        )
         // quests
         .route("/api/quests", get(quests::list_quests).post(quests::create_quest))
         .route(

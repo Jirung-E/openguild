@@ -193,6 +193,38 @@ pub fn write_entries(
     write_atomic(paths.comments_path(slug), &text)
 }
 
+// ─── DEV-100: path 기반 generic IO — quest / campaign 공용 ───
+
+/// 임의 경로의 댓글 파일 → entry 목록. 부재 시 빈 vec.
+pub fn read_entries_at(path: &std::path::Path) -> Result<Vec<CommentEntry>> {
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let s = std::fs::read_to_string(path)
+        .with_context(|| format!("failed to read comments: {}", path.display()))?;
+    Ok(parse_entries(&s))
+}
+
+/// 임의 경로에 entry 목록 쓰기 (atomic).
+pub fn write_entries_at(path: &std::path::Path, entries: &[CommentEntry]) -> Result<()> {
+    write_atomic(path, &serialize_entries(entries))
+}
+
+/// 임의 경로의 단일 텍스트 (메모) 읽기. 부재 시 None.
+pub fn read_text_at(path: &std::path::Path) -> Result<Option<String>> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    let s = std::fs::read_to_string(path)
+        .with_context(|| format!("failed to read: {}", path.display()))?;
+    Ok(Some(s))
+}
+
+/// 임의 경로에 단일 텍스트 쓰기 (atomic).
+pub fn write_text_at(path: &std::path::Path, content: &str) -> Result<()> {
+    write_atomic(path, content)
+}
+
 /// 공개 댓글 파일 읽기. 부재 시 `Ok(None)`.
 pub fn read_comments(paths: &GuildPaths, slug: &str) -> Result<Option<String>> {
     let p = paths.comments_path(slug);

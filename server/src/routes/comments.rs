@@ -119,3 +119,69 @@ pub async fn toggle_reaction(
     let entry = ops::toggle_comment_reaction(&store, &slug, id, &body.emoji).await?;
     Ok(Json(entry))
 }
+
+// ─── DEV-100: Campaign 댓글 / 메모 — quest 와 동일 형식 ───
+
+use openguild_core::ops::campaign_comments as cops;
+
+pub async fn camp_list_comments(
+    State(store): State<Store>,
+    Path(slug): Path<String>,
+) -> AppResult<Json<CommentsListResponse>> {
+    let entries = cops::list_entries(&store, &slug)?;
+    Ok(Json(CommentsListResponse { entries }))
+}
+
+pub async fn camp_add_comment(
+    State(store): State<Store>,
+    Path(slug): Path<String>,
+    Json(body): Json<AddCommentRequest>,
+) -> AppResult<Json<CommentEntry>> {
+    let entry = cops::add_entry(&store, &slug, body.author, body.body, body.parent_id).await?;
+    Ok(Json(entry))
+}
+
+pub async fn camp_update_comment(
+    State(store): State<Store>,
+    Path((slug, id)): Path<(String, u64)>,
+    Json(body): Json<UpdateCommentRequest>,
+) -> AppResult<Json<CommentEntry>> {
+    let entry = cops::update_entry(&store, &slug, id, body.body).await?;
+    Ok(Json(entry))
+}
+
+pub async fn camp_delete_comment(
+    State(store): State<Store>,
+    Path((slug, id)): Path<(String, u64)>,
+) -> AppResult<axum::http::StatusCode> {
+    cops::delete_entry(&store, &slug, id).await?;
+    Ok(axum::http::StatusCode::NO_CONTENT)
+}
+
+pub async fn camp_toggle_reaction(
+    State(store): State<Store>,
+    Path((slug, id)): Path<(String, u64)>,
+    Json(body): Json<ToggleReactionRequest>,
+) -> AppResult<Json<CommentEntry>> {
+    let entry = cops::toggle_reaction(&store, &slug, id, &body.emoji).await?;
+    Ok(Json(entry))
+}
+
+pub async fn camp_get_memo(
+    State(store): State<Store>,
+    Path(slug): Path<String>,
+) -> AppResult<Json<ContentResponse>> {
+    let content = cops::get_memo(&store, &slug)?;
+    Ok(Json(ContentResponse { content }))
+}
+
+pub async fn camp_set_memo(
+    State(store): State<Store>,
+    Path(slug): Path<String>,
+    Json(body): Json<SetContentRequest>,
+) -> AppResult<Json<ContentResponse>> {
+    cops::set_memo(&store, &slug, body.content.clone()).await?;
+    Ok(Json(ContentResponse {
+        content: Some(body.content),
+    }))
+}

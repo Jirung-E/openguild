@@ -413,6 +413,14 @@ pub fn run() {
             commands::update_comment,
             commands::delete_comment,
             commands::toggle_comment_reaction,
+            // DEV-100: 캠페인 댓글 / 메모.
+            commands::list_campaign_comments,
+            commands::add_campaign_comment,
+            commands::update_campaign_comment,
+            commands::delete_campaign_comment,
+            commands::toggle_campaign_comment_reaction,
+            commands::get_campaign_memo,
+            commands::set_campaign_memo,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

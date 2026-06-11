@@ -20,6 +20,9 @@
 	import { formatTs, formatRelative, isDateOverdue } from '$lib/utils/datetime';
 	// BUG-023: Quest Detail 의 QuestCombobox 와 같은 UI 로 통일.
 	import QuestCombobox from '$lib/components/QuestCombobox.svelte';
+	// DEV-100: 캠페인 댓글 / 메모 — quest 컴포넌트 재사용 (scope prop).
+	import QuestCommentsSection from '$lib/components/QuestCommentsSection.svelte';
+	import QuestNoteSection from '$lib/components/QuestNoteSection.svelte';
 	// BUG-021: Quest Detail 과 동일한 CodeMirror editor (라인 번호 + markdown
 	// syntax highlighting) 로 통일.
 	import { EditorView, basicSetup } from 'codemirror';
@@ -478,6 +481,10 @@
 				<button class="link-add-btn" onclick={() => (comboOpen = true)}>+ 퀘스트 연결</button>
 			</div>
 		</section>
+
+		<!-- DEV-100: 캠페인 댓글 + 메모 — quest 와 동일 컴포넌트, scope 만 다름. -->
+		<QuestCommentsSection slug={detail.campaign_slug} scope="campaign" />
+		<QuestNoteSection slug={detail.campaign_slug} mode="memo" scope="campaign" />
 	{/if}
 </div>
 

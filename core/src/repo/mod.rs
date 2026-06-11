@@ -145,6 +145,17 @@ impl GuildPaths {
         self.quests_dir().join(format!("{slug}.comments.md"))
     }
 
+    /// DEV-100: Campaign 별 공개 댓글 (`.guild/campaigns/{slug}.comments.md`).
+    pub fn campaign_comments_path(&self, slug: &str) -> PathBuf {
+        self.campaigns_dir().join(format!("{slug}.comments.md"))
+    }
+
+    /// DEV-100: Campaign 별 비공개 메모 (`.guild/campaigns/{slug}.memo.md`).
+    /// **gitignored**.
+    pub fn campaign_memo_path(&self, slug: &str) -> PathBuf {
+        self.campaigns_dir().join(format!("{slug}.memo.md"))
+    }
+
     /// DEV-012: Quest 별 비공개 메모 (`.guild/quests/{slug}.memo.md`).
     /// frontmatter 없는 plain markdown. **gitignored** (개인 노트).
     pub fn memo_path(&self, slug: &str) -> PathBuf {
@@ -160,7 +171,9 @@ impl GuildPaths {
          backups/\n\
          .lock\n\
          # DEV-012: 비공개 메모 (개인 노트)\n\
-         quests/*.memo.md\n"
+         quests/*.memo.md\n\
+         # DEV-100: 캠페인 비공개 메모\n\
+         campaigns/*.memo.md\n"
     }
 }
 

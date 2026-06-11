@@ -382,6 +382,41 @@ function routeToInvoke(
 				};
 			}
 		}
+		// DEV-100: .../comments / .../memo — quest 댓글과 동일 형식.
+		if (sub === 'comments') {
+			if (!parts[4]) {
+				if (method === 'GET') return { cmd: 'list_campaign_comments', args: { slug } };
+				if (method === 'POST') {
+					const b =
+						(body as { author?: string; body?: string; parent_id?: number | null } | undefined) ??
+						{};
+					return {
+						cmd: 'add_campaign_comment',
+						args: { slug, author: b.author ?? '', body: b.body ?? '', parentId: b.parent_id ?? null }
+					};
+				}
+			}
+			if (parts[4] && /^\d+$/.test(parts[4]) && parts[5] === 'reactions' && method === 'POST') {
+				const id = Number(parts[4]);
+				const emoji = (body as { emoji?: string } | undefined)?.emoji ?? '';
+				return { cmd: 'toggle_campaign_comment_reaction', args: { slug, id, emoji } };
+			}
+			if (parts[4] && /^\d+$/.test(parts[4]) && !parts[5]) {
+				const id = Number(parts[4]);
+				if (method === 'PATCH') {
+					const bodyText = (body as { body?: string } | undefined)?.body ?? '';
+					return { cmd: 'update_campaign_comment', args: { slug, id, body: bodyText } };
+				}
+				if (method === 'DELETE') return { cmd: 'delete_campaign_comment', args: { slug, id } };
+			}
+		}
+		if (sub === 'memo') {
+			if (method === 'GET') return { cmd: 'get_campaign_memo', args: { slug } };
+			if (method === 'PUT') {
+				const content = (body as { content?: string } | undefined)?.content ?? '';
+				return { cmd: 'set_campaign_memo', args: { slug, content } };
+			}
+		}
 		// .../checklist  → add / set / rm
 		if (sub === 'checklist') {
 			if (!parts[4] && method === 'POST') {

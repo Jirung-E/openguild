@@ -14,7 +14,7 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
 	import MarkdownView from './MarkdownView.svelte';
-	import { commentsApi } from '$lib/api/comments';
+	import { commentsApi as questCommentsApi, campaignCommentsApi } from '$lib/api/comments';
 	import { EditorView, basicSetup } from 'codemirror';
 	import { markdown } from '@codemirror/lang-markdown';
 	import { oneDark } from '@codemirror/theme-one-dark';
@@ -28,7 +28,12 @@
 
 	// `mode` prop 은 호환성을 위해 받지만 동작 분기 X — 항상 memo.
 	// svelte 가 "초기값만 캡쳐" 경고 안 내도록 destructure 에서 제외.
-	let { slug }: { slug: string; mode?: 'memo' | 'comments' } = $props();
+	// DEV-100: scope — quest (기본) / campaign.
+	let {
+		slug,
+		scope = 'quest'
+	}: { slug: string; mode?: 'memo' | 'comments'; scope?: 'quest' | 'campaign' } = $props();
+	const commentsApi = $derived(scope === 'campaign' ? campaignCommentsApi : questCommentsApi);
 
 	const label = {
 		heading: '메모 (Memo)',
