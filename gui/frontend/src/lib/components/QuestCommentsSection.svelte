@@ -43,6 +43,17 @@
 		collapsedRoots = next;
 	}
 
+	// DEV-108: 이모지 반응 — 고정 4종. 커스텀 추가는 후속 quest.
+	const REACTION_SET = ['👍', '✅', '❓', '❌'];
+	async function toggleReaction(id: number, emoji: string) {
+		try {
+			const updated = await commentsApi.toggleReaction(slug, id, emoji);
+			entries = entries.map((e) => (e.id === id ? updated : e));
+		} catch (e) {
+			alert(e instanceof Error ? e.message : 'reaction failed');
+		}
+	}
+
 	// DEV-129: 댓글 '내용' 접기 — entry 단위 본문 collapse. 답글 접기 (위)
 	// 와 별개 — 본문만 가리고 head (작성자/번호/액션) 는 유지.
 	let collapsedBodies = $state(new Set<number>());
@@ -332,6 +343,23 @@
 				<MarkdownView source={e.body} />
 			</div>
 		{/if}
+		{#if editingId !== e.id}
+			<!-- DEV-108: 이모지 반응 bar — 활성은 강조, 클릭 토글. -->
+			<div class="reaction-bar">
+				{#each REACTION_SET as emoji (emoji)}
+					<button
+						class="reaction-btn"
+						class:on={(e.reactions ?? []).includes(emoji)}
+						onclick={() => toggleReaction(e.id, emoji)}
+						title={(e.reactions ?? []).includes(emoji) ? `${emoji} 해제` : `${emoji} 반응`}
+					>{emoji}</button>
+				{/each}
+				{#each (e.reactions ?? []).filter((r) => !REACTION_SET.includes(r)) as extra (extra)}
+					<!-- 고정 셋 밖 이모지 (CLI / 미래 커스텀) 도 표시 + 토글 가능. -->
+					<button class="reaction-btn on" onclick={() => toggleReaction(e.id, extra)} title={`${extra} 해제`}>{extra}</button>
+				{/each}
+			</div>
+		{/if}
 	</li>
 {/snippet}
 
@@ -617,6 +645,28 @@
 		text-overflow: ellipsis;
 	}
 	.body-collapsed:hover { color: var(--text-muted); border-left-color: var(--accent); }
+	/* DEV-108: 이모지 반응 bar. 비활성은 흐리게, 활성은 accent 테두리. */
+	.reaction-bar {
+		display: flex;
+		gap: 0.25rem;
+		margin-top: 0.35rem;
+	}
+	.reaction-btn {
+		padding: 0.1rem 0.4rem;
+		background: transparent;
+		border: 1px solid transparent;
+		border-radius: 10px;
+		font-size: 0.78rem;
+		cursor: pointer;
+		opacity: 0.35;
+		transition: opacity 0.1s, border-color 0.1s, background 0.1s;
+	}
+	.reaction-btn:hover { opacity: 0.8; }
+	.reaction-btn.on {
+		opacity: 1;
+		background: color-mix(in srgb, var(--accent) 12%, transparent);
+		border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+	}
 	.entry-actions {
 		margin-left: auto;
 		display: flex;

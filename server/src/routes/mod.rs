@@ -51,6 +51,11 @@ pub fn create_router(store: Store) -> Router {
             "/api/quests/by/{slug}/comments/{id}",
             patch(comments::update_comment).delete(comments::delete_comment),
         )
+        // DEV-108: 이모지 반응 토글.
+        .route(
+            "/api/quests/by/{slug}/comments/{id}/reactions",
+            post(comments::toggle_reaction),
+        )
         .route(
             "/api/quests/by/{slug}/memo",
             get(comments::get_memo).put(comments::set_memo),

@@ -37,6 +37,11 @@ pub struct CommentEntry {
     /// 답글의 경우 부모 entry id. 마커의 `reply_to="N"` attr 에서 추출.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_id: Option<u64>,
+    /// DEV-108: 이모지 반응 — 활성 이모지 목록. 마커의 `reactions="👍,✅"`.
+    /// single-user 단계 = 이모지당 on/off (목록 포함 여부). multi-user
+    /// (DEV-021) 진입 시 user 별 분리로 확장.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reactions: Vec<String>,
 }
 
 /// DEV-094: 마커 패턴 — `<!-- og-comment id="..." ts="..." author="..." -->`.
@@ -100,6 +105,7 @@ pub fn parse_entries(text: &str) -> Vec<CommentEntry> {
             author: String::new(),
             body: body.to_string(),
             parent_id: None,
+            reactions: Vec::new(),
         }];
     }
 
@@ -121,7 +127,16 @@ pub fn parse_entries(text: &str) -> Vec<CommentEntry> {
         // 답글이면 `reply_to="N"`. 없거나 파싱 실패면 None.
         let parent_id = extract_attr(attrs, "reply_to")
             .and_then(|s| s.parse::<u64>().ok());
-        out.push(CommentEntry { id, ts, author, body, parent_id });
+        // DEV-108: `reactions="👍,✅"` — 콤마 구분, 빈 항목 제거.
+        let reactions = extract_attr(attrs, "reactions")
+            .map(|s| {
+                s.split(',')
+                    .map(|x| x.trim().to_string())
+                    .filter(|x| !x.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default();
+        out.push(CommentEntry { id, ts, author, body, parent_id, reactions });
     }
     out
 }
@@ -142,12 +157,19 @@ pub fn serialize_entries(entries: &[CommentEntry]) -> String {
             Some(pid) => format!(" reply_to=\"{pid}\""),
             None => String::new(),
         };
+        // DEV-108: reactions attr — 비어있으면 생략 (구 파일과 byte 동일 유지).
+        let reactions_attr = if e.reactions.is_empty() {
+            String::new()
+        } else {
+            format!(" reactions=\"{}\"", sanitize_attr(&e.reactions.join(",")))
+        };
         out.push_str(&format!(
-            "<!-- og-comment id=\"{}\" ts=\"{}\" author=\"{}\"{} -->\n",
+            "<!-- og-comment id=\"{}\" ts=\"{}\" author=\"{}\"{}{} -->\n",
             e.id,
             sanitize_attr(&e.ts),
             sanitize_attr(&e.author),
             reply_attr,
+            reactions_attr,
         ));
         out.push_str(e.body.trim());
         out.push('\n');
@@ -282,6 +304,7 @@ mod tests {
                 author: "alice".into(),
                 body: "Hello\nworld".into(),
                 parent_id: None,
+                reactions: Vec::new(),
             },
             CommentEntry {
                 id: 2,
@@ -289,6 +312,7 @@ mod tests {
                 author: "".into(),
                 body: "Second.".into(),
                 parent_id: None,
+                reactions: Vec::new(),
             },
             // 답글: id=3 이 id=1 에 대한 reply.
             CommentEntry {
@@ -297,6 +321,7 @@ mod tests {
                 author: "bob".into(),
                 body: "Reply to 1".into(),
                 parent_id: Some(1),
+                reactions: Vec::new(),
             },
         ];
         let s = serialize_entries(&entries);
@@ -304,6 +329,33 @@ mod tests {
         assert_eq!(parsed, entries);
         // 직렬화 결과에 reply_to 가 들어 있어야.
         assert!(s.contains("reply_to=\"1\""));
+    }
+
+    /// DEV-108: reactions attr roundtrip + 빈 reactions 는 attr 생략.
+    #[test]
+    fn reactions_roundtrip() {
+        let entries = vec![CommentEntry {
+            id: 1,
+            ts: "x".into(),
+            author: "a".into(),
+            body: "b".into(),
+            parent_id: None,
+            reactions: vec!["👍".into(), "✅".into()],
+        }];
+        let s = serialize_entries(&entries);
+        assert!(s.contains("reactions=\"👍,✅\""));
+        assert_eq!(parse_entries(&s), entries);
+
+        // 빈 reactions — attr 자체가 없어야 (구 파일과 호환).
+        let none = vec![CommentEntry {
+            id: 1,
+            ts: "x".into(),
+            author: "a".into(),
+            body: "b".into(),
+            parent_id: None,
+            reactions: Vec::new(),
+        }];
+        assert!(!serialize_entries(&none).contains("reactions"));
     }
 
     #[test]
@@ -321,6 +373,7 @@ mod tests {
             author: "ali\"ce".into(),
             body: "body".into(),
             parent_id: None,
+            reactions: Vec::new(),
         }];
         let s = serialize_entries(&entries);
         // " → ' 로 치환되어 attribute 안전.

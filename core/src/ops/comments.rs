@@ -216,6 +216,47 @@ pub async fn update_comment_entry(
     Ok(updated)
 }
 
+/// DEV-108: 이모지 반응 토글 — 있으면 제거, 없으면 추가. single-user 전제
+/// (이모지당 on/off). 토글 후 entry 반환.
+pub async fn toggle_comment_reaction(
+    store: &Store,
+    slug: &str,
+    id: u64,
+    emoji: &str,
+) -> AppResult<CommentEntry> {
+    let emoji = emoji.trim();
+    if emoji.is_empty() || emoji.contains(',') || emoji.contains('"') {
+        return Err(AppError::BadRequest(
+            "emoji 는 비어있지 않아야 하고 ',' / '\"' 를 포함할 수 없음".into(),
+        ));
+    }
+    let _ = journal::append(
+        &store.journal_pool,
+        "toggle_comment_reaction",
+        &json!({ "slug": slug, "id": id, "emoji": emoji }),
+        None::<&serde_json::Value>,
+    )
+    .await
+    .map_err(AppError::Internal)?;
+
+    let mut entries = svc::list_entries(store, slug)?;
+    let entry = entries
+        .iter_mut()
+        .find(|e| e.id == id)
+        .ok_or_else(|| AppError::NotFound(format!("comment {id} not found for {slug}")))?;
+    if let Some(pos) = entry.reactions.iter().position(|r| r == emoji) {
+        entry.reactions.remove(pos);
+    } else {
+        entry.reactions.push(emoji.to_string());
+    }
+    let updated = entry.clone();
+    crate::repo::comments::write_entries(&store.paths, slug, &entries)
+        .map_err(AppError::Internal)?;
+    // reactions 는 file-only (DB 캐시 컬럼 없음 — read 경로가 file 직접이라
+    // 무방. 캐시 재구축도 file 에서 다시 파싱). body 등은 그대로라 UPSERT 생략.
+    Ok(updated)
+}
+
 /// 댓글 entry 삭제.
 pub async fn delete_comment_entry(store: &Store, slug: &str, id: u64) -> AppResult<()> {
     let _ = journal::append(

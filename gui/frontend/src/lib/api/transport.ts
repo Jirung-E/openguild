@@ -197,8 +197,14 @@ function routeToInvoke(
 					};
 				}
 			}
+			// /comments/{id}/reactions (DEV-108: 이모지 토글)
+			if (parts[5] && /^\d+$/.test(parts[5]) && parts[6] === 'reactions' && method === 'POST') {
+				const id = Number(parts[5]);
+				const emoji = (body as { emoji?: string } | undefined)?.emoji ?? '';
+				return { cmd: 'toggle_comment_reaction', args: { slug, id, emoji } };
+			}
 			// /comments/{id} (수정 / 삭제)
-			if (parts[5] && /^\d+$/.test(parts[5])) {
+			if (parts[5] && /^\d+$/.test(parts[5]) && !parts[6]) {
 				const id = Number(parts[5]);
 				if (method === 'PATCH') {
 					const bodyText = (body as { body?: string } | undefined)?.body ?? '';

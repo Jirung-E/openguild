@@ -412,6 +412,7 @@ pub fn run() {
             commands::add_comment,
             commands::update_comment,
             commands::delete_comment,
+            commands::toggle_comment_reaction,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

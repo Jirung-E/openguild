@@ -103,3 +103,19 @@ pub async fn delete_comment(
     ops::delete_comment_entry(&store, &slug, id).await?;
     Ok(axum::http::StatusCode::NO_CONTENT)
 }
+
+// ─── DEV-108: 이모지 반응 ───
+
+#[derive(Debug, Deserialize)]
+pub struct ToggleReactionRequest {
+    pub emoji: String,
+}
+
+pub async fn toggle_reaction(
+    State(store): State<Store>,
+    Path((slug, id)): Path<(String, u64)>,
+    Json(body): Json<ToggleReactionRequest>,
+) -> AppResult<Json<CommentEntry>> {
+    let entry = ops::toggle_comment_reaction(&store, &slug, id, &body.emoji).await?;
+    Ok(Json(entry))
+}

@@ -1200,3 +1200,16 @@ pub async fn delete_comment(
         .await
         .map_err(err)
 }
+
+/// DEV-108: 이모지 반응 토글.
+#[tauri::command]
+pub async fn toggle_comment_reaction(
+    store: State<'_, Store>,
+    slug: String,
+    id: u64,
+    emoji: String,
+) -> Result<CommentEntry, String> {
+    openguild_core::ops::comments::toggle_comment_reaction(&store, &slug, id, &emoji)
+        .await
+        .map_err(err)
+}

@@ -20,6 +20,8 @@ export interface CommentEntry {
 	 * 1-level threading — 답글의 답글도 동일 root 의 직접 자식으로 flatten.
 	 */
 	parent_id?: number | null;
+	/** DEV-108: 활성 이모지 반응 목록 (single-user — 이모지당 on/off). */
+	reactions?: string[];
 }
 
 export interface CommentsListResponse {
@@ -44,6 +46,12 @@ export const commentsApi = {
 		),
 	deleteComment: (slug: string, id: number) =>
 		api.delete(`/api/quests/by/${encodeURIComponent(slug)}/comments/${id}`),
+	// DEV-108: 이모지 반응 토글 — 갱신된 entry 반환.
+	toggleReaction: (slug: string, id: number, emoji: string) =>
+		api.post<CommentEntry>(
+			`/api/quests/by/${encodeURIComponent(slug)}/comments/${id}/reactions`,
+			{ emoji }
+		),
 
 	// ─── DEV-012: 메모 (단일 텍스트) ───
 	getMemo: (slug: string) =>
