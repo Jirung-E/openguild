@@ -10,7 +10,9 @@
 		buildTree,
 		filterQuests,
 		flattenTree,
-		includeAncestors
+		includeAncestors,
+		sortQuests,
+		type SortKey
 	} from '$lib/utils/quest-list';
 	import QuestListFilter from './QuestListFilter.svelte';
 	import QuestListItem from './QuestListItem.svelte';
@@ -45,6 +47,21 @@
 	type ViewMode = 'tree' | 'list';
 	const VIEW_MODE_KEY = 'openguild.questListMode';
 	let viewMode = $state<ViewMode>('tree');
+
+	// DEV-033: 정렬 — CLI --sort 와 1:1. URL ?sort= / ?desc=1 + localStorage 영속.
+	const SORT_KEY = 'openguild.questListSort';
+	const SORT_KEYS: SortKey[] = ['id', 'urgency', 'status', 'updated', 'created'];
+	const SORT_LABELS: Record<SortKey, string> = {
+		id: 'ID (생성 순)',
+		urgency: '긴급도',
+		status: '상태',
+		updated: '갱신 시각',
+		created: '생성 시각'
+	};
+	let sortKey = $state<SortKey>('id');
+	let sortDesc = $state(false);
+	// status 정렬용 — status_id → sort_order 맵.
+	let statusOrder = $derived(new Map(statuses.map((s) => [s.id, s.sort_order])));
 
 	// --- 데이터 ---
 	async function loadData() {
@@ -89,6 +106,25 @@
 					.filter((t) => t.length > 0)
 			);
 		}
+		// DEV-033: URL ?sort= 우선, 없으면 localStorage.
+		const urlSort = params.get('sort');
+		if (urlSort && (SORT_KEYS as string[]).includes(urlSort)) {
+			sortKey = urlSort as SortKey;
+			sortDesc = params.get('desc') === '1';
+		} else {
+			try {
+				const saved = localStorage.getItem(SORT_KEY);
+				if (saved) {
+					const [k, d] = saved.split(':');
+					if ((SORT_KEYS as string[]).includes(k)) {
+						sortKey = k as SortKey;
+						sortDesc = d === 'desc';
+					}
+				}
+			} catch {
+				/* 무시 */
+			}
+		}
 	});
 
 	// DEV-095: Nav 의 Reindex 버튼이 bump 한 store 를 subscribe — 값 변할 때마다
@@ -123,10 +159,29 @@
 		} else {
 			url.searchParams.delete('tags');
 		}
+		// DEV-033: 정렬 → URL. 기본 (id asc) 은 생략.
+		if (sortKey !== 'id' || sortDesc) {
+			url.searchParams.set('sort', sortKey);
+			if (sortDesc) url.searchParams.set('desc', '1');
+			else url.searchParams.delete('desc');
+		} else {
+			url.searchParams.delete('sort');
+			url.searchParams.delete('desc');
+		}
 		const next = `${url.pathname}${url.search}`;
 		const current = `${$page.url.pathname}${$page.url.search}`;
 		if (next !== current) {
 			goto(next, { replaceState: true, keepFocus: true, noScroll: true });
+		}
+	});
+
+	// DEV-033: 정렬 선택 localStorage 영속.
+	$effect(() => {
+		if (loading) return;
+		try {
+			localStorage.setItem(SORT_KEY, `${sortKey}:${sortDesc ? 'desc' : 'asc'}`);
+		} catch {
+			/* 무시 */
 		}
 	});
 
@@ -156,8 +211,14 @@
 		);
 		// DEV-065: 'list' 모드 — 부모 그룹 X. 매칭된 quest 만 평면. ancestor
 		// 자동 포함 안 함 (검색 결과 정확).
+		// DEV-033: 정렬 — list 모드는 평면 그대로, tree 모드는 buildTree 가
+		// 입력 배열 순서를 sibling 순서로 보존하므로 정렬 후 build.
 		if (viewMode === 'list') {
-			return matched.map((q) => ({ quest: q, depth: 0, hasChildren: false }));
+			return sortQuests(matched, sortKey, sortDesc, statusOrder).map((q) => ({
+				quest: q,
+				depth: 0,
+				hasChildren: false
+			}));
 		}
 		// 'tree' 모드.
 		const hasFilters =
@@ -169,7 +230,7 @@
 		const effectiveExpanded = hasFilters
 			? new Set([...expanded, ...ancestorIdsOf(matched, quests)])
 			: expanded;
-		const tree = buildTree(filtered, null);
+		const tree = buildTree(sortQuests(filtered, sortKey, sortDesc, statusOrder), null);
 		return flattenTree(tree, effectiveExpanded);
 	});
 
@@ -244,6 +305,20 @@
 			>
 				<span class="vt-icon">≡</span><span>List</span>
 			</button>
+		</div>
+		<!-- DEV-033: 정렬 — CLI --sort 와 1:1. 방향 토글 = --reverse. -->
+		<div class="sort-group" aria-label="정렬">
+			<select class="sort-sel" bind:value={sortKey} title="정렬 기준">
+				{#each SORT_KEYS as k (k)}
+					<option value={k}>{SORT_LABELS[k]}</option>
+				{/each}
+			</select>
+			<button
+				class="sort-dir"
+				onclick={() => (sortDesc = !sortDesc)}
+				title={sortDesc ? '내림차순 — 클릭 시 오름차순' : '오름차순 — 클릭 시 내림차순'}
+				aria-label="정렬 방향"
+			>{sortDesc ? '↓' : '↑'}</button>
 		</div>
 		<!-- DEV-068: 모든 quest 의 unique tag 들. 클릭으로 필터 토글 (AND). -->
 		{#if allTagOptions.length > 0}
@@ -372,6 +447,33 @@
 		gap: 0.3rem;
 		align-items: center;
 	}
+	/* DEV-033: 정렬 select + 방향 토글. */
+	.sort-group {
+		display: flex;
+		align-items: center;
+		gap: 0.25rem;
+	}
+	.sort-sel {
+		padding: 0.25rem 0.5rem;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		color: var(--text);
+		font-size: 0.78rem;
+		cursor: pointer;
+	}
+	.sort-dir {
+		width: 1.7rem;
+		height: 1.7rem;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		color: var(--text-muted);
+		font-size: 0.85rem;
+		cursor: pointer;
+	}
+	.sort-dir:hover { color: var(--text); border-color: var(--text-faint); }
+
 	.tag-filter-chip {
 		padding: 0.15rem 0.65rem;
 		background: color-mix(in srgb, var(--warning) 8%, transparent);

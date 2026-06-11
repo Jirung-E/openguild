@@ -129,3 +129,54 @@ export function ancestorIdsOf(matched: Quest[], all: Quest[]): Set<number> {
 	}
 	return ancestors;
 }
+
+// ── DEV-033: 정렬 ────────────────────────────────────────────
+
+export type SortKey = 'id' | 'urgency' | 'status' | 'updated' | 'created';
+
+/**
+ * DEV-033: quest 배열 정렬 — CLI `--sort` 와 1:1 의미.
+ *
+ * - `id`: 생성 순 (id asc 가 기본 방향).
+ * - `urgency`: 높은 순 (1=Critical 이 위) 이 기본 방향.
+ * - `status`: statusOrder (slug sort_order) 순. 미지정 status 는 뒤로.
+ * - `updated` / `created`: 최신이 위 (desc 가 기본 방향 아님 — 호출자가
+ *   desc 토글로 제어. 여기선 ISO 문자열 asc).
+ *
+ * 같은 키 값일 땐 id asc 로 안정화. `desc=true` 면 전체 방향 반전
+ * (CLI `--reverse` 와 동일).
+ */
+export function sortQuests(
+	quests: Quest[],
+	key: SortKey,
+	desc = false,
+	statusOrder?: Map<number, number>
+): Quest[] {
+	const cmp = (a: Quest, b: Quest): number => {
+		let c = 0;
+		switch (key) {
+			case 'id':
+				c = a.id - b.id;
+				break;
+			case 'urgency':
+				c = a.urgency - b.urgency; // 1 (Critical) 이 먼저
+				break;
+			case 'status': {
+				const oa = statusOrder?.get(a.status_id) ?? Number.MAX_SAFE_INTEGER;
+				const ob = statusOrder?.get(b.status_id) ?? Number.MAX_SAFE_INTEGER;
+				c = oa - ob;
+				break;
+			}
+			case 'updated':
+				c = (a.updated_at ?? '').localeCompare(b.updated_at ?? '');
+				break;
+			case 'created':
+				c = (a.created_at ?? '').localeCompare(b.created_at ?? '');
+				break;
+		}
+		if (c === 0) c = a.id - b.id; // tie-break 안정화
+		return c;
+	};
+	const sorted = [...quests].sort(cmp);
+	return desc ? sorted.reverse() : sorted;
+}

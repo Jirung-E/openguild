@@ -364,3 +364,57 @@ describe('DEV-040 회귀: sub-quest 검색', () => {
 		expect(tree[0].children[0].id).toBe(2);
 	});
 });
+
+// --- DEV-033: sortQuests ---
+
+import { sortQuests } from './quest-list';
+
+function qs(
+	id: number,
+	opts: { urgency?: number; statusId?: number; created?: string; updated?: string } = {}
+): Quest {
+	return {
+		...q(id),
+		urgency: opts.urgency ?? 3,
+		status_id: opts.statusId ?? 1,
+		created_at: opts.created ?? '',
+		updated_at: opts.updated ?? ''
+	};
+}
+
+describe('sortQuests', () => {
+	it('id 기본 — asc, desc 토글로 반전', () => {
+		const list = [qs(3), qs(1), qs(2)];
+		expect(sortQuests(list, 'id').map((x) => x.id)).toEqual([1, 2, 3]);
+		expect(sortQuests(list, 'id', true).map((x) => x.id)).toEqual([3, 2, 1]);
+	});
+
+	it('urgency — 1 (Critical) 이 먼저, tie 는 id asc', () => {
+		const list = [qs(1, { urgency: 4 }), qs(2, { urgency: 1 }), qs(3, { urgency: 1 })];
+		expect(sortQuests(list, 'urgency').map((x) => x.id)).toEqual([2, 3, 1]);
+	});
+
+	it('status — statusOrder 의 sort_order 순, 미지정 status 는 뒤로', () => {
+		const order = new Map([
+			[10, 1],
+			[20, 2]
+		]);
+		const list = [qs(1, { statusId: 20 }), qs(2, { statusId: 99 }), qs(3, { statusId: 10 })];
+		expect(sortQuests(list, 'status', false, order).map((x) => x.id)).toEqual([3, 1, 2]);
+	});
+
+	it('updated / created — ISO 문자열 asc', () => {
+		const list = [
+			qs(1, { updated: '2026-06-09T10:00:00+09:00' }),
+			qs(2, { updated: '2026-06-08T10:00:00+09:00' })
+		];
+		expect(sortQuests(list, 'updated').map((x) => x.id)).toEqual([2, 1]);
+		expect(sortQuests(list, 'updated', true).map((x) => x.id)).toEqual([1, 2]);
+	});
+
+	it('원본 배열 비파괴', () => {
+		const list = [qs(2), qs(1)];
+		sortQuests(list, 'id');
+		expect(list.map((x) => x.id)).toEqual([2, 1]);
+	});
+});
