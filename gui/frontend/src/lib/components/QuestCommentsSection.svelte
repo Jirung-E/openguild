@@ -41,6 +41,26 @@
 		collapsedRoots = next;
 	}
 
+	// DEV-129: 댓글 '내용' 접기 — entry 단위 본문 collapse. 답글 접기 (위)
+	// 와 별개 — 본문만 가리고 head (작성자/번호/액션) 는 유지.
+	let collapsedBodies = $state(new Set<number>());
+	function toggleBodyCollapsed(id: number) {
+		const next = new Set(collapsedBodies);
+		if (next.has(id)) next.delete(id);
+		else next.add(id);
+		collapsedBodies = next;
+	}
+	// 접었을 때 보여줄 1줄 미리보기 — markdown 마커 대충 제거.
+	function bodyPreview(body: string): string {
+		const firstLine =
+			body
+				.split('\n')
+				.map((l) => l.trim())
+				.find((l) => l.length > 0) ?? '';
+		const plain = firstLine.replace(/^#+\s*/, '').replace(/[*_`>]/g, '');
+		return plain.length > 80 ? plain.slice(0, 80) + '…' : plain;
+	}
+
 	// 신규 top-level 작성 폼
 	let newAuthor = $state('');
 	let newBody = $state('');
@@ -256,6 +276,13 @@
 			<time class="ts" datetime={e.ts}>{formatTs(e.ts)}</time>
 			{#if editingId !== e.id}
 				<div class="entry-actions">
+					<!-- DEV-129: 본문 접기 — head 는 유지, 내용만 토글. -->
+					<button
+						class="link-btn"
+						onclick={() => toggleBodyCollapsed(e.id)}
+						aria-expanded={!collapsedBodies.has(e.id)}
+						title={collapsedBodies.has(e.id) ? '내용 펼치기' : '내용 접기'}
+					>{collapsedBodies.has(e.id) ? '▸ 내용' : '▾ 내용'}</button>
 					{#if !isReply}
 						{@const childCount = (groups.childrenByRoot.get(e.id) ?? []).length}
 						{@const isThreadCollapsed = collapsedRoots.has(e.id)}
@@ -292,6 +319,11 @@
 				</button>
 				<button class="btn-cancel" onclick={cancelEdit} disabled={editSaving}>취소</button>
 			</div>
+		{:else if collapsedBodies.has(e.id)}
+			<!-- DEV-129: 접힌 본문 — 1줄 미리보기, 클릭으로 펼침. -->
+			<button class="body-collapsed" onclick={() => toggleBodyCollapsed(e.id)} title="내용 펼치기">
+				{bodyPreview(e.body)}
+			</button>
 		{:else}
 			<div class="entry-body">
 				<MarkdownView source={e.body} />
@@ -562,6 +594,24 @@
 		text-decoration: none;
 	}
 	.reply-to:hover { color: var(--accent); }
+	/* DEV-129: 접힌 본문 미리보기 — 1줄 ellipsis, 클릭으로 펼침. */
+	.body-collapsed {
+		display: block;
+		width: 100%;
+		text-align: left;
+		background: none;
+		border: none;
+		border-left: 2px solid var(--border);
+		padding: 0.15rem 0 0.15rem 0.6rem;
+		color: var(--text-faint);
+		font-size: 0.8rem;
+		font-style: italic;
+		cursor: pointer;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.body-collapsed:hover { color: var(--text-muted); border-left-color: var(--accent); }
 	.entry-actions {
 		margin-left: auto;
 		display: flex;
