@@ -531,7 +531,28 @@ openguild migrate-to-files
 - 회귀: snapshot 만든 후 cache 행 의도적 wipe → restore → 댓글/메모 살아남음
   (snapshot.rs 의 `snapshot_preserves_comments_and_memos` 테스트).
 
-### `app_meta` — BUG-059 (구현 완료)
+### 댓글 이모지 반응 — DEV-108 (구현 완료)
+
+- og-comment 마커에 `reactions="👍,✅"` attribute — 활성 이모지 콤마 목록.
+  빈 목록이면 attr 생략 (구 파일과 byte 동일).
+- **file-only** — `quest_comments` 캐시에 컬럼 없음. 댓글 read 경로가 file
+  직접 (`list_comment_entries`) 이라 무방, 캐시 재구축도 file 재파싱.
+- single-user 단계 = 이모지당 on/off. multi-user (DEV-021) 진입 시 user 별
+  분리로 포맷 확장 (예: per-user attr 또는 별도 마커).
+- emoji 값 제약: `,` / `"` 금지 (마커 attr 안전) — ops 에서 검증.
+
+### 캠페인 댓글 / 메모 — DEV-100 (구현 완료)
+
+- quest 와 동일 entry 포맷 / 동일 기능 (답글 / 반응 / 번호):
+  - `.guild/campaigns/{slug}.comments.md` — git tracked.
+  - `.guild/campaigns/{slug}.memo.md` — gitignored (seed `.gitignore` 에
+    `campaigns/*.memo.md` 추가).
+- `repo::comments` 의 path 기반 generic IO (`read/write_entries_at`,
+  `read/write_text_at`) 를 quest / campaign 이 공용.
+- ops 는 `ops::campaign_comments` — journal append 포함.
+- **DB 캐시 없음** (quest 의 DEV-102 와 달리) — snapshot 백업 합류는 후속
+  quest 후보. 댓글 파일은 git tracked 라 손실 위험 낮음, 메모는 gitignored
+  + 캐시 없음 = 백업 사각지대 (quest 메모의 DEV-102 이전과 동일 상태).
 
 - migration 0014: `app_meta(key TEXT PK, value TEXT)` 단순 key-value 테이블.
 - `reindex()` 가 transaction commit 직전 `('last_indexed_at', NOW_ISO)` UPSERT.

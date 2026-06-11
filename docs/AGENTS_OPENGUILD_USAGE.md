@@ -268,6 +268,25 @@ openguild quest memo set <SLUG> --file <PATH>             # 비공개 메모 (�
 불가. 사용자 / 여러 agent 가 한 quest 에서 대화하는 구조이므로 작성자는
 대화의 전제 조건.
 
+캠페인에도 동일 구조의 댓글 / 메모 가 있음 (DEV-100) — 단 CLI 명령은 아직
+quest 전용. GUI / HTTP (`/api/campaigns/{slug}/comments`) 로 접근.
+
+### 2.10 퀘스트 템플릿 (DEV-060)
+
+`.guild/templates/{name}.md` — quest 파일과 같은 `+++` TOML frontmatter
+(`title` / `type` / `urgency` / `tags` 전부 선택) + 기본 본문. frontmatter
+없으면 파일 전체가 본문.
+
+```bash
+openguild template list                  # 템플릿 목록 (이름 / 기본값 요약)
+openguild template show <NAME>           # 본문 출력
+openguild quest new --template <NAME>    # 템플릿으로 생성
+openguild quest new --template bug-report --title "특정 제목"   # 명시 옵션이 우선
+```
+
+merge 우선순위: **명시 옵션 > 템플릿 값 > 기본** (urgency 기본 3).
+type / title 은 둘 중 한 쪽엔 있어야 함. local 모드 전용 (HTTP 미지원).
+
 ---
 
 ## 3. Agent 워크플로 패턴

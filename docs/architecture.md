@@ -327,6 +327,28 @@ openguild/
 >   CLI / server 는 변경 없음 (CLI: stale 사용자 책임, server: DEV-122 분리).
 > - 2026-06-09 DEV-122 등록 (open): server long-running 의 startup + mid-runtime
 >   sync 전략. prerequisite DEV-121. (S1 startup + M1~M4 mid-runtime 옵션.)
+> - 2026-06-11 DEV-123~128: Quest Detail floating cluster (위/댓글/메모 점프) /
+>   Successors 추가 UI (`succ` relation) / Nav 테마 토글 / 새로고침 스크롤 유지 /
+>   댓글 #N anchor.
+> - 2026-06-11 BUG-061: admin 새 status 검은색 — COLOR_PALETTE 의 CSS var 혼입
+>   (DEV-074 sweep 오적용) → 구체 hex 환원. status 색은 TOML 데이터라 var 불가.
+> - 2026-06-11 DEV-129 / DEV-130: 댓글 본문 접기 (1줄 미리보기) / 편집창 Tab =
+>   들여쓰기 (CodeMirror indentWithTab 4곳 + textarea tabInsert action 3곳).
+> - 2026-06-12 DEV-110: CLI 댓글 list 필터 — --author/--since/--top-only/
+>   --reply-to/--grep (AND).
+> - 2026-06-12 DEV-060: 퀘스트 템플릿 — `.guild/templates/{name}.md` +
+>   `quest new --template` (명시 옵션 > 템플릿 > 기본) + `template list/show`.
+>   복사 기능은 사용자 결정으로 제외.
+> - 2026-06-12 DEV-108: 댓글 이모지 반응 — og-comment 마커 `reactions` attr
+>   (file-only, 캐시 무관) + 고정 4종 토글 UI + Tauri/HTTP surface. 커스텀
+>   이모티콘은 DEV-132 후속.
+> - 2026-06-12 DEV-033 fix2: List 고급 필터 (urgency / prereq·sub tri-state /
+>   날짜 범위) + Board 반영 (`quest-filter` 공유 store, 미매치 노드 fdim dim).
+> - 2026-06-12 DEV-100: 캠페인 댓글 / 메모 — `.guild/campaigns/{slug}.comments
+>   .md` / `.memo.md`, ops::campaign_comments + 같은 GUI 컴포넌트 scope prop
+>   재사용. repo::comments 에 path 기반 generic IO.
+> - 2026-06-12 BUG-063: server 시간 비교 테스트의 자정 flaky —
+>   subtract_one_minute 의 날짜 wrap 을 chrono 연산으로 교체.
 >
 > 자세한 설계 근거: `docs/architecture-refactor.md`, `docs/storage-design.md`.
 
