@@ -23,9 +23,12 @@
 	// sort_order 는 backend 가 max+1 로 자동.
 
 	// DEV-014 후속 (fix5): 추가 시 기본 색 다양화 — 사용 중 색 회피.
+	// BUG-061: palette 는 반드시 구체 hex — status 색은 TOML 에 저장되는
+	// 데이터라 CSS var() 불가. var 문자열이 <input type="color"> 에 binding
+	// 되면 검은색 fallback (사용자 보고 '새 status 가 무조건 검은색').
 	const COLOR_PALETTE = [
-		'#8b95a1', '#4a90d9', '#7bb87f', 'var(--warning)',
-		'var(--danger)', '#8e4ec6', '#1abc9c', '#e91e63',
+		'#8b95a1', '#4a90d9', '#7bb87f', '#f5a623',
+		'#e94f4f', '#8e4ec6', '#1abc9c', '#e91e63',
 		'#34495e', '#16a085', '#d35400', '#2c3e50'
 	];
 	function pickNextColor(): string {
