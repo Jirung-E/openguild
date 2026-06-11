@@ -17,6 +17,8 @@
 	import { commentsApi, type CommentEntry } from '$lib/api/comments';
 	// DEV-118: native confirm() 대신 인앱 모달.
 	import ConfirmDialog from './ConfirmDialog.svelte';
+	// DEV-130: Tab = tab 문자 삽입 (focus 이동 X).
+	import { tabInsert } from '$lib/actions/tab-insert';
 
 	let { slug }: { slug: string } = $props();
 
@@ -307,6 +309,7 @@
 		</div>
 		{#if editingId === e.id}
 			<textarea
+				use:tabInsert
 				class="body-input"
 				bind:value={editBody}
 				rows="4"
@@ -383,6 +386,7 @@
 											/>
 										</div>
 										<textarea
+											use:tabInsert
 											class="body-input"
 											bind:value={replyBody}
 											rows="3"
@@ -431,6 +435,7 @@
 				/>
 			</div>
 			<textarea
+				use:tabInsert
 				class="body-input"
 				bind:value={newBody}
 				rows="3"

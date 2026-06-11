@@ -20,7 +20,7 @@
 	import { oneDark } from '@codemirror/theme-one-dark';
 	// DEV-117: Windows 표준 redo (Ctrl+Shift+Z) keymap.
 	import { keymap } from '@codemirror/view';
-	import { redo } from '@codemirror/commands';
+	import { redo, indentWithTab } from '@codemirror/commands';
 	// DEV-074 fix4: light theme 에선 oneDark 안 적용.
 	import { theme, resolveTheme } from '$lib/stores/theme';
 	// DEV-074 fix15: CodeMirror native scrollbar 대신 overlay.
@@ -111,7 +111,8 @@
 				markdown(),
 				...(eff === 'dark' ? [oneDark] : []),
 				// DEV-117: Windows 표준 redo (Ctrl+Shift+Z) 추가.
-				keymap.of([{ key: 'Mod-Shift-z', run: redo, preventDefault: true }]),
+				// DEV-130: Tab = 들여쓰기 (focus 이동 X). Esc 후 Tab 으로 탈출 가능.
+				keymap.of([{ key: 'Mod-Shift-z', run: redo, preventDefault: true }, indentWithTab]),
 				EditorView.theme({
 					'&': { fontSize: '0.875rem', borderRadius: '6px', height: '100%' },
 					'.cm-editor': { borderRadius: '6px', height: '100%' },

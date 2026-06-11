@@ -16,6 +16,9 @@
 	import { EditorView, basicSetup } from 'codemirror';
 	import { markdown } from '@codemirror/lang-markdown';
 	import { oneDark } from '@codemirror/theme-one-dark';
+	// DEV-130: Tab = 들여쓰기 (focus 이동 X).
+	import { keymap } from '@codemirror/view';
+	import { indentWithTab } from '@codemirror/commands';
 
 	let loading = $state(true);
 	let error = $state<string | null>(null);
@@ -132,6 +135,8 @@
 				basicSetup,
 				markdown(),
 				oneDark,
+				// DEV-130: Tab = 들여쓰기 (focus 이동 X).
+				keymap.of([indentWithTab]),
 				EditorView.theme({
 					'&': { fontSize: '0.875rem', borderRadius: '6px', height: '100%' },
 					'.cm-editor': { borderRadius: '6px', height: '100%' },
