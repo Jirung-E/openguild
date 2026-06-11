@@ -234,6 +234,23 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
             .deleted
             .then(|| updated_at.clone());
 
+        // BUG-060 후속: urgency 범위 (1..=4) 밖이면 4 (Low) 로 clamp + skipped
+        // 에 경고. 이전엔 silent INSERT — invalid 값이 GUI 까지 흘러가 보드
+        // 폭발의 원인이 됐음 (GUI 측 방어는 BUG-060 본 fix). quest 자체는
+        // 잃지 않도록 skip 이 아닌 clamp.
+        let urgency = if (1..=4).contains(&qf.frontmatter.urgency) {
+            qf.frontmatter.urgency
+        } else {
+            report.skipped.push((
+                path.display().to_string(),
+                format!(
+                    "urgency {} 가 유효 범위 (1..=4) 밖 — 4 (Low) 로 clamp 하여 적재. 파일 정정 권장.",
+                    qf.frontmatter.urgency
+                ),
+            ));
+            4
+        };
+
         // DEV-076: desired_due / required_due 도 함께 적재 (file → DB sync).
         // DEV-121: cached_mtime 도 함께 — 이후 incremental sync 가 정확히 비교.
         let cached_mtime = crate::repo::fs::mtime_unix_nanos(path);
@@ -249,7 +266,7 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
         .bind(&qf.frontmatter.title)
         .bind(&qf.description)
         .bind(status_id)
-        .bind(qf.frontmatter.urgency)
+        .bind(urgency)
         .bind(parent_id)
         .bind(&created_at)
         .bind(&updated_at)
@@ -907,6 +924,50 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(counter, 2);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-060 후속: 범위 밖 urgency 는 4 로 clamp + skipped 경고. quest 자체는
+    /// 적재 (잃지 않음).
+    #[tokio::test]
+    async fn reindex_clamps_out_of_range_urgency() {
+        let dir = fresh_tmp("urgency-clamp");
+        let store = setup_store(&dir).await;
+        let paths = GuildPaths::new(&dir);
+
+        let q = QuestFile {
+            frontmatter: QuestFrontmatter {
+                quest_id: "DEV-001".into(),
+                title: "bad urgency".into(),
+                status: "open".into(),
+                urgency: 99,
+                parent: None,
+                prerequisites: vec![],
+                created_at: "x".into(),
+                updated_at: "x".into(),
+                deleted: false,
+                desired_due: None,
+                required_due: None,
+                tags: vec![],
+            },
+            description: String::new(),
+            auto_block: String::new(),
+        };
+        q.write(paths.quest_path("DEV-001")).unwrap();
+
+        let report = reindex(&store).await.unwrap();
+        assert_eq!(report.quests_loaded, 1, "clamp 일 뿐 quest 는 적재");
+        assert!(
+            report.skipped.iter().any(|(_, msg)| msg.contains("urgency 99")),
+            "skipped 에 경고: {:?}",
+            report.skipped
+        );
+        let u: i64 = sqlx::query_scalar("SELECT urgency FROM quests WHERE number = 1")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(u, 4, "4 (Low) 로 clamp");
 
         let _ = std::fs::remove_dir_all(&dir);
     }
