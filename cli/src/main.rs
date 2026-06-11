@@ -356,7 +356,25 @@ enum TagCmd {
 #[derive(Subcommand)]
 enum CommentCmd {
     /// entry 목록 (id / ts / author / body 요약 1줄).
-    List { slug: String },
+    /// DEV-110: 필터 옵션 — 모두 AND 결합.
+    List {
+        slug: String,
+        /// 작성자 일치 (대소문자 무시 정확 일치).
+        #[arg(long)]
+        author: Option<String>,
+        /// 이 시각 이후 작성분만 — ISO date (`2026-06-01`) 또는 datetime.
+        #[arg(long)]
+        since: Option<String>,
+        /// top-level 댓글만 (답글 제외).
+        #[arg(long = "top-only", conflicts_with = "reply_to")]
+        top_only: bool,
+        /// 특정 entry 의 답글만.
+        #[arg(long = "reply-to")]
+        reply_to: Option<u64>,
+        /// body 부분 일치 (대소문자 무시).
+        #[arg(long)]
+        grep: Option<String>,
+    },
     /// entry 본문 전체 또는 단일.
     Show {
         slug: String,
@@ -3247,8 +3265,28 @@ fn run() -> Result<()> {
                 }
             }
             QuestCmd::Comment { sub } => match sub {
-                CommentCmd::List { slug } => {
-                    let entries = c.comments_list(&slug)?;
+                CommentCmd::List { slug, author, since, top_only, reply_to, grep } => {
+                    let mut entries = c.comments_list(&slug)?;
+                    // DEV-110: 필터 — 모두 AND.
+                    if let Some(a) = &author {
+                        entries.retain(|e| e.author.eq_ignore_ascii_case(a));
+                    }
+                    if let Some(s) = &since {
+                        // ISO 문자열 prefix 비교 — entry ts 는 RFC 3339 (+09:00 류
+                        // 단일 TZ 운용 전제). date 만 입력 시 그 날 00:00 기준.
+                        let threshold = openguild_core::time::normalize_filter_ts(s);
+                        entries.retain(|e| e.ts.as_str() >= threshold.as_str());
+                    }
+                    if top_only {
+                        entries.retain(|e| e.parent_id.is_none());
+                    }
+                    if let Some(p) = reply_to {
+                        entries.retain(|e| e.parent_id == Some(p));
+                    }
+                    if let Some(g) = &grep {
+                        let needle = g.to_lowercase();
+                        entries.retain(|e| e.body.to_lowercase().contains(&needle));
+                    }
                     if cli.json {
                         println!(
                             "{}",

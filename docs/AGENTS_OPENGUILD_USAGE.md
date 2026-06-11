@@ -251,6 +251,9 @@ env 로 임계치 조정 가능:
 
 ```bash
 openguild quest comment list <SLUG>                       # entry 목록
+openguild quest comment list <SLUG> --author claude --since 2026-06-01 \
+    --top-only --grep TEXT                                # 필터 (AND, DEV-110)
+openguild quest comment list <SLUG> --reply-to N          # 특정 entry 의 답글만
 openguild quest comment show <SLUG> [--id N]              # 본문
 openguild quest comment add <SLUG> --author <NAME> --file <PATH>   # 추가 (stdin 도 가능)
 openguild quest comment add <SLUG> --author <NAME> --parent-id N --file <PATH>  # 답글
