@@ -1775,12 +1775,18 @@
 
 	// DEV-033: List 필터 → Board 반영. 매치 안 되는 노드 dim (fdim data).
 	// UX 는 'dim' (hide 가 아니라) — 위치 관계 (edge / lane 맥락) 보존.
-	import { questFilters, isFilterActive } from '$lib/stores/quest-filter';
+	import { questFilters, isFilterActive, EMPTY_FILTER } from '$lib/stores/quest-filter';
 	import { filterQuests as filterQuestsForBoard } from '$lib/utils/quest-list';
+	// DEV-135: 필터 활성 chip — 매치 수 표시 + 해제. allQuests 는 의도적
+	// 비-reactive (BUG-054) 라 template 에서 직접 참조하지 않고 effect 가 복사.
+	let filterMatchCount = $state(0);
+	let filterTotalCount = $state(0);
+	let filterActive = $state(false);
 	$effect(() => {
 		const f = $questFilters;
 		if (!cy) return;
 		if (!isFilterActive(f)) {
+			filterActive = false;
 			cy.nodes('[questId]').forEach((n) => {
 				n.data('fdim', false);
 			});
@@ -1803,11 +1809,26 @@
 				parentIds
 			}).map((q) => q.id)
 		);
+		filterActive = true;
+		filterMatchCount = matched.size;
+		filterTotalCount = allQuests.length;
 		cy.nodes('[questId]').forEach((n) => {
 			const qid = n.data('questId') as number;
 			n.data('fdim', !matched.has(qid));
 		});
 	});
+
+	// DEV-135: 필터 해제 — store 리셋 + URL 의 필터 param 제거.
+	// URL 을 안 지우면 List 재진입 시 URL 파싱이 필터를 되살림. 정렬 (sort/desc)
+	// 은 필터가 아니므로 유지.
+	function clearBoardFilter() {
+		questFilters.set(EMPTY_FILTER);
+		const url = new URL(window.location.href);
+		for (const k of ['search', 'title_only', 'tags']) {
+			url.searchParams.delete(k);
+		}
+		goto(`${url.pathname}${url.search}`, { replaceState: true, keepFocus: true, noScroll: true });
+	}
 
 	// DEV-095: Nav reindex → board 데이터 reload.
 	import { reindexBump } from '$lib/stores/reindex';
@@ -2618,6 +2639,13 @@
 	</div>
 	{/if}
 
+	<!-- DEV-135: List 필터 활성 표시 — Board 의 dim 이 '왜' 인지 + 한 클릭 해제. -->
+	{#if filterActive}
+		<div class="filter-chip" role="status">
+			<span class="fc-label">필터 적용 중 — {filterMatchCount}/{filterTotalCount} 매치</span>
+			<button class="fc-clear" onclick={clearBoardFilter} title="필터 모두 해제">× 해제</button>
+		</div>
+	{/if}
 	<!-- DEV-073 fix3: New Quest 는 상단 우측 고정 (항상 노출), 나머지 도구바는
 	     그 아래로 내림 (사용자 피드백). 접기 토글로 도구만 숨길 수 있음. -->
 	{#if onNewQuest}
@@ -3123,6 +3151,26 @@
 
 	/* ── 툴바 (z:10) ── */
 	/* DEV-073 fix3: New Quest 는 상단 고정, 나머지 도구바는 그 아래로. */
+	/* DEV-135: 필터 활성 chip — 좌상단 (toolbar 와 반대편). */
+	.filter-chip {
+		position: absolute; top: 10px; left: 14px;
+		z-index: 10;
+		pointer-events: auto;
+		display: flex; align-items: center; gap: 0.5rem;
+		padding: 0.3rem 0.7rem;
+		background: color-mix(in srgb, var(--accent) 12%, var(--bg-elevated));
+		border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+		border-radius: 999px;
+		font-size: 0.78rem;
+		color: var(--text);
+	}
+	.fc-label { color: var(--accent); font-weight: 500; }
+	.fc-clear {
+		background: none; border: none; cursor: pointer;
+		color: var(--text-muted); font-size: 0.78rem; padding: 0;
+	}
+	.fc-clear:hover { color: var(--danger); }
+
 	.tb-newquest-wrap {
 		position: absolute; top: 10px; right: 14px;
 		z-index: 10;

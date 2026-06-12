@@ -1,7 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { get } from 'svelte/store';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
+	// DEV-135: mount 시 필터 복원 (Board 와 공유 store).
+	import { questFilters } from '$lib/stores/quest-filter';
 	import { questsApi } from '$lib/api/quests';
 	import { metaApi } from '$lib/api/meta';
 	import type { Quest, QuestStatus, QuestType } from '$lib/types';
@@ -101,6 +104,25 @@
 
 	onMount(async () => {
 		await loadData();
+		// DEV-135: 공유 store → state 복원. view 전환 (List unmount → Board →
+		// List) 시 비-URL 필터 (type/status/고급) 가 소실되어 Board 의 dim 과
+		// 어긋나던 비일관 해소. URL 동기화되는 항목 (search/tags 등) 은 아래
+		// URL 파싱이 다시 덮어씀 — URL 이 우선.
+		{
+			const f = get(questFilters);
+			filterTypeIds = new Set(f.typeIds);
+			filterStatusIds = new Set(f.statusIds);
+			search = f.search;
+			titleOnly = f.titleOnly;
+			filterTags = new Set(f.tags);
+			filterUrgencies = new Set(f.urgencies);
+			filterPrereq = f.prereq;
+			filterSub = f.sub;
+			createdAfter = f.createdAfter;
+			createdBefore = f.createdBefore;
+			updatedAfter = f.updatedAfter;
+			updatedBefore = f.updatedBefore;
+		}
 		// URL → state (초기 로드).
 		const params = $page.url.searchParams;
 		search = params.get('search') ?? '';
@@ -197,7 +219,7 @@
 	});
 
 	// DEV-033: 필터 상태를 Board 공유 store 로 mirror (List 가 truth).
-	import { questFilters } from '$lib/stores/quest-filter';
+	// (import 는 상단 — DEV-135 의 mount 복원과 공유.)
 	$effect(() => {
 		questFilters.set({
 			typeIds: filterTypeIds,
