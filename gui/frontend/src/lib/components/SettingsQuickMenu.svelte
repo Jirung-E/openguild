@@ -101,7 +101,10 @@
 		top: calc(100% + 6px);
 		right: 0;
 		z-index: 151;
-		width: 280px;
+		/* DEV-138 fix3: px 고정이면 UI 크기 (rem scale, DEV-101) ↑ 시 글자가
+		   삐져나감 — rem 으로 같이 스케일. 화면보다 커지지 않게 안전망. */
+		width: 17.5rem;
+		max-width: calc(100vw - 2rem);
 		padding: 0.75rem;
 		background: var(--bg-elevated);
 		border: 1px solid var(--border);
@@ -126,6 +129,7 @@
 	}
 	.qm-seg-btn {
 		flex: 1;
+		min-width: 0; /* DEV-138 fix3: flex 자식이 내용 폭으로 안 밀려나게. */
 		padding: 0.3rem 0;
 		background: transparent;
 		border: 1px solid var(--border);
@@ -133,6 +137,9 @@
 		color: var(--text-muted);
 		font-size: 0.78rem;
 		cursor: pointer;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 	.qm-seg-btn:hover { color: var(--text); border-color: var(--text-faint); }
 	.qm-seg-btn.active {
@@ -148,6 +155,8 @@
 	.qm-slider :global(.slider) { flex: 1; }
 	.qm-val {
 		min-width: 3.2rem;
+		flex-shrink: 0;
+		white-space: nowrap;
 		text-align: right;
 		font-size: 0.75rem;
 		color: var(--text);
