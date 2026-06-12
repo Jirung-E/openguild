@@ -64,6 +64,10 @@ pub async fn get_quest_by_slug(
     store: State<'_, Store>,
     slug: String,
 ) -> Result<QuestDetail, String> {
+    // DEV-137 (Phase 2): 상세 진입 시 그 파일만 lazy mtime 체크 — GUI 를 켜둔
+    // 채 외부 편집한 경우에도 상세 화면은 최신. 실패는 무시 (stale 표시가
+    // 에러보다 낫다).
+    let _ = openguild_core::incremental::refresh_quest_if_stale(&store, &slug).await;
     read::get_by_slug(&store.index_pool, &slug).await.map_err(err)
 }
 

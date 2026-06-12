@@ -191,6 +191,73 @@ pub async fn sync_changed_quest_files(store: &Store) -> AppResult<IncrementalRep
     Ok(report)
 }
 
+/// DEV-137 (Phase 2): 단일 quest 의 lazy refresh — 상세 페이지 진입 시 호출.
+///
+/// 그 quest 파일 하나만 stat() 으로 cached_mtime 과 비교 (~1ms). 외부 편집이
+/// 감지되면 그 행만 re-parse + UPDATE 후 `true` 반환 (호출자는 그냥 DB read
+/// 를 이어가면 최신). 파일 없음 / DB 에 없음 / 변경 없음 → `false`.
+///
+/// Phase 1 과 동일한 의도적 한계: frontmatter 의 prereq / tags / parent
+/// cascade 는 여기서 재계산하지 않음 — 그건 시동 sync 의 풀 reindex fallback
+/// 영역. 본 함수는 제목 / 본문 / status / urgency / due 등 표시 필드 중심.
+pub async fn refresh_quest_if_stale(store: &Store, slug: &str) -> AppResult<bool> {
+    let path = store.paths.quest_path(slug);
+    if !path.exists() {
+        return Ok(false);
+    }
+    let file_mtime = repo_fs::mtime_unix_nanos(&path);
+    let row: Option<(i64, i64)> = sqlx::query_as(
+        "SELECT q.id, q.cached_mtime
+         FROM quests q JOIN quest_types qt ON qt.id = q.quest_type_id
+         WHERE qt.prefix || '-' || printf('%03d', q.number) = ?",
+    )
+    .bind(slug)
+    .fetch_optional(&store.index_pool)
+    .await?;
+    let Some((id, cached_mtime)) = row else {
+        return Ok(false); // 신규 파일 — 시동 sync / reindex 영역.
+    };
+    if file_mtime <= cached_mtime {
+        return Ok(false);
+    }
+
+    let qf = QuestFile::read(&path)
+        .map_err(crate::error::AppError::Internal)?;
+    let status_id: Option<i64> =
+        sqlx::query_scalar("SELECT id FROM quest_statuses WHERE slug = ?")
+            .bind(&qf.frontmatter.status)
+            .fetch_optional(&store.index_pool)
+            .await?;
+    let Some(status_id) = status_id else {
+        return Ok(false); // unknown status — 풀 reindex 가 처리할 영역.
+    };
+    let created_at = crate::time::normalize_legacy_ts(&qf.frontmatter.created_at);
+    let updated_at = crate::time::normalize_legacy_ts(&qf.frontmatter.updated_at);
+    let deleted_at: Option<String> = qf.frontmatter.deleted.then(|| updated_at.clone());
+
+    sqlx::query(
+        "UPDATE quests SET
+           title = ?, description = ?, status_id = ?, urgency = ?,
+           created_at = ?, updated_at = ?, deleted_at = ?,
+           desired_due = ?, required_due = ?, cached_mtime = ?
+         WHERE id = ?",
+    )
+    .bind(&qf.frontmatter.title)
+    .bind(&qf.description)
+    .bind(status_id)
+    .bind(qf.frontmatter.urgency)
+    .bind(&created_at)
+    .bind(&updated_at)
+    .bind(deleted_at)
+    .bind(qf.frontmatter.desired_due.as_deref())
+    .bind(qf.frontmatter.required_due.as_deref())
+    .bind(file_mtime)
+    .bind(id)
+    .execute(&store.index_pool)
+    .await?;
+    Ok(true)
+}
+
 /// Store::open 후 통합 sync. Phase 1: incremental + 필요 시 fallback reindex.
 ///
 /// 흐름:
@@ -333,6 +400,57 @@ mod tests {
 
         let report = sync_changed_quest_files(&store).await.unwrap();
         assert_eq!(report.updated, 0);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-137: 단일 quest lazy refresh — 변경 시 true + DB 갱신, 무변경 false.
+    #[tokio::test]
+    async fn refresh_quest_if_stale_single_file() {
+        let dir = fresh_tmp("lazy");
+        let store = setup(&dir).await;
+        let paths = store.paths.clone();
+
+        let qf = QuestFile {
+            frontmatter: QuestFrontmatter {
+                quest_id: "DEV-001".into(),
+                title: "v1".into(),
+                status: "open".into(),
+                urgency: 3,
+                parent: None,
+                prerequisites: vec![],
+                created_at: "2026-01-01T00:00:00Z".into(),
+                updated_at: "2026-01-01T00:00:00Z".into(),
+                deleted: false,
+                desired_due: None,
+                required_due: None,
+                tags: vec![],
+            },
+            description: String::new(),
+            auto_block: String::new(),
+        };
+        qf.write(paths.quest_path("DEV-001")).unwrap();
+        crate::reindex::reindex(&store).await.unwrap();
+
+        // 변경 없음 → false.
+        assert!(!refresh_quest_if_stale(&store, "DEV-001").await.unwrap());
+
+        // 외부 편집 → true + title 갱신.
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let mut qf2 = qf.clone();
+        qf2.frontmatter.title = "v2 external".into();
+        qf2.write(paths.quest_path("DEV-001")).unwrap();
+        assert!(refresh_quest_if_stale(&store, "DEV-001").await.unwrap());
+        let title: String = sqlx::query_scalar("SELECT title FROM quests WHERE id = 1")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(title, "v2 external");
+        // 두 번째 호출 — cached_mtime 갱신됐으니 false.
+        assert!(!refresh_quest_if_stale(&store, "DEV-001").await.unwrap());
+
+        // 없는 slug → false (에러 아님).
+        assert!(!refresh_quest_if_stale(&store, "DEV-999").await.unwrap());
 
         let _ = std::fs::remove_dir_all(&dir);
     }
