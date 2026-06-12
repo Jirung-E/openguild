@@ -80,8 +80,27 @@
 		return plain.length > 80 ? plain.slice(0, 80) + '…' : plain;
 	}
 
+	// DEV-136: 마지막 작성자 기억 — 비우면 "(이름 없음)" 으로 떠서 매번
+	// 입력해야 하는 마찰 제거. localStorage prefill, 저장 성공 시 갱신.
+	const AUTHOR_KEY = 'openguild.commentAuthor';
+	function loadSavedAuthor(): string {
+		try {
+			return localStorage.getItem(AUTHOR_KEY) ?? '';
+		} catch {
+			return '';
+		}
+	}
+	function saveAuthor(name: string) {
+		try {
+			const n = name.trim();
+			if (n) localStorage.setItem(AUTHOR_KEY, n);
+		} catch {
+			/* 무시 */
+		}
+	}
+
 	// 신규 top-level 작성 폼
-	let newAuthor = $state('');
+	let newAuthor = $state(loadSavedAuthor());
 	let newBody = $state('');
 	let saving = $state(false);
 	let saveError = $state<string | null>(null);
@@ -94,7 +113,7 @@
 
 	// 답글 작성 — 한 번에 한 parent.
 	let replyingTo = $state<number | null>(null);
-	let replyAuthor = $state('');
+	let replyAuthor = $state(loadSavedAuthor());
 	let replyBody = $state('');
 	let replySaving = $state(false);
 	let replyError = $state<string | null>(null);
@@ -182,6 +201,7 @@
 		saveError = null;
 		try {
 			const entry = await commentsApi.addComment(slug, newBody, newAuthor, null);
+			saveAuthor(newAuthor); // DEV-136: 성공 시 기억.
 			entries = [...entries, entry];
 			newBody = '';
 		} catch (e) {
@@ -272,6 +292,7 @@
 		replyError = null;
 		try {
 			const entry = await commentsApi.addComment(slug, replyBody, replyAuthor, parentId);
+			saveAuthor(replyAuthor); // DEV-136: 성공 시 기억.
 			entries = [...entries, entry];
 			cancelReply();
 		} catch (e) {
