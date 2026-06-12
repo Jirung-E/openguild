@@ -3,6 +3,9 @@
 	import { goto } from '$app/navigation';
 	import { recentsApi, type Recent } from '$lib/api/recents';
 	import { detectEnvironment } from '$lib/api/transport';
+	// DEV-138: welcome 에서도 ⚙ 퀵메뉴 (Nav 와 동일 컴포넌트).
+	import SettingsQuickMenu from '$lib/components/SettingsQuickMenu.svelte';
+	let quickMenuOpen = $state(false);
 
 	let recents: Recent[] = $state([]);
 	let loading = $state(true);
@@ -210,9 +213,21 @@
 				<h1>openguild</h1>
 				<p class="sub">최근 작업한 길드</p>
 			</div>
-			<!-- DEV-052 fix: welcome 에서도 설정 (테마 / UI 크기 등) 접근 가능해야 함.
+			<!-- DEV-052 fix → DEV-138: welcome 에서도 ⚙ 가 퀵메뉴 (Nav 와 동일).
 				 Nav 가 가려져 있으므로 페이지 자체에 톱니바퀴. -->
-			<a class="settings-link" href="/settings" title="설정" aria-label="설정">⚙</a>
+			<div class="settings-wrap">
+				<button
+					class="settings-link"
+					class:active={quickMenuOpen}
+					onclick={() => (quickMenuOpen = !quickMenuOpen)}
+					title="설정"
+					aria-label="설정"
+					aria-expanded={quickMenuOpen}
+				>⚙</button>
+				{#if quickMenuOpen}
+					<SettingsQuickMenu onclose={() => (quickMenuOpen = false)} />
+				{/if}
+			</div>
 		</div>
 	</header>
 
@@ -382,6 +397,8 @@
 		justify-content: space-between;
 		gap: 1rem;
 	}
+	/* DEV-138: 퀵메뉴 anchor. */
+	.settings-wrap { position: relative; }
 	.settings-link {
 		display: inline-flex;
 		align-items: center;
@@ -389,6 +406,9 @@
 		width: 2.25rem;
 		height: 2.25rem;
 		border-radius: 8px;
+		background: transparent;
+		border: none;
+		cursor: pointer;
 		text-decoration: none;
 		color: var(--text-muted);
 		background: var(--bg-elevated);
