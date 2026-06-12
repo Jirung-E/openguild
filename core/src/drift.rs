@@ -128,9 +128,12 @@ pub async fn detect_drift(store: &Store) -> Result<DriftReport> {
     // missing/stale 은 sibling 에 대해선 따로 다루지 않음 — reindex 가 DELETE +
     // INSERT 이므로 fresh 한 번 표기 → auto_resync 가 일괄 갱신.
     let mut fresh_siblings = Vec::new();
+    // DEV-134: 캠페인 sibling 도 캐시 (campaign_comments / campaign_memos) 대상.
     for path in repo_fs::list_quest_comment_files(paths.quests_dir())?
         .into_iter()
         .chain(repo_fs::list_quest_memo_files(paths.quests_dir())?)
+        .chain(repo_fs::list_quest_comment_files(paths.campaigns_dir())?)
+        .chain(repo_fs::list_quest_memo_files(paths.campaigns_dir())?)
     {
         let mtime = repo_fs::mtime(&path).unwrap_or(SystemTime::UNIX_EPOCH);
         if mtime > index_mtime

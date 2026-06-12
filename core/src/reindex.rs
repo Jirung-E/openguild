@@ -92,6 +92,9 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
     sqlx::query("DELETE FROM quest_tags").execute(&mut *tx).await?;
     // DEV-068 (tag defs): `.guild/tags/*.toml` 정의도 wipe + 재적재.
     sqlx::query("DELETE FROM quest_tag_defs").execute(&mut *tx).await?;
+    // DEV-134: 캠페인 댓글 / 메모 캐시도 wipe — sibling 파일로부터 재구축.
+    sqlx::query("DELETE FROM campaign_comments").execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM campaign_memos").execute(&mut *tx).await?;
 
     // 2. types — id 는 파일 정렬 순.
     let type_paths = repo_fs::list_with_extension(paths.types_dir(), "toml")
@@ -474,8 +477,13 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
     // 6. DEV-011: campaigns — `.guild/campaigns/*.md` 파일 정렬 순.
     let campaigns_dir = paths.campaigns_dir();
     let mut max_camp_num: i64 = 0;
+    // DEV-134: sibling (댓글/메모) 적재용 slug → id 맵.
+    let mut camp_slug_to_id: HashMap<String, i64> = HashMap::new();
     if campaigns_dir.exists() {
-        let camp_paths = repo_fs::list_with_extension(&campaigns_dir, "md")
+        // DEV-134: BUG-047 의 캠페인판 — DEV-100 의 sibling `.comments.md` /
+        // `.memo.md` 를 캠페인 본문으로 오인하지 않도록 body-file 필터 사용.
+        // (헬퍼는 quest 명명이지만 디렉토리 무관 — stem 에 '.' 없는 .md 만.)
+        let camp_paths = repo_fs::list_quest_body_files(&campaigns_dir)
             .map_err(crate::error::AppError::Internal)?;
         for (i, path) in camp_paths.iter().enumerate() {
             let id = (i + 1) as i64;
@@ -555,7 +563,80 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
                 max_camp_num = max_camp_num.max(n);
             }
 
+            camp_slug_to_id.insert(cf.frontmatter.campaign_id.clone(), id);
             report.campaigns_loaded += 1;
+        }
+
+        // 6b. DEV-134: 캠페인 sibling (`{slug}.comments.md` / `{slug}.memo.md`)
+        //     → campaign_comments / campaign_memos 캐시. DEV-102 의 미러.
+        let camp_comment_paths = repo_fs::list_quest_comment_files(&campaigns_dir)
+            .map_err(crate::error::AppError::Internal)?;
+        for path in &camp_comment_paths {
+            let Some(slug) = repo_fs::quest_slug_from_sibling_path(path) else {
+                continue;
+            };
+            let Some(&cid) = camp_slug_to_id.get(&slug) else {
+                report.skipped.push((
+                    path.display().to_string(),
+                    format!("no matching campaign for comment sibling slug={slug}"),
+                ));
+                continue;
+            };
+            let raw = match std::fs::read_to_string(path) {
+                Ok(s) => s,
+                Err(e) => {
+                    report.skipped.push((path.display().to_string(), e.to_string()));
+                    continue;
+                }
+            };
+            for entry in crate::repo::comments::parse_entries(&raw) {
+                sqlx::query(
+                    "INSERT INTO campaign_comments (campaign_id, entry_id, ts, author, body, parent_id)
+                     VALUES (?, ?, ?, ?, ?, ?)",
+                )
+                .bind(cid)
+                .bind(entry.id as i64)
+                .bind(&entry.ts)
+                .bind(&entry.author)
+                .bind(&entry.body)
+                .bind(entry.parent_id.map(|n| n as i64))
+                .execute(&mut *tx)
+                .await?;
+                report.comments_loaded += 1;
+            }
+        }
+
+        let camp_memo_paths = repo_fs::list_quest_memo_files(&campaigns_dir)
+            .map_err(crate::error::AppError::Internal)?;
+        for path in &camp_memo_paths {
+            let Some(slug) = repo_fs::quest_slug_from_sibling_path(path) else {
+                continue;
+            };
+            let Some(&cid) = camp_slug_to_id.get(&slug) else {
+                report.skipped.push((
+                    path.display().to_string(),
+                    format!("no matching campaign for memo sibling slug={slug}"),
+                ));
+                continue;
+            };
+            let content = match std::fs::read_to_string(path) {
+                Ok(s) => s,
+                Err(e) => {
+                    report.skipped.push((path.display().to_string(), e.to_string()));
+                    continue;
+                }
+            };
+            let updated_at = repo_fs::mtime_iso8601(path).unwrap_or_default();
+            sqlx::query(
+                "INSERT INTO campaign_memos (campaign_id, user_id, content, updated_at)
+                 VALUES (?, 0, ?, ?)",
+            )
+            .bind(cid)
+            .bind(&content)
+            .bind(&updated_at)
+            .execute(&mut *tx)
+            .await?;
+            report.memos_loaded += 1;
         }
     }
     // campaign_counters self-heal — alive campaign 의 최대 번호로.
@@ -820,6 +901,57 @@ mod tests {
             .unwrap();
         assert_eq!(n_c, 1);
         assert_eq!(n_m, 1);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-134: 캠페인 sibling (`C-001.comments.md` / `.memo.md`) 이
+    /// (a) 캠페인 본문으로 오인되지 않고 (BUG-047 의 캠페인판)
+    /// (b) campaign_comments / campaign_memos 캐시로 적재되는지.
+    #[tokio::test]
+    async fn reindex_loads_campaign_siblings_without_misparse() {
+        let dir = fresh_tmp("camp-siblings");
+        let store = setup_store(&dir).await;
+        let paths = store.paths.clone();
+        std::fs::create_dir_all(paths.campaigns_dir()).unwrap();
+
+        // 캠페인 본문 + sibling 2종.
+        std::fs::write(
+            paths.campaigns_dir().join("C-001.md"),
+            "+++\ncampaign_id = \"C-001\"\ntitle = \"camp\"\nstatus = \"active\"\ncreated_at = \"x\"\nupdated_at = \"x\"\n+++\nbody\n",
+        )
+        .unwrap();
+        std::fs::write(
+            paths.campaign_comments_path("C-001"),
+            "<!-- og-comment id=\"1\" ts=\"2026-06-12T10:00:00+09:00\" author=\"alice\" -->\ncamp comment\n",
+        )
+        .unwrap();
+        std::fs::write(paths.campaign_memo_path("C-001"), "camp memo").unwrap();
+
+        let report = reindex(&store).await.unwrap();
+        assert_eq!(report.campaigns_loaded, 1, "본문 1개만 캠페인으로");
+        assert!(
+            report.skipped.is_empty(),
+            "sibling 이 본문 오인 / skip 경고를 내면 안 됨: {:?}",
+            report.skipped
+        );
+        let n_c: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM campaign_comments")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        let n_m: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM campaign_memos")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!((n_c, n_m), (1, 1));
+
+        // idempotent — 재실행에도 중복 없음.
+        reindex(&store).await.unwrap();
+        let n_c2: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM campaign_comments")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(n_c2, 1);
 
         let _ = std::fs::remove_dir_all(&dir);
     }
