@@ -268,8 +268,15 @@ openguild quest memo set <SLUG> --file <PATH>             # 비공개 메모 (�
 불가. 사용자 / 여러 agent 가 한 quest 에서 대화하는 구조이므로 작성자는
 대화의 전제 조건.
 
-캠페인에도 동일 구조의 댓글 / 메모 가 있음 (DEV-100) — 단 CLI 명령은 아직
-quest 전용. GUI / HTTP (`/api/campaigns/{slug}/comments`) 로 접근.
+캠페인에도 동일 구조의 댓글 / 메모 가 있음 (DEV-100) — 명령 형식 / 필터 /
+`--author` 규칙 모두 quest 와 동일:
+
+```bash
+openguild campaign comment list C-001 [--author ... --since ... --grep ...]
+openguild campaign comment add C-001 --author <NAME> --file <PATH>
+openguild campaign comment rm C-001 <ID> --force
+openguild campaign memo set C-001 --file <PATH>   # show / clear 도 동일
+```
 
 ### 2.10 퀘스트 템플릿 (DEV-060)
 
