@@ -732,6 +732,29 @@
 					</select>
 				</label>
 
+				<!-- DEV-055 → DEV-133: 타입 변경 — 편집 모드에서만 노출 (사용자 요청).
+				     slug 가 바뀌는 무거운 동작이라 일반 보기에서 한 클릭 거리는 과함.
+				     기존과 동일하게 confirm 모달 후 즉시 적용 (저장 버튼과 무관). -->
+				<div class="field-label">
+					<span>타입 변경 <span class="hint">(slug 바뀜 — 즉시 적용)</span></span>
+					<div class="status-btns">
+						{#each types as t}
+							<button
+								class="status-btn"
+								class:active={t.id === detail.quest_type_id}
+								style:--c={t.color}
+								onclick={() => askChangeType(t)}
+								disabled={changingType || t.id === detail.quest_type_id}
+								title={t.id === detail.quest_type_id
+									? '현재 타입'
+									: `${t.prefix} 로 변경 — slug 바뀜`}
+							>
+								{t.prefix}
+							</button>
+						{/each}
+					</div>
+				</div>
+
 				<!-- DEV-076: 희망 / 필수 기한. 빈 값 = 미설정 / 해제. -->
 				<div class="due-row">
 					<label class="field-label">
@@ -798,27 +821,6 @@
 							data-testid="status-btn-{s.id}"
 						>
 							{#if s.id === statusFlashId}✓ {/if}{s.name_en}
-						</button>
-					{/each}
-				</div>
-			</div>
-
-			<!-- DEV-055: type 변경 (slug 가 바뀜, confirm 모달 후 진행) -->
-			<div class="status-row">
-				<span class="branch-label">타입 변경</span>
-				<div class="status-btns">
-					{#each types as t}
-						<button
-							class="status-btn"
-							class:active={t.id === detail.quest_type_id}
-							style:--c={t.color}
-							onclick={() => askChangeType(t)}
-							disabled={changingType || t.id === detail.quest_type_id}
-							title={t.id === detail.quest_type_id
-								? '현재 타입'
-								: `${t.prefix} 로 변경 — slug 바뀜`}
-						>
-							{t.prefix}
 						</button>
 					{/each}
 				</div>
@@ -1121,6 +1123,14 @@
 				자동으로 갱신되지 않습니다. 필요하면 검색해서 직접 수정하세요.
 				부모/자식/선행 관계의 auto-block 메타는 자동 갱신됩니다.
 			</p>
+			<!-- DEV-133: 타입 변경이 편집 모드 안으로 이동 — 즉시 적용 + 새 slug
+			     로 navigate 되므로 저장 안 한 제목/설명 편집은 유지되지 않음. -->
+			{#if editMode}
+				<p class="del-prereq">
+					⚠ 변경 즉시 새 슬러그 페이지로 이동합니다 — <strong>저장하지 않은
+					제목/설명 편집은 사라집니다.</strong> 먼저 저장 후 변경을 권장.
+				</p>
+			{/if}
 			<div class="del-actions">
 				<button class="btn-del-yes" onclick={doChangeType} disabled={changingType}>
 					{changingType ? '변경 중…' : '변경'}
