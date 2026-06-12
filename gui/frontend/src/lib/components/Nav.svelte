@@ -2,26 +2,10 @@
 	import { page } from '$app/stores';
 	import { adminApi } from '$lib/api/admin';
 	import { bumpReindex } from '$lib/stores/reindex';
-	// DEV-125: Settings 외 빠른 접근 — Nav 에서 한 클릭으로 다음 모드 순환.
-	import { theme, resolveTheme, type ThemeChoice } from '$lib/stores/theme';
-
-	const THEME_CYCLE: ThemeChoice[] = ['system', 'light', 'dark'];
-	function cycleTheme() {
-		const cur = $theme;
-		const idx = THEME_CYCLE.indexOf(cur);
-		const next = THEME_CYCLE[(idx + 1) % THEME_CYCLE.length];
-		theme.set(next);
-	}
-	let themeIcon = $derived.by(() => {
-		if ($theme === 'light') return '☀';
-		if ($theme === 'dark') return '☾';
-		// system 모드 — 현재 effective 에 따라 표시.
-		return resolveTheme('system') === 'light' ? '☀' : '☾';
-	});
-	let themeTitle = $derived.by(() => {
-		const cur = $theme === 'system' ? `시스템 (${resolveTheme('system')})` : $theme;
-		return `테마: ${cur} — 클릭 시 다음 (system → light → dark → system) 으로 순환`;
-	});
+	// DEV-138: 설정 퀵메뉴 — ⚙ 클릭 시 dropdown (테마/UI크기/폭 + 전체 설정).
+	// DEV-125 의 standalone 테마 순환 버튼은 퀵메뉴로 흡수.
+	import SettingsQuickMenu from './SettingsQuickMenu.svelte';
+	let quickMenuOpen = $state(false);
 
 	// DEV-011: Home 탭. URL `/` 가 ?view 없으면 home 기본.
 	type View = 'home' | 'board' | 'list';
@@ -109,23 +93,21 @@
 				⟲
 			{/if}
 		</button>
-		<!-- DEV-125: 테마 빠른 토글 — Settings 의 라디오는 그대로 유지. -->
-		<button
-			class="btn-theme"
-			class:system={$theme === 'system'}
-			onclick={cycleTheme}
-			title={themeTitle}
-			aria-label="테마 전환"
-		>{themeIcon}{#if $theme === 'system'}<span class="sys-dot" aria-hidden="true"></span>{/if}</button>
-		<!-- DEV-084: New Quest / 업데이트 버튼은 본문 / 설정 페이지로 이동.
-		     우상단엔 ⚙ 설정 진입만 (정보 / 업데이트 등 비자주 기능 묶음). -->
-		<a
-			href="/settings"
-			class="btn-settings"
-			class:active={onSettingsPath}
-			title="설정"
-			aria-label="설정"
-		>⚙</a>
+		<!-- DEV-084 → DEV-138: ⚙ 가 바로 페이지 이동 대신 퀵메뉴 dropdown.
+		     자주 쓰는 표시 설정은 메뉴에서 즉시, 전체 설정은 링크로. -->
+		<div class="settings-wrap">
+			<button
+				class="btn-settings"
+				class:active={onSettingsPath || quickMenuOpen}
+				onclick={() => (quickMenuOpen = !quickMenuOpen)}
+				title="설정"
+				aria-label="설정"
+				aria-expanded={quickMenuOpen}
+			>⚙</button>
+			{#if quickMenuOpen}
+				<SettingsQuickMenu onclose={() => (quickMenuOpen = false)} />
+			{/if}
+		</div>
 	</div>
 </header>
 
@@ -186,39 +168,12 @@
 		margin-left: auto;
 	}
 
-	/* DEV-125: 테마 빠른 토글. .btn-settings 와 동일 사이즈. */
-	.btn-theme {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
+	/* DEV-138: 퀵메뉴 anchor — dropdown 의 position:absolute 기준점. */
+	.settings-wrap {
 		position: relative;
-		width: 2rem;
-		height: 2rem;
-		border-radius: 6px;
-		font-size: 1.05rem;
-		line-height: 1;
-		color: var(--text-muted);
-		background: transparent;
-		border: none;
-		cursor: pointer;
-		transition: background 0.15s, color 0.15s;
-	}
-	.btn-theme:hover {
-		background: var(--nav-hover-bg);
-		color: var(--text);
-	}
-	/* system 모드 표시 — 아이콘 우하단 작은 도트. */
-	.sys-dot {
-		position: absolute;
-		right: 4px;
-		bottom: 4px;
-		width: 4px;
-		height: 4px;
-		border-radius: 50%;
-		background: var(--accent);
 	}
 
-	/* DEV-084: 설정 진입 — 톱니바퀴 아이콘. 우상단 (New Quest 가 있던 자리). */
+	/* DEV-084: 설정 진입 — 톱니바퀴 아이콘. DEV-138 부터 button (퀵메뉴 토글). */
 	.btn-settings {
 		display: inline-flex;
 		align-items: center;
@@ -229,6 +184,9 @@
 		font-size: 1.1rem;
 		line-height: 1;
 		color: var(--text-muted);
+		background: transparent;
+		border: none;
+		cursor: pointer;
 		text-decoration: none;
 		transition: background 0.15s, color 0.15s, transform 0.2s;
 	}
