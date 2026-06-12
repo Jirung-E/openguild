@@ -64,6 +64,33 @@
 	// (a11y_autofocus 경고 회피 + 같은 UX).
 	let titleInput: HTMLInputElement | undefined = $state();
 
+	// DEV-060: 템플릿 선택 — Tauri 전용 (local 파일 기반, CLI 와 동일 정책).
+	import { detectEnvironment } from '$lib/api/transport';
+	import { templatesApi, type QuestTemplate } from '$lib/api/templates';
+	const isTauri = detectEnvironment() === 'tauri';
+	let templates = $state<QuestTemplate[]>([]);
+	let selectedTemplate = $state(''); // name. '' = 미사용.
+	let templateTags = $state<string[]>([]);
+
+	function applyTemplate(name: string) {
+		selectedTemplate = name;
+		const t = templates.find((x) => x.name === name);
+		if (!t) {
+			templateTags = [];
+			return;
+		}
+		// CLI 의 merge 와 동일 정신: 사용자가 이미 입력한 값 (title/description)
+		// 은 안 덮음. type / urgency 는 선택 즉시 반영 (되돌리기 쉬움).
+		if (t.type) {
+			const match = types.find((ty) => ty.prefix === t.type);
+			if (match) typeId = match.id;
+		}
+		if (t.urgency != null && t.urgency >= 1 && t.urgency <= 4) urgency = t.urgency;
+		if (!title.trim() && t.title) title = t.title;
+		if (!description.trim() && t.body) description = t.body;
+		templateTags = t.tags;
+	}
+
 	onMount(async () => {
 		try {
 			const [t, s] = await Promise.all([metaApi.getQuestTypes(), metaApi.getQuestStatuses()]);
@@ -75,6 +102,10 @@
 			if (sorted.length > 0) {
 				openStatusSlug = sorted[0].slug;
 				openStatusLabel = sorted[0].name_en;
+			}
+			// DEV-060: 템플릿 목록 — 실패해도 모달 자체는 OK.
+			if (isTauri) {
+				templates = await templatesApi.list().catch(() => []);
 			}
 		} finally {
 			loading = false;
@@ -103,6 +134,10 @@
 				urgency,
 				parent_quest_id: parentQuestId
 			});
+			// DEV-060: 템플릿 기본 tags — 생성 직후 적용 (실패해도 quest 는 유효).
+			if (templateTags.length > 0) {
+				await questsApi.setTags(quest.id, templateTags).catch(() => {});
+			}
 			onclose();
 			oncreated?.(quest);
 		} catch (e) {
@@ -170,6 +205,25 @@
 			</div>
 		{:else}
 			<div class="form">
+				<!-- DEV-060: 템플릿 — 선택 시 type/urgency 즉시 반영, 제목/설명은
+				     비어있을 때만 prefill (사용자 입력 우선, CLI merge 와 동일). -->
+				{#if isTauri && templates.length > 0}
+					<div class="field">
+						<label class="field-label">
+							<span>템플릿</span>
+							<select
+								class="sel"
+								bind:value={selectedTemplate}
+								onchange={() => applyTemplate(selectedTemplate)}
+							>
+								<option value="">(템플릿 없이)</option>
+								{#each templates as t (t.name)}
+									<option value={t.name}>{t.name}{t.title ? ` — ${t.title}` : ''}</option>
+								{/each}
+							</select>
+						</label>
+					</div>
+				{/if}
 				<div class="field-row">
 					<div class="field">
 						<label class="field-label">

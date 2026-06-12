@@ -427,6 +427,8 @@ pub fn run() {
             // DEV-087: 캠페인 배너 이미지 (파일 선택은 frontend dialog plugin).
             commands::set_campaign_banner,
             commands::clear_campaign_banner,
+            // DEV-060: 퀘스트 템플릿 (NewQuestModal 의 선택 dropdown).
+            commands::list_templates,
         ])
         // DEV-087: asset protocol scope — 길드 경로가 동적이라 (사용자가 임의
         // 폴더 open) config scope 대신 런타임 allow. `.guild/assets/` 의 배너

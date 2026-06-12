@@ -1290,6 +1290,37 @@ pub fn get_campaign_memo(
     Ok(ContentResponse { content })
 }
 
+// ─── DEV-060: 퀘스트 템플릿 ───
+
+/// 템플릿 DTO — repo::TemplateFile 은 Serialize 미구현이라 평탄화해서 반환.
+#[derive(serde::Serialize)]
+pub struct TemplateDto {
+    pub name: String,
+    pub title: Option<String>,
+    /// type prefix (예 "BUG").
+    pub r#type: Option<String>,
+    pub urgency: Option<i64>,
+    pub tags: Vec<String>,
+    pub body: String,
+}
+
+#[tauri::command]
+pub fn list_templates(store: State<'_, Store>) -> Result<Vec<TemplateDto>, String> {
+    let templates =
+        openguild_core::repo::list_templates(&store.paths).map_err(|e| format!("{e:#}"))?;
+    Ok(templates
+        .into_iter()
+        .map(|t| TemplateDto {
+            name: t.name,
+            title: t.frontmatter.title,
+            r#type: t.frontmatter.type_prefix,
+            urgency: t.frontmatter.urgency,
+            tags: t.frontmatter.tags,
+            body: t.body,
+        })
+        .collect())
+}
+
 // ─── DEV-087: 캠페인 배너 이미지 ───
 
 /// source 파일을 `.guild/assets/` 로 복사 + frontmatter / DB 갱신.
