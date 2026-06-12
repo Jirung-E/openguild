@@ -50,8 +50,11 @@
 	}
 
 	// DEV-108: 이모지 반응 — 고정 4종. 커스텀 추가는 후속 quest.
+	// DEV-139: 전체 노출 대신 slack 스타일 — 활성 pill + '+' popup picker.
 	const REACTION_SET = ['👍', '✅', '❓', '❌'];
+	let pickerOpenFor = $state<number | null>(null);
 	async function toggleReaction(id: number, emoji: string) {
+		pickerOpenFor = null;
 		try {
 			const updated = await commentsApi.toggleReaction(slug, id, emoji);
 			entries = entries.map((e) => (e.id === id ? updated : e));
@@ -304,10 +307,16 @@
 </script>
 
 {#snippet entryView(e: CommentEntry, isReply: boolean)}
-	<li class="entry" class:reply={isReply} id={`comment-${e.id}`}>
+	<!-- DEV-139: li → div — root + 답글을 하나의 카드 (entry-card) 로 감싸기 위해. -->
+	<div class="entry" class:reply={isReply} id={`comment-${e.id}`}>
 		<div class="entry-head">
-			<!-- DEV-128: 댓글 번호 — CLI / 본문 참조 (예: '#3 참조') 와 일관. -->
-			<a class="entry-no" href={`#comment-${e.id}`} title={`댓글 #${e.id} 로 링크`}>#{e.id}</a>
+			<!-- DEV-128 → DEV-139: 댓글 번호 — 클릭 시 본문 접기/펼치기 ('내용' 버튼 대체). -->
+			<button
+				class="entry-no"
+				onclick={() => toggleBodyCollapsed(e.id)}
+				aria-expanded={!collapsedBodies.has(e.id)}
+				title={collapsedBodies.has(e.id) ? `#${e.id} 내용 펼치기` : `#${e.id} 내용 접기`}
+			>#{e.id}</button>
 			{#if e.parent_id != null}
 				<a class="reply-to" href={`#comment-${e.parent_id}`} title={`#${e.parent_id} 댓글로 이동`}>↩ #{e.parent_id}</a>
 			{/if}
@@ -316,30 +325,6 @@
 			<time class="ts" datetime={e.ts}>{formatTs(e.ts)}</time>
 			{#if editingId !== e.id}
 				<div class="entry-actions">
-					<!-- DEV-129: 본문 접기 — head 는 유지, 내용만 토글. -->
-					<button
-						class="link-btn"
-						onclick={() => toggleBodyCollapsed(e.id)}
-						aria-expanded={!collapsedBodies.has(e.id)}
-						title={collapsedBodies.has(e.id) ? '내용 펼치기' : '내용 접기'}
-					>{collapsedBodies.has(e.id) ? '▸ 내용' : '▾ 내용'}</button>
-					{#if !isReply}
-						{@const childCount = (groups.childrenByRoot.get(e.id) ?? []).length}
-						{@const isThreadCollapsed = collapsedRoots.has(e.id)}
-						<button class="link-btn" onclick={() => enterReply(e.id)}>↩ 답글</button>
-						<!-- DEV-107 fix2: 답글 토글을 root entry 의 actions 안으로. 별도 row 제거. -->
-						{#if childCount > 0}
-							<button
-								class="link-btn thread-toggle-inline"
-								onclick={() => toggleRootCollapsed(e.id)}
-								aria-expanded={!isThreadCollapsed}
-								title={isThreadCollapsed ? '답글 펼치기' : '답글 접기'}
-							>
-								<span class="thread-toggle-icon" class:collapsed={isThreadCollapsed}>▼</span>
-								답글 {childCount}
-							</button>
-						{/if}
-					{/if}
 					<button class="link-btn" onclick={() => enterEdit(e)}>✎ 편집</button>
 					<button class="link-btn danger" onclick={() => askRemove(e.id)}>× 삭제</button>
 				</div>
@@ -371,23 +356,55 @@
 			</div>
 		{/if}
 		{#if editingId !== e.id}
-			<!-- DEV-108: 이모지 반응 bar — 활성은 강조, 클릭 토글. -->
-			<div class="reaction-bar">
-				{#each REACTION_SET as emoji (emoji)}
-					<button
-						class="reaction-btn"
-						class:on={(e.reactions ?? []).includes(emoji)}
-						onclick={() => toggleReaction(e.id, emoji)}
-						title={(e.reactions ?? []).includes(emoji) ? `${emoji} 해제` : `${emoji} 반응`}
-					>{emoji}</button>
-				{/each}
-				{#each (e.reactions ?? []).filter((r) => !REACTION_SET.includes(r)) as extra (extra)}
-					<!-- 고정 셋 밖 이모지 (CLI / 미래 커스텀) 도 표시 + 토글 가능. -->
-					<button class="reaction-btn on" onclick={() => toggleReaction(e.id, extra)} title={`${extra} 해제`}>{extra}</button>
-				{/each}
+			<!-- DEV-139: 푸터 행 — 좌측 답글 컨트롤 / 우측 이모지 (slack 스타일). -->
+			<div class="entry-foot">
+				<div class="foot-left">
+					{#if !isReply}
+						{@const childCount = (groups.childrenByRoot.get(e.id) ?? []).length}
+						{@const isThreadCollapsed = collapsedRoots.has(e.id)}
+						{#if childCount > 0}
+							<!-- 삼각형만 클릭 — '답글 n' 텍스트는 표시 전용. -->
+							<button
+								class="tri-btn"
+								onclick={() => toggleRootCollapsed(e.id)}
+								aria-expanded={!isThreadCollapsed}
+								title={isThreadCollapsed ? '답글 펼치기' : '답글 접기'}
+							>{isThreadCollapsed ? '▶' : '▼'}</button>
+							<span class="reply-count">답글 {childCount}</span>
+						{/if}
+						<button class="reply-write-btn" onclick={() => enterReply(e.id)}>답글 쓰기</button>
+					{/if}
+				</div>
+				<div class="foot-right">
+					{#each e.reactions ?? [] as r (r)}
+						<button class="reaction-pill" onclick={() => toggleReaction(e.id, r)} title={`${r} 해제`}>
+							{r}
+						</button>
+					{/each}
+					<div class="picker-wrap">
+						<button
+							class="reaction-add"
+							onclick={() => (pickerOpenFor = pickerOpenFor === e.id ? null : e.id)}
+							aria-expanded={pickerOpenFor === e.id}
+							title="반응 추가"
+						>☺+</button>
+						{#if pickerOpenFor === e.id}
+							<div class="picker-ov" role="presentation" onclick={() => (pickerOpenFor = null)}></div>
+							<div class="reaction-picker" role="menu">
+								{#each REACTION_SET as emoji (emoji)}
+									<button
+										class="picker-item"
+										class:on={(e.reactions ?? []).includes(emoji)}
+										onclick={() => toggleReaction(e.id, emoji)}
+									>{emoji}</button>
+								{/each}
+							</div>
+						{/if}
+					</div>
+				</div>
 			</div>
 		{/if}
-	</li>
+	</div>
 {/snippet}
 
 <section class="comments-sec">
@@ -419,61 +436,63 @@
 				{#each groups.roots as root (root.id)}
 					{@const childCount = (groups.childrenByRoot.get(root.id) ?? []).length}
 					{@const isCollapsed = collapsedRoots.has(root.id)}
-					{@render entryView(root, false)}
-					<!-- DEV-107 fix2: 토글은 root entry 의 actions 안으로 이동 (별도 row 제거). -->
-					{#if (childCount > 0 && !isCollapsed) || replyingTo === root.id}
-						<li class="thread">
-							<ul class="reply-list">
-								{#if !isCollapsed}
-									{#each groups.childrenByRoot.get(root.id) ?? [] as r (r.id)}
-										{@render entryView(r, true)}
-									{/each}
-								{/if}
-								{#if replyingTo === root.id}
-									<li class="reply-form">
-										<div class="reply-author">
-											<input
-												class="author-input"
-												type="text"
-												placeholder="작성자 (옵션)"
-												bind:value={replyAuthor}
+					<!-- DEV-139: root + 답글을 하나의 카드로 — 댓글 간 시각 구분. -->
+					<li class="entry-card">
+						{@render entryView(root, false)}
+						{#if (childCount > 0 && !isCollapsed) || replyingTo === root.id}
+							<div class="thread">
+								<div class="reply-list">
+									{#if !isCollapsed}
+										{#each groups.childrenByRoot.get(root.id) ?? [] as r (r.id)}
+											{@render entryView(r, true)}
+										{/each}
+									{/if}
+									{#if replyingTo === root.id}
+										<div class="reply-form">
+											<div class="reply-author">
+												<input
+													class="author-input"
+													type="text"
+													placeholder="작성자 (옵션)"
+													bind:value={replyAuthor}
+													disabled={replySaving}
+												/>
+											</div>
+											<textarea
+												use:tabInsert
+												class="body-input"
+												bind:value={replyBody}
+												rows="3"
+												placeholder={`@${root.author || root.id} 에 답글…`}
 												disabled={replySaving}
-											/>
+											></textarea>
+											{#if replyError}<p class="state err">{replyError}</p>{/if}
+											<div class="actions">
+												<button
+													class="btn-save"
+													onclick={() => submitReply(root.id)}
+													disabled={replySaving || !replyBody.trim()}
+												>
+													{replySaving ? '저장…' : '답글 추가'}
+												</button>
+												<button class="btn-cancel" onclick={cancelReply} disabled={replySaving}>
+													취소
+												</button>
+											</div>
 										</div>
-										<textarea
-											use:tabInsert
-											class="body-input"
-											bind:value={replyBody}
-											rows="3"
-											placeholder={`@${root.author || root.id} 에 답글…`}
-											disabled={replySaving}
-										></textarea>
-										{#if replyError}<p class="state err">{replyError}</p>{/if}
-										<div class="actions">
-											<button
-												class="btn-save"
-												onclick={() => submitReply(root.id)}
-												disabled={replySaving || !replyBody.trim()}
-											>
-												{replySaving ? '저장…' : '답글 추가'}
-											</button>
-											<button class="btn-cancel" onclick={cancelReply} disabled={replySaving}>
-												취소
-											</button>
-										</div>
-									</li>
-								{/if}
-							</ul>
-						</li>
-					{/if}
+									{/if}
+								</div>
+							</div>
+						{/if}
+					</li>
 				{/each}
 				{#if groups.orphans.length > 0}
-					<li class="orphan-head">
+					<li class="entry-card orphan-card">
 						<span class="orphan-label">↩ 삭제된 댓글에 대한 답글</span>
+						{#each groups.orphans as o (o.id)}
+							{@render entryView(o, true)}
+						{/each}
 					</li>
-					{#each groups.orphans as o (o.id)}
-						{@render entryView(o, true)}
-					{/each}
 				{/if}
 			</ul>
 		{/if}
@@ -568,36 +587,23 @@
 		flex-direction: column;
 		gap: 0.75rem;
 	}
-	.entry {
+	/* DEV-139: root + 답글을 감싸는 카드 — 댓글 간 시각 구분.
+	   본문 (entry-body 의 MarkdownView) 은 --bg 라 카드 배경과 한 단계 차이. */
+	.entry-card {
+		list-style: none;
+		background: color-mix(in srgb, var(--bg-elevated) 65%, var(--bg));
 		border: 1px solid var(--bg-subtle);
-		border-radius: 6px;
-		background: var(--bg);
-		padding: 0.6rem 0.85rem;
+		border-radius: 8px;
+		padding: 0.6rem 0.75rem;
 	}
-	.entry.reply {
-		background: var(--bg);
+	.entry {
+		border-radius: 6px;
 	}
 	.thread {
-		list-style: none;
 		margin: 0;
 		padding: 0;
 	}
-	/* DEV-107 fix2: 답글 토글 — root entry 의 .link-btn 들 옆 inline. */
-	.thread-toggle-inline {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.3rem;
-	}
-	.thread-toggle-icon {
-		font-size: 0.55rem;
-		transition: transform 0.12s;
-		display: inline-block;
-	}
-	.thread-toggle-icon.collapsed {
-		transform: rotate(-90deg);
-	}
 	.reply-list {
-		list-style: none;
 		margin: 0.25rem 0 0 1.5rem;
 		padding-left: 0.75rem;
 		border-left: 2px solid var(--bg-subtle);
@@ -615,10 +621,7 @@
 	}
 	.reply-author { display: flex; gap: 0.4rem; }
 
-	.orphan-head {
-		list-style: none;
-		margin-top: 0.5rem;
-	}
+	.orphan-card { display: flex; flex-direction: column; gap: 0.5rem; }
 	.orphan-label {
 		font-size: 0.72rem;
 		color: var(--text-muted);
@@ -636,12 +639,13 @@
 	.author { font-weight: 600; color: var(--text); }
 	.sep { color: var(--text-faint); }
 	.ts { color: var(--text-faint); }
-	/* DEV-128: 댓글 번호 — anchor 링크 + 미묘한 monospace 강조. */
+	/* DEV-128 → DEV-139: 댓글 번호 — 클릭 시 본문 접기/펼치기 버튼. */
 	.entry-no {
 		font-family: 'SFMono-Regular', Consolas, monospace;
 		font-size: 0.72rem;
 		color: var(--text-faint);
-		text-decoration: none;
+		background: transparent;
+		cursor: pointer;
 		padding: 0.05rem 0.35rem;
 		border-radius: 4px;
 		border: 1px solid var(--border-muted);
@@ -672,26 +676,102 @@
 		text-overflow: ellipsis;
 	}
 	.body-collapsed:hover { color: var(--text-muted); border-left-color: var(--accent); }
-	/* DEV-108: 이모지 반응 bar. 비활성은 흐리게, 활성은 accent 테두리. */
-	.reaction-bar {
+	/* DEV-139: 푸터 행 — 좌측 답글 컨트롤 / 우측 이모지. */
+	.entry-foot {
 		display: flex;
-		gap: 0.25rem;
-		margin-top: 0.35rem;
+		align-items: center;
+		justify-content: space-between;
+		margin-top: 0.4rem;
+		gap: 0.5rem;
 	}
-	.reaction-btn {
-		padding: 0.1rem 0.4rem;
+	.foot-left {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+	}
+	/* 삼각형만 클릭 — 채운 삼각형 (▼/▶), 일반 글자색, 종전보다 큼. */
+	.tri-btn {
 		background: transparent;
-		border: 1px solid transparent;
+		border: none;
+		cursor: pointer;
+		font-size: 0.85rem;
+		line-height: 1;
+		color: var(--text);
+		padding: 0.1rem 0.2rem;
+	}
+	.tri-btn:hover { color: var(--accent); }
+	.reply-count {
+		font-size: 0.75rem;
+		color: var(--text-muted);
+		user-select: none;
+	}
+	/* '답글 쓰기' — 댓글번호 (#N) 와 같은 테두리 버튼 느낌. */
+	.reply-write-btn {
+		font-size: 0.72rem;
+		color: var(--text-muted);
+		background: transparent;
+		cursor: pointer;
+		padding: 0.1rem 0.5rem;
+		border-radius: 4px;
+		border: 1px solid var(--border-muted);
+	}
+	.reply-write-btn:hover { color: var(--accent); border-color: var(--accent); }
+	/* 우측 — 활성 반응 pill + '+' popup (slack 스타일). */
+	.foot-right {
+		display: flex;
+		align-items: center;
+		gap: 0.25rem;
+	}
+	.reaction-pill {
+		padding: 0.1rem 0.45rem;
+		background: color-mix(in srgb, var(--accent) 12%, transparent);
+		border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
 		border-radius: 10px;
 		font-size: 0.78rem;
 		cursor: pointer;
-		opacity: 0.35;
-		transition: opacity 0.1s, border-color 0.1s, background 0.1s;
 	}
-	.reaction-btn:hover { opacity: 0.8; }
-	.reaction-btn.on {
-		opacity: 1;
-		background: color-mix(in srgb, var(--accent) 12%, transparent);
+	.reaction-pill:hover { border-color: var(--danger); }
+	.picker-wrap { position: relative; }
+	.reaction-add {
+		padding: 0.1rem 0.4rem;
+		background: transparent;
+		border: 1px solid var(--border-muted);
+		border-radius: 10px;
+		font-size: 0.72rem;
+		color: var(--text-faint);
+		cursor: pointer;
+	}
+	.reaction-add:hover { color: var(--text); border-color: var(--text-faint); }
+	.picker-ov {
+		position: fixed;
+		inset: 0;
+		z-index: 90;
+		background: transparent;
+	}
+	.reaction-picker {
+		position: absolute;
+		bottom: calc(100% + 4px);
+		right: 0;
+		z-index: 91;
+		display: flex;
+		gap: 0.2rem;
+		padding: 0.3rem 0.4rem;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		box-shadow: 0 6px 18px var(--shadow);
+	}
+	.picker-item {
+		padding: 0.15rem 0.35rem;
+		background: transparent;
+		border: 1px solid transparent;
+		border-radius: 6px;
+		font-size: 0.95rem;
+		cursor: pointer;
+	}
+	.picker-item:hover { background: var(--bg-subtle); }
+	.picker-item.on {
+		background: color-mix(in srgb, var(--accent) 15%, transparent);
 		border-color: color-mix(in srgb, var(--accent) 45%, transparent);
 	}
 	.entry-actions {
