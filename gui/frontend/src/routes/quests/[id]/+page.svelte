@@ -1579,7 +1579,7 @@
 	.modal-sm {
 		background: var(--bg-elevated);
 		border: 1px solid var(--border); border-radius: 10px;
-		width: 100%; max-width: 480px;
+		width: 100%; max-width: 30rem; /* BUG-064 */
 		padding: 1rem 1.25rem 1rem;
 		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
 	}

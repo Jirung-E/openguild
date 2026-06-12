@@ -574,7 +574,7 @@
 	.btn-pick:disabled { opacity: 0.6; cursor: default; }
 	.picker-hint {
 		flex: 1 1 auto;
-		min-width: 200px;
+		min-width: 12.5rem; /* BUG-064 */
 		color: var(--text-muted);
 		font-size: 0.825rem;
 	}
@@ -656,7 +656,7 @@
 	.modal {
 		background: var(--bg-elevated);
 		border: 1px solid var(--border); border-radius: 10px;
-		width: 100%; max-width: 420px;
+		width: 100%; max-width: 26.25rem; /* BUG-064 */
 		padding: 1.2rem 1.4rem;
 		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
 		color: var(--text);

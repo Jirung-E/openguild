@@ -123,7 +123,7 @@
 	}
 
 	.upd-progress {
-		width: 180px;
+		width: 11.25rem; /* BUG-064 */
 		height: 6px;
 		background: var(--bg-subtle);
 		border-radius: 3px;

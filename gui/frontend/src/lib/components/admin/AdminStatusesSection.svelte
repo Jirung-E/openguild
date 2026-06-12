@@ -501,7 +501,7 @@
 		border: 1px solid var(--border);
 		border-radius: 10px;
 		width: 100%;
-		max-width: 460px;
+		max-width: 28.75rem; /* BUG-064 */
 		padding: 1.2rem 1.4rem;
 		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
 		color: var(--text);

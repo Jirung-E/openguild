@@ -240,7 +240,7 @@
 		border-radius: 6px;
 		color: var(--text);
 		font-size: 0.8rem;
-		min-width: 200px;
+		min-width: 12.5rem; /* BUG-064 */
 		outline: none;
 		transition: border-color 0.15s;
 	}

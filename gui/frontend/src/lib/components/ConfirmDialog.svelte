@@ -107,7 +107,7 @@
 		border: 1px solid var(--border);
 		border-radius: 10px;
 		width: 100%;
-		max-width: 420px;
+		max-width: 26.25rem; /* BUG-064 */
 		padding: 1.1rem 1.4rem 1.2rem;
 		box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
 		color: var(--text);

@@ -3006,7 +3006,7 @@
 	/* ── 노드 확장 카드 (z:6) ── */
 	.node-card {
 		position: absolute;
-		width: 300px;
+		width: 18.75rem; /* BUG-064 */
 		z-index: 6;
 		background: var(--bg-elevated);
 		border: 1px solid var(--border);
@@ -3270,7 +3270,7 @@
 		border: 1px solid var(--border);
 		border-radius: 10px;
 		padding: 1.25rem 1.5rem 1rem;
-		min-width: 280px; max-width: 420px;
+		min-width: 17.5rem; max-width: 26.25rem; /* BUG-064 */
 		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
 		display: flex; flex-direction: column; gap: 1rem;
 	}
@@ -3302,7 +3302,7 @@
 		border: 1px solid var(--border);
 		border-radius: 10px;
 		padding: 1.25rem 1.5rem 1.25rem;
-		min-width: 480px; max-width: 640px;
+		min-width: 30rem; max-width: 40rem; /* BUG-064 */
 		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
 		display: flex; flex-direction: column; gap: 0.75rem;
 		color: var(--text);
