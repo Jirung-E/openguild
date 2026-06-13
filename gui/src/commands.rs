@@ -781,6 +781,11 @@ pub fn init_and_open_guild(
     }
     app.unmanage::<openguild_core::Store>();
     app.manage(store);
+    // DEV-087 fix2: 새/초기화한 길드 디렉토리를 asset protocol scope 에 추가
+    // (open_guild_in_current_window 와 동일 이유 — 배너/첨부 asset:// 차단 방지).
+    if let Err(e) = app.asset_protocol_scope().allow_directory(p, true) {
+        eprintln!("[openguild-gui] warn: asset scope allow 실패 — {e:#}");
+    }
     app.unmanage::<crate::LaunchInfo>();
     app.manage(crate::LaunchInfo {
         mode: "guild",
@@ -840,6 +845,14 @@ pub fn open_guild_in_current_window(
     // 3-4. 기존 store 해제 + 새 store 등록.
     app.unmanage::<openguild_core::Store>();
     app.manage(new_store);
+
+    // DEV-087 fix2: 새 길드의 디렉토리를 asset protocol scope 에 추가.
+    // startup 의 asset scope 는 초기 길드만 allow 하므로, Welcome 에서 다른
+    // 길드를 열면 그 길드의 `.guild/assets|attachments` 가 scope 밖이 되어
+    // 배너/첨부의 asset:// URL 이 차단됐다 (이미지 안 뜸). swap 마다 재적용.
+    if let Err(e) = app.asset_protocol_scope().allow_directory(p, true) {
+        eprintln!("[openguild-gui] warn: asset scope allow 실패 — {e:#}");
+    }
 
     // 5. launch mode → guild. unmanage/manage 동일 패턴.
     app.unmanage::<crate::LaunchInfo>();
