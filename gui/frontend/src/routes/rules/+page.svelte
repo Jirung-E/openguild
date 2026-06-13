@@ -15,7 +15,9 @@
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { EditorView, basicSetup } from 'codemirror';
 	import { markdown } from '@codemirror/lang-markdown';
-	import { oneDark } from '@codemirror/theme-one-dark';
+	// 편집기 테마 — Compartment 로 다크/라이트 라이브 전환.
+	import { theme } from '$lib/stores/theme';
+	import { editorThemeCompartment, editorThemeExtension } from '$lib/utils/editor-theme';
 	// DEV-130: Tab = 들여쓰기 (focus 이동 X).
 	import { keymap } from '@codemirror/view';
 	import { indentWithTab } from '@codemirror/commands';
@@ -134,7 +136,8 @@
 			extensions: [
 				basicSetup,
 				markdown(),
-				oneDark,
+				// 테마 — Compartment 로 다크/라이트 라이브 전환.
+				editorThemeCompartment.of(editorThemeExtension($theme)),
 				// DEV-130: Tab = 들여쓰기 (focus 이동 X).
 				keymap.of([indentWithTab]),
 				EditorView.theme({
@@ -146,6 +149,14 @@
 			parent: editorContainer
 		});
 	}
+
+	// 테마 변경 시 재생성 없이 테마 확장만 교체 (커서/스크롤/undo 보존).
+	$effect(() => {
+		const t = $theme;
+		editorView?.dispatch({
+			effects: editorThemeCompartment.reconfigure(editorThemeExtension(t))
+		});
+	});
 
 	function cancelEdit() {
 		editorView?.destroy();

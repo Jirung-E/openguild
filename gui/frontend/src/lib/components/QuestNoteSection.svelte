@@ -17,12 +17,12 @@
 	import { commentsApi as questCommentsApi, campaignCommentsApi } from '$lib/api/comments';
 	import { EditorView, basicSetup } from 'codemirror';
 	import { markdown } from '@codemirror/lang-markdown';
-	import { oneDark } from '@codemirror/theme-one-dark';
 	// DEV-117: Windows 표준 redo (Ctrl+Shift+Z) keymap.
 	import { keymap } from '@codemirror/view';
 	import { redo, indentWithTab } from '@codemirror/commands';
-	// DEV-074 fix4: light theme 에선 oneDark 안 적용.
-	import { theme, resolveTheme } from '$lib/stores/theme';
+	// 편집기 테마 — Compartment 로 다크/라이트 라이브 전환.
+	import { theme } from '$lib/stores/theme';
+	import { editorThemeCompartment, editorThemeExtension } from '$lib/utils/editor-theme';
 	// DEV-074 fix15: CodeMirror native scrollbar 대신 overlay.
 	import OverlayScrollbar from './OverlayScrollbar.svelte';
 
@@ -108,13 +108,13 @@
 			editorView = null;
 		}
 		editorContainer.style.height = `${loadEditorHeight()}px`;
-		const eff = resolveTheme($theme);
 		editorView = new EditorView({
 			doc: editText,
 			extensions: [
 				basicSetup,
 				markdown(),
-				...(eff === 'dark' ? [oneDark] : []),
+				// 테마 — Compartment 로 다크/라이트 라이브 전환 (재생성 X).
+				editorThemeCompartment.of(editorThemeExtension($theme)),
 				// DEV-117: Windows 표준 redo (Ctrl+Shift+Z) 추가.
 				// DEV-130: Tab = 들여쓰기 (focus 이동 X). Esc 후 Tab 으로 탈출 가능.
 				keymap.of([{ key: 'Mod-Shift-z', run: redo, preventDefault: true }, indentWithTab]),
@@ -130,13 +130,12 @@
 		cmScroller = editorContainer.querySelector('.cm-scroller') as HTMLElement | null;
 	}
 
-	// DEV-074 fix4: theme 변경 시 편집 중이면 editor 재생성.
+	// 테마 변경 시 재생성 없이 테마 확장만 교체 (커서/스크롤/undo 보존).
 	$effect(() => {
-		const _ = $theme;
-		if (editMode && editorView) {
-			editText = editorView.state.doc.toString();
-			initEditor();
-		}
+		const t = $theme;
+		editorView?.dispatch({
+			effects: editorThemeCompartment.reconfigure(editorThemeExtension(t))
+		});
 	});
 
 	function cancelEdit() {

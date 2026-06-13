@@ -9,14 +9,15 @@
 	import { adminApi } from '$lib/api/admin';
 	import type { QuestTagDef } from '$lib/types';
 	// DEV-074 fix4: CodeMirror oneDark 는 라이트모드에 부적합 — theme 따라 분기.
-	import { theme, resolveTheme } from '$lib/stores/theme';
+	import { theme } from '$lib/stores/theme';
 	// DEV-074 fix15: 편집창 native scrollbar 대신 overlay.
 	import OverlayScrollbar from '$lib/components/OverlayScrollbar.svelte';
 	// BUG-021 fix1: marked 직접 호출 대신 공유 컴포넌트 MarkdownView 사용.
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	import { EditorView, basicSetup } from 'codemirror';
 	import { markdown } from '@codemirror/lang-markdown';
-	import { oneDark } from '@codemirror/theme-one-dark';
+	// 편집기 테마 — Compartment 로 다크/라이트 라이브 전환 (재생성 X).
+	import { editorThemeCompartment, editorThemeExtension } from '$lib/utils/editor-theme';
 	// DEV-117: CodeMirror 의 기본 historyKeymap 은 Windows 에서 Ctrl+Y 만 redo —
 	// Ctrl+Shift+Z 는 Mac 전용. 양쪽 모두 지원하려면 keymap 추가.
 	import { keymap } from '@codemirror/view';
@@ -293,16 +294,21 @@
 		}, 250);
 	}
 	let editorResizeObserver: ResizeObserver | null = null;
-	// DEV-074 fix4: theme 변경 시 편집 중이면 editor 재생성 (oneDark on/off).
+	// DEV-130: 들여쓰기 설정 변경 시 편집 중이면 editor 재생성.
 	$effect(() => {
-		// DEV-074: theme / DEV-130: 들여쓰기 설정 변경 시 편집 중이면 재생성.
-		const _ = $theme;
-		const __ = $editorSettings;
+		const _ = $editorSettings;
 		if (editMode && editorView) {
 			// 현재 내용 보존.
 			editDescription = editorView.state.doc.toString();
 			initEditor();
 		}
+	});
+	// 테마 변경 시 재생성 없이 테마 확장만 교체 (커서/스크롤/undo 보존).
+	$effect(() => {
+		const t = $theme;
+		editorView?.dispatch({
+			effects: editorThemeCompartment.reconfigure(editorThemeExtension(t))
+		});
 	});
 
 	function initEditor() {
@@ -311,16 +317,13 @@
 		// DEV-057: parent (.editor-wrap) 가 height 결정. cm-scroller 는 fill.
 		// 이전엔 cm-scroller maxHeight 480px 가 고정 한계 — parent resize 시 의미 없음.
 		editorContainer.style.height = `${loadEditorHeight()}px`;
-		const eff = resolveTheme($theme);
 		editorView = new EditorView({
 			doc: editDescription,
 			extensions: [
 				basicSetup,
 				markdown(),
-				// DEV-074 fix4: dark 일 때만 oneDark — light 면 기본 light 테마 사용.
-				...(eff === 'dark' ? [oneDark] : []),
-				// DEV-117: Windows 표준 redo (Ctrl+Shift+Z) 추가 — 기본 historyKeymap 은
-				// Ctrl+Y 만. basicSetup 다음에 두어 우선 적용.
+				// 테마 — Compartment 로 다크/라이트 라이브 전환 (재생성 X).
+				editorThemeCompartment.of(editorThemeExtension($theme)),
 				// DEV-117: Windows 표준 redo. (Tab 들여쓰기는 indentExtensions 가 담당.)
 				keymap.of([{ key: 'Mod-Shift-z', run: redo, preventDefault: true }]),
 				// DEV-130: tab/space + 2/4칸 들여쓰기 — Tab 키맵 + indentUnit/tabSize.

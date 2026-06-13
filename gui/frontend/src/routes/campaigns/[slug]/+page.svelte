@@ -27,7 +27,9 @@
 	// syntax highlighting) 로 통일.
 	import { EditorView, basicSetup } from 'codemirror';
 	import { markdown } from '@codemirror/lang-markdown';
-	import { oneDark } from '@codemirror/theme-one-dark';
+	// BUG: 편집창 띄운 채 다크/라이트 전환 시 테마 안 바뀌던 문제 — Compartment 로 라이브 교체.
+	import { theme } from '$lib/stores/theme';
+	import { editorThemeCompartment, editorThemeExtension } from '$lib/utils/editor-theme';
 	// DEV-130: Tab = 들여쓰기 — indentExtensions 가 Tab 키맵 포함 (focus 이동 X).
 	// DEV-069: 편집기 첨부 — 클립보드 이미지 paste / 파일 drag&drop 업로드.
 	import { attachmentExtension } from '$lib/utils/editor-attach';
@@ -90,7 +92,8 @@
 			extensions: [
 				basicSetup,
 				markdown(),
-				oneDark,
+				// 테마 — Compartment 로 다크/라이트 라이브 전환.
+				editorThemeCompartment.of(editorThemeExtension($theme)),
 				// DEV-130: tab/space + 2/4칸 들여쓰기 — Tab 키맵 + indentUnit/tabSize.
 				indentExtensions($editorSettings),
 				// DEV-069: 클립보드 이미지 paste / 파일 drag&drop → 첨부 업로드.
@@ -119,6 +122,13 @@
 		editorResizeObserver?.disconnect();
 		editorResizeObserver = null;
 	}
+	// 테마 변경 시 editor 재생성 없이 테마 확장만 교체 (커서/스크롤/undo 보존).
+	$effect(() => {
+		const t = $theme;
+		editorView?.dispatch({
+			effects: editorThemeCompartment.reconfigure(editorThemeExtension(t))
+		});
+	});
 
 	// 체크리스트 추가 입력
 	let newChecklistText = $state('');
