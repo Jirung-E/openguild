@@ -53,10 +53,36 @@
 	// DEV-139: 전체 노출 대신 slack 스타일 — 활성 pill + '+' popup picker.
 	const REACTION_SET = ['👍', '✅', '❓', '❌'];
 	let pickerOpenFor = $state<number | null>(null);
+	// DEV-108: reaction 항목 = "emoji" 또는 "emoji:author1|author2".
+	// 누가 반응했는지 호버로 보여주기 위해 파싱.
+	function parseReaction(r: string): { emoji: string; authors: string[] } {
+		const idx = r.indexOf(':');
+		if (idx < 0) return { emoji: r, authors: [] };
+		return {
+			emoji: r.slice(0, idx),
+			authors: r
+				.slice(idx + 1)
+				.split('|')
+				.map((a) => a.trim())
+				.filter((a) => a.length > 0)
+		};
+	}
+	function reactionsOf(e: CommentEntry): { emoji: string; authors: string[] }[] {
+		return (e.reactions ?? []).map(parseReaction);
+	}
+	// 현재 사용자(=댓글 작성자 이름). 비어있으면 core 가 '(익명)' 처리.
+	function currentAuthor(): string {
+		return newAuthor.trim() || loadSavedAuthor();
+	}
+	function reactedByMe(authors: string[]): boolean {
+		const me = currentAuthor().trim() || '(익명)';
+		return authors.includes(me);
+	}
+
 	async function toggleReaction(id: number, emoji: string) {
 		pickerOpenFor = null;
 		try {
-			const updated = await commentsApi.toggleReaction(slug, id, emoji);
+			const updated = await commentsApi.toggleReaction(slug, id, emoji, currentAuthor());
 			entries = entries.map((e) => (e.id === id ? updated : e));
 		} catch (e) {
 			alert(e instanceof Error ? e.message : 'reaction failed');
@@ -394,6 +420,7 @@
 			</div>
 		{/if}
 		{#if editingId !== e.id}
+			{@const reacts = reactionsOf(e)}
 			<!-- DEV-139: 푸터 행 — 좌측 답글 컨트롤 / 우측 이모지 (slack 스타일). -->
 			<div class="entry-foot">
 				<div class="foot-left">
@@ -414,9 +441,15 @@
 					{/if}
 				</div>
 				<div class="foot-right">
-					{#each e.reactions ?? [] as r (r)}
-						<button class="reaction-pill" onclick={() => toggleReaction(e.id, r)} title={`${r} 해제`}>
-							{r}
+					{#each reacts as r (r.emoji)}
+						<!-- DEV-108: 호버하면 누가 반응했는지 (authors) 표시. -->
+						<button
+							class="reaction-pill"
+							class:mine={reactedByMe(r.authors)}
+							onclick={() => toggleReaction(e.id, r.emoji)}
+							title={r.authors.length ? `${r.authors.join(', ')} · 클릭하면 토글` : '클릭하면 토글'}
+						>
+							{r.emoji}{#if r.authors.length > 1}<span class="rc">{r.authors.length}</span>{/if}
 						</button>
 					{/each}
 					<div class="picker-wrap">
@@ -432,7 +465,7 @@
 								{#each REACTION_SET as emoji (emoji)}
 									<button
 										class="picker-item"
-										class:on={(e.reactions ?? []).includes(emoji)}
+										class:on={reactedByMe(reacts.find((x) => x.emoji === emoji)?.authors ?? [])}
 										onclick={() => toggleReaction(e.id, emoji)}
 									>{emoji}</button>
 								{/each}
@@ -769,6 +802,18 @@
 		cursor: pointer;
 	}
 	.reaction-pill:hover { border-color: var(--danger); }
+	/* DEV-108: 내가 단 반응은 진한 테두리로 구분. */
+	.reaction-pill.mine {
+		background: color-mix(in srgb, var(--accent) 24%, transparent);
+		border-color: var(--accent);
+	}
+	/* 반응 수 (2명 이상). */
+	.reaction-pill .rc {
+		margin-left: 0.2rem;
+		font-size: 0.7rem;
+		font-weight: 700;
+		color: var(--text-muted);
+	}
 	.picker-wrap { position: relative; }
 	.reaction-add {
 		padding: 0.1rem 0.4rem;

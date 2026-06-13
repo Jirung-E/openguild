@@ -84,6 +84,31 @@ fn sanitize_attr(s: &str) -> String {
     s.replace('"', "'")
 }
 
+/// DEV-108 (누가 반응했는지 호버 표시): reaction 항목 문자열을 (emoji, authors)
+/// 로 분해. 형식 = `emoji` (legacy) 또는 `emoji:author1|author2`.
+/// 구분자 `:` / `|` 는 emoji / author 에 들어갈 수 없음 (toggle 에서 검증).
+pub fn split_reaction(s: &str) -> (String, Vec<String>) {
+    match s.split_once(':') {
+        Some((emoji, rest)) => (
+            emoji.to_string(),
+            rest.split('|')
+                .map(|a| a.trim().to_string())
+                .filter(|a| !a.is_empty())
+                .collect(),
+        ),
+        None => (s.to_string(), Vec::new()),
+    }
+}
+
+/// (emoji, authors) → reaction 항목 문자열. authors 가 비면 emoji 만 (legacy 호환).
+pub fn join_reaction(emoji: &str, authors: &[String]) -> String {
+    if authors.is_empty() {
+        emoji.to_string()
+    } else {
+        format!("{emoji}:{}", authors.join("|"))
+    }
+}
+
 /// 텍스트 → entry 목록.
 ///
 /// 마커가 0개면:

@@ -200,8 +200,11 @@ function routeToInvoke(
 			// /comments/{id}/reactions (DEV-108: 이모지 토글)
 			if (parts[5] && /^\d+$/.test(parts[5]) && parts[6] === 'reactions' && method === 'POST') {
 				const id = Number(parts[5]);
-				const emoji = (body as { emoji?: string } | undefined)?.emoji ?? '';
-				return { cmd: 'toggle_comment_reaction', args: { slug, id, emoji } };
+				const rb = (body as { emoji?: string; author?: string } | undefined) ?? {};
+				return {
+					cmd: 'toggle_comment_reaction',
+					args: { slug, id, emoji: rb.emoji ?? '', author: rb.author ?? '' }
+				};
 			}
 			// /comments/{id}/discussion (DEV-142: 토론 플래그 토글)
 			if (parts[5] && /^\d+$/.test(parts[5]) && parts[6] === 'discussion' && method === 'POST') {
@@ -406,8 +409,11 @@ function routeToInvoke(
 			}
 			if (parts[4] && /^\d+$/.test(parts[4]) && parts[5] === 'reactions' && method === 'POST') {
 				const id = Number(parts[4]);
-				const emoji = (body as { emoji?: string } | undefined)?.emoji ?? '';
-				return { cmd: 'toggle_campaign_comment_reaction', args: { slug, id, emoji } };
+				const rb = (body as { emoji?: string; author?: string } | undefined) ?? {};
+				return {
+					cmd: 'toggle_campaign_comment_reaction',
+					args: { slug, id, emoji: rb.emoji ?? '', author: rb.author ?? '' }
+				};
 			}
 			if (parts[4] && /^\d+$/.test(parts[4]) && !parts[5]) {
 				const id = Number(parts[4]);

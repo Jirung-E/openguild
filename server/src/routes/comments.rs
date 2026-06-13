@@ -109,6 +109,9 @@ pub async fn delete_comment(
 #[derive(Debug, Deserialize)]
 pub struct ToggleReactionRequest {
     pub emoji: String,
+    // DEV-108: 누가 반응했는지 — 미지정 시 빈 문자열 → ops 가 '(익명)' 처리.
+    #[serde(default)]
+    pub author: String,
 }
 
 pub async fn toggle_reaction(
@@ -116,7 +119,7 @@ pub async fn toggle_reaction(
     Path((slug, id)): Path<(String, u64)>,
     Json(body): Json<ToggleReactionRequest>,
 ) -> AppResult<Json<CommentEntry>> {
-    let entry = ops::toggle_comment_reaction(&store, &slug, id, &body.emoji).await?;
+    let entry = ops::toggle_comment_reaction(&store, &slug, id, &body.emoji, &body.author).await?;
     Ok(Json(entry))
 }
 
@@ -181,7 +184,7 @@ pub async fn camp_toggle_reaction(
     Path((slug, id)): Path<(String, u64)>,
     Json(body): Json<ToggleReactionRequest>,
 ) -> AppResult<Json<CommentEntry>> {
-    let entry = cops::toggle_reaction(&store, &slug, id, &body.emoji).await?;
+    let entry = cops::toggle_reaction(&store, &slug, id, &body.emoji, &body.author).await?;
     Ok(Json(entry))
 }
 

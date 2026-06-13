@@ -1234,8 +1234,9 @@ pub async fn toggle_comment_reaction(
     slug: String,
     id: u64,
     emoji: String,
+    author: String,
 ) -> Result<CommentEntry, String> {
-    openguild_core::ops::comments::toggle_comment_reaction(&store, &slug, id, &emoji)
+    openguild_core::ops::comments::toggle_comment_reaction(&store, &slug, id, &emoji, &author)
         .await
         .map_err(err)
 }
@@ -1325,8 +1326,9 @@ pub async fn toggle_campaign_comment_reaction(
     slug: String,
     id: u64,
     emoji: String,
+    author: String,
 ) -> Result<CommentEntry, String> {
-    openguild_core::ops::campaign_comments::toggle_reaction(&store, &slug, id, &emoji)
+    openguild_core::ops::campaign_comments::toggle_reaction(&store, &slug, id, &emoji, &author)
         .await
         .map_err(err)
 }

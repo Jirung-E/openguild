@@ -533,13 +533,21 @@ openguild migrate-to-files
 
 ### 댓글 이모지 반응 — DEV-108 (구현 완료)
 
-- og-comment 마커에 `reactions="👍,✅"` attribute — 활성 이모지 콤마 목록.
-  빈 목록이면 attr 생략 (구 파일과 byte 동일).
+- og-comment 마커에 `reactions="👍:alice|bob,✅:carol"` attribute — 콤마로
+  구분된 이모지 항목 목록. 각 항목 = `emoji` (legacy) 또는
+  `emoji:author1|author2`. 빈 목록이면 attr 생략 (구 파일과 byte 동일).
+- **누가 반응했는지** (DEV-108 후속): 항목마다 author 목록을 기록 → GUI 에서
+  pill 호버 시 작성자 표시, 내가 단 반응은 강조. toggle 은 `(slug,id,emoji,
+  author)` — author 가 이미 있으면 해제, 없으면 추가. 마지막 author 가 빠지면
+  항목 제거. 빈 author 는 `(익명)` 으로 기록 (항상 1명 이상 보장).
+  - `repo::comments::split_reaction` / `join_reaction` 가 인코딩 담당. 구
+    `reactions="👍,✅"` (author 없는 legacy) 도 그대로 파싱 (authors 빈 목록).
 - **file-only** — `quest_comments` 캐시에 컬럼 없음. 댓글 read 경로가 file
   직접 (`list_comment_entries`) 이라 무방, 캐시 재구축도 file 재파싱.
-- single-user 단계 = 이모지당 on/off. multi-user (DEV-021) 진입 시 user 별
-  분리로 포맷 확장 (예: per-user attr 또는 별도 마커).
-- emoji 값 제약: `,` / `"` 금지 (마커 attr 안전) — ops 에서 검증.
+- single-user 단계 = author 이름이 곧 작성자. multi-user (DEV-021) 진입 시
+  실제 user_id 와 연결로 확장.
+- emoji / author 값 제약: `,` `"` `:` `|` 금지 (마커 attr / 인코딩 안전) —
+  ops 에서 검증.
 
 ### 토론(discussion) 댓글 + 완료 게이트 — DEV-142 (구현 완료)
 

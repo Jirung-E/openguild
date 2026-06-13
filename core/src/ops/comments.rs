@@ -223,31 +223,60 @@ pub async fn toggle_comment_reaction(
     slug: &str,
     id: u64,
     emoji: &str,
+    author: &str,
 ) -> AppResult<CommentEntry> {
     let emoji = emoji.trim();
-    if emoji.is_empty() || emoji.contains(',') || emoji.contains('"') {
+    let bad = |c: char| matches!(c, ',' | '"' | ':' | '|');
+    if emoji.is_empty() || emoji.contains(bad) {
         return Err(AppError::BadRequest(
-            "emoji 는 비어있지 않아야 하고 ',' / '\"' 를 포함할 수 없음".into(),
+            "emoji 는 비어있지 않아야 하고 , \" : | 를 포함할 수 없음".into(),
         ));
     }
+    // DEV-108: 누가 반응했는지 기록 — 빈 author 는 '(익명)' 으로 대체해 항상 1명
+    // 이상 보장 (toggle 로직 단순화 + 호버에 표시할 이름 보장).
+    let author = author.trim();
+    if author.contains(bad) {
+        return Err(AppError::BadRequest(
+            "author 는 , \" : | 를 포함할 수 없음".into(),
+        ));
+    }
+    let author = if author.is_empty() { "(익명)" } else { author };
     let _ = journal::append(
         &store.journal_pool,
         "toggle_comment_reaction",
-        &json!({ "slug": slug, "id": id, "emoji": emoji }),
+        &json!({ "slug": slug, "id": id, "emoji": emoji, "author": author }),
         None::<&serde_json::Value>,
     )
     .await
     .map_err(AppError::Internal)?;
 
+    use crate::repo::comments::{join_reaction, split_reaction};
     let mut entries = svc::list_entries(store, slug)?;
     let entry = entries
         .iter_mut()
         .find(|e| e.id == id)
         .ok_or_else(|| AppError::NotFound(format!("comment {id} not found for {slug}")))?;
-    if let Some(pos) = entry.reactions.iter().position(|r| r == emoji) {
-        entry.reactions.remove(pos);
+    // 같은 emoji 항목을 찾아 author 를 토글. 없으면 새 항목.
+    if let Some(pos) = entry
+        .reactions
+        .iter()
+        .position(|r| split_reaction(r).0 == emoji)
+    {
+        let (_, mut authors) = split_reaction(&entry.reactions[pos]);
+        if let Some(ap) = authors.iter().position(|a| a == author) {
+            authors.remove(ap); // 이미 반응함 → 해제.
+        } else {
+            authors.push(author.to_string());
+        }
+        if authors.is_empty() {
+            entry.reactions.remove(pos);
+        } else {
+            entry.reactions[pos] = join_reaction(emoji, &authors);
+        }
     } else {
-        entry.reactions.push(emoji.to_string());
+        entry
+            .reactions
+            .push(join_reaction(emoji, &[author.to_string()]));
     }
     let updated = entry.clone();
     crate::repo::comments::write_entries(&store.paths, slug, &entries)
@@ -472,19 +501,44 @@ mod tests {
             .await
             .unwrap();
 
-        let on = toggle_comment_reaction(&store, &slug, 1, "👍").await.unwrap();
-        assert_eq!(on.reactions, vec!["👍"]);
+        // DEV-108: author 별 토글 — emoji:author 인코딩으로 누가 반응했는지 기록.
+        let on = toggle_comment_reaction(&store, &slug, 1, "👍", "alice")
+            .await
+            .unwrap();
+        assert_eq!(on.reactions, vec!["👍:alice"]);
         // 파일에 attr 로 남아 재파싱에도 살아있어야.
         let listed = list_comment_entries(&store, &slug).unwrap();
-        assert_eq!(listed[0].reactions, vec!["👍"]);
+        assert_eq!(listed[0].reactions, vec!["👍:alice"]);
 
-        let off = toggle_comment_reaction(&store, &slug, 1, "👍").await.unwrap();
+        // 다른 author 가 같은 emoji → authors 누적.
+        let two = toggle_comment_reaction(&store, &slug, 1, "👍", "bob")
+            .await
+            .unwrap();
+        assert_eq!(two.reactions, vec!["👍:alice|bob"]);
+
+        // alice 재토글 → 본인만 빠짐.
+        let one = toggle_comment_reaction(&store, &slug, 1, "👍", "alice")
+            .await
+            .unwrap();
+        assert_eq!(one.reactions, vec!["👍:bob"]);
+
+        // 마지막 author 빠지면 reaction 자체 제거.
+        let off = toggle_comment_reaction(&store, &slug, 1, "👍", "bob")
+            .await
+            .unwrap();
         assert!(off.reactions.is_empty());
 
-        // validation — 빈 값 / 콤마 / 따옴표 거부, 없는 entry NotFound.
-        assert!(toggle_comment_reaction(&store, &slug, 1, " ").await.is_err());
-        assert!(toggle_comment_reaction(&store, &slug, 1, "a,b").await.is_err());
-        assert!(toggle_comment_reaction(&store, &slug, 99, "👍").await.is_err());
+        // 빈 author → '(익명)' 으로 기록.
+        let anon = toggle_comment_reaction(&store, &slug, 1, "✅", "")
+            .await
+            .unwrap();
+        assert_eq!(anon.reactions, vec!["✅:(익명)"]);
+
+        // validation — 빈 emoji / 콤마 / 콜론 거부, 없는 entry NotFound.
+        assert!(toggle_comment_reaction(&store, &slug, 1, " ", "a").await.is_err());
+        assert!(toggle_comment_reaction(&store, &slug, 1, "a,b", "a").await.is_err());
+        assert!(toggle_comment_reaction(&store, &slug, 1, "a:b", "a").await.is_err());
+        assert!(toggle_comment_reaction(&store, &slug, 99, "👍", "a").await.is_err());
 
         let _ = std::fs::remove_dir_all(&dir);
     }

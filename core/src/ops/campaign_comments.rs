@@ -193,38 +193,64 @@ pub async fn delete_entry(store: &Store, slug: &str, id: u64) -> AppResult<()> {
     Ok(())
 }
 
-/// DEV-108 동일: 이모지 반응 토글.
+/// DEV-108 동일: 이모지 반응 토글 (author 별 — 누가 반응했는지 호버 표시).
 pub async fn toggle_reaction(
     store: &Store,
     slug: &str,
     id: u64,
     emoji: &str,
+    author: &str,
 ) -> AppResult<CommentEntry> {
     let emoji = emoji.trim();
-    if emoji.is_empty() || emoji.contains(',') || emoji.contains('"') {
+    let bad = |c: char| matches!(c, ',' | '"' | ':' | '|');
+    if emoji.is_empty() || emoji.contains(bad) {
         return Err(AppError::BadRequest(
-            "emoji 는 비어있지 않아야 하고 ',' / '\"' 를 포함할 수 없음".into(),
+            "emoji 는 비어있지 않아야 하고 , \" : | 를 포함할 수 없음".into(),
         ));
     }
+    let author = author.trim();
+    if author.contains(bad) {
+        return Err(AppError::BadRequest(
+            "author 는 , \" : | 를 포함할 수 없음".into(),
+        ));
+    }
+    let author = if author.is_empty() { "(익명)" } else { author };
     let _ = journal::append(
         &store.journal_pool,
         "toggle_campaign_comment_reaction",
-        &json!({ "slug": slug, "id": id, "emoji": emoji }),
+        &json!({ "slug": slug, "id": id, "emoji": emoji, "author": author }),
         None::<&serde_json::Value>,
     )
     .await
     .map_err(AppError::Internal)?;
 
+    use crate::repo::comments::{join_reaction, split_reaction};
     let path = store.paths.campaign_comments_path(slug);
     let mut entries = repo::read_entries_at(&path).map_err(AppError::Internal)?;
     let entry = entries
         .iter_mut()
         .find(|e| e.id == id)
         .ok_or_else(|| AppError::NotFound(format!("comment {id} not found for {slug}")))?;
-    if let Some(pos) = entry.reactions.iter().position(|r| r == emoji) {
-        entry.reactions.remove(pos);
+    if let Some(pos) = entry
+        .reactions
+        .iter()
+        .position(|r| split_reaction(r).0 == emoji)
+    {
+        let (_, mut authors) = split_reaction(&entry.reactions[pos]);
+        if let Some(ap) = authors.iter().position(|a| a == author) {
+            authors.remove(ap);
+        } else {
+            authors.push(author.to_string());
+        }
+        if authors.is_empty() {
+            entry.reactions.remove(pos);
+        } else {
+            entry.reactions[pos] = join_reaction(emoji, &authors);
+        }
     } else {
-        entry.reactions.push(emoji.to_string());
+        entry
+            .reactions
+            .push(join_reaction(emoji, &[author.to_string()]));
     }
     let updated = entry.clone();
     repo::write_entries_at(&path, &entries).map_err(AppError::Internal)?;
@@ -347,9 +373,9 @@ mod tests {
     async fn reaction_toggle_and_memo() {
         let (dir, store) = setup("react").await;
         add_entry(&store, "C-001", "a".into(), "x".into(), None).await.unwrap();
-        let r1 = toggle_reaction(&store, "C-001", 1, "👍").await.unwrap();
-        assert_eq!(r1.reactions, vec!["👍"]);
-        let r2 = toggle_reaction(&store, "C-001", 1, "👍").await.unwrap();
+        let r1 = toggle_reaction(&store, "C-001", 1, "👍", "alice").await.unwrap();
+        assert_eq!(r1.reactions, vec!["👍:alice"]);
+        let r2 = toggle_reaction(&store, "C-001", 1, "👍", "alice").await.unwrap();
         assert!(r2.reactions.is_empty());
 
         assert!(get_memo(&store, "C-001").unwrap().is_none());

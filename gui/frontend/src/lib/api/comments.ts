@@ -52,8 +52,8 @@ function makeCommentsApi(base: (slug: string) => string) {
 		deleteComment: (slug: string, id: number) =>
 			api.delete(`${base(slug)}/comments/${id}`),
 		// DEV-108: 이모지 반응 토글 — 갱신된 entry 반환.
-		toggleReaction: (slug: string, id: number, emoji: string) =>
-			api.post<CommentEntry>(`${base(slug)}/comments/${id}/reactions`, { emoji }),
+		toggleReaction: (slug: string, id: number, emoji: string, author: string) =>
+			api.post<CommentEntry>(`${base(slug)}/comments/${id}/reactions`, { emoji, author }),
 		// DEV-142: 토론 플래그 / resolve 토글 — 갱신된 entry 반환.
 		toggleDiscussion: (slug: string, id: number) =>
 			api.post<CommentEntry>(`${base(slug)}/comments/${id}/discussion`, {}),
