@@ -33,6 +33,9 @@
 	let statuses = $state<QuestStatus[]>([]);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
+	// DEV-033 fix: 초기 복원 완료 플래그 — true 가 되기 전엔 영속 effect 가
+	// 저장하지 않음 (기본값으로 덮어쓰는 race 방지).
+	let initialized = $state(false);
 	// DEV-074 fix14: 내부 .list 의 ref — OverlayScrollbar target 으로 전달.
 	let listEl: HTMLDivElement | undefined = $state(undefined);
 
@@ -211,6 +214,11 @@
 		}
 		// DEV-126 fix2: 데이터 로드 후 컨테이너 스크롤 위치 복원 (reload 대비).
 		restoreListScroll();
+		// DEV-033 fix: 모든 복원(URL/localStorage)이 끝난 뒤에야 영속 effect 가
+		// 저장하도록 — loading 만으로 막으면 loadData 의 finally 에서 loading 이
+		// false 가 되는 시점(아직 복원 전)에 effect 가 기본값(id:asc)으로 덮어써
+		// 저장된 정렬이 매번 날아갔다.
+		initialized = true;
 	});
 
 	// DEV-126 fix2: .list 컨테이너 스크롤 저장 — throttle + 페이지 떠나기 직전.
@@ -251,8 +259,8 @@
 	// state → URL (변경 시).
 	// `replaceState=true` 로 history 폭증 방지.
 	$effect(() => {
-		// 최초 onMount 전에는 무시.
-		if (loading) return;
+		// DEV-033 fix: 복원 완료 전엔 무시 (기본값을 URL 에 쓰지 않도록).
+		if (!initialized) return;
 		const url = new URL($page.url);
 		if (search.trim()) url.searchParams.set('search', search.trim());
 		else url.searchParams.delete('search');
@@ -285,7 +293,10 @@
 
 	// DEV-033: 필터 상태를 Board 공유 store 로 mirror (List 가 truth).
 	// (import 는 상단 — DEV-135 의 mount 복원과 공유.)
+	// DEV-033 fix: 복원 완료 전엔 mirror 안 함 — onMount 의 store→state 복원을
+	// 기본값으로 덮어쓰는 race 방지.
 	$effect(() => {
+		if (!initialized) return;
 		questFilters.set({
 			typeIds: filterTypeIds,
 			statusIds: filterStatusIds,
@@ -302,9 +313,9 @@
 		});
 	});
 
-	// DEV-033: 정렬 선택 localStorage 영속.
+	// DEV-033: 정렬 선택 localStorage 영속. (DEV-033 fix: loading → initialized)
 	$effect(() => {
-		if (loading) return;
+		if (!initialized) return;
 		try {
 			localStorage.setItem(SORT_KEY, `${sortKey}:${sortDesc ? 'desc' : 'asc'}`);
 		} catch {
@@ -314,7 +325,7 @@
 
 	// DEV-065: mode 변경 시 localStorage 영속.
 	$effect(() => {
-		if (loading) return;
+		if (!initialized) return;
 		try {
 			localStorage.setItem(VIEW_MODE_KEY, viewMode);
 		} catch {
