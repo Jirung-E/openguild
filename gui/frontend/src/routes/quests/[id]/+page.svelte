@@ -20,7 +20,7 @@
 	// DEV-117: CodeMirror 의 기본 historyKeymap 은 Windows 에서 Ctrl+Y 만 redo —
 	// Ctrl+Shift+Z 는 Mac 전용. 양쪽 모두 지원하려면 keymap 추가.
 	import { keymap } from '@codemirror/view';
-	import { redo, indentWithTab } from '@codemirror/commands';
+	import { redo } from '@codemirror/commands';
 	// DEV-069: 편집기 첨부 — 클립보드 이미지 paste / 파일 drag&drop 업로드.
 	import { attachmentExtension } from '$lib/utils/editor-attach';
 	// DEV-140: 본문 cross-link — XXX-NNN 타이핑 시 [[...]] 링크 자동완성.
@@ -319,9 +319,9 @@
 				...(eff === 'dark' ? [oneDark] : []),
 				// DEV-117: Windows 표준 redo (Ctrl+Shift+Z) 추가 — 기본 historyKeymap 은
 				// Ctrl+Y 만. basicSetup 다음에 두어 우선 적용.
-				// DEV-130: Tab = 들여쓰기 (focus 이동 X). Esc 후 Tab 으로 탈출 가능.
-				keymap.of([{ key: 'Mod-Shift-z', run: redo, preventDefault: true }, indentWithTab]),
-				// DEV-130: tab/space + 2/4칸 들여쓰기 설정 적용 (indentWithTab 이 이 단위 사용).
+				// DEV-117: Windows 표준 redo. (Tab 들여쓰기는 indentExtensions 가 담당.)
+				keymap.of([{ key: 'Mod-Shift-z', run: redo, preventDefault: true }]),
+				// DEV-130: tab/space + 2/4칸 들여쓰기 — Tab 키맵 + indentUnit/tabSize.
 				indentExtensions($editorSettings),
 				// DEV-069: 클립보드 이미지 paste / 파일 drag&drop → 첨부 업로드.
 				attachmentExtension((msg) => (saveError = `첨부 업로드 실패: ${msg}`)),

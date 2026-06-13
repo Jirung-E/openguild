@@ -6,6 +6,8 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { campaignsApi } from '$lib/api/campaigns';
+	// DEV-130 #2: 본문 textarea Tab = 들여쓰기 (설정 반영).
+	import { tabInsert } from '$lib/actions/tab-insert';
 
 	let title = $state('');
 	let startedAt = $state('');
@@ -75,6 +77,7 @@
 		<label>
 			<span class="lab">본문 (markdown, 선택)</span>
 			<textarea
+				use:tabInsert
 				bind:value={description}
 				rows="10"
 				disabled={saving}

@@ -28,9 +28,7 @@
 	import { EditorView, basicSetup } from 'codemirror';
 	import { markdown } from '@codemirror/lang-markdown';
 	import { oneDark } from '@codemirror/theme-one-dark';
-	// DEV-130: Tab = 들여쓰기 (focus 이동 X).
-	import { keymap } from '@codemirror/view';
-	import { indentWithTab } from '@codemirror/commands';
+	// DEV-130: Tab = 들여쓰기 — indentExtensions 가 Tab 키맵 포함 (focus 이동 X).
 	// DEV-069: 편집기 첨부 — 클립보드 이미지 paste / 파일 drag&drop 업로드.
 	import { attachmentExtension } from '$lib/utils/editor-attach';
 	// DEV-140: 본문 cross-link — XXX-NNN 타이핑 시 [[...]] 링크 자동완성.
@@ -93,9 +91,7 @@
 				basicSetup,
 				markdown(),
 				oneDark,
-				// DEV-130: Tab = 들여쓰기 (focus 이동 X).
-				keymap.of([indentWithTab]),
-				// DEV-130: tab/space + 2/4칸 들여쓰기 설정 적용.
+				// DEV-130: tab/space + 2/4칸 들여쓰기 — Tab 키맵 + indentUnit/tabSize.
 				indentExtensions($editorSettings),
 				// DEV-069: 클립보드 이미지 paste / 파일 drag&drop → 첨부 업로드.
 				attachmentExtension((msg) => (error = `첨부 업로드 실패: ${msg}`)),

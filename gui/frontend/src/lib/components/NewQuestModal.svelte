@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { questsApi } from '$lib/api/quests';
 	import { metaApi } from '$lib/api/meta';
+	// DEV-130 #2: 설명 textarea 도 Tab = 들여쓰기 (focus 이동 X), 설정 반영.
+	import { tabInsert } from '$lib/actions/tab-insert';
 	import { adminApi } from '$lib/api/admin';
 	import { onMount } from 'svelte';
 	import { URGENCY_LABEL, type Quest, type QuestType, type QuestStatus } from '$lib/types';
@@ -268,6 +270,7 @@
 					<label class="field-label">
 						<span>설명 (선택)</span>
 						<textarea
+							use:tabInsert
 							class="ta"
 							rows="5"
 							placeholder="Markdown 형식으로 작성할 수 있습니다"
