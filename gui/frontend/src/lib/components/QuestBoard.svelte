@@ -7,6 +7,8 @@
 	import type { Core, NodeSingular, Css, StylesheetJson } from 'cytoscape';
 	import { goto } from '$app/navigation';
 	import { questsApi } from '$lib/api/quests';
+	// DEV-142 후속: 상태 변경 실패(미해결 토론 등) 시 통일된 toast 경고.
+	import { showToast } from '$lib/stores/toast';
 	import { metaApi } from '$lib/api/meta';
 	import { detectEnvironment } from '$lib/api/transport';
 	// BUG-034: 유효 기한 (퀘스트 required_due vs 연결 캠페인 ended_at) 계산 헬퍼.
@@ -973,7 +975,11 @@
 					await questsApi.changeStatus(record.questId, { status_slug: slugOf(target.statusId) });
 					node.data('statusId', target.statusId);
 					applyStatusChange(record.questId, target.statusId);
-				} catch { busy = false; return; }
+				} catch (e) {
+					showToast(e instanceof Error ? e.message : '상태 변경 실패', 'error');
+					busy = false;
+					return;
+				}
 			}
 			node.animate({ position: { x: target.x, y: target.y }, duration: 120 });
 			// DEV-067: record.to.x 는 visual. DB 는 absolute.
@@ -994,7 +1000,10 @@
 						await questsApi.changeStatus(item.questId, { status_slug: slugOf(target.statusId) });
 						node.data('statusId', target.statusId);
 						applyStatusChange(item.questId, target.statusId);
-					} catch { continue; }
+					} catch (e) {
+							showToast(e instanceof Error ? e.message : '상태 변경 실패', 'error');
+							continue;
+						}
 				}
 				node.animate({ position: { x: target.x, y: target.y }, duration: 200 });
 				// DEV-067: target.x 는 visual. DB 는 absolute.
@@ -2463,9 +2472,11 @@
 						await questsApi.changeStatus(questId, { status_slug: newStatus.slug });
 						node.data('statusId', newStatus.id);
 						applyStatusChange(questId, newStatus.id);
-					} catch {
-						// API 실패 → 드래그 시작 위치로 복원
+					} catch (e) {
+						// API 실패 (예: DEV-142 미해결 토론으로 완료 차단) → 시작 위치로
+						// 복원 + 사유 toast (이전엔 무경고로 되돌리기만 해 혼란).
 						node.animate({ position: { x: fromPos.x, y: fromPos.y }, duration: 150 });
+						showToast(e instanceof Error ? e.message : '상태 변경 실패', 'error');
 						continue;
 					}
 				}

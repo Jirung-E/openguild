@@ -4,6 +4,8 @@
 	import { onMount } from 'svelte';
 	import Nav from '$lib/components/Nav.svelte';
 	import UpdateBanner from '$lib/components/UpdateBanner.svelte';
+	// 앱 공용 toast — alert() 대체, 어디서든 동일 UI.
+	import ToastHost from '$lib/components/ToastHost.svelte';
 	import SchemaAheadBanner from '$lib/components/SchemaAheadBanner.svelte';
 	// DEV-074 fix13: window 스크롤 overlay — 컨텐츠 폭 차지 X.
 	import OverlayScrollbar from '$lib/components/OverlayScrollbar.svelte';
@@ -222,6 +224,7 @@
 	{@render children()}
 </main>
 <OverlayScrollbar />
+<ToastHost />
 
 <style>
 	main {

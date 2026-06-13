@@ -27,6 +27,8 @@
 	import { crossLinkAutocomplete } from '$lib/utils/editor-links';
 	// DEV-130: 편집기 들여쓰기 설정 (tab/space + 2/4칸).
 	import { indentExtensions } from '$lib/utils/editor-indent';
+	// alert() 대신 통일된 toast (UI 일관성 — DEV-142 완료 차단 경고 등).
+	import { showToast } from '$lib/stores/toast';
 	import { editorSettings } from '$lib/stores/editorSettings';
 	import {
 		URGENCY_LABEL,
@@ -406,7 +408,7 @@
 			historyVersion += 1;
 			setTimeout(() => { if (statusFlashId === statusId) statusFlashId = null; }, 600);
 		} catch (e) {
-			alert(e instanceof Error ? e.message : 'status change failed');
+			showToast(e instanceof Error ? e.message : 'status change failed', 'error');
 		} finally {
 			changingStatus = false;
 		}
@@ -434,7 +436,7 @@
 			// slug 바뀜 → 새 slug 의 URL 로 navigate. BUG-015 fix1: from 보존.
 			await goto(`/quests/${updated.quest_id}${fromSuffix}`, { replaceState: true });
 		} catch (e) {
-			alert(e instanceof Error ? e.message : 'type change failed');
+			showToast(e instanceof Error ? e.message : 'type change failed', 'error');
 		} finally {
 			changingType = false;
 		}
@@ -501,7 +503,7 @@
 			await questsApi.changeParent(subId, { parent_quest_id: null });
 			detail = await questsApi.getBySlug(slug);
 		} catch (e) {
-			alert(e instanceof Error ? e.message : '분리 실패');
+			showToast(e instanceof Error ? e.message : '분리 실패', 'error');
 		}
 	}
 
@@ -511,7 +513,7 @@
 			await questsApi.removePrerequisite(detail.id, prereqId);
 			detail = await questsApi.getBySlug(slug);
 		} catch (e) {
-			alert(e instanceof Error ? e.message : 'failed');
+			showToast(e instanceof Error ? e.message : 'failed', 'error');
 		}
 	}
 
@@ -537,7 +539,7 @@
 			newTagText = '';
 			tagInputOpen = false;
 		} catch (err) {
-			alert(err instanceof Error ? err.message : 'failed');
+			showToast(err instanceof Error ? err.message : 'failed', 'error');
 		}
 	}
 	async function removeTag(t: string) {
@@ -547,7 +549,7 @@
 			await questsApi.setTags(detail.id, after);
 			detail = await questsApi.getBySlug(slug);
 		} catch (err) {
-			alert(err instanceof Error ? err.message : 'failed');
+			showToast(err instanceof Error ? err.message : 'failed', 'error');
 		}
 	}
 
@@ -585,7 +587,7 @@
 			// query param 분기 (list / board / home / campaign).
 			goBack();
 		} catch (e) {
-			alert(e instanceof Error ? e.message : '삭제 실패');
+			showToast(e instanceof Error ? e.message : '삭제 실패', 'error');
 			deleting = false;
 		}
 	}
@@ -645,7 +647,7 @@
 			await campaignsApi.unlinkQuest(campaignSlug, detail.quest_id);
 			linkedCampaigns = await campaignsApi.forQuest(detail.id);
 		} catch (e) {
-			alert(e instanceof Error ? e.message : 'campaign 연결 해제 실패');
+			showToast(e instanceof Error ? e.message : 'campaign 연결 해제 실패', 'error');
 		}
 	}
 </script>
