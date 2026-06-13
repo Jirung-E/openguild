@@ -2927,6 +2927,7 @@ name = "openguild-gui"
 version = "0.2.0-beta"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "chrono",
  "openguild-core",
  "serde",

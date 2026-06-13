@@ -554,6 +554,32 @@ openguild migrate-to-files
   quest 후보. 댓글 파일은 git tracked 라 손실 위험 낮음, 메모는 gitignored
   + 캐시 없음 = 백업 사각지대 (quest 메모의 DEV-102 이전과 동일 상태).
 
+### 본문 첨부파일 — DEV-069 (구현 완료)
+
+- 진리원 = `.guild/attachments/{nanos}-{rand}.{ext}` 실제 파일. 본문이
+  `![](attachments/foo.png)` (이미지) / `<video src="attachments/x.mp4">`
+  / `[name](attachments/y.pdf)` 로 참조. GUI 의 `MarkdownView.rewriteLocalMedia`
+  가 `attachments/` 상대 src 를 Tauri asset URL (또는 server `/api/guild-files/`)
+  로 재작성해 표시.
+- **백업 = `attachment_blobs` BLOB 캐시** (migration 0018). **git 은 선택사항**
+  이므로 (사용자 결정) 첨부도 snapshot 만으로 복원 가능해야 함 — 댓글/메모와
+  달리 첨부는 바이너리라 파일 자체를 DB 에 담아야 snapshot 에 합류.
+  - `rel_path` PK / `bytes` BLOB / `mtime` (Unix nanos, `cached_mtime` 규약).
+  - `ops::attachments::save_attachment` = 확장자 검증 (이미지/동영상/pdf 화이트
+    리스트) + journal append + 파일 write + blob UPSERT.
+  - `reindex` 가 `sync_attachment_blobs` 로 **양방향 self-heal**:
+    1. 디렉토리의 새/변경 (mtime) 파일 → blob UPSERT (외부에서 직접 넣은
+       첨부도 백업에 합류).
+    2. blob 만 있고 파일이 사라짐 (snapshot restore 직후 등) → 파일 복원 →
+       복원 후 새 mtime 으로 blob 갱신 (다음 sync 가 재-upsert 안 하게).
+  - snapshot = `index.db` binary copy 라 blob 자동 포함. git 없이 snapshot
+    복원만으로 첨부 전체 부활.
+- **업로드 UX** (GUI, Tauri 전용): quest / campaign 상세 편집기 (CodeMirror)
+  에 `editor-attach.ts` 의 `attachmentExtension` — 클립보드 이미지 Ctrl+V
+  paste + 파일 drag&drop → base64 → `save_attachment` invoke → 반환 rel 경로를
+  커서 위치에 마크다운 삽입 (업로드 중 placeholder 표시). 브라우저(server)
+  모드 업로드 + 첨부 삭제 UX 는 DEV-097 범위.
+
 - migration 0014: `app_meta(key TEXT PK, value TEXT)` 단순 key-value 테이블.
 - `reindex()` 가 transaction commit 직전 `('last_indexed_at', NOW_ISO)` UPSERT.
 - `detect_drift` 가 그 값을 SystemTime 으로 파싱해 임계값으로 사용 — file mtime

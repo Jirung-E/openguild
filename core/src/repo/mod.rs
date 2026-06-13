@@ -128,8 +128,8 @@ impl GuildPaths {
         self.dot_guild().join("assets")
     }
 
-    /// DEV-069: 본문 첨부 디렉토리 (`.guild/attachments/`). git tracked.
-    /// markdown 본문이 `![](attachments/foo.png)` 로 참조.
+    /// DEV-069: 본문 첨부 디렉토리 (`.guild/attachments/`). git tracked + `attachment_blobs`
+    /// blob 백업 (git 미사용 시 snapshot 복원용). markdown 본문이 `![](attachments/foo.png)` 로 참조.
     pub fn attachments_dir(&self) -> PathBuf {
         self.dot_guild().join("attachments")
     }

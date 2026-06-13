@@ -1344,6 +1344,24 @@ pub async fn set_campaign_banner(
     .map_err(err)
 }
 
+/// DEV-069: 본문 첨부 저장 — 클립보드 paste / 드래그&드랍 파일을 base64 로
+/// 받아 `.guild/attachments/` 에 write + blob 백업. 반환: 본문 참조용
+/// 상대 경로 (`attachments/...`).
+#[tauri::command]
+pub async fn save_attachment(
+    store: State<'_, Store>,
+    data_base64: String,
+    ext: String,
+) -> Result<String, String> {
+    use base64::Engine as _;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data_base64.as_bytes())
+        .map_err(|e| format!("base64 decode 실패: {e}"))?;
+    openguild_core::ops::attachments::save_attachment(&store, &bytes, &ext)
+        .await
+        .map_err(err)
+}
+
 #[tauri::command]
 pub async fn clear_campaign_banner(
     store: State<'_, Store>,

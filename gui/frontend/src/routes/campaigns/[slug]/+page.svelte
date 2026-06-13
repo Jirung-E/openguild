@@ -31,6 +31,8 @@
 	// DEV-130: Tab = 들여쓰기 (focus 이동 X).
 	import { keymap } from '@codemirror/view';
 	import { indentWithTab } from '@codemirror/commands';
+	// DEV-069: 편집기 첨부 — 클립보드 이미지 paste / 파일 drag&drop 업로드.
+	import { attachmentExtension } from '$lib/utils/editor-attach';
 
 	let slug = $derived($page.params.slug ?? '');
 	let detail = $state<CampaignDetail | null>(null);
@@ -88,6 +90,8 @@
 				oneDark,
 				// DEV-130: Tab = 들여쓰기 (focus 이동 X).
 				keymap.of([indentWithTab]),
+				// DEV-069: 클립보드 이미지 paste / 파일 drag&drop → 첨부 업로드.
+				attachmentExtension((msg) => (error = `첨부 업로드 실패: ${msg}`)),
 				EditorView.theme({
 					'&': { fontSize: '0.875rem', borderRadius: '6px', height: '100%' },
 					'.cm-editor': { borderRadius: '6px', height: '100%' },

@@ -36,6 +36,9 @@ pub struct ReindexReport {
     pub memos_loaded: usize,
     /// DEV-068: frontmatter tags 에서 적재된 tag 수 (quest 전체 합산, 중복 dedupe 후).
     pub tags_loaded: usize,
+    /// DEV-069: attachment blob 백업 갱신 수 / blob 에서 복원된 파일 수.
+    pub attachments_backed_up: usize,
+    pub attachments_restored: usize,
     /// 파싱 / 무결성 실패로 skip 된 파일 (경로 + 사유).
     pub skipped: Vec<(String, String)>,
 }
@@ -664,6 +667,13 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
     .await?;
 
     tx.commit().await?;
+
+    // DEV-069: 첨부 blob 양방향 self-heal — 새/변경 파일 → blob 백업,
+    // blob 만 남은 것 (snapshot 복원 직후 등) → 파일 복원.
+    // sync_attachment_blobs 는 store.index_pool 을 직접 쓰므로 commit 이후 호출.
+    let (backed_up, restored) = crate::ops::attachments::sync_attachment_blobs(store).await?;
+    report.attachments_backed_up = backed_up;
+    report.attachments_restored = restored;
 
     // 7. auto 블록을 SQL 기준으로 다시 그려서 파일에 쓰기 — 외부 편집 결과
     //    auto 블록이 stale 일 수 있음. write_consistent_auto_blocks 가 옵션.
