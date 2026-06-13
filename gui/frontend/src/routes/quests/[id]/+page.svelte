@@ -23,6 +23,8 @@
 	import { redo, indentWithTab } from '@codemirror/commands';
 	// DEV-069: 편집기 첨부 — 클립보드 이미지 paste / 파일 drag&drop 업로드.
 	import { attachmentExtension } from '$lib/utils/editor-attach';
+	// DEV-140: 본문 cross-link — XXX-NNN 타이핑 시 [[...]] 링크 자동완성.
+	import { crossLinkAutocomplete } from '$lib/utils/editor-links';
 	import {
 		URGENCY_LABEL,
 		urgencyColor,
@@ -316,6 +318,8 @@
 				keymap.of([{ key: 'Mod-Shift-z', run: redo, preventDefault: true }, indentWithTab]),
 				// DEV-069: 클립보드 이미지 paste / 파일 drag&drop → 첨부 업로드.
 				attachmentExtension((msg) => (saveError = `첨부 업로드 실패: ${msg}`)),
+				// DEV-140: XXX-NNN 타이핑 → [[...]] cross-link 자동완성.
+				crossLinkAutocomplete(),
 				EditorView.theme({
 					'&': { fontSize: '0.875rem', borderRadius: '6px', height: '100%' },
 					'.cm-editor': { borderRadius: '6px', height: '100%' },

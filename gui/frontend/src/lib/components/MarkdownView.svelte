@@ -10,6 +10,13 @@
 	import { tick } from 'svelte';
 	// DEV-111: mermaid 다이어그램 렌더링 — lazy import (~700KB), 블록 있을 때만.
 	import { theme, resolveTheme } from '$lib/stores/theme';
+	// DEV-140: 본문 cross-link — [[DEV-033]] / [[C-001]] 위키문법을 링크로.
+	import {
+		questIndex,
+		loadQuestIndex,
+		lookupRef,
+		refHref
+	} from '$lib/stores/questIndex';
 
 	let { source }: { source: string } = $props();
 
@@ -87,15 +94,81 @@
 		pre.replaceWith(err);
 	}
 
+	// DEV-140: cross-link 판정용 인덱스 — 최초 1회 적재 (실패 무해).
+	loadQuestIndex();
+
 	$effect(() => {
-		// html / theme 변경 시 재렌더.
+		// html / theme / 인덱스 변경 시 재렌더.
 		void html;
 		void $theme;
+		void $questIndex;
 		tick().then(() => {
 			renderMermaidBlocks();
 			rewriteLocalMedia();
+			rewriteCrossLinks();
 		});
 	});
+
+	// DEV-140: `[[DEV-033]]` / `[[C-001]]` → 내부 링크. 미존재 ID 는 빨강.
+	//
+	// marked 는 `[[...]]` 를 링크로 해석하지 않아 본문에 리터럴 텍스트로 남음.
+	// 렌더 후 텍스트 노드만 훑어 토큰을 anchor 로 치환 (code/pre/기존 a 안은 제외).
+	const CROSS_LINK_RE = /\[\[([A-Za-z]{1,}-\d+)\]\]/g;
+	// 별도 non-global tester — /g 의 lastIndex 부작용 없이 acceptNode 에서 검사.
+	const CROSS_LINK_TEST = /\[\[[A-Za-z]{1,}-\d+\]\]/;
+	function guessKind(id: string): 'quest' | 'campaign' {
+		const ref = lookupRef(id);
+		if (ref) return ref.kind;
+		// 미존재 — slug 형태로 추정 (C-NNN 은 캠페인, 그 외 퀘스트).
+		return /^C-\d+$/i.test(id) ? 'campaign' : 'quest';
+	}
+	function rewriteCrossLinks() {
+		if (!container) return;
+		const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
+			acceptNode(node) {
+				const parent = node.parentElement;
+				if (!parent) return NodeFilter.FILTER_REJECT;
+				// code / pre / 이미 만든 링크 안은 건너뜀.
+				if (parent.closest('code, pre, a')) return NodeFilter.FILTER_REJECT;
+				return CROSS_LINK_TEST.test(node.nodeValue ?? '')
+					? NodeFilter.FILTER_ACCEPT
+					: NodeFilter.FILTER_REJECT;
+			}
+		});
+		const targets: Text[] = [];
+		let n: Node | null;
+		while ((n = walker.nextNode())) targets.push(n as Text);
+
+		for (const textNode of targets) {
+			const text = textNode.nodeValue ?? '';
+			CROSS_LINK_RE.lastIndex = 0;
+			const frag = document.createDocumentFragment();
+			let last = 0;
+			let m: RegExpExecArray | null;
+			while ((m = CROSS_LINK_RE.exec(text))) {
+				const [whole, rawId] = m;
+				const id = rawId.toUpperCase();
+				if (m.index > last) {
+					frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+				}
+				const ref = lookupRef(id);
+				const kind = guessKind(id);
+				const a = document.createElement('a');
+				a.href = refHref(id, kind);
+				a.textContent = id;
+				a.className = ref ? 'xlink' : 'xlink missing';
+				a.title = ref
+					? `${kind === 'campaign' ? '캠페인' : '퀘스트'}: ${ref.title}`
+					: `존재하지 않는 ${kind === 'campaign' ? '캠페인' : '퀘스트'} — ${id}`;
+				frag.appendChild(a);
+				last = m.index + whole.length;
+			}
+			if (last < text.length) {
+				frag.appendChild(document.createTextNode(text.slice(last)));
+			}
+			textNode.parentNode?.replaceChild(frag, textNode);
+		}
+	}
 
 	// DEV-069: markdown 본문의 로컬 이미지 / 동영상 참조 해석.
 	//
@@ -185,6 +258,27 @@
 		color: var(--accent);
 		overflow-wrap: anywhere;
 		word-break: break-word;
+	}
+	/* DEV-140: cross-link 칩 — 인라인 ID 링크. 미존재 ID 는 빨강. */
+	.md :global(a.xlink) {
+		font-weight: 600;
+		text-decoration: none;
+		background: color-mix(in srgb, var(--accent) 12%, transparent);
+		border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+		border-radius: 4px;
+		padding: 0 0.3rem;
+		white-space: nowrap;
+	}
+	.md :global(a.xlink:hover) {
+		background: color-mix(in srgb, var(--accent) 22%, transparent);
+	}
+	.md :global(a.xlink.missing) {
+		color: var(--danger);
+		background: color-mix(in srgb, var(--danger) 12%, transparent);
+		border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+	}
+	.md :global(a.xlink.missing:hover) {
+		background: color-mix(in srgb, var(--danger) 20%, transparent);
 	}
 	.md :global(hr) {
 		border: none;
