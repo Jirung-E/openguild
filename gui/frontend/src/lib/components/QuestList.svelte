@@ -4,7 +4,13 @@
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	// DEV-135: mount 시 필터 복원 (Board 와 공유 store).
-	import { questFilters, type QuestFilterState } from '$lib/stores/quest-filter';
+	import {
+		questFilters,
+		serializeFilter,
+		deserializeFilter,
+		FILTER_STORAGE_SUFFIX,
+		type QuestFilterState
+	} from '$lib/stores/quest-filter';
 	// DEV-033 #2: 필터를 길드별 localStorage 에 영속 — Ctrl+R / 앱 재시작 후에도 유지.
 	import { resolveGuildKeyPrefix, guildKey } from '$lib/utils/guild-storage';
 	import { questsApi } from '$lib/api/quests';
@@ -130,7 +136,7 @@
 	// 타입/상태 ID 는 길드마다 달라 guildKey 로 namespace 분리.
 	let filterKeyPrefix = $state('');
 	function filterKey(): string {
-		return guildKey(filterKeyPrefix, 'questListFilter');
+		return guildKey(filterKeyPrefix, FILTER_STORAGE_SUFFIX);
 	}
 	function snapshotFilter(): QuestFilterState {
 		return {
@@ -164,48 +170,14 @@
 	}
 	function saveFilterToStorage() {
 		try {
-			const f = snapshotFilter();
-			localStorage.setItem(
-				filterKey(),
-				JSON.stringify({
-					typeIds: [...f.typeIds],
-					statusIds: [...f.statusIds],
-					search: f.search,
-					titleOnly: f.titleOnly,
-					tags: [...f.tags],
-					urgencies: [...f.urgencies],
-					prereq: f.prereq,
-					sub: f.sub,
-					createdAfter: f.createdAfter,
-					createdBefore: f.createdBefore,
-					updatedAfter: f.updatedAfter,
-					updatedBefore: f.updatedBefore
-				})
-			);
+			localStorage.setItem(filterKey(), serializeFilter(snapshotFilter()));
 		} catch {
 			/* 무시 */
 		}
 	}
 	function loadFilterFromStorage(): QuestFilterState | null {
 		try {
-			const raw = localStorage.getItem(filterKey());
-			if (!raw) return null;
-			const o = JSON.parse(raw);
-			const triOf = (v: unknown): TriState => (v === 'has' || v === 'none' ? v : 'any');
-			return {
-				typeIds: new Set<number>(Array.isArray(o.typeIds) ? o.typeIds : []),
-				statusIds: new Set<number>(Array.isArray(o.statusIds) ? o.statusIds : []),
-				search: typeof o.search === 'string' ? o.search : '',
-				titleOnly: o.titleOnly === true,
-				tags: new Set<string>(Array.isArray(o.tags) ? o.tags : []),
-				urgencies: new Set<number>(Array.isArray(o.urgencies) ? o.urgencies : []),
-				prereq: triOf(o.prereq),
-				sub: triOf(o.sub),
-				createdAfter: typeof o.createdAfter === 'string' ? o.createdAfter : '',
-				createdBefore: typeof o.createdBefore === 'string' ? o.createdBefore : '',
-				updatedAfter: typeof o.updatedAfter === 'string' ? o.updatedAfter : '',
-				updatedBefore: typeof o.updatedBefore === 'string' ? o.updatedBefore : ''
-			};
+			return deserializeFilter(localStorage.getItem(filterKey()));
 		} catch {
 			return null;
 		}

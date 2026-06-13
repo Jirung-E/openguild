@@ -24,8 +24,11 @@
 		type Quest,
 		type QuestDependency,
 		type QuestPosition,
-		type QuestStatus
+		type QuestStatus,
+		type QuestType
 	} from '$lib/types';
+	// DEV-135: 보드에서도 필터 설정 — '보드 설정' 모달에 List 와 동일한 필터 UI.
+	import QuestListFilter from './QuestListFilter.svelte';
 
 	// DEV-084: New Quest 버튼이 toolbar 로 이동 — 클릭 시 부모 (+page) 의 모달 오픈.
 	let { onNewQuest }: { onNewQuest?: () => void } = $props();
@@ -1772,12 +1775,14 @@
 	});
 
 	async function loadBoardData() {
-		const [quests, statuses, positions, dependencies] = await Promise.all([
+		const [quests, statuses, positions, dependencies, types] = await Promise.all([
 			questsApi.list(),
 			metaApi.getQuestStatuses(),
 			questsApi.listPositions(),
-			questsApi.listDependencies()
+			questsApi.listDependencies(),
+			metaApi.getQuestTypes() // DEV-135: 보드 필터 UI 의 타입 칩.
 		]);
+		boardTypes = types;
 		await init(quests, statuses, positions, dependencies);
 		// init 직후 store 에 flash id 가 이미 있으면 즉시 처리
 		//  (Nav 의 New Quest 모달 → goto → 보드 페이지 도착 흐름)
@@ -1787,16 +1792,28 @@
 
 	// DEV-033: List 필터 → Board 반영. 매치 안 되는 노드 dim (fdim data).
 	// UX 는 'dim' (hide 가 아니라) — 위치 관계 (edge / lane 맥락) 보존.
-	import { questFilters, isFilterActive, EMPTY_FILTER } from '$lib/stores/quest-filter';
-	import { filterQuests as filterQuestsForBoard } from '$lib/utils/quest-list';
+	import {
+		questFilters,
+		isFilterActive,
+		EMPTY_FILTER,
+		serializeFilter,
+		deserializeFilter,
+		FILTER_STORAGE_SUFFIX,
+		type QuestFilterState
+	} from '$lib/stores/quest-filter';
+	import { filterQuests as filterQuestsForBoard, type TriState } from '$lib/utils/quest-list';
 	// DEV-135: 필터 활성 chip — 매치 수 표시 + 해제. allQuests 는 의도적
 	// 비-reactive (BUG-054) 라 template 에서 직접 참조하지 않고 effect 가 복사.
 	let filterMatchCount = $state(0);
 	let filterTotalCount = $state(0);
 	let filterActive = $state(false);
-	$effect(() => {
-		const f = $questFilters;
+	// DEV-135 fix: dim 적용 로직을 함수로 분리. effect(필터 변경) 뿐 아니라 cy /
+	// 노드가 만들어진 직후(render 완료)에도 명시 호출 — cy/allQuests 가 비반응
+	// (BUG-054) 라, List→Board 전환처럼 cy 준비 전에 effect 가 한 번 돌고 끝나면
+	// dim 이 영영 안 걸리던 버그(필터 걸어도 보드 변화 없음) 수정.
+	function applyFilterDim() {
 		if (!cy) return;
+		const f = get(questFilters);
 		if (!isFilterActive(f)) {
 			filterActive = false;
 			cy.nodes('[questId]').forEach((n) => {
@@ -1828,6 +1845,10 @@
 			const qid = n.data('questId') as number;
 			n.data('fdim', !matched.has(qid));
 		});
+	}
+	$effect(() => {
+		void $questFilters; // store 변경 추적 → dim 재적용.
+		applyFilterDim();
 	});
 
 	// DEV-135: 필터 해제 — store 리셋 + URL 의 필터 param 제거.
@@ -1835,12 +1856,86 @@
 	// 은 필터가 아니므로 유지.
 	function clearBoardFilter() {
 		questFilters.set(EMPTY_FILTER);
+		saveFilterToStorage(EMPTY_FILTER);
+		if (boardFilterReady) initBoardFilterFromStore();
 		const url = new URL(window.location.href);
 		for (const k of ['search', 'title_only', 'tags']) {
 			url.searchParams.delete(k);
 		}
 		goto(`${url.pathname}${url.search}`, { replaceState: true, keepFocus: true, noScroll: true });
 	}
+
+	// ── DEV-135: 보드에서 필터 설정 ('보드 설정' 모달의 필터 섹션) ──
+	// List 와 동일한 QuestListFilter 를 모달에 띄우고, 편집 시 공유 store +
+	// localStorage(List 와 동일 키) 에 반영 → dim 즉시 갱신 + List 와 일관.
+	let boardTypes = $state<QuestType[]>([]);
+	let boardFilterReady = $state(false);
+	let bfTypeIds = $state(new Set<number>());
+	let bfStatusIds = $state(new Set<number>());
+	let bfSearch = $state('');
+	let bfTitleOnly = $state(false);
+	let bfUrgencies = $state(new Set<number>());
+	let bfPrereq = $state<TriState>('any');
+	let bfSub = $state<TriState>('any');
+	let bfCreatedAfter = $state('');
+	let bfCreatedBefore = $state('');
+	let bfUpdatedAfter = $state('');
+	let bfUpdatedBefore = $state('');
+
+	function saveFilterToStorage(f: QuestFilterState) {
+		try {
+			localStorage.setItem(gk(FILTER_STORAGE_SUFFIX), serializeFilter(f));
+		} catch {
+			/* 무시 */
+		}
+	}
+	function initBoardFilterFromStore() {
+		const f = get(questFilters);
+		bfTypeIds = new Set(f.typeIds);
+		bfStatusIds = new Set(f.statusIds);
+		bfSearch = f.search;
+		bfTitleOnly = f.titleOnly;
+		bfUrgencies = new Set(f.urgencies);
+		bfPrereq = f.prereq;
+		bfSub = f.sub;
+		bfCreatedAfter = f.createdAfter;
+		bfCreatedBefore = f.createdBefore;
+		bfUpdatedAfter = f.updatedAfter;
+		bfUpdatedBefore = f.updatedBefore;
+	}
+	function boardFilterSnapshot(): QuestFilterState {
+		return {
+			typeIds: bfTypeIds,
+			statusIds: bfStatusIds,
+			search: bfSearch,
+			titleOnly: bfTitleOnly,
+			// tags 는 board UI 에서 편집 안 함 — store 의 기존 값 유지.
+			tags: get(questFilters).tags,
+			urgencies: bfUrgencies,
+			prereq: bfPrereq,
+			sub: bfSub,
+			createdAfter: bfCreatedAfter,
+			createdBefore: bfCreatedBefore,
+			updatedAfter: bfUpdatedAfter,
+			updatedBefore: bfUpdatedBefore
+		};
+	}
+	// 보드 필터 편집 → store + localStorage. init 후(boardFilterReady) 에만.
+	$effect(() => {
+		const snap = boardFilterSnapshot(); // bf* 추적.
+		if (!boardFilterReady) return;
+		questFilters.set(snap);
+		saveFilterToStorage(snap);
+	});
+	// '보드 설정' 모달 열림/닫힘에 맞춰 편집 상태 init / 비활성화.
+	$effect(() => {
+		if (showHideModal && !boardFilterReady) {
+			initBoardFilterFromStore();
+			boardFilterReady = true;
+		} else if (!showHideModal && boardFilterReady) {
+			boardFilterReady = false;
+		}
+	});
 
 	// DEV-095: Nav reindex → board 데이터 reload.
 	import { reindexBump } from '$lib/stores/reindex';
@@ -2575,6 +2670,9 @@
 		// 일관 재계산. syncLanes 도 visible 압축 반영.
 		applyLaneVisualCompression();
 		syncLanes();
+		// DEV-135 fix: 렌더 완료(노드 생성) 직후 현재 필터로 dim 적용 —
+		// effect 만으론 cy 준비 전에 돌고 끝나 List→Board 전환 시 dim 누락됨.
+		applyFilterDim();
 	}
 </script>
 
@@ -2858,6 +2956,38 @@
 					{/each}
 				</tbody>
 			</table>
+
+			<!-- DEV-135: 보드 필터 — List 와 동일한 필터 UI. 변경 시 공유 store +
+			     localStorage 에 반영되어 dim 이 즉시 갱신되고 List 와도 일관. -->
+			<div class="bf-section">
+				<div class="bf-head">
+					<h4 class="bf-title">필터</h4>
+					{#if filterActive}
+						<span class="bf-count">{filterMatchCount}/{filterTotalCount} 매치</span>
+						<button class="bf-clear" onclick={clearBoardFilter} title="필터 모두 해제">× 해제</button>
+					{/if}
+				</div>
+				<p class="hide-help">
+					매치 안 되는 노드는 보드에서 흐리게 표시됩니다(숨기지 않음). 여기서 바꾼 필터는 리스트와 공유됩니다.
+				</p>
+				<div class="bf-filter">
+					<QuestListFilter
+						types={boardTypes}
+						statuses={sorted}
+						bind:typeIds={bfTypeIds}
+						bind:statusIds={bfStatusIds}
+						bind:search={bfSearch}
+						bind:titleOnly={bfTitleOnly}
+						bind:urgencies={bfUrgencies}
+						bind:prereqState={bfPrereq}
+						bind:subState={bfSub}
+						bind:createdAfter={bfCreatedAfter}
+						bind:createdBefore={bfCreatedBefore}
+						bind:updatedAfter={bfUpdatedAfter}
+						bind:updatedBefore={bfUpdatedBefore}
+					/>
+				</div>
+			</div>
 		</div>
 	</div>
 {/if}
@@ -3321,6 +3451,33 @@
 		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
 		display: flex; flex-direction: column; gap: 0.75rem;
 		color: var(--text);
+		/* DEV-135: 필터 섹션 추가로 길어질 수 있어 모달 자체 스크롤. */
+		max-height: calc(100vh - 4rem);
+		overflow-y: auto;
+	}
+	/* DEV-135: 보드 설정 모달 안 필터 섹션. */
+	.bf-section {
+		border-top: 1px solid var(--bg-subtle);
+		padding-top: 0.75rem;
+		display: flex; flex-direction: column; gap: 0.4rem;
+	}
+	.bf-head { display: flex; align-items: center; gap: 0.6rem; }
+	.bf-title { margin: 0; font-size: 0.95rem; font-weight: 600; color: var(--text-strong); }
+	.bf-count { font-size: 0.8rem; color: var(--accent); font-weight: 600; }
+	.bf-clear {
+		margin-left: auto;
+		background: transparent;
+		border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+		color: var(--danger);
+		border-radius: 6px; padding: 0.15rem 0.5rem; font-size: 0.78rem; cursor: pointer;
+	}
+	.bf-clear:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
+	/* QuestListFilter 는 본래 가로 바 — 모달 안에선 우측 130px 예약 padding 불필요. */
+	.bf-filter :global(.filter-bar),
+	.bf-filter :global(.adv-bar) {
+		padding-right: 1rem;
+		background: transparent;
+		border-bottom: none;
 	}
 	.hide-head {
 		display: flex; align-items: center; justify-content: space-between;
