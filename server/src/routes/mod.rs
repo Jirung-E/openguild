@@ -56,6 +56,15 @@ pub fn create_router(store: Store) -> Router {
             "/api/quests/by/{slug}/comments/{id}/reactions",
             post(comments::toggle_reaction),
         )
+        // DEV-142: 토론 플래그 / resolve 토글.
+        .route(
+            "/api/quests/by/{slug}/comments/{id}/discussion",
+            post(comments::toggle_discussion),
+        )
+        .route(
+            "/api/quests/by/{slug}/comments/{id}/resolved",
+            post(comments::toggle_resolved),
+        )
         .route(
             "/api/quests/by/{slug}/memo",
             get(comments::get_memo).put(comments::set_memo),

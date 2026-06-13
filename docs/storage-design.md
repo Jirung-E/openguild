@@ -541,6 +541,22 @@ openguild migrate-to-files
   분리로 포맷 확장 (예: per-user attr 또는 별도 마커).
 - emoji 값 제약: `,` / `"` 금지 (마커 attr 안전) — ops 에서 검증.
 
+### 토론(discussion) 댓글 + 완료 게이트 — DEV-142 (구현 완료)
+
+- og-comment 마커에 `discussion="true"` / `resolved="true"` attr 추가 (true 일
+  때만 출력 — 구 파일 byte 호환, reactions 와 동일 방식). `CommentEntry` 에
+  `discussion: bool` / `resolved: bool` 필드. **file-only** (DB 캐시 컬럼 없음).
+- **완료 게이트**: `ops::quests::change_status` 가 target status 의
+  `counts_as_done = true` 면, 해당 quest 의 댓글 파일을 읽어 `discussion &&
+  !resolved` 인 댓글이 하나라도 있으면 `BadRequest` 로 전환 차단. CLI(`quest
+  move ... done`) / GUI 공통 — core 한 곳에서 강제.
+- discussion 을 끄면 resolved 도 함께 해제 (의미 없는 잔여 상태 방지).
+  resolved 토글은 discussion 댓글에만 허용.
+- "완료" 기준 = admin 에서 설정하는 status.counts_as_done (campaign 완료 판정과
+  동일 기준, DEV-093). 즉 토론 미해결이면 캠페인 진행률에도 안 잡힘.
+- UI: QuestCommentsSection 의 댓글 head 에 `💬 토론` 토글 + 미해결/해결 배지
+  (quest scope 한정 — campaign 은 change_status 게이트가 없어 미노출).
+
 ### 캠페인 댓글 / 메모 — DEV-100 (구현 완료)
 
 - quest 와 동일 entry 포맷 / 동일 기능 (답글 / 반응 / 번호):

@@ -47,6 +47,8 @@ pub fn add_entry(
         body: body_trimmed,
         parent_id,
         reactions: Vec::new(),
+        discussion: false,
+        resolved: false,
     };
     entries.push(entry.clone());
     repo::write_entries(&store.paths, slug, &entries).map_err(AppError::Internal)?;

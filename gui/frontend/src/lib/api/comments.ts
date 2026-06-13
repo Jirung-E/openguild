@@ -22,6 +22,10 @@ export interface CommentEntry {
 	parent_id?: number | null;
 	/** DEV-108: 활성 이모지 반응 목록 (single-user — 이모지당 on/off). */
 	reactions?: string[];
+	/** DEV-142: 토론(discussion) 댓글 여부. true 면 resolve 전까지 완료 차단. */
+	discussion?: boolean;
+	/** DEV-142: 토론 해결 여부. discussion 이 아닐 땐 무의미. */
+	resolved?: boolean;
 }
 
 export interface CommentsListResponse {
@@ -50,6 +54,11 @@ function makeCommentsApi(base: (slug: string) => string) {
 		// DEV-108: 이모지 반응 토글 — 갱신된 entry 반환.
 		toggleReaction: (slug: string, id: number, emoji: string) =>
 			api.post<CommentEntry>(`${base(slug)}/comments/${id}/reactions`, { emoji }),
+		// DEV-142: 토론 플래그 / resolve 토글 — 갱신된 entry 반환.
+		toggleDiscussion: (slug: string, id: number) =>
+			api.post<CommentEntry>(`${base(slug)}/comments/${id}/discussion`, {}),
+		toggleResolved: (slug: string, id: number) =>
+			api.post<CommentEntry>(`${base(slug)}/comments/${id}/resolved`, {}),
 
 		// ─── DEV-012: 메모 (단일 텍스트) ───
 		getMemo: (slug: string) => api.get<ContentResponse>(`${base(slug)}/memo`),

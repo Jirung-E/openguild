@@ -63,6 +63,26 @@
 		}
 	}
 
+	// DEV-142: 토론(discussion) 플래그 토글. discussion 댓글이 미해결이면
+	// 이 quest 를 완료 상태로 전환할 수 없다 (core 게이트).
+	async function toggleDiscussion(id: number) {
+		try {
+			const updated = await commentsApi.toggleDiscussion(slug, id);
+			entries = entries.map((e) => (e.id === id ? updated : e));
+		} catch (e) {
+			alert(e instanceof Error ? e.message : 'discussion toggle failed');
+		}
+	}
+	// DEV-142: discussion 댓글 resolve 토글.
+	async function toggleResolved(id: number) {
+		try {
+			const updated = await commentsApi.toggleResolved(slug, id);
+			entries = entries.map((e) => (e.id === id ? updated : e));
+		} catch (e) {
+			alert(e instanceof Error ? e.message : 'resolve toggle failed');
+		}
+	}
+
 	// DEV-129: 댓글 '내용' 접기 — entry 단위 본문 collapse. 답글 접기 (위)
 	// 와 별개 — 본문만 가리고 head (작성자/번호/액션) 는 유지.
 	let collapsedBodies = $state(new Set<number>());
@@ -323,8 +343,26 @@
 			<span class="author">{e.author || '(이름 없음)'}</span>
 			<span class="sep">·</span>
 			<time class="ts" datetime={e.ts}>{formatTs(e.ts)}</time>
+			<!-- DEV-142: 토론 댓글 상태 배지 — 미해결이면 완료 차단 (quest 한정).
+			     클릭으로 resolve 토글. -->
+			{#if scope === 'quest' && e.discussion}
+				<button
+					class="disc-badge"
+					class:resolved={e.resolved}
+					onclick={() => toggleResolved(e.id)}
+					title={e.resolved ? '해결됨 — 클릭하면 다시 미해결로' : '미해결 토론 — 클릭하면 해결 처리 (완료 차단 해제)'}
+				>{e.resolved ? '✓ 해결됨' : '● 미해결 토론'}</button>
+			{/if}
 			{#if editingId !== e.id}
 				<div class="entry-actions">
+					{#if scope === 'quest'}
+						<button
+							class="link-btn"
+							class:on={e.discussion}
+							onclick={() => toggleDiscussion(e.id)}
+							title={e.discussion ? '토론 표시 해제' : '토론으로 표시 — resolve 전까지 완료 차단'}
+						>💬 토론</button>
+					{/if}
 					<button class="link-btn" onclick={() => enterEdit(e)}>✎ 편집</button>
 					<button class="link-btn danger" onclick={() => askRemove(e.id)}>× 삭제</button>
 				</div>
@@ -788,6 +826,29 @@
 	.link-btn:hover { color: var(--accent); }
 	.link-btn.danger { color: var(--danger); }
 	.link-btn.danger:hover { color: var(--danger); }
+	/* DEV-142: '토론' 토글 활성 표시. */
+	.link-btn.on { color: var(--warning, #d08700); font-weight: 700; }
+
+	/* DEV-142: 토론 상태 배지 — 미해결(빨강) / 해결(초록). */
+	.disc-badge {
+		margin-left: 0.4rem;
+		padding: 0.05rem 0.4rem;
+		border-radius: 999px;
+		border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+		background: color-mix(in srgb, var(--danger) 14%, transparent);
+		color: var(--danger);
+		font-size: 0.7rem;
+		font-weight: 700;
+		cursor: pointer;
+		white-space: nowrap;
+	}
+	.disc-badge:hover { background: color-mix(in srgb, var(--danger) 22%, transparent); }
+	.disc-badge.resolved {
+		border-color: color-mix(in srgb, var(--success) 45%, transparent);
+		background: color-mix(in srgb, var(--success) 14%, transparent);
+		color: var(--success);
+	}
+	.disc-badge.resolved:hover { background: color-mix(in srgb, var(--success) 22%, transparent); }
 
 	.entry-body :global(p) { margin: 0.25rem 0; }
 

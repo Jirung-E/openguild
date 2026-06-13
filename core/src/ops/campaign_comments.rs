@@ -125,6 +125,8 @@ pub async fn add_entry(
         body: body_trimmed,
         parent_id,
         reactions: Vec::new(),
+        discussion: false,
+        resolved: false,
     };
     entries.push(entry.clone());
     repo::write_entries_at(&path, &entries).map_err(AppError::Internal)?;

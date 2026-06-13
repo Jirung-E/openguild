@@ -203,6 +203,14 @@ function routeToInvoke(
 				const emoji = (body as { emoji?: string } | undefined)?.emoji ?? '';
 				return { cmd: 'toggle_comment_reaction', args: { slug, id, emoji } };
 			}
+			// /comments/{id}/discussion (DEV-142: 토론 플래그 토글)
+			if (parts[5] && /^\d+$/.test(parts[5]) && parts[6] === 'discussion' && method === 'POST') {
+				return { cmd: 'toggle_comment_discussion', args: { slug, id: Number(parts[5]) } };
+			}
+			// /comments/{id}/resolved (DEV-142: 토론 resolve 토글)
+			if (parts[5] && /^\d+$/.test(parts[5]) && parts[6] === 'resolved' && method === 'POST') {
+				return { cmd: 'toggle_comment_resolved', args: { slug, id: Number(parts[5]) } };
+			}
 			// /comments/{id} (수정 / 삭제)
 			if (parts[5] && /^\d+$/.test(parts[5]) && !parts[6]) {
 				const id = Number(parts[5]);

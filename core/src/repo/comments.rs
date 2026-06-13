@@ -42,6 +42,14 @@ pub struct CommentEntry {
     /// (DEV-021) 진입 시 user 별 분리로 확장.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub reactions: Vec<String>,
+    /// DEV-142: 토론(discussion) 댓글 표시. 마커의 `discussion="true"`.
+    /// discussion 이면서 `resolved=false` 인 댓글이 하나라도 있으면 quest 를
+    /// 완료(counts_as_done) 상태로 전환 불가 (ops::quests::change_status 게이트).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub discussion: bool,
+    /// DEV-142: 토론 해결 여부. 마커의 `resolved="true"`. discussion 이 아닐 땐 무의미.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub resolved: bool,
 }
 
 /// DEV-094: 마커 패턴 — `<!-- og-comment id="..." ts="..." author="..." -->`.
@@ -106,6 +114,8 @@ pub fn parse_entries(text: &str) -> Vec<CommentEntry> {
             body: body.to_string(),
             parent_id: None,
             reactions: Vec::new(),
+            discussion: false,
+            resolved: false,
         }];
     }
 
@@ -136,7 +146,19 @@ pub fn parse_entries(text: &str) -> Vec<CommentEntry> {
                     .collect()
             })
             .unwrap_or_default();
-        out.push(CommentEntry { id, ts, author, body, parent_id, reactions });
+        // DEV-142: `discussion="true"` / `resolved="true"` — 그 외 값/부재는 false.
+        let discussion = extract_attr(attrs, "discussion").as_deref() == Some("true");
+        let resolved = extract_attr(attrs, "resolved").as_deref() == Some("true");
+        out.push(CommentEntry {
+            id,
+            ts,
+            author,
+            body,
+            parent_id,
+            reactions,
+            discussion,
+            resolved,
+        });
     }
     out
 }
@@ -163,13 +185,18 @@ pub fn serialize_entries(entries: &[CommentEntry]) -> String {
         } else {
             format!(" reactions=\"{}\"", sanitize_attr(&e.reactions.join(",")))
         };
+        // DEV-142: discussion / resolved — true 일 때만 출력 (구 파일 byte 호환).
+        let discussion_attr = if e.discussion { " discussion=\"true\"" } else { "" };
+        let resolved_attr = if e.resolved { " resolved=\"true\"" } else { "" };
         out.push_str(&format!(
-            "<!-- og-comment id=\"{}\" ts=\"{}\" author=\"{}\"{}{} -->\n",
+            "<!-- og-comment id=\"{}\" ts=\"{}\" author=\"{}\"{}{}{}{} -->\n",
             e.id,
             sanitize_attr(&e.ts),
             sanitize_attr(&e.author),
             reply_attr,
             reactions_attr,
+            discussion_attr,
+            resolved_attr,
         ));
         out.push_str(e.body.trim());
         out.push('\n');
@@ -337,6 +364,8 @@ mod tests {
                 body: "Hello\nworld".into(),
                 parent_id: None,
                 reactions: Vec::new(),
+                discussion: false,
+                resolved: false,
             },
             CommentEntry {
                 id: 2,
@@ -345,6 +374,8 @@ mod tests {
                 body: "Second.".into(),
                 parent_id: None,
                 reactions: Vec::new(),
+                discussion: false,
+                resolved: false,
             },
             // 답글: id=3 이 id=1 에 대한 reply.
             CommentEntry {
@@ -354,6 +385,8 @@ mod tests {
                 body: "Reply to 1".into(),
                 parent_id: Some(1),
                 reactions: Vec::new(),
+                discussion: false,
+                resolved: false,
             },
         ];
         let s = serialize_entries(&entries);
@@ -373,6 +406,8 @@ mod tests {
             body: "b".into(),
             parent_id: None,
             reactions: vec!["👍".into(), "✅".into()],
+            discussion: false,
+            resolved: false,
         }];
         let s = serialize_entries(&entries);
         assert!(s.contains("reactions=\"👍,✅\""));
@@ -386,8 +421,44 @@ mod tests {
             body: "b".into(),
             parent_id: None,
             reactions: Vec::new(),
+            discussion: false,
+            resolved: false,
         }];
         assert!(!serialize_entries(&none).contains("reactions"));
+    }
+
+    /// DEV-142: discussion / resolved attr roundtrip + 기본 false 는 attr 생략.
+    #[test]
+    fn discussion_resolved_roundtrip() {
+        let entries = vec![CommentEntry {
+            id: 1,
+            ts: "x".into(),
+            author: "a".into(),
+            body: "토론 필요".into(),
+            parent_id: None,
+            reactions: Vec::new(),
+            discussion: true,
+            resolved: true,
+        }];
+        let s = serialize_entries(&entries);
+        assert!(s.contains("discussion=\"true\""));
+        assert!(s.contains("resolved=\"true\""));
+        assert_eq!(parse_entries(&s), entries);
+
+        // 기본값 (false) — attr 자체가 없어야 (구 파일과 byte 호환).
+        let plain = vec![CommentEntry {
+            id: 1,
+            ts: "x".into(),
+            author: "a".into(),
+            body: "b".into(),
+            parent_id: None,
+            reactions: Vec::new(),
+            discussion: false,
+            resolved: false,
+        }];
+        let ps = serialize_entries(&plain);
+        assert!(!ps.contains("discussion"));
+        assert!(!ps.contains("resolved"));
     }
 
     #[test]
@@ -406,6 +477,8 @@ mod tests {
             body: "body".into(),
             parent_id: None,
             reactions: Vec::new(),
+            discussion: false,
+            resolved: false,
         }];
         let s = serialize_entries(&entries);
         // " → ' 로 치환되어 attribute 안전.

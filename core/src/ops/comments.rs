@@ -257,6 +257,70 @@ pub async fn toggle_comment_reaction(
     Ok(updated)
 }
 
+/// DEV-142: 댓글의 토론(discussion) 플래그 토글. discussion 이 켜지면 resolve
+/// 전까지 quest 완료 전환이 차단된다. discussion 을 끄면 resolved 도 같이 해제
+/// (의미 없는 잔여 상태 방지).
+pub async fn toggle_comment_discussion(
+    store: &Store,
+    slug: &str,
+    id: u64,
+) -> AppResult<CommentEntry> {
+    let _ = journal::append(
+        &store.journal_pool,
+        "toggle_comment_discussion",
+        &json!({ "slug": slug, "id": id }),
+        None::<&serde_json::Value>,
+    )
+    .await
+    .map_err(AppError::Internal)?;
+
+    let mut entries = svc::list_entries(store, slug)?;
+    let entry = entries
+        .iter_mut()
+        .find(|e| e.id == id)
+        .ok_or_else(|| AppError::NotFound(format!("comment {id} not found for {slug}")))?;
+    entry.discussion = !entry.discussion;
+    if !entry.discussion {
+        entry.resolved = false;
+    }
+    let updated = entry.clone();
+    crate::repo::comments::write_entries(&store.paths, slug, &entries)
+        .map_err(AppError::Internal)?;
+    Ok(updated)
+}
+
+/// DEV-142: discussion 댓글의 resolved 토글. discussion 이 아닌 댓글엔 BadRequest.
+pub async fn toggle_comment_resolved(
+    store: &Store,
+    slug: &str,
+    id: u64,
+) -> AppResult<CommentEntry> {
+    let _ = journal::append(
+        &store.journal_pool,
+        "toggle_comment_resolved",
+        &json!({ "slug": slug, "id": id }),
+        None::<&serde_json::Value>,
+    )
+    .await
+    .map_err(AppError::Internal)?;
+
+    let mut entries = svc::list_entries(store, slug)?;
+    let entry = entries
+        .iter_mut()
+        .find(|e| e.id == id)
+        .ok_or_else(|| AppError::NotFound(format!("comment {id} not found for {slug}")))?;
+    if !entry.discussion {
+        return Err(AppError::BadRequest(
+            "discussion 댓글이 아니면 resolve 할 수 없음".into(),
+        ));
+    }
+    entry.resolved = !entry.resolved;
+    let updated = entry.clone();
+    crate::repo::comments::write_entries(&store.paths, slug, &entries)
+        .map_err(AppError::Internal)?;
+    Ok(updated)
+}
+
 /// 댓글 entry 삭제.
 pub async fn delete_comment_entry(store: &Store, slug: &str, id: u64) -> AppResult<()> {
     let _ = journal::append(

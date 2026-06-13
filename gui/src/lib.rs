@@ -417,6 +417,8 @@ pub fn run() {
             commands::update_comment,
             commands::delete_comment,
             commands::toggle_comment_reaction,
+            commands::toggle_comment_discussion,
+            commands::toggle_comment_resolved,
             // DEV-100: 캠페인 댓글 / 메모.
             commands::list_campaign_comments,
             commands::add_campaign_comment,

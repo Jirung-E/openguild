@@ -207,6 +207,46 @@ pub async fn change_status(
         return sql::fetch_by_id(&store.index_pool, id).await;
     }
 
+    // DEV-142: 완료(counts_as_done=true) 상태로의 전환은 미해결 토론(discussion)
+    // 댓글이 하나라도 있으면 차단 — CLI / GUI 공통 게이트. 댓글은 file 진리원에서
+    // 직접 확인 (discussion/resolved 는 마커 attr, DB 캐시 컬럼 없음).
+    let target_counts_as_done: Option<bool> =
+        sqlx::query_scalar("SELECT counts_as_done FROM quest_statuses WHERE slug = ?")
+            .bind(&body.status_slug)
+            .fetch_optional(&store.index_pool)
+            .await?;
+    if target_counts_as_done == Some(true) {
+        let slug: Option<String> = sqlx::query_scalar(
+            "SELECT qt.prefix || '-' || printf('%03d', q.number)
+             FROM quests q JOIN quest_types qt ON q.quest_type_id = qt.id
+             WHERE q.id = ?",
+        )
+        .bind(id)
+        .fetch_optional(&store.index_pool)
+        .await?;
+        if let Some(slug) = slug {
+            let entries = crate::repo::comments::read_entries(&store.paths, &slug)
+                .map_err(crate::error::AppError::Internal)?;
+            let unresolved: Vec<u64> = entries
+                .iter()
+                .filter(|e| e.discussion && !e.resolved)
+                .map(|e| e.id)
+                .collect();
+            if !unresolved.is_empty() {
+                let ids = unresolved
+                    .iter()
+                    .map(|i| format!("#{i}"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                return Err(crate::error::AppError::BadRequest(format!(
+                    "미해결 토론(discussion) 댓글 {}개({ids})를 먼저 resolve 해야 \
+                     완료 상태로 전환할 수 있습니다.",
+                    unresolved.len()
+                )));
+            }
+        }
+    }
+
     let _ = journal::append(
         &store.journal_pool,
         "change_status",
@@ -868,6 +908,61 @@ mod tests {
 
         let content = std::fs::read_to_string(dir.join(".guild/quests/DEV-001.md")).unwrap();
         assert!(content.contains("status = \"in_progress\""));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-142: 미해결 discussion 댓글이 있으면 완료(done) 전환 차단,
+    /// resolve 후엔 통과.
+    #[tokio::test]
+    async fn change_status_blocked_by_unresolved_discussion() {
+        let dir = fresh_tmp("disc-gate");
+        let store = setup_store(&dir).await;
+        let q = create_quest(
+            &store,
+            CreateQuestRequest {
+                quest_type_id: 1,
+                title: "t".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        let slug = q.quest_id.clone();
+
+        // discussion 댓글 추가 + discussion 플래그 on.
+        let c = crate::ops::comments::add_comment_entry(
+            &store,
+            &slug,
+            "admin".into(),
+            "논의 필요".into(),
+            None,
+        )
+        .await
+        .unwrap();
+        crate::ops::comments::toggle_comment_discussion(&store, &slug, c.id)
+            .await
+            .unwrap();
+
+        // done(counts_as_done) 전환 → 차단.
+        let blocked = change_status(&store, q.id, ChangeStatusRequest { status_slug: "done".into() }).await;
+        assert!(blocked.is_err(), "미해결 discussion 이면 완료 차단되어야");
+
+        // in_progress(counts_as_done=false) 전환 → 허용 (게이트는 완료에만 적용).
+        change_status(&store, q.id, ChangeStatusRequest { status_slug: "in_progress".into() })
+            .await
+            .expect("non-done 전환은 허용");
+
+        // resolve 후 done 전환 → 통과.
+        crate::ops::comments::toggle_comment_resolved(&store, &slug, c.id)
+            .await
+            .unwrap();
+        change_status(&store, q.id, ChangeStatusRequest { status_slug: "done".into() })
+            .await
+            .expect("resolve 후엔 완료 가능");
 
         let _ = std::fs::remove_dir_all(&dir);
     }

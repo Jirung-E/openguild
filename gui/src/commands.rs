@@ -1227,6 +1227,31 @@ pub async fn toggle_comment_reaction(
         .map_err(err)
 }
 
+/// DEV-142: 토론(discussion) 플래그 토글. discussion 댓글이 미해결이면 quest
+/// 완료 전환이 차단된다.
+#[tauri::command]
+pub async fn toggle_comment_discussion(
+    store: State<'_, Store>,
+    slug: String,
+    id: u64,
+) -> Result<CommentEntry, String> {
+    openguild_core::ops::comments::toggle_comment_discussion(&store, &slug, id)
+        .await
+        .map_err(err)
+}
+
+/// DEV-142: discussion 댓글의 resolved 토글.
+#[tauri::command]
+pub async fn toggle_comment_resolved(
+    store: State<'_, Store>,
+    slug: String,
+    id: u64,
+) -> Result<CommentEntry, String> {
+    openguild_core::ops::comments::toggle_comment_resolved(&store, &slug, id)
+        .await
+        .map_err(err)
+}
+
 // ─── DEV-100: Campaign 댓글 / 메모 — quest 패턴 미러 ───
 
 #[tauri::command]

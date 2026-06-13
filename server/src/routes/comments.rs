@@ -120,6 +120,24 @@ pub async fn toggle_reaction(
     Ok(Json(entry))
 }
 
+// ─── DEV-142: 토론(discussion) 플래그 / resolve 토글 ───
+
+pub async fn toggle_discussion(
+    State(store): State<Store>,
+    Path((slug, id)): Path<(String, u64)>,
+) -> AppResult<Json<CommentEntry>> {
+    let entry = ops::toggle_comment_discussion(&store, &slug, id).await?;
+    Ok(Json(entry))
+}
+
+pub async fn toggle_resolved(
+    State(store): State<Store>,
+    Path((slug, id)): Path<(String, u64)>,
+) -> AppResult<Json<CommentEntry>> {
+    let entry = ops::toggle_comment_resolved(&store, &slug, id).await?;
+    Ok(Json(entry))
+}
+
 // ─── DEV-100: Campaign 댓글 / 메모 — quest 와 동일 형식 ───
 
 use openguild_core::ops::campaign_comments as cops;
