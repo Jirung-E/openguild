@@ -36,6 +36,47 @@
 	// DEV-074 fix14: 내부 .list 의 ref — OverlayScrollbar target 으로 전달.
 	let listEl: HTMLDivElement | undefined = $state(undefined);
 
+	// DEV-126 fix2: 퀘스트 리스트는 window 가 아니라 내부 .list 컨테이너가
+	// 스크롤한다 (overflow-y:auto). layout 의 window.scrollY 복원은 항상 0 이라
+	// 효과 없음 → 컨테이너 scrollTop 을 path 별로 직접 저장/복원.
+	const LIST_SCROLL_KEY = 'openguild.listScroll.';
+	function listScrollKey(): string {
+		return LIST_SCROLL_KEY + $page.url.pathname + $page.url.search;
+	}
+	function saveListScroll() {
+		if (!listEl) return;
+		try {
+			sessionStorage.setItem(listScrollKey(), String(listEl.scrollTop));
+		} catch {
+			/* quota / disabled — 무시 */
+		}
+	}
+	function restoreListScroll() {
+		if (!listEl) return;
+		let raw: string | null;
+		try {
+			raw = sessionStorage.getItem(listScrollKey());
+		} catch {
+			return;
+		}
+		if (raw === null) return;
+		const y = parseInt(raw, 10);
+		if (!Number.isFinite(y) || y <= 0) return;
+		// 트리/목록은 loadData 후 비동기로 자라남 — 컨테이너가 y 에 도달 가능할
+		// 때까지 (또는 ~1.2초) 재시도 (layout 의 window 복원과 동일 패턴).
+		let tries = 0;
+		const attempt = () => {
+			if (!listEl) return;
+			listEl.scrollTop = y;
+			tries += 1;
+			const reached = Math.abs(listEl.scrollTop - y) <= 2;
+			const tall = listEl.scrollHeight - listEl.clientHeight >= y;
+			if (reached || tall || tries >= 40) return;
+			setTimeout(attempt, 30);
+		};
+		requestAnimationFrame(() => requestAnimationFrame(attempt));
+	}
+
 	let filterTypeIds = $state(new Set<number>());
 	let filterStatusIds = $state(new Set<number>());
 	let expanded = $state(new Set<number>());
@@ -168,6 +209,30 @@
 				/* 무시 */
 			}
 		}
+		// DEV-126 fix2: 데이터 로드 후 컨테이너 스크롤 위치 복원 (reload 대비).
+		restoreListScroll();
+	});
+
+	// DEV-126 fix2: .list 컨테이너 스크롤 저장 — throttle + 페이지 떠나기 직전.
+	$effect(() => {
+		const el = listEl;
+		if (!el) return;
+		let last = 0;
+		const onScroll = () => {
+			const now = Date.now();
+			if (now - last < 200) return;
+			last = now;
+			saveListScroll();
+		};
+		const onLeave = () => saveListScroll();
+		el.addEventListener('scroll', onScroll, { passive: true });
+		window.addEventListener('beforeunload', onLeave);
+		window.addEventListener('pagehide', onLeave);
+		return () => {
+			el.removeEventListener('scroll', onScroll);
+			window.removeEventListener('beforeunload', onLeave);
+			window.removeEventListener('pagehide', onLeave);
+		};
 	});
 
 	// DEV-095: Nav 의 Reindex 버튼이 bump 한 store 를 subscribe — 값 변할 때마다
