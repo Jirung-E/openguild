@@ -110,6 +110,14 @@ foreach ($q in $questPlan) {
     Start-Sleep -Milliseconds 50
 }
 
+# DEV-140: 본문 cross-link 데모 — 위 퀘스트들을 [[ID]] 위키문법으로 참조.
+# 실재 ID (DEV-001 / BUG-001) 는 파란 링크, 미존재 (DEV-404) 는 빨간 링크로
+# MarkdownView 가 렌더하는지 확인용. 편집기에서 ID 타이핑 시 자동완성도 확인.
+$xlinkDesc = "관련 작업: [[DEV-001]] 의 API 위에서 진행. [[BUG-001]] 리다이렉트 이슈와 연관. " +
+    "아직 없는 [[DEV-404]] 는 빨간 링크로 표시되어야 함."
+Invoke-Og quest new --type DEV --title "본문 cross-link 데모 (DEV-140)" --urgency 3 --description $xlinkDesc
+Start-Sleep -Milliseconds 50
+
 # 일부는 상태 변경해서 다양성 확보.
 Write-Host "`n=== [3/8] Quest 상태 전환 ===" -ForegroundColor Green
 # 가장 최신 슬러그를 모르므로 list 로 가져옴.
