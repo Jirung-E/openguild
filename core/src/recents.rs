@@ -134,7 +134,8 @@ pub fn normalize_abs(path: &Path) -> String {
 }
 
 /// 길드 디렉토리에서 이름 추측 — `*.guild` 파일이 있으면 그 stem, 아니면 디렉토리명.
-fn guess_name(dir: &Path) -> String {
+/// DEV-141: GUI Nav 의 현재 길드 이름 표시도 이 함수를 재사용 (recents 와 동일 규칙).
+pub fn guess_name(dir: &Path) -> String {
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.flatten() {
             let p = entry.path();

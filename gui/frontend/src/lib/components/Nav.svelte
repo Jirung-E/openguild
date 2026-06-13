@@ -1,11 +1,26 @@
 <script lang="ts">
 	import { page } from '$app/stores';
+	import { onMount } from 'svelte';
 	import { adminApi } from '$lib/api/admin';
 	import { bumpReindex } from '$lib/stores/reindex';
+	import { detectEnvironment } from '$lib/api/transport';
 	// DEV-138: 설정 퀵메뉴 — ⚙ 클릭 시 dropdown (테마/UI크기/폭 + 전체 설정).
 	// DEV-125 의 standalone 테마 순환 버튼은 퀵메뉴로 흡수.
 	import SettingsQuickMenu from './SettingsQuickMenu.svelte';
 	let quickMenuOpen = $state(false);
+
+	// DEV-141: 현재 진입한 길드 이름 — 어느 길드인지 한눈에. Tauri 전용 커맨드라
+	// 데스크탑 모드에서만 표시 (브라우저/server 모드는 빈 값 → 미표시).
+	let guildName = $state('');
+	onMount(async () => {
+		if (detectEnvironment() !== 'tauri') return;
+		try {
+			const { invoke } = await import('@tauri-apps/api/core');
+			guildName = await invoke<string>('current_guild_name');
+		} catch {
+			/* 길드 모드 아님 / 조회 실패 — 표시 안 함 */
+		}
+	});
 
 	// DEV-011: Home 탭. URL `/` 가 ?view 없으면 home 기본.
 	type View = 'home' | 'board' | 'list';
@@ -56,7 +71,13 @@
 
 <header>
 	<!-- DEV-052 후속 (4회차): 로고 클릭 → Welcome (다른 길드로 전환 / recent 관리). -->
-	<a href="/welcome" class="logo">openguild</a>
+	<a href="/welcome" class="logo">
+		openguild
+		<!-- DEV-141: 현재 길드 이름 — 로고 옆 작은 배지로 어느 길드인지 표시. -->
+		{#if guildName}
+			<span class="guild-name" title="현재 길드: {guildName}">{guildName}</span>
+		{/if}
+	</a>
 
 	<nav>
 		<a href="/" class:active={onRootPath && currentView === 'home'}>Home</a>
@@ -129,11 +150,30 @@
 	}
 
 	.logo {
+		display: inline-flex;
+		align-items: baseline;
+		gap: 0.5rem;
 		font-size: 1.1rem;
 		font-weight: 700;
 		color: var(--text);
 		text-decoration: none;
 		letter-spacing: 0.02em;
+	}
+
+	/* DEV-141: 현재 길드 이름 배지 — 로고보다 작고 muted, accent 보더로 구분. */
+	.guild-name {
+		font-size: 0.75rem;
+		font-weight: 600;
+		letter-spacing: 0;
+		color: var(--accent);
+		background: color-mix(in srgb, var(--accent) 12%, transparent);
+		border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+		border-radius: 5px;
+		padding: 0.1rem 0.4rem;
+		max-width: 12rem;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	nav {

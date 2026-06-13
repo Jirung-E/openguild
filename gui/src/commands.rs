@@ -689,6 +689,15 @@ pub fn current_guild_path(store: State<'_, Store>) -> String {
     store.paths.guild_root.display().to_string()
 }
 
+/// DEV-141: 현재 길드 이름 — `{name}.guild` 마커의 stem 또는 디렉토리명
+/// (recents 의 표시명과 동일 규칙). Nav 에서 어느 길드에 들어와 있는지 표시용.
+/// Welcome / Uninit 모드의 placeholder 경로면 의미 없는 값일 수 있으므로
+/// frontend 는 `launch_mode.mode === "guild"` 일 때만 사용.
+#[tauri::command]
+pub fn current_guild_name(store: State<'_, Store>) -> String {
+    openguild_core::recents::guess_name(&store.paths.guild_root)
+}
+
 /// BUG-041: DB schema 가 현재 binary 가 모르는 migration 까지 적용된 상태인지.
 ///
 /// 응답:
