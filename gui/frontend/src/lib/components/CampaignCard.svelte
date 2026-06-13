@@ -115,21 +115,25 @@
 			.then((u) => (bannerUrl = u))
 			.catch(() => (bannerUrl = null));
 	});
-	let bannerStyle = $derived(
-		bannerUrl
-			? `background-image: linear-gradient(90deg, var(--bg-elevated) 0%, var(--bg-elevated) 35%, color-mix(in srgb, var(--bg-elevated) 35%, transparent) 70%, transparent 100%), url("${bannerUrl}"); background-size: cover; background-position: right center; background-repeat: no-repeat;`
-			: ''
-	);
+	// DEV-087 fix: 배너를 CSS background-image 대신 실제 <img> 로 렌더.
+	// WebView2 는 custom 스킴(asset://...) URL 을 CSS url() 에선 막고 <img src>
+	// 에선 허용하는 사례가 있어, 첨부(DEV-069)와 동일하게 <img> 경로로 통일해야
+	// 홈 carousel 에서도 표시된다. fade 는 별도 오버레이 div 로 분리.
+	let showBanner = $derived(mode === 'active' && !!bannerUrl);
 </script>
 
 <a
 	class="card {mode}"
 	class:completed
 	{href}
-	style={bannerStyle}
 	draggable="false"
 	data-sveltekit-preload-data="hover"
 >
+	{#if showBanner}
+		<!-- DEV-087 fix: 배너 이미지 레이어 + fade 오버레이 (좌측 불투명 → 우측 투명). -->
+		<img class="banner-img" src={bannerUrl} alt="" aria-hidden="true" draggable="false" />
+		<div class="banner-fade" aria-hidden="true"></div>
+	{/if}
 	{#if mode === 'active'}
 		<div class="head">
 			<span class="slug">{summary.campaign_slug}</span>
@@ -220,6 +224,40 @@
 		font: inherit;
 		text-decoration: none;
 		box-sizing: border-box;
+		/* DEV-087 fix: 배너 img/fade 레이어를 둥근 모서리로 클립. */
+		position: relative;
+		overflow: hidden;
+	}
+	/* DEV-087 fix: 배너 이미지 — 카드 우측을 채우고, fade 오버레이가 좌측 글자
+	   영역을 카드 배경색으로 덮어 가독성 확보 (기존 CSS background 와 동일 효과). */
+	.banner-img {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		object-position: right center;
+		z-index: 0;
+		pointer-events: none;
+		user-select: none;
+	}
+	.banner-fade {
+		position: absolute;
+		inset: 0;
+		z-index: 1;
+		pointer-events: none;
+		background: linear-gradient(
+			90deg,
+			var(--bg-elevated) 0%,
+			var(--bg-elevated) 35%,
+			color-mix(in srgb, var(--bg-elevated) 35%, transparent) 70%,
+			transparent 100%
+		);
+	}
+	/* 배너 레이어 위에 본문 컨텐츠. */
+	.card > *:not(.banner-img):not(.banner-fade) {
+		position: relative;
+		z-index: 2;
 	}
 	.card:hover { background: var(--bg-subtle); border-color: var(--text-faint); }
 	/* BUG-027: active 카드 세로 길이 늘림 (사용자 피드백 — 너무 짧음). */
