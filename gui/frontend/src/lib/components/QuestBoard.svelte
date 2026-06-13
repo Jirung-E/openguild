@@ -128,9 +128,12 @@
 	// (cover fit, NODE_W × NODE_H) 다운샘플 → 텍스트 또렷.
 	function makeSvgUrl(quest: Quest): string {
 		const W = NODE_W, H = NODE_H;
-		// devicePixelRatio 한도 — 과한 사이즈는 메모리 낭비. 1.0 / 1.5 / 2.0 / 3.0
-		// 같은 일반 값을 그대로 사용. 1 미만이면 1 로.
-		const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+		// devicePixelRatio 한도 — 과한 사이즈는 메모리 낭비. 상한 3.
+		// BUG-057 fix2: 하한을 2 로 — WebView2 가 HiDPI / OS 배율(125%·150%)
+		// 디스플레이에서도 devicePixelRatio 를 1 로 보고하는 사례가 있어, 1×
+		// 텍스처는 OS 가 창을 확대할 때 번진다. 최소 2× 슈퍼샘플로 발급해 두면
+		// cover 다운샘플 후에도 텍스트가 또렷.
+		const dpr = Math.max(2, Math.min(3, window.devicePixelRatio || 1));
 		const Wpx = Math.round(W * dpr);
 		const Hpx = Math.round(H * dpr);
 		// BUG-060: 유효 범위 밖 데이터에도 안전한 헬퍼 사용 — 이전엔 bare access
@@ -2330,8 +2333,9 @@
 			boxSelectionEnabled: false,
 			// BUG-057: HiDPI 캔버스. 기본 'auto' 가 WebView2 에서 1 로 떨어지는
 			// 사례 있어 명시. 노드 SVG 도 dpr 배 사이즈로 발급 (makeSvgUrl) →
-			// 보더 / 그림자 / 텍스트 모두 또렷.
-			pixelRatio: Math.max(1, Math.min(3, window.devicePixelRatio || 1))
+			// 보더 / 그림자 / 텍스트 모두 또렷. fix2: 하한 2 (makeSvgUrl 과 동일
+			// 이유 — dpr=1 보고 시에도 캔버스 보더/엣지가 OS 확대로 번지지 않게).
+			pixelRatio: Math.max(2, Math.min(3, window.devicePixelRatio || 1))
 		});
 
 		cy.on('pan zoom', () => {
