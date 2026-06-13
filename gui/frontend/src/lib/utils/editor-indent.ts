@@ -11,26 +11,53 @@
 
 import { indentUnit } from '@codemirror/language';
 import { indentMore, indentLess } from '@codemirror/commands';
-import { EditorState, type Extension } from '@codemirror/state';
+import { EditorSelection, EditorState, type Extension } from '@codemirror/state';
 import { keymap, type Command } from '@codemirror/view';
 import { get } from 'svelte/store';
-import { editorSettings, type EditorSettings } from '$lib/stores/editorSettings';
+import {
+	editorSettings,
+	nextTabStopSpaces,
+	type EditorSettings
+} from '$lib/stores/editorSettings';
 
-/** 현재 설정의 들여쓰기 단위 문자열 (tab='\t', space=공백 N칸). */
+/** 현재 설정의 들여쓰기 단위 문자열 (tab='\t', space=공백 N칸) — indentUnit 용. */
 function unitOf(s: EditorSettings): string {
 	return s.tabMode === 'space' ? ' '.repeat(s.indentSize) : '\t';
 }
 
-/** Tab: 선택 있으면 indentMore, 없으면 설정 단위 삽입 (실시간 store 값 사용). */
+/**
+ * Tab: 선택 있으면 indentMore. 없으면 —
+ * - tab 모드: 탭 문자 1개 (탭 문자는 그 자체로 정지점 정렬).
+ * - space 모드: VSCode 처럼 커서 열에서 다음 탭 정지점까지의 공백만 삽입
+ *   (항상 N칸이 아니라 정렬). 커서마다(멀티 커서) 개별 계산.
+ */
 const insertIndent: Command = (view) => {
 	const s = get(editorSettings);
 	const { state } = view;
 	if (state.selection.ranges.some((r) => !r.empty)) return indentMore(view);
+	if (s.tabMode === 'tab') {
+		view.dispatch(
+			state.update(state.replaceSelection('\t'), {
+				scrollIntoView: true,
+				userEvent: 'input'
+			})
+		);
+		return true;
+	}
+	const size = s.indentSize;
 	view.dispatch(
-		state.update(state.replaceSelection(unitOf(s)), {
-			scrollIntoView: true,
-			userEvent: 'input'
-		})
+		state.update(
+			state.changeByRange((range) => {
+				const line = state.doc.lineAt(range.head);
+				const before = state.sliceDoc(line.from, range.head);
+				const insert = ' '.repeat(nextTabStopSpaces(before, size));
+				return {
+					changes: { from: range.from, to: range.to, insert },
+					range: EditorSelection.cursor(range.from + insert.length)
+				};
+			}),
+			{ scrollIntoView: true, userEvent: 'input' }
+		)
 	);
 	return true;
 };

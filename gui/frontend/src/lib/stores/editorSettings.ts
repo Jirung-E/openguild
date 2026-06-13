@@ -51,3 +51,18 @@ export function setTabMode(mode: TabMode) {
 export function setIndentSize(size: IndentSize) {
 	editorSettings.update((s) => ({ ...s, indentSize: size }));
 }
+
+/**
+ * DEV-130: VSCode 식 탭 정지점 — `beforeText`(줄 시작 ~ 커서) 의 시각적 열을
+ * 계산해, 다음 탭 정지점(indentSize 의 배수)까지 필요한 공백 수를 반환.
+ * 즉 항상 indentSize 칸이 아니라 "현재 열에서 다음 정지점까지" 만큼만.
+ * 탭 문자(\t)는 indentSize 폭으로 환산. 결과는 1..=indentSize.
+ */
+export function nextTabStopSpaces(beforeText: string, indentSize: number): number {
+	let col = 0;
+	for (const ch of beforeText) {
+		if (ch === '\t') col += indentSize - (col % indentSize);
+		else col += 1;
+	}
+	return indentSize - (col % indentSize);
+}

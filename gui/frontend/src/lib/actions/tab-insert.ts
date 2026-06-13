@@ -10,14 +10,24 @@
 // - Escape 후 Tab 으로 focus 빠져나가는 표준 패턴은 유지 — Tab 만 가로챔.
 
 import { get } from 'svelte/store';
-import { editorSettings } from '$lib/stores/editorSettings';
+import { editorSettings, nextTabStopSpaces } from '$lib/stores/editorSettings';
 
 export function tabInsert(node: HTMLTextAreaElement) {
 	function onKeydown(e: KeyboardEvent) {
 		if (e.key !== 'Tab' || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
 		e.preventDefault();
 		const s = get(editorSettings);
-		const unit = s.tabMode === 'space' ? ' '.repeat(s.indentSize) : '\t';
+		// DEV-130: space 모드는 VSCode 처럼 커서 열에서 다음 탭 정지점까지의 공백만
+		// (항상 N칸이 아님). 탭 모드는 탭 문자 1개.
+		let unit: string;
+		if (s.tabMode === 'space') {
+			const start = node.selectionStart;
+			const lineStart = node.value.lastIndexOf('\n', start - 1) + 1;
+			const before = node.value.slice(lineStart, start);
+			unit = ' '.repeat(nextTabStopSpaces(before, s.indentSize));
+		} else {
+			unit = '\t';
+		}
 		// undo 스택 보존 경로.
 		if (document.execCommand && document.execCommand('insertText', false, unit)) {
 			return;
