@@ -4,7 +4,9 @@
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	// DEV-135: mount 시 필터 복원 (Board 와 공유 store).
-	import { questFilters } from '$lib/stores/quest-filter';
+	import { questFilters, type QuestFilterState } from '$lib/stores/quest-filter';
+	// DEV-033 #2: 필터를 길드별 localStorage 에 영속 — Ctrl+R / 앱 재시작 후에도 유지.
+	import { resolveGuildKeyPrefix, guildKey } from '$lib/utils/guild-storage';
 	import { questsApi } from '$lib/api/quests';
 	import { metaApi } from '$lib/api/meta';
 	import type { Quest, QuestStatus, QuestType } from '$lib/types';
@@ -122,6 +124,92 @@
 	};
 	let sortKey = $state<SortKey>('id');
 	let sortDesc = $state(false);
+
+	// DEV-033 #2: 필터 영속 (길드별) — Ctrl+R / 앱 재시작 후에도 유지.
+	// questFilters store 는 in-memory 라 전체 리로드 시 날아감 → localStorage 병행.
+	// 타입/상태 ID 는 길드마다 달라 guildKey 로 namespace 분리.
+	let filterKeyPrefix = $state('');
+	function filterKey(): string {
+		return guildKey(filterKeyPrefix, 'questListFilter');
+	}
+	function snapshotFilter(): QuestFilterState {
+		return {
+			typeIds: filterTypeIds,
+			statusIds: filterStatusIds,
+			search,
+			titleOnly,
+			tags: filterTags,
+			urgencies: filterUrgencies,
+			prereq: filterPrereq,
+			sub: filterSub,
+			createdAfter,
+			createdBefore,
+			updatedAfter,
+			updatedBefore
+		};
+	}
+	function applyFilter(f: QuestFilterState) {
+		filterTypeIds = new Set(f.typeIds);
+		filterStatusIds = new Set(f.statusIds);
+		search = f.search;
+		titleOnly = f.titleOnly;
+		filterTags = new Set(f.tags);
+		filterUrgencies = new Set(f.urgencies);
+		filterPrereq = f.prereq;
+		filterSub = f.sub;
+		createdAfter = f.createdAfter;
+		createdBefore = f.createdBefore;
+		updatedAfter = f.updatedAfter;
+		updatedBefore = f.updatedBefore;
+	}
+	function saveFilterToStorage() {
+		try {
+			const f = snapshotFilter();
+			localStorage.setItem(
+				filterKey(),
+				JSON.stringify({
+					typeIds: [...f.typeIds],
+					statusIds: [...f.statusIds],
+					search: f.search,
+					titleOnly: f.titleOnly,
+					tags: [...f.tags],
+					urgencies: [...f.urgencies],
+					prereq: f.prereq,
+					sub: f.sub,
+					createdAfter: f.createdAfter,
+					createdBefore: f.createdBefore,
+					updatedAfter: f.updatedAfter,
+					updatedBefore: f.updatedBefore
+				})
+			);
+		} catch {
+			/* 무시 */
+		}
+	}
+	function loadFilterFromStorage(): QuestFilterState | null {
+		try {
+			const raw = localStorage.getItem(filterKey());
+			if (!raw) return null;
+			const o = JSON.parse(raw);
+			const triOf = (v: unknown): TriState => (v === 'has' || v === 'none' ? v : 'any');
+			return {
+				typeIds: new Set<number>(Array.isArray(o.typeIds) ? o.typeIds : []),
+				statusIds: new Set<number>(Array.isArray(o.statusIds) ? o.statusIds : []),
+				search: typeof o.search === 'string' ? o.search : '',
+				titleOnly: o.titleOnly === true,
+				tags: new Set<string>(Array.isArray(o.tags) ? o.tags : []),
+				urgencies: new Set<number>(Array.isArray(o.urgencies) ? o.urgencies : []),
+				prereq: triOf(o.prereq),
+				sub: triOf(o.sub),
+				createdAfter: typeof o.createdAfter === 'string' ? o.createdAfter : '',
+				createdBefore: typeof o.createdBefore === 'string' ? o.createdBefore : '',
+				updatedAfter: typeof o.updatedAfter === 'string' ? o.updatedAfter : '',
+				updatedBefore: typeof o.updatedBefore === 'string' ? o.updatedBefore : ''
+			};
+		} catch {
+			return null;
+		}
+	}
 	// status 정렬용 — status_id → sort_order 맵.
 	let statusOrder = $derived(new Map(statuses.map((s) => [s.id, s.sort_order])));
 
@@ -148,25 +236,14 @@
 
 	onMount(async () => {
 		await loadData();
-		// DEV-135: 공유 store → state 복원. view 전환 (List unmount → Board →
-		// List) 시 비-URL 필터 (type/status/고급) 가 소실되어 Board 의 dim 과
-		// 어긋나던 비일관 해소. URL 동기화되는 항목 (search/tags 등) 은 아래
-		// URL 파싱이 다시 덮어씀 — URL 이 우선.
-		{
-			const f = get(questFilters);
-			filterTypeIds = new Set(f.typeIds);
-			filterStatusIds = new Set(f.statusIds);
-			search = f.search;
-			titleOnly = f.titleOnly;
-			filterTags = new Set(f.tags);
-			filterUrgencies = new Set(f.urgencies);
-			filterPrereq = f.prereq;
-			filterSub = f.sub;
-			createdAfter = f.createdAfter;
-			createdBefore = f.createdBefore;
-			updatedAfter = f.updatedAfter;
-			updatedBefore = f.updatedBefore;
-		}
+		// DEV-033 #2: 길드별 필터 키 prefix 확정 (localStorage load/save 전).
+		filterKeyPrefix = await resolveGuildKeyPrefix();
+		// DEV-135: 공유 store → state 복원 (view 전환 시 in-memory 일관성).
+		applyFilter(get(questFilters));
+		// DEV-033 #2: 영속된 필터가 있으면 우선 적용 — 전체 리로드(Ctrl+R)/앱
+		// 재시작 시 store 는 비어 있으므로 localStorage 가 진짜 복원원.
+		const savedFilter = loadFilterFromStorage();
+		if (savedFilter) applyFilter(savedFilter);
 		// URL → state (초기 로드).
 		const params = $page.url.searchParams;
 		search = params.get('search') ?? '';
@@ -297,20 +374,10 @@
 	// 기본값으로 덮어쓰는 race 방지.
 	$effect(() => {
 		if (!initialized) return;
-		questFilters.set({
-			typeIds: filterTypeIds,
-			statusIds: filterStatusIds,
-			search,
-			titleOnly,
-			tags: filterTags,
-			urgencies: filterUrgencies,
-			prereq: filterPrereq,
-			sub: filterSub,
-			createdAfter,
-			createdBefore,
-			updatedAfter,
-			updatedBefore
-		});
+		const snap = snapshotFilter();
+		questFilters.set(snap);
+		// DEV-033 #2: 동일 변경을 길드별 localStorage 에도 — 전체 리로드 후 복원.
+		saveFilterToStorage();
 	});
 
 	// DEV-033: 정렬 선택 localStorage 영속. (DEV-033 fix: loading → initialized)
