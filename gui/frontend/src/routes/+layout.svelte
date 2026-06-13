@@ -69,13 +69,23 @@
 			);
 			if (raw === null) return;
 			const y = parseInt(raw, 10);
-			if (Number.isFinite(y) && y > 0) {
-				// 다음 tick — 컨텐츠 mount 끝나야 정확. requestAnimationFrame 두 번
-				// (DOM + layout) 후가 가장 안정.
-				requestAnimationFrame(() => {
-					requestAnimationFrame(() => window.scrollTo({ top: y, left: 0 }));
-				});
-			}
+			if (!Number.isFinite(y) || y <= 0) return;
+			// DEV-126 fix: 페이지 본문은 onMount fetch 후 비동기로 자라난다.
+			// rAF 두 번만으로는 컨텐츠 높이가 아직 y 에 못 미쳐 scrollTo 가 짧게
+			// clamp 되는 경우가 많았다 (= 복원 안 됨). 목표 y 에 도달 가능할
+			// 때까지 (scrollHeight 충분) 또는 최대 ~1.2초 동안 짧은 간격으로 재시도.
+			let tries = 0;
+			const MAX_TRIES = 40; // 40 × ~30ms ≈ 1.2s
+			const attempt = () => {
+				window.scrollTo({ top: y, left: 0 });
+				tries += 1;
+				const reached = Math.abs(window.scrollY - y) <= 2;
+				const tallEnough =
+					document.documentElement.scrollHeight - window.innerHeight >= y;
+				if (reached || tallEnough || tries >= MAX_TRIES) return;
+				setTimeout(attempt, 30);
+			};
+			requestAnimationFrame(() => requestAnimationFrame(attempt));
 		} catch {
 			/* ignore */
 		}
