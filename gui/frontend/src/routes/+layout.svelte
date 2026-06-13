@@ -127,6 +127,15 @@
 		const unsub = contentWidth.subscribe((w) => {
 			if (typeof document !== 'undefined') {
 				document.documentElement.style.setProperty('--content-max-width', `${w}px`);
+				// BUG-064 후속: 고정 폭 팝업/모달이 '컨텐츠 폭' 설정에 비례하도록
+				// --popup-scale 토큰 발급. 기준 1100px = 1.0, 0.9~1.3 으로 clamp
+				// (너무 좁거나 과하게 넓어지지 않게). 팝업 width 는
+				// calc(<base>rem * var(--popup-scale)) 로 참조.
+				const scale = Math.max(0.9, Math.min(1.3, w / 1100));
+				document.documentElement.style.setProperty(
+					'--popup-scale',
+					scale.toFixed(3)
+				);
 			}
 		});
 		return () => unsub();

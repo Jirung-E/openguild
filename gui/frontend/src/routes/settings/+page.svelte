@@ -399,7 +399,7 @@
 		right: 1.5rem;
 		bottom: 1.5rem;
 		z-index: 60;
-		max-width: 22.5rem; /* BUG-064 */
+		max-width: calc(22.5rem * var(--popup-scale, 1)); /* BUG-064 */
 		padding: 0.85rem 2rem 0.85rem 1rem;
 		background: var(--bg-elevated);
 		border: 1px solid var(--border);

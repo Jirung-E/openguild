@@ -308,7 +308,7 @@
 		border: 1px solid var(--border);
 		border-radius: 12px;
 		width: 100%;
-		max-width: 35rem; /* BUG-064: px → rem (UI scale 연동) */
+		max-width: calc(35rem * var(--popup-scale, 1)); /* BUG-064: px → rem (UI scale) + 컨텐츠 폭 연동 */
 		box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
 		animation: modal-in 0.18s cubic-bezier(0.34, 1.3, 0.64, 1) forwards;
 		transform-origin: top center;

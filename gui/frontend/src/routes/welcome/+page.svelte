@@ -656,7 +656,7 @@
 	.modal {
 		background: var(--bg-elevated);
 		border: 1px solid var(--border); border-radius: 10px;
-		width: 100%; max-width: 26.25rem; /* BUG-064 */
+		width: 100%; max-width: calc(26.25rem * var(--popup-scale, 1)); /* BUG-064 */
 		padding: 1.2rem 1.4rem;
 		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
 		color: var(--text);

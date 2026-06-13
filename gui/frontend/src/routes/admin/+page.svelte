@@ -379,7 +379,7 @@
 		top: 1rem;
 		right: 1rem;
 		z-index: 1000;
-		max-width: 26.25rem; /* BUG-064 */
+		max-width: calc(26.25rem * var(--popup-scale, 1)); /* BUG-064 */
 		pointer-events: none;
 	}
 	.message {
