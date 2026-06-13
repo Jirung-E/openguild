@@ -32,6 +32,11 @@
 	let dragging = $state(false);
 	let hideTimer: ReturnType<typeof setTimeout> | null = null;
 	let ro: ResizeObserver | null = null;
+	// 컨텐츠(scrollHeight) 변화 감지용 — ResizeObserver 는 컨테이너 자신의 box
+	// 크기만 보고, 필터/접기 등으로 내부 행이 늘거나 줄어 scrollHeight 가 바뀌는
+	// 건 못 잡는다 (= thumb 크기가 안 갱신돼 끝까지 안 내려가는 버그). 자식
+	// 추가/삭제(childList) 를 MutationObserver 로 잡아 재측정.
+	let mo: MutationObserver | null = null;
 	let scrollUnsub: (() => void) | null = null;
 	let rafHandle: number | null = null;
 
@@ -143,9 +148,13 @@
 		if (target) {
 			window.addEventListener('scroll', onWinScroll, { passive: true });
 		}
-		ro = new ResizeObserver(measure);
+		ro = new ResizeObserver(scheduleRemeasure);
 		ro.observe(target ?? document.documentElement);
 		if (!target) ro.observe(document.body);
+		// 컨텐츠 mutation (행 추가/삭제, 댓글 접기/펼치기 등) → 재측정.
+		const moTarget = target ?? document.body;
+		mo = new MutationObserver(scheduleRemeasure);
+		mo.observe(moTarget, { childList: true, subtree: true });
 	});
 
 	onDestroy(() => {
@@ -153,6 +162,7 @@
 		window.removeEventListener('resize', onWinResize);
 		if (target) window.removeEventListener('scroll', onWinScroll);
 		ro?.disconnect();
+		mo?.disconnect();
 		if (hideTimer) clearTimeout(hideTimer);
 		if (rafHandle !== null) cancelAnimationFrame(rafHandle);
 	});
