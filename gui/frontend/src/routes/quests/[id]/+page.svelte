@@ -25,6 +25,9 @@
 	import { attachmentExtension } from '$lib/utils/editor-attach';
 	// DEV-140: 본문 cross-link — XXX-NNN 타이핑 시 [[...]] 링크 자동완성.
 	import { crossLinkAutocomplete } from '$lib/utils/editor-links';
+	// DEV-130: 편집기 들여쓰기 설정 (tab/space + 2/4칸).
+	import { indentExtensions } from '$lib/utils/editor-indent';
+	import { editorSettings } from '$lib/stores/editorSettings';
 	import {
 		URGENCY_LABEL,
 		urgencyColor,
@@ -290,7 +293,9 @@
 	let editorResizeObserver: ResizeObserver | null = null;
 	// DEV-074 fix4: theme 변경 시 편집 중이면 editor 재생성 (oneDark on/off).
 	$effect(() => {
+		// DEV-074: theme / DEV-130: 들여쓰기 설정 변경 시 편집 중이면 재생성.
 		const _ = $theme;
+		const __ = $editorSettings;
 		if (editMode && editorView) {
 			// 현재 내용 보존.
 			editDescription = editorView.state.doc.toString();
@@ -316,6 +321,8 @@
 				// Ctrl+Y 만. basicSetup 다음에 두어 우선 적용.
 				// DEV-130: Tab = 들여쓰기 (focus 이동 X). Esc 후 Tab 으로 탈출 가능.
 				keymap.of([{ key: 'Mod-Shift-z', run: redo, preventDefault: true }, indentWithTab]),
+				// DEV-130: tab/space + 2/4칸 들여쓰기 설정 적용 (indentWithTab 이 이 단위 사용).
+				indentExtensions($editorSettings),
 				// DEV-069: 클립보드 이미지 paste / 파일 drag&drop → 첨부 업로드.
 				attachmentExtension((msg) => (saveError = `첨부 업로드 실패: ${msg}`)),
 				// DEV-140: XXX-NNN 타이핑 → [[...]] cross-link 자동완성.

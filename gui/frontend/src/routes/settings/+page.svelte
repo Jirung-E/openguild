@@ -33,6 +33,13 @@
 		DEFAULT_CONTENT_WIDTH
 	} from '$lib/stores/contentWidth';
 	import { theme, setTheme, type ThemeChoice } from '$lib/stores/theme';
+	// DEV-130: 편집기 들여쓰기 설정 (tab/space + 2/4칸).
+	import {
+		editorSettings,
+		setTabMode,
+		setIndentSize,
+		type IndentSize
+	} from '$lib/stores/editorSettings';
 	// DEV-101 fix2: native input[type=range] 의 drag 문제 (값 재바인딩 →
 	// thumb 튐, UI scale 의 자기 자신 변형 → 손 놓침) 회피한 델타 기반 슬라이더.
 	import CustomSlider from '$lib/components/CustomSlider.svelte';
@@ -45,7 +52,7 @@
 	// preview / displayScale wrapper 제거.
 
 	// DEV-052 / DEV-101 fix6: 탭 분리 — '정보' / '표시'.
-	type Tab = 'info' | 'display';
+	type Tab = 'info' | 'display' | 'editor';
 	let activeTab = $state<Tab>('info');
 
 	// floating toast 닫기 — updateState 를 idle 로.
@@ -90,11 +97,59 @@
 				onclick={() => (activeTab = 'display')}
 				aria-pressed={activeTab === 'display'}
 			>표시</button>
+			<!-- DEV-130: 편집기 들여쓰기 설정. -->
+			<button
+				class="tab"
+				class:active={activeTab === 'editor'}
+				onclick={() => (activeTab = 'editor')}
+				aria-pressed={activeTab === 'editor'}
+			>편집기</button>
 		</nav>
 	</aside>
 
 	<section class="panel">
-		{#if activeTab === 'info'}
+		{#if activeTab === 'editor'}
+		<!-- DEV-130: 본문 편집기 들여쓰기 — 코드 편집기처럼 tab/space + 칸수 선택. -->
+		<h2>편집기</h2>
+		<dl class="info-grid">
+			<dt>Tab 동작</dt>
+			<dd class="theme-row">
+				<div class="theme-toggle" role="group" aria-label="Tab 동작">
+					<button
+						class="th-btn"
+						class:active={$editorSettings.tabMode === 'tab'}
+						onclick={() => setTabMode('tab')}
+						aria-pressed={$editorSettings.tabMode === 'tab'}
+					>탭 문자</button>
+					<button
+						class="th-btn"
+						class:active={$editorSettings.tabMode === 'space'}
+						onclick={() => setTabMode('space')}
+						aria-pressed={$editorSettings.tabMode === 'space'}
+					>공백</button>
+				</div>
+				<p class="scale-hint">
+					Tab 키를 눌렀을 때 탭 문자(\t)를 넣을지, 공백을 넣을지. 퀘스트 / 캠페인 본문 편집기에 적용.
+				</p>
+			</dd>
+			<dt>들여쓰기 칸수</dt>
+			<dd class="theme-row">
+				<div class="theme-toggle" role="group" aria-label="들여쓰기 칸수">
+					{#each [2, 4] as n (n)}
+						<button
+							class="th-btn"
+							class:active={$editorSettings.indentSize === n}
+							onclick={() => setIndentSize(n as IndentSize)}
+							aria-pressed={$editorSettings.indentSize === n}
+						>{n}칸</button>
+					{/each}
+				</div>
+				<p class="scale-hint">
+					공백 모드에서 Tab 한 번에 넣을 공백 개수 (탭 문자 모드에선 표시 폭). 2 / 4 중 선택.
+				</p>
+			</dd>
+		</dl>
+		{:else if activeTab === 'info'}
 		<h2>정보</h2>
 		<dl class="info-grid">
 			<dt>앱 이름</dt>

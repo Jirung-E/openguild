@@ -35,6 +35,9 @@
 	import { attachmentExtension } from '$lib/utils/editor-attach';
 	// DEV-140: 본문 cross-link — XXX-NNN 타이핑 시 [[...]] 링크 자동완성.
 	import { crossLinkAutocomplete } from '$lib/utils/editor-links';
+	// DEV-130: 편집기 들여쓰기 설정 (tab/space + 2/4칸).
+	import { indentExtensions } from '$lib/utils/editor-indent';
+	import { editorSettings } from '$lib/stores/editorSettings';
 
 	let slug = $derived($page.params.slug ?? '');
 	let detail = $state<CampaignDetail | null>(null);
@@ -92,6 +95,8 @@
 				oneDark,
 				// DEV-130: Tab = 들여쓰기 (focus 이동 X).
 				keymap.of([indentWithTab]),
+				// DEV-130: tab/space + 2/4칸 들여쓰기 설정 적용.
+				indentExtensions($editorSettings),
 				// DEV-069: 클립보드 이미지 paste / 파일 drag&drop → 첨부 업로드.
 				attachmentExtension((msg) => (error = `첨부 업로드 실패: ${msg}`)),
 				// DEV-140: XXX-NNN 타이핑 → [[...]] cross-link 자동완성.
