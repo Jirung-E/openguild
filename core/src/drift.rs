@@ -58,12 +58,13 @@ impl DriftReport {
     }
 }
 
-/// drift 검출. 파일 mtime > index.db 의 updated_at 으로 판단.
+/// drift 검출.
 ///
-/// 단점: ISO 8601 string 의 updated_at 과 OS mtime (SystemTime) 비교 어려움.
-/// 대신 단순 휴리스틱:
-/// - file mtime 이 index.db file mtime 보다 새것이면 그 파일은 fresh 후보.
-/// - 정확히 어느 quest 가 변경됐는지는 alm rough — 모든 newer 파일 fresh 로 표기.
+/// - **quest 본문**: 파일 mtime(nanos) > 그 quest 행의 `cached_mtime` 이면 fresh
+///   (= 우리 write 경로 밖에서 파일이 바뀜). per-row 라 정확.
+/// - **sibling** (`.comments.md` / `.memo.md`): 아직 per-row mtime 이 없어 global
+///   `last_indexed_at` 기준.
+/// - missing/stale: 파일 ↔ index slug 집합 차집합.
 pub async fn detect_drift(store: &Store) -> Result<DriftReport> {
     let paths = &store.paths;
     let pool = &store.index_pool;
@@ -77,15 +78,34 @@ pub async fn detect_drift(store: &Store) -> Result<DriftReport> {
     // auto_resync 가 첫 reindex 를 강제. (이전엔 fallback 으로 index.db mtime
     // 을 다시 썼는데 그건 똑같이 버그 경로 — 첫 startup 마다 'clean' 잘못 판정
     // → reindex skip → 마커 영원히 빈 값 → bootstrap 실패.)
+    // sibling 판정에만 쓰는 global 시간 기준 (아래 fresh_siblings).
     let index_mtime = fetch_last_indexed_at(pool)
         .await
         .unwrap_or(SystemTime::UNIX_EPOCH);
 
-    // 파일 → mtime 맵
-    // BUG-047: sibling `.comments.md` / `.memo.md` 제외 — 매번 missing_in_index
-    // 로 잡혀서 reindex 후에도 drift 가 사라지지 않는 false positive.
+    // quest 본문 drift 는 **per-row `cached_mtime`** 로 판단 (DEV-121 / migration
+    // 0015). 즉 "파일 mtime 이 그 quest 행에 기록된 cached_mtime 보다 새것인가".
+    //
+    // 이전엔 global `last_indexed_at` 과 비교했는데, ops mutation / 시동 sync /
+    // 상세 lazy(DEV-137) 가 데이터(+cached_mtime)는 갱신해도 last_indexed_at 을
+    // 안 올리는 경우, **데이터는 최신인 quest 가 매번 fresh 로 오탐**됐다
+    // (사용자 보고: 파일/리스트엔 제대로 보이는데 admin drift 에는 걸림).
+    // cached_mtime 은 reindex / incremental sync / lazy refresh / 모든 ops 의
+    // write_quest_file 이 파일 mtime 으로 동기화하므로, 외부 편집(우리 write
+    // 경로 밖에서 파일이 바뀜)만 정확히 fresh 로 잡힌다.
+    //
+    // BUG-047: sibling `.comments.md` / `.memo.md` 는 본문 목록에서 제외.
+    let index_rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT qt.prefix || '-' || printf('%03d', q.number), q.cached_mtime
+         FROM quests q JOIN quest_types qt ON q.quest_type_id = qt.id",
+    )
+    .fetch_all(pool)
+    .await
+    .context("index quest 조회 실패")?;
+    let db_mtime: HashMap<String, i64> = index_rows.into_iter().collect();
+
     let quest_paths = repo_fs::list_quest_body_files(paths.quests_dir())?;
-    let mut file_slugs: HashMap<String, SystemTime> = HashMap::new();
+    let mut file_slugs: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut fresh_files = Vec::new();
 
     for path in &quest_paths {
@@ -93,33 +113,28 @@ pub async fn detect_drift(store: &Store) -> Result<DriftReport> {
             continue;
         };
         let slug = stem.to_string();
-        let mtime = repo_fs::mtime(path).unwrap_or(SystemTime::UNIX_EPOCH);
-        file_slugs.insert(slug.clone(), mtime);
-        if mtime > index_mtime {
-            fresh_files.push(slug);
+        file_slugs.insert(slug.clone());
+        // db 에 있는 quest 만 fresh 판정 (없으면 missing_in_index 로).
+        if let Some(&cached) = db_mtime.get(&slug) {
+            let file_mtime = repo_fs::mtime_unix_nanos(path);
+            if file_mtime > cached {
+                fresh_files.push(slug);
+            }
         }
     }
     fresh_files.sort();
 
-    // index 에 있는 quest slug 들
-    let index_slugs: Vec<String> = sqlx::query_scalar(
-        "SELECT qt.prefix || '-' || printf('%03d', q.number)
-         FROM quests q JOIN quest_types qt ON q.quest_type_id = qt.id",
-    )
-    .fetch_all(pool)
-    .await
-    .context("index quest 조회 실패")?;
-
     let mut missing_in_index: Vec<String> = file_slugs
-        .keys()
-        .filter(|s| !index_slugs.contains(s))
+        .iter()
+        .filter(|s| !db_mtime.contains_key(*s))
         .cloned()
         .collect();
     missing_in_index.sort();
 
-    let mut stale_in_index: Vec<String> = index_slugs
-        .into_iter()
-        .filter(|s| !file_slugs.contains_key(s))
+    let mut stale_in_index: Vec<String> = db_mtime
+        .keys()
+        .filter(|s| !file_slugs.contains(*s))
+        .cloned()
         .collect();
     stale_in_index.sort();
 
@@ -258,6 +273,53 @@ mod tests {
         );
         // stale_in_index 도 비어야 (위에서 만든 quest 는 index 에 있음).
         assert!(report.stale_in_index.is_empty());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-121 #8 회귀: ops/sync 로 데이터는 최신인데 global last_indexed_at 이
+    /// 안 올라가 drift 가 오탐되던 문제. per-row cached_mtime 비교라, ops 로
+    /// 만든/고친 quest 는 fresh 로 안 잡히고, 우리 write 경로 밖에서 파일이 더
+    /// 새로 바뀐 경우(외부 편집)만 fresh 로 잡힌다.
+    #[tokio::test]
+    async fn drift_fresh_only_for_external_edit_not_ops() {
+        let dir = fresh_tmp("per-row");
+        let store = setup(&dir).await;
+        let q = ops::create_quest(
+            &store,
+            crate::models::CreateQuestRequest {
+                quest_type_id: 1,
+                title: "t".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        let slug = q.quest_id.clone();
+        let path = store.paths.quest_path(&slug);
+
+        // ops 로 막 만든 quest → write_quest_file 이 cached_mtime 동기화 → fresh 아님.
+        let r1 = detect_drift(&store).await.unwrap();
+        assert!(
+            !r1.fresh_files.contains(&slug),
+            "ops write 직후 fresh 오탐: {:?}",
+            r1.fresh_files
+        );
+
+        // 외부 편집 시뮬: ops 밖에서 파일 mtime 을 더 새로 (내용 그대로 재기록).
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let content = std::fs::read_to_string(&path).unwrap();
+        std::fs::write(&path, content).unwrap();
+
+        let r2 = detect_drift(&store).await.unwrap();
+        assert!(
+            r2.fresh_files.contains(&slug),
+            "외부 편집은 fresh 로 잡혀야: {:?}",
+            r2.fresh_files
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }

@@ -612,6 +612,13 @@ async fn write_quest_file_as_deleted(
         auto_block: String::new(),
     };
     qf.write(&path).map_err(crate::error::AppError::Internal)?;
+    // drift: soft-delete 로 쓴 파일도 cached_mtime 동기화 (오탐 방지).
+    let mtime = crate::repo::fs::mtime_unix_nanos(&path);
+    sqlx::query("UPDATE quests SET cached_mtime = ? WHERE id = ?")
+        .bind(mtime)
+        .bind(quest.id)
+        .execute(&store.index_pool)
+        .await?;
     Ok(())
 }
 
@@ -707,6 +714,16 @@ pub(crate) async fn write_quest_file(
 
     qf.write(&path)
         .map_err(crate::error::AppError::Internal)?;
+
+    // drift/DEV-121: 방금 쓴 파일의 mtime 을 cached_mtime 에 기록. detect_drift 와
+    // incremental sync 가 per-row cached_mtime 으로 "파일이 DB 보다 새것인가" 를
+    // 판단하므로, ops 가 쓴 파일이 곧바로 stale 로 오탐되지 않게 동기화해 둔다.
+    let mtime = crate::repo::fs::mtime_unix_nanos(&path);
+    sqlx::query("UPDATE quests SET cached_mtime = ? WHERE id = ?")
+        .bind(mtime)
+        .bind(quest.id)
+        .execute(pool)
+        .await?;
     Ok(())
 }
 
