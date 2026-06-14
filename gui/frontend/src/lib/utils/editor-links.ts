@@ -15,7 +15,7 @@ import {
 	type CompletionContext,
 	type CompletionResult
 } from '@codemirror/autocomplete';
-import { markdownLanguage } from '@codemirror/lang-markdown';
+import { markdownLanguage, commonmarkLanguage } from '@codemirror/lang-markdown';
 import type { Extension } from '@codemirror/state';
 import { questIndex, loadQuestIndex, type IndexedRef } from '$lib/stores/questIndex';
 import { get } from 'svelte/store';
@@ -70,6 +70,11 @@ export function crossLinkAutocomplete(): Extension {
 	// 후보 detail(제목) 표시를 위해 인덱스 미리 적재.
 	loadQuestIndex();
 	return [
+		// DEV-140 후속(버그): 편집기는 `markdown()` = 기본 base **commonmark** 를
+		// 쓰는데 이전엔 자동완성 소스를 GFM `markdownLanguage` 에만 등록해, 커서
+		// 위치의 활성 언어(commonmark)와 불일치 → 소스가 안 잡혀 '🔗 링크 걸기' 가
+		// 안 떴다. base 가 무엇이든 동작하도록 두 언어 모두에 등록.
+		commonmarkLanguage.data.of({ autocomplete: questIdCompletion }),
 		markdownLanguage.data.of({ autocomplete: questIdCompletion }),
 		// basicSetup 가 이미 autocompletion 을 포함하지만, 타이핑 중 자동 활성화를
 		// 보장하기 위해 명시 (config 는 병합됨).
