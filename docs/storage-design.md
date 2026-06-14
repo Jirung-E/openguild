@@ -650,6 +650,62 @@ openguild migrate-to-files
 - mtime 보존 복사 (git checkout, rsync -t): 가장 위험. admin Reindex 로 우회
   필요. 추후 `cached_size` 컬럼 추가 검토.
 
+### 상세 진입 lazy refresh — DEV-137 / DEV-121 Phase 2 (구현 완료)
+
+- Phase 1 은 *시동 1회* sync — GUI 를 켜 둔 채 외부 편집하면 재시작/⟲ 전까진
+  stale. 이를 보완하는 런타임 안전망.
+- `get_quest_by_slug` (상세 read 경로) 맨 앞에서
+  `incremental::refresh_quest_if_stale(slug)`:
+  - 그 quest 파일 하나만 `stat()` → file mtime vs `cached_mtime` (~1ms, 내용 안
+    읽음).
+  - 새것이면 **그 한 행만** re-parse + UPDATE (title / description / status /
+    urgency / due / created·updated·deleted + cached_mtime) 후 응답.
+  - 같거나 작으면 / 파일 없음 / DB 에 없음 / unknown status → skip (기존 캐시로
+    응답, panic 없음).
+- **의도적 한계** (Phase 1 과 동일): prereq / parent / tag cascade 는 재계산 안
+  함 — 관계 변경은 풀 reindex 영역. 신규/삭제·sibling·비-quest 도 범위 외.
+
+### 파일 진리 ↔ 캐시 신선도 — 정책 정리 (DEV-137 논의 정리)
+
+정책을 평가할 땐 **두 측면을 분리**해야 한다:
+
+**(A) 권한 / 파생 구조 — 항상 성립 (sync 기능과 무관).**
+- 모든 mutation(ops)은 파일 + DB **동시 기록** → DB 에만 있고 파일엔 없는
+  데이터가 생기지 않음.
+- `index.db` 를 통째로 지워도 `reindex` 로 파일에서 **무손실 재구축** → 순수
+  파생 캐시.
+- 용어 주의: `index.db` = *쿼리/검색 보조 캐시*. **백업은 별개** — `backups/`
+  의 `journal.db` + `snapshots/`. 셋 다 파일에서 파생되는 gitignore 대상.
+- → "파일이 진리, DB 는 파생물" 은 이미 참. (DEV-137 이 바꾸는 게 아님.)
+
+**(B) 신선도 / 일관성 — "읽기가 외부 편집을 반영하나" — sync 지점 기반
+eventually-consistent.**
+
+| sync 지점 | 무엇을 | 언제 |
+|---|---|---|
+| 시동 sync (DEV-121 P1) | 변경된 quest 파일 (+ 신규/삭제·관계 시 풀 reindex fallback) | 앱 시작 / Welcome 로 길드 열 때(BUG-049 fix) |
+| 상세 lazy (DEV-137) | 그 quest 한 건 | 상세 페이지 진입 |
+| 수동 ⟲ (DEV-095) | 전체 (풀 reindex) | 사용자 클릭 |
+
+**현재 sync 지점이 안 덮는 빈틈** (= 외부 편집 후 해당 sync 지점 전까진 stale):
+
+| 읽는 대상 | 시동 sync | 상세 lazy | ⟲ |
+|---|---|---|---|
+| quest 표시 필드 (title/status/…) | ✅ | ✅ | ✅ |
+| quest 관계 (prereq/parent/tag) | △ full fallback 시 | ❌ | ✅ |
+| 목록 / 보드 (여러 파일) | ✅ (시동) | ❌ | ✅ |
+| 비-quest (campaign / status / type / 댓글·메모) | ❌ | ❌ | ✅ |
+| 신규 / 삭제 파일 | ✅ full fallback | ❌ | ✅ |
+
+**결론**:
+- "DB 는 파일에서 파생된 캐시/인덱스" (A) = 이미 완전 부합.
+- "읽으면 항상 파일이 최신" (B) = quest 상세는 DEV-137 로 부합, 그 외는 sync
+  지점 기반 eventually-consistent (목록/관계/비-quest 는 ⟲ 또는 재시작 필요).
+- **완전 실시간 파일-진리**(어디서 읽어도 즉시 반영)는 **fs watcher**(`notify`,
+  DEV-122 옵션 C) 또는 모든 read 에 lazy(목록은 N-file stat 비용) 가 필요 —
+  비용 대비 가치로 **의도적 보류**. 현 모델 = "권한은 항상 파일, 신선도는 sync
+  지점 기반 eventually-consistent".
+
 ---
 
 ## ⚠️ 구현 완료 후 — dogfood 전환 (필수)
