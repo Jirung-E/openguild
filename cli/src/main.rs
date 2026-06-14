@@ -101,6 +101,8 @@ enum Command {
         #[arg(long)]
         to: Option<String>,
     },
+    /// 파일 → index.db 캐시 재구축 (외부 편집 / git pull / restore 후 정합).
+    Reindex,
 }
 
 #[derive(Subcommand)]
@@ -1814,6 +1816,19 @@ impl Backend {
         }
     }
 
+    /// DEV-095: 파일 → index.db 풀 reindex. Local 전용 (remote 는 서버측 명령).
+    fn reindex(&self) -> Result<openguild_core::reindex::ReindexReport> {
+        match self {
+            Backend::Http(_) => Err(anyhow!(
+                "원격 모드에선 미지원 — 서버에서 `openguild-server reindex` 사용"
+            )),
+            Backend::Local(l) => l
+                .rt
+                .block_on(openguild_core::reindex::reindex(&l.store))
+                .map_err(|e| anyhow!(e)),
+        }
+    }
+
     fn list_backups(&self) -> Result<Vec<openguild_core::snapshot::SnapshotInfo>> {
         match self {
             Backend::Http(c) => c.list_snapshots(),
@@ -3229,7 +3244,37 @@ fn run() -> Result<()> {
                 println!("✓ 복원 완료: {}", info.timestamp);
                 println!();
                 println!("주의: 파일 시스템 (`.guild/quests/*.md`) 자동 갱신 안 됨.");
-                println!("      필요시 `openguild-server reindex`.");
+                println!("      필요시 `openguild reindex`.");
+            }
+        }
+        Command::Reindex => {
+            let report = c.reindex()?;
+            if cli.json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "ok": true,
+                        "quests": report.quests_loaded,
+                        "dependencies": report.dependencies_loaded,
+                        "campaigns": report.campaigns_loaded,
+                        "comments": report.comments_loaded,
+                        "skipped": report.skipped.len(),
+                    })
+                );
+            } else {
+                println!(
+                    "✓ reindex 완료 — quests {} / deps {} / campaigns {} / comments {}",
+                    report.quests_loaded,
+                    report.dependencies_loaded,
+                    report.campaigns_loaded,
+                    report.comments_loaded
+                );
+                if !report.skipped.is_empty() {
+                    println!("  skipped {} 개 (파싱/무결성 실패):", report.skipped.len());
+                    for (path, why) in &report.skipped {
+                        println!("    - {path}: {why}");
+                    }
+                }
             }
         }
         Command::Campaign { sub } => handle_campaign(&c, cli.json, sub)?,
