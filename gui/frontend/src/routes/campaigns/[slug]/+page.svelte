@@ -154,6 +154,48 @@
 		}
 	}
 
+	// DEV-144: quest 상세(DEV-109/123/127) 의 우하단 floating 점프 cluster 를
+	// 캠페인 상세에도. 댓글/메모 anchor 기준 노출 + 맨 위로.
+	let commentsAnchorEl: HTMLDivElement | undefined = $state(undefined);
+	let memoAnchorEl: HTMLDivElement | undefined = $state(undefined);
+	let showCommentsJump = $state(false);
+	let showMemoJump = $state(false);
+	let showTopJump = $state(false);
+	function checkJumpVisibility() {
+		const vh = window.innerHeight;
+		showCommentsJump = commentsAnchorEl
+			? commentsAnchorEl.getBoundingClientRect().top > vh * 1.1
+			: false;
+		showMemoJump = memoAnchorEl
+			? memoAnchorEl.getBoundingClientRect().top > vh * 1.1
+			: false;
+		showTopJump = window.scrollY > vh * 0.8;
+	}
+	function jumpToComments() {
+		commentsAnchorEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+	}
+	function jumpToMemo() {
+		memoAnchorEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+	}
+	function jumpToTop() {
+		window.scrollTo({ top: 0, behavior: 'smooth' });
+	}
+	onMount(() => {
+		const handler = () => checkJumpVisibility();
+		window.addEventListener('scroll', handler, { passive: true });
+		window.addEventListener('resize', handler);
+		checkJumpVisibility();
+		return () => {
+			window.removeEventListener('scroll', handler);
+			window.removeEventListener('resize', handler);
+		};
+	});
+	// detail 로드/변경 시 anchor 위치 재측정.
+	$effect(() => {
+		void detail;
+		queueMicrotask(() => checkJumpVisibility());
+	});
+
 	onMount(load);
 	$effect(() => {
 		// slug 가 바뀌면 (다른 캠페인으로 navigate) 재로드
@@ -552,10 +594,34 @@
 		</section>
 
 		<!-- DEV-100: 캠페인 댓글 + 메모 — quest 와 동일 컴포넌트, scope 만 다름. -->
+		<!-- DEV-144: floating 버튼 점프 anchor. -->
+		<div bind:this={commentsAnchorEl} id="campaign-comments-anchor"></div>
 		<QuestCommentsSection slug={detail.campaign_slug} scope="campaign" />
+		<div bind:this={memoAnchorEl} id="campaign-memo-anchor"></div>
 		<QuestNoteSection slug={detail.campaign_slug} mode="memo" scope="campaign" />
 	{/if}
 </div>
+
+<!-- DEV-144: 우하단 floating 점프 버튼 cluster (quest 상세 패턴). -->
+{#if detail && (showTopJump || showCommentsJump || showMemoJump)}
+	<div class="jump-cluster">
+		{#if showTopJump}
+			<button class="jump-btn" onclick={jumpToTop} title="맨 위로" aria-label="맨 위로">
+				<span class="jb-icon">↑</span><span class="jb-label">위</span>
+			</button>
+		{/if}
+		{#if showCommentsJump}
+			<button class="jump-btn" onclick={jumpToComments} title="댓글로 이동" aria-label="댓글로 이동">
+				<span class="jb-icon">💬</span><span class="jb-label">댓글</span>
+			</button>
+		{/if}
+		{#if showMemoJump}
+			<button class="jump-btn" onclick={jumpToMemo} title="메모로 이동" aria-label="메모로 이동">
+				<span class="jb-icon">📝</span><span class="jb-label">메모</span>
+			</button>
+		{/if}
+	</div>
+{/if}
 
 <!-- BUG-023: Quest 연결 콤보 모달 (Quest Detail 패턴 그대로) -->
 {#if comboOpen && detail}
@@ -865,5 +931,45 @@
 	}
 	.quest-progress-fill.done {
 		background: var(--success-strong);
+	}
+
+	/* DEV-144: 우하단 floating 점프 cluster (quest 상세와 동일). */
+	.jump-cluster {
+		position: fixed;
+		right: 1.5rem;
+		bottom: 1.5rem;
+		z-index: 80;
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		align-items: flex-end;
+	}
+	.jump-btn {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		padding: 0.55rem 1rem;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-radius: 999px;
+		color: var(--text);
+		font-size: 0.85rem;
+		font-weight: 500;
+		cursor: pointer;
+		box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+		transition: background 0.12s, border-color 0.12s, transform 0.12s;
+	}
+	.jump-btn:hover {
+		background: var(--bg-subtle);
+		border-color: var(--accent);
+		transform: translateY(-2px);
+	}
+	.jump-btn .jb-icon {
+		font-size: 1rem;
+		line-height: 1;
+		color: var(--accent);
+	}
+	.jump-btn .jb-label {
+		line-height: 1;
 	}
 </style>
