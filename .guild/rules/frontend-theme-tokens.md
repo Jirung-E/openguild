@@ -47,7 +47,33 @@ const bg = palette.bg;
 }
 ```
 
-## 4. native picker — `color-scheme`
+## 4. 토큰은 용도에 맞게 — `--nav-*` 는 Nav 전용 (BUG-069)
+
+토큰을 쓰더라도 **의미에 맞는** 토큰을 써야 한다. `--nav-bg` / `--nav-border`
+는 상단 네비게이션(`Nav.svelte`) 전용 색이다. 일반 섹션 / 카드 / 버튼 / 표의
+배경·경계에 쓰지 말 것.
+
+```css
+/* ❌ 잘못 — Nav 전용 토큰을 일반 surface 에 사용 */
+section { background: var(--nav-bg); border: 1px solid var(--nav-border); }
+
+/* ✅ 올바름 — 의미 토큰 */
+section { background: var(--bg-elevated); border: 1px solid var(--border); }
+```
+
+라이트 테마에선 `--nav-bg` 값이 `--bg-elevated` 와, `--nav-border` 가 `--border`
+와 우연히 같아서 **안 들킨다.** 하지만 다크 테마에선 `--nav-*` 가 보라빛이라
+그 영역만 다른 섹션과 색이 달라진다. "토큰을 썼으니 OK" 가 아니라 — 잘못된
+토큰은 hex 직접 작성과 똑같이 테마 깨짐의 원인.
+
+| 용도 | 토큰 |
+|------|------|
+| 표면(카드/섹션/elevated) | `--bg-elevated` |
+| 살짝 들어간 표면(버튼/입력) | `--bg-subtle` |
+| 경계선 | `--border` |
+| 네비게이션 바 (그 외 금지) | `--nav-bg` / `--nav-border` |
+
+## 5. native picker — `color-scheme`
 
 `<input type="date">` 같은 native control 의 아이콘 색은 `color-scheme`
 property 가 결정. `global.css` 의 `:root` (dark) 와 `[data-theme='light']`

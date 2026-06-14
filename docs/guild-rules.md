@@ -118,6 +118,12 @@ DEV-001, DEV-002, BUG-045, REQ-007, ...  ─── feature 브랜치 (develop �
   컴포넌트 안에서 `eff === 'light' ? '#x' : '#y'` 분기 작성 금지 — 중복 정의 /
   drift 의 원인.
 - 새 색 추가 시 dark / light 양쪽 모두 정의. 한쪽만 정의하면 다른 테마에서 깨짐.
+- **토큰은 용도(semantic)에 맞게 사용 — BUG-069 (재발 방지).** `--nav-*`
+  (`--nav-bg` / `--nav-border`) 는 Nav 전용. `Nav.svelte` 외부의 surface /
+  border 에 쓰지 말 것. 일반 표면은 `--bg-elevated` / `--bg-subtle`, 경계선은
+  `--border` 사용. light 테마에선 `--nav-*` 값이 `--bg-elevated` / `--border`
+  와 우연히 같아 안 들키지만 dark 에선 보라빛이라 섹션마다 색이 달라진다
+  (토큰을 쓰긴 했어도 "잘못된 토큰" 이면 hex 직접 사용과 같은 문제).
 - 사용자가 보는 in-app rule 은 `.guild/rules/frontend-theme-tokens.md` 참조.
 
 ---
