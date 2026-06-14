@@ -776,6 +776,12 @@ pub fn init_and_open_guild(
     // 3. Store 열고 swap.
     let store = tauri::async_runtime::block_on(openguild_core::Store::open(p))
         .map_err(|e| format!("Store::open 실패: {e:#}"))?;
+    // BUG-049/DEV-121 fix: 초기화/연 길드도 시동 sync (open_guild_in_current_window 와 동일).
+    if let Err(e) =
+        tauri::async_runtime::block_on(openguild_core::incremental::sync_on_open(&store))
+    {
+        eprintln!("[openguild-gui] warn: sync_on_open 실패 — {e:#}");
+    }
     if let Err(e) = openguild_core::recents::add(p) {
         eprintln!("[openguild-gui] warn: recents 갱신 실패 — {e:#}");
     }
@@ -836,6 +842,16 @@ pub fn open_guild_in_current_window(
     // 1. 새 Store 미리 열기 (실패 시 swap 안 함).
     let new_store = tauri::async_runtime::block_on(openguild_core::Store::open(p))
         .map_err(|e| format!("Store::open 실패: {e:#}"))?;
+
+    // BUG-049/DEV-121 fix: Welcome 에서 연 길드도 시동 sync 적용. 기존엔
+    // sync_on_open 이 앱 부팅 시 '초기 길드' 에만 돌아, Welcome → 길드 열기
+    // 흐름에서는 외부 편집이 동기화 안 돼 admin drift 가 남았다 (asset scope 와
+    // 동일한 swap 누락 패턴). swap 전 새 store 에 sync.
+    if let Err(e) =
+        tauri::async_runtime::block_on(openguild_core::incremental::sync_on_open(&new_store))
+    {
+        eprintln!("[openguild-gui] warn: sync_on_open 실패 — {e:#}");
+    }
 
     // 2. recents 등록 (실패해도 swap 진행).
     if let Err(e) = openguild_core::recents::add(p) {
