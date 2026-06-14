@@ -864,7 +864,7 @@
 		font-size: 0.825rem;
 	}
 	.add-row button:disabled { opacity: 0.5; cursor: not-allowed; }
-	.add-row button:hover:not(:disabled) { background: var(--nav-border); }
+	.add-row button:hover:not(:disabled) { background: var(--bg-subtle); }
 
 	/* BUG-023: 모달 (Quest Detail 패턴) */
 	.ov {
@@ -902,7 +902,7 @@
 		cursor: pointer;
 		font-size: 0.825rem;
 	}
-	.link-add-btn:hover { background: var(--nav-border); }
+	.link-add-btn:hover { background: var(--bg-subtle); }
 
 	/* BUG-021: linked quest 의 type/status badge 도 Quest List pill 패턴. */
 	.badge {

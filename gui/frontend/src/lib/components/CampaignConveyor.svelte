@@ -278,5 +278,5 @@
 		cursor: pointer;
 		transition: background 0.15s;
 	}
-	.play-pause:hover { background: var(--nav-border); }
+	.play-pause:hover { background: var(--bg-subtle); }
 </style>

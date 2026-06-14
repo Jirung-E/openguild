@@ -329,8 +329,10 @@
 	section {
 		margin-bottom: 2.5rem;
 		padding: 1.25rem;
-		background: var(--nav-bg);
-		border: 1px solid var(--nav-border);
+		/* 다른 admin 섹션(Statuses/Types/TagDefs 컴포넌트)과 동일 토큰.
+		   이전 --nav-bg/--nav-border 는 다크에서 보라빛이라 섹션마다 색이 달랐음. */
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
 		border-radius: 8px;
 	}
 	.section-header {
@@ -345,7 +347,7 @@
 	}
 	button {
 		padding: 0.4rem 0.9rem;
-		background: var(--nav-border);
+		background: var(--bg-subtle);
 		border: 1px solid var(--border);
 		border-radius: 6px;
 		color: var(--text);
@@ -377,7 +379,7 @@
 	td {
 		padding: 0.5rem 0.75rem;
 		text-align: left;
-		border-bottom: 1px solid var(--nav-border);
+		border-bottom: 1px solid var(--border);
 	}
 	th {
 		color: var(--text-muted);

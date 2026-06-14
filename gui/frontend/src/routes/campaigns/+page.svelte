@@ -235,5 +235,5 @@
 		font-size: 0.75rem;
 		cursor: pointer;
 	}
-	.reorder button:hover { background: var(--nav-border); }
+	.reorder button:hover { background: var(--bg-subtle); }
 </style>

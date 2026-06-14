@@ -162,7 +162,7 @@
 		cursor: pointer;
 		transition: background 0.15s;
 	}
-	.arrow:hover { background: var(--nav-border); }
+	.arrow:hover { background: var(--bg-subtle); }
 	.dots {
 		display: flex;
 		gap: 0.35rem;
@@ -197,5 +197,5 @@
 		transition: background 0.15s;
 		margin-left: 0.4rem;
 	}
-	.play-pause:hover { background: var(--nav-border); }
+	.play-pause:hover { background: var(--bg-subtle); }
 </style>
