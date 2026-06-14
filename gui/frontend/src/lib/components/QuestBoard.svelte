@@ -22,6 +22,7 @@
 		URGENCY_COLOR,
 		urgencyColor,
 		urgencyLabel,
+		urgencyOutOfRange,
 		URGENCY_BG,
 		URGENCY_LABEL,
 		urgencyBgFor,
@@ -151,6 +152,8 @@
 		const uc = urgencyColor(quest.urgency);
 		const tc = quest.type_color;
 		const ul = urgencyLabel(quest.urgency);
+		// BUG-060 후속: 원본 urgency 가 범위(1-4) 밖이면 clamp 표시 + ⚠ 경고.
+		const urgWarn = urgencyOutOfRange(quest.urgency);
 		const qid = quest.quest_id;
 		// DEV-074 fix: SVG data URL 안에선 CSS var() 컴퓨팅 X — 명시 색.
 		// DEV-074 fix20: themePalette 단일 source 사용.
@@ -221,6 +224,8 @@
   <text x="${ulX + ulW / 2}" y="21.5" text-anchor="middle"
     fill="${uc}" font-size="10" font-weight="500"
     font-family="system-ui,sans-serif">${x(ul)}</text>
+  ${urgWarn ? `<text x="${ulX + ulW + 5}" y="21.5" fill="${dangerFill}"
+    font-size="12" font-weight="700" font-family="system-ui,sans-serif"><title>urgency 원본값 ${quest.urgency} 가 범위(1-4) 밖 — clamp 표시 중</title>⚠</text>` : ''}
   ${ccText ? `<text x="${ccX + ccW / 2}" y="21.5" text-anchor="middle"
     fill="${ccFill}" font-size="10" font-weight="500"
     font-family="system-ui,sans-serif">${x(ccText)}</text>` : ''}

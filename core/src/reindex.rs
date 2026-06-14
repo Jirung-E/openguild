@@ -240,22 +240,21 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
             .deleted
             .then(|| updated_at.clone());
 
-        // BUG-060 후속: urgency 범위 (1..=4) 밖이면 4 (Low) 로 clamp + skipped
-        // 에 경고. 이전엔 silent INSERT — invalid 값이 GUI 까지 흘러가 보드
-        // 폭발의 원인이 됐음 (GUI 측 방어는 BUG-060 본 fix). quest 자체는
-        // 잃지 않도록 skip 이 아닌 clamp.
-        let urgency = if (1..=4).contains(&qf.frontmatter.urgency) {
-            qf.frontmatter.urgency
-        } else {
+        // BUG-060 후속: urgency 범위 (1..=4) 밖이면 skipped 에 경고하되 **raw 값을
+        // 그대로 적재**한다. 이전엔 4 로 clamp 했으나, (1) incremental sync
+        // (sync_changed_quest_files / refresh_quest_if_stale) 는 이미 raw 를
+        // 저장해 reindex 와 불일치였고, (2) GUI 가 원본 범위 밖 여부를 알아야
+        // 상세/노드/리스트에 경고를 띄울 수 있다. clamp 는 표시 계층(GUI
+        // urgencyLabel/Color)에서만. 보드 폭발은 GUI 의 안전 헬퍼가 이미 방어.
+        let urgency = qf.frontmatter.urgency;
+        if !(1..=4).contains(&urgency) {
             report.skipped.push((
                 path.display().to_string(),
                 format!(
-                    "urgency {} 가 유효 범위 (1..=4) 밖 — 4 (Low) 로 clamp 하여 적재. 파일 정정 권장.",
-                    qf.frontmatter.urgency
+                    "urgency {urgency} 가 유효 범위 (1..=4) 밖 — raw 값 그대로 적재(GUI 는 clamp 표시 + 경고). 파일 정정 권장."
                 ),
             ));
-            4
-        };
+        }
 
         // DEV-076: desired_due / required_due 도 함께 적재 (file → DB sync).
         // DEV-121: cached_mtime 도 함께 — 이후 incremental sync 가 정확히 비교.
@@ -1079,11 +1078,12 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// BUG-060 후속: 범위 밖 urgency 는 4 로 clamp + skipped 경고. quest 자체는
-    /// 적재 (잃지 않음).
+    /// BUG-060 후속: 범위 밖 urgency 는 skipped 경고 + **raw 값 그대로 적재**
+    /// (incremental sync 와 일관 + GUI 가 경고 띄울 수 있도록). clamp 는 GUI 표시
+    /// 계층에서만. quest 자체는 잃지 않음.
     #[tokio::test]
-    async fn reindex_clamps_out_of_range_urgency() {
-        let dir = fresh_tmp("urgency-clamp");
+    async fn reindex_keeps_raw_out_of_range_urgency_with_warning() {
+        let dir = fresh_tmp("urgency-raw");
         let store = setup_store(&dir).await;
         let paths = GuildPaths::new(&dir);
 
@@ -1118,7 +1118,7 @@ mod tests {
             .fetch_one(&store.index_pool)
             .await
             .unwrap();
-        assert_eq!(u, 4, "4 (Low) 로 clamp");
+        assert_eq!(u, 99, "raw 값(99) 그대로 적재 — clamp 는 GUI 표시 계층에서");
 
         let _ = std::fs::remove_dir_all(&dir);
     }

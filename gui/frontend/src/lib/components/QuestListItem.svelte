@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { urgencyColor, urgencyLabel, type Quest } from '$lib/types';
+	import { urgencyColor, urgencyLabel, urgencyOutOfRange, type Quest } from '$lib/types';
 
 	let {
 		quest,
@@ -63,6 +63,14 @@
 		<span class="comment-count" title={`댓글 ${quest.comment_count}개`}>
 			<span class="cc-icon">💬</span><span>{quest.comment_count}</span>
 		</span>
+	{/if}
+
+	<!-- BUG-060 후속: 원본 urgency 가 범위(1-4) 밖이면 경고. clamp 된 값으로 표시. -->
+	{#if urgencyOutOfRange(quest.urgency)}
+		<span
+			class="urgency-warn"
+			title={`urgency 원본값 ${quest.urgency} 가 유효 범위(1-4) 밖 — clamp 표시 중. 파일 정정 필요.`}
+		>⚠</span>
 	{/if}
 
 	<!-- 긴급도 -->
@@ -163,4 +171,12 @@
 		border: 1px solid color-mix(in srgb, var(--success) 40%, transparent);
 	}
 	.dc-icon { font-size: 0.7rem; line-height: 1; }
+	/* BUG-060 후속: 범위 밖 urgency 경고 — 빨간 ⚠. */
+	.urgency-warn {
+		flex-shrink: 0;
+		color: var(--danger);
+		font-size: 0.85rem;
+		line-height: 1;
+		cursor: help;
+	}
 </style>

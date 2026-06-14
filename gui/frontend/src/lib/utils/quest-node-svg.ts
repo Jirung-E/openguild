@@ -7,7 +7,7 @@
 //
 // 결과: data:image/svg+xml URL. `<img src={url} />` 로 표시.
 
-import { URGENCY_COLOR, URGENCY_LABEL, type Quest } from '../types';
+import { urgencyColor, urgencyLabel, urgencyOutOfRange, type Quest } from '../types';
 import { themePalette } from '../stores/theme';
 
 const NODE_W = 284;
@@ -127,9 +127,11 @@ export function makeQuestNodeSvgUrl(
 			: 1;
 	const Wpx = Math.round(W * dpr);
 	const Hpx = Math.round(H * dpr);
-	const uc = URGENCY_COLOR[quest.urgency as 1 | 2 | 3 | 4] ?? '#666';
+	// BUG-060 후속: clamp 표시(범위 밖이면 1~4 로) + 원본 범위 밖이면 ⚠ 경고.
+	const uc = urgencyColor(quest.urgency);
 	const tc = quest.type_color;
-	const ul = URGENCY_LABEL[quest.urgency as 1 | 2 | 3 | 4] ?? '?';
+	const ul = urgencyLabel(quest.urgency);
+	const urgWarn = urgencyOutOfRange(quest.urgency);
 	const qid = quest.quest_id;
 
 	const xEsc = (s: string) =>
@@ -194,6 +196,8 @@ export function makeQuestNodeSvgUrl(
   <text x="${ulX + ulW / 2}" y="21.5" text-anchor="middle"
     fill="${uc}" font-size="10" font-weight="500"
     font-family="system-ui,sans-serif">${xEsc(ul)}</text>
+  ${urgWarn ? `<text x="${ulX + ulW + 5}" y="21.5" fill="${palette.danger}"
+    font-size="12" font-weight="700" font-family="system-ui,sans-serif"><title>urgency 원본값 ${quest.urgency} 가 범위(1-4) 밖 — clamp 표시 중</title>⚠</text>` : ''}
   ${dText ? `<rect x="${dX}" y="9" width="${dW}" height="17" rx="8.5"
     fill="${dColor}" fill-opacity="0.16" stroke="${dColor}" stroke-opacity="0.6" stroke-width="1"/>
   <text x="${dX + dW / 2}" y="21.5" text-anchor="middle"

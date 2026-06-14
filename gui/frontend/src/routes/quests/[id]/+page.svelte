@@ -35,6 +35,7 @@
 		URGENCY_LABEL,
 		urgencyColor,
 		urgencyLabel,
+		urgencyOutOfRange,
 		type CandidateRelation,
 		type Quest,
 		type QuestDetail,
@@ -689,6 +690,13 @@
 			<span class="badge urgency" style:--c={urgencyColor(detail.urgency)}>
 				{urgencyLabel(detail.urgency)}
 			</span>
+			{#if urgencyOutOfRange(detail.urgency)}
+				<!-- BUG-060 후속: 원본 urgency 가 범위(1-4) 밖 — clamp 표시 + 경고. -->
+				<span
+					class="urgency-warn"
+					title={`urgency 원본값 ${detail.urgency} 가 유효 범위(1-4) 밖 — clamp 표시 중. .guild 파일의 urgency 를 1~4 로 정정하세요.`}
+				>⚠ 범위 밖</span>
+			{/if}
 			{#key badgePulse}
 				<span class="badge status pulsing" style:--c={detail.status_color}>
 					{detail.status_name_en}
@@ -1596,6 +1604,21 @@
 		background: color-mix(in srgb, var(--c) 18%, transparent);
 		color: var(--c);
 		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
+	}
+	/* BUG-060 후속: 범위 밖 urgency 경고 배지. */
+	.urgency-warn {
+		flex-shrink: 0;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.2rem;
+		padding: 0.15rem 0.55rem;
+		border-radius: 20px;
+		font-size: 0.75rem;
+		font-weight: 600;
+		color: var(--danger);
+		background: color-mix(in srgb, var(--danger) 14%, transparent);
+		border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+		cursor: help;
 	}
 
 	/* --- 모달 (콤보박스 / 삭제) --- */

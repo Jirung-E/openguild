@@ -312,13 +312,26 @@ export function urgencyBgFor(urgency: number, theme: 'dark' | 'light'): string {
  * 이전엔 `URGENCY_LABEL[quest.urgency]` 같은 bare access 였는데, 데이터가
  * 유효 범위 (1..=4) 를 벗어나면 `undefined` 가 반환. 호출 측에서 `.length`
  * 같은 접근 시 "Cannot read properties of undefined" 로 보드 전체 폭발.
- * (사용자 보고 — reindex 후 보드 중앙에 그 메시지가 떠 board mount 실패.)
  *
- * 범위 밖이면 4 (Low) 로 fallback — 시각적 노이즈 최소 + 데이터 정정 유도.
+ * 표시는 항상 1..=4 로 **clamp**: 1 미만 → 1(Critical), 4 초과 → 4(Low).
+ * (admin #2 피드백 반영 — 이전 '무조건 4 fallback' 은 하한이 틀려 urgency 0 도
+ * Low 가 됐다.) DB 는 파일의 raw 값을 보존하고(파일 진실) clamp 는 표시 계층에서
+ * 만 한다. 원본이 범위 밖인지는 urgencyOutOfRange() 로 판별해 상세/노드/리스트에
+ * 경고를 띄운다.
  */
+export function urgencyClamp(u: number): 1 | 2 | 3 | 4 {
+	const n = Math.round(u);
+	if (!Number.isFinite(n) || n < 1) return 1;
+	if (n > 4) return 4;
+	return n as 1 | 2 | 3 | 4;
+}
 export function urgencyLabel(u: number): string {
-	return URGENCY_LABEL[u] ?? URGENCY_LABEL[4];
+	return URGENCY_LABEL[urgencyClamp(u)];
 }
 export function urgencyColor(u: number): string {
-	return URGENCY_COLOR[u] ?? URGENCY_COLOR[4];
+	return URGENCY_COLOR[urgencyClamp(u)];
+}
+/** 원본 urgency 가 유효 범위(1..=4 정수) 밖인가 — 경고 아이콘 표시용. */
+export function urgencyOutOfRange(u: number | null | undefined): boolean {
+	return typeof u === 'number' && (!Number.isInteger(u) || u < 1 || u > 4);
 }
