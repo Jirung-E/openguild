@@ -89,6 +89,17 @@ DEV-001, DEV-002, BUG-045, REQ-007, ...  ─── feature 브랜치 (develop �
 
 ---
 
+## 저장소 — 파일 진리 / DB 캐시 (불변 규칙)
+
+- **파일이 진리원, `index.db` 는 파생 캐시.** `.guild/**` 의 `.md`/`.toml` 이 source of truth. `index.db` 는 언제든 `reindex` 로 파일에서 **무손실 재구축** 가능해야 한다 → **파일에서 파생되지 않는 값을 DB 에만 저장 금지** (DB-only 권위 상태 도입 금지).
+- **모든 mutation 은 파일 + DB 동시 기록.** ops 경로(journal → SQL → 파일 write → auto-block)를 거친다. 한쪽만 바꾸지 말 것.
+- **백업 ≠ 캐시.** 백업은 `backups/journal.db` + `snapshots/`. `index.db` 는 백업이 아니다 (캐시를 백업처럼 의존 금지).
+- **읽기는 eventually-consistent.** 외부 편집 반영은 sync 지점으로만 — 시동 sync(DEV-121) / 상세 lazy(DEV-137) / 수동 ⟲(DEV-095). 신선도가 필요한 **새 read 경로**를 추가하면 어느 sync 지점이 그걸 덮는지 확인할 것 (목록류는 N-file stat 비용 고려).
+- mtime 비교는 **Unix nanoseconds(절대 시각)** 로 — naive ISO string 금지(TZ 안전성).
+- 상세: `docs/storage-design.md` § "파일 진리 ↔ 캐시 신선도 정책", guild rule `file-truth-db-cache`.
+
+---
+
 ## 프론트엔드 (Svelte)
 
 - 순수 함수(유틸, 필터, 트리 빌드 등)는 **vitest 단위 테스트 작성**
