@@ -113,9 +113,16 @@
 	//
 	// marked 는 `[[...]]` 를 링크로 해석하지 않아 본문에 리터럴 텍스트로 남음.
 	// 렌더 후 텍스트 노드만 훑어 토큰을 anchor 로 치환 (code/pre/기존 a 안은 제외).
-	const CROSS_LINK_RE = /\[\[([A-Za-z]{1,}-\d+)\]\]/g;
+	// DEV-140 후속: 두 형태를 모두 인식.
+	//  1) `[[DEV-033]]` (명시 위키링크) — 실재=파랑 / 미존재=빨강.
+	//  2) bare `DEV-033` (대괄호 없이) — **실재하는 ID 만** 링크(파랑). 미존재
+	//     bare 는 일반 텍스트로 둔다(오탐 방지). 앞뒤가 단어문자/하이픈이면 제외
+	//     (`MYDEV-1` / `DEV-1a` 등 단어 일부 안 잡음).
+	const CROSS_LINK_RE =
+		/\[\[([A-Za-z]{1,}-\d+)\]\]|(?<![\w-])([A-Za-z]{1,}-\d+)(?![\w-])/g;
 	// 별도 non-global tester — /g 의 lastIndex 부작용 없이 acceptNode 에서 검사.
-	const CROSS_LINK_TEST = /\[\[[A-Za-z]{1,}-\d+\]\]/;
+	const CROSS_LINK_TEST =
+		/\[\[[A-Za-z]{1,}-\d+\]\]|(?<![\w-])[A-Za-z]{1,}-\d+(?![\w-])/;
 	function guessKind(id: string): 'quest' | 'campaign' {
 		const ref = lookupRef(id);
 		if (ref) return ref.kind;
@@ -146,12 +153,18 @@
 			let last = 0;
 			let m: RegExpExecArray | null;
 			while ((m = CROSS_LINK_RE.exec(text))) {
-				const [whole, rawId] = m;
+				const whole = m[0];
+				const bracketed = m[1]; // [[ID]] 안
+				const bare = m[2]; // 대괄호 없는 ID
+				const rawId = bracketed ?? bare;
 				const id = rawId.toUpperCase();
+				const ref = lookupRef(id);
+				// bare 인데 실재하지 않으면 링크하지 않음 — 텍스트로 남긴다(오탐 방지).
+				// (다음 append 에서 text.slice 로 자동 포함되므로 last 갱신 안 함.)
+				if (!bracketed && !ref) continue;
 				if (m.index > last) {
 					frag.appendChild(document.createTextNode(text.slice(last, m.index)));
 				}
-				const ref = lookupRef(id);
 				const kind = guessKind(id);
 				const a = document.createElement('a');
 				a.href = refHref(id, kind);
