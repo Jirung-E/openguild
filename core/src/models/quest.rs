@@ -44,6 +44,14 @@ pub struct QuestRow {
     /// QuestBoard 노드 / QuestList row 에 표시.
     #[serde(default)]
     pub comment_count: i64,
+    /// DEV-142 후속: 미해결 토론(discussion=1, resolved=0) 댓글 수.
+    /// > 0 이면 홈 '토론 댓글' 섹션 + 노드/리스트 빨강 아이콘.
+    #[serde(default)]
+    pub discussion_unresolved: i64,
+    /// DEV-142 후속: 해결된 토론(discussion=1, resolved=1) 댓글 수.
+    /// 미해결이 0 이고 이 값이 > 0 이면 노드/리스트 초록 아이콘.
+    #[serde(default)]
+    pub discussion_resolved: i64,
 }
 
 /// 퀘스트 상세 응답 (서브퀘스트, 선행퀘스트, 위치 포함)
@@ -247,6 +255,8 @@ mod tests {
             earliest_campaign_due: None,
             tags: vec![],
             comment_count: 0,
+            discussion_unresolved: 0,
+            discussion_resolved: 0,
         };
         let json = serde_json::to_string(&q).unwrap();
         let back: QuestRow = serde_json::from_str(&json).unwrap();

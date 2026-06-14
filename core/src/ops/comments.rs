@@ -44,13 +44,16 @@ async fn upsert_comment_entry_db(
         return Ok(());
     };
     sqlx::query(
-        "INSERT INTO quest_comments (quest_id, entry_id, ts, author, body, parent_id)
-         VALUES (?, ?, ?, ?, ?, ?)
+        "INSERT INTO quest_comments
+            (quest_id, entry_id, ts, author, body, parent_id, discussion, resolved)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(quest_id, entry_id) DO UPDATE SET
-             ts        = excluded.ts,
-             author    = excluded.author,
-             body      = excluded.body,
-             parent_id = excluded.parent_id",
+             ts         = excluded.ts,
+             author     = excluded.author,
+             body       = excluded.body,
+             parent_id  = excluded.parent_id,
+             discussion = excluded.discussion,
+             resolved   = excluded.resolved",
     )
     .bind(qid)
     .bind(entry.id as i64)
@@ -58,6 +61,8 @@ async fn upsert_comment_entry_db(
     .bind(&entry.author)
     .bind(&entry.body)
     .bind(entry.parent_id.map(|n| n as i64))
+    .bind(entry.discussion as i64)
+    .bind(entry.resolved as i64)
     .execute(&store.index_pool)
     .await
     .map_err(|e| AppError::Internal(anyhow::anyhow!("upsert quest_comments: {e}")))?;
@@ -119,8 +124,9 @@ async fn replace_comments_db(store: &Store, slug: &str) -> AppResult<()> {
         .map_err(|e| AppError::Internal(anyhow::anyhow!("clear quest_comments: {e}")))?;
     for entry in &entries {
         sqlx::query(
-            "INSERT INTO quest_comments (quest_id, entry_id, ts, author, body, parent_id)
-             VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO quest_comments
+                (quest_id, entry_id, ts, author, body, parent_id, discussion, resolved)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(qid)
         .bind(entry.id as i64)
@@ -128,6 +134,8 @@ async fn replace_comments_db(store: &Store, slug: &str) -> AppResult<()> {
         .bind(&entry.author)
         .bind(&entry.body)
         .bind(entry.parent_id.map(|n| n as i64))
+        .bind(entry.discussion as i64)
+        .bind(entry.resolved as i64)
         .execute(&mut *tx)
         .await
         .map_err(|e| AppError::Internal(anyhow::anyhow!("insert quest_comments: {e}")))?;
@@ -322,6 +330,8 @@ pub async fn toggle_comment_discussion(
         .map_err(AppError::Internal)?;
     // BUG-068: sibling 파일 mtime 캐시 동기화 (drift 오탐 방지).
     let _ = crate::file_mtime::touch(store, &store.paths.comments_path(slug)).await;
+    // DEV-142 후속: discussion/resolved 를 DB 캐시에도 반영 (목록/홈 집계용).
+    upsert_comment_entry_db(store, slug, &updated).await?;
     Ok(updated)
 }
 
@@ -356,6 +366,8 @@ pub async fn toggle_comment_resolved(
         .map_err(AppError::Internal)?;
     // BUG-068: sibling 파일 mtime 캐시 동기화 (drift 오탐 방지).
     let _ = crate::file_mtime::touch(store, &store.paths.comments_path(slug)).await;
+    // DEV-142 후속: discussion/resolved 를 DB 캐시에도 반영 (목록/홈 집계용).
+    upsert_comment_entry_db(store, slug, &updated).await?;
     Ok(updated)
 }
 

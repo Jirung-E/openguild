@@ -60,6 +60,16 @@ export interface Quest {
 	 * QuestBoard 노드 / QuestList row 에 배지로 표시. 0 이면 표시 X.
 	 */
 	comment_count?: number;
+	/**
+	 * DEV-142 후속: 미해결 토론(discussion·!resolved) 댓글 수. > 0 이면 홈 '토론
+	 * 댓글' 섹션 + 노드/리스트 빨강 토론 아이콘.
+	 */
+	discussion_unresolved?: number;
+	/**
+	 * DEV-142 후속: 해결된 토론 댓글 수. 미해결이 0 이고 이 값이 > 0 이면
+	 * 노드/리스트 초록 토론 아이콘.
+	 */
+	discussion_resolved?: number;
 }
 
 export interface QuestDetail extends Quest {

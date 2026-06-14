@@ -50,7 +50,15 @@ pub const QUEST_SELECT: &str = r#"
         ) AS earliest_campaign_due,
         (
             SELECT COUNT(*) FROM quest_comments WHERE quest_id = q.id
-        ) AS comment_count
+        ) AS comment_count,
+        (
+            SELECT COUNT(*) FROM quest_comments
+            WHERE quest_id = q.id AND discussion = 1 AND resolved = 0
+        ) AS discussion_unresolved,
+        (
+            SELECT COUNT(*) FROM quest_comments
+            WHERE quest_id = q.id AND discussion = 1 AND resolved = 1
+        ) AS discussion_resolved
     FROM quests q
     JOIN quest_types   qt ON q.quest_type_id = qt.id
     JOIN quest_statuses qs ON q.status_id    = qs.id
