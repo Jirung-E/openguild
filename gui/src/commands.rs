@@ -313,6 +313,17 @@ pub struct SkippedFile {
     pub reason: String,
 }
 
+/// 비정상 quest 파일 (정의되지 않은 status / 파싱 실패) 목록. GUI 시동 알림 +
+/// admin 재검사용. read-only (DB 안 건드림).
+#[tauri::command]
+pub async fn list_problem_files(store: State<'_, Store>) -> Result<Vec<SkippedFile>, String> {
+    Ok(openguild_core::health::list_problem_quest_files(&store)
+        .await
+        .into_iter()
+        .map(|(path, reason)| SkippedFile { path, reason })
+        .collect())
+}
+
 #[tauri::command]
 pub async fn admin_reindex(store: State<'_, Store>) -> Result<ReindexResult, String> {
     let report = reindex::reindex(&store).await.map_err(err)?;

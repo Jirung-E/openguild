@@ -6,6 +6,7 @@
 	import UpdateBanner from '$lib/components/UpdateBanner.svelte';
 	// 앱 공용 toast — alert() 대체, 어디서든 동일 UI.
 	import ToastHost from '$lib/components/ToastHost.svelte';
+	import { showToast } from '$lib/stores/toast';
 	import SchemaAheadBanner from '$lib/components/SchemaAheadBanner.svelte';
 	// DEV-074 fix13: window 스크롤 overlay — 컨텐츠 폭 차지 X.
 	import OverlayScrollbar from '$lib/components/OverlayScrollbar.svelte';
@@ -45,6 +46,30 @@
 	}
 	onMount(sweepMermaidLeftovers);
 	afterNavigate(sweepMermaidLeftovers);
+
+	// 비정상 quest 파일(정의되지 않은 status / 파싱 실패) 감지 시 시동 알림.
+	// 그런 파일은 reindex/sync 에서 조용히 skip 되므로 사용자에게 안 보임 → toast.
+	onMount(async () => {
+		if (detectEnvironment() !== 'tauri') return;
+		try {
+			const { invoke } = await import('@tauri-apps/api/core');
+			const problems = await invoke<{ path: string; reason: string }[]>('list_problem_files');
+			if (problems.length > 0) {
+				const lines = problems
+					.slice(0, 5)
+					.map((p) => `· ${p.path.split(/[/\\]/).pop()} — ${p.reason}`)
+					.join('\n');
+				const more = problems.length > 5 ? `\n…외 ${problems.length - 5}개` : '';
+				showToast(
+					`비정상 파일 ${problems.length}개 감지 (캐시에서 제외됨):\n${lines}${more}`,
+					'error',
+					0
+				);
+			}
+		} catch {
+			/* 길드 모드 아님 / 조회 실패 — 무시 */
+		}
+	});
 
 	// DEV-126: 페이지 새로고침 후 스크롤 위치 유지.
 	// SvelteKit 의 SPA navigation 은 자동으로 위치 관리 (afterNavigate 가 history

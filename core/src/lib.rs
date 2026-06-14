@@ -13,6 +13,7 @@ pub mod db;
 pub mod drift;
 pub mod error;
 pub mod file_mtime;
+pub mod health;
 pub mod incremental;
 pub mod guild_file;
 pub mod lock;

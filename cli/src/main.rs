@@ -1064,6 +1064,23 @@ impl Backend {
         r.map_err(|e| anyhow!("{}", e))
     }
 
+    /// Local 모드에서 비정상 quest 파일 (파싱 실패 / 정의되지 않은 status) 을
+    /// stderr 로 경고. 그런 파일은 reindex·동기화에서 조용히 skip 되므로 GUI
+    /// 시동 알림과 동일 취지로 사용자에게 알린다. Http 모드 / 조회 실패는 noop.
+    fn warn_problem_files(&self) {
+        if let Backend::Local(l) = self {
+            let problems =
+                l.rt.block_on(openguild_core::health::list_problem_quest_files(&l.store));
+            if !problems.is_empty() {
+                eprintln!("⚠ 비정상 파일 {} 개 감지 (캐시에서 제외됨):", problems.len());
+                for (path, why) in &problems {
+                    eprintln!("    - {path}: {why}");
+                }
+                eprintln!("  파일을 고치거나 status 를 정의한 뒤 `openguild reindex` 하세요.");
+            }
+        }
+    }
+
     // ── 도메인 메서드 ──────────────────────────────────────
 
     fn ping(&self) -> Result<String> {
@@ -2838,6 +2855,12 @@ fn run() -> Result<()> {
     }
 
     let c = Backend::new(cli.remote.clone(), cli.guild.clone())?;
+
+    // 비정상 파일 감지 시 stderr 경고 (GUI 시동 알림과 동일 취지). json 모드는
+    // 기계 출력 오염 방지를 위해, Reindex 는 자체적으로 skipped 를 출력하므로 제외.
+    if !cli.json && !matches!(cli.command, Command::Reindex) {
+        c.warn_problem_files();
+    }
 
     match cli.command {
         Command::Init { .. } => unreachable!("handled above"),

@@ -16,6 +16,17 @@ export interface QuestStatusWithCount extends QuestStatus {
 	quest_count: number;
 }
 
+/** reindex 중 건너뛴 파일 (파싱 실패 / 정의되지 않은 status 등). */
+export interface SkippedFile {
+	path: string;
+	reason: string;
+}
+/** reindex 결과 — 적재 카운트 + 건너뛴 파일 상세. */
+export interface ReindexResult {
+	quests_loaded: number;
+	skipped: SkippedFile[];
+}
+
 /**
  * 백업 / drift / type-status 관리.
  * 인증 없음 — 향후 멀티유저 단계에서 토큰 / role 가드 추가.
@@ -35,7 +46,7 @@ export const adminApi = {
 	checkDrift: () => api.get<DriftReport>('/api/admin/drift'),
 
 	/** 파일 → index.db 재구축. */
-	reindex: () => api.post<unknown>('/api/admin/reindex', {}),
+	reindex: () => api.post<ReindexResult>('/api/admin/reindex', {}),
 
 	// ─── DEV-014: types ───
 	listTypes: () => api.get<QuestTypeWithCount[]>('/api/admin/types'),

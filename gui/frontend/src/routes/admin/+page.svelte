@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { adminApi } from '$lib/api/admin';
+	import type { SkippedFile } from '$lib/api/admin';
 	import type { DriftReport, SnapshotInfo } from '$lib/types';
+	import { detectEnvironment } from '$lib/api/transport';
 	// DEV-014: Quest type / status 커스터마이즈 섹션.
 	import AdminTypesSection from '$lib/components/admin/AdminTypesSection.svelte';
 	import AdminStatusesSection from '$lib/components/admin/AdminStatusesSection.svelte';
@@ -12,6 +14,10 @@
 
 	let snapshots = $state<SnapshotInfo[]>([]);
 	let drift = $state<DriftReport | null>(null);
+	// 비정상 파일 (정의되지 않은 status / 파싱 실패) — reindex/sync 에서 조용히
+	// skip 되므로 명시 경고. Tauri 에선 시동 시 list_problem_files 로, web 에선
+	// reindex 결과의 skipped 로 채워진다.
+	let problemFiles = $state<SkippedFile[]>([]);
 	let busy = $state(false);
 	let message = $state<{ kind: 'info' | 'success' | 'error'; text: string } | null>(null);
 	// DEV-119: 복원 확인 — 인앱 모달. null = 닫힘, 객체 = 열림 ({ts} 는 undefined 면 최신).
@@ -29,7 +35,19 @@
 
 	onMount(async () => {
 		await refresh();
+		await loadProblemFiles();
 	});
+
+	/** Tauri 전용: 비정상 파일 목록 조회 (web 에선 noop — HTTP route 없음). */
+	async function loadProblemFiles() {
+		if (detectEnvironment() !== 'tauri') return;
+		try {
+			const { invoke } = await import('@tauri-apps/api/core');
+			problemFiles = await invoke<SkippedFile[]>('list_problem_files');
+		} catch {
+			/* 길드 모드 아님 / 조회 실패 — 무시 */
+		}
+	}
 
 	async function refresh() {
 		try {
@@ -116,14 +134,21 @@
 		if (!confirm('파일들로부터 index.db 를 재구축합니다. 계속할까요?')) return;
 		busy = true;
 		try {
-			await adminApi.reindex();
-			showSuccess('reindex 완료 — 데이터 새로고침');
+			const result = await adminApi.reindex();
 			drift = null;
-			// DEV-120: reindex 후 자동 새로고침. 사용자가 변경된 데이터를 즉시
-			// 보길 기대. snapshots 등 admin 페이지 자체 데이터 + 사용자가 다른
-			// 페이지 (Board/List/Detail) 로 돌아갈 때 stale 캐시 잡지 않도록
-			// full reload. 토스트가 잠깐 보이도록 짧은 지연 후.
-			setTimeout(() => window.location.reload(), 600);
+			problemFiles = result.skipped;
+			if (result.skipped.length > 0) {
+				// 비정상 파일이 있으면 자동 새로고침하지 않는다 — 사용자가 아래
+				// 경고 패널을 읽고 직접 조치하도록.
+				showError(`reindex 완료 — 비정상 파일 ${result.skipped.length}개 건너뜀 (아래 확인)`);
+			} else {
+				showSuccess('reindex 완료 — 데이터 새로고침');
+				// DEV-120: reindex 후 자동 새로고침. 사용자가 변경된 데이터를 즉시
+				// 보길 기대. snapshots 등 admin 페이지 자체 데이터 + 사용자가 다른
+				// 페이지 (Board/List/Detail) 로 돌아갈 때 stale 캐시 잡지 않도록
+				// full reload. 토스트가 잠깐 보이도록 짧은 지연 후.
+				setTimeout(() => window.location.reload(), 600);
+			}
 		} catch (e) {
 			showError(`reindex 실패: ${e}`);
 		} finally {
@@ -202,6 +227,21 @@
 				<button onclick={onReindex} disabled={busy}>Reindex</button>
 			</div>
 		</div>
+
+		{#if problemFiles.length > 0}
+			<div class="problem-files" role="alert">
+				<h3>⚠ 비정상 파일 {problemFiles.length}개 — 캐시에서 제외됨</h3>
+				<p class="hint">
+					아래 파일은 파싱 실패 / 정의되지 않은 status 로 reindex·동기화에서
+					건너뛰어집니다. 파일을 고치거나 status 를 정의한 뒤 Reindex 하세요.
+				</p>
+				<ul>
+					{#each problemFiles as p (p.path)}
+						<li><code>{p.path}</code><span class="reason"> — {p.reason}</span></li>
+					{/each}
+				</ul>
+			</div>
+		{/if}
 
 		{#if drift === null}
 			<p class="empty">파일 vs index.db 일치성 검사. 외부 편집 / git pull 후 활용.</p>
@@ -371,6 +411,34 @@
 		font-size: 0.85rem;
 		color: var(--text);
 		list-style: disc;
+	}
+	.problem-files {
+		margin-bottom: 1rem;
+		padding: 0.75rem 1rem;
+		border-radius: 0.5rem;
+		background: color-mix(in srgb, var(--danger) 12%, transparent);
+		border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+	}
+	.problem-files h3 {
+		margin: 0 0 0.25rem 0;
+		font-size: 0.95rem;
+		color: var(--danger);
+	}
+	.problem-files ul {
+		margin: 0.5rem 0 0 1.25rem;
+		padding: 0;
+	}
+	.problem-files li {
+		font-size: 0.85rem;
+		color: var(--text);
+		list-style: disc;
+		margin-bottom: 0.15rem;
+	}
+	.problem-files code {
+		font-family: 'Cascadia Code', 'Courier New', monospace;
+	}
+	.problem-files .reason {
+		color: var(--text-muted);
 	}
 	/* DEV-014 후속 (fix5): toast wrapper — 화면 우상단 고정.
 	   모달 (.ov z-index 100) 보다 높은 z-index 로 가려지지 않게. */

@@ -368,6 +368,7 @@ pub fn run() {
             commands::admin_restore,
             commands::admin_check_drift,
             commands::admin_reindex,
+            commands::list_problem_files,
             // admin meta (DEV-014)
             commands::admin_list_types,
             commands::admin_create_type,
