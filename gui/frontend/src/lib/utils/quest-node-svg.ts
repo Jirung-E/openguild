@@ -138,6 +138,15 @@ export function makeQuestNodeSvgUrl(
 	const ulW = Math.ceil(ul.length * 5.6) + 14;
 	const ulX = 10 + qidW + 6;
 
+	// DEV-142 후속: 토론 배지 — 일반 댓글과 별도. 미해결>0 빨강, 아니면 해결>0
+	// 초록. 우측 상단. (보드 노드 QuestBoard.svelte 와 동일 규칙.)
+	const du = quest.discussion_unresolved ?? 0;
+	const dr = quest.discussion_resolved ?? 0;
+	const dColor = du > 0 ? palette.danger : dr > 0 ? palette.success : '';
+	const dText = dColor ? `🗨 ${du > 0 ? du : dr}` : '';
+	const dW = dText ? Math.ceil(dText.length * 6.0) + 14 : 0;
+	const dX = W - 10 - dW;
+
 	const full = quest.title;
 	const MAX_PX = 260;
 	const [line1, rest1] = splitByPixelWidthAtWord(full, MAX_PX);
@@ -185,6 +194,11 @@ export function makeQuestNodeSvgUrl(
   <text x="${ulX + ulW / 2}" y="21.5" text-anchor="middle"
     fill="${uc}" font-size="10" font-weight="500"
     font-family="system-ui,sans-serif">${xEsc(ul)}</text>
+  ${dText ? `<rect x="${dX}" y="9" width="${dW}" height="17" rx="8.5"
+    fill="${dColor}" fill-opacity="0.16" stroke="${dColor}" stroke-opacity="0.6" stroke-width="1"/>
+  <text x="${dX + dW / 2}" y="21.5" text-anchor="middle"
+    fill="${dColor}" font-size="10" font-weight="600"
+    font-family="system-ui,sans-serif">${xEsc(dText)}</text>` : ''}
   <text x="10" y="${titleY}" fill="${titleFill}" font-size="12"
     font-family="system-ui,-apple-system,sans-serif">${xEsc(line1)}</text>
   ${line2 ? `<text x="10" y="${titleY + 16}" fill="${titleFill}" font-size="12"

@@ -44,6 +44,20 @@
 	<!-- 제목 -->
 	<span class="title">{quest.title}</span>
 
+	<!-- DEV-142 후속: 토론 댓글 — 일반 댓글과 별도 아이콘. 미해결=빨강 / 해결=초록. -->
+	{#if (quest.discussion_unresolved ?? 0) > 0}
+		<span
+			class="discussion-count unresolved"
+			title={`미해결 토론 ${quest.discussion_unresolved}개`}
+		>
+			<span class="dc-icon">🗨</span><span>{quest.discussion_unresolved}</span>
+		</span>
+	{:else if (quest.discussion_resolved ?? 0) > 0}
+		<span class="discussion-count resolved" title={`해결된 토론 ${quest.discussion_resolved}개`}>
+			<span class="dc-icon">🗨</span><span>{quest.discussion_resolved}</span>
+		</span>
+	{/if}
+
 	<!-- DEV-116: 댓글 개수 — 0 이면 표시 X. -->
 	{#if (quest.comment_count ?? 0) > 0}
 		<span class="comment-count" title={`댓글 ${quest.comment_count}개`}>
@@ -127,4 +141,26 @@
 		border: 1px solid var(--border);
 	}
 	.cc-icon { font-size: 0.7rem; line-height: 1; }
+	/* DEV-142 후속: 토론 댓글 pill — 일반 댓글과 색으로 구분. */
+	.discussion-count {
+		flex-shrink: 0;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.2rem;
+		padding: 0.1rem 0.45rem;
+		border-radius: 20px;
+		font-size: 0.72rem;
+		font-weight: 600;
+	}
+	.discussion-count.unresolved {
+		color: var(--danger);
+		background: color-mix(in srgb, var(--danger) 14%, transparent);
+		border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+	}
+	.discussion-count.resolved {
+		color: var(--success-strong);
+		background: color-mix(in srgb, var(--success) 14%, transparent);
+		border: 1px solid color-mix(in srgb, var(--success) 40%, transparent);
+	}
+	.dc-icon { font-size: 0.7rem; line-height: 1; }
 </style>

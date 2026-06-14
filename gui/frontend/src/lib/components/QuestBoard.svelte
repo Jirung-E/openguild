@@ -170,6 +170,14 @@
 		const ccW = ccText ? Math.ceil(ccText.length * 6.0) + 14 : 0;
 		const ccX = W - 10 - ccW;
 		const ccFill = dueMutedFill;
+		// DEV-142 후속: 토론 배지 — 일반 댓글(💬)과 별도. 미해결>0 빨강, 아니면
+		// 해결>0 초록. 💬 배지 왼쪽(없으면 우측 끝)에 둔다.
+		const du = quest.discussion_unresolved ?? 0;
+		const dr = quest.discussion_resolved ?? 0;
+		const dColor = du > 0 ? palette.danger : dr > 0 ? palette.success : '';
+		const dText = dColor ? `🗨 ${du > 0 ? du : dr}` : '';
+		const dW = dText ? Math.ceil(dText.length * 6.0) + 14 : 0;
+		const dX = dText ? (ccText ? ccX - 6 - dW : W - 10 - dW) : 0;
 
 		// 제목 가용 폭: NODE_W - 좌 padding(10) - 우 minimum margin(14) = 260px.
 		// 단어 경계 우선 — 공백 있는 텍스트는 단어 단위로, 한글 / 긴 단어는 mid-char.
@@ -216,6 +224,11 @@
   ${ccText ? `<text x="${ccX + ccW / 2}" y="21.5" text-anchor="middle"
     fill="${ccFill}" font-size="10" font-weight="500"
     font-family="system-ui,sans-serif">${x(ccText)}</text>` : ''}
+  ${dText ? `<rect x="${dX}" y="9" width="${dW}" height="17" rx="8.5"
+    fill="${dColor}" fill-opacity="0.16" stroke="${dColor}" stroke-opacity="0.6" stroke-width="1"/>
+  <text x="${dX + dW / 2}" y="21.5" text-anchor="middle"
+    fill="${dColor}" font-size="10" font-weight="600"
+    font-family="system-ui,sans-serif">${x(dText)}</text>` : ''}
   <text x="10" y="${titleY}" fill="${textFill}" font-size="12"
     font-family="system-ui,-apple-system,sans-serif">${x(line1)}</text>
   ${line2 ? `<text x="10" y="${titleY + 16}" fill="${textFill}" font-size="12"
