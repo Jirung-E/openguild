@@ -4843,6 +4843,8 @@ mod tests {
             earliest_campaign_due: None,
             tags: vec![],
             comment_count: 0,
+            discussion_unresolved: 0,
+            discussion_resolved: 0,
         };
         QuestDetail {
             quest: q,
