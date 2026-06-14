@@ -11,7 +11,7 @@
 	import { page } from '$app/stores';
 	import { campaignsApi } from '$lib/api/campaigns';
 	import { questsApi } from '$lib/api/quests';
-	import type { CampaignDetail, Quest } from '$lib/types';
+	import type { CampaignDetail, CampaignLinkedQuest, Quest } from '$lib/types';
 	// BUG-021 fix1: 공유 컴포넌트로 Quest Detail / Campaign Detail 의 markdown
 	// 프리뷰 통일.
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
@@ -362,24 +362,45 @@
 			(q) => !(detail?.linked_quests ?? []).some((lq) => lq.id === q.id)
 		)
 	);
+	// BUG-046 와 동일 유형: `load()` 전체 reload 는 detail 객체를 새로 만들어
+	// `{#each linked_quests}` 의 DOM 참조를 통째로 swap → 브라우저가 scroll
+	// anchor 를 잃고 페이지 최상단으로 점프. 체크리스트(removeChecklist)는 이미
+	// optimistic splice 로 고쳤지만 quest 연결/해제 경로엔 미적용이었음.
+	// optimistic update 로 scroll 보존 + 즉시 반응. 실패 시 revert.
 	async function pickQuestToLink(questId: number) {
 		if (!detail) return;
 		const q = allQuests.find((x) => x.id === questId);
 		if (!q) return;
+		comboOpen = false;
+		const linked: CampaignLinkedQuest = {
+			id: q.id,
+			quest_id: q.quest_id,
+			title: q.title,
+			type_prefix: q.type_prefix,
+			type_color: q.type_color,
+			status_slug: q.status_slug,
+			status_name_en: q.status_name_en,
+			status_color: q.status_color
+		};
+		detail.linked_quests.push(linked);
 		try {
 			await campaignsApi.linkQuest(detail.campaign_slug, q.quest_id);
-			comboOpen = false;
-			await load();
 		} catch (e) {
+			const i = detail.linked_quests.findIndex((x) => x.quest_id === q.quest_id);
+			if (i >= 0) detail.linked_quests.splice(i, 1);
 			alert(e instanceof Error ? e.message : 'failed');
 		}
 	}
 	async function unlinkQuest(qSlug: string) {
 		if (!detail) return;
+		const idx = detail.linked_quests.findIndex((q) => q.quest_id === qSlug);
+		if (idx < 0) return;
+		const removed = detail.linked_quests[idx];
+		detail.linked_quests.splice(idx, 1);
 		try {
 			await campaignsApi.unlinkQuest(detail.campaign_slug, qSlug);
-			await load();
 		} catch (e) {
+			detail.linked_quests.splice(idx, 0, removed);
 			alert(e instanceof Error ? e.message : 'failed');
 		}
 	}
