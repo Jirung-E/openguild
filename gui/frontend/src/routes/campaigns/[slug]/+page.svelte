@@ -32,7 +32,7 @@
 	import { editorThemeCompartment, editorThemeExtension } from '$lib/utils/editor-theme';
 	// DEV-130: Tab = 들여쓰기 — indentExtensions 가 Tab 키맵 포함 (focus 이동 X).
 	// DEV-069: 편집기 첨부 — 클립보드 이미지 paste / 파일 drag&drop 업로드.
-	import { attachmentExtension } from '$lib/utils/editor-attach';
+	import { attachmentExtension, pickAndAttach } from '$lib/utils/editor-attach';
 	// DEV-140: 본문 cross-link — XXX-NNN 타이핑 시 [[...]] 링크 자동완성.
 	import { crossLinkAutocomplete } from '$lib/utils/editor-links';
 	// DEV-130: 편집기 들여쓰기 설정 (tab/space + 2/4칸).
@@ -516,6 +516,16 @@
 				<!-- svelte-ignore a11y_label_has_associated_control -->
 				<label class="field-label">
 					<span>본문 (Markdown)</span>
+					<!-- DEV-069: 첨부 — 버튼/드래그&드랍/Ctrl+V 동일 업로드. -->
+					<div class="editor-toolbar">
+						<button
+							type="button"
+							class="btn-attach"
+							onclick={() =>
+								editorView && pickAndAttach(editorView, (msg) => (error = `첨부 업로드 실패: ${msg}`))}
+							title="이미지·동영상·파일 첨부 (드래그&드랍 / Ctrl+V 도 가능)"
+						>📎 첨부</button>
+					</div>
 					<div class="editor-wrap" bind:this={editorContainer}></div>
 				</label>
 				<div class="actions">
@@ -818,6 +828,24 @@
 	/* BUG-021: textarea 는 CodeMirror 로 교체. CSS 미사용 selector 정리. */
 
 	/* BUG-021: CodeMirror editor (Quest Detail 패턴 — DEV-057 의 height 영속). */
+	/* DEV-069: 편집기 위 첨부 툴바. */
+	.editor-toolbar {
+		display: flex;
+		gap: 0.4rem;
+		margin: 0.25rem 0;
+	}
+	.btn-attach {
+		font-size: 0.8rem;
+		padding: 0.2rem 0.6rem;
+		border-radius: 6px;
+		border: 1px solid var(--border);
+		background: var(--bg-subtle);
+		color: var(--text);
+		cursor: pointer;
+	}
+	.btn-attach:hover {
+		background: var(--bg-elevated);
+	}
 	.editor-wrap {
 		border: 1px solid var(--border);
 		border-radius: 6px;

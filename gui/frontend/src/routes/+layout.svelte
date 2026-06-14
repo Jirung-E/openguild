@@ -227,12 +227,28 @@
 		};
 		document.addEventListener('click', interceptExternalLink, { capture: true });
 
+		// DEV-069: tauri.conf 의 dragDropEnabled=false 로 webview 가 HTML5 drag&drop
+		// 을 직접 받게 했다(편집기 첨부용). 그 부작용으로 편집기 '밖' 에 파일을
+		// 떨구면 WebView 가 그 파일 URL 로 navigate → SPA 소실. 전역 가드로 기본
+		// 동작을 막는다. 편집기(CodeMirror)의 자체 drop 핸들러는 target 단계에서
+		// 먼저 동작하므로 첨부 업로드는 정상.
+		const dropGuard = (e: DragEvent) => {
+			// 파일이 포함된 drag 만 가드 (텍스트 선택 drag&drop 은 통과).
+			if (e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files')) {
+				e.preventDefault();
+			}
+		};
+		window.addEventListener('dragover', dropGuard);
+		window.addEventListener('drop', dropGuard);
+
 		return () => {
 			document.removeEventListener('contextmenu', block, { capture: true });
 			window.removeEventListener('contextmenu', block, { capture: true });
 			document.removeEventListener('click', interceptExternalLink, {
 				capture: true
 			});
+			window.removeEventListener('dragover', dropGuard);
+			window.removeEventListener('drop', dropGuard);
 		};
 	});
 </script>

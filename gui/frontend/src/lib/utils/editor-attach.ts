@@ -17,10 +17,11 @@ import type { Extension } from '@codemirror/state';
 import { invoke } from '@tauri-apps/api/core';
 import { detectEnvironment } from '$lib/api/transport';
 
-/** core ALLOWED_EXTS 와 동기 (core/src/ops/attachments.rs). */
-const ALLOWED_EXTS = new Set([
-	'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'mp4', 'webm', 'pdf'
-]);
+// DEV-069 후속(admin #8): 임의 파일 첨부 허용. 미디어(이미지/동영상)는 본문에
+// embed, 그 외는 다운로드 링크로 삽입. backend(save_attachment)도 화이트리스트
+// 제거됨.
+const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg']);
+const VIDEO_EXTS = new Set(['mp4', 'webm']);
 
 const EXT_BY_MIME: Record<string, string> = {
 	'image/png': 'png',
@@ -34,14 +35,17 @@ const EXT_BY_MIME: Record<string, string> = {
 	'application/pdf': 'pdf'
 };
 
-/** MIME 우선, 없으면 파일명 확장자. 허용 목록 밖이면 null. */
-function extOf(file: File): string | null {
+/** MIME 우선, 없으면 파일명 확장자. 확장자 없으면 'bin'. (임의 파일 허용.) */
+function extOf(file: File): string {
 	const byMime = EXT_BY_MIME[file.type];
 	if (byMime) return byMime;
 	const dot = file.name.lastIndexOf('.');
-	if (dot < 0) return null;
-	const ext = file.name.slice(dot + 1).toLowerCase();
-	return ALLOWED_EXTS.has(ext) ? ext : null;
+	if (dot < 0) return 'bin';
+	const ext = file.name
+		.slice(dot + 1)
+		.toLowerCase()
+		.replace(/[^a-z0-9]/g, '');
+	return ext || 'bin';
 }
 
 /** ArrayBuffer → base64 — 큰 파일도 안전하게 청크 단위 변환. */
@@ -55,14 +59,15 @@ function toBase64(buf: ArrayBuffer): string {
 	return btoa(bin);
 }
 
-/** rel 경로 → 본문 삽입용 마크다운. 이미지는 `![]()`, 그 외는 링크. */
+/** rel 경로 → 본문 삽입용 마크다운. 이미지는 `![]()`, 동영상은 video, 그 외 링크. */
 function markdownFor(rel: string, ext: string, name: string): string {
-	if (ext === 'mp4' || ext === 'webm') {
+	if (IMAGE_EXTS.has(ext)) return `![${name}](${rel})`;
+	if (VIDEO_EXTS.has(ext)) {
 		// marked 는 raw HTML pass-through — MarkdownView 가 video src 재작성.
 		return `<video controls src="${rel}"></video>`;
 	}
-	if (ext === 'pdf') return `[${name}](${rel})`;
-	return `![${name}](${rel})`;
+	// pdf 포함 기타 파일 — 다운로드 링크.
+	return `[${name}](${rel})`;
 }
 
 let uploadSeq = 0;
@@ -103,15 +108,41 @@ function replacePlaceholder(view: EditorView, placeholder: string, md: string) {
 	view.dispatch({ changes: { from: idx, to: idx + placeholder.length, insert: md } });
 }
 
-/** FileList / DataTransferItemList 에서 허용 파일만 추출. */
+/** FileList → 첨부 대상(임의 파일 허용). */
 function allowedFiles(files: FileList | null | undefined): { file: File; ext: string }[] {
 	if (!files) return [];
-	const out: { file: File; ext: string }[] = [];
-	for (const file of files) {
-		const ext = extOf(file);
-		if (ext) out.push({ file, ext });
+	return Array.from(files).map((file) => ({ file, ext: extOf(file) }));
+}
+
+/**
+ * DEV-069 후속(admin #8): '첨부파일 추가' 버튼 핸들러. 숨은 file input 으로
+ * 임의 파일(다중) 선택 → 커서 위치에 업로드/삽입. CodeMirror 편집기 전용
+ * (quest/campaign 본문, 규칙). 미디어는 embed, 그 외는 링크.
+ */
+export function pickAndAttach(
+	view: EditorView,
+	onError: (msg: string) => void = (m) => console.error('첨부 업로드 실패:', m)
+): void {
+	if (detectEnvironment() !== 'tauri') {
+		onError('첨부 업로드는 데스크탑 앱에서만 지원됩니다.');
+		return;
 	}
-	return out;
+	const input = document.createElement('input');
+	input.type = 'file';
+	input.multiple = true;
+	input.style.display = 'none';
+	input.onchange = () => {
+		const picked = allowedFiles(input.files);
+		input.remove();
+		if (picked.length === 0) return;
+		view.focus();
+		let pos = view.state.selection.main.head;
+		for (const { file, ext } of picked) {
+			pos += uploadAndInsert(view, file, ext, pos, onError);
+		}
+	};
+	document.body.appendChild(input);
+	input.click();
 }
 
 /**

@@ -10,21 +10,32 @@ use crate::error::{AppError, AppResult};
 use crate::repo::fs as repo_fs;
 use crate::store::{journal, Store};
 
-/// 허용 확장자 — 이미지 + 동영상 + pdf (MarkdownView 가 표시 가능한 것 위주).
-const ALLOWED_EXTS: &[&str] = &[
-    "png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "mp4", "webm", "pdf",
-];
+/// 확장자를 파일명에 안전하게 쓸 수 있도록 정규화 — ascii 영숫자만, 소문자,
+/// 최대 16자. 결과가 비면 `bin` (확장자 없는 파일 / 이상한 값 대비).
+///
+/// DEV-069 후속(admin #8): 이미지/동영상 외 임의 파일도 첨부 가능해야 하므로
+/// 확장자 화이트리스트를 제거. 첨부는 사용자 본인 머신의 로컬 저장이고 파일명은
+/// 시각+난수라 traversal 위험이 없다. 표시(embed vs 링크)는 frontend 가 결정.
+fn sanitize_ext(ext: &str) -> String {
+    let cleaned: String = ext
+        .trim()
+        .trim_start_matches('.')
+        .to_ascii_lowercase()
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .take(16)
+        .collect();
+    if cleaned.is_empty() {
+        "bin".into()
+    } else {
+        cleaned
+    }
+}
 
 /// 첨부 저장 — bytes 를 `.guild/attachments/{nanos}-{rand}.{ext}` 로 write
 /// + blob UPSERT. 반환: `.guild/` 상대 경로 (본문 참조용 `attachments/...`).
 pub async fn save_attachment(store: &Store, bytes: &[u8], ext: &str) -> AppResult<String> {
-    let ext = ext.trim().trim_start_matches('.').to_ascii_lowercase();
-    if !ALLOWED_EXTS.contains(&ext.as_str()) {
-        return Err(AppError::BadRequest(format!(
-            "지원하지 않는 첨부 확장자: .{ext} ({})",
-            ALLOWED_EXTS.join("/")
-        )));
-    }
+    let ext = sanitize_ext(ext);
     if bytes.is_empty() {
         return Err(AppError::BadRequest("빈 첨부".into()));
     }
@@ -165,8 +176,13 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(n, 1);
-        // 거부 — 확장자 / 빈 바이트.
-        assert!(save_attachment(&store, b"x", "exe").await.is_err());
+        // DEV-069 후속(admin #8): 임의 확장자 허용 — 미디어 외 파일도 첨부 가능.
+        let z = save_attachment(&store, b"ZIPDATA", "zip").await.unwrap();
+        assert!(z.ends_with(".zip"));
+        // 확장자 없으면 .bin 으로 정규화.
+        let b = save_attachment(&store, b"RAW", "").await.unwrap();
+        assert!(b.ends_with(".bin"));
+        // 빈 바이트는 여전히 거부.
         assert!(save_attachment(&store, b"", "png").await.is_err());
         let _ = std::fs::remove_dir_all(&dir);
     }
