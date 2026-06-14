@@ -13,6 +13,10 @@
 	import { detectEnvironment } from '$lib/api/transport';
 	// BUG-034: 유효 기한 (퀘스트 required_due vs 연결 캠페인 ended_at) 계산 헬퍼.
 	import { effectiveQuestDue } from '$lib/utils/quest-node-svg';
+	import {
+		loadLaneOrder as loadLaneOrderShared,
+		saveLaneOrder as saveLaneOrderShared
+	} from '$lib/utils/lane-order';
 	import { flashQuestId } from '$lib/stores';
 	import {
 		URGENCY_COLOR,
@@ -797,22 +801,15 @@
 	// DEV-059: 사용자 정의 lane 순서 — '보여지는 순서' 만. 파일 / DB / 다른 quest
 	// 영향 X. status 추가/삭제는 sort_order 따라 자동 끝에 append (loadFromData
 	// 의 ordered + remaining 패턴).
+	//
+	// 상태순서 통일: load/save 로직을 lib/utils/lane-order.ts 공유 헬퍼로 추출.
+	// 상세페이지 status 드롭다운이 같은 laneOrder 를 따르도록(이전엔 보드 전용이라
+	// 보드에서 바꾼 순서가 상세에 반영 안 됐음). guildKeyPrefix 는 gk() 와 동일.
 	function loadLaneOrder(): string[] {
-		try {
-			const raw = localStorage.getItem(gk('laneOrder'));
-			if (!raw) return [];
-			const arr = JSON.parse(raw);
-			return Array.isArray(arr) ? arr.filter((s) => typeof s === 'string') : [];
-		} catch {
-			return [];
-		}
+		return loadLaneOrderShared(guildKeyPrefix);
 	}
 	function saveLaneOrder(slugs: string[]) {
-		try {
-			localStorage.setItem(gk('laneOrder'), JSON.stringify(slugs));
-		} catch {
-			/* 무시 */
-		}
+		saveLaneOrderShared(guildKeyPrefix, slugs);
 	}
 	// li (lane index) 의 lane 을 한 칸 좌/우 swap. 모든 노드를 새 lane 좌표로
 	// 다시 그려야 하므로 cy reload.

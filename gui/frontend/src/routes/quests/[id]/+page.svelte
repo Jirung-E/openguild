@@ -51,6 +51,10 @@
 	// DEV-094: 댓글은 entry 단위 컴포넌트.
 	import QuestCommentsSection from '$lib/components/QuestCommentsSection.svelte';
 	import { formatTs, formatRelative, isDateOverdue } from '$lib/utils/datetime';
+	// 상태순서 통일: 보드 레인 순서(localStorage laneOrder)를 status 드롭다운에도
+	// 반영. 없으면 sort_order fallback. (보드와 같은 공유 헬퍼/키 사용.)
+	import { loadLaneOrder, orderStatusesByLane } from '$lib/utils/lane-order';
+	import { resolveGuildKeyPrefix } from '$lib/utils/guild-storage';
 
 	let slug = $derived($page.params.id ?? '');
 	// BUG-015 fix1: parent / sub / prereq link 가 같은 origin 을 propagate 해서
@@ -153,7 +157,11 @@
 		window.scrollTo({ top: 0, behavior: 'smooth' });
 	}
 
-	let sortedStatuses = $derived([...statuses].sort((a, b) => a.sort_order - b.sort_order));
+	// 보드에서 정한 레인 순서 우선, 없는 status 는 sort_order 로 뒤에.
+	let laneOrder = $state<string[]>([]);
+	let sortedStatuses = $derived(
+		orderStatusesByLane(statuses, laneOrder, (a, b) => a.sort_order - b.sort_order)
+	);
 
 	// DEV-068: tag 정의 — slug → (color, description) lookup.
 	let tagDefs = $state<QuestTagDef[]>([]);
@@ -191,6 +199,8 @@
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'failed to load';
 		}
+		// 보드 레인 순서 로드 (길드별 localStorage). 실패/web 이면 빈 배열 → sort_order.
+		laneOrder = loadLaneOrder(await resolveGuildKeyPrefix());
 	});
 
 	// DEV-109/123/127: window 스크롤 / resize 추적 → 점프 버튼 cluster 노출.
