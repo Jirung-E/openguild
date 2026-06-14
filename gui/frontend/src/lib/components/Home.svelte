@@ -186,6 +186,20 @@
 		return rows;
 	});
 
+	// DEV-142 후속: 미해결 토론 댓글이 달린 퀘스트 — 홈에 '마감 지난 퀘스트' 와
+	// 같은 방식(QuestNodeConveyor)으로 표시. 미해결 토론은 해결 전까지 완료 전환이
+	// 막히는(DEV-142) 액션 아이템이라 눈에 띄어야 한다.
+	let discussionQuests = $derived.by(() => {
+		const rows = allQuests.filter((q) => (q.discussion_unresolved ?? 0) > 0);
+		// 미해결 토론 수 많은 순 → 같은 수면 최근 수정 순.
+		rows.sort(
+			(a, b) =>
+				(b.discussion_unresolved ?? 0) - (a.discussion_unresolved ?? 0) ||
+				(b.updated_at ?? '').localeCompare(a.updated_at ?? '')
+		);
+		return rows;
+	});
+
 	let upcomingSummaries = $derived.by(() => {
 		const t = now;
 		const winEnd = t + UPCOMING_WINDOW_DAYS * 24 * 60 * 60 * 1000;
@@ -294,6 +308,17 @@
 					<span class="count overdue">({overdueQuests.length})</span>
 				</h2>
 				<QuestNodeConveyor quests={overdueQuests} mode="overdue" />
+			</section>
+		{/if}
+
+		<!-- DEV-142 후속: 미해결 토론 댓글 퀘스트 (있을 때만) ──── -->
+		{#if discussionQuests.length > 0}
+			<section class="block">
+				<h2>
+					토론 댓글
+					<span class="count overdue">({discussionQuests.length})</span>
+				</h2>
+				<QuestNodeConveyor quests={discussionQuests} mode="overdue" />
 			</section>
 		{/if}
 
