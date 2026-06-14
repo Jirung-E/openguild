@@ -11,31 +11,14 @@
 
 use anyhow::{Context, Result};
 use std::collections::HashMap;
-use std::time::SystemTime;
 
 use crate::repo::fs as repo_fs;
 use crate::store::Store;
 
-/// BUG-059: `app_meta.last_indexed_at` (ISO 8601) 을 `SystemTime` 으로 변환.
-/// 마커가 비어있거나 파싱 실패 / 컬럼 미존재 (legacy DB) 면 `None` —
-/// 호출자가 기존 동작 (index.db mtime) 으로 fallback.
-async fn fetch_last_indexed_at(pool: &sqlx::SqlitePool) -> Option<SystemTime> {
-    let raw: Option<String> = sqlx::query_scalar(
-        "SELECT value FROM app_meta WHERE key = 'last_indexed_at'",
-    )
-    .fetch_optional(pool)
-    .await
-    .ok()
-    .flatten();
-    let s = raw?;
-    if s.is_empty() {
-        return None;
-    }
-    // ISO 8601 with offset — chrono 가 RFC 3339 로 파싱.
-    chrono::DateTime::parse_from_rfc3339(&s)
-        .ok()
-        .map(SystemTime::from)
-}
+// BUG-067/068: drift 판정이 global `app_meta.last_indexed_at` → per-row
+// (quest: cached_mtime) / per-file (sibling: file_mtime_cache) 비교로 바뀌어
+// last_indexed_at 기반 fetch 헬퍼는 제거됨. last_indexed_at 마커 자체는 reindex
+// 가 계속 기록(다른 용도 가능).
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct DriftReport {
@@ -68,20 +51,6 @@ impl DriftReport {
 pub async fn detect_drift(store: &Store) -> Result<DriftReport> {
     let paths = &store.paths;
     let pool = &store.index_pool;
-
-    // BUG-059: 시간 기준은 `app_meta.last_indexed_at` (= 마지막 reindex 의 ISO 시각).
-    // 이전엔 `index.db` 파일 mtime 을 썼는데 SQLite WAL checkpoint / Store::open
-    // 의 초기 write 등으로 mtime 이 NOW 로 튀어 외부 편집을 못 잡는 false negative
-    // 발생.
-    //
-    // 마커 없음 / 빈 값 → **epoch 으로 처리**해서 모든 파일을 fresh 로 판정 →
-    // auto_resync 가 첫 reindex 를 강제. (이전엔 fallback 으로 index.db mtime
-    // 을 다시 썼는데 그건 똑같이 버그 경로 — 첫 startup 마다 'clean' 잘못 판정
-    // → reindex skip → 마커 영원히 빈 값 → bootstrap 실패.)
-    // sibling 판정에만 쓰는 global 시간 기준 (아래 fresh_siblings).
-    let index_mtime = fetch_last_indexed_at(pool)
-        .await
-        .unwrap_or(SystemTime::UNIX_EPOCH);
 
     // quest 본문 drift 는 **per-row `cached_mtime`** 로 판단 (DEV-121 / migration
     // 0015). 즉 "파일 mtime 이 그 quest 행에 기록된 cached_mtime 보다 새것인가".
@@ -138,22 +107,27 @@ pub async fn detect_drift(store: &Store) -> Result<DriftReport> {
         .collect();
     stale_in_index.sort();
 
-    // DEV-102: sibling 파일도 캐시 (`quest_comments` / `quest_memos`) 를 가지므로
-    // 외부 편집 감지 대상. file mtime > index.db mtime 이면 fresh_siblings 에 추가.
-    // missing/stale 은 sibling 에 대해선 따로 다루지 않음 — reindex 가 DELETE +
-    // INSERT 이므로 fresh 한 번 표기 → auto_resync 가 일괄 갱신.
+    // DEV-102/134: sibling 파일(quest/campaign 의 댓글·메모)도 캐시
+    // (quest_comments / quest_memos / campaign_*) 를 가져 외부 편집 감지 대상.
+    // BUG-068: per-file `file_mtime_cache` 와 비교 — quest 본문의 per-row
+    // cached_mtime 과 동일 취지. 캐시에 mtime 이 있고 파일이 그보다 새것일 때만
+    // fresh (ops 가 댓글/메모를 써도 그때 캐시도 같이 갱신되므로 오탐 X). 캐시에
+    // 아직 없는 파일은 미반영으로 보고 fresh (reindex 가 sync_all 로 채움).
+    let sib_cache = crate::file_mtime::load_all(store).await;
     let mut fresh_siblings = Vec::new();
-    // DEV-134: 캠페인 sibling 도 캐시 (campaign_comments / campaign_memos) 대상.
     for path in repo_fs::list_quest_comment_files(paths.quests_dir())?
         .into_iter()
         .chain(repo_fs::list_quest_memo_files(paths.quests_dir())?)
         .chain(repo_fs::list_quest_comment_files(paths.campaigns_dir())?)
         .chain(repo_fs::list_quest_memo_files(paths.campaigns_dir())?)
     {
-        let mtime = repo_fs::mtime(&path).unwrap_or(SystemTime::UNIX_EPOCH);
-        if mtime > index_mtime
-            && let Some(name) = path.file_name().and_then(|n| n.to_str())
-        {
+        let rel = crate::file_mtime::rel_key(paths, &path);
+        let file_mtime = repo_fs::mtime_unix_nanos(&path);
+        let fresh = match sib_cache.get(&rel) {
+            Some(&cached) => file_mtime > cached,
+            None => true,
+        };
+        if fresh && let Some(name) = path.file_name().and_then(|n| n.to_str()) {
             fresh_siblings.push(name.to_string());
         }
     }
@@ -319,6 +293,54 @@ mod tests {
             r2.fresh_files.contains(&slug),
             "외부 편집은 fresh 로 잡혀야: {:?}",
             r2.fresh_files
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-068: ops 로 쓴 sibling(댓글) 은 file_mtime_cache 가 같이 갱신돼
+    /// fresh_siblings 오탐 X. ops 밖에서 파일을 더 새로 바꾼 경우만 fresh.
+    #[tokio::test]
+    async fn sibling_drift_only_for_external_edit_not_ops() {
+        let dir = fresh_tmp("sib-per-file");
+        let store = setup(&dir).await;
+        let q = ops::create_quest(
+            &store,
+            crate::models::CreateQuestRequest {
+                quest_type_id: 1,
+                title: "t".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        let slug = q.quest_id.clone();
+        // ops 로 댓글 추가 → 파일 write + file_mtime_cache touch.
+        ops::comments::add_comment_entry(&store, &slug, "a".into(), "x".into(), None)
+            .await
+            .unwrap();
+
+        let r1 = detect_drift(&store).await.unwrap();
+        assert!(
+            r1.fresh_siblings.is_empty(),
+            "ops 로 쓴 댓글은 fresh_siblings 오탐 X: {:?}",
+            r1.fresh_siblings
+        );
+
+        // 외부 편집 시뮬: ops 밖에서 comments 파일 mtime 더 새로.
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let cpath = store.paths.comments_path(&slug);
+        let content = std::fs::read_to_string(&cpath).unwrap();
+        std::fs::write(&cpath, content).unwrap();
+
+        let r2 = detect_drift(&store).await.unwrap();
+        assert!(
+            r2.fresh_siblings.iter().any(|n| n.ends_with(".comments.md")),
+            "외부 편집한 sibling 은 fresh: {:?}",
+            r2.fresh_siblings
         );
 
         let _ = std::fs::remove_dir_all(&dir);

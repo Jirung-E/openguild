@@ -130,6 +130,8 @@ pub async fn add_entry(
     };
     entries.push(entry.clone());
     repo::write_entries_at(&path, &entries).map_err(AppError::Internal)?;
+    // BUG-068: sibling 파일 mtime 캐시 동기화 (drift 오탐 방지).
+    let _ = crate::file_mtime::touch(store, &path).await;
     // DEV-134: file 진리원 갱신 후 DB 캐시 UPSERT.
     upsert_entry_db(store, slug, &entry).await?;
     Ok(entry)
@@ -164,6 +166,8 @@ pub async fn update_entry(
     entry.body = body_trimmed;
     let updated = entry.clone();
     repo::write_entries_at(&path, &entries).map_err(AppError::Internal)?;
+    // BUG-068: sibling 파일 mtime 캐시 동기화 (drift 오탐 방지).
+    let _ = crate::file_mtime::touch(store, &path).await;
     // DEV-134: 캐시 UPSERT.
     upsert_entry_db(store, slug, &updated).await?;
     Ok(updated)
@@ -188,6 +192,8 @@ pub async fn delete_entry(store: &Store, slug: &str, id: u64) -> AppResult<()> {
         return Err(AppError::NotFound(format!("comment {id} not found for {slug}")));
     }
     repo::write_entries_at(&path, &entries).map_err(AppError::Internal)?;
+    // BUG-068: sibling 파일 mtime 캐시 동기화 (drift 오탐 방지).
+    let _ = crate::file_mtime::touch(store, &path).await;
     // DEV-134: 캐시 row 삭제.
     delete_entry_db(store, slug, id).await?;
     Ok(())
@@ -254,6 +260,8 @@ pub async fn toggle_reaction(
     }
     let updated = entry.clone();
     repo::write_entries_at(&path, &entries).map_err(AppError::Internal)?;
+    // BUG-068: sibling 파일 mtime 캐시 동기화 (drift 오탐 방지).
+    let _ = crate::file_mtime::touch(store, &path).await;
     Ok(updated)
 }
 
@@ -274,6 +282,7 @@ pub async fn set_memo(store: &Store, slug: &str, content: String) -> AppResult<(
     .map_err(AppError::Internal)?;
     repo::write_text_at(&store.paths.campaign_memo_path(slug), &content)
         .map_err(AppError::Internal)?;
+    let _ = crate::file_mtime::touch(store, &store.paths.campaign_memo_path(slug)).await;
     // DEV-134: 캐시 UPSERT — snapshot 백업 대상.
     upsert_memo_db(store, slug, &content).await
 }

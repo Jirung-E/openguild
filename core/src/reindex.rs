@@ -675,6 +675,10 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
     report.attachments_backed_up = backed_up;
     report.attachments_restored = restored;
 
+    // BUG-068: sibling(댓글/메모) 파일 mtime 캐시 재구성 — detect_drift 의
+    // fresh_siblings 가 per-file 로 비교하도록. (pool 직접 사용 → commit 이후.)
+    let _ = crate::file_mtime::sync_all(store).await;
+
     // 7. auto 블록을 SQL 기준으로 다시 그려서 파일에 쓰기 — 외부 편집 결과
     //    auto 블록이 stale 일 수 있음. write_consistent_auto_blocks 가 옵션.
     //    (현재 turn 에선 단순 reindex 만, auto 갱신은 호출자가 별도 호출 가능)
