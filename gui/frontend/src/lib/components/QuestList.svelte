@@ -216,10 +216,15 @@
 		// 재시작 시 store 는 비어 있으므로 localStorage 가 진짜 복원원.
 		const savedFilter = loadFilterFromStorage();
 		if (savedFilter) applyFilter(savedFilter);
-		// URL → state (초기 로드).
+		// URL → state (초기 로드). DEV-135 #4 fix: param 이 '있을 때만' 덮어씀.
+		// 이전엔 ?? '' 로 무조건 덮어써, /?view=list 처럼 param 없는 nav 후
+		// localStorage 에서 복원한 검색어가 매번 지워졌다 (다른 필터는 유지되는데
+		// 검색만 풀리는 비일관). tags 처럼 '있을 때만' 적용으로 통일.
 		const params = $page.url.searchParams;
-		search = params.get('search') ?? '';
-		titleOnly = params.get('title_only') === 'true';
+		const urlSearch = params.get('search');
+		if (urlSearch !== null) search = urlSearch;
+		const urlTitleOnly = params.get('title_only');
+		if (urlTitleOnly !== null) titleOnly = urlTitleOnly === 'true';
 		// DEV-065: URL 의 ?mode= 우선, 없으면 localStorage, 없으면 'tree'.
 		const urlMode = params.get('mode');
 		if (urlMode === 'list' || urlMode === 'tree') {

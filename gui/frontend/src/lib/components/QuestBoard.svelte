@@ -1751,6 +1751,13 @@
 				/* 무시 — prefix 빈 채로 fallback */
 			}
 			// prefix 확정 후 가벼운 영속 상태 즉시 로드 (init 이전 — UI 깜빡임 최소화).
+			// DEV-135 fix: 보드로 바로 새로고침/재시작 시 questFilters store 는
+			// 비어 있어 dim 이 안 걸렸다 (List 를 거쳐야만 store 채워짐). store 가
+			// 비었으면 localStorage(List 와 동일 키)에서 필터를 hydrate.
+			if (!isFilterActive(get(questFilters))) {
+				const savedFilter = deserializeFilter(localStorage.getItem(gk(FILTER_STORAGE_SUFFIX)));
+				if (savedFilter) questFilters.set(savedFilter);
+			}
 			hideSettings = loadHideSettings();
 			globalCols = loadGlobalCols();
 			// DEV-105 fix4: collapsed lane 상태 복원이 누락되어 새로고침 시
