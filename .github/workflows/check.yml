@@ -109,6 +109,10 @@ jobs:
       - name: svelte-check
         run: npm run check
 
+      # DEV-131: 컴포넌트 CSS hex 직접 사용 차단 (테마 토큰만). 재발 방지.
+      - name: check no hex in component CSS
+        run: npm run check:no-hex
+
       - name: vitest
         run: npm test -- --run
 

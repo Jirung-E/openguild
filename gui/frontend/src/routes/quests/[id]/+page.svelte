@@ -1319,7 +1319,7 @@
 
 	.btn-delete {
 		padding: 0.3rem 0.9rem;
-		border: 1px solid #3a1f22; border-radius: 6px;
+		border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent); border-radius: 6px;
 		background: transparent; color: var(--danger);
 		font-size: 0.8rem; cursor: pointer;
 		transition: background 0.1s;

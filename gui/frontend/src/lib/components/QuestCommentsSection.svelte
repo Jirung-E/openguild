@@ -920,7 +920,7 @@
 	.link-btn.danger { color: var(--danger); }
 	.link-btn.danger:hover { color: var(--danger); }
 	/* DEV-142: '토론' 토글 활성 표시. */
-	.link-btn.on { color: var(--warning, #d08700); font-weight: 700; }
+	.link-btn.on { color: var(--warning); font-weight: 700; }
 
 	/* DEV-142: 토론 상태 배지 — 미해결(빨강) / 해결(초록). */
 	.disc-badge {

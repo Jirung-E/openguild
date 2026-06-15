@@ -211,9 +211,9 @@
 	}
 
 	button.active {
-		background: color-mix(in srgb, var(--c, #4a90d9) 20%, transparent);
-		border-color: var(--c, #4a90d9);
-		color: var(--c, #4a90d9);
+		background: color-mix(in srgb, var(--c, var(--accent)) 20%, transparent);
+		border-color: var(--c, var(--accent));
+		color: var(--c, var(--accent));
 	}
 
 	/* --- 검색 영역 --- */

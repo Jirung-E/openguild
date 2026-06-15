@@ -125,6 +125,11 @@ DEV-001, DEV-002, BUG-045, REQ-007, ...  ─── feature 브랜치 (develop �
   와 우연히 같아 안 들키지만 dark 에선 보라빛이라 섹션마다 색이 달라진다
   (토큰을 쓰긴 했어도 "잘못된 토큰" 이면 hex 직접 사용과 같은 문제).
 - 사용자가 보는 in-app rule 은 `.guild/rules/frontend-theme-tokens.md` 참조.
+- **enforcement — DEV-131**: 컴포넌트 CSS(`.svelte` 의 `<style>` + `.css`) 안
+  hex 직접 사용은 CI 에서 차단(`npm run check:no-hex`,
+  `gui/frontend/scripts/check-no-hex.mjs`). 토큰 정의처(`global.css`)만 allowlist.
+  새 색은 `global.css` 의 `:root` + `[data-theme=light]` 양쪽에 토큰으로 추가 후
+  사용. (mask 채널 등 비-테마 용도는 `black` 같은 키워드로.)
 
 ---
 
