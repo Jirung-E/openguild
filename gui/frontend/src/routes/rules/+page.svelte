@@ -9,7 +9,10 @@
   `.guild/rules/general.md` 로 마이그레이션됨.
 -->
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
+	import { onMount, onDestroy, tick } from 'svelte';
+	// DEV-153: 편집 중이면 이탈 가드에 보고 (라우트 이탈용. 같은 페이지 내 규칙
+	// 전환 경고는 아래 confirmDiscardSlug 모달이 별도로 담당).
+	import { setUnsaved } from '$lib/stores/unsaved';
 	import { rulesApi, type RuleEntry } from '$lib/api/rules';
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
@@ -31,6 +34,9 @@
 	let selectedContent = $state<string | null>(null);
 
 	let editMode = $state(false);
+	// DEV-153: 편집 중이면 이탈 가드에 보고.
+	$effect(() => setUnsaved('rules-edit', editMode));
+	onDestroy(() => setUnsaved('rules-edit', false));
 	let editText = $state('');
 	let saving = $state(false);
 	let saveError = $state<string | null>(null);

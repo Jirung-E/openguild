@@ -12,8 +12,10 @@
   flatten (GitHub PR 댓글 모델). frontend 가 자유롭게 indent / 시각화 가능.
 -->
 <script lang="ts">
-	import { tick } from 'svelte';
+	import { tick, onDestroy } from 'svelte';
 	import MarkdownView from './MarkdownView.svelte';
+	// DEV-153: 작성/편집/답글 중이면 이탈 가드에 보고.
+	import { setUnsaved } from '$lib/stores/unsaved';
 	import {
 		commentsApi as questCommentsApi,
 		campaignCommentsApi,
@@ -172,6 +174,13 @@
 	let replyAuthor = $state(loadSavedAuthor());
 	let replyBody = $state('');
 	let replySaving = $state(false);
+
+	// DEV-153: 새 댓글에 입력했거나 편집/답글이 열려 있으면 미저장 — 이탈 가드 보고.
+	let commentsDirty = $derived(
+		newBody.trim() !== '' || editingId !== null || replyingTo !== null
+	);
+	$effect(() => setUnsaved(`comments:${scope}`, commentsDirty));
+	onDestroy(() => setUnsaved(`comments:${scope}`, false));
 	let replyError = $state<string | null>(null);
 
 	async function load() {

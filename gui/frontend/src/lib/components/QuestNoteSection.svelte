@@ -12,7 +12,9 @@
   `mode` prop 은 호환을 위해 받지만 무시 — 항상 memo 동작.
 -->
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
+	import { onMount, onDestroy, tick } from 'svelte';
+	// DEV-153: 메모 편집 중이면 이탈 가드에 보고.
+	import { setUnsaved } from '$lib/stores/unsaved';
 	import MarkdownView from './MarkdownView.svelte';
 	import { commentsApi as questCommentsApi, campaignCommentsApi } from '$lib/api/comments';
 	import { EditorView, basicSetup } from 'codemirror';
@@ -54,6 +56,10 @@
 	}
 
 	let editMode = $state(false);
+	// DEV-153: 메모 편집 중이면 이탈 가드에 보고. (이 컴포넌트는 항상 memo —
+	// 댓글은 QuestCommentsSection 이 'comments:*' key 로 별도 보고.)
+	$effect(() => setUnsaved(`note:${scope}`, editMode));
+	onDestroy(() => setUnsaved(`note:${scope}`, false));
 	let editText = $state('');
 	let saving = $state(false);
 	let saveError = $state<string | null>(null);

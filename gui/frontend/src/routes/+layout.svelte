@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { page } from '$app/stores';
-	import { afterNavigate } from '$app/navigation';
+	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
+	// DEV-153: 미저장 변경 통합 가드.
+	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+	import { anyUnsaved, clearUnsaved } from '$lib/stores/unsaved';
 	import { onMount } from 'svelte';
 	import Nav from '$lib/components/Nav.svelte';
 	import UpdateBanner from '$lib/components/UpdateBanner.svelte';
@@ -27,6 +30,43 @@
 	// DEV-052 후속: /welcome 라우트에선 Nav (Board/List/Admin/+New Quest) 숨김.
 	// 길드 컨텍스트가 없는 상태에서 의미 없는 액션 노출 방지.
 	let showNav = $derived($page.url.pathname !== '/welcome');
+
+	// DEV-153: 미저장 변경 통합 가드. 편집 중(unsaved.ts 에 보고된 dirty)이면
+	// 라우트 이동(링크/뒤로·앞으로가기)을 취소하고 공용 확인 모달을 띄운다.
+	// 새로고침/창 닫기 등 willUnload 는 cancel 불가 → 아래 beforeunload 가 담당.
+	let showUnsavedModal = $state(false);
+	// 확인 시 실행할 동작 (라우트 이동 / 창 닫기 등) — 모달 일반화.
+	let pendingAction: (() => void) | null = null;
+	beforeNavigate((nav) => {
+		if (!anyUnsaved() || nav.willUnload) return;
+		const url = nav.to?.url;
+		if (!url) return;
+		nav.cancel();
+		pendingAction = () => goto(url);
+		showUnsavedModal = true;
+	});
+	function discardAndProceed() {
+		showUnsavedModal = false;
+		clearUnsaved();
+		const act = pendingAction;
+		pendingAction = null;
+		act?.();
+	}
+	function keepEditing() {
+		showUnsavedModal = false;
+		pendingAction = null;
+	}
+	// 새로고침 / 창 닫기 / 외부 이동 — 브라우저 기본 "나가시겠습니까?" 경고.
+	onMount(() => {
+		const guard = (e: BeforeUnloadEvent) => {
+			if (anyUnsaved()) {
+				e.preventDefault();
+				e.returnValue = '';
+			}
+		};
+		window.addEventListener('beforeunload', guard);
+		return () => window.removeEventListener('beforeunload', guard);
+	});
 
 	// DEV-111 fix1: mermaid 가 render() 중 실패하면 body 끝에 leftover 임시
 	// 컨테이너 (bomb 아이콘 + "Syntax error in text mermaid version X.Y.Z") 가
@@ -241,6 +281,28 @@
 		window.addEventListener('dragover', dropGuard);
 		window.addEventListener('drop', dropGuard);
 
+		// DEV-153: 창 닫기(X) 가드. WebView2 는 native close 에 beforeunload 를
+		// 보장 안 하므로 Tauri onCloseRequested 로 직접 막는다. 미저장이면 close
+		// 를 preventDefault 하고 공용 모달 — '버리고 이동' 시 forceClose 후 close()
+		// (close 가 onCloseRequested 를 재발생시키므로 플래그로 통과).
+		let unlistenClose: (() => void) | undefined;
+		let forceClose = false;
+		import('@tauri-apps/api/window')
+			.then(({ getCurrentWindow }) => {
+				const appWindow = getCurrentWindow();
+				return appWindow.onCloseRequested((event) => {
+					if (forceClose || !anyUnsaved()) return;
+					event.preventDefault();
+					pendingAction = () => {
+						forceClose = true;
+						void appWindow.close();
+					};
+					showUnsavedModal = true;
+				});
+			})
+			.then((un) => (unlistenClose = un))
+			.catch(() => {});
+
 		return () => {
 			document.removeEventListener('contextmenu', block, { capture: true });
 			window.removeEventListener('contextmenu', block, { capture: true });
@@ -249,6 +311,7 @@
 			});
 			window.removeEventListener('dragover', dropGuard);
 			window.removeEventListener('drop', dropGuard);
+			unlistenClose?.();
 		};
 	});
 </script>
@@ -266,6 +329,17 @@
 </main>
 <OverlayScrollbar />
 <ToastHost />
+
+<!-- DEV-153: 미저장 변경 시 라우트 이동 확인 (모든 페이지 공통). -->
+<ConfirmDialog
+	open={showUnsavedModal}
+	title="편집 중 이동"
+	message={'저장하지 않은 변경 사항이 있습니다.\n버리고 이동할까요?'}
+	confirmLabel="버리고 이동"
+	danger
+	onconfirm={discardAndProceed}
+	oncancel={keepEditing}
+/>
 
 <style>
 	main {

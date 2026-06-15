@@ -6,7 +6,9 @@
    - 연결된 quest 표시 + 추가 / 제거
 -->
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
+	import { onMount, onDestroy, tick } from 'svelte';
+	// DEV-153: 편집 중이면 이탈 가드에 보고.
+	import { setUnsaved } from '$lib/stores/unsaved';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { campaignsApi } from '$lib/api/campaigns';
@@ -47,6 +49,9 @@
 	// BUG-033: edit mode 통합 — Quest Detail 과 동일하게 단일 editMode 가
 	// 제목 / 기간 / 본문 모두 묶음. 이전엔 editMeta / editBody 분리되어 통일감 X.
 	let editMode = $state(false);
+	// DEV-153: 편집 중이면 이탈 가드에 보고.
+	$effect(() => setUnsaved('campaign-edit', editMode));
+	onDestroy(() => setUnsaved('campaign-edit', false));
 	let titleEdit = $state('');
 	let startedEdit = $state('');
 	let endedEdit = $state('');

@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { page } from '$app/stores';
-	import { onMount, tick } from 'svelte';
+	import { onMount, onDestroy, tick } from 'svelte';
+	// DEV-153: 편집 중이면 이탈 가드에 보고.
+	import { setUnsaved } from '$lib/stores/unsaved';
 	import { goto } from '$app/navigation';
 	import { questsApi } from '$lib/api/quests';
 	import { metaApi } from '$lib/api/meta';
@@ -79,6 +81,10 @@
 
 	// 편집 모드
 	let editMode = $state(false);
+	// DEV-153: 편집 모드 = 미저장 가능 → 이탈 가드에 보고. 저장/취소/네비 reset 시
+	// editMode=false 가 되어 자동 해제. 컴포넌트 파기 시에도 안전하게 정리.
+	$effect(() => setUnsaved('quest-edit', editMode));
+	onDestroy(() => setUnsaved('quest-edit', false));
 	let editTitle = $state('');
 	let editUrgency = $state(3);
 	let editDescription = $state('');
