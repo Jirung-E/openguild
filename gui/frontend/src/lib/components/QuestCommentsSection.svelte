@@ -27,6 +27,24 @@
 	import { tabInsert } from '$lib/actions/tab-insert';
 	// DEV-151: 댓글 textarea 첨부 — paste/drag&drop/버튼.
 	import { textareaAttach, pickAndAttachTextarea } from '$lib/utils/editor-attach';
+	// DEV-140 후속: 댓글 textarea cross-link 자동완성 (XXX-NNN → [[...]]).
+	import { wikiSuggestion, applyWikiLink, type WikiSuggestion } from '$lib/utils/textarea-wikilink';
+	import { questIndex, loadQuestIndex } from '$lib/stores/questIndex';
+	import { get } from 'svelte/store';
+
+	loadQuestIndex();
+	// 현재 활성 textarea + 제안. el 로 어느 textarea 아래 표시할지 구분.
+	let wikiSuggest = $state<(WikiSuggestion & { el: HTMLTextAreaElement }) | null>(null);
+	function onWikiInput(e: Event) {
+		const el = e.currentTarget as HTMLTextAreaElement;
+		const s = wikiSuggestion(el.value, el.selectionStart ?? 0, get(questIndex));
+		wikiSuggest = s ? { ...s, el } : null;
+	}
+	function applyWiki() {
+		if (!wikiSuggest) return;
+		applyWikiLink(wikiSuggest.el, wikiSuggest);
+		wikiSuggest = null;
+	}
 
 	// 첨부 버튼이 삽입할 textarea 참조 (편집/답글은 한 번에 하나만 열림).
 	let newTextareaEl = $state<HTMLTextAreaElement | undefined>(undefined);
@@ -417,9 +435,15 @@
 				bind:this={editTextareaEl}
 				class="body-input"
 				bind:value={editBody}
+				oninput={onWikiInput}
+				onkeyup={onWikiInput}
+				onclick={onWikiInput}
 				rows="4"
 				placeholder="본문 (markdown)"
 			></textarea>
+			{#if wikiSuggest && wikiSuggest.el === editTextareaEl}
+				<button type="button" class="wiki-suggest" onmousedown={(ev) => { ev.preventDefault(); applyWiki(); }}>🔗 [[{wikiSuggest.id}]] 링크 걸기{wikiSuggest.ref ? ` — ${wikiSuggest.ref.title}` : ' (미존재)'}</button>
+			{/if}
 			{#if editError}<p class="state err">{editError}</p>{/if}
 			<div class="actions">
 				<button
@@ -562,10 +586,16 @@
 												bind:this={replyTextareaEl}
 												class="body-input"
 												bind:value={replyBody}
+												oninput={onWikiInput}
+												onkeyup={onWikiInput}
+												onclick={onWikiInput}
 												rows="3"
 												placeholder={`@${root.author || root.id} 에 답글…`}
 												disabled={replySaving}
 											></textarea>
+											{#if wikiSuggest && wikiSuggest.el === replyTextareaEl}
+												<button type="button" class="wiki-suggest" onmousedown={(ev) => { ev.preventDefault(); applyWiki(); }}>🔗 [[{wikiSuggest.id}]] 링크 걸기{wikiSuggest.ref ? ` — ${wikiSuggest.ref.title}` : ' (미존재)'}</button>
+											{/if}
 											{#if replyError}<p class="state err">{replyError}</p>{/if}
 											<div class="actions">
 												<button
@@ -624,10 +654,16 @@
 				bind:this={newTextareaEl}
 				class="body-input"
 				bind:value={newBody}
+				oninput={onWikiInput}
+				onkeyup={onWikiInput}
+				onclick={onWikiInput}
 				rows="3"
 				placeholder="댓글 작성 (markdown 사용 가능)"
 				disabled={saving}
 			></textarea>
+			{#if wikiSuggest && wikiSuggest.el === newTextareaEl}
+				<button type="button" class="wiki-suggest" onmousedown={(ev) => { ev.preventDefault(); applyWiki(); }}>🔗 [[{wikiSuggest.id}]] 링크 걸기{wikiSuggest.ref ? ` — ${wikiSuggest.ref.title}` : ' (미존재)'}</button>
+			{/if}
 			{#if saveError}<p class="state err">{saveError}</p>{/if}
 			<div class="actions">
 				<button
@@ -983,6 +1019,20 @@
 		margin-right: auto;
 	}
 	.btn-attach:hover { background: var(--bg-elevated); }
+	/* DEV-140 후속: 댓글 cross-link 자동완성 제안 (클릭형). */
+	.wiki-suggest {
+		display: block;
+		margin: 0.25rem 0 0;
+		padding: 0.3rem 0.6rem;
+		background: color-mix(in srgb, var(--accent) 12%, transparent);
+		border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+		color: var(--accent);
+		border-radius: 6px;
+		cursor: pointer;
+		font-size: 0.8rem;
+		text-align: left;
+	}
+	.wiki-suggest:hover { background: color-mix(in srgb, var(--accent) 20%, transparent); }
 	.btn-save {
 		padding: 0.3rem 0.85rem;
 		background: var(--btn-primary-bg); border: 1px solid var(--btn-primary-border);

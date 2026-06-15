@@ -26,6 +26,8 @@
 	import { indentWithTab } from '@codemirror/commands';
 	// DEV-069: 규칙 편집기에도 첨부 (drag&drop / Ctrl+V / 버튼).
 	import { attachmentExtension, pickAndAttach } from '$lib/utils/editor-attach';
+	// DEV-140 후속: 규칙 편집기에도 XXX-NNN → [[...]] 자동완성.
+	import { crossLinkAutocomplete } from '$lib/utils/editor-links';
 
 	let loading = $state(true);
 	let error = $state<string | null>(null);
@@ -148,6 +150,8 @@
 				editorThemeCompartment.of(editorThemeExtension($theme)),
 				// DEV-069: 첨부 — 클립보드 paste / 파일 drag&drop.
 				attachmentExtension((msg) => (saveError = `첨부 업로드 실패: ${msg}`)),
+				// DEV-140 후속: XXX-NNN 타이핑 → [[...]] cross-link 자동완성.
+				crossLinkAutocomplete(),
 				// DEV-130: Tab = 들여쓰기 (focus 이동 X).
 				keymap.of([indentWithTab]),
 				EditorView.theme({

@@ -25,6 +25,8 @@
 	// 편집기 테마 — Compartment 로 다크/라이트 라이브 전환.
 	import { theme } from '$lib/stores/theme';
 	import { editorThemeCompartment, editorThemeExtension } from '$lib/utils/editor-theme';
+	// DEV-140 후속: 메모 편집기에도 XXX-NNN → [[...]] 자동완성.
+	import { crossLinkAutocomplete } from '$lib/utils/editor-links';
 	// DEV-074 fix15: CodeMirror native scrollbar 대신 overlay.
 	import OverlayScrollbar from './OverlayScrollbar.svelte';
 
@@ -121,6 +123,8 @@
 				markdown(),
 				// 테마 — Compartment 로 다크/라이트 라이브 전환 (재생성 X).
 				editorThemeCompartment.of(editorThemeExtension($theme)),
+				// DEV-140 후속: XXX-NNN 타이핑 → [[...]] cross-link 자동완성.
+				crossLinkAutocomplete(),
 				// DEV-117: Windows 표준 redo (Ctrl+Shift+Z) 추가.
 				// DEV-130: Tab = 들여쓰기 (focus 이동 X). Esc 후 Tab 으로 탈출 가능.
 				keymap.of([{ key: 'Mod-Shift-z', run: redo, preventDefault: true }, indentWithTab]),
