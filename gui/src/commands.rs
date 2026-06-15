@@ -26,6 +26,20 @@ fn err<E: std::fmt::Display>(e: E) -> String {
     format!("{e}")
 }
 
+/// DEV-154: Store::open 에러를 프론트가 구분할 수 있게 태깅. 더 새 schema 길드
+/// (IncompatibleGuild) 는 sentinel 접두어로 — welcome 이 전용 안내 + 업데이트
+/// 버튼을 띄운다. 그 외는 기존 메시지.
+pub const INCOMPATIBLE_GUILD_TAG: &str = "INCOMPATIBLE_GUILD::";
+fn open_err(e: anyhow::Error) -> String {
+    if let Some(openguild_core::AppError::IncompatibleGuild(msg)) =
+        e.downcast_ref::<openguild_core::AppError>()
+    {
+        format!("{INCOMPATIBLE_GUILD_TAG}{msg}")
+    } else {
+        format!("Store::open 실패: {e:#}")
+    }
+}
+
 // ─────────────────────── meta ───────────────────────
 
 #[tauri::command]
@@ -785,7 +799,7 @@ pub fn init_and_open_guild(
 
     // 3. Store 열고 swap.
     let store = tauri::async_runtime::block_on(openguild_core::Store::open(p))
-        .map_err(|e| format!("Store::open 실패: {e:#}"))?;
+        .map_err(open_err)?;
     // BUG-049/DEV-121 fix: 초기화/연 길드도 시동 sync (open_guild_in_current_window 와 동일).
     if let Err(e) =
         tauri::async_runtime::block_on(openguild_core::incremental::sync_on_open(&store))
@@ -851,7 +865,7 @@ pub fn open_guild_in_current_window(
 
     // 1. 새 Store 미리 열기 (실패 시 swap 안 함).
     let new_store = tauri::async_runtime::block_on(openguild_core::Store::open(p))
-        .map_err(|e| format!("Store::open 실패: {e:#}"))?;
+        .map_err(open_err)?;
 
     // BUG-049/DEV-121 fix: Welcome 에서 연 길드도 시동 sync 적용. 기존엔
     // sync_on_open 이 앱 부팅 시 '초기 길드' 에만 돌아, Welcome → 길드 열기

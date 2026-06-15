@@ -5,7 +5,24 @@
 	import { detectEnvironment } from '$lib/api/transport';
 	// DEV-138: welcome 에서도 ⚙ 퀵메뉴 (Nav 와 동일 컴포넌트).
 	import SettingsQuickMenu from '$lib/components/SettingsQuickMenu.svelte';
+	// DEV-154: 호환 안 되는 길드(더 새 schema) 전용 안내 + 업데이트 확인.
+	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+	import { checkForUpdate } from '$lib/api/updater';
 	let quickMenuOpen = $state(false);
+
+	// 더 새 schema 길드 열기 시도 시 메시지 (commands.rs 의 INCOMPATIBLE_GUILD_TAG).
+	const INCOMPAT_TAG = 'INCOMPATIBLE_GUILD::';
+	let incompatibleMsg = $state<string | null>(null);
+	// 길드 열기/초기화 에러 공통 처리 — IncompatibleGuild 면 전용 모달, 그 외는
+	// 일반 메시지 반환(호출 측이 openErr/initErr 등에 대입).
+	function handleOpenError(e: unknown): string | null {
+		const msg = e instanceof Error ? e.message : String(e);
+		if (msg.startsWith(INCOMPAT_TAG)) {
+			incompatibleMsg = msg.slice(INCOMPAT_TAG.length).trim();
+			return null;
+		}
+		return msg;
+	}
 
 	let recents: Recent[] = $state([]);
 	let loading = $state(true);
@@ -70,7 +87,7 @@
 			// 성공: 현재 process 의 Store 가 swap 됐음. 보드로 이동.
 			goto('/');
 		} catch (e) {
-			openErr = e instanceof Error ? e.message : String(e);
+			openErr = handleOpenError(e);
 		} finally {
 			opening = null;
 		}
@@ -91,7 +108,7 @@
 			// 성공: store swap 됨. 보드로.
 			goto('/');
 		} catch (e) {
-			initErr = e instanceof Error ? e.message : String(e);
+			initErr = handleOpenError(e);
 		} finally {
 			initRunning = false;
 		}
@@ -145,7 +162,7 @@
 				initErr = null;
 			}
 		} catch (e) {
-			pickErr = e instanceof Error ? e.message : String(e);
+			pickErr = handleOpenError(e);
 		} finally {
 			pickRunning = false;
 		}
@@ -171,7 +188,7 @@
 			await recentsApi.remove(target.path);
 			recents = recents.filter((r) => r.path !== target.path);
 		} catch (e) {
-			openErr = e instanceof Error ? e.message : String(e);
+			openErr = handleOpenError(e);
 		}
 	}
 
@@ -373,6 +390,19 @@
 		</div>
 	</div>
 {/if}
+
+<!-- DEV-154: 더 새 schema 길드 — 전용 안내 + 업데이트 확인 (DEV-063). -->
+<ConfirmDialog
+	open={incompatibleMsg !== null}
+	title="호환되지 않는 길드"
+	message={incompatibleMsg ?? ''}
+	confirmLabel="업데이트 확인"
+	oncancel={() => (incompatibleMsg = null)}
+	onconfirm={() => {
+		incompatibleMsg = null;
+		void checkForUpdate();
+	}}
+/>
 
 <style>
 	.welcome {
