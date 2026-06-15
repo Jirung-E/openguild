@@ -23,6 +23,13 @@
 	import ConfirmDialog from './ConfirmDialog.svelte';
 	// DEV-130: Tab = tab 문자 삽입 (focus 이동 X).
 	import { tabInsert } from '$lib/actions/tab-insert';
+	// DEV-151: 댓글 textarea 첨부 — paste/drag&drop/버튼.
+	import { textareaAttach, pickAndAttachTextarea } from '$lib/utils/editor-attach';
+
+	// 첨부 버튼이 삽입할 textarea 참조 (편집/답글은 한 번에 하나만 열림).
+	let newTextareaEl = $state<HTMLTextAreaElement | undefined>(undefined);
+	let editTextareaEl = $state<HTMLTextAreaElement | undefined>(undefined);
+	let replyTextareaEl = $state<HTMLTextAreaElement | undefined>(undefined);
 
 	// DEV-100: scope — quest (기본) / campaign. API base 만 다름.
 	let { slug, scope = 'quest' }: { slug: string; scope?: 'quest' | 'campaign' } = $props();
@@ -397,6 +404,8 @@
 		{#if editingId === e.id}
 			<textarea
 				use:tabInsert
+				use:textareaAttach={{ onError: (m) => (editError = `첨부 실패: ${m}`) }}
+				bind:this={editTextareaEl}
 				class="body-input"
 				bind:value={editBody}
 				rows="4"
@@ -404,6 +413,13 @@
 			></textarea>
 			{#if editError}<p class="state err">{editError}</p>{/if}
 			<div class="actions">
+				<button
+					type="button"
+					class="btn-attach"
+					onclick={() =>
+						pickAndAttachTextarea(editTextareaEl, (m) => (editError = `첨부 실패: ${m}`))}
+					title="이미지·동영상·파일 첨부 (드래그&드랍 / Ctrl+V 도 가능)"
+				>📎 첨부</button>
 				<button class="btn-save" onclick={() => saveEdit(e.id)} disabled={editSaving}>
 					{editSaving ? '저장…' : '저장'}
 				</button>
@@ -531,6 +547,10 @@
 											</div>
 											<textarea
 												use:tabInsert
+												use:textareaAttach={{
+													onError: (m) => (replyError = `첨부 실패: ${m}`)
+												}}
+												bind:this={replyTextareaEl}
 												class="body-input"
 												bind:value={replyBody}
 												rows="3"
@@ -539,6 +559,16 @@
 											></textarea>
 											{#if replyError}<p class="state err">{replyError}</p>{/if}
 											<div class="actions">
+												<button
+													type="button"
+													class="btn-attach"
+													onclick={() =>
+														pickAndAttachTextarea(
+															replyTextareaEl,
+															(m) => (replyError = `첨부 실패: ${m}`)
+														)}
+													title="이미지·동영상·파일 첨부 (드래그&드랍 / Ctrl+V 도 가능)"
+												>📎 첨부</button>
 												<button
 													class="btn-save"
 													onclick={() => submitReply(root.id)}
@@ -581,6 +611,8 @@
 			</div>
 			<textarea
 				use:tabInsert
+				use:textareaAttach={{ onError: (m) => (saveError = `첨부 실패: ${m}`) }}
+				bind:this={newTextareaEl}
 				class="body-input"
 				bind:value={newBody}
 				rows="3"
@@ -589,6 +621,13 @@
 			></textarea>
 			{#if saveError}<p class="state err">{saveError}</p>{/if}
 			<div class="actions">
+				<button
+					type="button"
+					class="btn-attach"
+					onclick={() =>
+						pickAndAttachTextarea(newTextareaEl, (m) => (saveError = `첨부 실패: ${m}`))}
+					title="이미지·동영상·파일 첨부 (드래그&드랍 / Ctrl+V 도 가능)"
+				>📎 첨부</button>
 				<button
 					class="btn-save"
 					onclick={add}
@@ -927,6 +966,14 @@
 		min-height: 4rem;
 	}
 	.actions { display: flex; gap: 0.4rem; margin-top: 0.35rem; }
+	/* DEV-151: 댓글 첨부 버튼. */
+	.btn-attach {
+		padding: 0.3rem 0.7rem;
+		background: var(--bg-subtle); border: 1px solid var(--border);
+		color: var(--text); border-radius: 6px; cursor: pointer; font-size: 0.8rem;
+		margin-right: auto;
+	}
+	.btn-attach:hover { background: var(--bg-elevated); }
 	.btn-save {
 		padding: 0.3rem 0.85rem;
 		background: var(--btn-primary-bg); border: 1px solid var(--btn-primary-border);

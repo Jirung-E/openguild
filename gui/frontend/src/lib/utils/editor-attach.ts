@@ -114,6 +114,106 @@ function allowedFiles(files: FileList | null | undefined): { file: File; ext: st
 	return Array.from(files).map((file) => ({ file, ext: extOf(file) }));
 }
 
+// ───────────────────────── textarea (DEV-151) ─────────────────────────
+// 댓글 편집기는 CodeMirror 가 아니라 <textarea> 라 위 EditorView 경로가 안 먹는다.
+// textarea 용 paste/drop/버튼 첨부 — bind:value 동기화를 위해 'input' 이벤트를
+// 직접 dispatch 한다.
+
+/** 커서 위치에 text 삽입 + input 이벤트 (Svelte bind:value 갱신). */
+function insertIntoTextarea(ta: HTMLTextAreaElement, text: string) {
+	const start = ta.selectionStart ?? ta.value.length;
+	const end = ta.selectionEnd ?? ta.value.length;
+	ta.setRangeText(text, start, end, 'end');
+	ta.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+/** placeholder 를 결과 마크다운으로 치환 (업로드 완료 시). */
+function replaceInTextarea(ta: HTMLTextAreaElement, placeholder: string, md: string) {
+	const idx = ta.value.indexOf(placeholder);
+	if (idx < 0) return; // 사용자가 지웠으면 그냥 둔다.
+	ta.value = ta.value.slice(0, idx) + md + ta.value.slice(idx + placeholder.length);
+	ta.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function uploadAndInsertTextarea(
+	ta: HTMLTextAreaElement,
+	file: File,
+	ext: string,
+	onError: (msg: string) => void
+) {
+	const placeholder = `![업로드 중… ${file.name || 'clipboard'} #${++uploadSeq}]()`;
+	insertIntoTextarea(ta, placeholder);
+	void (async () => {
+		try {
+			const dataBase64 = toBase64(await file.arrayBuffer());
+			const rel = await invoke<string>('save_attachment', { dataBase64, ext });
+			const md = markdownFor(rel, ext, file.name || rel.split('/').pop() || rel);
+			replaceInTextarea(ta, placeholder, md);
+		} catch (e) {
+			replaceInTextarea(ta, placeholder, '');
+			onError(typeof e === 'string' ? e : ((e as Error).message ?? String(e)));
+		}
+	})();
+}
+
+/**
+ * Svelte action — <textarea> 에 clipboard paste / 파일 drag&drop 첨부 부착.
+ * `use:textareaAttach={{ onError }}`. 브라우저(server) 모드에선 noop.
+ */
+export function textareaAttach(
+	ta: HTMLTextAreaElement,
+	opts: { onError?: (msg: string) => void } = {}
+): { destroy(): void } {
+	if (detectEnvironment() !== 'tauri') return { destroy() {} };
+	const onError = opts.onError ?? ((m) => console.error('첨부 업로드 실패:', m));
+	const onPaste = (e: ClipboardEvent) => {
+		const picked = allowedFiles(e.clipboardData?.files);
+		if (picked.length === 0) return; // 일반 텍스트 paste 는 기본 동작.
+		e.preventDefault();
+		for (const { file, ext } of picked) uploadAndInsertTextarea(ta, file, ext, onError);
+	};
+	const onDrop = (e: DragEvent) => {
+		const picked = allowedFiles(e.dataTransfer?.files);
+		if (picked.length === 0) return;
+		e.preventDefault();
+		ta.focus();
+		for (const { file, ext } of picked) uploadAndInsertTextarea(ta, file, ext, onError);
+	};
+	ta.addEventListener('paste', onPaste);
+	ta.addEventListener('drop', onDrop);
+	return {
+		destroy() {
+			ta.removeEventListener('paste', onPaste);
+			ta.removeEventListener('drop', onDrop);
+		}
+	};
+}
+
+/** '첨부' 버튼 — textarea 커서 위치에 파일(다중) 업로드/삽입. */
+export function pickAndAttachTextarea(
+	ta: HTMLTextAreaElement | undefined | null,
+	onError: (msg: string) => void = (m) => console.error('첨부 업로드 실패:', m)
+): void {
+	if (!ta) return;
+	if (detectEnvironment() !== 'tauri') {
+		onError('첨부 업로드는 데스크탑 앱에서만 지원됩니다.');
+		return;
+	}
+	const input = document.createElement('input');
+	input.type = 'file';
+	input.multiple = true;
+	input.style.display = 'none';
+	input.onchange = () => {
+		const picked = allowedFiles(input.files);
+		input.remove();
+		if (picked.length === 0) return;
+		ta.focus();
+		for (const { file, ext } of picked) uploadAndInsertTextarea(ta, file, ext, onError);
+	};
+	document.body.appendChild(input);
+	input.click();
+}
+
 /**
  * DEV-069 후속(admin #8): '첨부파일 추가' 버튼 핸들러. 숨은 file input 으로
  * 임의 파일(다중) 선택 → 커서 위치에 업로드/삽입. CodeMirror 편집기 전용
