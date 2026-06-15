@@ -893,15 +893,12 @@ mod helper_tests {
             rt.block_on(run_backup()).expect("backup ok");
         });
         let snapshot_dir = dir.join(".guild/backups/snapshots");
+        // BUG-076: snapshot 은 이제 `{ts}/` 디렉토리 (소스 파일 묶음).
         let count = std::fs::read_dir(&snapshot_dir)
             .unwrap()
-            .filter(|e| {
-                e.as_ref()
-                    .map(|e| e.path().extension().and_then(|s| s.to_str()) == Some("db"))
-                    .unwrap_or(false)
-            })
+            .filter(|e| e.as_ref().map(|e| e.path().is_dir()).unwrap_or(false))
             .count();
-        assert!(count >= 1, "snapshot file should be created");
+        assert!(count >= 1, "snapshot dir should be created");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

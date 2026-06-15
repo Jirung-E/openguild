@@ -104,7 +104,10 @@
 		busy = true;
 		try {
 			const res = await adminApi.restore(ts);
-			showSuccess(`복원 완료: ${formatTimestamp(res.restored_to)}. 파일 동기화를 위해 'reindex' 가 필요할 수 있습니다.`);
+			// BUG-076: restore 가 파일 복구 + reindex(캐시 재구축)까지 수행. 별도
+			// reindex 안내(데이터 소실 위험) 제거. 파일/DB 변경 반영 위해 새로고침.
+			showSuccess(`복원 완료: ${formatTimestamp(res.restored_to)} — 파일 복구 + 재색인 완료. 새로고침합니다.`);
+			setTimeout(() => window.location.reload(), 800);
 		} catch (e) {
 			showError(`복원 실패: ${e}`);
 		} finally {
