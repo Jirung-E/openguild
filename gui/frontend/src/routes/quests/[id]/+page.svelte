@@ -821,8 +821,9 @@
 
 				<!-- CodeMirror 가 div 안에 textarea 를 동적으로 생성 — svelte 가 정적
 				     분석으로는 control 미포함으로 판단. ignore. -->
-				<!-- svelte-ignore a11y_label_has_associated_control -->
-				<label class="field-label">
+				<!-- BUG: editor 섹션은 <label> 금지 — 안의 '📎 첨부' 버튼(labelable)이
+				     라벨 클릭마다 활성화돼 파일창이 뜬다(DEV-069 후속 admin #13). div 로. -->
+				<div class="field-label">
 					<span>설명 (Markdown)</span>
 					<!-- DEV-069: 첨부 — 버튼/드래그&드랍/Ctrl+V 모두 동일 업로드. -->
 					<div class="editor-toolbar">
@@ -840,7 +841,7 @@
 					{#if cmScroller}
 						<OverlayScrollbar target={cmScroller} />
 					{/if}
-				</label>
+				</div>
 
 				{#if saveError}<p class="save-error">{saveError}</p>{/if}
 

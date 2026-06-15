@@ -206,8 +206,9 @@
 	{:else if loadError}
 		<p class="state err">{loadError}</p>
 	{:else if editMode}
-		<!-- svelte-ignore a11y_label_has_associated_control -->
-		<label class="field-label">
+		<!-- BUG: editor 섹션은 <label> 금지 — 안의 '📎 첨부' 버튼(labelable)이
+		     라벨 클릭마다 활성화돼 파일창이 뜬다(admin #13). div 로. -->
+		<div class="field-label">
 			<span>{label.help}</span>
 			<!-- DEV-069 후속: 첨부 — 버튼/드래그&드랍/Ctrl+V 동일 업로드. -->
 			<div class="editor-toolbar">
@@ -224,7 +225,7 @@
 			{#if cmScroller}
 				<OverlayScrollbar target={cmScroller} />
 			{/if}
-		</label>
+		</div>
 		<div class="actions">
 			<button class="btn-save" onclick={save} disabled={saving}>
 				{saving ? '저장…' : '저장'}

@@ -518,8 +518,9 @@
 			{#if editMode}
 				<!-- CodeMirror 가 div 안에 textarea 를 동적 생성 — svelte 정적
 				     분석으로는 label 의 associated control 미확인. ignore. -->
-				<!-- svelte-ignore a11y_label_has_associated_control -->
-				<label class="field-label">
+				<!-- BUG: editor 섹션은 <label> 금지 — 안의 '📎 첨부' 버튼(labelable)이
+				     라벨 클릭마다 활성화돼 파일창이 뜬다(admin #13). div 로. -->
+				<div class="field-label">
 					<span>본문 (Markdown)</span>
 					<!-- DEV-069: 첨부 — 버튼/드래그&드랍/Ctrl+V 동일 업로드. -->
 					<div class="editor-toolbar">
@@ -532,7 +533,7 @@
 						>📎 첨부</button>
 					</div>
 					<div class="editor-wrap" bind:this={editorContainer}></div>
-				</label>
+				</div>
 				<div class="actions">
 					<button class="btn-save" onclick={saveEdit} disabled={saving || !titleEdit.trim()}>
 						{saving ? '저장…' : '저장'}
