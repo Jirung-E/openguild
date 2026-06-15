@@ -88,7 +88,15 @@ export interface QuestDetail extends Quest {
 	 * 서버 미배포 환경 대비 optional.
 	 */
 	tags?: string[];
+	/** DEV-156: 본문과 별개 첨부 목록 (Jira 식 섹션). sidecar 진리원. */
+	attachments?: QuestAttachment[];
 	position: QuestPosition | null;
+}
+
+/** DEV-156: quest/campaign 첨부 한 건 (본문과 별개). */
+export interface QuestAttachment {
+	path: string;
+	name: string;
 }
 
 export interface QuestPosition {
@@ -231,6 +239,8 @@ export interface CampaignDetail extends Campaign {
 	quest_done?: number;
 	/** DEV-093: quest_done / quest_total. */
 	quest_progress?: number;
+	/** DEV-156: 본문과 별개 첨부 목록 (Jira 식 섹션). */
+	attachments?: QuestAttachment[];
 }
 
 export interface CampaignSummary {

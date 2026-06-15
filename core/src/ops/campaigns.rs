@@ -52,6 +52,8 @@ pub async fn fetch_detail(store: &Store, slug: &str) -> AppResult<CampaignDetail
         quest_total,
         quest_done,
         quest_progress,
+        // DEV-156: 첨부는 Store 가진 호출 계층(GUI 커맨드)에서 채움.
+        attachments: Vec::new(),
     })
 }
 

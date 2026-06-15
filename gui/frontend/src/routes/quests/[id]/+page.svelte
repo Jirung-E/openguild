@@ -16,6 +16,8 @@
 	import OverlayScrollbar from '$lib/components/OverlayScrollbar.svelte';
 	// BUG-021 fix1: marked 직접 호출 대신 공유 컴포넌트 MarkdownView 사용.
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
+	// DEV-156: 본문 아래 첨부 섹션 (Jira 식).
+	import AttachmentSection from '$lib/components/AttachmentSection.svelte';
 	import { EditorView, basicSetup } from 'codemirror';
 	import { markdown } from '@codemirror/lang-markdown';
 	// 편집기 테마 — Compartment 로 다크/라이트 라이브 전환 (재생성 X).
@@ -85,6 +87,22 @@
 	// editMode=false 가 되어 자동 해제. 컴포넌트 파기 시에도 안전하게 정리.
 	$effect(() => setUnsaved('quest-edit', editMode));
 	onDestroy(() => setUnsaved('quest-edit', false));
+
+	// DEV-156: 편집기의 '첨부' 버튼 / 비미디어 paste·drop 이 본문 인라인 대신 이
+	// 콜백으로 '첨부 섹션'에 추가. detail.attachments 가 단일 소스 → 섹션 갱신.
+	async function attachToSection(rel: string, name: string) {
+		if (!detail) return;
+		try {
+			const { invoke } = await import('@tauri-apps/api/core');
+			detail.attachments = await invoke('add_quest_attachment', {
+				slug: detail.quest_id,
+				path: rel,
+				name
+			});
+		} catch (e) {
+			saveError = `첨부 실패: ${e}`;
+		}
+	}
 	let editTitle = $state('');
 	let editUrgency = $state(3);
 	let editDescription = $state('');
@@ -346,7 +364,7 @@
 				// DEV-130: tab/space + 2/4칸 들여쓰기 — Tab 키맵 + indentUnit/tabSize.
 				indentExtensions($editorSettings),
 				// DEV-069: 클립보드 이미지 paste / 파일 drag&drop → 첨부 업로드.
-				attachmentExtension((msg) => (saveError = `첨부 업로드 실패: ${msg}`)),
+				attachmentExtension((msg) => (saveError = `첨부 업로드 실패: ${msg}`), attachToSection),
 				// DEV-140: XXX-NNN 타이핑 → [[...]] cross-link 자동완성.
 				crossLinkAutocomplete(),
 				EditorView.theme({
@@ -832,7 +850,7 @@
 							class="btn-attach"
 							onclick={() =>
 								editorView &&
-								pickAndAttach(editorView, (msg) => (saveError = `첨부 업로드 실패: ${msg}`))}
+								pickAndAttach(editorView, (msg) => (saveError = `첨부 업로드 실패: ${msg}`), attachToSection)}
 							title="이미지·동영상·파일 첨부 (드래그&드랍 / Ctrl+V 도 가능)"
 						>📎 첨부</button>
 					</div>
@@ -893,6 +911,9 @@
 				{/if}
 			</div>
 		{/if}
+
+		<!-- DEV-156: 본문 아래 첨부 섹션 (Jira 식). -->
+		<AttachmentSection slug={detail.quest_id} scope="quest" bind:attachments={detail.attachments} />
 
 		<!-- 부모 퀘스트 (DEV-050) -->
 		{#if detail.parent}

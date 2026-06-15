@@ -114,6 +114,42 @@ function allowedFiles(files: FileList | null | undefined): { file: File; ext: st
 	return Array.from(files).map((file) => ({ file, ext: extOf(file) }));
 }
 
+function isMedia(ext: string): boolean {
+	return IMAGE_EXTS.has(ext) || VIDEO_EXTS.has(ext);
+}
+
+/**
+ * DEV-156: 파일 1개 업로드(저장) — `.guild/attachments/` 상대 경로 + 표시 파일명
+ * 반환. 첨부 섹션(AttachmentSection)이 직접 업로드할 때 재사용. Tauri 전용.
+ */
+export async function uploadAttachmentFile(file: File): Promise<{ rel: string; name: string }> {
+	const ext = extOf(file);
+	const dataBase64 = toBase64(await file.arrayBuffer());
+	const rel = await invoke<string>('save_attachment', { dataBase64, ext });
+	return { rel, name: file.name || rel.split('/').pop() || rel };
+}
+
+/**
+ * DEV-156: 본문 인라인 대신 '첨부 섹션'으로 보낼 때 — 업로드만 하고 (rel, name) 을
+ * onAttach 콜백에 전달. 콜백이 Tauri add_*_attachment 커맨드 호출 + 목록 갱신.
+ */
+function uploadToSection(
+	file: File,
+	ext: string,
+	onAttach: (rel: string, name: string) => void,
+	onError: (msg: string) => void
+): void {
+	void (async () => {
+		try {
+			const dataBase64 = toBase64(await file.arrayBuffer());
+			const rel = await invoke<string>('save_attachment', { dataBase64, ext });
+			onAttach(rel, file.name || rel.split('/').pop() || rel);
+		} catch (e) {
+			onError(typeof e === 'string' ? e : ((e as Error).message ?? String(e)));
+		}
+	})();
+}
+
 // ───────────────────────── textarea (DEV-151) ─────────────────────────
 // 댓글 편집기는 CodeMirror 가 아니라 <textarea> 라 위 EditorView 경로가 안 먹는다.
 // textarea 용 paste/drop/버튼 첨부 — bind:value 동기화를 위해 'input' 이벤트를
@@ -221,7 +257,8 @@ export function pickAndAttachTextarea(
  */
 export function pickAndAttach(
 	view: EditorView,
-	onError: (msg: string) => void = (m) => console.error('첨부 업로드 실패:', m)
+	onError: (msg: string) => void = (m) => console.error('첨부 업로드 실패:', m),
+	onAttach?: (rel: string, name: string) => void
 ): void {
 	if (detectEnvironment() !== 'tauri') {
 		onError('첨부 업로드는 데스크탑 앱에서만 지원됩니다.');
@@ -235,6 +272,11 @@ export function pickAndAttach(
 		const picked = allowedFiles(input.files);
 		input.remove();
 		if (picked.length === 0) return;
+		// DEV-156: onAttach 가 있으면 버튼 첨부는 (미디어 포함) 모두 '첨부 섹션'으로.
+		if (onAttach) {
+			for (const { file, ext } of picked) uploadToSection(file, ext, onAttach, onError);
+			return;
+		}
 		view.focus();
 		let pos = view.state.selection.main.head;
 		for (const { file, ext } of picked) {
@@ -250,18 +292,26 @@ export function pickAndAttach(
  * 브라우저 (server) 모드에선 빈 extension (업로드 미지원, DEV-097).
  */
 export function attachmentExtension(
-	onError: (msg: string) => void = (m) => console.error('첨부 업로드 실패:', m)
+	onError: (msg: string) => void = (m) => console.error('첨부 업로드 실패:', m),
+	onAttach?: (rel: string, name: string) => void
 ): Extension {
 	if (detectEnvironment() !== 'tauri') return [];
+	// DEV-156: onAttach 있을 때 paste/drop 규칙 — 미디어(이미지/동영상)는 본문
+	// 인라인 임베드, 그 외 파일은 '첨부 섹션'(onAttach). onAttach 없으면 모두 인라인.
+	const place = (view: EditorView, file: File, ext: string, pos: number): number => {
+		if (onAttach && !isMedia(ext)) {
+			uploadToSection(file, ext, onAttach, onError);
+			return 0;
+		}
+		return uploadAndInsert(view, file, ext, pos, onError);
+	};
 	return EditorView.domEventHandlers({
 		paste(event, view) {
 			const picked = allowedFiles(event.clipboardData?.files);
 			if (picked.length === 0) return false; // 일반 텍스트 paste 는 기본 동작.
 			event.preventDefault();
 			let pos = view.state.selection.main.head;
-			for (const { file, ext } of picked) {
-				pos += uploadAndInsert(view, file, ext, pos, onError);
-			}
+			for (const { file, ext } of picked) pos += place(view, file, ext, pos);
 			return true;
 		},
 		drop(event, view) {
@@ -271,9 +321,7 @@ export function attachmentExtension(
 			let pos =
 				view.posAtCoords({ x: event.clientX, y: event.clientY }) ??
 				view.state.selection.main.head;
-			for (const { file, ext } of picked) {
-				pos += uploadAndInsert(view, file, ext, pos, onError);
-			}
+			for (const { file, ext } of picked) pos += place(view, file, ext, pos);
 			return true;
 		}
 	});

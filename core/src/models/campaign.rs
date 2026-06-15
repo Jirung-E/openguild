@@ -92,6 +92,10 @@ pub struct CampaignDetail {
     /// DEV-093: quest_done / quest_total. 0 일 때 0.0.
     #[serde(default)]
     pub quest_progress: f64,
+    /// DEV-156: 본문과 별개 첨부 목록 (Jira 식). sidecar 진리원 — service 는 빈
+    /// 채로 두고 Store 가진 호출 계층에서 채운다.
+    #[serde(default)]
+    pub attachments: Vec<crate::models::QuestAttachment>,
 }
 
 /// Home / 카드 표시용 압축 요약.

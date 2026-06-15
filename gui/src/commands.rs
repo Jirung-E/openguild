@@ -996,7 +996,10 @@ pub async fn get_campaign(
     store: State<'_, Store>,
     slug: String,
 ) -> Result<CampaignDetail, String> {
-    camp_ops::fetch_detail(&store, &slug).await.map_err(err)
+    let mut detail = camp_ops::fetch_detail(&store, &slug).await.map_err(err)?;
+    // DEV-156: 첨부 목록(sidecar) 채우기.
+    detail.attachments = openguild_core::ops::attachments::list_campaign_attachments(&store, &slug);
+    Ok(detail)
 }
 
 #[tauri::command]

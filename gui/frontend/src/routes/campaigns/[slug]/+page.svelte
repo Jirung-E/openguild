@@ -17,6 +17,8 @@
 	// BUG-021 fix1: 공유 컴포넌트로 Quest Detail / Campaign Detail 의 markdown
 	// 프리뷰 통일.
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
+	// DEV-156: 본문 아래 첨부 섹션 (Jira 식).
+	import AttachmentSection from '$lib/components/AttachmentSection.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	// BUG-033: 생성 / 변경 시각 표시용 — Quest Detail 과 동일 헬퍼.
 	import { formatTs, formatRelative, isDateOverdue } from '$lib/utils/datetime';
@@ -52,6 +54,21 @@
 	// DEV-153: 편집 중이면 이탈 가드에 보고.
 	$effect(() => setUnsaved('campaign-edit', editMode));
 	onDestroy(() => setUnsaved('campaign-edit', false));
+
+	// DEV-156: 편집기 '첨부' 버튼 / 비미디어 paste·drop → 본문 인라인 대신 첨부 섹션.
+	async function attachToSection(rel: string, name: string) {
+		if (!detail) return;
+		try {
+			const { invoke } = await import('@tauri-apps/api/core');
+			detail.attachments = await invoke('add_campaign_attachment', {
+				slug: detail.campaign_slug,
+				path: rel,
+				name
+			});
+		} catch (e) {
+			error = `첨부 실패: ${e}`;
+		}
+	}
 	let titleEdit = $state('');
 	let startedEdit = $state('');
 	let endedEdit = $state('');
@@ -102,7 +119,7 @@
 				// DEV-130: tab/space + 2/4칸 들여쓰기 — Tab 키맵 + indentUnit/tabSize.
 				indentExtensions($editorSettings),
 				// DEV-069: 클립보드 이미지 paste / 파일 drag&drop → 첨부 업로드.
-				attachmentExtension((msg) => (error = `첨부 업로드 실패: ${msg}`)),
+				attachmentExtension((msg) => (error = `첨부 업로드 실패: ${msg}`), attachToSection),
 				// DEV-140: XXX-NNN 타이핑 → [[...]] cross-link 자동완성.
 				crossLinkAutocomplete(),
 				EditorView.theme({
@@ -528,7 +545,8 @@
 							type="button"
 							class="btn-attach"
 							onclick={() =>
-								editorView && pickAndAttach(editorView, (msg) => (error = `첨부 업로드 실패: ${msg}`))}
+								editorView &&
+								pickAndAttach(editorView, (msg) => (error = `첨부 업로드 실패: ${msg}`), attachToSection)}
 							title="이미지·동영상·파일 첨부 (드래그&드랍 / Ctrl+V 도 가능)"
 						>📎 첨부</button>
 					</div>
@@ -545,6 +563,15 @@
 			{:else}
 				<div class="empty">본문 없음. <button class="link" onclick={enterEditMode}>본문 추가</button></div>
 			{/if}
+		</section>
+
+		<!-- DEV-156: 본문 아래 첨부 섹션 (Jira 식). -->
+		<section class="body">
+			<AttachmentSection
+				slug={detail.campaign_slug}
+				scope="campaign"
+				bind:attachments={detail.attachments}
+			/>
 		</section>
 
 		<!-- 체크리스트 -->
