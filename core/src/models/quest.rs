@@ -72,7 +72,21 @@ pub struct QuestDetail {
     /// DEV-068: 본 quest 의 tag 목록 (frontmatter 가 진리원). 검색 / 필터링용.
     #[serde(default)]
     pub tags: Vec<String>,
+    /// DEV-156: 본문과 별개의 첨부 목록 (Jira 식, 본문 아래 섹션). 진리원은
+    /// sidecar 파일 `.guild/quests/{slug}.attachments.json`.
+    #[serde(default)]
+    pub attachments: Vec<QuestAttachment>,
     pub position: Option<QuestPosition>,
+}
+
+/// DEV-156: quest 첨부 한 건. `.guild/attachments/{nanos}-{rand}.{ext}` 저장
+/// 파일(DEV-069 의 save_attachment) 을 가리키는 상대 경로 + 표시용 원본 파일명.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QuestAttachment {
+    /// `.guild/` 기준 상대 경로 (예: "attachments/abc.png").
+    pub path: String,
+    /// 표시용 원본 파일명.
+    pub name: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]

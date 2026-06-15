@@ -148,6 +148,134 @@ pub async fn sync_attachment_blobs(store: &Store) -> AppResult<(usize, usize)> {
     Ok((upserted, restored))
 }
 
+// ───────────────────────── DEV-156: 첨부 목록 (Jira 식) ─────────────────────────
+// 본문과 별개로 quest/campaign 에 "첨부된" 파일 목록. 진리원은 sidecar
+// `.guild/{quests|campaigns}/{slug}.attachments.json`. 파일 바이트는 DEV-069 의
+// save_attachment 가 `.guild/attachments/` 에 저장 + blob 백업하므로, 여기서는
+// (경로, 원본 파일명) 메타만 관리한다.
+
+use crate::models::QuestAttachment;
+
+fn read_attachment_list(path: &std::path::Path) -> Vec<QuestAttachment> {
+    let Ok(raw) = std::fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    serde_json::from_str(&raw).unwrap_or_default()
+}
+
+fn write_attachment_list(path: &std::path::Path, list: &[QuestAttachment]) -> AppResult<()> {
+    if list.is_empty() {
+        // 비면 sidecar 제거 (불필요 파일 남기지 않음).
+        let _ = std::fs::remove_file(path);
+        return Ok(());
+    }
+    let json = serde_json::to_string_pretty(list)
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("serialize attachments: {e}")))?;
+    std::fs::write(path, json)
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("write attachments sidecar: {e}")))?;
+    Ok(())
+}
+
+/// quest 첨부 목록 조회.
+pub fn list_quest_attachments(store: &Store, slug: &str) -> Vec<QuestAttachment> {
+    read_attachment_list(&store.paths.quest_attachments_meta_path(slug))
+}
+
+/// campaign 첨부 목록 조회.
+pub fn list_campaign_attachments(store: &Store, slug: &str) -> Vec<QuestAttachment> {
+    read_attachment_list(&store.paths.campaign_attachments_meta_path(slug))
+}
+
+/// quest 에 첨부 추가 (path 중복이면 무시). 갱신된 목록 반환.
+pub async fn add_quest_attachment(
+    store: &Store,
+    slug: &str,
+    path: &str,
+    name: &str,
+) -> AppResult<Vec<QuestAttachment>> {
+    add_attachment(store, &store.paths.quest_attachments_meta_path(slug), slug, path, name).await
+}
+
+/// campaign 에 첨부 추가. 갱신된 목록 반환.
+pub async fn add_campaign_attachment(
+    store: &Store,
+    slug: &str,
+    path: &str,
+    name: &str,
+) -> AppResult<Vec<QuestAttachment>> {
+    add_attachment(store, &store.paths.campaign_attachments_meta_path(slug), slug, path, name).await
+}
+
+async fn add_attachment(
+    store: &Store,
+    meta_path: &std::path::Path,
+    slug: &str,
+    path: &str,
+    name: &str,
+) -> AppResult<Vec<QuestAttachment>> {
+    if path.trim().is_empty() {
+        return Err(AppError::BadRequest("빈 첨부 경로".into()));
+    }
+    let _ = journal::append(
+        &store.journal_pool,
+        "add_attachment",
+        &json!({ "slug": slug, "path": path }),
+        None::<&serde_json::Value>,
+    )
+    .await
+    .map_err(AppError::Internal)?;
+    let mut list = read_attachment_list(meta_path);
+    if !list.iter().any(|a| a.path == path) {
+        list.push(QuestAttachment {
+            path: path.to_string(),
+            name: if name.trim().is_empty() { path.to_string() } else { name.to_string() },
+        });
+        write_attachment_list(meta_path, &list)?;
+    }
+    Ok(list)
+}
+
+/// quest 첨부 제거 (목록에서만 — blob/파일은 self-heal 정책상 유지). 갱신 목록 반환.
+pub async fn remove_quest_attachment(
+    store: &Store,
+    slug: &str,
+    path: &str,
+) -> AppResult<Vec<QuestAttachment>> {
+    remove_attachment(store, &store.paths.quest_attachments_meta_path(slug), slug, path).await
+}
+
+/// campaign 첨부 제거. 갱신 목록 반환.
+pub async fn remove_campaign_attachment(
+    store: &Store,
+    slug: &str,
+    path: &str,
+) -> AppResult<Vec<QuestAttachment>> {
+    remove_attachment(store, &store.paths.campaign_attachments_meta_path(slug), slug, path).await
+}
+
+async fn remove_attachment(
+    store: &Store,
+    meta_path: &std::path::Path,
+    slug: &str,
+    path: &str,
+) -> AppResult<Vec<QuestAttachment>> {
+    let _ = journal::append(
+        &store.journal_pool,
+        "remove_attachment",
+        &json!({ "slug": slug, "path": path }),
+        None::<&serde_json::Value>,
+    )
+    .await
+    .map_err(AppError::Internal)?;
+    let mut list = read_attachment_list(meta_path);
+    let before = list.len();
+    list.retain(|a| a.path != path);
+    if list.len() != before {
+        write_attachment_list(meta_path, &list)?;
+    }
+    Ok(list)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -184,6 +312,41 @@ mod tests {
         assert!(b.ends_with(".bin"));
         // 빈 바이트는 여전히 거부.
         assert!(save_attachment(&store, b"", "png").await.is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-156: quest 첨부 목록 sidecar add/list/remove 라운드트립 + 중복 무시.
+    #[tokio::test]
+    async fn attachment_list_roundtrip() {
+        let (dir, store) = setup("list").await;
+        assert!(list_quest_attachments(&store, "DEV-001").is_empty());
+
+        let l1 = add_quest_attachment(&store, "DEV-001", "attachments/a.zip", "design.zip")
+            .await
+            .unwrap();
+        assert_eq!(l1.len(), 1);
+        assert_eq!(l1[0].name, "design.zip");
+        // 중복 path 는 무시.
+        let l2 = add_quest_attachment(&store, "DEV-001", "attachments/a.zip", "design.zip")
+            .await
+            .unwrap();
+        assert_eq!(l2.len(), 1);
+        // 다른 path 추가.
+        add_quest_attachment(&store, "DEV-001", "attachments/b.pdf", "ref.pdf")
+            .await
+            .unwrap();
+        assert_eq!(list_quest_attachments(&store, "DEV-001").len(), 2);
+        // sidecar 파일 실재.
+        assert!(store.paths.quest_attachments_meta_path("DEV-001").exists());
+
+        let l3 = remove_quest_attachment(&store, "DEV-001", "attachments/a.zip")
+            .await
+            .unwrap();
+        assert_eq!(l3.len(), 1);
+        assert_eq!(l3[0].path, "attachments/b.pdf");
+        // 마지막 제거 시 sidecar 삭제.
+        remove_quest_attachment(&store, "DEV-001", "attachments/b.pdf").await.unwrap();
+        assert!(!store.paths.quest_attachments_meta_path("DEV-001").exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

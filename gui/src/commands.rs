@@ -70,7 +70,11 @@ pub async fn list_deleted_quests(store: State<'_, Store>) -> Result<Vec<QuestRow
 
 #[tauri::command]
 pub async fn get_quest(store: State<'_, Store>, id: i64) -> Result<QuestDetail, String> {
-    read::get(&store.index_pool, id).await.map_err(err)
+    let mut detail = read::get(&store.index_pool, id).await.map_err(err)?;
+    // DEV-156: 첨부 목록(sidecar)은 Store 가 필요 — 여기서 채운다.
+    detail.attachments =
+        openguild_core::ops::attachments::list_quest_attachments(&store, &detail.quest.quest_id);
+    Ok(detail)
 }
 
 #[tauri::command]
@@ -82,7 +86,60 @@ pub async fn get_quest_by_slug(
     // 채 외부 편집한 경우에도 상세 화면은 최신. 실패는 무시 (stale 표시가
     // 에러보다 낫다).
     let _ = openguild_core::incremental::refresh_quest_if_stale(&store, &slug).await;
-    read::get_by_slug(&store.index_pool, &slug).await.map_err(err)
+    let mut detail = read::get_by_slug(&store.index_pool, &slug).await.map_err(err)?;
+    // DEV-156: 첨부 목록(sidecar) 채우기.
+    detail.attachments = openguild_core::ops::attachments::list_quest_attachments(&store, &slug);
+    Ok(detail)
+}
+
+// ─────────────────────── DEV-156: quest/campaign 첨부 목록 ───────────────────────
+
+/// quest 첨부 추가 (이미 저장된 .guild/attachments 경로 + 원본 파일명). 갱신 목록.
+#[tauri::command]
+pub async fn add_quest_attachment(
+    store: State<'_, Store>,
+    slug: String,
+    path: String,
+    name: String,
+) -> Result<Vec<openguild_core::models::QuestAttachment>, String> {
+    openguild_core::ops::attachments::add_quest_attachment(&store, &slug, &path, &name)
+        .await
+        .map_err(err)
+}
+
+/// quest 첨부 제거 (목록에서만). 갱신 목록.
+#[tauri::command]
+pub async fn remove_quest_attachment(
+    store: State<'_, Store>,
+    slug: String,
+    path: String,
+) -> Result<Vec<openguild_core::models::QuestAttachment>, String> {
+    openguild_core::ops::attachments::remove_quest_attachment(&store, &slug, &path)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn add_campaign_attachment(
+    store: State<'_, Store>,
+    slug: String,
+    path: String,
+    name: String,
+) -> Result<Vec<openguild_core::models::QuestAttachment>, String> {
+    openguild_core::ops::attachments::add_campaign_attachment(&store, &slug, &path, &name)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn remove_campaign_attachment(
+    store: State<'_, Store>,
+    slug: String,
+    path: String,
+) -> Result<Vec<openguild_core::models::QuestAttachment>, String> {
+    openguild_core::ops::attachments::remove_campaign_attachment(&store, &slug, &path)
+        .await
+        .map_err(err)
 }
 
 #[tauri::command]

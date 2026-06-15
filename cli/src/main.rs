@@ -4850,6 +4850,7 @@ mod tests {
             prerequisites: vec![],
             successors: vec![],
             tags: vec![],
+            attachments: vec![],
             position: None,
         }
     }

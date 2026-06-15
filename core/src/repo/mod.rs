@@ -157,6 +157,17 @@ impl GuildPaths {
         self.quests_dir().join(format!("{slug}.comments.md"))
     }
 
+    /// DEV-156: Quest 별 첨부 목록 sidecar (`.guild/quests/{slug}.attachments.json`).
+    /// 본문과 별개의 Jira 식 첨부 목록의 진리원. git tracked.
+    pub fn quest_attachments_meta_path(&self, slug: &str) -> PathBuf {
+        self.quests_dir().join(format!("{slug}.attachments.json"))
+    }
+
+    /// DEV-156: Campaign 별 첨부 목록 sidecar.
+    pub fn campaign_attachments_meta_path(&self, slug: &str) -> PathBuf {
+        self.campaigns_dir().join(format!("{slug}.attachments.json"))
+    }
+
     /// DEV-100: Campaign 별 공개 댓글 (`.guild/campaigns/{slug}.comments.md`).
     pub fn campaign_comments_path(&self, slug: &str) -> PathBuf {
         self.campaigns_dir().join(format!("{slug}.comments.md"))
