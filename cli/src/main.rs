@@ -4025,11 +4025,8 @@ fn init_guild_at(
         };
         let guild_path = cwd.join(format!("{name}.guild"));
         let today = today_date();
-        let content = format!(
-            "name = \"{}\"\nversion = \"1.0\"\ncreated_at = \"{}\"\n",
-            name.replace('\\', "\\\\").replace('"', "\\\""),
-            today
-        );
+        // DEV-064: 마커 포맷은 core 공용 헬퍼 — schema_version 포함.
+        let content = openguild_core::guild_file::marker_content(&name, &today);
         std::fs::write(&guild_path, content)
             .with_context(|| format!("길드 파일 작성 실패: {}", guild_path.display()))?;
         (guild_path, name)

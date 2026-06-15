@@ -57,6 +57,28 @@ impl Store {
     pub async fn open<P: AsRef<std::path::Path>>(guild_root: P) -> Result<Self> {
         let paths = GuildPaths::new(guild_root.as_ref());
 
+        // DEV-064: 길드 schema 버전 호환 검사 — 마커(`{name}.guild`)가 있을 때만
+        // (seed 전 빈 디렉토리는 통과). 더 새 버전이면 데이터 손상 방지를 위해
+        // 열지 않고 IncompatibleGuild 로 명확히 안내한다.
+        if let Some(root_str) = guild_root.as_ref().to_str()
+            && let Ok(marker) = crate::guild_file::load(root_str)
+        {
+            match crate::guild_file::schema_compat(marker.schema_version) {
+                crate::guild_file::SchemaCompat::Newer(v) => {
+                    return Err(crate::error::AppError::IncompatibleGuild(format!(
+                        "이 길드는 더 새 버전의 OpenGuild (schema v{v}) 로 만들어졌습니다. \
+                         이 앱은 schema v{} 까지 지원합니다. 앱을 업데이트하세요.",
+                        crate::guild_file::CURRENT_SCHEMA_VERSION
+                    ))
+                    .into());
+                }
+                // TODO: schema 가 올라가면 여기서 migrate_N_to_M chain 실행 +
+                // 마커 갱신. 현재 CURRENT=1 이라 Older 는 발생하지 않음.
+                crate::guild_file::SchemaCompat::Older(_) => {}
+                crate::guild_file::SchemaCompat::Current => {}
+            }
+        }
+
         // 디렉토리 보장
         std::fs::create_dir_all(paths.dot_guild())?;
         std::fs::create_dir_all(paths.backups_dir())?;
@@ -292,6 +314,35 @@ mod tests {
         let p = std::env::temp_dir().join(format!("og-store-{label}-{ns}"));
         std::fs::create_dir_all(&p).unwrap();
         p
+    }
+
+    /// DEV-064: 더 새 schema 길드는 열지 않고 IncompatibleGuild 안내.
+    #[tokio::test]
+    async fn open_rejects_newer_schema() {
+        let dir = fresh_tmp("schema-newer");
+        std::fs::write(
+            dir.join("x.guild"),
+            "name = \"x\"\nversion = \"1.0\"\ncreated_at = \"\"\nschema_version = 99\n",
+        )
+        .unwrap();
+        let res = Store::open(&dir).await;
+        assert!(res.is_err(), "더 새 schema 는 거부되어야");
+        let msg = res.err().unwrap().to_string();
+        assert!(msg.contains("99") && msg.contains("업데이트"), "안내 메시지: {msg}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-064: schema_version 필드 없는 구 길드는 1 로 간주 → 정상.
+    #[tokio::test]
+    async fn open_accepts_legacy_marker_without_schema_version() {
+        let dir = fresh_tmp("schema-legacy");
+        std::fs::write(
+            dir.join("x.guild"),
+            "name = \"x\"\nversion = \"1.0\"\ncreated_at = \"2026-01-01\"\n",
+        )
+        .unwrap();
+        assert!(Store::open(&dir).await.is_ok(), "구 길드(필드 없음)는 열려야");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[tokio::test]

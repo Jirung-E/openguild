@@ -16,6 +16,10 @@ pub enum AppError {
     #[error("{0}")]
     BadRequest(String),
 
+    /// DEV-064: 길드가 이 실행파일보다 새 schema 로 만들어져 못 엶. 앱 업데이트 필요.
+    #[error("{0}")]
+    IncompatibleGuild(String),
+
     #[error("internal error: {0:#}")]
     Internal(#[from] anyhow::Error),
 }

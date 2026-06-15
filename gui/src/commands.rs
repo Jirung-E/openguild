@@ -777,10 +777,9 @@ pub fn init_and_open_guild(
         });
     let marker = p.join(format!("{guild_name}.guild"));
     if !marker.exists() {
-        let today = chrono::Local::now().format("%Y-%m-%d");
-        let toml = format!(
-            "name = \"{guild_name}\"\nversion = \"1.0\"\ncreated_at = \"{today}\"\n"
-        );
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        // DEV-064: 마커 포맷은 core 공용 헬퍼 — schema_version 포함.
+        let toml = openguild_core::guild_file::marker_content(&guild_name, &today);
         std::fs::write(&marker, toml).map_err(|e| format!("marker 파일 생성 실패: {e}"))?;
     }
 
