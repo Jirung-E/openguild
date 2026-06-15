@@ -50,11 +50,11 @@
 			class="discussion-count unresolved"
 			title={`미해결 토론 ${quest.discussion_unresolved}개`}
 		>
-			<span class="dc-icon">🗨</span><span>{quest.discussion_unresolved}</span>
+			<span class="dc-icon">✗</span><span>{quest.discussion_unresolved}</span>
 		</span>
 	{:else if (quest.discussion_resolved ?? 0) > 0}
 		<span class="discussion-count resolved" title={`해결된 토론 ${quest.discussion_resolved}개`}>
-			<span class="dc-icon">🗨</span><span>{quest.discussion_resolved}</span>
+			<span class="dc-icon">✓</span><span>{quest.discussion_resolved}</span>
 		</span>
 	{/if}
 
@@ -170,7 +170,7 @@
 		background: color-mix(in srgb, var(--success) 14%, transparent);
 		border: 1px solid color-mix(in srgb, var(--success) 40%, transparent);
 	}
-	.dc-icon { font-size: 0.7rem; line-height: 1; }
+	.dc-icon { font-size: 0.9rem; line-height: 1; font-weight: 700; }
 	/* BUG-060 후속: 범위 밖 urgency 경고 — 빨간 ⚠. */
 	.urgency-warn {
 		flex-shrink: 0;

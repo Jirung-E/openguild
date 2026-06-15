@@ -140,12 +140,13 @@ export function makeQuestNodeSvgUrl(
 	const ulW = Math.ceil(ul.length * 5.6) + 14;
 	const ulX = 10 + qidW + 6;
 
-	// DEV-142 후속: 토론 배지 — 일반 댓글과 별도. 미해결>0 빨강, 아니면 해결>0
-	// 초록. 우측 상단. (보드 노드 QuestBoard.svelte 와 동일 규칙.)
+	// DEV-142 후속 / DEV-150: 토론 배지 — 일반 댓글과 별도. 미해결>0 면 ✗(빨강),
+	// 아니면 해결>0 면 ✓(초록). 텍스트 글리프라 fill 로 테마색이 그대로 입혀짐.
+	// 우측 상단. (보드 노드 QuestBoard.svelte 와 동일 규칙.)
 	const du = quest.discussion_unresolved ?? 0;
 	const dr = quest.discussion_resolved ?? 0;
 	const dColor = du > 0 ? palette.danger : dr > 0 ? palette.success : '';
-	const dText = dColor ? `🗨 ${du > 0 ? du : dr}` : '';
+	const dText = dColor ? `${du > 0 ? '✗' : '✓'} ${du > 0 ? du : dr}` : '';
 	const dW = dText ? Math.ceil(dText.length * 6.0) + 14 : 0;
 	const dX = W - 10 - dW;
 

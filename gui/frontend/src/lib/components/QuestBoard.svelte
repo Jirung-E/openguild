@@ -173,12 +173,13 @@
 		const ccW = ccText ? Math.ceil(ccText.length * 6.0) + 14 : 0;
 		const ccX = W - 10 - ccW;
 		const ccFill = dueMutedFill;
-		// DEV-142 후속: 토론 배지 — 일반 댓글(💬)과 별도. 미해결>0 빨강, 아니면
-		// 해결>0 초록. 💬 배지 왼쪽(없으면 우측 끝)에 둔다.
+		// DEV-142 후속 / DEV-150: 토론 배지 — 일반 댓글(💬)과 별도. 미해결>0 면
+		// ✗(빨강), 아니면 해결>0 면 ✓(초록). 텍스트 글리프라 fill 로 색이 입혀짐
+		// (이모지와 달리 테마색 그대로). 💬 배지 왼쪽(없으면 우측 끝)에 둔다.
 		const du = quest.discussion_unresolved ?? 0;
 		const dr = quest.discussion_resolved ?? 0;
 		const dColor = du > 0 ? palette.danger : dr > 0 ? palette.success : '';
-		const dText = dColor ? `🗨 ${du > 0 ? du : dr}` : '';
+		const dText = dColor ? `${du > 0 ? '✗' : '✓'} ${du > 0 ? du : dr}` : '';
 		const dW = dText ? Math.ceil(dText.length * 6.0) + 14 : 0;
 		const dX = dText ? (ccText ? ccX - 6 - dW : W - 10 - dW) : 0;
 
