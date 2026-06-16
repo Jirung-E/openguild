@@ -441,12 +441,11 @@ async fn run_reindex() -> Result<()> {
     let store = openguild_core::Store::open(&ctx.guild_path).await?;
     let report = openguild_core::reindex::reindex(&store).await?;
 
+    // DEV-160: CLI 와 동일 포맷 — core 의 공용 summary_lines() 사용.
     println!("✓ index.db 재구축 완료");
-    println!("  types        : {}", report.types_loaded);
-    println!("  statuses     : {}", report.statuses_loaded);
-    println!("  quests       : {}", report.quests_loaded);
-    println!("  dependencies : {}", report.dependencies_loaded);
-    println!("  positions    : {} 복원 (board UI 상태)", report.positions_restored);
+    for line in report.summary_lines() {
+        println!("  {line}");
+    }
     if !report.skipped.is_empty() {
         println!();
         println!("⚠ {} 개 파일 skip 됨 (파싱 / 무결성 실패):", report.skipped.len());

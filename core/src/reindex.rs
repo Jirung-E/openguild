@@ -43,6 +43,28 @@ pub struct ReindexReport {
     pub skipped: Vec<(String, String)>,
 }
 
+impl ReindexReport {
+    /// 사람용 요약 라인 (CLI / server 의 reindex 출력 공용 — DEV-160).
+    /// skip 상세는 호출 측에서 별도 표시. 순수 포맷팅이라 IO 없음.
+    pub fn summary_lines(&self) -> Vec<String> {
+        vec![
+            format!("types        : {}", self.types_loaded),
+            format!("statuses     : {}", self.statuses_loaded),
+            format!("quests       : {}", self.quests_loaded),
+            format!("dependencies : {}", self.dependencies_loaded),
+            format!("campaigns    : {}", self.campaigns_loaded),
+            format!("comments     : {}", self.comments_loaded),
+            format!("memos        : {}", self.memos_loaded),
+            format!("tags         : {}", self.tags_loaded),
+            format!(
+                "attachments  : {} backed up / {} restored",
+                self.attachments_backed_up, self.attachments_restored
+            ),
+            format!("positions    : {} 복원 (board UI 상태)", self.positions_restored),
+        ]
+    }
+}
+
 /// 메인 진입점.
 pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
     let mut report = ReindexReport::default();

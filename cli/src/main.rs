@@ -3370,25 +3370,30 @@ fn run() -> Result<()> {
                     "{}",
                     serde_json::json!({
                         "ok": true,
+                        "types": report.types_loaded,
+                        "statuses": report.statuses_loaded,
                         "quests": report.quests_loaded,
                         "dependencies": report.dependencies_loaded,
                         "campaigns": report.campaigns_loaded,
                         "comments": report.comments_loaded,
+                        "memos": report.memos_loaded,
+                        "tags": report.tags_loaded,
+                        "positions": report.positions_restored,
                         "skipped": report.skipped.len(),
                     })
                 );
             } else {
-                println!(
-                    "✓ reindex 완료 — quests {} / deps {} / campaigns {} / comments {}",
-                    report.quests_loaded,
-                    report.dependencies_loaded,
-                    report.campaigns_loaded,
-                    report.comments_loaded
-                );
+                // DEV-160: server (openguild-server reindex) 와 동일한 상세 다줄 출력.
+                println!("✓ index.db 재구축 완료");
+                for line in report.summary_lines() {
+                    println!("  {line}");
+                }
                 if !report.skipped.is_empty() {
-                    println!("  skipped {} 개 (파싱/무결성 실패):", report.skipped.len());
-                    for (path, why) in &report.skipped {
-                        println!("    - {path}: {why}");
+                    println!();
+                    println!("⚠ {} 개 파일 skip 됨 (파싱 / 무결성 실패):", report.skipped.len());
+                    for (path, reason) in &report.skipped {
+                        println!("  - {path}");
+                        println!("    → {reason}");
                     }
                 }
             }
