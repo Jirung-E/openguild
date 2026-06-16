@@ -103,6 +103,12 @@ enum Command {
     },
     /// 파일 → index.db 캐시 재구축 (외부 편집 / git pull / restore 후 정합).
     Reindex,
+    /// 외부 편집 / 손상으로 index.db 가 파일과 어긋났는지 검사 (+ 자동 resync).
+    CheckDrift {
+        /// 발견된 drift 를 자동으로 reindex 로 해소 (기본: 보고만).
+        #[arg(long)]
+        resync: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1883,6 +1889,19 @@ impl Backend {
         }
     }
 
+    /// DEV-159: index.db ↔ 파일 drift 검사. Local 전용 (remote 는 서버측 명령).
+    fn check_drift(&self) -> Result<openguild_core::drift::DriftReport> {
+        match self {
+            Backend::Http(_) => Err(anyhow!(
+                "원격 모드에선 미지원 — 서버에서 `openguild-server check-drift` 사용"
+            )),
+            Backend::Local(l) => l
+                .rt
+                .block_on(openguild_core::drift::detect_drift(&l.store))
+                .map_err(|e| anyhow!(e)),
+        }
+    }
+
     fn list_backups(&self) -> Result<Vec<openguild_core::snapshot::SnapshotInfo>> {
         match self {
             Backend::Http(c) => c.list_snapshots(),
@@ -3371,6 +3390,49 @@ fn run() -> Result<()> {
                     for (path, why) in &report.skipped {
                         println!("    - {path}: {why}");
                     }
+                }
+            }
+        }
+        Command::CheckDrift { resync } => {
+            let report = c.check_drift()?;
+            if cli.json {
+                if resync && !report.is_clean() {
+                    c.reindex()?;
+                }
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "clean": report.is_clean(),
+                        "resynced": resync && !report.is_clean(),
+                        "report": report,
+                    })
+                );
+            } else if report.is_clean() {
+                println!("✓ index.db 가 파일과 일치 (drift 없음)");
+            } else {
+                println!("⚠ drift 발견:");
+                let sections = [
+                    ("파일은 있는데 index 에 없음", &report.missing_in_index),
+                    ("index 에 있는데 파일이 없음", &report.stale_in_index),
+                    ("파일 mtime > index.db mtime", &report.fresh_files),
+                    ("sibling(.comments/.memo) 가 더 새것", &report.fresh_siblings),
+                ];
+                for (label, items) in sections {
+                    if !items.is_empty() {
+                        println!();
+                        println!("  {label} ({}):", items.len());
+                        for s in items {
+                            println!("    - {s}");
+                        }
+                    }
+                }
+                println!();
+                if resync {
+                    println!("▸ reindex 실행 중...");
+                    c.reindex()?;
+                    println!("✓ resync 완료");
+                } else {
+                    println!("(--resync 로 자동 reindex 가능)");
                 }
             }
         }
