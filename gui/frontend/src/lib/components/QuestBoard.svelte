@@ -1693,6 +1693,8 @@
 				} as Css.Node
 			},
 			{ selector: 'edge[?dimmed]', style: { opacity: 0.07 } },
+			// BUG-078: 필터 미스매치 edge 디밍 (relation dim 과 독립, node fdim 과 짝).
+			{ selector: 'edge[?fdim]', style: { opacity: 0.07 } },
 			{
 				selector: 'edge[etype = "pre"]',
 				style: { 'line-color': edgePre, 'target-arrow-color': edgePre, 'target-arrow-shape': 'triangle', 'line-style': 'solid', 'curve-style': 'bezier', width: 2 }
@@ -1842,6 +1844,10 @@
 			cy.nodes('[questId]').forEach((n) => {
 				n.data('fdim', false);
 			});
+			// BUG-078: 필터 해제 시 edge 디밍도 해제.
+			cy.edges().forEach((e) => {
+				e.data('fdim', false);
+			});
 			return;
 		}
 		const prereqQuestIds = new Set(allDependencies.map((d) => d.quest_id));
@@ -1867,6 +1873,12 @@
 		cy.nodes('[questId]').forEach((n) => {
 			const qid = n.data('questId') as number;
 			n.data('fdim', !matched.has(qid));
+		});
+		// BUG-078: edge 도 디밍 — 단 양 끝 노드가 모두 매치(둘 다 비-디밍)면 선명 유지.
+		cy.edges().forEach((e) => {
+			const s = e.source().data('questId') as number;
+			const t = e.target().data('questId') as number;
+			e.data('fdim', !matched.has(s) || !matched.has(t));
 		});
 	}
 	$effect(() => {
