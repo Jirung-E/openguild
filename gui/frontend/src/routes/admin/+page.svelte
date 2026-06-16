@@ -140,18 +140,17 @@
 			const result = await adminApi.reindex();
 			drift = null;
 			problemFiles = result.skipped;
+			// reindex 후 항상 새로고침. 새로고침 시 +layout 의 시동 스캔
+			// (list_problem_files → 토스트) + admin 의 loadProblemFiles(패널) 가 다시
+			// 돌아 '무엇이 문제인지'가 자동으로 표시된다. (이전엔 문제 있을 때 reload
+			// 안 해서 수동 Ctrl+R 전까지 상세가 안 보였음.) 데이터 stale 도 해소.
 			if (result.skipped.length > 0) {
-				// 비정상 파일이 있으면 자동 새로고침하지 않는다 — 사용자가 아래
-				// 경고 패널을 읽고 직접 조치하도록.
-				showError(`reindex 완료 — 비정상 파일 ${result.skipped.length}개 건너뜀 (아래 확인)`);
+				showError(`reindex — 비정상 파일 ${result.skipped.length}개 건너뜀. 새로고침 후 상세 표시.`);
 			} else {
 				showSuccess('reindex 완료 — 데이터 새로고침');
-				// DEV-120: reindex 후 자동 새로고침. 사용자가 변경된 데이터를 즉시
-				// 보길 기대. snapshots 등 admin 페이지 자체 데이터 + 사용자가 다른
-				// 페이지 (Board/List/Detail) 로 돌아갈 때 stale 캐시 잡지 않도록
-				// full reload. 토스트가 잠깐 보이도록 짧은 지연 후.
-				setTimeout(() => window.location.reload(), 600);
 			}
+			// 토스트가 잠깐 보이도록 짧은 지연 후 full reload.
+			setTimeout(() => window.location.reload(), 800);
 		} catch (e) {
 			showError(`reindex 실패: ${e}`);
 		} finally {
