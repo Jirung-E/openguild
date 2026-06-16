@@ -5,6 +5,7 @@
 # 사용:
 #   cd <빈 폴더>
 #   pwsh -File <openguild repo>/scripts/seed-test-data.ps1
+#   pwsh -File ...\seed-test-data.ps1 -BinDir E:\home\workspace\lab   # 바이너리 위치 지정
 #
 # 동작:
 #   1. cwd 에 .guild 가 있으면 에러 후 종료. (실수 방지)
@@ -17,12 +18,21 @@
 #      + snapshot 백업 회귀.
 #   6. DEV-016 (multi-file): sample 길드 규칙 생성 — Rules 페이지 검증.
 #
-# 환경:
-#   - $env:OPENGUILD_BIN 으로 바이너리 경로 override 가능.
-#   - 기본은 PATH 의 'openguild', 없으면 repo의 target/release/openguild.exe.
+# 바이너리 선택 (첫 위치 인자 = 바이너리 폴더):
+#   - 인자 없음            → PATH 의 'openguild' 사용 (기본).
+#   - .\seed-test-data.ps1 .          → 현재 폴더의 openguild.exe (스크립트와 동봉 시).
+#   - .\seed-test-data.ps1 <폴더>     → 그 폴더의 openguild.exe.
+#   - -BinDir <폴더> 로 명시 지정도 가능.
+#   PATH 설치본이 outdated 라 신규 subcommand(quest comment 등)가 없을 때 최신 빌드
+#   위치를 직접 지정. (길드 이름은 -Name 으로, 기본 'test-guild'.)
 
 [CmdletBinding()]
 param(
+    # 바이너리(openguild.exe)가 들어있는 폴더. 첫 위치 인자. 미지정 시 PATH 사용.
+    [Parameter(Position = 0)]
+    [string]$BinDir = "",
+    # 생성할 길드 이름. 이름을 줄 땐 -Name 으로 (positional 0 은 BinDir).
+    [Parameter(Position = 1)]
     [string]$Name = "test-guild"
 )
 
@@ -38,28 +48,21 @@ try { & chcp 65001 | Out-Null } catch {}
 
 # ── 바이너리 경로 결정 ────────────────────────────────────────
 function Resolve-OpenguildBin {
-    # 우선순위: OPENGUILD_BIN > repo target/release > repo target/debug > PATH.
-    # repo build 를 PATH 보다 우선. 시스템 설치본은 종종 outdated → campaign 같은
-    # 신규 subcommand 누락. 개발 중에는 항상 최신 빌드 우선.
-    if ($env:OPENGUILD_BIN) {
-        if (-not (Test-Path $env:OPENGUILD_BIN)) {
-            throw "OPENGUILD_BIN 지정됨이지만 파일이 없음: $($env:OPENGUILD_BIN)"
+    param([string]$BinDir)
+    # -BinDir 인자가 있으면 그 폴더의 openguild.exe 를 사용. 없으면 PATH 의 openguild.
+    if ($BinDir) {
+        $candidate = Join-Path $BinDir "openguild.exe"
+        if (-not (Test-Path $candidate)) {
+            throw "지정한 위치에 openguild.exe 가 없음: $candidate"
         }
-        return $env:OPENGUILD_BIN
+        return $candidate
     }
-    # $PSScriptRoot 는 함수 안에서도 스크립트 파일 경로를 가리킴 ($MyInvocation
-    # 은 함수 본문을 반환해서 Split-Path 에 잘못된 문자 에러).
-    $repoRoot = Split-Path -Parent $PSScriptRoot
-    $candidate = Join-Path $repoRoot "target\release\openguild.exe"
-    if (Test-Path $candidate) { return $candidate }
-    $candidate = Join-Path $repoRoot "target\debug\openguild.exe"
-    if (Test-Path $candidate) { return $candidate }
     $cmd = Get-Command openguild -ErrorAction SilentlyContinue
     if ($cmd) { return $cmd.Source }
-    throw "openguild 바이너리를 찾을 수 없음. PATH 등록하거나 OPENGUILD_BIN 환경변수 지정."
+    throw "PATH 에서 openguild 를 찾을 수 없음. -BinDir <폴더> 로 위치를 지정하거나 PATH 에 등록."
 }
 
-$bin = Resolve-OpenguildBin
+$bin = Resolve-OpenguildBin -BinDir $BinDir
 Write-Host "[seed] openguild binary: $bin" -ForegroundColor Cyan
 
 # ── 안전장치: 이미 초기화된 폴더에서는 실행 거부 ──────────────
