@@ -371,6 +371,29 @@ enum TemplateCmd {
     List,
     /// 템플릿 본문 출력.
     Show { name: String },
+    /// 템플릿 추가/갱신 — `.guild/templates/{name}.md` 생성. 본문은 --file / stdin.
+    Add {
+        /// 템플릿 이름 (파일명 stem).
+        name: String,
+        /// 기본 type prefix (DEV / BUG ...).
+        #[arg(long = "type")]
+        type_prefix: Option<String>,
+        /// 새 quest 의 기본 제목.
+        #[arg(long)]
+        title: Option<String>,
+        /// 기본 urgency (1=Critical .. 4=Low).
+        #[arg(long)]
+        urgency: Option<i64>,
+        /// 기본 tags — 반복 또는 콤마 구분.
+        #[arg(long, value_delimiter = ',')]
+        tags: Vec<String>,
+        /// 본문 파일. 미지정 시 stdin (파이프 없으면 빈 본문).
+        #[arg(long)]
+        file: Option<std::path::PathBuf>,
+        /// 이미 있으면 덮어쓰기 허용.
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1626,6 +1649,20 @@ impl Backend {
                     ));
                 }
                 openguild_core::repo::TemplateFile::read(&path)
+            }
+        }
+    }
+
+    /// DEV-158: 템플릿 저장. 반환: 쓰여진 경로.
+    fn template_save(
+        &self,
+        tpl: &openguild_core::repo::TemplateFile,
+        force: bool,
+    ) -> Result<std::path::PathBuf> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => {
+                openguild_core::repo::save_template(&l.store.paths, tpl, force)
             }
         }
     }
@@ -3109,6 +3146,43 @@ fn run() -> Result<()> {
                 } else {
                     println!("# {} — {}", t.name, t.frontmatter.title.as_deref().unwrap_or("(제목 없음)"));
                     println!("{}", t.body);
+                }
+            }
+            TemplateCmd::Add {
+                name,
+                type_prefix,
+                title,
+                urgency,
+                tags,
+                file,
+                force,
+            } => {
+                // 본문: --file > (파이프된) stdin > 빈 본문. tty 면 hang 방지 위해 stdin skip.
+                let body = if let Some(p) = &file {
+                    read_content(Some(p.as_path()))?
+                } else if !std::io::stdin().is_terminal() {
+                    read_content(None)?
+                } else {
+                    String::new()
+                };
+                let tpl = openguild_core::repo::TemplateFile {
+                    name: name.clone(),
+                    frontmatter: openguild_core::repo::TemplateFrontmatter {
+                        title,
+                        type_prefix,
+                        urgency,
+                        tags,
+                    },
+                    body,
+                };
+                let path = c.template_save(&tpl, force)?;
+                if cli.json {
+                    println!(
+                        "{}",
+                        serde_json::json!({ "ok": true, "name": name, "path": path.display().to_string() })
+                    );
+                } else {
+                    println!("✓ 템플릿 '{name}' 저장 — {}", path.display());
                 }
             }
         },

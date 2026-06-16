@@ -24,7 +24,7 @@ pub use quest::{QuestFile, QuestFrontmatter, AUTO_BEGIN, AUTO_END};
 pub use seed::{default_statuses, default_types, seed_guild_dir, SeedReport};
 pub use status_def::StatusFile;
 pub use tag_def::TagFile;
-pub use template::{list_templates, TemplateFile, TemplateFrontmatter};
+pub use template::{list_templates, save_template, TemplateFile, TemplateFrontmatter};
 pub use type_def::{Counter, TypeFile};
 
 use std::path::{Path, PathBuf};

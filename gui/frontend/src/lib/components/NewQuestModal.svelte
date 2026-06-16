@@ -93,6 +93,50 @@
 		templateTags = t.tags;
 	}
 
+	// DEV-158: 현재 입력을 템플릿으로 저장 (Tauri 전용).
+	let showSaveTpl = $state(false);
+	let tplName = $state('');
+	let tplMsg = $state<string | null>(null);
+	let tplExists = $state(false); // 같은 이름 존재 → 덮어쓰기 버튼 노출.
+	let savingTpl = $state(false);
+
+	async function saveAsTemplate(force = false) {
+		if (!tplName.trim()) {
+			tplMsg = '템플릿 이름을 입력하세요.';
+			return;
+		}
+		savingTpl = true;
+		tplMsg = null;
+		try {
+			const typePrefix = types.find((t) => t.id === typeId)?.prefix ?? null;
+			await templatesApi.save({
+				name: tplName.trim(),
+				title: title.trim() || null,
+				type: typePrefix,
+				urgency,
+				tags: templateTags,
+				body: description,
+				force
+			});
+			// 목록 갱신 후 닫기.
+			templates = await templatesApi.list().catch(() => templates);
+			showSaveTpl = false;
+			tplName = '';
+			tplExists = false;
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : String(e);
+			if (!force && msg.includes('이미 존재')) {
+				// 네이티브 confirm() 회피 (BUG-075) — 인라인 '덮어쓰기' 버튼으로 처리.
+				tplExists = true;
+				tplMsg = `'${tplName.trim()}' 이미 있음 — 덮어쓰시겠습니까?`;
+			} else {
+				tplMsg = msg;
+			}
+		} finally {
+			savingTpl = false;
+		}
+	}
+
 	onMount(async () => {
 		try {
 			const [t, s] = await Promise.all([metaApi.getQuestTypes(), metaApi.getQuestStatuses()]);
@@ -288,7 +332,47 @@
 						{saving ? '생성 중…' : '퀘스트 생성'}
 					</button>
 					<button class="btn-cancel" onclick={onclose} disabled={saving}>취소</button>
+					{#if isTauri}
+						<button
+							class="btn-tpl"
+							type="button"
+							onclick={() => {
+								showSaveTpl = !showSaveTpl;
+								tplMsg = null;
+								tplExists = false;
+							}}
+							disabled={saving}
+						>
+							{showSaveTpl ? '템플릿 저장 닫기' : '템플릿으로 저장'}
+						</button>
+					{/if}
 				</div>
+
+				{#if isTauri && showSaveTpl}
+					<!-- DEV-158: 현재 입력(타입/긴급도/제목/설명/템플릿 tags)을 템플릿으로 저장. -->
+					<div class="tpl-save">
+						<input
+							class="inp"
+							type="text"
+							placeholder="템플릿 이름 (예: bug-report)"
+							bind:value={tplName}
+							onkeydown={(e) => {
+								if (e.key === 'Enter') saveAsTemplate(false);
+							}}
+						/>
+						<button class="btn-create" type="button" onclick={() => saveAsTemplate(false)} disabled={savingTpl || !tplName.trim()}>
+							{savingTpl ? '저장 중…' : '저장'}
+						</button>
+						{#if tplExists}
+							<button class="btn-overwrite" type="button" onclick={() => saveAsTemplate(true)} disabled={savingTpl}>
+								덮어쓰기
+							</button>
+						{/if}
+					</div>
+					{#if tplMsg}
+						<p class="tpl-msg">{tplMsg}</p>
+					{/if}
+				{/if}
 			</div>
 		{/if}
 	</div>
@@ -471,6 +555,42 @@
 		cursor: pointer;
 	}
 	.btn-cancel:hover:not(:disabled) { background: var(--bg-subtle); }
+
+	/* DEV-158: 템플릿으로 저장 — 우측 정렬, 보조 액션. */
+	.btn-tpl {
+		margin-left: auto;
+		padding: 0.45rem 0.9rem;
+		background: transparent;
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		color: var(--text-muted);
+		font-size: 0.875rem;
+		cursor: pointer;
+	}
+	.btn-tpl:hover:not(:disabled) { background: var(--bg-subtle); color: var(--text); }
+	.btn-tpl:disabled { opacity: 0.5; cursor: default; }
+	.tpl-save {
+		display: flex;
+		gap: 0.5rem;
+		align-items: center;
+		margin-top: 0.5rem;
+	}
+	.btn-overwrite {
+		padding: 0.45rem 0.9rem;
+		background: transparent;
+		border: 1px solid var(--danger);
+		border-radius: 6px;
+		color: var(--danger);
+		font-size: 0.875rem;
+		cursor: pointer;
+		white-space: nowrap;
+	}
+	.btn-overwrite:disabled { opacity: 0.5; cursor: default; }
+	.tpl-msg {
+		margin: 0.4rem 0 0;
+		font-size: 0.8rem;
+		color: var(--text-muted);
+	}
 
 	/* DEV-014 후속: empty-state — type / status 가 0개일 때 폼 대신 안내. */
 	.empty-state {

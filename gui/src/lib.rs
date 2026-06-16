@@ -437,6 +437,8 @@ pub fn run() {
             commands::clear_campaign_banner,
             // DEV-060: 퀘스트 템플릿 (NewQuestModal 의 선택 dropdown).
             commands::list_templates,
+            // DEV-158: 현재 입력을 템플릿으로 저장.
+            commands::save_template,
             // DEV-069: 본문 첨부 (paste / drag&drop 업로드).
             commands::save_attachment,
         ])

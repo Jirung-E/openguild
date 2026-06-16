@@ -11,9 +11,25 @@ export interface QuestTemplate {
 	body: string;
 }
 
+export interface SaveTemplateInput {
+	name: string;
+	title: string | null;
+	type: string | null;
+	urgency: number | null;
+	tags: string[];
+	body: string;
+	/** 같은 이름이 이미 있으면 덮어쓰기 허용. */
+	force: boolean;
+}
+
 export const templatesApi = {
 	list: async (): Promise<QuestTemplate[]> => {
 		const { invoke } = await import('@tauri-apps/api/core');
 		return await invoke<QuestTemplate[]>('list_templates');
+	},
+	// DEV-158: 현재 입력을 템플릿으로 저장. 반환: 쓰여진 파일 경로.
+	save: async (input: SaveTemplateInput): Promise<string> => {
+		const { invoke } = await import('@tauri-apps/api/core');
+		return await invoke<string>('save_template', { ...input });
 	}
 };

@@ -1474,6 +1474,35 @@ pub fn list_templates(store: State<'_, Store>) -> Result<Vec<TemplateDto>, Strin
         .collect())
 }
 
+/// DEV-158: 현재 입력을 템플릿으로 저장 — `.guild/templates/{name}.md`.
+/// `force=false` 인데 같은 이름이 있으면 에러 (프론트에서 덮어쓰기 확인 후 재호출).
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub fn save_template(
+    store: State<'_, Store>,
+    name: String,
+    title: Option<String>,
+    r#type: Option<String>,
+    urgency: Option<i64>,
+    tags: Vec<String>,
+    body: String,
+    force: bool,
+) -> Result<String, String> {
+    let tpl = openguild_core::repo::TemplateFile {
+        name,
+        frontmatter: openguild_core::repo::TemplateFrontmatter {
+            title,
+            type_prefix: r#type,
+            urgency,
+            tags,
+        },
+        body,
+    };
+    let path = openguild_core::repo::save_template(&store.paths, &tpl, force)
+        .map_err(|e| format!("{e:#}"))?;
+    Ok(path.display().to_string())
+}
+
 // ─── DEV-087: 캠페인 배너 이미지 ───
 
 /// source 파일을 `.guild/assets/` 로 복사 + frontmatter / DB 갱신.

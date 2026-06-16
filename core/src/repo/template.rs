@@ -20,7 +20,7 @@
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TemplateFrontmatter {
@@ -75,6 +75,25 @@ impl TemplateFile {
         }
     }
 
+    /// 파일에 쓸 직렬화 — `parse()` 와 round-trip. frontmatter 가 전부 비면
+    /// 본문만(plain markdown). 설정된 필드만 emit (skip_serializing_if).
+    pub fn to_file_string(&self) -> Result<String> {
+        let fm = toml::to_string(&self.frontmatter)
+            .context("template frontmatter TOML 직렬화 실패")?;
+        let mut out = String::new();
+        if !fm.trim().is_empty() {
+            out.push_str("+++\n");
+            out.push_str(&fm);
+            if !fm.ends_with('\n') {
+                out.push('\n');
+            }
+            out.push_str("+++\n\n");
+        }
+        out.push_str(self.body.trim_end());
+        out.push('\n');
+        Ok(out)
+    }
+
     pub fn read<P: AsRef<Path>>(path: P) -> Result<Self> {
         let p = path.as_ref();
         let name = p
@@ -114,6 +133,31 @@ pub fn list_templates(paths: &super::GuildPaths) -> Result<Vec<TemplateFile>> {
     Ok(out)
 }
 
+/// DEV-158: 템플릿 저장 — `.guild/templates/{name}.md`. 디렉토리 자동 생성.
+/// `overwrite=false` 인데 파일이 이미 있으면 에러. 반환: 쓰여진 경로.
+pub fn save_template(
+    paths: &super::GuildPaths,
+    tpl: &TemplateFile,
+    overwrite: bool,
+) -> Result<PathBuf> {
+    if tpl.name.trim().is_empty() {
+        anyhow::bail!("템플릿 이름이 비어 있음");
+    }
+    let path = paths.template_path(&tpl.name);
+    if path.exists() && !overwrite {
+        anyhow::bail!(
+            "템플릿 '{}' 이미 존재 — 덮어쓰려면 force 사용 ({})",
+            tpl.name,
+            path.display()
+        );
+    }
+    std::fs::create_dir_all(paths.templates_dir())
+        .with_context(|| format!("templates 디렉토리 생성 실패: {}", paths.templates_dir().display()))?;
+    std::fs::write(&path, tpl.to_file_string()?)
+        .with_context(|| format!("템플릿 쓰기 실패: {}", path.display()))?;
+    Ok(path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -145,6 +189,60 @@ mod tests {
         assert!(t.frontmatter.title.is_none());
         assert_eq!(t.frontmatter.urgency, Some(1));
         assert_eq!(t.body, "body");
+    }
+
+    #[test]
+    fn to_file_string_roundtrips() {
+        let mut t = TemplateFile {
+            name: "bug".into(),
+            ..Default::default()
+        };
+        t.frontmatter.title = Some("버그 리포트".into());
+        t.frontmatter.type_prefix = Some("BUG".into());
+        t.frontmatter.urgency = Some(2);
+        t.frontmatter.tags = vec!["triage".into()];
+        t.body = "## 증상\n\n## 재현".into();
+        let s = t.to_file_string().unwrap();
+        let back = TemplateFile::parse("bug", &s).unwrap();
+        assert_eq!(back.frontmatter.title.as_deref(), Some("버그 리포트"));
+        assert_eq!(back.frontmatter.type_prefix.as_deref(), Some("BUG"));
+        assert_eq!(back.frontmatter.urgency, Some(2));
+        assert_eq!(back.frontmatter.tags, vec!["triage"]);
+        assert_eq!(back.body, "## 증상\n\n## 재현");
+    }
+
+    #[test]
+    fn plain_body_roundtrips_without_frontmatter() {
+        let t = TemplateFile {
+            name: "plain".into(),
+            frontmatter: TemplateFrontmatter::default(),
+            body: "그냥 본문".into(),
+        };
+        let s = t.to_file_string().unwrap();
+        assert!(!s.starts_with("+++"));
+        assert_eq!(TemplateFile::parse("plain", &s).unwrap().body, "그냥 본문");
+    }
+
+    #[test]
+    fn save_template_writes_and_guards_overwrite() {
+        let ns = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("og-tpl-save-{ns}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let paths = super::super::GuildPaths::new(&dir);
+        let t = TemplateFile {
+            name: "feature".into(),
+            ..Default::default()
+        };
+        let p = save_template(&paths, &t, false).unwrap();
+        assert!(p.exists());
+        // 덮어쓰기 금지면 에러.
+        assert!(save_template(&paths, &t, false).is_err());
+        // force 면 성공.
+        assert!(save_template(&paths, &t, true).is_ok());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
