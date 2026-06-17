@@ -17,6 +17,7 @@ pub mod health;
 pub mod incremental;
 pub mod guild_file;
 pub mod lock;
+pub mod maintenance;
 pub mod migrate;
 pub mod models;
 pub mod ops;

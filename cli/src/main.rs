@@ -109,6 +109,14 @@ enum Command {
         #[arg(long)]
         resync: bool,
     },
+    /// SQLite VACUUM — index.db 의 dead row 제거 + 파일 크기 정리.
+    Vacuum,
+    /// journal.db 의 최근 N 개 op 출력 (debug / audit 용).
+    JournalTail {
+        /// 출력할 row 수 (기본 50).
+        #[arg(short = 'n', long, default_value_t = 50)]
+        count: i64,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1902,6 +1910,32 @@ impl Backend {
         }
     }
 
+    /// DEV-162: index.db VACUUM. Local 전용 (실행 중 host 는 HTTP admin 사용).
+    fn vacuum(&self) -> Result<openguild_core::maintenance::VacuumReport> {
+        match self {
+            Backend::Http(_) => Err(anyhow!(
+                "원격 모드에선 미지원 — 실행 중 host 는 HTTP admin, 오프라인은 로컬에서 실행"
+            )),
+            Backend::Local(l) => l
+                .rt
+                .block_on(openguild_core::maintenance::vacuum(&l.store))
+                .map_err(|e| anyhow!(e)),
+        }
+    }
+
+    /// DEV-162: journal.db 최근 op tail. Local 전용.
+    fn journal_tail(&self, count: i64) -> Result<Option<openguild_core::maintenance::JournalTail>> {
+        match self {
+            Backend::Http(_) => Err(anyhow!(
+                "원격 모드에선 미지원 — 실행 중 host 는 HTTP admin, 오프라인은 로컬에서 실행"
+            )),
+            Backend::Local(l) => l
+                .rt
+                .block_on(openguild_core::maintenance::journal_tail(&l.store.paths, count))
+                .map_err(|e| anyhow!(e)),
+        }
+    }
+
     fn list_backups(&self) -> Result<Vec<openguild_core::snapshot::SnapshotInfo>> {
         match self {
             Backend::Http(c) => c.list_snapshots(),
@@ -3438,6 +3472,79 @@ fn run() -> Result<()> {
                     println!("✓ resync 완료");
                 } else {
                     println!("(--resync 로 자동 reindex 가능)");
+                }
+            }
+        }
+        Command::Vacuum => {
+            let r = c.vacuum()?;
+            if cli.json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "ok": true,
+                        "before_bytes": r.before_bytes,
+                        "after_bytes": r.after_bytes,
+                        "saved_bytes": r.saved(),
+                    })
+                );
+            } else {
+                println!("✓ VACUUM 완료");
+                println!("  before : {} bytes", r.before_bytes);
+                println!("  after  : {} bytes", r.after_bytes);
+                if r.saved() > 0 && r.before_bytes > 0 {
+                    println!(
+                        "  saved  : {} bytes ({:.1}%)",
+                        r.saved(),
+                        (r.saved() as f64 / r.before_bytes as f64) * 100.0
+                    );
+                } else {
+                    println!("  saved  : 0 bytes (이미 dense)");
+                }
+            }
+        }
+        Command::JournalTail { count } => {
+            let tail = c.journal_tail(count)?;
+            match tail {
+                None => {
+                    if cli.json {
+                        println!("{}", serde_json::json!({ "exists": false, "rows": [] }));
+                    } else {
+                        println!("(journal.db 없음 — 아직 mutation 안 됐거나 snapshot 직후)");
+                    }
+                }
+                Some(t) => {
+                    if cli.json {
+                        println!(
+                            "{}",
+                            serde_json::json!({
+                                "exists": true,
+                                "total": t.total,
+                                "rows": t.rows.iter().map(|o| serde_json::json!({
+                                    "id": o.id, "ts": o.ts, "op": o.op,
+                                    "args": o.args, "result": o.result,
+                                })).collect::<Vec<_>>(),
+                            })
+                        );
+                    } else {
+                        println!("journal.db: {} row(s) total — showing last {}", t.total, t.rows.len());
+                        println!();
+                        // char 단위 truncate — byte slice 는 멀티바이트(한글) 중간에서 panic.
+                        let trunc = |s: &str| -> String {
+                            if s.chars().count() > 100 {
+                                format!("{}…", s.chars().take(100).collect::<String>())
+                            } else {
+                                s.to_string()
+                            }
+                        };
+                        for o in &t.rows {
+                            println!("#{:>6}  {}  {}", o.id, o.ts, o.op);
+                            println!("         args   : {}", trunc(&o.args));
+                            if let Some(r) = &o.result {
+                                println!("         result : {}", trunc(r));
+                            }
+                            println!();
+                        }
+                    }
                 }
             }
         }
