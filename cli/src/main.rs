@@ -125,6 +125,12 @@ enum Command {
     },
     /// legacy guild.db → .guild/quests/*.md 파일 진리원 구조로 일회성 이전.
     MigrateToFiles,
+    /// 길드 메타 / index.db / snapshot / journal 요약 (진단).
+    Info {
+        /// 1 줄 요약만 (script / status bar 친화).
+        #[arg(long)]
+        brief: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1035,6 +1041,15 @@ impl HttpClient {
 }
 
 // ─────────────────────────── Backend (Http / Local) ───────────────────────────
+
+/// DEV-164: `info` 결과 묶음 — 길드 메타 + index.db 요약 + snapshot/journal.
+struct CliInfo {
+    path: std::path::PathBuf,
+    guild: openguild_core::guild_file::GuildFile,
+    summary: openguild_core::maintenance::IndexSummary,
+    snapshots: Vec<openguild_core::snapshot::SnapshotInfo>,
+    journal_total: i64,
+}
 
 /// 백엔드 추상화. 같은 메서드 시그니처로 HTTP / Local 양쪽 지원.
 ///
@@ -1978,6 +1993,32 @@ impl Backend {
                     .block_on(openguild_core::migrate::migrate_to_files(&l.guild_path))
                     .map_err(|e| anyhow!(e))
             }
+        }
+    }
+
+    /// DEV-164: 길드 메타 + index.db/snapshot/journal 요약. Local 전용.
+    fn info(&self) -> Result<CliInfo> {
+        match self {
+            Backend::Http(_) => Err(anyhow!(
+                "원격 모드에선 미지원 — 실행 중 host 정보는 server 측에서 확인"
+            )),
+            Backend::Local(l) => l.rt.block_on(async {
+                let guild =
+                    openguild_core::guild_file::load(&l.guild_path.to_string_lossy())?;
+                let summary = openguild_core::maintenance::index_summary(&l.store).await?;
+                let snapshots = openguild_core::snapshot::list_snapshots(&l.store.paths)?;
+                let journal_total = openguild_core::maintenance::journal_tail(&l.store.paths, 0)
+                    .await?
+                    .map(|t| t.total)
+                    .unwrap_or(0);
+                Ok(CliInfo {
+                    path: l.guild_path.clone(),
+                    guild,
+                    summary,
+                    snapshots,
+                    journal_total,
+                })
+            }),
         }
     }
 
@@ -3666,6 +3707,63 @@ fn run() -> Result<()> {
                     "  index.db      : {}",
                     if report.index_db_copied { "복사됨" } else { "이미 존재 — 건드리지 않음" }
                 );
+            }
+        }
+        Command::Info { brief } => {
+            let i = c.info()?;
+            let total = i.summary.quests_alive + i.summary.quests_deleted;
+            let snap_total: u64 = i.snapshots.iter().map(|s| s.size_bytes).sum();
+            let latest = i.snapshots.last().map(|s| s.timestamp.as_str()).unwrap_or("(none)");
+            let schema = i.summary.schema_version.as_deref();
+            if cli.json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "guild": i.guild.name,
+                        "version": i.guild.version,
+                        "created_at": i.guild.created_at,
+                        "path": i.path.display().to_string(),
+                        "db_size_bytes": i.summary.db_size_bytes,
+                        "schema": schema,
+                        "quests_alive": i.summary.quests_alive,
+                        "quests_deleted": i.summary.quests_deleted,
+                        "snapshots": i.snapshots.len(),
+                        "snapshots_bytes": snap_total,
+                        "latest_snapshot": i.snapshots.last().map(|s| s.timestamp.clone()),
+                        "journal_ops": i.journal_total,
+                    })
+                );
+            } else if brief {
+                println!(
+                    "guild={} quests={}/{} schema={} snapshots={} journal={}",
+                    i.guild.name,
+                    i.summary.quests_alive,
+                    total,
+                    schema.unwrap_or("(none)"),
+                    i.snapshots.len(),
+                    i.journal_total,
+                );
+            } else {
+                println!(
+                    "guild   : {}  (v{}, created {})",
+                    i.guild.name, i.guild.version, i.guild.created_at
+                );
+                println!("path    : {}", i.path.display());
+                println!();
+                println!("db      : {} bytes", i.summary.db_size_bytes);
+                println!("schema  : {}", schema.unwrap_or("(db not initialized)"));
+                println!(
+                    "quests  : {} alive, {} deleted",
+                    i.summary.quests_alive, i.summary.quests_deleted
+                );
+                println!();
+                println!(
+                    "snapshots: {} file(s), {} bytes total (latest: {})",
+                    i.snapshots.len(),
+                    snap_total,
+                    latest
+                );
+                println!("journal : {} ops since last snapshot", i.journal_total);
             }
         }
         Command::Campaign { sub } => handle_campaign(&c, cli.json, sub)?,

@@ -43,6 +43,47 @@ pub async fn vacuum(store: &Store) -> Result<VacuumReport> {
     })
 }
 
+/// DEV-164: `info` 진단용 index.db 요약 (호스트 전용 항목 제외 — CLI/GUI 공용).
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct IndexSummary {
+    pub quests_alive: i64,
+    pub quests_deleted: i64,
+    /// 마지막 성공 마이그레이션 ("0007 description"). DB 미초기화 시 None.
+    pub schema_version: Option<String>,
+    pub db_size_bytes: u64,
+}
+
+/// index.db 의 quest 수 / schema 버전 / 파일 크기 요약.
+pub async fn index_summary(store: &Store) -> Result<IndexSummary> {
+    let pool = &store.index_pool;
+    let quests_alive: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM quests WHERE deleted_at IS NULL")
+            .fetch_one(pool)
+            .await
+            .unwrap_or(0);
+    let quests_deleted: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM quests WHERE deleted_at IS NOT NULL")
+            .fetch_one(pool)
+            .await
+            .unwrap_or(0);
+    let last_mig: Option<(i64, String)> = sqlx::query_as(
+        "SELECT version, description FROM _sqlx_migrations \
+         WHERE success = 1 ORDER BY version DESC LIMIT 1",
+    )
+    .fetch_optional(pool)
+    .await
+    .unwrap_or(None);
+    let db_size_bytes = std::fs::metadata(store.paths.index_db())
+        .map(|m| m.len())
+        .unwrap_or(0);
+    Ok(IndexSummary {
+        quests_alive,
+        quests_deleted,
+        schema_version: last_mig.map(|(v, d)| format!("{v:04} {d}")),
+        db_size_bytes,
+    })
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct JournalOp {
     pub id: i64,
