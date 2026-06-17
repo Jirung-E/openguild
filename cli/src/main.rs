@@ -117,6 +117,14 @@ enum Command {
         #[arg(short = 'n', long, default_value_t = 50)]
         count: i64,
     },
+    /// type 의 last_number 가 실제 max quest 번호와 일치하는지 검사 (+ 자동 보정).
+    CheckCounters {
+        /// 발견된 불일치를 파일 + SQL 에 직접 보정 (기본: 보고만).
+        #[arg(long)]
+        fix: bool,
+    },
+    /// legacy guild.db → .guild/quests/*.md 파일 진리원 구조로 일회성 이전.
+    MigrateToFiles,
 }
 
 #[derive(Subcommand)]
@@ -1936,6 +1944,43 @@ impl Backend {
         }
     }
 
+    /// DEV-164: counter 정합 검사 / 보정. Local 전용.
+    fn check_counters(&self, fix: bool) -> Result<openguild_core::ops::counter::CombinedReport> {
+        match self {
+            Backend::Http(_) => Err(anyhow!("원격 모드에선 미지원 — 오프라인(로컬)에서 실행")),
+            Backend::Local(l) => l
+                .rt
+                .block_on(openguild_core::ops::check_and_fix_counters(&l.store, fix))
+                .map_err(|e| anyhow!(e)),
+        }
+    }
+
+    /// DEV-164: legacy guild.db → 파일 진리원 일회성 이전. Local 전용.
+    /// guild_path 의 quests/ 가 이미 차 있으면(이미 이전됨) 에러.
+    fn migrate_to_files(&self) -> Result<openguild_core::migrate::MigrationReport> {
+        match self {
+            Backend::Http(_) => Err(anyhow!("원격 모드에선 미지원 — 오프라인(로컬)에서 실행")),
+            Backend::Local(l) => {
+                let quests_dir = l.guild_path.join(".guild").join("quests");
+                let has_md = std::fs::read_dir(&quests_dir)
+                    .ok()
+                    .into_iter()
+                    .flatten()
+                    .flatten()
+                    .any(|e| e.path().extension().and_then(|s| s.to_str()) == Some("md"));
+                if has_md {
+                    return Err(anyhow!(
+                        ".guild/quests/ 에 이미 quest 파일이 있습니다 — 마이그레이션은 한 번만. \
+                         덮어쓰려면 quests/ 를 비운 뒤 재시도."
+                    ));
+                }
+                l.rt
+                    .block_on(openguild_core::migrate::migrate_to_files(&l.guild_path))
+                    .map_err(|e| anyhow!(e))
+            }
+        }
+    }
+
     fn list_backups(&self) -> Result<Vec<openguild_core::snapshot::SnapshotInfo>> {
         match self {
             Backend::Http(c) => c.list_snapshots(),
@@ -3546,6 +3591,81 @@ fn run() -> Result<()> {
                         }
                     }
                 }
+            }
+        }
+        Command::CheckCounters { fix } => {
+            let report = c.check_counters(fix)?;
+            if cli.json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "ok": true,
+                        "types_checked": report.file_report.types_checked,
+                        "file_issues": report.file_report.issues.len(),
+                        "sql_drift": report.sql_drift.len(),
+                        "fixed": fix,
+                    })
+                );
+            } else {
+                println!("✓ counter 검증 완료");
+                println!("  검사된 type 수 : {}", report.file_report.types_checked);
+                println!(
+                    "  발견 이슈     : {} (file) + {} (SQL)",
+                    report.file_report.issues.len(),
+                    report.sql_drift.len()
+                );
+                for issue in &report.file_report.issues {
+                    println!();
+                    println!("  • type {} [file drift]:", issue.prefix);
+                    println!("    저장된 last_number   : {}", issue.stored_last_number);
+                    println!("    실제 max quest 번호  : {}", issue.actual_max_number);
+                    if fix {
+                        println!("    → {} 으로 보정됨 (file + SQL)", issue.corrected_to);
+                    } else {
+                        println!("    (--fix 로 자동 보정 가능)");
+                    }
+                }
+                for drift in &report.sql_drift {
+                    println!();
+                    println!("  • type {} [SQL drift]:", drift.prefix);
+                    println!("    file last_number     : {}", drift.file_last_number);
+                    println!("    SQL  last_number     : {}", drift.sql_last_number);
+                    if fix {
+                        println!("    → {} 으로 보정됨 (SQL ← file)", drift.synced_to);
+                    } else {
+                        println!("    (--fix 로 자동 보정 가능)");
+                    }
+                }
+            }
+        }
+        Command::MigrateToFiles => {
+            let report = c.migrate_to_files()?;
+            if cli.json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "ok": true,
+                        "legacy_db": report.legacy_db_path.display().to_string(),
+                        "quests_written": report.quests_written,
+                        "deleted_quests_included": report.deleted_quests_included,
+                        "types_updated": report.types_updated,
+                        "index_db_copied": report.index_db_copied,
+                    })
+                );
+            } else {
+                println!("✓ 마이그레이션 완료");
+                println!("  legacy DB     : {}", report.legacy_db_path.display());
+                println!("  quests 작성   : {}", report.quests_written);
+                println!(
+                    "  - alive       : {}",
+                    report.quests_written - report.deleted_quests_included
+                );
+                println!("  - soft-deleted: {}", report.deleted_quests_included);
+                println!("  types 갱신    : {} (counter)", report.types_updated);
+                println!(
+                    "  index.db      : {}",
+                    if report.index_db_copied { "복사됨" } else { "이미 존재 — 건드리지 않음" }
+                );
             }
         }
         Command::Campaign { sub } => handle_campaign(&c, cli.json, sub)?,
