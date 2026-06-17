@@ -21,10 +21,13 @@
 	import { markdown } from '@codemirror/lang-markdown';
 	// DEV-117: Windows 표준 redo (Ctrl+Shift+Z) keymap.
 	import { keymap } from '@codemirror/view';
-	import { redo, indentWithTab } from '@codemirror/commands';
+	import { redo } from '@codemirror/commands';
 	// 편집기 테마 — Compartment 로 다크/라이트 라이브 전환.
 	import { theme } from '$lib/stores/theme';
 	import { editorThemeCompartment, editorThemeExtension } from '$lib/utils/editor-theme';
+	// DEV-130: Tab 들여쓰기는 editorSettings(tab/space·크기)를 따르는 indentExtensions 가 담당.
+	import { indentExtensions } from '$lib/utils/editor-indent';
+	import { editorSettings } from '$lib/stores/editorSettings';
 	// DEV-140 후속: 메모 편집기에도 XXX-NNN → [[...]] 자동완성.
 	import { crossLinkAutocomplete } from '$lib/utils/editor-links';
 	// DEV-069 후속(admin #11): 메모에도 첨부 — paste/drag&drop/버튼.
@@ -130,8 +133,9 @@
 				// DEV-069 후속: 첨부 — 클립보드 paste / 파일 drag&drop.
 				attachmentExtension((msg) => (saveError = `첨부 실패: ${msg}`)),
 				// DEV-117: Windows 표준 redo (Ctrl+Shift+Z) 추가.
-				// DEV-130: Tab = 들여쓰기 (focus 이동 X). Esc 후 Tab 으로 탈출 가능.
-				keymap.of([{ key: 'Mod-Shift-z', run: redo, preventDefault: true }, indentWithTab]),
+				keymap.of([{ key: 'Mod-Shift-z', run: redo, preventDefault: true }]),
+				// DEV-130: Tab = 들여쓰기 (focus 이동 X) — 설정대로 커서 위치에 삽입.
+				indentExtensions($editorSettings),
 				EditorView.theme({
 					'&': { fontSize: '0.875rem', borderRadius: '6px', height: '100%' },
 					'.cm-editor': { borderRadius: '6px', height: '100%' },

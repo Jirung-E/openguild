@@ -21,9 +21,9 @@
 	// 편집기 테마 — Compartment 로 다크/라이트 라이브 전환.
 	import { theme } from '$lib/stores/theme';
 	import { editorThemeCompartment, editorThemeExtension } from '$lib/utils/editor-theme';
-	// DEV-130: Tab = 들여쓰기 (focus 이동 X).
-	import { keymap } from '@codemirror/view';
-	import { indentWithTab } from '@codemirror/commands';
+	// DEV-130: Tab 들여쓰기 — editorSettings(tab/space·크기)를 따르는 indentExtensions.
+	import { indentExtensions } from '$lib/utils/editor-indent';
+	import { editorSettings } from '$lib/stores/editorSettings';
 	// DEV-069: 규칙 편집기에도 첨부 (drag&drop / Ctrl+V / 버튼).
 	import { attachmentExtension, pickAndAttach } from '$lib/utils/editor-attach';
 	// DEV-140 후속: 규칙 편집기에도 XXX-NNN → [[...]] 자동완성.
@@ -152,8 +152,8 @@
 				attachmentExtension((msg) => (saveError = `첨부 업로드 실패: ${msg}`)),
 				// DEV-140 후속: XXX-NNN 타이핑 → [[...]] cross-link 자동완성.
 				crossLinkAutocomplete(),
-				// DEV-130: Tab = 들여쓰기 (focus 이동 X).
-				keymap.of([indentWithTab]),
+				// DEV-130: Tab = 들여쓰기 (focus 이동 X) — 설정대로 커서 위치에 삽입.
+				indentExtensions($editorSettings),
 				EditorView.theme({
 					'&': { fontSize: '0.875rem', borderRadius: '6px', height: '100%' },
 					'.cm-editor': { borderRadius: '6px', height: '100%' },
