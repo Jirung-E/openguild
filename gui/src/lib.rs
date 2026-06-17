@@ -372,6 +372,9 @@ pub fn run() {
             commands::admin_restore,
             commands::admin_check_drift,
             commands::admin_reindex,
+            // DEV-162: 런타임 정비 (vacuum / journal tail).
+            commands::admin_vacuum,
+            commands::admin_journal_tail,
             commands::list_problem_files,
             // admin meta (DEV-014)
             commands::admin_list_types,

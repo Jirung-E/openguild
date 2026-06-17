@@ -313,6 +313,14 @@ function routeToInvoke(
 	if (method === 'POST' && pathOnly === '/api/admin/reindex') {
 		return { cmd: 'admin_reindex', args: {} };
 	}
+	// DEV-162: 런타임 정비.
+	if (method === 'POST' && pathOnly === '/api/admin/vacuum') {
+		return { cmd: 'admin_vacuum', args: {} };
+	}
+	if (method === 'GET' && pathOnly === '/api/admin/journal') {
+		const c = query.get('count');
+		return { cmd: 'admin_journal_tail', args: c != null ? { count: Number(c) } : {} };
+	}
 
 	// ───── admin meta (DEV-014) — types ─────
 	if (method === 'GET' && pathOnly === '/api/admin/types') {

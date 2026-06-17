@@ -412,6 +412,26 @@ pub async fn admin_reindex(store: State<'_, Store>) -> Result<ReindexResult, Str
     })
 }
 
+/// DEV-162: index.db VACUUM (런타임 정비). admin 페이지 '정리' 버튼.
+#[tauri::command]
+pub async fn admin_vacuum(
+    store: State<'_, Store>,
+) -> Result<openguild_core::maintenance::VacuumReport, String> {
+    openguild_core::maintenance::vacuum(&store).await.map_err(err)
+}
+
+/// DEV-162: journal.db(AOF) 최근 op. admin 페이지 '최근 작업' 뷰.
+#[tauri::command]
+pub async fn admin_journal_tail(
+    store: State<'_, Store>,
+    count: Option<i64>,
+) -> Result<openguild_core::maintenance::JournalTail, String> {
+    let tail = openguild_core::maintenance::journal_tail(&store.paths, count.unwrap_or(50))
+        .await
+        .map_err(err)?;
+    Ok(tail.unwrap_or_default())
+}
+
 // ─────────────────────── admin meta (DEV-014) ───────────────────────
 
 /// 사용 중 quest 수를 포함한 type DTO — UI 의 "삭제 가능?" 판단 용도.

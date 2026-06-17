@@ -27,6 +27,26 @@ export interface ReindexResult {
 	skipped: SkippedFile[];
 }
 
+/** DEV-162: VACUUM 결과 — index.db 크기 변화. */
+export interface VacuumReport {
+	before_bytes: number;
+	after_bytes: number;
+	saved_bytes: number;
+}
+/** DEV-162: journal.db(AOF) 한 op. */
+export interface JournalOp {
+	id: number;
+	ts: string;
+	op: string;
+	args: string;
+	result: string | null;
+}
+/** DEV-162: journal tail — 전체 op 수 + 최근 N(오래된→최신). */
+export interface JournalTail {
+	total: number;
+	rows: JournalOp[];
+}
+
 /**
  * 백업 / drift / type-status 관리.
  * 인증 없음 — 향후 멀티유저 단계에서 토큰 / role 가드 추가.
@@ -47,6 +67,13 @@ export const adminApi = {
 
 	/** 파일 → index.db 재구축. */
 	reindex: () => api.post<ReindexResult>('/api/admin/reindex', {}),
+
+	/** DEV-162: index.db VACUUM (런타임 정비). */
+	vacuum: () => api.post<VacuumReport>('/api/admin/vacuum', {}),
+
+	/** DEV-162: journal.db(AOF) 최근 op. */
+	journalTail: (count = 50) =>
+		api.get<JournalTail>(`/api/admin/journal?count=${encodeURIComponent(count)}`),
 
 	// ─── DEV-014: types ───
 	listTypes: () => api.get<QuestTypeWithCount[]>('/api/admin/types'),

@@ -2,11 +2,12 @@
 //!
 //! **인증 없음** (현 MVP). 멀티유저 단계 진입 시 토큰 / role 가드 필요.
 
-use axum::{extract::{Path, State}, Json};
+use axum::{extract::{Path, Query, State}, Json};
 use serde::Deserialize;
 use serde_json::json;
 
 use crate::error::AppResult;
+use openguild_core::maintenance::{self, JournalTail, VacuumReport};
 use openguild_core::snapshot::{self, SnapshotInfo};
 use openguild_core::{drift, reindex, Store};
 
@@ -87,6 +88,36 @@ pub async fn run_reindex(
         "dependencies_loaded": report.dependencies_loaded,
         "skipped": report.skipped.iter().map(|(p, r)| json!({ "path": p, "reason": r })).collect::<Vec<_>>(),
     })))
+}
+
+/// DEV-162: `POST /api/admin/vacuum` — index.db VACUUM (런타임 정비).
+pub async fn vacuum(State(store): State<Store>) -> AppResult<Json<VacuumReport>> {
+    let report = maintenance::vacuum(&store)
+        .await
+        .map_err(openguild_core::AppError::Internal)?;
+    Ok(Json(report))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct JournalQuery {
+    /// 최근 op 개수 (기본 50).
+    #[serde(default = "default_journal_count")]
+    pub count: i64,
+}
+fn default_journal_count() -> i64 {
+    50
+}
+
+/// DEV-162: `GET /api/admin/journal?count=N` — journal.db(AOF) 최근 op.
+pub async fn journal_tail(
+    State(store): State<Store>,
+    Query(q): Query<JournalQuery>,
+) -> AppResult<Json<JournalTail>> {
+    let tail = maintenance::journal_tail(&store.paths, q.count)
+        .await
+        .map_err(openguild_core::AppError::Internal)?
+        .unwrap_or_default();
+    Ok(Json(tail))
 }
 
 // ─── DEV-069: 본문 첨부 / 자산 파일 서빙 (브라우저 모드) ───

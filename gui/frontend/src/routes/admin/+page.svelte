@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { adminApi } from '$lib/api/admin';
-	import type { SkippedFile } from '$lib/api/admin';
+	import type { SkippedFile, JournalTail } from '$lib/api/admin';
 	import type { DriftReport, SnapshotInfo } from '$lib/types';
 	import { detectEnvironment } from '$lib/api/transport';
 	// DEV-014: Quest type / status 커스터마이즈 섹션.
@@ -23,6 +23,8 @@
 	// DEV-119: 복원 확인 — 인앱 모달. null = 닫힘, 객체 = 열림 ({ts} 는 undefined 면 최신).
 	// reindex 는 사용자 지시로 sweep 제외 (idempotent, 파일 truth 불변).
 	let confirmRestore = $state<{ ts: string | undefined } | null>(null);
+	// DEV-162: 런타임 정비 — journal tail 뷰 (null = 아직 미조회).
+	let journal = $state<JournalTail | null>(null);
 
 	function onSectionMessage(
 		m: { kind: 'info' | 'success' | 'error'; text: string } | null
@@ -157,6 +159,39 @@
 			busy = false;
 		}
 	}
+
+	// DEV-162: index.db VACUUM (dead row 공간 회수).
+	async function onVacuum() {
+		busy = true;
+		try {
+			const r = await adminApi.vacuum();
+			const pct = r.before_bytes > 0 ? ((r.saved_bytes / r.before_bytes) * 100).toFixed(1) : '0';
+			if (r.saved_bytes > 0) {
+				showSuccess(`VACUUM 완료 — ${r.saved_bytes.toLocaleString()} bytes 회수 (${pct}%)`);
+			} else {
+				showInfo('VACUUM 완료 — 회수 공간 없음 (이미 dense)');
+			}
+		} catch (e) {
+			showError(`VACUUM 실패: ${e}`);
+		} finally {
+			busy = false;
+		}
+	}
+
+	// DEV-162: journal.db(AOF) 최근 op 조회.
+	async function onJournalTail() {
+		busy = true;
+		try {
+			journal = await adminApi.journalTail(50);
+			if (journal.total === 0) {
+				showInfo('journal.db 비어 있음 (snapshot 직후 또는 mutation 없음)');
+			}
+		} catch (e) {
+			showError(`journal 조회 실패: ${e}`);
+		} finally {
+			busy = false;
+		}
+	}
 </script>
 
 <svelte:head>
@@ -281,6 +316,36 @@
 					<p class="hint">Reindex 버튼으로 캐시를 파일 기준으로 재구축할 수 있습니다.</p>
 				</div>
 			{/if}
+		{/if}
+	</section>
+
+	<!-- DEV-162: 런타임 정비 — VACUUM + journal(AOF) tail. -->
+	<section>
+		<div class="section-header">
+			<h2>정비 / 진단</h2>
+			<div class="actions">
+				<button onclick={onVacuum} disabled={busy}>정리 (VACUUM)</button>
+				<button onclick={onJournalTail} disabled={busy}>최근 작업 (저널)</button>
+			</div>
+		</div>
+
+		{#if journal === null}
+			<p class="empty">
+				VACUUM: index.db 의 dead row 공간 회수. 저널: journal.db 의 최근 변경 op (AOF).
+			</p>
+		{:else if journal.total === 0}
+			<p class="ok">저널 비어 있음 (snapshot 직후 또는 mutation 없음)</p>
+		{:else}
+			<p class="hint">journal.db: {journal.total} op 중 최근 {journal.rows.length} 개 (오래된 → 최신)</p>
+			<ul class="journal">
+				{#each journal.rows as op (op.id)}
+					<li>
+						<code class="jop">#{op.id} {op.op}</code>
+						<span class="jts">{op.ts}</span>
+						<div class="jargs"><code>{op.args}</code></div>
+					</li>
+				{/each}
+			</ul>
 		{/if}
 	</section>
 </div>
@@ -415,6 +480,38 @@
 		font-size: 0.85rem;
 		color: var(--text);
 		list-style: disc;
+	}
+	/* DEV-162: journal(AOF) tail 뷰. */
+	.journal {
+		margin: 0.5rem 0 0;
+		padding: 0;
+		list-style: none;
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+	.journal li {
+		padding: 0.4rem 0.6rem;
+		border: 1px solid var(--border);
+		border-radius: 0.4rem;
+		background: var(--bg-subtle);
+	}
+	.jop {
+		font-family: 'Cascadia Code', 'Courier New', monospace;
+		font-size: 0.82rem;
+		color: var(--text-strong);
+	}
+	.jts {
+		margin-left: 0.5rem;
+		font-size: 0.75rem;
+		color: var(--text-muted);
+	}
+	.jargs {
+		margin-top: 0.25rem;
+		font-family: 'Cascadia Code', 'Courier New', monospace;
+		font-size: 0.78rem;
+		color: var(--text-muted);
+		word-break: break-all;
 	}
 	.problem-files {
 		margin-bottom: 1rem;

@@ -155,6 +155,9 @@ pub fn create_router(store: Store) -> Router {
         .route("/api/admin/restore", post(admin::restore))
         .route("/api/admin/drift", get(admin::check_drift))
         .route("/api/admin/reindex", post(admin::run_reindex))
+        // DEV-162: 런타임 정비 — vacuum / journal tail.
+        .route("/api/admin/vacuum", post(admin::vacuum))
+        .route("/api/admin/journal", get(admin::journal_tail))
         .with_state(store)
 }
 

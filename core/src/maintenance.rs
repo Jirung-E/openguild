@@ -9,10 +9,12 @@ use anyhow::Result;
 use crate::repo::GuildPaths;
 use crate::store::Store;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct VacuumReport {
     pub before_bytes: u64,
     pub after_bytes: u64,
+    /// 회수된 바이트 (HTTP/GUI 직렬화 편의 — saved() 와 동일).
+    pub saved_bytes: u64,
 }
 
 impl VacuumReport {
@@ -37,10 +39,11 @@ pub async fn vacuum(store: &Store) -> Result<VacuumReport> {
     Ok(VacuumReport {
         before_bytes: before,
         after_bytes: after,
+        saved_bytes: before.saturating_sub(after),
     })
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct JournalOp {
     pub id: i64,
     pub ts: String,
@@ -49,7 +52,7 @@ pub struct JournalOp {
     pub result: Option<String>,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct JournalTail {
     /// journal.db 의 전체 op 수.
     pub total: i64,
