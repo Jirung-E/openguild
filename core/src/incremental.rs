@@ -44,6 +44,55 @@ use crate::error::AppResult;
 use crate::repo::{fs as repo_fs, QuestFile};
 use crate::store::Store;
 
+/// BUG-080: 외부 편집된 quest 파일의 frontmatter `updated_at` 을 파일 mtime 으로
+/// write-back (파일 = 진리원). frontmatter 의 `updated_at` 한 줄만 교체하고
+/// 본문 / auto-block 은 건드리지 않는다. 반환: `(기록할 updated_at iso, write 후
+/// mtime nanos)`. write 가 파일 mtime 을 다시 바꾸므로 반환된 새 mtime 을
+/// cached_mtime 으로 저장해야 다음 sync 가 같은 편집을 재감지(churn)하지 않는다.
+fn writeback_external_edit_ts(path: &std::path::Path) -> (String, i64) {
+    let edit_iso = repo_fs::mtime_iso8601(path).unwrap_or_default();
+    if !edit_iso.is_empty() {
+        if let Ok(src) = std::fs::read_to_string(path) {
+            if let Some(updated) = replace_frontmatter_updated_at(&src, &edit_iso) {
+                let _ = repo_fs::write_atomic(path, &updated);
+            }
+        }
+    }
+    (edit_iso, repo_fs::mtime_unix_nanos(path))
+}
+
+/// frontmatter(맨 위 `+++ … +++`) 안의 `updated_at = "…"` 한 줄만 교체.
+/// 본문은 그대로. updated_at 줄이 없으면 None(변경 안 함).
+fn replace_frontmatter_updated_at(src: &str, new_ts: &str) -> Option<String> {
+    if !src.trim_start().starts_with("+++") {
+        return None;
+    }
+    let mut out = String::with_capacity(src.len() + 16);
+    let mut opened = false;
+    let mut in_fm = false;
+    let mut replaced = false;
+    for line in src.split_inclusive('\n') {
+        let body = line.trim_end_matches(['\r', '\n']);
+        if body.trim() == "+++" {
+            if !opened {
+                opened = true;
+                in_fm = true;
+            } else if in_fm {
+                in_fm = false;
+            }
+            out.push_str(line);
+            continue;
+        }
+        if in_fm && !replaced && body.trim_start().starts_with("updated_at") {
+            out.push_str(&format!("updated_at = \"{new_ts}\"\n"));
+            replaced = true;
+            continue;
+        }
+        out.push_str(line);
+    }
+    replaced.then_some(out)
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct IncrementalReport {
     /// 외부 편집 감지되어 re-parse + UPDATE 한 quest slug 수.
@@ -134,8 +183,14 @@ pub async fn sync_changed_quest_files(store: &Store) -> AppResult<IncrementalRep
 
                             let created_at =
                                 crate::time::normalize_legacy_ts(&qf.frontmatter.created_at);
-                            let updated_at =
-                                crate::time::normalize_legacy_ts(&qf.frontmatter.updated_at);
+                            // BUG-080: 외부 편집은 frontmatter updated_at 을 안 바꾸므로
+                            // 파일 mtime 으로 보정 + frontmatter write-back (파일=진리원).
+                            let (edit_iso, effective_mtime) = writeback_external_edit_ts(path);
+                            let updated_at = if edit_iso.is_empty() {
+                                crate::time::normalize_legacy_ts(&qf.frontmatter.updated_at)
+                            } else {
+                                edit_iso
+                            };
                             let deleted_at: Option<String> =
                                 qf.frontmatter.deleted.then(|| updated_at.clone());
 
@@ -157,7 +212,7 @@ pub async fn sync_changed_quest_files(store: &Store) -> AppResult<IncrementalRep
                             .bind(deleted_at)
                             .bind(qf.frontmatter.desired_due.as_deref())
                             .bind(qf.frontmatter.required_due.as_deref())
-                            .bind(file_mtime)
+                            .bind(effective_mtime)
                             .bind(id)
                             .execute(pool)
                             .await?;
@@ -232,7 +287,13 @@ pub async fn refresh_quest_if_stale(store: &Store, slug: &str) -> AppResult<bool
         return Ok(false); // unknown status — 풀 reindex 가 처리할 영역.
     };
     let created_at = crate::time::normalize_legacy_ts(&qf.frontmatter.created_at);
-    let updated_at = crate::time::normalize_legacy_ts(&qf.frontmatter.updated_at);
+    // BUG-080: 외부 편집 → 파일 mtime 으로 updated_at 보정 + frontmatter write-back.
+    let (edit_iso, effective_mtime) = writeback_external_edit_ts(&path);
+    let updated_at = if edit_iso.is_empty() {
+        crate::time::normalize_legacy_ts(&qf.frontmatter.updated_at)
+    } else {
+        edit_iso
+    };
     let deleted_at: Option<String> = qf.frontmatter.deleted.then(|| updated_at.clone());
 
     sqlx::query(
@@ -251,7 +312,7 @@ pub async fn refresh_quest_if_stale(store: &Store, slug: &str) -> AppResult<bool
     .bind(deleted_at)
     .bind(qf.frontmatter.desired_due.as_deref())
     .bind(qf.frontmatter.required_due.as_deref())
-    .bind(file_mtime)
+    .bind(effective_mtime)
     .bind(id)
     .execute(&store.index_pool)
     .await?;
@@ -299,6 +360,22 @@ mod tests {
         let store = Store::open(dir).await.unwrap();
         crate::reindex::reindex(&store).await.unwrap();
         store
+    }
+
+    #[test]
+    fn replace_frontmatter_updated_at_swaps_only_that_line() {
+        let src = "+++\nquest_id = \"DEV-001\"\nupdated_at = \"2020-01-01T00:00:00Z\"\ndeleted = false\n+++\n\nbody updated_at = stays\n";
+        let out = replace_frontmatter_updated_at(src, "2026-06-19T12:00:00+09:00").unwrap();
+        assert!(out.contains("updated_at = \"2026-06-19T12:00:00+09:00\""));
+        assert!(!out.contains("2020-01-01T00:00:00Z"));
+        // 본문의 'updated_at' 텍스트는 그대로.
+        assert!(out.contains("body updated_at = stays"));
+        assert!(out.contains("quest_id = \"DEV-001\""));
+    }
+
+    #[test]
+    fn replace_frontmatter_updated_at_none_without_frontmatter() {
+        assert!(replace_frontmatter_updated_at("no frontmatter here\n", "x").is_none());
     }
 
     /// 외부 편집된 파일이 정확히 UPDATE 되고 cached_mtime 이 갱신.
@@ -356,15 +433,28 @@ mod tests {
         assert_eq!(report.updated, 1, "modified file 1건 UPDATE 되어야");
 
         // DB 확인 — 새 title / urgency 가 반영.
-        let row: (String, i64) =
-            sqlx::query_as("SELECT title, urgency FROM quests WHERE id = 1")
+        let row: (String, i64, String) =
+            sqlx::query_as("SELECT title, urgency, updated_at FROM quests WHERE id = 1")
                 .fetch_one(&store.index_pool)
                 .await
                 .unwrap();
         assert_eq!(row.0, "edited externally");
         assert_eq!(row.1, 2);
+        // BUG-080: updated_at 은 stale frontmatter(2026-01-02)가 아니라 파일 mtime 보정.
+        assert_ne!(
+            row.2, "2026-01-02T00:00:00Z",
+            "updated_at 이 파일 mtime 으로 갱신되어야"
+        );
+        // 파일 frontmatter 도 write-back — DB 와 동일 값, 본문은 보존.
+        let on_disk = std::fs::read_to_string(paths.quest_path("DEV-001")).unwrap();
+        assert!(
+            !on_disk.contains("updated_at = \"2026-01-02T00:00:00Z\""),
+            "frontmatter updated_at 이 write-back 되어야"
+        );
+        assert!(on_disk.contains(&format!("updated_at = \"{}\"", row.2)));
+        assert!(on_disk.contains("body v2"), "본문은 보존되어야");
 
-        // 두 번째 호출 — 변경 없음.
+        // 두 번째 호출 — 변경 없음 (write-back 후 cached_mtime 갱신 → churn 없음).
         let report2 = sync_changed_quest_files(&store).await.unwrap();
         assert_eq!(report2.updated, 0);
 
