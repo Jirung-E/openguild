@@ -352,6 +352,12 @@ enum QuestCmd {
         #[command(subcommand)]
         sub: CommentCmd,
     },
+    /// 첨부 (본문과 별개 섹션) — list / add / rm.
+    /// 진리원: `.guild/quests/{slug}.attachments.json` + `.guild/attachments/`.
+    Attach {
+        #[command(subcommand)]
+        sub: AttachCmd,
+    },
     /// 메모 (단일 텍스트, 비공개) — show / set / clear.
     /// 진리원: `.guild/quests/{slug}.memo.md` (gitignored).
     Memo {
@@ -638,6 +644,11 @@ enum CampaignCmd {
     Comment {
         #[command(subcommand)]
         sub: CommentCmd,
+    },
+    /// 캠페인 첨부 — quest attach 와 동일 (list / add / rm).
+    Attach {
+        #[command(subcommand)]
+        sub: AttachCmd,
     },
     /// 캠페인 비공개 메모 — quest memo 와 동일.
     Memo {
@@ -1705,6 +1716,104 @@ impl Backend {
     }
 
 
+    // ── DEV-170: 첨부 (quest / campaign 공용) — Local 전용 ──
+
+    fn attachments_list(
+        &self,
+        scope: CommentScope,
+        slug: &str,
+    ) -> Result<Vec<openguild_core::models::quest::QuestAttachment>> {
+        match self {
+            Backend::Http(_) => Err(anyhow!("원격 모드에선 미지원 — 로컬에서 실행")),
+            Backend::Local(l) => Ok(match scope {
+                CommentScope::Quest => {
+                    openguild_core::ops::attachments::list_quest_attachments(&l.store, slug)
+                }
+                CommentScope::Campaign => {
+                    openguild_core::ops::attachments::list_campaign_attachments(&l.store, slug)
+                }
+            }),
+        }
+    }
+
+    fn attachments_add(
+        &self,
+        scope: CommentScope,
+        slug: &str,
+        file: &std::path::Path,
+        name: Option<String>,
+    ) -> Result<Vec<openguild_core::models::quest::QuestAttachment>> {
+        match self {
+            Backend::Http(_) => Err(anyhow!("원격 모드에선 미지원 — 로컬에서 실행")),
+            Backend::Local(l) => {
+                let bytes = std::fs::read(file)
+                    .with_context(|| format!("파일 읽기 실패: {}", file.display()))?;
+                let ext = file
+                    .extension()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("bin");
+                let display = name.unwrap_or_else(|| {
+                    file.file_name()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("attachment")
+                        .to_string()
+                });
+                l.rt
+                    .block_on(async {
+                        let rel = openguild_core::ops::attachments::save_attachment(
+                            &l.store, &bytes, ext,
+                        )
+                        .await?;
+                        match scope {
+                            CommentScope::Quest => {
+                                openguild_core::ops::attachments::add_quest_attachment(
+                                    &l.store, slug, &rel, &display,
+                                )
+                                .await
+                            }
+                            CommentScope::Campaign => {
+                                openguild_core::ops::attachments::add_campaign_attachment(
+                                    &l.store, slug, &rel, &display,
+                                )
+                                .await
+                            }
+                        }
+                    })
+                    .map_err(|e| anyhow!(e))
+            }
+        }
+    }
+
+    fn attachments_remove(
+        &self,
+        scope: CommentScope,
+        slug: &str,
+        path: &str,
+    ) -> Result<Vec<openguild_core::models::quest::QuestAttachment>> {
+        match self {
+            Backend::Http(_) => Err(anyhow!("원격 모드에선 미지원 — 로컬에서 실행")),
+            Backend::Local(l) => l
+                .rt
+                .block_on(async {
+                    match scope {
+                        CommentScope::Quest => {
+                            openguild_core::ops::attachments::remove_quest_attachment(
+                                &l.store, slug, path,
+                            )
+                            .await
+                        }
+                        CommentScope::Campaign => {
+                            openguild_core::ops::attachments::remove_campaign_attachment(
+                                &l.store, slug, path,
+                            )
+                            .await
+                        }
+                    }
+                })
+                .map_err(|e| anyhow!(e)),
+        }
+    }
+
     // ── DEV-100: scope dispatch — quest / campaign 공용 ──
 
     fn comments_list_scoped(
@@ -2297,6 +2406,73 @@ impl CommentScope {
     }
 }
 
+/// DEV-170: quest / campaign 첨부(섹션) 명령.
+#[derive(Subcommand)]
+enum AttachCmd {
+    /// 첨부 목록 (이름 / 경로).
+    List { slug: String },
+    /// 로컬 파일을 업로드(.guild/attachments)해 첨부 섹션에 추가.
+    Add {
+        slug: String,
+        /// 첨부할 로컬 파일 경로.
+        file: std::path::PathBuf,
+        /// 표시 이름 (미지정 시 원본 파일명).
+        #[arg(long)]
+        name: Option<String>,
+    },
+    /// 첨부 제거 (목록에서만 — blob/파일은 self-heal 정책상 유지).
+    Rm {
+        slug: String,
+        /// 제거할 첨부의 경로 (list 의 경로 값).
+        path: String,
+    },
+}
+
+/// DEV-170: quest / campaign 첨부 명령 공용 핸들러.
+fn run_attach_cmd(c: &Backend, scope: CommentScope, sub: AttachCmd, json: bool) -> Result<()> {
+    match sub {
+        AttachCmd::List { slug } => {
+            let list = c.attachments_list(scope, &slug)?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "attachments": list.iter()
+                            .map(|a| serde_json::json!({ "name": a.name, "path": a.path }))
+                            .collect::<Vec<_>>(),
+                    })
+                );
+            } else if list.is_empty() {
+                println!("(첨부 없음)");
+            } else {
+                for a in &list {
+                    println!("- {}  ({})", a.name, a.path);
+                }
+            }
+        }
+        AttachCmd::Add { slug, file, name } => {
+            let list = c.attachments_add(scope, &slug, &file, name)?;
+            if json {
+                println!("{}", serde_json::json!({ "ok": true, "count": list.len() }));
+            } else {
+                println!("✓ 첨부 추가 — 총 {} 개", list.len());
+                if let Some(a) = list.last() {
+                    println!("  {}  ({})", a.name, a.path);
+                }
+            }
+        }
+        AttachCmd::Rm { slug, path } => {
+            let list = c.attachments_remove(scope, &slug, &path)?;
+            if json {
+                println!("{}", serde_json::json!({ "ok": true, "count": list.len() }));
+            } else {
+                println!("✓ 첨부 제거 — 남은 {} 개", list.len());
+            }
+        }
+    }
+    Ok(())
+}
+
 /// quest / campaign 댓글 명령 공용 핸들러 (DEV-100).
 fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool) -> Result<()> {
     match sub {
@@ -2675,6 +2851,7 @@ fn handle_campaign(c: &Backend, json: bool, sub: CampaignCmd) -> Result<()> {
         CampaignCmd::Comment { sub } => {
             run_comment_cmd(c, CommentScope::Campaign, sub, json)?
         }
+        CampaignCmd::Attach { sub } => run_attach_cmd(c, CommentScope::Campaign, sub, json)?,
         CampaignCmd::Memo { sub } => run_memo_cmd(c, CommentScope::Campaign, sub, json)?,
         CampaignCmd::New {
             title,
@@ -4312,6 +4489,7 @@ fn run() -> Result<()> {
             }
             // DEV-100: quest / campaign 공용 핸들러로 위임.
             QuestCmd::Comment { sub } => run_comment_cmd(&c, CommentScope::Quest, sub, cli.json)?,
+            QuestCmd::Attach { sub } => run_attach_cmd(&c, CommentScope::Quest, sub, cli.json)?,
             QuestCmd::Memo { sub } => run_memo_cmd(&c, CommentScope::Quest, sub, cli.json)?,
             QuestCmd::Tag { sub } => match sub {
                 TagCmd::List { slug } => {
