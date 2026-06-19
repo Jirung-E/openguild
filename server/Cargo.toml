@@ -37,3 +37,7 @@ http-body-util = "0.1"
 tower = { version = "0.5", features = ["util"] }
 # 테스트의 시간 연산 — 자정 경계 wrap 버그 방지 (chrono 절대 시각 연산).
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+
+[build-dependencies]
+# DEV-169: Windows exe 아이콘 임베드 (cfg(windows) 에서만 동작 — 다른 OS 는 no-op).
+winresource = "0.1"

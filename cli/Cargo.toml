@@ -23,3 +23,7 @@ sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }
 
 [dev-dependencies]
 toml = "0.8"
+
+[build-dependencies]
+# DEV-169: Windows exe 아이콘 임베드 (cfg(windows) 에서만 동작 — 다른 OS 는 no-op).
+winresource = "0.1"
