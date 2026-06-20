@@ -40,7 +40,9 @@
 		to: number;
 		items: WikiItem[];
 		left: number;
-		top: number;
+		// 아래로 뜨면 top, 위로 뜨면 bottom 으로 anchor (위로는 높이 무관하게 caret 위).
+		top: number | null;
+		bottom: number | null;
 	} | null>(null);
 	let wikiSel = $state(0);
 	let wikiPopEl = $state<HTMLUListElement | undefined>(undefined);
@@ -86,8 +88,9 @@
 		wikiSel = 0;
 	}
 
-	// caret 기준 팝업 위치 — 화면 밖이면 숨김 + 위로 flip + 좌우 clamp + caret 와 간격.
-	const WIKI_GAP = 6;
+	// caret 기준 팝업 위치 — 화면 밖이면 숨김 + 좌우 clamp.
+	// 아래로 뜨면 top=caret 아래(기존 그대로), 위로 뜨면 bottom anchor 로 caret 바로 위
+	// (팝업 높이와 무관 — 추정 오차로 입력부를 가리던 문제 해결).
 	function placeWiki(
 		el: HTMLTextAreaElement,
 		from: number,
@@ -102,14 +105,13 @@
 		const visTop = Math.max(rect.top, 0);
 		const visBottom = Math.min(rect.bottom, window.innerHeight);
 		if (caretBottom < visTop || caretTop > visBottom) return null;
-		const estH = Math.min(items.length * 30 + 8, 224); // max-height 14rem(=224px) 추정
-		const flipUp =
-			caretBottom + estH + WIKI_GAP > window.innerHeight && caretTop - estH - WIKI_GAP > 0;
-		// 위로 뜰 땐 caret 줄(다음 입력부)을 가리지 않게 GAP 만큼 더 올림.
-		const top = flipUp ? caretTop - estH - WIKI_GAP : caretBottom + WIKI_GAP;
+		const estH = Math.min(items.length * 30 + 8, 224); // flip 판단용 높이 추정.
+		const flipUp = caretBottom + estH > window.innerHeight && caretTop - estH > 0;
 		const rawLeft = rect.left + c.left - el.scrollLeft;
 		const left = Math.max(4, Math.min(rawLeft, window.innerWidth - 240));
-		return { el, from, to, items, left, top };
+		return flipUp
+			? { el, from, to, items, left, top: null, bottom: window.innerHeight - caretTop }
+			: { el, from, to, items, left, top: caretBottom, bottom: null };
 	}
 
 	function repositionWiki() {
@@ -561,7 +563,7 @@
 				oninput={onWikiInput}
 				onkeyup={onWikiInput}
 				onclick={onWikiInput}
-				onkeydown={onWikiKeydown}
+				onkeydowncapture={onWikiKeydown}
 				rows="4"
 				placeholder="본문 (markdown)"
 			></textarea>
@@ -710,7 +712,7 @@
 												oninput={onWikiInput}
 												onkeyup={onWikiInput}
 												onclick={onWikiInput}
-												onkeydown={onWikiKeydown}
+												onkeydowncapture={onWikiKeydown}
 												rows="3"
 												placeholder={`@${root.author || root.id} 에 답글…`}
 												disabled={replySaving}
@@ -776,7 +778,7 @@
 				oninput={onWikiInput}
 				onkeyup={onWikiInput}
 				onclick={onWikiInput}
-				onkeydown={onWikiKeydown}
+				onkeydowncapture={onWikiKeydown}
 				rows="3"
 				placeholder="댓글 작성 (markdown 사용 가능)"
 				disabled={saving}
@@ -816,7 +818,11 @@
 
 <!-- DEV-171: cross-link 자동완성 팝업 — caret 위치에 떠서 실재 ID 후보 표시. -->
 {#if wiki}
-	<ul class="wiki-pop" bind:this={wikiPopEl} style="left:{wiki.left}px; top:{wiki.top}px;">
+	<ul
+		class="wiki-pop"
+		bind:this={wikiPopEl}
+		style="left:{wiki.left}px; {wiki.bottom != null ? `bottom:${wiki.bottom}px` : `top:${wiki.top}px`}"
+	>
 		{#each wiki.items as it, i (it.id)}
 			<li>
 				<button

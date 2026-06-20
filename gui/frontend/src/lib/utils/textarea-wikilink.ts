@@ -56,16 +56,26 @@ export function wikiMatch(
 	return { from: caret - token.length, to: caret, items };
 }
 
-/** textarea 의 [from,to] 토큰을 `[[ID]]` 로 치환 + input 이벤트(bind:value 동기화). */
+/** textarea 의 [from,to] 토큰을 `[[ID]]` 로 치환.
+ *  DEV-171 후속: execCommand('insertText') 로 삽입해 브라우저 undo 스택 보존
+ *  (Ctrl+Z 동작). setRangeText 는 undo 히스토리를 끊어 자동완성 입력이 되돌려지지
+ *  않던 문제. execCommand 실패 시에만 setRangeText 로 fallback. */
 export function applyWikiLink(
 	ta: HTMLTextAreaElement,
 	from: number,
 	to: number,
 	id: string
 ): void {
-	ta.setRangeText(`[[${id}]]`, from, to, 'end');
-	ta.dispatchEvent(new Event('input', { bubbles: true }));
+	const text = `[[${id}]]`;
 	ta.focus();
+	ta.setSelectionRange(from, to);
+	// execCommand('insertText') 는 선택 영역을 치환하며 input 이벤트도 자동 발화.
+	if (document.execCommand && document.execCommand('insertText', false, text)) {
+		return;
+	}
+	// fallback (undo 끊김).
+	ta.setRangeText(text, from, to, 'end');
+	ta.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
 // mirror-div 로 복제할 스타일 (caret 좌표 계산용).
