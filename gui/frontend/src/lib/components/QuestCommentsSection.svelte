@@ -51,13 +51,20 @@
 		wikiPopEl?.querySelector('.wiki-opt.sel')?.scrollIntoView({ block: 'nearest' });
 	});
 
+	// DEV-171 후속: Esc/클릭아웃으로 닫은 토큰 — 같은 토큰에선 재오픈 안 함
+	// ('esc 눌러도 다시 뜨던' 문제). 토큰이 바뀌면 해제.
+	let wikiDismissed = $state<string | null>(null);
+
 	function onWikiInput(e: Event) {
-		// DEV-171 후속: 방향키/Enter/Esc(네비) 는 재계산 skip — wikiSel 이 0 으로
-		// 리셋돼 위/아래 선택이 첫 항목으로 되돌아가던 문제.
+		// 네비/적용 키(↑↓ Enter Tab Esc)는 재계산 skip — wikiSel 리셋/재오픈 방지.
 		if (
 			e instanceof KeyboardEvent &&
 			wiki &&
-			(e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter' || e.key === 'Escape')
+			(e.key === 'ArrowDown' ||
+				e.key === 'ArrowUp' ||
+				e.key === 'Enter' ||
+				e.key === 'Tab' ||
+				e.key === 'Escape')
 		)
 			return;
 		const el = e.currentTarget as HTMLTextAreaElement;
@@ -65,13 +72,22 @@
 		const m = wikiMatch(el.value, caret, get(questIndex));
 		if (!m) {
 			wiki = null;
+			wikiDismissed = null;
 			return;
 		}
+		const token = el.value.slice(m.from, m.to);
+		if (wikiDismissed === token) {
+			// 닫은 토큰 그대로면 재오픈 안 함.
+			wiki = null;
+			return;
+		}
+		wikiDismissed = null;
 		wiki = placeWiki(el, m.from, m.to, m.items);
 		wikiSel = 0;
 	}
 
-	// DEV-171 후속: caret 기준 팝업 위치 계산 — 화면 밖이면 위로 flip + 좌우 clamp.
+	// caret 기준 팝업 위치 — 화면 밖이면 숨김 + 위로 flip + 좌우 clamp + caret 와 간격.
+	const WIKI_GAP = 6;
 	function placeWiki(
 		el: HTMLTextAreaElement,
 		from: number,
@@ -82,41 +98,56 @@
 		const rect = el.getBoundingClientRect();
 		const caretTop = rect.top + c.top - el.scrollTop;
 		const caretBottom = caretTop + c.height;
-		// DEV-171 후속: caret(자동완성 대상)이 입력창의 보이는 영역 ∩ 뷰포트 밖으로
-		// 스크롤되면 팝업을 숨긴다 (엉뚱한 위치에 떠 있지 않도록).
+		// caret(자동완성 대상)이 입력창 보이는 영역 ∩ 뷰포트 밖이면 팝업 숨김.
 		const visTop = Math.max(rect.top, 0);
 		const visBottom = Math.min(rect.bottom, window.innerHeight);
 		if (caretBottom < visTop || caretTop > visBottom) return null;
 		const estH = Math.min(items.length * 30 + 8, 224); // max-height 14rem(=224px) 추정
-		const flipUp = caretBottom + estH > window.innerHeight && caretTop - estH > 0;
-		const top = flipUp ? caretTop - estH : caretBottom;
+		const flipUp =
+			caretBottom + estH + WIKI_GAP > window.innerHeight && caretTop - estH - WIKI_GAP > 0;
+		// 위로 뜰 땐 caret 줄(다음 입력부)을 가리지 않게 GAP 만큼 더 올림.
+		const top = flipUp ? caretTop - estH - WIKI_GAP : caretBottom + WIKI_GAP;
 		const rawLeft = rect.left + c.left - el.scrollLeft;
 		const left = Math.max(4, Math.min(rawLeft, window.innerWidth - 240));
 		return { el, from, to, items, left, top };
 	}
 
-	// 창/입력창 스크롤·리사이즈 시 팝업이 caret 을 따라가도록 재배치.
 	function repositionWiki() {
 		if (!wiki) return;
 		wiki = placeWiki(wiki.el, wiki.from, wiki.to, wiki.items);
 	}
+	// 닫기(Esc/클릭아웃) — 현재 토큰을 기억해 즉시 재오픈 방지.
+	function dismissWiki() {
+		if (wiki) wikiDismissed = wiki.el.value.slice(wiki.from, wiki.to);
+		wiki = null;
+	}
 	$effect(() => {
 		if (!wiki) return;
 		const onMove = () => repositionWiki();
-		// capture=true 로 textarea 내부/조상 스크롤까지 포착 (scroll 은 bubble X).
+		const onDown = (ev: MouseEvent) => {
+			if (!wiki) return;
+			const t = ev.target as Node;
+			// 팝업/현재 textarea 내부 클릭(옵션 선택·캐럿 이동)은 닫지 않음.
+			if (wikiPopEl?.contains(t) || wiki.el === t) return;
+			dismissWiki();
+		};
+		// capture=true 로 textarea 내부/조상 스크롤·외부 클릭까지 포착.
 		window.addEventListener('scroll', onMove, true);
 		window.addEventListener('resize', onMove);
+		window.addEventListener('mousedown', onDown, true);
 		return () => {
 			window.removeEventListener('scroll', onMove, true);
 			window.removeEventListener('resize', onMove);
+			window.removeEventListener('mousedown', onDown, true);
 		};
 	});
 	function applyWiki(item: WikiItem) {
 		if (!wiki) return;
 		applyWikiLink(wiki.el, wiki.from, wiki.to, item.id);
 		wiki = null;
+		wikiDismissed = null;
 	}
-	// VS 식 키보드 네비 (팝업 떠 있을 때만 가로챔).
+	// VS 식 키보드 네비/적용 (팝업 떠 있을 때만 가로챔).
 	function onWikiKeydown(e: KeyboardEvent) {
 		if (!wiki) return;
 		const n = wiki.items.length;
@@ -126,12 +157,15 @@
 		} else if (e.key === 'ArrowUp') {
 			e.preventDefault();
 			wikiSel = (wikiSel - 1 + n) % n;
-		} else if (e.key === 'Enter') {
+		} else if (e.key === 'Enter' || e.key === 'Tab') {
+			// Tab 도 적용. tabInsert(use:action) 의 탭 삽입을 막으려 즉시 전파 중단.
 			e.preventDefault();
+			e.stopImmediatePropagation();
 			applyWiki(wiki.items[wikiSel]);
 		} else if (e.key === 'Escape') {
 			e.preventDefault();
-			wiki = null;
+			e.stopImmediatePropagation();
+			dismissWiki();
 		}
 	}
 
