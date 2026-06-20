@@ -1560,6 +1560,40 @@ pub async fn save_attachment(
         .map_err(err)
 }
 
+/// DEV-171/BUG-081: `.guild` 상대 경로를 절대 경로로 해석 (traversal 가드 + 존재 확인).
+fn resolve_guild_rel(store: &Store, rel: &str) -> Result<std::path::PathBuf, String> {
+    if rel.contains("..") {
+        return Err("잘못된 첨부 경로".into());
+    }
+    let path = store.paths.dot_guild().join(rel);
+    if !path.exists() {
+        return Err(format!("파일 없음: {rel}"));
+    }
+    Ok(path)
+}
+
+/// BUG-081: 첨부 파일을 OS 기본 앱으로 열기 (로컬 미리보기/열기).
+#[tauri::command]
+pub fn open_guild_file(
+    app: tauri::AppHandle,
+    store: State<'_, Store>,
+    rel: String,
+) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    let path = resolve_guild_rel(&store, &rel)?;
+    app.opener()
+        .open_path(path.to_string_lossy().to_string(), None::<&str>)
+        .map_err(|e| format!("열기 실패: {e}"))
+}
+
+/// BUG-081: 첨부 파일을 dest 로 복사 (개별/전체 다운로드 = 다른 위치로 저장).
+#[tauri::command]
+pub fn copy_guild_file(store: State<'_, Store>, rel: String, dest: String) -> Result<(), String> {
+    let src = resolve_guild_rel(&store, &rel)?;
+    std::fs::copy(&src, &dest).map_err(|e| format!("복사 실패: {e}"))?;
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn clear_campaign_banner(
     store: State<'_, Store>,

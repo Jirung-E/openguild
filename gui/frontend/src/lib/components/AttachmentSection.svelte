@@ -2,7 +2,8 @@
   DEV-156: 본문 아래 첨부파일 섹션 (Jira 식). quest/campaign 상세에서 본문 아래에
   표시. 이미지는 썸네일, 동영상은 플레이어, 그 외는 파일 칩. '+ 첨부' 로 추가,
   × 로 목록에서 제거(파일 자체는 self-heal 정책상 유지). 진리원은 sidecar —
-  add/remove 커맨드가 갱신된 목록을 반환한다. Tauri 전용.
+  add/remove 커맨드가 갱신된 목록을 반환한다.
+  BUG-081: 클릭 미리보기/열기(로컬 OS 기본앱 · 원격 새 탭) + 다운로드(전체/개별).
 -->
 <script lang="ts">
 	import { guildFileUrl } from '$lib/utils/banner';
@@ -13,8 +14,6 @@
 		path: string;
 		name: string;
 	}
-	// attachments 는 bindable — 섹션과 편집기 onAttach 가 같은 부모 상태
-	// (detail.attachments)를 단일 소스로 갱신.
 	let {
 		slug,
 		scope = 'quest',
@@ -22,10 +21,10 @@
 	}: { slug: string; scope?: 'quest' | 'campaign'; attachments?: Attachment[] } = $props();
 
 	const list = $derived(attachments ?? []);
+	const isTauri = detectEnvironment() === 'tauri';
 
 	let busy = $state(false);
 	let error = $state<string | null>(null);
-	// 이미지/동영상 썸네일용 resolved asset URL (path → url).
 	let urls = $state<Record<string, string>>({});
 
 	const IMG = /\.(png|jpe?g|gif|webp|bmp|svg)$/i;
@@ -54,8 +53,8 @@
 	);
 
 	async function pickAndAdd() {
-		if (detectEnvironment() !== 'tauri') {
-			error = '첨부는 데스크탑 앱에서만 지원됩니다.';
+		if (!isTauri) {
+			error = '첨부 추가는 데스크탑 앱에서만 지원됩니다.';
 			return;
 		}
 		const input = document.createElement('input');
@@ -97,13 +96,73 @@
 		}
 	}
 
+	// BUG-081: 클릭 = 미리보기/열기. 로컬은 OS 기본 앱, 원격은 새 탭(브라우저 미리보기).
 	async function openFile(path: string) {
+		error = null;
 		try {
-			const url = urls[path] ?? (await guildFileUrl(path));
-			const { openUrl } = await import('@tauri-apps/plugin-opener');
-			await openUrl(url);
-		} catch {
-			/* 무시 */
+			if (isTauri) {
+				const { invoke } = await import('@tauri-apps/api/core');
+				await invoke('open_guild_file', { rel: path });
+			} else {
+				const url = urls[path] ?? (await guildFileUrl(path));
+				window.open(url, '_blank', 'noopener');
+			}
+		} catch (e) {
+			error = `열기 실패: ${e instanceof Error ? e.message : String(e)}`;
+		}
+	}
+
+	function browserDownload(url: string, name: string) {
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = name;
+		document.body.appendChild(a);
+		a.click();
+		a.remove();
+	}
+
+	// BUG-081: 개별 다운로드. 로컬은 저장 위치 선택 후 복사, 원격은 <a download>.
+	async function downloadOne(att: Attachment) {
+		error = null;
+		try {
+			if (isTauri) {
+				const { save } = await import('@tauri-apps/plugin-dialog');
+				const dest = await save({ defaultPath: att.name });
+				if (!dest) return;
+				const { invoke } = await import('@tauri-apps/api/core');
+				await invoke('copy_guild_file', { rel: att.path, dest });
+			} else {
+				browserDownload(await guildFileUrl(att.path), att.name);
+			}
+		} catch (e) {
+			error = `다운로드 실패: ${e instanceof Error ? e.message : String(e)}`;
+		}
+	}
+
+	// BUG-081: 전체 다운로드. 로컬은 폴더 선택 후 일괄 복사, 원격은 순차 다운로드.
+	async function downloadAll() {
+		if (list.length === 0) return;
+		error = null;
+		if (isTauri) {
+			try {
+				const { open } = await import('@tauri-apps/plugin-dialog');
+				const dir = await open({ directory: true, title: '첨부 저장 폴더' });
+				if (!dir || typeof dir !== 'string') return;
+				const { invoke } = await import('@tauri-apps/api/core');
+				busy = true;
+				for (const a of list) {
+					await invoke('copy_guild_file', { rel: a.path, dest: `${dir}/${a.name}` });
+				}
+			} catch (e) {
+				error = `전체 다운로드 실패: ${e instanceof Error ? e.message : String(e)}`;
+			} finally {
+				busy = false;
+			}
+		} else {
+			for (const a of list) {
+				browserDownload(await guildFileUrl(a.path), a.name);
+				await new Promise((r) => setTimeout(r, 200));
+			}
 		}
 	}
 </script>
@@ -111,9 +170,16 @@
 <section class="attachments">
 	<div class="head">
 		<h3>첨부파일 {#if list.length > 0}<span class="count">({list.length})</span>{/if}</h3>
-		<button type="button" class="add" onclick={pickAndAdd} disabled={busy}>
-			{busy ? '업로드 중…' : '+ 첨부'}
-		</button>
+		<div class="head-actions">
+			{#if list.length > 0}
+				<button type="button" class="btn" onclick={downloadAll} disabled={busy} title="모든 첨부 다운로드">
+					전체 다운로드
+				</button>
+			{/if}
+			<button type="button" class="btn" onclick={pickAndAdd} disabled={busy}>
+				{busy ? '처리 중…' : '+ 첨부'}
+			</button>
+		</div>
 	</div>
 	{#if error}<p class="err">{error}</p>{/if}
 	{#if list.length === 0}
@@ -122,7 +188,7 @@
 		<ul class="grid">
 			{#each list as a (a.path)}
 				<li class="item">
-					<button type="button" class="thumb" onclick={() => openFile(a.path)} title={a.name}>
+					<button type="button" class="thumb" onclick={() => openFile(a.path)} title="열기 / 미리보기">
 						{#if isImage(a.path) && urls[a.path]}
 							<img src={urls[a.path]} alt={a.name} />
 						{:else if isVideo(a.path) && urls[a.path]}
@@ -131,8 +197,11 @@
 							<span class="file-ico">📄</span>
 						{/if}
 					</button>
-					<span class="name" title={a.name}>{a.name}</span>
-					<button type="button" class="rm" title="목록에서 제거" onclick={() => remove(a.path)}>×</button>
+					<button type="button" class="rm" title="목록에서 제거" aria-label="제거" onclick={() => remove(a.path)}>×</button>
+					<div class="foot">
+						<span class="name" title={a.name}>{a.name}</span>
+						<button type="button" class="dl" title="다운로드" aria-label="다운로드" onclick={() => downloadOne(a)}>⤓</button>
+					</div>
 				</li>
 			{/each}
 		</ul>
@@ -141,9 +210,8 @@
 
 <style>
 	.attachments {
-		/* DEV-069 후속: 구분선을 섹션 위가 아니라 아래에 — 본문과 붙고
-		   다음(서브퀘스트) 섹션과 분리되도록. */
-		margin-top: 1rem;
+		/* BUG-081: 본문과 너무 벌어지지 않게 — 구분선은 아래(다음 섹션과 분리). */
+		margin-top: 0.4rem;
 		padding-bottom: 0.75rem;
 		border-bottom: 1px solid var(--border);
 		margin-bottom: 1rem;
@@ -163,7 +231,11 @@
 		color: var(--text-muted);
 		font-weight: 400;
 	}
-	.add {
+	.head-actions {
+		display: flex;
+		gap: 0.4rem;
+	}
+	.btn {
 		font-size: 0.8rem;
 		padding: 0.25rem 0.7rem;
 		border-radius: 6px;
@@ -171,11 +243,12 @@
 		background: var(--bg-subtle);
 		color: var(--text);
 		cursor: pointer;
+		white-space: nowrap;
 	}
-	.add:hover:not(:disabled) {
+	.btn:hover:not(:disabled) {
 		background: var(--bg-elevated);
 	}
-	.add:disabled {
+	.btn:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
 	}
@@ -228,25 +301,56 @@
 	.file-ico {
 		font-size: 1.8rem;
 	}
+	.foot {
+		display: flex;
+		align-items: center;
+		gap: 0.25rem;
+	}
 	.name {
+		flex: 1;
+		min-width: 0;
 		font-size: 0.75rem;
 		color: var(--text);
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
+	.dl {
+		flex: none;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 1.4rem;
+		height: 1.4rem;
+		padding: 0;
+		border: none;
+		border-radius: 4px;
+		background: transparent;
+		color: var(--text-muted);
+		cursor: pointer;
+		font-size: 0.95rem;
+		line-height: 1;
+	}
+	.dl:hover {
+		background: var(--bg-subtle);
+		color: var(--text);
+	}
 	.rm {
 		position: absolute;
-		top: 0.15rem;
-		right: 0.15rem;
-		width: 1.2rem;
-		height: 1.2rem;
-		line-height: 1;
+		top: 0.2rem;
+		right: 0.2rem;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 1.3rem;
+		height: 1.3rem;
+		padding: 0;
 		border: none;
 		border-radius: 50%;
-		background: color-mix(in srgb, var(--danger) 80%, transparent);
+		background: color-mix(in srgb, var(--danger) 85%, transparent);
 		color: white;
 		cursor: pointer;
-		font-size: 0.85rem;
+		font-size: 0.95rem;
+		line-height: 1;
 	}
 </style>

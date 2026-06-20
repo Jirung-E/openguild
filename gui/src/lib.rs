@@ -444,6 +444,9 @@ pub fn run() {
             commands::save_template,
             // DEV-069: 본문 첨부 (paste / drag&drop 업로드).
             commands::save_attachment,
+            // BUG-081: 첨부 열기(미리보기) / 다운로드(복사).
+            commands::open_guild_file,
+            commands::copy_guild_file,
         ])
         // DEV-087: asset protocol scope — 길드 경로가 동적이라 (사용자가 임의
         // 폴더 open) config scope 대신 런타임 allow. `.guild/assets/` 의 배너
