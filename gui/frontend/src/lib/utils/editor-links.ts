@@ -75,12 +75,13 @@ function questIdCompletion(context: CompletionContext): CompletionResult | null 
 	if (matches.length > MAX_MATCHES) matches.length = MAX_MATCHES;
 	options.push(...matches);
 
+	// DEV-140 #9: validFor 를 두지 않는다 — 두면 CM 이 최초 쿼리에서 slice 된 상위
+	// N개만 재필터해, 더 좁혀도(예: DEV-1xx 후반) 안 뜨던 문제. 키마다 소스를 재실행해
+	// 현재 prefix 의 최신 매칭을 다시 계산(댓글과 동일 동작).
 	return {
 		from,
 		to: context.pos,
-		options,
-		// 토큰이 더 길어져도 같은 from 으로 재필터 (label=실재 id 라 정상 매칭).
-		validFor: /^[A-Za-z]{1,}-\d*$/
+		options
 	};
 }
 
