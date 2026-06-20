@@ -141,9 +141,12 @@
 
 <style>
 	.attachments {
+		/* DEV-069 후속: 구분선을 섹션 위가 아니라 아래에 — 본문과 붙고
+		   다음(서브퀘스트) 섹션과 분리되도록. */
 		margin-top: 1rem;
-		border-top: 1px solid var(--border);
-		padding-top: 0.75rem;
+		padding-bottom: 0.75rem;
+		border-bottom: 1px solid var(--border);
+		margin-bottom: 1rem;
 	}
 	.head {
 		display: flex;
