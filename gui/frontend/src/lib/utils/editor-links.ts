@@ -41,13 +41,28 @@ function questIdCompletion(context: CompletionContext): CompletionResult | null 
 	const upper = token.toUpperCase();
 	const index = get(questIndex);
 
-	// DEV-140 #7(2): prefix 매칭되는 실재 ID 들을 후보로 나열.
-	// label 을 실재 id 로 두어야 CM 필터가 타이핑한 bare 토큰과 정상 매칭
-	// (#1: label 이 `[[..]]` 라 매칭 실패 → validFor 와 충돌해 깜빡이던 버그 수정).
-	const options: Completion[] = [];
+	// DEV-140 #7(2) / DEV-171 후속: 맨 위는 항상 '현재 입력값'(그대로 링크),
+	// 그 아래로 prefix 매칭 실재 ID. label 을 실재 id 로 두어야 CM 필터가 타이핑한
+	// bare 토큰과 정상 매칭 (#1: label 이 `[[..]]` 라 매칭 실패 → validFor 충돌로
+	// 깜빡이던 버그 수정).
+	const selfRef = index.get(upper);
+	const options: Completion[] = [
+		{
+			label: upper,
+			displayLabel: `🔗 ${upper}${selfRef ? '' : ' (미존재)'}`,
+			detail: selfRef
+				? `${selfRef.kind === 'campaign' ? '캠페인' : '퀘스트'} · ${selfRef.title}`
+				: '링크 생성 — 렌더 시 빨강',
+			apply: `[[${upper}]]`,
+			type: 'reference',
+			// 현재 입력값을 항상 맨 위로.
+			boost: 99
+		}
+	];
+	const matches: Completion[] = [];
 	for (const [id, ref] of index) {
-		if (id.startsWith(upper)) {
-			options.push({
+		if (id !== upper && id.startsWith(upper)) {
+			matches.push({
 				label: id,
 				displayLabel: `🔗 ${id}`,
 				detail: `${ref.kind === 'campaign' ? '캠페인' : '퀘스트'} · ${ref.title}`,
@@ -56,22 +71,9 @@ function questIdCompletion(context: CompletionContext): CompletionResult | null 
 			});
 		}
 	}
-	options.sort((a, b) => a.label.localeCompare(b.label));
-	options.length = Math.min(options.length, MAX_MATCHES);
-
-	// 정확히 그 토큰이 실재하지 않으면 '새(미존재) 링크' 후보도 제공.
-	if (!index.has(upper)) {
-		options.push({
-			label: upper,
-			displayLabel: `🔗 ${upper} 링크 걸기 (미존재)`,
-			detail: '링크 생성 — 렌더 시 빨강',
-			apply: `[[${upper}]]`,
-			type: 'reference',
-			boost: -1
-		});
-	}
-
-	if (options.length === 0) return null;
+	matches.sort((a, b) => a.label.localeCompare(b.label));
+	if (matches.length > MAX_MATCHES) matches.length = MAX_MATCHES;
+	options.push(...matches);
 
 	return {
 		from,

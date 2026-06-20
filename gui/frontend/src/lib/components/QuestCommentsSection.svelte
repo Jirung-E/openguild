@@ -45,6 +45,14 @@
 	let wikiSel = $state(0);
 
 	function onWikiInput(e: Event) {
+		// DEV-171 후속: 방향키/Enter/Esc(네비) 는 재계산 skip — wikiSel 이 0 으로
+		// 리셋돼 위/아래 선택이 첫 항목으로 되돌아가던 문제.
+		if (
+			e instanceof KeyboardEvent &&
+			wiki &&
+			(e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter' || e.key === 'Escape')
+		)
+			return;
 		const el = e.currentTarget as HTMLTextAreaElement;
 		const caret = el.selectionStart ?? 0;
 		const m = wikiMatch(el.value, caret, get(questIndex));

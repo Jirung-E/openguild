@@ -39,19 +39,20 @@ export function wikiMatch(
 	const token = m[2];
 	const upper = token.toUpperCase();
 
-	const items: WikiItem[] = [];
+	// DEV-171: 맨 위는 항상 '현재 입력값'(그대로 링크), 그 아래로 prefix 매칭 실재 ID.
+	const selfRef = index.get(upper);
+	const items: WikiItem[] = [
+		{ id: upper, title: selfRef?.title ?? null, kind: selfRef?.kind ?? null, exists: !!selfRef }
+	];
+	const matches: WikiItem[] = [];
 	for (const [id, ref] of index) {
-		if (id.startsWith(upper)) {
-			items.push({ id, title: ref.title, kind: ref.kind, exists: true });
+		if (id !== upper && id.startsWith(upper)) {
+			matches.push({ id, title: ref.title, kind: ref.kind, exists: true });
 		}
 	}
-	items.sort((a, b) => a.id.localeCompare(b.id));
-	if (items.length > MAX_ITEMS) items.length = MAX_ITEMS;
-	// 정확히 그 토큰이 실재하지 않으면 '새(미존재) 링크' 후보도 제공.
-	if (!index.has(upper)) {
-		items.push({ id: upper, title: null, kind: null, exists: false });
-	}
-	if (items.length === 0) return null;
+	matches.sort((a, b) => a.id.localeCompare(b.id));
+	if (matches.length > MAX_ITEMS) matches.length = MAX_ITEMS;
+	items.push(...matches);
 	return { from: caret - token.length, to: caret, items };
 }
 
