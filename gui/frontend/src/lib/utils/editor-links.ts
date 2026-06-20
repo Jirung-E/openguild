@@ -23,8 +23,6 @@ import { get } from 'svelte/store';
 /** 커서 직전의 ID 토큰 (앞이 `[` 가 아니어야 — 위키링크 안은 제외). */
 const BEFORE_CURSOR = /(^|[^[\w-])([A-Za-z]{2,}-\d+)$/;
 
-/** prefix 매칭 실재 ID 후보 최대 개수. */
-const MAX_MATCHES = 20;
 
 function questIdCompletion(context: CompletionContext): CompletionResult | null {
 	// 커서 앞 텍스트에서 ID 토큰 추출.
@@ -72,7 +70,6 @@ function questIdCompletion(context: CompletionContext): CompletionResult | null 
 		}
 	}
 	matches.sort((a, b) => a.label.localeCompare(b.label));
-	if (matches.length > MAX_MATCHES) matches.length = MAX_MATCHES;
 	options.push(...matches);
 
 	// DEV-140 #9: validFor 를 두지 않는다 — 두면 CM 이 최초 쿼리에서 slice 된 상위

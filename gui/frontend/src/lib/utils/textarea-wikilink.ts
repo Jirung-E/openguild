@@ -10,7 +10,6 @@ import type { IndexedRef } from '$lib/stores/questIndex';
 
 /** 커서 직전 ID 토큰 — 앞이 `[`/단어/하이픈이 아니어야(이미 위키링크면 제외). */
 const BEFORE_CURSOR = /(^|[^[\w-])([A-Za-z]{2,}-\d+)$/;
-const MAX_ITEMS = 20;
 
 export interface WikiItem {
 	id: string;
@@ -51,7 +50,6 @@ export function wikiMatch(
 		}
 	}
 	matches.sort((a, b) => a.id.localeCompare(b.id));
-	if (matches.length > MAX_ITEMS) matches.length = MAX_ITEMS;
 	items.push(...matches);
 	return { from: caret - token.length, to: caret, items };
 }
