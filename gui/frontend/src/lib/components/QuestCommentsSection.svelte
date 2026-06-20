@@ -27,23 +27,65 @@
 	import { tabInsert } from '$lib/actions/tab-insert';
 	// DEV-151: 댓글 textarea 첨부 — paste/drag&drop/버튼.
 	import { textareaAttach, pickAndAttachTextarea } from '$lib/utils/editor-attach';
-	// DEV-140 후속: 댓글 textarea cross-link 자동완성 (XXX-NNN → [[...]]).
-	import { wikiSuggestion, applyWikiLink, type WikiSuggestion } from '$lib/utils/textarea-wikilink';
+	// DEV-140/171: 댓글 textarea cross-link 자동완성 — caret 위치 팝업 + 실재 ID 제안.
+	import { wikiMatch, applyWikiLink, caretXY, type WikiItem } from '$lib/utils/textarea-wikilink';
 	import { questIndex, loadQuestIndex } from '$lib/stores/questIndex';
 	import { get } from 'svelte/store';
 
 	loadQuestIndex();
-	// 현재 활성 textarea + 제안. el 로 어느 textarea 아래 표시할지 구분.
-	let wikiSuggest = $state<(WikiSuggestion & { el: HTMLTextAreaElement }) | null>(null);
+	// DEV-171: caret 위치 팝업 — 활성 textarea + 후보 + 화면 좌표 + 선택 index.
+	let wiki = $state<{
+		el: HTMLTextAreaElement;
+		from: number;
+		to: number;
+		items: WikiItem[];
+		left: number;
+		top: number;
+	} | null>(null);
+	let wikiSel = $state(0);
+
 	function onWikiInput(e: Event) {
 		const el = e.currentTarget as HTMLTextAreaElement;
-		const s = wikiSuggestion(el.value, el.selectionStart ?? 0, get(questIndex));
-		wikiSuggest = s ? { ...s, el } : null;
+		const caret = el.selectionStart ?? 0;
+		const m = wikiMatch(el.value, caret, get(questIndex));
+		if (!m) {
+			wiki = null;
+			return;
+		}
+		const c = caretXY(el, m.to);
+		const rect = el.getBoundingClientRect();
+		wiki = {
+			el,
+			from: m.from,
+			to: m.to,
+			items: m.items,
+			left: rect.left + c.left - el.scrollLeft,
+			top: rect.top + c.top - el.scrollTop + c.height
+		};
+		wikiSel = 0;
 	}
-	function applyWiki() {
-		if (!wikiSuggest) return;
-		applyWikiLink(wikiSuggest.el, wikiSuggest);
-		wikiSuggest = null;
+	function applyWiki(item: WikiItem) {
+		if (!wiki) return;
+		applyWikiLink(wiki.el, wiki.from, wiki.to, item.id);
+		wiki = null;
+	}
+	// VS 식 키보드 네비 (팝업 떠 있을 때만 가로챔).
+	function onWikiKeydown(e: KeyboardEvent) {
+		if (!wiki) return;
+		const n = wiki.items.length;
+		if (e.key === 'ArrowDown') {
+			e.preventDefault();
+			wikiSel = (wikiSel + 1) % n;
+		} else if (e.key === 'ArrowUp') {
+			e.preventDefault();
+			wikiSel = (wikiSel - 1 + n) % n;
+		} else if (e.key === 'Enter') {
+			e.preventDefault();
+			applyWiki(wiki.items[wikiSel]);
+		} else if (e.key === 'Escape') {
+			e.preventDefault();
+			wiki = null;
+		}
 	}
 
 	// 첨부 버튼이 삽입할 textarea 참조 (편집/답글은 한 번에 하나만 열림).
@@ -438,12 +480,10 @@
 				oninput={onWikiInput}
 				onkeyup={onWikiInput}
 				onclick={onWikiInput}
+				onkeydown={onWikiKeydown}
 				rows="4"
 				placeholder="본문 (markdown)"
 			></textarea>
-			{#if wikiSuggest && wikiSuggest.el === editTextareaEl}
-				<button type="button" class="wiki-suggest" onmousedown={(ev) => { ev.preventDefault(); applyWiki(); }}>🔗 [[{wikiSuggest.id}]] 링크 걸기{wikiSuggest.ref ? ` — ${wikiSuggest.ref.title}` : ' (미존재)'}</button>
-			{/if}
 			{#if editError}<p class="state err">{editError}</p>{/if}
 			<div class="actions">
 				<button
@@ -589,13 +629,11 @@
 												oninput={onWikiInput}
 												onkeyup={onWikiInput}
 												onclick={onWikiInput}
+												onkeydown={onWikiKeydown}
 												rows="3"
 												placeholder={`@${root.author || root.id} 에 답글…`}
 												disabled={replySaving}
 											></textarea>
-											{#if wikiSuggest && wikiSuggest.el === replyTextareaEl}
-												<button type="button" class="wiki-suggest" onmousedown={(ev) => { ev.preventDefault(); applyWiki(); }}>🔗 [[{wikiSuggest.id}]] 링크 걸기{wikiSuggest.ref ? ` — ${wikiSuggest.ref.title}` : ' (미존재)'}</button>
-											{/if}
 											{#if replyError}<p class="state err">{replyError}</p>{/if}
 											<div class="actions">
 												<button
@@ -657,13 +695,11 @@
 				oninput={onWikiInput}
 				onkeyup={onWikiInput}
 				onclick={onWikiInput}
+				onkeydown={onWikiKeydown}
 				rows="3"
 				placeholder="댓글 작성 (markdown 사용 가능)"
 				disabled={saving}
 			></textarea>
-			{#if wikiSuggest && wikiSuggest.el === newTextareaEl}
-				<button type="button" class="wiki-suggest" onmousedown={(ev) => { ev.preventDefault(); applyWiki(); }}>🔗 [[{wikiSuggest.id}]] 링크 걸기{wikiSuggest.ref ? ` — ${wikiSuggest.ref.title}` : ' (미존재)'}</button>
-			{/if}
 			{#if saveError}<p class="state err">{saveError}</p>{/if}
 			<div class="actions">
 				<button
@@ -696,6 +732,29 @@
 	onconfirm={remove}
 	oncancel={() => (confirmDeleteId = null)}
 />
+
+<!-- DEV-171: cross-link 자동완성 팝업 — caret 위치에 떠서 실재 ID 후보 표시. -->
+{#if wiki}
+	<ul class="wiki-pop" style="left:{wiki.left}px; top:{wiki.top}px;">
+		{#each wiki.items as it, i (it.id)}
+			<li>
+				<button
+					type="button"
+					class="wiki-opt"
+					class:sel={i === wikiSel}
+					onmousedown={(ev) => {
+						ev.preventDefault();
+						applyWiki(it);
+					}}
+					onmouseenter={() => (wikiSel = i)}
+				>
+					<span class="wiki-id" class:missing={!it.exists}>🔗 {it.id}</span>
+					<span class="wiki-meta">{it.exists ? it.title : '새 링크 (미존재)'}</span>
+				</button>
+			</li>
+		{/each}
+	</ul>
+{/if}
 
 <style>
 	.comments-sec { margin-bottom: 1.5rem; }
@@ -1019,20 +1078,57 @@
 		margin-right: auto;
 	}
 	.btn-attach:hover { background: var(--bg-elevated); }
-	/* DEV-140 후속: 댓글 cross-link 자동완성 제안 (클릭형). */
-	.wiki-suggest {
-		display: block;
-		margin: 0.25rem 0 0;
-		padding: 0.3rem 0.6rem;
-		background: color-mix(in srgb, var(--accent) 12%, transparent);
-		border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
-		color: var(--accent);
-		border-radius: 6px;
+	/* DEV-171: cross-link 자동완성 팝업 (caret 위치, VS 식). */
+	.wiki-pop {
+		position: fixed;
+		z-index: 50;
+		margin: 0;
+		padding: 0.2rem;
+		list-style: none;
+		min-width: 14rem;
+		max-width: 22rem;
+		max-height: 14rem;
+		overflow-y: auto;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+	}
+	.wiki-opt {
+		display: flex;
+		align-items: baseline;
+		gap: 0.5rem;
+		width: 100%;
+		padding: 0.3rem 0.5rem;
+		border: none;
+		border-radius: 5px;
+		background: transparent;
+		color: var(--text);
 		cursor: pointer;
-		font-size: 0.8rem;
 		text-align: left;
 	}
-	.wiki-suggest:hover { background: color-mix(in srgb, var(--accent) 20%, transparent); }
+	.wiki-opt.sel,
+	.wiki-opt:hover {
+		background: color-mix(in srgb, var(--accent) 18%, transparent);
+	}
+	.wiki-id {
+		flex: none;
+		font-family: 'SFMono-Regular', Consolas, monospace;
+		font-size: 0.8rem;
+		color: var(--accent);
+	}
+	.wiki-id.missing {
+		color: var(--danger);
+	}
+	.wiki-meta {
+		flex: 1;
+		min-width: 0;
+		font-size: 0.78rem;
+		color: var(--text-muted);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
 	.btn-save {
 		padding: 0.3rem 0.85rem;
 		background: var(--btn-primary-bg); border: 1px solid var(--btn-primary-border);
