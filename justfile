@@ -46,9 +46,9 @@ build: build-rust build-frontend
 
 # --- 테스트 (test) ---
 
-# Rust workspace 전체 테스트
+# Rust workspace 전체 테스트 (release — debug 산출물이 디스크를 너무 차지)
 test-rust:
-    cargo test --workspace
+    cargo test --workspace --release
 
 # Frontend vitest
 test-frontend:
