@@ -60,18 +60,45 @@
 			wiki = null;
 			return;
 		}
-		const c = caretXY(el, m.to);
-		const rect = el.getBoundingClientRect();
-		wiki = {
-			el,
-			from: m.from,
-			to: m.to,
-			items: m.items,
-			left: rect.left + c.left - el.scrollLeft,
-			top: rect.top + c.top - el.scrollTop + c.height
-		};
+		wiki = placeWiki(el, m.from, m.to, m.items);
 		wikiSel = 0;
 	}
+
+	// DEV-171 후속: caret 기준 팝업 위치 계산 — 화면 밖이면 위로 flip + 좌우 clamp.
+	function placeWiki(
+		el: HTMLTextAreaElement,
+		from: number,
+		to: number,
+		items: WikiItem[]
+	): typeof wiki {
+		const c = caretXY(el, to);
+		const rect = el.getBoundingClientRect();
+		const caretTop = rect.top + c.top - el.scrollTop;
+		const caretBottom = caretTop + c.height;
+		const estH = Math.min(items.length * 30 + 8, 224); // max-height 14rem(=224px) 추정
+		const flipUp = caretBottom + estH > window.innerHeight && caretTop - estH > 0;
+		const top = flipUp ? caretTop - estH : caretBottom;
+		const rawLeft = rect.left + c.left - el.scrollLeft;
+		const left = Math.max(4, Math.min(rawLeft, window.innerWidth - 240));
+		return { el, from, to, items, left, top };
+	}
+
+	// 창/입력창 스크롤·리사이즈 시 팝업이 caret 을 따라가도록 재배치.
+	function repositionWiki() {
+		if (!wiki) return;
+		wiki = placeWiki(wiki.el, wiki.from, wiki.to, wiki.items);
+	}
+	$effect(() => {
+		if (!wiki) return;
+		const onMove = () => repositionWiki();
+		// capture=true 로 textarea 내부/조상 스크롤까지 포착 (scroll 은 bubble X).
+		window.addEventListener('scroll', onMove, true);
+		window.addEventListener('resize', onMove);
+		return () => {
+			window.removeEventListener('scroll', onMove, true);
+			window.removeEventListener('resize', onMove);
+		};
+	});
 	function applyWiki(item: WikiItem) {
 		if (!wiki) return;
 		applyWikiLink(wiki.el, wiki.from, wiki.to, item.id);
