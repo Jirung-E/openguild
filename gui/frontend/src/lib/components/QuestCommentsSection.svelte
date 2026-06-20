@@ -43,6 +43,13 @@
 		top: number;
 	} | null>(null);
 	let wikiSel = $state(0);
+	let wikiPopEl = $state<HTMLUListElement | undefined>(undefined);
+	// DEV-171 후속: ↑/↓ 로 선택 이동 시 선택 항목이 팝업 스크롤 밖이면 보이도록 스크롤.
+	$effect(() => {
+		void wikiSel;
+		void wiki;
+		wikiPopEl?.querySelector('.wiki-opt.sel')?.scrollIntoView({ block: 'nearest' });
+	});
 
 	function onWikiInput(e: Event) {
 		// DEV-171 후속: 방향키/Enter/Esc(네비) 는 재계산 skip — wikiSel 이 0 으로
@@ -75,6 +82,11 @@
 		const rect = el.getBoundingClientRect();
 		const caretTop = rect.top + c.top - el.scrollTop;
 		const caretBottom = caretTop + c.height;
+		// DEV-171 후속: caret(자동완성 대상)이 입력창의 보이는 영역 ∩ 뷰포트 밖으로
+		// 스크롤되면 팝업을 숨긴다 (엉뚱한 위치에 떠 있지 않도록).
+		const visTop = Math.max(rect.top, 0);
+		const visBottom = Math.min(rect.bottom, window.innerHeight);
+		if (caretBottom < visTop || caretTop > visBottom) return null;
 		const estH = Math.min(items.length * 30 + 8, 224); // max-height 14rem(=224px) 추정
 		const flipUp = caretBottom + estH > window.innerHeight && caretTop - estH > 0;
 		const top = flipUp ? caretTop - estH : caretBottom;
@@ -770,7 +782,7 @@
 
 <!-- DEV-171: cross-link 자동완성 팝업 — caret 위치에 떠서 실재 ID 후보 표시. -->
 {#if wiki}
-	<ul class="wiki-pop" style="left:{wiki.left}px; top:{wiki.top}px;">
+	<ul class="wiki-pop" bind:this={wikiPopEl} style="left:{wiki.left}px; top:{wiki.top}px;">
 		{#each wiki.items as it, i (it.id)}
 			<li>
 				<button
