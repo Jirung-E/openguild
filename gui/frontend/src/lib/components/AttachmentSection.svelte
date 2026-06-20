@@ -198,10 +198,8 @@
 						{/if}
 					</button>
 					<button type="button" class="rm" title="목록에서 제거" aria-label="제거" onclick={() => remove(a.path)}>×</button>
-					<div class="foot">
-						<span class="name" title={a.name}>{a.name}</span>
-						<button type="button" class="dl" title="다운로드" aria-label="다운로드" onclick={() => downloadOne(a)}>⤓</button>
-					</div>
+					<button type="button" class="dl" title="다운로드" aria-label="다운로드" onclick={() => downloadOne(a)}>⤓</button>
+					<span class="name" title={a.name}>{a.name}</span>
 				</li>
 			{/each}
 		</ul>
@@ -301,39 +299,34 @@
 	.file-ico {
 		font-size: 1.8rem;
 	}
-	.foot {
-		display: flex;
-		align-items: center;
-		gap: 0.25rem;
-	}
 	.name {
-		flex: 1;
-		min-width: 0;
 		font-size: 0.75rem;
 		color: var(--text);
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
+	/* BUG-081 후속: 다운로드 버튼을 × 아래 우상단 오버레이로 — 제목(name) 안 가림. */
 	.dl {
-		flex: none;
+		position: absolute;
+		top: 1.65rem;
+		right: 0.2rem;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 1.4rem;
-		height: 1.4rem;
+		width: 1.3rem;
+		height: 1.3rem;
 		padding: 0;
 		border: none;
-		border-radius: 4px;
-		background: transparent;
-		color: var(--text-muted);
+		border-radius: 50%;
+		background: color-mix(in srgb, var(--accent) 85%, transparent);
+		color: white;
 		cursor: pointer;
-		font-size: 0.95rem;
+		font-size: 0.9rem;
 		line-height: 1;
 	}
 	.dl:hover {
-		background: var(--bg-subtle);
-		color: var(--text);
+		background: var(--accent);
 	}
 	.rm {
 		position: absolute;
