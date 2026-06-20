@@ -17,11 +17,14 @@ import {
 } from '@codemirror/autocomplete';
 import { markdownLanguage, commonmarkLanguage } from '@codemirror/lang-markdown';
 import type { Extension } from '@codemirror/state';
-import { questIndex, loadQuestIndex, type IndexedRef } from '$lib/stores/questIndex';
+import { questIndex, loadQuestIndex } from '$lib/stores/questIndex';
 import { get } from 'svelte/store';
 
 /** 커서 직전의 ID 토큰 (앞이 `[` 가 아니어야 — 위키링크 안은 제외). */
 const BEFORE_CURSOR = /(^|[^[\w-])([A-Za-z]{2,}-\d+)$/;
+
+/** prefix 매칭 실재 ID 후보 최대 개수. */
+const MAX_MATCHES = 20;
 
 function questIdCompletion(context: CompletionContext): CompletionResult | null {
 	// 커서 앞 텍스트에서 ID 토큰 추출.
@@ -32,33 +35,50 @@ function questIdCompletion(context: CompletionContext): CompletionResult | null 
 
 	const token = m[2];
 	const from = context.pos - token.length;
-	// 명시적 호출(Ctrl-Space)이 아니면, 타이핑 중에만 — 토큰 경계에서.
+	// 명시적 호출(Ctrl-Space)이 아니면, 토큰이 충분히 길 때만 (XXX-N 이상).
 	if (!context.explicit && token.length < 3) return null;
 
-	const id = token.toUpperCase();
-	const ref: IndexedRef | undefined = get(questIndex).get(id);
-	const kindLabel = ref
-		? ref.kind === 'campaign'
-			? '캠페인'
-			: '퀘스트'
-		: '미존재';
+	const upper = token.toUpperCase();
+	const index = get(questIndex);
 
-	const option: Completion = {
-		label: `[[${id}]]`,
-		displayLabel: `🔗 ${id} 링크 걸기`,
-		detail: ref ? `${kindLabel} · ${ref.title}` : `${kindLabel} — 링크는 생성 (빨강 표시)`,
-		apply: `[[${id}]]`,
-		type: 'reference',
-		// 실재 ID 를 위로.
-		boost: ref ? 1 : -1
-	};
+	// DEV-140 #7(2): prefix 매칭되는 실재 ID 들을 후보로 나열.
+	// label 을 실재 id 로 두어야 CM 필터가 타이핑한 bare 토큰과 정상 매칭
+	// (#1: label 이 `[[..]]` 라 매칭 실패 → validFor 와 충돌해 깜빡이던 버그 수정).
+	const options: Completion[] = [];
+	for (const [id, ref] of index) {
+		if (id.startsWith(upper)) {
+			options.push({
+				label: id,
+				displayLabel: `🔗 ${id}`,
+				detail: `${ref.kind === 'campaign' ? '캠페인' : '퀘스트'} · ${ref.title}`,
+				apply: `[[${id}]]`,
+				type: 'reference'
+			});
+		}
+	}
+	options.sort((a, b) => a.label.localeCompare(b.label));
+	options.length = Math.min(options.length, MAX_MATCHES);
+
+	// 정확히 그 토큰이 실재하지 않으면 '새(미존재) 링크' 후보도 제공.
+	if (!index.has(upper)) {
+		options.push({
+			label: upper,
+			displayLabel: `🔗 ${upper} 링크 걸기 (미존재)`,
+			detail: '링크 생성 — 렌더 시 빨강',
+			apply: `[[${upper}]]`,
+			type: 'reference',
+			boost: -1
+		});
+	}
+
+	if (options.length === 0) return null;
 
 	return {
 		from,
 		to: context.pos,
-		options: [option],
-		// 토큰이 더 길어지면 다시 매칭.
-		validFor: /^[A-Za-z]{2,}-\d+$/
+		options,
+		// 토큰이 더 길어져도 같은 from 으로 재필터 (label=실재 id 라 정상 매칭).
+		validFor: /^[A-Za-z]{1,}-\d*$/
 	};
 }
 
