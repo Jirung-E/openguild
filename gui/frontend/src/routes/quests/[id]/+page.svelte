@@ -1621,10 +1621,12 @@
 	/* BUG-031 → BUG-033: 본문과 첫 section (Parent / Sub-Quests) 사이가 여전히
 	   좁다는 피드백. margin → padding 으로 변경 (collapse 회피) + border-top
 	   으로 시각 구분선. 첫 section 윗쪽에도 padding-top 동시 적용. */
-	.description-block { padding-bottom: 2.5rem; margin-bottom: 0; }
+	/* BUG-031 후속: 본문 아래에 첨부 섹션이 들어오며 이 큰 padding 이 본문↔첨부
+	   간격만 과하게 벌렸음. 첨부 섹션이 자체 구분선/여백을 가지므로 본문 아래는 좁게. */
+	.description-block { padding-bottom: 0.5rem; margin-bottom: 0; }
 	.description-block + section,
 	.description-block ~ section:first-of-type {
-		padding-top: 1rem;
+		padding-top: 0;
 	}
 
 	.quest-list {

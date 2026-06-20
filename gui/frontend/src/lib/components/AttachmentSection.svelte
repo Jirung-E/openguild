@@ -210,11 +210,11 @@
 
 <style>
 	.attachments {
-		/* BUG-081: 본문과 너무 벌어지지 않게 — 구분선은 아래(다음 섹션과 분리). */
+		/* 본문과는 좁게(본문 컨테이너가 아래 여백 담당), 구분선 위/아래는 넉넉히. */
 		margin-top: 0.4rem;
-		padding-bottom: 0.75rem;
+		padding-bottom: 1.5rem;
 		border-bottom: 1px solid var(--border);
-		margin-bottom: 1rem;
+		margin-bottom: 1.75rem;
 	}
 	.head {
 		display: flex;
