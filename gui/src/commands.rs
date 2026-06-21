@@ -1022,6 +1022,9 @@ pub async fn get_campaign(
     store: State<'_, Store>,
     slug: String,
 ) -> Result<CampaignDetail, String> {
+    // DEV-178: quest 와 대칭 — 상세 진입 시 캠페인 본문 파일만 lazy mtime 체크해
+    // GUI 를 켜둔 채 외부 편집한 경우에도 최신. 실패는 무시 (stale > 에러).
+    let _ = openguild_core::incremental::refresh_campaign_if_stale(&store, &slug).await;
     let mut detail = camp_ops::fetch_detail(&store, &slug).await.map_err(err)?;
     // DEV-156: 첨부 목록(sidecar) 채우기.
     detail.attachments = openguild_core::ops::attachments::list_campaign_attachments(&store, &slug);

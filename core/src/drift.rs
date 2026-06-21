@@ -131,6 +131,22 @@ pub async fn detect_drift(store: &Store) -> Result<DriftReport> {
             fresh_siblings.push(name.to_string());
         }
     }
+    // DEV-178: primary cached(캠페인 본문 + types/statuses/tags 정의)도 같은
+    // file_mtime_cache 로 외부편집을 감지 — per-row cached_mtime 이 없어서다.
+    // 단 sibling 과 달리 "캐시에 없음"을 fresh 로 보지 않는다: 메타는 migration
+    // 시드로 DB 엔 있는데 캐시엔 없을 수 있어 None=>fresh 면 오탐(§27 회귀).
+    // 캐시에 있고 파일이 더 새것일 때만 fresh — 신규 파일 적재는 reindex 담당.
+    // (이름은 fresh_siblings 지만 의미상 "캐시 기반 fresh 파일" — 하나라도 있으면
+    // is_clean()=false → auto_resync 가 reindex.)
+    for path in crate::file_mtime::list_primary_cached_files(paths) {
+        let rel = crate::file_mtime::rel_key(paths, &path);
+        if let Some(&cached) = sib_cache.get(&rel)
+            && repo_fs::mtime_unix_nanos(&path) > cached
+            && let Some(name) = path.file_name().and_then(|n| n.to_str())
+        {
+            fresh_siblings.push(name.to_string());
+        }
+    }
     fresh_siblings.sort();
 
     Ok(DriftReport {
@@ -341,6 +357,58 @@ mod tests {
             r2.fresh_siblings.iter().any(|n| n.ends_with(".comments.md")),
             "외부 편집한 sibling 은 fresh: {:?}",
             r2.fresh_siblings
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-178: 캠페인 본문 + 메타(status 정의)의 외부 편집이 drift 로 잡혀야.
+    /// reindex 직후엔 clean (sync_all 이 캐시를 채움) → 외부 편집만 fresh.
+    #[tokio::test]
+    async fn drift_detects_external_campaign_and_meta_edits() {
+        let dir = fresh_tmp("camp-meta");
+        let store = setup(&dir).await;
+        std::fs::create_dir_all(store.paths.campaigns_dir()).unwrap();
+        let cpath = store.paths.campaigns_dir().join("C-001.md");
+        std::fs::write(
+            &cpath,
+            "+++\ncampaign_id = \"C-001\"\ntitle = \"c\"\nstatus = \"active\"\ncreated_at = \"x\"\nupdated_at = \"x\"\n+++\nbody v1\n",
+        )
+        .unwrap();
+        crate::reindex::reindex(&store).await.unwrap();
+
+        // reindex 직후엔 clean (캠페인 + 메타 모두 캐시와 일치).
+        assert!(
+            detect_drift(&store).await.unwrap().is_clean(),
+            "reindex 직후엔 clean 이어야"
+        );
+
+        // 1) 캠페인 본문 외부 편집 → drift.
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        std::fs::write(
+            &cpath,
+            "+++\ncampaign_id = \"C-001\"\ntitle = \"c2\"\nstatus = \"active\"\ncreated_at = \"x\"\nupdated_at = \"x\"\n+++\nbody v2\n",
+        )
+        .unwrap();
+        assert!(
+            !detect_drift(&store).await.unwrap().is_clean(),
+            "캠페인 본문 외부편집이 drift 로 잡혀야"
+        );
+
+        // reindex 로 clean 회복.
+        crate::reindex::reindex(&store).await.unwrap();
+        assert!(detect_drift(&store).await.unwrap().is_clean());
+
+        // 2) 메타(status 정의 toml) 외부 편집 → drift.
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let status_files =
+            crate::repo::fs::list_with_extension(store.paths.statuses_dir(), "toml").unwrap();
+        let sf = status_files.first().expect("seed status 존재");
+        let content = std::fs::read_to_string(sf).unwrap();
+        std::fs::write(sf, content).unwrap(); // 내용 동일, mtime 만 갱신.
+        assert!(
+            !detect_drift(&store).await.unwrap().is_clean(),
+            "status 정의 외부편집이 drift 로 잡혀야"
         );
 
         let _ = std::fs::remove_dir_all(&dir);

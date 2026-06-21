@@ -50,6 +50,28 @@ pub async fn touch(store: &Store, abs: &Path) -> Result<(), sqlx::Error> {
     Ok(())
 }
 
+/// DEV-178: per-file mtime 캐시로 외부편집을 감지할 "primary" 파일들 —
+/// 캠페인 본문(`campaigns/{slug}.md`) + types/statuses/tags 정의(`*.toml`).
+///
+/// quest 본문은 per-row `cached_mtime`(quests 테이블)으로, sibling 댓글/메모는
+/// 아래 sync_all 이 별도로 다룬다. 그 외 DB 캐시로 읽히는 파일들(캠페인 본문 +
+/// 메타 정의)은 per-row mtime 컬럼이 없어 여기서 file_mtime_cache 로 커버한다.
+/// detect_drift 와 sync_all 이 같은 목록을 쓰도록 한 곳에 모은다.
+pub fn list_primary_cached_files(paths: &GuildPaths) -> Vec<std::path::PathBuf> {
+    let mut files = Vec::new();
+    // 캠페인 본문 (sibling `.comments.md` / `.memo.md` 제외 — stem 에 '.' 없는 .md).
+    if let Ok(c) = repo_fs::list_quest_body_files(&paths.campaigns_dir()) {
+        files.extend(c);
+    }
+    // types / statuses / tags 정의.
+    for dir in [paths.types_dir(), paths.statuses_dir(), paths.tags_dir()] {
+        if let Ok(t) = repo_fs::list_with_extension(&dir, "toml") {
+            files.extend(t);
+        }
+    }
+    files
+}
+
 /// 전체 (rel_path → mtime) 맵. detect_drift 가 사용.
 pub async fn load_all(store: &Store) -> HashMap<String, i64> {
     sqlx::query_as::<_, (String, i64)>("SELECT rel_path, mtime FROM file_mtime_cache")
@@ -73,6 +95,8 @@ pub async fn sync_all(store: &Store) -> Result<(), sqlx::Error> {
             files.extend(m);
         }
     }
+    // DEV-178: 캠페인 본문 + types/statuses/tags 정의도 같은 캐시로 커버.
+    files.extend(list_primary_cached_files(paths));
     // 현존 파일 → upsert + 본 set 으로 살아있는 rel 수집.
     let mut alive: std::collections::HashSet<String> = std::collections::HashSet::new();
     for f in &files {

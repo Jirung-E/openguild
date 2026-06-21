@@ -683,8 +683,8 @@ eventually-consistent.**
 
 | sync 지점 | 무엇을 | 언제 |
 |---|---|---|
-| 시동 sync (DEV-121 P1) | 변경된 quest 파일 (+ 신규/삭제·관계 시 풀 reindex fallback) | 앱 시작 / Welcome 로 길드 열 때(BUG-049 fix) |
-| 상세 lazy (DEV-137) | 그 quest 한 건 | 상세 페이지 진입 |
+| 시동 sync (DEV-121 P1) | 변경된 quest 파일 + 신규/삭제·관계 또는 campaign 본문·types/statuses/tags 외부편집 시 drift→풀 reindex (DEV-178) | 앱 시작 / Welcome 로 길드 열 때(BUG-049 fix) |
+| 상세 lazy (DEV-137 / DEV-178) | 그 quest 한 건 (DEV-137) / 그 campaign 한 건 (DEV-178) | 상세 페이지 진입 |
 | 수동 ⟲ (DEV-095) | 전체 (풀 reindex) | 사용자 클릭 |
 
 **현재 sync 지점이 안 덮는 빈틈** (= 외부 편집 후 해당 sync 지점 전까진 stale):
@@ -694,13 +694,23 @@ eventually-consistent.**
 | quest 표시 필드 (title/status/…) | ✅ | ✅ | ✅ |
 | quest 관계 (prereq/parent/tag) | △ full fallback 시 | ❌ | ✅ |
 | 목록 / 보드 (여러 파일) | ✅ (시동) | ❌ | ✅ |
-| 비-quest (campaign / status / type / 댓글·메모) | ❌ | ❌ | ✅ |
+| campaign 본문 (title/desc/status/체크리스트/링크) | ✅ drift (DEV-178) | ✅ (DEV-178) | ✅ |
+| types / statuses / tags 정의 | ✅ drift (DEV-178) | ❌ 목록이라 lazy 없음 | ✅ |
+| 댓글·메모 (sibling) | ✅ drift (BUG-068) | ❌ | ✅ |
+| rules / templates | 파일 직독 — 항상 즉시 | 항상 즉시 | 항상 즉시 |
 | 신규 / 삭제 파일 | ✅ full fallback | ❌ | ✅ |
+
+> DEV-178: campaign 본문·메타 정의는 per-row `cached_mtime` 컬럼이 없어 범용
+> `file_mtime_cache`(BUG-068)로 비교. drift 는 "캐시에 있고 파일이 더 새것"일
+> 때만 fresh (시드만 된 메타를 fresh 로 보면 오탐) — 모든 mutation ops 가 파일
+> write 직후 `file_mtime::touch` 로 캐시를 갱신해 오탐을 막는다. 신규 campaign
+> 파일 적재 자체는 reindex/⟲ 영역.
 
 **결론**:
 - "DB 는 파일에서 파생된 캐시/인덱스" (A) = 이미 완전 부합.
-- "읽으면 항상 파일이 최신" (B) = quest 상세는 DEV-137 로 부합, 그 외는 sync
-  지점 기반 eventually-consistent (목록/관계/비-quest 는 ⟲ 또는 재시작 필요).
+- "읽으면 항상 파일이 최신" (B) = quest·campaign 상세는 lazy 로 부합, 메타·댓글은
+  시동 drift 로 재시작 시 반영, rules/templates 는 파일 직독이라 항상 즉시.
+  목록/관계는 여전히 ⟲ 또는 재시작 필요.
 - **완전 실시간 파일-진리**(어디서 읽어도 즉시 반영)는 **fs watcher**(`notify`,
   DEV-122 옵션 C) 또는 모든 read 에 lazy(목록은 N-file stat 비용) 가 필요 —
   비용 대비 가치로 **의도적 보류**. 현 모델 = "권한은 항상 파일, 신선도는 sync

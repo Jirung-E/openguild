@@ -194,6 +194,7 @@ pub async fn delete_campaign(store: &Store, id: i64) -> AppResult<()> {
         cf.frontmatter.deleted = true;
         cf.frontmatter.updated_at = crate::time::now_local_iso8601();
         let _ = cf.write(&path);
+        let _ = crate::file_mtime::touch(store, &path).await; // DEV-178
     }
     Ok(())
 }
@@ -273,6 +274,7 @@ pub async fn add_checklist_line(
     cf.body = new_body;
     cf.frontmatter.updated_at = crate::time::now_local_iso8601();
     cf.write(&path).map_err(AppError::Internal)?;
+    let _ = crate::file_mtime::touch(store, &path).await; // DEV-178
 
     // DB sync — 파일 본문 → DB.
     let items = extract_checklist_items(&cf.body);
@@ -324,6 +326,7 @@ pub async fn set_checklist_checked_by_index(
     cf.body = new_body;
     cf.frontmatter.updated_at = crate::time::now_local_iso8601();
     cf.write(&path).map_err(AppError::Internal)?;
+    let _ = crate::file_mtime::touch(store, &path).await; // DEV-178
 
     let items = extract_checklist_items(&cf.body);
     sql::replace_checklists_from_file(&store.index_pool, campaign_id, &items).await?;
@@ -358,6 +361,7 @@ pub async fn remove_checklist_by_index(
     cf.body = new_body;
     cf.frontmatter.updated_at = crate::time::now_local_iso8601();
     cf.write(&path).map_err(AppError::Internal)?;
+    let _ = crate::file_mtime::touch(store, &path).await; // DEV-178
 
     let items = extract_checklist_items(&cf.body);
     sql::replace_checklists_from_file(&store.index_pool, campaign_id, &items).await?;
@@ -420,6 +424,8 @@ pub(crate) async fn write_campaign_file(
         body,
     };
     cf.write(&path).map_err(AppError::Internal)?;
+    // DEV-178: 외부편집 감지용 mtime 캐시 갱신 (drift / lazy refresh 오탐 방지).
+    let _ = crate::file_mtime::touch(store, &path).await;
     Ok(())
 }
 

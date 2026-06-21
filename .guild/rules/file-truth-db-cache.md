@@ -30,9 +30,25 @@ ops 경로(journal append → SQL → 파일 atomic write → auto-block 재생�
 
 | sync 지점 | 무엇을 | 언제 |
 |---|---|---|
-| 시동 sync (DEV-121) | 변경된 quest 파일 (+ 신규/삭제·관계 시 풀 reindex) | 앱 시작 / Welcome 로 길드 열 때 |
-| 상세 lazy (DEV-137) | 그 quest 한 건 | 상세 진입 |
+| 시동 sync (DEV-121) | 변경된 quest 파일 (cheap) + 신규/삭제·관계 또는 캠페인 본문·types/statuses/tags 외부편집 시 drift→풀 reindex (DEV-178) | 앱 시작 / Welcome 로 길드 열 때 |
+| 상세 lazy (DEV-137 / DEV-178) | 그 quest 한 건 (DEV-137) / 그 campaign 한 건 (DEV-178) | 상세 진입 |
 | 수동 ⟲ (DEV-095) | 전체 | 사용자 클릭 |
+
+DB 캐시로 읽는 엔티티의 외부편집 커버리지:
+
+| 엔티티 | 읽기 | 외부편집 반영 |
+|---|---|---|
+| quest 본문 | DB 캐시 | 상세 lazy(per-row cached_mtime) + 시동 drift |
+| campaign 본문 | DB 캐시 | 상세 lazy + 시동 drift (DEV-178, file_mtime_cache) |
+| types / statuses / tags 정의 | DB 캐시 | 시동 drift (DEV-178, file_mtime_cache) — 목록이라 lazy 없음 |
+| 댓글 / 메모 (sibling) | DB 캐시 | 시동 drift (BUG-068, file_mtime_cache) |
+| rules / templates | **파일 직독** | 항상 즉시 (캐시 없음) |
+
+campaign 본문·메타는 per-row `cached_mtime` 컬럼이 없어 범용 `file_mtime_cache`
+(BUG-068)로 비교한다. drift 는 "캐시에 있고 파일이 더 새것"일 때만 fresh —
+캐시에 없는 메타(시드만 된 상태)를 fresh 로 보면 오탐(§위 #4 의 last_indexed_at
+회귀와 동류). 신규 파일 적재는 reindex 가 담당. 이를 위해 모든 mutation ops 는
+파일 write 직후 `file_mtime::touch` 로 캐시를 갱신한다(오탐 방지).
 
 신선도가 필요한 **새 read 경로**를 추가하면 "어느 sync 지점이 이걸 덮나" 를 확인.
 목록/보드처럼 여러 파일을 보는 경로는 per-read lazy 가 비싸니 시동 sync / ⟲ 에 의존.

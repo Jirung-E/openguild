@@ -94,8 +94,9 @@ pub async fn create_type(
         description: description.clone().filter(|s| !s.trim().is_empty()),
         counter: crate::repo::Counter { last_number: 0 },
     };
-    file.write(store.paths.type_path(&prefix))
-        .map_err(AppError::Internal)?;
+    let type_path = store.paths.type_path(&prefix);
+    file.write(&type_path).map_err(AppError::Internal)?;
+    let _ = crate::file_mtime::touch(store, &type_path).await; // DEV-178: drift 오탐 방지
 
     // 2. DB INSERT + counter row.
     let new_id: i64 = sqlx::query_scalar(
@@ -165,6 +166,7 @@ pub async fn update_type(
     }
 
     file.write(&path).map_err(AppError::Internal)?;
+    let _ = crate::file_mtime::touch(store, &path).await; // DEV-178: drift 오탐 방지
     sqlx::query("UPDATE quest_types SET color = ?, description = ? WHERE id = ?")
         .bind(&row.color)
         .bind(&row.description)
@@ -655,8 +657,9 @@ pub async fn create_status(
         counts_as_done: false,
     };
     let filename = StatusFile::filename(sort_order, &slug);
-    file.write(store.paths.statuses_dir().join(&filename))
-        .map_err(AppError::Internal)?;
+    let status_path = store.paths.statuses_dir().join(&filename);
+    file.write(&status_path).map_err(AppError::Internal)?;
+    let _ = crate::file_mtime::touch(store, &status_path).await; // DEV-178: drift 오탐 방지
 
     // 2. DB INSERT.
     let new_id: i64 = sqlx::query_scalar(
@@ -763,16 +766,19 @@ pub async fn update_status(
     }
 
     // 파일 — sort_order 가 바뀌었으면 rename, 아니면 in-place rewrite.
-    if order_changed {
+    let written_path = if order_changed {
         let new_filename = StatusFile::filename(row.sort_order, &working_slug);
         let new_path = store.paths.statuses_dir().join(&new_filename);
         file.write(&new_path).map_err(AppError::Internal)?;
         if new_path != old_path {
             let _ = std::fs::remove_file(&old_path);
         }
+        new_path
     } else {
         file.write(&old_path).map_err(AppError::Internal)?;
-    }
+        old_path
+    };
+    let _ = crate::file_mtime::touch(store, &written_path).await; // DEV-178: drift 오탐 방지
 
     sqlx::query(
         "UPDATE quest_statuses SET name_en = ?, name_ko = ?, color = ?, sort_order = ?, counts_as_done = ? WHERE id = ?",
@@ -873,8 +879,9 @@ pub async fn upsert_tag_def(
         color: color.clone(),
         description: description.clone(),
     };
-    file.write(store.paths.tag_path(&slug))
-        .map_err(AppError::Internal)?;
+    let tag_path = store.paths.tag_path(&slug);
+    file.write(&tag_path).map_err(AppError::Internal)?;
+    let _ = crate::file_mtime::touch(store, &tag_path).await; // DEV-178: drift 오탐 방지
 
     // DB upsert.
     sqlx::query(

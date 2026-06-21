@@ -319,6 +319,98 @@ pub async fn refresh_quest_if_stale(store: &Store, slug: &str) -> AppResult<bool
     Ok(true)
 }
 
+/// DEV-178: 단일 campaign 의 lazy refresh — 상세 페이지 진입 시 호출
+/// (`refresh_quest_if_stale` 의 campaign 판). 캠페인 본문 파일 하나만 stat() 으로
+/// `file_mtime_cache` 와 비교 — 외부 편집이 감지되면 그 행만 re-parse + UPDATE
+/// (체크리스트 / linked_quests 포함) 후 `true` 반환.
+///
+/// quest 본문은 per-row `cached_mtime` 를 쓰지만 campaigns 테이블엔 그 컬럼이 없어
+/// sibling 과 동일한 범용 `file_mtime_cache`(BUG-068) 로 비교한다. 캐시에 아직
+/// 없으면(첫 진입) 한 번 갱신 후 touch — 이후 churn 없음.
+pub async fn refresh_campaign_if_stale(store: &Store, slug: &str) -> AppResult<bool> {
+    let path = store.paths.campaign_path(slug);
+    if !path.exists() {
+        return Ok(false);
+    }
+    let rel = crate::file_mtime::rel_key(&store.paths, &path);
+    let file_mtime = repo_fs::mtime_unix_nanos(&path);
+    let cache = crate::file_mtime::load_all(store).await;
+    if let Some(&cached) = cache.get(&rel)
+        && file_mtime <= cached
+    {
+        return Ok(false); // 변경 없음.
+    }
+
+    // campaigns 행 존재 확인 (신규/삭제는 reindex 영역).
+    let id: Option<i64> =
+        sqlx::query_scalar("SELECT id FROM campaigns WHERE campaign_slug = ?")
+            .bind(slug)
+            .fetch_optional(&store.index_pool)
+            .await?;
+    let Some(id) = id else {
+        return Ok(false);
+    };
+    let Ok(cf) = crate::repo::CampaignFile::read(&path) else {
+        return Ok(false); // 파싱 실패 — reindex 가 skip 경고로 처리.
+    };
+    if cf.frontmatter.deleted {
+        // 외부에서 soft-delete — 행 제거는 auto_resync/reindex 영역.
+        return Ok(false);
+    }
+
+    // 행 UPDATE — reindex 의 per-campaign INSERT 와 동일 필드.
+    sqlx::query(
+        "UPDATE campaigns SET
+           title = ?, description = ?, status = ?,
+           started_at = ?, ended_at = ?, display_order = ?, image_path = ?,
+           created_at = ?, updated_at = ?
+         WHERE id = ?",
+    )
+    .bind(&cf.frontmatter.title)
+    .bind(&cf.body)
+    .bind(&cf.frontmatter.status)
+    .bind((!cf.frontmatter.started_at.is_empty()).then_some(&cf.frontmatter.started_at))
+    .bind((!cf.frontmatter.ended_at.is_empty()).then_some(&cf.frontmatter.ended_at))
+    .bind(cf.frontmatter.display_order)
+    .bind(cf.frontmatter.image.as_deref())
+    .bind(&cf.frontmatter.created_at)
+    .bind(&cf.frontmatter.updated_at)
+    .bind(id)
+    .execute(&store.index_pool)
+    .await?;
+
+    // 체크리스트 (본문) + linked_quests (frontmatter) re-sync.
+    let items = crate::repo::extract_checklist_items(&cf.body);
+    crate::services::campaigns::replace_checklists_from_file(&store.index_pool, id, &items)
+        .await?;
+    sqlx::query("DELETE FROM campaign_quests WHERE campaign_id = ?")
+        .bind(id)
+        .execute(&store.index_pool)
+        .await?;
+    for qslug in &cf.frontmatter.linked_quests {
+        let qid: Option<i64> = sqlx::query_scalar(
+            "SELECT q.id FROM quests q JOIN quest_types qt ON qt.id = q.quest_type_id
+             WHERE qt.prefix || '-' || printf('%03d', q.number) = ?",
+        )
+        .bind(qslug)
+        .fetch_optional(&store.index_pool)
+        .await?;
+        if let Some(qid) = qid {
+            sqlx::query(
+                "INSERT OR IGNORE INTO campaign_quests (campaign_id, quest_id) VALUES (?, ?)",
+            )
+            .bind(id)
+            .bind(qid)
+            .execute(&store.index_pool)
+            .await?;
+        }
+    }
+
+    // 캐시 갱신 — 다음 진입 churn 방지.
+    let _ = crate::file_mtime::touch(store, &path).await;
+    Ok(true)
+}
+
 /// Store::open 후 통합 sync. Phase 1: incremental + 필요 시 fallback reindex.
 ///
 /// 흐름:
@@ -575,6 +667,64 @@ mod tests {
         let report = sync_changed_quest_files(&store).await.unwrap();
         assert_eq!(report.updated, 0);
         assert!(report.needs_full_reindex, "신규 파일은 풀 reindex flag");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-178: 캠페인 상세 lazy refresh — 외부 편집 감지 시 그 행만 갱신,
+    /// 무변경엔 no-op (touch 로 churn 없음).
+    #[tokio::test]
+    async fn refresh_campaign_if_stale_detects_external_edit() {
+        let dir = fresh_tmp("camp-lazy");
+        let store = setup(&dir).await;
+        let paths = store.paths.clone();
+        std::fs::create_dir_all(paths.campaigns_dir()).unwrap();
+
+        let cf = crate::repo::CampaignFile {
+            frontmatter: crate::repo::CampaignFrontmatter {
+                campaign_id: "C-001".into(),
+                title: "orig".into(),
+                status: "active".into(),
+                started_at: String::new(),
+                ended_at: String::new(),
+                linked_quests: vec![],
+                display_order: 0,
+                image: None,
+                created_at: "2026-01-01T00:00:00Z".into(),
+                updated_at: "2026-01-01T00:00:00Z".into(),
+                deleted: false,
+            },
+            body: "body v1".into(),
+        };
+        cf.write(paths.campaign_path("C-001")).unwrap();
+        // reindex 가 campaigns 행 + file_mtime 캐시(sync_all) 채움.
+        crate::reindex::reindex(&store).await.unwrap();
+
+        // 변경 없음 → false.
+        assert!(!refresh_campaign_if_stale(&store, "C-001").await.unwrap());
+
+        // 외부 편집 — 파일 직접 수정 (새 mtime).
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let mut cf2 = cf.clone();
+        cf2.frontmatter.title = "edited externally".into();
+        cf2.body = "body v2".into();
+        cf2.write(paths.campaign_path("C-001")).unwrap();
+
+        // 감지 → true, DB 갱신.
+        assert!(refresh_campaign_if_stale(&store, "C-001").await.unwrap());
+        let (title, desc): (String, Option<String>) =
+            sqlx::query_as("SELECT title, description FROM campaigns WHERE campaign_slug = 'C-001'")
+                .fetch_one(&store.index_pool)
+                .await
+                .unwrap();
+        assert_eq!(title, "edited externally");
+        assert_eq!(desc.as_deref(), Some("body v2"));
+
+        // 두 번째 호출 — touch 로 cache 갱신됐으니 false (churn 없음).
+        assert!(!refresh_campaign_if_stale(&store, "C-001").await.unwrap());
+
+        // 없는 slug → false (에러 아님).
+        assert!(!refresh_campaign_if_stale(&store, "C-999").await.unwrap());
 
         let _ = std::fs::remove_dir_all(&dir);
     }
