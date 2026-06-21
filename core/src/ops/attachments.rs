@@ -127,8 +127,19 @@ pub async fn sync_attachment_blobs(store: &Store) -> AppResult<(usize, usize)> {
         }
     }
 
-    // 2. blob 만 남은 것 (파일 소실) → 복원.
+    // 2. blob 만 남은 것 (파일 소실).
     for (rel, _) in db {
+        // BUG-087: 어떤 sidecar/본문에서도 참조 안 되는 orphan 은 복원하지 않고
+        // GC. 안 그러면 (수동 삭제했거나 BUG-084 이전 생성된) orphan 파일이 매
+        // reindex 의 self-heal 로 부활한다. 참조 중인 것만 복원(snapshot 복원 후
+        // 파일 소실 케이스가 본래 의도).
+        if !attachment_referenced(store, &rel).await {
+            let _ = sqlx::query("DELETE FROM attachment_blobs WHERE rel_path = ?")
+                .bind(&rel)
+                .execute(&store.index_pool)
+                .await;
+            continue;
+        }
         let bytes: Vec<u8> =
             sqlx::query_scalar("SELECT bytes FROM attachment_blobs WHERE rel_path = ?")
                 .bind(&rel)
@@ -434,11 +445,13 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// self-heal — 파일 삭제 후 sync 가 blob 에서 복원.
+    /// self-heal — 참조 중인 첨부는 파일 삭제 후 sync 가 blob 에서 복원.
     #[tokio::test]
     async fn sync_restores_missing_file_from_blob() {
         let (dir, store) = setup("heal").await;
         let rel = save_attachment(&store, b"IMAGE", "png").await.unwrap();
+        // BUG-087: 참조돼야 복원 대상. (sidecar 에 등록 → attachment_referenced=true)
+        add_quest_attachment(&store, "DEV-001", &rel, "img.png").await.unwrap();
         let path = store.paths.dot_guild().join(&rel);
         std::fs::remove_file(&path).unwrap();
 
@@ -450,6 +463,29 @@ mod tests {
         std::fs::write(store.paths.attachments_dir().join("manual.png"), b"M").unwrap();
         let (up2, _) = sync_attachment_blobs(&store).await.unwrap();
         assert_eq!(up2, 1);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-087: 어디서도 참조 안 되는 orphan blob 은 sync 가 복원하지 않고 GC —
+    /// 매 reindex 마다 파일이 부활하던 문제.
+    #[tokio::test]
+    async fn sync_gcs_unreferenced_orphan_blob() {
+        let (dir, store) = setup("gc-orphan").await;
+        let rel = save_attachment(&store, b"DATA", "zip").await.unwrap();
+        let path = store.paths.dot_guild().join(&rel);
+        // 어떤 sidecar/본문에도 등록 안 함 + 파일 삭제 → orphan blob 만 남음.
+        std::fs::remove_file(&path).unwrap();
+
+        let (_up, restored) = sync_attachment_blobs(&store).await.unwrap();
+        assert_eq!(restored, 0, "미참조 orphan 은 복원하지 않아야");
+        assert!(!path.exists(), "orphan 파일이 부활하면 안 됨");
+        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM attachment_blobs WHERE rel_path = ?")
+            .bind(&rel)
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(n, 0, "orphan blob 은 GC 되어 다음 reindex 부활을 막아야");
 
         let _ = std::fs::remove_dir_all(&dir);
     }
