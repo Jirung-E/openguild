@@ -96,7 +96,7 @@ enum Command {
         #[command(subcommand)]
         sub: BackupCmd,
     },
-    /// 백업으로 복원 (복구 — 추후 journal replay 시점 복원 DEV-022 와 연계)
+    /// 백업(스냅샷)으로 복원. (추후 journal replay 로 시점 복원 연계 예정.)
     Restore {
         /// 특정 timestamp (`YYYYMMDD-HHMMSS`). 미지정 시 최신 사용.
         #[arg(long)]
@@ -114,7 +114,7 @@ enum Command {
         #[command(subcommand)]
         sub: IndexCmd,
     },
-    /// journal(AOF) — tail. (시점 복원 replay 는 `restore` 에서 처리 — DEV-022)
+    /// journal(AOF) — tail. (시점 복원 replay 는 `restore` 에서 처리 예정.)
     Journal {
         #[command(subcommand)]
         sub: JournalCmd,
