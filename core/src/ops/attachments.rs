@@ -272,8 +272,58 @@ async fn remove_attachment(
     list.retain(|a| a.path != path);
     if list.len() != before {
         write_attachment_list(meta_path, &list)?;
+        // BUG-084: 다른 첨부 sidecar / 본문에서 더는 참조 안 하면 실제 파일 + blob 삭제
+        // (blob 까지 지워야 reindex self-heal 이 복원하지 않음). 참조 중이면 유지.
+        gc_attachment_file(store, path).await;
     }
     Ok(list)
+}
+
+/// BUG-084: path 가 어떤 첨부 sidecar / 본문에서도 참조 안 되면 실제 파일 + blob 삭제.
+async fn gc_attachment_file(store: &Store, path: &str) {
+    if path.trim().is_empty() || attachment_referenced(store, path).await {
+        return;
+    }
+    let abs = store.paths.dot_guild().join(path);
+    let _ = std::fs::remove_file(&abs);
+    let _ = sqlx::query("DELETE FROM attachment_blobs WHERE rel_path = ?")
+        .bind(path)
+        .execute(&store.index_pool)
+        .await;
+}
+
+/// path 가 다른 첨부 sidecar(quest/campaign) 또는 본문(description)에서 참조되는지.
+async fn attachment_referenced(store: &Store, path: &str) -> bool {
+    for dir in [store.paths.quests_dir(), store.paths.campaigns_dir()] {
+        let Ok(rd) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for e in rd.flatten() {
+            let p = e.path();
+            let is_sidecar = p
+                .file_name()
+                .and_then(|s| s.to_str())
+                .map(|n| n.ends_with(".attachments.json"))
+                .unwrap_or(false);
+            if is_sidecar && read_attachment_list(&p).iter().any(|a| a.path == path) {
+                return true;
+            }
+        }
+    }
+    let like = format!("%{path}%");
+    for table in ["quests", "campaigns"] {
+        let q = format!("SELECT 1 FROM {table} WHERE description LIKE ? LIMIT 1");
+        let hit: Option<i64> = sqlx::query_scalar(&q)
+            .bind(&like)
+            .fetch_optional(&store.index_pool)
+            .await
+            .ok()
+            .flatten();
+        if hit.is_some() {
+            return true;
+        }
+    }
+    false
 }
 
 #[cfg(test)]
@@ -347,6 +397,40 @@ mod tests {
         // 마지막 제거 시 sidecar 삭제.
         remove_quest_attachment(&store, "DEV-001", "attachments/b.pdf").await.unwrap();
         assert!(!store.paths.quest_attachments_meta_path("DEV-001").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-084: 어디서도 참조 안 되면 remove 가 실제 파일 + blob 삭제.
+    #[tokio::test]
+    async fn remove_deletes_orphan_file_and_blob() {
+        let (dir, store) = setup("gc").await;
+        let rel = save_attachment(&store, b"DATA", "zip").await.unwrap();
+        add_quest_attachment(&store, "DEV-001", &rel, "f.zip").await.unwrap();
+        let abs = store.paths.dot_guild().join(&rel);
+        assert!(abs.exists());
+
+        remove_quest_attachment(&store, "DEV-001", &rel).await.unwrap();
+        assert!(!abs.exists(), "orphan 파일이 삭제되어야");
+        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM attachment_blobs WHERE rel_path = ?")
+            .bind(&rel)
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(n, 0, "blob 도 삭제 (self-heal 복원 방지)");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-084: 다른 첨부에서 참조 중이면 파일 유지.
+    #[tokio::test]
+    async fn remove_keeps_referenced_file() {
+        let (dir, store) = setup("gckeep").await;
+        let rel = save_attachment(&store, b"DATA", "zip").await.unwrap();
+        add_quest_attachment(&store, "DEV-001", &rel, "f.zip").await.unwrap();
+        add_quest_attachment(&store, "DEV-002", &rel, "f.zip").await.unwrap();
+        let abs = store.paths.dot_guild().join(&rel);
+
+        remove_quest_attachment(&store, "DEV-001", &rel).await.unwrap();
+        assert!(abs.exists(), "다른 첨부가 참조 중이면 파일 유지");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

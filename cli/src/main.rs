@@ -2420,7 +2420,7 @@ enum AttachCmd {
         #[arg(long)]
         name: Option<String>,
     },
-    /// 첨부 제거 (목록에서만 — blob/파일은 self-heal 정책상 유지).
+    /// 첨부 제거. 다른 곳에서 참조 안 하면 실제 파일 + blob 도 삭제(orphan 정리).
     Rm {
         slug: String,
         /// 제거할 첨부의 경로 (list 의 경로 값).
