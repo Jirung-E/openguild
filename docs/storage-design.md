@@ -283,7 +283,7 @@ openguild 의 첫 베타 마일스톤.
   binary 로 열어도 brick 안 되도록 backward compat (BUG-041).
 - 역할: 빠른 쿼리 — cycle check / candidates / list 정렬 / 통계 / 캠페인 진행률 /
   Home 임박 분류 (DEV-076).
-- 손실되어도 OK — 파일에서 재구축 (서버 `openguild-server reindex` 또는 GUI 상단
+- 손실되어도 OK — 파일에서 재구축 (서버 `openguild reindex` 또는 GUI 상단
   reindex 버튼 — DEV-095).
 - 시작 시 검증: `drift::detect_drift` 가 quest 본문 파일 mtime 과
   `app_meta.last_indexed_at` (마지막 reindex 의 ISO 시각) 비교. 불일치 시
@@ -320,8 +320,8 @@ CREATE INDEX idx_ops_ts ON ops (ts);
 
 - 형식: index.db 스키마 그대로의 binary copy.
 - 트리거:
-  - 수동 `openguild backup` 또는 `openguild-server backup`
-  - `openguild-server host` 시작 시 + 1시간 주기
+  - 수동 `openguild backup new`
+  - `openguild-server host` (서버) 시작 시 + 1시간 주기
   - CLI startup 시 마지막 snapshot 으로부터 N 시간 / M mutation 경과 시
 - Retention: 최근 7개 보관, 그 이상은 제거.
 
@@ -430,9 +430,9 @@ openguild migrate-to-files
 | **F4** | auto 블록 렌더러 + 영향 범위 추적 (parent 변경 시 옛/새 부모 갱신) | ✅ |
 | **F5** | `reindex` — 파일들로부터 index.db 재구축 | ✅ |
 | **F6** | snapshot / restore CLI 명령 | ✅ |
-| **F7** | external 편집 감지 (`core::drift`, `check-drift [--resync]`) | ✅ |
+| **F7** | external 편집 감지 (`core::drift`, `check drift [--resync]`) | ✅ |
 | **F8** | lock 파일 메커니즘 | ✅ |
-| **F9** | counter 검증 + 자동 보정 (`check-counters`) | ✅ |
+| **F9** | counter 검증 + 자동 보정 (`check counters`) | ✅ |
 | **F10** | `migrate-to-files` 명령 | ✅ |
 | **F11** | 기존 audit / auto-backup 코드 제거 | ✅ |
 | **F12** | `openguild init` 이 `.guild/` 디렉토리 + 시드 + gitignore 생성 | ✅ |
@@ -440,7 +440,7 @@ openguild migrate-to-files
 
 **13 / 13 완료** 🎉 — 저장소 설계 모든 단계 구현 완료 (2026-05-16).
 
-운영 시 추가 보호: `openguild-server check-drift --resync` 로 외부 편집 / git pull 후
+운영 시 추가 보호: `openguild check drift --resync` 로 외부 편집 / git pull 후
 캐시 동기화 가능. mutation 진행 전 `LockGuard` 로 single-writer 보장.
 
 ## 자동 백업 정책 (2026-05-17)
@@ -453,11 +453,13 @@ openguild migrate-to-files
 **둘 중 하나라도 도달** 시 snapshot 자동 생성 + journal truncate. stderr 에 알림.
 사용자별 조정: env `OPENGUILD_AUTO_BACKUP_OPS` / `OPENGUILD_AUTO_BACKUP_HOURS`.
 
-수동 명령:
-- `openguild backup` / `backups` / `restore [--to TS]` — 사용자 CLI (local mode)
-- `openguild-server snapshot` / `restore [--to TS] [--list]` — server admin CLI
+수동 명령 (`openguild` CLI, local mode):
+- `openguild backup new` — 즉시 snapshot
+- `openguild backup list` / `openguild backup remove <TS>` — 목록 / 삭제
+- `openguild restore [--to TS]` — snapshot 으로 복원
 
-원격 HTTP / GUI 통합 — 추후 (REST `POST /api/admin/snapshot` 등).
+원격 / GUI 는 HTTP admin (`POST /api/admin/snapshot`, `GET /api/admin/snapshots`,
+`DELETE /api/admin/snapshots/{ts}`, `POST /api/admin/restore`). (server = host 전용.)
 
 ---
 

@@ -47,7 +47,7 @@ DEV-001, DEV-002, BUG-045, REQ-007, ...  ─── feature 브랜치 (develop �
   - `[DEV-002][gui/frontend] Tauri 환경 감지 어댑터`
   - `[DEV-002][core] invoke 핸들러 wiring`
   - `[BUG-045] --remote env override 무시되던 문제 수정`
-  - `[DEV-019][server] check-drift 명령 추가`
+  - `[DEV-019][server] check drift 명령 추가`
 - 본문 첫 줄 — 70자 이내. 본문은 빈 줄로 구분.
 - 다중 카테고리는 별도 commit 으로 분리 권장 (각 commit 의 영역 명확).
 - **한 commit 에 다른 quest 변경 섞지 말 것** (BUG-016 정책). 다른 quest 의

@@ -50,7 +50,7 @@ Co-Authored-By: ... (해당 시)
 
 예시:
 - `[DEV-002][gui/frontend] Tauri 환경 감지 어댑터`
-- `[DEV-019][server] check-drift 명령 추가`
+- `[DEV-019][server] check drift 명령 추가`
 - `[BUG-045][cli] --remote env override 무시되던 문제 수정`
 
 ### 버전 / 릴리즈
@@ -82,7 +82,7 @@ agent (Claude / 다른 LLM) 가 `Write` / `Edit` 도구로 `.guild/quests/*.md` 
 - **status / urgency / parent / prereq / delete 변경 = 반드시 CLI**
   (`openguild quest status / update / parent / prereq / delete`).
 - **description 본문만** 부득이 직접 편집 가능 (BUG-001 우회). 그 경우 직후
-  `openguild-server reindex` 필수 (GUI 는 BUG-049 후 시동 시 자동).
+  `openguild reindex` 필수 (GUI 는 BUG-049 후 시동 시 자동).
 - **댓글 (`{slug}.comments.md`) / 메모 (`{slug}.memo.md`)** 도 **DEV-102 부터 DB
   캐시 (`quest_comments` / `quest_memos`) sync** + snapshot 백업. 직접 편집 후엔
   `drift::auto_resync` 가 자동 reindex (GUI 시동 + server / cli 진입 hook —
@@ -119,7 +119,7 @@ openguild/
 │                          repo / ops / store / snapshot / reindex /
 │                          drift / counter / lock / migrate
 ├── cli/                ← bin `openguild` (Backend = Http | Local)
-├── server/             ← bin `openguild-server` (HTTP + 관리 CLI)
+├── server/             ← bin `openguild-server` (HTTP host 전용 — DEV-163)
 ├── gui/                ← bin `openguild-gui` (Tauri v2, DEV-001 트리)
 │   ├── src/            ← Rust shell + invoke 핸들러 23개 (commands.rs)
 │   ├── tauri.conf.json
@@ -154,7 +154,7 @@ openguild/
 | 영역 | 실행 |
 |---|---|
 | 서버 host | `cargo run --bin openguild-server -- host` |
-| 서버 관리 | `openguild-server {info, snapshot, restore, reindex, migrate-to-files, check-counters, check-drift}` |
+| 정비/진단 | `openguild {info, backup new, restore, reindex, migrate-to-files, check counters, check drift, index vacuum, journal tail}` (또는 HTTP admin `/api/admin/*`) |
 | 프론트엔드 | `cd gui/frontend && npm run dev` (또는 `just dev-frontend`) |
 | CLI | `cargo run --bin openguild -- --help` (또는 `target/release/openguild`) |
 | 테스트 전체 | `cargo test --workspace && (cd gui/frontend && npm test -- --run)` |

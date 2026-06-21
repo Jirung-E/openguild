@@ -99,14 +99,17 @@ Full CLI reference: [`docs/AGENTS_OPENGUILD_USAGE.md`](./docs/AGENTS_OPENGUILD_U
 ## Development
 **Backend (HTTP server + admin CLI)**
 ```bash
-cargo run --bin openguild-server -- host            # start HTTP server
-cargo run --bin openguild-server -- info            # guild meta + cache + snapshot stats
-cargo run --bin openguild-server -- snapshot        # manual backup (RDB)
-cargo run --bin openguild-server -- restore [--to TS] [--list]
-cargo run --bin openguild-server -- reindex         # rebuild .guild/index.db from files
-cargo run --bin openguild-server -- migrate-to-files  # one-shot: legacy guild.db → .guild/quests/*.md
-cargo run --bin openguild-server -- check-counters [--fix]
-cargo run --bin openguild-server -- check-drift [--resync]
+cargo run --bin openguild-server -- host            # start HTTP server (host-only)
+
+# Maintenance/diagnostics live in the `openguild` CLI (or HTTP admin /api/admin/*):
+cargo run --bin openguild -- info                   # guild meta + cache + snapshot stats
+cargo run --bin openguild -- backup new             # manual backup (RDB snapshot)
+cargo run --bin openguild -- backup list            # list snapshots
+cargo run --bin openguild -- restore [--to TS]      # restore from a snapshot
+cargo run --bin openguild -- reindex                # rebuild .guild/index.db from files (= `index rebuild`)
+cargo run --bin openguild -- migrate-to-files       # one-shot: legacy guild.db → .guild/quests/*.md
+cargo run --bin openguild -- check counters [--fix]
+cargo run --bin openguild -- check drift [--resync]
 # or: just dev-server
 ```
 
@@ -245,14 +248,17 @@ openguild campaign checklist check C-001 1
 
 **백엔드 (HTTP 서버 + 관리 CLI)**
 ```bash
-cargo run --bin openguild-server -- host            # 서버 시작
-cargo run --bin openguild-server -- info            # 길드 / 캐시 / snapshot 현황
-cargo run --bin openguild-server -- snapshot        # 즉시 백업 (RDB)
-cargo run --bin openguild-server -- restore [--to TS] [--list]
-cargo run --bin openguild-server -- reindex         # 파일 → index.db 재구축
-cargo run --bin openguild-server -- migrate-to-files  # 1회: legacy guild.db → .guild/quests/*.md
-cargo run --bin openguild-server -- check-counters [--fix]
-cargo run --bin openguild-server -- check-drift [--resync]
+cargo run --bin openguild-server -- host            # 서버 시작 (host 전용)
+
+# 정비/진단은 `openguild` CLI (또는 HTTP admin /api/admin/*):
+cargo run --bin openguild -- info                   # 길드 / 캐시 / snapshot 현황
+cargo run --bin openguild -- backup new             # 즉시 백업 (RDB snapshot)
+cargo run --bin openguild -- backup list            # 백업 목록
+cargo run --bin openguild -- restore [--to TS]      # snapshot 으로 복원
+cargo run --bin openguild -- reindex                # 파일 → index.db 재구축 (= `index rebuild`)
+cargo run --bin openguild -- migrate-to-files       # 1회: legacy guild.db → .guild/quests/*.md
+cargo run --bin openguild -- check counters [--fix]
+cargo run --bin openguild -- check drift [--resync]
 # or: just dev-server
 ```
 

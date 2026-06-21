@@ -43,10 +43,10 @@ GUILD_PATH=/path/to/your-project cargo run --bin openguild-server -- host
 openguild --remote http://localhost:3000 ping
 ```
 
-서버 관리 명령 (서버를 띄우지 않고 실행):
+정비/진단 명령 (서버 불필요 — `openguild` CLI):
 ```bash
-openguild-server backup     # 즉시 1회 백업
-openguild-server info       # 길드 메타 / DB 크기 / 백업 현황
+openguild backup new   # 즉시 1회 백업 (snapshot)
+openguild info         # 길드 메타 / DB 크기 / 백업 현황
 ```
 
 ### 1.3 환경변수 / 옵션
@@ -235,8 +235,9 @@ openguild campaign checklist rm      <slug> <N>
 ### 2.8 백업 / 복원
 
 ```bash
-openguild backup                       # 즉시 snapshot 생성
-openguild backups                      # 사용 가능 snapshot 목록
+openguild backup new                   # 즉시 snapshot 생성
+openguild backup list                  # 사용 가능 snapshot 목록
+openguild backup remove <TIMESTAMP>    # 특정 snapshot 삭제
 openguild restore [--to <TIMESTAMP>]   # 최신 (또는 지정) snapshot 으로 복원
 ```
 
@@ -386,9 +387,9 @@ openguild 는 **파일 = truth, `.guild/index.db` = SQL 캐시** 구조. mutatio
 
 #### 부득이하게 직접 편집해야 한다면
 
-1. agent 가 `.md` / `.toml` 을 편집한 직후 **반드시** `openguild-server reindex`
-   실행 (SQL 캐시 재구축).
-2. 변경 후 `openguild-server check-drift` 로 drift 0 확인.
+1. agent 가 `.md` / `.toml` 을 편집한 직후 **반드시** `openguild reindex`
+   실행 (SQL 캐시 재구축; = `openguild index rebuild`).
+2. 변경 후 `openguild check drift` 로 drift 0 확인.
 3. journal 에 의도 기록은 자동 안 됨 — commit 메시지 / quest 본문에 사유 명시.
 
 #### BUG-001 우회 (multi-line description) 의 경우
@@ -399,7 +400,7 @@ openguild 는 **파일 = truth, `.guild/index.db` = SQL 캐시** 구조. mutatio
 ```bash
 # 1) 파일 직접 편집 (frontmatter 의 description 본문만!)
 # 2) reindex 로 SQL 동기화
-openguild-server reindex
+openguild reindex
 ```
 
 **frontmatter 의 status / urgency / parent / prerequisites 는 절대 직접 안 건드림.**

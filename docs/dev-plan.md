@@ -119,7 +119,7 @@
 - ✅ Quest Board toolbar 접기 (DEV-073), 그룹 정렬 개선 (DEV-077).
 - ✅ 캠페인 quest 진행도 (DEV-093) — status.counts_as_done + Home + Detail + Admin.
 - ✅ installer 사용 가이드 동봉 (DEV-098).
-- ✅ server CLI 강화 (DEV-018 brief/detailed, DEV-023 vacuum/journal-tail).
+- ✅ server CLI 강화 (DEV-018 brief/detailed, DEV-023 vacuum/journal tail).
 - 캠페인 댓글 / 메모 — DEV-100 (대기).
 - 다국어 — DEV-015 (i18n backbone 필요).
 - 첨부파일 — DEV-069 (새 기능).

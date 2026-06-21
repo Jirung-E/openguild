@@ -48,7 +48,7 @@ pwsh -File <openguild repo>/scripts/seed-test-data.ps1
      create`).
    - 없으면 **CLI 추가가 선행** (별도 quest). 댓글 (DEV-094) / 태그 (DEV-068)
      처럼 GUI / HTTP only 인 기능은 일단 보류 (또는 file 직접 작성 — 단 그
-     경우 `openguild-server reindex` 도 같이 호출해야 함).
+     경우 `openguild reindex` 도 같이 호출해야 함).
 2. **스크립트 단계 번호 갱신** — 단계 수가 늘어나면 모든 `[N/M]` 헤더 일관 갱신.
 3. **본 규칙 (이 파일) 의 "검증 단계" 표 갱신** — 새 행 추가.
 4. **DEV-075 quest 본문에 어떤 fix 가 들어갔는지 짧게 기록** (또는 본 규칙의

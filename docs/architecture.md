@@ -15,7 +15,7 @@ graph TB
     end
 
     subgraph Server["server crate (Axum HTTP)"]
-        SRV_CLI["CLI: host / info / snapshot / restore / reindex /<br/>migrate-to-files / check-counters / check-drift"]
+        SRV_CLI["CLI: host / info / snapshot / restore / reindex /<br/>migrate-to-files / check counters / check drift"]
         SRV_ROUTES["routes/ - /api/quests/* /api/admin/*"]
         SRV_ERR["HttpError - IntoResponse wrapper"]
     end
@@ -130,7 +130,7 @@ openguild/
 │   └── src/
 │       ├── main.rs                  ← host / info / snapshot / restore /
 │       │                                reindex / migrate-to-files /
-│       │                                check-counters / check-drift
+│       │                                check counters / check drift
 │       ├── error.rs                 ← HttpError newtype
 │       ├── tests.rs                 ← 통합 테스트
 │       └── routes/
@@ -198,7 +198,7 @@ openguild/
 >   drift::detect_drift 가 sibling 파일도 fresh 감지 (auto reindex 트리거).
 > - 2026-06-05 DEV-098 installer NSIS resources 에 README + USAGE 동봉
 >   (사용자 친화 시작 가이드).
-> - 2026-06-05 DEV-018 `openguild-server info` 에 `--brief` / `--detailed` 모드.
+> - 2026-06-05 DEV-018 `openguild info` 에 `--brief` / `--detailed` 모드.
 > - 2026-06-05 DEV-070 Quest Detail "Successors" 섹션 — quest_dependencies 역방향.
 > - 2026-06-05 BUG-046 Campaign 체크리스트 클릭 시 페이지 최상단 점프 — optimistic
 >   update 로 fix.
@@ -215,7 +215,7 @@ openguild/
 > - 2026-06-06 DEV-065 QuestList Tree / List 뷰 모드 토글 (URL + localStorage).
 > - 2026-06-06 DEV-077 arrangeNodesGrouped — cluster 의 y 좌표 lane 별 분리
 >   (lane 안 겹침 없으면 같은 row 공유).
-> - 2026-06-06 DEV-023 server CLI `vacuum` + `journal-tail` 추가.
+> - 2026-06-06 DEV-023 server CLI `vacuum` + `journal tail` 추가.
 > - 2026-06-06 BUG-054 QuestBoard.sorted → $state — long-standing npm check
 >   warning 제거 (0 warnings).
 > - 2026-06-07 DEV-068 `.guild/tags/{slug}.toml` 색·설명 — migration 0013
@@ -454,7 +454,7 @@ Quest frontmatter 필드: `quest_id` / `title` / `status` (slug) / `urgency` / `
 - sub ↔ prereq 상호 배제.
 - 직계 부모는 prereq 후보에서 제외.
 - Soft delete: 파일 frontmatter `deleted: true`. SELECT 는 `WHERE deleted_at IS NULL` 필터. 파일 위치 그대로 (rename 없음 → git diff 깨끗).
-- Counter: type 의 `last_number` 는 단조 증가. ID 재사용 방지 (`check-counters` 로 검증).
+- Counter: type 의 `last_number` 는 단조 증가. ID 재사용 방지 (`check counters` 로 검증).
 
 ## 안전장치 (agent / 자동화 대응)
 
@@ -462,10 +462,10 @@ Quest frontmatter 필드: `quest_id` / `title` / `status` (slug) / `urgency` / `
 |---|---|---|
 | **Journal (AOF)** | `core::store::journal` | 모든 mutation 이 `.guild/backups/journal.db` 의 `ops` 테이블에 append (timestamp + op + args + result JSON). |
 | **자동 snapshot** | `core::snapshot::maybe_auto_snapshot` | 매 mutation 끝에 정책 검사 — ops 50 회 또는 24h 도달 시 자동 RDB 스냅샷. 알림 stderr. env `OPENGUILD_AUTO_BACKUP_OPS` / `_HOURS` 로 조정. |
-| **수동 snapshot** | CLI `openguild backup`, server `openguild-server snapshot`, GUI `/admin` | 즉시 `.guild/backups/snapshots/{ts}.db` + journal truncate. Retention 7. |
-| **Restore** | CLI `openguild restore [--to TS]`, server `openguild-server restore`, GUI `/admin` | snapshot 으로 index.db 복원 (이전 상태는 `.pre-restore.db` 로 자동 백업). |
-| **Drift 검사** | server `check-drift [--resync]`, GUI `/admin` | 파일 vs 캐시 불일치 검출. `--resync` 또는 `/admin reindex` 로 복구. |
-| **Counter 검증** | server `check-counters [--fix]` | type 의 last_number 무결성 검증. ID 중복 방지. |
+| **수동 snapshot** | CLI `openguild backup new`, HTTP `POST /api/admin/snapshot`, GUI `/admin` | 즉시 `.guild/backups/snapshots/{ts}/` + journal truncate. Retention 7. |
+| **Restore** | CLI `openguild restore [--to TS]`, HTTP `POST /api/admin/restore`, GUI `/admin` | snapshot 으로 복원 (이전 상태는 `.pre-restore/` 로 자동 백업). |
+| **Drift 검사** | CLI `openguild check drift [--resync]`, HTTP `GET /api/admin/drift`, GUI `/admin` | 파일 vs 캐시 불일치 검출. `--resync` 또는 `/admin reindex` 로 복구. |
+| **Counter 검증** | CLI `openguild check counters [--fix]` | type 의 last_number 무결성 검증. ID 중복 방지. |
 | **Single-writer lock** | `core::lock::LockGuard` (`.guild/.lock`) | 동시 mutation 방지. PID stale 자동 강탈. |
 | **Soft delete** | quest frontmatter `deleted: true` | 실 삭제 X, `quest restore` 로 복원. 파일 위치 그대로 (git diff 깨끗). |
 | **CLI `--yes` 강제** | `cli/` | `openguild quest delete` 는 `--yes` 없으면 거부 |
