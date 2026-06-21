@@ -91,16 +91,12 @@ enum Command {
     },
     /// 서버 상태 확인 (health)
     Ping,
-    /// 백업 (snapshot) 즉시 생성
-    Backup,
-    /// 사용 가능한 백업 목록
-    Backups,
-    /// 특정 백업(스냅샷) 삭제
-    BackupRm {
-        /// 삭제할 timestamp (`YYYYMMDD-HHMMSS`). `backups` 로 확인.
-        timestamp: String,
+    /// 백업(스냅샷) — 생성 / 목록 / 삭제
+    Backup {
+        #[command(subcommand)]
+        sub: BackupCmd,
     },
-    /// 백업으로 복원
+    /// 백업으로 복원 (복구 — 추후 journal replay 시점 복원 DEV-022 와 연계)
     Restore {
         /// 특정 timestamp (`YYYYMMDD-HHMMSS`). 미지정 시 최신 사용.
         #[arg(long)]
@@ -135,6 +131,20 @@ enum Command {
         /// 1 줄 요약만 (script / status bar 친화).
         #[arg(long)]
         brief: bool,
+    },
+}
+
+/// DEV-176: 백업(스냅샷) 서브커맨드 — 다른 명사 그룹(quest/campaign…)과 통일.
+#[derive(Subcommand)]
+enum BackupCmd {
+    /// 백업(스냅샷) 즉시 생성
+    Create,
+    /// 사용 가능한 백업 목록 (오래된 순)
+    List,
+    /// 특정 백업 삭제
+    Rm {
+        /// 삭제할 timestamp (`YYYYMMDD-HHMMSS`). `backup list` 로 확인.
+        timestamp: String,
     },
 }
 
@@ -3620,56 +3630,58 @@ fn run() -> Result<()> {
                 }
             }
         },
-        Command::Backup => {
-            let info = c.create_backup()?;
-            if cli.json {
-                println!(
-                    "{}",
-                    serde_json::json!({
-                        "ok": true,
-                        "timestamp": info.timestamp,
-                        "size_bytes": info.size_bytes,
-                        "path": info.path.to_string_lossy(),
-                    })
-                );
-            } else {
-                println!("✓ snapshot 생성: {} ({} bytes)", info.timestamp, info.size_bytes);
-                println!("  path: {}", info.path.display());
-            }
-        }
-        Command::Backups => {
-            let list = c.list_backups()?;
-            if cli.json {
-                let arr: Vec<_> = list
-                    .iter()
-                    .map(|s| {
+        Command::Backup { sub } => match sub {
+            BackupCmd::Create => {
+                let info = c.create_backup()?;
+                if cli.json {
+                    println!(
+                        "{}",
                         serde_json::json!({
-                            "timestamp": s.timestamp,
-                            "size_bytes": s.size_bytes,
-                            "path": s.path.to_string_lossy(),
+                            "ok": true,
+                            "timestamp": info.timestamp,
+                            "size_bytes": info.size_bytes,
+                            "path": info.path.to_string_lossy(),
                         })
-                    })
-                    .collect();
-                println!("{}", serde_json::to_string_pretty(&arr)?);
-            } else if list.is_empty() {
-                println!("(사용 가능한 백업 없음)");
-                println!();
-                println!("`openguild backup` 으로 생성하세요.");
-            } else {
-                println!("백업 목록 (오래된 순):");
-                for s in &list {
-                    println!("  {} — {} bytes", s.timestamp, s.size_bytes);
+                    );
+                } else {
+                    println!("✓ snapshot 생성: {} ({} bytes)", info.timestamp, info.size_bytes);
+                    println!("  path: {}", info.path.display());
                 }
             }
-        }
-        Command::BackupRm { timestamp } => {
-            c.delete_backup(&timestamp)?;
-            if cli.json {
-                println!("{}", serde_json::json!({ "ok": true, "deleted": timestamp }));
-            } else {
-                println!("✓ 백업 삭제: {timestamp}");
+            BackupCmd::List => {
+                let list = c.list_backups()?;
+                if cli.json {
+                    let arr: Vec<_> = list
+                        .iter()
+                        .map(|s| {
+                            serde_json::json!({
+                                "timestamp": s.timestamp,
+                                "size_bytes": s.size_bytes,
+                                "path": s.path.to_string_lossy(),
+                            })
+                        })
+                        .collect();
+                    println!("{}", serde_json::to_string_pretty(&arr)?);
+                } else if list.is_empty() {
+                    println!("(사용 가능한 백업 없음)");
+                    println!();
+                    println!("`openguild backup create` 으로 생성하세요.");
+                } else {
+                    println!("백업 목록 (오래된 순):");
+                    for s in &list {
+                        println!("  {} — {} bytes", s.timestamp, s.size_bytes);
+                    }
+                }
             }
-        }
+            BackupCmd::Rm { timestamp } => {
+                c.delete_backup(&timestamp)?;
+                if cli.json {
+                    println!("{}", serde_json::json!({ "ok": true, "deleted": timestamp }));
+                } else {
+                    println!("✓ 백업 삭제: {timestamp}");
+                }
+            }
+        },
         Command::Restore { to } => {
             let info = c.restore_backup(to)?;
             if cli.json {
