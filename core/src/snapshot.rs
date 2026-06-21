@@ -225,49 +225,18 @@ pub async fn maybe_auto_snapshot(
     Ok(Some(info))
 }
 
-/// "YYYYMMDD-HHMMSS" → SystemTime (UTC).
+/// "YYYYMMDD-HHMMSS" (로컬 시각) → SystemTime.
+///
+/// BUG-086: 타임스탬프는 로컬 시각으로 생성(now_compact)되므로 파싱도 로컬 기준.
+/// chrono 로 일관 처리 — 수동 윤년/epoch 계산 제거. spring-forward 로 존재하지
+/// 않는 시각이면 None (age trigger 가 안 도는 것뿐, 무해).
 fn snapshot_time(timestamp: &str) -> Option<std::time::SystemTime> {
-    // 형식: YYYYMMDD-HHMMSS (15글자)
-    if timestamp.len() != 15 || &timestamp[8..9] != "-" {
-        return None;
-    }
-    let y: u64 = timestamp[0..4].parse().ok()?;
-    let mo: u64 = timestamp[4..6].parse().ok()?;
-    let d: u64 = timestamp[6..8].parse().ok()?;
-    let h: u64 = timestamp[9..11].parse().ok()?;
-    let mi: u64 = timestamp[11..13].parse().ok()?;
-    let s: u64 = timestamp[13..15].parse().ok()?;
-
-    // UTC 기준 epoch 변환 (단순 — 윤년 처리 정확).
-    let secs = ymdhms_to_epoch(y, mo, d, h, mi, s)?;
-    Some(std::time::UNIX_EPOCH + Duration::from_secs(secs))
-}
-
-fn ymdhms_to_epoch(y: u64, mo: u64, d: u64, h: u64, mi: u64, s: u64) -> Option<u64> {
-    if y < 1970 || !(1..=12).contains(&mo) || !(1..=31).contains(&d) {
-        return None;
-    }
-    let mut days: u64 = 0;
-    for yr in 1970..y {
-        days += if is_leap_y(yr as i64) { 366 } else { 365 };
-    }
-    let months = days_in_months_y(y as i64);
-    for &m in months.iter().take((mo - 1) as usize) {
-        days += m as u64;
-    }
-    days += d - 1;
-    Some(days * 86400 + h * 3600 + mi * 60 + s)
-}
-
-fn is_leap_y(y: i64) -> bool {
-    (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
-}
-fn days_in_months_y(y: i64) -> [u32; 12] {
-    [
-        31,
-        if is_leap_y(y) { 29 } else { 28 },
-        31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
-    ]
+    use chrono::TimeZone;
+    let naive = chrono::NaiveDateTime::parse_from_str(timestamp, "%Y%m%d-%H%M%S").ok()?;
+    chrono::Local
+        .from_local_datetime(&naive)
+        .earliest()
+        .map(std::time::SystemTime::from)
 }
 
 /// 사용 가능한 snapshot 목록 (오래된 순부터).
@@ -391,50 +360,12 @@ fn prune_old_snapshots(paths: &GuildPaths, keep: usize) -> Result<()> {
     Ok(())
 }
 
-/// `YYYYMMDD-HHMMSS` UTC compact timestamp.
+/// `YYYYMMDD-HHMMSS` 로컬 compact timestamp.
+///
+/// BUG-086: 이전엔 UTC(`duration_since(UNIX_EPOCH)`)로 찍어 로컬(KST)과 9시간
+/// 어긋났다. 앱 나머지(now_local_iso8601)와 동일하게 로컬 시각으로.
 fn now_compact() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let (y, mo, d, h, mi, s) = epoch_to_ymdhms(secs);
-    format!("{y:04}{mo:02}{d:02}-{h:02}{mi:02}{s:02}")
-}
-
-fn epoch_to_ymdhms(secs: u64) -> (u32, u32, u32, u32, u32, u32) {
-    let s = (secs % 60) as u32;
-    let mi = ((secs / 60) % 60) as u32;
-    let h = ((secs / 3600) % 24) as u32;
-    let mut days = (secs / 86400) as i64;
-    let mut year: i64 = 1970;
-    loop {
-        let dy = if is_leap(year) { 366 } else { 365 };
-        if days >= dy {
-            days -= dy;
-            year += 1;
-        } else {
-            break;
-        }
-    }
-    let dim = days_in_months(year);
-    let mut month: usize = 0;
-    while month < 12 && days >= dim[month] as i64 {
-        days -= dim[month] as i64;
-        month += 1;
-    }
-    (year as u32, (month + 1) as u32, (days + 1) as u32, h, mi, s)
-}
-
-fn is_leap(y: i64) -> bool {
-    (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
-}
-fn days_in_months(y: i64) -> [u32; 12] {
-    [
-        31,
-        if is_leap(y) { 29 } else { 28 },
-        31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
-    ]
+    chrono::Local::now().format("%Y%m%d-%H%M%S").to_string()
 }
 
 #[cfg(test)]
@@ -696,6 +627,23 @@ mod tests {
         assert!(snapshot_time("invalid").is_none());
         assert!(snapshot_time("20260516_103341").is_none()); // _ instead of -
         assert!(snapshot_time("2026-05-16T10:33:41").is_none()); // ISO format
+    }
+
+    /// BUG-086: now_compact(로컬) ↔ snapshot_time(로컬) 왕복이 현재 시각과 근접.
+    /// 한쪽이 UTC, 다른 쪽이 로컬이면 TZ offset(예: 9h)만큼 어긋나 실패한다.
+    #[test]
+    fn now_compact_roundtrips_local() {
+        let ts = now_compact();
+        let parsed = snapshot_time(&ts).expect("now_compact 출력은 snapshot_time 으로 파싱돼야");
+        let now = std::time::SystemTime::now();
+        let diff = now
+            .duration_since(parsed)
+            .or_else(|e| Ok::<_, std::time::SystemTimeError>(e.duration()))
+            .unwrap();
+        assert!(
+            diff < Duration::from_secs(5),
+            "now_compact↔snapshot_time 왕복이 현재와 5초 내여야 (UTC/로컬 혼용 시 ~9h): diff={diff:?}"
+        );
     }
 
     #[tokio::test]
