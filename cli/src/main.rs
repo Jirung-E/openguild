@@ -142,6 +142,7 @@ enum BackupCmd {
     /// 사용 가능한 백업 목록 (오래된 순)
     List,
     /// 특정 백업 삭제
+    #[command(name = "remove")]
     Rm {
         /// 삭제할 timestamp (`YYYYMMDD-HHMMSS`). `backup list` 로 확인.
         timestamp: String,
@@ -361,13 +362,13 @@ enum QuestCmd {
         clear_required: bool,
     },
     // BUG-016: quest_id leak 방지 — about 에는 기능 설명만.
-    /// 댓글 (entry 단위, 공개) — list / show / add / edit / rm.
+    /// 댓글 (entry 단위, 공개) — list / show / add / edit / remove.
     /// 진리원: `.guild/quests/{slug}.comments.md` (git tracked).
     Comment {
         #[command(subcommand)]
         sub: CommentCmd,
     },
-    /// 첨부 (본문과 별개 섹션) — list / add / rm.
+    /// 첨부 (본문과 별개 섹션) — list / add / remove.
     /// 진리원: `.guild/quests/{slug}.attachments.json` + `.guild/attachments/`.
     Attach {
         #[command(subcommand)]
@@ -380,7 +381,7 @@ enum QuestCmd {
         sub: MemoCmd,
     },
     // BUG-016: doc 에 quest_id prefix 누출 X.
-    /// 태그 — list / add / rm / set. frontmatter 가 진리원.
+    /// 태그 — list / add / remove / set. frontmatter 가 진리원.
     Tag {
         #[command(subcommand)]
         sub: TagCmd,
@@ -399,6 +400,7 @@ enum TagCmd {
         tags: Vec<String>,
     },
     /// tag 1개 또는 여러 개 제거 (없는 건 무시).
+    #[command(name = "remove")]
     Rm {
         slug: String,
         /// 제거할 tag 들.
@@ -494,6 +496,7 @@ enum CommentCmd {
         file: Option<std::path::PathBuf>,
     },
     /// entry 삭제. `--force` 없으면 prompt.
+    #[command(name = "remove")]
     Rm {
         slug: String,
         id: u64,
@@ -521,6 +524,7 @@ enum PrereqCmd {
     /// 선행 퀘스트 추가
     Add { slug: String, prereq: String },
     /// 선행 퀘스트 제거
+    #[command(name = "remove")]
     Rm { slug: String, prereq: String },
 }
 
@@ -660,7 +664,7 @@ enum CampaignCmd {
         #[command(subcommand)]
         sub: CommentCmd,
     },
-    /// 캠페인 첨부 — quest attach 와 동일 (list / add / rm).
+    /// 캠페인 첨부 — quest attach 와 동일 (list / add / remove).
     Attach {
         #[command(subcommand)]
         sub: AttachCmd,
@@ -734,6 +738,7 @@ enum CampaignChecklistCmd {
         index: usize,
     },
     /// N번째 (1-based) 항목 삭제
+    #[command(name = "remove")]
     Rm {
         campaign_slug: String,
         index: usize,
@@ -2450,6 +2455,7 @@ enum AttachCmd {
         name: Option<String>,
     },
     /// 첨부 제거. 다른 곳에서 참조 안 하면 실제 파일 + blob 도 삭제(orphan 정리).
+    #[command(name = "remove")]
     Rm {
         slug: String,
         /// 제거할 첨부의 경로 (list 의 경로 값).
