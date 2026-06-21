@@ -3903,7 +3903,11 @@ fn run() -> Result<()> {
                         })
                     );
                 } else {
-                    println!("✓ snapshot 생성: {} ({} bytes)", info.timestamp, info.size_bytes);
+                    println!(
+                        "✓ snapshot 생성: {} ({} bytes)",
+                        openguild_core::snapshot::ts_to_local_display(&info.timestamp),
+                        info.size_bytes
+                    );
                     println!("  path: {}", info.path.display());
                 }
             }
@@ -3928,7 +3932,11 @@ fn run() -> Result<()> {
                 } else {
                     println!("백업 목록 (오래된 순):");
                     for s in &list {
-                        println!("  {} — {} bytes", s.timestamp, s.size_bytes);
+                        println!(
+                            "  {} — {} bytes",
+                            openguild_core::snapshot::ts_to_local_display(&s.timestamp),
+                            s.size_bytes
+                        );
                     }
                 }
             }
@@ -3952,7 +3960,10 @@ fn run() -> Result<()> {
                     })
                 );
             } else {
-                println!("✓ 복원 완료: {}", info.timestamp);
+                println!(
+                    "✓ 복원 완료: {}",
+                    openguild_core::snapshot::ts_to_local_display(&info.timestamp)
+                );
                 println!();
                 println!("주의: 파일 시스템 (`.guild/quests/*.md`) 자동 갱신 안 됨.");
                 println!("      필요시 `openguild reindex`.");
@@ -4004,7 +4015,11 @@ fn run() -> Result<()> {
             let i = c.info()?;
             let total = i.summary.quests_alive + i.summary.quests_deleted;
             let snap_total: u64 = i.snapshots.iter().map(|s| s.size_bytes).sum();
-            let latest = i.snapshots.last().map(|s| s.timestamp.as_str()).unwrap_or("(none)");
+            let latest = i
+                .snapshots
+                .last()
+                .map(|s| openguild_core::snapshot::ts_to_local_display(&s.timestamp))
+                .unwrap_or_else(|| "(none)".to_string());
             let schema = i.summary.schema_version.as_deref();
             if cli.json {
                 println!(

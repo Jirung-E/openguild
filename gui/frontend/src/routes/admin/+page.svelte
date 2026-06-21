@@ -64,9 +64,21 @@
 	}
 
 	function formatTimestamp(ts: string): string {
-		// "20260516-103341" → "2026-05-16 10:33:41"
+		// BUG-086: 스냅샷 timestamp 는 UTC 정규형("20260516-103341")로 저장 →
+		// 표시할 때만 로컬로 변환. 파싱 실패 시 원본 그대로.
 		if (ts.length !== 15 || ts[8] !== '-') return ts;
-		return `${ts.slice(0, 4)}-${ts.slice(4, 6)}-${ts.slice(6, 8)} ${ts.slice(9, 11)}:${ts.slice(11, 13)}:${ts.slice(13, 15)}`;
+		const [y, mo, d, h, mi, s] = [
+			+ts.slice(0, 4),
+			+ts.slice(4, 6),
+			+ts.slice(6, 8),
+			+ts.slice(9, 11),
+			+ts.slice(11, 13),
+			+ts.slice(13, 15)
+		];
+		const dt = new Date(Date.UTC(y, mo - 1, d, h, mi, s));
+		if (Number.isNaN(dt.getTime())) return ts;
+		const p = (n: number) => String(n).padStart(2, '0');
+		return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())} ${p(dt.getHours())}:${p(dt.getMinutes())}:${p(dt.getSeconds())}`;
 	}
 
 	function showSuccess(text: string) {

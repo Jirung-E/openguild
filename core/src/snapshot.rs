@@ -225,18 +225,30 @@ pub async fn maybe_auto_snapshot(
     Ok(Some(info))
 }
 
-/// "YYYYMMDD-HHMMSS" (로컬 시각) → SystemTime.
+/// "YYYYMMDD-HHMMSS" (UTC) → SystemTime.
 ///
-/// BUG-086: 타임스탬프는 로컬 시각으로 생성(now_compact)되므로 파싱도 로컬 기준.
-/// chrono 로 일관 처리 — 수동 윤년/epoch 계산 제거. spring-forward 로 존재하지
-/// 않는 시각이면 None (age trigger 가 안 도는 것뿐, 무해).
+/// BUG-086(후속): 타임스탬프는 **정규형 UTC** 로 저장(now_compact). 디렉토리명이
+/// offset 마커를 못 담으므로 UTC 규약으로 통일 — tz/DST 무관하게 정렬 단조 +
+/// 모호성 없음. 사람에게 보일 때만 로컬 변환(ts_to_local_display).
 fn snapshot_time(timestamp: &str) -> Option<std::time::SystemTime> {
     use chrono::TimeZone;
     let naive = chrono::NaiveDateTime::parse_from_str(timestamp, "%Y%m%d-%H%M%S").ok()?;
-    chrono::Local
-        .from_local_datetime(&naive)
-        .earliest()
-        .map(std::time::SystemTime::from)
+    Some(chrono::Utc.from_utc_datetime(&naive).into())
+}
+
+/// BUG-086(후속): 저장된 UTC compact 타임스탬프(`YYYYMMDD-HHMMSS`)를 사람용
+/// 로컬 표시 문자열(`YYYY-MM-DD HH:MM:SS`)로 변환. 파싱 실패 시 원본 그대로.
+/// CLI / GUI 의 표시 계층에서 사용 (저장값은 UTC 정규형 유지).
+pub fn ts_to_local_display(ts: &str) -> String {
+    use chrono::TimeZone;
+    match chrono::NaiveDateTime::parse_from_str(ts, "%Y%m%d-%H%M%S") {
+        Ok(naive) => chrono::Utc
+            .from_utc_datetime(&naive)
+            .with_timezone(&chrono::Local)
+            .format("%Y-%m-%d %H:%M:%S")
+            .to_string(),
+        Err(_) => ts.to_string(),
+    }
 }
 
 /// 사용 가능한 snapshot 목록 (오래된 순부터).
@@ -360,12 +372,12 @@ fn prune_old_snapshots(paths: &GuildPaths, keep: usize) -> Result<()> {
     Ok(())
 }
 
-/// `YYYYMMDD-HHMMSS` 로컬 compact timestamp.
+/// `YYYYMMDD-HHMMSS` UTC compact timestamp (디렉토리명 = 정규형 식별자).
 ///
-/// BUG-086: 이전엔 UTC(`duration_since(UNIX_EPOCH)`)로 찍어 로컬(KST)과 9시간
-/// 어긋났다. 앱 나머지(now_local_iso8601)와 동일하게 로컬 시각으로.
+/// BUG-086(후속): 저장은 UTC 정규형(tz/DST 무관 정렬 단조 + offset 없는 포맷의
+/// 모호성 제거). 사람에게 보일 때만 ts_to_local_display 로 로컬 변환.
 fn now_compact() -> String {
-    chrono::Local::now().format("%Y%m%d-%H%M%S").to_string()
+    chrono::Utc::now().format("%Y%m%d-%H%M%S").to_string()
 }
 
 #[cfg(test)]
@@ -629,10 +641,10 @@ mod tests {
         assert!(snapshot_time("2026-05-16T10:33:41").is_none()); // ISO format
     }
 
-    /// BUG-086: now_compact(로컬) ↔ snapshot_time(로컬) 왕복이 현재 시각과 근접.
-    /// 한쪽이 UTC, 다른 쪽이 로컬이면 TZ offset(예: 9h)만큼 어긋나 실패한다.
+    /// BUG-086: now_compact ↔ snapshot_time 왕복이 현재 시각과 근접 (둘 다 UTC).
+    /// 생성/파싱 규약이 어긋나면 TZ offset(예: 9h)만큼 벌어져 실패한다.
     #[test]
-    fn now_compact_roundtrips_local() {
+    fn now_compact_roundtrips() {
         let ts = now_compact();
         let parsed = snapshot_time(&ts).expect("now_compact 출력은 snapshot_time 으로 파싱돼야");
         let now = std::time::SystemTime::now();
@@ -642,8 +654,20 @@ mod tests {
             .unwrap();
         assert!(
             diff < Duration::from_secs(5),
-            "now_compact↔snapshot_time 왕복이 현재와 5초 내여야 (UTC/로컬 혼용 시 ~9h): diff={diff:?}"
+            "now_compact↔snapshot_time 왕복이 현재와 5초 내여야: diff={diff:?}"
         );
+    }
+
+    /// BUG-086(후속): UTC 저장값을 로컬 표시로 변환 — KST(+09:00)면 +9h.
+    #[test]
+    fn ts_to_local_display_converts_utc() {
+        // 파싱 실패는 원본 그대로.
+        assert_eq!(ts_to_local_display("invalid"), "invalid");
+        // 형식 변환 확인 (로컬 offset 은 환경마다 달라 형식만 검증).
+        let out = ts_to_local_display("20260101-000000");
+        assert_eq!(out.len(), 19, "YYYY-MM-DD HH:MM:SS 형식: {out}");
+        assert_eq!(&out[4..5], "-");
+        assert_eq!(&out[13..14], ":");
     }
 
     #[tokio::test]
