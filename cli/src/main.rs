@@ -2529,6 +2529,15 @@ fn run_attach_cmd(c: &Backend, scope: CommentScope, sub: AttachCmd, json: bool) 
             }
         }
         AttachCmd::Rm { slug, path } => {
+            // BUG-085: core remove 는 매칭 없으면 조용히 no-op 인데 갱신 리스트만
+            // 돌려줘서, 없는 경로를 넘겨도 "✓ 첨부 제거" 가 떴다. 제거 전에 목록에
+            // 실제로 있는지 확인하고, 없으면 명확히 에러.
+            let before = c.attachments_list(scope, &slug)?;
+            if !before.iter().any(|a| a.path == path) {
+                return Err(anyhow!(
+                    "그런 첨부 없음: {path}\n  `attach list {slug}` 로 경로를 확인하세요"
+                ));
+            }
             let list = c.attachments_remove(scope, &slug, &path)?;
             if json {
                 println!("{}", serde_json::json!({ "ok": true, "count": list.len() }));
