@@ -358,6 +358,16 @@ pub async fn refresh_campaign_if_stale(store: &Store, slug: &str) -> AppResult<b
         return Ok(false);
     }
 
+    // BUG-080: 외부 편집은 frontmatter updated_at 을 안 바꾸므로 파일 mtime 으로
+    // 보정 + frontmatter write-back (quest 와 동일). write-back 이 mtime 을 다시
+    // 바꾸므로 아래 file_mtime::touch 가 그 후 mtime 을 캐시 → churn 없음.
+    let (edit_iso, _) = writeback_external_edit_ts(&path);
+    let updated_at = if edit_iso.is_empty() {
+        crate::time::normalize_legacy_ts(&cf.frontmatter.updated_at)
+    } else {
+        edit_iso
+    };
+
     // 행 UPDATE — reindex 의 per-campaign INSERT 와 동일 필드.
     sqlx::query(
         "UPDATE campaigns SET
@@ -374,7 +384,7 @@ pub async fn refresh_campaign_if_stale(store: &Store, slug: &str) -> AppResult<b
     .bind(cf.frontmatter.display_order)
     .bind(cf.frontmatter.image.as_deref())
     .bind(&cf.frontmatter.created_at)
-    .bind(&cf.frontmatter.updated_at)
+    .bind(&updated_at)
     .bind(id)
     .execute(&store.index_pool)
     .await?;
@@ -719,6 +729,24 @@ mod tests {
                 .unwrap();
         assert_eq!(title, "edited externally");
         assert_eq!(desc.as_deref(), Some("body v2"));
+
+        // BUG-080: updated_at 이 stale frontmatter(2026-01-01)가 아니라 파일 mtime 보정.
+        let db_updated: String =
+            sqlx::query_scalar("SELECT updated_at FROM campaigns WHERE campaign_slug = 'C-001'")
+                .fetch_one(&store.index_pool)
+                .await
+                .unwrap();
+        assert_ne!(
+            db_updated, "2026-01-01T00:00:00Z",
+            "updated_at 이 파일 mtime 으로 보정되어야"
+        );
+        // 파일 frontmatter 도 write-back, 본문 보존.
+        let on_disk = std::fs::read_to_string(paths.campaign_path("C-001")).unwrap();
+        assert!(
+            !on_disk.contains("updated_at = \"2026-01-01T00:00:00Z\""),
+            "frontmatter updated_at 이 write-back 되어야"
+        );
+        assert!(on_disk.contains("body v2"), "본문은 보존되어야");
 
         // 두 번째 호출 — touch 로 cache 갱신됐으니 false (churn 없음).
         assert!(!refresh_campaign_if_stale(&store, "C-001").await.unwrap());
