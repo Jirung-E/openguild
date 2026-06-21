@@ -169,8 +169,8 @@ enum JournalCmd {
 /// DEV-176: 백업(스냅샷) 서브커맨드 — 다른 명사 그룹(quest/campaign…)과 통일.
 #[derive(Subcommand)]
 enum BackupCmd {
-    /// 백업(스냅샷) 즉시 생성
-    Create,
+    /// 백업(스냅샷) 즉시 생성 (quest/campaign 의 `new` 와 통일).
+    New,
     /// 사용 가능한 백업 목록 (오래된 순)
     List,
     /// 특정 백업 삭제
@@ -454,8 +454,9 @@ enum TemplateCmd {
     List,
     /// 템플릿 본문 출력.
     Show { name: String },
-    /// 템플릿 추가/갱신 — `.guild/templates/{name}.md` 생성. 본문은 --file / stdin.
-    Add {
+    /// 템플릿 생성/갱신 — `.guild/templates/{name}.md`. 본문은 --file / stdin.
+    /// (독립 엔티티라 quest/campaign 처럼 `new`.)
+    New {
         /// 템플릿 이름 (파일명 stem).
         name: String,
         /// 기본 type prefix (DEV / BUG ...).
@@ -3751,7 +3752,7 @@ fn run() -> Result<()> {
                     println!("{}", t.body);
                 }
             }
-            TemplateCmd::Add {
+            TemplateCmd::New {
                 name,
                 type_prefix,
                 title,
@@ -3889,7 +3890,7 @@ fn run() -> Result<()> {
             }
         },
         Command::Backup { sub } => match sub {
-            BackupCmd::Create => {
+            BackupCmd::New => {
                 let info = c.create_backup()?;
                 if cli.json {
                     println!(
