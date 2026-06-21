@@ -102,27 +102,22 @@ enum Command {
         #[arg(long)]
         to: Option<String>,
     },
-    /// 파일 → index.db 캐시 재구축 (외부 편집 / git pull / restore 후 정합).
+    /// 파일 → index.db 캐시 재구축 (외부 편집 / git pull / restore 후 정합). `index rebuild` 와 동일.
     Reindex,
-    /// 외부 편집 / 손상으로 index.db 가 파일과 어긋났는지 검사 (+ 자동 resync).
-    CheckDrift {
-        /// 발견된 drift 를 자동으로 reindex 로 해소 (기본: 보고만).
-        #[arg(long)]
-        resync: bool,
+    /// 무결성 점검 — drift / counters.
+    Check {
+        #[command(subcommand)]
+        sub: CheckCmd,
     },
-    /// SQLite VACUUM — index.db 의 dead row 제거 + 파일 크기 정리.
-    Vacuum,
-    /// journal.db 의 최근 N 개 op 출력 (debug / audit 용).
-    JournalTail {
-        /// 출력할 row 수 (기본 50).
-        #[arg(short = 'n', long, default_value_t = 50)]
-        count: i64,
+    /// index.db 캐시 — rebuild / vacuum.
+    Index {
+        #[command(subcommand)]
+        sub: IndexCmd,
     },
-    /// type 의 last_number 가 실제 max quest 번호와 일치하는지 검사 (+ 자동 보정).
-    CheckCounters {
-        /// 발견된 불일치를 파일 + SQL 에 직접 보정 (기본: 보고만).
-        #[arg(long)]
-        fix: bool,
+    /// journal(AOF) — tail. (시점 복원 replay 는 `restore` 에서 처리 — DEV-022)
+    Journal {
+        #[command(subcommand)]
+        sub: JournalCmd,
     },
     /// legacy guild.db → .guild/quests/*.md 파일 진리원 구조로 일회성 이전.
     MigrateToFiles,
@@ -131,6 +126,43 @@ enum Command {
         /// 1 줄 요약만 (script / status bar 친화).
         #[arg(long)]
         brief: bool,
+    },
+}
+
+/// DEV-177: 무결성 점검 그룹.
+#[derive(Subcommand)]
+enum CheckCmd {
+    /// 외부 편집 / 손상으로 index.db 가 파일과 어긋났는지 검사 (+ 자동 resync).
+    Drift {
+        /// 발견된 drift 를 자동으로 reindex 로 해소 (기본: 보고만).
+        #[arg(long)]
+        resync: bool,
+    },
+    /// type 의 last_number 가 실제 max quest 번호와 일치하는지 검사 (+ 자동 보정).
+    Counters {
+        /// 발견된 불일치를 파일 + SQL 에 직접 보정 (기본: 보고만).
+        #[arg(long)]
+        fix: bool,
+    },
+}
+
+/// DEV-177: index.db 캐시 그룹.
+#[derive(Subcommand)]
+enum IndexCmd {
+    /// 파일 → index.db 캐시 재구축 (top-level `reindex` 와 동일).
+    Rebuild,
+    /// SQLite VACUUM — index.db 의 dead row 제거 + 파일 크기 정리.
+    Vacuum,
+}
+
+/// DEV-177: journal(AOF) 그룹. (replay 는 restore 에서 — DEV-022)
+#[derive(Subcommand)]
+enum JournalCmd {
+    /// journal.db 의 최근 N 개 op 출력 (debug / audit 용).
+    Tail {
+        /// 출력할 row 수 (기본 50).
+        #[arg(short = 'n', long, default_value_t = 50)]
+        count: i64,
     },
 }
 
@@ -3232,6 +3264,212 @@ fn quest_field_value(d: &QuestDetail, field: &str) -> Result<String> {
     Ok(v)
 }
 
+// ─── DEV-177: 정비 명령 핸들러 (reindex 는 top-level + index rebuild 양쪽에서 재사용) ───
+
+fn run_reindex_cmd(c: &Backend, json: bool) -> Result<()> {
+    let report = c.reindex()?;
+    if json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "ok": true,
+                "types": report.types_loaded,
+                "statuses": report.statuses_loaded,
+                "quests": report.quests_loaded,
+                "dependencies": report.dependencies_loaded,
+                "campaigns": report.campaigns_loaded,
+                "comments": report.comments_loaded,
+                "memos": report.memos_loaded,
+                "tags": report.tags_loaded,
+                "positions": report.positions_restored,
+                "skipped": report.skipped.len(),
+            })
+        );
+    } else {
+        println!("✓ index.db 재구축 완료");
+        for line in report.summary_lines() {
+            println!("  {line}");
+        }
+        if !report.skipped.is_empty() {
+            println!();
+            println!("⚠ {} 개 파일 skip 됨 (파싱 / 무결성 실패):", report.skipped.len());
+            for (path, reason) in &report.skipped {
+                println!("  - {path}");
+                println!("    → {reason}");
+            }
+        }
+    }
+    Ok(())
+}
+
+fn run_check_drift_cmd(c: &Backend, resync: bool, json: bool) -> Result<()> {
+    let report = c.check_drift()?;
+    if json {
+        if resync && !report.is_clean() {
+            c.reindex()?;
+        }
+        println!(
+            "{}",
+            serde_json::json!({
+                "clean": report.is_clean(),
+                "resynced": resync && !report.is_clean(),
+                "report": report,
+            })
+        );
+    } else if report.is_clean() {
+        println!("✓ index.db 가 파일과 일치 (drift 없음)");
+    } else {
+        println!("⚠ drift 발견:");
+        let sections = [
+            ("파일은 있는데 index 에 없음", &report.missing_in_index),
+            ("index 에 있는데 파일이 없음", &report.stale_in_index),
+            ("파일 mtime > index.db mtime", &report.fresh_files),
+            ("sibling(.comments/.memo) 가 더 새것", &report.fresh_siblings),
+        ];
+        for (label, items) in sections {
+            if !items.is_empty() {
+                println!();
+                println!("  {label} ({}):", items.len());
+                for s in items {
+                    println!("    - {s}");
+                }
+            }
+        }
+        println!();
+        if resync {
+            println!("▸ reindex 실행 중...");
+            c.reindex()?;
+            println!("✓ resync 완료");
+        } else {
+            println!("(--resync 로 자동 reindex 가능)");
+        }
+    }
+    Ok(())
+}
+
+fn run_check_counters_cmd(c: &Backend, fix: bool, json: bool) -> Result<()> {
+    let report = c.check_counters(fix)?;
+    if json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "ok": true,
+                "types_checked": report.file_report.types_checked,
+                "file_issues": report.file_report.issues.len(),
+                "sql_drift": report.sql_drift.len(),
+                "fixed": fix,
+            })
+        );
+    } else {
+        println!("✓ counter 검증 완료");
+        println!("  검사된 type 수 : {}", report.file_report.types_checked);
+        println!(
+            "  발견 이슈     : {} (file) + {} (SQL)",
+            report.file_report.issues.len(),
+            report.sql_drift.len()
+        );
+        for issue in &report.file_report.issues {
+            println!();
+            println!("  • type {} [file drift]:", issue.prefix);
+            println!("    저장된 last_number   : {}", issue.stored_last_number);
+            println!("    실제 max quest 번호  : {}", issue.actual_max_number);
+            if fix {
+                println!("    → {} 으로 보정됨 (file + SQL)", issue.corrected_to);
+            } else {
+                println!("    (--fix 로 자동 보정 가능)");
+            }
+        }
+        for drift in &report.sql_drift {
+            println!();
+            println!("  • type {} [SQL drift]:", drift.prefix);
+            println!("    file last_number     : {}", drift.file_last_number);
+            println!("    SQL  last_number     : {}", drift.sql_last_number);
+            if fix {
+                println!("    → {} 으로 보정됨 (SQL ← file)", drift.synced_to);
+            } else {
+                println!("    (--fix 로 자동 보정 가능)");
+            }
+        }
+    }
+    Ok(())
+}
+
+fn run_vacuum_cmd(c: &Backend, json: bool) -> Result<()> {
+    let r = c.vacuum()?;
+    if json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "ok": true,
+                "before_bytes": r.before_bytes,
+                "after_bytes": r.after_bytes,
+                "saved_bytes": r.saved(),
+            })
+        );
+    } else {
+        println!("✓ VACUUM 완료");
+        println!("  before : {} bytes", r.before_bytes);
+        println!("  after  : {} bytes", r.after_bytes);
+        if r.saved() > 0 && r.before_bytes > 0 {
+            println!(
+                "  saved  : {} bytes ({:.1}%)",
+                r.saved(),
+                (r.saved() as f64 / r.before_bytes as f64) * 100.0
+            );
+        } else {
+            println!("  saved  : 0 bytes (이미 dense)");
+        }
+    }
+    Ok(())
+}
+
+fn run_journal_tail_cmd(c: &Backend, count: i64, json: bool) -> Result<()> {
+    let tail = c.journal_tail(count)?;
+    match tail {
+        None => {
+            if json {
+                println!("{}", serde_json::json!({ "exists": false, "rows": [] }));
+            } else {
+                println!("(journal.db 없음 — 아직 mutation 안 됐거나 snapshot 직후)");
+            }
+        }
+        Some(t) => {
+            if json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "exists": true,
+                        "total": t.total,
+                        "rows": t.rows.iter().map(|o| serde_json::json!({
+                            "id": o.id, "ts": o.ts, "op": o.op,
+                            "args": o.args, "result": o.result,
+                        })).collect::<Vec<_>>(),
+                    })
+                );
+            } else {
+                println!("journal.db: {} row(s) total — showing last {}", t.total, t.rows.len());
+                println!();
+                let trunc = |s: &str| -> String {
+                    if s.chars().count() > 100 {
+                        format!("{}…", s.chars().take(100).collect::<String>())
+                    } else {
+                        s.to_string()
+                    }
+                };
+                for o in &t.rows {
+                    println!("#{:>6}  {}  {}", o.id, o.ts, o.op);
+                    println!("         args   : {}", trunc(&o.args));
+                    if let Some(r) = &o.result {
+                        println!("         result : {}", trunc(r));
+                    }
+                    println!();
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 // ─────────────────────────── 명령 처리 ───────────────────────────
 
 fn run() -> Result<()> {
@@ -3246,7 +3484,12 @@ fn run() -> Result<()> {
 
     // 비정상 파일 감지 시 stderr 경고 (GUI 시동 알림과 동일 취지). json 모드는
     // 기계 출력 오염 방지를 위해, Reindex 는 자체적으로 skipped 를 출력하므로 제외.
-    if !cli.json && !matches!(cli.command, Command::Reindex) {
+    if !cli.json
+        && !matches!(
+            cli.command,
+            Command::Reindex | Command::Index { sub: IndexCmd::Rebuild }
+        )
+    {
         c.warn_problem_files();
     }
 
@@ -3705,202 +3948,18 @@ fn run() -> Result<()> {
                 println!("      필요시 `openguild reindex`.");
             }
         }
-        Command::Reindex => {
-            let report = c.reindex()?;
-            if cli.json {
-                println!(
-                    "{}",
-                    serde_json::json!({
-                        "ok": true,
-                        "types": report.types_loaded,
-                        "statuses": report.statuses_loaded,
-                        "quests": report.quests_loaded,
-                        "dependencies": report.dependencies_loaded,
-                        "campaigns": report.campaigns_loaded,
-                        "comments": report.comments_loaded,
-                        "memos": report.memos_loaded,
-                        "tags": report.tags_loaded,
-                        "positions": report.positions_restored,
-                        "skipped": report.skipped.len(),
-                    })
-                );
-            } else {
-                // DEV-160: server (openguild-server reindex) 와 동일한 상세 다줄 출력.
-                println!("✓ index.db 재구축 완료");
-                for line in report.summary_lines() {
-                    println!("  {line}");
-                }
-                if !report.skipped.is_empty() {
-                    println!();
-                    println!("⚠ {} 개 파일 skip 됨 (파싱 / 무결성 실패):", report.skipped.len());
-                    for (path, reason) in &report.skipped {
-                        println!("  - {path}");
-                        println!("    → {reason}");
-                    }
-                }
-            }
-        }
-        Command::CheckDrift { resync } => {
-            let report = c.check_drift()?;
-            if cli.json {
-                if resync && !report.is_clean() {
-                    c.reindex()?;
-                }
-                println!(
-                    "{}",
-                    serde_json::json!({
-                        "clean": report.is_clean(),
-                        "resynced": resync && !report.is_clean(),
-                        "report": report,
-                    })
-                );
-            } else if report.is_clean() {
-                println!("✓ index.db 가 파일과 일치 (drift 없음)");
-            } else {
-                println!("⚠ drift 발견:");
-                let sections = [
-                    ("파일은 있는데 index 에 없음", &report.missing_in_index),
-                    ("index 에 있는데 파일이 없음", &report.stale_in_index),
-                    ("파일 mtime > index.db mtime", &report.fresh_files),
-                    ("sibling(.comments/.memo) 가 더 새것", &report.fresh_siblings),
-                ];
-                for (label, items) in sections {
-                    if !items.is_empty() {
-                        println!();
-                        println!("  {label} ({}):", items.len());
-                        for s in items {
-                            println!("    - {s}");
-                        }
-                    }
-                }
-                println!();
-                if resync {
-                    println!("▸ reindex 실행 중...");
-                    c.reindex()?;
-                    println!("✓ resync 완료");
-                } else {
-                    println!("(--resync 로 자동 reindex 가능)");
-                }
-            }
-        }
-        Command::Vacuum => {
-            let r = c.vacuum()?;
-            if cli.json {
-                println!(
-                    "{}",
-                    serde_json::json!({
-                        "ok": true,
-                        "before_bytes": r.before_bytes,
-                        "after_bytes": r.after_bytes,
-                        "saved_bytes": r.saved(),
-                    })
-                );
-            } else {
-                println!("✓ VACUUM 완료");
-                println!("  before : {} bytes", r.before_bytes);
-                println!("  after  : {} bytes", r.after_bytes);
-                if r.saved() > 0 && r.before_bytes > 0 {
-                    println!(
-                        "  saved  : {} bytes ({:.1}%)",
-                        r.saved(),
-                        (r.saved() as f64 / r.before_bytes as f64) * 100.0
-                    );
-                } else {
-                    println!("  saved  : 0 bytes (이미 dense)");
-                }
-            }
-        }
-        Command::JournalTail { count } => {
-            let tail = c.journal_tail(count)?;
-            match tail {
-                None => {
-                    if cli.json {
-                        println!("{}", serde_json::json!({ "exists": false, "rows": [] }));
-                    } else {
-                        println!("(journal.db 없음 — 아직 mutation 안 됐거나 snapshot 직후)");
-                    }
-                }
-                Some(t) => {
-                    if cli.json {
-                        println!(
-                            "{}",
-                            serde_json::json!({
-                                "exists": true,
-                                "total": t.total,
-                                "rows": t.rows.iter().map(|o| serde_json::json!({
-                                    "id": o.id, "ts": o.ts, "op": o.op,
-                                    "args": o.args, "result": o.result,
-                                })).collect::<Vec<_>>(),
-                            })
-                        );
-                    } else {
-                        println!("journal.db: {} row(s) total — showing last {}", t.total, t.rows.len());
-                        println!();
-                        // char 단위 truncate — byte slice 는 멀티바이트(한글) 중간에서 panic.
-                        let trunc = |s: &str| -> String {
-                            if s.chars().count() > 100 {
-                                format!("{}…", s.chars().take(100).collect::<String>())
-                            } else {
-                                s.to_string()
-                            }
-                        };
-                        for o in &t.rows {
-                            println!("#{:>6}  {}  {}", o.id, o.ts, o.op);
-                            println!("         args   : {}", trunc(&o.args));
-                            if let Some(r) = &o.result {
-                                println!("         result : {}", trunc(r));
-                            }
-                            println!();
-                        }
-                    }
-                }
-            }
-        }
-        Command::CheckCounters { fix } => {
-            let report = c.check_counters(fix)?;
-            if cli.json {
-                println!(
-                    "{}",
-                    serde_json::json!({
-                        "ok": true,
-                        "types_checked": report.file_report.types_checked,
-                        "file_issues": report.file_report.issues.len(),
-                        "sql_drift": report.sql_drift.len(),
-                        "fixed": fix,
-                    })
-                );
-            } else {
-                println!("✓ counter 검증 완료");
-                println!("  검사된 type 수 : {}", report.file_report.types_checked);
-                println!(
-                    "  발견 이슈     : {} (file) + {} (SQL)",
-                    report.file_report.issues.len(),
-                    report.sql_drift.len()
-                );
-                for issue in &report.file_report.issues {
-                    println!();
-                    println!("  • type {} [file drift]:", issue.prefix);
-                    println!("    저장된 last_number   : {}", issue.stored_last_number);
-                    println!("    실제 max quest 번호  : {}", issue.actual_max_number);
-                    if fix {
-                        println!("    → {} 으로 보정됨 (file + SQL)", issue.corrected_to);
-                    } else {
-                        println!("    (--fix 로 자동 보정 가능)");
-                    }
-                }
-                for drift in &report.sql_drift {
-                    println!();
-                    println!("  • type {} [SQL drift]:", drift.prefix);
-                    println!("    file last_number     : {}", drift.file_last_number);
-                    println!("    SQL  last_number     : {}", drift.sql_last_number);
-                    if fix {
-                        println!("    → {} 으로 보정됨 (SQL ← file)", drift.synced_to);
-                    } else {
-                        println!("    (--fix 로 자동 보정 가능)");
-                    }
-                }
-            }
-        }
+        Command::Reindex => run_reindex_cmd(&c, cli.json)?,
+        Command::Check { sub } => match sub {
+            CheckCmd::Drift { resync } => run_check_drift_cmd(&c, resync, cli.json)?,
+            CheckCmd::Counters { fix } => run_check_counters_cmd(&c, fix, cli.json)?,
+        },
+        Command::Index { sub } => match sub {
+            IndexCmd::Rebuild => run_reindex_cmd(&c, cli.json)?,
+            IndexCmd::Vacuum => run_vacuum_cmd(&c, cli.json)?,
+        },
+        Command::Journal { sub } => match sub {
+            JournalCmd::Tail { count } => run_journal_tail_cmd(&c, count, cli.json)?,
+        },
         Command::MigrateToFiles => {
             let report = c.migrate_to_files()?;
             if cli.json {
