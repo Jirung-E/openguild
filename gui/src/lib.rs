@@ -369,6 +369,7 @@ pub fn run() {
             // admin
             commands::admin_create_snapshot,
             commands::admin_list_snapshots,
+            commands::admin_delete_snapshot,
             commands::admin_restore,
             commands::admin_check_drift,
             commands::admin_reindex,

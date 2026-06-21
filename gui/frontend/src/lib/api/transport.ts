@@ -304,6 +304,10 @@ function routeToInvoke(
 	if (method === 'GET' && pathOnly === '/api/admin/snapshots') {
 		return { cmd: 'admin_list_snapshots', args: {} };
 	}
+	// DEV-175: DELETE /api/admin/snapshots/{ts}
+	if (method === 'DELETE' && parts[0] === 'api' && parts[1] === 'admin' && parts[2] === 'snapshots' && parts[3]) {
+		return { cmd: 'admin_delete_snapshot', args: { ts: decodeURIComponent(parts[3]) } };
+	}
 	if (method === 'POST' && pathOnly === '/api/admin/restore') {
 		return { cmd: 'admin_restore', args: { args: body ?? {} } };
 	}

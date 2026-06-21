@@ -117,6 +117,21 @@
 		}
 	}
 
+	// DEV-175: 백업 삭제 — 인앱 confirm 후 삭제 + 목록 갱신.
+	let confirmDeleteSnap = $state<string | null>(null);
+	async function doDeleteSnapshot(ts: string) {
+		busy = true;
+		try {
+			await adminApi.deleteSnapshot(ts);
+			snapshots = await adminApi.listSnapshots();
+			showSuccess(`백업 삭제: ${formatTimestamp(ts)}`);
+		} catch (e) {
+			showError(`백업 삭제 실패: ${e}`);
+		} finally {
+			busy = false;
+		}
+	}
+
 	async function onCheckDrift() {
 		busy = true;
 		try {
@@ -241,9 +256,15 @@
 						<tr>
 							<td><code>{formatTimestamp(s.timestamp)}</code></td>
 							<td>{formatSize(s.size_bytes)}</td>
-							<td>
+							<td class="snap-actions">
 								<button class="restore" onclick={() => onRestore(s.timestamp)} disabled={busy}
 									>복원</button
+								>
+								<button
+									class="del-snap"
+									title="이 백업 삭제"
+									onclick={() => (confirmDeleteSnap = s.timestamp)}
+									disabled={busy}>삭제</button
 								>
 							</td>
 						</tr>
@@ -368,6 +389,23 @@
 	oncancel={() => (confirmRestore = null)}
 />
 
+<!-- DEV-175: 백업 삭제 확인 — 인앱 모달. -->
+<ConfirmDialog
+	open={confirmDeleteSnap !== null}
+	title="백업 삭제"
+	message={confirmDeleteSnap
+		? `"${formatTimestamp(confirmDeleteSnap)}" 백업을 삭제할까요?\n\n이 백업 파일이 영구 삭제됩니다 (되돌릴 수 없음).`
+		: ''}
+	confirmLabel="삭제"
+	danger
+	onconfirm={() => {
+		const ts = confirmDeleteSnap;
+		confirmDeleteSnap = null;
+		if (ts) doDeleteSnapshot(ts);
+	}}
+	oncancel={() => (confirmDeleteSnap = null)}
+/>
+
 <style>
 	.page {
 		max-width: var(--content-max-width, 900px);
@@ -437,6 +475,18 @@
 	}
 	button.restore:hover:not(:disabled) {
 		background: var(--btn-warning-bg-hover);
+	}
+	/* DEV-175: 백업 삭제 버튼. */
+	.snap-actions {
+		display: flex;
+		gap: 0.4rem;
+	}
+	button.del-snap {
+		color: var(--danger);
+		border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+	}
+	button.del-snap:hover:not(:disabled) {
+		background: color-mix(in srgb, var(--danger) 14%, transparent);
 	}
 	table {
 		width: 100%;

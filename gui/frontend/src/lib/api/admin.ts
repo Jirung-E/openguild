@@ -58,6 +58,10 @@ export const adminApi = {
 	/** 사용 가능 snapshot 목록 (오래된 순). */
 	listSnapshots: () => api.get<SnapshotInfo[]>('/api/admin/snapshots'),
 
+	/** DEV-175: 특정 snapshot 삭제. */
+	deleteSnapshot: (ts: string) =>
+		api.delete(`/api/admin/snapshots/${encodeURIComponent(ts)}`),
+
 	/** snapshot 으로 index.db 복원. to 미지정 시 최신 사용. */
 	restore: (to?: string) =>
 		api.post<RestoreResponse>('/api/admin/restore', to ? { to } : {}),

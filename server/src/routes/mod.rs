@@ -152,6 +152,7 @@ pub fn create_router(store: Store) -> Router {
         // admin
         .route("/api/admin/snapshot", post(admin::create_snapshot))
         .route("/api/admin/snapshots", get(admin::list_snapshots))
+        .route("/api/admin/snapshots/{ts}", delete(admin::delete_snapshot))
         .route("/api/admin/restore", post(admin::restore))
         .route("/api/admin/drift", get(admin::check_drift))
         .route("/api/admin/reindex", post(admin::run_reindex))

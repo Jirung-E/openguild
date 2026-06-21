@@ -37,6 +37,16 @@ pub async fn list_snapshots(
     Ok(Json(list))
 }
 
+/// DEV-175: `DELETE /api/admin/snapshots/{ts}` — 특정 snapshot 삭제.
+pub async fn delete_snapshot(
+    State(store): State<Store>,
+    Path(ts): Path<String>,
+) -> AppResult<Json<serde_json::Value>> {
+    snapshot::delete_snapshot(&store.paths, &ts)
+        .map_err(openguild_core::AppError::Internal)?;
+    Ok(Json(json!({ "ok": true, "deleted": ts })))
+}
+
 /// `POST /api/admin/restore` — 지정 snapshot 으로 복원.
 pub async fn restore(
     State(store): State<Store>,

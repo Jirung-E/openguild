@@ -95,6 +95,11 @@ enum Command {
     Backup,
     /// 사용 가능한 백업 목록
     Backups,
+    /// 특정 백업(스냅샷) 삭제
+    BackupRm {
+        /// 삭제할 timestamp (`YYYYMMDD-HHMMSS`). `backups` 로 확인.
+        timestamp: String,
+    },
     /// 백업으로 복원
     Restore {
         /// 특정 timestamp (`YYYYMMDD-HHMMSS`). 미지정 시 최신 사용.
@@ -938,6 +943,10 @@ impl HttpClient {
 
     fn list_snapshots(&self) -> Result<Vec<openguild_core::snapshot::SnapshotInfo>> {
         self.get("/api/admin/snapshots")
+    }
+
+    fn delete_snapshot(&self, timestamp: &str) -> Result<()> {
+        self.delete_no_body(&format!("/api/admin/snapshots/{timestamp}"))
     }
 
     fn restore_snapshot(
@@ -2135,6 +2144,16 @@ impl Backend {
         match self {
             Backend::Http(c) => c.list_snapshots(),
             Backend::Local(l) => openguild_core::snapshot::list_snapshots(&l.store.paths),
+        }
+    }
+
+    /// DEV-175: 특정 백업 삭제.
+    fn delete_backup(&self, timestamp: &str) -> Result<()> {
+        match self {
+            Backend::Http(c) => c.delete_snapshot(timestamp),
+            Backend::Local(l) => {
+                openguild_core::snapshot::delete_snapshot(&l.store.paths, timestamp)
+            }
         }
     }
 
@@ -3641,6 +3660,14 @@ fn run() -> Result<()> {
                 for s in &list {
                     println!("  {} — {} bytes", s.timestamp, s.size_bytes);
                 }
+            }
+        }
+        Command::BackupRm { timestamp } => {
+            c.delete_backup(&timestamp)?;
+            if cli.json {
+                println!("{}", serde_json::json!({ "ok": true, "deleted": timestamp }));
+            } else {
+                println!("✓ 백업 삭제: {timestamp}");
             }
         }
         Command::Restore { to } => {

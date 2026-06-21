@@ -325,6 +325,12 @@ pub async fn admin_list_snapshots(
     snapshot::list_snapshots(&store.paths).map_err(err)
 }
 
+/// DEV-175: 특정 백업(스냅샷) 삭제.
+#[tauri::command]
+pub fn admin_delete_snapshot(store: State<'_, Store>, ts: String) -> Result<(), String> {
+    snapshot::delete_snapshot(&store.paths, &ts).map_err(err)
+}
+
 #[derive(Debug, Deserialize)]
 pub struct RestoreArgs {
     /// 특정 timestamp (`YYYYMMDD-HHMMSS`). 미지정 시 최신.

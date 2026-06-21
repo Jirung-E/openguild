@@ -306,6 +306,25 @@ pub fn latest_snapshot(paths: &GuildPaths) -> Result<Option<SnapshotInfo>> {
     Ok(list_snapshots(paths)?.into_iter().last())
 }
 
+/// DEV-175: 특정 snapshot 삭제 — `snapshots/{timestamp}/` 디렉토리 제거.
+/// timestamp 는 디렉토리 이름 한 토막이어야 (traversal 방지).
+pub fn delete_snapshot(paths: &GuildPaths, timestamp: &str) -> Result<()> {
+    if timestamp.is_empty()
+        || timestamp.contains('/')
+        || timestamp.contains('\\')
+        || timestamp.contains("..")
+    {
+        anyhow::bail!("잘못된 snapshot timestamp: {timestamp}");
+    }
+    let target = paths.snapshots_dir().join(timestamp);
+    if !target.is_dir() {
+        anyhow::bail!("snapshot 없음: {timestamp}");
+    }
+    std::fs::remove_dir_all(&target)
+        .with_context(|| format!("snapshot 삭제 실패: {}", target.display()))?;
+    Ok(())
+}
+
 /// BUG-076: snapshot(소스 파일 묶음)을 `.guild/` 로 되돌리고 index.db 를 reindex 로
 /// 재구축. 파일이 진실이므로 rules/댓글/메모/첨부 등 모두 복원된다.
 ///
@@ -552,6 +571,28 @@ mod tests {
                 "20260103-120000".to_string(),
             ]
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-175: delete_snapshot 이 디렉토리 제거 + 미존재/traversal 가드.
+    #[tokio::test]
+    async fn delete_snapshot_removes_and_guards() {
+        let dir = fresh_tmp("del");
+        let store = setup(&dir).await;
+        let paths = store.paths.clone();
+        for ts in ["20260101-120000", "20260102-120000"] {
+            let p = paths.snapshots_dir().join(ts);
+            std::fs::create_dir_all(&p).unwrap();
+            std::fs::write(p.join("marker.guild"), b"x").unwrap();
+        }
+        // 존재하는 것 삭제 → 디렉토리 사라지고 목록 1개.
+        delete_snapshot(&paths, "20260101-120000").unwrap();
+        assert!(!paths.snapshots_dir().join("20260101-120000").exists());
+        assert_eq!(list_snapshots(&paths).unwrap().len(), 1);
+        // 미존재 → 에러.
+        assert!(delete_snapshot(&paths, "29990101-000000").is_err());
+        // traversal 가드.
+        assert!(delete_snapshot(&paths, "../evil").is_err());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
