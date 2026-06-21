@@ -218,14 +218,21 @@ function uploadAndInsertTextarea(
  */
 export function textareaAttach(
 	ta: HTMLTextAreaElement,
-	opts: { onError?: (msg: string) => void; onAttach?: (rel: string, name: string) => void } = {}
+	opts: {
+		onError?: (msg: string) => void;
+		onAttach?: (rel: string, name: string) => void;
+		mediaOnly?: boolean;
+	} = {}
 ): { destroy(): void } {
 	if (detectEnvironment() !== 'tauri') return { destroy() {} };
 	const onError = opts.onError ?? ((m) => console.error('첨부 업로드 실패:', m));
-	// BUG-083: onAttach(첨부 섹션) 가 있으면 본문(quest/campaign) 편집기와 동일하게
-	// 미디어는 댓글 인라인 임베드, 비미디어는 첨부 섹션으로 라우팅. onAttach 없으면
-	// 모두 인라인 (fallback).
+	// BUG-083(잠정): 댓글은 mediaOnly — 이미지/동영상만 인라인 임베드, 비미디어 차단.
+	// (per-comment 첨부 기능은 On Hold.) onAttach 분기는 추후 재작업용으로 유지.
 	const place = (file: File, ext: string) => {
+		if (opts.mediaOnly && !isMedia(ext)) {
+			onError(MEDIA_ONLY_MSG);
+			return;
+		}
 		if (opts.onAttach && !isMedia(ext)) uploadToSection(file, ext, opts.onAttach, onError);
 		else uploadAndInsertTextarea(ta, file, ext, onError);
 	};

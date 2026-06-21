@@ -26,7 +26,7 @@
 	// DEV-130: Tab = tab 문자 삽입 (focus 이동 X).
 	import { tabInsert } from '$lib/actions/tab-insert';
 	// DEV-151: 댓글 textarea 첨부 — paste/drag&drop/버튼.
-	import { textareaAttach, pickAndAttachTextarea } from '$lib/utils/editor-attach';
+	import { textareaAttach } from '$lib/utils/editor-attach';
 	// DEV-140/171: 댓글 textarea cross-link 자동완성 — caret 위치 팝업 + 실재 ID 제안.
 	import { wikiMatch, applyWikiLink, caretXY, type WikiItem } from '$lib/utils/textarea-wikilink';
 	import { questIndex, loadQuestIndex } from '$lib/stores/questIndex';
@@ -171,23 +171,10 @@
 		}
 	}
 
-	// 첨부 버튼이 삽입할 textarea 참조 (편집/답글은 한 번에 하나만 열림).
-	let newTextareaEl = $state<HTMLTextAreaElement | undefined>(undefined);
-	let editTextareaEl = $state<HTMLTextAreaElement | undefined>(undefined);
-	let replyTextareaEl = $state<HTMLTextAreaElement | undefined>(undefined);
-
 	// DEV-100: scope — quest (기본) / campaign. API base 만 다름.
-	// BUG-083: onAttach 가 있으면 댓글 첨부(버튼·비미디어 paste/drop)를 본문 첨부
-	// 버튼과 동일하게 quest/campaign 첨부 섹션으로 라우팅 (인라인 링크 X).
-	let {
-		slug,
-		scope = 'quest',
-		onAttach
-	}: {
-		slug: string;
-		scope?: 'quest' | 'campaign';
-		onAttach?: (rel: string, name: string) => void;
-	} = $props();
+	// BUG-083(잠정): 댓글 첨부 버튼은 제거, paste/drop 은 미디어(이미지/동영상)만
+	// 인라인 허용. per-comment 첨부 기능은 On Hold.
+	let { slug, scope = 'quest' }: { slug: string; scope?: 'quest' | 'campaign' } = $props();
 	const commentsApi = $derived(scope === 'campaign' ? campaignCommentsApi : questCommentsApi);
 
 	let loading = $state(true);
@@ -571,8 +558,7 @@
 		{#if editingId === e.id}
 			<textarea
 				use:tabInsert
-				use:textareaAttach={{ onError: (m) => (editError = `첨부 실패: ${m}`), onAttach }}
-				bind:this={editTextareaEl}
+				use:textareaAttach={{ onError: (m) => (editError = `첨부 실패: ${m}`), mediaOnly: true }}
 				class="body-input"
 				bind:value={editBody}
 				oninput={onWikiInput}
@@ -584,13 +570,6 @@
 			></textarea>
 			{#if editError}<p class="state err">{editError}</p>{/if}
 			<div class="actions">
-				<button
-					type="button"
-					class="btn-attach"
-					onclick={() =>
-						pickAndAttachTextarea(editTextareaEl, (m) => (editError = `첨부 실패: ${m}`), onAttach)}
-					title="이미지·동영상·파일 첨부 (드래그&드랍 / Ctrl+V 도 가능)">📎 첨부</button
-				>
 				<button class="btn-save" onclick={() => saveEdit(e.id)} disabled={editSaving}>
 					{editSaving ? '저장…' : '저장'}
 				</button>
@@ -725,9 +704,8 @@
 													use:tabInsert
 													use:textareaAttach={{
 														onError: (m) => (replyError = `첨부 실패: ${m}`),
-														onAttach
+														mediaOnly: true
 													}}
-													bind:this={replyTextareaEl}
 													class="body-input"
 													bind:value={replyBody}
 													oninput={onWikiInput}
@@ -740,18 +718,6 @@
 												></textarea>
 												{#if replyError}<p class="state err">{replyError}</p>{/if}
 												<div class="actions">
-													<button
-														type="button"
-														class="btn-attach"
-														onclick={() =>
-															pickAndAttachTextarea(
-																replyTextareaEl,
-																(m) => (replyError = `첨부 실패: ${m}`),
-																onAttach
-															)}
-														title="이미지·동영상·파일 첨부 (드래그&드랍 / Ctrl+V 도 가능)"
-														>📎 첨부</button
-													>
 													<button
 														class="btn-save"
 														onclick={() => submitReply(root.id)}
@@ -794,8 +760,7 @@
 				</div>
 				<textarea
 					use:tabInsert
-					use:textareaAttach={{ onError: (m) => (saveError = `첨부 실패: ${m}`), onAttach }}
-					bind:this={newTextareaEl}
+					use:textareaAttach={{ onError: (m) => (saveError = `첨부 실패: ${m}`), mediaOnly: true }}
 					class="body-input"
 					bind:value={newBody}
 					oninput={onWikiInput}
@@ -808,17 +773,6 @@
 				></textarea>
 				{#if saveError}<p class="state err">{saveError}</p>{/if}
 				<div class="actions">
-					<button
-						type="button"
-						class="btn-attach"
-						onclick={() =>
-							pickAndAttachTextarea(
-								newTextareaEl,
-								(m) => (saveError = `첨부 실패: ${m}`),
-								onAttach
-							)}
-						title="이미지·동영상·파일 첨부 (드래그&드랍 / Ctrl+V 도 가능)">📎 첨부</button
-					>
 					<button class="btn-save" onclick={add} disabled={saving || !newBody.trim()}>
 						{saving ? '추가…' : '+ 댓글 추가'}
 					</button>
@@ -1268,20 +1222,6 @@
 		display: flex;
 		gap: 0.4rem;
 		margin-top: 0.35rem;
-	}
-	/* DEV-151: 댓글 첨부 버튼. */
-	.btn-attach {
-		padding: 0.3rem 0.7rem;
-		background: var(--bg-subtle);
-		border: 1px solid var(--border);
-		color: var(--text);
-		border-radius: 6px;
-		cursor: pointer;
-		font-size: 0.8rem;
-		margin-right: auto;
-	}
-	.btn-attach:hover {
-		background: var(--bg-elevated);
 	}
 	/* DEV-171: cross-link 자동완성 팝업 (caret 위치, VS 식). */
 	.wiki-pop {
