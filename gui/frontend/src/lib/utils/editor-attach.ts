@@ -23,6 +23,12 @@ import { detectEnvironment } from '$lib/api/transport';
 const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg']);
 const VIDEO_EXTS = new Set(['mp4', 'webm']);
 
+// BUG-083: 첨부 섹션이 없는 편집기(메모·규칙)는 본문 인라인으로만 넣을 수 있는
+// 미디어(이미지/동영상)만 허용 — 비미디어는 클릭해도 안 열리는 죽은 링크가 되므로
+// 차단 + 안내.
+const MEDIA_ONLY_MSG =
+	'이미지·동영상만 첨부할 수 있습니다. 다른 파일은 quest/campaign 의 첨부 섹션을 이용하세요.';
+
 const EXT_BY_MIME: Record<string, string> = {
 	'image/png': 'png',
 	'image/jpeg': 'jpg',
@@ -155,12 +161,26 @@ function uploadToSection(
 // textarea 용 paste/drop/버튼 첨부 — bind:value 동기화를 위해 'input' 이벤트를
 // 직접 dispatch 한다.
 
-/** 커서 위치에 text 삽입 + input 이벤트 (Svelte bind:value 갱신). */
+/**
+ * 커서 위치에 text 삽입. BUG-083: `execCommand('insertText')` 로 삽입해 네이티브
+ * undo 스택을 보존(Ctrl+Z 가능) — setRangeText 는 undo 불가라 미지원 환경 fallback
+ * 으로만. execCommand 는 'input' 이벤트를 자동 발생시켜 Svelte bind:value 도 갱신.
+ */
 function insertIntoTextarea(ta: HTMLTextAreaElement, text: string) {
 	const start = ta.selectionStart ?? ta.value.length;
 	const end = ta.selectionEnd ?? ta.value.length;
-	ta.setRangeText(text, start, end, 'end');
-	ta.dispatchEvent(new Event('input', { bubbles: true }));
+	ta.focus();
+	ta.setSelectionRange(start, end);
+	let ok = false;
+	try {
+		ok = document.execCommand('insertText', false, text);
+	} catch {
+		ok = false;
+	}
+	if (!ok) {
+		ta.setRangeText(text, start, end, 'end');
+		ta.dispatchEvent(new Event('input', { bubbles: true }));
+	}
 }
 
 /** placeholder 를 결과 마크다운으로 치환 (업로드 완료 시). */
@@ -198,22 +218,29 @@ function uploadAndInsertTextarea(
  */
 export function textareaAttach(
 	ta: HTMLTextAreaElement,
-	opts: { onError?: (msg: string) => void } = {}
+	opts: { onError?: (msg: string) => void; onAttach?: (rel: string, name: string) => void } = {}
 ): { destroy(): void } {
 	if (detectEnvironment() !== 'tauri') return { destroy() {} };
 	const onError = opts.onError ?? ((m) => console.error('첨부 업로드 실패:', m));
+	// BUG-083: onAttach(첨부 섹션) 가 있으면 본문(quest/campaign) 편집기와 동일하게
+	// 미디어는 댓글 인라인 임베드, 비미디어는 첨부 섹션으로 라우팅. onAttach 없으면
+	// 모두 인라인 (fallback).
+	const place = (file: File, ext: string) => {
+		if (opts.onAttach && !isMedia(ext)) uploadToSection(file, ext, opts.onAttach, onError);
+		else uploadAndInsertTextarea(ta, file, ext, onError);
+	};
 	const onPaste = (e: ClipboardEvent) => {
 		const picked = allowedFiles(e.clipboardData?.files);
 		if (picked.length === 0) return; // 일반 텍스트 paste 는 기본 동작.
 		e.preventDefault();
-		for (const { file, ext } of picked) uploadAndInsertTextarea(ta, file, ext, onError);
+		for (const { file, ext } of picked) place(file, ext);
 	};
 	const onDrop = (e: DragEvent) => {
 		const picked = allowedFiles(e.dataTransfer?.files);
 		if (picked.length === 0) return;
 		e.preventDefault();
 		ta.focus();
-		for (const { file, ext } of picked) uploadAndInsertTextarea(ta, file, ext, onError);
+		for (const { file, ext } of picked) place(file, ext);
 	};
 	ta.addEventListener('paste', onPaste);
 	ta.addEventListener('drop', onDrop);
@@ -228,7 +255,8 @@ export function textareaAttach(
 /** '첨부' 버튼 — textarea 커서 위치에 파일(다중) 업로드/삽입. */
 export function pickAndAttachTextarea(
 	ta: HTMLTextAreaElement | undefined | null,
-	onError: (msg: string) => void = (m) => console.error('첨부 업로드 실패:', m)
+	onError: (msg: string) => void = (m) => console.error('첨부 업로드 실패:', m),
+	onAttach?: (rel: string, name: string) => void
 ): void {
 	if (!ta) return;
 	if (detectEnvironment() !== 'tauri') {
@@ -243,6 +271,12 @@ export function pickAndAttachTextarea(
 		const picked = allowedFiles(input.files);
 		input.remove();
 		if (picked.length === 0) return;
+		// BUG-083: onAttach 가 있으면 본문 첨부 버튼과 동일하게 (미디어 포함) 모두
+		// 첨부 섹션으로. 없으면 커서 위치 인라인 삽입 (fallback).
+		if (onAttach) {
+			for (const { file, ext } of picked) uploadToSection(file, ext, onAttach, onError);
+			return;
+		}
 		ta.focus();
 		for (const { file, ext } of picked) uploadAndInsertTextarea(ta, file, ext, onError);
 	};
@@ -258,7 +292,8 @@ export function pickAndAttachTextarea(
 export function pickAndAttach(
 	view: EditorView,
 	onError: (msg: string) => void = (m) => console.error('첨부 업로드 실패:', m),
-	onAttach?: (rel: string, name: string) => void
+	onAttach?: (rel: string, name: string) => void,
+	opts: { mediaOnly?: boolean } = {}
 ): void {
 	if (detectEnvironment() !== 'tauri') {
 		onError('첨부 업로드는 데스크탑 앱에서만 지원됩니다.');
@@ -272,6 +307,19 @@ export function pickAndAttach(
 		const picked = allowedFiles(input.files);
 		input.remove();
 		if (picked.length === 0) return;
+		// BUG-083: 첨부 섹션 없는 편집기(메모·규칙)는 미디어만 인라인 허용, 비미디어 차단.
+		if (opts.mediaOnly) {
+			view.focus();
+			let pos = view.state.selection.main.head;
+			for (const { file, ext } of picked) {
+				if (!isMedia(ext)) {
+					onError(MEDIA_ONLY_MSG);
+					continue;
+				}
+				pos += uploadAndInsert(view, file, ext, pos, onError);
+			}
+			return;
+		}
 		// DEV-156: onAttach 가 있으면 버튼 첨부는 (미디어 포함) 모두 '첨부 섹션'으로.
 		if (onAttach) {
 			for (const { file, ext } of picked) uploadToSection(file, ext, onAttach, onError);
@@ -293,12 +341,19 @@ export function pickAndAttach(
  */
 export function attachmentExtension(
 	onError: (msg: string) => void = (m) => console.error('첨부 업로드 실패:', m),
-	onAttach?: (rel: string, name: string) => void
+	onAttach?: (rel: string, name: string) => void,
+	opts: { mediaOnly?: boolean } = {}
 ): Extension {
 	if (detectEnvironment() !== 'tauri') return [];
-	// DEV-156: onAttach 있을 때 paste/drop 규칙 — 미디어(이미지/동영상)는 본문
-	// 인라인 임베드, 그 외 파일은 '첨부 섹션'(onAttach). onAttach 없으면 모두 인라인.
+	// DEV-156 / BUG-083: paste/drop 규칙 —
+	//  · mediaOnly(메모·규칙): 미디어만 인라인, 비미디어 차단 + 안내.
+	//  · onAttach(quest/campaign 본문): 미디어 인라인, 비미디어는 첨부 섹션.
+	//  · 둘 다 없으면: 모두 인라인 (fallback).
 	const place = (view: EditorView, file: File, ext: string, pos: number): number => {
+		if (opts.mediaOnly && !isMedia(ext)) {
+			onError(MEDIA_ONLY_MSG);
+			return 0;
+		}
 		if (onAttach && !isMedia(ext)) {
 			uploadToSection(file, ext, onAttach, onError);
 			return 0;

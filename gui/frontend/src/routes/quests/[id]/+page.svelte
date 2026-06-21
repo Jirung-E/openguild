@@ -1116,7 +1116,7 @@
 		<!-- DEV-012: 공개 댓글 + 비공개 메모. quest slug 기준. -->
 		<!-- DEV-109: 본문이 길 때 floating 버튼이 이 anchor 로 점프. -->
 		<div bind:this={commentsAnchorEl} id="comments-anchor"></div>
-		<QuestCommentsSection slug={detail.quest_id} />
+		<QuestCommentsSection slug={detail.quest_id} onAttach={attachToSection} />
 		<!-- DEV-123: 메모 점프 anchor. -->
 		<div bind:this={memoAnchorEl} id="memo-anchor"></div>
 		<QuestNoteSection slug={detail.quest_id} mode="memo" />

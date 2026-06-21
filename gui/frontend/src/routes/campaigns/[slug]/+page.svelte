@@ -660,7 +660,7 @@
 		<!-- DEV-100: 캠페인 댓글 + 메모 — quest 와 동일 컴포넌트, scope 만 다름. -->
 		<!-- DEV-144: floating 버튼 점프 anchor. -->
 		<div bind:this={commentsAnchorEl} id="campaign-comments-anchor"></div>
-		<QuestCommentsSection slug={detail.campaign_slug} scope="campaign" />
+		<QuestCommentsSection slug={detail.campaign_slug} scope="campaign" onAttach={attachToSection} />
 		<div bind:this={memoAnchorEl} id="campaign-memo-anchor"></div>
 		<QuestNoteSection slug={detail.campaign_slug} mode="memo" scope="campaign" />
 	{/if}

@@ -149,7 +149,9 @@
 				// 테마 — Compartment 로 다크/라이트 라이브 전환.
 				editorThemeCompartment.of(editorThemeExtension($theme)),
 				// DEV-069: 첨부 — 클립보드 paste / 파일 drag&drop.
-				attachmentExtension((msg) => (saveError = `첨부 업로드 실패: ${msg}`)),
+				attachmentExtension((msg) => (saveError = `첨부 업로드 실패: ${msg}`), undefined, {
+					mediaOnly: true
+				}),
 				// DEV-140 후속: XXX-NNN 타이핑 → [[...]] cross-link 자동완성.
 				crossLinkAutocomplete(),
 				// DEV-130: Tab = 들여쓰기 (focus 이동 X) — 설정대로 커서 위치에 삽입.
@@ -377,8 +379,10 @@
 										class="btn-attach"
 										onclick={() =>
 											editorView &&
-											pickAndAttach(editorView, (msg) => (saveError = `첨부 업로드 실패: ${msg}`))}
-										title="이미지·동영상·파일 첨부 (드래그&드랍 / Ctrl+V 도 가능)"
+											pickAndAttach(editorView, (msg) => (saveError = `첨부 업로드 실패: ${msg}`), undefined, {
+												mediaOnly: true
+											})}
+										title="이미지·동영상 첨부 (드래그&드랍 / Ctrl+V 도 가능)"
 									>📎 첨부</button>
 								</div>
 								<div class="editor-wrap" bind:this={editorContainer}></div>

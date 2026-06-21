@@ -177,7 +177,17 @@
 	let replyTextareaEl = $state<HTMLTextAreaElement | undefined>(undefined);
 
 	// DEV-100: scope — quest (기본) / campaign. API base 만 다름.
-	let { slug, scope = 'quest' }: { slug: string; scope?: 'quest' | 'campaign' } = $props();
+	// BUG-083: onAttach 가 있으면 댓글 첨부(버튼·비미디어 paste/drop)를 본문 첨부
+	// 버튼과 동일하게 quest/campaign 첨부 섹션으로 라우팅 (인라인 링크 X).
+	let {
+		slug,
+		scope = 'quest',
+		onAttach
+	}: {
+		slug: string;
+		scope?: 'quest' | 'campaign';
+		onAttach?: (rel: string, name: string) => void;
+	} = $props();
 	const commentsApi = $derived(scope === 'campaign' ? campaignCommentsApi : questCommentsApi);
 
 	let loading = $state(true);
@@ -556,7 +566,7 @@
 		{#if editingId === e.id}
 			<textarea
 				use:tabInsert
-				use:textareaAttach={{ onError: (m) => (editError = `첨부 실패: ${m}`) }}
+				use:textareaAttach={{ onError: (m) => (editError = `첨부 실패: ${m}`), onAttach }}
 				bind:this={editTextareaEl}
 				class="body-input"
 				bind:value={editBody}
@@ -573,7 +583,7 @@
 					type="button"
 					class="btn-attach"
 					onclick={() =>
-						pickAndAttachTextarea(editTextareaEl, (m) => (editError = `첨부 실패: ${m}`))}
+						pickAndAttachTextarea(editTextareaEl, (m) => (editError = `첨부 실패: ${m}`), onAttach)}
 					title="이미지·동영상·파일 첨부 (드래그&드랍 / Ctrl+V 도 가능)"
 				>📎 첨부</button>
 				<button class="btn-save" onclick={() => saveEdit(e.id)} disabled={editSaving}>
@@ -704,7 +714,8 @@
 											<textarea
 												use:tabInsert
 												use:textareaAttach={{
-													onError: (m) => (replyError = `첨부 실패: ${m}`)
+													onError: (m) => (replyError = `첨부 실패: ${m}`),
+													onAttach
 												}}
 												bind:this={replyTextareaEl}
 												class="body-input"
@@ -725,7 +736,8 @@
 													onclick={() =>
 														pickAndAttachTextarea(
 															replyTextareaEl,
-															(m) => (replyError = `첨부 실패: ${m}`)
+															(m) => (replyError = `첨부 실패: ${m}`),
+											onAttach
 														)}
 													title="이미지·동영상·파일 첨부 (드래그&드랍 / Ctrl+V 도 가능)"
 												>📎 첨부</button>
@@ -771,7 +783,7 @@
 			</div>
 			<textarea
 				use:tabInsert
-				use:textareaAttach={{ onError: (m) => (saveError = `첨부 실패: ${m}`) }}
+				use:textareaAttach={{ onError: (m) => (saveError = `첨부 실패: ${m}`), onAttach }}
 				bind:this={newTextareaEl}
 				class="body-input"
 				bind:value={newBody}
@@ -789,7 +801,7 @@
 					type="button"
 					class="btn-attach"
 					onclick={() =>
-						pickAndAttachTextarea(newTextareaEl, (m) => (saveError = `첨부 실패: ${m}`))}
+						pickAndAttachTextarea(newTextareaEl, (m) => (saveError = `첨부 실패: ${m}`), onAttach)}
 					title="이미지·동영상·파일 첨부 (드래그&드랍 / Ctrl+V 도 가능)"
 				>📎 첨부</button>
 				<button

@@ -131,7 +131,9 @@
 				// DEV-140 후속: XXX-NNN 타이핑 → [[...]] cross-link 자동완성.
 				crossLinkAutocomplete(),
 				// DEV-069 후속: 첨부 — 클립보드 paste / 파일 drag&drop.
-				attachmentExtension((msg) => (saveError = `첨부 실패: ${msg}`)),
+				attachmentExtension((msg) => (saveError = `첨부 실패: ${msg}`), undefined, {
+					mediaOnly: true
+				}),
 				// DEV-117: Windows 표준 redo (Ctrl+Shift+Z) 추가.
 				keymap.of([{ key: 'Mod-Shift-z', run: redo, preventDefault: true }]),
 				// DEV-130: Tab = 들여쓰기 (focus 이동 X) — 설정대로 커서 위치에 삽입.
@@ -220,8 +222,11 @@
 					type="button"
 					class="btn-attach"
 					onclick={() =>
-						editorView && pickAndAttach(editorView, (msg) => (saveError = `첨부 실패: ${msg}`))}
-					title="이미지·동영상·파일 첨부 (드래그&드랍 / Ctrl+V 도 가능)"
+						editorView &&
+						pickAndAttach(editorView, (msg) => (saveError = `첨부 실패: ${msg}`), undefined, {
+							mediaOnly: true
+						})}
+					title="이미지·동영상 첨부 (드래그&드랍 / Ctrl+V 도 가능). 다른 파일은 첨부 섹션을 사용하세요."
 				>📎 첨부</button>
 			</div>
 			<div class="editor-wrap" bind:this={editorContainer}></div>
