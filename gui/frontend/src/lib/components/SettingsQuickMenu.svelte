@@ -7,12 +7,7 @@
 -->
 <script lang="ts">
 	import { theme, setTheme, type ThemeChoice } from '$lib/stores/theme';
-	import {
-		uiScale,
-		setUiScale,
-		MIN_SCALE,
-		MAX_SCALE
-	} from '$lib/stores/uiScale';
+	import { uiScale, setUiScale, MIN_SCALE, MAX_SCALE } from '$lib/stores/uiScale';
 	import {
 		contentWidth,
 		setContentWidth,
@@ -37,7 +32,7 @@
 	}
 </script>
 
-<svelte:window onkeydown={onkeydown} />
+<svelte:window {onkeydown} />
 
 <!-- 바깥 클릭 닫기 — 투명 오버레이. -->
 <div class="qm-ov" role="presentation" onclick={onclose}></div>
@@ -50,8 +45,8 @@
 				<button
 					class="qm-seg-btn"
 					class:active={$theme === o.value}
-					onclick={() => setTheme(o.value)}
-				>{o.label}</button>
+					onclick={() => setTheme(o.value)}>{o.label}</button
+				>
 			{/each}
 		</div>
 	</div>
@@ -141,7 +136,10 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
-	.qm-seg-btn:hover { color: var(--text); border-color: var(--text-faint); }
+	.qm-seg-btn:hover {
+		color: var(--text);
+		border-color: var(--text-faint);
+	}
 	.qm-seg-btn.active {
 		background: color-mix(in srgb, var(--accent) 15%, transparent);
 		border-color: var(--accent);
@@ -152,7 +150,9 @@
 		align-items: center;
 		gap: 0.5rem;
 	}
-	.qm-slider :global(.slider) { flex: 1; }
+	.qm-slider :global(.slider) {
+		flex: 1;
+	}
 	.qm-val {
 		min-width: 3.2rem;
 		flex-shrink: 0;
@@ -171,5 +171,7 @@
 		font-size: 0.8rem;
 		text-decoration: none;
 	}
-	.qm-all:hover { text-decoration: underline; }
+	.qm-all:hover {
+		text-decoration: underline;
+	}
 </style>

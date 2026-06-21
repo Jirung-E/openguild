@@ -56,9 +56,7 @@
 		if (env === 'tauri') {
 			try {
 				const { invoke } = await import('@tauri-apps/api/core');
-				const info = await invoke<{ mode: string; uninit_path: string | null }>(
-					'launch_mode'
-				);
+				const info = await invoke<{ mode: string; uninit_path: string | null }>('launch_mode');
 				if (info.mode === 'uninit' && info.uninit_path) {
 					uninitPath = info.uninit_path;
 					// 기본 길드 이름 = path 의 마지막 component (디렉토리명).
@@ -239,8 +237,8 @@
 					onclick={() => (quickMenuOpen = !quickMenuOpen)}
 					title="설정"
 					aria-label="설정"
-					aria-expanded={quickMenuOpen}
-				>⚙</button>
+					aria-expanded={quickMenuOpen}>⚙</button
+				>
 				{#if quickMenuOpen}
 					<SettingsQuickMenu onclose={() => (quickMenuOpen = false)} />
 				{/if}
@@ -269,17 +267,12 @@
 			<h2>이 위치를 길드로 초기화할까요?</h2>
 			<p class="uninit-path">{uninitPath}</p>
 			<p class="uninit-desc">
-				지정한 디렉토리에 openguild 마커 (<code>.guild/</code> 폴더 + 시드)가 없습니다.
-				초기화하면 빈 길드가 생성되어 바로 작업할 수 있습니다.
+				지정한 디렉토리에 openguild 마커 (<code>.guild/</code> 폴더 + 시드)가 없습니다. 초기화하면 빈
+				길드가 생성되어 바로 작업할 수 있습니다.
 			</p>
 			<label class="uninit-name">
 				<span>길드 이름</span>
-				<input
-					type="text"
-					bind:value={initName}
-					placeholder="guild"
-					disabled={initRunning}
-				/>
+				<input type="text" bind:value={initName} placeholder="guild" disabled={initRunning} />
 			</label>
 			{#if initErr}
 				<p class="err">{initErr}</p>
@@ -353,9 +346,7 @@
 	{/if}
 
 	<footer class="hint">
-		<p>
-			항목을 클릭하면 현재 창에서 그 길드를 엽니다.
-		</p>
+		<p>항목을 클릭하면 현재 창에서 그 길드를 엽니다.</p>
 	</footer>
 </main>
 
@@ -382,7 +373,9 @@
 				<strong>{confirmRemove.name}</strong> 을 최근 목록에서 제거할까요?
 			</p>
 			<p class="modal-path">{confirmRemove.path}</p>
-			<p class="modal-msg modal-note">디스크의 길드 파일은 그대로 두고, Recent 목록에서만 빠집니다.</p>
+			<p class="modal-msg modal-note">
+				디스크의 길드 파일은 그대로 두고, Recent 목록에서만 빠집니다.
+			</p>
 			<div class="modal-actions">
 				<button class="btn-yes" onclick={doRemove}>제거</button>
 				<button class="btn-no" onclick={cancelRemove}>취소</button>
@@ -428,7 +421,9 @@
 		gap: 1rem;
 	}
 	/* DEV-138: 퀵메뉴 anchor. */
-	.settings-wrap { position: relative; }
+	.settings-wrap {
+		position: relative;
+	}
 	.settings-link {
 		display: inline-flex;
 		align-items: center;
@@ -444,7 +439,10 @@
 		background: var(--bg-elevated);
 		border: 1px solid var(--border);
 		font-size: 1.1rem;
-		transition: background 0.1s, color 0.1s, border-color 0.1s;
+		transition:
+			background 0.1s,
+			color 0.1s,
+			border-color 0.1s;
 	}
 	.settings-link:hover {
 		color: var(--text);
@@ -478,14 +476,19 @@
 		font-size: 1.2rem;
 		line-height: 1;
 		cursor: pointer;
-		transition: border-color 0.12s, color 0.12s, background 0.12s;
+		transition:
+			border-color 0.12s,
+			color 0.12s,
+			background 0.12s;
 	}
 	.recent-remove:hover {
 		border-color: var(--danger);
 		color: var(--danger);
 		background: rgba(233, 79, 79, 0.08);
 	}
-	.recent-btn { flex: 1 1 auto; }
+	.recent-btn {
+		flex: 1 1 auto;
+	}
 	.missing-label {
 		color: var(--warning);
 		font-size: 0.8rem;
@@ -503,7 +506,9 @@
 		display: grid;
 		grid-template-columns: 1fr;
 		gap: 0.25rem;
-		transition: border-color 0.12s, background 0.12s;
+		transition:
+			border-color 0.12s,
+			background 0.12s;
 	}
 	.recent-list .recent-row:not(.missing) .recent-btn:hover:not(:disabled) {
 		border-color: var(--accent);
@@ -551,7 +556,10 @@
 	.clear:hover {
 		border-color: var(--danger);
 	}
-	.loading, .empty, .info, .err {
+	.loading,
+	.empty,
+	.info,
+	.err {
 		padding: 1rem;
 		background: var(--bg-elevated);
 		border-radius: 6px;
@@ -600,8 +608,13 @@
 		transition: background 0.12s;
 		flex: 0 0 auto;
 	}
-	.btn-pick:hover:not(:disabled) { background: var(--accent); }
-	.btn-pick:disabled { opacity: 0.6; cursor: default; }
+	.btn-pick:hover:not(:disabled) {
+		background: var(--accent);
+	}
+	.btn-pick:disabled {
+		opacity: 0.6;
+		cursor: default;
+	}
 	.picker-hint {
 		flex: 1 1 auto;
 		min-width: 12.5rem; /* BUG-064 */
@@ -677,27 +690,35 @@
 
 	/* --- 커스텀 confirm 모달 --- */
 	.ov {
-		position: fixed; inset: 0;
+		position: fixed;
+		inset: 0;
 		background: rgba(0, 0, 0, 0.6);
 		z-index: 100;
-		display: flex; align-items: center; justify-content: center;
+		display: flex;
+		align-items: center;
+		justify-content: center;
 		padding: 1rem;
 	}
 	.modal {
 		background: var(--bg-elevated);
-		border: 1px solid var(--border); border-radius: 10px;
-		width: 100%; max-width: calc(26.25rem * var(--popup-scale, 1)); /* BUG-064 */
+		border: 1px solid var(--border);
+		border-radius: 10px;
+		width: 100%;
+		max-width: calc(26.25rem * var(--popup-scale, 1)); /* BUG-064 */
 		padding: 1.2rem 1.4rem;
 		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
 		color: var(--text);
 	}
 	.modal-title {
 		margin: 0 0 0.5rem;
-		font-size: 1rem; font-weight: 600; color: var(--text-strong);
+		font-size: 1rem;
+		font-weight: 600;
+		color: var(--text-strong);
 	}
 	.modal-msg {
 		margin: 0 0 1rem;
-		font-size: 0.875rem; color: var(--text);
+		font-size: 0.875rem;
+		color: var(--text);
 	}
 	.modal-msg strong {
 		color: var(--text-strong);
@@ -717,20 +738,32 @@
 		color: var(--text-muted);
 	}
 	.modal-actions {
-		display: flex; gap: 0.5rem; justify-content: flex-end;
+		display: flex;
+		gap: 0.5rem;
+		justify-content: flex-end;
 	}
 	.btn-yes {
 		padding: 0.4rem 1.1rem;
 		background: rgba(233, 79, 79, 0.15);
-		border: 1px solid var(--danger); border-radius: 6px;
-		color: var(--danger); font-size: 0.875rem; cursor: pointer;
+		border: 1px solid var(--danger);
+		border-radius: 6px;
+		color: var(--danger);
+		font-size: 0.875rem;
+		cursor: pointer;
 	}
-	.btn-yes:hover { background: rgba(233, 79, 79, 0.25); }
+	.btn-yes:hover {
+		background: rgba(233, 79, 79, 0.25);
+	}
 	.btn-no {
 		padding: 0.4rem 1rem;
 		background: transparent;
-		border: 1px solid var(--border); border-radius: 6px;
-		color: var(--text-muted); font-size: 0.875rem; cursor: pointer;
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		color: var(--text-muted);
+		font-size: 0.875rem;
+		cursor: pointer;
 	}
-	.btn-no:hover { background: var(--bg-subtle); }
+	.btn-no:hover {
+		background: var(--bg-subtle);
+	}
 </style>

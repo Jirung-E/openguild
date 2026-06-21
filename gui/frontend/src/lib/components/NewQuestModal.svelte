@@ -161,10 +161,16 @@
 	});
 
 	async function create() {
-		if (!title.trim()) { saveError = '제목을 입력해주세요.'; return; }
+		if (!title.trim()) {
+			saveError = '제목을 입력해주세요.';
+			return;
+		}
 		// DEV-014 후속: 검증 메시지 분리 — 이전엔 두 조건이 한 메시지("타입을 선택")
 		// 로 묶여서 status 가 0개인데 type 만 있는 경우에도 오해 메시지가 나왔음.
-		if (!typeId) { saveError = '타입을 선택해주세요.'; return; }
+		if (!typeId) {
+			saveError = '타입을 선택해주세요.';
+			return;
+		}
 		if (!openStatusSlug) {
 			saveError = '상태가 없습니다. 먼저 상태를 추가하세요.';
 			return;
@@ -216,8 +222,8 @@
 			<div class="empty-state">
 				<p class="empty-title">퀘스트 타입이 없습니다</p>
 				<p class="empty-msg">
-					Quest type (DEV / BUG / REQ 같은 prefix) 이 하나도 정의되어 있지 않아
-					새 퀘스트를 만들 수 없습니다. 먼저 Admin 페이지에서 type 을 추가하세요.
+					Quest type (DEV / BUG / REQ 같은 prefix) 이 하나도 정의되어 있지 않아 새 퀘스트를 만들 수
+					없습니다. 먼저 Admin 페이지에서 type 을 추가하세요.
 				</p>
 				<div class="form-actions">
 					<a class="btn-create" href="/admin" onclick={onclose}>Admin 으로 가기</a>
@@ -229,10 +235,10 @@
 			<div class="empty-state">
 				<p class="empty-title">퀘스트 상태가 없습니다</p>
 				<p class="empty-msg">
-					Quest status 가 하나도 정의되어 있지 않아 새 퀘스트를 만들 수 없습니다.
-					기본 <strong>'Open'</strong> (게시됨, 회색) 을 만들고 계속할까요?
-					필요하면 그 뒤 Admin 페이지에서 색 / 이름을 바꾸거나 다른 상태를
-					추가할 수 있습니다.
+					Quest status 가 하나도 정의되어 있지 않아 새 퀘스트를 만들 수 없습니다. 기본 <strong
+						>'Open'</strong
+					> (게시됨, 회색) 을 만들고 계속할까요? 필요하면 그 뒤 Admin 페이지에서 색 / 이름을 바꾸거나
+					다른 상태를 추가할 수 있습니다.
 				</p>
 				{#if bootstrapError}
 					<p class="save-error">{bootstrapError}</p>
@@ -360,11 +366,21 @@
 								if (e.key === 'Enter') saveAsTemplate(false);
 							}}
 						/>
-						<button class="btn-create" type="button" onclick={() => saveAsTemplate(false)} disabled={savingTpl || !tplName.trim()}>
+						<button
+							class="btn-create"
+							type="button"
+							onclick={() => saveAsTemplate(false)}
+							disabled={savingTpl || !tplName.trim()}
+						>
 							{savingTpl ? '저장 중…' : '저장'}
 						</button>
 						{#if tplExists}
-							<button class="btn-overwrite" type="button" onclick={() => saveAsTemplate(true)} disabled={savingTpl}>
+							<button
+								class="btn-overwrite"
+								type="button"
+								onclick={() => saveAsTemplate(true)}
+								disabled={savingTpl}
+							>
 								덮어쓰기
 							</button>
 						{/if}
@@ -395,14 +411,22 @@
 		border: 1px solid var(--border);
 		border-radius: 12px;
 		width: 100%;
-		max-width: calc(35rem * var(--popup-scale, 1)); /* BUG-064: px → rem (UI scale) + 컨텐츠 폭 연동 */
+		max-width: calc(
+			35rem * var(--popup-scale, 1)
+		); /* BUG-064: px → rem (UI scale) + 컨텐츠 폭 연동 */
 		box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
 		animation: modal-in 0.18s cubic-bezier(0.34, 1.3, 0.64, 1) forwards;
 		transform-origin: top center;
 	}
 	@keyframes modal-in {
-		from { opacity: 0; transform: scale(0.9) translateY(-10px); }
-		to   { opacity: 1; transform: scale(1) translateY(0); }
+		from {
+			opacity: 0;
+			transform: scale(0.9) translateY(-10px);
+		}
+		to {
+			opacity: 1;
+			transform: scale(1) translateY(0);
+		}
 	}
 
 	.modal-head {
@@ -428,7 +452,9 @@
 		padding: 0 4px;
 		transition: color 0.1s;
 	}
-	.close-btn:hover { color: var(--text); }
+	.close-btn:hover {
+		color: var(--text);
+	}
 
 	.loading {
 		padding: 2rem;
@@ -477,7 +503,9 @@
 		outline: none;
 		min-width: 80px;
 	}
-	.sel:focus { border-color: var(--accent); }
+	.sel:focus {
+		border-color: var(--accent);
+	}
 
 	.status-fixed {
 		display: inline-flex;
@@ -504,7 +532,9 @@
 		width: 100%;
 		box-sizing: border-box;
 	}
-	.inp:focus { border-color: var(--accent); }
+	.inp:focus {
+		border-color: var(--accent);
+	}
 
 	.ta {
 		padding: 0.5rem 0.75rem;
@@ -520,7 +550,9 @@
 		font-family: 'SFMono-Regular', Consolas, monospace;
 		line-height: 1.5;
 	}
-	.ta:focus { border-color: var(--accent); }
+	.ta:focus {
+		border-color: var(--accent);
+	}
 
 	.save-error {
 		color: var(--danger);
@@ -541,10 +573,18 @@
 		color: var(--btn-primary-text);
 		font-size: 0.875rem;
 		cursor: pointer;
-		transition: background 0.1s, border-color 0.1s;
+		transition:
+			background 0.1s,
+			border-color 0.1s;
 	}
-	.btn-create:hover:not(:disabled) { background: var(--btn-primary-bg-hover); border-color: var(--btn-primary-border-hover); }
-	.btn-create:disabled { opacity: 0.5; cursor: default; }
+	.btn-create:hover:not(:disabled) {
+		background: var(--btn-primary-bg-hover);
+		border-color: var(--btn-primary-border-hover);
+	}
+	.btn-create:disabled {
+		opacity: 0.5;
+		cursor: default;
+	}
 	.btn-cancel {
 		padding: 0.45rem 1rem;
 		background: transparent;
@@ -554,7 +594,9 @@
 		font-size: 0.875rem;
 		cursor: pointer;
 	}
-	.btn-cancel:hover:not(:disabled) { background: var(--bg-subtle); }
+	.btn-cancel:hover:not(:disabled) {
+		background: var(--bg-subtle);
+	}
 
 	/* DEV-158: 템플릿으로 저장 — 우측 정렬, 보조 액션. */
 	.btn-tpl {
@@ -567,8 +609,14 @@
 		font-size: 0.875rem;
 		cursor: pointer;
 	}
-	.btn-tpl:hover:not(:disabled) { background: var(--bg-subtle); color: var(--text); }
-	.btn-tpl:disabled { opacity: 0.5; cursor: default; }
+	.btn-tpl:hover:not(:disabled) {
+		background: var(--bg-subtle);
+		color: var(--text);
+	}
+	.btn-tpl:disabled {
+		opacity: 0.5;
+		cursor: default;
+	}
 	.tpl-save {
 		display: flex;
 		gap: 0.5rem;
@@ -585,7 +633,10 @@
 		cursor: pointer;
 		white-space: nowrap;
 	}
-	.btn-overwrite:disabled { opacity: 0.5; cursor: default; }
+	.btn-overwrite:disabled {
+		opacity: 0.5;
+		cursor: default;
+	}
 	.tpl-msg {
 		margin: 0.4rem 0 0;
 		font-size: 0.8rem;
@@ -611,7 +662,9 @@
 		line-height: 1.5;
 		color: var(--text);
 	}
-	.empty-msg strong { color: var(--text-strong); }
+	.empty-msg strong {
+		color: var(--text-strong);
+	}
 	/* href 인 .btn-create / .btn-cancel 도 동일 패딩. */
 	a.btn-create,
 	a.btn-cancel {

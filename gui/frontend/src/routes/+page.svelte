@@ -12,9 +12,7 @@
 
 	// DEV-011: Home 추가. ?view 없으면 home 기본.
 	type View = 'home' | 'board' | 'list';
-	let currentView: View = $derived(
-		($page.url.searchParams.get('view') as View | null) ?? 'home'
-	);
+	let currentView: View = $derived(($page.url.searchParams.get('view') as View | null) ?? 'home');
 
 	// DEV-084: New Quest 를 상단 nav 에서 각 뷰의 기존 상단 바/툴바 우측 끝으로
 	// 이동 (QuestBoard toolbar / QuestList filter-bar). 모달 + 생성 로직은 여기
@@ -41,9 +39,7 @@
 			// DEV-052 후속 (3회차): launch_mode 가 string → { mode, uninit_path }
 			// 객체로 바뀌었음. 이전 string 비교 (mode === 'welcome') 는 영원히
 			// false 라 redirect 가 안 되는 버그가 있었음.
-			const info = await invoke<{ mode: string; uninit_path: string | null }>(
-				'launch_mode'
-			);
+			const info = await invoke<{ mode: string; uninit_path: string | null }>('launch_mode');
 			if (info.mode === 'welcome' || info.mode === 'uninit') {
 				goto('/welcome');
 			}

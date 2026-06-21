@@ -34,10 +34,7 @@ export async function loadQuestIndex(force = false): Promise<void> {
 	if (inflight) return inflight;
 	inflight = (async () => {
 		try {
-			const [quests, campaigns] = await Promise.all([
-				questsApi.list(),
-				campaignsApi.list()
-			]);
+			const [quests, campaigns] = await Promise.all([questsApi.list(), campaignsApi.list()]);
 			const next = new Map<string, IndexedRef>();
 			for (const q of quests) {
 				next.set(q.quest_id.toUpperCase(), { title: q.title, kind: 'quest' });

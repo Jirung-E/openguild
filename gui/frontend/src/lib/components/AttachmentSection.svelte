@@ -169,10 +169,18 @@
 
 <section class="attachments">
 	<div class="head">
-		<h3>첨부파일 {#if list.length > 0}<span class="count">({list.length})</span>{/if}</h3>
+		<h3>
+			첨부파일 {#if list.length > 0}<span class="count">({list.length})</span>{/if}
+		</h3>
 		<div class="head-actions">
 			{#if list.length > 0}
-				<button type="button" class="btn" onclick={downloadAll} disabled={busy} title="모든 첨부 다운로드">
+				<button
+					type="button"
+					class="btn"
+					onclick={downloadAll}
+					disabled={busy}
+					title="모든 첨부 다운로드"
+				>
 					전체 다운로드
 				</button>
 			{/if}
@@ -188,7 +196,12 @@
 		<ul class="grid">
 			{#each list as a (a.path)}
 				<li class="item">
-					<button type="button" class="thumb" onclick={() => openFile(a.path)} title="열기 / 미리보기">
+					<button
+						type="button"
+						class="thumb"
+						onclick={() => openFile(a.path)}
+						title="열기 / 미리보기"
+					>
 						{#if isImage(a.path) && urls[a.path]}
 							<img src={urls[a.path]} alt={a.name} />
 						{:else if isVideo(a.path) && urls[a.path]}
@@ -197,8 +210,20 @@
 							<span class="file-ico">📄</span>
 						{/if}
 					</button>
-					<button type="button" class="rm" title="목록에서 제거" aria-label="제거" onclick={() => remove(a.path)}>×</button>
-					<button type="button" class="dl" title="다운로드" aria-label="다운로드" onclick={() => downloadOne(a)}>⤓</button>
+					<button
+						type="button"
+						class="rm"
+						title="목록에서 제거"
+						aria-label="제거"
+						onclick={() => remove(a.path)}>×</button
+					>
+					<button
+						type="button"
+						class="dl"
+						title="다운로드"
+						aria-label="다운로드"
+						onclick={() => downloadOne(a)}>⤓</button
+					>
 					<span class="name" title={a.name}>{a.name}</span>
 				</li>
 			{/each}

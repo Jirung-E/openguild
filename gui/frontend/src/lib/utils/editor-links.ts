@@ -23,7 +23,6 @@ import { get } from 'svelte/store';
 /** 커서 직전의 ID 토큰 (앞이 `[` 가 아니어야 — 위키링크 안은 제외). */
 const BEFORE_CURSOR = /(^|[^[\w-])([A-Za-z]{2,}-\d+)$/;
 
-
 function questIdCompletion(context: CompletionContext): CompletionResult | null {
 	// 커서 앞 텍스트에서 ID 토큰 추출.
 	const line = context.state.doc.lineAt(context.pos);

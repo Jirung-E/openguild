@@ -116,16 +116,12 @@
 					class="search-clear"
 					title="검색어 지우기"
 					onclick={() => (search = '')}
-					data-testid="quest-search-clear"
-				>×</button>
+					data-testid="quest-search-clear">×</button
+				>
 			{/if}
 		</label>
 		<label class="search-opt">
-			<input
-				type="checkbox"
-				bind:checked={titleOnly}
-				data-testid="quest-search-title-only"
-			/>
+			<input type="checkbox" bind:checked={titleOnly} data-testid="quest-search-title-only" />
 			<span>제목만</span>
 		</label>
 	</div>
@@ -135,8 +131,8 @@
 		class="adv-toggle"
 		class:active={advancedActive}
 		onclick={() => (advancedOpen = !advancedOpen)}
-		aria-expanded={advancedOpen}
-	>{advancedOpen ? '▾' : '▸'} 고급{advancedActive ? ' ●' : ''}</button>
+		aria-expanded={advancedOpen}>{advancedOpen ? '▾' : '▸'} 고급{advancedActive ? ' ●' : ''}</button
+	>
 </div>
 
 {#if advancedOpen}
@@ -147,22 +143,38 @@
 				<button
 					class:active={urgencies.has(u)}
 					style:--c={urgencyColor(u)}
-					onclick={() => (urgencies = toggle(urgencies, u))}
-				>{urgencyLabel(u)}</button>
+					onclick={() => (urgencies = toggle(urgencies, u))}>{urgencyLabel(u)}</button
+				>
 			{/each}
 		</div>
 		<div class="divider"></div>
 		<!-- prereq / sub tri-state -->
-		<button class="tri" class:active={prereqState !== 'any'} onclick={() => (prereqState = cycleTri(prereqState))} title="선행 quest 보유 여부 (전체 → 있음 → 없음)">
+		<button
+			class="tri"
+			class:active={prereqState !== 'any'}
+			onclick={() => (prereqState = cycleTri(prereqState))}
+			title="선행 quest 보유 여부 (전체 → 있음 → 없음)"
+		>
 			선행: {TRI_LABEL[prereqState]}
 		</button>
-		<button class="tri" class:active={subState !== 'any'} onclick={() => (subState = cycleTri(subState))} title="서브 quest 보유 여부 (전체 → 있음 → 없음)">
+		<button
+			class="tri"
+			class:active={subState !== 'any'}
+			onclick={() => (subState = cycleTri(subState))}
+			title="서브 quest 보유 여부 (전체 → 있음 → 없음)"
+		>
 			서브: {TRI_LABEL[subState]}
 		</button>
 		<div class="divider"></div>
 		<!-- 날짜 범위 -->
-		<label class="date-range">생성 <input type="date" bind:value={createdAfter} /> ~ <input type="date" bind:value={createdBefore} /></label>
-		<label class="date-range">갱신 <input type="date" bind:value={updatedAfter} /> ~ <input type="date" bind:value={updatedBefore} /></label>
+		<label class="date-range"
+			>생성 <input type="date" bind:value={createdAfter} /> ~
+			<input type="date" bind:value={createdBefore} /></label
+		>
+		<label class="date-range"
+			>갱신 <input type="date" bind:value={updatedAfter} /> ~
+			<input type="date" bind:value={updatedBefore} /></label
+		>
 		{#if advancedActive}
 			<button class="adv-clear" onclick={clearAdvanced} title="고급 필터 모두 해제">× 해제</button>
 		{/if}
@@ -230,8 +242,14 @@
 	}
 	.sr-only {
 		position: absolute;
-		width: 1px; height: 1px; padding: 0; margin: -1px;
-		overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+		border: 0;
 	}
 	.search-input {
 		padding: 0.3rem 1.8rem 0.3rem 0.7rem;
@@ -244,8 +262,12 @@
 		outline: none;
 		transition: border-color 0.15s;
 	}
-	.search-input:focus { border-color: var(--accent); }
-	.search-input::-webkit-search-cancel-button { display: none; }
+	.search-input:focus {
+		border-color: var(--accent);
+	}
+	.search-input::-webkit-search-cancel-button {
+		display: none;
+	}
 	.search-clear {
 		position: absolute;
 		right: 0.3rem;
@@ -258,7 +280,10 @@
 		line-height: 1;
 		cursor: pointer;
 	}
-	.search-clear:hover { color: var(--danger); background: transparent; }
+	.search-clear:hover {
+		color: var(--danger);
+		background: transparent;
+	}
 	.search-opt {
 		display: inline-flex;
 		align-items: center;
@@ -268,15 +293,23 @@
 		cursor: pointer;
 		user-select: none;
 	}
-	.search-opt input { cursor: pointer; }
-	.search-opt:hover { color: var(--text); }
+	.search-opt input {
+		cursor: pointer;
+	}
+	.search-opt:hover {
+		color: var(--text);
+	}
 
 	/* --- DEV-033: 고급 필터 --- */
 	.adv-toggle {
 		border-style: dashed;
 		color: var(--text-faint);
 	}
-	.adv-toggle.active { color: var(--accent); border-color: var(--accent); background: transparent; }
+	.adv-toggle.active {
+		color: var(--accent);
+		border-color: var(--accent);
+		background: transparent;
+	}
 	.adv-bar {
 		display: flex;
 		align-items: center;
@@ -300,7 +333,9 @@
 		border-color: var(--c, var(--accent));
 		color: var(--c, var(--accent));
 	}
-	.tri.active { --c: var(--accent); }
+	.tri.active {
+		--c: var(--accent);
+	}
 	.date-range {
 		display: inline-flex;
 		align-items: center;
@@ -316,5 +351,8 @@
 		color: var(--text);
 		font-size: 0.75rem;
 	}
-	.adv-clear { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
+	.adv-clear {
+		color: var(--danger);
+		border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+	}
 </style>

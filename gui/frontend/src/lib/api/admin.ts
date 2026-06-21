@@ -59,12 +59,10 @@ export const adminApi = {
 	listSnapshots: () => api.get<SnapshotInfo[]>('/api/admin/snapshots'),
 
 	/** DEV-175: 특정 snapshot 삭제. */
-	deleteSnapshot: (ts: string) =>
-		api.delete(`/api/admin/snapshots/${encodeURIComponent(ts)}`),
+	deleteSnapshot: (ts: string) => api.delete(`/api/admin/snapshots/${encodeURIComponent(ts)}`),
 
 	/** snapshot 으로 index.db 복원. to 미지정 시 최신 사용. */
-	restore: (to?: string) =>
-		api.post<RestoreResponse>('/api/admin/restore', to ? { to } : {}),
+	restore: (to?: string) => api.post<RestoreResponse>('/api/admin/restore', to ? { to } : {}),
 
 	/** 파일 vs index.db drift 검사. */
 	checkDrift: () => api.get<DriftReport>('/api/admin/drift'),
@@ -94,17 +92,12 @@ export const adminApi = {
 		prefix: string,
 		body: { new_prefix?: string; color?: string; description?: string | null }
 	) => api.patch<QuestType>(`/api/admin/types/${encodeURIComponent(prefix)}`, body),
-	deleteType: (prefix: string) =>
-		api.delete(`/api/admin/types/${encodeURIComponent(prefix)}`),
+	deleteType: (prefix: string) => api.delete(`/api/admin/types/${encodeURIComponent(prefix)}`),
 
 	// ─── DEV-014: statuses ───
 	listStatuses: () => api.get<QuestStatusWithCount[]>('/api/admin/statuses'),
-	createStatus: (body: {
-		name_en: string;
-		name_ko: string;
-		color: string;
-		sort_order?: number;
-	}) => api.post<QuestStatus>('/api/admin/statuses', body),
+	createStatus: (body: { name_en: string; name_ko: string; color: string; sort_order?: number }) =>
+		api.post<QuestStatus>('/api/admin/statuses', body),
 	/**
 	 * BUG-018: update 가 slug rename 도 통합.
 	 * `new_slug` 지정 시 quest_history + 모든 quest .md frontmatter cascade.
@@ -121,8 +114,7 @@ export const adminApi = {
 			counts_as_done?: boolean;
 		}
 	) => api.patch<QuestStatus>(`/api/admin/statuses/${encodeURIComponent(slug)}`, body),
-	deleteStatus: (slug: string) =>
-		api.delete(`/api/admin/statuses/${encodeURIComponent(slug)}`),
+	deleteStatus: (slug: string) => api.delete(`/api/admin/statuses/${encodeURIComponent(slug)}`),
 
 	// ─── DEV-068: tag defs (`.guild/tags/{slug}.toml`) ───
 	/** 모든 tag 정의 (slug ASC). */
@@ -131,6 +123,5 @@ export const adminApi = {
 	upsertTagDef: (body: { slug: string; color?: string; description?: string }) =>
 		api.post<QuestTagDef>('/api/tag-defs', body),
 	/** 정의만 삭제 — quest frontmatter 의 tag 사용은 보존 (fallback 색으로 표시). */
-	deleteTagDef: (slug: string) =>
-		api.delete(`/api/tag-defs/${encodeURIComponent(slug)}`)
+	deleteTagDef: (slug: string) => api.delete(`/api/tag-defs/${encodeURIComponent(slug)}`)
 };

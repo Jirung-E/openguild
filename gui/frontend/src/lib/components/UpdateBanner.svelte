@@ -101,11 +101,25 @@
 		color: var(--text);
 		font-size: 0.85rem;
 	}
-	.upd-main { display: flex; align-items: center; gap: 0.75rem; flex: 1; min-width: 0; }
-	.upd-title { font-weight: 600; white-space: nowrap; }
+	.upd-main {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		flex: 1;
+		min-width: 0;
+	}
+	.upd-title {
+		font-weight: 600;
+		white-space: nowrap;
+	}
 
-	.upd-notes { font-size: 0.8rem; color: var(--text-muted); }
-	.upd-notes summary { cursor: pointer; }
+	.upd-notes {
+		font-size: 0.8rem;
+		color: var(--text-muted);
+	}
+	.upd-notes summary {
+		cursor: pointer;
+	}
 	.upd-notes pre {
 		margin: 0.4rem 0 0;
 		white-space: pre-wrap;
@@ -140,12 +154,23 @@
 		animation: upd-indet 1.1s ease-in-out infinite;
 	}
 	@keyframes upd-indet {
-		0% { margin-left: -35%; }
-		100% { margin-left: 100%; }
+		0% {
+			margin-left: -35%;
+		}
+		100% {
+			margin-left: 100%;
+		}
 	}
-	.upd-pct { font-variant-numeric: tabular-nums; color: var(--text-muted); }
+	.upd-pct {
+		font-variant-numeric: tabular-nums;
+		color: var(--text-muted);
+	}
 
-	.upd-actions { display: flex; gap: 0.4rem; flex-shrink: 0; }
+	.upd-actions {
+		display: flex;
+		gap: 0.4rem;
+		flex-shrink: 0;
+	}
 	.upd-btn {
 		padding: 0.3rem 0.75rem;
 		border-radius: 6px;
@@ -155,7 +180,16 @@
 		font-size: 0.8rem;
 		cursor: pointer;
 	}
-	.upd-btn:hover { background: var(--bg-subtle); }
-	.upd-btn.primary { background: var(--btn-primary-bg); border-color: var(--btn-primary-border); color: var(--btn-primary-text); }
-	.upd-btn.primary:hover { background: var(--btn-primary-bg-hover); border-color: var(--btn-primary-border-hover); }
+	.upd-btn:hover {
+		background: var(--bg-subtle);
+	}
+	.upd-btn.primary {
+		background: var(--btn-primary-bg);
+		border-color: var(--btn-primary-border);
+		color: var(--btn-primary-text);
+	}
+	.upd-btn.primary:hover {
+		background: var(--btn-primary-bg-hover);
+		border-color: var(--btn-primary-border-hover);
+	}
 </style>

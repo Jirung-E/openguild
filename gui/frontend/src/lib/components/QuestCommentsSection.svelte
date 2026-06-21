@@ -329,9 +329,7 @@
 	let replySaving = $state(false);
 
 	// DEV-153: 새 댓글에 입력했거나 편집/답글이 열려 있으면 미저장 — 이탈 가드 보고.
-	let commentsDirty = $derived(
-		newBody.trim() !== '' || editingId !== null || replyingTo !== null
-	);
+	let commentsDirty = $derived(newBody.trim() !== '' || editingId !== null || replyingTo !== null);
 	$effect(() => setUnsaved(`comments:${scope}`, commentsDirty));
 	onDestroy(() => setUnsaved(`comments:${scope}`, false));
 	let replyError = $state<string | null>(null);
@@ -531,9 +529,12 @@
 				onclick={() => toggleBodyCollapsed(e.id)}
 				aria-expanded={!collapsedBodies.has(e.id)}
 				title={collapsedBodies.has(e.id) ? `#${e.id} 내용 펼치기` : `#${e.id} 내용 접기`}
-			>#{e.id}</button>
+				>#{e.id}</button
+			>
 			{#if e.parent_id != null}
-				<a class="reply-to" href={`#comment-${e.parent_id}`} title={`#${e.parent_id} 댓글로 이동`}>↩ #{e.parent_id}</a>
+				<a class="reply-to" href={`#comment-${e.parent_id}`} title={`#${e.parent_id} 댓글로 이동`}
+					>↩ #{e.parent_id}</a
+				>
 			{/if}
 			<span class="author">{e.author || '(이름 없음)'}</span>
 			<span class="sep">·</span>
@@ -545,8 +546,11 @@
 					class="disc-badge"
 					class:resolved={e.resolved}
 					onclick={() => toggleResolved(e.id)}
-					title={e.resolved ? '해결됨 — 클릭하면 다시 미해결로' : '미해결 토론 — 클릭하면 해결 처리 (완료 차단 해제)'}
-				>{e.resolved ? '✓ 해결됨' : '● 미해결 토론'}</button>
+					title={e.resolved
+						? '해결됨 — 클릭하면 다시 미해결로'
+						: '미해결 토론 — 클릭하면 해결 처리 (완료 차단 해제)'}
+					>{e.resolved ? '✓ 해결됨' : '● 미해결 토론'}</button
+				>
 			{/if}
 			{#if editingId !== e.id}
 				<div class="entry-actions">
@@ -556,7 +560,8 @@
 							class:on={e.discussion}
 							onclick={() => toggleDiscussion(e.id)}
 							title={e.discussion ? '토론 표시 해제' : '토론으로 표시 — resolve 전까지 완료 차단'}
-						>💬 토론</button>
+							>💬 토론</button
+						>
 					{/if}
 					<button class="link-btn" onclick={() => enterEdit(e)}>✎ 편집</button>
 					<button class="link-btn danger" onclick={() => askRemove(e.id)}>× 삭제</button>
@@ -584,8 +589,8 @@
 					class="btn-attach"
 					onclick={() =>
 						pickAndAttachTextarea(editTextareaEl, (m) => (editError = `첨부 실패: ${m}`), onAttach)}
-					title="이미지·동영상·파일 첨부 (드래그&드랍 / Ctrl+V 도 가능)"
-				>📎 첨부</button>
+					title="이미지·동영상·파일 첨부 (드래그&드랍 / Ctrl+V 도 가능)">📎 첨부</button
+				>
 				<button class="btn-save" onclick={() => saveEdit(e.id)} disabled={editSaving}>
 					{editSaving ? '저장…' : '저장'}
 				</button>
@@ -616,7 +621,8 @@
 								onclick={() => toggleRootCollapsed(e.id)}
 								aria-expanded={!isThreadCollapsed}
 								title={isThreadCollapsed ? '답글 펼치기' : '답글 접기'}
-							>{isThreadCollapsed ? '▶' : '▼'}</button>
+								>{isThreadCollapsed ? '▶' : '▼'}</button
+							>
 							<span class="reply-count">답글 {childCount}</span>
 						{/if}
 						<button class="reply-write-btn" onclick={() => enterReply(e.id)}>답글 쓰기</button>
@@ -639,17 +645,21 @@
 							class="reaction-add"
 							onclick={() => (pickerOpenFor = pickerOpenFor === e.id ? null : e.id)}
 							aria-expanded={pickerOpenFor === e.id}
-							title="반응 추가"
-						>☺+</button>
+							title="반응 추가">☺+</button
+						>
 						{#if pickerOpenFor === e.id}
-							<div class="picker-ov" role="presentation" onclick={() => (pickerOpenFor = null)}></div>
+							<div
+								class="picker-ov"
+								role="presentation"
+								onclick={() => (pickerOpenFor = null)}
+							></div>
 							<div class="reaction-picker" role="menu">
 								{#each REACTION_SET as emoji (emoji)}
 									<button
 										class="picker-item"
 										class:on={reactedByMe(reacts.find((x) => x.emoji === emoji)?.authors ?? [])}
-										onclick={() => toggleReaction(e.id, emoji)}
-									>{emoji}</button>
+										onclick={() => toggleReaction(e.id, emoji)}>{emoji}</button
+									>
 								{/each}
 							</div>
 						{/if}
@@ -677,143 +687,144 @@
 	</div>
 
 	{#if !collapsed}
-	{#if loading}
-		<p class="state">Loading…</p>
-	{:else if loadError}
-		<p class="state err">{loadError}</p>
-	{:else}
-		{#if entries.length === 0}
-			<p class="no-desc">아직 댓글 없음.</p>
+		{#if loading}
+			<p class="state">Loading…</p>
+		{:else if loadError}
+			<p class="state err">{loadError}</p>
 		{:else}
-			<ul class="entry-list">
-				{#each groups.roots as root (root.id)}
-					{@const childCount = (groups.childrenByRoot.get(root.id) ?? []).length}
-					{@const isCollapsed = collapsedRoots.has(root.id)}
-					<!-- DEV-139: root + 답글을 하나의 카드로 — 댓글 간 시각 구분. -->
-					<li class="entry-card">
-						{@render entryView(root, false)}
-						{#if (childCount > 0 && !isCollapsed) || replyingTo === root.id}
-							<div class="thread">
-								<div class="reply-list">
-									{#if !isCollapsed}
-										{#each groups.childrenByRoot.get(root.id) ?? [] as r (r.id)}
-											{@render entryView(r, true)}
-										{/each}
-									{/if}
-									{#if replyingTo === root.id}
-										<div class="reply-form">
-											<div class="reply-author">
-												<input
-													class="author-input"
-													type="text"
-													placeholder="작성자 (옵션)"
-													bind:value={replyAuthor}
+			{#if entries.length === 0}
+				<p class="no-desc">아직 댓글 없음.</p>
+			{:else}
+				<ul class="entry-list">
+					{#each groups.roots as root (root.id)}
+						{@const childCount = (groups.childrenByRoot.get(root.id) ?? []).length}
+						{@const isCollapsed = collapsedRoots.has(root.id)}
+						<!-- DEV-139: root + 답글을 하나의 카드로 — 댓글 간 시각 구분. -->
+						<li class="entry-card">
+							{@render entryView(root, false)}
+							{#if (childCount > 0 && !isCollapsed) || replyingTo === root.id}
+								<div class="thread">
+									<div class="reply-list">
+										{#if !isCollapsed}
+											{#each groups.childrenByRoot.get(root.id) ?? [] as r (r.id)}
+												{@render entryView(r, true)}
+											{/each}
+										{/if}
+										{#if replyingTo === root.id}
+											<div class="reply-form">
+												<div class="reply-author">
+													<input
+														class="author-input"
+														type="text"
+														placeholder="작성자 (옵션)"
+														bind:value={replyAuthor}
+														disabled={replySaving}
+													/>
+												</div>
+												<textarea
+													use:tabInsert
+													use:textareaAttach={{
+														onError: (m) => (replyError = `첨부 실패: ${m}`),
+														onAttach
+													}}
+													bind:this={replyTextareaEl}
+													class="body-input"
+													bind:value={replyBody}
+													oninput={onWikiInput}
+													onkeyup={onWikiInput}
+													onclick={onWikiInput}
+													onkeydowncapture={onWikiKeydown}
+													rows="3"
+													placeholder={`@${root.author || root.id} 에 답글…`}
 													disabled={replySaving}
-												/>
+												></textarea>
+												{#if replyError}<p class="state err">{replyError}</p>{/if}
+												<div class="actions">
+													<button
+														type="button"
+														class="btn-attach"
+														onclick={() =>
+															pickAndAttachTextarea(
+																replyTextareaEl,
+																(m) => (replyError = `첨부 실패: ${m}`),
+																onAttach
+															)}
+														title="이미지·동영상·파일 첨부 (드래그&드랍 / Ctrl+V 도 가능)"
+														>📎 첨부</button
+													>
+													<button
+														class="btn-save"
+														onclick={() => submitReply(root.id)}
+														disabled={replySaving || !replyBody.trim()}
+													>
+														{replySaving ? '저장…' : '답글 추가'}
+													</button>
+													<button class="btn-cancel" onclick={cancelReply} disabled={replySaving}>
+														취소
+													</button>
+												</div>
 											</div>
-											<textarea
-												use:tabInsert
-												use:textareaAttach={{
-													onError: (m) => (replyError = `첨부 실패: ${m}`),
-													onAttach
-												}}
-												bind:this={replyTextareaEl}
-												class="body-input"
-												bind:value={replyBody}
-												oninput={onWikiInput}
-												onkeyup={onWikiInput}
-												onclick={onWikiInput}
-												onkeydowncapture={onWikiKeydown}
-												rows="3"
-												placeholder={`@${root.author || root.id} 에 답글…`}
-												disabled={replySaving}
-											></textarea>
-											{#if replyError}<p class="state err">{replyError}</p>{/if}
-											<div class="actions">
-												<button
-													type="button"
-													class="btn-attach"
-													onclick={() =>
-														pickAndAttachTextarea(
-															replyTextareaEl,
-															(m) => (replyError = `첨부 실패: ${m}`),
-											onAttach
-														)}
-													title="이미지·동영상·파일 첨부 (드래그&드랍 / Ctrl+V 도 가능)"
-												>📎 첨부</button>
-												<button
-													class="btn-save"
-													onclick={() => submitReply(root.id)}
-													disabled={replySaving || !replyBody.trim()}
-												>
-													{replySaving ? '저장…' : '답글 추가'}
-												</button>
-												<button class="btn-cancel" onclick={cancelReply} disabled={replySaving}>
-													취소
-												</button>
-											</div>
-										</div>
-									{/if}
+										{/if}
+									</div>
 								</div>
-							</div>
-						{/if}
-					</li>
-				{/each}
-				{#if groups.orphans.length > 0}
-					<li class="entry-card orphan-card">
-						<span class="orphan-label">↩ 삭제된 댓글에 대한 답글</span>
-						{#each groups.orphans as o (o.id)}
-							{@render entryView(o, true)}
-						{/each}
-					</li>
-				{/if}
-			</ul>
-		{/if}
+							{/if}
+						</li>
+					{/each}
+					{#if groups.orphans.length > 0}
+						<li class="entry-card orphan-card">
+							<span class="orphan-label">↩ 삭제된 댓글에 대한 답글</span>
+							{#each groups.orphans as o (o.id)}
+								{@render entryView(o, true)}
+							{/each}
+						</li>
+					{/if}
+				</ul>
+			{/if}
 
-		<!-- 새 top-level 댓글 -->
-		<div class="new-form">
-			<div class="new-row">
-				<input
-					class="author-input"
-					type="text"
-					placeholder="작성자 (옵션)"
-					bind:value={newAuthor}
+			<!-- 새 top-level 댓글 -->
+			<div class="new-form">
+				<div class="new-row">
+					<input
+						class="author-input"
+						type="text"
+						placeholder="작성자 (옵션)"
+						bind:value={newAuthor}
+						disabled={saving}
+					/>
+				</div>
+				<textarea
+					use:tabInsert
+					use:textareaAttach={{ onError: (m) => (saveError = `첨부 실패: ${m}`), onAttach }}
+					bind:this={newTextareaEl}
+					class="body-input"
+					bind:value={newBody}
+					oninput={onWikiInput}
+					onkeyup={onWikiInput}
+					onclick={onWikiInput}
+					onkeydowncapture={onWikiKeydown}
+					rows="3"
+					placeholder="댓글 작성 (markdown 사용 가능)"
 					disabled={saving}
-				/>
+				></textarea>
+				{#if saveError}<p class="state err">{saveError}</p>{/if}
+				<div class="actions">
+					<button
+						type="button"
+						class="btn-attach"
+						onclick={() =>
+							pickAndAttachTextarea(
+								newTextareaEl,
+								(m) => (saveError = `첨부 실패: ${m}`),
+								onAttach
+							)}
+						title="이미지·동영상·파일 첨부 (드래그&드랍 / Ctrl+V 도 가능)">📎 첨부</button
+					>
+					<button class="btn-save" onclick={add} disabled={saving || !newBody.trim()}>
+						{saving ? '추가…' : '+ 댓글 추가'}
+					</button>
+				</div>
 			</div>
-			<textarea
-				use:tabInsert
-				use:textareaAttach={{ onError: (m) => (saveError = `첨부 실패: ${m}`), onAttach }}
-				bind:this={newTextareaEl}
-				class="body-input"
-				bind:value={newBody}
-				oninput={onWikiInput}
-				onkeyup={onWikiInput}
-				onclick={onWikiInput}
-				onkeydowncapture={onWikiKeydown}
-				rows="3"
-				placeholder="댓글 작성 (markdown 사용 가능)"
-				disabled={saving}
-			></textarea>
-			{#if saveError}<p class="state err">{saveError}</p>{/if}
-			<div class="actions">
-				<button
-					type="button"
-					class="btn-attach"
-					onclick={() =>
-						pickAndAttachTextarea(newTextareaEl, (m) => (saveError = `첨부 실패: ${m}`), onAttach)}
-					title="이미지·동영상·파일 첨부 (드래그&드랍 / Ctrl+V 도 가능)"
-				>📎 첨부</button>
-				<button
-					class="btn-save"
-					onclick={add}
-					disabled={saving || !newBody.trim()}
-				>
-					{saving ? '추가…' : '+ 댓글 추가'}
-				</button>
-			</div>
-		</div>
-	{/if}
+		{/if}
 	{/if}
 </section>
 
@@ -833,7 +844,9 @@
 	<ul
 		class="wiki-pop"
 		bind:this={wikiPopEl}
-		style="left:{wiki.left}px; {wiki.bottom != null ? `bottom:${wiki.bottom}px` : `top:${wiki.top}px`}"
+		style="left:{wiki.left}px; {wiki.bottom != null
+			? `bottom:${wiki.bottom}px`
+			: `top:${wiki.top}px`}"
 	>
 		{#each wiki.items as it, i (it.id)}
 			<li>
@@ -856,18 +869,30 @@
 {/if}
 
 <style>
-	.comments-sec { margin-bottom: 1.5rem; }
+	.comments-sec {
+		margin-bottom: 1.5rem;
+	}
 	.section-head {
-		display: flex; align-items: center; gap: 0.5rem;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
 		margin-bottom: 0.5rem;
 	}
 	/* DEV-107: 섹션 토글 — title 자체를 button 으로 만들어 클릭 가능. */
 	.section-toggle {
-		display: flex; align-items: center; gap: 0.4rem;
-		background: none; border: none; padding: 0; cursor: pointer;
-		color: inherit; font: inherit;
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		background: none;
+		border: none;
+		padding: 0;
+		cursor: pointer;
+		color: inherit;
+		font: inherit;
 	}
-	.section-toggle:hover .section-title { color: var(--text); }
+	.section-toggle:hover .section-title {
+		color: var(--text);
+	}
 	.toggle-icon {
 		font-size: 0.65rem;
 		color: var(--text-muted);
@@ -878,8 +903,11 @@
 		transform: rotate(-90deg);
 	}
 	.section-title {
-		font-size: 0.8rem; font-weight: 600;
-		text-transform: uppercase; letter-spacing: 0.05em; margin: 0;
+		font-size: 0.8rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		margin: 0;
 		color: var(--accent);
 		transition: color 0.12s;
 	}
@@ -888,9 +916,19 @@
 		color: var(--text-muted);
 	}
 
-	.state { color: var(--text-muted); font-size: 0.825rem; margin: 0.25rem 0; }
-	.state.err { color: var(--danger); }
-	.no-desc { color: var(--text-faint); font-size: 0.825rem; margin: 0.25rem 0; }
+	.state {
+		color: var(--text-muted);
+		font-size: 0.825rem;
+		margin: 0.25rem 0;
+	}
+	.state.err {
+		color: var(--danger);
+	}
+	.no-desc {
+		color: var(--text-faint);
+		font-size: 0.825rem;
+		margin: 0.25rem 0;
+	}
 
 	.entry-list {
 		list-style: none;
@@ -932,9 +970,16 @@
 		flex-direction: column;
 		gap: 0.35rem;
 	}
-	.reply-author { display: flex; gap: 0.4rem; }
+	.reply-author {
+		display: flex;
+		gap: 0.4rem;
+	}
 
-	.orphan-card { display: flex; flex-direction: column; gap: 0.5rem; }
+	.orphan-card {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
 	.orphan-label {
 		font-size: 0.72rem;
 		color: var(--text-muted);
@@ -949,9 +994,16 @@
 		color: var(--text-muted);
 		margin-bottom: 0.4rem;
 	}
-	.author { font-weight: 600; color: var(--text); }
-	.sep { color: var(--text-faint); }
-	.ts { color: var(--text-faint); }
+	.author {
+		font-weight: 600;
+		color: var(--text);
+	}
+	.sep {
+		color: var(--text-faint);
+	}
+	.ts {
+		color: var(--text-faint);
+	}
 	/* DEV-128 → DEV-139: 댓글 번호 — 클릭 시 본문 접기/펼치기 버튼. */
 	.entry-no {
 		font-family: 'SFMono-Regular', Consolas, monospace;
@@ -963,14 +1015,19 @@
 		border-radius: 4px;
 		border: 1px solid var(--border-muted);
 	}
-	.entry-no:hover { color: var(--accent); border-color: var(--accent); }
+	.entry-no:hover {
+		color: var(--accent);
+		border-color: var(--accent);
+	}
 	.reply-to {
 		font-family: 'SFMono-Regular', Consolas, monospace;
 		font-size: 0.7rem;
 		color: var(--text-muted);
 		text-decoration: none;
 	}
-	.reply-to:hover { color: var(--accent); }
+	.reply-to:hover {
+		color: var(--accent);
+	}
 	/* DEV-129: 접힌 본문 미리보기 — 1줄 ellipsis, 클릭으로 펼침. */
 	.body-collapsed {
 		display: block;
@@ -988,7 +1045,10 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
-	.body-collapsed:hover { color: var(--text-muted); border-left-color: var(--accent); }
+	.body-collapsed:hover {
+		color: var(--text-muted);
+		border-left-color: var(--accent);
+	}
 	/* DEV-139: 푸터 행 — 좌측 답글 컨트롤 / 우측 이모지. */
 	.entry-foot {
 		display: flex;
@@ -1012,7 +1072,9 @@
 		color: var(--text);
 		padding: 0.1rem 0.2rem;
 	}
-	.tri-btn:hover { color: var(--accent); }
+	.tri-btn:hover {
+		color: var(--accent);
+	}
 	.reply-count {
 		font-size: 0.75rem;
 		color: var(--text-muted);
@@ -1028,7 +1090,10 @@
 		border-radius: 4px;
 		border: 1px solid var(--border-muted);
 	}
-	.reply-write-btn:hover { color: var(--accent); border-color: var(--accent); }
+	.reply-write-btn:hover {
+		color: var(--accent);
+		border-color: var(--accent);
+	}
 	/* 우측 — 활성 반응 pill + '+' popup (slack 스타일). */
 	.foot-right {
 		display: flex;
@@ -1043,7 +1108,9 @@
 		font-size: 0.78rem;
 		cursor: pointer;
 	}
-	.reaction-pill:hover { border-color: var(--danger); }
+	.reaction-pill:hover {
+		border-color: var(--danger);
+	}
 	/* DEV-108: 내가 단 반응은 진한 테두리로 구분. */
 	.reaction-pill.mine {
 		background: color-mix(in srgb, var(--accent) 24%, transparent);
@@ -1056,7 +1123,9 @@
 		font-weight: 700;
 		color: var(--text-muted);
 	}
-	.picker-wrap { position: relative; }
+	.picker-wrap {
+		position: relative;
+	}
 	.reaction-add {
 		padding: 0.1rem 0.4rem;
 		background: transparent;
@@ -1066,7 +1135,10 @@
 		color: var(--text-faint);
 		cursor: pointer;
 	}
-	.reaction-add:hover { color: var(--text); border-color: var(--text-faint); }
+	.reaction-add:hover {
+		color: var(--text);
+		border-color: var(--text-faint);
+	}
 	.picker-ov {
 		position: fixed;
 		inset: 0;
@@ -1094,7 +1166,9 @@
 		font-size: 0.95rem;
 		cursor: pointer;
 	}
-	.picker-item:hover { background: var(--bg-subtle); }
+	.picker-item:hover {
+		background: var(--bg-subtle);
+	}
 	.picker-item.on {
 		background: color-mix(in srgb, var(--accent) 15%, transparent);
 		border-color: color-mix(in srgb, var(--accent) 45%, transparent);
@@ -1105,16 +1179,29 @@
 		gap: 0.5rem;
 	}
 	.link-btn {
-		background: none; border: none;
-		color: var(--accent); cursor: pointer;
-		padding: 0; font: inherit; font-size: 0.78rem;
+		background: none;
+		border: none;
+		color: var(--accent);
+		cursor: pointer;
+		padding: 0;
+		font: inherit;
+		font-size: 0.78rem;
 		text-decoration: underline;
 	}
-	.link-btn:hover { color: var(--accent); }
-	.link-btn.danger { color: var(--danger); }
-	.link-btn.danger:hover { color: var(--danger); }
+	.link-btn:hover {
+		color: var(--accent);
+	}
+	.link-btn.danger {
+		color: var(--danger);
+	}
+	.link-btn.danger:hover {
+		color: var(--danger);
+	}
 	/* DEV-142: '토론' 토글 활성 표시. */
-	.link-btn.on { color: var(--warning); font-weight: 700; }
+	.link-btn.on {
+		color: var(--warning);
+		font-weight: 700;
+	}
 
 	/* DEV-142: 토론 상태 배지 — 미해결(빨강) / 해결(초록). */
 	.disc-badge {
@@ -1129,15 +1216,21 @@
 		cursor: pointer;
 		white-space: nowrap;
 	}
-	.disc-badge:hover { background: color-mix(in srgb, var(--danger) 22%, transparent); }
+	.disc-badge:hover {
+		background: color-mix(in srgb, var(--danger) 22%, transparent);
+	}
 	.disc-badge.resolved {
 		border-color: color-mix(in srgb, var(--success) 45%, transparent);
 		background: color-mix(in srgb, var(--success) 14%, transparent);
 		color: var(--success);
 	}
-	.disc-badge.resolved:hover { background: color-mix(in srgb, var(--success) 22%, transparent); }
+	.disc-badge.resolved:hover {
+		background: color-mix(in srgb, var(--success) 22%, transparent);
+	}
 
-	.entry-body :global(p) { margin: 0.25rem 0; }
+	.entry-body :global(p) {
+		margin: 0.25rem 0;
+	}
 
 	.new-form {
 		border-top: 1px dashed var(--bg-subtle);
@@ -1146,7 +1239,10 @@
 		flex-direction: column;
 		gap: 0.4rem;
 	}
-	.new-row { display: flex; gap: 0.4rem; }
+	.new-row {
+		display: flex;
+		gap: 0.4rem;
+	}
 	.author-input {
 		flex: 0 0 14rem;
 		padding: 0.3rem 0.5rem;
@@ -1168,15 +1264,25 @@
 		resize: vertical;
 		min-height: 4rem;
 	}
-	.actions { display: flex; gap: 0.4rem; margin-top: 0.35rem; }
+	.actions {
+		display: flex;
+		gap: 0.4rem;
+		margin-top: 0.35rem;
+	}
 	/* DEV-151: 댓글 첨부 버튼. */
 	.btn-attach {
 		padding: 0.3rem 0.7rem;
-		background: var(--bg-subtle); border: 1px solid var(--border);
-		color: var(--text); border-radius: 6px; cursor: pointer; font-size: 0.8rem;
+		background: var(--bg-subtle);
+		border: 1px solid var(--border);
+		color: var(--text);
+		border-radius: 6px;
+		cursor: pointer;
+		font-size: 0.8rem;
 		margin-right: auto;
 	}
-	.btn-attach:hover { background: var(--bg-elevated); }
+	.btn-attach:hover {
+		background: var(--bg-elevated);
+	}
 	/* DEV-171: cross-link 자동완성 팝업 (caret 위치, VS 식). */
 	.wiki-pop {
 		position: fixed;
@@ -1230,15 +1336,31 @@
 	}
 	.btn-save {
 		padding: 0.3rem 0.85rem;
-		background: var(--btn-primary-bg); border: 1px solid var(--btn-primary-border);
-		color: var(--btn-primary-text); border-radius: 6px; cursor: pointer; font-size: 0.825rem;
+		background: var(--btn-primary-bg);
+		border: 1px solid var(--btn-primary-border);
+		color: var(--btn-primary-text);
+		border-radius: 6px;
+		cursor: pointer;
+		font-size: 0.825rem;
 	}
-	.btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
-	.btn-save:hover:not(:disabled) { background: var(--btn-primary-bg-hover); border-color: var(--btn-primary-border-hover); }
+	.btn-save:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+	.btn-save:hover:not(:disabled) {
+		background: var(--btn-primary-bg-hover);
+		border-color: var(--btn-primary-border-hover);
+	}
 	.btn-cancel {
 		padding: 0.3rem 0.85rem;
-		background: transparent; border: 1px solid var(--border);
-		color: var(--text); border-radius: 6px; cursor: pointer; font-size: 0.825rem;
+		background: transparent;
+		border: 1px solid var(--border);
+		color: var(--text);
+		border-radius: 6px;
+		cursor: pointer;
+		font-size: 0.825rem;
 	}
-	.btn-cancel:hover:not(:disabled) { background: var(--bg-subtle); }
+	.btn-cancel:hover:not(:disabled) {
+		background: var(--bg-subtle);
+	}
 </style>

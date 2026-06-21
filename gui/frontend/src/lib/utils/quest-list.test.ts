@@ -266,12 +266,7 @@ describe('includeAncestors / ancestorIdsOf', () => {
 	//        ├─ 2
 	//        │   └─ 4 (잎)
 	//        └─ 3
-	const tree: Quest[] = [
-		q(1),
-		q(2, { parentId: 1 }),
-		q(3, { parentId: 1 }),
-		q(4, { parentId: 2 })
-	];
+	const tree: Quest[] = [q(1), q(2, { parentId: 1 }), q(3, { parentId: 1 }), q(4, { parentId: 2 })];
 
 	it('잎이 매치되면 모든 조상이 포함됨', () => {
 		const matched = [tree.find((x) => x.id === 4)!];
@@ -435,10 +430,14 @@ describe('filterQuests extra', () => {
 		const list = [qs(1), qs(2), qs(3)];
 		const prereqQuestIds = new Set([2]);
 		expect(
-			filterQuests(list, none, none, '', false, new Set(), { prereq: 'has', prereqQuestIds }).map((x) => x.id)
+			filterQuests(list, none, none, '', false, new Set(), { prereq: 'has', prereqQuestIds }).map(
+				(x) => x.id
+			)
 		).toEqual([2]);
 		expect(
-			filterQuests(list, none, none, '', false, new Set(), { prereq: 'none', prereqQuestIds }).map((x) => x.id)
+			filterQuests(list, none, none, '', false, new Set(), { prereq: 'none', prereqQuestIds }).map(
+				(x) => x.id
+			)
 		).toEqual([1, 3]);
 		// any = 미적용.
 		expect(
@@ -450,7 +449,9 @@ describe('filterQuests extra', () => {
 		const list = [qs(1), qs(2)];
 		const parentIds = new Set([1]);
 		expect(
-			filterQuests(list, none, none, '', false, new Set(), { sub: 'has', parentIds }).map((x) => x.id)
+			filterQuests(list, none, none, '', false, new Set(), { sub: 'has', parentIds }).map(
+				(x) => x.id
+			)
 		).toEqual([1]);
 	});
 

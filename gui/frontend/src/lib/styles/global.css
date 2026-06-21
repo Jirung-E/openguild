@@ -263,7 +263,9 @@ input[type='checkbox'] {
 	cursor: pointer;
 	position: relative;
 	vertical-align: middle;
-	transition: background 0.1s, border-color 0.1s;
+	transition:
+		background 0.1s,
+		border-color 0.1s;
 }
 input[type='checkbox']:hover:not(:disabled) {
 	border-color: var(--accent);
@@ -291,4 +293,3 @@ input[type='checkbox']:disabled {
 	cursor: not-allowed;
 	opacity: 0.5;
 }
-

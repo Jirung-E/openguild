@@ -58,12 +58,7 @@ export function wikiMatch(
  *  DEV-171 후속: execCommand('insertText') 로 삽입해 브라우저 undo 스택 보존
  *  (Ctrl+Z 동작). setRangeText 는 undo 히스토리를 끊어 자동완성 입력이 되돌려지지
  *  않던 문제. execCommand 실패 시에만 setRangeText 로 fallback. */
-export function applyWikiLink(
-	ta: HTMLTextAreaElement,
-	from: number,
-	to: number,
-	id: string
-): void {
+export function applyWikiLink(ta: HTMLTextAreaElement, from: number, to: number, id: string): void {
 	const text = `[[${id}]]`;
 	ta.focus();
 	ta.setSelectionRange(from, to);
@@ -78,11 +73,33 @@ export function applyWikiLink(
 
 // mirror-div 로 복제할 스타일 (caret 좌표 계산용).
 const MIRROR_PROPS = [
-	'boxSizing', 'width', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth',
-	'borderLeftWidth', 'borderStyle', 'paddingTop', 'paddingRight', 'paddingBottom',
-	'paddingLeft', 'fontStyle', 'fontVariant', 'fontWeight', 'fontStretch', 'fontSize',
-	'lineHeight', 'fontFamily', 'textAlign', 'textTransform', 'textIndent',
-	'letterSpacing', 'wordSpacing', 'tabSize', 'whiteSpace', 'wordWrap', 'wordBreak'
+	'boxSizing',
+	'width',
+	'borderTopWidth',
+	'borderRightWidth',
+	'borderBottomWidth',
+	'borderLeftWidth',
+	'borderStyle',
+	'paddingTop',
+	'paddingRight',
+	'paddingBottom',
+	'paddingLeft',
+	'fontStyle',
+	'fontVariant',
+	'fontWeight',
+	'fontStretch',
+	'fontSize',
+	'lineHeight',
+	'fontFamily',
+	'textAlign',
+	'textTransform',
+	'textIndent',
+	'letterSpacing',
+	'wordSpacing',
+	'tabSize',
+	'whiteSpace',
+	'wordWrap',
+	'wordBreak'
 ] as const;
 
 /**

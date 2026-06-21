@@ -526,8 +526,8 @@
 				class="sort-dir"
 				onclick={() => (sortDesc = !sortDesc)}
 				title={sortDesc ? '내림차순 — 클릭 시 오름차순' : '오름차순 — 클릭 시 내림차순'}
-				aria-label="정렬 방향"
-			>{sortDesc ? '↓' : '↑'}</button>
+				aria-label="정렬 방향">{sortDesc ? '↓' : '↑'}</button
+			>
 		</div>
 		<!-- DEV-068: 모든 quest 의 unique tag 들. 클릭으로 필터 토글 (AND). -->
 		{#if allTagOptions.length > 0}
@@ -544,7 +544,11 @@
 					</button>
 				{/each}
 				{#if filterTags.size > 0}
-					<button class="tag-clear" onclick={() => (filterTags = new Set())} title="태그 필터 모두 해제">
+					<button
+						class="tag-clear"
+						onclick={() => (filterTags = new Set())}
+						title="태그 필터 모두 해제"
+					>
 						× 전체 해제
 					</button>
 				{/if}
@@ -610,10 +614,18 @@
 		font-size: 0.8rem;
 		font-weight: 600;
 		cursor: pointer;
-		transition: background 0.1s, border-color 0.1s;
+		transition:
+			background 0.1s,
+			border-color 0.1s;
 	}
-	.qb-new:hover { background: var(--btn-primary-bg-hover); border-color: var(--btn-primary-border-hover); }
-	.qb-new-icon { font-size: 0.95rem; line-height: 1; }
+	.qb-new:hover {
+		background: var(--btn-primary-bg-hover);
+		border-color: var(--btn-primary-border-hover);
+	}
+	.qb-new-icon {
+		font-size: 0.95rem;
+		line-height: 1;
+	}
 
 	.list {
 		flex: 1;
@@ -681,7 +693,10 @@
 		font-size: 0.85rem;
 		cursor: pointer;
 	}
-	.sort-dir:hover { color: var(--text); border-color: var(--text-faint); }
+	.sort-dir:hover {
+		color: var(--text);
+		border-color: var(--text-faint);
+	}
 
 	.tag-filter-chip {
 		padding: 0.15rem 0.65rem;
@@ -692,9 +707,13 @@
 		font-size: 0.72rem;
 		font-family: 'JetBrains Mono', ui-monospace, monospace;
 		cursor: pointer;
-		transition: background 0.1s, border-color 0.1s;
+		transition:
+			background 0.1s,
+			border-color 0.1s;
 	}
-	.tag-filter-chip:hover { background: color-mix(in srgb, var(--warning) 18%, transparent); }
+	.tag-filter-chip:hover {
+		background: color-mix(in srgb, var(--warning) 18%, transparent);
+	}
 	.tag-filter-chip.active {
 		background: color-mix(in srgb, var(--warning) 28%, transparent);
 		border-color: color-mix(in srgb, var(--warning) 70%, transparent);
@@ -720,7 +739,10 @@
 		font-size: 0.7rem;
 		cursor: pointer;
 	}
-	.tag-clear:hover { background: var(--bg-subtle); color: var(--text); }
+	.tag-clear:hover {
+		background: var(--bg-subtle);
+		color: var(--text);
+	}
 	.view-toggle {
 		display: inline-flex;
 		gap: 0;
@@ -740,12 +762,19 @@
 		color: var(--text-muted);
 		font-size: 0.8rem;
 		cursor: pointer;
-		transition: background 0.1s, color 0.1s;
+		transition:
+			background 0.1s,
+			color 0.1s;
 	}
-	.vt-btn:hover { color: var(--text); }
+	.vt-btn:hover {
+		color: var(--text);
+	}
 	.vt-btn.active {
 		background: var(--bg-subtle);
 		color: var(--text);
 	}
-	.vt-icon { font-size: 0.95rem; line-height: 1; }
+	.vt-icon {
+		font-size: 0.95rem;
+		line-height: 1;
+	}
 </style>

@@ -39,8 +39,7 @@ export interface CommentsListResponse {
 function makeCommentsApi(base: (slug: string) => string) {
 	return {
 		// ─── DEV-094: 댓글 entry CRUD ───
-		listComments: (slug: string) =>
-			api.get<CommentsListResponse>(`${base(slug)}/comments`),
+		listComments: (slug: string) => api.get<CommentsListResponse>(`${base(slug)}/comments`),
 		addComment: (slug: string, body: string, author = '', parentId: number | null = null) =>
 			api.post<CommentEntry>(`${base(slug)}/comments`, {
 				author,
@@ -49,8 +48,7 @@ function makeCommentsApi(base: (slug: string) => string) {
 			}),
 		updateComment: (slug: string, id: number, body: string) =>
 			api.patch<CommentEntry>(`${base(slug)}/comments/${id}`, { body }),
-		deleteComment: (slug: string, id: number) =>
-			api.delete(`${base(slug)}/comments/${id}`),
+		deleteComment: (slug: string, id: number) => api.delete(`${base(slug)}/comments/${id}`),
 		// DEV-108: 이모지 반응 토글 — 갱신된 entry 반환.
 		toggleReaction: (slug: string, id: number, emoji: string, author: string) =>
 			api.post<CommentEntry>(`${base(slug)}/comments/${id}/reactions`, { emoji, author }),
@@ -69,9 +67,7 @@ function makeCommentsApi(base: (slug: string) => string) {
 
 export type CommentsApi = ReturnType<typeof makeCommentsApi>;
 
-export const commentsApi = makeCommentsApi(
-	(slug) => `/api/quests/by/${encodeURIComponent(slug)}`
-);
+export const commentsApi = makeCommentsApi((slug) => `/api/quests/by/${encodeURIComponent(slug)}`);
 /** DEV-100: 캠페인 댓글 / 메모 — 경로는 기존 campaign 패턴. */
 export const campaignCommentsApi = makeCommentsApi(
 	(slug) => `/api/campaigns/${encodeURIComponent(slug)}`

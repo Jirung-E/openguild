@@ -34,9 +34,7 @@
 		const q = query.trim().toLowerCase();
 		if (!q) return quests;
 		return quests.filter(
-			(x) =>
-				x.quest_id.toLowerCase().includes(q) ||
-				x.title.toLowerCase().includes(q)
+			(x) => x.quest_id.toLowerCase().includes(q) || x.title.toLowerCase().includes(q)
 		);
 	});
 
@@ -91,11 +89,7 @@
 	{:else}
 		<ul class="cb-list" role="listbox" bind:this={listEl}>
 			{#each filtered() as q, i (q.id)}
-				<li
-					role="option"
-					aria-selected={i === highlightIdx}
-					class:on={i === highlightIdx}
-				>
+				<li role="option" aria-selected={i === highlightIdx} class:on={i === highlightIdx}>
 					<button
 						type="button"
 						class="cb-row"
@@ -131,7 +125,9 @@
 		font-size: 0.875rem;
 		outline: none;
 	}
-	.cb-input:focus { border-color: var(--accent); }
+	.cb-input:focus {
+		border-color: var(--accent);
+	}
 
 	.cb-empty {
 		padding: 0.6rem 0.8rem;
@@ -157,9 +153,15 @@
 	.cb-list::-webkit-scrollbar {
 		display: none;
 	}
-	.cb-list li { border-bottom: 1px solid var(--bg-elevated); }
-	.cb-list li:last-child { border-bottom: none; }
-	.cb-list li.on { background: var(--bg-elevated); }
+	.cb-list li {
+		border-bottom: 1px solid var(--bg-elevated);
+	}
+	.cb-list li:last-child {
+		border-bottom: none;
+	}
+	.cb-list li.on {
+		background: var(--bg-elevated);
+	}
 	.cb-row {
 		display: flex;
 		align-items: center;
@@ -174,7 +176,10 @@
 		text-align: left;
 		font: inherit;
 	}
-	.cb-row:focus { outline: 1px solid var(--accent); outline-offset: -1px; }
+	.cb-row:focus {
+		outline: 1px solid var(--accent);
+		outline-offset: -1px;
+	}
 
 	.badge {
 		flex-shrink: 0;

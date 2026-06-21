@@ -71,9 +71,7 @@
 		// MarkdownView 가 발급한 id 패턴 = `mm-<n>-<rand>`.
 		// mermaid v11 가 만드는 임시 노드 후보: 같은 id 의 svg, `d` 프리픽스 div.
 		document
-			.querySelectorAll<HTMLElement>(
-				'body > svg[id^="mm-"], body > div[id^="dmm-"]'
-			)
+			.querySelectorAll<HTMLElement>('body > svg[id^="mm-"], body > div[id^="dmm-"]')
 			.forEach((el) => el.remove());
 	}
 	onMount(sweepMermaidLeftovers);
@@ -139,8 +137,7 @@
 				window.scrollTo({ top: y, left: 0 });
 				tries += 1;
 				const reached = Math.abs(window.scrollY - y) <= 2;
-				const tallEnough =
-					document.documentElement.scrollHeight - window.innerHeight >= y;
+				const tallEnough = document.documentElement.scrollHeight - window.innerHeight >= y;
 				if (reached || tallEnough || tries >= MAX_TRIES) return;
 				setTimeout(attempt, 30);
 			};
@@ -191,10 +188,7 @@
 				// (너무 좁거나 과하게 넓어지지 않게). 팝업 width 는
 				// calc(<base>rem * var(--popup-scale)) 로 참조.
 				const scale = Math.max(0.9, Math.min(1.3, w / 1100));
-				document.documentElement.style.setProperty(
-					'--popup-scale',
-					scale.toFixed(3)
-				);
+				document.documentElement.style.setProperty('--popup-scale', scale.toFixed(3));
 			}
 		});
 		return () => unsub();
@@ -239,9 +233,9 @@
 		const interceptExternalLink = async (e: MouseEvent) => {
 			// 가장 가까운 a 찾기 — 자식 element 클릭에도 동작.
 			const path = e.composedPath() as Element[];
-			const anchor = path.find(
-				(el) => el instanceof HTMLAnchorElement
-			) as HTMLAnchorElement | undefined;
+			const anchor = path.find((el) => el instanceof HTMLAnchorElement) as
+				| HTMLAnchorElement
+				| undefined;
 			if (!anchor) return;
 			const href = anchor.getAttribute('href') ?? '';
 			if (!/^https?:\/\//i.test(href)) return; // internal / hash / javascript: → pass

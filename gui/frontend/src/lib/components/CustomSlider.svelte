@@ -38,15 +38,7 @@
 		disabled?: boolean;
 	};
 
-	let {
-		value,
-		min,
-		max,
-		step = 1,
-		onChange,
-		ariaLabel,
-		disabled = false
-	}: Props = $props();
+	let { value, min, max, step = 1, onChange, ariaLabel, disabled = false }: Props = $props();
 
 	let track: HTMLDivElement | undefined = $state(undefined);
 	let dragging = $state(false);

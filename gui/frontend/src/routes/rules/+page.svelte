@@ -76,10 +76,7 @@
 			// 선택 유지 / 자동 선택.
 			if (preferSlug && entries.some((e) => e.slug === preferSlug)) {
 				selectedSlug = preferSlug;
-			} else if (
-				selectedSlug == null ||
-				!entries.some((e) => e.slug === selectedSlug)
-			) {
+			} else if (selectedSlug == null || !entries.some((e) => e.slug === selectedSlug)) {
 				selectedSlug = entries[0]?.slug ?? null;
 			}
 			refreshSelectedContent();
@@ -190,9 +187,7 @@
 			const res = await rulesApi.set(selectedSlug, text);
 			selectedContent = res.content;
 			// 메모리 목록도 갱신 — 페이지 reload 안 해도 sidebar 정합.
-			entries = entries.map((e) =>
-				e.slug === selectedSlug ? { ...e, content: text } : e
-			);
+			entries = entries.map((e) => (e.slug === selectedSlug ? { ...e, content: text } : e));
 			cancelEdit();
 		} catch (e) {
 			saveError = e instanceof Error ? e.message : 'save failed';
@@ -379,11 +374,16 @@
 										class="btn-attach"
 										onclick={() =>
 											editorView &&
-											pickAndAttach(editorView, (msg) => (saveError = `첨부 업로드 실패: ${msg}`), undefined, {
-												mediaOnly: true
-											})}
-										title="이미지·동영상 첨부 (드래그&드랍 / Ctrl+V 도 가능)"
-									>📎 첨부</button>
+											pickAndAttach(
+												editorView,
+												(msg) => (saveError = `첨부 업로드 실패: ${msg}`),
+												undefined,
+												{
+													mediaOnly: true
+												}
+											)}
+										title="이미지·동영상 첨부 (드래그&드랍 / Ctrl+V 도 가능)">📎 첨부</button
+									>
 								</div>
 								<div class="editor-wrap" bind:this={editorContainer}></div>
 							</div>
@@ -391,9 +391,7 @@
 								<button class="btn-save" onclick={save} disabled={saving}>
 									{saving ? '저장…' : '저장'}
 								</button>
-								<button class="btn-cancel" onclick={cancelEdit} disabled={saving}>
-									취소
-								</button>
+								<button class="btn-cancel" onclick={cancelEdit} disabled={saving}> 취소 </button>
 							</div>
 							{#if saveError}<p class="err">{saveError}</p>{/if}
 						</div>

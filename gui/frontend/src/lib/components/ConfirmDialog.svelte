@@ -70,7 +70,7 @@
 	}
 </script>
 
-<svelte:window onkeydown={onkeydown} />
+<svelte:window {onkeydown} />
 
 {#if open}
 	<div
@@ -139,7 +139,9 @@
 		font-size: 0.875rem;
 		cursor: pointer;
 	}
-	.btn-no:hover { background: var(--bg-subtle); }
+	.btn-no:hover {
+		background: var(--bg-subtle);
+	}
 	.btn-yes {
 		padding: 0.4rem 1.1rem;
 		background: var(--btn-primary-bg);
@@ -149,11 +151,16 @@
 		font-size: 0.875rem;
 		cursor: pointer;
 	}
-	.btn-yes:hover { background: var(--btn-primary-bg-hover); border-color: var(--btn-primary-border-hover); }
+	.btn-yes:hover {
+		background: var(--btn-primary-bg-hover);
+		border-color: var(--btn-primary-border-hover);
+	}
 	.btn-yes.danger {
 		background: color-mix(in srgb, var(--danger) 18%, transparent);
 		border-color: var(--danger);
 		color: var(--danger);
 	}
-	.btn-yes.danger:hover { background: color-mix(in srgb, var(--danger) 32%, transparent); }
+	.btn-yes.danger:hover {
+		background: color-mix(in srgb, var(--danger) 32%, transparent);
+	}
 </style>

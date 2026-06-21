@@ -374,8 +374,7 @@ export function attachmentExtension(
 			if (picked.length === 0) return false;
 			event.preventDefault();
 			let pos =
-				view.posAtCoords({ x: event.clientX, y: event.clientY }) ??
-				view.state.selection.main.head;
+				view.posAtCoords({ x: event.clientX, y: event.clientY }) ?? view.state.selection.main.head;
 			for (const { file, ext } of picked) pos += place(view, file, ext, pos);
 			return true;
 		}

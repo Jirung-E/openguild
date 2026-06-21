@@ -11,11 +11,7 @@
 	import { onMount, onDestroy, tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import type { Quest } from '$lib/types';
-	import {
-		makeQuestNodeSvgUrl,
-		QUEST_NODE_W,
-		QUEST_NODE_H
-	} from '$lib/utils/quest-node-svg';
+	import { makeQuestNodeSvgUrl, QUEST_NODE_W, QUEST_NODE_H } from '$lib/utils/quest-node-svg';
 	// DEV-074 fix3: theme 별 노드 색 — store 변경 시 reactive.
 	import { theme, resolveTheme } from '$lib/stores/theme';
 	let effectiveTheme = $derived(resolveTheme($theme));
@@ -250,7 +246,9 @@
 	}
 	/* BUG-036: fade mask / cursor 는 인라인 style 로 직접 적용 (위 div 참조).
 	   .marquee class 는 .dragging combinator (drag 중 슬롯 click 차단) 용으로만 유지. */
-	.conveyor.marquee.dragging { cursor: grabbing; }
+	.conveyor.marquee.dragging {
+		cursor: grabbing;
+	}
 
 	.track {
 		display: flex;
@@ -270,9 +268,13 @@
 		flex-direction: column;
 		align-items: stretch;
 	}
-	.spacer { flex: 0 0 284px; }
+	.spacer {
+		flex: 0 0 284px;
+	}
 	/* BUG-035: 실제 드래그 중 슬롯 클릭 차단. marquee 가 아닐 땐 자연스러운 click. */
-	.conveyor.marquee.dragging .slot { pointer-events: none; }
+	.conveyor.marquee.dragging .slot {
+		pointer-events: none;
+	}
 
 	.slot img {
 		display: block;
@@ -297,5 +299,7 @@
 		cursor: pointer;
 		transition: background 0.15s;
 	}
-	.play-pause:hover { background: var(--bg-subtle); }
+	.play-pause:hover {
+		background: var(--bg-subtle);
+	}
 </style>

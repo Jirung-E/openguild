@@ -207,63 +207,74 @@
 	</div>
 
 	{#if !collapsed}
-	{#if loading}
-		<p class="state">Loading…</p>
-	{:else if loadError}
-		<p class="state err">{loadError}</p>
-	{:else if editMode}
-		<!-- BUG: editor 섹션은 <label> 금지 — 안의 '📎 첨부' 버튼(labelable)이
+		{#if loading}
+			<p class="state">Loading…</p>
+		{:else if loadError}
+			<p class="state err">{loadError}</p>
+		{:else if editMode}
+			<!-- BUG: editor 섹션은 <label> 금지 — 안의 '📎 첨부' 버튼(labelable)이
 		     라벨 클릭마다 활성화돼 파일창이 뜬다(admin #13). div 로. -->
-		<div class="field-label">
-			<span>{label.help}</span>
-			<!-- DEV-069 후속: 첨부 — 버튼/드래그&드랍/Ctrl+V 동일 업로드. -->
-			<div class="editor-toolbar">
-				<button
-					type="button"
-					class="btn-attach"
-					onclick={() =>
-						editorView &&
-						pickAndAttach(editorView, (msg) => (saveError = `첨부 실패: ${msg}`), undefined, {
-							mediaOnly: true
-						})}
-					title="이미지·동영상 첨부 (드래그&드랍 / Ctrl+V 도 가능). 다른 파일은 첨부 섹션을 사용하세요."
-				>📎 첨부</button>
+			<div class="field-label">
+				<span>{label.help}</span>
+				<!-- DEV-069 후속: 첨부 — 버튼/드래그&드랍/Ctrl+V 동일 업로드. -->
+				<div class="editor-toolbar">
+					<button
+						type="button"
+						class="btn-attach"
+						onclick={() =>
+							editorView &&
+							pickAndAttach(editorView, (msg) => (saveError = `첨부 실패: ${msg}`), undefined, {
+								mediaOnly: true
+							})}
+						title="이미지·동영상 첨부 (드래그&드랍 / Ctrl+V 도 가능). 다른 파일은 첨부 섹션을 사용하세요."
+						>📎 첨부</button
+					>
+				</div>
+				<div class="editor-wrap" bind:this={editorContainer}></div>
+				<!-- DEV-074 fix15: CodeMirror native scrollbar 대신 overlay. -->
+				{#if cmScroller}
+					<OverlayScrollbar target={cmScroller} />
+				{/if}
 			</div>
-			<div class="editor-wrap" bind:this={editorContainer}></div>
-			<!-- DEV-074 fix15: CodeMirror native scrollbar 대신 overlay. -->
-			{#if cmScroller}
-				<OverlayScrollbar target={cmScroller} />
-			{/if}
-		</div>
-		<div class="actions">
-			<button class="btn-save" onclick={save} disabled={saving}>
-				{saving ? '저장…' : '저장'}
-			</button>
-			<button class="btn-cancel" onclick={cancelEdit} disabled={saving}>취소</button>
-		</div>
-		{#if saveError}<p class="state err">{saveError}</p>{/if}
-	{:else if content && content.trim()}
-		<MarkdownView source={content} />
-	{:else}
-		<p class="no-desc">
-			{label.emptyHint}
-			<button class="link-btn" onclick={enterEdit}>{label.emptyAction}</button>
-		</p>
-	{/if}
+			<div class="actions">
+				<button class="btn-save" onclick={save} disabled={saving}>
+					{saving ? '저장…' : '저장'}
+				</button>
+				<button class="btn-cancel" onclick={cancelEdit} disabled={saving}>취소</button>
+			</div>
+			{#if saveError}<p class="state err">{saveError}</p>{/if}
+		{:else if content && content.trim()}
+			<MarkdownView source={content} />
+		{:else}
+			<p class="no-desc">
+				{label.emptyHint}
+				<button class="link-btn" onclick={enterEdit}>{label.emptyAction}</button>
+			</p>
+		{/if}
 	{/if}
 </section>
 
 <style>
-	.note-sec { margin-bottom: 1.5rem; }
+	.note-sec {
+		margin-bottom: 1.5rem;
+	}
 	.section-head {
-		display: flex; align-items: center; gap: 0.75rem;
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
 		margin-bottom: 0.5rem;
 	}
 	/* DEV-107: 섹션 토글. */
 	.section-toggle {
-		display: flex; align-items: center; gap: 0.4rem;
-		background: none; border: none; padding: 0; cursor: pointer;
-		color: inherit; font: inherit;
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		background: none;
+		border: none;
+		padding: 0;
+		cursor: pointer;
+		color: inherit;
+		font: inherit;
 	}
 	.toggle-icon {
 		font-size: 0.65rem;
@@ -275,62 +286,132 @@
 		transform: rotate(-90deg);
 	}
 	.section-title {
-		font-size: 0.8rem; font-weight: 600;
-		text-transform: uppercase; letter-spacing: 0.05em; margin: 0;
+		font-size: 0.8rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		margin: 0;
 		transition: color 0.12s;
 	}
-	.section-title.note-memo { color: var(--warning); }
+	.section-title.note-memo {
+		color: var(--warning);
+	}
 
 	.sec-add-btn {
 		padding: 0.15rem 0.6rem;
-		border: 1px solid var(--border); border-radius: 4px;
-		background: transparent; color: var(--text-muted);
-		font-size: 0.72rem; cursor: pointer;
+		border: 1px solid var(--border);
+		border-radius: 4px;
+		background: transparent;
+		color: var(--text-muted);
+		font-size: 0.72rem;
+		cursor: pointer;
 		margin-left: auto;
 	}
-	.sec-add-btn:hover { background: var(--bg-subtle); color: var(--text); }
+	.sec-add-btn:hover {
+		background: var(--bg-subtle);
+		color: var(--text);
+	}
 
-	.state { color: var(--text-muted); font-size: 0.825rem; margin: 0.25rem 0; }
-	.state.err { color: var(--danger); }
+	.state {
+		color: var(--text-muted);
+		font-size: 0.825rem;
+		margin: 0.25rem 0;
+	}
+	.state.err {
+		color: var(--danger);
+	}
 
-	.no-desc { color: var(--text-faint); font-size: 0.825rem; margin: 0.25rem 0; }
+	.no-desc {
+		color: var(--text-faint);
+		font-size: 0.825rem;
+		margin: 0.25rem 0;
+	}
 	.link-btn {
-		background: none; border: none; color: var(--accent);
-		cursor: pointer; padding: 0; font: inherit; text-decoration: underline;
+		background: none;
+		border: none;
+		color: var(--accent);
+		cursor: pointer;
+		padding: 0;
+		font: inherit;
+		text-decoration: underline;
 		margin-left: 0.35rem;
 	}
 
-	.field-label { display: flex; flex-direction: column; gap: 0.35rem; }
-	.field-label > span { font-size: 0.75rem; color: var(--text-muted); }
-	/* DEV-069 후속: 첨부 툴바. */
-	.editor-toolbar { display: flex; gap: 0.4rem; margin: 0.25rem 0; }
-	.btn-attach {
-		font-size: 0.8rem; padding: 0.2rem 0.6rem; border-radius: 6px;
-		border: 1px solid var(--border); background: var(--bg-subtle);
-		color: var(--text); cursor: pointer;
+	.field-label {
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
 	}
-	.btn-attach:hover { background: var(--bg-elevated); }
+	.field-label > span {
+		font-size: 0.75rem;
+		color: var(--text-muted);
+	}
+	/* DEV-069 후속: 첨부 툴바. */
+	.editor-toolbar {
+		display: flex;
+		gap: 0.4rem;
+		margin: 0.25rem 0;
+	}
+	.btn-attach {
+		font-size: 0.8rem;
+		padding: 0.2rem 0.6rem;
+		border-radius: 6px;
+		border: 1px solid var(--border);
+		background: var(--bg-subtle);
+		color: var(--text);
+		cursor: pointer;
+	}
+	.btn-attach:hover {
+		background: var(--bg-elevated);
+	}
 	.editor-wrap {
-		border: 1px solid var(--border); border-radius: 6px;
-		overflow: hidden; min-height: 180px; max-height: 90vh;
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		overflow: hidden;
+		min-height: 180px;
+		max-height: 90vh;
 		resize: vertical;
 	}
 	/* DEV-074 fix15: native scrollbar 숨김 — OverlayScrollbar 가 대신 그림. */
-	.editor-wrap :global(.cm-scroller) { scrollbar-width: none; }
-	.editor-wrap :global(.cm-scroller::-webkit-scrollbar) { display: none; }
+	.editor-wrap :global(.cm-scroller) {
+		scrollbar-width: none;
+	}
+	.editor-wrap :global(.cm-scroller::-webkit-scrollbar) {
+		display: none;
+	}
 
-	.actions { display: flex; gap: 0.4rem; margin-top: 0.5rem; }
+	.actions {
+		display: flex;
+		gap: 0.4rem;
+		margin-top: 0.5rem;
+	}
 	.btn-save {
 		padding: 0.35rem 0.85rem;
-		background: var(--btn-primary-bg); border: 1px solid var(--btn-primary-border);
-		color: var(--btn-primary-text); border-radius: 6px; cursor: pointer; font-size: 0.825rem;
+		background: var(--btn-primary-bg);
+		border: 1px solid var(--btn-primary-border);
+		color: var(--btn-primary-text);
+		border-radius: 6px;
+		cursor: pointer;
+		font-size: 0.825rem;
 	}
-	.btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
-	.btn-save:hover:not(:disabled) { background: var(--btn-primary-bg-hover); border-color: var(--btn-primary-border-hover); }
+	.btn-save:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+	.btn-save:hover:not(:disabled) {
+		background: var(--btn-primary-bg-hover);
+		border-color: var(--btn-primary-border-hover);
+	}
 	.btn-cancel {
 		padding: 0.35rem 0.85rem;
-		background: transparent; border: 1px solid var(--border);
-		color: var(--text); border-radius: 6px; cursor: pointer; font-size: 0.825rem;
+		background: transparent;
+		border: 1px solid var(--border);
+		color: var(--text);
+		border-radius: 6px;
+		cursor: pointer;
+		font-size: 0.825rem;
 	}
-	.btn-cancel:hover:not(:disabled) { background: var(--bg-subtle); }
+	.btn-cancel:hover:not(:disabled) {
+		background: var(--bg-subtle);
+	}
 </style>

@@ -89,191 +89,193 @@
 				class="tab"
 				class:active={activeTab === 'info'}
 				onclick={() => (activeTab = 'info')}
-				aria-pressed={activeTab === 'info'}
-			>정보</button>
+				aria-pressed={activeTab === 'info'}>정보</button
+			>
 			<button
 				class="tab"
 				class:active={activeTab === 'display'}
 				onclick={() => (activeTab = 'display')}
-				aria-pressed={activeTab === 'display'}
-			>표시</button>
+				aria-pressed={activeTab === 'display'}>표시</button
+			>
 			<!-- DEV-130: 편집기 들여쓰기 설정. -->
 			<button
 				class="tab"
 				class:active={activeTab === 'editor'}
 				onclick={() => (activeTab = 'editor')}
-				aria-pressed={activeTab === 'editor'}
-			>편집기</button>
+				aria-pressed={activeTab === 'editor'}>편집기</button
+			>
 		</nav>
 	</aside>
 
 	<section class="panel">
 		{#if activeTab === 'editor'}
-		<!-- DEV-130: 본문 편집기 들여쓰기 — 코드 편집기처럼 tab/space + 칸수 선택. -->
-		<h2>편집기</h2>
-		<dl class="info-grid">
-			<dt>Tab 동작</dt>
-			<dd class="theme-row">
-				<div class="theme-toggle" role="group" aria-label="Tab 동작">
-					<button
-						class="th-btn"
-						class:active={$editorSettings.tabMode === 'tab'}
-						onclick={() => setTabMode('tab')}
-						aria-pressed={$editorSettings.tabMode === 'tab'}
-					>탭 문자</button>
-					<button
-						class="th-btn"
-						class:active={$editorSettings.tabMode === 'space'}
-						onclick={() => setTabMode('space')}
-						aria-pressed={$editorSettings.tabMode === 'space'}
-					>공백</button>
-				</div>
-				<p class="scale-hint">
-					Tab 키를 눌렀을 때 탭 문자(\t)를 넣을지, 공백을 넣을지. 퀘스트 / 캠페인 본문 편집기에 적용.
-				</p>
-			</dd>
-			<dt>들여쓰기 칸수</dt>
-			<dd class="theme-row">
-				<div class="theme-toggle" role="group" aria-label="들여쓰기 칸수">
-					{#each [2, 4] as n (n)}
+			<!-- DEV-130: 본문 편집기 들여쓰기 — 코드 편집기처럼 tab/space + 칸수 선택. -->
+			<h2>편집기</h2>
+			<dl class="info-grid">
+				<dt>Tab 동작</dt>
+				<dd class="theme-row">
+					<div class="theme-toggle" role="group" aria-label="Tab 동작">
 						<button
 							class="th-btn"
-							class:active={$editorSettings.indentSize === n}
-							onclick={() => setIndentSize(n as IndentSize)}
-							aria-pressed={$editorSettings.indentSize === n}
-						>{n}칸</button>
-					{/each}
-				</div>
-				<p class="scale-hint">
-					공백 모드에서 Tab 한 번에 넣을 공백 개수 (탭 문자 모드에선 표시 폭). 2 / 4 중 선택.
-				</p>
-			</dd>
-		</dl>
-		{:else if activeTab === 'info'}
-		<h2>정보</h2>
-		<dl class="info-grid">
-			<dt>앱 이름</dt>
-			<dd>{appName}</dd>
-			<dt>버전</dt>
-			<dd>
-				<span>{appVersion}</span>
-				{#if isTauri}
-					<!-- DEV-086: 버전 아래 '슬쩍' 업데이트 확인. 결과는 floating toast. -->
-					<button
-						class="btn-check-upd"
-						onclick={() => checkForUpdate()}
-						disabled={$updateState.status === 'checking' ||
-							$updateState.status === 'downloading'}
-					>
-						{$updateState.status === 'checking' ? '확인 중…' : '업데이트 확인'}
-					</button>
-				{/if}
-			</dd>
-			<dt>저장소</dt>
-			<dd><a href={repoUrl} target="_blank" rel="noreferrer noopener">{repoUrl}</a></dd>
-		</dl>
-		{:else}
-
-		<!-- DEV-101: UI 크기 (rem scale) — 슬라이더 변경 시 즉시 반영. -->
-		<h2>표시</h2>
-		<dl class="info-grid">
-			<dt>UI 크기</dt>
-			<dd class="ui-scale">
-				<div class="scale-row">
-					<CustomSlider
-						value={$uiScale}
-						min={MIN_SCALE}
-						max={MAX_SCALE}
-						step={0.01}
-						ariaLabel="UI 크기"
-						onChange={setUiScale}
-					/>
-					<!-- DEV-101 fix4: 직접 숫자 입력. % 단위 (50~200). -->
-					<div class="num-input">
-						<input
-							type="number"
-							min={Math.round(MIN_SCALE * 100)}
-							max={Math.round(MAX_SCALE * 100)}
-							step="1"
-							value={Math.round($uiScale * 100)}
-							oninput={(e) => {
-								const n = Number.parseInt(e.currentTarget.value, 10);
-								if (Number.isFinite(n)) setUiScale(n / 100);
-							}}
-							aria-label="UI 크기 (퍼센트)"
-						/>
-						<span class="unit">%</span>
+							class:active={$editorSettings.tabMode === 'tab'}
+							onclick={() => setTabMode('tab')}
+							aria-pressed={$editorSettings.tabMode === 'tab'}>탭 문자</button
+						>
+						<button
+							class="th-btn"
+							class:active={$editorSettings.tabMode === 'space'}
+							onclick={() => setTabMode('space')}
+							aria-pressed={$editorSettings.tabMode === 'space'}>공백</button
+						>
 					</div>
-					<button
-						class="btn-reset"
-						onclick={resetUiScale}
-						disabled={$uiScale === DEFAULT_SCALE}
-						title="100% 로 초기화"
-					>초기화</button>
-				</div>
-				<p class="scale-hint">전체 UI 의 텍스트 / 여백이 비례 확대·축소됩니다 ({Math.round(MIN_SCALE * 100)}%~{Math.round(MAX_SCALE * 100)}%, 1% 단위). 슬라이더 / 숫자 입력 모두 즉시 적용.</p>
-			</dd>
+					<p class="scale-hint">
+						Tab 키를 눌렀을 때 탭 문자(\t)를 넣을지, 공백을 넣을지. 퀘스트 / 캠페인 본문 편집기에
+						적용.
+					</p>
+				</dd>
+				<dt>들여쓰기 칸수</dt>
+				<dd class="theme-row">
+					<div class="theme-toggle" role="group" aria-label="들여쓰기 칸수">
+						{#each [2, 4] as n (n)}
+							<button
+								class="th-btn"
+								class:active={$editorSettings.indentSize === n}
+								onclick={() => setIndentSize(n as IndentSize)}
+								aria-pressed={$editorSettings.indentSize === n}>{n}칸</button
+							>
+						{/each}
+					</div>
+					<p class="scale-hint">
+						공백 모드에서 Tab 한 번에 넣을 공백 개수 (탭 문자 모드에선 표시 폭). 2 / 4 중 선택.
+					</p>
+				</dd>
+			</dl>
+		{:else if activeTab === 'info'}
+			<h2>정보</h2>
+			<dl class="info-grid">
+				<dt>앱 이름</dt>
+				<dd>{appName}</dd>
+				<dt>버전</dt>
+				<dd>
+					<span>{appVersion}</span>
+					{#if isTauri}
+						<!-- DEV-086: 버전 아래 '슬쩍' 업데이트 확인. 결과는 floating toast. -->
+						<button
+							class="btn-check-upd"
+							onclick={() => checkForUpdate()}
+							disabled={$updateState.status === 'checking' || $updateState.status === 'downloading'}
+						>
+							{$updateState.status === 'checking' ? '확인 중…' : '업데이트 확인'}
+						</button>
+					{/if}
+				</dd>
+				<dt>저장소</dt>
+				<dd><a href={repoUrl} target="_blank" rel="noreferrer noopener">{repoUrl}</a></dd>
+			</dl>
+		{:else}
+			<!-- DEV-101: UI 크기 (rem scale) — 슬라이더 변경 시 즉시 반영. -->
+			<h2>표시</h2>
+			<dl class="info-grid">
+				<dt>UI 크기</dt>
+				<dd class="ui-scale">
+					<div class="scale-row">
+						<CustomSlider
+							value={$uiScale}
+							min={MIN_SCALE}
+							max={MAX_SCALE}
+							step={0.01}
+							ariaLabel="UI 크기"
+							onChange={setUiScale}
+						/>
+						<!-- DEV-101 fix4: 직접 숫자 입력. % 단위 (50~200). -->
+						<div class="num-input">
+							<input
+								type="number"
+								min={Math.round(MIN_SCALE * 100)}
+								max={Math.round(MAX_SCALE * 100)}
+								step="1"
+								value={Math.round($uiScale * 100)}
+								oninput={(e) => {
+									const n = Number.parseInt(e.currentTarget.value, 10);
+									if (Number.isFinite(n)) setUiScale(n / 100);
+								}}
+								aria-label="UI 크기 (퍼센트)"
+							/>
+							<span class="unit">%</span>
+						</div>
+						<button
+							class="btn-reset"
+							onclick={resetUiScale}
+							disabled={$uiScale === DEFAULT_SCALE}
+							title="100% 로 초기화">초기화</button
+						>
+					</div>
+					<p class="scale-hint">
+						전체 UI 의 텍스트 / 여백이 비례 확대·축소됩니다 ({Math.round(
+							MIN_SCALE * 100
+						)}%~{Math.round(MAX_SCALE * 100)}%, 1% 단위). 슬라이더 / 숫자 입력 모두 즉시 적용.
+					</p>
+				</dd>
 
-			<!-- DEV-101 fix2: 컨텐츠 표시 영역 폭 — UI scale 과 별개. -->
-			<dt>컨텐츠 폭</dt>
-			<dd class="ui-scale">
-				<div class="scale-row">
-					<CustomSlider
-						value={$contentWidth}
-						min={MIN_CONTENT_WIDTH}
-						max={MAX_CONTENT_WIDTH}
-						step={5}
-						ariaLabel="컨텐츠 폭"
-						onChange={setContentWidth}
-					/>
-					<!-- DEV-101 fix4: 직접 숫자 입력. px 단위. -->
-					<div class="num-input">
-						<input
-							type="number"
+				<!-- DEV-101 fix2: 컨텐츠 표시 영역 폭 — UI scale 과 별개. -->
+				<dt>컨텐츠 폭</dt>
+				<dd class="ui-scale">
+					<div class="scale-row">
+						<CustomSlider
+							value={$contentWidth}
 							min={MIN_CONTENT_WIDTH}
 							max={MAX_CONTENT_WIDTH}
-							step="5"
-							value={$contentWidth}
-							oninput={(e) => {
-								const n = Number.parseInt(e.currentTarget.value, 10);
-								if (Number.isFinite(n)) setContentWidth(n);
-							}}
-							aria-label="컨텐츠 폭 (픽셀)"
+							step={5}
+							ariaLabel="컨텐츠 폭"
+							onChange={setContentWidth}
 						/>
-						<span class="unit">px</span>
-					</div>
-					<button
-						class="btn-reset"
-						onclick={resetContentWidth}
-						disabled={$contentWidth === DEFAULT_CONTENT_WIDTH}
-						title="기본 ({DEFAULT_CONTENT_WIDTH}px) 으로 초기화"
-					>초기화</button>
-				</div>
-				<p class="scale-hint">
-					페이지의 좌우 안전 영역 — 와이드 모니터에서 더 넓게 사용. 범위 {MIN_CONTENT_WIDTH}~{MAX_CONTENT_WIDTH}px, 5px 단위.
-				</p>
-			</dd>
-
-			<!-- DEV-074: 테마 (Dark / Light / System). -->
-			<dt>테마</dt>
-			<dd class="theme-row">
-				<div class="theme-toggle" role="group" aria-label="테마">
-					{#each ['dark', 'light', 'system'] as opt (opt)}
+						<!-- DEV-101 fix4: 직접 숫자 입력. px 단위. -->
+						<div class="num-input">
+							<input
+								type="number"
+								min={MIN_CONTENT_WIDTH}
+								max={MAX_CONTENT_WIDTH}
+								step="5"
+								value={$contentWidth}
+								oninput={(e) => {
+									const n = Number.parseInt(e.currentTarget.value, 10);
+									if (Number.isFinite(n)) setContentWidth(n);
+								}}
+								aria-label="컨텐츠 폭 (픽셀)"
+							/>
+							<span class="unit">px</span>
+						</div>
 						<button
-							class="th-btn"
-							class:active={$theme === opt}
-							onclick={() => setTheme(opt as ThemeChoice)}
-							aria-pressed={$theme === opt}
+							class="btn-reset"
+							onclick={resetContentWidth}
+							disabled={$contentWidth === DEFAULT_CONTENT_WIDTH}
+							title="기본 ({DEFAULT_CONTENT_WIDTH}px) 으로 초기화">초기화</button
 						>
-							{opt === 'dark' ? '다크' : opt === 'light' ? '라이트' : '시스템'}
-						</button>
-					{/each}
-				</div>
-				<p class="scale-hint">
-					CSS 토큰 기반 — 시스템 모드는 OS 설정 따라 자동 전환.
-				</p>
-			</dd>
-		</dl>
+					</div>
+					<p class="scale-hint">
+						페이지의 좌우 안전 영역 — 와이드 모니터에서 더 넓게 사용. 범위 {MIN_CONTENT_WIDTH}~{MAX_CONTENT_WIDTH}px,
+						5px 단위.
+					</p>
+				</dd>
+
+				<!-- DEV-074: 테마 (Dark / Light / System). -->
+				<dt>테마</dt>
+				<dd class="theme-row">
+					<div class="theme-toggle" role="group" aria-label="테마">
+						{#each ['dark', 'light', 'system'] as opt (opt)}
+							<button
+								class="th-btn"
+								class:active={$theme === opt}
+								onclick={() => setTheme(opt as ThemeChoice)}
+								aria-pressed={$theme === opt}
+							>
+								{opt === 'dark' ? '다크' : opt === 'light' ? '라이트' : '시스템'}
+							</button>
+						{/each}
+					</div>
+					<p class="scale-hint">CSS 토큰 기반 — 시스템 모드는 OS 설정 따라 자동 전환.</p>
+				</dd>
+			</dl>
 		{/if}
 	</section>
 </div>
@@ -341,10 +343,19 @@
 		border-radius: 6px;
 		font-size: 0.9rem;
 		cursor: pointer;
-		transition: background 0.15s, color 0.15s;
+		transition:
+			background 0.15s,
+			color 0.15s;
 	}
-	.tab:hover { background: var(--bg-elevated); color: var(--text); }
-	.tab.active { background: var(--bg-subtle); color: var(--text); font-weight: 600; }
+	.tab:hover {
+		background: var(--bg-elevated);
+		color: var(--text);
+	}
+	.tab.active {
+		background: var(--bg-subtle);
+		color: var(--text);
+		font-weight: 600;
+	}
 
 	.panel {
 		flex: 1;
@@ -363,9 +374,20 @@
 		margin: 0 0 1rem;
 		font-size: 0.875rem;
 	}
-	.info-grid dt { color: var(--text-muted); }
-	.info-grid dd { margin: 0; color: var(--text); display: flex; flex-direction: column; gap: 0.35rem; align-items: flex-start; }
-	.info-grid a { color: var(--accent); }
+	.info-grid dt {
+		color: var(--text-muted);
+	}
+	.info-grid dd {
+		margin: 0;
+		color: var(--text);
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
+		align-items: flex-start;
+	}
+	.info-grid a {
+		color: var(--accent);
+	}
 
 	/* DEV-086: 버전 아래 '슬쩍' 업데이트 확인 — subtle outline 버튼. */
 	.btn-check-upd {
@@ -376,10 +398,18 @@
 		color: var(--text-muted);
 		font-size: 0.75rem;
 		cursor: pointer;
-		transition: background 0.15s, color 0.15s;
+		transition:
+			background 0.15s,
+			color 0.15s;
 	}
-	.btn-check-upd:hover:not(:disabled) { background: var(--bg-subtle); color: var(--text); }
-	.btn-check-upd:disabled { opacity: 0.5; cursor: not-allowed; }
+	.btn-check-upd:hover:not(:disabled) {
+		background: var(--bg-subtle);
+		color: var(--text);
+	}
+	.btn-check-upd:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
 
 	.btn-primary {
 		padding: 0.4rem 0.9rem;
@@ -390,8 +420,14 @@
 		font-size: 0.85rem;
 		cursor: pointer;
 	}
-	.btn-primary:hover { background: var(--btn-primary-bg-hover); border-color: var(--btn-primary-border-hover); }
-	.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+	.btn-primary:hover {
+		background: var(--btn-primary-bg-hover);
+		border-color: var(--btn-primary-border-hover);
+	}
+	.btn-primary:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
 
 	/* DEV-085: 업데이트 결과 floating toast — fixed, 우하단. 레이아웃 안 밀어냄. */
 	.upd-toast {
@@ -409,7 +445,9 @@
 		font-size: 0.85rem;
 		color: var(--text);
 	}
-	.upd-toast.err { border-left-color: var(--danger); }
+	.upd-toast.err {
+		border-left-color: var(--danger);
+	}
 	.upd-toast-x {
 		position: absolute;
 		top: 0.4rem;
@@ -421,12 +459,29 @@
 		line-height: 1;
 		cursor: pointer;
 	}
-	.upd-toast-x:hover { color: var(--text); }
-	.upd-toast .t-title { margin: 0; font-weight: 600; }
-	.upd-toast .t-title.ok { color: var(--success); }
-	.upd-toast .t-title.err { color: var(--danger); }
-	.upd-toast .t-msg { margin: 0.35rem 0 0; color: var(--text-muted); font-size: 0.8rem; word-break: break-word; }
-	.upd-toast details { margin: 0.5rem 0; color: var(--text-muted); }
+	.upd-toast-x:hover {
+		color: var(--text);
+	}
+	.upd-toast .t-title {
+		margin: 0;
+		font-weight: 600;
+	}
+	.upd-toast .t-title.ok {
+		color: var(--success);
+	}
+	.upd-toast .t-title.err {
+		color: var(--danger);
+	}
+	.upd-toast .t-msg {
+		margin: 0.35rem 0 0;
+		color: var(--text-muted);
+		font-size: 0.8rem;
+		word-break: break-word;
+	}
+	.upd-toast details {
+		margin: 0.5rem 0;
+		color: var(--text-muted);
+	}
 	.upd-toast pre {
 		white-space: pre-wrap;
 		background: var(--bg);
@@ -442,7 +497,9 @@
 	.upd-toast pre::-webkit-scrollbar {
 		display: none;
 	}
-	.upd-toast .btn-primary { margin-top: 0.5rem; }
+	.upd-toast .btn-primary {
+		margin-top: 0.5rem;
+	}
 
 	/* DEV-101 fix6: 탭 분리 후 h2.section 구분선 불필요 — 비워둠. */
 	.ui-scale .scale-row {
@@ -528,9 +585,13 @@
 		color: var(--text-muted);
 		font-size: 0.8rem;
 		cursor: pointer;
-		transition: background 0.1s, color 0.1s;
+		transition:
+			background 0.1s,
+			color 0.1s;
 	}
-	.th-btn:hover { color: var(--text); }
+	.th-btn:hover {
+		color: var(--text);
+	}
 	.th-btn.active {
 		background: var(--bg-subtle);
 		color: var(--text);

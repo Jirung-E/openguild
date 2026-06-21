@@ -78,10 +78,7 @@
 		<div class="empty">{emptyText}</div>
 	{:else}
 		<div class="viewport">
-			<div
-				class="track"
-				style:transform={`translateX(-${idx * 100}%)`}
-			>
+			<div class="track" style:transform={`translateX(-${idx * 100}%)`}>
 				{#each summaries as s (s.id)}
 					<div class="slot">
 						<CampaignCard summary={s} mode="active" {now} />
@@ -127,7 +124,11 @@
 		gap: 0.5rem;
 		padding: 0.25rem 0 0.5rem 0;
 	}
-	.empty { color: var(--text-faint); font-size: 0.875rem; padding: 1rem 0; }
+	.empty {
+		color: var(--text-faint);
+		font-size: 0.875rem;
+		padding: 1rem 0;
+	}
 
 	.viewport {
 		overflow: hidden;
@@ -162,7 +163,9 @@
 		cursor: pointer;
 		transition: background 0.15s;
 	}
-	.arrow:hover { background: var(--bg-subtle); }
+	.arrow:hover {
+		background: var(--bg-subtle);
+	}
 	.dots {
 		display: flex;
 		gap: 0.35rem;
@@ -174,10 +177,14 @@
 		height: 8px;
 		border-radius: 50%;
 		cursor: pointer;
-		transition: background 0.15s, transform 0.15s;
+		transition:
+			background 0.15s,
+			transform 0.15s;
 		padding: 0;
 	}
-	.dot:hover { background: var(--text-faint); }
+	.dot:hover {
+		background: var(--text-faint);
+	}
 	.dot.active {
 		background: var(--accent);
 		transform: scale(1.4);
@@ -197,5 +204,7 @@
 		transition: background 0.15s;
 		margin-left: 0.4rem;
 	}
-	.play-pause:hover { background: var(--bg-subtle); }
+	.play-pause:hover {
+		background: var(--bg-subtle);
+	}
 </style>

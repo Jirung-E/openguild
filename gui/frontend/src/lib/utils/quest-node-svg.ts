@@ -122,9 +122,7 @@ export function makeQuestNodeSvgUrl(
 	// BUG-057: HiDPI — SVG 를 dpr 배 사이즈로 발급 + viewBox 로 좌표 보존.
 	// Cytoscape / `<img src>` 가 그 사이즈 raster cache → 표시 사이즈로 다운샘플 → 선명.
 	const dpr =
-		typeof window !== 'undefined'
-			? Math.max(1, Math.min(3, window.devicePixelRatio || 1))
-			: 1;
+		typeof window !== 'undefined' ? Math.max(1, Math.min(3, window.devicePixelRatio || 1)) : 1;
 	const Wpx = Math.round(W * dpr);
 	const Hpx = Math.round(H * dpr);
 	// BUG-060 후속: clamp 표시(범위 밖이면 1~4 로) + 원본 범위 밖이면 ⚠ 경고.
@@ -134,8 +132,7 @@ export function makeQuestNodeSvgUrl(
 	const urgWarn = urgencyOutOfRange(quest.urgency);
 	const qid = quest.quest_id;
 
-	const xEsc = (s: string) =>
-		s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+	const xEsc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 	const qidW = Math.ceil(qid.length * 6.4) + 16;
 	const ulW = Math.ceil(ul.length * 5.6) + 14;
 	const ulX = 10 + qidW + 6;
@@ -197,22 +194,36 @@ export function makeQuestNodeSvgUrl(
   <text x="${ulX + ulW / 2}" y="21.5" text-anchor="middle"
     fill="${uc}" font-size="10" font-weight="500"
     font-family="system-ui,sans-serif">${xEsc(ul)}</text>
-  ${urgWarn ? `<text x="${ulX + ulW + 5}" y="21.5" fill="${palette.danger}"
-    font-size="12" font-weight="700" font-family="system-ui,sans-serif"><title>urgency 원본값 ${quest.urgency} 가 범위(1-4) 밖 — clamp 표시 중</title>⚠</text>` : ''}
-  ${dText ? `<rect x="${dX}" y="9" width="${dW}" height="17" rx="8.5"
+  ${
+		urgWarn
+			? `<text x="${ulX + ulW + 5}" y="21.5" fill="${palette.danger}"
+    font-size="12" font-weight="700" font-family="system-ui,sans-serif"><title>urgency 원본값 ${quest.urgency} 가 범위(1-4) 밖 — clamp 표시 중</title>⚠</text>`
+			: ''
+	}
+  ${
+		dText
+			? `<rect x="${dX}" y="9" width="${dW}" height="17" rx="8.5"
     fill="${dColor}" fill-opacity="0.16" stroke="${dColor}" stroke-opacity="0.6" stroke-width="1"/>
   <text x="${dX + dW / 2}" y="21.5" text-anchor="middle"
     fill="${dColor}" font-size="10" font-weight="600"
-    font-family="system-ui,sans-serif">${xEsc(dText)}</text>` : ''}
+    font-family="system-ui,sans-serif">${xEsc(dText)}</text>`
+			: ''
+	}
   <text x="10" y="${titleY}" fill="${titleFill}" font-size="12"
     font-family="system-ui,-apple-system,sans-serif">${xEsc(line1)}</text>
-  ${line2 ? `<text x="10" y="${titleY + 16}" fill="${titleFill}" font-size="12"
-    font-family="system-ui,-apple-system,sans-serif">${xEsc(line2)}</text>` : ''}
-  ${dueText
-		? `<text x="${W - 10}" y="${H - 8}" text-anchor="end"
+  ${
+		line2
+			? `<text x="10" y="${titleY + 16}" fill="${titleFill}" font-size="12"
+    font-family="system-ui,-apple-system,sans-serif">${xEsc(line2)}</text>`
+			: ''
+	}
+  ${
+		dueText
+			? `<text x="${W - 10}" y="${H - 8}" text-anchor="end"
        fill="${dueColor}" font-size="10" font-weight="500"
        font-family="system-ui,sans-serif">⏱ ${xEsc(dueText)}</text>`
-		: ''}
+			: ''
+	}
   ${overlay}
 </svg>`;
 	return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);

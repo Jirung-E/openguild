@@ -25,9 +25,7 @@
 	// DEV-011: Home 탭. URL `/` 가 ?view 없으면 home 기본.
 	type View = 'home' | 'board' | 'list';
 
-	let currentView: View = $derived(
-		($page.url.searchParams.get('view') as View | null) ?? 'home'
-	);
+	let currentView: View = $derived(($page.url.searchParams.get('view') as View | null) ?? 'home');
 
 	let onAdminPath = $derived($page.url.pathname.startsWith('/admin'));
 	let onRootPath = $derived($page.url.pathname === '/');
@@ -123,8 +121,8 @@
 				onclick={() => (quickMenuOpen = !quickMenuOpen)}
 				title="설정"
 				aria-label="설정"
-				aria-expanded={quickMenuOpen}
-			>⚙</button>
+				aria-expanded={quickMenuOpen}>⚙</button
+			>
 			{#if quickMenuOpen}
 				<SettingsQuickMenu onclose={() => (quickMenuOpen = false)} />
 			{/if}
@@ -188,7 +186,9 @@
 		font-size: 0.875rem;
 		color: var(--text-muted);
 		text-decoration: none;
-		transition: background 0.15s, color 0.15s;
+		transition:
+			background 0.15s,
+			color 0.15s;
 	}
 
 	nav a:hover {
@@ -228,7 +228,10 @@
 		border: none;
 		cursor: pointer;
 		text-decoration: none;
-		transition: background 0.15s, color 0.15s, transform 0.2s;
+		transition:
+			background 0.15s,
+			color 0.15s,
+			transform 0.2s;
 	}
 	.btn-settings:hover {
 		background: var(--nav-hover-bg);
@@ -254,7 +257,10 @@
 		background: transparent;
 		border: none;
 		cursor: pointer;
-		transition: background 0.15s, color 0.15s, transform 0.4s;
+		transition:
+			background 0.15s,
+			color 0.15s,
+			transform 0.4s;
 	}
 	.btn-reindex:hover:not(:disabled) {
 		background: var(--nav-hover-bg);
@@ -274,7 +280,11 @@
 		color: var(--danger);
 	}
 	@keyframes spin {
-		from { transform: rotate(0deg); }
-		to   { transform: rotate(360deg); }
+		from {
+			transform: rotate(0deg);
+		}
+		to {
+			transform: rotate(360deg);
+		}
 	}
 </style>

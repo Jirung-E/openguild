@@ -137,7 +137,8 @@
 	// Cytoscape 가 background-image 를 그 사이즈로 raster cache 하므로 표시 시
 	// (cover fit, NODE_W × NODE_H) 다운샘플 → 텍스트 또렷.
 	function makeSvgUrl(quest: Quest): string {
-		const W = NODE_W, H = NODE_H;
+		const W = NODE_W,
+			H = NODE_H;
 		// devicePixelRatio 한도 — 과한 사이즈는 메모리 낭비. 상한 3.
 		// BUG-057 fix2: 하한을 2 로 — WebView2 가 HiDPI / OS 배율(125%·150%)
 		// 디스플레이에서도 devicePixelRatio 를 1 로 보고하는 사례가 있어, 1×
@@ -164,8 +165,8 @@
 
 		const x = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 		const qidW = Math.ceil(qid.length * 6.4) + 16;
-		const ulW  = Math.ceil(ul.length  * 5.6) + 14;
-		const ulX  = 10 + qidW + 6;
+		const ulW = Math.ceil(ul.length * 5.6) + 14;
+		const ulX = 10 + qidW + 6;
 
 		// DEV-116: 댓글 개수 badge — 상단 우측. 0 이면 표시 X.
 		const cc = quest.comment_count ?? 0;
@@ -191,9 +192,7 @@
 		const [rawL2, rest2] = splitByPixelWidthAtWord(rest1, MAX_PX);
 		// rest2 가 남았으면 2줄도 넘침 → ellipsis 자리만큼 줄여 자름.
 		// 여긴 어차피 잘림 표시이므로 word-break 강제 안 함 (mid-char OK).
-		const line2 = rest2.length > 0
-			? splitByPixelWidth(rawL2, MAX_PX - 10)[0] + '…'
-			: rawL2;
+		const line2 = rest2.length > 0 ? splitByPixelWidth(rawL2, MAX_PX - 10)[0] + '…' : rawL2;
 
 		// BUG-034: 유효 기한 (= min(required_due, earliest_campaign_due)) 표시.
 		// source='campaign' 이면 prefix '⛺' — 캠페인이 더 가까워 그게 우세함을 시각 단서로.
@@ -225,32 +224,50 @@
   <text x="${ulX + ulW / 2}" y="21.5" text-anchor="middle"
     fill="${uc}" font-size="10" font-weight="500"
     font-family="system-ui,sans-serif">${x(ul)}</text>
-  ${urgWarn ? `<text x="${ulX + ulW + 5}" y="21.5" fill="${dangerFill}"
-    font-size="12" font-weight="700" font-family="system-ui,sans-serif"><title>urgency 원본값 ${quest.urgency} 가 범위(1-4) 밖 — clamp 표시 중</title>⚠</text>` : ''}
-  ${ccText ? `<text x="${ccX + ccW / 2}" y="21.5" text-anchor="middle"
+  ${
+		urgWarn
+			? `<text x="${ulX + ulW + 5}" y="21.5" fill="${dangerFill}"
+    font-size="12" font-weight="700" font-family="system-ui,sans-serif"><title>urgency 원본값 ${quest.urgency} 가 범위(1-4) 밖 — clamp 표시 중</title>⚠</text>`
+			: ''
+	}
+  ${
+		ccText
+			? `<text x="${ccX + ccW / 2}" y="21.5" text-anchor="middle"
     fill="${ccFill}" font-size="10" font-weight="500"
-    font-family="system-ui,sans-serif">${x(ccText)}</text>` : ''}
-  ${dText ? `<rect x="${dX}" y="9" width="${dW}" height="17" rx="8.5"
+    font-family="system-ui,sans-serif">${x(ccText)}</text>`
+			: ''
+	}
+  ${
+		dText
+			? `<rect x="${dX}" y="9" width="${dW}" height="17" rx="8.5"
     fill="${dColor}" fill-opacity="0.16" stroke="${dColor}" stroke-opacity="0.6" stroke-width="1"/>
   <text x="${dX + dW / 2}" y="21.5" text-anchor="middle"
     fill="${dColor}" font-size="10" font-weight="600"
-    font-family="system-ui,sans-serif">${x(dText)}</text>` : ''}
+    font-family="system-ui,sans-serif">${x(dText)}</text>`
+			: ''
+	}
   <text x="10" y="${titleY}" fill="${textFill}" font-size="12"
     font-family="system-ui,-apple-system,sans-serif">${x(line1)}</text>
-  ${line2 ? `<text x="10" y="${titleY + 16}" fill="${textFill}" font-size="12"
-    font-family="system-ui,-apple-system,sans-serif">${x(line2)}</text>` : ''}
-  ${dueText
-		? `<text x="${W - 10}" y="${H - 8}" text-anchor="end"
+  ${
+		line2
+			? `<text x="10" y="${titleY + 16}" fill="${textFill}" font-size="12"
+    font-family="system-ui,-apple-system,sans-serif">${x(line2)}</text>`
+			: ''
+	}
+  ${
+		dueText
+			? `<text x="${W - 10}" y="${H - 8}" text-anchor="end"
        fill="${dueColor}" font-size="10" font-weight="500"
        font-family="system-ui,sans-serif">⏱ ${x(dueText)}</text>`
-		: ''}
+			: ''
+	}
 </svg>`;
 		return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
 	}
 	const NODE_GAP = 28;
 	const LANE_PAD_X = 20; // lane 양쪽 가장자리 여백 (한쪽)
 	const LANE_W = NODE_W * 3 + NODE_GAP * 2 + LANE_PAD_X * 2; // 948px
-	const LANE_GAP = 36;   // lane 사이 시각적 간격
+	const LANE_GAP = 36; // lane 사이 시각적 간격
 	const LANE_STRIDE = LANE_W + LANE_GAP; // 한 lane 의 X 단위 (다음 lane 시작점까지)
 	// DEV-105: collapsed lane 의 좁은 폭 — 세로 라벨 한 줄 들어갈 정도.
 	const LANE_COLLAPSED_W = 40;
@@ -268,7 +285,11 @@
 	}
 	interface BatchMove {
 		type: 'batch';
-		items: { questId: number; from: { x: number; y: number; statusId: number }; to: { x: number; y: number; statusId: number } }[];
+		items: {
+			questId: number;
+			from: { x: number; y: number; statusId: number };
+			to: { x: number; y: number; statusId: number };
+		}[];
 	}
 	type HistoryRecord = SingleMove | BatchMove;
 
@@ -310,9 +331,7 @@
 		return h.toString(16).padStart(8, '0');
 	}
 	function gk(suffix: string): string {
-		return guildKeyPrefix
-			? `openguild.${guildKeyPrefix}.${suffix}`
-			: `openguild.${suffix}`;
+		return guildKeyPrefix ? `openguild.${guildKeyPrefix}.${suffix}` : `openguild.${suffix}`;
 	}
 
 	// ── lane cols 영속화 헬퍼 (BUG-009) ─────────────────────────
@@ -380,8 +399,7 @@
 			const raw = localStorage.getItem(gk('hideSettings'));
 			if (!raw) return {};
 			const parsed = JSON.parse(raw);
-			if (parsed && typeof parsed === 'object')
-				return parsed as Record<string, HideSetting>;
+			if (parsed && typeof parsed === 'object') return parsed as Record<string, HideSetting>;
 		} catch {
 			/* 무시 */
 		}
@@ -452,10 +470,7 @@
 	let groupOf: Map<number, Set<number>> = new Map();
 
 	/** quests + dependencies 로부터 connected component (그룹) 계산. */
-	function computeGroups(
-		quests: Quest[],
-		deps: QuestDependency[]
-	): Map<number, Set<number>> {
+	function computeGroups(quests: Quest[], deps: QuestDependency[]): Map<number, Set<number>> {
 		const adj = new Map<number, Set<number>>();
 		const ensure = (id: number) => {
 			if (!adj.has(id)) adj.set(id, new Set());
@@ -886,7 +901,9 @@
 		const cols = laneCols[li] ?? 2;
 		// laneFirstCellX(li, cols) 는 absolute X. visible 압축 적용해서 visual X 로 변환.
 		const firstX =
-			statusId !== null ? absToVisualX(laneFirstCellX(li, cols), statusId) : laneFirstCellX(li, cols);
+			statusId !== null
+				? absToVisualX(laneFirstCellX(li, cols), statusId)
+				: laneFirstCellX(li, cols);
 		const localX = x - firstX;
 		const colIdx = Math.round(localX / cellW);
 		const sx = firstX + colIdx * cellW;
@@ -900,7 +917,9 @@
 	// ── 인앱 확인 다이얼로그 ────────────────────────────────────
 	let confirmDialog = $state<{ msg: string; resolve: (ok: boolean) => void } | null>(null);
 	function showConfirm(msg: string): Promise<boolean> {
-		return new Promise((resolve) => { confirmDialog = { msg, resolve }; });
+		return new Promise((resolve) => {
+			confirmDialog = { msg, resolve };
+		});
 	}
 	function confirmDialogResolve(ok: boolean) {
 		confirmDialog?.resolve(ok);
@@ -938,9 +957,12 @@
 	});
 	// 배치 dragfree 수집
 	type PendingDragItem = {
-		node: NodeSingular; questId: number;
-		fromPos: { x: number; y: number }; fromStatus: number;
-		toPos: { x: number; y: number }; toLaneIdx: number;
+		node: NodeSingular;
+		questId: number;
+		fromPos: { x: number; y: number };
+		fromStatus: number;
+		toPos: { x: number; y: number };
+		toLaneIdx: number;
 	};
 	let pendingDragBatch: PendingDragItem[] = [];
 	let pendingDragTimer: ReturnType<typeof setTimeout> | null = null;
@@ -968,12 +990,26 @@
 		if (!s) return;
 		// 확장 카드 동기화 — DEV-046 후속: status_slug 도 함께 갱신 (일관성).
 		if (expandedQuest?.id === questId) {
-			expandedQuest = { ...expandedQuest, status_id: s.id, status_slug: s.slug, status_name_en: s.name_en, status_name_ko: s.name_ko, status_color: s.color };
+			expandedQuest = {
+				...expandedQuest,
+				status_id: s.id,
+				status_slug: s.slug,
+				status_name_en: s.name_en,
+				status_name_ko: s.name_ko,
+				status_color: s.color
+			};
 		}
 		// allQuests 캐시 동기화 (tap으로 확장 시 최신 상태 반영)
 		const idx = allQuests.findIndex((q) => q.id === questId);
 		if (idx !== -1) {
-			allQuests[idx] = { ...allQuests[idx], status_id: s.id, status_slug: s.slug, status_name_en: s.name_en, status_name_ko: s.name_ko, status_color: s.color };
+			allQuests[idx] = {
+				...allQuests[idx],
+				status_id: s.id,
+				status_slug: s.slug,
+				status_name_en: s.name_en,
+				status_name_ko: s.name_ko,
+				status_color: s.color
+			};
 		}
 		// DEV-056: status 가 바뀌면 그룹 분포 / hideGroup 평가 결과가 달라질 수 있음.
 		// DEV-105 fix9: 새 lane 이 collapsed 면 visualX 도 재계산 필요.
@@ -988,7 +1024,10 @@
 		if (record.type === 'single') {
 			const target = direction === 'undo' ? record.from : record.to;
 			const node = cy.getElementById(`q-${record.questId}`) as NodeSingular;
-			if (node.length === 0) { busy = false; return; }
+			if (node.length === 0) {
+				busy = false;
+				return;
+			}
 			if (record.from.statusId !== record.to.statusId) {
 				try {
 					await questsApi.changeStatus(record.questId, { status_slug: slugOf(target.statusId) });
@@ -1020,15 +1059,17 @@
 						node.data('statusId', target.statusId);
 						applyStatusChange(item.questId, target.statusId);
 					} catch (e) {
-							showToast(e instanceof Error ? e.message : '상태 변경 실패', 'error');
-							continue;
-						}
+						showToast(e instanceof Error ? e.message : '상태 변경 실패', 'error');
+						continue;
+					}
 				}
 				node.animate({ position: { x: target.x, y: target.y }, duration: 200 });
 				// DEV-067: target.x 는 visual. DB 는 absolute.
 				const absX = visualToAbsX(target.x, target.statusId);
 				node.data('absX', absX);
-				promises.push(questsApi.updatePosition(item.questId, { x: absX, y: target.y }).catch(() => {}));
+				promises.push(
+					questsApi.updatePosition(item.questId, { x: absX, y: target.y }).catch(() => {})
+				);
 				// DEV-115: 배치 undo/redo 도 위로.
 				recentMoveZ += 1;
 				node.style('z-index', recentMoveZ);
@@ -1071,8 +1112,10 @@
 
 	function getNodeAtScreenPos(sx: number, sy: number): NodeSingular | null {
 		if (!cy) return null;
-		const zoom = cy.zoom(), pan = cy.pan();
-		const mx = (sx - pan.x) / zoom, my = (sy - pan.y) / zoom;
+		const zoom = cy.zoom(),
+			pan = cy.pan();
+		const mx = (sx - pan.x) / zoom,
+			my = (sy - pan.y) / zoom;
 		let found: NodeSingular | null = null;
 		cy.nodes('[questId]').forEach((n) => {
 			const bb = n.boundingBox();
@@ -1083,9 +1126,12 @@
 
 	function selectNodesInBox(sx1: number, sy1: number, sx2: number, sy2: number) {
 		if (!cy) return;
-		const zoom = cy.zoom(), pan = cy.pan();
-		const mx1 = (sx1 - pan.x) / zoom, my1 = (sy1 - pan.y) / zoom;
-		const mx2 = (sx2 - pan.x) / zoom, my2 = (sy2 - pan.y) / zoom;
+		const zoom = cy.zoom(),
+			pan = cy.pan();
+		const mx1 = (sx1 - pan.x) / zoom,
+			my1 = (sy1 - pan.y) / zoom;
+		const mx2 = (sx2 - pan.x) / zoom,
+			my2 = (sy2 - pan.y) / zoom;
 		cy.nodes('[questId]').forEach((node) => {
 			const pos = node.position();
 			if (pos.x >= mx1 && pos.x <= mx2 && pos.y >= my1 && pos.y <= my2) node.select();
@@ -1102,7 +1148,8 @@
 	function onBoxMouseDown(e: MouseEvent) {
 		if (!ctrlHeld || e.button !== 0) return;
 		const rect = container.getBoundingClientRect();
-		const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+		const sx = e.clientX - rect.left,
+			sy = e.clientY - rect.top;
 		const node = getNodeAtScreenPos(sx, sy);
 		if (node) {
 			ctrlClickNode = node;
@@ -1125,7 +1172,8 @@
 
 	function onBoxMouseMove(e: MouseEvent) {
 		if (cardDrag) {
-			const cw = container.clientWidth, ch = container.clientHeight;
+			const cw = container.clientWidth,
+				ch = container.clientHeight;
 			expandedPos = {
 				x: Math.max(0, Math.min(cw - CARD_W - 8, cardDrag.px + e.clientX - cardDrag.sx)),
 				y: Math.max(0, Math.min(ch - 120, cardDrag.py + e.clientY - cardDrag.sy))
@@ -1134,8 +1182,10 @@
 		}
 		if (!boxDragEl || !boxDragStart) return;
 		const rect = container.getBoundingClientRect();
-		const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
-		const x1 = Math.min(boxDragStart.x, sx), y1 = Math.min(boxDragStart.y, sy);
+		const sx = e.clientX - rect.left,
+			sy = e.clientY - rect.top;
+		const x1 = Math.min(boxDragStart.x, sx),
+			y1 = Math.min(boxDragStart.y, sy);
 		boxDragEl.style.left = `${x1}px`;
 		boxDragEl.style.top = `${y1}px`;
 		boxDragEl.style.width = `${Math.abs(sx - boxDragStart.x)}px`;
@@ -1143,7 +1193,10 @@
 	}
 
 	function onBoxMouseUp(e: MouseEvent) {
-		if (cardDrag) { cardDrag = null; return; }
+		if (cardDrag) {
+			cardDrag = null;
+			return;
+		}
 		if (ctrlClickNode) {
 			ctrlClickNode.selected() ? ctrlClickNode.unselect() : ctrlClickNode.select();
 			ctrlClickNode = null;
@@ -1151,9 +1204,12 @@
 		}
 		if (!boxDragEl || !boxDragStart) return;
 		const rect = container.getBoundingClientRect();
-		const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
-		const x1 = Math.min(boxDragStart.x, sx), y1 = Math.min(boxDragStart.y, sy);
-		const x2 = Math.max(boxDragStart.x, sx), y2 = Math.max(boxDragStart.y, sy);
+		const sx = e.clientX - rect.left,
+			sy = e.clientY - rect.top;
+		const x1 = Math.min(boxDragStart.x, sx),
+			y1 = Math.min(boxDragStart.y, sy);
+		const x2 = Math.max(boxDragStart.x, sx),
+			y2 = Math.max(boxDragStart.y, sy);
 		if (x2 - x1 > 4 || y2 - y1 > 4) selectNodesInBox(x1, y1, x2, y2);
 		cancelBoxSelection();
 	}
@@ -1197,11 +1253,15 @@
 		const typeMap = new Map<number, HighlightType>();
 
 		if (modes.has('pre'))
-			allDependencies.filter((d) => d.quest_id === qId).forEach((d) => typeMap.set(d.prerequisite_id, 'pre'));
+			allDependencies
+				.filter((d) => d.quest_id === qId)
+				.forEach((d) => typeMap.set(d.prerequisite_id, 'pre'));
 		if (modes.has('sub'))
 			allQuests.filter((q) => q.parent_quest_id === qId).forEach((q) => typeMap.set(q.id, 'sub'));
 		if (modes.has('next'))
-			allDependencies.filter((d) => d.prerequisite_id === qId).forEach((d) => typeMap.set(d.quest_id, 'next'));
+			allDependencies
+				.filter((d) => d.prerequisite_id === qId)
+				.forEach((d) => typeMap.set(d.quest_id, 'next'));
 		if (modes.has('parent') && expandedQuest.parent_quest_id !== null)
 			typeMap.set(expandedQuest.parent_quest_id, 'parent');
 
@@ -1220,9 +1280,11 @@
 
 	function toggleHighlight(mode: HighlightType) {
 		const next = new Set(activeHighlights);
-		if (next.has(mode)) next.delete(mode); else next.add(mode);
+		if (next.has(mode)) next.delete(mode);
+		else next.add(mode);
 		activeHighlights = next;
-		if (next.size > 0) applyHighlights(next); else clearHighlight();
+		if (next.size > 0) applyHighlights(next);
+		else clearHighlight();
 	}
 
 	function toggleAllHighlights() {
@@ -1286,10 +1348,7 @@
 			const r = Math.ceil(n / c);
 			const area = c * r;
 			const aspect = Math.abs(c - r);
-			if (
-				area < bestArea ||
-				(area === bestArea && aspect < bestAspect)
-			) {
+			if (area < bestArea || (area === bestArea && aspect < bestAspect)) {
 				bestC = c;
 				bestR = r;
 				bestArea = area;
@@ -1521,9 +1580,9 @@
 			laneCols[li] = cols;
 			const firstX = laneFirstCellX(li, cols);
 			// DEV-056 fix1: hidden 노드 제외 — 정렬 시 자리 안 차지하도록.
-			const nodes = cy.nodes(`[statusId = ${statusId}]`).filter(
-				(n) => (n as NodeSingular).style('display') !== 'none'
-			);
+			const nodes = cy
+				.nodes(`[statusId = ${statusId}]`)
+				.filter((n) => (n as NodeSingular).style('display') !== 'none');
 			if (nodes.length === 0) continue;
 			const sortedNodes = nodes.toArray().sort((a, b) => {
 				const sa = (a as NodeSingular).data('questSlug') as string;
@@ -1533,16 +1592,23 @@
 			sortedNodes.forEach((n, idx) => {
 				const node = n as NodeSingular;
 				const fromPos = { ...node.position() };
-				const col = idx % cols, row = Math.floor(idx / cols);
+				const col = idx % cols,
+					row = Math.floor(idx / cols);
 				// DEV-067: x = firstX(absolute) → visual 변환. DB save 는 absolute.
 				const absX = firstX + col * cellW;
 				const sid = node.data('statusId') as number;
 				const visX = absToVisualX(absX, sid);
 				const y = startY + row * cellH;
 				node.data('absX', absX);
-				batchItems.push({ questId: node.data('questId') as number, from: { ...fromPos, statusId: sid }, to: { x: visX, y, statusId: sid } });
+				batchItems.push({
+					questId: node.data('questId') as number,
+					from: { ...fromPos, statusId: sid },
+					to: { x: visX, y, statusId: sid }
+				});
 				node.animate({ position: { x: visX, y }, duration: 200 });
-				savePromises.push(questsApi.updatePosition(node.data('questId') as number, { x: absX, y }).catch(() => {}));
+				savePromises.push(
+					questsApi.updatePosition(node.data('questId') as number, { x: absX, y }).catch(() => {})
+				);
 			});
 		}
 		// laneCols 가 바뀌었으므로 trigger
@@ -1573,18 +1639,26 @@
 	// ── 키보드 ─────────────────────────────────────────────────
 
 	function handleKeydown(e: KeyboardEvent) {
-		if (['ControlLeft','ControlRight','MetaLeft','MetaRight'].includes(e.code)) onCtrlDown();
+		if (['ControlLeft', 'ControlRight', 'MetaLeft', 'MetaRight'].includes(e.code)) onCtrlDown();
 		const tag = (e.target as HTMLElement).tagName;
 		if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
 		const ctrl = e.ctrlKey || e.metaKey;
-		if (ctrl && e.code === 'KeyZ' && !e.shiftKey) { e.preventDefault(); undo(); }
-		else if (ctrl && e.code === 'KeyZ' && e.shiftKey) { e.preventDefault(); redo(); }
-		else if (!ctrl && e.code === 'KeyF') { e.preventDefault(); fitView(); }
-		else if (!ctrl && e.code === 'KeyG') { e.preventDefault(); toggleGridSnap(); }
-		else if (e.code === 'Escape') closeExpanded();
+		if (ctrl && e.code === 'KeyZ' && !e.shiftKey) {
+			e.preventDefault();
+			undo();
+		} else if (ctrl && e.code === 'KeyZ' && e.shiftKey) {
+			e.preventDefault();
+			redo();
+		} else if (!ctrl && e.code === 'KeyF') {
+			e.preventDefault();
+			fitView();
+		} else if (!ctrl && e.code === 'KeyG') {
+			e.preventDefault();
+			toggleGridSnap();
+		} else if (e.code === 'Escape') closeExpanded();
 	}
 	function handleKeyup(e: KeyboardEvent) {
-		if (['ControlLeft','ControlRight','MetaLeft','MetaRight'].includes(e.code)) onCtrlUp();
+		if (['ControlLeft', 'ControlRight', 'MetaLeft', 'MetaRight'].includes(e.code)) onCtrlUp();
 	}
 
 	// ── 초기화 ──────────────────────────────────────────────────
@@ -1622,7 +1696,8 @@
 					'background-image-opacity': 0.88,
 					'border-color': 'data(urgencyColor)',
 					'border-width': 2,
-					width: NODE_W, height: NODE_H,
+					width: NODE_W,
+					height: NODE_H,
 					shape: 'round-rectangle',
 					label: '',
 					'z-index': 10
@@ -1644,19 +1719,55 @@
 			},
 			{
 				selector: 'node[questId][highlightType = "pre"]',
-				style: { 'background-color': preBg, 'border-color': preBorder, 'border-width': 3, 'shadow-blur': 12, 'shadow-color': preBorder, 'shadow-opacity': 0.65, 'shadow-offset-x': 0, 'shadow-offset-y': 0 } as Css.Node
+				style: {
+					'background-color': preBg,
+					'border-color': preBorder,
+					'border-width': 3,
+					'shadow-blur': 12,
+					'shadow-color': preBorder,
+					'shadow-opacity': 0.65,
+					'shadow-offset-x': 0,
+					'shadow-offset-y': 0
+				} as Css.Node
 			},
 			{
 				selector: 'node[questId][highlightType = "sub"]',
-				style: { 'background-color': subBg, 'border-color': subBorder, 'border-width': 3, 'shadow-blur': 12, 'shadow-color': subBorder, 'shadow-opacity': 0.65, 'shadow-offset-x': 0, 'shadow-offset-y': 0 } as Css.Node
+				style: {
+					'background-color': subBg,
+					'border-color': subBorder,
+					'border-width': 3,
+					'shadow-blur': 12,
+					'shadow-color': subBorder,
+					'shadow-opacity': 0.65,
+					'shadow-offset-x': 0,
+					'shadow-offset-y': 0
+				} as Css.Node
 			},
 			{
 				selector: 'node[questId][highlightType = "next"]',
-				style: { 'background-color': nextBg, 'border-color': nextBorder, 'border-width': 3, 'shadow-blur': 12, 'shadow-color': nextBorder, 'shadow-opacity': 0.65, 'shadow-offset-x': 0, 'shadow-offset-y': 0 } as Css.Node
+				style: {
+					'background-color': nextBg,
+					'border-color': nextBorder,
+					'border-width': 3,
+					'shadow-blur': 12,
+					'shadow-color': nextBorder,
+					'shadow-opacity': 0.65,
+					'shadow-offset-x': 0,
+					'shadow-offset-y': 0
+				} as Css.Node
 			},
 			{
 				selector: 'node[questId][highlightType = "parent"]',
-				style: { 'background-color': parentBg, 'border-color': success, 'border-width': 3, 'shadow-blur': 12, 'shadow-color': success, 'shadow-opacity': 0.65, 'shadow-offset-x': 0, 'shadow-offset-y': 0 } as Css.Node
+				style: {
+					'background-color': parentBg,
+					'border-color': success,
+					'border-width': 3,
+					'shadow-blur': 12,
+					'shadow-color': success,
+					'shadow-opacity': 0.65,
+					'shadow-offset-x': 0,
+					'shadow-offset-y': 0
+				} as Css.Node
 			},
 			{
 				selector: 'node[questId][highlightType = "dim"]',
@@ -1697,11 +1808,26 @@
 			{ selector: 'edge[?fdim]', style: { opacity: 0.07 } },
 			{
 				selector: 'edge[etype = "pre"]',
-				style: { 'line-color': edgePre, 'target-arrow-color': edgePre, 'target-arrow-shape': 'triangle', 'line-style': 'solid', 'curve-style': 'bezier', width: 2 }
+				style: {
+					'line-color': edgePre,
+					'target-arrow-color': edgePre,
+					'target-arrow-shape': 'triangle',
+					'line-style': 'solid',
+					'curve-style': 'bezier',
+					width: 2
+				}
 			},
 			{
 				selector: 'edge[etype = "sub"]',
-				style: { 'line-color': textFaint, 'target-arrow-color': textFaint, 'target-arrow-shape': 'vee', 'line-style': 'dashed', 'line-dash-pattern': [6, 3], 'curve-style': 'bezier', width: 1.5 }
+				style: {
+					'line-color': textFaint,
+					'target-arrow-color': textFaint,
+					'target-arrow-shape': 'vee',
+					'line-style': 'dashed',
+					'line-dash-pattern': [6, 3],
+					'curve-style': 'bezier',
+					width: 1.5
+				}
 			}
 		];
 	}
@@ -2194,9 +2320,7 @@
 				const mode = laneArrangeModes[li] ?? arrangeMode;
 				if (mode === 'group' && cy) {
 					// 이 lane 의 노드만으로 group 정렬 (cross-lane edge 무시)
-					const laneNodes = cy
-						.nodes(`[statusId = ${s.id}]`)
-						.toArray() as NodeSingular[];
+					const laneNodes = cy.nodes(`[statusId = ${s.id}]`).toArray() as NodeSingular[];
 					arrangeNodesGrouped(laneNodes, cols);
 				} else {
 					arrangeNodes([s.id], cols);
@@ -2247,7 +2371,8 @@
 
 	function syncLanes() {
 		if (!cy) return;
-		const pan = cy.pan(), zoom = cy.zoom();
+		const pan = cy.pan(),
+			zoom = cy.zoom();
 
 		// 그리드 스냅 시각화: lane-col 의 background 으로 dot 패턴.
 		// 가로 dot 수가 정확히 lane 의 cols 와 일치하도록, cols 개 dot 가 들어간 SVG 를 한 row 로 두고
@@ -2453,11 +2578,29 @@
 		});
 
 		dependencies.forEach((d) => {
-			elements.push({ data: { id: `pre-${d.prerequisite_id}-${d.quest_id}`, source: `q-${d.prerequisite_id}`, target: `q-${d.quest_id}`, etype: 'pre', dimmed: false } });
+			elements.push({
+				data: {
+					id: `pre-${d.prerequisite_id}-${d.quest_id}`,
+					source: `q-${d.prerequisite_id}`,
+					target: `q-${d.quest_id}`,
+					etype: 'pre',
+					dimmed: false
+				}
+			});
 		});
-		quests.filter((q) => q.parent_quest_id !== null).forEach((q) => {
-			elements.push({ data: { id: `sub-${q.parent_quest_id}-${q.id}`, source: `q-${q.parent_quest_id}`, target: `q-${q.id}`, etype: 'sub', dimmed: false } });
-		});
+		quests
+			.filter((q) => q.parent_quest_id !== null)
+			.forEach((q) => {
+				elements.push({
+					data: {
+						id: `sub-${q.parent_quest_id}-${q.id}`,
+						source: `q-${q.parent_quest_id}`,
+						target: `q-${q.id}`,
+						etype: 'sub',
+						dimmed: false
+					}
+				});
+			});
 
 		cy = cytoscape({
 			container,
@@ -2532,7 +2675,8 @@
 				const targetStatusId = statusIdAtVisibleIdx(visIdx) ?? fromState.statusId;
 				const li = laneOf.get(targetStatusId) ?? 0;
 				pendingDragBatch.push({
-					node: n, questId: qid,
+					node: n,
+					questId: qid,
 					fromPos: { x: fromState.x, y: fromState.y },
 					fromStatus: fromState.statusId,
 					toPos: { ...pos },
@@ -2572,9 +2716,10 @@
 			for (const [laneIdx, items] of laneChanges) {
 				const newStatus = sorted[laneIdx];
 				const names = items.map((it) => it.node.data('questSlug')).join(', ');
-				const msg = items.length === 1
-					? `${names} → "${newStatus.name_en}" 상태로 변경할까요?`
-					: `${items.length}개 퀘스트를 "${newStatus.name_en}" 상태로 변경할까요?\n(${names})`;
+				const msg =
+					items.length === 1
+						? `${names} → "${newStatus.name_en}" 상태로 변경할까요?`
+						: `${items.length}개 퀘스트를 "${newStatus.name_en}" 상태로 변경할까요?\n(${names})`;
 				if (await showConfirm(msg)) {
 					confirmedLanes.add(laneIdx);
 				} else {
@@ -2621,7 +2766,8 @@
 				}
 				// DEV-067: clamp 는 visual 좌표 기준 (cytoscape position 이 visual).
 				// laneLeft = visibleLaneLeftOfStatus(targetStatusId).
-				const finalStatusId = laneChanged && confirmedLanes.has(toLaneIdx) ? newStatus.id : fromStatus;
+				const finalStatusId =
+					laneChanged && confirmedLanes.has(toLaneIdx) ? newStatus.id : fromStatus;
 				const laneLeftVis = visibleLaneLeftOfStatus(finalStatusId);
 				const minX = laneLeftVis + LANE_PAD_X + NODE_W / 2;
 				const maxX = laneLeftVis + LANE_W - LANE_PAD_X - NODE_W / 2;
@@ -2631,7 +2777,8 @@
 					node.position({ x: clampedX, y: finalY });
 				}
 
-				const moved = fromPos.x !== clampedX || fromPos.y !== finalY || fromStatus !== finalStatusId;
+				const moved =
+					fromPos.x !== clampedX || fromPos.y !== finalY || fromStatus !== finalStatusId;
 				if (moved) {
 					// DB save 는 absolute X. node.data.absX 도 동기화.
 					const absX = visualToAbsX(clampedX, finalStatusId);
@@ -2641,14 +2788,22 @@
 						from: { x: fromPos.x, y: fromPos.y, statusId: fromStatus },
 						to: { x: clampedX, y: finalY, statusId: finalStatusId }
 					});
-					posUpdates.push(questsApi.updatePosition(questId, { x: absX, y: finalY }).catch(() => {}));
+					posUpdates.push(
+						questsApi.updatePosition(questId, { x: absX, y: finalY }).catch(() => {})
+					);
 				}
 			}
 
 			if (historyItems.length > 0) {
-				const record: HistoryRecord = historyItems.length === 1
-					? { type: 'single', questId: historyItems[0].questId, from: historyItems[0].from, to: historyItems[0].to }
-					: { type: 'batch', items: historyItems };
+				const record: HistoryRecord =
+					historyItems.length === 1
+						? {
+								type: 'single',
+								questId: historyItems[0].questId,
+								from: historyItems[0].from,
+								to: historyItems[0].to
+							}
+						: { type: 'batch', items: historyItems };
 				undoStack.push(record);
 				if (undoStack.length > MAX_HISTORY) undoStack.shift();
 				redoStack.length = 0;
@@ -2718,73 +2873,105 @@
 
 	<!-- 노드 확장 카드 (z:6, 노드 위에 플로팅) -->
 	{#if expandedQuest}
-	<div
-		class="node-card"
-		class:card-dragging={!!cardDrag}
-		style:left="{expandedPos.x}px"
-		style:top="{expandedPos.y}px"
-		role="dialog"
-		tabindex="-1"
-		onmousedown={startCardDrag}
-	>
-		<div class="card-head">
-			<span class="drag-hint" title="드래그하여 이동">⠿</span>
-			<div class="card-badges">
-				<span class="badge" style:--c={expandedQuest.type_color}>{expandedQuest.quest_id}</span>
-				<span class="badge" style:--c={urgencyColor(expandedQuest.urgency)}>{urgencyLabel(expandedQuest.urgency)}</span>
-				<span class="badge" style:--c={expandedQuest.status_color}>{expandedQuest.status_name_en}</span>
+		<div
+			class="node-card"
+			class:card-dragging={!!cardDrag}
+			style:left="{expandedPos.x}px"
+			style:top="{expandedPos.y}px"
+			role="dialog"
+			tabindex="-1"
+			onmousedown={startCardDrag}
+		>
+			<div class="card-head">
+				<span class="drag-hint" title="드래그하여 이동">⠿</span>
+				<div class="card-badges">
+					<span class="badge" style:--c={expandedQuest.type_color}>{expandedQuest.quest_id}</span>
+					<span class="badge" style:--c={urgencyColor(expandedQuest.urgency)}
+						>{urgencyLabel(expandedQuest.urgency)}</span
+					>
+					<span class="badge" style:--c={expandedQuest.status_color}
+						>{expandedQuest.status_name_en}</span
+					>
+				</div>
+				<button class="card-close" onclick={closeExpanded} title="닫기 (Esc)">×</button>
 			</div>
-			<button class="card-close" onclick={closeExpanded} title="닫기 (Esc)">×</button>
-		</div>
 
-		<p class="card-title">{expandedQuest.title}</p>
+			<p class="card-title">{expandedQuest.title}</p>
 
-		<div class="card-branch">
-			<span class="blabel">Branch</span>
-			<code class="bname">{expandedQuest.type_prefix}-{String(expandedQuest.number).padStart(3, '0')}</code>
-		</div>
-
-		<button class="card-goto" onclick={() => goto(`/quests/${expandedQuest!.quest_id}?from=board`)}>
-			퀘스트 상세 페이지로 이동 →
-		</button>
-
-		<div class="card-divider"></div>
-		<p class="card-sec-label">연관 퀘스트 하이라이트 <span class="hl-multi-hint">(다중 선택 가능)</span></p>
-
-		<div class="card-hl-grid">
-			<button class="hl-btn all" class:on={activeHighlights.size === 4}
-				onclick={toggleAllHighlights}
-			>연관 전체</button>
-			<button class="hl-btn pre" class:on={activeHighlights.has('pre')}
-				onclick={() => toggleHighlight('pre')}
-			>● 선행 퀘스트</button>
-			<button class="hl-btn sub" class:on={activeHighlights.has('sub')}
-				onclick={() => toggleHighlight('sub')}
-			>● 서브 퀘스트</button>
-			<button class="hl-btn next" class:on={activeHighlights.has('next')}
-				onclick={() => toggleHighlight('next')}
-			>● 후속 퀘스트</button>
-			<button class="hl-btn parent" class:on={activeHighlights.has('parent')}
-				onclick={() => toggleHighlight('parent')}
-			>● 부모 퀘스트</button>
-		</div>
-
-		{#if activeHighlights.size > 0}
-			<div class="hl-actions">
-				<button class="hl-act sel" onclick={selectHighlighted} title="하이라이트된 노드들을 모두 선택 (드래그·상태변경 대상으로)">
-					🔘 선택
-				</button>
-				<button class="hl-act arr" onclick={arrangeHighlightedGroup} disabled={arranging} title="하이라이트된 노드들을 그룹으로 정렬">
-					⊞ 정렬
-				</button>
-				<button class="hl-act clear" onclick={clearHighlight} title="하이라이트 해제">
-					× 해제
-				</button>
+			<div class="card-branch">
+				<span class="blabel">Branch</span>
+				<code class="bname"
+					>{expandedQuest.type_prefix}-{String(expandedQuest.number).padStart(3, '0')}</code
+				>
 			</div>
-		{/if}
 
-		<p class="card-note">하이라이트는 선택(파란색)과 별개 — '선택' 버튼을 누르면 드래그·상태변경 대상이 됨</p>
-	</div>
+			<button
+				class="card-goto"
+				onclick={() => goto(`/quests/${expandedQuest!.quest_id}?from=board`)}
+			>
+				퀘스트 상세 페이지로 이동 →
+			</button>
+
+			<div class="card-divider"></div>
+			<p class="card-sec-label">
+				연관 퀘스트 하이라이트 <span class="hl-multi-hint">(다중 선택 가능)</span>
+			</p>
+
+			<div class="card-hl-grid">
+				<button
+					class="hl-btn all"
+					class:on={activeHighlights.size === 4}
+					onclick={toggleAllHighlights}>연관 전체</button
+				>
+				<button
+					class="hl-btn pre"
+					class:on={activeHighlights.has('pre')}
+					onclick={() => toggleHighlight('pre')}>● 선행 퀘스트</button
+				>
+				<button
+					class="hl-btn sub"
+					class:on={activeHighlights.has('sub')}
+					onclick={() => toggleHighlight('sub')}>● 서브 퀘스트</button
+				>
+				<button
+					class="hl-btn next"
+					class:on={activeHighlights.has('next')}
+					onclick={() => toggleHighlight('next')}>● 후속 퀘스트</button
+				>
+				<button
+					class="hl-btn parent"
+					class:on={activeHighlights.has('parent')}
+					onclick={() => toggleHighlight('parent')}>● 부모 퀘스트</button
+				>
+			</div>
+
+			{#if activeHighlights.size > 0}
+				<div class="hl-actions">
+					<button
+						class="hl-act sel"
+						onclick={selectHighlighted}
+						title="하이라이트된 노드들을 모두 선택 (드래그·상태변경 대상으로)"
+					>
+						🔘 선택
+					</button>
+					<button
+						class="hl-act arr"
+						onclick={arrangeHighlightedGroup}
+						disabled={arranging}
+						title="하이라이트된 노드들을 그룹으로 정렬"
+					>
+						⊞ 정렬
+					</button>
+					<button class="hl-act clear" onclick={clearHighlight} title="하이라이트 해제">
+						× 해제
+					</button>
+				</div>
+			{/if}
+
+			<p class="card-note">
+				하이라이트는 선택(파란색)과 별개 — '선택' 버튼을 누르면 드래그·상태변경 대상이 됨
+			</p>
+		</div>
 	{/if}
 
 	<!-- DEV-135: List 필터 활성 표시 — Board 의 dim 이 '왜' 인지 + 한 클릭 해제. -->
@@ -2810,13 +2997,20 @@
 		 함. flex 의 자연스러운 row 순서로 우측 anchor + 토글 항상 우측 끝. -->
 	<div class="toolbar" class:collapsed={toolbarCollapsed} class:has-newquest={!!onNewQuest}>
 		{#if !toolbarCollapsed}
-			<button class="tb-btn" onclick={fitView} title="Fit view (F)"><span class="icon">⊞</span></button>
+			<button class="tb-btn" onclick={fitView} title="Fit view (F)"
+				><span class="icon">⊞</span></button
+			>
 			<div class="tb-sep"></div>
 			<button class="tb-btn" onclick={undo} disabled={undoStack.length === 0} title="Undo (Ctrl+Z)">
 				<span class="icon">↩</span>
 				{#if undoStack.length > 0}<span class="count">{undoStack.length}</span>{/if}
 			</button>
-			<button class="tb-btn" onclick={redo} disabled={redoStack.length === 0} title="Redo (Ctrl+Shift+Z)">
+			<button
+				class="tb-btn"
+				onclick={redo}
+				disabled={redoStack.length === 0}
+				title="Redo (Ctrl+Shift+Z)"
+			>
 				<span class="icon">↪</span>
 				{#if redoStack.length > 0}<span class="count">{redoStack.length}</span>{/if}
 			</button>
@@ -2920,14 +3114,13 @@
 		<div class="hide-modal" role="dialog" aria-modal="true" tabindex="-1">
 			<div class="hide-head">
 				<h3 class="hide-title">보드 설정</h3>
-				<button
-					class="hide-close"
-					onclick={() => (showHideModal = false)}
-					aria-label="닫기"
-				>×</button>
+				<button class="hide-close" onclick={() => (showHideModal = false)} aria-label="닫기"
+					>×</button
+				>
 			</div>
 			<p class="hide-help">
-				레인 순서 변경 + 숨김 + 그룹·단독 노드 가리기. ◀ / ▶ 로 좌우 이동, 표시 해제 시 그 레인 전체 숨김.
+				레인 순서 변경 + 숨김 + 그룹·단독 노드 가리기. ◀ / ▶ 로 좌우 이동, 표시 해제 시 그 레인 전체
+				숨김.
 			</p>
 			<table class="hide-table">
 				<thead>
@@ -2950,15 +3143,15 @@
 									onclick={() => swapLane(li, -1)}
 									disabled={li === 0}
 									title="왼쪽으로"
-									aria-label="왼쪽으로"
-								>◀</button>
+									aria-label="왼쪽으로">◀</button
+								>
 								<button
 									class="reorder-btn"
 									onclick={() => swapLane(li, 1)}
 									disabled={li === sorted.length - 1}
 									title="오른쪽으로"
-									aria-label="오른쪽으로"
-								>▶</button>
+									aria-label="오른쪽으로">▶</button
+								>
 							</td>
 							<td>
 								<span class="hide-lane-name" style:color={s.color}>{s.name_en}</span>
@@ -2999,11 +3192,14 @@
 					<h4 class="bf-title">필터</h4>
 					{#if filterActive}
 						<span class="bf-count">{filterMatchCount}/{filterTotalCount} 매치</span>
-						<button class="bf-clear" onclick={clearBoardFilter} title="필터 모두 해제">× 해제</button>
+						<button class="bf-clear" onclick={clearBoardFilter} title="필터 모두 해제"
+							>× 해제</button
+						>
 					{/if}
 				</div>
 				<p class="hide-help">
-					매치 안 되는 노드는 보드에서 흐리게 표시됩니다(숨기지 않음). 여기서 바꾼 필터는 리스트와 공유됩니다.
+					매치 안 되는 노드는 보드에서 흐리게 표시됩니다(숨기지 않음). 여기서 바꾼 필터는 리스트와
+					공유됩니다.
 				</p>
 				<div class="bf-filter">
 					<QuestListFilter
@@ -3036,17 +3232,37 @@
 		overflow: hidden;
 	}
 
-	.lanes-bg { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
-	.board { position: absolute; inset: 0; z-index: 1; background: transparent; }
-	.lane-hdrs { position: absolute; inset: 0; z-index: 2; pointer-events: none; overflow: hidden; }
+	.lanes-bg {
+		position: absolute;
+		inset: 0;
+		z-index: 0;
+		pointer-events: none;
+	}
+	.board {
+		position: absolute;
+		inset: 0;
+		z-index: 1;
+		background: transparent;
+	}
+	.lane-hdrs {
+		position: absolute;
+		inset: 0;
+		z-index: 2;
+		pointer-events: none;
+		overflow: hidden;
+	}
 
 	:global(.lane-col) {
-		position: absolute; top: 0; bottom: 0;
+		position: absolute;
+		top: 0;
+		bottom: 0;
 		background: var(--bg-elevated);
 		border-right: 1px solid var(--bg-subtle);
 		box-sizing: border-box;
 		pointer-events: none;
-		transition: background 0.12s, box-shadow 0.12s;
+		transition:
+			background 0.12s,
+			box-shadow 0.12s;
 		overflow: hidden;
 	}
 	/* DEV-105 fix13/fix14: grid snap dot 표시. background-position 변경은 매
@@ -3069,8 +3285,12 @@
 	   (스케일하면 노드와 겹침). 내부 padding/gap/font 만 rem 으로 — UI 크기에
 	   비례해 컨텐츠가 자연스럽게 자람 (max 2x 까지 38px 안에 fit). */
 	:global(.lane-hdr) {
-		position: absolute; top: 0; height: 38px;
-		display: flex; align-items: center; gap: 0.375rem;
+		position: absolute;
+		top: 0;
+		height: 38px;
+		display: flex;
+		align-items: center;
+		gap: 0.375rem;
 		padding: 0 0.5rem 0 0.875rem;
 		border-right: 1px solid var(--bg-subtle);
 		border-bottom: 1px solid var(--bg-subtle);
@@ -3088,15 +3308,24 @@
 		justify-content: center;
 	}
 	:global(.lane-label) {
-		flex: 1; font-size: 0.75rem; font-weight: bold;
-		white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+		flex: 1;
+		font-size: 0.75rem;
+		font-weight: bold;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 		/* DEV-105: button 으로 변경 — 기본 button 스타일 reset. */
-		background: none; border: none; padding: 0; cursor: pointer;
+		background: none;
+		border: none;
+		padding: 0;
+		cursor: pointer;
 		text-align: left;
 		pointer-events: auto;
 		transition: opacity 0.15s;
 	}
-	:global(.lane-label:hover) { opacity: 0.75; }
+	:global(.lane-label:hover) {
+		opacity: 0.75;
+	}
 	/* DEV-105: collapsed 시 90도 회전 (세로) + 글자 한 줄 압축.
 	   DEV-105 fix4: max-height 60px 가 lane-hdr (38px) 보다 커서 긴 이름이 위로
 	   삐져나가 잘림. 헤더 안에 들어가도록 28px 로 축소 + ellipsis. */
@@ -3112,17 +3341,30 @@
 	}
 	/* DEV-105 fix5: 레인별 설정 토글 ⚙ — 항상 보임, 작은 라벨 옆 버튼. */
 	:global(.lane-settings-btn) {
-		flex-shrink: 0; pointer-events: auto;
-		background: none; border: 1px solid transparent; border-radius: 4px;
-		color: var(--text-faint); font-size: 0.85rem; padding: 0 4px;
-		cursor: pointer; line-height: 1.2;
-		transition: background 0.1s, color 0.1s, border-color 0.1s;
+		flex-shrink: 0;
+		pointer-events: auto;
+		background: none;
+		border: 1px solid transparent;
+		border-radius: 4px;
+		color: var(--text-faint);
+		font-size: 0.85rem;
+		padding: 0 4px;
+		cursor: pointer;
+		line-height: 1.2;
+		transition:
+			background 0.1s,
+			color 0.1s,
+			border-color 0.1s;
 	}
 	:global(.lane-settings-btn:hover) {
-		background: var(--bg-subtle); color: var(--text-muted); border-color: var(--border);
+		background: var(--bg-subtle);
+		color: var(--text-muted);
+		border-color: var(--border);
 	}
 	:global(.lane-hdr.settings-open .lane-settings-btn) {
-		color: var(--text); background: var(--bg-subtle); border-color: var(--border);
+		color: var(--text);
+		background: var(--bg-subtle);
+		border-color: var(--border);
 	}
 	/* settings 가 닫혀 있으면 cols-sel + arrange-group 숨김. */
 	:global(.lane-hdr:not(.settings-open) .lane-cols-sel),
@@ -3130,38 +3372,85 @@
 		display: none !important;
 	}
 	:global(.lane-cols-sel) {
-		flex-shrink: 0; pointer-events: auto;
-		background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
-		color: var(--text-muted); font-size: 0.72rem; padding: 1px 3px; cursor: pointer; outline: none;
+		flex-shrink: 0;
+		pointer-events: auto;
+		background: var(--bg);
+		border: 1px solid var(--border);
+		border-radius: 4px;
+		color: var(--text-muted);
+		font-size: 0.72rem;
+		padding: 1px 3px;
+		cursor: pointer;
+		outline: none;
 	}
-	:global(.lane-cols-sel:hover) { border-color: var(--text-faint); color: var(--text); }
+	:global(.lane-cols-sel:hover) {
+		border-color: var(--text-faint);
+		color: var(--text);
+	}
 	:global(.lane-arrange-btn) {
-		flex-shrink: 0; pointer-events: auto;
-		background: none; border: 1px solid transparent; border-radius: 4px;
-		color: var(--text-faint); font-size: 0.85rem; padding: 1px 5px;
-		cursor: pointer; line-height: 1.4;
-		transition: background 0.1s, color 0.1s, border-color 0.1s;
+		flex-shrink: 0;
+		pointer-events: auto;
+		background: none;
+		border: 1px solid transparent;
+		border-radius: 4px;
+		color: var(--text-faint);
+		font-size: 0.85rem;
+		padding: 1px 5px;
+		cursor: pointer;
+		line-height: 1.4;
+		transition:
+			background 0.1s,
+			color 0.1s,
+			border-color 0.1s;
 	}
-	:global(.lane-arrange-btn:hover) { background: var(--bg-subtle); border-color: var(--border); color: var(--text-muted); }
+	:global(.lane-arrange-btn:hover) {
+		background: var(--bg-subtle);
+		border-color: var(--border);
+		color: var(--text-muted);
+	}
 
 	/* DEV-059: lane 순서 변경 — label 양 끝 ◀ ▶. */
 	:global(.lane-move-btn) {
-		flex-shrink: 0; pointer-events: auto;
-		background: none; border: none; border-radius: 4px;
-		color: var(--text-faint); font-size: 0.7rem; padding: 0 4px;
-		cursor: pointer; line-height: 1;
-		transition: background 0.1s, color 0.1s;
+		flex-shrink: 0;
+		pointer-events: auto;
+		background: none;
+		border: none;
+		border-radius: 4px;
+		color: var(--text-faint);
+		font-size: 0.7rem;
+		padding: 0 4px;
+		cursor: pointer;
+		line-height: 1;
+		transition:
+			background 0.1s,
+			color 0.1s;
 	}
-	:global(.lane-move-btn:hover:not(:disabled)) { background: var(--bg-subtle); color: var(--text); }
-	:global(.lane-move-btn:disabled) { opacity: 0.25; cursor: not-allowed; }
+	:global(.lane-move-btn:hover:not(:disabled)) {
+		background: var(--bg-subtle);
+		color: var(--text);
+	}
+	:global(.lane-move-btn:disabled) {
+		opacity: 0.25;
+		cursor: not-allowed;
+	}
 
 	/* lane header 의 mode select (Group / All) — lane-cols-sel 과 비슷한 비주얼 */
 	:global(.lane-mode-sel) {
-		flex-shrink: 0; pointer-events: auto;
-		background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
-		color: var(--text-muted); font-size: 0.72rem; padding: 1px 3px; cursor: pointer; outline: none;
+		flex-shrink: 0;
+		pointer-events: auto;
+		background: var(--bg);
+		border: 1px solid var(--border);
+		border-radius: 4px;
+		color: var(--text-muted);
+		font-size: 0.72rem;
+		padding: 1px 3px;
+		cursor: pointer;
+		outline: none;
 	}
-	:global(.lane-mode-sel:hover) { border-color: var(--text-faint); color: var(--text); }
+	:global(.lane-mode-sel:hover) {
+		border-color: var(--text-faint);
+		color: var(--text);
+	}
 
 	/* lane header 의 ⊟ 버튼 + mode select 를 segmented 컨트롤로 묶음 (toolbar 와 동일 패턴) */
 	:global(.lane-arrange-group) {
@@ -3191,7 +3480,9 @@
 		background: var(--bg-elevated);
 		border: 1px solid var(--border);
 		border-radius: 10px;
-		box-shadow: 0 8px 32px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.04);
+		box-shadow:
+			0 8px 32px rgba(0, 0, 0, 0.55),
+			0 0 0 1px rgba(255, 255, 255, 0.04);
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
@@ -3200,15 +3491,28 @@
 		cursor: default;
 		user-select: none;
 	}
-	.node-card:not(.card-dragging) .card-head { cursor: grab; }
-	.node-card.card-dragging { cursor: grabbing; box-shadow: 0 16px 48px rgba(0,0,0,0.7); }
+	.node-card:not(.card-dragging) .card-head {
+		cursor: grab;
+	}
+	.node-card.card-dragging {
+		cursor: grabbing;
+		box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7);
+	}
 	@keyframes card-expand {
-		from { opacity: 0; transform: scale(0.72) translateY(-8px); }
-		to   { opacity: 1; transform: scale(1)    translateY(0);     }
+		from {
+			opacity: 0;
+			transform: scale(0.72) translateY(-8px);
+		}
+		to {
+			opacity: 1;
+			transform: scale(1) translateY(0);
+		}
 	}
 
 	.card-head {
-		display: flex; align-items: flex-start; gap: 6px;
+		display: flex;
+		align-items: flex-start;
+		gap: 6px;
 		padding: 8px 10px 8px 8px;
 		border-bottom: 1px solid var(--bg-subtle);
 	}
@@ -3220,56 +3524,106 @@
 		padding: 1px 2px;
 		transition: color 0.1s;
 	}
-	.card-head:hover .drag-hint { color: var(--text-faint); }
-	.card-badges { flex: 1; display: flex; flex-wrap: wrap; gap: 4px; }
+	.card-head:hover .drag-hint {
+		color: var(--text-faint);
+	}
+	.card-badges {
+		flex: 1;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px;
+	}
 	.badge {
-		padding: 0.15rem 0.5rem; border-radius: 20px;
-		font-size: 0.7rem; font-weight: 500;
+		padding: 0.15rem 0.5rem;
+		border-radius: 20px;
+		font-size: 0.7rem;
+		font-weight: 500;
 		background: color-mix(in srgb, var(--c) 18%, transparent);
 		color: var(--c);
 		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
 		white-space: nowrap;
 	}
 	.card-close {
-		flex-shrink: 0; background: none; border: none;
-		color: var(--text-faint); font-size: 1.1rem; line-height: 1;
-		padding: 0 2px; cursor: pointer; transition: color 0.1s;
+		flex-shrink: 0;
+		background: none;
+		border: none;
+		color: var(--text-faint);
+		font-size: 1.1rem;
+		line-height: 1;
+		padding: 0 2px;
+		cursor: pointer;
+		transition: color 0.1s;
 	}
-	.card-close:hover { color: var(--text); }
+	.card-close:hover {
+		color: var(--text);
+	}
 
 	.card-title {
-		margin: 0; padding: 10px 12px 6px;
-		font-size: 0.9rem; font-weight: 600; color: var(--text-strong);
-		line-height: 1.45; word-break: break-word;
+		margin: 0;
+		padding: 10px 12px 6px;
+		font-size: 0.9rem;
+		font-weight: 600;
+		color: var(--text-strong);
+		line-height: 1.45;
+		word-break: break-word;
 	}
 	.card-branch {
-		display: flex; align-items: center; gap: 8px;
+		display: flex;
+		align-items: center;
+		gap: 8px;
 		margin: 0 12px 8px;
 		padding: 4px 8px;
-		background: var(--bg); border: 1px solid var(--bg-subtle); border-radius: 5px;
+		background: var(--bg);
+		border: 1px solid var(--bg-subtle);
+		border-radius: 5px;
 	}
-	.blabel { font-size: 0.7rem; color: var(--text-faint); }
-	.bname { font-family: 'SFMono-Regular', Consolas, monospace; font-size: 0.78rem; color: var(--accent-secondary); }
+	.blabel {
+		font-size: 0.7rem;
+		color: var(--text-faint);
+	}
+	.bname {
+		font-family: 'SFMono-Regular', Consolas, monospace;
+		font-size: 0.78rem;
+		color: var(--accent-secondary);
+	}
 
 	.card-goto {
 		margin: 0 12px 10px;
 		padding: 6px 10px;
-		background: var(--bg-subtle); border: 1px solid var(--border); border-radius: 6px;
-		color: var(--accent); font-size: 0.78rem; cursor: pointer; text-align: left;
-		transition: background 0.1s, border-color 0.1s;
+		background: var(--bg-subtle);
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		color: var(--accent);
+		font-size: 0.78rem;
+		cursor: pointer;
+		text-align: left;
+		transition:
+			background 0.1s,
+			border-color 0.1s;
 	}
-	.card-goto:hover { background: var(--border); border-color: var(--text-faint); }
+	.card-goto:hover {
+		background: var(--border);
+		border-color: var(--text-faint);
+	}
 
-	.card-divider { height: 1px; background: var(--bg-subtle); }
+	.card-divider {
+		height: 1px;
+		background: var(--bg-subtle);
+	}
 
 	.card-sec-label {
 		margin: 10px 12px 4px;
-		font-size: 0.67rem; font-weight: 600; color: var(--text-faint);
-		text-transform: uppercase; letter-spacing: 0.06em;
+		font-size: 0.67rem;
+		font-weight: 600;
+		color: var(--text-faint);
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
 	}
 	.hl-multi-hint {
-		font-size: 0.62rem; color: var(--border);
-		text-transform: none; letter-spacing: 0;
+		font-size: 0.62rem;
+		color: var(--border);
+		text-transform: none;
+		letter-spacing: 0;
 		font-weight: 400;
 	}
 
@@ -3280,63 +3634,133 @@
 		padding: 0 12px;
 	}
 	/* "연관 전체"는 한 줄 전체 */
-	.hl-btn.all { grid-column: 1 / -1; }
+	.hl-btn.all {
+		grid-column: 1 / -1;
+	}
 
 	.hl-btn {
 		padding: 5px 8px;
 		border-radius: 5px;
-		font-size: 0.75rem; cursor: pointer; text-align: left;
+		font-size: 0.75rem;
+		cursor: pointer;
+		text-align: left;
 		transition: all 0.12s;
 		border: 1px solid transparent;
 		background: var(--bg);
 	}
 	/* DEV-074 fix20 (sweep): 토큰 + color-mix 로 통일.
 	   이전엔 hex 와 rgba() 직접 — 라이트모드에서 색 안 변함. */
-	.hl-btn.pre    { color: var(--hl-pre); border-color: color-mix(in srgb, var(--hl-pre) 25%, transparent); }
-	.hl-btn.sub    { color: var(--hl-sub); border-color: color-mix(in srgb, var(--hl-sub) 25%, transparent); }
-	.hl-btn.next   { color: var(--hl-next); border-color: color-mix(in srgb, var(--hl-next) 25%, transparent); }
-	.hl-btn.parent { color: var(--success); border-color: color-mix(in srgb, var(--success) 25%, transparent); }
-	.hl-btn.all    { color: var(--text); border-color: var(--border); }
+	.hl-btn.pre {
+		color: var(--hl-pre);
+		border-color: color-mix(in srgb, var(--hl-pre) 25%, transparent);
+	}
+	.hl-btn.sub {
+		color: var(--hl-sub);
+		border-color: color-mix(in srgb, var(--hl-sub) 25%, transparent);
+	}
+	.hl-btn.next {
+		color: var(--hl-next);
+		border-color: color-mix(in srgb, var(--hl-next) 25%, transparent);
+	}
+	.hl-btn.parent {
+		color: var(--success);
+		border-color: color-mix(in srgb, var(--success) 25%, transparent);
+	}
+	.hl-btn.all {
+		color: var(--text);
+		border-color: var(--border);
+	}
 
-	.hl-btn:hover { background: var(--bg-subtle); }
-	.hl-btn.pre.on    { background: color-mix(in srgb, var(--hl-pre) 15%, transparent); border-color: var(--hl-pre); }
-	.hl-btn.sub.on    { background: color-mix(in srgb, var(--hl-sub) 15%, transparent); border-color: var(--hl-sub); }
-	.hl-btn.next.on   { background: color-mix(in srgb, var(--hl-next) 15%, transparent); border-color: var(--hl-next); }
-	.hl-btn.parent.on { background: color-mix(in srgb, var(--success) 15%, transparent); border-color: var(--success); }
-	.hl-btn.all.on    { background: color-mix(in srgb, var(--text-muted) 10%, transparent); border-color: var(--text-muted); }
+	.hl-btn:hover {
+		background: var(--bg-subtle);
+	}
+	.hl-btn.pre.on {
+		background: color-mix(in srgb, var(--hl-pre) 15%, transparent);
+		border-color: var(--hl-pre);
+	}
+	.hl-btn.sub.on {
+		background: color-mix(in srgb, var(--hl-sub) 15%, transparent);
+		border-color: var(--hl-sub);
+	}
+	.hl-btn.next.on {
+		background: color-mix(in srgb, var(--hl-next) 15%, transparent);
+		border-color: var(--hl-next);
+	}
+	.hl-btn.parent.on {
+		background: color-mix(in srgb, var(--success) 15%, transparent);
+		border-color: var(--success);
+	}
+	.hl-btn.all.on {
+		background: color-mix(in srgb, var(--text-muted) 10%, transparent);
+		border-color: var(--text-muted);
+	}
 
 	.hl-actions {
 		margin: 6px 12px 0;
-		display: flex; gap: 4px;
+		display: flex;
+		gap: 4px;
 	}
 	.hl-act {
 		flex: 1;
 		padding: 4px 6px;
-		background: var(--bg); border: 1px solid var(--border); border-radius: 5px;
-		color: var(--text-muted); font-size: 0.72rem; cursor: pointer;
-		transition: background 0.1s, color 0.1s, border-color 0.1s;
+		background: var(--bg);
+		border: 1px solid var(--border);
+		border-radius: 5px;
+		color: var(--text-muted);
+		font-size: 0.72rem;
+		cursor: pointer;
+		transition:
+			background 0.1s,
+			color 0.1s,
+			border-color 0.1s;
 	}
-	.hl-act:hover:not(:disabled) { background: var(--bg-subtle); color: var(--text); }
-	.hl-act:disabled { opacity: 0.4; cursor: default; }
-	.hl-act.sel { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
-	.hl-act.sel:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent-secondary); }
-	.hl-act.arr { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 30%, transparent); }
-	.hl-act.arr:hover:not(:disabled) { background: color-mix(in srgb, var(--warning) 10%, transparent); color: var(--orange); }
-	.hl-act.clear { color: var(--text-faint); }
+	.hl-act:hover:not(:disabled) {
+		background: var(--bg-subtle);
+		color: var(--text);
+	}
+	.hl-act:disabled {
+		opacity: 0.4;
+		cursor: default;
+	}
+	.hl-act.sel {
+		color: var(--accent);
+		border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+	}
+	.hl-act.sel:hover:not(:disabled) {
+		background: color-mix(in srgb, var(--accent) 10%, transparent);
+		color: var(--accent-secondary);
+	}
+	.hl-act.arr {
+		color: var(--warning);
+		border-color: color-mix(in srgb, var(--warning) 30%, transparent);
+	}
+	.hl-act.arr:hover:not(:disabled) {
+		background: color-mix(in srgb, var(--warning) 10%, transparent);
+		color: var(--orange);
+	}
+	.hl-act.clear {
+		color: var(--text-faint);
+	}
 
 	.card-note {
 		margin: 6px 12px 10px;
-		font-size: 0.67rem; color: var(--border); line-height: 1.4;
+		font-size: 0.67rem;
+		color: var(--border);
+		line-height: 1.4;
 	}
 
 	/* ── 툴바 (z:10) ── */
 	/* DEV-073 fix3: New Quest 는 상단 고정, 나머지 도구바는 그 아래로. */
 	/* DEV-135: 필터 활성 chip — 좌상단 (toolbar 와 반대편). */
 	.filter-chip {
-		position: absolute; top: 10px; left: 14px;
+		position: absolute;
+		top: 10px;
+		left: 14px;
 		z-index: 10;
 		pointer-events: auto;
-		display: flex; align-items: center; gap: 0.5rem;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
 		padding: 0.3rem 0.7rem;
 		background: color-mix(in srgb, var(--accent) 12%, var(--bg-elevated));
 		border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
@@ -3344,21 +3768,37 @@
 		font-size: 0.78rem;
 		color: var(--text);
 	}
-	.fc-label { color: var(--accent); font-weight: 500; }
-	.fc-clear {
-		background: none; border: none; cursor: pointer;
-		color: var(--text-muted); font-size: 0.78rem; padding: 0;
+	.fc-label {
+		color: var(--accent);
+		font-weight: 500;
 	}
-	.fc-clear:hover { color: var(--danger); }
+	.fc-clear {
+		background: none;
+		border: none;
+		cursor: pointer;
+		color: var(--text-muted);
+		font-size: 0.78rem;
+		padding: 0;
+	}
+	.fc-clear:hover {
+		color: var(--danger);
+	}
 
 	.tb-newquest-wrap {
-		position: absolute; top: 10px; right: 14px;
+		position: absolute;
+		top: 10px;
+		right: 14px;
 		z-index: 10;
 		pointer-events: auto;
 	}
 	.toolbar {
-		position: absolute; top: 10px; right: 14px;
-		z-index: 10; display: flex; align-items: center; gap: 4px;
+		position: absolute;
+		top: 10px;
+		right: 14px;
+		z-index: 10;
+		display: flex;
+		align-items: center;
+		gap: 4px;
 		pointer-events: auto;
 	}
 	/* New Quest 가 있으면 도구바를 그 아래로 내림 — 새 퀘스트 버튼 높이 (~32px) + 여백. */
@@ -3374,16 +3814,34 @@
 		opacity: 0.7;
 		padding: 4px 8px;
 	}
-	.tb-btn.tb-collapse:hover { opacity: 1; }
-	.tb-btn {
-		display: flex; align-items: center; gap: 4px;
-		padding: 4px 10px;
-		background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 6px;
-		color: var(--text-muted); font-size: 0.8rem; cursor: pointer;
-		transition: background 0.1s, color 0.1s, border-color 0.1s;
+	.tb-btn.tb-collapse:hover {
+		opacity: 1;
 	}
-	.tb-btn:hover:not(:disabled) { background: var(--bg-subtle); border-color: var(--text-faint); color: var(--text); }
-	.tb-btn:disabled { opacity: 0.35; cursor: default; }
+	.tb-btn {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		padding: 4px 10px;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		color: var(--text-muted);
+		font-size: 0.8rem;
+		cursor: pointer;
+		transition:
+			background 0.1s,
+			color 0.1s,
+			border-color 0.1s;
+	}
+	.tb-btn:hover:not(:disabled) {
+		background: var(--bg-subtle);
+		border-color: var(--text-faint);
+		color: var(--text);
+	}
+	.tb-btn:disabled {
+		opacity: 0.35;
+		cursor: default;
+	}
 	.tb-btn.tb-on {
 		background: color-mix(in srgb, var(--warning) 12%, transparent);
 		border-color: color-mix(in srgb, var(--warning) 55%, transparent);
@@ -3394,25 +3852,51 @@
 		border-color: var(--warning);
 		color: var(--orange);
 	}
-	.tb-btn .icon { font-size: 0.95rem; line-height: 1; }
-	.tb-btn .count { font-size: 0.7rem; color: var(--text-faint); min-width: 10px; text-align: right; }
-	.tb-btn:hover:not(:disabled) .count { color: var(--text-muted); }
+	.tb-btn .icon {
+		font-size: 0.95rem;
+		line-height: 1;
+	}
+	.tb-btn .count {
+		font-size: 0.7rem;
+		color: var(--text-faint);
+		min-width: 10px;
+		text-align: right;
+	}
+	.tb-btn:hover:not(:disabled) .count {
+		color: var(--text-muted);
+	}
 	/* DEV-084: New Quest — toolbar 안 primary 강조 (초록).
 	   DEV-074 fix6: --btn-primary-* 토큰으로 통일 (dark/light 자동). */
 	.tb-btn.tb-new {
-		background: var(--btn-primary-bg); border-color: var(--btn-primary-border);
-		color: var(--btn-primary-text); font-weight: 600;
+		background: var(--btn-primary-bg);
+		border-color: var(--btn-primary-border);
+		color: var(--btn-primary-text);
+		font-weight: 600;
 	}
 	.tb-btn.tb-new:hover:not(:disabled) {
-		background: var(--btn-primary-bg-hover); border-color: var(--btn-primary-border-hover);
+		background: var(--btn-primary-bg-hover);
+		border-color: var(--btn-primary-border-hover);
 	}
-	.tb-sep { width: 1px; background: var(--border); align-self: stretch; margin: 2px 0; }
+	.tb-sep {
+		width: 1px;
+		background: var(--border);
+		align-self: stretch;
+		margin: 2px 0;
+	}
 	.tb-select {
 		padding: 3px 6px;
-		background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 6px;
-		color: var(--text-muted); font-size: 0.8rem; cursor: pointer; outline: none;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		color: var(--text-muted);
+		font-size: 0.8rem;
+		cursor: pointer;
+		outline: none;
 	}
-	.tb-select:hover { border-color: var(--text-faint); color: var(--text); }
+	.tb-select:hover {
+		border-color: var(--text-faint);
+		color: var(--text);
+	}
 
 	/* Arrange 버튼 + mode select 를 하나의 컨트롤처럼 묶음 */
 	.tb-arrange-group {
@@ -3432,49 +3916,82 @@
 	}
 
 	.overlay {
-		position: fixed; inset: 3.25rem 0 0 0;
-		display: flex; align-items: center; justify-content: center;
-		color: var(--text-faint); font-size: 0.9rem; pointer-events: none; z-index: 2;
+		position: fixed;
+		inset: 3.25rem 0 0 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		color: var(--text-faint);
+		font-size: 0.9rem;
+		pointer-events: none;
+		z-index: 2;
 	}
-	.overlay.error { color: var(--danger); }
+	.overlay.error {
+		color: var(--danger);
+	}
 
 	/* ── 인앱 확인 다이얼로그 ── */
 	.dialog-backdrop {
-		position: fixed; inset: 0;
+		position: fixed;
+		inset: 0;
 		background: rgba(0, 0, 0, 0.55);
 		z-index: 500;
-		display: flex; align-items: center; justify-content: center;
+		display: flex;
+		align-items: center;
+		justify-content: center;
 	}
 	.dialog {
 		background: var(--bg-elevated);
 		border: 1px solid var(--border);
 		border-radius: 10px;
 		padding: 1.25rem 1.5rem 1rem;
-		min-width: calc(17.5rem * var(--popup-scale, 1)); max-width: calc(26.25rem * var(--popup-scale, 1)); /* BUG-064 */
+		min-width: calc(17.5rem * var(--popup-scale, 1));
+		max-width: calc(26.25rem * var(--popup-scale, 1)); /* BUG-064 */
 		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
-		display: flex; flex-direction: column; gap: 1rem;
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
 	}
 	.dialog-msg {
 		margin: 0;
-		font-size: 0.9rem; color: var(--text); line-height: 1.5;
+		font-size: 0.9rem;
+		color: var(--text);
+		line-height: 1.5;
 		white-space: pre-wrap;
 	}
 	.dialog-btns {
-		display: flex; gap: 0.5rem; justify-content: flex-end;
+		display: flex;
+		gap: 0.5rem;
+		justify-content: flex-end;
 	}
 	.dialog-ok {
 		padding: 0.4rem 1.1rem;
-		background: var(--btn-primary-bg); border: 1px solid var(--btn-primary-border); border-radius: 6px;
-		color: var(--btn-primary-text); font-size: 0.875rem; cursor: pointer;
-		transition: background 0.1s, border-color 0.1s;
+		background: var(--btn-primary-bg);
+		border: 1px solid var(--btn-primary-border);
+		border-radius: 6px;
+		color: var(--btn-primary-text);
+		font-size: 0.875rem;
+		cursor: pointer;
+		transition:
+			background 0.1s,
+			border-color 0.1s;
 	}
-	.dialog-ok:hover { background: var(--btn-primary-bg-hover); border-color: var(--btn-primary-border-hover); }
+	.dialog-ok:hover {
+		background: var(--btn-primary-bg-hover);
+		border-color: var(--btn-primary-border-hover);
+	}
 	.dialog-cancel {
 		padding: 0.4rem 1rem;
-		background: transparent; border: 1px solid var(--border); border-radius: 6px;
-		color: var(--text-muted); font-size: 0.875rem; cursor: pointer;
+		background: transparent;
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		color: var(--text-muted);
+		font-size: 0.875rem;
+		cursor: pointer;
 	}
-	.dialog-cancel:hover { background: var(--bg-subtle); }
+	.dialog-cancel:hover {
+		background: var(--bg-subtle);
+	}
 
 	/* DEV-056: 숨김 설정 모달 */
 	.hide-modal {
@@ -3482,9 +3999,12 @@
 		border: 1px solid var(--border);
 		border-radius: 10px;
 		padding: 1.25rem 1.5rem 1.25rem;
-		min-width: calc(30rem * var(--popup-scale, 1)); max-width: calc(40rem * var(--popup-scale, 1)); /* BUG-064 */
+		min-width: calc(30rem * var(--popup-scale, 1));
+		max-width: calc(40rem * var(--popup-scale, 1)); /* BUG-064 */
 		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
-		display: flex; flex-direction: column; gap: 0.75rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
 		color: var(--text);
 		/* DEV-135: 필터 섹션 추가로 길어질 수 있어 모달 자체 스크롤. */
 		max-height: calc(100vh - 4rem);
@@ -3494,19 +4014,39 @@
 	.bf-section {
 		border-top: 1px solid var(--bg-subtle);
 		padding-top: 0.75rem;
-		display: flex; flex-direction: column; gap: 0.4rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.4rem;
 	}
-	.bf-head { display: flex; align-items: center; gap: 0.6rem; }
-	.bf-title { margin: 0; font-size: 0.95rem; font-weight: 600; color: var(--text-strong); }
-	.bf-count { font-size: 0.8rem; color: var(--accent); font-weight: 600; }
+	.bf-head {
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+	}
+	.bf-title {
+		margin: 0;
+		font-size: 0.95rem;
+		font-weight: 600;
+		color: var(--text-strong);
+	}
+	.bf-count {
+		font-size: 0.8rem;
+		color: var(--accent);
+		font-weight: 600;
+	}
 	.bf-clear {
 		margin-left: auto;
 		background: transparent;
 		border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
 		color: var(--danger);
-		border-radius: 6px; padding: 0.15rem 0.5rem; font-size: 0.78rem; cursor: pointer;
+		border-radius: 6px;
+		padding: 0.15rem 0.5rem;
+		font-size: 0.78rem;
+		cursor: pointer;
 	}
-	.bf-clear:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
+	.bf-clear:hover {
+		background: color-mix(in srgb, var(--danger) 12%, transparent);
+	}
 	/* QuestListFilter 는 본래 가로 바 — 모달 안에선 우측 130px 예약 padding 불필요. */
 	.bf-filter :global(.filter-bar),
 	.bf-filter :global(.adv-bar) {
@@ -3515,27 +4055,50 @@
 		border-bottom: none;
 	}
 	.hide-head {
-		display: flex; align-items: center; justify-content: space-between;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
 	}
 	.hide-title {
-		margin: 0; font-size: 1rem; font-weight: 600; color: var(--text-strong);
+		margin: 0;
+		font-size: 1rem;
+		font-weight: 600;
+		color: var(--text-strong);
 	}
 	.hide-close {
-		background: transparent; border: none; color: var(--text-muted);
-		font-size: 1.4rem; line-height: 1; cursor: pointer; padding: 0 0.3rem;
+		background: transparent;
+		border: none;
+		color: var(--text-muted);
+		font-size: 1.4rem;
+		line-height: 1;
+		cursor: pointer;
+		padding: 0 0.3rem;
 	}
-	.hide-close:hover { color: var(--text); }
+	.hide-close:hover {
+		color: var(--text);
+	}
 	.hide-help {
-		margin: 0; font-size: 0.825rem; color: var(--text-muted); line-height: 1.45;
+		margin: 0;
+		font-size: 0.825rem;
+		color: var(--text-muted);
+		line-height: 1.45;
 	}
 	.hide-table {
-		width: 100%; border-collapse: collapse; font-size: 0.875rem;
+		width: 100%;
+		border-collapse: collapse;
+		font-size: 0.875rem;
 	}
-	.hide-table th, .hide-table td {
-		text-align: left; padding: 0.5rem 0.6rem;
+	.hide-table th,
+	.hide-table td {
+		text-align: left;
+		padding: 0.5rem 0.6rem;
 		border-bottom: 1px solid var(--bg-subtle);
 	}
-	.hide-table th { color: var(--text-muted); font-weight: 500; font-size: 0.8rem; }
+	.hide-table th {
+		color: var(--text-muted);
+		font-weight: 500;
+		font-size: 0.8rem;
+	}
 	.hide-table tr.lane-off .hide-lane-name {
 		opacity: 0.45;
 		text-decoration: line-through;
@@ -3559,7 +4122,9 @@
 		border-radius: 4px;
 		color: var(--text-muted);
 		cursor: pointer;
-		transition: background 0.1s, color 0.1s;
+		transition:
+			background 0.1s,
+			color 0.1s;
 	}
 	.hide-table .reorder-btn:hover:not(:disabled) {
 		background: var(--border);

@@ -96,9 +96,7 @@ export class HttpTransport implements Transport {
 import { invoke } from '@tauri-apps/api/core';
 
 /** path + method → (invoke 명, args). 매칭 실패 시 null. */
-function routeToInvoke(
-	req: ApiCall
-): { cmd: string; args: Record<string, unknown> } | null {
+function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknown> } | null {
 	const { method, path, body } = req;
 
 	// query string 분리
@@ -113,8 +111,7 @@ function routeToInvoke(
 	if (pathOnly === '/api/rules') {
 		if (method === 'GET') return { cmd: 'list_rules', args: {} };
 		if (method === 'POST') {
-			const b =
-				(body as { slug?: string; content?: string } | undefined) ?? {};
+			const b = (body as { slug?: string; content?: string } | undefined) ?? {};
 			return {
 				cmd: 'create_rule',
 				args: { slug: b.slug ?? '', content: b.content ?? '' }
@@ -129,8 +126,7 @@ function routeToInvoke(
 			return { cmd: 'set_rule', args: { slug, content } };
 		}
 		if (method === 'PATCH') {
-			const newSlug =
-				(body as { new_slug?: string } | undefined)?.new_slug ?? '';
+			const newSlug = (body as { new_slug?: string } | undefined)?.new_slug ?? '';
 			return { cmd: 'rename_rule', args: { slug, newSlug } };
 		}
 		if (method === 'DELETE') {
@@ -180,11 +176,13 @@ function routeToInvoke(
 				if (method === 'GET') return { cmd: 'list_comments', args: { slug } };
 				if (method === 'POST') {
 					const b =
-						(body as {
-							author?: string;
-							body?: string;
-							parent_id?: number | null;
-						} | undefined) ?? {};
+						(body as
+							| {
+									author?: string;
+									body?: string;
+									parent_id?: number | null;
+							  }
+							| undefined) ?? {};
 					return {
 						cmd: 'add_comment',
 						args: {
@@ -249,7 +247,10 @@ function routeToInvoke(
 			if (method === 'DELETE') {
 				const cascadeStr = query.get('cascade');
 				const cascade = cascadeStr
-					? cascadeStr.split(',').map((s) => Number(s.trim())).filter((n) => Number.isFinite(n))
+					? cascadeStr
+							.split(',')
+							.map((s) => Number(s.trim()))
+							.filter((n) => Number.isFinite(n))
 					: undefined;
 				return { cmd: 'delete_quest', args: { id, cascade } };
 			}
@@ -305,7 +306,13 @@ function routeToInvoke(
 		return { cmd: 'admin_list_snapshots', args: {} };
 	}
 	// DEV-175: DELETE /api/admin/snapshots/{ts}
-	if (method === 'DELETE' && parts[0] === 'api' && parts[1] === 'admin' && parts[2] === 'snapshots' && parts[3]) {
+	if (
+		method === 'DELETE' &&
+		parts[0] === 'api' &&
+		parts[1] === 'admin' &&
+		parts[2] === 'snapshots' &&
+		parts[3]
+	) {
 		return { cmd: 'admin_delete_snapshot', args: { ts: decodeURIComponent(parts[3]) } };
 	}
 	if (method === 'POST' && pathOnly === '/api/admin/restore') {
@@ -415,7 +422,12 @@ function routeToInvoke(
 						{};
 					return {
 						cmd: 'add_campaign_comment',
-						args: { slug, author: b.author ?? '', body: b.body ?? '', parentId: b.parent_id ?? null }
+						args: {
+							slug,
+							author: b.author ?? '',
+							body: b.body ?? '',
+							parentId: b.parent_id ?? null
+						}
 					};
 				}
 			}
@@ -485,7 +497,7 @@ export class TauriTransport implements Transport {
 			return result as T;
 		} catch (e) {
 			// Tauri 가 throw 한 메시지는 보통 string. Error 로 감싸기.
-			const msg = typeof e === 'string' ? e : (e as { message?: string }).message ?? String(e);
+			const msg = typeof e === 'string' ? e : ((e as { message?: string }).message ?? String(e));
 			throw new Error(msg);
 		}
 	}

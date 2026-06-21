@@ -23,9 +23,18 @@
 	// DEV-014 후속 (fix5): 추가 시 기본 색을 매번 다르게.
 	// 기존 사용 중인 색을 피한 다음 palette 색을 고름.
 	const COLOR_PALETTE = [
-		'#4a90d9', '#e94f4f', '#7bb87f', '#f5a623',
-		'#8e4ec6', '#1abc9c', '#e91e63', '#34495e',
-		'#16a085', '#d35400', '#2c3e50', '#c0392b'
+		'#4a90d9',
+		'#e94f4f',
+		'#7bb87f',
+		'#f5a623',
+		'#8e4ec6',
+		'#1abc9c',
+		'#e91e63',
+		'#34495e',
+		'#16a085',
+		'#d35400',
+		'#2c3e50',
+		'#c0392b'
 	];
 	function pickNextColor(): string {
 		const used = new Set(types.map((t) => t.color.toLowerCase()));
@@ -40,7 +49,6 @@
 	let confirmDelete: QuestTypeWithCount | null = $state(null);
 	// DEV-119: rename cascade 확인 — 이전엔 window.confirm() (Tauri 에서 silent return).
 	let confirmRename = $state<{ oldPrefix: string; newPrefix: string; count: number } | null>(null);
-
 
 	onMount(refresh);
 
@@ -86,9 +94,7 @@
 			});
 			onmessage({
 				kind: 'success',
-				text: renaming
-					? `'${editing}' → '${newPrefix}' 갱신 완료 (cascade)`
-					: `'${editing}' 갱신됨`
+				text: renaming ? `'${editing}' → '${newPrefix}' 갱신 완료 (cascade)` : `'${editing}' 갱신됨`
 			});
 			editing = null;
 			await refresh();
@@ -148,7 +154,6 @@
 			busy = false;
 		}
 	}
-
 </script>
 
 <section>
@@ -193,12 +198,7 @@
 								<input type="color" bind:value={editColor} disabled={busy} />
 							</td>
 							<td>
-								<input
-									type="text"
-									bind:value={editDesc}
-									placeholder="(없음)"
-									disabled={busy}
-								/>
+								<input type="text" bind:value={editDesc} placeholder="(없음)" disabled={busy} />
 							</td>
 							<td class="count">{t.quest_count}</td>
 							<td class="row-actions">
@@ -257,12 +257,7 @@
 				</label>
 				<label>
 					<span>설명</span>
-					<input
-						type="text"
-						bind:value={newDesc}
-						placeholder="(선택) 짧은 설명"
-						disabled={busy}
-					/>
+					<input type="text" bind:value={newDesc} placeholder="(선택) 짧은 설명" disabled={busy} />
 				</label>
 			</div>
 			<div class="modal-actions">
@@ -309,7 +304,6 @@
 	}}
 	oncancel={() => (confirmRename = null)}
 />
-
 
 <style>
 	section {

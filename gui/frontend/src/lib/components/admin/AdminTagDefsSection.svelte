@@ -128,8 +128,8 @@
 		</div>
 	</div>
 	<p class="intro">
-		<code>.guild/tags/&lt;slug&gt;.toml</code> 의 색 / 설명. 정의가 없는 tag 도 quest 가 사용 가능
-		(UI 기본 색으로 표시).
+		<code>.guild/tags/&lt;slug&gt;.toml</code> 의 색 / 설명. 정의가 없는 tag 도 quest 가 사용 가능 (UI
+		기본 색으로 표시).
 	</p>
 
 	{#if defs.length === 0}

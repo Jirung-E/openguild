@@ -16,20 +16,11 @@
 	import CampaignConveyor from './CampaignConveyor.svelte';
 	// DEV-076: 마감 임박 / Overdue 퀘스트 (Quest Board 노드 모양 carousel).
 	import QuestNodeConveyor from './QuestNodeConveyor.svelte';
-	import type {
-		CampaignSummary,
-		Quest,
-		QuestStatus,
-		QuestType
-	} from '$lib/types';
+	import type { CampaignSummary, Quest, QuestStatus, QuestType } from '$lib/types';
 	import { metaApi } from '$lib/api/meta';
 	import { isCampaignDone } from '$lib/utils/campaign-progress';
 	// BUG-025: 캠페인 목록 페이지의 sort 옵션을 Home 카드에도 적용.
-	import {
-		loadCampaignSort,
-		sortCampaigns,
-		type CampaignSortMode
-	} from '$lib/utils/campaign-sort';
+	import { loadCampaignSort, sortCampaigns, type CampaignSortMode } from '$lib/utils/campaign-sort';
 
 	const RECENT_QUEST_LIMIT = 10;
 	const UPCOMING_WINDOW_DAYS = 7;
@@ -149,7 +140,7 @@
 	function requiredDueMs(q: Quest): number | null {
 		const q_due = q.required_due?.trim() || null;
 		const c_due = q.earliest_campaign_due?.trim() || null;
-		const earliest = q_due && c_due ? (q_due <= c_due ? q_due : c_due) : (q_due || c_due);
+		const earliest = q_due && c_due ? (q_due <= c_due ? q_due : c_due) : q_due || c_due;
 		if (!earliest) return null;
 		// 자정 비교가 자연스러움: 만료 == 그 날 끝.
 		const t = new Date(`${earliest}T23:59:59`).getTime();
@@ -344,10 +335,7 @@
 				<ul class="quest-list">
 					{#each recentQuests as q (q.id)}
 						<li>
-							<a
-								class="quest-row"
-								href={`/quests/${encodeURIComponent(q.quest_id)}?from=home`}
-							>
+							<a class="quest-row" href={`/quests/${encodeURIComponent(q.quest_id)}?from=home`}>
 								<span class="badge type" style:--c={typeColor(q.type_prefix)}>
 									{q.quest_id}
 								</span>
@@ -370,10 +358,18 @@
 		max-width: var(--content-max-width, 1100px);
 		margin: 0 auto;
 	}
-	.state { padding: 2rem 0; color: var(--text-muted); font-size: 0.875rem; }
-	.state.error { color: var(--danger); }
+	.state {
+		padding: 2rem 0;
+		color: var(--text-muted);
+		font-size: 0.875rem;
+	}
+	.state.error {
+		color: var(--danger);
+	}
 
-	.block { margin-bottom: 2rem; }
+	.block {
+		margin-bottom: 2rem;
+	}
 	.block h2 {
 		font-size: 1.05rem;
 		font-weight: 600;
@@ -396,7 +392,10 @@
 		margin-left: 0.25rem;
 	}
 	/* DEV-076: overdue 개수는 빨간색으로 강조 (시급한 시각 경고). */
-	.count.overdue { color: var(--danger); font-weight: 600; }
+	.count.overdue {
+		color: var(--danger);
+		font-weight: 600;
+	}
 
 	.actions {
 		display: flex;
@@ -412,7 +411,9 @@
 		font-size: 0.825rem;
 		cursor: pointer;
 	}
-	.btn-link:hover { background: var(--bg-subtle); }
+	.btn-link:hover {
+		background: var(--bg-subtle);
+	}
 	.btn-primary {
 		padding: 0.35rem 0.85rem;
 		background: var(--btn-primary-bg);
@@ -422,9 +423,16 @@
 		font-size: 0.825rem;
 		cursor: pointer;
 	}
-	.btn-primary:hover { background: var(--btn-primary-bg-hover); border-color: var(--btn-primary-border-hover); }
+	.btn-primary:hover {
+		background: var(--btn-primary-bg-hover);
+		border-color: var(--btn-primary-border-hover);
+	}
 
-	.empty { color: var(--text-faint); font-size: 0.875rem; padding: 0.75rem 0; }
+	.empty {
+		color: var(--text-faint);
+		font-size: 0.875rem;
+		padding: 0.75rem 0;
+	}
 
 	.quest-list {
 		list-style: none;
@@ -444,9 +452,14 @@
 		border-radius: 6px;
 		color: inherit;
 		text-decoration: none;
-		transition: border-color 0.15s, background 0.15s;
+		transition:
+			border-color 0.15s,
+			background 0.15s;
 	}
-	.quest-row:hover { border-color: var(--text-faint); background: var(--bg-subtle); }
+	.quest-row:hover {
+		border-color: var(--text-faint);
+		background: var(--bg-subtle);
+	}
 
 	/* BUG-021: Quest List 의 pill 스타일 통일 (color-mix bg + border). */
 	.badge {

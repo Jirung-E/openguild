@@ -12,7 +12,14 @@ vi.mock('$lib/api/quests', () => ({
 
 const statuses: QuestStatus[] = [
 	{ id: 1, slug: 'open', name_en: 'Open', name_ko: '게시됨', color: '#8B95A1', sort_order: 1 },
-	{ id: 2, slug: 'in_progress', name_en: 'In Progress', name_ko: '진행중', color: '#F5A623', sort_order: 2 },
+	{
+		id: 2,
+		slug: 'in_progress',
+		name_en: 'In Progress',
+		name_ko: '진행중',
+		color: '#F5A623',
+		sort_order: 2
+	},
 	{ id: 3, slug: 'testing', name_en: 'Testing', name_ko: '테스트', color: '#79c0ff', sort_order: 3 }
 ];
 

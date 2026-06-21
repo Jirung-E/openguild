@@ -25,12 +25,10 @@ export interface RulesResponse {
 export const rulesApi = {
 	// ─── multi-file CRUD ───
 	list: () => api.get<RulesListResponse>('/api/rules'),
-	get: (slug: string) =>
-		api.get<RuleResponse>(`/api/rules/${encodeURIComponent(slug)}`),
+	get: (slug: string) => api.get<RuleResponse>(`/api/rules/${encodeURIComponent(slug)}`),
 	set: (slug: string, content: string) =>
 		api.put<RuleResponse>(`/api/rules/${encodeURIComponent(slug)}`, { content }),
-	create: (slug: string, content = '') =>
-		api.post<RuleResponse>('/api/rules', { slug, content }),
+	create: (slug: string, content = '') => api.post<RuleResponse>('/api/rules', { slug, content }),
 	delete: (slug: string) => api.delete(`/api/rules/${encodeURIComponent(slug)}`),
 	rename: (slug: string, newSlug: string) =>
 		api.patch<RuleResponse>(`/api/rules/${encodeURIComponent(slug)}`, {
@@ -39,6 +37,5 @@ export const rulesApi = {
 
 	// ─── (deprecated) legacy 단일 ───
 	getSingle: () => api.get<RulesResponse>('/api/rules-single'),
-	setSingle: (content: string) =>
-		api.put<RulesResponse>('/api/rules-single', { content })
+	setSingle: (content: string) => api.put<RulesResponse>('/api/rules-single', { content })
 };

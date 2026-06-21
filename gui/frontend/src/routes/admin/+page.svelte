@@ -26,9 +26,7 @@
 	// DEV-162: 런타임 정비 — journal tail 뷰 (null = 아직 미조회).
 	let journal = $state<JournalTail | null>(null);
 
-	function onSectionMessage(
-		m: { kind: 'info' | 'success' | 'error'; text: string } | null
-	) {
+	function onSectionMessage(m: { kind: 'info' | 'success' | 'error'; text: string } | null) {
 		if (!m) return;
 		if (m.kind === 'success') showSuccess(m.text);
 		else if (m.kind === 'info') showInfo(m.text);
@@ -108,7 +106,9 @@
 			const res = await adminApi.restore(ts);
 			// BUG-076: restore 가 파일 복구 + reindex(캐시 재구축)까지 수행. 별도
 			// reindex 안내(데이터 소실 위험) 제거. 파일/DB 변경 반영 위해 새로고침.
-			showSuccess(`복원 완료: ${formatTimestamp(res.restored_to)} — 파일 복구 + 재색인 완료. 새로고침합니다.`);
+			showSuccess(
+				`복원 완료: ${formatTimestamp(res.restored_to)} — 파일 복구 + 재색인 완료. 새로고침합니다.`
+			);
 			setTimeout(() => window.location.reload(), 800);
 		} catch (e) {
 			showError(`복원 실패: ${e}`);
@@ -162,7 +162,9 @@
 			// 돌아 '무엇이 문제인지'가 자동으로 표시된다. (이전엔 문제 있을 때 reload
 			// 안 해서 수동 Ctrl+R 전까지 상세가 안 보였음.) 데이터 stale 도 해소.
 			if (result.skipped.length > 0) {
-				showError(`reindex — 비정상 파일 ${result.skipped.length}개 건너뜀. 새로고침 후 상세 표시.`);
+				showError(
+					`reindex — 비정상 파일 ${result.skipped.length}개 건너뜀. 새로고침 후 상세 표시.`
+				);
 			} else {
 				showSuccess('reindex 완료 — 데이터 새로고침');
 			}
@@ -223,9 +225,7 @@
 
 <div class="page">
 	<h1>관리자 (Admin)</h1>
-	<p class="note">
-		⚠ 인증 없음 — MVP 단계. 멀티유저로 확장 시 보호 필요.
-	</p>
+	<p class="note">⚠ 인증 없음 — MVP 단계. 멀티유저로 확장 시 보호 필요.</p>
 
 	<AdminTypesSection onmessage={onSectionMessage} />
 	<AdminStatusesSection onmessage={onSectionMessage} />
@@ -271,9 +271,7 @@
 					{/each}
 				</tbody>
 			</table>
-			<p class="hint">
-				자동 백업: 매 mutation 후 정책 검사 (ops 50 회 OR 24 시간 도달 시).
-			</p>
+			<p class="hint">자동 백업: 매 mutation 후 정책 검사 (ops 50 회 OR 24 시간 도달 시).</p>
 		{/if}
 	</section>
 
@@ -290,8 +288,8 @@
 			<div class="problem-files" role="alert">
 				<h3>⚠ 비정상 파일 {problemFiles.length}개 — 캐시에서 제외됨</h3>
 				<p class="hint">
-					아래 파일은 파싱 실패 / 정의되지 않은 status 로 reindex·동기화에서
-					건너뛰어집니다. 파일을 고치거나 status 를 정의한 뒤 Reindex 하세요.
+					아래 파일은 파싱 실패 / 정의되지 않은 status 로 reindex·동기화에서 건너뛰어집니다. 파일을
+					고치거나 status 를 정의한 뒤 Reindex 하세요.
 				</p>
 				<ul>
 					{#each problemFiles as p (p.path)}
@@ -357,7 +355,9 @@
 		{:else if journal.total === 0}
 			<p class="ok">저널 비어 있음 (snapshot 직후 또는 mutation 없음)</p>
 		{:else}
-			<p class="hint">journal.db: {journal.total} op 중 최근 {journal.rows.length} 개 (오래된 → 최신)</p>
+			<p class="hint">
+				journal.db: {journal.total} op 중 최근 {journal.rows.length} 개 (오래된 → 최신)
+			</p>
 			<ul class="journal">
 				{#each journal.rows as op (op.id)}
 					<li>
@@ -611,8 +611,14 @@
 		animation: toast-in 0.18s ease-out;
 	}
 	@keyframes toast-in {
-		from { opacity: 0; transform: translateY(-8px); }
-		to   { opacity: 1; transform: translateY(0); }
+		from {
+			opacity: 0;
+			transform: translateY(-8px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
 	}
 	.message.info {
 		background: color-mix(in srgb, var(--accent) 18%, transparent);

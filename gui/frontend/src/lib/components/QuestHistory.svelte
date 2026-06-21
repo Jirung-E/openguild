@@ -121,7 +121,8 @@
 						</span>
 					{:else}
 						<span class="qh-change">
-							{e.old_value ?? '∅'} <span class="qh-arrow">→</span> {e.new_value ?? '∅'}
+							{e.old_value ?? '∅'} <span class="qh-arrow">→</span>
+							{e.new_value ?? '∅'}
 						</span>
 					{/if}
 				</li>
@@ -131,31 +132,51 @@
 </section>
 
 <style>
-	.qh-section { margin-bottom: 1.5rem; }
+	.qh-section {
+		margin-bottom: 1.5rem;
+	}
 	.section-head {
-		display: flex; align-items: center; gap: 0.5rem;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
 		margin-bottom: 0.5rem;
 	}
 	.section-title {
-		font-size: 0.8rem; font-weight: 600; color: var(--text-muted);
-		text-transform: uppercase; letter-spacing: 0.05em; margin: 0;
+		font-size: 0.8rem;
+		font-weight: 600;
+		color: var(--text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		margin: 0;
 	}
 	.qh-count {
-		font-size: 0.72rem; color: var(--text-faint);
-		padding: 0.05rem 0.4rem; border-radius: 10px;
+		font-size: 0.72rem;
+		color: var(--text-faint);
+		padding: 0.05rem 0.4rem;
+		border-radius: 10px;
 		background: var(--bg-subtle);
 	}
 
 	.qh-state {
-		font-size: 0.85rem; color: var(--text-faint); margin: 0;
+		font-size: 0.85rem;
+		color: var(--text-faint);
+		margin: 0;
 		padding: 0.6rem 0.8rem;
-		background: var(--bg); border: 1px solid var(--bg-subtle); border-radius: 6px;
+		background: var(--bg);
+		border: 1px solid var(--bg-subtle);
+		border-radius: 6px;
 	}
-	.qh-state.error { color: var(--danger); }
+	.qh-state.error {
+		color: var(--danger);
+	}
 
 	.qh-list {
-		list-style: none; padding: 0; margin: 0;
-		border: 1px solid var(--bg-subtle); border-radius: 6px; overflow: hidden;
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		border: 1px solid var(--bg-subtle);
+		border-radius: 6px;
+		overflow: hidden;
 	}
 	.qh-item {
 		display: grid;
@@ -166,31 +187,44 @@
 		font-size: 0.82rem;
 		color: var(--text);
 	}
-	.qh-item + .qh-item { border-top: 1px solid var(--bg-subtle); }
+	.qh-item + .qh-item {
+		border-top: 1px solid var(--bg-subtle);
+	}
 
 	.qh-ts {
 		font-variant-numeric: tabular-nums;
-		color: var(--text-faint); font-size: 0.75rem;
+		color: var(--text-faint);
+		font-size: 0.75rem;
 		min-width: 5rem;
 	}
 	.qh-op {
-		color: var(--text-muted); font-size: 0.72rem;
-		text-transform: uppercase; letter-spacing: 0.04em;
+		color: var(--text-muted);
+		font-size: 0.72rem;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
 		padding: 0.05rem 0.45rem;
-		background: var(--bg-elevated); border: 1px solid var(--bg-subtle);
+		background: var(--bg-elevated);
+		border: 1px solid var(--bg-subtle);
 		border-radius: 10px;
 	}
-	.qh-op-empty { width: 0; }
+	.qh-op-empty {
+		width: 0;
+	}
 	.qh-change {
-		display: inline-flex; align-items: center; gap: 0.45rem;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.45rem;
 		flex-wrap: wrap;
 	}
 	.qh-status {
-		padding: 0.05rem 0.5rem; border-radius: 12px;
+		padding: 0.05rem 0.5rem;
+		border-radius: 12px;
 		font-size: 0.75rem;
 		background: color-mix(in srgb, var(--c) 18%, transparent);
 		color: var(--c);
 		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
 	}
-	.qh-arrow { color: var(--text-faint); }
+	.qh-arrow {
+		color: var(--text-faint);
+	}
 </style>

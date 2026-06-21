@@ -81,9 +81,7 @@
 	});
 
 	// 표시용 — 가장 큰 ahead version.
-	let maxAhead = $derived(
-		aheadVersions.length > 0 ? Math.max(...aheadVersions) : null
-	);
+	let maxAhead = $derived(aheadVersions.length > 0 ? Math.max(...aheadVersions) : null);
 </script>
 
 {#if isAhead && !dismissed}
@@ -99,14 +97,11 @@
 				{#if aheadVersions.length > 1}
 					(+{aheadVersions.length - 1} more)
 				{/if}
-				적용됨. 일부 데이터가 제대로 표시되지 않거나 reindex 가 실패할 수
-				있습니다.
+				적용됨. 일부 데이터가 제대로 표시되지 않거나 reindex 가 실패할 수 있습니다.
 			</span>
 		</div>
 		<div class="actions">
-			<button class="btn-update" onclick={openRelease}>
-				최신 버전 받기 ↗
-			</button>
+			<button class="btn-update" onclick={openRelease}> 최신 버전 받기 ↗ </button>
 			<button class="btn-dismiss" onclick={dismiss} aria-label="닫기" title="닫기">×</button>
 		</div>
 	</div>

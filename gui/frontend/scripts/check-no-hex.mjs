@@ -80,7 +80,9 @@ walk(SRC);
 
 if (violations.length > 0) {
 	console.error(`✗ 컴포넌트 CSS 에 hex 색 ${violations.length}건 — 테마 토큰(var(--…))을 쓰세요.`);
-	console.error('  (새 색이면 global.css 의 :root + [data-theme=light] 양쪽에 토큰 신설 후 사용)\n');
+	console.error(
+		'  (새 색이면 global.css 의 :root + [data-theme=light] 양쪽에 토큰 신설 후 사용)\n'
+	);
 	for (const v of violations) console.error('  ' + v);
 	process.exit(1);
 }

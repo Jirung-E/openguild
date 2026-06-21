@@ -97,10 +97,8 @@ export function filterQuests(
 			if (extra.sub === 'none' && has) return false;
 		}
 		// DEV-033: 날짜 범위 (date prefix 비교).
-		if (!dateInRange(q.created_at ?? '', extra.createdAfter, extra.createdBefore))
-			return false;
-		if (!dateInRange(q.updated_at ?? '', extra.updatedAfter, extra.updatedBefore))
-			return false;
+		if (!dateInRange(q.created_at ?? '', extra.createdAfter, extra.createdBefore)) return false;
+		if (!dateInRange(q.updated_at ?? '', extra.updatedAfter, extra.updatedBefore)) return false;
 		// DEV-068: tag 필터 — 선택된 tag 모두 가져야 매치 (AND).
 		if (tagFilter.size > 0) {
 			const qTags = new Set(q.tags ?? []);
@@ -115,12 +113,7 @@ export function filterQuests(
 			// DEV-068: 검색에 tag 도 포함.
 			const tagText = (q.tags ?? []).join(' ').toLowerCase();
 			for (const t of tokens) {
-				if (
-					!title.includes(t) &&
-					!desc.includes(t) &&
-					!slug.includes(t) &&
-					!tagText.includes(t)
-				) {
+				if (!title.includes(t) && !desc.includes(t) && !slug.includes(t) && !tagText.includes(t)) {
 					return false;
 				}
 			}

@@ -99,9 +99,22 @@
 </div>
 
 <style>
-	.page { padding: 1.25rem 1.5rem; max-width: 760px; margin: 0 auto; }
-	.header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; }
-	.header h1 { font-size: 1.2rem; color: var(--text); margin: 0; }
+	.page {
+		padding: 1.25rem 1.5rem;
+		max-width: 760px;
+		margin: 0 auto;
+	}
+	.header {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		margin-bottom: 1rem;
+	}
+	.header h1 {
+		font-size: 1.2rem;
+		color: var(--text);
+		margin: 0;
+	}
 	.back {
 		background: transparent;
 		border: 1px solid var(--border);
@@ -111,12 +124,26 @@
 		font-size: 0.825rem;
 		cursor: pointer;
 	}
-	.back:hover { background: var(--bg-subtle); }
+	.back:hover {
+		background: var(--bg-subtle);
+	}
 
-	form { display: flex; flex-direction: column; gap: 0.85rem; }
-	label { display: flex; flex-direction: column; gap: 0.3rem; }
-	.lab { font-size: 0.825rem; color: var(--text-muted); }
-	input, textarea {
+	form {
+		display: flex;
+		flex-direction: column;
+		gap: 0.85rem;
+	}
+	label {
+		display: flex;
+		flex-direction: column;
+		gap: 0.3rem;
+	}
+	.lab {
+		font-size: 0.825rem;
+		color: var(--text-muted);
+	}
+	input,
+	textarea {
 		background: var(--bg);
 		border: 1px solid var(--border);
 		color: var(--text);
@@ -125,10 +152,22 @@
 		font-size: 0.9rem;
 		font-family: inherit;
 	}
-	input:focus, textarea:focus { outline: none; border-color: var(--accent); }
-	textarea { font-family: 'JetBrains Mono', ui-monospace, monospace; resize: vertical; min-height: 120px; }
+	input:focus,
+	textarea:focus {
+		outline: none;
+		border-color: var(--accent);
+	}
+	textarea {
+		font-family: 'JetBrains Mono', ui-monospace, monospace;
+		resize: vertical;
+		min-height: 120px;
+	}
 
-	.period-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+	.period-row {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 0.75rem;
+	}
 
 	.error {
 		background: color-mix(in srgb, var(--danger) 18%, transparent);
@@ -139,16 +178,38 @@
 		font-size: 0.825rem;
 	}
 
-	.actions { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.5rem; }
-	.btn-cancel, .btn-primary {
+	.actions {
+		display: flex;
+		gap: 0.5rem;
+		justify-content: flex-end;
+		margin-top: 0.5rem;
+	}
+	.btn-cancel,
+	.btn-primary {
 		padding: 0.4rem 0.95rem;
 		border-radius: 6px;
 		font-size: 0.875rem;
 		cursor: pointer;
 	}
-	.btn-cancel { background: transparent; border: 1px solid var(--border); color: var(--text); }
-	.btn-cancel:hover { background: var(--bg-subtle); }
-	.btn-primary { background: var(--btn-primary-bg); border: 1px solid var(--btn-primary-border); color: var(--btn-primary-text); }
-	.btn-primary:hover:not(:disabled) { background: var(--btn-primary-bg-hover); border-color: var(--btn-primary-border-hover); }
-	.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+	.btn-cancel {
+		background: transparent;
+		border: 1px solid var(--border);
+		color: var(--text);
+	}
+	.btn-cancel:hover {
+		background: var(--bg-subtle);
+	}
+	.btn-primary {
+		background: var(--btn-primary-bg);
+		border: 1px solid var(--btn-primary-border);
+		color: var(--btn-primary-text);
+	}
+	.btn-primary:hover:not(:disabled) {
+		background: var(--btn-primary-bg-hover);
+		border-color: var(--btn-primary-border-hover);
+	}
+	.btn-primary:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
 </style>

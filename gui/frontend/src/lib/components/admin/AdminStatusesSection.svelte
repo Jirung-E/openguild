@@ -27,9 +27,18 @@
 	// 데이터라 CSS var() 불가. var 문자열이 <input type="color"> 에 binding
 	// 되면 검은색 fallback (사용자 보고 '새 status 가 무조건 검은색').
 	const COLOR_PALETTE = [
-		'#8b95a1', '#4a90d9', '#7bb87f', '#f5a623',
-		'#e94f4f', '#8e4ec6', '#1abc9c', '#e91e63',
-		'#34495e', '#16a085', '#d35400', '#2c3e50'
+		'#8b95a1',
+		'#4a90d9',
+		'#7bb87f',
+		'#f5a623',
+		'#e94f4f',
+		'#8e4ec6',
+		'#1abc9c',
+		'#e91e63',
+		'#34495e',
+		'#16a085',
+		'#d35400',
+		'#2c3e50'
 	];
 	function pickNextColor(): string {
 		const used = new Set(statuses.map((s) => s.color.toLowerCase()));
@@ -43,7 +52,6 @@
 	// DEV-119: rename cascade 확인 — 이전엔 window.confirm() 사용했으나 Tauri
 	// WebView 에서 silent return → 클릭 한 번에 영구 cascade. 인앱 모달로 교체.
 	let confirmRename = $state<{ oldSlug: string; newSlug: string; count: number } | null>(null);
-
 
 	onMount(refresh);
 
@@ -93,9 +101,7 @@
 			});
 			onmessage({
 				kind: 'success',
-				text: renaming
-					? `'${editing}' → '${newSlug}' 갱신 완료 (cascade)`
-					: `'${editing}' 갱신됨`
+				text: renaming ? `'${editing}' → '${newSlug}' 갱신 완료 (cascade)` : `'${editing}' 갱신됨`
 			});
 			editing = null;
 			await refresh();
@@ -261,9 +267,7 @@
 				{/each}
 			</tbody>
 		</table>
-		<p class="hint">
-			slug 는 frozen — history / 파일 frontmatter 가 참조하므로 rename 안 됨.
-		</p>
+		<p class="hint">slug 는 frozen — history / 파일 frontmatter 가 참조하므로 rename 안 됨.</p>
 	{/if}
 </section>
 
@@ -300,9 +304,7 @@
 					<code class="hex">{newColor}</code>
 				</label>
 			</div>
-			<p class="form-note">
-				새 status 는 목록 맨 뒤에 추가됩니다.
-			</p>
+			<p class="form-note">새 status 는 목록 맨 뒤에 추가됩니다.</p>
 			<div class="modal-actions">
 				<button class="btn-yes" onclick={doCreate} disabled={busy}>추가</button>
 				<button class="btn-no" onclick={() => (creating = false)} disabled={busy}>취소</button>
@@ -346,7 +348,6 @@
 	}}
 	oncancel={() => (confirmRename = null)}
 />
-
 
 <style>
 	section {

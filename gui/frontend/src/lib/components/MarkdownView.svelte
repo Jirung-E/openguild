@@ -11,12 +11,7 @@
 	// DEV-111: mermaid 다이어그램 렌더링 — lazy import (~700KB), 블록 있을 때만.
 	import { theme, resolveTheme } from '$lib/stores/theme';
 	// DEV-140: 본문 cross-link — [[DEV-033]] / [[C-001]] 위키문법을 링크로.
-	import {
-		questIndex,
-		loadQuestIndex,
-		lookupRef,
-		refHref
-	} from '$lib/stores/questIndex';
+	import { questIndex, loadQuestIndex, lookupRef, refHref } from '$lib/stores/questIndex';
 
 	let { source }: { source: string } = $props();
 
@@ -118,11 +113,9 @@
 	//  2) bare `DEV-033` (대괄호 없이) — **실재하는 ID 만** 링크(파랑). 미존재
 	//     bare 는 일반 텍스트로 둔다(오탐 방지). 앞뒤가 단어문자/하이픈이면 제외
 	//     (`MYDEV-1` / `DEV-1a` 등 단어 일부 안 잡음).
-	const CROSS_LINK_RE =
-		/\[\[([A-Za-z]{1,}-\d+)\]\]|(?<![\w-])([A-Za-z]{1,}-\d+)(?![\w-])/g;
+	const CROSS_LINK_RE = /\[\[([A-Za-z]{1,}-\d+)\]\]|(?<![\w-])([A-Za-z]{1,}-\d+)(?![\w-])/g;
 	// 별도 non-global tester — /g 의 lastIndex 부작용 없이 acceptNode 에서 검사.
-	const CROSS_LINK_TEST =
-		/\[\[[A-Za-z]{1,}-\d+\]\]|(?<![\w-])[A-Za-z]{1,}-\d+(?![\w-])/;
+	const CROSS_LINK_TEST = /\[\[[A-Za-z]{1,}-\d+\]\]|(?<![\w-])[A-Za-z]{1,}-\d+(?![\w-])/;
 	function guessKind(id: string): 'quest' | 'campaign' {
 		const ref = lookupRef(id);
 		if (ref) return ref.kind;
@@ -241,9 +234,17 @@
 		margin: 1em 0 0.4em;
 	}
 
-	.md :global(p) { margin: 0.5em 0; }
-	.md :global(ul), .md :global(ol) { padding-left: 1.5rem; margin: 0.4em 0; }
-	.md :global(input[type='checkbox']) { margin-right: 0.4rem; }
+	.md :global(p) {
+		margin: 0.5em 0;
+	}
+	.md :global(ul),
+	.md :global(ol) {
+		padding-left: 1.5rem;
+		margin: 0.4em 0;
+	}
+	.md :global(input[type='checkbox']) {
+		margin-right: 0.4rem;
+	}
 
 	.md :global(code) {
 		background: var(--bg-elevated);
@@ -257,7 +258,11 @@
 		padding: 0.75rem 1rem;
 		overflow-x: auto;
 	}
-	.md :global(pre code) { background: none; padding: 0; color: var(--text); }
+	.md :global(pre code) {
+		background: none;
+		padding: 0;
+		color: var(--text);
+	}
 	.md :global(blockquote) {
 		border-left: 3px solid var(--border);
 		margin: 0.5em 0;
@@ -308,7 +313,9 @@
 		border: 1px solid var(--bg-subtle);
 		padding: 0.35rem 0.6rem;
 	}
-	.md :global(th) { background: var(--bg-elevated); }
+	.md :global(th) {
+		background: var(--bg-elevated);
+	}
 	/* DEV-111: mermaid 다이어그램 렌더 영역. */
 	.md :global(.mermaid-rendered) {
 		display: flex;

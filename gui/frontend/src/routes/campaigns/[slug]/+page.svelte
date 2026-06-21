@@ -163,10 +163,7 @@
 	async function load() {
 		loading = true;
 		try {
-			const [d, qs] = await Promise.all([
-				campaignsApi.get(slug),
-				questsApi.list()
-			]);
+			const [d, qs] = await Promise.all([campaignsApi.get(slug), questsApi.list()]);
 			detail = d;
 			allQuests = qs;
 		} catch (e) {
@@ -188,9 +185,7 @@
 		showCommentsJump = commentsAnchorEl
 			? commentsAnchorEl.getBoundingClientRect().top > vh * 1.1
 			: false;
-		showMemoJump = memoAnchorEl
-			? memoAnchorEl.getBoundingClientRect().top > vh * 1.1
-			: false;
+		showMemoJump = memoAnchorEl ? memoAnchorEl.getBoundingClientRect().top > vh * 1.1 : false;
 		showTopJump = window.scrollY > vh * 0.8;
 	}
 	function jumpToComments() {
@@ -380,9 +375,7 @@
 
 	// ── Quest 연결 (BUG-023: QuestCombobox 모달) ──
 	let linkableQuests = $derived(
-		allQuests.filter(
-			(q) => !(detail?.linked_quests ?? []).some((lq) => lq.id === q.id)
-		)
+		allQuests.filter((q) => !(detail?.linked_quests ?? []).some((lq) => lq.id === q.id))
 	);
 	// BUG-046 와 동일 유형: `load()` 전체 reload 는 detail 객체를 새로 만들어
 	// `{#each linked_quests}` 의 DOM 참조를 통째로 swap → 브라우저가 scroll
@@ -441,14 +434,17 @@
 			alert(e instanceof Error ? e.message : 'failed');
 		}
 	}
-
 </script>
 
 <div class="page">
 	<div class="top">
 		<button class="back" onclick={() => history.back()}>← 뒤로</button>
 		{#if detail}
-			<button class="status-badge status-{detail.status}" onclick={toggleStatus} title="클릭하여 상태 토글">
+			<button
+				class="status-badge status-{detail.status}"
+				onclick={toggleStatus}
+				title="클릭하여 상태 토글"
+			>
 				{detail.status}
 			</button>
 			<!-- BUG-035: Quest Detail 의 top-bar 패턴 — 우측에 편집/삭제 묶음. -->
@@ -456,11 +452,14 @@
 				<div class="top-actions">
 					{#if isTauri}
 						<!-- DEV-087: 배너 이미지 — Tauri 전용 (파일 picker). -->
-						<button class="btn-edit" onclick={pickBanner} disabled={bannerBusy}>
-							🖼 배너
-						</button>
+						<button class="btn-edit" onclick={pickBanner} disabled={bannerBusy}> 🖼 배너 </button>
 						{#if detail.image_path}
-							<button class="btn-edit" onclick={removeBanner} disabled={bannerBusy} title="배너 제거">
+							<button
+								class="btn-edit"
+								onclick={removeBanner}
+								disabled={bannerBusy}
+								title="배너 제거"
+							>
 								🖼 ×
 							</button>
 						{/if}
@@ -506,26 +505,24 @@
 				<div
 					class="period"
 					class:overdue={isDateOverdue(detail.ended_at, detail.status === 'done' ? 'done' : null)}
-				>{fmtPeriod()}</div>
+				>
+					{fmtPeriod()}
+				</div>
 			{/if}
 			<!-- BUG-033: 캠페인도 생성 / 변경 시각 표시 (Quest Detail 과 동일). -->
 			<div class="meta-times">
 				<span class="meta-item">
 					<span class="meta-label">생성</span>
-					<time
-						class="meta-val"
-						datetime={detail.created_at}
-						title={formatTs(detail.created_at)}
-					>{formatTs(detail.created_at)}</time>
+					<time class="meta-val" datetime={detail.created_at} title={formatTs(detail.created_at)}
+						>{formatTs(detail.created_at)}</time
+					>
 				</span>
 				<span class="meta-sep">·</span>
 				<span class="meta-item">
 					<span class="meta-label">변경</span>
-					<time
-						class="meta-val"
-						datetime={detail.updated_at}
-						title={formatTs(detail.updated_at)}
-					>{formatRelative(detail.updated_at)}</time>
+					<time class="meta-val" datetime={detail.updated_at} title={formatTs(detail.updated_at)}
+						>{formatRelative(detail.updated_at)}</time
+					>
 				</span>
 			</div>
 		</section>
@@ -546,9 +543,13 @@
 							class="btn-attach"
 							onclick={() =>
 								editorView &&
-								pickAndAttach(editorView, (msg) => (error = `첨부 업로드 실패: ${msg}`), attachToSection)}
-							title="이미지·동영상·파일 첨부 (드래그&드랍 / Ctrl+V 도 가능)"
-						>📎 첨부</button>
+								pickAndAttach(
+									editorView,
+									(msg) => (error = `첨부 업로드 실패: ${msg}`),
+									attachToSection
+								)}
+							title="이미지·동영상·파일 첨부 (드래그&드랍 / Ctrl+V 도 가능)">📎 첨부</button
+						>
 					</div>
 					<div class="editor-wrap" bind:this={editorContainer}></div>
 				</div>
@@ -561,7 +562,9 @@
 			{:else if detail.description && detail.description.trim()}
 				<MarkdownView source={detail.description ?? ''} />
 			{:else}
-				<div class="empty">본문 없음. <button class="link" onclick={enterEditMode}>본문 추가</button></div>
+				<div class="empty">
+					본문 없음. <button class="link" onclick={enterEditMode}>본문 추가</button>
+				</div>
 			{/if}
 		</section>
 
@@ -617,7 +620,9 @@
 			<h2 class:done={(detail.quest_total ?? 0) > 0 && detail.quest_done === detail.quest_total}>
 				연결된 퀘스트
 				{#if (detail.quest_total ?? 0) > 0}
-					({detail.quest_done}/{detail.quest_total}, {Math.round((detail.quest_progress ?? 0) * 100)}%)
+					({detail.quest_done}/{detail.quest_total}, {Math.round(
+						(detail.quest_progress ?? 0) * 100
+					)}%)
 				{:else}
 					({detail.linked_quests.length})
 				{/if}
@@ -641,12 +646,15 @@
 				<ul class="linked">
 					{#each detail.linked_quests as q (q.id)}
 						<li>
-							<a href={`/quests/${encodeURIComponent(q.quest_id)}?from=campaign:${detail.campaign_slug}`}>
+							<a
+								href={`/quests/${encodeURIComponent(q.quest_id)}?from=campaign:${detail.campaign_slug}`}
+							>
 								<span class="badge type" style:--c={q.type_color}>{q.quest_id}</span>
 								<span class="qtitle">{q.title}</span>
 								<span class="badge status" style:--c={q.status_color}>{q.status_name_en}</span>
 							</a>
-							<button class="rm" title="연결 해제" onclick={() => unlinkQuest(q.quest_id)}>×</button>
+							<button class="rm" title="연결 해제" onclick={() => unlinkQuest(q.quest_id)}>×</button
+							>
 						</li>
 					{/each}
 				</ul>
@@ -675,7 +683,12 @@
 			</button>
 		{/if}
 		{#if showCommentsJump}
-			<button class="jump-btn" onclick={jumpToComments} title="댓글로 이동" aria-label="댓글로 이동">
+			<button
+				class="jump-btn"
+				onclick={jumpToComments}
+				title="댓글로 이동"
+				aria-label="댓글로 이동"
+			>
 				<span class="jb-icon">💬</span><span class="jb-label">댓글</span>
 			</button>
 		{/if}
@@ -709,7 +722,9 @@
 <ConfirmDialog
 	open={confirmDeleteCampaign}
 	title="캠페인 삭제"
-	message={detail ? `캠페인 "${detail.title}" 을(를) 삭제할까요?\n(soft delete — restore 가능)` : ''}
+	message={detail
+		? `캠페인 "${detail.title}" 을(를) 삭제할까요?\n(soft delete — restore 가능)`
+		: ''}
 	confirmLabel="삭제"
 	danger
 	onconfirm={deleteCampaign}
@@ -726,14 +741,21 @@
 />
 
 <style>
-	.page { padding: 1.25rem 1.5rem; max-width: var(--content-max-width, 880px); margin: 0 auto; }
+	.page {
+		padding: 1.25rem 1.5rem;
+		max-width: var(--content-max-width, 880px);
+		margin: 0 auto;
+	}
 	.top {
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
 		margin-bottom: 1rem;
 	}
-	.back, .btn-delete, .status-badge, .btn-edit {
+	.back,
+	.btn-delete,
+	.status-badge,
+	.btn-edit {
 		font-size: 0.825rem;
 		padding: 0.3rem 0.7rem;
 		border-radius: 6px;
@@ -743,10 +765,18 @@
 		color: var(--text);
 		font-family: inherit;
 	}
-	.back:hover, .btn-edit:hover { background: var(--bg-subtle); }
+	.back:hover,
+	.btn-edit:hover {
+		background: var(--bg-subtle);
+	}
 	/* BUG-035: 단독 margin-left 제거 — top-actions wrapper 가 push right. */
-	.btn-delete { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
-	.btn-delete:hover { background: color-mix(in srgb, var(--danger) 18%, transparent); }
+	.btn-delete {
+		color: var(--danger);
+		border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+	}
+	.btn-delete:hover {
+		background: color-mix(in srgb, var(--danger) 18%, transparent);
+	}
 	.top-actions {
 		display: flex;
 		gap: 0.4rem;
@@ -772,27 +802,65 @@
 		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
 	}
 
-	.state { color: var(--text-faint); padding: 1.5rem 0; font-size: 0.875rem; }
-	.state.error { color: var(--danger); }
+	.state {
+		color: var(--text-faint);
+		padding: 1.5rem 0;
+		font-size: 0.875rem;
+	}
+	.state.error {
+		color: var(--danger);
+	}
 
-	section { margin-bottom: 1.75rem; }
-	.section-head { display: flex; align-items: baseline; gap: 0.75rem; margin-bottom: 0.4rem; }
-	h1 { font-size: 1.4rem; color: var(--text); margin: 0; }
-	h2 { font-size: 1rem; color: var(--text); margin: 0 0 0.4rem 0; }
+	section {
+		margin-bottom: 1.75rem;
+	}
+	.section-head {
+		display: flex;
+		align-items: baseline;
+		gap: 0.75rem;
+		margin-bottom: 0.4rem;
+	}
+	h1 {
+		font-size: 1.4rem;
+		color: var(--text);
+		margin: 0;
+	}
+	h2 {
+		font-size: 1rem;
+		color: var(--text);
+		margin: 0 0 0.4rem 0;
+	}
 	/* BUG-025: 체크리스트 100% 달성 시 헤더 초록 */
-	h2.done { color: var(--success); }
-	h2 .done-mark { font-weight: 700; color: var(--success); font-size: 0.85rem; margin-left: 0.25rem; }
+	h2.done {
+		color: var(--success);
+	}
+	h2 .done-mark {
+		font-weight: 700;
+		color: var(--success);
+		font-size: 0.85rem;
+		margin-left: 0.25rem;
+	}
 
-	.title-row { display: flex; align-items: baseline; gap: 0.75rem; }
+	.title-row {
+		display: flex;
+		align-items: baseline;
+		gap: 0.75rem;
+	}
 	/* BUG-035: title-row 안 편집 버튼 제거 — top-bar 로 이동. */
 	.slug {
 		font-size: 0.8rem;
 		font-family: 'JetBrains Mono', ui-monospace, monospace;
 		color: var(--text-muted);
 	}
-	.period { color: var(--text-muted); font-size: 0.875rem; }
+	.period {
+		color: var(--text-muted);
+		font-size: 0.875rem;
+	}
 	/* DEV-079: 종료 기한 지난 캠페인 (status != done) 의 period 빨강 강조. */
-	.period.overdue { color: var(--danger); font-weight: 600; }
+	.period.overdue {
+		color: var(--danger);
+		font-weight: 600;
+	}
 
 	/* BUG-033: 생성 / 변경 시각 표시 — Quest Detail 의 .meta-times 와 동일 톤. */
 	.meta-times {
@@ -804,18 +872,42 @@
 		font-size: 0.75rem;
 		color: var(--text-faint);
 	}
-	.meta-times .meta-label { color: var(--text-muted); margin-right: 0.25rem; }
-	.meta-times .meta-val { color: var(--text); }
-	.meta-times .meta-sep { color: var(--border); }
+	.meta-times .meta-label {
+		color: var(--text-muted);
+		margin-right: 0.25rem;
+	}
+	.meta-times .meta-val {
+		color: var(--text);
+	}
+	.meta-times .meta-sep {
+		color: var(--border);
+	}
 
 	/* BUG-033: editMode 에 묶인 기간 입력에 라벨 추가. */
-	.period-row label { display: flex; align-items: center; gap: 0.35rem; }
-	.period-row .lbl { font-size: 0.75rem; color: var(--text-muted); }
-	.period-row .dash { color: var(--text-faint); }
+	.period-row label {
+		display: flex;
+		align-items: center;
+		gap: 0.35rem;
+	}
+	.period-row .lbl {
+		font-size: 0.75rem;
+		color: var(--text-muted);
+	}
+	.period-row .dash {
+		color: var(--text-faint);
+	}
 
 	/* BUG-033: 본문 editor 라벨 (Quest Detail .field-label 와 동일 스타일). */
-	.field-label { display: flex; flex-direction: column; gap: 0.4rem; margin-top: 0.5rem; }
-	.field-label > span { font-size: 0.8rem; color: var(--text-muted); }
+	.field-label {
+		display: flex;
+		flex-direction: column;
+		gap: 0.4rem;
+		margin-top: 0.5rem;
+	}
+	.field-label > span {
+		font-size: 0.8rem;
+		color: var(--text-muted);
+	}
 
 	.title-input {
 		background: var(--bg);
@@ -827,7 +919,12 @@
 		width: 100%;
 		margin-bottom: 0.5rem;
 	}
-	.period-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
+	.period-row {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-bottom: 0.5rem;
+	}
 	.period-row input {
 		background: var(--bg);
 		border: 1px solid var(--border);
@@ -836,7 +933,11 @@
 		padding: 0.3rem 0.5rem;
 	}
 
-	.actions { display: flex; gap: 0.4rem; margin-top: 0.5rem; }
+	.actions {
+		display: flex;
+		gap: 0.4rem;
+		margin-top: 0.5rem;
+	}
 	.btn-save {
 		padding: 0.35rem 0.85rem;
 		background: var(--btn-primary-bg);
@@ -846,8 +947,14 @@
 		cursor: pointer;
 		font-size: 0.825rem;
 	}
-	.btn-save:hover:not(:disabled) { background: var(--btn-primary-bg-hover); border-color: var(--btn-primary-border-hover); }
-	.btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
+	.btn-save:hover:not(:disabled) {
+		background: var(--btn-primary-bg-hover);
+		border-color: var(--btn-primary-border-hover);
+	}
+	.btn-save:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
 	.btn-cancel {
 		padding: 0.35rem 0.85rem;
 		background: transparent;
@@ -887,16 +994,39 @@
 		max-height: 90vh;
 		resize: vertical;
 	}
-	.editor-wrap :global(.cm-editor) { outline: none; }
-	.editor-wrap :global(.cm-editor.cm-focused) { outline: none; border: none; }
+	.editor-wrap :global(.cm-editor) {
+		outline: none;
+	}
+	.editor-wrap :global(.cm-editor.cm-focused) {
+		outline: none;
+		border: none;
+	}
 
 	/* BUG-021 fix1: .md CSS 는 공유 컴포넌트 MarkdownView 로 이동. */
 
-	.empty { color: var(--text-faint); font-size: 0.875rem; }
-	.link { background: none; border: none; color: var(--accent); cursor: pointer; padding: 0; }
+	.empty {
+		color: var(--text-faint);
+		font-size: 0.875rem;
+	}
+	.link {
+		background: none;
+		border: none;
+		color: var(--accent);
+		cursor: pointer;
+		padding: 0;
+	}
 
-	.checklist, .linked { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 2px; }
-	.checklist li, .linked li {
+	.checklist,
+	.linked {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+	.checklist li,
+	.linked li {
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
@@ -905,11 +1035,30 @@
 		border: 1px solid var(--bg-subtle);
 		border-radius: 6px;
 	}
-	.checklist li label { display: flex; align-items: center; gap: 0.5rem; flex: 1; cursor: pointer; }
-	.checklist li span.checked { text-decoration: line-through; color: var(--text-muted); }
+	.checklist li label {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		flex: 1;
+		cursor: pointer;
+	}
+	.checklist li span.checked {
+		text-decoration: line-through;
+		color: var(--text-muted);
+	}
 
-	.linked li a { display: flex; align-items: center; gap: 0.5rem; flex: 1; text-decoration: none; color: inherit; }
-	.qtitle { color: var(--text); flex: 1; }
+	.linked li a {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		flex: 1;
+		text-decoration: none;
+		color: inherit;
+	}
+	.qtitle {
+		color: var(--text);
+		flex: 1;
+	}
 
 	.rm {
 		background: transparent;
@@ -920,7 +1069,10 @@
 		width: 1.5rem;
 		height: 1.5rem;
 	}
-	.rm:hover { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
+	.rm:hover {
+		color: var(--danger);
+		border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+	}
 
 	.add-row {
 		display: flex;
@@ -945,36 +1097,58 @@
 		cursor: pointer;
 		font-size: 0.825rem;
 	}
-	.add-row button:disabled { opacity: 0.5; cursor: not-allowed; }
-	.add-row button:hover:not(:disabled) { background: var(--bg-subtle); }
+	.add-row button:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+	.add-row button:hover:not(:disabled) {
+		background: var(--bg-subtle);
+	}
 
 	/* BUG-023: 모달 (Quest Detail 패턴) */
 	.ov {
-		position: fixed; inset: 0;
+		position: fixed;
+		inset: 0;
 		background: rgba(0, 0, 0, 0.6);
 		z-index: 100;
-		display: flex; align-items: center; justify-content: center;
+		display: flex;
+		align-items: center;
+		justify-content: center;
 		padding: 1rem;
 	}
 	.modal-sm {
 		background: var(--bg-elevated);
-		border: 1px solid var(--border); border-radius: 10px;
-		width: 100%; max-width: calc(30rem * var(--popup-scale, 1)); /* BUG-064 */
+		border: 1px solid var(--border);
+		border-radius: 10px;
+		width: 100%;
+		max-width: calc(30rem * var(--popup-scale, 1)); /* BUG-064 */
 		padding: 1rem 1.25rem 1rem;
 		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
 	}
 	.modal-head {
-		display: flex; align-items: center; justify-content: space-between;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
 		margin-bottom: 0.85rem;
 	}
 	.modal-head h3 {
-		margin: 0; font-size: 0.95rem; font-weight: 600; color: var(--text-strong);
+		margin: 0;
+		font-size: 0.95rem;
+		font-weight: 600;
+		color: var(--text-strong);
 	}
 	.x {
-		background: none; border: none; color: var(--text-faint);
-		font-size: 1.2rem; line-height: 1; cursor: pointer; padding: 0 4px;
+		background: none;
+		border: none;
+		color: var(--text-faint);
+		font-size: 1.2rem;
+		line-height: 1;
+		cursor: pointer;
+		padding: 0 4px;
 	}
-	.x:hover { color: var(--text); }
+	.x:hover {
+		color: var(--text);
+	}
 	.link-add-btn {
 		padding: 0.35rem 0.85rem;
 		background: var(--bg-subtle);
@@ -984,7 +1158,9 @@
 		cursor: pointer;
 		font-size: 0.825rem;
 	}
-	.link-add-btn:hover { background: var(--bg-subtle); }
+	.link-add-btn:hover {
+		background: var(--bg-subtle);
+	}
 
 	/* BUG-021: linked quest 의 type/status badge 도 Quest List pill 패턴. */
 	.badge {
@@ -1009,7 +1185,9 @@
 	.quest-progress-fill {
 		height: 100%;
 		background: var(--accent);
-		transition: width 0.2s, background 0.2s;
+		transition:
+			width 0.2s,
+			background 0.2s;
 	}
 	.quest-progress-fill.done {
 		background: var(--success-strong);
@@ -1039,7 +1217,10 @@
 		font-weight: 500;
 		cursor: pointer;
 		box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
-		transition: background 0.12s, border-color 0.12s, transform 0.12s;
+		transition:
+			background 0.12s,
+			border-color 0.12s,
+			transform 0.12s;
 	}
 	.jump-btn:hover {
 		background: var(--bg-subtle);

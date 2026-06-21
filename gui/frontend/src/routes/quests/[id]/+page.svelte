@@ -281,8 +281,7 @@
 				}
 			})
 			.catch((e) => {
-				if (slug === currentSlug)
-					error = e instanceof Error ? e.message : 'failed to load';
+				if (slug === currentSlug) error = e instanceof Error ? e.message : 'failed to load';
 			})
 			.finally(() => {
 				if (slug === currentSlug) loading = false;
@@ -348,7 +347,10 @@
 
 	function initEditor() {
 		if (!editorContainer) return;
-		if (editorView) { editorView.destroy(); editorView = null; }
+		if (editorView) {
+			editorView.destroy();
+			editorView = null;
+		}
 		// DEV-057: parent (.editor-wrap) 가 height 결정. cm-scroller 는 fill.
 		// 이전엔 cm-scroller maxHeight 480px 가 고정 한계 — parent resize 시 의미 없음.
 		editorContainer.style.height = `${loadEditorHeight()}px`;
@@ -444,7 +446,9 @@
 			badgePulse += 1;
 			// 새 history 행을 보이도록 reload 트리거.
 			historyVersion += 1;
-			setTimeout(() => { if (statusFlashId === statusId) statusFlashId = null; }, 600);
+			setTimeout(() => {
+				if (statusFlashId === statusId) statusFlashId = null;
+			}, 600);
 		} catch (e) {
 			showToast(e instanceof Error ? e.message : 'status change failed', 'error');
 		} finally {
@@ -719,7 +723,8 @@
 				<span
 					class="urgency-warn"
 					title={`urgency 원본값 ${detail.urgency} 가 유효 범위(1-4) 밖 — clamp 표시 중. .guild 파일의 urgency 를 1~4 로 정정하세요.`}
-				>⚠ 범위 밖</span>
+					>⚠ 범위 밖</span
+				>
 			{/if}
 			{#key badgePulse}
 				<span class="badge status pulsing" style:--c={detail.status_color}>
@@ -763,7 +768,8 @@
 						<span
 							class="meta-val due-required"
 							class:overdue={isDateOverdue(detail.required_due, detail.status_slug)}
-						>{detail.required_due}</span>
+							>{detail.required_due}</span
+						>
 					</span>
 				{/if}
 				{#if detail.desired_due}
@@ -772,7 +778,8 @@
 						<span
 							class="meta-val due-desired"
 							class:overdue={isDateOverdue(detail.desired_due, detail.status_slug)}
-						>{detail.desired_due}</span>
+							>{detail.desired_due}</span
+						>
 					</span>
 				{/if}
 			{/if}
@@ -821,19 +828,11 @@
 				<div class="due-row">
 					<label class="field-label">
 						<span>희망 기한 <span class="hint">(정보성)</span></span>
-						<input
-							class="edit-date"
-							type="date"
-							bind:value={editDesiredDue}
-						/>
+						<input class="edit-date" type="date" bind:value={editDesiredDue} />
 					</label>
 					<label class="field-label">
 						<span>필수 기한 <span class="hint">(임박 / Overdue 기준)</span></span>
-						<input
-							class="edit-date"
-							type="date"
-							bind:value={editRequiredDue}
-						/>
+						<input class="edit-date" type="date" bind:value={editRequiredDue} />
 					</label>
 				</div>
 
@@ -850,9 +849,13 @@
 							class="btn-attach"
 							onclick={() =>
 								editorView &&
-								pickAndAttach(editorView, (msg) => (saveError = `첨부 업로드 실패: ${msg}`), attachToSection)}
-							title="이미지·동영상·파일 첨부 (드래그&드랍 / Ctrl+V 도 가능)"
-						>📎 첨부</button>
+								pickAndAttach(
+									editorView,
+									(msg) => (saveError = `첨부 업로드 실패: ${msg}`),
+									attachToSection
+								)}
+							title="이미지·동영상·파일 첨부 (드래그&드랍 / Ctrl+V 도 가능)">📎 첨부</button
+						>
 					</div>
 					<div class="editor-wrap" bind:this={editorContainer}></div>
 					<!-- DEV-074 fix15: CodeMirror native scrollbar 대신 overlay. -->
@@ -876,8 +879,16 @@
 			<!-- 권장 브랜치명 -->
 			<div class="branch-row">
 				<span class="branch-label">Branch</span>
-				<code class="branch-name">{detail.type_prefix}-{String(detail.number).padStart(3, '0')}</code>
-				<button class="copy-btn" onclick={() => navigator.clipboard.writeText(`${detail!.type_prefix}-${String(detail!.number).padStart(3, '0')}`)}>복사</button>
+				<code class="branch-name"
+					>{detail.type_prefix}-{String(detail.number).padStart(3, '0')}</code
+				>
+				<button
+					class="copy-btn"
+					onclick={() =>
+						navigator.clipboard.writeText(
+							`${detail!.type_prefix}-${String(detail!.number).padStart(3, '0')}`
+						)}>복사</button
+				>
 			</div>
 
 			<!-- 상태 변경 -->
@@ -894,7 +905,8 @@
 							disabled={changingStatus || s.id === detail.status_id}
 							data-testid="status-btn-{s.id}"
 						>
-							{#if s.id === statusFlashId}✓ {/if}{s.name_en}
+							{#if s.id === statusFlashId}✓
+							{/if}{s.name_en}
 						</button>
 					{/each}
 				</div>
@@ -907,7 +919,9 @@
 				{#if detail.description}
 					<MarkdownView source={detail.description} />
 				{:else}
-					<p class="no-desc">No description. <button class="link-btn" onclick={enterEditMode}>설명 추가하기</button></p>
+					<p class="no-desc">
+						No description. <button class="link-btn" onclick={enterEditMode}>설명 추가하기</button>
+					</p>
 				{/if}
 			</div>
 		{/if}
@@ -925,9 +939,13 @@
 					<li>
 						<div class="prereq-row">
 							<a href="/quests/{detail.parent.quest_id}{fromSuffix}" class="prereq-link">
-								<span class="badge type" style:--c={detail.parent.type_color}>{detail.parent.quest_id}</span>
+								<span class="badge type" style:--c={detail.parent.type_color}
+									>{detail.parent.quest_id}</span
+								>
 								<span class="ql-title">{detail.parent.title}</span>
-								<span class="badge status" style:--c={detail.parent.status_color}>{detail.parent.status_name_en}</span>
+								<span class="badge status" style:--c={detail.parent.status_color}
+									>{detail.parent.status_name_en}</span
+								>
 							</a>
 						</div>
 					</li>
@@ -955,7 +973,11 @@
 									<span class="badge status" style:--c={sq.status_color}>{sq.status_name_en}</span>
 								</a>
 								{#if !editMode}
-									<button class="prereq-rm" title="부모에서 분리" onclick={() => detachSubQuest(sq.id)}>×</button>
+									<button
+										class="prereq-rm"
+										title="부모에서 분리"
+										onclick={() => detachSubQuest(sq.id)}>×</button
+									>
 								{/if}
 							</div>
 						</li>
@@ -986,7 +1008,11 @@
 									<span class="badge status" style:--c={pq.status_color}>{pq.status_name_en}</span>
 								</a>
 								{#if !editMode}
-									<button class="prereq-rm" title="선행 퀘스트 제거" onclick={() => removePrerequisite(pq.id)}>×</button>
+									<button
+										class="prereq-rm"
+										title="선행 퀘스트 제거"
+										onclick={() => removePrerequisite(pq.id)}>×</button
+									>
 								{/if}
 							</div>
 						</li>
@@ -1009,7 +1035,7 @@
 			</div>
 			{#if (detail.tags ?? []).length > 0}
 				<ul class="tag-pills">
-					{#each (detail.tags ?? []) as t (t)}
+					{#each detail.tags ?? [] as t (t)}
 						<li>
 							<span class="tag-pill" style={tagStyle(t)} title={tagTitle(t)}>
 								{t}
@@ -1018,8 +1044,8 @@
 										class="tag-rm"
 										title="태그 제거"
 										onclick={() => removeTag(t)}
-										aria-label={`${t} 제거`}
-									>×</button>
+										aria-label={`${t} 제거`}>×</button
+									>
 								{/if}
 							</span>
 						</li>
@@ -1055,7 +1081,7 @@
 			</div>
 			{#if (detail.successors ?? []).length > 0}
 				<ul class="quest-list">
-					{#each (detail.successors ?? []) as sq (sq.id)}
+					{#each detail.successors ?? [] as sq (sq.id)}
 						<li>
 							<div class="prereq-row">
 								<a href="/quests/{sq.quest_id}{fromSuffix}" class="prereq-link">
@@ -1084,8 +1110,8 @@
 						disabled={campaignCandidates.length === 0}
 						title={campaignCandidates.length === 0
 							? '연결 가능한 캠페인이 없습니다'
-							: '캠페인 선택'}
-					>+ 연결</button>
+							: '캠페인 선택'}>+ 연결</button
+					>
 				{/if}
 			</div>
 			{#if linkedCampaigns.length > 0}
@@ -1102,7 +1128,8 @@
 									<button
 										class="prereq-rm"
 										title="캠페인 연결 해제"
-										onclick={() => unlinkCampaign(c.campaign_slug)}>×</button>
+										onclick={() => unlinkCampaign(c.campaign_slug)}>×</button
+									>
 								{/if}
 							</div>
 						</li>
@@ -1134,7 +1161,8 @@
 		<div class="modal-sm" role="dialog" aria-modal="true" tabindex="-1">
 			<div class="modal-head">
 				<h3>
-					{#if comboMode === 'sub'}기존 퀘스트를 서브퀘스트로 지정{:else if comboMode === 'prereq'}선행 퀘스트 추가{:else}후속 퀘스트 추가{/if}
+					{#if comboMode === 'sub'}기존 퀘스트를 서브퀘스트로 지정{:else if comboMode === 'prereq'}선행
+						퀘스트 추가{:else}후속 퀘스트 추가{/if}
 				</h3>
 				<button class="x" onclick={closeCombo}>×</button>
 			</div>
@@ -1188,31 +1216,38 @@
 		<div class="modal-sm" role="dialog" aria-modal="true" tabindex="-1">
 			<div class="modal-head">
 				<h3 class="del-title">타입 변경</h3>
-				<button class="x" onclick={() => (confirmTypeChange = null)} disabled={changingType}>×</button>
+				<button class="x" onclick={() => (confirmTypeChange = null)} disabled={changingType}
+					>×</button
+				>
 			</div>
 			<p class="del-msg">
-				<code>{detail.quest_id}</code> 의 타입을 <strong>{target.prefix}</strong> 로
-				변경합니다. 슬러그(quest_id) 가 바뀌어
+				<code>{detail.quest_id}</code> 의 타입을 <strong>{target.prefix}</strong> 로 변경합니다.
+				슬러그(quest_id) 가 바뀌어
 				<code>{target.prefix}-NNN</code> 형태의 새 번호가 부여됩니다.
 			</p>
 			<p class="del-prereq">
-				⚠ 다른 퀘스트 본문 안에 <code>{detail.quest_id}</code> 를 직접 언급(예 "참조") 한 부분은
-				자동으로 갱신되지 않습니다. 필요하면 검색해서 직접 수정하세요.
-				부모/자식/선행 관계의 auto-block 메타는 자동 갱신됩니다.
+				⚠ 다른 퀘스트 본문 안에 <code>{detail.quest_id}</code> 를 직접 언급(예 "참조") 한 부분은 자동으로
+				갱신되지 않습니다. 필요하면 검색해서 직접 수정하세요. 부모/자식/선행 관계의 auto-block 메타는
+				자동 갱신됩니다.
 			</p>
 			<!-- DEV-133: 타입 변경이 편집 모드 안으로 이동 — 즉시 적용 + 새 slug
 			     로 navigate 되므로 저장 안 한 제목/설명 편집은 유지되지 않음. -->
 			{#if editMode}
 				<p class="del-prereq">
-					⚠ 변경 즉시 새 슬러그 페이지로 이동합니다 — <strong>저장하지 않은
-					제목/설명 편집은 사라집니다.</strong> 먼저 저장 후 변경을 권장.
+					⚠ 변경 즉시 새 슬러그 페이지로 이동합니다 — <strong
+						>저장하지 않은 제목/설명 편집은 사라집니다.</strong
+					> 먼저 저장 후 변경을 권장.
 				</p>
 			{/if}
 			<div class="del-actions">
 				<button class="btn-del-yes" onclick={doChangeType} disabled={changingType}>
 					{changingType ? '변경 중…' : '변경'}
 				</button>
-				<button class="btn-del-no" onclick={() => (confirmTypeChange = null)} disabled={changingType}>
+				<button
+					class="btn-del-no"
+					onclick={() => (confirmTypeChange = null)}
+					disabled={changingType}
+				>
 					취소
 				</button>
 			</div>
@@ -1244,7 +1279,9 @@
 							<span>전체 선택</span>
 						</label>
 					</div>
-					<p class="del-sub-help">체크한 항목은 함께 삭제됩니다. 체크하지 않은 항목은 부모에서 분리됩니다.</p>
+					<p class="del-sub-help">
+						체크한 항목은 함께 삭제됩니다. 체크하지 않은 항목은 부모에서 분리됩니다.
+					</p>
 					<ul class="del-sub-list" bind:this={delSubListEl}>
 						{#each detail.sub_quests as sq (sq.id)}
 							<li>
@@ -1268,10 +1305,17 @@
 			{/if}
 			<p class="del-prereq">선행 퀘스트들은 별도의 퀘스트이므로 영향받지 않습니다.</p>
 			<div class="del-actions">
-				<button class="btn-del-yes" onclick={confirmDelete} disabled={deleting} data-testid="confirm-delete">
+				<button
+					class="btn-del-yes"
+					onclick={confirmDelete}
+					disabled={deleting}
+					data-testid="confirm-delete"
+				>
 					{deleting ? '삭제 중…' : '삭제'}
 				</button>
-				<button class="btn-del-no" onclick={() => (deleteModal = false)} disabled={deleting}>취소</button>
+				<button class="btn-del-no" onclick={() => (deleteModal = false)} disabled={deleting}
+					>취소</button
+				>
 			</div>
 		</div>
 	</div>
@@ -1287,7 +1331,12 @@
 			</button>
 		{/if}
 		{#if showCommentsJump}
-			<button class="jump-btn" onclick={jumpToComments} title="댓글로 이동" aria-label="댓글로 이동">
+			<button
+				class="jump-btn"
+				onclick={jumpToComments}
+				title="댓글로 이동"
+				aria-label="댓글로 이동"
+			>
 				<span class="jb-icon">💬</span>
 				<span class="jb-label">댓글</span>
 			</button>
@@ -1326,90 +1375,167 @@
 		cursor: pointer;
 		font-family: inherit;
 	}
-	.back:hover { color: var(--text); }
+	.back:hover {
+		color: var(--text);
+	}
 
-	.top-actions { display: flex; align-items: center; gap: 0.5rem; }
+	.top-actions {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
 
 	.btn-edit {
 		padding: 0.3rem 0.9rem;
-		border: 1px solid var(--border); border-radius: 6px;
-		background: var(--bg-subtle); color: var(--text-muted);
-		font-size: 0.8rem; cursor: pointer;
-		transition: background 0.1s, color 0.1s;
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		background: var(--bg-subtle);
+		color: var(--text-muted);
+		font-size: 0.8rem;
+		cursor: pointer;
+		transition:
+			background 0.1s,
+			color 0.1s;
 	}
-	.btn-edit:hover { background: var(--border); color: var(--text); }
+	.btn-edit:hover {
+		background: var(--border);
+		color: var(--text);
+	}
 
 	.btn-delete {
 		padding: 0.3rem 0.9rem;
-		border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent); border-radius: 6px;
-		background: transparent; color: var(--danger);
-		font-size: 0.8rem; cursor: pointer;
+		border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+		border-radius: 6px;
+		background: transparent;
+		color: var(--danger);
+		font-size: 0.8rem;
+		cursor: pointer;
 		transition: background 0.1s;
 	}
-	.btn-delete:hover { background: rgba(233,79,79,0.1); }
+	.btn-delete:hover {
+		background: rgba(233, 79, 79, 0.1);
+	}
 
 	.state-msg {
-		display: flex; align-items: center; justify-content: center;
-		height: 60vh; color: var(--text-faint); font-size: 0.9rem;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		height: 60vh;
+		color: var(--text-faint);
+		font-size: 0.9rem;
 	}
-	.state-msg.error { color: var(--danger); }
+	.state-msg.error {
+		color: var(--danger);
+	}
 
 	.header {
-		display: flex; gap: 0.5rem; flex-wrap: wrap;
+		display: flex;
+		gap: 0.5rem;
+		flex-wrap: wrap;
 		margin-bottom: 0.75rem;
 	}
 
 	.meta-times {
-		display: flex; align-items: center; flex-wrap: wrap;
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
 		gap: 0.4rem;
-		font-size: 0.72rem; color: var(--text-faint);
+		font-size: 0.72rem;
+		color: var(--text-faint);
 		margin-bottom: 0.85rem;
 	}
-	.meta-item { display: inline-flex; gap: 0.3rem; align-items: baseline; }
-	.meta-label { color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.05em; }
-	.meta-val { color: var(--text-muted); font-variant-numeric: tabular-nums; }
-	.meta-sep { color: var(--border); }
+	.meta-item {
+		display: inline-flex;
+		gap: 0.3rem;
+		align-items: baseline;
+	}
+	.meta-label {
+		color: var(--text-faint);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+	.meta-val {
+		color: var(--text-muted);
+		font-variant-numeric: tabular-nums;
+	}
+	.meta-sep {
+		color: var(--border);
+	}
 
 	.title {
-		font-size: 1.4rem; font-weight: 600; color: var(--text-strong);
-		margin: 0 0 1rem; line-height: 1.4;
+		font-size: 1.4rem;
+		font-weight: 600;
+		color: var(--text-strong);
+		margin: 0 0 1rem;
+		line-height: 1.4;
 	}
 
 	.branch-row {
-		display: flex; align-items: center; gap: 0.75rem;
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
 		margin-bottom: 0.75rem;
 		padding: 0.5rem 0.75rem;
-		background: var(--bg-elevated); border: 1px solid var(--bg-subtle); border-radius: 6px;
+		background: var(--bg-elevated);
+		border: 1px solid var(--bg-subtle);
+		border-radius: 6px;
 	}
-	.branch-label { font-size: 0.75rem; color: var(--text-muted); flex-shrink: 0; }
+	.branch-label {
+		font-size: 0.75rem;
+		color: var(--text-muted);
+		flex-shrink: 0;
+	}
 	.branch-name {
 		font-family: 'SFMono-Regular', Consolas, monospace;
-		font-size: 0.85rem; color: var(--accent-secondary); flex: 1;
+		font-size: 0.85rem;
+		color: var(--accent-secondary);
+		flex: 1;
 	}
 	.copy-btn {
 		padding: 0.15rem 0.6rem;
-		border: 1px solid var(--border); border-radius: 4px;
-		background: transparent; color: var(--text-muted);
-		font-size: 0.72rem; cursor: pointer;
-		transition: background 0.1s, color 0.1s;
+		border: 1px solid var(--border);
+		border-radius: 4px;
+		background: transparent;
+		color: var(--text-muted);
+		font-size: 0.72rem;
+		cursor: pointer;
+		transition:
+			background 0.1s,
+			color 0.1s;
 	}
-	.copy-btn:hover { background: var(--bg-subtle); color: var(--text); }
+	.copy-btn:hover {
+		background: var(--bg-subtle);
+		color: var(--text);
+	}
 
 	.status-row {
-		display: flex; align-items: center; gap: 0.75rem;
-		flex-wrap: wrap; margin-bottom: 1.25rem;
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		flex-wrap: wrap;
+		margin-bottom: 1.25rem;
 		padding: 0.5rem 0.75rem;
-		background: var(--bg-elevated); border: 1px solid var(--bg-subtle); border-radius: 6px;
+		background: var(--bg-elevated);
+		border: 1px solid var(--bg-subtle);
+		border-radius: 6px;
 	}
-	.status-btns { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+	.status-btns {
+		display: flex;
+		gap: 0.4rem;
+		flex-wrap: wrap;
+	}
 	.status-btn {
 		padding: 0.15rem 0.7rem;
 		border-radius: 20px;
 		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
 		background: transparent;
 		color: color-mix(in srgb, var(--c) 70%, var(--text-muted));
-		font-size: 0.75rem; cursor: pointer;
-		transition: background 0.12s, color 0.12s, transform 0.12s;
+		font-size: 0.75rem;
+		cursor: pointer;
+		transition:
+			background 0.12s,
+			color 0.12s,
+			transform 0.12s;
 	}
 	.status-btn:hover:not(:disabled) {
 		background: color-mix(in srgb, var(--c) 15%, transparent);
@@ -1417,77 +1543,146 @@
 	}
 	.status-btn.active {
 		background: color-mix(in srgb, var(--c) 18%, transparent);
-		color: var(--c); font-weight: 600; cursor: default;
+		color: var(--c);
+		font-weight: 600;
+		cursor: default;
 	}
-	.status-btn:disabled:not(.active) { opacity: 0.5; cursor: default; }
+	.status-btn:disabled:not(.active) {
+		opacity: 0.5;
+		cursor: default;
+	}
 	.status-btn.flash {
 		background: color-mix(in srgb, var(--c) 32%, transparent);
-		color: var(--c); font-weight: 600;
+		color: var(--c);
+		font-weight: 600;
 		transform: scale(1.04);
 	}
 
 	/* 헤더 상태 뱃지 펄스 */
-	.badge.pulsing { animation: pulseBadge 0.8s ease-out; }
+	.badge.pulsing {
+		animation: pulseBadge 0.8s ease-out;
+	}
 	@keyframes pulseBadge {
-		0%   { box-shadow: 0 0 0 0 var(--c); }
-		60%  { box-shadow: 0 0 0 6px color-mix(in srgb, var(--c) 0%, transparent); }
-		100% { box-shadow: 0 0 0 0 transparent; }
+		0% {
+			box-shadow: 0 0 0 0 var(--c);
+		}
+		60% {
+			box-shadow: 0 0 0 6px color-mix(in srgb, var(--c) 0%, transparent);
+		}
+		100% {
+			box-shadow: 0 0 0 0 transparent;
+		}
 	}
 
 	/* BUG-021 fix1: .md-body CSS 는 공유 컴포넌트 MarkdownView 로 이동.
 	   캠페인과 동일 스타일 — 헤더 사이즈 = 브라우저 기본 (헤더 명확 구분). */
 
-	.no-desc { color: var(--text-faint); font-size: 0.9rem; margin: 0 0 1.5rem; }
+	.no-desc {
+		color: var(--text-faint);
+		font-size: 0.9rem;
+		margin: 0 0 1.5rem;
+	}
 	.link-btn {
-		background: none; border: none; color: var(--accent);
-		font-size: 0.9rem; cursor: pointer; padding: 0;
+		background: none;
+		border: none;
+		color: var(--accent);
+		font-size: 0.9rem;
+		cursor: pointer;
+		padding: 0;
 		text-decoration: underline;
 	}
 
-	.edit-form { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1.5rem; }
+	.edit-form {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		margin-bottom: 1.5rem;
+	}
 	/* BUG-010: text-transform / letter-spacing 을 label 전체가 아닌 라벨 텍스트
 	   span 에만 적용 — 그렇지 않으면 자식 input / CodeMirror 까지 캐스케이드
 	   되어 입력값이 대문자로 보임. */
 	.field-label {
-		font-size: 0.75rem; font-weight: 600; color: var(--text-muted);
+		font-size: 0.75rem;
+		font-weight: 600;
+		color: var(--text-muted);
 		margin-top: 0.5rem;
 	}
 	.field-label > span:first-child {
-		text-transform: uppercase; letter-spacing: 0.05em;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
 	}
 	.edit-title {
 		padding: 0.5rem 0.75rem;
-		background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 6px;
-		color: var(--text-strong); font-size: 1rem; outline: none;
-		width: 100%; box-sizing: border-box;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		color: var(--text-strong);
+		font-size: 1rem;
+		outline: none;
+		width: 100%;
+		box-sizing: border-box;
 	}
-	.edit-title:focus { border-color: var(--accent); }
+	.edit-title:focus {
+		border-color: var(--accent);
+	}
 	.edit-select {
 		padding: 0.4rem 0.6rem;
-		background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 6px;
-		color: var(--text); font-size: 0.875rem; outline: none; width: 160px;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		color: var(--text);
+		font-size: 0.875rem;
+		outline: none;
+		width: 160px;
 	}
-	.edit-select:focus { border-color: var(--accent); }
+	.edit-select:focus {
+		border-color: var(--accent);
+	}
 	/* DEV-076: 기한 입력. select 와 동일 스타일. */
-	.due-row { display: flex; gap: 1rem; flex-wrap: wrap; }
-	.due-row .field-label { flex: 1 1 200px; }
+	.due-row {
+		display: flex;
+		gap: 1rem;
+		flex-wrap: wrap;
+	}
+	.due-row .field-label {
+		flex: 1 1 200px;
+	}
 	.edit-date {
 		padding: 0.4rem 0.6rem;
-		background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 6px;
-		color: var(--text); font-size: 0.875rem; outline: none;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		color: var(--text);
+		font-size: 0.875rem;
+		outline: none;
 		font-family: inherit;
 		/* BUG-031: color-scheme: dark 를 추가하면 picker icon 이 흰색 렌더 →
 		   global.css 의 filter:invert(0.85) 가 다시 검정으로 invert 함. 즉
 		   글로벌 fix 와 충돌. 어두운 입력 배경은 background 색만으로 충분 — 별도
 		   color-scheme 지정 금지. */
 	}
-	.edit-date:focus { border-color: var(--accent); }
-	.field-label .hint { color: var(--text-faint); font-weight: 400; font-size: 0.8em; }
-	.due-required { color: var(--orange); font-weight: 600; }
-	.due-desired { color: var(--accent); font-weight: 500; }
+	.edit-date:focus {
+		border-color: var(--accent);
+	}
+	.field-label .hint {
+		color: var(--text-faint);
+		font-weight: 400;
+		font-size: 0.8em;
+	}
+	.due-required {
+		color: var(--orange);
+		font-weight: 600;
+	}
+	.due-desired {
+		color: var(--accent);
+		font-weight: 500;
+	}
 	/* DEV-079: overdue 는 강한 빨강 + 굵게. desired / required 공통. */
 	.due-required.overdue,
-	.due-desired.overdue { color: var(--danger); font-weight: 700; }
+	.due-desired.overdue {
+		color: var(--danger);
+		font-weight: 700;
+	}
 	/* DEV-069: 편집기 위 첨부 툴바. */
 	.editor-toolbar {
 		display: flex;
@@ -1510,56 +1705,114 @@
 		/* DEV-057: 사용자 drag 로 height 조절. CodeMirror 의 cm-scroller 는
 		   parent height 100% 따라가서 늘어남. ResizeObserver 가 변경 감지 →
 		   localStorage 영속. */
-		border: 1px solid var(--border); border-radius: 6px;
-		overflow: hidden; min-height: 200px; max-height: 90vh;
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		overflow: hidden;
+		min-height: 200px;
+		max-height: 90vh;
 		resize: vertical;
 	}
-	.editor-wrap :global(.cm-editor) { outline: none; }
-	.editor-wrap :global(.cm-editor.cm-focused) { outline: none; border: none; }
+	.editor-wrap :global(.cm-editor) {
+		outline: none;
+	}
+	.editor-wrap :global(.cm-editor.cm-focused) {
+		outline: none;
+		border: none;
+	}
 	/* DEV-074 fix15: native scrollbar 숨김 — OverlayScrollbar 가 대신 그림. */
-	.editor-wrap :global(.cm-scroller) { scrollbar-width: none; }
-	.editor-wrap :global(.cm-scroller::-webkit-scrollbar) { display: none; }
-	.save-error { color: var(--danger); font-size: 0.8rem; margin: 0; }
-	.edit-actions { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+	.editor-wrap :global(.cm-scroller) {
+		scrollbar-width: none;
+	}
+	.editor-wrap :global(.cm-scroller::-webkit-scrollbar) {
+		display: none;
+	}
+	.save-error {
+		color: var(--danger);
+		font-size: 0.8rem;
+		margin: 0;
+	}
+	.edit-actions {
+		display: flex;
+		gap: 0.5rem;
+		margin-top: 0.5rem;
+	}
 	.btn-save {
 		padding: 0.4rem 1.2rem;
-		background: var(--btn-primary-bg); border: 1px solid var(--btn-primary-border); border-radius: 6px;
-		color: var(--btn-primary-text); font-size: 0.875rem; cursor: pointer;
+		background: var(--btn-primary-bg);
+		border: 1px solid var(--btn-primary-border);
+		border-radius: 6px;
+		color: var(--btn-primary-text);
+		font-size: 0.875rem;
+		cursor: pointer;
 	}
-	.btn-save:hover:not(:disabled) { background: var(--btn-primary-bg-hover); border-color: var(--btn-primary-border-hover); }
-	.btn-save:disabled { opacity: 0.5; cursor: default; }
+	.btn-save:hover:not(:disabled) {
+		background: var(--btn-primary-bg-hover);
+		border-color: var(--btn-primary-border-hover);
+	}
+	.btn-save:disabled {
+		opacity: 0.5;
+		cursor: default;
+	}
 	.btn-cancel {
 		padding: 0.4rem 1rem;
-		background: transparent; border: 1px solid var(--border); border-radius: 6px;
-		color: var(--text-muted); font-size: 0.875rem; cursor: pointer;
+		background: transparent;
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		color: var(--text-muted);
+		font-size: 0.875rem;
+		cursor: pointer;
 	}
-	.btn-cancel:hover:not(:disabled) { background: var(--bg-subtle); }
+	.btn-cancel:hover:not(:disabled) {
+		background: var(--bg-subtle);
+	}
 
 	.section-head {
-		display: flex; align-items: center; gap: 0.75rem;
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
 		margin-bottom: 0.5rem;
 	}
 	.section-title {
-		font-size: 0.8rem; font-weight: 600; color: var(--text-muted);
-		text-transform: uppercase; letter-spacing: 0.05em; margin: 0;
+		font-size: 0.8rem;
+		font-weight: 600;
+		color: var(--text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		margin: 0;
 	}
 	/* DEV-050: 라벨별 색 — QuestBoard 하이라이트 / CLI 의 quest show 와 일치. */
-	.section-title.parent-label { color: var(--success); }
-	.section-title.sub-label { color: var(--hl-sub); }
-	.section-title.prereq-label { color: var(--hl-pre); }
+	.section-title.parent-label {
+		color: var(--success);
+	}
+	.section-title.sub-label {
+		color: var(--hl-sub);
+	}
+	.section-title.prereq-label {
+		color: var(--hl-pre);
+	}
 	/* DEV-070: section header 옆의 부가 설명 hint. */
 	.sec-hint {
-		font-size: 0.75rem; color: var(--text-faint); font-style: italic;
+		font-size: 0.75rem;
+		color: var(--text-faint);
+		font-style: italic;
 	}
 
 	/* DEV-068: 태그 섹션. */
-	.section-title.tag-label { color: var(--warning); }
+	.section-title.tag-label {
+		color: var(--warning);
+	}
 	.tag-pills {
-		list-style: none; padding: 0; margin: 0;
-		display: flex; flex-wrap: wrap; gap: 0.35rem;
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.35rem;
 	}
 	.tag-pill {
-		display: inline-flex; align-items: center; gap: 0.25rem;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
 		padding: 0.15rem 0.6rem;
 		background: rgba(198, 144, 38, 0.12);
 		border: 1px solid rgba(198, 144, 38, 0.4);
@@ -1570,27 +1823,51 @@
 		letter-spacing: 0.02em;
 	}
 	.tag-rm {
-		border: none; background: none; color: var(--text-muted);
-		cursor: pointer; font-size: 1rem; line-height: 1; padding: 0 0 0 2px;
+		border: none;
+		background: none;
+		color: var(--text-muted);
+		cursor: pointer;
+		font-size: 1rem;
+		line-height: 1;
+		padding: 0 0 0 2px;
 	}
-	.tag-rm:hover { color: var(--danger); }
+	.tag-rm:hover {
+		color: var(--danger);
+	}
 	.tag-add-form {
-		display: flex; gap: 0.4rem; margin-top: 0.5rem;
+		display: flex;
+		gap: 0.4rem;
+		margin-top: 0.5rem;
 	}
 	.tag-add-form input {
-		flex: 1; padding: 0.3rem 0.6rem;
-		background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
-		color: var(--text); font-size: 0.85rem;
+		flex: 1;
+		padding: 0.3rem 0.6rem;
+		background: var(--bg);
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		color: var(--text);
+		font-size: 0.85rem;
 	}
 	.tag-add-form button {
 		padding: 0.3rem 0.85rem;
-		background: var(--bg-subtle); border: 1px solid var(--border); border-radius: 6px;
-		color: var(--text); font-size: 0.8rem; cursor: pointer;
+		background: var(--bg-subtle);
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		color: var(--text);
+		font-size: 0.8rem;
+		cursor: pointer;
 	}
-	.tag-add-form button:disabled { opacity: 0.4; cursor: not-allowed; }
-	.tag-add-form button:hover:not(:disabled) { background: var(--border); }
+	.tag-add-form button:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+	.tag-add-form button:hover:not(:disabled) {
+		background: var(--border);
+	}
 	/* DEV-011: Campaign section */
-	.section-title.campaign-label { color: var(--accent); }
+	.section-title.campaign-label {
+		color: var(--accent);
+	}
 	/* BUG-021: campaign slug badge — quest type badge 와 동일 pill 패턴 (color-mix). */
 	.campaign-badge {
 		--c: var(--accent);
@@ -1611,55 +1888,93 @@
 	   안으로 이동 (sub-quest / prereq 와 동일 배치). */
 	.sec-add-btn {
 		padding: 0.15rem 0.6rem;
-		border: 1px solid var(--border); border-radius: 4px;
-		background: transparent; color: var(--text-muted);
-		font-size: 0.72rem; cursor: pointer;
+		border: 1px solid var(--border);
+		border-radius: 4px;
+		background: transparent;
+		color: var(--text-muted);
+		font-size: 0.72rem;
+		cursor: pointer;
 	}
-	.sec-add-btn:hover { background: var(--bg-subtle); color: var(--text); }
+	.sec-add-btn:hover {
+		background: var(--bg-subtle);
+		color: var(--text);
+	}
 
-	section { margin-bottom: 1.5rem; }
+	section {
+		margin-bottom: 1.5rem;
+	}
 	/* BUG-031 → BUG-033: 본문과 첫 section (Parent / Sub-Quests) 사이가 여전히
 	   좁다는 피드백. margin → padding 으로 변경 (collapse 회피) + border-top
 	   으로 시각 구분선. 첫 section 윗쪽에도 padding-top 동시 적용. */
 	/* BUG-031 후속: 본문 아래에 첨부 섹션이 들어오며 이 큰 padding 이 본문↔첨부
 	   간격만 과하게 벌렸음. 첨부 섹션이 자체 구분선/여백을 가지므로 본문 아래는 좁게. */
-	.description-block { padding-bottom: 0.5rem; margin-bottom: 0; }
+	.description-block {
+		padding-bottom: 0.5rem;
+		margin-bottom: 0;
+	}
 	.description-block + section,
 	.description-block ~ section:first-of-type {
 		padding-top: 0;
 	}
 
 	.quest-list {
-		list-style: none; padding: 0; margin: 0;
-		border: 1px solid var(--bg-subtle); border-radius: 6px; overflow: hidden;
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		border: 1px solid var(--bg-subtle);
+		border-radius: 6px;
+		overflow: hidden;
 	}
-	.quest-list li + li { border-top: 1px solid var(--bg-subtle); }
+	.quest-list li + li {
+		border-top: 1px solid var(--bg-subtle);
+	}
 
-	.prereq-row { display: flex; align-items: center; padding: 0; }
+	.prereq-row {
+		display: flex;
+		align-items: center;
+		padding: 0;
+	}
 	.prereq-link {
-		display: flex; align-items: center; gap: 0.6rem;
-		flex: 1; padding: 0.55rem 1rem;
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+		flex: 1;
+		padding: 0.55rem 1rem;
 		text-decoration: none;
 		transition: background 0.1s;
 	}
-	.prereq-link:hover { background: var(--bg-elevated); }
+	.prereq-link:hover {
+		background: var(--bg-elevated);
+	}
 	.prereq-rm {
 		padding: 0.35rem 0.75rem;
-		background: none; border: none; color: var(--text-faint);
-		font-size: 1rem; cursor: pointer;
-		transition: color 0.1s; flex-shrink: 0;
+		background: none;
+		border: none;
+		color: var(--text-faint);
+		font-size: 1rem;
+		cursor: pointer;
+		transition: color 0.1s;
+		flex-shrink: 0;
 	}
-	.prereq-rm:hover { color: var(--danger); }
+	.prereq-rm:hover {
+		color: var(--danger);
+	}
 
 	.ql-title {
-		flex: 1; font-size: 0.875rem; color: var(--text);
-		white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+		flex: 1;
+		font-size: 0.875rem;
+		color: var(--text);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	.badge {
 		flex-shrink: 0;
-		padding: 0.15rem 0.55rem; border-radius: 20px;
-		font-size: 0.75rem; font-weight: 500;
+		padding: 0.15rem 0.55rem;
+		border-radius: 20px;
+		font-size: 0.75rem;
+		font-weight: 500;
 		background: color-mix(in srgb, var(--c) 18%, transparent);
 		color: var(--c);
 		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
@@ -1682,81 +1997,176 @@
 
 	/* --- 모달 (콤보박스 / 삭제) --- */
 	.ov {
-		position: fixed; inset: 0;
+		position: fixed;
+		inset: 0;
 		background: rgba(0, 0, 0, 0.6);
 		z-index: 100;
-		display: flex; align-items: center; justify-content: center;
+		display: flex;
+		align-items: center;
+		justify-content: center;
 		padding: 1rem;
 	}
 	.modal-sm {
 		background: var(--bg-elevated);
-		border: 1px solid var(--border); border-radius: 10px;
-		width: 100%; max-width: calc(30rem * var(--popup-scale, 1)); /* BUG-064 */
+		border: 1px solid var(--border);
+		border-radius: 10px;
+		width: 100%;
+		max-width: calc(30rem * var(--popup-scale, 1)); /* BUG-064 */
 		padding: 1rem 1.25rem 1rem;
 		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
 	}
 	.modal-head {
-		display: flex; align-items: center; justify-content: space-between;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
 		margin-bottom: 0.85rem;
 	}
 	.modal-head h3 {
-		margin: 0; font-size: 0.95rem; font-weight: 600; color: var(--text-strong);
+		margin: 0;
+		font-size: 0.95rem;
+		font-weight: 600;
+		color: var(--text-strong);
 	}
 	.x {
-		background: none; border: none; color: var(--text-faint);
-		font-size: 1.2rem; line-height: 1; cursor: pointer; padding: 0 4px;
+		background: none;
+		border: none;
+		color: var(--text-faint);
+		font-size: 1.2rem;
+		line-height: 1;
+		cursor: pointer;
+		padding: 0 4px;
 	}
-	.x:hover { color: var(--text); }
+	.x:hover {
+		color: var(--text);
+	}
 
-	.combo-state { color: var(--text-faint); font-size: 0.85rem; padding: 0.6rem 0; }
-	.combo-err { color: var(--danger); font-size: 0.8rem; margin: 0.5rem 0 0; }
+	.combo-state {
+		color: var(--text-faint);
+		font-size: 0.85rem;
+		padding: 0.6rem 0;
+	}
+	.combo-err {
+		color: var(--danger);
+		font-size: 0.8rem;
+		margin: 0.5rem 0 0;
+	}
 
-	.del-title { color: var(--danger); }
-	.del-msg { color: var(--text); font-size: 0.875rem; margin: 0 0 0.85rem; }
+	.del-title {
+		color: var(--danger);
+	}
+	.del-msg {
+		color: var(--text);
+		font-size: 0.875rem;
+		margin: 0 0 0.85rem;
+	}
 	.del-sub {
-		background: var(--bg); border: 1px solid var(--bg-subtle); border-radius: 6px;
-		padding: 0.6rem 0.8rem; margin-bottom: 0.85rem;
+		background: var(--bg);
+		border: 1px solid var(--bg-subtle);
+		border-radius: 6px;
+		padding: 0.6rem 0.8rem;
+		margin-bottom: 0.85rem;
 	}
 	.del-sub-head {
-		display: flex; align-items: center; justify-content: space-between;
-		gap: 0.5rem; margin-bottom: 0.3rem;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem;
+		margin-bottom: 0.3rem;
 	}
 	.del-sub-all {
-		display: flex; align-items: center; gap: 0.3rem;
-		font-size: 0.75rem; color: var(--text-muted); cursor: pointer;
+		display: flex;
+		align-items: center;
+		gap: 0.3rem;
+		font-size: 0.75rem;
+		color: var(--text-muted);
+		cursor: pointer;
 	}
-	.del-sub-all:hover { color: var(--text); }
-	.del-sub-title { margin: 0; font-size: 0.8rem; color: var(--text); font-weight: 600; }
-	.del-sub-help { margin: 0 0 0.5rem; font-size: 0.75rem; color: var(--text-muted); }
+	.del-sub-all:hover {
+		color: var(--text);
+	}
+	.del-sub-title {
+		margin: 0;
+		font-size: 0.8rem;
+		color: var(--text);
+		font-weight: 600;
+	}
+	.del-sub-help {
+		margin: 0 0 0.5rem;
+		font-size: 0.75rem;
+		color: var(--text-muted);
+	}
 	/* DEV-074 fix17: native scrollbar 숨김 — OverlayScrollbar 가 대신 그림. */
 	.del-sub-list {
-		list-style: none; padding: 0; margin: 0; max-height: 180px; overflow-y: auto;
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		max-height: 180px;
+		overflow-y: auto;
 		scrollbar-width: none;
 	}
-	.del-sub-list::-webkit-scrollbar { display: none; }
-	.del-sub-list li { padding: 0.25rem 0; }
-	.del-sub-list label {
-		display: flex; align-items: center; gap: 0.45rem;
-		cursor: pointer; font-size: 0.85rem; color: var(--text);
+	.del-sub-list::-webkit-scrollbar {
+		display: none;
 	}
-	.del-sub-list .badge { padding: 0.05rem 0.45rem; font-size: 0.7rem; }
-	.del-sub-title-text { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-	.del-prereq { font-size: 0.75rem; color: var(--text-muted); margin: 0 0 0.85rem; font-style: italic; }
-	.del-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
+	.del-sub-list li {
+		padding: 0.25rem 0;
+	}
+	.del-sub-list label {
+		display: flex;
+		align-items: center;
+		gap: 0.45rem;
+		cursor: pointer;
+		font-size: 0.85rem;
+		color: var(--text);
+	}
+	.del-sub-list .badge {
+		padding: 0.05rem 0.45rem;
+		font-size: 0.7rem;
+	}
+	.del-sub-title-text {
+		flex: 1;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.del-prereq {
+		font-size: 0.75rem;
+		color: var(--text-muted);
+		margin: 0 0 0.85rem;
+		font-style: italic;
+	}
+	.del-actions {
+		display: flex;
+		gap: 0.5rem;
+		justify-content: flex-end;
+	}
 	.btn-del-yes {
 		padding: 0.4rem 1.1rem;
-		background: rgba(233,79,79,0.15);
-		border: 1px solid var(--danger); border-radius: 6px;
-		color: var(--danger); font-size: 0.875rem; cursor: pointer;
+		background: rgba(233, 79, 79, 0.15);
+		border: 1px solid var(--danger);
+		border-radius: 6px;
+		color: var(--danger);
+		font-size: 0.875rem;
+		cursor: pointer;
 	}
-	.btn-del-yes:hover:not(:disabled) { background: rgba(233,79,79,0.25); }
-	.btn-del-yes:disabled { opacity: 0.5; cursor: default; }
+	.btn-del-yes:hover:not(:disabled) {
+		background: rgba(233, 79, 79, 0.25);
+	}
+	.btn-del-yes:disabled {
+		opacity: 0.5;
+		cursor: default;
+	}
 	.btn-del-no {
 		padding: 0.4rem 1rem;
-		background: transparent; border: 1px solid var(--border); border-radius: 6px;
-		color: var(--text-muted); font-size: 0.875rem; cursor: pointer;
+		background: transparent;
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		color: var(--text-muted);
+		font-size: 0.875rem;
+		cursor: pointer;
 	}
-	.btn-del-no:hover:not(:disabled) { background: var(--bg-subtle); }
+	.btn-del-no:hover:not(:disabled) {
+		background: var(--bg-subtle);
+	}
 
 	/* DEV-109/123/127: 우하단 floating 점프 cluster — 위/댓글/메모. */
 	.jump-cluster {
@@ -1782,7 +2192,10 @@
 		font-weight: 500;
 		cursor: pointer;
 		box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
-		transition: background 0.12s, border-color 0.12s, transform 0.12s;
+		transition:
+			background 0.12s,
+			border-color 0.12s,
+			transform 0.12s;
 	}
 	.jump-btn:hover {
 		background: var(--bg-subtle);

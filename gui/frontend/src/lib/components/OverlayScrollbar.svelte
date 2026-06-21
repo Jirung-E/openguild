@@ -200,7 +200,10 @@
 		pointer-events: auto;
 		cursor: pointer;
 		opacity: 0;
-		transition: opacity 0.2s, width 0.12s, background 0.12s;
+		transition:
+			opacity 0.2s,
+			width 0.12s,
+			background 0.12s;
 		touch-action: none;
 	}
 	.overlay-thumb.visible,

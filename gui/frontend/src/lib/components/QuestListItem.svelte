@@ -70,7 +70,8 @@
 		<span
 			class="urgency-warn"
 			title={`urgency 원본값 ${quest.urgency} 가 유효 범위(1-4) 밖 — clamp 표시 중. 파일 정정 필요.`}
-		>⚠</span>
+			>⚠</span
+		>
 	{/if}
 
 	<!-- 긴급도 -->
@@ -148,7 +149,10 @@
 		background: var(--bg-subtle);
 		border: 1px solid var(--border);
 	}
-	.cc-icon { font-size: 0.7rem; line-height: 1; }
+	.cc-icon {
+		font-size: 0.7rem;
+		line-height: 1;
+	}
 	/* DEV-142 후속: 토론 댓글 pill — 일반 댓글과 색으로 구분. */
 	.discussion-count {
 		flex-shrink: 0;
@@ -170,7 +174,11 @@
 		background: color-mix(in srgb, var(--success) 14%, transparent);
 		border: 1px solid color-mix(in srgb, var(--success) 40%, transparent);
 	}
-	.dc-icon { font-size: 0.9rem; line-height: 1; font-weight: 700; }
+	.dc-icon {
+		font-size: 0.9rem;
+		line-height: 1;
+		font-weight: 700;
+	}
 	/* BUG-060 후속: 범위 밖 urgency 경고 — 빨간 ⚠. */
 	.urgency-warn {
 		flex-shrink: 0;

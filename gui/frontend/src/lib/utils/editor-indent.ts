@@ -15,11 +15,7 @@ import { acceptCompletion } from '@codemirror/autocomplete';
 import { EditorSelection, EditorState, type Extension } from '@codemirror/state';
 import { keymap, type Command } from '@codemirror/view';
 import { get } from 'svelte/store';
-import {
-	editorSettings,
-	nextTabStopSpaces,
-	type EditorSettings
-} from '$lib/stores/editorSettings';
+import { editorSettings, nextTabStopSpaces, type EditorSettings } from '$lib/stores/editorSettings';
 
 /** 현재 설정의 들여쓰기 단위 문자열 (tab='\t', space=공백 N칸) — indentUnit 용. */
 function unitOf(s: EditorSettings): string {
@@ -71,7 +67,11 @@ export function indentExtensions(s: EditorSettings = get(editorSettings)): Exten
 		keymap.of([
 			// DEV-140 #9: 자동완성 팝업이 떠 있으면 Tab 으로 선택 적용(댓글과 동일),
 			// 없으면 들여쓰기. acceptCompletion 은 활성 완성이 없으면 false 반환.
-			{ key: 'Tab', run: (view) => acceptCompletion(view) || insertIndent(view), preventDefault: true },
+			{
+				key: 'Tab',
+				run: (view) => acceptCompletion(view) || insertIndent(view),
+				preventDefault: true
+			},
 			{ key: 'Shift-Tab', run: indentLess, preventDefault: true }
 		])
 	];

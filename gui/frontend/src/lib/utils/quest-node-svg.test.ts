@@ -6,10 +6,7 @@ import { effectiveQuestDue } from './quest-node-svg';
 import type { Quest } from '$lib/types';
 
 // 최소 Quest 헬퍼 — 기한 관련 필드만 의미 있음, 나머지는 dummy.
-function q(opts: {
-	required_due?: string | null;
-	earliest_campaign_due?: string | null;
-}): Quest {
+function q(opts: { required_due?: string | null; earliest_campaign_due?: string | null }): Quest {
 	return {
 		id: 1,
 		quest_id: 'DEV-001',

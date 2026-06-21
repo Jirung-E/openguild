@@ -37,30 +37,24 @@ export const campaignsApi = {
 
 	// 체크리스트
 	addChecklist: (slug: string, text: string) =>
-		api.post<CampaignChecklistItem>(
-			`/api/campaigns/${encodeURIComponent(slug)}/checklist`,
-			{ text }
-		),
+		api.post<CampaignChecklistItem>(`/api/campaigns/${encodeURIComponent(slug)}/checklist`, {
+			text
+		}),
 
 	setChecklist: (slug: string, index: number, checked: boolean) =>
-		api.patch<void>(
-			`/api/campaigns/${encodeURIComponent(slug)}/checklist/${index}`,
-			{ checked }
-		),
+		api.patch<void>(`/api/campaigns/${encodeURIComponent(slug)}/checklist/${index}`, { checked }),
 
 	removeChecklist: (slug: string, index: number) =>
 		api.delete(`/api/campaigns/${encodeURIComponent(slug)}/checklist/${index}`),
 
 	// Home 카드용 summaries
-	activeSummaries: () =>
-		api.get<CampaignSummary[]>('/api/campaigns/summaries/active'),
+	activeSummaries: () => api.get<CampaignSummary[]>('/api/campaigns/summaries/active'),
 
 	upcomingSummaries: (days = 7) =>
 		api.get<CampaignSummary[]>(`/api/campaigns/summaries/upcoming?days=${days}`),
 
 	/** Quest 가 속한 캠페인 목록 — Quest Detail 의 Campaigns 섹션. */
-	forQuest: (questId: number) =>
-		api.get<Campaign[]>(`/api/quests/${questId}/campaigns`),
+	forQuest: (questId: number) => api.get<Campaign[]>(`/api/quests/${questId}/campaigns`),
 
 	// ─── DEV-087: 배너 이미지 — Tauri 전용 (브라우저 모드는 버튼 숨김) ───
 	/** source 파일을 .guild/assets/ 로 복사 + 갱신된 campaign 반환. */

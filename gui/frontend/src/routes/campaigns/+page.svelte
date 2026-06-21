@@ -43,8 +43,7 @@
 	});
 
 	let filtered = $derived.by(() => {
-		const base =
-			statusFilter === 'all' ? all : all.filter((c) => c.status === statusFilter);
+		const base = statusFilter === 'all' ? all : all.filter((c) => c.status === statusFilter);
 		return sortCampaigns(base, sort);
 	});
 
@@ -108,10 +107,9 @@
 						<span class="title">{c.title}</span>
 						<span class="status status-{c.status}">{c.status}</span>
 						<!-- DEV-079: 종료 기한 지났는데 status != done 이면 period 빨강. -->
-						<span
-							class="period"
-							class:overdue={isDateOverdue(c.ended_at, c.status)}
-						>{fmtPeriod(c)}</span>
+						<span class="period" class:overdue={isDateOverdue(c.ended_at, c.status)}
+							>{fmtPeriod(c)}</span
+						>
 					</a>
 					{#if sort === 'manual'}
 						<div class="reorder">
@@ -126,14 +124,22 @@
 </div>
 
 <style>
-	.page { padding: 1.25rem 1.5rem; max-width: var(--content-max-width, 1100px); margin: 0 auto; }
+	.page {
+		padding: 1.25rem 1.5rem;
+		max-width: var(--content-max-width, 1100px);
+		margin: 0 auto;
+	}
 	.header {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
 		margin-bottom: 1rem;
 	}
-	.header h1 { font-size: 1.25rem; color: var(--text); margin: 0; }
+	.header h1 {
+		font-size: 1.25rem;
+		color: var(--text);
+		margin: 0;
+	}
 	.btn-primary {
 		padding: 0.4rem 0.85rem;
 		background: var(--btn-primary-bg);
@@ -143,7 +149,10 @@
 		font-size: 0.875rem;
 		cursor: pointer;
 	}
-	.btn-primary:hover { background: var(--btn-primary-bg-hover); border-color: var(--btn-primary-border-hover); }
+	.btn-primary:hover {
+		background: var(--btn-primary-bg-hover);
+		border-color: var(--btn-primary-border-hover);
+	}
 
 	.controls {
 		display: flex;
@@ -166,10 +175,23 @@
 		font-size: 0.825rem;
 	}
 
-	.state { color: var(--text-muted); padding: 1.5rem 0; font-size: 0.875rem; }
-	.state.error { color: var(--danger); }
+	.state {
+		color: var(--text-muted);
+		padding: 1.5rem 0;
+		font-size: 0.875rem;
+	}
+	.state.error {
+		color: var(--danger);
+	}
 
-	.list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+	.list {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
 	.row {
 		display: flex;
 		align-items: stretch;
@@ -188,14 +210,20 @@
 		text-decoration: none;
 		color: inherit;
 	}
-	.main:hover { border-color: var(--text-faint); background: var(--bg-subtle); }
+	.main:hover {
+		border-color: var(--text-faint);
+		background: var(--bg-subtle);
+	}
 
 	.slug {
 		font-size: 0.75rem;
 		color: var(--text-muted);
 		font-family: 'JetBrains Mono', ui-monospace, monospace;
 	}
-	.title { color: var(--text); font-size: 0.9rem; }
+	.title {
+		color: var(--text);
+		font-size: 0.9rem;
+	}
 	/* BUG-021: Quest List 의 pill 스타일 통일. */
 	.status {
 		flex-shrink: 0;
@@ -217,9 +245,15 @@
 		color: var(--c);
 		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
 	}
-	.period { font-size: 0.75rem; color: var(--text-muted); }
+	.period {
+		font-size: 0.75rem;
+		color: var(--text-muted);
+	}
 	/* DEV-079: 기한 지남 + status != done — 빨강. */
-	.period.overdue { color: var(--danger); font-weight: 600; }
+	.period.overdue {
+		color: var(--danger);
+		font-weight: 600;
+	}
 
 	.reorder {
 		display: flex;
@@ -235,5 +269,7 @@
 		font-size: 0.75rem;
 		cursor: pointer;
 	}
-	.reorder button:hover { background: var(--bg-subtle); }
+	.reorder button:hover {
+		background: var(--bg-subtle);
+	}
 </style>
