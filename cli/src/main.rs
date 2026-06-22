@@ -536,6 +536,11 @@ enum CommentCmd {
         #[arg(long)]
         force: bool,
     },
+    /// DEV-185: 토론(discussion) 플래그 토글 (quest 전용). 미해결 토론이 있으면
+    /// 그 quest 의 완료 전환이 차단됨. discussion 을 끄면 resolved 도 해제.
+    Discussion { slug: String, id: u64 },
+    /// DEV-185: discussion 댓글의 resolved 토글 (quest 전용).
+    Resolved { slug: String, id: u64 },
 }
 
 #[derive(Subcommand)]
@@ -1910,6 +1915,34 @@ impl Backend {
         }
     }
 
+    // DEV-185: 토론/해결 토글 — discussion 은 quest 전용 기능이라 scope 없음.
+    // 원격(Http)은 GUI 가 직접 HTTP 로 처리하므로 CLI 는 Local 만 지원.
+    fn comments_toggle_discussion(
+        &self,
+        slug: &str,
+        id: u64,
+    ) -> Result<openguild_core::repo::comments::CommentEntry> {
+        match self {
+            Backend::Http(_) => Err(anyhow!("원격 모드에선 미지원 — 로컬에서 실행")),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::comments::toggle_comment_discussion(&l.store, slug, id),
+            )),
+        }
+    }
+
+    fn comments_toggle_resolved(
+        &self,
+        slug: &str,
+        id: u64,
+    ) -> Result<openguild_core::repo::comments::CommentEntry> {
+        match self {
+            Backend::Http(_) => Err(anyhow!("원격 모드에선 미지원 — 로컬에서 실행")),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::comments::toggle_comment_resolved(&l.store, slug, id),
+            )),
+        }
+    }
+
     fn comments_edit_scoped(
         &self,
         scope: CommentScope,
@@ -2729,6 +2762,31 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                         );
                     } else {
                         println!("✓ 댓글 #{id} 삭제됨");
+                    }
+                }
+                CommentCmd::Discussion { slug, id } => {
+                    if scope != CommentScope::Quest {
+                        anyhow::bail!("토론(discussion) 토글은 quest 댓글 전용입니다.");
+                    }
+                    let e = c.comments_toggle_discussion(&slug, id)?;
+                    if json {
+                        println!(
+                            "{}",
+                            serde_json::json!({ "ok": true, "id": id, "discussion": e.discussion, "resolved": e.resolved })
+                        );
+                    } else {
+                        println!("✓ 댓글 #{id} 토론 {}", if e.discussion { "표시" } else { "해제" });
+                    }
+                }
+                CommentCmd::Resolved { slug, id } => {
+                    if scope != CommentScope::Quest {
+                        anyhow::bail!("resolved 토글은 quest 댓글 전용입니다.");
+                    }
+                    let e = c.comments_toggle_resolved(&slug, id)?;
+                    if json {
+                        println!("{}", serde_json::json!({ "ok": true, "id": id, "resolved": e.resolved }));
+                    } else {
+                        println!("✓ 댓글 #{id} {}", if e.resolved { "해결됨" } else { "미해결" });
                     }
                 }
     }
