@@ -60,7 +60,7 @@ pub async fn touch(store: &Store, abs: &Path) -> Result<(), sqlx::Error> {
 pub fn list_primary_cached_files(paths: &GuildPaths) -> Vec<std::path::PathBuf> {
     let mut files = Vec::new();
     // 캠페인 본문 (sibling `.comments.md` / `.memo.md` 제외 — stem 에 '.' 없는 .md).
-    if let Ok(c) = repo_fs::list_quest_body_files(&paths.campaigns_dir()) {
+    if let Ok(c) = repo_fs::list_quest_body_files(paths.campaigns_dir()) {
         files.extend(c);
     }
     // types / statuses / tags 정의.

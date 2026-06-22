@@ -51,12 +51,11 @@ use crate::store::Store;
 /// cached_mtime 으로 저장해야 다음 sync 가 같은 편집을 재감지(churn)하지 않는다.
 fn writeback_external_edit_ts(path: &std::path::Path) -> (String, i64) {
     let edit_iso = repo_fs::mtime_iso8601(path).unwrap_or_default();
-    if !edit_iso.is_empty() {
-        if let Ok(src) = std::fs::read_to_string(path) {
-            if let Some(updated) = replace_frontmatter_updated_at(&src, &edit_iso) {
-                let _ = repo_fs::write_atomic(path, &updated);
-            }
-        }
+    if !edit_iso.is_empty()
+        && let Ok(src) = std::fs::read_to_string(path)
+        && let Some(updated) = replace_frontmatter_updated_at(&src, &edit_iso)
+    {
+        let _ = repo_fs::write_atomic(path, &updated);
     }
     (edit_iso, repo_fs::mtime_unix_nanos(path))
 }
