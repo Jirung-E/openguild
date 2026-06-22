@@ -536,10 +536,10 @@ enum CommentCmd {
         #[arg(long)]
         force: bool,
     },
-    /// DEV-185: 토론(discussion) 플래그 토글 (quest 전용). 미해결 토론이 있으면
-    /// 그 quest 의 완료 전환이 차단됨. discussion 을 끄면 resolved 도 해제.
+    /// 토론(discussion) 플래그 토글 (quest 전용). 미해결 토론이 있으면 그 quest 의
+    /// 완료 전환이 차단됨. discussion 을 끄면 resolved 도 해제.
     Discussion { slug: String, id: u64 },
-    /// DEV-185: discussion 댓글의 resolved 토글 (quest 전용).
+    /// discussion 댓글의 resolved 토글 (quest 전용).
     Resolved { slug: String, id: u64 },
 }
 
