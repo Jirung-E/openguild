@@ -52,7 +52,9 @@
 		"@types/cytoscape": "^3.21.9",
 		"codemirror": "^6.0.2",
 		"cytoscape": "^3.33.3",
+		"highlight.js": "^11.11.1",
 		"marked": "^18.0.3",
+		"marked-highlight": "^2.2.4",
 		"mermaid": "^11.15.0"
 	}
 }

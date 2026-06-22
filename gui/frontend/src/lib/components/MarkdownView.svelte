@@ -6,7 +6,10 @@
   배경 var(--bg)) + Quest 의 확장 (pre / blockquote / table / hr / a) 머지.
 -->
 <script lang="ts">
-	import { marked } from 'marked';
+	import { Marked } from 'marked';
+	// DEV-183: 코드펜스 syntax highlighting — highlight.js (로컬 번들, 외부 통신 없음).
+	import { markedHighlight } from 'marked-highlight';
+	import hljs from 'highlight.js';
 	import { tick } from 'svelte';
 	// DEV-111: mermaid 다이어그램 렌더링 — lazy import (~700KB), 블록 있을 때만.
 	import { theme, resolveTheme } from '$lib/stores/theme';
@@ -15,7 +18,19 @@
 
 	let { source }: { source: string } = $props();
 
-	let html = $derived(marked(source ?? '', { async: false }) as string);
+	// DEV-183: highlight.js 연동 marked 인스턴스. language-mermaid 는 mermaid 가
+	// 따로 렌더 — plaintext 로 하이라이트돼도 innerText 가 보존돼 영향 없음.
+	const md = new Marked(
+		markedHighlight({
+			emptyLangClass: 'hljs',
+			langPrefix: 'hljs language-',
+			highlight(code, lang) {
+				const language = lang && hljs.getLanguage(lang) ? lang : 'plaintext';
+				return hljs.highlight(code, { language }).value;
+			}
+		})
+	);
+	let html = $derived(md.parse(source ?? '', { async: false }) as string);
 	let container: HTMLDivElement | undefined = $state(undefined);
 
 	// 매 effect 실행 시 mermaid 블록 탐지 + 렌더. id 충돌 방지용 counter.
@@ -262,6 +277,45 @@
 		background: none;
 		padding: 0;
 		color: var(--text);
+	}
+	/* DEV-183: highlight.js 토큰 매핑 테마 — 고정 hex 대신 테마 토큰을 써서
+	   다크/라이트 자동 적응 (컴포넌트 CSS no-hex 정책 준수). */
+	.md :global(.hljs-comment),
+	.md :global(.hljs-quote) {
+		color: var(--text-faint);
+		font-style: italic;
+	}
+	.md :global(.hljs-keyword),
+	.md :global(.hljs-selector-tag),
+	.md :global(.hljs-literal),
+	.md :global(.hljs-section),
+	.md :global(.hljs-built_in),
+	.md :global(.hljs-type),
+	.md :global(.hljs-name),
+	.md :global(.hljs-title) {
+		color: var(--accent);
+	}
+	.md :global(.hljs-string),
+	.md :global(.hljs-regexp),
+	.md :global(.hljs-attr),
+	.md :global(.hljs-attribute),
+	.md :global(.hljs-addition),
+	.md :global(.hljs-symbol) {
+		color: var(--success);
+	}
+	.md :global(.hljs-number),
+	.md :global(.hljs-bullet),
+	.md :global(.hljs-meta) {
+		color: var(--warning);
+	}
+	.md :global(.hljs-deletion) {
+		color: var(--danger);
+	}
+	.md :global(.hljs-emphasis) {
+		font-style: italic;
+	}
+	.md :global(.hljs-strong) {
+		font-weight: 700;
 	}
 	.md :global(blockquote) {
 		border-left: 3px solid var(--border);
