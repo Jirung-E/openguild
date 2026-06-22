@@ -84,10 +84,18 @@ export async function checkForUpdate(opts: { silent?: boolean } = {}): Promise<v
  */
 export function humanizeUpdaterError(raw: string): string {
 	const m = raw.toLowerCase();
-	if (m.includes('404') || m.includes('not found')) {
+	// "Could not fetch a valid release JSON from the remote" — latest.json 이
+	// endpoint 에 없거나(서명 secret 미설정 등) 잘못된 경우. 원문에 "fetch" 가
+	// 들어 있어 아래 네트워크 분기보다 먼저 잡아야 한다(404 와 동류로 안내).
+	if (
+		m.includes('404') ||
+		m.includes('not found') ||
+		m.includes('release json') ||
+		m.includes('valid release')
+	) {
 		return (
 			'릴리즈가 아직 없거나 endpoint URL 이 잘못됐습니다. ' +
-			'(GitHub Releases 에 latest.json 이 attach 되어 있어야 합니다.)\n\n원본: ' +
+			'(GitHub Releases 에 latest.json + 서명(.sig)이 attach 되어 있어야 합니다.)\n\n원본: ' +
 			raw
 		);
 	}

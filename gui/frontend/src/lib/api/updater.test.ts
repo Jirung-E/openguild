@@ -10,6 +10,11 @@ describe('humanizeUpdaterError', () => {
 	it('not found 도 같은 안내', () => {
 		expect(humanizeUpdaterError('endpoint not found')).toMatch(/릴리즈가 아직 없거나/);
 	});
+	it('"valid release JSON" 못 가져옴 → (네트워크 아님) 릴리즈/latest.json 안내', () => {
+		const out = humanizeUpdaterError('Could not fetch a valid release JSON from the remote');
+		expect(out).toMatch(/릴리즈가 아직 없거나/);
+		expect(out).not.toMatch(/네트워크 연결을 확인/);
+	});
 	it('network 키워드 → 네트워크 안내', () => {
 		expect(humanizeUpdaterError('network error')).toMatch(/네트워크/);
 		expect(humanizeUpdaterError('failed to fetch')).toMatch(/네트워크/);
