@@ -15,9 +15,12 @@ v0.1.0-beta 이후의 대규모 개편 — 저장 모델을 "파일 진리원 + 
   토론(discussion) 플래그 + 미해결 시 완료 차단 + 홈 "토론 댓글" 섹션.
   (DEV-171/108/142/148/149/150, BUG-082)
 - **캠페인**: 본문 첨부, floating 점프 버튼, 배너 이미지.
+- **코드 하이라이팅**: 본문 마크다운 코드블록 syntax highlighting — highlight.js
+  로컬 번들(외부 통신 없음), 테마 토큰 매핑으로 다크/라이트 적응. (DEV-183)
 - **CLI 확장**: `reindex`, `check drift/counters`, `index rebuild/vacuum`,
   `journal tail`, `info`, `backup new/list/remove`, `restore`, `template new`,
-  `migrate-to-files`. (DEV-095/159/162/164/170/176/177/179)
+  `migrate-to-files`, `quest comment discussion/resolved`(토론 토글).
+  (DEV-095/159/162/164/170/176/177/179/185)
 - **호환성**: 길드 `schema_version` + 실행파일 호환 검사 + 안내 배너,
   미저장 변경 경고(라우트 이동). (DEV-064/154/153)
 - **자동 업데이트**: Tauri updater 기반 + tag push 릴리즈 워크플로. (DEV-063/071)
@@ -40,6 +43,11 @@ v0.1.0-beta 이후의 대규모 개편 — 저장 모델을 "파일 진리원 + 
 - reindex self-heal이 미참조 orphan 첨부를 부활시키던 문제. (BUG-087)
 - `attach remove`가 없는 경로에도 성공 메시지를 내던 문제. (BUG-085)
 - GUI 창이 안 닫히던 회귀(닫기/새로고침 가드 제거). (BUG-075)
+- 아이콘 투명 배경 — 투명 소스로 아이콘 세트 재생성. (BUG-088)
+- IncompatibleGuild 모달의 '업데이트 확인'이 무반응이던 문제 — 결과(확인 중/최신/
+  새 버전/실패)를 인라인 표시. (DEV-154)
+- 업데이트 확인 에러 분류 — `latest.json` 부재를 네트워크 오류로 잘못 안내하던 것
+  수정. (BUG-045)
 - 그 외 다수 (보드 필터 edge 디밍, 다크모드 토큰 오용, urgency clamp 경고 등).
 
 ### Known issues

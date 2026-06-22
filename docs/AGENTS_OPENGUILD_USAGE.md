@@ -258,8 +258,10 @@ openguild quest comment list <SLUG> --reply-to N          # 특정 entry 의 답
 openguild quest comment show <SLUG> [--id N]              # 본문
 openguild quest comment add <SLUG> --author <NAME> --file <PATH>   # 추가 (stdin 도 가능)
 openguild quest comment add <SLUG> --author <NAME> --parent-id N --file <PATH>  # 답글
-openguild quest comment edit <SLUG> --id N --file <PATH>  # body 교체
-openguild quest comment rm <SLUG> --id N [--force]        # 삭제
+openguild quest comment edit <SLUG> N --file <PATH>       # body 교체 (id 는 positional)
+openguild quest comment remove <SLUG> N [--force]         # 삭제
+openguild quest comment discussion <SLUG> N               # 토론(discussion) 토글 — quest 전용 (DEV-185)
+openguild quest comment resolved <SLUG> N                 # 토론 해결 토글 (DEV-185)
 openguild quest memo set <SLUG> --file <PATH>             # 비공개 메모 (사용자당 1개)
 ```
 
