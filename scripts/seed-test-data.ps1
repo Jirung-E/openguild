@@ -228,6 +228,29 @@ if ($campList.Count -ge 2 -and $questList.Count -ge 3) {
     Invoke-Og campaign link $campList[1].campaign_slug $questList[2].quest_id
 }
 
+# ── 6b) 관계 / 태그 / soft-delete / 템플릿 ──────────────────────
+#   parent·prereq 가 없으면 보드 엣지 / 트리 모드 / 의존성 그래프 / candidates 가
+#   빈 상태로 데모됨 — 핵심 시각화 검증용 관계를 만든다. 태그(칩/필터),
+#   soft-delete(삭제목록/복원), 템플릿(NewQuestModal 드롭다운)도 함께 시딩.
+Write-Host "`n=== [6b] 관계 / 태그 / soft-delete / 템플릿 ===" -ForegroundColor Green
+if ($questList.Count -ge 6) {
+    # 하위 퀘스트 (Sub-quests / 트리 모드)
+    Invoke-Og quest parent $questList[1].quest_id $questList[0].quest_id
+    Invoke-Og quest parent $questList[2].quest_id $questList[0].quest_id
+    # 선행 관계 (의존성 그래프 / 보드 엣지 / candidates)
+    Invoke-Og quest prereq add $questList[3].quest_id $questList[0].quest_id
+    Invoke-Og quest prereq add $questList[4].quest_id $questList[3].quest_id
+    # 태그 (tag chip / 필터)
+    Invoke-Og quest tag add $questList[0].quest_id backend api
+    Invoke-Og quest tag add $questList[3].quest_id bug regression
+    # soft delete 1개 (deleted 목록 / 복원 검증) — 가장 오래된 quest.
+    Invoke-Og quest delete $questList[$questList.Count - 1].quest_id --yes
+}
+# 템플릿 1개 — NewQuestModal 의 템플릿 드롭다운이 비어있지 않게 (DEV-060/158).
+Write-Host "[og] template new bug-report" -ForegroundColor DarkGray
+"## 재현 절차`n`n## 기대 / 실제`n" | & $bin template new bug-report --type BUG --title "[버그] " --urgency 2
+if ($LASTEXITCODE -ne 0) { throw "template new 실패" }
+
 # ── 7) DEV-099 / DEV-102: 댓글 + 메모 (CLI + DB cache sync) ──
 Write-Host "`n=== [7/8] 댓글 / 메모 (DEV-094/099/102) ===" -ForegroundColor Green
 
@@ -286,6 +309,10 @@ Write-Host "Future  : 1개 (1주 이후 fallback — 위 set 가 채우므로 �
 Write-Host "Due     : 일부 quest 에 과거/임박/미래 기한 — Home 임박 뱃지 / Overdue 검증."
 Write-Host "Comments: 첫 quest 에 댓글 2 (top + reply) + 메모 1 — DB 캐시 sync (DEV-102)."
 Write-Host "Attach  : 첫 quest 에 첨부 1 — 본문 아래 첨부 섹션 데모 (DEV-156/170)."
+Write-Host "관계    : 하위 2 + 선행 2 — 보드 엣지 / 트리 / 의존성 그래프 / candidates 검증."
+Write-Host "Tags    : 2 quest 에 태그 — 칩 / 필터 검증."
+Write-Host "Deleted : 1 quest soft-delete — 삭제 목록 / 복원 검증."
+Write-Host "Template: bug-report 1 개 — NewQuestModal 드롭다운 검증 (DEV-060/158)."
 Write-Host "Rules   : $($ruleSamples.Count) 개 sample (branch-policy / code-review / release-checklist)"
 Write-Host ""
 Write-Host "GUI 열어서 Home / Rules 페이지 확인:"
