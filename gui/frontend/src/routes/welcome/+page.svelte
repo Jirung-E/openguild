@@ -7,8 +7,18 @@
 	import SettingsQuickMenu from '$lib/components/SettingsQuickMenu.svelte';
 	// DEV-154: 호환 안 되는 길드(더 새 schema) 전용 안내 + 업데이트 확인.
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
-	import { checkForUpdate } from '$lib/api/updater';
+	// DEV-154: UpdateBanner 는 available/downloading/ready 만 표시(DEV-085) — checking/
+	// uptodate/error 는 전역 배너에 안 떠서 welcome 의 '업데이트 확인' 이 무반응처럼
+	// 보였음. 여기선 그 결과를 인라인으로 직접 표시.
+	import { checkForUpdate, updateState, downloadAndRelaunch } from '$lib/api/updater';
 	let quickMenuOpen = $state(false);
+	// '업데이트 확인' 을 눌렀는지 — 눌렀을 때만 결과 토스트 표시.
+	let updateRequested = $state(false);
+	function runUpdateCheck() {
+		incompatibleMsg = null;
+		updateRequested = true;
+		void checkForUpdate();
+	}
 
 	// 더 새 schema 길드 열기 시도 시 메시지 (commands.rs 의 INCOMPATIBLE_GUILD_TAG).
 	const INCOMPAT_TAG = 'INCOMPATIBLE_GUILD::';
@@ -391,13 +401,78 @@
 	message={incompatibleMsg ?? ''}
 	confirmLabel="업데이트 확인"
 	oncancel={() => (incompatibleMsg = null)}
-	onconfirm={() => {
-		incompatibleMsg = null;
-		void checkForUpdate();
-	}}
+	onconfirm={runUpdateCheck}
 />
 
+<!-- DEV-154: 업데이트 확인 결과를 인라인으로 표시 (전역 배너가 안 덮는 상태들). -->
+{#if updateRequested}
+	<div class="upd-toast" role="status">
+		{#if $updateState.status === 'checking'}
+			<span>업데이트 확인 중…</span>
+		{:else if $updateState.status === 'available'}
+			<span>새 버전 {$updateState.version} 사용 가능</span>
+			<button class="upd-go" onclick={() => downloadAndRelaunch()}>지금 업데이트</button>
+		{:else if $updateState.status === 'downloading'}
+			<span>다운로드 중… {$updateState.pct ?? ''}{$updateState.pct != null ? '%' : ''}</span>
+		{:else if $updateState.status === 'ready'}
+			<span>설치 완료 — 재시작 중…</span>
+		{:else if $updateState.status === 'uptodate'}
+			<span>이미 최신 버전입니다. (호환되는 새 버전이 아직 없을 수 있어요.)</span>
+		{:else if $updateState.status === 'error'}
+			<span class="upd-err">업데이트 확인 실패: {$updateState.message}</span>
+		{/if}
+		<button class="upd-close" onclick={() => (updateRequested = false)} title="닫기">✕</button>
+	</div>
+{/if}
+
 <style>
+	/* DEV-154: 업데이트 확인 결과 토스트 (하단 고정). */
+	.upd-toast {
+		position: fixed;
+		left: 50%;
+		bottom: 1.25rem;
+		transform: translateX(-50%);
+		z-index: 60;
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+		max-width: min(90vw, 36rem);
+		padding: 0.55rem 0.9rem;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		box-shadow: 0 6px 20px var(--shadow);
+		color: var(--text);
+		font-size: 0.85rem;
+	}
+	.upd-toast .upd-err {
+		color: var(--danger);
+	}
+	.upd-go {
+		padding: 0.25rem 0.7rem;
+		border-radius: 6px;
+		border: 1px solid var(--btn-primary-border);
+		background: var(--btn-primary-bg);
+		color: var(--btn-primary-text);
+		font-size: 0.8rem;
+		cursor: pointer;
+	}
+	.upd-go:hover {
+		background: var(--btn-primary-bg-hover);
+	}
+	.upd-close {
+		margin-left: auto;
+		padding: 0.1rem 0.4rem;
+		background: transparent;
+		border: none;
+		color: var(--text-muted);
+		cursor: pointer;
+		font-size: 0.85rem;
+	}
+	.upd-close:hover {
+		color: var(--text);
+	}
+
 	.welcome {
 		max-width: var(--content-max-width, 720px);
 		margin: 0 auto;
