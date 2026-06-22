@@ -42,7 +42,8 @@
     ],
     "resources": {
       "../README.md": "docs/README.md",
-      "../docs/USAGE.md": "docs/USAGE.md"
+      "../docs/USAGE.md": "docs/USAGE.md",
+      "../CHANGELOG.md": "docs/CHANGELOG.md"
     },
     "windows": {
       "nsis": {
