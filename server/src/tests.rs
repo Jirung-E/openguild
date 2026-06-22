@@ -11,11 +11,17 @@ use crate::routes;
 /// 각 테스트마다 독립 temp dir + 시드 + Store + 라우터 생성.
 /// 디렉토리 정리는 OS 기본 temp 정리에 위임 (테스트 결정성 우선).
 async fn setup() -> Router {
+    // BUG: Windows SystemTime 해상도(~15ms)가 거칠어 병렬 테스트가 같은 ns 를
+    // 받으면 temp 디렉토리(=guild)를 공유 → quest counter 충돌로 flaky
+    // (debug 에서 재현, release 는 타이밍상 우연히 통과). 프로세스 내 원자
+    // 카운터로 유일성 보장.
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let ns = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let dir = std::env::temp_dir().join(format!("og-test-{ns}"));
+    let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("og-test-{ns}-{seq}"));
     std::fs::create_dir_all(&dir).unwrap();
     openguild_core::repo::seed_guild_dir(&dir).unwrap();
     let store = openguild_core::Store::open(&dir).await.unwrap();
