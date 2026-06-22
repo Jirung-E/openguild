@@ -278,6 +278,50 @@ if ($questForComments) {
     "# 첨부 데모`n`n시드 스크립트가 생성한 예시 첨부 파일 (DEV-156/170)." | Out-File -Encoding utf8 $attachTmp
     Invoke-Og quest attach add $questForComments $attachTmp --name "seed-note.md"
     Remove-Item $attachTmp -ErrorAction SilentlyContinue
+
+    # DEV-142/148/149: 토론 댓글 — 미해결 1개(홈 '토론 댓글' 섹션 + 완료 게이트)
+    # + 해결 1개(✓ 표시). DEV-185 의 CLI discussion/resolved 토글 사용.
+    Write-Host "[og] 토론 댓글 (discussion 미해결 + 해결)" -ForegroundColor DarkGray
+    "설계 확정 전까지 완료 막아두자. (미해결 토론)" | & $bin quest comment add $questForComments --author carol
+    if ($LASTEXITCODE -ne 0) { throw "discussion comment add 실패" }
+    Invoke-Og quest comment discussion $questForComments 3   # id 3 = 방금 추가 → 미해결 토론
+    "이건 합의됨 — 해결로 표시." | & $bin quest comment add $questForComments --author dave
+    if ($LASTEXITCODE -ne 0) { throw "resolved comment add 실패" }
+    Invoke-Og quest comment discussion $questForComments 4   # id 4 → 토론
+    Invoke-Og quest comment resolved $questForComments 4     # → 해결
+
+    # DEV-069/156: 이미지 첨부 — 인라인 미리보기/임베드 경로 검증 (PNG 생성).
+    Write-Host "[og] 이미지 첨부 (PNG)" -ForegroundColor DarkGray
+    $imgTmp = Join-Path ([System.IO.Path]::GetTempPath()) "openguild-seed-image.png"
+    try {
+        Add-Type -AssemblyName System.Drawing -ErrorAction Stop
+        $bmp = New-Object System.Drawing.Bitmap 64, 64
+        $gfx = [System.Drawing.Graphics]::FromImage($bmp)
+        $gfx.Clear([System.Drawing.Color]::SteelBlue)
+        $gfx.Dispose(); $bmp.Save($imgTmp, [System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose()
+    } catch {
+        # System.Drawing 불가 환경 — 1x1 PNG base64 fallback.
+        [IO.File]::WriteAllBytes($imgTmp, [Convert]::FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="))
+    }
+    Invoke-Og quest attach add $questForComments $imgTmp --name "preview.png"
+    Remove-Item $imgTmp -ErrorAction SilentlyContinue
+
+    # 비미디어 첨부파일 1개 더 (.json) — 다운로드 링크 아이콘 검증.
+    Write-Host "[og] 추가 첨부파일 (.json)" -ForegroundColor DarkGray
+    $jsonTmp = Join-Path ([System.IO.Path]::GetTempPath()) "openguild-seed-config.json"
+    '{ "demo": true, "note": "시드 첨부 예시" }' | Out-File -Encoding utf8 $jsonTmp
+    Invoke-Og quest attach add $questForComments $jsonTmp --name "config.json"
+    Remove-Item $jsonTmp -ErrorAction SilentlyContinue
+}
+
+# 두 번째 quest 에도 댓글 + 메모 — 목록/홈 집계 다양성.
+$secondQuest = if ($questList.Count -ge 2) { $questList[1].quest_id } else { $null }
+if ($secondQuest -and $secondQuest -ne $questForComments) {
+    Write-Host "[og] 두 번째 quest 댓글/메모 ($secondQuest)" -ForegroundColor DarkGray
+    "재현 단계 정리했습니다. 로그는 메모 참고." | & $bin quest comment add $secondQuest --author alice
+    if ($LASTEXITCODE -ne 0) { throw "second quest comment 실패" }
+    "메모: 관련 로그 / 재현 환경 기록 예정." | & $bin quest memo set $secondQuest
+    if ($LASTEXITCODE -ne 0) { throw "second quest memo 실패" }
 }
 
 # ── 8) DEV-016 (multi-file): sample 길드 규칙 (Rules 페이지 검증) ──
@@ -307,8 +351,10 @@ Write-Host "Active  : $($activeCampaigns.Count) 개 캠페인 (carousel 회전)"
 Write-Host "Upcoming: $($upcomingCampaigns.Count) 개 (1주 내 시작 — marquee 임계값 테스트)"
 Write-Host "Future  : 1개 (1주 이후 fallback — 위 set 가 채우므로 노출은 안 됨)"
 Write-Host "Due     : 일부 quest 에 과거/임박/미래 기한 — Home 임박 뱃지 / Overdue 검증."
-Write-Host "Comments: 첫 quest 에 댓글 2 (top + reply) + 메모 1 — DB 캐시 sync (DEV-102)."
-Write-Host "Attach  : 첫 quest 에 첨부 1 — 본문 아래 첨부 섹션 데모 (DEV-156/170)."
+Write-Host "Comments: 첫 quest 댓글 4 (top+reply+토론 미해결/해결) + 둘째 quest 댓글 1 — DB 캐시 sync."
+Write-Host "Memo    : 2 quest 에 메모."
+Write-Host "토론    : 미해결 1 (홈 토론 섹션/완료 게이트) + 해결 1 (DEV-142/148/185)."
+Write-Host "Attach  : 첫 quest 에 3개 — .md / 이미지 .png(미리보기) / .json (DEV-156/170)."
 Write-Host "관계    : 하위 2 + 선행 2 — 보드 엣지 / 트리 / 의존성 그래프 / candidates 검증."
 Write-Host "Tags    : 2 quest 에 태그 — 칩 / 필터 검증."
 Write-Host "Deleted : 1 quest soft-delete — 삭제 목록 / 복원 검증."
