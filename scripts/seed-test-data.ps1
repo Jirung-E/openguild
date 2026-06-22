@@ -15,6 +15,7 @@
 #   4. DEV-076: 일부 quest 에 희망/필수 기한 설정 — Home 의 "마감 임박" / Overdue
 #      뱃지 검증.
 #   5. DEV-094/099/102: 첫 quest 에 댓글 (top + reply) + 메모 — DB 캐시 sync
+#      + DEV-156/170: 첫 quest 에 첨부파일 1개 (본문 아래 첨부 섹션 데모)
 #      + snapshot 백업 회귀.
 #   6. DEV-016 (multi-file): sample 길드 규칙 생성 — Rules 페이지 검증.
 #
@@ -247,6 +248,13 @@ if ($questForComments) {
     Write-Host "[og] quest memo set $questForComments" -ForegroundColor DarkGray
     "본인 한정 메모 — 검토 시 참고용." | & $bin quest memo set $questForComments
     if ($LASTEXITCODE -ne 0) { throw "quest memo set 실패" }
+
+    # DEV-156/170: 본문 아래 첨부 섹션 데모 — 임시 파일 1개를 첫 quest 에 첨부.
+    Write-Host "[og] quest attach add $questForComments" -ForegroundColor DarkGray
+    $attachTmp = Join-Path ([System.IO.Path]::GetTempPath()) "openguild-seed-note.md"
+    "# 첨부 데모`n`n시드 스크립트가 생성한 예시 첨부 파일 (DEV-156/170)." | Out-File -Encoding utf8 $attachTmp
+    Invoke-Og quest attach add $questForComments $attachTmp --name "seed-note.md"
+    Remove-Item $attachTmp -ErrorAction SilentlyContinue
 }
 
 # ── 8) DEV-016 (multi-file): sample 길드 규칙 (Rules 페이지 검증) ──
@@ -277,6 +285,7 @@ Write-Host "Upcoming: $($upcomingCampaigns.Count) 개 (1주 내 시작 — marqu
 Write-Host "Future  : 1개 (1주 이후 fallback — 위 set 가 채우므로 노출은 안 됨)"
 Write-Host "Due     : 일부 quest 에 과거/임박/미래 기한 — Home 임박 뱃지 / Overdue 검증."
 Write-Host "Comments: 첫 quest 에 댓글 2 (top + reply) + 메모 1 — DB 캐시 sync (DEV-102)."
+Write-Host "Attach  : 첫 quest 에 첨부 1 — 본문 아래 첨부 섹션 데모 (DEV-156/170)."
 Write-Host "Rules   : $($ruleSamples.Count) 개 sample (branch-policy / code-review / release-checklist)"
 Write-Host ""
 Write-Host "GUI 열어서 Home / Rules 페이지 확인:"
