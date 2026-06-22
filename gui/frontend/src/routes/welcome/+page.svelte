@@ -3,6 +3,36 @@
 	import { goto } from '$app/navigation';
 	import { recentsApi, type Recent } from '$lib/api/recents';
 	import { detectEnvironment } from '$lib/api/transport';
+	// DEV-138: welcome 에서도 ⚙ 퀵메뉴 (Nav 와 동일 컴포넌트).
+	import SettingsQuickMenu from '$lib/components/SettingsQuickMenu.svelte';
+	// DEV-154: 호환 안 되는 길드(더 새 schema) 전용 안내 + 업데이트 확인.
+	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+	// DEV-154: UpdateBanner 는 available/downloading/ready 만 표시(DEV-085) — checking/
+	// uptodate/error 는 전역 배너에 안 떠서 welcome 의 '업데이트 확인' 이 무반응처럼
+	// 보였음. 여기선 그 결과를 인라인으로 직접 표시.
+	import { checkForUpdate, updateState, downloadAndRelaunch } from '$lib/api/updater';
+	let quickMenuOpen = $state(false);
+	// '업데이트 확인' 을 눌렀는지 — 눌렀을 때만 결과 토스트 표시.
+	let updateRequested = $state(false);
+	function runUpdateCheck() {
+		incompatibleMsg = null;
+		updateRequested = true;
+		void checkForUpdate();
+	}
+
+	// 더 새 schema 길드 열기 시도 시 메시지 (commands.rs 의 INCOMPATIBLE_GUILD_TAG).
+	const INCOMPAT_TAG = 'INCOMPATIBLE_GUILD::';
+	let incompatibleMsg = $state<string | null>(null);
+	// 길드 열기/초기화 에러 공통 처리 — IncompatibleGuild 면 전용 모달, 그 외는
+	// 일반 메시지 반환(호출 측이 openErr/initErr 등에 대입).
+	function handleOpenError(e: unknown): string | null {
+		const msg = e instanceof Error ? e.message : String(e);
+		if (msg.startsWith(INCOMPAT_TAG)) {
+			incompatibleMsg = msg.slice(INCOMPAT_TAG.length).trim();
+			return null;
+		}
+		return msg;
+	}
 
 	let recents: Recent[] = $state([]);
 	let loading = $state(true);
@@ -36,9 +66,7 @@
 		if (env === 'tauri') {
 			try {
 				const { invoke } = await import('@tauri-apps/api/core');
-				const info = await invoke<{ mode: string; uninit_path: string | null }>(
-					'launch_mode'
-				);
+				const info = await invoke<{ mode: string; uninit_path: string | null }>('launch_mode');
 				if (info.mode === 'uninit' && info.uninit_path) {
 					uninitPath = info.uninit_path;
 					// 기본 길드 이름 = path 의 마지막 component (디렉토리명).
@@ -67,7 +95,7 @@
 			// 성공: 현재 process 의 Store 가 swap 됐음. 보드로 이동.
 			goto('/');
 		} catch (e) {
-			openErr = e instanceof Error ? e.message : String(e);
+			openErr = handleOpenError(e);
 		} finally {
 			opening = null;
 		}
@@ -88,7 +116,7 @@
 			// 성공: store swap 됨. 보드로.
 			goto('/');
 		} catch (e) {
-			initErr = e instanceof Error ? e.message : String(e);
+			initErr = handleOpenError(e);
 		} finally {
 			initRunning = false;
 		}
@@ -142,7 +170,7 @@
 				initErr = null;
 			}
 		} catch (e) {
-			pickErr = e instanceof Error ? e.message : String(e);
+			pickErr = handleOpenError(e);
 		} finally {
 			pickRunning = false;
 		}
@@ -168,7 +196,7 @@
 			await recentsApi.remove(target.path);
 			recents = recents.filter((r) => r.path !== target.path);
 		} catch (e) {
-			openErr = e instanceof Error ? e.message : String(e);
+			openErr = handleOpenError(e);
 		}
 	}
 
@@ -205,8 +233,27 @@
 
 <main class="welcome">
 	<header>
-		<h1>openguild</h1>
-		<p class="sub">최근 작업한 길드</p>
+		<div class="title-row">
+			<div>
+				<h1>openguild</h1>
+				<p class="sub">최근 작업한 길드</p>
+			</div>
+			<!-- DEV-052 fix → DEV-138: welcome 에서도 ⚙ 가 퀵메뉴 (Nav 와 동일).
+				 Nav 가 가려져 있으므로 페이지 자체에 톱니바퀴. -->
+			<div class="settings-wrap">
+				<button
+					class="settings-link"
+					class:active={quickMenuOpen}
+					onclick={() => (quickMenuOpen = !quickMenuOpen)}
+					title="설정"
+					aria-label="설정"
+					aria-expanded={quickMenuOpen}>⚙</button
+				>
+				{#if quickMenuOpen}
+					<SettingsQuickMenu onclose={() => (quickMenuOpen = false)} />
+				{/if}
+			</div>
+		</div>
 	</header>
 
 	{#if env === 'tauri'}
@@ -230,17 +277,12 @@
 			<h2>이 위치를 길드로 초기화할까요?</h2>
 			<p class="uninit-path">{uninitPath}</p>
 			<p class="uninit-desc">
-				지정한 디렉토리에 openguild 마커 (<code>.guild/</code> 폴더 + 시드)가 없습니다.
-				초기화하면 빈 길드가 생성되어 바로 작업할 수 있습니다.
+				지정한 디렉토리에 openguild 마커 (<code>.guild/</code> 폴더 + 시드)가 없습니다. 초기화하면 빈
+				길드가 생성되어 바로 작업할 수 있습니다.
 			</p>
 			<label class="uninit-name">
 				<span>길드 이름</span>
-				<input
-					type="text"
-					bind:value={initName}
-					placeholder="guild"
-					disabled={initRunning}
-				/>
+				<input type="text" bind:value={initName} placeholder="guild" disabled={initRunning} />
 			</label>
 			{#if initErr}
 				<p class="err">{initErr}</p>
@@ -314,9 +356,7 @@
 	{/if}
 
 	<footer class="hint">
-		<p>
-			항목을 클릭하면 현재 창에서 그 길드를 엽니다.
-		</p>
+		<p>항목을 클릭하면 현재 창에서 그 길드를 엽니다.</p>
 	</footer>
 </main>
 
@@ -343,7 +383,9 @@
 				<strong>{confirmRemove.name}</strong> 을 최근 목록에서 제거할까요?
 			</p>
 			<p class="modal-path">{confirmRemove.path}</p>
-			<p class="modal-msg modal-note">디스크의 길드 파일은 그대로 두고, Recent 목록에서만 빠집니다.</p>
+			<p class="modal-msg modal-note">
+				디스크의 길드 파일은 그대로 두고, Recent 목록에서만 빠집니다.
+			</p>
 			<div class="modal-actions">
 				<button class="btn-yes" onclick={doRemove}>제거</button>
 				<button class="btn-no" onclick={cancelRemove}>취소</button>
@@ -352,21 +394,135 @@
 	</div>
 {/if}
 
+<!-- DEV-154: 더 새 schema 길드 — 전용 안내 + 업데이트 확인 (DEV-063). -->
+<ConfirmDialog
+	open={incompatibleMsg !== null}
+	title="호환되지 않는 길드"
+	message={incompatibleMsg ?? ''}
+	confirmLabel="업데이트 확인"
+	oncancel={() => (incompatibleMsg = null)}
+	onconfirm={runUpdateCheck}
+/>
+
+<!-- DEV-154: 업데이트 확인 결과를 인라인으로 표시 (전역 배너가 안 덮는 상태들). -->
+{#if updateRequested}
+	<div class="upd-toast" role="status">
+		{#if $updateState.status === 'checking'}
+			<span>업데이트 확인 중…</span>
+		{:else if $updateState.status === 'available'}
+			<span>새 버전 {$updateState.version} 사용 가능</span>
+			<button class="upd-go" onclick={() => downloadAndRelaunch()}>지금 업데이트</button>
+		{:else if $updateState.status === 'downloading'}
+			<span>다운로드 중… {$updateState.pct ?? ''}{$updateState.pct != null ? '%' : ''}</span>
+		{:else if $updateState.status === 'ready'}
+			<span>설치 완료 — 재시작 중…</span>
+		{:else if $updateState.status === 'uptodate'}
+			<span>이미 최신 버전입니다. (호환되는 새 버전이 아직 없을 수 있어요.)</span>
+		{:else if $updateState.status === 'error'}
+			<span class="upd-err">업데이트 확인 실패: {$updateState.message}</span>
+		{/if}
+		<button class="upd-close" onclick={() => (updateRequested = false)} title="닫기">✕</button>
+	</div>
+{/if}
+
 <style>
+	/* DEV-154: 업데이트 확인 결과 토스트 (하단 고정). */
+	.upd-toast {
+		position: fixed;
+		left: 50%;
+		bottom: 1.25rem;
+		transform: translateX(-50%);
+		z-index: 60;
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+		max-width: min(90vw, 36rem);
+		padding: 0.55rem 0.9rem;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		box-shadow: 0 6px 20px var(--shadow);
+		color: var(--text);
+		font-size: 0.85rem;
+	}
+	.upd-toast .upd-err {
+		color: var(--danger);
+	}
+	.upd-go {
+		padding: 0.25rem 0.7rem;
+		border-radius: 6px;
+		border: 1px solid var(--btn-primary-border);
+		background: var(--btn-primary-bg);
+		color: var(--btn-primary-text);
+		font-size: 0.8rem;
+		cursor: pointer;
+	}
+	.upd-go:hover {
+		background: var(--btn-primary-bg-hover);
+	}
+	.upd-close {
+		margin-left: auto;
+		padding: 0.1rem 0.4rem;
+		background: transparent;
+		border: none;
+		color: var(--text-muted);
+		cursor: pointer;
+		font-size: 0.85rem;
+	}
+	.upd-close:hover {
+		color: var(--text);
+	}
+
 	.welcome {
-		max-width: 720px;
+		max-width: var(--content-max-width, 720px);
 		margin: 0 auto;
 		padding: 2rem 1.5rem;
-		color: #c9d1d9;
+		color: var(--text);
 	}
 	header h1 {
 		margin: 0;
 		font-size: 2rem;
-		color: #4a90d9;
+		color: var(--accent);
 	}
 	header .sub {
 		margin: 0.25rem 0 1.5rem;
-		color: #8b95a1;
+		color: var(--text-muted);
+	}
+	/* DEV-052 fix: welcome 의 설정 진입 — 우상단 톱니바퀴. */
+	header .title-row {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 1rem;
+	}
+	/* DEV-138: 퀵메뉴 anchor. */
+	.settings-wrap {
+		position: relative;
+	}
+	.settings-link {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 2.25rem;
+		height: 2.25rem;
+		border-radius: 8px;
+		background: transparent;
+		border: none;
+		cursor: pointer;
+		text-decoration: none;
+		color: var(--text-muted);
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		font-size: 1.1rem;
+		transition:
+			background 0.1s,
+			color 0.1s,
+			border-color 0.1s;
+	}
+	.settings-link:hover {
+		color: var(--text);
+		background: var(--bg-subtle);
+		border-color: var(--text-faint);
 	}
 	.recent-list {
 		list-style: none;
@@ -389,30 +545,35 @@
 		flex: 0 0 auto;
 		padding: 0 0.85rem;
 		background: transparent;
-		border: 1px solid #30363d;
+		border: 1px solid var(--border);
 		border-radius: 6px;
-		color: #8b95a1;
+		color: var(--text-muted);
 		font-size: 1.2rem;
 		line-height: 1;
 		cursor: pointer;
-		transition: border-color 0.12s, color 0.12s, background 0.12s;
+		transition:
+			border-color 0.12s,
+			color 0.12s,
+			background 0.12s;
 	}
 	.recent-remove:hover {
-		border-color: #e94f4f;
-		color: #e94f4f;
+		border-color: var(--danger);
+		color: var(--danger);
 		background: rgba(233, 79, 79, 0.08);
 	}
-	.recent-btn { flex: 1 1 auto; }
+	.recent-btn {
+		flex: 1 1 auto;
+	}
 	.missing-label {
-		color: #e9a04f;
+		color: var(--warning);
 		font-size: 0.8rem;
 	}
 	.recent-btn {
 		width: 100%;
 		text-align: left;
 		padding: 0.75rem 1rem;
-		background: #161b22;
-		border: 1px solid #30363d;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
 		border-radius: 6px;
 		color: inherit;
 		font: inherit;
@@ -420,11 +581,13 @@
 		display: grid;
 		grid-template-columns: 1fr;
 		gap: 0.25rem;
-		transition: border-color 0.12s, background 0.12s;
+		transition:
+			border-color 0.12s,
+			background 0.12s;
 	}
 	.recent-list .recent-row:not(.missing) .recent-btn:hover:not(:disabled) {
-		border-color: #58a6ff;
-		background: #1a212a;
+		border-color: var(--accent);
+		background: var(--bg-subtle);
 	}
 	.recent-btn:disabled {
 		opacity: 0.6;
@@ -441,45 +604,48 @@
 		font-size: 1.05rem;
 	}
 	.recent-btn .last {
-		color: #8b95a1;
+		color: var(--text-muted);
 		font-size: 0.85rem;
 		font-family: 'SFMono-Regular', Consolas, monospace;
 	}
 	.recent-btn .path {
-		color: #8b95a1;
+		color: var(--text-muted);
 		font-size: 0.85rem;
 		font-family: 'SFMono-Regular', Consolas, monospace;
 		word-break: break-all;
 	}
 	.recent-btn .opening {
-		color: #58a6ff;
+		color: var(--accent);
 		font-size: 0.8rem;
 	}
 	.clear {
 		margin-top: 1rem;
 		padding: 0.4rem 0.9rem;
 		background: transparent;
-		color: #e94f4f;
-		border: 1px solid #30363d;
+		color: var(--danger);
+		border: 1px solid var(--border);
 		border-radius: 4px;
 		font-size: 0.85rem;
 		cursor: pointer;
 	}
 	.clear:hover {
-		border-color: #e94f4f;
+		border-color: var(--danger);
 	}
-	.loading, .empty, .info, .err {
+	.loading,
+	.empty,
+	.info,
+	.err {
 		padding: 1rem;
-		background: #161b22;
+		background: var(--bg-elevated);
 		border-radius: 6px;
-		color: #8b95a1;
+		color: var(--text-muted);
 	}
 	.err {
-		color: #e94f4f;
+		color: var(--danger);
 		margin-top: 1rem;
 	}
 	code {
-		background: #0d1117;
+		background: var(--bg);
 		padding: 0.1rem 0.4rem;
 		border-radius: 3px;
 		font-family: 'SFMono-Regular', Consolas, monospace;
@@ -488,8 +654,8 @@
 	.hint {
 		margin-top: 2rem;
 		padding-top: 1rem;
-		border-top: 1px solid #30363d;
-		color: #8b95a1;
+		border-top: 1px solid var(--border);
+		color: var(--text-muted);
 		font-size: 0.85rem;
 	}
 
@@ -501,28 +667,33 @@
 		gap: 0.85rem;
 		margin: 0 0 1.25rem;
 		padding: 0.85rem 1rem;
-		background: #161b22;
-		border: 1px solid #30363d;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
 		border-radius: 8px;
 	}
 	.btn-pick {
 		padding: 0.5rem 1rem;
-		background: #1f6feb;
-		border: 1px solid #2f81f7;
+		background: var(--accent-strong);
+		border: 1px solid var(--accent);
 		border-radius: 6px;
-		color: #fff;
+		color: var(--btn-primary-text);
 		font-size: 0.9rem;
 		font-weight: 500;
 		cursor: pointer;
 		transition: background 0.12s;
 		flex: 0 0 auto;
 	}
-	.btn-pick:hover:not(:disabled) { background: #2f81f7; }
-	.btn-pick:disabled { opacity: 0.6; cursor: default; }
+	.btn-pick:hover:not(:disabled) {
+		background: var(--accent);
+	}
+	.btn-pick:disabled {
+		opacity: 0.6;
+		cursor: default;
+	}
 	.picker-hint {
 		flex: 1 1 auto;
-		min-width: 200px;
-		color: #8b95a1;
+		min-width: 12.5rem; /* BUG-064 */
+		color: var(--text-muted);
 		font-size: 0.825rem;
 	}
 	.picker .err {
@@ -536,28 +707,28 @@
 	.uninit {
 		margin-bottom: 1.5rem;
 		padding: 1rem 1.25rem;
-		background: #1a212a;
-		border: 1px solid #58a6ff;
+		background: var(--bg-subtle);
+		border: 1px solid var(--accent);
 		border-radius: 8px;
 	}
 	.uninit h2 {
 		margin: 0 0 0.5rem;
 		font-size: 1.05rem;
-		color: #58a6ff;
+		color: var(--accent);
 	}
 	.uninit-path {
 		margin: 0 0 0.5rem;
 		padding: 0.4rem 0.6rem;
-		background: #0d1117;
+		background: var(--bg);
 		border-radius: 4px;
 		font-family: 'SFMono-Regular', Consolas, monospace;
 		font-size: 0.85rem;
-		color: #c9d1d9;
+		color: var(--text);
 		word-break: break-all;
 	}
 	.uninit-desc {
 		margin: 0 0 0.85rem;
-		color: #c9d1d9;
+		color: var(--text);
 		font-size: 0.875rem;
 	}
 	.uninit-name {
@@ -566,25 +737,25 @@
 		gap: 0.6rem;
 		margin: 0 0 0.85rem;
 		font-size: 0.875rem;
-		color: #c9d1d9;
+		color: var(--text);
 	}
 	.uninit-name > span {
 		flex: 0 0 auto;
-		color: #8b95a1;
+		color: var(--text-muted);
 	}
 	.uninit-name input {
 		flex: 1 1 auto;
 		padding: 0.4rem 0.6rem;
-		background: #0d1117;
-		border: 1px solid #30363d;
+		background: var(--bg);
+		border: 1px solid var(--border);
 		border-radius: 4px;
-		color: #c9d1d9;
+		color: var(--text);
 		font: inherit;
 		font-family: 'SFMono-Regular', Consolas, monospace;
 	}
 	.uninit-name input:focus {
 		outline: none;
-		border-color: #58a6ff;
+		border-color: var(--accent);
 	}
 	.uninit-actions {
 		display: flex;
@@ -594,60 +765,80 @@
 
 	/* --- 커스텀 confirm 모달 --- */
 	.ov {
-		position: fixed; inset: 0;
+		position: fixed;
+		inset: 0;
 		background: rgba(0, 0, 0, 0.6);
 		z-index: 100;
-		display: flex; align-items: center; justify-content: center;
+		display: flex;
+		align-items: center;
+		justify-content: center;
 		padding: 1rem;
 	}
 	.modal {
-		background: #161b22;
-		border: 1px solid #30363d; border-radius: 10px;
-		width: 100%; max-width: 420px;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-radius: 10px;
+		width: 100%;
+		max-width: calc(26.25rem * var(--popup-scale, 1)); /* BUG-064 */
 		padding: 1.2rem 1.4rem;
 		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
-		color: #c9d1d9;
+		color: var(--text);
 	}
 	.modal-title {
 		margin: 0 0 0.5rem;
-		font-size: 1rem; font-weight: 600; color: #e6edf3;
+		font-size: 1rem;
+		font-weight: 600;
+		color: var(--text-strong);
 	}
 	.modal-msg {
 		margin: 0 0 1rem;
-		font-size: 0.875rem; color: #c9d1d9;
+		font-size: 0.875rem;
+		color: var(--text);
 	}
 	.modal-msg strong {
-		color: #e6edf3;
+		color: var(--text-strong);
 	}
 	.modal-path {
 		margin: -0.5rem 0 0.85rem;
 		padding: 0.4rem 0.6rem;
-		background: #0d1117;
+		background: var(--bg);
 		border-radius: 4px;
 		font-family: 'SFMono-Regular', Consolas, monospace;
 		font-size: 0.8rem;
-		color: #8b95a1;
+		color: var(--text-muted);
 		word-break: break-all;
 	}
 	.modal-note {
 		font-size: 0.8rem;
-		color: #8b95a1;
+		color: var(--text-muted);
 	}
 	.modal-actions {
-		display: flex; gap: 0.5rem; justify-content: flex-end;
+		display: flex;
+		gap: 0.5rem;
+		justify-content: flex-end;
 	}
 	.btn-yes {
 		padding: 0.4rem 1.1rem;
 		background: rgba(233, 79, 79, 0.15);
-		border: 1px solid #e94f4f; border-radius: 6px;
-		color: #e94f4f; font-size: 0.875rem; cursor: pointer;
+		border: 1px solid var(--danger);
+		border-radius: 6px;
+		color: var(--danger);
+		font-size: 0.875rem;
+		cursor: pointer;
 	}
-	.btn-yes:hover { background: rgba(233, 79, 79, 0.25); }
+	.btn-yes:hover {
+		background: rgba(233, 79, 79, 0.25);
+	}
 	.btn-no {
 		padding: 0.4rem 1rem;
 		background: transparent;
-		border: 1px solid #30363d; border-radius: 6px;
-		color: #8b949e; font-size: 0.875rem; cursor: pointer;
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		color: var(--text-muted);
+		font-size: 0.875rem;
+		cursor: pointer;
 	}
-	.btn-no:hover { background: #21262d; }
+	.btn-no:hover {
+		background: var(--bg-subtle);
+	}
 </style>

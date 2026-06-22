@@ -43,8 +43,7 @@
 	});
 
 	let filtered = $derived.by(() => {
-		const base =
-			statusFilter === 'all' ? all : all.filter((c) => c.status === statusFilter);
+		const base = statusFilter === 'all' ? all : all.filter((c) => c.status === statusFilter);
 		return sortCampaigns(base, sort);
 	});
 
@@ -108,10 +107,9 @@
 						<span class="title">{c.title}</span>
 						<span class="status status-{c.status}">{c.status}</span>
 						<!-- DEV-079: 종료 기한 지났는데 status != done 이면 period 빨강. -->
-						<span
-							class="period"
-							class:overdue={isDateOverdue(c.ended_at, c.status)}
-						>{fmtPeriod(c)}</span>
+						<span class="period" class:overdue={isDateOverdue(c.ended_at, c.status)}
+							>{fmtPeriod(c)}</span
+						>
 					</a>
 					{#if sort === 'manual'}
 						<div class="reorder">
@@ -126,24 +124,35 @@
 </div>
 
 <style>
-	.page { padding: 1.25rem 1.5rem; max-width: 1100px; margin: 0 auto; }
+	.page {
+		padding: 1.25rem 1.5rem;
+		max-width: var(--content-max-width, 1100px);
+		margin: 0 auto;
+	}
 	.header {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
 		margin-bottom: 1rem;
 	}
-	.header h1 { font-size: 1.25rem; color: #c9d1d9; margin: 0; }
+	.header h1 {
+		font-size: 1.25rem;
+		color: var(--text);
+		margin: 0;
+	}
 	.btn-primary {
 		padding: 0.4rem 0.85rem;
-		background: #238636;
-		border: 1px solid #2ea043;
+		background: var(--btn-primary-bg);
+		border: 1px solid var(--btn-primary-border);
 		border-radius: 6px;
-		color: #fff;
+		color: var(--btn-primary-text);
 		font-size: 0.875rem;
 		cursor: pointer;
 	}
-	.btn-primary:hover { background: #2ea043; }
+	.btn-primary:hover {
+		background: var(--btn-primary-bg-hover);
+		border-color: var(--btn-primary-border-hover);
+	}
 
 	.controls {
 		display: flex;
@@ -152,24 +161,37 @@
 	}
 	.controls label {
 		font-size: 0.825rem;
-		color: #8b949e;
+		color: var(--text-muted);
 		display: flex;
 		align-items: center;
 		gap: 0.4rem;
 	}
 	.controls select {
-		background: #161b22;
-		border: 1px solid #30363d;
-		color: #c9d1d9;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		color: var(--text);
 		border-radius: 4px;
 		padding: 0.25rem 0.5rem;
 		font-size: 0.825rem;
 	}
 
-	.state { color: #6e7681; padding: 1.5rem 0; font-size: 0.875rem; }
-	.state.error { color: #f85149; }
+	.state {
+		color: var(--text-muted);
+		padding: 1.5rem 0;
+		font-size: 0.875rem;
+	}
+	.state.error {
+		color: var(--danger);
+	}
 
-	.list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+	.list {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
 	.row {
 		display: flex;
 		align-items: stretch;
@@ -182,20 +204,26 @@
 		gap: 0.75rem;
 		align-items: center;
 		padding: 0.6rem 0.85rem;
-		background: #161b22;
-		border: 1px solid #21262d;
+		background: var(--bg-elevated);
+		border: 1px solid var(--bg-subtle);
 		border-radius: 6px;
 		text-decoration: none;
 		color: inherit;
 	}
-	.main:hover { border-color: #484f58; background: #1c2128; }
+	.main:hover {
+		border-color: var(--text-faint);
+		background: var(--bg-subtle);
+	}
 
 	.slug {
 		font-size: 0.75rem;
-		color: #8b949e;
+		color: var(--text-muted);
 		font-family: 'JetBrains Mono', ui-monospace, monospace;
 	}
-	.title { color: #c9d1d9; font-size: 0.9rem; }
+	.title {
+		color: var(--text);
+		font-size: 0.9rem;
+	}
 	/* BUG-021: Quest List 의 pill 스타일 통일. */
 	.status {
 		flex-shrink: 0;
@@ -206,20 +234,26 @@
 		text-transform: uppercase;
 	}
 	.status-active {
-		--c: #56d364;
+		--c: var(--success);
 		background: color-mix(in srgb, var(--c) 18%, transparent);
 		color: var(--c);
 		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
 	}
 	.status-done {
-		--c: #8b949e;
+		--c: var(--text-muted);
 		background: color-mix(in srgb, var(--c) 18%, transparent);
 		color: var(--c);
 		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
 	}
-	.period { font-size: 0.75rem; color: #8b949e; }
+	.period {
+		font-size: 0.75rem;
+		color: var(--text-muted);
+	}
 	/* DEV-079: 기한 지남 + status != done — 빨강. */
-	.period.overdue { color: #f85149; font-weight: 600; }
+	.period.overdue {
+		color: var(--danger);
+		font-weight: 600;
+	}
 
 	.reorder {
 		display: flex;
@@ -227,13 +261,15 @@
 		gap: 2px;
 	}
 	.reorder button {
-		background: #21262d;
-		border: 1px solid #30363d;
-		color: #c9d1d9;
+		background: var(--bg-subtle);
+		border: 1px solid var(--border);
+		color: var(--text);
 		border-radius: 4px;
 		width: 1.8rem;
 		font-size: 0.75rem;
 		cursor: pointer;
 	}
-	.reorder button:hover { background: #2a2a4a; }
+	.reorder button:hover {
+		background: var(--bg-subtle);
+	}
 </style>

@@ -24,10 +24,36 @@ pub async fn fetch_detail(store: &Store, slug: &str) -> AppResult<CampaignDetail
     let row = sql::fetch_by_slug(&store.index_pool, slug).await?;
     let checklists = sql::list_checklists(&store.index_pool, row.id).await?;
     let linked_quests = sql::list_linked_quests(&store.index_pool, row.id).await?;
+    // DEV-093: linked_quests 의 status_slug 기반으로 done 카운트 계산.
+    // service 의 list_linked_quests 는 alive only — total = linked_quests.len().
+    let quest_total = linked_quests.len() as i64;
+    // counts_as_done = 1 인 status_id 들 fetch.
+    let done_slugs: Vec<String> = sqlx::query_scalar(
+        "SELECT slug FROM quest_statuses WHERE counts_as_done = 1",
+    )
+    .fetch_all(&store.index_pool)
+    .await
+    .map_err(|e| AppError::Internal(anyhow::anyhow!("done slug fetch: {e}")))?;
+    let done_set: std::collections::HashSet<&str> =
+        done_slugs.iter().map(|s| s.as_str()).collect();
+    let quest_done = linked_quests
+        .iter()
+        .filter(|q| done_set.contains(q.status_slug.as_str()))
+        .count() as i64;
+    let quest_progress = if quest_total > 0 {
+        quest_done as f64 / quest_total as f64
+    } else {
+        0.0
+    };
     Ok(CampaignDetail {
         campaign: row,
         checklists,
         linked_quests,
+        quest_total,
+        quest_done,
+        quest_progress,
+        // DEV-156: 첨부는 Store 가진 호출 계층(GUI 커맨드)에서 채움.
+        attachments: Vec::new(),
     })
 }
 
@@ -66,6 +92,88 @@ pub async fn update_campaign(
     Ok(camp)
 }
 
+/// DEV-087: 배너 이미지 설정 — source 파일을 `.guild/assets/{slug}-banner.{ext}`
+/// 로 복사 + frontmatter / DB 갱신. 기존 배너는 덮어씀 (캠페인당 1장).
+pub async fn set_banner_image(
+    store: &Store,
+    slug: &str,
+    source_path: &std::path::Path,
+) -> AppResult<CampaignRow> {
+    if !source_path.exists() {
+        return Err(AppError::BadRequest(format!(
+            "이미지 파일 없음: {}",
+            source_path.display()
+        )));
+    }
+    let ext = source_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .unwrap_or_default();
+    if !matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp") {
+        return Err(AppError::BadRequest(format!(
+            "지원하지 않는 이미지 확장자: .{ext} (png/jpg/jpeg/gif/webp/bmp)"
+        )));
+    }
+    let _ = journal::append(
+        &store.journal_pool,
+        "set_campaign_banner",
+        &json!({ "slug": slug, "source": source_path.display().to_string() }),
+        None::<&serde_json::Value>,
+    )
+    .await
+    .map_err(AppError::Internal)?;
+
+    let camp = sql::fetch_by_slug(&store.index_pool, slug).await?;
+
+    // 1. assets/ 로 복사. 다른 확장자의 옛 배너가 있다면 제거.
+    std::fs::create_dir_all(store.paths.assets_dir())
+        .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
+    let rel = format!("assets/{slug}-banner.{ext}");
+    let dest = store.paths.dot_guild().join(&rel);
+    if let Some(old_rel) = &camp.image_path
+        && old_rel != &rel
+    {
+        let _ = std::fs::remove_file(store.paths.dot_guild().join(old_rel));
+    }
+    std::fs::copy(source_path, &dest)
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("이미지 복사 실패: {e}")))?;
+
+    // 2. DB + 파일.
+    sqlx::query("UPDATE campaigns SET image_path = ? WHERE id = ?")
+        .bind(&rel)
+        .bind(camp.id)
+        .execute(&store.index_pool)
+        .await?;
+    let camp = sql::fetch_by_slug(&store.index_pool, slug).await?;
+    write_campaign_file(store, &camp, false).await?;
+    Ok(camp)
+}
+
+/// DEV-087: 배너 제거 — assets 파일 삭제 + frontmatter / DB NULL.
+pub async fn clear_banner_image(store: &Store, slug: &str) -> AppResult<CampaignRow> {
+    let _ = journal::append(
+        &store.journal_pool,
+        "clear_campaign_banner",
+        &json!({ "slug": slug }),
+        None::<&serde_json::Value>,
+    )
+    .await
+    .map_err(AppError::Internal)?;
+
+    let camp = sql::fetch_by_slug(&store.index_pool, slug).await?;
+    if let Some(rel) = &camp.image_path {
+        let _ = std::fs::remove_file(store.paths.dot_guild().join(rel));
+    }
+    sqlx::query("UPDATE campaigns SET image_path = NULL WHERE id = ?")
+        .bind(camp.id)
+        .execute(&store.index_pool)
+        .await?;
+    let camp = sql::fetch_by_slug(&store.index_pool, slug).await?;
+    write_campaign_file(store, &camp, false).await?;
+    Ok(camp)
+}
+
 pub async fn delete_campaign(store: &Store, id: i64) -> AppResult<()> {
     let _ = journal::append(
         &store.journal_pool,
@@ -86,6 +194,7 @@ pub async fn delete_campaign(store: &Store, id: i64) -> AppResult<()> {
         cf.frontmatter.deleted = true;
         cf.frontmatter.updated_at = crate::time::now_local_iso8601();
         let _ = cf.write(&path);
+        let _ = crate::file_mtime::touch(store, &path).await; // DEV-178
     }
     Ok(())
 }
@@ -165,6 +274,7 @@ pub async fn add_checklist_line(
     cf.body = new_body;
     cf.frontmatter.updated_at = crate::time::now_local_iso8601();
     cf.write(&path).map_err(AppError::Internal)?;
+    let _ = crate::file_mtime::touch(store, &path).await; // DEV-178
 
     // DB sync — 파일 본문 → DB.
     let items = extract_checklist_items(&cf.body);
@@ -216,6 +326,7 @@ pub async fn set_checklist_checked_by_index(
     cf.body = new_body;
     cf.frontmatter.updated_at = crate::time::now_local_iso8601();
     cf.write(&path).map_err(AppError::Internal)?;
+    let _ = crate::file_mtime::touch(store, &path).await; // DEV-178
 
     let items = extract_checklist_items(&cf.body);
     sql::replace_checklists_from_file(&store.index_pool, campaign_id, &items).await?;
@@ -250,6 +361,7 @@ pub async fn remove_checklist_by_index(
     cf.body = new_body;
     cf.frontmatter.updated_at = crate::time::now_local_iso8601();
     cf.write(&path).map_err(AppError::Internal)?;
+    let _ = crate::file_mtime::touch(store, &path).await; // DEV-178
 
     let items = extract_checklist_items(&cf.body);
     sql::replace_checklists_from_file(&store.index_pool, campaign_id, &items).await?;
@@ -304,6 +416,7 @@ pub(crate) async fn write_campaign_file(
             ended_at: camp.ended_at.clone().unwrap_or_default(),
             linked_quests: linked_slugs,
             display_order: camp.display_order,
+            image: camp.image_path.clone(),
             created_at: camp.created_at.clone(),
             updated_at: camp.updated_at.clone(),
             deleted: false,
@@ -311,6 +424,8 @@ pub(crate) async fn write_campaign_file(
         body,
     };
     cf.write(&path).map_err(AppError::Internal)?;
+    // DEV-178: 외부편집 감지용 mtime 캐시 갱신 (drift / lazy refresh 오탐 방지).
+    let _ = crate::file_mtime::touch(store, &path).await;
     Ok(())
 }
 
@@ -324,6 +439,7 @@ fn new_file_for(camp: &CampaignRow) -> CampaignFile {
             ended_at: camp.ended_at.clone().unwrap_or_default(),
             linked_quests: vec![],
             display_order: camp.display_order,
+            image: camp.image_path.clone(),
             created_at: camp.created_at.clone(),
             updated_at: camp.updated_at.clone(),
             deleted: false,

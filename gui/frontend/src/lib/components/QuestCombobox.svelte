@@ -10,6 +10,8 @@
 <script lang="ts">
 	import type { Quest } from '$lib/types';
 	import { onMount, tick } from 'svelte';
+	// DEV-074 fix16: 검색 결과 list 도 overlay scrollbar.
+	import OverlayScrollbar from './OverlayScrollbar.svelte';
 
 	let {
 		quests,
@@ -26,14 +28,13 @@
 	let query = $state('');
 	let highlightIdx = $state(0);
 	let inputEl: HTMLInputElement | undefined = $state(undefined);
+	let listEl: HTMLUListElement | undefined = $state(undefined);
 
 	const filtered = $derived(() => {
 		const q = query.trim().toLowerCase();
 		if (!q) return quests;
 		return quests.filter(
-			(x) =>
-				x.quest_id.toLowerCase().includes(q) ||
-				x.title.toLowerCase().includes(q)
+			(x) => x.quest_id.toLowerCase().includes(q) || x.title.toLowerCase().includes(q)
 		);
 	});
 
@@ -86,13 +87,9 @@
 	{#if filtered().length === 0}
 		<div class="cb-empty">결과 없음</div>
 	{:else}
-		<ul class="cb-list" role="listbox">
+		<ul class="cb-list" role="listbox" bind:this={listEl}>
 			{#each filtered() as q, i (q.id)}
-				<li
-					role="option"
-					aria-selected={i === highlightIdx}
-					class:on={i === highlightIdx}
-				>
+				<li role="option" aria-selected={i === highlightIdx} class:on={i === highlightIdx}>
 					<button
 						type="button"
 						class="cb-row"
@@ -107,6 +104,9 @@
 				</li>
 			{/each}
 		</ul>
+		{#if listEl}
+			<OverlayScrollbar target={listEl} />
+		{/if}
 	{/if}
 </div>
 
@@ -118,20 +118,22 @@
 	}
 	.cb-input {
 		padding: 0.4rem 0.7rem;
-		background: #0d1117;
-		border: 1px solid #30363d;
+		background: var(--bg);
+		border: 1px solid var(--border);
 		border-radius: 6px;
-		color: #e6edf3;
+		color: var(--text-strong);
 		font-size: 0.875rem;
 		outline: none;
 	}
-	.cb-input:focus { border-color: #58a6ff; }
+	.cb-input:focus {
+		border-color: var(--accent);
+	}
 
 	.cb-empty {
 		padding: 0.6rem 0.8rem;
-		color: #484f58;
+		color: var(--text-faint);
 		font-size: 0.8rem;
-		border: 1px dashed #21262d;
+		border: 1px dashed var(--bg-subtle);
 		border-radius: 6px;
 		text-align: center;
 	}
@@ -142,13 +144,24 @@
 		padding: 0;
 		max-height: 220px;
 		overflow-y: auto;
-		border: 1px solid #21262d;
+		/* DEV-074 fix16: native scrollbar 숨김 — OverlayScrollbar 가 대신 그림. */
+		scrollbar-width: none;
+		border: 1px solid var(--bg-subtle);
 		border-radius: 6px;
-		background: #0d1117;
+		background: var(--bg);
 	}
-	.cb-list li { border-bottom: 1px solid #161b22; }
-	.cb-list li:last-child { border-bottom: none; }
-	.cb-list li.on { background: #161b22; }
+	.cb-list::-webkit-scrollbar {
+		display: none;
+	}
+	.cb-list li {
+		border-bottom: 1px solid var(--bg-elevated);
+	}
+	.cb-list li:last-child {
+		border-bottom: none;
+	}
+	.cb-list li.on {
+		background: var(--bg-elevated);
+	}
 	.cb-row {
 		display: flex;
 		align-items: center;
@@ -163,7 +176,10 @@
 		text-align: left;
 		font: inherit;
 	}
-	.cb-row:focus { outline: 1px solid #58a6ff; outline-offset: -1px; }
+	.cb-row:focus {
+		outline: 1px solid var(--accent);
+		outline-offset: -1px;
+	}
 
 	.badge {
 		flex-shrink: 0;
@@ -177,7 +193,7 @@
 	}
 	.title {
 		flex: 1;
-		color: #c9d1d9;
+		color: var(--text);
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;

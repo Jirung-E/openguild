@@ -1,7 +1,9 @@
 pub mod admin;
 pub mod campaigns;
+pub mod comments;
 pub mod meta;
 pub mod quests;
+pub mod rules;
 
 use axum::{
     routing::{delete, get, patch, post, put},
@@ -15,6 +17,83 @@ pub fn create_router(store: Store) -> Router {
         // meta
         .route("/api/quest-types", get(meta::list_quest_types))
         .route("/api/quest-statuses", get(meta::list_quest_statuses))
+        // DEV-068: tag defs — `.guild/tags/{slug}.toml` 진리원.
+        .route(
+            "/api/tag-defs",
+            get(meta::list_tag_defs).post(meta::upsert_tag_def),
+        )
+        .route("/api/tag-defs/{slug}", delete(meta::delete_tag_def))
+        // DEV-016 (multi-file): 길드 규칙 — `.guild/rules/{slug}.md`.
+        // 단일 (legacy) endpoint 도 backward compat 으로 다른 경로에 유지.
+        .route(
+            "/api/rules",
+            get(rules::list_rules).post(rules::create_rule),
+        )
+        .route(
+            "/api/rules/{slug}",
+            get(rules::get_rule)
+                .put(rules::set_rule)
+                .patch(rules::rename_rule)
+                .delete(rules::delete_rule),
+        )
+        // DEV-016 legacy 단일 파일 — 기존 호출자 호환.
+        .route(
+            "/api/rules-single",
+            get(rules::get_rules).put(rules::set_rules),
+        )
+        // DEV-012 / DEV-094: Quest 댓글 (entry 단위, tracked) + 메모 (단일, gitignored).
+        // GET = entries 목록, POST = 새 entry 추가.
+        .route(
+            "/api/quests/by/{slug}/comments",
+            get(comments::list_comments).post(comments::add_comment),
+        )
+        .route(
+            "/api/quests/by/{slug}/comments/{id}",
+            patch(comments::update_comment).delete(comments::delete_comment),
+        )
+        // DEV-108: 이모지 반응 토글.
+        .route(
+            "/api/quests/by/{slug}/comments/{id}/reactions",
+            post(comments::toggle_reaction),
+        )
+        // DEV-142: 토론 플래그 / resolve 토글.
+        .route(
+            "/api/quests/by/{slug}/comments/{id}/discussion",
+            post(comments::toggle_discussion),
+        )
+        .route(
+            "/api/quests/by/{slug}/comments/{id}/resolved",
+            post(comments::toggle_resolved),
+        )
+        .route(
+            "/api/quests/by/{slug}/memo",
+            get(comments::get_memo).put(comments::set_memo),
+        )
+        // DEV-100: Campaign 댓글 / 메모 — 응답 형식은 quest 와 동일,
+        // 경로는 기존 campaign 라우트 패턴 (`/api/campaigns/{slug}/...`) 따름.
+        .route(
+            "/api/campaigns/{slug}/comments",
+            get(comments::camp_list_comments).post(comments::camp_add_comment),
+        )
+        .route(
+            "/api/campaigns/{slug}/comments/{id}",
+            patch(comments::camp_update_comment).delete(comments::camp_delete_comment),
+        )
+        .route(
+            "/api/campaigns/{slug}/comments/{id}/reactions",
+            post(comments::camp_toggle_reaction),
+        )
+        .route(
+            "/api/campaigns/{slug}/memo",
+            get(comments::camp_get_memo).put(comments::camp_set_memo),
+        )
+        // DEV-087: 배너 이미지 bytes (브라우저 모드 표시).
+        .route(
+            "/api/campaigns/{slug}/image",
+            get(campaigns::get_banner_image),
+        )
+        // DEV-069: 본문 첨부 / 자산 — attachments/ + assets/ 한정 서빙.
+        .route("/api/guild-files/{*rel}", get(admin::get_guild_file))
         // quests
         .route("/api/quests", get(quests::list_quests).post(quests::create_quest))
         .route(
@@ -27,6 +106,8 @@ pub fn create_router(store: Store) -> Router {
         .route("/api/quests/{id}/parent", patch(quests::change_parent))
         // DEV-076: 희망 / 필수 기한 설정 / 해제.
         .route("/api/quests/{id}/due", patch(quests::set_due_dates))
+        // DEV-068: 태그 전체 교체. body: { "tags": [...] }
+        .route("/api/quests/{id}/tags", patch(quests::set_tags))
         .route("/api/quests/{id}/restore", patch(quests::restore_quest))
         .route("/api/quests/{id}/candidates", get(quests::list_candidates))
         .route("/api/quests/{id}/prerequisites", post(quests::add_prerequisite))
@@ -71,9 +152,13 @@ pub fn create_router(store: Store) -> Router {
         // admin
         .route("/api/admin/snapshot", post(admin::create_snapshot))
         .route("/api/admin/snapshots", get(admin::list_snapshots))
+        .route("/api/admin/snapshots/{ts}", delete(admin::delete_snapshot))
         .route("/api/admin/restore", post(admin::restore))
         .route("/api/admin/drift", get(admin::check_drift))
         .route("/api/admin/reindex", post(admin::run_reindex))
+        // DEV-162: 런타임 정비 — vacuum / journal tail.
+        .route("/api/admin/vacuum", post(admin::vacuum))
+        .route("/api/admin/journal", get(admin::journal_tail))
         .with_state(store)
 }
 

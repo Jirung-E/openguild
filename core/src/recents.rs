@@ -134,7 +134,8 @@ pub fn normalize_abs(path: &Path) -> String {
 }
 
 /// 길드 디렉토리에서 이름 추측 — `*.guild` 파일이 있으면 그 stem, 아니면 디렉토리명.
-fn guess_name(dir: &Path) -> String {
+/// DEV-141: GUI Nav 의 현재 길드 이름 표시도 이 함수를 재사용 (recents 와 동일 규칙).
+pub fn guess_name(dir: &Path) -> String {
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.flatten() {
             let p = entry.path();
@@ -195,16 +196,29 @@ mod tests {
             .as_nanos();
         let dir = std::env::temp_dir().join(format!("og-recents-{label}-{ns}"));
         std::fs::create_dir_all(&dir).unwrap();
-        // 각 test 가 자기 env 사용. 동시 실행 안전 위해 unique dir.
-        // 단, env::set_var 가 process-global 이라 #[serial] 필요할 수도.
-        // 본 테스트들은 OPENGUILD_RECENTS_DIR 을 항상 다른 값으로 설정 후 함수 호출
-        // 즉시 결과 검사 — 순차 실행이면 안전. cargo 기본 병렬에서도 fn 별 env 격리는 안 됨
-        // 그래서 cargo test recents -- --test-threads=1 권장. 단 일부 함수에서 함께 검증.
+        // 각 test 가 자기 dir 사용 (unique ns prefix). 단 env::set_var 는
+        // process-global 이라 with_env 의 static Mutex 가 직렬화 — BUG-048.
         dir
     }
 
+    /// BUG-048: 모든 recents 테스트가 같은 process-global env
+    /// (`OPENGUILD_RECENTS_DIR`) 를 set/remove 하므로 병렬 실행 시 race.
+    /// 한 테스트가 unset 한 순간 다른 테스트의 `add()` 가 호출되면 진짜
+    /// `%LOCALAPPDATA%\openguild\openguild\data\recents.json` 를 건드려
+    /// 사용자 머신을 오염시키고 본 테스트 결과도 비결정.
+    /// → process 안의 static Mutex 로 직렬화. 단일 스레드 효과.
+    fn env_lock() -> &'static std::sync::Mutex<()> {
+        static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+        LOCK.get_or_init(|| std::sync::Mutex::new(()))
+    }
+
     fn with_env<F: FnOnce()>(dir: &Path, f: F) {
-        // SAFETY: 단일 스레드 가정 (--test-threads=1) — 또는 동시 호출 시 결과 비결정.
+        // BUG-048: env 변수 critical section. 다른 테스트가 unset 한 순간
+        // 본 add() 가 default ProjectDirs 경로 (= 실제 사용자 recents) 를 쓰지
+        // 않도록 보호. 한 테스트가 panic 해도 다른 테스트 안 깨지게 PoisonError
+        // 도 흡수 (Mutex 의 데이터는 ()  — 의미 없음).
+        let _guard = env_lock().lock().unwrap_or_else(|e| e.into_inner());
+        // SAFETY: 위 lock 이 단일 스레드 실행 보장.
         unsafe {
             std::env::set_var("OPENGUILD_RECENTS_DIR", dir);
         }

@@ -77,17 +77,107 @@ enum Command {
         #[command(subcommand)]
         sub: CampaignCmd,
     },
+    // BUG-016: doc comment 의 quest id 가 clap help 로 leak — 외부 사용자에게
+    // internal quest 번호 노출 금지. 기능 설명만 plain `///` 으로.
+    /// 길드 규칙 — `.guild/rules/{slug}.md` 다중 파일 CRUD.
+    Rules {
+        #[command(subcommand)]
+        sub: RulesCmd,
+    },
+    /// 퀘스트 템플릿 — `.guild/templates/{name}.md`. `quest new --template` 으로 사용.
+    Template {
+        #[command(subcommand)]
+        sub: TemplateCmd,
+    },
     /// 서버 상태 확인 (health)
     Ping,
-    /// 백업 (snapshot) 즉시 생성
-    Backup,
-    /// 사용 가능한 백업 목록
-    Backups,
-    /// 백업으로 복원
+    /// 백업(스냅샷) — 생성 / 목록 / 삭제
+    Backup {
+        #[command(subcommand)]
+        sub: BackupCmd,
+    },
+    /// 백업(스냅샷)으로 복원. (추후 journal replay 로 시점 복원 연계 예정.)
     Restore {
         /// 특정 timestamp (`YYYYMMDD-HHMMSS`). 미지정 시 최신 사용.
         #[arg(long)]
         to: Option<String>,
+    },
+    /// 파일 → index.db 캐시 재구축 (외부 편집 / git pull / restore 후 정합). `index rebuild` 와 동일.
+    Reindex,
+    /// 무결성 점검 — drift / counters.
+    Check {
+        #[command(subcommand)]
+        sub: CheckCmd,
+    },
+    /// index.db 캐시 — rebuild / vacuum.
+    Index {
+        #[command(subcommand)]
+        sub: IndexCmd,
+    },
+    /// journal(AOF) — tail. (시점 복원 replay 는 `restore` 에서 처리 예정.)
+    Journal {
+        #[command(subcommand)]
+        sub: JournalCmd,
+    },
+    /// legacy guild.db → .guild/quests/*.md 파일 진리원 구조로 일회성 이전.
+    MigrateToFiles,
+    /// 길드 메타 / index.db / snapshot / journal 요약 (진단).
+    Info {
+        /// 1 줄 요약만 (script / status bar 친화).
+        #[arg(long)]
+        brief: bool,
+    },
+}
+
+/// DEV-177: 무결성 점검 그룹.
+#[derive(Subcommand)]
+enum CheckCmd {
+    /// 외부 편집 / 손상으로 index.db 가 파일과 어긋났는지 검사 (+ 자동 resync).
+    Drift {
+        /// 발견된 drift 를 자동으로 reindex 로 해소 (기본: 보고만).
+        #[arg(long)]
+        resync: bool,
+    },
+    /// type 의 last_number 가 실제 max quest 번호와 일치하는지 검사 (+ 자동 보정).
+    Counters {
+        /// 발견된 불일치를 파일 + SQL 에 직접 보정 (기본: 보고만).
+        #[arg(long)]
+        fix: bool,
+    },
+}
+
+/// DEV-177: index.db 캐시 그룹.
+#[derive(Subcommand)]
+enum IndexCmd {
+    /// 파일 → index.db 캐시 재구축 (top-level `reindex` 와 동일).
+    Rebuild,
+    /// SQLite VACUUM — index.db 의 dead row 제거 + 파일 크기 정리.
+    Vacuum,
+}
+
+/// DEV-177: journal(AOF) 그룹. (replay 는 restore 에서 — DEV-022)
+#[derive(Subcommand)]
+enum JournalCmd {
+    /// journal.db 의 최근 N 개 op 출력 (debug / audit 용).
+    Tail {
+        /// 출력할 row 수 (기본 50).
+        #[arg(short = 'n', long, default_value_t = 50)]
+        count: i64,
+    },
+}
+
+/// DEV-176: 백업(스냅샷) 서브커맨드 — 다른 명사 그룹(quest/campaign…)과 통일.
+#[derive(Subcommand)]
+enum BackupCmd {
+    /// 백업(스냅샷) 즉시 생성 (quest/campaign 의 `new` 와 통일).
+    New,
+    /// 사용 가능한 백업 목록 (오래된 순)
+    List,
+    /// 특정 백업 삭제
+    #[command(name = "remove")]
+    Rm {
+        /// 삭제할 timestamp (`YYYYMMDD-HHMMSS`). `backup list` 로 확인.
+        timestamp: String,
     },
 }
 
@@ -166,6 +256,11 @@ enum QuestCmd {
         /// 매칭 개수만 정수로 출력. `--id-only` 와 상호배타.
         #[arg(long)]
         count: bool,
+        // BUG-016: doc 에 quest_id prefix 누출 금지.
+        /// tree 모드 — root quest 부터 들여쓰기로 자식 표시. 기본 flat.
+        /// `--id-only` / `--count` / `--json` 과 함께 쓰면 무시 (구조화 출력 우선).
+        #[arg(long)]
+        tree: bool,
     },
     /// 퀘스트 검색 — title / description / slug 부분 일치 (공백 split AND).
     /// 사실상 `list --search` 의 별칭이지만 발견성을 위해 단독 명령으로 노출.
@@ -200,19 +295,23 @@ enum QuestCmd {
     History { slug: String },
     /// 새 퀘스트 생성
     New {
-        /// 타입 prefix (DEV / BUG / REQ ...)
+        /// 타입 prefix (DEV / BUG / REQ ...). --template 의 type 으로 대체 가능.
         #[arg(long = "type", value_name = "PREFIX")]
-        type_prefix: String,
+        type_prefix: Option<String>,
+        /// 제목. --template 의 title 로 대체 가능.
         #[arg(long)]
-        title: String,
+        title: Option<String>,
         #[arg(long)]
         description: Option<String>,
-        /// 1=Critical 2=High 3=Medium 4=Low (기본 3)
-        #[arg(long, default_value_t = 3)]
-        urgency: i64,
+        /// 1=Critical 2=High 3=Medium 4=Low (기본 3, 템플릿이 있으면 그 값)
+        #[arg(long)]
+        urgency: Option<i64>,
         /// 부모 퀘스트 슬러그 (서브퀘스트로 생성)
         #[arg(long)]
         parent: Option<String>,
+        /// 템플릿 이름 (`.guild/templates/{name}.md`). 명시 옵션이 템플릿보다 우선.
+        #[arg(long)]
+        template: Option<String>,
     },
     /// 수정 (제공된 필드만)
     Update {
@@ -294,6 +393,168 @@ enum QuestCmd {
         #[arg(long = "clear-required")]
         clear_required: bool,
     },
+    // BUG-016: quest_id leak 방지 — about 에는 기능 설명만.
+    /// 댓글 (entry 단위, 공개) — list / show / add / edit / remove.
+    /// 진리원: `.guild/quests/{slug}.comments.md` (git tracked).
+    Comment {
+        #[command(subcommand)]
+        sub: CommentCmd,
+    },
+    /// 첨부 (본문과 별개 섹션) — list / add / remove.
+    /// 진리원: `.guild/quests/{slug}.attachments.json` + `.guild/attachments/`.
+    Attach {
+        #[command(subcommand)]
+        sub: AttachCmd,
+    },
+    /// 메모 (단일 텍스트, 비공개) — show / set / clear.
+    /// 진리원: `.guild/quests/{slug}.memo.md` (gitignored).
+    Memo {
+        #[command(subcommand)]
+        sub: MemoCmd,
+    },
+    // BUG-016: doc 에 quest_id prefix 누출 X.
+    /// 태그 — list / add / remove / set. frontmatter 가 진리원.
+    Tag {
+        #[command(subcommand)]
+        sub: TagCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum TagCmd {
+    /// 현재 quest 의 tag 목록 (공백 구분 1줄).
+    List { slug: String },
+    /// tag 1개 또는 여러 개 추가 (기존과 합쳐 dedupe).
+    Add {
+        slug: String,
+        /// 추가할 tag 들. 공백 구분 또는 여러 인자.
+        #[arg(required = true, num_args = 1..)]
+        tags: Vec<String>,
+    },
+    /// tag 1개 또는 여러 개 제거 (없는 건 무시).
+    #[command(name = "remove")]
+    Rm {
+        slug: String,
+        /// 제거할 tag 들.
+        #[arg(required = true, num_args = 1..)]
+        tags: Vec<String>,
+    },
+    /// tag 전체 교체 (기존 모두 삭제 후 인자만). 인자 0 개 = 전체 삭제.
+    Set {
+        slug: String,
+        /// 새 tag 들 (공백 구분 또는 여러 인자).
+        tags: Vec<String>,
+    },
+}
+
+/// DEV-060: 퀘스트 템플릿.
+#[derive(Subcommand)]
+enum TemplateCmd {
+    /// 템플릿 목록 (이름 / 기본값 요약).
+    List,
+    /// 템플릿 본문 출력.
+    Show { name: String },
+    /// 템플릿 생성/갱신 — `.guild/templates/{name}.md`. 본문은 --file / stdin.
+    /// (독립 엔티티라 quest/campaign 처럼 `new`.)
+    New {
+        /// 템플릿 이름 (파일명 stem).
+        name: String,
+        /// 기본 type prefix (DEV / BUG ...).
+        #[arg(long = "type")]
+        type_prefix: Option<String>,
+        /// 새 quest 의 기본 제목.
+        #[arg(long)]
+        title: Option<String>,
+        /// 기본 urgency (1=Critical .. 4=Low).
+        #[arg(long)]
+        urgency: Option<i64>,
+        /// 기본 tags — 반복 또는 콤마 구분.
+        #[arg(long, value_delimiter = ',')]
+        tags: Vec<String>,
+        /// 본문 파일. 미지정 시 stdin (파이프 없으면 빈 본문).
+        #[arg(long)]
+        file: Option<std::path::PathBuf>,
+        /// 이미 있으면 덮어쓰기 허용.
+        #[arg(long)]
+        force: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum CommentCmd {
+    /// entry 목록 (id / ts / author / body 요약 1줄). 필터 옵션은 모두 AND 결합.
+    List {
+        slug: String,
+        /// 작성자 일치 (대소문자 무시 정확 일치).
+        #[arg(long)]
+        author: Option<String>,
+        /// 이 시각 이후 작성분만 — ISO date (`2026-06-01`) 또는 datetime.
+        #[arg(long)]
+        since: Option<String>,
+        /// top-level 댓글만 (답글 제외).
+        #[arg(long = "top-only", conflicts_with = "reply_to")]
+        top_only: bool,
+        /// 특정 entry 의 답글만.
+        #[arg(long = "reply-to")]
+        reply_to: Option<u64>,
+        /// body 부분 일치 (대소문자 무시).
+        #[arg(long)]
+        grep: Option<String>,
+    },
+    /// entry 본문 전체 또는 단일.
+    Show {
+        slug: String,
+        /// 특정 entry id 만 출력. 미지정 시 모든 entry.
+        #[arg(long)]
+        id: Option<u64>,
+    },
+    /// 새 댓글 entry 추가. 본문은 `--file PATH` 또는 stdin.
+    Add {
+        slug: String,
+        /// 작성자 (자유 문자열, 빈 값 허용).
+        #[arg(long)]
+        author: Option<String>,
+        /// 답글인 경우 부모 entry id.
+        #[arg(long = "parent-id")]
+        parent_id: Option<u64>,
+        /// 본문 파일. 미지정 시 stdin.
+        #[arg(long)]
+        file: Option<std::path::PathBuf>,
+    },
+    /// 기존 entry 의 body 교체. ts / author 보존.
+    Edit {
+        slug: String,
+        id: u64,
+        #[arg(long)]
+        file: Option<std::path::PathBuf>,
+    },
+    /// entry 삭제. `--force` 없으면 prompt.
+    #[command(name = "remove")]
+    Rm {
+        slug: String,
+        id: u64,
+        #[arg(long)]
+        force: bool,
+    },
+    /// 토론(discussion) 플래그 토글 (quest 전용). 미해결 토론이 있으면 그 quest 의
+    /// 완료 전환이 차단됨. discussion 을 끄면 resolved 도 해제.
+    Discussion { slug: String, id: u64 },
+    /// discussion 댓글의 resolved 토글 (quest 전용).
+    Resolved { slug: String, id: u64 },
+}
+
+#[derive(Subcommand)]
+enum MemoCmd {
+    /// 메모 본문 stdout. 파일 없으면 "(메모 없음)".
+    Show { slug: String },
+    /// 메모 본문 교체. 본문은 `--file PATH` 또는 stdin.
+    Set {
+        slug: String,
+        #[arg(long)]
+        file: Option<std::path::PathBuf>,
+    },
+    /// 메모 본문 비움 (빈 문자열로 교체 — 파일은 남음).
+    Clear { slug: String },
 }
 
 #[derive(Subcommand)]
@@ -301,6 +562,7 @@ enum PrereqCmd {
     /// 선행 퀘스트 추가
     Add { slug: String, prereq: String },
     /// 선행 퀘스트 제거
+    #[command(name = "remove")]
     Rm { slug: String, prereq: String },
 }
 
@@ -380,10 +642,76 @@ enum StatusesCmd {
     Delete { slug: String },
 }
 
+/// `--file PATH` 또는 stdin 에서 본문 읽기 — Rules / 향후 description set 등 공용.
+fn read_content(path: Option<&std::path::Path>) -> Result<String> {
+    if let Some(p) = path {
+        std::fs::read_to_string(p)
+            .with_context(|| format!("파일 읽기 실패: {}", p.display()))
+    } else {
+        use std::io::Read;
+        let mut s = String::new();
+        std::io::stdin().read_to_string(&mut s)?;
+        Ok(s)
+    }
+}
+
+// ─────────────────────────── Rules 서브명령 (DEV-016 multi-file) ───────────────────────────
+
+#[derive(Subcommand)]
+enum RulesCmd {
+    /// 모든 규칙 slug 목록 (legacy `.guild/rules.md` 가 있으면 자동 마이그레이션).
+    List,
+    /// 한 규칙의 본문 출력 (stdout). slug 없으면 NotFound.
+    Show { slug: String },
+    /// 한 규칙 본문 교체 (멱등). 파일이 없으면 만들고 / 있으면 덮어씀.
+    /// 본문은 `--file <PATH>` 또는 stdin (인자 없을 때).
+    Set {
+        slug: String,
+        /// 본문이 들어있는 파일. 미지정 시 stdin.
+        #[arg(long)]
+        file: Option<std::path::PathBuf>,
+    },
+    /// 신규 규칙 생성 — 같은 slug 이미 있으면 에러. 본문은 `--file` / stdin.
+    /// `--empty` 시 본문 없이 빈 규칙 생성.
+    Create {
+        slug: String,
+        #[arg(long)]
+        file: Option<std::path::PathBuf>,
+        #[arg(long)]
+        empty: bool,
+    },
+    /// 규칙 삭제. `--force` 없으면 prompt.
+    Delete {
+        slug: String,
+        #[arg(long)]
+        force: bool,
+    },
+    /// 규칙 slug 변경.
+    Rename {
+        slug: String,
+        new_slug: String,
+    },
+}
+
 // ─────────────────────────── Campaign 서브명령 (DEV-011) ───────────────────────────
 
 #[derive(Subcommand)]
 enum CampaignCmd {
+    /// 캠페인 공개 댓글 — quest comment 와 동일 형식 / 필터.
+    Comment {
+        #[command(subcommand)]
+        sub: CommentCmd,
+    },
+    /// 캠페인 첨부 — quest attach 와 동일 (list / add / remove).
+    Attach {
+        #[command(subcommand)]
+        sub: AttachCmd,
+    },
+    /// 캠페인 비공개 메모 — quest memo 와 동일.
+    Memo {
+        #[command(subcommand)]
+        sub: MemoCmd,
+    },
     /// 새 캠페인 생성 (자동 C-NNN slug)
     New {
         #[arg(long)]
@@ -448,6 +776,7 @@ enum CampaignChecklistCmd {
         index: usize,
     },
     /// N번째 (1-based) 항목 삭제
+    #[command(name = "remove")]
     Rm {
         campaign_slug: String,
         index: usize,
@@ -669,6 +998,10 @@ impl HttpClient {
         self.get("/api/admin/snapshots")
     }
 
+    fn delete_snapshot(&self, timestamp: &str) -> Result<()> {
+        self.delete_no_body(&format!("/api/admin/snapshots/{timestamp}"))
+    }
+
     fn restore_snapshot(
         &self,
         to: Option<String>,
@@ -782,6 +1115,15 @@ impl HttpClient {
 
 // ─────────────────────────── Backend (Http / Local) ───────────────────────────
 
+/// DEV-164: `info` 결과 묶음 — 길드 메타 + index.db 요약 + snapshot/journal.
+struct CliInfo {
+    path: std::path::PathBuf,
+    guild: openguild_core::guild_file::GuildFile,
+    summary: openguild_core::maintenance::IndexSummary,
+    snapshots: Vec<openguild_core::snapshot::SnapshotInfo>,
+    journal_total: i64,
+}
+
 /// 백엔드 추상화. 같은 메서드 시그니처로 HTTP / Local 양쪽 지원.
 ///
 /// - Http: 기존 reqwest blocking 클라이언트 위임
@@ -834,10 +1176,14 @@ impl Backend {
             .context("failed to start tokio runtime")?;
         let store = rt.block_on(openguild_core::Store::open(&guild_path))?;
 
-        // Recent guild 자동 등록 — 실패해도 ops 자체엔 영향 없음 (warn 만).
-        if let Err(e) = openguild_core::recents::add(&guild_path) {
-            eprintln!("[openguild] warn: recents 갱신 실패 — {e:#}");
-        }
+        // DEV-117: 여기서 `recents::add` 를 호출하지 않는다.
+        //
+        // 과거엔 매 CLI 호출 (e.g. `openguild quest comment add ...`) 마다
+        // recents 가 갱신되어 사용자가 다른 길드에서 GUI 작업 중이어도
+        // CLI 활동을 한 길드가 Welcome 의 '최근 연 길드' 최상단으로 올라가
+        // 사용자에게 "왜 내가 안 연 길드가 최상단에 있나" 라는 혼란을 줬다.
+        // recents 의 의미는 'GUI 로 사용자가 직접 연 길드' — CLI 활동은 X.
+        // GUI 의 `recents::add` 호출 (gui/src/lib.rs) 만 유지.
 
         Ok(Backend::Local(LocalBackend {
             store,
@@ -849,6 +1195,23 @@ impl Backend {
     /// AppError → anyhow::Error 변환.
     fn map_err<T>(r: openguild_core::AppResult<T>) -> Result<T> {
         r.map_err(|e| anyhow!("{}", e))
+    }
+
+    /// Local 모드에서 비정상 quest 파일 (파싱 실패 / 정의되지 않은 status) 을
+    /// stderr 로 경고. 그런 파일은 reindex·동기화에서 조용히 skip 되므로 GUI
+    /// 시동 알림과 동일 취지로 사용자에게 알린다. Http 모드 / 조회 실패는 noop.
+    fn warn_problem_files(&self) {
+        if let Backend::Local(l) = self {
+            let problems =
+                l.rt.block_on(openguild_core::health::list_problem_quest_files(&l.store));
+            if !problems.is_empty() {
+                eprintln!("⚠ 비정상 파일 {} 개 감지 (캐시에서 제외됨):", problems.len());
+                for (path, why) in &problems {
+                    eprintln!("    - {path}: {why}");
+                }
+                eprintln!("  파일을 고치거나 status 를 정의한 뒤 `openguild reindex` 하세요.");
+            }
+        }
     }
 
     // ── 도메인 메서드 ──────────────────────────────────────
@@ -1107,6 +1470,7 @@ impl Backend {
             Backend::Local(l) => Self::map_err(l.rt.block_on(
                 openguild_core::ops::update_status(
                     &l.store, slug, new_slug, name_en, name_ko, color, sort_order,
+                    None, // DEV-093: CLI 는 본 패치에서 counts_as_done 미노출.
                 ),
             )),
         }
@@ -1305,6 +1669,434 @@ impl Backend {
 
     // ── 백업 / 복원 ──────────────────────────────────────
 
+    // ── DEV-016 (multi-file): 길드 규칙 — local 전용 (HTTP 미지원 우선) ──
+
+    fn rules_list(&self) -> Result<Vec<openguild_core::repo::rules::RuleEntry>> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => Self::map_err(Ok::<_, openguild_core::error::AppError>(
+                openguild_core::ops::rules::list_rules(&l.store)?,
+            )),
+        }
+    }
+
+    fn rules_get(&self, slug: &str) -> Result<Option<String>> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => Self::map_err(Ok::<_, openguild_core::error::AppError>(
+                openguild_core::ops::rules::get_rule(&l.store, slug)?,
+            )),
+        }
+    }
+
+    fn rules_set(&self, slug: &str, content: String) -> Result<()> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::rules::set_rule(&l.store, slug, content),
+            )),
+        }
+    }
+
+    fn rules_create(&self, slug: &str, content: String) -> Result<()> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::rules::create_rule(&l.store, slug, content),
+            )),
+        }
+    }
+
+    fn rules_delete(&self, slug: &str) -> Result<()> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::rules::delete_rule(&l.store, slug),
+            )),
+        }
+    }
+
+    fn rules_rename(&self, old_slug: &str, new_slug: &str) -> Result<()> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::rules::rename_rule(&l.store, old_slug, new_slug),
+            )),
+        }
+    }
+
+    // ── DEV-060: 템플릿 — local 전용 (HTTP 미지원 우선) ──
+
+    fn templates_list(&self) -> Result<Vec<openguild_core::repo::TemplateFile>> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => {
+                openguild_core::repo::list_templates(&l.store.paths)
+            }
+        }
+    }
+
+    fn template_load(&self, name: &str) -> Result<openguild_core::repo::TemplateFile> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => {
+                let path = l.store.paths.template_path(name);
+                if !path.exists() {
+                    let available: Vec<String> =
+                        openguild_core::repo::list_templates(&l.store.paths)
+                            .unwrap_or_default()
+                            .into_iter()
+                            .map(|t| t.name)
+                            .collect();
+                    return Err(anyhow!(
+                        "템플릿 '{name}' 없음 ({}). 사용 가능: {}",
+                        path.display(),
+                        if available.is_empty() {
+                            "(없음 — .guild/templates/ 에 {name}.md 작성)".to_string()
+                        } else {
+                            available.join(", ")
+                        }
+                    ));
+                }
+                openguild_core::repo::TemplateFile::read(&path)
+            }
+        }
+    }
+
+    /// DEV-158: 템플릿 저장. 반환: 쓰여진 경로.
+    fn template_save(
+        &self,
+        tpl: &openguild_core::repo::TemplateFile,
+        force: bool,
+    ) -> Result<std::path::PathBuf> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => {
+                openguild_core::repo::save_template(&l.store.paths, tpl, force)
+            }
+        }
+    }
+
+
+    // ── DEV-170: 첨부 (quest / campaign 공용) — Local 전용 ──
+
+    fn attachments_list(
+        &self,
+        scope: CommentScope,
+        slug: &str,
+    ) -> Result<Vec<openguild_core::models::quest::QuestAttachment>> {
+        match self {
+            Backend::Http(_) => Err(anyhow!("원격 모드에선 미지원 — 로컬에서 실행")),
+            Backend::Local(l) => Ok(match scope {
+                CommentScope::Quest => {
+                    openguild_core::ops::attachments::list_quest_attachments(&l.store, slug)
+                }
+                CommentScope::Campaign => {
+                    openguild_core::ops::attachments::list_campaign_attachments(&l.store, slug)
+                }
+            }),
+        }
+    }
+
+    fn attachments_add(
+        &self,
+        scope: CommentScope,
+        slug: &str,
+        file: &std::path::Path,
+        name: Option<String>,
+    ) -> Result<Vec<openguild_core::models::quest::QuestAttachment>> {
+        match self {
+            Backend::Http(_) => Err(anyhow!("원격 모드에선 미지원 — 로컬에서 실행")),
+            Backend::Local(l) => {
+                let bytes = std::fs::read(file)
+                    .with_context(|| format!("파일 읽기 실패: {}", file.display()))?;
+                let ext = file
+                    .extension()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("bin");
+                let display = name.unwrap_or_else(|| {
+                    file.file_name()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("attachment")
+                        .to_string()
+                });
+                l.rt
+                    .block_on(async {
+                        let rel = openguild_core::ops::attachments::save_attachment(
+                            &l.store, &bytes, ext,
+                        )
+                        .await?;
+                        match scope {
+                            CommentScope::Quest => {
+                                openguild_core::ops::attachments::add_quest_attachment(
+                                    &l.store, slug, &rel, &display,
+                                )
+                                .await
+                            }
+                            CommentScope::Campaign => {
+                                openguild_core::ops::attachments::add_campaign_attachment(
+                                    &l.store, slug, &rel, &display,
+                                )
+                                .await
+                            }
+                        }
+                    })
+                    .map_err(|e| anyhow!(e))
+            }
+        }
+    }
+
+    fn attachments_remove(
+        &self,
+        scope: CommentScope,
+        slug: &str,
+        path: &str,
+    ) -> Result<Vec<openguild_core::models::quest::QuestAttachment>> {
+        match self {
+            Backend::Http(_) => Err(anyhow!("원격 모드에선 미지원 — 로컬에서 실행")),
+            Backend::Local(l) => l
+                .rt
+                .block_on(async {
+                    match scope {
+                        CommentScope::Quest => {
+                            openguild_core::ops::attachments::remove_quest_attachment(
+                                &l.store, slug, path,
+                            )
+                            .await
+                        }
+                        CommentScope::Campaign => {
+                            openguild_core::ops::attachments::remove_campaign_attachment(
+                                &l.store, slug, path,
+                            )
+                            .await
+                        }
+                    }
+                })
+                .map_err(|e| anyhow!(e)),
+        }
+    }
+
+    // ── DEV-100: scope dispatch — quest / campaign 공용 ──
+
+    fn comments_list_scoped(
+        &self,
+        scope: CommentScope,
+        slug: &str,
+    ) -> Result<Vec<openguild_core::repo::comments::CommentEntry>> {
+        match scope {
+            CommentScope::Quest => self.comments_list(slug),
+            CommentScope::Campaign => match self {
+                Backend::Http(_) => Err(Self::http_unsupported_meta()),
+                Backend::Local(l) => Self::map_err(Ok::<_, openguild_core::error::AppError>(
+                    openguild_core::ops::campaign_comments::list_entries(&l.store, slug)?,
+                )),
+            },
+        }
+    }
+
+    fn comments_add_scoped(
+        &self,
+        scope: CommentScope,
+        slug: &str,
+        author: String,
+        body: String,
+        parent_id: Option<u64>,
+    ) -> Result<openguild_core::repo::comments::CommentEntry> {
+        match scope {
+            CommentScope::Quest => self.comments_add(slug, author, body, parent_id),
+            CommentScope::Campaign => match self {
+                Backend::Http(_) => Err(Self::http_unsupported_meta()),
+                Backend::Local(l) => Self::map_err(l.rt.block_on(
+                    openguild_core::ops::campaign_comments::add_entry(
+                        &l.store, slug, author, body, parent_id,
+                    ),
+                )),
+            },
+        }
+    }
+
+    // DEV-185: 토론/해결 토글 — discussion 은 quest 전용 기능이라 scope 없음.
+    // 원격(Http)은 GUI 가 직접 HTTP 로 처리하므로 CLI 는 Local 만 지원.
+    fn comments_toggle_discussion(
+        &self,
+        slug: &str,
+        id: u64,
+    ) -> Result<openguild_core::repo::comments::CommentEntry> {
+        match self {
+            Backend::Http(_) => Err(anyhow!("원격 모드에선 미지원 — 로컬에서 실행")),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::comments::toggle_comment_discussion(&l.store, slug, id),
+            )),
+        }
+    }
+
+    fn comments_toggle_resolved(
+        &self,
+        slug: &str,
+        id: u64,
+    ) -> Result<openguild_core::repo::comments::CommentEntry> {
+        match self {
+            Backend::Http(_) => Err(anyhow!("원격 모드에선 미지원 — 로컬에서 실행")),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::comments::toggle_comment_resolved(&l.store, slug, id),
+            )),
+        }
+    }
+
+    fn comments_edit_scoped(
+        &self,
+        scope: CommentScope,
+        slug: &str,
+        id: u64,
+        body: String,
+    ) -> Result<openguild_core::repo::comments::CommentEntry> {
+        match scope {
+            CommentScope::Quest => self.comments_edit(slug, id, body),
+            CommentScope::Campaign => match self {
+                Backend::Http(_) => Err(Self::http_unsupported_meta()),
+                Backend::Local(l) => Self::map_err(l.rt.block_on(
+                    openguild_core::ops::campaign_comments::update_entry(&l.store, slug, id, body),
+                )),
+            },
+        }
+    }
+
+    fn comments_delete_scoped(&self, scope: CommentScope, slug: &str, id: u64) -> Result<()> {
+        match scope {
+            CommentScope::Quest => self.comments_delete(slug, id),
+            CommentScope::Campaign => match self {
+                Backend::Http(_) => Err(Self::http_unsupported_meta()),
+                Backend::Local(l) => Self::map_err(l.rt.block_on(
+                    openguild_core::ops::campaign_comments::delete_entry(&l.store, slug, id),
+                )),
+            },
+        }
+    }
+
+    fn memo_get_scoped(&self, scope: CommentScope, slug: &str) -> Result<Option<String>> {
+        match scope {
+            CommentScope::Quest => self.memo_get(slug),
+            CommentScope::Campaign => match self {
+                Backend::Http(_) => Err(Self::http_unsupported_meta()),
+                Backend::Local(l) => Self::map_err(Ok::<_, openguild_core::error::AppError>(
+                    openguild_core::ops::campaign_comments::get_memo(&l.store, slug)?,
+                )),
+            },
+        }
+    }
+
+    fn memo_set_scoped(&self, scope: CommentScope, slug: &str, content: String) -> Result<()> {
+        match scope {
+            CommentScope::Quest => self.memo_set(slug, content),
+            CommentScope::Campaign => match self {
+                Backend::Http(_) => Err(Self::http_unsupported_meta()),
+                Backend::Local(l) => Self::map_err(l.rt.block_on(
+                    openguild_core::ops::campaign_comments::set_memo(&l.store, slug, content),
+                )),
+            },
+        }
+    }
+    // ── DEV-099: 댓글 / 메모 — local 전용 (HTTP 미지원 우선) ──
+
+    fn comments_list(
+        &self,
+        slug: &str,
+    ) -> Result<Vec<openguild_core::repo::comments::CommentEntry>> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => Self::map_err(Ok::<_, openguild_core::error::AppError>(
+                openguild_core::ops::comments::list_comment_entries(&l.store, slug)?,
+            )),
+        }
+    }
+
+    fn comments_add(
+        &self,
+        slug: &str,
+        author: String,
+        body: String,
+        parent_id: Option<u64>,
+    ) -> Result<openguild_core::repo::comments::CommentEntry> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::comments::add_comment_entry(
+                    &l.store, slug, author, body, parent_id,
+                ),
+            )),
+        }
+    }
+
+    fn comments_edit(
+        &self,
+        slug: &str,
+        id: u64,
+        body: String,
+    ) -> Result<openguild_core::repo::comments::CommentEntry> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::comments::update_comment_entry(
+                    &l.store, slug, id, body,
+                ),
+            )),
+        }
+    }
+
+    fn comments_delete(&self, slug: &str, id: u64) -> Result<()> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::comments::delete_comment_entry(&l.store, slug, id),
+            )),
+        }
+    }
+
+    fn memo_get(&self, slug: &str) -> Result<Option<String>> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => Self::map_err(Ok::<_, openguild_core::error::AppError>(
+                openguild_core::ops::comments::get_memo(&l.store, slug)?,
+            )),
+        }
+    }
+
+    fn memo_set(&self, slug: &str, content: String) -> Result<()> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::comments::set_memo(&l.store, slug, content),
+            )),
+        }
+    }
+
+    // DEV-068: tag — frontmatter 에서 read, ops::set_quest_tags 로 write.
+    fn tag_list(&self, slug: &str) -> Result<Vec<String>> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => {
+                // frontmatter 의 tags 가 진리원. file 직접 read.
+                let path = l.store.paths.quest_path(slug);
+                let qf = openguild_core::repo::QuestFile::read(&path)
+                    .map_err(|e| anyhow::anyhow!("quest {slug} 본문 읽기 실패: {e:#}"))?;
+                Ok(qf.frontmatter.tags.clone())
+            }
+        }
+    }
+
+    fn tag_set(&self, slug: &str, tags: Vec<String>) -> Result<()> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => {
+                let id = self.id_of(slug)?;
+                Self::map_err(l.rt.block_on(
+                    openguild_core::ops::set_quest_tags(&l.store, id, tags),
+                ))?;
+                Ok(())
+            }
+        }
+    }
+
     fn create_backup(&self) -> Result<openguild_core::snapshot::SnapshotInfo> {
         match self {
             Backend::Http(c) => c.create_snapshot(),
@@ -1314,10 +2106,135 @@ impl Backend {
         }
     }
 
+    /// DEV-095: 파일 → index.db 풀 reindex. Local 전용 (remote 는 서버측 명령).
+    fn reindex(&self) -> Result<openguild_core::reindex::ReindexReport> {
+        match self {
+            Backend::Http(_) => Err(anyhow!(
+                "원격 모드에선 미지원 — 서버에서 `openguild-server reindex` 사용"
+            )),
+            Backend::Local(l) => l
+                .rt
+                .block_on(openguild_core::reindex::reindex(&l.store))
+                .map_err(|e| anyhow!(e)),
+        }
+    }
+
+    /// DEV-159: index.db ↔ 파일 drift 검사. Local 전용 (remote 는 서버측 명령).
+    fn check_drift(&self) -> Result<openguild_core::drift::DriftReport> {
+        match self {
+            Backend::Http(_) => Err(anyhow!(
+                "원격 모드에선 미지원 — 서버에서 `openguild-server check-drift` 사용"
+            )),
+            Backend::Local(l) => l
+                .rt
+                .block_on(openguild_core::drift::detect_drift(&l.store))
+                .map_err(|e| anyhow!(e)),
+        }
+    }
+
+    /// DEV-162: index.db VACUUM. Local 전용 (실행 중 host 는 HTTP admin 사용).
+    fn vacuum(&self) -> Result<openguild_core::maintenance::VacuumReport> {
+        match self {
+            Backend::Http(_) => Err(anyhow!(
+                "원격 모드에선 미지원 — 실행 중 host 는 HTTP admin, 오프라인은 로컬에서 실행"
+            )),
+            Backend::Local(l) => l
+                .rt
+                .block_on(openguild_core::maintenance::vacuum(&l.store))
+                .map_err(|e| anyhow!(e)),
+        }
+    }
+
+    /// DEV-162: journal.db 최근 op tail. Local 전용.
+    fn journal_tail(&self, count: i64) -> Result<Option<openguild_core::maintenance::JournalTail>> {
+        match self {
+            Backend::Http(_) => Err(anyhow!(
+                "원격 모드에선 미지원 — 실행 중 host 는 HTTP admin, 오프라인은 로컬에서 실행"
+            )),
+            Backend::Local(l) => l
+                .rt
+                .block_on(openguild_core::maintenance::journal_tail(&l.store.paths, count))
+                .map_err(|e| anyhow!(e)),
+        }
+    }
+
+    /// DEV-164: counter 정합 검사 / 보정. Local 전용.
+    fn check_counters(&self, fix: bool) -> Result<openguild_core::ops::counter::CombinedReport> {
+        match self {
+            Backend::Http(_) => Err(anyhow!("원격 모드에선 미지원 — 오프라인(로컬)에서 실행")),
+            Backend::Local(l) => l
+                .rt
+                .block_on(openguild_core::ops::check_and_fix_counters(&l.store, fix))
+                .map_err(|e| anyhow!(e)),
+        }
+    }
+
+    /// DEV-164: legacy guild.db → 파일 진리원 일회성 이전. Local 전용.
+    /// guild_path 의 quests/ 가 이미 차 있으면(이미 이전됨) 에러.
+    fn migrate_to_files(&self) -> Result<openguild_core::migrate::MigrationReport> {
+        match self {
+            Backend::Http(_) => Err(anyhow!("원격 모드에선 미지원 — 오프라인(로컬)에서 실행")),
+            Backend::Local(l) => {
+                let quests_dir = l.guild_path.join(".guild").join("quests");
+                let has_md = std::fs::read_dir(&quests_dir)
+                    .ok()
+                    .into_iter()
+                    .flatten()
+                    .flatten()
+                    .any(|e| e.path().extension().and_then(|s| s.to_str()) == Some("md"));
+                if has_md {
+                    return Err(anyhow!(
+                        ".guild/quests/ 에 이미 quest 파일이 있습니다 — 마이그레이션은 한 번만. \
+                         덮어쓰려면 quests/ 를 비운 뒤 재시도."
+                    ));
+                }
+                l.rt
+                    .block_on(openguild_core::migrate::migrate_to_files(&l.guild_path))
+                    .map_err(|e| anyhow!(e))
+            }
+        }
+    }
+
+    /// DEV-164: 길드 메타 + index.db/snapshot/journal 요약. Local 전용.
+    fn info(&self) -> Result<CliInfo> {
+        match self {
+            Backend::Http(_) => Err(anyhow!(
+                "원격 모드에선 미지원 — 실행 중 host 정보는 server 측에서 확인"
+            )),
+            Backend::Local(l) => l.rt.block_on(async {
+                let guild =
+                    openguild_core::guild_file::load(&l.guild_path.to_string_lossy())?;
+                let summary = openguild_core::maintenance::index_summary(&l.store).await?;
+                let snapshots = openguild_core::snapshot::list_snapshots(&l.store.paths)?;
+                let journal_total = openguild_core::maintenance::journal_tail(&l.store.paths, 0)
+                    .await?
+                    .map(|t| t.total)
+                    .unwrap_or(0);
+                Ok(CliInfo {
+                    path: l.guild_path.clone(),
+                    guild,
+                    summary,
+                    snapshots,
+                    journal_total,
+                })
+            }),
+        }
+    }
+
     fn list_backups(&self) -> Result<Vec<openguild_core::snapshot::SnapshotInfo>> {
         match self {
             Backend::Http(c) => c.list_snapshots(),
             Backend::Local(l) => openguild_core::snapshot::list_snapshots(&l.store.paths),
+        }
+    }
+
+    /// DEV-175: 특정 백업 삭제.
+    fn delete_backup(&self, timestamp: &str) -> Result<()> {
+        match self {
+            Backend::Http(c) => c.delete_snapshot(timestamp),
+            Backend::Local(l) => {
+                openguild_core::snapshot::delete_snapshot(&l.store.paths, timestamp)
+            }
         }
     }
 
@@ -1546,6 +2463,380 @@ fn hex_rgb(hex: &str) -> Option<(u8, u8, u8)> {
     Some((r, g, b))
 }
 
+/// DEV-060: `quest new` 의 템플릿 merge — 명시 옵션 > 템플릿 값 > 기본.
+///
+/// 반환: (type_prefix, title, description, urgency, template_tags).
+/// type / title 은 양쪽 모두 없으면 에러. urgency 기본 3.
+#[allow(clippy::type_complexity)]
+fn merge_new_quest_inputs(
+    type_prefix: Option<String>,
+    title: Option<String>,
+    description: Option<String>,
+    urgency: Option<i64>,
+    tpl: Option<&openguild_core::repo::TemplateFile>,
+) -> Result<(String, String, Option<String>, i64, Vec<String>)> {
+    let type_prefix = type_prefix
+        .or_else(|| tpl.and_then(|t| t.frontmatter.type_prefix.clone()))
+        .ok_or_else(|| anyhow!("--type 필요 (또는 type 을 정의한 --template 지정)"))?;
+    let title = title
+        .or_else(|| tpl.and_then(|t| t.frontmatter.title.clone()))
+        .ok_or_else(|| anyhow!("--title 필요 (또는 title 을 정의한 --template 지정)"))?;
+    let description =
+        description.or_else(|| tpl.map(|t| t.body.clone()).filter(|b| !b.is_empty()));
+    let urgency = urgency
+        .or_else(|| tpl.and_then(|t| t.frontmatter.urgency))
+        .unwrap_or(3);
+    let tags = tpl.map(|t| t.frontmatter.tags.clone()).unwrap_or_default();
+    Ok((type_prefix, title, description, urgency, tags))
+}
+
+/// DEV-100: 댓글 / 메모 명령의 대상 — quest 또는 campaign.
+#[derive(Clone, Copy, PartialEq)]
+enum CommentScope {
+    Quest,
+    Campaign,
+}
+
+impl CommentScope {
+    fn noun(self) -> &'static str {
+        match self {
+            CommentScope::Quest => "quest",
+            CommentScope::Campaign => "campaign",
+        }
+    }
+}
+
+/// DEV-170: quest / campaign 첨부(섹션) 명령.
+#[derive(Subcommand)]
+enum AttachCmd {
+    /// 첨부 목록 (이름 / 경로).
+    List { slug: String },
+    /// 로컬 파일을 업로드(.guild/attachments)해 첨부 섹션에 추가.
+    Add {
+        slug: String,
+        /// 첨부할 로컬 파일 경로.
+        file: std::path::PathBuf,
+        /// 표시 이름 (미지정 시 원본 파일명).
+        #[arg(long)]
+        name: Option<String>,
+    },
+    /// 첨부 제거. 다른 곳에서 참조 안 하면 실제 파일 + blob 도 삭제(orphan 정리).
+    #[command(name = "remove")]
+    Rm {
+        slug: String,
+        /// 제거할 첨부의 경로 (list 의 경로 값).
+        path: String,
+    },
+}
+
+/// DEV-170: quest / campaign 첨부 명령 공용 핸들러.
+fn run_attach_cmd(c: &Backend, scope: CommentScope, sub: AttachCmd, json: bool) -> Result<()> {
+    match sub {
+        AttachCmd::List { slug } => {
+            let list = c.attachments_list(scope, &slug)?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "attachments": list.iter()
+                            .map(|a| serde_json::json!({ "name": a.name, "path": a.path }))
+                            .collect::<Vec<_>>(),
+                    })
+                );
+            } else if list.is_empty() {
+                println!("(첨부 없음)");
+            } else {
+                for a in &list {
+                    println!("- {}  ({})", a.name, a.path);
+                }
+            }
+        }
+        AttachCmd::Add { slug, file, name } => {
+            let list = c.attachments_add(scope, &slug, &file, name)?;
+            if json {
+                println!("{}", serde_json::json!({ "ok": true, "count": list.len() }));
+            } else {
+                println!("✓ 첨부 추가 — 총 {} 개", list.len());
+                if let Some(a) = list.last() {
+                    println!("  {}  ({})", a.name, a.path);
+                }
+            }
+        }
+        AttachCmd::Rm { slug, path } => {
+            // BUG-085: core remove 는 매칭 없으면 조용히 no-op 인데 갱신 리스트만
+            // 돌려줘서, 없는 경로를 넘겨도 "✓ 첨부 제거" 가 떴다. 제거 전에 목록에
+            // 실제로 있는지 확인하고, 없으면 명확히 에러.
+            let before = c.attachments_list(scope, &slug)?;
+            if !before.iter().any(|a| a.path == path) {
+                return Err(anyhow!(
+                    "그런 첨부 없음: {path}\n  `attach list {slug}` 로 경로를 확인하세요"
+                ));
+            }
+            let list = c.attachments_remove(scope, &slug, &path)?;
+            if json {
+                println!("{}", serde_json::json!({ "ok": true, "count": list.len() }));
+            } else {
+                println!("✓ 첨부 제거 — 남은 {} 개", list.len());
+            }
+        }
+    }
+    Ok(())
+}
+
+/// quest / campaign 댓글 명령 공용 핸들러 (DEV-100).
+fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool) -> Result<()> {
+    match sub {
+                CommentCmd::List { slug, author, since, top_only, reply_to, grep } => {
+                    let mut entries = c.comments_list_scoped(scope, &slug)?;
+                    // DEV-110: 필터 — 모두 AND.
+                    if let Some(a) = &author {
+                        entries.retain(|e| e.author.eq_ignore_ascii_case(a));
+                    }
+                    if let Some(s) = &since {
+                        // ISO 문자열 prefix 비교 — entry ts 는 RFC 3339 (+09:00 류
+                        // 단일 TZ 운용 전제). date 만 입력 시 그 날 00:00 기준.
+                        let threshold = openguild_core::time::normalize_filter_ts(s);
+                        entries.retain(|e| e.ts.as_str() >= threshold.as_str());
+                    }
+                    if top_only {
+                        entries.retain(|e| e.parent_id.is_none());
+                    }
+                    if let Some(p) = reply_to {
+                        entries.retain(|e| e.parent_id == Some(p));
+                    }
+                    if let Some(g) = &grep {
+                        let needle = g.to_lowercase();
+                        entries.retain(|e| e.body.to_lowercase().contains(&needle));
+                    }
+                    if json {
+                        println!(
+                            "{}",
+                            serde_json::json!({
+                                "entries": entries.iter().map(|e| serde_json::json!({
+                                    "id": e.id,
+                                    "ts": e.ts,
+                                    "author": e.author,
+                                    "parent_id": e.parent_id,
+                                    "body_len": e.body.len(),
+                                })).collect::<Vec<_>>(),
+                            })
+                        );
+                    } else if entries.is_empty() {
+                        println!("(댓글 없음)");
+                    } else {
+                        for e in &entries {
+                            let summary = e
+                                .body
+                                .lines()
+                                .next()
+                                .unwrap_or("")
+                                .chars()
+                                .take(60)
+                                .collect::<String>();
+                            let reply = e
+                                .parent_id
+                                .map(|p| format!(" ↩ #{p}"))
+                                .unwrap_or_default();
+                            let author = if e.author.is_empty() {
+                                "(이름 없음)".to_string()
+                            } else {
+                                e.author.clone()
+                            };
+                            let ts = if e.ts.is_empty() {
+                                "(시각 미상)".to_string()
+                            } else {
+                                e.ts.clone()
+                            };
+                            println!("#{}  {}  {}{}  {}", e.id, ts, author, reply, summary);
+                        }
+                    }
+                }
+                CommentCmd::Show { slug, id } => {
+                    let entries = c.comments_list_scoped(scope, &slug)?;
+                    let selected: Vec<_> = match id {
+                        Some(target) => {
+                            let only = entries
+                                .into_iter()
+                                .find(|e| e.id == target)
+                                .ok_or_else(|| {
+                                    anyhow::anyhow!("entry #{target} 없음 ({} {slug})", scope.noun())
+                                })?;
+                            vec![only]
+                        }
+                        None => entries,
+                    };
+                    if json {
+                        println!(
+                            "{}",
+                            serde_json::json!({
+                                "entries": selected.iter().map(|e| serde_json::json!({
+                                    "id": e.id,
+                                    "ts": e.ts,
+                                    "author": e.author,
+                                    "parent_id": e.parent_id,
+                                    "body": e.body,
+                                })).collect::<Vec<_>>(),
+                            })
+                        );
+                    } else if selected.is_empty() {
+                        println!("(댓글 없음)");
+                    } else {
+                        for (i, e) in selected.iter().enumerate() {
+                            if i > 0 {
+                                println!("\n---\n");
+                            }
+                            let reply = e
+                                .parent_id
+                                .map(|p| format!(" (↩ #{p})"))
+                                .unwrap_or_default();
+                            let author = if e.author.is_empty() {
+                                "(이름 없음)".to_string()
+                            } else {
+                                e.author.clone()
+                            };
+                            println!("#{}  {}  {}{}", e.id, e.ts, author, reply);
+                            println!();
+                            print!("{}", e.body);
+                            if !e.body.ends_with('\n') {
+                                println!();
+                            }
+                        }
+                    }
+                }
+                CommentCmd::Add {
+                    slug,
+                    author,
+                    parent_id,
+                    file,
+                } => {
+                    let body = read_content(file.as_deref())?;
+                    let entry =
+                        c.comments_add_scoped(scope, &slug, author.unwrap_or_default(), body, parent_id)?;
+                    if json {
+                        println!(
+                            "{}",
+                            serde_json::json!({
+                                "ok": true,
+                                "id": entry.id,
+                                "ts": entry.ts,
+                                "parent_id": entry.parent_id,
+                            })
+                        );
+                    } else {
+                        let reply = entry
+                            .parent_id
+                            .map(|p| format!(" ↩ #{p}"))
+                            .unwrap_or_default();
+                        println!("✓ 댓글 추가: #{} ({}{})", entry.id, entry.ts, reply);
+                    }
+                }
+                CommentCmd::Edit { slug, id, file } => {
+                    let body = read_content(file.as_deref())?;
+                    let entry = c.comments_edit_scoped(scope, &slug, id, body)?;
+                    if json {
+                        println!(
+                            "{}",
+                            serde_json::json!({ "ok": true, "id": entry.id })
+                        );
+                    } else {
+                        println!("✓ 댓글 #{} 본문 갱신됨", entry.id);
+                    }
+                }
+                CommentCmd::Rm { slug, id, force } => {
+                    if !force {
+                        eprint!("댓글 #{id} ({} {slug}) 을 삭제할까요? (y/N) ", scope.noun());
+                        use std::io::Write;
+                        std::io::stderr().flush().ok();
+                        let mut buf = String::new();
+                        std::io::stdin().read_line(&mut buf)?;
+                        if !matches!(buf.trim(), "y" | "Y" | "yes") {
+                            println!("(취소)");
+                            return Ok(());
+                        }
+                    }
+                    c.comments_delete_scoped(scope, &slug, id)?;
+                    if json {
+                        println!(
+                            "{}",
+                            serde_json::json!({ "ok": true, "id": id })
+                        );
+                    } else {
+                        println!("✓ 댓글 #{id} 삭제됨");
+                    }
+                }
+                CommentCmd::Discussion { slug, id } => {
+                    if scope != CommentScope::Quest {
+                        anyhow::bail!("토론(discussion) 토글은 quest 댓글 전용입니다.");
+                    }
+                    let e = c.comments_toggle_discussion(&slug, id)?;
+                    if json {
+                        println!(
+                            "{}",
+                            serde_json::json!({ "ok": true, "id": id, "discussion": e.discussion, "resolved": e.resolved })
+                        );
+                    } else {
+                        println!("✓ 댓글 #{id} 토론 {}", if e.discussion { "표시" } else { "해제" });
+                    }
+                }
+                CommentCmd::Resolved { slug, id } => {
+                    if scope != CommentScope::Quest {
+                        anyhow::bail!("resolved 토글은 quest 댓글 전용입니다.");
+                    }
+                    let e = c.comments_toggle_resolved(&slug, id)?;
+                    if json {
+                        println!("{}", serde_json::json!({ "ok": true, "id": id, "resolved": e.resolved }));
+                    } else {
+                        println!("✓ 댓글 #{id} {}", if e.resolved { "해결됨" } else { "미해결" });
+                    }
+                }
+    }
+    Ok(())
+}
+
+/// quest / campaign 메모 명령 공용 핸들러 (DEV-100).
+fn run_memo_cmd(c: &Backend, scope: CommentScope, sub: MemoCmd, json: bool) -> Result<()> {
+    match sub {
+                MemoCmd::Show { slug } => {
+                    let content = c.memo_get_scoped(scope, &slug)?;
+                    if json {
+                        println!(
+                            "{}",
+                            serde_json::json!({ "slug": slug, "content": content })
+                        );
+                    } else if let Some(s) = content {
+                        if s.is_empty() {
+                            println!("(메모 비어있음)");
+                        } else {
+                            print!("{s}");
+                            if !s.ends_with('\n') {
+                                println!();
+                            }
+                        }
+                    } else {
+                        println!("(메모 없음)");
+                    }
+                }
+                MemoCmd::Set { slug, file } => {
+                    let content = read_content(file.as_deref())?;
+                    c.memo_set_scoped(scope, &slug, content)?;
+                    if json {
+                        println!("{}", serde_json::json!({ "ok": true, "slug": slug }));
+                    } else {
+                        println!("✓ 메모 저장됨 ({} {slug})", scope.noun());
+                    }
+                }
+                MemoCmd::Clear { slug } => {
+                    c.memo_set_scoped(scope, &slug, String::new())?;
+                    if json {
+                        println!("{}", serde_json::json!({ "ok": true, "slug": slug }));
+                    } else {
+                        println!("✓ 메모 비움 ({} {slug})", scope.noun());
+                    }
+                }
+    }
+    Ok(())
+}
+
 /// ANSI 24-bit truecolor — `#RRGGBB` → "\x1b[38;2;r;g;bm{text}\x1b[0m".
 /// 비-TTY / NO_COLOR 일 땐 plain 반환.
 fn colorize(text: &str, hex: &str) -> String {
@@ -1691,6 +2982,12 @@ fn handle_campaign(c: &Backend, json: bool, sub: CampaignCmd) -> Result<()> {
     }
 
     match sub {
+        // DEV-100: 댓글 / 메모 — quest 와 공용 핸들러 (campaign scope).
+        CampaignCmd::Comment { sub } => {
+            run_comment_cmd(c, CommentScope::Campaign, sub, json)?
+        }
+        CampaignCmd::Attach { sub } => run_attach_cmd(c, CommentScope::Campaign, sub, json)?,
+        CampaignCmd::Memo { sub } => run_memo_cmd(c, CommentScope::Campaign, sub, json)?,
         CampaignCmd::New {
             title,
             started_at,
@@ -1862,6 +3159,66 @@ fn print_quest_list(quests: &[Quest], json: bool) {
     }
 }
 
+/// DEV-065 (CLI tree mode): 부모 → 자식 들여쓰기로 한 화면에 트리 출력.
+/// 결과 안의 quest 가 부모 link 자식인데 부모가 결과 안에 없으면 (필터 등)
+/// root 로 표시.
+fn print_quest_tree(quests: &[Quest]) {
+    use std::collections::HashMap;
+    if quests.is_empty() {
+        println!("(no quests)");
+        return;
+    }
+    // id → quest 매핑 (참조).
+    let by_id: HashMap<i64, &Quest> = quests.iter().map(|q| (q.id, q)).collect();
+    // id → 자식들 (직계).
+    let mut children: HashMap<i64, Vec<i64>> = HashMap::new();
+    let mut roots: Vec<i64> = Vec::new();
+    for q in quests {
+        match q.parent_quest_id {
+            Some(pid) if by_id.contains_key(&pid) => {
+                children.entry(pid).or_default().push(q.id);
+            }
+            _ => roots.push(q.id),
+        }
+    }
+    // 자식 정렬 — slug 알파벳 순으로 일관.
+    for v in children.values_mut() {
+        v.sort_by(|a, b| {
+            let qa = by_id.get(a).map(|q| q.quest_id.as_str()).unwrap_or("");
+            let qb = by_id.get(b).map(|q| q.quest_id.as_str()).unwrap_or("");
+            qa.cmp(qb)
+        });
+    }
+    roots.sort_by(|a, b| {
+        let qa = by_id.get(a).map(|q| q.quest_id.as_str()).unwrap_or("");
+        let qb = by_id.get(b).map(|q| q.quest_id.as_str()).unwrap_or("");
+        qa.cmp(qb)
+    });
+    fn walk(
+        id: i64,
+        depth: usize,
+        by_id: &HashMap<i64, &Quest>,
+        children: &HashMap<i64, Vec<i64>>,
+    ) {
+        let Some(q) = by_id.get(&id) else { return };
+        let prefix = if depth == 0 {
+            String::new()
+        } else {
+            format!("{}└─ ", "   ".repeat(depth - 1))
+        };
+        print!("{prefix}");
+        print_quest(q, false);
+        if let Some(kids) = children.get(&id) {
+            for &kid in kids {
+                walk(kid, depth + 1, by_id, children);
+            }
+        }
+    }
+    for r in roots {
+        walk(r, 0, &by_id, &children);
+    }
+}
+
 fn print_quest_detail(d: &QuestDetail, json: bool) {
     if json {
         println!("{}", serde_json::to_string_pretty(d).unwrap());
@@ -1975,6 +3332,212 @@ fn quest_field_value(d: &QuestDetail, field: &str) -> Result<String> {
     Ok(v)
 }
 
+// ─── DEV-177: 정비 명령 핸들러 (reindex 는 top-level + index rebuild 양쪽에서 재사용) ───
+
+fn run_reindex_cmd(c: &Backend, json: bool) -> Result<()> {
+    let report = c.reindex()?;
+    if json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "ok": true,
+                "types": report.types_loaded,
+                "statuses": report.statuses_loaded,
+                "quests": report.quests_loaded,
+                "dependencies": report.dependencies_loaded,
+                "campaigns": report.campaigns_loaded,
+                "comments": report.comments_loaded,
+                "memos": report.memos_loaded,
+                "tags": report.tags_loaded,
+                "positions": report.positions_restored,
+                "skipped": report.skipped.len(),
+            })
+        );
+    } else {
+        println!("✓ index.db 재구축 완료");
+        for line in report.summary_lines() {
+            println!("  {line}");
+        }
+        if !report.skipped.is_empty() {
+            println!();
+            println!("⚠ {} 개 파일 skip 됨 (파싱 / 무결성 실패):", report.skipped.len());
+            for (path, reason) in &report.skipped {
+                println!("  - {path}");
+                println!("    → {reason}");
+            }
+        }
+    }
+    Ok(())
+}
+
+fn run_check_drift_cmd(c: &Backend, resync: bool, json: bool) -> Result<()> {
+    let report = c.check_drift()?;
+    if json {
+        if resync && !report.is_clean() {
+            c.reindex()?;
+        }
+        println!(
+            "{}",
+            serde_json::json!({
+                "clean": report.is_clean(),
+                "resynced": resync && !report.is_clean(),
+                "report": report,
+            })
+        );
+    } else if report.is_clean() {
+        println!("✓ index.db 가 파일과 일치 (drift 없음)");
+    } else {
+        println!("⚠ drift 발견:");
+        let sections = [
+            ("파일은 있는데 index 에 없음", &report.missing_in_index),
+            ("index 에 있는데 파일이 없음", &report.stale_in_index),
+            ("파일 mtime > index.db mtime", &report.fresh_files),
+            ("sibling(.comments/.memo) 가 더 새것", &report.fresh_siblings),
+        ];
+        for (label, items) in sections {
+            if !items.is_empty() {
+                println!();
+                println!("  {label} ({}):", items.len());
+                for s in items {
+                    println!("    - {s}");
+                }
+            }
+        }
+        println!();
+        if resync {
+            println!("▸ reindex 실행 중...");
+            c.reindex()?;
+            println!("✓ resync 완료");
+        } else {
+            println!("(--resync 로 자동 reindex 가능)");
+        }
+    }
+    Ok(())
+}
+
+fn run_check_counters_cmd(c: &Backend, fix: bool, json: bool) -> Result<()> {
+    let report = c.check_counters(fix)?;
+    if json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "ok": true,
+                "types_checked": report.file_report.types_checked,
+                "file_issues": report.file_report.issues.len(),
+                "sql_drift": report.sql_drift.len(),
+                "fixed": fix,
+            })
+        );
+    } else {
+        println!("✓ counter 검증 완료");
+        println!("  검사된 type 수 : {}", report.file_report.types_checked);
+        println!(
+            "  발견 이슈     : {} (file) + {} (SQL)",
+            report.file_report.issues.len(),
+            report.sql_drift.len()
+        );
+        for issue in &report.file_report.issues {
+            println!();
+            println!("  • type {} [file drift]:", issue.prefix);
+            println!("    저장된 last_number   : {}", issue.stored_last_number);
+            println!("    실제 max quest 번호  : {}", issue.actual_max_number);
+            if fix {
+                println!("    → {} 으로 보정됨 (file + SQL)", issue.corrected_to);
+            } else {
+                println!("    (--fix 로 자동 보정 가능)");
+            }
+        }
+        for drift in &report.sql_drift {
+            println!();
+            println!("  • type {} [SQL drift]:", drift.prefix);
+            println!("    file last_number     : {}", drift.file_last_number);
+            println!("    SQL  last_number     : {}", drift.sql_last_number);
+            if fix {
+                println!("    → {} 으로 보정됨 (SQL ← file)", drift.synced_to);
+            } else {
+                println!("    (--fix 로 자동 보정 가능)");
+            }
+        }
+    }
+    Ok(())
+}
+
+fn run_vacuum_cmd(c: &Backend, json: bool) -> Result<()> {
+    let r = c.vacuum()?;
+    if json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "ok": true,
+                "before_bytes": r.before_bytes,
+                "after_bytes": r.after_bytes,
+                "saved_bytes": r.saved(),
+            })
+        );
+    } else {
+        println!("✓ VACUUM 완료");
+        println!("  before : {} bytes", r.before_bytes);
+        println!("  after  : {} bytes", r.after_bytes);
+        if r.saved() > 0 && r.before_bytes > 0 {
+            println!(
+                "  saved  : {} bytes ({:.1}%)",
+                r.saved(),
+                (r.saved() as f64 / r.before_bytes as f64) * 100.0
+            );
+        } else {
+            println!("  saved  : 0 bytes (이미 dense)");
+        }
+    }
+    Ok(())
+}
+
+fn run_journal_tail_cmd(c: &Backend, count: i64, json: bool) -> Result<()> {
+    let tail = c.journal_tail(count)?;
+    match tail {
+        None => {
+            if json {
+                println!("{}", serde_json::json!({ "exists": false, "rows": [] }));
+            } else {
+                println!("(journal.db 없음 — 아직 mutation 안 됐거나 snapshot 직후)");
+            }
+        }
+        Some(t) => {
+            if json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "exists": true,
+                        "total": t.total,
+                        "rows": t.rows.iter().map(|o| serde_json::json!({
+                            "id": o.id, "ts": o.ts, "op": o.op,
+                            "args": o.args, "result": o.result,
+                        })).collect::<Vec<_>>(),
+                    })
+                );
+            } else {
+                println!("journal.db: {} row(s) total — showing last {}", t.total, t.rows.len());
+                println!();
+                let trunc = |s: &str| -> String {
+                    if s.chars().count() > 100 {
+                        format!("{}…", s.chars().take(100).collect::<String>())
+                    } else {
+                        s.to_string()
+                    }
+                };
+                for o in &t.rows {
+                    println!("#{:>6}  {}  {}", o.id, o.ts, o.op);
+                    println!("         args   : {}", trunc(&o.args));
+                    if let Some(r) = &o.result {
+                        println!("         result : {}", trunc(r));
+                    }
+                    println!();
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 // ─────────────────────────── 명령 처리 ───────────────────────────
 
 fn run() -> Result<()> {
@@ -1986,6 +3549,17 @@ fn run() -> Result<()> {
     }
 
     let c = Backend::new(cli.remote.clone(), cli.guild.clone())?;
+
+    // 비정상 파일 감지 시 stderr 경고 (GUI 시동 알림과 동일 취지). json 모드는
+    // 기계 출력 오염 방지를 위해, Reindex 는 자체적으로 skipped 를 출력하므로 제외.
+    if !cli.json
+        && !matches!(
+            cli.command,
+            Command::Reindex | Command::Index { sub: IndexCmd::Rebuild }
+        )
+    {
+        c.warn_problem_files();
+    }
 
     match cli.command {
         Command::Init { .. } => unreachable!("handled above"),
@@ -2176,48 +3750,263 @@ fn run() -> Result<()> {
                 }
             }
         },
-        Command::Backup => {
-            let info = c.create_backup()?;
-            if cli.json {
-                println!(
-                    "{}",
-                    serde_json::json!({
-                        "ok": true,
-                        "timestamp": info.timestamp,
-                        "size_bytes": info.size_bytes,
-                        "path": info.path.to_string_lossy(),
-                    })
-                );
-            } else {
-                println!("✓ snapshot 생성: {} ({} bytes)", info.timestamp, info.size_bytes);
-                println!("  path: {}", info.path.display());
-            }
-        }
-        Command::Backups => {
-            let list = c.list_backups()?;
-            if cli.json {
-                let arr: Vec<_> = list
-                    .iter()
-                    .map(|s| {
+        // DEV-060: 퀘스트 템플릿.
+        Command::Template { sub } => match sub {
+            TemplateCmd::List => {
+                let templates = c.templates_list()?;
+                if cli.json {
+                    println!(
+                        "{}",
                         serde_json::json!({
-                            "timestamp": s.timestamp,
-                            "size_bytes": s.size_bytes,
-                            "path": s.path.to_string_lossy(),
+                            "templates": templates.iter().map(|t| serde_json::json!({
+                                "name": t.name,
+                                "title": t.frontmatter.title,
+                                "type": t.frontmatter.type_prefix,
+                                "urgency": t.frontmatter.urgency,
+                                "tags": t.frontmatter.tags,
+                                "body_len": t.body.len(),
+                            })).collect::<Vec<_>>(),
                         })
-                    })
-                    .collect();
-                println!("{}", serde_json::to_string_pretty(&arr)?);
-            } else if list.is_empty() {
-                println!("(사용 가능한 백업 없음)");
-                println!();
-                println!("`openguild backup` 으로 생성하세요.");
-            } else {
-                println!("백업 목록 (오래된 순):");
-                for s in &list {
-                    println!("  {} — {} bytes", s.timestamp, s.size_bytes);
+                    );
+                } else if templates.is_empty() {
+                    println!("(템플릿 없음 — .guild/templates/{{name}}.md 작성)");
+                } else {
+                    for t in &templates {
+                        let mut meta = Vec::new();
+                        if let Some(ty) = &t.frontmatter.type_prefix {
+                            meta.push(format!("type={ty}"));
+                        }
+                        if let Some(u) = t.frontmatter.urgency {
+                            meta.push(format!("urgency={u}"));
+                        }
+                        if !t.frontmatter.tags.is_empty() {
+                            meta.push(format!("tags={}", t.frontmatter.tags.join(",")));
+                        }
+                        println!(
+                            "{}  {}  {}",
+                            t.name,
+                            t.frontmatter.title.as_deref().unwrap_or("(제목 없음)"),
+                            meta.join(" ")
+                        );
+                    }
                 }
             }
-        }
+            TemplateCmd::Show { name } => {
+                let t = c.template_load(&name)?;
+                if cli.json {
+                    println!(
+                        "{}",
+                        serde_json::json!({
+                            "name": t.name,
+                            "title": t.frontmatter.title,
+                            "type": t.frontmatter.type_prefix,
+                            "urgency": t.frontmatter.urgency,
+                            "tags": t.frontmatter.tags,
+                            "body": t.body,
+                        })
+                    );
+                } else {
+                    println!("# {} — {}", t.name, t.frontmatter.title.as_deref().unwrap_or("(제목 없음)"));
+                    println!("{}", t.body);
+                }
+            }
+            TemplateCmd::New {
+                name,
+                type_prefix,
+                title,
+                urgency,
+                tags,
+                file,
+                force,
+            } => {
+                // 본문: --file > (파이프된) stdin > 빈 본문. tty 면 hang 방지 위해 stdin skip.
+                let body = if let Some(p) = &file {
+                    read_content(Some(p.as_path()))?
+                } else if !std::io::stdin().is_terminal() {
+                    read_content(None)?
+                } else {
+                    String::new()
+                };
+                let tpl = openguild_core::repo::TemplateFile {
+                    name: name.clone(),
+                    frontmatter: openguild_core::repo::TemplateFrontmatter {
+                        title,
+                        type_prefix,
+                        urgency,
+                        tags,
+                    },
+                    body,
+                };
+                let path = c.template_save(&tpl, force)?;
+                if cli.json {
+                    println!(
+                        "{}",
+                        serde_json::json!({ "ok": true, "name": name, "path": path.display().to_string() })
+                    );
+                } else {
+                    println!("✓ 템플릿 '{name}' 저장 — {}", path.display());
+                }
+            }
+        },
+        Command::Rules { sub } => match sub {
+            RulesCmd::List => {
+                let entries = c.rules_list()?;
+                if cli.json {
+                    println!(
+                        "{}",
+                        serde_json::json!({
+                            "entries": entries.iter().map(|e| serde_json::json!({
+                                "slug": e.slug,
+                                "len": e.content.len(),
+                            })).collect::<Vec<_>>(),
+                        })
+                    );
+                } else if entries.is_empty() {
+                    println!("(규칙 없음)");
+                } else {
+                    println!("Slug                  Lines  Size");
+                    for e in &entries {
+                        let lines = e.content.lines().count();
+                        println!(
+                            "{:<22}{:>5}  {} bytes",
+                            e.slug,
+                            lines,
+                            e.content.len()
+                        );
+                    }
+                }
+            }
+            RulesCmd::Show { slug } => {
+                let content = c
+                    .rules_get(&slug)?
+                    .ok_or_else(|| anyhow::anyhow!("규칙 '{slug}' 없음"))?;
+                if cli.json {
+                    println!(
+                        "{}",
+                        serde_json::json!({ "slug": slug, "content": content })
+                    );
+                } else {
+                    print!("{content}");
+                    if !content.ends_with('\n') {
+                        println!();
+                    }
+                }
+            }
+            RulesCmd::Set { slug, file } => {
+                let content = read_content(file.as_deref())?;
+                c.rules_set(&slug, content)?;
+                if cli.json {
+                    println!("{}", serde_json::json!({ "ok": true, "slug": slug }));
+                } else {
+                    println!("✓ 규칙 '{slug}' 저장됨");
+                }
+            }
+            RulesCmd::Create { slug, file, empty } => {
+                let content = if empty {
+                    String::new()
+                } else {
+                    read_content(file.as_deref())?
+                };
+                c.rules_create(&slug, content)?;
+                if cli.json {
+                    println!("{}", serde_json::json!({ "ok": true, "slug": slug }));
+                } else {
+                    println!("✓ 규칙 '{slug}' 생성됨");
+                }
+            }
+            RulesCmd::Delete { slug, force } => {
+                if !force {
+                    eprint!("규칙 '{slug}' 을 삭제할까요? (y/N) ");
+                    use std::io::Write;
+                    std::io::stderr().flush().ok();
+                    let mut buf = String::new();
+                    std::io::stdin().read_line(&mut buf)?;
+                    if !matches!(buf.trim(), "y" | "Y" | "yes") {
+                        println!("(취소)");
+                        return Ok(());
+                    }
+                }
+                c.rules_delete(&slug)?;
+                if cli.json {
+                    println!("{}", serde_json::json!({ "ok": true, "slug": slug }));
+                } else {
+                    println!("✓ 규칙 '{slug}' 삭제됨");
+                }
+            }
+            RulesCmd::Rename { slug, new_slug } => {
+                c.rules_rename(&slug, &new_slug)?;
+                if cli.json {
+                    println!(
+                        "{}",
+                        serde_json::json!({
+                            "ok": true, "from": slug, "to": new_slug,
+                        })
+                    );
+                } else {
+                    println!("✓ '{slug}' → '{new_slug}' 이름 변경");
+                }
+            }
+        },
+        Command::Backup { sub } => match sub {
+            BackupCmd::New => {
+                let info = c.create_backup()?;
+                if cli.json {
+                    println!(
+                        "{}",
+                        serde_json::json!({
+                            "ok": true,
+                            "timestamp": info.timestamp,
+                            "size_bytes": info.size_bytes,
+                            "path": info.path.to_string_lossy(),
+                        })
+                    );
+                } else {
+                    println!(
+                        "✓ snapshot 생성: {} ({} bytes)",
+                        openguild_core::snapshot::ts_to_local_display(&info.timestamp),
+                        info.size_bytes
+                    );
+                    println!("  path: {}", info.path.display());
+                }
+            }
+            BackupCmd::List => {
+                let list = c.list_backups()?;
+                if cli.json {
+                    let arr: Vec<_> = list
+                        .iter()
+                        .map(|s| {
+                            serde_json::json!({
+                                "timestamp": s.timestamp,
+                                "size_bytes": s.size_bytes,
+                                "path": s.path.to_string_lossy(),
+                            })
+                        })
+                        .collect();
+                    println!("{}", serde_json::to_string_pretty(&arr)?);
+                } else if list.is_empty() {
+                    println!("(사용 가능한 백업 없음)");
+                    println!();
+                    println!("`openguild backup create` 으로 생성하세요.");
+                } else {
+                    println!("백업 목록 (오래된 순):");
+                    for s in &list {
+                        println!(
+                            "  {} — {} bytes",
+                            openguild_core::snapshot::ts_to_local_display(&s.timestamp),
+                            s.size_bytes
+                        );
+                    }
+                }
+            }
+            BackupCmd::Rm { timestamp } => {
+                c.delete_backup(&timestamp)?;
+                if cli.json {
+                    println!("{}", serde_json::json!({ "ok": true, "deleted": timestamp }));
+                } else {
+                    println!("✓ 백업 삭제: {timestamp}");
+                }
+            }
+        },
         Command::Restore { to } => {
             let info = c.restore_backup(to)?;
             if cli.json {
@@ -2229,10 +4018,116 @@ fn run() -> Result<()> {
                     })
                 );
             } else {
-                println!("✓ 복원 완료: {}", info.timestamp);
+                println!(
+                    "✓ 복원 완료: {}",
+                    openguild_core::snapshot::ts_to_local_display(&info.timestamp)
+                );
                 println!();
                 println!("주의: 파일 시스템 (`.guild/quests/*.md`) 자동 갱신 안 됨.");
-                println!("      필요시 `openguild-server reindex`.");
+                println!("      필요시 `openguild reindex`.");
+            }
+        }
+        Command::Reindex => run_reindex_cmd(&c, cli.json)?,
+        Command::Check { sub } => match sub {
+            CheckCmd::Drift { resync } => run_check_drift_cmd(&c, resync, cli.json)?,
+            CheckCmd::Counters { fix } => run_check_counters_cmd(&c, fix, cli.json)?,
+        },
+        Command::Index { sub } => match sub {
+            IndexCmd::Rebuild => run_reindex_cmd(&c, cli.json)?,
+            IndexCmd::Vacuum => run_vacuum_cmd(&c, cli.json)?,
+        },
+        Command::Journal { sub } => match sub {
+            JournalCmd::Tail { count } => run_journal_tail_cmd(&c, count, cli.json)?,
+        },
+        Command::MigrateToFiles => {
+            let report = c.migrate_to_files()?;
+            if cli.json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "ok": true,
+                        "legacy_db": report.legacy_db_path.display().to_string(),
+                        "quests_written": report.quests_written,
+                        "deleted_quests_included": report.deleted_quests_included,
+                        "types_updated": report.types_updated,
+                        "index_db_copied": report.index_db_copied,
+                    })
+                );
+            } else {
+                println!("✓ 마이그레이션 완료");
+                println!("  legacy DB     : {}", report.legacy_db_path.display());
+                println!("  quests 작성   : {}", report.quests_written);
+                println!(
+                    "  - alive       : {}",
+                    report.quests_written - report.deleted_quests_included
+                );
+                println!("  - soft-deleted: {}", report.deleted_quests_included);
+                println!("  types 갱신    : {} (counter)", report.types_updated);
+                println!(
+                    "  index.db      : {}",
+                    if report.index_db_copied { "복사됨" } else { "이미 존재 — 건드리지 않음" }
+                );
+            }
+        }
+        Command::Info { brief } => {
+            let i = c.info()?;
+            let total = i.summary.quests_alive + i.summary.quests_deleted;
+            let snap_total: u64 = i.snapshots.iter().map(|s| s.size_bytes).sum();
+            let latest = i
+                .snapshots
+                .last()
+                .map(|s| openguild_core::snapshot::ts_to_local_display(&s.timestamp))
+                .unwrap_or_else(|| "(none)".to_string());
+            let schema = i.summary.schema_version.as_deref();
+            if cli.json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "guild": i.guild.name,
+                        "version": i.guild.version,
+                        "created_at": i.guild.created_at,
+                        "path": i.path.display().to_string(),
+                        "db_size_bytes": i.summary.db_size_bytes,
+                        "schema": schema,
+                        "quests_alive": i.summary.quests_alive,
+                        "quests_deleted": i.summary.quests_deleted,
+                        "snapshots": i.snapshots.len(),
+                        "snapshots_bytes": snap_total,
+                        "latest_snapshot": i.snapshots.last().map(|s| s.timestamp.clone()),
+                        "journal_ops": i.journal_total,
+                    })
+                );
+            } else if brief {
+                println!(
+                    "guild={} quests={}/{} schema={} snapshots={} journal={}",
+                    i.guild.name,
+                    i.summary.quests_alive,
+                    total,
+                    schema.unwrap_or("(none)"),
+                    i.snapshots.len(),
+                    i.journal_total,
+                );
+            } else {
+                println!(
+                    "guild   : {}  (v{}, created {})",
+                    i.guild.name, i.guild.version, i.guild.created_at
+                );
+                println!("path    : {}", i.path.display());
+                println!();
+                println!("db      : {} bytes", i.summary.db_size_bytes);
+                println!("schema  : {}", schema.unwrap_or("(db not initialized)"));
+                println!(
+                    "quests  : {} alive, {} deleted",
+                    i.summary.quests_alive, i.summary.quests_deleted
+                );
+                println!();
+                println!(
+                    "snapshots: {} file(s), {} bytes total (latest: {})",
+                    i.snapshots.len(),
+                    snap_total,
+                    latest
+                );
+                println!("journal : {} ops since last snapshot", i.journal_total);
             }
         }
         Command::Campaign { sub } => handle_campaign(&c, cli.json, sub)?,
@@ -2259,6 +4154,7 @@ fn run() -> Result<()> {
                 offset,
                 id_only,
                 count,
+                tree,
             } => {
                 let q = ListQuery {
                     r#type: vec_to_csv(type_prefix),
@@ -2288,6 +4184,9 @@ fn run() -> Result<()> {
                     for q in &quests {
                         println!("{}", q.quest_id);
                     }
+                } else if tree && !cli.json {
+                    // DEV-065 (CLI tree mode): 부모 → 자식 들여쓰기 출력.
+                    print_quest_tree(&quests);
                 } else {
                     print_quest_list(&quests, cli.json);
                 }
@@ -2383,7 +4282,17 @@ fn run() -> Result<()> {
                 description,
                 urgency,
                 parent,
+                template,
             } => {
+                // DEV-060: 템플릿 merge — 명시 옵션 > 템플릿 값 > 기본.
+                let tpl = match &template {
+                    Some(name) => Some(c.template_load(name)?),
+                    None => None,
+                };
+                let merged =
+                    merge_new_quest_inputs(type_prefix, title, description, urgency, tpl.as_ref())?;
+                let (type_prefix, title, description, urgency, tpl_tags) = merged;
+
                 let type_id = c.resolve_type_id(&type_prefix)?;
                 let statuses = c.quest_statuses()?;
                 let open_status = statuses
@@ -2404,6 +4313,12 @@ fn run() -> Result<()> {
                     parent_quest_id: parent_id,
                 };
                 let q = c.create_quest(body)?;
+                // DEV-060: 템플릿의 기본 tags 적용 (생성 직후 set).
+                if !tpl_tags.is_empty()
+                    && let Err(e) = c.tag_set(&q.quest_id, tpl_tags)
+                {
+                    eprintln!("[openguild] warn: 템플릿 tags 적용 실패 — {e:#}");
+                }
                 // multi-line description 도 그대로 보여줘 사용자가 "잘렸다" 오해 방지.
                 print_quest_full(&q, cli.json);
             }
@@ -2759,6 +4674,77 @@ fn run() -> Result<()> {
                     }
                 }
             }
+            // DEV-100: quest / campaign 공용 핸들러로 위임.
+            QuestCmd::Comment { sub } => run_comment_cmd(&c, CommentScope::Quest, sub, cli.json)?,
+            QuestCmd::Attach { sub } => run_attach_cmd(&c, CommentScope::Quest, sub, cli.json)?,
+            QuestCmd::Memo { sub } => run_memo_cmd(&c, CommentScope::Quest, sub, cli.json)?,
+            QuestCmd::Tag { sub } => match sub {
+                TagCmd::List { slug } => {
+                    let tags = c.tag_list(&slug)?;
+                    if cli.json {
+                        println!(
+                            "{}",
+                            serde_json::json!({ "slug": slug, "tags": tags })
+                        );
+                    } else if tags.is_empty() {
+                        println!("(태그 없음)");
+                    } else {
+                        println!("{}", tags.join(" "));
+                    }
+                }
+                TagCmd::Add { slug, tags: new_tags } => {
+                    let mut existing = c.tag_list(&slug)?;
+                    for t in new_tags {
+                        // 공백 split — 공백 구분 한 인자도 지원.
+                        for token in t.split_whitespace() {
+                            let s = token.to_string();
+                            if !existing.contains(&s) {
+                                existing.push(s);
+                            }
+                        }
+                    }
+                    c.tag_set(&slug, existing.clone())?;
+                    if cli.json {
+                        println!("{}", serde_json::json!({ "ok": true, "slug": slug, "tags": existing }));
+                    } else {
+                        println!("✓ {slug} tags: {}", existing.join(" "));
+                    }
+                }
+                TagCmd::Rm { slug, tags: remove } => {
+                    let existing = c.tag_list(&slug)?;
+                    let to_remove: std::collections::HashSet<String> = remove
+                        .iter()
+                        .flat_map(|t| t.split_whitespace().map(|s| s.to_string()))
+                        .collect();
+                    let after: Vec<String> = existing
+                        .into_iter()
+                        .filter(|t| !to_remove.contains(t))
+                        .collect();
+                    c.tag_set(&slug, after.clone())?;
+                    if cli.json {
+                        println!("{}", serde_json::json!({ "ok": true, "slug": slug, "tags": after }));
+                    } else if after.is_empty() {
+                        println!("✓ {slug} tags: (없음)");
+                    } else {
+                        println!("✓ {slug} tags: {}", after.join(" "));
+                    }
+                }
+                TagCmd::Set { slug, tags: new_tags } => {
+                    // 공백 구분 인자도 split.
+                    let flat: Vec<String> = new_tags
+                        .iter()
+                        .flat_map(|t| t.split_whitespace().map(|s| s.to_string()))
+                        .collect();
+                    c.tag_set(&slug, flat.clone())?;
+                    if cli.json {
+                        println!("{}", serde_json::json!({ "ok": true, "slug": slug, "tags": flat }));
+                    } else if flat.is_empty() {
+                        println!("✓ {slug} tags: (모두 제거)");
+                    } else {
+                        println!("✓ {slug} tags: {}", flat.join(" "));
+                    }
+                }
+            },
             QuestCmd::Prereq { sub } => match sub {
                 PrereqCmd::Add { slug, prereq } => {
                     let id = c.id_of(&slug)?;
@@ -2870,11 +4856,8 @@ fn init_guild_at(
         };
         let guild_path = cwd.join(format!("{name}.guild"));
         let today = today_date();
-        let content = format!(
-            "name = \"{}\"\nversion = \"1.0\"\ncreated_at = \"{}\"\n",
-            name.replace('\\', "\\\\").replace('"', "\\\""),
-            today
-        );
+        // DEV-064: 마커 포맷은 core 공용 헬퍼 — schema_version 포함.
+        let content = openguild_core::guild_file::marker_content(&name, &today);
         std::fs::write(&guild_path, content)
             .with_context(|| format!("길드 파일 작성 실패: {}", guild_path.display()))?;
         (guild_path, name)
@@ -2956,6 +4939,7 @@ mod tests {
             name_ko: "".into(),
             color: "".into(),
             sort_order: 0,
+            counts_as_done: false,
         }
     }
     fn ty(id: i64, prefix: &str) -> QuestType {
@@ -3040,6 +5024,7 @@ mod tests {
                     offset,
                     id_only,
                     count,
+                    tree,
                 },
             } => {
                 assert!(type_prefix.is_empty());
@@ -3049,6 +5034,7 @@ mod tests {
                 assert!(created_before.is_none());
                 assert!(updated_after.is_none());
                 assert!(updated_before.is_none());
+                assert!(!tree);
                 assert!(child_of.is_none());
                 assert!(!no_parent);
                 assert!(!has_prereq);
@@ -3173,9 +5159,10 @@ mod tests {
                     child_of, no_parent,
                     has_prereq, no_prereq, has_sub, no_sub,
                     search, title_only,
-                    sort, reverse, limit, offset, id_only, count,
+                    sort, reverse, limit, offset, id_only, count, tree,
                 },
             } => {
+                assert!(!tree);
                 assert_eq!(type_prefix, vec!["BUG"]);
                 assert_eq!(status, vec!["in_progress"]);
                 assert_eq!(urgency.as_deref(), Some("2"));
@@ -3370,13 +5357,17 @@ mod tests {
                         urgency,
                         parent,
                         description,
+                        template,
                     },
             } => {
-                assert_eq!(type_prefix, "DEV");
-                assert_eq!(title, "test");
-                assert_eq!(urgency, 3); // default
+                // DEV-060: --type / --title 은 Option (템플릿으로 대체 가능),
+                // urgency 도 Option (merge 후 기본 3) — 핸들러에서 결정.
+                assert_eq!(type_prefix.as_deref(), Some("DEV"));
+                assert_eq!(title.as_deref(), Some("test"));
+                assert!(urgency.is_none()); // 기본값은 핸들러 merge 에서
                 assert!(parent.is_none());
                 assert!(description.is_none());
+                assert!(template.is_none());
             }
             _ => panic!("expected quest new"),
         }
@@ -3391,6 +5382,7 @@ mod tests {
             "--description", "details",
             "--urgency", "1",
             "--parent", "DEV-007",
+            "--template", "bug-report",
         ])
         .unwrap();
         match cli.command {
@@ -3402,16 +5394,89 @@ mod tests {
                         urgency,
                         parent,
                         description,
+                        template,
                     },
             } => {
-                assert_eq!(type_prefix, "BUG");
-                assert_eq!(title, "fix");
-                assert_eq!(urgency, 1);
+                assert_eq!(type_prefix.as_deref(), Some("BUG"));
+                assert_eq!(title.as_deref(), Some("fix"));
+                assert_eq!(urgency, Some(1));
                 assert_eq!(parent.as_deref(), Some("DEV-007"));
                 assert_eq!(description.as_deref(), Some("details"));
+                assert_eq!(template.as_deref(), Some("bug-report"));
             }
             _ => panic!("expected quest new"),
         }
+    }
+
+    /// 템플릿 merge — 명시 옵션 > 템플릿 > 기본 우선순위.
+    #[test]
+    fn merge_new_quest_inputs_priority() {
+        use openguild_core::repo::TemplateFile;
+        let tpl = TemplateFile::parse(
+            "t",
+            "+++\ntitle = \"tpl title\"\ntype = \"BUG\"\nurgency = 2\ntags = [\"x\"]\n+++\ntpl body",
+        )
+        .unwrap();
+
+        // 명시값이 템플릿보다 우선.
+        let (ty, ti, desc, u, tags) = merge_new_quest_inputs(
+            Some("DEV".into()),
+            Some("explicit".into()),
+            Some("explicit body".into()),
+            Some(1),
+            Some(&tpl),
+        )
+        .unwrap();
+        assert_eq!((ty.as_str(), ti.as_str(), u), ("DEV", "explicit", 1));
+        assert_eq!(desc.as_deref(), Some("explicit body"));
+        assert_eq!(tags, vec!["x"]); // tags 는 템플릿 제공분 그대로.
+
+        // 명시값 없으면 템플릿 값.
+        let (ty, ti, desc, u, _) =
+            merge_new_quest_inputs(None, None, None, None, Some(&tpl)).unwrap();
+        assert_eq!((ty.as_str(), ti.as_str(), u), ("BUG", "tpl title", 2));
+        assert_eq!(desc.as_deref(), Some("tpl body"));
+
+        // 템플릿도 없으면 type / title 은 에러, urgency 는 기본 3.
+        assert!(merge_new_quest_inputs(None, Some("t".into()), None, None, None).is_err());
+        assert!(merge_new_quest_inputs(Some("DEV".into()), None, None, None, None).is_err());
+        let (_, _, desc, u, tags) =
+            merge_new_quest_inputs(Some("DEV".into()), Some("t".into()), None, None, None)
+                .unwrap();
+        assert!(desc.is_none());
+        assert_eq!(u, 3);
+        assert!(tags.is_empty());
+    }
+
+    /// 댓글 list 필터 — 5개 flag 파싱 + --top-only / --reply-to 상호배타.
+    #[test]
+    fn cli_parse_comment_list_filters() {
+        let cli = Cli::try_parse_from([
+            "openguild", "quest", "comment", "list", "DEV-001",
+            "--author", "claude",
+            "--since", "2026-06-01",
+            "--top-only",
+            "--grep", "needle",
+        ])
+        .unwrap();
+        match cli.command {
+            Command::Quest { sub: QuestCmd::Comment { sub: CommentCmd::List { slug, author, since, top_only, reply_to, grep } } } => {
+                assert_eq!(slug, "DEV-001");
+                assert_eq!(author.as_deref(), Some("claude"));
+                assert_eq!(since.as_deref(), Some("2026-06-01"));
+                assert!(top_only);
+                assert!(reply_to.is_none());
+                assert_eq!(grep.as_deref(), Some("needle"));
+            }
+            _ => panic!("expected comment list"),
+        }
+
+        // --top-only 와 --reply-to 동시 지정은 clap 이 거부.
+        assert!(Cli::try_parse_from([
+            "openguild", "quest", "comment", "list", "DEV-001",
+            "--top-only", "--reply-to", "3",
+        ])
+        .is_err());
     }
 
     #[test]
@@ -3604,12 +5669,19 @@ mod tests {
             desired_due: None,
             required_due: None,
             earliest_campaign_due: None,
+            tags: vec![],
+            comment_count: 0,
+            discussion_unresolved: 0,
+            discussion_resolved: 0,
         };
         QuestDetail {
             quest: q,
             parent: None,
             sub_quests: vec![],
             prerequisites: vec![],
+            successors: vec![],
+            tags: vec![],
+            attachments: vec![],
             position: None,
         }
     }
@@ -4105,6 +6177,7 @@ mod tests {
                 name_ko: "게시됨".into(),
                 color: "".into(),
                 sort_order: 1,
+                counts_as_done: false,
             },
             QuestStatus {
                 id: 2,
@@ -4113,6 +6186,7 @@ mod tests {
                 name_ko: "진행 중".into(),
                 color: "".into(),
                 sort_order: 2,
+                counts_as_done: false,
             },
         ];
         // 기존 match_status_id 가 name_en 만. 본 quest 가 추가한 name_ko fallback

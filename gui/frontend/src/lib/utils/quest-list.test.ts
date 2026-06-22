@@ -266,12 +266,7 @@ describe('includeAncestors / ancestorIdsOf', () => {
 	//        ├─ 2
 	//        │   └─ 4 (잎)
 	//        └─ 3
-	const tree: Quest[] = [
-		q(1),
-		q(2, { parentId: 1 }),
-		q(3, { parentId: 1 }),
-		q(4, { parentId: 2 })
-	];
+	const tree: Quest[] = [q(1), q(2, { parentId: 1 }), q(3, { parentId: 1 }), q(4, { parentId: 2 })];
 
 	it('잎이 매치되면 모든 조상이 포함됨', () => {
 		const matched = [tree.find((x) => x.id === 4)!];
@@ -342,5 +337,134 @@ describe('DEV-040 회귀: sub-quest 검색', () => {
 		expect(tree[0].id).toBe(1);
 		expect(tree[0].children).toHaveLength(1);
 		expect(tree[0].children[0].id).toBe(2);
+	});
+
+	// DEV-068 fix: tag 필터로 child 가 매치돼도 includeAncestors 가 부모 포함해야
+	// Tree 모드에서 buildTree 가 child 노드를 표시 가능.
+	it('tag 필터의 child 매치 → includeAncestors 후 tree 에서 표시됨', () => {
+		const parent: Quest = { ...quest(1, null, 'parent'), tags: ['x'] };
+		const child: Quest = { ...quest(2, 1, 'child'), tags: ['target'] };
+		const sibling: Quest = { ...quest(3, null, 'sibling'), tags: ['unrelated'] };
+		const tagged = [parent, child, sibling];
+		const matched = filterQuests(tagged, new Set(), new Set(), '', false, new Set(['target']));
+		expect(matched.map((m) => m.id)).toEqual([2]);
+		// 직접 buildTree 는 child 못 보임 (parent 가 매치 안 됨).
+		expect(buildTree(matched, null)).toHaveLength(0);
+		// includeAncestors 적용 후 child 가 부모 아래에 표시.
+		const withAncestors = includeAncestors(matched, tagged);
+		const tree = buildTree(withAncestors, null);
+		expect(tree).toHaveLength(1);
+		expect(tree[0].id).toBe(1);
+		expect(tree[0].children).toHaveLength(1);
+		expect(tree[0].children[0].id).toBe(2);
+	});
+});
+
+// --- DEV-033: sortQuests ---
+
+import { sortQuests } from './quest-list';
+
+function qs(
+	id: number,
+	opts: { urgency?: number; statusId?: number; created?: string; updated?: string } = {}
+): Quest {
+	return {
+		...q(id),
+		urgency: opts.urgency ?? 3,
+		status_id: opts.statusId ?? 1,
+		created_at: opts.created ?? '',
+		updated_at: opts.updated ?? ''
+	};
+}
+
+describe('sortQuests', () => {
+	it('id 기본 — asc, desc 토글로 반전', () => {
+		const list = [qs(3), qs(1), qs(2)];
+		expect(sortQuests(list, 'id').map((x) => x.id)).toEqual([1, 2, 3]);
+		expect(sortQuests(list, 'id', true).map((x) => x.id)).toEqual([3, 2, 1]);
+	});
+
+	it('urgency — 1 (Critical) 이 먼저, tie 는 id asc', () => {
+		const list = [qs(1, { urgency: 4 }), qs(2, { urgency: 1 }), qs(3, { urgency: 1 })];
+		expect(sortQuests(list, 'urgency').map((x) => x.id)).toEqual([2, 3, 1]);
+	});
+
+	it('status — statusOrder 의 sort_order 순, 미지정 status 는 뒤로', () => {
+		const order = new Map([
+			[10, 1],
+			[20, 2]
+		]);
+		const list = [qs(1, { statusId: 20 }), qs(2, { statusId: 99 }), qs(3, { statusId: 10 })];
+		expect(sortQuests(list, 'status', false, order).map((x) => x.id)).toEqual([3, 1, 2]);
+	});
+
+	it('updated / created — ISO 문자열 asc', () => {
+		const list = [
+			qs(1, { updated: '2026-06-09T10:00:00+09:00' }),
+			qs(2, { updated: '2026-06-08T10:00:00+09:00' })
+		];
+		expect(sortQuests(list, 'updated').map((x) => x.id)).toEqual([2, 1]);
+		expect(sortQuests(list, 'updated', true).map((x) => x.id)).toEqual([1, 2]);
+	});
+
+	it('원본 배열 비파괴', () => {
+		const list = [qs(2), qs(1)];
+		sortQuests(list, 'id');
+		expect(list.map((x) => x.id)).toEqual([2, 1]);
+	});
+});
+
+// --- DEV-033: ExtraFilters ---
+
+describe('filterQuests extra', () => {
+	const none = new Set<number>();
+	it('urgency 다중 선택', () => {
+		const list = [qs(1, { urgency: 1 }), qs(2, { urgency: 3 }), qs(3, { urgency: 4 })];
+		const out = filterQuests(list, none, none, '', false, new Set(), {
+			urgencies: new Set([1, 4])
+		});
+		expect(out.map((x) => x.id)).toEqual([1, 3]);
+	});
+
+	it('prereq tri-state — has / none', () => {
+		const list = [qs(1), qs(2), qs(3)];
+		const prereqQuestIds = new Set([2]);
+		expect(
+			filterQuests(list, none, none, '', false, new Set(), { prereq: 'has', prereqQuestIds }).map(
+				(x) => x.id
+			)
+		).toEqual([2]);
+		expect(
+			filterQuests(list, none, none, '', false, new Set(), { prereq: 'none', prereqQuestIds }).map(
+				(x) => x.id
+			)
+		).toEqual([1, 3]);
+		// any = 미적용.
+		expect(
+			filterQuests(list, none, none, '', false, new Set(), { prereq: 'any', prereqQuestIds })
+		).toHaveLength(3);
+	});
+
+	it('sub tri-state', () => {
+		const list = [qs(1), qs(2)];
+		const parentIds = new Set([1]);
+		expect(
+			filterQuests(list, none, none, '', false, new Set(), { sub: 'has', parentIds }).map(
+				(x) => x.id
+			)
+		).toEqual([1]);
+	});
+
+	it('날짜 범위 — created (포함 경계)', () => {
+		const list = [
+			qs(1, { created: '2026-06-01T10:00:00+09:00' }),
+			qs(2, { created: '2026-06-05T10:00:00+09:00' }),
+			qs(3, { created: '2026-06-09T10:00:00+09:00' })
+		];
+		const out = filterQuests(list, none, none, '', false, new Set(), {
+			createdAfter: '2026-06-05',
+			createdBefore: '2026-06-09'
+		});
+		expect(out.map((x) => x.id)).toEqual([2, 3]);
 	});
 });

@@ -47,10 +47,22 @@ DEV-001, DEV-002, BUG-045, REQ-007, ...  ─── feature 브랜치 (develop �
   - `[DEV-002][gui/frontend] Tauri 환경 감지 어댑터`
   - `[DEV-002][core] invoke 핸들러 wiring`
   - `[BUG-045] --remote env override 무시되던 문제 수정`
-  - `[DEV-019][server] check-drift 명령 추가`
+  - `[DEV-019][server] check drift 명령 추가`
 - 본문 첫 줄 — 70자 이내. 본문은 빈 줄로 구분.
 - 다중 카테고리는 별도 commit 으로 분리 권장 (각 commit 의 영역 명확).
+- **한 commit 에 다른 quest 변경 섞지 말 것** (BUG-016 정책). 다른 quest 의
+  파일이 stage 됐다면 `git reset HEAD <path>` 또는 별도 branch 로 분리.
 - 무엇(what) 보다 **왜(why)** 중심 — diff 가 what 은 보여주므로.
+- **Co-Authored-By 표기**: AI agent 가 작성한 commit 은 trailer 에
+  `Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>` 추가.
+
+### 머지 (2026-05-18 변경, BUG-016 강조)
+
+- 기본 `git merge {QUEST_ID}` — linear 면 FF, 분기 시에만 자동 merge commit.
+- `--no-ff` 강제 금지 (log 가 머지 커밋으로 지저분해짐).
+- **머지된 feature 브랜치 삭제 금지** — 사용자가 명시적으로 삭제 요청할 때까지 보존.
+- rebase 가 필요하면 (develop 이 앞서 갔을 때) feature → develop 위로 rebase 후
+  FF merge — develop 의 linear 히스토리 유지.
 
 ### 릴리즈
 
@@ -77,6 +89,17 @@ DEV-001, DEV-002, BUG-045, REQ-007, ...  ─── feature 브랜치 (develop �
 
 ---
 
+## 저장소 — 파일 진리 / DB 캐시 (불변 규칙)
+
+- **파일이 진리원, `index.db` 는 파생 캐시.** `.guild/**` 의 `.md`/`.toml` 이 source of truth. `index.db` 는 언제든 `reindex` 로 파일에서 **무손실 재구축** 가능해야 한다 → **파일에서 파생되지 않는 값을 DB 에만 저장 금지** (DB-only 권위 상태 도입 금지).
+- **모든 mutation 은 파일 + DB 동시 기록.** ops 경로(journal → SQL → 파일 write → auto-block)를 거친다. 한쪽만 바꾸지 말 것.
+- **백업 ≠ 캐시.** 백업은 `backups/journal.db` + `snapshots/`. `index.db` 는 백업이 아니다 (캐시를 백업처럼 의존 금지).
+- **읽기는 eventually-consistent.** 외부 편집 반영은 sync 지점으로만 — 시동 sync(DEV-121) / 상세 lazy(DEV-137) / 수동 ⟲(DEV-095). 신선도가 필요한 **새 read 경로**를 추가하면 어느 sync 지점이 그걸 덮는지 확인할 것 (목록류는 N-file stat 비용 고려).
+- mtime 비교는 **Unix nanoseconds(절대 시각)** 로 — naive ISO string 금지(TZ 안전성).
+- 상세: `docs/storage-design.md` § "파일 진리 ↔ 캐시 신선도 정책", guild rule `file-truth-db-cache`.
+
+---
+
 ## 프론트엔드 (Svelte)
 
 - 순수 함수(유틸, 필터, 트리 빌드 등)는 **vitest 단위 테스트 작성**
@@ -84,6 +107,29 @@ DEV-001, DEV-002, BUG-045, REQ-007, ...  ─── feature 브랜치 (develop �
 - API 호출은 반드시 `$lib/api/` 레이어를 통해서만 — 컴포넌트에서 직접 fetch 금지
 - `$state` / `$derived` Svelte 5 문법 사용, Svelte 4 방식(`writable` store 등) 혼용 금지
 - 타입 에러 0개 유지 (`npm run check`)
+
+### 테마 색 — DEV-074 (재발 방지)
+
+- **컴포넌트 CSS 의 색은 토큰 (`var(--xxx)`) 만 사용.** hex (`#79c0ff` 등) 직접 작성 금지.
+  토큰이 없는 색은 `lib/styles/global.css` 의 `:root` + `[data-theme='light']`
+  양쪽에 신설 후 사용.
+- **JS 가 색을 필요로 하는 경우** (Cytoscape canvas / SVG data URL — CSS `var()`
+  컴퓨팅 못 함) `lib/stores/theme.ts` 의 `themePalette(eff)` 단일 source 사용.
+  컴포넌트 안에서 `eff === 'light' ? '#x' : '#y'` 분기 작성 금지 — 중복 정의 /
+  drift 의 원인.
+- 새 색 추가 시 dark / light 양쪽 모두 정의. 한쪽만 정의하면 다른 테마에서 깨짐.
+- **토큰은 용도(semantic)에 맞게 사용 — BUG-069 (재발 방지).** `--nav-*`
+  (`--nav-bg` / `--nav-border`) 는 Nav 전용. `Nav.svelte` 외부의 surface /
+  border 에 쓰지 말 것. 일반 표면은 `--bg-elevated` / `--bg-subtle`, 경계선은
+  `--border` 사용. light 테마에선 `--nav-*` 값이 `--bg-elevated` / `--border`
+  와 우연히 같아 안 들키지만 dark 에선 보라빛이라 섹션마다 색이 달라진다
+  (토큰을 쓰긴 했어도 "잘못된 토큰" 이면 hex 직접 사용과 같은 문제).
+- 사용자가 보는 in-app rule 은 `.guild/rules/frontend-theme-tokens.md` 참조.
+- **enforcement — DEV-131**: 컴포넌트 CSS(`.svelte` 의 `<style>` + `.css`) 안
+  hex 직접 사용은 CI 에서 차단(`npm run check:no-hex`,
+  `gui/frontend/scripts/check-no-hex.mjs`). 토큰 정의처(`global.css`)만 allowlist.
+  새 색은 `global.css` 의 `:root` + `[data-theme=light]` 양쪽에 토큰으로 추가 후
+  사용. (mask 채널 등 비-테마 용도는 `black` 같은 키워드로.)
 
 ---
 

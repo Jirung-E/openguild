@@ -86,6 +86,26 @@ pub async fn set_due_dates(
     Ok(Json(ops::set_due_dates(&store, id, desired, required).await?))
 }
 
+/// DEV-068: tag 전체 교체. body: `{ "tags": ["a", "b", ...] }`.
+/// 정규화 (trim + dedupe + 빈 제거) 는 service 위임. 인자 빈 vec = 전체 삭제.
+pub async fn set_tags(
+    State(store): State<Store>,
+    Path(id): Path<i64>,
+    Json(body): Json<serde_json::Value>,
+) -> AppResult<Json<QuestRow>> {
+    let tags: Vec<String> = body
+        .as_object()
+        .and_then(|o| o.get("tags"))
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(Json(ops::set_quest_tags(&store, id, tags).await?))
+}
+
 pub async fn delete_quest(
     State(store): State<Store>,
     Path(id): Path<i64>,

@@ -40,6 +40,7 @@ pub fn default_statuses() -> Vec<(&'static str, StatusFile)> {
                 name_en: "Open".into(),
                 name_ko: "게시됨".into(),
                 color: "#8B95A1".into(),
+                counts_as_done: false,
             },
         ),
         (
@@ -49,6 +50,7 @@ pub fn default_statuses() -> Vec<(&'static str, StatusFile)> {
                 name_en: "In Progress".into(),
                 name_ko: "진행 중".into(),
                 color: "#4A90D9".into(),
+                counts_as_done: false,
             },
         ),
         (
@@ -58,6 +60,7 @@ pub fn default_statuses() -> Vec<(&'static str, StatusFile)> {
                 name_en: "Testing".into(),
                 name_ko: "테스트 중".into(),
                 color: "#A47AE2".into(),
+                counts_as_done: false,
             },
         ),
         (
@@ -67,6 +70,8 @@ pub fn default_statuses() -> Vec<(&'static str, StatusFile)> {
                 name_en: "Done".into(),
                 name_ko: "완료".into(),
                 color: "#7BB87F".into(),
+                // DEV-093: done 은 자동 "완료" 카운트.
+                counts_as_done: true,
             },
         ),
         (
@@ -76,6 +81,7 @@ pub fn default_statuses() -> Vec<(&'static str, StatusFile)> {
                 name_en: "Returned".into(),
                 name_ko: "반려".into(),
                 color: "#D97757".into(),
+                counts_as_done: false,
             },
         ),
         (
@@ -85,6 +91,8 @@ pub fn default_statuses() -> Vec<(&'static str, StatusFile)> {
                 name_en: "Cancelled".into(),
                 name_ko: "취소됨".into(),
                 color: "#E94F4F".into(),
+                // DEV-093: cancelled 도 "완료" 카운트 (= 더 이상 처리 안 함).
+                counts_as_done: true,
             },
         ),
         (
@@ -94,6 +102,7 @@ pub fn default_statuses() -> Vec<(&'static str, StatusFile)> {
                 name_en: "On Hold".into(),
                 name_ko: "보류".into(),
                 color: "#F5A623".into(),
+                counts_as_done: false,
             },
         ),
     ]
@@ -115,6 +124,8 @@ pub fn seed_guild_dir<P: AsRef<std::path::Path>>(guild_root: P) -> Result<SeedRe
         paths.statuses_dir(),
         paths.backups_dir(),
         paths.snapshots_dir(),
+        // DEV-069: 본문 첨부 (이미지 등) — git tracked. `![](attachments/x.png)`.
+        paths.attachments_dir(),
     ] {
         std::fs::create_dir_all(&dir)
             .with_context(|| format!("failed to create dir: {}", dir.display()))?;

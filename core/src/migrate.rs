@@ -238,6 +238,7 @@ fn build_quest_file(
         deleted: q.deleted_at.is_some(),
         desired_due: None,
         required_due: None,
+        tags: vec![],
     };
 
     // _ 처리: type_prefix 와 number 는 frontmatter 에 직접 안 들어감 (slug 에서 derive).

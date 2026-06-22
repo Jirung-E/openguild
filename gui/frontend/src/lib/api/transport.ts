@@ -96,9 +96,7 @@ export class HttpTransport implements Transport {
 import { invoke } from '@tauri-apps/api/core';
 
 /** path + method → (invoke 명, args). 매칭 실패 시 null. */
-function routeToInvoke(
-	req: ApiCall
-): { cmd: string; args: Record<string, unknown> } | null {
+function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknown> } | null {
 	const { method, path, body } = req;
 
 	// query string 분리
@@ -109,6 +107,41 @@ function routeToInvoke(
 	// parts[0] === 'api'
 
 	// ───── meta ─────
+	// DEV-016 (multi-file): 다중 길드 규칙.
+	if (pathOnly === '/api/rules') {
+		if (method === 'GET') return { cmd: 'list_rules', args: {} };
+		if (method === 'POST') {
+			const b = (body as { slug?: string; content?: string } | undefined) ?? {};
+			return {
+				cmd: 'create_rule',
+				args: { slug: b.slug ?? '', content: b.content ?? '' }
+			};
+		}
+	}
+	if (parts[0] === 'api' && parts[1] === 'rules' && parts[2]) {
+		const slug = decodeURIComponent(parts[2]);
+		if (method === 'GET') return { cmd: 'get_rule', args: { slug } };
+		if (method === 'PUT') {
+			const content = (body as { content?: string } | undefined)?.content ?? '';
+			return { cmd: 'set_rule', args: { slug, content } };
+		}
+		if (method === 'PATCH') {
+			const newSlug = (body as { new_slug?: string } | undefined)?.new_slug ?? '';
+			return { cmd: 'rename_rule', args: { slug, newSlug } };
+		}
+		if (method === 'DELETE') {
+			return { cmd: 'delete_rule', args: { slug } };
+		}
+	}
+	// DEV-016 legacy 단일 — backward compat.
+	if (pathOnly === '/api/rules-single') {
+		if (method === 'GET') return { cmd: 'get_rules', args: {} };
+		if (method === 'PUT') {
+			const content = (body as { content?: string } | undefined)?.content ?? '';
+			return { cmd: 'set_rules', args: { content } };
+		}
+	}
+
 	if (method === 'GET' && pathOnly === '/api/quest-types') {
 		return { cmd: 'list_quest_types', args: {} };
 	}
@@ -134,8 +167,74 @@ function routeToInvoke(
 	}
 
 	// ───── /api/quests/by/{slug} ─────
-	if (method === 'GET' && parts[0] === 'api' && parts[1] === 'quests' && parts[2] === 'by' && parts[3]) {
-		return { cmd: 'get_quest_by_slug', args: { slug: decodeURIComponent(parts[3]) } };
+	if (parts[0] === 'api' && parts[1] === 'quests' && parts[2] === 'by' && parts[3]) {
+		const slug = decodeURIComponent(parts[3]);
+		// DEV-094: /api/quests/by/{slug}/comments — entry 단위 CRUD.
+		if (parts[4] === 'comments') {
+			// /comments (목록 / 추가)
+			if (!parts[5]) {
+				if (method === 'GET') return { cmd: 'list_comments', args: { slug } };
+				if (method === 'POST') {
+					const b =
+						(body as
+							| {
+									author?: string;
+									body?: string;
+									parent_id?: number | null;
+							  }
+							| undefined) ?? {};
+					return {
+						cmd: 'add_comment',
+						args: {
+							slug,
+							author: b.author ?? '',
+							body: b.body ?? '',
+							// Tauri 의 parent_id 인자 — Option<u64>. null / undefined 둘 다 None.
+							parentId: b.parent_id ?? null
+						}
+					};
+				}
+			}
+			// /comments/{id}/reactions (DEV-108: 이모지 토글)
+			if (parts[5] && /^\d+$/.test(parts[5]) && parts[6] === 'reactions' && method === 'POST') {
+				const id = Number(parts[5]);
+				const rb = (body as { emoji?: string; author?: string } | undefined) ?? {};
+				return {
+					cmd: 'toggle_comment_reaction',
+					args: { slug, id, emoji: rb.emoji ?? '', author: rb.author ?? '' }
+				};
+			}
+			// /comments/{id}/discussion (DEV-142: 토론 플래그 토글)
+			if (parts[5] && /^\d+$/.test(parts[5]) && parts[6] === 'discussion' && method === 'POST') {
+				return { cmd: 'toggle_comment_discussion', args: { slug, id: Number(parts[5]) } };
+			}
+			// /comments/{id}/resolved (DEV-142: 토론 resolve 토글)
+			if (parts[5] && /^\d+$/.test(parts[5]) && parts[6] === 'resolved' && method === 'POST') {
+				return { cmd: 'toggle_comment_resolved', args: { slug, id: Number(parts[5]) } };
+			}
+			// /comments/{id} (수정 / 삭제)
+			if (parts[5] && /^\d+$/.test(parts[5]) && !parts[6]) {
+				const id = Number(parts[5]);
+				if (method === 'PATCH') {
+					const bodyText = (body as { body?: string } | undefined)?.body ?? '';
+					return { cmd: 'update_comment', args: { slug, id, body: bodyText } };
+				}
+				if (method === 'DELETE') {
+					return { cmd: 'delete_comment', args: { slug, id } };
+				}
+			}
+		}
+		if (parts[4] === 'memo') {
+			if (method === 'GET') return { cmd: 'get_memo', args: { slug } };
+			if (method === 'PUT') {
+				const content = (body as { content?: string } | undefined)?.content ?? '';
+				return { cmd: 'set_memo', args: { slug, content } };
+			}
+		}
+		// 기본 — quest detail by slug.
+		if (method === 'GET' && !parts[4]) {
+			return { cmd: 'get_quest_by_slug', args: { slug } };
+		}
 	}
 
 	// ───── /api/quests/{id}/... ─────
@@ -148,7 +247,10 @@ function routeToInvoke(
 			if (method === 'DELETE') {
 				const cascadeStr = query.get('cascade');
 				const cascade = cascadeStr
-					? cascadeStr.split(',').map((s) => Number(s.trim())).filter((n) => Number.isFinite(n))
+					? cascadeStr
+							.split(',')
+							.map((s) => Number(s.trim()))
+							.filter((n) => Number.isFinite(n))
 					: undefined;
 				return { cmd: 'delete_quest', args: { id, cascade } };
 			}
@@ -162,6 +264,11 @@ function routeToInvoke(
 		// DEV-076 / BUG-031: 희망 / 필수 기한 설정 / 해제.
 		if (sub === 'due' && method === 'PATCH') {
 			return { cmd: 'set_quest_due_dates', args: { id, body } };
+		}
+		// DEV-068: tag 전체 교체. body: { tags: string[] }.
+		if (sub === 'tags' && method === 'PATCH') {
+			const tags = (body as { tags?: string[] } | undefined)?.tags ?? [];
+			return { cmd: 'set_quest_tags', args: { id, tags } };
 		}
 		// DEV-055: quest type 변경 (slug 가 바뀜, 다른 quest 파일들도 cascade).
 		if (sub === 'type' && method === 'PATCH') {
@@ -198,6 +305,16 @@ function routeToInvoke(
 	if (method === 'GET' && pathOnly === '/api/admin/snapshots') {
 		return { cmd: 'admin_list_snapshots', args: {} };
 	}
+	// DEV-175: DELETE /api/admin/snapshots/{ts}
+	if (
+		method === 'DELETE' &&
+		parts[0] === 'api' &&
+		parts[1] === 'admin' &&
+		parts[2] === 'snapshots' &&
+		parts[3]
+	) {
+		return { cmd: 'admin_delete_snapshot', args: { ts: decodeURIComponent(parts[3]) } };
+	}
 	if (method === 'POST' && pathOnly === '/api/admin/restore') {
 		return { cmd: 'admin_restore', args: { args: body ?? {} } };
 	}
@@ -206,6 +323,14 @@ function routeToInvoke(
 	}
 	if (method === 'POST' && pathOnly === '/api/admin/reindex') {
 		return { cmd: 'admin_reindex', args: {} };
+	}
+	// DEV-162: 런타임 정비.
+	if (method === 'POST' && pathOnly === '/api/admin/vacuum') {
+		return { cmd: 'admin_vacuum', args: {} };
+	}
+	if (method === 'GET' && pathOnly === '/api/admin/journal') {
+		const c = query.get('count');
+		return { cmd: 'admin_journal_tail', args: c != null ? { count: Number(c) } : {} };
 	}
 
 	// ───── admin meta (DEV-014) — types ─────
@@ -233,6 +358,17 @@ function routeToInvoke(
 		// BUG-018: rename 은 update 안으로 통합 (body.new_slug).
 		if (method === 'PATCH') return { cmd: 'admin_update_status', args: { slug, body } };
 		if (method === 'DELETE') return { cmd: 'admin_delete_status', args: { slug } };
+	}
+	// DEV-068: tag defs.
+	if (method === 'GET' && pathOnly === '/api/tag-defs') {
+		return { cmd: 'admin_list_tag_defs', args: {} };
+	}
+	if (method === 'POST' && pathOnly === '/api/tag-defs') {
+		return { cmd: 'admin_upsert_tag_def', args: { body } };
+	}
+	if (parts[0] === 'api' && parts[1] === 'tag-defs' && parts[2]) {
+		const slug = decodeURIComponent(parts[2]);
+		if (method === 'DELETE') return { cmd: 'admin_delete_tag_def', args: { slug } };
 	}
 
 	// ───── campaigns (DEV-011) ─────
@@ -274,6 +410,49 @@ function routeToInvoke(
 					cmd: 'campaign_unlink_quest',
 					args: { slug, questSlug: decodeURIComponent(parts[4]) }
 				};
+			}
+		}
+		// DEV-100: .../comments / .../memo — quest 댓글과 동일 형식.
+		if (sub === 'comments') {
+			if (!parts[4]) {
+				if (method === 'GET') return { cmd: 'list_campaign_comments', args: { slug } };
+				if (method === 'POST') {
+					const b =
+						(body as { author?: string; body?: string; parent_id?: number | null } | undefined) ??
+						{};
+					return {
+						cmd: 'add_campaign_comment',
+						args: {
+							slug,
+							author: b.author ?? '',
+							body: b.body ?? '',
+							parentId: b.parent_id ?? null
+						}
+					};
+				}
+			}
+			if (parts[4] && /^\d+$/.test(parts[4]) && parts[5] === 'reactions' && method === 'POST') {
+				const id = Number(parts[4]);
+				const rb = (body as { emoji?: string; author?: string } | undefined) ?? {};
+				return {
+					cmd: 'toggle_campaign_comment_reaction',
+					args: { slug, id, emoji: rb.emoji ?? '', author: rb.author ?? '' }
+				};
+			}
+			if (parts[4] && /^\d+$/.test(parts[4]) && !parts[5]) {
+				const id = Number(parts[4]);
+				if (method === 'PATCH') {
+					const bodyText = (body as { body?: string } | undefined)?.body ?? '';
+					return { cmd: 'update_campaign_comment', args: { slug, id, body: bodyText } };
+				}
+				if (method === 'DELETE') return { cmd: 'delete_campaign_comment', args: { slug, id } };
+			}
+		}
+		if (sub === 'memo') {
+			if (method === 'GET') return { cmd: 'get_campaign_memo', args: { slug } };
+			if (method === 'PUT') {
+				const content = (body as { content?: string } | undefined)?.content ?? '';
+				return { cmd: 'set_campaign_memo', args: { slug, content } };
 			}
 		}
 		// .../checklist  → add / set / rm
@@ -318,7 +497,7 @@ export class TauriTransport implements Transport {
 			return result as T;
 		} catch (e) {
 			// Tauri 가 throw 한 메시지는 보통 string. Error 로 감싸기.
-			const msg = typeof e === 'string' ? e : (e as { message?: string }).message ?? String(e);
+			const msg = typeof e === 'string' ? e : ((e as { message?: string }).message ?? String(e));
 			throw new Error(msg);
 		}
 	}

@@ -94,8 +94,9 @@ pub async fn create_type(
         description: description.clone().filter(|s| !s.trim().is_empty()),
         counter: crate::repo::Counter { last_number: 0 },
     };
-    file.write(store.paths.type_path(&prefix))
-        .map_err(AppError::Internal)?;
+    let type_path = store.paths.type_path(&prefix);
+    file.write(&type_path).map_err(AppError::Internal)?;
+    let _ = crate::file_mtime::touch(store, &type_path).await; // DEV-178: drift 오탐 방지
 
     // 2. DB INSERT + counter row.
     let new_id: i64 = sqlx::query_scalar(
@@ -165,6 +166,7 @@ pub async fn update_type(
     }
 
     file.write(&path).map_err(AppError::Internal)?;
+    let _ = crate::file_mtime::touch(store, &path).await; // DEV-178: drift 오탐 방지
     sqlx::query("UPDATE quest_types SET color = ?, description = ? WHERE id = ?")
         .bind(&row.color)
         .bind(&row.description)
@@ -650,10 +652,14 @@ pub async fn create_status(
         name_en: name_en.clone(),
         name_ko: name_ko.clone(),
         color: color.clone(),
+        // DEV-093: 신규 생성 status 의 기본 counts_as_done — false. 사용자가
+        // 추후 statuses update 로 토글.
+        counts_as_done: false,
     };
     let filename = StatusFile::filename(sort_order, &slug);
-    file.write(store.paths.statuses_dir().join(&filename))
-        .map_err(AppError::Internal)?;
+    let status_path = store.paths.statuses_dir().join(&filename);
+    file.write(&status_path).map_err(AppError::Internal)?;
+    let _ = crate::file_mtime::touch(store, &status_path).await; // DEV-178: drift 오탐 방지
 
     // 2. DB INSERT.
     let new_id: i64 = sqlx::query_scalar(
@@ -675,6 +681,8 @@ pub async fn create_status(
         name_ko,
         color,
         sort_order,
+        // DEV-093: 새 status 의 기본 — 사용자가 추후 토글.
+        counts_as_done: false,
     })
 }
 
@@ -682,6 +690,7 @@ pub async fn create_status(
 ///
 /// `new_slug` 가 현재와 다르면 rename cascade (history.quest_slug + 모든
 /// quest .md frontmatter + 파일명).
+#[allow(clippy::too_many_arguments)] // 단순 field-by-field optional patch — request DTO 만들 정도는 아님.
 pub async fn update_status(
     store: &Store,
     slug: String,
@@ -690,6 +699,8 @@ pub async fn update_status(
     name_ko: Option<String>,
     color: Option<String>,
     sort_order: Option<i64>,
+    // DEV-093: 캠페인 진행도 계산용 "완료" 카운트 여부.
+    counts_as_done: Option<bool>,
 ) -> AppResult<QuestStatus> {
     if let Some(c) = &color {
         validate_color(c)?;
@@ -748,26 +759,35 @@ pub async fn update_status(
         row.sort_order = n;
         file.sort_order = n;
     }
+    // DEV-093: counts_as_done toggle.
+    if let Some(b) = counts_as_done {
+        row.counts_as_done = b;
+        file.counts_as_done = b;
+    }
 
     // 파일 — sort_order 가 바뀌었으면 rename, 아니면 in-place rewrite.
-    if order_changed {
+    let written_path = if order_changed {
         let new_filename = StatusFile::filename(row.sort_order, &working_slug);
         let new_path = store.paths.statuses_dir().join(&new_filename);
         file.write(&new_path).map_err(AppError::Internal)?;
         if new_path != old_path {
             let _ = std::fs::remove_file(&old_path);
         }
+        new_path
     } else {
         file.write(&old_path).map_err(AppError::Internal)?;
-    }
+        old_path
+    };
+    let _ = crate::file_mtime::touch(store, &written_path).await; // DEV-178: drift 오탐 방지
 
     sqlx::query(
-        "UPDATE quest_statuses SET name_en = ?, name_ko = ?, color = ?, sort_order = ? WHERE id = ?",
+        "UPDATE quest_statuses SET name_en = ?, name_ko = ?, color = ?, sort_order = ?, counts_as_done = ? WHERE id = ?",
     )
     .bind(&row.name_en)
     .bind(&row.name_ko)
     .bind(&row.color)
     .bind(row.sort_order)
+    .bind(row.counts_as_done as i64)
     .bind(row.id)
     .execute(&store.index_pool)
     .await?;
@@ -815,6 +835,83 @@ async fn fetch_status_by_slug(pool: &SqlitePool, slug: &str) -> AppResult<QuestS
         .context("fetch status")
         .map_err(AppError::Internal)?
         .ok_or_else(|| AppError::NotFound(format!("status 없음: {slug}")))
+}
+
+// ─────────────────────── DEV-068: Tag defs ───────────────────────
+
+/// tag slug 검증 — 소문자/숫자/`-`/`_` 만, 1-32자.
+fn validate_tag_slug(slug: &str) -> AppResult<()> {
+    if slug.is_empty() || slug.len() > 32 {
+        return Err(AppError::BadRequest(format!(
+            "tag slug 길이 1-32 만 (입력: {slug:?})"
+        )));
+    }
+    if !slug
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
+    {
+        return Err(AppError::BadRequest(format!(
+            "tag slug 는 소문자/숫자/`-`/`_` 만 (입력: {slug:?})"
+        )));
+    }
+    Ok(())
+}
+
+/// tag 정의 생성 또는 갱신 (upsert). color 빈 문자열 = 미정의.
+pub async fn upsert_tag_def(
+    store: &Store,
+    slug: String,
+    color: String,
+    description: String,
+) -> AppResult<crate::models::QuestTagDef> {
+    let slug = slug.trim().to_string();
+    validate_tag_slug(&slug)?;
+    let color = color.trim().to_string();
+    if !color.is_empty() {
+        validate_color(&color)?;
+    }
+    let description = description.trim().to_string();
+
+    // file write — `.guild/tags/{slug}.toml`.
+    std::fs::create_dir_all(store.paths.tags_dir())
+        .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
+    let file = crate::repo::TagFile {
+        color: color.clone(),
+        description: description.clone(),
+    };
+    let tag_path = store.paths.tag_path(&slug);
+    file.write(&tag_path).map_err(AppError::Internal)?;
+    let _ = crate::file_mtime::touch(store, &tag_path).await; // DEV-178: drift 오탐 방지
+
+    // DB upsert.
+    sqlx::query(
+        "INSERT INTO quest_tag_defs (slug, color, description) VALUES (?, ?, ?)
+         ON CONFLICT(slug) DO UPDATE SET color = excluded.color, description = excluded.description",
+    )
+    .bind(&slug)
+    .bind(&color)
+    .bind(&description)
+    .execute(&store.index_pool)
+    .await?;
+
+    Ok(crate::models::QuestTagDef {
+        slug,
+        color,
+        description,
+    })
+}
+
+/// tag 정의 삭제 — 파일 + DB. quest 의 frontmatter 의 tag string 자체는 보존
+/// (def 없어도 사용 가능). 사용자가 의도적으로 quest tag 도 제거하려면 별도.
+pub async fn delete_tag_def(store: &Store, slug: String) -> AppResult<()> {
+    let slug = slug.trim().to_string();
+    validate_tag_slug(&slug)?;
+    let _ = std::fs::remove_file(store.paths.tag_path(&slug));
+    sqlx::query("DELETE FROM quest_tag_defs WHERE slug = ?")
+        .bind(&slug)
+        .execute(&store.index_pool)
+        .await?;
+    Ok(())
 }
 
 /// `name_en` → snake_case slug ([a-z0-9_]+).
@@ -1016,6 +1113,7 @@ mod tests {
             None,
             None,
             Some(row.sort_order + 100),
+            None,
         )
         .await
         .unwrap();
@@ -1038,6 +1136,7 @@ mod tests {
             "open".into(),
             None,
             Some("Reopened".into()),
+            None,
             None,
             None,
             None,
@@ -1080,13 +1179,14 @@ mod tests {
             Some("".into()),
             None,
             None,
+            None,
         )
         .await
         .unwrap();
         assert_eq!(updated.name_en, "Open");
         assert_eq!(updated.name_ko, "");
         // name_en 빈 값은 여전히 거부.
-        let err = update_status(&store, "open".into(), None, Some("".into()), None, None, None)
+        let err = update_status(&store, "open".into(), None, Some("".into()), None, None, None, None)
             .await
             .unwrap_err();
         assert!(matches!(err, AppError::BadRequest(_)));
@@ -1131,6 +1231,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .unwrap_err();
@@ -1140,6 +1241,7 @@ mod tests {
             "open".into(),
             None,
             Some("Open!".into()),
+            None,
             None,
             None,
             None,
@@ -1256,6 +1358,7 @@ mod tests {
             None,
             Some("게시".into()),
             Some("#888888".into()),
+            None,
             None,
         )
         .await

@@ -11,11 +11,10 @@
 	import { onMount, onDestroy, tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import type { Quest } from '$lib/types';
-	import {
-		makeQuestNodeSvgUrl,
-		QUEST_NODE_W,
-		QUEST_NODE_H
-	} from '$lib/utils/quest-node-svg';
+	import { makeQuestNodeSvgUrl, QUEST_NODE_W, QUEST_NODE_H } from '$lib/utils/quest-node-svg';
+	// DEV-074 fix3: theme 별 노드 색 — store 변경 시 reactive.
+	import { theme, resolveTheme } from '$lib/stores/theme';
+	let effectiveTheme = $derived(resolveTheme($theme));
 
 	let {
 		quests,
@@ -142,7 +141,7 @@
 	}
 
 	// overdue 모드에서는 빨간 stroke overlay.
-	const OVERLAY_COLOR = '#f85149';
+	const OVERLAY_COLOR = 'var(--danger)';
 	function overlayFor(_q: Quest): string | undefined {
 		return mode === 'overdue' ? OVERLAY_COLOR : undefined;
 	}
@@ -193,7 +192,7 @@
 					onclick={() => openQuest(q)}
 				>
 					<img
-						src={makeQuestNodeSvgUrl(q, overlayFor(q))}
+						src={makeQuestNodeSvgUrl(q, overlayFor(q), effectiveTheme)}
 						alt={`${q.quest_id} ${q.title}`}
 						width={CARD_W}
 						height={QUEST_NODE_H}
@@ -212,7 +211,7 @@
 						onclick={() => openQuest(q)}
 					>
 						<img
-							src={makeQuestNodeSvgUrl(q, overlayFor(q))}
+							src={makeQuestNodeSvgUrl(q, overlayFor(q), effectiveTheme)}
 							alt=""
 							width={CARD_W}
 							height={QUEST_NODE_H}
@@ -247,7 +246,9 @@
 	}
 	/* BUG-036: fade mask / cursor 는 인라인 style 로 직접 적용 (위 div 참조).
 	   .marquee class 는 .dragging combinator (drag 중 슬롯 click 차단) 용으로만 유지. */
-	.conveyor.marquee.dragging { cursor: grabbing; }
+	.conveyor.marquee.dragging {
+		cursor: grabbing;
+	}
 
 	.track {
 		display: flex;
@@ -267,9 +268,13 @@
 		flex-direction: column;
 		align-items: stretch;
 	}
-	.spacer { flex: 0 0 284px; }
+	.spacer {
+		flex: 0 0 284px;
+	}
 	/* BUG-035: 실제 드래그 중 슬롯 클릭 차단. marquee 가 아닐 땐 자연스러운 click. */
-	.conveyor.marquee.dragging .slot { pointer-events: none; }
+	.conveyor.marquee.dragging .slot {
+		pointer-events: none;
+	}
 
 	.slot img {
 		display: block;
@@ -283,9 +288,9 @@
 		margin-top: 0.25rem;
 	}
 	.play-pause {
-		background: #21262d;
-		border: 1px solid #30363d;
-		color: #c9d1d9;
+		background: var(--bg-subtle);
+		border: 1px solid var(--border);
+		color: var(--text);
 		border-radius: 50%;
 		width: 1.8rem;
 		height: 1.8rem;
@@ -294,5 +299,7 @@
 		cursor: pointer;
 		transition: background 0.15s;
 	}
-	.play-pause:hover { background: #2a2a4a; }
+	.play-pause:hover {
+		background: var(--bg-subtle);
+	}
 </style>

@@ -1,21 +1,39 @@
 ﻿# DEV-075: 테스트 데이터 자동 주입 스크립트.
 #
+# 운영 규칙: `.guild/rules/test-data-script.md` 참조.
+#
 # 사용:
 #   cd <빈 폴더>
 #   pwsh -File <openguild repo>/scripts/seed-test-data.ps1
+#   pwsh -File ...\seed-test-data.ps1 -BinDir E:\home\workspace\lab   # 바이너리 위치 지정
 #
 # 동작:
 #   1. cwd 에 .guild 가 있으면 에러 후 종료. (실수 방지)
 #   2. openguild init 실행.
 #   3. 다양한 시간대 / 진행률 / 타입의 campaign + quest 데이터 주입.
 #      Home 페이지의 carousel / conveyor / 최근 퀘스트 UI 를 한 번에 검증.
+#   4. DEV-076: 일부 quest 에 희망/필수 기한 설정 — Home 의 "마감 임박" / Overdue
+#      뱃지 검증.
+#   5. DEV-094/099/102: 첫 quest 에 댓글 (top + reply) + 메모 — DB 캐시 sync
+#      + DEV-156/170: 첫 quest 에 첨부파일 1개 (본문 아래 첨부 섹션 데모)
+#      + snapshot 백업 회귀.
+#   6. DEV-016 (multi-file): sample 길드 규칙 생성 — Rules 페이지 검증.
 #
-# 환경:
-#   - $env:OPENGUILD_BIN 으로 바이너리 경로 override 가능.
-#   - 기본은 PATH 의 'openguild', 없으면 repo의 target/release/openguild.exe.
+# 바이너리 선택 (첫 위치 인자 = 바이너리 폴더):
+#   - 인자 없음            → PATH 의 'openguild' 사용 (기본).
+#   - .\seed-test-data.ps1 .          → 현재 폴더의 openguild.exe (스크립트와 동봉 시).
+#   - .\seed-test-data.ps1 <폴더>     → 그 폴더의 openguild.exe.
+#   - -BinDir <폴더> 로 명시 지정도 가능.
+#   PATH 설치본이 outdated 라 신규 subcommand(quest comment 등)가 없을 때 최신 빌드
+#   위치를 직접 지정. (길드 이름은 -Name 으로, 기본 'test-guild'.)
 
 [CmdletBinding()]
 param(
+    # 바이너리(openguild.exe)가 들어있는 폴더. 첫 위치 인자. 미지정 시 PATH 사용.
+    [Parameter(Position = 0)]
+    [string]$BinDir = "",
+    # 생성할 길드 이름. 이름을 줄 땐 -Name 으로 (positional 0 은 BinDir).
+    [Parameter(Position = 1)]
     [string]$Name = "test-guild"
 )
 
@@ -31,28 +49,21 @@ try { & chcp 65001 | Out-Null } catch {}
 
 # ── 바이너리 경로 결정 ────────────────────────────────────────
 function Resolve-OpenguildBin {
-    # 우선순위: OPENGUILD_BIN > repo target/release > repo target/debug > PATH.
-    # repo build 를 PATH 보다 우선. 시스템 설치본은 종종 outdated → campaign 같은
-    # 신규 subcommand 누락. 개발 중에는 항상 최신 빌드 우선.
-    if ($env:OPENGUILD_BIN) {
-        if (-not (Test-Path $env:OPENGUILD_BIN)) {
-            throw "OPENGUILD_BIN 지정됨이지만 파일이 없음: $($env:OPENGUILD_BIN)"
+    param([string]$BinDir)
+    # -BinDir 인자가 있으면 그 폴더의 openguild.exe 를 사용. 없으면 PATH 의 openguild.
+    if ($BinDir) {
+        $candidate = Join-Path $BinDir "openguild.exe"
+        if (-not (Test-Path $candidate)) {
+            throw "지정한 위치에 openguild.exe 가 없음: $candidate"
         }
-        return $env:OPENGUILD_BIN
+        return $candidate
     }
-    # $PSScriptRoot 는 함수 안에서도 스크립트 파일 경로를 가리킴 ($MyInvocation
-    # 은 함수 본문을 반환해서 Split-Path 에 잘못된 문자 에러).
-    $repoRoot = Split-Path -Parent $PSScriptRoot
-    $candidate = Join-Path $repoRoot "target\release\openguild.exe"
-    if (Test-Path $candidate) { return $candidate }
-    $candidate = Join-Path $repoRoot "target\debug\openguild.exe"
-    if (Test-Path $candidate) { return $candidate }
     $cmd = Get-Command openguild -ErrorAction SilentlyContinue
     if ($cmd) { return $cmd.Source }
-    throw "openguild 바이너리를 찾을 수 없음. PATH 등록하거나 OPENGUILD_BIN 환경변수 지정."
+    throw "PATH 에서 openguild 를 찾을 수 없음. -BinDir <폴더> 로 위치를 지정하거나 PATH 에 등록."
 }
 
-$bin = Resolve-OpenguildBin
+$bin = Resolve-OpenguildBin -BinDir $BinDir
 Write-Host "[seed] openguild binary: $bin" -ForegroundColor Cyan
 
 # ── 안전장치: 이미 초기화된 폴더에서는 실행 거부 ──────────────
@@ -74,11 +85,11 @@ function Invoke-Og {
 function Day { param([int]$Offset) (Get-Date).AddDays($Offset).ToString("yyyy-MM-dd") }
 
 # ── 1) init ─────────────────────────────────────────────────
-Write-Host "`n=== [1/5] init ===" -ForegroundColor Green
+Write-Host "`n=== [1/8] init ===" -ForegroundColor Green
 Invoke-Og init --name $Name
 
 # ── 2) Quest 생성 (다양한 타입 / 상태) ────────────────────────
-Write-Host "`n=== [2/5] Quests ===" -ForegroundColor Green
+Write-Host "`n=== [2/8] Quests ===" -ForegroundColor Green
 
 # 최근 추가된 퀘스트 목록 (Home 하단) 검증용. 10개 이상 만들어
 # slice(0, 10) 잘림 확인.
@@ -103,8 +114,16 @@ foreach ($q in $questPlan) {
     Start-Sleep -Milliseconds 50
 }
 
+# DEV-140: 본문 cross-link 데모 — 위 퀘스트들을 [[ID]] 위키문법으로 참조.
+# 실재 ID (DEV-001 / BUG-001) 는 파란 링크, 미존재 (DEV-404) 는 빨간 링크로
+# MarkdownView 가 렌더하는지 확인용. 편집기에서 ID 타이핑 시 자동완성도 확인.
+$xlinkDesc = "관련 작업: [[DEV-001]] 의 API 위에서 진행. [[BUG-001]] 리다이렉트 이슈와 연관. " +
+    "아직 없는 [[DEV-404]] 는 빨간 링크로 표시되어야 함."
+Invoke-Og quest new --type DEV --title "본문 cross-link 데모 (DEV-140)" --urgency 3 --description $xlinkDesc
+Start-Sleep -Milliseconds 50
+
 # 일부는 상태 변경해서 다양성 확보.
-Write-Host "`n=== [3/5] Quest 상태 전환 ===" -ForegroundColor Green
+Write-Host "`n=== [3/8] Quest 상태 전환 ===" -ForegroundColor Green
 # 가장 최신 슬러그를 모르므로 list 로 가져옴.
 $listOut = & $bin quest list --json 2>$null
 $quests = $listOut | ConvertFrom-Json
@@ -115,8 +134,32 @@ if ($quests.Count -ge 3) {
     Invoke-Og quest move $quests[2].quest_id on_hold
 }
 
-# ── 3) Campaign 생성 (Home carousel / conveyor 모두 검증) ────
-Write-Host "`n=== [4/5] Campaigns ===" -ForegroundColor Green
+# ── 4) DEV-076: 희망 / 필수 기한 (Home 임박 / Overdue 검증) ────
+Write-Host "`n=== [4/8] Quest 기한 설정 (DEV-076) ===" -ForegroundColor Green
+# Home 의 "마감 임박" 뱃지 / Overdue 표시 / 정렬 검증.
+# - 과거 일자 (Overdue) 1개
+# - 1~3일 내 (Critical 임박) 2개
+# - 1주 이내 (Warning 임박) 2개
+# - 미래 (정보성) 일부
+if ($quests.Count -ge 6) {
+    # Overdue — 어제까지 필수.
+    Invoke-Og quest due $quests[3].quest_id --required (Day -1)
+    # Critical 임박 — 내일 / 모레.
+    Invoke-Og quest due $quests[4].quest_id --required (Day 1)
+    Invoke-Og quest due $quests[5].quest_id --required (Day 2)
+    # Warning 임박 — 1주 이내.
+    if ($quests.Count -ge 8) {
+        Invoke-Og quest due $quests[6].quest_id --required (Day 5)
+        Invoke-Og quest due $quests[7].quest_id --desired (Day 6) --required (Day 10)
+    }
+    # 정보성 — 희망만 멀리.
+    if ($quests.Count -ge 10) {
+        Invoke-Og quest due $quests[9].quest_id --desired (Day 30)
+    }
+}
+
+# ── 5) Campaign 생성 (Home carousel / conveyor 모두 검증) ────
+Write-Host "`n=== [5/8] Campaigns ===" -ForegroundColor Green
 
 # 진행 중 캠페인 (carousel): 5개 — 자동 회전 + dots / 화살표 검증.
 $activeCampaigns = @(
@@ -174,8 +217,8 @@ foreach ($c in $upcomingCampaigns) {
 }
 New-CampaignWithChecklist -Title $futureCampaign.title -Start $futureCampaign.start -End $futureCampaign.end -Progress 0.0 -Items 3 | Out-Null
 
-# ── 4) 캠페인 ↔ 퀘스트 연결 (Quest Detail 의 Campaigns 섹션 검증) ──
-Write-Host "`n=== [5/5] Campaign ↔ Quest 연결 ===" -ForegroundColor Green
+# ── 6) 캠페인 ↔ 퀘스트 연결 (Quest Detail 의 Campaigns 섹션 검증) ──
+Write-Host "`n=== [6/8] Campaign ↔ Quest 연결 ===" -ForegroundColor Green
 $campList = & $bin campaign list --status active --json 2>$null | ConvertFrom-Json
 $questList = & $bin quest list --json 2>$null | ConvertFrom-Json
 
@@ -185,6 +228,121 @@ if ($campList.Count -ge 2 -and $questList.Count -ge 3) {
     Invoke-Og campaign link $campList[1].campaign_slug $questList[2].quest_id
 }
 
+# ── 6b) 관계 / 태그 / soft-delete / 템플릿 ──────────────────────
+#   parent·prereq 가 없으면 보드 엣지 / 트리 모드 / 의존성 그래프 / candidates 가
+#   빈 상태로 데모됨 — 핵심 시각화 검증용 관계를 만든다. 태그(칩/필터),
+#   soft-delete(삭제목록/복원), 템플릿(NewQuestModal 드롭다운)도 함께 시딩.
+Write-Host "`n=== [6b] 관계 / 태그 / soft-delete / 템플릿 ===" -ForegroundColor Green
+if ($questList.Count -ge 6) {
+    # 하위 퀘스트 (Sub-quests / 트리 모드)
+    Invoke-Og quest parent $questList[1].quest_id $questList[0].quest_id
+    Invoke-Og quest parent $questList[2].quest_id $questList[0].quest_id
+    # 선행 관계 (의존성 그래프 / 보드 엣지 / candidates)
+    Invoke-Og quest prereq add $questList[3].quest_id $questList[0].quest_id
+    Invoke-Og quest prereq add $questList[4].quest_id $questList[3].quest_id
+    # 태그 (tag chip / 필터)
+    Invoke-Og quest tag add $questList[0].quest_id backend api
+    Invoke-Og quest tag add $questList[3].quest_id bug regression
+    # soft delete 1개 (deleted 목록 / 복원 검증) — 가장 오래된 quest.
+    Invoke-Og quest delete $questList[$questList.Count - 1].quest_id --yes
+}
+# 템플릿 1개 — NewQuestModal 의 템플릿 드롭다운이 비어있지 않게 (DEV-060/158).
+Write-Host "[og] template new bug-report" -ForegroundColor DarkGray
+"## 재현 절차`n`n## 기대 / 실제`n" | & $bin template new bug-report --type BUG --title "[버그] " --urgency 2
+if ($LASTEXITCODE -ne 0) { throw "template new 실패" }
+
+# ── 7) DEV-099 / DEV-102: 댓글 + 메모 (CLI + DB cache sync) ──
+Write-Host "`n=== [7/8] 댓글 / 메모 (DEV-094/099/102) ===" -ForegroundColor Green
+
+# DEV-094 entry 단위 댓글 + 답글, DEV-099 CLI, DEV-102 DB 캐시 + snapshot 백업.
+# Quest Detail 의 댓글 섹션 / 답글 / 메모 영역 + drift::auto_resync 도 검증.
+$questForComments = ($questList | Select-Object -First 1).quest_id
+if ($questForComments) {
+    Write-Host "[og] quest comment add $questForComments (alice / 최상위)" -ForegroundColor DarkGray
+    "이 캠페인의 진행 흐름 정리해보자." | & $bin quest comment add $questForComments --author alice
+    if ($LASTEXITCODE -ne 0) { throw "quest comment add 실패" }
+
+    # 답글 — add 직후라 부모 entry id 가 1.
+    Write-Host "[og] quest comment add (bob / 답글)" -ForegroundColor DarkGray
+    "동의. 다음 마일스톤 후 다시 보자." | & $bin quest comment add $questForComments --author bob --parent-id 1
+    if ($LASTEXITCODE -ne 0) { throw "quest comment add (reply) 실패" }
+
+    # 메모 — set 으로 한 번에 본문 교체.
+    Write-Host "[og] quest memo set $questForComments" -ForegroundColor DarkGray
+    "본인 한정 메모 — 검토 시 참고용." | & $bin quest memo set $questForComments
+    if ($LASTEXITCODE -ne 0) { throw "quest memo set 실패" }
+
+    # DEV-156/170: 본문 아래 첨부 섹션 데모 — 임시 파일 1개를 첫 quest 에 첨부.
+    Write-Host "[og] quest attach add $questForComments" -ForegroundColor DarkGray
+    $attachTmp = Join-Path ([System.IO.Path]::GetTempPath()) "openguild-seed-note.md"
+    "# 첨부 데모`n`n시드 스크립트가 생성한 예시 첨부 파일 (DEV-156/170)." | Out-File -Encoding utf8 $attachTmp
+    Invoke-Og quest attach add $questForComments $attachTmp --name "seed-note.md"
+    Remove-Item $attachTmp -ErrorAction SilentlyContinue
+
+    # DEV-142/148/149: 토론 댓글 — 미해결 1개(홈 '토론 댓글' 섹션 + 완료 게이트)
+    # + 해결 1개(✓ 표시). DEV-185 의 CLI discussion/resolved 토글 사용.
+    Write-Host "[og] 토론 댓글 (discussion 미해결 + 해결)" -ForegroundColor DarkGray
+    "설계 확정 전까지 완료 막아두자. (미해결 토론)" | & $bin quest comment add $questForComments --author carol
+    if ($LASTEXITCODE -ne 0) { throw "discussion comment add 실패" }
+    Invoke-Og quest comment discussion $questForComments 3   # id 3 = 방금 추가 → 미해결 토론
+    "이건 합의됨 — 해결로 표시." | & $bin quest comment add $questForComments --author dave
+    if ($LASTEXITCODE -ne 0) { throw "resolved comment add 실패" }
+    Invoke-Og quest comment discussion $questForComments 4   # id 4 → 토론
+    Invoke-Og quest comment resolved $questForComments 4     # → 해결
+
+    # DEV-069/156: 이미지 첨부 — 인라인 미리보기/임베드 경로 검증 (PNG 생성).
+    Write-Host "[og] 이미지 첨부 (PNG)" -ForegroundColor DarkGray
+    $imgTmp = Join-Path ([System.IO.Path]::GetTempPath()) "openguild-seed-image.png"
+    try {
+        Add-Type -AssemblyName System.Drawing -ErrorAction Stop
+        $bmp = New-Object System.Drawing.Bitmap 64, 64
+        $gfx = [System.Drawing.Graphics]::FromImage($bmp)
+        $gfx.Clear([System.Drawing.Color]::SteelBlue)
+        $gfx.Dispose(); $bmp.Save($imgTmp, [System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose()
+    } catch {
+        # System.Drawing 불가 환경 — 1x1 PNG base64 fallback.
+        [IO.File]::WriteAllBytes($imgTmp, [Convert]::FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="))
+    }
+    Invoke-Og quest attach add $questForComments $imgTmp --name "preview.png"
+    Remove-Item $imgTmp -ErrorAction SilentlyContinue
+
+    # 비미디어 첨부파일 1개 더 (.json) — 다운로드 링크 아이콘 검증.
+    Write-Host "[og] 추가 첨부파일 (.json)" -ForegroundColor DarkGray
+    $jsonTmp = Join-Path ([System.IO.Path]::GetTempPath()) "openguild-seed-config.json"
+    '{ "demo": true, "note": "시드 첨부 예시" }' | Out-File -Encoding utf8 $jsonTmp
+    Invoke-Og quest attach add $questForComments $jsonTmp --name "config.json"
+    Remove-Item $jsonTmp -ErrorAction SilentlyContinue
+}
+
+# 두 번째 quest 에도 댓글 + 메모 — 목록/홈 집계 다양성.
+$secondQuest = if ($questList.Count -ge 2) { $questList[1].quest_id } else { $null }
+if ($secondQuest -and $secondQuest -ne $questForComments) {
+    Write-Host "[og] 두 번째 quest 댓글/메모 ($secondQuest)" -ForegroundColor DarkGray
+    "재현 단계 정리했습니다. 로그는 메모 참고." | & $bin quest comment add $secondQuest --author alice
+    if ($LASTEXITCODE -ne 0) { throw "second quest comment 실패" }
+    "메모: 관련 로그 / 재현 환경 기록 예정." | & $bin quest memo set $secondQuest
+    if ($LASTEXITCODE -ne 0) { throw "second quest memo 실패" }
+}
+
+# ── 8) DEV-016 (multi-file): sample 길드 규칙 (Rules 페이지 검증) ──
+Write-Host "`n=== [8/8] 길드 규칙 (DEV-016 multi-file) ===" -ForegroundColor Green
+
+# 짧은 sample 들 — 다중 파일 sidebar / 선택 / 편집 / 신규 / 이름변경 / 삭제
+# 의 좌측 목록 정렬 / 선택 동작 검증. 본문은 의미 있는 minimal markdown 으로.
+$ruleSamples = @{
+    "branch-policy"   = "# 브랜치 정책`n`n- branch 이름 = quest_id.`n- ``feature/`` 같은 prefix 금지.`n- 머지된 feature 브랜치 삭제 금지 (히스토리 보존).`n- FF 가능하면 FF (``git merge`` 기본). ``--no-ff`` 강제 금지.`n"
+    "code-review"     = "# 코드 리뷰 체크리스트`n`n- [ ] 새 quest 의 본문에 작업 의도 / 변경 사항 / 검증 명시.`n- [ ] ``cargo test`` / ``npm test`` / ``npm run check`` 통과.`n- [ ] 신규 migration 시 backward-compat 고려 (BUG-041 참조).`n- [ ] 사용자 노출 message 의 영/한 wording 확인.`n"
+    "release-checklist" = "# 릴리즈 짧은 체크리스트`n`n자세한 절차는 ``release-process`` 참조.`n`n1. develop 의 testing → done 정리.`n2. 버전 동기화 6 파일.`n3. ``cargo tauri build`` 통과 확인.`n4. tag + GitHub release + ``latest.json`` attach.`n"
+}
+
+foreach ($slug in $ruleSamples.Keys) {
+    # CLI 가 stdin 으로 본문 읽음.
+    $body = $ruleSamples[$slug]
+    Write-Host "[og] rules create $slug" -ForegroundColor DarkGray
+    $body | & $bin rules create $slug
+    if ($LASTEXITCODE -ne 0) { throw "rules create 실패: $slug" }
+}
+
 # ── 완료 요약 ────────────────────────────────────────────────
 Write-Host "`n=== 완료 ===" -ForegroundColor Green
 Write-Host "Guild   : $Name ($(Get-Location))"
@@ -192,8 +350,18 @@ Write-Host "Quests  : $($quests.Count + 0) 개 (목록 첫 10개만 Home 에 표
 Write-Host "Active  : $($activeCampaigns.Count) 개 캠페인 (carousel 회전)"
 Write-Host "Upcoming: $($upcomingCampaigns.Count) 개 (1주 내 시작 — marquee 임계값 테스트)"
 Write-Host "Future  : 1개 (1주 이후 fallback — 위 set 가 채우므로 노출은 안 됨)"
+Write-Host "Due     : 일부 quest 에 과거/임박/미래 기한 — Home 임박 뱃지 / Overdue 검증."
+Write-Host "Comments: 첫 quest 댓글 4 (top+reply+토론 미해결/해결) + 둘째 quest 댓글 1 — DB 캐시 sync."
+Write-Host "Memo    : 2 quest 에 메모."
+Write-Host "토론    : 미해결 1 (홈 토론 섹션/완료 게이트) + 해결 1 (DEV-142/148/185)."
+Write-Host "Attach  : 첫 quest 에 3개 — .md / 이미지 .png(미리보기) / .json (DEV-156/170)."
+Write-Host "관계    : 하위 2 + 선행 2 — 보드 엣지 / 트리 / 의존성 그래프 / candidates 검증."
+Write-Host "Tags    : 2 quest 에 태그 — 칩 / 필터 검증."
+Write-Host "Deleted : 1 quest soft-delete — 삭제 목록 / 복원 검증."
+Write-Host "Template: bug-report 1 개 — NewQuestModal 드롭다운 검증 (DEV-060/158)."
+Write-Host "Rules   : $($ruleSamples.Count) 개 sample (branch-policy / code-review / release-checklist)"
 Write-Host ""
-Write-Host "GUI 열어서 Home 페이지 확인:"
+Write-Host "GUI 열어서 Home / Rules 페이지 확인:"
 Write-Host "  cd `"$(Get-Location)`""
 Write-Host "  openguild-gui  # 또는 설치된 OpenGuild 앱"
 

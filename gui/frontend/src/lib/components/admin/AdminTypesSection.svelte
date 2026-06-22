@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { adminApi, type QuestTypeWithCount } from '$lib/api/admin';
+	// DEV-119: window.confirm() 대신 인앱 ConfirmDialog.
+	import ConfirmDialog from '../ConfirmDialog.svelte';
 
 	type Msg = { kind: 'info' | 'success' | 'error'; text: string } | null;
 	let { onmessage }: { onmessage: (m: Msg) => void } = $props();
@@ -21,9 +23,18 @@
 	// DEV-014 후속 (fix5): 추가 시 기본 색을 매번 다르게.
 	// 기존 사용 중인 색을 피한 다음 palette 색을 고름.
 	const COLOR_PALETTE = [
-		'#4a90d9', '#e94f4f', '#7bb87f', '#f5a623',
-		'#8e4ec6', '#1abc9c', '#e91e63', '#34495e',
-		'#16a085', '#d35400', '#2c3e50', '#c0392b'
+		'#4a90d9',
+		'#e94f4f',
+		'#7bb87f',
+		'#f5a623',
+		'#8e4ec6',
+		'#1abc9c',
+		'#e91e63',
+		'#34495e',
+		'#16a085',
+		'#d35400',
+		'#2c3e50',
+		'#c0392b'
 	];
 	function pickNextColor(): string {
 		const used = new Set(types.map((t) => t.color.toLowerCase()));
@@ -36,7 +47,8 @@
 
 	// 삭제 확인 모달.
 	let confirmDelete: QuestTypeWithCount | null = $state(null);
-
+	// DEV-119: rename cascade 확인 — 이전엔 window.confirm() (Tauri 에서 silent return).
+	let confirmRename = $state<{ oldPrefix: string; newPrefix: string; count: number } | null>(null);
 
 	onMount(refresh);
 
@@ -61,19 +73,18 @@
 	async function saveEdit() {
 		if (!editing) return;
 		const newPrefix = editPrefix.trim().toUpperCase();
-		const renaming = newPrefix && newPrefix !== editing;
-		// BUG-018: prefix 변경 시 cascade 확인.
+		const renaming = !!newPrefix && newPrefix !== editing;
+		// BUG-018 / DEV-119: prefix rename cascade 확인 — 인앱 모달.
 		if (renaming) {
 			const count = types.find((t) => t.prefix === editing)?.quest_count ?? 0;
-			const ok = window.confirm(
-				`'${editing}' → '${newPrefix}' 로 이름 변경.\n\n` +
-					`이 type 의 모든 quest (${count}개) 의 slug 가 cascade 됩니다 ` +
-					`(파일명 / frontmatter / DB history).\n\n` +
-					`다른 quest 본문 안의 '${editing}-NNN' mention 은 자동 갱신되지 않습니다 ` +
-					`— 직접 검색/수정 필요.\n\n계속할까요?`
-			);
-			if (!ok) return;
+			confirmRename = { oldPrefix: editing, newPrefix, count };
+			return; // 모달 onconfirm 이 doSaveEdit 호출.
 		}
+		await doSaveEdit(false, '');
+	}
+
+	async function doSaveEdit(renaming: boolean, newPrefix: string) {
+		if (!editing) return;
 		busy = true;
 		try {
 			await adminApi.updateType(editing, {
@@ -83,9 +94,7 @@
 			});
 			onmessage({
 				kind: 'success',
-				text: renaming
-					? `'${editing}' → '${newPrefix}' 갱신 완료 (cascade)`
-					: `'${editing}' 갱신됨`
+				text: renaming ? `'${editing}' → '${newPrefix}' 갱신 완료 (cascade)` : `'${editing}' 갱신됨`
 			});
 			editing = null;
 			await refresh();
@@ -145,7 +154,6 @@
 			busy = false;
 		}
 	}
-
 </script>
 
 <section>
@@ -190,12 +198,7 @@
 								<input type="color" bind:value={editColor} disabled={busy} />
 							</td>
 							<td>
-								<input
-									type="text"
-									bind:value={editDesc}
-									placeholder="(없음)"
-									disabled={busy}
-								/>
+								<input type="text" bind:value={editDesc} placeholder="(없음)" disabled={busy} />
 							</td>
 							<td class="count">{t.quest_count}</td>
 							<td class="row-actions">
@@ -254,12 +257,7 @@
 				</label>
 				<label>
 					<span>설명</span>
-					<input
-						type="text"
-						bind:value={newDesc}
-						placeholder="(선택) 짧은 설명"
-						disabled={busy}
-					/>
+					<input type="text" bind:value={newDesc} placeholder="(선택) 짧은 설명" disabled={busy} />
 				</label>
 			</div>
 			<div class="modal-actions">
@@ -286,13 +284,33 @@
 	</div>
 {/if}
 
+<!-- DEV-119: prefix rename cascade 확인 — 인앱 모달. -->
+<ConfirmDialog
+	open={confirmRename !== null}
+	title="Type prefix 변경 (cascade)"
+	message={confirmRename
+		? `'${confirmRename.oldPrefix}' → '${confirmRename.newPrefix}' 로 이름 변경.\n\n` +
+			`이 type 의 모든 quest (${confirmRename.count}개) 의 slug 가 cascade 됩니다 ` +
+			`(파일명 / frontmatter / DB history).\n\n` +
+			`다른 quest 본문 안의 '${confirmRename.oldPrefix}-NNN' mention 은 자동 갱신되지 않습니다 ` +
+			`— 직접 검색/수정 필요.\n\n계속할까요?`
+		: ''}
+	confirmLabel="변경"
+	danger
+	onconfirm={() => {
+		const r = confirmRename;
+		confirmRename = null;
+		if (r) doSaveEdit(true, r.newPrefix);
+	}}
+	oncancel={() => (confirmRename = null)}
+/>
 
 <style>
 	section {
 		margin-bottom: 2.5rem;
 		padding: 1.25rem;
-		background: #1a1a2e;
-		border: 1px solid #2a2a4a;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
 		border-radius: 8px;
 	}
 	.section-header {
@@ -311,34 +329,36 @@
 	}
 	button {
 		padding: 0.35rem 0.85rem;
-		background: #2a2a4a;
-		border: 1px solid #3a3a6a;
+		background: var(--bg-subtle);
+		border: 1px solid var(--border);
 		border-radius: 4px;
-		color: #c9d1d9;
+		color: var(--text);
 		font-size: 0.85rem;
 		cursor: pointer;
 	}
 	button:hover:not(:disabled) {
-		background: #3a3a6a;
+		background: var(--border);
 	}
 	button:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
 	}
 	button.danger {
-		color: #e94f4f;
-		border-color: #5a2a2a;
+		color: var(--danger);
+		border-color: var(--danger);
 	}
 	button.danger:hover:not(:disabled) {
 		background: rgba(233, 79, 79, 0.18);
 	}
+	/* DEV-074 fix6 / DEV-116 fix: `--btn-primary-*` 토큰. */
 	button.save {
-		background: #1f6feb;
-		border-color: #2f81f7;
-		color: #fff;
+		background: var(--btn-primary-bg);
+		border-color: var(--btn-primary-border);
+		color: var(--btn-primary-text);
 	}
 	button.save:hover:not(:disabled) {
-		background: #2f81f7;
+		background: var(--btn-primary-bg-hover);
+		border-color: var(--btn-primary-border-hover);
 	}
 	table {
 		width: 100%;
@@ -349,23 +369,23 @@
 	td {
 		text-align: left;
 		padding: 0.5rem 0.6rem;
-		border-bottom: 1px solid #2a2a4a;
+		border-bottom: 1px solid var(--border);
 		vertical-align: middle;
 	}
 	th {
-		color: #8b949e;
+		color: var(--text-muted);
 		font-weight: 500;
 		font-size: 0.8rem;
 	}
 	code {
 		font-family: 'SFMono-Regular', Consolas, monospace;
 		font-size: 0.85em;
-		background: #0d1117;
+		background: var(--bg);
 		padding: 0.05rem 0.3rem;
 		border-radius: 3px;
 	}
 	.hex {
-		color: #8b949e;
+		color: var(--text-muted);
 		margin-left: 0.4rem;
 	}
 	.swatch {
@@ -374,13 +394,13 @@
 		height: 1rem;
 		border-radius: 3px;
 		vertical-align: middle;
-		border: 1px solid #2a2a4a;
+		border: 1px solid var(--border);
 	}
 	.desc {
-		color: #c9d1d9;
+		color: var(--text);
 	}
 	.count {
-		color: #8b949e;
+		color: var(--text-muted);
 	}
 	.row-actions {
 		display: flex;
@@ -390,15 +410,15 @@
 	input[type='text'] {
 		width: 100%;
 		padding: 0.3rem 0.5rem;
-		background: #0d1117;
-		border: 1px solid #30363d;
+		background: var(--bg);
+		border: 1px solid var(--border);
 		border-radius: 4px;
-		color: #c9d1d9;
+		color: var(--text);
 		font: inherit;
 	}
 	input[type='text']:focus {
 		outline: none;
-		border-color: #58a6ff;
+		border-color: var(--accent);
 	}
 	input[type='text'].prefix-input {
 		width: 7ch;
@@ -409,18 +429,18 @@
 		width: 2.2rem;
 		height: 1.6rem;
 		padding: 0;
-		border: 1px solid #30363d;
+		border: 1px solid var(--border);
 		border-radius: 4px;
-		background: #0d1117;
+		background: var(--bg);
 		cursor: pointer;
 	}
 	.empty {
-		color: #8b95a1;
+		color: var(--text-muted);
 		font-size: 0.875rem;
 	}
 	.hint {
 		margin-top: 0.75rem;
-		color: #8b949e;
+		color: var(--text-muted);
 		font-size: 0.8rem;
 	}
 
@@ -436,28 +456,28 @@
 		padding: 1rem;
 	}
 	.modal {
-		background: #161b22;
-		border: 1px solid #30363d;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
 		border-radius: 10px;
 		width: 100%;
-		max-width: 460px;
+		max-width: calc(28.75rem * var(--popup-scale, 1)); /* BUG-064 */
 		padding: 1.2rem 1.4rem;
 		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
-		color: #c9d1d9;
+		color: var(--text);
 	}
 	.modal-title {
 		margin: 0 0 0.85rem;
 		font-size: 1rem;
 		font-weight: 600;
-		color: #e6edf3;
+		color: var(--text-strong);
 	}
 	.modal-msg {
 		margin: 0 0 1rem;
 		font-size: 0.875rem;
-		color: #c9d1d9;
+		color: var(--text);
 	}
 	.modal-msg strong {
-		color: #e6edf3;
+		color: var(--text-strong);
 	}
 	.form {
 		display: flex;
@@ -473,7 +493,7 @@
 	}
 	.form label > span {
 		flex: 0 0 4rem;
-		color: #8b949e;
+		color: var(--text-muted);
 	}
 	.modal-actions {
 		display: flex;
@@ -483,9 +503,9 @@
 	.btn-yes {
 		padding: 0.4rem 1.1rem;
 		background: rgba(31, 111, 235, 0.18);
-		border: 1px solid #2f81f7;
+		border: 1px solid var(--accent);
 		border-radius: 6px;
-		color: #58a6ff;
+		color: var(--accent);
 		font-size: 0.875rem;
 		cursor: pointer;
 	}
@@ -494,8 +514,8 @@
 	}
 	.btn-yes.danger {
 		background: rgba(233, 79, 79, 0.18);
-		border-color: #e94f4f;
-		color: #e94f4f;
+		border-color: var(--danger);
+		color: var(--danger);
 	}
 	.btn-yes.danger:hover:not(:disabled) {
 		background: rgba(233, 79, 79, 0.32);
@@ -503,13 +523,13 @@
 	.btn-no {
 		padding: 0.4rem 1rem;
 		background: transparent;
-		border: 1px solid #30363d;
+		border: 1px solid var(--border);
 		border-radius: 6px;
-		color: #8b949e;
+		color: var(--text-muted);
 		font-size: 0.875rem;
 		cursor: pointer;
 	}
 	.btn-no:hover:not(:disabled) {
-		background: #21262d;
+		background: var(--bg-subtle);
 	}
 </style>

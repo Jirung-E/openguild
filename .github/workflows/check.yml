@@ -80,9 +80,9 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: cargo test
-        # --test-threads=1 — env 변수 공유 테스트가 병렬에서 충돌하므로
-        # 직렬 실행. AGENTS.md / 각 quest 의 검증 절차와 동일.
-        run: cargo test --workspace -- --test-threads=1
+        # BUG-052: BUG-048 의 static Mutex 가 recents env race 를 격리 →
+        # multi-thread 안전. `--test-threads=1` 강제 제거 (CI 시간 단축).
+        run: cargo test --workspace
 
   gui-frontend:
     name: gui/frontend (svelte-kit)
@@ -108,6 +108,10 @@ jobs:
 
       - name: svelte-check
         run: npm run check
+
+      # DEV-131: 컴포넌트 CSS hex 직접 사용 차단 (테마 토큰만). 재발 방지.
+      - name: check no hex in component CSS
+        run: npm run check:no-hex
 
       - name: vitest
         run: npm test -- --run

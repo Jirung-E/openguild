@@ -1,6 +1,6 @@
 [package]
 name = "openguild-core"
-version = "0.1.0-beta"
+version = "0.2.0-beta"
 edition = "2024"
 description = "openguild core — 비즈니스 로직, sqlx, 모델. server / cli / desktop 공유."
 
@@ -29,3 +29,6 @@ tracing = "0.1"
 # DEV-041: 타임스탬프 ISO 8601 + TZ offset 포맷.
 # default-features=false 로 wasm/시간 외 기능 제거 — std + clock 만.
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+
+# DEV-094: 댓글 entry 마커 (`<!-- og-comment id="..." ts="..." -->`) 파싱.
+regex = "1"

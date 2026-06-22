@@ -1,6 +1,6 @@
 [package]
 name = "openguild-gui"
-version = "0.1.0-beta"
+version = "0.2.0-beta"
 edition = "2024"
 description = "openguild desktop 앱 — Tauri v2 shell + Svelte frontend (gui/frontend)."
 
@@ -16,10 +16,19 @@ path = "src/main.rs"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+# DEV-087: protocol-asset — 배너 / 본문 로컬 이미지를 asset:// 로 서빙.
+tauri = { version = "2", features = ["protocol-asset"] }
 # DEV-053: native file dialog (디렉토리 선택) — Welcome 에서 "폴더 열기".
 tauri-plugin-dialog = "2"
+# DEV-063: auto-update. updater = 체크 / 다운로드 / 설치, process = 재시작 (relaunch).
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+# BUG-040: 외부 링크 (`https://...`) 를 시스템 브라우저로 — `tauri-plugin-opener`.
+# webview 안에서 navigate 되면 SPA 가 사라지는 문제 차단.
+tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
+# DEV-069: 본문 첨부 — 프론트가 클립보드/드랍 파일을 base64 로 invoke.
+base64 = "0.22"
 serde_json = "1"
 anyhow = "1"
 
@@ -28,6 +37,19 @@ openguild-core = { path = "../core" }
 
 # DEV-052 후속: init_and_open_guild 의 .guild marker 파일 created_at 작성용.
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+
+# BUG-041 후속: Windows release 는 `windows_subsystem = "windows"` 로 빌드되어
+# `--version` / `--help` 같은 console 출력이 부모 콘솔에서 안 보임 (cmd 가
+# detach). `AttachConsole(ATTACH_PARENT_PROCESS)` + `SetStdHandle(CONOUT$)` 로
+# 부모 콘솔에 attach 후 stdout/stderr 를 그쪽에 redirect.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_System_Console",
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+    # CreateFileW 의 SECURITY_ATTRIBUTES 인자 타입 때문에 Win32_Security 도 필요.
+    "Win32_Security",
+] }
 
 [features]
 # Production: 미리 빌드된 frontend 자산 임베드

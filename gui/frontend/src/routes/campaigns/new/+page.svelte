@@ -6,6 +6,8 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { campaignsApi } from '$lib/api/campaigns';
+	// DEV-130 #2: 본문 textarea Tab = 들여쓰기 (설정 반영).
+	import { tabInsert } from '$lib/actions/tab-insert';
 
 	let title = $state('');
 	let startedAt = $state('');
@@ -75,6 +77,7 @@
 		<label>
 			<span class="lab">본문 (markdown, 선택)</span>
 			<textarea
+				use:tabInsert
 				bind:value={description}
 				rows="10"
 				disabled={saving}
@@ -96,56 +99,117 @@
 </div>
 
 <style>
-	.page { padding: 1.25rem 1.5rem; max-width: 760px; margin: 0 auto; }
-	.header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; }
-	.header h1 { font-size: 1.2rem; color: #c9d1d9; margin: 0; }
+	.page {
+		padding: 1.25rem 1.5rem;
+		max-width: 760px;
+		margin: 0 auto;
+	}
+	.header {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		margin-bottom: 1rem;
+	}
+	.header h1 {
+		font-size: 1.2rem;
+		color: var(--text);
+		margin: 0;
+	}
 	.back {
 		background: transparent;
-		border: 1px solid #30363d;
-		color: #c9d1d9;
+		border: 1px solid var(--border);
+		color: var(--text);
 		border-radius: 6px;
 		padding: 0.3rem 0.7rem;
 		font-size: 0.825rem;
 		cursor: pointer;
 	}
-	.back:hover { background: #21262d; }
+	.back:hover {
+		background: var(--bg-subtle);
+	}
 
-	form { display: flex; flex-direction: column; gap: 0.85rem; }
-	label { display: flex; flex-direction: column; gap: 0.3rem; }
-	.lab { font-size: 0.825rem; color: #8b949e; }
-	input, textarea {
-		background: #0d1117;
-		border: 1px solid #30363d;
-		color: #c9d1d9;
+	form {
+		display: flex;
+		flex-direction: column;
+		gap: 0.85rem;
+	}
+	label {
+		display: flex;
+		flex-direction: column;
+		gap: 0.3rem;
+	}
+	.lab {
+		font-size: 0.825rem;
+		color: var(--text-muted);
+	}
+	input,
+	textarea {
+		background: var(--bg);
+		border: 1px solid var(--border);
+		color: var(--text);
 		border-radius: 6px;
 		padding: 0.45rem 0.6rem;
 		font-size: 0.9rem;
 		font-family: inherit;
 	}
-	input:focus, textarea:focus { outline: none; border-color: #58a6ff; }
-	textarea { font-family: 'JetBrains Mono', ui-monospace, monospace; resize: vertical; min-height: 120px; }
+	input:focus,
+	textarea:focus {
+		outline: none;
+		border-color: var(--accent);
+	}
+	textarea {
+		font-family: 'JetBrains Mono', ui-monospace, monospace;
+		resize: vertical;
+		min-height: 120px;
+	}
 
-	.period-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+	.period-row {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 0.75rem;
+	}
 
 	.error {
-		background: #2d0f0f;
-		border: 1px solid #f85149;
-		color: #ff7b72;
+		background: color-mix(in srgb, var(--danger) 18%, transparent);
+		border: 1px solid var(--danger);
+		color: var(--danger);
 		padding: 0.4rem 0.65rem;
 		border-radius: 4px;
 		font-size: 0.825rem;
 	}
 
-	.actions { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.5rem; }
-	.btn-cancel, .btn-primary {
+	.actions {
+		display: flex;
+		gap: 0.5rem;
+		justify-content: flex-end;
+		margin-top: 0.5rem;
+	}
+	.btn-cancel,
+	.btn-primary {
 		padding: 0.4rem 0.95rem;
 		border-radius: 6px;
 		font-size: 0.875rem;
 		cursor: pointer;
 	}
-	.btn-cancel { background: transparent; border: 1px solid #30363d; color: #c9d1d9; }
-	.btn-cancel:hover { background: #21262d; }
-	.btn-primary { background: #238636; border: 1px solid #2ea043; color: #fff; }
-	.btn-primary:hover:not(:disabled) { background: #2ea043; }
-	.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+	.btn-cancel {
+		background: transparent;
+		border: 1px solid var(--border);
+		color: var(--text);
+	}
+	.btn-cancel:hover {
+		background: var(--bg-subtle);
+	}
+	.btn-primary {
+		background: var(--btn-primary-bg);
+		border: 1px solid var(--btn-primary-border);
+		color: var(--btn-primary-text);
+	}
+	.btn-primary:hover:not(:disabled) {
+		background: var(--btn-primary-bg-hover);
+		border-color: var(--btn-primary-border-hover);
+	}
+	.btn-primary:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
 </style>

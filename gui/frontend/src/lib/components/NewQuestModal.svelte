@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { questsApi } from '$lib/api/quests';
 	import { metaApi } from '$lib/api/meta';
+	// DEV-130 #2: 설명 textarea 도 Tab = 들여쓰기 (focus 이동 X), 설정 반영.
+	import { tabInsert } from '$lib/actions/tab-insert';
 	import { adminApi } from '$lib/api/admin';
 	import { onMount } from 'svelte';
 	import { URGENCY_LABEL, type Quest, type QuestType, type QuestStatus } from '$lib/types';
@@ -64,6 +66,77 @@
 	// (a11y_autofocus 경고 회피 + 같은 UX).
 	let titleInput: HTMLInputElement | undefined = $state();
 
+	// DEV-060: 템플릿 선택 — Tauri 전용 (local 파일 기반, CLI 와 동일 정책).
+	import { detectEnvironment } from '$lib/api/transport';
+	import { templatesApi, type QuestTemplate } from '$lib/api/templates';
+	const isTauri = detectEnvironment() === 'tauri';
+	let templates = $state<QuestTemplate[]>([]);
+	let selectedTemplate = $state(''); // name. '' = 미사용.
+	let templateTags = $state<string[]>([]);
+
+	function applyTemplate(name: string) {
+		selectedTemplate = name;
+		const t = templates.find((x) => x.name === name);
+		if (!t) {
+			templateTags = [];
+			return;
+		}
+		// CLI 의 merge 와 동일 정신: 사용자가 이미 입력한 값 (title/description)
+		// 은 안 덮음. type / urgency 는 선택 즉시 반영 (되돌리기 쉬움).
+		if (t.type) {
+			const match = types.find((ty) => ty.prefix === t.type);
+			if (match) typeId = match.id;
+		}
+		if (t.urgency != null && t.urgency >= 1 && t.urgency <= 4) urgency = t.urgency;
+		if (!title.trim() && t.title) title = t.title;
+		if (!description.trim() && t.body) description = t.body;
+		templateTags = t.tags;
+	}
+
+	// DEV-158: 현재 입력을 템플릿으로 저장 (Tauri 전용).
+	let showSaveTpl = $state(false);
+	let tplName = $state('');
+	let tplMsg = $state<string | null>(null);
+	let tplExists = $state(false); // 같은 이름 존재 → 덮어쓰기 버튼 노출.
+	let savingTpl = $state(false);
+
+	async function saveAsTemplate(force = false) {
+		if (!tplName.trim()) {
+			tplMsg = '템플릿 이름을 입력하세요.';
+			return;
+		}
+		savingTpl = true;
+		tplMsg = null;
+		try {
+			const typePrefix = types.find((t) => t.id === typeId)?.prefix ?? null;
+			await templatesApi.save({
+				name: tplName.trim(),
+				title: title.trim() || null,
+				type: typePrefix,
+				urgency,
+				tags: templateTags,
+				body: description,
+				force
+			});
+			// 목록 갱신 후 닫기.
+			templates = await templatesApi.list().catch(() => templates);
+			showSaveTpl = false;
+			tplName = '';
+			tplExists = false;
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : String(e);
+			if (!force && msg.includes('이미 존재')) {
+				// 네이티브 confirm() 회피 (BUG-075) — 인라인 '덮어쓰기' 버튼으로 처리.
+				tplExists = true;
+				tplMsg = `'${tplName.trim()}' 이미 있음 — 덮어쓰시겠습니까?`;
+			} else {
+				tplMsg = msg;
+			}
+		} finally {
+			savingTpl = false;
+		}
+	}
+
 	onMount(async () => {
 		try {
 			const [t, s] = await Promise.all([metaApi.getQuestTypes(), metaApi.getQuestStatuses()]);
@@ -76,6 +149,10 @@
 				openStatusSlug = sorted[0].slug;
 				openStatusLabel = sorted[0].name_en;
 			}
+			// DEV-060: 템플릿 목록 — 실패해도 모달 자체는 OK.
+			if (isTauri) {
+				templates = await templatesApi.list().catch(() => []);
+			}
 		} finally {
 			loading = false;
 			// Loading 끝나고 input 이 DOM 에 마운트되면 focus.
@@ -84,10 +161,16 @@
 	});
 
 	async function create() {
-		if (!title.trim()) { saveError = '제목을 입력해주세요.'; return; }
+		if (!title.trim()) {
+			saveError = '제목을 입력해주세요.';
+			return;
+		}
 		// DEV-014 후속: 검증 메시지 분리 — 이전엔 두 조건이 한 메시지("타입을 선택")
 		// 로 묶여서 status 가 0개인데 type 만 있는 경우에도 오해 메시지가 나왔음.
-		if (!typeId) { saveError = '타입을 선택해주세요.'; return; }
+		if (!typeId) {
+			saveError = '타입을 선택해주세요.';
+			return;
+		}
 		if (!openStatusSlug) {
 			saveError = '상태가 없습니다. 먼저 상태를 추가하세요.';
 			return;
@@ -103,6 +186,10 @@
 				urgency,
 				parent_quest_id: parentQuestId
 			});
+			// DEV-060: 템플릿 기본 tags — 생성 직후 적용 (실패해도 quest 는 유효).
+			if (templateTags.length > 0) {
+				await questsApi.setTags(quest.id, templateTags).catch(() => {});
+			}
 			onclose();
 			oncreated?.(quest);
 		} catch (e) {
@@ -135,8 +222,8 @@
 			<div class="empty-state">
 				<p class="empty-title">퀘스트 타입이 없습니다</p>
 				<p class="empty-msg">
-					Quest type (DEV / BUG / REQ 같은 prefix) 이 하나도 정의되어 있지 않아
-					새 퀘스트를 만들 수 없습니다. 먼저 Admin 페이지에서 type 을 추가하세요.
+					Quest type (DEV / BUG / REQ 같은 prefix) 이 하나도 정의되어 있지 않아 새 퀘스트를 만들 수
+					없습니다. 먼저 Admin 페이지에서 type 을 추가하세요.
 				</p>
 				<div class="form-actions">
 					<a class="btn-create" href="/admin" onclick={onclose}>Admin 으로 가기</a>
@@ -148,10 +235,10 @@
 			<div class="empty-state">
 				<p class="empty-title">퀘스트 상태가 없습니다</p>
 				<p class="empty-msg">
-					Quest status 가 하나도 정의되어 있지 않아 새 퀘스트를 만들 수 없습니다.
-					기본 <strong>'Open'</strong> (게시됨, 회색) 을 만들고 계속할까요?
-					필요하면 그 뒤 Admin 페이지에서 색 / 이름을 바꾸거나 다른 상태를
-					추가할 수 있습니다.
+					Quest status 가 하나도 정의되어 있지 않아 새 퀘스트를 만들 수 없습니다. 기본 <strong
+						>'Open'</strong
+					> (게시됨, 회색) 을 만들고 계속할까요? 필요하면 그 뒤 Admin 페이지에서 색 / 이름을 바꾸거나
+					다른 상태를 추가할 수 있습니다.
 				</p>
 				{#if bootstrapError}
 					<p class="save-error">{bootstrapError}</p>
@@ -170,6 +257,25 @@
 			</div>
 		{:else}
 			<div class="form">
+				<!-- DEV-060: 템플릿 — 선택 시 type/urgency 즉시 반영, 제목/설명은
+				     비어있을 때만 prefill (사용자 입력 우선, CLI merge 와 동일). -->
+				{#if isTauri && templates.length > 0}
+					<div class="field">
+						<label class="field-label">
+							<span>템플릿</span>
+							<select
+								class="sel"
+								bind:value={selectedTemplate}
+								onchange={() => applyTemplate(selectedTemplate)}
+							>
+								<option value="">(템플릿 없이)</option>
+								{#each templates as t (t.name)}
+									<option value={t.name}>{t.name}{t.title ? ` — ${t.title}` : ''}</option>
+								{/each}
+							</select>
+						</label>
+					</div>
+				{/if}
 				<div class="field-row">
 					<div class="field">
 						<label class="field-label">
@@ -214,6 +320,7 @@
 					<label class="field-label">
 						<span>설명 (선택)</span>
 						<textarea
+							use:tabInsert
 							class="ta"
 							rows="5"
 							placeholder="Markdown 형식으로 작성할 수 있습니다"
@@ -231,7 +338,57 @@
 						{saving ? '생성 중…' : '퀘스트 생성'}
 					</button>
 					<button class="btn-cancel" onclick={onclose} disabled={saving}>취소</button>
+					{#if isTauri}
+						<button
+							class="btn-tpl"
+							type="button"
+							onclick={() => {
+								showSaveTpl = !showSaveTpl;
+								tplMsg = null;
+								tplExists = false;
+							}}
+							disabled={saving}
+						>
+							{showSaveTpl ? '템플릿 저장 닫기' : '템플릿으로 저장'}
+						</button>
+					{/if}
 				</div>
+
+				{#if isTauri && showSaveTpl}
+					<!-- DEV-158: 현재 입력(타입/긴급도/제목/설명/템플릿 tags)을 템플릿으로 저장. -->
+					<div class="tpl-save">
+						<input
+							class="inp"
+							type="text"
+							placeholder="템플릿 이름 (예: bug-report)"
+							bind:value={tplName}
+							onkeydown={(e) => {
+								if (e.key === 'Enter') saveAsTemplate(false);
+							}}
+						/>
+						<button
+							class="btn-create"
+							type="button"
+							onclick={() => saveAsTemplate(false)}
+							disabled={savingTpl || !tplName.trim()}
+						>
+							{savingTpl ? '저장 중…' : '저장'}
+						</button>
+						{#if tplExists}
+							<button
+								class="btn-overwrite"
+								type="button"
+								onclick={() => saveAsTemplate(true)}
+								disabled={savingTpl}
+							>
+								덮어쓰기
+							</button>
+						{/if}
+					</div>
+					{#if tplMsg}
+						<p class="tpl-msg">{tplMsg}</p>
+					{/if}
+				{/if}
 			</div>
 		{/if}
 	</div>
@@ -250,18 +407,26 @@
 	}
 
 	.modal {
-		background: #161b22;
-		border: 1px solid #30363d;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
 		border-radius: 12px;
 		width: 100%;
-		max-width: 560px;
+		max-width: calc(
+			35rem * var(--popup-scale, 1)
+		); /* BUG-064: px → rem (UI scale) + 컨텐츠 폭 연동 */
 		box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
 		animation: modal-in 0.18s cubic-bezier(0.34, 1.3, 0.64, 1) forwards;
 		transform-origin: top center;
 	}
 	@keyframes modal-in {
-		from { opacity: 0; transform: scale(0.9) translateY(-10px); }
-		to   { opacity: 1; transform: scale(1) translateY(0); }
+		from {
+			opacity: 0;
+			transform: scale(0.9) translateY(-10px);
+		}
+		to {
+			opacity: 1;
+			transform: scale(1) translateY(0);
+		}
 	}
 
 	.modal-head {
@@ -269,30 +434,32 @@
 		align-items: center;
 		justify-content: space-between;
 		padding: 1rem 1.25rem 0.75rem;
-		border-bottom: 1px solid #21262d;
+		border-bottom: 1px solid var(--bg-subtle);
 	}
 	.modal-title {
 		margin: 0;
 		font-size: 1rem;
 		font-weight: 600;
-		color: #e6edf3;
+		color: var(--text-strong);
 	}
 	.close-btn {
 		background: none;
 		border: none;
-		color: #484f58;
+		color: var(--text-faint);
 		font-size: 1.3rem;
 		line-height: 1;
 		cursor: pointer;
 		padding: 0 4px;
 		transition: color 0.1s;
 	}
-	.close-btn:hover { color: #c9d1d9; }
+	.close-btn:hover {
+		color: var(--text);
+	}
 
 	.loading {
 		padding: 2rem;
 		text-align: center;
-		color: #484f58;
+		color: var(--text-faint);
 		font-size: 0.9rem;
 	}
 
@@ -318,7 +485,7 @@
 	.field-label {
 		font-size: 0.72rem;
 		font-weight: 600;
-		color: #8b949e;
+		color: var(--text-muted);
 	}
 	.field-label > span:first-child,
 	span.field-label {
@@ -328,24 +495,26 @@
 
 	.sel {
 		padding: 0.4rem 0.6rem;
-		background: #0d1117;
-		border: 1px solid #30363d;
+		background: var(--bg);
+		border: 1px solid var(--border);
 		border-radius: 6px;
-		color: #c9d1d9;
+		color: var(--text);
 		font-size: 0.875rem;
 		outline: none;
 		min-width: 80px;
 	}
-	.sel:focus { border-color: #58a6ff; }
+	.sel:focus {
+		border-color: var(--accent);
+	}
 
 	.status-fixed {
 		display: inline-flex;
 		align-items: center;
 		padding: 0.4rem 0.6rem;
-		background: #0d1117;
-		border: 1px solid #21262d;
+		background: var(--bg);
+		border: 1px solid var(--bg-subtle);
 		border-radius: 6px;
-		color: #8b949e;
+		color: var(--text-muted);
 		font-size: 0.875rem;
 		min-width: 80px;
 		min-height: calc(0.875rem + 0.8rem + 2px);
@@ -354,23 +523,25 @@
 
 	.inp {
 		padding: 0.5rem 0.75rem;
-		background: #0d1117;
-		border: 1px solid #30363d;
+		background: var(--bg);
+		border: 1px solid var(--border);
 		border-radius: 6px;
-		color: #e6edf3;
+		color: var(--text-strong);
 		font-size: 0.9rem;
 		outline: none;
 		width: 100%;
 		box-sizing: border-box;
 	}
-	.inp:focus { border-color: #58a6ff; }
+	.inp:focus {
+		border-color: var(--accent);
+	}
 
 	.ta {
 		padding: 0.5rem 0.75rem;
-		background: #0d1117;
-		border: 1px solid #30363d;
+		background: var(--bg);
+		border: 1px solid var(--border);
 		border-radius: 6px;
-		color: #c9d1d9;
+		color: var(--text);
 		font-size: 0.85rem;
 		outline: none;
 		width: 100%;
@@ -379,10 +550,12 @@
 		font-family: 'SFMono-Regular', Consolas, monospace;
 		line-height: 1.5;
 	}
-	.ta:focus { border-color: #58a6ff; }
+	.ta:focus {
+		border-color: var(--accent);
+	}
 
 	.save-error {
-		color: #e94f4f;
+		color: var(--danger);
 		font-size: 0.8rem;
 		margin: 0;
 	}
@@ -394,26 +567,81 @@
 	}
 	.btn-create {
 		padding: 0.45rem 1.25rem;
-		background: #238636;
-		border: 1px solid #2ea043;
+		background: var(--btn-primary-bg);
+		border: 1px solid var(--btn-primary-border);
 		border-radius: 6px;
-		color: #fff;
+		color: var(--btn-primary-text);
 		font-size: 0.875rem;
 		cursor: pointer;
-		transition: background 0.1s;
+		transition:
+			background 0.1s,
+			border-color 0.1s;
 	}
-	.btn-create:hover:not(:disabled) { background: #2ea043; }
-	.btn-create:disabled { opacity: 0.5; cursor: default; }
+	.btn-create:hover:not(:disabled) {
+		background: var(--btn-primary-bg-hover);
+		border-color: var(--btn-primary-border-hover);
+	}
+	.btn-create:disabled {
+		opacity: 0.5;
+		cursor: default;
+	}
 	.btn-cancel {
 		padding: 0.45rem 1rem;
 		background: transparent;
-		border: 1px solid #30363d;
+		border: 1px solid var(--border);
 		border-radius: 6px;
-		color: #8b949e;
+		color: var(--text-muted);
 		font-size: 0.875rem;
 		cursor: pointer;
 	}
-	.btn-cancel:hover:not(:disabled) { background: #21262d; }
+	.btn-cancel:hover:not(:disabled) {
+		background: var(--bg-subtle);
+	}
+
+	/* DEV-158: 템플릿으로 저장 — 우측 정렬, 보조 액션. */
+	.btn-tpl {
+		margin-left: auto;
+		padding: 0.45rem 0.9rem;
+		background: transparent;
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		color: var(--text-muted);
+		font-size: 0.875rem;
+		cursor: pointer;
+	}
+	.btn-tpl:hover:not(:disabled) {
+		background: var(--bg-subtle);
+		color: var(--text);
+	}
+	.btn-tpl:disabled {
+		opacity: 0.5;
+		cursor: default;
+	}
+	.tpl-save {
+		display: flex;
+		gap: 0.5rem;
+		align-items: center;
+		margin-top: 0.5rem;
+	}
+	.btn-overwrite {
+		padding: 0.45rem 0.9rem;
+		background: transparent;
+		border: 1px solid var(--danger);
+		border-radius: 6px;
+		color: var(--danger);
+		font-size: 0.875rem;
+		cursor: pointer;
+		white-space: nowrap;
+	}
+	.btn-overwrite:disabled {
+		opacity: 0.5;
+		cursor: default;
+	}
+	.tpl-msg {
+		margin: 0.4rem 0 0;
+		font-size: 0.8rem;
+		color: var(--text-muted);
+	}
 
 	/* DEV-014 후속: empty-state — type / status 가 0개일 때 폼 대신 안내. */
 	.empty-state {
@@ -426,15 +654,17 @@
 		margin: 0;
 		font-size: 1.05rem;
 		font-weight: 600;
-		color: #e6edf3;
+		color: var(--text-strong);
 	}
 	.empty-msg {
 		margin: 0;
 		font-size: 0.9rem;
 		line-height: 1.5;
-		color: #c9d1d9;
+		color: var(--text);
 	}
-	.empty-msg strong { color: #e6edf3; }
+	.empty-msg strong {
+		color: var(--text-strong);
+	}
 	/* href 인 .btn-create / .btn-cancel 도 동일 패딩. */
 	a.btn-create,
 	a.btn-cancel {

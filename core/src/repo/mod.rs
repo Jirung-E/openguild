@@ -8,10 +8,14 @@
 
 pub mod auto;
 pub mod campaign;
+pub mod comments;
 pub mod fs;
 pub mod quest;
+pub mod rules;
 pub mod seed;
 pub mod status_def;
+pub mod tag_def;
+pub mod template;
 pub mod type_def;
 
 pub use auto::{QuestRef, QuestRelations};
@@ -19,6 +23,8 @@ pub use campaign::{extract_checklist_items, CampaignFile, CampaignFrontmatter, C
 pub use quest::{QuestFile, QuestFrontmatter, AUTO_BEGIN, AUTO_END};
 pub use seed::{default_statuses, default_types, seed_guild_dir, SeedReport};
 pub use status_def::StatusFile;
+pub use tag_def::TagFile;
+pub use template::{list_templates, save_template, TemplateFile, TemplateFrontmatter};
 pub use type_def::{Counter, TypeFile};
 
 use std::path::{Path, PathBuf};
@@ -92,13 +98,105 @@ impl GuildPaths {
         self.types_dir().join(format!("{prefix}.toml"))
     }
 
+    /// DEV-016: 길드 규칙 — **legacy 단일 파일** (`.guild/rules.md`).
+    /// DEV-016 후속 (multi-file) 부터는 `.guild/rules/{slug}.md` 가 권장. 본
+    /// 단일 파일은 backward compat — 첫 list_rules 호출 시 `.guild/rules/general.md`
+    /// 로 자동 마이그레이션됨.
+    pub fn rules_path(&self) -> PathBuf {
+        self.dot_guild().join("rules.md")
+    }
+
+    /// DEV-016 multi-file: 규칙 디렉토리 (`.guild/rules/`).
+    pub fn rules_dir(&self) -> PathBuf {
+        self.dot_guild().join("rules")
+    }
+
+    /// DEV-016 multi-file: 한 규칙 파일 (`.guild/rules/{slug}.md`).
+    pub fn rule_path(&self, slug: &str) -> PathBuf {
+        self.rules_dir().join(format!("{slug}.md"))
+    }
+
+    /// DEV-068: tag 정의 디렉토리 (`.guild/tags/`). git tracked.
+    /// quest_tags 의 사용 tag 와 별개 — 사용자가 color / description 정의.
+    pub fn tags_dir(&self) -> PathBuf {
+        self.dot_guild().join("tags")
+    }
+
+    /// DEV-087: 길드 자산 디렉토리 (`.guild/assets/`). git tracked.
+    /// 캠페인 배너 등 이미지가 길드 폴더와 함께 이동하도록 복사 보관.
+    pub fn assets_dir(&self) -> PathBuf {
+        self.dot_guild().join("assets")
+    }
+
+    /// DEV-069: 본문 첨부 디렉토리 (`.guild/attachments/`). git tracked + `attachment_blobs`
+    /// blob 백업 (git 미사용 시 snapshot 복원용). markdown 본문이 `![](attachments/foo.png)` 로 참조.
+    pub fn attachments_dir(&self) -> PathBuf {
+        self.dot_guild().join("attachments")
+    }
+
+    /// DEV-060: quest 템플릿 디렉토리 (`.guild/templates/`). git tracked.
+    /// `{name}.md` — quest 파일과 동일한 `+++` TOML frontmatter (필드 모두
+    /// 선택) + 기본 본문.
+    pub fn templates_dir(&self) -> PathBuf {
+        self.dot_guild().join("templates")
+    }
+
+    /// DEV-060: 한 템플릿 파일 (`.guild/templates/{name}.md`).
+    pub fn template_path(&self, name: &str) -> PathBuf {
+        self.templates_dir().join(format!("{name}.md"))
+    }
+
+    /// DEV-068: 한 tag 정의 파일 (`.guild/tags/{slug}.toml`).
+    pub fn tag_path(&self, slug: &str) -> PathBuf {
+        self.tags_dir().join(format!("{slug}.toml"))
+    }
+
+    /// DEV-012: Quest 별 공개 댓글 (`.guild/quests/{slug}.comments.md`).
+    /// frontmatter 없는 plain markdown. git tracked.
+    pub fn comments_path(&self, slug: &str) -> PathBuf {
+        self.quests_dir().join(format!("{slug}.comments.md"))
+    }
+
+    /// DEV-156: Quest 별 첨부 목록 sidecar (`.guild/quests/{slug}.attachments.json`).
+    /// 본문과 별개의 Jira 식 첨부 목록의 진리원. git tracked.
+    pub fn quest_attachments_meta_path(&self, slug: &str) -> PathBuf {
+        self.quests_dir().join(format!("{slug}.attachments.json"))
+    }
+
+    /// DEV-156: Campaign 별 첨부 목록 sidecar.
+    pub fn campaign_attachments_meta_path(&self, slug: &str) -> PathBuf {
+        self.campaigns_dir().join(format!("{slug}.attachments.json"))
+    }
+
+    /// DEV-100: Campaign 별 공개 댓글 (`.guild/campaigns/{slug}.comments.md`).
+    pub fn campaign_comments_path(&self, slug: &str) -> PathBuf {
+        self.campaigns_dir().join(format!("{slug}.comments.md"))
+    }
+
+    /// DEV-100: Campaign 별 비공개 메모 (`.guild/campaigns/{slug}.memo.md`).
+    /// **gitignored**.
+    pub fn campaign_memo_path(&self, slug: &str) -> PathBuf {
+        self.campaigns_dir().join(format!("{slug}.memo.md"))
+    }
+
+    /// DEV-012: Quest 별 비공개 메모 (`.guild/quests/{slug}.memo.md`).
+    /// frontmatter 없는 plain markdown. **gitignored** (개인 노트).
+    pub fn memo_path(&self, slug: &str) -> PathBuf {
+        self.quests_dir().join(format!("{slug}.memo.md"))
+    }
+
     /// `.guild/.gitignore` 의 표준 내용.
+    /// DEV-012: `quests/*.memo.md` 추가 — 비공개 메모 (개인 노트, 팀 공유 X).
     pub fn gitignore_content() -> &'static str {
         "# openguild — 내부 캐시 / UI 상태 / 백업 (git 추적 X)\n\
          index.db\n\
          positions.json\n\
          backups/\n\
-         .lock\n"
+         .lock\n\
+         # DEV-012: 비공개 메모 (개인 노트)\n\
+         quests/*.memo.md\n\
+         # DEV-100: 캠페인 비공개 메모\n\
+         campaigns/*.memo.md\n"
     }
 }
 

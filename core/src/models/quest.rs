@@ -35,6 +35,23 @@ pub struct QuestRow {
     // 를 "유효 기한" 으로 표시.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub earliest_campaign_due: Option<String>,
+    /// DEV-068: 본 quest 의 tag 목록. `quest_tags` 별도 테이블에서 service 가
+    /// 채움 (sqlx::FromRow 자동 매핑 X — Vec 매핑 안 됨).
+    #[sqlx(skip)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
+    /// DEV-116: 본 quest 의 댓글 수 — `quest_comments` 의 COUNT subquery.
+    /// QuestBoard 노드 / QuestList row 에 표시.
+    #[serde(default)]
+    pub comment_count: i64,
+    /// DEV-142 후속: 미해결 토론(discussion=1, resolved=0) 댓글 수.
+    /// > 0 이면 홈 '토론 댓글' 섹션 + 노드/리스트 빨강 아이콘.
+    #[serde(default)]
+    pub discussion_unresolved: i64,
+    /// DEV-142 후속: 해결된 토론(discussion=1, resolved=1) 댓글 수.
+    /// 미해결이 0 이고 이 값이 > 0 이면 노드/리스트 초록 아이콘.
+    #[serde(default)]
+    pub discussion_resolved: i64,
 }
 
 /// 퀘스트 상세 응답 (서브퀘스트, 선행퀘스트, 위치 포함)
@@ -47,7 +64,29 @@ pub struct QuestDetail {
     pub parent: Option<QuestRow>,
     pub sub_quests: Vec<QuestRow>,
     pub prerequisites: Vec<QuestRow>,
+    /// DEV-070: 본 quest 를 선행으로 가지는 quest 들 (= 후속 / successor).
+    /// `quest_dependencies` 의 역방향. alive 만. 빈 vec 이면 후속 없음 — Quest
+    /// Detail 의 "후속 퀘스트" 섹션 conditional 표시.
+    #[serde(default)]
+    pub successors: Vec<QuestRow>,
+    /// DEV-068: 본 quest 의 tag 목록 (frontmatter 가 진리원). 검색 / 필터링용.
+    #[serde(default)]
+    pub tags: Vec<String>,
+    /// DEV-156: 본문과 별개의 첨부 목록 (Jira 식, 본문 아래 섹션). 진리원은
+    /// sidecar 파일 `.guild/quests/{slug}.attachments.json`.
+    #[serde(default)]
+    pub attachments: Vec<QuestAttachment>,
     pub position: Option<QuestPosition>,
+}
+
+/// DEV-156: quest 첨부 한 건. `.guild/attachments/{nanos}-{rand}.{ext}` 저장
+/// 파일(DEV-069 의 save_attachment) 을 가리키는 상대 경로 + 표시용 원본 파일명.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QuestAttachment {
+    /// `.guild/` 기준 상대 경로 (예: "attachments/abc.png").
+    pub path: String,
+    /// 표시용 원본 파일명.
+    pub name: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
@@ -228,6 +267,10 @@ mod tests {
             desired_due: None,
             required_due: None,
             earliest_campaign_due: None,
+            tags: vec![],
+            comment_count: 0,
+            discussion_unresolved: 0,
+            discussion_resolved: 0,
         };
         let json = serde_json::to_string(&q).unwrap();
         let back: QuestRow = serde_json::from_str(&json).unwrap();

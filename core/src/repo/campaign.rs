@@ -51,6 +51,10 @@ pub struct CampaignFrontmatter {
     /// 기본 0. 같으면 created_at DESC tie-break.
     #[serde(default)]
     pub display_order: i64,
+    /// DEV-087: 배너 이미지 — `.guild/` 상대 경로 (예 "assets/C-001-banner.png").
+    /// None = 배너 없음.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     #[serde(default)]
@@ -201,6 +205,7 @@ mod tests {
             ended_at: "".into(),
             linked_quests: vec!["DEV-001".into(), "DEV-005".into()],
             display_order: 0,
+            image: None,
             created_at: "2026-05-25T15:00:00Z".into(),
             updated_at: "2026-05-25T15:00:00Z".into(),
             deleted: false,

@@ -11,11 +11,17 @@ use crate::routes;
 /// 각 테스트마다 독립 temp dir + 시드 + Store + 라우터 생성.
 /// 디렉토리 정리는 OS 기본 temp 정리에 위임 (테스트 결정성 우선).
 async fn setup() -> Router {
+    // BUG: Windows SystemTime 해상도(~15ms)가 거칠어 병렬 테스트가 같은 ns 를
+    // 받으면 temp 디렉토리(=guild)를 공유 → quest counter 충돌로 flaky
+    // (debug 에서 재현, release 는 타이밍상 우연히 통과). 프로세스 내 원자
+    // 카운터로 유일성 보장.
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let ns = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let dir = std::env::temp_dir().join(format!("og-test-{ns}"));
+    let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("og-test-{ns}-{seq}"));
     std::fs::create_dir_all(&dir).unwrap();
     openguild_core::repo::seed_guild_dir(&dir).unwrap();
     let store = openguild_core::Store::open(&dir).await.unwrap();
@@ -484,29 +490,15 @@ async fn test_list_created_after_tz_aware_finds_recent_with_offset_format() {
          stored={created:?}, query={one_min_before:?}, results={arr:?}");
 }
 
-/// "2026-05-22T13:41:10+09:00" 같은 입력에서 분 부분만 -1.
-/// 매우 간단한 변환 — 초과 / 일자 경계는 무시 (이 테스트 시나리오에선 안 발생).
+/// "2026-05-22T13:41:10+09:00" 같은 입력에서 1분 빼기.
+///
+/// 이전 구현은 분/시 자리만 문자열 치환 — 자정 (00:00) 에 실행되면 23:59 로
+/// wrap 하면서 **날짜는 그대로** 라 미래 시각이 되어 테스트가 flaky 했음
+/// (2026-06-12 00:00:52 실행에서 실제 발생). chrono 절대 시각 연산으로 교체.
 fn subtract_one_minute(s: &str) -> String {
-    // 분은 14..16 위치.
-    let mut chars: Vec<char> = s.chars().collect();
-    let minute_str: String = chars[14..16].iter().collect();
-    let mut m: i32 = minute_str.parse().unwrap_or(0);
-    m -= 1;
-    if m < 0 {
-        m += 60;
-        // 시간을 -1 — 시 위치 11..13.
-        let hour_str: String = chars[11..13].iter().collect();
-        let mut h: i32 = hour_str.parse().unwrap_or(0);
-        h -= 1;
-        if h < 0 { h += 24; }
-        let h_s = format!("{h:02}");
-        chars[11] = h_s.chars().next().unwrap();
-        chars[12] = h_s.chars().nth(1).unwrap();
-    }
-    let m_s = format!("{m:02}");
-    chars[14] = m_s.chars().next().unwrap();
-    chars[15] = m_s.chars().nth(1).unwrap();
-    chars.iter().collect()
+    let dt = chrono::DateTime::parse_from_rfc3339(s)
+        .expect("test ts must be RFC 3339");
+    (dt - chrono::Duration::minutes(1)).to_rfc3339_opts(chrono::SecondsFormat::Secs, false)
 }
 
 fn url_encode(s: &str) -> String {

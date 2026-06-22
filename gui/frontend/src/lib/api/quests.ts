@@ -23,8 +23,7 @@ export const questsApi = {
 
 	create: (body: CreateQuestRequest) => api.post<Quest>('/api/quests', body),
 
-	update: (id: number, body: UpdateQuestRequest) =>
-		api.patch<Quest>(`/api/quests/${id}`, body),
+	update: (id: number, body: UpdateQuestRequest) => api.patch<Quest>(`/api/quests/${id}`, body),
 
 	/**
 	 * 삭제. cascadeIds 가 주어지면 해당 직계 자식들을 함께 삭제, 나머지는 분리(parent_quest_id=null).
@@ -81,8 +80,12 @@ export const questsApi = {
 	 *
 	 * 두 필드 동시 가능. 유효성 검사 (YYYY-MM-DD) 는 server 가 수행.
 	 */
-	setDueDates: (
-		id: number,
-		body: { desired_due?: string | null; required_due?: string | null }
-	) => api.patch<Quest>(`/api/quests/${id}/due`, body)
+	setDueDates: (id: number, body: { desired_due?: string | null; required_due?: string | null }) =>
+		api.patch<Quest>(`/api/quests/${id}/due`, body),
+
+	/**
+	 * DEV-068: tag 전체 교체. 정규화 (trim + dedupe + 빈 제거) 는 backend.
+	 * 빈 배열 = 전체 삭제.
+	 */
+	setTags: (id: number, tags: string[]) => api.patch<Quest>(`/api/quests/${id}/tags`, { tags })
 };

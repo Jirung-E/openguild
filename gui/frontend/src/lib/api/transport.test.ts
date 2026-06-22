@@ -1,10 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import {
-	detectEnvironment,
-	HttpTransport,
-	TauriTransport,
-	__test_only
-} from './transport';
+import { detectEnvironment, HttpTransport, TauriTransport, __test_only } from './transport';
 
 vi.mock('@tauri-apps/api/core', () => ({
 	invoke: vi.fn()
@@ -75,9 +70,9 @@ describe('HttpTransport', () => {
 
 	it('error 응답은 throw', async () => {
 		mockFetch(404, { error: 'not found' });
-		await expect(
-			new HttpTransport().call({ method: 'GET', path: '/api/missing' })
-		).rejects.toThrow('not found');
+		await expect(new HttpTransport().call({ method: 'GET', path: '/api/missing' })).rejects.toThrow(
+			'not found'
+		);
 	});
 
 	it('204 No Content 는 undefined', async () => {
@@ -122,10 +117,10 @@ describe('TauriTransport', () => {
 		await new TauriTransport().call({
 			method: 'POST',
 			path: '/api/quests',
-			body: { title: 'x', quest_type_id: 1, status_slug: "open" }
+			body: { title: 'x', quest_type_id: 1, status_slug: 'open' }
 		});
 		expect(mockInvoke).toHaveBeenCalledWith('create_quest', {
-			body: { title: 'x', quest_type_id: 1, status_slug: "open" }
+			body: { title: 'x', quest_type_id: 1, status_slug: 'open' }
 		});
 	});
 
@@ -134,11 +129,11 @@ describe('TauriTransport', () => {
 		await new TauriTransport().call({
 			method: 'PATCH',
 			path: '/api/quests/3/status',
-			body: { status_slug: "in_progress" }
+			body: { status_slug: 'in_progress' }
 		});
 		expect(mockInvoke).toHaveBeenCalledWith('change_quest_status', {
 			id: 3,
-			body: { status_slug: "in_progress" }
+			body: { status_slug: 'in_progress' }
 		});
 	});
 
@@ -270,7 +265,7 @@ describe('TauriTransport', () => {
 		});
 	});
 
-it('DELETE /api/admin/statuses/on_hold → admin_delete_status', async () => {
+	it('DELETE /api/admin/statuses/on_hold → admin_delete_status', async () => {
 		mockInvoke.mockResolvedValue(undefined);
 		await new TauriTransport().call({
 			method: 'DELETE',

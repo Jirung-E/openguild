@@ -90,22 +90,41 @@
 - 📌 상세 설계: [`docs/storage-design.md`](./storage-design.md)
 - 테스트: Rust 191 (core 110 + cli 25 + server 56) + frontend 41 = **232 통과**
 
-## 9단계 — CI/CD + 배포 ⚪
-- ⚪ GitHub Actions: PR 시 cargo check / cargo test / npm check / npm test
-- ⚪ AWS EC2 배포 (백엔드)
-- ⚪ 프론트엔드 정적 호스팅 (Vercel / Netlify 등)
+## 9단계 — CI/CD + 배포 🟡
+- ✅ GitHub Actions (`.github/workflows/check.yml`) — cargo clippy `-D warnings` +
+  cargo test (직렬) + frontend `svelte-check` / `vitest` / `vite build`.
+  BUG-050 (clippy needless_borrows 4건) 으로 안정화.
+- ✅ Release 워크플로 (`.github/workflows/release.yml`) — Tauri bundle + 자동 업데이트 서명.
+- ⚪ AWS EC2 배포 (백엔드) — 보류.
+- ⚪ 프론트엔드 정적 호스팅 — desktop GUI 가 주 진입점이 되어 우선순위 낮음.
 
 ---
 
 ## 추후 (MVP 외)
 
-- 멀티유저 인증 (JWT)
-- Campaign / Comment / Memo / Quest History UI
-- Quest 타입 / 상태 커스텀
-- 다국어
-- 길드 규칙 (Guild Rules) 기능
-- 다음 퀘스트(Successor) / 부모 퀘스트 직접 변경 UI
-- core crate 분리 (server / cli 공유)
+- 멀티유저 인증 (JWT) — DEV-021.
+- ✅ Campaign — DEV-011 구현됨.
+- ✅ Comment / Memo (file-only) — DEV-094 / DEV-099.
+- ✅ Comment / Memo DB 백업 (캐시 + snapshot) — DEV-102 구현 완료.
+  migration 0011 + reindex / drift / ops cache sync + snapshot end-to-end 회귀.
+  메모 user_id 격리는 DEV-021 JWT 진입 시 활성.
+- ✅ Quest History — DEV-013.
+- ✅ Quest 타입 / 상태 커스텀 — DEV-014 / DEV-046 등.
+- ✅ 길드 규칙 (Guild Rules) — `.guild/rules/*.md` + CLI 구현됨.
+- ✅ 태그 (DEV-068) — 풀스택 (frontmatter + DB + CLI + HTTP + Tauri + Detail UI + List 필터).
+- ✅ 후속 퀘스트 (DEV-070) — Quest Detail. 부모 직접 변경 UI 는 별도.
+- ✅ 다크 / 라이트 모드 (DEV-074) — CSS variable backbone + 25+ component 마이그레이션.
+- ✅ UI 크기 조절 (DEV-101) — Settings 슬라이더 + rem scale.
+- ✅ Quest List Tree / List 토글 (DEV-065).
+- ✅ Quest Board toolbar 접기 (DEV-073), 그룹 정렬 개선 (DEV-077).
+- ✅ 캠페인 quest 진행도 (DEV-093) — status.counts_as_done + Home + Detail + Admin.
+- ✅ installer 사용 가이드 동봉 (DEV-098).
+- ✅ server CLI 강화 (DEV-018 brief/detailed, DEV-023 vacuum/journal tail).
+- 캠페인 댓글 / 메모 — DEV-100 (대기).
+- 다국어 — DEV-015 (i18n backbone 필요).
+- 첨부파일 — DEV-069 (새 기능).
+- 레인 접기 / 순서 — DEV-105 / DEV-059 (Cytoscape).
+- Journal replay — DEV-022 (시점 복원).
 
 ## 보류 결정 (재검토 가능)
 

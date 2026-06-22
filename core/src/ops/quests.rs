@@ -1,4 +1,4 @@
-﻿//! Quest mutation orchestration — SQL + file + journal.
+//! Quest mutation orchestration — SQL + file + journal.
 //!
 //! 각 함수는 `&Store` 받고 `AppResult<T>` 반환.
 //! 호출자 (server routes / cli Backend::Local) 가 사용.
@@ -111,6 +111,79 @@ pub async fn set_due_dates(
     Ok(quest)
 }
 
+/// DEV-068: 한 quest 의 tags 전체 교체. file frontmatter + DB 캐시 모두 갱신.
+///
+/// 입력 tags 는 trim + 빈 문자열 제거 + 중복 제거 후 stable order 보존
+/// (들어온 순서대로, 같은 tag 의 첫 등장만). 새 tags 가 비면 frontmatter
+/// 에서 키 자체 생략.
+pub async fn set_quest_tags(
+    store: &Store,
+    id: i64,
+    tags: Vec<String>,
+) -> AppResult<QuestRow> {
+    use std::collections::HashSet;
+
+    // 정규화: trim + 빈 거 제거 + 중복 제거 (순서 보존).
+    let mut seen: HashSet<String> = HashSet::new();
+    let normalized: Vec<String> = tags
+        .into_iter()
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+        .filter(|t| seen.insert(t.clone()))
+        .collect();
+
+    let _ = journal::append(
+        &store.journal_pool,
+        "set_quest_tags",
+        &json!({ "id": id, "tags": &normalized }),
+        None::<&serde_json::Value>,
+    )
+    .await
+    .map_err(crate::error::AppError::Internal)?;
+
+    let quest = sql::fetch_by_id(&store.index_pool, id).await?;
+
+    // 1) DB 캐시 갱신 — 트랜잭션 안에서 wipe + INSERT.
+    let mut tx = store
+        .index_pool
+        .begin()
+        .await
+        .map_err(|e| crate::error::AppError::Internal(anyhow::anyhow!("begin tx: {e}")))?;
+    sqlx::query("DELETE FROM quest_tags WHERE quest_id = ?")
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| crate::error::AppError::Internal(anyhow::anyhow!("clear quest_tags: {e}")))?;
+    for tag in &normalized {
+        sqlx::query("INSERT INTO quest_tags (quest_id, tag) VALUES (?, ?)")
+            .bind(id)
+            .bind(tag)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| {
+                crate::error::AppError::Internal(anyhow::anyhow!("insert quest_tags: {e}"))
+            })?;
+    }
+    tx.commit()
+        .await
+        .map_err(|e| crate::error::AppError::Internal(anyhow::anyhow!("commit tx: {e}")))?;
+
+    // 2) 파일 frontmatter 갱신 — write_quest_file 이 existing tags 보존하므로
+    //    여기선 직접 frontmatter 갱신 후 다시 read 해서 강제 sync.
+    //    가장 단순: write_quest_file 한 번 호출하기 전 파일의 tags 를 새 값으로
+    //    덮어쓰기 — 파일 한 번 더 read + write.
+    let path = store.paths.quest_path(&quest.quest_id);
+    if let Ok(mut qf) = crate::repo::QuestFile::read(&path) {
+        qf.frontmatter.tags = normalized.clone();
+        qf.write(&path).map_err(crate::error::AppError::Internal)?;
+    }
+
+    // set_quest_tags 에선 sql:: 함수가 따로 없어 write_quest_file 만으로는
+    // tags 갱신 안 됨 (existing 보존). 그래서 위에서 직접 frontmatter 수정.
+    after_mutation(store).await;
+    Ok(quest)
+}
+
 /// 상태 변경.
 pub async fn change_status(
     store: &Store,
@@ -132,6 +205,46 @@ pub async fn change_status(
     if old_status_slug.as_deref() == Some(body.status_slug.as_str()) {
         // 이미 그 상태 — 그대로 반환. quest_history 기록 X.
         return sql::fetch_by_id(&store.index_pool, id).await;
+    }
+
+    // DEV-142: 완료(counts_as_done=true) 상태로의 전환은 미해결 토론(discussion)
+    // 댓글이 하나라도 있으면 차단 — CLI / GUI 공통 게이트. 댓글은 file 진리원에서
+    // 직접 확인 (discussion/resolved 는 마커 attr, DB 캐시 컬럼 없음).
+    let target_counts_as_done: Option<bool> =
+        sqlx::query_scalar("SELECT counts_as_done FROM quest_statuses WHERE slug = ?")
+            .bind(&body.status_slug)
+            .fetch_optional(&store.index_pool)
+            .await?;
+    if target_counts_as_done == Some(true) {
+        let slug: Option<String> = sqlx::query_scalar(
+            "SELECT qt.prefix || '-' || printf('%03d', q.number)
+             FROM quests q JOIN quest_types qt ON q.quest_type_id = qt.id
+             WHERE q.id = ?",
+        )
+        .bind(id)
+        .fetch_optional(&store.index_pool)
+        .await?;
+        if let Some(slug) = slug {
+            let entries = crate::repo::comments::read_entries(&store.paths, &slug)
+                .map_err(crate::error::AppError::Internal)?;
+            let unresolved: Vec<u64> = entries
+                .iter()
+                .filter(|e| e.discussion && !e.resolved)
+                .map(|e| e.id)
+                .collect();
+            if !unresolved.is_empty() {
+                let ids = unresolved
+                    .iter()
+                    .map(|i| format!("#{i}"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                return Err(crate::error::AppError::BadRequest(format!(
+                    "미해결 토론(discussion) 댓글 {}개({ids})를 먼저 resolve 해야 \
+                     완료 상태로 전환할 수 있습니다.",
+                    unresolved.len()
+                )));
+            }
+        }
     }
 
     let _ = journal::append(
@@ -491,6 +604,7 @@ async fn write_quest_file_as_deleted(
         deleted: true,
         desired_due: None,
         required_due: None,
+        tags: vec![],
     };
     let qf = QuestFile {
         frontmatter,
@@ -498,6 +612,13 @@ async fn write_quest_file_as_deleted(
         auto_block: String::new(),
     };
     qf.write(&path).map_err(crate::error::AppError::Internal)?;
+    // drift: soft-delete 로 쓴 파일도 cached_mtime 동기화 (오탐 방지).
+    let mtime = crate::repo::fs::mtime_unix_nanos(&path);
+    sqlx::query("UPDATE quests SET cached_mtime = ? WHERE id = ?")
+        .bind(mtime)
+        .bind(quest.id)
+        .execute(&store.index_pool)
+        .await?;
     Ok(())
 }
 
@@ -535,11 +656,20 @@ pub(crate) async fn write_quest_file(
     //   - description_explicit=true → DB 값 그대로 (BUG-012 의 의도).
     //   - false + 파일 존재 + 파일 본문 non-empty → 파일 본문 사용 + DB sync.
     //   - 그 외 → DB 값.
+    // DEV-068: tags 는 frontmatter 가 진리원. write_quest_file 이 매 mutation
+    // 마다 호출되므로 기존 파일의 tags 를 보존 (없으면 빈 vec). description
+    // 보존 패턴과 동일.
+    let existing_file = QuestFile::read(&path).ok();
+    let existing_tags: Vec<String> = existing_file
+        .as_ref()
+        .map(|q| q.frontmatter.tags.clone())
+        .unwrap_or_default();
+
     let description = if description_explicit {
         quest.description.clone().unwrap_or_default()
     } else {
-        match QuestFile::read(&path) {
-            Ok(existing) if !existing.description.trim().is_empty() => {
+        match &existing_file {
+            Some(existing) if !existing.description.trim().is_empty() => {
                 // 파일 본문이 DB 와 다르면 DB 도 sync.
                 let db_desc = quest.description.as_deref().unwrap_or("");
                 if existing.description != db_desc {
@@ -549,7 +679,7 @@ pub(crate) async fn write_quest_file(
                         .execute(pool)
                         .await?;
                 }
-                existing.description
+                existing.description.clone()
             }
             _ => quest.description.clone().unwrap_or_default(),
         }
@@ -572,6 +702,8 @@ pub(crate) async fn write_quest_file(
         // DEV-076: DB → 파일 sync. quest 의 due 필드 그대로 propagate.
         desired_due: quest.desired_due.clone(),
         required_due: quest.required_due.clone(),
+        // DEV-068: 기존 frontmatter 의 tags 그대로 보존. set_tags 는 별도 함수.
+        tags: existing_tags,
     };
 
     let qf = QuestFile {
@@ -582,6 +714,16 @@ pub(crate) async fn write_quest_file(
 
     qf.write(&path)
         .map_err(crate::error::AppError::Internal)?;
+
+    // drift/DEV-121: 방금 쓴 파일의 mtime 을 cached_mtime 에 기록. detect_drift 와
+    // incremental sync 가 per-row cached_mtime 으로 "파일이 DB 보다 새것인가" 를
+    // 판단하므로, ops 가 쓴 파일이 곧바로 stale 로 오탐되지 않게 동기화해 둔다.
+    let mtime = crate::repo::fs::mtime_unix_nanos(&path);
+    sqlx::query("UPDATE quests SET cached_mtime = ? WHERE id = ?")
+        .bind(mtime)
+        .bind(quest.id)
+        .execute(pool)
+        .await?;
     Ok(())
 }
 
@@ -783,6 +925,61 @@ mod tests {
 
         let content = std::fs::read_to_string(dir.join(".guild/quests/DEV-001.md")).unwrap();
         assert!(content.contains("status = \"in_progress\""));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-142: 미해결 discussion 댓글이 있으면 완료(done) 전환 차단,
+    /// resolve 후엔 통과.
+    #[tokio::test]
+    async fn change_status_blocked_by_unresolved_discussion() {
+        let dir = fresh_tmp("disc-gate");
+        let store = setup_store(&dir).await;
+        let q = create_quest(
+            &store,
+            CreateQuestRequest {
+                quest_type_id: 1,
+                title: "t".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        let slug = q.quest_id.clone();
+
+        // discussion 댓글 추가 + discussion 플래그 on.
+        let c = crate::ops::comments::add_comment_entry(
+            &store,
+            &slug,
+            "admin".into(),
+            "논의 필요".into(),
+            None,
+        )
+        .await
+        .unwrap();
+        crate::ops::comments::toggle_comment_discussion(&store, &slug, c.id)
+            .await
+            .unwrap();
+
+        // done(counts_as_done) 전환 → 차단.
+        let blocked = change_status(&store, q.id, ChangeStatusRequest { status_slug: "done".into() }).await;
+        assert!(blocked.is_err(), "미해결 discussion 이면 완료 차단되어야");
+
+        // in_progress(counts_as_done=false) 전환 → 허용 (게이트는 완료에만 적용).
+        change_status(&store, q.id, ChangeStatusRequest { status_slug: "in_progress".into() })
+            .await
+            .expect("non-done 전환은 허용");
+
+        // resolve 후 done 전환 → 통과.
+        crate::ops::comments::toggle_comment_resolved(&store, &slug, c.id)
+            .await
+            .unwrap();
+        change_status(&store, q.id, ChangeStatusRequest { status_slug: "done".into() })
+            .await
+            .expect("resolve 후엔 완료 가능");
 
         let _ = std::fs::remove_dir_all(&dir);
     }

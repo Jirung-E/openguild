@@ -1,0 +1,11 @@
+-- DEV-121 Phase 1: quests 테이블에 cached_mtime 컬럼 추가 (incremental sync).
+--
+-- 시간 비교 안전성:
+--   - 단위는 Unix nanoseconds — timezone-independent absolute time.
+--   - Rust 의 SystemTime::duration_since(UNIX_EPOCH)?.as_nanos() 와 1:1 매칭.
+--   - DEFAULT 0 → 마이그레이션 직후 첫 sync 가 모든 row 의 file mtime > 0
+--     으로 판정하여 cached_mtime 을 backfill 한 번. 이후 cheap.
+--
+-- 대상: quests 만 (Phase 1). statuses / types / tags / campaigns / siblings 는
+-- 양이 적어 (수 ~ 수십 개) 기존 reindex / drift 경로 유지.
+ALTER TABLE quests ADD COLUMN cached_mtime INTEGER NOT NULL DEFAULT 0;

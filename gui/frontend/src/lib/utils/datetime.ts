@@ -113,10 +113,7 @@ export function formatRemaining(
  * @returns date 가 유효한 YYYY-MM-DD 이고 그 날의 끝이 지났으며 status 가
  *          진행 가능 상태면 true.
  */
-export function isDateOverdue(
-	date: string | null | undefined,
-	status?: string | null
-): boolean {
+export function isDateOverdue(date: string | null | undefined, status?: string | null): boolean {
 	if (!date) return false;
 	const d = date.trim();
 	if (!d) return false;

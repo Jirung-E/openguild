@@ -7,7 +7,8 @@
 //
 // 결과: data:image/svg+xml URL. `<img src={url} />` 로 표시.
 
-import { URGENCY_COLOR, URGENCY_LABEL, type Quest } from '../types';
+import { urgencyColor, urgencyLabel, urgencyOutOfRange, type Quest } from '../types';
+import { themePalette } from '../stores/theme';
 
 const NODE_W = 284;
 const NODE_H = 80;
@@ -104,20 +105,47 @@ export function effectiveQuestDue(quest: Quest): {
  * Quest Board 의 노드와 동일한 모양으로 quest 를 SVG data URL 로 렌더링.
  *
  * @param overlayColor 옵션. 'overdue' = 빨간 외곽선 강조, undefined = 기본.
+ * @param theme DEV-074: 'dark' (기본) / 'light'. light 면 node bg 흰색, text 검정.
  */
-export function makeQuestNodeSvgUrl(quest: Quest, overlayColor?: string): string {
+export function makeQuestNodeSvgUrl(
+	quest: Quest,
+	overlayColor?: string,
+	theme: 'dark' | 'light' = 'dark'
+): string {
+	// DEV-074 fix20: themePalette 단일 source 사용. 이전엔 inline 분기.
+	const palette = themePalette(theme);
+	const bgFill = palette.bg;
+	const titleFill = palette.text;
+	const defaultDueColor = palette.textMuted;
 	const W = NODE_W;
 	const H = NODE_H;
-	const uc = URGENCY_COLOR[quest.urgency as 1 | 2 | 3 | 4] ?? '#666';
+	// BUG-057: HiDPI — SVG 를 dpr 배 사이즈로 발급 + viewBox 로 좌표 보존.
+	// Cytoscape / `<img src>` 가 그 사이즈 raster cache → 표시 사이즈로 다운샘플 → 선명.
+	const dpr =
+		typeof window !== 'undefined' ? Math.max(1, Math.min(3, window.devicePixelRatio || 1)) : 1;
+	const Wpx = Math.round(W * dpr);
+	const Hpx = Math.round(H * dpr);
+	// BUG-060 후속: clamp 표시(범위 밖이면 1~4 로) + 원본 범위 밖이면 ⚠ 경고.
+	const uc = urgencyColor(quest.urgency);
 	const tc = quest.type_color;
-	const ul = URGENCY_LABEL[quest.urgency as 1 | 2 | 3 | 4] ?? '?';
+	const ul = urgencyLabel(quest.urgency);
+	const urgWarn = urgencyOutOfRange(quest.urgency);
 	const qid = quest.quest_id;
 
-	const xEsc = (s: string) =>
-		s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+	const xEsc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 	const qidW = Math.ceil(qid.length * 6.4) + 16;
 	const ulW = Math.ceil(ul.length * 5.6) + 14;
 	const ulX = 10 + qidW + 6;
+
+	// DEV-142 후속 / DEV-150: 토론 배지 — 일반 댓글과 별도. 미해결>0 면 ✗(빨강),
+	// 아니면 해결>0 면 ✓(초록). 텍스트 글리프라 fill 로 테마색이 그대로 입혀짐.
+	// 우측 상단. (보드 노드 QuestBoard.svelte 와 동일 규칙.)
+	const du = quest.discussion_unresolved ?? 0;
+	const dr = quest.discussion_resolved ?? 0;
+	const dColor = du > 0 ? palette.danger : dr > 0 ? palette.success : '';
+	const dText = dColor ? `${du > 0 ? '✗' : '✓'} ${du > 0 ? du : dr}` : '';
+	const dW = dText ? Math.ceil(dText.length * 6.0) + 14 : 0;
+	const dX = W - 10 - dW;
 
 	const full = quest.title;
 	const MAX_PX = 260;
@@ -130,7 +158,7 @@ export function makeQuestNodeSvgUrl(quest: Quest, overlayColor?: string): string
 	// '⛺' 아이콘 — 캠페인 기한이 더 가까워서 그게 표시되고 있다는 시각 단서.
 	const { date: due, source } = effectiveQuestDue(quest);
 	let dueText = '';
-	let dueColor = '#8b949e';
+	let dueColor = defaultDueColor;
 	if (due) {
 		dueText = source === 'campaign' ? `⛺ ${due}` : due;
 		const dueMs = new Date(`${due}T23:59:59`).getTime();
@@ -154,8 +182,8 @@ export function makeQuestNodeSvgUrl(quest: Quest, overlayColor?: string): string
 		: '';
 
 	// DEV-081: 좌측 urgency 색 strip 제거 — border (stroke) 만으로도 충분히 강조.
-	const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
-  <rect x="0" y="0" width="${W}" height="${H}" rx="6" ry="6" fill="#0d1117" stroke="${uc}" stroke-width="1.5" stroke-opacity="0.9"/>
+	const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${Wpx}" height="${Hpx}" viewBox="0 0 ${W} ${H}">
+  <rect x="0" y="0" width="${W}" height="${H}" rx="6" ry="6" fill="${bgFill}" stroke="${uc}" stroke-width="1.5" stroke-opacity="0.9"/>
   <rect x="10" y="9" width="${qidW}" height="17" rx="8.5"
     fill="${tc}" fill-opacity="0.16" stroke="${tc}" stroke-opacity="0.55" stroke-width="1"/>
   <text x="${10 + qidW / 2}" y="21.5" text-anchor="middle"
@@ -166,15 +194,36 @@ export function makeQuestNodeSvgUrl(quest: Quest, overlayColor?: string): string
   <text x="${ulX + ulW / 2}" y="21.5" text-anchor="middle"
     fill="${uc}" font-size="10" font-weight="500"
     font-family="system-ui,sans-serif">${xEsc(ul)}</text>
-  <text x="10" y="${titleY}" fill="#c9d1d9" font-size="12"
+  ${
+		urgWarn
+			? `<text x="${ulX + ulW + 5}" y="21.5" fill="${palette.danger}"
+    font-size="12" font-weight="700" font-family="system-ui,sans-serif"><title>urgency 원본값 ${quest.urgency} 가 범위(1-4) 밖 — clamp 표시 중</title>⚠</text>`
+			: ''
+	}
+  ${
+		dText
+			? `<rect x="${dX}" y="9" width="${dW}" height="17" rx="8.5"
+    fill="${dColor}" fill-opacity="0.16" stroke="${dColor}" stroke-opacity="0.6" stroke-width="1"/>
+  <text x="${dX + dW / 2}" y="21.5" text-anchor="middle"
+    fill="${dColor}" font-size="10" font-weight="600"
+    font-family="system-ui,sans-serif">${xEsc(dText)}</text>`
+			: ''
+	}
+  <text x="10" y="${titleY}" fill="${titleFill}" font-size="12"
     font-family="system-ui,-apple-system,sans-serif">${xEsc(line1)}</text>
-  ${line2 ? `<text x="10" y="${titleY + 16}" fill="#c9d1d9" font-size="12"
-    font-family="system-ui,-apple-system,sans-serif">${xEsc(line2)}</text>` : ''}
-  ${dueText
-		? `<text x="${W - 10}" y="${H - 8}" text-anchor="end"
+  ${
+		line2
+			? `<text x="10" y="${titleY + 16}" fill="${titleFill}" font-size="12"
+    font-family="system-ui,-apple-system,sans-serif">${xEsc(line2)}</text>`
+			: ''
+	}
+  ${
+		dueText
+			? `<text x="${W - 10}" y="${H - 8}" text-anchor="end"
        fill="${dueColor}" font-size="10" font-weight="500"
        font-family="system-ui,sans-serif">⏱ ${xEsc(dueText)}</text>`
-		: ''}
+			: ''
+	}
   ${overlay}
 </svg>`;
 	return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);

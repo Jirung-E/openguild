@@ -1,3 +1,149 @@
+/*
+ * DEV-074: 다크 / 라이트 테마 토큰.
+ *
+ * CSS custom property 로 색을 정의. 컴포넌트들은 `var(--bg)` / `var(--text)`
+ * 등을 사용해 자동으로 테마 전환에 반응.
+ *
+ * 본 라운드는 토큰 + global.css 의 root 만 var() 화. 각 컴포넌트의 hardcoded
+ * color 는 점진 retrofit (별도 sub-quest 권장).
+ *
+ * 사용 방식:
+ *   - 기본 (data-theme 없음 / dark) = dark tokens.
+ *   - `<html data-theme="light">` = light tokens.
+ *   - `<html data-theme="dark">` = dark tokens (명시).
+ *   - 토글 store 는 lib/stores/theme.ts.
+ */
+
+:root {
+	/* Dark tokens — 기본. */
+	--bg: #0d1117;
+	--bg-elevated: #161b22;
+	--bg-subtle: #21262d;
+	--border: #30363d;
+	--border-muted: #21262d;
+	--text: #c9d1d9;
+	--text-strong: #e6edf3;
+	--text-muted: #8b949e;
+	--text-faint: #484f58;
+	--accent: #58a6ff;
+	--accent-strong: #1f6feb;
+	--success: #56d364;
+	--success-strong: #238636;
+	--warning: #f5a623;
+	--danger: #f85149;
+	--shadow: rgba(0, 0, 0, 0.5);
+	/* DEV-074: Nav 전용 token (#1a1a2e 의 보라/네이비 톤 — 일반 bg 와 시각 분리). */
+	--nav-bg: #1a1a2e;
+	--nav-border: #2a2a4a;
+	--nav-hover-bg: #2a2a4a;
+
+	/* DEV-074 fix6: primary action 버튼 (초록) 의 명도 — dark / light 분리.
+	   기존 `var(--success-strong)` 직접 사용은 라이트모드에서 너무 어두움
+	   (#116329). 본 토큰으로 모든 primary 버튼 통일. */
+	--btn-primary-bg: var(--success-strong);
+	--btn-primary-bg-hover: var(--success-strong);
+	--btn-primary-border: var(--success-strong);
+	--btn-primary-border-hover: var(--success);
+	--btn-primary-text: #fff;
+	/* DEV-074 fix6: warning 버튼 (admin '복원' 등). */
+	--btn-warning-bg: color-mix(in srgb, var(--warning) 18%, transparent);
+	--btn-warning-bg-hover: color-mix(in srgb, var(--warning) 32%, transparent);
+	--btn-warning-border: color-mix(in srgb, var(--warning) 55%, transparent);
+	--btn-warning-text: var(--warning);
+
+	/* DEV-074 fix20 (sweep): semantic 색 — 이전엔 컴포넌트마다 hex 산재.
+	   - accent-secondary: --accent (#58a6ff) 와 별도, 한 단계 옅은 blue.
+	     코드 / 링크 등 secondary 강조. flash border 도 이쪽.
+	   - orange: due/warning 텍스트 강조 (--warning 보다 더 채도 높음).
+	   - hl-pre/sub/next + bg: Quest Board 의 highlight type. parent 는
+	     --success 재사용 (이미 일관) + --hl-parent-bg 만 추가.
+	   - selected-bg: cytoscape 노드 selected 배경. */
+	--accent-secondary: #79c0ff;
+	--orange: #f0883e;
+	--hl-pre: #a371f7;
+	--hl-pre-bg: #190d33;
+	--hl-sub: #3dc9b0;
+	--hl-sub-bg: #062220;
+	--hl-next: #f0883e;
+	--hl-next-bg: #2a1200;
+	--hl-parent-bg: #0a2914;
+	--selected-bg: #112240;
+	--edge-pre: #4a90d9;
+
+	/* DEV-074 fix8: 카드 상단 하이라이트 그라데이션 (overdue / completed).
+	   다크: 22% tint + bg-elevated base, 60% 에서 base 도달.
+	   라이트: 옅게 (10%) + bg (흰) base, 70% 에서 fade — 분홍/민트가 너무
+	   두드러지지 않게. */
+	--card-hl-strength: 22%;
+	--card-hl-base: var(--bg-elevated);
+	--card-hl-fade: 60%;
+
+	/* date input picker — 환경 무관 dark picker. */
+	color-scheme: dark;
+}
+
+[data-theme='light'] {
+	/* BUG-058: native date picker icon — `:root` 가 dark 라 light 테마에서도
+	   picker icon 이 흰색 → 흰 배경에 묻혀 안 보임. light 일 땐 명시적으로
+	   `light` 로 override. */
+	color-scheme: light;
+	--bg: #ffffff;
+	--bg-elevated: #f6f8fa;
+	--bg-subtle: #eaeef2;
+	--border: #d0d7de;
+	--border-muted: #d8dee4;
+	--text: #1f2328;
+	--text-strong: #0a0c10;
+	--text-muted: #59636e;
+	--text-faint: #8b949e;
+	--accent: #0969da;
+	--accent-strong: #0550ae;
+	--success: #1a7f37;
+	--success-strong: #116329;
+	--warning: #9a6700;
+	--danger: #cf222e;
+	--shadow: rgba(140, 149, 159, 0.3);
+	/* DEV-074: light theme Nav — 부드러운 light gray (GitHub 스타일). */
+	--nav-bg: #f6f8fa;
+	--nav-border: #d0d7de;
+	--nav-hover-bg: #eaeef2;
+
+	/* DEV-074 fix6: 라이트 — 한 단계 밝은 초록 (#1a7f37) + hover 는 한 단계 더. */
+	--btn-primary-bg: var(--success);
+	--btn-primary-bg-hover: color-mix(in srgb, var(--success) 85%, white);
+	--btn-primary-border: var(--success);
+	--btn-primary-border-hover: var(--success);
+	--btn-primary-text: #fff;
+	/* DEV-074 fix6: 라이트 — 옅은 노랑 카드 + 진한 글자. */
+	--btn-warning-bg: #fff8d6;
+	--btn-warning-bg-hover: #ffefa8;
+	--btn-warning-border: #d4a72c;
+	--btn-warning-text: #6f5400;
+
+	/* DEV-074 fix20 (sweep): semantic 색 light 대응. 자세한 건 :root 참조. */
+	--accent-secondary: #0969da;
+	--orange: #bc4c00;
+	--hl-pre: #8250df;
+	--hl-pre-bg: #f3eafe;
+	--hl-sub: #1a7f64;
+	--hl-sub-bg: #dbf6ee;
+	--hl-next: #bc4c00;
+	--hl-next-bg: #fde6cf;
+	--hl-parent-bg: #dafbe1;
+	--selected-bg: #ddf4ff;
+	--edge-pre: #0969da;
+
+	/* DEV-074 fix8 / fix9: 라이트 — 흰 base 에 wash. fix8 의 10% 가 너무 옅음
+	   사용자 피드백 → 20% 로 ↑. base 는 그대로 --bg (#ffffff). */
+	--card-hl-strength: 20%;
+	--card-hl-base: var(--bg);
+	--card-hl-fade: 70%;
+}
+
+[data-theme='dark'] {
+	color-scheme: dark;
+}
+
 *,
 *::before,
 *::after {
@@ -9,8 +155,16 @@
 html {
 	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 	font-size: 16px;
-	color: #c9d1d9;
-	background: #0d1117;
+	color: var(--text);
+	background: var(--bg);
+	/* DEV-074 fix13: window native scrollbar 숨김. wheel / touch / 키보드 스크롤
+	   은 정상 작동. OverlayScrollbar 컴포넌트가 우측에 position: fixed thumb 만
+	   그려 진짜 overlay 구현 (컨텐츠 폭 0px 차지). 내부 overflow 컨테이너 (모달
+	   리스트, CodeMirror) 는 기존 `* { scrollbar-width: thin }` 그대로. */
+	scrollbar-width: none;
+}
+html::-webkit-scrollbar {
+	display: none;
 }
 
 body {
@@ -26,18 +180,116 @@ button {
 	font-family: inherit;
 }
 
-/* BUG-026 → BUG-031: <input type="date"> picker icon 처리.
-   변경 이력:
-   - BUG-026: filter:invert(0.85) — 라이트 테마의 검정 아이콘을 invert 해서
-     밝게 보이게. 그러나 OS 또는 WebView2 가 다크 테마로 native picker 를 이미
-     흰색 렌더하는 환경에서는 invert 가 다시 검정으로 만들어버려 (BUG-031)
-     특정 환경에서 보이지 않음.
-   - BUG-031 (현재): `color-scheme: dark` 를 input 에 직접 명시 — 환경 무관
-     하게 native picker 를 dark theme 으로 렌더. invert filter 는 제거. 모든
-     환경에서 아이콘이 light 색으로 일관 표시.
+/* BUG-026 → BUG-031 → DEV-074: <input type="date"> picker icon.
+   - BUG-031 의 `color-scheme: dark` 직접 명시는 제거됨.
+   - 대신 :root / [data-theme=light] 의 `color-scheme` 토큰을 따름.
+   - dark theme: native picker dark, light theme: native picker light.
 
-   ⚠ 컴포넌트별 스타일에 `color-scheme` 을 다른 값으로 override 하지 말 것 —
-      이 규칙이 모든 date input 의 picker 색을 일관 처리. */
-input[type='date'] {
-	color-scheme: dark;
+   ⚠ 컴포넌트별 스타일에 `color-scheme` 을 다른 값으로 override 하지 말 것. */
+
+/*
+ * DEV-074 fix2: 전역 커스텀 스크롤바.
+ *
+ * 동기: 기본 OS / 브라우저 스크롤바가 (1) 컨텐츠 폭을 밀어내서 layout shift 유발,
+ * (2) 다크/라이트 어울리지 않음, (3) overlay 가 아니어서 시각적 무게 큼.
+ *
+ * 전략: WebKit (Chrome / Tauri WebView2) 의 `::-webkit-scrollbar` 커스텀 +
+ * Firefox 의 `scrollbar-width: thin` + `scrollbar-color`. 기본 thumb 은 반투명,
+ * hover 시 진해짐. track 은 transparent → 컨텐츠 영역을 밀어내지 않음.
+ *
+ * 한계: WebKit 의 ::-webkit-scrollbar 는 여전히 컨텐츠 폭을 차지함 (overlay 아님).
+ * 회피: html / body / scroll container 에 `scrollbar-gutter: stable both-edges` 대신
+ * 폭 자체를 좁게 (8px) + 반투명. CodeMirror / textarea 도 동일 룰.
+ */
+
+* {
+	scrollbar-width: thin;
+	scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+:root {
+	--scrollbar-thumb: rgba(139, 148, 158, 0.35);
+	--scrollbar-thumb-hover: rgba(139, 148, 158, 0.6);
+}
+
+[data-theme='light'] {
+	--scrollbar-thumb: rgba(89, 99, 110, 0.3);
+	--scrollbar-thumb-hover: rgba(89, 99, 110, 0.55);
+}
+
+::-webkit-scrollbar {
+	width: 10px;
+	height: 10px;
+	background: transparent;
+}
+
+::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+	background: var(--scrollbar-thumb);
+	border-radius: 8px;
+	/* border 가 track 의 일부를 가려서 thumb 가 실제보다 얇게 보이는 트릭 */
+	border: 2px solid transparent;
+	background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: var(--scrollbar-thumb-hover);
+	background-clip: content-box;
+}
+
+::-webkit-scrollbar-corner {
+	background: transparent;
+}
+
+/*
+ * DEV-074 fix11: 전역 체크박스 — native unchecked 가 라이트모드에서도 회색 배경
+ * 으로 어둡게 보이는 문제. accent-color 는 checked 만 영향 → 언체크도 theme
+ * 따르도록 custom 으로 통일.
+ *
+ * 모든 `<input type='checkbox'>` 에 적용 — 마크다운 task list / 모달 / 폼 공통.
+ * 컴포넌트가 자체 스타일을 원하면 그쪽에서 override 가능.
+ */
+input[type='checkbox'] {
+	appearance: none;
+	-webkit-appearance: none;
+	width: 1rem;
+	height: 1rem;
+	border: 1px solid var(--border);
+	border-radius: 3px;
+	background: var(--bg);
+	cursor: pointer;
+	position: relative;
+	vertical-align: middle;
+	transition:
+		background 0.1s,
+		border-color 0.1s;
+}
+input[type='checkbox']:hover:not(:disabled) {
+	border-color: var(--accent);
+}
+input[type='checkbox']:checked {
+	background: var(--accent);
+	border-color: var(--accent);
+}
+input[type='checkbox']:checked::after {
+	content: '';
+	position: absolute;
+	left: 0.28rem;
+	top: 0.1rem;
+	width: 0.28rem;
+	height: 0.55rem;
+	border: solid var(--btn-primary-text);
+	border-width: 0 2px 2px 0;
+	transform: rotate(45deg);
+}
+input[type='checkbox']:focus-visible {
+	outline: 2px solid color-mix(in srgb, var(--accent) 50%, transparent);
+	outline-offset: 1px;
+}
+input[type='checkbox']:disabled {
+	cursor: not-allowed;
+	opacity: 0.5;
 }

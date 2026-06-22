@@ -57,9 +57,7 @@ export function sortCampaigns<T extends SortableCampaign>(
 	} else {
 		// manual — display_order ASC, tie-break created_at DESC
 		out.sort(
-			(a, b) =>
-				a.display_order - b.display_order ||
-				b.created_at.localeCompare(a.created_at)
+			(a, b) => a.display_order - b.display_order || b.created_at.localeCompare(a.created_at)
 		);
 	}
 	return out;

@@ -1,18 +1,45 @@
 <script lang="ts">
 	import { page } from '$app/stores';
-	import { onMount, tick } from 'svelte';
+	import { onMount, onDestroy, tick } from 'svelte';
+	// DEV-153: 편집 중이면 이탈 가드에 보고.
+	import { setUnsaved } from '$lib/stores/unsaved';
 	import { goto } from '$app/navigation';
 	import { questsApi } from '$lib/api/quests';
 	import { metaApi } from '$lib/api/meta';
 	import { campaignsApi } from '$lib/api/campaigns';
+	// DEV-068: `.guild/tags/{slug}.toml` 정의 — Tag pill 색칠용.
+	import { adminApi } from '$lib/api/admin';
+	import type { QuestTagDef } from '$lib/types';
+	// DEV-074 fix4: CodeMirror oneDark 는 라이트모드에 부적합 — theme 따라 분기.
+	import { theme } from '$lib/stores/theme';
+	// DEV-074 fix15: 편집창 native scrollbar 대신 overlay.
+	import OverlayScrollbar from '$lib/components/OverlayScrollbar.svelte';
 	// BUG-021 fix1: marked 직접 호출 대신 공유 컴포넌트 MarkdownView 사용.
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
+	// DEV-156: 본문 아래 첨부 섹션 (Jira 식).
+	import AttachmentSection from '$lib/components/AttachmentSection.svelte';
 	import { EditorView, basicSetup } from 'codemirror';
 	import { markdown } from '@codemirror/lang-markdown';
-	import { oneDark } from '@codemirror/theme-one-dark';
+	// 편집기 테마 — Compartment 로 다크/라이트 라이브 전환 (재생성 X).
+	import { editorThemeCompartment, editorThemeExtension } from '$lib/utils/editor-theme';
+	// DEV-117: CodeMirror 의 기본 historyKeymap 은 Windows 에서 Ctrl+Y 만 redo —
+	// Ctrl+Shift+Z 는 Mac 전용. 양쪽 모두 지원하려면 keymap 추가.
+	import { keymap } from '@codemirror/view';
+	import { redo } from '@codemirror/commands';
+	// DEV-069: 편집기 첨부 — 클립보드 이미지 paste / 파일 drag&drop / '첨부' 버튼.
+	import { attachmentExtension, pickAndAttach } from '$lib/utils/editor-attach';
+	// DEV-140: 본문 cross-link — XXX-NNN 타이핑 시 [[...]] 링크 자동완성.
+	import { crossLinkAutocomplete } from '$lib/utils/editor-links';
+	// DEV-130: 편집기 들여쓰기 설정 (tab/space + 2/4칸).
+	import { indentExtensions } from '$lib/utils/editor-indent';
+	// alert() 대신 통일된 toast (UI 일관성 — DEV-142 완료 차단 경고 등).
+	import { showToast } from '$lib/stores/toast';
+	import { editorSettings } from '$lib/stores/editorSettings';
 	import {
-		URGENCY_COLOR,
 		URGENCY_LABEL,
+		urgencyColor,
+		urgencyLabel,
+		urgencyOutOfRange,
 		type CandidateRelation,
 		type Quest,
 		type QuestDetail,
@@ -24,7 +51,15 @@
 	// BUG-030: 캠페인 연결 콤보박스 (QuestCombobox 와 동일 톤).
 	import CampaignCombobox from '$lib/components/CampaignCombobox.svelte';
 	import QuestHistory from '$lib/components/QuestHistory.svelte';
+	// DEV-012: 공개 댓글 + 비공개 메모 섹션.
+	import QuestNoteSection from '$lib/components/QuestNoteSection.svelte';
+	// DEV-094: 댓글은 entry 단위 컴포넌트.
+	import QuestCommentsSection from '$lib/components/QuestCommentsSection.svelte';
 	import { formatTs, formatRelative, isDateOverdue } from '$lib/utils/datetime';
+	// 상태순서 통일: 보드 레인 순서(localStorage laneOrder)를 status 드롭다운에도
+	// 반영. 없으면 sort_order fallback. (보드와 같은 공유 헬퍼/키 사용.)
+	import { loadLaneOrder, orderStatusesByLane } from '$lib/utils/lane-order';
+	import { resolveGuildKeyPrefix } from '$lib/utils/guild-storage';
 
 	let slug = $derived($page.params.id ?? '');
 	// BUG-015 fix1: parent / sub / prereq link 가 같은 origin 을 propagate 해서
@@ -48,6 +83,26 @@
 
 	// 편집 모드
 	let editMode = $state(false);
+	// DEV-153: 편집 모드 = 미저장 가능 → 이탈 가드에 보고. 저장/취소/네비 reset 시
+	// editMode=false 가 되어 자동 해제. 컴포넌트 파기 시에도 안전하게 정리.
+	$effect(() => setUnsaved('quest-edit', editMode));
+	onDestroy(() => setUnsaved('quest-edit', false));
+
+	// DEV-156: 편집기의 '첨부' 버튼 / 비미디어 paste·drop 이 본문 인라인 대신 이
+	// 콜백으로 '첨부 섹션'에 추가. detail.attachments 가 단일 소스 → 섹션 갱신.
+	async function attachToSection(rel: string, name: string) {
+		if (!detail) return;
+		try {
+			const { invoke } = await import('@tauri-apps/api/core');
+			detail.attachments = await invoke('add_quest_attachment', {
+				slug: detail.quest_id,
+				path: rel,
+				name
+			});
+		} catch (e) {
+			saveError = `첨부 실패: ${e}`;
+		}
+	}
 	let editTitle = $state('');
 	let editUrgency = $state(3);
 	let editDescription = $state('');
@@ -69,8 +124,8 @@
 	// 변경이력 — 상태 변경 후 새로고침 트리거 (DEV-038).
 	let historyVersion = $state(0);
 
-	// 콤보박스 / 후보
-	type ComboMode = 'sub' | 'prereq';
+	// 콤보박스 / 후보 (DEV-124: succ 추가)
+	type ComboMode = 'sub' | 'prereq' | 'succ';
 	let comboMode = $state<ComboMode | null>(null);
 	let candidates = $state<Quest[]>([]);
 	let candidatesLoading = $state(false);
@@ -87,18 +142,110 @@
 	// CodeMirror
 	let editorContainer: HTMLDivElement | undefined = $state(undefined);
 	let editorView: EditorView | null = null;
+	// DEV-074 fix15: `.cm-scroller` 의 OverlayScrollbar target.
+	let cmScroller: HTMLElement | null = $state(null);
+	// DEV-074 fix17: 삭제 cascade 모달의 sub-quest list overlay scrollbar.
+	let delSubListEl: HTMLUListElement | undefined = $state(undefined);
 
-	let sortedStatuses = $derived([...statuses].sort((a, b) => a.sort_order - b.sort_order));
+	// DEV-109 / DEV-123 / DEV-127: floating button cluster — 본문이 길 때 점프.
+	// 각 anchor 의 viewport 위치 기준으로 노출 결정.
+	let commentsAnchorEl: HTMLDivElement | undefined = $state(undefined);
+	let memoAnchorEl: HTMLDivElement | undefined = $state(undefined);
+	let showCommentsJump = $state(false);
+	let showMemoJump = $state(false);
+	let showTopJump = $state(false);
+	function checkJumpVisibility() {
+		const vh = window.innerHeight;
+		if (commentsAnchorEl) {
+			const r = commentsAnchorEl.getBoundingClientRect();
+			showCommentsJump = r.top > vh * 1.1;
+		} else {
+			showCommentsJump = false;
+		}
+		// 메모 (DEV-123): anchor 가 viewport 아래쪽이면 표시.
+		if (memoAnchorEl) {
+			const r = memoAnchorEl.getBoundingClientRect();
+			showMemoJump = r.top > vh * 1.1;
+		} else {
+			showMemoJump = false;
+		}
+		// 맨 위로 (DEV-127): 스크롤이 한 화면 이상 내려가 있으면 표시.
+		showTopJump = window.scrollY > vh * 0.8;
+	}
+	function jumpToComments() {
+		commentsAnchorEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+	}
+	function jumpToMemo() {
+		memoAnchorEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+	}
+	function jumpToTop() {
+		window.scrollTo({ top: 0, behavior: 'smooth' });
+	}
+
+	// 보드에서 정한 레인 순서 우선, 없는 status 는 sort_order 로 뒤에.
+	let laneOrder = $state<string[]>([]);
+	let sortedStatuses = $derived(
+		orderStatusesByLane(statuses, laneOrder, (a, b) => a.sort_order - b.sort_order)
+	);
+
+	// DEV-068: tag 정의 — slug → (color, description) lookup.
+	let tagDefs = $state<QuestTagDef[]>([]);
+	let tagDefMap = $derived(new Map(tagDefs.map((d) => [d.slug, d])));
+
+	function tagStyle(t: string): string {
+		const d = tagDefMap.get(t);
+		if (!d || !d.color) return '';
+		// hex → rgba 변환 (배경 12% / 테두리 40%).
+		const c = d.color.trim();
+		const hex = c.startsWith('#') ? c.slice(1) : c;
+		if (!/^[0-9a-fA-F]{6}$/.test(hex)) return `color: ${c}`;
+		const r = parseInt(hex.slice(0, 2), 16);
+		const g = parseInt(hex.slice(2, 4), 16);
+		const b = parseInt(hex.slice(4, 6), 16);
+		return `background: rgba(${r},${g},${b},0.12); border-color: rgba(${r},${g},${b},0.4); color: ${c};`;
+	}
+
+	function tagTitle(t: string): string {
+		const d = tagDefMap.get(t);
+		return d?.description || t;
+	}
 
 	// 메타(타입/상태)는 마운트 시 한 번만
 	onMount(async () => {
 		try {
-			const [t, s] = await Promise.all([metaApi.getQuestTypes(), metaApi.getQuestStatuses()]);
+			const [t, s, td] = await Promise.all([
+				metaApi.getQuestTypes(),
+				metaApi.getQuestStatuses(),
+				adminApi.listTagDefs().catch(() => [] as QuestTagDef[])
+			]);
 			types = t;
 			statuses = s;
+			tagDefs = td;
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'failed to load';
 		}
+		// 보드 레인 순서 로드 (길드별 localStorage). 실패/web 이면 빈 배열 → sort_order.
+		laneOrder = loadLaneOrder(await resolveGuildKeyPrefix());
+	});
+
+	// DEV-109/123/127: window 스크롤 / resize 추적 → 점프 버튼 cluster 노출.
+	onMount(() => {
+		const handler = () => checkJumpVisibility();
+		window.addEventListener('scroll', handler, { passive: true });
+		window.addEventListener('resize', handler);
+		// 초기 1회.
+		checkJumpVisibility();
+		return () => {
+			window.removeEventListener('scroll', handler);
+			window.removeEventListener('resize', handler);
+		};
+	});
+
+	// detail 이 로드되거나 변경되면 (다른 quest 로 이동 등) 다시 측정.
+	$effect(() => {
+		void detail;
+		// tick 후 DOM 안정화 — anchor 위치 정확.
+		queueMicrotask(() => checkJumpVisibility());
 	});
 
 	// slug 가 바뀌면(다른 quest 페이지로 navigate) detail 을 다시 로드.
@@ -134,8 +281,7 @@
 				}
 			})
 			.catch((e) => {
-				if (slug === currentSlug)
-					error = e instanceof Error ? e.message : 'failed to load';
+				if (slug === currentSlug) error = e instanceof Error ? e.message : 'failed to load';
 			})
 			.finally(() => {
 				if (slug === currentSlug) loading = false;
@@ -182,10 +328,29 @@
 		}, 250);
 	}
 	let editorResizeObserver: ResizeObserver | null = null;
+	// DEV-130: 들여쓰기 설정 변경 시 편집 중이면 editor 재생성.
+	$effect(() => {
+		const _ = $editorSettings;
+		if (editMode && editorView) {
+			// 현재 내용 보존.
+			editDescription = editorView.state.doc.toString();
+			initEditor();
+		}
+	});
+	// 테마 변경 시 재생성 없이 테마 확장만 교체 (커서/스크롤/undo 보존).
+	$effect(() => {
+		const t = $theme;
+		editorView?.dispatch({
+			effects: editorThemeCompartment.reconfigure(editorThemeExtension(t))
+		});
+	});
 
 	function initEditor() {
 		if (!editorContainer) return;
-		if (editorView) { editorView.destroy(); editorView = null; }
+		if (editorView) {
+			editorView.destroy();
+			editorView = null;
+		}
 		// DEV-057: parent (.editor-wrap) 가 height 결정. cm-scroller 는 fill.
 		// 이전엔 cm-scroller maxHeight 480px 가 고정 한계 — parent resize 시 의미 없음.
 		editorContainer.style.height = `${loadEditorHeight()}px`;
@@ -194,7 +359,16 @@
 			extensions: [
 				basicSetup,
 				markdown(),
-				oneDark,
+				// 테마 — Compartment 로 다크/라이트 라이브 전환 (재생성 X).
+				editorThemeCompartment.of(editorThemeExtension($theme)),
+				// DEV-117: Windows 표준 redo. (Tab 들여쓰기는 indentExtensions 가 담당.)
+				keymap.of([{ key: 'Mod-Shift-z', run: redo, preventDefault: true }]),
+				// DEV-130: tab/space + 2/4칸 들여쓰기 — Tab 키맵 + indentUnit/tabSize.
+				indentExtensions($editorSettings),
+				// DEV-069: 클립보드 이미지 paste / 파일 drag&drop → 첨부 업로드.
+				attachmentExtension((msg) => (saveError = `첨부 업로드 실패: ${msg}`), attachToSection),
+				// DEV-140: XXX-NNN 타이핑 → [[...]] cross-link 자동완성.
+				crossLinkAutocomplete(),
 				EditorView.theme({
 					'&': { fontSize: '0.875rem', borderRadius: '6px', height: '100%' },
 					'.cm-editor': { borderRadius: '6px', height: '100%' },
@@ -203,6 +377,8 @@
 			],
 			parent: editorContainer
 		});
+		// DEV-074 fix15: .cm-scroller ref → OverlayScrollbar target.
+		cmScroller = editorContainer.querySelector('.cm-scroller') as HTMLElement | null;
 		// 사용자가 resize 핸들로 크기 바꿀 때마다 영속화.
 		editorResizeObserver?.disconnect();
 		editorResizeObserver = new ResizeObserver((entries) => {
@@ -214,6 +390,7 @@
 	}
 
 	function exitEditMode() {
+		cmScroller = null;
 		editorView?.destroy();
 		editorView = null;
 		editorResizeObserver?.disconnect();
@@ -269,9 +446,11 @@
 			badgePulse += 1;
 			// 새 history 행을 보이도록 reload 트리거.
 			historyVersion += 1;
-			setTimeout(() => { if (statusFlashId === statusId) statusFlashId = null; }, 600);
+			setTimeout(() => {
+				if (statusFlashId === statusId) statusFlashId = null;
+			}, 600);
 		} catch (e) {
-			alert(e instanceof Error ? e.message : 'status change failed');
+			showToast(e instanceof Error ? e.message : 'status change failed', 'error');
 		} finally {
 			changingStatus = false;
 		}
@@ -299,7 +478,7 @@
 			// slug 바뀜 → 새 slug 의 URL 로 navigate. BUG-015 fix1: from 보존.
 			await goto(`/quests/${updated.quest_id}${fromSuffix}`, { replaceState: true });
 		} catch (e) {
-			alert(e instanceof Error ? e.message : 'type change failed');
+			showToast(e instanceof Error ? e.message : 'type change failed', 'error');
 		} finally {
 			changingType = false;
 		}
@@ -314,7 +493,8 @@
 		candidatesLoading = true;
 		candidates = [];
 		try {
-			const relation: CandidateRelation = mode === 'sub' ? 'sub' : 'prereq';
+			// DEV-124: succ 도 동일 API endpoint (server / Tauri 가 그대로 통과).
+			const relation: CandidateRelation = mode;
 			candidates = await questsApi.candidates(detail.id, relation);
 		} catch (e) {
 			comboError = e instanceof Error ? e.message : '후보 조회 실패';
@@ -336,8 +516,11 @@
 			if (mode === 'sub') {
 				// 기존 퀘스트를 이 퀘스트의 서브로 지정 = 그 퀘스트의 부모를 이 퀘스트로
 				await questsApi.changeParent(questId, { parent_quest_id: detail.id });
-			} else {
+			} else if (mode === 'prereq') {
 				await questsApi.addPrerequisite(detail.id, questId);
+			} else {
+				// DEV-124: succ — 이 quest 를 candidate 의 prereq 로 추가.
+				await questsApi.addPrerequisite(questId, detail.id);
 			}
 			detail = await questsApi.getBySlug(slug);
 			closeCombo();
@@ -362,7 +545,7 @@
 			await questsApi.changeParent(subId, { parent_quest_id: null });
 			detail = await questsApi.getBySlug(slug);
 		} catch (e) {
-			alert(e instanceof Error ? e.message : '분리 실패');
+			showToast(e instanceof Error ? e.message : '분리 실패', 'error');
 		}
 	}
 
@@ -372,7 +555,43 @@
 			await questsApi.removePrerequisite(detail.id, prereqId);
 			detail = await questsApi.getBySlug(slug);
 		} catch (e) {
-			alert(e instanceof Error ? e.message : 'failed');
+			showToast(e instanceof Error ? e.message : 'failed', 'error');
+		}
+	}
+
+	// --- DEV-068: 태그 ---
+	let tagInputOpen = $state(false);
+	let newTagText = $state('');
+	async function addTagFromInput(e: Event) {
+		e.preventDefault();
+		if (!detail) return;
+		const tokens = newTagText
+			.split(/\s+/)
+			.map((s) => s.trim())
+			.filter((s) => s.length > 0);
+		if (tokens.length === 0) return;
+		const existing = detail.tags ?? [];
+		const merged = [...existing];
+		for (const t of tokens) {
+			if (!merged.includes(t)) merged.push(t);
+		}
+		try {
+			await questsApi.setTags(detail.id, merged);
+			detail = await questsApi.getBySlug(slug);
+			newTagText = '';
+			tagInputOpen = false;
+		} catch (err) {
+			showToast(err instanceof Error ? err.message : 'failed', 'error');
+		}
+	}
+	async function removeTag(t: string) {
+		if (!detail) return;
+		const after = (detail.tags ?? []).filter((x) => x !== t);
+		try {
+			await questsApi.setTags(detail.id, after);
+			detail = await questsApi.getBySlug(slug);
+		} catch (err) {
+			showToast(err instanceof Error ? err.message : 'failed', 'error');
 		}
 	}
 
@@ -406,9 +625,11 @@
 		try {
 			const ids = Array.from(cascadeSet);
 			await questsApi.delete(detail.id, ids.length > 0 ? ids : undefined);
-			goto('/');
+			// BUG-044: origin 으로 복귀 — 하드코딩된 '/' 대신 goBack() 이 ?from
+			// query param 분기 (list / board / home / campaign).
+			goBack();
 		} catch (e) {
-			alert(e instanceof Error ? e.message : '삭제 실패');
+			showToast(e instanceof Error ? e.message : '삭제 실패', 'error');
 			deleting = false;
 		}
 	}
@@ -468,7 +689,7 @@
 			await campaignsApi.unlinkQuest(campaignSlug, detail.quest_id);
 			linkedCampaigns = await campaignsApi.forQuest(detail.id);
 		} catch (e) {
-			alert(e instanceof Error ? e.message : 'campaign 연결 해제 실패');
+			showToast(e instanceof Error ? e.message : 'campaign 연결 해제 실패', 'error');
 		}
 	}
 </script>
@@ -494,9 +715,17 @@
 		<!-- 헤더 뱃지 -->
 		<div class="header">
 			<span class="badge type" style:--c={detail.type_color}>{detail.quest_id}</span>
-			<span class="badge urgency" style:--c={URGENCY_COLOR[detail.urgency]}>
-				{URGENCY_LABEL[detail.urgency]}
+			<span class="badge urgency" style:--c={urgencyColor(detail.urgency)}>
+				{urgencyLabel(detail.urgency)}
 			</span>
+			{#if urgencyOutOfRange(detail.urgency)}
+				<!-- BUG-060 후속: 원본 urgency 가 범위(1-4) 밖 — clamp 표시 + 경고. -->
+				<span
+					class="urgency-warn"
+					title={`urgency 원본값 ${detail.urgency} 가 유효 범위(1-4) 밖 — clamp 표시 중. .guild 파일의 urgency 를 1~4 로 정정하세요.`}
+					>⚠ 범위 밖</span
+				>
+			{/if}
 			{#key badgePulse}
 				<span class="badge status pulsing" style:--c={detail.status_color}>
 					{detail.status_name_en}
@@ -539,7 +768,8 @@
 						<span
 							class="meta-val due-required"
 							class:overdue={isDateOverdue(detail.required_due, detail.status_slug)}
-						>{detail.required_due}</span>
+							>{detail.required_due}</span
+						>
 					</span>
 				{/if}
 				{#if detail.desired_due}
@@ -548,7 +778,8 @@
 						<span
 							class="meta-val due-desired"
 							class:overdue={isDateOverdue(detail.desired_due, detail.status_slug)}
-						>{detail.desired_due}</span>
+							>{detail.desired_due}</span
+						>
 					</span>
 				{/if}
 			{/if}
@@ -570,33 +801,68 @@
 					</select>
 				</label>
 
+				<!-- DEV-055 → DEV-133: 타입 변경 — 편집 모드에서만 노출 (사용자 요청).
+				     slug 가 바뀌는 무거운 동작이라 일반 보기에서 한 클릭 거리는 과함.
+				     기존과 동일하게 confirm 모달 후 즉시 적용 (저장 버튼과 무관). -->
+				<div class="field-label">
+					<span>타입 변경 <span class="hint">(slug 바뀜 — 즉시 적용)</span></span>
+					<div class="status-btns">
+						{#each types as t}
+							<button
+								class="status-btn"
+								class:active={t.id === detail.quest_type_id}
+								style:--c={t.color}
+								onclick={() => askChangeType(t)}
+								disabled={changingType || t.id === detail.quest_type_id}
+								title={t.id === detail.quest_type_id
+									? '현재 타입'
+									: `${t.prefix} 로 변경 — slug 바뀜`}
+							>
+								{t.prefix}
+							</button>
+						{/each}
+					</div>
+				</div>
+
 				<!-- DEV-076: 희망 / 필수 기한. 빈 값 = 미설정 / 해제. -->
 				<div class="due-row">
 					<label class="field-label">
 						<span>희망 기한 <span class="hint">(정보성)</span></span>
-						<input
-							class="edit-date"
-							type="date"
-							bind:value={editDesiredDue}
-						/>
+						<input class="edit-date" type="date" bind:value={editDesiredDue} />
 					</label>
 					<label class="field-label">
 						<span>필수 기한 <span class="hint">(임박 / Overdue 기준)</span></span>
-						<input
-							class="edit-date"
-							type="date"
-							bind:value={editRequiredDue}
-						/>
+						<input class="edit-date" type="date" bind:value={editRequiredDue} />
 					</label>
 				</div>
 
 				<!-- CodeMirror 가 div 안에 textarea 를 동적으로 생성 — svelte 가 정적
 				     분석으로는 control 미포함으로 판단. ignore. -->
-				<!-- svelte-ignore a11y_label_has_associated_control -->
-				<label class="field-label">
+				<!-- BUG: editor 섹션은 <label> 금지 — 안의 '📎 첨부' 버튼(labelable)이
+				     라벨 클릭마다 활성화돼 파일창이 뜬다(DEV-069 후속 admin #13). div 로. -->
+				<div class="field-label">
 					<span>설명 (Markdown)</span>
+					<!-- DEV-069: 첨부 — 버튼/드래그&드랍/Ctrl+V 모두 동일 업로드. -->
+					<div class="editor-toolbar">
+						<button
+							type="button"
+							class="btn-attach"
+							onclick={() =>
+								editorView &&
+								pickAndAttach(
+									editorView,
+									(msg) => (saveError = `첨부 업로드 실패: ${msg}`),
+									attachToSection
+								)}
+							title="이미지·동영상·파일 첨부 (드래그&드랍 / Ctrl+V 도 가능)">📎 첨부</button
+						>
+					</div>
 					<div class="editor-wrap" bind:this={editorContainer}></div>
-				</label>
+					<!-- DEV-074 fix15: CodeMirror native scrollbar 대신 overlay. -->
+					{#if cmScroller}
+						<OverlayScrollbar target={cmScroller} />
+					{/if}
+				</div>
 
 				{#if saveError}<p class="save-error">{saveError}</p>{/if}
 
@@ -613,8 +879,16 @@
 			<!-- 권장 브랜치명 -->
 			<div class="branch-row">
 				<span class="branch-label">Branch</span>
-				<code class="branch-name">{detail.type_prefix}-{String(detail.number).padStart(3, '0')}</code>
-				<button class="copy-btn" onclick={() => navigator.clipboard.writeText(`${detail!.type_prefix}-${String(detail!.number).padStart(3, '0')}`)}>복사</button>
+				<code class="branch-name"
+					>{detail.type_prefix}-{String(detail.number).padStart(3, '0')}</code
+				>
+				<button
+					class="copy-btn"
+					onclick={() =>
+						navigator.clipboard.writeText(
+							`${detail!.type_prefix}-${String(detail!.number).padStart(3, '0')}`
+						)}>복사</button
+				>
 			</div>
 
 			<!-- 상태 변경 -->
@@ -631,28 +905,8 @@
 							disabled={changingStatus || s.id === detail.status_id}
 							data-testid="status-btn-{s.id}"
 						>
-							{#if s.id === statusFlashId}✓ {/if}{s.name_en}
-						</button>
-					{/each}
-				</div>
-			</div>
-
-			<!-- DEV-055: type 변경 (slug 가 바뀜, confirm 모달 후 진행) -->
-			<div class="status-row">
-				<span class="branch-label">타입 변경</span>
-				<div class="status-btns">
-					{#each types as t}
-						<button
-							class="status-btn"
-							class:active={t.id === detail.quest_type_id}
-							style:--c={t.color}
-							onclick={() => askChangeType(t)}
-							disabled={changingType || t.id === detail.quest_type_id}
-							title={t.id === detail.quest_type_id
-								? '현재 타입'
-								: `${t.prefix} 로 변경 — slug 바뀜`}
-						>
-							{t.prefix}
+							{#if s.id === statusFlashId}✓
+							{/if}{s.name_en}
 						</button>
 					{/each}
 				</div>
@@ -665,10 +919,15 @@
 				{#if detail.description}
 					<MarkdownView source={detail.description} />
 				{:else}
-					<p class="no-desc">No description. <button class="link-btn" onclick={enterEditMode}>설명 추가하기</button></p>
+					<p class="no-desc">
+						No description. <button class="link-btn" onclick={enterEditMode}>설명 추가하기</button>
+					</p>
 				{/if}
 			</div>
 		{/if}
+
+		<!-- DEV-156: 본문 아래 첨부 섹션 (Jira 식). -->
+		<AttachmentSection slug={detail.quest_id} scope="quest" bind:attachments={detail.attachments} />
 
 		<!-- 부모 퀘스트 (DEV-050) -->
 		{#if detail.parent}
@@ -680,9 +939,13 @@
 					<li>
 						<div class="prereq-row">
 							<a href="/quests/{detail.parent.quest_id}{fromSuffix}" class="prereq-link">
-								<span class="badge type" style:--c={detail.parent.type_color}>{detail.parent.quest_id}</span>
+								<span class="badge type" style:--c={detail.parent.type_color}
+									>{detail.parent.quest_id}</span
+								>
 								<span class="ql-title">{detail.parent.title}</span>
-								<span class="badge status" style:--c={detail.parent.status_color}>{detail.parent.status_name_en}</span>
+								<span class="badge status" style:--c={detail.parent.status_color}
+									>{detail.parent.status_name_en}</span
+								>
 							</a>
 						</div>
 					</li>
@@ -710,7 +973,11 @@
 									<span class="badge status" style:--c={sq.status_color}>{sq.status_name_en}</span>
 								</a>
 								{#if !editMode}
-									<button class="prereq-rm" title="부모에서 분리" onclick={() => detachSubQuest(sq.id)}>×</button>
+									<button
+										class="prereq-rm"
+										title="부모에서 분리"
+										onclick={() => detachSubQuest(sq.id)}>×</button
+									>
 								{/if}
 							</div>
 						</li>
@@ -741,7 +1008,11 @@
 									<span class="badge status" style:--c={pq.status_color}>{pq.status_name_en}</span>
 								</a>
 								{#if !editMode}
-									<button class="prereq-rm" title="선행 퀘스트 제거" onclick={() => removePrerequisite(pq.id)}>×</button>
+									<button
+										class="prereq-rm"
+										title="선행 퀘스트 제거"
+										onclick={() => removePrerequisite(pq.id)}>×</button
+									>
 								{/if}
 							</div>
 						</li>
@@ -749,6 +1020,81 @@
 				</ul>
 			{:else}
 				<p class="no-desc">선행 퀘스트 없음.</p>
+			{/if}
+		</section>
+
+		<!-- DEV-068: 태그 — frontmatter 가 진리원. inline 편집 가능. -->
+		<section>
+			<div class="section-head">
+				<h2 class="section-title tag-label">Tags</h2>
+				{#if !editMode}
+					<button class="sec-add-btn" onclick={() => (tagInputOpen = !tagInputOpen)}>
+						{tagInputOpen ? '취소' : '+ 추가'}
+					</button>
+				{/if}
+			</div>
+			{#if (detail.tags ?? []).length > 0}
+				<ul class="tag-pills">
+					{#each detail.tags ?? [] as t (t)}
+						<li>
+							<span class="tag-pill" style={tagStyle(t)} title={tagTitle(t)}>
+								{t}
+								{#if !editMode}
+									<button
+										class="tag-rm"
+										title="태그 제거"
+										onclick={() => removeTag(t)}
+										aria-label={`${t} 제거`}>×</button
+									>
+								{/if}
+							</span>
+						</li>
+					{/each}
+				</ul>
+			{:else if !tagInputOpen}
+				<p class="no-desc">태그 없음.</p>
+			{/if}
+			{#if tagInputOpen && !editMode}
+				<form class="tag-add-form" onsubmit={addTagFromInput}>
+					<input
+						type="text"
+						bind:value={newTagText}
+						placeholder="새 태그 (공백 구분으로 여러 개)"
+						aria-label="새 태그"
+					/>
+					<button type="submit" disabled={!newTagText.trim()}>추가</button>
+				</form>
+			{/if}
+		</section>
+
+		<!-- DEV-070: 후속 퀘스트 — 본 quest 를 선행으로 가진 quest 들 (역방향
+			참조). DEV-124: 추가 버튼. -->
+		<section>
+			<div class="section-head">
+				<h2 class="section-title prereq-label">Successors</h2>
+				<span class="sec-hint">이 퀘스트를 선행으로 가진 퀘스트</span>
+				{#if !editMode}
+					<button class="sec-add-btn" onclick={() => openCombo('succ')} title="후속 퀘스트 추가">
+						+ 추가
+					</button>
+				{/if}
+			</div>
+			{#if (detail.successors ?? []).length > 0}
+				<ul class="quest-list">
+					{#each detail.successors ?? [] as sq (sq.id)}
+						<li>
+							<div class="prereq-row">
+								<a href="/quests/{sq.quest_id}{fromSuffix}" class="prereq-link">
+									<span class="badge type" style:--c={sq.type_color}>{sq.quest_id}</span>
+									<span class="ql-title">{sq.title}</span>
+									<span class="badge status" style:--c={sq.status_color}>{sq.status_name_en}</span>
+								</a>
+							</div>
+						</li>
+					{/each}
+				</ul>
+			{:else}
+				<p class="no-desc">후속 퀘스트 없음.</p>
 			{/if}
 		</section>
 
@@ -764,8 +1110,8 @@
 						disabled={campaignCandidates.length === 0}
 						title={campaignCandidates.length === 0
 							? '연결 가능한 캠페인이 없습니다'
-							: '캠페인 선택'}
-					>+ 연결</button>
+							: '캠페인 선택'}>+ 연결</button
+					>
 				{/if}
 			</div>
 			{#if linkedCampaigns.length > 0}
@@ -782,7 +1128,8 @@
 									<button
 										class="prereq-rm"
 										title="캠페인 연결 해제"
-										onclick={() => unlinkCampaign(c.campaign_slug)}>×</button>
+										onclick={() => unlinkCampaign(c.campaign_slug)}>×</button
+									>
 								{/if}
 							</div>
 						</li>
@@ -792,6 +1139,14 @@
 				<p class="no-desc">연결된 캠페인 없음.</p>
 			{/if}
 		</section>
+
+		<!-- DEV-012: 공개 댓글 + 비공개 메모. quest slug 기준. -->
+		<!-- DEV-109: 본문이 길 때 floating 버튼이 이 anchor 로 점프. -->
+		<div bind:this={commentsAnchorEl} id="comments-anchor"></div>
+		<QuestCommentsSection slug={detail.quest_id} />
+		<!-- DEV-123: 메모 점프 anchor. -->
+		<div bind:this={memoAnchorEl} id="memo-anchor"></div>
+		<QuestNoteSection slug={detail.quest_id} mode="memo" />
 
 		<!-- 변경 이력 (DEV-038) -->
 		{#key `${detail.id}:${historyVersion}`}
@@ -805,7 +1160,10 @@
 	<div class="ov" role="presentation">
 		<div class="modal-sm" role="dialog" aria-modal="true" tabindex="-1">
 			<div class="modal-head">
-				<h3>{comboMode === 'sub' ? '기존 퀘스트를 서브퀘스트로 지정' : '선행 퀘스트 추가'}</h3>
+				<h3>
+					{#if comboMode === 'sub'}기존 퀘스트를 서브퀘스트로 지정{:else if comboMode === 'prereq'}선행
+						퀘스트 추가{:else}후속 퀘스트 추가{/if}
+				</h3>
 				<button class="x" onclick={closeCombo}>×</button>
 			</div>
 			{#if candidatesLoading}
@@ -858,23 +1216,38 @@
 		<div class="modal-sm" role="dialog" aria-modal="true" tabindex="-1">
 			<div class="modal-head">
 				<h3 class="del-title">타입 변경</h3>
-				<button class="x" onclick={() => (confirmTypeChange = null)} disabled={changingType}>×</button>
+				<button class="x" onclick={() => (confirmTypeChange = null)} disabled={changingType}
+					>×</button
+				>
 			</div>
 			<p class="del-msg">
-				<code>{detail.quest_id}</code> 의 타입을 <strong>{target.prefix}</strong> 로
-				변경합니다. 슬러그(quest_id) 가 바뀌어
+				<code>{detail.quest_id}</code> 의 타입을 <strong>{target.prefix}</strong> 로 변경합니다.
+				슬러그(quest_id) 가 바뀌어
 				<code>{target.prefix}-NNN</code> 형태의 새 번호가 부여됩니다.
 			</p>
 			<p class="del-prereq">
-				⚠ 다른 퀘스트 본문 안에 <code>{detail.quest_id}</code> 를 직접 언급(예 "참조") 한 부분은
-				자동으로 갱신되지 않습니다. 필요하면 검색해서 직접 수정하세요.
-				부모/자식/선행 관계의 auto-block 메타는 자동 갱신됩니다.
+				⚠ 다른 퀘스트 본문 안에 <code>{detail.quest_id}</code> 를 직접 언급(예 "참조") 한 부분은 자동으로
+				갱신되지 않습니다. 필요하면 검색해서 직접 수정하세요. 부모/자식/선행 관계의 auto-block 메타는
+				자동 갱신됩니다.
 			</p>
+			<!-- DEV-133: 타입 변경이 편집 모드 안으로 이동 — 즉시 적용 + 새 slug
+			     로 navigate 되므로 저장 안 한 제목/설명 편집은 유지되지 않음. -->
+			{#if editMode}
+				<p class="del-prereq">
+					⚠ 변경 즉시 새 슬러그 페이지로 이동합니다 — <strong
+						>저장하지 않은 제목/설명 편집은 사라집니다.</strong
+					> 먼저 저장 후 변경을 권장.
+				</p>
+			{/if}
 			<div class="del-actions">
 				<button class="btn-del-yes" onclick={doChangeType} disabled={changingType}>
 					{changingType ? '변경 중…' : '변경'}
 				</button>
-				<button class="btn-del-no" onclick={() => (confirmTypeChange = null)} disabled={changingType}>
+				<button
+					class="btn-del-no"
+					onclick={() => (confirmTypeChange = null)}
+					disabled={changingType}
+				>
 					취소
 				</button>
 			</div>
@@ -906,8 +1279,10 @@
 							<span>전체 선택</span>
 						</label>
 					</div>
-					<p class="del-sub-help">체크한 항목은 함께 삭제됩니다. 체크하지 않은 항목은 부모에서 분리됩니다.</p>
-					<ul class="del-sub-list">
+					<p class="del-sub-help">
+						체크한 항목은 함께 삭제됩니다. 체크하지 않은 항목은 부모에서 분리됩니다.
+					</p>
+					<ul class="del-sub-list" bind:this={delSubListEl}>
 						{#each detail.sub_quests as sq (sq.id)}
 							<li>
 								<label>
@@ -923,22 +1298,61 @@
 							</li>
 						{/each}
 					</ul>
+					{#if delSubListEl}
+						<OverlayScrollbar target={delSubListEl} />
+					{/if}
 				</div>
 			{/if}
 			<p class="del-prereq">선행 퀘스트들은 별도의 퀘스트이므로 영향받지 않습니다.</p>
 			<div class="del-actions">
-				<button class="btn-del-yes" onclick={confirmDelete} disabled={deleting} data-testid="confirm-delete">
+				<button
+					class="btn-del-yes"
+					onclick={confirmDelete}
+					disabled={deleting}
+					data-testid="confirm-delete"
+				>
 					{deleting ? '삭제 중…' : '삭제'}
 				</button>
-				<button class="btn-del-no" onclick={() => (deleteModal = false)} disabled={deleting}>취소</button>
+				<button class="btn-del-no" onclick={() => (deleteModal = false)} disabled={deleting}
+					>취소</button
+				>
 			</div>
 		</div>
 	</div>
 {/if}
 
+<!-- DEV-109/123/127: 우하단 floating 점프 버튼 cluster. -->
+{#if detail && (showTopJump || showCommentsJump || showMemoJump)}
+	<div class="jump-cluster">
+		{#if showTopJump}
+			<button class="jump-btn" onclick={jumpToTop} title="맨 위로" aria-label="맨 위로">
+				<span class="jb-icon">↑</span>
+				<span class="jb-label">위</span>
+			</button>
+		{/if}
+		{#if showCommentsJump}
+			<button
+				class="jump-btn"
+				onclick={jumpToComments}
+				title="댓글로 이동"
+				aria-label="댓글로 이동"
+			>
+				<span class="jb-icon">💬</span>
+				<span class="jb-label">댓글</span>
+			</button>
+		{/if}
+		{#if showMemoJump}
+			<button class="jump-btn" onclick={jumpToMemo} title="메모로 이동" aria-label="메모로 이동">
+				<span class="jb-icon">📝</span>
+				<span class="jb-label">메모</span>
+			</button>
+		{/if}
+	</div>
+{/if}
+
 <style>
 	.container {
-		max-width: 800px;
+		max-width: var(--content-max-width, 800px);
 		margin: 0 auto;
 		padding: 1.5rem;
 	}
@@ -953,7 +1367,7 @@
 	/* BUG-015: anchor → button 으로 변경. button 기본 스타일 제거. */
 	.back {
 		font-size: 0.875rem;
-		color: #8b949e;
+		color: var(--text-muted);
 		text-decoration: none;
 		background: none;
 		border: none;
@@ -961,90 +1375,167 @@
 		cursor: pointer;
 		font-family: inherit;
 	}
-	.back:hover { color: #c9d1d9; }
+	.back:hover {
+		color: var(--text);
+	}
 
-	.top-actions { display: flex; align-items: center; gap: 0.5rem; }
+	.top-actions {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
 
 	.btn-edit {
 		padding: 0.3rem 0.9rem;
-		border: 1px solid #30363d; border-radius: 6px;
-		background: #21262d; color: #8b949e;
-		font-size: 0.8rem; cursor: pointer;
-		transition: background 0.1s, color 0.1s;
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		background: var(--bg-subtle);
+		color: var(--text-muted);
+		font-size: 0.8rem;
+		cursor: pointer;
+		transition:
+			background 0.1s,
+			color 0.1s;
 	}
-	.btn-edit:hover { background: #30363d; color: #c9d1d9; }
+	.btn-edit:hover {
+		background: var(--border);
+		color: var(--text);
+	}
 
 	.btn-delete {
 		padding: 0.3rem 0.9rem;
-		border: 1px solid #3a1f22; border-radius: 6px;
-		background: transparent; color: #e94f4f;
-		font-size: 0.8rem; cursor: pointer;
+		border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+		border-radius: 6px;
+		background: transparent;
+		color: var(--danger);
+		font-size: 0.8rem;
+		cursor: pointer;
 		transition: background 0.1s;
 	}
-	.btn-delete:hover { background: rgba(233,79,79,0.1); }
+	.btn-delete:hover {
+		background: rgba(233, 79, 79, 0.1);
+	}
 
 	.state-msg {
-		display: flex; align-items: center; justify-content: center;
-		height: 60vh; color: #484f58; font-size: 0.9rem;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		height: 60vh;
+		color: var(--text-faint);
+		font-size: 0.9rem;
 	}
-	.state-msg.error { color: #e94f4f; }
+	.state-msg.error {
+		color: var(--danger);
+	}
 
 	.header {
-		display: flex; gap: 0.5rem; flex-wrap: wrap;
+		display: flex;
+		gap: 0.5rem;
+		flex-wrap: wrap;
 		margin-bottom: 0.75rem;
 	}
 
 	.meta-times {
-		display: flex; align-items: center; flex-wrap: wrap;
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
 		gap: 0.4rem;
-		font-size: 0.72rem; color: #6e7681;
+		font-size: 0.72rem;
+		color: var(--text-faint);
 		margin-bottom: 0.85rem;
 	}
-	.meta-item { display: inline-flex; gap: 0.3rem; align-items: baseline; }
-	.meta-label { color: #484f58; text-transform: uppercase; letter-spacing: 0.05em; }
-	.meta-val { color: #8b949e; font-variant-numeric: tabular-nums; }
-	.meta-sep { color: #30363d; }
+	.meta-item {
+		display: inline-flex;
+		gap: 0.3rem;
+		align-items: baseline;
+	}
+	.meta-label {
+		color: var(--text-faint);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+	.meta-val {
+		color: var(--text-muted);
+		font-variant-numeric: tabular-nums;
+	}
+	.meta-sep {
+		color: var(--border);
+	}
 
 	.title {
-		font-size: 1.4rem; font-weight: 600; color: #e6edf3;
-		margin: 0 0 1rem; line-height: 1.4;
+		font-size: 1.4rem;
+		font-weight: 600;
+		color: var(--text-strong);
+		margin: 0 0 1rem;
+		line-height: 1.4;
 	}
 
 	.branch-row {
-		display: flex; align-items: center; gap: 0.75rem;
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
 		margin-bottom: 0.75rem;
 		padding: 0.5rem 0.75rem;
-		background: #161b22; border: 1px solid #21262d; border-radius: 6px;
+		background: var(--bg-elevated);
+		border: 1px solid var(--bg-subtle);
+		border-radius: 6px;
 	}
-	.branch-label { font-size: 0.75rem; color: #8b949e; flex-shrink: 0; }
+	.branch-label {
+		font-size: 0.75rem;
+		color: var(--text-muted);
+		flex-shrink: 0;
+	}
 	.branch-name {
 		font-family: 'SFMono-Regular', Consolas, monospace;
-		font-size: 0.85rem; color: #79c0ff; flex: 1;
+		font-size: 0.85rem;
+		color: var(--accent-secondary);
+		flex: 1;
 	}
 	.copy-btn {
 		padding: 0.15rem 0.6rem;
-		border: 1px solid #30363d; border-radius: 4px;
-		background: transparent; color: #8b949e;
-		font-size: 0.72rem; cursor: pointer;
-		transition: background 0.1s, color 0.1s;
+		border: 1px solid var(--border);
+		border-radius: 4px;
+		background: transparent;
+		color: var(--text-muted);
+		font-size: 0.72rem;
+		cursor: pointer;
+		transition:
+			background 0.1s,
+			color 0.1s;
 	}
-	.copy-btn:hover { background: #21262d; color: #c9d1d9; }
+	.copy-btn:hover {
+		background: var(--bg-subtle);
+		color: var(--text);
+	}
 
 	.status-row {
-		display: flex; align-items: center; gap: 0.75rem;
-		flex-wrap: wrap; margin-bottom: 1.25rem;
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		flex-wrap: wrap;
+		margin-bottom: 1.25rem;
 		padding: 0.5rem 0.75rem;
-		background: #161b22; border: 1px solid #21262d; border-radius: 6px;
+		background: var(--bg-elevated);
+		border: 1px solid var(--bg-subtle);
+		border-radius: 6px;
 	}
-	.status-btns { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+	.status-btns {
+		display: flex;
+		gap: 0.4rem;
+		flex-wrap: wrap;
+	}
 	.status-btn {
 		padding: 0.15rem 0.7rem;
 		border-radius: 20px;
 		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
 		background: transparent;
-		color: color-mix(in srgb, var(--c) 70%, #8b949e);
-		font-size: 0.75rem; cursor: pointer;
-		transition: background 0.12s, color 0.12s, transform 0.12s;
+		color: color-mix(in srgb, var(--c) 70%, var(--text-muted));
+		font-size: 0.75rem;
+		cursor: pointer;
+		transition:
+			background 0.12s,
+			color 0.12s,
+			transform 0.12s;
 	}
 	.status-btn:hover:not(:disabled) {
 		background: color-mix(in srgb, var(--c) 15%, transparent);
@@ -1052,129 +1543,343 @@
 	}
 	.status-btn.active {
 		background: color-mix(in srgb, var(--c) 18%, transparent);
-		color: var(--c); font-weight: 600; cursor: default;
+		color: var(--c);
+		font-weight: 600;
+		cursor: default;
 	}
-	.status-btn:disabled:not(.active) { opacity: 0.5; cursor: default; }
+	.status-btn:disabled:not(.active) {
+		opacity: 0.5;
+		cursor: default;
+	}
 	.status-btn.flash {
 		background: color-mix(in srgb, var(--c) 32%, transparent);
-		color: var(--c); font-weight: 600;
+		color: var(--c);
+		font-weight: 600;
 		transform: scale(1.04);
 	}
 
 	/* 헤더 상태 뱃지 펄스 */
-	.badge.pulsing { animation: pulseBadge 0.8s ease-out; }
+	.badge.pulsing {
+		animation: pulseBadge 0.8s ease-out;
+	}
 	@keyframes pulseBadge {
-		0%   { box-shadow: 0 0 0 0 var(--c); }
-		60%  { box-shadow: 0 0 0 6px color-mix(in srgb, var(--c) 0%, transparent); }
-		100% { box-shadow: 0 0 0 0 transparent; }
+		0% {
+			box-shadow: 0 0 0 0 var(--c);
+		}
+		60% {
+			box-shadow: 0 0 0 6px color-mix(in srgb, var(--c) 0%, transparent);
+		}
+		100% {
+			box-shadow: 0 0 0 0 transparent;
+		}
 	}
 
 	/* BUG-021 fix1: .md-body CSS 는 공유 컴포넌트 MarkdownView 로 이동.
 	   캠페인과 동일 스타일 — 헤더 사이즈 = 브라우저 기본 (헤더 명확 구분). */
 
-	.no-desc { color: #484f58; font-size: 0.9rem; margin: 0 0 1.5rem; }
+	.no-desc {
+		color: var(--text-faint);
+		font-size: 0.9rem;
+		margin: 0 0 1.5rem;
+	}
 	.link-btn {
-		background: none; border: none; color: #58a6ff;
-		font-size: 0.9rem; cursor: pointer; padding: 0;
+		background: none;
+		border: none;
+		color: var(--accent);
+		font-size: 0.9rem;
+		cursor: pointer;
+		padding: 0;
 		text-decoration: underline;
 	}
 
-	.edit-form { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1.5rem; }
+	.edit-form {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		margin-bottom: 1.5rem;
+	}
 	/* BUG-010: text-transform / letter-spacing 을 label 전체가 아닌 라벨 텍스트
 	   span 에만 적용 — 그렇지 않으면 자식 input / CodeMirror 까지 캐스케이드
 	   되어 입력값이 대문자로 보임. */
 	.field-label {
-		font-size: 0.75rem; font-weight: 600; color: #8b949e;
+		font-size: 0.75rem;
+		font-weight: 600;
+		color: var(--text-muted);
 		margin-top: 0.5rem;
 	}
 	.field-label > span:first-child {
-		text-transform: uppercase; letter-spacing: 0.05em;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
 	}
 	.edit-title {
 		padding: 0.5rem 0.75rem;
-		background: #161b22; border: 1px solid #30363d; border-radius: 6px;
-		color: #e6edf3; font-size: 1rem; outline: none;
-		width: 100%; box-sizing: border-box;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		color: var(--text-strong);
+		font-size: 1rem;
+		outline: none;
+		width: 100%;
+		box-sizing: border-box;
 	}
-	.edit-title:focus { border-color: #58a6ff; }
+	.edit-title:focus {
+		border-color: var(--accent);
+	}
 	.edit-select {
 		padding: 0.4rem 0.6rem;
-		background: #161b22; border: 1px solid #30363d; border-radius: 6px;
-		color: #c9d1d9; font-size: 0.875rem; outline: none; width: 160px;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		color: var(--text);
+		font-size: 0.875rem;
+		outline: none;
+		width: 160px;
 	}
-	.edit-select:focus { border-color: #58a6ff; }
+	.edit-select:focus {
+		border-color: var(--accent);
+	}
 	/* DEV-076: 기한 입력. select 와 동일 스타일. */
-	.due-row { display: flex; gap: 1rem; flex-wrap: wrap; }
-	.due-row .field-label { flex: 1 1 200px; }
+	.due-row {
+		display: flex;
+		gap: 1rem;
+		flex-wrap: wrap;
+	}
+	.due-row .field-label {
+		flex: 1 1 200px;
+	}
 	.edit-date {
 		padding: 0.4rem 0.6rem;
-		background: #161b22; border: 1px solid #30363d; border-radius: 6px;
-		color: #c9d1d9; font-size: 0.875rem; outline: none;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		color: var(--text);
+		font-size: 0.875rem;
+		outline: none;
 		font-family: inherit;
 		/* BUG-031: color-scheme: dark 를 추가하면 picker icon 이 흰색 렌더 →
 		   global.css 의 filter:invert(0.85) 가 다시 검정으로 invert 함. 즉
 		   글로벌 fix 와 충돌. 어두운 입력 배경은 background 색만으로 충분 — 별도
 		   color-scheme 지정 금지. */
 	}
-	.edit-date:focus { border-color: #58a6ff; }
-	.field-label .hint { color: #6e7681; font-weight: 400; font-size: 0.8em; }
-	.due-required { color: #f0883e; font-weight: 600; }
-	.due-desired { color: #58a6ff; font-weight: 500; }
+	.edit-date:focus {
+		border-color: var(--accent);
+	}
+	.field-label .hint {
+		color: var(--text-faint);
+		font-weight: 400;
+		font-size: 0.8em;
+	}
+	.due-required {
+		color: var(--orange);
+		font-weight: 600;
+	}
+	.due-desired {
+		color: var(--accent);
+		font-weight: 500;
+	}
 	/* DEV-079: overdue 는 강한 빨강 + 굵게. desired / required 공통. */
 	.due-required.overdue,
-	.due-desired.overdue { color: #f85149; font-weight: 700; }
+	.due-desired.overdue {
+		color: var(--danger);
+		font-weight: 700;
+	}
+	/* DEV-069: 편집기 위 첨부 툴바. */
+	.editor-toolbar {
+		display: flex;
+		gap: 0.4rem;
+		margin: 0.25rem 0;
+	}
+	.btn-attach {
+		font-size: 0.8rem;
+		padding: 0.2rem 0.6rem;
+		border-radius: 6px;
+		border: 1px solid var(--border);
+		background: var(--bg-subtle);
+		color: var(--text);
+		cursor: pointer;
+	}
+	.btn-attach:hover {
+		background: var(--bg-elevated);
+	}
 	.editor-wrap {
 		/* DEV-057: 사용자 drag 로 height 조절. CodeMirror 의 cm-scroller 는
 		   parent height 100% 따라가서 늘어남. ResizeObserver 가 변경 감지 →
 		   localStorage 영속. */
-		border: 1px solid #30363d; border-radius: 6px;
-		overflow: hidden; min-height: 200px; max-height: 90vh;
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		overflow: hidden;
+		min-height: 200px;
+		max-height: 90vh;
 		resize: vertical;
 	}
-	.editor-wrap :global(.cm-editor) { outline: none; }
-	.editor-wrap :global(.cm-editor.cm-focused) { outline: none; border: none; }
-	.save-error { color: #e94f4f; font-size: 0.8rem; margin: 0; }
-	.edit-actions { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+	.editor-wrap :global(.cm-editor) {
+		outline: none;
+	}
+	.editor-wrap :global(.cm-editor.cm-focused) {
+		outline: none;
+		border: none;
+	}
+	/* DEV-074 fix15: native scrollbar 숨김 — OverlayScrollbar 가 대신 그림. */
+	.editor-wrap :global(.cm-scroller) {
+		scrollbar-width: none;
+	}
+	.editor-wrap :global(.cm-scroller::-webkit-scrollbar) {
+		display: none;
+	}
+	.save-error {
+		color: var(--danger);
+		font-size: 0.8rem;
+		margin: 0;
+	}
+	.edit-actions {
+		display: flex;
+		gap: 0.5rem;
+		margin-top: 0.5rem;
+	}
 	.btn-save {
 		padding: 0.4rem 1.2rem;
-		background: #238636; border: 1px solid #2ea043; border-radius: 6px;
-		color: #fff; font-size: 0.875rem; cursor: pointer;
+		background: var(--btn-primary-bg);
+		border: 1px solid var(--btn-primary-border);
+		border-radius: 6px;
+		color: var(--btn-primary-text);
+		font-size: 0.875rem;
+		cursor: pointer;
 	}
-	.btn-save:hover:not(:disabled) { background: #2ea043; }
-	.btn-save:disabled { opacity: 0.5; cursor: default; }
+	.btn-save:hover:not(:disabled) {
+		background: var(--btn-primary-bg-hover);
+		border-color: var(--btn-primary-border-hover);
+	}
+	.btn-save:disabled {
+		opacity: 0.5;
+		cursor: default;
+	}
 	.btn-cancel {
 		padding: 0.4rem 1rem;
-		background: transparent; border: 1px solid #30363d; border-radius: 6px;
-		color: #8b949e; font-size: 0.875rem; cursor: pointer;
+		background: transparent;
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		color: var(--text-muted);
+		font-size: 0.875rem;
+		cursor: pointer;
 	}
-	.btn-cancel:hover:not(:disabled) { background: #21262d; }
+	.btn-cancel:hover:not(:disabled) {
+		background: var(--bg-subtle);
+	}
 
 	.section-head {
-		display: flex; align-items: center; gap: 0.75rem;
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
 		margin-bottom: 0.5rem;
 	}
 	.section-title {
-		font-size: 0.8rem; font-weight: 600; color: #8b949e;
-		text-transform: uppercase; letter-spacing: 0.05em; margin: 0;
+		font-size: 0.8rem;
+		font-weight: 600;
+		color: var(--text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		margin: 0;
 	}
 	/* DEV-050: 라벨별 색 — QuestBoard 하이라이트 / CLI 의 quest show 와 일치. */
-	.section-title.parent-label { color: #7ee787; }
-	.section-title.sub-label { color: #3dc9b0; }
-	.section-title.prereq-label { color: #a371f7; }
+	.section-title.parent-label {
+		color: var(--success);
+	}
+	.section-title.sub-label {
+		color: var(--hl-sub);
+	}
+	.section-title.prereq-label {
+		color: var(--hl-pre);
+	}
+	/* DEV-070: section header 옆의 부가 설명 hint. */
+	.sec-hint {
+		font-size: 0.75rem;
+		color: var(--text-faint);
+		font-style: italic;
+	}
+
+	/* DEV-068: 태그 섹션. */
+	.section-title.tag-label {
+		color: var(--warning);
+	}
+	.tag-pills {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.35rem;
+	}
+	.tag-pill {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+		padding: 0.15rem 0.6rem;
+		background: rgba(198, 144, 38, 0.12);
+		border: 1px solid rgba(198, 144, 38, 0.4);
+		border-radius: 20px;
+		font-size: 0.75rem;
+		color: var(--warning);
+		font-family: 'JetBrains Mono', ui-monospace, monospace;
+		letter-spacing: 0.02em;
+	}
+	.tag-rm {
+		border: none;
+		background: none;
+		color: var(--text-muted);
+		cursor: pointer;
+		font-size: 1rem;
+		line-height: 1;
+		padding: 0 0 0 2px;
+	}
+	.tag-rm:hover {
+		color: var(--danger);
+	}
+	.tag-add-form {
+		display: flex;
+		gap: 0.4rem;
+		margin-top: 0.5rem;
+	}
+	.tag-add-form input {
+		flex: 1;
+		padding: 0.3rem 0.6rem;
+		background: var(--bg);
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		color: var(--text);
+		font-size: 0.85rem;
+	}
+	.tag-add-form button {
+		padding: 0.3rem 0.85rem;
+		background: var(--bg-subtle);
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		color: var(--text);
+		font-size: 0.8rem;
+		cursor: pointer;
+	}
+	.tag-add-form button:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+	.tag-add-form button:hover:not(:disabled) {
+		background: var(--border);
+	}
 	/* DEV-011: Campaign section */
-	.section-title.campaign-label { color: #4a9eff; }
+	.section-title.campaign-label {
+		color: var(--accent);
+	}
 	/* BUG-021: campaign slug badge — quest type badge 와 동일 pill 패턴 (color-mix). */
 	.campaign-badge {
-		--c: #4a9eff;
+		--c: var(--accent);
 	}
 	.badge.status.status-active {
-		--c: #56d364;
+		--c: var(--success);
 		background: color-mix(in srgb, var(--c) 18%, transparent);
 		color: var(--c);
 		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
 	}
 	.badge.status.status-done {
-		--c: #8b949e;
+		--c: var(--text-muted);
 		background: color-mix(in srgb, var(--c) 18%, transparent);
 		color: var(--c);
 		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
@@ -1183,128 +1888,326 @@
 	   안으로 이동 (sub-quest / prereq 와 동일 배치). */
 	.sec-add-btn {
 		padding: 0.15rem 0.6rem;
-		border: 1px solid #30363d; border-radius: 4px;
-		background: transparent; color: #8b949e;
-		font-size: 0.72rem; cursor: pointer;
+		border: 1px solid var(--border);
+		border-radius: 4px;
+		background: transparent;
+		color: var(--text-muted);
+		font-size: 0.72rem;
+		cursor: pointer;
 	}
-	.sec-add-btn:hover { background: #21262d; color: #c9d1d9; }
+	.sec-add-btn:hover {
+		background: var(--bg-subtle);
+		color: var(--text);
+	}
 
-	section { margin-bottom: 1.5rem; }
+	section {
+		margin-bottom: 1.5rem;
+	}
 	/* BUG-031 → BUG-033: 본문과 첫 section (Parent / Sub-Quests) 사이가 여전히
 	   좁다는 피드백. margin → padding 으로 변경 (collapse 회피) + border-top
 	   으로 시각 구분선. 첫 section 윗쪽에도 padding-top 동시 적용. */
-	.description-block { padding-bottom: 2.5rem; margin-bottom: 0; }
+	/* BUG-031 후속: 본문 아래에 첨부 섹션이 들어오며 이 큰 padding 이 본문↔첨부
+	   간격만 과하게 벌렸음. 첨부 섹션이 자체 구분선/여백을 가지므로 본문 아래는 좁게. */
+	.description-block {
+		padding-bottom: 0.5rem;
+		margin-bottom: 0;
+	}
 	.description-block + section,
 	.description-block ~ section:first-of-type {
-		padding-top: 1rem;
+		padding-top: 0;
 	}
 
 	.quest-list {
-		list-style: none; padding: 0; margin: 0;
-		border: 1px solid #21262d; border-radius: 6px; overflow: hidden;
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		border: 1px solid var(--bg-subtle);
+		border-radius: 6px;
+		overflow: hidden;
 	}
-	.quest-list li + li { border-top: 1px solid #21262d; }
+	.quest-list li + li {
+		border-top: 1px solid var(--bg-subtle);
+	}
 
-	.prereq-row { display: flex; align-items: center; padding: 0; }
+	.prereq-row {
+		display: flex;
+		align-items: center;
+		padding: 0;
+	}
 	.prereq-link {
-		display: flex; align-items: center; gap: 0.6rem;
-		flex: 1; padding: 0.55rem 1rem;
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+		flex: 1;
+		padding: 0.55rem 1rem;
 		text-decoration: none;
 		transition: background 0.1s;
 	}
-	.prereq-link:hover { background: #161b22; }
+	.prereq-link:hover {
+		background: var(--bg-elevated);
+	}
 	.prereq-rm {
 		padding: 0.35rem 0.75rem;
-		background: none; border: none; color: #484f58;
-		font-size: 1rem; cursor: pointer;
-		transition: color 0.1s; flex-shrink: 0;
+		background: none;
+		border: none;
+		color: var(--text-faint);
+		font-size: 1rem;
+		cursor: pointer;
+		transition: color 0.1s;
+		flex-shrink: 0;
 	}
-	.prereq-rm:hover { color: #e94f4f; }
+	.prereq-rm:hover {
+		color: var(--danger);
+	}
 
 	.ql-title {
-		flex: 1; font-size: 0.875rem; color: #c9d1d9;
-		white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+		flex: 1;
+		font-size: 0.875rem;
+		color: var(--text);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	.badge {
 		flex-shrink: 0;
-		padding: 0.15rem 0.55rem; border-radius: 20px;
-		font-size: 0.75rem; font-weight: 500;
+		padding: 0.15rem 0.55rem;
+		border-radius: 20px;
+		font-size: 0.75rem;
+		font-weight: 500;
 		background: color-mix(in srgb, var(--c) 18%, transparent);
 		color: var(--c);
 		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
 	}
+	/* BUG-060 후속: 범위 밖 urgency 경고 배지. */
+	.urgency-warn {
+		flex-shrink: 0;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.2rem;
+		padding: 0.15rem 0.55rem;
+		border-radius: 20px;
+		font-size: 0.75rem;
+		font-weight: 600;
+		color: var(--danger);
+		background: color-mix(in srgb, var(--danger) 14%, transparent);
+		border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+		cursor: help;
+	}
 
 	/* --- 모달 (콤보박스 / 삭제) --- */
 	.ov {
-		position: fixed; inset: 0;
+		position: fixed;
+		inset: 0;
 		background: rgba(0, 0, 0, 0.6);
 		z-index: 100;
-		display: flex; align-items: center; justify-content: center;
+		display: flex;
+		align-items: center;
+		justify-content: center;
 		padding: 1rem;
 	}
 	.modal-sm {
-		background: #161b22;
-		border: 1px solid #30363d; border-radius: 10px;
-		width: 100%; max-width: 480px;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-radius: 10px;
+		width: 100%;
+		max-width: calc(30rem * var(--popup-scale, 1)); /* BUG-064 */
 		padding: 1rem 1.25rem 1rem;
 		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
 	}
 	.modal-head {
-		display: flex; align-items: center; justify-content: space-between;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
 		margin-bottom: 0.85rem;
 	}
 	.modal-head h3 {
-		margin: 0; font-size: 0.95rem; font-weight: 600; color: #e6edf3;
+		margin: 0;
+		font-size: 0.95rem;
+		font-weight: 600;
+		color: var(--text-strong);
 	}
 	.x {
-		background: none; border: none; color: #484f58;
-		font-size: 1.2rem; line-height: 1; cursor: pointer; padding: 0 4px;
+		background: none;
+		border: none;
+		color: var(--text-faint);
+		font-size: 1.2rem;
+		line-height: 1;
+		cursor: pointer;
+		padding: 0 4px;
 	}
-	.x:hover { color: #c9d1d9; }
+	.x:hover {
+		color: var(--text);
+	}
 
-	.combo-state { color: #484f58; font-size: 0.85rem; padding: 0.6rem 0; }
-	.combo-err { color: #e94f4f; font-size: 0.8rem; margin: 0.5rem 0 0; }
+	.combo-state {
+		color: var(--text-faint);
+		font-size: 0.85rem;
+		padding: 0.6rem 0;
+	}
+	.combo-err {
+		color: var(--danger);
+		font-size: 0.8rem;
+		margin: 0.5rem 0 0;
+	}
 
-	.del-title { color: #e94f4f; }
-	.del-msg { color: #c9d1d9; font-size: 0.875rem; margin: 0 0 0.85rem; }
+	.del-title {
+		color: var(--danger);
+	}
+	.del-msg {
+		color: var(--text);
+		font-size: 0.875rem;
+		margin: 0 0 0.85rem;
+	}
 	.del-sub {
-		background: #0d1117; border: 1px solid #21262d; border-radius: 6px;
-		padding: 0.6rem 0.8rem; margin-bottom: 0.85rem;
+		background: var(--bg);
+		border: 1px solid var(--bg-subtle);
+		border-radius: 6px;
+		padding: 0.6rem 0.8rem;
+		margin-bottom: 0.85rem;
 	}
 	.del-sub-head {
-		display: flex; align-items: center; justify-content: space-between;
-		gap: 0.5rem; margin-bottom: 0.3rem;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem;
+		margin-bottom: 0.3rem;
 	}
 	.del-sub-all {
-		display: flex; align-items: center; gap: 0.3rem;
-		font-size: 0.75rem; color: #8b949e; cursor: pointer;
+		display: flex;
+		align-items: center;
+		gap: 0.3rem;
+		font-size: 0.75rem;
+		color: var(--text-muted);
+		cursor: pointer;
 	}
-	.del-sub-all:hover { color: #c9d1d9; }
-	.del-sub-title { margin: 0; font-size: 0.8rem; color: #c9d1d9; font-weight: 600; }
-	.del-sub-help { margin: 0 0 0.5rem; font-size: 0.75rem; color: #8b949e; }
-	.del-sub-list { list-style: none; padding: 0; margin: 0; max-height: 180px; overflow-y: auto; }
-	.del-sub-list li { padding: 0.25rem 0; }
+	.del-sub-all:hover {
+		color: var(--text);
+	}
+	.del-sub-title {
+		margin: 0;
+		font-size: 0.8rem;
+		color: var(--text);
+		font-weight: 600;
+	}
+	.del-sub-help {
+		margin: 0 0 0.5rem;
+		font-size: 0.75rem;
+		color: var(--text-muted);
+	}
+	/* DEV-074 fix17: native scrollbar 숨김 — OverlayScrollbar 가 대신 그림. */
+	.del-sub-list {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		max-height: 180px;
+		overflow-y: auto;
+		scrollbar-width: none;
+	}
+	.del-sub-list::-webkit-scrollbar {
+		display: none;
+	}
+	.del-sub-list li {
+		padding: 0.25rem 0;
+	}
 	.del-sub-list label {
-		display: flex; align-items: center; gap: 0.45rem;
-		cursor: pointer; font-size: 0.85rem; color: #c9d1d9;
+		display: flex;
+		align-items: center;
+		gap: 0.45rem;
+		cursor: pointer;
+		font-size: 0.85rem;
+		color: var(--text);
 	}
-	.del-sub-list .badge { padding: 0.05rem 0.45rem; font-size: 0.7rem; }
-	.del-sub-title-text { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-	.del-prereq { font-size: 0.75rem; color: #8b949e; margin: 0 0 0.85rem; font-style: italic; }
-	.del-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
+	.del-sub-list .badge {
+		padding: 0.05rem 0.45rem;
+		font-size: 0.7rem;
+	}
+	.del-sub-title-text {
+		flex: 1;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.del-prereq {
+		font-size: 0.75rem;
+		color: var(--text-muted);
+		margin: 0 0 0.85rem;
+		font-style: italic;
+	}
+	.del-actions {
+		display: flex;
+		gap: 0.5rem;
+		justify-content: flex-end;
+	}
 	.btn-del-yes {
 		padding: 0.4rem 1.1rem;
-		background: rgba(233,79,79,0.15);
-		border: 1px solid #e94f4f; border-radius: 6px;
-		color: #e94f4f; font-size: 0.875rem; cursor: pointer;
+		background: rgba(233, 79, 79, 0.15);
+		border: 1px solid var(--danger);
+		border-radius: 6px;
+		color: var(--danger);
+		font-size: 0.875rem;
+		cursor: pointer;
 	}
-	.btn-del-yes:hover:not(:disabled) { background: rgba(233,79,79,0.25); }
-	.btn-del-yes:disabled { opacity: 0.5; cursor: default; }
+	.btn-del-yes:hover:not(:disabled) {
+		background: rgba(233, 79, 79, 0.25);
+	}
+	.btn-del-yes:disabled {
+		opacity: 0.5;
+		cursor: default;
+	}
 	.btn-del-no {
 		padding: 0.4rem 1rem;
-		background: transparent; border: 1px solid #30363d; border-radius: 6px;
-		color: #8b949e; font-size: 0.875rem; cursor: pointer;
+		background: transparent;
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		color: var(--text-muted);
+		font-size: 0.875rem;
+		cursor: pointer;
 	}
-	.btn-del-no:hover:not(:disabled) { background: #21262d; }
+	.btn-del-no:hover:not(:disabled) {
+		background: var(--bg-subtle);
+	}
+
+	/* DEV-109/123/127: 우하단 floating 점프 cluster — 위/댓글/메모. */
+	.jump-cluster {
+		position: fixed;
+		right: 1.5rem;
+		bottom: 1.5rem;
+		z-index: 80;
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		align-items: flex-end;
+	}
+	.jump-btn {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		padding: 0.55rem 1rem;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-radius: 999px;
+		color: var(--text);
+		font-size: 0.85rem;
+		font-weight: 500;
+		cursor: pointer;
+		box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+		transition:
+			background 0.12s,
+			border-color 0.12s,
+			transform 0.12s;
+	}
+	.jump-btn:hover {
+		background: var(--bg-subtle);
+		border-color: var(--accent);
+		transform: translateY(-2px);
+	}
+	.jump-btn .jb-icon {
+		font-size: 1rem;
+		line-height: 1;
+		color: var(--accent);
+	}
+	.jump-btn .jb-label {
+		line-height: 1;
+	}
 </style>

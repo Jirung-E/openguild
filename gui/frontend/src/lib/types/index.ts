@@ -13,6 +13,15 @@ export interface QuestStatus {
 	name_ko: string;
 	color: string;
 	sort_order: number;
+	/** DEV-093: "완료" 로 카운트되는 status — 캠페인 진행률 계산용. 서버 미배포 환경 fallback 위해 optional. */
+	counts_as_done?: boolean;
+}
+
+/** DEV-068: 사용자 정의 tag. `.guild/tags/{slug}.toml` 진리원. */
+export interface QuestTagDef {
+	slug: string;
+	color: string;
+	description: string;
 }
 
 export interface Quest {
@@ -44,6 +53,23 @@ export interface Quest {
 	 * 를 "유효 기한" 으로 표시.
 	 */
 	earliest_campaign_due?: string | null;
+	/** DEV-068: 본 quest 의 tag 목록. */
+	tags?: string[];
+	/**
+	 * DEV-116: 본 quest 의 댓글 수 — `quest_comments` 의 COUNT subquery.
+	 * QuestBoard 노드 / QuestList row 에 배지로 표시. 0 이면 표시 X.
+	 */
+	comment_count?: number;
+	/**
+	 * DEV-142 후속: 미해결 토론(discussion·!resolved) 댓글 수. > 0 이면 홈 '토론
+	 * 댓글' 섹션 + 노드/리스트 빨강 토론 아이콘.
+	 */
+	discussion_unresolved?: number;
+	/**
+	 * DEV-142 후속: 해결된 토론 댓글 수. 미해결이 0 이고 이 값이 > 0 이면
+	 * 노드/리스트 초록 토론 아이콘.
+	 */
+	discussion_resolved?: number;
 }
 
 export interface QuestDetail extends Quest {
@@ -51,7 +77,26 @@ export interface QuestDetail extends Quest {
 	parent?: Quest | null;
 	sub_quests: Quest[];
 	prerequisites: Quest[];
+	/**
+	 * DEV-070: 본 quest 를 선행으로 가지는 quest 들 (= 후속 / successor).
+	 * 빈 배열이면 후속 없음 — Quest Detail 의 "후속 퀘스트" 섹션 conditional 표시.
+	 * 서버 미배포 환경 대비 optional (undefined → 빈 배열로 fallback).
+	 */
+	successors?: Quest[];
+	/**
+	 * DEV-068: 본 quest 의 tag 목록. frontmatter 가 진리원.
+	 * 서버 미배포 환경 대비 optional.
+	 */
+	tags?: string[];
+	/** DEV-156: 본문과 별개 첨부 목록 (Jira 식 섹션). sidecar 진리원. */
+	attachments?: QuestAttachment[];
 	position: QuestPosition | null;
+}
+
+/** DEV-156: quest/campaign 첨부 한 건 (본문과 별개). */
+export interface QuestAttachment {
+	path: string;
+	name: string;
 }
 
 export interface QuestPosition {
@@ -95,7 +140,7 @@ export interface ChangeTypeRequest {
 	new_type_prefix: string;
 }
 
-export type CandidateRelation = 'parent' | 'sub' | 'prereq';
+export type CandidateRelation = 'parent' | 'sub' | 'prereq' | 'succ';
 
 export interface UpdatePositionRequest {
 	x: number;
@@ -160,6 +205,8 @@ export interface Campaign {
 	started_at: string | null;
 	ended_at: string | null;
 	display_order: number;
+	/** DEV-087: 배너 이미지 (`.guild/` 상대 경로). null = 없음. */
+	image_path?: string | null;
 	created_at: string;
 	updated_at: string;
 }
@@ -186,6 +233,14 @@ export interface CampaignLinkedQuest {
 export interface CampaignDetail extends Campaign {
 	checklists: CampaignChecklistItem[];
 	linked_quests: CampaignLinkedQuest[];
+	/** DEV-093: 링크된 alive quest 수. 서버 미배포 환경 fallback 위해 optional. */
+	quest_total?: number;
+	/** DEV-093: 위 중 status.counts_as_done = true 인 수. */
+	quest_done?: number;
+	/** DEV-093: quest_done / quest_total. */
+	quest_progress?: number;
+	/** DEV-156: 본문과 별개 첨부 목록 (Jira 식 섹션). */
+	attachments?: QuestAttachment[];
 }
 
 export interface CampaignSummary {
@@ -196,11 +251,22 @@ export interface CampaignSummary {
 	started_at: string | null;
 	ended_at: string | null;
 	display_order: number;
+	/** DEV-087: 배너 이미지 (`.guild/` 상대 경로) — 카드 배경. */
+	image_path?: string | null;
 	created_at: string;
 	/** 0.0 ~ 1.0 — 체크리스트 완료율. */
 	progress: number;
 	checklist_total: number;
 	checklist_checked: number;
+	/**
+	 * DEV-093: 링크된 quest 중 alive (soft delete 제외) 개수.
+	 * 서버 미배포 환경 대비 optional.
+	 */
+	quest_total?: number;
+	/** DEV-093: 위 중 status.counts_as_done = true 인 수. */
+	quest_done?: number;
+	/** DEV-093: quest_done / quest_total. */
+	quest_progress?: number;
 }
 
 export interface CreateCampaignRequest {
@@ -232,3 +298,50 @@ export const URGENCY_BG: Record<number, string> = {
 	3: '#2a2100',
 	4: '#181c22'
 };
+
+/**
+ * DEV-074 fix: light theme 의 urgency bg — Cytoscape 가 CSS var 인식 못 해
+ * data() 로 전달해야 함. theme 전환 시 QuestBoard 가 모든 노드의
+ * urgencyBg data 를 이쪽 값으로 갱신.
+ */
+export const URGENCY_BG_LIGHT: Record<number, string> = {
+	1: '#fdecec', // 옅은 빨강.
+	2: '#fef2dc', // 옅은 주황.
+	3: '#fdf6cc', // 옅은 노랑.
+	4: '#eef0f3' // 옅은 회색.
+};
+
+export function urgencyBgFor(urgency: number, theme: 'dark' | 'light'): string {
+	const map = theme === 'light' ? URGENCY_BG_LIGHT : URGENCY_BG;
+	return map[urgency] ?? map[4] ?? '#888';
+}
+
+/**
+ * BUG-060: URGENCY_LABEL / URGENCY_COLOR 의 안전 접근 헬퍼.
+ *
+ * 이전엔 `URGENCY_LABEL[quest.urgency]` 같은 bare access 였는데, 데이터가
+ * 유효 범위 (1..=4) 를 벗어나면 `undefined` 가 반환. 호출 측에서 `.length`
+ * 같은 접근 시 "Cannot read properties of undefined" 로 보드 전체 폭발.
+ *
+ * 표시는 항상 1..=4 로 **clamp**: 1 미만 → 1(Critical), 4 초과 → 4(Low).
+ * (admin #2 피드백 반영 — 이전 '무조건 4 fallback' 은 하한이 틀려 urgency 0 도
+ * Low 가 됐다.) DB 는 파일의 raw 값을 보존하고(파일 진실) clamp 는 표시 계층에서
+ * 만 한다. 원본이 범위 밖인지는 urgencyOutOfRange() 로 판별해 상세/노드/리스트에
+ * 경고를 띄운다.
+ */
+export function urgencyClamp(u: number): 1 | 2 | 3 | 4 {
+	const n = Math.round(u);
+	if (!Number.isFinite(n) || n < 1) return 1;
+	if (n > 4) return 4;
+	return n as 1 | 2 | 3 | 4;
+}
+export function urgencyLabel(u: number): string {
+	return URGENCY_LABEL[urgencyClamp(u)];
+}
+export function urgencyColor(u: number): string {
+	return URGENCY_COLOR[urgencyClamp(u)];
+}
+/** 원본 urgency 가 유효 범위(1..=4 정수) 밖인가 — 경고 아이콘 표시용. */
+export function urgencyOutOfRange(u: number | null | undefined): boolean {
+	return typeof u === 'number' && (!Number.isInteger(u) || u < 1 || u > 4);
+}

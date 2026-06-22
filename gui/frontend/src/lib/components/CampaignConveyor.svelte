@@ -50,9 +50,7 @@
 
 	// BUG-028: 카드만의 폭 (margin/spacer 제외) 으로 fit 판단.
 	let cardsOnlyW = $derived(
-		summaries.length === 0
-			? 0
-			: summaries.length * CARD_W + (summaries.length - 1) * GAP_PX
+		summaries.length === 0 ? 0 : summaries.length * CARD_W + (summaries.length - 1) * GAP_PX
 	);
 	let needsMarquee = $derived(viewportW > 0 && cardsOnlyW > viewportW);
 	let pixelsPerSec = $derived((CARD_W + GAP_PX) / secondsPerCard);
@@ -220,7 +218,11 @@
 {/if}
 
 <style>
-	.empty { color: #6e7681; font-size: 0.875rem; padding: 1rem 0; }
+	.empty {
+		color: var(--text-faint);
+		font-size: 0.875rem;
+		padding: 1rem 0;
+	}
 
 	.conveyor {
 		overflow: hidden;
@@ -234,19 +236,21 @@
 		-webkit-mask-image: linear-gradient(
 			90deg,
 			transparent 0,
-			#000 32px,
-			#000 calc(100% - 32px),
+			black 32px,
+			black calc(100% - 32px),
 			transparent 100%
 		);
 		mask-image: linear-gradient(
 			90deg,
 			transparent 0,
-			#000 32px,
-			#000 calc(100% - 32px),
+			black 32px,
+			black calc(100% - 32px),
 			transparent 100%
 		);
 	}
-	.conveyor.marquee.dragging { cursor: grabbing; }
+	.conveyor.marquee.dragging {
+		cursor: grabbing;
+	}
 
 	.track {
 		display: flex;
@@ -254,12 +258,18 @@
 		width: max-content;
 		will-change: transform;
 	}
-	.slot { flex: 0 0 200px; }
-	.spacer { flex: 0 0 200px; }
+	.slot {
+		flex: 0 0 200px;
+	}
+	.spacer {
+		flex: 0 0 200px;
+	}
 
 	/* BUG-031: 실제 드래그 중에만 슬롯 클릭 막음 (capture 이후). 임계값 미만은
 	   click 으로 분기되어 자연스럽게 카드 navigate. */
-	.conveyor.marquee.dragging .slot { pointer-events: none; }
+	.conveyor.marquee.dragging .slot {
+		pointer-events: none;
+	}
 
 	.controls {
 		display: flex;
@@ -267,9 +277,9 @@
 		margin-top: 0.25rem;
 	}
 	.play-pause {
-		background: #21262d;
-		border: 1px solid #30363d;
-		color: #c9d1d9;
+		background: var(--bg-subtle);
+		border: 1px solid var(--border);
+		color: var(--text);
 		border-radius: 50%;
 		width: 1.8rem;
 		height: 1.8rem;
@@ -278,5 +288,7 @@
 		cursor: pointer;
 		transition: background 0.15s;
 	}
-	.play-pause:hover { background: #2a2a4a; }
+	.play-pause:hover {
+		background: var(--bg-subtle);
+	}
 </style>

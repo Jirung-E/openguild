@@ -47,7 +47,18 @@ pub const QUEST_SELECT: &str = r#"
               AND c.status = 'active'
               AND c.ended_at IS NOT NULL
               AND c.ended_at != ''
-        ) AS earliest_campaign_due
+        ) AS earliest_campaign_due,
+        (
+            SELECT COUNT(*) FROM quest_comments WHERE quest_id = q.id
+        ) AS comment_count,
+        (
+            SELECT COUNT(*) FROM quest_comments
+            WHERE quest_id = q.id AND discussion = 1 AND resolved = 0
+        ) AS discussion_unresolved,
+        (
+            SELECT COUNT(*) FROM quest_comments
+            WHERE quest_id = q.id AND discussion = 1 AND resolved = 1
+        ) AS discussion_resolved
     FROM quests q
     JOIN quest_types   qt ON q.quest_type_id = qt.id
     JOIN quest_statuses qs ON q.status_id    = qs.id
@@ -303,7 +314,30 @@ pub async fn list(pool: &SqlitePool, query: &ListQuery) -> AppResult<Vec<QuestRo
             q = q.bind(pat); // slug
         }
     }
-    let quests = q.fetch_all(pool).await?;
+    let mut quests = q.fetch_all(pool).await?;
+    // DEV-068: tags 채움 — 한 query 로 quest_tags 전체 fetch 후 매핑.
+    if !quests.is_empty() {
+        let ids: Vec<i64> = quests.iter().map(|q| q.id).collect();
+        let placeholders = vec!["?"; ids.len()].join(",");
+        let sql_tags = format!(
+            "SELECT quest_id, tag FROM quest_tags WHERE quest_id IN ({placeholders}) ORDER BY tag"
+        );
+        let mut q_tags = sqlx::query_as::<_, (i64, String)>(&sql_tags);
+        for id in &ids {
+            q_tags = q_tags.bind(id);
+        }
+        let rows = q_tags.fetch_all(pool).await?;
+        let mut map: std::collections::HashMap<i64, Vec<String>> =
+            std::collections::HashMap::new();
+        for (qid, tag) in rows {
+            map.entry(qid).or_default().push(tag);
+        }
+        for q in &mut quests {
+            if let Some(tags) = map.remove(&q.id) {
+                q.tags = tags;
+            }
+        }
+    }
     Ok(quests)
 }
 
@@ -383,13 +417,32 @@ pub async fn get(pool: &SqlitePool, id: i64) -> AppResult<QuestDetail> {
     let quest = fetch_by_id(pool, id).await?;
     let parent = fetch_parent(pool, &quest).await?;
     let (sub_quests, prerequisites, position) = fetch_relations(pool, id).await?;
+    // DEV-070: 후속 (이 quest 를 선행으로 갖는 quest 들).
+    let successors = fetch_successors(pool, id).await?;
+    // DEV-068: tag 들 — quest_tags 캐시 (file frontmatter sync 됨).
+    let tags = fetch_quest_tags(pool, id).await?;
     Ok(QuestDetail {
         quest,
         parent,
         sub_quests,
         prerequisites,
+        successors,
+        tags,
+        // DEV-156: 첨부 목록은 sidecar 파일 진리원이라 Store 가 필요 — 여기선 빈
+        // 채로 두고, Store 를 가진 호출 계층(GUI 커맨드 등)에서 채운다.
+        attachments: Vec::new(),
         position,
     })
+}
+
+/// DEV-068: 본 quest 의 tag 목록. quest_tags 캐시 read.
+pub async fn fetch_quest_tags(pool: &SqlitePool, id: i64) -> AppResult<Vec<String>> {
+    Ok(sqlx::query_scalar::<_, String>(
+        "SELECT tag FROM quest_tags WHERE quest_id = ? ORDER BY tag",
+    )
+    .bind(id)
+    .fetch_all(pool)
+    .await?)
 }
 
 /// DEV-047: 부모 quest 한 row 조회 (있으면). parent_quest_id 가 None / 부모
@@ -422,14 +475,36 @@ pub async fn get_by_slug(pool: &SqlitePool, slug: &str) -> AppResult<QuestDetail
     let id = quest.id;
     let parent = fetch_parent(pool, &quest).await?;
     let (sub_quests, prerequisites, position) = fetch_relations(pool, id).await?;
+    let successors = fetch_successors(pool, id).await?;
+    let tags = fetch_quest_tags(pool, id).await?;
 
     Ok(QuestDetail {
         quest,
         parent,
         sub_quests,
         prerequisites,
+        successors,
+        tags,
+        // DEV-156: 첨부 목록은 sidecar 파일 진리원이라 Store 가 필요 — 여기선 빈
+        // 채로 두고, Store 를 가진 호출 계층(GUI 커맨드 등)에서 채운다.
+        attachments: Vec::new(),
         position,
     })
+}
+
+/// DEV-070: 본 quest 를 선행으로 가지는 alive quest 들.
+/// `quest_dependencies (quest_id, prerequisite_id)` 에서 prerequisite_id = id
+/// 인 row 의 quest_id 들. 사이클은 BFS 검증으로 막혀 있어 self / 조상 안 들어옴.
+pub async fn fetch_successors(pool: &SqlitePool, id: i64) -> AppResult<Vec<QuestRow>> {
+    let sql = format!(
+        "{QUEST_SELECT}
+         JOIN quest_dependencies dep ON q.id = dep.quest_id
+         WHERE q.deleted_at IS NULL AND dep.prerequisite_id = ? ORDER BY q.id"
+    );
+    Ok(sqlx::query_as::<_, QuestRow>(&sql)
+        .bind(id)
+        .fetch_all(pool)
+        .await?)
 }
 
 pub async fn list_positions(pool: &SqlitePool) -> AppResult<Vec<QuestPosition>> {
@@ -1077,9 +1152,43 @@ pub async fn list_candidates(
                 result.push(c);
             }
         }
+        // DEV-124: successors — `id` 가 candidate 의 prereq 로 추가될 수 있는
+        // quest 들. prereq 의 mirror — has_prerequisite_path(id, c.id) 가 false.
+        // 또한 candidate 가 id 의 직계 sub / parent 면 그 관계가 본질이지
+        // prereq 관계가 아니라 제외 (prereq 와 같은 정책).
+        "succ" => {
+            // direct successors — `id` 를 prereq 로 이미 가진 quest 들.
+            let direct_succs: HashSet<i64> = sqlx::query_scalar(
+                "SELECT quest_id FROM quest_dependencies WHERE prerequisite_id = ?",
+            )
+            .bind(id)
+            .fetch_all(pool)
+            .await?
+            .into_iter()
+            .collect();
+            for c in all {
+                if c.id == id {
+                    continue;
+                }
+                if direct_succs.contains(&c.id) {
+                    continue;
+                }
+                if direct_subs.contains(&c.id) {
+                    continue;
+                }
+                if c.parent_quest_id == Some(id) {
+                    continue;
+                }
+                // cycle 차단 — id 가 이미 c.id 의 prereq path 위에 있으면 의미 X.
+                if has_prerequisite_path(pool, id, c.id).await? {
+                    continue;
+                }
+                result.push(c);
+            }
+        }
         other => {
             return Err(AppError::BadRequest(format!(
-                "invalid relation: {other} (expected parent|sub|prereq)"
+                "invalid relation: {other} (expected parent|sub|prereq|succ)"
             )));
         }
     }
@@ -1384,6 +1493,286 @@ mod tests {
             q.earliest_campaign_due.is_none(),
             "unlinked quest 의 earliest_campaign_due 는 None 이어야 함"
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ─── DEV-070: successors ───
+
+    /// 후속 quest 없으면 빈 vec.
+    #[tokio::test]
+    async fn successors_empty_when_no_dependent() {
+        let (dir, store) = fresh_store("succ-empty").await;
+        let id = make_quest(&store).await;
+        let succ = fetch_successors(&store.index_pool, id).await.unwrap();
+        assert!(succ.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A 가 B 의 선행이면 B 는 A 의 후속.
+    #[tokio::test]
+    async fn successor_contains_dependent_quest() {
+        let (dir, store) = fresh_store("succ-one").await;
+        let a = make_quest(&store).await;
+        let b = make_quest(&store).await;
+        crate::ops::add_prerequisite(
+            &store,
+            b,
+            crate::models::AddPrerequisiteRequest { prerequisite_id: a },
+        )
+        .await
+        .unwrap();
+
+        // A 의 successors = [B].
+        let succ_a = fetch_successors(&store.index_pool, a).await.unwrap();
+        assert_eq!(succ_a.len(), 1);
+        assert_eq!(succ_a[0].id, b);
+
+        // B 의 successors = []. (A 만 갖고 있으므로.)
+        let succ_b = fetch_successors(&store.index_pool, b).await.unwrap();
+        assert!(succ_b.is_empty());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 후속 quest 가 soft-delete 되면 successors 에서 빠진다.
+    #[tokio::test]
+    async fn successors_excludes_deleted_quests() {
+        let (dir, store) = fresh_store("succ-del").await;
+        let a = make_quest(&store).await;
+        let b = make_quest(&store).await;
+        crate::ops::add_prerequisite(
+            &store,
+            b,
+            crate::models::AddPrerequisiteRequest { prerequisite_id: a },
+        )
+        .await
+        .unwrap();
+        crate::ops::delete_quest(&store, b, &[]).await.unwrap();
+
+        let succ = fetch_successors(&store.index_pool, a).await.unwrap();
+        assert!(succ.is_empty(), "deleted 후속은 제외");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ─── DEV-068: tags ───
+
+    /// set_quest_tags 가 DB 캐시 + 파일 frontmatter 둘 다 갱신.
+    #[tokio::test]
+    async fn set_quest_tags_syncs_db_and_file() {
+        let (dir, store) = fresh_store("tags-sync").await;
+        let q0 = crate::ops::create_quest(
+            &store,
+            CreateQuestRequest {
+                quest_type_id: 1,
+                title: "t".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        let id = q0.id;
+        let quest = fetch_by_id(&store.index_pool, id).await.unwrap();
+
+        crate::ops::set_quest_tags(
+            &store,
+            id,
+            vec!["backend".into(), "performance".into()],
+        )
+        .await
+        .unwrap();
+
+        // DB: 두 row.
+        let rows: Vec<(String,)> =
+            sqlx::query_as("SELECT tag FROM quest_tags WHERE quest_id = ? ORDER BY tag")
+                .bind(id)
+                .fetch_all(&store.index_pool)
+                .await
+                .unwrap();
+        let tags: Vec<String> = rows.into_iter().map(|(t,)| t).collect();
+        assert_eq!(tags, vec!["backend".to_string(), "performance".into()]);
+
+        // File frontmatter.
+        let qf = crate::repo::QuestFile::read(store.paths.quest_path(&quest.quest_id))
+            .unwrap();
+        assert_eq!(qf.frontmatter.tags, vec!["backend".to_string(), "performance".into()]);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 중복 / 빈 / 공백 tags 가 정규화됨.
+    #[tokio::test]
+    async fn set_quest_tags_normalizes_input() {
+        let (dir, store) = fresh_store("tags-norm").await;
+        let q = crate::ops::create_quest(
+            &store,
+            CreateQuestRequest {
+                quest_type_id: 1,
+                title: "t".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        let id = q.id;
+        crate::ops::set_quest_tags(
+            &store,
+            id,
+            vec![
+                "  backend  ".into(),
+                "".into(),
+                "BACKEND".into(), // 다른 case — 중복 아님 (자유 문자열).
+                "   ".into(),
+                "backend".into(), // 중복.
+            ],
+        )
+        .await
+        .unwrap();
+        let rows: Vec<(String,)> = sqlx::query_as(
+            "SELECT tag FROM quest_tags WHERE quest_id = ? ORDER BY tag",
+        )
+        .bind(id)
+        .fetch_all(&store.index_pool)
+        .await
+        .unwrap();
+        let tags: Vec<String> = rows.into_iter().map(|(t,)| t).collect();
+        assert_eq!(tags, vec!["BACKEND".to_string(), "backend".into()]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// set_quest_tags(vec![]) 호출 시 모든 tag 삭제 + frontmatter 의 키 자체 생략.
+    #[tokio::test]
+    async fn set_quest_tags_empty_clears_all() {
+        let (dir, store) = fresh_store("tags-clear").await;
+        let q = crate::ops::create_quest(
+            &store,
+            CreateQuestRequest {
+                quest_type_id: 1,
+                title: "t".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        let id = q.id;
+        crate::ops::set_quest_tags(&store, id, vec!["foo".into()])
+            .await
+            .unwrap();
+        crate::ops::set_quest_tags(&store, id, vec![]).await.unwrap();
+        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM quest_tags WHERE quest_id = ?")
+            .bind(id)
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(n, 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 다른 mutation (status 변경 등) 후에도 tags 보존.
+    #[tokio::test]
+    async fn other_mutations_preserve_tags() {
+        let (dir, store) = fresh_store("tags-preserve").await;
+        let q = crate::ops::create_quest(
+            &store,
+            CreateQuestRequest {
+                quest_type_id: 1,
+                title: "t".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        let id = q.id;
+        crate::ops::set_quest_tags(&store, id, vec!["x".into(), "y".into()])
+            .await
+            .unwrap();
+        // 상태 변경.
+        crate::ops::change_status(
+            &store,
+            id,
+            crate::models::ChangeStatusRequest {
+                status_slug: "in_progress".into(),
+            },
+        )
+        .await
+        .unwrap();
+        // tags 가 DB / 파일 양쪽에 살아있어야.
+        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM quest_tags WHERE quest_id = ?")
+            .bind(id)
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(n, 2);
+        let q = fetch_by_id(&store.index_pool, id).await.unwrap();
+        let qf = crate::repo::QuestFile::read(store.paths.quest_path(&q.quest_id)).unwrap();
+        assert_eq!(qf.frontmatter.tags.len(), 2);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// reindex 가 frontmatter tags → quest_tags 적재.
+    #[tokio::test]
+    async fn reindex_loads_tags_from_frontmatter() {
+        let (dir, store) = fresh_store("tags-reindex").await;
+        let q = crate::ops::create_quest(
+            &store,
+            CreateQuestRequest {
+                quest_type_id: 1,
+                title: "t".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        let id = q.id;
+        crate::ops::set_quest_tags(&store, id, vec!["foo".into(), "bar".into()])
+            .await
+            .unwrap();
+        // cache wipe + reindex.
+        sqlx::query("DELETE FROM quest_tags")
+            .execute(&store.index_pool)
+            .await
+            .unwrap();
+        let report = crate::reindex::reindex(&store).await.unwrap();
+        assert_eq!(report.tags_loaded, 2);
+        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM quest_tags")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(n, 2);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// QuestDetail 의 successors 필드가 채워지는지 (E2E).
+    #[tokio::test]
+    async fn get_quest_detail_includes_successors() {
+        let (dir, store) = fresh_store("detail-succ").await;
+        let a = make_quest(&store).await;
+        let b = make_quest(&store).await;
+        crate::ops::add_prerequisite(
+            &store,
+            b,
+            crate::models::AddPrerequisiteRequest { prerequisite_id: a },
+        )
+        .await
+        .unwrap();
+        let detail = get(&store.index_pool, a).await.unwrap();
+        assert_eq!(detail.successors.len(), 1);
+        assert_eq!(detail.successors[0].id, b);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

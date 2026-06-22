@@ -1,17 +1,18 @@
-//! Snapshot + Restore — Redis RDB 패턴.
+//! Snapshot + Restore — Redis RDB 패턴 (BUG-076: 파일 기반).
 //!
-//! `.guild/backups/snapshots/{timestamp}.db` 는 그 시점의 `.guild/index.db` 사본.
-//! 동시에 `.guild/backups/journal.db` 의 ops 테이블 비움 — 새 snapshot 이후의
-//! mutation 만 journal 에 쌓이도록.
+//! **RDB = `.guild/` 소스 파일(진실)의 사본**, index.db(캐시)가 아니다.
+//! `.guild/backups/snapshots/{timestamp}/` 디렉토리에 루트 마커 + 소스 하위
+//! 디렉토리(quests/campaigns/rules/tags/types/statuses/attachments)를 복사한다.
+//! index.db/journal.db/backups 는 제외(캐시·자기참조). 동시에 journal(ops, AOF)
+//! truncate — 이 snapshot 이후 mutation 만 쌓이도록.
 //!
 //! Restore 시:
-//! 1. 가장 가까운 snapshot 선택 (요청 시각 ≤ snapshot ts).
-//! 2. snapshot DB 를 `.guild/index.db` 로 복사.
-//! 3. journal 의 ops 를 시간 순서대로 replay (요청 시각 ≤ op ts).
-//! 4. 파일들 (`.guild/quests/`, `types/`, `statuses/`) 을 새 index 기준으로 재생성.
+//! 1. 현재 소스 + index.db 를 `.pre-restore/` 로 백업 (되돌리기 가능).
+//! 2. 현재 소스 제거 후 snapshot 의 파일을 `.guild/` 로 복원.
+//! 3. reindex 로 index.db(캐시) 재구축. → rules/댓글/메모/첨부 등 전부 복원.
 //!
-//! 첫 단계 구현 (이 모듈): snapshot 생성 + 목록 + 단순 restore (snapshot 만, journal replay X).
-//! Journal replay 는 ops 의 args 를 역으로 적용해야 — 별도 단계 (F7+ 예정).
+//! journal replay(시점 복원, DEV-022 = AOF)는 이 위에 별도로 얹는다 — 현재는
+//! snapshot 시점으로 복원.
 
 use anyhow::{Context, Result};
 use std::path::PathBuf;
@@ -64,31 +65,115 @@ impl AutoSnapshotPolicy {
     }
 }
 
-/// 현재 `.guild/index.db` 를 `.guild/backups/snapshots/{ts}.db` 로 복사 +
-/// `.guild/backups/journal.db` truncate.
+/// DEV-022/BUG-076: snapshot 이 담는 `.guild/` 소스 하위 디렉토리 (진실 = 파일).
+/// index.db/journal.db (캐시) 와 backups/ (자기 자신) 는 제외.
+const SOURCE_SUBDIRS: &[&str] = &[
+    "quests",
+    "campaigns",
+    "rules",
+    "tags",
+    "types",
+    "statuses",
+    "attachments",
+];
+
+/// dir 트리를 통째로 복사 (대상에 병합 생성). 파일/하위디렉토리 재귀.
+fn copy_tree(src: &std::path::Path, dst: &std::path::Path) -> Result<()> {
+    if !src.exists() {
+        return Ok(());
+    }
+    std::fs::create_dir_all(dst)
+        .with_context(|| format!("디렉토리 생성 실패: {}", dst.display()))?;
+    for entry in std::fs::read_dir(src)
+        .with_context(|| format!("디렉토리 읽기 실패: {}", src.display()))?
+    {
+        let entry = entry?;
+        let from = entry.path();
+        let to = dst.join(entry.file_name());
+        if from.is_dir() {
+            copy_tree(&from, &to)?;
+        } else {
+            std::fs::copy(&from, &to)
+                .with_context(|| format!("복사 실패: {} → {}", from.display(), to.display()))?;
+        }
+    }
+    Ok(())
+}
+
+fn tree_size(dir: &std::path::Path) -> u64 {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+    rd.filter_map(|e| e.ok()).fold(0u64, |acc, e| {
+        let p = e.path();
+        acc + if p.is_dir() {
+            tree_size(&p)
+        } else {
+            std::fs::metadata(&p).map(|m| m.len()).unwrap_or(0)
+        }
+    })
+}
+
+/// 길드의 소스 파일(진실)을 `dst` 로 복사 — 루트 마커 `*.guild` + `.guild/` 의
+/// SOURCE_SUBDIRS. index.db/journal.db/backups 는 제외. 레이아웃 보존:
+/// `dst/{marker}.guild`, `dst/.guild/{subdir}/...`.
+fn copy_guild_source(paths: &GuildPaths, dst: &std::path::Path) -> Result<()> {
+    std::fs::create_dir_all(dst)?;
+    // 루트 마커 `*.guild`.
+    if let Ok(rd) = std::fs::read_dir(&paths.guild_root) {
+        for e in rd.filter_map(|e| e.ok()) {
+            let p = e.path();
+            if p.is_file() && p.extension().and_then(|x| x.to_str()) == Some("guild") {
+                let _ = std::fs::copy(&p, dst.join(e.file_name()));
+            }
+        }
+    }
+    // `.guild/<subdir>`.
+    let dot_dst = dst.join(".guild");
+    for sub in SOURCE_SUBDIRS {
+        copy_tree(&paths.dot_guild().join(sub), &dot_dst.join(sub))?;
+    }
+    Ok(())
+}
+
+/// 현재 길드의 소스(SOURCE_SUBDIRS + 루트 마커) 제거 — restore 직전 클린업.
+/// index.db/journal.db/backups 는 절대 건드리지 않는다.
+fn clear_guild_source(paths: &GuildPaths) -> Result<()> {
+    for sub in SOURCE_SUBDIRS {
+        let d = paths.dot_guild().join(sub);
+        if d.exists() {
+            std::fs::remove_dir_all(&d)
+                .with_context(|| format!("소스 제거 실패: {}", d.display()))?;
+        }
+    }
+    if let Ok(rd) = std::fs::read_dir(&paths.guild_root) {
+        for e in rd.filter_map(|e| e.ok()) {
+            let p = e.path();
+            if p.is_file() && p.extension().and_then(|x| x.to_str()) == Some("guild") {
+                let _ = std::fs::remove_file(&p);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// BUG-076: snapshot = `.guild/` 소스 파일(진실)의 사본. `index.db`(캐시)가 아님.
+/// `.guild/backups/snapshots/{ts}/` 디렉토리에 루트 마커 + 소스 하위디렉토리 복사
+/// + journal truncate. restore 는 이 파일들을 되돌린 뒤 reindex 로 index.db 재구축.
 ///
 /// Retention 7 개 — 8 번째 이상 오래된 것 삭제.
 pub async fn create_snapshot(store: &Store) -> Result<SnapshotInfo> {
     let paths = &store.paths;
     let ts = now_compact();
-    let target = paths.snapshots_dir().join(format!("{ts}.db"));
+    let target = paths.snapshots_dir().join(&ts);
 
     std::fs::create_dir_all(paths.snapshots_dir())
         .with_context(|| format!("snapshots 디렉토리 생성 실패: {}", paths.snapshots_dir().display()))?;
 
-    // index.db 가 write 중일 수 있어 SQLite 의 backup API 가 안전 (PRAGMA wal_checkpoint 후 fs::copy).
-    // 단순 fs::copy 도 SQLite WAL 모드에선 일관성 위험. 안전을 위해 source pool 에서 wal_checkpoint(TRUNCATE) 실행.
-    sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
-        .execute(&store.index_pool)
-        .await
-        .ok(); // checkpoint 실패해도 fs::copy 시도 — best effort
+    copy_guild_source(paths, &target).context("snapshot 소스 복사 실패")?;
+    let size_bytes = tree_size(&target);
 
-    std::fs::copy(paths.index_db(), &target)
-        .with_context(|| format!("snapshot 복사 실패: {} → {}", paths.index_db().display(), target.display()))?;
-
-    let size_bytes = std::fs::metadata(&target).map(|m| m.len()).unwrap_or(0);
-
-    // journal truncate.
+    // journal truncate (AOF 리셋 — 이 snapshot 이후 ops 만 쌓이도록).
     journal::truncate(&store.journal_pool)
         .await
         .context("journal truncate 실패")?;
@@ -140,49 +225,30 @@ pub async fn maybe_auto_snapshot(
     Ok(Some(info))
 }
 
-/// "YYYYMMDD-HHMMSS" → SystemTime (UTC).
+/// "YYYYMMDD-HHMMSS" (UTC) → SystemTime.
+///
+/// BUG-086(후속): 타임스탬프는 **정규형 UTC** 로 저장(now_compact). 디렉토리명이
+/// offset 마커를 못 담으므로 UTC 규약으로 통일 — tz/DST 무관하게 정렬 단조 +
+/// 모호성 없음. 사람에게 보일 때만 로컬 변환(ts_to_local_display).
 fn snapshot_time(timestamp: &str) -> Option<std::time::SystemTime> {
-    // 형식: YYYYMMDD-HHMMSS (15글자)
-    if timestamp.len() != 15 || &timestamp[8..9] != "-" {
-        return None;
-    }
-    let y: u64 = timestamp[0..4].parse().ok()?;
-    let mo: u64 = timestamp[4..6].parse().ok()?;
-    let d: u64 = timestamp[6..8].parse().ok()?;
-    let h: u64 = timestamp[9..11].parse().ok()?;
-    let mi: u64 = timestamp[11..13].parse().ok()?;
-    let s: u64 = timestamp[13..15].parse().ok()?;
-
-    // UTC 기준 epoch 변환 (단순 — 윤년 처리 정확).
-    let secs = ymdhms_to_epoch(y, mo, d, h, mi, s)?;
-    Some(std::time::UNIX_EPOCH + Duration::from_secs(secs))
+    use chrono::TimeZone;
+    let naive = chrono::NaiveDateTime::parse_from_str(timestamp, "%Y%m%d-%H%M%S").ok()?;
+    Some(chrono::Utc.from_utc_datetime(&naive).into())
 }
 
-fn ymdhms_to_epoch(y: u64, mo: u64, d: u64, h: u64, mi: u64, s: u64) -> Option<u64> {
-    if y < 1970 || !(1..=12).contains(&mo) || !(1..=31).contains(&d) {
-        return None;
+/// BUG-086(후속): 저장된 UTC compact 타임스탬프(`YYYYMMDD-HHMMSS`)를 사람용
+/// 로컬 표시 문자열(`YYYY-MM-DD HH:MM:SS`)로 변환. 파싱 실패 시 원본 그대로.
+/// CLI / GUI 의 표시 계층에서 사용 (저장값은 UTC 정규형 유지).
+pub fn ts_to_local_display(ts: &str) -> String {
+    use chrono::TimeZone;
+    match chrono::NaiveDateTime::parse_from_str(ts, "%Y%m%d-%H%M%S") {
+        Ok(naive) => chrono::Utc
+            .from_utc_datetime(&naive)
+            .with_timezone(&chrono::Local)
+            .format("%Y-%m-%d %H:%M:%S")
+            .to_string(),
+        Err(_) => ts.to_string(),
     }
-    let mut days: u64 = 0;
-    for yr in 1970..y {
-        days += if is_leap_y(yr as i64) { 366 } else { 365 };
-    }
-    let months = days_in_months_y(y as i64);
-    for &m in months.iter().take((mo - 1) as usize) {
-        days += m as u64;
-    }
-    days += d - 1;
-    Some(days * 86400 + h * 3600 + mi * 60 + s)
-}
-
-fn is_leap_y(y: i64) -> bool {
-    (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
-}
-fn days_in_months_y(y: i64) -> [u32; 12] {
-    [
-        31,
-        if is_leap_y(y) { 29 } else { 28 },
-        31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
-    ]
 }
 
 /// 사용 가능한 snapshot 목록 (오래된 순부터).
@@ -191,9 +257,10 @@ pub fn list_snapshots(paths: &GuildPaths) -> Result<Vec<SnapshotInfo>> {
     if !dir.exists() {
         return Ok(Vec::new());
     }
+    // BUG-076: snapshot 은 이제 `{ts}/` 디렉토리 (소스 파일 묶음).
     let mut entries: Vec<_> = std::fs::read_dir(&dir)?
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("db"))
+        .filter(|e| e.path().is_dir())
         .collect();
     entries.sort_by_key(|e| e.file_name());
 
@@ -201,11 +268,11 @@ pub fn list_snapshots(paths: &GuildPaths) -> Result<Vec<SnapshotInfo>> {
     for e in entries {
         let path = e.path();
         let timestamp = path
-            .file_stem()
+            .file_name()
             .and_then(|s| s.to_str())
             .unwrap_or("")
             .to_string();
-        let size_bytes = e.metadata().map(|m| m.len()).unwrap_or(0);
+        let size_bytes = tree_size(&path);
         out.push(SnapshotInfo {
             timestamp,
             path,
@@ -220,96 +287,97 @@ pub fn latest_snapshot(paths: &GuildPaths) -> Result<Option<SnapshotInfo>> {
     Ok(list_snapshots(paths)?.into_iter().last())
 }
 
-/// snapshot DB 를 `.guild/index.db` 로 복원.
+/// DEV-175: 특정 snapshot 삭제 — `snapshots/{timestamp}/` 디렉토리 제거.
+/// timestamp 는 디렉토리 이름 한 토막이어야 (traversal 방지).
+pub fn delete_snapshot(paths: &GuildPaths, timestamp: &str) -> Result<()> {
+    if timestamp.is_empty()
+        || timestamp.contains('/')
+        || timestamp.contains('\\')
+        || timestamp.contains("..")
+    {
+        anyhow::bail!("잘못된 snapshot timestamp: {timestamp}");
+    }
+    let target = paths.snapshots_dir().join(timestamp);
+    if !target.is_dir() {
+        anyhow::bail!("snapshot 없음: {timestamp}");
+    }
+    std::fs::remove_dir_all(&target)
+        .with_context(|| format!("snapshot 삭제 실패: {}", target.display()))?;
+    Ok(())
+}
+
+/// BUG-076: snapshot(소스 파일 묶음)을 `.guild/` 로 되돌리고 index.db 를 reindex 로
+/// 재구축. 파일이 진실이므로 rules/댓글/메모/첨부 등 모두 복원된다.
 ///
-/// **현 시점 단순 버전**: snapshot 시점으로만 되돌림. 그 이후 journal 의 ops 는 미반영.
-/// (journal replay 는 F7+ 에서 별도 구현 예정.)
+/// 흐름:
+/// 1. 현재 소스 + index.db 를 `.pre-restore/` 로 백업 (재시도 가능).
+/// 2. 현재 소스(SOURCE_SUBDIRS + 루트 마커) 제거.
+/// 3. snapshot 의 소스를 길드로 복사.
+/// 4. reindex 로 index.db 재구축 (live pool — fs::copy 로 덮어쓰지 않으므로 안전).
 ///
-/// 파일 시스템 측 (`.guild/quests/*.md` 등) 은 자동 갱신 안 함 — 호출자가 별도 `reindex` 또는
-/// 파일 export 명령으로 처리 (다음 단계).
+/// journal replay(시점 복원, DEV-022)는 이 위에 별도로 얹는다 — 현재는 snapshot
+/// 시점으로 복원.
 pub async fn restore_snapshot(store: &Store, snapshot: &SnapshotInfo) -> Result<()> {
     let paths = &store.paths;
 
-    // 현재 index.db 를 .pre-restore 로 백업 (재시도 가능).
-    let backup = paths.index_db().with_extension("pre-restore.db");
+    // 1. pre-restore 백업 (소스 파일 + index.db) — 되돌리기 가능.
+    let pre = paths.backups_dir().join(".pre-restore");
+    let _ = std::fs::remove_dir_all(&pre);
+    copy_guild_source(paths, &pre).context("pre-restore 소스 백업 실패")?;
     if paths.index_db().exists() {
-        let _ = std::fs::remove_file(&backup);
-        std::fs::copy(paths.index_db(), &backup)
-            .with_context(|| format!("pre-restore 백업 실패: {}", backup.display()))?;
+        let _ = std::fs::copy(paths.index_db(), pre.join("index.db"));
     }
 
-    // index_pool 의 연결을 비워두기 위해 checkpoint 실행 후 (또는 풀 close 옵션 — 현재 풀은 살아있음)
-    // SQLite 는 fs::copy 시 같은 파일 잠금이 충돌할 수 있음. 가장 안전: pool 종료.
-    // 본 함수는 호출자가 store 를 새로 열기 전에 호출하는 패턴 권장 — 단순 fs::copy.
-    sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
-        .execute(&store.index_pool)
-        .await
-        .ok();
+    // 2. 현재 소스 제거 (index.db/journal.db/backups 는 보존).
+    clear_guild_source(paths)?;
 
-    std::fs::copy(&snapshot.path, paths.index_db())
-        .with_context(|| format!("snapshot 복사 실패: {} → {}", snapshot.path.display(), paths.index_db().display()))?;
+    // 3. snapshot 소스를 길드 루트로 복원 (마커 + .guild/<subdir>).
+    let dot_dst = paths.dot_guild();
+    std::fs::create_dir_all(&dot_dst)?;
+    // 루트 마커.
+    if let Ok(rd) = std::fs::read_dir(&snapshot.path) {
+        for e in rd.filter_map(|e| e.ok()) {
+            let p = e.path();
+            if p.is_file() && p.extension().and_then(|x| x.to_str()) == Some("guild") {
+                let _ = std::fs::copy(&p, paths.guild_root.join(e.file_name()));
+            }
+        }
+    }
+    // .guild/<subdir>.
+    let snap_dot = snapshot.path.join(".guild");
+    for sub in SOURCE_SUBDIRS {
+        copy_tree(&snap_dot.join(sub), &dot_dst.join(sub))?;
+    }
+
+    // 4. index.db 재구축 (파일 → DB). live pool 사용 — fs::copy 로 덮어쓰지
+    //    않으므로 연결 불일치(깜빡임) 없음.
+    crate::reindex::reindex(store)
+        .await
+        .map_err(|e| anyhow::anyhow!("restore 후 reindex 실패: {e}"))?;
 
     Ok(())
 }
 
-/// snapshot 파일 시간 정렬 후 N 개 이상 오래된 것 삭제.
+/// snapshot 디렉토리 시간 정렬 후 N 개 이상 오래된 것 삭제.
 fn prune_old_snapshots(paths: &GuildPaths, keep: usize) -> Result<()> {
     let mut entries: Vec<_> = std::fs::read_dir(paths.snapshots_dir())?
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("db"))
+        .filter(|e| e.path().is_dir())
         .collect();
     entries.sort_by_key(|e| e.file_name());
     while entries.len() > keep {
         let old = entries.remove(0);
-        let _ = std::fs::remove_file(old.path());
+        let _ = std::fs::remove_dir_all(old.path());
     }
     Ok(())
 }
 
-/// `YYYYMMDD-HHMMSS` UTC compact timestamp.
+/// `YYYYMMDD-HHMMSS` UTC compact timestamp (디렉토리명 = 정규형 식별자).
+///
+/// BUG-086(후속): 저장은 UTC 정규형(tz/DST 무관 정렬 단조 + offset 없는 포맷의
+/// 모호성 제거). 사람에게 보일 때만 ts_to_local_display 로 로컬 변환.
 fn now_compact() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let (y, mo, d, h, mi, s) = epoch_to_ymdhms(secs);
-    format!("{y:04}{mo:02}{d:02}-{h:02}{mi:02}{s:02}")
-}
-
-fn epoch_to_ymdhms(secs: u64) -> (u32, u32, u32, u32, u32, u32) {
-    let s = (secs % 60) as u32;
-    let mi = ((secs / 60) % 60) as u32;
-    let h = ((secs / 3600) % 24) as u32;
-    let mut days = (secs / 86400) as i64;
-    let mut year: i64 = 1970;
-    loop {
-        let dy = if is_leap(year) { 366 } else { 365 };
-        if days >= dy {
-            days -= dy;
-            year += 1;
-        } else {
-            break;
-        }
-    }
-    let dim = days_in_months(year);
-    let mut month: usize = 0;
-    while month < 12 && days >= dim[month] as i64 {
-        days -= dim[month] as i64;
-        month += 1;
-    }
-    (year as u32, (month + 1) as u32, (days + 1) as u32, h, mi, s)
-}
-
-fn is_leap(y: i64) -> bool {
-    (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
-}
-fn days_in_months(y: i64) -> [u32; 12] {
-    [
-        31,
-        if is_leap(y) { 29 } else { 28 },
-        31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
-    ]
+    chrono::Utc::now().format("%Y%m%d-%H%M%S").to_string()
 }
 
 #[cfg(test)]
@@ -348,6 +416,34 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// BUG-076: 소스 파일을 지운 뒤 restore 가 파일을 복구 + index.db 재구축.
+    #[tokio::test]
+    async fn restore_recovers_deleted_source_files() {
+        let dir = fresh_tmp("restore");
+        let store = setup(&dir).await;
+        let types_dir = store.paths.dot_guild().join("types");
+        assert!(types_dir.exists(), "seed 가 types 파일 생성");
+
+        let info = create_snapshot(&store).await.unwrap();
+
+        // 사용자 시나리오: 소스 파일 삭제.
+        std::fs::remove_dir_all(&types_dir).unwrap();
+        assert!(!types_dir.exists());
+
+        restore_snapshot(&store, &info).await.unwrap();
+
+        // 파일 복구.
+        assert!(types_dir.exists(), "restore 가 파일을 되돌려야");
+        assert!(std::fs::read_dir(&types_dir).unwrap().count() > 0);
+        // index.db 도 reindex 로 재구축 (캐시).
+        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM quest_types")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert!(n > 0, "reindex 로 quest_types 재구축");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[tokio::test]
     async fn create_snapshot_truncates_journal() {
         let dir = fresh_tmp("trunc");
@@ -378,11 +474,12 @@ mod tests {
         let store = setup(&dir).await;
         let paths = store.paths.clone();
 
-        // 9 개 snapshot fake — 시간차 별로 작성.
+        // 9 개 snapshot fake — 시간차 별로 작성 (이제 디렉토리).
         for i in 0..9 {
             let ts = format!("2026010{i}-000000");
-            let p = paths.snapshots_dir().join(format!("{ts}.db"));
-            std::fs::write(&p, format!("snapshot-{i}")).unwrap();
+            let p = paths.snapshots_dir().join(&ts);
+            std::fs::create_dir_all(&p).unwrap();
+            std::fs::write(p.join("marker.guild"), format!("snapshot-{i}")).unwrap();
         }
         // 한 번 더 create_snapshot — retention 7 적용.
         let _ = create_snapshot(&store).await.unwrap();
@@ -403,7 +500,9 @@ mod tests {
 
         // 시간 역순으로 작성 — 정렬 후 시간 순이어야
         for ts in ["20260103-120000", "20260101-120000", "20260102-120000"] {
-            std::fs::write(paths.snapshots_dir().join(format!("{ts}.db")), b"x").unwrap();
+            let p = paths.snapshots_dir().join(ts);
+            std::fs::create_dir_all(&p).unwrap();
+            std::fs::write(p.join("marker.guild"), b"x").unwrap();
         }
         let list = list_snapshots(&paths).unwrap();
         let stamps: Vec<_> = list.iter().map(|s| s.timestamp.clone()).collect();
@@ -415,6 +514,28 @@ mod tests {
                 "20260103-120000".to_string(),
             ]
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-175: delete_snapshot 이 디렉토리 제거 + 미존재/traversal 가드.
+    #[tokio::test]
+    async fn delete_snapshot_removes_and_guards() {
+        let dir = fresh_tmp("del");
+        let store = setup(&dir).await;
+        let paths = store.paths.clone();
+        for ts in ["20260101-120000", "20260102-120000"] {
+            let p = paths.snapshots_dir().join(ts);
+            std::fs::create_dir_all(&p).unwrap();
+            std::fs::write(p.join("marker.guild"), b"x").unwrap();
+        }
+        // 존재하는 것 삭제 → 디렉토리 사라지고 목록 1개.
+        delete_snapshot(&paths, "20260101-120000").unwrap();
+        assert!(!paths.snapshots_dir().join("20260101-120000").exists());
+        assert_eq!(list_snapshots(&paths).unwrap().len(), 1);
+        // 미존재 → 에러.
+        assert!(delete_snapshot(&paths, "29990101-000000").is_err());
+        // traversal 가드.
+        assert!(delete_snapshot(&paths, "../evil").is_err());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -520,6 +641,35 @@ mod tests {
         assert!(snapshot_time("2026-05-16T10:33:41").is_none()); // ISO format
     }
 
+    /// BUG-086: now_compact ↔ snapshot_time 왕복이 현재 시각과 근접 (둘 다 UTC).
+    /// 생성/파싱 규약이 어긋나면 TZ offset(예: 9h)만큼 벌어져 실패한다.
+    #[test]
+    fn now_compact_roundtrips() {
+        let ts = now_compact();
+        let parsed = snapshot_time(&ts).expect("now_compact 출력은 snapshot_time 으로 파싱돼야");
+        let now = std::time::SystemTime::now();
+        let diff = now
+            .duration_since(parsed)
+            .or_else(|e| Ok::<_, std::time::SystemTimeError>(e.duration()))
+            .unwrap();
+        assert!(
+            diff < Duration::from_secs(5),
+            "now_compact↔snapshot_time 왕복이 현재와 5초 내여야: diff={diff:?}"
+        );
+    }
+
+    /// BUG-086(후속): UTC 저장값을 로컬 표시로 변환 — KST(+09:00)면 +9h.
+    #[test]
+    fn ts_to_local_display_converts_utc() {
+        // 파싱 실패는 원본 그대로.
+        assert_eq!(ts_to_local_display("invalid"), "invalid");
+        // 형식 변환 확인 (로컬 offset 은 환경마다 달라 형식만 검증).
+        let out = ts_to_local_display("20260101-000000");
+        assert_eq!(out.len(), 19, "YYYY-MM-DD HH:MM:SS 형식: {out}");
+        assert_eq!(&out[4..5], "-");
+        assert_eq!(&out[13..14], ":");
+    }
+
     #[tokio::test]
     async fn restore_snapshot_restores_index_db() {
         let dir = fresh_tmp("restore");
@@ -554,10 +704,101 @@ mod tests {
             .unwrap();
         assert_eq!(n, 0, "snapshot 시점엔 quest 0");
 
-        // pre-restore 백업 생성됨
-        assert!(store.paths.index_db().with_extension("pre-restore.db").exists());
-        // 복원된 파일 크기는 원래 snapshot 과 비슷 (정확히 같진 않을 수 있으나 차이 작음)
+        // BUG-076: pre-restore 백업은 이제 backups/.pre-restore/ 디렉토리 + 그 안 index.db.
+        assert!(store.paths.backups_dir().join(".pre-restore").exists());
+        assert!(store.paths.backups_dir().join(".pre-restore").join("index.db").exists());
         let _ = initial_size;
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-102: 댓글 / 메모가 snapshot 에 살아남고 restore 후에도 그대로인지.
+    /// 이게 본 quest 의 핵심 목적 — git 없이도 댓글 / 메모를 잃지 않음.
+    #[tokio::test]
+    async fn snapshot_preserves_comments_and_memos() {
+        use crate::models::CreateQuestRequest;
+        use crate::ops::{comments as comments_ops, quests as quest_ops};
+
+        let dir = fresh_tmp("snap-c-m");
+        let store = setup(&dir).await;
+
+        // 1. quest 1 개 생성.
+        let q = quest_ops::create_quest(
+            &store,
+            CreateQuestRequest {
+                quest_type_id: 1,
+                title: "for backup".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        // 2. 댓글 + 메모 작성 (file + DB 양쪽 sync).
+        let entry = comments_ops::add_comment_entry(
+            &store,
+            &q.quest_id,
+            "alice".into(),
+            "hello".into(),
+            None,
+        )
+        .await
+        .unwrap();
+        comments_ops::set_memo(&store, &q.quest_id, "private note".into())
+            .await
+            .unwrap();
+
+        // 3. snapshot 생성.
+        let snap = create_snapshot(&store).await.unwrap();
+        assert!(snap.path.exists());
+
+        // 4. file 진리원도 같이 살린다는 시나리오 가정 — DB 캐시만 손실 시나리오 시뮬레이션:
+        //    quest_comments / quest_memos 행을 의도적으로 비우고, restore 가 살리는지.
+        sqlx::query("DELETE FROM quest_comments")
+            .execute(&store.index_pool)
+            .await
+            .unwrap();
+        sqlx::query("DELETE FROM quest_memos")
+            .execute(&store.index_pool)
+            .await
+            .unwrap();
+        let c_after_wipe: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM quest_comments")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(c_after_wipe, 0);
+
+        // 5. snapshot 으로 restore.
+        restore_snapshot(&store, &snap).await.unwrap();
+
+        // 6. 새 store 로 열어서 댓글 / 메모 복원 확인.
+        let store2 = Store::open(&dir).await.unwrap();
+        let c_after_restore: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM quest_comments")
+            .fetch_one(&store2.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(c_after_restore, 1, "댓글이 snapshot 에서 복원되어야");
+
+        let (entry_id, author, body): (i64, String, String) = sqlx::query_as(
+            "SELECT entry_id, author, body FROM quest_comments",
+        )
+        .fetch_one(&store2.index_pool)
+        .await
+        .unwrap();
+        assert_eq!(entry_id, entry.id as i64);
+        assert_eq!(author, "alice");
+        assert_eq!(body, "hello");
+
+        let memo_content: String = sqlx::query_scalar(
+            "SELECT content FROM quest_memos WHERE user_id = 0",
+        )
+        .fetch_one(&store2.index_pool)
+        .await
+        .unwrap();
+        assert_eq!(memo_content, "private note");
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

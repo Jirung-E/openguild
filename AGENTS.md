@@ -50,7 +50,7 @@ Co-Authored-By: ... (해당 시)
 
 예시:
 - `[DEV-002][gui/frontend] Tauri 환경 감지 어댑터`
-- `[DEV-019][server] check-drift 명령 추가`
+- `[DEV-019][server] check drift 명령 추가`
 - `[BUG-045][cli] --remote env override 무시되던 문제 수정`
 
 ### 버전 / 릴리즈
@@ -82,7 +82,13 @@ agent (Claude / 다른 LLM) 가 `Write` / `Edit` 도구로 `.guild/quests/*.md` 
 - **status / urgency / parent / prereq / delete 변경 = 반드시 CLI**
   (`openguild quest status / update / parent / prereq / delete`).
 - **description 본문만** 부득이 직접 편집 가능 (BUG-001 우회). 그 경우 직후
-  `openguild-server reindex` 필수.
+  `openguild reindex` 필수 (GUI 는 BUG-049 후 시동 시 자동).
+- **댓글 (`{slug}.comments.md`) / 메모 (`{slug}.memo.md`)** 도 **DEV-102 부터 DB
+  캐시 (`quest_comments` / `quest_memos`) sync** + snapshot 백업. 직접 편집 후엔
+  `drift::auto_resync` 가 자동 reindex (GUI 시동 + server / cli 진입 hook —
+  BUG-049). 단 즉시 일관시키려면 명시적으로 `openguild quest comment add /
+  edit / rm` 또는 `openguild quest memo set` 사용 권장. HTML 마커 (`<!-- og-comment
+  id=N ts=... -->`) 포맷 깨면 parser 실패.
 - 자세한 표 + 우회 절차는 [`docs/AGENTS_OPENGUILD_USAGE.md` § 4](./docs/AGENTS_OPENGUILD_USAGE.md) 의
   "🚨 `.guild/` 파일을 직접 편집하지 말 것" 절 참조.
 
@@ -113,7 +119,7 @@ openguild/
 │                          repo / ops / store / snapshot / reindex /
 │                          drift / counter / lock / migrate
 ├── cli/                ← bin `openguild` (Backend = Http | Local)
-├── server/             ← bin `openguild-server` (HTTP + 관리 CLI)
+├── server/             ← bin `openguild-server` (HTTP host 전용 — DEV-163)
 ├── gui/                ← bin `openguild-gui` (Tauri v2, DEV-001 트리)
 │   ├── src/            ← Rust shell + invoke 핸들러 23개 (commands.rs)
 │   ├── tauri.conf.json
@@ -132,7 +138,7 @@ openguild/
 |---|---|
 | `docs/architecture.md` | 시스템 구조 / API 엔드포인트 / 데이터 모델 / 안전장치 |
 | `docs/architecture-refactor.md` | core 분리 + CLI 로컬 모드 등 구조 변경 이력 / 미래 계획 |
-| `docs/storage-design.md` | 파일 진리원 + SQLite 캐시/저널 — 차기 저장소 설계 (구현 대기) |
+| `docs/storage-design.md` | 파일 진리원 + SQLite 캐시(`index.db`)/백업(`journal.db` + `snapshots/`) 구조 |
 | `docs/dev-plan.md` | 단계별 개발 계획 + 진행 상태 |
 | `docs/planning.md` | 기획 결정 (용어, MVP 범위, 향후 기능) |
 | `docs/guild-rules.md` | 개발 규칙 (커밋·브랜치·백/프론트 컨벤션) |
@@ -148,7 +154,7 @@ openguild/
 | 영역 | 실행 |
 |---|---|
 | 서버 host | `cargo run --bin openguild-server -- host` |
-| 서버 관리 | `openguild-server {info, snapshot, restore, reindex, migrate-to-files, check-counters, check-drift}` |
+| 정비/진단 | `openguild {info, backup new, restore, reindex, migrate-to-files, check counters, check drift, index vacuum, journal tail}` (또는 HTTP admin `/api/admin/*`) |
 | 프론트엔드 | `cd gui/frontend && npm run dev` (또는 `just dev-frontend`) |
 | CLI | `cargo run --bin openguild -- --help` (또는 `target/release/openguild`) |
 | 테스트 전체 | `cargo test --workspace && (cd gui/frontend && npm test -- --run)` |

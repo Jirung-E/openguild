@@ -174,3 +174,35 @@ pub async fn list_for_quest(
 ) -> AppResult<Json<Vec<CampaignRow>>> {
     Ok(Json(svc::list_for_quest(&store.index_pool, quest_id).await?))
 }
+
+/// DEV-087: 배너 이미지 bytes 서빙 — HTTP / 브라우저 모드 표시용.
+/// Tauri 모드는 asset protocol (convertFileSrc) 사용이라 이 endpoint 안 탐.
+pub async fn get_banner_image(
+    State(store): State<Store>,
+    Path(slug): Path<String>,
+) -> AppResult<axum::response::Response> {
+    use axum::response::IntoResponse;
+    let row = svc::fetch_by_slug(&store.index_pool, &slug).await?;
+    let Some(rel) = row.image_path else {
+        return Err(openguild_core::error::AppError::NotFound(format!(
+            "campaign {slug} 에 배너 없음"
+        ))
+        .into());
+    };
+    let path = store.paths.dot_guild().join(&rel);
+    let bytes = std::fs::read(&path).map_err(|e| {
+        openguild_core::error::AppError::Internal(anyhow::anyhow!(
+            "배너 파일 읽기 실패 {}: {e}",
+            path.display()
+        ))
+    })?;
+    let mime = match path.extension().and_then(|e| e.to_str()) {
+        Some("png") => "image/png",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        Some("bmp") => "image/bmp",
+        _ => "application/octet-stream",
+    };
+    Ok(([(axum::http::header::CONTENT_TYPE, mime)], bytes).into_response())
+}

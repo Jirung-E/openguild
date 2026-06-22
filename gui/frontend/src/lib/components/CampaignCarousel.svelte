@@ -78,10 +78,7 @@
 		<div class="empty">{emptyText}</div>
 	{:else}
 		<div class="viewport">
-			<div
-				class="track"
-				style:transform={`translateX(-${idx * 100}%)`}
-			>
+			<div class="track" style:transform={`translateX(-${idx * 100}%)`}>
 				{#each summaries as s (s.id)}
 					<div class="slot">
 						<CampaignCard summary={s} mode="active" {now} />
@@ -127,7 +124,11 @@
 		gap: 0.5rem;
 		padding: 0.25rem 0 0.5rem 0;
 	}
-	.empty { color: #6e7681; font-size: 0.875rem; padding: 1rem 0; }
+	.empty {
+		color: var(--text-faint);
+		font-size: 0.875rem;
+		padding: 1rem 0;
+	}
 
 	.viewport {
 		overflow: hidden;
@@ -151,9 +152,9 @@
 		gap: 0.5rem;
 	}
 	.arrow {
-		background: #21262d;
-		border: 1px solid #30363d;
-		color: #c9d1d9;
+		background: var(--bg-subtle);
+		border: 1px solid var(--border);
+		color: var(--text);
 		border-radius: 50%;
 		width: 1.8rem;
 		height: 1.8rem;
@@ -162,32 +163,38 @@
 		cursor: pointer;
 		transition: background 0.15s;
 	}
-	.arrow:hover { background: #2a2a4a; }
+	.arrow:hover {
+		background: var(--bg-subtle);
+	}
 	.dots {
 		display: flex;
 		gap: 0.35rem;
 	}
 	.dot {
-		background: #30363d;
+		background: var(--border);
 		border: none;
 		width: 8px;
 		height: 8px;
 		border-radius: 50%;
 		cursor: pointer;
-		transition: background 0.15s, transform 0.15s;
+		transition:
+			background 0.15s,
+			transform 0.15s;
 		padding: 0;
 	}
-	.dot:hover { background: #484f58; }
+	.dot:hover {
+		background: var(--text-faint);
+	}
 	.dot.active {
-		background: #58a6ff;
+		background: var(--accent);
 		transform: scale(1.4);
 	}
 
 	/* BUG-027: 정지/재생 토글 — 화살표와 같은 스타일 + 위치는 dots 우측. */
 	.play-pause {
-		background: #21262d;
-		border: 1px solid #30363d;
-		color: #c9d1d9;
+		background: var(--bg-subtle);
+		border: 1px solid var(--border);
+		color: var(--text);
 		border-radius: 50%;
 		width: 1.8rem;
 		height: 1.8rem;
@@ -197,5 +204,7 @@
 		transition: background 0.15s;
 		margin-left: 0.4rem;
 	}
-	.play-pause:hover { background: #2a2a4a; }
+	.play-pause:hover {
+		background: var(--bg-subtle);
+	}
 </style>

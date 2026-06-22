@@ -10,7 +10,7 @@ use openguild_core::models::{
     AddChecklistRequest, AddPrerequisiteRequest, CampaignChecklistItem, CampaignDetail,
     CampaignRow, CampaignSummary, ChangeParentRequest, ChangeStatusRequest,
     CreateCampaignRequest, CreateQuestRequest, LinkQuestRequest, ListQuery, QuestDependency,
-    QuestDetail, QuestHistoryEntry, QuestPosition, QuestRow, QuestStatus, QuestType,
+    QuestDetail, QuestHistoryEntry, QuestPosition, QuestRow, QuestStatus, QuestTagDef, QuestType,
     UpdateCampaignRequest, UpdatePositionRequest, UpdateQuestRequest,
 };
 use openguild_core::ops::{campaigns as camp_ops, meta as meta_ops, quests as ops};
@@ -24,6 +24,20 @@ use tauri::State;
 /// `AppError` → 문자열 — invoke 에러 직렬화 보일러플레이트 제거.
 fn err<E: std::fmt::Display>(e: E) -> String {
     format!("{e}")
+}
+
+/// DEV-154: Store::open 에러를 프론트가 구분할 수 있게 태깅. 더 새 schema 길드
+/// (IncompatibleGuild) 는 sentinel 접두어로 — welcome 이 전용 안내 + 업데이트
+/// 버튼을 띄운다. 그 외는 기존 메시지.
+pub const INCOMPATIBLE_GUILD_TAG: &str = "INCOMPATIBLE_GUILD::";
+fn open_err(e: anyhow::Error) -> String {
+    if let Some(openguild_core::AppError::IncompatibleGuild(msg)) =
+        e.downcast_ref::<openguild_core::AppError>()
+    {
+        format!("{INCOMPATIBLE_GUILD_TAG}{msg}")
+    } else {
+        format!("Store::open 실패: {e:#}")
+    }
 }
 
 // ─────────────────────── meta ───────────────────────
@@ -56,7 +70,11 @@ pub async fn list_deleted_quests(store: State<'_, Store>) -> Result<Vec<QuestRow
 
 #[tauri::command]
 pub async fn get_quest(store: State<'_, Store>, id: i64) -> Result<QuestDetail, String> {
-    read::get(&store.index_pool, id).await.map_err(err)
+    let mut detail = read::get(&store.index_pool, id).await.map_err(err)?;
+    // DEV-156: 첨부 목록(sidecar)은 Store 가 필요 — 여기서 채운다.
+    detail.attachments =
+        openguild_core::ops::attachments::list_quest_attachments(&store, &detail.quest.quest_id);
+    Ok(detail)
 }
 
 #[tauri::command]
@@ -64,7 +82,64 @@ pub async fn get_quest_by_slug(
     store: State<'_, Store>,
     slug: String,
 ) -> Result<QuestDetail, String> {
-    read::get_by_slug(&store.index_pool, &slug).await.map_err(err)
+    // DEV-137 (Phase 2): 상세 진입 시 그 파일만 lazy mtime 체크 — GUI 를 켜둔
+    // 채 외부 편집한 경우에도 상세 화면은 최신. 실패는 무시 (stale 표시가
+    // 에러보다 낫다).
+    let _ = openguild_core::incremental::refresh_quest_if_stale(&store, &slug).await;
+    let mut detail = read::get_by_slug(&store.index_pool, &slug).await.map_err(err)?;
+    // DEV-156: 첨부 목록(sidecar) 채우기.
+    detail.attachments = openguild_core::ops::attachments::list_quest_attachments(&store, &slug);
+    Ok(detail)
+}
+
+// ─────────────────────── DEV-156: quest/campaign 첨부 목록 ───────────────────────
+
+/// quest 첨부 추가 (이미 저장된 .guild/attachments 경로 + 원본 파일명). 갱신 목록.
+#[tauri::command]
+pub async fn add_quest_attachment(
+    store: State<'_, Store>,
+    slug: String,
+    path: String,
+    name: String,
+) -> Result<Vec<openguild_core::models::QuestAttachment>, String> {
+    openguild_core::ops::attachments::add_quest_attachment(&store, &slug, &path, &name)
+        .await
+        .map_err(err)
+}
+
+/// quest 첨부 제거 (목록에서만). 갱신 목록.
+#[tauri::command]
+pub async fn remove_quest_attachment(
+    store: State<'_, Store>,
+    slug: String,
+    path: String,
+) -> Result<Vec<openguild_core::models::QuestAttachment>, String> {
+    openguild_core::ops::attachments::remove_quest_attachment(&store, &slug, &path)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn add_campaign_attachment(
+    store: State<'_, Store>,
+    slug: String,
+    path: String,
+    name: String,
+) -> Result<Vec<openguild_core::models::QuestAttachment>, String> {
+    openguild_core::ops::attachments::add_campaign_attachment(&store, &slug, &path, &name)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn remove_campaign_attachment(
+    store: State<'_, Store>,
+    slug: String,
+    path: String,
+) -> Result<Vec<openguild_core::models::QuestAttachment>, String> {
+    openguild_core::ops::attachments::remove_campaign_attachment(&store, &slug, &path)
+        .await
+        .map_err(err)
 }
 
 #[tauri::command]
@@ -168,6 +243,16 @@ pub async fn set_quest_due_dates(
         .map_err(err)
 }
 
+/// DEV-068: tag 전체 교체. 정규화 (trim + dedupe + 빈 제거) 는 service 위임.
+#[tauri::command]
+pub async fn set_quest_tags(
+    store: State<'_, Store>,
+    id: i64,
+    tags: Vec<String>,
+) -> Result<QuestRow, String> {
+    ops::set_quest_tags(&store, id, tags).await.map_err(err)
+}
+
 /// DEV-055: quest 의 type 변경 — slug 가 바뀜.
 #[tauri::command]
 pub async fn change_quest_type(
@@ -240,6 +325,12 @@ pub async fn admin_list_snapshots(
     snapshot::list_snapshots(&store.paths).map_err(err)
 }
 
+/// DEV-175: 특정 백업(스냅샷) 삭제.
+#[tauri::command]
+pub fn admin_delete_snapshot(store: State<'_, Store>, ts: String) -> Result<(), String> {
+    snapshot::delete_snapshot(&store.paths, &ts).map_err(err)
+}
+
 #[derive(Debug, Deserialize)]
 pub struct RestoreArgs {
     /// 특정 timestamp (`YYYYMMDD-HHMMSS`). 미지정 시 최신.
@@ -299,6 +390,17 @@ pub struct SkippedFile {
     pub reason: String,
 }
 
+/// 비정상 quest 파일 (정의되지 않은 status / 파싱 실패) 목록. GUI 시동 알림 +
+/// admin 재검사용. read-only (DB 안 건드림).
+#[tauri::command]
+pub async fn list_problem_files(store: State<'_, Store>) -> Result<Vec<SkippedFile>, String> {
+    Ok(openguild_core::health::list_problem_quest_files(&store)
+        .await
+        .into_iter()
+        .map(|(path, reason)| SkippedFile { path, reason })
+        .collect())
+}
+
 #[tauri::command]
 pub async fn admin_reindex(store: State<'_, Store>) -> Result<ReindexResult, String> {
     let report = reindex::reindex(&store).await.map_err(err)?;
@@ -314,6 +416,26 @@ pub async fn admin_reindex(store: State<'_, Store>) -> Result<ReindexResult, Str
             .map(|(path, reason)| SkippedFile { path, reason })
             .collect(),
     })
+}
+
+/// DEV-162: index.db VACUUM (런타임 정비). admin 페이지 '정리' 버튼.
+#[tauri::command]
+pub async fn admin_vacuum(
+    store: State<'_, Store>,
+) -> Result<openguild_core::maintenance::VacuumReport, String> {
+    openguild_core::maintenance::vacuum(&store).await.map_err(err)
+}
+
+/// DEV-162: journal.db(AOF) 최근 op. admin 페이지 '최근 작업' 뷰.
+#[tauri::command]
+pub async fn admin_journal_tail(
+    store: State<'_, Store>,
+    count: Option<i64>,
+) -> Result<openguild_core::maintenance::JournalTail, String> {
+    let tail = openguild_core::maintenance::journal_tail(&store.paths, count.unwrap_or(50))
+        .await
+        .map_err(err)?;
+    Ok(tail.unwrap_or_default())
 }
 
 // ─────────────────────── admin meta (DEV-014) ───────────────────────
@@ -461,6 +583,9 @@ pub struct UpdateStatusBody {
     pub color: Option<String>,
     #[serde(default)]
     pub sort_order: Option<i64>,
+    // DEV-093: 캠페인 진행도용 "완료" 카운트 토글.
+    #[serde(default)]
+    pub counts_as_done: Option<bool>,
 }
 
 #[tauri::command]
@@ -477,6 +602,7 @@ pub async fn admin_update_status(
         body.name_ko,
         body.color,
         body.sort_order,
+        body.counts_as_done,
     )
     .await
     .map_err(err)
@@ -488,6 +614,44 @@ pub async fn admin_delete_status(
     slug: String,
 ) -> Result<(), String> {
     meta_ops::delete_status(&store, slug).await.map_err(err)
+}
+
+// ─────────────────────── tag defs (DEV-068) ───────────────────────
+
+#[tauri::command]
+pub async fn admin_list_tag_defs(
+    store: State<'_, Store>,
+) -> Result<Vec<QuestTagDef>, String> {
+    meta_svc::list_quest_tag_defs(&store.index_pool)
+        .await
+        .map_err(err)
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpsertTagDefBody {
+    pub slug: String,
+    #[serde(default)]
+    pub color: String,
+    #[serde(default)]
+    pub description: String,
+}
+
+#[tauri::command]
+pub async fn admin_upsert_tag_def(
+    store: State<'_, Store>,
+    body: UpsertTagDefBody,
+) -> Result<QuestTagDef, String> {
+    meta_ops::upsert_tag_def(&store, body.slug, body.color, body.description)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn admin_delete_tag_def(
+    store: State<'_, Store>,
+    slug: String,
+) -> Result<(), String> {
+    meta_ops::delete_tag_def(&store, slug).await.map_err(err)
 }
 
 /// serde: `Option<Option<T>>` 필드 생략 vs `null` 구분 — `update_type`
@@ -633,6 +797,48 @@ pub fn current_guild_path(store: State<'_, Store>) -> String {
     store.paths.guild_root.display().to_string()
 }
 
+/// DEV-141: 현재 길드 이름 — `{name}.guild` 마커의 stem 또는 디렉토리명
+/// (recents 의 표시명과 동일 규칙). Nav 에서 어느 길드에 들어와 있는지 표시용.
+/// Welcome / Uninit 모드의 placeholder 경로면 의미 없는 값일 수 있으므로
+/// frontend 는 `launch_mode.mode === "guild"` 일 때만 사용.
+#[tauri::command]
+pub fn current_guild_name(store: State<'_, Store>) -> String {
+    openguild_core::recents::guess_name(&store.paths.guild_root)
+}
+
+/// BUG-041: DB schema 가 현재 binary 가 모르는 migration 까지 적용된 상태인지.
+///
+/// 응답:
+/// - `is_ahead`: true 면 frontend 가 "업데이트 필요" 알림 표시.
+/// - `ahead_versions`: DB 의 `_sqlx_migrations` 중 binary 가 모르는 version 목록.
+/// - `binary_version`: 이 binary 의 CARGO_PKG_VERSION — 사용자가 "내 GUI 가
+///   몇 버전" 인지 한 눈에 확인용.
+/// - `latest_known_migration`: 이 binary 가 알고 있는 가장 큰 migration version
+///   (= 빌드 시 `core/migrations` 의 max). DB 가 이보다 앞서 있으면 banner.
+///
+/// frontend 의 banner 가 이 값으로 사용자 행동 가이드 표시. Welcome/Uninit 모드
+/// (in-memory) 는 항상 `is_ahead: false`.
+#[derive(serde::Serialize)]
+pub struct DbSchemaStatus {
+    pub is_ahead: bool,
+    pub ahead_versions: Vec<i64>,
+    pub binary_version: String,
+    pub latest_known_migration: Option<i64>,
+}
+
+#[tauri::command]
+pub fn get_db_schema_status(store: State<'_, Store>) -> DbSchemaStatus {
+    let ahead = store.db_ahead_versions.clone();
+    // binary 가 알고 있는 max migration — core 가 expose.
+    let latest_known = openguild_core::db::latest_known_migration_version();
+    DbSchemaStatus {
+        is_ahead: !ahead.is_empty(),
+        ahead_versions: ahead,
+        binary_version: env!("CARGO_PKG_VERSION").to_string(),
+        latest_known_migration: latest_known,
+    }
+}
+
 /// DEV-052 후속: 길드 마커 없는 디렉토리에서 사용자가 "초기화" 승인 시
 /// 호출. .guild 시드 생성 + Store::open + recents 등록 + Store / LaunchInfo
 /// 를 swap. `unmanage` 의 deprecation 이유는 open_guild_in_current_window 주석 참고.
@@ -668,21 +874,31 @@ pub fn init_and_open_guild(
         });
     let marker = p.join(format!("{guild_name}.guild"));
     if !marker.exists() {
-        let today = chrono::Local::now().format("%Y-%m-%d");
-        let toml = format!(
-            "name = \"{guild_name}\"\nversion = \"1.0\"\ncreated_at = \"{today}\"\n"
-        );
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        // DEV-064: 마커 포맷은 core 공용 헬퍼 — schema_version 포함.
+        let toml = openguild_core::guild_file::marker_content(&guild_name, &today);
         std::fs::write(&marker, toml).map_err(|e| format!("marker 파일 생성 실패: {e}"))?;
     }
 
     // 3. Store 열고 swap.
     let store = tauri::async_runtime::block_on(openguild_core::Store::open(p))
-        .map_err(|e| format!("Store::open 실패: {e:#}"))?;
+        .map_err(open_err)?;
+    // BUG-049/DEV-121 fix: 초기화/연 길드도 시동 sync (open_guild_in_current_window 와 동일).
+    if let Err(e) =
+        tauri::async_runtime::block_on(openguild_core::incremental::sync_on_open(&store))
+    {
+        eprintln!("[openguild-gui] warn: sync_on_open 실패 — {e:#}");
+    }
     if let Err(e) = openguild_core::recents::add(p) {
         eprintln!("[openguild-gui] warn: recents 갱신 실패 — {e:#}");
     }
     app.unmanage::<openguild_core::Store>();
     app.manage(store);
+    // DEV-087 fix2: 새/초기화한 길드 디렉토리를 asset protocol scope 에 추가
+    // (open_guild_in_current_window 와 동일 이유 — 배너/첨부 asset:// 차단 방지).
+    if let Err(e) = app.asset_protocol_scope().allow_directory(p, true) {
+        eprintln!("[openguild-gui] warn: asset scope allow 실패 — {e:#}");
+    }
     app.unmanage::<crate::LaunchInfo>();
     app.manage(crate::LaunchInfo {
         mode: "guild",
@@ -732,7 +948,17 @@ pub fn open_guild_in_current_window(
 
     // 1. 새 Store 미리 열기 (실패 시 swap 안 함).
     let new_store = tauri::async_runtime::block_on(openguild_core::Store::open(p))
-        .map_err(|e| format!("Store::open 실패: {e:#}"))?;
+        .map_err(open_err)?;
+
+    // BUG-049/DEV-121 fix: Welcome 에서 연 길드도 시동 sync 적용. 기존엔
+    // sync_on_open 이 앱 부팅 시 '초기 길드' 에만 돌아, Welcome → 길드 열기
+    // 흐름에서는 외부 편집이 동기화 안 돼 admin drift 가 남았다 (asset scope 와
+    // 동일한 swap 누락 패턴). swap 전 새 store 에 sync.
+    if let Err(e) =
+        tauri::async_runtime::block_on(openguild_core::incremental::sync_on_open(&new_store))
+    {
+        eprintln!("[openguild-gui] warn: sync_on_open 실패 — {e:#}");
+    }
 
     // 2. recents 등록 (실패해도 swap 진행).
     if let Err(e) = openguild_core::recents::add(p) {
@@ -742,6 +968,14 @@ pub fn open_guild_in_current_window(
     // 3-4. 기존 store 해제 + 새 store 등록.
     app.unmanage::<openguild_core::Store>();
     app.manage(new_store);
+
+    // DEV-087 fix2: 새 길드의 디렉토리를 asset protocol scope 에 추가.
+    // startup 의 asset scope 는 초기 길드만 allow 하므로, Welcome 에서 다른
+    // 길드를 열면 그 길드의 `.guild/assets|attachments` 가 scope 밖이 되어
+    // 배너/첨부의 asset:// URL 이 차단됐다 (이미지 안 뜸). swap 마다 재적용.
+    if let Err(e) = app.asset_protocol_scope().allow_directory(p, true) {
+        eprintln!("[openguild-gui] warn: asset scope allow 실패 — {e:#}");
+    }
 
     // 5. launch mode → guild. unmanage/manage 동일 패턴.
     app.unmanage::<crate::LaunchInfo>();
@@ -788,7 +1022,13 @@ pub async fn get_campaign(
     store: State<'_, Store>,
     slug: String,
 ) -> Result<CampaignDetail, String> {
-    camp_ops::fetch_detail(&store, &slug).await.map_err(err)
+    // DEV-178: quest 와 대칭 — 상세 진입 시 캠페인 본문 파일만 lazy mtime 체크해
+    // GUI 를 켜둔 채 외부 편집한 경우에도 최신. 실패는 무시 (stale > 에러).
+    let _ = openguild_core::incremental::refresh_campaign_if_stale(&store, &slug).await;
+    let mut detail = camp_ops::fetch_detail(&store, &slug).await.map_err(err)?;
+    // DEV-156: 첨부 목록(sidecar) 채우기.
+    detail.attachments = openguild_core::ops::attachments::list_campaign_attachments(&store, &slug);
+    Ok(detail)
 }
 
 #[tauri::command]
@@ -916,4 +1156,473 @@ pub async fn list_campaigns_for_quest(
     camp_svc::list_for_quest(&store.index_pool, quest_id)
         .await
         .map_err(err)
+}
+
+// ─────────────────────── DEV-012/016: content 응답 공용 shape ───────────────────────
+
+/// `.guild/rules.md` / `.guild/quests/{slug}.{comments,memo}.md` 의 GET 응답.
+/// 파일 부재 시 `content: null`.
+#[derive(serde::Serialize)]
+pub struct ContentResponse {
+    pub content: Option<String>,
+}
+
+// DEV-016 호환 alias.
+pub type RulesResponse = ContentResponse;
+
+#[tauri::command]
+pub fn get_rules(store: State<'_, Store>) -> Result<RulesResponse, String> {
+    let content = openguild_core::ops::rules::get_rules(&store).map_err(err)?;
+    Ok(RulesResponse { content })
+}
+
+#[tauri::command]
+pub async fn set_rules(
+    store: State<'_, Store>,
+    content: String,
+) -> Result<RulesResponse, String> {
+    openguild_core::ops::rules::set_rules(&store, content.clone())
+        .await
+        .map_err(err)?;
+    Ok(RulesResponse {
+        content: Some(content),
+    })
+}
+
+// ─── DEV-016 (multi-file): 다중 길드 규칙 ───
+
+use openguild_core::repo::rules::RuleEntry;
+
+#[derive(serde::Serialize)]
+pub struct RulesListResponse {
+    pub entries: Vec<RuleEntry>,
+}
+
+#[derive(serde::Serialize)]
+pub struct RuleResponse {
+    pub slug: String,
+    pub content: Option<String>,
+}
+
+#[tauri::command]
+pub fn list_rules(store: State<'_, Store>) -> Result<RulesListResponse, String> {
+    let entries = openguild_core::ops::rules::list_rules(&store).map_err(err)?;
+    Ok(RulesListResponse { entries })
+}
+
+#[tauri::command]
+pub fn get_rule(store: State<'_, Store>, slug: String) -> Result<RuleResponse, String> {
+    let content = openguild_core::ops::rules::get_rule(&store, &slug).map_err(err)?;
+    Ok(RuleResponse { slug, content })
+}
+
+#[tauri::command]
+pub async fn set_rule(
+    store: State<'_, Store>,
+    slug: String,
+    content: String,
+) -> Result<RuleResponse, String> {
+    openguild_core::ops::rules::set_rule(&store, &slug, content.clone())
+        .await
+        .map_err(err)?;
+    Ok(RuleResponse {
+        slug,
+        content: Some(content),
+    })
+}
+
+#[tauri::command]
+pub async fn create_rule(
+    store: State<'_, Store>,
+    slug: String,
+    content: Option<String>,
+) -> Result<RuleResponse, String> {
+    let c = content.unwrap_or_default();
+    openguild_core::ops::rules::create_rule(&store, &slug, c.clone())
+        .await
+        .map_err(err)?;
+    Ok(RuleResponse {
+        slug,
+        content: Some(c),
+    })
+}
+
+#[tauri::command]
+pub async fn delete_rule(store: State<'_, Store>, slug: String) -> Result<(), String> {
+    openguild_core::ops::rules::delete_rule(&store, &slug)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn rename_rule(
+    store: State<'_, Store>,
+    slug: String,
+    new_slug: String,
+) -> Result<RuleResponse, String> {
+    openguild_core::ops::rules::rename_rule(&store, &slug, &new_slug)
+        .await
+        .map_err(err)?;
+    let content = openguild_core::ops::rules::get_rule(&store, &new_slug).map_err(err)?;
+    Ok(RuleResponse {
+        slug: new_slug,
+        content,
+    })
+}
+
+// ─────────────────────── DEV-012 / DEV-094: 댓글 / 메모 ───────────────────────
+
+// 메모는 단일 텍스트 그대로 (DEV-012).
+#[tauri::command]
+pub fn get_memo(
+    store: State<'_, Store>,
+    slug: String,
+) -> Result<ContentResponse, String> {
+    let content = openguild_core::ops::comments::get_memo(&store, &slug).map_err(err)?;
+    Ok(ContentResponse { content })
+}
+
+#[tauri::command]
+pub async fn set_memo(
+    store: State<'_, Store>,
+    slug: String,
+    content: String,
+) -> Result<ContentResponse, String> {
+    openguild_core::ops::comments::set_memo(&store, &slug, content.clone())
+        .await
+        .map_err(err)?;
+    Ok(ContentResponse {
+        content: Some(content),
+    })
+}
+
+// DEV-094: 댓글은 entry 단위. 응답은 항상 `{ entries: [...] }` 또는 단일 entry.
+use openguild_core::repo::comments::CommentEntry;
+
+#[derive(serde::Serialize)]
+pub struct CommentsListResponse {
+    pub entries: Vec<CommentEntry>,
+}
+
+#[tauri::command]
+pub fn list_comments(
+    store: State<'_, Store>,
+    slug: String,
+) -> Result<CommentsListResponse, String> {
+    let entries =
+        openguild_core::ops::comments::list_comment_entries(&store, &slug).map_err(err)?;
+    Ok(CommentsListResponse { entries })
+}
+
+#[tauri::command]
+pub async fn add_comment(
+    store: State<'_, Store>,
+    slug: String,
+    author: Option<String>,
+    body: String,
+    parent_id: Option<u64>,
+) -> Result<CommentEntry, String> {
+    openguild_core::ops::comments::add_comment_entry(
+        &store,
+        &slug,
+        author.unwrap_or_default(),
+        body,
+        parent_id,
+    )
+    .await
+    .map_err(err)
+}
+
+#[tauri::command]
+pub async fn update_comment(
+    store: State<'_, Store>,
+    slug: String,
+    id: u64,
+    body: String,
+) -> Result<CommentEntry, String> {
+    openguild_core::ops::comments::update_comment_entry(&store, &slug, id, body)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn delete_comment(
+    store: State<'_, Store>,
+    slug: String,
+    id: u64,
+) -> Result<(), String> {
+    openguild_core::ops::comments::delete_comment_entry(&store, &slug, id)
+        .await
+        .map_err(err)
+}
+
+/// DEV-108: 이모지 반응 토글.
+#[tauri::command]
+pub async fn toggle_comment_reaction(
+    store: State<'_, Store>,
+    slug: String,
+    id: u64,
+    emoji: String,
+    author: String,
+) -> Result<CommentEntry, String> {
+    openguild_core::ops::comments::toggle_comment_reaction(&store, &slug, id, &emoji, &author)
+        .await
+        .map_err(err)
+}
+
+/// DEV-142: 토론(discussion) 플래그 토글. discussion 댓글이 미해결이면 quest
+/// 완료 전환이 차단된다.
+#[tauri::command]
+pub async fn toggle_comment_discussion(
+    store: State<'_, Store>,
+    slug: String,
+    id: u64,
+) -> Result<CommentEntry, String> {
+    openguild_core::ops::comments::toggle_comment_discussion(&store, &slug, id)
+        .await
+        .map_err(err)
+}
+
+/// DEV-142: discussion 댓글의 resolved 토글.
+#[tauri::command]
+pub async fn toggle_comment_resolved(
+    store: State<'_, Store>,
+    slug: String,
+    id: u64,
+) -> Result<CommentEntry, String> {
+    openguild_core::ops::comments::toggle_comment_resolved(&store, &slug, id)
+        .await
+        .map_err(err)
+}
+
+// ─── DEV-100: Campaign 댓글 / 메모 — quest 패턴 미러 ───
+
+#[tauri::command]
+pub fn list_campaign_comments(
+    store: State<'_, Store>,
+    slug: String,
+) -> Result<CommentsListResponse, String> {
+    let entries =
+        openguild_core::ops::campaign_comments::list_entries(&store, &slug).map_err(err)?;
+    Ok(CommentsListResponse { entries })
+}
+
+#[tauri::command]
+pub async fn add_campaign_comment(
+    store: State<'_, Store>,
+    slug: String,
+    author: Option<String>,
+    body: String,
+    parent_id: Option<u64>,
+) -> Result<CommentEntry, String> {
+    openguild_core::ops::campaign_comments::add_entry(
+        &store,
+        &slug,
+        author.unwrap_or_default(),
+        body,
+        parent_id,
+    )
+    .await
+    .map_err(err)
+}
+
+#[tauri::command]
+pub async fn update_campaign_comment(
+    store: State<'_, Store>,
+    slug: String,
+    id: u64,
+    body: String,
+) -> Result<CommentEntry, String> {
+    openguild_core::ops::campaign_comments::update_entry(&store, &slug, id, body)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn delete_campaign_comment(
+    store: State<'_, Store>,
+    slug: String,
+    id: u64,
+) -> Result<(), String> {
+    openguild_core::ops::campaign_comments::delete_entry(&store, &slug, id)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn toggle_campaign_comment_reaction(
+    store: State<'_, Store>,
+    slug: String,
+    id: u64,
+    emoji: String,
+    author: String,
+) -> Result<CommentEntry, String> {
+    openguild_core::ops::campaign_comments::toggle_reaction(&store, &slug, id, &emoji, &author)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+pub fn get_campaign_memo(
+    store: State<'_, Store>,
+    slug: String,
+) -> Result<ContentResponse, String> {
+    let content =
+        openguild_core::ops::campaign_comments::get_memo(&store, &slug).map_err(err)?;
+    Ok(ContentResponse { content })
+}
+
+// ─── DEV-060: 퀘스트 템플릿 ───
+
+/// 템플릿 DTO — repo::TemplateFile 은 Serialize 미구현이라 평탄화해서 반환.
+#[derive(serde::Serialize)]
+pub struct TemplateDto {
+    pub name: String,
+    pub title: Option<String>,
+    /// type prefix (예 "BUG").
+    pub r#type: Option<String>,
+    pub urgency: Option<i64>,
+    pub tags: Vec<String>,
+    pub body: String,
+}
+
+#[tauri::command]
+pub fn list_templates(store: State<'_, Store>) -> Result<Vec<TemplateDto>, String> {
+    let templates =
+        openguild_core::repo::list_templates(&store.paths).map_err(|e| format!("{e:#}"))?;
+    Ok(templates
+        .into_iter()
+        .map(|t| TemplateDto {
+            name: t.name,
+            title: t.frontmatter.title,
+            r#type: t.frontmatter.type_prefix,
+            urgency: t.frontmatter.urgency,
+            tags: t.frontmatter.tags,
+            body: t.body,
+        })
+        .collect())
+}
+
+/// DEV-158: 현재 입력을 템플릿으로 저장 — `.guild/templates/{name}.md`.
+/// `force=false` 인데 같은 이름이 있으면 에러 (프론트에서 덮어쓰기 확인 후 재호출).
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub fn save_template(
+    store: State<'_, Store>,
+    name: String,
+    title: Option<String>,
+    r#type: Option<String>,
+    urgency: Option<i64>,
+    tags: Vec<String>,
+    body: String,
+    force: bool,
+) -> Result<String, String> {
+    let tpl = openguild_core::repo::TemplateFile {
+        name,
+        frontmatter: openguild_core::repo::TemplateFrontmatter {
+            title,
+            type_prefix: r#type,
+            urgency,
+            tags,
+        },
+        body,
+    };
+    let path = openguild_core::repo::save_template(&store.paths, &tpl, force)
+        .map_err(|e| format!("{e:#}"))?;
+    Ok(path.display().to_string())
+}
+
+// ─── DEV-087: 캠페인 배너 이미지 ───
+
+/// source 파일을 `.guild/assets/` 로 복사 + frontmatter / DB 갱신.
+/// 갱신된 campaign row 반환 (image_path 포함).
+#[tauri::command]
+pub async fn set_campaign_banner(
+    store: State<'_, Store>,
+    slug: String,
+    source_path: String,
+) -> Result<openguild_core::models::CampaignRow, String> {
+    openguild_core::ops::campaigns::set_banner_image(
+        &store,
+        &slug,
+        std::path::Path::new(&source_path),
+    )
+    .await
+    .map_err(err)
+}
+
+/// DEV-069: 본문 첨부 저장 — 클립보드 paste / 드래그&드랍 파일을 base64 로
+/// 받아 `.guild/attachments/` 에 write + blob 백업. 반환: 본문 참조용
+/// 상대 경로 (`attachments/...`).
+#[tauri::command]
+pub async fn save_attachment(
+    store: State<'_, Store>,
+    data_base64: String,
+    ext: String,
+) -> Result<String, String> {
+    use base64::Engine as _;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data_base64.as_bytes())
+        .map_err(|e| format!("base64 decode 실패: {e}"))?;
+    openguild_core::ops::attachments::save_attachment(&store, &bytes, &ext)
+        .await
+        .map_err(err)
+}
+
+/// DEV-171/BUG-081: `.guild` 상대 경로를 절대 경로로 해석 (traversal 가드 + 존재 확인).
+fn resolve_guild_rel(store: &Store, rel: &str) -> Result<std::path::PathBuf, String> {
+    if rel.contains("..") {
+        return Err("잘못된 첨부 경로".into());
+    }
+    let path = store.paths.dot_guild().join(rel);
+    if !path.exists() {
+        return Err(format!("파일 없음: {rel}"));
+    }
+    Ok(path)
+}
+
+/// BUG-081: 첨부 파일을 OS 기본 앱으로 열기 (로컬 미리보기/열기).
+#[tauri::command]
+pub fn open_guild_file(
+    app: tauri::AppHandle,
+    store: State<'_, Store>,
+    rel: String,
+) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    let path = resolve_guild_rel(&store, &rel)?;
+    app.opener()
+        .open_path(path.to_string_lossy().to_string(), None::<&str>)
+        .map_err(|e| format!("열기 실패: {e}"))
+}
+
+/// BUG-081: 첨부 파일을 dest 로 복사 (개별/전체 다운로드 = 다른 위치로 저장).
+#[tauri::command]
+pub fn copy_guild_file(store: State<'_, Store>, rel: String, dest: String) -> Result<(), String> {
+    let src = resolve_guild_rel(&store, &rel)?;
+    std::fs::copy(&src, &dest).map_err(|e| format!("복사 실패: {e}"))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn clear_campaign_banner(
+    store: State<'_, Store>,
+    slug: String,
+) -> Result<openguild_core::models::CampaignRow, String> {
+    openguild_core::ops::campaigns::clear_banner_image(&store, &slug)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn set_campaign_memo(
+    store: State<'_, Store>,
+    slug: String,
+    content: String,
+) -> Result<ContentResponse, String> {
+    openguild_core::ops::campaign_comments::set_memo(&store, &slug, content.clone())
+        .await
+        .map_err(err)?;
+    Ok(ContentResponse {
+        content: Some(content),
+    })
 }

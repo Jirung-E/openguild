@@ -43,10 +43,10 @@ GUILD_PATH=/path/to/your-project cargo run --bin openguild-server -- host
 openguild --remote http://localhost:3000 ping
 ```
 
-서버 관리 명령 (서버를 띄우지 않고 실행):
+정비/진단 명령 (서버 불필요 — `openguild` CLI):
 ```bash
-openguild-server backup     # 즉시 1회 백업
-openguild-server info       # 길드 메타 / DB 크기 / 백업 현황
+openguild backup new   # 즉시 1회 백업 (snapshot)
+openguild info         # 길드 메타 / DB 크기 / 백업 현황
 ```
 
 ### 1.3 환경변수 / 옵션
@@ -75,7 +75,17 @@ openguild statuses               # 상태 목록 (Open / In Progress / Done / ..
 
 ```bash
 openguild quest list [--json]
-openguild quest show <slug>                          # 예: DEV-001 (서브/선행 포함)
+openguild quest list --type DEV,BUG --status open,in_progress --urgency 1-2
+                    --has-prereq --no-sub --child-of <slug> --no-parent
+                    --created-after 2026-05-01 --updated-before 2026-06-01
+                    --search "키워드" --title-only
+                    --sort urgency,id --reverse --limit 20 --offset 0
+                    --id-only | --count                # script 친화 출력
+
+openguild quest search "<keyword>" [--title-only] [--limit N]
+                       [--id-only | --count]          # `list --search` 의 단축
+
+openguild quest show <slug> [--field <NAME>]          # NAME: id/title/status/description/urgency/type/parent/created_at/updated_at
 
 openguild quest new --type <PREFIX> --title <T>      # 상태는 자동으로 Open
                   [--description <DESC>]
@@ -95,10 +105,13 @@ openguild quest deleted          # soft deleted 목록
 ### 2.3 상태 변경
 
 ```bash
-openguild quest status <slug> <STATUS>   # 임의 상태 (이름 또는 ID)
-openguild quest start  <slug>            # → In Progress
-openguild quest done   <slug>            # → Done
-openguild quest reopen <slug>            # → Open
+openguild quest move   <slug> <STATUS>   # ⭐ 정식 — 임의 상태 (이름 또는 slug, ID)
+openguild quest start  <slug>            # → In Progress (shortcut)
+openguild quest done   <slug>            # → Done       (shortcut)
+openguild quest reopen <slug>            # → Open       (shortcut)
+
+openguild quest status <slug>            # 현재 상태만 출력 (조회 전용)
+openguild quest status <slug> <STATUS>   # ⚠ deprecated — `move` 사용 권장
 ```
 
 상태명은 대소문자 / 공백 / `_` / `-` 모두 허용:
@@ -161,11 +174,70 @@ openguild quest prereq add <slug> <prereq-slug>
 openguild quest prereq rm  <slug> <prereq-slug>
 ```
 
-### 2.5 백업 / 복원
+### 2.5 기한 (DEV-076)
+
+quest 에 희망 / 필수 기한 (`YYYY-MM-DD`) 지정. **필수 기한 (`required_due`)**
+은 Home 의 "마감 임박" / "Overdue" 섹션 분류 기준. 희망 기한 (`desired_due`)
+은 정보성.
 
 ```bash
-openguild backup                       # 즉시 snapshot 생성
-openguild backups                      # 사용 가능 snapshot 목록
+openguild quest due <slug>                       # 현재 두 기한 출력
+openguild quest due <slug> --desired  2026-06-15 # 희망 기한 설정
+openguild quest due <slug> --required 2026-06-30 # 필수 기한 설정
+openguild quest due <slug> --clear-desired       # 희망 기한 해제 (null)
+openguild quest due <slug> --clear-required      # 필수 기한 해제 (null)
+```
+
+- 형식은 `YYYY-MM-DD` 만 허용. 잘못된 형식은 `BadRequest`.
+- `--desired` / `--required` 와 대응 `--clear-*` 는 상호배타.
+- 빈 문자열 / 공백은 자동으로 None 으로 정규화.
+
+### 2.6 변경 이력 (DEV-013)
+
+```bash
+openguild quest history <slug>         # 최신 → 과거 순. status / type 변경 등.
+openguild quest history <slug> --json
+```
+
+각 row 는 op (e.g. `change_status`, `change_type`), old_value, new_value, ts,
+quest_slug 포함.
+
+### 2.7 Campaign (DEV-011)
+
+캠페인 = "다음 마일스톤" 계획서. quest 와 다대다 링크 + 자체 체크리스트 +
+기간. slug 는 `C-001` ~ `C-NNN`.
+
+```bash
+openguild campaign list [--status active|done|planned] [--json]
+openguild campaign show <slug> [--json]      # 체크리스트 + linked quests 포함
+
+openguild campaign new --title <T>
+                      [--start <YYYY-MM-DD>] [--end <YYYY-MM-DD>]
+openguild campaign delete <slug>             # soft delete
+
+openguild campaign start <slug>              # status → active
+openguild campaign end   <slug>              # status → done
+
+# Quest 연결 (다대다)
+openguild campaign link   <slug> <quest-slug>
+openguild campaign unlink <slug> <quest-slug>
+
+# 체크리스트 (1-based 인덱스, body 의 `- [ ]` / `- [x]` 줄과 양방향)
+openguild campaign checklist add     <slug> "<text>"
+openguild campaign checklist check   <slug> <N>
+openguild campaign checklist uncheck <slug> <N>
+openguild campaign checklist rm      <slug> <N>
+```
+
+진행률 = `checked / total`. Home 의 active 캠페인 carousel 카드 progress bar
+가 이 값을 표시. 100% 달성 시 카드 초록 강조.
+
+### 2.8 백업 / 복원
+
+```bash
+openguild backup new                   # 즉시 snapshot 생성
+openguild backup list                  # 사용 가능 snapshot 목록
+openguild backup remove <TIMESTAMP>    # 특정 snapshot 삭제
 openguild restore [--to <TIMESTAMP>]   # 최신 (또는 지정) snapshot 으로 복원
 ```
 
@@ -175,6 +247,55 @@ env 로 임계치 조정 가능:
 - `OPENGUILD_AUTO_BACKUP_HOURS=N` (기본 24)
 
 자동 백업 시 stderr 에 알림: `[auto-backup] snapshot 생성됨: 20260516-103341 (...)`.
+
+### 2.9 댓글 / 메모 (DEV-094 / DEV-099)
+
+```bash
+openguild quest comment list <SLUG>                       # entry 목록
+openguild quest comment list <SLUG> --author claude --since 2026-06-01 \
+    --top-only --grep TEXT                                # 필터 (AND, DEV-110)
+openguild quest comment list <SLUG> --reply-to N          # 특정 entry 의 답글만
+openguild quest comment show <SLUG> [--id N]              # 본문
+openguild quest comment add <SLUG> --author <NAME> --file <PATH>   # 추가 (stdin 도 가능)
+openguild quest comment add <SLUG> --author <NAME> --parent-id N --file <PATH>  # 답글
+openguild quest comment edit <SLUG> N --file <PATH>       # body 교체 (id 는 positional)
+openguild quest comment remove <SLUG> N [--force]         # 삭제
+openguild quest comment discussion <SLUG> N               # 토론(discussion) 토글 — quest 전용 (DEV-185)
+openguild quest comment resolved <SLUG> N                 # 토론 해결 토글 (DEV-185)
+openguild quest memo set <SLUG> --file <PATH>             # 비공개 메모 (사용자당 1개)
+```
+
+**🚨 `--author` 필수 규칙**: agent 가 댓글을 쓸 때는 반드시 `--author` 에 자기
+식별자를 명시할 것 (예: `--author claude`). 작성자 없는 댓글은 GUI 에서
+"(이름 없음)" 으로 표시되어 사용자 댓글과 구분이 안 됨 — 누가 쓴 건지 추적
+불가. 사용자 / 여러 agent 가 한 quest 에서 대화하는 구조이므로 작성자는
+대화의 전제 조건.
+
+캠페인에도 동일 구조의 댓글 / 메모 가 있음 (DEV-100) — 명령 형식 / 필터 /
+`--author` 규칙 모두 quest 와 동일:
+
+```bash
+openguild campaign comment list C-001 [--author ... --since ... --grep ...]
+openguild campaign comment add C-001 --author <NAME> --file <PATH>
+openguild campaign comment rm C-001 <ID> --force
+openguild campaign memo set C-001 --file <PATH>   # show / clear 도 동일
+```
+
+### 2.10 퀘스트 템플릿 (DEV-060)
+
+`.guild/templates/{name}.md` — quest 파일과 같은 `+++` TOML frontmatter
+(`title` / `type` / `urgency` / `tags` 전부 선택) + 기본 본문. frontmatter
+없으면 파일 전체가 본문.
+
+```bash
+openguild template list                  # 템플릿 목록 (이름 / 기본값 요약)
+openguild template show <NAME>           # 본문 출력
+openguild quest new --template <NAME>    # 템플릿으로 생성
+openguild quest new --template bug-report --title "특정 제목"   # 명시 옵션이 우선
+```
+
+merge 우선순위: **명시 옵션 > 템플릿 값 > 기본** (urgency 기본 3).
+type / title 은 둘 중 한 쪽엔 있어야 함. local 모드 전용 (HTTP 미지원).
 
 ---
 
@@ -268,9 +389,9 @@ openguild 는 **파일 = truth, `.guild/index.db` = SQL 캐시** 구조. mutatio
 
 #### 부득이하게 직접 편집해야 한다면
 
-1. agent 가 `.md` / `.toml` 을 편집한 직후 **반드시** `openguild-server reindex`
-   실행 (SQL 캐시 재구축).
-2. 변경 후 `openguild-server check-drift` 로 drift 0 확인.
+1. agent 가 `.md` / `.toml` 을 편집한 직후 **반드시** `openguild reindex`
+   실행 (SQL 캐시 재구축; = `openguild index rebuild`).
+2. 변경 후 `openguild check drift` 로 drift 0 확인.
 3. journal 에 의도 기록은 자동 안 됨 — commit 메시지 / quest 본문에 사유 명시.
 
 #### BUG-001 우회 (multi-line description) 의 경우
@@ -281,7 +402,7 @@ openguild 는 **파일 = truth, `.guild/index.db` = SQL 캐시** 구조. mutatio
 ```bash
 # 1) 파일 직접 편집 (frontmatter 의 description 본문만!)
 # 2) reindex 로 SQL 동기화
-openguild-server reindex
+openguild reindex
 ```
 
 **frontmatter 의 status / urgency / parent / prerequisites 는 절대 직접 안 건드림.**

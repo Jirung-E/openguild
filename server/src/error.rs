@@ -26,6 +26,8 @@ impl IntoResponse for HttpError {
         let (status, message) = match self.0 {
             AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
+            // DEV-064: 길드가 서버보다 새 schema — 서버 업데이트 필요.
+            AppError::IncompatibleGuild(msg) => (StatusCode::CONFLICT, msg),
             AppError::Internal(err) => {
                 tracing::error!("internal error: {err:#}");
                 (

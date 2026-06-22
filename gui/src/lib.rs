@@ -148,8 +148,98 @@ pub struct LaunchInfo {
     pub uninit_path: Option<PathBuf>,
 }
 
+/// BUG-041 후속: Windows release 의 `windows_subsystem = "windows"` 빌드는
+/// stdout/stderr 이 부모 콘솔에서 분리됨. `AttachConsole(ATTACH_PARENT_PROCESS)`
+/// 만으로는 부족 — Rust 의 stdout 핸들이 invalid 인 채라 println! 이 어디로도
+/// 안 감. `CONOUT$` 파일을 열어 `SetStdHandle` 로 STDOUT/STDERR 를 redirect
+/// 까지 해야 println!/eprintln! 이 콘솔에 보임.
+///
+/// 이미 stdout handle 이 valid (`>`/`|` 로 redirect / pipe 된 경우) 면 noop —
+/// 그쪽으로 정상 흐름.
+///
+/// debug 빌드 / non-Windows / 부모 콘솔 없는 환경 (GUI launcher 더블클릭) 시 noop.
+fn attach_parent_console() {
+    #[cfg(windows)]
+    unsafe {
+        use std::ptr;
+        use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
+        use windows_sys::Win32::Storage::FileSystem::{
+            CreateFileW, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
+        };
+        use windows_sys::Win32::System::Console::{
+            AttachConsole, GetStdHandle, SetStdHandle, ATTACH_PARENT_PROCESS,
+            STD_ERROR_HANDLE, STD_OUTPUT_HANDLE,
+        };
+
+        // stdout 이 이미 valid (redirect 등) 면 그대로 — 건드리면 그쪽으로 안 감.
+        let cur = GetStdHandle(STD_OUTPUT_HANDLE);
+        if !cur.is_null() && cur != INVALID_HANDLE_VALUE {
+            return;
+        }
+        if AttachConsole(ATTACH_PARENT_PROCESS) == 0 {
+            return; // 부모 콘솔 없음 — GUI launcher 등.
+        }
+        // `CONOUT$` (콘솔 출력 파일) 을 GENERIC_WRITE 로 open → handle 을
+        // STD_OUTPUT_HANDLE / STD_ERROR_HANDLE 로 SetStdHandle.
+        // GENERIC_WRITE = 0x4000_0000.
+        const GENERIC_WRITE: u32 = 0x4000_0000;
+        let name: Vec<u16> = "CONOUT$\0".encode_utf16().collect();
+        let h = CreateFileW(
+            name.as_ptr(),
+            GENERIC_WRITE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            ptr::null(),
+            OPEN_EXISTING,
+            0,
+            ptr::null_mut(),
+        );
+        if h.is_null() || h == INVALID_HANDLE_VALUE {
+            return;
+        }
+        SetStdHandle(STD_OUTPUT_HANDLE, h);
+        SetStdHandle(STD_ERROR_HANDLE, h);
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // BUG-041 후속: `--version` / `--help` 짧은 flag 처리.
+    // Tauri 시동 전에 stdout 으로 답하고 종료 — launcher / 스크립트 친화.
+    //
+    // Windows release 는 windows_subsystem="windows" 로 빌드되어 cmd 에서 직접
+    // 실행 시 stdout 이 부모 콘솔에서 detach (cmd 가 즉시 prompt 복귀).
+    // `attach_parent_console()` 로 부모 콘솔 attach 후 stdout/stderr redirect.
+    for a in std::env::args().skip(1) {
+        match a.as_str() {
+            "--version" | "-V" => {
+                attach_parent_console();
+                println!("openguild-gui {}", env!("CARGO_PKG_VERSION"));
+                std::process::exit(0);
+            }
+            "--help" | "-h" => {
+                attach_parent_console();
+                println!(
+                    "openguild-gui — desktop GUI\n\
+                     \n\
+                     Usage:\n  \
+                       openguild-gui [GUILD_PATH]\n\
+                     \n\
+                     GUILD_PATH 가 디렉토리 / `.guild` 파일이면 해당 길드로 시동.\n\
+                     미지정 시 welcome 화면.\n\
+                     \n\
+                     Env:\n  \
+                       OPENGUILD_GUILD=PATH  argv 대신 환경변수로 길드 지정.\n\
+                     \n\
+                     Flags:\n  \
+                       -V, --version   버전 출력 후 종료\n  \
+                       -h, --help      이 도움말 출력 후 종료"
+                );
+                std::process::exit(0);
+            }
+            _ => {}
+        }
+    }
+
     let launch_mode = match resolve_launch_mode(
         std::env::args_os(),
         std::env::var("OPENGUILD_GUILD").ok(),
@@ -161,57 +251,87 @@ pub fn run() {
         }
     };
 
-    // Welcome / Uninit 모드는 OS temp 디렉토리에 빈 길드 부트스트랩 — Store /
-    // Tauri commands 가 항상 valid 한 store 가정해서. 사용자가 길드 선택 /
-    // 초기화하면 commands::open_guild_in_current_window / init_and_open_guild
-    // 가 store 를 swap.
-    let (guild_path, launch_info) = match &launch_mode {
-        LaunchMode::Guild(p) => (
-            p.clone(),
-            LaunchInfo { mode: "guild", uninit_path: None },
-        ),
-        LaunchMode::Welcome => {
-            let tmp = std::env::temp_dir().join("openguild-welcome-placeholder");
-            std::fs::create_dir_all(&tmp).ok();
-            (tmp, LaunchInfo { mode: "welcome", uninit_path: None })
-        }
-        LaunchMode::Uninit(p) => {
-            let tmp = std::env::temp_dir().join("openguild-welcome-placeholder");
-            std::fs::create_dir_all(&tmp).ok();
-            (
-                tmp,
-                LaunchInfo {
-                    mode: "uninit",
-                    uninit_path: Some(p.clone()),
-                },
-            )
-        }
+    // BUG-041: Welcome / Uninit 모드는 진짜 길드 없이 시동 — 디스크에 placeholder
+    // DB 를 만들면 그 DB 가 binary 의 schema 만큼 migrate 된 채 영구 남아, 이후
+    // 더 이전 (mig 모르는) binary 가 같은 placeholder 를 열면 brick. → Welcome
+    // /Uninit 은 **in-memory DB** 로 시동, 디스크 placeholder 안 만듦. 사용자가
+    // 실제 길드를 선택하면 commands 가 file-backed Store 로 swap.
+    let (mode_label, store_path, uninit_path) = match &launch_mode {
+        LaunchMode::Guild(p) => ("guild", Some(p.clone()), None),
+        LaunchMode::Welcome => ("welcome", None, None),
+        LaunchMode::Uninit(p) => ("uninit", None, Some(p.clone())),
     };
+    let launch_info = LaunchInfo { mode: mode_label, uninit_path };
     eprintln!(
         "[openguild-gui] launch mode: {} (path: {})",
         launch_info.mode,
-        guild_path.display()
+        store_path
+            .as_ref()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "<in-memory>".into())
     );
 
     // Store::open 은 async — Tauri 의 async runtime 으로 동기 실행.
-    let store = tauri::async_runtime::block_on(Store::open(&guild_path))
-        .expect("Store::open 실패 — guild 디렉토리 손상 또는 권한 없음");
+    let store = tauri::async_runtime::block_on(async {
+        match &store_path {
+            Some(p) => Store::open(p).await,
+            // BUG-041: Welcome / Uninit 은 in-memory — paths 인자는 임시
+            // placeholder (디렉토리 만들기 위함이지만 in-memory pool 은 디스크
+            // 에 안 씀).
+            None => {
+                let tmp = std::env::temp_dir().join("openguild-welcome-placeholder");
+                Store::open_in_memory(&tmp).await
+            }
+        }
+    })
+    .expect("Store::open 실패 — guild 디렉토리 손상 또는 권한 없음");
 
     // Recent guild 자동 등록 (DEV-006). Welcome / Uninit 은 placeholder 라 등록 안 함.
-    if matches!(launch_mode, LaunchMode::Guild(_))
-        && let Err(e) = openguild_core::recents::add(&guild_path)
+    if let Some(p) = &store_path
+        && let Err(e) = openguild_core::recents::add(p)
     {
         eprintln!("[openguild-gui] warn: recents 갱신 실패 — {e:#}");
     }
 
+    // BUG-049 / DEV-121: 시동 시 외부 편집 sync. 사용자가 CLI / 외부 편집으로
+    // 파일을 바꿨다면 index.db 가 stale.
+    //
+    // DEV-121: `incremental::sync_on_open` — modified file 들 cheap UPDATE +
+    // 필요 시 풀 reindex fallback. 대부분 case 가 빠름 (stat() 만으로 감지).
+    // Welcome / Uninit 은 in-memory 라 sync 없음.
+    if store_path.is_some() {
+        match tauri::async_runtime::block_on(openguild_core::incremental::sync_on_open(&store)) {
+            Ok((inc, Some(rep))) => eprintln!(
+                "[openguild-gui] incremental {} + full reindex: {} quests / {} deps / {} campaigns",
+                inc.updated, rep.quests_loaded, rep.dependencies_loaded, rep.campaigns_loaded
+            ),
+            Ok((inc, None)) if inc.updated > 0 => {
+                eprintln!("[openguild-gui] incremental sync: {} quests updated", inc.updated)
+            }
+            Ok(_) => {}
+            Err(e) => eprintln!("[openguild-gui] warn: sync_on_open 실패 — {e:#}"),
+        }
+    }
+
+    // DEV-087: setup closure 로 넘길 asset scope 대상 — 길드 root.
+    let asset_scope_path = store_path.clone();
+
     tauri::Builder::default()
         // DEV-053: 디렉토리 선택 dialog — Welcome 의 "폴더 열기".
         .plugin(tauri_plugin_dialog::init())
+        // DEV-063: auto-update — updater (체크/다운로드/설치) + process (relaunch).
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
+        // BUG-040: 외부 링크 시스템 브라우저로.
+        .plugin(tauri_plugin_opener::init())
         .manage(store)
         .manage(launch_info)
         .invoke_handler(tauri::generate_handler![
             commands::launch_mode,
             commands::current_guild_path,
+            commands::current_guild_name,
+            // BUG-041: DB schema 가 binary 보다 새로운지 — banner 표시용.
+            commands::get_db_schema_status,
             commands::inspect_guild_path,
             commands::open_guild_in_current_window,
             commands::init_and_open_guild,
@@ -223,6 +343,10 @@ pub fn run() {
             commands::list_deleted_quests,
             commands::get_quest,
             commands::get_quest_by_slug,
+            commands::add_quest_attachment,
+            commands::remove_quest_attachment,
+            commands::add_campaign_attachment,
+            commands::remove_campaign_attachment,
             commands::list_quest_candidates,
             commands::list_quest_positions,
             commands::list_quest_dependencies,
@@ -234,6 +358,8 @@ pub fn run() {
             commands::change_quest_parent,
             // DEV-076 / BUG-031: 희망 / 필수 기한 — Tauri transport invoke.
             commands::set_quest_due_dates,
+            // DEV-068: tag 전체 교체.
+            commands::set_quest_tags,
             commands::change_quest_type,
             commands::delete_quest,
             commands::restore_quest,
@@ -243,9 +369,14 @@ pub fn run() {
             // admin
             commands::admin_create_snapshot,
             commands::admin_list_snapshots,
+            commands::admin_delete_snapshot,
             commands::admin_restore,
             commands::admin_check_drift,
             commands::admin_reindex,
+            // DEV-162: 런타임 정비 (vacuum / journal tail).
+            commands::admin_vacuum,
+            commands::admin_journal_tail,
+            commands::list_problem_files,
             // admin meta (DEV-014)
             commands::admin_list_types,
             commands::admin_create_type,
@@ -255,6 +386,10 @@ pub fn run() {
             commands::admin_create_status,
             commands::admin_update_status,
             commands::admin_delete_status,
+            // DEV-068: tag defs
+            commands::admin_list_tag_defs,
+            commands::admin_upsert_tag_def,
+            commands::admin_delete_tag_def,
             // recents (DEV-006)
             commands::list_recents,
             commands::clear_recents,
@@ -273,7 +408,60 @@ pub fn run() {
             commands::list_campaign_active_summaries,
             commands::list_campaign_upcoming_summaries,
             commands::list_campaigns_for_quest,
+            // DEV-016: 길드 규칙.
+            commands::get_rules,
+            commands::set_rules,
+            // DEV-016 (multi-file): 다중 규칙 CRUD.
+            commands::list_rules,
+            commands::get_rule,
+            commands::set_rule,
+            commands::create_rule,
+            commands::delete_rule,
+            commands::rename_rule,
+            // DEV-012 / DEV-094: 메모 (단일 텍스트) + 댓글 (entry 단위).
+            commands::get_memo,
+            commands::set_memo,
+            commands::list_comments,
+            commands::add_comment,
+            commands::update_comment,
+            commands::delete_comment,
+            commands::toggle_comment_reaction,
+            commands::toggle_comment_discussion,
+            commands::toggle_comment_resolved,
+            // DEV-100: 캠페인 댓글 / 메모.
+            commands::list_campaign_comments,
+            commands::add_campaign_comment,
+            commands::update_campaign_comment,
+            commands::delete_campaign_comment,
+            commands::toggle_campaign_comment_reaction,
+            commands::get_campaign_memo,
+            commands::set_campaign_memo,
+            // DEV-087: 캠페인 배너 이미지 (파일 선택은 frontend dialog plugin).
+            commands::set_campaign_banner,
+            commands::clear_campaign_banner,
+            // DEV-060: 퀘스트 템플릿 (NewQuestModal 의 선택 dropdown).
+            commands::list_templates,
+            // DEV-158: 현재 입력을 템플릿으로 저장.
+            commands::save_template,
+            // DEV-069: 본문 첨부 (paste / drag&drop 업로드).
+            commands::save_attachment,
+            // BUG-081: 첨부 열기(미리보기) / 다운로드(복사).
+            commands::open_guild_file,
+            commands::copy_guild_file,
         ])
+        // DEV-087: asset protocol scope — 길드 경로가 동적이라 (사용자가 임의
+        // 폴더 open) config scope 대신 런타임 allow. `.guild/assets/` 의 배너
+        // 이미지와 (DEV-069) 본문 로컬 이미지를 convertFileSrc 로 표시 가능.
+        .setup(move |app| {
+            if let Some(p) = &asset_scope_path {
+                use tauri::Manager;
+                let scope = app.asset_protocol_scope();
+                if let Err(e) = scope.allow_directory(p, true) {
+                    eprintln!("[openguild-gui] warn: asset scope allow 실패 — {e:#}");
+                }
+            }
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

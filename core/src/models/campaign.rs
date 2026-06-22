@@ -46,6 +46,9 @@ pub struct CampaignRow {
     pub started_at: Option<String>,
     pub ended_at: Option<String>,
     pub display_order: i64,
+    /// DEV-087: 배너 이미지 (`.guild/` 상대 경로). None = 없음.
+    #[serde(default)]
+    pub image_path: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -80,6 +83,19 @@ pub struct CampaignDetail {
     pub campaign: CampaignRow,
     pub checklists: Vec<CampaignChecklistItem>,
     pub linked_quests: Vec<CampaignLinkedQuest>,
+    /// DEV-093: 링크된 quest 중 alive (= linked_quests.len() — 이미 service 가 alive filter).
+    #[serde(default)]
+    pub quest_total: i64,
+    /// DEV-093: 위 중 status.counts_as_done = true 인 수.
+    #[serde(default)]
+    pub quest_done: i64,
+    /// DEV-093: quest_done / quest_total. 0 일 때 0.0.
+    #[serde(default)]
+    pub quest_progress: f64,
+    /// DEV-156: 본문과 별개 첨부 목록 (Jira 식). sidecar 진리원 — service 는 빈
+    /// 채로 두고 Store 가진 호출 계층에서 채운다.
+    #[serde(default)]
+    pub attachments: Vec<crate::models::QuestAttachment>,
 }
 
 /// Home / 카드 표시용 압축 요약.
@@ -92,12 +108,25 @@ pub struct CampaignSummary {
     pub started_at: Option<String>,
     pub ended_at: Option<String>,
     pub display_order: i64,
+    /// DEV-087: 배너 이미지 (`.guild/` 상대 경로) — Home carousel 배경.
+    #[serde(default)]
+    pub image_path: Option<String>,
     pub created_at: String,
     /// 체크리스트 완료율 (체크된 항목 / 전체 항목). 항목이 0개면 0.0.
+    /// = `checklist_progress` 의 별칭 (frontend 호환).
     pub progress: f64,
     /// 전체 체크리스트 항목 수 (UI 가 "3/10" 처럼 표시 가능).
     pub checklist_total: i64,
     pub checklist_checked: i64,
+    /// DEV-093: 링크된 quest 중 alive (soft delete 제외) 개수.
+    #[serde(default)]
+    pub quest_total: i64,
+    /// DEV-093: 위 중 status.counts_as_done = true 인 quest 수.
+    #[serde(default)]
+    pub quest_done: i64,
+    /// DEV-093: quest_done / quest_total. quest_total = 0 이면 0.0.
+    #[serde(default)]
+    pub quest_progress: f64,
 }
 
 // --- 요청 바디 ---

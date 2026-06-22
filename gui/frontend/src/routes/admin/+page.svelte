@@ -1,19 +1,32 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { adminApi } from '$lib/api/admin';
+	import type { SkippedFile, JournalTail } from '$lib/api/admin';
 	import type { DriftReport, SnapshotInfo } from '$lib/types';
+	import { detectEnvironment } from '$lib/api/transport';
 	// DEV-014: Quest type / status 커스터마이즈 섹션.
 	import AdminTypesSection from '$lib/components/admin/AdminTypesSection.svelte';
 	import AdminStatusesSection from '$lib/components/admin/AdminStatusesSection.svelte';
+	// DEV-068: `.guild/tags/{slug}.toml` 정의 (색 / 설명).
+	import AdminTagDefsSection from '$lib/components/admin/AdminTagDefsSection.svelte';
+	// DEV-119: window.confirm() 대신 인앱 모달 (Tauri 에서 native confirm silent return).
+	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 
 	let snapshots = $state<SnapshotInfo[]>([]);
 	let drift = $state<DriftReport | null>(null);
+	// 비정상 파일 (정의되지 않은 status / 파싱 실패) — reindex/sync 에서 조용히
+	// skip 되므로 명시 경고. Tauri 에선 시동 시 list_problem_files 로, web 에선
+	// reindex 결과의 skipped 로 채워진다.
+	let problemFiles = $state<SkippedFile[]>([]);
 	let busy = $state(false);
 	let message = $state<{ kind: 'info' | 'success' | 'error'; text: string } | null>(null);
+	// DEV-119: 복원 확인 — 인앱 모달. null = 닫힘, 객체 = 열림 ({ts} 는 undefined 면 최신).
+	// reindex 는 사용자 지시로 sweep 제외 (idempotent, 파일 truth 불변).
+	let confirmRestore = $state<{ ts: string | undefined } | null>(null);
+	// DEV-162: 런타임 정비 — journal tail 뷰 (null = 아직 미조회).
+	let journal = $state<JournalTail | null>(null);
 
-	function onSectionMessage(
-		m: { kind: 'info' | 'success' | 'error'; text: string } | null
-	) {
+	function onSectionMessage(m: { kind: 'info' | 'success' | 'error'; text: string } | null) {
 		if (!m) return;
 		if (m.kind === 'success') showSuccess(m.text);
 		else if (m.kind === 'info') showInfo(m.text);
@@ -22,7 +35,19 @@
 
 	onMount(async () => {
 		await refresh();
+		await loadProblemFiles();
 	});
+
+	/** Tauri 전용: 비정상 파일 목록 조회 (web 에선 noop — HTTP route 없음). */
+	async function loadProblemFiles() {
+		if (detectEnvironment() !== 'tauri') return;
+		try {
+			const { invoke } = await import('@tauri-apps/api/core');
+			problemFiles = await invoke<SkippedFile[]>('list_problem_files');
+		} catch {
+			/* 길드 모드 아님 / 조회 실패 — 무시 */
+		}
+	}
 
 	async function refresh() {
 		try {
@@ -39,9 +64,21 @@
 	}
 
 	function formatTimestamp(ts: string): string {
-		// "20260516-103341" → "2026-05-16 10:33:41"
+		// BUG-086: 스냅샷 timestamp 는 UTC 정규형("20260516-103341")로 저장 →
+		// 표시할 때만 로컬로 변환. 파싱 실패 시 원본 그대로.
 		if (ts.length !== 15 || ts[8] !== '-') return ts;
-		return `${ts.slice(0, 4)}-${ts.slice(4, 6)}-${ts.slice(6, 8)} ${ts.slice(9, 11)}:${ts.slice(11, 13)}:${ts.slice(13, 15)}`;
+		const [y, mo, d, h, mi, s] = [
+			+ts.slice(0, 4),
+			+ts.slice(4, 6),
+			+ts.slice(6, 8),
+			+ts.slice(9, 11),
+			+ts.slice(11, 13),
+			+ts.slice(13, 15)
+		];
+		const dt = new Date(Date.UTC(y, mo - 1, d, h, mi, s));
+		if (Number.isNaN(dt.getTime())) return ts;
+		const p = (n: number) => String(n).padStart(2, '0');
+		return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())} ${p(dt.getHours())}:${p(dt.getMinutes())}:${p(dt.getSeconds())}`;
 	}
 
 	function showSuccess(text: string) {
@@ -70,17 +107,38 @@
 		}
 	}
 
-	async function onRestore(ts?: string) {
-		const label = ts ? formatTimestamp(ts) : '최신';
-		if (!confirm(`정말 "${label}" 백업으로 복원하시겠습니까?\n\n현재 상태가 덮어써집니다 (직전 .pre-restore.db 로 자동 백업됨).`)) {
-			return;
-		}
+	function onRestore(ts?: string) {
+		// DEV-119: native confirm 대신 인앱 모달 — onconfirm 에서 doRestore.
+		confirmRestore = { ts };
+	}
+
+	async function doRestore(ts: string | undefined) {
 		busy = true;
 		try {
 			const res = await adminApi.restore(ts);
-			showSuccess(`복원 완료: ${formatTimestamp(res.restored_to)}. 파일 동기화를 위해 'reindex' 가 필요할 수 있습니다.`);
+			// BUG-076: restore 가 파일 복구 + reindex(캐시 재구축)까지 수행. 별도
+			// reindex 안내(데이터 소실 위험) 제거. 파일/DB 변경 반영 위해 새로고침.
+			showSuccess(
+				`복원 완료: ${formatTimestamp(res.restored_to)} — 파일 복구 + 재색인 완료. 새로고침합니다.`
+			);
+			setTimeout(() => window.location.reload(), 800);
 		} catch (e) {
 			showError(`복원 실패: ${e}`);
+		} finally {
+			busy = false;
+		}
+	}
+
+	// DEV-175: 백업 삭제 — 인앱 confirm 후 삭제 + 목록 갱신.
+	let confirmDeleteSnap = $state<string | null>(null);
+	async function doDeleteSnapshot(ts: string) {
+		busy = true;
+		try {
+			await adminApi.deleteSnapshot(ts);
+			snapshots = await adminApi.listSnapshots();
+			showSuccess(`백업 삭제: ${formatTimestamp(ts)}`);
+		} catch (e) {
+			showError(`백업 삭제 실패: ${e}`);
 		} finally {
 			busy = false;
 		}
@@ -108,11 +166,57 @@
 		if (!confirm('파일들로부터 index.db 를 재구축합니다. 계속할까요?')) return;
 		busy = true;
 		try {
-			await adminApi.reindex();
-			showSuccess('reindex 완료');
+			const result = await adminApi.reindex();
 			drift = null;
+			problemFiles = result.skipped;
+			// reindex 후 항상 새로고침. 새로고침 시 +layout 의 시동 스캔
+			// (list_problem_files → 토스트) + admin 의 loadProblemFiles(패널) 가 다시
+			// 돌아 '무엇이 문제인지'가 자동으로 표시된다. (이전엔 문제 있을 때 reload
+			// 안 해서 수동 Ctrl+R 전까지 상세가 안 보였음.) 데이터 stale 도 해소.
+			if (result.skipped.length > 0) {
+				showError(
+					`reindex — 비정상 파일 ${result.skipped.length}개 건너뜀. 새로고침 후 상세 표시.`
+				);
+			} else {
+				showSuccess('reindex 완료 — 데이터 새로고침');
+			}
+			// 토스트가 잠깐 보이도록 짧은 지연 후 full reload.
+			setTimeout(() => window.location.reload(), 800);
 		} catch (e) {
 			showError(`reindex 실패: ${e}`);
+		} finally {
+			busy = false;
+		}
+	}
+
+	// DEV-162: index.db VACUUM (dead row 공간 회수).
+	async function onVacuum() {
+		busy = true;
+		try {
+			const r = await adminApi.vacuum();
+			const pct = r.before_bytes > 0 ? ((r.saved_bytes / r.before_bytes) * 100).toFixed(1) : '0';
+			if (r.saved_bytes > 0) {
+				showSuccess(`VACUUM 완료 — ${r.saved_bytes.toLocaleString()} bytes 회수 (${pct}%)`);
+			} else {
+				showInfo('VACUUM 완료 — 회수 공간 없음 (이미 dense)');
+			}
+		} catch (e) {
+			showError(`VACUUM 실패: ${e}`);
+		} finally {
+			busy = false;
+		}
+	}
+
+	// DEV-162: journal.db(AOF) 최근 op 조회.
+	async function onJournalTail() {
+		busy = true;
+		try {
+			journal = await adminApi.journalTail(50);
+			if (journal.total === 0) {
+				showInfo('journal.db 비어 있음 (snapshot 직후 또는 mutation 없음)');
+			}
+		} catch (e) {
+			showError(`journal 조회 실패: ${e}`);
 		} finally {
 			busy = false;
 		}
@@ -133,12 +237,11 @@
 
 <div class="page">
 	<h1>관리자 (Admin)</h1>
-	<p class="note">
-		⚠ 인증 없음 — MVP 단계. 멀티유저로 확장 시 보호 필요.
-	</p>
+	<p class="note">⚠ 인증 없음 — MVP 단계. 멀티유저로 확장 시 보호 필요.</p>
 
 	<AdminTypesSection onmessage={onSectionMessage} />
 	<AdminStatusesSection onmessage={onSectionMessage} />
+	<AdminTagDefsSection onmessage={onSectionMessage} />
 
 	<section>
 		<div class="section-header">
@@ -165,18 +268,22 @@
 						<tr>
 							<td><code>{formatTimestamp(s.timestamp)}</code></td>
 							<td>{formatSize(s.size_bytes)}</td>
-							<td>
+							<td class="snap-actions">
 								<button class="restore" onclick={() => onRestore(s.timestamp)} disabled={busy}
 									>복원</button
+								>
+								<button
+									class="del-snap"
+									title="이 백업 삭제"
+									onclick={() => (confirmDeleteSnap = s.timestamp)}
+									disabled={busy}>삭제</button
 								>
 							</td>
 						</tr>
 					{/each}
 				</tbody>
 			</table>
-			<p class="hint">
-				자동 백업: 매 mutation 후 정책 검사 (ops 50 회 OR 24 시간 도달 시).
-			</p>
+			<p class="hint">자동 백업: 매 mutation 후 정책 검사 (ops 50 회 OR 24 시간 도달 시).</p>
 		{/if}
 	</section>
 
@@ -188,6 +295,21 @@
 				<button onclick={onReindex} disabled={busy}>Reindex</button>
 			</div>
 		</div>
+
+		{#if problemFiles.length > 0}
+			<div class="problem-files" role="alert">
+				<h3>⚠ 비정상 파일 {problemFiles.length}개 — 캐시에서 제외됨</h3>
+				<p class="hint">
+					아래 파일은 파싱 실패 / 정의되지 않은 status 로 reindex·동기화에서 건너뛰어집니다. 파일을
+					고치거나 status 를 정의한 뒤 Reindex 하세요.
+				</p>
+				<ul>
+					{#each problemFiles as p (p.path)}
+						<li><code>{p.path}</code><span class="reason"> — {p.reason}</span></li>
+					{/each}
+				</ul>
+			</div>
+		{/if}
 
 		{#if drift === null}
 			<p class="empty">파일 vs index.db 일치성 검사. 외부 편집 / git pull 후 활용.</p>
@@ -227,14 +349,81 @@
 			{/if}
 		{/if}
 	</section>
+
+	<!-- DEV-162: 런타임 정비 — VACUUM + journal(AOF) tail. -->
+	<section>
+		<div class="section-header">
+			<h2>정비 / 진단</h2>
+			<div class="actions">
+				<button onclick={onVacuum} disabled={busy}>정리 (VACUUM)</button>
+				<button onclick={onJournalTail} disabled={busy}>최근 작업 (저널)</button>
+			</div>
+		</div>
+
+		{#if journal === null}
+			<p class="empty">
+				VACUUM: index.db 의 dead row 공간 회수. 저널: journal.db 의 최근 변경 op (AOF).
+			</p>
+		{:else if journal.total === 0}
+			<p class="ok">저널 비어 있음 (snapshot 직후 또는 mutation 없음)</p>
+		{:else}
+			<p class="hint">
+				journal.db: {journal.total} op 중 최근 {journal.rows.length} 개 (오래된 → 최신)
+			</p>
+			<ul class="journal">
+				{#each journal.rows as op (op.id)}
+					<li>
+						<code class="jop">#{op.id} {op.op}</code>
+						<span class="jts">{op.ts}</span>
+						<div class="jargs"><code>{op.args}</code></div>
+					</li>
+				{/each}
+			</ul>
+		{/if}
+	</section>
 </div>
+
+<!-- DEV-119: backup 복원 확인 — 인앱 모달. -->
+<ConfirmDialog
+	open={confirmRestore !== null}
+	title="백업 복원"
+	message={confirmRestore
+		? `정말 "${confirmRestore.ts ? formatTimestamp(confirmRestore.ts) : '최신'}" 백업으로 복원하시겠습니까?\n\n` +
+			`현재 상태가 덮어써집니다 (직전 .pre-restore.db 로 자동 백업됨).`
+		: ''}
+	confirmLabel="복원"
+	danger
+	onconfirm={() => {
+		const r = confirmRestore;
+		confirmRestore = null;
+		if (r) doRestore(r.ts);
+	}}
+	oncancel={() => (confirmRestore = null)}
+/>
+
+<!-- DEV-175: 백업 삭제 확인 — 인앱 모달. -->
+<ConfirmDialog
+	open={confirmDeleteSnap !== null}
+	title="백업 삭제"
+	message={confirmDeleteSnap
+		? `"${formatTimestamp(confirmDeleteSnap)}" 백업을 삭제할까요?\n\n이 백업 파일이 영구 삭제됩니다 (되돌릴 수 없음).`
+		: ''}
+	confirmLabel="삭제"
+	danger
+	onconfirm={() => {
+		const ts = confirmDeleteSnap;
+		confirmDeleteSnap = null;
+		if (ts) doDeleteSnapshot(ts);
+	}}
+	oncancel={() => (confirmDeleteSnap = null)}
+/>
 
 <style>
 	.page {
-		max-width: 900px;
+		max-width: var(--content-max-width, 900px);
 		margin: 0 auto;
 		padding: 2rem 1.5rem;
-		color: #c9d1d9;
+		color: var(--text);
 	}
 	h1 {
 		margin: 0 0 0.5rem 0;
@@ -247,18 +436,20 @@
 	h3 {
 		margin: 0.75rem 0 0.25rem;
 		font-size: 0.95rem;
-		color: #8b949e;
+		color: var(--text-muted);
 	}
 	.note {
-		color: #8b949e;
+		color: var(--text-muted);
 		font-size: 0.85rem;
 		margin-bottom: 1.5rem;
 	}
 	section {
 		margin-bottom: 2.5rem;
 		padding: 1.25rem;
-		background: #1a1a2e;
-		border: 1px solid #2a2a4a;
+		/* 다른 admin 섹션(Statuses/Types/TagDefs 컴포넌트)과 동일 토큰.
+		   이전 --nav-bg/--nav-border 는 다크에서 보라빛이라 섹션마다 색이 달랐음. */
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
 		border-radius: 8px;
 	}
 	.section-header {
@@ -273,27 +464,41 @@
 	}
 	button {
 		padding: 0.4rem 0.9rem;
-		background: #2a2a4a;
-		border: 1px solid #3a3a5a;
+		background: var(--bg-subtle);
+		border: 1px solid var(--border);
 		border-radius: 6px;
-		color: #c9d1d9;
+		color: var(--text);
 		font-size: 0.85rem;
 		cursor: pointer;
 		transition: background 0.15s;
 	}
 	button:hover:not(:disabled) {
-		background: #3a3a5a;
+		background: var(--border);
 	}
 	button:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
 	}
+	/* DEV-074 fix6: --btn-warning-* 토큰으로 통일. */
 	button.restore {
-		background: #533f00;
-		border-color: #7a6020;
+		background: var(--btn-warning-bg);
+		border-color: var(--btn-warning-border);
+		color: var(--btn-warning-text);
 	}
 	button.restore:hover:not(:disabled) {
-		background: #7a6020;
+		background: var(--btn-warning-bg-hover);
+	}
+	/* DEV-175: 백업 삭제 버튼. */
+	.snap-actions {
+		display: flex;
+		gap: 0.4rem;
+	}
+	button.del-snap {
+		color: var(--danger);
+		border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+	}
+	button.del-snap:hover:not(:disabled) {
+		background: color-mix(in srgb, var(--danger) 14%, transparent);
 	}
 	table {
 		width: 100%;
@@ -303,10 +508,10 @@
 	td {
 		padding: 0.5rem 0.75rem;
 		text-align: left;
-		border-bottom: 1px solid #2a2a4a;
+		border-bottom: 1px solid var(--border);
 	}
 	th {
-		color: #8b949e;
+		color: var(--text-muted);
 		font-weight: 500;
 		font-size: 0.85rem;
 	}
@@ -315,16 +520,16 @@
 		font-size: 0.85rem;
 	}
 	.empty {
-		color: #8b949e;
+		color: var(--text-muted);
 		font-size: 0.875rem;
 		margin: 0;
 	}
 	.ok {
-		color: #2ea043;
+		color: var(--success-strong);
 		font-weight: 500;
 	}
 	.hint {
-		color: #8b949e;
+		color: var(--text-muted);
 		font-size: 0.825rem;
 		margin-top: 0.75rem;
 	}
@@ -335,8 +540,68 @@
 	.drift-report li {
 		font-family: 'Cascadia Code', 'Courier New', monospace;
 		font-size: 0.85rem;
-		color: #c9d1d9;
+		color: var(--text);
 		list-style: disc;
+	}
+	/* DEV-162: journal(AOF) tail 뷰. */
+	.journal {
+		margin: 0.5rem 0 0;
+		padding: 0;
+		list-style: none;
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+	.journal li {
+		padding: 0.4rem 0.6rem;
+		border: 1px solid var(--border);
+		border-radius: 0.4rem;
+		background: var(--bg-subtle);
+	}
+	.jop {
+		font-family: 'Cascadia Code', 'Courier New', monospace;
+		font-size: 0.82rem;
+		color: var(--text-strong);
+	}
+	.jts {
+		margin-left: 0.5rem;
+		font-size: 0.75rem;
+		color: var(--text-muted);
+	}
+	.jargs {
+		margin-top: 0.25rem;
+		font-family: 'Cascadia Code', 'Courier New', monospace;
+		font-size: 0.78rem;
+		color: var(--text-muted);
+		word-break: break-all;
+	}
+	.problem-files {
+		margin-bottom: 1rem;
+		padding: 0.75rem 1rem;
+		border-radius: 0.5rem;
+		background: color-mix(in srgb, var(--danger) 12%, transparent);
+		border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+	}
+	.problem-files h3 {
+		margin: 0 0 0.25rem 0;
+		font-size: 0.95rem;
+		color: var(--danger);
+	}
+	.problem-files ul {
+		margin: 0.5rem 0 0 1.25rem;
+		padding: 0;
+	}
+	.problem-files li {
+		font-size: 0.85rem;
+		color: var(--text);
+		list-style: disc;
+		margin-bottom: 0.15rem;
+	}
+	.problem-files code {
+		font-family: 'Cascadia Code', 'Courier New', monospace;
+	}
+	.problem-files .reason {
+		color: var(--text-muted);
 	}
 	/* DEV-014 후속 (fix5): toast wrapper — 화면 우상단 고정.
 	   모달 (.ov z-index 100) 보다 높은 z-index 로 가려지지 않게. */
@@ -345,32 +610,38 @@
 		top: 1rem;
 		right: 1rem;
 		z-index: 1000;
-		max-width: 420px;
+		max-width: calc(26.25rem * var(--popup-scale, 1)); /* BUG-064 */
 		pointer-events: none;
 	}
 	.message {
 		padding: 0.75rem 1rem;
 		border-radius: 6px;
 		font-size: 0.875rem;
-		color: #e6edf3;
+		color: var(--text-strong);
 		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
 		pointer-events: auto;
 		animation: toast-in 0.18s ease-out;
 	}
 	@keyframes toast-in {
-		from { opacity: 0; transform: translateY(-8px); }
-		to   { opacity: 1; transform: translateY(0); }
+		from {
+			opacity: 0;
+			transform: translateY(-8px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
 	}
 	.message.info {
-		background: #1a3a5a;
-		border: 1px solid #2a5a7a;
+		background: color-mix(in srgb, var(--accent) 18%, transparent);
+		border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
 	}
 	.message.success {
-		background: #0f3a1a;
-		border: 1px solid #2a6a3a;
+		background: color-mix(in srgb, var(--success) 18%, transparent);
+		border: 1px solid color-mix(in srgb, var(--success) 45%, transparent);
 	}
 	.message.error {
-		background: #3a0f0f;
-		border: 1px solid #6a2a2a;
+		background: color-mix(in srgb, var(--danger) 18%, transparent);
+		border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
 	}
 </style>

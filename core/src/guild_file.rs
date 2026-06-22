@@ -2,11 +2,53 @@ use anyhow::{Context, Result};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
+/// DEV-064: 현재 실행파일이 지원하는 길드 파일 구조(schema) 버전.
+/// 길드 파일 구조(frontmatter 필드, toml 형식 등)가 바뀌면 +1 하고 migration
+/// 함수를 추가한다. 1 = 최초 baseline.
+pub const CURRENT_SCHEMA_VERSION: i64 = 1;
+
+fn default_schema_version() -> i64 {
+    1
+}
+
 #[derive(Debug, Deserialize)]
 pub struct GuildFile {
     pub name: String,
     pub version: String,
     pub created_at: String,
+    /// DEV-064: 길드 파일 구조 버전. 필드 없는 구 길드는 1 로 간주.
+    #[serde(default = "default_schema_version")]
+    pub schema_version: i64,
+}
+
+/// 길드 마커(`{name}.guild`) 파일 내용 — 항상 현재 schema_version 으로 기록.
+/// CLI(init) / GUI(create) 양쪽이 공유해 포맷 drift 방지.
+pub fn marker_content(name: &str, created_at: &str) -> String {
+    let esc = name.replace('\\', "\\\\").replace('"', "\\\"");
+    format!(
+        "name = \"{esc}\"\nversion = \"1.0\"\ncreated_at = \"{created_at}\"\nschema_version = {CURRENT_SCHEMA_VERSION}\n"
+    )
+}
+
+/// DEV-064: 길드 schema 버전 vs 실행파일 지원 버전 비교 결과.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SchemaCompat {
+    /// 동일 — 정상.
+    Current,
+    /// 길드가 더 옛 버전 — migration 필요 (값 = 길드 버전).
+    Older(i64),
+    /// 길드가 더 새 버전 — 이 실행파일로는 못 엶. 앱 업데이트 필요 (값 = 길드 버전).
+    Newer(i64),
+}
+
+/// schema_version 을 현재 지원 버전과 비교.
+pub fn schema_compat(schema_version: i64) -> SchemaCompat {
+    use std::cmp::Ordering;
+    match schema_version.cmp(&CURRENT_SCHEMA_VERSION) {
+        Ordering::Equal => SchemaCompat::Current,
+        Ordering::Less => SchemaCompat::Older(schema_version),
+        Ordering::Greater => SchemaCompat::Newer(schema_version),
+    }
 }
 
 /// guild 디렉터리에서 `{name}.guild` 파일을 찾아 파싱한다.

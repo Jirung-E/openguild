@@ -1,4 +1,4 @@
-﻿//! `.guild/quests/*.md` + `.guild/types/*.toml` + `.guild/statuses/*.toml` 파일들로부터
+//! `.guild/quests/*.md` + `.guild/types/*.toml` + `.guild/statuses/*.toml` 파일들로부터
 //! `.guild/index.db` 의 캐시 내용을 재구축.
 //!
 //! 사용 시나리오:
@@ -30,8 +30,39 @@ pub struct ReindexReport {
     pub positions_restored: usize,
     /// DEV-011: campaign 파일 로드 수.
     pub campaigns_loaded: usize,
+    /// DEV-102: sibling `{slug}.comments.md` 의 entry 수 (모든 quest 합산).
+    pub comments_loaded: usize,
+    /// DEV-102: sibling `{slug}.memo.md` 의 quest 수 (file 하나당 row 1개).
+    pub memos_loaded: usize,
+    /// DEV-068: frontmatter tags 에서 적재된 tag 수 (quest 전체 합산, 중복 dedupe 후).
+    pub tags_loaded: usize,
+    /// DEV-069: attachment blob 백업 갱신 수 / blob 에서 복원된 파일 수.
+    pub attachments_backed_up: usize,
+    pub attachments_restored: usize,
     /// 파싱 / 무결성 실패로 skip 된 파일 (경로 + 사유).
     pub skipped: Vec<(String, String)>,
+}
+
+impl ReindexReport {
+    /// 사람용 요약 라인 (CLI / server 의 reindex 출력 공용 — DEV-160).
+    /// skip 상세는 호출 측에서 별도 표시. 순수 포맷팅이라 IO 없음.
+    pub fn summary_lines(&self) -> Vec<String> {
+        vec![
+            format!("types        : {}", self.types_loaded),
+            format!("statuses     : {}", self.statuses_loaded),
+            format!("quests       : {}", self.quests_loaded),
+            format!("dependencies : {}", self.dependencies_loaded),
+            format!("campaigns    : {}", self.campaigns_loaded),
+            format!("comments     : {}", self.comments_loaded),
+            format!("memos        : {}", self.memos_loaded),
+            format!("tags         : {}", self.tags_loaded),
+            format!(
+                "attachments  : {} backed up / {} restored",
+                self.attachments_backed_up, self.attachments_restored
+            ),
+            format!("positions    : {} 복원 (board UI 상태)", self.positions_restored),
+        ]
+    }
 }
 
 /// 메인 진입점.
@@ -55,6 +86,15 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
 
     // 1. 기존 내용 비움 (트랜잭션 안에서 — partial 실패 시 rollback).
     let mut tx = pool.begin().await?;
+
+    // BUG-042: FK 위반 (787) 회피. reindex 의 quest INSERT 는 파일 정렬 순이라
+    // parent_quest_id 가 자기보다 뒤에 들어갈 quest 를 가리키면 즉시 FK 검증에서
+    // 실패. `PRAGMA defer_foreign_keys = 1` 로 transaction commit 시점에만 검증.
+    // 이 PRAGMA 는 transaction 범위 — commit 후 자동 해제.
+    sqlx::query("PRAGMA defer_foreign_keys = 1")
+        .execute(&mut *tx)
+        .await?;
+
     sqlx::query("DELETE FROM quest_dependencies").execute(&mut *tx).await?;
     sqlx::query("DELETE FROM quest_positions").execute(&mut *tx).await?;
     sqlx::query("DELETE FROM quests").execute(&mut *tx).await?;
@@ -70,6 +110,16 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
     sqlx::query("UPDATE campaign_counters SET last_number = 0 WHERE id = 1")
         .execute(&mut *tx)
         .await?;
+    // DEV-102: 댓글 / 메모 캐시도 wipe — sibling 파일로부터 재구축.
+    sqlx::query("DELETE FROM quest_comments").execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM quest_memos").execute(&mut *tx).await?;
+    // DEV-068: 태그 캐시도 wipe — frontmatter 의 tags 배열로부터 재구축.
+    sqlx::query("DELETE FROM quest_tags").execute(&mut *tx).await?;
+    // DEV-068 (tag defs): `.guild/tags/*.toml` 정의도 wipe + 재적재.
+    sqlx::query("DELETE FROM quest_tag_defs").execute(&mut *tx).await?;
+    // DEV-134: 캠페인 댓글 / 메모 캐시도 wipe — sibling 파일로부터 재구축.
+    sqlx::query("DELETE FROM campaign_comments").execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM campaign_memos").execute(&mut *tx).await?;
 
     // 2. types — id 는 파일 정렬 순.
     let type_paths = repo_fs::list_with_extension(paths.types_dir(), "toml")
@@ -119,9 +169,20 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
         match StatusFile::read(path) {
             Ok(s) => {
                 // DEV-042: slug 컬럼도 함께 INSERT — quest_history 가 slug 기반.
+                // DEV-093: counts_as_done 도 file → DB sync.
+                //
+                // DEV-093 fix (사용자 보고: '연결 quest done 3 인데 진척도 0'):
+                // 기존 길드의 status file 에 counts_as_done 키 자체가 없음 (옛 형식).
+                // TOML 의 default false 가 들어가 migration 0012 의 backfill 가 reindex
+                // 직후 사라짐. file 에 키 누락 + slug 가 done/cancelled 면 자동 true
+                // (직관 일치 — '완료된 상태는 진행도 카운트'). file 에 명시 false 가
+                // 들어와 있으면 그대로 false (사용자 의도 보존 — 단 TOML default
+                // false 와 명시 false 를 구분 못해 best-effort).
+                let counts_as_done = s.counts_as_done
+                    || matches!(slug, "done" | "cancelled");
                 sqlx::query(
-                    "INSERT INTO quest_statuses (id, name_en, name_ko, color, sort_order, slug)
-                     VALUES (?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO quest_statuses (id, name_en, name_ko, color, sort_order, slug, counts_as_done)
+                     VALUES (?, ?, ?, ?, ?, ?, ?)",
                 )
                 .bind(id)
                 .bind(&s.name_en)
@@ -129,6 +190,7 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
                 .bind(&s.color)
                 .bind(s.sort_order)
                 .bind(slug)
+                .bind(counts_as_done as i64)
                 .execute(&mut *tx)
                 .await?;
                 slug_to_status_id.insert(slug.to_string(), id);
@@ -141,7 +203,9 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
     }
 
     // 4. quests — 파일 한 번 로드해서 모두 메모리에. id 는 파일 정렬 순.
-    let quest_paths = repo_fs::list_with_extension(paths.quests_dir(), "md")
+    // BUG-047: sibling `.comments.md` / `.memo.md` 제외 — 이전엔 quest 본문으로
+    // 오인해서 매 reindex 마다 "frontmatter 없음" skip 경고 발생.
+    let quest_paths = repo_fs::list_quest_body_files(paths.quests_dir())
         .map_err(crate::error::AppError::Internal)?;
     let mut quest_files: Vec<(std::path::PathBuf, QuestFile)> = Vec::new();
     for path in &quest_paths {
@@ -198,12 +262,30 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
             .deleted
             .then(|| updated_at.clone());
 
+        // BUG-060 후속: urgency 범위 (1..=4) 밖이면 skipped 에 경고하되 **raw 값을
+        // 그대로 적재**한다. 이전엔 4 로 clamp 했으나, (1) incremental sync
+        // (sync_changed_quest_files / refresh_quest_if_stale) 는 이미 raw 를
+        // 저장해 reindex 와 불일치였고, (2) GUI 가 원본 범위 밖 여부를 알아야
+        // 상세/노드/리스트에 경고를 띄울 수 있다. clamp 는 표시 계층(GUI
+        // urgencyLabel/Color)에서만. 보드 폭발은 GUI 의 안전 헬퍼가 이미 방어.
+        let urgency = qf.frontmatter.urgency;
+        if !(1..=4).contains(&urgency) {
+            report.skipped.push((
+                path.display().to_string(),
+                format!(
+                    "urgency {urgency} 가 유효 범위 (1..=4) 밖 — raw 값 그대로 적재(GUI 는 clamp 표시 + 경고). 파일 정정 권장."
+                ),
+            ));
+        }
+
         // DEV-076: desired_due / required_due 도 함께 적재 (file → DB sync).
+        // DEV-121: cached_mtime 도 함께 — 이후 incremental sync 가 정확히 비교.
+        let cached_mtime = crate::repo::fs::mtime_unix_nanos(path);
         sqlx::query(
             "INSERT INTO quests
              (id, quest_type_id, number, title, description, status_id, urgency, parent_quest_id,
-              created_at, updated_at, deleted_at, desired_due, required_due)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              created_at, updated_at, deleted_at, desired_due, required_due, cached_mtime)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(id)
         .bind(type_id)
@@ -211,24 +293,45 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
         .bind(&qf.frontmatter.title)
         .bind(&qf.description)
         .bind(status_id)
-        .bind(qf.frontmatter.urgency)
+        .bind(urgency)
         .bind(parent_id)
         .bind(&created_at)
         .bind(&updated_at)
         .bind(deleted_at)
         .bind(qf.frontmatter.desired_due.as_deref())
         .bind(qf.frontmatter.required_due.as_deref())
+        .bind(cached_mtime)
         .execute(&mut *tx)
         .await?;
 
         report.quests_loaded += 1;
     }
 
-    // 5. dependencies — 각 quest 의 prerequisites 에서.
+    // 5. dependencies — 각 quest 의 prerequisites 에서. DEV-068: 같은 loop 에서
+    //    tags 도 적재 (per-quest 작업 묶음).
     for (_, qf) in &quest_files {
         let Some(qid) = slug_to_id.get(&qf.frontmatter.quest_id).copied() else {
             continue;
         };
+
+        // DEV-068: tags — frontmatter 의 tags 배열 → quest_tags. 중복은
+        // PRIMARY KEY (quest_id, tag) 가 막아주지만 정렬 안정성 위해
+        // dedupe 후 INSERT OR IGNORE.
+        for tag in &qf.frontmatter.tags {
+            let normalized = tag.trim();
+            if normalized.is_empty() {
+                continue;
+            }
+            sqlx::query(
+                "INSERT OR IGNORE INTO quest_tags (quest_id, tag) VALUES (?, ?)",
+            )
+            .bind(qid)
+            .bind(normalized)
+            .execute(&mut *tx)
+            .await?;
+            report.tags_loaded += 1;
+        }
+
         for pslug in &qf.frontmatter.prerequisites {
             let Some(pid) = slug_to_id.get(pslug).copied() else {
                 continue;
@@ -264,9 +367,122 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
     }
     report.positions_restored = positions_restored;
 
+    // 5b''. DEV-068 (tag defs): `.guild/tags/{slug}.toml` 파일들을 quest_tag_defs
+    //       에 적재. file 진리원, DB 는 캐시.
+    let tag_paths = repo_fs::list_with_extension(paths.tags_dir(), "toml")
+        .map_err(crate::error::AppError::Internal)?;
+    for path in &tag_paths {
+        let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        match crate::repo::TagFile::read(path) {
+            Ok(tf) => {
+                sqlx::query(
+                    "INSERT INTO quest_tag_defs (slug, color, description) VALUES (?, ?, ?)
+                     ON CONFLICT(slug) DO UPDATE SET color = excluded.color, description = excluded.description",
+                )
+                .bind(stem)
+                .bind(&tf.color)
+                .bind(&tf.description)
+                .execute(&mut *tx)
+                .await?;
+            }
+            Err(e) => {
+                report.skipped.push((path.display().to_string(), format!("{e:#}")));
+            }
+        }
+    }
+
+    // 5b'. DEV-102: sibling 파일 (`{slug}.comments.md` / `{slug}.memo.md`) →
+    //      `quest_comments` / `quest_memos` 캐시 sync. 파일이 진리원, 캐시는
+    //      snapshot 백업 대상. quest 가 존재하지 않는 sibling 은 skip + 경고.
+    let comment_paths = repo_fs::list_quest_comment_files(paths.quests_dir())
+        .map_err(crate::error::AppError::Internal)?;
+    for path in &comment_paths {
+        let Some(slug) = repo_fs::quest_slug_from_sibling_path(path) else {
+            continue;
+        };
+        let Some(&qid) = slug_to_id.get(&slug) else {
+            report.skipped.push((
+                path.display().to_string(),
+                format!("no matching quest for comment sibling slug={slug}"),
+            ));
+            continue;
+        };
+        let raw = match std::fs::read_to_string(path) {
+            Ok(s) => s,
+            Err(e) => {
+                report.skipped.push((path.display().to_string(), e.to_string()));
+                continue;
+            }
+        };
+        let entries = crate::repo::comments::parse_entries(&raw);
+        for entry in entries {
+            sqlx::query(
+                "INSERT INTO quest_comments
+                    (quest_id, entry_id, ts, author, body, parent_id, discussion, resolved)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            )
+            .bind(qid)
+            .bind(entry.id as i64)
+            .bind(&entry.ts)
+            .bind(&entry.author)
+            .bind(&entry.body)
+            .bind(entry.parent_id.map(|n| n as i64))
+            .bind(entry.discussion as i64)
+            .bind(entry.resolved as i64)
+            .execute(&mut *tx)
+            .await?;
+            report.comments_loaded += 1;
+        }
+    }
+
+    let memo_paths = repo_fs::list_quest_memo_files(paths.quests_dir())
+        .map_err(crate::error::AppError::Internal)?;
+    for path in &memo_paths {
+        let Some(slug) = repo_fs::quest_slug_from_sibling_path(path) else {
+            continue;
+        };
+        let Some(&qid) = slug_to_id.get(&slug) else {
+            report.skipped.push((
+                path.display().to_string(),
+                format!("no matching quest for memo sibling slug={slug}"),
+            ));
+            continue;
+        };
+        let content = match std::fs::read_to_string(path) {
+            Ok(s) => s,
+            Err(e) => {
+                report.skipped.push((path.display().to_string(), e.to_string()));
+                continue;
+            }
+        };
+        // updated_at — file mtime 으로 근사. mutation 경로는 services 가
+        // now_local_iso8601() 로 정확히 설정. single-user 단계라 user_id=0.
+        let updated_at = repo_fs::mtime_iso8601(path).unwrap_or_default();
+        sqlx::query(
+            "INSERT INTO quest_memos (quest_id, user_id, content, updated_at)
+             VALUES (?, 0, ?, ?)",
+        )
+        .bind(qid)
+        .bind(&content)
+        .bind(&updated_at)
+        .execute(&mut *tx)
+        .await?;
+        report.memos_loaded += 1;
+    }
+
     // 5c. quest_history 의 quest_id 재정렬 (DEV-049).
     //     이전 reindex 가 id 를 재할당했어도 quest_slug 컬럼이 stable identifier
     //     로 살아있음. quest_id 컬럼은 새 매핑으로 갱신.
+    //
+    // BUG-043: WHERE 절에 EXISTS 추가. 사용자가 quest 파일을 hard-delete 하면
+    // 그 slug 에 해당하는 row 가 quests 에 없음 → subselect 가 NULL → NOT NULL
+    // 컬럼에 NULL UPDATE → "NOT NULL constraint failed: quest_history.quest_id"
+    // (sqlite 1299). 매칭 안 되는 history 행은 기존 quest_id 유지 (stale 가능,
+    // 단 NULL 안 됨). 그 history 가 가리키던 quest 가 진짜로 사라졌다면 stale
+    // FK 이지만 quest_history 에는 FK constraint 없으므로 dangling reference 로
+    // 남아도 read-only 표시용 데이터라 무해.
     sqlx::query(
         "UPDATE quest_history
          SET quest_id = (
@@ -275,7 +491,12 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
              JOIN quest_types qt ON q.quest_type_id = qt.id
              WHERE qt.prefix || '-' || printf('%03d', q.number) = quest_history.quest_slug
          )
-         WHERE quest_slug IS NOT NULL",
+         WHERE quest_slug IS NOT NULL
+           AND EXISTS (
+             SELECT 1 FROM quests q
+             JOIN quest_types qt ON q.quest_type_id = qt.id
+             WHERE qt.prefix || '-' || printf('%03d', q.number) = quest_history.quest_slug
+           )",
     )
     .execute(&mut *tx)
     .await?;
@@ -283,8 +504,13 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
     // 6. DEV-011: campaigns — `.guild/campaigns/*.md` 파일 정렬 순.
     let campaigns_dir = paths.campaigns_dir();
     let mut max_camp_num: i64 = 0;
+    // DEV-134: sibling (댓글/메모) 적재용 slug → id 맵.
+    let mut camp_slug_to_id: HashMap<String, i64> = HashMap::new();
     if campaigns_dir.exists() {
-        let camp_paths = repo_fs::list_with_extension(&campaigns_dir, "md")
+        // DEV-134: BUG-047 의 캠페인판 — DEV-100 의 sibling `.comments.md` /
+        // `.memo.md` 를 캠페인 본문으로 오인하지 않도록 body-file 필터 사용.
+        // (헬퍼는 quest 명명이지만 디렉토리 무관 — stem 에 '.' 없는 .md 만.)
+        let camp_paths = repo_fs::list_quest_body_files(&campaigns_dir)
             .map_err(crate::error::AppError::Internal)?;
         for (i, path) in camp_paths.iter().enumerate() {
             let id = (i + 1) as i64;
@@ -302,8 +528,8 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
             sqlx::query(
                 "INSERT INTO campaigns
                     (id, campaign_slug, title, description, status,
-                     started_at, ended_at, display_order, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     started_at, ended_at, display_order, image_path, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(id)
             .bind(&cf.frontmatter.campaign_id)
@@ -321,6 +547,8 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
                 Some(&cf.frontmatter.ended_at)
             })
             .bind(cf.frontmatter.display_order)
+            // DEV-087: 배너 이미지 — frontmatter 가 진리원.
+            .bind(cf.frontmatter.image.as_deref())
             .bind(&cf.frontmatter.created_at)
             .bind(&cf.frontmatter.updated_at)
             .execute(&mut *tx)
@@ -362,7 +590,80 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
                 max_camp_num = max_camp_num.max(n);
             }
 
+            camp_slug_to_id.insert(cf.frontmatter.campaign_id.clone(), id);
             report.campaigns_loaded += 1;
+        }
+
+        // 6b. DEV-134: 캠페인 sibling (`{slug}.comments.md` / `{slug}.memo.md`)
+        //     → campaign_comments / campaign_memos 캐시. DEV-102 의 미러.
+        let camp_comment_paths = repo_fs::list_quest_comment_files(&campaigns_dir)
+            .map_err(crate::error::AppError::Internal)?;
+        for path in &camp_comment_paths {
+            let Some(slug) = repo_fs::quest_slug_from_sibling_path(path) else {
+                continue;
+            };
+            let Some(&cid) = camp_slug_to_id.get(&slug) else {
+                report.skipped.push((
+                    path.display().to_string(),
+                    format!("no matching campaign for comment sibling slug={slug}"),
+                ));
+                continue;
+            };
+            let raw = match std::fs::read_to_string(path) {
+                Ok(s) => s,
+                Err(e) => {
+                    report.skipped.push((path.display().to_string(), e.to_string()));
+                    continue;
+                }
+            };
+            for entry in crate::repo::comments::parse_entries(&raw) {
+                sqlx::query(
+                    "INSERT INTO campaign_comments (campaign_id, entry_id, ts, author, body, parent_id)
+                     VALUES (?, ?, ?, ?, ?, ?)",
+                )
+                .bind(cid)
+                .bind(entry.id as i64)
+                .bind(&entry.ts)
+                .bind(&entry.author)
+                .bind(&entry.body)
+                .bind(entry.parent_id.map(|n| n as i64))
+                .execute(&mut *tx)
+                .await?;
+                report.comments_loaded += 1;
+            }
+        }
+
+        let camp_memo_paths = repo_fs::list_quest_memo_files(&campaigns_dir)
+            .map_err(crate::error::AppError::Internal)?;
+        for path in &camp_memo_paths {
+            let Some(slug) = repo_fs::quest_slug_from_sibling_path(path) else {
+                continue;
+            };
+            let Some(&cid) = camp_slug_to_id.get(&slug) else {
+                report.skipped.push((
+                    path.display().to_string(),
+                    format!("no matching campaign for memo sibling slug={slug}"),
+                ));
+                continue;
+            };
+            let content = match std::fs::read_to_string(path) {
+                Ok(s) => s,
+                Err(e) => {
+                    report.skipped.push((path.display().to_string(), e.to_string()));
+                    continue;
+                }
+            };
+            let updated_at = repo_fs::mtime_iso8601(path).unwrap_or_default();
+            sqlx::query(
+                "INSERT INTO campaign_memos (campaign_id, user_id, content, updated_at)
+                 VALUES (?, 0, ?, ?)",
+            )
+            .bind(cid)
+            .bind(&content)
+            .bind(&updated_at)
+            .execute(&mut *tx)
+            .await?;
+            report.memos_loaded += 1;
         }
     }
     // campaign_counters self-heal — alive campaign 의 최대 번호로.
@@ -377,7 +678,30 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
         .await?;
     }
 
+    // BUG-059: drift detection 의 신뢰 가능한 시간 기준 — reindex 종료 시점을
+    // ISO 타임스탬프로 app_meta 에 기록. 다음 startup 의 detect_drift 가 이 값과
+    // file mtime 을 비교 → SQLite WAL / Store::open 의 mtime 부작용에 영향 없음.
+    let last_indexed_at = crate::time::now_local_iso8601();
+    sqlx::query(
+        "INSERT INTO app_meta (key, value) VALUES ('last_indexed_at', ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    )
+    .bind(&last_indexed_at)
+    .execute(&mut *tx)
+    .await?;
+
     tx.commit().await?;
+
+    // DEV-069: 첨부 blob 양방향 self-heal — 새/변경 파일 → blob 백업,
+    // blob 만 남은 것 (snapshot 복원 직후 등) → 파일 복원.
+    // sync_attachment_blobs 는 store.index_pool 을 직접 쓰므로 commit 이후 호출.
+    let (backed_up, restored) = crate::ops::attachments::sync_attachment_blobs(store).await?;
+    report.attachments_backed_up = backed_up;
+    report.attachments_restored = restored;
+
+    // BUG-068: sibling(댓글/메모) 파일 mtime 캐시 재구성 — detect_drift 의
+    // fresh_siblings 가 per-file 로 비교하도록. (pool 직접 사용 → commit 이후.)
+    let _ = crate::file_mtime::sync_all(store).await;
 
     // 7. auto 블록을 SQL 기준으로 다시 그려서 파일에 쓰기 — 외부 편집 결과
     //    auto 블록이 stale 일 수 있음. write_consistent_auto_blocks 가 옵션.
@@ -404,6 +728,270 @@ mod tests {
     async fn setup_store(dir: &std::path::Path) -> Store {
         seed_guild_dir(dir).unwrap();
         Store::open(dir).await.unwrap()
+    }
+
+    /// BUG-047 regression: sibling `.comments.md` / `.memo.md` 파일이 있어도
+    /// reindex 가 `skipped` 에 누적하지 않아야 함 (이전엔 frontmatter 없는 파일
+    /// 로 인식해 매번 "missing opening +++ delimiter" 경고).
+    #[tokio::test]
+    async fn reindex_ignores_sibling_comment_and_memo_files() {
+        let dir = fresh_tmp("siblings");
+        let store = setup_store(&dir).await;
+
+        // 정상 quest 파일 + sibling 두 종류 직접 작성.
+        let paths = store.paths.clone();
+        let qf = QuestFile {
+            frontmatter: QuestFrontmatter {
+                quest_id: "DEV-001".into(),
+                title: "with siblings".into(),
+                status: "open".into(),
+                urgency: 3,
+                parent: None,
+                prerequisites: vec![],
+                created_at: "2026-01-01T00:00:00Z".into(),
+                updated_at: "2026-01-01T00:00:00Z".into(),
+                deleted: false,
+                desired_due: None,
+                required_due: None,
+                tags: vec![],
+            },
+            description: String::new(),
+            auto_block: String::new(),
+        };
+        qf.write(paths.quest_path("DEV-001")).unwrap();
+
+        // sibling — frontmatter 없는 plain markdown (DEV-012 / DEV-094 패턴).
+        let comments = paths.quests_dir().join("DEV-001.comments.md");
+        let memo = paths.quests_dir().join("DEV-001.memo.md");
+        std::fs::write(&comments, "<!-- og-comment id=\"1\" ts=\"\" author=\"\" -->\ntest comment\n").unwrap();
+        std::fs::write(&memo, "personal scratch").unwrap();
+
+        let report = reindex(&store).await.unwrap();
+        assert_eq!(report.quests_loaded, 1, "정상 quest 1 개만 로드되어야");
+        assert!(
+            report.skipped.is_empty(),
+            "sibling 파일들이 skipped 에 안 들어가야: {:?}",
+            report.skipped
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-102: sibling 파일이 `quest_comments` / `quest_memos` 캐시로
+    /// 적재되는지. snapshot 의 백업 대상이 되도록 (snapshot 은 index.db binary
+    /// copy 라 cache 테이블만 보장).
+    #[tokio::test]
+    async fn reindex_loads_sibling_files_into_cache_tables() {
+        let dir = fresh_tmp("sibling-cache");
+        let store = setup_store(&dir).await;
+        let paths = store.paths.clone();
+
+        // 두 개 quest — 첫째는 댓글 2개 (top-level + reply) + 메모, 둘째는 메모만.
+        for slug in ["DEV-001", "DEV-002"] {
+            let qf = QuestFile {
+                frontmatter: QuestFrontmatter {
+                    quest_id: slug.into(),
+                    title: "t".into(),
+                    status: "open".into(),
+                    urgency: 3,
+                    parent: None,
+                    prerequisites: vec![],
+                    created_at: "2026-01-01T00:00:00Z".into(),
+                    updated_at: "2026-01-01T00:00:00Z".into(),
+                    deleted: false,
+                    desired_due: None,
+                    required_due: None,
+                    tags: vec![],
+                },
+                description: String::new(),
+                auto_block: String::new(),
+            };
+            qf.write(paths.quest_path(slug)).unwrap();
+        }
+
+        let comments_001 = paths.quests_dir().join("DEV-001.comments.md");
+        std::fs::write(
+            &comments_001,
+            "<!-- og-comment id=\"1\" ts=\"2026-06-01T10:00:00+09:00\" author=\"alice\" -->\n\
+             top-level\n\
+             <!-- og-comment id=\"2\" ts=\"2026-06-01T11:00:00+09:00\" author=\"bob\" reply_to=\"1\" -->\n\
+             answer\n",
+        )
+        .unwrap();
+        let memo_001 = paths.quests_dir().join("DEV-001.memo.md");
+        std::fs::write(&memo_001, "scratch one").unwrap();
+        let memo_002 = paths.quests_dir().join("DEV-002.memo.md");
+        std::fs::write(&memo_002, "scratch two").unwrap();
+
+        let report = reindex(&store).await.unwrap();
+        assert_eq!(report.comments_loaded, 2, "DEV-001 의 댓글 2개");
+        assert_eq!(report.memos_loaded, 2, "DEV-001 + DEV-002 메모 각 1");
+        assert!(report.skipped.is_empty(), "skipped 비어야: {:?}", report.skipped);
+
+        // DB 확인: 댓글 row 들 정확히 들어갔는지.
+        let rows: Vec<(i64, i64, String, String, String, Option<i64>)> = sqlx::query_as(
+            "SELECT quest_id, entry_id, ts, author, body, parent_id
+             FROM quest_comments
+             ORDER BY quest_id, entry_id",
+        )
+        .fetch_all(&store.index_pool)
+        .await
+        .unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].1, 1);
+        assert_eq!(rows[0].3, "alice");
+        assert_eq!(rows[0].4, "top-level");
+        assert_eq!(rows[0].5, None);
+        assert_eq!(rows[1].1, 2);
+        assert_eq!(rows[1].3, "bob");
+        assert_eq!(rows[1].5, Some(1));
+
+        // memo row 들 — user_id 모두 0 (single-user sentinel).
+        let memo_rows: Vec<(i64, i64, String)> = sqlx::query_as(
+            "SELECT quest_id, user_id, content FROM quest_memos ORDER BY quest_id",
+        )
+        .fetch_all(&store.index_pool)
+        .await
+        .unwrap();
+        assert_eq!(memo_rows.len(), 2);
+        assert!(memo_rows.iter().all(|r| r.1 == 0));
+        assert_eq!(memo_rows[0].2, "scratch one");
+        assert_eq!(memo_rows[1].2, "scratch two");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-102: sibling 파일이 가리키는 quest 가 없으면 skip + 경고 — DELETE 도
+    /// 실패하지 않고 다른 sync 와 격리.
+    #[tokio::test]
+    async fn reindex_skips_orphan_sibling_files() {
+        let dir = fresh_tmp("sibling-orphan");
+        let store = setup_store(&dir).await;
+        let paths = store.paths.clone();
+
+        // quest 파일 0개. sibling 파일만 존재 — 정상 quest 없으니 orphan.
+        std::fs::write(
+            paths.quests_dir().join("ZZZ-999.comments.md"),
+            "<!-- og-comment id=\"1\" ts=\"\" author=\"\" -->\norphan\n",
+        )
+        .unwrap();
+        std::fs::write(
+            paths.quests_dir().join("ZZZ-999.memo.md"),
+            "orphan memo",
+        )
+        .unwrap();
+
+        let report = reindex(&store).await.unwrap();
+        assert_eq!(report.comments_loaded, 0);
+        assert_eq!(report.memos_loaded, 0);
+        // 둘 다 skipped 에 경고로.
+        assert_eq!(report.skipped.len(), 2, "orphan sibling 2 건: {:?}", report.skipped);
+        assert!(report.skipped.iter().all(|(_, msg)| msg.contains("no matching quest")));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-102: 두 번 reindex 해도 quest_comments / quest_memos 가 중복되지
+    /// 않아야 (DELETE 가 정상 동작).
+    #[tokio::test]
+    async fn reindex_twice_is_idempotent_for_siblings() {
+        let dir = fresh_tmp("sibling-idem");
+        let store = setup_store(&dir).await;
+        let paths = store.paths.clone();
+
+        let qf = QuestFile {
+            frontmatter: QuestFrontmatter {
+                quest_id: "DEV-001".into(),
+                title: "t".into(),
+                status: "open".into(),
+                urgency: 3,
+                parent: None,
+                prerequisites: vec![],
+                created_at: "2026-01-01T00:00:00Z".into(),
+                updated_at: "2026-01-01T00:00:00Z".into(),
+                deleted: false,
+                desired_due: None,
+                required_due: None,
+                tags: vec![],
+            },
+            description: String::new(),
+            auto_block: String::new(),
+        };
+        qf.write(paths.quest_path("DEV-001")).unwrap();
+        std::fs::write(
+            paths.quests_dir().join("DEV-001.comments.md"),
+            "<!-- og-comment id=\"1\" ts=\"\" author=\"\" -->\nbody\n",
+        )
+        .unwrap();
+        std::fs::write(paths.quests_dir().join("DEV-001.memo.md"), "memo").unwrap();
+
+        let r1 = reindex(&store).await.unwrap();
+        let r2 = reindex(&store).await.unwrap();
+        assert_eq!(r1.comments_loaded, 1);
+        assert_eq!(r2.comments_loaded, 1, "재실행도 1 (중복 없음)");
+        let n_c: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM quest_comments")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        let n_m: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM quest_memos")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(n_c, 1);
+        assert_eq!(n_m, 1);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-134: 캠페인 sibling (`C-001.comments.md` / `.memo.md`) 이
+    /// (a) 캠페인 본문으로 오인되지 않고 (BUG-047 의 캠페인판)
+    /// (b) campaign_comments / campaign_memos 캐시로 적재되는지.
+    #[tokio::test]
+    async fn reindex_loads_campaign_siblings_without_misparse() {
+        let dir = fresh_tmp("camp-siblings");
+        let store = setup_store(&dir).await;
+        let paths = store.paths.clone();
+        std::fs::create_dir_all(paths.campaigns_dir()).unwrap();
+
+        // 캠페인 본문 + sibling 2종.
+        std::fs::write(
+            paths.campaigns_dir().join("C-001.md"),
+            "+++\ncampaign_id = \"C-001\"\ntitle = \"camp\"\nstatus = \"active\"\ncreated_at = \"x\"\nupdated_at = \"x\"\n+++\nbody\n",
+        )
+        .unwrap();
+        std::fs::write(
+            paths.campaign_comments_path("C-001"),
+            "<!-- og-comment id=\"1\" ts=\"2026-06-12T10:00:00+09:00\" author=\"alice\" -->\ncamp comment\n",
+        )
+        .unwrap();
+        std::fs::write(paths.campaign_memo_path("C-001"), "camp memo").unwrap();
+
+        let report = reindex(&store).await.unwrap();
+        assert_eq!(report.campaigns_loaded, 1, "본문 1개만 캠페인으로");
+        assert!(
+            report.skipped.is_empty(),
+            "sibling 이 본문 오인 / skip 경고를 내면 안 됨: {:?}",
+            report.skipped
+        );
+        let n_c: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM campaign_comments")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        let n_m: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM campaign_memos")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!((n_c, n_m), (1, 1));
+
+        // idempotent — 재실행에도 중복 없음.
+        reindex(&store).await.unwrap();
+        let n_c2: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM campaign_comments")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(n_c2, 1);
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[tokio::test]
@@ -447,6 +1035,7 @@ mod tests {
                 deleted: false,
                 desired_due: None,
                 required_due: None,
+                tags: vec![],
             },
             description: "body".into(),
             auto_block: String::new(),
@@ -466,6 +1055,7 @@ mod tests {
                 deleted: false,
                 desired_due: None,
                 required_due: None,
+                tags: vec![],
             },
             description: String::new(),
             auto_block: String::new(),
@@ -510,6 +1100,51 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// BUG-060 후속: 범위 밖 urgency 는 skipped 경고 + **raw 값 그대로 적재**
+    /// (incremental sync 와 일관 + GUI 가 경고 띄울 수 있도록). clamp 는 GUI 표시
+    /// 계층에서만. quest 자체는 잃지 않음.
+    #[tokio::test]
+    async fn reindex_keeps_raw_out_of_range_urgency_with_warning() {
+        let dir = fresh_tmp("urgency-raw");
+        let store = setup_store(&dir).await;
+        let paths = GuildPaths::new(&dir);
+
+        let q = QuestFile {
+            frontmatter: QuestFrontmatter {
+                quest_id: "DEV-001".into(),
+                title: "bad urgency".into(),
+                status: "open".into(),
+                urgency: 99,
+                parent: None,
+                prerequisites: vec![],
+                created_at: "x".into(),
+                updated_at: "x".into(),
+                deleted: false,
+                desired_due: None,
+                required_due: None,
+                tags: vec![],
+            },
+            description: String::new(),
+            auto_block: String::new(),
+        };
+        q.write(paths.quest_path("DEV-001")).unwrap();
+
+        let report = reindex(&store).await.unwrap();
+        assert_eq!(report.quests_loaded, 1, "clamp 일 뿐 quest 는 적재");
+        assert!(
+            report.skipped.iter().any(|(_, msg)| msg.contains("urgency 99")),
+            "skipped 에 경고: {:?}",
+            report.skipped
+        );
+        let u: i64 = sqlx::query_scalar("SELECT urgency FROM quests WHERE number = 1")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(u, 99, "raw 값(99) 그대로 적재 — clamp 는 GUI 표시 계층에서");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[tokio::test]
     async fn reindex_skips_invalid_files() {
         let dir = fresh_tmp("invalid");
@@ -530,6 +1165,7 @@ mod tests {
                 deleted: false,
                 desired_due: None,
                 required_due: None,
+                tags: vec![],
             },
             description: String::new(),
             auto_block: String::new(),
@@ -566,6 +1202,7 @@ mod tests {
                 deleted: false,
                 desired_due: None,
                 required_due: None,
+                tags: vec![],
             },
             description: String::new(),
             auto_block: String::new(),
@@ -632,6 +1269,7 @@ mod tests {
                 deleted: false,
                 desired_due: None,
                 required_due: None,
+                tags: vec![],
             },
             description: String::new(),
             auto_block: String::new(),
@@ -677,6 +1315,7 @@ mod tests {
                 deleted: false,
                 desired_due: None,
                 required_due: None,
+                tags: vec![],
             },
             description: String::new(),
             auto_block: String::new(),
@@ -739,6 +1378,7 @@ mod tests {
                 deleted: false,
                 desired_due: None,
                 required_due: None,
+                tags: vec![],
             },
             description: String::new(),
             auto_block: String::new(),
@@ -788,6 +1428,7 @@ mod tests {
                 deleted: false,
                 desired_due: None,
                 required_due: None,
+                tags: vec![],
             },
             description: String::new(),
             auto_block: String::new(),
@@ -807,6 +1448,7 @@ mod tests {
                 deleted: false,
                 desired_due: None,
                 required_due: None,
+                tags: vec![],
             },
             description: String::new(),
             auto_block: String::new(),

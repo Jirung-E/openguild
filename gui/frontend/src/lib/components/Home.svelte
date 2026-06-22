@@ -16,19 +16,11 @@
 	import CampaignConveyor from './CampaignConveyor.svelte';
 	// DEV-076: 마감 임박 / Overdue 퀘스트 (Quest Board 노드 모양 carousel).
 	import QuestNodeConveyor from './QuestNodeConveyor.svelte';
-	import type {
-		CampaignSummary,
-		Quest,
-		QuestStatus,
-		QuestType
-	} from '$lib/types';
+	import type { CampaignSummary, Quest, QuestStatus, QuestType } from '$lib/types';
 	import { metaApi } from '$lib/api/meta';
+	import { isCampaignDone } from '$lib/utils/campaign-progress';
 	// BUG-025: 캠페인 목록 페이지의 sort 옵션을 Home 카드에도 적용.
-	import {
-		loadCampaignSort,
-		sortCampaigns,
-		type CampaignSortMode
-	} from '$lib/utils/campaign-sort';
+	import { loadCampaignSort, sortCampaigns, type CampaignSortMode } from '$lib/utils/campaign-sort';
 
 	const RECENT_QUEST_LIMIT = 10;
 	const UPCOMING_WINDOW_DAYS = 7;
@@ -55,7 +47,7 @@
 	// (목록 페이지 다녀와도 즉시 반영).
 	let sort = $state<CampaignSortMode>('recent');
 
-	onMount(async () => {
+	async function loadHomeData() {
 		try {
 			const [a, q, t, s] = await Promise.all([
 				campaignsApi.activeSummaries(),
@@ -72,6 +64,22 @@
 		} finally {
 			loading = false;
 		}
+	}
+
+	// DEV-095: Nav reindex 후 데이터 reload — store-bump subscribe.
+	import { reindexBump } from '$lib/stores/reindex';
+	let lastBump = $state(0);
+	$effect(() => {
+		const bump = $reindexBump;
+		if (bump !== lastBump && bump > 0) {
+			lastBump = bump;
+			loading = true;
+			loadHomeData();
+		}
+	});
+
+	onMount(async () => {
+		await loadHomeData();
 		// BUG-025: localStorage 의 sort 옵션 적용 (캠페인 목록 페이지에서 변경
 		// 했을 수 있음). 매번 mount 마다 새로 읽음.
 		sort = loadCampaignSort();
@@ -132,7 +140,7 @@
 	function requiredDueMs(q: Quest): number | null {
 		const q_due = q.required_due?.trim() || null;
 		const c_due = q.earliest_campaign_due?.trim() || null;
-		const earliest = q_due && c_due ? (q_due <= c_due ? q_due : c_due) : (q_due || c_due);
+		const earliest = q_due && c_due ? (q_due <= c_due ? q_due : c_due) : q_due || c_due;
 		if (!earliest) return null;
 		// 자정 비교가 자연스러움: 만료 == 그 날 끝.
 		const t = new Date(`${earliest}T23:59:59`).getTime();
@@ -169,6 +177,20 @@
 		return rows;
 	});
 
+	// DEV-142 후속: 미해결 토론 댓글이 달린 퀘스트 — 홈에 '마감 지난 퀘스트' 와
+	// 같은 방식(QuestNodeConveyor)으로 표시. 미해결 토론은 해결 전까지 완료 전환이
+	// 막히는(DEV-142) 액션 아이템이라 눈에 띄어야 한다.
+	let discussionQuests = $derived.by(() => {
+		const rows = allQuests.filter((q) => (q.discussion_unresolved ?? 0) > 0);
+		// 미해결 토론 수 많은 순 → 같은 수면 최근 수정 순.
+		rows.sort(
+			(a, b) =>
+				(b.discussion_unresolved ?? 0) - (a.discussion_unresolved ?? 0) ||
+				(b.updated_at ?? '').localeCompare(a.updated_at ?? '')
+		);
+		return rows;
+	});
+
 	let upcomingSummaries = $derived.by(() => {
 		const t = now;
 		const winEnd = t + UPCOMING_WINDOW_DAYS * 24 * 60 * 60 * 1000;
@@ -198,18 +220,19 @@
 		return futureSorted.slice(0, 1);
 	});
 
-	// DEV-080 → DEV-081: 마감 지난 캠페인 — 체크리스트가 있고 미완료이며 ended_at 이 지난 active 캠페인.
+	// DEV-080 → DEV-081 → DEV-093 fix2: 마감 지난 캠페인.
 	//
 	// 필터:
-	//   - checklist_total > 0  (체크리스트 비어있는 캠페인은 "달성" 개념 자체가 모호 → 제외)
-	//   - progress < 1.0       (100% 달성한 건 실질적으로 끝)
+	//   - 체크리스트 또는 연결 quest 중 적어도 하나가 있음 (둘 다 없으면 "달성" 모호 → 제외)
+	//   - "완료" 상태가 아님 (`isCampaignDone` — 체크리스트 + quest 양쪽 다 100% 가 아님)
 	//   - ended_at 지남
-	// 위치는 곧 시작 아래. 모양 / 동작은 upcoming 과 동일 (CampaignConveyor 재사용).
 	let overdueCampaigns = $derived.by(() => {
 		const t = now;
 		const rows = allActive.filter((c) => {
-			if (c.checklist_total === 0) return false;
-			if (c.progress >= 1.0) return false;
+			const hasChecklist = c.checklist_total > 0;
+			const hasQuests = (c.quest_total ?? 0) > 0;
+			if (!hasChecklist && !hasQuests) return false;
+			if (isCampaignDone(c)) return false;
 			const end = dateEndMs(c.ended_at);
 			return end !== null && end < t;
 		});
@@ -279,6 +302,17 @@
 			</section>
 		{/if}
 
+		<!-- DEV-142 후속: 미해결 토론 댓글 퀘스트 (있을 때만) ──── -->
+		{#if discussionQuests.length > 0}
+			<section class="block">
+				<h2>
+					토론 댓글
+					<span class="count overdue">({discussionQuests.length})</span>
+				</h2>
+				<QuestNodeConveyor quests={discussionQuests} mode="overdue" />
+			</section>
+		{/if}
+
 		<!-- DEV-076: 마감 임박 퀘스트 ─────────────────── -->
 		{#if imminentQuests.length > 0}
 			<section class="block">
@@ -301,10 +335,7 @@
 				<ul class="quest-list">
 					{#each recentQuests as q (q.id)}
 						<li>
-							<a
-								class="quest-row"
-								href={`/quests/${encodeURIComponent(q.quest_id)}?from=home`}
-							>
+							<a class="quest-row" href={`/quests/${encodeURIComponent(q.quest_id)}?from=home`}>
 								<span class="badge type" style:--c={typeColor(q.type_prefix)}>
 									{q.quest_id}
 								</span>
@@ -324,36 +355,47 @@
 <style>
 	.home {
 		padding: 1.25rem 1.5rem 2rem;
-		max-width: 1100px;
+		max-width: var(--content-max-width, 1100px);
 		margin: 0 auto;
 	}
-	.state { padding: 2rem 0; color: #8b949e; font-size: 0.875rem; }
-	.state.error { color: #f85149; }
+	.state {
+		padding: 2rem 0;
+		color: var(--text-muted);
+		font-size: 0.875rem;
+	}
+	.state.error {
+		color: var(--danger);
+	}
 
-	.block { margin-bottom: 2rem; }
+	.block {
+		margin-bottom: 2rem;
+	}
 	.block h2 {
 		font-size: 1.05rem;
 		font-weight: 600;
-		color: #c9d1d9;
+		color: var(--text);
 		margin: 0 0 0.4rem 0;
 	}
 	.block h3 {
 		font-size: 0.8rem;
 		font-weight: 500;
-		color: #8b949e;
+		color: var(--text-muted);
 		margin: 1rem 0 0.2rem 0;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 	}
 	/* BUG-028: 섹션 제목의 (n) 개수 — 흐릿한 회색. */
 	.count {
-		color: #6e7681;
+		color: var(--text-faint);
 		font-weight: 400;
 		font-size: 0.85em;
 		margin-left: 0.25rem;
 	}
 	/* DEV-076: overdue 개수는 빨간색으로 강조 (시급한 시각 경고). */
-	.count.overdue { color: #f85149; font-weight: 600; }
+	.count.overdue {
+		color: var(--danger);
+		font-weight: 600;
+	}
 
 	.actions {
 		display: flex;
@@ -363,25 +405,34 @@
 	.btn-link {
 		padding: 0.35rem 0.85rem;
 		background: transparent;
-		border: 1px solid #30363d;
+		border: 1px solid var(--border);
 		border-radius: 6px;
-		color: #c9d1d9;
+		color: var(--text);
 		font-size: 0.825rem;
 		cursor: pointer;
 	}
-	.btn-link:hover { background: #21262d; }
+	.btn-link:hover {
+		background: var(--bg-subtle);
+	}
 	.btn-primary {
 		padding: 0.35rem 0.85rem;
-		background: #238636;
-		border: 1px solid #2ea043;
+		background: var(--btn-primary-bg);
+		border: 1px solid var(--btn-primary-border);
 		border-radius: 6px;
-		color: #fff;
+		color: var(--btn-primary-text);
 		font-size: 0.825rem;
 		cursor: pointer;
 	}
-	.btn-primary:hover { background: #2ea043; }
+	.btn-primary:hover {
+		background: var(--btn-primary-bg-hover);
+		border-color: var(--btn-primary-border-hover);
+	}
 
-	.empty { color: #6e7681; font-size: 0.875rem; padding: 0.75rem 0; }
+	.empty {
+		color: var(--text-faint);
+		font-size: 0.875rem;
+		padding: 0.75rem 0;
+	}
 
 	.quest-list {
 		list-style: none;
@@ -396,14 +447,19 @@
 		align-items: center;
 		gap: 0.6rem;
 		padding: 0.5rem 0.75rem;
-		background: #161b22;
-		border: 1px solid #21262d;
+		background: var(--bg-elevated);
+		border: 1px solid var(--bg-subtle);
 		border-radius: 6px;
 		color: inherit;
 		text-decoration: none;
-		transition: border-color 0.15s, background 0.15s;
+		transition:
+			border-color 0.15s,
+			background 0.15s;
 	}
-	.quest-row:hover { border-color: #484f58; background: #1c2128; }
+	.quest-row:hover {
+		border-color: var(--text-faint);
+		background: var(--bg-subtle);
+	}
 
 	/* BUG-021: Quest List 의 pill 스타일 통일 (color-mix bg + border). */
 	.badge {
@@ -422,7 +478,7 @@
 	.title {
 		flex: 1;
 		font-size: 0.875rem;
-		color: #c9d1d9;
+		color: var(--text);
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;

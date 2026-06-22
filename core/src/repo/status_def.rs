@@ -14,6 +14,15 @@ pub struct StatusFile {
     pub name_en: String,
     pub name_ko: String,
     pub color: String,
+    /// DEV-093: 이 status 가 "완료" 로 카운트되는지 — 캠페인 진행률의
+    /// `quest_done / quest_total` 분자 계산용. 기본 false. seed 의 `done` /
+    /// `cancelled` 는 true. frontmatter 에서 키 자체 생략 가능 — 그때 false.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub counts_as_done: bool,
+}
+
+fn is_false(b: &bool) -> bool {
+    !b
 }
 
 impl StatusFile {
@@ -84,6 +93,7 @@ mod tests {
             name_en: "In Progress".into(),
             name_ko: "진행 중".into(),
             color: "#4A90D9".into(),
+            counts_as_done: false,
         };
         let s = st.serialize();
         let parsed = StatusFile::parse(&s).unwrap();
@@ -98,6 +108,7 @@ mod tests {
             name_en: "Done".into(),
             name_ko: "완료".into(),
             color: "#30A46C".into(),
+            counts_as_done: false,
         };
         let path = dir.join("3-done.toml");
         st.write(&path).unwrap();

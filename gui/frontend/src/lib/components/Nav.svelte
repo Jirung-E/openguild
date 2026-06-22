@@ -1,82 +1,177 @@
 <script lang="ts">
 	import { page } from '$app/stores';
-	import { goto } from '$app/navigation';
-	import NewQuestModal from './NewQuestModal.svelte';
-	import { flashQuestId } from '$lib/stores';
-	import type { Quest } from '$lib/types';
+	import { onMount } from 'svelte';
+	import { adminApi } from '$lib/api/admin';
+	import { bumpReindex } from '$lib/stores/reindex';
+	import { detectEnvironment } from '$lib/api/transport';
+	// DEV-138: 설정 퀵메뉴 — ⚙ 클릭 시 dropdown (테마/UI크기/폭 + 전체 설정).
+	// DEV-125 의 standalone 테마 순환 버튼은 퀵메뉴로 흡수.
+	import SettingsQuickMenu from './SettingsQuickMenu.svelte';
+	let quickMenuOpen = $state(false);
 
-	// DEV-011: Home 탭 추가. URL `/` 가 ?view 없으면 home 기본.
+	// DEV-141: 현재 진입한 길드 이름 — 어느 길드인지 한눈에. Tauri 전용 커맨드라
+	// 데스크탑 모드에서만 표시 (브라우저/server 모드는 빈 값 → 미표시).
+	let guildName = $state('');
+	onMount(async () => {
+		if (detectEnvironment() !== 'tauri') return;
+		try {
+			const { invoke } = await import('@tauri-apps/api/core');
+			guildName = await invoke<string>('current_guild_name');
+		} catch {
+			/* 길드 모드 아님 / 조회 실패 — 표시 안 함 */
+		}
+	});
+
+	// DEV-011: Home 탭. URL `/` 가 ?view 없으면 home 기본.
 	type View = 'home' | 'board' | 'list';
 
-	let currentView: View = $derived(
-		($page.url.searchParams.get('view') as View | null) ?? 'home'
-	);
+	let currentView: View = $derived(($page.url.searchParams.get('view') as View | null) ?? 'home');
 
 	let onAdminPath = $derived($page.url.pathname.startsWith('/admin'));
 	let onRootPath = $derived($page.url.pathname === '/');
-	// BUG-022: + New Quest 버튼은 Quest Board / Quest List 컨텍스트에서만.
-	// Home / Admin / Campaigns / Quest Detail 등에서는 숨김.
-	let showNewQuestButton = $derived(
-		onRootPath && (currentView === 'board' || currentView === 'list')
-	);
+	let onSettingsPath = $derived($page.url.pathname.startsWith('/settings'));
+	// DEV-016: 길드 규칙 페이지.
+	let onRulesPath = $derived($page.url.pathname.startsWith('/rules'));
 
-	let showNewQuest = $state(false);
+	// DEV-095: Reindex 버튼 — 사용자 의견 "Admin 페이지 아닌 일반 사용자도
+	// 접근 가능". 외부 편집 / `openguild quest new` CLI / git pull 등으로
+	// `.guild/quests/*.md` 가 바뀌었을 때 cache 정합 회복.
+	type ReindexState =
+		| { status: 'idle' }
+		| { status: 'running' }
+		| { status: 'done'; ts: number }
+		| { status: 'error'; message: string };
+	let reindexState = $state<ReindexState>({ status: 'idle' });
 
-	async function onCreated(quest: Quest) {
-		// 보드 뷰가 아니면(목록 뷰 등) 보드로 이동시킨 뒤 펄스
-		if ($page.url.pathname !== '/' || currentView !== 'board') {
-			await goto('/?view=board');
+	async function runReindex() {
+		reindexState = { status: 'running' };
+		try {
+			await adminApi.reindex();
+			// DEV-095 fix: invalidateAll() 은 +page.ts 의 load() 만 트리거 — 우리
+			// 페이지들은 onMount 직접 fetch 라 안 먹음. store-bump 패턴으로 페이지
+			// 가 reactive subscribe.
+			bumpReindex();
+			reindexState = { status: 'done', ts: Date.now() };
+			// 3 초 후 idle 로 — 사용자 noise 최소화.
+			setTimeout(() => {
+				if (reindexState.status === 'done') {
+					reindexState = { status: 'idle' };
+				}
+			}, 3000);
+		} catch (e) {
+			reindexState = {
+				status: 'error',
+				message: e instanceof Error ? e.message : 'reindex 실패'
+			};
 		}
-		// QuestBoard 가 store 구독해서 해당 노드로 panTo + 펄스
-		flashQuestId.set(quest.id);
 	}
 </script>
 
 <header>
 	<!-- DEV-052 후속 (4회차): 로고 클릭 → Welcome (다른 길드로 전환 / recent 관리). -->
-	<a href="/welcome" class="logo">openguild</a>
+	<a href="/welcome" class="logo">
+		openguild
+		<!-- DEV-141: 현재 길드 이름 — 로고 옆 작은 배지로 어느 길드인지 표시. -->
+		{#if guildName}
+			<span class="guild-name" title="현재 길드: {guildName}">{guildName}</span>
+		{/if}
+	</a>
 
 	<nav>
 		<a href="/" class:active={onRootPath && currentView === 'home'}>Home</a>
 		<a href="/?view=board" class:active={onRootPath && currentView === 'board'}>Quest Board</a>
 		<a href="/?view=list" class:active={onRootPath && currentView === 'list'}>Quest List</a>
 		<a href="/admin" class:active={onAdminPath}>Admin</a>
+		<!-- DEV-016: 길드 규칙 — 팀 컨벤션 / 그라운드 룰. -->
+		<a href="/rules" class:active={onRulesPath}>Rules</a>
 	</nav>
 
 	<div class="nav-right">
-		{#if showNewQuestButton}
-			<button class="btn-new" onclick={() => (showNewQuest = true)}>+ New Quest</button>
-		{/if}
+		<!-- DEV-095: 외부 편집 후 cache 정합 회복 — 일반 사용자도 한 클릭으로. -->
+		<button
+			class="btn-reindex"
+			class:running={reindexState.status === 'running'}
+			class:done={reindexState.status === 'done'}
+			class:error={reindexState.status === 'error'}
+			onclick={runReindex}
+			disabled={reindexState.status === 'running'}
+			title={reindexState.status === 'error'
+				? `Reindex 실패: ${reindexState.message}`
+				: reindexState.status === 'done'
+					? '✓ Reindex 완료'
+					: '캐시 정합 — 외부 편집 / git pull 후 한 번 클릭'}
+			aria-label="Reindex"
+		>
+			{#if reindexState.status === 'running'}
+				⟳
+			{:else if reindexState.status === 'done'}
+				✓
+			{:else if reindexState.status === 'error'}
+				⚠
+			{:else}
+				⟲
+			{/if}
+		</button>
+		<!-- DEV-084 → DEV-138: ⚙ 가 바로 페이지 이동 대신 퀵메뉴 dropdown.
+		     자주 쓰는 표시 설정은 메뉴에서 즉시, 전체 설정은 링크로. -->
+		<div class="settings-wrap">
+			<button
+				class="btn-settings"
+				class:active={onSettingsPath || quickMenuOpen}
+				onclick={() => (quickMenuOpen = !quickMenuOpen)}
+				title="설정"
+				aria-label="설정"
+				aria-expanded={quickMenuOpen}>⚙</button
+			>
+			{#if quickMenuOpen}
+				<SettingsQuickMenu onclose={() => (quickMenuOpen = false)} />
+			{/if}
+		</div>
 	</div>
 </header>
 
-{#if showNewQuest}
-	<NewQuestModal
-		onclose={() => (showNewQuest = false)}
-		oncreated={onCreated}
-	/>
-{/if}
-
 <style>
+	/* DEV-074: hardcoded color → var() 마이그레이션. */
+	/* DEV-101 fix5: height 52px → 3.25rem — UI scale 반영. 안 그러면 버튼 (rem) 만
+	   확대돼 nav 가 자식보다 작아짐. */
 	header {
 		display: flex;
 		align-items: center;
 		gap: 2rem;
 		padding: 0 1.5rem;
-		height: 52px;
-		background: #1a1a2e;
-		border-bottom: 1px solid #2a2a4a;
+		height: 3.25rem;
+		background: var(--nav-bg);
+		border-bottom: 1px solid var(--nav-border);
 		position: sticky;
 		top: 0;
 		z-index: 100;
 	}
 
 	.logo {
+		display: inline-flex;
+		align-items: baseline;
+		gap: 0.5rem;
 		font-size: 1.1rem;
 		font-weight: 700;
-		color: #c9d1d9;
+		color: var(--text);
 		text-decoration: none;
 		letter-spacing: 0.02em;
+	}
+
+	/* DEV-141: 현재 길드 이름 배지 — 로고보다 작고 muted, accent 보더로 구분. */
+	.guild-name {
+		font-size: 0.75rem;
+		font-weight: 600;
+		letter-spacing: 0;
+		color: var(--accent);
+		background: color-mix(in srgb, var(--accent) 12%, transparent);
+		border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+		border-radius: 5px;
+		padding: 0.1rem 0.4rem;
+		max-width: 12rem;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	nav {
@@ -89,39 +184,107 @@
 		padding: 0.35rem 0.85rem;
 		border-radius: 6px;
 		font-size: 0.875rem;
-		color: #8b949e;
+		color: var(--text-muted);
 		text-decoration: none;
-		transition: background 0.15s, color 0.15s;
+		transition:
+			background 0.15s,
+			color 0.15s;
 	}
 
 	nav a:hover {
-		background: #2a2a4a;
-		color: #c9d1d9;
+		background: var(--nav-hover-bg);
+		color: var(--text);
 	}
 
 	nav a.active {
-		background: #2a2a4a;
-		color: #ffffff;
-		font-weight: 500;
+		background: var(--nav-hover-bg);
+		color: var(--text);
 	}
 
 	.nav-right {
 		display: flex;
 		align-items: center;
+		gap: 0.5rem;
 		margin-left: auto;
 	}
 
-	.btn-new {
-		padding: 0.35rem 1rem;
-		background: #238636;
-		border: 1px solid #2ea043;
-		border-radius: 6px;
-		color: #fff;
-		font-size: 0.825rem;
-		font-weight: 500;
-		cursor: pointer;
-		transition: background 0.15s;
-		white-space: nowrap;
+	/* DEV-138: 퀵메뉴 anchor — dropdown 의 position:absolute 기준점. */
+	.settings-wrap {
+		position: relative;
 	}
-	.btn-new:hover { background: #2ea043; }
+
+	/* DEV-084: 설정 진입 — 톱니바퀴 아이콘. DEV-138 부터 button (퀵메뉴 토글). */
+	.btn-settings {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 2rem;
+		height: 2rem;
+		border-radius: 6px;
+		font-size: 1.1rem;
+		line-height: 1;
+		color: var(--text-muted);
+		background: transparent;
+		border: none;
+		cursor: pointer;
+		text-decoration: none;
+		transition:
+			background 0.15s,
+			color 0.15s,
+			transform 0.2s;
+	}
+	.btn-settings:hover {
+		background: var(--nav-hover-bg);
+		color: var(--text);
+		transform: rotate(45deg);
+	}
+	.btn-settings.active {
+		background: var(--nav-hover-bg);
+		color: var(--text);
+	}
+
+	/* DEV-095: Reindex 버튼 — 설정 옆. */
+	.btn-reindex {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 2rem;
+		height: 2rem;
+		border-radius: 6px;
+		font-size: 1.05rem;
+		line-height: 1;
+		color: var(--text-muted);
+		background: transparent;
+		border: none;
+		cursor: pointer;
+		transition:
+			background 0.15s,
+			color 0.15s,
+			transform 0.4s;
+	}
+	.btn-reindex:hover:not(:disabled) {
+		background: var(--nav-hover-bg);
+		color: var(--text);
+	}
+	.btn-reindex:disabled {
+		cursor: wait;
+	}
+	.btn-reindex.running {
+		color: var(--accent);
+		animation: spin 1.2s linear infinite;
+	}
+	.btn-reindex.done {
+		color: var(--success);
+	}
+	.btn-reindex.error {
+		color: var(--danger);
+	}
+	@keyframes spin {
+		from {
+			transform: rotate(0deg);
+		}
+		to {
+			transform: rotate(360deg);
+		}
+	}
 </style>
