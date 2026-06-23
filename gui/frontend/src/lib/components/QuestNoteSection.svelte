@@ -30,8 +30,9 @@
 	import { editorSettings } from '$lib/stores/editorSettings';
 	// DEV-140 후속: 메모 편집기에도 XXX-NNN → [[...]] 자동완성.
 	import { crossLinkAutocomplete } from '$lib/utils/editor-links';
-	// DEV-069 후속(admin #11): 메모에도 첨부 — paste/drag&drop/버튼.
-	import { attachmentExtension, pickAndAttach } from '$lib/utils/editor-attach';
+	// DEV-069 후속(admin #11): 메모에도 첨부 — paste/drag&drop.
+	// DEV-188: '첨부' 버튼은 제거(메모는 개인용). paste/drag&drop 첨부는 유지.
+	import { attachmentExtension } from '$lib/utils/editor-attach';
 	// DEV-074 fix15: CodeMirror native scrollbar 대신 overlay.
 	import OverlayScrollbar from './OverlayScrollbar.svelte';
 
@@ -56,11 +57,72 @@
 	let content = $state<string | null>(null);
 
 	// DEV-107 fix1: 섹션 접기 (메모) — 사용자 피드백 반영해 localStorage 영속
-	// 제거. 매 진입 시 펼침 기본.
+	// 제거. 매 진입 시 펼침 기본. (DEV-189: '접기'는 영속 X 그대로 유지.)
 	let collapsed = $state(false);
 	function toggleCollapsed() {
 		collapsed = !collapsed;
 	}
+
+	// DEV-189: 메모 표시 높이 모드 — 'expand'(전체 높이, 기본) / 'fixed'(고정
+	// 높이 + 내부 스크롤). 접기(collapsed)와 별개. fixed/expand 만 localStorage
+	// 영속 — 접기는 영속하지 않음(매 진입 시 펼침 유지).
+	const HEIGHT_MODE_KEY = 'openguild.memoHeightMode';
+	function loadHeightMode(): 'expand' | 'fixed' {
+		try {
+			return localStorage.getItem(HEIGHT_MODE_KEY) === 'fixed' ? 'fixed' : 'expand';
+		} catch {
+			return 'expand';
+		}
+	}
+	let heightMode = $state<'expand' | 'fixed'>(loadHeightMode());
+	function toggleHeightMode() {
+		heightMode = heightMode === 'fixed' ? 'expand' : 'fixed';
+		try {
+			localStorage.setItem(HEIGHT_MODE_KEY, heightMode);
+		} catch {
+			/* ignore */
+		}
+	}
+
+	// DEV-189(admin 후속): 고정 모드 높이는 드래그로 조절 가능 + 영속.
+	const MEMO_FIXED_HEIGHT_KEY = 'openguild.memoFixedHeight';
+	function loadMemoFixedHeight(): number {
+		try {
+			const n = parseInt(localStorage.getItem(MEMO_FIXED_HEIGHT_KEY) ?? '', 10);
+			if (Number.isFinite(n) && n >= 120 && n <= 2000) return n;
+		} catch {
+			/* ignore */
+		}
+		return 360;
+	}
+	let memoFixedHeight = $state(loadMemoFixedHeight());
+	let memoBodyEl: HTMLDivElement | undefined = $state(undefined);
+	let memoFixedSaveTimer: ReturnType<typeof setTimeout> | null = null;
+	// 고정 모드에서 사용자가 resize 핸들로 높이를 바꾸면 디바운스 저장.
+	// (overflow:auto + 고정 height 라 콘텐츠 변화로는 box 높이가 안 바뀜 → resize 만 포착.)
+	$effect(() => {
+		if (heightMode !== 'fixed' || !memoBodyEl) return;
+		const el = memoBodyEl;
+		const obs = new ResizeObserver((entries) => {
+			for (const e of entries) {
+				// border-box 높이로 읽어야 style:height(=border-box, 전역 border-box)와
+				// 일치 — contentRect 는 padding/border 제외라 재로드마다 값이 줄어든다.
+				const h = Math.round(e.borderBoxSize?.[0]?.blockSize ?? el.offsetHeight);
+				if (h < 120 || h > 2000) continue;
+				memoFixedHeight = h;
+				if (memoFixedSaveTimer) clearTimeout(memoFixedSaveTimer);
+				memoFixedSaveTimer = setTimeout(() => {
+					try {
+						localStorage.setItem(MEMO_FIXED_HEIGHT_KEY, String(h));
+					} catch {
+						/* ignore */
+					}
+				}, 250);
+			}
+		});
+		obs.observe(el);
+		return () => obs.disconnect();
+	});
 
 	let editMode = $state(false);
 	// DEV-153: 메모 편집 중이면 이탈 가드에 보고. (이 컴포넌트는 항상 memo —
@@ -203,6 +265,18 @@
 			<button class="sec-add-btn" onclick={enterEdit}>
 				{content && content.trim() ? '✎ 편집' : `+ ${label.emptyAction}`}
 			</button>
+			<!-- DEV-189: 표시 높이 모드 토글 (고정 ↔ 확장). 내용 있을 때만. -->
+			{#if content && content.trim()}
+				<button
+					class="sec-mode-btn"
+					onclick={toggleHeightMode}
+					title={heightMode === 'fixed'
+						? '메모를 전체 높이로 펼치기 (확장)'
+						: '메모를 고정 높이 + 스크롤로 (고정)'}
+				>
+					{heightMode === 'fixed' ? '⤢ 확장' : '⊟ 고정'}
+				</button>
+			{/if}
 		{/if}
 	</div>
 
@@ -215,21 +289,9 @@
 			<!-- BUG: editor 섹션은 <label> 금지 — 안의 '📎 첨부' 버튼(labelable)이
 		     라벨 클릭마다 활성화돼 파일창이 뜬다(admin #13). div 로. -->
 			<div class="field-label">
-				<span>{label.help}</span>
-				<!-- DEV-069 후속: 첨부 — 버튼/드래그&드랍/Ctrl+V 동일 업로드. -->
-				<div class="editor-toolbar">
-					<button
-						type="button"
-						class="btn-attach"
-						onclick={() =>
-							editorView &&
-							pickAndAttach(editorView, (msg) => (saveError = `첨부 실패: ${msg}`), undefined, {
-								mediaOnly: true
-							})}
-						title="이미지·동영상 첨부 (드래그&드랍 / Ctrl+V 도 가능). 다른 파일은 첨부 섹션을 사용하세요."
-						>📎 첨부</button
-					>
-				</div>
+				<!-- DEV-188: '첨부' 버튼 제거(메모는 개인용). 이미지·동영상은
+				     드래그&드랍 / Ctrl+V 로 첨부 가능(attachmentExtension). -->
+				<span>{label.help} (이미지·동영상은 드래그&드랍 또는 Ctrl+V 로 첨부)</span>
 				<div class="editor-wrap" bind:this={editorContainer}></div>
 				<!-- DEV-074 fix15: CodeMirror native scrollbar 대신 overlay. -->
 				{#if cmScroller}
@@ -244,7 +306,16 @@
 			</div>
 			{#if saveError}<p class="state err">{saveError}</p>{/if}
 		{:else if content && content.trim()}
-			<MarkdownView source={content} />
+			<!-- DEV-189: 'fixed' 모드면 고정 높이 + 내부 스크롤(드래그로 크기 조절),
+			     'expand' 면 전체 높이. -->
+			<div
+				class="memo-body"
+				class:fixed={heightMode === 'fixed'}
+				bind:this={memoBodyEl}
+				style:height={heightMode === 'fixed' ? `${memoFixedHeight}px` : null}
+			>
+				<MarkdownView source={content} />
+			</div>
 		{:else}
 			<p class="no-desc">
 				{label.emptyHint}
@@ -312,6 +383,33 @@
 		color: var(--text);
 	}
 
+	/* DEV-189: 표시 높이 모드 토글 버튼. */
+	.sec-mode-btn {
+		padding: 0.15rem 0.6rem;
+		border: 1px solid var(--border);
+		border-radius: 4px;
+		background: transparent;
+		color: var(--text-muted);
+		font-size: 0.72rem;
+		cursor: pointer;
+	}
+	.sec-mode-btn:hover {
+		background: var(--bg-subtle);
+		color: var(--text);
+	}
+
+	/* DEV-189: 'fixed' 모드 — 메모 본문을 고정 높이 + 내부 스크롤. 높이는 인라인
+	   style 로 지정되며 resize 핸들로 드래그 조절 가능(영속). */
+	.memo-body.fixed {
+		overflow-y: auto;
+		resize: vertical;
+		min-height: 120px;
+		max-height: 2000px;
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		padding: 0.25rem 0.75rem;
+	}
+
 	.state {
 		color: var(--text-muted);
 		font-size: 0.825rem;
@@ -345,24 +443,6 @@
 	.field-label > span {
 		font-size: 0.75rem;
 		color: var(--text-muted);
-	}
-	/* DEV-069 후속: 첨부 툴바. */
-	.editor-toolbar {
-		display: flex;
-		gap: 0.4rem;
-		margin: 0.25rem 0;
-	}
-	.btn-attach {
-		font-size: 0.8rem;
-		padding: 0.2rem 0.6rem;
-		border-radius: 6px;
-		border: 1px solid var(--border);
-		background: var(--bg-subtle);
-		color: var(--text);
-		cursor: pointer;
-	}
-	.btn-attach:hover {
-		background: var(--bg-elevated);
 	}
 	.editor-wrap {
 		border: 1px solid var(--border);

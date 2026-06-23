@@ -267,6 +267,22 @@
 		else next.add(id);
 		collapsedBodies = next;
 	}
+
+	// DEV-190: 모든 댓글의 답글(collapsedRoots) + 본문(collapsedBodies)을 일괄
+	// 접기/펼치기. 댓글 섹션 자체 접기(collapsed)와 별개. 모든 entry 본문이
+	// 접혀있으면 '전체 펼치기', 아니면 '전체 접기'.
+	let allCollapsed = $derived(
+		entries.length > 0 && entries.every((e) => collapsedBodies.has(e.id))
+	);
+	function toggleCollapseAll() {
+		if (allCollapsed) {
+			collapsedRoots = new Set();
+			collapsedBodies = new Set();
+		} else {
+			collapsedRoots = new Set(groups.roots.map((r) => r.id));
+			collapsedBodies = new Set(entries.map((e) => e.id));
+		}
+	}
 	// 접었을 때 보여줄 1줄 미리보기 — markdown 마커 대충 제거.
 	function bodyPreview(body: string): string {
 		const firstLine =
@@ -663,6 +679,16 @@
 			<h2 class="section-title">댓글 (Comments)</h2>
 		</button>
 		<span class="count">{entries.length}</span>
+		<!-- DEV-190: 전체 접기/펼치기 — 모든 댓글 답글+본문 일괄. 섹션 토글과 별개. -->
+		{#if !collapsed && entries.length > 0}
+			<button
+				class="collapse-all-btn"
+				onclick={toggleCollapseAll}
+				title={allCollapsed ? '모든 댓글의 답글·본문 펼치기' : '모든 댓글의 답글·본문 접기'}
+			>
+				{allCollapsed ? '⊕ 전체 펼치기' : '⊖ 전체 접기'}
+			</button>
+		{/if}
 	</div>
 
 	{#if !collapsed}
@@ -868,6 +894,22 @@
 	.count {
 		font-size: 0.8rem;
 		color: var(--text-muted);
+	}
+
+	/* DEV-190: 전체 접기/펼치기 버튼 — 우측 정렬. */
+	.collapse-all-btn {
+		margin-left: auto;
+		padding: 0.15rem 0.6rem;
+		border: 1px solid var(--border);
+		border-radius: 4px;
+		background: transparent;
+		color: var(--text-muted);
+		font-size: 0.72rem;
+		cursor: pointer;
+	}
+	.collapse-all-btn:hover {
+		background: var(--bg-subtle);
+		color: var(--text);
 	}
 
 	.state {

@@ -11,6 +11,9 @@
 	import { setUnsaved } from '$lib/stores/unsaved';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
+	// DEV-192: 스크롤 위치 복원용 snapshot 타입 + 견고 복원 유틸.
+	import type { Snapshot } from './$types';
+	import { restoreScroll } from '$lib/utils/scroll-restore';
 	import { campaignsApi } from '$lib/api/campaigns';
 	import { questsApi } from '$lib/api/quests';
 	import type { CampaignDetail, CampaignLinkedQuest, Quest } from '$lib/types';
@@ -182,10 +185,12 @@
 	let showTopJump = $state(false);
 	function checkJumpVisibility() {
 		const vh = window.innerHeight;
-		showCommentsJump = commentsAnchorEl
-			? commentsAnchorEl.getBoundingClientRect().top > vh * 1.1
-			: false;
-		showMemoJump = memoAnchorEl ? memoAnchorEl.getBoundingClientRect().top > vh * 1.1 : false;
+		// DEV-191: anchor 가 보이는 밴드 [0, 1.1vh] 밖이면 표시 — 아래(내려가기)·
+		// 위(top<0, 올라가기) 양방향. 메모 영역에서도 '댓글로'가 뜬다.
+		const cTop = commentsAnchorEl?.getBoundingClientRect().top ?? null;
+		showCommentsJump = cTop !== null && (cTop > vh * 1.1 || cTop < 0);
+		const mTop = memoAnchorEl?.getBoundingClientRect().top ?? null;
+		showMemoJump = mTop !== null && (mTop > vh * 1.1 || mTop < 0);
 		showTopJump = window.scrollY > vh * 0.8;
 	}
 	function jumpToComments() {
@@ -197,6 +202,28 @@
 	function jumpToTop() {
 		window.scrollTo({ top: 0, behavior: 'smooth' });
 	}
+
+	// DEV-192: 스크롤 위치 복원 (퀘스트 상세와 동일). detail 은 onMount 후 async
+	// 로드 → 복원값을 보관했다가 로드 + 레이아웃(2 rAF) 후 instant 적용. back 버튼은
+	// 이미 history.back() 이라 popstate 복귀 시 snapshot.restore 가 발동한다.
+	let pendingScroll: number | null = null;
+	function applyPendingScroll() {
+		if (pendingScroll == null || !detail) return;
+		const y = pendingScroll;
+		pendingScroll = null;
+		restoreScroll(y);
+	}
+	export const snapshot: Snapshot<number> = {
+		capture: () => window.scrollY,
+		restore: (y) => {
+			pendingScroll = y;
+			applyPendingScroll();
+		}
+	};
+	$effect(() => {
+		void detail;
+		if (detail) applyPendingScroll();
+	});
 	onMount(() => {
 		const handler = () => checkJumpVisibility();
 		window.addEventListener('scroll', handler, { passive: true });

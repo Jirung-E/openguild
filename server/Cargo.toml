@@ -1,6 +1,6 @@
 [package]
 name = "openguild-server"
-version = "0.2.0-beta"
+version = "0.2.1-beta"
 edition = "2024"
 description = "openguild HTTP API 서버"
 

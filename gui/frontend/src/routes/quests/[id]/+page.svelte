@@ -4,6 +4,9 @@
 	// DEV-153: 편집 중이면 이탈 가드에 보고.
 	import { setUnsaved } from '$lib/stores/unsaved';
 	import { goto } from '$app/navigation';
+	// DEV-192: 스크롤 위치 복원용 snapshot 타입 + 견고 복원 유틸.
+	import type { Snapshot } from './$types';
+	import { restoreScroll } from '$lib/utils/scroll-restore';
 	import { questsApi } from '$lib/api/quests';
 	import { metaApi } from '$lib/api/meta';
 	import { campaignsApi } from '$lib/api/campaigns';
@@ -156,16 +159,18 @@
 	let showTopJump = $state(false);
 	function checkJumpVisibility() {
 		const vh = window.innerHeight;
+		// DEV-191: anchor 가 보이는 밴드 [0, 1.1vh] 밖이면 표시 — 아래(top>1.1vh,
+		// 내려가기)·위(top<0, 올라가기) 양방향. 메모 영역에서도 '댓글로'가 뜬다.
 		if (commentsAnchorEl) {
-			const r = commentsAnchorEl.getBoundingClientRect();
-			showCommentsJump = r.top > vh * 1.1;
+			const top = commentsAnchorEl.getBoundingClientRect().top;
+			showCommentsJump = top > vh * 1.1 || top < 0;
 		} else {
 			showCommentsJump = false;
 		}
-		// 메모 (DEV-123): anchor 가 viewport 아래쪽이면 표시.
+		// 메모 (DEV-123 → DEV-191): 댓글과 동일하게 양방향.
 		if (memoAnchorEl) {
-			const r = memoAnchorEl.getBoundingClientRect();
-			showMemoJump = r.top > vh * 1.1;
+			const top = memoAnchorEl.getBoundingClientRect().top;
+			showMemoJump = top > vh * 1.1 || top < 0;
 		} else {
 			showMemoJump = false;
 		}
@@ -181,6 +186,30 @@
 	function jumpToTop() {
 		window.scrollTo({ top: 0, behavior: 'smooth' });
 	}
+
+	// DEV-192: 스크롤 위치 복원. SvelteKit snapshot 으로 떠날 때 scrollY 를 캡쳐하고
+	// 뒤로/앞으로 복귀 시 복원. 단 detail 은 mount 후 async 로 로드되고 마크다운/
+	// 이미지/첨부가 이어서 레이아웃되므로, 값을 보관했다가 detail 로드 후
+	// restoreScroll(높이 안정까지 재적용) 로 정확히 복원한다.
+	let pendingScroll: number | null = null;
+	function applyPendingScroll() {
+		if (pendingScroll == null || !detail) return;
+		const y = pendingScroll;
+		pendingScroll = null;
+		restoreScroll(y);
+	}
+	export const snapshot: Snapshot<number> = {
+		capture: () => window.scrollY,
+		restore: (y) => {
+			pendingScroll = y;
+			applyPendingScroll();
+		}
+	};
+	// detail 이 (재)로드되면 대기 중인 복원 적용.
+	$effect(() => {
+		void detail;
+		if (detail) applyPendingScroll();
+	});
 
 	// 보드에서 정한 레인 순서 우선, 없는 status 는 sort_order 로 뒤에.
 	let laneOrder = $state<string[]>([]);
@@ -638,6 +667,13 @@
 	// 로 명시 origin 추적. SvelteKit / Tauri WebView 의 history stack 동작
 	// 불확실 → URL query 가 신뢰 가능.
 	function goBack() {
+		// DEV-192 (B-2a): 앱 내 히스토리가 있으면 실제 뒤로가기 → 직전 페이지의
+		// snapshot(스크롤) 복원이 발동한다. goto(push) 는 새 엔트리라 복원 안 됨.
+		// 직접 진입(히스토리 없음, length<=1) 은 아래 ?from 분기로 fallback.
+		if (window.history.length > 1) {
+			window.history.back();
+			return;
+		}
 		const from = $page.url.searchParams.get('from');
 		if (from === 'list') {
 			goto('/?view=list');
