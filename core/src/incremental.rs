@@ -247,9 +247,10 @@ pub async fn sync_changed_quest_files(store: &Store) -> AppResult<IncrementalRep
 
 /// DEV-137 (Phase 2): 단일 quest 의 lazy refresh — 상세 페이지 진입 시 호출.
 ///
-/// 그 quest 파일 하나만 stat() 으로 cached_mtime 과 비교 (~1ms). 외부 편집이
-/// 감지되면 그 행만 re-parse + UPDATE 후 `true` 반환 (호출자는 그냥 DB read
-/// 를 이어가면 최신). 파일 없음 / DB 에 없음 / 변경 없음 → `false`.
+/// BUG-089: 상세 진입 시 그 quest 파일 하나를 *항상* re-parse + UPDATE 한다
+/// (파일 1개라 저렴). mtime 게이트로 건너뛰면 다른 openguild 프로세스(CLI/server)
+/// 의 편집을 놓치기 때문. mtime 비교는 파일 write-back(updated_at 보정) 여부에만
+/// 쓰고, 반환값 = '외부 편집 감지 여부'. 파일 없음 / DB 에 없음 → `false`.
 ///
 /// Phase 1 과 동일한 의도적 한계: frontmatter 의 prereq / tags / parent
 /// cascade 는 여기서 재계산하지 않음 — 그건 시동 sync 의 풀 reindex fallback
@@ -271,9 +272,13 @@ pub async fn refresh_quest_if_stale(store: &Store, slug: &str) -> AppResult<bool
     let Some((id, cached_mtime)) = row else {
         return Ok(false); // 신규 파일 — 시동 sync / reindex 영역.
     };
-    if file_mtime <= cached_mtime {
-        return Ok(false);
-    }
+    // BUG-089: 콘텐츠 re-read + UPDATE 는 상세 진입 시 *항상* 수행한다. mtime
+    // 게이트로 re-read 를 건너뛰면, 다른 openguild 프로세스(CLI/server)가 파일 +
+    // cached_mtime 을 함께 갱신한 경우 이 프로세스의 index.db 뷰가 stale 인 채
+    // 남는다(게이트가 "이미 동기화됨"으로 오판). 파일 1개 re-parse 는 저렴.
+    // 단, 파일 write-back(updated_at 보정)은 매 진입 churn 을 유발하므로 실제
+    // 외부 편집(file_mtime > cached_mtime)일 때만.
+    let externally_edited = file_mtime > cached_mtime;
 
     let qf = QuestFile::read(&path)
         .map_err(crate::error::AppError::Internal)?;
@@ -286,12 +291,20 @@ pub async fn refresh_quest_if_stale(store: &Store, slug: &str) -> AppResult<bool
         return Ok(false); // unknown status — 풀 reindex 가 처리할 영역.
     };
     let created_at = crate::time::normalize_legacy_ts(&qf.frontmatter.created_at);
-    // BUG-080: 외부 편집 → 파일 mtime 으로 updated_at 보정 + frontmatter write-back.
-    let (edit_iso, effective_mtime) = writeback_external_edit_ts(&path);
-    let updated_at = if edit_iso.is_empty() {
-        crate::time::normalize_legacy_ts(&qf.frontmatter.updated_at)
+    // BUG-080 + BUG-089: 외부 편집일 때만 파일 mtime 으로 updated_at 보정 +
+    // frontmatter write-back (write-back 은 파일 재기록이라 churn 방지 위해 게이트).
+    let (updated_at, effective_mtime) = if externally_edited {
+        let (edit_iso, eff) = writeback_external_edit_ts(&path);
+        if edit_iso.is_empty() {
+            (crate::time::normalize_legacy_ts(&qf.frontmatter.updated_at), eff)
+        } else {
+            (edit_iso, eff)
+        }
     } else {
-        edit_iso
+        (
+            crate::time::normalize_legacy_ts(&qf.frontmatter.updated_at),
+            cached_mtime,
+        )
     };
     let deleted_at: Option<String> = qf.frontmatter.deleted.then(|| updated_at.clone());
 
@@ -315,13 +328,14 @@ pub async fn refresh_quest_if_stale(store: &Store, slug: &str) -> AppResult<bool
     .bind(id)
     .execute(&store.index_pool)
     .await?;
-    Ok(true)
+    Ok(externally_edited)
 }
 
 /// DEV-178: 단일 campaign 의 lazy refresh — 상세 페이지 진입 시 호출
-/// (`refresh_quest_if_stale` 의 campaign 판). 캠페인 본문 파일 하나만 stat() 으로
-/// `file_mtime_cache` 와 비교 — 외부 편집이 감지되면 그 행만 re-parse + UPDATE
-/// (체크리스트 / linked_quests 포함) 후 `true` 반환.
+/// (`refresh_quest_if_stale` 의 campaign 판). BUG-089: 상세 진입 시 그 캠페인
+/// 본문 파일 하나를 *항상* re-parse + UPDATE (체크리스트 / linked_quests 포함).
+/// `file_mtime_cache` 비교는 파일 write-back / touch 여부에만 쓰고 반환값 =
+/// '외부 편집 감지 여부'.
 ///
 /// quest 본문은 per-row `cached_mtime` 를 쓰지만 campaigns 테이블엔 그 컬럼이 없어
 /// sibling 과 동일한 범용 `file_mtime_cache`(BUG-068) 로 비교한다. 캐시에 아직
@@ -334,11 +348,13 @@ pub async fn refresh_campaign_if_stale(store: &Store, slug: &str) -> AppResult<b
     let rel = crate::file_mtime::rel_key(&store.paths, &path);
     let file_mtime = repo_fs::mtime_unix_nanos(&path);
     let cache = crate::file_mtime::load_all(store).await;
-    if let Some(&cached) = cache.get(&rel)
-        && file_mtime <= cached
-    {
-        return Ok(false); // 변경 없음.
-    }
+    // BUG-089: 콘텐츠 re-read + UPDATE(체크리스트/linked_quests 포함)는 상세 진입
+    // 시 *항상* 수행 — mtime 게이트로 건너뛰면 다른 openguild 프로세스(CLI/server)
+    // 의 편집을 놓친다. write-back/touch(파일 재기록·캐시 갱신)만 외부 편집 시로.
+    let externally_edited = match cache.get(&rel) {
+        Some(&cached) => file_mtime > cached,
+        None => true, // 첫 진입(캐시 없음) — 갱신 + touch.
+    };
 
     // campaigns 행 존재 확인 (신규/삭제는 reindex 영역).
     let id: Option<i64> =
@@ -357,14 +373,17 @@ pub async fn refresh_campaign_if_stale(store: &Store, slug: &str) -> AppResult<b
         return Ok(false);
     }
 
-    // BUG-080: 외부 편집은 frontmatter updated_at 을 안 바꾸므로 파일 mtime 으로
-    // 보정 + frontmatter write-back (quest 와 동일). write-back 이 mtime 을 다시
-    // 바꾸므로 아래 file_mtime::touch 가 그 후 mtime 을 캐시 → churn 없음.
-    let (edit_iso, _) = writeback_external_edit_ts(&path);
-    let updated_at = if edit_iso.is_empty() {
-        crate::time::normalize_legacy_ts(&cf.frontmatter.updated_at)
+    // BUG-080 + BUG-089: 외부 편집일 때만 파일 mtime 으로 updated_at 보정 +
+    // frontmatter write-back (write-back 은 파일 재기록 → churn 방지 위해 게이트).
+    let updated_at = if externally_edited {
+        let (edit_iso, _) = writeback_external_edit_ts(&path);
+        if edit_iso.is_empty() {
+            crate::time::normalize_legacy_ts(&cf.frontmatter.updated_at)
+        } else {
+            edit_iso
+        }
     } else {
-        edit_iso
+        crate::time::normalize_legacy_ts(&cf.frontmatter.updated_at)
     };
 
     // 행 UPDATE — reindex 의 per-campaign INSERT 와 동일 필드.
@@ -415,9 +434,11 @@ pub async fn refresh_campaign_if_stale(store: &Store, slug: &str) -> AppResult<b
         }
     }
 
-    // 캐시 갱신 — 다음 진입 churn 방지.
-    let _ = crate::file_mtime::touch(store, &path).await;
-    Ok(true)
+    // 캐시 갱신 — 외부 편집 시에만 (다음 진입 churn 방지).
+    if externally_edited {
+        let _ = crate::file_mtime::touch(store, &path).await;
+    }
+    Ok(externally_edited)
 }
 
 /// Store::open 후 통합 sync. Phase 1: incremental + 필요 시 fallback reindex.
@@ -752,6 +773,114 @@ mod tests {
 
         // 없는 slug → false (에러 아님).
         assert!(!refresh_campaign_if_stale(&store, "C-999").await.unwrap());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-089: mtime 게이트가 닫혀 있어도(다른 openguild 프로세스가 파일 +
+    /// cached_mtime 을 함께 갱신한 상황) 상세 refresh 는 콘텐츠를 *항상* re-read 해
+    /// DB 에 반영한다. 파일 write-back(churn)은 없음(false 반환).
+    #[tokio::test]
+    async fn refresh_quest_resyncs_content_even_when_gate_closed() {
+        let dir = fresh_tmp("lazy-poison");
+        let store = setup(&dir).await;
+        let paths = store.paths.clone();
+
+        let qf = QuestFile {
+            frontmatter: QuestFrontmatter {
+                quest_id: "DEV-001".into(),
+                title: "v1".into(),
+                status: "open".into(),
+                urgency: 3,
+                parent: None,
+                prerequisites: vec![],
+                created_at: "2026-01-01T00:00:00Z".into(),
+                updated_at: "2026-01-01T00:00:00Z".into(),
+                deleted: false,
+                desired_due: None,
+                required_due: None,
+                tags: vec![],
+            },
+            description: String::new(),
+            auto_block: String::new(),
+        };
+        qf.write(paths.quest_path("DEV-001")).unwrap();
+        crate::reindex::reindex(&store).await.unwrap();
+
+        // 다른 프로세스(CLI)가 파일을 v2 로 고치고 cached_mtime 도 새 mtime 으로
+        // 갱신한 상황 시뮬레이션 → file_mtime <= cached → 게이트 닫힘.
+        let mut qf2 = qf.clone();
+        qf2.frontmatter.title = "v2 by other process".into();
+        qf2.write(paths.quest_path("DEV-001")).unwrap();
+        let m = repo_fs::mtime_unix_nanos(&paths.quest_path("DEV-001"));
+        sqlx::query("UPDATE quests SET cached_mtime = ? WHERE id = 1")
+            .bind(m)
+            .execute(&store.index_pool)
+            .await
+            .unwrap();
+
+        // 게이트상 외부편집 아님(false) — 그러나 콘텐츠는 re-sync 되어야.
+        let edited = refresh_quest_if_stale(&store, "DEV-001").await.unwrap();
+        assert!(!edited, "file_mtime <= cached → write-back 안 함(false)");
+        let title: String = sqlx::query_scalar("SELECT title FROM quests WHERE id = 1")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(
+            title, "v2 by other process",
+            "게이트가 닫혀도 콘텐츠는 항상 re-read 되어야 (BUG-089)"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-089: 캠페인도 동일 — 게이트가 닫혀도 콘텐츠/체크리스트/링크 re-sync.
+    #[tokio::test]
+    async fn refresh_campaign_resyncs_content_even_when_gate_closed() {
+        let dir = fresh_tmp("camp-lazy-poison");
+        let store = setup(&dir).await;
+        let paths = store.paths.clone();
+        std::fs::create_dir_all(paths.campaigns_dir()).unwrap();
+
+        let cf = crate::repo::CampaignFile {
+            frontmatter: crate::repo::CampaignFrontmatter {
+                campaign_id: "C-001".into(),
+                title: "orig".into(),
+                status: "active".into(),
+                started_at: String::new(),
+                ended_at: String::new(),
+                linked_quests: vec![],
+                display_order: 0,
+                image: None,
+                created_at: "2026-01-01T00:00:00Z".into(),
+                updated_at: "2026-01-01T00:00:00Z".into(),
+                deleted: false,
+            },
+            body: "body v1".into(),
+        };
+        cf.write(paths.campaign_path("C-001")).unwrap();
+        crate::reindex::reindex(&store).await.unwrap();
+
+        // 다른 프로세스가 파일 수정 + cache touch (= CLI 동작) → 게이트 닫힘.
+        let mut cf2 = cf.clone();
+        cf2.frontmatter.title = "edited by other process".into();
+        cf2.body = "body v2".into();
+        cf2.write(paths.campaign_path("C-001")).unwrap();
+        let _ = crate::file_mtime::touch(&store, &paths.campaign_path("C-001")).await;
+
+        // 게이트상 외부편집 아님(false) — 그러나 콘텐츠 re-sync 되어야.
+        let edited = refresh_campaign_if_stale(&store, "C-001").await.unwrap();
+        assert!(!edited, "file_mtime <= cached(touch) → write-back 안 함(false)");
+        let (title, desc): (String, Option<String>) =
+            sqlx::query_as("SELECT title, description FROM campaigns WHERE campaign_slug = 'C-001'")
+                .fetch_one(&store.index_pool)
+                .await
+                .unwrap();
+        assert_eq!(
+            title, "edited by other process",
+            "게이트가 닫혀도 콘텐츠는 항상 re-read 되어야 (BUG-089)"
+        );
+        assert_eq!(desc.as_deref(), Some("body v2"));
 
         let _ = std::fs::remove_dir_all(&dir);
     }
