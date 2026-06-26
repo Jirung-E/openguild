@@ -16,6 +16,10 @@ pub struct RestoreRequest {
     /// 특정 timestamp (`YYYYMMDD-HHMMSS`). 미지정 시 최신.
     #[serde(default)]
     pub to: Option<String>,
+    /// 시점 복원 — 최신 snapshot 복원 후 journal 을 이 시각(ISO8601 UTC, 포함)
+    /// 까지 replay. `to` 와 동시 지정 시 `at` 우선.
+    #[serde(default)]
+    pub at: Option<String>,
 }
 
 /// `POST /api/admin/snapshot` — 즉시 snapshot.
@@ -52,6 +56,19 @@ pub async fn restore(
     State(store): State<Store>,
     Json(body): Json<RestoreRequest>,
 ) -> AppResult<Json<serde_json::Value>> {
+    // DEV-022: 시점 복원 (journal replay) — 최신 snapshot 기준.
+    if let Some(ts) = body.at {
+        let snapshots = snapshot::list_snapshots(&store.paths)
+            .map_err(openguild_core::AppError::Internal)?;
+        let latest = snapshots.last().cloned().ok_or_else(|| {
+            openguild_core::AppError::NotFound("사용 가능한 snapshot 이 없습니다".into())
+        })?;
+        let report = openguild_core::replay::replay_to(&store, &latest, &ts).await?;
+        return Ok(Json(json!({
+            "replayed_to": report.target_ts,
+            "applied": report.applied,
+        })));
+    }
     let snapshots = snapshot::list_snapshots(&store.paths)
         .map_err(openguild_core::AppError::Internal)?;
     let target = if let Some(ts) = body.to {

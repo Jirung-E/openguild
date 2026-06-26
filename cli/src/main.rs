@@ -1028,6 +1028,23 @@ impl HttpClient {
             .ok_or_else(|| anyhow!("복원된 snapshot 정보 누락"))
     }
 
+    /// DEV-022: 시점 복원 (journal replay) — HTTP admin.
+    fn restore_to_point(
+        &self,
+        target_ts: &str,
+    ) -> Result<openguild_core::replay::ReplayReport> {
+        let resp: serde_json::Value =
+            self.post("/api/admin/restore", &serde_json::json!({ "at": target_ts }))?;
+        Ok(openguild_core::replay::ReplayReport {
+            target_ts: resp
+                .get("replayed_to")
+                .and_then(|v| v.as_str())
+                .unwrap_or(target_ts)
+                .to_string(),
+            applied: resp.get("applied").and_then(|v| v.as_u64()).unwrap_or(0) as usize,
+        })
+    }
+
     // ── Campaign (DEV-011 commit 3) ───────────────────────
 
     fn campaign_create(
@@ -2275,11 +2292,7 @@ impl Backend {
         target_ts: &str,
     ) -> Result<openguild_core::replay::ReplayReport> {
         match self {
-            Backend::Http(_) => {
-                anyhow::bail!(
-                    "원격(HTTP) 모드의 시점 복원(--at)은 아직 미지원 — 로컬 모드를 사용하세요."
-                )
-            }
+            Backend::Http(c) => c.restore_to_point(target_ts),
             Backend::Local(l) => {
                 let snapshots = openguild_core::snapshot::list_snapshots(&l.store.paths)?;
                 let latest = snapshots.last().cloned().ok_or_else(|| {
