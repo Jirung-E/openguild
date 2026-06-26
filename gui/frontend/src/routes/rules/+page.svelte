@@ -25,7 +25,7 @@
 	import { indentExtensions } from '$lib/utils/editor-indent';
 	import { editorSettings } from '$lib/stores/editorSettings';
 	// DEV-069: 규칙 편집기에도 첨부 (drag&drop / Ctrl+V / 버튼).
-	import { attachmentExtension, pickAndAttach } from '$lib/utils/editor-attach';
+	import { attachmentExtension } from '$lib/utils/editor-attach';
 	// DEV-140 후속: 규칙 편집기에도 XXX-NNN → [[...]] 자동완성.
 	import { crossLinkAutocomplete } from '$lib/utils/editor-links';
 
@@ -363,28 +363,8 @@
 
 					{#if editMode}
 						<div class="edit-form">
-							<!-- BUG: editor 섹션은 <label> 금지 — 안의 '📎 첨부' 버튼(labelable)이
-							     라벨 클릭마다 활성화돼 파일창이 뜬다(admin #13). div 로. -->
 							<div class="field-label">
-								<span>본문 (Markdown)</span>
-								<!-- DEV-069: 첨부 — 버튼/드래그&드랍/Ctrl+V 동일 업로드. -->
-								<div class="editor-toolbar">
-									<button
-										type="button"
-										class="btn-attach"
-										onclick={() =>
-											editorView &&
-											pickAndAttach(
-												editorView,
-												(msg) => (saveError = `첨부 업로드 실패: ${msg}`),
-												undefined,
-												{
-													mediaOnly: true
-												}
-											)}
-										title="이미지·동영상 첨부 (드래그&드랍 / Ctrl+V 도 가능)">📎 첨부</button
-									>
-								</div>
+								<span>본문 (Markdown) — 첨부는 드래그&드랍 / Ctrl+V</span>
 								<div class="editor-wrap" bind:this={editorContainer}></div>
 							</div>
 							<div class="actions">
@@ -611,24 +591,6 @@
 	.field-label > span {
 		font-size: 0.8rem;
 		color: var(--text-muted);
-	}
-	/* DEV-069: 편집기 위 첨부 툴바. */
-	.editor-toolbar {
-		display: flex;
-		gap: 0.4rem;
-		margin: 0.25rem 0;
-	}
-	.btn-attach {
-		font-size: 0.8rem;
-		padding: 0.2rem 0.6rem;
-		border-radius: 6px;
-		border: 1px solid var(--border);
-		background: var(--bg-subtle);
-		color: var(--text);
-		cursor: pointer;
-	}
-	.btn-attach:hover {
-		background: var(--bg-elevated);
 	}
 	.editor-wrap {
 		border: 1px solid var(--border);
