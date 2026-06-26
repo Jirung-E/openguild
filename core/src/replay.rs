@@ -249,3 +249,151 @@ fn opt_opt_string(args: &Value, key: &str) -> Option<Option<String>> {
         Some(v) => serde_json::from_value(v.clone()).ok(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::{ChangeStatusRequest, CreateQuestRequest};
+    use crate::repo::seed_guild_dir;
+
+    fn fresh_tmp(label: &str) -> std::path::PathBuf {
+        let ns = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let p = std::env::temp_dir().join(format!("og-replay-{label}-{ns}"));
+        std::fs::create_dir_all(&p).unwrap();
+        p
+    }
+
+    async fn setup(dir: &std::path::Path) -> Store {
+        seed_guild_dir(dir).unwrap();
+        let store = Store::open(dir).await.unwrap();
+        // 시드된 types/statuses 파일을 index.db 로 — create_quest 가 type/status 조회.
+        crate::reindex::reindex(&store).await.unwrap();
+        store
+    }
+
+    async fn dev_type_id(store: &Store) -> i64 {
+        sqlx::query_scalar("SELECT id FROM quest_types WHERE prefix = 'DEV'")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap()
+    }
+
+    fn new_dev(tid: i64, title: &str) -> CreateQuestRequest {
+        CreateQuestRequest {
+            quest_type_id: tid,
+            title: title.into(),
+            description: None,
+            status_slug: "open".into(),
+            urgency: Some(3),
+            parent_quest_id: None,
+        }
+    }
+
+    async fn status_of(store: &Store, slug: &str) -> Option<String> {
+        sqlx::query_scalar(
+            "SELECT s.slug FROM quests q
+             JOIN quest_statuses s ON s.id = q.status_id
+             JOIN quest_types qt ON qt.id = q.quest_type_id
+             WHERE qt.prefix || '-' || printf('%03d', q.number) = ?",
+        )
+        .bind(slug)
+        .fetch_optional(&store.index_pool)
+        .await
+        .unwrap()
+    }
+
+    async fn exists(store: &Store, slug: &str) -> bool {
+        let n: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM quests q JOIN quest_types qt ON qt.id = q.quest_type_id
+             WHERE qt.prefix || '-' || printf('%03d', q.number) = ?",
+        )
+        .bind(slug)
+        .fetch_one(&store.index_pool)
+        .await
+        .unwrap();
+        n > 0
+    }
+
+    /// snapshot 이후의 quest mutation(상태 변경 + 신규 생성)을 replay 가 재적용.
+    #[tokio::test]
+    async fn replay_reapplies_quest_ops_on_top_of_snapshot() {
+        let dir = fresh_tmp("reapply");
+        let store = setup(&dir).await;
+        let tid = dev_type_id(&store).await;
+
+        // base: DEV-001 생성 후 snapshot (journal truncate).
+        let q1 = ops::quests::create_quest(&store, new_dev(tid, "first"))
+            .await
+            .unwrap();
+        assert_eq!(q1.quest_id, "DEV-001");
+        let snap = snapshot::create_snapshot(&store).await.unwrap();
+
+        // snapshot 이후 mutation: DEV-001 → testing, DEV-002 신규.
+        ops::quests::change_status(
+            &store,
+            q1.id,
+            ChangeStatusRequest {
+                status_slug: "testing".into(),
+            },
+        )
+        .await
+        .unwrap();
+        ops::quests::create_quest(&store, new_dev(tid, "second"))
+            .await
+            .unwrap();
+        assert_eq!(status_of(&store, "DEV-001").await.as_deref(), Some("testing"));
+        assert!(exists(&store, "DEV-002").await);
+
+        // 먼 미래로 replay → snapshot(DEV-001 open, DEV-002 없음) 복원 후 ops 재적용.
+        let report = replay_to(&store, &snap, "9999-12-31T23:59:59Z")
+            .await
+            .unwrap();
+        assert_eq!(report.applied, 2, "change_status + create_quest 2개");
+        assert_eq!(
+            status_of(&store, "DEV-001").await.as_deref(),
+            Some("testing"),
+            "replay 가 status 재적용 (id→slug→id 변환 포함)"
+        );
+        assert!(exists(&store, "DEV-002").await, "replay 가 create 재적용");
+        assert_eq!(
+            journal::count(&store.journal_pool).await.unwrap(),
+            0,
+            "replay 후 journal 은 새 baseline 으로 truncate"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// snapshot 직전 시점(=ops 이전)으로 replay 하면 어떤 op 도 적용 안 됨 → snapshot 상태.
+    #[tokio::test]
+    async fn replay_before_any_op_yields_snapshot_state() {
+        let dir = fresh_tmp("point");
+        let store = setup(&dir).await;
+        let tid = dev_type_id(&store).await;
+
+        ops::quests::create_quest(&store, new_dev(tid, "first"))
+            .await
+            .unwrap();
+        let snap = snapshot::create_snapshot(&store).await.unwrap();
+        ops::quests::create_quest(&store, new_dev(tid, "second"))
+            .await
+            .unwrap();
+        assert!(exists(&store, "DEV-002").await);
+
+        // target = 1970 (모든 journal op 이전) → 0개 적용 → snapshot 상태.
+        let report = replay_to(&store, &snap, "1970-01-01T00:00:00Z")
+            .await
+            .unwrap();
+        assert_eq!(report.applied, 0);
+        assert!(exists(&store, "DEV-001").await);
+        assert!(
+            !exists(&store, "DEV-002").await,
+            "snapshot 이후 생성된 DEV-002 는 미적용"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
