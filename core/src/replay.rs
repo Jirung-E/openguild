@@ -27,8 +27,8 @@ use serde_json::Value;
 
 use crate::error::{AppError, AppResult};
 use crate::models::{
-    AddPrerequisiteRequest, ChangeParentRequest, ChangeStatusRequest, CreateQuestRequest,
-    UpdateQuestRequest,
+    AddPrerequisiteRequest, ChangeParentRequest, ChangeStatusRequest, CreateCampaignRequest,
+    CreateQuestRequest, UpdateCampaignRequest, UpdateQuestRequest,
 };
 use crate::ops;
 use crate::snapshot::{self, SnapshotInfo};
@@ -47,17 +47,23 @@ pub struct ReplayReport {
 struct IdMaps {
     /// index.db quest id → slug (예: "DEV-001"). 삭제된 quest 포함.
     quest: HashMap<i64, String>,
+    /// index.db campaign id → campaign_slug (예: "C-001").
+    campaign: HashMap<i64, String>,
 }
 
 async fn build_id_maps(store: &Store) -> AppResult<IdMaps> {
-    let rows: Vec<(i64, String)> = sqlx::query_as(
+    let quest: Vec<(i64, String)> = sqlx::query_as(
         "SELECT q.id, qt.prefix || '-' || printf('%03d', q.number)
          FROM quests q JOIN quest_types qt ON qt.id = q.quest_type_id",
     )
     .fetch_all(&store.index_pool)
     .await?;
+    let campaign: Vec<(i64, String)> = sqlx::query_as("SELECT id, campaign_slug FROM campaigns")
+        .fetch_all(&store.index_pool)
+        .await?;
     Ok(IdMaps {
-        quest: rows.into_iter().collect(),
+        quest: quest.into_iter().collect(),
+        campaign: campaign.into_iter().collect(),
     })
 }
 
@@ -80,6 +86,20 @@ async fn resolve_quest_id(store: &Store, maps: &IdMaps, journal_id: i64) -> AppR
             "replay: quest {slug} 가 복원된 상태에 없음 (replay 순서/무결성 문제)"
         ))
     })
+}
+
+/// journal campaign id → 복원된 db 의 현재 campaign id (slug 경유). 불가 시 Err.
+async fn resolve_campaign_id(store: &Store, maps: &IdMaps, journal_id: i64) -> AppResult<i64> {
+    let slug = maps.campaign.get(&journal_id).ok_or_else(|| {
+        AppError::Internal(anyhow!(
+            "replay: journal campaign id {journal_id} 를 slug 로 해석할 수 없음"
+        ))
+    })?;
+    let id: Option<i64> = sqlx::query_scalar("SELECT id FROM campaigns WHERE campaign_slug = ?")
+        .bind(slug)
+        .fetch_optional(&store.index_pool)
+        .await?;
+    id.ok_or_else(|| AppError::Internal(anyhow!("replay: campaign {slug} 가 복원된 상태에 없음")))
 }
 
 /// 최신 snapshot 을 복원한 뒤 journal ops 를 `target_ts`(포함)까지 재적용.
@@ -207,6 +227,56 @@ async fn apply_op(store: &Store, maps: &IdMaps, op: &journal::OpRow) -> AppResul
             let id = resolve_quest_id(store, maps, arg_i64(&args, "id")?).await?;
             ops::quests::restore_quest(store, id).await?;
         }
+        // ── 캠페인 구조 op: campaign_id 는 변환, slug/text/index 는 그대로. ──
+        "create_campaign" => {
+            let body: CreateCampaignRequest = serde_json::from_value(args)
+                .map_err(|e| AppError::Internal(anyhow!("create_campaign args: {e}")))?;
+            ops::campaigns::create_campaign(store, body).await?;
+        }
+        "update_campaign" => {
+            let id = resolve_campaign_id(store, maps, arg_i64(&args, "id")?).await?;
+            let body: UpdateCampaignRequest = serde_json::from_value(args["body"].clone())
+                .map_err(|e| AppError::Internal(anyhow!("update_campaign body: {e}")))?;
+            ops::campaigns::update_campaign(store, id, body).await?;
+        }
+        "clear_campaign_banner" => {
+            ops::campaigns::clear_banner_image(store, &arg_str(&args, "slug")?).await?;
+        }
+        "delete_campaign" => {
+            let id = resolve_campaign_id(store, maps, arg_i64(&args, "id")?).await?;
+            ops::campaigns::delete_campaign(store, id).await?;
+        }
+        "campaign_link_quest" => {
+            let cid = resolve_campaign_id(store, maps, arg_i64(&args, "campaign_id")?).await?;
+            ops::campaigns::link_quest_by_slug(store, cid, &arg_str(&args, "quest_slug")?).await?;
+        }
+        "campaign_unlink_quest" => {
+            let cid = resolve_campaign_id(store, maps, arg_i64(&args, "campaign_id")?).await?;
+            ops::campaigns::unlink_quest_by_slug(store, cid, &arg_str(&args, "quest_slug")?).await?;
+        }
+        "campaign_checklist_add" => {
+            let cid = resolve_campaign_id(store, maps, arg_i64(&args, "campaign_id")?).await?;
+            ops::campaigns::add_checklist_line(store, cid, &arg_str(&args, "text")?).await?;
+        }
+        "campaign_checklist_set" => {
+            let cid = resolve_campaign_id(store, maps, arg_i64(&args, "campaign_id")?).await?;
+            let index = arg_u64(&args, "index")? as usize;
+            let checked = args.get("checked").and_then(Value::as_bool).unwrap_or(false);
+            ops::campaigns::set_checklist_checked_by_index(store, cid, index, checked).await?;
+        }
+        "campaign_checklist_rm" => {
+            let cid = resolve_campaign_id(store, maps, arg_i64(&args, "campaign_id")?).await?;
+            let index = arg_u64(&args, "index")? as usize;
+            ops::campaigns::remove_checklist_by_index(store, cid, index).await?;
+        }
+        // 배너는 외부 원본 이미지 경로에 의존 — replay 시 그 파일이 없을 수 있어 fail-loud.
+        "set_campaign_banner" => {
+            return Err(AppError::Internal(anyhow!(
+                "replay: 'set_campaign_banner' 는 외부 원본 이미지 경로에 의존해 시점 \
+                 replay 로 재현할 수 없습니다. full snapshot restore 를 사용하세요."
+            )));
+        }
+
         // ── 댓글 토글/삭제: slug + entry id 기반. 둘 다 파일 내장값이라 안정적. ──
         "toggle_comment_reaction" => {
             let slug = arg_str(&args, "slug")?;
@@ -291,7 +361,7 @@ fn opt_opt_string(args: &Value, key: &str) -> Option<Option<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{ChangeStatusRequest, CreateQuestRequest};
+    use crate::models::{ChangeStatusRequest, CreateCampaignRequest, CreateQuestRequest};
     use crate::repo::seed_guild_dir;
 
     fn fresh_tmp(label: &str) -> std::path::PathBuf {
@@ -431,6 +501,65 @@ mod tests {
             !exists(&store, "DEV-002").await,
             "snapshot 이후 생성된 DEV-002 는 미적용"
         );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 캠페인 구조 op(링크 + 체크리스트)을 replay 가 재적용 — campaign_id 변환 검증.
+    #[tokio::test]
+    async fn replay_reapplies_campaign_structural_ops() {
+        let dir = fresh_tmp("camp");
+        let store = setup(&dir).await;
+        let tid = dev_type_id(&store).await;
+
+        // base: 캠페인 C-001 + 퀘스트 DEV-001, snapshot.
+        let camp = ops::campaigns::create_campaign(
+            &store,
+            CreateCampaignRequest {
+                title: "camp".into(),
+                description: None,
+                started_at: None,
+                ended_at: None,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(camp.campaign_slug, "C-001");
+        ops::quests::create_quest(&store, new_dev(tid, "q1"))
+            .await
+            .unwrap();
+        let snap = snapshot::create_snapshot(&store).await.unwrap();
+
+        // snapshot 이후: 링크 + 체크리스트.
+        ops::campaigns::link_quest_by_slug(&store, camp.id, "DEV-001")
+            .await
+            .unwrap();
+        ops::campaigns::add_checklist_line(&store, camp.id, "item one")
+            .await
+            .unwrap();
+
+        let report = replay_to(&store, &snap, "9999-12-31T23:59:59Z")
+            .await
+            .unwrap();
+        assert_eq!(report.applied, 2, "link + checklist_add 2개");
+
+        let linked: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM campaign_quests cq JOIN campaigns c ON c.id = cq.campaign_id
+             WHERE c.campaign_slug = 'C-001'",
+        )
+        .fetch_one(&store.index_pool)
+        .await
+        .unwrap();
+        assert_eq!(linked, 1, "replay 가 campaign_id 변환 후 링크 재적용");
+
+        let items: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM campaign_checklists cc JOIN campaigns c ON c.id = cc.campaign_id
+             WHERE c.campaign_slug = 'C-001'",
+        )
+        .fetch_one(&store.index_pool)
+        .await
+        .unwrap();
+        assert_eq!(items, 1, "replay 가 체크리스트 재적용");
 
         let _ = std::fs::remove_dir_all(&dir);
     }
