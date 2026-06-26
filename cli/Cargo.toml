@@ -1,6 +1,7 @@
 [package]
 name = "openguild-cli"
 version = "0.2.1-beta"
+license = "MIT"
 edition = "2024"
 description = "openguild CLI — local + remote guild operations"
 

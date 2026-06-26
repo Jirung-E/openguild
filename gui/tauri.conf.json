@@ -41,6 +41,7 @@
       "icons/icon.ico"
     ],
     "resources": {
+      "../LICENSE": "LICENSE",
       "../README.md": "docs/README.md",
       "../docs/USAGE.md": "docs/USAGE.md",
       "../docs/AGENTS_OPENGUILD_USAGE.md": "docs/AGENTS_OPENGUILD_USAGE.md",
