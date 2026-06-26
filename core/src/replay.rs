@@ -207,6 +207,38 @@ async fn apply_op(store: &Store, maps: &IdMaps, op: &journal::OpRow) -> AppResul
             let id = resolve_quest_id(store, maps, arg_i64(&args, "id")?).await?;
             ops::quests::restore_quest(store, id).await?;
         }
+        // ── 댓글 토글/삭제: slug + entry id 기반. 둘 다 파일 내장값이라 안정적. ──
+        "toggle_comment_reaction" => {
+            let slug = arg_str(&args, "slug")?;
+            let id = arg_u64(&args, "id")?;
+            let emoji = arg_str(&args, "emoji")?;
+            let author = arg_str(&args, "author")?;
+            ops::comments::toggle_comment_reaction(store, &slug, id, &emoji, &author).await?;
+        }
+        "toggle_comment_discussion" => {
+            let slug = arg_str(&args, "slug")?;
+            ops::comments::toggle_comment_discussion(store, &slug, arg_u64(&args, "id")?).await?;
+        }
+        "toggle_comment_resolved" => {
+            let slug = arg_str(&args, "slug")?;
+            ops::comments::toggle_comment_resolved(store, &slug, arg_u64(&args, "id")?).await?;
+        }
+        "delete_comment_entry" => {
+            let slug = arg_str(&args, "slug")?;
+            ops::comments::delete_comment_entry(store, &slug, arg_u64(&args, "id")?).await?;
+        }
+
+        // ── 내용(body)을 journal 에 기록하지 않는 op (audit 로그라 len 만 저장) ──
+        // → replay 로 내용을 복원할 수 없음. fail-loud.
+        "set_comments" | "add_comment_entry" | "update_comment_entry" | "set_memo" => {
+            return Err(AppError::Internal(anyhow!(
+                "replay: '{}' 는 내용(body)이 journal 에 기록되지 않아(감사 로그) \
+                 replay 로 복원할 수 없습니다. 이 시점 범위는 full snapshot restore 를 \
+                 사용하세요.",
+                op.op
+            )));
+        }
+
         // slug 가 바뀌어 안전 매핑 불가 — full snapshot restore 권장.
         "change_quest_type" => {
             return Err(AppError::Internal(anyhow!(
@@ -231,6 +263,12 @@ fn arg_i64(args: &Value, key: &str) -> AppResult<i64> {
     args.get(key)
         .and_then(Value::as_i64)
         .ok_or_else(|| AppError::Internal(anyhow!("replay: 인자 '{key}'(i64) 누락")))
+}
+
+fn arg_u64(args: &Value, key: &str) -> AppResult<u64> {
+    args.get(key)
+        .and_then(Value::as_u64)
+        .ok_or_else(|| AppError::Internal(anyhow!("replay: 인자 '{key}'(u64) 누락")))
 }
 
 fn arg_str(args: &Value, key: &str) -> AppResult<String> {
