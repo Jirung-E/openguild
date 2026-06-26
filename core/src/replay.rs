@@ -297,14 +297,53 @@ async fn apply_op(store: &Store, maps: &IdMaps, op: &journal::OpRow) -> AppResul
             let slug = arg_str(&args, "slug")?;
             ops::comments::delete_comment_entry(store, &slug, arg_u64(&args, "id")?).await?;
         }
+        "toggle_campaign_comment_reaction" => {
+            let slug = arg_str(&args, "slug")?;
+            ops::campaign_comments::toggle_reaction(
+                store,
+                &slug,
+                arg_u64(&args, "id")?,
+                &arg_str(&args, "emoji")?,
+                &arg_str(&args, "author")?,
+            )
+            .await?;
+        }
+        "delete_campaign_comment" => {
+            let slug = arg_str(&args, "slug")?;
+            ops::campaign_comments::delete_entry(store, &slug, arg_u64(&args, "id")?).await?;
+        }
+
+        // ── 길드 규칙: slug 기반. 삭제/이름변경은 내용 불필요 → replayable. ──
+        "delete_rule" => {
+            ops::rules::delete_rule(store, &arg_str(&args, "slug")?).await?;
+        }
+        "rename_rule" => {
+            ops::rules::rename_rule(
+                store,
+                &arg_str(&args, "old_slug")?,
+                &arg_str(&args, "new_slug")?,
+            )
+            .await?;
+        }
 
         // ── 내용(body)을 journal 에 기록하지 않는 op (audit 로그라 len 만 저장) ──
         // → replay 로 내용을 복원할 수 없음. fail-loud.
-        "set_comments" | "add_comment_entry" | "update_comment_entry" | "set_memo" => {
+        "set_comments" | "add_comment_entry" | "update_comment_entry" | "set_memo"
+        | "add_campaign_comment" | "update_campaign_comment" | "set_campaign_memo"
+        | "create_rule" | "set_rule" | "set_rules" => {
             return Err(AppError::Internal(anyhow!(
                 "replay: '{}' 는 내용(body)이 journal 에 기록되지 않아(감사 로그) \
                  replay 로 복원할 수 없습니다. 이 시점 범위는 full snapshot restore 를 \
                  사용하세요.",
+                op.op
+            )));
+        }
+
+        // ── 첨부: 바이너리/외부 파일 경로에 의존 — 시점 replay 불가. ──
+        "save_attachment" | "add_attachment" | "remove_attachment" => {
+            return Err(AppError::Internal(anyhow!(
+                "replay: '{}' 는 첨부 바이너리/외부 파일에 의존해 시점 replay 로 \
+                 재현할 수 없습니다. full snapshot restore 를 사용하세요.",
                 op.op
             )));
         }
