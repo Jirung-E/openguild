@@ -49,9 +49,25 @@ pub struct Store {
     /// `get_db_schema_status`). in-memory (welcome 모드) 는 항상 빈 vec —
     /// 매 시동마다 fresh DB.
     pub db_ahead_versions: Vec<i64>,
+    /// DEV-022: journal replay 중이면 true. 이 동안 quest mutation 의 자동
+    /// 스냅샷(`ops::quests::after_mutation`)을 억제한다 — replay 도중 snapshot 이
+    /// journal 을 truncate 하면 남은 ops 가 사라져 replay 가 깨지기 때문.
+    /// `Arc` 라 `Clone` 된 Store 들이 같은 플래그를 공유한다.
+    pub replaying: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Store {
+    /// DEV-022: replay 모드 on/off (자동 스냅샷 억제용).
+    pub fn set_replaying(&self, on: bool) {
+        self.replaying
+            .store(on, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// DEV-022: 현재 replay 중인지.
+    pub fn is_replaying(&self) -> bool {
+        self.replaying.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
     /// 길드 루트 경로로 Store 생성. 필요한 디렉토리 / DB 가 없으면 만들고 마이그레이션.
     /// 시드는 별도 — 호출자가 `seed::seed_guild_dir` 명시 호출.
     pub async fn open<P: AsRef<std::path::Path>>(guild_root: P) -> Result<Self> {
@@ -106,6 +122,7 @@ impl Store {
             index_pool,
             journal_pool,
             db_ahead_versions,
+            replaying: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         })
     }
 
@@ -162,6 +179,7 @@ impl Store {
             index_pool,
             journal_pool,
             db_ahead_versions,
+            replaying: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         })
     }
 }
