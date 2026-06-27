@@ -11,6 +11,11 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
   별개). (DEV-190)
 - 설치 동봉 문서에 `AGENTS_OPENGUILD_USAGE.md` 추가 (README/USAGE/CHANGELOG와 함께).
   (DEV-098)
+- **시점 복원(journal replay)** — `backup restore --at <ISO8601-UTC>` / HTTP
+  `/api/admin/restore` `at`: 최신 snapshot 을 복원한 뒤 journal(AOF) 을 그 시각까지
+  재적용해 "마지막 백업 이후 ~ 임의 시점" 으로 복원. id 는 slug 경유로 재매핑(reindex
+  대응). 내용 op(댓글/메모 본문)·type 변경·첨부가 낀 구간은 안전을 위해 거부하고
+  full snapshot restore 를 안내(fail-loud). (DEV-022)
 
 ### Changed
 - 메모 편집기의 '첨부' 버튼 제거(개인 메모). 이미지·동영상은 드래그&드랍 / Ctrl+V
