@@ -138,8 +138,8 @@
 			const selected = await open({
 				directory: false,
 				multiple: false,
-				title: '길드 파일(.guild) 선택',
-				filters: [{ name: '길드 마커', extensions: ['guild'] }]
+				title: '길드 마커 파일 선택 (이름.guild)',
+				filters: [{ name: '길드 마커 (*.guild)', extensions: ['guild'] }]
 			});
 			if (!selected) return; // 취소.
 			const file = typeof selected === 'string' ? selected : selected[0];
@@ -255,8 +255,8 @@
 				{pickRunning ? '여는 중…' : '📂 길드 열기'}
 			</button>
 			<span class="picker-hint">
-				길드 파일(<code>.guild</code>)을 고르면 그 길드를 엽니다. 길드가 있는 위치엔 탐색기에
-				<code>.guild</code> 파일이 보이므로 더블클릭으로 바로 열 수 있습니다.
+				길드 마커 파일(예: <code>이름.guild</code>)을 선택하면 그 길드를 엽니다. 길드가 있는 폴더엔
+				<code>.guild</code> 확장자 파일이 있어, 탐색기에서 보고 더블클릭으로 바로 열 수 있습니다.
 			</span>
 			{#if pickErr}
 				<p class="err">{pickErr}</p>
