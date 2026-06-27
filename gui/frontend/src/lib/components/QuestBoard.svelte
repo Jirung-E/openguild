@@ -1636,6 +1636,29 @@
 		syncExpandedPos();
 	}
 
+	// BUG-090: 트랙패드/마우스 줌 표준화. cytoscape 기본 wheel 줌은 트랙패드의
+	// two-finger 스크롤(plain wheel)도 줌으로 해석해 노트북에서 erratic.
+	// → userZoomingEnabled=false 로 끄고 직접 처리(Figma/Miro 관례):
+	//   - pinch(트랙패드) 및 Ctrl+wheel(마우스) = 커서 기준 줌
+	//   - 그 외 two-finger 스크롤/휠 = pan
+	// cy.zoom/panBy 는 'pan'/'zoom' 이벤트를 emit → 기존 syncLanes 자동 적용.
+	function onBoardWheel(e: WheelEvent) {
+		if (!cy) return;
+		e.preventDefault();
+		if (e.ctrlKey) {
+			const rect = container.getBoundingClientRect();
+			// 마우스 휠(큰 delta)과 트랙패드 pinch(작은 delta) 모두 무난하도록 캡 + 감도.
+			const dy = Math.max(-60, Math.min(60, e.deltaY));
+			cy.zoom({
+				level: cy.zoom() * Math.exp(-dy * 0.005),
+				renderedPosition: { x: e.clientX - rect.left, y: e.clientY - rect.top }
+			});
+		} else {
+			// 자연 스크롤: 아래로 스크롤(deltaY>0) → 콘텐츠가 위로.
+			cy.panBy({ x: -e.deltaX, y: -e.deltaY });
+		}
+	}
+
 	// ── 키보드 ─────────────────────────────────────────────────
 
 	function handleKeydown(e: KeyboardEvent) {
@@ -2230,7 +2253,10 @@
 		}
 	}
 
-	onDestroy(() => cy?.destroy());
+	onDestroy(() => {
+		container?.removeEventListener('wheel', onBoardWheel); // BUG-090
+		cy?.destroy();
+	});
 
 	// ── 레인 HTML ───────────────────────────────────────────────
 
@@ -2609,9 +2635,9 @@
 			layout: { name: 'preset' },
 			minZoom: 0.25,
 			maxZoom: 2,
-			// wheel zoom 속도 — 기본 1 이 너무 느림 (사용자 피드백).
-			// cytoscape 권장 범위 [1, ~3]. 2.5 면 한 번 휠 클릭에 체감 ~2x 빠름.
-			wheelSensitivity: 2.5,
+			// BUG-090: 기본 wheel 줌 비활성 — 트랙패드 two-finger 스크롤까지 줌으로
+			// 잡혀 erratic. 대신 onBoardWheel 에서 pinch=줌 / 스크롤=pan 직접 처리.
+			userZoomingEnabled: false,
 			boxSelectionEnabled: false,
 			// BUG-057: HiDPI 캔버스. 기본 'auto' 가 WebView2 에서 1 로 떨어지는
 			// 사례 있어 명시. 노드 SVG 도 dpr 배 사이즈로 발급 (makeSvgUrl) →
@@ -2624,6 +2650,10 @@
 			syncLanes();
 			scheduleViewportSave(); // DEV-058
 		});
+
+		// BUG-090: 트랙패드 pinch / Ctrl+wheel = 줌, 그 외 스크롤 = pan.
+		// passive:false — preventDefault 로 페이지 스크롤/브라우저 줌 차단.
+		container.addEventListener('wheel', onBoardWheel, { passive: false });
 
 		// ── 드래그 이벤트 (다중선택 배치 처리) ─────────────────────
 
