@@ -176,6 +176,52 @@
 		}
 	}
 
+	// DEV-204: `.guild` 마커 파일을 직접 선택. 네이티브 폴더 다이얼로그는 파일을
+	// 안 보여줘 "이 위치에 길드가 있나?" 판단이 어려운 문제 — 파일 피커는 `.guild`
+	// 파일을 보여주므로 길드 존재가 명확히 보인다. 선택한 파일의 부모 = 길드 루트.
+	async function pickGuildFile() {
+		if (pickRunning) return;
+		if (env !== 'tauri') {
+			pickErr = 'Tauri 데스크톱 앱에서만 동작합니다.';
+			return;
+		}
+		pickRunning = true;
+		pickErr = null;
+		try {
+			const { open } = await import('@tauri-apps/plugin-dialog');
+			const selected = await open({
+				directory: false,
+				multiple: false,
+				title: '길드 파일(.guild) 선택',
+				filters: [{ name: '길드 마커', extensions: ['guild'] }]
+			});
+			if (!selected) return; // 취소.
+			const file = typeof selected === 'string' ? selected : selected[0];
+			if (!file) return;
+			// 마커 파일의 부모 디렉토리 = 길드 루트.
+			const dir = file.replace(/[\\/][^\\/]+$/, '');
+
+			const { invoke } = await import('@tauri-apps/api/core');
+			const info = await invoke<{
+				exists: boolean;
+				is_dir: boolean;
+				has_marker: boolean;
+				resolved_path: string;
+			}>('inspect_guild_path', { path: dir });
+
+			if (!info.has_marker) {
+				pickErr = `선택한 .guild 파일의 폴더에서 길드를 찾지 못했습니다: ${dir}`;
+				return;
+			}
+			await invoke('open_guild_in_current_window', { path: info.resolved_path });
+			goto('/');
+		} catch (e) {
+			pickErr = handleOpenError(e);
+		} finally {
+			pickRunning = false;
+		}
+	}
+
 	// DEV-052 후속 (5회차): 단일 항목 제거 — 모든 항목에 × 버튼.
 	// 확인 모달 거쳐서 실수 방지.
 	let confirmRemove: Recent | null = $state(null);
@@ -259,11 +305,20 @@
 	{#if env === 'tauri'}
 		<!-- DEV-053: 파일 탐색기로 임의 위치의 길드 열기. -->
 		<section class="picker">
-			<button class="btn-pick" onclick={pickFolder} disabled={pickRunning}>
-				{pickRunning ? '여는 중…' : '📁 폴더에서 열기'}
-			</button>
+			<div class="pick-btns">
+				<button class="btn-pick" onclick={pickFolder} disabled={pickRunning}>
+					{pickRunning ? '여는 중…' : '📁 폴더에서 열기'}
+				</button>
+				<!-- DEV-204: 폴더 다이얼로그엔 .guild 파일이 안 보여 길드 존재 판단이
+				     어려워, .guild 파일을 직접 선택하는 경로 추가(파일이라 보임). -->
+				<button class="btn-pick alt" onclick={pickGuildFile} disabled={pickRunning}>
+					📄 길드 파일(.guild) 선택
+				</button>
+			</div>
 			<span class="picker-hint">
-				기존 길드 폴더를 선택하면 바로 열고, 길드가 아닌 폴더면 초기화 안내가 표시됩니다.
+				기존 길드 폴더를 선택하면 바로 열고, 길드가 아닌 폴더면 초기화 안내가 표시됩니다. 폴더
+				탐색기에서 길드가 보이지 않으면 <strong>길드 파일(.guild) 선택</strong>으로 마커 파일을 직접
+				고르세요.
 			</span>
 			{#if pickErr}
 				<p class="err">{pickErr}</p>
@@ -689,6 +744,21 @@
 	.btn-pick:disabled {
 		opacity: 0.6;
 		cursor: default;
+	}
+	/* DEV-204: 폴더 / .guild 파일 선택 두 버튼 그룹 + 보조 버튼 스타일. */
+	.pick-btns {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+		flex: 0 0 auto;
+	}
+	.btn-pick.alt {
+		background: transparent;
+		color: var(--text);
+		border-color: var(--border);
+	}
+	.btn-pick.alt:hover:not(:disabled) {
+		background: var(--bg-subtle);
 	}
 	.picker-hint {
 		flex: 1 1 auto;
