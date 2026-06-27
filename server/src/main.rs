@@ -26,7 +26,11 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
-use tower_http::{cors::CorsLayer, services::ServeDir, trace::TraceLayer};
+use tower_http::{
+    cors::CorsLayer,
+    services::{ServeDir, ServeFile},
+    trace::TraceLayer,
+};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -119,12 +123,25 @@ async fn run_host(port_arg: Option<u16>) -> Result<()> {
     //          auto-backup task 폐기 — HTTP admin / CLI 로 명시적 실행.)
     let mut app = routes::create_router(store);
 
-    // frontend 정적 서빙 (선택)
+    // DEV-195: frontend 정적 서빙 (선택) — 단일 origin 으로 SPA+API 같이 서빙.
+    // 기본값은 SvelteKit(adapter-static) 의 실제 빌드 출력 `gui/frontend/build`
+    // (이전 기본값 `dist` 는 실제로 생성되지 않아 항상 API-only 로 떨어지던 버그).
     let dist_path = std::env::var("FRONTEND_DIST")
-        .unwrap_or_else(|_| "gui/frontend/dist".to_string());
+        .unwrap_or_else(|_| "gui/frontend/build".to_string());
     let serves_static = Path::new(&dist_path).is_dir();
     if serves_static {
-        app = app.fallback_service(ServeDir::new(&dist_path));
+        // SPA fallback — 클라이언트 라우트 딥링크(예 `/quests/DEV-001` 직접 접근/
+        // 새로고침)는 실제 파일이 없어 404 가 나므로, 매칭 안 되는 경로는 모두
+        // index.html 로 떨어뜨려 SPA 라우터가 처리하게 한다. `/api/*`, `/health`
+        // 는 이미 위에서 라우트가 매칭되므로 이 fallback 까지 오지 않는다.
+        //
+        // `.not_found_service()` 대신 `.fallback()` 사용 — not_found_service 는
+        // 상태코드를 항상 404 로 고정해버려(tower_http 문서/소스 SetStatus) 본문은
+        // index.html 인데 응답이 404 로 보임. `.fallback()` 은 상태코드를 건드리지
+        // 않아 파일이 존재하는 index.html 이 정상 200 으로 응답된다.
+        let index_html = Path::new(&dist_path).join("index.html");
+        let serve_dir = ServeDir::new(&dist_path).fallback(ServeFile::new(index_html));
+        app = app.fallback_service(serve_dir);
     }
 
     let app = app
