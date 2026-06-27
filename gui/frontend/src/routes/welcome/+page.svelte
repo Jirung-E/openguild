@@ -122,6 +122,56 @@
 		}
 	}
 
+	// DEV-053: 네이티브 폴더 다이얼로그로 길드 폴더 선택. 마커가 있으면 바로 열고,
+	// 없으면 "이 위치를 길드로 초기화?" 인라인 prompt(uninitPath) 를 띄운다.
+	async function pickFolder() {
+		if (pickRunning) return;
+		if (env !== 'tauri') {
+			pickErr = 'Tauri 데스크톱 앱에서만 동작합니다.';
+			return;
+		}
+		pickRunning = true;
+		pickErr = null;
+		try {
+			const { open } = await import('@tauri-apps/plugin-dialog');
+			const selected = await open({
+				directory: true,
+				multiple: false,
+				title: '길드 폴더 선택'
+			});
+			if (!selected) return; // 취소.
+			const dir = typeof selected === 'string' ? selected : selected[0];
+			if (!dir) return;
+
+			const { invoke } = await import('@tauri-apps/api/core');
+			const info = await invoke<{
+				exists: boolean;
+				is_dir: boolean;
+				has_marker: boolean;
+				resolved_path: string;
+			}>('inspect_guild_path', { path: dir });
+
+			if (!info.is_dir) {
+				pickErr = `선택된 경로가 유효한 디렉토리가 아닙니다: ${info.resolved_path}`;
+				return;
+			}
+			if (info.has_marker) {
+				// 기존 길드 → 바로 현재 창에서 열기.
+				await invoke('open_guild_in_current_window', { path: info.resolved_path });
+				goto('/');
+			} else {
+				// 마커 없음 → 인라인 초기화 prompt 활성화.
+				uninitPath = info.resolved_path;
+				const parts = info.resolved_path.split(/[\\/]/).filter(Boolean);
+				initName = parts[parts.length - 1] ?? 'guild';
+			}
+		} catch (e) {
+			pickErr = handleOpenError(e);
+		} finally {
+			pickRunning = false;
+		}
+	}
+
 	// DEV-204: `.guild` 마커 파일을 직접 선택. 네이티브 폴더 다이얼로그는 파일을
 	// 안 보여줘 "이 위치에 길드가 있나?" 판단이 어려운 문제 — 파일 피커는 `.guild`
 	// 파일을 보여주므로 길드 존재가 명확히 보인다. 선택한 파일의 부모 = 길드 루트.
@@ -251,13 +301,17 @@
 	{#if env === 'tauri'}
 		<!-- DEV-053: 파일 탐색기로 임의 위치의 길드 열기. -->
 		<section class="picker">
-			<button class="btn-pick" onclick={pickGuildFile} disabled={pickRunning}>
+			<button class="btn-pick" onclick={pickFolder} disabled={pickRunning}>
 				{pickRunning ? '여는 중…' : '📂 길드 열기'}
 			</button>
 			<span class="picker-hint">
-				길드 마커 파일(예: <code>이름.guild</code>)을 선택하면 그 길드를 엽니다. 길드가 있는 폴더엔
-				<code>.guild</code> 확장자 파일이 있어, 탐색기에서 보고 더블클릭으로 바로 열 수 있습니다.
+				길드 폴더를 선택하면 그 위치의 길드를 엽니다. 아직 길드가 아니면 이 위치를 새 길드로
+				초기화할지 물어봅니다. 길드 루트의 마커 파일(<code>이름.guild</code>)을 직접 골라 기존
+				길드를 열 수도 있습니다.
 			</span>
+			<button type="button" class="pick-file-link" onclick={pickGuildFile} disabled={pickRunning}>
+				또는 <code>.guild</code> 파일 직접 선택
+			</button>
 			{#if pickErr}
 				<p class="err">{pickErr}</p>
 			{/if}
@@ -270,8 +324,8 @@
 			<h2>이 위치를 길드로 초기화할까요?</h2>
 			<p class="uninit-path">{uninitPath}</p>
 			<p class="uninit-desc">
-				지정한 디렉토리에 openguild 마커 (<code>.guild/</code> 폴더 + 시드)가 없습니다. 초기화하면 빈
-				길드가 생성되어 바로 작업할 수 있습니다.
+				지정한 디렉토리에 openguild 마커 파일(<code>이름.guild</code>)이 없습니다. 초기화하면 마커 +
+				<code>.guild/</code> 데이터 폴더가 생성되어 바로 작업할 수 있습니다.
 			</p>
 			<label class="uninit-name">
 				<span>길드 이름</span>
@@ -694,6 +748,32 @@
 		margin: 0;
 		padding: 0.5rem 0.75rem;
 		font-size: 0.85rem;
+	}
+	/* DEV-204: 보조 affordance — `.guild` 파일 직접 선택 (버튼 아닌 텍스트 링크 스타일). */
+	.pick-file-link {
+		flex: 1 0 100%;
+		margin: -0.25rem 0 0;
+		padding: 0;
+		background: transparent;
+		border: none;
+		color: var(--accent);
+		font-size: 0.8rem;
+		text-align: left;
+		cursor: pointer;
+		text-decoration: underline;
+		text-underline-offset: 2px;
+	}
+	.pick-file-link:hover:not(:disabled) {
+		color: var(--text);
+	}
+	.pick-file-link:disabled {
+		opacity: 0.6;
+		cursor: default;
+		color: var(--text-muted);
+	}
+	.pick-file-link code {
+		background: transparent;
+		padding: 0;
 	}
 
 	/* --- uninit prompt (DEV-052 후속 2회차) --- */
