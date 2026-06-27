@@ -1,13 +1,33 @@
 use anyhow::Result;
 use sqlx::{
-    sqlite::{SqliteConnectOptions, SqlitePoolOptions},
+    sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions},
     SqlitePool,
 };
 use std::collections::HashSet;
 use std::str::FromStr;
 
+/// BUG-091: DB 가 네트워크 파일시스템(UNC 공유) 위에 있는지.
+///
+/// `sqlite_file_url`(store.rs)이 UNC 경로 `\\server\share\..` 를
+/// `sqlite://server/share/..` 로 변환하므로 `sqlite://` prefix 로 판별한다.
+/// 로컬은 `sqlite:C:/..`(드라이브) 또는 `sqlite:file:..`/`sqlite::memory:` 라
+/// `//` 가 없다.
+fn is_network_url(database_url: &str) -> bool {
+    database_url.starts_with("sqlite://")
+}
+
 pub async fn create_pool(database_url: &str) -> Result<SqlitePool> {
-    let options = SqliteConnectOptions::from_str(database_url)?.create_if_missing(true);
+    let mut options = SqliteConnectOptions::from_str(database_url)?.create_if_missing(true);
+
+    // BUG-091: WAL(sqlx 기본)은 공유메모리(mmap)가 필요해 SMB/UNC 네트워크
+    // 파일시스템에서 동작하지 않는다(SQLite 공식 제약) → 네트워크 공유 길드의
+    // index.db/journal.db 를 못 열던 문제. 네트워크면 rollback journal(DELETE)로
+    // 전환하고, SMB 의 락 지연을 견디도록 busy_timeout 도 넉넉히.
+    if is_network_url(database_url) {
+        options = options
+            .journal_mode(SqliteJournalMode::Delete)
+            .busy_timeout(std::time::Duration::from_secs(15));
+    }
 
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
@@ -56,6 +76,18 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<Vec<i64>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// BUG-091: UNC 네트워크 URL 만 network 로 판별(로컬/메모리는 아님).
+    #[test]
+    fn is_network_url_detects_unc_only() {
+        // UNC: sqlite_file_url 이 \\server\share\.. → sqlite://server/share/..
+        assert!(is_network_url("sqlite://server/share/guild/.guild/index.db?mode=rwc"));
+        // 로컬 드라이브.
+        assert!(!is_network_url("sqlite:C:/work/guild/.guild/index.db?mode=rwc"));
+        // 메모리 / file scheme.
+        assert!(!is_network_url("sqlite::memory:"));
+        assert!(!is_network_url("sqlite:file:og-mem-1?mode=memory&cache=shared"));
+    }
 
     /// BUG-041 regression: DB 에 binary 가 모르는 mig record 가 있어도
     /// `run_migrations` 가 panic 없이 통과 + 그 version 을 ahead 로 보고.
