@@ -12,7 +12,7 @@
 	import { checkForUpdate } from '$lib/api/updater';
 	// DEV-113: 원격 서버 연결 — "어떤 길드를 열지" 선택이라 길드 열기와 같은
 	// Welcome 화면에서 처리(설정 페이지에서 연결하는 건 자리가 어색하다는 피드백).
-	import { remoteServerUrl, setRemoteServerUrl, pingRemoteServer } from '$lib/stores/remoteServer';
+	import { setRemoteServerUrl, pingRemoteServer } from '$lib/stores/remoteServer';
 	// DEV-113 후속(사용자 피드백: "원격 길드도 등록하면 일반 길드처럼 접속할
 	// 수 있어야하는데 지금은 이해가 안 된다"): 원격 연결을 local recents 와
 	// 동등한 "최근 목록" 항목으로 — 한 번 연결하면 기록에 남아 다음부터는
@@ -313,12 +313,8 @@
 		remoteCheckMsg = null;
 	}
 
-	// 활성 연결만 끔(기록은 목록에 유지) — local 을 다시 고르지 않고 그냥
-	// "로컬로" 돌아가고 싶을 때의 단축. 실제 안전장치(local 열기 시 항상 끔)는
-	// openRecent / initUninit / pickFolder 의 setRemoteServerUrl(null).
-	function disconnectRemote() {
-		setRemoteServerUrl(null);
-	}
+	// local 길드를 열면 항상 setRemoteServerUrl(null) 로 원격 override 를
+	// 끈다 — openRecent / initUninit / pickFolder 참조.
 </script>
 
 <svelte:head>
@@ -368,17 +364,13 @@
 
 		<!-- DEV-113 후속: 원격 서버 연결 — "어떤 길드를 열지"의 또 다른 선택이라
 		     길드 열기와 같은 화면에서. 연결하면 아래 "최근 길드" 목록에 등록되어
-		     일반 길드처럼 클릭 한 번으로 다시 열 수 있다. 설정 페이지엔 현재
-		     연결 상태만 읽기 전용 표시. -->
+		     일반 길드처럼 클릭 한 번으로 다시 열 수 있다. local 과 대칭으로 "현재
+		     연결 상태" 표시는 없음(local 도 "현재 열려있는 길드" 표시가 없음) —
+		     사용자 피드백: 별도 "로컬로 전환" 버튼이 무슨 역할인지 혼란스러움.
+		     로컬로 돌아가려면 아래 목록에서 local 항목을 클릭하면 됨(그 경로들이
+		     이미 setRemoteServerUrl(null) 처리). 설정 페이지엔 현재 연결 상태만
+		     읽기 전용 표시. -->
 		<section class="picker remote-picker">
-			{#if $remoteServerUrl}
-				<p class="remote-status">
-					현재 원격 서버에 연결됨 — <span class="remote-active">{$remoteServerUrl}</span>
-					<button type="button" class="pick-file-link inline" onclick={disconnectRemote}>
-						로컬로 전환
-					</button>
-				</p>
-			{/if}
 			<div class="remote-input-row">
 				<input
 					type="text"
@@ -789,48 +781,9 @@
 		padding: 0.5rem 0.75rem;
 		font-size: 0.85rem;
 	}
-	/* 텍스트 링크 스타일 버튼 — DEV-113 후속의 "로컬로 전환" 등 보조 액션에 재사용. */
-	.pick-file-link {
-		flex: 1 0 100%;
-		margin: -0.25rem 0 0;
-		padding: 0;
-		background: transparent;
-		border: none;
-		color: var(--accent);
-		font-size: 0.8rem;
-		text-align: left;
-		cursor: pointer;
-		text-decoration: underline;
-		text-underline-offset: 2px;
-	}
-	.pick-file-link:hover:not(:disabled) {
-		color: var(--text);
-	}
-	.pick-file-link:disabled {
-		opacity: 0.6;
-		cursor: default;
-		color: var(--text-muted);
-	}
-	/* DEV-113 후속: .remote-status(<p>, flex 부모 아님) 안에서 쓰는 변형 — flex
-		 기반 전체너비/음수마진 무효화하고 텍스트 옆에 자연스럽게 붙도록. */
-	.pick-file-link.inline {
-		flex: 0 0 auto;
-		display: inline;
-		margin: 0 0 0 0.5rem;
-	}
-
 	/* DEV-113: 원격 서버 연결 섹션 — 길드 폴더 열기 picker 와 같은 톤, 살짝 구분. */
 	.remote-picker {
 		margin-top: -0.4rem;
-	}
-	.remote-status {
-		margin: 0;
-		font-size: 0.85rem;
-		color: var(--text-muted);
-	}
-	.remote-active {
-		color: var(--accent);
-		font-weight: 500;
 	}
 	.remote-input-row {
 		display: flex;
