@@ -47,6 +47,11 @@
 	let recents: Recent[] = $state([]);
 	// DEV-113 후속: 원격 길드 "최근 목록" — local recents 와 같은 자리에 합쳐서 표시.
 	let remoteGuildList: RemoteGuild[] = $state([]);
+	// DEV-206(사용자 보고): 이전에 연결했던 원격 길드가 항상 활성 상태로 보여
+	// 서버가 죽어있어도 클릭해야만 실패를 알 수 있었다. local recents 의
+	// missing(경로 없음 → 회색 비활성화)과 대칭으로, url → 확인 결과(아직
+	// 없으면 "확인 중" = 비활성화, true = 활성화, false = 비활성화 + 경고).
+	let remoteReachable = $state<Record<string, boolean>>({});
 	let loading = $state(true);
 	let err: string | null = $state(null);
 	let confirmOpen = $state(false); // 브라우저 confirm 대신 커스텀 모달.
@@ -91,6 +96,17 @@
 			loading = false;
 		}
 		remoteGuildList = listRemoteGuilds();
+		// DEV-206: 목록에 뜬 원격 길드 전부를 백그라운드에서 병렬로 ping —
+		// 응답 오는 항목부터 차례로 활성화(전체 대기 없이 즉시 반영).
+		for (const g of remoteGuildList) {
+			pingRemoteServer(g.url)
+				.then((ok) => {
+					remoteReachable = { ...remoteReachable, [g.url]: ok };
+				})
+				.catch(() => {
+					remoteReachable = { ...remoteReachable, [g.url]: false };
+				});
+		}
 		// launch_mode 가 'uninit' 이면 prompt 활성화.
 		if (env === 'tauri') {
 			try {
@@ -441,7 +457,9 @@
 		<!-- DEV-113 후속: local + remote 를 하나의 목록으로(최근 연 순). -->
 		<ul class="recent-list">
 			{#each unified as entry (entry.kind === 'local' ? entry.path : entry.url)}
-				<li class="recent-row" class:missing={entry.kind === 'local' && entry.missing}>
+				{@const remoteOk = entry.kind === 'remote' && remoteReachable[entry.url] === true}
+				{@const remoteChecked = entry.kind === 'remote' && entry.url in remoteReachable}
+				<li class="recent-row" class:missing={entry.kind === 'local' ? entry.missing : !remoteOk}>
 					{#if entry.kind === 'local'}
 						<button
 							class="recent-btn"
@@ -469,14 +487,23 @@
 							class="recent-btn"
 							type="button"
 							onclick={() => openRemoteEntry(entry.url)}
-							disabled={opening !== null}
-							title="이 원격 서버에 연결합니다"
+							disabled={opening !== null || !remoteOk}
+							title={!remoteChecked
+								? '연결 확인 중…'
+								: remoteOk
+									? '이 원격 서버에 연결합니다'
+									: '서버에 연결할 수 없습니다'}
 						>
 							<div class="row">
 								<span class="name">🌐 {entry.name}</span>
 								<span class="last">{fmtDate(entry.last_opened)}</span>
 							</div>
 							<div class="path">{entry.url}</div>
+							{#if !remoteChecked}
+								<div class="checking-label">연결 확인 중…</div>
+							{:else if !remoteOk}
+								<div class="missing-label">⚠ 서버에 연결할 수 없습니다</div>
+							{/if}
 						</button>
 					{/if}
 					<!-- DEV-052 후속 (5회차): 모든 항목에 × — 단일 삭제 + 확인 모달. -->
@@ -645,6 +672,11 @@
 	}
 	.missing-label {
 		color: var(--warning);
+		font-size: 0.8rem;
+	}
+	/* DEV-206: 원격 길드 ping 확인 중 — 아직 경고는 아니므로 muted. */
+	.checking-label {
+		color: var(--text-muted);
 		font-size: 0.8rem;
 	}
 	.recent-btn {
