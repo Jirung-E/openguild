@@ -210,53 +210,6 @@
 		}
 	}
 
-	// DEV-204: `.guild` 마커 파일을 직접 선택. 네이티브 폴더 다이얼로그는 파일을
-	// 안 보여줘 "이 위치에 길드가 있나?" 판단이 어려운 문제 — 파일 피커는 `.guild`
-	// 파일을 보여주므로 길드 존재가 명확히 보인다. 선택한 파일의 부모 = 길드 루트.
-	async function pickGuildFile() {
-		if (pickRunning) return;
-		if (env !== 'tauri') {
-			pickErr = 'Tauri 데스크톱 앱에서만 동작합니다.';
-			return;
-		}
-		pickRunning = true;
-		pickErr = null;
-		try {
-			const { open } = await import('@tauri-apps/plugin-dialog');
-			const selected = await open({
-				directory: false,
-				multiple: false,
-				title: '길드 마커 파일 선택 (이름.guild)',
-				filters: [{ name: '길드 마커 (*.guild)', extensions: ['guild'] }]
-			});
-			if (!selected) return; // 취소.
-			const file = typeof selected === 'string' ? selected : selected[0];
-			if (!file) return;
-			// 마커 파일의 부모 디렉토리 = 길드 루트.
-			const dir = file.replace(/[\\/][^\\/]+$/, '');
-
-			const { invoke } = await import('@tauri-apps/api/core');
-			const info = await invoke<{
-				exists: boolean;
-				is_dir: boolean;
-				has_marker: boolean;
-				resolved_path: string;
-			}>('inspect_guild_path', { path: dir });
-
-			if (!info.has_marker) {
-				pickErr = `선택한 .guild 파일의 폴더에서 길드를 찾지 못했습니다: ${dir}`;
-				return;
-			}
-			setRemoteServerUrl(null); // DEV-113 후속 — openRecent 와 동일 이유.
-			await invoke('open_guild_in_current_window', { path: info.resolved_path });
-			goto('/');
-		} catch (e) {
-			pickErr = handleOpenError(e);
-		} finally {
-			pickRunning = false;
-		}
-	}
-
 	// DEV-052 후속 (5회차): 단일 항목 제거 — 모든 항목에 × 버튼.
 	// 확인 모달 거쳐서 실수 방지. DEV-113 후속: local/remote 공용 — kind 로 분기.
 	let confirmRemove: UnifiedEntry | null = $state(null);
@@ -362,7 +315,7 @@
 
 	// 활성 연결만 끔(기록은 목록에 유지) — local 을 다시 고르지 않고 그냥
 	// "로컬로" 돌아가고 싶을 때의 단축. 실제 안전장치(local 열기 시 항상 끔)는
-	// openRecent / initUninit / pickFolder / pickGuildFile 의 setRemoteServerUrl(null).
+	// openRecent / initUninit / pickFolder 의 setRemoteServerUrl(null).
 	function disconnectRemote() {
 		setRemoteServerUrl(null);
 	}
@@ -398,19 +351,16 @@
 	</header>
 
 	{#if env === 'tauri'}
-		<!-- DEV-053: 파일 탐색기로 임의 위치의 길드 열기. -->
+		<!-- DEV-053: 파일 탐색기로 임의 위치의 길드 열기. DEV-204 후속(admin
+		     "revert 해라"): .guild 마커 파일 직접 선택 옵션은 폐기 — 원래의
+		     단일 폴더 다이얼로그로 되돌림. -->
 		<section class="picker">
 			<button class="btn-pick" onclick={pickFolder} disabled={pickRunning}>
-				{pickRunning ? '여는 중…' : '📂 길드 열기'}
+				{pickRunning ? '여는 중…' : '📁 폴더에서 열기'}
 			</button>
 			<span class="picker-hint">
-				길드 폴더를 선택하면 그 위치의 길드를 엽니다. 아직 길드가 아니면 이 위치를 새 길드로
-				초기화할지 물어봅니다. 길드 루트의 마커 파일(<code>이름.guild</code>)을 직접 골라 기존
-				길드를 열 수도 있습니다.
+				기존 길드 폴더를 선택하면 바로 열고, 길드가 아닌 폴더면 초기화 안내가 표시됩니다.
 			</span>
-			<button type="button" class="pick-file-link" onclick={pickGuildFile} disabled={pickRunning}>
-				또는 <code>.guild</code> 파일 직접 선택
-			</button>
 			{#if pickErr}
 				<p class="err">{pickErr}</p>
 			{/if}
@@ -839,7 +789,7 @@
 		padding: 0.5rem 0.75rem;
 		font-size: 0.85rem;
 	}
-	/* DEV-204: 보조 affordance — `.guild` 파일 직접 선택 (버튼 아닌 텍스트 링크 스타일). */
+	/* 텍스트 링크 스타일 버튼 — DEV-113 후속의 "로컬로 전환" 등 보조 액션에 재사용. */
 	.pick-file-link {
 		flex: 1 0 100%;
 		margin: -0.25rem 0 0;
@@ -867,10 +817,6 @@
 		flex: 0 0 auto;
 		display: inline;
 		margin: 0 0 0 0.5rem;
-	}
-	.pick-file-link code {
-		background: transparent;
-		padding: 0;
 	}
 
 	/* DEV-113: 원격 서버 연결 섹션 — 길드 폴더 열기 picker 와 같은 톤, 살짝 구분. */
