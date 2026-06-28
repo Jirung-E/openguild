@@ -9,6 +9,7 @@
 	import { flashQuestId } from '$lib/stores';
 	import type { Quest } from '$lib/types';
 	import { detectEnvironment } from '$lib/api/transport';
+	import { getRemoteServerUrl } from '$lib/stores/remoteServer';
 
 	// DEV-011: Home 추가. ?view 없으면 home 기본.
 	type View = 'home' | 'board' | 'list';
@@ -32,8 +33,17 @@
 	// 길드 컨텍스트가 없으므로 / (board) 진입 시 항상 /welcome 으로 bounce.
 	// (이전에 sessionStorage 마커로 첫 회만 redirect 했지만, Nav 로고 클릭 등
 	// 으로 다시 / 진입 시 빈 보드가 노출되는 버그가 있어서 제거.)
+	//
+	// DEV-113 후속(사용자 보고: "웹브라우저로는 원격길드 접속이 되는데 GUI
+	// 에서는 안된다"): `launch_mode` 는 Rust 의 로컬 Store 상태만 본다 —
+	// 원격 서버에 연결(remoteServerUrl)해도 Rust 쪽은 여전히 길드를 안 연
+	// 상태(`welcome`)이므로, Welcome 에서 연결 후 `/` 로 이동해도 이 guard
+	// 가 즉시 다시 `/welcome` 으로 돌려보내 마치 "연결이 안 되는" 것처럼
+	// 보였다(브라우저 모드는 이 invoke 자체가 없어 멀쩩했음). 원격 override
+	// 가 활성이면 이 bounce 를 건너뛴다 — 원격 연결도 유효한 "길드 컨텍스트".
 	onMount(async () => {
 		if (detectEnvironment() !== 'tauri') return;
+		if (getRemoteServerUrl()) return;
 		try {
 			const { invoke } = await import('@tauri-apps/api/core');
 			// DEV-052 후속 (3회차): launch_mode 가 string → { mode, uninit_path }
