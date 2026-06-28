@@ -18,6 +18,24 @@ pub fn create_router(store: Store) -> Router {
         // meta
         .route("/api/quest-types", get(meta::list_quest_types))
         .route("/api/quest-statuses", get(meta::list_quest_statuses))
+        // DEV-193: admin types/statuses CRUD — Tauri invoke(admin_* commands)
+        // 와 HTTP 파리티. transport.ts 의 routeToInvoke 매핑이 이 경로를 그대로 씀.
+        .route(
+            "/api/admin/types",
+            get(meta::admin_list_types).post(meta::admin_create_type),
+        )
+        .route(
+            "/api/admin/types/{prefix}",
+            patch(meta::admin_update_type).delete(meta::admin_delete_type),
+        )
+        .route(
+            "/api/admin/statuses",
+            get(meta::admin_list_statuses).post(meta::admin_create_status),
+        )
+        .route(
+            "/api/admin/statuses/{slug}",
+            patch(meta::admin_update_status).delete(meta::admin_delete_status),
+        )
         // DEV-068: tag defs — `.guild/tags/{slug}.toml` 진리원.
         .route(
             "/api/tag-defs",
