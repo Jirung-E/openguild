@@ -14,6 +14,17 @@
 	// DEV-113: 원격 서버 연결 — "어떤 길드를 열지" 선택이라 길드 열기와 같은
 	// Welcome 화면에서 처리(설정 페이지에서 연결하는 건 자리가 어색하다는 피드백).
 	import { remoteServerUrl, setRemoteServerUrl, pingRemoteServer } from '$lib/stores/remoteServer';
+	// DEV-113 후속(사용자 피드백: "원격 길드도 등록하면 일반 길드처럼 접속할
+	// 수 있어야하는데 지금은 이해가 안 된다"): 원격 연결을 local recents 와
+	// 동등한 "최근 목록" 항목으로 — 한 번 연결하면 기록에 남아 다음부터는
+	// 클릭만으로 재연결.
+	import {
+		listRemoteGuilds,
+		registerRemoteGuild,
+		removeRemoteGuild,
+		clearRemoteGuilds,
+		type RemoteGuild
+	} from '$lib/stores/remoteGuilds';
 	let quickMenuOpen = $state(false);
 	// '업데이트 확인' 을 눌렀는지 — 눌렀을 때만 결과 토스트 표시.
 	let updateRequested = $state(false);
@@ -38,11 +49,29 @@
 	}
 
 	let recents: Recent[] = $state([]);
+	// DEV-113 후속: 원격 길드 "최근 목록" — local recents 와 같은 자리에 합쳐서 표시.
+	let remoteGuildList: RemoteGuild[] = $state([]);
 	let loading = $state(true);
 	let err: string | null = $state(null);
 	let confirmOpen = $state(false); // 브라우저 confirm 대신 커스텀 모달.
-	let opening: string | null = $state(null); // 진행 중인 path (UI 비활성화).
+	let opening: string | null = $state(null); // 진행 중인 path (UI 비활성화). remote 는 동기라 불필요.
 	let openErr: string | null = $state(null);
+
+	// DEV-113 후속: local(path 기준) 과 remote(url 기준) 를 하나의 목록으로 —
+	// "원격 길드도 등록하면 일반 길드처럼 접속할 수 있어야" 피드백 반영.
+	// kind 로 열기/제거 핸들러와 표시(path vs url)를 분기.
+	type UnifiedEntry =
+		| { kind: 'local'; path: string; name: string; last_opened: string; missing: boolean }
+		| { kind: 'remote'; url: string; name: string; last_opened: string };
+
+	let unified: UnifiedEntry[] = $derived(
+		(
+			[
+				...recents.map((r) => ({ kind: 'local' as const, ...r })),
+				...remoteGuildList.map((g) => ({ kind: 'remote' as const, ...g }))
+			] satisfies UnifiedEntry[]
+		).sort((a, b) => (a.last_opened < b.last_opened ? 1 : -1))
+	);
 
 	// DEV-052 후속 (2회차): 길드 미초기화 디렉토리에서 시작했을 때의 prompt.
 	let uninitPath: string | null = $state(null);
@@ -65,6 +94,7 @@
 		} finally {
 			loading = false;
 		}
+		remoteGuildList = listRemoteGuilds();
 		// launch_mode 가 'uninit' 이면 prompt 활성화.
 		if (env === 'tauri') {
 			try {
@@ -93,6 +123,13 @@
 			if (env !== 'tauri') {
 				throw new Error('Tauri 데스크톱 앱에서만 동작합니다.');
 			}
+			// DEV-113 후속: local 길드를 열 때는 이전에 연결해둔 원격 서버
+			// override 를 반드시 끈다 — 안 그러면 Rust 의 Store 는 이 local
+			// 길드로 swap 되는데 transport(매 호출 시 remoteServerUrl 우선
+			// 확인)는 여전히 옛 원격 URL 로 HTTP 호출해, "로컬을 열었는데
+			// 화면엔 그대로 원격 데이터"가 보이는 혼란이 생긴다(사용자 보고:
+			// 원격/로컬 전환이 이해가 안 된다).
+			setRemoteServerUrl(null);
 			const { invoke } = await import('@tauri-apps/api/core');
 			await invoke('open_guild_in_current_window', { path });
 			// 성공: 현재 process 의 Store 가 swap 됐음. 보드로 이동.
@@ -114,6 +151,7 @@
 		initRunning = true;
 		initErr = null;
 		try {
+			setRemoteServerUrl(null); // DEV-113 후속 — openRecent 와 동일 이유.
 			const { invoke } = await import('@tauri-apps/api/core');
 			await invoke('init_and_open_guild', { path: uninitPath, name });
 			// 성공: store swap 됨. 보드로.
@@ -160,6 +198,7 @@
 			}
 			if (info.has_marker) {
 				// 기존 길드 → 바로 현재 창에서 열기.
+				setRemoteServerUrl(null); // DEV-113 후속 — openRecent 와 동일 이유.
 				await invoke('open_guild_in_current_window', { path: info.resolved_path });
 				goto('/');
 			} else {
@@ -212,6 +251,7 @@
 				pickErr = `선택한 .guild 파일의 폴더에서 길드를 찾지 못했습니다: ${dir}`;
 				return;
 			}
+			setRemoteServerUrl(null); // DEV-113 후속 — openRecent 와 동일 이유.
 			await invoke('open_guild_in_current_window', { path: info.resolved_path });
 			goto('/');
 		} catch (e) {
@@ -222,11 +262,11 @@
 	}
 
 	// DEV-052 후속 (5회차): 단일 항목 제거 — 모든 항목에 × 버튼.
-	// 확인 모달 거쳐서 실수 방지.
-	let confirmRemove: Recent | null = $state(null);
+	// 확인 모달 거쳐서 실수 방지. DEV-113 후속: local/remote 공용 — kind 로 분기.
+	let confirmRemove: UnifiedEntry | null = $state(null);
 
-	function askRemove(r: Recent) {
-		confirmRemove = r;
+	function askRemove(entry: UnifiedEntry) {
+		confirmRemove = entry;
 	}
 
 	function cancelRemove() {
@@ -238,8 +278,13 @@
 		if (!target) return;
 		confirmRemove = null;
 		try {
-			await recentsApi.remove(target.path);
-			recents = recents.filter((r) => r.path !== target.path);
+			if (target.kind === 'local') {
+				await recentsApi.remove(target.path);
+				recents = recents.filter((r) => r.path !== target.path);
+			} else {
+				removeRemoteGuild(target.url);
+				remoteGuildList = remoteGuildList.filter((g) => g.url !== target.url);
+			}
 		} catch (e) {
 			openErr = handleOpenError(e);
 		}
@@ -258,6 +303,10 @@
 		confirmOpen = false;
 		await recentsApi.clear();
 		recents = [];
+		// DEV-113 후속: "전체 비우기" 가 이제 통합 목록을 비우는 동작이라 원격
+		// 기록도 함께.
+		clearRemoteGuilds();
+		remoteGuildList = [];
 	}
 
 	function cancelClear() {
@@ -271,8 +320,11 @@
 		return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 	}
 
-	// DEV-113: 원격 서버 연결 — URL 입력 + 연결 확인 + 적용(연결 후 보드로 이동).
-	let remoteInput = $state($remoteServerUrl ?? '');
+	// DEV-113 후속: 원격 서버 연결 — URL 입력 + 연결 확인 + 연결(목록에 등록 +
+	// 활성화 + 보드로 이동). 한 번 연결하면 unified 목록에 남아 다음부터는
+	// 그냥 클릭으로 재연결("원격 길드도 등록하면 일반 길드처럼 접속할 수
+	// 있어야" 피드백).
+	let remoteInput = $state('');
 	let remoteCheckState = $state<'idle' | 'checking' | 'ok' | 'fail'>('idle');
 	let remoteCheckMsg = $state<string | null>(null);
 
@@ -291,19 +343,32 @@
 		}
 	}
 
-	// 연결(적용) — 확인 없이도 시도 가능(신뢰된 서버 주소를 이미 아는 경우).
-	function connectRemote() {
-		const url = remoteInput.trim();
-		if (!url) return;
+	// 목록에 있는 기존 원격 길드 클릭 — 재입력 없이 바로 재연결. 새 URL 연결
+	// (connectRemote)과 핵심 로직 공유 — core::recents::add 가 로컬 열기
+	// 성공 시 자동으로 LRU 갱신하는 것과 동등하게, 연결 성공 시 registerRemoteGuild
+	// 로 갱신.
+	function openRemoteEntry(url: string) {
 		setRemoteServerUrl(url);
+		registerRemoteGuild(url);
+		remoteGuildList = listRemoteGuilds();
 		goto('/');
 	}
 
-	function disconnectRemote() {
+	// 새 URL 연결 — 확인(ping) 없이도 시도 가능(신뢰된 서버 주소를 이미 아는 경우).
+	function connectRemote() {
+		const url = remoteInput.trim();
+		if (!url) return;
+		openRemoteEntry(url);
 		remoteInput = '';
-		setRemoteServerUrl(null);
 		remoteCheckState = 'idle';
 		remoteCheckMsg = null;
+	}
+
+	// 활성 연결만 끔(기록은 목록에 유지) — local 을 다시 고르지 않고 그냥
+	// "로컬로" 돌아가고 싶을 때의 단축. 실제 안전장치(local 열기 시 항상 끔)는
+	// openRecent / initUninit / pickFolder / pickGuildFile 의 setRemoteServerUrl(null).
+	function disconnectRemote() {
+		setRemoteServerUrl(null);
 	}
 </script>
 
@@ -355,39 +420,42 @@
 			{/if}
 		</section>
 
-		<!-- DEV-113: 원격 서버 연결 — "어떤 길드를 열지"의 또 다른 선택이라 길드
-		     열기와 같은 화면에서. 설정 페이지엔 현재 연결 상태만 읽기 전용 표시. -->
+		<!-- DEV-113 후속: 원격 서버 연결 — "어떤 길드를 열지"의 또 다른 선택이라
+		     길드 열기와 같은 화면에서. 연결하면 아래 "최근 길드" 목록에 등록되어
+		     일반 길드처럼 클릭 한 번으로 다시 열 수 있다. 설정 페이지엔 현재
+		     연결 상태만 읽기 전용 표시. -->
 		<section class="picker remote-picker">
 			{#if $remoteServerUrl}
 				<p class="remote-status">
 					현재 원격 서버에 연결됨 — <span class="remote-active">{$remoteServerUrl}</span>
+					<button type="button" class="pick-file-link inline" onclick={disconnectRemote}>
+						로컬로 전환
+					</button>
 				</p>
-				<button class="pick-file-link" onclick={disconnectRemote}>연결 해제 (로컬로)</button>
-			{:else}
-				<div class="remote-input-row">
-					<input
-						type="text"
-						placeholder="원격 서버 주소 — http://192.168.1.10:3000"
-						bind:value={remoteInput}
-						aria-label="원격 서버 URL"
-					/>
-					<button class="btn-pick alt" onclick={checkRemote} disabled={!remoteInput.trim()}>
-						{remoteCheckState === 'checking' ? '확인 중…' : '연결 확인'}
-					</button>
-					<button class="btn-pick" onclick={connectRemote} disabled={!remoteInput.trim()}>
-						연결
-					</button>
-				</div>
-				{#if remoteCheckState === 'ok'}
-					<p class="remote-check ok">✓ 연결 확인됨.</p>
-				{:else if remoteCheckState === 'fail'}
-					<p class="remote-check err">연결 실패{remoteCheckMsg ? `: ${remoteCheckMsg}` : ''}</p>
-				{/if}
-				<span class="picker-hint">
-					openguild-server 의 주소. 연결하면 이 PC 의 길드 대신 그 서버의 길드를 사용합니다.
-					<strong>인증이 없으니 신뢰된 네트워크에서만</strong> 사용하세요.
-				</span>
 			{/if}
+			<div class="remote-input-row">
+				<input
+					type="text"
+					placeholder="원격 서버 주소 — http://192.168.1.10:3000"
+					bind:value={remoteInput}
+					aria-label="원격 서버 URL"
+				/>
+				<button class="btn-pick alt" onclick={checkRemote} disabled={!remoteInput.trim()}>
+					{remoteCheckState === 'checking' ? '확인 중…' : '연결 확인'}
+				</button>
+				<button class="btn-pick" onclick={connectRemote} disabled={!remoteInput.trim()}>
+					연결
+				</button>
+			</div>
+			{#if remoteCheckState === 'ok'}
+				<p class="remote-check ok">✓ 연결 확인됨.</p>
+			{:else if remoteCheckState === 'fail'}
+				<p class="remote-check err">연결 실패{remoteCheckMsg ? `: ${remoteCheckMsg}` : ''}</p>
+			{/if}
+			<span class="picker-hint">
+				openguild-server 의 주소. 연결하면 아래 "최근 길드" 목록에 등록되어 다음부터는 클릭만으로
+				다시 열 수 있습니다. <strong>인증이 없으니 신뢰된 네트워크에서만</strong> 사용하세요.
+			</span>
 		</section>
 	{/if}
 
@@ -425,43 +493,60 @@
 			Recent guild 목록은 desktop 앱 (Tauri) 에서만 동작합니다.<br />
 			브라우저 모드에선 현재 server 가 호스팅한 길드만 표시됩니다.
 		</p>
-	{:else if recents.length === 0}
+	{:else if unified.length === 0}
 		<p class="empty">
 			아직 열어본 길드가 없습니다.<br />
 			<code>openguild init</code> 으로 새 길드를 만들거나, <code>openguild-gui &lt;path&gt;</code>
-			로 기존 길드를 열어 보세요.
+			로 기존 길드를 열거나, 위에서 원격 서버에 연결해 보세요.
 		</p>
 	{:else}
+		<!-- DEV-113 후속: local + remote 를 하나의 목록으로(최근 연 순). -->
 		<ul class="recent-list">
-			{#each recents as r (r.path)}
-				<li class="recent-row" class:missing={r.missing}>
-					<button
-						class="recent-btn"
-						type="button"
-						onclick={() => openRecent(r.path)}
-						disabled={opening !== null || r.missing}
-						title={r.missing
-							? '경로를 찾을 수 없습니다 — 이동 / 삭제됐을 수 있음'
-							: '현재 창에서 이 길드를 엽니다'}
-					>
-						<div class="row">
-							<span class="name">{r.name}</span>
-							<span class="last">{fmtDate(r.last_opened)}</span>
-						</div>
-						<div class="path">{r.path}</div>
-						{#if r.missing}
-							<div class="missing-label">⚠ 경로를 찾을 수 없습니다</div>
-						{/if}
-						{#if opening === r.path}
-							<div class="opening">길드 여는 중…</div>
-						{/if}
-					</button>
+			{#each unified as entry (entry.kind === 'local' ? entry.path : entry.url)}
+				<li class="recent-row" class:missing={entry.kind === 'local' && entry.missing}>
+					{#if entry.kind === 'local'}
+						<button
+							class="recent-btn"
+							type="button"
+							onclick={() => openRecent(entry.path)}
+							disabled={opening !== null || entry.missing}
+							title={entry.missing
+								? '경로를 찾을 수 없습니다 — 이동 / 삭제됐을 수 있음'
+								: '현재 창에서 이 길드를 엽니다'}
+						>
+							<div class="row">
+								<span class="name">{entry.name}</span>
+								<span class="last">{fmtDate(entry.last_opened)}</span>
+							</div>
+							<div class="path">{entry.path}</div>
+							{#if entry.missing}
+								<div class="missing-label">⚠ 경로를 찾을 수 없습니다</div>
+							{/if}
+							{#if opening === entry.path}
+								<div class="opening">길드 여는 중…</div>
+							{/if}
+						</button>
+					{:else}
+						<button
+							class="recent-btn"
+							type="button"
+							onclick={() => openRemoteEntry(entry.url)}
+							disabled={opening !== null}
+							title="이 원격 서버에 연결합니다"
+						>
+							<div class="row">
+								<span class="name">🌐 {entry.name}</span>
+								<span class="last">{fmtDate(entry.last_opened)}</span>
+							</div>
+							<div class="path">{entry.url}</div>
+						</button>
+					{/if}
 					<!-- DEV-052 후속 (5회차): 모든 항목에 × — 단일 삭제 + 확인 모달. -->
 					<button
 						class="recent-remove"
 						type="button"
-						onclick={() => askRemove(r)}
-						title="목록에서 제거 (디스크 데이터는 건드리지 않음)"
+						onclick={() => askRemove(entry)}
+						title="목록에서 제거"
 						aria-label="목록에서 제거"
 					>
 						×
@@ -485,7 +570,7 @@
 	<div class="ov" role="presentation">
 		<div class="modal" role="dialog" aria-modal="true" tabindex="-1">
 			<h3 class="modal-title">최근 길드 목록 비우기</h3>
-			<p class="modal-msg">Recent 목록을 모두 비울까요? 되돌릴 수 없습니다.</p>
+			<p class="modal-msg">최근 길드 목록(로컬 + 원격)을 모두 비울까요? 되돌릴 수 없습니다.</p>
 			<div class="modal-actions">
 				<button class="btn-yes" onclick={doClear}>비우기</button>
 				<button class="btn-no" onclick={cancelClear}>취소</button>
@@ -502,9 +587,13 @@
 			<p class="modal-msg">
 				<strong>{confirmRemove.name}</strong> 을 최근 목록에서 제거할까요?
 			</p>
-			<p class="modal-path">{confirmRemove.path}</p>
+			<p class="modal-path">
+				{confirmRemove.kind === 'local' ? confirmRemove.path : confirmRemove.url}
+			</p>
 			<p class="modal-msg modal-note">
-				디스크의 길드 파일은 그대로 두고, Recent 목록에서만 빠집니다.
+				{confirmRemove.kind === 'local'
+					? '디스크의 길드 파일은 그대로 두고, Recent 목록에서만 빠집니다.'
+					: '서버 연결 자체에는 영향 없고, Recent 목록에서만 빠집니다.'}
 			</p>
 			<div class="modal-actions">
 				<button class="btn-yes" onclick={doRemove}>제거</button>
@@ -843,6 +932,13 @@
 		opacity: 0.6;
 		cursor: default;
 		color: var(--text-muted);
+	}
+	/* DEV-113 후속: .remote-status(<p>, flex 부모 아님) 안에서 쓰는 변형 — flex
+		 기반 전체너비/음수마진 무효화하고 텍스트 옆에 자연스럽게 붙도록. */
+	.pick-file-link.inline {
+		flex: 0 0 auto;
+		display: inline;
+		margin: 0 0 0 0.5rem;
 	}
 	.pick-file-link code {
 		background: transparent;
