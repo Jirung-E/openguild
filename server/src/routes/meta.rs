@@ -20,6 +20,21 @@ pub async fn list_quest_statuses(
     Ok(Json(svc::list_quest_statuses(&store.index_pool).await?))
 }
 
+#[derive(Debug, Serialize)]
+pub struct GuildInfo {
+    pub name: String,
+}
+
+/// `GET /api/guild-info` — DEV-113 후속: 사용자 보고("원격 길드 접속 시
+/// 제목이 안 보이거나 잘못 보임") — 브라우저/원격(HTTP) 모드에서 길드
+/// 이름을 표시하기 위한 라우트. Tauri 의 `current_guild_name` invoke 와
+/// 동일한 fallback 규칙(`recents::guess_name` — marker 파일의 name 또는
+/// 디렉토리명)을 재사용해 한쪽만 다른 이름을 보여주는 불일치를 막는다.
+pub async fn get_guild_info(State(store): State<Store>) -> Json<GuildInfo> {
+    let name = openguild_core::recents::guess_name(&store.paths.guild_root);
+    Json(GuildInfo { name })
+}
+
 /// DEV-068: tag def 목록.
 pub async fn list_tag_defs(
     State(store): State<Store>,

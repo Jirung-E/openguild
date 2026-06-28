@@ -16,6 +16,7 @@ pub fn create_router(store: Store) -> Router {
     Router::new()
         .route("/health", get(health))
         // meta
+        .route("/api/guild-info", get(meta::get_guild_info))
         .route("/api/quest-types", get(meta::list_quest_types))
         .route("/api/quest-statuses", get(meta::list_quest_statuses))
         // DEV-193: admin types/statuses CRUD — Tauri invoke(admin_* commands)

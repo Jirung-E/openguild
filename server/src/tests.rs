@@ -834,6 +834,17 @@ async fn test_history_records_slugs_not_ids() {
         "new_value 가 숫자면 안 됨: {:?}", arr[0]["new_value"]);
 }
 
+/// DEV-113 후속: 사용자 보고("원격 길드 접속 시 제목이 안 보임") — 브라우저/
+/// 원격(HTTP) 모드의 Nav 가 길드 이름을 가져오는 라우트.
+#[tokio::test]
+async fn test_guild_info_exposes_name() {
+    let app = setup().await;
+    let (status, body) = get(app, "/api/guild-info").await;
+    assert_eq!(status, StatusCode::OK);
+    let name = body["name"].as_str().expect("name must be string");
+    assert!(!name.is_empty(), "guild name 이 비어있으면 안 됨");
+}
+
 #[tokio::test]
 async fn test_status_endpoint_exposes_slug() {
     let app = setup().await;
