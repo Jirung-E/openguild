@@ -52,10 +52,12 @@ enum Command {
         /// 바인드 포트 (env: PORT, 기본 3000)
         #[arg(long)]
         port: Option<u16>,
-        /// DEV-195 후속(admin 피드백): 바인드 주소 — `host --host` 처럼 서브커맨드와
-        /// 이름이 겹치면 어색하다는 지적으로 `--bind` 로 명명. `local`(=127.0.0.1,
-        /// 기본 — 의도치 않은 네트워크 노출 방지) / `public`(=0.0.0.0, 다른 기기
-        /// 접근 허용) 별칭 또는 IP 리터럴(예: `192.168.1.10`). env: BIND.
+        // DEV-195 후속(admin 피드백): `host --host` 처럼 서브커맨드와 이름이
+        // 겹치면 어색하다는 지적으로 `--bind` 로 명명.
+        // BUG-016: doc 에 quest_id leak 금지 — 아래 /// 는 기능 설명만.
+        /// 바인드 주소. `local`(=127.0.0.1, 기본 — 의도치 않은 네트워크 노출
+        /// 방지) / `public`(=0.0.0.0, 다른 기기 접근 허용) 별칭 또는 IP
+        /// 리터럴(예: `192.168.1.10`). env: BIND.
         #[arg(long)]
         bind: Option<String>,
     },
@@ -286,6 +288,79 @@ mod cli_tests {
         // DEV-163: 옛 정비 서브커맨드(reindex 등)는 이제 server 에 없음 → 알 수 없는 명령.
         let err = Cli::try_parse_from(["openguild-server", "reindex"]).unwrap_err();
         assert!(matches!(err.kind(), clap::error::ErrorKind::InvalidSubcommand));
+    }
+
+    /// 사용자 보고(2026-06-29): `openguild-server host --help` 가
+    /// `--bind` 옵션 설명에 적힌 "DEV-195"를 그대로 노출(`bind` 필드의
+    /// `///` doc comment 에 quest id 가 들어가 있었음). `cli/src/main.rs`
+    /// 의 `help_output_has_no_quest_id_leaks`(BUG-016) 와 동일한 회귀
+    /// 가드가 **server 의 Cli 에는 없었다** — CLI 쪽 테스트는 CLI 의
+    /// `Cli::command()` 만 스캔하므로 server 의 누출을 못 잡았다(사용자
+    /// 보고: "테스트는 통과했다"가 이 이유). 별도 binary 라 별도 가드 필요.
+    #[test]
+    fn help_output_has_no_quest_id_leaks() {
+        use clap::CommandFactory;
+        let cmd = Cli::command();
+        let mut violations: Vec<String> = Vec::new();
+        check_help_recursive(&cmd, cmd.get_name(), &mut violations);
+        assert!(
+            violations.is_empty(),
+            "quest id 가 help 출력에 leak:\n{}",
+            violations.join("\n")
+        );
+    }
+
+    fn check_help_recursive(cmd: &clap::Command, path: &str, violations: &mut Vec<String>) {
+        let mut owned = cmd.clone();
+        let help = owned.render_long_help().to_string();
+        if let Some(found) = find_quest_id(&help) {
+            violations.push(format!("[{path}] '{found}' in help"));
+        }
+        for sub in cmd.get_subcommands() {
+            let sub_path = format!("{path} {}", sub.get_name());
+            check_help_recursive(sub, &sub_path, violations);
+        }
+    }
+
+    /// 처음 발견된 `<PREFIX>-<숫자>` substring (PREFIX 는 ASCII 대문자 2~5).
+    /// `cli/src/main.rs` 의 동명 헬퍼와 동일 — 별도 crate 의 테스트라 공유 X.
+    fn find_quest_id(s: &str) -> Option<&str> {
+        let bytes = s.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() {
+            let Some(dash_rel) = s[i..].find('-') else { break };
+            let dash = i + dash_rel;
+            let prefix_end = dash;
+            let mut prefix_start = prefix_end;
+            while prefix_start > 0
+                && bytes[prefix_start - 1].is_ascii_uppercase()
+                && prefix_end - prefix_start < 5
+            {
+                prefix_start -= 1;
+            }
+            let prefix_len = prefix_end - prefix_start;
+            let after = dash + 1;
+            let mut digits = after;
+            while digits < bytes.len() && bytes[digits].is_ascii_digit() {
+                digits += 1;
+            }
+            if prefix_len >= 2 && digits > after {
+                return Some(&s[prefix_start..digits]);
+            }
+            i = dash + 1;
+        }
+        None
+    }
+
+    #[test]
+    fn find_quest_id_detects_patterns() {
+        assert!(find_quest_id("foo (DEV-001) bar").is_some());
+        assert!(find_quest_id("BUG-44 trailing").is_some());
+        assert!(find_quest_id("REQ-7").is_some());
+        assert!(find_quest_id("no quest id here").is_none());
+        assert!(find_quest_id("D-1").is_none());
+        assert!(find_quest_id("DEV-").is_none());
+        assert!(find_quest_id("dev-001").is_none());
     }
 }
 
