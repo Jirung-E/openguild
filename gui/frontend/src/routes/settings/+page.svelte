@@ -45,6 +45,8 @@
 	import CustomSlider from '$lib/components/CustomSlider.svelte';
 	// DEV-074 fix17: release notes <pre> overlay scrollbar.
 	import OverlayScrollbar from '$lib/components/OverlayScrollbar.svelte';
+	// DEV-113 (MVP): 원격 서버 모드 — URL 설정 + 연결 확인.
+	import { remoteServerUrl, setRemoteServerUrl, pingRemoteServer } from '$lib/stores/remoteServer';
 
 	let upToastNotesEl: HTMLPreElement | undefined = $state(undefined);
 
@@ -52,8 +54,39 @@
 	// preview / displayScale wrapper 제거.
 
 	// DEV-052 / DEV-101 fix6: 탭 분리 — '정보' / '표시'.
-	type Tab = 'info' | 'display' | 'editor';
+	type Tab = 'info' | 'display' | 'editor' | 'remote';
 	let activeTab = $state<Tab>('info');
+
+	// DEV-113 (MVP): 원격 서버 URL 입력 + 연결 확인.
+	let remoteInput = $state($remoteServerUrl ?? '');
+	let remoteCheckState = $state<'idle' | 'checking' | 'ok' | 'fail'>('idle');
+	let remoteCheckMsg = $state<string | null>(null);
+
+	function applyRemote() {
+		setRemoteServerUrl(remoteInput);
+		remoteCheckState = 'idle';
+		remoteCheckMsg = null;
+	}
+	function clearRemote() {
+		remoteInput = '';
+		setRemoteServerUrl(null);
+		remoteCheckState = 'idle';
+		remoteCheckMsg = null;
+	}
+	async function checkRemote() {
+		const url = remoteInput.trim();
+		if (!url) return;
+		remoteCheckState = 'checking';
+		remoteCheckMsg = null;
+		try {
+			const ok = await pingRemoteServer(url);
+			remoteCheckState = ok ? 'ok' : 'fail';
+			if (!ok) remoteCheckMsg = '서버가 응답했지만 예상한 형식이 아닙니다.';
+		} catch (e) {
+			remoteCheckState = 'fail';
+			remoteCheckMsg = e instanceof Error ? e.message : String(e);
+		}
+	}
 
 	// floating toast 닫기 — updateState 를 idle 로.
 	const dismissCheck = () => dismissUpdate();
@@ -104,6 +137,15 @@
 				onclick={() => (activeTab = 'editor')}
 				aria-pressed={activeTab === 'editor'}>편집기</button
 			>
+			<!-- DEV-113 (MVP): 원격 서버 — 데스크탑(Tauri) 전용, 브라우저 모드는 이미 HTTP. -->
+			{#if isTauri}
+				<button
+					class="tab"
+					class:active={activeTab === 'remote'}
+					onclick={() => (activeTab = 'remote')}
+					aria-pressed={activeTab === 'remote'}>원격 서버</button
+				>
+			{/if}
 		</nav>
 	</aside>
 
@@ -148,6 +190,51 @@
 					<p class="scale-hint">
 						공백 모드에서 Tab 한 번에 넣을 공백 개수 (탭 문자 모드에선 표시 폭). 2 / 4 중 선택.
 					</p>
+				</dd>
+			</dl>
+		{:else if activeTab === 'remote'}
+			<!-- DEV-113 (MVP): 원격 서버 모드 — URL 입력 + 연결 확인. 인증 없음(범위 밖, DEV-021). -->
+			<h2>원격 서버</h2>
+			<dl class="info-grid">
+				<dt>현재 모드</dt>
+				<dd>
+					{#if $remoteServerUrl}
+						<span class="remote-active">원격 — {$remoteServerUrl}</span>
+					{:else}
+						<span>로컬 (이 PC 의 길드 파일 직접 사용)</span>
+					{/if}
+				</dd>
+				<dt>서버 URL</dt>
+				<dd class="theme-row">
+					<div class="remote-input-row">
+						<input
+							type="text"
+							placeholder="http://192.168.1.10:3000"
+							bind:value={remoteInput}
+							aria-label="원격 서버 URL"
+						/>
+						<button class="btn-reset" onclick={checkRemote} disabled={!remoteInput.trim()}>
+							{remoteCheckState === 'checking' ? '확인 중…' : '연결 확인'}
+						</button>
+					</div>
+					{#if remoteCheckState === 'ok'}
+						<p class="remote-check ok">✓ 연결 확인됨.</p>
+					{:else if remoteCheckState === 'fail'}
+						<p class="remote-check err">연결 실패{remoteCheckMsg ? `: ${remoteCheckMsg}` : ''}</p>
+					{/if}
+					<p class="scale-hint">
+						openguild-server 의 주소(예: <code>http://호스트:3000</code>). 적용하면 이 PC 의 길드
+						대신 그 서버의 길드를 사용합니다. <strong>인증이 없으니 신뢰된 네트워크에서만</strong>
+						사용하세요.
+					</p>
+					<div class="remote-actions">
+						<button class="btn-primary" onclick={applyRemote} disabled={!remoteInput.trim()}>
+							적용 (원격으로 전환)
+						</button>
+						<button class="btn-reset" onclick={clearRemote} disabled={!$remoteServerUrl}>
+							로컬로 복귀
+						</button>
+					</div>
 				</dd>
 			</dl>
 		{:else if activeTab === 'info'}
@@ -425,6 +512,61 @@
 		border-color: var(--btn-primary-border-hover);
 	}
 	.btn-primary:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	/* DEV-113 (MVP): 원격 서버 설정. */
+	.remote-active {
+		color: var(--accent);
+		font-weight: 500;
+	}
+	.remote-input-row {
+		display: flex;
+		gap: 0.5rem;
+	}
+	.remote-input-row input {
+		flex: 1;
+		min-width: 0;
+		padding: 0.4rem 0.6rem;
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		background: var(--bg);
+		color: var(--text);
+		font-size: 0.85rem;
+	}
+	.remote-check {
+		margin: 0.3rem 0 0;
+		font-size: 0.8rem;
+	}
+	.remote-check.ok {
+		color: var(--success);
+	}
+	.remote-check.err {
+		color: var(--danger);
+	}
+	.remote-actions {
+		display: flex;
+		gap: 0.5rem;
+		margin-top: 0.6rem;
+	}
+	.remote-actions .btn-reset,
+	.remote-input-row .btn-reset {
+		padding: 0.4rem 0.9rem;
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		background: transparent;
+		color: var(--text);
+		font-size: 0.85rem;
+		cursor: pointer;
+		white-space: nowrap;
+	}
+	.remote-actions .btn-reset:hover:not(:disabled),
+	.remote-input-row .btn-reset:hover:not(:disabled) {
+		background: var(--bg-subtle);
+	}
+	.remote-actions .btn-reset:disabled,
+	.remote-input-row .btn-reset:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
 	}

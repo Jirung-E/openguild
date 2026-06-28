@@ -12,6 +12,9 @@
  */
 
 import type { HttpMethod } from './types';
+// DEV-113: 원격 서버 모드 — Tauri 환경에서도 사용자가 설정한 URL 이 있으면
+// HTTP 로 우회.
+import { getRemoteServerUrl } from '$lib/stores/remoteServer';
 
 /** transport 가 처리하는 한 호출의 명세. */
 export interface ApiCall {
@@ -53,13 +56,17 @@ export function detectEnvironment(): 'http' | 'tauri' {
  * 개발: `.env.development` 에서 `VITE_API_URL=http://localhost:3000`.
  * 프로덕션: 같은 도메인이면 미설정으로 OK. 별도 호스팅이면 build 시 지정.
  */
-const HTTP_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
+const DEFAULT_HTTP_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
 
 export class HttpTransport implements Transport {
 	readonly kind = 'http' as const;
 
+	// DEV-113: base 를 인자로 받을 수 있게 — 원격 서버 모드(Tauri + 사용자가
+	// 입력한 URL)에서도 같은 클래스를 재사용. 기본값은 기존 VITE_API_URL.
+	constructor(private base: string = DEFAULT_HTTP_BASE) {}
+
 	async call<T>(req: ApiCall): Promise<T> {
-		const res = await fetch(`${HTTP_BASE}${req.path}`, {
+		const res = await fetch(`${this.base}${req.path}`, {
 			method: req.method,
 			headers: { 'Content-Type': 'application/json' },
 			body: req.body !== undefined ? JSON.stringify(req.body) : undefined
@@ -551,6 +558,40 @@ export const __test_only = { routeToInvoke };
 
 // ─────────────────────── default ───────────────────────
 
-/** 모듈 로드 시점에 한 번 결정. SSR 도 안전. */
-export const transport: Transport =
-	detectEnvironment() === 'tauri' ? new TauriTransport() : new HttpTransport();
+const tauriTransportInstance = new TauriTransport();
+const defaultHttpTransportInstance = new HttpTransport();
+
+/**
+ * DEV-113 (MVP): 매 호출마다 현재 모드를 평가 — Tauri 환경이라도 원격 서버
+ * URL(remoteServer.ts, 사용자가 설정)이 있으면 그 URL 로 HTTP 호출(invoke 대신).
+ * 인증 없음(범위 밖, DEV-021) — 신뢰된 네트워크에서만 사용 권장. 브라우저
+ * 모드는 항상 기존 HttpTransport(VITE_API_URL/same-origin), 영향 없음.
+ */
+function resolveTransport(): Transport {
+	if (detectEnvironment() === 'tauri') {
+		// 동적 import 가 아니라 평범한 import — 순환 의존 없음(remoteServer.ts 는
+		// transport.ts 를 모름). SSR/테스트 환경에서도 안전하도록 try.
+		const remote = getRemoteServerUrlSafe();
+		if (remote) return new HttpTransport(remote);
+		return tauriTransportInstance;
+	}
+	return defaultHttpTransportInstance;
+}
+
+function getRemoteServerUrlSafe(): string | null {
+	try {
+		return getRemoteServerUrl();
+	} catch {
+		return null;
+	}
+}
+
+/** 모듈 로드 시점이 아니라 매 호출 시점에 모드를 재평가하는 위임 객체. */
+export const transport: Transport = {
+	get kind() {
+		return resolveTransport().kind;
+	},
+	call<T>(req: ApiCall): Promise<T> {
+		return resolveTransport().call<T>(req);
+	}
+};
