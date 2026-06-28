@@ -1636,16 +1636,34 @@
 		syncExpandedPos();
 	}
 
+	// BUG-090(admin 후속): "마우스로 컨트롤시에는 이전과 같이 동작해야함" —
+	// 트랙패드 two-finger 스크롤은 pan, 그러나 일반 마우스의 plain wheel 은
+	// 예전처럼 줌이어야 한다는 피드백. ctrlKey 만으로는 트랙패드 pinch 와
+	// 마우스 plain wheel 을 구분 못 해 둘 다 ctrlKey=false 로 들어옴 — 별도
+	// 휴리스틱 필요.
+	//
+	// 트랙패드 vs 마우스 wheel 구분(업계 통용 휴리스틱, 100% 정확친 않음):
+	//   - deltaMode !== 0(LINE/PAGE 단위) → 거의 항상 일반 마우스.
+	//   - deltaMode === 0(PIXEL) 인 경우 — 마우스는 노치(notch)당 큰 고정폭
+	//     점프(Windows 기본 ±100, 다른 OS 도 보통 ≥50), 트랙패드 스크롤은
+	//     매끄러운 모멘텀이라 프레임당 delta 가 작다(보통 <50).
+	function isTrackpadWheel(e: WheelEvent): boolean {
+		if (e.deltaMode !== 0) return false;
+		return Math.abs(e.deltaY) < 50;
+	}
+
 	// BUG-090: 트랙패드/마우스 줌 표준화. cytoscape 기본 wheel 줌은 트랙패드의
 	// two-finger 스크롤(plain wheel)도 줌으로 해석해 노트북에서 erratic.
 	// → userZoomingEnabled=false 로 끄고 직접 처리(Figma/Miro 관례):
-	//   - pinch(트랙패드) 및 Ctrl+wheel(마우스) = 커서 기준 줌
-	//   - 그 외 two-finger 스크롤/휠 = pan
+	//   - pinch(트랙패드, ctrlKey) 및 Ctrl+wheel(마우스) = 커서 기준 줌
+	//   - 일반 마우스의 plain wheel = 줌(admin 피드백 — 이전 동작 유지)
+	//   - 트랙패드의 plain two-finger 스크롤만 pan
 	// cy.zoom/panBy 는 'pan'/'zoom' 이벤트를 emit → 기존 syncLanes 자동 적용.
 	function onBoardWheel(e: WheelEvent) {
 		if (!cy) return;
 		e.preventDefault();
-		if (e.ctrlKey) {
+		const isZoom = e.ctrlKey || !isTrackpadWheel(e);
+		if (isZoom) {
 			const rect = container.getBoundingClientRect();
 			// 마우스 휠(큰 delta)과 트랙패드 pinch(작은 delta) 모두 무난하도록 캡 + 감도.
 			const dy = Math.max(-60, Math.min(60, e.deltaY));
@@ -1654,7 +1672,7 @@
 				renderedPosition: { x: e.clientX - rect.left, y: e.clientY - rect.top }
 			});
 		} else {
-			// 자연 스크롤: 아래로 스크롤(deltaY>0) → 콘텐츠가 위로.
+			// 트랙패드 자연 스크롤: 아래로 스크롤(deltaY>0) → 콘텐츠가 위로.
 			cy.panBy({ x: -e.deltaX, y: -e.deltaY });
 		}
 	}
