@@ -34,6 +34,9 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
 - reindex 후 보드 grid snap 점이 표시되지 않던 stale 캐시 버그. (BUG-092)
 - 상세 화면 lazy refresh 가 다른 프로세스의 편집을 놓치던 문제 — 콘텐츠
   항상 다시 읽도록 수정.
+- NSIS 설치본에서 `openguild-server` 의 `/` 접속이 항상 404 였던 문제 —
+  설치 번들에 frontend 정적 자산(`gui/frontend/build`)이 빠져 있었음.
+  설치 시 함께 복사되도록 수정. (DEV-195)
 
 ## 0.2.1-beta — 2026-06-23
 

@@ -45,7 +45,8 @@
       "../README.md": "docs/README.md",
       "../docs/USAGE.md": "docs/USAGE.md",
       "../docs/AGENTS_OPENGUILD_USAGE.md": "docs/AGENTS_OPENGUILD_USAGE.md",
-      "../CHANGELOG.md": "docs/CHANGELOG.md"
+      "../CHANGELOG.md": "docs/CHANGELOG.md",
+      "./frontend/build": "gui/frontend/build"
     },
     "windows": {
       "nsis": {
