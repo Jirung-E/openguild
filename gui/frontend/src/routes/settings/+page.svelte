@@ -34,7 +34,7 @@
 	} from '$lib/stores/contentWidth';
 	import { theme, setTheme, type ThemeChoice } from '$lib/stores/theme';
 	// DEV-015 (MVP): 언어 토글 — 설정 페이지에도 노출.
-	import { locale, setLocale, t, type Locale } from '$lib/stores/locale';
+	import { locale, setLocale, type Locale } from '$lib/stores/locale';
 	// DEV-130: 편집기 들여쓰기 설정 (tab/space + 2/4칸).
 	import {
 		editorSettings,
@@ -312,7 +312,8 @@
 				<dt>언어</dt>
 				<dd class="theme-row">
 					<div class="theme-toggle" role="group" aria-label="언어">
-						{#each [{ value: 'ko', label: t('settings.language.ko', $locale) }, { value: 'en', label: t('settings.language.en', $locale) }] as opt (opt.value)}
+						<!-- DEV-015 후속: 언어 이름 자체는 번역 대상이 아님 — 항상 고정 표기. -->
+						{#each [{ value: 'ko', label: '한국어' }, { value: 'en', label: 'English' }] as opt (opt.value)}
 							<button
 								class="th-btn"
 								class:active={$locale === opt.value}

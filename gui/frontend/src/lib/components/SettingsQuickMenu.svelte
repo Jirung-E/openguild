@@ -27,10 +27,15 @@
 		{ value: 'dark', label: t('settings.theme.dark', $locale) }
 	]);
 
-	let LOCALE_OPTIONS = $derived<{ value: Locale; label: string }[]>([
-		{ value: 'ko', label: t('settings.language.ko', $locale) },
-		{ value: 'en', label: t('settings.language.en', $locale) }
-	]);
+	// DEV-015 후속(사용자 피드백): 언어 선택 버튼의 라벨(언어 이름 자체)은
+	// 현재 선택된 언어로 번역되면 안 됨 — "한국어"/"English" 는 그 언어를
+	// 가리키는 고유명사라 항상 같은 표기로 보여야 선택 중인 항목을 혼동 없이
+	// 알 수 있다(영어 선택 시 "Korean"으로 바뀌면 원래 한국어 옵션이었는지
+	// 헷갈림). t() 로 번역하지 않고 고정 표기.
+	const LOCALE_OPTIONS: { value: Locale; label: string }[] = [
+		{ value: 'ko', label: '한국어' },
+		{ value: 'en', label: 'English' }
+	];
 
 	function onkeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') {

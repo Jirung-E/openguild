@@ -49,8 +49,6 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'settings.uiScale': { ko: 'UI 크기', en: 'UI Scale' },
 	'settings.contentWidth': { ko: '컨텐츠 폭', en: 'Content Width' },
 	'settings.language': { ko: '언어', en: 'Language' },
-	'settings.language.ko': { ko: '한국어', en: 'Korean' },
-	'settings.language.en': { ko: 'English', en: 'English' },
 	'settings.all': { ko: '전체 설정 →', en: 'All settings →' }
 };
 
