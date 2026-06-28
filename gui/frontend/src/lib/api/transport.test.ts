@@ -287,6 +287,72 @@ describe('TauriTransport', () => {
 		).rejects.toThrow('quest not found');
 	});
 
+	// DEV-152: 첨부 업로드 — 브라우저(server) 모드 지원 매핑.
+	it('POST /api/attachments → save_attachment', async () => {
+		mockInvoke.mockResolvedValue('attachments/abc.png');
+		await new TauriTransport().call({
+			method: 'POST',
+			path: '/api/attachments',
+			body: { data_base64: 'QUJD', ext: 'png' }
+		});
+		expect(mockInvoke).toHaveBeenCalledWith('save_attachment', {
+			dataBase64: 'QUJD',
+			ext: 'png'
+		});
+	});
+
+	it('POST /api/quests/by/DEV-001/attachments → add_quest_attachment', async () => {
+		mockInvoke.mockResolvedValue([]);
+		await new TauriTransport().call({
+			method: 'POST',
+			path: '/api/quests/by/DEV-001/attachments',
+			body: { path: 'attachments/abc.png', name: 'pic.png' }
+		});
+		expect(mockInvoke).toHaveBeenCalledWith('add_quest_attachment', {
+			slug: 'DEV-001',
+			path: 'attachments/abc.png',
+			name: 'pic.png'
+		});
+	});
+
+	it('DELETE /api/quests/by/DEV-001/attachments?path=... → remove_quest_attachment', async () => {
+		mockInvoke.mockResolvedValue([]);
+		await new TauriTransport().call({
+			method: 'DELETE',
+			path: '/api/quests/by/DEV-001/attachments?path=attachments%2Fabc.png'
+		});
+		expect(mockInvoke).toHaveBeenCalledWith('remove_quest_attachment', {
+			slug: 'DEV-001',
+			path: 'attachments/abc.png'
+		});
+	});
+
+	it('POST /api/campaigns/C-001/attachments → add_campaign_attachment', async () => {
+		mockInvoke.mockResolvedValue([]);
+		await new TauriTransport().call({
+			method: 'POST',
+			path: '/api/campaigns/C-001/attachments',
+			body: { path: 'attachments/abc.png', name: 'pic.png' }
+		});
+		expect(mockInvoke).toHaveBeenCalledWith('add_campaign_attachment', {
+			slug: 'C-001',
+			path: 'attachments/abc.png',
+			name: 'pic.png'
+		});
+	});
+
+	it('DELETE /api/campaigns/C-001/attachments?path=... → remove_campaign_attachment', async () => {
+		mockInvoke.mockResolvedValue([]);
+		await new TauriTransport().call({
+			method: 'DELETE',
+			path: '/api/campaigns/C-001/attachments?path=attachments%2Fabc.png'
+		});
+		expect(mockInvoke).toHaveBeenCalledWith('remove_campaign_attachment', {
+			slug: 'C-001',
+			path: 'attachments/abc.png'
+		});
+	});
+
 	it('routeToInvoke — meta 양쪽 매핑', () => {
 		expect(__test_only.routeToInvoke({ method: 'GET', path: '/api/quest-types' })).toEqual({
 			cmd: 'list_quest_types',

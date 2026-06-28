@@ -26,6 +26,9 @@ sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "migrate"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
+# DEV-152: 첨부 업로드 — Tauri invoke 와 동일 시그니처(base64 JSON body) 유지.
+base64 = "0.22"
+
 # 에러 처리
 anyhow = "1"
 

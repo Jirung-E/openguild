@@ -38,7 +38,11 @@ pub async fn get_quest(
     State(store): State<Store>,
     Path(id): Path<i64>,
 ) -> AppResult<Json<QuestDetail>> {
-    Ok(Json(read::get(&store.index_pool, id).await?))
+    let mut detail = read::get(&store.index_pool, id).await?;
+    // DEV-152: 첨부 목록(sidecar) — GUI Tauri 커맨드와 동일하게 여기서 채움.
+    detail.attachments =
+        openguild_core::ops::attachments::list_quest_attachments(&store, &detail.quest.quest_id);
+    Ok(Json(detail))
 }
 
 pub async fn update_quest(
@@ -184,7 +188,10 @@ pub async fn get_quest_by_slug(
     State(store): State<Store>,
     Path(slug): Path<String>,
 ) -> AppResult<Json<QuestDetail>> {
-    Ok(Json(read::get_by_slug(&store.index_pool, &slug).await?))
+    let mut detail = read::get_by_slug(&store.index_pool, &slug).await?;
+    // DEV-152: 첨부 목록(sidecar) — GUI Tauri 커맨드와 동일하게 여기서 채움.
+    detail.attachments = openguild_core::ops::attachments::list_quest_attachments(&store, &slug);
+    Ok(Json(detail))
 }
 
 pub async fn list_positions(

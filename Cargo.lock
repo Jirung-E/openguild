@@ -2948,6 +2948,7 @@ version = "0.2.1-beta"
 dependencies = [
  "anyhow",
  "axum",
+ "base64 0.22.1",
  "chrono",
  "clap",
  "http-body-util",

@@ -4,18 +4,18 @@
  * - 클립보드 이미지 Ctrl+V (사용자 댓글 #2)
  * - 파일 드래그&드랍 (사용자 댓글 #4)
  *
- * 흐름: 파일 bytes → base64 → Tauri `save_attachment` invoke →
+ * 흐름: 파일 bytes → base64 → `POST /api/attachments` (DEV-152: Tauri 모드는
+ * transport.ts 가 invoke 로, 브라우저 모드는 HTTP 로 — 호출부는 동일 코드) →
  * `.guild/attachments/{name}` 저장 (+ index.db blob 백업, 댓글 #3) →
  * 반환된 상대 경로를 마크다운으로 커서 위치에 삽입.
  * MarkdownView 가 `attachments/...` src 를 asset URL 로 재작성해 표시.
  *
- * Tauri 전용 — 브라우저 (server) 모드 업로드는 DEV-097 범위.
+ * DEV-152: Tauri 데스크탑 + 브라우저(server) 모드 둘 다 지원.
  */
 
 import { EditorView } from '@codemirror/view';
 import type { Extension } from '@codemirror/state';
-import { invoke } from '@tauri-apps/api/core';
-import { detectEnvironment } from '$lib/api/transport';
+import { api } from '$lib/api/client';
 
 // DEV-069 후속(admin #8): 임의 파일 첨부 허용. 미디어(이미지/동영상)는 본문에
 // embed, 그 외는 다운로드 링크로 삽입. backend(save_attachment)도 화이트리스트
@@ -65,6 +65,18 @@ function toBase64(buf: ArrayBuffer): string {
 	return btoa(bin);
 }
 
+/**
+ * DEV-152: 첨부 bytes 저장 — Tauri/브라우저 공통 진입점. `api.post` 가
+ * transport.ts 를 거쳐 Tauri 면 invoke('save_attachment', ...), 브라우저면
+ * `POST /api/attachments` 로 자동 분기(호출부는 환경 무지).
+ */
+async function saveAttachmentBytes(file: File, ext: string): Promise<string> {
+	const data_base64 = toBase64(await file.arrayBuffer());
+	// HTTP body 필드는 이 프로젝트 컨벤션상 snake_case(server 의 axum Deserialize
+	// 와 1:1) — transport.ts 의 routeToInvoke 가 Tauri invoke 용 camelCase args 로 변환.
+	return api.post<string>('/api/attachments', { data_base64, ext });
+}
+
 /** rel 경로 → 본문 삽입용 마크다운. 이미지는 `![]()`, 동영상은 video, 그 외 링크. */
 function markdownFor(rel: string, ext: string, name: string): string {
 	if (IMAGE_EXTS.has(ext)) return `![${name}](${rel})`;
@@ -95,8 +107,7 @@ function uploadAndInsert(
 	view.dispatch({ changes: { from: pos, insert: placeholder } });
 	void (async () => {
 		try {
-			const dataBase64 = toBase64(await file.arrayBuffer());
-			const rel = await invoke<string>('save_attachment', { dataBase64, ext });
+			const rel = await saveAttachmentBytes(file, ext);
 			const md = markdownFor(rel, ext, file.name || rel.split('/').pop() || rel);
 			replacePlaceholder(view, placeholder, md);
 		} catch (e) {
@@ -125,13 +136,13 @@ function isMedia(ext: string): boolean {
 }
 
 /**
- * DEV-156: 파일 1개 업로드(저장) — `.guild/attachments/` 상대 경로 + 표시 파일명
- * 반환. 첨부 섹션(AttachmentSection)이 직접 업로드할 때 재사용. Tauri 전용.
+ * DEV-156/152: 파일 1개 업로드(저장) — `.guild/attachments/` 상대 경로 + 표시
+ * 파일명 반환. 첨부 섹션(AttachmentSection)이 직접 업로드할 때 재사용.
+ * Tauri + 브라우저 모두 지원.
  */
 export async function uploadAttachmentFile(file: File): Promise<{ rel: string; name: string }> {
 	const ext = extOf(file);
-	const dataBase64 = toBase64(await file.arrayBuffer());
-	const rel = await invoke<string>('save_attachment', { dataBase64, ext });
+	const rel = await saveAttachmentBytes(file, ext);
 	return { rel, name: file.name || rel.split('/').pop() || rel };
 }
 
@@ -147,8 +158,7 @@ function uploadToSection(
 ): void {
 	void (async () => {
 		try {
-			const dataBase64 = toBase64(await file.arrayBuffer());
-			const rel = await invoke<string>('save_attachment', { dataBase64, ext });
+			const rel = await saveAttachmentBytes(file, ext);
 			onAttach(rel, file.name || rel.split('/').pop() || rel);
 		} catch (e) {
 			onError(typeof e === 'string' ? e : ((e as Error).message ?? String(e)));
@@ -201,8 +211,7 @@ function uploadAndInsertTextarea(
 	insertIntoTextarea(ta, placeholder);
 	void (async () => {
 		try {
-			const dataBase64 = toBase64(await file.arrayBuffer());
-			const rel = await invoke<string>('save_attachment', { dataBase64, ext });
+			const rel = await saveAttachmentBytes(file, ext);
 			const md = markdownFor(rel, ext, file.name || rel.split('/').pop() || rel);
 			replaceInTextarea(ta, placeholder, md);
 		} catch (e) {
@@ -214,7 +223,7 @@ function uploadAndInsertTextarea(
 
 /**
  * Svelte action — <textarea> 에 clipboard paste / 파일 drag&drop 첨부 부착.
- * `use:textareaAttach={{ onError }}`. 브라우저(server) 모드에선 noop.
+ * `use:textareaAttach={{ onError }}`. DEV-152: Tauri + 브라우저 모두 지원.
  */
 export function textareaAttach(
 	ta: HTMLTextAreaElement,
@@ -224,7 +233,6 @@ export function textareaAttach(
 		mediaOnly?: boolean;
 	} = {}
 ): { destroy(): void } {
-	if (detectEnvironment() !== 'tauri') return { destroy() {} };
 	const onError = opts.onError ?? ((m) => console.error('첨부 업로드 실패:', m));
 	// BUG-083(잠정): 댓글은 mediaOnly — 이미지/동영상만 인라인 임베드, 비미디어 차단.
 	// (per-comment 첨부 기능은 On Hold.) onAttach 분기는 추후 재작업용으로 유지.
@@ -266,10 +274,6 @@ export function pickAndAttachTextarea(
 	onAttach?: (rel: string, name: string) => void
 ): void {
 	if (!ta) return;
-	if (detectEnvironment() !== 'tauri') {
-		onError('첨부 업로드는 데스크탑 앱에서만 지원됩니다.');
-		return;
-	}
 	const input = document.createElement('input');
 	input.type = 'file';
 	input.multiple = true;
@@ -302,10 +306,6 @@ export function pickAndAttach(
 	onAttach?: (rel: string, name: string) => void,
 	opts: { mediaOnly?: boolean } = {}
 ): void {
-	if (detectEnvironment() !== 'tauri') {
-		onError('첨부 업로드는 데스크탑 앱에서만 지원됩니다.');
-		return;
-	}
 	const input = document.createElement('input');
 	input.type = 'file';
 	input.multiple = true;
@@ -344,14 +344,13 @@ export function pickAndAttach(
 
 /**
  * 편집기 extension 생성 — quest / campaign 상세 initEditor 의 extensions 에 추가.
- * 브라우저 (server) 모드에선 빈 extension (업로드 미지원, DEV-097).
+ * DEV-152: Tauri + 브라우저(server) 모드 둘 다 지원.
  */
 export function attachmentExtension(
 	onError: (msg: string) => void = (m) => console.error('첨부 업로드 실패:', m),
 	onAttach?: (rel: string, name: string) => void,
 	opts: { mediaOnly?: boolean } = {}
 ): Extension {
-	if (detectEnvironment() !== 'tauri') return [];
 	// DEV-156 / BUG-083: paste/drop 규칙 —
 	//  · mediaOnly(메모·규칙): 미디어만 인라인, 비미디어 차단 + 안내.
 	//  · onAttach(quest/campaign 본문): 미디어 인라인, 비미디어는 첨부 섹션.

@@ -1,4 +1,5 @@
 pub mod admin;
+pub mod attachments;
 pub mod campaigns;
 pub mod comments;
 pub mod meta;
@@ -94,6 +95,17 @@ pub fn create_router(store: Store) -> Router {
         )
         // DEV-069: 본문 첨부 / 자산 — attachments/ + assets/ 한정 서빙.
         .route("/api/guild-files/{*rel}", get(admin::get_guild_file))
+        // DEV-152: 첨부 업로드(remote 모드) — bytes 저장 + quest/campaign 목록 등록.
+        .route("/api/attachments", post(attachments::save_attachment))
+        .route(
+            "/api/quests/by/{slug}/attachments",
+            post(attachments::add_quest_attachment).delete(attachments::remove_quest_attachment),
+        )
+        .route(
+            "/api/campaigns/{slug}/attachments",
+            post(attachments::add_campaign_attachment)
+                .delete(attachments::remove_campaign_attachment),
+        )
         // quests
         .route("/api/quests", get(quests::list_quests).post(quests::create_quest))
         .route(

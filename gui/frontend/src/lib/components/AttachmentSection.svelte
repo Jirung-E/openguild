@@ -9,6 +9,7 @@
 	import { guildFileUrl } from '$lib/utils/banner';
 	import { uploadAttachmentFile } from '$lib/utils/editor-attach';
 	import { detectEnvironment } from '$lib/api/transport';
+	import { api } from '$lib/api/client';
 
 	interface Attachment {
 		path: string;
@@ -45,18 +46,15 @@
 		}
 	}
 
-	const addCmd = $derived(
-		scope === 'campaign' ? 'add_campaign_attachment' : 'add_quest_attachment'
-	);
-	const rmCmd = $derived(
-		scope === 'campaign' ? 'remove_campaign_attachment' : 'remove_quest_attachment'
+	// DEV-152: quest/campaign 별 첨부 목록 endpoint. api.post/delete 가
+	// transport.ts 를 거쳐 Tauri 면 invoke, 브라우저면 HTTP 로 자동 분기.
+	const attachPath = $derived(
+		scope === 'campaign'
+			? `/api/campaigns/${slug}/attachments`
+			: `/api/quests/by/${slug}/attachments`
 	);
 
 	async function pickAndAdd() {
-		if (!isTauri) {
-			error = '첨부 추가는 데스크탑 앱에서만 지원됩니다.';
-			return;
-		}
 		const input = document.createElement('input');
 		input.type = 'file';
 		input.multiple = true;
@@ -68,10 +66,9 @@
 			busy = true;
 			error = null;
 			try {
-				const { invoke } = await import('@tauri-apps/api/core');
 				for (const file of files) {
 					const { rel, name } = await uploadAttachmentFile(file);
-					attachments = await invoke<Attachment[]>(addCmd, { slug, path: rel, name });
+					attachments = await api.post<Attachment[]>(attachPath, { path: rel, name });
 				}
 			} catch (e) {
 				error = e instanceof Error ? e.message : String(e);
@@ -87,8 +84,9 @@
 		busy = true;
 		error = null;
 		try {
-			const { invoke } = await import('@tauri-apps/api/core');
-			attachments = await invoke<Attachment[]>(rmCmd, { slug, path });
+			attachments = await api.delete<Attachment[]>(
+				`${attachPath}?path=${encodeURIComponent(path)}`
+			);
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
 		} finally {

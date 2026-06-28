@@ -14,5 +14,7 @@ export const api = {
 	post: <T>(path: string, body: unknown) => transport.call<T>({ method: 'POST', path, body }),
 	patch: <T>(path: string, body: unknown) => transport.call<T>({ method: 'PATCH', path, body }),
 	put: <T>(path: string, body: unknown) => transport.call<T>({ method: 'PUT', path, body }),
-	delete: (path: string) => transport.call<void>({ method: 'DELETE', path })
+	// DEV-152: 첨부 제거(remove_*_attachment)는 갱신된 목록(Vec<Attachment>)을
+	// 반환 — 기존 호출부(quests 등, 반환값 무시)는 T=void 기본값으로 그대로 호환.
+	delete: <T = void>(path: string) => transport.call<T>({ method: 'DELETE', path })
 };

@@ -231,6 +231,22 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 				return { cmd: 'set_memo', args: { slug, content } };
 			}
 		}
+		// DEV-152: .../attachments → add(sidecar 등록) / remove.
+		if (parts[4] === 'attachments') {
+			if (method === 'POST') {
+				const b = (body as { path?: string; name?: string } | undefined) ?? {};
+				return {
+					cmd: 'add_quest_attachment',
+					args: { slug, path: b.path ?? '', name: b.name ?? '' }
+				};
+			}
+			if (method === 'DELETE') {
+				return {
+					cmd: 'remove_quest_attachment',
+					args: { slug, path: query.get('path') ?? '' }
+				};
+			}
+		}
 		// 기본 — quest detail by slug.
 		if (method === 'GET' && !parts[4]) {
 			return { cmd: 'get_quest_by_slug', args: { slug } };
@@ -371,6 +387,17 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 		if (method === 'DELETE') return { cmd: 'admin_delete_tag_def', args: { slug } };
 	}
 
+	// ───── DEV-152: 첨부 업로드(bytes 저장) — slug 와 무관, 단일 endpoint. ─────
+	// HTTP body 는 snake_case(server Deserialize 와 1:1) — invoke args 는 Tauri
+	// 컨벤션대로 camelCase 로 변환.
+	if (method === 'POST' && pathOnly === '/api/attachments') {
+		const b = (body as { data_base64?: string; ext?: string } | undefined) ?? {};
+		return {
+			cmd: 'save_attachment',
+			args: { dataBase64: b.data_base64 ?? '', ext: b.ext ?? '' }
+		};
+	}
+
 	// ───── campaigns (DEV-011) ─────
 	// summaries — list 보다 먼저 매칭 (slug 자리에 'summaries' 가 옴).
 	if (method === 'GET' && pathOnly === '/api/campaigns/summaries/active') {
@@ -453,6 +480,22 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 			if (method === 'PUT') {
 				const content = (body as { content?: string } | undefined)?.content ?? '';
 				return { cmd: 'set_campaign_memo', args: { slug, content } };
+			}
+		}
+		// DEV-152: .../attachments → add(sidecar 등록) / remove.
+		if (sub === 'attachments') {
+			if (method === 'POST') {
+				const b = (body as { path?: string; name?: string } | undefined) ?? {};
+				return {
+					cmd: 'add_campaign_attachment',
+					args: { slug, path: b.path ?? '', name: b.name ?? '' }
+				};
+			}
+			if (method === 'DELETE') {
+				return {
+					cmd: 'remove_campaign_attachment',
+					args: { slug, path: query.get('path') ?? '' }
+				};
 			}
 		}
 		// .../checklist  → add / set / rm
