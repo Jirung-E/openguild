@@ -33,6 +33,8 @@
 		DEFAULT_CONTENT_WIDTH
 	} from '$lib/stores/contentWidth';
 	import { theme, setTheme, type ThemeChoice } from '$lib/stores/theme';
+	// DEV-015 (MVP): 언어 토글 — 설정 페이지에도 노출.
+	import { locale, setLocale, t, type Locale } from '$lib/stores/locale';
 	// DEV-130: 편집기 들여쓰기 설정 (tab/space + 2/4칸).
 	import {
 		editorSettings,
@@ -361,6 +363,27 @@
 						{/each}
 					</div>
 					<p class="scale-hint">CSS 토큰 기반 — 시스템 모드는 OS 설정 따라 자동 전환.</p>
+				</dd>
+
+				<!-- DEV-015 (MVP): 언어 토글 — 현재는 이 설정 페이지 라벨 일부에만 적용. -->
+				<dt>언어</dt>
+				<dd class="theme-row">
+					<div class="theme-toggle" role="group" aria-label="언어">
+						{#each [{ value: 'ko', label: t('settings.language.ko', $locale) }, { value: 'en', label: t('settings.language.en', $locale) }] as opt (opt.value)}
+							<button
+								class="th-btn"
+								class:active={$locale === opt.value}
+								onclick={() => setLocale(opt.value as Locale)}
+								aria-pressed={$locale === opt.value}
+							>
+								{opt.label}
+							</button>
+						{/each}
+					</div>
+					<p class="scale-hint">
+						현재는 MVP — 일부 화면(이 설정 페이지 등)의 라벨만 전환됩니다. 전체 적용은 후속(DEV-205)
+						작업입니다.
+					</p>
 				</dd>
 			</dl>
 		{/if}
