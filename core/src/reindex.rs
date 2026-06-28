@@ -217,10 +217,24 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
         }
     }
 
-    // slug → (id, parent_quest_id Option<i64>, prereq slugs)
+    // slug → id. **실제로 INSERT 될 quest 만** 매핑해야 한다 — 아래 insert 루프가
+    // unknown type prefix / 잘못된 number / unknown status 인 quest 를 skip(continue)
+    // 하므로, 그 slug 를 이 map 에 넣어두면 다른 quest 의 parent_id /
+    // prerequisites / position 복원 / campaign linked_quests 가 "존재하지 않는"
+    // quest id 를 가리키게 되어 commit 시 FK 위반(code 787)으로 reindex 전체가
+    // 실패한다(사용자 보고: 특정 길드에서 reindex 가 항상 FK 에러). validity 는
+    // 각 파일 자신의 데이터로만 결정되므로 순서 무관 — 삽입 루프 전에 한 번에
+    // 계산 가능.
     let mut slug_to_id: HashMap<String, i64> = HashMap::new();
     for (i, (_, qf)) in quest_files.iter().enumerate() {
-        slug_to_id.insert(qf.frontmatter.quest_id.clone(), (i + 1) as i64);
+        let id = (i + 1) as i64;
+        let prefix = qf.type_prefix().unwrap_or("");
+        let will_insert = prefix_to_id.contains_key(prefix)
+            && qf.number().is_ok()
+            && slug_to_status_id.contains_key(&qf.frontmatter.status);
+        if will_insert {
+            slug_to_id.insert(qf.frontmatter.quest_id.clone(), id);
+        }
     }
 
     for (i, (path, qf)) in quest_files.iter().enumerate() {
@@ -1463,6 +1477,87 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(n, 1);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 사용자 보고 회귀: parent/prerequisite 가 (unknown status 등으로) skip 된
+    /// quest 의 slug 를 가리키면, 그 slug 가 여전히 `slug_to_id` 에 남아있어
+    /// 존재하지 않는 quest id 를 참조 → commit 시 FOREIGN KEY constraint
+    /// failed (787) 로 reindex 전체가 실패했다. skip 된 quest 의 slug 는
+    /// 애초에 매핑에 들어가지 않아야 하고, 그 quest 를 참조하던 다른 quest 는
+    /// 정상 적재되며 해당 parent/prerequisite 링크만 조용히 무시되어야 한다.
+    #[tokio::test]
+    async fn reindex_drops_dangling_refs_to_skipped_quest_without_fk_error() {
+        let dir = fresh_tmp("dangling-ref");
+        let store = setup_store(&dir).await;
+        let paths = GuildPaths::new(&dir);
+
+        // DEV-001 — status 가 존재하지 않는 slug → insert 자체가 skip.
+        let bad = QuestFile {
+            frontmatter: QuestFrontmatter {
+                quest_id: "DEV-001".into(),
+                title: "bad status".into(),
+                status: "bogus_status_xyz".into(),
+                urgency: 3,
+                parent: None,
+                prerequisites: vec![],
+                created_at: "x".into(),
+                updated_at: "x".into(),
+                deleted: false,
+                desired_due: None,
+                required_due: None,
+                tags: vec![],
+            },
+            description: String::new(),
+            auto_block: String::new(),
+        };
+        bad.write(paths.quest_path("DEV-001")).unwrap();
+
+        // DEV-002 — DEV-001 을 parent + prerequisite 로 참조 (skip 된 quest 가리킴).
+        let dependent = QuestFile {
+            frontmatter: QuestFrontmatter {
+                quest_id: "DEV-002".into(),
+                title: "child of skipped".into(),
+                status: "open".into(),
+                urgency: 3,
+                parent: Some("DEV-001".into()),
+                prerequisites: vec!["DEV-001".into()],
+                created_at: "x".into(),
+                updated_at: "x".into(),
+                deleted: false,
+                desired_due: None,
+                required_due: None,
+                tags: vec![],
+            },
+            description: String::new(),
+            auto_block: String::new(),
+        };
+        dependent.write(paths.quest_path("DEV-002")).unwrap();
+
+        // 이전엔 여기서 FK constraint failed 로 Err — 이제는 성공해야 함.
+        let report = reindex(&store).await.unwrap();
+        assert_eq!(report.quests_loaded, 1, "DEV-002 만 적재, DEV-001 은 skip");
+        assert_eq!(report.dependencies_loaded, 0, "skip 된 quest 로의 prerequisite 는 무시");
+        assert!(
+            report.skipped.iter().any(|(_, msg)| msg.contains("unknown status slug")),
+            "DEV-001 이 skip 사유와 함께 보고되어야: {:?}",
+            report.skipped
+        );
+
+        let parent_id: Option<i64> = sqlx::query_scalar(
+            "SELECT parent_quest_id FROM quests WHERE title = 'child of skipped'",
+        )
+        .fetch_one(&store.index_pool)
+        .await
+        .unwrap();
+        assert!(parent_id.is_none(), "존재하지 않는 quest 를 parent 로 가리키면 안 됨");
+
+        let n_deps: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM quest_dependencies")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(n_deps, 0);
 
         let _ = std::fs::remove_dir_all(&dir);
     }
