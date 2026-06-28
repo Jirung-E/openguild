@@ -12,6 +12,8 @@
 //! 환경변수:
 //!   GUILD_PATH    대상 길드 디렉토리 (기본: `.`)
 //!   PORT          host 바인드 포트 (기본: 3000)
+//!   BIND          host 바인드 주소 (기본: local). `local`/`public` 별칭 또는
+//!                 IP 리터럴 — `--bind` 참조.
 //!   FRONTEND_DIST 정적 자산 폴더 (기본: gui/frontend/dist)
 
 mod error;
@@ -50,6 +52,12 @@ enum Command {
         /// 바인드 포트 (env: PORT, 기본 3000)
         #[arg(long)]
         port: Option<u16>,
+        /// DEV-195 후속(admin 피드백): 바인드 주소 — `host --host` 처럼 서브커맨드와
+        /// 이름이 겹치면 어색하다는 지적으로 `--bind` 로 명명. `local`(=127.0.0.1,
+        /// 기본 — 의도치 않은 네트워크 노출 방지) / `public`(=0.0.0.0, 다른 기기
+        /// 접근 허용) 별칭 또는 IP 리터럴(예: `192.168.1.10`). env: BIND.
+        #[arg(long)]
+        bind: Option<String>,
     },
 }
 
@@ -68,7 +76,19 @@ fn main() -> Result<()> {
         .build()?;
 
     match cli.command {
-        Command::Host { port } => rt.block_on(run_host(port)),
+        Command::Host { port, bind } => rt.block_on(run_host(port, bind)),
+    }
+}
+
+/// `--bind`/`BIND` 값 → 실제 바인드 IP. `local`/`public` 별칭 + IP 리터럴.
+/// 인식 못 하는 값은 에러(오타로 의도치 않은 노출/바인드 실패 방지).
+fn resolve_bind_ip(raw: &str) -> Result<std::net::IpAddr> {
+    match raw.trim() {
+        "local" => Ok(std::net::IpAddr::from([127, 0, 0, 1])),
+        "public" => Ok(std::net::IpAddr::from([0, 0, 0, 0])),
+        other => other
+            .parse()
+            .with_context(|| format!("--bind 값을 IP 로 해석할 수 없음: '{other}' (local / public / IP 리터럴)")),
     }
 }
 
@@ -114,7 +134,7 @@ fn load_guild() -> Result<GuildCtx> {
 
 // ─────────────────────── host ───────────────────────
 
-async fn run_host(port_arg: Option<u16>) -> Result<()> {
+async fn run_host(port_arg: Option<u16>, bind_arg: Option<String>) -> Result<()> {
     let ctx = load_guild()?;
     // Store 는 .guild/index.db + journal.db 둘 다 자동 마이그레이션.
     let store = openguild_core::Store::open(&ctx.guild_path).await?;
@@ -170,7 +190,11 @@ async fn run_host(port_arg: Option<u16>) -> Result<()> {
     let port: u16 = port_arg
         .or_else(|| std::env::var("PORT").ok().and_then(|p| p.parse().ok()))
         .unwrap_or(3000);
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let bind_raw = bind_arg
+        .or_else(|| std::env::var("BIND").ok())
+        .unwrap_or_else(|| "local".to_string());
+    let bind_ip = resolve_bind_ip(&bind_raw)?;
+    let addr = SocketAddr::from((bind_ip, port));
 
     let listener = tokio::net::TcpListener::bind(addr)
         .await
@@ -186,6 +210,13 @@ async fn run_host(port_arg: Option<u16>) -> Result<()> {
     // DEV-163: 정비는 CLI(`openguild ...`) 또는 HTTP admin(`/api/admin/*`).
     println!("  admin  : HTTP /api/admin/* (snapshot/reindex/drift/vacuum/journal)");
     println!("  maint  : offline 은 `openguild` CLI (backup/restore/reindex/…)");
+    // DEV-195: 인증 계층이 없으므로 loopback 밖으로 노출하면 신뢰된 네트워크/
+    // 리버스 프록시 뒤에서만 사용 권장 — 시작 시 한 줄로 경고.
+    if !bind_ip.is_loopback() {
+        println!(
+            "  ⚠ warning: bound to {bind_ip} (네트워크 노출) — 인증 없음, 신뢰된 네트워크에서만 사용하세요."
+        );
+    }
     println!();
     println!("Press Ctrl+C to stop.");
     println!();
@@ -203,7 +234,10 @@ mod cli_tests {
     fn parse_host_default_port() {
         let cli = Cli::try_parse_from(["openguild-server", "host"]).unwrap();
         match cli.command {
-            Command::Host { port } => assert_eq!(port, None),
+            Command::Host { port, bind } => {
+                assert_eq!(port, None);
+                assert_eq!(bind, None);
+            }
         }
     }
 
@@ -211,8 +245,28 @@ mod cli_tests {
     fn parse_host_with_port() {
         let cli = Cli::try_parse_from(["openguild-server", "host", "--port", "3300"]).unwrap();
         match cli.command {
-            Command::Host { port } => assert_eq!(port, Some(3300)),
+            Command::Host { port, .. } => assert_eq!(port, Some(3300)),
         }
+    }
+
+    #[test]
+    fn parse_host_with_bind() {
+        let cli =
+            Cli::try_parse_from(["openguild-server", "host", "--bind", "public"]).unwrap();
+        match cli.command {
+            Command::Host { bind, .. } => assert_eq!(bind, Some("public".to_string())),
+        }
+    }
+
+    #[test]
+    fn resolve_bind_ip_aliases() {
+        assert_eq!(resolve_bind_ip("local").unwrap(), std::net::IpAddr::from([127, 0, 0, 1]));
+        assert_eq!(resolve_bind_ip("public").unwrap(), std::net::IpAddr::from([0, 0, 0, 0]));
+        assert_eq!(
+            resolve_bind_ip("192.168.1.10").unwrap(),
+            std::net::IpAddr::from([192, 168, 1, 10])
+        );
+        assert!(resolve_bind_ip("not-an-ip").is_err());
     }
 
     #[test]
