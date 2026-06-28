@@ -2,6 +2,39 @@
 
 Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
 
+## 0.3.0-beta — 2026-06-28
+
+### Added
+- **시점 복원(journal replay)** — `backup restore --at <ISO8601-UTC>` / HTTP
+  `/api/admin/restore` `at`: 최신 snapshot 을 복원한 뒤 journal(AOF) 을 그
+  시각까지 재적용. (DEV-022)
+- **단일 origin 웹 배포** — server 가 SPA(`gui/frontend/build`)와 API 를 같은
+  origin 으로 서빙, SPA 딥링크 fallback. 실행 위치(repo root / `target/release`)
+  와 무관하게 정적 자산을 찾도록 exe 상대경로 탐색까지 보강. (DEV-195)
+- **원격 서버 모드(MVP)** — Tauri 데스크탑 GUI 가 로컬 길드 대신 원격
+  openguild-server 의 HTTP API 에 접속. 연결/해제는 Welcome 화면에서, 설정
+  페이지엔 현재 연결 상태만 읽기 전용 표시. 인증은 범위 밖(신뢰된 네트워크
+  전용). (DEV-113)
+- **브라우저/원격 모드 첨부 업로드** 지원. (DEV-152)
+- **다국어 인프라(한/영 토글)** — 설정 퀵메뉴 + 설정 페이지 모두에 노출.
+  GUI 전역 스윕은 후속([DEV-205](.guild/quests/DEV-205.md)). (DEV-015)
+- 네이티브 창 테마(Windows 타이틀바)를 앱 테마에 동기화.
+- 네트워크 공유 길드(UNC 경로) 지원 — journal_mode 자동 분기. (BUG-091)
+
+### Changed
+- 보드 줌 — 트랙패드 pinch=줌 / 스크롤=pan, 마우스 plain wheel 은 줌 유지.
+  (BUG-090)
+- Welcome 화면 길드 열기 — 폴더 선택(생성+열기 겸용)을 주 버튼으로 복원,
+  `.guild` 마커 파일 직접 선택은 보조 링크로. (DEV-204)
+- 길드 열기 안내 문구 정확화 — 마커는 `이름.guild` 파일.
+- 본문 편집기 상단 중복 첨부 버튼 제거.
+- MIT 라이선스 적용.
+
+### Fixed
+- reindex 후 보드 grid snap 점이 표시되지 않던 stale 캐시 버그. (BUG-092)
+- 상세 화면 lazy refresh 가 다른 프로세스의 편집을 놓치던 문제 — 콘텐츠
+  항상 다시 읽도록 수정.
+
 ## 0.2.1-beta — 2026-06-23
 
 ### Added
