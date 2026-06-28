@@ -2279,6 +2279,12 @@
 	// ── 레인 HTML ───────────────────────────────────────────────
 
 	function buildLaneDivs(sorted: QuestStatus[]) {
+		// BUG-092: lane-col DOM 을 통째로 새로 만드는데, syncLanes() 의 grid snap
+		// 그리기 캐시(gridBgCache, lane index 키)는 안 지워지면 새로 생성된(아직
+		// backgroundImage 미설정) dotsEl 에 대해 캐시 히트로 오판해 실제 그리기를
+		// 건너뛴다(zoom/cols 가 이전과 같으면) — reindex/swapLane 후 grid snap 점이
+		// 안 보이던 원인. DOM 재생성과 함께 캐시도 항상 무효화.
+		gridBgCache.clear();
 		lanesEl.innerHTML = '';
 		sorted.forEach(() => {
 			const col = document.createElement('div');
