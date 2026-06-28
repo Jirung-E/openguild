@@ -126,8 +126,27 @@ async fn run_host(port_arg: Option<u16>) -> Result<()> {
     // DEV-195: frontend 정적 서빙 (선택) — 단일 origin 으로 SPA+API 같이 서빙.
     // 기본값은 SvelteKit(adapter-static) 의 실제 빌드 출력 `gui/frontend/build`
     // (이전 기본값 `dist` 는 실제로 생성되지 않아 항상 API-only 로 떨어지던 버그).
-    let dist_path = std::env::var("FRONTEND_DIST")
-        .unwrap_or_else(|_| "gui/frontend/build".to_string());
+    //
+    // DEV-195 후속: 기본값이 cwd 기준 상대경로라 repo root 에서 실행할 때만
+    // 우연히 맞았다. 사용자가 자연스럽게 실행할 위치인 `target/release/`
+    // 에서 실행하면 cwd 가 달라 항상 API-only 로 떨어져 `/` 접속이 404 —
+    // exe 의 조상 디렉토리들(`target/release` → `target` → repo root)도
+    // 차례로 시도해 cargo build 산출물 레이아웃을 그대로 따라간다.
+    let dist_path = std::env::var("FRONTEND_DIST").unwrap_or_else(|_| {
+        const REL: &str = "gui/frontend/build";
+        if Path::new(REL).is_dir() {
+            return REL.to_string();
+        }
+        if let Ok(exe) = std::env::current_exe() {
+            for dir in exe.ancestors() {
+                let candidate = dir.join(REL);
+                if candidate.is_dir() {
+                    return candidate.to_string_lossy().into_owned();
+                }
+            }
+        }
+        REL.to_string()
+    });
     let serves_static = Path::new(&dist_path).is_dir();
     if serves_static {
         // SPA fallback — 클라이언트 라우트 딥링크(예 `/quests/DEV-001` 직접 접근/
