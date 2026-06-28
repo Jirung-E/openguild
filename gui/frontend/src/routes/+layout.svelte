@@ -300,8 +300,9 @@
 
 <!-- BUG-041: DB schema 가 binary 보다 새로운 경우 알림 (Tauri 만). 항상 최상단. -->
 <SchemaAheadBanner />
-<!-- DEV-063: 업데이트 배너 — Nav 아래, 새 버전 있을 때만 노출. 모든 라우트
-     (welcome 포함) 공통. -->
+<!-- DEV-063 / DEV-194 후속: 업데이트 알림 — 우하단 floating toast(레이아웃
+     안 밀어냄), idle 아닌 모든 상태 표시. 모든 라우트(welcome 포함) 공통,
+     단일 mount — 페이지별 중복 토스트 제거됨. -->
 <UpdateBanner />
 {#if showNav}
 	<Nav />
