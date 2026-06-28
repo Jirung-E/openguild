@@ -11,6 +11,9 @@
 	// uptodate/error 는 전역 배너에 안 떠서 welcome 의 '업데이트 확인' 이 무반응처럼
 	// 보였음. 여기선 그 결과를 인라인으로 직접 표시.
 	import { checkForUpdate, updateState, downloadAndRelaunch } from '$lib/api/updater';
+	// DEV-113: 원격 서버 연결 — "어떤 길드를 열지" 선택이라 길드 열기와 같은
+	// Welcome 화면에서 처리(설정 페이지에서 연결하는 건 자리가 어색하다는 피드백).
+	import { remoteServerUrl, setRemoteServerUrl, pingRemoteServer } from '$lib/stores/remoteServer';
 	let quickMenuOpen = $state(false);
 	// '업데이트 확인' 을 눌렀는지 — 눌렀을 때만 결과 토스트 표시.
 	let updateRequested = $state(false);
@@ -267,6 +270,41 @@
 		const pad = (n: number) => String(n).padStart(2, '0');
 		return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 	}
+
+	// DEV-113: 원격 서버 연결 — URL 입력 + 연결 확인 + 적용(연결 후 보드로 이동).
+	let remoteInput = $state($remoteServerUrl ?? '');
+	let remoteCheckState = $state<'idle' | 'checking' | 'ok' | 'fail'>('idle');
+	let remoteCheckMsg = $state<string | null>(null);
+
+	async function checkRemote() {
+		const url = remoteInput.trim();
+		if (!url) return;
+		remoteCheckState = 'checking';
+		remoteCheckMsg = null;
+		try {
+			const ok = await pingRemoteServer(url);
+			remoteCheckState = ok ? 'ok' : 'fail';
+			if (!ok) remoteCheckMsg = '서버가 응답했지만 예상한 형식이 아닙니다.';
+		} catch (e) {
+			remoteCheckState = 'fail';
+			remoteCheckMsg = e instanceof Error ? e.message : String(e);
+		}
+	}
+
+	// 연결(적용) — 확인 없이도 시도 가능(신뢰된 서버 주소를 이미 아는 경우).
+	function connectRemote() {
+		const url = remoteInput.trim();
+		if (!url) return;
+		setRemoteServerUrl(url);
+		goto('/');
+	}
+
+	function disconnectRemote() {
+		remoteInput = '';
+		setRemoteServerUrl(null);
+		remoteCheckState = 'idle';
+		remoteCheckMsg = null;
+	}
 </script>
 
 <svelte:head>
@@ -314,6 +352,41 @@
 			</button>
 			{#if pickErr}
 				<p class="err">{pickErr}</p>
+			{/if}
+		</section>
+
+		<!-- DEV-113: 원격 서버 연결 — "어떤 길드를 열지"의 또 다른 선택이라 길드
+		     열기와 같은 화면에서. 설정 페이지엔 현재 연결 상태만 읽기 전용 표시. -->
+		<section class="picker remote-picker">
+			{#if $remoteServerUrl}
+				<p class="remote-status">
+					현재 원격 서버에 연결됨 — <span class="remote-active">{$remoteServerUrl}</span>
+				</p>
+				<button class="pick-file-link" onclick={disconnectRemote}>연결 해제 (로컬로)</button>
+			{:else}
+				<div class="remote-input-row">
+					<input
+						type="text"
+						placeholder="원격 서버 주소 — http://192.168.1.10:3000"
+						bind:value={remoteInput}
+						aria-label="원격 서버 URL"
+					/>
+					<button class="btn-pick alt" onclick={checkRemote} disabled={!remoteInput.trim()}>
+						{remoteCheckState === 'checking' ? '확인 중…' : '연결 확인'}
+					</button>
+					<button class="btn-pick" onclick={connectRemote} disabled={!remoteInput.trim()}>
+						연결
+					</button>
+				</div>
+				{#if remoteCheckState === 'ok'}
+					<p class="remote-check ok">✓ 연결 확인됨.</p>
+				{:else if remoteCheckState === 'fail'}
+					<p class="remote-check err">연결 실패{remoteCheckMsg ? `: ${remoteCheckMsg}` : ''}</p>
+				{/if}
+				<span class="picker-hint">
+					openguild-server 의 주소. 연결하면 이 PC 의 길드 대신 그 서버의 길드를 사용합니다.
+					<strong>인증이 없으니 신뢰된 네트워크에서만</strong> 사용하세요.
+				</span>
 			{/if}
 		</section>
 	{/if}
@@ -774,6 +847,55 @@
 	.pick-file-link code {
 		background: transparent;
 		padding: 0;
+	}
+
+	/* DEV-113: 원격 서버 연결 섹션 — 길드 폴더 열기 picker 와 같은 톤, 살짝 구분. */
+	.remote-picker {
+		margin-top: -0.4rem;
+	}
+	.remote-status {
+		margin: 0;
+		font-size: 0.85rem;
+		color: var(--text-muted);
+	}
+	.remote-active {
+		color: var(--accent);
+		font-weight: 500;
+	}
+	.remote-input-row {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+		flex: 1 0 100%;
+	}
+	.remote-input-row input {
+		flex: 1 1 auto;
+		min-width: 12.5rem;
+		padding: 0.45rem 0.6rem;
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		background: var(--bg);
+		color: var(--text);
+		font-size: 0.85rem;
+	}
+	.btn-pick.alt {
+		background: transparent;
+		color: var(--text);
+		border-color: var(--border);
+	}
+	.btn-pick.alt:hover:not(:disabled) {
+		background: var(--bg-subtle);
+	}
+	.remote-check {
+		flex: 1 0 100%;
+		margin: 0;
+		font-size: 0.8rem;
+	}
+	.remote-check.ok {
+		color: var(--success);
+	}
+	.remote-check.err {
+		color: var(--danger);
 	}
 
 	/* --- uninit prompt (DEV-052 후속 2회차) --- */

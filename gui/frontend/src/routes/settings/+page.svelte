@@ -47,8 +47,8 @@
 	import CustomSlider from '$lib/components/CustomSlider.svelte';
 	// DEV-074 fix17: release notes <pre> overlay scrollbar.
 	import OverlayScrollbar from '$lib/components/OverlayScrollbar.svelte';
-	// DEV-113 (MVP): 원격 서버 모드 — URL 설정 + 연결 확인.
-	import { remoteServerUrl, setRemoteServerUrl, pingRemoteServer } from '$lib/stores/remoteServer';
+	// DEV-113: 원격 서버 모드 — 연결/해제는 Welcome 화면에서, 여기서는 상태만 읽음.
+	import { remoteServerUrl } from '$lib/stores/remoteServer';
 
 	let upToastNotesEl: HTMLPreElement | undefined = $state(undefined);
 
@@ -58,37 +58,6 @@
 	// DEV-052 / DEV-101 fix6: 탭 분리 — '정보' / '표시'.
 	type Tab = 'info' | 'display' | 'editor' | 'remote';
 	let activeTab = $state<Tab>('info');
-
-	// DEV-113 (MVP): 원격 서버 URL 입력 + 연결 확인.
-	let remoteInput = $state($remoteServerUrl ?? '');
-	let remoteCheckState = $state<'idle' | 'checking' | 'ok' | 'fail'>('idle');
-	let remoteCheckMsg = $state<string | null>(null);
-
-	function applyRemote() {
-		setRemoteServerUrl(remoteInput);
-		remoteCheckState = 'idle';
-		remoteCheckMsg = null;
-	}
-	function clearRemote() {
-		remoteInput = '';
-		setRemoteServerUrl(null);
-		remoteCheckState = 'idle';
-		remoteCheckMsg = null;
-	}
-	async function checkRemote() {
-		const url = remoteInput.trim();
-		if (!url) return;
-		remoteCheckState = 'checking';
-		remoteCheckMsg = null;
-		try {
-			const ok = await pingRemoteServer(url);
-			remoteCheckState = ok ? 'ok' : 'fail';
-			if (!ok) remoteCheckMsg = '서버가 응답했지만 예상한 형식이 아닙니다.';
-		} catch (e) {
-			remoteCheckState = 'fail';
-			remoteCheckMsg = e instanceof Error ? e.message : String(e);
-		}
-	}
 
 	// floating toast 닫기 — updateState 를 idle 로.
 	const dismissCheck = () => dismissUpdate();
@@ -195,7 +164,9 @@
 				</dd>
 			</dl>
 		{:else if activeTab === 'remote'}
-			<!-- DEV-113 (MVP): 원격 서버 모드 — URL 입력 + 연결 확인. 인증 없음(범위 밖, DEV-021). -->
+			<!-- DEV-113: 원격 서버 연결/해제는 Welcome 화면(로고 클릭)에서만 — "어떤
+			     길드를 열지" 선택이라 길드 열기와 같은 자리. 여기는 현재 상태를
+			     보여주기만 하는 읽기 전용 패널. -->
 			<h2>원격 서버</h2>
 			<dl class="info-grid">
 				<dt>현재 모드</dt>
@@ -205,38 +176,10 @@
 					{:else}
 						<span>로컬 (이 PC 의 길드 파일 직접 사용)</span>
 					{/if}
-				</dd>
-				<dt>서버 URL</dt>
-				<dd class="theme-row">
-					<div class="remote-input-row">
-						<input
-							type="text"
-							placeholder="http://192.168.1.10:3000"
-							bind:value={remoteInput}
-							aria-label="원격 서버 URL"
-						/>
-						<button class="btn-reset" onclick={checkRemote} disabled={!remoteInput.trim()}>
-							{remoteCheckState === 'checking' ? '확인 중…' : '연결 확인'}
-						</button>
-					</div>
-					{#if remoteCheckState === 'ok'}
-						<p class="remote-check ok">✓ 연결 확인됨.</p>
-					{:else if remoteCheckState === 'fail'}
-						<p class="remote-check err">연결 실패{remoteCheckMsg ? `: ${remoteCheckMsg}` : ''}</p>
-					{/if}
 					<p class="scale-hint">
-						openguild-server 의 주소(예: <code>http://호스트:3000</code>). 적용하면 이 PC 의 길드
-						대신 그 서버의 길드를 사용합니다. <strong>인증이 없으니 신뢰된 네트워크에서만</strong>
-						사용하세요.
+						연결하거나 해제하려면 좌상단 로고를 눌러 Welcome 화면으로 이동하세요. (인증이 없으니
+						원격 연결은 신뢰된 네트워크에서만 사용하세요.)
 					</p>
-					<div class="remote-actions">
-						<button class="btn-primary" onclick={applyRemote} disabled={!remoteInput.trim()}>
-							적용 (원격으로 전환)
-						</button>
-						<button class="btn-reset" onclick={clearRemote} disabled={!$remoteServerUrl}>
-							로컬로 복귀
-						</button>
-					</div>
 				</dd>
 			</dl>
 		{:else if activeTab === 'info'}
@@ -539,59 +482,10 @@
 		cursor: not-allowed;
 	}
 
-	/* DEV-113 (MVP): 원격 서버 설정. */
+	/* DEV-113: 원격 서버 — 현재 모드 표시(읽기 전용)만 남음. */
 	.remote-active {
 		color: var(--accent);
 		font-weight: 500;
-	}
-	.remote-input-row {
-		display: flex;
-		gap: 0.5rem;
-	}
-	.remote-input-row input {
-		flex: 1;
-		min-width: 0;
-		padding: 0.4rem 0.6rem;
-		border: 1px solid var(--border);
-		border-radius: 6px;
-		background: var(--bg);
-		color: var(--text);
-		font-size: 0.85rem;
-	}
-	.remote-check {
-		margin: 0.3rem 0 0;
-		font-size: 0.8rem;
-	}
-	.remote-check.ok {
-		color: var(--success);
-	}
-	.remote-check.err {
-		color: var(--danger);
-	}
-	.remote-actions {
-		display: flex;
-		gap: 0.5rem;
-		margin-top: 0.6rem;
-	}
-	.remote-actions .btn-reset,
-	.remote-input-row .btn-reset {
-		padding: 0.4rem 0.9rem;
-		border: 1px solid var(--border);
-		border-radius: 6px;
-		background: transparent;
-		color: var(--text);
-		font-size: 0.85rem;
-		cursor: pointer;
-		white-space: nowrap;
-	}
-	.remote-actions .btn-reset:hover:not(:disabled),
-	.remote-input-row .btn-reset:hover:not(:disabled) {
-		background: var(--bg-subtle);
-	}
-	.remote-actions .btn-reset:disabled,
-	.remote-input-row .btn-reset:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
 	}
 
 	/* DEV-085: 업데이트 결과 floating toast — fixed, 우하단. 레이아웃 안 밀어냄. */
