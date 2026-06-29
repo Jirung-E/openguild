@@ -32,10 +32,26 @@ remoteServerUrl.subscribe((url) => {
 	}
 });
 
-/** trailing slash 제거 + 빈 문자열은 null(로컬 복귀)로 정규화. */
+/**
+ * BUG-098(사용자 보고: "127.0.0.1:3000 만 입력하면 '서버가 응답했지만
+ * 예상한 형식이 아니다'"): 스킴(`http://`) 없이 입력하면 `fetch()` 가
+ * 절대 URL 이 아니라 **상대 경로**로 해석해 Tauri 앱 자기 자신의 origin
+ * 에 요청을 보낸다 — SPA fallback 이 200 + HTML(index.html)을 돌려줘
+ * "응답은 왔는데 형식이 이상함"으로 보였을 뿐, 실제로는 입력한 서버에
+ * 전혀 도달하지 못한 것. 스킴이 없으면 `http://` 를 기본으로 붙인다
+ * (원격 서버는 보통 LAN 내부, 인증 없는 평문이라 https 강제는 불필요한
+ * 마찰). trailing slash 도 함께 정리.
+ */
+export function normalizeRemoteUrl(url: string): string {
+	const trimmed = url.trim().replace(/\/+$/, '');
+	if (!trimmed) return trimmed;
+	return /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+}
+
+/** 스킴 보정 + trailing slash 제거 + 빈 문자열은 null(로컬 복귀)로 정규화. */
 export function setRemoteServerUrl(url: string | null) {
 	const trimmed = url?.trim();
-	remoteServerUrl.set(trimmed ? trimmed.replace(/\/+$/, '') : null);
+	remoteServerUrl.set(trimmed ? normalizeRemoteUrl(trimmed) : null);
 }
 
 /** transport.ts 가 매 호출마다 동기적으로 읽는 현재 값. */
@@ -45,7 +61,7 @@ export function getRemoteServerUrl(): string | null {
 
 /** 설정 UI 의 "연결 확인" — `/health` 가 "ok" 를 반환하는지만 확인(인증 없음). */
 export async function pingRemoteServer(url: string): Promise<boolean> {
-	const base = url.trim().replace(/\/+$/, '');
+	const base = normalizeRemoteUrl(url);
 	const res = await fetch(`${base}/health`);
 	if (!res.ok) return false;
 	const text = await res.text();

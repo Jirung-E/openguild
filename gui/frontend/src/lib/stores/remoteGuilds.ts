@@ -9,6 +9,8 @@
 // (transport.ts 가 매 호출마다 읽음) — 이 모듈은 "예전에 연결했던 것들의
 // 기록"을 추적. 역할이 다르므로 분리.
 
+import { normalizeRemoteUrl } from './remoteServer';
+
 const KEY = 'openguild.remoteGuilds';
 const MAX_REMOTE_GUILDS = 10;
 
@@ -55,7 +57,10 @@ export function listRemoteGuilds(): RemoteGuild[] {
  * 자동 호출되는 것과 동등하게, `connectRemote()` / 목록에서 재연결할 때 호출.
  */
 export function registerRemoteGuild(url: string): RemoteGuild {
-	const normalized = url.trim().replace(/\/+$/, '');
+	// BUG-098: 스킴 누락 입력("127.0.0.1:3000")이 setRemoteServerUrl 의
+	// activeServerUrl 과는 다른(스킴 없는) 값으로 저장돼, 같은 서버인데
+	// 목록에 별도 항목으로 중복되는 것을 방지 — 동일한 정규화 규칙 재사용.
+	const normalized = normalizeRemoteUrl(url);
 	const entry: RemoteGuild = {
 		url: normalized,
 		name: deriveName(normalized) || normalized,
