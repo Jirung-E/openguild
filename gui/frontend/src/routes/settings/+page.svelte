@@ -42,7 +42,9 @@
 	// thumb 튐, UI scale 의 자기 자신 변형 → 손 놓침) 회피한 델타 기반 슬라이더.
 	import CustomSlider from '$lib/components/CustomSlider.svelte';
 	// DEV-113: 원격 서버 모드 — 연결/해제는 Welcome 화면에서, 여기서는 상태만 읽음.
-	import { remoteServerUrl } from '$lib/stores/remoteServer';
+	// BUG-099: isRemoteSessionActive 도 — remoteServerUrl 만 보면 이전 세션의
+	// 잔존 값과 "이번 세션에 실제로 연결함"을 구분 못 함(BUG-095 와 동일 이유).
+	import { remoteServerUrl, isRemoteSessionActive } from '$lib/stores/remoteServer';
 
 	// DEV-101 fix3: 즉시 반영 — store 가 source of truth, drag 중에도 매 step 적용.
 	// preview / displayScale wrapper 제거.
@@ -58,6 +60,14 @@
 	let appName = $state('openguild');
 	const repoUrl = 'https://github.com/Jirung-E/openguild';
 
+	// BUG-099(사용자 보고: "Welcome 에서 설정으로 바로 들어가면 '원격 서버'
+	// 탭에 아직 아무 길드도 안 열렸는데 '로컬'로 잘못 표시됨"): "현재 모드"가
+	// remoteServerUrl 존재 여부만 봐서, 길드를 하나도 안 연 상태(Welcome)에서
+	// 도 "로컬 (이 PC 의 길드 파일 직접 사용)"이라고 잘못 표시했다. 실제로
+	// 길드가 열려있는지(로컬 launch_mode === 'guild' 또는 원격 활성)까지
+	// 함께 봐야 정확함.
+	let localGuildOpen = $state(false);
+
 	onMount(async () => {
 		if (!isTauri) {
 			appVersion = '개발 (브라우저)';
@@ -70,7 +80,19 @@
 		} catch {
 			appVersion = '알 수 없음';
 		}
+		try {
+			const { invoke } = await import('@tauri-apps/api/core');
+			const info = await invoke<{ mode: string }>('launch_mode');
+			localGuildOpen = info.mode === 'guild';
+		} catch {
+			/* 알 수 없으면 false 유지(anyGuildOpen 이 원격 여부로 보완). */
+		}
 	});
+
+	// 원격이 "이번 세션에 실제로" 활성인지(BUG-095 의 board guard 와 동일 기준).
+	const isRemoteActive = $derived(!!$remoteServerUrl && isRemoteSessionActive());
+	// 브라우저 모드는 서버가 항상 어떤 길드든 호스팅 중이라 always true.
+	const anyGuildOpen = $derived(!isTauri || localGuildOpen || isRemoteActive);
 </script>
 
 <div class="settings">
@@ -160,15 +182,24 @@
 			<dl class="info-grid">
 				<dt>현재 모드</dt>
 				<dd>
-					{#if $remoteServerUrl}
+					{#if !anyGuildOpen}
+						<span class="remote-none">아직 길드를 열지 않음</span>
+						<p class="scale-hint">
+							좌상단 로고를 눌러 Welcome 화면에서 길드를 선택하거나 원격 서버에 연결하세요.
+						</p>
+					{:else if isRemoteActive}
 						<span class="remote-active">원격 — {$remoteServerUrl}</span>
+						<p class="scale-hint">
+							연결을 해제하려면 좌상단 로고를 눌러 Welcome 화면에서 다른(로컬) 길드를 여세요.
+							(인증이 없으니 원격 연결은 신뢰된 네트워크에서만 사용하세요.)
+						</p>
 					{:else}
 						<span>로컬 (이 PC 의 길드 파일 직접 사용)</span>
+						<p class="scale-hint">
+							원격 서버에 연결하려면 좌상단 로고를 눌러 Welcome 화면으로 이동하세요. (인증이 없으니
+							원격 연결은 신뢰된 네트워크에서만 사용하세요.)
+						</p>
 					{/if}
-					<p class="scale-hint">
-						연결하거나 해제하려면 좌상단 로고를 눌러 Welcome 화면으로 이동하세요. (인증이 없으니
-						원격 연결은 신뢰된 네트워크에서만 사용하세요.)
-					</p>
 				</dd>
 			</dl>
 		{:else if activeTab === 'info'}
@@ -425,6 +456,11 @@
 	.remote-active {
 		color: var(--accent);
 		font-weight: 500;
+	}
+	/* BUG-099: 아직 길드를 안 연 상태 — 경고는 아니라 muted. */
+	.remote-none {
+		color: var(--text-muted);
+		font-style: italic;
 	}
 
 	/* DEV-101 fix6: 탭 분리 후 h2.section 구분선 불필요 — 비워둠. */
