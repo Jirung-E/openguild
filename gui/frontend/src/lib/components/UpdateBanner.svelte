@@ -36,6 +36,19 @@
 	// 장시간 켜둔 세션이 새 버전 놓침. 6시간이 타협점.
 	const PERIODIC_CHECK_MS = 6 * 60 * 60 * 1000;
 
+	// BUG-096(사용자 보고: "업데이트 확인 결과 팝업이 시간이 지나도 안사라진다"):
+	// 닫기(×) 버튼만 있고 자동 닫힘이 전혀 없었다. uptodate/error 는 사용자
+	// 행동이 필요 없는 정보성 상태라 일정 시간 후 자동으로 닫혀야 함 —
+	// available/downloading/ready 는 actionable(또는 진행 중)이라 그대로
+	// 사용자가 직접 닫을 때까지 유지.
+	const AUTO_DISMISS_MS = 5000;
+	$effect(() => {
+		const s = $updateState.status;
+		if (s !== 'uptodate' && s !== 'error') return;
+		const handle = setTimeout(() => dismissUpdate(), AUTO_DISMISS_MS);
+		return () => clearTimeout(handle);
+	});
+
 	onMount(() => {
 		if (!isTauri) return; // 브라우저 모드 — 업데이트 개념 없음.
 
