@@ -12,7 +12,11 @@
 	import { checkForUpdate } from '$lib/api/updater';
 	// DEV-113: 원격 서버 연결 — "어떤 길드를 열지" 선택이라 길드 열기와 같은
 	// Welcome 화면에서 처리(설정 페이지에서 연결하는 건 자리가 어색하다는 피드백).
-	import { setRemoteServerUrl, pingRemoteServer } from '$lib/stores/remoteServer';
+	import {
+		setRemoteServerUrl,
+		pingRemoteServer,
+		markRemoteSessionActive
+	} from '$lib/stores/remoteServer';
 	// DEV-113 후속(사용자 피드백: "원격 길드도 등록하면 일반 길드처럼 접속할
 	// 수 있어야하는데 지금은 이해가 안 된다"): 원격 연결을 local recents 와
 	// 동등한 "최근 목록" 항목으로 — 한 번 연결하면 기록에 남아 다음부터는
@@ -313,6 +317,10 @@
 	// 성공 시 자동으로 LRU 갱신하는 것과 동등하게, 연결 성공 시 registerRemoteGuild
 	// 로 갱신.
 	function openRemoteEntry(url: string) {
+		// BUG-095: 이번 세션에서 사용자가 직접 연결했음을 표시 — board 의
+		// bounce guard 가 콜드 스타트(이전 세션의 localStorage 잔존 값)와
+		// 구분하는 기준.
+		markRemoteSessionActive();
 		setRemoteServerUrl(url);
 		registerRemoteGuild(url);
 		remoteGuildList = listRemoteGuilds();

@@ -51,3 +51,36 @@ export async function pingRemoteServer(url: string): Promise<boolean> {
 	const text = await res.text();
 	return text.trim() === 'ok';
 }
+
+// BUG-095(사용자 보고: "gui를 처음 열때 이전 원격 길드의 홈으로 열리는 현상"):
+// `remoteServerUrl` 은 localStorage(디스크) 영속이라 앱을 완전히 새로 켜도
+// 남아있다. local 길드는 DEV-052 설계상 인자 없이 실행하면 항상 Welcome 으로
+// 진입(이전 길드 자동 재오픈 X)인데, board(`/`) 의 bounce guard 가
+// "remoteServerUrl 이 설정돼 있으면 무조건 건너뛴다"로 되어 있어 원격만
+// 콜드 스타트에도 자동 재진입되는 비대칭이 생겼다.
+//
+// sessionStorage 는 OS 프로세스(=새 WebView 세션)가 재시작되면 항상 빈
+// 상태로 시작(localStorage 와의 핵심 차이) — "이번 세션에 사용자가 Welcome
+// 에서 실제로 연결을 클릭했는지"를 구분하는 데 쓴다. 콜드 스타트 시점엔
+// 이 플래그가 없으므로 board guard 가 정상적으로 Welcome 으로 bounce.
+const SESSION_KEY = 'openguild.remoteSessionActive';
+
+/** Welcome 에서 연결(클릭/입력) 성공 시 호출 — 이번 세션에서 활성화됐음을 표시. */
+export function markRemoteSessionActive(): void {
+	if (typeof sessionStorage === 'undefined') return;
+	try {
+		sessionStorage.setItem(SESSION_KEY, '1');
+	} catch {
+		/* 무시 */
+	}
+}
+
+/** board 의 bounce guard 가 확인 — 이번 세션에서 정말로 연결을 활성화했는지. */
+export function isRemoteSessionActive(): boolean {
+	if (typeof sessionStorage === 'undefined') return false;
+	try {
+		return sessionStorage.getItem(SESSION_KEY) === '1';
+	} catch {
+		return false;
+	}
+}

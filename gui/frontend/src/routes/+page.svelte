@@ -9,7 +9,7 @@
 	import { flashQuestId } from '$lib/stores';
 	import type { Quest } from '$lib/types';
 	import { detectEnvironment } from '$lib/api/transport';
-	import { getRemoteServerUrl } from '$lib/stores/remoteServer';
+	import { getRemoteServerUrl, isRemoteSessionActive } from '$lib/stores/remoteServer';
 
 	// DEV-011: Home 추가. ?view 없으면 home 기본.
 	type View = 'home' | 'board' | 'list';
@@ -41,9 +41,18 @@
 	// 가 즉시 다시 `/welcome` 으로 돌려보내 마치 "연결이 안 되는" 것처럼
 	// 보였다(브라우저 모드는 이 invoke 자체가 없어 멀쩩했음). 원격 override
 	// 가 활성이면 이 bounce 를 건너뛴다 — 원격 연결도 유효한 "길드 컨텍스트".
+	//
+	// BUG-095(사용자 보고: "gui를 처음 열때 이전 원격 길드의 홈으로 열리는
+	// 현상"): `remoteServerUrl` 만 보고 건너뛰면 localStorage 에 남은 *이전
+	// 세션* 의 값으로 콜드 스타트에도 자동 재진입한다 — local 길드는 open_*
+	// Tauri command 가 `LaunchInfo.mode` 를 "guild" 로 갱신해줘서(Rust 쪽
+	// 진짜 상태) 이런 문제가 없는데, 원격은 그 갱신 메커니즘이 없어 비대칭.
+	// `isRemoteSessionActive()`(sessionStorage — 프로세스 재시작마다 빈
+	// 상태로 시작)로 "이번 세션에 Welcome 에서 실제로 연결했는지"까지 함께
+	// 확인해야 진짜 콜드 스타트와 구분된다.
 	onMount(async () => {
 		if (detectEnvironment() !== 'tauri') return;
-		if (getRemoteServerUrl()) return;
+		if (getRemoteServerUrl() && isRemoteSessionActive()) return;
 		try {
 			const { invoke } = await import('@tauri-apps/api/core');
 			// DEV-052 후속 (3회차): launch_mode 가 string → { mode, uninit_path }
