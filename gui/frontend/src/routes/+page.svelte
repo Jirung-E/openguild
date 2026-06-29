@@ -60,7 +60,16 @@
 			// false 라 redirect 가 안 되는 버그가 있었음.
 			const info = await invoke<{ mode: string; uninit_path: string | null }>('launch_mode');
 			if (info.mode === 'welcome' || info.mode === 'uninit') {
-				goto('/welcome');
+				// BUG-100(사용자 보고: "gui를 처음 켰을때도 웰컴페이지에서 뒤로가기
+				// 단축키가 동작한다 — 최근에 연 길드로 돌아가려는 것 같다"):
+				// 기본 goto 는 history 에 새 항목을 쌓아(push), 콜드 스타트 시
+				// ["/", "/welcome"] 두 entry 가 남는다. "/" 자체는 길드 컨텍스트
+				// 없이도 board/home UI 를 렌더하므로(빈 placeholder Store),
+				// 뒤로가기를 누르면 그 "/" 가 잠깐 보였다가 다시 /welcome 으로
+				// bounce — 마치 "다른 길드로 가려다 막힌" 것처럼 보인다.
+				// replaceState 로 "/" 항목을 지우고 들어가 history 에 dangling
+				// entry 가 남지 않게 한다.
+				goto('/welcome', { replaceState: true });
 			}
 		} catch {
 			// invoke 실패 시 redirect 생략 (회귀 방지).
