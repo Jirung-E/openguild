@@ -9,6 +9,7 @@
 	import { guildFileUrl } from '$lib/utils/banner';
 	import { uploadAttachmentFile } from '$lib/utils/editor-attach';
 	import { detectEnvironment } from '$lib/api/transport';
+	import { getRemoteServerUrl } from '$lib/stores/remoteServer';
 	import { api } from '$lib/api/client';
 
 	interface Attachment {
@@ -22,7 +23,12 @@
 	}: { slug: string; scope?: 'quest' | 'campaign'; attachments?: Attachment[] } = $props();
 
 	const list = $derived(attachments ?? []);
-	const isTauri = detectEnvironment() === 'tauri';
+	// BUG-097(사용자 보고: "이미지 첨부한게 표시가 안된다"): Tauri + 원격
+	// 연결 상태에서도 무조건 "로컬 파일 시스템" 경로(open_guild_file/
+	// copy_guild_file invoke, 둘 다 Rust 의 로컬 Store 기준)를 타면 깨진다
+	// — 원격 길드의 파일은 로컬 디스크에 없다. "진짜 로컬" 일 때만 invoke,
+	// 그 외(브라우저 또는 Tauri+원격)는 URL 기반(새 탭/다운로드 링크)으로.
+	const isTauri = detectEnvironment() === 'tauri' && !getRemoteServerUrl();
 
 	let busy = $state(false);
 	let error = $state<string | null>(null);
