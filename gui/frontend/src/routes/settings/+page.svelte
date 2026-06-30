@@ -45,6 +45,11 @@
 	// BUG-099: isRemoteSessionActive 도 — remoteServerUrl 만 보면 이전 세션의
 	// 잔존 값과 "이번 세션에 실제로 연결함"을 구분 못 함(BUG-095 와 동일 이유).
 	import { remoteServerUrl, isRemoteSessionActive } from '$lib/stores/remoteServer';
+	// DEV-207 후속(사용자 보고: "길드를 열었다가 welcome으로 돌아가서
+	// 확인했을때" 여전히 길드가 열려있는 것처럼 표시됨): launch_mode 는
+	// Welcome 재방문으로 안 풀리는 Rust 상태라 stale 할 수 있다 —
+	// 보드 마운트/Welcome 마운트가 갱신하는 세션 플래그로 보강.
+	import { isGuildContextActive } from '$lib/stores/guildSession';
 
 	// DEV-101 fix3: 즉시 반영 — store 가 source of truth, drag 중에도 매 step 적용.
 	// preview / displayScale wrapper 제거.
@@ -100,7 +105,10 @@
 
 	// 원격이 "이번 세션에 실제로" 활성인지(BUG-095 의 board guard 와 동일 기준).
 	const isRemoteActive = $derived(!!$remoteServerUrl && isRemoteSessionActive());
-	const anyGuildOpen = $derived(localGuildOpen || isRemoteActive);
+	// DEV-207 후속: localGuildOpen/isRemoteActive 만으로는 Welcome 재방문 후
+	// stale 상태를 못 거른다 — isGuildContextActive() 로 "보드가 마지막으로
+	// bounce 없이 마운트됐는지"까지 함께 확인.
+	const anyGuildOpen = $derived(isGuildContextActive() && (localGuildOpen || isRemoteActive));
 </script>
 
 <div class="settings">

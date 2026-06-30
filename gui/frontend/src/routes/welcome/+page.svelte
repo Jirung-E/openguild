@@ -17,6 +17,7 @@
 		pingRemoteServer,
 		markRemoteSessionActive
 	} from '$lib/stores/remoteServer';
+	import { markGuildContextInactive } from '$lib/stores/guildSession';
 	// DEV-113 후속(사용자 피드백: "원격 길드도 등록하면 일반 길드처럼 접속할
 	// 수 있어야하는데 지금은 이해가 안 된다"): 원격 연결을 local recents 와
 	// 동등한 "최근 목록" 항목으로 — 한 번 연결하면 기록에 남아 다음부터는
@@ -91,6 +92,11 @@
 	const env = detectEnvironment();
 
 	onMount(async () => {
+		// DEV-207 후속: Welcome 에 도달했다는 건 "아직 길드를 안 골랐다"는
+		// 뜻 — 직전에 어떤 길드를 봤었든(로컬/원격) 설정 페이지의 "지금 열려
+		// 있음" 판단은 여기서 항상 리셋. 길드를 다시 열면(routes/+page.svelte
+		// 의 board onMount) 다시 active 로 마크됨.
+		markGuildContextInactive();
 		// recents 먼저 로드.
 		try {
 			recents = await recentsApi.list();

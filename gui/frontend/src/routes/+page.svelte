@@ -10,6 +10,7 @@
 	import type { Quest } from '$lib/types';
 	import { detectEnvironment } from '$lib/api/transport';
 	import { getRemoteServerUrl, isRemoteSessionActive } from '$lib/stores/remoteServer';
+	import { markGuildContextActive } from '$lib/stores/guildSession';
 
 	// DEV-011: Home 추가. ?view 없으면 home 기본.
 	type View = 'home' | 'board' | 'list';
@@ -50,9 +51,18 @@
 	// `isRemoteSessionActive()`(sessionStorage — 프로세스 재시작마다 빈
 	// 상태로 시작)로 "이번 세션에 Welcome 에서 실제로 연결했는지"까지 함께
 	// 확인해야 진짜 콜드 스타트와 구분된다.
+	// DEV-207 후속(사용자 보고: "길드를 열었다가 welcome으로 돌아가서
+	// 확인했을때"가 여전히 길드가 열려있는 것처럼 표시됨): 보드가 bounce
+	// 없이(=길드 컨텍스트 진짜 활성) 마운트되는 시점마다 markGuildContextActive()
+	// 로 기록 — welcome 의 onMount 는 반대로 항상 inactive 마크. 설정
+	// 페이지는 Rust launch_mode 대신 이 세션 플래그로 "지금 실제로 길드가
+	// 표시 중인지" 판단(launch_mode 는 Welcome 재방문으로 안 풀려서 stale).
 	onMount(async () => {
 		if (detectEnvironment() !== 'tauri') return;
-		if (getRemoteServerUrl() && isRemoteSessionActive()) return;
+		if (getRemoteServerUrl() && isRemoteSessionActive()) {
+			markGuildContextActive();
+			return;
+		}
 		try {
 			const { invoke } = await import('@tauri-apps/api/core');
 			// DEV-052 후속 (3회차): launch_mode 가 string → { mode, uninit_path }
@@ -70,6 +80,8 @@
 				// replaceState 로 "/" 항목을 지우고 들어가 history 에 dangling
 				// entry 가 남지 않게 한다.
 				goto('/welcome', { replaceState: true });
+			} else {
+				markGuildContextActive();
 			}
 		} catch {
 			// invoke 실패 시 redirect 생략 (회귀 방지).
