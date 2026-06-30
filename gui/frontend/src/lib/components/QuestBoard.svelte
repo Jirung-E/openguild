@@ -1662,13 +1662,20 @@
 	function onBoardWheel(e: WheelEvent) {
 		if (!cy) return;
 		e.preventDefault();
-		const isZoom = e.ctrlKey || !isTrackpadWheel(e);
+		const trackpad = isTrackpadWheel(e);
+		const isZoom = e.ctrlKey || !trackpad;
 		if (isZoom) {
 			const rect = container.getBoundingClientRect();
-			// 마우스 휠(큰 delta)과 트랙패드 pinch(작은 delta) 모두 무난하도록 캡 + 감도.
+			// BUG-090 후속(admin 보고: "마우스로 줌인/아웃 하는 속도가 빨라졌다"):
+			// 마우스 노치는 deltaY≈100(캡 60) 으로 trackpad 보다 한 이벤트당 변화폭이
+			// 훨씬 큰데, 감도 상수를 공유해 마우스 줌이 옛 cytoscape
+			// wheelSensitivity=2.5(노치당 ~7% 변화) 대비 과도하게(~30%) 빨라졌었다.
+			// 마우스/트랙패드 감도를 분리 — 마우스는 0.0012(캡 60 기준 ≈7% 로 옛 체감
+			// 복원), 트랙패드 pinch 는 연속 제스처라 기존 0.005 유지.
+			const sensitivity = trackpad ? 0.005 : 0.0012;
 			const dy = Math.max(-60, Math.min(60, e.deltaY));
 			cy.zoom({
-				level: cy.zoom() * Math.exp(-dy * 0.005),
+				level: cy.zoom() * Math.exp(-dy * sensitivity),
 				renderedPosition: { x: e.clientX - rect.left, y: e.clientY - rect.top }
 			});
 		} else {
