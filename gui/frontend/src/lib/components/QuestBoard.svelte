@@ -1638,41 +1638,44 @@
 
 	// BUG-090(admin 후속): "마우스로 컨트롤시에는 이전과 같이 동작해야함" —
 	// 트랙패드 two-finger 스크롤은 pan, 그러나 일반 마우스의 plain wheel 은
-	// 예전처럼 줌이어야 한다는 피드백. ctrlKey 만으로는 트랙패드 pinch 와
-	// 마우스 plain wheel 을 구분 못 해 둘 다 ctrlKey=false 로 들어옴 — 별도
-	// 휴리스틱 필요.
+	// 예전처럼 줌이어야 한다는 피드백. 둘 다 ctrlKey=false 로 들어와 modifier 로는
+	// 구분 못 함 — 별도 휴리스틱 필요.
 	//
-	// 트랙패드 vs 마우스 wheel 구분(업계 통용 휴리스틱, 100% 정확친 않음):
-	//   - deltaMode !== 0(LINE/PAGE 단위) → 거의 항상 일반 마우스.
-	//   - deltaMode === 0(PIXEL) 인 경우 — 마우스는 노치(notch)당 큰 고정폭
-	//     점프(Windows 기본 ±100, 다른 OS 도 보통 ≥50), 트랙패드 스크롤은
-	//     매끄러운 모멘텀이라 프레임당 delta 가 작다(보통 <50).
-	function isTrackpadWheel(e: WheelEvent): boolean {
-		if (e.deltaMode !== 0) return false;
-		return Math.abs(e.deltaY) < 50;
+	// BUG-090: 마우스 휠 노치 판별. admin 노트북 트랙패드 *실제 보드* 실측(WebView2):
+	//   - 마우스 휠      : wheelDeltaY = ±120 의 배수(WHEEL_DELTA 하드웨어 고정값).
+	//   - 트랙패드 스크롤: wheelDeltaY ≈ -deltaY (예: dY=44 → wDY=-44) — 120 배수 아님.
+	//                      *정수* deltaY 도 나오므로(44.00) 정수성/매그니튜드로는 구분 불가.
+	// 따라서 wheelDeltaY 가 120 의 배수인지가 마우스 vs 트랙패드의 견고한 단일 신호.
+	// (빠른 트랙패드 스크롤이 deltaY 50+ 여도 wheelDeltaY 는 그 값을 따라가 120 배수가
+	// 아니므로 pan 유지 — 옛 `|deltaY|<50` 임계값이 빠른 스크롤을 줌으로 오판한 버그 해결.)
+	function isMouseWheelNotch(e: WheelEvent): boolean {
+		if (e.deltaMode !== 0) return true; // LINE/PAGE 단위 → 거의 항상 마우스
+		const w = Math.abs((e as WheelEvent & { wheelDeltaY?: number }).wheelDeltaY ?? 0);
+		return w !== 0 && w % 120 === 0; // ±120 배수 = 마우스 노치
 	}
 
 	// BUG-090: 트랙패드/마우스 줌 표준화. cytoscape 기본 wheel 줌은 트랙패드의
 	// two-finger 스크롤(plain wheel)도 줌으로 해석해 노트북에서 erratic.
 	// → userZoomingEnabled=false 로 끄고 직접 처리(Figma/Miro 관례):
-	//   - pinch(트랙패드, ctrlKey) 및 Ctrl+wheel(마우스) = 커서 기준 줌
+	//   - Ctrl + wheel = 커서 기준 줌. 트랙패드 줌은 Ctrl+two-finger 스크롤로 함
+	//     (WebView2 는 트랙패드 pinch 를 Page Scale 줌으로 자체 소비해 DOM wheel
+	//     이벤트로 안 내려보냄 — JS 에서 가로챌 수 없는 플랫폼 한계라 Ctrl+스크롤로 대체).
 	//   - 일반 마우스의 plain wheel = 줌(admin 피드백 — 이전 동작 유지)
 	//   - 트랙패드의 plain two-finger 스크롤만 pan
 	// cy.zoom/panBy 는 'pan'/'zoom' 이벤트를 emit → 기존 syncLanes 자동 적용.
 	function onBoardWheel(e: WheelEvent) {
 		if (!cy) return;
 		e.preventDefault();
-		const trackpad = isTrackpadWheel(e);
-		const isZoom = e.ctrlKey || !trackpad;
-		if (isZoom) {
+		const mouse = isMouseWheelNotch(e);
+		// Ctrl+wheel(트랙패드 Ctrl+스크롤 또는 마우스 Ctrl+휠) 또는 plain 마우스 휠 = 줌.
+		// 그 외(트랙패드 plain two-finger 스크롤) = pan.
+		if (e.ctrlKey || mouse) {
 			const rect = container.getBoundingClientRect();
-			// BUG-090 후속(admin 보고: "마우스로 줌인/아웃 하는 속도가 빨라졌다"):
-			// 마우스 노치는 deltaY≈100(캡 60) 으로 trackpad 보다 한 이벤트당 변화폭이
-			// 훨씬 큰데, 감도 상수를 공유해 마우스 줌이 옛 cytoscape
-			// wheelSensitivity=2.5(노치당 ~7% 변화) 대비 과도하게(~30%) 빨라졌었다.
-			// 마우스/트랙패드 감도를 분리 — 마우스는 0.0012(캡 60 기준 ≈7% 로 옛 체감
-			// 복원), 트랙패드 pinch 는 연속 제스처라 기존 0.005 유지.
-			const sensitivity = trackpad ? 0.005 : 0.0012;
+			// 감도 분리: 마우스 노치는 deltaY≈100(캡 60) 으로 변화폭이 커서 둔감하게
+			// (0.0012 — 캡 60 기준 ≈7%, cytoscape 옛 wheelSensitivity=2.5 체감 복원).
+			// 트랙패드 Ctrl+스크롤은 deltaY 가 연속적이라(노치 아님) 민감하게(0.005) —
+			// mouse(=wheelDeltaY 120배수)가 아닌 ctrlKey 줌이 여기 해당.
+			const sensitivity = mouse ? 0.0012 : 0.005;
 			const dy = Math.max(-60, Math.min(60, e.deltaY));
 			cy.zoom({
 				level: cy.zoom() * Math.exp(-dy * sensitivity),
