@@ -50,7 +50,10 @@
 	// preview / displayScale wrapper 제거.
 
 	// DEV-052 / DEV-101 fix6: 탭 분리 — '정보' / '표시'.
-	type Tab = 'info' | 'display' | 'editor' | 'remote';
+	// DEV-207 후속: '원격 서버' 전용 탭은 폐기 — '정보' 탭에 길드 위치 한
+	// 줄로 통합(사용자 피드백: "그냥 정보 탭에 원격이면 주소, 로컬이면 경로
+	// 출력해서 보여주고, 웰컴페이지에서 들어간거면 표시 안하면 되는거 아님?").
+	type Tab = 'info' | 'display' | 'editor';
 	let activeTab = $state<Tab>('info');
 
 	const isTauri = detectEnvironment() === 'tauri';
@@ -65,8 +68,11 @@
 	// remoteServerUrl 존재 여부만 봐서, 길드를 하나도 안 연 상태(Welcome)에서
 	// 도 "로컬 (이 PC 의 길드 파일 직접 사용)"이라고 잘못 표시했다. 실제로
 	// 길드가 열려있는지(로컬 launch_mode === 'guild' 또는 원격 활성)까지
-	// 함께 봐야 정확함.
+	// 함께 봐야 정확함 — Welcome 에서 들어온 거면(anyGuildOpen=false) 이
+	// 줄 자체를 표시 안 함(DEV-207).
 	let localGuildOpen = $state(false);
+	// DEV-207: 로컬일 때 보여줄 실제 길드 경로.
+	let guildPath = $state<string | null>(null);
 
 	onMount(async () => {
 		if (!isTauri) {
@@ -84,6 +90,9 @@
 			const { invoke } = await import('@tauri-apps/api/core');
 			const info = await invoke<{ mode: string }>('launch_mode');
 			localGuildOpen = info.mode === 'guild';
+			if (localGuildOpen) {
+				guildPath = await invoke<string>('current_guild_path');
+			}
 		} catch {
 			/* 알 수 없으면 false 유지(anyGuildOpen 이 원격 여부로 보완). */
 		}
@@ -91,8 +100,7 @@
 
 	// 원격이 "이번 세션에 실제로" 활성인지(BUG-095 의 board guard 와 동일 기준).
 	const isRemoteActive = $derived(!!$remoteServerUrl && isRemoteSessionActive());
-	// 브라우저 모드는 서버가 항상 어떤 길드든 호스팅 중이라 always true.
-	const anyGuildOpen = $derived(!isTauri || localGuildOpen || isRemoteActive);
+	const anyGuildOpen = $derived(localGuildOpen || isRemoteActive);
 </script>
 
 <div class="settings">
@@ -119,15 +127,6 @@
 				onclick={() => (activeTab = 'editor')}
 				aria-pressed={activeTab === 'editor'}>편집기</button
 			>
-			<!-- DEV-113 (MVP): 원격 서버 — 데스크탑(Tauri) 전용, 브라우저 모드는 이미 HTTP. -->
-			{#if isTauri}
-				<button
-					class="tab"
-					class:active={activeTab === 'remote'}
-					onclick={() => (activeTab = 'remote')}
-					aria-pressed={activeTab === 'remote'}>원격 서버</button
-				>
-			{/if}
 		</nav>
 	</aside>
 
@@ -174,34 +173,6 @@
 					</p>
 				</dd>
 			</dl>
-		{:else if activeTab === 'remote'}
-			<!-- DEV-113: 원격 서버 연결/해제는 Welcome 화면(로고 클릭)에서만 — "어떤
-			     길드를 열지" 선택이라 길드 열기와 같은 자리. 여기는 현재 상태를
-			     보여주기만 하는 읽기 전용 패널. -->
-			<h2>원격 서버</h2>
-			<dl class="info-grid">
-				<dt>현재 모드</dt>
-				<dd>
-					{#if !anyGuildOpen}
-						<span class="remote-none">아직 길드를 열지 않음</span>
-						<p class="scale-hint">
-							좌상단 로고를 눌러 Welcome 화면에서 길드를 선택하거나 원격 서버에 연결하세요.
-						</p>
-					{:else if isRemoteActive}
-						<span class="remote-active">원격 — {$remoteServerUrl}</span>
-						<p class="scale-hint">
-							연결을 해제하려면 좌상단 로고를 눌러 Welcome 화면에서 다른(로컬) 길드를 여세요.
-							(인증이 없으니 원격 연결은 신뢰된 네트워크에서만 사용하세요.)
-						</p>
-					{:else}
-						<span>로컬 (이 PC 의 길드 파일 직접 사용)</span>
-						<p class="scale-hint">
-							원격 서버에 연결하려면 좌상단 로고를 눌러 Welcome 화면으로 이동하세요. (인증이 없으니
-							원격 연결은 신뢰된 네트워크에서만 사용하세요.)
-						</p>
-					{/if}
-				</dd>
-			</dl>
 		{:else if activeTab === 'info'}
 			<h2>정보</h2>
 			<dl class="info-grid">
@@ -221,6 +192,20 @@
 						</button>
 					{/if}
 				</dd>
+				<!-- DEV-207(사용자 피드백: "정보 탭에 원격이면 주소, 로컬이면 경로
+				     출력하고, 웰컴페이지에서 들어간거면 표시 안하면 되는거 아님?"):
+				     별도 '원격 서버' 탭 폐기 — 길드가 열려있을 때만(anyGuildOpen) 한
+				     줄로 통합 표시. 연결/해제는 여전히 Welcome 화면(로고 클릭)에서만. -->
+				{#if isTauri && anyGuildOpen}
+					<dt>{isRemoteActive ? '원격 서버' : '길드 경로'}</dt>
+					<dd>
+						{#if isRemoteActive}
+							<span class="remote-active">{$remoteServerUrl}</span>
+						{:else}
+							<span>{guildPath ?? '—'}</span>
+						{/if}
+					</dd>
+				{/if}
 				<dt>저장소</dt>
 				<dd><a href={repoUrl} target="_blank" rel="noreferrer noopener">{repoUrl}</a></dd>
 			</dl>
@@ -452,15 +437,10 @@
 		cursor: not-allowed;
 	}
 
-	/* DEV-113: 원격 서버 — 현재 모드 표시(읽기 전용)만 남음. */
+	/* DEV-207: '정보' 탭의 원격 서버 주소 강조. */
 	.remote-active {
 		color: var(--accent);
 		font-weight: 500;
-	}
-	/* BUG-099: 아직 길드를 안 연 상태 — 경고는 아니라 muted. */
-	.remote-none {
-		color: var(--text-muted);
-		font-style: italic;
 	}
 
 	/* DEV-101 fix6: 탭 분리 후 h2.section 구분선 불필요 — 비워둠. */
