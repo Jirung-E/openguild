@@ -812,7 +812,7 @@ mod tests {
         let mut qf2 = qf.clone();
         qf2.frontmatter.title = "v2 by other process".into();
         qf2.write(paths.quest_path("DEV-001")).unwrap();
-        let m = repo_fs::mtime_unix_nanos(&paths.quest_path("DEV-001"));
+        let m = repo_fs::mtime_unix_nanos(paths.quest_path("DEV-001"));
         sqlx::query("UPDATE quests SET cached_mtime = ? WHERE id = 1")
             .bind(m)
             .execute(&store.index_pool)
