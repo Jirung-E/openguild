@@ -15,6 +15,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::db;
+use crate::recents::strip_verbatim_prefix;
 use crate::repo::{
     auto, GuildPaths, QuestFile, QuestFrontmatter, QuestRef, QuestRelations, TypeFile,
 };
@@ -51,10 +52,7 @@ pub async fn migrate_to_files<P: AsRef<Path>>(guild_root: P) -> Result<Migration
 
     // Windows canonicalize 는 `\\?\` 접두사를 붙임 — sqlx URL 파서가 `?` 를 query 시작으로 오인.
     let raw = legacy_db.to_string_lossy();
-    let cleaned = raw
-        .trim_start_matches(r"\\?\")
-        .trim_start_matches(r"\\\\?\\")
-        .replace('\\', "/");
+    let cleaned = strip_verbatim_prefix(&raw).replace('\\', "/");
     let legacy_url = format!("sqlite:{cleaned}?mode=ro");
     let pool = db::create_pool(&legacy_url)
         .await

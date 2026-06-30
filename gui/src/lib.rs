@@ -7,6 +7,7 @@
 
 mod commands;
 
+use openguild_core::recents::strip_verbatim_prefix;
 use openguild_core::Store;
 use std::path::{Path, PathBuf};
 
@@ -132,12 +133,8 @@ where
 /// `canonicalize` 실패 시 원본 그대로 (방어적).
 fn absolutize(p: &Path) -> PathBuf {
     let abs = std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
-    // Windows: `\\?\C:\…` → `C:\…`.
     let s = abs.to_string_lossy().to_string();
-    let cleaned = s
-        .trim_start_matches(r"\\?\")
-        .trim_start_matches(r"\\\\?\\");
-    PathBuf::from(cleaned)
+    PathBuf::from(strip_verbatim_prefix(&s))
 }
 
 /// DEV-052: managed state — frontend 가 invoke 로 조회하여 첫 진입 URL 결정.

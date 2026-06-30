@@ -6,6 +6,7 @@
 
 use anyhow::Result;
 
+use crate::recents::strip_verbatim_prefix;
 use crate::repo::GuildPaths;
 use crate::store::Store;
 
@@ -110,9 +111,7 @@ pub async fn journal_tail(paths: &GuildPaths, count: i64) -> Result<Option<Journ
     }
     let url = format!(
         "sqlite:{}?mode=ro",
-        jdb.to_string_lossy()
-            .trim_start_matches(r"\\?\")
-            .replace('\\', "/")
+        strip_verbatim_prefix(&jdb.to_string_lossy()).replace('\\', "/")
     );
     let pool = crate::db::create_pool(&url).await?;
     let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM ops")

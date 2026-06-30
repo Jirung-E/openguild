@@ -17,6 +17,7 @@ use anyhow::{Context, Result};
 use sqlx::SqlitePool;
 
 use crate::db;
+use crate::recents::strip_verbatim_prefix;
 use crate::repo::GuildPaths;
 
 /// Path 를 SQLite URL (`sqlite:<path>?mode=<mode>`) 로 변환.
@@ -25,13 +26,13 @@ use crate::repo::GuildPaths;
 /// `recents::add` 가 `canonicalize` 한 path 를 저장하는데, Windows 에선 그
 /// 결과가 `\\?\` 로 시작 → `replace('\\', '/')` 후 `//?/C:/…` 가 되고,
 /// SQLite URL 파서가 첫 `?` 를 query string 시작으로 오인해서 깨짐.
-/// (`migrate.rs` 에 동일한 처리가 이미 있음 — DEV-052 후속 4회차에 공통화.)
+/// UNC 네트워크 공유는 `\\?\UNC\server\share\…` 형태라 `strip_verbatim_prefix`
+/// 가 `\\server\share\…` 로 복원 → `/` 치환 후 `//server/share/…` 가 되어
+/// `sqlite://…` 스킴이 되고, 이게 `db::is_network_url` 이 WAL 대신
+/// journal_mode=Delete 를 쓰도록 분기하는 기준과도 일치한다(BUG-091).
 fn sqlite_file_url(path: &std::path::Path, mode: &str) -> String {
     let raw = path.to_string_lossy();
-    let cleaned = raw
-        .trim_start_matches(r"\\?\")
-        .trim_start_matches(r"\\\\?\\")
-        .replace('\\', "/");
+    let cleaned = strip_verbatim_prefix(&raw).replace('\\', "/");
     format!("sqlite:{cleaned}?mode={mode}")
 }
 
