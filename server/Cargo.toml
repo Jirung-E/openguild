@@ -17,7 +17,7 @@ clap = { version = "4", features = ["derive"] }
 # 웹 프레임워크
 axum = "0.8"
 tokio = { version = "1", features = ["full"] }
-tower-http = { version = "0.6", features = ["cors", "trace", "fs"] }
+tower-http = { version = "0.6", features = ["cors", "trace", "fs", "set-header"] }
 
 # DB
 sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "migrate"] }

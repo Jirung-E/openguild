@@ -31,6 +31,7 @@ use std::path::{Path, PathBuf};
 use tower_http::{
     cors::CorsLayer,
     services::{ServeDir, ServeFile},
+    set_header::SetResponseHeaderLayer,
     trace::TraceLayer,
 };
 
@@ -185,7 +186,30 @@ async fn run_host(port_arg: Option<u16>, bind_arg: Option<String>) -> Result<()>
         app = app.fallback_service(serve_dir);
     }
 
+    // BUG-004: production CSP — eval 금지(unsafe-eval 미포함) + 리소스 출처를
+    // same-origin 으로 제한. DEV-195 단일 origin 배포라 API 도 'self' 로 충분.
+    // script-src 'unsafe-inline' 은 SvelteKit adapter-static 이 index.html 에
+    // hydration 부트스트랩을 inline <script> 로 심기 때문에 필요(빌드마다 내용이
+    // 바뀌어 hash 고정 불가). style-src 'unsafe-inline' 은 Svelte/cytoscape 의
+    // inline style 때문. img/media 의 data:/blob: 은 첨부 미리보기(클립보드
+    // paste)용.
+    let csp = concat!(
+        "default-src 'self'; ",
+        "script-src 'self' 'unsafe-inline'; ",
+        "style-src 'self' 'unsafe-inline'; ",
+        "img-src 'self' data: blob:; ",
+        "media-src 'self' data: blob:; ",
+        "font-src 'self' data:; ",
+        "connect-src 'self'; ",
+        "object-src 'none'; ",
+        "base-uri 'self'; ",
+        "frame-ancestors 'self'"
+    );
     let app = app
+        .layer(SetResponseHeaderLayer::if_not_present(
+            axum::http::header::CONTENT_SECURITY_POLICY,
+            axum::http::HeaderValue::from_static(csp),
+        ))
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive());
 
