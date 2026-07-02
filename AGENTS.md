@@ -81,7 +81,8 @@ agent (Claude / 다른 LLM) 가 `Write` / `Edit` 도구로 `.guild/quests/*.md` 
 
 - **status / urgency / parent / prereq / delete 변경 = 반드시 CLI**
   (`openguild quest status / update / parent / prereq / delete`).
-- **description 본문만** 부득이 직접 편집 가능 (BUG-001 우회). 그 경우 직후
+- **description 본문만** 부득이 직접 편집 가능 (multi-line 도 `quest update
+  --description` 이 정상 저장 — BUG-001 수정됨, 가급적 CLI). 직접 편집 시 직후
   `openguild reindex` 필수 (GUI 는 BUG-049 후 시동 시 자동).
 - **댓글 (`{slug}.comments.md`) / 메모 (`{slug}.memo.md`)** 도 **DEV-102 부터 DB
   캐시 (`quest_comments` / `quest_memos`) sync** + snapshot 백업. 직접 편집 후엔
@@ -100,9 +101,10 @@ agent (Claude / 다른 LLM) 가 `Write` / `Edit` 도구로 `.guild/quests/*.md` 
 
 - 상태/타입 **추가**: 새 파일 만들고 reindex — 안전.
 - 상태/타입 **순서 변경**: 파일명의 sort_order prefix 만 변경 (slug 는 유지).
-- 상태/타입 **slug rename**: 위험 — quest_history.old/new_value 와 .md
-  frontmatter 의 status 필드도 동시 갱신 필요. 가급적 피하고, 어쩔 수 없다면
-  helper 가 생기기 전까진 수동 일괄 변경 + reindex.
+- 상태/타입 **slug rename**: `openguild statuses update <slug> --slug <new>` /
+  `openguild types update <prefix> --prefix <new>` 가 rename + cascade
+  (quest_history / 모든 .md frontmatter) 를 자동 처리. 파일명만 직접 바꾸면
+  cascade 안 돼 drift — 반드시 CLI 사용.
 
 ## 한 줄 요약
 
