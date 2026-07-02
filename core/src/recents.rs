@@ -119,6 +119,23 @@ pub fn remove(path: &str) -> Result<()> {
     Ok(())
 }
 
+/// Windows `canonicalize()` 가 반환하는 extended-length(verbatim) prefix 제거.
+///
+/// 로컬 드라이브: `\\?\C:\...` → `C:\...`.
+/// UNC 네트워크 공유(BUG-091): `\\?\UNC\server\share\...` → `\\server\share\...`.
+/// `\\?\` 만 잘라내면 UNC 의 경우 `UNC\server\share\...` 가 남는데, 이는 앞의
+/// `\\` 가 없어 Windows 경로 API 가 네트워크 경로로 인식 못 하는 깨진 문자열이다
+/// (`UNC\` 마커는 `\\` 로 되돌려야 유효한 UNC 형태가 됨).
+pub fn strip_verbatim_prefix(s: &str) -> String {
+    if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{rest}")
+    } else if let Some(rest) = s.strip_prefix(r"\\?\") {
+        rest.to_string()
+    } else {
+        s.to_string()
+    }
+}
+
 /// path 를 절대 + 사용자 친화 형태로 정규화.
 ///
 /// Windows: `canonicalize` 결과의 `\\?\` extended-length prefix 제거 — 그
@@ -127,10 +144,7 @@ pub fn remove(path: &str) -> Result<()> {
 pub fn normalize_abs(path: &Path) -> String {
     let abs = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
     let raw = abs.to_string_lossy().to_string();
-    // Windows extended-length prefix 제거.
-    raw.trim_start_matches(r"\\?\")
-        .trim_start_matches(r"\\\\?\\")
-        .to_string()
+    strip_verbatim_prefix(&raw)
 }
 
 /// 길드 디렉토리에서 이름 추측 — `*.guild` 파일이 있으면 그 stem, 아니면 디렉토리명.
@@ -188,6 +202,27 @@ fn days_to_ymd(mut days: i64) -> (i32, u32, u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// BUG-091: UNC 네트워크 경로의 `\\?\UNC\` verbatim 마커는 `\\` 로
+    /// 복원되어야 한다 (단순 `\\?\` 제거만으로는 `Path::is_dir()` 가
+    /// 인식 못 하는 `UNC\server\share\...` 가 남는다).
+    #[test]
+    fn strip_verbatim_prefix_unc() {
+        assert_eq!(
+            strip_verbatim_prefix(r"\\?\UNC\server\share\guild"),
+            r"\\server\share\guild"
+        );
+    }
+
+    #[test]
+    fn strip_verbatim_prefix_local_drive() {
+        assert_eq!(strip_verbatim_prefix(r"\\?\C:\guild"), r"C:\guild");
+    }
+
+    #[test]
+    fn strip_verbatim_prefix_passthrough() {
+        assert_eq!(strip_verbatim_prefix(r"C:\guild"), r"C:\guild");
+    }
 
     fn fresh_env(label: &str) -> PathBuf {
         let ns = std::time::SystemTime::now()

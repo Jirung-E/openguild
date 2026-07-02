@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { detectEnvironment, HttpTransport, TauriTransport, __test_only } from './transport';
+import {
+	detectEnvironment,
+	HttpTransport,
+	TauriTransport,
+	transport,
+	__test_only
+} from './transport';
+import { setRemoteServerUrl } from '$lib/stores/remoteServer';
 
 vi.mock('@tauri-apps/api/core', () => ({
 	invoke: vi.fn()
@@ -287,6 +294,72 @@ describe('TauriTransport', () => {
 		).rejects.toThrow('quest not found');
 	});
 
+	// DEV-152: 첨부 업로드 — 브라우저(server) 모드 지원 매핑.
+	it('POST /api/attachments → save_attachment', async () => {
+		mockInvoke.mockResolvedValue('attachments/abc.png');
+		await new TauriTransport().call({
+			method: 'POST',
+			path: '/api/attachments',
+			body: { data_base64: 'QUJD', ext: 'png' }
+		});
+		expect(mockInvoke).toHaveBeenCalledWith('save_attachment', {
+			dataBase64: 'QUJD',
+			ext: 'png'
+		});
+	});
+
+	it('POST /api/quests/by/DEV-001/attachments → add_quest_attachment', async () => {
+		mockInvoke.mockResolvedValue([]);
+		await new TauriTransport().call({
+			method: 'POST',
+			path: '/api/quests/by/DEV-001/attachments',
+			body: { path: 'attachments/abc.png', name: 'pic.png' }
+		});
+		expect(mockInvoke).toHaveBeenCalledWith('add_quest_attachment', {
+			slug: 'DEV-001',
+			path: 'attachments/abc.png',
+			name: 'pic.png'
+		});
+	});
+
+	it('DELETE /api/quests/by/DEV-001/attachments?path=... → remove_quest_attachment', async () => {
+		mockInvoke.mockResolvedValue([]);
+		await new TauriTransport().call({
+			method: 'DELETE',
+			path: '/api/quests/by/DEV-001/attachments?path=attachments%2Fabc.png'
+		});
+		expect(mockInvoke).toHaveBeenCalledWith('remove_quest_attachment', {
+			slug: 'DEV-001',
+			path: 'attachments/abc.png'
+		});
+	});
+
+	it('POST /api/campaigns/C-001/attachments → add_campaign_attachment', async () => {
+		mockInvoke.mockResolvedValue([]);
+		await new TauriTransport().call({
+			method: 'POST',
+			path: '/api/campaigns/C-001/attachments',
+			body: { path: 'attachments/abc.png', name: 'pic.png' }
+		});
+		expect(mockInvoke).toHaveBeenCalledWith('add_campaign_attachment', {
+			slug: 'C-001',
+			path: 'attachments/abc.png',
+			name: 'pic.png'
+		});
+	});
+
+	it('DELETE /api/campaigns/C-001/attachments?path=... → remove_campaign_attachment', async () => {
+		mockInvoke.mockResolvedValue([]);
+		await new TauriTransport().call({
+			method: 'DELETE',
+			path: '/api/campaigns/C-001/attachments?path=attachments%2Fabc.png'
+		});
+		expect(mockInvoke).toHaveBeenCalledWith('remove_campaign_attachment', {
+			slug: 'C-001',
+			path: 'attachments/abc.png'
+		});
+	});
+
 	it('routeToInvoke — meta 양쪽 매핑', () => {
 		expect(__test_only.routeToInvoke({ method: 'GET', path: '/api/quest-types' })).toEqual({
 			cmd: 'list_quest_types',
@@ -296,5 +369,67 @@ describe('TauriTransport', () => {
 			cmd: 'list_quest_statuses',
 			args: {}
 		});
+	});
+});
+
+// DEV-113 (MVP): 원격 서버 모드 — `transport` (동적 위임)이 Tauri 환경에서도
+// remoteServer 가 설정돼 있으면 invoke 대신 그 URL 로 HTTP 호출하는지.
+describe('transport (동적 위임, DEV-113 원격 모드)', () => {
+	beforeEach(() => {
+		mockInvoke.mockReset();
+		setRemoteServerUrl(null); // 매 테스트 로컬(기본)로 리셋.
+	});
+	afterEach(() => {
+		const w = window as unknown as Record<string, unknown>;
+		delete w.__TAURI__;
+		delete w.__TAURI_INTERNALS__;
+		setRemoteServerUrl(null);
+		vi.unstubAllGlobals();
+	});
+
+	it('Tauri 환경 + 원격 URL 미설정 → invoke 사용(기존 동작 그대로)', async () => {
+		(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+		mockInvoke.mockResolvedValue([]);
+		expect(transport.kind).toBe('tauri');
+		await transport.call({ method: 'GET', path: '/api/quests' });
+		expect(mockInvoke).toHaveBeenCalledWith('list_quests', {});
+	});
+
+	it('Tauri 환경 + 원격 URL 설정 → invoke 대신 그 URL 로 fetch', async () => {
+		(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+		setRemoteServerUrl('http://192.168.1.10:3000');
+		vi.stubGlobal(
+			'fetch',
+			vi.fn().mockResolvedValue({
+				ok: true,
+				status: 200,
+				headers: new Headers({ 'content-type': 'application/json' }),
+				text: () => Promise.resolve('[]')
+			})
+		);
+		expect(transport.kind).toBe('http');
+		await transport.call({ method: 'GET', path: '/api/quests' });
+		expect(mockInvoke).not.toHaveBeenCalled();
+		const call = vi.mocked(fetch).mock.calls[0];
+		expect(call[0]).toBe('http://192.168.1.10:3000/api/quests');
+	});
+
+	it('브라우저 환경에선 원격 URL 설정과 무관하게 항상 HTTP(기존 동작)', async () => {
+		// Tauri 글로벌 없음 → detectEnvironment()==='http'.
+		setRemoteServerUrl('http://192.168.1.10:3000'); // 영향 없어야.
+		vi.stubGlobal(
+			'fetch',
+			vi.fn().mockResolvedValue({
+				ok: true,
+				status: 200,
+				headers: new Headers({ 'content-type': 'application/json' }),
+				text: () => Promise.resolve('[]')
+			})
+		);
+		expect(transport.kind).toBe('http');
+		await transport.call({ method: 'GET', path: '/api/quests' });
+		// 브라우저 모드는 remoteServerUrl 을 안 보고 기존 base(빈 문자열/VITE_API_URL) 사용.
+		const call = vi.mocked(fetch).mock.calls[0];
+		expect(call[0]).not.toContain('192.168.1.10');
 	});
 });

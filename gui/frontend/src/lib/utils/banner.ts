@@ -1,21 +1,34 @@
 // DEV-087: 캠페인 배너 이미지 URL 해석.
 //
 // WebView 는 raw file:// 로드를 차단 (frontend origin 이 http://tauri.localhost
-// — cross-origin) — Tauri 모드는 asset protocol (convertFileSrc), 브라우저
-// (HTTP) 모드는 서버의 bytes endpoint 사용.
+// — cross-origin) — Tauri-local 모드는 asset protocol (convertFileSrc), 그 외
+// (브라우저, 또는 BUG-097: Tauri + 원격 연결)는 서버의 bytes endpoint 사용.
 
 import { detectEnvironment } from '$lib/api/transport';
+import { getRemoteServerUrl } from '$lib/stores/remoteServer';
 
-// 길드 경로는 세션 동안 불변 — 1회 조회 후 메모.
-let guildPathPromise: Promise<string> | null = null;
-async function guildPath(): Promise<string> {
-	if (!guildPathPromise) {
-		guildPathPromise = (async () => {
-			const { invoke } = await import('@tauri-apps/api/core');
-			return await invoke<string>('current_guild_path');
-		})();
-	}
-	return guildPathPromise;
+// BUG-097(사용자 보고: "이미지 첨부한게 표시가 안된다"): 이전엔
+// `detectEnvironment() === 'tauri'` 만 보고 분기해, Tauri + 원격 연결 상태
+// 에서도 무조건 "로컬" asset 경로(현재 invoke 로 얻는 Rust 의 로컬 Store
+// 경로 — 원격 연결 시엔 보통 미연결/placeholder)로 `convertFileSrc` 를
+// 만들어버렸다. 존재하지 않는 로컬 경로라 이미지가 깨짐. Nav 길드 이름
+// (DEV-113 후속)/board bounce guard(BUG-095) 와 동일한 패턴의 버그.
+function isTauriLocal(): boolean {
+	return detectEnvironment() === 'tauri' && !getRemoteServerUrl();
+}
+
+/** Tauri + 원격 연결 시 HTTP 요청에 붙일 base — 그 외(브라우저)는 빈 문자열(같은 origin). */
+function httpBase(): string {
+	if (detectEnvironment() === 'tauri') return getRemoteServerUrl() ?? '';
+	return '';
+}
+
+// DEV-113 후속: Welcome 에서 같은 프로세스 안에 다른 로컬 길드로 전환할 수
+// 있게 되어 "길드 경로는 세션 동안 불변" 가정이 깨졌다 — 매번 새로 조회
+// (Tauri invoke 는 가벼운 로컬 호출이라 캐싱 불필요).
+async function localGuildPath(): Promise<string> {
+	const { invoke } = await import('@tauri-apps/api/core');
+	return await invoke<string>('current_guild_path');
 }
 
 /**
@@ -27,12 +40,12 @@ export async function campaignBannerUrl(
 	imagePath: string | null | undefined
 ): Promise<string | null> {
 	if (!imagePath) return null;
-	if (detectEnvironment() === 'tauri') {
+	if (isTauriLocal()) {
 		const { convertFileSrc } = await import('@tauri-apps/api/core');
-		const root = await guildPath();
+		const root = await localGuildPath();
 		return convertFileSrc(`${root}/.guild/${imagePath}`);
 	}
-	return `/api/campaigns/${encodeURIComponent(slug)}/image`;
+	return `${httpBase()}/api/campaigns/${encodeURIComponent(slug)}/image`;
 }
 
 /**
@@ -40,11 +53,12 @@ export async function campaignBannerUrl(
  * 가능 URL. markdown 본문의 로컬 이미지 / 동영상 참조 해석용.
  */
 export async function guildFileUrl(relPath: string): Promise<string> {
-	if (detectEnvironment() === 'tauri') {
+	if (isTauriLocal()) {
 		const { convertFileSrc } = await import('@tauri-apps/api/core');
-		const root = await guildPath();
+		const root = await localGuildPath();
 		return convertFileSrc(`${root}/.guild/${relPath}`);
 	}
-	// 브라우저 모드 — 서버가 attachments/ + assets/ 만 서빙.
-	return `/api/guild-files/${relPath}`;
+	// 브라우저 모드(base='') 또는 Tauri+원격(base=원격 URL) — 서버가
+	// attachments/ + assets/ 만 서빙.
+	return `${httpBase()}/api/guild-files/${relPath}`;
 }

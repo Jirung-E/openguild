@@ -1,6 +1,7 @@
 [package]
 name = "openguild-server"
-version = "0.2.1-beta"
+version = "0.3.0-beta"
+license = "MIT"
 edition = "2024"
 description = "openguild HTTP API 서버"
 
@@ -24,6 +25,9 @@ sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "migrate"] }
 # 직렬화
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# DEV-152: 첨부 업로드 — Tauri invoke 와 동일 시그니처(base64 JSON body) 유지.
+base64 = "0.22"
 
 # 에러 처리
 anyhow = "1"

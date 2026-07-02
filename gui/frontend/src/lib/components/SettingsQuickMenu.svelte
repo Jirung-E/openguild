@@ -14,14 +14,27 @@
 		MIN_CONTENT_WIDTH,
 		MAX_CONTENT_WIDTH
 	} from '$lib/stores/contentWidth';
+	// DEV-015 (MVP): 언어 토글 — 이 메뉴의 라벨들을 t() 로 전환. 전역 스윕은 후속(DEV-205).
+	import { locale, setLocale, t, type Locale } from '$lib/stores/locale';
 	import CustomSlider from './CustomSlider.svelte';
 
 	let { onclose }: { onclose: () => void } = $props();
 
-	const THEME_OPTIONS: { value: ThemeChoice; label: string }[] = [
-		{ value: 'system', label: '시스템' },
-		{ value: 'light', label: '라이트' },
-		{ value: 'dark', label: '다크' }
+	// $derived — $locale 변경 시 라벨이 즉시 다시 계산되어야 (plain const 는 초기값에 고정됨).
+	let THEME_OPTIONS = $derived<{ value: ThemeChoice; label: string }[]>([
+		{ value: 'system', label: t('settings.theme.system', $locale) },
+		{ value: 'light', label: t('settings.theme.light', $locale) },
+		{ value: 'dark', label: t('settings.theme.dark', $locale) }
+	]);
+
+	// DEV-015 후속(사용자 피드백): 언어 선택 버튼의 라벨(언어 이름 자체)은
+	// 현재 선택된 언어로 번역되면 안 됨 — "한국어"/"English" 는 그 언어를
+	// 가리키는 고유명사라 항상 같은 표기로 보여야 선택 중인 항목을 혼동 없이
+	// 알 수 있다(영어 선택 시 "Korean"으로 바뀌면 원래 한국어 옵션이었는지
+	// 헷갈림). t() 로 번역하지 않고 고정 표기.
+	const LOCALE_OPTIONS: { value: Locale; label: string }[] = [
+		{ value: 'ko', label: '한국어' },
+		{ value: 'en', label: 'English' }
 	];
 
 	function onkeydown(e: KeyboardEvent) {
@@ -39,8 +52,8 @@
 
 <div class="qm" role="menu" aria-label="설정 퀵메뉴">
 	<div class="qm-row">
-		<span class="qm-label">테마</span>
-		<div class="qm-seg" role="group" aria-label="테마">
+		<span class="qm-label">{t('settings.theme', $locale)}</span>
+		<div class="qm-seg" role="group" aria-label={t('settings.theme', $locale)}>
 			{#each THEME_OPTIONS as o (o.value)}
 				<button
 					class="qm-seg-btn"
@@ -51,15 +64,29 @@
 		</div>
 	</div>
 
+	<!-- DEV-015 (MVP): 언어 토글 — 이 메뉴의 라벨에 즉시 반영, 전역 적용은 후속. -->
 	<div class="qm-row">
-		<span class="qm-label">UI 크기</span>
+		<span class="qm-label">{t('settings.language', $locale)}</span>
+		<div class="qm-seg" role="group" aria-label={t('settings.language', $locale)}>
+			{#each LOCALE_OPTIONS as o (o.value)}
+				<button
+					class="qm-seg-btn"
+					class:active={$locale === o.value}
+					onclick={() => setLocale(o.value)}>{o.label}</button
+				>
+			{/each}
+		</div>
+	</div>
+
+	<div class="qm-row">
+		<span class="qm-label">{t('settings.uiScale', $locale)}</span>
 		<div class="qm-slider">
 			<CustomSlider
 				value={$uiScale}
 				min={MIN_SCALE}
 				max={MAX_SCALE}
 				step={0.01}
-				ariaLabel="UI 크기"
+				ariaLabel={t('settings.uiScale', $locale)}
 				onChange={setUiScale}
 			/>
 			<span class="qm-val">{Math.round($uiScale * 100)}%</span>
@@ -67,21 +94,21 @@
 	</div>
 
 	<div class="qm-row">
-		<span class="qm-label">컨텐츠 폭</span>
+		<span class="qm-label">{t('settings.contentWidth', $locale)}</span>
 		<div class="qm-slider">
 			<CustomSlider
 				value={$contentWidth}
 				min={MIN_CONTENT_WIDTH}
 				max={MAX_CONTENT_WIDTH}
 				step={10}
-				ariaLabel="컨텐츠 폭"
+				ariaLabel={t('settings.contentWidth', $locale)}
 				onChange={setContentWidth}
 			/>
 			<span class="qm-val">{$contentWidth}px</span>
 		</div>
 	</div>
 
-	<a class="qm-all" href="/settings" onclick={onclose}>전체 설정 →</a>
+	<a class="qm-all" href="/settings" onclick={onclose}>{t('settings.all', $locale)}</a>
 </div>
 
 <style>

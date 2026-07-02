@@ -137,7 +137,7 @@ open → in_progress → testing → done
 
 #### 테스트 단계로 보낼 때 — 본문에 테스트 방법 첨부 **필수**
 
-`openguild quest status <slug> testing` 호출 직전 또는 직후에, quest 본문
+`openguild quest move <slug> testing` 호출 직전 또는 직후에, quest 본문
 (description) 에 **"## 테스트 방법"** 섹션을 추가한다.
 
 예시:
@@ -152,7 +152,7 @@ window.__TAURI__ 감지 → invoke 또는 fetch. Tauri 작업의 선행.
 - SSR / Node 환경에서 detectEnvironment() 가 'http' 반환 (Node 의 globalThis 에 window 없음)
 EOF
 )"
-openguild quest status DEV-002 testing
+openguild quest move DEV-002 testing
 ```
 
 테스트 방법 항목 작성 가이드:
@@ -238,7 +238,13 @@ openguild campaign checklist rm      <slug> <N>
 openguild backup new                   # 즉시 snapshot 생성
 openguild backup list                  # 사용 가능 snapshot 목록
 openguild backup remove <TIMESTAMP>    # 특정 snapshot 삭제
-openguild restore [--to <TIMESTAMP>]   # 최신 (또는 지정) snapshot 으로 복원
+openguild restore                      # 최신 snapshot 으로 복원 (journal 보존)
+openguild restore --to <TIMESTAMP>     # 지정 snapshot 으로 복원 (journal 보존)
+openguild restore --at <ISO8601-UTC>   # 시점 복원(DEV-022) — 최신 snapshot 복원 후
+                                       # journal(AOF) 을 그 시각까지 재적용, 이후 journal truncate.
+                                       # `--to` 와 상호배타. 내용 op(댓글/메모 본문)·type 변경·
+                                       # 첨부가 낀 구간은 거부(fail-loud). "최신 상태로 복구" 는
+                                       # 먼 미래 시각 지정(예 9999-12-31T23:59:59Z).
 ```
 
 자동 백업: 매 mutation 이후 정책 검토 (ops 50회 OR 24시간 경과 시 자동 snapshot).
@@ -297,6 +303,28 @@ openguild quest new --template bug-report --title "특정 제목"   # 명시 옵
 merge 우선순위: **명시 옵션 > 템플릿 값 > 기본** (urgency 기본 3).
 type / title 은 둘 중 한 쪽엔 있어야 함. local 모드 전용 (HTTP 미지원).
 
+### 2.11 정비 / 진단 / 규칙
+
+서버 불필요 — `openguild` CLI 로 직접.
+
+```bash
+openguild reindex                    # 파일 → index.db 캐시 재구축 (= index rebuild).
+                                     # 외부 편집 / git pull / restore 후 정합
+openguild check drift                # 파일 ↔ 캐시 drift 점검
+openguild check counters             # 타입 카운터 정합 점검
+openguild index rebuild | vacuum     # 캐시 재구축 / VACUUM
+openguild journal tail               # journal(AOF) 최근 op — audit / 디버그
+openguild info                       # 길드 메타 / index.db·snapshot·journal 요약 (진단)
+
+# 길드 규칙 (.guild/rules/{slug}.md — 프로젝트 컨벤션 문서, git tracked)
+openguild rules list                          # 규칙 slug 목록
+openguild rules show   <slug>                 # 본문 출력
+openguild rules create <slug> --file <PATH>   # 신규 (중복 slug 는 에러) / stdin 도 가능
+openguild rules set    <slug> --file <PATH>   # 본문 교체 (멱등 — 없으면 생성)
+openguild rules delete <slug> [--force]
+openguild rules rename <old-slug> <new-slug>
+```
+
 ---
 
 ## 3. Agent 워크플로 패턴
@@ -353,8 +381,8 @@ $ openguild quest prereq add DEV-049 DEV-048
 | **Soft delete** | `delete` 는 실제로 row 를 안 지우고 `deleted_at` 만 set. 복원 `restore`, 목록 `deleted` |
 | **`--yes` 강제** | 삭제는 `--yes` 명시 필수. 미명시 시 거부 |
 | **`--dry-run`** | `delete` / `update` 의 영향을 실제 호출 없이 미리 확인 |
-| **자동 백업** | 서버가 1시간마다 `VACUUM INTO` 로 `<guild>/backups/guild.db.<ts>` 생성, 7일 보관 |
-| **Audit log** | 모든 mutation HTTP 호출이 `<guild>/audit.log` 에 timestamped tab-separated 기록 |
+| **자동 백업** | 매 mutation 후 정책 검토(ops 50회 OR 24h 경과)로 `.guild/` 소스 파일 스냅샷 자동 생성. env `OPENGUILD_AUTO_BACKUP_OPS`/`_HOURS` 로 조정 (§2.8) |
+| **저널(AOF)** | 모든 mutation 이 `.guild/backups/journal.db` 에 op 로 기록 — `openguild journal tail` 로 확인, 시점 복원(`restore --at`)의 소스 |
 
 ### 권장 패턴
 
@@ -378,35 +406,28 @@ openguild 는 **파일 = truth, `.guild/index.db` = SQL 캐시** 구조. mutatio
 
 | 변경할 것                | 정식 경로 |
 |--------------------------|-------------------------------------------------|
-| status                   | `openguild quest status <slug> <STATUS>` (`start` / `done` / `reopen` 도 가능) |
+| status                   | `openguild quest move <slug> <STATUS>` (`start` / `done` / `reopen` 도 가능) |
 | title                    | `openguild quest update <slug> --title <T>` |
-| description              | `openguild quest update <slug> --description <D>` (multi-line 제약은 BUG-001 참고) |
+| description              | `openguild quest update <slug> --description <D>` (multi-line OK — BUG-001 수정됨) |
 | urgency                  | `openguild quest update <slug> --urgency 1-4` |
 | parent                   | `openguild quest parent <slug> <parent>` / `--detach` |
 | prerequisites            | `openguild quest prereq add/rm <slug> <other>` |
 | 삭제 / 복원              | `openguild quest delete/restore <slug>` |
-| type / status 메타       | (현재 CLI 미지원 — 직접 편집 후 reindex 의 유일한 예외) |
+| type 메타                | `openguild types add/update/delete` (`update --prefix` 로 rename+cascade) |
+| status 메타              | `openguild statuses add/update/delete` (`update --slug` 로 rename+cascade) |
 
 #### 부득이하게 직접 편집해야 한다면
 
-1. agent 가 `.md` / `.toml` 을 편집한 직후 **반드시** `openguild reindex`
-   실행 (SQL 캐시 재구축; = `openguild index rebuild`).
-2. 변경 후 `openguild check drift` 로 drift 0 확인.
+본문(description)은 `openguild quest update --description` 이 multi-line 을 정상
+저장하므로(BUG-001 수정됨) 웬만하면 CLI 로 처리한다. 그래도 파일을 직접
+편집했다면:
+
+1. 편집 직후 **반드시** `openguild reindex` (SQL 캐시 재구축; = `openguild index rebuild`).
+2. `openguild check drift` 로 drift 0 확인.
 3. journal 에 의도 기록은 자동 안 됨 — commit 메시지 / quest 본문에 사유 명시.
 
-#### BUG-001 우회 (multi-line description) 의 경우
-
-`openguild quest update --description "$(cat <<'EOF' ... EOF)"` 가 multi-line
-에서 첫 줄만 저장하는 결함 (BUG-001) 우회 시:
-
-```bash
-# 1) 파일 직접 편집 (frontmatter 의 description 본문만!)
-# 2) reindex 로 SQL 동기화
-openguild reindex
-```
-
 **frontmatter 의 status / urgency / parent / prerequisites 는 절대 직접 안 건드림.**
-그건 위의 명령으로 해야 함. 본문 (description) 만 직접 편집 OK.
+그건 위 표의 명령으로 해야 함. 본문 (description) 만 직접 편집 OK.
 
 ### 안전한 삭제 예시
 
@@ -446,7 +467,7 @@ fi
 
 ## 6. JSON 출력 사용
 
-`--json` 시 모든 출력이 한 줄 또는 pretty-printed JSON. agent 가 `jq` / `serde_json` 등으로 파싱:
+`--json` 시 모든 출력이 pretty-printed(2-space 들여쓰기) JSON. agent 가 `jq` / `serde_json` 등으로 파싱:
 
 ```bash
 # 새 quest 생성 후 슬러그만 캡처

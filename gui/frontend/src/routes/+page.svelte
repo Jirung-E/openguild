@@ -9,6 +9,8 @@
 	import { flashQuestId } from '$lib/stores';
 	import type { Quest } from '$lib/types';
 	import { detectEnvironment } from '$lib/api/transport';
+	import { getRemoteServerUrl, isRemoteSessionActive } from '$lib/stores/remoteServer';
+	import { markGuildContextActive } from '$lib/stores/guildSession';
 
 	// DEV-011: Home 추가. ?view 없으면 home 기본.
 	type View = 'home' | 'board' | 'list';
@@ -32,8 +34,35 @@
 	// 길드 컨텍스트가 없으므로 / (board) 진입 시 항상 /welcome 으로 bounce.
 	// (이전에 sessionStorage 마커로 첫 회만 redirect 했지만, Nav 로고 클릭 등
 	// 으로 다시 / 진입 시 빈 보드가 노출되는 버그가 있어서 제거.)
+	//
+	// DEV-113 후속(사용자 보고: "웹브라우저로는 원격길드 접속이 되는데 GUI
+	// 에서는 안된다"): `launch_mode` 는 Rust 의 로컬 Store 상태만 본다 —
+	// 원격 서버에 연결(remoteServerUrl)해도 Rust 쪽은 여전히 길드를 안 연
+	// 상태(`welcome`)이므로, Welcome 에서 연결 후 `/` 로 이동해도 이 guard
+	// 가 즉시 다시 `/welcome` 으로 돌려보내 마치 "연결이 안 되는" 것처럼
+	// 보였다(브라우저 모드는 이 invoke 자체가 없어 멀쩩했음). 원격 override
+	// 가 활성이면 이 bounce 를 건너뛴다 — 원격 연결도 유효한 "길드 컨텍스트".
+	//
+	// BUG-095(사용자 보고: "gui를 처음 열때 이전 원격 길드의 홈으로 열리는
+	// 현상"): `remoteServerUrl` 만 보고 건너뛰면 localStorage 에 남은 *이전
+	// 세션* 의 값으로 콜드 스타트에도 자동 재진입한다 — local 길드는 open_*
+	// Tauri command 가 `LaunchInfo.mode` 를 "guild" 로 갱신해줘서(Rust 쪽
+	// 진짜 상태) 이런 문제가 없는데, 원격은 그 갱신 메커니즘이 없어 비대칭.
+	// `isRemoteSessionActive()`(sessionStorage — 프로세스 재시작마다 빈
+	// 상태로 시작)로 "이번 세션에 Welcome 에서 실제로 연결했는지"까지 함께
+	// 확인해야 진짜 콜드 스타트와 구분된다.
+	// DEV-207 후속(사용자 보고: "길드를 열었다가 welcome으로 돌아가서
+	// 확인했을때"가 여전히 길드가 열려있는 것처럼 표시됨): 보드가 bounce
+	// 없이(=길드 컨텍스트 진짜 활성) 마운트되는 시점마다 markGuildContextActive()
+	// 로 기록 — welcome 의 onMount 는 반대로 항상 inactive 마크. 설정
+	// 페이지는 Rust launch_mode 대신 이 세션 플래그로 "지금 실제로 길드가
+	// 표시 중인지" 판단(launch_mode 는 Welcome 재방문으로 안 풀려서 stale).
 	onMount(async () => {
 		if (detectEnvironment() !== 'tauri') return;
+		if (getRemoteServerUrl() && isRemoteSessionActive()) {
+			markGuildContextActive();
+			return;
+		}
 		try {
 			const { invoke } = await import('@tauri-apps/api/core');
 			// DEV-052 후속 (3회차): launch_mode 가 string → { mode, uninit_path }
@@ -41,7 +70,18 @@
 			// false 라 redirect 가 안 되는 버그가 있었음.
 			const info = await invoke<{ mode: string; uninit_path: string | null }>('launch_mode');
 			if (info.mode === 'welcome' || info.mode === 'uninit') {
-				goto('/welcome');
+				// BUG-100(사용자 보고: "gui를 처음 켰을때도 웰컴페이지에서 뒤로가기
+				// 단축키가 동작한다 — 최근에 연 길드로 돌아가려는 것 같다"):
+				// 기본 goto 는 history 에 새 항목을 쌓아(push), 콜드 스타트 시
+				// ["/", "/welcome"] 두 entry 가 남는다. "/" 자체는 길드 컨텍스트
+				// 없이도 board/home UI 를 렌더하므로(빈 placeholder Store),
+				// 뒤로가기를 누르면 그 "/" 가 잠깐 보였다가 다시 /welcome 으로
+				// bounce — 마치 "다른 길드로 가려다 막힌" 것처럼 보인다.
+				// replaceState 로 "/" 항목을 지우고 들어가 history 에 dangling
+				// entry 가 남지 않게 한다.
+				goto('/welcome', { replaceState: true });
+			} else {
+				markGuildContextActive();
 			}
 		} catch {
 			// invoke 실패 시 redirect 생략 (회귀 방지).

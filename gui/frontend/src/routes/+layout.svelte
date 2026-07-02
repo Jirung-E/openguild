@@ -20,7 +20,8 @@
 		theme,
 		applyThemeToDocument,
 		watchSystemPreference,
-		resolveTheme
+		resolveTheme,
+		type ThemeChoice
 	} from '$lib/stores/theme';
 	import { get } from 'svelte/store';
 	import '$lib/styles/global.css';
@@ -196,10 +197,28 @@
 
 	// DEV-074: 테마 — store 변경 시 `<html data-theme>` 갱신. 'system' 일 때
 	// OS preference 변경도 listener 로 즉시 반영.
+	// DEV-201: 동시에 Tauri 네이티브 창 테마(Windows 타이틀바 등)도 동기화 —
+	// 시스템이 라이트인데 앱을 다크로 둔 경우 타이틀바가 흰색으로 튀던 문제 해결.
+	async function applyWindowTheme(t: ThemeChoice) {
+		if (detectEnvironment() !== 'tauri') return;
+		try {
+			const { getCurrentWindow } = await import('@tauri-apps/api/window');
+			// 'dark'/'light' = 강제(앱 선택 우선), 'system' = null(OS 따름).
+			// Windows 에선 이게 immersive dark mode 로 네이티브 타이틀바를 칠한다.
+			await getCurrentWindow().setTheme(t === 'system' ? null : t);
+		} catch (e) {
+			console.warn('[theme] 네이티브 창 테마 적용 실패', e);
+		}
+	}
 	onMount(() => {
-		const unsubTheme = theme.subscribe(applyThemeToDocument);
+		const applyAll = (t: ThemeChoice) => {
+			applyThemeToDocument(t);
+			void applyWindowTheme(t);
+		};
+		const unsubTheme = theme.subscribe(applyAll);
 		const unwatchSys = watchSystemPreference(() => {
 			// system 모드일 때만 재적용 (다른 모드는 사용자가 명시 — OS 변경 무시).
+			// 창 테마는 system=null 이라 OS 가 알아서 따라가므로 document 만 재적용.
 			if (get(theme) === 'system') {
 				applyThemeToDocument('system');
 			}
@@ -281,8 +300,9 @@
 
 <!-- BUG-041: DB schema 가 binary 보다 새로운 경우 알림 (Tauri 만). 항상 최상단. -->
 <SchemaAheadBanner />
-<!-- DEV-063: 업데이트 배너 — Nav 아래, 새 버전 있을 때만 노출. 모든 라우트
-     (welcome 포함) 공통. -->
+<!-- DEV-063 / DEV-194 후속: 업데이트 알림 — 우하단 floating toast(레이아웃
+     안 밀어냄), idle 아닌 모든 상태 표시. 모든 라우트(welcome 포함) 공통,
+     단일 mount — 페이지별 중복 토스트 제거됨. -->
 <UpdateBanner />
 {#if showNav}
 	<Nav />

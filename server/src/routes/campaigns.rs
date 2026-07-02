@@ -60,7 +60,11 @@ pub async fn get_campaign(
     State(store): State<Store>,
     Path(slug): Path<String>,
 ) -> AppResult<Json<CampaignDetail>> {
-    Ok(Json(ops::fetch_detail(&store, &slug).await?))
+    let mut detail = ops::fetch_detail(&store, &slug).await?;
+    // DEV-152: 첨부 목록(sidecar) — GUI Tauri 커맨드와 동일하게 여기서 채움.
+    detail.attachments =
+        openguild_core::ops::attachments::list_campaign_attachments(&store, &slug);
+    Ok(Json(detail))
 }
 
 pub async fn update_campaign(

@@ -18,6 +18,11 @@ use sqlx::SqlitePool;
 /// 매 mutation 끝에 호출 — 자동 백업 정책 검토 + 필요시 snapshot.
 /// snapshot 실패해도 mutation 결과엔 영향 X (stderr 경고만).
 async fn after_mutation(store: &Store) {
+    // DEV-022: journal replay 중에는 auto-snapshot 억제. replay 도중 snapshot 이
+    // journal 을 truncate 하면 아직 적용 안 한 ops 가 사라져 replay 가 깨진다.
+    if store.is_replaying() {
+        return;
+    }
     let policy = snapshot::AutoSnapshotPolicy::from_env();
     match snapshot::maybe_auto_snapshot(store, policy).await {
         Ok(Some(info)) => {

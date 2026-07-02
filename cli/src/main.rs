@@ -96,11 +96,16 @@ enum Command {
         #[command(subcommand)]
         sub: BackupCmd,
     },
-    /// 백업(스냅샷)으로 복원. (추후 journal replay 로 시점 복원 연계 예정.)
+    /// 백업(스냅샷)으로 복원. `--at` 으로 journal replay 시점 복원.
     Restore {
         /// 특정 timestamp (`YYYYMMDD-HHMMSS`). 미지정 시 최신 사용.
         #[arg(long)]
         to: Option<String>,
+        /// 시점 복원 — 최신 snapshot 복원 후 journal(AOF) 을 이 시각(ISO8601
+        /// UTC, 예 `2026-06-27T00:15:00Z`, 포함)까지 재적용. 내용 op(댓글/메모
+        /// 본문)·type 변경·첨부가 낀 구간은 안전을 위해 거부됨.
+        #[arg(long, conflicts_with = "to")]
+        at: Option<String>,
     },
     /// 파일 → index.db 캐시 재구축 (외부 편집 / git pull / restore 후 정합). `index rebuild` 와 동일.
     Reindex,
@@ -1021,6 +1026,23 @@ impl HttpClient {
         list.into_iter()
             .find(|s| s.timestamp == ts)
             .ok_or_else(|| anyhow!("복원된 snapshot 정보 누락"))
+    }
+
+    /// DEV-022: 시점 복원 (journal replay) — HTTP admin.
+    fn restore_to_point(
+        &self,
+        target_ts: &str,
+    ) -> Result<openguild_core::replay::ReplayReport> {
+        let resp: serde_json::Value =
+            self.post("/api/admin/restore", &serde_json::json!({ "at": target_ts }))?;
+        Ok(openguild_core::replay::ReplayReport {
+            target_ts: resp
+                .get("replayed_to")
+                .and_then(|v| v.as_str())
+                .unwrap_or(target_ts)
+                .to_string(),
+            applied: resp.get("applied").and_then(|v| v.as_u64()).unwrap_or(0) as usize,
+        })
     }
 
     // ── Campaign (DEV-011 commit 3) ───────────────────────
@@ -2259,6 +2281,28 @@ impl Backend {
                     &l.store, &target,
                 ))?;
                 Ok(target)
+            }
+        }
+    }
+
+    /// DEV-022: 시점 복원 — 최신 snapshot 복원 후 journal 을 `target_ts`(포함)까지
+    /// replay. journal 은 최신 snapshot 이후만 보유하므로 replay 기준은 항상 최신.
+    fn restore_to_point(
+        &self,
+        target_ts: &str,
+    ) -> Result<openguild_core::replay::ReplayReport> {
+        match self {
+            Backend::Http(c) => c.restore_to_point(target_ts),
+            Backend::Local(l) => {
+                let snapshots = openguild_core::snapshot::list_snapshots(&l.store.paths)?;
+                let latest = snapshots.last().cloned().ok_or_else(|| {
+                    anyhow!("사용 가능한 snapshot 이 없습니다 (replay 는 최신 snapshot 기준)")
+                })?;
+                let report = l
+                    .rt
+                    .block_on(openguild_core::replay::replay_to(&l.store, &latest, target_ts))
+                    .map_err(|e| anyhow!("replay 실패: {e}"))?;
+                Ok(report)
             }
         }
     }
@@ -4007,24 +4051,47 @@ fn run() -> Result<()> {
                 }
             }
         },
-        Command::Restore { to } => {
-            let info = c.restore_backup(to)?;
-            if cli.json {
-                println!(
-                    "{}",
-                    serde_json::json!({
-                        "ok": true,
-                        "restored_to": info.timestamp,
-                    })
-                );
+        Command::Restore { to, at } => {
+            if let Some(ts) = at {
+                // DEV-022: 시점 복원 (journal replay).
+                let report = c.restore_to_point(&ts)?;
+                if cli.json {
+                    println!(
+                        "{}",
+                        serde_json::json!({
+                            "ok": true,
+                            "replayed_to": report.target_ts,
+                            "applied": report.applied,
+                        })
+                    );
+                } else {
+                    println!(
+                        "✓ 시점 복원 완료: {} 까지 journal op {} 개 재적용",
+                        report.target_ts, report.applied
+                    );
+                    println!();
+                    println!("주의: 이 시점 이후의 변경은 폐기되었습니다.");
+                    println!("      파일 시스템 표시가 안 맞으면 `openguild reindex`.");
+                }
             } else {
-                println!(
-                    "✓ 복원 완료: {}",
-                    openguild_core::snapshot::ts_to_local_display(&info.timestamp)
-                );
-                println!();
-                println!("주의: 파일 시스템 (`.guild/quests/*.md`) 자동 갱신 안 됨.");
-                println!("      필요시 `openguild reindex`.");
+                let info = c.restore_backup(to)?;
+                if cli.json {
+                    println!(
+                        "{}",
+                        serde_json::json!({
+                            "ok": true,
+                            "restored_to": info.timestamp,
+                        })
+                    );
+                } else {
+                    println!(
+                        "✓ 복원 완료: {}",
+                        openguild_core::snapshot::ts_to_local_display(&info.timestamp)
+                    );
+                    println!();
+                    println!("주의: 파일 시스템 (`.guild/quests/*.md`) 자동 갱신 안 됨.");
+                    println!("      필요시 `openguild reindex`.");
+                }
             }
         }
         Command::Reindex => run_reindex_cmd(&c, cli.json)?,

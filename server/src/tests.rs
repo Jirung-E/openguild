@@ -834,6 +834,17 @@ async fn test_history_records_slugs_not_ids() {
         "new_value 가 숫자면 안 됨: {:?}", arr[0]["new_value"]);
 }
 
+/// DEV-113 후속: 사용자 보고("원격 길드 접속 시 제목이 안 보임") — 브라우저/
+/// 원격(HTTP) 모드의 Nav 가 길드 이름을 가져오는 라우트.
+#[tokio::test]
+async fn test_guild_info_exposes_name() {
+    let app = setup().await;
+    let (status, body) = get(app, "/api/guild-info").await;
+    assert_eq!(status, StatusCode::OK);
+    let name = body["name"].as_str().expect("name must be string");
+    assert!(!name.is_empty(), "guild name 이 비어있으면 안 됨");
+}
+
 #[tokio::test]
 async fn test_status_endpoint_exposes_slug() {
     let app = setup().await;
@@ -1971,4 +1982,660 @@ async fn test_create_subquest_invalid_parent() {
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(body["error"].as_str().unwrap().contains("parent quest"));
+}
+
+// ═══════════════════ DEV-196: campaigns ═══════════════════
+
+#[tokio::test]
+async fn test_campaign_create_get_update_delete() {
+    let app = setup().await;
+    let (status, c) = post(
+        app.clone(),
+        "/api/campaigns",
+        json!({ "title": "beta", "description": "d1" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let slug = c["campaign_slug"].as_str().unwrap().to_string();
+    assert_eq!(slug, "C-001");
+
+    let (status, detail) = get(app.clone(), &format!("/api/campaigns/{slug}")).await;
+    assert_eq!(status, StatusCode::OK);
+    // CampaignDetail.campaign 은 #[serde(flatten)] — 중첩 키 없이 최상위 필드.
+    assert_eq!(detail["title"], "beta");
+
+    let (status, updated) = patch(
+        app.clone(),
+        &format!("/api/campaigns/{slug}"),
+        json!({ "title": "beta v2" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(updated["title"], "beta v2");
+
+    let status = delete(app.clone(), &format!("/api/campaigns/{slug}")).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    // soft-delete 후 목록(alive 전용)에서 제외.
+    let (_, list) = get(app, "/api/campaigns").await;
+    assert!(list.as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn test_campaign_list_filter_by_status() {
+    let app = setup().await;
+    post(app.clone(), "/api/campaigns", json!({ "title": "c1" })).await;
+    let (_, c2) = post(app.clone(), "/api/campaigns", json!({ "title": "c2" })).await;
+    let slug2 = c2["campaign_slug"].as_str().unwrap();
+    patch(
+        app.clone(),
+        &format!("/api/campaigns/{slug2}"),
+        json!({ "status": "done" }),
+    )
+    .await;
+
+    let (_, active) = get(app.clone(), "/api/campaigns?status=active").await;
+    assert_eq!(active.as_array().unwrap().len(), 1);
+    let (_, done) = get(app, "/api/campaigns?status=done").await;
+    assert_eq!(done.as_array().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn test_campaign_link_unlink_quest() {
+    let app = setup().await;
+    post(
+        app.clone(),
+        "/api/quests",
+        json!({ "quest_type_id": 1, "title": "q1", "status_slug": "open" }),
+    )
+    .await;
+    post(app.clone(), "/api/campaigns", json!({ "title": "camp" })).await;
+
+    let status = {
+        let (s, _) = post(
+            app.clone(),
+            "/api/campaigns/C-001/quests",
+            json!({ "quest_slug": "DEV-001" }),
+        )
+        .await;
+        s
+    };
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    let (_, detail) = get(app.clone(), "/api/campaigns/C-001").await;
+    assert_eq!(detail["linked_quests"].as_array().unwrap().len(), 1);
+    assert_eq!(detail["quest_total"], 1);
+
+    let status = delete(app.clone(), "/api/campaigns/C-001/quests/DEV-001").await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (_, detail) = get(app, "/api/campaigns/C-001").await;
+    assert_eq!(detail["linked_quests"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn test_campaign_checklist_add_set_remove() {
+    let app = setup().await;
+    post(app.clone(), "/api/campaigns", json!({ "title": "camp" })).await;
+
+    let (status, item) = post(
+        app.clone(),
+        "/api/campaigns/C-001/checklist",
+        json!({ "text": "item one" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(item["text"], "item one");
+    assert_eq!(item["checked"], false);
+
+    // ops::set/remove_checklist_by_index 는 1-based index (0 은 BadRequest).
+    let status = {
+        let (s, _) = patch(
+            app.clone(),
+            "/api/campaigns/C-001/checklist/1",
+            json!({ "checked": true }),
+        )
+        .await;
+        s
+    };
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    let (_, detail) = get(app.clone(), "/api/campaigns/C-001").await;
+    assert_eq!(detail["checklists"][0]["checked"], true);
+
+    let status = delete(app.clone(), "/api/campaigns/C-001/checklist/1").await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (_, detail) = get(app, "/api/campaigns/C-001").await;
+    assert!(detail["checklists"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn test_campaign_checklist_set_without_checked_is_bad_request() {
+    let app = setup().await;
+    post(app.clone(), "/api/campaigns", json!({ "title": "camp" })).await;
+    post(
+        app.clone(),
+        "/api/campaigns/C-001/checklist",
+        json!({ "text": "item" }),
+    )
+    .await;
+    let (status, _) = patch(app, "/api/campaigns/C-001/checklist/0", json!({})).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_campaign_summaries_active_and_upcoming() {
+    let app = setup().await;
+    post(app.clone(), "/api/campaigns", json!({ "title": "active-one" })).await;
+    let (status, _) = get(app.clone(), "/api/campaigns/summaries/active").await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = get(app, "/api/campaigns/summaries/upcoming?days=30").await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_campaign_list_for_quest() {
+    let app = setup().await;
+    let (_, q) = post(
+        app.clone(),
+        "/api/quests",
+        json!({ "quest_type_id": 1, "title": "q1", "status_slug": "open" }),
+    )
+    .await;
+    let qid = q["id"].as_i64().unwrap();
+    post(app.clone(), "/api/campaigns", json!({ "title": "camp" })).await;
+    post(
+        app.clone(),
+        "/api/campaigns/C-001/quests",
+        json!({ "quest_slug": "DEV-001" }),
+    )
+    .await;
+    let (status, list) = get(app, &format!("/api/quests/{qid}/campaigns")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(list.as_array().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn test_campaign_get_banner_image_404_when_none() {
+    let app = setup().await;
+    post(app.clone(), "/api/campaigns", json!({ "title": "camp" })).await;
+    let status = app
+        .oneshot(
+            Request::get("/api/campaigns/C-001/image")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap()
+        .status();
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+// ═══════════════════ DEV-196: comments (quest) ═══════════════════
+
+async fn seed_quest(app: Router) -> Router {
+    post(
+        app.clone(),
+        "/api/quests",
+        json!({ "quest_type_id": 1, "title": "q1", "status_slug": "open" }),
+    )
+    .await;
+    app
+}
+
+#[tokio::test]
+async fn test_quest_comment_add_list_update_delete() {
+    let app = seed_quest(setup().await).await;
+    let (status, entry) = post(
+        app.clone(),
+        "/api/quests/by/DEV-001/comments",
+        json!({ "author": "alice", "body": "hello" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let id = entry["id"].as_u64().unwrap();
+
+    let (status, list) = get(app.clone(), "/api/quests/by/DEV-001/comments").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(list["entries"].as_array().unwrap().len(), 1);
+
+    let (status, updated) = patch(
+        app.clone(),
+        &format!("/api/quests/by/DEV-001/comments/{id}"),
+        json!({ "body": "edited" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(updated["body"], "edited");
+
+    let status = delete(
+        app.clone(),
+        &format!("/api/quests/by/DEV-001/comments/{id}"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (_, list) = get(app, "/api/quests/by/DEV-001/comments").await;
+    assert!(list["entries"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn test_quest_comment_reply_threading() {
+    let app = seed_quest(setup().await).await;
+    let (_, root) = post(
+        app.clone(),
+        "/api/quests/by/DEV-001/comments",
+        json!({ "author": "a", "body": "root" }),
+    )
+    .await;
+    let root_id = root["id"].as_u64().unwrap();
+    let (status, reply) = post(
+        app.clone(),
+        "/api/quests/by/DEV-001/comments",
+        json!({ "author": "b", "body": "reply", "parent_id": root_id }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(reply["parent_id"], root_id);
+}
+
+#[tokio::test]
+async fn test_quest_comment_reaction_toggle() {
+    let app = seed_quest(setup().await).await;
+    let (_, entry) = post(
+        app.clone(),
+        "/api/quests/by/DEV-001/comments",
+        json!({ "author": "a", "body": "x" }),
+    )
+    .await;
+    let id = entry["id"].as_u64().unwrap();
+
+    let (status, after_add) = post(
+        app.clone(),
+        &format!("/api/quests/by/DEV-001/comments/{id}/reactions"),
+        json!({ "emoji": "+1", "author": "bob" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(after_add["reactions"].as_array().unwrap().len(), 1);
+
+    // 같은 author+emoji 다시 → 토글 해제. reactions 는
+    // skip_serializing_if = "Vec::is_empty" 라 비면 키 자체가 응답에서 빠진다.
+    let (status, after_remove) = post(
+        app.clone(),
+        &format!("/api/quests/by/DEV-001/comments/{id}/reactions"),
+        json!({ "emoji": "+1", "author": "bob" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(after_remove.get("reactions").is_none());
+}
+
+#[tokio::test]
+async fn test_quest_comment_discussion_and_resolved_toggle() {
+    let app = seed_quest(setup().await).await;
+    let (_, entry) = post(
+        app.clone(),
+        "/api/quests/by/DEV-001/comments",
+        json!({ "author": "a", "body": "needs discussion" }),
+    )
+    .await;
+    let id = entry["id"].as_u64().unwrap();
+
+    // discussion 아닌 상태에서 resolve 시도 → BadRequest.
+    let (status, _) = post(
+        app.clone(),
+        &format!("/api/quests/by/DEV-001/comments/{id}/resolved"),
+        json!({}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    let (status, after_disc) = post(
+        app.clone(),
+        &format!("/api/quests/by/DEV-001/comments/{id}/discussion"),
+        json!({}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(after_disc["discussion"], true);
+
+    // DEV-142: 미해결 discussion 이면 done(counts_as_done) 전환 차단.
+    let (status, _) = patch(
+        app.clone(),
+        "/api/quests/1/status",
+        json!({ "status_slug": "done" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    let (status, after_resolved) = post(
+        app.clone(),
+        &format!("/api/quests/by/DEV-001/comments/{id}/resolved"),
+        json!({}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(after_resolved["resolved"], true);
+
+    // 해소 후엔 done 전환 가능.
+    let (status, _) = patch(app, "/api/quests/1/status", json!({ "status_slug": "done" })).await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_quest_memo_get_set() {
+    let app = seed_quest(setup().await).await;
+    let (status, empty) = get(app.clone(), "/api/quests/by/DEV-001/memo").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(empty["content"].is_null());
+
+    let (status, set) = put(
+        app.clone(),
+        "/api/quests/by/DEV-001/memo",
+        json!({ "content": "private note" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(set["content"], "private note");
+
+    let (_, got) = get(app, "/api/quests/by/DEV-001/memo").await;
+    assert_eq!(got["content"], "private note");
+}
+
+// ═══════════════════ DEV-196: comments (campaign) ═══════════════════
+
+#[tokio::test]
+async fn test_campaign_comment_add_list_update_delete() {
+    let app = setup().await;
+    post(app.clone(), "/api/campaigns", json!({ "title": "camp" })).await;
+
+    let (status, entry) = post(
+        app.clone(),
+        "/api/campaigns/C-001/comments",
+        json!({ "author": "alice", "body": "hi" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let id = entry["id"].as_u64().unwrap();
+
+    let (_, list) = get(app.clone(), "/api/campaigns/C-001/comments").await;
+    assert_eq!(list["entries"].as_array().unwrap().len(), 1);
+
+    let (status, updated) = patch(
+        app.clone(),
+        &format!("/api/campaigns/C-001/comments/{id}"),
+        json!({ "body": "edited" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(updated["body"], "edited");
+
+    let status = delete(app.clone(), &format!("/api/campaigns/C-001/comments/{id}")).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (_, list) = get(app, "/api/campaigns/C-001/comments").await;
+    assert!(list["entries"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn test_campaign_comment_reaction_toggle() {
+    let app = setup().await;
+    post(app.clone(), "/api/campaigns", json!({ "title": "camp" })).await;
+    let (_, entry) = post(
+        app.clone(),
+        "/api/campaigns/C-001/comments",
+        json!({ "author": "a", "body": "x" }),
+    )
+    .await;
+    let id = entry["id"].as_u64().unwrap();
+    let (status, after) = post(
+        app,
+        &format!("/api/campaigns/C-001/comments/{id}/reactions"),
+        json!({ "emoji": "check", "author": "carol" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(after["reactions"].as_array().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn test_campaign_memo_get_set() {
+    let app = setup().await;
+    post(app.clone(), "/api/campaigns", json!({ "title": "camp" })).await;
+    let (_, empty) = get(app.clone(), "/api/campaigns/C-001/memo").await;
+    assert!(empty["content"].is_null());
+    let (status, set) = put(
+        app.clone(),
+        "/api/campaigns/C-001/memo",
+        json!({ "content": "memo text" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, got) = get(app, "/api/campaigns/C-001/memo").await;
+    assert_eq!(got["content"], set["content"]);
+}
+
+// ═══════════════════ DEV-196: rules ═══════════════════
+
+#[tokio::test]
+async fn test_rules_multi_file_crud() {
+    let app = setup().await;
+    let (status, created) = post(
+        app.clone(),
+        "/api/rules",
+        json!({ "slug": "my-rule", "content": "# Rule" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(created["slug"], "my-rule");
+
+    let (status, list) = get(app.clone(), "/api/rules").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(list["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|e| e["slug"] == "my-rule"));
+
+    let (status, got) = get(app.clone(), "/api/rules/my-rule").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(got["content"], "# Rule");
+
+    let (status, updated) = put(
+        app.clone(),
+        "/api/rules/my-rule",
+        json!({ "content": "# Rule v2" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(updated["content"], "# Rule v2");
+
+    let (status, renamed) = patch(
+        app.clone(),
+        "/api/rules/my-rule",
+        json!({ "new_slug": "renamed-rule" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(renamed["slug"], "renamed-rule");
+
+    let status = delete(app, "/api/rules/renamed-rule").await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn test_rules_legacy_single_file() {
+    let app = setup().await;
+    let (status, set) = put(
+        app.clone(),
+        "/api/rules-single",
+        json!({ "content": "legacy rules" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(set["content"], "legacy rules");
+    let (_, got) = get(app, "/api/rules-single").await;
+    assert_eq!(got["content"], "legacy rules");
+}
+
+// ═══════════════════ DEV-196: meta (tag-defs) ═══════════════════
+
+#[tokio::test]
+async fn test_tag_defs_upsert_list_delete() {
+    let app = setup().await;
+    let (status, created) = post(
+        app.clone(),
+        "/api/tag-defs",
+        json!({ "slug": "urgent", "color": "#ff0000", "description": "기급" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(created["slug"], "urgent");
+
+    let (status, list) = get(app.clone(), "/api/tag-defs").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(list.as_array().unwrap().len(), 1);
+
+    // 같은 slug 다시 upsert → 갱신(개수 그대로).
+    post(
+        app.clone(),
+        "/api/tag-defs",
+        json!({ "slug": "urgent", "color": "#00ff00", "description": "기급(수정)" }),
+    )
+    .await;
+    let (_, list2) = get(app.clone(), "/api/tag-defs").await;
+    assert_eq!(list2.as_array().unwrap().len(), 1);
+    assert_eq!(list2[0]["color"], "#00ff00");
+
+    let status = delete(app.clone(), "/api/tag-defs/urgent").await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, list3) = get(app, "/api/tag-defs").await;
+    assert!(list3.as_array().unwrap().is_empty());
+}
+
+// ═══════════════════ DEV-196: admin ═══════════════════
+
+#[tokio::test]
+async fn test_admin_snapshot_create_list_delete() {
+    let app = setup().await;
+    let (status, info) = post(app.clone(), "/api/admin/snapshot", json!({})).await;
+    assert_eq!(status, StatusCode::OK);
+    let ts = info["timestamp"].as_str().unwrap().to_string();
+
+    let (status, list) = get(app.clone(), "/api/admin/snapshots").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(list.as_array().unwrap().iter().any(|s| s["timestamp"] == ts));
+
+    let (status, _) = delete_with_body(app, &format!("/api/admin/snapshots/{ts}")).await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_admin_restore_to_latest_snapshot() {
+    let app = setup().await;
+    let _ = seed_quest(app.clone()).await;
+    post(app.clone(), "/api/admin/snapshot", json!({})).await;
+    // snapshot 이후 변경.
+    post(
+        app.clone(),
+        "/api/quests",
+        json!({ "quest_type_id": 1, "title": "after-snap", "status_slug": "open" }),
+    )
+    .await;
+    let (_, before) = get(app.clone(), "/api/quests").await;
+    assert_eq!(before.as_array().unwrap().len(), 2);
+
+    let (status, _) = post(app.clone(), "/api/admin/restore", json!({})).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (_, after) = get(app, "/api/quests").await;
+    assert_eq!(
+        after.as_array().unwrap().len(),
+        1,
+        "restore 가 snapshot 이전 상태로 되돌려야"
+    );
+}
+
+#[tokio::test]
+async fn test_admin_restore_at_replays_journal_to_timestamp() {
+    let app = setup().await;
+    let _ = seed_quest(app.clone()).await; // DEV-001
+    post(app.clone(), "/api/admin/snapshot", json!({})).await;
+    post(
+        app.clone(),
+        "/api/quests",
+        json!({ "quest_type_id": 1, "title": "after-snap", "status_slug": "open" }),
+    )
+    .await; // DEV-002, snapshot 이후 journal 에 기록됨.
+
+    // 먼 미래 시점까지 replay → snapshot 이후 ops 모두 재적용.
+    let (status, body) = post(
+        app.clone(),
+        "/api/admin/restore",
+        json!({ "at": "9999-12-31T23:59:59Z" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["applied"], 1);
+
+    let (_, after) = get(app, "/api/quests").await;
+    assert_eq!(
+        after.as_array().unwrap().len(),
+        2,
+        "replay 가 DEV-002 생성을 재적용해야"
+    );
+}
+
+#[tokio::test]
+async fn test_admin_drift_check() {
+    let app = setup().await;
+    let (status, report) = get(app, "/api/admin/drift").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(report.is_object());
+}
+
+#[tokio::test]
+async fn test_admin_reindex() {
+    let app = setup().await;
+    let _ = seed_quest(app.clone()).await;
+    let (status, report) = post(app, "/api/admin/reindex", json!({})).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(report["quests_loaded"].as_i64().unwrap() >= 1);
+}
+
+#[tokio::test]
+async fn test_admin_vacuum() {
+    let app = setup().await;
+    let (status, _) = post(app, "/api/admin/vacuum", json!({})).await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_admin_journal_tail() {
+    let app = setup().await;
+    let _ = seed_quest(app.clone()).await;
+    let (status, tail) = get(app, "/api/admin/journal?count=10").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(tail.is_object());
+}
+
+// ═══════════════════ DEV-196: assets (guild-files) ═══════════════════
+
+#[tokio::test]
+async fn test_guild_files_rejects_disallowed_prefix() {
+    let app = setup().await;
+    let (status, _) = get(app, "/api/guild-files/quests/DEV-001.md").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_guild_files_rejects_path_traversal() {
+    let app = setup().await;
+    let (status, _) = get(app, "/api/guild-files/attachments/../rules.md").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_guild_files_not_found_for_missing_file() {
+    let app = setup().await;
+    let (status, _) = get(app, "/api/guild-files/attachments/nope.png").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
 }

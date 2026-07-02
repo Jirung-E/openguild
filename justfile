@@ -46,15 +46,20 @@ build: build-rust build-frontend
 
 # --- 테스트 (test) ---
 
-# Rust workspace 전체 테스트 (release — debug 산출물이 디스크를 너무 차지)
+# Rust workspace 전체 테스트 (release — debug 산출물이 디스크를 너무 차지).
+# clippy -D warnings 도 함께 — cargo test 만으론 안 잡혀서 CI 에서만 터지는
+# 사고 방지(check.yml 과 동일 게이트를 push 전에 로컬에서 먼저 통과시킴).
 test-rust:
+    cargo clippy --workspace --all-targets -- -D warnings
     cargo test --workspace --release
 
-# Frontend vitest
+# Frontend 검증 — svelte-check/no-hex/vitest (check.yml 의 gui-frontend job 과 동일).
 test-frontend:
+    cd gui/frontend && npm run check
+    cd gui/frontend && npm run check:no-hex
     cd gui/frontend && npm test -- --run
 
-# 전체 테스트
+# 전체 테스트 (CI 와 동일)
 test: test-rust test-frontend
 
 # --- 품질 ---

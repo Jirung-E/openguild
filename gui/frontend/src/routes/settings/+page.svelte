@@ -5,17 +5,13 @@
   비-주요 기능 묶음 — 상단 nav 의 ⚙ 아이콘으로 진입.
 
   - 정보: 앱 이름 / 버전 / 저장소 링크.
-  - 업데이트: 수동 체크 + 결과 floating toast (DEV-063 updater 재사용). Tauri 전용.
+  - 업데이트: 수동 체크 버튼만 — 결과 표시는 전역 UpdateBanner(우하단
+    floating toast, DEV-194 후속으로 통합)가 담당. Tauri 전용.
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { detectEnvironment } from '$lib/api/transport';
-	import {
-		updateState,
-		checkForUpdate,
-		downloadAndRelaunch,
-		dismissUpdate
-	} from '$lib/api/updater';
+	import { updateState, checkForUpdate } from '$lib/api/updater';
 	import {
 		uiScale,
 		setUiScale,
@@ -33,6 +29,8 @@
 		DEFAULT_CONTENT_WIDTH
 	} from '$lib/stores/contentWidth';
 	import { theme, setTheme, type ThemeChoice } from '$lib/stores/theme';
+	// DEV-015 (MVP): 언어 토글 — 설정 페이지에도 노출.
+	import { locale, setLocale, type Locale } from '$lib/stores/locale';
 	// DEV-130: 편집기 들여쓰기 설정 (tab/space + 2/4칸).
 	import {
 		editorSettings,
@@ -43,20 +41,25 @@
 	// DEV-101 fix2: native input[type=range] 의 drag 문제 (값 재바인딩 →
 	// thumb 튐, UI scale 의 자기 자신 변형 → 손 놓침) 회피한 델타 기반 슬라이더.
 	import CustomSlider from '$lib/components/CustomSlider.svelte';
-	// DEV-074 fix17: release notes <pre> overlay scrollbar.
-	import OverlayScrollbar from '$lib/components/OverlayScrollbar.svelte';
-
-	let upToastNotesEl: HTMLPreElement | undefined = $state(undefined);
+	// DEV-113: 원격 서버 모드 — 연결/해제는 Welcome 화면에서, 여기서는 상태만 읽음.
+	// BUG-099: isRemoteSessionActive 도 — remoteServerUrl 만 보면 이전 세션의
+	// 잔존 값과 "이번 세션에 실제로 연결함"을 구분 못 함(BUG-095 와 동일 이유).
+	import { remoteServerUrl, isRemoteSessionActive } from '$lib/stores/remoteServer';
+	// DEV-207 후속(사용자 보고: "길드를 열었다가 welcome으로 돌아가서
+	// 확인했을때" 여전히 길드가 열려있는 것처럼 표시됨): launch_mode 는
+	// Welcome 재방문으로 안 풀리는 Rust 상태라 stale 할 수 있다 —
+	// 보드 마운트/Welcome 마운트가 갱신하는 세션 플래그로 보강.
+	import { isGuildContextActive } from '$lib/stores/guildSession';
 
 	// DEV-101 fix3: 즉시 반영 — store 가 source of truth, drag 중에도 매 step 적용.
 	// preview / displayScale wrapper 제거.
 
 	// DEV-052 / DEV-101 fix6: 탭 분리 — '정보' / '표시'.
+	// DEV-207 후속: '원격 서버' 전용 탭은 폐기 — '정보' 탭에 길드 위치 한
+	// 줄로 통합(사용자 피드백: "그냥 정보 탭에 원격이면 주소, 로컬이면 경로
+	// 출력해서 보여주고, 웰컴페이지에서 들어간거면 표시 안하면 되는거 아님?").
 	type Tab = 'info' | 'display' | 'editor';
 	let activeTab = $state<Tab>('info');
-
-	// floating toast 닫기 — updateState 를 idle 로.
-	const dismissCheck = () => dismissUpdate();
 
 	const isTauri = detectEnvironment() === 'tauri';
 
@@ -64,6 +67,17 @@
 	let appVersion = $state('—');
 	let appName = $state('openguild');
 	const repoUrl = 'https://github.com/Jirung-E/openguild';
+
+	// BUG-099(사용자 보고: "Welcome 에서 설정으로 바로 들어가면 '원격 서버'
+	// 탭에 아직 아무 길드도 안 열렸는데 '로컬'로 잘못 표시됨"): "현재 모드"가
+	// remoteServerUrl 존재 여부만 봐서, 길드를 하나도 안 연 상태(Welcome)에서
+	// 도 "로컬 (이 PC 의 길드 파일 직접 사용)"이라고 잘못 표시했다. 실제로
+	// 길드가 열려있는지(로컬 launch_mode === 'guild' 또는 원격 활성)까지
+	// 함께 봐야 정확함 — Welcome 에서 들어온 거면(anyGuildOpen=false) 이
+	// 줄 자체를 표시 안 함(DEV-207).
+	let localGuildOpen = $state(false);
+	// DEV-207: 로컬일 때 보여줄 실제 길드 경로.
+	let guildPath = $state<string | null>(null);
 
 	onMount(async () => {
 		if (!isTauri) {
@@ -77,7 +91,24 @@
 		} catch {
 			appVersion = '알 수 없음';
 		}
+		try {
+			const { invoke } = await import('@tauri-apps/api/core');
+			const info = await invoke<{ mode: string }>('launch_mode');
+			localGuildOpen = info.mode === 'guild';
+			if (localGuildOpen) {
+				guildPath = await invoke<string>('current_guild_path');
+			}
+		} catch {
+			/* 알 수 없으면 false 유지(anyGuildOpen 이 원격 여부로 보완). */
+		}
 	});
+
+	// 원격이 "이번 세션에 실제로" 활성인지(BUG-095 의 board guard 와 동일 기준).
+	const isRemoteActive = $derived(!!$remoteServerUrl && isRemoteSessionActive());
+	// DEV-207 후속: localGuildOpen/isRemoteActive 만으로는 Welcome 재방문 후
+	// stale 상태를 못 거른다 — isGuildContextActive() 로 "보드가 마지막으로
+	// bounce 없이 마운트됐는지"까지 함께 확인.
+	const anyGuildOpen = $derived(isGuildContextActive() && (localGuildOpen || isRemoteActive));
 </script>
 
 <div class="settings">
@@ -169,6 +200,20 @@
 						</button>
 					{/if}
 				</dd>
+				<!-- DEV-207(사용자 피드백: "정보 탭에 원격이면 주소, 로컬이면 경로
+				     출력하고, 웰컴페이지에서 들어간거면 표시 안하면 되는거 아님?"):
+				     별도 '원격 서버' 탭 폐기 — 길드가 열려있을 때만(anyGuildOpen) 한
+				     줄로 통합 표시. 연결/해제는 여전히 Welcome 화면(로고 클릭)에서만. -->
+				{#if isTauri && anyGuildOpen}
+					<dt>{isRemoteActive ? '원격 서버' : '길드 경로'}</dt>
+					<dd>
+						{#if isRemoteActive}
+							<span class="remote-active">{$remoteServerUrl}</span>
+						{:else}
+							<span>{guildPath ?? '—'}</span>
+						{/if}
+					</dd>
+				{/if}
 				<dt>저장소</dt>
 				<dd><a href={repoUrl} target="_blank" rel="noreferrer noopener">{repoUrl}</a></dd>
 			</dl>
@@ -275,43 +320,32 @@
 					</div>
 					<p class="scale-hint">CSS 토큰 기반 — 시스템 모드는 OS 설정 따라 자동 전환.</p>
 				</dd>
+
+				<!-- DEV-015 (MVP): 언어 토글 — 현재는 이 설정 페이지 라벨 일부에만 적용. -->
+				<dt>언어</dt>
+				<dd class="theme-row">
+					<div class="theme-toggle" role="group" aria-label="언어">
+						<!-- DEV-015 후속: 언어 이름 자체는 번역 대상이 아님 — 항상 고정 표기. -->
+						{#each [{ value: 'ko', label: '한국어' }, { value: 'en', label: 'English' }] as opt (opt.value)}
+							<button
+								class="th-btn"
+								class:active={$locale === opt.value}
+								onclick={() => setLocale(opt.value as Locale)}
+								aria-pressed={$locale === opt.value}
+							>
+								{opt.label}
+							</button>
+						{/each}
+					</div>
+					<p class="scale-hint">
+						현재는 MVP — 일부 화면(이 설정 페이지 등)의 라벨만 전환됩니다. 전체 적용은 후속(DEV-205)
+						작업입니다.
+					</p>
+				</dd>
 			</dl>
 		{/if}
 	</section>
 </div>
-
-<!-- DEV-085: 업데이트 확인 결과 — floating toast (fixed). 우하단에 떠서 레이아웃 영향 X. -->
-{#if isTauri && $updateState.status !== 'idle'}
-	<div class="upd-toast" class:err={$updateState.status === 'error'} role="status">
-		<button class="upd-toast-x" title="닫기" onclick={dismissCheck}>×</button>
-		{#if $updateState.status === 'checking'}
-			<p class="t-title">업데이트 확인 중…</p>
-		{:else if $updateState.status === 'uptodate'}
-			<p class="t-title ok">최신 버전입니다.</p>
-		{:else if $updateState.status === 'available'}
-			<p class="t-title">새 버전 <strong>{$updateState.version}</strong> 사용 가능</p>
-			{#if $updateState.notes}
-				<details>
-					<summary>릴리즈 노트</summary>
-					<pre bind:this={upToastNotesEl}>{$updateState.notes}</pre>
-					{#if upToastNotesEl}
-						<OverlayScrollbar target={upToastNotesEl} />
-					{/if}
-				</details>
-			{/if}
-			<button class="btn-primary" onclick={() => downloadAndRelaunch()}>
-				지금 업데이트 (다운로드 + 재시작)
-			</button>
-		{:else if $updateState.status === 'downloading'}
-			<p class="t-title">다운로드 중… {$updateState.pct !== null ? `${$updateState.pct}%` : ''}</p>
-		{:else if $updateState.status === 'ready'}
-			<p class="t-title ok">설치 완료 — 재시작 중…</p>
-		{:else if $updateState.status === 'error'}
-			<p class="t-title err">확인 실패</p>
-			<p class="t-msg">{$updateState.message}</p>
-		{/if}
-	</div>
-{/if}
 
 <style>
 	.settings {
@@ -411,94 +445,10 @@
 		cursor: not-allowed;
 	}
 
-	.btn-primary {
-		padding: 0.4rem 0.9rem;
-		background: var(--btn-primary-bg);
-		border: 1px solid var(--btn-primary-border);
-		border-radius: 6px;
-		color: var(--btn-primary-text);
-		font-size: 0.85rem;
-		cursor: pointer;
-	}
-	.btn-primary:hover {
-		background: var(--btn-primary-bg-hover);
-		border-color: var(--btn-primary-border-hover);
-	}
-	.btn-primary:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
-	/* DEV-085: 업데이트 결과 floating toast — fixed, 우하단. 레이아웃 안 밀어냄. */
-	.upd-toast {
-		position: fixed;
-		right: 1.5rem;
-		bottom: 1.5rem;
-		z-index: 60;
-		max-width: calc(22.5rem * var(--popup-scale, 1)); /* BUG-064 */
-		padding: 0.85rem 2rem 0.85rem 1rem;
-		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-left: 3px solid var(--success-strong);
-		border-radius: 8px;
-		box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
-		font-size: 0.85rem;
-		color: var(--text);
-	}
-	.upd-toast.err {
-		border-left-color: var(--danger);
-	}
-	.upd-toast-x {
-		position: absolute;
-		top: 0.4rem;
-		right: 0.5rem;
-		background: none;
-		border: none;
-		color: var(--text-faint);
-		font-size: 1.1rem;
-		line-height: 1;
-		cursor: pointer;
-	}
-	.upd-toast-x:hover {
-		color: var(--text);
-	}
-	.upd-toast .t-title {
-		margin: 0;
-		font-weight: 600;
-	}
-	.upd-toast .t-title.ok {
-		color: var(--success);
-	}
-	.upd-toast .t-title.err {
-		color: var(--danger);
-	}
-	.upd-toast .t-msg {
-		margin: 0.35rem 0 0;
-		color: var(--text-muted);
-		font-size: 0.8rem;
-		word-break: break-word;
-	}
-	.upd-toast details {
-		margin: 0.5rem 0;
-		color: var(--text-muted);
-	}
-	.upd-toast pre {
-		white-space: pre-wrap;
-		background: var(--bg);
-		border: 1px solid var(--bg-subtle);
-		border-radius: 6px;
-		padding: 0.5rem 0.75rem;
-		max-height: 8rem;
-		overflow-y: auto;
-		margin: 0.4rem 0 0;
-		/* DEV-074 fix17: native scrollbar 숨김 — OverlayScrollbar 가 대신 그림. */
-		scrollbar-width: none;
-	}
-	.upd-toast pre::-webkit-scrollbar {
-		display: none;
-	}
-	.upd-toast .btn-primary {
-		margin-top: 0.5rem;
+	/* DEV-207: '정보' 탭의 원격 서버 주소 강조. */
+	.remote-active {
+		color: var(--accent);
+		font-weight: 500;
 	}
 
 	/* DEV-101 fix6: 탭 분리 후 h2.section 구분선 불필요 — 비워둠. */

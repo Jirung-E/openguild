@@ -9,6 +9,8 @@
 	import { guildFileUrl } from '$lib/utils/banner';
 	import { uploadAttachmentFile } from '$lib/utils/editor-attach';
 	import { detectEnvironment } from '$lib/api/transport';
+	import { getRemoteServerUrl } from '$lib/stores/remoteServer';
+	import { api } from '$lib/api/client';
 
 	interface Attachment {
 		path: string;
@@ -21,7 +23,12 @@
 	}: { slug: string; scope?: 'quest' | 'campaign'; attachments?: Attachment[] } = $props();
 
 	const list = $derived(attachments ?? []);
-	const isTauri = detectEnvironment() === 'tauri';
+	// BUG-097(사용자 보고: "이미지 첨부한게 표시가 안된다"): Tauri + 원격
+	// 연결 상태에서도 무조건 "로컬 파일 시스템" 경로(open_guild_file/
+	// copy_guild_file invoke, 둘 다 Rust 의 로컬 Store 기준)를 타면 깨진다
+	// — 원격 길드의 파일은 로컬 디스크에 없다. "진짜 로컬" 일 때만 invoke,
+	// 그 외(브라우저 또는 Tauri+원격)는 URL 기반(새 탭/다운로드 링크)으로.
+	const isTauri = detectEnvironment() === 'tauri' && !getRemoteServerUrl();
 
 	let busy = $state(false);
 	let error = $state<string | null>(null);
@@ -45,18 +52,15 @@
 		}
 	}
 
-	const addCmd = $derived(
-		scope === 'campaign' ? 'add_campaign_attachment' : 'add_quest_attachment'
-	);
-	const rmCmd = $derived(
-		scope === 'campaign' ? 'remove_campaign_attachment' : 'remove_quest_attachment'
+	// DEV-152: quest/campaign 별 첨부 목록 endpoint. api.post/delete 가
+	// transport.ts 를 거쳐 Tauri 면 invoke, 브라우저면 HTTP 로 자동 분기.
+	const attachPath = $derived(
+		scope === 'campaign'
+			? `/api/campaigns/${slug}/attachments`
+			: `/api/quests/by/${slug}/attachments`
 	);
 
 	async function pickAndAdd() {
-		if (!isTauri) {
-			error = '첨부 추가는 데스크탑 앱에서만 지원됩니다.';
-			return;
-		}
 		const input = document.createElement('input');
 		input.type = 'file';
 		input.multiple = true;
@@ -68,10 +72,9 @@
 			busy = true;
 			error = null;
 			try {
-				const { invoke } = await import('@tauri-apps/api/core');
 				for (const file of files) {
 					const { rel, name } = await uploadAttachmentFile(file);
-					attachments = await invoke<Attachment[]>(addCmd, { slug, path: rel, name });
+					attachments = await api.post<Attachment[]>(attachPath, { path: rel, name });
 				}
 			} catch (e) {
 				error = e instanceof Error ? e.message : String(e);
@@ -87,8 +90,9 @@
 		busy = true;
 		error = null;
 		try {
-			const { invoke } = await import('@tauri-apps/api/core');
-			attachments = await invoke<Attachment[]>(rmCmd, { slug, path });
+			attachments = await api.delete<Attachment[]>(
+				`${attachPath}?path=${encodeURIComponent(path)}`
+			);
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
 		} finally {

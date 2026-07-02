@@ -19,22 +19,6 @@ use sqlx::SqlitePool;
 use crate::db;
 use crate::repo::GuildPaths;
 
-/// Path 를 SQLite URL (`sqlite:<path>?mode=<mode>`) 로 변환.
-///
-/// Windows 의 `\\?\C:\…` extended-length prefix 를 제거해야 함:
-/// `recents::add` 가 `canonicalize` 한 path 를 저장하는데, Windows 에선 그
-/// 결과가 `\\?\` 로 시작 → `replace('\\', '/')` 후 `//?/C:/…` 가 되고,
-/// SQLite URL 파서가 첫 `?` 를 query string 시작으로 오인해서 깨짐.
-/// (`migrate.rs` 에 동일한 처리가 이미 있음 — DEV-052 후속 4회차에 공통화.)
-fn sqlite_file_url(path: &std::path::Path, mode: &str) -> String {
-    let raw = path.to_string_lossy();
-    let cleaned = raw
-        .trim_start_matches(r"\\?\")
-        .trim_start_matches(r"\\\\?\\")
-        .replace('\\', "/");
-    format!("sqlite:{cleaned}?mode={mode}")
-}
-
 #[derive(Clone)]
 pub struct Store {
     pub paths: GuildPaths,
@@ -49,9 +33,25 @@ pub struct Store {
     /// `get_db_schema_status`). in-memory (welcome 모드) 는 항상 빈 vec —
     /// 매 시동마다 fresh DB.
     pub db_ahead_versions: Vec<i64>,
+    /// DEV-022: journal replay 중이면 true. 이 동안 quest mutation 의 자동
+    /// 스냅샷(`ops::quests::after_mutation`)을 억제한다 — replay 도중 snapshot 이
+    /// journal 을 truncate 하면 남은 ops 가 사라져 replay 가 깨지기 때문.
+    /// `Arc` 라 `Clone` 된 Store 들이 같은 플래그를 공유한다.
+    pub replaying: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Store {
+    /// DEV-022: replay 모드 on/off (자동 스냅샷 억제용).
+    pub fn set_replaying(&self, on: bool) {
+        self.replaying
+            .store(on, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// DEV-022: 현재 replay 중인지.
+    pub fn is_replaying(&self) -> bool {
+        self.replaying.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
     /// 길드 루트 경로로 Store 생성. 필요한 디렉토리 / DB 가 없으면 만들고 마이그레이션.
     /// 시드는 별도 — 호출자가 `seed::seed_guild_dir` 명시 호출.
     pub async fn open<P: AsRef<std::path::Path>>(guild_root: P) -> Result<Self> {
@@ -80,23 +80,34 @@ impl Store {
         }
 
         // 디렉토리 보장
-        std::fs::create_dir_all(paths.dot_guild())?;
-        std::fs::create_dir_all(paths.backups_dir())?;
+        std::fs::create_dir_all(paths.dot_guild())
+            .with_context(|| format!(".guild 디렉토리 생성 실패: {}", paths.dot_guild().display()))?;
+        std::fs::create_dir_all(paths.backups_dir()).with_context(|| {
+            format!(
+                "backups 디렉토리 생성 실패: {}",
+                paths.backups_dir().display()
+            )
+        })?;
 
-        // index.db
-        let index_url = sqlite_file_url(&paths.index_db(), "rwc");
-        let index_pool = db::create_pool(&index_url)
+        // index.db — 경로 직접 전달 (URL 로 만들면 UNC 가 깨짐, BUG-091 2차).
+        let index_pool = db::create_pool_from_path(&paths.index_db(), false)
             .await
-            .with_context(|| format!("failed to open index db: {index_url}"))?;
+            .with_context(|| {
+                format!("failed to open index db: {}", paths.index_db().display())
+            })?;
         let db_ahead_versions = db::run_migrations(&index_pool)
             .await
             .context("failed to migrate index db")?;
 
         // journal.db
-        let journal_url = sqlite_file_url(&paths.journal_db(), "rwc");
-        let journal_pool = db::create_pool(&journal_url)
+        let journal_pool = db::create_pool_from_path(&paths.journal_db(), false)
             .await
-            .with_context(|| format!("failed to open journal db: {journal_url}"))?;
+            .with_context(|| {
+                format!(
+                    "failed to open journal db: {}",
+                    paths.journal_db().display()
+                )
+            })?;
         journal::ensure_schema(&journal_pool)
             .await
             .context("failed to init journal schema")?;
@@ -106,6 +117,7 @@ impl Store {
             index_pool,
             journal_pool,
             db_ahead_versions,
+            replaying: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         })
     }
 
@@ -162,6 +174,7 @@ impl Store {
             index_pool,
             journal_pool,
             db_ahead_versions,
+            replaying: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         })
     }
 }

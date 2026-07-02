@@ -289,3 +289,7 @@ sqlite3 .guild/index.db "DELETE FROM _sqlx_migrations WHERE version = N;"
 
 (`N` 은 panic 메시지의 version 으로 교체.) Schema 변경 자체는 DB 에 남되 추적이
 끊기는 것 — 옛 binary 는 그 테이블을 사용하지 않으니 안전.
+
+## License
+
+MIT License © 2026 Jirung-E. 자세한 내용은 [LICENSE](LICENSE) 참조.

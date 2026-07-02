@@ -23,6 +23,7 @@ pub mod models;
 pub mod ops;
 pub mod recents;
 pub mod reindex;
+pub mod replay;
 pub mod repo;
 pub mod services;
 pub mod snapshot;

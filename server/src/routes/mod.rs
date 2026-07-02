@@ -1,4 +1,5 @@
 pub mod admin;
+pub mod attachments;
 pub mod campaigns;
 pub mod comments;
 pub mod meta;
@@ -15,8 +16,27 @@ pub fn create_router(store: Store) -> Router {
     Router::new()
         .route("/health", get(health))
         // meta
+        .route("/api/guild-info", get(meta::get_guild_info))
         .route("/api/quest-types", get(meta::list_quest_types))
         .route("/api/quest-statuses", get(meta::list_quest_statuses))
+        // DEV-193: admin types/statuses CRUD — Tauri invoke(admin_* commands)
+        // 와 HTTP 파리티. transport.ts 의 routeToInvoke 매핑이 이 경로를 그대로 씀.
+        .route(
+            "/api/admin/types",
+            get(meta::admin_list_types).post(meta::admin_create_type),
+        )
+        .route(
+            "/api/admin/types/{prefix}",
+            patch(meta::admin_update_type).delete(meta::admin_delete_type),
+        )
+        .route(
+            "/api/admin/statuses",
+            get(meta::admin_list_statuses).post(meta::admin_create_status),
+        )
+        .route(
+            "/api/admin/statuses/{slug}",
+            patch(meta::admin_update_status).delete(meta::admin_delete_status),
+        )
         // DEV-068: tag defs — `.guild/tags/{slug}.toml` 진리원.
         .route(
             "/api/tag-defs",
@@ -94,6 +114,17 @@ pub fn create_router(store: Store) -> Router {
         )
         // DEV-069: 본문 첨부 / 자산 — attachments/ + assets/ 한정 서빙.
         .route("/api/guild-files/{*rel}", get(admin::get_guild_file))
+        // DEV-152: 첨부 업로드(remote 모드) — bytes 저장 + quest/campaign 목록 등록.
+        .route("/api/attachments", post(attachments::save_attachment))
+        .route(
+            "/api/quests/by/{slug}/attachments",
+            post(attachments::add_quest_attachment).delete(attachments::remove_quest_attachment),
+        )
+        .route(
+            "/api/campaigns/{slug}/attachments",
+            post(attachments::add_campaign_attachment)
+                .delete(attachments::remove_campaign_attachment),
+        )
         // quests
         .route("/api/quests", get(quests::list_quests).post(quests::create_quest))
         .route(

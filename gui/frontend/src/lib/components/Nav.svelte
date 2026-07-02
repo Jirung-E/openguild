@@ -2,21 +2,26 @@
 	import { page } from '$app/stores';
 	import { onMount } from 'svelte';
 	import { adminApi } from '$lib/api/admin';
+	import { metaApi } from '$lib/api/meta';
 	import { bumpReindex } from '$lib/stores/reindex';
-	import { detectEnvironment } from '$lib/api/transport';
 	// DEV-138: 설정 퀵메뉴 — ⚙ 클릭 시 dropdown (테마/UI크기/폭 + 전체 설정).
 	// DEV-125 의 standalone 테마 순환 버튼은 퀵메뉴로 흡수.
 	import SettingsQuickMenu from './SettingsQuickMenu.svelte';
 	let quickMenuOpen = $state(false);
 
-	// DEV-141: 현재 진입한 길드 이름 — 어느 길드인지 한눈에. Tauri 전용 커맨드라
-	// 데스크탑 모드에서만 표시 (브라우저/server 모드는 빈 값 → 미표시).
+	// DEV-141 / DEV-113 후속(사용자 보고): 현재 길드 이름 — 어느 길드인지
+	// 한눈에. 이전엔 Tauri invoke 만 써서 (a) 브라우저/server 모드는 항상
+	// 미표시, (b) Tauri + 원격 연결 시 Rust 로컬 placeholder 이름
+	// ("openguild-welcome-placeholder")이 잘못 보였다. `metaApi.getGuildDisplayInfo()`
+	// 가 모드별로 올바른 source(Tauri-local invoke vs HTTP)를 골라 항상 실제
+	// 길드 이름을 가져오고, 원격 연결이면 `isRemote` 로 배지도 표시.
 	let guildName = $state('');
+	let isRemoteGuild = $state(false);
 	onMount(async () => {
-		if (detectEnvironment() !== 'tauri') return;
 		try {
-			const { invoke } = await import('@tauri-apps/api/core');
-			guildName = await invoke<string>('current_guild_name');
+			const info = await metaApi.getGuildDisplayInfo();
+			guildName = info.name;
+			isRemoteGuild = info.remote;
 		} catch {
 			/* 길드 모드 아님 / 조회 실패 — 표시 안 함 */
 		}
@@ -74,6 +79,10 @@
 		<!-- DEV-141: 현재 길드 이름 — 로고 옆 작은 배지로 어느 길드인지 표시. -->
 		{#if guildName}
 			<span class="guild-name" title="현재 길드: {guildName}">{guildName}</span>
+			<!-- DEV-113 후속: 원격 서버에 연결된 상태면 명시 배지. -->
+			{#if isRemoteGuild}
+				<span class="remote-badge" title="원격 서버에 연결됨">🌐 원격</span>
+			{/if}
 		{/if}
 	</a>
 
@@ -171,6 +180,20 @@
 		max-width: 12rem;
 		overflow: hidden;
 		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	/* DEV-113 후속: 원격 연결 배지 — guild-name 과 톤 구분(warning 계열,
+		 인증 없는 네트워크 노출 상태라는 의미). */
+	.remote-badge {
+		font-size: 0.7rem;
+		font-weight: 600;
+		letter-spacing: 0;
+		color: var(--warning);
+		background: color-mix(in srgb, var(--warning) 14%, transparent);
+		border: 1px solid color-mix(in srgb, var(--warning) 40%, transparent);
+		border-radius: 5px;
+		padding: 0.1rem 0.4rem;
 		white-space: nowrap;
 	}
 

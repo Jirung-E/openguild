@@ -2,6 +2,61 @@
 
 Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
 
+## 0.3.0-beta — 2026-07-02
+
+### Added
+- **단일 origin 웹 배포** — server 가 SPA(`gui/frontend/build`)와 API 를 같은
+  origin 으로 서빙, SPA 딥링크 fallback. 실행 위치(repo root / `target/release`)
+  와 무관하게 정적 자산을 찾도록 exe 상대경로 탐색까지 보강. (DEV-195)
+- **원격 서버 모드(MVP)** — Tauri 데스크탑 GUI 가 로컬 길드 대신 원격
+  openguild-server 의 HTTP API 에 접속. 연결/해제는 Welcome 화면에서, 설정
+  페이지엔 현재 연결 상태만 읽기 전용 표시. 인증은 범위 밖(신뢰된 네트워크
+  전용). (DEV-113)
+- **브라우저/원격 모드 첨부 업로드** 지원. (DEV-152)
+- **다국어 인프라(한/영 토글)** — 설정 퀵메뉴 + 설정 페이지 모두에 노출.
+  GUI 전역 스윕은 후속([DEV-205](.guild/quests/DEV-205.md)). (DEV-015)
+- 네이티브 창 테마(Windows 타이틀바)를 앱 테마에 동기화.
+- 네트워크 공유 길드(UNC 경로) 열기 — `canonicalize` 의 verbatim prefix
+  (`\\?\UNC\`) 정규화로 `.guild` 를 유효 디렉토리로 인식 못 하던 문제 수정
+  + index.db journal_mode 자동 분기(WAL→DELETE). (BUG-091)
+
+### Changed
+- 보드 줌 — 트랙패드 두손가락 스크롤=pan / Ctrl+스크롤=줌, 마우스 휠=줌.
+  (WebView2 가 트랙패드 pinch 를 자체 소비해 DOM 으로 안 보내므로 Ctrl+스크롤로
+  대체.) (BUG-090)
+- 설정 페이지 '원격 서버' 탭 폐기 — '정보' 탭에 현재 길드 위치(로컬 경로 /
+  원격 URL)로 통합. (DEV-207)
+- Welcome 화면 길드 열기 — 폴더 선택(생성+열기 겸용)을 주 버튼으로 복원,
+  `.guild` 마커 파일 직접 선택은 보조 링크로. (DEV-204)
+- 길드 열기 안내 문구 정확화 — 마커는 `이름.guild` 파일.
+- 본문 편집기 상단 중복 첨부 버튼 제거.
+- MIT 라이선스 적용.
+
+### Fixed
+- reindex 후 보드 grid snap 점이 표시되지 않던 stale 캐시 버그. (BUG-092)
+- 상세 화면 lazy refresh 가 다른 프로세스의 편집을 놓치던 문제 — 콘텐츠
+  항상 다시 읽도록 수정.
+- NSIS 설치본에서 `openguild-server` 의 `/` 접속이 항상 404 였던 문제 —
+  설치 번들에 frontend 정적 자산(`gui/frontend/build`)이 빠져 있었음.
+  설치 시 함께 복사되도록 수정. (DEV-195)
+- 브라우저/원격 모드 admin 의 타입/상태 관리가 깨지던 문제 — `/api/admin/types`
+  / `/api/admin/statuses` CRUD 라우트가 server 에 없어 SPA fallback(HTML)이
+  JSON 자리에 응답됨. Tauri invoke 와 1:1 대응 라우트 추가. (DEV-193)
+- 웹 접속 시 탭 아이콘이 Svelte 기본 로고로 표시되던 문제 — 앱 아이콘
+  favicon(ico/png) 으로 교체. (BUG-101)
+- Welcome 재방문 후 설정 페이지가 이전 길드 컨텍스트를 계속 표시하던 문제 —
+  세션 단위 길드 컨텍스트 플래그로 수정. (BUG-099 후속)
+- 콜드 스타트 시 Welcome 에서 뒤로가기로 빈 보드에 진입되던 문제 —
+  redirect 를 history 교체로 변경. (BUG-100)
+
+### Known issues
+- **원격 모드 인증 없음** (JWT 미구현, DEV-021) — 원격 서버는 신뢰된
+  네트워크에서만 사용할 것.
+- 다국어(한/영)는 인프라 + 일부 화면만 적용 — 전역 문자열 스윕은 후속.
+  (DEV-015, DEV-205)
+- 터치스크린 핀치-투-줌 미지원 — 보드 줌은 Ctrl+스크롤/마우스 휠. (DEV-208)
+- UI polish / server 기능 강화 umbrella 는 계속 진행 중. (DEV-088, DEV-089)
+
 ## 0.2.1-beta — 2026-06-23
 
 ### Added
@@ -11,6 +66,11 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
   별개). (DEV-190)
 - 설치 동봉 문서에 `AGENTS_OPENGUILD_USAGE.md` 추가 (README/USAGE/CHANGELOG와 함께).
   (DEV-098)
+- **시점 복원(journal replay)** — `backup restore --at <ISO8601-UTC>` / HTTP
+  `/api/admin/restore` `at`: 최신 snapshot 을 복원한 뒤 journal(AOF) 을 그 시각까지
+  재적용해 "마지막 백업 이후 ~ 임의 시점" 으로 복원. id 는 slug 경유로 재매핑(reindex
+  대응). 내용 op(댓글/메모 본문)·type 변경·첨부가 낀 구간은 안전을 위해 거부하고
+  full snapshot restore 를 안내(fail-loud). (DEV-022)
 
 ### Changed
 - 메모 편집기의 '첨부' 버튼 제거(개인 메모). 이미지·동영상은 드래그&드랍 / Ctrl+V
