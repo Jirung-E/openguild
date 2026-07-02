@@ -6,7 +6,6 @@
 
 use anyhow::Result;
 
-use crate::recents::strip_verbatim_prefix;
 use crate::repo::GuildPaths;
 use crate::store::Store;
 
@@ -109,11 +108,8 @@ pub async fn journal_tail(paths: &GuildPaths, count: i64) -> Result<Option<Journ
     if !jdb.exists() {
         return Ok(None);
     }
-    let url = format!(
-        "sqlite:{}?mode=ro",
-        strip_verbatim_prefix(&jdb.to_string_lossy()).replace('\\', "/")
-    );
-    let pool = crate::db::create_pool(&url).await?;
+    // 경로 직접 전달 (URL 로 만들면 UNC 가 깨짐, BUG-091 2차). read-only.
+    let pool = crate::db::create_pool_from_path(&jdb, true).await?;
     let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM ops")
         .fetch_one(&pool)
         .await

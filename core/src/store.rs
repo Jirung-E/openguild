@@ -17,24 +17,7 @@ use anyhow::{Context, Result};
 use sqlx::SqlitePool;
 
 use crate::db;
-use crate::recents::strip_verbatim_prefix;
 use crate::repo::GuildPaths;
-
-/// Path 를 SQLite URL (`sqlite:<path>?mode=<mode>`) 로 변환.
-///
-/// Windows 의 `\\?\C:\…` extended-length prefix 를 제거해야 함:
-/// `recents::add` 가 `canonicalize` 한 path 를 저장하는데, Windows 에선 그
-/// 결과가 `\\?\` 로 시작 → `replace('\\', '/')` 후 `//?/C:/…` 가 되고,
-/// SQLite URL 파서가 첫 `?` 를 query string 시작으로 오인해서 깨짐.
-/// UNC 네트워크 공유는 `\\?\UNC\server\share\…` 형태라 `strip_verbatim_prefix`
-/// 가 `\\server\share\…` 로 복원 → `/` 치환 후 `//server/share/…` 가 되어
-/// `sqlite://…` 스킴이 되고, 이게 `db::is_network_url` 이 WAL 대신
-/// journal_mode=Delete 를 쓰도록 분기하는 기준과도 일치한다(BUG-091).
-fn sqlite_file_url(path: &std::path::Path, mode: &str) -> String {
-    let raw = path.to_string_lossy();
-    let cleaned = strip_verbatim_prefix(&raw).replace('\\', "/");
-    format!("sqlite:{cleaned}?mode={mode}")
-}
 
 #[derive(Clone)]
 pub struct Store {
@@ -97,23 +80,34 @@ impl Store {
         }
 
         // 디렉토리 보장
-        std::fs::create_dir_all(paths.dot_guild())?;
-        std::fs::create_dir_all(paths.backups_dir())?;
+        std::fs::create_dir_all(paths.dot_guild())
+            .with_context(|| format!(".guild 디렉토리 생성 실패: {}", paths.dot_guild().display()))?;
+        std::fs::create_dir_all(paths.backups_dir()).with_context(|| {
+            format!(
+                "backups 디렉토리 생성 실패: {}",
+                paths.backups_dir().display()
+            )
+        })?;
 
-        // index.db
-        let index_url = sqlite_file_url(&paths.index_db(), "rwc");
-        let index_pool = db::create_pool(&index_url)
+        // index.db — 경로 직접 전달 (URL 로 만들면 UNC 가 깨짐, BUG-091 2차).
+        let index_pool = db::create_pool_from_path(&paths.index_db(), false)
             .await
-            .with_context(|| format!("failed to open index db: {index_url}"))?;
+            .with_context(|| {
+                format!("failed to open index db: {}", paths.index_db().display())
+            })?;
         let db_ahead_versions = db::run_migrations(&index_pool)
             .await
             .context("failed to migrate index db")?;
 
         // journal.db
-        let journal_url = sqlite_file_url(&paths.journal_db(), "rwc");
-        let journal_pool = db::create_pool(&journal_url)
+        let journal_pool = db::create_pool_from_path(&paths.journal_db(), false)
             .await
-            .with_context(|| format!("failed to open journal db: {journal_url}"))?;
+            .with_context(|| {
+                format!(
+                    "failed to open journal db: {}",
+                    paths.journal_db().display()
+                )
+            })?;
         journal::ensure_schema(&journal_pool)
             .await
             .context("failed to init journal schema")?;

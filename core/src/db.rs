@@ -6,24 +6,37 @@ use sqlx::{
 use std::collections::HashSet;
 use std::str::FromStr;
 
-/// BUG-091: DB 가 네트워크 파일시스템(UNC 공유) 위에 있는지.
+/// BUG-091: DB 파일이 네트워크 파일시스템(UNC 공유) 위에 있는지.
 ///
-/// `sqlite_file_url`(store.rs)이 UNC 경로 `\\server\share\..` 를
-/// `sqlite://server/share/..` 로 변환하므로 `sqlite://` prefix 로 판별한다.
-/// 로컬은 `sqlite:C:/..`(드라이브) 또는 `sqlite:file:..`/`sqlite::memory:` 라
-/// `//` 가 없다.
-fn is_network_url(database_url: &str) -> bool {
-    database_url.starts_with("sqlite://")
+/// verbatim(`\\?\UNC\..`) 형태도 방어적으로 처리 — 정규화를 놓친 경로가
+/// 들어와도 오판(`\\?\C:\..` 를 네트워크로) 하지 않도록 prefix 를 벗기고 판별.
+pub fn is_network_path(path: &std::path::Path) -> bool {
+    let raw = path.to_string_lossy();
+    let s = crate::recents::strip_verbatim_prefix(&raw);
+    s.starts_with(r"\\") || s.starts_with("//")
 }
 
-pub async fn create_pool(database_url: &str) -> Result<SqlitePool> {
-    let mut options = SqliteConnectOptions::from_str(database_url)?.create_if_missing(true);
+/// 파일 기반 SQLite pool — 경로를 URL 문자열로 변환하지 않고 직접 연다.
+///
+/// BUG-091(2차): UNC 경로를 `sqlite://server/share/..` URL 로 만들면 sqlx 의
+/// URL 파서가 `server` 를 host 로 해석해 파일 경로가 깨진다(code 14: unable to
+/// open database file) — UNC 는 URL 로 표현할 수 없다.
+/// `SqliteConnectOptions::filename()` 은 경로를 파싱 없이 그대로 SQLite 에
+/// 전달하므로 UNC(`\\server\share\..`)도 정상 동작.
+pub async fn create_pool_from_path(
+    path: &std::path::Path,
+    read_only: bool,
+) -> Result<SqlitePool> {
+    let mut options = SqliteConnectOptions::new()
+        .filename(path)
+        .create_if_missing(!read_only)
+        .read_only(read_only);
 
     // BUG-091: WAL(sqlx 기본)은 공유메모리(mmap)가 필요해 SMB/UNC 네트워크
     // 파일시스템에서 동작하지 않는다(SQLite 공식 제약) → 네트워크 공유 길드의
     // index.db/journal.db 를 못 열던 문제. 네트워크면 rollback journal(DELETE)로
     // 전환하고, SMB 의 락 지연을 견디도록 busy_timeout 도 넉넉히.
-    if is_network_url(database_url) {
+    if is_network_path(path) {
         options = options
             .journal_mode(SqliteJournalMode::Delete)
             .busy_timeout(std::time::Duration::from_secs(15));
@@ -33,7 +46,17 @@ pub async fn create_pool(database_url: &str) -> Result<SqlitePool> {
         .max_connections(5)
         .connect_with(options)
         .await?;
+    Ok(pool)
+}
 
+/// URL 기반 pool — in-memory(`sqlite::memory:` / `sqlite:file:..?mode=memory`)
+/// 전용. 파일 DB 는 `create_pool_from_path` 를 쓸 것 (UNC 경로가 URL 로 깨짐).
+pub async fn create_pool(database_url: &str) -> Result<SqlitePool> {
+    let options = SqliteConnectOptions::from_str(database_url)?.create_if_missing(true);
+    let pool = SqlitePoolOptions::new()
+        .max_connections(5)
+        .connect_with(options)
+        .await?;
     Ok(pool)
 }
 
@@ -77,16 +100,16 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<Vec<i64>> {
 mod tests {
     use super::*;
 
-    /// BUG-091: UNC 네트워크 URL 만 network 로 판별(로컬/메모리는 아님).
+    /// BUG-091: UNC 네트워크 경로만 network 로 판별(로컬 드라이브는 아님).
     #[test]
-    fn is_network_url_detects_unc_only() {
-        // UNC: sqlite_file_url 이 \\server\share\.. → sqlite://server/share/..
-        assert!(is_network_url("sqlite://server/share/guild/.guild/index.db?mode=rwc"));
-        // 로컬 드라이브.
-        assert!(!is_network_url("sqlite:C:/work/guild/.guild/index.db?mode=rwc"));
-        // 메모리 / file scheme.
-        assert!(!is_network_url("sqlite::memory:"));
-        assert!(!is_network_url("sqlite:file:og-mem-1?mode=memory&cache=shared"));
+    fn is_network_path_detects_unc_only() {
+        use std::path::Path;
+        // UNC 원형 + verbatim.
+        assert!(is_network_path(Path::new(r"\\server\share\guild\.guild\index.db")));
+        assert!(is_network_path(Path::new(r"\\?\UNC\server\share\guild\.guild\index.db")));
+        // 로컬 드라이브 (원형 + verbatim — verbatim 을 네트워크로 오판하면 안 됨).
+        assert!(!is_network_path(Path::new(r"C:\work\guild\.guild\index.db")));
+        assert!(!is_network_path(Path::new(r"\\?\C:\work\guild\.guild\index.db")));
     }
 
     /// BUG-041 regression: DB 에 binary 가 모르는 mig record 가 있어도

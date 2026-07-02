@@ -15,7 +15,6 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::db;
-use crate::recents::strip_verbatim_prefix;
 use crate::repo::{
     auto, GuildPaths, QuestFile, QuestFrontmatter, QuestRef, QuestRelations, TypeFile,
 };
@@ -50,13 +49,10 @@ pub async fn migrate_to_files<P: AsRef<Path>>(guild_root: P) -> Result<Migration
         );
     }
 
-    // Windows canonicalize 는 `\\?\` 접두사를 붙임 — sqlx URL 파서가 `?` 를 query 시작으로 오인.
-    let raw = legacy_db.to_string_lossy();
-    let cleaned = strip_verbatim_prefix(&raw).replace('\\', "/");
-    let legacy_url = format!("sqlite:{cleaned}?mode=ro");
-    let pool = db::create_pool(&legacy_url)
+    // 경로 직접 전달 (URL 로 만들면 verbatim/UNC 가 깨짐, BUG-091 2차). read-only.
+    let pool = db::create_pool_from_path(&legacy_db, true)
         .await
-        .with_context(|| format!("legacy DB open 실패: {legacy_url}"))?;
+        .with_context(|| format!("legacy DB open 실패: {}", legacy_db.display()))?;
 
     // 모든 quest (alive + deleted) — frontmatter 의 deleted 플래그로 표현.
     let quests: Vec<QuestRowFlat> = sqlx::query_as::<_, QuestRowFlat>(
