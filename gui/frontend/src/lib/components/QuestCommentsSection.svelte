@@ -5,11 +5,12 @@
   - 편집: 본인 entry "✎ 편집" → inline textarea (작성 시각/작성자 보존).
   - 삭제: "× 삭제" 확인 후 entry 제거. parent 삭제 시 자식은 orphan reference
     로 남되, render 단계에서 "(삭제된 댓글에 대한 답글)" 로 안내.
-  - 답글: 각 entry 의 "↩ 답글" → inline form. parent_id 자동 채움.
+  - 답글: 각 entry 의 "답글 쓰기" → 스레드 하단 inline form. parent_id 자동 채움.
   - 새 top-level 댓글: 하단 폼.
 
-  parent_id 관계는 1-level threading — 답글의 답글도 동일 root 의 자식으로
-  flatten (GitHub PR 댓글 모델). frontend 가 자유롭게 indent / 시각화 가능.
+  DEV-200: 2단 들여쓰기 threading — root > level-1 답글 > level-2(답글의 답글).
+  level-2 보다 깊은 체인은 가장 가까운 level-1 조상 밑에 flatten 하고
+  ↩ #id 링크가 실제 답글 대상을 가리킨다. parent_id 체인은 데이터에 그대로 기록.
 -->
 <script lang="ts">
 	import { tick, onDestroy } from 'svelte';
@@ -145,7 +146,8 @@
 	});
 	function applyWiki(item: WikiItem) {
 		if (!wiki) return;
-		applyWikiLink(wiki.el, wiki.from, wiki.to, item.id);
+		// DEV-173: 규칙은 원본 대소문자 slug 로 삽입 (insert 우선).
+		applyWikiLink(wiki.el, wiki.from, wiki.to, item.insert ?? item.id);
 		wiki = null;
 		wikiDismissed = null;
 	}
@@ -355,10 +357,12 @@
 		load();
 	});
 
-	// 화면 구조: roots (parent_id == null) + 각 root 의 replies (parent_id == root.id).
-	// 답글의 답글은 root 의 자식으로 flatten (1-level) — server 가 parent_id 가
-	// 다른 reply 를 가리키게 둘 수 있지만 frontend 는 가장 가까운 root 까지 거슬러
-	// 올라가 그 root 의 자식으로 묶음. 단순 단일-패스로 구현:
+	// 화면 구조 (DEV-200: 2단 들여쓰기):
+	//   root (parent_id == null)
+	//   └ level-1 답글 (parent 가 root)
+	//     └ level-2 답글 (parent 가 level-1 이하 — 더 깊은 체인은 가장 가까운
+	//       level-1 조상 밑에 flatten, ↩ #id 링크가 실제 대상 표시)
+	// 단일-패스로 구현:
 	//   1. id → entry 맵.
 	//   2. 각 entry 마다 root_id 찾기 (parent_id chain 따라가서 None 인 entry).
 	//   3. root 가 사라진 reply 는 "orphan" 표시.
@@ -378,12 +382,20 @@
 			return cur ? cur.id : null;
 		};
 		const roots: CommentEntry[] = [];
+		// 전체 자손 (답글 수/스레드 접기 기준 — 기존과 동일).
 		const childrenByRoot = new Map<number, CommentEntry[]>();
+		// DEV-200: 2단 트리 — root 직속(level-1) + level-1 별 하위(level-2, flatten).
+		const level1ByRoot = new Map<number, CommentEntry[]>();
+		const level2ByParent = new Map<number, CommentEntry[]>();
+		// entry id → root id (답글 폼을 어느 스레드에 띄울지 — root 자신 포함).
+		const rootIdOf = new Map<number, number>();
 		const orphans: CommentEntry[] = [];
 		for (const e of entries) {
 			if (e.parent_id == null) {
 				roots.push(e);
 				childrenByRoot.set(e.id, []);
+				level1ByRoot.set(e.id, []);
+				rootIdOf.set(e.id, e.id);
 			}
 		}
 		for (const e of entries) {
@@ -391,14 +403,36 @@
 			const r = rootOf(e.id);
 			if (r == null) {
 				orphans.push(e);
+				continue;
+			}
+			childrenByRoot.get(r)?.push(e);
+			rootIdOf.set(e.id, r);
+			if (e.parent_id === r) {
+				level1ByRoot.get(r)?.push(e);
 			} else {
-				const arr = childrenByRoot.get(r) ?? [];
-				arr.push(e);
-				childrenByRoot.set(r, arr);
+				// 가장 가까운 level-1 조상 (parent_id === r 인 entry) 밑에 배치.
+				let cur = byId.get(e.parent_id);
+				while (cur && cur.parent_id != null && cur.parent_id !== r) {
+					cur = byId.get(cur.parent_id);
+				}
+				if (cur && cur.parent_id === r) {
+					const arr = level2ByParent.get(cur.id) ?? [];
+					arr.push(e);
+					level2ByParent.set(cur.id, arr);
+				} else {
+					// 방어 — 조상 해석 실패 시 level-1 로.
+					level1ByRoot.get(r)?.push(e);
+				}
 			}
 		}
-		return { roots, childrenByRoot, orphans };
+		return { roots, childrenByRoot, level1ByRoot, level2ByParent, rootIdOf, byId, orphans };
 	});
+
+	// DEV-200: 답글 대상이 답글이어도 폼은 그 스레드(root 카드) 하단에 표시.
+	let replyFormRoot = $derived(
+		replyingTo == null ? null : (groups.rootIdOf.get(replyingTo) ?? null)
+	);
+	let replyTarget = $derived(replyingTo == null ? null : (groups.byId.get(replyingTo) ?? null));
 
 	function formatTs(ts: string): string {
 		if (!ts) return '(시각 미상)';
@@ -620,8 +654,9 @@
 							>
 							<span class="reply-count">답글 {childCount}</span>
 						{/if}
-						<button class="reply-write-btn" onclick={() => enterReply(e.id)}>답글 쓰기</button>
 					{/if}
+					<!-- DEV-200: 답글에도 답글 쓰기 — parent_id 로 대상 기록, 표시는 2단까지. -->
+					<button class="reply-write-btn" onclick={() => enterReply(e.id)}>답글 쓰기</button>
 				</div>
 				<div class="foot-right">
 					{#each reacts as r (r.emoji)}
@@ -707,15 +742,25 @@
 						<!-- DEV-139: root + 답글을 하나의 카드로 — 댓글 간 시각 구분. -->
 						<li class="entry-card">
 							{@render entryView(root, false)}
-							{#if (childCount > 0 && !isCollapsed) || replyingTo === root.id}
+							{#if (childCount > 0 && !isCollapsed) || replyFormRoot === root.id}
 								<div class="thread">
 									<div class="reply-list">
 										{#if !isCollapsed}
-											{#each groups.childrenByRoot.get(root.id) ?? [] as r (r.id)}
+											<!-- DEV-200: 2단 트리 — level-1 답글 + 그 밑에 level-2 (더 깊은
+											     체인은 level-2 에 flatten, ↩ #id 가 실제 대상 표시). -->
+											{#each groups.level1ByRoot.get(root.id) ?? [] as r (r.id)}
 												{@render entryView(r, true)}
+												{@const l2 = groups.level2ByParent.get(r.id) ?? []}
+												{#if l2.length > 0}
+													<div class="reply-list l2">
+														{#each l2 as c (c.id)}
+															{@render entryView(c, true)}
+														{/each}
+													</div>
+												{/if}
 											{/each}
 										{/if}
-										{#if replyingTo === root.id}
+										{#if replyFormRoot === root.id}
 											<div class="reply-form">
 												<div class="reply-author">
 													<input
@@ -739,14 +784,14 @@
 													onclick={onWikiInput}
 													onkeydowncapture={onWikiKeydown}
 													rows="3"
-													placeholder={`@${root.author || root.id} 에 답글…`}
+													placeholder={`↩ #${replyTarget?.id ?? root.id} ${replyTarget?.author || ''} 에 답글…`}
 													disabled={replySaving}
 												></textarea>
 												{#if replyError}<p class="state err">{replyError}</p>{/if}
 												<div class="actions">
 													<button
 														class="btn-save"
-														onclick={() => submitReply(root.id)}
+														onclick={() => submitReply(replyingTo ?? root.id)}
 														disabled={replySaving || !replyBody.trim()}
 													>
 														{replySaving ? '저장…' : '답글 추가'}
@@ -840,8 +885,10 @@
 					}}
 					onmouseenter={() => (wikiSel = i)}
 				>
-					<span class="wiki-id" class:missing={!it.exists}>🔗 {it.id}</span>
-					<span class="wiki-meta">{it.exists ? it.title : '새 링크 (미존재)'}</span>
+					<span class="wiki-id" class:missing={!it.exists}>🔗 {it.insert ?? it.id}</span>
+					<span class="wiki-meta">
+						{it.exists ? `${it.kind === 'rule' ? '규칙 · ' : ''}${it.title}` : '새 링크 (미존재)'}
+					</span>
 				</button>
 			</li>
 		{/each}
@@ -957,6 +1004,12 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.5rem;
+	}
+	/* DEV-200: level-2 (답글의 답글) — 한 단 더 들여쓰기. 그 이상 깊이는 여기에
+	   flatten (↩ #id 링크가 실제 대상 표시). */
+	.reply-list.l2 {
+		margin: 0 0 0 1.25rem;
+		padding-left: 0.75rem;
 	}
 	.reply-form {
 		border: 1px dashed var(--border);
