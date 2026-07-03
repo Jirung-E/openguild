@@ -4935,6 +4935,23 @@ fn init_guild_at(
     openguild_core::repo::seed_guild_dir(cwd)
         .with_context(|| format!(".guild/ 시드 실패: {}", cwd.display()))?;
 
+    // BUG-102: 시드 직후 index.db 를 파일 기준으로 재구축. 이걸 안 하면 첫
+    // Store::open 의 migration(0001)이 넣는 *구식 기본 statuses(5개)* 가 DB 에
+    // 남아, 파일 시드(7개 — testing/returned 포함)와 첫날부터 drift 상태가 됨
+    // (statuses 목록이 5개로 보이다가 restore/reindex 시점에 7개로 "바뀌는"
+    // 증상의 원인). GUI 의 init_and_open_guild 는 sync_on_open 으로 이미 동일
+    // 보정을 함 — CLI init 만 구멍이었음.
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .context("tokio runtime 생성 실패")?;
+    rt.block_on(async {
+        let store = openguild_core::Store::open(cwd).await?;
+        let _ = openguild_core::reindex::reindex(&store).await?;
+        anyhow::Ok(())
+    })
+    .context("init 후 index.db 초기 동기화(reindex) 실패")?;
+
     Ok((guild_path, name))
 }
 
@@ -5972,6 +5989,34 @@ mod tests {
         assert_eq!(path.file_name().unwrap(), "커스텀이름.guild");
         let content = std::fs::read_to_string(&path).unwrap();
         assert!(content.contains("name = \"커스텀이름\""));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-102: init 직후 index.db 의 statuses 가 파일 시드와 일치해야 한다.
+    /// init 이 reindex 를 안 하면 migration(0001)의 구식 기본 5개 셋이 DB 에
+    /// 남아 파일(7개 — testing/returned 포함)과 첫날부터 drift — statuses
+    /// 목록이 5개로 보이다가 restore/reindex 시점에 7개로 "바뀌는" 증상.
+    #[test]
+    fn init_syncs_index_db_statuses_with_seed_files() {
+        let dir = fresh_tmp("bug102-statuses");
+        init_guild_at(&dir, Some("t".into())).unwrap();
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let n: i64 = rt.block_on(async {
+            let store = openguild_core::Store::open(&dir).await.unwrap();
+            sqlx::query_scalar("SELECT COUNT(*) FROM quest_statuses")
+                .fetch_one(&store.index_pool)
+                .await
+                .unwrap()
+        });
+        assert_eq!(
+            n as usize,
+            openguild_core::repo::default_statuses().len(),
+            "init 직후 DB statuses 수가 파일 시드와 달라 drift (BUG-102)"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
