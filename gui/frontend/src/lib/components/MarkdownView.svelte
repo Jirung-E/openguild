@@ -125,18 +125,25 @@
 	// 렌더 후 텍스트 노드만 훑어 토큰을 anchor 로 치환 (code/pre/기존 a 안은 제외).
 	// DEV-140 후속: 두 형태를 모두 인식.
 	//  1) `[[DEV-033]]` (명시 위키링크) — 실재=파랑 / 미존재=빨강.
+	//     DEV-173: 규칙 slug (`[[release-process]]` — XXX-NNN 형식이 아닌 slug) 도
+	//     명시 위키링크로만 인식해 규칙 페이지로 링크 (+미존재 빨강).
 	//  2) bare `DEV-033` (대괄호 없이) — **실재하는 ID 만** 링크(파랑). 미존재
 	//     bare 는 일반 텍스트로 둔다(오탐 방지). 앞뒤가 단어문자/하이픈이면 제외
-	//     (`MYDEV-1` / `DEV-1a` 등 단어 일부 안 잡음).
-	const CROSS_LINK_RE = /\[\[([A-Za-z]{1,}-\d+)\]\]|(?<![\w-])([A-Za-z]{1,}-\d+)(?![\w-])/g;
+	//     (`MYDEV-1` / `DEV-1a` 등 단어 일부 안 잡음). 규칙 slug 는 일반 단어와
+	//     구분 불가라 bare 인식 대상이 아님 (quest/campaign 만 — DEV-173).
+	const CROSS_LINK_RE = /\[\[([A-Za-z][\w-]*)\]\]|(?<![\w-])([A-Za-z]{1,}-\d+)(?![\w-])/g;
 	// 별도 non-global tester — /g 의 lastIndex 부작용 없이 acceptNode 에서 검사.
-	const CROSS_LINK_TEST = /\[\[[A-Za-z]{1,}-\d+\]\]|(?<![\w-])[A-Za-z]{1,}-\d+(?![\w-])/;
-	function guessKind(id: string): 'quest' | 'campaign' {
+	const CROSS_LINK_TEST = /\[\[[A-Za-z][\w-]*\]\]|(?<![\w-])[A-Za-z]{1,}-\d+(?![\w-])/;
+	// quest/campaign 추적번호 형식 (XXX-NNN). 이 형식이 아니면 규칙 slug 로 본다.
+	const ID_TOKEN_RE = /^[A-Za-z]{1,}-\d+$/;
+	function guessKind(id: string): 'quest' | 'campaign' | 'rule' {
 		const ref = lookupRef(id);
 		if (ref) return ref.kind;
-		// 미존재 — slug 형태로 추정 (C-NNN 은 캠페인, 그 외 퀘스트).
+		// 미존재 — 형태로 추정 (C-NNN 캠페인 / XXX-NNN 퀘스트 / 그 외 규칙 slug).
+		if (!ID_TOKEN_RE.test(id)) return 'rule';
 		return /^C-\d+$/i.test(id) ? 'campaign' : 'quest';
 	}
+	const KIND_LABEL = { quest: '퀘스트', campaign: '캠페인', rule: '규칙' } as const;
 	function rewriteCrossLinks() {
 		if (!container) return;
 		const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
@@ -175,12 +182,13 @@
 				}
 				const kind = guessKind(id);
 				const a = document.createElement('a');
-				a.href = refHref(id, kind);
-				a.textContent = id;
+				a.href = refHref(id, kind, ref?.slug ?? rawId);
+				// DEV-173: 규칙 slug 는 소문자가 정체성 — 원문 그대로 표시.
+				a.textContent = kind === 'rule' ? (ref?.slug ?? rawId) : id;
 				a.className = ref ? 'xlink' : 'xlink missing';
 				a.title = ref
-					? `${kind === 'campaign' ? '캠페인' : '퀘스트'}: ${ref.title}`
-					: `존재하지 않는 ${kind === 'campaign' ? '캠페인' : '퀘스트'} — ${id}`;
+					? `${KIND_LABEL[kind]}: ${ref.title}`
+					: `존재하지 않는 ${KIND_LABEL[kind]} — ${kind === 'rule' ? rawId : id}`;
 				frag.appendChild(a);
 				last = m.index + whole.length;
 			}

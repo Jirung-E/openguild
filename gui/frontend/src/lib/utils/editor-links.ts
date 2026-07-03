@@ -22,8 +22,50 @@ import { get } from 'svelte/store';
 
 /** 커서 직전의 ID 토큰 (앞이 `[` 가 아니어야 — 위키링크 안은 제외). */
 const BEFORE_CURSOR = /(^|[^[\w-])([A-Za-z]{2,}-\d+)$/;
+/** DEV-173: `[[` 바로 안(아직 안 닫힘)의 부분 slug — 규칙 포함 전체 인덱스 제안. */
+const BEFORE_CURSOR_WIKI = /\[\[([\w-]*)$/;
+
+const KIND_LABEL = { quest: '퀘스트', campaign: '캠페인', rule: '규칙' } as const;
+
+/**
+ * DEV-173: `[[` 컨텍스트 자동완성 — 규칙 slug 포함 전체 인덱스에서 prefix 매칭.
+ * bare 토큰 인식(questIdCompletion)은 quest/campaign 만 유지 — 규칙 slug 는
+ * 일반 단어와 구분이 안 돼 `[[ 안에서만` 제안한다 (퀘스트 본문 결정 사항).
+ */
+function wikiContextCompletion(context: CompletionContext): CompletionResult | null {
+	const line = context.state.doc.lineAt(context.pos);
+	const before = context.state.sliceDoc(line.from, context.pos);
+	const m = BEFORE_CURSOR_WIKI.exec(before);
+	if (!m) return null;
+	const partial = m[1];
+	// 빈 `[[` 는 명시 호출(Ctrl-Space)일 때만 전체 목록.
+	if (!context.explicit && partial.length < 1) return null;
+
+	const upper = partial.toUpperCase();
+	const index = get(questIndex);
+	const options: Completion[] = [];
+	for (const [id, ref] of index) {
+		if (!id.startsWith(upper)) continue;
+		// 삽입은 규칙=원본 slug / quest·campaign=대문자 정규형. 이미 열린 `[[` 뒤라
+		// 나머지 + `]]` 만 삽입.
+		const insert = ref.kind === 'rule' ? (ref.slug ?? id.toLowerCase()) : id;
+		options.push({
+			label: id,
+			displayLabel: `🔗 ${insert}`,
+			detail: `${KIND_LABEL[ref.kind]} · ${ref.title}`,
+			apply: `${insert}]]`,
+			type: 'reference'
+		});
+	}
+	if (options.length === 0) return null;
+	options.sort((a, b) => a.label.localeCompare(b.label));
+	return { from: context.pos - partial.length, to: context.pos, options };
+}
 
 function questIdCompletion(context: CompletionContext): CompletionResult | null {
+	// DEV-173: `[[` 안이면 위키 컨텍스트(규칙 포함)가 담당.
+	const wiki = wikiContextCompletion(context);
+	if (wiki) return wiki;
 	// 커서 앞 텍스트에서 ID 토큰 추출.
 	const line = context.state.doc.lineAt(context.pos);
 	const before = context.state.sliceDoc(line.from, context.pos);
@@ -48,7 +90,7 @@ function questIdCompletion(context: CompletionContext): CompletionResult | null 
 			label: upper,
 			displayLabel: `🔗 ${upper}${selfRef ? '' : ' (미존재)'}`,
 			detail: selfRef
-				? `${selfRef.kind === 'campaign' ? '캠페인' : '퀘스트'} · ${selfRef.title}`
+				? `${KIND_LABEL[selfRef.kind]} · ${selfRef.title}`
 				: '링크 생성 — 렌더 시 빨강',
 			apply: `[[${upper}]]`,
 			type: 'reference',
@@ -58,11 +100,13 @@ function questIdCompletion(context: CompletionContext): CompletionResult | null 
 	];
 	const matches: Completion[] = [];
 	for (const [id, ref] of index) {
+		// DEV-173: bare 토큰 제안은 quest/campaign 만 — 규칙은 `[[ 컨텍스트 전용.
+		if (ref.kind === 'rule') continue;
 		if (id !== upper && id.startsWith(upper)) {
 			matches.push({
 				label: id,
 				displayLabel: `🔗 ${id}`,
-				detail: `${ref.kind === 'campaign' ? '캠페인' : '퀘스트'} · ${ref.title}`,
+				detail: `${KIND_LABEL[ref.kind]} · ${ref.title}`,
 				apply: `[[${id}]]`,
 				type: 'reference'
 			});

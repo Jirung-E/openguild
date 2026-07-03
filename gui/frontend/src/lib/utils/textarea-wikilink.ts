@@ -10,13 +10,17 @@ import type { IndexedRef } from '$lib/stores/questIndex';
 
 /** 커서 직전 ID 토큰 — 앞이 `[`/단어/하이픈이 아니어야(이미 위키링크면 제외). */
 const BEFORE_CURSOR = /(^|[^[\w-])([A-Za-z]{2,}-\d+)$/;
+/** DEV-173: `[[` 바로 안(아직 안 닫힘)의 부분 slug — 규칙 포함 전체 인덱스 제안. */
+const BEFORE_CURSOR_WIKI = /\[\[([\w-]*)$/;
 
 export interface WikiItem {
 	id: string;
 	title: string | null;
-	kind: 'quest' | 'campaign' | null;
+	kind: 'quest' | 'campaign' | 'rule' | null;
 	/** 실재 ID 인지 (false = '새 링크' 후보, 렌더 시 빨강). */
 	exists: boolean;
+	/** 삽입 텍스트 (규칙 = 원본 대소문자 slug). 미지정 시 id. */
+	insert?: string;
 }
 
 export interface WikiMatch {
@@ -24,6 +28,8 @@ export interface WikiMatch {
 	from: number;
 	to: number;
 	items: WikiItem[];
+	/** DEV-173: `[[` 컨텍스트 매칭 여부 — 치환 범위가 `[[` 를 포함. */
+	wikiContext?: boolean;
 }
 
 /** caret 직전 ID 토큰의 prefix 로 실재 ID 후보 목록 생성. 없으면 null. */
@@ -33,6 +39,30 @@ export function wikiMatch(
 	index: Map<string, IndexedRef>
 ): WikiMatch | null {
 	const before = value.slice(0, caret);
+
+	// DEV-173: `[[` 컨텍스트 — 규칙 포함 전체 인덱스에서 prefix 매칭.
+	// 치환 범위는 `[[` 부터 (applyWikiLink 가 `[[id]]` 로 통째 치환).
+	const w = BEFORE_CURSOR_WIKI.exec(before);
+	if (w) {
+		const partial = w[1];
+		if (partial.length < 1) return null; // 빈 `[[` 는 제안 안 함 (소음 방지).
+		const upper = partial.toUpperCase();
+		const items: WikiItem[] = [];
+		for (const [id, ref] of index) {
+			if (!id.startsWith(upper)) continue;
+			items.push({
+				id,
+				title: ref.title,
+				kind: ref.kind,
+				exists: true,
+				insert: ref.kind === 'rule' ? (ref.slug ?? id.toLowerCase()) : id
+			});
+		}
+		if (items.length === 0) return null;
+		items.sort((a, b) => a.id.localeCompare(b.id));
+		return { from: caret - partial.length - 2, to: caret, items, wikiContext: true };
+	}
+
 	const m = BEFORE_CURSOR.exec(before);
 	if (!m) return null;
 	const token = m[2];
@@ -45,6 +75,9 @@ export function wikiMatch(
 	];
 	const matches: WikiItem[] = [];
 	for (const [id, ref] of index) {
+		// DEV-173: bare 토큰 제안은 quest/campaign 만 — 규칙 slug 는 일반 단어와
+		// 구분이 안 돼 `[[ 컨텍스트 전용.
+		if (ref.kind === 'rule') continue;
 		if (id !== upper && id.startsWith(upper)) {
 			matches.push({ id, title: ref.title, kind: ref.kind, exists: true });
 		}

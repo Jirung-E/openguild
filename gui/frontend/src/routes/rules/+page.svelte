@@ -97,7 +97,9 @@
 	}
 
 	onMount(() => {
-		loadList();
+		// DEV-173: cross-link 딥링크 — `/rules?slug=xxx` 로 진입 시 해당 규칙 선택.
+		const slugParam = new URLSearchParams(window.location.search).get('slug');
+		loadList(slugParam);
 	});
 
 	// DEV-119: 편집중 다른 slug 선택 시 native confirm 대신 인앱 모달.

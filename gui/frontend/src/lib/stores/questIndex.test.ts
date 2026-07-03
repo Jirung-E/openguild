@@ -22,6 +22,15 @@ describe('DEV-140 cross-link helpers', () => {
 		expect(refHref('DEV-033', 'quest')).toBe('/quests/DEV-033');
 	});
 
+	// DEV-173: 규칙은 원본 대소문자 slug 로 /rules 딥링크.
+	it('refHref routes rules to /rules?slug= with original-case slug', () => {
+		expect(refHref('RELEASE-PROCESS', 'rule', 'release-process')).toBe(
+			'/rules?slug=release-process'
+		);
+		// slug 미제공 시 소문자 fallback.
+		expect(refHref('FOO-BAR', 'rule')).toBe('/rules?slug=foo-bar');
+	});
+
 	it('wiki-link extraction regex captures ids inside [[ ]]', () => {
 		const re = /\[\[([A-Za-z]{1,}-\d+)\]\]/g;
 		const text = '[[DEV-033]] 에서 언급, [[C-001]] 참고, 그리고 [[BUG-9]].';
