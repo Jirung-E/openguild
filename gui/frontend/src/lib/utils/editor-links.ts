@@ -17,6 +17,7 @@ import {
 } from '@codemirror/autocomplete';
 import { markdownLanguage, commonmarkLanguage } from '@codemirror/lang-markdown';
 import type { Extension } from '@codemirror/state';
+import type { EditorView } from '@codemirror/view';
 import { questIndex, loadQuestIndex } from '$lib/stores/questIndex';
 import { get } from 'svelte/store';
 
@@ -37,8 +38,7 @@ function wikiContextCompletion(context: CompletionContext): CompletionResult | n
 	const m = BEFORE_CURSOR_WIKI.exec(before);
 	if (!m) return null;
 	const partial = m[1];
-	// 빈 `[[` 는 명시 호출(Ctrl-Space)일 때만 전체 목록.
-	if (!context.explicit && partial.length < 1) return null;
+	// DEV-223: 빈 `[[` 에서도 전체 후보 표시 (사용자 결정 — [[ 입력 즉시 팝업).
 
 	const upper = partial.toUpperCase();
 	const index = get(questIndex);
@@ -52,7 +52,16 @@ function wikiContextCompletion(context: CompletionContext): CompletionResult | n
 			label: id,
 			displayLabel: `🔗 ${insert}`,
 			detail: `${KIND_LABEL[ref.kind]} · ${ref.title}`,
-			apply: `${insert}]]`,
+			// DEV-223: closeBrackets 가 `[[` 입력 시 `]]` 를 자동 삽입해두므로,
+			// 문자열 apply(`insert]]`)를 쓰면 [[slug]]]] 로 중복된다 — 커서 뒤에
+			// 이미 `]]` 가 있으면 재사용하고 커서만 그 뒤로 이동.
+			apply: (view: EditorView, _c: Completion, from: number, to: number) => {
+				const alreadyClosed = view.state.sliceDoc(to, to + 2) === ']]';
+				view.dispatch({
+					changes: { from, to, insert: alreadyClosed ? insert : `${insert}]]` },
+					selection: { anchor: from + insert.length + 2 }
+				});
+			},
 			type: 'reference'
 		});
 	}

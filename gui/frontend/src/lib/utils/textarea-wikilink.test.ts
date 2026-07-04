@@ -35,9 +35,13 @@ describe('wikiMatch', () => {
 		expect(m!.items.some((i) => i.id === 'DEV-033')).toBe(true);
 	});
 
-	it('빈 [[ 는 제안하지 않음', () => {
+	// DEV-223: 빈 [[ 에서도 전체 후보 표시 (사용자 결정).
+	it('빈 [[ 는 전체 후보를 제안', () => {
 		const v = '앞 텍스트 [[';
-		expect(wikiMatch(v, v.length, index)).toBeNull();
+		const m = wikiMatch(v, v.length, index);
+		expect(m).not.toBeNull();
+		expect(m!.items.length).toBe(index.size);
+		expect(v.slice(m!.from, m!.to)).toBe('[[');
 	});
 
 	it('매칭 없는 [[ prefix 는 null', () => {

@@ -46,7 +46,7 @@ export function wikiMatch(
 	const w = BEFORE_CURSOR_WIKI.exec(before);
 	if (w) {
 		const partial = w[1];
-		if (partial.length < 1) return null; // 빈 `[[` 는 제안 안 함 (소음 방지).
+		// DEV-223: 빈 `[[` 에서도 전체 후보 표시 (사용자 결정).
 		const upper = partial.toUpperCase();
 		const items: WikiItem[] = [];
 		for (const [id, ref] of index) {
@@ -72,15 +72,18 @@ export function wikiMatch(
  *  (Ctrl+Z 동작). setRangeText 는 undo 히스토리를 끊어 자동완성 입력이 되돌려지지
  *  않던 문제. execCommand 실패 시에만 setRangeText 로 fallback. */
 export function applyWikiLink(ta: HTMLTextAreaElement, from: number, to: number, id: string): void {
+	// DEV-223: 치환 범위 바로 뒤에 이미 `]]` 가 있으면(닫힌 위키링크 안에서 재완성
+	// 등) 함께 삼켜 [[id]]]] 중복을 방지.
+	const to2 = ta.value.slice(to, to + 2) === ']]' ? to + 2 : to;
 	const text = `[[${id}]]`;
 	ta.focus();
-	ta.setSelectionRange(from, to);
+	ta.setSelectionRange(from, to2);
 	// execCommand('insertText') 는 선택 영역을 치환하며 input 이벤트도 자동 발화.
 	if (document.execCommand && document.execCommand('insertText', false, text)) {
 		return;
 	}
 	// fallback (undo 끊김).
-	ta.setRangeText(text, from, to, 'end');
+	ta.setRangeText(text, from, to2, 'end');
 	ta.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
