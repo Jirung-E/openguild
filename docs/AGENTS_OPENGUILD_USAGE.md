@@ -88,12 +88,14 @@ openguild quest search "<keyword>" [--title-only] [--limit N]
 openguild quest show <slug> [--field <NAME>]          # NAME: id/title/status/description/urgency/type/parent/created_at/updated_at
 
 openguild quest new --type <PREFIX> --title <T>      # 상태는 자동으로 Open
-                  [--description <DESC>]
+                  [--description <DESC> | --description-file <PATH>]
                   [--urgency 1-4]                    # 1=Critical 4=Low (기본 3)
                   [--parent <slug>]                  # 서브퀘스트로 생성
+                  # DEV-222: --description-file = UTF-8 파일에서 본문 읽기 —
+                  # 한글 인코딩/이스케이프/`--` 시작 본문 문제 회피 (agent 권장)
 
-openguild quest update <slug> [--title] [--description] [--urgency]
-                              [--dry-run]            # 영향 미리보기
+openguild quest update <slug> [--title] [--description | --description-file <PATH>]
+                              [--urgency] [--dry-run] # 영향 미리보기
 
 openguild quest delete <slug> [--cascade <slug>,...] --yes        # --yes 필수
 openguild quest delete <slug> [--cascade <slug>,...] --dry-run    # 영향 미리보기

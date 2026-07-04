@@ -333,6 +333,10 @@ enum QuestCmd {
         title: Option<String>,
         #[arg(long)]
         description: Option<String>,
+        /// DEV-222: 본문을 UTF-8 파일에서 읽기 — 한글 인코딩/따옴표 이스케이프/
+        /// `--` 로 시작하는 본문의 플래그 오인 회피 (comment add --file 관례).
+        #[arg(long = "description-file", conflicts_with = "description")]
+        description_file: Option<std::path::PathBuf>,
         /// 1=Critical 2=High 3=Medium 4=Low (기본 3, 템플릿이 있으면 그 값)
         #[arg(long)]
         urgency: Option<i64>,
@@ -350,6 +354,9 @@ enum QuestCmd {
         title: Option<String>,
         #[arg(long)]
         description: Option<String>,
+        /// DEV-222: 본문을 UTF-8 파일에서 읽기 (--description 과 상호배타).
+        #[arg(long = "description-file", conflicts_with = "description")]
+        description_file: Option<std::path::PathBuf>,
         #[arg(long)]
         urgency: Option<i64>,
         /// 실제 수정 대신 변경 미리보기만 출력
@@ -1192,6 +1199,22 @@ struct LocalBackend {
     rt: tokio::runtime::Runtime,
     /// 호스트 길드 경로 (info 출력용)
     guild_path: std::path::PathBuf,
+}
+
+/// DEV-222: `--description` / `--description-file` 통합 해석 — 파일 지정 시
+/// UTF-8 로 읽는다 (clap `conflicts_with` 로 동시 지정은 이미 거부됨).
+fn resolve_description_input(
+    inline: Option<String>,
+    file: Option<std::path::PathBuf>,
+) -> Result<Option<String>> {
+    match file {
+        Some(p) => {
+            let s = std::fs::read_to_string(&p)
+                .with_context(|| format!("description 파일 읽기 실패: {}", p.display()))?;
+            Ok(Some(s.trim_end().to_string()))
+        }
+        None => Ok(inline),
+    }
 }
 
 /// DEV-210: `restore --at` 키워드 해석 — `latest`(대소문자 무시) 는 journal
@@ -4555,10 +4578,13 @@ fn run() -> Result<()> {
                 type_prefix,
                 title,
                 description,
+                description_file,
                 urgency,
                 parent,
                 template,
             } => {
+                // DEV-222: --description-file 이면 UTF-8 파일에서 본문 읽기.
+                let description = resolve_description_input(description, description_file)?;
                 // DEV-060: 템플릿 merge — 명시 옵션 > 템플릿 값 > 기본.
                 let tpl = match &template {
                     Some(name) => Some(c.template_load(name)?),
@@ -4601,9 +4627,12 @@ fn run() -> Result<()> {
                 slug,
                 title,
                 description,
+                description_file,
                 urgency,
                 dry_run,
             } => {
+                // DEV-222: --description-file 이면 UTF-8 파일에서 본문 읽기.
+                let description = resolve_description_input(description, description_file)?;
                 let detail = c.quest_by_slug(&slug)?;
                 let id = detail.quest.id;
 
@@ -5649,6 +5678,7 @@ mod tests {
                         urgency,
                         parent,
                         description,
+                        description_file,
                         template,
                     },
             } => {
@@ -5659,6 +5689,7 @@ mod tests {
                 assert!(urgency.is_none()); // 기본값은 핸들러 merge 에서
                 assert!(parent.is_none());
                 assert!(description.is_none());
+                assert!(description_file.is_none());
                 assert!(template.is_none());
             }
             _ => panic!("expected quest new"),
@@ -5686,6 +5717,7 @@ mod tests {
                         urgency,
                         parent,
                         description,
+                        description_file,
                         template,
                     },
             } => {
@@ -5694,6 +5726,7 @@ mod tests {
                 assert_eq!(urgency, Some(1));
                 assert_eq!(parent.as_deref(), Some("DEV-007"));
                 assert_eq!(description.as_deref(), Some("details"));
+                assert!(description_file.is_none());
                 assert_eq!(template.as_deref(), Some("bug-report"));
             }
             _ => panic!("expected quest new"),
@@ -5738,6 +5771,39 @@ mod tests {
         assert!(desc.is_none());
         assert_eq!(u, 3);
         assert!(tags.is_empty());
+    }
+
+    /// DEV-222: --description-file — 파일 읽기 / 상호배타 / 미지정 passthrough.
+    #[test]
+    fn resolve_description_input_file_and_conflict() {
+        // 파일 읽기 (UTF-8 한글 + multi-line, 끝 개행 trim).
+        let dir = std::env::temp_dir().join(format!(
+            "og-desc-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("d.md");
+        std::fs::write(&f, "첫 줄\n\n## 섹션\n본문\n").unwrap();
+        let got = resolve_description_input(None, Some(f)).unwrap();
+        assert_eq!(got.as_deref(), Some("첫 줄\n\n## 섹션\n본문"));
+        // 미지정 시 inline passthrough.
+        assert_eq!(
+            resolve_description_input(Some("x".into()), None).unwrap().as_deref(),
+            Some("x")
+        );
+        // 없는 파일은 에러.
+        assert!(resolve_description_input(None, Some(dir.join("none.md"))).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+
+        // clap: --description 과 --description-file 동시 지정 거부.
+        assert!(Cli::try_parse_from([
+            "openguild", "quest", "new", "--type", "DEV", "--title", "t",
+            "--description", "a", "--description-file", "b.md",
+        ])
+        .is_err());
     }
 
     /// DEV-210: `--at latest` 키워드 해석 — 대소문자 무시, 일반 ISO 는 passthrough.
