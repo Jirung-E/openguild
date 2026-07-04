@@ -445,6 +445,26 @@
 		return set;
 	});
 
+	// DEV-214: 접힌 스레드 안(자손)에 토론이 있으면 상태 표시 — 접힘 때문에
+	// 미해결 토론을 놓치는 문제 방지. root 자신은 접혀도 보이므로 자손만 집계.
+	// 'unresolved' 가 하나라도 있으면 unresolved 우선.
+	let threadDiscState = $derived.by(() => {
+		const map = new Map<number, 'unresolved' | 'resolved'>();
+		for (const [rootId, children] of groups.childrenByRoot) {
+			let state: 'unresolved' | 'resolved' | null = null;
+			for (const c of children) {
+				if (!c.discussion) continue;
+				if (!c.resolved) {
+					state = 'unresolved';
+					break;
+				}
+				state = 'resolved';
+			}
+			if (state) map.set(rootId, state);
+		}
+		return map;
+	});
+
 	// DEV-200: 답글 대상이 답글이어도 폼은 그 스레드(root 카드) 하단에 표시.
 	let replyFormRoot = $derived(
 		replyingTo == null ? null : (groups.rootIdOf.get(replyingTo) ?? null)
@@ -649,8 +669,14 @@
 				<button class="btn-cancel" onclick={cancelEdit} disabled={editSaving}>취소</button>
 			</div>
 		{:else if collapsedBodies.has(e.id)}
-			<!-- DEV-129: 접힌 본문 — 1줄 미리보기, 클릭으로 펼침. -->
+			<!-- DEV-129: 접힌 본문 — 1줄 미리보기, 클릭으로 펼침.
+			     DEV-214: 이 entry 자신이 토론이면 상태 글리프를 미리보기 앞에. -->
 			<button class="body-collapsed" onclick={() => toggleBodyCollapsed(e.id)} title="내용 펼치기">
+				{#if e.discussion}
+					<span class="disc-flag" class:unresolved={!e.resolved} class:resolved={e.resolved}
+						>{e.resolved ? '✓' : '✗'}</span
+					>
+				{/if}
 				{bodyPreview(e.body)}
 			</button>
 		{:else}
@@ -676,6 +702,15 @@
 								>{isThreadCollapsed ? '▶' : '▼'}</button
 							>
 							<span class="reply-count">답글 {childCount}</span>
+							<!-- DEV-214: 접힌 답글 안에 토론 있으면 상태 글리프. -->
+							{#if isThreadCollapsed}
+								{@const disc = threadDiscState.get(e.id)}
+								{#if disc === 'unresolved'}
+									<span class="disc-flag unresolved" title="접힌 답글에 미해결 토론 있음">✗</span>
+								{:else if disc === 'resolved'}
+									<span class="disc-flag resolved" title="접힌 답글의 토론은 전부 해결됨">✓</span>
+								{/if}
+							{/if}
 						{/if}
 					{/if}
 					<!-- DEV-200: 답글에도 답글 쓰기 — parent_id 로 대상 기록, 표시는 2단까지. -->
@@ -737,6 +772,12 @@
 			<h2 class="section-title">댓글 (Comments)</h2>
 		</button>
 		<span class="count">{entries.length}</span>
+		<!-- DEV-214: 섹션이 접혀 있어도 미해결 토론은 보이게 (완료 차단과 직결). -->
+		{#if collapsed && unresolvedCount > 0}
+			<span class="disc-flag unresolved" title="미해결 토론 {unresolvedCount}개 — 완료 차단 중"
+				>✗ {unresolvedCount}</span
+			>
+		{/if}
 		<!-- DEV-213: 토론만 모아보기 — quest 전용, 토론 댓글이 있을 때만 노출. -->
 		{#if scope === 'quest' && !collapsed && discussionCount > 0}
 			<button
@@ -1010,6 +1051,17 @@
 	/* DEV-213: 토론만 보기에서 비토론 entry dim — 숨김 대신 문맥 유지. */
 	.entry.dimmed {
 		opacity: 0.45;
+	}
+	/* DEV-214: 접힘 지점(스레드/본문/섹션)의 토론 상태 글리프 — DEV-150 글리프 재사용. */
+	.disc-flag {
+		font-size: 0.72rem;
+		font-weight: 700;
+	}
+	.disc-flag.unresolved {
+		color: var(--danger);
+	}
+	.disc-flag.resolved {
+		color: var(--success);
 	}
 
 	.collapse-all-btn {
