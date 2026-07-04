@@ -6490,7 +6490,11 @@ mod tests {
         }
     }
 
+    /// quest ID 형식과 겹치지만 help 에 써도 되는 기술 용어 (오탐 방지).
+    const HELP_ID_ALLOWLIST: &[&str] = &["UTF-8", "ISO-8601", "RFC-3339", "SHA-256"];
+
     /// 처음 발견된 `<PREFIX>-<숫자>` substring (PREFIX 는 ASCII 대문자 2~5).
+    /// 단 HELP_ID_ALLOWLIST 의 기술 용어는 건너뜀.
     fn find_quest_id(s: &str) -> Option<&str> {
         let bytes = s.as_bytes();
         let mut i = 0;
@@ -6515,7 +6519,13 @@ mod tests {
                 digits += 1;
             }
             if prefix_len >= 2 && digits > after {
-                return Some(&s[prefix_start..digits]);
+                let candidate = &s[prefix_start..digits];
+                // 기술 용어 오탐 skip — 더 긴 용어(ISO-8601 등)의 부분 매칭도
+                // 흡수하도록 allowlist 항목이 candidate 를 포함하는지로 검사.
+                let allowed = HELP_ID_ALLOWLIST.iter().any(|t| t.contains(candidate));
+                if !allowed {
+                    return Some(candidate);
+                }
             }
             i = dash + 1;
         }
@@ -6531,6 +6541,11 @@ mod tests {
         assert!(find_quest_id("D-1").is_none()); // prefix 너무 짧음.
         assert!(find_quest_id("DEV-").is_none()); // 숫자 없음.
         assert!(find_quest_id("dev-001").is_none()); // 소문자.
+        // 기술 용어 allowlist — 오탐 아님.
+        assert!(find_quest_id("본문을 UTF-8 파일에서 읽기").is_none());
+        assert!(find_quest_id("ISO-8601 UTC").is_none());
+        // allowlist 용어와 quest id 가 같이 있으면 quest id 는 잡아야 함.
+        assert_eq!(find_quest_id("UTF-8 그리고 DEV-001"), Some("DEV-001"));
     }
 
     #[test]
