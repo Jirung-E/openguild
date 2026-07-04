@@ -10,6 +10,9 @@
 -->
 <script lang="ts">
 	import { onMount, onDestroy, tick } from 'svelte';
+	// BUG-104: 선택 규칙을 URL(?slug=) 에 반영 — 규칙간 링크 이동 + 뒤로가기 복원.
+	import { page } from '$app/stores';
+	import { goto } from '$app/navigation';
 	// DEV-153: 편집 중이면 이탈 가드에 보고 (라우트 이탈용. 같은 페이지 내 규칙
 	// 전환 경고는 아래 confirmDiscardSlug 모달이 별도로 담당).
 	import { setUnsaved } from '$lib/stores/unsaved';
@@ -108,6 +111,32 @@
 		loadList(slugParam);
 	});
 
+	// BUG-104: URL(?slug=) 을 선택 상태의 진리원으로.
+	//
+	// (1) 규칙 본문의 다른 규칙 [[링크]] 클릭 — 같은 라우트 내 이동이라 onMount 가
+	//     재실행되지 않아 선택이 안 바뀌던 문제: $page.url 반응형 구독으로 해결.
+	// (2) 퀘스트/캠페인 링크를 따라갔다 뒤로가기 — 선택이 컴포넌트 state 뿐이라
+	//     첫 규칙으로 초기화되던 문제: 선택 시 replaceState 로 URL 에 기록해 해결
+	//     (복귀 시 history 의 ?slug= 를 onMount 가 읽음).
+	$effect(() => {
+		const slug = $page.url.searchParams.get('slug');
+		if (slug && slug !== selectedSlug && entries.some((e) => e.slug === slug)) {
+			select(slug);
+		}
+	});
+
+	function syncUrl(slug: string) {
+		const cur = new URLSearchParams(window.location.search).get('slug');
+		if (cur === slug) return;
+		// replaceState — 규칙 선택마다 history entry 를 쌓지 않는다(뒤로가기는
+		// 페이지 단위 이동용). goto 라 SvelteKit $page 도 일관 갱신.
+		goto(`/rules?slug=${encodeURIComponent(slug)}`, {
+			replaceState: true,
+			keepFocus: true,
+			noScroll: true
+		});
+	}
+
 	// DEV-119: 편집중 다른 slug 선택 시 native confirm 대신 인앱 모달.
 	let confirmDiscardSlug = $state<string | null>(null);
 
@@ -118,6 +147,7 @@
 		}
 		selectedSlug = slug;
 		refreshSelectedContent();
+		syncUrl(slug);
 	}
 
 	function applyPendingSelect() {
@@ -127,6 +157,7 @@
 		cancelEdit();
 		selectedSlug = slug;
 		refreshSelectedContent();
+		syncUrl(slug); // BUG-104
 	}
 
 	// ─── 편집 ───
