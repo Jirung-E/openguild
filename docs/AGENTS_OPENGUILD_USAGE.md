@@ -326,7 +326,7 @@ openguild info                       # 길드 메타 / index.db·snapshot·journ
 # 길드 규칙 (.guild/rules/{slug}.md — 프로젝트 컨벤션 문서, git tracked)
 openguild rules list                          # 규칙 slug 목록
 openguild rules show   <slug>                 # 본문 출력
-openguild rules create <slug> --file <PATH>   # 신규 (중복 slug 는 에러) / stdin 도 가능
+openguild rules create <slug> --file <PATH>   # 신규 (중복 slug 는 에러, `new` 별칭 OK)
 openguild rules set    <slug> --file <PATH>   # 본문 교체 (멱등 — 없으면 생성)
 openguild rules delete <slug> [--force]
 openguild rules rename <old-slug> <new-slug>

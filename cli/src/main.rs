@@ -708,7 +708,8 @@ enum RulesCmd {
         file: Option<std::path::PathBuf>,
     },
     /// 신규 규칙 생성 — 같은 slug 이미 있으면 에러. 본문은 `--file` / stdin.
-    /// `--empty` 시 본문 없이 빈 규칙 생성.
+    /// `--empty` 시 본문 없이 빈 규칙 생성. (`new` 별칭 — 생성 관례 통일, DEV-209)
+    #[command(alias = "new")]
     Create {
         slug: String,
         #[arg(long)]
@@ -3855,11 +3856,14 @@ fn run() -> Result<()> {
                     // BUG-018: agent / script 용 — slug 포함된 raw row.
                     println!("{}", serde_json::to_string_pretty(&statuses)?);
                 } else {
-                    // BUG-018: slug 는 사용자 노출 X (internal stable id).
-                    // 사용자 입력은 update/delete 가 name_en/name_ko 등으로 lookup.
+                    // DEV-209(BUG-018 정책 갱신): slug 도 표시 — quest move 등 명령
+                    // 인자와 frontmatter 의 정규 식별자가 slug 라, 목록에서 안 보이면
+                    // 사용자가 뭘 입력할지 알 수 없음(에러 메시지의 "Open (open)"
+                    // 표기와 통일).
                     for s in &statuses {
                         let name_colored = colorize(&format!("{:<14}", s.name_en), &s.color);
-                        println!("{name_colored} {}", s.name_ko);
+                        let slug = format!("({})", s.slug);
+                        println!("{name_colored} {slug:<14} {}", s.name_ko);
                     }
                 }
             }
