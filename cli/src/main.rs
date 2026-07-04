@@ -1360,9 +1360,9 @@ impl Backend {
         // 바인드 순서: (quest 절 인자들) → (campaign 절 인자들) → limit.
         // 두 절이 같은 필터 세트를 쓰므로 값을 두 번 바인드한다.
         let mut binds: Vec<String> = Vec::new();
-        if author.is_some() {
+        if let Some(a) = author {
             push_both("LOWER(c.author) = LOWER(?)", "LOWER(c.author) = LOWER(?)");
-            binds.push(author.unwrap().to_string());
+            binds.push(a.to_string());
         }
         if let Some(s) = since {
             push_both("c.ts >= ?", "c.ts >= ?");
@@ -1372,12 +1372,12 @@ impl Backend {
             push_both("c.ts <= ?", "c.ts <= ?");
             binds.push(openguild_core::time::normalize_filter_ts(u));
         }
-        if grep.is_some() {
+        if let Some(g) = grep {
             push_both(
                 "LOWER(c.body) LIKE '%' || LOWER(?) || '%'",
                 "LOWER(c.body) LIKE '%' || LOWER(?) || '%'",
             );
-            binds.push(grep.unwrap().to_string());
+            binds.push(g.to_string());
         }
         if discussion {
             push_both("c.discussion = 1", "0 = 1");
