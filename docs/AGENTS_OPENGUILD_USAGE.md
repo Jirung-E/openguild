@@ -275,6 +275,7 @@ openguild quest comment add <SLUG> --author <NAME> --file <PATH>   # 추가 (std
 openguild quest comment add <SLUG> --author <NAME> --parent-id N --file <PATH>  # 답글
 openguild quest comment edit <SLUG> N --file <PATH>       # body 교체 (id 는 positional)
 openguild quest comment remove <SLUG> N [--force]         # 삭제
+openguild quest comment react <SLUG> N <EMOJI> --author claude   # 이모지 반응 토글 (DEV-199)
 openguild quest comment discussion <SLUG> N               # 토론(discussion) 토글 — quest 전용 (DEV-185)
 openguild quest comment resolved <SLUG> N                 # 토론 해결 토글 (DEV-185)
 openguild quest memo set <SLUG> --file <PATH>             # 비공개 메모 (사용자당 1개)

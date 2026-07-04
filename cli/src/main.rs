@@ -579,6 +579,16 @@ enum CommentCmd {
         #[arg(long)]
         force: bool,
     },
+    /// 이모지 반응 토글 — 이미 눌렀으면 제거 (GUI 와 동일 시맨틱). DEV-199.
+    React {
+        slug: String,
+        id: u64,
+        /// 이모지 (임의 문자열 허용 — GUI 고정 4종 외에도 가능).
+        emoji: String,
+        /// 반응 주체 — author 단위 토글이라 필수.
+        #[arg(long)]
+        author: String,
+    },
     /// 토론(discussion) 플래그 토글 (quest 전용). 미해결 토론이 있으면 그 quest 의
     /// 완료 전환이 차단됨. discussion 을 끄면 resolved 도 해제.
     Discussion { slug: String, id: u64 },
@@ -2156,6 +2166,33 @@ impl Backend {
         }
     }
 
+    /// DEV-199: 이모지 반응 토글 — GUI invoke / HTTP 와 동일한 core 함수 재사용.
+    /// 다른 댓글 mutation 과 동일하게 Local 전용.
+    fn comments_react_scoped(
+        &self,
+        scope: CommentScope,
+        slug: &str,
+        id: u64,
+        emoji: &str,
+        author: &str,
+    ) -> Result<openguild_core::repo::comments::CommentEntry> {
+        let Backend::Local(l) = self else {
+            return Err(Self::http_unsupported_meta());
+        };
+        match scope {
+            CommentScope::Quest => Self::map_err(l.rt.block_on(
+                openguild_core::ops::comments::toggle_comment_reaction(
+                    &l.store, slug, id, emoji, author,
+                ),
+            )),
+            CommentScope::Campaign => Self::map_err(l.rt.block_on(
+                openguild_core::ops::campaign_comments::toggle_reaction(
+                    &l.store, slug, id, emoji, author,
+                ),
+            )),
+        }
+    }
+
     fn comments_delete_scoped(&self, scope: CommentScope, slug: &str, id: u64) -> Result<()> {
         match scope {
             CommentScope::Quest => self.comments_delete(slug, id),
@@ -2871,7 +2908,23 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                             } else {
                                 e.ts.clone()
                             };
-                            println!("#{}  {}  {}{}  {}", e.id, ts, author, reply, summary);
+                            // DEV-199: 반응 집계 표시 — 👍2 ✅1 형태.
+                            let reacts = if e.reactions.is_empty() {
+                                String::new()
+                            } else {
+                                use openguild_core::repo::comments::split_reaction;
+                                let agg = e
+                                    .reactions
+                                    .iter()
+                                    .map(|r| {
+                                        let (em, a) = split_reaction(r);
+                                        format!("{em}{}", a.len().max(1))
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .join(" ");
+                                format!("  [{agg}]")
+                            };
+                            println!("#{}  {}  {}{}  {}{}", e.id, ts, author, reply, summary, reacts);
                         }
                     }
                 }
@@ -2986,6 +3039,43 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                         );
                     } else {
                         println!("✓ 댓글 #{id} 삭제됨");
+                    }
+                }
+                CommentCmd::React { slug, id, emoji, author } => {
+                    let entry = c.comments_react_scoped(scope, &slug, id, &emoji, &author)?;
+                    // 토글 결과 요약 — 현재 entry 의 반응 집계 표시.
+                    use openguild_core::repo::comments::split_reaction;
+                    let now_on = entry.reactions.iter().any(|r| {
+                        let (e, authors) = split_reaction(r);
+                        e == emoji && authors.iter().any(|a| a == &author)
+                    });
+                    let agg = entry
+                        .reactions
+                        .iter()
+                        .map(|r| {
+                            let (e, authors) = split_reaction(r);
+                            format!("{e}{}", authors.len().max(1))
+                        })
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    if json {
+                        println!(
+                            "{}",
+                            serde_json::json!({
+                                "ok": true,
+                                "id": entry.id,
+                                "emoji": emoji,
+                                "on": now_on,
+                                "reactions": entry.reactions,
+                            })
+                        );
+                    } else {
+                        println!(
+                            "✓ #{} {emoji} {} (현재: {})",
+                            entry.id,
+                            if now_on { "추가" } else { "제거" },
+                            if agg.is_empty() { "없음".to_string() } else { agg }
+                        );
                     }
                 }
                 CommentCmd::Discussion { slug, id } => {
