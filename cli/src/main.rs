@@ -1091,6 +1091,10 @@ impl HttpClient {
                 .unwrap_or(target_ts)
                 .to_string(),
             applied: resp.get("applied").and_then(|v| v.as_u64()).unwrap_or(0) as usize,
+            pre_backup: resp
+                .get("pre_backup")
+                .and_then(|v| v.as_str())
+                .map(String::from),
         })
     }
 
@@ -4340,6 +4344,7 @@ fn run() -> Result<()> {
                             "latest": is_latest,
                             "replayed_to": report.target_ts,
                             "applied": report.applied,
+                            "pre_backup": report.pre_backup,
                         })
                     );
                 } else if is_latest {
@@ -4356,8 +4361,14 @@ fn run() -> Result<()> {
                         report.target_ts, report.applied
                     );
                     println!();
-                    println!("주의: 이 시점 이후의 변경은 폐기되었습니다.");
-                    println!("      파일 시스템 표시가 안 맞으면 `openguild reindex`.");
+                    if let Some(pb) = &report.pre_backup {
+                        // DEV-212: 폐기가 아니라 자동 백업으로 보존됨을 안내.
+                        println!("복원 전 상태는 스냅샷 {pb} 로 자동 백업되었습니다.");
+                        println!("되돌리려면: openguild restore --to {pb}");
+                    } else {
+                        println!("주의: 이 시점 이후의 변경은 폐기되었습니다.");
+                    }
+                    println!("파일 시스템 표시가 안 맞으면 `openguild reindex`.");
                 }
             } else {
                 let info = c.restore_backup(to)?;
