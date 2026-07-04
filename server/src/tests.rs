@@ -2575,12 +2575,28 @@ async fn test_admin_restore_at_replays_journal_to_timestamp() {
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["applied"], 1);
+    // DEV-212: journal 이 있었으므로 실행 직전 자동 백업 스냅샷 ts 가 응답에 포함.
+    assert!(
+        body["pre_backup"].as_str().is_some(),
+        "pre_backup 이 응답에 있어야 (DEV-212): {body}"
+    );
 
-    let (_, after) = get(app, "/api/quests").await;
+    let (_, after) = get(app.clone(), "/api/quests").await;
     assert_eq!(
         after.as_array().unwrap().len(),
         2,
         "replay 가 DEV-002 생성을 재적용해야"
+    );
+
+    // DEV-212: pre_backup 스냅샷이 backup 목록에 실재.
+    let pre = body["pre_backup"].as_str().unwrap().to_string();
+    let (_, list) = get(app, "/api/admin/snapshots").await;
+    assert!(
+        list.as_array()
+            .unwrap()
+            .iter()
+            .any(|s| s["timestamp"] == pre.as_str()),
+        "자동 백업이 snapshot 목록에 존재해야 (DEV-212)"
     );
 }
 

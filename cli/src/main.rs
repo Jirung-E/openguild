@@ -5874,6 +5874,102 @@ mod tests {
         assert!(tags.is_empty());
     }
 
+    /// DEV-221: comments_search — quest/campaign UNION + 필터 + 최신순.
+    /// 캐시 테이블에 직접 INSERT 해 SQL 조합을 검증 (파일 IO 없이).
+    #[test]
+    fn comments_search_union_filters_and_order() {
+        let dir = fresh_tmp("comsearch");
+        init_guild_at(&dir, Some("t".into())).unwrap();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let store = rt.block_on(openguild_core::Store::open(&dir)).unwrap();
+        rt.block_on(async {
+            // quest DEV-001 + campaign C-001 행을 캐시에 직접 구성.
+            sqlx::query(
+                "INSERT INTO quests (quest_type_id, number, title, status_id, urgency, created_at, updated_at)
+                 VALUES (1, 1, 'q', 1, 3, 't', 't')",
+            )
+            .execute(&store.index_pool)
+            .await
+            .unwrap();
+            sqlx::query(
+                "INSERT INTO campaigns (campaign_slug, title, status, created_at, updated_at)
+                 VALUES ('C-001', 'c', 'active', 't', 't')",
+            )
+            .execute(&store.index_pool)
+            .await
+            .unwrap();
+            for (eid, ts, author, body, disc, res) in [
+                (1_i64, "2026-01-01T00:00:00+09:00", "admin", "첫 댓글", 0_i64, 0_i64),
+                (2, "2026-01-03T00:00:00+09:00", "claude", "토론 시작", 1, 0),
+                (3, "2026-01-05T00:00:00+09:00", "admin", "해결된 토론", 1, 1),
+            ] {
+                sqlx::query(
+                    "INSERT INTO quest_comments (quest_id, entry_id, ts, author, body, discussion, resolved)
+                     VALUES (1, ?, ?, ?, ?, ?, ?)",
+                )
+                .bind(eid)
+                .bind(ts)
+                .bind(author)
+                .bind(body)
+                .bind(disc)
+                .bind(res)
+                .execute(&store.index_pool)
+                .await
+                .unwrap();
+            }
+            sqlx::query(
+                "INSERT INTO campaign_comments (campaign_id, entry_id, ts, author, body)
+                 VALUES (1, 1, '2026-01-04T00:00:00+09:00', 'admin', '캠페인 댓글')",
+            )
+            .execute(&store.index_pool)
+            .await
+            .unwrap();
+        });
+        let backend = Backend::Local(LocalBackend {
+            store,
+            rt,
+            guild_path: dir.clone(),
+        });
+
+        // 전체 — quest+campaign UNION, 최신순.
+        let all = backend
+            .comments_search(None, None, None, None, false, false, 20)
+            .unwrap();
+        assert_eq!(all.len(), 4);
+        assert_eq!(all[0].ts, "2026-01-05T00:00:00+09:00", "최신순 정렬");
+        assert!(all.iter().any(|c| c.scope == "campaign" && c.slug == "C-001"));
+
+        // author 필터 (대소문자 무시) — quest 2 + campaign 1.
+        let admins = backend
+            .comments_search(Some("ADMIN"), None, None, None, false, false, 20)
+            .unwrap();
+        assert_eq!(admins.len(), 3);
+
+        // 미해결 토론만 — campaign 은 discussion 개념이 없어 자연 제외.
+        let unresolved = backend
+            .comments_search(None, None, None, None, false, true, 20)
+            .unwrap();
+        assert_eq!(unresolved.len(), 1);
+        assert_eq!(unresolved[0].entry_id, 2);
+
+        // grep + since 조합.
+        let hits = backend
+            .comments_search(None, Some("2026-01-02"), None, Some("토론"), false, false, 20)
+            .unwrap();
+        assert_eq!(hits.len(), 2);
+
+        // limit.
+        let limited = backend
+            .comments_search(None, None, None, None, false, false, 2)
+            .unwrap();
+        assert_eq!(limited.len(), 2);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// DEV-222: --description-file — 파일 읽기 / 상호배타 / 미지정 passthrough.
     #[test]
     fn resolve_description_input_file_and_conflict() {

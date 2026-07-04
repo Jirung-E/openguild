@@ -50,6 +50,7 @@ openguild comments --unresolved                            # 미해결 토론 �
 | git checkout/pull 후 CLI 실행 → **전체 quest updated_at 오탐 변조** (BUG-103 미수정) | 브랜치 전환 직후 `git status` 로 .guild 대량 diff 확인, 오염 시 1+1 diff 검증 후 `git restore` + `reindex` |
 | checkout 이 미커밋 .guild 와 충돌해 Abort → 그대로 커밋하면 develop 직접 커밋 사고 | checkout 후 **반드시 `git branch --show-current` 확인** |
 | 댓글 작성자 누락 | 항상 `--author claude` (소문자) |
+| `cargo fmt`(인자 무시하고 **워크스페이스 전체** 포맷) → repo 가 fmt-clean 이 아니라 50파일 노이즈 diff (2회 실사고) | 단일 파일은 `rustfmt --edition 2024 <파일>` 만 사용, `cargo fmt` 금지 |
 | 파괴적 restore | `restore --at` 은 journal truncate(비가역) — 스크래치 길드에서만 실험 |
 
 ## 자주 쓰는 패턴
