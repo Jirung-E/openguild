@@ -6518,7 +6518,10 @@ mod tests {
             while digits < bytes.len() && bytes[digits].is_ascii_digit() {
                 digits += 1;
             }
-            if prefix_len >= 2 && digits > after {
+            // prefix 1자도 잡음 — 캠페인 slug(C-001) leak 도 가드 대상 (admin 지적).
+            // 길드 규칙 slug(소문자 단어)는 일반 텍스트와 형식이 같아 패턴으로
+            // 원리적으로 구분 불가 — 리뷰로 커버 (한계 명시).
+            if prefix_len >= 1 && digits > after {
                 let candidate = &s[prefix_start..digits];
                 // 기술 용어 오탐 skip — 더 긴 용어(ISO-8601 등)의 부분 매칭도
                 // 흡수하도록 allowlist 항목이 candidate 를 포함하는지로 검사.
@@ -6538,9 +6541,9 @@ mod tests {
         assert!(find_quest_id("BUG-44 trailing").is_some());
         assert!(find_quest_id("REQ-7").is_some());
         assert!(find_quest_id("no quest id here").is_none());
-        assert!(find_quest_id("D-1").is_none()); // prefix 너무 짧음.
+        assert_eq!(find_quest_id("캠페인 C-001 참고"), Some("C-001")); // 캠페인도 가드.
         assert!(find_quest_id("DEV-").is_none()); // 숫자 없음.
-        assert!(find_quest_id("dev-001").is_none()); // 소문자.
+        assert!(find_quest_id("dev-001").is_none()); // 소문자 (규칙 slug 는 패턴 구분 불가 — 한계).
         // 기술 용어 allowlist — 오탐 아님.
         assert!(find_quest_id("본문을 UTF-8 파일에서 읽기").is_none());
         assert!(find_quest_id("ISO-8601 UTC").is_none());
