@@ -243,8 +243,9 @@ openguild restore --to <TIMESTAMP>     # 지정 snapshot 으로 복원 (journal 
 openguild restore --at <ISO8601-UTC>   # 시점 복원(DEV-022) — 최신 snapshot 복원 후
                                        # journal(AOF) 을 그 시각까지 재적용, 이후 journal truncate.
                                        # `--to` 와 상호배타. 내용 op(댓글/메모 본문)·type 변경·
-                                       # 첨부가 낀 구간은 거부(fail-loud). "최신 상태로 복구" 는
-                                       # 먼 미래 시각 지정(예 9999-12-31T23:59:59Z).
+                                       # 첨부가 낀 구간은 거부(fail-loud).
+openguild restore --at latest          # 최신 상태로 복구(DEV-210) — journal 전체 재적용.
+                                       # 손상 복구의 정식 진입점.
 ```
 
 자동 백업: 매 mutation 이후 정책 검토 (ops 50회 OR 24시간 경과 시 자동 snapshot).

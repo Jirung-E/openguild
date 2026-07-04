@@ -102,8 +102,9 @@ enum Command {
         #[arg(long)]
         to: Option<String>,
         /// 시점 복원 — 최신 snapshot 복원 후 journal(AOF) 을 이 시각(ISO8601
-        /// UTC, 예 `2026-06-27T00:15:00Z`, 포함)까지 재적용. 내용 op(댓글/메모
-        /// 본문)·type 변경·첨부가 낀 구간은 안전을 위해 거부됨.
+        /// UTC, 예 `2026-06-27T00:15:00Z`, 포함)까지 재적용. `latest` 키워드 =
+        /// journal 전체 재적용(최신 상태로 복구). 내용 op(댓글/메모 본문)·type
+        /// 변경·첨부가 낀 구간은 안전을 위해 거부됨.
         #[arg(long, conflicts_with = "to")]
         at: Option<String>,
     },
@@ -1190,6 +1191,17 @@ struct LocalBackend {
     rt: tokio::runtime::Runtime,
     /// 호스트 길드 경로 (info 출력용)
     guild_path: std::path::PathBuf,
+}
+
+/// DEV-210: `restore --at` 키워드 해석 — `latest`(대소문자 무시) 는 journal
+/// 전체 재적용(= 최신 상태 복구)을 뜻하는 먼 미래 시각으로 치환. 그 외는
+/// ISO 문자열 그대로(파싱/검증은 core 의 replay 가 담당).
+fn resolve_at_keyword(at: &str) -> String {
+    if at.eq_ignore_ascii_case("latest") {
+        "9999-12-31T23:59:59Z".to_string()
+    } else {
+        at.to_string()
+    }
 }
 
 /// DEV-221: 전역 댓글 검색 결과 한 건 (quest/campaign 통합).
@@ -4198,16 +4210,29 @@ fn run() -> Result<()> {
         Command::Restore { to, at } => {
             if let Some(ts) = at {
                 // DEV-022: 시점 복원 (journal replay).
+                // DEV-210: `latest` 키워드 = 최신 스냅샷 + journal 전체 재적용
+                // (= 최신 상태로 복구). 먼 미래 ISO 를 직접 칠 필요 없음.
+                let is_latest = ts.eq_ignore_ascii_case("latest");
+                let ts = resolve_at_keyword(&ts);
                 let report = c.restore_to_point(&ts)?;
                 if cli.json {
                     println!(
                         "{}",
                         serde_json::json!({
                             "ok": true,
+                            "latest": is_latest,
                             "replayed_to": report.target_ts,
                             "applied": report.applied,
                         })
                     );
+                } else if is_latest {
+                    // 최신 복구 = 무손실(상태 동일) — 폐기 경고 없음.
+                    println!(
+                        "✓ 최신 상태로 복구: 최신 스냅샷 + journal op {} 개 재적용",
+                        report.applied
+                    );
+                    println!();
+                    println!("참고: 파일 시스템 표시가 안 맞으면 `openguild reindex`.");
                 } else {
                     println!(
                         "✓ 시점 복원 완료: {} 까지 journal op {} 개 재적용",
@@ -5709,6 +5734,20 @@ mod tests {
         assert!(desc.is_none());
         assert_eq!(u, 3);
         assert!(tags.is_empty());
+    }
+
+    /// DEV-210: `--at latest` 키워드 해석 — 대소문자 무시, 일반 ISO 는 passthrough.
+    #[test]
+    fn resolve_at_keyword_latest_and_passthrough() {
+        assert_eq!(resolve_at_keyword("latest"), "9999-12-31T23:59:59Z");
+        assert_eq!(resolve_at_keyword("LATEST"), "9999-12-31T23:59:59Z");
+        assert_eq!(resolve_at_keyword("Latest"), "9999-12-31T23:59:59Z");
+        assert_eq!(
+            resolve_at_keyword("2026-06-27T00:15:00Z"),
+            "2026-06-27T00:15:00Z"
+        );
+        // 오타류는 그대로 통과 — core replay 의 ts 파싱이 거부한다.
+        assert_eq!(resolve_at_keyword("lastest"), "lastest");
     }
 
     /// 댓글 list 필터 — 5개 flag 파싱 + --top-only / --reply-to 상호배타.
