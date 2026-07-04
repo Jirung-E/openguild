@@ -428,6 +428,23 @@
 		return { roots, childrenByRoot, level1ByRoot, level2ByParent, rootIdOf, byId, orphans };
 	});
 
+	// DEV-213: 토론 댓글만 모아보기 (quest 전용 — discussion 은 quest 한정 기능).
+	// 스레드 문맥 보존: root 카드는 "스레드 안에 토론이 하나라도 있으면" 표시하고,
+	// 스레드 내부의 비토론 entry 는 숨기지 않고 dim 처리(대화 흐름 유지).
+	let discussionOnly = $state(false);
+	let discussionCount = $derived(entries.filter((e) => e.discussion).length);
+	let unresolvedCount = $derived(entries.filter((e) => e.discussion && !e.resolved).length);
+	// 토론을 포함한 스레드의 root id 집합.
+	let discussionRoots = $derived.by(() => {
+		const set = new Set<number>();
+		for (const e of entries) {
+			if (!e.discussion) continue;
+			const r = e.parent_id == null ? e.id : groups.rootIdOf.get(e.id);
+			if (r != null) set.add(r);
+		}
+		return set;
+	});
+
 	// DEV-200: 답글 대상이 답글이어도 폼은 그 스레드(root 카드) 하단에 표시.
 	let replyFormRoot = $derived(
 		replyingTo == null ? null : (groups.rootIdOf.get(replyingTo) ?? null)
@@ -558,7 +575,13 @@
 
 {#snippet entryView(e: CommentEntry, isReply: boolean)}
 	<!-- DEV-139: li → div — root + 답글을 하나의 카드 (entry-card) 로 감싸기 위해. -->
-	<div class="entry" class:reply={isReply} id={`comment-${e.id}`}>
+	<!-- DEV-213: 토론만 보기 모드에서 비토론 entry 는 숨기지 않고 dim (문맥 유지). -->
+	<div
+		class="entry"
+		class:reply={isReply}
+		class:dimmed={discussionOnly && !e.discussion}
+		id={`comment-${e.id}`}
+	>
 		<div class="entry-head">
 			<!-- DEV-128 → DEV-139: 댓글 번호 — 클릭 시 본문 접기/펼치기 ('내용' 버튼 대체). -->
 			<button
@@ -714,6 +737,21 @@
 			<h2 class="section-title">댓글 (Comments)</h2>
 		</button>
 		<span class="count">{entries.length}</span>
+		<!-- DEV-213: 토론만 모아보기 — quest 전용, 토론 댓글이 있을 때만 노출. -->
+		{#if scope === 'quest' && !collapsed && discussionCount > 0}
+			<button
+				class="disc-filter-btn"
+				class:on={discussionOnly}
+				onclick={() => (discussionOnly = !discussionOnly)}
+				aria-pressed={discussionOnly}
+				title={discussionOnly
+					? '전체 댓글 보기'
+					: '토론 댓글이 있는 스레드만 보기 (비토론 댓글은 흐리게)'}
+			>
+				💬 토론만 {discussionCount}{#if unresolvedCount > 0}&nbsp;(미해결
+					{unresolvedCount}){/if}
+			</button>
+		{/if}
 		<!-- DEV-190: 전체 접기/펼치기 — 모든 댓글 답글+본문 일괄. 섹션 토글과 별개. -->
 		{#if !collapsed && entries.length > 0}
 			<button
@@ -737,75 +775,77 @@
 			{:else}
 				<ul class="entry-list">
 					{#each groups.roots as root (root.id)}
-						{@const childCount = (groups.childrenByRoot.get(root.id) ?? []).length}
-						{@const isCollapsed = collapsedRoots.has(root.id)}
-						<!-- DEV-139: root + 답글을 하나의 카드로 — 댓글 간 시각 구분. -->
-						<li class="entry-card">
-							{@render entryView(root, false)}
-							{#if (childCount > 0 && !isCollapsed) || replyFormRoot === root.id}
-								<div class="thread">
-									<div class="reply-list">
-										{#if !isCollapsed}
-											<!-- DEV-200: 2단 트리 — level-1 답글 + 그 밑에 level-2 (더 깊은
+						{#if !discussionOnly || discussionRoots.has(root.id)}
+							{@const childCount = (groups.childrenByRoot.get(root.id) ?? []).length}
+							{@const isCollapsed = !discussionOnly && collapsedRoots.has(root.id)}
+							<!-- DEV-139: root + 답글을 하나의 카드로 — 댓글 간 시각 구분. -->
+							<li class="entry-card">
+								{@render entryView(root, false)}
+								{#if (childCount > 0 && !isCollapsed) || replyFormRoot === root.id}
+									<div class="thread">
+										<div class="reply-list">
+											{#if !isCollapsed}
+												<!-- DEV-200: 2단 트리 — level-1 답글 + 그 밑에 level-2 (더 깊은
 											     체인은 level-2 에 flatten, ↩ #id 가 실제 대상 표시). -->
-											{#each groups.level1ByRoot.get(root.id) ?? [] as r (r.id)}
-												{@render entryView(r, true)}
-												{@const l2 = groups.level2ByParent.get(r.id) ?? []}
-												{#if l2.length > 0}
-													<div class="reply-list l2">
-														{#each l2 as c (c.id)}
-															{@render entryView(c, true)}
-														{/each}
+												{#each groups.level1ByRoot.get(root.id) ?? [] as r (r.id)}
+													{@render entryView(r, true)}
+													{@const l2 = groups.level2ByParent.get(r.id) ?? []}
+													{#if l2.length > 0}
+														<div class="reply-list l2">
+															{#each l2 as c (c.id)}
+																{@render entryView(c, true)}
+															{/each}
+														</div>
+													{/if}
+												{/each}
+											{/if}
+											{#if replyFormRoot === root.id}
+												<div class="reply-form">
+													<div class="reply-author">
+														<input
+															class="author-input"
+															type="text"
+															placeholder="작성자 (옵션)"
+															bind:value={replyAuthor}
+															disabled={replySaving}
+														/>
 													</div>
-												{/if}
-											{/each}
-										{/if}
-										{#if replyFormRoot === root.id}
-											<div class="reply-form">
-												<div class="reply-author">
-													<input
-														class="author-input"
-														type="text"
-														placeholder="작성자 (옵션)"
-														bind:value={replyAuthor}
+													<textarea
+														use:tabInsert
+														use:textareaAttach={{
+															onError: (m) => (replyError = `첨부 실패: ${m}`),
+															mediaOnly: true
+														}}
+														class="body-input"
+														bind:value={replyBody}
+														oninput={onWikiInput}
+														onkeyup={onWikiInput}
+														onclick={onWikiInput}
+														onkeydowncapture={onWikiKeydown}
+														rows="3"
+														placeholder={`↩ #${replyTarget?.id ?? root.id} ${replyTarget?.author || ''} 에 답글…`}
 														disabled={replySaving}
-													/>
+													></textarea>
+													{#if replyError}<p class="state err">{replyError}</p>{/if}
+													<div class="actions">
+														<button
+															class="btn-save"
+															onclick={() => submitReply(replyingTo ?? root.id)}
+															disabled={replySaving || !replyBody.trim()}
+														>
+															{replySaving ? '저장…' : '답글 추가'}
+														</button>
+														<button class="btn-cancel" onclick={cancelReply} disabled={replySaving}>
+															취소
+														</button>
+													</div>
 												</div>
-												<textarea
-													use:tabInsert
-													use:textareaAttach={{
-														onError: (m) => (replyError = `첨부 실패: ${m}`),
-														mediaOnly: true
-													}}
-													class="body-input"
-													bind:value={replyBody}
-													oninput={onWikiInput}
-													onkeyup={onWikiInput}
-													onclick={onWikiInput}
-													onkeydowncapture={onWikiKeydown}
-													rows="3"
-													placeholder={`↩ #${replyTarget?.id ?? root.id} ${replyTarget?.author || ''} 에 답글…`}
-													disabled={replySaving}
-												></textarea>
-												{#if replyError}<p class="state err">{replyError}</p>{/if}
-												<div class="actions">
-													<button
-														class="btn-save"
-														onclick={() => submitReply(replyingTo ?? root.id)}
-														disabled={replySaving || !replyBody.trim()}
-													>
-														{replySaving ? '저장…' : '답글 추가'}
-													</button>
-													<button class="btn-cancel" onclick={cancelReply} disabled={replySaving}>
-														취소
-													</button>
-												</div>
-											</div>
-										{/if}
+											{/if}
+										</div>
 									</div>
-								</div>
-							{/if}
-						</li>
+								{/if}
+							</li>
+						{/if}
 					{/each}
 					{#if groups.orphans.length > 0}
 						<li class="entry-card orphan-card">
@@ -944,6 +984,34 @@
 	}
 
 	/* DEV-190: 전체 접기/펼치기 버튼 — 우측 정렬. */
+	/* DEV-213: 토론만 모아보기 토글. */
+	.disc-filter-btn {
+		margin-left: auto;
+		padding: 0.15rem 0.6rem;
+		border: 1px solid var(--border);
+		border-radius: 4px;
+		background: transparent;
+		color: var(--text-muted);
+		font-size: 0.72rem;
+		cursor: pointer;
+	}
+	.disc-filter-btn:hover {
+		color: var(--text);
+		border-color: var(--accent);
+	}
+	.disc-filter-btn.on {
+		color: var(--accent);
+		border-color: var(--accent);
+	}
+	/* 필터 버튼이 있으면 전체접기 버튼은 그 옆 (auto margin 은 필터 쪽). */
+	.disc-filter-btn + .collapse-all-btn {
+		margin-left: 0.4rem;
+	}
+	/* DEV-213: 토론만 보기에서 비토론 entry dim — 숨김 대신 문맥 유지. */
+	.entry.dimmed {
+		opacity: 0.45;
+	}
+
 	.collapse-all-btn {
 		margin-left: auto;
 		padding: 0.15rem 0.6rem;
