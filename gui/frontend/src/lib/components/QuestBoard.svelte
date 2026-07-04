@@ -1636,6 +1636,53 @@
 		syncExpandedPos();
 	}
 
+	// DEV-208: 터치스크린 핀치-투-줌. 계측으로 WebView2 가 touch 이벤트를 JS 로
+	// 전달함을 확인(touches=2 도달) — 네이티브 변경 없이 커스텀 핸들러로 구현.
+	// cytoscape 는 userZoomingEnabled=false(BUG-090)라 자체 핀치 줌이 없고,
+	// 두 손가락 동안 cytoscape 의 한 손가락 pan 과 싸우지 않도록 pinch 중엔
+	// userPanningEnabled 를 잠시 끈다. 한 손가락 pan/탭/노드 드래그는 cytoscape
+	// 기본 터치 처리 그대로.
+	let pinch: { lastDist: number; lastMidX: number; lastMidY: number } | null = null;
+	function touchDistMid(e: TouchEvent): { dist: number; midX: number; midY: number } {
+		const a = e.touches[0];
+		const b = e.touches[1];
+		return {
+			dist: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY),
+			midX: (a.clientX + b.clientX) / 2,
+			midY: (a.clientY + b.clientY) / 2
+		};
+	}
+	function onBoardTouchStart(e: TouchEvent) {
+		if (!cy || e.touches.length !== 2) return;
+		e.preventDefault(); // 브라우저/WebView2 의 네이티브 제스처 차단.
+		const { dist, midX, midY } = touchDistMid(e);
+		pinch = { lastDist: dist, lastMidX: midX, lastMidY: midY };
+		cy.userPanningEnabled(false);
+	}
+	function onBoardTouchMove(e: TouchEvent) {
+		if (!cy || !pinch || e.touches.length !== 2) return;
+		e.preventDefault();
+		const { dist, midX, midY } = touchDistMid(e);
+		if (pinch.lastDist > 0 && dist > 0) {
+			const rect = container.getBoundingClientRect();
+			// 두 손가락 거리비 = 줌 배율, 중점 기준 줌.
+			cy.zoom({
+				level: cy.zoom() * (dist / pinch.lastDist),
+				renderedPosition: { x: midX - rect.left, y: midY - rect.top }
+			});
+			// 중점 이동분 = pan (핀치하며 끌기).
+			cy.panBy({ x: midX - pinch.lastMidX, y: midY - pinch.lastMidY });
+		}
+		pinch = { lastDist: dist, lastMidX: midX, lastMidY: midY };
+	}
+	function onBoardTouchEnd(e: TouchEvent) {
+		if (e.touches.length >= 2) return;
+		if (pinch) {
+			pinch = null;
+			cy?.userPanningEnabled(true);
+		}
+	}
+
 	// BUG-090(admin 후속): "마우스로 컨트롤시에는 이전과 같이 동작해야함" —
 	// 트랙패드 two-finger 스크롤은 pan, 그러나 일반 마우스의 plain wheel 은
 	// 예전처럼 줌이어야 한다는 피드백. 둘 다 ctrlKey=false 로 들어와 modifier 로는
@@ -2283,6 +2330,11 @@
 
 	onDestroy(() => {
 		container?.removeEventListener('wheel', onBoardWheel); // BUG-090
+		// DEV-208: 터치 핀치.
+		container?.removeEventListener('touchstart', onBoardTouchStart);
+		container?.removeEventListener('touchmove', onBoardTouchMove);
+		container?.removeEventListener('touchend', onBoardTouchEnd);
+		container?.removeEventListener('touchcancel', onBoardTouchEnd);
 		cy?.destroy();
 	});
 
@@ -2688,6 +2740,13 @@
 		// BUG-090: 트랙패드 pinch / Ctrl+wheel = 줌, 그 외 스크롤 = pan.
 		// passive:false — preventDefault 로 페이지 스크롤/브라우저 줌 차단.
 		container.addEventListener('wheel', onBoardWheel, { passive: false });
+
+		// DEV-208: 터치스크린 핀치 = 줌. passive:false — 두 손가락 제스처의
+		// 네이티브(Page Scale) 줌/스크롤을 preventDefault 로 차단.
+		container.addEventListener('touchstart', onBoardTouchStart, { passive: false });
+		container.addEventListener('touchmove', onBoardTouchMove, { passive: false });
+		container.addEventListener('touchend', onBoardTouchEnd);
+		container.addEventListener('touchcancel', onBoardTouchEnd);
 
 		// ── 드래그 이벤트 (다중선택 배치 처리) ─────────────────────
 
@@ -3307,6 +3366,9 @@
 		inset: 0;
 		z-index: 1;
 		background: transparent;
+		/* DEV-208: 브라우저/WebView2 네이티브 터치 제스처(Page Scale 줌·스크롤)
+		   차단 — 터치는 전부 커스텀 핸들러/cytoscape 가 처리. */
+		touch-action: none;
 	}
 	.lane-hdrs {
 		position: absolute;
