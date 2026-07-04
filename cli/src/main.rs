@@ -6485,6 +6485,55 @@ mod tests {
         );
     }
 
+    /// admin 지적(2026-07-05): 규칙 slug 는 일반 단어와 형식이 같아
+    /// `<PREFIX>-<숫자>` 패턴으로는 못 잡는다 — 대신 **이 repo 의 실제
+    /// `.guild/rules/*.md` slug 목록**을 읽어 help 에 등장하는지 직접 검사.
+    /// (개발 repo 밖에서 실행되면 rules 디렉토리가 없어 자연 skip.)
+    #[test]
+    fn help_output_has_no_rule_slug_leaks() {
+        use clap::CommandFactory;
+        let rules_dir =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../.guild/rules");
+        let Ok(rd) = std::fs::read_dir(&rules_dir) else {
+            return; // dogfood 길드 없음 — skip.
+        };
+        let slugs: Vec<String> = rd
+            .filter_map(|e| e.ok())
+            .filter_map(|e| {
+                let name = e.file_name().to_string_lossy().to_string();
+                name.strip_suffix(".md").map(str::to_string)
+            })
+            .collect();
+
+        let cmd = Cli::command();
+        let mut violations: Vec<String> = Vec::new();
+        check_rule_slugs_recursive(&cmd, cmd.get_name(), &slugs, &mut violations);
+        assert!(
+            violations.is_empty(),
+            "규칙 slug 가 help 출력에 leak:\n{}",
+            violations.join("\n")
+        );
+    }
+
+    fn check_rule_slugs_recursive(
+        cmd: &clap::Command,
+        path: &str,
+        slugs: &[String],
+        violations: &mut Vec<String>,
+    ) {
+        let mut owned = cmd.clone();
+        let help = owned.render_long_help().to_string().to_lowercase();
+        for slug in slugs {
+            if help.contains(&slug.to_lowercase()) {
+                violations.push(format!("[{path}] '{slug}' in help"));
+            }
+        }
+        for sub in cmd.get_subcommands() {
+            let sub_path = format!("{path} {}", sub.get_name());
+            check_rule_slugs_recursive(sub, &sub_path, slugs, violations);
+        }
+    }
+
     fn check_help_recursive(
         cmd: &clap::Command,
         path: &str,
@@ -6531,7 +6580,7 @@ mod tests {
             }
             // prefix 1자도 잡음 — 캠페인 slug(C-001) leak 도 가드 대상 (admin 지적).
             // 길드 규칙 slug(소문자 단어)는 일반 텍스트와 형식이 같아 패턴으로
-            // 원리적으로 구분 불가 — 리뷰로 커버 (한계 명시).
+            // 원리적으로 구분 불가 — help_output_has_no_rule_slug_leaks 가 실제 slug 목록으로 커버.
             if prefix_len >= 1 && digits > after {
                 let candidate = &s[prefix_start..digits];
                 // 기술 용어 오탐 skip — 더 긴 용어(ISO-8601 등)의 부분 매칭도
@@ -6554,7 +6603,7 @@ mod tests {
         assert!(find_quest_id("no quest id here").is_none());
         assert_eq!(find_quest_id("캠페인 C-001 참고"), Some("C-001")); // 캠페인도 가드.
         assert!(find_quest_id("DEV-").is_none()); // 숫자 없음.
-        assert!(find_quest_id("dev-001").is_none()); // 소문자 (규칙 slug 는 패턴 구분 불가 — 한계).
+        assert!(find_quest_id("dev-001").is_none()); // 소문자 (규칙 slug 는 별도 테스트가 실제 목록으로 검사).
         // 기술 용어 allowlist — 오탐 아님.
         assert!(find_quest_id("본문을 UTF-8 파일에서 읽기").is_none());
         assert!(find_quest_id("ISO-8601 UTC").is_none());
