@@ -8,10 +8,10 @@
  */
 import type { IndexedRef } from '$lib/stores/questIndex';
 
-/** 커서 직전 ID 토큰 — 앞이 `[`/단어/하이픈이 아니어야(이미 위키링크면 제외). */
-const BEFORE_CURSOR = /(^|[^[\w-])([A-Za-z]{2,}-\d+)$/;
 /** DEV-173: `[[` 바로 안(아직 안 닫힘)의 부분 slug — 규칙 포함 전체 인덱스 제안.
- *  규칙 slug 는 한글 등 비ASCII 가능 — 공백/대괄호 제외 모든 문자 허용. */
+ *  규칙 slug 는 한글 등 비ASCII 가능 — 공백/대괄호 제외 모든 문자 허용.
+ *  DEV-220(사용자 결정): bare 토큰(XXX-NNN 그냥 타이핑) 트리거는 제거 —
+ *  자동완성은 `[[` 컨텍스트에서만. */
 const BEFORE_CURSOR_WIKI = /\[\[([^[\]\s]*)$/;
 
 export interface WikiItem {
@@ -64,28 +64,7 @@ export function wikiMatch(
 		return { from: caret - partial.length - 2, to: caret, items, wikiContext: true };
 	}
 
-	const m = BEFORE_CURSOR.exec(before);
-	if (!m) return null;
-	const token = m[2];
-	const upper = token.toUpperCase();
-
-	// DEV-171: 맨 위는 항상 '현재 입력값'(그대로 링크), 그 아래로 prefix 매칭 실재 ID.
-	const selfRef = index.get(upper);
-	const items: WikiItem[] = [
-		{ id: upper, title: selfRef?.title ?? null, kind: selfRef?.kind ?? null, exists: !!selfRef }
-	];
-	const matches: WikiItem[] = [];
-	for (const [id, ref] of index) {
-		// DEV-173: bare 토큰 제안은 quest/campaign 만 — 규칙 slug 는 일반 단어와
-		// 구분이 안 돼 `[[ 컨텍스트 전용.
-		if (ref.kind === 'rule') continue;
-		if (id !== upper && id.startsWith(upper)) {
-			matches.push({ id, title: ref.title, kind: ref.kind, exists: true });
-		}
-	}
-	matches.sort((a, b) => a.id.localeCompare(b.id));
-	items.push(...matches);
-	return { from: caret - token.length, to: caret, items };
+	return null;
 }
 
 /** textarea 의 [from,to] 토큰을 `[[ID]]` 로 치환.

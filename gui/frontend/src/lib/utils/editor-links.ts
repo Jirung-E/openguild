@@ -20,8 +20,6 @@ import type { Extension } from '@codemirror/state';
 import { questIndex, loadQuestIndex } from '$lib/stores/questIndex';
 import { get } from 'svelte/store';
 
-/** 커서 직전의 ID 토큰 (앞이 `[` 가 아니어야 — 위키링크 안은 제외). */
-const BEFORE_CURSOR = /(^|[^[\w-])([A-Za-z]{2,}-\d+)$/;
 /** DEV-173: `[[` 바로 안(아직 안 닫힘)의 부분 slug — 규칙 포함 전체 인덱스 제안.
  *  규칙 slug 는 한글 등 비ASCII 가능 — 공백/대괄호 제외 모든 문자 허용. */
 const BEFORE_CURSOR_WIKI = /\[\[([^[\]\s]*)$/;
@@ -63,67 +61,10 @@ function wikiContextCompletion(context: CompletionContext): CompletionResult | n
 	return { from: context.pos - partial.length, to: context.pos, options };
 }
 
+// DEV-220(사용자 결정): bare 토큰(XXX-NNN 그냥 타이핑) 자동완성 트리거 제거 —
+// 일반 문자열 입력 중 팝업이 뜨는 게 불편. 자동완성은 `[[` 컨텍스트에서만.
 function questIdCompletion(context: CompletionContext): CompletionResult | null {
-	// DEV-173: `[[` 안이면 위키 컨텍스트(규칙 포함)가 담당.
-	const wiki = wikiContextCompletion(context);
-	if (wiki) return wiki;
-	// 커서 앞 텍스트에서 ID 토큰 추출.
-	const line = context.state.doc.lineAt(context.pos);
-	const before = context.state.sliceDoc(line.from, context.pos);
-	const m = BEFORE_CURSOR.exec(before);
-	if (!m) return null;
-
-	const token = m[2];
-	const from = context.pos - token.length;
-	// 명시적 호출(Ctrl-Space)이 아니면, 토큰이 충분히 길 때만 (XXX-N 이상).
-	if (!context.explicit && token.length < 3) return null;
-
-	const upper = token.toUpperCase();
-	const index = get(questIndex);
-
-	// DEV-140 #7(2) / DEV-171 후속: 맨 위는 항상 '현재 입력값'(그대로 링크),
-	// 그 아래로 prefix 매칭 실재 ID. label 을 실재 id 로 두어야 CM 필터가 타이핑한
-	// bare 토큰과 정상 매칭 (#1: label 이 `[[..]]` 라 매칭 실패 → validFor 충돌로
-	// 깜빡이던 버그 수정).
-	const selfRef = index.get(upper);
-	const options: Completion[] = [
-		{
-			label: upper,
-			displayLabel: `🔗 ${upper}${selfRef ? '' : ' (미존재)'}`,
-			detail: selfRef
-				? `${KIND_LABEL[selfRef.kind]} · ${selfRef.title}`
-				: '링크 생성 — 렌더 시 빨강',
-			apply: `[[${upper}]]`,
-			type: 'reference',
-			// 현재 입력값을 항상 맨 위로.
-			boost: 99
-		}
-	];
-	const matches: Completion[] = [];
-	for (const [id, ref] of index) {
-		// DEV-173: bare 토큰 제안은 quest/campaign 만 — 규칙은 `[[ 컨텍스트 전용.
-		if (ref.kind === 'rule') continue;
-		if (id !== upper && id.startsWith(upper)) {
-			matches.push({
-				label: id,
-				displayLabel: `🔗 ${id}`,
-				detail: `${KIND_LABEL[ref.kind]} · ${ref.title}`,
-				apply: `[[${id}]]`,
-				type: 'reference'
-			});
-		}
-	}
-	matches.sort((a, b) => a.label.localeCompare(b.label));
-	options.push(...matches);
-
-	// DEV-140 #9: validFor 를 두지 않는다 — 두면 CM 이 최초 쿼리에서 slice 된 상위
-	// N개만 재필터해, 더 좁혀도(예: DEV-1xx 후반) 안 뜨던 문제. 키마다 소스를 재실행해
-	// 현재 prefix 의 최신 매칭을 다시 계산(댓글과 동일 동작).
-	return {
-		from,
-		to: context.pos,
-		options
-	};
+	return wikiContextCompletion(context);
 }
 
 /**

@@ -10,12 +10,10 @@ describe('wikiMatch', () => {
 		['RELEASE-PROCESS', { title: '릴리즈 패키지 절차', kind: 'rule', slug: 'release-process' }]
 	]);
 
-	it('bare 토큰은 quest/campaign 만 제안 (규칙 제외)', () => {
+	// DEV-220: bare 토큰(대괄호 없음)은 더 이상 자동완성 트리거가 아님.
+	it('bare 토큰은 제안하지 않음 (DEV-220 — [[ 컨텍스트 전용)', () => {
 		const v = '관련: DEV-0';
-		const m = wikiMatch(v, v.length, index);
-		expect(m).not.toBeNull();
-		expect(m!.items.some((i) => i.kind === 'rule')).toBe(false);
-		expect(m!.items.some((i) => i.id === 'DEV-033')).toBe(true);
+		expect(wikiMatch(v, v.length, index)).toBeNull();
 	});
 
 	it('[[ 컨텍스트는 규칙 slug 도 제안하고 치환 범위가 [[ 를 포함', () => {

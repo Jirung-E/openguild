@@ -119,24 +119,17 @@
 		});
 	});
 
-	// DEV-140: `[[DEV-033]]` / `[[C-001]]` → 내부 링크. 미존재 ID 는 빨강.
+	// DEV-140: `[[DEV-033]]` / `[[C-001]]` / `[[규칙slug]]` → 내부 링크.
+	// 실재=파랑 / 미존재=빨강.
 	//
 	// marked 는 `[[...]]` 를 링크로 해석하지 않아 본문에 리터럴 텍스트로 남음.
 	// 렌더 후 텍스트 노드만 훑어 토큰을 anchor 로 치환 (code/pre/기존 a 안은 제외).
-	// DEV-140 후속: 두 형태를 모두 인식.
-	//  1) `[[DEV-033]]` (명시 위키링크) — 실재=파랑 / 미존재=빨강.
-	//     DEV-173: 규칙 slug (`[[release-process]]` — XXX-NNN 형식이 아닌 slug) 도
-	//     명시 위키링크로만 인식해 규칙 페이지로 링크 (+미존재 빨강).
-	//  2) bare `DEV-033` (대괄호 없이) — **실재하는 ID 만** 링크(파랑). 미존재
-	//     bare 는 일반 텍스트로 둔다(오탐 방지). 앞뒤가 단어문자/하이픈이면 제외
-	//     (`MYDEV-1` / `DEV-1a` 등 단어 일부 안 잡음). 규칙 slug 는 일반 단어와
-	//     구분 불가라 bare 인식 대상이 아님 (quest/campaign 만 — DEV-173).
-	// DEV-173 후속(admin 보고 "이미 있는 이름인데 연결 안 됨"): 규칙 slug 는
-	// 한글 등 비ASCII 가능 — 대괄호 형태는 공백/대괄호 제외 모든 문자 허용.
-	// bare 는 기존대로 ASCII 추적번호(XXX-NNN)만.
-	const CROSS_LINK_RE = /\[\[([^[\]\s]{1,64})\]\]|(?<![\w-])([A-Za-z]{1,}-\d+)(?![\w-])/g;
+	// DEV-220(사용자 결정): **명시 `[[..]]` 만 인식** — bare `DEV-033`(대괄호 없음)
+	// 자동 링크는 제거(의도치 않은 링크화가 불편). slug 는 한글 등 비ASCII 허용
+	// (공백/대괄호 제외 — DEV-173).
+	const CROSS_LINK_RE = /\[\[([^[\]\s]{1,64})\]\]/g;
 	// 별도 non-global tester — /g 의 lastIndex 부작용 없이 acceptNode 에서 검사.
-	const CROSS_LINK_TEST = /\[\[[^[\]\s]{1,64}\]\]|(?<![\w-])[A-Za-z]{1,}-\d+(?![\w-])/;
+	const CROSS_LINK_TEST = /\[\[[^[\]\s]{1,64}\]\]/;
 	// quest/campaign 추적번호 형식 (XXX-NNN). 이 형식이 아니면 규칙 slug 로 본다.
 	const ID_TOKEN_RE = /^[A-Za-z]{1,}-\d+$/;
 	function guessKind(id: string): 'quest' | 'campaign' | 'rule' {
@@ -172,14 +165,9 @@
 			let m: RegExpExecArray | null;
 			while ((m = CROSS_LINK_RE.exec(text))) {
 				const whole = m[0];
-				const bracketed = m[1]; // [[ID]] 안
-				const bare = m[2]; // 대괄호 없는 ID
-				const rawId = bracketed ?? bare;
+				const rawId = m[1]; // [[ID]] 안
 				const id = rawId.toUpperCase();
 				const ref = lookupRef(id);
-				// bare 인데 실재하지 않으면 링크하지 않음 — 텍스트로 남긴다(오탐 방지).
-				// (다음 append 에서 text.slice 로 자동 포함되므로 last 갱신 안 함.)
-				if (!bracketed && !ref) continue;
 				if (m.index > last) {
 					frag.appendChild(document.createTextNode(text.slice(last, m.index)));
 				}
