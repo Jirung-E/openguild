@@ -333,7 +333,7 @@ enum QuestCmd {
         title: Option<String>,
         #[arg(long)]
         description: Option<String>,
-        /// DEV-222: 본문을 UTF-8 파일에서 읽기 — 한글 인코딩/따옴표 이스케이프/
+        /// 본문을 UTF-8 파일에서 읽기 — 한글 인코딩/따옴표 이스케이프/
         /// `--` 로 시작하는 본문의 플래그 오인 회피 (comment add --file 관례).
         #[arg(long = "description-file", conflicts_with = "description")]
         description_file: Option<std::path::PathBuf>,
@@ -354,7 +354,7 @@ enum QuestCmd {
         title: Option<String>,
         #[arg(long)]
         description: Option<String>,
-        /// DEV-222: 본문을 UTF-8 파일에서 읽기 (--description 과 상호배타).
+        /// 본문을 UTF-8 파일에서 읽기 (--description 과 상호배타).
         #[arg(long = "description-file", conflicts_with = "description")]
         description_file: Option<std::path::PathBuf>,
         #[arg(long)]
@@ -537,10 +537,10 @@ enum CommentCmd {
         /// body 부분 일치 (대소문자 무시).
         #[arg(long)]
         grep: Option<String>,
-        /// 최신순 출력 (기본은 오래된 순 = 대화 흐름) — DEV-221.
+        /// 최신순 출력 (기본은 오래된 순 = 대화 흐름).
         #[arg(long)]
         reverse: bool,
-        /// 최대 N 개만 (필터/정렬 적용 후) — DEV-221.
+        /// 최대 N 개만 (필터/정렬 적용 후).
         #[arg(long)]
         limit: Option<usize>,
     },
@@ -579,7 +579,7 @@ enum CommentCmd {
         #[arg(long)]
         force: bool,
     },
-    /// 이모지 반응 토글 — 이미 눌렀으면 제거 (GUI 와 동일 시맨틱). DEV-199.
+    /// 이모지 반응 토글 — 이미 눌렀으면 제거 (GUI 와 동일 시맨틱).
     React {
         slug: String,
         id: u64,
@@ -725,7 +725,7 @@ enum RulesCmd {
         file: Option<std::path::PathBuf>,
     },
     /// 신규 규칙 생성 — 같은 slug 이미 있으면 에러. 본문은 `--file` / stdin.
-    /// `--empty` 시 본문 없이 빈 규칙 생성. (`new` 별칭 — 생성 관례 통일, DEV-209)
+    /// `--empty` 시 본문 없이 빈 규칙 생성. (`new` 별칭도 동작.)
     #[command(alias = "new")]
     Create {
         slug: String,
