@@ -10,6 +10,7 @@ pub mod auto;
 pub mod campaign;
 pub mod comments;
 pub mod fs;
+pub mod history;
 pub mod quest;
 pub mod rules;
 pub mod seed;

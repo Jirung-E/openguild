@@ -17,7 +17,7 @@
 use std::collections::HashMap;
 
 use crate::error::AppResult;
-use crate::repo::{auto, fs as repo_fs, CampaignFile, QuestFile, StatusFile, TypeFile};
+use crate::repo::{CampaignFile, QuestFile, StatusFile, TypeFile, auto, fs as repo_fs};
 use crate::store::Store;
 
 #[derive(Debug, Default, Clone)]
@@ -39,6 +39,10 @@ pub struct ReindexReport {
     /// DEV-069: attachment blob 백업 갱신 수 / blob 에서 복원된 파일 수.
     pub attachments_backed_up: usize,
     pub attachments_restored: usize,
+    /// DEV-180: `{slug}.history.jsonl` 사이드카에서 재구축된 history 이벤트 수
+    /// / 사이드카 없던 slug 의 DB 행을 파일로 export 한 수 (일회성 자가 치유).
+    pub history_loaded: usize,
+    pub history_exported: usize,
     /// 파싱 / 무결성 실패로 skip 된 파일 (경로 + 사유).
     pub skipped: Vec<(String, String)>,
 }
@@ -55,12 +59,19 @@ impl ReindexReport {
             format!("campaigns    : {}", self.campaigns_loaded),
             format!("comments     : {}", self.comments_loaded),
             format!("memos        : {}", self.memos_loaded),
+            format!(
+                "history      : {} 복원 / {} export (사이드카)",
+                self.history_loaded, self.history_exported
+            ),
             format!("tags         : {}", self.tags_loaded),
             format!(
                 "attachments  : {} backed up / {} restored",
                 self.attachments_backed_up, self.attachments_restored
             ),
-            format!("positions    : {} 복원 (board UI 상태)", self.positions_restored),
+            format!(
+                "positions    : {} 복원 (board UI 상태)",
+                self.positions_restored
+            ),
         ]
     }
 }
@@ -95,31 +106,59 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
         .execute(&mut *tx)
         .await?;
 
-    sqlx::query("DELETE FROM quest_dependencies").execute(&mut *tx).await?;
-    sqlx::query("DELETE FROM quest_positions").execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM quest_dependencies")
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("DELETE FROM quest_positions")
+        .execute(&mut *tx)
+        .await?;
     sqlx::query("DELETE FROM quests").execute(&mut *tx).await?;
-    sqlx::query("DELETE FROM quest_counters").execute(&mut *tx).await?;
-    sqlx::query("DELETE FROM quest_statuses").execute(&mut *tx).await?;
-    sqlx::query("DELETE FROM quest_types").execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM quest_counters")
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("DELETE FROM quest_statuses")
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("DELETE FROM quest_types")
+        .execute(&mut *tx)
+        .await?;
     // DEV-011: campaigns 관련 — 마이그레이션 0008 적용 후에만 존재.
     // 테이블이 아직 없는 환경 (구 DB) 대비 IF EXISTS 안 됨 → migration 으로
     // 보장된 후에만 reindex 실행되도록. 트랜잭션 안에서 안전.
-    sqlx::query("DELETE FROM campaign_quests").execute(&mut *tx).await?;
-    sqlx::query("DELETE FROM campaign_checklists").execute(&mut *tx).await?;
-    sqlx::query("DELETE FROM campaigns").execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM campaign_quests")
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("DELETE FROM campaign_checklists")
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("DELETE FROM campaigns")
+        .execute(&mut *tx)
+        .await?;
     sqlx::query("UPDATE campaign_counters SET last_number = 0 WHERE id = 1")
         .execute(&mut *tx)
         .await?;
     // DEV-102: 댓글 / 메모 캐시도 wipe — sibling 파일로부터 재구축.
-    sqlx::query("DELETE FROM quest_comments").execute(&mut *tx).await?;
-    sqlx::query("DELETE FROM quest_memos").execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM quest_comments")
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("DELETE FROM quest_memos")
+        .execute(&mut *tx)
+        .await?;
     // DEV-068: 태그 캐시도 wipe — frontmatter 의 tags 배열로부터 재구축.
-    sqlx::query("DELETE FROM quest_tags").execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM quest_tags")
+        .execute(&mut *tx)
+        .await?;
     // DEV-068 (tag defs): `.guild/tags/*.toml` 정의도 wipe + 재적재.
-    sqlx::query("DELETE FROM quest_tag_defs").execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM quest_tag_defs")
+        .execute(&mut *tx)
+        .await?;
     // DEV-134: 캠페인 댓글 / 메모 캐시도 wipe — sibling 파일로부터 재구축.
-    sqlx::query("DELETE FROM campaign_comments").execute(&mut *tx).await?;
-    sqlx::query("DELETE FROM campaign_memos").execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM campaign_comments")
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("DELETE FROM campaign_memos")
+        .execute(&mut *tx)
+        .await?;
 
     // 2. types — id 는 파일 정렬 순.
     let type_paths = repo_fs::list_with_extension(paths.types_dir(), "toml")
@@ -150,7 +189,9 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
                 report.types_loaded += 1;
             }
             Err(e) => {
-                report.skipped.push((path.display().to_string(), format!("{e:#}")));
+                report
+                    .skipped
+                    .push((path.display().to_string(), format!("{e:#}")));
             }
         }
     }
@@ -161,10 +202,7 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
     let mut slug_to_status_id: HashMap<String, i64> = HashMap::new();
     for (i, path) in status_paths.iter().enumerate() {
         let id = (i + 1) as i64;
-        let filename = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("");
+        let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
         let slug = StatusFile::slug_from_filename(filename).unwrap_or(filename);
         match StatusFile::read(path) {
             Ok(s) => {
@@ -178,8 +216,7 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
                 // (직관 일치 — '완료된 상태는 진행도 카운트'). file 에 명시 false 가
                 // 들어와 있으면 그대로 false (사용자 의도 보존 — 단 TOML default
                 // false 와 명시 false 를 구분 못해 best-effort).
-                let counts_as_done = s.counts_as_done
-                    || matches!(slug, "done" | "cancelled");
+                let counts_as_done = s.counts_as_done || matches!(slug, "done" | "cancelled");
                 sqlx::query(
                     "INSERT INTO quest_statuses (id, name_en, name_ko, color, sort_order, slug, counts_as_done)
                      VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -197,7 +234,9 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
                 report.statuses_loaded += 1;
             }
             Err(e) => {
-                report.skipped.push((path.display().to_string(), format!("{e:#}")));
+                report
+                    .skipped
+                    .push((path.display().to_string(), format!("{e:#}")));
             }
         }
     }
@@ -212,7 +251,9 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
         match QuestFile::read(path) {
             Ok(qf) => quest_files.push((path.clone(), qf)),
             Err(e) => {
-                report.skipped.push((path.display().to_string(), format!("{e:#}")));
+                report
+                    .skipped
+                    .push((path.display().to_string(), format!("{e:#}")));
             }
         }
     }
@@ -250,7 +291,9 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
         let number = match qf.number() {
             Ok(n) => n,
             Err(e) => {
-                report.skipped.push((path.display().to_string(), format!("{e:#}")));
+                report
+                    .skipped
+                    .push((path.display().to_string(), format!("{e:#}")));
                 continue;
             }
         };
@@ -271,10 +314,7 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
         // ISO 8601 UTC 로 normalize 한 뒤 db 에 기록. 새 format 은 그대로 통과.
         let created_at = crate::time::normalize_legacy_ts(&qf.frontmatter.created_at);
         let updated_at = crate::time::normalize_legacy_ts(&qf.frontmatter.updated_at);
-        let deleted_at: Option<String> = qf
-            .frontmatter
-            .deleted
-            .then(|| updated_at.clone());
+        let deleted_at: Option<String> = qf.frontmatter.deleted.then(|| updated_at.clone());
 
         // BUG-060 후속: urgency 범위 (1..=4) 밖이면 skipped 에 경고하되 **raw 값을
         // 그대로 적재**한다. 이전엔 4 로 clamp 했으나, (1) incremental sync
@@ -336,13 +376,11 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
             if normalized.is_empty() {
                 continue;
             }
-            sqlx::query(
-                "INSERT OR IGNORE INTO quest_tags (quest_id, tag) VALUES (?, ?)",
-            )
-            .bind(qid)
-            .bind(normalized)
-            .execute(&mut *tx)
-            .await?;
+            sqlx::query("INSERT OR IGNORE INTO quest_tags (quest_id, tag) VALUES (?, ?)")
+                .bind(qid)
+                .bind(normalized)
+                .execute(&mut *tx)
+                .await?;
             report.tags_loaded += 1;
         }
 
@@ -402,7 +440,9 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
                 .await?;
             }
             Err(e) => {
-                report.skipped.push((path.display().to_string(), format!("{e:#}")));
+                report
+                    .skipped
+                    .push((path.display().to_string(), format!("{e:#}")));
             }
         }
     }
@@ -426,7 +466,9 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
         let raw = match std::fs::read_to_string(path) {
             Ok(s) => s,
             Err(e) => {
-                report.skipped.push((path.display().to_string(), e.to_string()));
+                report
+                    .skipped
+                    .push((path.display().to_string(), e.to_string()));
                 continue;
             }
         };
@@ -467,7 +509,9 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
         let content = match std::fs::read_to_string(path) {
             Ok(s) => s,
             Err(e) => {
-                report.skipped.push((path.display().to_string(), e.to_string()));
+                report
+                    .skipped
+                    .push((path.display().to_string(), e.to_string()));
                 continue;
             }
         };
@@ -515,6 +559,72 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
     .execute(&mut *tx)
     .await?;
 
+    // 5d. DEV-180: quest_history ↔ `{slug}.history.jsonl` 사이드카 동기화 —
+    //     파일이 진리원, 테이블은 캐시.
+    //  (a) **export (일회성 자가 치유)**: 사이드카가 없는 slug 에 DB 행이
+    //      있으면(DEV-180 이전 데이터) 먼저 파일로 내보내 이력 보존.
+    //  (b) **rebuild**: 사이드카가 있는 slug 는 그 파일 기준으로 DB 행을
+    //      재구축 — index.db 를 지웠다 새로 만들어도 이력이 복원된다.
+    {
+        use crate::repo::history as hist;
+        // (a) export.
+        let rows: Vec<(String, String, String, Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT quest_slug, ts, op, old_value, new_value
+                 FROM quest_history WHERE quest_slug IS NOT NULL ORDER BY quest_slug, id",
+        )
+        .fetch_all(&mut *tx)
+        .await?;
+        let mut by_slug: std::collections::BTreeMap<String, Vec<hist::HistoryEntry>> =
+            std::collections::BTreeMap::new();
+        for (slug, ts, op, old, new) in rows {
+            by_slug
+                .entry(slug)
+                .or_default()
+                .push(hist::HistoryEntry { ts, op, old, new });
+        }
+        for (slug, entries) in &by_slug {
+            let path = hist::history_path(paths, slug);
+            if !path.exists() {
+                for e in entries {
+                    hist::append(paths, slug, e).map_err(crate::error::AppError::Internal)?;
+                    report.history_exported += 1;
+                }
+            }
+        }
+        // (b) rebuild from sidecars.
+        for (slug, path) in hist::list_sidecars(paths) {
+            let entries = hist::read_all(&path).map_err(crate::error::AppError::Internal)?;
+            // 해당 quest 의 현재 id — 없으면(파일만 남은 dangling) skip.
+            let qid: Option<i64> = sqlx::query_scalar(
+                "SELECT q.id FROM quests q JOIN quest_types qt ON qt.id = q.quest_type_id
+                 WHERE qt.prefix || '-' || printf('%03d', q.number) = ?",
+            )
+            .bind(&slug)
+            .fetch_optional(&mut *tx)
+            .await?;
+            let Some(qid) = qid else { continue };
+            sqlx::query("DELETE FROM quest_history WHERE quest_slug = ?")
+                .bind(&slug)
+                .execute(&mut *tx)
+                .await?;
+            for e in &entries {
+                sqlx::query(
+                    "INSERT INTO quest_history (quest_id, quest_slug, ts, op, old_value, new_value)
+                     VALUES (?, ?, ?, ?, ?, ?)",
+                )
+                .bind(qid)
+                .bind(&slug)
+                .bind(&e.ts)
+                .bind(&e.op)
+                .bind(&e.old)
+                .bind(&e.new)
+                .execute(&mut *tx)
+                .await?;
+                report.history_loaded += 1;
+            }
+        }
+    }
+
     // 6. DEV-011: campaigns — `.guild/campaigns/*.md` 파일 정렬 순.
     let campaigns_dir = paths.campaigns_dir();
     let mut max_camp_num: i64 = 0;
@@ -531,7 +641,9 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
             let cf = match CampaignFile::read(path) {
                 Ok(c) => c,
                 Err(e) => {
-                    report.skipped.push((path.display().to_string(), format!("{e:#}")));
+                    report
+                        .skipped
+                        .push((path.display().to_string(), format!("{e:#}")));
                     continue;
                 }
             };
@@ -626,7 +738,9 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
             let raw = match std::fs::read_to_string(path) {
                 Ok(s) => s,
                 Err(e) => {
-                    report.skipped.push((path.display().to_string(), e.to_string()));
+                    report
+                        .skipped
+                        .push((path.display().to_string(), e.to_string()));
                     continue;
                 }
             };
@@ -663,7 +777,9 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
             let content = match std::fs::read_to_string(path) {
                 Ok(s) => s,
                 Err(e) => {
-                    report.skipped.push((path.display().to_string(), e.to_string()));
+                    report
+                        .skipped
+                        .push((path.display().to_string(), e.to_string()));
                     continue;
                 }
             };
@@ -727,7 +843,7 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::repo::{seed_guild_dir, GuildPaths, QuestFile, QuestFrontmatter};
+    use crate::repo::{GuildPaths, QuestFile, QuestFrontmatter, seed_guild_dir};
 
     fn fresh_tmp(label: &str) -> std::path::PathBuf {
         let ns = std::time::SystemTime::now()
@@ -742,6 +858,72 @@ mod tests {
     async fn setup_store(dir: &std::path::Path) -> Store {
         seed_guild_dir(dir).unwrap();
         Store::open(dir).await.unwrap()
+    }
+
+    /// DEV-180: quest_history 사이드카 동기화 — (a) 사이드카가 있으면 DB 를
+    /// 파일 기준으로 재구축(테이블을 지워도 복원), (b) 사이드카 없는 slug 의
+    /// DB 행은 파일로 export (일회성 자가 치유).
+    #[tokio::test]
+    async fn reindex_syncs_history_sidecar_both_ways() {
+        use crate::models::{ChangeStatusRequest, CreateQuestRequest};
+        use crate::repo::history as hist;
+        let dir = fresh_tmp("hist");
+        let store = setup_store(&dir).await;
+        crate::reindex::reindex(&store).await.unwrap();
+        let tid: i64 = sqlx::query_scalar("SELECT id FROM quest_types WHERE prefix = 'DEV'")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+
+        // quest 생성 + 상태 변경 → 사이드카 append 됨.
+        let q = crate::ops::quests::create_quest(
+            &store,
+            CreateQuestRequest {
+                quest_type_id: tid,
+                title: "h".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        crate::ops::quests::change_status(
+            &store,
+            q.id,
+            ChangeStatusRequest {
+                status_slug: "done".into(),
+            },
+        )
+        .await
+        .unwrap();
+        let sidecar = hist::history_path(&store.paths, &q.quest_id);
+        assert!(sidecar.exists(), "change_status 가 사이드카 생성");
+        assert_eq!(hist::read_all(&sidecar).unwrap().len(), 1);
+
+        // (a) fresh index.db 시뮬레이션: 테이블 비우고 reindex → 파일에서 복원.
+        sqlx::query("DELETE FROM quest_history")
+            .execute(&store.index_pool)
+            .await
+            .unwrap();
+        let report = crate::reindex::reindex(&store).await.unwrap();
+        assert!(report.history_loaded >= 1, "사이드카 → DB 재구축");
+        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM quest_history WHERE quest_slug = ?")
+            .bind(&q.quest_id)
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(n, 1, "이력이 파일에서 복원되어야 (DEV-180)");
+
+        // (b) DEV-180 이전 데이터 시뮬레이션: 사이드카 지우고 DB 행만 존재 →
+        // reindex 가 파일로 export.
+        std::fs::remove_file(&sidecar).unwrap();
+        let report2 = crate::reindex::reindex(&store).await.unwrap();
+        assert!(report2.history_exported >= 1, "DB → 사이드카 export");
+        assert!(sidecar.exists(), "자가 치유로 사이드카 재생성");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// BUG-047 regression: sibling `.comments.md` / `.memo.md` 파일이 있어도
@@ -777,7 +959,11 @@ mod tests {
         // sibling — frontmatter 없는 plain markdown (DEV-012 / DEV-094 패턴).
         let comments = paths.quests_dir().join("DEV-001.comments.md");
         let memo = paths.quests_dir().join("DEV-001.memo.md");
-        std::fs::write(&comments, "<!-- og-comment id=\"1\" ts=\"\" author=\"\" -->\ntest comment\n").unwrap();
+        std::fs::write(
+            &comments,
+            "<!-- og-comment id=\"1\" ts=\"\" author=\"\" -->\ntest comment\n",
+        )
+        .unwrap();
         std::fs::write(&memo, "personal scratch").unwrap();
 
         let report = reindex(&store).await.unwrap();
@@ -840,7 +1026,11 @@ mod tests {
         let report = reindex(&store).await.unwrap();
         assert_eq!(report.comments_loaded, 2, "DEV-001 의 댓글 2개");
         assert_eq!(report.memos_loaded, 2, "DEV-001 + DEV-002 메모 각 1");
-        assert!(report.skipped.is_empty(), "skipped 비어야: {:?}", report.skipped);
+        assert!(
+            report.skipped.is_empty(),
+            "skipped 비어야: {:?}",
+            report.skipped
+        );
 
         // DB 확인: 댓글 row 들 정확히 들어갔는지.
         let rows: Vec<(i64, i64, String, String, String, Option<i64>)> = sqlx::query_as(
@@ -861,12 +1051,11 @@ mod tests {
         assert_eq!(rows[1].5, Some(1));
 
         // memo row 들 — user_id 모두 0 (single-user sentinel).
-        let memo_rows: Vec<(i64, i64, String)> = sqlx::query_as(
-            "SELECT quest_id, user_id, content FROM quest_memos ORDER BY quest_id",
-        )
-        .fetch_all(&store.index_pool)
-        .await
-        .unwrap();
+        let memo_rows: Vec<(i64, i64, String)> =
+            sqlx::query_as("SELECT quest_id, user_id, content FROM quest_memos ORDER BY quest_id")
+                .fetch_all(&store.index_pool)
+                .await
+                .unwrap();
         assert_eq!(memo_rows.len(), 2);
         assert!(memo_rows.iter().all(|r| r.1 == 0));
         assert_eq!(memo_rows[0].2, "scratch one");
@@ -889,18 +1078,24 @@ mod tests {
             "<!-- og-comment id=\"1\" ts=\"\" author=\"\" -->\norphan\n",
         )
         .unwrap();
-        std::fs::write(
-            paths.quests_dir().join("ZZZ-999.memo.md"),
-            "orphan memo",
-        )
-        .unwrap();
+        std::fs::write(paths.quests_dir().join("ZZZ-999.memo.md"), "orphan memo").unwrap();
 
         let report = reindex(&store).await.unwrap();
         assert_eq!(report.comments_loaded, 0);
         assert_eq!(report.memos_loaded, 0);
         // 둘 다 skipped 에 경고로.
-        assert_eq!(report.skipped.len(), 2, "orphan sibling 2 건: {:?}", report.skipped);
-        assert!(report.skipped.iter().all(|(_, msg)| msg.contains("no matching quest")));
+        assert_eq!(
+            report.skipped.len(),
+            2,
+            "orphan sibling 2 건: {:?}",
+            report.skipped
+        );
+        assert!(
+            report
+                .skipped
+                .iter()
+                .all(|(_, msg)| msg.contains("no matching quest"))
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1020,10 +1215,15 @@ mod tests {
         assert!(report.skipped.is_empty());
 
         // index.db 에 types/statuses 들어가있음
-        let n_types: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM quest_types").fetch_one(&store.index_pool).await.unwrap();
+        let n_types: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM quest_types")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
         assert_eq!(n_types, 3);
-        let n_statuses: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM quest_statuses").fetch_one(&store.index_pool).await.unwrap();
+        let n_statuses: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM quest_statuses")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
         assert_eq!(n_statuses, 7);
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -1088,16 +1288,17 @@ mod tests {
 
         // index.db 검증
         let titles: Vec<String> = sqlx::query_scalar("SELECT title FROM quests ORDER BY id")
-            .fetch_all(&store.index_pool).await.unwrap();
+            .fetch_all(&store.index_pool)
+            .await
+            .unwrap();
         assert_eq!(titles, vec!["first".to_string(), "child".to_string()]);
 
         // parent 링크 보존
-        let parent_id: Option<i64> = sqlx::query_scalar(
-            "SELECT parent_quest_id FROM quests WHERE title = 'child'",
-        )
-        .fetch_one(&store.index_pool)
-        .await
-        .unwrap();
+        let parent_id: Option<i64> =
+            sqlx::query_scalar("SELECT parent_quest_id FROM quests WHERE title = 'child'")
+                .fetch_one(&store.index_pool)
+                .await
+                .unwrap();
         assert!(parent_id.is_some(), "child should have parent");
 
         // counter 보존 — DEV 의 type_id 를 prefix 로 조회.
@@ -1146,7 +1347,10 @@ mod tests {
         let report = reindex(&store).await.unwrap();
         assert_eq!(report.quests_loaded, 1, "clamp 일 뿐 quest 는 적재");
         assert!(
-            report.skipped.iter().any(|(_, msg)| msg.contains("urgency 99")),
+            report
+                .skipped
+                .iter()
+                .any(|(_, msg)| msg.contains("urgency 99")),
             "skipped 에 경고: {:?}",
             report.skipped
         );
@@ -1229,11 +1433,10 @@ mod tests {
         assert_eq!(r1.positions_restored, 0, "처음엔 보존할 position 없음");
 
         // position 수동 INSERT (실제 update_position 호출과 동등)
-        let qid: i64 =
-            sqlx::query_scalar("SELECT id FROM quests WHERE deleted_at IS NULL LIMIT 1")
-                .fetch_one(&store.index_pool)
-                .await
-                .unwrap();
+        let qid: i64 = sqlx::query_scalar("SELECT id FROM quests WHERE deleted_at IS NULL LIMIT 1")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
         sqlx::query(
             "INSERT INTO quest_positions (quest_id, quest_slug, x, y) VALUES (?, 'DEV-001', 162.0, 108.0)",
         )
@@ -1292,12 +1495,11 @@ mod tests {
         reindex(&store).await.unwrap();
 
         // DEV-001 의 id 와 position / history INSERT.
-        let dev1_id: i64 = sqlx::query_scalar(
-            "SELECT id FROM quests WHERE deleted_at IS NULL LIMIT 1",
-        )
-        .fetch_one(&store.index_pool)
-        .await
-        .unwrap();
+        let dev1_id: i64 =
+            sqlx::query_scalar("SELECT id FROM quests WHERE deleted_at IS NULL LIMIT 1")
+                .fetch_one(&store.index_pool)
+                .await
+                .unwrap();
         sqlx::query(
             "INSERT INTO quest_positions (quest_id, quest_slug, x, y) VALUES (?, 'DEV-001', 11.0, 22.0)",
         )
@@ -1345,27 +1547,28 @@ mod tests {
         .fetch_one(&store.index_pool)
         .await
         .unwrap();
-        assert_ne!(dev1_new_id, dev1_id, "BUG-001 추가로 DEV-001 의 id 가 시프트되어야 함");
+        assert_ne!(
+            dev1_new_id, dev1_id,
+            "BUG-001 추가로 DEV-001 의 id 가 시프트되어야 함"
+        );
 
         // position: quest_id 와 quest_slug 둘 다 새 id 와 슬러그 가리켜야.
-        let (p_qid, p_slug, p_x, p_y): (i64, String, f64, f64) = sqlx::query_as(
-            "SELECT quest_id, quest_slug, x, y FROM quest_positions",
-        )
-        .fetch_one(&store.index_pool)
-        .await
-        .unwrap();
+        let (p_qid, p_slug, p_x, p_y): (i64, String, f64, f64) =
+            sqlx::query_as("SELECT quest_id, quest_slug, x, y FROM quest_positions")
+                .fetch_one(&store.index_pool)
+                .await
+                .unwrap();
         assert_eq!(p_qid, dev1_new_id, "position.quest_id 가 새 id 로 갱신");
         assert_eq!(p_slug, "DEV-001");
         assert!((p_x - 11.0).abs() < 1e-6);
         assert!((p_y - 22.0).abs() < 1e-6);
 
         // history: quest_id 도 새 id 로 갱신, slug 는 그대로.
-        let (h_qid, h_slug): (i64, String) = sqlx::query_as(
-            "SELECT quest_id, quest_slug FROM quest_history",
-        )
-        .fetch_one(&store.index_pool)
-        .await
-        .unwrap();
+        let (h_qid, h_slug): (i64, String) =
+            sqlx::query_as("SELECT quest_id, quest_slug FROM quest_history")
+                .fetch_one(&store.index_pool)
+                .await
+                .unwrap();
         assert_eq!(h_qid, dev1_new_id, "history.quest_id 가 새 id 로 갱신");
         assert_eq!(h_slug, "DEV-001");
 
@@ -1538,9 +1741,15 @@ mod tests {
         // 이전엔 여기서 FK constraint failed 로 Err — 이제는 성공해야 함.
         let report = reindex(&store).await.unwrap();
         assert_eq!(report.quests_loaded, 1, "DEV-002 만 적재, DEV-001 은 skip");
-        assert_eq!(report.dependencies_loaded, 0, "skip 된 quest 로의 prerequisite 는 무시");
+        assert_eq!(
+            report.dependencies_loaded, 0,
+            "skip 된 quest 로의 prerequisite 는 무시"
+        );
         assert!(
-            report.skipped.iter().any(|(_, msg)| msg.contains("unknown status slug")),
+            report
+                .skipped
+                .iter()
+                .any(|(_, msg)| msg.contains("unknown status slug")),
             "DEV-001 이 skip 사유와 함께 보고되어야: {:?}",
             report.skipped
         );
@@ -1551,7 +1760,10 @@ mod tests {
         .fetch_one(&store.index_pool)
         .await
         .unwrap();
-        assert!(parent_id.is_none(), "존재하지 않는 quest 를 parent 로 가리키면 안 됨");
+        assert!(
+            parent_id.is_none(),
+            "존재하지 않는 quest 를 parent 로 가리키면 안 됨"
+        );
 
         let n_deps: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM quest_dependencies")
             .fetch_one(&store.index_pool)
