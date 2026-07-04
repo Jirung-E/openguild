@@ -131,9 +131,12 @@
 	//     bare 는 일반 텍스트로 둔다(오탐 방지). 앞뒤가 단어문자/하이픈이면 제외
 	//     (`MYDEV-1` / `DEV-1a` 등 단어 일부 안 잡음). 규칙 slug 는 일반 단어와
 	//     구분 불가라 bare 인식 대상이 아님 (quest/campaign 만 — DEV-173).
-	const CROSS_LINK_RE = /\[\[([A-Za-z][\w-]*)\]\]|(?<![\w-])([A-Za-z]{1,}-\d+)(?![\w-])/g;
+	// DEV-173 후속(admin 보고 "이미 있는 이름인데 연결 안 됨"): 규칙 slug 는
+	// 한글 등 비ASCII 가능 — 대괄호 형태는 공백/대괄호 제외 모든 문자 허용.
+	// bare 는 기존대로 ASCII 추적번호(XXX-NNN)만.
+	const CROSS_LINK_RE = /\[\[([^[\]\s]{1,64})\]\]|(?<![\w-])([A-Za-z]{1,}-\d+)(?![\w-])/g;
 	// 별도 non-global tester — /g 의 lastIndex 부작용 없이 acceptNode 에서 검사.
-	const CROSS_LINK_TEST = /\[\[[A-Za-z][\w-]*\]\]|(?<![\w-])[A-Za-z]{1,}-\d+(?![\w-])/;
+	const CROSS_LINK_TEST = /\[\[[^[\]\s]{1,64}\]\]|(?<![\w-])[A-Za-z]{1,}-\d+(?![\w-])/;
 	// quest/campaign 추적번호 형식 (XXX-NNN). 이 형식이 아니면 규칙 slug 로 본다.
 	const ID_TOKEN_RE = /^[A-Za-z]{1,}-\d+$/;
 	function guessKind(id: string): 'quest' | 'campaign' | 'rule' {

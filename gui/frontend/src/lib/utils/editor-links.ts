@@ -22,8 +22,9 @@ import { get } from 'svelte/store';
 
 /** 커서 직전의 ID 토큰 (앞이 `[` 가 아니어야 — 위키링크 안은 제외). */
 const BEFORE_CURSOR = /(^|[^[\w-])([A-Za-z]{2,}-\d+)$/;
-/** DEV-173: `[[` 바로 안(아직 안 닫힘)의 부분 slug — 규칙 포함 전체 인덱스 제안. */
-const BEFORE_CURSOR_WIKI = /\[\[([\w-]*)$/;
+/** DEV-173: `[[` 바로 안(아직 안 닫힘)의 부분 slug — 규칙 포함 전체 인덱스 제안.
+ *  규칙 slug 는 한글 등 비ASCII 가능 — 공백/대괄호 제외 모든 문자 허용. */
+const BEFORE_CURSOR_WIKI = /\[\[([^[\]\s]*)$/;
 
 const KIND_LABEL = { quest: '퀘스트', campaign: '캠페인', rule: '규칙' } as const;
 

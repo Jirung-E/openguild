@@ -10,8 +10,9 @@ import type { IndexedRef } from '$lib/stores/questIndex';
 
 /** 커서 직전 ID 토큰 — 앞이 `[`/단어/하이픈이 아니어야(이미 위키링크면 제외). */
 const BEFORE_CURSOR = /(^|[^[\w-])([A-Za-z]{2,}-\d+)$/;
-/** DEV-173: `[[` 바로 안(아직 안 닫힘)의 부분 slug — 규칙 포함 전체 인덱스 제안. */
-const BEFORE_CURSOR_WIKI = /\[\[([\w-]*)$/;
+/** DEV-173: `[[` 바로 안(아직 안 닫힘)의 부분 slug — 규칙 포함 전체 인덱스 제안.
+ *  규칙 slug 는 한글 등 비ASCII 가능 — 공백/대괄호 제외 모든 문자 허용. */
+const BEFORE_CURSOR_WIKI = /\[\[([^[\]\s]*)$/;
 
 export interface WikiItem {
 	id: string;

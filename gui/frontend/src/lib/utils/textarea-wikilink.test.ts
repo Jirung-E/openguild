@@ -46,4 +46,15 @@ describe('wikiMatch', () => {
 		const v = '[[zzz';
 		expect(wikiMatch(v, v.length, index)).toBeNull();
 	});
+
+	// DEV-173 후속: 한글 등 비ASCII 규칙 slug 도 [[ 컨텍스트에서 매칭.
+	it('[[ 컨텍스트에서 한글 규칙 slug 매칭', () => {
+		const idx = new Map<string, IndexedRef>([
+			['커밋규칙', { title: '커밋 규칙', kind: 'rule', slug: '커밋규칙' }]
+		]);
+		const v = '[[커밋';
+		const m = wikiMatch(v, v.length, idx);
+		expect(m).not.toBeNull();
+		expect(m!.items[0].insert).toBe('커밋규칙');
+	});
 });

@@ -28,6 +28,9 @@
 	import { attachmentExtension } from '$lib/utils/editor-attach';
 	// DEV-140 후속: 규칙 편집기에도 XXX-NNN → [[...]] 자동완성.
 	import { crossLinkAutocomplete } from '$lib/utils/editor-links';
+	// DEV-173 후속: 규칙 생성/삭제/이름변경/저장(제목 변경) 시 cross-link 인덱스
+	// 재적재 — 안 하면 방금 만든 규칙이 [[링크]] 에서 미존재(빨강)로 남음.
+	import { loadQuestIndex } from '$lib/stores/questIndex';
 
 	let loading = $state(true);
 	let error = $state<string | null>(null);
@@ -80,6 +83,9 @@
 				selectedSlug = entries[0]?.slug ?? null;
 			}
 			refreshSelectedContent();
+			// DEV-173 후속: 목록이 바뀌었을 수 있으니(생성/삭제/이름변경 후 재호출됨)
+			// cross-link 인덱스도 재적재.
+			loadQuestIndex(true);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'failed to load';
 		} finally {
@@ -190,6 +196,8 @@
 			selectedContent = res.content;
 			// 메모리 목록도 갱신 — 페이지 reload 안 해도 sidebar 정합.
 			entries = entries.map((e) => (e.slug === selectedSlug ? { ...e, content: text } : e));
+			// DEV-173 후속: 제목(첫 # 헤딩)이 바뀌었을 수 있음 — 인덱스 재적재.
+			loadQuestIndex(true);
 			cancelEdit();
 		} catch (e) {
 			saveError = e instanceof Error ? e.message : 'save failed';
