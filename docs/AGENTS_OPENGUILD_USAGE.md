@@ -257,10 +257,16 @@ env 로 임계치 조정 가능:
 ### 2.9 댓글 / 메모 (DEV-094 / DEV-099)
 
 ```bash
+openguild comments [--author A] [--since TS] [--until TS] [--grep T]
+                   [--discussion | --unresolved] [--limit N]
+    # DEV-221: 길드 전체(quest+campaign) 댓글 횡단 검색 — 기본 최신순 20개.
+    # agent 세션 시작 시 `openguild comments --author admin` 으로 피드백 수집.
+
 openguild quest comment list <SLUG>                       # entry 목록
 openguild quest comment list <SLUG> --author claude --since 2026-06-01 \
     --top-only --grep TEXT                                # 필터 (AND, DEV-110)
 openguild quest comment list <SLUG> --reply-to N          # 특정 entry 의 답글만
+openguild quest comment list <SLUG> --reverse --limit 5   # 최근 5개 (DEV-221)
 openguild quest comment show <SLUG> [--id N]              # 본문
 openguild quest comment add <SLUG> --author <NAME> --file <PATH>   # 추가 (stdin 도 가능)
 openguild quest comment add <SLUG> --author <NAME> --parent-id N --file <PATH>  # 답글

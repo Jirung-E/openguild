@@ -119,6 +119,30 @@ enum Command {
         #[command(subcommand)]
         sub: IndexCmd,
     },
+    /// 길드 전체 댓글 횡단 검색 — quest + campaign, 기본 최신순 20개.
+    Comments {
+        /// 작성자 일치 (대소문자 무시 정확 일치).
+        #[arg(long)]
+        author: Option<String>,
+        /// 이 시각 이후 작성분만 — ISO date (`2026-06-01`) 또는 datetime.
+        #[arg(long)]
+        since: Option<String>,
+        /// 이 시각 이전 작성분만.
+        #[arg(long)]
+        until: Option<String>,
+        /// body 부분 일치 (대소문자 무시).
+        #[arg(long)]
+        grep: Option<String>,
+        /// 토론(discussion) 댓글만 (quest 전용 플래그 — campaign 댓글 제외됨).
+        #[arg(long)]
+        discussion: bool,
+        /// 미해결 토론만 (discussion 포함).
+        #[arg(long, conflicts_with = "discussion")]
+        unresolved: bool,
+        /// 최대 N 개 (기본 20).
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+    },
     /// journal(AOF) — tail. (시점 복원 replay 는 `restore` 에서 처리 예정.)
     Journal {
         #[command(subcommand)]
@@ -505,6 +529,12 @@ enum CommentCmd {
         /// body 부분 일치 (대소문자 무시).
         #[arg(long)]
         grep: Option<String>,
+        /// 최신순 출력 (기본은 오래된 순 = 대화 흐름) — DEV-221.
+        #[arg(long)]
+        reverse: bool,
+        /// 최대 N 개만 (필터/정렬 적용 후) — DEV-221.
+        #[arg(long)]
+        limit: Option<usize>,
     },
     /// entry 본문 전체 또는 단일.
     Show {
@@ -1162,6 +1192,21 @@ struct LocalBackend {
     guild_path: std::path::PathBuf,
 }
 
+/// DEV-221: 전역 댓글 검색 결과 한 건 (quest/campaign 통합).
+#[derive(sqlx::FromRow, serde::Serialize)]
+struct GlobalComment {
+    /// "quest" | "campaign"
+    scope: String,
+    /// 소속 슬러그 (DEV-001 / C-001)
+    slug: String,
+    entry_id: i64,
+    ts: String,
+    author: String,
+    body: String,
+    discussion: bool,
+    resolved: bool,
+}
+
 impl Backend {
     /// `--remote` / `OPENGUILD_REMOTE` 지정 시 Http, 그 외 로컬 모드.
     /// 로컬 모드: `--guild PATH` 또는 cwd 부터 `.guild` 자동 탐색.
@@ -1237,6 +1282,98 @@ impl Backend {
     }
 
     // ── 도메인 메서드 ──────────────────────────────────────
+
+    /// DEV-221: 길드 전체 댓글 횡단 검색 — quest + campaign 캐시 UNION, 최신순.
+    /// 로컬 전용 (index.db 직접 쿼리). 원격은 후속(HTTP 라우트 파리티) 전까지 미지원.
+    #[allow(clippy::too_many_arguments)]
+    fn comments_search(
+        &self,
+        author: Option<&str>,
+        since: Option<&str>,
+        until: Option<&str>,
+        grep: Option<&str>,
+        discussion: bool,
+        unresolved: bool,
+        limit: usize,
+    ) -> Result<Vec<GlobalComment>> {
+        let Backend::Local(l) = self else {
+            return Err(anyhow!(
+                "comments 전역 검색은 로컬 모드 전용입니다 (원격 HTTP 파리티는 후속)."
+            ));
+        };
+        // quest / campaign 캐시 UNION. campaign_comments 엔 discussion 컬럼이
+        // 없어 상수 0 — --discussion/--unresolved 필터 시 자연 제외.
+        let mut conds_q = String::new();
+        let mut conds_c = String::new();
+        let mut push_both = |cond_q: &str, cond_c: &str| {
+            conds_q.push_str(" AND ");
+            conds_q.push_str(cond_q);
+            conds_c.push_str(" AND ");
+            conds_c.push_str(cond_c);
+        };
+        // 바인드 순서: (quest 절 인자들) → (campaign 절 인자들) → limit.
+        // 두 절이 같은 필터 세트를 쓰므로 값을 두 번 바인드한다.
+        let mut binds: Vec<String> = Vec::new();
+        if author.is_some() {
+            push_both("LOWER(c.author) = LOWER(?)", "LOWER(c.author) = LOWER(?)");
+            binds.push(author.unwrap().to_string());
+        }
+        if let Some(s) = since {
+            push_both("c.ts >= ?", "c.ts >= ?");
+            binds.push(openguild_core::time::normalize_filter_ts(s));
+        }
+        if let Some(u) = until {
+            push_both("c.ts <= ?", "c.ts <= ?");
+            binds.push(openguild_core::time::normalize_filter_ts(u));
+        }
+        if grep.is_some() {
+            push_both(
+                "LOWER(c.body) LIKE '%' || LOWER(?) || '%'",
+                "LOWER(c.body) LIKE '%' || LOWER(?) || '%'",
+            );
+            binds.push(grep.unwrap().to_string());
+        }
+        if discussion {
+            push_both("c.discussion = 1", "0 = 1");
+        }
+        if unresolved {
+            push_both("c.discussion = 1 AND c.resolved = 0", "0 = 1");
+        }
+
+        let sql = format!(
+            "SELECT * FROM (
+               SELECT 'quest' AS scope,
+                      qt.prefix || '-' || printf('%03d', q.number) AS slug,
+                      c.entry_id, c.ts, c.author, c.body,
+                      c.discussion, c.resolved
+                 FROM quest_comments c
+                 JOIN quests q ON q.id = c.quest_id
+                 JOIN quest_types qt ON qt.id = q.quest_type_id
+                WHERE 1 = 1{conds_q}
+               UNION ALL
+               SELECT 'campaign' AS scope, ca.campaign_slug AS slug,
+                      c.entry_id, c.ts, c.author, c.body,
+                      0 AS discussion, 0 AS resolved
+                 FROM campaign_comments c
+                 JOIN campaigns ca ON ca.id = c.campaign_id
+                WHERE 1 = 1{conds_c}
+             )
+             ORDER BY ts DESC
+             LIMIT ?"
+        );
+        let rows = l.rt.block_on(async {
+            let mut q = sqlx::query_as::<_, GlobalComment>(&sql);
+            for b in &binds {
+                q = q.bind(b); // quest 절
+            }
+            for b in &binds {
+                q = q.bind(b); // campaign 절 (동일 값 재바인드)
+            }
+            q = q.bind(limit as i64);
+            q.fetch_all(&l.store.index_pool).await
+        })?;
+        Ok(rows)
+    }
 
     fn ping(&self) -> Result<String> {
         match self {
@@ -2630,7 +2767,7 @@ fn run_attach_cmd(c: &Backend, scope: CommentScope, sub: AttachCmd, json: bool) 
 /// quest / campaign 댓글 명령 공용 핸들러 (DEV-100).
 fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool) -> Result<()> {
     match sub {
-                CommentCmd::List { slug, author, since, top_only, reply_to, grep } => {
+                CommentCmd::List { slug, author, since, top_only, reply_to, grep, reverse, limit } => {
                     let mut entries = c.comments_list_scoped(scope, &slug)?;
                     // DEV-110: 필터 — 모두 AND.
                     if let Some(a) = &author {
@@ -2651,6 +2788,13 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                     if let Some(g) = &grep {
                         let needle = g.to_lowercase();
                         entries.retain(|e| e.body.to_lowercase().contains(&needle));
+                    }
+                    // DEV-221: 최신순 + 개수 제한 (필터 적용 후).
+                    if reverse {
+                        entries.reverse();
+                    }
+                    if let Some(n) = limit {
+                        entries.truncate(n);
                     }
                     if json {
                         println!(
@@ -4103,6 +4247,41 @@ fn run() -> Result<()> {
             IndexCmd::Rebuild => run_reindex_cmd(&c, cli.json)?,
             IndexCmd::Vacuum => run_vacuum_cmd(&c, cli.json)?,
         },
+        Command::Comments { author, since, until, grep, discussion, unresolved, limit } => {
+            let rows = c.comments_search(
+                author.as_deref(),
+                since.as_deref(),
+                until.as_deref(),
+                grep.as_deref(),
+                discussion,
+                unresolved,
+                limit,
+            )?;
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&rows)?);
+            } else if rows.is_empty() {
+                println!("(댓글 없음)");
+            } else {
+                for r in &rows {
+                    let summary = r
+                        .body
+                        .lines()
+                        .next()
+                        .unwrap_or("")
+                        .chars()
+                        .take(60)
+                        .collect::<String>();
+                    let author = if r.author.is_empty() { "(이름 없음)" } else { &r.author };
+                    // 토론 상태 배지: ● 미해결 / ✓ 해결 (quest 전용).
+                    let badge = if r.discussion {
+                        if r.resolved { " ✓" } else { " ●" }
+                    } else {
+                        ""
+                    };
+                    println!("{:<9} #{:<3} {}  {}{}  {}", r.slug, r.entry_id, r.ts, author, badge, summary);
+                }
+            }
+        }
         Command::Journal { sub } => match sub {
             JournalCmd::Tail { count } => run_journal_tail_cmd(&c, count, cli.json)?,
         },
@@ -5544,13 +5723,15 @@ mod tests {
         ])
         .unwrap();
         match cli.command {
-            Command::Quest { sub: QuestCmd::Comment { sub: CommentCmd::List { slug, author, since, top_only, reply_to, grep } } } => {
+            Command::Quest { sub: QuestCmd::Comment { sub: CommentCmd::List { slug, author, since, top_only, reply_to, grep, reverse, limit } } } => {
                 assert_eq!(slug, "DEV-001");
                 assert_eq!(author.as_deref(), Some("claude"));
                 assert_eq!(since.as_deref(), Some("2026-06-01"));
                 assert!(top_only);
                 assert!(reply_to.is_none());
                 assert_eq!(grep.as_deref(), Some("needle"));
+                assert!(!reverse);
+                assert!(limit.is_none());
             }
             _ => panic!("expected comment list"),
         }
