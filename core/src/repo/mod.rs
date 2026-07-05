@@ -11,6 +11,7 @@ pub mod campaign;
 pub mod comments;
 pub mod fs;
 pub mod history;
+pub mod library;
 pub mod quest;
 pub mod rules;
 pub mod seed;
@@ -77,6 +78,22 @@ impl GuildPaths {
 
     pub fn backups_dir(&self) -> PathBuf {
         self.dot_guild().join("backups")
+    }
+
+    /// DEV-215: 도서관 문서 디렉토리 (`.guild/library/`). git tracked.
+    pub fn library_dir(&self) -> PathBuf {
+        self.dot_guild().join("library")
+    }
+
+    /// DEV-215: 한 도서관 문서 (`.guild/library/{BOOK-NNN}.md`).
+    pub fn book_path(&self, book_id: &str) -> PathBuf {
+        self.library_dir().join(format!("{book_id}.md"))
+    }
+
+    /// DEV-215: 도서관 번호 카운터 (`.guild/library/.counter.toml`).
+    /// quest_types 의 counter 와 완전히 별개 — 단조 증가, 재사용 금지.
+    pub fn library_counter_path(&self) -> PathBuf {
+        self.library_dir().join(".counter.toml")
     }
 
     /// DEV-180: 퀘스트 이력 사이드카 디렉토리 (`.guild/history/`). git tracked.

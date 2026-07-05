@@ -17,6 +17,7 @@ pub mod campaign_comments;
 pub mod campaigns;
 pub mod comments;
 pub mod counter;
+pub mod library;
 pub mod meta;
 pub mod quests;
 pub mod rules;

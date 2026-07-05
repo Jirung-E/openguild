@@ -78,6 +78,8 @@ const SOURCE_SUBDIRS: &[&str] = &[
     // DEV-180: 이력 사이드카가 quests/ 밖 전용 디렉토리로 분리돼 별도 등록
     // 필요 — 빠뜨리면 snapshot/restore 가 조용히 history/ 를 건너뛴다.
     "history",
+    // DEV-215: 도서관 문서 (+.counter.toml — copy_tree 가 숨김 파일도 복사).
+    "library",
 ];
 
 /// dir 트리를 통째로 복사 (대상에 병합 생성). 파일/하위디렉토리 재귀.

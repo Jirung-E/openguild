@@ -43,6 +43,9 @@ pub struct ReindexReport {
     /// / 사이드카 없던 slug 의 DB 행을 파일로 export 한 수 (일회성 자가 치유).
     pub history_loaded: usize,
     pub history_exported: usize,
+    /// DEV-215: `.guild/library/{BOOK-NNN}.md` 에서 적재된 도서관 문서 수
+    /// (soft-deleted 포함 — 파일이 있으면 캐시에 실림).
+    pub library_loaded: usize,
     /// 파싱 / 무결성 실패로 skip 된 파일 (경로 + 사유).
     pub skipped: Vec<(String, String)>,
 }
@@ -64,6 +67,7 @@ impl ReindexReport {
                 self.history_loaded, self.history_exported
             ),
             format!("tags         : {}", self.tags_loaded),
+            format!("library      : {}", self.library_loaded),
             format!(
                 "attachments  : {} backed up / {} restored",
                 self.attachments_backed_up, self.attachments_restored
@@ -150,6 +154,10 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
         .await?;
     // DEV-068 (tag defs): `.guild/tags/*.toml` 정의도 wipe + 재적재.
     sqlx::query("DELETE FROM quest_tag_defs")
+        .execute(&mut *tx)
+        .await?;
+    // DEV-215: 도서관 캐시도 wipe — `.guild/library/*.md` 파일로부터 재구축.
+    sqlx::query("DELETE FROM library_docs")
         .execute(&mut *tx)
         .await?;
     // DEV-134: 캠페인 댓글 / 메모 캐시도 wipe — sibling 파일로부터 재구축.
@@ -443,6 +451,46 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
                 report
                     .skipped
                     .push((path.display().to_string(), format!("{e:#}")));
+            }
+        }
+    }
+
+    // 5b'''. DEV-215: `.guild/library/{BOOK-NNN}.md` → library_docs 캐시.
+    //        파일이 진리원. soft-deleted 도 적재 (deleted_at 채워서) — 파일이
+    //        존재하는 한 캐시에 실려야 번호 충돌 검증/복원이 가능.
+    {
+        use crate::repo::library as lib;
+        for path in lib::list_book_files(paths).map_err(crate::error::AppError::Internal)? {
+            match lib::BookFile::read(&path) {
+                Ok(bf) => {
+                    let Ok(number) = bf.number() else {
+                        report.skipped.push((
+                            path.display().to_string(),
+                            format!("book_id 형식 오류: {}", bf.frontmatter.book_id),
+                        ));
+                        continue;
+                    };
+                    let deleted_at: Option<String> =
+                        bf.frontmatter.deleted.then(|| bf.frontmatter.updated_at.clone());
+                    sqlx::query(
+                        "INSERT INTO library_docs (number, title, body, created_at, updated_at, deleted_at)
+                         VALUES (?, ?, ?, ?, ?, ?)",
+                    )
+                    .bind(number)
+                    .bind(&bf.frontmatter.title)
+                    .bind(&bf.body)
+                    .bind(&bf.frontmatter.created_at)
+                    .bind(&bf.frontmatter.updated_at)
+                    .bind(deleted_at)
+                    .execute(&mut *tx)
+                    .await?;
+                    report.library_loaded += 1;
+                }
+                Err(e) => {
+                    report
+                        .skipped
+                        .push((path.display().to_string(), format!("{e:#}")));
+                }
             }
         }
     }
@@ -861,6 +909,43 @@ mod tests {
     async fn setup_store(dir: &std::path::Path) -> Store {
         seed_guild_dir(dir).unwrap();
         Store::open(dir).await.unwrap()
+    }
+
+    /// DEV-215: 도서관 캐시 재구축 — index.db 를 비워도 `.guild/library/*.md`
+    /// 파일에서 복원. soft-deleted 도 deleted_at 채워 적재.
+    #[tokio::test]
+    async fn reindex_rebuilds_library_docs_from_files() {
+        use crate::ops::library as lib;
+        let dir = fresh_tmp("library");
+        let store = setup_store(&dir).await;
+        crate::reindex::reindex(&store).await.unwrap();
+
+        lib::create_book(&store, "첫 문서", "본문 A").await.unwrap();
+        lib::create_book(&store, "둘째", "본문 B").await.unwrap();
+        lib::delete_book(&store, "BOOK-001").await.unwrap();
+
+        // 캐시 손실 시나리오.
+        sqlx::query("DELETE FROM library_docs")
+            .execute(&store.index_pool)
+            .await
+            .unwrap();
+
+        let report = crate::reindex::reindex(&store).await.unwrap();
+        assert_eq!(report.library_loaded, 2, "soft-deleted 포함 파일 전체 적재");
+
+        let alive = lib::list_books(&store).await.unwrap();
+        assert_eq!(alive.len(), 1);
+        assert_eq!(alive[0].book_id(), "BOOK-002");
+        assert_eq!(alive[0].body, "본문 B");
+        let deleted_at: Option<String> = sqlx::query_scalar(
+            "SELECT deleted_at FROM library_docs WHERE number = 1",
+        )
+        .fetch_one(&store.index_pool)
+        .await
+        .unwrap();
+        assert!(deleted_at.is_some(), "soft-deleted 는 deleted_at 채워 복원");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// DEV-180: quest_history 사이드카 동기화 — (a) 사이드카가 있으면 DB 를

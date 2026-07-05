@@ -128,6 +128,8 @@ pub fn seed_guild_dir<P: AsRef<std::path::Path>>(guild_root: P) -> Result<SeedRe
         paths.attachments_dir(),
         // DEV-180: 퀘스트 이력 사이드카 — git tracked.
         paths.history_dir(),
+        // DEV-215: 도서관 문서 — git tracked.
+        paths.library_dir(),
     ] {
         std::fs::create_dir_all(&dir)
             .with_context(|| format!("failed to create dir: {}", dir.display()))?;

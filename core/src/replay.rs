@@ -345,6 +345,10 @@ async fn apply_op(store: &Store, maps: &IdMaps, op: &journal::OpRow) -> AppResul
         "delete_rule" => {
             ops::rules::delete_rule(store, &arg_str(&args, "slug")?).await?;
         }
+        // ── DEV-215 도서관: 삭제는 book_id 만으로 replayable (soft delete). ──
+        "delete_book" => {
+            ops::library::delete_book(store, &arg_str(&args, "book_id")?).await?;
+        }
         "rename_rule" => {
             ops::rules::rename_rule(
                 store,
@@ -365,7 +369,10 @@ async fn apply_op(store: &Store, maps: &IdMaps, op: &journal::OpRow) -> AppResul
         | "set_campaign_memo"
         | "create_rule"
         | "set_rule"
-        | "set_rules" => {
+        | "set_rules"
+        // DEV-215: 도서관 create/update 도 body 를 journal 에 안 실음(len 만).
+        | "create_book"
+        | "update_book" => {
             return Err(AppError::Internal(anyhow!(
                 "replay: '{}' 는 내용(body)이 journal 에 기록되지 않아(감사 로그) \
                  replay 로 복원할 수 없습니다. 이 시점 범위는 full snapshot restore 를 \
