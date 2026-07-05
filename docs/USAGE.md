@@ -108,7 +108,7 @@ echo "TODO: foo 확인" | openguild quest memo set DEV-001
 
 # 길드 규칙 (top-level 은 `rule` — `rules` alias 도 동작)
 openguild rule list
-echo "내용" | openguild rule create branch-policy
+echo "내용" | openguild rule new branch-policy
 
 # 캠페인
 openguild campaign new --title "베타 1.0"

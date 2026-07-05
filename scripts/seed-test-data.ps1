@@ -338,9 +338,9 @@ $ruleSamples = @{
 foreach ($slug in $ruleSamples.Keys) {
     # CLI 가 stdin 으로 본문 읽음.
     $body = $ruleSamples[$slug]
-    Write-Host "[og] rules create $slug" -ForegroundColor DarkGray
-    $body | & $bin rules create $slug
-    if ($LASTEXITCODE -ne 0) { throw "rules create 실패: $slug" }
+    Write-Host "[og] rules new $slug" -ForegroundColor DarkGray
+    $body | & $bin rules new $slug
+    if ($LASTEXITCODE -ne 0) { throw "rules new 실패: $slug" }
 }
 
 # ── 완료 요약 ────────────────────────────────────────────────

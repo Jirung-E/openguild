@@ -704,13 +704,26 @@ enum StatusesCmd {
     Delete { slug: String },
 }
 
-/// `--file PATH` 또는 stdin 에서 본문 읽기 — Rules / 향후 description set 등 공용.
+/// `--file PATH` 또는 stdin 에서 본문 읽기 — comment/memo/rules 공용.
+///
+/// DEV-186: `--file` 도 없고 stdin 이 파이프/리다이렉트 없이 터미널(tty)
+/// 이면 예전엔 안내 없이 그냥 멈췄음(`rule new <slug>` 만 치면 hang —
+/// 사용자 보고). tty 면 즉시 에러로 사용법 안내 + 비정상 종료.
 fn read_content(path: Option<&std::path::Path>) -> Result<String> {
     if let Some(p) = path {
         std::fs::read_to_string(p)
             .with_context(|| format!("파일 읽기 실패: {}", p.display()))
     } else {
-        use std::io::Read;
+        use std::io::{IsTerminal, Read};
+        if std::io::stdin().is_terminal() {
+            bail!(
+                "본문을 --file 없이 stdin 으로 받으려 했지만 터미널입니다 \
+                 (그냥 실행하면 멈춘 것처럼 보임).\n\
+                 --file <PATH> 로 파일을 지정하거나, 파이프로 입력하세요 \
+                 (예: echo \"내용\" | openguild ...).\n\
+                 지원하는 명령이면 --empty 로 빈 본문 생성도 가능합니다."
+            );
+        }
         let mut s = String::new();
         std::io::stdin().read_to_string(&mut s)?;
         Ok(s)
@@ -734,8 +747,11 @@ enum RulesCmd {
         file: Option<std::path::PathBuf>,
     },
     /// 신규 규칙 생성 — 같은 slug 이미 있으면 에러. 본문은 `--file` / stdin.
-    /// `--empty` 시 본문 없이 빈 규칙 생성. (`new` 별칭도 동작.)
-    #[command(alias = "new")]
+    /// `--empty` 시 본문 없이 빈 규칙 생성.
+    // DEV-227/BUG-111: quest/campaign/template/backup 이 전부 `new` 를 쓰는데
+    // rules 만 `create` 가 canonical 이라 --help 에 create 가 나왔음 —
+    // canonical 을 new 로, create 는 하위호환 alias 로 스왑.
+    #[command(name = "new", alias = "create")]
     Create {
         slug: String,
         #[arg(long)]
@@ -6814,6 +6830,39 @@ mod tests {
             let cli = Cli::try_parse_from(args).unwrap();
             match cli.command {
                 Command::Rules { sub } => assert!(matches!(sub, RulesCmd::List)),
+                _ => panic!(),
+            }
+        }
+    }
+
+    /// BUG-111: quest/campaign/template/backup 은 전부 `new` 가 canonical 인데
+    /// rules 만 `create` 가 canonical 이라 `rule --help` 에 create 로 나왔음 —
+    /// new 를 canonical 로, create 는 alias 로 스왑.
+    #[test]
+    fn cli_rule_new_is_canonical_create_is_alias() {
+        use clap::CommandFactory;
+        let cmd = Cli::command();
+        let rule_cmd = cmd
+            .get_subcommands()
+            .find(|c| c.get_name() == "rule")
+            .expect("rule top-level 존재");
+        let new_sub = rule_cmd
+            .get_subcommands()
+            .find(|c| c.get_name() == "new")
+            .expect("new 가 canonical 이어야 (help 에 new 로 표시)");
+        let aliases: Vec<&str> = new_sub.get_all_aliases().collect();
+        assert!(aliases.contains(&"create"), "create 가 alias 로 남아있어야: {aliases:?}");
+
+        for args in [
+            ["openguild", "rule", "new", "t1", "--empty"],
+            ["openguild", "rule", "create", "t1", "--empty"],
+        ] {
+            let cli = Cli::try_parse_from(args).unwrap();
+            match cli.command {
+                Command::Rules { sub: RulesCmd::Create { slug, empty, .. } } => {
+                    assert_eq!(slug, "t1");
+                    assert!(empty);
+                }
                 _ => panic!(),
             }
         }
