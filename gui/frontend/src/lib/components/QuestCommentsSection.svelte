@@ -47,10 +47,17 @@
 	} | null>(null);
 	let wikiSel = $state(0);
 	let wikiPopEl = $state<HTMLUListElement | undefined>(undefined);
+	// BUG-114: mouseenter(호버)로도 wikiSel 이 바뀌는데, 이 effect 가 그때마다
+	// scrollIntoView 를 불러 스크롤바를 마우스로 드래그하는 도중 커서가 옆의
+	// 항목 위를 지나칠 때마다 스크롤이 강제로 되돌아가 — 스크롤바를 움직일 수
+	// 없는 것처럼 보였다. 키보드(↑/↓) 이동일 때만 스크롤, 마우스 호버는 무시.
+	let wikiSelFromKeyboard = false;
 	// DEV-171 후속: ↑/↓ 로 선택 이동 시 선택 항목이 팝업 스크롤 밖이면 보이도록 스크롤.
 	$effect(() => {
 		void wikiSel;
 		void wiki;
+		if (!wikiSelFromKeyboard) return;
+		wikiSelFromKeyboard = false;
 		wikiPopEl?.querySelector('.wiki-opt.sel')?.scrollIntoView({ block: 'nearest' });
 	});
 
@@ -157,9 +164,11 @@
 		const n = wiki.items.length;
 		if (e.key === 'ArrowDown') {
 			e.preventDefault();
+			wikiSelFromKeyboard = true;
 			wikiSel = (wikiSel + 1) % n;
 		} else if (e.key === 'ArrowUp') {
 			e.preventDefault();
+			wikiSelFromKeyboard = true;
 			wikiSel = (wikiSel - 1 + n) % n;
 		} else if (e.key === 'Enter' || e.key === 'Tab') {
 			// Tab 도 적용. tabInsert(use:action) 의 탭 삽입을 막으려 즉시 전파 중단.
