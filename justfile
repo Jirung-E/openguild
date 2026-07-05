@@ -42,7 +42,9 @@ build-rust:
     cargo build --workspace --release
 
 # 전체 빌드 (Rust + frontend)
-build: build-rust build-frontend
+# 순서 중요: gui 의 tauri bundle resources 가 frontend/build 를 요구 —
+# frontend 를 먼저 만들어야 build-rust 가 성공 (BUG-107).
+build: build-frontend build-rust
 
 # --- 테스트 (test) ---
 
