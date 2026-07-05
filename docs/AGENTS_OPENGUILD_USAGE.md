@@ -327,7 +327,7 @@ openguild journal tail               # journal(AOF) 최근 op — audit / 디버
 openguild info                       # 길드 메타 / index.db·snapshot·journal 요약 (진단)
 
 # 길드 규칙 (.guild/rules/{slug}.md — 프로젝트 컨벤션 문서, git tracked)
-# top-level 은 `rule` (canonical) — `rules` alias 도 동작
+# top-level 은 `rule` 단수형만 (복수형 alias 없음 — type/status 와 다름)
 openguild rule list                          # 규칙 slug 목록
 openguild rule show   <slug>                 # 본문 출력
 openguild rule new    <slug> --file <PATH>   # 신규 (중복 slug 는 에러, `create` 별칭 OK)

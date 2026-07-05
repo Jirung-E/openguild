@@ -87,8 +87,10 @@ enum Command {
     // BUG-016: doc comment 의 quest id 가 clap help 로 leak — 외부 사용자에게
     // internal quest 번호 노출 금지. 기능 설명만 plain `///` 으로.
     /// 길드 규칙 — `.guild/rules/{slug}.md` 다중 파일 CRUD.
-    // DEV-227: canonical 단수형, 복수형은 alias.
-    #[command(name = "rule", alias = "rules")]
+    // DEV-227/DEV-231: canonical 단수형. rules 는 사용자 지시로 alias 도
+    // 남기지 않고 완전 제거(type/status 의 복수형 alias 와 다른 결정) —
+    // rules 는 원래 bare 호출에 하위호환 관행이 없었으니 남길 이유도 없음.
+    #[command(name = "rule")]
     Rules {
         #[command(subcommand)]
         sub: RulesCmd,
@@ -6822,10 +6824,10 @@ mod tests {
         assert!(Cli::try_parse_from(["openguild", "status"]).is_err());
     }
 
-    /// DEV-227: type/status/rule 단수형이 canonical, 복수형은 alias 로
-    /// 계속 동작해야(기존 스크립트 호환) — sub 는 다른 그룹처럼 필수.
+    /// DEV-227: type/status 단수형이 canonical, 복수형은 alias 로 계속
+    /// 동작해야(기존 스크립트 호환) — sub 는 다른 그룹처럼 필수.
     #[test]
-    fn cli_singular_type_status_rule_parse_same_as_plural_alias() {
+    fn cli_singular_type_status_parse_same_as_plural_alias() {
         for args in [["openguild", "type", "list"], ["openguild", "types", "list"]] {
             let cli = Cli::try_parse_from(args).unwrap();
             assert!(matches!(cli.command, Command::Types { sub: TypesCmd::List }));
@@ -6834,13 +6836,21 @@ mod tests {
             let cli = Cli::try_parse_from(args).unwrap();
             assert!(matches!(cli.command, Command::Statuses { sub: StatusesCmd::List }));
         }
-        for args in [["openguild", "rule", "list"], ["openguild", "rules", "list"]] {
-            let cli = Cli::try_parse_from(args).unwrap();
-            match cli.command {
-                Command::Rules { sub } => assert!(matches!(sub, RulesCmd::List)),
-                _ => panic!(),
-            }
+    }
+
+    /// DEV-231: rule 은 type/status 와 달리 복수형 alias 를 아예 남기지
+    /// 않기로 함(사용자 지시) — `rules` 는 이제 unknown subcommand 에러.
+    #[test]
+    fn cli_rule_singular_only_no_plural_alias() {
+        let cli = Cli::try_parse_from(["openguild", "rule", "list"]).unwrap();
+        match cli.command {
+            Command::Rules { sub } => assert!(matches!(sub, RulesCmd::List)),
+            _ => panic!(),
         }
+        assert!(
+            Cli::try_parse_from(["openguild", "rules", "list"]).is_err(),
+            "rules alias 는 완전히 제거됐어야"
+        );
     }
 
     /// BUG-111: quest/campaign/template/backup 은 전부 `new` 가 canonical 인데
