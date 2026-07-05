@@ -75,6 +75,9 @@ const SOURCE_SUBDIRS: &[&str] = &[
     "types",
     "statuses",
     "attachments",
+    // DEV-180: 이력 사이드카가 quests/ 밖 전용 디렉토리로 분리돼 별도 등록
+    // 필요 — 빠뜨리면 snapshot/restore 가 조용히 history/ 를 건너뛴다.
+    "history",
 ];
 
 /// dir 트리를 통째로 복사 (대상에 병합 생성). 파일/하위디렉토리 재귀.
@@ -823,6 +826,75 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(memo_content, "private note");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-180: history 사이드카(`.guild/history/`)가 quests/ 밖으로 분리된
+    /// 뒤 SOURCE_SUBDIRS 에 등록을 빠뜨리면 snapshot/restore 가 조용히
+    /// history/ 를 건너뛴다 — 회귀 방지.
+    #[tokio::test]
+    async fn snapshot_preserves_history_sidecar() {
+        use crate::models::CreateQuestRequest;
+        use crate::ops::quests as quest_ops;
+
+        let dir = fresh_tmp("snap-history");
+        let store = setup(&dir).await;
+        // change_status 대상 "testing" 이 DB 에 있어야 — 시드된 status 파일을
+        // index.db 로 반영.
+        crate::reindex::reindex(&store).await.unwrap();
+
+        let q = quest_ops::create_quest(
+            &store,
+            CreateQuestRequest {
+                quest_type_id: 1,
+                title: "for history backup".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        // change_status 가 사이드카에 append.
+        quest_ops::change_status(
+            &store,
+            q.id,
+            crate::models::ChangeStatusRequest {
+                status_slug: "testing".into(),
+            },
+        )
+        .await
+        .unwrap();
+
+        let sidecar = store.paths.quest_history_sidecar_path(&q.quest_id);
+        assert!(sidecar.exists(), "change_status 가 사이드카를 생성해야");
+
+        let snap = create_snapshot(&store).await.unwrap();
+        assert!(
+            snap.path.join(".guild/history").join(format!("{}.jsonl", q.quest_id)).exists(),
+            "snapshot 이 .guild/history/ 를 포함해야 (SOURCE_SUBDIRS 등록 확인)"
+        );
+
+        // DB 캐시만 손실 시나리오: quest_history 를 비우고 restore 가 사이드카에서
+        // 되살리는지 확인.
+        sqlx::query("DELETE FROM quest_history")
+            .execute(&store.index_pool)
+            .await
+            .unwrap();
+
+        restore_snapshot(&store, &snap).await.unwrap();
+
+        let store2 = Store::open(&dir).await.unwrap();
+        let n: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM quest_history WHERE quest_slug = ?",
+        )
+        .bind(&q.quest_id)
+        .fetch_one(&store2.index_pool)
+        .await
+        .unwrap();
+        assert_eq!(n, 1, "restore 후 사이드카 기반으로 quest_history 복원돼야");
 
         let _ = std::fs::remove_dir_all(&dir);
     }
