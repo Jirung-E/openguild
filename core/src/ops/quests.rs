@@ -277,7 +277,7 @@ pub async fn change_status(
         &crate::repo::history::HistoryEntry {
             ts: ts.clone(),
             op: "change_status".into(),
-            old: Some(old_status_slug.clone()),
+            old: old_status_slug.clone(),
             new: Some(new_status_slug.clone()),
         },
     )
