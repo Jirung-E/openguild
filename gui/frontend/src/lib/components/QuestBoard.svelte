@@ -2896,7 +2896,13 @@
 				const maxX = laneLeftVis + LANE_W - LANE_PAD_X - NODE_W / 2;
 				const clampedX = Math.max(minX, Math.min(maxX, snappedX));
 				const finalY = snappedY;
-				if (clampedX !== toPos.x || finalY !== toPos.y) {
+				// BUG-109: applyStatusChange() 가 방금 호출한 applyLaneVisualCompression()
+				// 이 이 node 의 absX(아직 새 값으로 안 바뀐 상태)로 전체 노드 위치를
+				// 재계산해 이전 레인 근처로 되돌려놓는다 — gridSnap 이 켜져있으면
+				// clampedX !== toPos.x 라 아래 조건이 걸려 덮어써지지만, 꺼져있으면
+				// 드롭 위치가 이미 클램프 범위 안이라 조건이 걸리지 않아 되돌아간
+				// 위치가 그대로 남는 버그였음. lane 이 바뀐 경우엔 무조건 재적용.
+				if (laneChanged || clampedX !== toPos.x || finalY !== toPos.y) {
 					node.position({ x: clampedX, y: finalY });
 				}
 
