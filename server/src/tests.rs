@@ -2461,6 +2461,57 @@ async fn test_rules_multi_file_crud() {
     assert_eq!(status, StatusCode::NO_CONTENT);
 }
 
+/// DEV-216: 도서관 CRUD — 생성/목록/조회/수정/soft delete + 번호 재사용 금지.
+#[tokio::test]
+async fn test_library_crud_and_number_monotonic() {
+    let app = setup().await;
+
+    let (status, b1) = post(
+        app.clone(),
+        "/api/library",
+        json!({ "title": "설계 결정", "body": "본문 A" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(b1["book_id"], "BOOK-001");
+    assert_eq!(b1["title"], "설계 결정");
+    assert_eq!(b1["body"], "본문 A");
+
+    let (status, _) = post(app.clone(), "/api/library", json!({ "title": "둘째" })).await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let (status, list) = get(app.clone(), "/api/library").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(list.as_array().unwrap().len(), 2);
+
+    let (status, got) = get(app.clone(), "/api/library/BOOK-001").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(got["body"], "본문 A");
+
+    let (status, updated) = patch(
+        app.clone(),
+        "/api/library/BOOK-001",
+        json!({ "title": "바뀐 제목" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(updated["title"], "바뀐 제목");
+    assert_eq!(updated["body"], "본문 A", "body 미지정 시 보존");
+
+    let status = delete(app.clone(), "/api/library/BOOK-001").await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, _) = get(app.clone(), "/api/library/BOOK-001").await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "soft delete 후 조회 제외");
+
+    // 삭제된 번호 재사용 금지 — 카운터 단조 증가.
+    let (_, b3) = post(app.clone(), "/api/library", json!({ "title": "셋째" })).await;
+    assert_eq!(b3["book_id"], "BOOK-003");
+
+    // 잘못된 id 형식.
+    let (status, _) = get(app, "/api/library/DEV-001").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
 #[tokio::test]
 async fn test_rules_legacy_single_file() {
     let app = setup().await;

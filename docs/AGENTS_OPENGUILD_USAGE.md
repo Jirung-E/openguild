@@ -336,6 +336,14 @@ openguild rule new    <slug> --file <PATH>   # 신규 (중복 slug 는 에러; `
 openguild rule set    <slug> --file <PATH>   # 본문 교체 (멱등 — 없으면 생성)
 openguild rule delete <slug> [--force]
 openguild rule rename <old-slug> <new-slug>
+
+# 도서관 (.guild/library/ — 프로젝트 참고문서/노트, 자체 BOOK 번호, git tracked)
+# 번호는 자동 부여 + 단조 증가 (삭제해도 재사용 안 됨). 원격 모드(--remote) 지원.
+openguild library list                             # 문서 목록 (번호/제목/갱신)
+openguild library show   <ID>                      # 본문 출력 (ID = BOOK-N)
+openguild library new    --title <T> [--file <P>]  # 신규 (본문은 UTF-8 파일)
+openguild library update <ID> [--title <T>] [--file <P>]
+openguild library delete <ID> [--yes]              # soft delete
 ```
 
 ---

@@ -95,6 +95,11 @@ enum Command {
         #[command(subcommand)]
         sub: RulesCmd,
     },
+    /// 도서관 — 프로젝트 참고문서/노트 (`.guild/library/`, 자체 BOOK 번호).
+    Library {
+        #[command(subcommand)]
+        sub: LibraryCmd,
+    },
     /// 퀘스트 템플릿 — `.guild/templates/{name}.md`. `quest new --template` 으로 사용.
     Template {
         #[command(subcommand)]
@@ -790,6 +795,44 @@ enum RulesCmd {
     },
 }
 
+// ─────────────────────────── Library 서브명령 ───────────────────────────
+
+/// 도서관 문서 관리 — 파일 진리원 `.guild/library/`, 자체 BOOK 번호
+/// (quest 번호와 별개, 단조 증가 재사용 금지).
+#[derive(Subcommand)]
+enum LibraryCmd {
+    /// 문서 목록 (번호 / 제목 / 갱신 시각).
+    List,
+    /// 한 문서의 본문 출력 (stdout).
+    Show {
+        /// 문서 ID (BOOK-N 형식).
+        id: String,
+    },
+    /// 새 문서 생성 — 번호는 자동 부여. 본문은 `--file` (미지정 시 빈 본문).
+    New {
+        #[arg(long)]
+        title: String,
+        /// 본문 파일 (UTF-8). 한글 등 비ASCII 는 stdin 파이프 대신 파일 권장.
+        #[arg(long)]
+        file: Option<std::path::PathBuf>,
+    },
+    /// 문서 수정 — 제공된 필드만 (title / 본문 파일).
+    Update {
+        id: String,
+        #[arg(long)]
+        title: Option<String>,
+        /// 새 본문 파일 (UTF-8). 미지정 시 본문 유지.
+        #[arg(long)]
+        file: Option<std::path::PathBuf>,
+    },
+    /// 문서 삭제 (soft delete — 번호는 재사용되지 않음). `--yes` 없으면 확인.
+    Delete {
+        id: String,
+        #[arg(long)]
+        yes: bool,
+    },
+}
+
 // ─────────────────────────── Campaign 서브명령 (DEV-011) ───────────────────────────
 
 #[derive(Subcommand)]
@@ -1301,6 +1344,33 @@ struct GlobalComment {
     /// BUG-110: 답글이면 부모 entry_id. `quest comment list` 는 `↩ #N` 표시하는데
     /// 전역 comments 검색은 이 필드가 없어 답글인지, 어디에 달렸는지 안 보였음.
     parent_id: Option<i64>,
+}
+
+/// DEV-216: 도서관 문서 DTO — 서버 응답(BookResponse: book_id + flatten row)과
+/// 동일 형태. 로컬 모드는 LibraryDocRow 에서 변환.
+#[derive(Debug, Serialize, Deserialize)]
+struct BookDto {
+    book_id: String,
+    number: i64,
+    title: String,
+    body: String,
+    created_at: String,
+    updated_at: String,
+    deleted_at: Option<String>,
+}
+
+impl From<openguild_core::ops::library::LibraryDocRow> for BookDto {
+    fn from(r: openguild_core::ops::library::LibraryDocRow) -> Self {
+        Self {
+            book_id: r.book_id(),
+            number: r.number,
+            title: r.title,
+            body: r.body,
+            created_at: r.created_at,
+            updated_at: r.updated_at,
+            deleted_at: r.deleted_at,
+        }
+    }
 }
 
 impl Backend {
@@ -1977,6 +2047,71 @@ impl Backend {
             Backend::Local(l) => Self::map_err(l.rt.block_on(
                 openguild_core::ops::rules::rename_rule(&l.store, old_slug, new_slug),
             )),
+        }
+    }
+
+    // ── DEV-216: 도서관 — local + remote(HTTP /api/library) 둘 다 지원 ──
+
+    fn library_list(&self) -> Result<Vec<BookDto>> {
+        match self {
+            Backend::Http(c) => c.get("/api/library"),
+            Backend::Local(l) => Self::map_err(
+                l.rt.block_on(openguild_core::ops::library::list_books(&l.store)),
+            )
+            .map(|rows| rows.into_iter().map(BookDto::from).collect()),
+        }
+    }
+
+    fn library_get(&self, id: &str) -> Result<BookDto> {
+        match self {
+            Backend::Http(c) => c.get(&format!("/api/library/{id}")),
+            Backend::Local(l) => {
+                let row = Self::map_err(
+                    l.rt.block_on(openguild_core::ops::library::get_book(&l.store, id)),
+                )?;
+                row.map(BookDto::from)
+                    .ok_or_else(|| anyhow!("도서관 문서 '{id}' 없음"))
+            }
+        }
+    }
+
+    fn library_new(&self, title: &str, body: &str) -> Result<BookDto> {
+        match self {
+            Backend::Http(c) => c.post(
+                "/api/library",
+                &serde_json::json!({ "title": title, "body": body }),
+            ),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::library::create_book(&l.store, title, body),
+            ))
+            .map(BookDto::from),
+        }
+    }
+
+    fn library_update(
+        &self,
+        id: &str,
+        title: Option<&str>,
+        body: Option<&str>,
+    ) -> Result<BookDto> {
+        match self {
+            Backend::Http(c) => c.patch(
+                &format!("/api/library/{id}"),
+                &serde_json::json!({ "title": title, "body": body }),
+            ),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::library::update_book(&l.store, id, title, body),
+            ))
+            .map(BookDto::from),
+        }
+    }
+
+    fn library_delete(&self, id: &str) -> Result<()> {
+        match self {
+            Backend::Http(c) => c.delete_no_body(&format!("/api/library/{id}")),
+            Backend::Local(l) => Self::map_err(
+                l.rt.block_on(openguild_core::ops::library::delete_book(&l.store, id)),
+            ),
         }
     }
 
@@ -4346,6 +4481,83 @@ fn run() -> Result<()> {
                     );
                 } else {
                     println!("✓ '{slug}' → '{new_slug}' 이름 변경");
+                }
+            }
+        },
+        Command::Library { sub } => match sub {
+            LibraryCmd::List => {
+                let books = c.library_list()?;
+                if cli.json {
+                    println!("{}", serde_json::to_string_pretty(&books)?);
+                } else if books.is_empty() {
+                    println!("(도서관 문서 없음)");
+                } else {
+                    for b in &books {
+                        println!("{:<10} {}  ({})", b.book_id, b.title, b.updated_at);
+                    }
+                }
+            }
+            LibraryCmd::Show { id } => {
+                let b = c.library_get(&id)?;
+                if cli.json {
+                    println!("{}", serde_json::to_string_pretty(&b)?);
+                } else {
+                    println!("{}  {}", b.book_id, b.title);
+                    println!("  created: {}  updated: {}", b.created_at, b.updated_at);
+                    if !b.body.is_empty() {
+                        println!();
+                        println!("{}", b.body);
+                    }
+                }
+            }
+            LibraryCmd::New { title, file } => {
+                let body = match file {
+                    Some(p) => std::fs::read_to_string(&p)
+                        .with_context(|| format!("파일 읽기 실패: {}", p.display()))?,
+                    None => String::new(),
+                };
+                let b = c.library_new(&title, &body)?;
+                if cli.json {
+                    println!("{}", serde_json::to_string_pretty(&b)?);
+                } else {
+                    println!("✓ {} 생성됨 — {}", b.book_id, b.title);
+                }
+            }
+            LibraryCmd::Update { id, title, file } => {
+                if title.is_none() && file.is_none() {
+                    bail!("변경할 필드가 없습니다 — --title 또는 --file 지정");
+                }
+                let body = match file {
+                    Some(p) => Some(
+                        std::fs::read_to_string(&p)
+                            .with_context(|| format!("파일 읽기 실패: {}", p.display()))?,
+                    ),
+                    None => None,
+                };
+                let b = c.library_update(&id, title.as_deref(), body.as_deref())?;
+                if cli.json {
+                    println!("{}", serde_json::to_string_pretty(&b)?);
+                } else {
+                    println!("✓ {} 수정됨 — {}", b.book_id, b.title);
+                }
+            }
+            LibraryCmd::Delete { id, yes } => {
+                if !yes {
+                    eprint!("도서관 문서 '{id}' 을 삭제할까요? (y/N) ");
+                    use std::io::Write;
+                    std::io::stderr().flush().ok();
+                    let mut input = String::new();
+                    std::io::stdin().read_line(&mut input)?;
+                    if !input.trim().eq_ignore_ascii_case("y") {
+                        println!("취소됨");
+                        return Ok(());
+                    }
+                }
+                c.library_delete(&id)?;
+                if cli.json {
+                    println!("{}", serde_json::json!({ "ok": true, "book_id": id }));
+                } else {
+                    println!("✓ '{id}' 삭제됨 (soft delete — 번호는 재사용되지 않음)");
                 }
             }
         },
@@ -6862,6 +7074,56 @@ mod tests {
             Cli::try_parse_from(["openguild", "rules", "list"]).is_err(),
             "rules alias 는 완전히 제거됐어야"
         );
+    }
+
+    /// 도서관 명령 파싱 — 단수형 top-level + sub 필수 규칙 준수, new/update
+    /// 의 --title/--file 조합, delete --yes.
+    #[test]
+    fn cli_library_subcommands_parse() {
+        assert!(Cli::try_parse_from(["openguild", "library"]).is_err(), "sub 필수");
+        let cli = Cli::try_parse_from(["openguild", "library", "list"]).unwrap();
+        assert!(matches!(cli.command, Command::Library { sub: LibraryCmd::List }));
+
+        let cli = Cli::try_parse_from(["openguild", "library", "show", "BOOK-001"]).unwrap();
+        match cli.command {
+            Command::Library { sub: LibraryCmd::Show { id } } => assert_eq!(id, "BOOK-001"),
+            _ => panic!(),
+        }
+
+        let cli = Cli::try_parse_from([
+            "openguild", "library", "new", "--title", "제목", "--file", "b.md",
+        ])
+        .unwrap();
+        match cli.command {
+            Command::Library { sub: LibraryCmd::New { title, file } } => {
+                assert_eq!(title, "제목");
+                assert_eq!(file.unwrap().to_string_lossy(), "b.md");
+            }
+            _ => panic!(),
+        }
+
+        let cli = Cli::try_parse_from([
+            "openguild", "library", "update", "BOOK-002", "--title", "t2",
+        ])
+        .unwrap();
+        match cli.command {
+            Command::Library { sub: LibraryCmd::Update { id, title, file } } => {
+                assert_eq!(id, "BOOK-002");
+                assert_eq!(title.as_deref(), Some("t2"));
+                assert!(file.is_none());
+            }
+            _ => panic!(),
+        }
+
+        let cli =
+            Cli::try_parse_from(["openguild", "library", "delete", "BOOK-003", "--yes"]).unwrap();
+        match cli.command {
+            Command::Library { sub: LibraryCmd::Delete { id, yes } } => {
+                assert_eq!(id, "BOOK-003");
+                assert!(yes);
+            }
+            _ => panic!(),
+        }
     }
 
     /// BUG-111: quest/campaign/template/backup 은 전부 `new` 가 canonical 인데

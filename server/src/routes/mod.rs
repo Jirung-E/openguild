@@ -2,6 +2,7 @@ pub mod admin;
 pub mod attachments;
 pub mod campaigns;
 pub mod comments;
+pub mod library;
 pub mod meta;
 pub mod quests;
 pub mod rules;
@@ -60,6 +61,17 @@ pub fn create_router(store: Store) -> Router {
         .route(
             "/api/rules-single",
             get(rules::get_rules).put(rules::set_rules),
+        )
+        // DEV-216: 도서관 — `.guild/library/{BOOK-NNN}.md`.
+        .route(
+            "/api/library",
+            get(library::list_books).post(library::create_book),
+        )
+        .route(
+            "/api/library/{book_id}",
+            get(library::get_book)
+                .patch(library::update_book)
+                .delete(library::delete_book),
         )
         // DEV-012 / DEV-094: Quest 댓글 (entry 단위, tracked) + 메모 (단일, gitignored).
         // GET = entries 목록, POST = 새 entry 추가.
