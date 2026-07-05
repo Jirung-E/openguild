@@ -152,6 +152,11 @@ enum Command {
         /// 최대 N 개 (기본 20).
         #[arg(long, default_value_t = 20)]
         limit: usize,
+        /// 첫 줄 60자 요약만 출력 (기본: 본문 전체 — `quest comment list` 와
+        /// 동일). 여러 건 훑어볼 때만 사용 — 요약만 보고 답글 달았다가 뒷내용을
+        /// 놓친 사고(2026-07-05)로 기본을 전체 출력으로 바꿈.
+        #[arg(long)]
+        summary: bool,
     },
     /// journal(AOF) — tail. (시점 복원 replay 는 `restore` 에서 처리 예정.)
     Journal {
@@ -4463,7 +4468,7 @@ fn run() -> Result<()> {
             IndexCmd::Rebuild => run_reindex_cmd(&c, cli.json)?,
             IndexCmd::Vacuum => run_vacuum_cmd(&c, cli.json)?,
         },
-        Command::Comments { author, since, until, grep, discussion, unresolved, limit } => {
+        Command::Comments { author, since, until, grep, discussion, unresolved, limit, summary } => {
             let rows = c.comments_search(
                 author.as_deref(),
                 since.as_deref(),
@@ -4479,14 +4484,6 @@ fn run() -> Result<()> {
                 println!("(댓글 없음)");
             } else {
                 for r in &rows {
-                    let summary = r
-                        .body
-                        .lines()
-                        .next()
-                        .unwrap_or("")
-                        .chars()
-                        .take(60)
-                        .collect::<String>();
                     let author = if r.author.is_empty() { "(이름 없음)" } else { &r.author };
                     // 토론 상태 배지: ● 미해결 / ✓ 해결 (quest 전용).
                     let badge = if r.discussion {
@@ -4497,9 +4494,20 @@ fn run() -> Result<()> {
                     // BUG-110: quest comment list 와 동일하게 답글이면 부모 표시.
                     let reply = r.parent_id.map(|p| format!(" ↩ #{p}")).unwrap_or_default();
                     println!(
-                        "{:<9} #{:<3}{}  {}  {}{}  {}",
-                        r.slug, r.entry_id, reply, r.ts, author, badge, summary
+                        "{:<9} #{:<3}{}  {}  {}{}",
+                        r.slug, r.entry_id, reply, r.ts, author, badge
                     );
+                    // 기본은 본문 전체 (quest comment list 와 동일) — --summary 시
+                    // 첫 줄 60자만. 요약만 보고 뒷줄을 놓쳐 답글을 잘못 단 사고
+                    // (2026-07-05) 이후 기본을 전체로 바꿈.
+                    if summary {
+                        let s: String = r.body.lines().next().unwrap_or("").chars().take(60).collect();
+                        println!("  {s}");
+                    } else {
+                        for line in r.body.lines() {
+                            println!("  {line}");
+                        }
+                    }
                 }
             }
         }
