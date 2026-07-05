@@ -164,11 +164,25 @@ fn clear_guild_source(paths: &GuildPaths) -> Result<()> {
 /// Retention 7 개 — 8 번째 이상 오래된 것 삭제.
 pub async fn create_snapshot(store: &Store) -> Result<SnapshotInfo> {
     let paths = &store.paths;
-    let ts = now_compact();
-    let target = paths.snapshots_dir().join(&ts);
 
     std::fs::create_dir_all(paths.snapshots_dir())
         .with_context(|| format!("snapshots 디렉토리 생성 실패: {}", paths.snapshots_dir().display()))?;
+
+    // BUG-108: now_compact() 는 초 단위라 짧은 시간 안에 snapshot 이 두 번
+    // 생성되면(테스트, 또는 replay_to 의 pre_backup 처럼 한 호출 안에서
+    // 연달아) 같은 디렉토리 이름이 나온다. copy_tree 는 대상을 비우지 않고
+    // 병합만 하므로, 충돌 시 이전 snapshot 이 이후 상태로 오염된다
+    // (replay_to 가 과거 snapshot 을 복원해도 그 사이 생성된 quest 가 남는
+    // 버그로 발현). 디렉토리가 이미 있으면 `-01`, `-02` ... 접미사로 유니크화.
+    let base_ts = now_compact();
+    let mut ts = base_ts.clone();
+    let mut target = paths.snapshots_dir().join(&ts);
+    let mut n = 1u32;
+    while target.exists() {
+        ts = format!("{base_ts}-{n:02}");
+        target = paths.snapshots_dir().join(&ts);
+        n += 1;
+    }
 
     copy_guild_source(paths, &target).context("snapshot 소스 복사 실패")?;
     let size_bytes = tree_size(&target);
@@ -230,23 +244,34 @@ pub async fn maybe_auto_snapshot(
 /// BUG-086(후속): 타임스탬프는 **정규형 UTC** 로 저장(now_compact). 디렉토리명이
 /// offset 마커를 못 담으므로 UTC 규약으로 통일 — tz/DST 무관하게 정렬 단조 +
 /// 모호성 없음. 사람에게 보일 때만 로컬 변환(ts_to_local_display).
+///
+/// BUG-108: 같은 초 충돌 시 `-01` 접미사가 붙을 수 있어 앞 15자(고정폭
+/// "YYYYMMDD-HHMMSS")만 파싱 대상으로 삼는다.
 fn snapshot_time(timestamp: &str) -> Option<std::time::SystemTime> {
     use chrono::TimeZone;
-    let naive = chrono::NaiveDateTime::parse_from_str(timestamp, "%Y%m%d-%H%M%S").ok()?;
+    let base = timestamp.get(0..15)?;
+    let naive = chrono::NaiveDateTime::parse_from_str(base, "%Y%m%d-%H%M%S").ok()?;
     Some(chrono::Utc.from_utc_datetime(&naive).into())
 }
 
-/// BUG-086(후속): 저장된 UTC compact 타임스탬프(`YYYYMMDD-HHMMSS`)를 사람용
-/// 로컬 표시 문자열(`YYYY-MM-DD HH:MM:SS`)로 변환. 파싱 실패 시 원본 그대로.
-/// CLI / GUI 의 표시 계층에서 사용 (저장값은 UTC 정규형 유지).
+/// BUG-086(후속): 저장된 UTC compact 타임스탬프(`YYYYMMDD-HHMMSS`, BUG-108 이후
+/// 충돌 시 `-01` 접미사 가능)를 사람용 로컬 표시 문자열로 변환. 파싱 실패 시
+/// 원본 그대로. CLI / GUI 의 표시 계층에서 사용 (저장값은 UTC 정규형 유지).
 pub fn ts_to_local_display(ts: &str) -> String {
     use chrono::TimeZone;
-    match chrono::NaiveDateTime::parse_from_str(ts, "%Y%m%d-%H%M%S") {
-        Ok(naive) => chrono::Utc
-            .from_utc_datetime(&naive)
-            .with_timezone(&chrono::Local)
-            .format("%Y-%m-%d %H:%M:%S")
-            .to_string(),
+    let Some(base) = ts.get(0..15) else {
+        return ts.to_string();
+    };
+    let suffix = &ts[15.min(ts.len())..];
+    match chrono::NaiveDateTime::parse_from_str(base, "%Y%m%d-%H%M%S") {
+        Ok(naive) => {
+            let display = chrono::Utc
+                .from_utc_datetime(&naive)
+                .with_timezone(&chrono::Local)
+                .format("%Y-%m-%d %H:%M:%S")
+                .to_string();
+            format!("{display}{suffix}")
+        }
         Err(_) => ts.to_string(),
     }
 }
