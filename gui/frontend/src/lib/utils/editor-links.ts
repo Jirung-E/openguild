@@ -25,7 +25,7 @@ import { get } from 'svelte/store';
  *  규칙 slug 는 한글 등 비ASCII 가능 — 공백/대괄호 제외 모든 문자 허용. */
 const BEFORE_CURSOR_WIKI = /\[\[([^[\]\s]*)$/;
 
-const KIND_LABEL = { quest: '퀘스트', campaign: '캠페인', rule: '규칙' } as const;
+const KIND_LABEL = { quest: '퀘스트', campaign: '캠페인', rule: '규칙', book: '도서관' } as const;
 
 /**
  * DEV-173: `[[` 컨텍스트 자동완성 — 규칙 slug 포함 전체 인덱스에서 prefix 매칭.

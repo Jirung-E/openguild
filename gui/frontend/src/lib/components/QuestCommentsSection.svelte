@@ -977,7 +977,9 @@
 				>
 					<span class="wiki-id" class:missing={!it.exists}>🔗 {it.insert ?? it.id}</span>
 					<span class="wiki-meta">
-						{it.exists ? `${it.kind === 'rule' ? '규칙 · ' : ''}${it.title}` : '새 링크 (미존재)'}
+						{it.exists
+							? `${it.kind === 'rule' ? '규칙 · ' : it.kind === 'book' ? '도서관 · ' : ''}${it.title}`
+							: '새 링크 (미존재)'}
 					</span>
 				</button>
 			</li>

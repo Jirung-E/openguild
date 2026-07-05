@@ -12,12 +12,14 @@ import { writable, get } from 'svelte/store';
 import { questsApi } from '$lib/api/quests';
 import { campaignsApi } from '$lib/api/campaigns';
 import { rulesApi } from '$lib/api/rules';
+// DEV-218: 도서관 문서(BOOK-NNN)도 cross-link 대상.
+import { libraryApi } from '$lib/api/library';
 import { reindexBump } from '$lib/stores/reindex';
 
 export interface IndexedRef {
 	/** 표시용 — 자동완성 detail / 링크 title 에. */
 	title: string;
-	kind: 'quest' | 'campaign' | 'rule';
+	kind: 'quest' | 'campaign' | 'rule' | 'book';
 	/**
 	 * DEV-173: 규칙 전용 — 원본 대소문자 slug. 규칙 slug 는 파일명이라
 	 * 대소문자를 보존해야 href (`/rules?slug=..`) 가 정확하다.
@@ -43,10 +45,12 @@ export async function loadQuestIndex(force = false): Promise<void> {
 		try {
 			// DEV-173: 규칙도 인덱스에 — 실패해도 quest/campaign 은 살린다
 			// (rules 는 보조 대상이라 개별 catch).
-			const [quests, campaigns, rules] = await Promise.all([
+			const [quests, campaigns, rules, books] = await Promise.all([
 				questsApi.list(),
 				campaignsApi.list(),
-				rulesApi.list().catch(() => null)
+				rulesApi.list().catch(() => null),
+				// DEV-218: 도서관 — rules 와 같은 이유로 개별 catch.
+				libraryApi.list().catch(() => null)
 			]);
 			const next = new Map<string, IndexedRef>();
 			for (const q of quests) {
@@ -63,6 +67,11 @@ export async function loadQuestIndex(force = false): Promise<void> {
 					kind: 'rule',
 					slug: r.slug
 				});
+			}
+			for (const b of books ?? []) {
+				// BOOK-NNN 은 XXX-NNN 형식이라 기존 정규식에 자동 포함 — 인덱스에
+				// 실으면 렌더/자동완성이 그대로 동작 (DEV-218).
+				next.set(b.book_id.toUpperCase(), { title: b.title, kind: 'book' });
 			}
 			questIndex.set(next);
 			loaded = true;
@@ -95,9 +104,17 @@ export function lookupRef(id: string): IndexedRef | null {
 export const REF_TOKEN = /^[A-Za-z]{1,}-\d+$/;
 
 /** ID 종류에 맞는 상세 페이지 경로. 규칙은 원본 대소문자 slug 필요 (DEV-173). */
-export function refHref(id: string, kind: 'quest' | 'campaign' | 'rule', slug?: string): string {
+export function refHref(
+	id: string,
+	kind: 'quest' | 'campaign' | 'rule' | 'book',
+	slug?: string
+): string {
 	if (kind === 'rule') {
 		return `/rules?slug=${encodeURIComponent(slug ?? id.toLowerCase())}`;
+	}
+	// DEV-218: 도서관 딥링크 — /library?id=BOOK-NNN.
+	if (kind === 'book') {
+		return `/library?id=${encodeURIComponent(id)}`;
 	}
 	return kind === 'campaign'
 		? `/campaigns/${encodeURIComponent(id)}`

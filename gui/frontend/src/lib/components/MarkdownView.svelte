@@ -132,14 +132,16 @@
 	const CROSS_LINK_TEST = /\[\[[^[\]\s]{1,64}\]\]/;
 	// quest/campaign 추적번호 형식 (XXX-NNN). 이 형식이 아니면 규칙 slug 로 본다.
 	const ID_TOKEN_RE = /^[A-Za-z]{1,}-\d+$/;
-	function guessKind(id: string): 'quest' | 'campaign' | 'rule' {
+	function guessKind(id: string): 'quest' | 'campaign' | 'rule' | 'book' {
 		const ref = lookupRef(id);
 		if (ref) return ref.kind;
-		// 미존재 — 형태로 추정 (C-NNN 캠페인 / XXX-NNN 퀘스트 / 그 외 규칙 slug).
+		// 미존재 — 형태로 추정 (C-NNN 캠페인 / BOOK-NNN 도서관 / XXX-NNN 퀘스트 /
+		// 그 외 규칙 slug). DEV-218: BOOK prefix 는 도서관 전용 네임스페이스.
 		if (!ID_TOKEN_RE.test(id)) return 'rule';
+		if (/^BOOK-\d+$/i.test(id)) return 'book';
 		return /^C-\d+$/i.test(id) ? 'campaign' : 'quest';
 	}
-	const KIND_LABEL = { quest: '퀘스트', campaign: '캠페인', rule: '규칙' } as const;
+	const KIND_LABEL = { quest: '퀘스트', campaign: '캠페인', rule: '규칙', book: '도서관' } as const;
 	function rewriteCrossLinks() {
 		if (!container) return;
 		const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {

@@ -7,7 +7,9 @@ describe('wikiMatch', () => {
 	const index = new Map<string, IndexedRef>([
 		['DEV-033', { title: '퀘스트 목록', kind: 'quest' }],
 		['C-001', { title: '베타 0.3.0', kind: 'campaign' }],
-		['RELEASE-PROCESS', { title: '릴리즈 패키지 절차', kind: 'rule', slug: 'release-process' }]
+		['RELEASE-PROCESS', { title: '릴리즈 패키지 절차', kind: 'rule', slug: 'release-process' }],
+		// DEV-218: 도서관 문서 — BOOK-NNN 은 XXX-NNN 형식이라 기존 매칭에 자동 포함.
+		['BOOK-001', { title: '설계 결정 기록', kind: 'book' }]
 	]);
 
 	// DEV-220: bare 토큰(대괄호 없음)은 더 이상 자동완성 트리거가 아님.
@@ -47,6 +49,17 @@ describe('wikiMatch', () => {
 	it('매칭 없는 [[ prefix 는 null', () => {
 		const v = '[[zzz';
 		expect(wikiMatch(v, v.length, index)).toBeNull();
+	});
+
+	// DEV-218: 도서관 문서도 [[ 컨텍스트에서 제안 — insert 는 대문자 정규형 ID.
+	it('[[ 컨텍스트에서 도서관 BOOK ID 도 매칭', () => {
+		const v = '[[book';
+		const m = wikiMatch(v, v.length, index);
+		expect(m).not.toBeNull();
+		const book = m!.items.find((i) => i.kind === 'book');
+		expect(book).toBeDefined();
+		expect(book!.id).toBe('BOOK-001');
+		expect(book!.insert ?? book!.id).toBe('BOOK-001');
 	});
 
 	// DEV-173 후속: 한글 등 비ASCII 규칙 slug 도 [[ 컨텍스트에서 매칭.

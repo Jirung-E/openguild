@@ -17,7 +17,7 @@ const BEFORE_CURSOR_WIKI = /\[\[([^[\]\s]*)$/;
 export interface WikiItem {
 	id: string;
 	title: string | null;
-	kind: 'quest' | 'campaign' | 'rule' | null;
+	kind: 'quest' | 'campaign' | 'rule' | 'book' | null;
 	/** 실재 ID 인지 (false = '새 링크' 후보, 렌더 시 빨강). */
 	exists: boolean;
 	/** 삽입 텍스트 (규칙 = 원본 대소문자 slug). 미지정 시 id. */

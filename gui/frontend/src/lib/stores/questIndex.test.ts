@@ -31,6 +31,11 @@ describe('DEV-140 cross-link helpers', () => {
 		expect(refHref('FOO-BAR', 'rule')).toBe('/rules?slug=foo-bar');
 	});
 
+	// DEV-218: 도서관 문서는 /library?id= 딥링크.
+	it('refHref routes books to /library?id=', () => {
+		expect(refHref('BOOK-001', 'book')).toBe('/library?id=BOOK-001');
+	});
+
 	it('wiki-link extraction regex captures ids inside [[ ]]', () => {
 		const re = /\[\[([A-Za-z]{1,}-\d+)\]\]/g;
 		const text = '[[DEV-033]] 에서 언급, [[C-001]] 참고, 그리고 [[BUG-9]].';
