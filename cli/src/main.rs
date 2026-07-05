@@ -524,7 +524,9 @@ enum TemplateCmd {
         /// 기본 tags — 반복 또는 콤마 구분.
         #[arg(long, value_delimiter = ',')]
         tags: Vec<String>,
-        /// 본문 파일. 미지정 시 stdin (파이프 없으면 빈 본문).
+        /// 본문 파일. 미지정 시 stdin (파이프 없으면 빈 본문). 한글 등
+        /// 비ASCII 는 --file 권장 — PowerShell 파이프(`echo | ...`)는 인코딩이
+        /// 안 맞아 깨질 수 있음.
         #[arg(long)]
         file: Option<std::path::PathBuf>,
         /// 이미 있으면 덮어쓰기 허용.
@@ -576,7 +578,8 @@ enum CommentCmd {
         /// 답글인 경우 부모 entry id.
         #[arg(long = "parent-id")]
         parent_id: Option<u64>,
-        /// 본문 파일. 미지정 시 stdin.
+        /// 본문 파일. 미지정 시 stdin. 한글 등 비ASCII 는 --file 권장 —
+        /// PowerShell 파이프(`echo | ...`)는 인코딩이 안 맞아 깨질 수 있음.
         #[arg(long)]
         file: Option<std::path::PathBuf>,
     },
@@ -584,6 +587,7 @@ enum CommentCmd {
     Edit {
         slug: String,
         id: u64,
+        /// 본문 파일. 미지정 시 stdin. 한글 등은 --file 권장.
         #[arg(long)]
         file: Option<std::path::PathBuf>,
     },
@@ -616,7 +620,9 @@ enum CommentCmd {
 enum MemoCmd {
     /// 메모 본문 stdout. 파일 없으면 "(메모 없음)".
     Show { slug: String },
-    /// 메모 본문 교체. 본문은 `--file PATH` 또는 stdin.
+    /// 메모 본문 교체. 본문은 `--file PATH` 또는 stdin. 한글 등 비ASCII 는
+    /// --file 권장 — PowerShell 파이프(`echo | ...`)는 인코딩이 안 맞아
+    /// 깨질 수 있음.
     Set {
         slug: String,
         #[arg(long)]
@@ -749,18 +755,23 @@ enum RulesCmd {
     /// 본문은 `--file <PATH>` 또는 stdin (인자 없을 때).
     Set {
         slug: String,
-        /// 본문이 들어있는 파일. 미지정 시 stdin.
+        /// 본문이 들어있는 파일. 미지정 시 stdin. 한글 등 비ASCII 는 --file
+        /// 권장 — PowerShell 파이프(`echo | ...`)는 인코딩이 안 맞아 깨질
+        /// 수 있음. `rule show` 로 확인했을 때 깨져 보이면 이 경우임.
         #[arg(long)]
         file: Option<std::path::PathBuf>,
     },
     /// 신규 규칙 생성 — 같은 slug 이미 있으면 에러. 본문은 `--file` / stdin.
     /// `--empty` 시 본문 없이 빈 규칙 생성.
-    // DEV-227/BUG-111: quest/campaign/template/backup 이 전부 `new` 를 쓰는데
-    // rules 만 `create` 가 canonical 이라 --help 에 create 가 나왔음 —
-    // canonical 을 new 로, create 는 하위호환 alias 로 스왑.
-    #[command(name = "new", alias = "create")]
+    // DEV-227/BUG-111/DEV-232: quest/campaign/template/backup 이 전부
+    // `new` 를 쓰는데 rules 만 `create` 가 canonical 이라 --help 에 create
+    // 가 나왔음 — canonical 을 new 로 스왑. DEV-232: create alias 도
+    // 사용자 지시로 완전 제거(rules 와 동일하게 — 남길 이유 없다는 판단).
+    #[command(name = "new")]
     Create {
         slug: String,
+        /// 본문이 들어있는 파일. 미지정 시 stdin. 한글 등은 --file 권장 —
+        /// PowerShell 파이프는 인코딩이 안 맞아 깨질 수 있음.
         #[arg(long)]
         file: Option<std::path::PathBuf>,
         #[arg(long)]
@@ -6855,9 +6866,10 @@ mod tests {
 
     /// BUG-111: quest/campaign/template/backup 은 전부 `new` 가 canonical 인데
     /// rules 만 `create` 가 canonical 이라 `rule --help` 에 create 로 나왔음 —
-    /// new 를 canonical 로, create 는 alias 로 스왑.
+    /// new 를 canonical 로 스왑. DEV-232: create alias 도 사용자 지시로 완전
+    /// 제거(rules 복수형 alias 와 동일한 판단 — 남길 이유 없음).
     #[test]
-    fn cli_rule_new_is_canonical_create_is_alias() {
+    fn cli_rule_new_is_canonical_create_removed() {
         use clap::CommandFactory;
         let cmd = Cli::command();
         let rule_cmd = cmd
@@ -6869,21 +6881,20 @@ mod tests {
             .find(|c| c.get_name() == "new")
             .expect("new 가 canonical 이어야 (help 에 new 로 표시)");
         let aliases: Vec<&str> = new_sub.get_all_aliases().collect();
-        assert!(aliases.contains(&"create"), "create 가 alias 로 남아있어야: {aliases:?}");
+        assert!(aliases.is_empty(), "create alias 는 완전히 제거됐어야: {aliases:?}");
 
-        for args in [
-            ["openguild", "rule", "new", "t1", "--empty"],
-            ["openguild", "rule", "create", "t1", "--empty"],
-        ] {
-            let cli = Cli::try_parse_from(args).unwrap();
-            match cli.command {
-                Command::Rules { sub: RulesCmd::Create { slug, empty, .. } } => {
-                    assert_eq!(slug, "t1");
-                    assert!(empty);
-                }
-                _ => panic!(),
+        let cli = Cli::try_parse_from(["openguild", "rule", "new", "t1", "--empty"]).unwrap();
+        match cli.command {
+            Command::Rules { sub: RulesCmd::Create { slug, empty, .. } } => {
+                assert_eq!(slug, "t1");
+                assert!(empty);
             }
+            _ => panic!(),
         }
+        assert!(
+            Cli::try_parse_from(["openguild", "rule", "create", "t1", "--empty"]).is_err(),
+            "create 는 이제 unknown subcommand 에러여야"
+        );
     }
 
     /// BUG-110: 예전엔 bare `openguild types`/`statuses` 가 list 로 떨어졌는데

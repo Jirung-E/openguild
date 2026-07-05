@@ -330,7 +330,7 @@ openguild info                       # 길드 메타 / index.db·snapshot·journ
 # top-level 은 `rule` 단수형만 (복수형 alias 없음 — type/status 와 다름)
 openguild rule list                          # 규칙 slug 목록
 openguild rule show   <slug>                 # 본문 출력
-openguild rule new    <slug> --file <PATH>   # 신규 (중복 slug 는 에러, `create` 별칭 OK)
+openguild rule new    <slug> --file <PATH>   # 신규 (중복 slug 는 에러; `create` alias 없음)
 openguild rule set    <slug> --file <PATH>   # 본문 교체 (멱등 — 없으면 생성)
 openguild rule delete <slug> [--force]
 openguild rule rename <old-slug> <new-slug>
