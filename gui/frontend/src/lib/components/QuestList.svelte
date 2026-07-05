@@ -9,6 +9,7 @@
 		serializeFilter,
 		deserializeFilter,
 		FILTER_STORAGE_SUFFIX,
+		EMPTY_FILTER,
 		type QuestFilterState
 	} from '$lib/stores/quest-filter';
 	// DEV-033 #2: 필터를 길드별 localStorage 에 영속 — Ctrl+R / 앱 재시작 후에도 유지.
@@ -213,9 +214,14 @@
 		// DEV-135: 공유 store → state 복원 (view 전환 시 in-memory 일관성).
 		applyFilter(get(questFilters));
 		// DEV-033 #2: 영속된 필터가 있으면 우선 적용 — 전체 리로드(Ctrl+R)/앱
-		// 재시작 시 store 는 비어 있으므로 localStorage 가 진짜 복원원.
+		// 재시작 시 store 는 비어 있으므로 localStorage 가 진짜 복원.
+		//
+		// BUG-112 fix: questFilters 는 모듈 전역 store 라 다른 길드에서 필터를
+		// 걸어두고 나가면 메모리에 남아있다 — 이 길드에 저장된 필터가 없으면
+		// (savedFilter === null) 방금 위에서 복원한 다른 길드의 값이 그대로
+		// 남는 버그였음. 없으면 EMPTY_FILTER 로 명시 리셋.
 		const savedFilter = loadFilterFromStorage();
-		if (savedFilter) applyFilter(savedFilter);
+		applyFilter(savedFilter ?? EMPTY_FILTER);
 		// URL → state (초기 로드). DEV-135 #4 fix: param 이 '있을 때만' 덮어씀.
 		// 이전엔 ?? '' 로 무조건 덮어써, /?view=list 처럼 param 없는 nav 후
 		// localStorage 에서 복원한 검색어가 매번 지워졌다 (다른 필터는 유지되는데

@@ -2001,9 +2001,17 @@
 			// DEV-135 fix: 보드로 바로 새로고침/재시작 시 questFilters store 는
 			// 비어 있어 dim 이 안 걸렸다 (List 를 거쳐야만 store 채워짐). store 가
 			// 비었으면 localStorage(List 와 동일 키)에서 필터를 hydrate.
-			if (!isFilterActive(get(questFilters))) {
+			//
+			// BUG-112 fix: questFilters 는 모듈 전역 store 라 다른 길드에서 필터를
+			// 걸어둔 채 그 길드를 나가고 이 길드로 들어와도 메모리에 그대로 남아
+			// 있음 — `!isFilterActive(...)` 가드가 "이미 뭔가 걸려있으면(다른
+			// 길드 값이라도) 건드리지 않는다"로 오작동해, 다른 길드의 필터가
+			// 새 길드에 그대로 유지되는 버그였음. localStorage 는 이미 gk() 로
+			// 길드별로 스코프돼 있으므로, 항상 **이 길드의 저장값**으로 덮어써야
+			// 맞다 — 없으면 EMPTY_FILTER 로 리셋.
+			{
 				const savedFilter = deserializeFilter(localStorage.getItem(gk(FILTER_STORAGE_SUFFIX)));
-				if (savedFilter) questFilters.set(savedFilter);
+				questFilters.set(savedFilter ?? EMPTY_FILTER);
 			}
 			hideSettings = loadHideSettings();
 			globalCols = loadGlobalCols();
