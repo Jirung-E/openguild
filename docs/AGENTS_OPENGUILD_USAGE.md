@@ -67,8 +67,8 @@ openguild info         # 길드 메타 / DB 크기 / 백업 현황
 ```bash
 openguild init [--name <NAME>]   # cwd 를 길드로 초기화
 openguild ping                   # 서버 health 확인
-openguild type                   # quest 타입 목록 (DEV / BUG / REQ) — `types` alias 도 동작
-openguild status                 # 상태 목록 (Open / In Progress / Done / ...) — `statuses` alias 도 동작
+openguild type list              # quest 타입 목록 (DEV / BUG / REQ) — `types` alias 도 동작
+openguild status list            # 상태 목록 (Open / In Progress / Done / ...) — `statuses` alias 도 동작
 ```
 
 ### 2.2 Quest CRUD

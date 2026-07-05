@@ -64,18 +64,20 @@ enum Command {
     },
     /// 퀘스트 타입 — 목록 / 추가 / 수정 / 삭제 / 이름 변경
     // DEV-227: 다른 top-level 명사 그룹(quest/campaign/template/backup/check/
-    // index/journal)과의 단수형 일관성 위해 canonical 이름을 단수로 — 기존
-    // 스크립트 호환 위해 복수형은 alias 로 유지.
+    // index/journal/rule)과의 단수형 일관성 위해 canonical 이름을 단수로 —
+    // 기존 스크립트 호환 위해 복수형은 alias 로 유지. sub 도 다른 그룹처럼
+    // 필수로 — bare 호출이 조용히 list 로 떨어지던 예전 관행(DEV-062) 제거,
+    // `type list` 명시 필요.
     #[command(name = "type", alias = "types")]
     Types {
         #[command(subcommand)]
-        sub: Option<TypesCmd>,
+        sub: TypesCmd,
     },
     /// 퀘스트 상태 — 목록 / 추가 / 수정 / 삭제 / 이름 변경
     #[command(name = "status", alias = "statuses")]
     Statuses {
         #[command(subcommand)]
-        sub: Option<StatusesCmd>,
+        sub: StatusesCmd,
     },
     /// 캠페인 관련 명령
     Campaign {
@@ -626,10 +628,10 @@ enum PrereqCmd {
     Rm { slug: String, prereq: String },
 }
 
-/// DEV-062: type 관리. sub 미지정 시 List.
+/// DEV-062: type 관리. DEV-227: sub 필수 — `type list` 명시.
 #[derive(Subcommand)]
 enum TypesCmd {
-    /// 목록 (기본 동작)
+    /// 목록
     List,
     /// 새 type 추가
     Add {
@@ -661,10 +663,10 @@ enum TypesCmd {
     Delete { prefix: String },
 }
 
-/// DEV-062: status 관리. sub 미지정 시 List.
+/// DEV-062: status 관리. DEV-227: sub 필수 — `status list` 명시.
 #[derive(Subcommand)]
 enum StatusesCmd {
-    /// 목록 (기본 동작)
+    /// 목록
     List,
     /// 새 status 추가. slug 는 name_en 에서 자동 생성.
     Add {
@@ -3896,7 +3898,7 @@ fn run() -> Result<()> {
                 println!("ok ({s})");
             }
         }
-        Command::Types { sub } => match sub.unwrap_or(TypesCmd::List) {
+        Command::Types { sub } => match sub {
             TypesCmd::List => {
                 let types = c.quest_types()?;
                 if cli.json {
@@ -3973,7 +3975,7 @@ fn run() -> Result<()> {
                 }
             }
         },
-        Command::Statuses { sub } => match sub.unwrap_or(StatusesCmd::List) {
+        Command::Statuses { sub } => match sub {
             StatusesCmd::List => {
                 let statuses = c.quest_statuses()?;
                 if cli.json {
@@ -6733,27 +6735,26 @@ mod tests {
 
     // ─── DEV-062: types / statuses subcommand 파싱 ───
 
+    /// DEV-227: quest/campaign/template/backup/check/index/journal/rule 은
+    /// sub 없인 에러(list 조차 명시 필요) — type/status 도 동일하게 맞춤.
+    /// bare 호출이 조용히 list 로 떨어지던 DEV-062 관행 제거.
     #[test]
-    fn cli_types_no_sub_defaults_to_list() {
-        // 호환성: 기존 `openguild types` 는 list 동작 유지.
-        let cli = Cli::try_parse_from(["openguild", "types"]).unwrap();
-        match cli.command {
-            Command::Types { sub } => assert!(sub.is_none()),
-            _ => panic!(),
-        }
+    fn cli_types_and_statuses_require_explicit_sub() {
+        assert!(Cli::try_parse_from(["openguild", "type"]).is_err());
+        assert!(Cli::try_parse_from(["openguild", "status"]).is_err());
     }
 
     /// DEV-227: type/status/rule 단수형이 canonical, 복수형은 alias 로
-    /// 계속 동작해야(기존 스크립트 호환).
+    /// 계속 동작해야(기존 스크립트 호환) — sub 는 다른 그룹처럼 필수.
     #[test]
     fn cli_singular_type_status_rule_parse_same_as_plural_alias() {
-        for args in [["openguild", "type"], ["openguild", "types"]] {
+        for args in [["openguild", "type", "list"], ["openguild", "types", "list"]] {
             let cli = Cli::try_parse_from(args).unwrap();
-            assert!(matches!(cli.command, Command::Types { sub: None }));
+            assert!(matches!(cli.command, Command::Types { sub: TypesCmd::List }));
         }
-        for args in [["openguild", "status"], ["openguild", "statuses"]] {
+        for args in [["openguild", "status", "list"], ["openguild", "statuses", "list"]] {
             let cli = Cli::try_parse_from(args).unwrap();
-            assert!(matches!(cli.command, Command::Statuses { sub: None }));
+            assert!(matches!(cli.command, Command::Statuses { sub: StatusesCmd::List }));
         }
         for args in [["openguild", "rule", "list"], ["openguild", "rules", "list"]] {
             let cli = Cli::try_parse_from(args).unwrap();
@@ -6772,7 +6773,7 @@ mod tests {
         .unwrap();
         match cli.command {
             Command::Types {
-                sub: Some(TypesCmd::Add { prefix, color, description }),
+                sub: TypesCmd::Add { prefix, color, description },
             } => {
                 assert_eq!(prefix, "FOO");
                 assert_eq!(color, "#abcdef");
@@ -6795,13 +6796,13 @@ mod tests {
         match cli.command {
             Command::Types {
                 sub:
-                    Some(TypesCmd::Update {
+                    TypesCmd::Update {
                         prefix,
                         new_prefix,
                         clear_description,
                         description,
                         color,
-                    }),
+                    },
             } => {
                 assert_eq!(prefix, "DEV");
                 assert!(new_prefix.is_none());
@@ -6820,7 +6821,7 @@ mod tests {
             .unwrap();
         match cli.command {
             Command::Types {
-                sub: Some(TypesCmd::Update { prefix, new_prefix, .. }),
+                sub: TypesCmd::Update { prefix, new_prefix, .. },
             } => {
                 assert_eq!(prefix, "DEV");
                 assert_eq!(new_prefix.as_deref(), Some("CORE"));
@@ -6846,7 +6847,7 @@ mod tests {
         .unwrap();
         match cli.command {
             Command::Statuses {
-                sub: Some(StatusesCmd::Add { name_en, color, name_ko, sort_order }),
+                sub: StatusesCmd::Add { name_en, color, name_ko, sort_order },
             } => {
                 assert_eq!(name_en, "Blocked");
                 assert_eq!(color, "#ff0000");
@@ -6900,7 +6901,7 @@ mod tests {
         .unwrap();
         match cli.command {
             Command::Statuses {
-                sub: Some(StatusesCmd::Update { slug, new_slug, .. }),
+                sub: StatusesCmd::Update { slug, new_slug, .. },
             } => {
                 assert_eq!(slug, "open");
                 assert_eq!(new_slug.as_deref(), Some("backlog"));
