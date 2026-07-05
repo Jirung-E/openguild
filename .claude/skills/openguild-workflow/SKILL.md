@@ -18,6 +18,9 @@ openguild comments --author admin --limit 10               # 최근 사용자 �
 openguild comments --unresolved                            # 미해결 토론 전체
 ```
 
+`comments` 기본 출력은 본문 **전체**(DEV-230, 요약만 보고 뒷줄 놓쳐 오답한
+사고 이후 변경) — 여러 건 훑어볼 땐 `--summary` 로 첫 줄만.
+
 ## 퀘스트 수명주기 (필수 순서)
 
 1. **착수**: `git checkout develop && git checkout -b {QUEST_ID}` (브랜치명 = quest_id 그대로) → `openguild quest start {ID}`
@@ -52,6 +55,9 @@ openguild comments --unresolved                            # 미해결 토론 �
 | 댓글 작성자 누락 | 항상 `--author claude` (소문자) |
 | `cargo fmt`(인자 무시하고 **워크스페이스 전체** 포맷) → repo 가 fmt-clean 이 아니라 50파일 노이즈 diff (2회 실사고) | 단일 파일은 `rustfmt --edition 2024 <파일>` 만 사용, `cargo fmt` 금지 |
 | 파괴적 restore | `restore --at` 은 journal truncate(비가역) — 스크래치 길드에서만 실험 |
+| CLI top-level 이름 헷갈림 — `type`/`status` 는 `types`/`statuses` alias 가 **있음**, `rule` 은 `rules`/`create` alias 가 **없음**(DEV-231/232, 사용자가 케이스별로 결정) | 예전 예시나 스크립트에 `rules ...`/`rule create ...` 가 있으면 깨짐 — `rule ...`/`rule new ...` 로 |
+| `comments`(전역 검색) 요약 60자만 보고 답글 달았다가 뒷줄 놓침(실사고, BUG-105) | DEV-230 이후 기본이 본문 전체로 바뀜 — 그래도 여러 건 훑을 땐 뒷줄까지 있는지 항상 의심 |
+| `echo "한글" \| openguild ...` 파이프 → PowerShell 콘솔 인코딩에 따라 깨짐 (comment/memo/rule 전부 같은 read_content 헬퍼 사용) | `--file <UTF8파일>` 로 넘기기 — 해당 명령들 `--help` 에도 이제 이 안내가 있음(DEV-232) |
 
 ## 자주 쓰는 패턴
 
@@ -63,5 +69,5 @@ openguild quest comment add {ID} --author claude --file /path/utf8.md
 openguild quest comment add {ID} --author claude --parent-id N --file ...   # 답글
 # 계획/설계는 본문 확정사항, 논의/보고는 댓글 — 사용자 피드백엔 답글(parent-id)로
 openguild campaign list && openguild campaign show C-XXX   # 현재 마일스톤 파악
-openguild rules show restore-behavior                      # restore 동작 정리 문서
+openguild rule show restore-behavior                       # restore 동작 정리 문서 (DEV-231: `rules` alias 제거됨 — `rule` 만)
 ```

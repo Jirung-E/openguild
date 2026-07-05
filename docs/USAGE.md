@@ -98,7 +98,7 @@ openguild quest list
 openguild quest new --type DEV --title "API 추가"
 
 # 상태 변경
-openguild quest status DEV-001 in_progress
+openguild quest move DEV-001 in_progress
 
 # 댓글 추가 (stdin 으로 본문)
 echo "디자인 확정함." | openguild quest comment add DEV-001 --author alice
@@ -116,6 +116,11 @@ openguild campaign link C-001 DEV-001
 ```
 
 전체 명령은 `openguild --help` / `openguild <명령> --help` 참조.
+
+> **Windows PowerShell 주의**: 위처럼 `echo "한글" | openguild ...` 로
+> 파이프하면 콘솔 인코딩 설정에 따라 한글이 깨질 수 있습니다. 깨지면
+> UTF-8 파일에 내용을 적어두고 `--file <PATH>` 로 넘기세요 (댓글/메모/
+> 규칙/quest 본문 명령 전부 지원).
 
 ### 원격 모드
 

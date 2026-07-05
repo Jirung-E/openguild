@@ -261,9 +261,11 @@ env 로 임계치 조정 가능:
 
 ```bash
 openguild comments [--author A] [--since TS] [--until TS] [--grep T]
-                   [--discussion | --unresolved] [--limit N]
+                   [--discussion | --unresolved] [--limit N] [--summary]
     # DEV-221: 길드 전체(quest+campaign) 댓글 횡단 검색 — 기본 최신순 20개.
     # agent 세션 시작 시 `openguild comments --author admin` 으로 피드백 수집.
+    # DEV-230: 기본 출력은 본문 전체(요약 첫 줄만 보고 뒷내용을 놓쳐 오답한
+    # 사고 이후 변경) — 여러 건 훑어볼 때만 --summary 로 첫 줄 60자 축약.
 
 openguild quest comment list <SLUG>                       # entry 목록
 openguild quest comment list <SLUG> --author claude --since 2026-06-01 \
