@@ -17,7 +17,7 @@ import {
 } from '@codemirror/autocomplete';
 import { markdownLanguage, commonmarkLanguage } from '@codemirror/lang-markdown';
 import type { Extension } from '@codemirror/state';
-import type { EditorView } from '@codemirror/view';
+import { tooltips, type EditorView } from '@codemirror/view';
 import { questIndex, loadQuestIndex } from '$lib/stores/questIndex';
 import { get } from 'svelte/store';
 
@@ -92,6 +92,11 @@ export function crossLinkAutocomplete(): Extension {
 		markdownLanguage.data.of({ autocomplete: questIdCompletion }),
 		// basicSetup 가 이미 autocompletion 을 포함하지만, 타이핑 중 자동 활성화를
 		// 보장하기 위해 명시 (config 는 병합됨).
-		autocompletion({ activateOnTyping: true })
+		autocompletion({ activateOnTyping: true }),
+		// BUG-114: 편집기를 감싼 `.editor-wrap` 이 리사이즈 핸들/모서리 때문에
+		// `overflow: hidden` 이라, 기본 위치(에디터 DOM 내부)로 뜨는 자동완성
+		// 툴팁이 그 경계에서 잘려 후보가 몇 개만 보였다. 툴팁을 document.body
+		// 에 붙여 조상의 overflow 클리핑을 우회.
+		tooltips({ parent: document.body })
 	];
 }
