@@ -1264,6 +1264,9 @@ struct GlobalComment {
     body: String,
     discussion: bool,
     resolved: bool,
+    /// BUG-110: 답글이면 부모 entry_id. `quest comment list` 는 `↩ #N` 표시하는데
+    /// 전역 comments 검색은 이 필드가 없어 답글인지, 어디에 달렸는지 안 보였음.
+    parent_id: Option<i64>,
 }
 
 impl Backend {
@@ -1404,7 +1407,7 @@ impl Backend {
                SELECT 'quest' AS scope,
                       qt.prefix || '-' || printf('%03d', q.number) AS slug,
                       c.entry_id, c.ts, c.author, c.body,
-                      c.discussion, c.resolved
+                      c.discussion, c.resolved, c.parent_id
                  FROM quest_comments c
                  JOIN quests q ON q.id = c.quest_id
                  JOIN quest_types qt ON qt.id = q.quest_type_id
@@ -1412,7 +1415,7 @@ impl Backend {
                UNION ALL
                SELECT 'campaign' AS scope, ca.campaign_slug AS slug,
                       c.entry_id, c.ts, c.author, c.body,
-                      0 AS discussion, 0 AS resolved
+                      0 AS discussion, 0 AS resolved, c.parent_id
                  FROM campaign_comments c
                  JOIN campaigns ca ON ca.id = c.campaign_id
                 WHERE 1 = 1{conds_c}
@@ -3867,8 +3870,43 @@ fn run_journal_tail_cmd(c: &Backend, count: i64, json: bool) -> Result<()> {
 
 // ─────────────────────────── 명령 처리 ───────────────────────────
 
+/// DEV-227 후속(BUG-110): `type`/`status` 는 canonical 단수형이라 sub 필수로
+/// 바꿨는데, clap alias(`types`/`statuses`)는 같은 파싱 트리를 공유해 alias
+/// 로 불러도 sub 필수가 그대로 적용됨 — 원래 alias 를 유지한 취지(기존
+/// 스크립트가 bare `openguild types` 로 list 를 기대하던 관행 안 깨기)가
+/// 무색해짐. clap 파싱 이후엔 어떤 이름(canonical/alias)으로 불렀는지 구분이
+/// 안 되므로, raw argv 단계에서 legacy plural bare 호출만 `list` 를 끼워
+/// 넣어 예전처럼 동작하게 한다. canonical `type`/`status` 는 여전히 sub 필수.
+fn rewrite_legacy_plural_bare_invocation(args: Vec<String>) -> Vec<String> {
+    const LEGACY_PLURALS: &[&str] = &["types", "statuses"];
+    let mut i = 1; // args[0] = 실행 파일 경로.
+    let cmd_idx = loop {
+        let Some(a) = args.get(i) else { break None };
+        if a == "--json" {
+            i += 1;
+        } else if a == "--remote" || a == "--guild" {
+            i += 2; // flag + value
+        } else if a.starts_with("--") {
+            i += 1;
+        } else {
+            break Some(i);
+        }
+    };
+    if let Some(idx) = cmd_idx
+        && LEGACY_PLURALS.contains(&args[idx].as_str())
+        && args.len() == idx + 1
+    {
+        let mut out = args;
+        out.push("list".to_string());
+        return out;
+    }
+    args
+}
+
 fn run() -> Result<()> {
-    let cli = Cli::parse();
+    let cli = Cli::parse_from(rewrite_legacy_plural_bare_invocation(
+        std::env::args().collect(),
+    ));
 
     // Init 은 길드 자체를 만드는 명령 — 백엔드 연결 불필요. 먼저 처리.
     if let Command::Init { name } = &cli.command {
@@ -4440,7 +4478,12 @@ fn run() -> Result<()> {
                     } else {
                         ""
                     };
-                    println!("{:<9} #{:<3} {}  {}{}  {}", r.slug, r.entry_id, r.ts, author, badge, summary);
+                    // BUG-110: quest comment list 와 동일하게 답글이면 부모 표시.
+                    let reply = r.parent_id.map(|p| format!(" ↩ #{p}")).unwrap_or_default();
+                    println!(
+                        "{:<9} #{:<3}{}  {}  {}{}  {}",
+                        r.slug, r.entry_id, reply, r.ts, author, badge, summary
+                    );
                 }
             }
         }
@@ -5910,14 +5953,15 @@ mod tests {
             .execute(&store.index_pool)
             .await
             .unwrap();
-            for (eid, ts, author, body, disc, res) in [
-                (1_i64, "2026-01-01T00:00:00+09:00", "admin", "첫 댓글", 0_i64, 0_i64),
-                (2, "2026-01-03T00:00:00+09:00", "claude", "토론 시작", 1, 0),
-                (3, "2026-01-05T00:00:00+09:00", "admin", "해결된 토론", 1, 1),
+            for (eid, ts, author, body, disc, res, parent) in [
+                (1_i64, "2026-01-01T00:00:00+09:00", "admin", "첫 댓글", 0_i64, 0_i64, None::<i64>),
+                (2, "2026-01-03T00:00:00+09:00", "claude", "토론 시작", 1, 0, None),
+                // BUG-110: #1 에 대한 답글 — comments_search 가 parent_id 를 실어야.
+                (3, "2026-01-05T00:00:00+09:00", "admin", "해결된 토론", 1, 1, Some(1)),
             ] {
                 sqlx::query(
-                    "INSERT INTO quest_comments (quest_id, entry_id, ts, author, body, discussion, resolved)
-                     VALUES (1, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO quest_comments (quest_id, entry_id, ts, author, body, discussion, resolved, parent_id)
+                     VALUES (1, ?, ?, ?, ?, ?, ?, ?)",
                 )
                 .bind(eid)
                 .bind(ts)
@@ -5925,6 +5969,7 @@ mod tests {
                 .bind(body)
                 .bind(disc)
                 .bind(res)
+                .bind(parent)
                 .execute(&store.index_pool)
                 .await
                 .unwrap();
@@ -5950,6 +5995,15 @@ mod tests {
         assert_eq!(all.len(), 4);
         assert_eq!(all[0].ts, "2026-01-05T00:00:00+09:00", "최신순 정렬");
         assert!(all.iter().any(|c| c.scope == "campaign" && c.slug == "C-001"));
+        // BUG-110: 답글(entry 3)은 parent_id 가 실려야, 답글 아닌 것들은 None.
+        assert_eq!(
+            all.iter().find(|c| c.entry_id == 3 && c.scope == "quest").unwrap().parent_id,
+            Some(1)
+        );
+        assert_eq!(
+            all.iter().find(|c| c.entry_id == 1 && c.scope == "quest").unwrap().parent_id,
+            None
+        );
 
         // author 필터 (대소문자 무시) — quest 2 + campaign 1.
         let admins = backend
@@ -6763,6 +6817,61 @@ mod tests {
                 _ => panic!(),
             }
         }
+    }
+
+    /// BUG-110: 예전엔 bare `openguild types`/`statuses` 가 list 로 떨어졌는데
+    /// DEV-227 의 sub 필수화가 alias 에도 그대로 적용돼 이 하위호환이 깨졌음.
+    /// canonical(`type`/`status`)은 sub 필수 유지, legacy alias 만 rewrite 로
+    /// list 를 끼워 넣어 예전 동작 복원.
+    #[test]
+    fn rewrite_legacy_plural_bare_appends_list() {
+        let out = rewrite_legacy_plural_bare_invocation(vec!["openguild".into(), "types".into()]);
+        assert_eq!(out, vec!["openguild", "types", "list"]);
+        let out2 =
+            rewrite_legacy_plural_bare_invocation(vec!["openguild".into(), "statuses".into()]);
+        assert_eq!(out2, vec!["openguild", "statuses", "list"]);
+    }
+
+    #[test]
+    fn rewrite_legacy_plural_leaves_canonical_and_explicit_sub_untouched() {
+        // canonical 단수형은 안 건드림 — sub 필수 그대로.
+        let out = rewrite_legacy_plural_bare_invocation(vec!["openguild".into(), "type".into()]);
+        assert_eq!(out, vec!["openguild", "type"]);
+        // 이미 서브커맨드가 있으면 안 건드림.
+        let out2 = rewrite_legacy_plural_bare_invocation(vec![
+            "openguild".into(),
+            "types".into(),
+            "add".into(),
+            "FOO".into(),
+        ]);
+        assert_eq!(out2, vec!["openguild", "types", "add", "FOO"]);
+    }
+
+    #[test]
+    fn rewrite_legacy_plural_skips_global_flags() {
+        let out = rewrite_legacy_plural_bare_invocation(vec![
+            "openguild".into(),
+            "--json".into(),
+            "statuses".into(),
+        ]);
+        assert_eq!(out, vec!["openguild", "--json", "statuses", "list"]);
+    }
+
+    /// end-to-end: rewrite 를 거치면 legacy plural bare 호출이 실제로 List 로
+    /// 파싱되지만, canonical 단수형은 여전히 sub 없인 에러.
+    #[test]
+    fn cli_legacy_plural_bare_parses_as_list_via_rewrite() {
+        let rewritten =
+            rewrite_legacy_plural_bare_invocation(vec!["openguild".into(), "types".into()]);
+        let cli = Cli::try_parse_from(rewritten).unwrap();
+        assert!(matches!(cli.command, Command::Types { sub: TypesCmd::List }));
+
+        let rewritten2 =
+            rewrite_legacy_plural_bare_invocation(vec!["openguild".into(), "statuses".into()]);
+        let cli2 = Cli::try_parse_from(rewritten2).unwrap();
+        assert!(matches!(cli2.command, Command::Statuses { sub: StatusesCmd::List }));
+
+        assert!(Cli::try_parse_from(["openguild", "type"]).is_err());
     }
 
     #[test]
