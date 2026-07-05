@@ -79,6 +79,19 @@ impl GuildPaths {
         self.dot_guild().join("backups")
     }
 
+    /// DEV-180: 퀘스트 이력 사이드카 디렉토리 (`.guild/history/`). git tracked.
+    /// `.guild/quests/` 에 comments/memo/attachments 사이드카가 이미 있어
+    /// 4번째 파일 종류를 더하면 디렉토리가 난잡해지므로, backups/ 처럼
+    /// 최상위에 전용 디렉토리를 둔다.
+    pub fn history_dir(&self) -> PathBuf {
+        self.dot_guild().join("history")
+    }
+
+    /// DEV-180: 한 퀘스트의 이력 사이드카 (`.guild/history/{slug}.jsonl`).
+    pub fn quest_history_sidecar_path(&self, slug: &str) -> PathBuf {
+        self.history_dir().join(format!("{slug}.jsonl"))
+    }
+
     pub fn journal_db(&self) -> PathBuf {
         self.backups_dir().join("journal.db")
     }

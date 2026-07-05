@@ -1,0 +1,5 @@
+{"ts":"2026-05-22T21:41:12+09:00","op":"change_status","old":"open","new":"in_progress"}
+{"ts":"2026-05-22T21:42:30+09:00","op":"change_status","old":"in_progress","new":"testing"}
+{"ts":"2026-05-22T21:42:36+09:00","op":"change_status","old":"testing","new":"in_progress"}
+{"ts":"2026-05-22T21:44:35+09:00","op":"change_status","old":"in_progress","new":"testing"}
+{"ts":"2026-05-22T21:49:54+09:00","op":"change_status","old":"testing","new":"done"}

@@ -1,11 +1,16 @@
-//! DEV-180: quest_history 사이드카 — `.guild/quests/{slug}.history.jsonl`.
+//! DEV-180: quest_history 사이드카 — `.guild/history/{slug}.jsonl`.
 //!
 //! quest_history 는 그동안 index.db **전용** 권위 데이터였다 — "index.db 는
 //! 재생성 가능한 캐시" 원칙을 깨는 유일한 예외라, index.db 를 지우면(새 clone /
 //! 캐시 초기화) 변경 이력이 영구 소실됐다. 본 모듈이 파일을 진리원으로 승격:
 //!
 //! - **포맷**: 한 줄 = 한 이벤트 JSON (`{"ts","op","old","new"}`), append-only.
-//!   slug 는 파일명이 담당. comments/memo/attachments 사이드카 패턴과 일관.
+//!   slug 는 파일명이 담당.
+//! - **위치**: `.guild/quests/` 가 아닌 최상위 `.guild/history/` 전용 디렉토리.
+//!   quests/ 는 이미 `.comments.md`/`.memo.md`/`.attachments.json` 사이드카로
+//!   퀘스트당 파일이 4개인데, 여기에 history 까지 더하면 디렉토리가 난잡해짐
+//!   (실사고: git diff 에 미커밋 사이드카 278개가 한꺼번에 쏟아짐) — backups/
+//!   처럼 최상위에 분리해 quests/ 는 그대로 둔다.
 //! - **쓰기**: history 를 남기는 mutation(change_status / change_type)이
 //!   DB INSERT 와 동시에 append. change_type 은 `.md` 처럼 사이드카도 rename.
 //! - **읽기/복구**: reindex 가 사이드카 → quest_history 재구축. 사이드카가
@@ -33,14 +38,16 @@ pub struct HistoryEntry {
     pub new: Option<String>,
 }
 
-/// `.guild/quests/{slug}.history.jsonl` 경로.
+/// `.guild/history/{slug}.jsonl` 경로.
 pub fn history_path(paths: &GuildPaths, slug: &str) -> PathBuf {
-    paths.quests_dir().join(format!("{slug}.history.jsonl"))
+    paths.quest_history_sidecar_path(slug)
 }
 
-/// 이벤트 1건 append (파일 없으면 생성).
+/// 이벤트 1건 append (파일 없으면 생성; 디렉토리도 최초 1회 생성).
 pub fn append(paths: &GuildPaths, slug: &str, entry: &HistoryEntry) -> Result<()> {
     let path = history_path(paths, slug);
+    std::fs::create_dir_all(paths.history_dir())
+        .with_context(|| format!("history 디렉토리 생성 실패: {}", paths.history_dir().display()))?;
     let line = serde_json::to_string(entry).context("history entry 직렬화")?;
     let mut f = std::fs::OpenOptions::new()
         .create(true)
@@ -84,16 +91,16 @@ pub fn rename(paths: &GuildPaths, old_slug: &str, new_slug: &str) -> Result<()> 
     Ok(())
 }
 
-/// `.guild/quests/` 안의 모든 history 사이드카 → (slug, path) 목록.
+/// `.guild/history/` 안의 모든 사이드카 → (slug, path) 목록.
 pub fn list_sidecars(paths: &GuildPaths) -> Vec<(String, PathBuf)> {
-    let Ok(rd) = std::fs::read_dir(paths.quests_dir()) else {
+    let Ok(rd) = std::fs::read_dir(paths.history_dir()) else {
         return Vec::new();
     };
     rd.filter_map(|e| e.ok())
         .filter_map(|e| {
             let p = e.path();
             let name = p.file_name()?.to_str()?.to_string();
-            let slug = name.strip_suffix(".history.jsonl")?.to_string();
+            let slug = name.strip_suffix(".jsonl")?.to_string();
             Some((slug, p))
         })
         .collect()
@@ -110,7 +117,7 @@ mod tests {
             .unwrap()
             .as_nanos();
         let dir = std::env::temp_dir().join(format!("og-hist-{ns}"));
-        std::fs::create_dir_all(dir.join(".guild/quests")).unwrap();
+        std::fs::create_dir_all(dir.join(".guild/history")).unwrap();
         let paths = GuildPaths::new(&dir);
 
         let e1 = HistoryEntry {

@@ -559,16 +559,19 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
     .execute(&mut *tx)
     .await?;
 
-    // 5d. DEV-180: quest_history ↔ `{slug}.history.jsonl` 사이드카 동기화 —
-    //     파일이 진리원, 테이블은 캐시.
+    // 5d. DEV-180: quest_history ↔ `.guild/history/{slug}.jsonl` 사이드카
+    //     동기화 — 파일이 진리원, 테이블은 캐시.
     //  (a) **export (일회성 자가 치유)**: 사이드카가 없는 slug 에 DB 행이
     //      있으면(DEV-180 이전 데이터) 먼저 파일로 내보내 이력 보존.
     //  (b) **rebuild**: 사이드카가 있는 slug 는 그 파일 기준으로 DB 행을
     //      재구축 — index.db 를 지웠다 새로 만들어도 이력이 복원된다.
     {
         use crate::repo::history as hist;
+        // clippy::type_complexity — (slug, ts, op, old, new) 튜플이 인라인에
+        // 쓰기엔 너무 복잡하다는 지적. 이 5d 블록 안에서만 쓰는 지역 타입.
+        type HistoryRow = (String, String, String, Option<String>, Option<String>);
         // (a) export.
-        let rows: Vec<(String, String, String, Option<String>, Option<String>)> = sqlx::query_as(
+        let rows: Vec<HistoryRow> = sqlx::query_as(
             "SELECT quest_slug, ts, op, old_value, new_value
                  FROM quest_history WHERE quest_slug IS NOT NULL ORDER BY quest_slug, id",
         )

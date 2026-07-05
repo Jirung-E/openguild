@@ -1,0 +1,9 @@
+{"ts":"2026-06-27T17:39:05+09:00","op":"change_status","old":"open","new":"in_progress"}
+{"ts":"2026-06-27T17:40:49+09:00","op":"change_status","old":"in_progress","new":"testing"}
+{"ts":"2026-06-27T19:30:27+09:00","op":"change_status","old":"testing","new":"in_progress"}
+{"ts":"2026-06-27T19:31:58+09:00","op":"change_status","old":"in_progress","new":"testing"}
+{"ts":"2026-06-28T01:33:52+09:00","op":"change_status","old":"testing","new":"on_hold"}
+{"ts":"2026-06-28T22:13:19+09:00","op":"change_status","old":"on_hold","new":"testing"}
+{"ts":"2026-06-28T22:57:03+09:00","op":"change_status","old":"testing","new":"in_progress"}
+{"ts":"2026-06-28T23:03:07+09:00","op":"change_status","old":"in_progress","new":"testing"}
+{"ts":"2026-06-28T23:47:20+09:00","op":"change_status","old":"testing","new":"cancelled"}

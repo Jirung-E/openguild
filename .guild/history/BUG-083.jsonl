@@ -1,0 +1,4 @@
+{"ts":"2026-06-21T22:38:26+09:00","op":"change_status","old":"open","new":"testing"}
+{"ts":"2026-06-22T00:47:01+09:00","op":"change_status","old":"testing","new":"in_progress"}
+{"ts":"2026-06-22T00:51:39+09:00","op":"change_status","old":"in_progress","new":"on_hold"}
+{"ts":"2026-06-22T01:03:39+09:00","op":"change_status","old":"on_hold","new":"done"}

@@ -1,0 +1,6 @@
+{"ts":"2026-06-06T13:47:43+09:00","op":"change_status","old":"open","new":"testing"}
+{"ts":"2026-06-06T17:44:21+09:00","op":"change_status","old":"testing","new":"returned"}
+{"ts":"2026-06-07T00:07:23+09:00","op":"change_status","old":"returned","new":"done"}
+{"ts":"2026-06-09T01:28:03+09:00","op":"change_status","old":"done","new":"in_progress"}
+{"ts":"2026-06-09T01:44:59+09:00","op":"change_status","old":"in_progress","new":"testing"}
+{"ts":"2026-06-13T02:01:56+09:00","op":"change_status","old":"testing","new":"done"}
