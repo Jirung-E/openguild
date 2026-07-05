@@ -92,11 +92,17 @@ export function crossLinkAutocomplete(): Extension {
 		markdownLanguage.data.of({ autocomplete: questIdCompletion }),
 		// basicSetup 가 이미 autocompletion 을 포함하지만, 타이핑 중 자동 활성화를
 		// 보장하기 위해 명시 (config 는 병합됨).
-		autocompletion({ activateOnTyping: true }),
-		// BUG-114: 편집기를 감싼 `.editor-wrap` 이 리사이즈 핸들/모서리 때문에
+		//
+		// BUG-115 후속: 진짜 원인은 overflow 클리핑이 아니라 CodeMirror
+		// autocompletion 의 기본 maxRenderedOptions(100) 이었다 — 빈 `[[` 는
+		// 길드 전체 quest/campaign/rule(수백 개)을 다 후보로 주는데, 알파벳
+		// 정렬(BUG < DEV < REQ) 상 100번째에서 잘려 "BUG-1xx 까지만 보임"으로
+		// 나타났다. 길드가 커도 다 보이게 넉넉히 올림.
+		autocompletion({ activateOnTyping: true, maxRenderedOptions: 1000 }),
+		// BUG-115: 편집기를 감싼 `.editor-wrap` 이 리사이즈 핸들/모서리 때문에
 		// `overflow: hidden` 이라, 기본 위치(에디터 DOM 내부)로 뜨는 자동완성
-		// 툴팁이 그 경계에서 잘려 후보가 몇 개만 보였다. 툴팁을 document.body
-		// 에 붙여 조상의 overflow 클리핑을 우회.
+		// 툴팁이 그 경계에서 잘릴 수 있다(조상에 transform 이 있으면 CodeMirror
+		// 가 absolute 로 폴백). 툴팁을 document.body 에 붙여 우회.
 		tooltips({ parent: document.body })
 	];
 }
