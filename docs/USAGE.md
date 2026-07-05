@@ -106,9 +106,9 @@ echo "디자인 확정함." | openguild quest comment add DEV-001 --author alice
 # 메모 (비공개)
 echo "TODO: foo 확인" | openguild quest memo set DEV-001
 
-# 길드 규칙
-openguild rules list
-echo "내용" | openguild rules create branch-policy
+# 길드 규칙 (top-level 은 `rule` — `rules` alias 도 동작)
+openguild rule list
+echo "내용" | openguild rule create branch-policy
 
 # 캠페인
 openguild campaign new --title "베타 1.0"

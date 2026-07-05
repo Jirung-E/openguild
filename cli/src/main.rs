@@ -63,11 +63,16 @@ enum Command {
         sub: QuestCmd,
     },
     /// 퀘스트 타입 — 목록 / 추가 / 수정 / 삭제 / 이름 변경
+    // DEV-227: 다른 top-level 명사 그룹(quest/campaign/template/backup/check/
+    // index/journal)과의 단수형 일관성 위해 canonical 이름을 단수로 — 기존
+    // 스크립트 호환 위해 복수형은 alias 로 유지.
+    #[command(name = "type", alias = "types")]
     Types {
         #[command(subcommand)]
         sub: Option<TypesCmd>,
     },
     /// 퀘스트 상태 — 목록 / 추가 / 수정 / 삭제 / 이름 변경
+    #[command(name = "status", alias = "statuses")]
     Statuses {
         #[command(subcommand)]
         sub: Option<StatusesCmd>,
@@ -80,6 +85,8 @@ enum Command {
     // BUG-016: doc comment 의 quest id 가 clap help 로 leak — 외부 사용자에게
     // internal quest 번호 노출 금지. 기능 설명만 plain `///` 으로.
     /// 길드 규칙 — `.guild/rules/{slug}.md` 다중 파일 CRUD.
+    // DEV-227: canonical 단수형, 복수형은 alias.
+    #[command(name = "rule", alias = "rules")]
     Rules {
         #[command(subcommand)]
         sub: RulesCmd,
@@ -6733,6 +6740,27 @@ mod tests {
         match cli.command {
             Command::Types { sub } => assert!(sub.is_none()),
             _ => panic!(),
+        }
+    }
+
+    /// DEV-227: type/status/rule 단수형이 canonical, 복수형은 alias 로
+    /// 계속 동작해야(기존 스크립트 호환).
+    #[test]
+    fn cli_singular_type_status_rule_parse_same_as_plural_alias() {
+        for args in [["openguild", "type"], ["openguild", "types"]] {
+            let cli = Cli::try_parse_from(args).unwrap();
+            assert!(matches!(cli.command, Command::Types { sub: None }));
+        }
+        for args in [["openguild", "status"], ["openguild", "statuses"]] {
+            let cli = Cli::try_parse_from(args).unwrap();
+            assert!(matches!(cli.command, Command::Statuses { sub: None }));
+        }
+        for args in [["openguild", "rule", "list"], ["openguild", "rules", "list"]] {
+            let cli = Cli::try_parse_from(args).unwrap();
+            match cli.command {
+                Command::Rules { sub } => assert!(matches!(sub, RulesCmd::List)),
+                _ => panic!(),
+            }
         }
     }
 

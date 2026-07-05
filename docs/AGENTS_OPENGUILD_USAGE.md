@@ -67,8 +67,8 @@ openguild info         # 길드 메타 / DB 크기 / 백업 현황
 ```bash
 openguild init [--name <NAME>]   # cwd 를 길드로 초기화
 openguild ping                   # 서버 health 확인
-openguild types                  # quest 타입 목록 (DEV / BUG / REQ)
-openguild statuses               # 상태 목록 (Open / In Progress / Done / ...)
+openguild type                   # quest 타입 목록 (DEV / BUG / REQ) — `types` alias 도 동작
+openguild status                 # 상태 목록 (Open / In Progress / Done / ...) — `statuses` alias 도 동작
 ```
 
 ### 2.2 Quest CRUD
@@ -327,12 +327,13 @@ openguild journal tail               # journal(AOF) 최근 op — audit / 디버
 openguild info                       # 길드 메타 / index.db·snapshot·journal 요약 (진단)
 
 # 길드 규칙 (.guild/rules/{slug}.md — 프로젝트 컨벤션 문서, git tracked)
-openguild rules list                          # 규칙 slug 목록
-openguild rules show   <slug>                 # 본문 출력
-openguild rules create <slug> --file <PATH>   # 신규 (중복 slug 는 에러, `new` 별칭 OK)
-openguild rules set    <slug> --file <PATH>   # 본문 교체 (멱등 — 없으면 생성)
-openguild rules delete <slug> [--force]
-openguild rules rename <old-slug> <new-slug>
+# top-level 은 `rule` (canonical) — `rules` alias 도 동작
+openguild rule list                          # 규칙 slug 목록
+openguild rule show   <slug>                 # 본문 출력
+openguild rule create <slug> --file <PATH>   # 신규 (중복 slug 는 에러, `new` 별칭 OK)
+openguild rule set    <slug> --file <PATH>   # 본문 교체 (멱등 — 없으면 생성)
+openguild rule delete <slug> [--force]
+openguild rule rename <old-slug> <new-slug>
 ```
 
 ---
@@ -423,8 +424,8 @@ openguild 는 **파일 = truth, `.guild/index.db` = SQL 캐시** 구조. mutatio
 | parent                   | `openguild quest parent <slug> <parent>` / `--detach` |
 | prerequisites            | `openguild quest prereq add/rm <slug> <other>` |
 | 삭제 / 복원              | `openguild quest delete/restore <slug>` |
-| type 메타                | `openguild types add/update/delete` (`update --prefix` 로 rename+cascade) |
-| status 메타              | `openguild statuses add/update/delete` (`update --slug` 로 rename+cascade) |
+| type 메타                | `openguild type add/update/delete` (`update --prefix` 로 rename+cascade) |
+| status 메타              | `openguild status add/update/delete` (`update --slug` 로 rename+cascade) |
 
 #### 부득이하게 직접 편집해야 한다면
 
