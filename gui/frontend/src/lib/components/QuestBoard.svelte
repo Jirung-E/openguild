@@ -905,7 +905,12 @@
 				? absToVisualX(laneFirstCellX(li, cols), statusId)
 				: laneFirstCellX(li, cols);
 		const localX = x - firstX;
-		const colIdx = Math.round(localX / cellW);
+		// BUG-113: colIdx 가 [0, cols-1] 로 안 잘려 있어, 레인 폭 자체는 항상
+		// (더 많은 열도 들어갈 만큼) 넓기 때문에 1/2 열 snap 인 레인에서도 옆쪽에
+		// 드롭하면 반올림된 colIdx 가 그 레인의 col 수를 넘어서 버렸다 —
+		// 그 값이 우연히 3열 grid 의 바깥쪽 셀 위치와 겹쳐 "3열 snap 의 양 끝
+		// 으로 스냅되는" 것처럼 보였음. 레인에 설정된 col 수 범위로 clamp.
+		const colIdx = Math.max(0, Math.min(cols - 1, Math.round(localX / cellW)));
 		const sx = firstX + colIdx * cellW;
 		// Y 그리드 기준: 보드 상단 + NODE_H/2 (첫 셀 중앙)
 		const baseY = LANE_TOP + 16 + NODE_H / 2;
