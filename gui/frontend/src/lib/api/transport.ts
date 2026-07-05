@@ -149,6 +149,29 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 		}
 	}
 
+	// DEV-217: 도서관 — server routes/library.rs 와 1:1.
+	if (pathOnly === '/api/library') {
+		if (method === 'GET') return { cmd: 'list_books', args: {} };
+		if (method === 'POST') {
+			const b = (body as { title?: string; body?: string } | undefined) ?? {};
+			return { cmd: 'create_book', args: { title: b.title ?? '', body: b.body ?? '' } };
+		}
+	}
+	if (parts[0] === 'api' && parts[1] === 'library' && parts[2]) {
+		const bookId = decodeURIComponent(parts[2]);
+		if (method === 'GET') return { cmd: 'get_book', args: { bookId } };
+		if (method === 'PATCH') {
+			const b = (body as { title?: string | null; body?: string | null } | undefined) ?? {};
+			return {
+				cmd: 'update_book',
+				args: { bookId, title: b.title ?? null, body: b.body ?? null }
+			};
+		}
+		if (method === 'DELETE') {
+			return { cmd: 'delete_book', args: { bookId } };
+		}
+	}
+
 	if (method === 'GET' && pathOnly === '/api/quest-types') {
 		return { cmd: 'list_quest_types', args: {} };
 	}

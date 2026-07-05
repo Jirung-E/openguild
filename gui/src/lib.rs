@@ -415,6 +415,12 @@ pub fn run() {
             commands::create_rule,
             commands::delete_rule,
             commands::rename_rule,
+            // DEV-217: 도서관.
+            commands::list_books,
+            commands::get_book,
+            commands::create_book,
+            commands::update_book,
+            commands::delete_book,
             // DEV-012 / DEV-094: 메모 (단일 텍스트) + 댓글 (entry 단위).
             commands::get_memo,
             commands::set_memo,

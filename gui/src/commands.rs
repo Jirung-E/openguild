@@ -1270,6 +1270,93 @@ pub async fn rename_rule(
     })
 }
 
+// ─────────────────────── DEV-217: 도서관 (Library) ───────────────────────
+// server routes/library.rs 의 BookResponse 와 동일 형태 — transport.ts 가
+// HTTP/invoke 를 투명하게 스위칭할 수 있게 (DEV-193 파리티 원칙).
+
+#[derive(serde::Serialize)]
+pub struct BookResponse {
+    pub book_id: String,
+    pub number: i64,
+    pub title: String,
+    pub body: String,
+    pub created_at: String,
+    pub updated_at: String,
+    pub deleted_at: Option<String>,
+}
+
+impl From<openguild_core::ops::library::LibraryDocRow> for BookResponse {
+    fn from(r: openguild_core::ops::library::LibraryDocRow) -> Self {
+        Self {
+            book_id: r.book_id(),
+            number: r.number,
+            title: r.title,
+            body: r.body,
+            created_at: r.created_at,
+            updated_at: r.updated_at,
+            deleted_at: r.deleted_at,
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn list_books(store: State<'_, Store>) -> Result<Vec<BookResponse>, String> {
+    let rows = openguild_core::ops::library::list_books(&store)
+        .await
+        .map_err(err)?;
+    Ok(rows.into_iter().map(BookResponse::from).collect())
+}
+
+#[tauri::command]
+pub async fn get_book(store: State<'_, Store>, book_id: String) -> Result<BookResponse, String> {
+    openguild_core::ops::library::get_book(&store, &book_id)
+        .await
+        .map_err(err)?
+        .map(BookResponse::from)
+        .ok_or_else(|| format!("도서관 문서 '{book_id}' 없음"))
+}
+
+#[tauri::command]
+pub async fn create_book(
+    store: State<'_, Store>,
+    title: String,
+    body: Option<String>,
+) -> Result<BookResponse, String> {
+    let row = openguild_core::ops::library::create_book(
+        &store,
+        &title,
+        body.as_deref().unwrap_or(""),
+    )
+    .await
+    .map_err(err)?;
+    Ok(row.into())
+}
+
+#[tauri::command]
+pub async fn update_book(
+    store: State<'_, Store>,
+    book_id: String,
+    title: Option<String>,
+    body: Option<String>,
+) -> Result<BookResponse, String> {
+    let row = openguild_core::ops::library::update_book(
+        &store,
+        &book_id,
+        title.as_deref(),
+        body.as_deref(),
+    )
+    .await
+    .map_err(err)?;
+    Ok(row.into())
+}
+
+#[tauri::command]
+pub async fn delete_book(store: State<'_, Store>, book_id: String) -> Result<(), String> {
+    openguild_core::ops::library::delete_book(&store, &book_id)
+        .await
+        .map_err(err)
+}
+
 // ─────────────────────── DEV-012 / DEV-094: 댓글 / 메모 ───────────────────────
 
 // 메모는 단일 텍스트 그대로 (DEV-012).

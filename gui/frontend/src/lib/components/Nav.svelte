@@ -37,6 +37,8 @@
 	let onSettingsPath = $derived($page.url.pathname.startsWith('/settings'));
 	// DEV-016: 길드 규칙 페이지.
 	let onRulesPath = $derived($page.url.pathname.startsWith('/rules'));
+	// DEV-217: 도서관 페이지.
+	let onLibraryPath = $derived($page.url.pathname.startsWith('/library'));
 
 	// DEV-095: Reindex 버튼 — 사용자 의견 "Admin 페이지 아닌 일반 사용자도
 	// 접근 가능". 외부 편집 / `openguild quest new` CLI / git pull 등으로
@@ -93,6 +95,8 @@
 		<a href="/admin" class:active={onAdminPath}>Admin</a>
 		<!-- DEV-016: 길드 규칙 — 팀 컨벤션 / 그라운드 룰. -->
 		<a href="/rules" class:active={onRulesPath}>Rules</a>
+		<!-- DEV-217: 도서관 — 프로젝트 참고문서/노트 (BOOK 번호). -->
+		<a href="/library" class:active={onLibraryPath}>Library</a>
 	</nav>
 
 	<div class="nav-right">

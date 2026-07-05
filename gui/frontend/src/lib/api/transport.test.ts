@@ -370,6 +370,37 @@ describe('TauriTransport', () => {
 			args: {}
 		});
 	});
+
+	it('routeToInvoke — 도서관 CRUD 매핑 (DEV-217)', () => {
+		expect(__test_only.routeToInvoke({ method: 'GET', path: '/api/library' })).toEqual({
+			cmd: 'list_books',
+			args: {}
+		});
+		expect(
+			__test_only.routeToInvoke({
+				method: 'POST',
+				path: '/api/library',
+				body: { title: '제목', body: '본문' }
+			})
+		).toEqual({ cmd: 'create_book', args: { title: '제목', body: '본문' } });
+		expect(__test_only.routeToInvoke({ method: 'GET', path: '/api/library/BOOK-001' })).toEqual({
+			cmd: 'get_book',
+			args: { bookId: 'BOOK-001' }
+		});
+		expect(
+			__test_only.routeToInvoke({
+				method: 'PATCH',
+				path: '/api/library/BOOK-001',
+				body: { title: '새 제목' }
+			})
+		).toEqual({
+			cmd: 'update_book',
+			args: { bookId: 'BOOK-001', title: '새 제목', body: null }
+		});
+		expect(
+			__test_only.routeToInvoke({ method: 'DELETE', path: '/api/library/BOOK-001' })
+		).toEqual({ cmd: 'delete_book', args: { bookId: 'BOOK-001' } });
+	});
 });
 
 // DEV-113 (MVP): 원격 서버 모드 — `transport` (동적 위임)이 Tauri 환경에서도
