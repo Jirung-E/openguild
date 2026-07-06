@@ -108,6 +108,14 @@
 		syncUrl();
 		load();
 	}
+	// 날짜 직접 입력 — bind:value 로 anchor 는 이미 갱신됨. 빈 값(지움)은 무시.
+	function onAnchorInput() {
+		if (!/^\d{4}-\d{2}-\d{2}$/.test(anchor)) {
+			anchor = fmt(new Date());
+		}
+		syncUrl();
+		load();
+	}
 	function setUnit(u: Unit) {
 		if (unit === u) return;
 		unit = u;
@@ -235,7 +243,18 @@
 			</div>
 			<div class="nav">
 				<button onclick={() => step(-1)} aria-label="이전">◀</button>
-				<span class="range-label">{rangeLabel}</span>
+				<!-- 날짜 직접 입력 (admin 요청) — quest 기한 편집과 동일한
+				     native date input. 주/월 뷰에선 고른 날짜가 속한 기간으로 이동. -->
+				<input
+					class="anchor-date"
+					type="date"
+					bind:value={anchor}
+					onchange={onAnchorInput}
+					aria-label="날짜 선택"
+				/>
+				{#if unit !== 'day'}
+					<span class="range-label">{rangeLabel}</span>
+				{/if}
 				<button onclick={() => step(1)} aria-label="다음">▶</button>
 				<button onclick={goToday}>오늘</button>
 			</div>
@@ -386,6 +405,15 @@
 		font-weight: 600;
 		min-width: 7.5rem;
 		text-align: center;
+	}
+	/* 날짜 직접 입력 — quest 기한 편집 input 과 같은 native date. */
+	.anchor-date {
+		background: var(--bg);
+		border: 1px solid var(--border);
+		color: var(--text);
+		border-radius: 6px;
+		padding: 0.15rem 0.4rem;
+		font-size: 0.82rem;
 	}
 
 	.note {
