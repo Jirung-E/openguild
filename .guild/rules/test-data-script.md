@@ -25,7 +25,7 @@ pwsh -File <openguild repo>/scripts/seed-test-data.ps1
 `OPENGUILD_BIN` > `target/release/openguild.exe` > `target/debug/openguild.exe`
 > PATH 의 `openguild`.
 
-## 검증 단계 (= 스크립트의 8 단계)
+## 검증 단계 (= 스크립트의 10 단계)
 
 | 단계 | 내용 | 검증 대상 UI |
 |------|------|--------------|
@@ -37,6 +37,8 @@ pwsh -File <openguild repo>/scripts/seed-test-data.ps1
 | 6 | campaign ↔ quest 연결 | Quest Detail 의 Campaigns 섹션 / Campaign Detail 의 Quests |
 | 7 | **DEV-094/099/102** 첫 quest 에 댓글 2 (top + reply) + 메모 1 | Quest Detail 댓글/메모 섹션 + DB 캐시 sync (snapshot 안 살아남는지) |
 | 8 | **DEV-016 multi-file** sample 규칙 3 개 (branch-policy / code-review / release-checklist) | Rules 페이지 sidebar / 선택 / 편집 |
+| 9 | **DEV-215~218** 도서관 문서 2 개 (본문+[[cross-link]] / 빈 본문) + 댓글의 [[BOOK-001]] 참조 | Library 페이지 목록/편집 / 딥링크 / 렌더·자동완성의 도서관 링크 |
+| 10 | **DEV-167** worklog 노트 2 개 (오늘/이틀 전) — 활동은 스크립트 실행 자체가 생성 | HOME 히트맵 카드 / /worklog 상세 (일/주 뷰, 노트, 타임라인) |
 
 ## 갱신 절차 — 신규 기능 추가 시
 
