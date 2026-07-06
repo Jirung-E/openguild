@@ -29,7 +29,7 @@
 	import { editorSettings } from '$lib/stores/editorSettings';
 	import { crossLinkAutocomplete } from '$lib/utils/editor-links';
 
-	type Unit = 'day' | 'week' | 'month';
+	type Unit = 'day' | 'week' | 'month' | 'range';
 	const UNITS: Unit[] = ['day', 'week', 'month', 'range'];
 	const UNIT_LABEL: Record<Unit, string> = { day: '일', week: '주', month: '월', range: '구간' };
 
