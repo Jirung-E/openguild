@@ -30,12 +30,15 @@
 	import { crossLinkAutocomplete } from '$lib/utils/editor-links';
 
 	type Unit = 'day' | 'week' | 'month';
-	const UNITS: Unit[] = ['day', 'week', 'month'];
-	const UNIT_LABEL: Record<Unit, string> = { day: '일', week: '주', month: '월' };
+	const UNITS: Unit[] = ['day', 'week', 'month', 'range'];
+	const UNIT_LABEL: Record<Unit, string> = { day: '일', week: '주', month: '월', range: '구간' };
 
 	let unit = $state<Unit>('day');
 	/** 기준 날짜 (일 뷰 = 그 날, 주/월 뷰 = 그 날이 속한 기간). */
 	let anchor = $state(fmt(new Date()));
+	// 임의 구간(range) 뷰의 시작/끝 — admin 요청.
+	let rangeFrom = $state(fmt(new Date()));
+	let rangeTo = $state(fmt(new Date()));
 
 	let loading = $state(true);
 	let error = $state<string | null>(null);
@@ -55,6 +58,12 @@
 
 	/** unit + anchor → [from, to] (날짜 포함). */
 	function range(): { from: string; to: string } {
+		if (unit === 'range') {
+			// 역순 입력이면 스왑.
+			return rangeFrom <= rangeTo
+				? { from: rangeFrom, to: rangeTo }
+				: { from: rangeTo, to: rangeFrom };
+		}
 		const a = parse(anchor);
 		if (unit === 'day') return { from: anchor, to: anchor };
 		if (unit === 'week') {
@@ -72,9 +81,19 @@
 	const rangeLabel = $derived.by(() => {
 		const { from, to } = range();
 		if (unit === 'day') return anchor;
-		if (unit === 'week') return `${from} ~ ${to}`;
-		return anchor.slice(0, 7);
+		if (unit === 'month') return anchor.slice(0, 7);
+		return `${from} ~ ${to}`;
 	});
+
+	// 월 뷰용 — <input type="month"> 는 'YYYY-MM' 값을 쓰므로 anchor 와 변환.
+	const anchorMonth = $derived(anchor.slice(0, 7));
+	function onMonthInput(e: Event) {
+		const v = (e.currentTarget as HTMLInputElement).value;
+		if (!/^\d{4}-\d{2}$/.test(v)) return; // 지움 등 — 무시.
+		anchor = `${v}-01`;
+		syncUrl();
+		load();
+	}
 
 	async function load() {
 		loading = true;
@@ -119,24 +138,48 @@
 	function setUnit(u: Unit) {
 		if (unit === u) return;
 		unit = u;
+		if (u === 'range') {
+			// 직전 뷰의 기간을 초기값으로 — 빈 구간에서 시작하지 않게.
+			rangeFrom = anchor;
+			rangeTo = anchor;
+		}
+		load();
+	}
+	function onRangeInput() {
+		if (!/^\d{4}-\d{2}-\d{2}$/.test(rangeFrom) || !/^\d{4}-\d{2}-\d{2}$/.test(rangeTo)) return;
 		load();
 	}
 
 	function syncUrl() {
 		const cur = new URLSearchParams(window.location.search).get('date');
 		if (cur === anchor) return;
+		// 아래 URL $effect 가 이 로컬 변경에 반응해 anchor 를 옛 URL 값으로
+		// 되돌리지 않도록 먼저 기록 (goto 는 비동기 — 사용자 보고 버그).
+		lastUrlDate = anchor;
 		goto(`/worklog?date=${anchor}`, { replaceState: true, keepFocus: true, noScroll: true });
 	}
 
 	onMount(() => {
 		const dateParam = new URLSearchParams(window.location.search).get('date');
-		if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) anchor = dateParam;
+		if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+			anchor = dateParam;
+			lastUrlDate = dateParam;
+		}
 		load();
 	});
 
 	// URL(?date=) 진리원 — 뒤로가기/딥링크 (BUG-104 패턴).
+	//
+	// 사용자 보고 버그: 이 effect 가 `anchor` 도 반응형 의존이라, 날짜 입력으로
+	// anchor 가 바뀌는 즉시(goto 로 URL 이 갱신되기 전에) 재실행돼 "URL 의 옛
+	// 날짜 ≠ anchor" 조건에 걸려 anchor 를 옛 값으로 되돌렸다 — 날짜를 골라도
+	// 처음 값으로 계속 복귀. URL 값이 실제로 바뀌었을 때만 반응하도록
+	// lastUrlDate 로 가드.
+	let lastUrlDate: string | null = null;
 	$effect(() => {
 		const d = $page.url.searchParams.get('date');
+		if (d === lastUrlDate) return;
+		lastUrlDate = d;
 		if (d && /^\d{4}-\d{2}-\d{2}$/.test(d) && d !== anchor) {
 			anchor = d;
 			load();
@@ -242,21 +285,51 @@
 				{/each}
 			</div>
 			<div class="nav">
-				<button onclick={() => step(-1)} aria-label="이전">◀</button>
-				<!-- 날짜 직접 입력 (admin 요청) — quest 기한 편집과 동일한
-				     native date input. 주/월 뷰에선 고른 날짜가 속한 기간으로 이동. -->
-				<input
-					class="anchor-date"
-					type="date"
-					bind:value={anchor}
-					onchange={onAnchorInput}
-					aria-label="날짜 선택"
-				/>
-				{#if unit !== 'day'}
-					<span class="range-label">{rangeLabel}</span>
+				{#if unit === 'range'}
+					<!-- 임의 구간 (admin 요청) — 시작/끝 날짜 직접 지정. -->
+					<input
+						class="anchor-date"
+						type="date"
+						bind:value={rangeFrom}
+						onchange={onRangeInput}
+						aria-label="구간 시작"
+					/>
+					<span class="range-tilde">~</span>
+					<input
+						class="anchor-date"
+						type="date"
+						bind:value={rangeTo}
+						onchange={onRangeInput}
+						aria-label="구간 끝"
+					/>
+				{:else}
+					<button onclick={() => step(-1)} aria-label="이전">◀</button>
+					{#if unit === 'month'}
+						<!-- 월 뷰는 native month picker — 월만 고름 (admin 요청). -->
+						<input
+							class="anchor-date"
+							type="month"
+							value={anchorMonth}
+							onchange={onMonthInput}
+							aria-label="월 선택"
+						/>
+					{:else}
+						<!-- 날짜 직접 입력 (admin 요청) — quest 기한 편집과 동일한
+						     native date input. 주 뷰에선 고른 날짜가 속한 주로 이동. -->
+						<input
+							class="anchor-date"
+							type="date"
+							bind:value={anchor}
+							onchange={onAnchorInput}
+							aria-label="날짜 선택"
+						/>
+					{/if}
+					{#if unit === 'week'}
+						<span class="range-label">{rangeLabel}</span>
+					{/if}
+					<button onclick={() => step(1)} aria-label="다음">▶</button>
+					<button onclick={goToday}>오늘</button>
 				{/if}
-				<button onclick={() => step(1)} aria-label="다음">▶</button>
-				<button onclick={goToday}>오늘</button>
 			</div>
 		</div>
 	</div>
@@ -406,13 +479,17 @@
 		min-width: 7.5rem;
 		text-align: center;
 	}
-	/* 날짜 직접 입력 — quest 기한 편집 input 과 같은 native date. */
+	/* 날짜 직접 입력 — quest 기한 편집 input 과 같은 native date/month. */
 	.anchor-date {
 		background: var(--bg);
 		border: 1px solid var(--border);
 		color: var(--text);
 		border-radius: 6px;
 		padding: 0.15rem 0.4rem;
+		font-size: 0.82rem;
+	}
+	.range-tilde {
+		color: var(--text-muted);
 		font-size: 0.82rem;
 	}
 
