@@ -11,7 +11,7 @@
 	import { onMount, onDestroy, tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import type { Quest } from '$lib/types';
-	import { makeQuestNodeSvgUrl, QUEST_NODE_W, QUEST_NODE_H } from '$lib/utils/quest-node-svg';
+	import { makeQuestNodeSvgUrl, QUEST_NODE_H } from '$lib/utils/quest-node-svg';
 	// DEV-074 fix3: theme 별 노드 색 — store 변경 시 reactive.
 	import { theme, resolveTheme } from '$lib/stores/theme';
 	// BUG-117: SVG 노드 이미지는 px 고정이라 uiScale(root font-size)이 안
@@ -30,7 +30,10 @@
 	} = $props();
 
 	const GAP_PX = 12;
-	const CARD_W = QUEST_NODE_W;
+	// 홈에선 CampaignConveyor 카드(200px)와 비슷한 크기로 — 보드 노드 폭
+	// (QUEST_NODE_W=284)이 과하게 컸음(admin 피드백). SVG layout 폭을 200 으로
+	// 재배치 생성(글자 크기 유지, 제목만 더 일찍 truncate).
+	const CARD_W = 200;
 	// BUG-117: uiScale 반영 실효 크기 — 이미지/슬롯 폭과 marquee 폭·속도
 	// 계산이 같은 값을 봐야 흐름이 일관 (track gap 0.75rem 도 12px×scale).
 	let effCardW = $derived(Math.round(CARD_W * $uiScale));
@@ -201,7 +204,7 @@
 					onclick={() => openQuest(q)}
 				>
 					<img
-						src={makeQuestNodeSvgUrl(q, overlayFor(q), effectiveTheme)}
+						src={makeQuestNodeSvgUrl(q, overlayFor(q), effectiveTheme, CARD_W)}
 						alt={`${q.quest_id} ${q.title}`}
 						width={effCardW}
 						height={effCardH}
@@ -221,7 +224,7 @@
 						onclick={() => openQuest(q)}
 					>
 						<img
-							src={makeQuestNodeSvgUrl(q, overlayFor(q), effectiveTheme)}
+							src={makeQuestNodeSvgUrl(q, overlayFor(q), effectiveTheme, CARD_W)}
 							alt=""
 							width={effCardW}
 							height={effCardH}
@@ -268,7 +271,7 @@
 		will-change: transform;
 	}
 	.slot {
-		flex: 0 0 284px;
+		flex: 0 0 200px;
 		background: transparent;
 		border: none;
 		padding: 0;
@@ -279,7 +282,7 @@
 		align-items: stretch;
 	}
 	.spacer {
-		flex: 0 0 284px;
+		flex: 0 0 200px;
 	}
 	/* BUG-035: 실제 드래그 중 슬롯 클릭 차단. marquee 가 아닐 땐 자연스러운 click. */
 	.conveyor.marquee.dragging .slot {
