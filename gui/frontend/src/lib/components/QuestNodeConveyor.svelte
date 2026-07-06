@@ -14,6 +14,9 @@
 	import { makeQuestNodeSvgUrl, QUEST_NODE_W, QUEST_NODE_H } from '$lib/utils/quest-node-svg';
 	// DEV-074 fix3: theme 별 노드 색 — store 변경 시 reactive.
 	import { theme, resolveTheme } from '$lib/stores/theme';
+	// BUG-117: SVG 노드 이미지는 px 고정이라 uiScale(root font-size)이 안
+	// 먹었음 — scale 배율을 직접 곱해 이미지/슬롯 폭 + marquee 계산에 반영.
+	import { uiScale } from '$lib/stores/uiScale';
 	let effectiveTheme = $derived(resolveTheme($theme));
 
 	let {
@@ -28,6 +31,11 @@
 
 	const GAP_PX = 12;
 	const CARD_W = QUEST_NODE_W;
+	// BUG-117: uiScale 반영 실효 크기 — 이미지/슬롯 폭과 marquee 폭·속도
+	// 계산이 같은 값을 봐야 흐름이 일관 (track gap 0.75rem 도 12px×scale).
+	let effCardW = $derived(Math.round(CARD_W * $uiScale));
+	let effCardH = $derived(Math.round(QUEST_NODE_H * $uiScale));
+	let effGap = $derived(GAP_PX * $uiScale);
 
 	let viewportEl: HTMLDivElement | undefined = $state(undefined);
 	let trackEl: HTMLDivElement | undefined = $state(undefined);
@@ -45,10 +53,10 @@
 	let lastFrameTime = 0;
 
 	let cardsOnlyW = $derived(
-		quests.length === 0 ? 0 : quests.length * CARD_W + (quests.length - 1) * GAP_PX
+		quests.length === 0 ? 0 : quests.length * effCardW + (quests.length - 1) * effGap
 	);
 	let needsMarquee = $derived(viewportW > 0 && cardsOnlyW > viewportW);
-	let pixelsPerSec = $derived((CARD_W + GAP_PX) / secondsPerCard);
+	let pixelsPerSec = $derived((effCardW + effGap) / secondsPerCard);
 
 	function isPaused(t: number): boolean {
 		if (isDragging || hoverPause || userPaused) return true;
@@ -188,24 +196,26 @@
 				<button
 					type="button"
 					class="slot"
+					style:flex-basis={`${effCardW}px`}
 					title={`${q.quest_id}  ${q.title}`}
 					onclick={() => openQuest(q)}
 				>
 					<img
 						src={makeQuestNodeSvgUrl(q, overlayFor(q), effectiveTheme)}
 						alt={`${q.quest_id} ${q.title}`}
-						width={CARD_W}
-						height={QUEST_NODE_H}
+						width={effCardW}
+						height={effCardH}
 						draggable="false"
 					/>
 				</button>
 			{/each}
 			{#if needsMarquee}
-				<div class="spacer" aria-hidden="true"></div>
+				<div class="spacer" style:flex-basis={`${effCardW}px`} aria-hidden="true"></div>
 				{#each quests as q, i (`dup-${i}`)}
 					<button
 						type="button"
 						class="slot"
+						style:flex-basis={`${effCardW}px`}
 						aria-hidden="true"
 						tabindex="-1"
 						onclick={() => openQuest(q)}
@@ -213,13 +223,13 @@
 						<img
 							src={makeQuestNodeSvgUrl(q, overlayFor(q), effectiveTheme)}
 							alt=""
-							width={CARD_W}
-							height={QUEST_NODE_H}
+							width={effCardW}
+							height={effCardH}
 							draggable="false"
 						/>
 					</button>
 				{/each}
-				<div class="spacer" aria-hidden="true"></div>
+				<div class="spacer" style:flex-basis={`${effCardW}px`} aria-hidden="true"></div>
 			{/if}
 		</div>
 	</div>

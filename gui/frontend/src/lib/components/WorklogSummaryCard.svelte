@@ -175,19 +175,20 @@
 		color: var(--text);
 	}
 
+	/* BUG-117: 셀/간격을 rem 으로 — uiScale(root font-size)에 비례. */
 	.heat {
 		display: flex;
-		gap: 3px;
+		gap: 0.1875rem;
 		margin-bottom: 0.7rem;
 	}
 	.week {
 		display: flex;
 		flex-direction: column;
-		gap: 3px;
+		gap: 0.1875rem;
 	}
 	.cell {
-		width: 11px;
-		height: 11px;
+		width: 0.6875rem;
+		height: 0.6875rem;
 		border-radius: 2px;
 		border: 1px solid var(--border);
 		padding: 0;

@@ -11,6 +11,9 @@
 	import { onMount, onDestroy, tick } from 'svelte';
 	import type { CampaignSummary } from '$lib/types';
 	import CampaignCard from './CampaignCard.svelte';
+	// BUG-117: 카드 슬롯이 px 고정이라 uiScale 시 안의 rem 글자만 커져 넘쳤음
+	// — scale 배율을 곱해 슬롯 폭과 marquee 계산에 함께 반영.
+	import { uiScale } from '$lib/stores/uiScale';
 
 	let {
 		summaries,
@@ -29,8 +32,7 @@
 
 	const CARD_W = 200;
 	const GAP_PX = 12;
-	// 첫↔끝 시각 분리용 spacer 폭 (= 카드 1장).
-	const LOOP_SPACER_PX = 200;
+	// spacer 폭 = 카드 1장 (effCardW inline style — BUG-117).
 
 	let viewportEl: HTMLDivElement | undefined = $state(undefined);
 	let trackEl: HTMLDivElement | undefined = $state(undefined);
@@ -48,12 +50,16 @@
 	let rafHandle: number | null = null;
 	let lastFrameTime = 0;
 
+	// BUG-117: uiScale 반영 실효 크기.
+	let effCardW = $derived(Math.round(CARD_W * $uiScale));
+	let effGap = $derived(GAP_PX * $uiScale);
+
 	// BUG-028: 카드만의 폭 (margin/spacer 제외) 으로 fit 판단.
 	let cardsOnlyW = $derived(
-		summaries.length === 0 ? 0 : summaries.length * CARD_W + (summaries.length - 1) * GAP_PX
+		summaries.length === 0 ? 0 : summaries.length * effCardW + (summaries.length - 1) * effGap
 	);
 	let needsMarquee = $derived(viewportW > 0 && cardsOnlyW > viewportW);
-	let pixelsPerSec = $derived((CARD_W + GAP_PX) / secondsPerCard);
+	let pixelsPerSec = $derived((effCardW + effGap) / secondsPerCard);
 
 	function isPaused(t: number): boolean {
 		if (isDragging) return true;
@@ -184,20 +190,20 @@
 			style:transform={needsMarquee ? `translateX(${-scrollX}px)` : ''}
 		>
 			{#each summaries as s (s.id)}
-				<div class="slot">
+				<div class="slot" style:flex-basis={`${effCardW}px`}>
 					<CampaignCard summary={s} {mode} {now} />
 				</div>
 			{/each}
 			{#if needsMarquee}
 				<!-- 첫↔끝 시각 분리 spacer. -->
-				<div class="spacer" aria-hidden="true"></div>
+				<div class="spacer" style:flex-basis={`${effCardW}px`} aria-hidden="true"></div>
 				{#each summaries as s, i (`dup-${i}`)}
-					<div class="slot" aria-hidden="true">
+					<div class="slot" style:flex-basis={`${effCardW}px`} aria-hidden="true">
 						<CampaignCard summary={s} {mode} {now} />
 					</div>
 				{/each}
 				<!-- 두번째 시퀀스 뒤에도 동일 spacer — 사이클 균형. -->
-				<div class="spacer" aria-hidden="true"></div>
+				<div class="spacer" style:flex-basis={`${effCardW}px`} aria-hidden="true"></div>
 			{/if}
 		</div>
 	</div>
