@@ -21,6 +21,7 @@ pub mod library;
 pub mod meta;
 pub mod quests;
 pub mod rules;
+pub mod worklog;
 
 pub use counter::check_and_fix_counters;
 pub use meta::{

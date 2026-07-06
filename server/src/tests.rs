@@ -2512,6 +2512,71 @@ async fn test_library_crud_and_number_monotonic() {
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
+/// DEV-167: worklog — 활동 타임라인/집계/히트맵 + 날짜별 노트 CRUD.
+#[tokio::test]
+async fn test_worklog_activities_and_note() {
+    let app = setup().await;
+
+    // quest 생성 + done 전환 → created/status 활동 발생.
+    let (_, created) = post(
+        app.clone(),
+        "/api/quests",
+        json!({ "quest_type_id": 1, "title": "작업기록", "status_slug": "open" }),
+    )
+    .await;
+    let qid = created["id"].as_i64().unwrap();
+    let (status, _) = patch(
+        app.clone(),
+        &format!("/api/quests/{qid}/status"),
+        json!({ "status_slug": "done" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let today = &openguild_core::time::now_local_iso8601()[..10];
+
+    let (status, report) =
+        get(app.clone(), &format!("/api/worklog?from={today}&to={today}")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(report["counts"]["created"], 1);
+    assert_eq!(report["counts"]["status_changes"], 1);
+    assert_eq!(report["counts"]["done_transitions"], 1);
+    assert!(!report["activities"].as_array().unwrap().is_empty());
+
+    let (status, summary) =
+        get(app.clone(), &format!("/api/worklog/summary?from={today}&to={today}")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(summary.as_array().unwrap().len(), 1);
+    assert_eq!(summary[0]["date"], today.to_string());
+
+    // 노트 CRUD.
+    let (status, note) = put(
+        app.clone(),
+        &format!("/api/worklog/note/{today}"),
+        json!({ "content": "오늘 노트" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(note["content"], "오늘 노트");
+    let (_, got) = get(app.clone(), &format!("/api/worklog/note/{today}")).await;
+    assert_eq!(got["content"], "오늘 노트");
+    let (_, notes) =
+        get(app.clone(), &format!("/api/worklog/notes?from={today}&to={today}")).await;
+    assert_eq!(notes.as_array().unwrap().len(), 1);
+    // 빈 본문 = 삭제.
+    let (_, cleared) = put(
+        app.clone(),
+        &format!("/api/worklog/note/{today}"),
+        json!({ "content": "" }),
+    )
+    .await;
+    assert!(cleared["content"].is_null());
+
+    // 잘못된 날짜 형식.
+    let (status, _) = get(app, "/api/worklog/note/evil..path").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
 #[tokio::test]
 async fn test_rules_legacy_single_file() {
     let app = setup().await;

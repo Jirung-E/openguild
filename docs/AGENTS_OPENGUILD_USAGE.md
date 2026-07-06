@@ -344,6 +344,14 @@ openguild library show   <ID>                      # 본문 출력 (ID = BOOK-N)
 openguild library new    --title <T> [--file <P>]  # 신규 (본문은 UTF-8 파일)
 openguild library update <ID> [--title <T>] [--file <P>]
 openguild library delete <ID> [--yes]              # soft delete
+
+# 작업 기록 (활동 = quest 이력/댓글/생성 자동 집계, 노트 = .guild/worklog/{날짜}.md)
+openguild worklog show                               # 오늘 하루 타임라인 + 집계
+openguild worklog show --date <YYYY-MM-DD>           # 특정 날짜
+openguild worklog show --from <D> --to <D>           # 기간 (날짜 구분선 그룹핑)
+openguild worklog note show  <YYYY-MM-DD>
+openguild worklog note set   <YYYY-MM-DD> --file <P> # 한글은 UTF-8 파일 권장
+openguild worklog note clear <YYYY-MM-DD>
 ```
 
 ---

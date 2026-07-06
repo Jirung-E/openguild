@@ -16,6 +16,8 @@
 	import CampaignConveyor from './CampaignConveyor.svelte';
 	// DEV-076: 마감 임박 / Overdue 퀘스트 (Quest Board 노드 모양 carousel).
 	import QuestNodeConveyor from './QuestNodeConveyor.svelte';
+	// DEV-167: 작업 기록 요약 (히트맵) — /worklog 상세의 유일한 진입점.
+	import WorklogSummaryCard from './WorklogSummaryCard.svelte';
 	import type { CampaignSummary, Quest, QuestStatus, QuestType } from '$lib/types';
 	import { metaApi } from '$lib/api/meta';
 	import { isCampaignDone } from '$lib/utils/campaign-progress';
@@ -349,6 +351,9 @@
 				</ul>
 			{/if}
 		</section>
+
+		<!-- ── DEV-167: 작업 기록 요약 (히트맵 + 오늘 집계) ─────────────── -->
+		<WorklogSummaryCard />
 	{/if}
 </div>
 

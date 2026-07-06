@@ -80,6 +80,8 @@ const SOURCE_SUBDIRS: &[&str] = &[
     "history",
     // DEV-215: 도서관 문서 (+.counter.toml — copy_tree 가 숨김 파일도 복사).
     "library",
+    // DEV-167: 작업 기록 노트.
+    "worklog",
 ];
 
 /// dir 트리를 통째로 복사 (대상에 병합 생성). 파일/하위디렉토리 재귀.

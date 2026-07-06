@@ -6,6 +6,7 @@ pub mod library;
 pub mod meta;
 pub mod quests;
 pub mod rules;
+pub mod worklog;
 
 use axum::{
     routing::{delete, get, patch, post, put},
@@ -72,6 +73,14 @@ pub fn create_router(store: Store) -> Router {
             get(library::get_book)
                 .patch(library::update_book)
                 .delete(library::delete_book),
+        )
+        // DEV-167: 작업 기록 — 활동 타임라인 / 히트맵 집계 / 날짜별 노트.
+        .route("/api/worklog", get(worklog::get_activities))
+        .route("/api/worklog/summary", get(worklog::get_summary))
+        .route("/api/worklog/notes", get(worklog::list_notes))
+        .route(
+            "/api/worklog/note/{date}",
+            get(worklog::get_note).put(worklog::set_note),
         )
         // DEV-012 / DEV-094: Quest 댓글 (entry 단위, tracked) + 메모 (단일, gitignored).
         // GET = entries 목록, POST = 새 entry 추가.

@@ -100,6 +100,11 @@ enum Command {
         #[command(subcommand)]
         sub: LibraryCmd,
     },
+    /// 작업 기록 — 날짜/기간별 활동 타임라인 + 날짜별 노트.
+    Worklog {
+        #[command(subcommand)]
+        sub: WorklogCmd,
+    },
     /// 퀘스트 템플릿 — `.guild/templates/{name}.md`. `quest new --template` 으로 사용.
     Template {
         #[command(subcommand)]
@@ -833,6 +838,49 @@ enum LibraryCmd {
     },
 }
 
+// ─────────────────────────── Worklog 서브명령 ───────────────────────────
+
+/// 작업 기록 — 활동은 캐시 조회(quest 이력/댓글/생성), 노트는
+/// `.guild/worklog/{YYYY-MM-DD}.md` (전역 공유, git tracked).
+#[derive(Subcommand)]
+enum WorklogCmd {
+    /// 기간 내 활동 타임라인 + 집계. 기본: 오늘 하루.
+    Show {
+        /// 특정 날짜 하루 (YYYY-MM-DD). --from/--to 와 상호배타.
+        #[arg(long, conflicts_with_all = ["from", "to"])]
+        date: Option<String>,
+        /// 기간 시작 (YYYY-MM-DD).
+        #[arg(long, requires = "to")]
+        from: Option<String>,
+        /// 기간 끝 (YYYY-MM-DD, 포함).
+        #[arg(long, requires = "from")]
+        to: Option<String>,
+    },
+    /// 날짜별 노트 — show / set / clear.
+    Note {
+        #[command(subcommand)]
+        sub: WorklogNoteCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum WorklogNoteCmd {
+    /// 노트 본문 출력. 없으면 "(노트 없음)".
+    Show {
+        /// YYYY-MM-DD.
+        date: String,
+    },
+    /// 노트 본문 교체. 본문은 `--file <PATH>` (UTF-8) — 한글 등은 파일 권장.
+    Set {
+        date: String,
+        /// 본문 파일. 미지정 시 stdin.
+        #[arg(long)]
+        file: Option<std::path::PathBuf>,
+    },
+    /// 노트 삭제 (파일 제거).
+    Clear { date: String },
+}
+
 // ─────────────────────────── Campaign 서브명령 (DEV-011) ───────────────────────────
 
 #[derive(Subcommand)]
@@ -987,6 +1035,11 @@ impl HttpClient {
         body: &B,
     ) -> Result<T> {
         let res = self.http.patch(self.url(path)).json(body).send()?;
+        self.handle(res)
+    }
+
+    fn put<B: Serialize, T: for<'de> Deserialize<'de>>(&self, path: &str, body: &B) -> Result<T> {
+        let res = self.http.put(self.url(path)).json(body).send()?;
         self.handle(res)
     }
 
@@ -2111,6 +2164,52 @@ impl Backend {
             Backend::Http(c) => c.delete_no_body(&format!("/api/library/{id}")),
             Backend::Local(l) => Self::map_err(
                 l.rt.block_on(openguild_core::ops::library::delete_book(&l.store, id)),
+            ),
+        }
+    }
+
+    // ── DEV-167: 작업 기록 — local + remote(HTTP /api/worklog) 둘 다 지원 ──
+
+    fn worklog_activities(
+        &self,
+        from: &str,
+        to: &str,
+    ) -> Result<openguild_core::ops::worklog::WorklogReport> {
+        match self {
+            Backend::Http(c) => c.get(&format!("/api/worklog?from={from}&to={to}")),
+            Backend::Local(l) => Self::map_err(
+                l.rt.block_on(openguild_core::ops::worklog::activities(&l.store, from, to)),
+            ),
+        }
+    }
+
+    fn worklog_note_get(&self, date: &str) -> Result<Option<String>> {
+        match self {
+            Backend::Http(c) => {
+                #[derive(Deserialize)]
+                struct NoteDto {
+                    content: Option<String>,
+                }
+                let n: NoteDto = c.get(&format!("/api/worklog/note/{date}"))?;
+                Ok(n.content)
+            }
+            Backend::Local(l) => Self::map_err(Ok::<_, openguild_core::error::AppError>(
+                openguild_core::ops::worklog::get_note(&l.store, date)?,
+            )),
+        }
+    }
+
+    fn worklog_note_set(&self, date: &str, content: String) -> Result<()> {
+        match self {
+            Backend::Http(c) => {
+                let _: serde_json::Value = c.put(
+                    &format!("/api/worklog/note/{date}"),
+                    &serde_json::json!({ "content": content }),
+                )?;
+                Ok(())
+            }
+            Backend::Local(l) => Self::map_err(
+                l.rt.block_on(openguild_core::ops::worklog::set_note(&l.store, date, content)),
             ),
         }
     }
@@ -4560,6 +4659,100 @@ fn run() -> Result<()> {
                     println!("✓ '{id}' 삭제됨 (soft delete — 번호는 재사용되지 않음)");
                 }
             }
+        },
+        Command::Worklog { sub } => match sub {
+            WorklogCmd::Show { date, from, to } => {
+                // 기본 = 오늘 하루. --date 는 그 하루, --from/--to 는 기간.
+                let (f, t) = match (date, from, to) {
+                    (Some(d), _, _) => (d.clone(), d),
+                    (None, Some(f), Some(t)) => (f, t),
+                    _ => {
+                        let today = openguild_core::time::now_local_iso8601()[..10].to_string();
+                        (today.clone(), today)
+                    }
+                };
+                let report = c.worklog_activities(&f, &t)?;
+                if cli.json {
+                    println!("{}", serde_json::to_string_pretty(&report)?);
+                } else {
+                    if f == t {
+                        println!("작업 기록 — {f}");
+                    } else {
+                        println!("작업 기록 — {f} ~ {t}");
+                    }
+                    // 하루 뷰면 그 날짜의 노트도 함께 (파일 있으면).
+                    if f == t
+                        && let Ok(Some(note)) = c.worklog_note_get(&f)
+                    {
+                        println!();
+                        println!("📝 노트:");
+                        for line in note.lines() {
+                            println!("  {line}");
+                        }
+                    }
+                    println!();
+                    if report.activities.is_empty() {
+                        println!("(활동 없음)");
+                    } else {
+                        let mut cur_date = String::new();
+                        for a in &report.activities {
+                            let d = a.ts.get(..10).unwrap_or("");
+                            if f != t && d != cur_date {
+                                cur_date = d.to_string();
+                                println!("── {cur_date} ──");
+                            }
+                            let hm = a.ts.get(11..16).unwrap_or("--:--");
+                            let badge = match a.kind.as_str() {
+                                "status" => "상태",
+                                "type" => "타입",
+                                "comment" => "댓글",
+                                "created" => "생성",
+                                other => other,
+                            };
+                            let first = a.summary.lines().next().unwrap_or("");
+                            println!("{hm}  {:<10} [{badge}] {first}", a.slug);
+                        }
+                        println!();
+                        println!(
+                            "요약: 상태변경 {} · 댓글 {} · 생성 {} · done 전환 {}",
+                            report.counts.status_changes,
+                            report.counts.comments,
+                            report.counts.created,
+                            report.counts.done_transitions
+                        );
+                    }
+                }
+            }
+            WorklogCmd::Note { sub } => match sub {
+                WorklogNoteCmd::Show { date } => {
+                    let content = c.worklog_note_get(&date)?;
+                    if cli.json {
+                        println!("{}", serde_json::json!({ "date": date, "content": content }));
+                    } else {
+                        match content {
+                            Some(s) => print!("{s}{}", if s.ends_with('\n') { "" } else { "\n" }),
+                            None => println!("(노트 없음)"),
+                        }
+                    }
+                }
+                WorklogNoteCmd::Set { date, file } => {
+                    let content = read_content(file.as_deref())?;
+                    c.worklog_note_set(&date, content)?;
+                    if cli.json {
+                        println!("{}", serde_json::json!({ "ok": true, "date": date }));
+                    } else {
+                        println!("✓ {date} 노트 저장됨");
+                    }
+                }
+                WorklogNoteCmd::Clear { date } => {
+                    c.worklog_note_set(&date, String::new())?;
+                    if cli.json {
+                        println!("{}", serde_json::json!({ "ok": true, "date": date }));
+                    } else {
+                        println!("✓ {date} 노트 삭제됨");
+                    }
+                }
+            },
         },
         Command::Backup { sub } => match sub {
             BackupCmd::New => {
@@ -7124,6 +7317,53 @@ mod tests {
             }
             _ => panic!(),
         }
+    }
+
+    /// 작업 기록 명령 파싱 — show 의 date/from-to 상호배타, note sub 필수.
+    #[test]
+    fn cli_worklog_subcommands_parse() {
+        assert!(Cli::try_parse_from(["openguild", "worklog"]).is_err(), "sub 필수");
+        let cli = Cli::try_parse_from(["openguild", "worklog", "show"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Command::Worklog { sub: WorklogCmd::Show { date: None, from: None, to: None } }
+        ));
+
+        let cli =
+            Cli::try_parse_from(["openguild", "worklog", "show", "--date", "2026-07-05"]).unwrap();
+        match cli.command {
+            Command::Worklog { sub: WorklogCmd::Show { date, .. } } => {
+                assert_eq!(date.as_deref(), Some("2026-07-05"));
+            }
+            _ => panic!(),
+        }
+        // --date 와 --from 동시 지정 거부, --from 은 --to 필수.
+        assert!(Cli::try_parse_from([
+            "openguild", "worklog", "show", "--date", "2026-07-05", "--from", "2026-07-01",
+            "--to", "2026-07-05",
+        ])
+        .is_err());
+        assert!(
+            Cli::try_parse_from(["openguild", "worklog", "show", "--from", "2026-07-01"]).is_err()
+        );
+
+        let cli = Cli::try_parse_from([
+            "openguild", "worklog", "note", "set", "2026-07-05", "--file", "n.md",
+        ])
+        .unwrap();
+        match cli.command {
+            Command::Worklog { sub: WorklogCmd::Note { sub: WorklogNoteCmd::Set { date, file } } } => {
+                assert_eq!(date, "2026-07-05");
+                assert!(file.is_some());
+            }
+            _ => panic!(),
+        }
+        let cli =
+            Cli::try_parse_from(["openguild", "worklog", "note", "clear", "2026-07-05"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Command::Worklog { sub: WorklogCmd::Note { sub: WorklogNoteCmd::Clear { .. } } }
+        ));
     }
 
     /// BUG-111: quest/campaign/template/backup 은 전부 `new` 가 canonical 인데

@@ -421,6 +421,12 @@ pub fn run() {
             commands::create_book,
             commands::update_book,
             commands::delete_book,
+            // DEV-167: 작업 기록.
+            commands::worklog_activities,
+            commands::worklog_summary,
+            commands::worklog_note_get,
+            commands::worklog_note_set,
+            commands::worklog_notes,
             // DEV-012 / DEV-094: 메모 (단일 텍스트) + 댓글 (entry 단위).
             commands::get_memo,
             commands::set_memo,

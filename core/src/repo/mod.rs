@@ -96,6 +96,18 @@ impl GuildPaths {
         self.library_dir().join(".counter.toml")
     }
 
+    /// DEV-167: 작업 기록 노트 디렉토리 (`.guild/worklog/`). git tracked.
+    /// `{YYYY-MM-DD}.md` — 날짜별 수동 노트 (전역 공유; quest memo 와 달리
+    /// 개인 노트가 아님 — 그래서 이름도 note 로 구분, admin 결정).
+    pub fn worklog_dir(&self) -> PathBuf {
+        self.dot_guild().join("worklog")
+    }
+
+    /// DEV-167: 한 날짜의 노트 (`.guild/worklog/{YYYY-MM-DD}.md`).
+    pub fn worklog_note_path(&self, date: &str) -> PathBuf {
+        self.worklog_dir().join(format!("{date}.md"))
+    }
+
     /// DEV-180: 퀘스트 이력 사이드카 디렉토리 (`.guild/history/`). git tracked.
     /// `.guild/quests/` 에 comments/memo/attachments 사이드카가 이미 있어
     /// 4번째 파일 종류를 더하면 디렉토리가 난잡해지므로, backups/ 처럼

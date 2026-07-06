@@ -401,6 +401,37 @@ describe('TauriTransport', () => {
 			__test_only.routeToInvoke({ method: 'DELETE', path: '/api/library/BOOK-001' })
 		).toEqual({ cmd: 'delete_book', args: { bookId: 'BOOK-001' } });
 	});
+
+	it('routeToInvoke — 작업 기록 매핑 (DEV-167)', () => {
+		expect(
+			__test_only.routeToInvoke({
+				method: 'GET',
+				path: '/api/worklog?from=2026-07-01&to=2026-07-05'
+			})
+		).toEqual({ cmd: 'worklog_activities', args: { from: '2026-07-01', to: '2026-07-05' } });
+		expect(
+			__test_only.routeToInvoke({
+				method: 'GET',
+				path: '/api/worklog/summary?from=2026-04-13&to=2026-07-05'
+			})
+		).toEqual({ cmd: 'worklog_summary', args: { from: '2026-04-13', to: '2026-07-05' } });
+		expect(
+			__test_only.routeToInvoke({
+				method: 'GET',
+				path: '/api/worklog/notes?from=2026-07-01&to=2026-07-05'
+			})
+		).toEqual({ cmd: 'worklog_notes', args: { from: '2026-07-01', to: '2026-07-05' } });
+		expect(
+			__test_only.routeToInvoke({ method: 'GET', path: '/api/worklog/note/2026-07-05' })
+		).toEqual({ cmd: 'worklog_note_get', args: { date: '2026-07-05' } });
+		expect(
+			__test_only.routeToInvoke({
+				method: 'PUT',
+				path: '/api/worklog/note/2026-07-05',
+				body: { content: '노트' }
+			})
+		).toEqual({ cmd: 'worklog_note_set', args: { date: '2026-07-05', content: '노트' } });
+	});
 });
 
 // DEV-113 (MVP): 원격 서버 모드 — `transport` (동적 위임)이 Tauri 환경에서도

@@ -1357,6 +1357,82 @@ pub async fn delete_book(store: State<'_, Store>, book_id: String) -> Result<(),
         .map_err(err)
 }
 
+// ─────────────────────── DEV-167: 작업 기록 (Worklog) ───────────────────────
+// server routes/worklog.rs 와 1:1 (transport.ts 스위칭용).
+
+#[tauri::command]
+pub async fn worklog_activities(
+    store: State<'_, Store>,
+    from: String,
+    to: String,
+) -> Result<openguild_core::ops::worklog::WorklogReport, String> {
+    openguild_core::ops::worklog::activities(&store, &from, &to)
+        .await
+        .map_err(err)
+}
+
+#[derive(serde::Serialize)]
+pub struct DailyCount {
+    pub date: String,
+    pub count: i64,
+}
+
+#[tauri::command]
+pub async fn worklog_summary(
+    store: State<'_, Store>,
+    from: String,
+    to: String,
+) -> Result<Vec<DailyCount>, String> {
+    let rows = openguild_core::ops::worklog::daily_summary(&store, &from, &to)
+        .await
+        .map_err(err)?;
+    Ok(rows
+        .into_iter()
+        .map(|(date, count)| DailyCount { date, count })
+        .collect())
+}
+
+#[derive(serde::Serialize)]
+pub struct WorklogNoteResponse {
+    pub date: String,
+    pub content: Option<String>,
+}
+
+#[tauri::command]
+pub fn worklog_note_get(
+    store: State<'_, Store>,
+    date: String,
+) -> Result<WorklogNoteResponse, String> {
+    let content = openguild_core::ops::worklog::get_note(&store, &date).map_err(err)?;
+    Ok(WorklogNoteResponse { date, content })
+}
+
+#[tauri::command]
+pub async fn worklog_note_set(
+    store: State<'_, Store>,
+    date: String,
+    content: String,
+) -> Result<WorklogNoteResponse, String> {
+    openguild_core::ops::worklog::set_note(&store, &date, content)
+        .await
+        .map_err(err)?;
+    let content = openguild_core::ops::worklog::get_note(&store, &date).map_err(err)?;
+    Ok(WorklogNoteResponse { date, content })
+}
+
+#[tauri::command]
+pub fn worklog_notes(
+    store: State<'_, Store>,
+    from: String,
+    to: String,
+) -> Result<Vec<WorklogNoteResponse>, String> {
+    let notes = openguild_core::ops::worklog::list_notes(&store, &from, &to).map_err(err)?;
+    Ok(notes
+        .into_iter()
+        .map(|(date, content)| WorklogNoteResponse { date, content: Some(content) })
+        .collect())
+}
+
 // ─────────────────────── DEV-012 / DEV-094: 댓글 / 메모 ───────────────────────
 
 // 메모는 단일 텍스트 그대로 (DEV-012).

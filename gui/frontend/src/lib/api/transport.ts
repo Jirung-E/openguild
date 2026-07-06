@@ -172,6 +172,34 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 		}
 	}
 
+	// DEV-167: 작업 기록 — server routes/worklog.rs 와 1:1.
+	if (method === 'GET' && pathOnly === '/api/worklog') {
+		return {
+			cmd: 'worklog_activities',
+			args: { from: query.get('from') ?? '', to: query.get('to') ?? '' }
+		};
+	}
+	if (method === 'GET' && pathOnly === '/api/worklog/summary') {
+		return {
+			cmd: 'worklog_summary',
+			args: { from: query.get('from') ?? '', to: query.get('to') ?? '' }
+		};
+	}
+	if (method === 'GET' && pathOnly === '/api/worklog/notes') {
+		return {
+			cmd: 'worklog_notes',
+			args: { from: query.get('from') ?? '', to: query.get('to') ?? '' }
+		};
+	}
+	if (parts[0] === 'api' && parts[1] === 'worklog' && parts[2] === 'note' && parts[3]) {
+		const date = decodeURIComponent(parts[3]);
+		if (method === 'GET') return { cmd: 'worklog_note_get', args: { date } };
+		if (method === 'PUT') {
+			const content = (body as { content?: string } | undefined)?.content ?? '';
+			return { cmd: 'worklog_note_set', args: { date, content } };
+		}
+	}
+
 	if (method === 'GET' && pathOnly === '/api/quest-types') {
 		return { cmd: 'list_quest_types', args: {} };
 	}
