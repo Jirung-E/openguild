@@ -275,9 +275,49 @@
 		writeIdSet(collapseStorageKey('collapsedBodies'), s);
 	});
 
-	// DEV-108: 이모지 반응 — 고정 4종. 커스텀 추가는 후속 quest.
+	// DEV-108: 이모지 반응 — 고정 4종.
+	// DEV-132: + 사용자 커스텀(길드 전체 — quest/campaign 무관하게 공유,
+	// "자주 쓰는 이모지" 개념이라 scope/slug 로 나누지 않음). localStorage
+	// 영속 — 저장 포맷(reactions attr)은 이미 임의 문자열이라 backend 변경 없음.
 	// DEV-139: 전체 노출 대신 slack 스타일 — 활성 pill + '+' popup picker.
 	const REACTION_SET = ['👍', '✅', '❓', '❌'];
+	let customReactions = $state<string[]>([]);
+	function customReactionsKey(): string {
+		return guildKey(guildKeyPrefix, 'commentCustomReactions');
+	}
+	$effect(() => {
+		if (!prefixReady) return;
+		try {
+			const raw = localStorage.getItem(customReactionsKey());
+			const arr = raw ? JSON.parse(raw) : [];
+			customReactions = Array.isArray(arr) ? arr.filter((x) => typeof x === 'string') : [];
+		} catch {
+			customReactions = [];
+		}
+	});
+	function persistCustomReactions() {
+		try {
+			localStorage.setItem(customReactionsKey(), JSON.stringify(customReactions));
+		} catch {
+			/* 무시 */
+		}
+	}
+	const allReactions = $derived([...REACTION_SET, ...customReactions]);
+	let customEmojiInput = $state('');
+	function addCustomReaction(id: number) {
+		const emoji = customEmojiInput.trim();
+		customEmojiInput = '';
+		if (!emoji) return;
+		if (!REACTION_SET.includes(emoji) && !customReactions.includes(emoji)) {
+			customReactions = [...customReactions, emoji];
+			persistCustomReactions();
+		}
+		toggleReaction(id, emoji);
+	}
+	function removeCustomReaction(emoji: string) {
+		customReactions = customReactions.filter((e) => e !== emoji);
+		persistCustomReactions();
+	}
 	let pickerOpenFor = $state<number | null>(null);
 	// DEV-108: reaction 항목 = "emoji" 또는 "emoji:author1|author2".
 	// 누가 반응했는지 호버로 보여주기 위해 파싱.
@@ -923,13 +963,44 @@
 								onclick={() => (pickerOpenFor = null)}
 							></div>
 							<div class="reaction-picker" role="menu">
-								{#each REACTION_SET as emoji (emoji)}
+								<div class="picker-row">
+									{#each allReactions as emoji (emoji)}
+										<div class="picker-item-wrap">
+											<button
+												class="picker-item"
+												class:on={reactedByMe(reacts.find((x) => x.emoji === emoji)?.authors ?? [])}
+												onclick={() => toggleReaction(e.id, emoji)}>{emoji}</button
+											>
+											<!-- DEV-132: 고정 4종은 제거 불가, 커스텀만 x 로 삭제. -->
+											{#if !REACTION_SET.includes(emoji)}
+												<button
+													class="picker-item-rm"
+													title="커스텀 반응 목록에서 삭제"
+													aria-label="{emoji} 삭제"
+													onclick={(ev) => {
+														ev.stopPropagation();
+														removeCustomReaction(emoji);
+													}}>×</button
+												>
+											{/if}
+										</div>
+									{/each}
+								</div>
+								<!-- DEV-132: 직접 입력 — 고정 4종 외 임의 이모지 추가(길드 전체 재사용). -->
+								<div class="picker-add-row">
+									<input
+										class="picker-add-input"
+										type="text"
+										placeholder="이모지 붙여넣기"
+										bind:value={customEmojiInput}
+										onkeydown={(ev) => ev.key === 'Enter' && addCustomReaction(e.id)}
+									/>
 									<button
-										class="picker-item"
-										class:on={reactedByMe(reacts.find((x) => x.emoji === emoji)?.authors ?? [])}
-										onclick={() => toggleReaction(e.id, emoji)}>{emoji}</button
+										class="picker-add-btn"
+										disabled={!customEmojiInput.trim()}
+										onclick={() => addCustomReaction(e.id)}>추가</button
 									>
-								{/each}
+								</div>
 							</div>
 						{/if}
 					</div>
@@ -1501,12 +1572,22 @@
 		right: 0;
 		z-index: 91;
 		display: flex;
-		gap: 0.2rem;
+		flex-direction: column;
+		gap: 0.3rem;
 		padding: 0.3rem 0.4rem;
 		background: var(--bg-elevated);
 		border: 1px solid var(--border);
 		border-radius: 8px;
 		box-shadow: 0 6px 18px var(--shadow);
+		min-width: 9rem;
+	}
+	.picker-row {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.2rem;
+	}
+	.picker-item-wrap {
+		position: relative;
 	}
 	.picker-item {
 		padding: 0.15rem 0.35rem;
@@ -1522,6 +1603,60 @@
 	.picker-item.on {
 		background: color-mix(in srgb, var(--accent) 15%, transparent);
 		border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+	}
+	/* DEV-132: 커스텀 반응 삭제 버튼 — 평소엔 숨기고 hover 시에만. */
+	.picker-item-rm {
+		position: absolute;
+		top: -0.35rem;
+		right: -0.35rem;
+		width: 0.9rem;
+		height: 0.9rem;
+		padding: 0;
+		display: none;
+		align-items: center;
+		justify-content: center;
+		border: none;
+		border-radius: 50%;
+		background: color-mix(in srgb, var(--danger) 85%, transparent);
+		color: white;
+		font-size: 0.65rem;
+		line-height: 1;
+		cursor: pointer;
+	}
+	.picker-item-wrap:hover .picker-item-rm {
+		display: flex;
+	}
+	.picker-add-row {
+		display: flex;
+		gap: 0.25rem;
+		border-top: 1px solid var(--border);
+		padding-top: 0.3rem;
+	}
+	.picker-add-input {
+		flex: 1;
+		min-width: 0;
+		padding: 0.2rem 0.4rem;
+		background: var(--bg);
+		border: 1px solid var(--border);
+		color: var(--text);
+		border-radius: 4px;
+		font-size: 0.8rem;
+	}
+	.picker-add-btn {
+		padding: 0.2rem 0.5rem;
+		background: transparent;
+		border: 1px solid var(--border);
+		color: var(--text);
+		border-radius: 4px;
+		font-size: 0.75rem;
+		cursor: pointer;
+	}
+	.picker-add-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+	.picker-add-btn:hover:not(:disabled) {
+		background: var(--bg-subtle);
 	}
 	.entry-actions {
 		margin-left: auto;
