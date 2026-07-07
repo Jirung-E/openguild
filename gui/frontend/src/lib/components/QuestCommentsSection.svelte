@@ -398,6 +398,10 @@
 		const level2ByParent = new Map<number, CommentEntry[]>();
 		// entry id → root id (답글 폼을 어느 스레드에 띄울지 — root 자신 포함).
 		const rootIdOf = new Map<number, number>();
+		// BUG-116: entry id → 그 entry 가 속한 level-1 조상 id (level-1 자신은
+		// 자기 자신). 답글의 답글 작성 시 폼을 "스레드 맨 아래"가 아니라 그
+		// level-1 그룹 바로 아래에 띄우기 위한 조회용 — root 에는 없음.
+		const level1AncestorOf = new Map<number, number>();
 		const orphans: CommentEntry[] = [];
 		for (const e of entries) {
 			if (e.parent_id == null) {
@@ -418,6 +422,7 @@
 			rootIdOf.set(e.id, r);
 			if (e.parent_id === r) {
 				level1ByRoot.get(r)?.push(e);
+				level1AncestorOf.set(e.id, e.id);
 			} else {
 				// 가장 가까운 level-1 조상 (parent_id === r 인 entry) 밑에 배치.
 				let cur = byId.get(e.parent_id);
@@ -428,13 +433,24 @@
 					const arr = level2ByParent.get(cur.id) ?? [];
 					arr.push(e);
 					level2ByParent.set(cur.id, arr);
+					level1AncestorOf.set(e.id, cur.id);
 				} else {
 					// 방어 — 조상 해석 실패 시 level-1 로.
 					level1ByRoot.get(r)?.push(e);
+					level1AncestorOf.set(e.id, e.id);
 				}
 			}
 		}
-		return { roots, childrenByRoot, level1ByRoot, level2ByParent, rootIdOf, byId, orphans };
+		return {
+			roots,
+			childrenByRoot,
+			level1ByRoot,
+			level2ByParent,
+			rootIdOf,
+			byId,
+			orphans,
+			level1AncestorOf
+		};
 	});
 
 	// DEV-213: 토론 댓글만 모아보기 (quest 전용 — discussion 은 quest 한정 기능).
@@ -474,11 +490,20 @@
 		return map;
 	});
 
-	// DEV-200: 답글 대상이 답글이어도 폼은 그 스레드(root 카드) 하단에 표시.
+	// DEV-200: 답글 대상이 답글이어도 폼은 그 스레드(root 카드) 안에 표시.
 	let replyFormRoot = $derived(
 		replyingTo == null ? null : (groups.rootIdOf.get(replyingTo) ?? null)
 	);
 	let replyTarget = $derived(replyingTo == null ? null : (groups.byId.get(replyingTo) ?? null));
+	// BUG-116: root 에 답글 쓰면 폼은 스레드 맨 아래(새 level-1 자리, null).
+	// level-1/level-2 에 답글 쓰면 그 level-1 그룹 바로 아래 — 예전엔 항상
+	// 스레드 맨 아래에 떠서 "답글의 답글" 쓸 때 입력창이 대상에서 멀리
+	// 떨어져 보였다 (admin 보고).
+	let replyFormLevel1 = $derived(
+		replyingTo == null || replyTarget?.parent_id == null
+			? null
+			: (groups.level1AncestorOf.get(replyingTo) ?? null)
+	);
 
 	function formatTs(ts: string): string {
 		if (!ts) return '(시각 미상)';
@@ -563,6 +588,15 @@
 		replyingTo = parentId;
 		replyBody = '';
 		replyError = null;
+		// BUG-116: 대상이 root 가 아니면(level-1/level-2 답글) 폼이 그 level-1
+		// 그룹 옆에 뜨는데, 스레드가 접혀 있으면 그 그룹 자체가 안 그려져
+		// 폼도 같이 숨는다 — 먼저 펼침.
+		const rootId = groups.rootIdOf.get(parentId);
+		if (rootId != null && rootId !== parentId && collapsedRoots.has(rootId)) {
+			const next = new Set(collapsedRoots);
+			next.delete(rootId);
+			collapsedRoots = next;
+		}
 		await tick();
 		// 새로 mount 된 .reply-form 의 textarea — 한 번에 한 폼만 떠 있음.
 		const form = document.querySelector<HTMLElement>('.reply-form');
@@ -601,6 +635,49 @@
 		}
 	}
 </script>
+
+{#snippet replyFormView(rootId: number)}
+	<!-- BUG-116: root/level-1/level-2 어디에 답글 쓰든 같은 폼 마크업 —
+	     호출 위치(스레드 하단 vs 특정 level-1 그룹 옆)만 다름. -->
+	<div class="reply-form">
+		<div class="reply-author">
+			<input
+				class="author-input"
+				type="text"
+				placeholder="작성자 (옵션)"
+				bind:value={replyAuthor}
+				disabled={replySaving}
+			/>
+		</div>
+		<textarea
+			use:tabInsert
+			use:textareaAttach={{
+				onError: (m) => (replyError = `첨부 실패: ${m}`),
+				mediaOnly: true
+			}}
+			class="body-input"
+			bind:value={replyBody}
+			oninput={onWikiInput}
+			onkeyup={onWikiInput}
+			onclick={onWikiInput}
+			onkeydowncapture={onWikiKeydown}
+			rows="3"
+			placeholder={`↩ #${replyTarget?.id ?? rootId} ${replyTarget?.author || ''} 에 답글…`}
+			disabled={replySaving}
+		></textarea>
+		{#if replyError}<p class="state err">{replyError}</p>{/if}
+		<div class="actions">
+			<button
+				class="btn-save"
+				onclick={() => submitReply(replyingTo ?? rootId)}
+				disabled={replySaving || !replyBody.trim()}
+			>
+				{replySaving ? '저장…' : '답글 추가'}
+			</button>
+			<button class="btn-cancel" onclick={cancelReply} disabled={replySaving}> 취소 </button>
+		</div>
+	</div>
+{/snippet}
 
 {#snippet entryView(e: CommentEntry, isReply: boolean)}
 	<!-- DEV-139: li → div — root + 답글을 하나의 카드 (entry-card) 로 감싸기 위해. -->
@@ -847,49 +924,16 @@
 															{/each}
 														</div>
 													{/if}
+													<!-- BUG-116: 이 level-1(또는 그 밑 level-2)에 쓰는 답글은
+													     스레드 맨 아래가 아니라 여기(그 그룹 바로 옆)에. -->
+													{#if replyFormRoot === root.id && replyFormLevel1 === r.id}
+														{@render replyFormView(root.id)}
+													{/if}
 												{/each}
 											{/if}
-											{#if replyFormRoot === root.id}
-												<div class="reply-form">
-													<div class="reply-author">
-														<input
-															class="author-input"
-															type="text"
-															placeholder="작성자 (옵션)"
-															bind:value={replyAuthor}
-															disabled={replySaving}
-														/>
-													</div>
-													<textarea
-														use:tabInsert
-														use:textareaAttach={{
-															onError: (m) => (replyError = `첨부 실패: ${m}`),
-															mediaOnly: true
-														}}
-														class="body-input"
-														bind:value={replyBody}
-														oninput={onWikiInput}
-														onkeyup={onWikiInput}
-														onclick={onWikiInput}
-														onkeydowncapture={onWikiKeydown}
-														rows="3"
-														placeholder={`↩ #${replyTarget?.id ?? root.id} ${replyTarget?.author || ''} 에 답글…`}
-														disabled={replySaving}
-													></textarea>
-													{#if replyError}<p class="state err">{replyError}</p>{/if}
-													<div class="actions">
-														<button
-															class="btn-save"
-															onclick={() => submitReply(replyingTo ?? root.id)}
-															disabled={replySaving || !replyBody.trim()}
-														>
-															{replySaving ? '저장…' : '답글 추가'}
-														</button>
-														<button class="btn-cancel" onclick={cancelReply} disabled={replySaving}>
-															취소
-														</button>
-													</div>
-												</div>
+											<!-- root 자체에 쓰는 답글(새 level-1)만 스레드 맨 아래. -->
+											{#if replyFormRoot === root.id && replyFormLevel1 === null}
+												{@render replyFormView(root.id)}
 											{/if}
 										</div>
 									</div>
