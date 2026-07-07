@@ -273,6 +273,7 @@ openguild quest comment list <SLUG> --author claude --since 2026-06-01 \
 openguild quest comment list <SLUG> --reply-to N          # 특정 entry 의 답글만
 openguild quest comment list <SLUG> --reverse --limit 5   # 최근 5개 (DEV-221)
 openguild quest comment show <SLUG> [--id N]              # 본문
+openguild quest comment show <SLUG> --id N --depth 2 --with-parents  # 답글 2단 + 조상까지 같이
 openguild quest comment add <SLUG> --author <NAME> --file <PATH>   # 추가 (stdin 도 가능)
 openguild quest comment add <SLUG> --author <NAME> --parent-id N --file <PATH>  # 답글
 openguild quest comment edit <SLUG> N --file <PATH>       # body 교체 (id 는 positional)
@@ -280,6 +281,7 @@ openguild quest comment remove <SLUG> N [--force]         # 삭제
 openguild quest comment react <SLUG> N <EMOJI> --author claude   # 이모지 반응 토글 (DEV-199)
 openguild quest comment discussion <SLUG> N               # 토론(discussion) 토글 — quest 전용 (DEV-185)
 openguild quest comment resolved <SLUG> N                 # 토론 해결 토글 (DEV-185)
+openguild quest comment pinned <SLUG> N                   # 상단 고정 토글 — quest/campaign 둘 다 (DEV-234)
 openguild quest memo set <SLUG> --file <PATH>             # 비공개 메모 (사용자당 1개)
 ```
 

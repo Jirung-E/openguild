@@ -572,12 +572,20 @@ enum CommentCmd {
         #[arg(long)]
         limit: Option<usize>,
     },
-    /// entry 본문 전체 또는 단일.
+    /// entry 본문 전체 또는 단일. `--id` 지정 시 `--depth`/`--with-parents` 로
+    /// 그 entry 의 답글/부모를 얼마나 같이 보여줄지 조절 (기본은 그 entry 만).
     Show {
         slug: String,
-        /// 특정 entry id 만 출력. 미지정 시 모든 entry.
+        /// 특정 entry id 만 출력. 미지정 시 모든 entry(이 경우 --depth/--with-parents 무시).
         #[arg(long)]
         id: Option<u64>,
+        /// 답글을 몇 단계까지 함께 출력할지 (0 = 대상 entry 만, 기본값).
+        /// `--id` 없이는 무시.
+        #[arg(long, default_value_t = 0)]
+        depth: usize,
+        /// 부모 체인(조상, root 까지)도 함께 출력. `--id` 없이는 무시.
+        #[arg(long)]
+        with_parents: bool,
     },
     /// 새 댓글 entry 추가. 본문은 `--file PATH` 또는 stdin.
     Add {
@@ -1423,6 +1431,60 @@ fn resolve_at_keyword(at: &str) -> String {
     } else {
         at.to_string()
     }
+}
+
+/// `comment show --id <target>` 의 부모/자식 범위 조절 — admin 요청.
+/// `depth` 만큼 답글을 BFS 로 따라가고(0 = target 만), `with_parents` 면
+/// root 까지의 조상 체인도 앞에 붙인다(오래된 순). GUI(DEV-200)는 시각적으로
+/// 2단까지만 보여주지만 실제 parent_id 체인은 임의 깊이라 CLI 는 그대로 노출.
+/// target 이 없으면 None.
+fn select_thread(
+    entries: Vec<openguild_core::repo::comments::CommentEntry>,
+    target: u64,
+    depth: usize,
+    with_parents: bool,
+) -> Option<Vec<openguild_core::repo::comments::CommentEntry>> {
+    use std::collections::HashMap;
+    let by_id: HashMap<u64, openguild_core::repo::comments::CommentEntry> =
+        entries.into_iter().map(|e| (e.id, e)).collect();
+    let root = by_id.get(&target)?.clone();
+
+    let mut out = Vec::new();
+    if with_parents {
+        let mut chain = Vec::new();
+        let mut cur = root.parent_id;
+        let mut seen = std::collections::HashSet::new();
+        while let Some(pid) = cur {
+            if !seen.insert(pid) {
+                break; // 방어적 cycle 가드 — 정상 데이터에선 발생 안 함.
+            }
+            let Some(p) = by_id.get(&pid) else { break };
+            chain.push(p.clone());
+            cur = p.parent_id;
+        }
+        chain.reverse(); // 가장 오래된(root) 조상부터.
+        out.extend(chain);
+    }
+    out.push(root);
+
+    let mut frontier = vec![target];
+    for _ in 0..depth {
+        let mut next = Vec::new();
+        for pid in &frontier {
+            let mut children: Vec<_> =
+                by_id.values().filter(|e| e.parent_id == Some(*pid)).cloned().collect();
+            children.sort_by(|a, b| a.ts.cmp(&b.ts));
+            for c in children {
+                next.push(c.id);
+                out.push(c);
+            }
+        }
+        if next.is_empty() {
+            break;
+        }
+        frontier = next;
+    }
+    Some(out)
 }
 
 /// DEV-221: 전역 댓글 검색 결과 한 건 (quest/campaign 통합).
@@ -3335,18 +3397,13 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                         }
                     }
                 }
-                CommentCmd::Show { slug, id } => {
+                CommentCmd::Show { slug, id, depth, with_parents } => {
                     let entries = c.comments_list_scoped(scope, &slug)?;
                     let selected: Vec<_> = match id {
-                        Some(target) => {
-                            let only = entries
-                                .into_iter()
-                                .find(|e| e.id == target)
-                                .ok_or_else(|| {
-                                    anyhow::anyhow!("entry #{target} 없음 ({} {slug})", scope.noun())
-                                })?;
-                            vec![only]
-                        }
+                        Some(target) => select_thread(entries, target, depth, with_parents)
+                            .ok_or_else(|| {
+                                anyhow::anyhow!("entry #{target} 없음 ({} {slug})", scope.noun())
+                            })?,
                         None => entries,
                     };
                     if json {
@@ -6748,6 +6805,92 @@ mod tests {
             }
             _ => panic!("expected comment pinned"),
         }
+    }
+
+    /// admin 요청: comment show 의 부모/자식 출력 범위 옵션.
+    #[test]
+    fn cli_parse_comment_show_depth_and_with_parents() {
+        let cli = Cli::try_parse_from([
+            "openguild", "quest", "comment", "show", "DEV-001",
+            "--id", "3", "--depth", "2", "--with-parents",
+        ])
+        .unwrap();
+        match cli.command {
+            Command::Quest {
+                sub: QuestCmd::Comment { sub: CommentCmd::Show { slug, id, depth, with_parents } },
+            } => {
+                assert_eq!(slug, "DEV-001");
+                assert_eq!(id, Some(3));
+                assert_eq!(depth, 2);
+                assert!(with_parents);
+            }
+            _ => panic!("expected comment show"),
+        }
+
+        // 기본값 — depth=0, with_parents=false.
+        let cli2 =
+            Cli::try_parse_from(["openguild", "quest", "comment", "show", "DEV-001"]).unwrap();
+        match cli2.command {
+            Command::Quest {
+                sub: QuestCmd::Comment { sub: CommentCmd::Show { id, depth, with_parents, .. } },
+            } => {
+                assert_eq!(id, None);
+                assert_eq!(depth, 0);
+                assert!(!with_parents);
+            }
+            _ => panic!("expected comment show"),
+        }
+    }
+
+    fn thread_entry(
+        id: u64,
+        parent_id: Option<u64>,
+        ts: &str,
+    ) -> openguild_core::repo::comments::CommentEntry {
+        openguild_core::repo::comments::CommentEntry {
+            id,
+            ts: ts.to_string(),
+            author: "a".into(),
+            body: format!("body {id}"),
+            parent_id,
+            reactions: Vec::new(),
+            discussion: false,
+            resolved: false,
+            pinned: false,
+        }
+    }
+
+    /// select_thread — depth 0 은 대상만, with_parents 는 root 까지 조상 포함,
+    /// depth>0 은 그만큼 답글 단계를 BFS 로 포함(존재 안 하는 id 는 None).
+    #[test]
+    fn select_thread_depth_and_parents() {
+        // 1(root) -> 2(level1) -> 3(level2) -> 4(level3); 2 의 형제로 5.
+        let entries = vec![
+            thread_entry(1, None, "t1"),
+            thread_entry(2, Some(1), "t2"),
+            thread_entry(3, Some(2), "t3"),
+            thread_entry(4, Some(3), "t4"),
+            thread_entry(5, Some(1), "t5"),
+        ];
+
+        // depth=0, with_parents=false → 대상 하나만.
+        let only = select_thread(entries.clone(), 3, 0, false).unwrap();
+        assert_eq!(only.iter().map(|e| e.id).collect::<Vec<_>>(), vec![3]);
+
+        // depth=1 → 3 의 직접 답글(4)까지.
+        let d1 = select_thread(entries.clone(), 3, 1, false).unwrap();
+        assert_eq!(d1.iter().map(|e| e.id).collect::<Vec<_>>(), vec![3, 4]);
+
+        // with_parents=true → root(1) → 2 → 3 순으로 조상 포함.
+        let wp = select_thread(entries.clone(), 3, 0, true).unwrap();
+        assert_eq!(wp.iter().map(|e| e.id).collect::<Vec<_>>(), vec![1, 2, 3]);
+
+        // 둘 다 → 조상 + 대상 + 답글.
+        let both = select_thread(entries.clone(), 3, 1, true).unwrap();
+        assert_eq!(both.iter().map(|e| e.id).collect::<Vec<_>>(), vec![1, 2, 3, 4]);
+
+        // 없는 id → None.
+        assert!(select_thread(entries, 99, 0, false).is_none());
     }
 
     #[test]
