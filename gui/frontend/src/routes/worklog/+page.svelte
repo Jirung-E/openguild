@@ -156,7 +156,9 @@
 		// 아래 URL $effect 가 이 로컬 변경에 반응해 anchor 를 옛 URL 값으로
 		// 되돌리지 않도록 먼저 기록 (goto 는 비동기 — 사용자 보고 버그).
 		lastUrlDate = anchor;
-		goto(`/worklog?date=${anchor}`, { replaceState: true, keepFocus: true, noScroll: true });
+		// BUG-120: pushState(기본) — 날짜/단위 변경마다 새 history entry 를 쌓아
+		// 브라우저 뒤로가기로 이전에 보던 날짜로 한 단계씩 되짚어갈 수 있게 한다.
+		goto(`/worklog?date=${anchor}`, { keepFocus: true, noScroll: true });
 	}
 
 	onMount(() => {

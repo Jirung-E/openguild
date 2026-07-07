@@ -116,7 +116,7 @@
 	// (1) 규칙 본문의 다른 규칙 [[링크]] 클릭 — 같은 라우트 내 이동이라 onMount 가
 	//     재실행되지 않아 선택이 안 바뀌던 문제: $page.url 반응형 구독으로 해결.
 	// (2) 퀘스트/캠페인 링크를 따라갔다 뒤로가기 — 선택이 컴포넌트 state 뿐이라
-	//     첫 규칙으로 초기화되던 문제: 선택 시 replaceState 로 URL 에 기록해 해결
+	//     첫 규칙으로 초기화되던 문제: 선택 시 URL 에 기록해 해결
 	//     (복귀 시 history 의 ?slug= 를 onMount 가 읽음).
 	$effect(() => {
 		const slug = $page.url.searchParams.get('slug');
@@ -128,10 +128,9 @@
 	function syncUrl(slug: string) {
 		const cur = new URLSearchParams(window.location.search).get('slug');
 		if (cur === slug) return;
-		// replaceState — 규칙 선택마다 history entry 를 쌓지 않는다(뒤로가기는
-		// 페이지 단위 이동용). goto 라 SvelteKit $page 도 일관 갱신.
+		// BUG-120: pushState(기본) — 규칙 선택마다 새 history entry 를 쌓아
+		// 브라우저 뒤로가기로 이전에 본 규칙을 한 단계씩 되짚어갈 수 있게 한다.
 		goto(`/rules?slug=${encodeURIComponent(slug)}`, {
-			replaceState: true,
 			keepFocus: true,
 			noScroll: true
 		});
