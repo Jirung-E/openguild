@@ -63,6 +63,13 @@
 			/* ignore */
 		}
 	}
+	// svelte-check 는 `{#if viewMode === 'explorer'}` 블록 안에서 다시
+	// `viewMode === 'tree'` 를 비교하면 (그 블록 안에선 타입이 'explorer' 로
+	// 좁혀져) "겹치지 않는 타입 비교"로 오탐한다 — 토글 버튼 두 개가 항상 같은
+	// 블록 안에 있어 발생. 함수 호출로 감싸 좁히기를 우회.
+	function isMode(m: ViewMode): boolean {
+		return viewMode === m;
+	}
 	// explorer 모드 전용 — 현재 탐색 중인 폴더 경로("" = 최상위).
 	let explorerPath = $state('');
 	const explorerNode = $derived(explorerPath ? (tree.nodeMap.get(explorerPath) ?? null) : null);
@@ -409,8 +416,8 @@
 		<div class="explorer-toolbar">
 			<h1 class="page-title">도서관</h1>
 			<div class="view-toggle">
-				<button class:on={viewMode === 'tree'} onclick={() => setViewMode('tree')} title="트리 보기">☰</button>
-				<button class:on={viewMode === 'explorer'} onclick={() => setViewMode('explorer')} title="아이콘 보기">▦</button>
+				<button class:on={isMode('tree')} onclick={() => setViewMode('tree')} title="트리 보기">☰</button>
+				<button class:on={isMode('explorer')} onclick={() => setViewMode('explorer')} title="아이콘 보기">▦</button>
 			</div>
 			<button class="btn-new" onclick={openCreateFolder}>+ 폴더</button>
 			<button class="btn-new" onclick={openCreate}>+ 신규</button>
@@ -489,8 +496,8 @@
 					<div class="sidebar-head">
 						<h2>도서관</h2>
 						<div class="view-toggle">
-							<button class:on={viewMode === 'tree'} onclick={() => setViewMode('tree')} title="트리 보기">☰</button>
-							<button class:on={viewMode === 'explorer'} onclick={() => setViewMode('explorer')} title="아이콘 보기">▦</button>
+							<button class:on={isMode('tree')} onclick={() => setViewMode('tree')} title="트리 보기">☰</button>
+							<button class:on={isMode('explorer')} onclick={() => setViewMode('explorer')} title="아이콘 보기">▦</button>
 						</div>
 					</div>
 					<div class="sidebar-actions">
