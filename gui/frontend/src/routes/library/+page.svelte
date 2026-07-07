@@ -146,28 +146,52 @@
 	}
 
 	onMount(() => {
-		// 딥링크 — `/library?id=BOOK-NNN` 진입 시 해당 문서 선택.
-		const idParam = new URLSearchParams(window.location.search).get('id');
-		loadList(idParam);
+		// 딥링크 — `/library?id=BOOK-NNN&path=폴더` 진입 시 해당 문서/폴더 위치 복원.
+		const sp = new URLSearchParams(window.location.search);
+		explorerPath = sp.get('path') ?? '';
+		loadList(sp.get('id'));
 	});
 
-	// BUG-104 와 동일: URL(?id=) 을 선택 상태의 진리원으로 — 문서간 [[링크]] 이동
-	// + 뒤로가기 복원.
+	// BUG-104 + admin 보고(2026-07-07): 문서/폴더를 여러 번 옮겨다닌 뒤 브라우저
+	// 뒤로가기를 눌러도 도서관 밖으로 그냥 나가버렸음 — syncUrl 이 매번
+	// replaceState 라 히스토리가 안 쌓였던 게 원인(원래 "선택은 페이지 이동
+	// 아님"이라는 다른 페이지들의 의도된 절충이었는데, 도서관처럼 폴더를 옮겨
+	// 다니며 탐색하는 화면엔 안 맞는다는 피드백). id/path 변경마다 새 history
+	// entry 를 쌓도록 pushState 로 전환 + explorerPath 도 URL 에 반영.
 	$effect(() => {
-		const id = $page.url.searchParams.get('id');
+		const sp = $page.url.searchParams;
+		const id = sp.get('id');
+		const path = sp.get('path') ?? '';
+		if (path !== explorerPath) {
+			explorerPath = path;
+		}
 		if (id && id !== selectedId && books.some((b) => b.book_id === id)) {
 			select(id);
+		} else if (!id && selectedId !== null) {
+			// 뒤로가기로 ?id= 가 사라짐(문서 상세 → 목록) — 상태만 반영, 다시
+			// syncUrl 로 되돌리지 않음(이미 URL 이 진실).
+			selectedId = null;
 		}
 	});
 
-	function syncUrl(id: string) {
-		const cur = new URLSearchParams(window.location.search).get('id');
-		if (cur === id) return;
-		goto(`/library?id=${encodeURIComponent(id)}`, {
-			replaceState: true,
-			keepFocus: true,
-			noScroll: true
-		});
+	/** 현재 selectedId/explorerPath 를 URL 에 반영 — 새 history entry 를 쌓아
+	 *  브라우저 뒤로/앞으로가기가 문서·폴더 탐색을 단계적으로 되돌릴 수 있게. */
+	function syncUrl() {
+		const cur = new URLSearchParams(window.location.search);
+		const curId = cur.get('id');
+		const curPath = cur.get('path') ?? '';
+		if (curId === selectedId && curPath === explorerPath) return;
+		const next = new URLSearchParams();
+		if (explorerPath) next.set('path', explorerPath);
+		if (selectedId) next.set('id', selectedId);
+		const qs = next.toString();
+		goto(qs ? `/library?${qs}` : '/library', { keepFocus: true, noScroll: true });
+	}
+
+	/** explorer 모드 폴더 이동 — state 갱신 + history entry. */
+	function gotoFolder(path: string) {
+		explorerPath = path;
+		syncUrl();
 	}
 
 	let confirmDiscardId = $state<string | null>(null);
@@ -181,7 +205,7 @@
 			return;
 		}
 		selectedId = id;
-		syncUrl(id);
+		syncUrl();
 	}
 
 	function applyPendingSelect() {
@@ -191,12 +215,13 @@
 			pendingBackToGrid = false;
 			cancelEdit();
 			selectedId = null;
+			syncUrl();
 			return;
 		}
 		if (!id) return;
 		cancelEdit();
 		selectedId = id;
-		syncUrl(id);
+		syncUrl();
 	}
 
 	// explorer 모드: 그리드로 복귀 (선택 해제, 폴더 위치는 유지).
@@ -206,6 +231,7 @@
 			return;
 		}
 		selectedId = null;
+		syncUrl();
 	}
 
 	// ─── 편집 ───
@@ -417,6 +443,7 @@
 			await libraryApi.folders.delete(path);
 			if (explorerPath === path || explorerPath.startsWith(`${path}/`)) {
 				explorerPath = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+				syncUrl();
 			}
 			await loadList(selectedId);
 		} catch (e) {
@@ -448,11 +475,11 @@
 			bind:value={searchQuery}
 		/>
 		<div class="crumbs">
-			<button class="crumb" onclick={() => (explorerPath = '')}>도서관</button>
+			<button class="crumb" onclick={() => gotoFolder('')}>도서관</button>
 			{#each explorerPath ? explorerPath.split('/') : [] as _seg, i (i)}
 				{@const partial = explorerPath.split('/').slice(0, i + 1).join('/')}
 				<span class="crumb-sep">›</span>
-				<button class="crumb" onclick={() => (explorerPath = partial)}>{_seg}</button>
+				<button class="crumb" onclick={() => gotoFolder(partial)}>{_seg}</button>
 			{/each}
 			{#if explorerPath}
 				<button class="btn-del-folder" onclick={() => deleteFolder(explorerPath)}>
@@ -514,7 +541,7 @@
 		{:else}
 			<div class="tile-grid">
 				{#each explorerFolders as f (f.path)}
-					<button class="tile" onclick={() => (explorerPath = f.path)}>
+					<button class="tile" onclick={() => gotoFolder(f.path)}>
 						<span class="tile-icon" aria-hidden="true">📁</span>
 						<span class="tile-label">{f.name}</span>
 					</button>
