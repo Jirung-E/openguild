@@ -18,7 +18,7 @@
 	import { goto } from '$app/navigation';
 	import { setUnsaved } from '$lib/stores/unsaved';
 	import { libraryApi, type Book, type LibraryFolder } from '$lib/api/library';
-	import { buildLibraryTree, flattenFolderPaths } from '$lib/utils/library-tree';
+	import { buildLibraryTree, flattenFolderPaths, searchBooks } from '$lib/utils/library-tree';
 	import LibraryFolderTree from '$lib/components/LibraryFolderTree.svelte';
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
@@ -76,6 +76,11 @@
 	const explorerNode = $derived(explorerPath ? (tree.nodeMap.get(explorerPath) ?? null) : null);
 	const explorerFolders = $derived(explorerPath === '' ? tree.roots : (explorerNode?.children ?? []));
 	const explorerDocs = $derived(explorerPath === '' ? tree.rootDocs : (explorerNode?.docs ?? []));
+
+	// DEV-238: 검색 — 활성화되면 폴더 구조/현재 탐색 위치와 무관하게 매칭
+	// 문서만 평평하게 보여줌(검색 중엔 "어느 폴더에 있나"보다 "찾았나"가 우선).
+	let searchQuery = $state('');
+	const searchResults = $derived(searchBooks(books, searchQuery));
 
 	let editMode = $state(false);
 	$effect(() => setUnsaved('library-edit', editMode));
@@ -436,6 +441,12 @@
 			<button class="btn-new" onclick={openCreateFolder}>+ 폴더</button>
 			<button class="btn-new" onclick={openCreate}>+ 신규</button>
 		</div>
+		<input
+			class="search-input"
+			type="search"
+			placeholder="제목/본문 검색"
+			bind:value={searchQuery}
+		/>
 		<div class="crumbs">
 			<button class="crumb" onclick={() => (explorerPath = '')}>도서관</button>
 			{#each explorerPath ? explorerPath.split('/') : [] as _seg, i (i)}
@@ -483,7 +494,22 @@
 			</div>
 		{/if}
 
-		{#if explorerFolders.length === 0 && explorerDocs.length === 0}
+		{#if searchResults}
+			<!-- DEV-238: 검색 중엔 현재 폴더 위치 무시 — 매칭 문서만 평평하게. -->
+			{#if searchResults.length === 0}
+				<p class="empty-list">검색 결과 없음.</p>
+			{:else}
+				<div class="tile-grid">
+					{#each searchResults as b (b.book_id)}
+						<button class="tile" onclick={() => select(b.book_id)}>
+							<span class="tile-icon" aria-hidden="true">📄</span>
+							<span class="tile-label">{b.title}</span>
+							<span class="tile-sub">{b.book_id}</span>
+						</button>
+					{/each}
+				</div>
+			{/if}
+		{:else if explorerFolders.length === 0 && explorerDocs.length === 0}
 			<p class="empty-list">비어 있음. "+ 신규" 또는 "+ 폴더" 로 만들기.</p>
 		{:else}
 			<div class="tile-grid">
@@ -518,7 +544,32 @@
 						<button class="btn-new" onclick={openCreateFolder} title="새 폴더">+ 폴더</button>
 						<button class="btn-new" onclick={openCreate} title="신규 문서">+ 신규</button>
 					</div>
-					{#if books.length === 0 && folders.length === 0}
+					<input
+						class="search-input"
+						type="search"
+						placeholder="제목/본문 검색"
+						bind:value={searchQuery}
+					/>
+					{#if searchResults}
+						<!-- DEV-238: 검색 중엔 폴더 구조 무시 — 매칭 문서만 평평하게. -->
+						{#if searchResults.length === 0}
+							<p class="empty-list">검색 결과 없음.</p>
+						{:else}
+							<div class="book-list">
+								{#each searchResults as b (b.book_id)}
+									<button
+										class="book-item"
+										class:active={b.book_id === selectedId}
+										onclick={() => select(b.book_id)}
+									>
+										<span class="book-id">{b.book_id}</span>
+										<span class="book-title">{b.title}</span>
+										{#if b.path}<span class="book-path">{b.path}</span>{/if}
+									</button>
+								{/each}
+							</div>
+						{/if}
+					{:else if books.length === 0 && folders.length === 0}
 						<p class="empty-list">문서 없음. "+ 신규" 로 만들기.</p>
 					{:else}
 						<div class="book-list">
@@ -988,6 +1039,21 @@
 		color: var(--text);
 		border-radius: 4px;
 		font-size: 0.85rem;
+	}
+	/* DEV-238: 검색창 — sidebar/explorer 툴바 양쪽에서 재사용. */
+	.search-input {
+		width: 100%;
+		padding: 0.3rem 0.55rem;
+		background: var(--bg);
+		border: 1px solid var(--border);
+		color: var(--text);
+		border-radius: 4px;
+		font-size: 0.82rem;
+		margin: 0.4rem 0;
+	}
+	.book-path {
+		font-size: 0.68rem;
+		color: var(--text-muted);
 	}
 
 	.state {

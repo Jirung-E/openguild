@@ -62,3 +62,26 @@ export function buildLibraryTree(folders: LibraryFolder[], books: Book[]): Libra
 export function flattenFolderPaths(tree: LibraryTree): string[] {
 	return [...tree.nodeMap.keys()].sort((a, b) => a.localeCompare(b));
 }
+
+/**
+ * DEV-238: 도서관 검색 — 제목/본문 부분일치, 클라이언트 필터링(문서 수가
+ * 크지 않다는 전제 — 커지면 서버 LIKE/FTS5 로 옮길 수 있음).
+ *
+ * 빈 쿼리는 `null`(검색 비활성 — 호출측이 평소 폴더 구조 렌더와 구분).
+ * 제목 매칭이 본문만 매칭보다 우선 노출, 각 그룹 안은 제목 가나다순.
+ */
+export function searchBooks(books: Book[], query: string): Book[] | null {
+	const q = query.trim().toLowerCase();
+	if (!q) return null;
+	const titleHits: Book[] = [];
+	const bodyOnlyHits: Book[] = [];
+	for (const b of books) {
+		const titleHit = b.title.toLowerCase().includes(q);
+		const bodyHit = !titleHit && b.body.toLowerCase().includes(q);
+		if (titleHit) titleHits.push(b);
+		else if (bodyHit) bodyOnlyHits.push(b);
+	}
+	titleHits.sort((a, b) => a.title.localeCompare(b.title));
+	bodyOnlyHits.sort((a, b) => a.title.localeCompare(b.title));
+	return [...titleHits, ...bodyOnlyHits];
+}
