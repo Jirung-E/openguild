@@ -902,4 +902,66 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// 도서관(library) 백업 확인 — 문서(폴더 안) + 첨부(DEV-237)까지 snapshot/
+    /// restore 후 살아남고, DB 캐시(library_docs/library_folders)도
+    /// reindex 로 재구축되는지. SOURCE_SUBDIRS 에 "library" 는 있지만
+    /// "attachments"(첨부 실제 bytes) 까지 같이 살아야 첨부가 진짜 복원.
+    #[tokio::test]
+    async fn snapshot_preserves_library_docs_folders_and_attachments() {
+        use crate::ops::{attachments as att_ops, library as lib_ops};
+
+        let dir = fresh_tmp("snap-library");
+        let store = setup(&dir).await;
+
+        lib_ops::create_folder(&store, "아키텍처").await.unwrap();
+        let book = lib_ops::create_book(&store, "라우터 설계", "본문", "아키텍처")
+            .await
+            .unwrap();
+        let rel = att_ops::save_attachment(&store, b"SPEC-BYTES", "pdf")
+            .await
+            .unwrap();
+        att_ops::add_book_attachment(&store, &book.book_id(), &rel, "spec.pdf")
+            .await
+            .unwrap();
+
+        let snap = create_snapshot(&store).await.unwrap();
+        assert!(
+            snap.path.join(".guild/library").join(format!("{}.md", book.book_id())).exists(),
+            "snapshot 이 도서관 문서를 포함해야"
+        );
+        assert!(
+            snap.path
+                .join(".guild/library")
+                .join(format!("{}.attachments.json", book.book_id()))
+                .exists(),
+            "snapshot 이 도서관 첨부 sidecar 를 포함해야"
+        );
+        assert!(
+            snap.path.join(".guild/attachments").join(rel.trim_start_matches("attachments/")).exists(),
+            "snapshot 이 첨부 실제 bytes 도 포함해야"
+        );
+
+        // DB 캐시만 손실 시나리오.
+        sqlx::query("DELETE FROM library_docs").execute(&store.index_pool).await.unwrap();
+        sqlx::query("DELETE FROM library_folders").execute(&store.index_pool).await.unwrap();
+
+        restore_snapshot(&store, &snap).await.unwrap();
+
+        let store2 = Store::open(&dir).await.unwrap();
+        let restored = lib_ops::get_book(&store2, &book.book_id()).await.unwrap().unwrap();
+        assert_eq!(restored.title, "라우터 설계");
+        assert_eq!(restored.path, "아키텍처", "폴더 소속도 복원돼야");
+
+        let folders = lib_ops::list_folders(&store2).await.unwrap();
+        assert!(folders.iter().any(|f| f.path == "아키텍처"));
+
+        let atts = att_ops::list_book_attachments(&store2, &book.book_id());
+        assert_eq!(atts.len(), 1);
+        assert_eq!(atts[0].name, "spec.pdf");
+        let abs = store2.paths.dot_guild().join(&rel);
+        assert_eq!(std::fs::read(&abs).unwrap(), b"SPEC-BYTES", "첨부 bytes 자체도 복원돼야");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
