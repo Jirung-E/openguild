@@ -820,7 +820,7 @@ enum LibraryCmd {
         /// 본문 파일 (UTF-8). 한글 등 비ASCII 는 stdin 파이프 대신 파일 권장.
         #[arg(long)]
         file: Option<std::path::PathBuf>,
-        /// DEV-239: 소속 폴더 경로 (미지정 = 최상위). 예: `아키텍처/서브`.
+        /// 소속 폴더 경로 (미지정 = 최상위). 예: `아키텍처/서브`.
         #[arg(long)]
         path: Option<String>,
     },
@@ -832,8 +832,7 @@ enum LibraryCmd {
         /// 새 본문 파일 (UTF-8). 미지정 시 본문 유지.
         #[arg(long)]
         file: Option<std::path::PathBuf>,
-        /// DEV-239: 새 폴더 경로로 이동. 빈 문자열("")이면 최상위로 이동.
-        /// 미지정 시 현재 위치 유지.
+        /// 새 폴더 경로로 이동. 빈 문자열("")이면 최상위로 이동. 미지정 시 현재 위치 유지.
         #[arg(long)]
         path: Option<String>,
     },
@@ -843,7 +842,7 @@ enum LibraryCmd {
         #[arg(long)]
         yes: bool,
     },
-    /// DEV-239: 폴더(계층) 관리 — 순수 컨테이너, 본문 없음.
+    /// 폴더(계층) 관리 — 순수 컨테이너, 본문 없음.
     Folder {
         #[command(subcommand)]
         sub: LibraryFolderCmd,
@@ -7487,6 +7486,20 @@ mod tests {
                 }
             )
         );
+
+        let cli = Cli::try_parse_from([
+            "openguild", "library", "folder", "delete", "아키텍처/서브", "--yes",
+        ])
+        .unwrap();
+        match cli.command {
+            Command::Library {
+                sub: LibraryCmd::Folder { sub: LibraryFolderCmd::Delete { path, yes } },
+            } => {
+                assert_eq!(path, "아키텍처/서브");
+                assert!(yes);
+            }
+            _ => panic!(),
+        }
     }
 
     /// 작업 기록 명령 파싱 — show 의 date/from-to 상호배타, note sub 필수.

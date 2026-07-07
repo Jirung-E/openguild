@@ -343,8 +343,8 @@ foreach ($slug in $ruleSamples.Keys) {
     if ($LASTEXITCODE -ne 0) { throw "rule new 실패: $slug" }
 }
 
-# ── 9) DEV-215~218: 도서관 (Library 페이지 + [[BOOK-NNN]] cross-link 검증) ──
-Write-Host "`n=== [9/10] 도서관 (DEV-215~218) ===" -ForegroundColor Green
+# ── 9) DEV-215~218, DEV-239: 도서관 (Library 페이지 + 폴더 + cross-link 검증) ──
+Write-Host "`n=== [9/10] 도서관 (DEV-215~218, DEV-239) ===" -ForegroundColor Green
 
 # BOOK-001: cross-link 대상 — quest 본문/댓글에서 [[BOOK-001]] 로 참조 검증.
 # BOOK-002: 목록 정렬/선택 + 빈 본문 문서의 '+ 작성' 흐름 검증.
@@ -370,6 +370,16 @@ if ($LASTEXITCODE -ne 0) { throw "library new 실패 (2)" }
 # 첫 quest 댓글에서 도서관 문서 참조 — [[BOOK-001]] 렌더/자동완성 검증.
 "참고 문서 정리함: [[BOOK-001]] 확인." | & $bin quest comment add $questForComments --author alice
 if ($LASTEXITCODE -ne 0) { throw "book cross-link comment 실패" }
+
+# DEV-239: 폴더 — 트리/탐색기 보기 토글, 폴더 안 문서 배치, 경로 기반
+# cross-link 자동완성([[아키텍처/ 타이핑) 검증용.
+Write-Host "[og] library folder new (아키텍처)" -ForegroundColor DarkGray
+& $bin library folder new "아키텍처" | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "library folder new 실패" }
+
+Write-Host "[og] library new (BOOK-003, 폴더 안)" -ForegroundColor DarkGray
+& $bin library new --title "라우터 설계" --path "아키텍처" | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "library new 실패 (3, path)" }
 
 # ── 10) DEV-167: 작업 기록 (HOME 히트맵 카드 + /worklog 상세 검증) ──
 Write-Host "`n=== [10/10] 작업 기록 (DEV-167) ===" -ForegroundColor Green
@@ -406,7 +416,7 @@ Write-Host "Tags    : 2 quest 에 태그 — 칩 / 필터 검증."
 Write-Host "Deleted : 1 quest soft-delete — 삭제 목록 / 복원 검증."
 Write-Host "Template: bug-report 1 개 — NewQuestModal 드롭다운 검증 (DEV-060/158)."
 Write-Host "Rules   : $($ruleSamples.Count) 개 sample (branch-policy / code-review / release-checklist)"
-Write-Host "Library : 2 개 (BOOK-001 본문+cross-link / BOOK-002 빈 본문) + 댓글의 [[BOOK-001]] 참조."
+Write-Host "Library : 3 개 (BOOK-001 본문+cross-link / BOOK-002 빈 본문 / BOOK-003 폴더 안) + 폴더 1(아키텍처) + 댓글의 [[BOOK-001]] 참조."
 Write-Host "Worklog : 노트 2 (오늘/이틀 전) — 활동은 이 스크립트 실행 자체가 오늘 날짜로 생성."
 Write-Host ""
 Write-Host "GUI 열어서 Home / Rules 페이지 확인:"

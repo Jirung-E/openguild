@@ -339,11 +339,16 @@ openguild rule rename <old-slug> <new-slug>
 
 # 도서관 (.guild/library/ — 프로젝트 참고문서/노트, 자체 BOOK 번호, git tracked)
 # 번호는 자동 부여 + 단조 증가 (삭제해도 재사용 안 됨). 원격 모드(--remote) 지원.
-openguild library list                             # 문서 목록 (번호/제목/갱신)
-openguild library show   <ID>                      # 본문 출력 (ID = BOOK-N)
-openguild library new    --title <T> [--file <P>]  # 신규 (본문은 UTF-8 파일)
-openguild library update <ID> [--title <T>] [--file <P>]
-openguild library delete <ID> [--yes]              # soft delete
+openguild library list                                        # 문서 목록 (번호/제목/경로/갱신)
+openguild library show   <ID>                                 # 본문 출력 (ID = BOOK-N)
+openguild library new    --title <T> [--file <P>] [--path <F>] # 신규 (본문은 UTF-8 파일, --path = 소속 폴더)
+openguild library update <ID> [--title <T>] [--file <P>] [--path <F>] # --path "" 는 최상위로 이동
+openguild library delete <ID> [--yes]                         # soft delete
+
+# 도서관 폴더 (순수 컨테이너 — 본문 없음. 문서/하위 폴더 있으면 삭제 거부)
+openguild library folder list                  # 폴더 경로 목록
+openguild library folder new    <PATH>         # 예: "아키텍처" 또는 "아키텍처/서브"
+openguild library folder delete <PATH> [--yes] # 비어 있어야 삭제 가능
 
 # 작업 기록 (활동 = quest 이력/댓글/생성 자동 집계, 노트 = .guild/worklog/{날짜}.md)
 openguild worklog show                               # 오늘 하루 타임라인 + 집계

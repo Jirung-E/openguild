@@ -469,4 +469,21 @@ mod tests {
         create_book(&store, "가이드", "", "운영").await.unwrap();
         assert!(delete_folder(&store, "운영").await.is_err(), "문서 있는 폴더는 삭제 거부");
     }
+
+    #[tokio::test]
+    async fn folder_delete_rejects_when_subfolder_exists() {
+        let dir = fresh_tmp("folder-sub");
+        let store = setup(&dir).await;
+
+        create_folder(&store, "아키텍처").await.unwrap();
+        create_folder(&store, "아키텍처/서브").await.unwrap();
+        assert!(
+            delete_folder(&store, "아키텍처").await.is_err(),
+            "하위 폴더가 있으면 삭제 거부 (문서가 하나도 없어도)"
+        );
+        // 하위 폴더부터 지우면 이제 부모도 삭제 가능.
+        delete_folder(&store, "아키텍처/서브").await.unwrap();
+        delete_folder(&store, "아키텍처").await.unwrap();
+        assert!(list_folders(&store).await.unwrap().is_empty());
+    }
 }

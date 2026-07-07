@@ -2554,6 +2554,35 @@ async fn test_library_folders_and_doc_path() {
     assert_eq!(status, StatusCode::NO_CONTENT);
 }
 
+/// DEV-239: 잘못된 폴더 경로(`..`)는 400, 하위 폴더 있으면(문서 없어도) 삭제 거부.
+#[tokio::test]
+async fn test_library_folder_path_validation_and_subfolder_guard() {
+    let app = setup().await;
+
+    let (status, _) = post(
+        app.clone(),
+        "/api/library",
+        json!({ "title": "잘못된 경로", "path": "아키텍처/.." }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    let (status, _) =
+        post(app.clone(), "/api/library/folders", json!({ "path": "아키텍처" })).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let (status, _) =
+        post(app.clone(), "/api/library/folders", json!({ "path": "아키텍처/서브" })).await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let status = delete(app.clone(), "/api/library/folders?path=아키텍처").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    let status = delete(app.clone(), "/api/library/folders?path=아키텍처/서브").await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let status = delete(app, "/api/library/folders?path=아키텍처").await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+}
+
 /// DEV-167: worklog — 활동 타임라인/집계/히트맵 + 날짜별 노트 CRUD.
 #[tokio::test]
 async fn test_worklog_activities_and_note() {
