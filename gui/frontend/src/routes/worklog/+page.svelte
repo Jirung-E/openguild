@@ -389,7 +389,15 @@
 					{#if unit !== 'day'}
 						<div class="day-sep">── {g.date} ──</div>
 					{/if}
-					{#each g.rows as a (a.ts + a.slug + a.kind + a.summary)}
+					<!-- BUG-118 (admin 보고): 짧은 시간에 상태를 반복 토글하면 같은 ts/
+					     slug/kind/summary 조합이 여러 번 나올 수 있어 (ts+slug+kind+
+					     summary) 키가 unique 하지 않았음 — Svelte 5 는 keyed each 의
+					     중복 키를 허용 안 하고 첫 렌더에서 throw, "로딩" 화면이 그대로
+					     굳어버림(loading 상태 자체는 false 로 바뀌지만 그걸 반영할
+					     렌더가 죽어서 화면이 안 바뀜). ActivityRow 엔 안정적인 고유 id
+					     가 없어(여러 테이블 UNION) index 로 키를 대체.
+					-->
+					{#each g.rows as a, ri (ri)}
 						<a class="row" href={activityHref(a)}>
 							<span class="ts">{a.ts.slice(11, 16)}</span>
 							<span class="badge {KIND_BADGE[a.kind]?.cls ?? ''}">
