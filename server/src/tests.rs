@@ -2729,6 +2729,44 @@ async fn test_worklog_activities_and_note() {
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
+/// DEV-236: 토론 resolve 전환이 worklog 타임라인/집계에 나타남 (이전엔 journal
+/// 감사로그에만 남아 안 보였던 설계 공백).
+#[tokio::test]
+async fn test_worklog_shows_discussion_resolve_events() {
+    let app = seed_quest(setup().await).await;
+    let (_, entry) = post(
+        app.clone(),
+        "/api/quests/by/DEV-001/comments",
+        json!({ "author": "a", "body": "결정 필요" }),
+    )
+    .await;
+    let id = entry["id"].as_u64().unwrap();
+    post(
+        app.clone(),
+        &format!("/api/quests/by/DEV-001/comments/{id}/discussion"),
+        json!({}),
+    )
+    .await;
+    post(
+        app.clone(),
+        &format!("/api/quests/by/DEV-001/comments/{id}/resolved"),
+        json!({}),
+    )
+    .await;
+
+    let today = &openguild_core::time::now_local_iso8601()[..10];
+    let (status, report) =
+        get(app, &format!("/api/worklog?from={today}&to={today}")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(report["counts"]["discussion_events"], 1);
+    let activities = report["activities"].as_array().unwrap();
+    let ev = activities
+        .iter()
+        .find(|a| a["kind"] == "discussion")
+        .expect("discussion 활동이 있어야");
+    assert!(ev["summary"].as_str().unwrap().contains("해결"));
+}
+
 #[tokio::test]
 async fn test_rules_legacy_single_file() {
     let app = setup().await;

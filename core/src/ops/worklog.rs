@@ -53,6 +53,8 @@ pub struct ActivityCounts {
     pub created: i64,
     /// 상태변경 중 done 으로의 전환 수.
     pub done_transitions: i64,
+    /// DEV-236: 토론 댓글 resolve/reopen 전환 수.
+    pub discussion_events: i64,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -71,9 +73,18 @@ pub async fn activities(store: &Store, from: &str, to: &str) -> AppResult<Worklo
     let rows = sqlx::query_as::<_, ActivityRow>(
         "SELECT * FROM (
            SELECT h.ts AS ts,
-                  CASE h.op WHEN 'change_status' THEN 'status' ELSE 'type' END AS kind,
+                  CASE h.op
+                    WHEN 'change_status' THEN 'status'
+                    WHEN 'discussion_resolved' THEN 'discussion'
+                    WHEN 'discussion_reopened' THEN 'discussion'
+                    ELSE 'type'
+                  END AS kind,
                   h.quest_slug AS slug,
-                  COALESCE(h.old_value,'?') || ' → ' || COALESCE(h.new_value,'?') AS summary
+                  CASE h.op
+                    WHEN 'discussion_resolved' THEN '댓글 #' || COALESCE(h.new_value,'?') || ' 토론 해결'
+                    WHEN 'discussion_reopened' THEN '댓글 #' || COALESCE(h.new_value,'?') || ' 토론 재개(미해결)'
+                    ELSE COALESCE(h.old_value,'?') || ' → ' || COALESCE(h.new_value,'?')
+                  END AS summary
              FROM quest_history h
             WHERE h.quest_slug IS NOT NULL
               AND substr(h.ts,1,10) BETWEEN ? AND ?
@@ -120,6 +131,7 @@ pub async fn activities(store: &Store, from: &str, to: &str) -> AppResult<Worklo
                     counts.done_transitions += 1;
                 }
             }
+            "discussion" => counts.discussion_events += 1,
             "comment" => counts.comments += 1,
             "created" => counts.created += 1,
             _ => {}
@@ -329,6 +341,58 @@ mod tests {
         assert_eq!(sum.len(), 1);
         assert_eq!(sum[0].0, d);
         assert_eq!(sum[0].1, report.activities.len() as i64);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-236: 토론 resolve/reopen 전환이 'discussion' kind 로 타임라인에 표출.
+    #[tokio::test]
+    async fn activities_includes_discussion_resolve_events() {
+        let dir = fresh_tmp("disc");
+        let store = setup(&dir).await;
+        let tid: i64 = sqlx::query_scalar("SELECT id FROM quest_types WHERE prefix = 'DEV'")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        let q = crate::ops::quests::create_quest(
+            &store,
+            CreateQuestRequest {
+                quest_type_id: tid,
+                title: "토론 테스트".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        let c = crate::ops::comments::add_comment_entry(
+            &store,
+            &q.quest_id,
+            "claude".into(),
+            "결정 필요".into(),
+            None,
+        )
+        .await
+        .unwrap();
+        crate::ops::comments::toggle_comment_discussion(&store, &q.quest_id, c.id)
+            .await
+            .unwrap();
+        crate::ops::comments::toggle_comment_resolved(&store, &q.quest_id, c.id)
+            .await
+            .unwrap();
+
+        let d = today();
+        let report = activities(&store, &d, &d).await.unwrap();
+        assert_eq!(report.counts.discussion_events, 1);
+        let ev = report
+            .activities
+            .iter()
+            .find(|a| a.kind == "discussion")
+            .expect("discussion 활동이 타임라인에 있어야");
+        assert!(ev.summary.contains("해결"));
+        assert!(ev.summary.contains(&c.id.to_string()));
 
         let _ = std::fs::remove_dir_all(&dir);
     }

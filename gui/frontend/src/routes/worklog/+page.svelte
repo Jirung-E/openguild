@@ -251,7 +251,9 @@
 		status: { label: '상태', cls: 'b-status' },
 		type: { label: '타입', cls: 'b-status' },
 		comment: { label: '댓글', cls: 'b-comment' },
-		created: { label: '생성', cls: 'b-created' }
+		created: { label: '생성', cls: 'b-created' },
+		// DEV-236: 토론 resolve/reopen 전환.
+		discussion: { label: '토론', cls: 'b-discussion' }
 	};
 	function activityHref(a: ActivityRow): string {
 		return /^C-\d+$/.test(a.slug)
@@ -413,6 +415,9 @@
 				<span><b>{report.counts.status_changes}</b> 상태변경</span>
 				<span><b>{report.counts.comments}</b> 댓글</span>
 				<span><b>{report.counts.created}</b> 생성</span>
+				{#if report.counts.discussion_events > 0}
+					<span><b>{report.counts.discussion_events}</b> 토론 전환</span>
+				{/if}
 				<span class="right">done 전환 <b>{report.counts.done_transitions}</b></span>
 			</div>
 		{/if}
@@ -607,6 +612,10 @@
 	.b-created {
 		background: color-mix(in srgb, var(--warning) 15%, transparent);
 		color: var(--warning);
+	}
+	.b-discussion {
+		background: color-mix(in srgb, var(--danger) 15%, transparent);
+		color: var(--danger);
 	}
 	.slug {
 		flex: none;

@@ -5,7 +5,7 @@ import { api } from './client';
 
 export interface ActivityRow {
 	ts: string;
-	/** "status" | "type" | "comment" | "created" */
+	/** "status" | "type" | "comment" | "created" | "discussion" */
 	kind: string;
 	slug: string;
 	summary: string;
@@ -16,6 +16,8 @@ export interface ActivityCounts {
 	comments: number;
 	created: number;
 	done_transitions: number;
+	/** DEV-236: 토론 resolve/reopen 전환 수. */
+	discussion_events: number;
 }
 
 export interface WorklogReport {
