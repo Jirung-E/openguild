@@ -142,6 +142,30 @@ pub async fn remove_campaign_attachment(
         .map_err(err)
 }
 
+/// DEV-237: 도서관 문서 첨부 — 이미지/동영상 외 임의 파일.
+#[tauri::command]
+pub async fn add_book_attachment(
+    store: State<'_, Store>,
+    book_id: String,
+    path: String,
+    name: String,
+) -> Result<Vec<openguild_core::models::QuestAttachment>, String> {
+    openguild_core::ops::attachments::add_book_attachment(&store, &book_id, &path, &name)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn remove_book_attachment(
+    store: State<'_, Store>,
+    book_id: String,
+    path: String,
+) -> Result<Vec<openguild_core::models::QuestAttachment>, String> {
+    openguild_core::ops::attachments::remove_book_attachment(&store, &book_id, &path)
+        .await
+        .map_err(err)
+}
+
 #[tauri::command]
 pub async fn list_quest_candidates(
     store: State<'_, Store>,
@@ -1285,6 +1309,8 @@ pub struct BookResponse {
     pub created_at: String,
     pub updated_at: String,
     pub deleted_at: Option<String>,
+    /// DEV-237: 첨부 목록 — get_book 에서만 채움(list_books 는 빈 배열).
+    pub attachments: Vec<openguild_core::models::QuestAttachment>,
 }
 
 impl From<openguild_core::ops::library::LibraryDocRow> for BookResponse {
@@ -1298,6 +1324,7 @@ impl From<openguild_core::ops::library::LibraryDocRow> for BookResponse {
             created_at: r.created_at,
             updated_at: r.updated_at,
             deleted_at: r.deleted_at,
+            attachments: Vec::new(),
         }
     }
 }
@@ -1329,11 +1356,13 @@ pub async fn list_books(store: State<'_, Store>) -> Result<Vec<BookResponse>, St
 
 #[tauri::command]
 pub async fn get_book(store: State<'_, Store>, book_id: String) -> Result<BookResponse, String> {
-    openguild_core::ops::library::get_book(&store, &book_id)
+    let mut resp: BookResponse = openguild_core::ops::library::get_book(&store, &book_id)
         .await
         .map_err(err)?
         .map(BookResponse::from)
-        .ok_or_else(|| format!("도서관 문서 '{book_id}' 없음"))
+        .ok_or_else(|| format!("도서관 문서 '{book_id}' 없음"))?;
+    resp.attachments = openguild_core::ops::attachments::list_book_attachments(&store, &book_id);
+    Ok(resp)
 }
 
 #[tauri::command]

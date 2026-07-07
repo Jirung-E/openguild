@@ -344,6 +344,8 @@ pub fn run() {
             commands::remove_quest_attachment,
             commands::add_campaign_attachment,
             commands::remove_campaign_attachment,
+            commands::add_book_attachment,
+            commands::remove_book_attachment,
             commands::list_quest_candidates,
             commands::list_quest_positions,
             commands::list_quest_dependencies,

@@ -197,6 +197,11 @@ pub fn list_campaign_attachments(store: &Store, slug: &str) -> Vec<QuestAttachme
     read_attachment_list(&store.paths.campaign_attachments_meta_path(slug))
 }
 
+/// DEV-237: 도서관 문서 첨부 목록 조회.
+pub fn list_book_attachments(store: &Store, book_id: &str) -> Vec<QuestAttachment> {
+    read_attachment_list(&store.paths.book_attachments_meta_path(book_id))
+}
+
 /// quest 에 첨부 추가 (path 중복이면 무시). 갱신된 목록 반환.
 pub async fn add_quest_attachment(
     store: &Store,
@@ -215,6 +220,18 @@ pub async fn add_campaign_attachment(
     name: &str,
 ) -> AppResult<Vec<QuestAttachment>> {
     add_attachment(store, &store.paths.campaign_attachments_meta_path(slug), slug, path, name).await
+}
+
+/// DEV-237: 도서관 문서에 첨부 추가 — 이미지/동영상 외 임의 파일 지원.
+/// quest/campaign 과 같은 sidecar 패턴 재사용.
+pub async fn add_book_attachment(
+    store: &Store,
+    book_id: &str,
+    path: &str,
+    name: &str,
+) -> AppResult<Vec<QuestAttachment>> {
+    add_attachment(store, &store.paths.book_attachments_meta_path(book_id), book_id, path, name)
+        .await
 }
 
 async fn add_attachment(
@@ -264,6 +281,15 @@ pub async fn remove_campaign_attachment(
     remove_attachment(store, &store.paths.campaign_attachments_meta_path(slug), slug, path).await
 }
 
+/// DEV-237: 도서관 문서 첨부 제거. 갱신 목록 반환.
+pub async fn remove_book_attachment(
+    store: &Store,
+    book_id: &str,
+    path: &str,
+) -> AppResult<Vec<QuestAttachment>> {
+    remove_attachment(store, &store.paths.book_attachments_meta_path(book_id), book_id, path).await
+}
+
 async fn remove_attachment(
     store: &Store,
     meta_path: &std::path::Path,
@@ -305,7 +331,13 @@ async fn gc_attachment_file(store: &Store, path: &str) {
 
 /// path 가 다른 첨부 sidecar(quest/campaign) 또는 본문(description)에서 참조되는지.
 async fn attachment_referenced(store: &Store, path: &str) -> bool {
-    for dir in [store.paths.quests_dir(), store.paths.campaigns_dir()] {
+    // DEV-237: 도서관 문서(sidecar + body)도 스캔 대상 — 그래야 도서관에서만
+    // 쓰이는 첨부를 다른 sidecar/본문에서 안 쓴다고 오판해 GC 하지 않는다.
+    for dir in [
+        store.paths.quests_dir(),
+        store.paths.campaigns_dir(),
+        store.paths.library_dir(),
+    ] {
         let Ok(rd) = std::fs::read_dir(&dir) else {
             continue;
         };
@@ -322,8 +354,13 @@ async fn attachment_referenced(store: &Store, path: &str) -> bool {
         }
     }
     let like = format!("%{path}%");
-    for table in ["quests", "campaigns"] {
-        let q = format!("SELECT 1 FROM {table} WHERE description LIKE ? LIMIT 1");
+    // (테이블, 본문 컬럼) — quests/campaigns 는 description, library_docs 는 body.
+    for (table, col) in [
+        ("quests", "description"),
+        ("campaigns", "description"),
+        ("library_docs", "body"),
+    ] {
+        let q = format!("SELECT 1 FROM {table} WHERE {col} LIKE ? LIMIT 1");
         let hit: Option<i64> = sqlx::query_scalar(&q)
             .bind(&like)
             .fetch_optional(&store.index_pool)
@@ -487,6 +524,41 @@ mod tests {
             .unwrap();
         assert_eq!(n, 0, "orphan blob 은 GC 되어 다음 reindex 부활을 막아야");
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-237: 도서관 문서 첨부 — quest/campaign 과 동일한 CRUD + GC 시맨틱.
+    #[tokio::test]
+    async fn book_attachment_list_roundtrip_and_gc() {
+        let (dir, store) = setup("book-attach").await;
+        assert!(list_book_attachments(&store, "BOOK-001").is_empty());
+
+        let rel = save_attachment(&store, b"DOC", "pdf").await.unwrap();
+        let list = add_book_attachment(&store, "BOOK-001", &rel, "spec.pdf")
+            .await
+            .unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].name, "spec.pdf");
+        assert!(store.paths.book_attachments_meta_path("BOOK-001").exists());
+
+        let abs = store.paths.dot_guild().join(&rel);
+        remove_book_attachment(&store, "BOOK-001", &rel).await.unwrap();
+        assert!(!abs.exists(), "미참조 첨부는 제거 시 파일도 삭제");
+        assert!(!store.paths.book_attachments_meta_path("BOOK-001").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-237: quest 첨부가 도서관 문서에서도 참조 중이면(교차 참조) 유지.
+    #[tokio::test]
+    async fn book_attachment_referenced_keeps_quest_attachment() {
+        let (dir, store) = setup("book-xref").await;
+        let rel = save_attachment(&store, b"DATA", "zip").await.unwrap();
+        add_quest_attachment(&store, "DEV-001", &rel, "f.zip").await.unwrap();
+        add_book_attachment(&store, "BOOK-001", &rel, "f.zip").await.unwrap();
+        let abs = store.paths.dot_guild().join(&rel);
+
+        remove_quest_attachment(&store, "DEV-001", &rel).await.unwrap();
+        assert!(abs.exists(), "도서관 문서가 여전히 참조 중이면 파일 유지");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

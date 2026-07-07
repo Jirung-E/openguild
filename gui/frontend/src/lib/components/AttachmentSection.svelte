@@ -20,7 +20,8 @@
 		slug,
 		scope = 'quest',
 		attachments = $bindable([])
-	}: { slug: string; scope?: 'quest' | 'campaign'; attachments?: Attachment[] } = $props();
+	}: { slug: string; scope?: 'quest' | 'campaign' | 'library'; attachments?: Attachment[] } =
+		$props();
 
 	const list = $derived(attachments ?? []);
 	// BUG-097(사용자 보고: "이미지 첨부한게 표시가 안된다"): Tauri + 원격
@@ -54,10 +55,13 @@
 
 	// DEV-152: quest/campaign 별 첨부 목록 endpoint. api.post/delete 가
 	// transport.ts 를 거쳐 Tauri 면 invoke, 브라우저면 HTTP 로 자동 분기.
+	// DEV-237: 도서관(library) 도 동일 sidecar 패턴으로 추가.
 	const attachPath = $derived(
 		scope === 'campaign'
 			? `/api/campaigns/${slug}/attachments`
-			: `/api/quests/by/${slug}/attachments`
+			: scope === 'library'
+				? `/api/library/${slug}/attachments`
+				: `/api/quests/by/${slug}/attachments`
 	);
 
 	async function pickAndAdd() {

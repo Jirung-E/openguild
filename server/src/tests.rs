@@ -2567,6 +2567,32 @@ async fn test_library_crud_and_number_monotonic() {
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
+/// DEV-237: 도서관 문서 첨부 — 이미지/동영상 외 임의 파일(zip)도 등록/삭제.
+#[tokio::test]
+async fn test_library_attachment_add_remove() {
+    let app = setup().await;
+    let (_, b1) = post(app.clone(), "/api/library", json!({ "title": "설계" })).await;
+    let book_id = b1["book_id"].as_str().unwrap().to_string();
+
+    let (status, list) = post(
+        app.clone(),
+        &format!("/api/library/{book_id}/attachments"),
+        json!({ "path": "attachments/spec.zip", "name": "spec.zip" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(list.as_array().unwrap().len(), 1);
+    assert_eq!(list[0]["name"], "spec.zip");
+
+    let (status, after) = delete_with_body(
+        app,
+        &format!("/api/library/{book_id}/attachments?path=attachments/spec.zip"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(after.as_array().unwrap().is_empty());
+}
+
 /// DEV-239: 도서관 폴더 — 생성/목록/삭제 + 문서 path 이동, 빈 폴더만 삭제 허용.
 #[tokio::test]
 async fn test_library_folders_and_doc_path() {

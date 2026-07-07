@@ -218,6 +218,11 @@ impl GuildPaths {
         self.campaigns_dir().join(format!("{slug}.attachments.json"))
     }
 
+    /// DEV-237: 도서관 문서 별 첨부 목록 sidecar (`.guild/library/{BOOK-NNN}.attachments.json`).
+    pub fn book_attachments_meta_path(&self, book_id: &str) -> PathBuf {
+        self.library_dir().join(format!("{book_id}.attachments.json"))
+    }
+
     /// DEV-100: Campaign 별 공개 댓글 (`.guild/campaigns/{slug}.comments.md`).
     pub fn campaign_comments_path(&self, slug: &str) -> PathBuf {
         self.campaigns_dir().join(format!("{slug}.comments.md"))

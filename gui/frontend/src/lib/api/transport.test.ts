@@ -422,6 +422,32 @@ describe('TauriTransport', () => {
 		).toEqual({ cmd: 'delete_library_folder', args: { path: '아키텍처' } });
 	});
 
+	it('routeToInvoke — 도서관 첨부 매핑 (DEV-237, book_id 뒤 sub-path 우선 매칭)', () => {
+		expect(
+			__test_only.routeToInvoke({
+				method: 'POST',
+				path: '/api/library/BOOK-001/attachments',
+				body: { path: 'attachments/a.zip', name: 'a.zip' }
+			})
+		).toEqual({
+			cmd: 'add_book_attachment',
+			args: { bookId: 'BOOK-001', path: 'attachments/a.zip', name: 'a.zip' }
+		});
+		expect(
+			__test_only.routeToInvoke({
+				method: 'DELETE',
+				path: '/api/library/BOOK-001/attachments?path=attachments/a.zip'
+			})
+		).toEqual({
+			cmd: 'remove_book_attachment',
+			args: { bookId: 'BOOK-001', path: 'attachments/a.zip' }
+		});
+		// sub-path 가 있는데 get_book(bookId 만 매칭하는 일반 블록)으로 새지 않는지.
+		expect(
+			__test_only.routeToInvoke({ method: 'GET', path: '/api/library/BOOK-001' })
+		).toEqual({ cmd: 'get_book', args: { bookId: 'BOOK-001' } });
+	});
+
 	it('routeToInvoke — 작업 기록 매핑 (DEV-167)', () => {
 		expect(
 			__test_only.routeToInvoke({

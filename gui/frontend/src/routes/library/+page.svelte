@@ -22,6 +22,7 @@
 	import LibraryFolderTree from '$lib/components/LibraryFolderTree.svelte';
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+	import AttachmentSection from '$lib/components/AttachmentSection.svelte';
 	import { EditorView, basicSetup } from 'codemirror';
 	import { markdown } from '@codemirror/lang-markdown';
 	import { theme } from '$lib/stores/theme';
@@ -211,6 +212,19 @@
 		initEditor(selected.body);
 	}
 
+	// DEV-237: 편집기 '첨부' 버튼 / 비미디어 paste·drop → 본문 인라인 대신 첨부
+	// 섹션. quests/campaigns 의 attachToSection 과 동일 시맨틱 — 다만 여기는
+	// api.post(transport 경유)를 써서 브라우저 모드에서도 동작(quests/campaigns
+	// 는 Tauri invoke 직접 호출이라 브라우저 모드 미지원인 기존 한계가 있음).
+	async function attachToSection(rel: string, name: string) {
+		if (!selected) return;
+		try {
+			selected.attachments = await libraryApi.addAttachment(selected.book_id, rel, name);
+		} catch (e) {
+			saveError = `첨부 실패: ${e instanceof Error ? e.message : String(e)}`;
+		}
+	}
+
 	function initEditor(doc: string) {
 		if (!editorContainer) return;
 		if (editorView) {
@@ -224,9 +238,9 @@
 				basicSetup,
 				markdown(),
 				editorThemeCompartment.of(editorThemeExtension($theme)),
-				attachmentExtension((msg) => (saveError = `첨부 업로드 실패: ${msg}`), undefined, {
-					mediaOnly: true
-				}),
+				// DEV-237: mediaOnly 제거 — 이미지/동영상 외 임의 파일은 attachToSection
+				// 이 첨부 섹션에 등록(본문에 dead link 인라인 안 됨).
+				attachmentExtension((msg) => (saveError = `첨부 업로드 실패: ${msg}`), attachToSection),
 				crossLinkAutocomplete(),
 				indentExtensions($editorSettings),
 				EditorView.theme({
@@ -665,6 +679,13 @@
 							<button class="link" onclick={enterEdit}>지금 작성</button>
 						</div>
 					{/if}
+
+					<!-- DEV-237: 첨부 섹션 — 이미지/동영상 외 임의 파일. -->
+					<AttachmentSection
+						slug={selected.book_id}
+						scope="library"
+						bind:attachments={selected.attachments}
+					/>
 				{/if}
 			</section>
 		</div>

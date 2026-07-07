@@ -11,16 +11,20 @@ use axum::{
 use serde::Deserialize;
 
 use crate::error::AppResult;
+use openguild_core::models::QuestAttachment;
 use openguild_core::ops::library as ops;
 use openguild_core::ops::library::{LibraryDocRow, LibraryFolderRow};
 use openguild_core::Store;
 
 /// 응답에 book_id("BOOK-NNN")를 함께 실어 클라이언트가 번호 포맷을 몰라도 됨.
+/// DEV-237: 첨부 목록도 함께 — quest/campaign 과 동일하게 단건 조회(get_book)
+/// 에서만 채우고 list_books 는 빈 배열(payload 절약).
 #[derive(Debug, serde::Serialize)]
 pub struct BookResponse {
     pub book_id: String,
     #[serde(flatten)]
     pub row: LibraryDocRow,
+    pub attachments: Vec<QuestAttachment>,
 }
 
 impl From<LibraryDocRow> for BookResponse {
@@ -28,6 +32,7 @@ impl From<LibraryDocRow> for BookResponse {
         Self {
             book_id: row.book_id(),
             row,
+            attachments: Vec::new(),
         }
     }
 }
@@ -73,7 +78,9 @@ pub async fn get_book(
     let row = ops::get_book(&store, &book_id).await?.ok_or_else(|| {
         openguild_core::error::AppError::NotFound(format!("book not found: {book_id}"))
     })?;
-    Ok(Json(row.into()))
+    let mut resp: BookResponse = row.into();
+    resp.attachments = openguild_core::ops::attachments::list_book_attachments(&store, &book_id);
+    Ok(Json(resp))
 }
 
 pub async fn create_book(

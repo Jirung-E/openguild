@@ -93,3 +93,24 @@ pub async fn remove_campaign_attachment(
         ops::remove_campaign_attachment(&store, &slug, &q.path).await?,
     ))
 }
+
+// DEV-237: 도서관 문서 첨부 — quest/campaign 과 동일 형식.
+pub async fn add_book_attachment(
+    State(store): State<Store>,
+    Path(book_id): Path<String>,
+    Json(body): Json<AddAttachmentRequest>,
+) -> AppResult<Json<Vec<QuestAttachment>>> {
+    Ok(Json(
+        ops::add_book_attachment(&store, &book_id, &body.path, &body.name).await?,
+    ))
+}
+
+pub async fn remove_book_attachment(
+    State(store): State<Store>,
+    Path(book_id): Path<String>,
+    Query(q): Query<AttachmentPathQuery>,
+) -> AppResult<Json<Vec<QuestAttachment>>> {
+    Ok(Json(
+        ops::remove_book_attachment(&store, &book_id, &q.path).await?,
+    ))
+}

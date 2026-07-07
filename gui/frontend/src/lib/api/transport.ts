@@ -171,7 +171,31 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 			return { cmd: 'delete_library_folder', args: { path: query.get('path') ?? '' } };
 		}
 	}
-	if (parts[0] === 'api' && parts[1] === 'library' && parts[2]) {
+	// DEV-237: /api/library/{bookId}/attachments — book_id 뒤에 sub-path 가 붙는
+	// 첫 케이스라 아래 일반 bookId 블록보다 먼저 검사해야 한다(안 그러면
+	// GET 등이 parts[3] 를 무시하고 get_book 으로 잘못 매칭됨).
+	if (
+		parts[0] === 'api' &&
+		parts[1] === 'library' &&
+		parts[2] &&
+		parts[3] === 'attachments'
+	) {
+		const bookId = decodeURIComponent(parts[2]);
+		if (method === 'POST') {
+			const b = (body as { path?: string; name?: string } | undefined) ?? {};
+			return {
+				cmd: 'add_book_attachment',
+				args: { bookId, path: b.path ?? '', name: b.name ?? '' }
+			};
+		}
+		if (method === 'DELETE') {
+			return {
+				cmd: 'remove_book_attachment',
+				args: { bookId, path: query.get('path') ?? '' }
+			};
+		}
+	}
+	if (parts[0] === 'api' && parts[1] === 'library' && parts[2] && !parts[3]) {
 		const bookId = decodeURIComponent(parts[2]);
 		if (method === 'GET') return { cmd: 'get_book', args: { bookId } };
 		if (method === 'PATCH') {

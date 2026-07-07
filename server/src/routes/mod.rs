@@ -163,6 +163,11 @@ pub fn create_router(store: Store) -> Router {
             post(attachments::add_campaign_attachment)
                 .delete(attachments::remove_campaign_attachment),
         )
+        // DEV-237: 도서관 문서 첨부 — 이미지/동영상 외 임의 파일.
+        .route(
+            "/api/library/{book_id}/attachments",
+            post(attachments::add_book_attachment).delete(attachments::remove_book_attachment),
+        )
         // quests
         .route("/api/quests", get(quests::list_quests).post(quests::create_quest))
         .route(
