@@ -160,6 +160,10 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
     sqlx::query("DELETE FROM library_docs")
         .execute(&mut *tx)
         .await?;
+    // DEV-239: 도서관 폴더 캐시도 wipe — `.guild/library/folders.toml` 로부터 재구축.
+    sqlx::query("DELETE FROM library_folders")
+        .execute(&mut *tx)
+        .await?;
     // DEV-134: 캠페인 댓글 / 메모 캐시도 wipe — sibling 파일로부터 재구축.
     sqlx::query("DELETE FROM campaign_comments")
         .execute(&mut *tx)
@@ -473,12 +477,13 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
                     let deleted_at: Option<String> =
                         bf.frontmatter.deleted.then(|| bf.frontmatter.updated_at.clone());
                     sqlx::query(
-                        "INSERT INTO library_docs (number, title, body, created_at, updated_at, deleted_at)
-                         VALUES (?, ?, ?, ?, ?, ?)",
+                        "INSERT INTO library_docs (number, title, body, path, created_at, updated_at, deleted_at)
+                         VALUES (?, ?, ?, ?, ?, ?, ?)",
                     )
                     .bind(number)
                     .bind(&bf.frontmatter.title)
                     .bind(&bf.body)
+                    .bind(&bf.frontmatter.path)
                     .bind(&bf.frontmatter.created_at)
                     .bind(&bf.frontmatter.updated_at)
                     .bind(deleted_at)
@@ -492,6 +497,22 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
                         .push((path.display().to_string(), format!("{e:#}")));
                 }
             }
+        }
+        // DEV-239: `.guild/library/folders.toml` → library_folders 캐시.
+        // soft-deleted 도 적재 (deleted_at 채워서).
+        let folders_file = lib::read_folders(paths).map_err(crate::error::AppError::Internal)?;
+        for e in folders_file.folders {
+            let deleted_at: Option<String> = e.deleted.then(|| e.updated_at.clone());
+            sqlx::query(
+                "INSERT INTO library_folders (path, created_at, updated_at, deleted_at)
+                 VALUES (?, ?, ?, ?)",
+            )
+            .bind(&e.path)
+            .bind(&e.created_at)
+            .bind(&e.updated_at)
+            .bind(deleted_at)
+            .execute(&mut *tx)
+            .await?;
         }
     }
 
@@ -920,8 +941,8 @@ mod tests {
         let store = setup_store(&dir).await;
         crate::reindex::reindex(&store).await.unwrap();
 
-        lib::create_book(&store, "첫 문서", "본문 A").await.unwrap();
-        lib::create_book(&store, "둘째", "본문 B").await.unwrap();
+        lib::create_book(&store, "첫 문서", "본문 A", "").await.unwrap();
+        lib::create_book(&store, "둘째", "본문 B", "").await.unwrap();
         lib::delete_book(&store, "BOOK-001").await.unwrap();
 
         // 캐시 손실 시나리오.
@@ -944,6 +965,41 @@ mod tests {
         .await
         .unwrap();
         assert!(deleted_at.is_some(), "soft-deleted 는 deleted_at 채워 복원");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-239: 도서관 폴더 캐시 재구축 — `folders.toml` 로부터 복원, 문서의
+    /// path 도 함께 복원.
+    #[tokio::test]
+    async fn reindex_rebuilds_library_folders_and_doc_path() {
+        use crate::ops::library as lib;
+        let dir = fresh_tmp("libfolder");
+        let store = setup_store(&dir).await;
+        crate::reindex::reindex(&store).await.unwrap();
+
+        lib::create_folder(&store, "아키텍처").await.unwrap();
+        let b = lib::create_book(&store, "라우터 설계", "본문", "아키텍처")
+            .await
+            .unwrap();
+
+        sqlx::query("DELETE FROM library_folders")
+            .execute(&store.index_pool)
+            .await
+            .unwrap();
+        sqlx::query("DELETE FROM library_docs")
+            .execute(&store.index_pool)
+            .await
+            .unwrap();
+
+        crate::reindex::reindex(&store).await.unwrap();
+
+        let folders = lib::list_folders(&store).await.unwrap();
+        assert_eq!(folders.len(), 1);
+        assert_eq!(folders[0].path, "아키텍처");
+
+        let doc = lib::get_book(&store, &b.book_id()).await.unwrap().unwrap();
+        assert_eq!(doc.path, "아키텍처", "문서 path 도 파일에서 복원");
 
         let _ = std::fs::remove_dir_all(&dir);
     }

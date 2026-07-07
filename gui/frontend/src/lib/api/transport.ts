@@ -153,18 +153,34 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 	if (pathOnly === '/api/library') {
 		if (method === 'GET') return { cmd: 'list_books', args: {} };
 		if (method === 'POST') {
-			const b = (body as { title?: string; body?: string } | undefined) ?? {};
-			return { cmd: 'create_book', args: { title: b.title ?? '', body: b.body ?? '' } };
+			const b = (body as { title?: string; body?: string; path?: string } | undefined) ?? {};
+			return {
+				cmd: 'create_book',
+				args: { title: b.title ?? '', body: b.body ?? '', path: b.path ?? '' }
+			};
+		}
+	}
+	// DEV-239: 도서관 폴더 — bookId 라우트와 겹치지 않도록 `folders` 정적 경로를 먼저 검사.
+	if (pathOnly === '/api/library/folders') {
+		if (method === 'GET') return { cmd: 'list_library_folders', args: {} };
+		if (method === 'POST') {
+			const b = (body as { path?: string } | undefined) ?? {};
+			return { cmd: 'create_library_folder', args: { path: b.path ?? '' } };
+		}
+		if (method === 'DELETE') {
+			return { cmd: 'delete_library_folder', args: { path: query.get('path') ?? '' } };
 		}
 	}
 	if (parts[0] === 'api' && parts[1] === 'library' && parts[2]) {
 		const bookId = decodeURIComponent(parts[2]);
 		if (method === 'GET') return { cmd: 'get_book', args: { bookId } };
 		if (method === 'PATCH') {
-			const b = (body as { title?: string | null; body?: string | null } | undefined) ?? {};
+			const b =
+				(body as { title?: string | null; body?: string | null; path?: string | null } | undefined) ??
+				{};
 			return {
 				cmd: 'update_book',
-				args: { bookId, title: b.title ?? null, body: b.body ?? null }
+				args: { bookId, title: b.title ?? null, body: b.body ?? null, path: b.path ?? null }
 			};
 		}
 		if (method === 'DELETE') {

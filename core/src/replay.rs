@@ -349,6 +349,13 @@ async fn apply_op(store: &Store, maps: &IdMaps, op: &journal::OpRow) -> AppResul
         "delete_book" => {
             ops::library::delete_book(store, &arg_str(&args, "book_id")?).await?;
         }
+        // ── DEV-239 도서관 폴더: 본문 없이 path 만으로 완전히 replayable. ──
+        "create_folder" => {
+            let _ = ops::library::create_folder(store, &arg_str(&args, "path")?).await?;
+        }
+        "delete_folder" => {
+            ops::library::delete_folder(store, &arg_str(&args, "path")?).await?;
+        }
         "rename_rule" => {
             ops::rules::rename_rule(
                 store,

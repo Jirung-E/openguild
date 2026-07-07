@@ -26,6 +26,13 @@ export interface IndexedRef {
 	 * quest/campaign 은 ID 가 항상 대문자 정규형이라 불필요.
 	 */
 	slug?: string;
+	/**
+	 * DEV-239: 도서관 문서 전용 — 소속 폴더 경로 ("" = 최상위). cross-link
+	 * 자동완성이 `[[경로/제목` 형태로 타이핑해도 후보를 찾을 수 있게 매칭에
+	 * 사용 — 실제 삽입되는 링크는 항상 `[[BOOK-NNN]]` (경로 자체는 링크
+	 * 문법에 없음, admin 결정).
+	 */
+	path?: string;
 }
 
 /** ID (대문자) → ref. quest_id ("DEV-033") + campaign_slug ("C-001") + 규칙 slug 통합. */
@@ -71,7 +78,7 @@ export async function loadQuestIndex(force = false): Promise<void> {
 			for (const b of books ?? []) {
 				// BOOK-NNN 은 XXX-NNN 형식이라 기존 정규식에 자동 포함 — 인덱스에
 				// 실으면 렌더/자동완성이 그대로 동작 (DEV-218).
-				next.set(b.book_id.toUpperCase(), { title: b.title, kind: 'book' });
+				next.set(b.book_id.toUpperCase(), { title: b.title, kind: 'book', path: b.path });
 			}
 			questIndex.set(next);
 			loaded = true;

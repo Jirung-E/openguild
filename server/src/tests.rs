@@ -2512,6 +2512,48 @@ async fn test_library_crud_and_number_monotonic() {
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
+/// DEV-239: 도서관 폴더 — 생성/목록/삭제 + 문서 path 이동, 빈 폴더만 삭제 허용.
+#[tokio::test]
+async fn test_library_folders_and_doc_path() {
+    let app = setup().await;
+
+    let (status, folder) =
+        post(app.clone(), "/api/library/folders", json!({ "path": "아키텍처" })).await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(folder["path"], "아키텍처");
+
+    let (status, list) = get(app.clone(), "/api/library/folders").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(list.as_array().unwrap().len(), 1);
+
+    let (status, b1) = post(
+        app.clone(),
+        "/api/library",
+        json!({ "title": "라우터 설계", "path": "아키텍처" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(b1["path"], "아키텍처");
+
+    // 문서가 있으면 폴더 삭제 거부.
+    let status = delete(app.clone(), "/api/library/folders?path=아키텍처").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // 루트로 이동.
+    let (status, moved) = patch(
+        app.clone(),
+        &format!("/api/library/{}", b1["book_id"].as_str().unwrap()),
+        json!({ "path": "" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(moved["path"], "");
+
+    // 이제 비었으니 삭제 가능.
+    let status = delete(app.clone(), "/api/library/folders?path=아키텍처").await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+}
+
 /// DEV-167: worklog — 활동 타임라인/집계/히트맵 + 날짜별 노트 CRUD.
 #[tokio::test]
 async fn test_worklog_activities_and_note() {

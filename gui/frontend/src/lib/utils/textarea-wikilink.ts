@@ -50,7 +50,14 @@ export function wikiMatch(
 		const upper = partial.toUpperCase();
 		const items: WikiItem[] = [];
 		for (const [id, ref] of index) {
-			if (!id.startsWith(upper)) continue;
+			// DEV-239: 도서관 문서는 관리번호(BOOK-NNN) 대신 "폴더/제목" 경로로
+			// 타이핑해도 찾을 수 있어야 함 — 매칭만 경로 기준, 실제 삽입은
+			// 여전히 `[[BOOK-NNN]]` (경로 자체는 링크 문법에 없음, admin 결정).
+			const pathLabel =
+				ref.kind === 'book' && ref.path ? `${ref.path}/${ref.title}` : null;
+			const idMatch = id.startsWith(upper);
+			const pathMatch = pathLabel != null && pathLabel.toUpperCase().startsWith(upper);
+			if (!idMatch && !pathMatch) continue;
 			items.push({
 				id,
 				title: ref.title,

@@ -74,6 +74,13 @@ pub fn create_router(store: Store) -> Router {
                 .patch(library::update_book)
                 .delete(library::delete_book),
         )
+        // DEV-239: 도서관 폴더(계층) — `.guild/library/folders.toml`.
+        .route(
+            "/api/library/folders",
+            get(library::list_folders)
+                .post(library::create_folder)
+                .delete(library::delete_folder),
+        )
         // DEV-167: 작업 기록 — 활동 타임라인 / 히트맵 집계 / 날짜별 노트.
         .route("/api/worklog", get(worklog::get_activities))
         .route("/api/worklog/summary", get(worklog::get_summary))

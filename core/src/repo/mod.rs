@@ -96,6 +96,13 @@ impl GuildPaths {
         self.library_dir().join(".counter.toml")
     }
 
+    /// DEV-239: 도서관 폴더(빈 폴더 포함) 레지스트리 (`.guild/library/folders.toml`).
+    /// 폴더는 순수 컨테이너(본문 없음, BOOK 슬롯 없음) — 문서 path 필드만으로는
+    /// 빈 폴더를 표현할 수 없어 별도 파일로 명시적 존재를 기록.
+    pub fn library_folders_path(&self) -> PathBuf {
+        self.library_dir().join("folders.toml")
+    }
+
     /// DEV-167: 작업 기록 노트 디렉토리 (`.guild/worklog/`). git tracked.
     /// `{YYYY-MM-DD}.md` — 날짜별 수동 노트 (전역 공유; quest memo 와 달리
     /// 개인 노트가 아님 — 그래서 이름도 note 로 구분, admin 결정).

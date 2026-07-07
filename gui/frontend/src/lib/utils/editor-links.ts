@@ -44,12 +44,17 @@ function wikiContextCompletion(context: CompletionContext): CompletionResult | n
 	const index = get(questIndex);
 	const options: Completion[] = [];
 	for (const [id, ref] of index) {
-		if (!id.startsWith(upper)) continue;
+		// DEV-239: 도서관 문서는 "폴더/제목" 경로로 타이핑해도 찾을 수 있어야
+		// 함 — 매칭만 경로 기준, 실제 삽입은 여전히 `[[BOOK-NNN]]`.
+		const pathLabel = ref.kind === 'book' && ref.path ? `${ref.path}/${ref.title}` : null;
+		const idMatch = id.startsWith(upper);
+		const pathMatch = pathLabel != null && pathLabel.toUpperCase().startsWith(upper);
+		if (!idMatch && !pathMatch) continue;
 		// 삽입은 규칙=원본 slug / quest·campaign=대문자 정규형. 이미 열린 `[[` 뒤라
 		// 나머지 + `]]` 만 삽입.
 		const insert = ref.kind === 'rule' ? (ref.slug ?? id.toLowerCase()) : id;
 		options.push({
-			label: id,
+			label: pathMatch && !idMatch ? pathLabel! : id,
 			displayLabel: `🔗 ${insert}`,
 			detail: `${KIND_LABEL[ref.kind]} · ${ref.title}`,
 			// DEV-223: closeBrackets 가 `[[` 입력 시 `]]` 를 자동 삽입해두므로,
@@ -67,7 +72,10 @@ function wikiContextCompletion(context: CompletionContext): CompletionResult | n
 	}
 	if (options.length === 0) return null;
 	options.sort((a, b) => a.label.localeCompare(b.label));
-	return { from: context.pos - partial.length, to: context.pos, options };
+	// DEV-239: label 이 id 또는 폴더 경로 둘 중 하나라 CodeMirror 기본 fuzzy
+	// 필터(label 기준)가 경로 매칭 후보를 지워버림 — 필터링은 위에서 이미
+	// 완료했으니 자체 필터를 끈다.
+	return { from: context.pos - partial.length, to: context.pos, options, filter: false };
 }
 
 // DEV-220(사용자 결정): bare 토큰(XXX-NNN 그냥 타이핑) 자동완성 트리거 제거 —

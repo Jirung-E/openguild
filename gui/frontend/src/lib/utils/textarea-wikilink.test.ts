@@ -9,7 +9,9 @@ describe('wikiMatch', () => {
 		['C-001', { title: '베타 0.3.0', kind: 'campaign' }],
 		['RELEASE-PROCESS', { title: '릴리즈 패키지 절차', kind: 'rule', slug: 'release-process' }],
 		// DEV-218: 도서관 문서 — BOOK-NNN 은 XXX-NNN 형식이라 기존 매칭에 자동 포함.
-		['BOOK-001', { title: '설계 결정 기록', kind: 'book' }]
+		['BOOK-001', { title: '설계 결정 기록', kind: 'book' }],
+		// DEV-239: 폴더 있는 도서관 문서 — 경로 기반 매칭 테스트용.
+		['BOOK-014', { title: '라우터 설계', kind: 'book', path: '아키텍처' }]
 	]);
 
 	// DEV-220: bare 토큰(대괄호 없음)은 더 이상 자동완성 트리거가 아님.
@@ -60,6 +62,16 @@ describe('wikiMatch', () => {
 		expect(book).toBeDefined();
 		expect(book!.id).toBe('BOOK-001');
 		expect(book!.insert ?? book!.id).toBe('BOOK-001');
+	});
+
+	// DEV-239: 폴더/제목 경로로 타이핑해도 찾되, 삽입은 항상 BOOK-NNN.
+	it('[[ 컨텍스트에서 도서관 폴더 경로로도 매칭 — 삽입은 BOOK-NNN', () => {
+		const v = '[[아키텍처/라';
+		const m = wikiMatch(v, v.length, index);
+		expect(m).not.toBeNull();
+		const book = m!.items.find((i) => i.id === 'BOOK-014');
+		expect(book).toBeDefined();
+		expect(book!.insert ?? book!.id).toBe('BOOK-014');
 	});
 
 	// DEV-173 후속: 한글 등 비ASCII 규칙 slug 도 [[ 컨텍스트에서 매칭.

@@ -382,7 +382,7 @@ describe('TauriTransport', () => {
 				path: '/api/library',
 				body: { title: '제목', body: '본문' }
 			})
-		).toEqual({ cmd: 'create_book', args: { title: '제목', body: '본문' } });
+		).toEqual({ cmd: 'create_book', args: { title: '제목', body: '본문', path: '' } });
 		expect(__test_only.routeToInvoke({ method: 'GET', path: '/api/library/BOOK-001' })).toEqual({
 			cmd: 'get_book',
 			args: { bookId: 'BOOK-001' }
@@ -395,11 +395,31 @@ describe('TauriTransport', () => {
 			})
 		).toEqual({
 			cmd: 'update_book',
-			args: { bookId: 'BOOK-001', title: '새 제목', body: null }
+			args: { bookId: 'BOOK-001', title: '새 제목', body: null, path: null }
 		});
 		expect(
 			__test_only.routeToInvoke({ method: 'DELETE', path: '/api/library/BOOK-001' })
 		).toEqual({ cmd: 'delete_book', args: { bookId: 'BOOK-001' } });
+	});
+
+	it('routeToInvoke — 도서관 폴더 매핑 (DEV-239)', () => {
+		expect(__test_only.routeToInvoke({ method: 'GET', path: '/api/library/folders' })).toEqual({
+			cmd: 'list_library_folders',
+			args: {}
+		});
+		expect(
+			__test_only.routeToInvoke({
+				method: 'POST',
+				path: '/api/library/folders',
+				body: { path: '아키텍처' }
+			})
+		).toEqual({ cmd: 'create_library_folder', args: { path: '아키텍처' } });
+		expect(
+			__test_only.routeToInvoke({
+				method: 'DELETE',
+				path: '/api/library/folders?path=아키텍처'
+			})
+		).toEqual({ cmd: 'delete_library_folder', args: { path: '아키텍처' } });
 	});
 
 	it('routeToInvoke — 작업 기록 매핑 (DEV-167)', () => {

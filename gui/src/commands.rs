@@ -1280,6 +1280,8 @@ pub struct BookResponse {
     pub number: i64,
     pub title: String,
     pub body: String,
+    /// DEV-239: 소속 폴더 경로 ("" = 최상위).
+    pub path: String,
     pub created_at: String,
     pub updated_at: String,
     pub deleted_at: Option<String>,
@@ -1292,9 +1294,27 @@ impl From<openguild_core::ops::library::LibraryDocRow> for BookResponse {
             number: r.number,
             title: r.title,
             body: r.body,
+            path: r.path,
             created_at: r.created_at,
             updated_at: r.updated_at,
             deleted_at: r.deleted_at,
+        }
+    }
+}
+
+#[derive(serde::Serialize)]
+pub struct FolderResponse {
+    pub path: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+impl From<openguild_core::ops::library::LibraryFolderRow> for FolderResponse {
+    fn from(r: openguild_core::ops::library::LibraryFolderRow) -> Self {
+        Self {
+            path: r.path,
+            created_at: r.created_at,
+            updated_at: r.updated_at,
         }
     }
 }
@@ -1321,11 +1341,13 @@ pub async fn create_book(
     store: State<'_, Store>,
     title: String,
     body: Option<String>,
+    path: Option<String>,
 ) -> Result<BookResponse, String> {
     let row = openguild_core::ops::library::create_book(
         &store,
         &title,
         body.as_deref().unwrap_or(""),
+        path.as_deref().unwrap_or(""),
     )
     .await
     .map_err(err)?;
@@ -1338,12 +1360,14 @@ pub async fn update_book(
     book_id: String,
     title: Option<String>,
     body: Option<String>,
+    path: Option<String>,
 ) -> Result<BookResponse, String> {
     let row = openguild_core::ops::library::update_book(
         &store,
         &book_id,
         title.as_deref(),
         body.as_deref(),
+        path.as_deref(),
     )
     .await
     .map_err(err)?;
@@ -1353,6 +1377,34 @@ pub async fn update_book(
 #[tauri::command]
 pub async fn delete_book(store: State<'_, Store>, book_id: String) -> Result<(), String> {
     openguild_core::ops::library::delete_book(&store, &book_id)
+        .await
+        .map_err(err)
+}
+
+// ─────────────────────── DEV-239: 도서관 폴더 ───────────────────────
+
+#[tauri::command]
+pub async fn list_library_folders(store: State<'_, Store>) -> Result<Vec<FolderResponse>, String> {
+    let rows = openguild_core::ops::library::list_folders(&store)
+        .await
+        .map_err(err)?;
+    Ok(rows.into_iter().map(FolderResponse::from).collect())
+}
+
+#[tauri::command]
+pub async fn create_library_folder(
+    store: State<'_, Store>,
+    path: String,
+) -> Result<FolderResponse, String> {
+    openguild_core::ops::library::create_folder(&store, &path)
+        .await
+        .map(FolderResponse::from)
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn delete_library_folder(store: State<'_, Store>, path: String) -> Result<(), String> {
+    openguild_core::ops::library::delete_folder(&store, &path)
         .await
         .map_err(err)
 }

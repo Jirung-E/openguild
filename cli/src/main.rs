@@ -820,8 +820,11 @@ enum LibraryCmd {
         /// 본문 파일 (UTF-8). 한글 등 비ASCII 는 stdin 파이프 대신 파일 권장.
         #[arg(long)]
         file: Option<std::path::PathBuf>,
+        /// DEV-239: 소속 폴더 경로 (미지정 = 최상위). 예: `아키텍처/서브`.
+        #[arg(long)]
+        path: Option<String>,
     },
-    /// 문서 수정 — 제공된 필드만 (title / 본문 파일).
+    /// 문서 수정 — 제공된 필드만 (title / 본문 파일 / 폴더 이동).
     Update {
         id: String,
         #[arg(long)]
@@ -829,10 +832,33 @@ enum LibraryCmd {
         /// 새 본문 파일 (UTF-8). 미지정 시 본문 유지.
         #[arg(long)]
         file: Option<std::path::PathBuf>,
+        /// DEV-239: 새 폴더 경로로 이동. 빈 문자열("")이면 최상위로 이동.
+        /// 미지정 시 현재 위치 유지.
+        #[arg(long)]
+        path: Option<String>,
     },
     /// 문서 삭제 (soft delete — 번호는 재사용되지 않음). `--yes` 없으면 확인.
     Delete {
         id: String,
+        #[arg(long)]
+        yes: bool,
+    },
+    /// DEV-239: 폴더(계층) 관리 — 순수 컨테이너, 본문 없음.
+    Folder {
+        #[command(subcommand)]
+        sub: LibraryFolderCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum LibraryFolderCmd {
+    /// 폴더 목록 (path 순).
+    List,
+    /// 새 폴더 생성.
+    New { path: String },
+    /// 폴더 삭제 — 안에 문서/하위 폴더가 없어야 함.
+    Delete {
+        path: String,
         #[arg(long)]
         yes: bool,
     },
@@ -1041,6 +1067,23 @@ impl HttpClient {
     fn put<B: Serialize, T: for<'de> Deserialize<'de>>(&self, path: &str, body: &B) -> Result<T> {
         let res = self.http.put(self.url(path)).json(body).send()?;
         self.handle(res)
+    }
+
+    /// DEV-239: 쿼리 파라미터(예: 폴더 path — 한글/슬래시 포함 가능)를 안전하게
+    /// percent-encode 하기 위해 문자열 concat 대신 reqwest `.query()` 사용.
+    fn delete_no_body_query(&self, path: &str, query: &[(&str, &str)]) -> Result<()> {
+        let res = self.http.delete(self.url(path)).query(query).send()?;
+        let status = res.status();
+        if !status.is_success() {
+            let body = res.text().unwrap_or_default();
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&body)
+                && let Some(err) = v.get("error").and_then(|e| e.as_str())
+            {
+                return Err(anyhow!("{}: {}", status, err));
+            }
+            return Err(anyhow!("{}: {}", status, body));
+        }
+        Ok(())
     }
 
     fn delete_no_body(&self, path: &str) -> Result<()> {
@@ -1407,6 +1450,9 @@ struct BookDto {
     number: i64,
     title: String,
     body: String,
+    /// DEV-239: 소속 폴더 경로 ("" = 최상위).
+    #[serde(default)]
+    path: String,
     created_at: String,
     updated_at: String,
     deleted_at: Option<String>,
@@ -1419,9 +1465,28 @@ impl From<openguild_core::ops::library::LibraryDocRow> for BookDto {
             number: r.number,
             title: r.title,
             body: r.body,
+            path: r.path,
             created_at: r.created_at,
             updated_at: r.updated_at,
             deleted_at: r.deleted_at,
+        }
+    }
+}
+
+/// DEV-239: 도서관 폴더 DTO.
+#[derive(Debug, Serialize, Deserialize)]
+struct FolderDto {
+    path: String,
+    created_at: String,
+    updated_at: String,
+}
+
+impl From<openguild_core::ops::library::LibraryFolderRow> for FolderDto {
+    fn from(r: openguild_core::ops::library::LibraryFolderRow) -> Self {
+        Self {
+            path: r.path,
+            created_at: r.created_at,
+            updated_at: r.updated_at,
         }
     }
 }
@@ -2128,14 +2193,14 @@ impl Backend {
         }
     }
 
-    fn library_new(&self, title: &str, body: &str) -> Result<BookDto> {
+    fn library_new(&self, title: &str, body: &str, path: &str) -> Result<BookDto> {
         match self {
             Backend::Http(c) => c.post(
                 "/api/library",
-                &serde_json::json!({ "title": title, "body": body }),
+                &serde_json::json!({ "title": title, "body": body, "path": path }),
             ),
             Backend::Local(l) => Self::map_err(l.rt.block_on(
-                openguild_core::ops::library::create_book(&l.store, title, body),
+                openguild_core::ops::library::create_book(&l.store, title, body, path),
             ))
             .map(BookDto::from),
         }
@@ -2146,14 +2211,15 @@ impl Backend {
         id: &str,
         title: Option<&str>,
         body: Option<&str>,
+        path: Option<&str>,
     ) -> Result<BookDto> {
         match self {
             Backend::Http(c) => c.patch(
                 &format!("/api/library/{id}"),
-                &serde_json::json!({ "title": title, "body": body }),
+                &serde_json::json!({ "title": title, "body": body, "path": path }),
             ),
             Backend::Local(l) => Self::map_err(l.rt.block_on(
-                openguild_core::ops::library::update_book(&l.store, id, title, body),
+                openguild_core::ops::library::update_book(&l.store, id, title, body, path),
             ))
             .map(BookDto::from),
         }
@@ -2164,6 +2230,41 @@ impl Backend {
             Backend::Http(c) => c.delete_no_body(&format!("/api/library/{id}")),
             Backend::Local(l) => Self::map_err(
                 l.rt.block_on(openguild_core::ops::library::delete_book(&l.store, id)),
+            ),
+        }
+    }
+
+    // ── DEV-239: 도서관 폴더 — local + remote 둘 다 지원 ──
+
+    fn library_folder_list(&self) -> Result<Vec<FolderDto>> {
+        match self {
+            Backend::Http(c) => c.get("/api/library/folders"),
+            Backend::Local(l) => Self::map_err(
+                l.rt.block_on(openguild_core::ops::library::list_folders(&l.store)),
+            )
+            .map(|rows| rows.into_iter().map(FolderDto::from).collect()),
+        }
+    }
+
+    fn library_folder_new(&self, path: &str) -> Result<FolderDto> {
+        match self {
+            Backend::Http(c) => {
+                c.post("/api/library/folders", &serde_json::json!({ "path": path }))
+            }
+            Backend::Local(l) => Self::map_err(
+                l.rt.block_on(openguild_core::ops::library::create_folder(&l.store, path)),
+            )
+            .map(FolderDto::from),
+        }
+    }
+
+    fn library_folder_delete(&self, path: &str) -> Result<()> {
+        match self {
+            Backend::Http(c) => {
+                c.delete_no_body_query("/api/library/folders", &[("path", path)])
+            }
+            Backend::Local(l) => Self::map_err(
+                l.rt.block_on(openguild_core::ops::library::delete_folder(&l.store, path)),
             ),
         }
     }
@@ -4592,7 +4693,12 @@ fn run() -> Result<()> {
                     println!("(도서관 문서 없음)");
                 } else {
                     for b in &books {
-                        println!("{:<10} {}  ({})", b.book_id, b.title, b.updated_at);
+                        let loc = if b.path.is_empty() {
+                            String::new()
+                        } else {
+                            format!("  [{}]", b.path)
+                        };
+                        println!("{:<10} {}{}  ({})", b.book_id, b.title, loc, b.updated_at);
                     }
                 }
             }
@@ -4602,6 +4708,8 @@ fn run() -> Result<()> {
                     println!("{}", serde_json::to_string_pretty(&b)?);
                 } else {
                     println!("{}  {}", b.book_id, b.title);
+                    let loc = if b.path.is_empty() { "(최상위)" } else { &b.path };
+                    println!("  경로: {loc}");
                     println!("  created: {}  updated: {}", b.created_at, b.updated_at);
                     if !b.body.is_empty() {
                         println!();
@@ -4609,22 +4717,22 @@ fn run() -> Result<()> {
                     }
                 }
             }
-            LibraryCmd::New { title, file } => {
+            LibraryCmd::New { title, file, path } => {
                 let body = match file {
                     Some(p) => std::fs::read_to_string(&p)
                         .with_context(|| format!("파일 읽기 실패: {}", p.display()))?,
                     None => String::new(),
                 };
-                let b = c.library_new(&title, &body)?;
+                let b = c.library_new(&title, &body, path.as_deref().unwrap_or(""))?;
                 if cli.json {
                     println!("{}", serde_json::to_string_pretty(&b)?);
                 } else {
                     println!("✓ {} 생성됨 — {}", b.book_id, b.title);
                 }
             }
-            LibraryCmd::Update { id, title, file } => {
-                if title.is_none() && file.is_none() {
-                    bail!("변경할 필드가 없습니다 — --title 또는 --file 지정");
+            LibraryCmd::Update { id, title, file, path } => {
+                if title.is_none() && file.is_none() && path.is_none() {
+                    bail!("변경할 필드가 없습니다 — --title / --file / --path 지정");
                 }
                 let body = match file {
                     Some(p) => Some(
@@ -4633,7 +4741,7 @@ fn run() -> Result<()> {
                     ),
                     None => None,
                 };
-                let b = c.library_update(&id, title.as_deref(), body.as_deref())?;
+                let b = c.library_update(&id, title.as_deref(), body.as_deref(), path.as_deref())?;
                 if cli.json {
                     println!("{}", serde_json::to_string_pretty(&b)?);
                 } else {
@@ -4659,6 +4767,47 @@ fn run() -> Result<()> {
                     println!("✓ '{id}' 삭제됨 (soft delete — 번호는 재사용되지 않음)");
                 }
             }
+            LibraryCmd::Folder { sub } => match sub {
+                LibraryFolderCmd::List => {
+                    let folders = c.library_folder_list()?;
+                    if cli.json {
+                        println!("{}", serde_json::to_string_pretty(&folders)?);
+                    } else if folders.is_empty() {
+                        println!("(폴더 없음)");
+                    } else {
+                        for f in &folders {
+                            println!("{}", f.path);
+                        }
+                    }
+                }
+                LibraryFolderCmd::New { path } => {
+                    let f = c.library_folder_new(&path)?;
+                    if cli.json {
+                        println!("{}", serde_json::to_string_pretty(&f)?);
+                    } else {
+                        println!("✓ 폴더 '{}' 생성됨", f.path);
+                    }
+                }
+                LibraryFolderCmd::Delete { path, yes } => {
+                    if !yes {
+                        eprint!("폴더 '{path}' 을 삭제할까요? (y/N) ");
+                        use std::io::Write;
+                        std::io::stderr().flush().ok();
+                        let mut input = String::new();
+                        std::io::stdin().read_line(&mut input)?;
+                        if !input.trim().eq_ignore_ascii_case("y") {
+                            println!("취소됨");
+                            return Ok(());
+                        }
+                    }
+                    c.library_folder_delete(&path)?;
+                    if cli.json {
+                        println!("{}", serde_json::json!({ "ok": true, "path": path }));
+                    } else {
+                        println!("✓ 폴더 '{path}' 삭제됨");
+                    }
+                }
+            },
         },
         Command::Worklog { sub } => match sub {
             WorklogCmd::Show { date, from, to } => {
@@ -7284,13 +7433,14 @@ mod tests {
         }
 
         let cli = Cli::try_parse_from([
-            "openguild", "library", "new", "--title", "제목", "--file", "b.md",
+            "openguild", "library", "new", "--title", "제목", "--file", "b.md", "--path", "아키텍처",
         ])
         .unwrap();
         match cli.command {
-            Command::Library { sub: LibraryCmd::New { title, file } } => {
+            Command::Library { sub: LibraryCmd::New { title, file, path } } => {
                 assert_eq!(title, "제목");
                 assert_eq!(file.unwrap().to_string_lossy(), "b.md");
+                assert_eq!(path.as_deref(), Some("아키텍처"));
             }
             _ => panic!(),
         }
@@ -7300,10 +7450,11 @@ mod tests {
         ])
         .unwrap();
         match cli.command {
-            Command::Library { sub: LibraryCmd::Update { id, title, file } } => {
+            Command::Library { sub: LibraryCmd::Update { id, title, file, path } } => {
                 assert_eq!(id, "BOOK-002");
                 assert_eq!(title.as_deref(), Some("t2"));
                 assert!(file.is_none());
+                assert!(path.is_none());
             }
             _ => panic!(),
         }
@@ -7317,6 +7468,25 @@ mod tests {
             }
             _ => panic!(),
         }
+
+        let cli = Cli::try_parse_from(["openguild", "library", "folder", "new", "아키텍처"])
+            .unwrap();
+        match cli.command {
+            Command::Library { sub: LibraryCmd::Folder { sub: LibraryFolderCmd::New { path } } } => {
+                assert_eq!(path, "아키텍처");
+            }
+            _ => panic!(),
+        }
+        assert!(
+            matches!(
+                Cli::try_parse_from(["openguild", "library", "folder", "list"])
+                    .unwrap()
+                    .command,
+                Command::Library {
+                    sub: LibraryCmd::Folder { sub: LibraryFolderCmd::List }
+                }
+            )
+        );
     }
 
     /// 작업 기록 명령 파싱 — show 의 date/from-to 상호배타, note sub 필수.

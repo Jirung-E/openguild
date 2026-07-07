@@ -48,6 +48,10 @@ pub struct BookFrontmatter {
     /// slug 형식 ("BOOK-001"). 파일명과 일치. 변경 불가.
     pub book_id: String,
     pub title: String,
+    /// DEV-239: 소속 폴더 경로 ("" = 최상위, "아키텍처" 또는 "아키텍처/서브").
+    /// DB 는 캐시일 뿐이므로 frontmatter 에도 기록해 재색인 시 복원 가능하게 함.
+    #[serde(default)]
+    pub path: String,
     /// 생성 시각 (로컬 ISO8601 — quests 와 동일 포맷).
     pub created_at: String,
     /// 마지막 mutation 시각.
@@ -55,6 +59,84 @@ pub struct BookFrontmatter {
     /// soft delete flag.
     #[serde(default)]
     pub deleted: bool,
+}
+
+/// DEV-239: 폴더 경로 정규화 + 검증. 빈 문자열("") 은 최상위(루트) — 유효.
+/// 세그먼트 규칙: 공백만이 아님, `/` `\` 없음(구분자와 충돌), `..`/`.` 금지.
+/// 반환값은 세그먼트를 `/` 로 이어붙인 정규화 문자열(트림된 각 세그먼트).
+pub fn normalize_folder_path(raw: &str) -> Result<String> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Ok(String::new());
+    }
+    let mut segs = Vec::new();
+    for seg in raw.split('/') {
+        let seg = seg.trim();
+        if seg.is_empty() {
+            return Err(anyhow!("빈 경로 세그먼트는 허용되지 않습니다: {raw:?}"));
+        }
+        if seg == "." || seg == ".." {
+            return Err(anyhow!("허용되지 않는 경로 세그먼트: {seg:?}"));
+        }
+        if seg.contains('\\') {
+            return Err(anyhow!("경로 세그먼트에 역슬래시를 쓸 수 없습니다: {seg:?}"));
+        }
+        segs.push(seg.to_string());
+    }
+    Ok(segs.join("/"))
+}
+
+/// `child_path` 가 `parent_path` 자신이거나 그 하위인지 (경로 prefix 판정,
+/// 폴더 삭제/이름변경 시 영향 범위 계산에 공용 사용).
+pub fn path_is_self_or_descendant(child_path: &str, parent_path: &str) -> bool {
+    if parent_path.is_empty() {
+        return true; // 루트의 하위는 전부.
+    }
+    child_path == parent_path || child_path.starts_with(&format!("{parent_path}/"))
+}
+
+// ─── 폴더 레지스트리 (.guild/library/folders.toml) ───
+//
+// DEV-239: 폴더는 순수 컨테이너(본문 없음) — 빈 폴더도 표현 가능하도록 문서
+// path 필드와 별개로 명시적 존재를 기록하는 파일. 비어 있으면 폴더 없음.
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct FoldersFile {
+    #[serde(default)]
+    pub folders: Vec<FolderEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FolderEntry {
+    /// 정규화된 폴더 경로 ("아키텍처", "아키텍처/서브"). 비어있음(루트)은 저장 안 함.
+    pub path: String,
+    pub created_at: String,
+    pub updated_at: String,
+    #[serde(default)]
+    pub deleted: bool,
+}
+
+const FOLDERS_HEADER: &str = "\
+# 도서관 폴더 레지스트리 — 폴더는 순수 컨테이너(본문 없음). 문서가 하나도
+# 없는 빈 폴더도 트리에 보이도록 이 파일에 명시적으로 기록한다.
+";
+
+pub fn read_folders(paths: &GuildPaths) -> Result<FoldersFile> {
+    let p = paths.library_folders_path();
+    if !p.exists() {
+        return Ok(FoldersFile::default());
+    }
+    let s = std::fs::read_to_string(&p)
+        .with_context(|| format!("failed to read: {}", p.display()))?;
+    toml::from_str(&s).context("failed to parse library folders TOML")
+}
+
+pub fn write_folders(paths: &GuildPaths, f: &FoldersFile) -> Result<()> {
+    std::fs::create_dir_all(paths.library_dir()).with_context(|| {
+        format!("failed to create library dir: {}", paths.library_dir().display())
+    })?;
+    let body = toml::to_string_pretty(f).context("failed to serialize library folders")?;
+    write_atomic(paths.library_folders_path(), &format!("{FOLDERS_HEADER}\n{body}"))
 }
 
 impl BookFile {
@@ -215,12 +297,53 @@ mod tests {
             frontmatter: BookFrontmatter {
                 book_id: book_slug(n),
                 title: title.into(),
+                path: String::new(),
                 created_at: "2026-07-05T22:00:00+09:00".into(),
                 updated_at: "2026-07-05T22:00:00+09:00".into(),
                 deleted: false,
             },
             body: format!("{title} 본문"),
         }
+    }
+
+    #[test]
+    fn normalize_folder_path_rules() {
+        assert_eq!(normalize_folder_path("").unwrap(), "");
+        assert_eq!(normalize_folder_path("  ").unwrap(), "");
+        assert_eq!(normalize_folder_path("아키텍처").unwrap(), "아키텍처");
+        assert_eq!(normalize_folder_path("아키텍처/서브").unwrap(), "아키텍처/서브");
+        assert_eq!(normalize_folder_path(" 아키텍처 / 서브 ").unwrap(), "아키텍처/서브");
+        assert!(normalize_folder_path("아키텍처//서브").is_err());
+        assert!(normalize_folder_path("..").is_err());
+        assert!(normalize_folder_path("아키텍처/..").is_err());
+        assert!(normalize_folder_path("아키텍처\\서브").is_err());
+    }
+
+    #[test]
+    fn path_is_self_or_descendant_rules() {
+        assert!(path_is_self_or_descendant("아키텍처", ""));
+        assert!(path_is_self_or_descendant("아키텍처/서브", "아키텍처"));
+        assert!(path_is_self_or_descendant("아키텍처", "아키텍처"));
+        assert!(!path_is_self_or_descendant("운영", "아키텍처"));
+        assert!(!path_is_self_or_descendant("아키텍처2", "아키텍처"), "prefix 우연 일치 방지");
+    }
+
+    #[test]
+    fn folders_file_roundtrip() {
+        let dir = fresh_tmp("folders");
+        let paths = GuildPaths::new(&dir);
+        assert!(read_folders(&paths).unwrap().folders.is_empty());
+        let f = FoldersFile {
+            folders: vec![FolderEntry {
+                path: "아키텍처".into(),
+                created_at: "2026-07-07T00:00:00+09:00".into(),
+                updated_at: "2026-07-07T00:00:00+09:00".into(),
+                deleted: false,
+            }],
+        };
+        write_folders(&paths, &f).unwrap();
+        assert_eq!(read_folders(&paths).unwrap(), f);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
