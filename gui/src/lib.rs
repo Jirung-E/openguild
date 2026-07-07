@@ -441,12 +441,14 @@ pub fn run() {
             commands::toggle_comment_reaction,
             commands::toggle_comment_discussion,
             commands::toggle_comment_resolved,
+            commands::toggle_comment_pinned,
             // DEV-100: 캠페인 댓글 / 메모.
             commands::list_campaign_comments,
             commands::add_campaign_comment,
             commands::update_campaign_comment,
             commands::delete_campaign_comment,
             commands::toggle_campaign_comment_reaction,
+            commands::toggle_campaign_comment_pinned,
             commands::get_campaign_memo,
             commands::set_campaign_memo,
             // DEV-087: 캠페인 배너 이미지 (파일 선택은 frontend dialog plugin).

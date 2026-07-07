@@ -315,6 +315,17 @@
 		}
 	}
 
+	// DEV-234: 상단 고정(pin) — root 댓글만 (버튼도 root 에만 노출). 목록
+	// 정렬은 아래 orderedRoots derived 가 담당, 원래 순서(시간순)는 pin 안에서 유지.
+	async function togglePinned(id: number) {
+		try {
+			const updated = await commentsApi.togglePinned(slug, id);
+			entries = entries.map((e) => (e.id === id ? updated : e));
+		} catch (e) {
+			alert(e instanceof Error ? e.message : 'pin toggle failed');
+		}
+	}
+
 	// DEV-142: 토론(discussion) 플래그 토글. discussion 댓글이 미해결이면
 	// 이 quest 를 완료 상태로 전환할 수 없다 (core 게이트).
 	async function toggleDiscussion(id: number) {
@@ -517,6 +528,15 @@
 			orphans,
 			level1AncestorOf
 		};
+	});
+
+	// DEV-234: 고정된 root 댓글을 맨 위로 — 고정끼리/일반끼리는 원래 순서
+	// (id 순, groups.roots 가 이미 그 순서) 유지. stable sort (Array#sort 는
+	// stable 보장) 이라 안전.
+	let orderedRoots = $derived.by(() => {
+		const roots = groups.roots;
+		if (!roots.some((r) => r.pinned)) return roots;
+		return [...roots].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
 	});
 
 	// DEV-213: 토론 댓글만 모아보기 (quest 전용 — discussion 은 quest 한정 기능).
@@ -864,6 +884,15 @@
 								{/if}
 							{/if}
 						{/if}
+						<!-- DEV-234: 상단 고정 — root 만(답글은 위치가 재배치되는 대상이
+						     아니라 버튼 노출 안 함). -->
+						<button
+							class="pin-btn"
+							class:on={e.pinned}
+							onclick={() => togglePinned(e.id)}
+							title={e.pinned ? '고정 해제' : '상단 고정'}
+							>📌</button
+						>
 					{/if}
 					<!-- DEV-200: 답글에도 답글 쓰기 — parent_id 로 대상 기록, 표시는 2단까지. -->
 					<button class="reply-write-btn" onclick={() => enterReply(e.id)}>답글 쓰기</button>
@@ -967,12 +996,13 @@
 				<p class="no-desc">아직 댓글 없음.</p>
 			{:else}
 				<ul class="entry-list">
-					{#each groups.roots as root (root.id)}
+					{#each orderedRoots as root (root.id)}
 						{#if !discussionOnly || discussionRoots.has(root.id)}
 							{@const childCount = (groups.childrenByRoot.get(root.id) ?? []).length}
 							{@const isCollapsed = !discussionOnly && collapsedRoots.has(root.id)}
-							<!-- DEV-139: root + 답글을 하나의 카드로 — 댓글 간 시각 구분. -->
-							<li class="entry-card">
+							<!-- DEV-139: root + 답글을 하나의 카드로 — 댓글 간 시각 구분.
+							     DEV-234: pinned 면 강조 테두리(하이라이트) 도 함께. -->
+							<li class="entry-card" class:pinned={root.pinned}>
 								{@render entryView(root, false)}
 								{#if (childCount > 0 && !isCollapsed) || replyFormRoot === root.id}
 									<div class="thread">
@@ -1231,6 +1261,16 @@
 		border-radius: 8px;
 		padding: 0.6rem 0.75rem;
 	}
+	/* DEV-234: 상단 고정된 댓글 — pin(위치 이동) 만으로는 눈에 안 띄어서
+	   테두리로 하이라이트도 함께. */
+	.entry-card.pinned {
+		border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+		background: color-mix(
+			in srgb,
+			var(--accent) 6%,
+			color-mix(in srgb, var(--bg-elevated) 65%, var(--bg))
+		);
+	}
 	.entry {
 		border-radius: 6px;
 	}
@@ -1383,6 +1423,26 @@
 	.reply-write-btn:hover {
 		color: var(--accent);
 		border-color: var(--accent);
+	}
+	/* DEV-234: 상단 고정 버튼 — 꺼짐 상태는 흐리게, 켜지면 강조색 채움. */
+	.pin-btn {
+		font-size: 0.75rem;
+		line-height: 1;
+		color: var(--text-faint);
+		background: transparent;
+		cursor: pointer;
+		padding: 0.15rem 0.35rem;
+		border-radius: 4px;
+		border: 1px solid transparent;
+		opacity: 0.6;
+	}
+	.pin-btn:hover {
+		opacity: 1;
+	}
+	.pin-btn.on {
+		color: var(--accent);
+		border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+		opacity: 1;
 	}
 	/* 우측 — 활성 반응 pill + '+' popup (slack 스타일). */
 	.foot-right {

@@ -45,15 +45,16 @@ async fn upsert_comment_entry_db(
     };
     sqlx::query(
         "INSERT INTO quest_comments
-            (quest_id, entry_id, ts, author, body, parent_id, discussion, resolved)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (quest_id, entry_id, ts, author, body, parent_id, discussion, resolved, pinned)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(quest_id, entry_id) DO UPDATE SET
              ts         = excluded.ts,
              author     = excluded.author,
              body       = excluded.body,
              parent_id  = excluded.parent_id,
              discussion = excluded.discussion,
-             resolved   = excluded.resolved",
+             resolved   = excluded.resolved,
+             pinned     = excluded.pinned",
     )
     .bind(qid)
     .bind(entry.id as i64)
@@ -63,6 +64,7 @@ async fn upsert_comment_entry_db(
     .bind(entry.parent_id.map(|n| n as i64))
     .bind(entry.discussion as i64)
     .bind(entry.resolved as i64)
+    .bind(entry.pinned as i64)
     .execute(&store.index_pool)
     .await
     .map_err(|e| AppError::Internal(anyhow::anyhow!("upsert quest_comments: {e}")))?;
@@ -125,8 +127,8 @@ async fn replace_comments_db(store: &Store, slug: &str) -> AppResult<()> {
     for entry in &entries {
         sqlx::query(
             "INSERT INTO quest_comments
-                (quest_id, entry_id, ts, author, body, parent_id, discussion, resolved)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (quest_id, entry_id, ts, author, body, parent_id, discussion, resolved, pinned)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(qid)
         .bind(entry.id as i64)
@@ -136,6 +138,7 @@ async fn replace_comments_db(store: &Store, slug: &str) -> AppResult<()> {
         .bind(entry.parent_id.map(|n| n as i64))
         .bind(entry.discussion as i64)
         .bind(entry.resolved as i64)
+        .bind(entry.pinned as i64)
         .execute(&mut *tx)
         .await
         .map_err(|e| AppError::Internal(anyhow::anyhow!("insert quest_comments: {e}")))?;
@@ -371,6 +374,34 @@ pub async fn toggle_comment_resolved(
     Ok(updated)
 }
 
+/// DEV-234: 댓글 상단 고정(pin) 토글. discussion 과 달리 quest 전용 게이트
+/// 없음 — root/답글 무관하게 켤 수 있고, 실제 "몇 개까지" "root 만" 같은
+/// 제약은 GUI 가 담당(pin 버튼을 root 댓글에만 노출).
+pub async fn toggle_comment_pinned(store: &Store, slug: &str, id: u64) -> AppResult<CommentEntry> {
+    let _ = journal::append(
+        &store.journal_pool,
+        "toggle_comment_pinned",
+        &json!({ "slug": slug, "id": id }),
+        None::<&serde_json::Value>,
+    )
+    .await
+    .map_err(AppError::Internal)?;
+
+    let mut entries = svc::list_entries(store, slug)?;
+    let entry = entries
+        .iter_mut()
+        .find(|e| e.id == id)
+        .ok_or_else(|| AppError::NotFound(format!("comment {id} not found for {slug}")))?;
+    entry.pinned = !entry.pinned;
+    let updated = entry.clone();
+    crate::repo::comments::write_entries(&store.paths, slug, &entries)
+        .map_err(AppError::Internal)?;
+    // BUG-068: sibling 파일 mtime 캐시 동기화 (drift 오탐 방지).
+    let _ = crate::file_mtime::touch(store, &store.paths.comments_path(slug)).await;
+    upsert_comment_entry_db(store, slug, &updated).await?;
+    Ok(updated)
+}
+
 /// 댓글 entry 삭제.
 pub async fn delete_comment_entry(store: &Store, slug: &str, id: u64) -> AppResult<()> {
     let _ = journal::append(
@@ -584,6 +615,36 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(parent_id, Some(top.id as i64));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-234: pin 토글 — 파일 attr + DB 캐시 모두 반영, discussion 과 달리
+    /// 게이트 없이 아무 entry 나 켤 수 있음.
+    #[tokio::test]
+    async fn toggle_pinned_roundtrip_and_syncs_db_cache() {
+        let (dir, store, slug) = fresh("pin").await;
+        let e = add_comment_entry(&store, &slug, "a".into(), "결정사항".into(), None)
+            .await
+            .unwrap();
+        assert!(!e.pinned);
+
+        let on = toggle_comment_pinned(&store, &slug, e.id).await.unwrap();
+        assert!(on.pinned);
+        let cached: i64 =
+            sqlx::query_scalar("SELECT pinned FROM quest_comments WHERE entry_id = ?")
+                .bind(e.id as i64)
+                .fetch_one(&store.index_pool)
+                .await
+                .unwrap();
+        assert_eq!(cached, 1);
+        // 파일에서 다시 읽어도 유지.
+        let listed = list_comment_entries(&store, &slug).unwrap();
+        assert!(listed[0].pinned);
+
+        let off = toggle_comment_pinned(&store, &slug, e.id).await.unwrap();
+        assert!(!off.pinned);
+
+        assert!(toggle_comment_pinned(&store, &slug, 999).await.is_err());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

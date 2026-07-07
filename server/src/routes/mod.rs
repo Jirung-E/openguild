@@ -113,6 +113,11 @@ pub fn create_router(store: Store) -> Router {
             "/api/quests/by/{slug}/comments/{id}/resolved",
             post(comments::toggle_resolved),
         )
+        // DEV-234: 상단 고정(pin) 토글 — quest 전용 게이트 없음.
+        .route(
+            "/api/quests/by/{slug}/comments/{id}/pinned",
+            post(comments::toggle_pinned),
+        )
         .route(
             "/api/quests/by/{slug}/memo",
             get(comments::get_memo).put(comments::set_memo),
@@ -130,6 +135,11 @@ pub fn create_router(store: Store) -> Router {
         .route(
             "/api/campaigns/{slug}/comments/{id}/reactions",
             post(comments::camp_toggle_reaction),
+        )
+        // DEV-234: 상단 고정(pin) 토글.
+        .route(
+            "/api/campaigns/{slug}/comments/{id}/pinned",
+            post(comments::camp_toggle_pinned),
         )
         .route(
             "/api/campaigns/{slug}/memo",

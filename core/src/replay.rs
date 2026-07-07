@@ -321,6 +321,11 @@ async fn apply_op(store: &Store, maps: &IdMaps, op: &journal::OpRow) -> AppResul
             let slug = arg_str(&args, "slug")?;
             ops::comments::toggle_comment_resolved(store, &slug, arg_u64(&args, "id")?).await?;
         }
+        // DEV-234: 상단 고정(pin) 토글 — id 만으로 replayable.
+        "toggle_comment_pinned" => {
+            let slug = arg_str(&args, "slug")?;
+            ops::comments::toggle_comment_pinned(store, &slug, arg_u64(&args, "id")?).await?;
+        }
         "delete_comment_entry" => {
             let slug = arg_str(&args, "slug")?;
             ops::comments::delete_comment_entry(store, &slug, arg_u64(&args, "id")?).await?;
@@ -335,6 +340,10 @@ async fn apply_op(store: &Store, maps: &IdMaps, op: &journal::OpRow) -> AppResul
                 &arg_str(&args, "author")?,
             )
             .await?;
+        }
+        "toggle_campaign_comment_pinned" => {
+            let slug = arg_str(&args, "slug")?;
+            ops::campaign_comments::toggle_pinned(store, &slug, arg_u64(&args, "id")?).await?;
         }
         "delete_campaign_comment" => {
             let slug = arg_str(&args, "slug")?;

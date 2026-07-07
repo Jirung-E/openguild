@@ -452,6 +452,21 @@ describe('TauriTransport', () => {
 			})
 		).toEqual({ cmd: 'worklog_note_set', args: { date: '2026-07-05', content: '노트' } });
 	});
+
+	it('routeToInvoke — 댓글 pin 토글 매핑 (DEV-234, quest/campaign 둘 다)', () => {
+		expect(
+			__test_only.routeToInvoke({
+				method: 'POST',
+				path: '/api/quests/by/DEV-001/comments/3/pinned'
+			})
+		).toEqual({ cmd: 'toggle_comment_pinned', args: { slug: 'DEV-001', id: 3 } });
+		expect(
+			__test_only.routeToInvoke({
+				method: 'POST',
+				path: '/api/campaigns/C-001/comments/3/pinned'
+			})
+		).toEqual({ cmd: 'toggle_campaign_comment_pinned', args: { slug: 'C-001', id: 3 } });
+	});
 });
 
 // DEV-113 (MVP): 원격 서버 모드 — `transport` (동적 위임)이 Tauri 환경에서도

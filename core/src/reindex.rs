@@ -545,8 +545,8 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
         for entry in entries {
             sqlx::query(
                 "INSERT INTO quest_comments
-                    (quest_id, entry_id, ts, author, body, parent_id, discussion, resolved)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (quest_id, entry_id, ts, author, body, parent_id, discussion, resolved, pinned)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(qid)
             .bind(entry.id as i64)
@@ -556,6 +556,7 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
             .bind(entry.parent_id.map(|n| n as i64))
             .bind(entry.discussion as i64)
             .bind(entry.resolved as i64)
+            .bind(entry.pinned as i64)
             .execute(&mut *tx)
             .await?;
             report.comments_loaded += 1;
@@ -818,8 +819,8 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
             };
             for entry in crate::repo::comments::parse_entries(&raw) {
                 sqlx::query(
-                    "INSERT INTO campaign_comments (campaign_id, entry_id, ts, author, body, parent_id)
-                     VALUES (?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO campaign_comments (campaign_id, entry_id, ts, author, body, parent_id, pinned)
+                     VALUES (?, ?, ?, ?, ?, ?, ?)",
                 )
                 .bind(cid)
                 .bind(entry.id as i64)
@@ -827,6 +828,7 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
                 .bind(&entry.author)
                 .bind(&entry.body)
                 .bind(entry.parent_id.map(|n| n as i64))
+                .bind(entry.pinned as i64)
                 .execute(&mut *tx)
                 .await?;
                 report.comments_loaded += 1;

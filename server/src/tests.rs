@@ -2321,6 +2321,39 @@ async fn test_quest_comment_discussion_and_resolved_toggle() {
     assert_eq!(status, StatusCode::OK);
 }
 
+/// DEV-234: 상단 고정(pin) 토글 — discussion 과 달리 quest 완료 전환 게이트 없음.
+#[tokio::test]
+async fn test_quest_comment_pinned_toggle() {
+    let app = seed_quest(setup().await).await;
+    let (_, entry) = post(
+        app.clone(),
+        "/api/quests/by/DEV-001/comments",
+        json!({ "author": "a", "body": "결정사항" }),
+    )
+    .await;
+    let id = entry["id"].as_u64().unwrap();
+
+    let (status, on) = post(
+        app.clone(),
+        &format!("/api/quests/by/DEV-001/comments/{id}/pinned"),
+        json!({}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(on["pinned"], true);
+
+    let (status, off) = post(
+        app,
+        &format!("/api/quests/by/DEV-001/comments/{id}/pinned"),
+        json!({}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    // pinned=false 는 discussion/resolved 와 같은 skip_serializing_if 라 필드
+    // 자체가 응답에서 생략됨(null) — "true 아님"으로 검증.
+    assert!(!off["pinned"].as_bool().unwrap_or(false));
+}
+
 #[tokio::test]
 async fn test_quest_memo_get_set() {
     let app = seed_quest(setup().await).await;
@@ -2394,6 +2427,28 @@ async fn test_campaign_comment_reaction_toggle() {
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(after["reactions"].as_array().unwrap().len(), 1);
+}
+
+/// DEV-234: 캠페인 댓글도 pin 지원 (discussion 과 달리 quest 전용 아님).
+#[tokio::test]
+async fn test_campaign_comment_pinned_toggle() {
+    let app = setup().await;
+    post(app.clone(), "/api/campaigns", json!({ "title": "camp" })).await;
+    let (_, entry) = post(
+        app.clone(),
+        "/api/campaigns/C-001/comments",
+        json!({ "author": "a", "body": "x" }),
+    )
+    .await;
+    let id = entry["id"].as_u64().unwrap();
+    let (status, on) = post(
+        app,
+        &format!("/api/campaigns/C-001/comments/{id}/pinned"),
+        json!({}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(on["pinned"], true);
 }
 
 #[tokio::test]

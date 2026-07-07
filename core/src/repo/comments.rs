@@ -50,6 +50,10 @@ pub struct CommentEntry {
     /// DEV-142: 토론 해결 여부. 마커의 `resolved="true"`. discussion 이 아닐 땐 무의미.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub resolved: bool,
+    /// DEV-234: 상단 고정(pin) 여부. 마커의 `pinned="true"`. quest/campaign
+    /// 댓글 둘 다 지원 — discussion 과 달리 quest 전용 게이트 없음.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pinned: bool,
 }
 
 /// DEV-094: 마커 패턴 — `<!-- og-comment id="..." ts="..." author="..." -->`.
@@ -141,6 +145,7 @@ pub fn parse_entries(text: &str) -> Vec<CommentEntry> {
             reactions: Vec::new(),
             discussion: false,
             resolved: false,
+            pinned: false,
         }];
     }
 
@@ -174,6 +179,8 @@ pub fn parse_entries(text: &str) -> Vec<CommentEntry> {
         // DEV-142: `discussion="true"` / `resolved="true"` — 그 외 값/부재는 false.
         let discussion = extract_attr(attrs, "discussion").as_deref() == Some("true");
         let resolved = extract_attr(attrs, "resolved").as_deref() == Some("true");
+        // DEV-234: `pinned="true"` — 그 외 값/부재는 false.
+        let pinned = extract_attr(attrs, "pinned").as_deref() == Some("true");
         out.push(CommentEntry {
             id,
             ts,
@@ -183,6 +190,7 @@ pub fn parse_entries(text: &str) -> Vec<CommentEntry> {
             reactions,
             discussion,
             resolved,
+            pinned,
         });
     }
     out
@@ -213,8 +221,10 @@ pub fn serialize_entries(entries: &[CommentEntry]) -> String {
         // DEV-142: discussion / resolved — true 일 때만 출력 (구 파일 byte 호환).
         let discussion_attr = if e.discussion { " discussion=\"true\"" } else { "" };
         let resolved_attr = if e.resolved { " resolved=\"true\"" } else { "" };
+        // DEV-234: pinned — 마찬가지로 true 일 때만 출력.
+        let pinned_attr = if e.pinned { " pinned=\"true\"" } else { "" };
         out.push_str(&format!(
-            "<!-- og-comment id=\"{}\" ts=\"{}\" author=\"{}\"{}{}{}{} -->\n",
+            "<!-- og-comment id=\"{}\" ts=\"{}\" author=\"{}\"{}{}{}{}{} -->\n",
             e.id,
             sanitize_attr(&e.ts),
             sanitize_attr(&e.author),
@@ -222,6 +232,7 @@ pub fn serialize_entries(entries: &[CommentEntry]) -> String {
             reactions_attr,
             discussion_attr,
             resolved_attr,
+            pinned_attr,
         ));
         out.push_str(e.body.trim());
         out.push('\n');
@@ -391,6 +402,7 @@ mod tests {
                 reactions: Vec::new(),
                 discussion: false,
                 resolved: false,
+                pinned: false,
             },
             CommentEntry {
                 id: 2,
@@ -401,6 +413,7 @@ mod tests {
                 reactions: Vec::new(),
                 discussion: false,
                 resolved: false,
+                pinned: false,
             },
             // 답글: id=3 이 id=1 에 대한 reply.
             CommentEntry {
@@ -412,6 +425,7 @@ mod tests {
                 reactions: Vec::new(),
                 discussion: false,
                 resolved: false,
+                pinned: false,
             },
         ];
         let s = serialize_entries(&entries);
@@ -433,6 +447,7 @@ mod tests {
             reactions: vec!["👍".into(), "✅".into()],
             discussion: false,
             resolved: false,
+            pinned: false,
         }];
         let s = serialize_entries(&entries);
         assert!(s.contains("reactions=\"👍,✅\""));
@@ -448,6 +463,7 @@ mod tests {
             reactions: Vec::new(),
             discussion: false,
             resolved: false,
+            pinned: false,
         }];
         assert!(!serialize_entries(&none).contains("reactions"));
     }
@@ -464,6 +480,7 @@ mod tests {
             reactions: Vec::new(),
             discussion: true,
             resolved: true,
+            pinned: false,
         }];
         let s = serialize_entries(&entries);
         assert!(s.contains("discussion=\"true\""));
@@ -480,10 +497,43 @@ mod tests {
             reactions: Vec::new(),
             discussion: false,
             resolved: false,
+            pinned: false,
         }];
         let ps = serialize_entries(&plain);
         assert!(!ps.contains("discussion"));
         assert!(!ps.contains("resolved"));
+    }
+
+    /// DEV-234: pinned attr roundtrip + 기본 false 는 attr 생략 (구 파일 byte 호환).
+    #[test]
+    fn pinned_roundtrip() {
+        let entries = vec![CommentEntry {
+            id: 1,
+            ts: "x".into(),
+            author: "a".into(),
+            body: "중요 결정".into(),
+            parent_id: None,
+            reactions: Vec::new(),
+            discussion: false,
+            resolved: false,
+            pinned: true,
+        }];
+        let s = serialize_entries(&entries);
+        assert!(s.contains("pinned=\"true\""));
+        assert_eq!(parse_entries(&s), entries);
+
+        let plain = vec![CommentEntry {
+            id: 1,
+            ts: "x".into(),
+            author: "a".into(),
+            body: "b".into(),
+            parent_id: None,
+            reactions: Vec::new(),
+            discussion: false,
+            resolved: false,
+            pinned: false,
+        }];
+        assert!(!serialize_entries(&plain).contains("pinned"));
     }
 
     #[test]
@@ -504,6 +554,7 @@ mod tests {
             reactions: Vec::new(),
             discussion: false,
             resolved: false,
+            pinned: false,
         }];
         let s = serialize_entries(&entries);
         // " → ' 로 치환되어 attribute 안전.

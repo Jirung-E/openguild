@@ -286,6 +286,10 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 			if (parts[5] && /^\d+$/.test(parts[5]) && parts[6] === 'resolved' && method === 'POST') {
 				return { cmd: 'toggle_comment_resolved', args: { slug, id: Number(parts[5]) } };
 			}
+			// /comments/{id}/pinned (DEV-234: 상단 고정 토글)
+			if (parts[5] && /^\d+$/.test(parts[5]) && parts[6] === 'pinned' && method === 'POST') {
+				return { cmd: 'toggle_comment_pinned', args: { slug, id: Number(parts[5]) } };
+			}
 			// /comments/{id} (수정 / 삭제)
 			if (parts[5] && /^\d+$/.test(parts[5]) && !parts[6]) {
 				const id = Number(parts[5]);
@@ -538,6 +542,13 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 				return {
 					cmd: 'toggle_campaign_comment_reaction',
 					args: { slug, id, emoji: rb.emoji ?? '', author: rb.author ?? '' }
+				};
+			}
+			// DEV-234: /comments/{id}/pinned — 상단 고정 토글.
+			if (parts[4] && /^\d+$/.test(parts[4]) && parts[5] === 'pinned' && method === 'POST') {
+				return {
+					cmd: 'toggle_campaign_comment_pinned',
+					args: { slug, id: Number(parts[4]) }
 				};
 			}
 			if (parts[4] && /^\d+$/.test(parts[4]) && !parts[5]) {

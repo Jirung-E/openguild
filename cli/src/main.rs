@@ -624,6 +624,8 @@ enum CommentCmd {
     Discussion { slug: String, id: u64 },
     /// discussion 댓글의 resolved 토글 (quest 전용).
     Resolved { slug: String, id: u64 },
+    /// 상단 고정(pin) 토글 — quest/campaign 댓글 둘 다 지원.
+    Pinned { slug: String, id: u64 },
 }
 
 #[derive(Subcommand)]
@@ -2532,6 +2534,27 @@ impl Backend {
         }
     }
 
+    /// DEV-234: 상단 고정(pin) 토글 — discussion 과 달리 quest 전용 아님, scope
+    /// 로 quest/campaign 분기. React 와 동일하게 Local 전용.
+    fn comments_toggle_pinned_scoped(
+        &self,
+        scope: CommentScope,
+        slug: &str,
+        id: u64,
+    ) -> Result<openguild_core::repo::comments::CommentEntry> {
+        let Backend::Local(l) = self else {
+            return Err(Self::http_unsupported_meta());
+        };
+        match scope {
+            CommentScope::Quest => Self::map_err(l.rt.block_on(
+                openguild_core::ops::comments::toggle_comment_pinned(&l.store, slug, id),
+            )),
+            CommentScope::Campaign => Self::map_err(l.rt.block_on(
+                openguild_core::ops::campaign_comments::toggle_pinned(&l.store, slug, id),
+            )),
+        }
+    }
+
     fn comments_edit_scoped(
         &self,
         scope: CommentScope,
@@ -3485,6 +3508,14 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                         println!("{}", serde_json::json!({ "ok": true, "id": id, "resolved": e.resolved }));
                     } else {
                         println!("✓ 댓글 #{id} {}", if e.resolved { "해결됨" } else { "미해결" });
+                    }
+                }
+                CommentCmd::Pinned { slug, id } => {
+                    let e = c.comments_toggle_pinned_scoped(scope, &slug, id)?;
+                    if json {
+                        println!("{}", serde_json::json!({ "ok": true, "id": id, "pinned": e.pinned }));
+                    } else {
+                        println!("✓ 댓글 #{id} {}", if e.pinned { "고정됨" } else { "고정 해제" });
                     }
                 }
     }
@@ -6701,6 +6732,22 @@ mod tests {
             "--top-only", "--reply-to", "3",
         ])
         .is_err());
+    }
+
+    /// DEV-234: pin 토글 — quest / campaign 양쪽 subcommand 트리에서 파싱.
+    #[test]
+    fn cli_parse_comment_pinned() {
+        let cli = Cli::try_parse_from([
+            "openguild", "quest", "comment", "pinned", "DEV-001", "3",
+        ])
+        .unwrap();
+        match cli.command {
+            Command::Quest { sub: QuestCmd::Comment { sub: CommentCmd::Pinned { slug, id } } } => {
+                assert_eq!(slug, "DEV-001");
+                assert_eq!(id, 3);
+            }
+            _ => panic!("expected comment pinned"),
+        }
     }
 
     #[test]

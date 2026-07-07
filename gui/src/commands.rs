@@ -1610,6 +1610,18 @@ pub async fn toggle_comment_resolved(
         .map_err(err)
 }
 
+/// DEV-234: 상단 고정(pin) 토글 — quest 전용 게이트 없음.
+#[tauri::command]
+pub async fn toggle_comment_pinned(
+    store: State<'_, Store>,
+    slug: String,
+    id: u64,
+) -> Result<CommentEntry, String> {
+    openguild_core::ops::comments::toggle_comment_pinned(&store, &slug, id)
+        .await
+        .map_err(err)
+}
+
 // ─── DEV-100: Campaign 댓글 / 메모 — quest 패턴 미러 ───
 
 #[tauri::command]
@@ -1673,6 +1685,18 @@ pub async fn toggle_campaign_comment_reaction(
     author: String,
 ) -> Result<CommentEntry, String> {
     openguild_core::ops::campaign_comments::toggle_reaction(&store, &slug, id, &emoji, &author)
+        .await
+        .map_err(err)
+}
+
+/// DEV-234: 캠페인 댓글 상단 고정(pin) 토글.
+#[tauri::command]
+pub async fn toggle_campaign_comment_pinned(
+    store: State<'_, Store>,
+    slug: String,
+    id: u64,
+) -> Result<CommentEntry, String> {
+    openguild_core::ops::campaign_comments::toggle_pinned(&store, &slug, id)
         .await
         .map_err(err)
 }
