@@ -13,7 +13,7 @@
   ↩ #id 링크가 실제 답글 대상을 가리킨다. parent_id 체인은 데이터에 그대로 기록.
 -->
 <script lang="ts">
-	import { tick, onDestroy } from 'svelte';
+	import { tick, onDestroy, onMount } from 'svelte';
 	import MarkdownView from './MarkdownView.svelte';
 	// DEV-153: 작성/편집/답글 중이면 이탈 가드에 보고.
 	import { setUnsaved } from '$lib/stores/unsaved';
@@ -32,6 +32,9 @@
 	import { wikiMatch, applyWikiLink, caretXY, type WikiItem } from '$lib/utils/textarea-wikilink';
 	import { questIndex, loadQuestIndex } from '$lib/stores/questIndex';
 	import { get } from 'svelte/store';
+	// DEV-235: 접기 상태(답글/본문) 영속 — 보드의 collapsedLanes(DEV-105) 와
+	// 같은 길드별 namespace 패턴.
+	import { resolveGuildKeyPrefix, guildKey } from '$lib/utils/guild-storage';
 
 	loadQuestIndex();
 	// DEV-171: caret 위치 팝업 — 활성 textarea + 후보 + 화면 좌표 + 선택 index.
@@ -201,6 +204,10 @@
 
 	// DEV-107 fix1: root entry (top-level 댓글) 별 답글 접기.
 	// 클릭 시 그 root 의 답글 전체 숨김 (들여쓰기 손실 없음 — 그냥 표시 안 함).
+	//
+	// DEV-235: 이건(섹션 전체 접기와 달리, 위 DEV-107 주석 참고) 페이지 이동
+	// 후에도 유지되길 원한다는 admin 보고 — 길드+quest/campaign 별
+	// localStorage 로 영속. 아래 persistReady/guildKeyPrefix 참조.
 	let collapsedRoots = $state(new Set<number>());
 	function toggleRootCollapsed(rootId: number) {
 		const next = new Set(collapsedRoots);
@@ -208,6 +215,65 @@
 		else next.add(rootId);
 		collapsedRoots = next;
 	}
+
+	// DEV-235: 접기 상태 localStorage 키 — 길드(guildKeyPrefix) + scope + slug
+	// 별로 독립. slug 가 바뀌어도(같은 컴포넌트 인스턴스가 재사용되는 경우)
+	// 다시 계산되도록 함수로.
+	let guildKeyPrefix = $state('');
+	let prefixReady = $state(false);
+	// restorePersisted() 가 state 를 채우는 동안(및 그 직후 첫 반영) 아래
+	// 저장용 $effect 들이 "빈 값으로 되읽어와 저장"하며 방금 복원한 값을
+	// 다시 저장하는 것 자체는 무해하지만, slug 전환 중간에 이전 slug 값으로
+	// 잘못 저장되는 걸 막기 위한 가드.
+	let persistReady = $state(false);
+	function collapseStorageKey(suffix: string): string {
+		return guildKey(guildKeyPrefix, `comments.${scope}.${slug}.${suffix}`);
+	}
+	function readIdSet(key: string): Set<number> {
+		try {
+			const raw = localStorage.getItem(key);
+			if (!raw) return new Set();
+			const arr = JSON.parse(raw);
+			return Array.isArray(arr) ? new Set(arr.filter((n) => typeof n === 'number')) : new Set();
+		} catch {
+			return new Set();
+		}
+	}
+	function writeIdSet(key: string, s: Set<number>) {
+		try {
+			localStorage.setItem(key, JSON.stringify([...s]));
+		} catch {
+			/* 무시 */
+		}
+	}
+	function restorePersisted() {
+		persistReady = false;
+		collapsedRoots = readIdSet(collapseStorageKey('collapsedRoots'));
+		collapsedBodies = readIdSet(collapseStorageKey('collapsedBodies'));
+		persistReady = true;
+	}
+	onMount(async () => {
+		guildKeyPrefix = await resolveGuildKeyPrefix();
+		prefixReady = true;
+	});
+	// slug/scope 가 바뀔 때(라우트 전환으로 컴포넌트가 재사용되는 경우)도
+	// 그 quest/campaign 전용 값으로 다시 복원.
+	$effect(() => {
+		void slug;
+		void scope;
+		if (!prefixReady) return;
+		restorePersisted();
+	});
+	$effect(() => {
+		const s = collapsedRoots;
+		if (!persistReady) return;
+		writeIdSet(collapseStorageKey('collapsedRoots'), s);
+	});
+	$effect(() => {
+		const s = collapsedBodies;
+		if (!persistReady) return;
+		writeIdSet(collapseStorageKey('collapsedBodies'), s);
+	});
 
 	// DEV-108: 이모지 반응 — 고정 4종. 커스텀 추가는 후속 quest.
 	// DEV-139: 전체 노출 대신 slack 스타일 — 활성 pill + '+' popup picker.
