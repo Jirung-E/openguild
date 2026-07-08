@@ -6,7 +6,13 @@
  * 목록을 만드는 순수 함수, (2) 토큰을 `[[ID]]` 로 치환하는 헬퍼, (3) textarea 안
  * caret 의 픽셀 좌표(mirror-div) 를 제공한다. 제안 팝업 UI 는 호출 측이 렌더.
  */
-import { KIND_ALIASES, KIND_NAMESPACE, type IndexedRef } from '$lib/stores/questIndex';
+import {
+	KIND_ALIASES,
+	KIND_NAMESPACE,
+	KIND_LABEL,
+	type IndexedRef,
+	type Kind
+} from '$lib/stores/questIndex';
 
 /** DEV-173: `[[` 바로 안(아직 안 닫힘)의 부분 slug — 규칙 포함 전체 인덱스 제안.
  *  규칙 slug 는 한글 등 비ASCII 가능 — 공백/대괄호 제외 모든 문자 허용.
@@ -22,6 +28,13 @@ export interface WikiItem {
 	exists: boolean;
 	/** 삽입 텍스트 (규칙 = 원본 대소문자 slug). 미지정 시 id. */
 	insert?: string;
+	/**
+	 * DEV-219 후속(admin 보고): `[[q` 처럼 콜론 없이 타이핑 중일 때 나오는
+	 * "네임스페이스 자체" 후보(`quest:` 등) — 선택하면 `[[quest:` 까지만
+	 * 삽입하고(`]]` 로 안 닫음) 그 뒤 실제 ID 를 이어 타이핑하게 한다.
+	 * 일반 ID 후보(closed link 삽입)와 apply 방식이 달라 구분 필요.
+	 */
+	nsPrefix?: boolean;
 }
 
 export interface WikiMatch {
@@ -54,6 +67,26 @@ export function wikiMatch(
 		const query = kindFilter ? partial.slice(ci + 1) : partial;
 		const upper = query.toUpperCase();
 		const items: WikiItem[] = [];
+		// DEV-219 후속(admin 보고): `[[q` 처럼 콜론 없이 타이핑 중이면 실제 ID
+		// 뿐 아니라 "네임스페이스 자체"(`quest:` 등)도 후보로 보여준다.
+		if (!kindFilter) {
+			const lower = partial.toLowerCase();
+			const seenKinds = new Set<Kind>();
+			for (const [alias, kind] of Object.entries(KIND_ALIASES)) {
+				if (seenKinds.has(kind)) continue;
+				const canonical = KIND_NAMESPACE[kind];
+				if (!canonical.startsWith(lower) && !alias.startsWith(lower)) continue;
+				seenKinds.add(kind);
+				items.push({
+					id: `${canonical}:`,
+					title: `${KIND_LABEL[kind]}만 보기`,
+					kind,
+					exists: true,
+					insert: `${canonical}:`,
+					nsPrefix: true
+				});
+			}
+		}
 		for (const [id, ref] of index) {
 			if (kindFilter && ref.kind !== kindFilter) continue;
 			// DEV-239: 도서관 문서는 관리번호(BOOK-NNN) 대신 "폴더/제목" 경로로
@@ -74,7 +107,11 @@ export function wikiMatch(
 			});
 		}
 		if (items.length === 0) return null;
-		items.sort((a, b) => a.id.localeCompare(b.id));
+		items.sort((a, b) => {
+			const an = a.nsPrefix ? 0 : 1;
+			const bn = b.nsPrefix ? 0 : 1;
+			return an !== bn ? an - bn : a.id.localeCompare(b.id);
+		});
 		return { from: caret - partial.length - 2, to: caret, items, wikiContext: true };
 	}
 
@@ -98,6 +135,30 @@ export function applyWikiLink(ta: HTMLTextAreaElement, from: number, to: number,
 	}
 	// fallback (undo 끊김).
 	ta.setRangeText(text, from, to2, 'end');
+	ta.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+/**
+ * DEV-219 후속: `[[` 부터 caret 까지를 `[[{prefix}` 로 치환 — `]]` 는 안 닫는다
+ * (네임스페이스 접두만 완성하고 실제 ID 를 이어 타이핑하게). `applyWikiLink`
+ * 와 달리 항상 열린 상태로 남긴다. execCommand 가 동기적으로 input 이벤트를
+ * 발화하므로, 호출 직후 caller 의 oninput 핸들러(wikiMatch 재실행)가 이미
+ * 다음(그 kind 로 필터된) 후보로 팝업을 갱신해준다 — 호출부는 wiki state 를
+ * 따로 건드리지 않아야 함.
+ */
+export function applyWikiPrefix(
+	ta: HTMLTextAreaElement,
+	from: number,
+	to: number,
+	prefix: string
+): void {
+	const text = `[[${prefix}`;
+	ta.focus();
+	ta.setSelectionRange(from, to);
+	if (document.execCommand && document.execCommand('insertText', false, text)) {
+		return;
+	}
+	ta.setRangeText(text, from, to, 'end');
 	ta.dispatchEvent(new Event('input', { bubbles: true }));
 }
 

@@ -45,7 +45,10 @@ describe('wikiMatch', () => {
 		const v = '앞 텍스트 [[';
 		const m = wikiMatch(v, v.length, index);
 		expect(m).not.toBeNull();
-		expect(m!.items.length).toBe(index.size);
+		// DEV-219 후속: 실재 ID 외에 네임스페이스 자체 후보(quest:/campaign:/rules:/library:)
+		// 4개가 앞에 추가된다.
+		expect(m!.items.filter((i) => i.nsPrefix).length).toBe(4);
+		expect(m!.items.filter((i) => !i.nsPrefix).length).toBe(index.size);
 		expect(v.slice(m!.from, m!.to)).toBe('[[');
 	});
 
@@ -59,11 +62,22 @@ describe('wikiMatch', () => {
 		const v = '[[book';
 		const m = wikiMatch(v, v.length, index);
 		expect(m).not.toBeNull();
-		const book = m!.items.find((i) => i.kind === 'book');
+		const book = m!.items.find((i) => i.kind === 'book' && !i.nsPrefix);
 		expect(book).toBeDefined();
 		expect(book!.id).toBe('BOOK-001');
 		// DEV-219: 삽입은 항상 `library:` 접두 포함.
 		expect(book!.insert ?? book!.id).toBe('library:BOOK-001');
+	});
+
+	// DEV-219 후속: `[[q` 처럼 콜론 없이 타이핑 중이면 네임스페이스 자체
+	// (`quest:` 등)도 후보로 뜬다 — 선택하면 접두만 삽입되고 이어서 ID 타이핑.
+	it('[[ 컨텍스트에서 콜론 없는 부분 입력도 네임스페이스 후보를 제안', () => {
+		const v = '[[q';
+		const m = wikiMatch(v, v.length, index);
+		expect(m).not.toBeNull();
+		const ns = m!.items.find((i) => i.nsPrefix && i.kind === 'quest');
+		expect(ns).toBeDefined();
+		expect(ns!.insert).toBe('quest:');
 	});
 
 	// DEV-239: 폴더/제목 경로로 타이핑해도 찾되, 삽입은 항상 BOOK-NNN.

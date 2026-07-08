@@ -18,7 +18,13 @@
 	// DEV-140: 본문 cross-link — [[DEV-033]] / [[C-001]] 위키문법을 링크로.
 	// DEV-219: [[kind:ID]] 명시 네임스페이스 지원 — resolveCrossLinkToken 이 접두
 	// 유무와 무관하게 kind/ref 를 함께 풀어준다.
-	import { questIndex, loadQuestIndex, refHref, resolveCrossLinkToken } from '$lib/stores/questIndex';
+	import {
+		questIndex,
+		loadQuestIndex,
+		refHref,
+		resolveCrossLinkToken,
+		KIND_LABEL
+	} from '$lib/stores/questIndex';
 
 	let { source }: { source: string } = $props();
 
@@ -144,7 +150,6 @@
 		if (/^BOOK-\d+$/i.test(id)) return 'book';
 		return /^C-\d+$/i.test(id) ? 'campaign' : 'quest';
 	}
-	const KIND_LABEL = { quest: '퀘스트', campaign: '캠페인', rule: '규칙', book: '도서관' } as const;
 	function rewriteCrossLinks() {
 		if (!container) return;
 		const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {

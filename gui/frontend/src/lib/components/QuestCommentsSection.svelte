@@ -15,6 +15,8 @@
 <script lang="ts">
 	import { tick, onDestroy, onMount } from 'svelte';
 	import MarkdownView from './MarkdownView.svelte';
+	// DEV-132 후속(admin 보고): 커스텀 반응 입력을 이모지 1개로 제한.
+	import { isSingleEmoji } from '$lib/utils/emoji';
 	// DEV-153: 작성/편집/답글 중이면 이탈 가드에 보고.
 	import { setUnsaved } from '$lib/stores/unsaved';
 	import {
@@ -29,7 +31,13 @@
 	// DEV-151: 댓글 textarea 첨부 — paste/drag&drop/버튼.
 	import { textareaAttach } from '$lib/utils/editor-attach';
 	// DEV-140/171: 댓글 textarea cross-link 자동완성 — caret 위치 팝업 + 실재 ID 제안.
-	import { wikiMatch, applyWikiLink, caretXY, type WikiItem } from '$lib/utils/textarea-wikilink';
+	import {
+		wikiMatch,
+		applyWikiLink,
+		applyWikiPrefix,
+		caretXY,
+		type WikiItem
+	} from '$lib/utils/textarea-wikilink';
 	import { questIndex, loadQuestIndex } from '$lib/stores/questIndex';
 	import { get } from 'svelte/store';
 	// DEV-235: 접기 상태(답글/본문) 영속 — 보드의 collapsedLanes(DEV-105) 와
@@ -156,6 +164,13 @@
 	});
 	function applyWiki(item: WikiItem) {
 		if (!wiki) return;
+		if (item.nsPrefix) {
+			// DEV-219 후속: 네임스페이스 접두만 삽입(`]]` 안 닫음) — execCommand 가
+			// 동기로 발화하는 input 이벤트를 타고 onWikiInput 이 이미 그 kind 로
+			// 필터된 다음 후보로 wiki state 를 갱신했으므로 여기서 건드리지 않음.
+			applyWikiPrefix(wiki.el, wiki.from, wiki.to, item.insert ?? item.id);
+			return;
+		}
 		// DEV-173: 규칙은 원본 대소문자 slug 로 삽입 (insert 우선).
 		applyWikiLink(wiki.el, wiki.from, wiki.to, item.insert ?? item.id);
 		wiki = null;
@@ -304,10 +319,16 @@
 	}
 	const allReactions = $derived([...REACTION_SET, ...customReactions]);
 	let customEmojiInput = $state('');
+	let customEmojiError = $state<string | null>(null);
 	function addCustomReaction(id: number) {
 		const emoji = customEmojiInput.trim();
-		customEmojiInput = '';
 		if (!emoji) return;
+		if (!isSingleEmoji(emoji)) {
+			customEmojiError = '이모지 1개만 입력하세요.';
+			return;
+		}
+		customEmojiError = null;
+		customEmojiInput = '';
 		if (!REACTION_SET.includes(emoji) && !customReactions.includes(emoji)) {
 			customReactions = [...customReactions, emoji];
 			persistCustomReactions();
@@ -812,6 +833,7 @@
 		class="entry"
 		class:reply={isReply}
 		class:dimmed={discussionOnly && !e.discussion}
+		class:pinned={isReply && e.pinned}
 		id={`comment-${e.id}`}
 	>
 		<div class="entry-head">
@@ -932,7 +954,11 @@
 					<div class="picker-wrap">
 						<button
 							class="reaction-add"
-							onclick={() => (pickerOpenFor = pickerOpenFor === e.id ? null : e.id)}
+							onclick={() => {
+								pickerOpenFor = pickerOpenFor === e.id ? null : e.id;
+								customEmojiInput = '';
+								customEmojiError = null;
+							}}
 							aria-expanded={pickerOpenFor === e.id}
 							title="반응 추가">☺+</button
 						>
@@ -966,13 +992,17 @@
 										</div>
 									{/each}
 								</div>
-								<!-- DEV-132: 직접 입력 — 고정 4종 외 임의 이모지 추가(길드 전체 재사용). -->
+								<!-- DEV-132: 직접 입력 — 고정 4종 외 임의 이모지 추가(길드 전체 재사용).
+								     DEV-132 후속(admin 보고): 길이 제한 없이 임의 문자열이 그대로
+								     들어갈 수 있던 문제 — 이모지 1개만 허용(addCustomReaction 검증). -->
 								<div class="picker-add-row">
 									<input
 										class="picker-add-input"
 										type="text"
-										placeholder="이모지 붙여넣기"
+										placeholder="이모지 1개"
+										maxlength="16"
 										bind:value={customEmojiInput}
+										oninput={() => (customEmojiError = null)}
 										onkeydown={(ev) => ev.key === 'Enter' && addCustomReaction(e.id)}
 									/>
 									<button
@@ -981,6 +1011,7 @@
 										onclick={() => addCustomReaction(e.id)}>추가</button
 									>
 								</div>
+								{#if customEmojiError}<p class="picker-add-err">{customEmojiError}</p>{/if}
 							</div>
 						{/if}
 					</div>
@@ -997,18 +1028,17 @@
 							{r.emoji}{#if r.authors.length > 1}<span class="rc">{r.authors.length}</span>{/if}
 						</button>
 					{/each}
-					{#if !isReply}
-						<!-- DEV-234 후속(admin 요청): 상단 고정 버튼을 오른쪽 아래로 이동 —
-						     foot-left 에서 여기로. root 만(답글은 위치 재배치 대상이 아니라
-						     버튼 노출 안 함). -->
-						<button
-							class="pin-btn"
-							class:on={e.pinned}
-							onclick={() => togglePinned(e.id)}
-							title={e.pinned ? '고정 해제' : '상단 고정'}
-							>📌</button
-						>
-					{/if}
+					<!-- DEV-234 후속(admin 요청): 상단 고정 버튼을 오른쪽 아래로 이동 —
+					     foot-left 에서 여기로. 답글도 고정 가능(admin 요청) — root 만
+					     스레드 정렬(orderedRoots)에 반영되고, 답글은 정렬 없이 강조
+					     테두리(.entry.pinned)만. -->
+					<button
+						class="pin-btn"
+						class:on={e.pinned}
+						onclick={() => togglePinned(e.id)}
+						title={e.pinned ? '고정 해제' : '상단 고정'}
+						>📌</button
+					>
 				</div>
 			</div>
 		{/if}
@@ -1191,11 +1221,15 @@
 					}}
 					onmouseenter={() => (wikiSel = i)}
 				>
-					<span class="wiki-id" class:missing={!it.exists}>🔗 {it.insert ?? it.id}</span>
+					<span class="wiki-id" class:missing={!it.exists}
+						>{it.nsPrefix ? '🏷️' : '🔗'} {it.insert ?? it.id}</span
+					>
 					<span class="wiki-meta">
-						{it.exists
-							? `${it.kind === 'rule' ? '규칙 · ' : it.kind === 'book' ? '도서관 · ' : ''}${it.title}`
-							: '새 링크 (미존재)'}
+						{it.nsPrefix
+							? it.title
+							: it.exists
+								? `${it.kind === 'rule' ? '규칙 · ' : it.kind === 'book' ? '도서관 · ' : ''}${it.title}`
+								: '새 링크 (미존재)'}
 					</span>
 				</button>
 			</li>
@@ -1349,6 +1383,14 @@
 	}
 	.entry {
 		border-radius: 6px;
+	}
+	/* DEV-234 후속(admin 요청): 답글도 고정 가능 — root 는 entry-card.pinned 로
+	   이미 강조되니, 답글(.entry.reply)만 자체 테두리로 강조. */
+	.entry.reply.pinned {
+		border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+		background: color-mix(in srgb, var(--accent) 6%, transparent);
+		padding: 0.3rem 0.5rem;
+		margin: -0.3rem -0.5rem 0;
 	}
 	.thread {
 		margin: 0;
@@ -1662,6 +1704,12 @@
 	}
 	.picker-add-btn:hover:not(:disabled) {
 		background: var(--bg-subtle);
+	}
+	/* DEV-132 후속: 이모지 1개 검증 실패 메시지. */
+	.picker-add-err {
+		margin: 0.2rem 0 0;
+		font-size: 0.7rem;
+		color: var(--danger);
 	}
 	.entry-actions {
 		margin-left: auto;

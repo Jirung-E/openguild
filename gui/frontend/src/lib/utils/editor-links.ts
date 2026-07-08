@@ -11,6 +11,7 @@
 
 import {
 	autocompletion,
+	startCompletion,
 	type Completion,
 	type CompletionContext,
 	type CompletionResult
@@ -18,14 +19,19 @@ import {
 import { markdownLanguage, commonmarkLanguage } from '@codemirror/lang-markdown';
 import type { Extension } from '@codemirror/state';
 import { tooltips, type EditorView } from '@codemirror/view';
-import { questIndex, loadQuestIndex, KIND_ALIASES, KIND_NAMESPACE } from '$lib/stores/questIndex';
+import {
+	questIndex,
+	loadQuestIndex,
+	KIND_ALIASES,
+	KIND_NAMESPACE,
+	KIND_LABEL,
+	type Kind
+} from '$lib/stores/questIndex';
 import { get } from 'svelte/store';
 
 /** DEV-173: `[[` 바로 안(아직 안 닫힘)의 부분 slug — 규칙 포함 전체 인덱스 제안.
  *  규칙 slug 는 한글 등 비ASCII 가능 — 공백/대괄호 제외 모든 문자 허용. */
 const BEFORE_CURSOR_WIKI = /\[\[([^[\]\s]*)$/;
-
-const KIND_LABEL = { quest: '퀘스트', campaign: '캠페인', rule: '규칙', book: '도서관' } as const;
 
 /**
  * DEV-173: `[[` 컨텍스트 자동완성 — 규칙 slug 포함 전체 인덱스에서 prefix 매칭.
@@ -49,6 +55,33 @@ function wikiContextCompletion(context: CompletionContext): CompletionResult | n
 	const upper = query.toUpperCase();
 	const index = get(questIndex);
 	const options: Completion[] = [];
+	// DEV-219 후속(admin 보고): `[[q` 처럼 콜론 없이 타이핑 중이면 실제 ID 뿐
+	// 아니라 "네임스페이스 자체"(`quest:` 등)도 후보로 보여준다 — 선택하면
+	// 접두만 삽입되고(`]]` 로 안 닫음) 그 종류로 필터된 자동완성이 바로 재오픈.
+	if (!kindFilter) {
+		const lower = partial.toLowerCase();
+		const seenKinds = new Set<Kind>();
+		for (const [alias, kind] of Object.entries(KIND_ALIASES)) {
+			if (seenKinds.has(kind)) continue;
+			const canonical = KIND_NAMESPACE[kind];
+			if (!canonical.startsWith(lower) && !alias.startsWith(lower)) continue;
+			seenKinds.add(kind);
+			const nsInsert = `${canonical}:`;
+			options.push({
+				label: nsInsert,
+				displayLabel: `🏷️ ${nsInsert}`,
+				detail: `네임스페이스 — ${KIND_LABEL[kind]}만 보기`,
+				apply: (view: EditorView, _c: Completion, from: number, to: number) => {
+					view.dispatch({
+						changes: { from, to, insert: nsInsert },
+						selection: { anchor: from + nsInsert.length }
+					});
+					startCompletion(view);
+				},
+				type: 'keyword'
+			});
+		}
+	}
 	for (const [id, ref] of index) {
 		if (kindFilter && ref.kind !== kindFilter) continue;
 		// DEV-239: 도서관 문서는 "폴더/제목" 경로로 타이핑해도 찾을 수 있어야
@@ -79,7 +112,11 @@ function wikiContextCompletion(context: CompletionContext): CompletionResult | n
 		});
 	}
 	if (options.length === 0) return null;
-	options.sort((a, b) => a.label.localeCompare(b.label));
+	options.sort((a, b) => {
+		const ak = a.type === 'keyword' ? 0 : 1;
+		const bk = b.type === 'keyword' ? 0 : 1;
+		return ak !== bk ? ak - bk : a.label.localeCompare(b.label);
+	});
 	// DEV-239: label 이 id 또는 폴더 경로 둘 중 하나라 CodeMirror 기본 fuzzy
 	// 필터(label 기준)가 경로 매칭 후보를 지워버림 — 필터링은 위에서 이미
 	// 완료했으니 자체 필터를 끈다.

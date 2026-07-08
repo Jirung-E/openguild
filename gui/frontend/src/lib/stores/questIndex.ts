@@ -48,6 +48,15 @@ export const KIND_NAMESPACE: Record<Kind, string> = {
 	book: 'library'
 };
 
+/** DEV-219 후속: kind → 한국어 표시 라벨. 이전엔 editor-links.ts /
+ *  MarkdownView.svelte 에 각각 중복 정의돼 drift 위험 — 여기 하나로 통합. */
+export const KIND_LABEL: Record<Kind, string> = {
+	quest: '퀘스트',
+	campaign: '캠페인',
+	rule: '규칙',
+	book: '도서관'
+};
+
 export interface IndexedRef {
 	/** 표시용 — 자동완성 detail / 링크 title 에. */
 	title: string;
