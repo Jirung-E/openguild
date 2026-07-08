@@ -108,7 +108,25 @@
 	onMount(() => {
 		// DEV-173: cross-link 딥링크 — `/rules?slug=xxx` 로 진입 시 해당 규칙 선택.
 		const slugParam = new URLSearchParams(window.location.search).get('slug');
-		loadList(slugParam);
+		loadList(slugParam).then(() => {
+			// BUG-126(admin 보고): slug 없이 진입(예: nav 의 "Rules" 링크)하면
+			// loadList 가 entries[0] 을 자동 선택하지만 URL 엔 반영 안 됐음 —
+			// 그 결과 "이 진입 지점" 자체가 history 상 "선택 없음" 으로 남아,
+			// 여러 규칙을 거쳐 뒤로가기하면 이 지점에서 (원래 selectedSlug 였던)
+			// 첫 규칙으로 안 돌아오고 직전 선택에 멈춰있는 것처럼 보였다 —
+			// $effect 가 slug 없는 URL 은 무시하도록 짜여 있었기 때문(아래).
+			// 진입 즉시 실제 선택을 URL 에 replaceState 로 명시해 이 지점부터
+			// 항상 URL == 상태가 성립하게 만든다.
+			if (selectedSlug && selectedSlug !== slugParam) {
+				const cur = new URLSearchParams(window.location.search);
+				cur.set('slug', selectedSlug);
+				goto(`/rules?${cur.toString()}`, {
+					replaceState: true,
+					keepFocus: true,
+					noScroll: true
+				});
+			}
+		});
 	});
 
 	// BUG-104: URL(?slug=) 을 선택 상태의 진리원으로.
@@ -118,10 +136,16 @@
 	// (2) 퀘스트/캠페인 링크를 따라갔다 뒤로가기 — 선택이 컴포넌트 state 뿐이라
 	//     첫 규칙으로 초기화되던 문제: 선택 시 URL 에 기록해 해결
 	//     (복귀 시 history 의 ?slug= 를 onMount 가 읽음).
+	// BUG-126 후속: slug 가 사라진 경우(뒤로가기로 slug 없는 최초 진입 지점에
+	// 복귀 / nav 의 "Rules" 링크를 같은 라우트에서 다시 클릭)도 첫 규칙으로
+	// 리셋 — 이전엔 무시해서 selectedSlug 가 직전 값에 멈춰있었다.
 	$effect(() => {
 		const slug = $page.url.searchParams.get('slug');
 		if (slug && slug !== selectedSlug && entries.some((e) => e.slug === slug)) {
 			select(slug);
+		} else if (!slug && entries.length > 0 && selectedSlug !== entries[0].slug) {
+			selectedSlug = entries[0].slug;
+			refreshSelectedContent();
 		}
 	});
 

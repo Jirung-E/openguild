@@ -166,6 +166,19 @@
 		if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
 			anchor = dateParam;
 			lastUrlDate = dateParam;
+		} else {
+			// BUG-126(admin 보고): date 없이 진입(기본=오늘)하면 그 상태가 URL 에
+			// 반영 안 돼 있었음 — 이 진입 지점 자체가 history 상 "날짜 없음" 으로
+			// 남아, 여러 날짜를 거쳐 뒤로가기하면 이 지점에서 원래 보던(오늘)
+			// 날짜로 안 돌아오고 직전 날짜에 멈춰있는 것처럼 보였다(규칙 페이지와
+			// 동일 원인 — 아래 $effect 가 date 없는 URL 을 무시하도록 짜여 있었음).
+			// 진입 즉시 실제 anchor 를 URL 에 replaceState 로 명시.
+			lastUrlDate = anchor;
+			goto(`/worklog?date=${anchor}`, {
+				replaceState: true,
+				keepFocus: true,
+				noScroll: true
+			});
 		}
 		load();
 	});
@@ -177,6 +190,8 @@
 	// 날짜 ≠ anchor" 조건에 걸려 anchor 를 옛 값으로 되돌렸다 — 날짜를 골라도
 	// 처음 값으로 계속 복귀. URL 값이 실제로 바뀌었을 때만 반응하도록
 	// lastUrlDate 로 가드.
+	// BUG-126 후속: date 가 사라진 경우(뒤로가기로 date 없는 최초 진입 지점에
+	// 복귀 / nav 링크를 같은 라우트에서 다시 클릭)도 무시하지 않고 오늘로 리셋.
 	let lastUrlDate: string | null = null;
 	$effect(() => {
 		const d = $page.url.searchParams.get('date');
@@ -184,6 +199,9 @@
 		lastUrlDate = d;
 		if (d && /^\d{4}-\d{2}-\d{2}$/.test(d) && d !== anchor) {
 			anchor = d;
+			load();
+		} else if (!d && anchor !== fmt(new Date())) {
+			anchor = fmt(new Date());
 			load();
 		}
 	});
@@ -374,9 +392,8 @@
 				<div class="note-head"><span>📝 기간 내 노트 {notes.length}건</span></div>
 				{#each notes as n (n.date)}
 					<div class="note-day">
-						<button class="note-date" onclick={() => goto(`/worklog?date=${n.date}`)}>
-							{n.date}
-						</button>
+						<!-- BUG-126(admin 요청): 링크일 필요 없음 — 그냥 날짜 표시. -->
+						<span class="note-date">{n.date}</span>
 						<div class="note-body"><MarkdownView source={n.content ?? ''} /></div>
 					</div>
 				{/each}
@@ -537,14 +554,11 @@
 		border-bottom: none;
 	}
 	.note-date {
-		background: transparent;
-		border: none;
-		color: var(--accent);
+		display: block;
+		color: var(--text-muted);
 		font-size: 0.78rem;
 		font-family: 'SFMono-Regular', Consolas, monospace;
 		padding: 0.5rem 0.75rem 0;
-		cursor: pointer;
-		text-decoration: underline;
 	}
 	.note-edit {
 		padding: 0.6rem 0.75rem;
