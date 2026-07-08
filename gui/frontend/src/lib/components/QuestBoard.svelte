@@ -742,7 +742,10 @@
 
 	// DEV-074 fix: light theme 시 노드 bg 색 light tone 으로. theme store
 	// subscribe — 변경 시 모든 노드 의 urgencyBg data 갱신 + cy.style 적용.
-	import { theme, resolveTheme, themePalette } from '$lib/stores/theme';
+	// BUG-121: `theme`(ThemeChoice) 대신 `effectiveTheme` 을 구독 — system
+	// 모드에서 OS 가 테마를 바꿔도 `theme` 값 자체는 'system' 그대로라
+	// writable 이 재통지하지 않아, 노드/SVG 재생성이 전혀 발화하지 않았다.
+	import { theme, effectiveTheme, resolveTheme, themePalette } from '$lib/stores/theme';
 	function currentEffectiveTheme(): 'dark' | 'light' {
 		return resolveTheme(getStore(theme));
 	}
@@ -1961,7 +1964,7 @@
 	}
 
 	onMount(() => {
-		const unsubTheme = theme.subscribe(() => refreshNodeBgForTheme());
+		const unsubTheme = effectiveTheme.subscribe(() => refreshNodeBgForTheme());
 
 		// gridSnap 은 guildKeyPrefix 가 두 번째 onMount 에서 set 된 직후 다시
 		// loadGridSnap 호출. 여기서는 listener 만.

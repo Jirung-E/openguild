@@ -12,7 +12,9 @@
 	import hljs from 'highlight.js';
 	import { tick } from 'svelte';
 	// DEV-111: mermaid 다이어그램 렌더링 — lazy import (~700KB), 블록 있을 때만.
-	import { theme, resolveTheme } from '$lib/stores/theme';
+	// BUG-121: `theme`(ThemeChoice) 대신 `effectiveTheme` 구독 — system 모드에서
+	// OS 가 테마를 바꿔도 `theme` 값 자체는 'system' 그대로라 재통지가 안 됨.
+	import { effectiveTheme } from '$lib/stores/theme';
 	// DEV-140: 본문 cross-link — [[DEV-033]] / [[C-001]] 위키문법을 링크로.
 	// DEV-219: [[kind:ID]] 명시 네임스페이스 지원 — resolveCrossLinkToken 이 접두
 	// 유무와 무관하게 kind/ref 를 함께 풀어준다.
@@ -55,7 +57,7 @@
 		const blocks = container.querySelectorAll<HTMLElement>('pre > code.language-mermaid');
 		if (blocks.length === 0) return;
 		const { default: mermaid } = await import('mermaid');
-		const eff = resolveTheme($theme);
+		const eff = $effectiveTheme;
 		mermaid.initialize({
 			startOnLoad: false,
 			theme: eff === 'dark' ? 'dark' : 'default',
@@ -112,7 +114,7 @@
 	$effect(() => {
 		// html / theme / 인덱스 변경 시 재렌더.
 		void html;
-		void $theme;
+		void $effectiveTheme;
 		void $questIndex;
 		tick().then(() => {
 			renderMermaidBlocks();

@@ -219,6 +219,9 @@
 		const unwatchSys = watchSystemPreference(() => {
 			// system 모드일 때만 재적용 (다른 모드는 사용자가 명시 — OS 변경 무시).
 			// 창 테마는 system=null 이라 OS 가 알아서 따라가므로 document 만 재적용.
+			// BUG-121: JS 가 색을 직접 계산하는 컴포넌트(QuestBoard 의 Cytoscape/SVG)
+			// 는 `effectiveTheme` 스토어를 구독 — 그쪽은 theme.ts 자체에서
+			// matchMedia listener 로 갱신되므로 여기서 별도 처리 불필요.
 			if (get(theme) === 'system') {
 				applyThemeToDocument('system');
 			}

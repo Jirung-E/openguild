@@ -13,11 +13,14 @@
 	import type { Quest } from '$lib/types';
 	import { makeQuestNodeSvgUrl, QUEST_NODE_H } from '$lib/utils/quest-node-svg';
 	// DEV-074 fix3: theme 별 노드 색 — store 변경 시 reactive.
-	import { theme, resolveTheme } from '$lib/stores/theme';
+	// BUG-121: `theme`(ThemeChoice) 대신 `effectiveTheme` 을 직접 구독 —
+	// system 모드에서 OS 가 테마를 바꿔도 `theme` 값 자체는 'system' 그대로라
+	// $derived 가 재계산되지 않았다(QuestBoard 와 동일 원인).
+	import { effectiveTheme as effectiveThemeStore } from '$lib/stores/theme';
 	// BUG-117: SVG 노드 이미지는 px 고정이라 uiScale(root font-size)이 안
 	// 먹었음 — scale 배율을 직접 곱해 이미지/슬롯 폭 + marquee 계산에 반영.
 	import { uiScale } from '$lib/stores/uiScale';
-	let effectiveTheme = $derived(resolveTheme($theme));
+	let effectiveTheme = $derived($effectiveThemeStore);
 
 	let {
 		quests,
