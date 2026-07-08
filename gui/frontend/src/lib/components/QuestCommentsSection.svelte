@@ -340,6 +340,45 @@
 		persistCustomReactions();
 	}
 	let pickerOpenFor = $state<number | null>(null);
+	// BUG-125(admin 보고): 이모지 버튼이 foot-left(왼쪽)로 옮겨진 뒤에도 팝업이
+	// CSS `right:0` 로 여전히 버튼 왼쪽으로(=화면 밖으로) 펼쳐졌음. 자동완성
+	// 팝업(placeWiki)과 동일하게 버튼 위치에서 JS 로 계산 + 화면 경계 clamp —
+	// 오른쪽으로 펼치되 뷰포트를 넘지 않도록.
+	let reactionPickerPos = $state<{ left: number; top: number | null; bottom: number | null } | null>(
+		null
+	);
+	function toggleReactionPicker(ev: MouseEvent, id: number) {
+		if (pickerOpenFor === id) {
+			pickerOpenFor = null;
+			reactionPickerPos = null;
+			return;
+		}
+		const btn = ev.currentTarget as HTMLElement;
+		const rect = btn.getBoundingClientRect();
+		const POPUP_W = 168; // .reaction-picker min-width(9rem=144px) + 여유.
+		const left = Math.max(4, Math.min(rect.left, window.innerWidth - POPUP_W - 4));
+		const spaceAbove = rect.top;
+		const spaceBelow = window.innerHeight - rect.bottom;
+		// 위쪽 공간이 좁고 아래가 더 넓으면 아래로 펼침(자동완성 팝업의 flip 과 동일 원리).
+		if (spaceAbove < 220 && spaceBelow > spaceAbove) {
+			reactionPickerPos = { left, top: rect.bottom + 4, bottom: null };
+		} else {
+			reactionPickerPos = { left, top: null, bottom: window.innerHeight - rect.top + 4 };
+		}
+		pickerOpenFor = id;
+		customEmojiInput = '';
+		customEmojiError = null;
+	}
+	// 팝업이 열린 채로 창 크기가 바뀌면 위치가 어긋날 수 있어 닫음(간단한 안전장치).
+	$effect(() => {
+		if (pickerOpenFor == null) return;
+		const onResize = () => {
+			pickerOpenFor = null;
+			reactionPickerPos = null;
+		};
+		window.addEventListener('resize', onResize);
+		return () => window.removeEventListener('resize', onResize);
+	});
 	// DEV-108: reaction 항목 = "emoji" 또는 "emoji:author1|author2".
 	// 누가 반응했는지 호버로 보여주기 위해 파싱.
 	function parseReaction(r: string): { emoji: string; authors: string[] } {
@@ -954,21 +993,28 @@
 					<div class="picker-wrap">
 						<button
 							class="reaction-add"
-							onclick={() => {
-								pickerOpenFor = pickerOpenFor === e.id ? null : e.id;
-								customEmojiInput = '';
-								customEmojiError = null;
-							}}
+							onclick={(ev) => toggleReactionPicker(ev, e.id)}
 							aria-expanded={pickerOpenFor === e.id}
 							title="반응 추가">☺+</button
 						>
-						{#if pickerOpenFor === e.id}
+						{#if pickerOpenFor === e.id && reactionPickerPos}
 							<div
 								class="picker-ov"
 								role="presentation"
-								onclick={() => (pickerOpenFor = null)}
+								onclick={() => {
+									pickerOpenFor = null;
+									reactionPickerPos = null;
+								}}
 							></div>
-							<div class="reaction-picker" role="menu">
+							<div
+								class="reaction-picker"
+								role="menu"
+								style:left="{reactionPickerPos.left}px"
+								style:top={reactionPickerPos.top != null ? `${reactionPickerPos.top}px` : null}
+								style:bottom={reactionPickerPos.bottom != null
+									? `${reactionPickerPos.bottom}px`
+									: null}
+							>
 								<div class="picker-row">
 									{#each allReactions as emoji (emoji)}
 										<div class="picker-item-wrap">
@@ -1501,7 +1547,11 @@
 	.entry-foot {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
+		/* BUG-125(admin 보고): space-between 이면 foot-right(반응 pill + 고정
+		   버튼)가 통째로 카드 오른쪽 끝에 붙어, 이모지 버튼이 foot-left 로
+		   옮겨진 뒤에도 반응 pill 들은 여전히 오른쪽 끝에 몰려있는 것처럼
+		   보였다 — foot-left 바로 옆에 왼쪽 정렬로 이어지게 하고, 고정
+		   버튼(.pin-btn)에만 margin-left:auto 를 줘서 그것만 오른쪽 끝으로. */
 		margin-top: 0.4rem;
 		gap: 0.5rem;
 	}
@@ -1553,6 +1603,9 @@
 		border-radius: 4px;
 		border: 1px solid transparent;
 		opacity: 0.6;
+		/* BUG-125: 반응 pill 은 왼쪽 정렬로 남기고, 고정 버튼만 카드 오른쪽
+		   끝(오른쪽 아래)으로 밀어냄. */
+		margin-left: auto;
 	}
 	.pin-btn:hover {
 		opacity: 1;
@@ -1567,6 +1620,10 @@
 		display: flex;
 		align-items: center;
 		gap: 0.25rem;
+		/* BUG-125: foot-left 옆으로 자연스레 이어지되(반응 pill 왼쪽 정렬),
+		   남는 공간을 이 컨테이너가 차지해야 .pin-btn 의 margin-left:auto 가
+		   카드 오른쪽 끝까지 닿는다. */
+		flex: 1;
 	}
 	.reaction-pill {
 		padding: 0.1rem 0.45rem;
@@ -1613,10 +1670,11 @@
 		z-index: 90;
 		background: transparent;
 	}
+	/* BUG-125: 버튼이 foot-left 로 옮겨진 뒤 CSS 만으로(right:0, picker-wrap
+	   상대 위치) 펼치면 화면 밖으로 나갈 수 있어 — JS 로 뷰포트 기준 위치
+	   계산(fixed) + clamp. 자동완성 팝업(.wiki-pop)과 동일한 접근. */
 	.reaction-picker {
-		position: absolute;
-		bottom: calc(100% + 4px);
-		right: 0;
+		position: fixed;
 		z-index: 91;
 		display: flex;
 		flex-direction: column;
