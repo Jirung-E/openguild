@@ -45,15 +45,14 @@
 
 	const selected = $derived(books.find((b) => b.book_id === selectedId) ?? null);
 
-	// BUG-133(admin 보고): reindex(=전체 새로고침) 후 도서관 첨부파일이 안 보임.
-	// 원인 — `list()`(list_books) 는 payload 절약을 위해 처음부터 attachments
-	// 를 항상 빈 배열로 반환(설계 의도)하고, 그동안 화면에 attachments 가 채워져
-	// 있던 건 addAttachment/update 응답을 로컬 books 배열에 수동 병합해온
-	// 부수효과였을 뿐 — 새로고침으로 그 임시 상태가 날아가면 복구할 방법이
-	// 없었다. quest/campaign 상세는 선택 시 단건 조회(get)로 첨부를 채우는데
-	// 도서관만 그 단건 조회를 아예 호출한 적이 없었음. 선택이 바뀔 때마다
-	// libraryApi.get() 으로 attachments 를 채워 넣어 동일한 패턴으로 맞춘다.
-	// (본문/제목 등은 이미 list() 로 있어 재조회 불필요 — attachments 만 갱신.)
+	// BUG-133(admin 보고) → BUG-134 후속(admin 지적): 문서를 열 때 quest 상세
+	// 페이지(`/quests/[id]` — 매번 questsApi.getBySlug 로 서버에서 새로 조회)와
+	// 달리, 도서관은 애초에 최초 `list()` 스냅샷을 그대로 보여주기만 하고
+	// 재조회가 없었다 — "인덱스(list 캐시) 내용을 읽는" 상태. quest 처럼
+	// 상세는 매번 서버에서 새로 불러오는 게 맞고, list 캐시가 본문까지 들고
+	// 있을 필요는 없다(검색용 캐시일 뿐 — 상세 표시는 이 재조회가 진리원).
+	// 선택이 바뀔 때마다 libraryApi.get() 으로 title/body/path/attachments
+	// 전부를 서버에서 다시 받아 덮어쓴다.
 	$effect(() => {
 		const id = selectedId;
 		if (!id) return;
@@ -62,10 +61,10 @@
 			.then((full) => {
 				// 응답 도착 전에 다른 문서를 선택했으면 무시(경쟁 상태 방지).
 				if (selectedId !== id) return;
-				books = books.map((b) => (b.book_id === id ? { ...b, attachments: full.attachments } : b));
+				books = books.map((b) => (b.book_id === id ? full : b));
 			})
 			.catch(() => {
-				/* 보조 기능 — 실패해도 본문/제목은 이미 list() 로 표시됨 */
+				/* 보조 기능 — 실패해도 list() 스냅샷은 표시됨 */
 			});
 	});
 
