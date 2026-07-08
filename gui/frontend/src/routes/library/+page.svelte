@@ -18,7 +18,7 @@
 	import { goto } from '$app/navigation';
 	import { setUnsaved } from '$lib/stores/unsaved';
 	import { libraryApi, type Book, type LibraryFolder } from '$lib/api/library';
-	import { buildLibraryTree, flattenFolderPaths, searchBooks } from '$lib/utils/library-tree';
+	import { buildLibraryTree, flattenFolderPaths, searchLibrary } from '$lib/utils/library-tree';
 	import LibraryFolderTree from '$lib/components/LibraryFolderTree.svelte';
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
@@ -54,6 +54,17 @@
 		if (next.has(path)) next.delete(path);
 		else next.add(path);
 		collapsedFolders = next;
+	}
+	// BUG-127: tree 모드 검색 결과의 폴더를 클릭하면 그 폴더 + 조상 전부를
+	// 펼치고(collapsedFolders 에서 제거) 검색을 닫아 트리에서 바로 보이게.
+	function revealFolder(path: string) {
+		const next = new Set(collapsedFolders);
+		const parts = path.split('/');
+		for (let i = 1; i <= parts.length; i++) {
+			next.delete(parts.slice(0, i).join('/'));
+		}
+		collapsedFolders = next;
+		searchQuery = '';
 	}
 	const tree = $derived(buildLibraryTree(folders, books));
 
@@ -91,10 +102,13 @@
 	const explorerFolders = $derived(explorerPath === '' ? tree.roots : (explorerNode?.children ?? []));
 	const explorerDocs = $derived(explorerPath === '' ? tree.rootDocs : (explorerNode?.docs ?? []));
 
-	// DEV-238: 검색 — 활성화되면 폴더 구조/현재 탐색 위치와 무관하게 매칭
-	// 문서만 평평하게 보여줌(검색 중엔 "어느 폴더에 있나"보다 "찾았나"가 우선).
+	// DEV-238 → BUG-127 후속(admin 보고): 예전엔 항상 전역 검색이었음 — 이제
+	// explorer(아이콘) 모드는 현재 폴더(explorerPath) + 하위만 검색(탐색기의
+	// "여기서 찾기" 감각). tree 모드는 "현재 폴더" 개념 자체가 없어(트리
+	// 전체를 항상 다 보여줌) 전역 유지. 폴더 이름도 매칭 대상에 포함.
 	let searchQuery = $state('');
-	const searchResults = $derived(searchBooks(books, searchQuery));
+	const searchScope = $derived(viewMode === 'explorer' ? explorerPath : '');
+	const searchResults = $derived(searchLibrary(tree, books, searchQuery, searchScope));
 
 	let editMode = $state(false);
 	$effect(() => setUnsaved('library-edit', editMode));
@@ -206,6 +220,11 @@
 	function gotoFolder(path: string) {
 		explorerPath = path;
 		syncUrl();
+	}
+
+	// BUG-127(admin 요청): 아이콘 뷰에서 상위 폴더로 바로 이동하는 버튼.
+	function parentOf(path: string): string {
+		return path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
 	}
 
 	let confirmDiscardId = $state<string | null>(null);
@@ -424,6 +443,27 @@
 		}
 	}
 
+	// BUG-127(admin 요청): 드래그&드랍 — 문서를 폴더(또는 상위/루트)에 드롭하면
+	// 그 경로로 이동. 기존 "폴더 이동" 버튼(submitMove)과 같은 PATCH, 대상만 다름.
+	async function moveDocTo(bookId: string, targetPath: string) {
+		const b = books.find((x) => x.book_id === bookId);
+		if (!b || b.path === targetPath) return;
+		try {
+			const updated = await libraryApi.update(bookId, { path: targetPath });
+			books = books.map((x) => (x.book_id === bookId ? updated : x));
+		} catch (e) {
+			showToast(e instanceof Error ? e.message : '이동 실패', 'error');
+		}
+	}
+	// explorer 모드 타일 드롭 시각 강조 + 핸들러.
+	let dragOverFolder = $state<string | null>(null);
+	function onTileDrop(e: DragEvent, targetPath: string) {
+		e.preventDefault();
+		dragOverFolder = null;
+		const id = e.dataTransfer?.getData('text/plain');
+		if (id) moveDocTo(id, targetPath);
+	}
+
 	// ─── DEV-239: 새 폴더 ───
 	function openCreateFolder() {
 		creatingFolder = true;
@@ -497,11 +537,54 @@
 			bind:value={searchQuery}
 		/>
 		<div class="crumbs">
-			<button class="crumb" onclick={() => gotoFolder('')}>도서관</button>
+			<!-- BUG-127(admin 요청): 현재 위치 왼쪽에 상위 폴더 이동 버튼.
+			     BUG-127: 상위/도서관/각 경로 조각도 드롭 대상 — 문서를 여기로 끌어다
+			     놓으면 그 조상 경로로 이동. -->
+			<button
+				class="btn-up"
+				class:drag-over={dragOverFolder === parentOf(explorerPath)}
+				onclick={() => gotoFolder(parentOf(explorerPath))}
+				disabled={!explorerPath}
+				title="상위 폴더로"
+				ondragover={(e) => {
+					if (!explorerPath) return;
+					e.preventDefault();
+					dragOverFolder = parentOf(explorerPath);
+				}}
+				ondragleave={() => (dragOverFolder = null)}
+				ondrop={(e) => explorerPath && onTileDrop(e, parentOf(explorerPath))}
+			>
+				⬆
+			</button>
+			<button
+				class="crumb"
+				class:drag-over={dragOverFolder === ''}
+				onclick={() => gotoFolder('')}
+				ondragover={(e) => {
+					e.preventDefault();
+					dragOverFolder = '';
+				}}
+				ondragleave={() => (dragOverFolder = null)}
+				ondrop={(e) => onTileDrop(e, '')}
+			>
+				도서관
+			</button>
 			{#each explorerPath ? explorerPath.split('/') : [] as _seg, i (i)}
 				{@const partial = explorerPath.split('/').slice(0, i + 1).join('/')}
 				<span class="crumb-sep">›</span>
-				<button class="crumb" onclick={() => gotoFolder(partial)}>{_seg}</button>
+				<button
+					class="crumb"
+					class:drag-over={dragOverFolder === partial}
+					onclick={() => gotoFolder(partial)}
+					ondragover={(e) => {
+						e.preventDefault();
+						dragOverFolder = partial;
+					}}
+					ondragleave={() => (dragOverFolder = null)}
+					ondrop={(e) => onTileDrop(e, partial)}
+				>
+					{_seg}
+				</button>
 			{/each}
 			{#if explorerPath}
 				<button class="btn-del-folder" onclick={() => askDeleteFolder(explorerPath)}>
@@ -544,13 +627,34 @@
 		{/if}
 
 		{#if searchResults}
-			<!-- DEV-238: 검색 중엔 현재 폴더 위치 무시 — 매칭 문서만 평평하게. -->
-			{#if searchResults.length === 0}
+			<!-- BUG-127: 검색은 현재 폴더(explorerPath) + 하위로 스코프, 폴더 이름도 매칭. -->
+			{#if searchResults.folders.length === 0 && searchResults.books.length === 0}
 				<p class="empty-list">검색 결과 없음.</p>
 			{:else}
 				<div class="tile-grid">
-					{#each searchResults as b (b.book_id)}
-						<button class="tile" onclick={() => select(b.book_id)}>
+					{#each searchResults.folders as f (f.path)}
+						<button
+							class="tile"
+							class:drag-over={dragOverFolder === f.path}
+							onclick={() => gotoFolder(f.path)}
+							ondragover={(e) => {
+								e.preventDefault();
+								dragOverFolder = f.path;
+							}}
+							ondragleave={() => (dragOverFolder = null)}
+							ondrop={(e) => onTileDrop(e, f.path)}
+						>
+							<span class="tile-icon" aria-hidden="true">📁</span>
+							<span class="tile-label">{f.name}</span>
+						</button>
+					{/each}
+					{#each searchResults.books as b (b.book_id)}
+						<button
+							class="tile"
+							draggable="true"
+							ondragstart={(e) => e.dataTransfer?.setData('text/plain', b.book_id)}
+							onclick={() => select(b.book_id)}
+						>
 							<span class="tile-icon" aria-hidden="true">📄</span>
 							<span class="tile-label">{b.title}</span>
 							<span class="tile-sub">{b.book_id}</span>
@@ -563,13 +667,28 @@
 		{:else}
 			<div class="tile-grid">
 				{#each explorerFolders as f (f.path)}
-					<button class="tile" onclick={() => gotoFolder(f.path)}>
+					<button
+						class="tile"
+						class:drag-over={dragOverFolder === f.path}
+						onclick={() => gotoFolder(f.path)}
+						ondragover={(e) => {
+							e.preventDefault();
+							dragOverFolder = f.path;
+						}}
+						ondragleave={() => (dragOverFolder = null)}
+						ondrop={(e) => onTileDrop(e, f.path)}
+					>
 						<span class="tile-icon" aria-hidden="true">📁</span>
 						<span class="tile-label">{f.name}</span>
 					</button>
 				{/each}
 				{#each explorerDocs as b (b.book_id)}
-					<button class="tile" onclick={() => select(b.book_id)}>
+					<button
+						class="tile"
+						draggable="true"
+						ondragstart={(e) => e.dataTransfer?.setData('text/plain', b.book_id)}
+						onclick={() => select(b.book_id)}
+					>
 						<span class="tile-icon" aria-hidden="true">📄</span>
 						<span class="tile-label">{b.title}</span>
 						<span class="tile-sub">{b.book_id}</span>
@@ -583,7 +702,19 @@
 				<!-- 좌측 sidebar -->
 				<aside class="sidebar">
 					<div class="sidebar-head">
-						<h2>도서관</h2>
+						<!-- BUG-127: 최상위(루트)로 이동 — 문서를 여기로 끌어다 놓으면 path=''. -->
+						<h2
+							class:drag-over={dragOverFolder === ''}
+							role="presentation"
+							ondragover={(e) => {
+								e.preventDefault();
+								dragOverFolder = '';
+							}}
+							ondragleave={() => (dragOverFolder = null)}
+							ondrop={(e) => onTileDrop(e, '')}
+						>
+							도서관
+						</h2>
 						<div class="view-toggle">
 							<button class:on={isMode('tree')} onclick={() => setViewMode('tree')} title="트리 보기">☰</button>
 							<button class:on={isMode('explorer')} onclick={() => setViewMode('explorer')} title="아이콘 보기">▦</button>
@@ -600,12 +731,20 @@
 						bind:value={searchQuery}
 					/>
 					{#if searchResults}
-						<!-- DEV-238: 검색 중엔 폴더 구조 무시 — 매칭 문서만 평평하게. -->
-						{#if searchResults.length === 0}
+						<!-- BUG-127: tree 모드는 "현재 폴더" 개념이 없어 전역 검색 유지,
+						     폴더 이름도 매칭 — 클릭하면 그 폴더를 펼쳐서 보여줌. -->
+						{#if searchResults.folders.length === 0 && searchResults.books.length === 0}
 							<p class="empty-list">검색 결과 없음.</p>
 						{:else}
 							<div class="book-list">
-								{#each searchResults as b (b.book_id)}
+								{#each searchResults.folders as f (f.path)}
+									<button class="book-item" onclick={() => revealFolder(f.path)}>
+										<span class="book-id">📁</span>
+										<span class="book-title">{f.name}</span>
+										<span class="book-path">{f.path}</span>
+									</button>
+								{/each}
+								{#each searchResults.books as b (b.book_id)}
 									<button
 										class="book-item"
 										class:active={b.book_id === selectedId}
@@ -631,12 +770,15 @@
 									onSelectDoc={select}
 									onDeleteFolder={askDeleteFolder}
 									onToggleCollapse={toggleFolderCollapsed}
+									onMoveDoc={moveDocTo}
 								/>
 							{/each}
 							{#each tree.rootDocs as b (b.book_id)}
 								<button
 									class="book-item"
 									class:active={b.book_id === selectedId}
+									draggable="true"
+									ondragstart={(e) => e.dataTransfer?.setData('text/plain', b.book_id)}
 									onclick={() => select(b.book_id)}
 								>
 									<span class="book-id">{b.book_id}</span>
@@ -702,10 +844,9 @@
 						{#if viewMode === 'explorer'}
 							<button class="btn-edit" onclick={explorerBack}>← 목록</button>
 						{/if}
-						<div class="view-toggle inline">
-							<button class:on={viewMode === 'tree'} onclick={() => setViewMode('tree')} title="트리 보기">☰</button>
-							<button class:on={viewMode === 'explorer'} onclick={() => setViewMode('explorer')} title="아이콘 보기">▦</button>
-						</div>
+						<!-- BUG-127(admin 요청): 뷰모드 토글은 트리/탐색기 목록 쪽에만 —
+						     여기(문서 상세)에 중복으로 있을 필요 없음. 아이콘 뷰에서 상세로
+						     들어가면 토글이 안 보이게 되는데, 그건 의도된 동작(admin 확인). -->
 						<h1 class="doc-title">
 							<span class="doc-id">{selected.book_id}</span>
 							{selected.title}
@@ -862,6 +1003,13 @@
 		letter-spacing: 0.05em;
 		color: var(--text-muted);
 		margin: 0;
+		border-radius: 4px;
+	}
+	/* BUG-127: 루트로 드래그&드롭 이동 강조. */
+	.sidebar-head h2.drag-over {
+		background: color-mix(in srgb, var(--accent) 16%, transparent);
+		outline: 1px dashed var(--accent);
+		color: var(--text);
 	}
 	.sidebar-actions {
 		display: flex;
@@ -874,11 +1022,6 @@
 		border: 1px solid var(--border);
 		border-radius: 4px;
 		overflow: hidden;
-	}
-	/* top-bar 안에서는 auto-margin 이 제목 위치를 어긋나게 함 — 그냥 나열. */
-	.view-toggle.inline {
-		margin-left: 0;
-		flex: none;
 	}
 	.view-toggle button {
 		padding: 0.15rem 0.4rem;
@@ -979,6 +1122,31 @@
 	.crumb-sep {
 		color: var(--text-muted);
 	}
+	.btn-up {
+		background: transparent;
+		border: 1px solid var(--border);
+		border-radius: 4px;
+		color: var(--text-muted);
+		cursor: pointer;
+		font-size: 0.78rem;
+		line-height: 1;
+		padding: 0.2rem 0.4rem;
+	}
+	.btn-up:hover:not(:disabled) {
+		color: var(--text);
+		border-color: var(--text-faint);
+	}
+	.btn-up:disabled {
+		opacity: 0.35;
+		cursor: default;
+	}
+	/* BUG-127: 상위 폴더 버튼/경로 조각도 드롭 대상. */
+	.btn-up.drag-over,
+	.crumb.drag-over {
+		background: color-mix(in srgb, var(--accent) 16%, transparent);
+		border-radius: 4px;
+		outline: 1px dashed var(--accent);
+	}
 	.btn-del-folder {
 		margin-left: auto;
 		background: transparent;
@@ -1015,6 +1183,11 @@
 	}
 	.tile:hover {
 		background: var(--bg-elevated);
+	}
+	/* BUG-127: 드래그 중인 문서가 이 폴더 타일 위에 있을 때 강조. */
+	.tile.drag-over {
+		background: color-mix(in srgb, var(--accent) 16%, transparent);
+		border-color: var(--accent);
 	}
 	.tile-icon {
 		font-size: 2rem;

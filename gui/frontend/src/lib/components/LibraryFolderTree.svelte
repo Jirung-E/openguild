@@ -5,10 +5,11 @@
 
   BUG-123(admin 보고): 접기 기능이 아예 없었음 — 토글 화살표 + collapsedFolders
   (부모가 Set 으로 관리) 로 하위 폴더/문서 표시 여부 제어.
+  BUG-129(admin 요청): 문서를 드래그해서 폴더에 드롭하면 그 폴더로 이동
+  (기존 "폴더 이동" 버튼과 동일 동작 — HTML5 드래그&드롭 문법).
 -->
 <script lang="ts">
 	import type { FolderNode } from '$lib/utils/library-tree';
-	import type { Book } from '$lib/api/library';
 	import LibraryFolderTree from './LibraryFolderTree.svelte';
 
 	let {
@@ -18,7 +19,8 @@
 		collapsedFolders,
 		onSelectDoc,
 		onDeleteFolder,
-		onToggleCollapse
+		onToggleCollapse,
+		onMoveDoc
 	}: {
 		node: FolderNode;
 		depth: number;
@@ -27,13 +29,34 @@
 		onSelectDoc: (id: string) => void;
 		onDeleteFolder: (path: string) => void;
 		onToggleCollapse: (path: string) => void;
+		onMoveDoc: (bookId: string, targetPath: string) => void;
 	} = $props();
 
 	const collapsed = $derived(collapsedFolders.has(node.path));
 	const hasChildren = $derived(node.children.length > 0 || node.docs.length > 0);
+
+	// BUG-129: 드래그 중인 문서가 이 폴더 위에 있을 때만 강조.
+	let dragOver = $state(false);
+	function onDrop(e: DragEvent) {
+		e.preventDefault();
+		dragOver = false;
+		const id = e.dataTransfer?.getData('text/plain');
+		if (id) onMoveDoc(id, node.path);
+	}
 </script>
 
-<div class="folder-row" style:padding-left={`${depth * 14}px`}>
+<div
+	class="folder-row"
+	class:drag-over={dragOver}
+	style:padding-left={`${depth * 14}px`}
+	role="presentation"
+	ondragover={(e) => {
+		e.preventDefault();
+		dragOver = true;
+	}}
+	ondragleave={() => (dragOver = false)}
+	ondrop={onDrop}
+>
 	<button
 		class="folder-toggle"
 		class:invisible={!hasChildren}
@@ -65,6 +88,7 @@
 			{onSelectDoc}
 			{onDeleteFolder}
 			{onToggleCollapse}
+			{onMoveDoc}
 		/>
 	{/each}
 
@@ -73,6 +97,8 @@
 			class="book-item"
 			class:active={b.book_id === selectedId}
 			style:padding-left={`${(depth + 1) * 14 + 8}px`}
+			draggable="true"
+			ondragstart={(e) => e.dataTransfer?.setData('text/plain', b.book_id)}
 			onclick={() => onSelectDoc(b.book_id)}
 		>
 			<span class="book-id">{b.book_id}</span>
@@ -90,6 +116,12 @@
 		padding-bottom: 0.15rem;
 		color: var(--text-muted);
 		font-size: 0.78rem;
+		border-radius: 4px;
+	}
+	/* BUG-129: 드롭 대상 강조. */
+	.folder-row.drag-over {
+		background: color-mix(in srgb, var(--accent) 16%, transparent);
+		outline: 1px dashed var(--accent);
 	}
 	.folder-toggle {
 		background: transparent;

@@ -85,3 +85,35 @@ export function searchBooks(books: Book[], query: string): Book[] | null {
 	bodyOnlyHits.sort((a, b) => a.title.localeCompare(b.title));
 	return [...titleHits, ...bodyOnlyHits];
 }
+
+export interface LibrarySearchResult {
+	folders: FolderNode[];
+	books: Book[];
+}
+
+/**
+ * BUG-128(admin 보고): DEV-238 검색은 (1) 항상 전역이었고 (2) 폴더 이름은
+ * 대상이 아니었음. `scope` 로 검색 범위를 그 폴더 자신 + 하위로 제한하고
+ * (""=전체), 폴더 name 매칭도 결과에 포함.
+ */
+export function searchLibrary(
+	tree: LibraryTree,
+	books: Book[],
+	query: string,
+	scope = ''
+): LibrarySearchResult | null {
+	const q = query.trim().toLowerCase();
+	if (!q) return null;
+	const inScope = (path: string) => !scope || path === scope || path.startsWith(`${scope}/`);
+
+	const folders = [...tree.nodeMap.values()]
+		.filter((n) => inScope(n.path) && n.name.toLowerCase().includes(q))
+		.sort((a, b) => a.path.localeCompare(b.path));
+
+	const books_ = searchBooks(
+		books.filter((b) => inScope(b.path)),
+		query
+	);
+
+	return { folders, books: books_ ?? [] };
+}

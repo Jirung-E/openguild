@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildLibraryTree, flattenFolderPaths, searchBooks } from './library-tree';
+import { buildLibraryTree, flattenFolderPaths, searchBooks, searchLibrary } from './library-tree';
 import type { Book, LibraryFolder } from '$lib/api/library';
 
 function book(id: string, title: string, path: string, body = ''): Book {
@@ -71,5 +71,46 @@ describe('searchBooks', () => {
 
 	it('매칭 없으면 빈 배열(null 아님 — 검색은 활성 상태)', () => {
 		expect(searchBooks(books, '전혀없는단어')).toEqual([]);
+	});
+});
+
+// BUG-128(admin 보고): 검색이 항상 전역이었고 폴더 이름은 검색 대상이 아니었음.
+describe('searchLibrary', () => {
+	const folders = [folder('아키텍처'), folder('아키텍처/서브'), folder('운영')];
+	const books = [
+		book('BOOK-001', '라우터 설계', '아키텍처', '본문'),
+		book('BOOK-002', '심화 라우터', '아키텍처/서브', '본문'),
+		book('BOOK-003', '배포 가이드', '운영', '본문'),
+		book('BOOK-004', '루트 문서', '', '라우터 언급 없음')
+	];
+	const tree = buildLibraryTree(folders, books);
+
+	it('빈 쿼리는 null', () => {
+		expect(searchLibrary(tree, books, '')).toBeNull();
+	});
+
+	it('scope 미지정(전체) 이면 전역 검색 — 기존 동작과 동일', () => {
+		const r = searchLibrary(tree, books, '라우터');
+		expect(r?.books.map((b) => b.book_id).sort()).toEqual(['BOOK-001', 'BOOK-002', 'BOOK-004']);
+	});
+
+	it('scope 지정 시 그 폴더 + 하위만 검색', () => {
+		const r = searchLibrary(tree, books, '라우터', '아키텍처');
+		expect(r?.books.map((b) => b.book_id).sort()).toEqual(['BOOK-001', 'BOOK-002']);
+	});
+
+	it('scope 밖의 폴더(운영)는 결과에서 제외', () => {
+		const r = searchLibrary(tree, books, '가이드', '아키텍처');
+		expect(r?.books).toEqual([]);
+	});
+
+	it('폴더 이름도 매칭 대상 — scope 내의 하위 폴더만', () => {
+		const r = searchLibrary(tree, books, '서브', '아키텍처');
+		expect(r?.folders.map((f) => f.path)).toEqual(['아키텍처/서브']);
+	});
+
+	it('scope 자신의 이름은 매칭 대상 아님(자기 자신 제외 안 하지만 하위 검색이 목적) — 상위 폴더는 결과에 없음', () => {
+		const r = searchLibrary(tree, books, '운영', '아키텍처');
+		expect(r?.folders).toEqual([]);
 	});
 });
