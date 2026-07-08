@@ -95,6 +95,11 @@ export interface LibrarySearchResult {
  * BUG-128(admin 보고): DEV-238 검색은 (1) 항상 전역이었고 (2) 폴더 이름은
  * 대상이 아니었음. `scope` 로 검색 범위를 그 폴더 자신 + 하위로 제한하고
  * (""=전체), 폴더 name 매칭도 결과에 포함.
+ *
+ * BUG-128 후속(admin 보고): 문서는 scope 폴더 "자신"도 검색 대상이 맞지만
+ * (그 폴더 바로 밑 문서), 폴더 이름 매칭에서 scope 폴더 자신까지 걸리면
+ * 이미 그 안에 들어와서 검색하는 중인데 자기 자신이 결과로 뜨는 게
+ * 무의미하다 — 폴더 매칭은 scope 의 "하위"만(자신 제외).
  */
 export function searchLibrary(
 	tree: LibraryTree,
@@ -105,9 +110,10 @@ export function searchLibrary(
 	const q = query.trim().toLowerCase();
 	if (!q) return null;
 	const inScope = (path: string) => !scope || path === scope || path.startsWith(`${scope}/`);
+	const inScopeDescendant = (path: string) => path !== scope && inScope(path);
 
 	const folders = [...tree.nodeMap.values()]
-		.filter((n) => inScope(n.path) && n.name.toLowerCase().includes(q))
+		.filter((n) => inScopeDescendant(n.path) && n.name.toLowerCase().includes(q))
 		.sort((a, b) => a.path.localeCompare(b.path));
 
 	const books_ = searchBooks(

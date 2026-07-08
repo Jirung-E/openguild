@@ -109,8 +109,15 @@ describe('searchLibrary', () => {
 		expect(r?.folders.map((f) => f.path)).toEqual(['아키텍처/서브']);
 	});
 
-	it('scope 자신의 이름은 매칭 대상 아님(자기 자신 제외 안 하지만 하위 검색이 목적) — 상위 폴더는 결과에 없음', () => {
+	it('scope 밖의 폴더(운영)는 폴더 이름 매칭에서도 제외', () => {
 		const r = searchLibrary(tree, books, '운영', '아키텍처');
+		expect(r?.folders).toEqual([]);
+	});
+
+	// BUG-128 후속(admin 보고): scope 폴더 안에서 검색 중인데 그 폴더 자신의
+	// 이름이 검색어와 매칭돼 결과에 자기 자신이 뜨는 건 무의미 — 제외해야 함.
+	it('scope 폴더 자신의 이름은 폴더 검색 결과에서 제외', () => {
+		const r = searchLibrary(tree, books, '아키텍처', '아키텍처');
 		expect(r?.folders).toEqual([]);
 	});
 });
