@@ -496,6 +496,12 @@ async fn fetch_type_by_prefix(pool: &SqlitePool, prefix: &str) -> AppResult<Ques
         .ok_or_else(|| AppError::NotFound(format!("type 없음: {prefix}")))
 }
 
+/// DEV-219: 캠페인(C-NNN)/도서관(BOOK-NNN) 이 이미 쓰는 prefix — quest type
+/// 으로 등록/rename 하면 무접두 `[[ID]]` cross-link 가 모호해진다(우선순위로
+/// 해소는 되지만 사용자 혼란). 최소한만 예약 — 나머지 충돌은 `[[kind:ID]]`
+/// 네임스페이스로 구분(admin/claude 합의, DEV-219 댓글 #2~#4).
+const RESERVED_TYPE_PREFIXES: &[&str] = &["C", "BOOK"];
+
 fn validate_prefix(prefix: &str) -> AppResult<()> {
     if prefix.is_empty() || prefix.len() > 6 {
         return Err(AppError::BadRequest(
@@ -506,6 +512,11 @@ fn validate_prefix(prefix: &str) -> AppResult<()> {
         return Err(AppError::BadRequest(
             "type prefix 는 대문자 또는 숫자만 (예: DEV, BUG, REQ)".into(),
         ));
+    }
+    if RESERVED_TYPE_PREFIXES.contains(&prefix) {
+        return Err(AppError::BadRequest(format!(
+            "'{prefix}' 는 예약된 prefix (캠페인/도서관) — 다른 prefix 를 사용하세요."
+        )));
     }
     Ok(())
 }
@@ -1012,6 +1023,29 @@ mod tests {
                 .unwrap_err();
             assert!(matches!(err, AppError::BadRequest(_)), "bad={bad}");
         }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn create_type_rejects_reserved_prefix() {
+        // DEV-219: C(캠페인)/BOOK(도서관) 은 quest type prefix 로 예약.
+        let (dir, store) = fresh_store("type-reserved").await;
+        for reserved in &["C", "BOOK"] {
+            let err = create_type(&store, (*reserved).into(), "#000".into(), None)
+                .await
+                .unwrap_err();
+            assert!(matches!(err, AppError::BadRequest(_)), "reserved={reserved}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn rename_type_rejects_reserved_prefix() {
+        let (dir, store) = fresh_store("type-rename-reserved").await;
+        let err = rename_type(&store, "BUG".into(), "BOOK".into())
+            .await
+            .unwrap_err();
+        assert!(matches!(err, AppError::BadRequest(_)));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

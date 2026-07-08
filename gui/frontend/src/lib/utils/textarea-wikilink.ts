@@ -6,7 +6,7 @@
  * 목록을 만드는 순수 함수, (2) 토큰을 `[[ID]]` 로 치환하는 헬퍼, (3) textarea 안
  * caret 의 픽셀 좌표(mirror-div) 를 제공한다. 제안 팝업 UI 는 호출 측이 렌더.
  */
-import type { IndexedRef } from '$lib/stores/questIndex';
+import { KIND_ALIASES, KIND_NAMESPACE, type IndexedRef } from '$lib/stores/questIndex';
 
 /** DEV-173: `[[` 바로 안(아직 안 닫힘)의 부분 slug — 규칙 포함 전체 인덱스 제안.
  *  규칙 slug 는 한글 등 비ASCII 가능 — 공백/대괄호 제외 모든 문자 허용.
@@ -47,12 +47,18 @@ export function wikiMatch(
 	if (w) {
 		const partial = w[1];
 		// DEV-223: 빈 `[[` 에서도 전체 후보 표시 (사용자 결정).
-		const upper = partial.toUpperCase();
+		// DEV-219: `[[rules:` 처럼 kind 접두를 이미 타이핑했으면 그 종류로만 필터.
+		const ci = partial.indexOf(':');
+		const typedPrefix = ci > 0 ? partial.slice(0, ci).toLowerCase() : null;
+		const kindFilter = typedPrefix ? KIND_ALIASES[typedPrefix] : undefined;
+		const query = kindFilter ? partial.slice(ci + 1) : partial;
+		const upper = query.toUpperCase();
 		const items: WikiItem[] = [];
 		for (const [id, ref] of index) {
+			if (kindFilter && ref.kind !== kindFilter) continue;
 			// DEV-239: 도서관 문서는 관리번호(BOOK-NNN) 대신 "폴더/제목" 경로로
 			// 타이핑해도 찾을 수 있어야 함 — 매칭만 경로 기준, 실제 삽입은
-			// 여전히 `[[BOOK-NNN]]` (경로 자체는 링크 문법에 없음, admin 결정).
+			// 여전히 `[[library:BOOK-NNN]]` (경로 자체는 링크 문법에 없음, admin 결정).
 			const pathLabel =
 				ref.kind === 'book' && ref.path ? `${ref.path}/${ref.title}` : null;
 			const idMatch = id.startsWith(upper);
@@ -63,7 +69,8 @@ export function wikiMatch(
 				title: ref.title,
 				kind: ref.kind,
 				exists: true,
-				insert: ref.kind === 'rule' ? (ref.slug ?? id.toLowerCase()) : id
+				// DEV-219(admin 결정): 자동완성은 항상 `kind:` 접두를 붙여 삽입.
+				insert: `${KIND_NAMESPACE[ref.kind]}:${ref.kind === 'rule' ? (ref.slug ?? id.toLowerCase()) : id}`
 			});
 		}
 		if (items.length === 0) return null;

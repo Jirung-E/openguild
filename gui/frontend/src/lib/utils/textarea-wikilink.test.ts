@@ -29,7 +29,8 @@ describe('wikiMatch', () => {
 		expect(v.slice(m!.from, m!.to)).toBe('[[rel');
 		const rule = m!.items.find((i) => i.kind === 'rule');
 		expect(rule).toBeDefined();
-		expect(rule!.insert).toBe('release-process');
+		// DEV-219: 자동완성은 항상 kind 네임스페이스 접두를 붙여 삽입.
+		expect(rule!.insert).toBe('rules:release-process');
 	});
 
 	it('[[ 컨텍스트에서 quest ID prefix 도 매칭', () => {
@@ -61,7 +62,8 @@ describe('wikiMatch', () => {
 		const book = m!.items.find((i) => i.kind === 'book');
 		expect(book).toBeDefined();
 		expect(book!.id).toBe('BOOK-001');
-		expect(book!.insert ?? book!.id).toBe('BOOK-001');
+		// DEV-219: 삽입은 항상 `library:` 접두 포함.
+		expect(book!.insert ?? book!.id).toBe('library:BOOK-001');
 	});
 
 	// DEV-239: 폴더/제목 경로로 타이핑해도 찾되, 삽입은 항상 BOOK-NNN.
@@ -71,7 +73,7 @@ describe('wikiMatch', () => {
 		expect(m).not.toBeNull();
 		const book = m!.items.find((i) => i.id === 'BOOK-014');
 		expect(book).toBeDefined();
-		expect(book!.insert ?? book!.id).toBe('BOOK-014');
+		expect(book!.insert ?? book!.id).toBe('library:BOOK-014');
 	});
 
 	// DEV-173 후속: 한글 등 비ASCII 규칙 slug 도 [[ 컨텍스트에서 매칭.
@@ -82,6 +84,22 @@ describe('wikiMatch', () => {
 		const v = '[[커밋';
 		const m = wikiMatch(v, v.length, idx);
 		expect(m).not.toBeNull();
-		expect(m!.items[0].insert).toBe('커밋규칙');
+		expect(m!.items[0].insert).toBe('rules:커밋규칙');
+	});
+
+	// DEV-219: `[[kind:` 접두를 이미 타이핑하면 그 종류로만 필터.
+	it('[[ 컨텍스트에서 kind 접두 타이핑 시 해당 종류로만 필터', () => {
+		const v = '[[rules:rel';
+		const m = wikiMatch(v, v.length, index);
+		expect(m).not.toBeNull();
+		expect(m!.items.every((i) => i.kind === 'rule')).toBe(true);
+		expect(m!.items.some((i) => i.id === 'RELEASE-PROCESS')).toBe(true);
+	});
+
+	it('[[ 컨텍스트에서 짧은 kind 별칭(q:)도 인식', () => {
+		const v = '[[q:dev';
+		const m = wikiMatch(v, v.length, index);
+		expect(m).not.toBeNull();
+		expect(m!.items.every((i) => i.kind === 'quest')).toBe(true);
 	});
 });

@@ -18,7 +18,7 @@ import {
 import { markdownLanguage, commonmarkLanguage } from '@codemirror/lang-markdown';
 import type { Extension } from '@codemirror/state';
 import { tooltips, type EditorView } from '@codemirror/view';
-import { questIndex, loadQuestIndex } from '$lib/stores/questIndex';
+import { questIndex, loadQuestIndex, KIND_ALIASES, KIND_NAMESPACE } from '$lib/stores/questIndex';
 import { get } from 'svelte/store';
 
 /** DEV-173: `[[` 바로 안(아직 안 닫힘)의 부분 slug — 규칙 포함 전체 인덱스 제안.
@@ -40,19 +40,27 @@ function wikiContextCompletion(context: CompletionContext): CompletionResult | n
 	const partial = m[1];
 	// DEV-223: 빈 `[[` 에서도 전체 후보 표시 (사용자 결정 — [[ 입력 즉시 팝업).
 
-	const upper = partial.toUpperCase();
+	// DEV-219: 사용자가 `[[rules:` 처럼 kind 접두를 이미 타이핑했으면 그 종류로만
+	// 필터, 나머지를 query 로 매칭. 접두가 없거나 별칭에 없으면 기존처럼 전체.
+	const ci = partial.indexOf(':');
+	const typedPrefix = ci > 0 ? partial.slice(0, ci).toLowerCase() : null;
+	const kindFilter = typedPrefix ? KIND_ALIASES[typedPrefix] : undefined;
+	const query = kindFilter ? partial.slice(ci + 1) : partial;
+	const upper = query.toUpperCase();
 	const index = get(questIndex);
 	const options: Completion[] = [];
 	for (const [id, ref] of index) {
+		if (kindFilter && ref.kind !== kindFilter) continue;
 		// DEV-239: 도서관 문서는 "폴더/제목" 경로로 타이핑해도 찾을 수 있어야
-		// 함 — 매칭만 경로 기준, 실제 삽입은 여전히 `[[BOOK-NNN]]`.
+		// 함 — 매칭만 경로 기준, 실제 삽입은 여전히 `[[library:BOOK-NNN]]`.
 		const pathLabel = ref.kind === 'book' && ref.path ? `${ref.path}/${ref.title}` : null;
 		const idMatch = id.startsWith(upper);
 		const pathMatch = pathLabel != null && pathLabel.toUpperCase().startsWith(upper);
 		if (!idMatch && !pathMatch) continue;
-		// 삽입은 규칙=원본 slug / quest·campaign=대문자 정규형. 이미 열린 `[[` 뒤라
-		// 나머지 + `]]` 만 삽입.
-		const insert = ref.kind === 'rule' ? (ref.slug ?? id.toLowerCase()) : id;
+		// DEV-219(admin 결정): 자동완성은 항상 `kind:` 접두를 붙여 삽입 — 나중에
+		// 같은 ID 가 다른 종류로 생겨도 이미 건 링크가 안전하도록 미리 예방.
+		// 삽입은 규칙=원본 slug / quest·campaign·book=대문자 정규형.
+		const insert = `${KIND_NAMESPACE[ref.kind]}:${ref.kind === 'rule' ? (ref.slug ?? id.toLowerCase()) : id}`;
 		options.push({
 			label: pathMatch && !idMatch ? pathLabel! : id,
 			displayLabel: `🔗 ${insert}`,

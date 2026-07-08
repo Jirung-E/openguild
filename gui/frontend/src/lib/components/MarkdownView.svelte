@@ -14,7 +14,9 @@
 	// DEV-111: mermaid 다이어그램 렌더링 — lazy import (~700KB), 블록 있을 때만.
 	import { theme, resolveTheme } from '$lib/stores/theme';
 	// DEV-140: 본문 cross-link — [[DEV-033]] / [[C-001]] 위키문법을 링크로.
-	import { questIndex, loadQuestIndex, lookupRef, refHref } from '$lib/stores/questIndex';
+	// DEV-219: [[kind:ID]] 명시 네임스페이스 지원 — resolveCrossLinkToken 이 접두
+	// 유무와 무관하게 kind/ref 를 함께 풀어준다.
+	import { questIndex, loadQuestIndex, refHref, resolveCrossLinkToken } from '$lib/stores/questIndex';
 
 	let { source }: { source: string } = $props();
 
@@ -127,16 +129,15 @@
 	// DEV-220(사용자 결정): **명시 `[[..]]` 만 인식** — bare `DEV-033`(대괄호 없음)
 	// 자동 링크는 제거(의도치 않은 링크화가 불편). slug 는 한글 등 비ASCII 허용
 	// (공백/대괄호 제외 — DEV-173).
+	// DEV-219: 접두 `kind:` (quest/q, campaign/c, rules/rule/r, library/lib/book)
+	// 를 허용 — 나머지 문자 클래스는 기존과 동일(공백/대괄호 제외).
 	const CROSS_LINK_RE = /\[\[([^[\]\s]{1,64})\]\]/g;
 	// 별도 non-global tester — /g 의 lastIndex 부작용 없이 acceptNode 에서 검사.
 	const CROSS_LINK_TEST = /\[\[[^[\]\s]{1,64}\]\]/;
 	// quest/campaign 추적번호 형식 (XXX-NNN). 이 형식이 아니면 규칙 slug 로 본다.
 	const ID_TOKEN_RE = /^[A-Za-z]{1,}-\d+$/;
-	function guessKind(id: string): 'quest' | 'campaign' | 'rule' | 'book' {
-		const ref = lookupRef(id);
-		if (ref) return ref.kind;
-		// 미존재 — 형태로 추정 (C-NNN 캠페인 / BOOK-NNN 도서관 / XXX-NNN 퀘스트 /
-		// 그 외 규칙 slug). DEV-218: BOOK prefix 는 도서관 전용 네임스페이스.
+	// DEV-219: 접두 없을 때만 쓰는 형태 추정 fallback (미존재 ID 용).
+	function guessKindByShape(id: string): 'quest' | 'campaign' | 'rule' | 'book' {
 		if (!ID_TOKEN_RE.test(id)) return 'rule';
 		if (/^BOOK-\d+$/i.test(id)) return 'book';
 		return /^C-\d+$/i.test(id) ? 'campaign' : 'quest';
@@ -167,13 +168,17 @@
 			let m: RegExpExecArray | null;
 			while ((m = CROSS_LINK_RE.exec(text))) {
 				const whole = m[0];
-				const rawId = m[1]; // [[ID]] 안
+				const rawToken = m[1]; // [[token]] 안 — kind: 접두 있을 수 있음(DEV-219)
+				const resolved = resolveCrossLinkToken(rawToken);
+				const ref = resolved.ref;
+				const rawId = resolved.id;
 				const id = rawId.toUpperCase();
-				const ref = lookupRef(id);
 				if (m.index > last) {
 					frag.appendChild(document.createTextNode(text.slice(last, m.index)));
 				}
-				const kind = guessKind(id);
+				// 접두가 있었으면 그 kind 를 그대로 신뢰(존재 여부와 무관), 없었고
+				// 미존재면 형태로 추정.
+				const kind = resolved.kind ?? guessKindByShape(id);
 				const a = document.createElement('a');
 				a.href = refHref(id, kind, ref?.slug ?? rawId);
 				// DEV-173: 규칙 slug 는 소문자가 정체성 — 원문 그대로 표시.
