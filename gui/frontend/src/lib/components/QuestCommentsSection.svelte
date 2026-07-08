@@ -353,8 +353,23 @@
 	// 그 자리에 고정돼 있었다. 트리거 버튼을 기억해뒀다가 scroll/resize 마다
 	// 다시 계산 — wiki 팝업의 repositionWiki 와 동일 패턴.
 	let reactionPickerBtn: HTMLElement | null = null;
+	// BUG-132(admin 보고): 버튼이 스크롤로 화면 밖으로 완전히 나가면(wiki
+	// 팝업의 placeWiki 가 `caretBottom < visTop || caretTop > visBottom` 일 때
+	// null 반환해 숨기는 것과 동일 케이스) 팝업이 허공에 떠서 남아있으면 안
+	// 됨 — 트리거가 안 보이면 팝업도 닫는다.
 	function computeReactionPickerPos(btn: HTMLElement) {
 		const rect = btn.getBoundingClientRect();
+		const offscreen =
+			rect.bottom <= 0 ||
+			rect.top >= window.innerHeight ||
+			rect.right <= 0 ||
+			rect.left >= window.innerWidth;
+		if (offscreen) {
+			pickerOpenFor = null;
+			reactionPickerPos = null;
+			reactionPickerBtn = null;
+			return;
+		}
 		const POPUP_W = 168; // .reaction-picker min-width(9rem=144px) + 여유.
 		const left = Math.max(4, Math.min(rect.left, window.innerWidth - POPUP_W - 4));
 		const spaceAbove = rect.top;
