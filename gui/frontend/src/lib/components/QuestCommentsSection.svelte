@@ -347,13 +347,13 @@
 	let reactionPickerPos = $state<{ left: number; top: number | null; bottom: number | null } | null>(
 		null
 	);
-	function toggleReactionPicker(ev: MouseEvent, id: number) {
-		if (pickerOpenFor === id) {
-			pickerOpenFor = null;
-			reactionPickerPos = null;
-			return;
-		}
-		const btn = ev.currentTarget as HTMLElement;
+	// BUG-131(admin 보고): "자동완성 팝업이랑 같은 방식" 이라고 해놓고 정작
+	// scroll 추종(repositionWiki 에 해당하는 부분)을 안 만들었다 — 열 때 딱
+	// 한 번만 위치를 계산해서, 목록을 스크롤하면 버튼은 움직이는데 팝업만
+	// 그 자리에 고정돼 있었다. 트리거 버튼을 기억해뒀다가 scroll/resize 마다
+	// 다시 계산 — wiki 팝업의 repositionWiki 와 동일 패턴.
+	let reactionPickerBtn: HTMLElement | null = null;
+	function computeReactionPickerPos(btn: HTMLElement) {
 		const rect = btn.getBoundingClientRect();
 		const POPUP_W = 168; // .reaction-picker min-width(9rem=144px) + 여유.
 		const left = Math.max(4, Math.min(rect.left, window.innerWidth - POPUP_W - 4));
@@ -365,19 +365,33 @@
 		} else {
 			reactionPickerPos = { left, top: null, bottom: window.innerHeight - rect.top + 4 };
 		}
+	}
+	function toggleReactionPicker(ev: MouseEvent, id: number) {
+		if (pickerOpenFor === id) {
+			pickerOpenFor = null;
+			reactionPickerPos = null;
+			reactionPickerBtn = null;
+			return;
+		}
+		const btn = ev.currentTarget as HTMLElement;
+		reactionPickerBtn = btn;
+		computeReactionPickerPos(btn);
 		pickerOpenFor = id;
 		customEmojiInput = '';
 		customEmojiError = null;
 	}
-	// 팝업이 열린 채로 창 크기가 바뀌면 위치가 어긋날 수 있어 닫음(간단한 안전장치).
+	// 열려 있는 동안 스크롤/리사이즈 시마다 트리거 버튼의 새 위치로 재계산
+	// (wiki 팝업의 repositionWiki 와 동일 — capture:true 로 조상 스크롤 컨테이너도 포착).
 	$effect(() => {
-		if (pickerOpenFor == null) return;
-		const onResize = () => {
-			pickerOpenFor = null;
-			reactionPickerPos = null;
+		if (pickerOpenFor == null || !reactionPickerBtn) return;
+		const btn = reactionPickerBtn;
+		const onReposition = () => computeReactionPickerPos(btn);
+		window.addEventListener('scroll', onReposition, true);
+		window.addEventListener('resize', onReposition);
+		return () => {
+			window.removeEventListener('scroll', onReposition, true);
+			window.removeEventListener('resize', onReposition);
 		};
-		window.addEventListener('resize', onResize);
-		return () => window.removeEventListener('resize', onResize);
 	});
 	// DEV-108: reaction 항목 = "emoji" 또는 "emoji:author1|author2".
 	// 누가 반응했는지 호버로 보여주기 위해 파싱.
@@ -407,6 +421,7 @@
 
 	async function toggleReaction(id: number, emoji: string) {
 		pickerOpenFor = null;
+		reactionPickerBtn = null;
 		try {
 			const updated = await commentsApi.toggleReaction(slug, id, emoji, currentAuthor());
 			entries = entries.map((e) => (e.id === id ? updated : e));
@@ -1004,6 +1019,7 @@
 								onclick={() => {
 									pickerOpenFor = null;
 									reactionPickerPos = null;
+									reactionPickerBtn = null;
 								}}
 							></div>
 							<div
