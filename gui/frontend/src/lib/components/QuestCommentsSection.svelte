@@ -924,31 +924,11 @@
 								{/if}
 							{/if}
 						{/if}
-						<!-- DEV-234: 상단 고정 — root 만(답글은 위치가 재배치되는 대상이
-						     아니라 버튼 노출 안 함). -->
-						<button
-							class="pin-btn"
-							class:on={e.pinned}
-							onclick={() => togglePinned(e.id)}
-							title={e.pinned ? '고정 해제' : '상단 고정'}
-							>📌</button
-						>
 					{/if}
 					<!-- DEV-200: 답글에도 답글 쓰기 — parent_id 로 대상 기록, 표시는 2단까지. -->
 					<button class="reply-write-btn" onclick={() => enterReply(e.id)}>답글 쓰기</button>
-				</div>
-				<div class="foot-right">
-					{#each reacts as r (r.emoji)}
-						<!-- DEV-108: 호버하면 누가 반응했는지 (authors) 표시. -->
-						<button
-							class="reaction-pill"
-							class:mine={reactedByMe(r.authors)}
-							onclick={() => toggleReaction(e.id, r.emoji)}
-							title={r.authors.length ? `${r.authors.join(', ')} · 클릭하면 토글` : '클릭하면 토글'}
-						>
-							{r.emoji}{#if r.authors.length > 1}<span class="rc">{r.authors.length}</span>{/if}
-						</button>
-					{/each}
+					<!-- DEV-132 후속(admin 요청): 이모지(반응 추가) 버튼을 답글 쓰기
+					     버튼 오른쪽으로 이동 — foot-right 에서 여기로. -->
 					<div class="picker-wrap">
 						<button
 							class="reaction-add"
@@ -1004,6 +984,31 @@
 							</div>
 						{/if}
 					</div>
+				</div>
+				<div class="foot-right">
+					{#each reacts as r (r.emoji)}
+						<!-- DEV-108: 호버하면 누가 반응했는지 (authors) 표시. -->
+						<button
+							class="reaction-pill"
+							class:mine={reactedByMe(r.authors)}
+							onclick={() => toggleReaction(e.id, r.emoji)}
+							title={r.authors.length ? `${r.authors.join(', ')} · 클릭하면 토글` : '클릭하면 토글'}
+						>
+							{r.emoji}{#if r.authors.length > 1}<span class="rc">{r.authors.length}</span>{/if}
+						</button>
+					{/each}
+					{#if !isReply}
+						<!-- DEV-234 후속(admin 요청): 상단 고정 버튼을 오른쪽 아래로 이동 —
+						     foot-left 에서 여기로. root 만(답글은 위치 재배치 대상이 아니라
+						     버튼 노출 안 함). -->
+						<button
+							class="pin-btn"
+							class:on={e.pinned}
+							onclick={() => togglePinned(e.id)}
+							title={e.pinned ? '고정 해제' : '상단 고정'}
+							>📌</button
+						>
+					{/if}
 				</div>
 			</div>
 		{/if}
