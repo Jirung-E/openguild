@@ -293,10 +293,27 @@
 	// ─── 편집 ───
 	async function enterEdit() {
 		if (!selected) return;
+		const id = selected.book_id;
 		editMode = true;
 		saveError = null;
+		// BUG-134 후속(admin 지적 — 위 effect 만으로는 여전히 안 고쳐짐): 선택
+		// 시 백그라운드로 도는 재조회(위 effect)는 비동기라, 문서를 선택하자마자
+		// 곧바로 "편집"을 누르면(흔한 동선) 그 fetch 가 아직 안 끝난 상태 —
+		// `selected.body` 는 여전히 최초 list() 스냅샷(구버전)이었다. 편집
+		// 진입 자체에서 직접 재조회해, 배경 fetch 타이밍과 무관하게 항상 최신
+		// 본문으로 시작하도록 보장.
+		let body = selected.body;
+		try {
+			const full = await libraryApi.get(id);
+			if (selectedId === id) {
+				books = books.map((b) => (b.book_id === id ? full : b));
+			}
+			body = full.body;
+		} catch {
+			/* 재조회 실패 — list() 스냅샷으로 폴백(기존 동작). */
+		}
 		await tick();
-		initEditor(selected.body);
+		initEditor(body);
 	}
 
 	// DEV-237: 편집기 '첨부' 버튼 / 비미디어 paste·drop → 본문 인라인 대신 첨부
