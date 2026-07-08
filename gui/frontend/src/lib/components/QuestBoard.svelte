@@ -1944,15 +1944,20 @@
 		if (!cy) return;
 		const eff = currentEffectiveTheme();
 		cy.nodes('[questId]').forEach((n) => {
-			const urgency = n.data('urgency') as number | undefined;
-			if (urgency != null) {
-				n.data('urgencyBg', urgencyBgFor(urgency, eff));
-			}
-			// nodeBg SVG 도 theme 색 hardcoded — 다시 생성. quest 데이터 추출.
+			// BUG-122(admin 보고): 원인 — node data 엔 파생값(urgencyColor/urgencyBg)만
+			// 저장하고 원본 `urgency` 는 애초에 저장한 적이 없어(DEV-074 최초 커밋부터),
+			// `n.data('urgency')` 가 항상 undefined → urgencyBg 가 테마 전환 시 절대
+			// 갱신되지 않았다. 노드가 active(클릭) 상태일 때만 이 값이 배경색으로
+			// 노출돼([?active] 셀렉터) 평소엔 안 보이다가, 클릭해야 새로고침 시점
+			// 테마의 색(어두운/밝은 urgency 톤)이 그대로 드러난 것 — 이게 "클릭하면
+			// 까맣게/하얗게 변함" 의 정체. nodeBg 재생성과 동일하게 allQuests 에서
+			// 원본 quest 를 찾아 quest.urgency 를 써야 한다.
 			const qid = n.data('questId') as number | undefined;
-			if (qid != null) {
-				const q = allQuests.find((x) => x.id === qid);
-				if (q) n.data('nodeBg', makeSvgUrl(q));
+			const q = qid != null ? allQuests.find((x) => x.id === qid) : undefined;
+			if (q) {
+				n.data('urgencyBg', urgencyBgFor(q.urgency, eff));
+				// nodeBg SVG 도 theme 색 hardcoded — 다시 생성.
+				n.data('nodeBg', makeSvgUrl(q));
 			}
 		});
 		// stylesheet 자체 교체 — base / highlight / selected 의 hardcoded hex 까지 반영.
