@@ -33,6 +33,9 @@
 	import { attachmentExtension } from '$lib/utils/editor-attach';
 	import { crossLinkAutocomplete } from '$lib/utils/editor-links';
 	import { loadQuestIndex } from '$lib/stores/questIndex';
+	// BUG-123(admin 재지적): 네이티브 alert() 대신 앱 공용 toast — 다른 페이지들과
+	// 동일한 alert() 대체 컨벤션(+layout.svelte 주석 참고).
+	import { showToast } from '$lib/stores/toast';
 
 	let loading = $state(true);
 	let error = $state<string | null>(null);
@@ -41,6 +44,17 @@
 	let selectedId = $state<string | null>(null);
 
 	const selected = $derived(books.find((b) => b.book_id === selectedId) ?? null);
+
+	// BUG-123(admin 보고): tree 모드 폴더 접기 — 이전엔 아예 구현이 안 돼 있어
+	// 하위 폴더/문서가 항상 펼쳐진 채였음. 세션 한정(일회성 토글, 재진입 시
+	// 기본 펼침) — 댓글 섹션 전체 접기(DEV-107 fix1)와 동일한 정책.
+	let collapsedFolders = $state(new Set<string>());
+	function toggleFolderCollapsed(path: string) {
+		const next = new Set(collapsedFolders);
+		if (next.has(path)) next.delete(path);
+		else next.add(path);
+		collapsedFolders = next;
+	}
 	const tree = $derived(buildLibraryTree(folders, books));
 
 	// ─── 보기 방식 (tree / explorer) — localStorage 로 유지 ───
@@ -356,7 +370,7 @@
 			if (selectedId === target) selectedId = null;
 			await loadList();
 		} catch (e) {
-			alert(e instanceof Error ? e.message : '삭제 실패');
+			showToast(e instanceof Error ? e.message : '삭제 실패', 'error');
 		}
 	}
 
@@ -437,8 +451,16 @@
 		}
 	}
 
-	async function deleteFolder(path: string) {
-		if (!confirm(`폴더 '${path}' 를 삭제할까요? (비어 있어야 삭제 가능)`)) return;
+	// BUG-123(admin 재지적 — 저번에도 커스텀 다이얼로그 요청 있었음): 네이티브
+	// confirm()/alert() 대신 인앱 ConfirmDialog + toast.
+	let confirmDeleteFolderPath = $state<string | null>(null);
+	function askDeleteFolder(path: string) {
+		confirmDeleteFolderPath = path;
+	}
+	async function deleteFolder() {
+		const path = confirmDeleteFolderPath;
+		confirmDeleteFolderPath = null;
+		if (!path) return;
 		try {
 			await libraryApi.folders.delete(path);
 			if (explorerPath === path || explorerPath.startsWith(`${path}/`)) {
@@ -447,7 +469,7 @@
 			}
 			await loadList(selectedId);
 		} catch (e) {
-			alert(e instanceof Error ? e.message : '폴더 삭제 실패 — 비어 있는지 확인하세요');
+			showToast(e instanceof Error ? e.message : '폴더 삭제 실패 — 비어 있는지 확인하세요', 'error');
 		}
 	}
 </script>
@@ -482,7 +504,7 @@
 				<button class="crumb" onclick={() => gotoFolder(partial)}>{_seg}</button>
 			{/each}
 			{#if explorerPath}
-				<button class="btn-del-folder" onclick={() => deleteFolder(explorerPath)}>
+				<button class="btn-del-folder" onclick={() => askDeleteFolder(explorerPath)}>
 					현재 폴더 삭제
 				</button>
 			{/if}
@@ -605,8 +627,10 @@
 									{node}
 									depth={0}
 									{selectedId}
+									{collapsedFolders}
 									onSelectDoc={select}
-									onDeleteFolder={deleteFolder}
+									onDeleteFolder={askDeleteFolder}
+									onToggleCollapse={toggleFolderCollapsed}
 								/>
 							{/each}
 							{#each tree.rootDocs as b (b.book_id)}
@@ -778,6 +802,17 @@
 	danger
 	onconfirm={deleteSelected}
 	oncancel={() => (confirmDeleteId = null)}
+/>
+
+<!-- BUG-123: 폴더 삭제 확인도 네이티브 confirm() 대신 인앱 다이얼로그. -->
+<ConfirmDialog
+	open={confirmDeleteFolderPath !== null}
+	title="폴더 삭제"
+	message={`폴더 '${confirmDeleteFolderPath ?? ''}' 를 삭제할까요? (비어 있어야 삭제 가능)`}
+	confirmLabel="삭제"
+	danger
+	onconfirm={deleteFolder}
+	oncancel={() => (confirmDeleteFolderPath = null)}
 />
 
 <ConfirmDialog
