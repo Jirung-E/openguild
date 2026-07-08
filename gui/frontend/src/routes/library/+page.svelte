@@ -45,6 +45,30 @@
 
 	const selected = $derived(books.find((b) => b.book_id === selectedId) ?? null);
 
+	// BUG-133(admin 보고): reindex(=전체 새로고침) 후 도서관 첨부파일이 안 보임.
+	// 원인 — `list()`(list_books) 는 payload 절약을 위해 처음부터 attachments
+	// 를 항상 빈 배열로 반환(설계 의도)하고, 그동안 화면에 attachments 가 채워져
+	// 있던 건 addAttachment/update 응답을 로컬 books 배열에 수동 병합해온
+	// 부수효과였을 뿐 — 새로고침으로 그 임시 상태가 날아가면 복구할 방법이
+	// 없었다. quest/campaign 상세는 선택 시 단건 조회(get)로 첨부를 채우는데
+	// 도서관만 그 단건 조회를 아예 호출한 적이 없었음. 선택이 바뀔 때마다
+	// libraryApi.get() 으로 attachments 를 채워 넣어 동일한 패턴으로 맞춘다.
+	// (본문/제목 등은 이미 list() 로 있어 재조회 불필요 — attachments 만 갱신.)
+	$effect(() => {
+		const id = selectedId;
+		if (!id) return;
+		libraryApi
+			.get(id)
+			.then((full) => {
+				// 응답 도착 전에 다른 문서를 선택했으면 무시(경쟁 상태 방지).
+				if (selectedId !== id) return;
+				books = books.map((b) => (b.book_id === id ? { ...b, attachments: full.attachments } : b));
+			})
+			.catch(() => {
+				/* 보조 기능 — 실패해도 본문/제목은 이미 list() 로 표시됨 */
+			});
+	});
+
 	// BUG-123(admin 보고): tree 모드 폴더 접기 — 이전엔 아예 구현이 안 돼 있어
 	// 하위 폴더/문서가 항상 펼쳐진 채였음. 세션 한정(일회성 토글, 재진입 시
 	// 기본 펼침) — 댓글 섹션 전체 접기(DEV-107 fix1)와 동일한 정책.
