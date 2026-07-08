@@ -104,7 +104,16 @@ pub async fn update_book(
         body.path.as_deref(),
     )
     .await?;
-    Ok(Json(row.into()))
+    // BUG-124(admin 보고): 이전엔 list_books 처럼 attachments 를 빈 배열로
+    // 두었음 — get_quest/update_quest(quests.rs) 는 단건 응답에 항상 채우는데
+    // 여기만 예외였음. 클라이언트(library/+page.svelte)가 이 응답으로 book
+    // 객체 전체를 교체하다 보니, 본문/제목/폴더 편집 후 저장할 때마다 기존
+    // 첨부파일 목록이 화면에서 사라졌다(디스크의 sidecar 파일 자체는 안전 —
+    // 표시만 깨짐, 새 첨부를 추가하면 그 응답이 최신 전체 목록을 돌려줘
+    // 우연히 복구됐었음).
+    let mut resp: BookResponse = row.into();
+    resp.attachments = openguild_core::ops::attachments::list_book_attachments(&store, &book_id);
+    Ok(Json(resp))
 }
 
 pub async fn delete_book(

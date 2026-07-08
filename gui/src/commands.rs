@@ -1400,7 +1400,13 @@ pub async fn update_book(
     )
     .await
     .map_err(err)?;
-    Ok(row.into())
+    // BUG-124(admin 보고): server/routes/library.rs 의 update_book 과 동일한
+    // 원인 — attachments 를 빈 배열로 둬서(get_book 만 채우는 게 원칙이었는데
+    // update 도 그렇게 취급) 저장할 때마다 클라이언트가 book 객체 전체를
+    // 이 응답으로 교체하며 기존 첨부파일 목록이 화면에서 사라졌다.
+    let mut resp: BookResponse = row.into();
+    resp.attachments = openguild_core::ops::attachments::list_book_attachments(&store, &book_id);
+    Ok(resp)
 }
 
 #[tauri::command]

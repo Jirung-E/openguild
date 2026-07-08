@@ -2593,6 +2593,43 @@ async fn test_library_attachment_add_remove() {
     assert!(after.as_array().unwrap().is_empty());
 }
 
+/// BUG-124(admin 보고): 첨부가 있는 문서를 본문/제목/폴더 수정(PATCH)하면
+/// 응답의 attachments 가 빈 배열이라 GUI 가 book 객체를 통째로 교체하며
+/// 화면에서 기존 첨부파일이 사라졌음 — update_book 도 get_book 처럼 항상
+/// 채워야 한다.
+#[tokio::test]
+async fn test_library_update_preserves_attachments_in_response() {
+    let app = setup().await;
+    let (_, b1) = post(app.clone(), "/api/library", json!({ "title": "설계" })).await;
+    let book_id = b1["book_id"].as_str().unwrap().to_string();
+
+    let (_, list) = post(
+        app.clone(),
+        &format!("/api/library/{book_id}/attachments"),
+        json!({ "path": "attachments/spec.zip", "name": "spec.zip" }),
+    )
+    .await;
+    assert_eq!(list.as_array().unwrap().len(), 1);
+
+    let (status, updated) = patch(
+        app.clone(),
+        &format!("/api/library/{book_id}"),
+        json!({ "body": "새 본문" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        updated["attachments"].as_array().unwrap().len(),
+        1,
+        "PATCH 응답도 get_book 처럼 attachments 를 채워야 함"
+    );
+    assert_eq!(updated["attachments"][0]["name"], "spec.zip");
+
+    // list_books 는 여전히 payload 절약을 위해 빈 배열 유지(의도적, 회귀 아님).
+    let (_, list_resp) = get(app.clone(), "/api/library").await;
+    assert!(list_resp[0]["attachments"].as_array().unwrap().is_empty());
+}
+
 /// DEV-239: 도서관 폴더 — 생성/목록/삭제 + 문서 path 이동, 빈 폴더만 삭제 허용.
 #[tokio::test]
 async fn test_library_folders_and_doc_path() {
