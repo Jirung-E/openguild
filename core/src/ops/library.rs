@@ -53,10 +53,41 @@ pub async fn list_books(store: &Store) -> AppResult<Vec<LibraryDocRow>> {
 }
 
 /// book_id(`BOOK-NNN`)로 단건 조회 (soft-deleted 제외).
+///
+/// BUG-134(admin 재보고 — 프론트 재조회만으론 여전히 안 고쳐짐): 이전엔 DB
+/// 캐시 행을 그대로 반환해, 파일을 외부(에디터/CLI/git pull)에서 편집해도
+/// reindex 전까지 옛 본문이 계속 나왔다. quest 상세의 lazy refresh
+/// (DEV-137/BUG-089, incremental.rs::refresh_quest_if_stale)와 동일하게
+/// 상세 진입 시 그 파일 하나를 **항상** re-read + 캐시 UPDATE 한다 —
+/// 파일 1개라 저렴하고, mtime 게이트로 건너뛰면 다른 프로세스의 편집을
+/// 놓친다(BUG-089 와 같은 이유). rules/templates 처럼 "파일 직독" 인
+/// 엔티티와 달리 library 는 목록/검색용 DB 캐시를 유지하므로, 진리원
+/// 반영은 이 sync 지점이 담당(file-truth-db-cache 규칙 §4).
 pub async fn get_book(store: &Store, book_id: &str) -> AppResult<Option<LibraryDocRow>> {
     let Some(number) = repo::parse_book_slug(book_id) else {
         return Err(AppError::BadRequest(format!("invalid book id: {book_id:?}")));
     };
+    let path = store.paths.book_path(book_id);
+    if let Ok(bf) = BookFile::read(&path)
+        && !bf.frontmatter.deleted
+    {
+        // 파일이 진리 — 캐시 행을 파일 내용으로 갱신(내용이 같으면
+        // no-op UPDATE, 저렴). 신규 파일(캐시에 행 없음)은 시동
+        // sync / reindex 영역이라 여기서 INSERT 하지 않는다
+        // (refresh_quest_if_stale 과 동일한 의도적 한계).
+        sqlx::query(
+            "UPDATE library_docs
+                SET title = ?, body = ?, path = ?, updated_at = ?
+              WHERE number = ? AND deleted_at IS NULL",
+        )
+        .bind(&bf.frontmatter.title)
+        .bind(&bf.body)
+        .bind(&bf.frontmatter.path)
+        .bind(&bf.frontmatter.updated_at)
+        .bind(number)
+        .execute(&store.index_pool)
+        .await?;
+    }
     let row = sqlx::query_as::<_, LibraryDocRow>(
         "SELECT id, number, title, body, path, created_at, updated_at, deleted_at
            FROM library_docs WHERE number = ? AND deleted_at IS NULL",
@@ -408,6 +439,37 @@ mod tests {
         let list = list_books(&store).await.unwrap();
         let ids: Vec<String> = list.iter().map(|b| b.book_id()).collect();
         assert_eq!(ids, vec!["BOOK-002", "BOOK-003"]);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-134: 파일을 외부(에디터/CLI/git pull)에서 편집한 뒤 상세 조회하면
+    /// DB 캐시가 아니라 파일의 최신 내용이 반환돼야 한다 — quest 상세의
+    /// lazy refresh(DEV-137)와 동일한 sync 지점.
+    #[tokio::test]
+    async fn get_book_refreshes_from_externally_edited_file() {
+        let dir = fresh_tmp("lazyref");
+        let store = setup(&dir).await;
+
+        let b = create_book(&store, "설계 결정", "원래 본문", "").await.unwrap();
+        let book_id = b.book_id();
+
+        // 외부 편집 시뮬레이션 — ops 를 거치지 않고 파일만 직접 수정
+        // (DB 캐시는 여전히 "원래 본문" 인 상태).
+        let path = store.paths.book_path(&book_id);
+        let mut f = BookFile::read(&path).unwrap();
+        f.body = "외부에서 바뀐 본문".into();
+        f.frontmatter.title = "외부에서 바뀐 제목".into();
+        f.write(&path).unwrap();
+
+        let got = get_book(&store, &book_id).await.unwrap().unwrap();
+        assert_eq!(got.body, "외부에서 바뀐 본문", "상세 조회는 파일 최신 내용 반환");
+        assert_eq!(got.title, "외부에서 바뀐 제목");
+
+        // 캐시(list 경로)에도 반영됐는지 — get 이 sync 지점.
+        let list = list_books(&store).await.unwrap();
+        let row = list.iter().find(|r| r.book_id() == book_id).unwrap();
+        assert_eq!(row.body, "외부에서 바뀐 본문");
 
         let _ = std::fs::remove_dir_all(&dir);
     }
