@@ -1,7 +1,7 @@
 <script lang="ts">
 	// DEV-068: `.guild/tags/{slug}.toml` — 사용자가 정의하는 태그.
-	// quest_tag_defs 캐시 + 파일 진리원. quest 의 frontmatter 의 tag 사용 자체는
-	// def 없어도 정상 (UI 가 fallback 색으로 표시).
+	// quest_tag_defs 캐시 + 파일 진리원. DEV-243 부터 도서관/규칙 태그도 이 registry 공유.
+	// frontmatter 의 tag 사용 자체는 def 없어도 정상 (UI 가 fallback 색으로 표시).
 	import { onMount } from 'svelte';
 	import { adminApi } from '$lib/api/admin';
 	import type { QuestTagDef } from '$lib/types';
@@ -108,7 +108,7 @@
 			await adminApi.deleteTagDef(target.slug);
 			onmessage({
 				kind: 'success',
-				text: `'${target.slug}' 정의 삭제됨 (quest 사용은 보존)`
+				text: `'${target.slug}' 정의 삭제됨 (기존 사용처의 태그는 보존)`
 			});
 			await refresh();
 		} catch (e) {
@@ -121,15 +121,15 @@
 
 <section>
 	<div class="section-header">
-		<h2>Quest Tag 정의</h2>
+		<h2>Tag 정의</h2>
 		<div class="actions">
 			<button onclick={openCreate} disabled={busy}>+ 새 tag 정의</button>
 			<button onclick={refresh} disabled={busy}>새로고침</button>
 		</div>
 	</div>
 	<p class="intro">
-		<code>.guild/tags/&lt;slug&gt;.toml</code> 의 색 / 설명. 정의가 없는 tag 도 quest 가 사용 가능 (UI
-		기본 색으로 표시).
+		<code>.guild/tags/&lt;slug&gt;.toml</code> 의 색 / 설명 — quest·도서관·규칙이 공유하는 태그
+		registry. 정의가 없는 tag 도 사용 가능(UI 기본 색으로 표시); 여기서는 색/설명만 미리 정의해둔다.
 	</p>
 
 	{#if defs.length === 0}

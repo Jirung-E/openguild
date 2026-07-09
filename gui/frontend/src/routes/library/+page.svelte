@@ -93,7 +93,35 @@
 		collapsedFolders = next;
 		searchQuery = '';
 	}
-	const tree = $derived(buildLibraryTree(folders, books));
+	// DEV-243 후속(admin 지적): 태그는 달 수 있는데 태그로 찾을 방법이 없었음.
+	// quest 의 DEV-068 tag 필터(AND, chip 클릭 토글)와 동일 패턴.
+	let filterTags = $state(new Set<string>());
+	const allTagOptions = $derived.by(() => {
+		const set = new Set<string>();
+		for (const b of books) for (const t of b.tags ?? []) set.add(t);
+		return Array.from(set).sort();
+	});
+	const tagCounts = $derived.by(() => {
+		const m = new Map<string, number>();
+		for (const b of books) for (const t of b.tags ?? []) m.set(t, (m.get(t) ?? 0) + 1);
+		return m;
+	});
+	function toggleTagFilter(t: string) {
+		const next = new Set(filterTags);
+		if (next.has(t)) next.delete(t);
+		else next.add(t);
+		filterTags = next;
+	}
+	const tagFilteredBooks = $derived(
+		filterTags.size === 0
+			? books
+			: books.filter((b) => {
+					const bTags = new Set(b.tags ?? []);
+					for (const t of filterTags) if (!bTags.has(t)) return false;
+					return true;
+				})
+	);
+	const tree = $derived(buildLibraryTree(folders, tagFilteredBooks));
 
 	// ─── 보기 방식 (tree / explorer) — localStorage 로 유지 ───
 	type ViewMode = 'tree' | 'explorer';
@@ -135,7 +163,7 @@
 	// 전체를 항상 다 보여줌) 전역 유지. 폴더 이름도 매칭 대상에 포함.
 	let searchQuery = $state('');
 	const searchScope = $derived(viewMode === 'explorer' ? explorerPath : '');
-	const searchResults = $derived(searchLibrary(tree, books, searchQuery, searchScope));
+	const searchResults = $derived(searchLibrary(tree, tagFilteredBooks, searchQuery, searchScope));
 
 	let editMode = $state(false);
 	$effect(() => setUnsaved('library-edit', editMode));
@@ -595,6 +623,26 @@
 			placeholder="제목/본문 검색"
 			bind:value={searchQuery}
 		/>
+		{#if allTagOptions.length > 0}
+			<div class="tag-filter-row" aria-label="태그 필터">
+				{#each allTagOptions as t (t)}
+					<button
+						class="tag-filter-chip"
+						class:active={filterTags.has(t)}
+						onclick={() => toggleTagFilter(t)}
+						title={filterTags.has(t) ? `${t} 필터 해제` : `${t} 필터 추가`}
+					>
+						{t}
+						<span class="tag-chip-count">{tagCounts.get(t) ?? 0}</span>
+					</button>
+				{/each}
+				{#if filterTags.size > 0}
+					<button class="tag-clear" onclick={() => (filterTags = new Set())} title="태그 필터 모두 해제">
+						× 전체 해제
+					</button>
+				{/if}
+			</div>
+		{/if}
 		<div class="crumbs">
 			<!-- BUG-127(admin 요청): 현재 위치 왼쪽에 상위 폴더 이동 버튼.
 			     BUG-127: 상위/도서관/각 경로 조각도 드롭 대상 — 문서를 여기로 끌어다
@@ -789,6 +837,30 @@
 						placeholder="제목/본문 검색"
 						bind:value={searchQuery}
 					/>
+					{#if allTagOptions.length > 0}
+						<div class="tag-filter-row" aria-label="태그 필터">
+							{#each allTagOptions as t (t)}
+								<button
+									class="tag-filter-chip"
+									class:active={filterTags.has(t)}
+									onclick={() => toggleTagFilter(t)}
+									title={filterTags.has(t) ? `${t} 필터 해제` : `${t} 필터 추가`}
+								>
+									{t}
+									<span class="tag-chip-count">{tagCounts.get(t) ?? 0}</span>
+								</button>
+							{/each}
+							{#if filterTags.size > 0}
+								<button
+									class="tag-clear"
+									onclick={() => (filterTags = new Set())}
+									title="태그 필터 모두 해제"
+								>
+									× 전체 해제
+								</button>
+							{/if}
+						</div>
+					{/if}
 					{#if searchResults}
 						<!-- BUG-127: tree 모드는 "현재 폴더" 개념이 없어 전역 검색 유지,
 						     폴더 이름도 매칭 — 클릭하면 그 폴더를 펼쳐서 보여줌. -->
@@ -1351,6 +1423,60 @@
 	.book-path {
 		font-size: 0.68rem;
 		color: var(--text-muted);
+	}
+
+	/* DEV-243 후속: 태그 필터 chip — quest QuestList.svelte 와 동일 패턴. */
+	.tag-filter-row {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.3rem;
+		align-items: center;
+		margin-bottom: 0.4rem;
+	}
+	.tag-filter-chip {
+		padding: 0.15rem 0.65rem;
+		background: color-mix(in srgb, var(--warning) 8%, transparent);
+		border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
+		border-radius: 20px;
+		color: var(--warning);
+		font-size: 0.72rem;
+		font-family: 'JetBrains Mono', ui-monospace, monospace;
+		cursor: pointer;
+		transition:
+			background 0.1s,
+			border-color 0.1s;
+	}
+	.tag-filter-chip:hover {
+		background: color-mix(in srgb, var(--warning) 18%, transparent);
+	}
+	.tag-filter-chip.active {
+		background: color-mix(in srgb, var(--warning) 28%, transparent);
+		border-color: color-mix(in srgb, var(--warning) 70%, transparent);
+		color: color-mix(in srgb, var(--warning) 60%, white);
+	}
+	.tag-chip-count {
+		display: inline-block;
+		margin-left: 0.4rem;
+		padding: 0 0.4rem;
+		min-width: 1.1rem;
+		text-align: center;
+		font-size: 0.65rem;
+		color: var(--text-muted);
+		background: var(--bg-subtle);
+		border-radius: 10px;
+	}
+	.tag-clear {
+		padding: 0.15rem 0.55rem;
+		background: transparent;
+		border: 1px solid var(--border);
+		border-radius: 20px;
+		color: var(--text-muted);
+		font-size: 0.7rem;
+		cursor: pointer;
+	}
+	.tag-clear:hover {
+		background: var(--bg-subtle);
+		color: var(--text);
 	}
 
 	.state {

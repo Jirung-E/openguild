@@ -128,6 +128,35 @@
 		}
 	}
 
+	// DEV-243 후속(admin 지적): 태그는 달 수 있는데 태그로 찾을 방법이 없었음.
+	// quest 의 DEV-068 tag 필터(AND, chip 클릭 토글)와 동일 패턴.
+	let filterTags = $state(new Set<string>());
+	const allTagOptions = $derived.by(() => {
+		const set = new Set<string>();
+		for (const e of entries) for (const t of e.tags ?? []) set.add(t);
+		return Array.from(set).sort();
+	});
+	const tagCounts = $derived.by(() => {
+		const m = new Map<string, number>();
+		for (const e of entries) for (const t of e.tags ?? []) m.set(t, (m.get(t) ?? 0) + 1);
+		return m;
+	});
+	function toggleTagFilter(t: string) {
+		const next = new Set(filterTags);
+		if (next.has(t)) next.delete(t);
+		else next.add(t);
+		filterTags = next;
+	}
+	const filteredEntries = $derived(
+		filterTags.size === 0
+			? entries
+			: entries.filter((e) => {
+					const eTags = new Set(e.tags ?? []);
+					for (const t of filterTags) if (!eTags.has(t)) return false;
+					return true;
+				})
+	);
+
 	onMount(() => {
 		// DEV-173: cross-link 딥링크 — `/rules?slug=xxx` 로 진입 시 해당 규칙 선택.
 		const slugParam = new URLSearchParams(window.location.search).get('slug');
@@ -371,11 +400,37 @@
 					<h2>규칙 목록</h2>
 					<button class="btn-new" onclick={openCreate} title="신규 규칙">+ 신규</button>
 				</div>
+				{#if allTagOptions.length > 0}
+					<div class="tag-filter-row" aria-label="태그 필터">
+						{#each allTagOptions as t (t)}
+							<button
+								class="tag-filter-chip"
+								class:active={filterTags.has(t)}
+								onclick={() => toggleTagFilter(t)}
+								title={filterTags.has(t) ? `${t} 필터 해제` : `${t} 필터 추가`}
+							>
+								{t}
+								<span class="tag-chip-count">{tagCounts.get(t) ?? 0}</span>
+							</button>
+						{/each}
+						{#if filterTags.size > 0}
+							<button
+								class="tag-clear"
+								onclick={() => (filterTags = new Set())}
+								title="태그 필터 모두 해제"
+							>
+								× 전체 해제
+							</button>
+						{/if}
+					</div>
+				{/if}
 				{#if entries.length === 0}
 					<p class="empty-list">규칙 없음. "+ 신규" 로 만들기.</p>
+				{:else if filteredEntries.length === 0}
+					<p class="empty-list">태그 필터에 맞는 규칙 없음.</p>
 				{:else}
 					<ul class="rule-list">
-						{#each entries as e (e.slug)}
+						{#each filteredEntries as e (e.slug)}
 							<li>
 								<button
 									class="rule-item"
@@ -561,6 +616,60 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.15rem;
+	}
+
+	/* DEV-243 후속: 태그 필터 chip — quest QuestList.svelte 와 동일 패턴. */
+	.tag-filter-row {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.3rem;
+		align-items: center;
+		margin-bottom: 0.4rem;
+	}
+	.tag-filter-chip {
+		padding: 0.15rem 0.65rem;
+		background: color-mix(in srgb, var(--warning) 8%, transparent);
+		border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
+		border-radius: 20px;
+		color: var(--warning);
+		font-size: 0.72rem;
+		font-family: 'JetBrains Mono', ui-monospace, monospace;
+		cursor: pointer;
+		transition:
+			background 0.1s,
+			border-color 0.1s;
+	}
+	.tag-filter-chip:hover {
+		background: color-mix(in srgb, var(--warning) 18%, transparent);
+	}
+	.tag-filter-chip.active {
+		background: color-mix(in srgb, var(--warning) 28%, transparent);
+		border-color: color-mix(in srgb, var(--warning) 70%, transparent);
+		color: color-mix(in srgb, var(--warning) 60%, white);
+	}
+	.tag-chip-count {
+		display: inline-block;
+		margin-left: 0.4rem;
+		padding: 0 0.4rem;
+		min-width: 1.1rem;
+		text-align: center;
+		font-size: 0.65rem;
+		color: var(--text-muted);
+		background: var(--bg-subtle);
+		border-radius: 10px;
+	}
+	.tag-clear {
+		padding: 0.15rem 0.55rem;
+		background: transparent;
+		border: 1px solid var(--border);
+		border-radius: 20px;
+		color: var(--text-muted);
+		font-size: 0.7rem;
+		cursor: pointer;
+	}
+	.tag-clear:hover {
+		background: var(--bg-subtle);
+		color: var(--text);
 	}
 	.rule-item {
 		width: 100%;

@@ -104,6 +104,7 @@
 
 <style>
 	section {
+		margin-top: 1rem;
 		margin-bottom: 1.5rem;
 	}
 	.section-head {
