@@ -58,6 +58,8 @@ pub fn create_router(store: Store) -> Router {
                 .patch(rules::rename_rule)
                 .delete(rules::delete_rule),
         )
+        // DEV-243: 규칙 태그 전체 교체.
+        .route("/api/rules/{slug}/tags", put(rules::set_tags))
         // DEV-016 legacy 단일 파일 — 기존 호출자 호환.
         .route(
             "/api/rules-single",
@@ -74,6 +76,8 @@ pub fn create_router(store: Store) -> Router {
                 .patch(library::update_book)
                 .delete(library::delete_book),
         )
+        // DEV-243: 도서관 문서 태그 전체 교체.
+        .route("/api/library/{book_id}/tags", patch(library::set_tags))
         // DEV-239: 도서관 폴더(계층) — `.guild/library/folders.toml`.
         .route(
             "/api/library/folders",

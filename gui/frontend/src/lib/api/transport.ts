@@ -125,7 +125,15 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 			};
 		}
 	}
-	if (parts[0] === 'api' && parts[1] === 'rules' && parts[2]) {
+	// DEV-243: /api/rules/{slug}/tags — sub-path 라 일반 slug 블록보다 먼저 검사.
+	if (parts[0] === 'api' && parts[1] === 'rules' && parts[2] && parts[3] === 'tags') {
+		const slug = decodeURIComponent(parts[2]);
+		if (method === 'PUT') {
+			const tags = (body as { tags?: string[] } | undefined)?.tags ?? [];
+			return { cmd: 'set_rule_tags', args: { slug, tags } };
+		}
+	}
+	if (parts[0] === 'api' && parts[1] === 'rules' && parts[2] && !parts[3]) {
 		const slug = decodeURIComponent(parts[2]);
 		if (method === 'GET') return { cmd: 'get_rule', args: { slug } };
 		if (method === 'PUT') {
@@ -169,6 +177,14 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 		}
 		if (method === 'DELETE') {
 			return { cmd: 'delete_library_folder', args: { path: query.get('path') ?? '' } };
+		}
+	}
+	// DEV-243: /api/library/{bookId}/tags — sub-path 라 일반 bookId 블록보다 먼저 검사.
+	if (parts[0] === 'api' && parts[1] === 'library' && parts[2] && parts[3] === 'tags') {
+		const bookId = decodeURIComponent(parts[2]);
+		if (method === 'PATCH') {
+			const tags = (body as { tags?: string[] } | undefined)?.tags ?? [];
+			return { cmd: 'set_book_tags', args: { bookId, tags } };
 		}
 	}
 	// DEV-237: /api/library/{bookId}/attachments — book_id 뒤에 sub-path 가 붙는

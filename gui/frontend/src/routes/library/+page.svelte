@@ -36,6 +36,10 @@
 	// BUG-123(admin 재지적): 네이티브 alert() 대신 앱 공용 toast — 다른 페이지들과
 	// 동일한 alert() 대체 컨벤션(+layout.svelte 주석 참고).
 	import { showToast } from '$lib/stores/toast';
+	// DEV-243: 태그 — quest 와 동일한 정의(색/설명) registry 공유.
+	import TagPills from '$lib/components/TagPills.svelte';
+	import { adminApi } from '$lib/api/admin';
+	import type { QuestTagDef } from '$lib/types';
 
 	let loading = $state(true);
 	let error = $state<string | null>(null);
@@ -202,6 +206,21 @@
 		explorerPath = sp.get('path') ?? '';
 		loadList(sp.get('id'));
 	});
+
+	// DEV-243: 태그 정의(색/설명) — quest 상세와 동일한 registry.
+	let tagDefs = $state<QuestTagDef[]>([]);
+	onMount(async () => {
+		tagDefs = await adminApi.listTagDefs().catch(() => [] as QuestTagDef[]);
+	});
+	async function setDocTags(tags: string[]) {
+		if (!selectedId) return;
+		try {
+			const updated = await libraryApi.setTags(selectedId, tags);
+			books = books.map((b) => (b.book_id === selectedId ? updated : b));
+		} catch (e) {
+			showToast(e instanceof Error ? e.message : '태그 저장 실패', 'error');
+		}
+	}
 
 	// BUG-104 + admin 보고(2026-07-07): 문서/폴더를 여러 번 옮겨다닌 뒤 브라우저
 	// 뒤로가기를 눌러도 도서관 밖으로 그냥 나가버렸음 — syncUrl 이 매번
@@ -962,6 +981,9 @@
 							<button class="link" onclick={enterEdit}>지금 작성</button>
 						</div>
 					{/if}
+
+					<!-- DEV-243: 태그. -->
+					<TagPills tags={selected.tags} {tagDefs} onSetTags={setDocTags} />
 
 					<!-- DEV-237: 첨부 섹션 — 이미지/동영상 외 임의 파일. -->
 					<AttachmentSection

@@ -34,6 +34,11 @@
 	// DEV-173 후속: 규칙 생성/삭제/이름변경/저장(제목 변경) 시 cross-link 인덱스
 	// 재적재 — 안 하면 방금 만든 규칙이 [[링크]] 에서 미존재(빨강)로 남음.
 	import { loadQuestIndex } from '$lib/stores/questIndex';
+	// DEV-243: 태그 — quest 와 동일한 정의(색/설명) registry 공유.
+	import TagPills from '$lib/components/TagPills.svelte';
+	import { adminApi } from '$lib/api/admin';
+	import type { QuestTagDef } from '$lib/types';
+	import { showToast } from '$lib/stores/toast';
 
 	let loading = $state(true);
 	let error = $state<string | null>(null);
@@ -103,6 +108,24 @@
 		}
 		const e = entries.find((x) => x.slug === selectedSlug);
 		selectedContent = e ? e.content : null;
+	}
+
+	// DEV-243: 태그 — entries 안의 RuleEntry.tags 를 그대로 파생.
+	let tagDefs = $state<QuestTagDef[]>([]);
+	onMount(async () => {
+		tagDefs = await adminApi.listTagDefs().catch(() => [] as QuestTagDef[]);
+	});
+	const selectedTags = $derived(entries.find((e) => e.slug === selectedSlug)?.tags ?? []);
+	async function setRuleTags(tags: string[]) {
+		if (!selectedSlug) return;
+		try {
+			const updated = await rulesApi.setTags(selectedSlug, tags);
+			entries = entries.map((e) =>
+				e.slug === selectedSlug ? { ...e, tags: updated.tags } : e
+			);
+		} catch (e) {
+			showToast(e instanceof Error ? e.message : '태그 저장 실패', 'error');
+		}
 	}
 
 	onMount(() => {
@@ -446,6 +469,10 @@
 							아직 작성된 본문이 없습니다.
 							<button class="link" onclick={enterEdit}>지금 작성</button>
 						</div>
+					{/if}
+					{#if !editMode}
+						<!-- DEV-243: 태그. -->
+						<TagPills tags={selectedTags} {tagDefs} onSetTags={setRuleTags} />
 					{/if}
 				{/if}
 			</section>

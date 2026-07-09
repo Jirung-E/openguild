@@ -23,6 +23,37 @@ pub struct LibraryDocRow {
     pub created_at: String,
     pub updated_at: String,
     pub deleted_at: Option<String>,
+    /// DEV-243: 자유 태그 — many-to-many(`library_tags`)라 SQL 컬럼이 아니라
+    /// 조회 후 별도 쿼리로 채움(`attach_tags`). quest_tags 와 동일 패턴.
+    #[sqlx(skip)]
+    pub tags: Vec<String>,
+}
+
+/// 여러 book 행에 `library_tags` 를 일괄 조회해 채워넣는다 (N+1 방지 — id IN (..)).
+async fn attach_tags(store: &Store, rows: &mut [LibraryDocRow]) -> AppResult<()> {
+    if rows.is_empty() {
+        return Ok(());
+    }
+    let ids: Vec<i64> = rows.iter().map(|r| r.id).collect();
+    let placeholders = vec!["?"; ids.len()].join(", ");
+    let sql = format!(
+        "SELECT book_id, tag FROM library_tags WHERE book_id IN ({placeholders}) ORDER BY tag"
+    );
+    let mut q = sqlx::query_as::<_, (i64, String)>(&sql);
+    for id in &ids {
+        q = q.bind(id);
+    }
+    let tag_rows = q.fetch_all(&store.index_pool).await?;
+    let mut by_id: std::collections::HashMap<i64, Vec<String>> = std::collections::HashMap::new();
+    for (book_id, tag) in tag_rows {
+        by_id.entry(book_id).or_default().push(tag);
+    }
+    for row in rows.iter_mut() {
+        if let Some(tags) = by_id.remove(&row.id) {
+            row.tags = tags;
+        }
+    }
+    Ok(())
 }
 
 /// library_folders 캐시 행.
@@ -43,12 +74,13 @@ impl LibraryDocRow {
 /// 살아있는 문서 목록 (번호 순). body 포함 — rules 와 같은 판단(문서 수가
 /// 크지 않고 GUI 목록이 미리보기를 쓸 수 있음). 커지면 후속에서 분리.
 pub async fn list_books(store: &Store) -> AppResult<Vec<LibraryDocRow>> {
-    let rows = sqlx::query_as::<_, LibraryDocRow>(
+    let mut rows = sqlx::query_as::<_, LibraryDocRow>(
         "SELECT id, number, title, body, path, created_at, updated_at, deleted_at
            FROM library_docs WHERE deleted_at IS NULL ORDER BY number",
     )
     .fetch_all(&store.index_pool)
     .await?;
+    attach_tags(store, &mut rows).await?;
     Ok(rows)
 }
 
@@ -87,15 +119,98 @@ pub async fn get_book(store: &Store, book_id: &str) -> AppResult<Option<LibraryD
         .bind(number)
         .execute(&store.index_pool)
         .await?;
+        // DEV-243: tags 도 같은 sync 지점에서 파일 기준으로 캐시 갱신.
+        if let Some(id) = sqlx::query_scalar::<_, i64>(
+            "SELECT id FROM library_docs WHERE number = ? AND deleted_at IS NULL",
+        )
+        .bind(number)
+        .fetch_optional(&store.index_pool)
+        .await?
+        {
+            sync_book_tags_cache(store, id, &bf.frontmatter.tags).await?;
+        }
     }
-    let row = sqlx::query_as::<_, LibraryDocRow>(
+    let mut row = sqlx::query_as::<_, LibraryDocRow>(
         "SELECT id, number, title, body, path, created_at, updated_at, deleted_at
            FROM library_docs WHERE number = ? AND deleted_at IS NULL",
     )
     .bind(number)
     .fetch_optional(&store.index_pool)
     .await?;
+    if let Some(r) = &mut row {
+        let mut rs = [r.clone()];
+        attach_tags(store, &mut rs).await?;
+        *r = rs[0].clone();
+    }
     Ok(row)
+}
+
+/// `library_tags` 를 주어진 목록으로 통째 교체 (wipe + INSERT, quest_tags 와 동일 패턴).
+async fn sync_book_tags_cache(store: &Store, book_id: i64, tags: &[String]) -> AppResult<()> {
+    let mut tx = store
+        .index_pool
+        .begin()
+        .await
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("begin tx: {e}")))?;
+    sqlx::query("DELETE FROM library_tags WHERE book_id = ?")
+        .bind(book_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("clear library_tags: {e}")))?;
+    for tag in tags {
+        sqlx::query("INSERT INTO library_tags (book_id, tag) VALUES (?, ?)")
+            .bind(book_id)
+            .bind(tag)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::Internal(anyhow::anyhow!("insert library_tags: {e}")))?;
+    }
+    tx.commit()
+        .await
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("commit tx: {e}")))?;
+    Ok(())
+}
+
+/// DEV-243: 한 문서의 tags 전체 교체. frontmatter + DB 캐시 모두 갱신
+/// (quest 의 `set_quest_tags` 와 동일 패턴 — trim/빈 제거/중복 제거, 순서 보존).
+pub async fn set_book_tags(
+    store: &Store,
+    book_id: &str,
+    tags: Vec<String>,
+) -> AppResult<LibraryDocRow> {
+    use std::collections::HashSet;
+
+    let mut seen: HashSet<String> = HashSet::new();
+    let normalized: Vec<String> = tags
+        .into_iter()
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+        .filter(|t| seen.insert(t.clone()))
+        .collect();
+
+    let existing = get_book(store, book_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("book not found: {book_id}")))?;
+
+    let _ = journal::append(
+        &store.journal_pool,
+        "set_book_tags",
+        &json!({ "book_id": book_id, "tags": &normalized }),
+        None::<&serde_json::Value>,
+    )
+    .await
+    .map_err(AppError::Internal)?;
+
+    let path = store.paths.book_path(book_id);
+    let mut bf = BookFile::read(&path).map_err(AppError::Internal)?;
+    bf.frontmatter.tags = normalized.clone();
+    bf.write(&path).map_err(AppError::Internal)?;
+
+    sync_book_tags_cache(store, existing.id, &normalized).await?;
+
+    get_book(store, book_id)
+        .await?
+        .ok_or_else(|| AppError::Internal(anyhow::anyhow!("updated book not found: {book_id}")))
 }
 
 /// 새 문서 생성 — 카운터에서 번호 할당, 파일 작성, 캐시 INSERT.
@@ -131,6 +246,7 @@ pub async fn create_book(
             created_at: now.clone(),
             updated_at: now.clone(),
             deleted: false,
+            tags: vec![],
         },
         body: body.trim().to_string(),
     };
@@ -201,6 +317,9 @@ pub async fn update_book(
             created_at: existing.created_at.clone(),
             updated_at: now.clone(),
             deleted: false,
+            // DEV-243: tags 는 이 함수의 대상이 아니므로 기존 값 보존
+            // (quest 의 write_quest_file 이 existing tags 보존하는 것과 동일 의도).
+            tags: existing.tags.clone(),
         },
         body: new_body.clone(),
     };
@@ -248,6 +367,7 @@ pub async fn delete_book(store: &Store, book_id: &str) -> AppResult<()> {
             created_at: existing.created_at.clone(),
             updated_at: now.clone(),
             deleted: true,
+            tags: existing.tags.clone(),
         },
         body: existing.body.clone(),
     };

@@ -1226,6 +1226,9 @@ pub struct RulesListResponse {
 pub struct RuleResponse {
     pub slug: String,
     pub content: Option<String>,
+    /// DEV-243: 자유 태그.
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 #[tauri::command]
@@ -1236,8 +1239,11 @@ pub fn list_rules(store: State<'_, Store>) -> Result<RulesListResponse, String> 
 
 #[tauri::command]
 pub fn get_rule(store: State<'_, Store>, slug: String) -> Result<RuleResponse, String> {
-    let content = openguild_core::ops::rules::get_rule(&store, &slug).map_err(err)?;
-    Ok(RuleResponse { slug, content })
+    let entry = openguild_core::ops::rules::get_rule_entry(&store, &slug).map_err(err)?;
+    Ok(match entry {
+        Some(e) => RuleResponse { slug: e.slug, content: Some(e.content), tags: e.tags },
+        None => RuleResponse { slug, content: None, tags: vec![] },
+    })
 }
 
 #[tauri::command]
@@ -1249,9 +1255,15 @@ pub async fn set_rule(
     openguild_core::ops::rules::set_rule(&store, &slug, content.clone())
         .await
         .map_err(err)?;
+    // BUG-134 패턴: 본문 저장은 tags 를 보존하지만, 응답엔 실제 현재 tags 를 재조회.
+    let tags = openguild_core::ops::rules::get_rule_entry(&store, &slug)
+        .map_err(err)?
+        .map(|e| e.tags)
+        .unwrap_or_default();
     Ok(RuleResponse {
         slug,
         content: Some(content),
+        tags,
     })
 }
 
@@ -1268,6 +1280,7 @@ pub async fn create_rule(
     Ok(RuleResponse {
         slug,
         content: Some(c),
+        tags: vec![],
     })
 }
 
@@ -1287,10 +1300,27 @@ pub async fn rename_rule(
     openguild_core::ops::rules::rename_rule(&store, &slug, &new_slug)
         .await
         .map_err(err)?;
-    let content = openguild_core::ops::rules::get_rule(&store, &new_slug).map_err(err)?;
+    let entry = openguild_core::ops::rules::get_rule_entry(&store, &new_slug).map_err(err)?;
+    Ok(match entry {
+        Some(e) => RuleResponse { slug: e.slug, content: Some(e.content), tags: e.tags },
+        None => RuleResponse { slug: new_slug, content: None, tags: vec![] },
+    })
+}
+
+/// DEV-243: 규칙 태그 전체 교체.
+#[tauri::command]
+pub async fn set_rule_tags(
+    store: State<'_, Store>,
+    slug: String,
+    tags: Vec<String>,
+) -> Result<RuleResponse, String> {
+    let entry = openguild_core::ops::rules::set_rule_tags(&store, &slug, tags)
+        .await
+        .map_err(err)?;
     Ok(RuleResponse {
-        slug: new_slug,
-        content,
+        slug: entry.slug,
+        content: Some(entry.content),
+        tags: entry.tags,
     })
 }
 
@@ -1311,6 +1341,9 @@ pub struct BookResponse {
     pub deleted_at: Option<String>,
     /// DEV-237: 첨부 목록 — get_book 에서만 채움(list_books 는 빈 배열).
     pub attachments: Vec<openguild_core::models::QuestAttachment>,
+    /// DEV-243: 자유 태그.
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 impl From<openguild_core::ops::library::LibraryDocRow> for BookResponse {
@@ -1325,6 +1358,7 @@ impl From<openguild_core::ops::library::LibraryDocRow> for BookResponse {
             updated_at: r.updated_at,
             deleted_at: r.deleted_at,
             attachments: Vec::new(),
+            tags: r.tags,
         }
     }
 }
@@ -1414,6 +1448,21 @@ pub async fn delete_book(store: State<'_, Store>, book_id: String) -> Result<(),
     openguild_core::ops::library::delete_book(&store, &book_id)
         .await
         .map_err(err)
+}
+
+/// DEV-243: 도서관 문서 태그 전체 교체.
+#[tauri::command]
+pub async fn set_book_tags(
+    store: State<'_, Store>,
+    book_id: String,
+    tags: Vec<String>,
+) -> Result<BookResponse, String> {
+    let row = openguild_core::ops::library::set_book_tags(&store, &book_id, tags)
+        .await
+        .map_err(err)?;
+    let mut resp: BookResponse = row.into();
+    resp.attachments = openguild_core::ops::attachments::list_book_attachments(&store, &book_id);
+    Ok(resp)
 }
 
 // ─────────────────────── DEV-239: 도서관 폴더 ───────────────────────

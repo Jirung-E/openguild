@@ -2516,6 +2516,41 @@ async fn test_rules_multi_file_crud() {
     assert_eq!(status, StatusCode::NO_CONTENT);
 }
 
+/// DEV-243: 규칙 태그 — PUT /api/rules/{slug}/tags, 본문 저장은 보존.
+#[tokio::test]
+async fn test_rule_tags_set_and_preserved_on_body_save() {
+    let app = setup().await;
+    let (_, _) = post(
+        app.clone(),
+        "/api/rules",
+        json!({ "slug": "tagged-rule", "content": "본문" }),
+    )
+    .await;
+
+    let (status, updated) = put(
+        app.clone(),
+        "/api/rules/tagged-rule/tags",
+        json!({ "tags": ["git", "convention"] }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(updated["tags"], json!(["git", "convention"]));
+
+    let (status, got) = get(app.clone(), "/api/rules/tagged-rule").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(got["tags"], json!(["git", "convention"]));
+
+    // 본문만 저장 — 태그는 그대로 남아야 함.
+    let (status, saved) = put(
+        app,
+        "/api/rules/tagged-rule",
+        json!({ "content": "새 본문" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(saved["tags"], json!(["git", "convention"]), "본문 저장이 태그를 지우면 안 됨");
+}
+
 /// DEV-216: 도서관 CRUD — 생성/목록/조회/수정/soft delete + 번호 재사용 금지.
 #[tokio::test]
 async fn test_library_crud_and_number_monotonic() {
@@ -2628,6 +2663,41 @@ async fn test_library_update_preserves_attachments_in_response() {
     // list_books 는 여전히 payload 절약을 위해 빈 배열 유지(의도적, 회귀 아님).
     let (_, list_resp) = get(app.clone(), "/api/library").await;
     assert!(list_resp[0]["attachments"].as_array().unwrap().is_empty());
+}
+
+/// DEV-243: 도서관 문서 태그 — PATCH /api/library/{book_id}/tags, 본문 저장은 보존.
+#[tokio::test]
+async fn test_library_tags_set_and_preserved_on_update() {
+    let app = setup().await;
+    let (_, b1) = post(app.clone(), "/api/library", json!({ "title": "설계" })).await;
+    let book_id = b1["book_id"].as_str().unwrap().to_string();
+    assert!(b1["tags"].as_array().unwrap().is_empty());
+
+    let (status, updated) = patch(
+        app.clone(),
+        &format!("/api/library/{book_id}/tags"),
+        json!({ "tags": ["architecture", "decision"] }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(updated["tags"], json!(["architecture", "decision"]));
+
+    // 본문만 수정 — 태그는 그대로 남아야 함.
+    let (status, saved) = patch(
+        app.clone(),
+        &format!("/api/library/{book_id}"),
+        json!({ "body": "새 본문" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        saved["tags"],
+        json!(["architecture", "decision"]),
+        "본문 저장이 태그를 지우면 안 됨"
+    );
+
+    let (_, got) = get(app.clone(), &format!("/api/library/{book_id}")).await;
+    assert_eq!(got["tags"], json!(["architecture", "decision"]));
 }
 
 /// DEV-239: 도서관 폴더 — 생성/목록/삭제 + 문서 path 이동, 빈 폴더만 삭제 허용.

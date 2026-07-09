@@ -160,6 +160,10 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
     sqlx::query("DELETE FROM library_docs")
         .execute(&mut *tx)
         .await?;
+    // DEV-243: 도서관 태그 캐시도 wipe — frontmatter 의 tags 배열로부터 재구축.
+    sqlx::query("DELETE FROM library_tags")
+        .execute(&mut *tx)
+        .await?;
     // DEV-239: 도서관 폴더 캐시도 wipe — `.guild/library/folders.toml` 로부터 재구축.
     sqlx::query("DELETE FROM library_folders")
         .execute(&mut *tx)
@@ -476,9 +480,9 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
                     };
                     let deleted_at: Option<String> =
                         bf.frontmatter.deleted.then(|| bf.frontmatter.updated_at.clone());
-                    sqlx::query(
+                    let book_row_id: i64 = sqlx::query_scalar(
                         "INSERT INTO library_docs (number, title, body, path, created_at, updated_at, deleted_at)
-                         VALUES (?, ?, ?, ?, ?, ?, ?)",
+                         VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id",
                     )
                     .bind(number)
                     .bind(&bf.frontmatter.title)
@@ -487,8 +491,20 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
                     .bind(&bf.frontmatter.created_at)
                     .bind(&bf.frontmatter.updated_at)
                     .bind(deleted_at)
-                    .execute(&mut *tx)
+                    .fetch_one(&mut *tx)
                     .await?;
+                    // DEV-243: tags — frontmatter 의 tags 배열 → library_tags.
+                    for tag in &bf.frontmatter.tags {
+                        let normalized = tag.trim();
+                        if normalized.is_empty() {
+                            continue;
+                        }
+                        sqlx::query("INSERT OR IGNORE INTO library_tags (book_id, tag) VALUES (?, ?)")
+                            .bind(book_row_id)
+                            .bind(normalized)
+                            .execute(&mut *tx)
+                            .await?;
+                    }
                     report.library_loaded += 1;
                 }
                 Err(e) => {

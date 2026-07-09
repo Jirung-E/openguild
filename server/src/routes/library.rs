@@ -124,6 +124,29 @@ pub async fn delete_book(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// DEV-243: tag 전체 교체. body: `{ "tags": ["a", "b", ...] }` — quest 의
+/// set_tags 와 동일 패턴.
+pub async fn set_tags(
+    State(store): State<Store>,
+    Path(book_id): Path<String>,
+    Json(body): Json<serde_json::Value>,
+) -> AppResult<Json<BookResponse>> {
+    let tags: Vec<String> = body
+        .as_object()
+        .and_then(|o| o.get("tags"))
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+    let row = ops::set_book_tags(&store, &book_id, tags).await?;
+    let mut resp: BookResponse = row.into();
+    resp.attachments = openguild_core::ops::attachments::list_book_attachments(&store, &book_id);
+    Ok(Json(resp))
+}
+
 // ─── DEV-239: 폴더 ───
 
 #[derive(Debug, serde::Serialize)]

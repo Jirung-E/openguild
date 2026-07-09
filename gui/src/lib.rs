@@ -417,12 +417,14 @@ pub fn run() {
             commands::create_rule,
             commands::delete_rule,
             commands::rename_rule,
+            commands::set_rule_tags,
             // DEV-217: 도서관.
             commands::list_books,
             commands::get_book,
             commands::create_book,
             commands::update_book,
             commands::delete_book,
+            commands::set_book_tags,
             // DEV-239: 도서관 폴더.
             commands::list_library_folders,
             commands::create_library_folder,

@@ -12,7 +12,8 @@ function book(id: string, title: string, path: string, body = ''): Book {
 		created_at: '',
 		updated_at: '',
 		deleted_at: null,
-		attachments: []
+		attachments: [],
+		tags: []
 	};
 }
 function folder(path: string): LibraryFolder {

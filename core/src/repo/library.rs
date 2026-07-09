@@ -59,6 +59,11 @@ pub struct BookFrontmatter {
     /// soft delete flag.
     #[serde(default)]
     pub deleted: bool,
+    /// DEV-243: 자유 태그 — quest 의 DEV-068 과 동일 패턴(색/설명 정의는
+    /// `.guild/tags/{slug}.toml` 공유 registry). 진리원은 본 필드, DB 의
+    /// `library_tags` 는 캐시. 빈 vec 는 frontmatter 에서 키 자체 생략.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
 }
 
 /// DEV-239: 폴더 경로 정규화 + 검증. 빈 문자열("") 은 최상위(루트) — 유효.
@@ -301,6 +306,7 @@ mod tests {
                 created_at: "2026-07-05T22:00:00+09:00".into(),
                 updated_at: "2026-07-05T22:00:00+09:00".into(),
                 deleted: false,
+                tags: vec![],
             },
             body: format!("{title} 본문"),
         }

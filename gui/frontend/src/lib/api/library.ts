@@ -18,6 +18,8 @@ export interface Book {
 	deleted_at: string | null;
 	/** DEV-237: get() 에서만 채움 — list() 는 빈 배열. */
 	attachments: QuestAttachment[];
+	/** DEV-243: 자유 태그. */
+	tags: string[];
 }
 
 export interface LibraryFolder {
@@ -34,6 +36,10 @@ export const libraryApi = {
 	update: (bookId: string, fields: { title?: string; body?: string; path?: string }) =>
 		api.patch<Book>(`/api/library/${encodeURIComponent(bookId)}`, fields),
 	delete: (bookId: string) => api.delete(`/api/library/${encodeURIComponent(bookId)}`),
+
+	// DEV-243: 태그 전체 교체.
+	setTags: (bookId: string, tags: string[]) =>
+		api.patch<Book>(`/api/library/${encodeURIComponent(bookId)}/tags`, { tags }),
 
 	// DEV-237: 첨부 — quests/campaigns 의 attachToSection 과 동일 시맨틱.
 	addAttachment: (bookId: string, path: string, name: string) =>

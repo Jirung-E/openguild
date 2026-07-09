@@ -1,7 +1,10 @@
 //! DEV-016 (multi-file): 길드 규칙 — `.guild/rules/{slug}.md` 다중 파일.
 //!
 //! 팀 컨벤션 / 그라운드 룰 / 코드 스타일 / 배포 체크리스트 등 길드별 자유
-//! 문서를 주제별로 분리. frontmatter 없는 plain Markdown.
+//! 문서를 주제별로 분리. 기본은 frontmatter 없는 plain Markdown 이지만,
+//! DEV-243(태그)부터 **선택적** `+++ TOML +++` frontmatter 를 지원 — 태그가
+//! 하나도 없으면 frontmatter 자체를 생략해(파일 포맷 그대로) 기존 규칙
+//! 파일과의 diff/하위호환을 최소화한다.
 //!
 //! 파일이 진리원 — DB 캐시 없음. server / GUI 가 직접 파일 IO.
 //!
@@ -20,12 +23,73 @@ use serde::{Deserialize, Serialize};
 use super::fs::write_atomic;
 use super::GuildPaths;
 
-/// 한 규칙 파일의 표현. list 결과는 content 포함 — 모든 규칙이 보통 짧으므로
-/// 별도 lazy load 불필요. 큰 길드에서는 후속 quest 로 metadata-only list 도 가능.
+/// DEV-243: 규칙 frontmatter — 태그만. quest/library 와 달리 다른 메타(상태,
+/// 생성일 등)는 없음 — 규칙은 순수 문서라 필요 최소한만.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RuleFrontmatter {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
+}
+
+/// frontmatter(선택) + 본문으로 분리된 규칙 파일 표현.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuleFile {
+    pub frontmatter: RuleFrontmatter,
+    pub body: String,
+}
+
+impl RuleFile {
+    /// frontmatter 가 없으면(기존 규칙 파일 전부 이 경우) 전체를 body 로,
+    /// tags 는 빈 vec. `+++` 로 시작하는데 닫는 `+++` 를 못 찾으면 — 파싱
+    /// 실패로 보지 않고 그냥 body 취급(사용자가 우연히 `+++` 로 시작하는
+    /// 본문을 쓴 legacy 케이스 보호).
+    pub fn parse(text: &str) -> Self {
+        let after_open = text.strip_prefix("+++\n").or_else(|| text.strip_prefix("+++\r\n"));
+        if let Some(after_open) = after_open {
+            let mut pos = 0;
+            while pos < after_open.len() {
+                let line_end = after_open[pos..]
+                    .find('\n')
+                    .map(|i| pos + i)
+                    .unwrap_or(after_open.len());
+                let line = after_open[pos..line_end].trim_end_matches('\r');
+                if line == "+++" {
+                    let fm_text = &after_open[..pos];
+                    let body_start = (line_end + 1).min(after_open.len());
+                    let body = after_open[body_start..].to_string();
+                    let frontmatter = toml::from_str(fm_text).unwrap_or_default();
+                    return RuleFile { frontmatter, body };
+                }
+                pos = line_end + 1;
+            }
+        }
+        RuleFile {
+            frontmatter: RuleFrontmatter::default(),
+            body: text.to_string(),
+        }
+    }
+
+    /// 태그가 없으면 frontmatter 생략(순수 body 그대로) — 기존 파일 포맷 보존.
+    pub fn serialize(&self) -> String {
+        if self.frontmatter.tags.is_empty() {
+            return self.body.clone();
+        }
+        let fm = toml::to_string_pretty(&self.frontmatter).unwrap_or_default();
+        format!("+++\n{fm}+++\n{}", self.body)
+    }
+}
+
+/// 한 규칙 파일의 표현. list 결과는 content(본문, frontmatter 제외) 포함 —
+/// 모든 규칙이 보통 짧으므로 별도 lazy load 불필요.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct RuleEntry {
     pub slug: String,
     pub content: String,
+    /// DEV-243: 자유 태그 — quest/library 와 동일 패턴(색/설명은
+    /// `.guild/tags/{slug}.toml` 공유 registry). 진리원은 frontmatter,
+    /// DB 캐시 없음(규칙 전체가 파일 직독 — file-truth-db-cache 규칙 §4).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
 }
 
 /// Slug 형식 검증 — 디렉토리 traversal / 숨김 파일 / 빈 값 방지.
@@ -115,33 +179,91 @@ pub fn list_rules(paths: &GuildPaths) -> Result<Vec<RuleEntry>> {
         if slug.is_empty() {
             continue;
         }
-        let content = std::fs::read_to_string(&path)
+        let raw = std::fs::read_to_string(&path)
             .with_context(|| format!("failed to read rule: {}", path.display()))?;
-        entries.push(RuleEntry { slug, content });
+        let rf = RuleFile::parse(&raw);
+        entries.push(RuleEntry {
+            slug,
+            content: rf.body,
+            tags: rf.frontmatter.tags,
+        });
     }
     Ok(entries)
 }
 
-/// 단일 규칙 읽기. 파일 부재 시 `Ok(None)`. slug 검증 실패는 Err.
+/// 단일 규칙 읽기 — 본문만(frontmatter 는 투명하게 걷어냄). 파일 부재 시
+/// `Ok(None)`. slug 검증 실패는 Err. 태그까지 필요하면 [`read_rule_entry`].
 pub fn read_rule(paths: &GuildPaths, slug: &str) -> Result<Option<String>> {
+    Ok(read_rule_entry(paths, slug)?.map(|e| e.content))
+}
+
+/// 단일 규칙 읽기 — 태그 포함 전체(slug/본문/태그).
+pub fn read_rule_entry(paths: &GuildPaths, slug: &str) -> Result<Option<RuleEntry>> {
     validate_slug(slug)?;
     let _ = migrate_legacy_single_file(paths);
     let p = paths.rule_path(slug);
     if !p.exists() {
         return Ok(None);
     }
-    let s = std::fs::read_to_string(&p)
+    let raw = std::fs::read_to_string(&p)
         .with_context(|| format!("failed to read rule: {}", p.display()))?;
-    Ok(Some(s))
+    let rf = RuleFile::parse(&raw);
+    Ok(Some(RuleEntry {
+        slug: slug.to_string(),
+        content: rf.body,
+        tags: rf.frontmatter.tags,
+    }))
 }
 
-/// 규칙 작성 (atomic). 신규 / 기존 모두 허용 — 멱등. 빈 문자열도 OK.
+/// 규칙 본문 작성 (atomic). 신규 / 기존 모두 허용 — 멱등. 빈 문자열도 OK.
+/// 기존 태그가 있으면 보존(본문만 교체하는 mutation 이라 tags 는 대상 아님 —
+/// quest 의 write_quest_file 이 existing tags 보존하는 것과 동일 의도).
 pub fn write_rule(paths: &GuildPaths, slug: &str, content: &str) -> Result<()> {
     validate_slug(slug)?;
+    let existing_tags = read_rule_entry(paths, slug)
+        .ok()
+        .flatten()
+        .map(|e| e.tags)
+        .unwrap_or_default();
+    let rf = RuleFile {
+        frontmatter: RuleFrontmatter { tags: existing_tags },
+        body: content.to_string(),
+    };
+    write_rule_file(paths, slug, &rf)
+}
+
+/// DEV-243: 규칙의 tags 전체 교체. 본문은 그대로 두고 frontmatter 만 갱신.
+pub fn set_rule_tags(paths: &GuildPaths, slug: &str, tags: Vec<String>) -> Result<RuleEntry> {
+    use std::collections::HashSet;
+    validate_slug(slug)?;
+    let existing = read_rule_entry(paths, slug)?
+        .ok_or_else(|| anyhow::anyhow!("rule not found: {slug}"))?;
+
+    let mut seen: HashSet<String> = HashSet::new();
+    let normalized: Vec<String> = tags
+        .into_iter()
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+        .filter(|t| seen.insert(t.clone()))
+        .collect();
+
+    let rf = RuleFile {
+        frontmatter: RuleFrontmatter { tags: normalized.clone() },
+        body: existing.content,
+    };
+    write_rule_file(paths, slug, &rf)?;
+    Ok(RuleEntry {
+        slug: slug.to_string(),
+        content: rf.body,
+        tags: normalized,
+    })
+}
+
+fn write_rule_file(paths: &GuildPaths, slug: &str, rf: &RuleFile) -> Result<()> {
     let dir = paths.rules_dir();
     std::fs::create_dir_all(&dir)
         .with_context(|| format!("failed to create rules dir: {}", dir.display()))?;
-    write_atomic(paths.rule_path(slug), content)
+    write_atomic(paths.rule_path(slug), &rf.serialize())
 }
 
 /// 신규 규칙 — 같은 slug 가 이미 있으면 Err. (`write_rule` 은 멱등 덮어쓰기.)
@@ -258,6 +380,78 @@ mod tests {
         create_rule(&p, "x", "a").unwrap();
         assert!(create_rule(&p, "x", "b").is_err());
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // BUG-243(신규 기능 — 태그): 태그 없는 기존 파일은 순수 body 그대로.
+    #[test]
+    fn new_rule_has_no_frontmatter_until_tagged() {
+        let (root, p) = fresh_paths("tags-none");
+        create_rule(&p, "plain", "# 그냥 규칙").unwrap();
+        let raw = std::fs::read_to_string(p.rule_path("plain")).unwrap();
+        assert_eq!(raw, "# 그냥 규칙", "태그 없으면 frontmatter 생략");
+        let entry = read_rule_entry(&p, "plain").unwrap().unwrap();
+        assert!(entry.tags.is_empty());
+        assert_eq!(entry.content, "# 그냥 규칙");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn set_rule_tags_adds_frontmatter_and_roundtrips() {
+        let (root, p) = fresh_paths("tags-set");
+        create_rule(&p, "commit-rules", "커밋은 이렇게").unwrap();
+
+        let entry =
+            set_rule_tags(&p, "commit-rules", vec!["git".into(), "convention".into()]).unwrap();
+        assert_eq!(entry.tags, vec!["git", "convention"]);
+        assert_eq!(entry.content, "커밋은 이렇게", "본문은 그대로");
+
+        // 파일에 frontmatter 가 실제로 생김.
+        let raw = std::fs::read_to_string(p.rule_path("commit-rules")).unwrap();
+        assert!(raw.starts_with("+++\n"));
+        assert!(raw.contains("커밋은 이렇게"));
+
+        // 재조회해도 동일.
+        let reread = read_rule_entry(&p, "commit-rules").unwrap().unwrap();
+        assert_eq!(reread.tags, vec!["git", "convention"]);
+        assert_eq!(reread.content, "커밋은 이렇게");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn write_rule_preserves_existing_tags() {
+        let (root, p) = fresh_paths("tags-preserve");
+        create_rule(&p, "x", "v1").unwrap();
+        set_rule_tags(&p, "x", vec!["a".into()]).unwrap();
+
+        // 본문만 교체(quest 편집기의 "저장"과 동일 경로) — 태그는 보존돼야 함.
+        write_rule(&p, "x", "v2").unwrap();
+        let entry = read_rule_entry(&p, "x").unwrap().unwrap();
+        assert_eq!(entry.content, "v2");
+        assert_eq!(entry.tags, vec!["a"], "본문 저장이 태그를 지우면 안 됨");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn set_rule_tags_normalizes_trim_dedupe_empty() {
+        let (root, p) = fresh_paths("tags-normalize");
+        create_rule(&p, "x", "v").unwrap();
+        let entry = set_rule_tags(
+            &p,
+            "x",
+            vec![" git ".into(), "git".into(), "".into(), "  ".into(), "b".into()],
+        )
+        .unwrap();
+        assert_eq!(entry.tags, vec!["git", "b"]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn legacy_body_starting_with_plus_plus_plus_not_misparsed() {
+        // 우연히 `+++` 로 시작하지만 닫는 `+++` 가 없는 본문 — frontmatter 로
+        // 오인하지 않고 그대로 body 로 취급.
+        let rf = RuleFile::parse("+++\n이건 그냥 본문이지 frontmatter 아님");
+        assert!(rf.frontmatter.tags.is_empty());
+        assert_eq!(rf.body, "+++\n이건 그냥 본문이지 frontmatter 아님");
     }
 
     #[test]

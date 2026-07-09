@@ -27,6 +27,9 @@ pub struct RuleResponse {
     pub slug: String,
     /// 파일 부재 시 null.
     pub content: Option<String>,
+    /// DEV-243: 자유 태그. 파일 부재 시 빈 배열.
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -55,8 +58,11 @@ pub async fn get_rule(
     State(store): State<Store>,
     Path(slug): Path<String>,
 ) -> AppResult<Json<RuleResponse>> {
-    let content = ops::get_rule(&store, &slug)?;
-    Ok(Json(RuleResponse { slug, content }))
+    let entry = ops::get_rule_entry(&store, &slug)?;
+    Ok(Json(match entry {
+        Some(e) => RuleResponse { slug: e.slug, content: Some(e.content), tags: e.tags },
+        None => RuleResponse { slug, content: None, tags: vec![] },
+    }))
 }
 
 pub async fn set_rule(
@@ -65,9 +71,13 @@ pub async fn set_rule(
     Json(body): Json<RuleContentRequest>,
 ) -> AppResult<Json<RuleResponse>> {
     ops::set_rule(&store, &slug, body.content.clone()).await?;
+    // BUG-134 패턴: 본문 저장은 tags 를 안 건드리지만(보존), 응답엔 실제
+    // 현재 tags 를 정직하게 실어야 함 — 재조회.
+    let tags = ops::get_rule_entry(&store, &slug)?.map(|e| e.tags).unwrap_or_default();
     Ok(Json(RuleResponse {
         slug,
         content: Some(body.content),
+        tags,
     }))
 }
 
@@ -81,6 +91,7 @@ pub async fn create_rule(
         Json(RuleResponse {
             slug: body.slug,
             content: Some(body.content),
+            tags: vec![],
         }),
     ))
 }
@@ -99,10 +110,34 @@ pub async fn rename_rule(
     Json(body): Json<RenameRuleRequest>,
 ) -> AppResult<Json<RuleResponse>> {
     ops::rename_rule(&store, &slug, &body.new_slug).await?;
-    let content = ops::get_rule(&store, &body.new_slug)?;
+    let entry = ops::get_rule_entry(&store, &body.new_slug)?;
+    Ok(Json(match entry {
+        Some(e) => RuleResponse { slug: e.slug, content: Some(e.content), tags: e.tags },
+        None => RuleResponse { slug: body.new_slug, content: None, tags: vec![] },
+    }))
+}
+
+/// DEV-243: tag 전체 교체. body: `{ "tags": ["a", "b", ...] }`.
+pub async fn set_tags(
+    State(store): State<Store>,
+    Path(slug): Path<String>,
+    Json(body): Json<serde_json::Value>,
+) -> AppResult<Json<RuleResponse>> {
+    let tags: Vec<String> = body
+        .as_object()
+        .and_then(|o| o.get("tags"))
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+    let entry = ops::set_rule_tags(&store, &slug, tags).await?;
     Ok(Json(RuleResponse {
-        slug: body.new_slug,
-        content,
+        slug: entry.slug,
+        content: Some(entry.content),
+        tags: entry.tags,
     }))
 }
 
