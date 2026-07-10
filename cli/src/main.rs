@@ -6857,6 +6857,7 @@ mod tests {
             discussion: false,
             resolved: false,
             pinned: false,
+            edited_at: None,
         }
     }
 

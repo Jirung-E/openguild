@@ -922,6 +922,10 @@
 			<span class="author">{e.author || '(이름 없음)'}</span>
 			<span class="sep">·</span>
 			<time class="ts" datetime={e.ts}>{formatTs(e.ts)}</time>
+			<!-- DEV-182: 편집된 댓글 표시 — hover 시 편집 시각. -->
+			{#if e.edited_at}
+				<span class="edited-marker" title={`편집됨 — ${formatTs(e.edited_at)}`}>(편집됨)</span>
+			{/if}
 			<!-- DEV-142: 토론 댓글 상태 배지 — 미해결이면 완료 차단 (quest 한정).
 			     클릭으로 resolve 토글. -->
 			{#if scope === 'quest' && e.discussion}
@@ -1528,6 +1532,12 @@
 	}
 	.ts {
 		color: var(--text-faint);
+	}
+	/* DEV-182: 편집됨 표시. */
+	.edited-marker {
+		color: var(--text-faint);
+		font-size: 0.75rem;
+		font-style: italic;
 	}
 	/* DEV-128 → DEV-139: 댓글 번호 — 클릭 시 본문 접기/펼치기 버튼. */
 	.entry-no {

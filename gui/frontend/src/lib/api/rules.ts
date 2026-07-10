@@ -8,6 +8,9 @@ export interface RuleEntry {
 	content: string;
 	/** DEV-243: 자유 태그. */
 	tags: string[];
+	/** DEV-182: 생성 / 마지막 본문 저장 시각. */
+	created_at: string;
+	updated_at: string;
 }
 
 export interface RulesListResponse {
@@ -19,6 +22,9 @@ export interface RuleResponse {
 	content: string | null;
 	/** DEV-243: 자유 태그. */
 	tags: string[];
+	/** DEV-182: 생성 / 마지막 본문 저장 시각. 파일 부재 시 빈 문자열. */
+	created_at: string;
+	updated_at: string;
 }
 
 /** legacy 단일-파일 응답 — backward compat 호출용. */

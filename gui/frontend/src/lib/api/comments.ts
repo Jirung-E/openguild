@@ -28,6 +28,8 @@ export interface CommentEntry {
 	resolved?: boolean;
 	/** DEV-234: 상단 고정(pin) 여부. quest/campaign 댓글 둘 다 지원. */
 	pinned?: boolean;
+	/** DEV-182: 본문 편집 시각. 한 번도 수정 안 했으면 undefined. */
+	edited_at?: string;
 }
 
 export interface CommentsListResponse {

@@ -39,6 +39,8 @@
 	import { adminApi } from '$lib/api/admin';
 	import type { QuestTagDef } from '$lib/types';
 	import { showToast } from '$lib/stores/toast';
+	// DEV-182: 생성/변경 시각 표시 — quest 상세와 동일 포맷 유틸.
+	import { formatTs, formatRelative } from '$lib/utils/datetime';
 
 	let loading = $state(true);
 	let error = $state<string | null>(null);
@@ -116,6 +118,8 @@
 		tagDefs = await adminApi.listTagDefs().catch(() => [] as QuestTagDef[]);
 	});
 	const selectedTags = $derived(entries.find((e) => e.slug === selectedSlug)?.tags ?? []);
+	// DEV-182: 생성/변경 시각.
+	const selectedEntry = $derived(entries.find((e) => e.slug === selectedSlug) ?? null);
 	async function setRuleTags(tags: string[]) {
 		if (!selectedSlug) return;
 		try {
@@ -486,6 +490,33 @@
 						{/if}
 					</div>
 
+					<!-- DEV-182: 생성 / 변경 시각. -->
+					{#if selectedEntry}
+						<div class="meta-times">
+							<span class="meta-item">
+								<span class="meta-label">생성</span>
+								<time
+									class="meta-val"
+									datetime={selectedEntry.created_at}
+									title={formatTs(selectedEntry.created_at)}
+								>
+									{formatTs(selectedEntry.created_at)}
+								</time>
+							</span>
+							<span class="meta-sep">·</span>
+							<span class="meta-item">
+								<span class="meta-label">변경</span>
+								<time
+									class="meta-val"
+									datetime={selectedEntry.updated_at}
+									title={formatTs(selectedEntry.updated_at)}
+								>
+									{formatRelative(selectedEntry.updated_at)}
+								</time>
+							</span>
+						</div>
+					{/if}
+
 					{#if renaming}
 						<div class="modal-inline">
 							<input
@@ -705,6 +736,33 @@
 		font-weight: 600;
 		color: var(--text);
 		margin: 0;
+	}
+	/* DEV-182: 생성/변경 시각 — quest 상세 페이지와 동일 스타일. */
+	.meta-times {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 0.4rem;
+		font-size: 0.72rem;
+		color: var(--text-faint);
+		margin-bottom: 0.85rem;
+	}
+	.meta-item {
+		display: inline-flex;
+		gap: 0.3rem;
+		align-items: baseline;
+	}
+	.meta-label {
+		color: var(--text-faint);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+	.meta-val {
+		color: var(--text-muted);
+		font-variant-numeric: tabular-nums;
+	}
+	.meta-sep {
+		color: var(--border);
 	}
 	.top-actions {
 		margin-left: auto;

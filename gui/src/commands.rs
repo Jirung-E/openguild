@@ -1229,6 +1229,11 @@ pub struct RuleResponse {
     /// DEV-243: 자유 태그.
     #[serde(default)]
     pub tags: Vec<String>,
+    /// DEV-182: 생성 / 마지막 본문 저장 시각. 파일 부재 시 빈 문자열.
+    #[serde(default)]
+    pub created_at: String,
+    #[serde(default)]
+    pub updated_at: String,
 }
 
 #[tauri::command]
@@ -1241,8 +1246,20 @@ pub fn list_rules(store: State<'_, Store>) -> Result<RulesListResponse, String> 
 pub fn get_rule(store: State<'_, Store>, slug: String) -> Result<RuleResponse, String> {
     let entry = openguild_core::ops::rules::get_rule_entry(&store, &slug).map_err(err)?;
     Ok(match entry {
-        Some(e) => RuleResponse { slug: e.slug, content: Some(e.content), tags: e.tags },
-        None => RuleResponse { slug, content: None, tags: vec![] },
+        Some(e) => RuleResponse {
+            slug: e.slug,
+            content: Some(e.content),
+            tags: e.tags,
+            created_at: e.created_at,
+            updated_at: e.updated_at,
+        },
+        None => RuleResponse {
+            slug,
+            content: None,
+            tags: vec![],
+            created_at: String::new(),
+            updated_at: String::new(),
+        },
     })
 }
 
@@ -1255,15 +1272,14 @@ pub async fn set_rule(
     openguild_core::ops::rules::set_rule(&store, &slug, content.clone())
         .await
         .map_err(err)?;
-    // BUG-134 패턴: 본문 저장은 tags 를 보존하지만, 응답엔 실제 현재 tags 를 재조회.
-    let tags = openguild_core::ops::rules::get_rule_entry(&store, &slug)
-        .map_err(err)?
-        .map(|e| e.tags)
-        .unwrap_or_default();
+    // BUG-134 패턴: 본문 저장은 tags 를 보존하지만, 응답엔 실제 현재 tags/시각을 재조회.
+    let entry = openguild_core::ops::rules::get_rule_entry(&store, &slug).map_err(err)?;
     Ok(RuleResponse {
         slug,
         content: Some(content),
-        tags,
+        tags: entry.as_ref().map(|e| e.tags.clone()).unwrap_or_default(),
+        created_at: entry.as_ref().map(|e| e.created_at.clone()).unwrap_or_default(),
+        updated_at: entry.map(|e| e.updated_at).unwrap_or_default(),
     })
 }
 
@@ -1277,10 +1293,13 @@ pub async fn create_rule(
     openguild_core::ops::rules::create_rule(&store, &slug, c.clone())
         .await
         .map_err(err)?;
+    let entry = openguild_core::ops::rules::get_rule_entry(&store, &slug).map_err(err)?;
     Ok(RuleResponse {
         slug,
         content: Some(c),
         tags: vec![],
+        created_at: entry.as_ref().map(|e| e.created_at.clone()).unwrap_or_default(),
+        updated_at: entry.map(|e| e.updated_at).unwrap_or_default(),
     })
 }
 
@@ -1302,8 +1321,20 @@ pub async fn rename_rule(
         .map_err(err)?;
     let entry = openguild_core::ops::rules::get_rule_entry(&store, &new_slug).map_err(err)?;
     Ok(match entry {
-        Some(e) => RuleResponse { slug: e.slug, content: Some(e.content), tags: e.tags },
-        None => RuleResponse { slug: new_slug, content: None, tags: vec![] },
+        Some(e) => RuleResponse {
+            slug: e.slug,
+            content: Some(e.content),
+            tags: e.tags,
+            created_at: e.created_at,
+            updated_at: e.updated_at,
+        },
+        None => RuleResponse {
+            slug: new_slug,
+            content: None,
+            tags: vec![],
+            created_at: String::new(),
+            updated_at: String::new(),
+        },
     })
 }
 
@@ -1321,6 +1352,8 @@ pub async fn set_rule_tags(
         slug: entry.slug,
         content: Some(entry.content),
         tags: entry.tags,
+        created_at: entry.created_at,
+        updated_at: entry.updated_at,
     })
 }
 

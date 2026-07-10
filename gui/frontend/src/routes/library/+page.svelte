@@ -40,6 +40,8 @@
 	import TagPills from '$lib/components/TagPills.svelte';
 	import { adminApi } from '$lib/api/admin';
 	import type { QuestTagDef } from '$lib/types';
+	// DEV-182: 생성/변경 시각 표시 — quest 상세와 동일 포맷 유틸.
+	import { formatTs, formatRelative } from '$lib/utils/datetime';
 
 	let loading = $state(true);
 	let error = $state<string | null>(null);
@@ -998,6 +1000,23 @@
 						<p class="doc-path">📁 {selected.path}</p>
 					{/if}
 
+					<!-- DEV-182: 생성 / 변경 시각. -->
+					<div class="meta-times">
+						<span class="meta-item">
+							<span class="meta-label">생성</span>
+							<time class="meta-val" datetime={selected.created_at} title={formatTs(selected.created_at)}>
+								{formatTs(selected.created_at)}
+							</time>
+						</span>
+						<span class="meta-sep">·</span>
+						<span class="meta-item">
+							<span class="meta-label">변경</span>
+							<time class="meta-val" datetime={selected.updated_at} title={formatTs(selected.updated_at)}>
+								{formatRelative(selected.updated_at)}
+							</time>
+						</span>
+					</div>
+
 					{#if retitling}
 						<div class="modal-inline">
 							<input
@@ -1364,6 +1383,33 @@
 		color: var(--text-muted);
 		font-size: 0.78rem;
 		margin: -0.5rem 0 0.75rem;
+	}
+	/* DEV-182: 생성/변경 시각 — quest 상세 페이지와 동일 스타일. */
+	.meta-times {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 0.4rem;
+		font-size: 0.72rem;
+		color: var(--text-faint);
+		margin-bottom: 0.85rem;
+	}
+	.meta-item {
+		display: inline-flex;
+		gap: 0.3rem;
+		align-items: baseline;
+	}
+	.meta-label {
+		color: var(--text-faint);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+	.meta-val {
+		color: var(--text-muted);
+		font-variant-numeric: tabular-nums;
+	}
+	.meta-sep {
+		color: var(--border);
 	}
 	.top-actions {
 		margin-left: auto;

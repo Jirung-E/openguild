@@ -54,6 +54,11 @@ pub struct CommentEntry {
     /// 댓글 둘 다 지원 — discussion 과 달리 quest 전용 게이트 없음.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub pinned: bool,
+    /// DEV-182: 본문 편집 시각. 마커의 `edited_at="..."`. 생성 후 한 번도
+    /// 수정 안 했으면 None(= "(편집됨)" 표시 안 함). 외부(파일 직접) 편집은
+    /// per-entry 귀속이 불가해 반영 안 됨 — API 를 통한 수정만 기록.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edited_at: Option<String>,
 }
 
 /// DEV-094: 마커 패턴 — `<!-- og-comment id="..." ts="..." author="..." -->`.
@@ -146,6 +151,7 @@ pub fn parse_entries(text: &str) -> Vec<CommentEntry> {
             discussion: false,
             resolved: false,
             pinned: false,
+            edited_at: None,
         }];
     }
 
@@ -181,6 +187,8 @@ pub fn parse_entries(text: &str) -> Vec<CommentEntry> {
         let resolved = extract_attr(attrs, "resolved").as_deref() == Some("true");
         // DEV-234: `pinned="true"` — 그 외 값/부재는 false.
         let pinned = extract_attr(attrs, "pinned").as_deref() == Some("true");
+        // DEV-182: `edited_at="..."` — 없으면 None(수정된 적 없음).
+        let edited_at = extract_attr(attrs, "edited_at");
         out.push(CommentEntry {
             id,
             ts,
@@ -191,6 +199,7 @@ pub fn parse_entries(text: &str) -> Vec<CommentEntry> {
             discussion,
             resolved,
             pinned,
+            edited_at,
         });
     }
     out
@@ -223,8 +232,13 @@ pub fn serialize_entries(entries: &[CommentEntry]) -> String {
         let resolved_attr = if e.resolved { " resolved=\"true\"" } else { "" };
         // DEV-234: pinned — 마찬가지로 true 일 때만 출력.
         let pinned_attr = if e.pinned { " pinned=\"true\"" } else { "" };
+        // DEV-182: edited_at — Some 일 때만 출력(구 파일 byte 호환).
+        let edited_attr = match &e.edited_at {
+            Some(ts) => format!(" edited_at=\"{}\"", sanitize_attr(ts)),
+            None => String::new(),
+        };
         out.push_str(&format!(
-            "<!-- og-comment id=\"{}\" ts=\"{}\" author=\"{}\"{}{}{}{}{} -->\n",
+            "<!-- og-comment id=\"{}\" ts=\"{}\" author=\"{}\"{}{}{}{}{}{} -->\n",
             e.id,
             sanitize_attr(&e.ts),
             sanitize_attr(&e.author),
@@ -233,6 +247,7 @@ pub fn serialize_entries(entries: &[CommentEntry]) -> String {
             discussion_attr,
             resolved_attr,
             pinned_attr,
+            edited_attr,
         ));
         out.push_str(e.body.trim());
         out.push('\n');
@@ -403,6 +418,7 @@ mod tests {
                 discussion: false,
                 resolved: false,
                 pinned: false,
+            edited_at: None,
             },
             CommentEntry {
                 id: 2,
@@ -414,6 +430,7 @@ mod tests {
                 discussion: false,
                 resolved: false,
                 pinned: false,
+            edited_at: None,
             },
             // 답글: id=3 이 id=1 에 대한 reply.
             CommentEntry {
@@ -426,6 +443,7 @@ mod tests {
                 discussion: false,
                 resolved: false,
                 pinned: false,
+            edited_at: None,
             },
         ];
         let s = serialize_entries(&entries);
@@ -448,6 +466,7 @@ mod tests {
             discussion: false,
             resolved: false,
             pinned: false,
+        edited_at: None,
         }];
         let s = serialize_entries(&entries);
         assert!(s.contains("reactions=\"👍,✅\""));
@@ -464,6 +483,7 @@ mod tests {
             discussion: false,
             resolved: false,
             pinned: false,
+        edited_at: None,
         }];
         assert!(!serialize_entries(&none).contains("reactions"));
     }
@@ -481,6 +501,7 @@ mod tests {
             discussion: true,
             resolved: true,
             pinned: false,
+        edited_at: None,
         }];
         let s = serialize_entries(&entries);
         assert!(s.contains("discussion=\"true\""));
@@ -498,6 +519,7 @@ mod tests {
             discussion: false,
             resolved: false,
             pinned: false,
+        edited_at: None,
         }];
         let ps = serialize_entries(&plain);
         assert!(!ps.contains("discussion"));
@@ -517,6 +539,7 @@ mod tests {
             discussion: false,
             resolved: false,
             pinned: true,
+        edited_at: None,
         }];
         let s = serialize_entries(&entries);
         assert!(s.contains("pinned=\"true\""));
@@ -532,6 +555,7 @@ mod tests {
             discussion: false,
             resolved: false,
             pinned: false,
+        edited_at: None,
         }];
         assert!(!serialize_entries(&plain).contains("pinned"));
     }
@@ -555,6 +579,7 @@ mod tests {
             discussion: false,
             resolved: false,
             pinned: false,
+        edited_at: None,
         }];
         let s = serialize_entries(&entries);
         // " → ' 로 치환되어 attribute 안전.

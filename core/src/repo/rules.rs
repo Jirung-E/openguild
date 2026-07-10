@@ -23,12 +23,18 @@ use serde::{Deserialize, Serialize};
 use super::fs::write_atomic;
 use super::GuildPaths;
 
-/// DEV-243: 규칙 frontmatter — 태그만. quest/library 와 달리 다른 메타(상태,
-/// 생성일 등)는 없음 — 규칙은 순수 문서라 필요 최소한만.
+/// DEV-243: 규칙 frontmatter — 태그. DEV-182: 생성/수정 시각도 추가.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RuleFrontmatter {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<String>,
+    /// DEV-182: 최초 기록 시각. 없으면(레거시 파일) 파일 mtime 으로 backfill.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
+    /// DEV-182: 마지막 본문 저장 시각. 태그만 바꾸는 mutation 은 갱신 안 함
+    /// (quest 의 set_quest_tags 가 updated_at 을 안 건드리는 것과 동일 정책).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
 }
 
 /// frontmatter(선택) + 본문으로 분리된 규칙 파일 표현.
@@ -69,9 +75,10 @@ impl RuleFile {
         }
     }
 
-    /// 태그가 없으면 frontmatter 생략(순수 body 그대로) — 기존 파일 포맷 보존.
+    /// 태그도 없고 시각도 기록된 적 없으면 frontmatter 생략(순수 body 그대로).
     pub fn serialize(&self) -> String {
-        if self.frontmatter.tags.is_empty() {
+        let fm = &self.frontmatter;
+        if fm.tags.is_empty() && fm.created_at.is_none() && fm.updated_at.is_none() {
             return self.body.clone();
         }
         let fm = toml::to_string_pretty(&self.frontmatter).unwrap_or_default();
@@ -90,6 +97,9 @@ pub struct RuleEntry {
     /// DB 캐시 없음(규칙 전체가 파일 직독 — file-truth-db-cache 규칙 §4).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<String>,
+    /// DEV-182: 항상 해석된 값(레거시 파일은 repo 레이어가 mtime 으로 backfill).
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 /// Slug 형식 검증 — 디렉토리 traversal / 숨김 파일 / 빈 값 방지.
@@ -181,14 +191,34 @@ pub fn list_rules(paths: &GuildPaths) -> Result<Vec<RuleEntry>> {
         }
         let raw = std::fs::read_to_string(&path)
             .with_context(|| format!("failed to read rule: {}", path.display()))?;
-        let rf = RuleFile::parse(&raw);
-        entries.push(RuleEntry {
-            slug,
-            content: rf.body,
-            tags: rf.frontmatter.tags,
-        });
+        entries.push(parse_backfilled(paths, &slug, &path, &raw)?);
     }
     Ok(entries)
+}
+
+/// DEV-182: frontmatter 를 파싱하고, `created_at`/`updated_at` 이 없는(레거시)
+/// 파일이면 파일 mtime 으로 backfill 후 파일에 write-back(self-heal, 한 번만).
+/// list_rules / read_rule_entry 공용.
+fn parse_backfilled(
+    paths: &GuildPaths,
+    slug: &str,
+    path: &std::path::Path,
+    raw: &str,
+) -> Result<RuleEntry> {
+    let mut rf = RuleFile::parse(raw);
+    if rf.frontmatter.created_at.is_none() || rf.frontmatter.updated_at.is_none() {
+        let mtime = super::fs::mtime_iso8601(path).unwrap_or_else(crate::time::now_local_iso8601);
+        rf.frontmatter.created_at.get_or_insert_with(|| mtime.clone());
+        rf.frontmatter.updated_at.get_or_insert(mtime);
+        let _ = write_rule_file(paths, slug, &rf); // best-effort self-heal
+    }
+    Ok(RuleEntry {
+        slug: slug.to_string(),
+        content: rf.body,
+        tags: rf.frontmatter.tags,
+        created_at: rf.frontmatter.created_at.unwrap_or_default(),
+        updated_at: rf.frontmatter.updated_at.unwrap_or_default(),
+    })
 }
 
 /// 단일 규칙 읽기 — 본문만(frontmatter 는 투명하게 걷어냄). 파일 부재 시
@@ -207,12 +237,7 @@ pub fn read_rule_entry(paths: &GuildPaths, slug: &str) -> Result<Option<RuleEntr
     }
     let raw = std::fs::read_to_string(&p)
         .with_context(|| format!("failed to read rule: {}", p.display()))?;
-    let rf = RuleFile::parse(&raw);
-    Ok(Some(RuleEntry {
-        slug: slug.to_string(),
-        content: rf.body,
-        tags: rf.frontmatter.tags,
-    }))
+    Ok(Some(parse_backfilled(paths, slug, &p, &raw)?))
 }
 
 /// 규칙 본문 작성 (atomic). 신규 / 기존 모두 허용 — 멱등. 빈 문자열도 OK.
@@ -220,13 +245,18 @@ pub fn read_rule_entry(paths: &GuildPaths, slug: &str) -> Result<Option<RuleEntr
 /// quest 의 write_quest_file 이 existing tags 보존하는 것과 동일 의도).
 pub fn write_rule(paths: &GuildPaths, slug: &str, content: &str) -> Result<()> {
     validate_slug(slug)?;
-    let existing_tags = read_rule_entry(paths, slug)
-        .ok()
-        .flatten()
-        .map(|e| e.tags)
-        .unwrap_or_default();
+    let existing = read_rule_entry(paths, slug).ok().flatten();
+    let now = crate::time::now_local_iso8601();
+    let (tags, created_at) = match existing {
+        Some(e) => (e.tags, e.created_at),
+        None => (Vec::new(), now.clone()),
+    };
     let rf = RuleFile {
-        frontmatter: RuleFrontmatter { tags: existing_tags },
+        frontmatter: RuleFrontmatter {
+            tags,
+            created_at: Some(created_at),
+            updated_at: Some(now),
+        },
         body: content.to_string(),
     };
     write_rule_file(paths, slug, &rf)
@@ -248,7 +278,11 @@ pub fn set_rule_tags(paths: &GuildPaths, slug: &str, tags: Vec<String>) -> Resul
         .collect();
 
     let rf = RuleFile {
-        frontmatter: RuleFrontmatter { tags: normalized.clone() },
+        frontmatter: RuleFrontmatter {
+            tags: normalized.clone(),
+            created_at: Some(existing.created_at.clone()),
+            updated_at: Some(existing.updated_at.clone()),
+        },
         body: existing.content,
     };
     write_rule_file(paths, slug, &rf)?;
@@ -256,6 +290,8 @@ pub fn set_rule_tags(paths: &GuildPaths, slug: &str, tags: Vec<String>) -> Resul
         slug: slug.to_string(),
         content: rf.body,
         tags: normalized,
+        created_at: existing.created_at,
+        updated_at: existing.updated_at,
     })
 }
 
@@ -382,16 +418,77 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    // BUG-243(신규 기능 — 태그): 태그 없는 기존 파일은 순수 body 그대로.
+    // DEV-182: created_at/updated_at 도입 이후로는 신규 규칙도 frontmatter 를
+    // 갖는다(시각은 항상 기록) — 태그가 없어도 frontmatter 자체는 생략 안 됨.
+    // (DEV-243 당시의 "태그 없으면 완전 생략" 은 시각 필드 도입으로 대체됨.)
     #[test]
-    fn new_rule_has_no_frontmatter_until_tagged() {
+    fn new_rule_has_frontmatter_with_timestamps_but_no_tags() {
         let (root, p) = fresh_paths("tags-none");
         create_rule(&p, "plain", "# 그냥 규칙").unwrap();
         let raw = std::fs::read_to_string(p.rule_path("plain")).unwrap();
-        assert_eq!(raw, "# 그냥 규칙", "태그 없으면 frontmatter 생략");
+        assert!(raw.starts_with("+++\n"), "시각 기록으로 frontmatter 는 항상 생김");
+        assert!(raw.contains("created_at"));
         let entry = read_rule_entry(&p, "plain").unwrap().unwrap();
         assert!(entry.tags.is_empty());
         assert_eq!(entry.content, "# 그냥 규칙");
+        assert!(!entry.created_at.is_empty());
+        assert_eq!(entry.created_at, entry.updated_at, "생성 직후엔 동일");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // DEV-182: 이 기능 이전에 만들어진, frontmatter 자체가 없는 규칙 파일 —
+    // 읽을 때 mtime 으로 backfill 되고 파일에 write-back(self-heal) 돼야 함.
+    #[test]
+    fn legacy_file_without_frontmatter_backfills_timestamps_from_mtime() {
+        let (root, p) = fresh_paths("legacy-backfill");
+        std::fs::create_dir_all(p.rules_dir()).unwrap();
+        std::fs::write(p.rule_path("legacy"), "# 옛날 규칙").unwrap();
+
+        let entry = read_rule_entry(&p, "legacy").unwrap().unwrap();
+        assert!(!entry.created_at.is_empty());
+        assert_eq!(entry.created_at, entry.updated_at);
+
+        // self-heal — 파일에 실제로 write-back 됐는지.
+        let raw = std::fs::read_to_string(p.rule_path("legacy")).unwrap();
+        assert!(raw.starts_with("+++\n"));
+        assert!(raw.contains("# 옛날 규칙"));
+
+        // 재조회 시 동일 값 유지(두 번째 backfill 안 일어남).
+        let reread = read_rule_entry(&p, "legacy").unwrap().unwrap();
+        assert_eq!(reread.created_at, entry.created_at);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // DEV-182: 본문만 저장(write_rule)하면 created_at 은 보존, updated_at 만 갱신.
+    #[test]
+    fn write_rule_preserves_created_at_bumps_updated_at() {
+        let (root, p) = fresh_paths("bump-updated");
+        create_rule(&p, "x", "v1").unwrap();
+        let first = read_rule_entry(&p, "x").unwrap().unwrap();
+
+        std::thread::sleep(std::time::Duration::from_millis(1100)); // 초 단위 포맷이라 확실히 갈리도록.
+        write_rule(&p, "x", "v2").unwrap();
+        let second = read_rule_entry(&p, "x").unwrap().unwrap();
+
+        assert_eq!(second.created_at, first.created_at, "created_at 은 보존");
+        assert_ne!(second.updated_at, first.updated_at, "updated_at 은 갱신");
+        assert_eq!(second.content, "v2");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // DEV-182: 태그만 바꾸는 mutation 은 updated_at 을 안 건드림(quest 의
+    // set_quest_tags 와 동일 정책).
+    #[test]
+    fn set_rule_tags_does_not_bump_updated_at() {
+        let (root, p) = fresh_paths("tags-no-bump");
+        create_rule(&p, "x", "v").unwrap();
+        let before = read_rule_entry(&p, "x").unwrap().unwrap();
+
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        let entry = set_rule_tags(&p, "x", vec!["a".into()]).unwrap();
+
+        assert_eq!(entry.updated_at, before.updated_at, "태그 변경은 updated_at 무관");
+        assert_eq!(entry.created_at, before.created_at);
         let _ = std::fs::remove_dir_all(&root);
     }
 

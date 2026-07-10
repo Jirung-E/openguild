@@ -30,6 +30,11 @@ pub struct RuleResponse {
     /// DEV-243: 자유 태그. 파일 부재 시 빈 배열.
     #[serde(default)]
     pub tags: Vec<String>,
+    /// DEV-182: 생성 / 마지막 본문 저장 시각. 파일 부재 시 빈 문자열.
+    #[serde(default)]
+    pub created_at: String,
+    #[serde(default)]
+    pub updated_at: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -60,8 +65,20 @@ pub async fn get_rule(
 ) -> AppResult<Json<RuleResponse>> {
     let entry = ops::get_rule_entry(&store, &slug)?;
     Ok(Json(match entry {
-        Some(e) => RuleResponse { slug: e.slug, content: Some(e.content), tags: e.tags },
-        None => RuleResponse { slug, content: None, tags: vec![] },
+        Some(e) => RuleResponse {
+            slug: e.slug,
+            content: Some(e.content),
+            tags: e.tags,
+            created_at: e.created_at,
+            updated_at: e.updated_at,
+        },
+        None => RuleResponse {
+            slug,
+            content: None,
+            tags: vec![],
+            created_at: String::new(),
+            updated_at: String::new(),
+        },
     }))
 }
 
@@ -72,12 +89,14 @@ pub async fn set_rule(
 ) -> AppResult<Json<RuleResponse>> {
     ops::set_rule(&store, &slug, body.content.clone()).await?;
     // BUG-134 패턴: 본문 저장은 tags 를 안 건드리지만(보존), 응답엔 실제
-    // 현재 tags 를 정직하게 실어야 함 — 재조회.
-    let tags = ops::get_rule_entry(&store, &slug)?.map(|e| e.tags).unwrap_or_default();
+    // 현재 tags/시각을 정직하게 실어야 함 — 재조회.
+    let entry = ops::get_rule_entry(&store, &slug)?;
     Ok(Json(RuleResponse {
         slug,
         content: Some(body.content),
-        tags,
+        tags: entry.as_ref().map(|e| e.tags.clone()).unwrap_or_default(),
+        created_at: entry.as_ref().map(|e| e.created_at.clone()).unwrap_or_default(),
+        updated_at: entry.map(|e| e.updated_at).unwrap_or_default(),
     }))
 }
 
@@ -86,12 +105,15 @@ pub async fn create_rule(
     Json(body): Json<CreateRuleRequest>,
 ) -> AppResult<(StatusCode, Json<RuleResponse>)> {
     ops::create_rule(&store, &body.slug, body.content.clone()).await?;
+    let entry = ops::get_rule_entry(&store, &body.slug)?;
     Ok((
         StatusCode::CREATED,
         Json(RuleResponse {
             slug: body.slug,
             content: Some(body.content),
             tags: vec![],
+            created_at: entry.as_ref().map(|e| e.created_at.clone()).unwrap_or_default(),
+            updated_at: entry.map(|e| e.updated_at).unwrap_or_default(),
         }),
     ))
 }
@@ -112,8 +134,20 @@ pub async fn rename_rule(
     ops::rename_rule(&store, &slug, &body.new_slug).await?;
     let entry = ops::get_rule_entry(&store, &body.new_slug)?;
     Ok(Json(match entry {
-        Some(e) => RuleResponse { slug: e.slug, content: Some(e.content), tags: e.tags },
-        None => RuleResponse { slug: body.new_slug, content: None, tags: vec![] },
+        Some(e) => RuleResponse {
+            slug: e.slug,
+            content: Some(e.content),
+            tags: e.tags,
+            created_at: e.created_at,
+            updated_at: e.updated_at,
+        },
+        None => RuleResponse {
+            slug: body.new_slug,
+            content: None,
+            tags: vec![],
+            created_at: String::new(),
+            updated_at: String::new(),
+        },
     }))
 }
 
@@ -138,6 +172,8 @@ pub async fn set_tags(
         slug: entry.slug,
         content: Some(entry.content),
         tags: entry.tags,
+        created_at: entry.created_at,
+        updated_at: entry.updated_at,
     }))
 }
 

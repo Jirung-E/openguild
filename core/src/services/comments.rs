@@ -50,13 +50,15 @@ pub fn add_entry(
         discussion: false,
         resolved: false,
         pinned: false,
+        edited_at: None,
     };
     entries.push(entry.clone());
     repo::write_entries(&store.paths, slug, &entries).map_err(AppError::Internal)?;
     Ok(entry)
 }
 
-/// entry 의 body 만 교체. ts / author 보존. 미존재 시 `NotFound`.
+/// entry 의 body 만 교체. ts / author 보존. `edited_at` 은 현재 시각으로 갱신
+/// (DEV-182 — 편집됨 표시용). 미존재 시 `NotFound`.
 pub fn update_entry(
     store: &Store,
     slug: &str,
@@ -74,6 +76,7 @@ pub fn update_entry(
         )));
     };
     entries[idx].body = body_trimmed;
+    entries[idx].edited_at = Some(crate::time::now_local_iso8601());
     let updated = entries[idx].clone();
     repo::write_entries(&store.paths, slug, &entries).map_err(AppError::Internal)?;
     Ok(updated)

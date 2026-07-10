@@ -30,14 +30,16 @@ async fn upsert_entry_db(store: &Store, slug: &str, entry: &CommentEntry) -> App
         return Ok(()); // 캐시에 캠페인 없으면 skip — reindex 가 복구.
     };
     sqlx::query(
-        "INSERT INTO campaign_comments (campaign_id, entry_id, ts, author, body, parent_id, pinned)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
+        "INSERT INTO campaign_comments
+            (campaign_id, entry_id, ts, author, body, parent_id, pinned, edited_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(campaign_id, entry_id) DO UPDATE SET
              ts        = excluded.ts,
              author    = excluded.author,
              body      = excluded.body,
              parent_id = excluded.parent_id,
-             pinned    = excluded.pinned",
+             pinned    = excluded.pinned,
+             edited_at = excluded.edited_at",
     )
     .bind(cid)
     .bind(entry.id as i64)
@@ -46,6 +48,7 @@ async fn upsert_entry_db(store: &Store, slug: &str, entry: &CommentEntry) -> App
     .bind(&entry.body)
     .bind(entry.parent_id.map(|n| n as i64))
     .bind(entry.pinned as i64)
+    .bind(&entry.edited_at)
     .execute(&store.index_pool)
     .await
     .map_err(|e| AppError::Internal(anyhow::anyhow!("upsert campaign_comments: {e}")))?;
@@ -130,6 +133,7 @@ pub async fn add_entry(
         discussion: false,
         resolved: false,
         pinned: false,
+        edited_at: None,
     };
     entries.push(entry.clone());
     repo::write_entries_at(&path, &entries).map_err(AppError::Internal)?;
@@ -140,7 +144,8 @@ pub async fn add_entry(
     Ok(entry)
 }
 
-/// entry 본문 수정 (ts / author 보존).
+/// entry 본문 수정 (ts / author 보존). `edited_at` 은 현재 시각으로 갱신
+/// (DEV-182).
 pub async fn update_entry(
     store: &Store,
     slug: &str,
@@ -167,6 +172,7 @@ pub async fn update_entry(
         .find(|e| e.id == id)
         .ok_or_else(|| AppError::NotFound(format!("comment {id} not found for {slug}")))?;
     entry.body = body_trimmed;
+    entry.edited_at = Some(crate::time::now_local_iso8601());
     let updated = entry.clone();
     repo::write_entries_at(&path, &entries).map_err(AppError::Internal)?;
     // BUG-068: sibling 파일 mtime 캐시 동기화 (drift 오탐 방지).

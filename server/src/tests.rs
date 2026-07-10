@@ -2217,6 +2217,37 @@ async fn test_quest_comment_add_list_update_delete() {
     assert!(list["entries"].as_array().unwrap().is_empty());
 }
 
+// DEV-182: 댓글 수정 시 edited_at 이 기록되고, 아직 안 고친 댓글은 없어야 함.
+#[tokio::test]
+async fn test_quest_comment_edited_at_set_on_update_only() {
+    let app = seed_quest(setup().await).await;
+    let (_, entry) = post(
+        app.clone(),
+        "/api/quests/by/DEV-001/comments",
+        json!({ "author": "alice", "body": "hello" }),
+    )
+    .await;
+    let id = entry["id"].as_u64().unwrap();
+    assert!(entry.get("edited_at").is_none(), "생성 직후엔 edited_at 없음");
+
+    let (status, updated) = patch(
+        app.clone(),
+        &format!("/api/quests/by/DEV-001/comments/{id}"),
+        json!({ "body": "edited" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        updated["edited_at"].as_str().is_some_and(|s| !s.is_empty()),
+        "수정 후엔 edited_at 이 기록돼야 함"
+    );
+
+    let (_, list) = get(app, "/api/quests/by/DEV-001/comments").await;
+    let entries = list["entries"].as_array().unwrap();
+    assert_eq!(entries.len(), 1);
+    assert!(entries[0]["edited_at"].as_str().is_some_and(|s| !s.is_empty()));
+}
+
 #[tokio::test]
 async fn test_quest_comment_reply_threading() {
     let app = seed_quest(setup().await).await;
@@ -2549,6 +2580,33 @@ async fn test_rule_tags_set_and_preserved_on_body_save() {
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(saved["tags"], json!(["git", "convention"]), "본문 저장이 태그를 지우면 안 됨");
+}
+
+// DEV-182: 규칙 생성 시 created_at/updated_at 이 기록되고, 본문 재저장 시
+// created_at 은 보존, updated_at 만 갱신.
+#[tokio::test]
+async fn test_rule_timestamps_created_preserved_updated_bumped() {
+    let app = setup().await;
+    let (_, created) = post(
+        app.clone(),
+        "/api/rules",
+        json!({ "slug": "timed-rule", "content": "v1" }),
+    )
+    .await;
+    let created_at = created["created_at"].as_str().unwrap().to_string();
+    assert!(!created_at.is_empty());
+    assert_eq!(created["updated_at"].as_str().unwrap(), created_at, "생성 직후엔 동일");
+
+    // 초 단위 포맷이라 같은 초 안에 재저장하면 updated_at 이 안 갈릴 수 있음.
+    tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+    let (status, saved) = put(app, "/api/rules/timed-rule", json!({ "content": "v2" })).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(saved["created_at"], created_at, "created_at 은 보존");
+    assert_ne!(
+        saved["updated_at"].as_str().unwrap(),
+        created_at,
+        "본문 재저장은 updated_at 을 갱신해야 함"
+    );
 }
 
 /// DEV-216: 도서관 CRUD — 생성/목록/조회/수정/soft delete + 번호 재사용 금지.
