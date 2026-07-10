@@ -13,6 +13,9 @@
 	import type { CampaignSummary } from '$lib/types';
 	import { formatRemaining } from '$lib/utils/datetime';
 	import { isCampaignDone } from '$lib/utils/campaign-progress';
+	// DEV-233 후속: 캐러셀/컨베이어의 transform 이 fixed 기준을 바꿔 툴팁이
+	// 잘리는 문제 — body 직속으로 이동.
+	import { portal } from '$lib/utils/portal';
 
 	let {
 		summary,
@@ -239,9 +242,17 @@
 </a>
 
 <!-- DEV-233: 카드가 overflow:hidden(배너 클립용) 이라 absolute 팝업은 잘림 —
-     position:fixed + 좌표 계산(BUG-125 emoji 팝업과 동일 접근)으로 escape. -->
+     position:fixed + 좌표 계산(BUG-125 emoji 팝업과 동일 접근)으로 escape.
+     후속(admin 보고): 홈 캐러셀(.track translateX)/컨베이어(will-change:
+     transform) 안에서는 fixed 의 containing block 이 그 조상으로 바뀌어
+     좌표가 틀어지고 overflow 클리핑까지 받음 — use:portal 로 body 직속 이동. -->
 {#if showStack}
-	<div class="quest-status-tooltip" style:top={`${tooltipTop}px`} style:left={`${tooltipLeft}px`}>
+	<div
+		class="quest-status-tooltip"
+		use:portal
+		style:top={`${tooltipTop}px`}
+		style:left={`${tooltipLeft}px`}
+	>
 		{#each summary.quest_status_counts ?? [] as sc (sc.status_slug)}
 			<div class="tooltip-row">
 				<span class="tooltip-dot" style:background={sc.status_color}></span>
