@@ -56,7 +56,8 @@ openguild info         # 길드 메타 / DB 크기 / 백업 현황
 | env `OPENGUILD_REMOTE` | (미설정) | 원격 서버 URL. 설정 시 원격 모드 |
 | 전역 `--remote <URL>` | env 보다 우선 | 원격 모드 강제 |
 | 전역 `--guild <PATH>` | (미설정) | 로컬 모드의 길드 경로. 미설정 시 cwd 부터 자동 탐색 |
-| 전역 `--json` | 끔 | agent stdout 파싱용 |
+| 전역 `--json` | 끔 | agent stdout 파싱용 (2-space pretty) |
+| 전역 `--compact` | 끔 | JSON 을 한 줄로 — 파이프/jq/로그 수집용. `--json` 필수 |
 
 ---
 
@@ -81,6 +82,7 @@ openguild quest list --type DEV,BUG --status open,in_progress --urgency 1-2
                     --search "키워드" --title-only
                     --sort urgency,id --reverse --limit 20 --offset 0
                     --id-only | --count                # script 친화 출력
+                    --table                            # 사람용 정렬 표 (--json/--tree 와 상호배타)
 
 openguild quest search "<keyword>" [--title-only] [--limit N]
                        [--id-only | --count]          # `list --search` 의 단축
@@ -509,6 +511,13 @@ fi
 # 새 quest 생성 후 슬러그만 캡처
 SLUG=$(openguild quest new --type DEV --title "X" --json | jq -r '.quest_id')
 openguild quest start "$SLUG"
+```
+
+DEV-211: `--compact` 를 함께 주면 한 줄 JSON — 파이프 체인 / 로그 수집(JSONL) /
+토큰 절약에 유리. pretty 는 기존 스크립트 호환을 위해 기본값 유지:
+
+```bash
+openguild quest list --json --compact | jq -c '.[] | {quest_id, status_slug}'
 ```
 
 dry-run 도 JSON 모드 지원 — 영향 분석을 프로그래밍으로 처리 가능.

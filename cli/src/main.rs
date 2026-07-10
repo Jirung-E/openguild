@@ -42,8 +42,27 @@ struct Cli {
     #[arg(long, global = true)]
     json: bool,
 
+    // DEV-211 — doc 주석에 quest id 금지(help 누출).
+    /// JSON 을 한 줄로 (파이프 / jq / 로그 수집용). --json 필요.
+    #[arg(long, global = true, requires = "json")]
+    compact: bool,
+
     #[command(subcommand)]
     command: Command,
+}
+
+/// DEV-211: `--compact` 전역 플래그 — 파싱 직후 1회 설정, json_str() 이 참조.
+/// 30여 개 출력 지점에 bool 을 실어 나르는 대신 프로세스 전역(한 번 실행되고
+/// 끝나는 CLI 특성상 안전).
+static JSON_COMPACT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// JSON 직렬화 — 기본 pretty(2-space, 기존 호환), --compact 면 한 줄.
+fn json_str<T: serde::Serialize>(v: &T) -> String {
+    if JSON_COMPACT.load(std::sync::atomic::Ordering::Relaxed) {
+        serde_json::to_string(v).unwrap()
+    } else {
+        serde_json::to_string_pretty(v).unwrap()
+    }
 }
 
 // QuestCmd 가 ListQuery 등 큰 필터 구조체를 포함하므로 다른 variant 와 크기 차가
@@ -317,6 +336,11 @@ enum QuestCmd {
         /// `--id-only` / `--count` / `--json` 과 함께 쓰면 무시 (구조화 출력 우선).
         #[arg(long)]
         tree: bool,
+        /// 정렬된 표(헤더 + 컬럼 정렬)로 출력 — 사람용. `--json`/`--tree` 와 상호배타.
+        // `json` 은 전역 인자라 clap 의 conflicts_with 대상이 못 됨(debug assert
+        // 가 subcommand 스코프에서 못 찾음) — 핸들러에서 수동 검증.
+        #[arg(long, conflicts_with_all = ["tree", "id_only", "count"])]
+        table: bool,
     },
     /// 퀘스트 검색 — title / description / slug 부분 일치 (공백 split AND).
     /// 사실상 `list --search` 의 별칭이지만 발견성을 위해 단독 명령으로 노출.
@@ -3678,7 +3702,7 @@ fn urgency_color(urgency: i64) -> &'static str {
 /// description 은 안 보임 (자세히는 `quest show <slug>`).
 fn print_quest(q: &Quest, json: bool) {
     if json {
-        println!("{}", serde_json::to_string_pretty(q).unwrap());
+        println!("{}", json_str(q));
         return;
     }
     print_quest_line(q);
@@ -3706,7 +3730,7 @@ fn change_status_with_noop_notice(
                 r#"{{"noop":true,"reason":"already in status","status_slug":{:?},"status":{:?}}}"#,
                 target_slug, detail.quest.status_name_en
             );
-            println!("{}", serde_json::to_string_pretty(&detail.quest).unwrap());
+            println!("{}", json_str(&detail.quest));
         } else {
             println!(
                 "(이미 {} 상태입니다 — 변경 없음)",
@@ -3726,7 +3750,7 @@ fn change_status_with_noop_notice(
 /// 전체 multi-line 표시.
 fn print_quest_full(q: &Quest, json: bool) {
     if json {
-        println!("{}", serde_json::to_string_pretty(q).unwrap());
+        println!("{}", json_str(q));
         return;
     }
     print_quest_line(q);
@@ -3757,7 +3781,7 @@ fn handle_campaign(c: &Backend, json: bool, sub: CampaignCmd) -> Result<()> {
 
     fn print_row(r: &CampaignRow, json: bool) {
         if json {
-            println!("{}", serde_json::to_string_pretty(r).unwrap());
+            println!("{}", json_str(r));
             return;
         }
         let period = match (&r.started_at, &r.ended_at) {
@@ -3774,7 +3798,7 @@ fn handle_campaign(c: &Backend, json: bool, sub: CampaignCmd) -> Result<()> {
 
     fn print_detail(d: &CampaignDetail, json: bool) {
         if json {
-            println!("{}", serde_json::to_string_pretty(d).unwrap());
+            println!("{}", json_str(d));
             return;
         }
         print_row(&d.campaign, false);
@@ -3828,7 +3852,7 @@ fn handle_campaign(c: &Backend, json: bool, sub: CampaignCmd) -> Result<()> {
             }
             let rows = c.campaign_list(status)?;
             if json {
-                println!("{}", serde_json::to_string_pretty(&rows).unwrap());
+                println!("{}", json_str(&rows));
             } else if rows.is_empty() {
                 println!("(no campaigns)");
             } else {
@@ -3844,7 +3868,7 @@ fn handle_campaign(c: &Backend, json: bool, sub: CampaignCmd) -> Result<()> {
         CampaignCmd::History { slug } => {
             let history = c.campaign_history(&slug)?;
             if json {
-                println!("{}", serde_json::to_string_pretty(&history).unwrap());
+                println!("{}", json_str(&history));
             } else if history.is_empty() {
                 println!("(이력 없음)");
             } else {
@@ -3919,7 +3943,7 @@ fn handle_campaign(c: &Backend, json: bool, sub: CampaignCmd) -> Result<()> {
             } => {
                 let item = c.campaign_checklist_add(&campaign_slug, &text)?;
                 if json {
-                    println!("{}", serde_json::to_string_pretty(&item).unwrap());
+                    println!("{}", json_str(&item));
                 } else {
                     println!(
                         "✓ added [{}] {}: {}",
@@ -3978,7 +4002,7 @@ fn handle_campaign(c: &Backend, json: bool, sub: CampaignCmd) -> Result<()> {
 
 fn print_quest_list(quests: &[Quest], json: bool) {
     if json {
-        println!("{}", serde_json::to_string_pretty(quests).unwrap());
+        println!("{}", json_str(&quests));
         return;
     }
     if quests.is_empty() {
@@ -3988,6 +4012,37 @@ fn print_quest_list(quests: &[Quest], json: bool) {
     for q in quests {
         print_quest(q, false);
     }
+}
+
+/// DEV-211: 사람용 정렬 표 — 헤더 + 컬럼 폭 정렬. 색은 line 렌더와 동일 규칙
+/// (type 색 ID / status 색 / urgency 색). 제목은 한글 등 가변폭 문자를
+/// 포함할 수 있어 **마지막 컬럼** 에 둬 패딩 계산을 피한다.
+fn print_quest_table(quests: &[Quest]) {
+    if quests.is_empty() {
+        println!("(no quests)");
+        return;
+    }
+    let id_w = quests
+        .iter()
+        .map(|q| q.quest_id.len())
+        .chain(std::iter::once("ID".len()))
+        .max()
+        .unwrap_or(2);
+    let st_w = quests
+        .iter()
+        .map(|q| q.status_name_en.len())
+        .chain(std::iter::once("STATUS".len()))
+        .max()
+        .unwrap_or(6);
+    println!("{:<id_w$}  {:<st_w$}  {:>3}  TITLE", "ID", "STATUS", "URG");
+    println!("{}", "─".repeat(id_w + st_w + 12));
+    for q in quests {
+        let id = colorize(&format!("{:<id_w$}", q.quest_id), &q.type_color);
+        let status = colorize(&format!("{:<st_w$}", q.status_name_en), &q.status_color);
+        let urg = colorize(&format!("{:>3}", q.urgency), urgency_color(q.urgency));
+        println!("{id}  {status}  {urg}  {}", q.title);
+    }
+    println!("-- {} quests", quests.len());
 }
 
 /// DEV-065 (CLI tree mode): 부모 → 자식 들여쓰기로 한 화면에 트리 출력.
@@ -4052,7 +4107,7 @@ fn print_quest_tree(quests: &[Quest]) {
 
 fn print_quest_detail(d: &QuestDetail, json: bool) {
     if json {
-        println!("{}", serde_json::to_string_pretty(d).unwrap());
+        println!("{}", json_str(d));
         return;
     }
     let q = &d.quest;
@@ -4409,6 +4464,9 @@ fn run() -> Result<()> {
         std::env::args().collect(),
     ));
 
+    // DEV-211: --compact — json_str() 이 참조하는 전역 플래그 설정.
+    JSON_COMPACT.store(cli.compact, std::sync::atomic::Ordering::Relaxed);
+
     // Init 은 길드 자체를 만드는 명령 — 백엔드 연결 불필요. 먼저 처리.
     if let Command::Init { name } = &cli.command {
         return init_guild(name.clone(), cli.json);
@@ -4441,7 +4499,7 @@ fn run() -> Result<()> {
             TypesCmd::List => {
                 let types = c.quest_types()?;
                 if cli.json {
-                    println!("{}", serde_json::to_string_pretty(&types)?);
+                    println!("{}", json_str(&types));
                 } else {
                     for t in &types {
                         // DEV-046: prefix 에 type.color.
@@ -4457,7 +4515,7 @@ fn run() -> Result<()> {
                 let prefix_uc = prefix.trim().to_uppercase();
                 let row = c.create_type(prefix_uc, color, description)?;
                 if cli.json {
-                    println!("{}", serde_json::to_string_pretty(&row)?);
+                    println!("{}", json_str(&row));
                 } else {
                     let p = colorize(&format!("{:<6}", row.prefix), &row.color);
                     println!("{p} 추가됨 — {}", row.description.as_deref().unwrap_or(""));
@@ -4490,7 +4548,7 @@ fn run() -> Result<()> {
                     desc_arg,
                 )?;
                 if cli.json {
-                    println!("{}", serde_json::to_string_pretty(&row)?);
+                    println!("{}", json_str(&row));
                 } else {
                     let p = colorize(&format!("{:<6}", row.prefix), &row.color);
                     if renamed {
@@ -4519,7 +4577,7 @@ fn run() -> Result<()> {
                 let statuses = c.quest_statuses()?;
                 if cli.json {
                     // BUG-018: agent / script 용 — slug 포함된 raw row.
-                    println!("{}", serde_json::to_string_pretty(&statuses)?);
+                    println!("{}", json_str(&statuses));
                 } else {
                     // DEV-209(BUG-018 정책 갱신): slug 도 표시 — quest move 등 명령
                     // 인자와 frontmatter 의 정규 식별자가 slug 라, 목록에서 안 보이면
@@ -4545,7 +4603,7 @@ fn run() -> Result<()> {
                     sort_order,
                 )?;
                 if cli.json {
-                    println!("{}", serde_json::to_string_pretty(&row)?);
+                    println!("{}", json_str(&row));
                 } else {
                     let n = colorize(&format!("{:<14}", row.name_en), &row.color);
                     println!(
@@ -4588,7 +4646,7 @@ fn run() -> Result<()> {
                     sort_order,
                 )?;
                 if cli.json {
-                    println!("{}", serde_json::to_string_pretty(&row)?);
+                    println!("{}", json_str(&row));
                 } else {
                     let n = colorize(&format!("{:<14}", row.name_en), &row.color);
                     if renamed {
@@ -4820,7 +4878,7 @@ fn run() -> Result<()> {
             LibraryCmd::List => {
                 let books = c.library_list()?;
                 if cli.json {
-                    println!("{}", serde_json::to_string_pretty(&books)?);
+                    println!("{}", json_str(&books));
                 } else if books.is_empty() {
                     println!("(도서관 문서 없음)");
                 } else {
@@ -4837,7 +4895,7 @@ fn run() -> Result<()> {
             LibraryCmd::Show { id } => {
                 let b = c.library_get(&id)?;
                 if cli.json {
-                    println!("{}", serde_json::to_string_pretty(&b)?);
+                    println!("{}", json_str(&b));
                 } else {
                     println!("{}  {}", b.book_id, b.title);
                     let loc = if b.path.is_empty() { "(최상위)" } else { &b.path };
@@ -4857,7 +4915,7 @@ fn run() -> Result<()> {
                 };
                 let b = c.library_new(&title, &body, path.as_deref().unwrap_or(""))?;
                 if cli.json {
-                    println!("{}", serde_json::to_string_pretty(&b)?);
+                    println!("{}", json_str(&b));
                 } else {
                     println!("✓ {} 생성됨 — {}", b.book_id, b.title);
                 }
@@ -4875,7 +4933,7 @@ fn run() -> Result<()> {
                 };
                 let b = c.library_update(&id, title.as_deref(), body.as_deref(), path.as_deref())?;
                 if cli.json {
-                    println!("{}", serde_json::to_string_pretty(&b)?);
+                    println!("{}", json_str(&b));
                 } else {
                     println!("✓ {} 수정됨 — {}", b.book_id, b.title);
                 }
@@ -4903,7 +4961,7 @@ fn run() -> Result<()> {
                 LibraryFolderCmd::List => {
                     let folders = c.library_folder_list()?;
                     if cli.json {
-                        println!("{}", serde_json::to_string_pretty(&folders)?);
+                        println!("{}", json_str(&folders));
                     } else if folders.is_empty() {
                         println!("(폴더 없음)");
                     } else {
@@ -4915,7 +4973,7 @@ fn run() -> Result<()> {
                 LibraryFolderCmd::New { path } => {
                     let f = c.library_folder_new(&path)?;
                     if cli.json {
-                        println!("{}", serde_json::to_string_pretty(&f)?);
+                        println!("{}", json_str(&f));
                     } else {
                         println!("✓ 폴더 '{}' 생성됨", f.path);
                     }
@@ -4954,7 +5012,7 @@ fn run() -> Result<()> {
                 };
                 let report = c.worklog_activities(&f, &t)?;
                 if cli.json {
-                    println!("{}", serde_json::to_string_pretty(&report)?);
+                    println!("{}", json_str(&report));
                 } else {
                     if f == t {
                         println!("작업 기록 — {f}");
@@ -5070,7 +5128,7 @@ fn run() -> Result<()> {
                             })
                         })
                         .collect();
-                    println!("{}", serde_json::to_string_pretty(&arr)?);
+                    println!("{}", json_str(&arr));
                 } else if list.is_empty() {
                     println!("(사용 가능한 백업 없음)");
                     println!();
@@ -5178,7 +5236,7 @@ fn run() -> Result<()> {
                 limit,
             )?;
             if cli.json {
-                println!("{}", serde_json::to_string_pretty(&rows)?);
+                println!("{}", json_str(&rows));
             } else if rows.is_empty() {
                 println!("(댓글 없음)");
             } else {
@@ -5329,7 +5387,11 @@ fn run() -> Result<()> {
                 id_only,
                 count,
                 tree,
+                table,
             } => {
+                if table && cli.json {
+                    return Err(anyhow!("--table 은 --json 과 함께 쓸 수 없습니다"));
+                }
                 let q = ListQuery {
                     r#type: vec_to_csv(type_prefix),
                     status: vec_to_csv(status),
@@ -5361,6 +5423,9 @@ fn run() -> Result<()> {
                 } else if tree && !cli.json {
                     // DEV-065 (CLI tree mode): 부모 → 자식 들여쓰기 출력.
                     print_quest_tree(&quests);
+                } else if table {
+                    // DEV-211: 사람용 정렬 표.
+                    print_quest_table(&quests);
                 } else {
                     print_quest_list(&quests, cli.json);
                 }
@@ -5379,9 +5444,9 @@ fn run() -> Result<()> {
                     println!("{}", quests.len());
                 } else if id_only {
                     if cli.json {
-                        println!("{}", serde_json::to_string_pretty(
+                        println!("{}", json_str(
                             &quests.iter().map(|q| q.quest_id.clone()).collect::<Vec<_>>()
-                        )?);
+                        ));
                     } else {
                         for q in &quests {
                             println!("{}", q.quest_id);
@@ -5409,7 +5474,7 @@ fn run() -> Result<()> {
                 let d = c.quest_by_slug(&slug)?;
                 let history = c.list_quest_history(d.quest.id)?;
                 if cli.json {
-                    println!("{}", serde_json::to_string_pretty(&history).unwrap());
+                    println!("{}", json_str(&history));
                 } else if history.is_empty() {
                     println!("(이력 없음)");
                 } else {
@@ -5747,7 +5812,7 @@ fn run() -> Result<()> {
                             "status_name_en": d.quest.status_name_en,
                             "status_name_ko": d.quest.status_name_ko,
                         });
-                        println!("{}", serde_json::to_string_pretty(&payload).unwrap());
+                        println!("{}", json_str(&payload));
                     } else {
                         println!(
                             "{}  {} ({})",
@@ -5815,7 +5880,7 @@ fn run() -> Result<()> {
                             "desired_due": q.desired_due,
                             "required_due": q.required_due,
                         });
-                        println!("{}", serde_json::to_string_pretty(&payload).unwrap());
+                        println!("{}", json_str(&payload));
                     } else {
                         println!(
                             "{}  desired_due: {}  required_due: {}",
@@ -5843,7 +5908,7 @@ fn run() -> Result<()> {
                             "desired_due": q.desired_due,
                             "required_due": q.required_due,
                         });
-                        println!("{}", serde_json::to_string_pretty(&payload).unwrap());
+                        println!("{}", json_str(&payload));
                     } else {
                         println!(
                             "{}  desired_due: {}  required_due: {}",
@@ -6222,8 +6287,10 @@ mod tests {
                     id_only,
                     count,
                     tree,
+                    table,
                 },
             } => {
+                assert!(!table);
                 assert!(type_prefix.is_empty());
                 assert!(status.is_empty());
                 assert!(urgency.is_none());
@@ -6356,10 +6423,11 @@ mod tests {
                     child_of, no_parent,
                     has_prereq, no_prereq, has_sub, no_sub,
                     search, title_only,
-                    sort, reverse, limit, offset, id_only, count, tree,
+                    sort, reverse, limit, offset, id_only, count, tree, table,
                 },
             } => {
                 assert!(!tree);
+                assert!(!table);
                 assert_eq!(type_prefix, vec!["BUG"]);
                 assert_eq!(status, vec!["in_progress"]);
                 assert_eq!(urgency.as_deref(), Some("2"));
@@ -7323,6 +7391,38 @@ mod tests {
     fn move_without_status_errors() {
         let r = Cli::try_parse_from(["openguild", "quest", "move", "DEV-001"]);
         assert!(r.is_err(), "move 는 status 인자 필수");
+    }
+
+    // ───────── DEV-211: --compact / --table 플래그 ─────────
+
+    #[test]
+    fn compact_requires_json() {
+        let r = Cli::try_parse_from(["openguild", "quest", "list", "--compact"]);
+        assert!(r.is_err(), "--compact 는 --json 없이는 거부");
+        let ok = Cli::try_parse_from(["openguild", "quest", "list", "--json", "--compact"]);
+        assert!(ok.is_ok());
+        assert!(ok.unwrap().compact);
+    }
+
+    #[test]
+    fn table_conflicts_with_tree_idonly_count() {
+        // --json 은 전역 인자라 clap conflicts 대상이 못 됨 — 핸들러 수동 검증.
+        for extra in ["--tree", "--id-only", "--count"] {
+            let r = Cli::try_parse_from(["openguild", "quest", "list", "--table", extra]);
+            assert!(r.is_err(), "--table 은 {extra} 와 상호배타");
+        }
+        assert!(Cli::try_parse_from(["openguild", "quest", "list", "--table"]).is_ok());
+    }
+
+    #[test]
+    fn json_str_respects_compact_flag() {
+        let v = serde_json::json!({ "a": 1, "b": [1, 2] });
+        JSON_COMPACT.store(false, std::sync::atomic::Ordering::Relaxed);
+        assert!(json_str(&v).contains('\n'), "기본은 pretty (기존 호환)");
+        JSON_COMPACT.store(true, std::sync::atomic::Ordering::Relaxed);
+        assert!(!json_str(&v).contains('\n'), "--compact 는 한 줄");
+        // 다른 테스트에 새지 않게 복원.
+        JSON_COMPACT.store(false, std::sync::atomic::Ordering::Relaxed);
     }
 
     // ───────── init_guild_at — tempdir 기반 ─────────
