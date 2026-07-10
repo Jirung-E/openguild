@@ -45,6 +45,8 @@ pub async fn fetch_detail(store: &Store, slug: &str) -> AppResult<CampaignDetail
     } else {
         0.0
     };
+    // DEV-233: 상태별 카운트 — CampaignCard 의 summarize() 와 동일 헬퍼 공유.
+    let quest_status_counts = sql::quest_status_counts(&store.index_pool, row.id).await?;
     Ok(CampaignDetail {
         campaign: row,
         checklists,
@@ -54,6 +56,7 @@ pub async fn fetch_detail(store: &Store, slug: &str) -> AppResult<CampaignDetail
         quest_progress,
         // DEV-156: 첨부는 Store 가진 호출 계층(GUI 커맨드)에서 채움.
         attachments: Vec::new(),
+        quest_status_counts,
     })
 }
 

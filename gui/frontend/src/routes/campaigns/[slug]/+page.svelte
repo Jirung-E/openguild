@@ -52,6 +52,29 @@
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 
+	// DEV-233: 링크 퀘스트 진행바 hover 시 상태별 stacked + 카운트 팝업 —
+	// CampaignCard 와 동일 UX(기본은 단일 채움, hover 시에만 전환).
+	let questBarEl = $state<HTMLDivElement | null>(null);
+	let questBarHover = $state(false);
+	let tooltipTop = $state(0);
+	let tooltipLeft = $state(0);
+	function onQuestBarEnter() {
+		if (!detail || detail.quest_done === detail.quest_total || !questBarEl) return;
+		const r = questBarEl.getBoundingClientRect();
+		tooltipTop = r.top;
+		tooltipLeft = r.left;
+		questBarHover = true;
+	}
+	function onQuestBarLeave() {
+		questBarHover = false;
+	}
+	const showQuestStack = $derived(
+		questBarHover &&
+			!!detail &&
+			detail.quest_done !== detail.quest_total &&
+			(detail.quest_status_counts?.length ?? 0) > 0
+	);
+
 	// BUG-033: edit mode 통합 — Quest Detail 과 동일하게 단일 editMode 가
 	// 제목 / 기간 / 본문 모두 묶음. 이전엔 editMeta / editBody 분리되어 통일감 X.
 	let editMode = $state(false);
@@ -644,13 +667,47 @@
 				{/if}
 			</h2>
 			{#if (detail.quest_total ?? 0) > 0}
-				<!-- DEV-093: progress bar — 체크리스트 옆 같은 시각. -->
-				<div class="quest-progress-bar">
-					<div
-						class="quest-progress-fill"
-						class:done={detail.quest_done === detail.quest_total}
-						style:width={`${Math.round((detail.quest_progress ?? 0) * 100)}%`}
-					></div>
+				<!-- DEV-093: progress bar — 체크리스트 옆 같은 시각. DEV-233: hover 시 상태별 stacked. -->
+				<div
+					class="quest-progress-bar"
+					bind:this={questBarEl}
+					role="img"
+					aria-label={`${detail.quest_done}/${detail.quest_total}`}
+					onmouseenter={onQuestBarEnter}
+					onmouseleave={onQuestBarLeave}
+				>
+					{#if showQuestStack}
+						{#each detail.quest_status_counts ?? [] as sc (sc.status_slug)}
+							<div
+								class="quest-progress-seg"
+								style:width={`${(sc.count / (detail.quest_total ?? 1)) * 100}%`}
+								style:background={sc.status_color}
+							></div>
+						{/each}
+					{:else}
+						<div
+							class="quest-progress-fill"
+							class:done={detail.quest_done === detail.quest_total}
+							style:width={`${Math.round((detail.quest_progress ?? 0) * 100)}%`}
+						></div>
+					{/if}
+				</div>
+			{/if}
+			{#if showQuestStack}
+				<div
+					class="quest-status-tooltip"
+					style:top={`${tooltipTop}px`}
+					style:left={`${tooltipLeft}px`}
+				>
+					{#each detail.quest_status_counts ?? [] as sc (sc.status_slug)}
+						<div class="tooltip-row">
+							<span class="tooltip-dot" style:background={sc.status_color}></span>
+							<span class="tooltip-name">{sc.status_name_en}</span>
+							<span class="tooltip-count"
+								>{sc.count}개 ({Math.round((sc.count / (detail.quest_total ?? 1)) * 100)}%)</span
+							>
+						</div>
+					{/each}
 				</div>
 			{/if}
 			{#if detail.linked_quests.length === 0}
@@ -1180,6 +1237,7 @@
 		border-radius: 3px;
 		overflow: hidden;
 		margin: 0 0 0.75rem;
+		display: flex;
 	}
 	.quest-progress-fill {
 		height: 100%;
@@ -1190,6 +1248,44 @@
 	}
 	.quest-progress-fill.done {
 		background: var(--success-strong);
+	}
+	/* DEV-233: hover 시 상태별 stacked 세그먼트 — CampaignCard 와 동일 패턴. */
+	.quest-progress-seg {
+		height: 100%;
+	}
+	.quest-status-tooltip {
+		position: fixed;
+		transform: translateY(-100%) translateY(-6px);
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		padding: 0.4rem 0.6rem;
+		font-size: 0.72rem;
+		z-index: 50;
+		box-shadow: 0 4px 12px color-mix(in srgb, black 25%, transparent);
+		pointer-events: none;
+		display: flex;
+		flex-direction: column;
+		gap: 0.2rem;
+		white-space: nowrap;
+	}
+	.tooltip-row {
+		display: flex;
+		align-items: center;
+		gap: 0.35rem;
+	}
+	.tooltip-dot {
+		width: 0.5rem;
+		height: 0.5rem;
+		border-radius: 50%;
+		flex: none;
+	}
+	.tooltip-name {
+		color: var(--text);
+		font-weight: 600;
+	}
+	.tooltip-count {
+		color: var(--text-muted);
 	}
 
 	/* DEV-144: 우하단 floating 점프 cluster (quest 상세와 동일). */

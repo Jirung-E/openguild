@@ -515,6 +515,29 @@ pub async fn list_upcoming_summaries(
     Ok(out)
 }
 
+/// DEV-233: 캠페인에 링크된 alive quest 를 상태별로 카운트. sort_order 순
+/// (open → ... → done) — frontend 가 진행바를 안정적인 순서로 렌더.
+/// summarize() 와 ops::campaigns::fetch_detail 이 공유.
+pub async fn quest_status_counts(
+    pool: &SqlitePool,
+    campaign_id: i64,
+) -> AppResult<Vec<crate::models::CampaignQuestStatusCount>> {
+    let rows = sqlx::query_as(
+        "SELECT qs.slug AS status_slug, qs.name_en AS status_name_en,
+                qs.color AS status_color, qs.sort_order, COUNT(*) AS count
+           FROM campaign_quests cq
+           JOIN quests q ON q.id = cq.quest_id
+           JOIN quest_statuses qs ON qs.id = q.status_id
+          WHERE cq.campaign_id = ? AND q.deleted_at IS NULL
+          GROUP BY qs.id
+          ORDER BY qs.sort_order ASC",
+    )
+    .bind(campaign_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
 async fn summarize(pool: &SqlitePool, c: CampaignRow) -> AppResult<CampaignSummary> {
     let stats: (i64, i64) = sqlx::query_as(
         "SELECT COUNT(*),
@@ -550,6 +573,7 @@ async fn summarize(pool: &SqlitePool, c: CampaignRow) -> AppResult<CampaignSumma
     } else {
         0.0
     };
+    let quest_status_counts = quest_status_counts(pool, c.id).await?;
     Ok(CampaignSummary {
         id: c.id,
         campaign_slug: c.campaign_slug,
@@ -566,5 +590,6 @@ async fn summarize(pool: &SqlitePool, c: CampaignRow) -> AppResult<CampaignSumma
         quest_total,
         quest_done,
         quest_progress,
+        quest_status_counts,
     })
 }

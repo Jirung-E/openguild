@@ -253,6 +253,8 @@ export interface CampaignDetail extends Campaign {
 	quest_progress?: number;
 	/** DEV-156: 본문과 별개 첨부 목록 (Jira 식 섹션). */
 	attachments?: QuestAttachment[];
+	/** DEV-233: 상태별 카운트 — 진행바 hover 시 stacked 표시용. sort_order 순. */
+	quest_status_counts?: CampaignQuestStatusCount[];
 }
 
 export interface CampaignSummary {
@@ -279,6 +281,17 @@ export interface CampaignSummary {
 	quest_done?: number;
 	/** DEV-093: quest_done / quest_total. */
 	quest_progress?: number;
+	/** DEV-233: 상태별 카운트 — 진행바 hover 시 stacked 표시용. sort_order 순. */
+	quest_status_counts?: CampaignQuestStatusCount[];
+}
+
+/** DEV-233: 캠페인 링크 퀘스트 상태별 카운트 한 행. */
+export interface CampaignQuestStatusCount {
+	status_slug: string;
+	status_name_en: string;
+	status_color: string;
+	sort_order: number;
+	count: number;
 }
 
 export interface CreateCampaignRequest {

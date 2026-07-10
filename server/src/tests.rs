@@ -2181,6 +2181,60 @@ async fn test_campaign_summaries_active_and_upcoming() {
     assert_eq!(status, StatusCode::OK);
 }
 
+// DEV-233: 캠페인 진행바 hover 시 상태별 stacked 표시용 — summary/detail 둘 다
+// 링크 퀘스트 상태별 카운트를 노출해야 함.
+#[tokio::test]
+async fn test_campaign_quest_status_counts_in_summary_and_detail() {
+    let app = setup().await;
+    post(
+        app.clone(),
+        "/api/quests",
+        json!({ "quest_type_id": 1, "title": "q1", "status_slug": "open" }),
+    )
+    .await;
+    post(
+        app.clone(),
+        "/api/quests",
+        json!({ "quest_type_id": 1, "title": "q2", "status_slug": "open" }),
+    )
+    .await;
+    post(app.clone(), "/api/campaigns", json!({ "title": "camp" })).await;
+    post(
+        app.clone(),
+        "/api/campaigns/C-001/quests",
+        json!({ "quest_slug": "DEV-001" }),
+    )
+    .await;
+    post(
+        app.clone(),
+        "/api/campaigns/C-001/quests",
+        json!({ "quest_slug": "DEV-002" }),
+    )
+    .await;
+    // 하나만 상태 변경 — open 1개 + in_progress 1개가 되도록.
+    let (_, q2) = get(app.clone(), "/api/quests/by/DEV-002").await;
+    let q2_id = q2["id"].as_i64().unwrap();
+    let (patch_status, patch_body) = patch(
+        app.clone(),
+        &format!("/api/quests/{q2_id}/status"),
+        json!({ "status_slug": "in_progress" }),
+    )
+    .await;
+    assert_eq!(patch_status, StatusCode::OK, "body={patch_body:?}");
+
+    let (status, summaries) = get(app.clone(), "/api/campaigns/summaries/active").await;
+    assert_eq!(status, StatusCode::OK);
+    let counts = summaries[0]["quest_status_counts"].as_array().unwrap();
+    assert_eq!(counts.len(), 2, "open + in_progress 두 상태");
+    let total: i64 = counts.iter().map(|c| c["count"].as_i64().unwrap()).sum();
+    assert_eq!(total, 2);
+
+    let (status, detail) = get(app, "/api/campaigns/C-001").await;
+    assert_eq!(status, StatusCode::OK);
+    let counts = detail["quest_status_counts"].as_array().unwrap();
+    assert_eq!(counts.len(), 2);
+}
+
 #[tokio::test]
 async fn test_campaign_list_for_quest() {
     let app = setup().await;
