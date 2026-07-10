@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/stores';
-	import { onMount, onDestroy, tick } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	// DEV-153: 편집 중이면 이탈 가드에 보고.
 	import { setUnsaved } from '$lib/stores/unsaved';
 	import { goto } from '$app/navigation';
@@ -13,31 +13,17 @@
 	// DEV-068: `.guild/tags/{slug}.toml` 정의 — Tag pill 색칠용.
 	import { adminApi } from '$lib/api/admin';
 	import type { QuestTagDef } from '$lib/types';
-	// DEV-074 fix4: CodeMirror oneDark 는 라이트모드에 부적합 — theme 따라 분기.
-	import { theme } from '$lib/stores/theme';
-	// DEV-074 fix15: 편집창 native scrollbar 대신 overlay.
+	// DEV-074 fix17: 삭제 cascade 모달의 sub-quest list overlay scrollbar.
 	import OverlayScrollbar from '$lib/components/OverlayScrollbar.svelte';
 	// BUG-021 fix1: marked 직접 호출 대신 공유 컴포넌트 MarkdownView 사용.
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	// DEV-156: 본문 아래 첨부 섹션 (Jira 식).
 	import AttachmentSection from '$lib/components/AttachmentSection.svelte';
-	import { EditorView, basicSetup } from 'codemirror';
-	import { markdown } from '@codemirror/lang-markdown';
-	// 편집기 테마 — Compartment 로 다크/라이트 라이브 전환 (재생성 X).
-	import { editorThemeCompartment, editorThemeExtension } from '$lib/utils/editor-theme';
-	// DEV-117: CodeMirror 의 기본 historyKeymap 은 Windows 에서 Ctrl+Y 만 redo —
-	// Ctrl+Shift+Z 는 Mac 전용. 양쪽 모두 지원하려면 keymap 추가.
-	import { keymap } from '@codemirror/view';
-	import { redo } from '@codemirror/commands';
-	// DEV-069: 편집기 첨부 — 클립보드 이미지 paste / 파일 drag&drop / '첨부' 버튼.
-	import { attachmentExtension } from '$lib/utils/editor-attach';
-	// DEV-140: 본문 cross-link — XXX-NNN 타이핑 시 [[...]] 링크 자동완성.
-	import { crossLinkAutocomplete } from '$lib/utils/editor-links';
-	// DEV-130: 편집기 들여쓰기 설정 (tab/space + 2/4칸).
-	import { indentExtensions } from '$lib/utils/editor-indent';
+	// DEV-203: 편집기 셋업(테마/들여쓰기/첨부/자동완성/redo/높이/overlay 스크롤)은
+	// 공통 MarkdownEditor 컴포넌트로 단일화.
+	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
 	// alert() 대신 통일된 toast (UI 일관성 — DEV-142 완료 차단 경고 등).
 	import { showToast } from '$lib/stores/toast';
-	import { editorSettings } from '$lib/stores/editorSettings';
 	import {
 		URGENCY_LABEL,
 		urgencyColor,
@@ -142,11 +128,6 @@
 	let deleting = $state(false);
 	let cascadeSet = $state<Set<number>>(new Set());
 
-	// CodeMirror
-	let editorContainer: HTMLDivElement | undefined = $state(undefined);
-	let editorView: EditorView | null = null;
-	// DEV-074 fix15: `.cm-scroller` 의 OverlayScrollbar target.
-	let cmScroller: HTMLElement | null = $state(null);
 	// DEV-074 fix17: 삭제 cascade 모달의 sub-quest list overlay scrollbar.
 	let delSubListEl: HTMLUListElement | undefined = $state(undefined);
 
@@ -319,7 +300,9 @@
 
 	// --- 편집 모드 ---
 
-	async function enterEditMode() {
+	// DEV-203: 편집기 생성/파괴/높이 영속/설정·테마 반응은 MarkdownEditor
+	// 컴포넌트가 {#if editMode} 수명주기로 자동 처리.
+	function enterEditMode() {
 		if (!detail) return;
 		editTitle = detail.title;
 		editUrgency = detail.urgency;
@@ -328,102 +311,9 @@
 		editDesiredDue = detail.desired_due ?? '';
 		editRequiredDue = detail.required_due ?? '';
 		editMode = true;
-		await tick();
-		initEditor();
-	}
-
-	// DEV-057: 편집창 사용자 크기 영속화.
-	const EDITOR_HEIGHT_KEY = 'openguild.questEditorHeight';
-	let editorHeightSaveTimer: ReturnType<typeof setTimeout> | null = null;
-	function loadEditorHeight(): number {
-		try {
-			const raw = localStorage.getItem(EDITOR_HEIGHT_KEY);
-			const n = raw ? parseInt(raw, 10) : NaN;
-			// 합리적 범위만 — 200~2000px.
-			if (Number.isFinite(n) && n >= 200 && n <= 2000) return n;
-		} catch {
-			/* 무시 */
-		}
-		return 480;
-	}
-	function scheduleEditorHeightSave(px: number) {
-		if (editorHeightSaveTimer) clearTimeout(editorHeightSaveTimer);
-		editorHeightSaveTimer = setTimeout(() => {
-			try {
-				localStorage.setItem(EDITOR_HEIGHT_KEY, String(Math.round(px)));
-			} catch {
-				/* 무시 */
-			}
-		}, 250);
-	}
-	let editorResizeObserver: ResizeObserver | null = null;
-	// DEV-130: 들여쓰기 설정 변경 시 편집 중이면 editor 재생성.
-	$effect(() => {
-		const _ = $editorSettings;
-		if (editMode && editorView) {
-			// 현재 내용 보존.
-			editDescription = editorView.state.doc.toString();
-			initEditor();
-		}
-	});
-	// 테마 변경 시 재생성 없이 테마 확장만 교체 (커서/스크롤/undo 보존).
-	$effect(() => {
-		const t = $theme;
-		editorView?.dispatch({
-			effects: editorThemeCompartment.reconfigure(editorThemeExtension(t))
-		});
-	});
-
-	function initEditor() {
-		if (!editorContainer) return;
-		if (editorView) {
-			editorView.destroy();
-			editorView = null;
-		}
-		// DEV-057: parent (.editor-wrap) 가 height 결정. cm-scroller 는 fill.
-		// 이전엔 cm-scroller maxHeight 480px 가 고정 한계 — parent resize 시 의미 없음.
-		editorContainer.style.height = `${loadEditorHeight()}px`;
-		editorView = new EditorView({
-			doc: editDescription,
-			extensions: [
-				basicSetup,
-				markdown(),
-				// 테마 — Compartment 로 다크/라이트 라이브 전환 (재생성 X).
-				editorThemeCompartment.of(editorThemeExtension($theme)),
-				// DEV-117: Windows 표준 redo. (Tab 들여쓰기는 indentExtensions 가 담당.)
-				keymap.of([{ key: 'Mod-Shift-z', run: redo, preventDefault: true }]),
-				// DEV-130: tab/space + 2/4칸 들여쓰기 — Tab 키맵 + indentUnit/tabSize.
-				indentExtensions($editorSettings),
-				// DEV-069: 클립보드 이미지 paste / 파일 drag&drop → 첨부 업로드.
-				attachmentExtension((msg) => (saveError = `첨부 업로드 실패: ${msg}`), attachToSection),
-				// DEV-140: XXX-NNN 타이핑 → [[...]] cross-link 자동완성.
-				crossLinkAutocomplete(),
-				EditorView.theme({
-					'&': { fontSize: '0.875rem', borderRadius: '6px', height: '100%' },
-					'.cm-editor': { borderRadius: '6px', height: '100%' },
-					'.cm-scroller': { overflow: 'auto' }
-				})
-			],
-			parent: editorContainer
-		});
-		// DEV-074 fix15: .cm-scroller ref → OverlayScrollbar target.
-		cmScroller = editorContainer.querySelector('.cm-scroller') as HTMLElement | null;
-		// 사용자가 resize 핸들로 크기 바꿀 때마다 영속화.
-		editorResizeObserver?.disconnect();
-		editorResizeObserver = new ResizeObserver((entries) => {
-			for (const entry of entries) {
-				scheduleEditorHeightSave(entry.contentRect.height);
-			}
-		});
-		editorResizeObserver.observe(editorContainer);
 	}
 
 	function exitEditMode() {
-		cmScroller = null;
-		editorView?.destroy();
-		editorView = null;
-		editorResizeObserver?.disconnect();
-		editorResizeObserver = null;
 		editMode = false;
 		saveError = null;
 	}
@@ -433,7 +323,7 @@
 		saving = true;
 		saveError = null;
 		try {
-			const desc = editorView ? editorView.state.doc.toString() : editDescription;
+			const desc = editDescription;
 			await questsApi.update(detail.id, {
 				title: editTitle.trim() || detail.title,
 				description: desc || undefined,
@@ -878,11 +768,11 @@
 				     이미지·동영상·파일은 드래그&드랍 / Ctrl+V 로 첨부(attachmentExtension). -->
 				<div class="field-label">
 					<span>설명 (Markdown) — 첨부는 드래그&드랍 / Ctrl+V 또는 아래 첨부 섹션</span>
-					<div class="editor-wrap" bind:this={editorContainer}></div>
-					<!-- DEV-074 fix15: CodeMirror native scrollbar 대신 overlay. -->
-					{#if cmScroller}
-						<OverlayScrollbar target={cmScroller} />
-					{/if}
+					<MarkdownEditor
+						bind:value={editDescription}
+						onError={(msg) => (saveError = `첨부 업로드 실패: ${msg}`)}
+						onAttach={attachToSection}
+					/>
 				</div>
 
 				{#if saveError}<p class="save-error">{saveError}</p>{/if}
@@ -1704,32 +1594,7 @@
 		color: var(--danger);
 		font-weight: 700;
 	}
-	/* DEV-069: 편집기 위 첨부 툴바. */
-	.editor-wrap {
-		/* DEV-057: 사용자 drag 로 height 조절. CodeMirror 의 cm-scroller 는
-		   parent height 100% 따라가서 늘어남. ResizeObserver 가 변경 감지 →
-		   localStorage 영속. */
-		border: 1px solid var(--border);
-		border-radius: 6px;
-		overflow: hidden;
-		min-height: 200px;
-		max-height: 90vh;
-		resize: vertical;
-	}
-	.editor-wrap :global(.cm-editor) {
-		outline: none;
-	}
-	.editor-wrap :global(.cm-editor.cm-focused) {
-		outline: none;
-		border: none;
-	}
-	/* DEV-074 fix15: native scrollbar 숨김 — OverlayScrollbar 가 대신 그림. */
-	.editor-wrap :global(.cm-scroller) {
-		scrollbar-width: none;
-	}
-	.editor-wrap :global(.cm-scroller::-webkit-scrollbar) {
-		display: none;
-	}
+	/* DEV-203: .editor-wrap CSS 는 공통 MarkdownEditor 컴포넌트로 이동. */
 	.save-error {
 		color: var(--danger);
 		font-size: 0.8rem;

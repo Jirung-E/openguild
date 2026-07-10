@@ -9,7 +9,7 @@
   `.guild/rules/general.md` 로 마이그레이션됨.
 -->
 <script lang="ts">
-	import { onMount, onDestroy, tick } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	// BUG-104: 선택 규칙을 URL(?slug=) 에 반영 — 규칙간 링크 이동 + 뒤로가기 복원.
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
@@ -19,18 +19,9 @@
 	import { rulesApi, type RuleEntry } from '$lib/api/rules';
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
-	import { EditorView, basicSetup } from 'codemirror';
-	import { markdown } from '@codemirror/lang-markdown';
-	// 편집기 테마 — Compartment 로 다크/라이트 라이브 전환.
-	import { theme } from '$lib/stores/theme';
-	import { editorThemeCompartment, editorThemeExtension } from '$lib/utils/editor-theme';
-	// DEV-130: Tab 들여쓰기 — editorSettings(tab/space·크기)를 따르는 indentExtensions.
-	import { indentExtensions } from '$lib/utils/editor-indent';
-	import { editorSettings } from '$lib/stores/editorSettings';
-	// DEV-069: 규칙 편집기에도 첨부 (drag&drop / Ctrl+V / 버튼).
-	import { attachmentExtension } from '$lib/utils/editor-attach';
-	// DEV-140 후속: 규칙 편집기에도 XXX-NNN → [[...]] 자동완성.
-	import { crossLinkAutocomplete } from '$lib/utils/editor-links';
+	// DEV-203: 편집기 셋업(테마/들여쓰기/첨부/자동완성/높이 영속)은 공통
+	// MarkdownEditor 컴포넌트로 단일화.
+	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
 	// DEV-173 후속: 규칙 생성/삭제/이름변경/저장(제목 변경) 시 cross-link 인덱스
 	// 재적재 — 안 하면 방금 만든 규칙이 [[링크]] 에서 미존재(빨강)로 남음.
 	import { loadQuestIndex } from '$lib/stores/questIndex';
@@ -64,21 +55,6 @@
 	let renaming = $state(false);
 	let renameSlug = $state('');
 	let renameError = $state<string | null>(null);
-
-	let editorContainer: HTMLDivElement | undefined = $state(undefined);
-	let editorView: EditorView | null = null;
-
-	const EDITOR_HEIGHT_KEY = 'openguild.questEditorHeight';
-	function loadEditorHeight(): number {
-		try {
-			const raw = localStorage.getItem(EDITOR_HEIGHT_KEY);
-			const n = raw ? parseInt(raw, 10) : NaN;
-			if (Number.isFinite(n) && n >= 200 && n <= 2000) return n;
-		} catch {
-			/* ignore */
-		}
-		return 480;
-	}
 
 	async function loadList(preferSlug?: string | null) {
 		loading = true;
@@ -240,58 +216,16 @@
 	}
 
 	// ─── 편집 ───
-	async function enterEdit() {
+	// DEV-203: 편집기 생성/파괴는 MarkdownEditor 컴포넌트가 {#if editMode}
+	// 수명주기로 자동 처리 — initEditor/destroy 보일러플레이트 제거.
+	function enterEdit() {
 		if (!selectedSlug) return;
 		editText = selectedContent ?? '';
 		editMode = true;
 		saveError = null;
-		await tick();
-		initEditor();
 	}
-
-	function initEditor() {
-		if (!editorContainer) return;
-		if (editorView) {
-			editorView.destroy();
-			editorView = null;
-		}
-		editorContainer.style.height = `${loadEditorHeight()}px`;
-		editorView = new EditorView({
-			doc: editText,
-			extensions: [
-				basicSetup,
-				markdown(),
-				// 테마 — Compartment 로 다크/라이트 라이브 전환.
-				editorThemeCompartment.of(editorThemeExtension($theme)),
-				// DEV-069: 첨부 — 클립보드 paste / 파일 drag&drop.
-				attachmentExtension((msg) => (saveError = `첨부 업로드 실패: ${msg}`), undefined, {
-					mediaOnly: true
-				}),
-				// DEV-140 후속: XXX-NNN 타이핑 → [[...]] cross-link 자동완성.
-				crossLinkAutocomplete(),
-				// DEV-130: Tab = 들여쓰기 (focus 이동 X) — 설정대로 커서 위치에 삽입.
-				indentExtensions($editorSettings),
-				EditorView.theme({
-					'&': { fontSize: '0.875rem', borderRadius: '6px', height: '100%' },
-					'.cm-editor': { borderRadius: '6px', height: '100%' },
-					'.cm-scroller': { overflow: 'auto' }
-				})
-			],
-			parent: editorContainer
-		});
-	}
-
-	// 테마 변경 시 재생성 없이 테마 확장만 교체 (커서/스크롤/undo 보존).
-	$effect(() => {
-		const t = $theme;
-		editorView?.dispatch({
-			effects: editorThemeCompartment.reconfigure(editorThemeExtension(t))
-		});
-	});
 
 	function cancelEdit() {
-		editorView?.destroy();
-		editorView = null;
 		editMode = false;
 		saveError = null;
 	}
@@ -301,7 +235,7 @@
 		saving = true;
 		saveError = null;
 		try {
-			const text = editorView ? editorView.state.doc.toString() : editText;
+			const text = editText;
 			const res = await rulesApi.set(selectedSlug, text);
 			selectedContent = res.content;
 			// 메모리 목록도 갱신 — 페이지 reload 안 해도 sidebar 정합.
@@ -538,7 +472,11 @@
 						<div class="edit-form">
 							<div class="field-label">
 								<span>본문 (Markdown) — 첨부는 드래그&드랍 / Ctrl+V</span>
-								<div class="editor-wrap" bind:this={editorContainer}></div>
+								<MarkdownEditor
+									bind:value={editText}
+									mediaOnly
+									onError={(msg) => (saveError = `첨부 업로드 실패: ${msg}`)}
+								/>
 							</div>
 							<div class="actions">
 								<button class="btn-save" onclick={save} disabled={saving}>
@@ -850,14 +788,7 @@
 		font-size: 0.8rem;
 		color: var(--text-muted);
 	}
-	.editor-wrap {
-		border: 1px solid var(--border);
-		border-radius: 6px;
-		overflow: hidden;
-		min-height: 200px;
-		max-height: 90vh;
-		resize: vertical;
-	}
+	/* DEV-203: .editor-wrap CSS 는 공통 MarkdownEditor 컴포넌트로 이동. */
 
 	.actions {
 		display: flex;

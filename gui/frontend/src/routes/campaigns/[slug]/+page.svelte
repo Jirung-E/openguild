@@ -6,7 +6,7 @@
    - 연결된 quest 표시 + 추가 / 제거
 -->
 <script lang="ts">
-	import { onMount, onDestroy, tick } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	// DEV-153: 편집 중이면 이탈 가드에 보고.
 	import { setUnsaved } from '$lib/stores/unsaved';
 	import { goto } from '$app/navigation';
@@ -31,21 +31,9 @@
 	import QuestCommentsSection from '$lib/components/QuestCommentsSection.svelte';
 	import QuestNoteSection from '$lib/components/QuestNoteSection.svelte';
 	import CampaignHistory from '$lib/components/CampaignHistory.svelte';
-	// BUG-021: Quest Detail 과 동일한 CodeMirror editor (라인 번호 + markdown
-	// syntax highlighting) 로 통일.
-	import { EditorView, basicSetup } from 'codemirror';
-	import { markdown } from '@codemirror/lang-markdown';
-	// BUG: 편집창 띄운 채 다크/라이트 전환 시 테마 안 바뀌던 문제 — Compartment 로 라이브 교체.
-	import { theme } from '$lib/stores/theme';
-	import { editorThemeCompartment, editorThemeExtension } from '$lib/utils/editor-theme';
-	// DEV-130: Tab = 들여쓰기 — indentExtensions 가 Tab 키맵 포함 (focus 이동 X).
-	// DEV-069: 편집기 첨부 — 클립보드 이미지 paste / 파일 drag&drop 업로드.
-	import { attachmentExtension } from '$lib/utils/editor-attach';
-	// DEV-140: 본문 cross-link — XXX-NNN 타이핑 시 [[...]] 링크 자동완성.
-	import { crossLinkAutocomplete } from '$lib/utils/editor-links';
-	// DEV-130: 편집기 들여쓰기 설정 (tab/space + 2/4칸).
-	import { indentExtensions } from '$lib/utils/editor-indent';
-	import { editorSettings } from '$lib/stores/editorSettings';
+	// DEV-203: 편집기 셋업(테마/들여쓰기/첨부/자동완성/redo/높이/overlay 스크롤)은
+	// 공통 MarkdownEditor 컴포넌트로 단일화.
+	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
 
 	let slug = $derived($page.params.slug ?? '');
 	let detail = $state<CampaignDetail | null>(null);
@@ -102,82 +90,8 @@
 	let bodyEdit = $state('');
 	let saving = $state(false);
 
-	// BUG-021: CodeMirror editor (Quest Detail 패턴 그대로).
-	// EDITOR_HEIGHT_KEY 는 Quest Detail 과 공유 — 일관 사용자 경험.
-	const EDITOR_HEIGHT_KEY = 'openguild.questEditorHeight';
-	let editorContainer: HTMLDivElement | undefined = $state(undefined);
-	let editorView: EditorView | null = null;
-	let editorResizeObserver: ResizeObserver | null = null;
-	let editorHeightSaveTimer: ReturnType<typeof setTimeout> | null = null;
-	function loadEditorHeight(): number {
-		try {
-			const raw = localStorage.getItem(EDITOR_HEIGHT_KEY);
-			const n = raw ? parseInt(raw, 10) : NaN;
-			if (Number.isFinite(n) && n >= 200 && n <= 2000) return n;
-		} catch {
-			/* 무시 */
-		}
-		return 480;
-	}
-	function scheduleEditorHeightSave(px: number) {
-		if (editorHeightSaveTimer) clearTimeout(editorHeightSaveTimer);
-		editorHeightSaveTimer = setTimeout(() => {
-			try {
-				localStorage.setItem(EDITOR_HEIGHT_KEY, String(Math.round(px)));
-			} catch {
-				/* 무시 */
-			}
-		}, 250);
-	}
-	function initEditor() {
-		if (!editorContainer) return;
-		if (editorView) {
-			editorView.destroy();
-			editorView = null;
-		}
-		editorContainer.style.height = `${loadEditorHeight()}px`;
-		editorView = new EditorView({
-			doc: bodyEdit,
-			extensions: [
-				basicSetup,
-				markdown(),
-				// 테마 — Compartment 로 다크/라이트 라이브 전환.
-				editorThemeCompartment.of(editorThemeExtension($theme)),
-				// DEV-130: tab/space + 2/4칸 들여쓰기 — Tab 키맵 + indentUnit/tabSize.
-				indentExtensions($editorSettings),
-				// DEV-069: 클립보드 이미지 paste / 파일 drag&drop → 첨부 업로드.
-				attachmentExtension((msg) => (error = `첨부 업로드 실패: ${msg}`), attachToSection),
-				// DEV-140: XXX-NNN 타이핑 → [[...]] cross-link 자동완성.
-				crossLinkAutocomplete(),
-				EditorView.theme({
-					'&': { fontSize: '0.875rem', borderRadius: '6px', height: '100%' },
-					'.cm-editor': { borderRadius: '6px', height: '100%' },
-					'.cm-scroller': { overflow: 'auto' }
-				})
-			],
-			parent: editorContainer
-		});
-		editorResizeObserver?.disconnect();
-		editorResizeObserver = new ResizeObserver((entries) => {
-			for (const entry of entries) {
-				scheduleEditorHeightSave(entry.contentRect.height);
-			}
-		});
-		editorResizeObserver.observe(editorContainer);
-	}
-	function destroyEditor() {
-		editorView?.destroy();
-		editorView = null;
-		editorResizeObserver?.disconnect();
-		editorResizeObserver = null;
-	}
-	// 테마 변경 시 editor 재생성 없이 테마 확장만 교체 (커서/스크롤/undo 보존).
-	$effect(() => {
-		const t = $theme;
-		editorView?.dispatch({
-			effects: editorThemeCompartment.reconfigure(editorThemeExtension(t))
-		});
-	});
+	// DEV-203: 편집기 생성/파괴/높이 영속/설정·테마 반응은 MarkdownEditor
+	// 컴포넌트가 {#if editMode} 수명주기로 자동 처리.
 
 	// 체크리스트 추가 입력
 	let newChecklistText = $state('');
@@ -282,26 +196,22 @@
 	}
 
 	// BUG-033: editMeta + editBody → 단일 editMode. Quest Detail 패턴 그대로.
-	async function enterEditMode() {
+	function enterEditMode() {
 		if (!detail) return;
 		titleEdit = detail.title;
 		startedEdit = detail.started_at ?? '';
 		endedEdit = detail.ended_at ?? '';
 		bodyEdit = detail.description ?? '';
 		editMode = true;
-		// CodeMirror 컨테이너는 {#if editMode} 가 true 되어야 mount → tick 후 init.
-		await tick();
-		initEditor();
 	}
 	function exitEditMode() {
-		destroyEditor();
 		editMode = false;
 	}
 	async function saveEdit() {
 		if (!detail) return;
 		saving = true;
 		try {
-			const desc = editorView ? editorView.state.doc.toString() : bodyEdit;
+			const desc = bodyEdit;
 			await campaignsApi.update(detail.campaign_slug, {
 				title: titleEdit.trim() || detail.title,
 				started_at: startedEdit,
@@ -587,7 +497,11 @@
 				     이미지·동영상·파일은 드래그&드랍 / Ctrl+V 로 첨부(attachmentExtension). -->
 				<div class="field-label">
 					<span>본문 (Markdown) — 첨부는 드래그&드랍 / Ctrl+V 또는 아래 첨부 섹션</span>
-					<div class="editor-wrap" bind:this={editorContainer}></div>
+					<MarkdownEditor
+						bind:value={bodyEdit}
+						onError={(msg) => (error = `첨부 업로드 실패: ${msg}`)}
+						onAttach={attachToSection}
+					/>
 				</div>
 				<div class="actions">
 					<button class="btn-save" onclick={saveEdit} disabled={saving || !titleEdit.trim()}>
@@ -1040,23 +954,7 @@
 
 	/* BUG-021: textarea 는 CodeMirror 로 교체. CSS 미사용 selector 정리. */
 
-	/* BUG-021: CodeMirror editor (Quest Detail 패턴 — DEV-057 의 height 영속). */
-	/* DEV-069: 편집기 위 첨부 툴바. */
-	.editor-wrap {
-		border: 1px solid var(--border);
-		border-radius: 6px;
-		overflow: hidden;
-		min-height: 200px;
-		max-height: 90vh;
-		resize: vertical;
-	}
-	.editor-wrap :global(.cm-editor) {
-		outline: none;
-	}
-	.editor-wrap :global(.cm-editor.cm-focused) {
-		outline: none;
-		border: none;
-	}
+	/* DEV-203: .editor-wrap CSS 는 공통 MarkdownEditor 컴포넌트로 이동. */
 
 	/* BUG-021 fix1: .md CSS 는 공유 컴포넌트 MarkdownView 로 이동. */
 

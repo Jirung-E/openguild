@@ -13,7 +13,7 @@
   (cross-link 대상 — DEV-218).
 -->
 <script lang="ts">
-	import { onMount, onDestroy, tick } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { setUnsaved } from '$lib/stores/unsaved';
@@ -23,15 +23,9 @@
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import AttachmentSection from '$lib/components/AttachmentSection.svelte';
-	import { EditorView, basicSetup } from 'codemirror';
-	import { markdown } from '@codemirror/lang-markdown';
-	import { theme } from '$lib/stores/theme';
-	import { editorThemeCompartment, editorThemeExtension } from '$lib/utils/editor-theme';
-	import { indentExtensions } from '$lib/utils/editor-indent';
-	import { editorSettings } from '$lib/stores/editorSettings';
-	// DEV-097 대체 결정: 도서관 문서가 공유 자료의 보금자리 — 첨부 지원 필수.
-	import { attachmentExtension } from '$lib/utils/editor-attach';
-	import { crossLinkAutocomplete } from '$lib/utils/editor-links';
+	// DEV-203: 편집기 셋업(테마/들여쓰기/첨부/자동완성/redo/높이/overlay 스크롤)은
+	// 공통 MarkdownEditor 컴포넌트로 단일화.
+	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
 	import { loadQuestIndex } from '$lib/stores/questIndex';
 	// BUG-123(admin 재지적): 네이티브 alert() 대신 앱 공용 toast — 다른 페이지들과
 	// 동일한 alert() 대체 컨벤션(+layout.svelte 주석 참고).
@@ -170,6 +164,7 @@
 	let editMode = $state(false);
 	$effect(() => setUnsaved('library-edit', editMode));
 	onDestroy(() => setUnsaved('library-edit', false));
+	let editText = $state('');
 	let saving = $state(false);
 	let saveError = $state<string | null>(null);
 
@@ -192,21 +187,6 @@
 	let creatingFolder = $state(false);
 	let createFolderPath = $state('');
 	let createFolderError = $state<string | null>(null);
-
-	let editorContainer: HTMLDivElement | undefined = $state(undefined);
-	let editorView: EditorView | null = null;
-
-	const EDITOR_HEIGHT_KEY = 'openguild.questEditorHeight';
-	function loadEditorHeight(): number {
-		try {
-			const raw = localStorage.getItem(EDITOR_HEIGHT_KEY);
-			const n = raw ? parseInt(raw, 10) : NaN;
-			if (Number.isFinite(n) && n >= 200 && n <= 2000) return n;
-		} catch {
-			/* ignore */
-		}
-		return 480;
-	}
 
 	async function loadList(preferId?: string | null) {
 		loading = true;
@@ -343,7 +323,6 @@
 	async function enterEdit() {
 		if (!selected) return;
 		const id = selected.book_id;
-		editMode = true;
 		saveError = null;
 		// BUG-134 후속(admin 지적 — 위 effect 만으로는 여전히 안 고쳐짐): 선택
 		// 시 백그라운드로 도는 재조회(위 effect)는 비동기라, 문서를 선택하자마자
@@ -361,8 +340,10 @@
 		} catch {
 			/* 재조회 실패 — list() 스냅샷으로 폴백(기존 동작). */
 		}
-		await tick();
-		initEditor(body);
+		// DEV-203: MarkdownEditor 는 마운트 시점의 editText 를 초기 doc 으로
+		// 쓰므로, 최신 본문 확보 후에 editMode 진입(BUG-134 의 fresh-body 보장).
+		editText = body;
+		editMode = true;
 	}
 
 	// DEV-237: 편집기 '첨부' 버튼 / 비미디어 paste·drop → 본문 인라인 대신 첨부
@@ -378,44 +359,8 @@
 		}
 	}
 
-	function initEditor(doc: string) {
-		if (!editorContainer) return;
-		if (editorView) {
-			editorView.destroy();
-			editorView = null;
-		}
-		editorContainer.style.height = `${loadEditorHeight()}px`;
-		editorView = new EditorView({
-			doc,
-			extensions: [
-				basicSetup,
-				markdown(),
-				editorThemeCompartment.of(editorThemeExtension($theme)),
-				// DEV-237: mediaOnly 제거 — 이미지/동영상 외 임의 파일은 attachToSection
-				// 이 첨부 섹션에 등록(본문에 dead link 인라인 안 됨).
-				attachmentExtension((msg) => (saveError = `첨부 업로드 실패: ${msg}`), attachToSection),
-				crossLinkAutocomplete(),
-				indentExtensions($editorSettings),
-				EditorView.theme({
-					'&': { fontSize: '0.875rem', borderRadius: '6px', height: '100%' },
-					'.cm-editor': { borderRadius: '6px', height: '100%' },
-					'.cm-scroller': { overflow: 'auto' }
-				})
-			],
-			parent: editorContainer
-		});
-	}
-
-	$effect(() => {
-		const t = $theme;
-		editorView?.dispatch({
-			effects: editorThemeCompartment.reconfigure(editorThemeExtension(t))
-		});
-	});
-
+	// DEV-203: 편집기 생성/파괴/테마·설정 반응은 MarkdownEditor 가 자동 처리.
 	function cancelEdit() {
-		editorView?.destroy();
-		editorView = null;
 		editMode = false;
 		saveError = null;
 	}
@@ -425,7 +370,7 @@
 		saving = true;
 		saveError = null;
 		try {
-			const text = editorView ? editorView.state.doc.toString() : '';
+			const text = editText;
 			const updated = await libraryApi.update(selectedId, { body: text });
 			books = books.map((b) => (b.book_id === selectedId ? updated : b));
 			loadQuestIndex(true);
@@ -1054,7 +999,12 @@
 						<div class="edit-form">
 							<div class="field-label">
 								<span>본문 (Markdown) — 첨부는 드래그&드랍 / Ctrl+V</span>
-								<div class="editor-wrap" bind:this={editorContainer}></div>
+								<!-- DEV-237: 비미디어 파일은 attachToSection 이 첨부 섹션에 등록. -->
+								<MarkdownEditor
+									bind:value={editText}
+									onError={(msg) => (saveError = `첨부 업로드 실패: ${msg}`)}
+									onAttach={attachToSection}
+								/>
 							</div>
 							<div class="actions">
 								<button class="btn-save" onclick={save} disabled={saving}>
@@ -1567,14 +1517,7 @@
 		font-size: 0.8rem;
 		color: var(--text-muted);
 	}
-	.editor-wrap {
-		border: 1px solid var(--border);
-		border-radius: 6px;
-		overflow: hidden;
-		min-height: 200px;
-		max-height: 90vh;
-		resize: vertical;
-	}
+	/* DEV-203: .editor-wrap CSS 는 공통 MarkdownEditor 컴포넌트로 이동. */
 
 	.actions {
 		display: flex;
