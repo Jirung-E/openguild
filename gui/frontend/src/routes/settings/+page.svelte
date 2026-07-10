@@ -28,7 +28,26 @@
 		MAX_CONTENT_WIDTH,
 		DEFAULT_CONTENT_WIDTH
 	} from '$lib/stores/contentWidth';
-	import { theme, setTheme, type ThemeChoice } from '$lib/stores/theme';
+	import { theme, setTheme, type ThemeChoice, type EffectiveTheme } from '$lib/stores/theme';
+	// DEV-114: 커스텀 테마 — 프리셋 저장/활성화 + 토큰 color picker.
+	import {
+		TOKEN_CATALOG,
+		customThemes,
+		activeCustomTheme,
+		activatePreset,
+		deactivateCustom,
+		savePreset,
+		deletePreset,
+		setActiveOverride,
+		clearActiveOverride,
+		exportPresetsJson,
+		importPresetsJson,
+		computedTokenValue
+	} from '$lib/stores/customThemes';
+	// DEV-114: export/import 결과 안내 — 앱 공용 toast. 삭제 확인은 인앱 모달
+	// (no-native-dialogs 규칙 — confirm() 금지).
+	import { showToast } from '$lib/stores/toast';
+	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	// DEV-015 (MVP): 언어 토글 — 설정 페이지에도 노출.
 	import { locale, setLocale, type Locale } from '$lib/stores/locale';
 	// DEV-130: 편집기 들여쓰기 설정 (tab/space + 2/4칸).
@@ -60,6 +79,92 @@
 	// 출력해서 보여주고, 웰컴페이지에서 들어간거면 표시 안하면 되는거 아님?").
 	type Tab = 'info' | 'display' | 'editor';
 	let activeTab = $state<Tab>('info');
+
+	// ─── DEV-114: 커스텀 테마 편집기 ───
+	// 편집 대상 = 활성 프리셋. 새 프리셋 생성 → 즉시 활성화 → picker 로 조정.
+	let showAdvancedTokens = $state(false);
+	let creatingPreset = $state(false);
+	let newPresetName = $state('');
+	let newPresetBase = $state<EffectiveTheme>('dark');
+	let presetError = $state<string | null>(null);
+	// picker 초기값 재계산 트리거 — override 변경/활성 전환 시 bump.
+	let pickerVersion = $state(0);
+
+	const activePreset = $derived(
+		$activeCustomTheme ? ($customThemes.find((p) => p.name === $activeCustomTheme) ?? null) : null
+	);
+
+	function submitCreatePreset() {
+		const name = newPresetName.trim();
+		if (!name) {
+			presetError = '프리셋 이름을 입력하세요.';
+			return;
+		}
+		if ($customThemes.some((p) => p.name === name)) {
+			presetError = '같은 이름의 프리셋이 이미 있습니다.';
+			return;
+		}
+		savePreset({ name, base: newPresetBase, overrides: {} });
+		activatePreset(name);
+		creatingPreset = false;
+		newPresetName = '';
+		presetError = null;
+		pickerVersion++;
+	}
+
+	function pickBaseTheme(opt: ThemeChoice) {
+		// 커스텀 활성 중 dark/light/system 클릭 → 커스텀 해제 후 기본 테마로.
+		if ($activeCustomTheme) deactivateCustom();
+		setTheme(opt);
+		pickerVersion++;
+	}
+
+	function pickCustomPreset(name: string) {
+		activatePreset(name);
+		pickerVersion++;
+	}
+
+	function onTokenInput(token: string, e: Event) {
+		const v = (e.currentTarget as HTMLInputElement).value;
+		setActiveOverride(token, v);
+	}
+
+	function resetToken(token: string) {
+		clearActiveOverride(token);
+		pickerVersion++;
+	}
+
+	async function exportPresets() {
+		try {
+			await navigator.clipboard.writeText(exportPresetsJson());
+			showToast('프리셋 JSON 을 클립보드에 복사했습니다.', 'success');
+		} catch {
+			showToast('클립보드 복사 실패', 'error');
+		}
+	}
+
+	let importText = $state('');
+	let importing = $state(false);
+	function importPresets() {
+		try {
+			const n = importPresetsJson(importText);
+			showToast(`프리셋 ${n}개를 가져왔습니다.`, 'success');
+			importText = '';
+			importing = false;
+		} catch (e) {
+			showToast(e instanceof Error ? e.message : 'JSON 형식 오류', 'error');
+		}
+	}
+
+	// 삭제 확인 (no-native-dialogs — confirm() 금지).
+	let confirmDeletePresetName = $state<string | null>(null);
+	function doDeletePreset() {
+		const name = confirmDeletePresetName;
+		confirmDeletePresetName = null;
+		if (!name) return;
+		deletePreset(name);
+		pickerVersion++;
+	}
 
 	const isTauri = detectEnvironment() === 'tauri';
 
@@ -303,22 +408,151 @@
 					</p>
 				</dd>
 
-				<!-- DEV-074: 테마 (Dark / Light / System). -->
+				<!-- DEV-074: 테마 (Dark / Light / System). DEV-114: 커스텀 프리셋도 옆에 노출. -->
 				<dt>테마</dt>
 				<dd class="theme-row">
 					<div class="theme-toggle" role="group" aria-label="테마">
 						{#each ['dark', 'light', 'system'] as opt (opt)}
 							<button
 								class="th-btn"
-								class:active={$theme === opt}
-								onclick={() => setTheme(opt as ThemeChoice)}
-								aria-pressed={$theme === opt}
+								class:active={!$activeCustomTheme && $theme === opt}
+								onclick={() => pickBaseTheme(opt as ThemeChoice)}
+								aria-pressed={!$activeCustomTheme && $theme === opt}
 							>
 								{opt === 'dark' ? '다크' : opt === 'light' ? '라이트' : '시스템'}
 							</button>
 						{/each}
+						{#each $customThemes as p (p.name)}
+							<button
+								class="th-btn custom"
+								class:active={$activeCustomTheme === p.name}
+								onclick={() => pickCustomPreset(p.name)}
+								aria-pressed={$activeCustomTheme === p.name}
+								title={`커스텀 (${p.base === 'dark' ? '다크' : '라이트'} 기반)`}
+							>
+								{p.name}
+							</button>
+						{/each}
 					</div>
 					<p class="scale-hint">CSS 토큰 기반 — 시스템 모드는 OS 설정 따라 자동 전환.</p>
+				</dd>
+
+				<!-- DEV-114: 커스텀 테마 편집기. -->
+				<dt>커스텀 테마</dt>
+				<dd class="theme-row">
+					<div class="ct-actions">
+						{#if !creatingPreset}
+							<button class="th-btn" onclick={() => (creatingPreset = true)}>+ 새 프리셋</button>
+						{/if}
+						{#if $customThemes.length > 0}
+							<button class="th-btn" onclick={exportPresets}>내보내기 (JSON 복사)</button>
+						{/if}
+						{#if !importing}
+							<button class="th-btn" onclick={() => (importing = true)}>가져오기</button>
+						{/if}
+						{#if activePreset}
+							<button
+								class="th-btn danger"
+								onclick={() => (confirmDeletePresetName = activePreset?.name ?? null)}
+							>
+								'{activePreset.name}' 삭제
+							</button>
+						{/if}
+					</div>
+
+					{#if creatingPreset}
+						<div class="ct-create">
+							<input
+								class="ct-name"
+								type="text"
+								placeholder="프리셋 이름"
+								bind:value={newPresetName}
+								onkeydown={(e) => e.key === 'Enter' && submitCreatePreset()}
+							/>
+							<div class="theme-toggle" role="group" aria-label="기반 테마">
+								{#each ['dark', 'light'] as b (b)}
+									<button
+										class="th-btn"
+										class:active={newPresetBase === b}
+										onclick={() => (newPresetBase = b as EffectiveTheme)}
+									>
+										{b === 'dark' ? '다크 기반' : '라이트 기반'}
+									</button>
+								{/each}
+							</div>
+							<button class="th-btn" onclick={submitCreatePreset}>생성</button>
+							<button
+								class="th-btn"
+								onclick={() => {
+									creatingPreset = false;
+									presetError = null;
+								}}>취소</button
+							>
+						</div>
+						{#if presetError}<p class="ct-error">{presetError}</p>{/if}
+					{/if}
+
+					{#if importing}
+						<div class="ct-import">
+							<textarea
+								class="ct-import-text"
+								rows="4"
+								placeholder="내보내기로 복사한 프리셋 JSON 을 붙여넣으세요"
+								bind:value={importText}
+							></textarea>
+							<div class="ct-actions">
+								<button class="th-btn" onclick={importPresets} disabled={!importText.trim()}>
+									가져오기
+								</button>
+								<button
+									class="th-btn"
+									onclick={() => {
+										importing = false;
+										importText = '';
+									}}>취소</button
+								>
+							</div>
+						</div>
+					{/if}
+
+					{#if activePreset}
+						<!-- 토큰 color picker — 활성 프리셋 편집(live 적용). -->
+						{#key `${activePreset.name}:${pickerVersion}`}
+							<div class="ct-tokens">
+								{#each TOKEN_CATALOG.filter((d) => showAdvancedTokens || !d.advanced) as d (d.token)}
+									<div class="ct-token" class:overridden={!!activePreset.overrides[d.token]}>
+										<input
+											type="color"
+											value={activePreset.overrides[d.token] ?? computedTokenValue(d.token)}
+											oninput={(e) => onTokenInput(d.token, e)}
+											aria-label={d.label}
+										/>
+										<span class="ct-token-label" title={d.token}>{d.label}</span>
+										{#if activePreset.overrides[d.token]}
+											<button
+												class="ct-reset"
+												title="기본값으로 되돌리기"
+												onclick={() => resetToken(d.token)}>↺</button
+											>
+										{/if}
+									</div>
+								{/each}
+							</div>
+						{/key}
+						<label class="ct-advanced">
+							<input type="checkbox" bind:checked={showAdvancedTokens} />
+							고급 토큰 표시 (보드 강조색 등)
+						</label>
+						<p class="scale-hint">
+							색을 바꾸면 즉시 적용되고 프리셋에 저장됩니다. 색점 왼쪽 표시는 기본값에서 변경된
+							토큰. 퀘스트 보드 색은 보드 재진입 시 반영됩니다.
+						</p>
+					{:else}
+						<p class="scale-hint">
+							프리셋을 만들거나 선택하면 토큰별 색 편집기가 나타납니다. 프리셋은 이 PC 에만
+							저장되며(개인 취향), 공유는 내보내기/가져오기(JSON)로.
+						</p>
+					{/if}
 				</dd>
 
 				<!-- DEV-015 (MVP): 언어 토글 — 현재는 이 설정 페이지 라벨 일부에만 적용. -->
@@ -346,6 +580,17 @@
 		{/if}
 	</section>
 </div>
+
+<!-- DEV-114: 프리셋 삭제 확인 — 인앱 모달 (no-native-dialogs). -->
+<ConfirmDialog
+	open={confirmDeletePresetName !== null}
+	title="프리셋 삭제"
+	message={`'${confirmDeletePresetName ?? ''}' 프리셋을 삭제할까요? 되돌릴 수 없습니다.`}
+	confirmLabel="삭제"
+	danger
+	onconfirm={doDeletePreset}
+	oncancel={() => (confirmDeletePresetName = null)}
+/>
 
 <style>
 	.settings {
@@ -545,5 +790,124 @@
 	.th-btn.active {
 		background: var(--bg-subtle);
 		color: var(--text);
+	}
+	/* DEV-114: 커스텀 프리셋 버튼 — 기본 3개와 구분되는 강조색 톤. */
+	.th-btn.custom {
+		color: var(--accent);
+	}
+	.th-btn.custom.active {
+		background: var(--bg-subtle);
+		color: var(--accent);
+		font-weight: 600;
+	}
+	.th-btn.danger {
+		color: var(--danger);
+	}
+	.th-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	/* DEV-114: 커스텀 테마 편집기. */
+	.ct-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.4rem;
+		align-items: center;
+	}
+	.ct-actions .th-btn {
+		border: 1px solid var(--border);
+		background: var(--bg-elevated);
+	}
+	.ct-create {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.4rem;
+		align-items: center;
+		margin-top: 0.5rem;
+	}
+	.ct-name {
+		padding: 0.3rem 0.6rem;
+		background: var(--bg);
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		color: var(--text);
+		font-size: 0.85rem;
+	}
+	.ct-error {
+		color: var(--danger);
+		font-size: 0.8rem;
+		margin: 0.3rem 0 0;
+	}
+	.ct-import {
+		margin-top: 0.5rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.4rem;
+	}
+	.ct-import-text {
+		width: 100%;
+		padding: 0.4rem 0.6rem;
+		background: var(--bg);
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		color: var(--text);
+		font-size: 0.78rem;
+		font-family: 'JetBrains Mono', ui-monospace, monospace;
+		resize: vertical;
+	}
+	.ct-tokens {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+		gap: 0.35rem 0.75rem;
+		margin-top: 0.6rem;
+	}
+	.ct-token {
+		display: flex;
+		align-items: center;
+		gap: 0.45rem;
+		padding: 0.15rem 0.3rem;
+		border-radius: 6px;
+	}
+	.ct-token.overridden {
+		background: color-mix(in srgb, var(--accent) 8%, transparent);
+	}
+	.ct-token input[type='color'] {
+		width: 1.6rem;
+		height: 1.6rem;
+		padding: 0;
+		border: 1px solid var(--border);
+		border-radius: 4px;
+		background: transparent;
+		cursor: pointer;
+		flex: none;
+	}
+	.ct-token-label {
+		font-size: 0.78rem;
+		color: var(--text);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.ct-reset {
+		margin-left: auto;
+		border: none;
+		background: none;
+		color: var(--text-muted);
+		cursor: pointer;
+		font-size: 0.85rem;
+		flex: none;
+	}
+	.ct-reset:hover {
+		color: var(--text);
+	}
+	.ct-advanced {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.35rem;
+		margin-top: 0.5rem;
+		font-size: 0.8rem;
+		color: var(--text-muted);
+		cursor: pointer;
 	}
 </style>

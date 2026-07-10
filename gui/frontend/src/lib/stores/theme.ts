@@ -189,6 +189,16 @@ const LIGHT_PALETTE: ThemePalette = {
 	edgePre: '#0969da'
 };
 
+// DEV-114: 커스텀 테마의 palette 연동 — CSS var() 를 못 쓰는 소비처
+// (Cytoscape/SVG data URL)에도 사용자 override 가 반영되도록 themePalette()
+// 결과에 병합. customThemes 스토어(activate/deactivate)가 설정/해제.
+let paletteOverrides: Partial<ThemePalette> = {};
+
+export function setPaletteOverrides(overrides: Partial<ThemePalette>) {
+	paletteOverrides = overrides;
+}
+
 export function themePalette(eff: EffectiveTheme): ThemePalette {
-	return eff === 'light' ? LIGHT_PALETTE : DARK_PALETTE;
+	const base = eff === 'light' ? LIGHT_PALETTE : DARK_PALETTE;
+	return Object.keys(paletteOverrides).length === 0 ? base : { ...base, ...paletteOverrides };
 }
