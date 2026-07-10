@@ -25,6 +25,8 @@ sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "migrate"] }
 # 직렬화
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# DEV-229: openguild-server.toml 설정 파일 파싱.
+toml = "0.8"
 
 # DEV-152: 첨부 업로드 — Tauri invoke 와 동일 시그니처(base64 JSON body) 유지.
 base64 = "0.22"

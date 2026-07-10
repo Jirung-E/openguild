@@ -15,6 +15,11 @@
 //!   BIND          host 바인드 주소 (기본: local). `local`/`public` 별칭 또는
 //!                 IP 리터럴 — `--bind` 참조.
 //!   FRONTEND_DIST 정적 자산 폴더 (기본: gui/frontend/dist)
+//!
+//! DEV-229: frontend 위치 지정 우선순위 — `--frontend-dist`/`FRONTEND_DIST`
+//! (CLI/env) > 설정 파일(`openguild-server.toml`, `--config` 로 명시 또는
+//! exe 옆/cwd 자동 탐색) > 기존 자동 탐색(cwd/exe 조상의 `gui/frontend/build`).
+//! 설정 파일 형식은 [`ServerConfig`] 참조.
 
 mod error;
 mod routes;
@@ -61,7 +66,74 @@ enum Command {
         /// 리터럴(예: `192.168.1.10`). env: BIND.
         #[arg(long)]
         bind: Option<String>,
+        /// frontend 정적 자산 폴더 직접 지정 (env: FRONTEND_DIST). 설정
+        /// 파일/자동 탐색보다 우선.
+        #[arg(long)]
+        frontend_dist: Option<String>,
+        /// 설정 파일(`openguild-server.toml`) 경로 명시. 미지정 시 exe 옆 →
+        /// cwd 순으로 자동 탐색(있으면 사용, 없으면 조용히 skip).
+        #[arg(long)]
+        config: Option<String>,
     },
+}
+
+/// DEV-229: `openguild-server.toml` 설정 파일 형식.
+///
+/// ```toml
+/// [server]
+/// frontend_dist = "C:/path/to/frontend/build"
+/// ```
+///
+/// 향후 port / bind addr / guild_path 등도 이 파일로 통합 가능(현재는
+/// frontend_dist 만) — 알 수 없는 키는 무시(전방 호환, `#[serde(default)]`
+/// 로 필드 부재도 허용).
+#[derive(Debug, Default, serde::Deserialize)]
+struct ServerConfig {
+    #[serde(default)]
+    server: ServerConfigSection,
+}
+
+#[derive(Debug, Default, serde::Deserialize)]
+struct ServerConfigSection {
+    frontend_dist: Option<String>,
+}
+
+/// 설정 파일을 읽어 파싱. `explicit` 지정 시 그 경로만 시도(없으면 에러 —
+/// 사용자가 명시한 경로이므로 조용히 무시하면 오타를 놓침). 미지정 시
+/// exe 옆 → cwd 순 자동 탐색(둘 다 없으면 `Ok(None)`, 에러 아님).
+///
+/// 반환값에 실제 사용된 경로도 함께 — 시동 로그에 어느 파일을 읽었는지 표시.
+fn load_server_config(explicit: Option<&str>) -> Result<Option<(ServerConfig, PathBuf)>> {
+    const FILENAME: &str = "openguild-server.toml";
+
+    let path = if let Some(p) = explicit {
+        let p = PathBuf::from(p);
+        if !p.is_file() {
+            anyhow::bail!("--config 로 지정한 파일이 없음: {}", p.display());
+        }
+        p
+    } else {
+        let exe_adjacent = std::env::current_exe()
+            .ok()
+            .and_then(|exe| exe.parent().map(|d| d.join(FILENAME)));
+        match exe_adjacent {
+            Some(p) if p.is_file() => p,
+            _ => {
+                let cwd = PathBuf::from(FILENAME);
+                if cwd.is_file() {
+                    cwd
+                } else {
+                    return Ok(None);
+                }
+            }
+        }
+    };
+
+    let raw = std::fs::read_to_string(&path)
+        .with_context(|| format!("설정 파일 읽기 실패: {}", path.display()))?;
+    let cfg: ServerConfig = toml::from_str(&raw)
+        .with_context(|| format!("설정 파일 파싱 실패: {}", path.display()))?;
+    Ok(Some((cfg, path)))
 }
 
 fn main() -> Result<()> {
@@ -79,7 +151,9 @@ fn main() -> Result<()> {
         .build()?;
 
     match cli.command {
-        Command::Host { port, bind } => rt.block_on(run_host(port, bind)),
+        Command::Host { port, bind, frontend_dist, config } => {
+            rt.block_on(run_host(port, bind, frontend_dist, config))
+        }
     }
 }
 
@@ -137,7 +211,12 @@ fn load_guild() -> Result<GuildCtx> {
 
 // ─────────────────────── host ───────────────────────
 
-async fn run_host(port_arg: Option<u16>, bind_arg: Option<String>) -> Result<()> {
+async fn run_host(
+    port_arg: Option<u16>,
+    bind_arg: Option<String>,
+    frontend_dist_arg: Option<String>,
+    config_arg: Option<String>,
+) -> Result<()> {
     let ctx = load_guild()?;
     // Store 는 .guild/index.db + journal.db 둘 다 자동 마이그레이션.
     let store = openguild_core::Store::open(&ctx.guild_path).await?;
@@ -145,6 +224,9 @@ async fn run_host(port_arg: Option<u16>, bind_arg: Option<String>) -> Result<()>
     // 라우터. (audit middleware 폐기 — journal.db 의 ops 가 그 역할.
     //          auto-backup task 폐기 — HTTP admin / CLI 로 명시적 실행.)
     let mut app = routes::create_router(store);
+
+    // DEV-229: 설정 파일 로드 — `--config` 명시 또는 exe 옆/cwd 자동 탐색.
+    let server_config = load_server_config(config_arg.as_deref())?;
 
     // DEV-195: frontend 정적 서빙 (선택) — 단일 origin 으로 SPA+API 같이 서빙.
     // 기본값은 SvelteKit(adapter-static) 의 실제 빌드 출력 `gui/frontend/build`
@@ -155,21 +237,31 @@ async fn run_host(port_arg: Option<u16>, bind_arg: Option<String>) -> Result<()>
     // 에서 실행하면 cwd 가 달라 항상 API-only 로 떨어져 `/` 접속이 404 —
     // exe 의 조상 디렉토리들(`target/release` → `target` → repo root)도
     // 차례로 시도해 cargo build 산출물 레이아웃을 그대로 따라간다.
-    let dist_path = std::env::var("FRONTEND_DIST").unwrap_or_else(|_| {
-        const REL: &str = "gui/frontend/build";
-        if Path::new(REL).is_dir() {
-            return REL.to_string();
-        }
-        if let Ok(exe) = std::env::current_exe() {
-            for dir in exe.ancestors() {
-                let candidate = dir.join(REL);
-                if candidate.is_dir() {
-                    return candidate.to_string_lossy().into_owned();
+    //
+    // DEV-229: 우선순위 — `--frontend-dist` > `FRONTEND_DIST` env > 설정
+    // 파일의 `[server] frontend_dist` > 기존 자동 탐색(위 REL 탐색).
+    let dist_path = frontend_dist_arg
+        .or_else(|| std::env::var("FRONTEND_DIST").ok())
+        .or_else(|| {
+            server_config
+                .as_ref()
+                .and_then(|(cfg, _)| cfg.server.frontend_dist.clone())
+        })
+        .unwrap_or_else(|| {
+            const REL: &str = "gui/frontend/build";
+            if Path::new(REL).is_dir() {
+                return REL.to_string();
+            }
+            if let Ok(exe) = std::env::current_exe() {
+                for dir in exe.ancestors() {
+                    let candidate = dir.join(REL);
+                    if candidate.is_dir() {
+                        return candidate.to_string_lossy().into_owned();
+                    }
                 }
             }
-        }
-        REL.to_string()
-    });
+            REL.to_string()
+        });
     let serves_static = Path::new(&dist_path).is_dir();
     if serves_static {
         // SPA fallback — 클라이언트 라우트 딥링크(예 `/quests/DEV-001` 직접 접근/
@@ -232,7 +324,21 @@ async fn run_host(port_arg: Option<u16>, bind_arg: Option<String>) -> Result<()>
     println!("  guild  : {}  (v{})", ctx.guild.name, ctx.guild.version);
     println!("  path   : {}", ctx.abs_path.display());
     println!("  bind   : http://{addr}");
-    println!("  static : {}", if serves_static { dist_path.as_str() } else { "(none — API only)" });
+    // DEV-229(BUG-105 후속): API-only 로 떨어졌을 때 그냥 "없다" 는 표시만으론
+    // 왜 화면이 안 뜨는지 알 수 없다는 게 실제 혼란 원인이었음 — 지정 방법을
+    // 함께 안내.
+    if serves_static {
+        println!("  static : {dist_path}");
+    } else {
+        println!("  static : (none — API-only 모드)");
+        println!(
+            "           frontend 자산 없음. --frontend-dist / FRONTEND_DIST env / \
+             openguild-server.toml 의 [server] frontend_dist 로 지정 가능."
+        );
+    }
+    if let Some((_, path)) = &server_config {
+        println!("  config : {}", path.display());
+    }
     // DEV-163: 정비는 CLI(`openguild ...`) 또는 HTTP admin(`/api/admin/*`).
     println!("  admin  : HTTP /api/admin/* (snapshot/reindex/drift/vacuum/journal)");
     println!("  maint  : offline 은 `openguild` CLI (backup/restore/reindex/…)");
@@ -260,7 +366,7 @@ mod cli_tests {
     fn parse_host_default_port() {
         let cli = Cli::try_parse_from(["openguild-server", "host"]).unwrap();
         match cli.command {
-            Command::Host { port, bind } => {
+            Command::Host { port, bind, .. } => {
                 assert_eq!(port, None);
                 assert_eq!(bind, None);
             }
@@ -282,6 +388,77 @@ mod cli_tests {
         match cli.command {
             Command::Host { bind, .. } => assert_eq!(bind, Some("public".to_string())),
         }
+    }
+
+    // DEV-229: --frontend-dist / --config CLI 파싱.
+    #[test]
+    fn parse_host_with_frontend_dist_and_config() {
+        let cli = Cli::try_parse_from([
+            "openguild-server",
+            "host",
+            "--frontend-dist",
+            "C:/dist",
+            "--config",
+            "C:/my.toml",
+        ])
+        .unwrap();
+        match cli.command {
+            Command::Host { frontend_dist, config, .. } => {
+                assert_eq!(frontend_dist, Some("C:/dist".to_string()));
+                assert_eq!(config, Some("C:/my.toml".to_string()));
+            }
+        }
+    }
+
+    // DEV-229: 설정 파일 로드 — explicit 경로 지정, 정상 파싱.
+    #[test]
+    fn load_server_config_explicit_path_parses_frontend_dist() {
+        let ns = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("og-srv-cfg-{ns}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let cfg_path = dir.join("openguild-server.toml");
+        std::fs::write(&cfg_path, "[server]\nfrontend_dist = \"C:/from/config\"\n").unwrap();
+
+        let (cfg, used_path) = load_server_config(Some(cfg_path.to_str().unwrap()))
+            .unwrap()
+            .expect("config should load");
+        assert_eq!(cfg.server.frontend_dist.as_deref(), Some("C:/from/config"));
+        assert_eq!(used_path, cfg_path);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // DEV-229: --config 로 명시했는데 파일이 없으면 조용히 넘어가지 않고 에러
+    // (자동 탐색과 달리 사용자가 명시한 경로라 오타를 놓치면 안 됨).
+    #[test]
+    fn load_server_config_explicit_missing_path_errors() {
+        assert!(load_server_config(Some("Z:/definitely/does/not/exist.toml")).is_err());
+    }
+
+    // DEV-229: 미지정 시 자동 탐색 대상(exe 옆/cwd)에 파일이 없으면 에러 아님 — None.
+    // (이 repo 의 server/ cwd 및 test exe 옆엔 openguild-server.toml 이 없음 전제.)
+    #[test]
+    fn load_server_config_none_when_not_found_and_not_explicit() {
+        assert!(load_server_config(None).unwrap().is_none());
+    }
+
+    // DEV-229: 잘못된 TOML 은 explicit 경로에서 에러.
+    #[test]
+    fn load_server_config_malformed_toml_errors() {
+        let ns = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("og-srv-cfg-bad-{ns}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let cfg_path = dir.join("bad.toml");
+        std::fs::write(&cfg_path, "not = [valid toml").unwrap();
+
+        assert!(load_server_config(Some(cfg_path.to_str().unwrap())).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
