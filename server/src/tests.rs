@@ -2021,6 +2021,55 @@ async fn test_campaign_create_get_update_delete() {
     assert!(list.as_array().unwrap().is_empty());
 }
 
+// DEV-226: 캠페인 status 변경 시 이력이 기록되고, no-op(같은 status 로
+// 재요청)/status 없는 update 는 기록 안 됨. quest_history 와 대칭.
+#[tokio::test]
+async fn test_campaign_history_records_status_change_only() {
+    let app = setup().await;
+    let (_, c) = post(app.clone(), "/api/campaigns", json!({ "title": "beta" })).await;
+    let slug = c["campaign_slug"].as_str().unwrap().to_string();
+
+    // title 만 바꾸는 update — 이력 없음.
+    patch(
+        app.clone(),
+        &format!("/api/campaigns/{slug}"),
+        json!({ "title": "beta v2" }),
+    )
+    .await;
+    let (status, history) = get(app.clone(), &format!("/api/campaigns/{slug}/history")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(history.as_array().unwrap().is_empty());
+
+    // 같은 status("active")로 재요청 — no-op, 이력 없음.
+    patch(
+        app.clone(),
+        &format!("/api/campaigns/{slug}"),
+        json!({ "status": "active" }),
+    )
+    .await;
+    let (_, history) = get(app.clone(), &format!("/api/campaigns/{slug}/history")).await;
+    assert!(history.as_array().unwrap().is_empty());
+
+    // 실제 status 변경 — 이력 1건.
+    let (status, updated) = patch(
+        app.clone(),
+        &format!("/api/campaigns/{slug}"),
+        json!({ "status": "done" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(updated["status"], "done");
+
+    let (status, history) = get(app, &format!("/api/campaigns/{slug}/history")).await;
+    assert_eq!(status, StatusCode::OK);
+    let entries = history.as_array().unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0]["op"], "change_status");
+    assert_eq!(entries[0]["old_value"], "active");
+    assert_eq!(entries[0]["new_value"], "done");
+    assert_eq!(entries[0]["campaign_slug"], slug);
+}
+
 #[tokio::test]
 async fn test_campaign_list_filter_by_status() {
     let app = setup().await;

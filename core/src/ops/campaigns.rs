@@ -86,9 +86,49 @@ pub async fn update_campaign(
     .await
     .map_err(AppError::Internal)?;
 
+    // DEV-226: status 변경 이력 기록 — quest 의 change_status(quest_history)
+    // 와 동일 패턴. status 가 요청에 없거나 현재값과 같으면(no-op) 기록 안 함.
+    let old_status = if body.status.is_some() {
+        Some(sql::fetch_by_id(&store.index_pool, id).await?.status)
+    } else {
+        None
+    };
+    let new_status = body.status.clone();
+
     let description_explicit = body.description.is_some();
     let camp = sql::update(&store.index_pool, id, body).await?;
     write_campaign_file(store, &camp, description_explicit).await?;
+
+    if let (Some(old), Some(new)) = (old_status, new_status)
+        && old != new
+    {
+        let ts = crate::time::now_local_iso8601();
+        sqlx::query(
+            "INSERT INTO campaign_history (campaign_id, campaign_slug, ts, op, old_value, new_value)
+             VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind(id)
+        .bind(&camp.campaign_slug)
+        .bind(&ts)
+        .bind("change_status")
+        .bind(&old)
+        .bind(&new)
+        .execute(&store.index_pool)
+        .await?;
+        // DEV-180 패턴: 파일 사이드카에도 append — 파일이 진리원.
+        crate::repo::history::append(
+            &store.paths,
+            &camp.campaign_slug,
+            &crate::repo::history::HistoryEntry {
+                ts,
+                op: "change_status".into(),
+                old: Some(old),
+                new: Some(new),
+            },
+        )
+        .map_err(AppError::Internal)?;
+    }
+
     Ok(camp)
 }
 

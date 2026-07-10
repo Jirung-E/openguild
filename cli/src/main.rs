@@ -953,6 +953,8 @@ enum CampaignCmd {
     },
     /// 캠페인 상세
     Show { slug: String },
+    /// 캠페인 상태 변경 이력 — 최신 → 과거 순 (quest history 와 대칭).
+    History { slug: String },
     /// 상태 변경 → active
     Start { slug: String },
     /// 상태 변경 → done
@@ -1314,6 +1316,14 @@ impl HttpClient {
         slug: &str,
     ) -> Result<openguild_core::models::CampaignDetail> {
         self.get(&format!("/api/campaigns/{slug}"))
+    }
+
+    /// DEV-226: 캠페인 변경 이력 — quest history 와 대칭.
+    fn campaign_history(
+        &self,
+        slug: &str,
+    ) -> Result<Vec<openguild_core::models::CampaignHistoryEntry>> {
+        self.get(&format!("/api/campaigns/{slug}/history"))
     }
 
     fn campaign_update(
@@ -2033,6 +2043,25 @@ impl Backend {
             Backend::Local(l) => Self::map_err(
                 l.rt.block_on(openguild_core::ops::campaigns::fetch_detail(&l.store, slug)),
             ),
+        }
+    }
+
+    /// DEV-226: 캠페인 변경 이력 — quest history 와 대칭.
+    fn campaign_history(
+        &self,
+        slug: &str,
+    ) -> Result<Vec<openguild_core::models::CampaignHistoryEntry>> {
+        match self {
+            Backend::Http(c) => c.campaign_history(slug),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(async {
+                let row = openguild_core::services::campaigns::fetch_by_slug(
+                    &l.store.index_pool,
+                    slug,
+                )
+                .await?;
+                openguild_core::services::campaigns::list_history(&l.store.index_pool, row.id)
+                    .await
+            })),
         }
     }
 
@@ -3811,6 +3840,22 @@ fn handle_campaign(c: &Backend, json: bool, sub: CampaignCmd) -> Result<()> {
         CampaignCmd::Show { slug } => {
             let d = c.campaign_show(&slug)?;
             print_detail(&d, json);
+        }
+        CampaignCmd::History { slug } => {
+            let history = c.campaign_history(&slug)?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&history).unwrap());
+            } else if history.is_empty() {
+                println!("(이력 없음)");
+            } else {
+                for h in &history {
+                    let old = h.old_value.as_deref().unwrap_or("∅");
+                    let new = h.new_value.as_deref().unwrap_or("∅");
+                    let rel = openguild_core::time::format_relative(&h.ts).unwrap_or_else(|| "—".into());
+                    println!("{}  {:<10} {} → {}", h.ts, rel, old, new);
+                }
+                println!("-- {} entries", history.len());
+            }
         }
         CampaignCmd::Start { slug } => {
             let r = c.campaign_set_status(&slug, "active")?;

@@ -3,6 +3,7 @@ import type {
 	Campaign,
 	CampaignChecklistItem,
 	CampaignDetail,
+	CampaignHistoryEntry,
 	CampaignStatus,
 	CampaignSummary,
 	CreateCampaignRequest,
@@ -23,6 +24,10 @@ export const campaignsApi = {
 		api.patch<Campaign>(`/api/campaigns/${encodeURIComponent(slug)}`, body),
 
 	delete: (slug: string) => api.delete(`/api/campaigns/${encodeURIComponent(slug)}`),
+
+	// DEV-226: 변경 이력 — quest listHistory 와 대칭.
+	listHistory: (slug: string) =>
+		api.get<CampaignHistoryEntry[]>(`/api/campaigns/${encodeURIComponent(slug)}/history`),
 
 	// Quest 연결
 	linkQuest: (slug: string, questSlug: string) =>

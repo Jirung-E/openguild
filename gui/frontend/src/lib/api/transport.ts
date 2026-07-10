@@ -547,6 +547,10 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 			if (method === 'PATCH') return { cmd: 'update_campaign', args: { slug, body } };
 			if (method === 'DELETE') return { cmd: 'delete_campaign', args: { slug } };
 		}
+		// DEV-226: 캠페인 변경 이력.
+		if (sub === 'history' && method === 'GET') {
+			return { cmd: 'campaign_history', args: { slug } };
+		}
 		// .../quests  → link / unlink
 		if (sub === 'quests') {
 			if (method === 'POST') return { cmd: 'campaign_link_quest', args: { slug, body } };

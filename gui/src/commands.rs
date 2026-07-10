@@ -8,7 +8,7 @@
 
 use openguild_core::models::{
     AddChecklistRequest, AddPrerequisiteRequest, CampaignChecklistItem, CampaignDetail,
-    CampaignRow, CampaignSummary, ChangeParentRequest, ChangeStatusRequest,
+    CampaignHistoryEntry, CampaignRow, CampaignSummary, ChangeParentRequest, ChangeStatusRequest,
     CreateCampaignRequest, CreateQuestRequest, LinkQuestRequest, ListQuery, QuestDependency,
     QuestDetail, QuestHistoryEntry, QuestPosition, QuestRow, QuestStatus, QuestTagDef, QuestType,
     UpdateCampaignRequest, UpdatePositionRequest, UpdateQuestRequest,
@@ -1078,6 +1078,20 @@ pub async fn delete_campaign(
         .await
         .map_err(err)?;
     camp_ops::delete_campaign(&store, row.id).await.map_err(err)
+}
+
+/// DEV-226: 캠페인 변경 이력 — quest history 와 대칭.
+#[tauri::command]
+pub async fn campaign_history(
+    store: State<'_, Store>,
+    slug: String,
+) -> Result<Vec<CampaignHistoryEntry>, String> {
+    let row = camp_svc::fetch_by_slug(&store.index_pool, &slug)
+        .await
+        .map_err(err)?;
+    camp_svc::list_history(&store.index_pool, row.id)
+        .await
+        .map_err(err)
 }
 
 #[tauri::command]

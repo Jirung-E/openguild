@@ -399,6 +399,7 @@ pub fn run() {
             commands::get_campaign,
             commands::update_campaign,
             commands::delete_campaign,
+            commands::campaign_history,
             commands::campaign_link_quest,
             commands::campaign_unlink_quest,
             commands::campaign_checklist_add,

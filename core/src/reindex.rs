@@ -888,6 +888,65 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
             .await?;
             report.memos_loaded += 1;
         }
+
+        // 6c. DEV-226: campaign_history ↔ `.guild/history/{slug}.jsonl` 사이드카
+        //     동기화 — quest_history(5d) 와 동일 패턴. 같은 사이드카 디렉토리를
+        //     quest/campaign 이 공유하지만 slug 형식이 달라(DEV-NNN/BUG-NNN vs
+        //     C-NNN) 충돌 없음 — 매칭 안 되는 slug 는 그냥 skip 됨.
+        {
+            use crate::repo::history as hist;
+            type HistoryRow = (String, String, String, Option<String>, Option<String>);
+            // (a) export — 사이드카 없는 slug 에 DB 행이 있으면 파일로 내보냄.
+            let rows: Vec<HistoryRow> = sqlx::query_as(
+                "SELECT campaign_slug, ts, op, old_value, new_value
+                     FROM campaign_history WHERE campaign_slug IS NOT NULL ORDER BY campaign_slug, id",
+            )
+            .fetch_all(&mut *tx)
+            .await?;
+            let mut by_slug: std::collections::BTreeMap<String, Vec<hist::HistoryEntry>> =
+                std::collections::BTreeMap::new();
+            for (slug, ts, op, old, new) in rows {
+                by_slug
+                    .entry(slug)
+                    .or_default()
+                    .push(hist::HistoryEntry { ts, op, old, new });
+            }
+            for (slug, entries) in &by_slug {
+                let path = hist::history_path(paths, slug);
+                if !path.exists() {
+                    for e in entries {
+                        hist::append(paths, slug, e).map_err(crate::error::AppError::Internal)?;
+                        report.history_exported += 1;
+                    }
+                }
+            }
+            // (b) rebuild from sidecars — campaign 으로 resolve 되는 slug 만.
+            for (slug, path) in hist::list_sidecars(paths) {
+                let Some(&cid) = camp_slug_to_id.get(&slug) else {
+                    continue; // quest slug 이거나 삭제된 캠페인 — quest 쪽 5d 가 처리(또는 dangling).
+                };
+                let entries = hist::read_all(&path).map_err(crate::error::AppError::Internal)?;
+                sqlx::query("DELETE FROM campaign_history WHERE campaign_slug = ?")
+                    .bind(&slug)
+                    .execute(&mut *tx)
+                    .await?;
+                for e in &entries {
+                    sqlx::query(
+                        "INSERT INTO campaign_history (campaign_id, campaign_slug, ts, op, old_value, new_value)
+                         VALUES (?, ?, ?, ?, ?, ?)",
+                    )
+                    .bind(cid)
+                    .bind(&slug)
+                    .bind(&e.ts)
+                    .bind(&e.op)
+                    .bind(&e.old)
+                    .bind(&e.new)
+                    .execute(&mut *tx)
+                    .await?;
+                    report.history_loaded += 1;
+                }
+            }
+        }
     }
     // campaign_counters self-heal — alive campaign 의 최대 번호로.
     if max_camp_num > 0 {
@@ -1083,6 +1142,66 @@ mod tests {
 
         // (b) DEV-180 이전 데이터 시뮬레이션: 사이드카 지우고 DB 행만 존재 →
         // reindex 가 파일로 export.
+        std::fs::remove_file(&sidecar).unwrap();
+        let report2 = crate::reindex::reindex(&store).await.unwrap();
+        assert!(report2.history_exported >= 1, "DB → 사이드카 export");
+        assert!(sidecar.exists(), "자가 치유로 사이드카 재생성");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-226: campaign_history 사이드카 동기화 — quest 판(위 테스트)의 캠페인
+    /// 대응. 같은 `.guild/history/` 디렉토리를 공유하지만 slug 형식이 달라
+    /// (C-NNN vs DEV-NNN) quest 쪽 재구축과 서로 간섭하지 않아야 함.
+    #[tokio::test]
+    async fn reindex_syncs_campaign_history_sidecar_both_ways() {
+        use crate::models::{CreateCampaignRequest, UpdateCampaignRequest};
+        use crate::repo::history as hist;
+        let dir = fresh_tmp("camp-hist");
+        let store = setup_store(&dir).await;
+        crate::reindex::reindex(&store).await.unwrap();
+
+        let camp = crate::ops::campaigns::create_campaign(
+            &store,
+            CreateCampaignRequest {
+                title: "h".into(),
+                description: None,
+                started_at: None,
+                ended_at: None,
+            },
+        )
+        .await
+        .unwrap();
+        crate::ops::campaigns::update_campaign(
+            &store,
+            camp.id,
+            UpdateCampaignRequest {
+                status: Some("done".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        let sidecar = hist::history_path(&store.paths, &camp.campaign_slug);
+        assert!(sidecar.exists(), "status 변경이 사이드카 생성");
+        assert_eq!(hist::read_all(&sidecar).unwrap().len(), 1);
+
+        // (a) fresh index.db 시뮬레이션.
+        sqlx::query("DELETE FROM campaign_history")
+            .execute(&store.index_pool)
+            .await
+            .unwrap();
+        let report = crate::reindex::reindex(&store).await.unwrap();
+        assert!(report.history_loaded >= 1, "사이드카 → DB 재구축");
+        let n: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM campaign_history WHERE campaign_slug = ?")
+                .bind(&camp.campaign_slug)
+                .fetch_one(&store.index_pool)
+                .await
+                .unwrap();
+        assert_eq!(n, 1, "이력이 파일에서 복원되어야 함");
+
+        // (b) 사이드카 지우고 DB 행만 존재 → reindex 가 파일로 export.
         std::fs::remove_file(&sidecar).unwrap();
         let report2 = crate::reindex::reindex(&store).await.unwrap();
         assert!(report2.history_exported >= 1, "DB → 사이드카 export");

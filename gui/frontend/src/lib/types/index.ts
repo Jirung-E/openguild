@@ -192,6 +192,18 @@ export interface QuestHistoryEntry {
 	actor: string | null;
 }
 
+// DEV-226: Campaign 변경 이력 한 행 — QuestHistoryEntry 와 동일 패턴.
+export interface CampaignHistoryEntry {
+	id: number;
+	campaign_id: number;
+	campaign_slug: string;
+	ts: string;
+	op: string;
+	old_value: string | null;
+	new_value: string | null;
+	actor: string | null;
+}
+
 // ─── DEV-011: Campaign ──────────────────────────────────
 
 export type CampaignStatus = 'active' | 'done';

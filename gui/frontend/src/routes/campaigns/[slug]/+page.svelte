@@ -30,6 +30,7 @@
 	// DEV-100: 캠페인 댓글 / 메모 — quest 컴포넌트 재사용 (scope prop).
 	import QuestCommentsSection from '$lib/components/QuestCommentsSection.svelte';
 	import QuestNoteSection from '$lib/components/QuestNoteSection.svelte';
+	import CampaignHistory from '$lib/components/CampaignHistory.svelte';
 	// BUG-021: Quest Detail 과 동일한 CodeMirror editor (라인 번호 + markdown
 	// syntax highlighting) 로 통일.
 	import { EditorView, basicSetup } from 'codemirror';
@@ -683,6 +684,9 @@
 		<QuestCommentsSection slug={detail.campaign_slug} scope="campaign" />
 		<div bind:this={memoAnchorEl} id="campaign-memo-anchor"></div>
 		<QuestNoteSection slug={detail.campaign_slug} mode="memo" scope="campaign" />
+
+		<!-- DEV-226: 변경 이력. -->
+		<CampaignHistory campaignSlug={detail.campaign_slug} />
 	{/if}
 </div>
 

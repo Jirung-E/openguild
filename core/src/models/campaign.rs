@@ -167,3 +167,16 @@ pub struct LinkQuestRequest {
     /// quest slug ("DEV-001") — server / CLI 가 ID 로 resolve.
     pub quest_slug: String,
 }
+
+/// DEV-226: Campaign 변경 이력 한 행 — quest_history(QuestHistoryEntry) 패턴.
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow, Clone)]
+pub struct CampaignHistoryEntry {
+    pub id: i64,
+    pub campaign_id: i64,
+    pub campaign_slug: String,
+    pub ts: String,
+    pub op: String,
+    pub old_value: Option<String>,
+    pub new_value: Option<String>,
+    pub actor: Option<String>,
+}

@@ -217,6 +217,8 @@ pub fn create_router(store: Store) -> Router {
                 .patch(campaigns::update_campaign)
                 .delete(campaigns::delete_campaign),
         )
+        // DEV-226: 캠페인 변경 이력 — quest history 와 대칭.
+        .route("/api/campaigns/{slug}/history", get(campaigns::list_history))
         .route("/api/campaigns/{slug}/quests", post(campaigns::link_quest))
         .route(
             "/api/campaigns/{slug}/quests/{quest_slug}",

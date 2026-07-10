@@ -10,8 +10,8 @@ use sqlx::SqlitePool;
 
 use crate::error::{AppError, AppResult};
 use crate::models::{
-    AddChecklistRequest, CampaignChecklistItem, CampaignLinkedQuest, CampaignRow,
-    CampaignStatus, CampaignSummary, CreateCampaignRequest, UpdateCampaignRequest,
+    AddChecklistRequest, CampaignChecklistItem, CampaignHistoryEntry, CampaignLinkedQuest,
+    CampaignRow, CampaignStatus, CampaignSummary, CreateCampaignRequest, UpdateCampaignRequest,
     UpdateChecklistRequest,
 };
 
@@ -63,6 +63,18 @@ pub async fn fetch_by_id(pool: &SqlitePool, id: i64) -> AppResult<CampaignRow> {
         .fetch_optional(pool)
         .await?;
     row.ok_or_else(|| AppError::NotFound(format!("campaign id {id} not found")))
+}
+
+/// DEV-226: campaign 의 변경 이력 (최신 → 과거 순). quest 의 list_history 와 동일 패턴.
+pub async fn list_history(pool: &SqlitePool, campaign_id: i64) -> AppResult<Vec<CampaignHistoryEntry>> {
+    let rows = sqlx::query_as::<_, CampaignHistoryEntry>(
+        "SELECT id, campaign_id, campaign_slug, ts, op, old_value, new_value, actor
+         FROM campaign_history WHERE campaign_id = ? ORDER BY ts DESC, id DESC",
+    )
+    .bind(campaign_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
 }
 
 // ─────────────────────── 생성 / 수정 / 삭제 ───────────────────────
