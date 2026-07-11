@@ -108,9 +108,17 @@ pub async fn activities(store: &Store, from: &str, to: &str) -> AppResult<Worklo
              FROM quests q
              JOIN quest_types qt ON qt.id = q.quest_type_id
             WHERE substr(q.created_at,1,10) BETWEEN ? AND ?
+           UNION ALL
+           -- DEV-226 후속(admin 보고): 캠페인 상태 변경도 활동 타임라인에.
+           SELECT ch.ts, 'status', ch.campaign_slug,
+                  COALESCE(ch.old_value,'?') || ' → ' || COALESCE(ch.new_value,'?')
+             FROM campaign_history ch
+            WHERE substr(ch.ts,1,10) BETWEEN ? AND ?
          )
          ORDER BY ts",
     )
+    .bind(from)
+    .bind(to)
     .bind(from)
     .bind(to)
     .bind(from)
@@ -168,9 +176,15 @@ pub async fn daily_summary(
            UNION ALL
            SELECT substr(q.created_at,1,10) FROM quests q
             WHERE substr(q.created_at,1,10) BETWEEN ? AND ?
+           UNION ALL
+           -- DEV-226 후속: 캠페인 상태 변경도 히트맵 집계에.
+           SELECT substr(ch.ts,1,10) FROM campaign_history ch
+            WHERE substr(ch.ts,1,10) BETWEEN ? AND ?
          )
          GROUP BY d ORDER BY d",
     )
+    .bind(from)
+    .bind(to)
     .bind(from)
     .bind(to)
     .bind(from)
@@ -340,6 +354,53 @@ mod tests {
         let sum = daily_summary(&store, &d, &d).await.unwrap();
         assert_eq!(sum.len(), 1);
         assert_eq!(sum[0].0, d);
+        assert_eq!(sum[0].1, report.activities.len() as i64);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-226 후속(admin 보고): 캠페인 상태 변경이 worklog 에 안 잡히던 회귀.
+    #[tokio::test]
+    async fn activities_includes_campaign_status_changes() {
+        use crate::models::{CreateCampaignRequest, UpdateCampaignRequest};
+        let dir = fresh_tmp("camp-status");
+        let store = setup(&dir).await;
+
+        let camp = crate::ops::campaigns::create_campaign(
+            &store,
+            CreateCampaignRequest {
+                title: "월드컵".into(),
+                description: None,
+                started_at: None,
+                ended_at: None,
+            },
+        )
+        .await
+        .unwrap();
+        crate::ops::campaigns::update_campaign(
+            &store,
+            camp.id,
+            UpdateCampaignRequest {
+                status: Some("done".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        let d = today();
+        let report = activities(&store, &d, &d).await.unwrap();
+        let row = report
+            .activities
+            .iter()
+            .find(|a| a.slug == camp.campaign_slug)
+            .expect("캠페인 상태 변경이 타임라인에 있어야 함");
+        assert_eq!(row.kind, "status");
+        assert_eq!(row.summary, "active → done");
+        assert_eq!(report.counts.status_changes, 1);
+
+        // 히트맵에도 반영.
+        let sum = daily_summary(&store, &d, &d).await.unwrap();
         assert_eq!(sum[0].1, report.activities.len() as i64);
 
         let _ = std::fs::remove_dir_all(&dir);
