@@ -70,6 +70,10 @@ openguild init [--name <NAME>]   # cwd 를 길드로 초기화
 openguild ping                   # 서버 health 확인
 openguild type list              # quest 타입 목록 (DEV / BUG / REQ) — `types` alias 도 동작
 openguild status list            # 상태 목록 (Open / In Progress / Done / ...) — `statuses` alias 도 동작
+openguild tag list [--used]      # 태그 정의 카탈로그 (--used: 정의 없이 쓰인 태그도 발견, 로컬 전용)
+openguild tag add <slug> [--color HEX] [--description TEXT]   # 정의 추가 (있으면 에러)
+openguild tag update <slug> [--color HEX] [--description TEXT] # 지정 필드만 교체
+openguild tag delete <slug>      # 정의 삭제 (태그 사용 자체는 보존)
 ```
 
 ### 2.2 Quest CRUD

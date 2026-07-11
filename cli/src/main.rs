@@ -119,6 +119,11 @@ enum Command {
         #[command(subcommand)]
         sub: LibraryCmd,
     },
+    /// 태그 정의 카탈로그 (`.guild/tags/{slug}.toml`) — quest/도서관/규칙 공유.
+    Tag {
+        #[command(subcommand)]
+        sub: TagDefCmd,
+    },
     /// 작업 기록 — 날짜/기간별 활동 타임라인 + 날짜별 노트.
     Worklog {
         #[command(subcommand)]
@@ -722,6 +727,40 @@ enum TypesCmd {
     },
     /// 사용 중 quest 없는 type 삭제
     Delete { prefix: String },
+}
+
+/// 태그 정의 관리 — GUI 어드민의 "Tag 정의" 섹션과 동일 registry.
+/// 정의 없는 태그도 사용 자체는 가능(UI 기본 색) — 여기선 색/설명만 관리.
+/// (quest 별 태그 부착은 별개 — quest tag 그룹의 TagCmd.)
+#[derive(Subcommand)]
+enum TagDefCmd {
+    /// 정의된 태그 목록 (slug / 색 / 설명)
+    List {
+        /// 실사용 중인 태그(quest/도서관 frontmatter)도 함께 — 정의 없이
+        /// 쓰인 ad-hoc 태그를 발견하는 용도. 로컬 모드 전용.
+        #[arg(long)]
+        used: bool,
+    },
+    /// 새 태그 정의 추가 (이미 있으면 에러 — 수정은 update)
+    Add {
+        /// 소문자/숫자/_ 만, 최대 32자.
+        slug: String,
+        /// 색 (#RGB 또는 #RRGGBB)
+        #[arg(long)]
+        color: Option<String>,
+        #[arg(long)]
+        description: Option<String>,
+    },
+    /// 기존 태그 정의 수정 — 지정한 필드만 교체
+    Update {
+        slug: String,
+        #[arg(long)]
+        color: Option<String>,
+        #[arg(long)]
+        description: Option<String>,
+    },
+    /// 태그 정의 삭제 (quest 등의 태그 사용 자체는 보존 — 기본 색으로 표시)
+    Delete { slug: String },
 }
 
 /// DEV-062: status 관리. DEV-227: sub 필수 — `status list` 명시.
@@ -1414,6 +1453,28 @@ impl HttpClient {
         self.delete_no_body(&format!(
             "/api/campaigns/{campaign_slug}/checklist/{index}"
         ))
+    }
+
+    // ─── 태그 정의 (top-level tag 그룹) ───
+
+    fn tag_defs(&self) -> Result<Vec<openguild_core::models::QuestTagDef>> {
+        self.get("/api/tag-defs")
+    }
+
+    fn tag_def_upsert(
+        &self,
+        slug: &str,
+        color: &str,
+        description: &str,
+    ) -> Result<openguild_core::models::QuestTagDef> {
+        self.post(
+            "/api/tag-defs",
+            &serde_json::json!({ "slug": slug, "color": color, "description": description }),
+        )
+    }
+
+    fn tag_def_delete(&self, slug: &str) -> Result<()> {
+        self.delete_no_body(&format!("/api/tag-defs/{slug}"))
     }
 }
 
@@ -2232,6 +2293,62 @@ impl Backend {
                 .await
             })),
         }
+    }
+
+    // ── 태그 정의 (top-level tag 그룹) ──────────────────
+
+    fn tag_defs(&self) -> Result<Vec<openguild_core::models::QuestTagDef>> {
+        match self {
+            Backend::Http(c) => c.tag_defs(),
+            Backend::Local(l) => Self::map_err(
+                l.rt.block_on(meta_svc::list_quest_tag_defs(&l.store.index_pool)),
+            ),
+        }
+    }
+
+    fn tag_def_upsert(
+        &self,
+        slug: &str,
+        color: &str,
+        description: &str,
+    ) -> Result<openguild_core::models::QuestTagDef> {
+        match self {
+            Backend::Http(c) => c.tag_def_upsert(slug, color, description),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::meta::upsert_tag_def(
+                    &l.store,
+                    slug.to_string(),
+                    color.to_string(),
+                    description.to_string(),
+                ),
+            )),
+        }
+    }
+
+    fn tag_def_delete(&self, slug: &str) -> Result<()> {
+        match self {
+            Backend::Http(c) => c.tag_def_delete(slug),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::meta::delete_tag_def(&l.store, slug.to_string()),
+            )),
+        }
+    }
+
+    /// 실사용 중 태그(quest/도서관 frontmatter 캐시) distinct — 로컬 전용
+    /// (HTTP 라우트 없음, comments 전역 검색과 동일 정책).
+    fn tags_in_use(&self) -> Result<Vec<String>> {
+        let Backend::Local(l) = self else {
+            return Err(anyhow!("--used 는 로컬 모드 전용입니다."));
+        };
+        let rows: Vec<(String,)> = l.rt.block_on(
+            sqlx::query_as(
+                "SELECT DISTINCT tag FROM quest_tags
+                 UNION SELECT DISTINCT tag FROM library_tags
+                 ORDER BY tag",
+            )
+            .fetch_all(&l.store.index_pool),
+        )?;
+        Ok(rows.into_iter().map(|(t,)| t).collect())
     }
 
     // ── 백업 / 복원 ──────────────────────────────────────
@@ -4619,6 +4736,7 @@ fn run() -> Result<()> {
         Command::Template { sub } => handle_template(&c, cli.json, sub)?,
         Command::Rules { sub } => handle_rules(&c, cli.json, sub)?,
         Command::Library { sub } => handle_library(&c, cli.json, sub)?,
+        Command::Tag { sub } => handle_tag(&c, cli.json, sub)?,
         Command::Worklog { sub } => handle_worklog(&c, cli.json, sub)?,
         Command::Backup { sub } => handle_backup(&c, cli.json, sub)?,
         Command::Restore { to, at } => handle_restore(&c, cli.json, to, at)?,
@@ -4922,6 +5040,96 @@ fn handle_types(c: &Backend, json: bool, sub: TypesCmd) -> Result<()> {
                 println!("{}", serde_json::json!({ "ok": true }));
             } else {
                 println!("'{}' 삭제됨", prefix.trim());
+            }
+        }
+    }
+    Ok(())
+}
+
+/// 태그 정의 카탈로그 관리 — GUI 어드민 "Tag 정의" 섹션의 CLI 파리티.
+fn handle_tag(c: &Backend, json: bool, sub: TagDefCmd) -> Result<()> {
+    match sub {
+        TagDefCmd::List { used } => {
+            let defs = c.tag_defs()?;
+            let used_tags = if used { c.tags_in_use()? } else { Vec::new() };
+            if json {
+                let defined: std::collections::HashSet<&str> =
+                    defs.iter().map(|d| d.slug.as_str()).collect();
+                let undefined: Vec<&String> =
+                    used_tags.iter().filter(|t| !defined.contains(t.as_str())).collect();
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "defs": defs,
+                        "used": if used { Some(&used_tags) } else { None },
+                        "undefined_in_use": if used { Some(undefined) } else { None },
+                    })
+                );
+            } else {
+                if defs.is_empty() {
+                    println!("(정의된 태그 없음)");
+                }
+                for d in &defs {
+                    let slug = colorize(&format!("{:<20}", d.slug), &d.color);
+                    let color = if d.color.is_empty() { "(색 없음)" } else { &d.color };
+                    println!("{slug} {:<8} {}", color, d.description);
+                }
+                if used {
+                    let defined: std::collections::HashSet<&str> =
+                        defs.iter().map(|d| d.slug.as_str()).collect();
+                    let undefined: Vec<&String> =
+                        used_tags.iter().filter(|t| !defined.contains(t.as_str())).collect();
+                    println!("-- 사용 중 태그 {}개", used_tags.len());
+                    if !undefined.is_empty() {
+                        println!(
+                            "-- 정의 없이 사용 중: {}",
+                            undefined.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")
+                        );
+                    }
+                }
+            }
+        }
+        TagDefCmd::Add { slug, color, description } => {
+            if c.tag_defs()?.iter().any(|d| d.slug == slug) {
+                bail!("태그 정의 '{slug}' 가 이미 있습니다 — 수정은 `tag update`");
+            }
+            let d = c.tag_def_upsert(
+                &slug,
+                color.as_deref().unwrap_or(""),
+                description.as_deref().unwrap_or(""),
+            )?;
+            if json {
+                println!("{}", json_str(&d));
+            } else {
+                println!("✓ 태그 정의 추가: {}", colorize(&d.slug, &d.color));
+            }
+        }
+        TagDefCmd::Update { slug, color, description } => {
+            let defs = c.tag_defs()?;
+            let Some(existing) = defs.iter().find(|d| d.slug == slug) else {
+                bail!("태그 정의 '{slug}' 가 없습니다 — 추가는 `tag add`");
+            };
+            if color.is_none() && description.is_none() {
+                bail!("--color / --description 중 하나는 지정해야 합니다");
+            }
+            // 지정한 필드만 교체 — upsert 가 전체 교체라 기존값과 merge.
+            let d = c.tag_def_upsert(
+                &slug,
+                color.as_deref().unwrap_or(&existing.color),
+                description.as_deref().unwrap_or(&existing.description),
+            )?;
+            if json {
+                println!("{}", json_str(&d));
+            } else {
+                println!("✓ 태그 정의 갱신: {}", colorize(&d.slug, &d.color));
+            }
+        }
+        TagDefCmd::Delete { slug } => {
+            c.tag_def_delete(&slug)?;
+            if json {
+                println!("{}", serde_json::json!({ "ok": true, "slug": slug }));
+            } else {
+                println!("✓ 태그 정의 삭제: {slug} (태그 사용 자체는 보존 — 기본 색으로 표시)");
             }
         }
     }
@@ -7115,6 +7323,30 @@ mod tests {
                 assert_eq!(id, 3);
             }
             _ => panic!("expected comment pinned"),
+        }
+    }
+
+    /// admin 요청: top-level tag 그룹 — 단수형 + sub 필수 규칙 준수.
+    #[test]
+    fn cli_parse_tag_group() {
+        // sub 없이 bare 호출은 에러 (cli-command-naming 규칙).
+        assert!(Cli::try_parse_from(["openguild", "tag"]).is_err());
+        let cli = Cli::try_parse_from([
+            "openguild", "tag", "add", "infra", "--color", "#ff8800", "--description", "인프라",
+        ])
+        .unwrap();
+        match cli.command {
+            Command::Tag { sub: TagDefCmd::Add { slug, color, description } } => {
+                assert_eq!(slug, "infra");
+                assert_eq!(color.as_deref(), Some("#ff8800"));
+                assert_eq!(description.as_deref(), Some("인프라"));
+            }
+            _ => panic!("expected tag add"),
+        }
+        let l = Cli::try_parse_from(["openguild", "tag", "list", "--used"]).unwrap();
+        match l.command {
+            Command::Tag { sub: TagDefCmd::List { used } } => assert!(used),
+            _ => panic!("expected tag list"),
         }
     }
 
