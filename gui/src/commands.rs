@@ -823,10 +823,19 @@ pub fn current_guild_path(store: State<'_, Store>) -> String {
 
 /// DEV-141: 현재 길드 이름 — `{name}.guild` 마커의 stem 또는 디렉토리명
 /// (recents 의 표시명과 동일 규칙). Nav 에서 어느 길드에 들어와 있는지 표시용.
-/// Welcome / Uninit 모드의 placeholder 경로면 의미 없는 값일 수 있으므로
-/// frontend 는 `launch_mode.mode === "guild"` 일 때만 사용.
+///
+/// BUG-136: 이전엔 "frontend 가 launch_mode 를 확인하고 쓰라"는 주석 계약만
+/// 있었는데 Nav 가 확인 안 해서 Welcome 상태에서 placeholder 디렉토리명
+/// ("openguild-welcome-placeholder")이 그대로 노출됐다 — 백엔드에서 강제:
+/// guild 모드가 아니면 빈 문자열(Nav 는 빈 이름이면 배지 숨김).
 #[tauri::command]
-pub fn current_guild_name(store: State<'_, Store>) -> String {
+pub fn current_guild_name(
+    store: State<'_, Store>,
+    launch: State<'_, crate::LaunchInfo>,
+) -> String {
+    if launch.mode != "guild" {
+        return String::new();
+    }
     openguild_core::recents::guess_name(&store.paths.guild_root)
 }
 
