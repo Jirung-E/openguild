@@ -38,8 +38,13 @@ pub struct Recent {
     pub last_opened: String,
 }
 
-/// OS 별 user data dir 기반 recents.json 경로.
+/// recents.json 경로 — DEV-247 부터 `~/.openguild/recents.json`.
 /// test 환경 (`OPENGUILD_RECENTS_DIR` env 설정) 면 그 경로 사용.
+///
+/// 구 경로(directories ProjectDirs 의 data_local_dir — Windows 기준
+/// `%LOCALAPPDATA%\openguild\openguild\data\recents.json`, 사람이 찾기 어려운
+/// 3중 중첩)에 파일이 있고 새 경로에 없으면 1회 이전(구 파일은 남겨둠 —
+/// 다운그레이드 안전).
 pub fn recents_path() -> Result<PathBuf> {
     if let Ok(dir) = std::env::var("OPENGUILD_RECENTS_DIR") {
         let p = PathBuf::from(dir);
@@ -47,14 +52,25 @@ pub fn recents_path() -> Result<PathBuf> {
             .with_context(|| format!("create test recents dir: {}", p.display()))?;
         return Ok(p.join("recents.json"));
     }
-    let dirs = directories::ProjectDirs::from("io", "openguild", "openguild")
-        .context("ProjectDirs::from failed — HOME / APPDATA 환경변수 미설정?")?;
-    // BUG-014: data_dir() → data_local_dir(). Windows 에서 Roaming →
-    // Local. Linux / macOS 는 두 메서드가 같은 경로라 영향 없음.
-    let data_dir = dirs.data_local_dir();
-    std::fs::create_dir_all(data_dir)
-        .with_context(|| format!("create recents dir: {}", data_dir.display()))?;
-    Ok(data_dir.join("recents.json"))
+    let new_path = crate::user_dirs::openguild_home()?.join("recents.json");
+    if !new_path.exists()
+        && let Some(old_path) = legacy_recents_path()
+        && old_path.is_file()
+        && let Err(e) = std::fs::copy(&old_path, &new_path)
+    {
+        tracing::warn!(
+            "recents 마이그레이션 실패 ({} → {}): {e:#}",
+            old_path.display(),
+            new_path.display()
+        );
+    }
+    Ok(new_path)
+}
+
+/// DEV-247 이전의 구 경로 (BUG-014 의 data_local_dir 기준).
+fn legacy_recents_path() -> Option<PathBuf> {
+    let dirs = directories::ProjectDirs::from("io", "openguild", "openguild")?;
+    Some(dirs.data_local_dir().join("recents.json"))
 }
 
 /// 디스크에서 list 읽기. 파일 없으면 빈 vec.

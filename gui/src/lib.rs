@@ -310,6 +310,22 @@ pub fn run() {
         }
     }
 
+    // DEV-247: 번들 문서(설치 폴더 docs/)를 ~/.openguild/docs/ 로 동기화 —
+    // 에이전트가 설치 폴더(%LOCALAPPDATA%) 접근에서 샌드박스 권한 문제를
+    // 겪는 것 회피(admin 보고). 첫 실행 복사 + 앱 업데이트 후 갱신 반영.
+    // 개발 실행(docs/ 없음)이나 실패는 조용히 skip — 부가 기능.
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(dir) = exe.parent()
+    {
+        match openguild_core::user_dirs::sync_bundled_docs(&dir.join("docs")) {
+            Ok(n) if n > 0 => {
+                eprintln!("[openguild-gui] bundled docs synced to ~/.openguild/docs ({n} files)")
+            }
+            Ok(_) => {}
+            Err(e) => eprintln!("[openguild-gui] warn: docs sync 실패 — {e:#}"),
+        }
+    }
+
     // DEV-087: setup closure 로 넘길 asset scope 대상 — 길드 root.
     let asset_scope_path = store_path.clone();
 

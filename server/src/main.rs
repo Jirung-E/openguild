@@ -100,7 +100,8 @@ struct ServerConfigSection {
 
 /// 설정 파일을 읽어 파싱. `explicit` 지정 시 그 경로만 시도(없으면 에러 —
 /// 사용자가 명시한 경로이므로 조용히 무시하면 오타를 놓침). 미지정 시
-/// exe 옆 → cwd 순 자동 탐색(둘 다 없으면 `Ok(None)`, 에러 아님).
+/// exe 옆 → cwd → `~/.openguild/` 순 자동 탐색(전부 없으면 `Ok(None)`,
+/// 에러 아님). ~/.openguild 는 사용자 데이터 홈 — 배치 무관 공통 설정 위치.
 ///
 /// 반환값에 실제 사용된 경로도 함께 — 시동 로그에 어느 파일을 읽었는지 표시.
 fn load_server_config(explicit: Option<&str>) -> Result<Option<(ServerConfig, PathBuf)>> {
@@ -116,16 +117,17 @@ fn load_server_config(explicit: Option<&str>) -> Result<Option<(ServerConfig, Pa
         let exe_adjacent = std::env::current_exe()
             .ok()
             .and_then(|exe| exe.parent().map(|d| d.join(FILENAME)));
+        let home = openguild_core::user_dirs::openguild_home()
+            .ok()
+            .map(|h| h.join(FILENAME));
+        let cwd = PathBuf::from(FILENAME);
         match exe_adjacent {
             Some(p) if p.is_file() => p,
-            _ => {
-                let cwd = PathBuf::from(FILENAME);
-                if cwd.is_file() {
-                    cwd
-                } else {
-                    return Ok(None);
-                }
-            }
+            _ if cwd.is_file() => cwd,
+            _ => match home {
+                Some(p) if p.is_file() => p,
+                _ => return Ok(None),
+            },
         }
     };
 

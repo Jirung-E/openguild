@@ -29,6 +29,7 @@ pub mod services;
 pub mod snapshot;
 pub mod store;
 pub mod time;
+pub mod user_dirs;
 
 pub use error::{AppError, AppResult};
 pub use store::Store;

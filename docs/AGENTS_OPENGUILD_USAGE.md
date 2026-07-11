@@ -3,6 +3,10 @@
 AI agent / 자동화 스크립트가 openguild 를 **자기 작업 관리 도구** 로 사용할 때 참조하는 문서.
 (openguild **를 개발** 할 때 참조는 `AGENTS.md` 의 "개발" 인덱스 따라갈 것.)
 
+> 이 문서와 번들 문서들은 `~/.openguild/docs/` 에도 복사됨 — 설치 폴더
+> (%LOCALAPPDATA%) 접근이 샌드박스로 막히는 환경에서는 그쪽을 읽을 것.
+> recents 등 사용자 데이터도 `~/.openguild/` 에 있음.
+
 ---
 
 ## 1. 셋업
