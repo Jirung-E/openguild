@@ -839,6 +839,29 @@ pub fn current_guild_name(
     openguild_core::recents::guess_name(&store.paths.guild_root)
 }
 
+// ─── DEV-249: 커스텀 테마 프리셋 파일 (~/.openguild/themes.json) ───
+// localStorage(WebView2 LevelDB — 사람이 열람/백업 불가) 대신 파일 저장.
+// 내용의 파싱/검증은 frontend(customThemes.ts)가 담당 — 여기는 raw IO 만.
+
+#[tauri::command]
+pub fn load_custom_themes() -> Result<Option<String>, String> {
+    let path = openguild_core::user_dirs::openguild_home()
+        .map_err(err)?
+        .join("themes.json");
+    if !path.is_file() {
+        return Ok(None);
+    }
+    std::fs::read_to_string(&path).map(Some).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn save_custom_themes(content: String) -> Result<(), String> {
+    let path = openguild_core::user_dirs::openguild_home()
+        .map_err(err)?
+        .join("themes.json");
+    openguild_core::repo::fs::write_atomic(&path, &content).map_err(err)
+}
+
 /// BUG-041: DB schema 가 현재 binary 가 모르는 migration 까지 적용된 상태인지.
 ///
 /// 응답:

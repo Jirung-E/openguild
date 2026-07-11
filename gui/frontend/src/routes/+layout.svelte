@@ -219,8 +219,9 @@
 		};
 		const unsubTheme = theme.subscribe(applyAll);
 		// DEV-114: 활성 커스텀 프리셋 복원 — base 테마 적용(위 subscribe 초기
-		// 발화) 후 override 를 얹는다.
-		initCustomTheme();
+		// 발화) 후 override 를 얹는다. DEV-249: Tauri 는 ~/.openguild/themes.json
+		// 로드(async) 포함.
+		void initCustomTheme();
 		const unwatchSys = watchSystemPreference(() => {
 			// system 모드일 때만 재적용 (다른 모드는 사용자가 명시 — OS 변경 무시).
 			// 창 테마는 system=null 이라 OS 가 알아서 따라가므로 document 만 재적용.

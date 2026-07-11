@@ -85,6 +85,43 @@ export interface CustomTheme {
 const PRESETS_KEY = 'openguild.customThemes';
 const ACTIVE_KEY = 'openguild.activeCustomTheme';
 
+// ─── DEV-249: Tauri 모드는 ~/.openguild/themes.json 파일이 진리원 ───
+// localStorage(WebView2 LevelDB)는 사람이 열람/백업/이동 불가 — admin 이
+// "폴더를 뒤져도 안 보임" 이라 보고한 원인. Tauri 에선 파일에 저장하고
+// localStorage 는 브라우저(remote) 모드 fallback + 마이그레이션 소스로만.
+function isTauriEnv(): boolean {
+	if (typeof window === 'undefined') return false;
+	const w = window as unknown as Record<string, unknown>;
+	return '__TAURI_INTERNALS__' in w || '__TAURI__' in w;
+}
+
+/** 시동 파일 로드가 끝나기 전의 store 변경(마이그레이션 이전 값 등)을 파일에
+ *  쓰지 않도록 게이트 — initCustomTheme() 이 로드 완료 후 연다. */
+let fileWriteReady = false;
+let fileSaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+interface ThemesFile {
+	presets: CustomTheme[];
+	active: string | null;
+}
+
+function scheduleFileSave() {
+	if (!isTauriEnv() || !fileWriteReady) return;
+	if (fileSaveTimer) clearTimeout(fileSaveTimer);
+	fileSaveTimer = setTimeout(async () => {
+		try {
+			const { invoke } = await import('@tauri-apps/api/core');
+			const payload: ThemesFile = {
+				presets: get(customThemes),
+				active: get(activeCustomTheme)
+			};
+			await invoke('save_custom_themes', { content: JSON.stringify(payload, null, 2) });
+		} catch (e) {
+			console.warn('[customThemes] themes.json 저장 실패', e);
+		}
+	}, 250);
+}
+
 function loadPresets(): CustomTheme[] {
 	if (typeof localStorage === 'undefined') return [];
 	try {
@@ -122,6 +159,7 @@ export const customThemes = writable<CustomTheme[]>(loadPresets());
 export const activeCustomTheme = writable<string | null>(loadActive());
 
 customThemes.subscribe((list) => {
+	scheduleFileSave(); // DEV-249: Tauri 는 파일에도 (debounce).
 	if (typeof localStorage === 'undefined') return;
 	try {
 		localStorage.setItem(PRESETS_KEY, JSON.stringify(list));
@@ -130,6 +168,7 @@ customThemes.subscribe((list) => {
 	}
 });
 activeCustomTheme.subscribe((name) => {
+	scheduleFileSave();
 	if (typeof localStorage === 'undefined') return;
 	try {
 		if (name) localStorage.setItem(ACTIVE_KEY, name);
@@ -233,10 +272,40 @@ export function importPresetsJson(json: string): number {
 }
 
 /**
- * 앱 시동 시 활성 프리셋 복원 — +layout onMount 에서 1회 호출.
+ * 앱 시동 시 로드 + 활성 프리셋 복원 — +layout onMount 에서 1회 호출.
  * (모듈 import 부수효과로 안 하는 이유: theme 적용 순서를 layout 이 제어.)
+ *
+ * DEV-249: Tauri 모드는 ~/.openguild/themes.json 이 진리원 —
+ * - 파일 있음: 파일 내용으로 store 교체(외부에서 직접 편집한 경우도 자연 반영).
+ * - 파일 없음 + localStorage 에 프리셋 있음: 1회 마이그레이션(파일로 기록).
+ * 브라우저(remote) 모드는 기존 localStorage 경로 그대로.
  */
-export function initCustomTheme() {
+export async function initCustomTheme() {
+	if (isTauriEnv()) {
+		try {
+			const { invoke } = await import('@tauri-apps/api/core');
+			const raw = await invoke<string | null>('load_custom_themes');
+			if (raw) {
+				const parsed = JSON.parse(raw) as Partial<ThemesFile>;
+				const presets = Array.isArray(parsed.presets)
+					? parsed.presets.filter(isValidPreset)
+					: [];
+				customThemes.set(presets);
+				activeCustomTheme.set(
+					typeof parsed.active === 'string' && parsed.active ? parsed.active : null
+				);
+			}
+			// 파일 없음 → 아래 fileWriteReady 이후 첫 store 변경(또는 지금의
+			// localStorage 값)이 마이그레이션으로 기록되도록 즉시 1회 저장.
+			fileWriteReady = true;
+			if (!raw && get(customThemes).length > 0) {
+				scheduleFileSave();
+			}
+		} catch (e) {
+			console.warn('[customThemes] themes.json 로드 실패 — localStorage 값 사용', e);
+			fileWriteReady = true;
+		}
+	}
 	const name = get(activeCustomTheme);
 	if (!name) return;
 	const p = findPreset(name);

@@ -91,14 +91,14 @@ describe('customThemes store', () => {
 		);
 		localStorage.setItem('openguild.activeCustomTheme', 'saved');
 		const { custom } = await loadFresh();
-		custom.initCustomTheme();
+		await custom.initCustomTheme();
 		expect(document.documentElement.style.getPropertyValue('--bg')).toBe('#fafafa');
 	});
 
 	it('initCustomTheme cleans dangling active name', async () => {
 		localStorage.setItem('openguild.activeCustomTheme', 'ghost');
 		const { custom } = await loadFresh();
-		custom.initCustomTheme();
+		await custom.initCustomTheme();
 		expect(get(custom.activeCustomTheme)).toBeNull();
 	});
 
