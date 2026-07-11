@@ -31,15 +31,16 @@ async fn upsert_entry_db(store: &Store, slug: &str, entry: &CommentEntry) -> App
     };
     sqlx::query(
         "INSERT INTO campaign_comments
-            (campaign_id, entry_id, ts, author, body, parent_id, pinned, edited_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (campaign_id, entry_id, ts, author, body, parent_id, pinned, edited_at, reactions)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(campaign_id, entry_id) DO UPDATE SET
              ts        = excluded.ts,
              author    = excluded.author,
              body      = excluded.body,
              parent_id = excluded.parent_id,
              pinned    = excluded.pinned,
-             edited_at = excluded.edited_at",
+             edited_at = excluded.edited_at,
+             reactions = excluded.reactions",
     )
     .bind(cid)
     .bind(entry.id as i64)
@@ -49,6 +50,7 @@ async fn upsert_entry_db(store: &Store, slug: &str, entry: &CommentEntry) -> App
     .bind(entry.parent_id.map(|n| n as i64))
     .bind(entry.pinned as i64)
     .bind(&entry.edited_at)
+    .bind(entry.reactions.join(","))
     .execute(&store.index_pool)
     .await
     .map_err(|e| AppError::Internal(anyhow::anyhow!("upsert campaign_comments: {e}")))?;

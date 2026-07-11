@@ -595,6 +595,10 @@ enum CommentCmd {
         /// 최대 N 개만 (필터/정렬 적용 후).
         #[arg(long)]
         limit: Option<usize>,
+        /// 답글을 부모 아래 들여쓰기 트리로 출력. `--reverse` 와 상호배타
+        /// (트리는 대화 흐름 순). 필터로 부모가 빠진 답글은 root 로 표시.
+        #[arg(long, conflicts_with = "reverse")]
+        tree: bool,
     },
     /// entry 본문 전체 또는 단일. `--id` 지정 시 `--depth`/`--with-parents` 로
     /// 그 entry 의 답글/부모를 얼마나 같이 보여줄지 조절 (기본은 그 entry 만).
@@ -604,8 +608,8 @@ enum CommentCmd {
         #[arg(long)]
         id: Option<u64>,
         /// 답글을 몇 단계까지 함께 출력할지 (0 = 대상 entry 만, 기본값).
-        /// `--id` 없이는 무시.
-        #[arg(long, default_value_t = 0)]
+        /// `all` = 무제한 (전체 답글 트리). `--id` 없이는 무시.
+        #[arg(long, default_value = "0", value_parser = parse_comment_depth)]
         depth: usize,
         /// 부모 체인(조상, root 까지)도 함께 출력. `--id` 없이는 무시.
         #[arg(long)]
@@ -1537,6 +1541,10 @@ struct GlobalComment {
     /// BUG-110: 답글이면 부모 entry_id. `quest comment list` 는 `↩ #N` 표시하는데
     /// 전역 comments 검색은 이 필드가 없어 답글인지, 어디에 달렸는지 안 보였음.
     parent_id: Option<i64>,
+    /// 상단 고정 여부 — 📌 배지.
+    pinned: bool,
+    /// 반응 캐시 원문(마커 attr 그대로, 콤마 구분) — 표시 시 split.
+    reactions: String,
 }
 
 /// DEV-216: 도서관 문서 DTO — 서버 응답(BookResponse: book_id + flatten row)과
@@ -1726,7 +1734,7 @@ impl Backend {
                SELECT 'quest' AS scope,
                       qt.prefix || '-' || printf('%03d', q.number) AS slug,
                       c.entry_id, c.ts, c.author, c.body,
-                      c.discussion, c.resolved, c.parent_id
+                      c.discussion, c.resolved, c.parent_id, c.pinned, c.reactions
                  FROM quest_comments c
                  JOIN quests q ON q.id = c.quest_id
                  JOIN quest_types qt ON qt.id = q.quest_type_id
@@ -1734,7 +1742,7 @@ impl Backend {
                UNION ALL
                SELECT 'campaign' AS scope, ca.campaign_slug AS slug,
                       c.entry_id, c.ts, c.author, c.body,
-                      0 AS discussion, 0 AS resolved, c.parent_id
+                      0 AS discussion, 0 AS resolved, c.parent_id, c.pinned, c.reactions
                  FROM campaign_comments c
                  JOIN campaigns ca ON ca.id = c.campaign_id
                 WHERE 1 = 1{conds_c}
@@ -3360,10 +3368,72 @@ fn run_attach_cmd(c: &Backend, scope: CommentScope, sub: AttachCmd, json: bool) 
 }
 
 /// quest / campaign 댓글 명령 공용 핸들러 (DEV-100).
+/// `--depth` 값 파서 — 숫자 또는 `all`(무제한).
+fn parse_comment_depth(s: &str) -> Result<usize, String> {
+    if s.eq_ignore_ascii_case("all") {
+        return Ok(usize::MAX);
+    }
+    s.parse::<usize>()
+        .map_err(|_| format!("'{s}' — 숫자 또는 'all' 이어야 합니다"))
+}
+
+/// 댓글 대상(quest/campaign)이 실존하는지 — 미존재 slug 가 "(댓글 없음)" 으로
+/// 침묵 통과하지 않게. 댓글이 0건일 때만 호출(정상 경로 비용 없음).
+fn ensure_scope_target_exists(c: &Backend, scope: CommentScope, slug: &str) -> Result<()> {
+    match scope {
+        CommentScope::Quest => {
+            c.quest_by_slug(slug)
+                .map_err(|_| anyhow!("퀘스트 '{slug}' 가 존재하지 않습니다"))?;
+        }
+        CommentScope::Campaign => {
+            c.campaign_show(slug)
+                .map_err(|_| anyhow!("캠페인 '{slug}' 가 존재하지 않습니다"))?;
+        }
+    }
+    Ok(())
+}
+
+/// 댓글 메타 배지 — 📌(고정) / ● 미해결 토론 / ✓ 해결됨. list/show/comments
+/// 세 출력이 동일 규칙을 쓰도록 단일화.
+fn comment_badges(pinned: bool, discussion: bool, resolved: bool) -> String {
+    let mut out = String::new();
+    if pinned {
+        out.push_str(" 📌");
+    }
+    if discussion {
+        out.push_str(if resolved { " ✓해결" } else { " ●미해결" });
+    }
+    out
+}
+
+/// 반응 집계 표시 — `[👍2 ✅1]` (없으면 빈 문자열). list 의 DEV-199 포맷을
+/// show / comments 횡단에서도 재사용.
+fn reactions_summary(reactions: &[String]) -> String {
+    if reactions.is_empty() {
+        return String::new();
+    }
+    use openguild_core::repo::comments::split_reaction;
+    let agg = reactions
+        .iter()
+        .map(|r| {
+            let (em, a) = split_reaction(r);
+            format!("{em}{}", a.len().max(1))
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!("  [{agg}]")
+}
+
 fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool) -> Result<()> {
     match sub {
-                CommentCmd::List { slug, author, since, top_only, reply_to, grep, reverse, limit } => {
+                CommentCmd::List { slug, author, since, top_only, reply_to, grep, reverse, limit, tree } => {
                     let mut entries = c.comments_list_scoped(scope, &slug)?;
+                    // DEV-250: 미존재 slug 가 "(댓글 없음)" 으로 침묵 통과하면
+                    // 오타를 들고 계속 진행하게 됨(특히 agent) — 빈 결과일 때만
+                    // 실존 확인(정상 경로 비용 0).
+                    if entries.is_empty() {
+                        ensure_scope_target_exists(c, scope, &slug)?;
+                    }
                     // DEV-110: 필터 — 모두 AND.
                     if let Some(a) = &author {
                         entries.retain(|e| e.author.eq_ignore_ascii_case(a));
@@ -3401,13 +3471,20 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                                     "author": e.author,
                                     "parent_id": e.parent_id,
                                     "body_len": e.body.len(),
+                                    // DEV-250: 메타도 agent 가 파싱 가능하게.
+                                    "pinned": e.pinned,
+                                    "discussion": e.discussion,
+                                    "resolved": e.resolved,
+                                    "reactions": e.reactions,
                                 })).collect::<Vec<_>>(),
                             })
                         );
                     } else if entries.is_empty() {
                         println!("(댓글 없음)");
                     } else {
-                        for e in &entries {
+                        // 한 줄 렌더 — flat/tree 공용. DEV-250: 📌/토론 배지 추가.
+                        let render = |e: &openguild_core::repo::comments::CommentEntry,
+                                      prefix: &str| {
                             let summary = e
                                 .body
                                 .lines()
@@ -3430,28 +3507,61 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                             } else {
                                 e.ts.clone()
                             };
+                            let badges = comment_badges(e.pinned, e.discussion, e.resolved);
                             // DEV-199: 반응 집계 표시 — 👍2 ✅1 형태.
-                            let reacts = if e.reactions.is_empty() {
-                                String::new()
-                            } else {
-                                use openguild_core::repo::comments::split_reaction;
-                                let agg = e
-                                    .reactions
-                                    .iter()
-                                    .map(|r| {
-                                        let (em, a) = split_reaction(r);
-                                        format!("{em}{}", a.len().max(1))
-                                    })
-                                    .collect::<Vec<_>>()
-                                    .join(" ");
-                                format!("  [{agg}]")
-                            };
-                            println!("#{}  {}  {}{}  {}{}", e.id, ts, author, reply, summary, reacts);
+                            let reacts = reactions_summary(&e.reactions);
+                            println!(
+                                "{prefix}#{}  {}  {}{}{}  {}{}",
+                                e.id, ts, author, reply, badges, summary, reacts
+                            );
+                        };
+                        if tree {
+                            // DEV-250: parent_id 들여쓰기 트리 (대화 흐름 순).
+                            // 필터로 부모가 결과에서 빠진 답글은 root 로 표시.
+                            use std::collections::{HashMap, HashSet};
+                            let ids: HashSet<u64> = entries.iter().map(|e| e.id).collect();
+                            let mut children: HashMap<u64, Vec<&_>> = HashMap::new();
+                            let mut roots: Vec<&_> = Vec::new();
+                            for e in &entries {
+                                match e.parent_id {
+                                    Some(p) if ids.contains(&p) => {
+                                        children.entry(p).or_default().push(e)
+                                    }
+                                    _ => roots.push(e),
+                                }
+                            }
+                            fn walk<'a>(
+                                e: &'a openguild_core::repo::comments::CommentEntry,
+                                depth: usize,
+                                children: &HashMap<u64, Vec<&'a openguild_core::repo::comments::CommentEntry>>,
+                                render: &impl Fn(&openguild_core::repo::comments::CommentEntry, &str),
+                            ) {
+                                let prefix = if depth == 0 {
+                                    String::new()
+                                } else {
+                                    format!("{}└─ ", "   ".repeat(depth - 1))
+                                };
+                                render(e, &prefix);
+                                for kid in children.get(&e.id).into_iter().flatten() {
+                                    walk(kid, depth + 1, children, render);
+                                }
+                            }
+                            for r in roots {
+                                walk(r, 0, &children, &render);
+                            }
+                        } else {
+                            for e in &entries {
+                                render(e, "");
+                            }
                         }
                     }
                 }
                 CommentCmd::Show { slug, id, depth, with_parents } => {
                     let entries = c.comments_list_scoped(scope, &slug)?;
+                    // DEV-250: 미존재 slug 침묵 통과 방지 (list 와 동일).
+                    if entries.is_empty() {
+                        ensure_scope_target_exists(c, scope, &slug)?;
+                    }
                     let selected: Vec<_> = match id {
                         Some(target) => select_thread(entries, target, depth, with_parents)
                             .ok_or_else(|| {
@@ -3469,6 +3579,11 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                                     "author": e.author,
                                     "parent_id": e.parent_id,
                                     "body": e.body,
+                                    // DEV-250: 메타도 agent 가 파싱 가능하게.
+                                    "pinned": e.pinned,
+                                    "discussion": e.discussion,
+                                    "resolved": e.resolved,
+                                    "reactions": e.reactions,
                                 })).collect::<Vec<_>>(),
                             })
                         );
@@ -3488,7 +3603,10 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                             } else {
                                 e.author.clone()
                             };
-                            println!("#{}  {}  {}{}", e.id, e.ts, author, reply);
+                            // DEV-250: 📌/토론 배지 + 반응 집계를 헤더에.
+                            let badges = comment_badges(e.pinned, e.discussion, e.resolved);
+                            let reacts = reactions_summary(&e.reactions);
+                            println!("#{}  {}  {}{}{}{}", e.id, e.ts, author, reply, badges, reacts);
                             println!();
                             print!("{}", e.body);
                             if !e.body.ends_with('\n') {
@@ -4530,17 +4648,19 @@ fn run() -> Result<()> {
             } else {
                 for r in &rows {
                     let author = if r.author.is_empty() { "(이름 없음)" } else { &r.author };
-                    // 토론 상태 배지: ● 미해결 / ✓ 해결 (quest 전용).
-                    let badge = if r.discussion {
-                        if r.resolved { " ✓" } else { " ●" }
+                    // DEV-250: 📌/토론 배지 + 반응 집계 — comment list/show 와 동일 규칙.
+                    let badge = comment_badges(r.pinned, r.discussion, r.resolved);
+                    let reactions: Vec<String> = if r.reactions.is_empty() {
+                        Vec::new()
                     } else {
-                        ""
+                        r.reactions.split(',').map(|s| s.to_string()).collect()
                     };
+                    let reacts = reactions_summary(&reactions);
                     // BUG-110: quest comment list 와 동일하게 답글이면 부모 표시.
                     let reply = r.parent_id.map(|p| format!(" ↩ #{p}")).unwrap_or_default();
                     println!(
-                        "{:<9} #{:<3}{}  {}  {}{}",
-                        r.slug, r.entry_id, reply, r.ts, author, badge
+                        "{:<9} #{:<3}{}  {}  {}{}{}",
+                        r.slug, r.entry_id, reply, r.ts, author, badge, reacts
                     );
                     // 기본은 본문 전체 (quest comment list 와 동일) — --summary 시
                     // 첫 줄 60자만. 요약만 보고 뒷줄을 놓쳐 답글을 잘못 단 사고
@@ -6960,7 +7080,7 @@ mod tests {
         ])
         .unwrap();
         match cli.command {
-            Command::Quest { sub: QuestCmd::Comment { sub: CommentCmd::List { slug, author, since, top_only, reply_to, grep, reverse, limit } } } => {
+            Command::Quest { sub: QuestCmd::Comment { sub: CommentCmd::List { slug, author, since, top_only, reply_to, grep, reverse, limit, tree } } } => {
                 assert_eq!(slug, "DEV-001");
                 assert_eq!(author.as_deref(), Some("claude"));
                 assert_eq!(since.as_deref(), Some("2026-06-01"));
@@ -6969,6 +7089,7 @@ mod tests {
                 assert_eq!(grep.as_deref(), Some("needle"));
                 assert!(!reverse);
                 assert!(limit.is_none());
+                assert!(!tree);
             }
             _ => panic!("expected comment list"),
         }
@@ -6995,6 +7116,42 @@ mod tests {
             }
             _ => panic!("expected comment pinned"),
         }
+    }
+
+    /// admin 요청(comment 출력 개선): --tree / --depth all 파싱.
+    #[test]
+    fn cli_parse_comment_tree_and_depth_all() {
+        // --tree 는 --reverse 와 상호배타.
+        assert!(Cli::try_parse_from([
+            "openguild", "quest", "comment", "list", "DEV-001", "--tree", "--reverse",
+        ])
+        .is_err());
+        let ok = Cli::try_parse_from([
+            "openguild", "quest", "comment", "list", "DEV-001", "--tree",
+        ])
+        .unwrap();
+        match ok.command {
+            Command::Quest { sub: QuestCmd::Comment { sub: CommentCmd::List { tree, .. } } } => {
+                assert!(tree);
+            }
+            _ => panic!("expected comment list"),
+        }
+
+        // --depth: 숫자 / all / 그 외 거부.
+        let d = Cli::try_parse_from([
+            "openguild", "quest", "comment", "show", "DEV-001", "--id", "1", "--depth", "all",
+        ])
+        .unwrap();
+        match d.command {
+            Command::Quest { sub: QuestCmd::Comment { sub: CommentCmd::Show { depth, .. } } } => {
+                assert_eq!(depth, usize::MAX, "'all' = 무제한");
+            }
+            _ => panic!("expected comment show"),
+        }
+        assert!(Cli::try_parse_from([
+            "openguild", "quest", "comment", "show", "DEV-001", "--id", "1", "--depth", "deep",
+        ])
+        .is_err());
     }
 
     /// admin 요청: comment show 의 부모/자식 출력 범위 옵션.

@@ -45,8 +45,8 @@ async fn upsert_comment_entry_db(
     };
     sqlx::query(
         "INSERT INTO quest_comments
-            (quest_id, entry_id, ts, author, body, parent_id, discussion, resolved, pinned, edited_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (quest_id, entry_id, ts, author, body, parent_id, discussion, resolved, pinned, edited_at, reactions)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(quest_id, entry_id) DO UPDATE SET
              ts         = excluded.ts,
              author     = excluded.author,
@@ -55,7 +55,8 @@ async fn upsert_comment_entry_db(
              discussion = excluded.discussion,
              resolved   = excluded.resolved,
              pinned     = excluded.pinned,
-             edited_at  = excluded.edited_at",
+             edited_at  = excluded.edited_at,
+             reactions  = excluded.reactions",
     )
     .bind(qid)
     .bind(entry.id as i64)
@@ -67,6 +68,7 @@ async fn upsert_comment_entry_db(
     .bind(entry.resolved as i64)
     .bind(entry.pinned as i64)
     .bind(&entry.edited_at)
+    .bind(entry.reactions.join(","))
     .execute(&store.index_pool)
     .await
     .map_err(|e| AppError::Internal(anyhow::anyhow!("upsert quest_comments: {e}")))?;

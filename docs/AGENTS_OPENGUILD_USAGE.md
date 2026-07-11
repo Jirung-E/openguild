@@ -274,8 +274,12 @@ openguild quest comment list <SLUG> --author claude --since 2026-06-01 \
     --top-only --grep TEXT                                # 필터 (AND, DEV-110)
 openguild quest comment list <SLUG> --reply-to N          # 특정 entry 의 답글만
 openguild quest comment list <SLUG> --reverse --limit 5   # 최근 5개 (DEV-221)
+openguild quest comment list <SLUG> --tree                # 답글 들여쓰기 트리 (--reverse 와 배타)
 openguild quest comment show <SLUG> [--id N]              # 본문
 openguild quest comment show <SLUG> --id N --depth 2 --with-parents  # 답글 2단 + 조상까지 같이
+openguild quest comment show <SLUG> --id N --depth all    # 답글 무제한 (전체 스레드)
+# list/show/comments 공통 메타 표시: 📌(고정) / ●미해결·✓해결(토론) / [👍2 ✅1](반응).
+# 존재하지 않는 slug 는 "(댓글 없음)" 이 아니라 에러 — 오타 침묵 통과 방지.
 openguild quest comment add <SLUG> --author <NAME> --file <PATH>   # 추가 (stdin 도 가능)
 openguild quest comment add <SLUG> --author <NAME> --parent-id N --file <PATH>  # 답글
 openguild quest comment edit <SLUG> N --file <PATH>       # body 교체 (id 는 positional)
