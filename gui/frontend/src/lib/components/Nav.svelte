@@ -168,7 +168,8 @@
 		background: var(--nav-bg);
 		border-bottom: 1px solid var(--nav-border);
 		position: sticky;
-		top: 0;
+		/* 커스텀 타이틀바(Windows Tauri) 아래에 붙도록 — 없으면 0px. */
+		top: var(--titlebar-h, 0px);
 		z-index: 100;
 	}
 

@@ -6,6 +6,9 @@
 	import { anyUnsaved, clearUnsaved } from '$lib/stores/unsaved';
 	import { onMount } from 'svelte';
 	import Nav from '$lib/components/Nav.svelte';
+	// 커스텀 타이틀바 — Windows Tauri 전용 (tauri.windows.conf.json 의
+	// decorations:false 와 세트). 네이티브 타이틀바 테마 어긋남 원천 해소.
+	import TitleBar from '$lib/components/TitleBar.svelte';
 	import UpdateBanner from '$lib/components/UpdateBanner.svelte';
 	// 앱 공용 toast — alert() 대체, 어디서든 동일 UI.
 	import ToastHost from '$lib/components/ToastHost.svelte';
@@ -33,6 +36,21 @@
 	// DEV-052 후속: /welcome 라우트에선 Nav (Board/List/Admin/+New Quest) 숨김.
 	// 길드 컨텍스트가 없는 상태에서 의미 없는 액션 노출 방지.
 	let showNav = $derived($page.url.pathname !== '/welcome');
+
+	// 커스텀 타이틀바 — decorations:false 는 Windows 만(tauri.windows.conf.json)
+	// 이므로 플랫폼 판별과 세트. 표시 시 sticky 요소들(Nav 등)의 top offset 용
+	// CSS 변수(--titlebar-h)를 root 에 심는다.
+	const showTitleBar =
+		detectEnvironment() === 'tauri' &&
+		typeof navigator !== 'undefined' &&
+		navigator.userAgent.includes('Windows');
+	$effect(() => {
+		if (typeof document === 'undefined') return;
+		document.documentElement.style.setProperty(
+			'--titlebar-h',
+			showTitleBar ? '32px' : '0px'
+		);
+	});
 
 	// DEV-153: 미저장 변경 통합 가드. 편집 중(unsaved.ts 에 보고된 dirty)이면
 	// 라우트 이동(링크/뒤로·앞으로가기)을 취소하고 공용 확인 모달을 띄운다.
@@ -307,6 +325,9 @@
 	});
 </script>
 
+{#if showTitleBar}
+	<TitleBar />
+{/if}
 <!-- BUG-041: DB schema 가 binary 보다 새로운 경우 알림 (Tauri 만). 항상 최상단. -->
 <SchemaAheadBanner />
 <!-- DEV-063 / DEV-194 후속: 업데이트 알림 — 우하단 floating toast(레이아웃
@@ -335,10 +356,10 @@
 
 <style>
 	main {
-		min-height: calc(100vh - 3.25rem);
+		min-height: calc(100vh - 3.25rem - var(--titlebar-h, 0px));
 		background: var(--bg);
 	}
 	main.no-nav {
-		min-height: 100vh;
+		min-height: calc(100vh - var(--titlebar-h, 0px));
 	}
 </style>
