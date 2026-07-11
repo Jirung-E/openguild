@@ -976,6 +976,40 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
 
     tx.commit().await?;
 
+    // DEV-242: counter 양방향 self-heal — (a) DB counter 를 실제 max(number)
+    // 까지 끌어올리고(외부 편집/git pull 로 큰 번호 파일이 들어온 경우),
+    // (b) type 파일의 [counter].last_number 가 DB 보다 낡았으면 write-back.
+    // 이전엔 파일 counter 를 `check counters --fix` 수동 실행으로만 갱신할 수
+    // 있어 늘 낡아 있었음(파일이 진리원이라는 원칙과 어긋남).
+    sqlx::query(
+        "UPDATE quest_counters
+            SET last_number = MAX(
+                last_number,
+                COALESCE((SELECT MAX(q.number) FROM quests q
+                           WHERE q.quest_type_id = quest_counters.quest_type_id), 0))",
+    )
+    .execute(&store.index_pool)
+    .await?;
+    {
+        let rows: Vec<(String, i64)> = sqlx::query_as(
+            "SELECT t.prefix, c.last_number FROM quest_counters c
+              JOIN quest_types t ON t.id = c.quest_type_id",
+        )
+        .fetch_all(&store.index_pool)
+        .await?;
+        for (prefix, db_last) in rows {
+            let path = paths.type_path(&prefix);
+            if let Ok(mut tf) = TypeFile::read(&path)
+                && tf.counter.last_number < db_last
+            {
+                tf.counter.last_number = db_last;
+                if let Err(e) = tf.write(&path) {
+                    tracing::warn!("type counter 파일 write-back 실패 ({prefix}): {e:#}");
+                }
+            }
+        }
+    }
+
     // DEV-069: 첨부 blob 양방향 self-heal — 새/변경 파일 → blob 백업,
     // blob 만 남은 것 (snapshot 복원 직후 등) → 파일 복원.
     // sync_attachment_blobs 는 store.index_pool 을 직접 쓰므로 commit 이후 호출.

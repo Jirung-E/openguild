@@ -59,6 +59,11 @@ pub async fn create_quest(store: &Store, body: CreateQuestRequest) -> AppResult<
     // 3. 새 파일 작성. description 은 create body 가 명시 (Some 또는 None).
     write_quest_file(store, &quest, true).await?;
 
+    // 3b. DEV-242: type 파일 counter 도 함께 갱신 — 이전엔 DB(quest_counters)
+    // 만 올라가고 파일은 `check counters --fix` 를 수동 실행해야만 갱신돼
+    // file-truth 원칙(§1: mutation 은 파일+DB 동시 기록)과 어긋난 채 낡았음.
+    sync_type_counter_file(store, &quest.type_prefix, quest.number);
+
     // 4. parent 있으면 부모 파일의 auto 블록 갱신. parent description 은 안 건드림.
     if let Some(pid) = parent_id {
         let parent = sql::fetch_by_id(&store.index_pool, pid).await?;
@@ -67,6 +72,25 @@ pub async fn create_quest(store: &Store, body: CreateQuestRequest) -> AppResult<
 
     after_mutation(store).await;
     Ok(quest)
+}
+
+/// DEV-242: `.guild/types/{prefix}.toml` 의 `[counter].last_number` 를 새로
+/// 부여된 번호로 끌어올린다(파일 값이 더 크면 보존 — 단조 증가). 실패는
+/// 경고만 — 번호 부여의 실제 정합성은 DB counter + self-heal 이 담당하고,
+/// 파일 counter 는 백업/표시 값이라 생성 자체를 막을 이유가 없음.
+fn sync_type_counter_file(store: &Store, prefix: &str, number: i64) {
+    let path = store.paths.type_path(prefix);
+    match crate::repo::TypeFile::read(&path) {
+        Ok(mut tf) => {
+            if tf.counter.last_number < number {
+                tf.counter.last_number = number;
+                if let Err(e) = tf.write(&path) {
+                    tracing::warn!("type counter 파일 갱신 실패 ({prefix}): {e:#}");
+                }
+            }
+        }
+        Err(e) => tracing::warn!("type 파일 읽기 실패 ({prefix}): {e:#}"),
+    }
 }
 
 /// Quest 의 title / description / urgency 수정.
@@ -377,6 +401,8 @@ pub async fn change_quest_type(
     if old_path != new_path {
         let _ = std::fs::remove_file(&old_path);
     }
+    // DEV-242: 대상 type 에 새 번호가 부여됐으므로 그 type 파일 counter 도 갱신.
+    sync_type_counter_file(store, &quest.type_prefix, quest.number);
 
     // 관련 quest 파일 갱신 — auto-block 안 sub-quests / prerequisites / parent
     // 표기에 본인 slug 가 들어가므로 새 slug 로 갱신되어야.
@@ -1552,6 +1578,45 @@ mod tests {
         .unwrap();
         let content = std::fs::read_to_string(dir.join(".guild/quests/DEV-001.md")).unwrap();
         assert!(content.contains("custom body"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-242: quest 생성이 type 파일의 [counter].last_number 도 갱신 —
+    /// 이전엔 DB 만 올라가고 파일은 --fix 수동 실행 전까지 낡아 있었음.
+    #[tokio::test]
+    async fn create_quest_syncs_type_counter_file() {
+        let dir = fresh_tmp("counter-file");
+        let store = setup_store(&dir).await;
+
+        let before = crate::repo::TypeFile::read(store.paths.type_path("DEV")).unwrap();
+        assert_eq!(before.counter.last_number, 0);
+
+        let q = create_quest(
+            &store,
+            CreateQuestRequest {
+                quest_type_id: 1,
+                title: "counter sync".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(q.number, 1);
+
+        let after = crate::repo::TypeFile::read(store.paths.type_path("DEV")).unwrap();
+        assert_eq!(after.counter.last_number, 1, "파일 counter 도 함께 갱신");
+
+        // 파일 counter 가 더 크면(수동 --fix 등) 보존 — 단조 증가.
+        let mut tf = crate::repo::TypeFile::read(store.paths.type_path("DEV")).unwrap();
+        tf.counter.last_number = 99;
+        tf.write(store.paths.type_path("DEV")).unwrap();
+        sync_type_counter_file(&store, "DEV", 2);
+        let kept = crate::repo::TypeFile::read(store.paths.type_path("DEV")).unwrap();
+        assert_eq!(kept.counter.last_number, 99, "더 큰 파일 값은 안 내림");
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 

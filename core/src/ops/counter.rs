@@ -315,11 +315,11 @@ mod tests {
         assert_eq!(new.quest_id, "BUG-007");
         assert_eq!(sql_counter(&store, "BUG").await, 7);
 
-        // 새 quest 파일 (BUG-007.md) 도 디스크에 생겼으므로 check-counters
-        // 가 file last_number=6 < actual max=7 을 잡아 file 도 7 로 보정 →
-        // file + SQL 둘 다 7 로 정합 (sql_drift 0건).
+        // DEV-242: create 가 type 파일 counter 도 즉시 동기화하므로 (이전엔
+        // --fix 수동 실행 전까지 file=6 으로 낡아 있었음) check-counters 는
+        // 고칠 게 없어야 함 — file + SQL 둘 다 이미 7 로 정합.
         let fix = check_and_fix_counters(&store, true).await.unwrap();
-        assert_eq!(fix.file_report.issues.len(), 1);
+        assert_eq!(fix.file_report.issues.len(), 0);
         assert_eq!(fix.sql_drift.len(), 0);
 
         let _ = std::fs::remove_dir_all(&dir);
