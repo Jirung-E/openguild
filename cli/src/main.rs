@@ -438,7 +438,11 @@ enum QuestCmd {
         yes: bool,
     },
     /// 삭제된(soft deleted) 퀘스트 목록
-    Deleted,
+    Deleted {
+        /// 정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.
+        #[arg(long)]
+        table: bool,
+    },
     /// 삭제된 퀘스트 복원
     Restore { slug: String },
     /// 현재 상태 출력. status 인자 지정 시 변경도 가능 — deprecated,
@@ -704,7 +708,11 @@ enum PrereqCmd {
 #[derive(Subcommand)]
 enum TypesCmd {
     /// 목록
-    List,
+    List {
+        /// 정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.
+        #[arg(long)]
+        table: bool,
+    },
     /// 새 type 추가
     Add {
         /// 대문자/숫자 1~6자 (예: DEV / BUG / REQ)
@@ -773,7 +781,11 @@ enum TagDefCmd {
 #[derive(Subcommand)]
 enum StatusesCmd {
     /// 목록
-    List,
+    List {
+        /// 정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.
+        #[arg(long)]
+        table: bool,
+    },
     /// 새 status 추가. slug 는 name_en 에서 자동 생성.
     Add {
         /// 영문 이름 (영문자 시작 + 영문/숫자/공백/-/_, 최대 32자).
@@ -890,7 +902,11 @@ enum RulesCmd {
 #[derive(Subcommand)]
 enum LibraryCmd {
     /// 문서 목록 (번호 / 제목 / 갱신 시각).
-    List,
+    List {
+        /// 정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.
+        #[arg(long)]
+        table: bool,
+    },
     /// 한 문서의 본문 출력 (stdout).
     Show {
         /// 문서 ID (BOOK-N 형식).
@@ -1023,6 +1039,9 @@ enum CampaignCmd {
         /// 필터: active | done
         #[arg(long)]
         status: Option<String>,
+        /// 정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.
+        #[arg(long)]
+        table: bool,
     },
     /// 캠페인 상세
     Show { slug: String },
@@ -4081,7 +4100,7 @@ fn handle_campaign(c: &Backend, json: bool, sub: CampaignCmd) -> Result<()> {
             })?;
             print_row(&row, json);
         }
-        CampaignCmd::List { status } => {
+        CampaignCmd::List { status, table } => {
             // 잘못된 --status 값은 silent fail 방지 — active | done 만 허용.
             if let Some(s) = &status
                 && s != "active"
@@ -4094,6 +4113,25 @@ fn handle_campaign(c: &Backend, json: bool, sub: CampaignCmd) -> Result<()> {
             let rows = c.campaign_list(status)?;
             if json {
                 println!("{}", json_str(&rows));
+            } else if table {
+                let cells: Vec<Vec<TableCell>> = rows
+                    .iter()
+                    .map(|r| {
+                        vec![
+                            (r.campaign_slug.clone(), None),
+                            (r.status.clone(), None),
+                            (r.started_at.clone().unwrap_or_default(), None),
+                            (r.ended_at.clone().unwrap_or_default(), None),
+                            (r.title.clone(), None),
+                        ]
+                    })
+                    .collect();
+                render_table(
+                    &["ID", "STATUS", "START", "END", "TITLE"],
+                    &[false, false, false, false],
+                    &cells,
+                    "campaigns",
+                );
             } else if rows.is_empty() {
                 println!("(no campaigns)");
             } else {
@@ -4255,35 +4293,87 @@ fn print_quest_list(quests: &[Quest], json: bool) {
     }
 }
 
-/// DEV-211: 사람용 정렬 표 — 헤더 + 컬럼 폭 정렬. 색은 line 렌더와 동일 규칙
-/// (type 색 ID / status 색 / urgency 색). 제목은 한글 등 가변폭 문자를
-/// 포함할 수 있어 **마지막 컬럼** 에 둬 패딩 계산을 피한다.
-fn print_quest_table(quests: &[Quest]) {
-    if quests.is_empty() {
-        println!("(no quests)");
+/// 테이블 셀 — (표시 텍스트, 색 hex). 색은 패딩 **후** 적용해 ANSI 코드가
+/// 폭 계산을 깨지 않게 한다.
+type TableCell = (String, Option<String>);
+
+/// 공용 테이블 렌더 — 헤더 + 컬럼 폭 정렬 + 행수 footer. 원칙: **한글 등
+/// 가변폭(더블폭) 문자가 올 수 있는 텍스트는 마지막 컬럼에** — 마지막 컬럼은
+/// 패딩하지 않으므로 폭 계산 문제가 없다. 그 외 컬럼은 ASCII 전제.
+/// `right_align[i]` = 해당 컬럼 우측 정렬(숫자용).
+fn render_table(headers: &[&str], right_align: &[bool], rows: &[Vec<TableCell>], noun: &str) {
+    if rows.is_empty() {
+        println!("(no {noun})");
         return;
     }
-    let id_w = quests
+    let ncols = headers.len();
+    // 마지막 컬럼 제외 폭 계산.
+    let widths: Vec<usize> = (0..ncols.saturating_sub(1))
+        .map(|i| {
+            rows.iter()
+                .map(|r| r.get(i).map(|(t, _)| t.chars().count()).unwrap_or(0))
+                .chain(std::iter::once(headers[i].chars().count()))
+                .max()
+                .unwrap_or(0)
+        })
+        .collect();
+    let pad = |text: &str, i: usize| -> String {
+        if i + 1 == ncols {
+            return text.to_string(); // 마지막 컬럼 — 패딩 없음.
+        }
+        let w = widths[i];
+        if right_align.get(i).copied().unwrap_or(false) {
+            format!("{text:>w$}")
+        } else {
+            format!("{text:<w$}")
+        }
+    };
+    let header_line = headers
         .iter()
-        .map(|q| q.quest_id.len())
-        .chain(std::iter::once("ID".len()))
-        .max()
-        .unwrap_or(2);
-    let st_w = quests
-        .iter()
-        .map(|q| q.status_name_en.len())
-        .chain(std::iter::once("STATUS".len()))
-        .max()
-        .unwrap_or(6);
-    println!("{:<id_w$}  {:<st_w$}  {:>3}  TITLE", "ID", "STATUS", "URG");
-    println!("{}", "─".repeat(id_w + st_w + 12));
-    for q in quests {
-        let id = colorize(&format!("{:<id_w$}", q.quest_id), &q.type_color);
-        let status = colorize(&format!("{:<st_w$}", q.status_name_en), &q.status_color);
-        let urg = colorize(&format!("{:>3}", q.urgency), urgency_color(q.urgency));
-        println!("{id}  {status}  {urg}  {}", q.title);
+        .enumerate()
+        .map(|(i, h)| pad(h, i))
+        .collect::<Vec<_>>()
+        .join("  ");
+    println!("{header_line}");
+    println!("{}", "─".repeat(header_line.chars().count().max(10)));
+    for row in rows {
+        let line = row
+            .iter()
+            .enumerate()
+            .map(|(i, (text, color))| {
+                let padded = pad(text, i);
+                match color {
+                    Some(c) if !c.is_empty() => colorize(&padded, c),
+                    _ => padded,
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("  ");
+        println!("{line}");
     }
-    println!("-- {} quests", quests.len());
+    println!("-- {} {noun}", rows.len());
+}
+
+/// DEV-211: 사람용 정렬 표 — 색은 line 렌더와 동일 규칙(type 색 ID / status
+/// 색 / urgency 색). 제목은 한글 가변폭이라 마지막 컬럼.
+fn print_quest_table(quests: &[Quest]) {
+    let rows: Vec<Vec<TableCell>> = quests
+        .iter()
+        .map(|q| {
+            vec![
+                (q.quest_id.clone(), Some(q.type_color.clone())),
+                (q.status_name_en.clone(), Some(q.status_color.clone())),
+                (q.urgency.to_string(), Some(urgency_color(q.urgency).to_string())),
+                (q.title.clone(), None),
+            ]
+        })
+        .collect();
+    render_table(
+        &["ID", "STATUS", "URG", "TITLE"],
+        &[false, false, true],
+        &rows,
+        "quests",
+    );
 }
 
 /// DEV-065 (CLI tree mode): 부모 → 자식 들여쓰기로 한 화면에 트리 출력.
@@ -4978,10 +5068,22 @@ fn days_in_months_init(y: i64) -> [u32; 12] {
 /// BUG-135: run() 스택 프레임 축소 — arm 지역값을 개별 함수 프레임으로.
 fn handle_types(c: &Backend, json: bool, sub: TypesCmd) -> Result<()> {
     match sub {
-        TypesCmd::List => {
+        TypesCmd::List { table } => {
             let types = c.quest_types()?;
             if json {
                 println!("{}", json_str(&types));
+            } else if table {
+                let rows: Vec<Vec<TableCell>> = types
+                    .iter()
+                    .map(|t| {
+                        vec![
+                            (t.prefix.clone(), Some(t.color.clone())),
+                            (t.color.clone(), None),
+                            (t.description.clone().unwrap_or_default(), None),
+                        ]
+                    })
+                    .collect();
+                render_table(&["PREFIX", "COLOR", "DESCRIPTION"], &[false, false], &rows, "types");
             } else {
                 for t in &types {
                     // DEV-046: prefix 에 type.color.
@@ -5200,11 +5302,30 @@ fn handle_tag(c: &Backend, json: bool, sub: TagDefCmd) -> Result<()> {
 /// BUG-135: run() 스택 프레임 축소 — arm 지역값을 개별 함수 프레임으로.
 fn handle_statuses(c: &Backend, json: bool, sub: StatusesCmd) -> Result<()> {
     match sub {
-        StatusesCmd::List => {
+        StatusesCmd::List { table } => {
             let statuses = c.quest_statuses()?;
             if json {
                 // BUG-018: agent / script 용 — slug 포함된 raw row.
                 println!("{}", json_str(&statuses));
+            } else if table {
+                let rows: Vec<Vec<TableCell>> = statuses
+                    .iter()
+                    .map(|s| {
+                        vec![
+                            (s.name_en.clone(), Some(s.color.clone())),
+                            (s.slug.clone(), None),
+                            (s.sort_order.to_string(), None),
+                            (if s.counts_as_done { "✓" } else { "" }.to_string(), None),
+                            (s.name_ko.clone(), None),
+                        ]
+                    })
+                    .collect();
+                render_table(
+                    &["NAME", "SLUG", "ORDER", "DONE", "NAME_KO"],
+                    &[false, false, true, false],
+                    &rows,
+                    "statuses",
+                );
             } else {
                 // DEV-209(BUG-018 정책 갱신): slug 도 표시 — quest move 등 명령
                 // 인자와 frontmatter 의 정규 식별자가 slug 라, 목록에서 안 보이면
@@ -5516,10 +5637,27 @@ fn handle_rules(c: &Backend, json: bool, sub: RulesCmd) -> Result<()> {
 /// BUG-135: run() 스택 프레임 축소 — arm 지역값을 개별 함수 프레임으로.
 fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
     match sub {
-        LibraryCmd::List => {
+        LibraryCmd::List { table } => {
             let books = c.library_list()?;
             if json {
                 println!("{}", json_str(&books));
+            } else if table {
+                // 폴더 path/제목은 한글 가변폭 가능 — 뒤쪽 컬럼에.
+                let rows: Vec<Vec<TableCell>> = books
+                    .iter()
+                    .map(|b| {
+                        vec![
+                            (b.book_id.clone(), None),
+                            (b.updated_at.clone(), None),
+                            (format!("{}{}{}",
+                                if b.path.is_empty() { "" } else { "[" },
+                                b.path,
+                                if b.path.is_empty() { "" } else { "] " },
+                            ) + &b.title, None),
+                        ]
+                    })
+                    .collect();
+                render_table(&["ID", "UPDATED", "TITLE"], &[false, false], &rows, "docs");
             } else if books.is_empty() {
                 println!("(도서관 문서 없음)");
             } else {
@@ -6385,9 +6523,13 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
                 }
             }
         }
-        QuestCmd::Deleted => {
+        QuestCmd::Deleted { table } => {
             let quests = c.list_deleted_quests()?;
-            print_quest_list(&quests, json);
+            if table && !json {
+                print_quest_table(&quests);
+            } else {
+                print_quest_list(&quests, json);
+            }
         }
         QuestCmd::Restore { slug } => {
             // alive 목록엔 없으니 deleted 목록에서 slug → id 매칭
@@ -7387,6 +7529,31 @@ mod tests {
         }
     }
 
+    /// 옵션셋 일관성 가드(guild rule cli-list-command-options): 알려진 목록형
+    /// 명령은 --table 이 파싱돼야 한다. 새 목록 명령을 추가하면 이 목록에도
+    /// 넣을 것 — 안 넣으면 리뷰에서 걸리는 구조.
+    #[test]
+    fn all_list_commands_accept_table_flag() {
+        const LIST_COMMANDS: &[&[&str]] = &[
+            &["quest", "list"],
+            &["quest", "deleted"],
+            &["campaign", "list"],
+            &["type", "list"],
+            &["status", "list"],
+            &["library", "list"],
+        ];
+        for cmd in LIST_COMMANDS {
+            let mut argv = vec!["openguild"];
+            argv.extend_from_slice(cmd);
+            argv.push("--table");
+            assert!(
+                Cli::try_parse_from(&argv).is_ok(),
+                "{} 은 --table 을 지원해야 함 (cli-list-command-options 규칙)",
+                cmd.join(" ")
+            );
+        }
+    }
+
     /// admin 요청: docs 명령 — 이름 optional, 목록/본문 파싱.
     #[test]
     fn cli_parse_docs() {
@@ -8271,11 +8438,11 @@ mod tests {
     fn cli_singular_type_status_parse_same_as_plural_alias() {
         for args in [["openguild", "type", "list"], ["openguild", "types", "list"]] {
             let cli = Cli::try_parse_from(args).unwrap();
-            assert!(matches!(cli.command, Command::Types { sub: TypesCmd::List }));
+            assert!(matches!(cli.command, Command::Types { sub: TypesCmd::List { .. } }));
         }
         for args in [["openguild", "status", "list"], ["openguild", "statuses", "list"]] {
             let cli = Cli::try_parse_from(args).unwrap();
-            assert!(matches!(cli.command, Command::Statuses { sub: StatusesCmd::List }));
+            assert!(matches!(cli.command, Command::Statuses { sub: StatusesCmd::List { .. } }));
         }
     }
 
@@ -8300,7 +8467,7 @@ mod tests {
     fn cli_library_subcommands_parse() {
         assert!(Cli::try_parse_from(["openguild", "library"]).is_err(), "sub 필수");
         let cli = Cli::try_parse_from(["openguild", "library", "list"]).unwrap();
-        assert!(matches!(cli.command, Command::Library { sub: LibraryCmd::List }));
+        assert!(matches!(cli.command, Command::Library { sub: LibraryCmd::List { .. } }));
 
         let cli = Cli::try_parse_from(["openguild", "library", "show", "BOOK-001"]).unwrap();
         match cli.command {
@@ -8504,12 +8671,12 @@ mod tests {
         let rewritten =
             rewrite_legacy_plural_bare_invocation(vec!["openguild".into(), "types".into()]);
         let cli = Cli::try_parse_from(rewritten).unwrap();
-        assert!(matches!(cli.command, Command::Types { sub: TypesCmd::List }));
+        assert!(matches!(cli.command, Command::Types { sub: TypesCmd::List { .. } }));
 
         let rewritten2 =
             rewrite_legacy_plural_bare_invocation(vec!["openguild".into(), "statuses".into()]);
         let cli2 = Cli::try_parse_from(rewritten2).unwrap();
-        assert!(matches!(cli2.command, Command::Statuses { sub: StatusesCmd::List }));
+        assert!(matches!(cli2.command, Command::Statuses { sub: StatusesCmd::List { .. } }));
 
         assert!(Cli::try_parse_from(["openguild", "type"]).is_err());
     }

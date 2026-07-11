@@ -94,6 +94,8 @@ openguild quest list --type DEV,BUG --status open,in_progress --urgency 1-2
                     --sort urgency,id --reverse --limit 20 --offset 0
                     --id-only | --count                # script 친화 출력
                     --table                            # 사람용 정렬 표 (--json/--tree 와 상호배타)
+# --table 은 목록형 명령 공통: quest list/deleted, campaign list, type list,
+# status list, library list (guild rule cli-list-command-options).
 
 openguild quest search "<keyword>" [--title-only] [--limit N]
                        [--id-only | --count]          # `list --search` 의 단축
