@@ -17,7 +17,14 @@ export interface LibraryTree {
 	nodeMap: Map<string, FolderNode>;
 }
 
-export function buildLibraryTree(folders: LibraryFolder[], books: Book[]): LibraryTree {
+export function buildLibraryTree(
+	folders: LibraryFolder[],
+	books: Book[],
+	// DEV-251: 호출측이 정렬 기준(번호/이름/수정순)을 고르면 books 를 미리
+	// 정렬해 넘기고 이 옵션으로 내부 title 재정렬을 끈다. 기본은 기존 동작
+	// (title localeCompare) — 다른 호출처/테스트 호환.
+	opts: { preserveDocOrder?: boolean } = {}
+): LibraryTree {
 	const nodeMap = new Map<string, FolderNode>();
 
 	function ensure(path: string): FolderNode {
@@ -47,13 +54,17 @@ export function buildLibraryTree(folders: LibraryFolder[], books: Book[]): Libra
 
 	function sortNode(n: FolderNode) {
 		n.children.sort((a, b) => a.name.localeCompare(b.name));
-		n.docs.sort((a, b) => a.title.localeCompare(b.title));
+		if (!opts.preserveDocOrder) {
+			n.docs.sort((a, b) => a.title.localeCompare(b.title));
+		}
 		n.children.forEach(sortNode);
 	}
 	const roots = [...nodeMap.values()].filter((n) => !n.path.includes('/'));
 	roots.sort((a, b) => a.name.localeCompare(b.name));
 	roots.forEach(sortNode);
-	rootDocs.sort((a, b) => a.title.localeCompare(b.title));
+	if (!opts.preserveDocOrder) {
+		rootDocs.sort((a, b) => a.title.localeCompare(b.title));
+	}
 
 	return { roots, rootDocs, nodeMap };
 }

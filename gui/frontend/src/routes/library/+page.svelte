@@ -117,7 +117,54 @@
 					return true;
 				})
 	);
-	const tree = $derived(buildLibraryTree(folders, tagFilteredBooks));
+	// DEV-251: 문서 정렬 기준 선택 — 번호/이름/수정순 + 방향. localStorage 영속.
+	type DocSortKey = 'number' | 'title' | 'updated';
+	const DOC_SORT_KEY = 'openguild.librarySort';
+	function loadDocSort(): { key: DocSortKey; desc: boolean } {
+		try {
+			const raw = JSON.parse(localStorage.getItem(DOC_SORT_KEY) ?? '');
+			if (
+				raw &&
+				['number', 'title', 'updated'].includes(raw.key) &&
+				typeof raw.desc === 'boolean'
+			) {
+				return raw;
+			}
+		} catch {
+			/* ignore */
+		}
+		return { key: 'title', desc: false }; // 기존 기본(이름순)과 동일.
+	}
+	let docSortKey = $state<DocSortKey>(loadDocSort().key);
+	let docSortDesc = $state(loadDocSort().desc);
+	$effect(() => {
+		try {
+			localStorage.setItem(DOC_SORT_KEY, JSON.stringify({ key: docSortKey, desc: docSortDesc }));
+		} catch {
+			/* ignore */
+		}
+	});
+	const DOC_SORT_LABELS: Record<DocSortKey, string> = {
+		number: '번호',
+		title: '이름',
+		updated: '수정'
+	};
+	const sortedBooks = $derived.by(() => {
+		const cmp = (a: Book, b: Book): number => {
+			switch (docSortKey) {
+				case 'number':
+					return a.number - b.number;
+				case 'updated':
+					return a.updated_at.localeCompare(b.updated_at);
+				default:
+					return a.title.localeCompare(b.title);
+			}
+		};
+		const arr = [...tagFilteredBooks].sort(cmp);
+		if (docSortDesc) arr.reverse();
+		return arr;
+	});
+	const tree = $derived(buildLibraryTree(folders, sortedBooks, { preserveDocOrder: true }));
 
 	// ─── 보기 방식 (tree / explorer) — localStorage 로 유지 ───
 	type ViewMode = 'tree' | 'explorer';
@@ -159,7 +206,7 @@
 	// 전체를 항상 다 보여줌) 전역 유지. 폴더 이름도 매칭 대상에 포함.
 	let searchQuery = $state('');
 	const searchScope = $derived(viewMode === 'explorer' ? explorerPath : '');
-	const searchResults = $derived(searchLibrary(tree, tagFilteredBooks, searchQuery, searchScope));
+	const searchResults = $derived(searchLibrary(tree, sortedBooks, searchQuery, searchScope));
 
 	let editMode = $state(false);
 	$effect(() => setUnsaved('library-edit', editMode));
@@ -564,12 +611,28 @@
 			<button class="btn-new" onclick={openCreateFolder}>+ 폴더</button>
 			<button class="btn-new" onclick={openCreate}>+ 신규</button>
 		</div>
-		<input
-			class="search-input"
-			type="search"
-			placeholder="제목/본문 검색"
-			bind:value={searchQuery}
-		/>
+		<div class="search-row">
+			<input
+				class="search-input"
+				type="search"
+				placeholder="제목/본문 검색"
+				bind:value={searchQuery}
+			/>
+			<!-- DEV-251: 문서 정렬 — quest list 의 sort-group 과 동일 패턴. -->
+			<div class="sort-group" aria-label="문서 정렬">
+				<select class="sort-sel" bind:value={docSortKey} title="정렬 기준">
+					{#each Object.entries(DOC_SORT_LABELS) as [k, label] (k)}
+						<option value={k}>{label}</option>
+					{/each}
+				</select>
+				<button
+					class="sort-dir"
+					onclick={() => (docSortDesc = !docSortDesc)}
+					title={docSortDesc ? '내림차순 — 클릭 시 오름차순' : '오름차순 — 클릭 시 내림차순'}
+					aria-label="정렬 방향">{docSortDesc ? '↓' : '↑'}</button
+				>
+			</div>
+		</div>
 		{#if allTagOptions.length > 0}
 			<div class="tag-filter-row" aria-label="태그 필터">
 				{#each allTagOptions as t (t)}
@@ -778,12 +841,28 @@
 						<button class="btn-new" onclick={openCreateFolder} title="새 폴더">+ 폴더</button>
 						<button class="btn-new" onclick={openCreate} title="신규 문서">+ 신규</button>
 					</div>
-					<input
-						class="search-input"
-						type="search"
-						placeholder="제목/본문 검색"
-						bind:value={searchQuery}
-					/>
+					<div class="search-row">
+						<input
+							class="search-input"
+							type="search"
+							placeholder="제목/본문 검색"
+							bind:value={searchQuery}
+						/>
+						<!-- DEV-251: 문서 정렬 — quest list 의 sort-group 과 동일 패턴. -->
+						<div class="sort-group" aria-label="문서 정렬">
+							<select class="sort-sel" bind:value={docSortKey} title="정렬 기준">
+								{#each Object.entries(DOC_SORT_LABELS) as [k, label] (k)}
+									<option value={k}>{label}</option>
+								{/each}
+							</select>
+							<button
+								class="sort-dir"
+								onclick={() => (docSortDesc = !docSortDesc)}
+								title={docSortDesc ? '내림차순 — 클릭 시 오름차순' : '오름차순 — 클릭 시 내림차순'}
+								aria-label="정렬 방향">{docSortDesc ? '↓' : '↑'}</button
+							>
+						</div>
+					</div>
 					{#if allTagOptions.length > 0}
 						<div class="tag-filter-row" aria-label="태그 필터">
 							{#each allTagOptions as t (t)}
@@ -1419,6 +1498,47 @@
 	.book-path {
 		font-size: 0.68rem;
 		color: var(--text-muted);
+	}
+
+	/* DEV-251: 검색 + 정렬 한 줄 배치. */
+	.search-row {
+		display: flex;
+		gap: 0.35rem;
+		align-items: center;
+	}
+	.search-row .search-input {
+		flex: 1;
+		min-width: 0;
+	}
+	/* DEV-251: 정렬 select + 방향 토글 — QuestList 의 sort-group 과 동일 패턴. */
+	.sort-group {
+		display: flex;
+		align-items: center;
+		gap: 0.25rem;
+		flex: none;
+	}
+	.sort-sel {
+		padding: 0.25rem 0.5rem;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		color: var(--text);
+		font-size: 0.78rem;
+		cursor: pointer;
+	}
+	.sort-dir {
+		width: 1.7rem;
+		height: 1.7rem;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		color: var(--text-muted);
+		font-size: 0.85rem;
+		cursor: pointer;
+	}
+	.sort-dir:hover {
+		color: var(--text);
+		border-color: var(--text-faint);
 	}
 
 	/* DEV-243 후속: 태그 필터 chip — quest QuestList.svelte 와 동일 패턴. */

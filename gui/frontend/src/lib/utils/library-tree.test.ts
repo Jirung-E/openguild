@@ -46,6 +46,23 @@ describe('buildLibraryTree', () => {
 		const tree = buildLibraryTree([folder('운영'), folder('아키텍처')], []);
 		expect(flattenFolderPaths(tree)).toEqual(['아키텍처', '운영']);
 	});
+
+	// DEV-251: 호출측 정렬(번호/수정순 등) 보존 옵션 — 내부 title 재정렬 끔.
+	it('preserveDocOrder 면 입력 순서를 그대로 유지 (기본은 title 정렬)', () => {
+		const input = [
+			book('BOOK-003', 'ㄷ문서', ''),
+			book('BOOK-001', 'ㄱ문서', ''),
+			book('BOOK-002', 'ㄴ문서', '')
+		];
+		const preserved = buildLibraryTree([], input, { preserveDocOrder: true });
+		expect(preserved.rootDocs.map((b) => b.book_id)).toEqual([
+			'BOOK-003',
+			'BOOK-001',
+			'BOOK-002'
+		]);
+		const sorted = buildLibraryTree([], input);
+		expect(sorted.rootDocs.map((b) => b.title)).toEqual(['ㄱ문서', 'ㄴ문서', 'ㄷ문서']);
+	});
 });
 
 describe('searchBooks', () => {
