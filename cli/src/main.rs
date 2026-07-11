@@ -124,6 +124,12 @@ enum Command {
         #[command(subcommand)]
         sub: TagDefCmd,
     },
+    /// 번들 문서를 stdout 으로 출력 — 빌드에 embed 되어 있어 파일 경로/읽기
+    /// 권한이 필요 없음 (agent 친화). 이름 미지정 시 목록.
+    Docs {
+        /// agents | usage | readme | changelog
+        name: Option<String>,
+    },
     /// 작업 기록 — 날짜/기간별 활동 타임라인 + 날짜별 노트.
     Worklog {
         #[command(subcommand)]
@@ -4706,6 +4712,10 @@ fn run() -> Result<()> {
     if let Command::Init { name } = &cli.command {
         return init_guild(name.clone(), cli.json);
     }
+    // docs 도 길드/백엔드 무관 (embed 문서 출력) — 길드 밖에서도 동작해야 함.
+    if let Command::Docs { name } = &cli.command {
+        return handle_docs(cli.json, name.clone());
+    }
 
     let c = Backend::new(cli.remote.clone(), cli.guild.clone())?;
 
@@ -4737,6 +4747,7 @@ fn run() -> Result<()> {
         Command::Rules { sub } => handle_rules(&c, cli.json, sub)?,
         Command::Library { sub } => handle_library(&c, cli.json, sub)?,
         Command::Tag { sub } => handle_tag(&c, cli.json, sub)?,
+        Command::Docs { .. } => unreachable!("handled above"),
         Command::Worklog { sub } => handle_worklog(&c, cli.json, sub)?,
         Command::Backup { sub } => handle_backup(&c, cli.json, sub)?,
         Command::Restore { to, at } => handle_restore(&c, cli.json, to, at)?,
@@ -5040,6 +5051,56 @@ fn handle_types(c: &Backend, json: bool, sub: TypesCmd) -> Result<()> {
                 println!("{}", serde_json::json!({ "ok": true }));
             } else {
                 println!("'{}' 삭제됨", prefix.trim());
+            }
+        }
+    }
+    Ok(())
+}
+
+/// 번들 문서 embed 출력 — `include_str!` 이 **컴파일 타임에 리포의 md 파일을
+/// 그대로 담으므로** 진리원은 기존 문서 파일 하나뿐(이중 관리 없음). 문서를
+/// 고치면 다음 빌드가 자동 반영. 설치 폴더의 docs/ 복사본이 유실/차단돼도
+/// 이 명령은 항상 동작.
+fn handle_docs(json: bool, name: Option<String>) -> Result<()> {
+    const DOCS: &[(&str, &str, &str)] = &[
+        (
+            "agents",
+            "AI agent 용 openguild 사용 가이드 (AGENTS_OPENGUILD_USAGE.md)",
+            include_str!("../../docs/AGENTS_OPENGUILD_USAGE.md"),
+        ),
+        ("usage", "사용자 매뉴얼 (USAGE.md)", include_str!("../../docs/USAGE.md")),
+        ("readme", "프로젝트 소개 (README.md)", include_str!("../../README.md")),
+        ("changelog", "변경 이력 (CHANGELOG.md)", include_str!("../../CHANGELOG.md")),
+    ];
+    match name {
+        Some(n) => {
+            let key = n.to_lowercase();
+            let Some((_, _, body)) = DOCS.iter().find(|(k, _, _)| *k == key) else {
+                bail!(
+                    "알 수 없는 문서 '{n}' — 사용 가능: {}",
+                    DOCS.iter().map(|(k, _, _)| *k).collect::<Vec<_>>().join(" | ")
+                );
+            };
+            // 문서 원문 그대로 — json 모드도 raw 출력(문서는 markdown 텍스트).
+            print!("{body}");
+            if !body.ends_with('\n') {
+                println!();
+            }
+        }
+        None => {
+            if json {
+                println!(
+                    "{}",
+                    serde_json::json!(DOCS
+                        .iter()
+                        .map(|(k, d, _)| serde_json::json!({ "name": k, "description": d }))
+                        .collect::<Vec<_>>())
+                );
+            } else {
+                for (k, d, _) in DOCS {
+                    println!("{k:<10} {d}");
+                }
+                println!("\n사용: openguild docs <name>");
             }
         }
     }
@@ -7324,6 +7385,20 @@ mod tests {
             }
             _ => panic!("expected comment pinned"),
         }
+    }
+
+    /// admin 요청: docs 명령 — 이름 optional, 목록/본문 파싱.
+    #[test]
+    fn cli_parse_docs() {
+        let bare = Cli::try_parse_from(["openguild", "docs"]).unwrap();
+        assert!(matches!(bare.command, Command::Docs { name: None }));
+        let named = Cli::try_parse_from(["openguild", "docs", "agents"]).unwrap();
+        match named.command {
+            Command::Docs { name } => assert_eq!(name.as_deref(), Some("agents")),
+            _ => panic!("expected docs"),
+        }
+        // 알 수 없는 이름은 파싱은 통과(런타임 에러 담당) — free string 이므로.
+        assert!(Cli::try_parse_from(["openguild", "docs", "nope"]).is_ok());
     }
 
     /// admin 요청: top-level tag 그룹 — 단수형 + sub 필수 규칙 준수.

@@ -6,6 +6,9 @@ AI agent / 자동화 스크립트가 openguild 를 **자기 작업 관리 도구
 > 이 문서와 번들 문서들은 `~/.openguild/docs/` 에도 복사됨 — 설치 폴더
 > (%LOCALAPPDATA%) 접근이 샌드박스로 막히는 환경에서는 그쪽을 읽을 것.
 > recents 등 사용자 데이터도 `~/.openguild/` 에 있음.
+>
+> 파일 읽기 자체가 막히는 환경이면 **`openguild docs agents`** — 이 문서가
+> 바이너리에 embed 되어 있어 stdout 으로 그대로 출력됨 (경로 불필요).
 
 ---
 
