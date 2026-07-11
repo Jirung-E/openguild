@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { page } from '$app/stores';
-	import { onMount } from 'svelte';
 	import { adminApi } from '$lib/api/admin';
 	import { metaApi } from '$lib/api/meta';
 	import { bumpReindex } from '$lib/stores/reindex';
@@ -15,16 +14,29 @@
 	// ("openguild-welcome-placeholder")이 잘못 보였다. `metaApi.getGuildDisplayInfo()`
 	// 가 모드별로 올바른 source(Tauri-local invoke vs HTTP)를 골라 항상 실제
 	// 길드 이름을 가져오고, 원격 연결이면 `isRemote` 로 배지도 표시.
+	// BUG-136 후속(admin #2): 다른 길드를 열었다가 Welcome 으로 돌아오면 Nav 에
+	// 이전 길드 이름이 남았음 — onMount 1회 조회는 라우팅 변화를 못 따라감.
+	// DEV-207 의 guildContextActive(보드/Welcome 마운트가 갱신, 이번에 반응형
+	// 스토어화)를 구독해 활성 전환마다 재조회 / 비활성이면 숨김.
+	import { guildContextActive } from '$lib/stores/guildSession';
 	let guildName = $state('');
 	let isRemoteGuild = $state(false);
-	onMount(async () => {
-		try {
-			const info = await metaApi.getGuildDisplayInfo();
-			guildName = info.name;
-			isRemoteGuild = info.remote;
-		} catch {
-			/* 길드 모드 아님 / 조회 실패 — 표시 안 함 */
+	$effect(() => {
+		if (!$guildContextActive) {
+			guildName = '';
+			isRemoteGuild = false;
+			return;
 		}
+		metaApi
+			.getGuildDisplayInfo()
+			.then((info) => {
+				guildName = info.name;
+				isRemoteGuild = info.remote;
+			})
+			.catch(() => {
+				/* 길드 모드 아님 / 조회 실패 — 표시 안 함 */
+				guildName = '';
+			});
 	});
 
 	// DEV-011: Home 탭. URL `/` 가 ?view 없으면 home 기본.
