@@ -16,6 +16,8 @@
 	import { resolveGuildKeyPrefix, guildKey } from '$lib/utils/guild-storage';
 	import { questsApi } from '$lib/api/quests';
 	import { metaApi } from '$lib/api/meta';
+	// DEV-205 모듈3: Quest List 문자열 i18n.
+	import { locale, t } from '$lib/stores/locale';
 	import type { Quest, QuestStatus, QuestType } from '$lib/types';
 	import {
 		ancestorIdsOf,
@@ -122,13 +124,13 @@
 	// DEV-033: 정렬 — CLI --sort 와 1:1. URL ?sort= / ?desc=1 + localStorage 영속.
 	const SORT_KEY = 'openguild.questListSort';
 	const SORT_KEYS: SortKey[] = ['id', 'urgency', 'status', 'updated', 'created'];
-	const SORT_LABELS: Record<SortKey, string> = {
-		id: 'ID (생성 순)',
-		urgency: '긴급도',
-		status: '상태',
-		updated: '갱신 시각',
-		created: '생성 시각'
-	};
+	const SORT_LABELS: Record<SortKey, string> = $derived({
+		id: t('questList.sortId', $locale),
+		urgency: t('questList.sortUrgency', $locale),
+		status: t('questList.sortStatus', $locale),
+		updated: t('questList.sortUpdated', $locale),
+		created: t('questList.sortCreated', $locale)
+	});
 	let sortKey = $state<SortKey>('id');
 	let sortDesc = $state(false);
 
@@ -478,7 +480,7 @@
 	     + 동일 크기. 페이지 전환 시 버튼이 안 흔들리도록. filter-bar 위에 떠 있되
 	     filter-bar 가 우측 130px padding 으로 자리 비워둠. -->
 	{#if onNewQuest}
-		<button class="qb-new" onclick={onNewQuest} title="새 퀘스트">
+		<button class="qb-new" onclick={onNewQuest} title={t('questList.newQuest', $locale)}>
 			<span class="qb-new-icon">+</span><span>New Quest</span>
 		</button>
 	{/if}
@@ -501,12 +503,12 @@
 
 	<!-- DEV-065 / DEV-068: 뷰 모드 토글 + tag 필터 chip 들 — filter-bar 아래. -->
 	<div class="view-toggle-row">
-		<div class="view-toggle" role="group" aria-label="뷰 모드">
+		<div class="view-toggle" role="group" aria-label={t('questList.viewMode', $locale)}>
 			<button
 				class="vt-btn"
 				class:active={viewMode === 'tree'}
 				onclick={() => (viewMode = 'tree')}
-				title="트리 — 부모 아래로 자식 들여쓰기"
+				title={t('questList.treeTitle', $locale)}
 				aria-pressed={viewMode === 'tree'}
 			>
 				<span class="vt-icon">⇲</span><span>Tree</span>
@@ -515,15 +517,15 @@
 				class="vt-btn"
 				class:active={viewMode === 'list'}
 				onclick={() => (viewMode = 'list')}
-				title="리스트 — 모든 퀘스트 평면"
+				title={t('questList.listTitle', $locale)}
 				aria-pressed={viewMode === 'list'}
 			>
 				<span class="vt-icon">≡</span><span>List</span>
 			</button>
 		</div>
 		<!-- DEV-033: 정렬 — CLI --sort 와 1:1. 방향 토글 = --reverse. -->
-		<div class="sort-group" aria-label="정렬">
-			<select class="sort-sel" bind:value={sortKey} title="정렬 기준">
+		<div class="sort-group" aria-label={t('questList.sort', $locale)}>
+			<select class="sort-sel" bind:value={sortKey} title={t('questList.sortBy', $locale)}>
 				{#each SORT_KEYS as k (k)}
 					<option value={k}>{SORT_LABELS[k]}</option>
 				{/each}
@@ -531,31 +533,33 @@
 			<button
 				class="sort-dir"
 				onclick={() => (sortDesc = !sortDesc)}
-				title={sortDesc ? '내림차순 — 클릭 시 오름차순' : '오름차순 — 클릭 시 내림차순'}
-				aria-label="정렬 방향">{sortDesc ? '↓' : '↑'}</button
+				title={sortDesc ? t('questList.sortDesc', $locale) : t('questList.sortAsc', $locale)}
+				aria-label={t('questList.sortDir', $locale)}>{sortDesc ? '↓' : '↑'}</button
 			>
 		</div>
 		<!-- DEV-068: 모든 quest 의 unique tag 들. 클릭으로 필터 토글 (AND). -->
 		{#if allTagOptions.length > 0}
-			<div class="tag-filter-row" aria-label="태그 필터">
-				{#each allTagOptions as t (t)}
+			<div class="tag-filter-row" aria-label={t('questList.tagFilter', $locale)}>
+				{#each allTagOptions as tag (tag)}
 					<button
 						class="tag-filter-chip"
-						class:active={filterTags.has(t)}
-						onclick={() => toggleTagFilter(t)}
-						title={filterTags.has(t) ? `${t} 필터 해제` : `${t} 필터 추가`}
+						class:active={filterTags.has(tag)}
+						onclick={() => toggleTagFilter(tag)}
+						title={filterTags.has(tag)
+							? `${tag}${t('questList.filterRemoveSuffix', $locale)}`
+							: `${tag}${t('questList.filterAddSuffix', $locale)}`}
 					>
-						{t}
-						<span class="tag-chip-count">{tagCounts.get(t) ?? 0}</span>
+						{tag}
+						<span class="tag-chip-count">{tagCounts.get(tag) ?? 0}</span>
 					</button>
 				{/each}
 				{#if filterTags.size > 0}
 					<button
 						class="tag-clear"
 						onclick={() => (filterTags = new Set())}
-						title="태그 필터 모두 해제"
+						title={t('questList.clearTagFilters', $locale)}
 					>
-						× 전체 해제
+						{t('questList.clearAllBtn', $locale)}
 					</button>
 				{/if}
 			</div>

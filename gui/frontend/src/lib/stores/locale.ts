@@ -370,7 +370,47 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'comment.deleteMsg': { ko: '이 댓글을 삭제할까요? (답글이 있다면 그대로 남고 안내가 표시됩니다)', en: 'Delete this comment? (any replies are kept with a notice)' },
 	'comment.ruleLinkPrefix': { ko: '규칙 · ', en: 'Rule · ' },
 	'comment.bookLinkPrefix': { ko: '도서관 · ', en: 'Library · ' },
-	'comment.newLink': { ko: '새 링크 (미존재)', en: 'New link (does not exist)' }
+	'comment.newLink': { ko: '새 링크 (미존재)', en: 'New link (does not exist)' },
+
+	// DEV-205 모듈3: Quest List 툴바.
+	'questList.newQuest': { ko: '새 퀘스트', en: 'New quest' },
+	'questList.viewMode': { ko: '뷰 모드', en: 'View mode' },
+	'questList.treeTitle': { ko: '트리 — 부모 아래로 자식 들여쓰기', en: 'Tree — children indented under parents' },
+	'questList.listTitle': { ko: '리스트 — 모든 퀘스트 평면', en: 'List — all quests flat' },
+	'questList.sort': { ko: '정렬', en: 'Sort' },
+	'questList.sortBy': { ko: '정렬 기준', en: 'Sort by' },
+	'questList.sortDir': { ko: '정렬 방향', en: 'Sort direction' },
+	'questList.sortDesc': { ko: '내림차순 — 클릭 시 오름차순', en: 'Descending — click for ascending' },
+	'questList.sortAsc': { ko: '오름차순 — 클릭 시 내림차순', en: 'Ascending — click for descending' },
+	'questList.tagFilter': { ko: '태그 필터', en: 'Tag filter' },
+	'questList.filterRemoveSuffix': { ko: ' 필터 해제', en: ' — remove filter' },
+	'questList.filterAddSuffix': { ko: ' 필터 추가', en: ' — add filter' },
+	'questList.clearTagFilters': { ko: '태그 필터 모두 해제', en: 'Clear all tag filters' },
+	'questList.clearAllBtn': { ko: '× 전체 해제', en: '× Clear all' },
+	'questList.sortId': { ko: 'ID (생성 순)', en: 'ID (creation order)' },
+	'questList.sortUrgency': { ko: '긴급도', en: 'Urgency' },
+	'questList.sortStatus': { ko: '상태', en: 'Status' },
+	'questList.sortUpdated': { ko: '갱신 시각', en: 'Updated' },
+	'questList.sortCreated': { ko: '생성 시각', en: 'Created' },
+
+	// DEV-205 모듈3: Quest List 필터.
+	'filter.triAny': { ko: '전체', en: 'All' },
+	'filter.triHas': { ko: '있음', en: 'Has' },
+	'filter.triNone': { ko: '없음', en: 'None' },
+	'filter.search': { ko: '검색', en: 'Search' },
+	'filter.searchPlaceholder': { ko: '검색 (제목 / 본문)', en: 'Search (title / body)' },
+	'filter.clearSearch': { ko: '검색어 지우기', en: 'Clear search' },
+	'filter.titleOnly': { ko: '제목만', en: 'Title only' },
+	'filter.advanced': { ko: '고급', en: 'Advanced' },
+	'filter.urgency': { ko: '긴급도', en: 'Urgency' },
+	'filter.prereqLabel': { ko: '선행', en: 'Prereq' },
+	'filter.subLabel': { ko: '서브', en: 'Sub' },
+	'filter.prereqTitle': { ko: '선행 quest 보유 여부 (전체 → 있음 → 없음)', en: 'Has prerequisites (all → has → none)' },
+	'filter.subTitle': { ko: '서브 quest 보유 여부 (전체 → 있음 → 없음)', en: 'Has sub-quests (all → has → none)' },
+	'filter.created': { ko: '생성', en: 'Created' },
+	'filter.updated': { ko: '갱신', en: 'Updated' },
+	'filter.clearAdvanced': { ko: '고급 필터 모두 해제', en: 'Clear all advanced filters' },
+	'filter.clearBtn': { ko: '× 해제', en: '× Clear' }
 };
 
 /** 현재 locale 기준 번역. 누락 키는 ko 원문 그대로(안전한 fallback). */
