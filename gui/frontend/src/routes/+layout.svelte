@@ -29,6 +29,9 @@
 	// DEV-114: 커스텀 테마 — 시동 시 활성 프리셋의 토큰 override 복원.
 	import { initCustomTheme } from '$lib/stores/customThemes';
 	import { get } from 'svelte/store';
+	// DEV-205: 앱 언어 → <html lang>. 네이티브 컨트롤(날짜 선택기의 년-월-일
+	// 표기 등)이 앱 언어를 따르도록.
+	import { locale } from '$lib/stores/locale';
 	import '$lib/styles/global.css';
 
 	let { children } = $props();
@@ -50,6 +53,12 @@
 			'--titlebar-h',
 			showTitleBar ? '32px' : '0px'
 		);
+	});
+
+	// DEV-205: <html lang> 을 앱 언어에 맞춤 — 네이티브 date input 등이 반영.
+	$effect(() => {
+		if (typeof document === 'undefined') return;
+		document.documentElement.lang = $locale;
 	});
 
 	// DEV-153: 미저장 변경 통합 가드. 편집 중(unsaved.ts 에 보고된 dirty)이면

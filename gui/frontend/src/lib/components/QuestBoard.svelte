@@ -2415,7 +2415,7 @@
 			[1, 2, 3].forEach((n) => {
 				const opt = document.createElement('option');
 				opt.value = String(n);
-				opt.textContent = `${n}열`;
+				opt.textContent = `${n}${t('board.colSuffix', get(locale))}`;
 				if (n === initialCols) opt.selected = true;
 				sel.appendChild(opt);
 			});
@@ -3138,7 +3138,7 @@
 	{#if onNewQuest}
 		<div class="tb-newquest-wrap">
 			<button class="tb-btn tb-new" onclick={onNewQuest} title={t('board.newQuest', $locale)}>
-				<span class="icon">+</span><span>New Quest</span>
+				<span class="icon">+</span><span>{t('board.newQuest', $locale)}</span>
 			</button>
 		</div>
 	{/if}

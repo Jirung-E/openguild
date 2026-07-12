@@ -20,6 +20,8 @@
 	import { goto, afterNavigate } from '$app/navigation';
 	import { metaApi } from '$lib/api/meta';
 	import { guildContextActive } from '$lib/stores/guildSession';
+	// DEV-205: 타이틀바 툴팁/메뉴 i18n.
+	import { locale, t } from '$lib/stores/locale';
 	import SearchPalette from './SearchPalette.svelte';
 
 	let maximized = $state(false);
@@ -105,18 +107,18 @@
 	<img class="tb-appicon" src="/title-icon.png" alt="" data-tauri-drag-region />
 
 	<div class="tb-left">
-		<button class="tb-icon-btn" onclick={() => goto('/welcome')} title="Welcome" aria-label="Welcome">
+		<button class="tb-icon-btn" onclick={() => goto('/welcome')} title={t('titlebar.welcome', $locale)} aria-label={t('titlebar.welcome', $locale)}>
 			<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" aria-hidden="true">
 				<path d="M2 8.2 L8 2.6 L14 8.2" />
 				<path d="M3.6 7 V13.4 H12.4 V7" />
 			</svg>
 		</button>
-		<button class="tb-icon-btn" onclick={() => history.back()} title="뒤로" aria-label="뒤로">
+		<button class="tb-icon-btn" onclick={() => history.back()} title={t('titlebar.back', $locale)} aria-label={t('titlebar.back', $locale)}>
 			<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 				<path d="M10 3 L5.5 8 L10 13" />
 			</svg>
 		</button>
-		<button class="tb-icon-btn" onclick={() => history.forward()} title="앞으로" aria-label="앞으로">
+		<button class="tb-icon-btn" onclick={() => history.forward()} title={t('titlebar.forward', $locale)} aria-label={t('titlebar.forward', $locale)}>
 			<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 				<path d="M6 3 L10.5 8 L6 13" />
 			</svg>
@@ -127,8 +129,8 @@
 				class="tb-icon-btn"
 				class:active={menuOpen}
 				onclick={() => (menuOpen = !menuOpen)}
-				title="메뉴"
-				aria-label="메뉴"
+				title={t('titlebar.menu', $locale)}
+				aria-label={t('titlebar.menu', $locale)}
 				aria-expanded={menuOpen}
 			>
 				<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" aria-hidden="true">
@@ -142,21 +144,21 @@
 							<rect x="2.5" y="2.5" width="11" height="11" rx="1.5" />
 							<path d="M5 6h6M5 8.5h6M5 11h3.5" />
 						</svg>
-						캠페인 목록
+						{t('titlebar.menuCampaigns', $locale)}
 					</button>
 					<button onclick={() => goto('/worklog')}>
 						<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 							<circle cx="8" cy="8" r="5.5" />
 							<path d="M8 4.8V8l2.2 1.6" />
 						</svg>
-						작업기록
+						{t('titlebar.menuWorklog', $locale)}
 					</button>
 					<button onclick={() => goto('/tags')}>
 						<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 							<path d="M8.3 2.5H3.2A.7.7 0 0 0 2.5 3.2v5.1a1 1 0 0 0 .3.7l4.9 4.9a1 1 0 0 0 1.4 0l4.4-4.4a1 1 0 0 0 0-1.4L9 2.8a1 1 0 0 0-.7-.3Z" />
 							<circle cx="5.4" cy="5.4" r=".9" />
 						</svg>
-						태그 목록
+						{t('titlebar.menuTags', $locale)}
 					</button>
 				</div>
 			{/if}
@@ -166,10 +168,10 @@
 
 	<!-- 중앙: 길드 이름 pill = 검색 팔레트. 길드 컨텍스트 있을 때만. -->
 	{#if $guildContextActive && guildName}
-		<button class="tb-search" class:open={searchOpen} onclick={() => (searchOpen = true)} title="문서 검색">
+		<button class="tb-search" class:open={searchOpen} onclick={() => (searchOpen = true)} title={t('titlebar.search', $locale)}>
 			<span class="tb-search-name">{guildName}</span>
 			{#if isRemote}
-				<span class="tb-remote" title="원격 서버에 연결됨">
+				<span class="tb-remote" title={t('nav.remoteConnected', $locale)}>
 					<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">
 						<circle cx="8" cy="8" r="5.7" />
 						<ellipse cx="8" cy="8" rx="2.4" ry="5.7" />
@@ -183,7 +185,7 @@
 	<div class="tb-spacer" data-tauri-drag-region></div>
 
 	<div class="tb-controls">
-		<button class="tb-btn" onclick={() => winCtl('min')} title="최소화" aria-label="최소화">
+		<button class="tb-btn" onclick={() => winCtl('min')} title={t('titlebar.minimize', $locale)} aria-label={t('titlebar.minimize', $locale)}>
 			<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
 				<line x1="0" y1="5" x2="10" y2="5" stroke="currentColor" stroke-width="1" />
 			</svg>
@@ -191,8 +193,8 @@
 		<button
 			class="tb-btn"
 			onclick={() => winCtl('max')}
-			title={maximized ? '이전 크기로 복원' : '최대화'}
-			aria-label={maximized ? '이전 크기로 복원' : '최대화'}
+			title={maximized ? t('titlebar.restore', $locale) : t('titlebar.maximize', $locale)}
+			aria-label={maximized ? t('titlebar.restore', $locale) : t('titlebar.maximize', $locale)}
 		>
 			{#if maximized}
 				<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
@@ -205,7 +207,7 @@
 				</svg>
 			{/if}
 		</button>
-		<button class="tb-btn tb-close" onclick={() => winCtl('close')} title="닫기" aria-label="닫기">
+		<button class="tb-btn tb-close" onclick={() => winCtl('close')} title={t('titlebar.close', $locale)} aria-label={t('titlebar.close', $locale)}>
 			<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
 				<line x1="0" y1="0" x2="10" y2="10" stroke="currentColor" stroke-width="1" />
 				<line x1="10" y1="0" x2="0" y2="10" stroke="currentColor" stroke-width="1" />

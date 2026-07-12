@@ -481,7 +481,7 @@
 	     filter-bar 가 우측 130px padding 으로 자리 비워둠. -->
 	{#if onNewQuest}
 		<button class="qb-new" onclick={onNewQuest} title={t('questList.newQuest', $locale)}>
-			<span class="qb-new-icon">+</span><span>New Quest</span>
+			<span class="qb-new-icon">+</span><span>{t('questList.newQuest', $locale)}</span>
 		</button>
 	{/if}
 
@@ -511,7 +511,7 @@
 				title={t('questList.treeTitle', $locale)}
 				aria-pressed={viewMode === 'tree'}
 			>
-				<span class="vt-icon">⇲</span><span>Tree</span>
+				<span class="vt-icon">⇲</span><span>{t('questList.tree', $locale)}</span>
 			</button>
 			<button
 				class="vt-btn"
@@ -520,7 +520,7 @@
 				title={t('questList.listTitle', $locale)}
 				aria-pressed={viewMode === 'list'}
 			>
-				<span class="vt-icon">≡</span><span>List</span>
+				<span class="vt-icon">≡</span><span>{t('questList.list', $locale)}</span>
 			</button>
 		</div>
 		<!-- DEV-033: 정렬 — CLI --sort 와 1:1. 방향 토글 = --reverse. -->
