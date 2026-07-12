@@ -176,6 +176,7 @@
 		style:height="{thumbH}px"
 		style:top="{thumbTop}px"
 		style:right="{thumbRight}px"
+		style:z-index={target ? 9999 : 90}
 		onpointerdown={onDown}
 		onpointermove={onMove}
 		onpointerup={onUp}
