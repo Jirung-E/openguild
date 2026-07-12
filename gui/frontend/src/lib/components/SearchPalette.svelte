@@ -20,6 +20,8 @@
 	import { rulesApi } from '$lib/api/rules';
 	import { libraryApi } from '$lib/api/library';
 	import MarkdownView from './MarkdownView.svelte';
+	// 크로스링크(`[[kind:ID]]`)와 동일한 네임스페이스 별칭 — 검색 범위 좁히기.
+	import { KIND_ALIASES, KIND_LABEL } from '$lib/stores/questIndex';
 
 	let { onclose }: { onclose: () => void } = $props();
 
@@ -33,13 +35,6 @@
 		meta: string; // 상태 등 짧은 부가 정보
 		load: () => Promise<string>; // 미리보기 본문(markdown) 지연 로더
 	}
-
-	const KIND_LABEL: Record<Kind, string> = {
-		quest: '퀘스트',
-		campaign: '캠페인',
-		rule: '규칙',
-		book: '도서관'
-	};
 
 	let all = $state<Item[]>([]);
 	let loading = $state(true);
@@ -118,16 +113,33 @@
 		}
 	}
 
-	const filtered = $derived.by(() => {
-		const raw = query.trim();
-		if (!raw) return all.slice(0, 50);
-		if (raw.startsWith('#')) {
-			const tag = raw.slice(1).toLowerCase();
-			if (!tag) return all.filter((i) => i.tags.length > 0).slice(0, 50);
-			return all.filter((i) => i.tags.some((t) => t.toLowerCase().includes(tag))).slice(0, 50);
+	// 입력을 `namespace:` 접두 + 나머지 검색어로 분리. 크로스링크(`[[kind:ID]]`)와
+	// 동일한 별칭 테이블 재사용: quest/q · campaign/c · rule/rules/r · book/library/lib.
+	const parsed = $derived.by((): { kind: Kind | null; term: string } => {
+		let raw = query.trim();
+		const ci = raw.indexOf(':');
+		if (ci > 0) {
+			const prefix = raw.slice(0, ci).toLowerCase();
+			const k = KIND_ALIASES[prefix];
+			if (k) return { kind: k, term: raw.slice(ci + 1).trim() };
 		}
-		const q = raw.toLowerCase();
-		return all
+		return { kind: null, term: raw };
+	});
+
+	// 활성 네임스페이스 범위 — 있으면 그 종류만 검색(범위 칩 표시용).
+	const scopeKind = $derived(parsed.kind);
+
+	const filtered = $derived.by(() => {
+		const { kind, term } = parsed;
+		const pool = kind ? all.filter((i) => i.kind === kind) : all;
+		if (!term) return pool.slice(0, 50);
+		if (term.startsWith('#')) {
+			const tag = term.slice(1).toLowerCase();
+			if (!tag) return pool.filter((i) => i.tags.length > 0).slice(0, 50);
+			return pool.filter((i) => i.tags.some((t) => t.toLowerCase().includes(tag))).slice(0, 50);
+		}
+		const q = term.toLowerCase();
+		return pool
 			.filter(
 				(i) =>
 					i.title.toLowerCase().includes(q) ||
@@ -213,13 +225,18 @@
 
 <div class="palette" role="dialog" aria-label="문서 검색">
 	{#if !preview}
-		<input
-			bind:this={inputEl}
-			bind:value={query}
-			onkeydown={onKey}
-			placeholder="검색어 또는 #태그 입력…"
-			spellcheck="false"
-		/>
+		<div class="input-wrap">
+			{#if scopeKind}
+				<span class="scope-chip {scopeKind}">{KIND_LABEL[scopeKind]}만</span>
+			{/if}
+			<input
+				bind:this={inputEl}
+				bind:value={query}
+				onkeydown={onKey}
+				placeholder="검색어 · 범위(rules: · quest: …) · #태그"
+				spellcheck="false"
+			/>
+		</div>
 		<div class="rows">
 			{#if loading}
 				<div class="empty">불러오는 중…</div>
@@ -292,15 +309,44 @@
 		box-shadow: 0 10px 34px rgba(0, 0, 0, 0.45);
 		overflow: hidden;
 	}
+	.input-wrap {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0 0.8rem;
+		background: var(--bg-subtle);
+		border-bottom: 1px solid var(--border);
+	}
+	.scope-chip {
+		flex: none;
+		font-size: 0.68rem;
+		font-weight: 600;
+		border-radius: 4px;
+		padding: 0.1rem 0.4rem;
+		color: var(--accent);
+		background: color-mix(in srgb, var(--accent) 14%, transparent);
+	}
+	.scope-chip.campaign {
+		color: #d2a8ff;
+		background: color-mix(in srgb, #d2a8ff 14%, transparent);
+	}
+	.scope-chip.rule {
+		color: #7ee787;
+		background: color-mix(in srgb, #7ee787 14%, transparent);
+	}
+	.scope-chip.book {
+		color: var(--warning);
+		background: color-mix(in srgb, var(--warning) 14%, transparent);
+	}
 	input {
+		flex: 1;
 		width: 100%;
-		padding: 0.55rem 0.8rem;
+		padding: 0.55rem 0;
 		font-size: 0.9rem;
 		border: none;
 		outline: none;
-		background: var(--bg-subtle);
+		background: transparent;
 		color: var(--text-strong);
-		border-bottom: 1px solid var(--border);
 	}
 	input::placeholder {
 		color: var(--text-faint);
