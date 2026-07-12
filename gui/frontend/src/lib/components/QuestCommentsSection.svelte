@@ -40,6 +40,8 @@
 	} from '$lib/utils/textarea-wikilink';
 	import { questIndex, loadQuestIndex } from '$lib/stores/questIndex';
 	import { get } from 'svelte/store';
+	// DEV-205(모듈4): 댓글 섹션 i18n.
+	import { locale, t } from '$lib/stores/locale';
 	// DEV-235: 접기 상태(답글/본문) 영속 — 보드의 collapsedLanes(DEV-105) 와
 	// 같은 길드별 namespace 패턴.
 	import { resolveGuildKeyPrefix, guildKey } from '$lib/utils/guild-storage';
@@ -147,9 +149,9 @@
 		const onMove = () => repositionWiki();
 		const onDown = (ev: MouseEvent) => {
 			if (!wiki) return;
-			const t = ev.target as Node;
+			const tgt = ev.target as Node;
 			// 팝업/현재 textarea 내부 클릭(옵션 선택·캐럿 이동)은 닫지 않음.
-			if (wikiPopEl?.contains(t) || wiki.el === t) return;
+			if (wikiPopEl?.contains(tgt) || wiki.el === tgt) return;
 			dismissWiki();
 		};
 		// capture=true 로 textarea 내부/조상 스크롤·외부 클릭까지 포착.
@@ -324,7 +326,7 @@
 		const emoji = customEmojiInput.trim();
 		if (!emoji) return;
 		if (!isSingleEmoji(emoji)) {
-			customEmojiError = '이모지 1개만 입력하세요.';
+			customEmojiError = t('comment.emojiOne', $locale);
 			return;
 		}
 		customEmojiError = null;
@@ -430,7 +432,7 @@
 		return newAuthor.trim() || loadSavedAuthor();
 	}
 	function reactedByMe(authors: string[]): boolean {
-		const me = currentAuthor().trim() || '(익명)';
+		const me = currentAuthor().trim() || t('comment.anonymous', $locale);
 		return authors.includes(me);
 	}
 
@@ -722,7 +724,7 @@
 	);
 
 	function formatTs(ts: string): string {
-		if (!ts) return '(시각 미상)';
+		if (!ts) return t('comment.unknownTime', $locale);
 		try {
 			const d = new Date(ts);
 			if (Number.isNaN(d.getTime())) return ts;
@@ -734,7 +736,7 @@
 
 	async function add() {
 		if (!newBody.trim()) {
-			saveError = '본문을 입력하세요.';
+			saveError = t('comment.bodyRequired', $locale);
 			return;
 		}
 		saving = true;
@@ -764,7 +766,7 @@
 
 	async function saveEdit(id: number) {
 		if (!editBody.trim()) {
-			editError = '본문을 입력하세요.';
+			editError = t('comment.bodyRequired', $locale);
 			return;
 		}
 		editSaving = true;
@@ -834,7 +836,7 @@
 
 	async function submitReply(parentId: number) {
 		if (!replyBody.trim()) {
-			replyError = '본문을 입력하세요.';
+			replyError = t('comment.bodyRequired', $locale);
 			return;
 		}
 		replySaving = true;
@@ -860,7 +862,7 @@
 			<input
 				class="author-input"
 				type="text"
-				placeholder="작성자 (옵션)"
+				placeholder={t('comment.authorOpt', $locale)}
 				bind:value={replyAuthor}
 				disabled={replySaving}
 			/>
@@ -868,7 +870,7 @@
 		<textarea
 			use:tabInsert
 			use:textareaAttach={{
-				onError: (m) => (replyError = `첨부 실패: ${m}`),
+				onError: (m) => (replyError = `${t('campaign.attachFailed', $locale)}: ${m}`),
 				mediaOnly: true
 			}}
 			class="body-input"
@@ -878,7 +880,7 @@
 			onclick={onWikiInput}
 			onkeydowncapture={onWikiKeydown}
 			rows="3"
-			placeholder={`↩ #${replyTarget?.id ?? rootId} ${replyTarget?.author || ''} 에 답글…`}
+			placeholder={`↩ #${replyTarget?.id ?? rootId} ${replyTarget?.author || ''}${t('comment.replyToSuffix', $locale)}`}
 			disabled={replySaving}
 		></textarea>
 		{#if replyError}<p class="state err">{replyError}</p>{/if}
@@ -888,9 +890,9 @@
 				onclick={() => submitReply(replyingTo ?? rootId)}
 				disabled={replySaving || !replyBody.trim()}
 			>
-				{replySaving ? '저장…' : '답글 추가'}
+				{replySaving ? t('common.saving', $locale) : t('comment.addReply', $locale)}
 			</button>
-			<button class="btn-cancel" onclick={cancelReply} disabled={replySaving}> 취소 </button>
+			<button class="btn-cancel" onclick={cancelReply} disabled={replySaving}> {t('common.cancel', $locale)} </button>
 		</div>
 	</div>
 {/snippet}
@@ -911,20 +913,20 @@
 				class="entry-no"
 				onclick={() => toggleBodyCollapsed(e.id)}
 				aria-expanded={!collapsedBodies.has(e.id)}
-				title={collapsedBodies.has(e.id) ? `#${e.id} 내용 펼치기` : `#${e.id} 내용 접기`}
+				title={collapsedBodies.has(e.id) ? `#${e.id} ${t('comment.expandBody', $locale)}` : `#${e.id} ${t('comment.collapseBody', $locale)}`}
 				>#{e.id}</button
 			>
 			{#if e.parent_id != null}
-				<a class="reply-to" href={`#comment-${e.parent_id}`} title={`#${e.parent_id} 댓글로 이동`}
+				<a class="reply-to" href={`#comment-${e.parent_id}`} title={`#${e.parent_id} ${t('comment.jumpToComment', $locale)}`}
 					>↩ #{e.parent_id}</a
 				>
 			{/if}
-			<span class="author">{e.author || '(이름 없음)'}</span>
+			<span class="author">{e.author || t('comment.noName', $locale)}</span>
 			<span class="sep">·</span>
 			<time class="ts" datetime={e.ts}>{formatTs(e.ts)}</time>
 			<!-- DEV-182: 편집된 댓글 표시 — hover 시 편집 시각. -->
 			{#if e.edited_at}
-				<span class="edited-marker" title={`편집됨 — ${formatTs(e.edited_at)}`}>(편집됨)</span>
+				<span class="edited-marker" title={`${t('comment.editedTitle', $locale)}${formatTs(e.edited_at)}`}>{t('comment.edited', $locale)}</span>
 			{/if}
 			<!-- DEV-142: 토론 댓글 상태 배지 — 미해결이면 완료 차단 (quest 한정).
 			     클릭으로 resolve 토글. -->
@@ -934,9 +936,9 @@
 					class:resolved={e.resolved}
 					onclick={() => toggleResolved(e.id)}
 					title={e.resolved
-						? '해결됨 — 클릭하면 다시 미해결로'
-						: '미해결 토론 — 클릭하면 해결 처리 (완료 차단 해제)'}
-					>{e.resolved ? '✓ 해결됨' : '● 미해결 토론'}</button
+						? t('comment.resolvedTitle', $locale)
+						: t('comment.unresolvedTitle', $locale)}
+					>{e.resolved ? t('comment.resolved', $locale) : t('comment.unresolved', $locale)}</button
 				>
 			{/if}
 			{#if editingId !== e.id}
@@ -946,19 +948,19 @@
 							class="link-btn"
 							class:on={e.discussion}
 							onclick={() => toggleDiscussion(e.id)}
-							title={e.discussion ? '토론 표시 해제' : '토론으로 표시 — resolve 전까지 완료 차단'}
-							>💬 토론</button
+							title={e.discussion ? t('comment.unmarkDiscussion', $locale) : t('comment.markDiscussion', $locale)}
+							>💬 {t('comment.discussion', $locale)}</button
 						>
 					{/if}
-					<button class="link-btn" onclick={() => enterEdit(e)}>✎ 편집</button>
-					<button class="link-btn danger" onclick={() => askRemove(e.id)}>× 삭제</button>
+					<button class="link-btn" onclick={() => enterEdit(e)}>✎ {t('detail.edit', $locale)}</button>
+					<button class="link-btn danger" onclick={() => askRemove(e.id)}>× {t('detail.delete', $locale)}</button>
 				</div>
 			{/if}
 		</div>
 		{#if editingId === e.id}
 			<textarea
 				use:tabInsert
-				use:textareaAttach={{ onError: (m) => (editError = `첨부 실패: ${m}`), mediaOnly: true }}
+				use:textareaAttach={{ onError: (m) => (editError = `${t('campaign.attachFailed', $locale)}: ${m}`), mediaOnly: true }}
 				class="body-input"
 				bind:value={editBody}
 				oninput={onWikiInput}
@@ -966,19 +968,19 @@
 				onclick={onWikiInput}
 				onkeydowncapture={onWikiKeydown}
 				rows="4"
-				placeholder="본문 (markdown)"
+				placeholder={t('comment.bodyMarkdown', $locale)}
 			></textarea>
 			{#if editError}<p class="state err">{editError}</p>{/if}
 			<div class="actions">
 				<button class="btn-save" onclick={() => saveEdit(e.id)} disabled={editSaving}>
-					{editSaving ? '저장…' : '저장'}
+					{editSaving ? t('common.saving', $locale) : t('common.save', $locale)}
 				</button>
-				<button class="btn-cancel" onclick={cancelEdit} disabled={editSaving}>취소</button>
+				<button class="btn-cancel" onclick={cancelEdit} disabled={editSaving}>{t('common.cancel', $locale)}</button>
 			</div>
 		{:else if collapsedBodies.has(e.id)}
 			<!-- DEV-129: 접힌 본문 — 1줄 미리보기, 클릭으로 펼침.
 			     DEV-214: 이 entry 자신이 토론이면 상태 글리프를 미리보기 앞에. -->
-			<button class="body-collapsed" onclick={() => toggleBodyCollapsed(e.id)} title="내용 펼치기">
+			<button class="body-collapsed" onclick={() => toggleBodyCollapsed(e.id)} title={t('comment.expandContent', $locale)}>
 				{#if e.discussion}
 					<span class="disc-flag" class:unresolved={!e.resolved} class:resolved={e.resolved}
 						>{e.resolved ? '✓' : '✗'}</span
@@ -1005,23 +1007,23 @@
 								class="tri-btn"
 								onclick={() => toggleRootCollapsed(e.id)}
 								aria-expanded={!isThreadCollapsed}
-								title={isThreadCollapsed ? '답글 펼치기' : '답글 접기'}
+								title={isThreadCollapsed ? t('comment.expandReplies', $locale) : t('comment.collapseReplies', $locale)}
 								>{isThreadCollapsed ? '▶' : '▼'}</button
 							>
-							<span class="reply-count">답글 {childCount}</span>
+							<span class="reply-count">{t('comment.replies', $locale)} {childCount}</span>
 							<!-- DEV-214: 접힌 답글 안에 토론 있으면 상태 글리프. -->
 							{#if isThreadCollapsed}
 								{@const disc = threadDiscState.get(e.id)}
 								{#if disc === 'unresolved'}
-									<span class="disc-flag unresolved" title="접힌 답글에 미해결 토론 있음">✗</span>
+									<span class="disc-flag unresolved" title={t('comment.collapsedHasUnresolved', $locale)}>✗</span>
 								{:else if disc === 'resolved'}
-									<span class="disc-flag resolved" title="접힌 답글의 토론은 전부 해결됨">✓</span>
+									<span class="disc-flag resolved" title={t('comment.collapsedAllResolved', $locale)}>✓</span>
 								{/if}
 							{/if}
 						{/if}
 					{/if}
 					<!-- DEV-200: 답글에도 답글 쓰기 — parent_id 로 대상 기록, 표시는 2단까지. -->
-					<button class="reply-write-btn" onclick={() => enterReply(e.id)}>답글 쓰기</button>
+					<button class="reply-write-btn" onclick={() => enterReply(e.id)}>{t('comment.writeReply', $locale)}</button>
 					<!-- DEV-132 후속(admin 요청): 이모지(반응 추가) 버튼을 답글 쓰기
 					     버튼 오른쪽으로 이동 — foot-right 에서 여기로. -->
 					<div class="picker-wrap">
@@ -1029,7 +1031,7 @@
 							class="reaction-add"
 							onclick={(ev) => toggleReactionPicker(ev, e.id)}
 							aria-expanded={pickerOpenFor === e.id}
-							title="반응 추가">☺+</button
+							title={t('comment.addReaction', $locale)}>☺+</button
 						>
 						{#if pickerOpenFor === e.id && reactionPickerPos}
 							<div
@@ -1062,8 +1064,8 @@
 											{#if !REACTION_SET.includes(emoji)}
 												<button
 													class="picker-item-rm"
-													title="커스텀 반응 목록에서 삭제"
-													aria-label="{emoji} 삭제"
+													title={t('comment.removeCustomReaction', $locale)}
+													aria-label="{emoji} {t('detail.delete', $locale)}"
 													onclick={(ev) => {
 														ev.stopPropagation();
 														removeCustomReaction(emoji);
@@ -1080,7 +1082,7 @@
 									<input
 										class="picker-add-input"
 										type="text"
-										placeholder="이모지 1개"
+										placeholder={t('comment.oneEmoji', $locale)}
 										maxlength="16"
 										bind:value={customEmojiInput}
 										oninput={() => (customEmojiError = null)}
@@ -1089,7 +1091,7 @@
 									<button
 										class="picker-add-btn"
 										disabled={!customEmojiInput.trim()}
-										onclick={() => addCustomReaction(e.id)}>추가</button
+										onclick={() => addCustomReaction(e.id)}>{t('common.add', $locale)}</button
 									>
 								</div>
 								{#if customEmojiError}<p class="picker-add-err">{customEmojiError}</p>{/if}
@@ -1104,7 +1106,7 @@
 							class="reaction-pill"
 							class:mine={reactedByMe(r.authors)}
 							onclick={() => toggleReaction(e.id, r.emoji)}
-							title={r.authors.length ? `${r.authors.join(', ')} · 클릭하면 토글` : '클릭하면 토글'}
+							title={r.authors.length ? `${r.authors.join(', ')} · ${t('comment.clickToggle', $locale)}` : t('comment.clickToggle', $locale)}
 						>
 							{r.emoji}{#if r.authors.length > 1}<span class="rc">{r.authors.length}</span>{/if}
 						</button>
@@ -1117,7 +1119,7 @@
 						class="pin-btn"
 						class:on={e.pinned}
 						onclick={() => togglePinned(e.id)}
-						title={e.pinned ? '고정 해제' : '상단 고정'}
+						title={e.pinned ? t('comment.unpin', $locale) : t('comment.pin', $locale)}
 						>📌</button
 					>
 				</div>
@@ -1134,15 +1136,15 @@
 			class="section-toggle"
 			onclick={toggleCollapsed}
 			aria-expanded={!collapsed}
-			title={collapsed ? '댓글 펼치기' : '댓글 접기'}
+			title={collapsed ? t('comment.expandComments', $locale) : t('comment.collapseComments', $locale)}
 		>
 			<span class="toggle-icon" class:collapsed>▼</span>
-			<h2 class="section-title">댓글 (Comments)</h2>
+			<h2 class="section-title">{t('comment.title', $locale)}</h2>
 		</button>
 		<span class="count">{entries.length}</span>
 		<!-- DEV-214: 섹션이 접혀 있어도 미해결 토론은 보이게 (완료 차단과 직결). -->
 		{#if collapsed && unresolvedCount > 0}
-			<span class="disc-flag unresolved" title="미해결 토론 {unresolvedCount}개 — 완료 차단 중"
+			<span class="disc-flag unresolved" title="{t('comment.unresolvedPre', $locale)}{unresolvedCount}{t('comment.unresolvedPost', $locale)}"
 				>✗ {unresolvedCount}</span
 			>
 		{/if}
@@ -1154,10 +1156,10 @@
 				onclick={() => (discussionOnly = !discussionOnly)}
 				aria-pressed={discussionOnly}
 				title={discussionOnly
-					? '전체 댓글 보기'
-					: '토론 댓글이 있는 스레드만 보기 (비토론 댓글은 흐리게)'}
+					? t('comment.showAll', $locale)
+					: t('comment.showDiscussionOnly', $locale)}
 			>
-				💬 토론만 {discussionCount}{#if unresolvedCount > 0}&nbsp;(미해결
+				💬 {t('comment.discussionOnly', $locale)} {discussionCount}{#if unresolvedCount > 0}&nbsp;({t('comment.unresolvedWord', $locale)}
 					{unresolvedCount}){/if}
 			</button>
 		{/if}
@@ -1166,9 +1168,9 @@
 			<button
 				class="collapse-all-btn"
 				onclick={toggleCollapseAll}
-				title={allCollapsed ? '모든 댓글의 답글·본문 펼치기' : '모든 댓글의 답글·본문 접기'}
+				title={allCollapsed ? t('comment.expandAllTitle', $locale) : t('comment.collapseAllTitle', $locale)}
 			>
-				{allCollapsed ? '⊕ 전체 펼치기' : '⊖ 전체 접기'}
+				{allCollapsed ? t('comment.expandAll', $locale) : t('comment.collapseAll', $locale)}
 			</button>
 		{/if}
 	</div>
@@ -1180,7 +1182,7 @@
 			<p class="state err">{loadError}</p>
 		{:else}
 			{#if entries.length === 0}
-				<p class="no-desc">아직 댓글 없음.</p>
+				<p class="no-desc">{t('comment.empty', $locale)}</p>
 			{:else}
 				<ul class="entry-list">
 					{#each orderedRoots as root (root.id)}
@@ -1226,7 +1228,7 @@
 					{/each}
 					{#if groups.orphans.length > 0}
 						<li class="entry-card orphan-card">
-							<span class="orphan-label">↩ 삭제된 댓글에 대한 답글</span>
+							<span class="orphan-label">{t('comment.replyToDeleted', $locale)}</span>
 							{#each groups.orphans as o (o.id)}
 								{@render entryView(o, true)}
 							{/each}
@@ -1241,14 +1243,14 @@
 					<input
 						class="author-input"
 						type="text"
-						placeholder="작성자 (옵션)"
+						placeholder={t('comment.authorOpt', $locale)}
 						bind:value={newAuthor}
 						disabled={saving}
 					/>
 				</div>
 				<textarea
 					use:tabInsert
-					use:textareaAttach={{ onError: (m) => (saveError = `첨부 실패: ${m}`), mediaOnly: true }}
+					use:textareaAttach={{ onError: (m) => (saveError = `${t('campaign.attachFailed', $locale)}: ${m}`), mediaOnly: true }}
 					class="body-input"
 					bind:value={newBody}
 					oninput={onWikiInput}
@@ -1256,13 +1258,13 @@
 					onclick={onWikiInput}
 					onkeydowncapture={onWikiKeydown}
 					rows="3"
-					placeholder="댓글 작성 (markdown 사용 가능)"
+					placeholder={t('comment.writePlaceholder', $locale)}
 					disabled={saving}
 				></textarea>
 				{#if saveError}<p class="state err">{saveError}</p>{/if}
 				<div class="actions">
 					<button class="btn-save" onclick={add} disabled={saving || !newBody.trim()}>
-						{saving ? '추가…' : '+ 댓글 추가'}
+						{saving ? t('comment.adding', $locale) : t('comment.addComment', $locale)}
 					</button>
 				</div>
 			</div>
@@ -1273,9 +1275,9 @@
 <!-- DEV-118: 댓글 삭제 확인 모달. -->
 <ConfirmDialog
 	open={confirmDeleteId !== null}
-	title="댓글 삭제"
-	message="이 댓글을 삭제할까요? (답글이 있다면 그대로 남고 안내가 표시됩니다)"
-	confirmLabel="삭제"
+	title={t('comment.deleteTitle', $locale)}
+	message={t('comment.deleteMsg', $locale)}
+	confirmLabel={t('detail.delete', $locale)}
 	danger
 	onconfirm={remove}
 	oncancel={() => (confirmDeleteId = null)}
@@ -1309,8 +1311,8 @@
 						{it.nsPrefix
 							? it.title
 							: it.exists
-								? `${it.kind === 'rule' ? '규칙 · ' : it.kind === 'book' ? '도서관 · ' : ''}${it.title}`
-								: '새 링크 (미존재)'}
+								? `${it.kind === 'rule' ? t('comment.ruleLinkPrefix', $locale) : it.kind === 'book' ? t('comment.bookLinkPrefix', $locale) : ''}${it.title}`
+								: t('comment.newLink', $locale)}
 					</span>
 				</button>
 			</li>
