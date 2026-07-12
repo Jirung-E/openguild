@@ -135,6 +135,7 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'common.cancel': { ko: '취소', en: 'Cancel' },
 	'common.no': { ko: '아니요', en: 'No' },
 	'common.close': { ko: '닫기', en: 'Close' },
+	'common.pickDate': { ko: '날짜 선택', en: 'Pick date' },
 	'common.change': { ko: '변경', en: 'Change' },
 	'common.clearBtn': { ko: '× 해제', en: '× Clear' },
 	'common.clearFilter': { ko: '필터 모두 해제', en: 'Clear all filters' },

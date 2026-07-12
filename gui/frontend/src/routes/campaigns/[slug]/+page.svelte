@@ -17,6 +17,8 @@
 	import { campaignsApi } from '$lib/api/campaigns';
 	// DEV-205 / REQ-001: 상세 공통 액션 라벨을 퀘스트 상세와 같은 i18n 사전으로.
 	import { locale, t } from '$lib/stores/locale';
+	// DEV-205: 언어 반응 날짜 입력(네이티브 date 대체).
+	import DateField from '$lib/components/DateField.svelte';
 	import { questsApi } from '$lib/api/quests';
 	import type { CampaignDetail, CampaignLinkedQuest, Quest } from '$lib/types';
 	// BUG-021 fix1: 공유 컴포넌트로 Quest Detail / Campaign Detail 의 markdown
@@ -455,12 +457,12 @@
 				<div class="period-row">
 					<label>
 						<span class="lbl">{t('campaign.start', $locale)}</span>
-						<input type="date" bind:value={startedEdit} disabled={saving} />
+						<DateField bind:value={startedEdit} disabled={saving} />
 					</label>
 					<span class="dash">~</span>
 					<label>
 						<span class="lbl">{t('campaign.end', $locale)}</span>
-						<input type="date" bind:value={endedEdit} disabled={saving} />
+						<DateField bind:value={endedEdit} disabled={saving} />
 					</label>
 				</div>
 			{:else}
@@ -914,14 +916,6 @@
 		gap: 0.5rem;
 		margin-bottom: 0.5rem;
 	}
-	.period-row input {
-		background: var(--bg);
-		border: 1px solid var(--border);
-		color: var(--text);
-		border-radius: 6px;
-		padding: 0.3rem 0.5rem;
-	}
-
 	.actions {
 		display: flex;
 		gap: 0.4rem;

@@ -3,6 +3,8 @@
 	import { urgencyLabel, urgencyColor } from '$lib/types';
 	// DEV-205 모듈3: 필터 문자열 i18n.
 	import { locale, t } from '$lib/stores/locale';
+	// DEV-205: 언어 반응 날짜 입력(네이티브 date 대체).
+	import DateField from './DateField.svelte';
 	import type { TriState } from '$lib/utils/quest-list';
 
 	let {
@@ -174,12 +176,12 @@
 		<div class="divider"></div>
 		<!-- 날짜 범위 -->
 		<label class="date-range"
-			>{t('filter.created', $locale)} <input type="date" bind:value={createdAfter} /> ~
-			<input type="date" bind:value={createdBefore} /></label
+			>{t('filter.created', $locale)} <DateField bind:value={createdAfter} /> ~
+			<DateField bind:value={createdBefore} /></label
 		>
 		<label class="date-range"
-			>{t('filter.updated', $locale)} <input type="date" bind:value={updatedAfter} /> ~
-			<input type="date" bind:value={updatedBefore} /></label
+			>{t('filter.updated', $locale)} <DateField bind:value={updatedAfter} /> ~
+			<DateField bind:value={updatedBefore} /></label
 		>
 		{#if advancedActive}
 			<button class="adv-clear" onclick={clearAdvanced} title={t('filter.clearAdvanced', $locale)}>{t('filter.clearBtn', $locale)}</button>
@@ -348,14 +350,6 @@
 		gap: 0.3rem;
 		font-size: 0.78rem;
 		color: var(--text-muted);
-	}
-	.date-range input {
-		padding: 0.2rem 0.4rem;
-		background: var(--bg);
-		border: 1px solid var(--border);
-		border-radius: 6px;
-		color: var(--text);
-		font-size: 0.75rem;
 	}
 	.adv-clear {
 		color: var(--danger);

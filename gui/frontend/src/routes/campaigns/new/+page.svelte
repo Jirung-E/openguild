@@ -6,6 +6,8 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { campaignsApi } from '$lib/api/campaigns';
+	// DEV-205: 언어 반응 날짜 입력(네이티브 date 대체).
+	import DateField from '$lib/components/DateField.svelte';
 	// DEV-130 #2: 본문 textarea Tab = 들여쓰기 (설정 반영).
 	import { tabInsert } from '$lib/actions/tab-insert';
 
@@ -66,11 +68,11 @@
 		<div class="period-row">
 			<label>
 				<span class="lab">시작일</span>
-				<input type="date" bind:value={startedAt} disabled={saving} />
+				<DateField bind:value={startedAt} disabled={saving} />
 			</label>
 			<label>
 				<span class="lab">종료일</span>
-				<input type="date" bind:value={endedAt} disabled={saving} />
+				<DateField bind:value={endedAt} disabled={saving} />
 			</label>
 		</div>
 

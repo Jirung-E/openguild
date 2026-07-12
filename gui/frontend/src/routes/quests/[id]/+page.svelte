@@ -11,6 +11,8 @@
 	import { metaApi } from '$lib/api/meta';
 	// DEV-205 / REQ-001: 상세 화면 라벨을 i18n 사전으로 — 캠페인 상세와 언어 통일.
 	import { locale, t } from '$lib/stores/locale';
+	// DEV-205: 언어 반응 날짜 입력(네이티브 date 대체).
+	import DateField from '$lib/components/DateField.svelte';
 	import { campaignsApi } from '$lib/api/campaigns';
 	// DEV-068: `.guild/tags/{slug}.toml` 정의 — Tag pill 색칠용.
 	import { adminApi } from '$lib/api/admin';
@@ -756,11 +758,11 @@
 				<div class="due-row">
 					<label class="field-label">
 						<span>희망 기한 <span class="hint">(정보성)</span></span>
-						<input class="edit-date" type="date" bind:value={editDesiredDue} />
+						<DateField bind:value={editDesiredDue} />
 					</label>
 					<label class="field-label">
 						<span>필수 기한 <span class="hint">(임박 / Overdue 기준)</span></span>
-						<input class="edit-date" type="date" bind:value={editRequiredDue} />
+						<DateField bind:value={editRequiredDue} />
 					</label>
 				</div>
 
