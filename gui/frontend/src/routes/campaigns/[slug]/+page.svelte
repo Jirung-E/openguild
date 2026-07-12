@@ -484,7 +484,7 @@
 				<span class="meta-item">
 					<span class="meta-label">{t('common.updated', $locale)}</span>
 					<time class="meta-val" datetime={detail.updated_at} title={formatTs(detail.updated_at)}
-						>{formatRelative(detail.updated_at)}</time
+						>{formatRelative(detail.updated_at, undefined, $locale)}</time
 					>
 				</span>
 			</div>

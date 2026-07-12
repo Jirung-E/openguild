@@ -11,6 +11,8 @@
 	import { detectEnvironment } from '$lib/api/transport';
 	import { getRemoteServerUrl } from '$lib/stores/remoteServer';
 	import { api } from '$lib/api/client';
+	// DEV-205: 첨부 섹션 i18n.
+	import { locale, t } from '$lib/stores/locale';
 
 	interface Attachment {
 		path: string;
@@ -116,7 +118,7 @@
 				window.open(url, '_blank', 'noopener');
 			}
 		} catch (e) {
-			error = `열기 실패: ${e instanceof Error ? e.message : String(e)}`;
+			error = `${t("attach.openFailed", $locale)}: ${e instanceof Error ? e.message : String(e)}`;
 		}
 	}
 
@@ -143,7 +145,7 @@
 				browserDownload(await guildFileUrl(att.path), att.name);
 			}
 		} catch (e) {
-			error = `다운로드 실패: ${e instanceof Error ? e.message : String(e)}`;
+			error = `${t("attach.downloadFailed", $locale)}: ${e instanceof Error ? e.message : String(e)}`;
 		}
 	}
 
@@ -154,7 +156,7 @@
 		if (isTauri) {
 			try {
 				const { open } = await import('@tauri-apps/plugin-dialog');
-				const dir = await open({ directory: true, title: '첨부 저장 폴더' });
+				const dir = await open({ directory: true, title: t("attach.saveDir", $locale) });
 				if (!dir || typeof dir !== 'string') return;
 				const { invoke } = await import('@tauri-apps/api/core');
 				busy = true;
@@ -162,7 +164,7 @@
 					await invoke('copy_guild_file', { rel: a.path, dest: `${dir}/${a.name}` });
 				}
 			} catch (e) {
-				error = `전체 다운로드 실패: ${e instanceof Error ? e.message : String(e)}`;
+				error = `${t("attach.downloadAllFailed", $locale)}: ${e instanceof Error ? e.message : String(e)}`;
 			} finally {
 				busy = false;
 			}
@@ -178,7 +180,7 @@
 <section class="attachments">
 	<div class="head">
 		<h3>
-			첨부파일 {#if list.length > 0}<span class="count">({list.length})</span>{/if}
+			{t('attach.title', $locale)} {#if list.length > 0}<span class="count">({list.length})</span>{/if}
 		</h3>
 		<div class="head-actions">
 			{#if list.length > 0}
@@ -187,19 +189,19 @@
 					class="btn"
 					onclick={downloadAll}
 					disabled={busy}
-					title="모든 첨부 다운로드"
+					title={t('attach.downloadAll', $locale)}
 				>
-					전체 다운로드
+					{t('attach.downloadAllBtn', $locale)}
 				</button>
 			{/if}
 			<button type="button" class="btn" onclick={pickAndAdd} disabled={busy}>
-				{busy ? '처리 중…' : '+ 첨부'}
+				{busy ? t('attach.processing', $locale) : t('attach.add', $locale)}
 			</button>
 		</div>
 	</div>
 	{#if error}<p class="err">{error}</p>{/if}
 	{#if list.length === 0}
-		<p class="empty">첨부 없음. '+ 첨부' 로 이미지·동영상·파일을 추가하세요.</p>
+		<p class="empty">{t('attach.empty', $locale)}</p>
 	{:else}
 		<ul class="grid">
 			{#each list as a (a.path)}
@@ -208,7 +210,7 @@
 						type="button"
 						class="thumb"
 						onclick={() => openFile(a.path)}
-						title="열기 / 미리보기"
+						title={t('attach.openPreview', $locale)}
 					>
 						{#if isImage(a.path) && urls[a.path]}
 							<img src={urls[a.path]} alt={a.name} />
@@ -221,15 +223,15 @@
 					<button
 						type="button"
 						class="rm"
-						title="목록에서 제거"
-						aria-label="제거"
+						title={t('attach.remove', $locale)}
+						aria-label={t('attach.removeAria', $locale)}
 						onclick={() => remove(a.path)}>×</button
 					>
 					<button
 						type="button"
 						class="dl"
-						title="다운로드"
-						aria-label="다운로드"
+						title={t('attach.download', $locale)}
+						aria-label={t('attach.download', $locale)}
 						onclick={() => downloadOne(a)}>⤓</button
 					>
 					<span class="name" title={a.name}>{a.name}</span>

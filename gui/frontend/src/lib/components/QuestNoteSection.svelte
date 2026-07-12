@@ -15,6 +15,8 @@
 	import { onDestroy } from 'svelte';
 	// DEV-153: 메모 편집 중이면 이탈 가드에 보고.
 	import { setUnsaved } from '$lib/stores/unsaved';
+	// DEV-205: 메모 섹션 i18n.
+	import { locale, t } from '$lib/stores/locale';
 	import MarkdownView from './MarkdownView.svelte';
 	import { commentsApi as questCommentsApi, campaignCommentsApi } from '$lib/api/comments';
 	// DEV-203: 편집기 셋업(테마/들여쓰기/첨부/자동완성/redo/높이/overlay 스크롤)은
@@ -30,12 +32,12 @@
 	}: { slug: string; mode?: 'memo' | 'comments'; scope?: 'quest' | 'campaign' } = $props();
 	const commentsApi = $derived(scope === 'campaign' ? campaignCommentsApi : questCommentsApi);
 
-	const label = {
-		heading: '메모 (Memo)',
-		emptyAction: '메모 작성',
-		emptyHint: '개인 메모. gitignored (팀 공유 X).',
-		help: '본인만 보는 비공개 메모 (`.guild/quests/{slug}.memo.md`, gitignored).'
-	};
+	const label = $derived({
+		heading: t('note.heading', $locale),
+		emptyAction: t('note.emptyAction', $locale),
+		emptyHint: t('note.emptyHint', $locale),
+		help: t('note.help', $locale)
+	});
 
 	let loading = $state(true);
 	let loadError = $state<string | null>(null);
@@ -173,14 +175,14 @@
 			class="section-toggle"
 			onclick={toggleCollapsed}
 			aria-expanded={!collapsed}
-			title={collapsed ? '메모 펼치기' : '메모 접기'}
+			title={collapsed ? t('note.expand', $locale) : t('note.collapse', $locale)}
 		>
 			<span class="toggle-icon" class:collapsed>▼</span>
 			<h2 class="section-title note-memo">{label.heading}</h2>
 		</button>
 		{#if !collapsed && !editMode && !loading && !loadError}
 			<button class="sec-add-btn" onclick={enterEdit}>
-				{content && content.trim() ? '✎ 편집' : `+ ${label.emptyAction}`}
+				{content && content.trim() ? `✎ ${t('detail.edit', $locale)}` : `+ ${label.emptyAction}`}
 			</button>
 			<!-- DEV-189: 표시 높이 모드 토글 (고정 ↔ 확장). 내용 있을 때만. -->
 			{#if content && content.trim()}
@@ -188,10 +190,10 @@
 					class="sec-mode-btn"
 					onclick={toggleHeightMode}
 					title={heightMode === 'fixed'
-						? '메모를 전체 높이로 펼치기 (확장)'
-						: '메모를 고정 높이 + 스크롤로 (고정)'}
+						? t('note.heightExpand', $locale)
+						: t('note.heightFixed', $locale)}
 				>
-					{heightMode === 'fixed' ? '⤢ 확장' : '⊟ 고정'}
+					{heightMode === 'fixed' ? t('note.expandBtn', $locale) : t('note.fixBtn', $locale)}
 				</button>
 			{/if}
 		{/if}
@@ -208,19 +210,19 @@
 			<div class="field-label">
 				<!-- DEV-188: '첨부' 버튼 제거(메모는 개인용). 이미지·동영상은
 				     드래그&드랍 / Ctrl+V 로 첨부 가능(attachmentExtension). -->
-				<span>{label.help} (이미지·동영상은 드래그&드랍 또는 Ctrl+V 로 첨부)</span>
+				<span>{label.help} {t('note.helpAttach', $locale)}</span>
 				<MarkdownEditor
 					bind:value={editText}
 					mediaOnly
 					defaultHeight={360}
-					onError={(msg) => (saveError = `첨부 실패: ${msg}`)}
+					onError={(msg) => (saveError = `${t('campaign.attachFailed', $locale)}: ${msg}`)}
 				/>
 			</div>
 			<div class="actions">
 				<button class="btn-save" onclick={save} disabled={saving}>
-					{saving ? '저장…' : '저장'}
+					{saving ? t('common.saving', $locale) : t('common.save', $locale)}
 				</button>
-				<button class="btn-cancel" onclick={cancelEdit} disabled={saving}>취소</button>
+				<button class="btn-cancel" onclick={cancelEdit} disabled={saving}>{t('common.cancel', $locale)}</button>
 			</div>
 			{#if saveError}<p class="state err">{saveError}</p>{/if}
 		{:else if content && content.trim()}

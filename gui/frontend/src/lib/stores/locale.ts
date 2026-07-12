@@ -277,7 +277,41 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'worklogCard.created': { ko: '생성', en: 'created' },
 	'worklogCard.lastActivity': { ko: '마지막 활동 ', en: 'Last activity ' },
 	'worklogCard.activityUnit': { ko: '활동 ', en: '' },
-	'worklogCard.activityCount': { ko: '건', en: '' }
+	'worklogCard.activityCount': { ko: '건', en: '' },
+
+	// DEV-205: 상세 공통 섹션(첨부/이력/메모) — 퀘스트·캠페인 공유 컴포넌트.
+	'attach.title': { ko: '첨부파일', en: 'Attachments' },
+	'attach.add': { ko: '+ 첨부', en: '+ Attach' },
+	'attach.processing': { ko: '처리 중…', en: 'Processing…' },
+	'attach.downloadAll': { ko: '모든 첨부 다운로드', en: 'Download all attachments' },
+	'attach.downloadAllBtn': { ko: '전체 다운로드', en: 'Download all' },
+	'attach.empty': { ko: "첨부 없음. '+ 첨부' 로 이미지·동영상·파일을 추가하세요.", en: "No attachments. Use '+ Attach' to add images, videos, or files." },
+	'attach.openPreview': { ko: '열기 / 미리보기', en: 'Open / preview' },
+	'attach.remove': { ko: '목록에서 제거', en: 'Remove from list' },
+	'attach.removeAria': { ko: '제거', en: 'Remove' },
+	'attach.download': { ko: '다운로드', en: 'Download' },
+	'attach.saveDir': { ko: '첨부 저장 폴더', en: 'Attachment save folder' },
+	'attach.openFailed': { ko: '열기 실패', en: 'Failed to open' },
+	'attach.downloadFailed': { ko: '다운로드 실패', en: 'Download failed' },
+	'attach.downloadAllFailed': { ko: '전체 다운로드 실패', en: 'Download all failed' },
+
+	'history.title': { ko: '변경 이력', en: 'Change history' },
+	'history.loading': { ko: '로드 중…', en: 'Loading…' },
+	'history.empty': { ko: '변경 이력 없음.', en: 'No change history.' },
+	'history.loadFailed': { ko: '이력 로드 실패', en: 'Failed to load history' },
+	'history.none': { ko: '(없음)', en: '(none)' },
+
+	'note.heading': { ko: '메모 (Memo)', en: 'Memo' },
+	'note.emptyAction': { ko: '메모 작성', en: 'Write memo' },
+	'note.emptyHint': { ko: '개인 메모. gitignored (팀 공유 X).', en: 'Private memo. Gitignored (not shared with the team).' },
+	'note.help': { ko: '본인만 보는 비공개 메모 (`.guild/quests/{slug}.memo.md`, gitignored).', en: 'A private memo only you can see (`.guild/quests/{slug}.memo.md`, gitignored).' },
+	'note.expand': { ko: '메모 펼치기', en: 'Expand memo' },
+	'note.collapse': { ko: '메모 접기', en: 'Collapse memo' },
+	'note.heightExpand': { ko: '메모를 전체 높이로 펼치기 (확장)', en: 'Expand memo to full height' },
+	'note.heightFixed': { ko: '메모를 고정 높이 + 스크롤로 (고정)', en: 'Fixed height with scroll' },
+	'note.expandBtn': { ko: '⤢ 확장', en: '⤢ Expand' },
+	'note.fixBtn': { ko: '⊟ 고정', en: '⊟ Fixed' },
+	'note.helpAttach': { ko: '(이미지·동영상은 드래그&드랍 또는 Ctrl+V 로 첨부)', en: '(attach images/videos via drag & drop or Ctrl+V)' }
 };
 
 /** 현재 locale 기준 번역. 누락 키는 ko 원문 그대로(안전한 fallback). */

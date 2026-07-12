@@ -44,7 +44,12 @@ export function formatTs(s: string | null | undefined): string {
  *
  * Quest Detail / History 에서 absolute + relative 둘 다 보여줄 때 사용.
  */
-export function formatRelative(s: string | null | undefined, now: Date = new Date()): string {
+// DEV-205: loc 파라미터 추가(기본 ko). 호출부가 $locale 을 넘기면 언어 반응.
+export function formatRelative(
+	s: string | null | undefined,
+	now: Date = new Date(),
+	loc: 'ko' | 'en' = 'ko'
+): string {
 	if (!s) return '';
 	const d = new Date(normalize(s));
 	if (Number.isNaN(d.getTime())) return s;
@@ -52,13 +57,13 @@ export function formatRelative(s: string | null | undefined, now: Date = new Dat
 	const diffMs = now.getTime() - d.getTime();
 	const sec = Math.floor(diffMs / 1000);
 	if (sec < 0) return formatTs(s); // 미래 — 절대값만
-	if (sec < 60) return '방금';
+	if (sec < 60) return loc === 'en' ? 'just now' : '방금';
 	const min = Math.floor(sec / 60);
-	if (min < 60) return `${min}분 전`;
+	if (min < 60) return loc === 'en' ? `${min}m ago` : `${min}분 전`;
 	const hr = Math.floor(min / 60);
-	if (hr < 24) return `${hr}시간 전`;
+	if (hr < 24) return loc === 'en' ? `${hr}h ago` : `${hr}시간 전`;
 	const day = Math.floor(hr / 24);
-	if (day < 7) return `${day}일 전`;
+	if (day < 7) return loc === 'en' ? `${day}d ago` : `${day}일 전`;
 	return formatTs(s);
 }
 

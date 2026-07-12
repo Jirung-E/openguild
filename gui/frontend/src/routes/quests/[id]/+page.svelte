@@ -683,7 +683,7 @@
 					title={formatTs(detail.updated_at)}
 					data-testid="updated-at"
 				>
-					{formatRelative(detail.updated_at)}
+					{formatRelative(detail.updated_at, undefined, $locale)}
 				</time>
 			</span>
 			{#if detail.desired_due || detail.required_due}
