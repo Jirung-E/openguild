@@ -88,8 +88,9 @@
 			for (const r of rules.entries) {
 				items.push({
 					kind: 'rule',
+					// 규칙은 slug 가 곧 식별자 — 별도 제목 없음(중복 표시 방지).
 					label: r.slug,
-					title: r.slug,
+					title: '',
 					tags: r.tags ?? [],
 					href: `/rules?slug=${encodeURIComponent(r.slug)}`,
 					meta: '규칙',
@@ -173,6 +174,11 @@
 		onclose();
 	}
 
+	// 표시 이름 — 규칙처럼 title 이 비면 label 만(중복/후행 공백 방지).
+	function displayName(it: Item): string {
+		return it.title ? `${it.label} ${it.title}` : it.label;
+	}
+
 	function onKey(e: KeyboardEvent) {
 		if (e.key === 'Escape') {
 			e.preventDefault();
@@ -249,9 +255,10 @@
 						class:sel={i === selIndex}
 						onmouseenter={() => (selIndex = i)}
 						onclick={() => openPreview(it)}
+						title={displayName(it) + (it.tags.length ? '  ' + it.tags.map((t) => '#' + t).join(' ') : '')}
 					>
 						<span class="ptype {it.kind}">{KIND_LABEL[it.kind]}</span>
-						<span class="ptitle">{it.label} {it.title}</span>
+						<span class="ptitle">{displayName(it)}</span>
 						{#if it.tags.length}
 							<span class="ptags">{it.tags.map((t) => '#' + t).join(' ')}</span>
 						{/if}
@@ -262,7 +269,7 @@
 	{:else}
 		<div class="dp-head">
 			<span class="ptype {preview.kind}">{KIND_LABEL[preview.kind]}</span>
-			<span class="dp-title">{preview.label} {preview.title}</span>
+			<span class="dp-title" title={displayName(preview)}>{displayName(preview)}</span>
 			<button class="dp-x" onclick={() => (preview = null)} title="목록으로 (Esc)">✕</button>
 		</div>
 		<div class="dp-meta">
