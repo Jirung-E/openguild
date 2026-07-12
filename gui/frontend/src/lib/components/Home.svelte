@@ -10,6 +10,8 @@
 	import { goto } from '$app/navigation';
 	import { campaignsApi } from '$lib/api/campaigns';
 	import { questsApi } from '$lib/api/quests';
+	// DEV-205 모듈2: 홈 문자열 i18n.
+	import { locale, t } from '$lib/stores/locale';
 	// BUG-025: 진행 중 = carousel (좌우 꽉, 1개씩 자동 회전),
 	//          곧 시작 = conveyor (멈춤 없이 흐름).
 	import CampaignCarousel from './CampaignCarousel.svelte';
@@ -262,33 +264,33 @@
 	{:else}
 		<!-- ── 진행 중 캠페인 ─────────────────────────── -->
 		<section class="block">
-			<h2>진행 중 캠페인 <span class="count">({currentActive.length})</span></h2>
+			<h2>{t('home.activeCampaigns', $locale)} <span class="count">({currentActive.length})</span></h2>
 			<CampaignCarousel summaries={currentActive} {now} />
 
 			<!-- ── 곧 시작 ─────────────────────────────── -->
-			<h3>곧 시작되는 캠페인 <span class="count">({upcomingSummaries.length})</span></h3>
+			<h3>{t('home.upcomingCampaigns', $locale)} <span class="count">({upcomingSummaries.length})</span></h3>
 			<CampaignConveyor summaries={upcomingSummaries} {now} />
 
 			<!-- ── DEV-080: 마감 지난 캠페인 (있을 때만). 모양 / 동작은 곧 시작과 동일. ── -->
 			{#if overdueCampaigns.length > 0}
 				<h3>
-					마감 지난 캠페인
+					{t('home.overdueCampaigns', $locale)}
 					<span class="count overdue">({overdueCampaigns.length})</span>
 				</h3>
 				<CampaignConveyor
 					summaries={overdueCampaigns}
 					{now}
 					mode="overdue"
-					emptyText="마감 지난 캠페인 없음."
+					emptyText={t('home.overdueCampaignsEmpty', $locale)}
 				/>
 			{/if}
 
 			<div class="actions">
 				<button class="btn-link" type="button" onclick={() => goto('/campaigns')}>
-					캠페인 목록
+					{t('home.campaignList', $locale)}
 				</button>
 				<button class="btn-primary" type="button" onclick={() => goto('/campaigns/new')}>
-					+ 캠페인 추가
+					{t('home.addCampaign', $locale)}
 				</button>
 			</div>
 		</section>
@@ -297,7 +299,7 @@
 		{#if overdueQuests.length > 0}
 			<section class="block">
 				<h2>
-					마감 지난 퀘스트
+					{t('home.overdueQuests', $locale)}
 					<span class="count overdue">({overdueQuests.length})</span>
 				</h2>
 				<QuestNodeConveyor quests={overdueQuests} mode="overdue" />
@@ -308,7 +310,7 @@
 		{#if discussionQuests.length > 0}
 			<section class="block">
 				<h2>
-					토론 댓글
+					{t('home.discussionComments', $locale)}
 					<span class="count overdue">({discussionQuests.length})</span>
 				</h2>
 				<QuestNodeConveyor quests={discussionQuests} mode="overdue" />
@@ -319,7 +321,7 @@
 		{#if imminentQuests.length > 0}
 			<section class="block">
 				<h2>
-					마감 임박 퀘스트
+					{t('home.imminentQuests', $locale)}
 					<span class="count">({imminentQuests.length})</span>
 				</h2>
 				<QuestNodeConveyor quests={imminentQuests} mode="imminent" />
@@ -334,9 +336,9 @@
 		<section class="block">
 			<!-- BUG-029: 최근은 최대 RECENT_QUEST_LIMIT (10) 으로 항상 잘림. 숫자 표시 X.
 			     DEV-078: '추가된' → '추가/수정된'. updated_at DESC 정렬로 수정된 것도 위로. -->
-			<h2>최근 추가/수정된 퀘스트</h2>
+			<h2>{t('home.recentQuests', $locale)}</h2>
 			{#if recentQuests.length === 0}
-				<div class="empty">아직 퀘스트가 없습니다.</div>
+				<div class="empty">{t('home.noQuests', $locale)}</div>
 			{:else}
 				<ul class="quest-list">
 					{#each recentQuests as q (q.id)}

@@ -171,7 +171,35 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'welcome.pickDialogTitle': { ko: '길드 폴더 선택', en: 'Select guild folder' },
 	'welcome.badResponse': { ko: '서버가 응답했지만 예상한 형식이 아닙니다.', en: 'The server responded but not in the expected format.' },
 	'welcome.notValidDir': { ko: '선택된 경로가 유효한 디렉토리가 아닙니다', en: 'Selected path is not a valid directory' },
-	'welcome.markerExample': { ko: '이름.guild', en: 'name.guild' }
+	'welcome.markerExample': { ko: '이름.guild', en: 'name.guild' },
+
+	// DEV-205 모듈2: 홈(Home) 대시보드.
+	'home.activeCampaigns': { ko: '진행 중 캠페인', en: 'Active campaigns' },
+	'home.upcomingCampaigns': { ko: '곧 시작되는 캠페인', en: 'Upcoming campaigns' },
+	'home.overdueCampaigns': { ko: '마감 지난 캠페인', en: 'Overdue campaigns' },
+	'home.overdueCampaignsEmpty': { ko: '마감 지난 캠페인 없음.', en: 'No overdue campaigns.' },
+	'home.campaignList': { ko: '캠페인 목록', en: 'Campaign list' },
+	'home.addCampaign': { ko: '+ 캠페인 추가', en: '+ Add campaign' },
+	'home.overdueQuests': { ko: '마감 지난 퀘스트', en: 'Overdue quests' },
+	'home.discussionComments': { ko: '토론 댓글', en: 'Discussion comments' },
+	'home.imminentQuests': { ko: '마감 임박 퀘스트', en: 'Due soon' },
+	'home.recentQuests': { ko: '최근 추가/수정된 퀘스트', en: 'Recently added / updated quests' },
+	'home.noQuests': { ko: '아직 퀘스트가 없습니다.', en: 'No quests yet.' },
+
+	// DEV-205 모듈2: 캠페인 목록 페이지.
+	'campaignList.title': { ko: '캠페인', en: 'Campaigns' },
+	'campaignList.new': { ko: '+ 새 캠페인', en: '+ New campaign' },
+	'campaignList.statusLabel': { ko: '상태', en: 'Status' },
+	'campaignList.statusAll': { ko: '전체', en: 'All' },
+	'campaignList.statusActive': { ko: '진행 중', en: 'Active' },
+	'campaignList.statusDone': { ko: '완료', en: 'Done' },
+	'campaignList.sortLabel': { ko: '정렬', en: 'Sort' },
+	'campaignList.sortRecent': { ko: '최근 추가 순', en: 'Recently added' },
+	'campaignList.sortRemaining': { ko: '남은 날짜 순', en: 'Time remaining' },
+	'campaignList.sortManual': { ko: '수동 (display_order)', en: 'Manual (display_order)' },
+	'campaignList.empty': { ko: '캠페인 없음.', en: 'No campaigns.' },
+	'campaignList.periodUndefined': { ko: '기간 미정', en: 'No period set' },
+	'campaignList.orderChangeFailed': { ko: 'order 변경 실패', en: 'Failed to change order' }
 };
 
 /** 현재 locale 기준 번역. 누락 키는 ko 원문 그대로(안전한 fallback). */

@@ -9,6 +9,8 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { campaignsApi } from '$lib/api/campaigns';
+	// DEV-205 모듈2: 캠페인 목록 문자열 i18n.
+	import { locale, t } from '$lib/stores/locale';
 	import type { Campaign } from '$lib/types';
 	import { isDateOverdue } from '$lib/utils/datetime';
 
@@ -53,14 +55,14 @@
 			await campaignsApi.update(c.campaign_slug, { display_order: next });
 			all = await campaignsApi.list();
 		} catch (e) {
-			alert(e instanceof Error ? e.message : 'order 변경 실패');
+			alert(e instanceof Error ? e.message : t('campaignList.orderChangeFailed', $locale));
 		}
 	}
 
 	function fmtPeriod(c: Campaign): string {
 		const a = c.started_at?.trim() || '';
 		const b = c.ended_at?.trim() || '';
-		if (!a && !b) return '기간 미정';
+		if (!a && !b) return t('campaignList.periodUndefined', $locale);
 		if (a && !b) return `${a} ~`;
 		if (!a && b) return `~ ${b}`;
 		return `${a} ~ ${b}`;
@@ -69,25 +71,25 @@
 
 <div class="page">
 	<div class="header">
-		<h1>캠페인</h1>
-		<button class="btn-primary" onclick={() => goto('/campaigns/new')}>+ 새 캠페인</button>
+		<h1>{t('campaignList.title', $locale)}</h1>
+		<button class="btn-primary" onclick={() => goto('/campaigns/new')}>{t('campaignList.new', $locale)}</button>
 	</div>
 
 	<div class="controls">
 		<label>
-			상태
+			{t('campaignList.statusLabel', $locale)}
 			<select bind:value={statusFilter}>
-				<option value="all">전체</option>
-				<option value="active">진행 중</option>
-				<option value="done">완료</option>
+				<option value="all">{t('campaignList.statusAll', $locale)}</option>
+				<option value="active">{t('campaignList.statusActive', $locale)}</option>
+				<option value="done">{t('campaignList.statusDone', $locale)}</option>
 			</select>
 		</label>
 		<label>
-			정렬
+			{t('campaignList.sortLabel', $locale)}
 			<select bind:value={sort}>
-				<option value="recent">최근 추가 순</option>
-				<option value="remaining">남은 날짜 순</option>
-				<option value="manual">수동 (display_order)</option>
+				<option value="recent">{t('campaignList.sortRecent', $locale)}</option>
+				<option value="remaining">{t('campaignList.sortRemaining', $locale)}</option>
+				<option value="manual">{t('campaignList.sortManual', $locale)}</option>
 			</select>
 		</label>
 	</div>
@@ -97,7 +99,7 @@
 	{:else if error}
 		<div class="state error">{error}</div>
 	{:else if filtered.length === 0}
-		<div class="state">캠페인 없음.</div>
+		<div class="state">{t('campaignList.empty', $locale)}</div>
 	{:else}
 		<ul class="list">
 			{#each filtered as c (c.id)}
