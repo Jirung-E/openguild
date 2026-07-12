@@ -133,21 +133,20 @@
 	const filtered = $derived.by(() => {
 		const { kind, term } = parsed;
 		const pool = kind ? all.filter((i) => i.kind === kind) : all;
-		if (!term) return pool.slice(0, 50);
+		// 결과 개수 상한 없음 — 단순 행이라 문서가 많아도 렌더 부담 미미, 영역 스크롤.
+		if (!term) return pool;
 		if (term.startsWith('#')) {
 			const tag = term.slice(1).toLowerCase();
-			if (!tag) return pool.filter((i) => i.tags.length > 0).slice(0, 50);
-			return pool.filter((i) => i.tags.some((t) => t.toLowerCase().includes(tag))).slice(0, 50);
+			if (!tag) return pool.filter((i) => i.tags.length > 0);
+			return pool.filter((i) => i.tags.some((t) => t.toLowerCase().includes(tag)));
 		}
 		const q = term.toLowerCase();
-		return pool
-			.filter(
-				(i) =>
-					i.title.toLowerCase().includes(q) ||
-					i.label.toLowerCase().includes(q) ||
-					i.tags.some((t) => t.toLowerCase().includes(q))
-			)
-			.slice(0, 50);
+		return pool.filter(
+			(i) =>
+				i.title.toLowerCase().includes(q) ||
+				i.label.toLowerCase().includes(q) ||
+				i.tags.some((t) => t.toLowerCase().includes(q))
+		);
 	});
 
 	// 필터가 바뀌어 선택 index 가 범위를 벗어나면 리셋.
