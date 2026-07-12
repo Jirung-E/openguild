@@ -288,8 +288,8 @@
 		background: color-mix(in srgb, var(--accent) 14%, transparent);
 	}
 	.dtype.rule {
-		color: #7ee787;
-		background: color-mix(in srgb, #7ee787 14%, transparent);
+		color: var(--success);
+		background: color-mix(in srgb, var(--success) 14%, transparent);
 	}
 	.dtype.book {
 		color: var(--warning);

@@ -286,7 +286,7 @@
 		</div>
 		<div class="dp-foot">
 			<button class="dp-btn" onclick={() => (preview = null)}>← 목록</button>
-			<button class="dp-btn primary" onclick={() => goItem(preview)}>페이지로 이동 →</button>
+			<button class="dp-btn primary" onclick={() => preview && goItem(preview)}>페이지로 이동 →</button>
 		</div>
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div class="dp-resize" onmousedown={startResize} title="아래로 드래그해 크기 조절"></div>
@@ -333,12 +333,12 @@
 		background: color-mix(in srgb, var(--accent) 14%, transparent);
 	}
 	.scope-chip.campaign {
-		color: #d2a8ff;
-		background: color-mix(in srgb, #d2a8ff 14%, transparent);
+		color: var(--hl-pre);
+		background: color-mix(in srgb, var(--hl-pre) 14%, transparent);
 	}
 	.scope-chip.rule {
-		color: #7ee787;
-		background: color-mix(in srgb, #7ee787 14%, transparent);
+		color: var(--success);
+		background: color-mix(in srgb, var(--success) 14%, transparent);
 	}
 	.scope-chip.book {
 		color: var(--warning);
@@ -397,12 +397,12 @@
 		background: color-mix(in srgb, var(--accent) 14%, transparent);
 	}
 	.ptype.campaign {
-		color: #d2a8ff;
-		background: color-mix(in srgb, #d2a8ff 14%, transparent);
+		color: var(--hl-pre);
+		background: color-mix(in srgb, var(--hl-pre) 14%, transparent);
 	}
 	.ptype.rule {
-		color: #7ee787;
-		background: color-mix(in srgb, #7ee787 14%, transparent);
+		color: var(--success);
+		background: color-mix(in srgb, var(--success) 14%, transparent);
 	}
 	.ptype.book {
 		color: var(--warning);
@@ -492,9 +492,9 @@
 		background: var(--nav-hover-bg);
 	}
 	.dp-btn.primary {
-		background: var(--success-strong, #238636);
+		background: var(--btn-primary-bg);
 		border-color: transparent;
-		color: #fff;
+		color: var(--btn-primary-text);
 	}
 	/* 아래 가장자리 = 세로 크기 조절 핸들. */
 	.dp-resize {
