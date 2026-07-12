@@ -6,6 +6,8 @@
 	// Promise 캐싱하므로 별도 캐시 불필요.
 	import type { Core, NodeSingular, Css, StylesheetJson } from 'cytoscape';
 	import { goto } from '$app/navigation';
+	// DEV-205 모듈3: Quest Board 문자열 i18n.
+	import { locale, t } from '$lib/stores/locale';
 	import { questsApi } from '$lib/api/quests';
 	// DEV-142 후속: 상태 변경 실패(미해결 토론 등) 시 통일된 toast 경고.
 	import { showToast } from '$lib/stores/toast';
@@ -227,7 +229,7 @@
   ${
 		urgWarn
 			? `<text x="${ulX + ulW + 5}" y="21.5" fill="${dangerFill}"
-    font-size="12" font-weight="700" font-family="system-ui,sans-serif"><title>urgency 원본값 ${quest.urgency} 가 범위(1-4) 밖 — clamp 표시 중</title>⚠</text>`
+    font-size="12" font-weight="700" font-family="system-ui,sans-serif"><title>${t('board.urgencyClampPre', get(locale))}${quest.urgency}${t('board.urgencyClampPost', get(locale))}</title>⚠</text>`
 			: ''
 	}
   ${
@@ -1042,7 +1044,7 @@
 					node.data('statusId', target.statusId);
 					applyStatusChange(record.questId, target.statusId);
 				} catch (e) {
-					showToast(e instanceof Error ? e.message : '상태 변경 실패', 'error');
+					showToast(e instanceof Error ? e.message : t('common.statusChangeFailed', get(locale)), 'error');
 					busy = false;
 					return;
 				}
@@ -1067,7 +1069,7 @@
 						node.data('statusId', target.statusId);
 						applyStatusChange(item.questId, target.statusId);
 					} catch (e) {
-						showToast(e instanceof Error ? e.message : '상태 변경 실패', 'error');
+						showToast(e instanceof Error ? e.message : t('common.statusChangeFailed', get(locale)), 'error');
 						continue;
 					}
 				}
@@ -2398,7 +2400,7 @@
 			label.style.color = s.color;
 			// DEV-105: 클릭으로 collapse 토글. label 이 button — keyboard / 접근성 OK.
 			label.type = 'button';
-			label.title = '레인 접기/펼치기';
+			label.title = t('board.laneToggle', get(locale));
 			if (collapsedLanes.has(s.slug)) label.classList.add('collapsed');
 			label.onclick = () => {
 				toggleLaneCollapsed(s.slug);
@@ -2408,7 +2410,7 @@
 			};
 			const sel = document.createElement('select');
 			sel.className = 'lane-cols-sel';
-			sel.title = '이 레인 정렬 열 수';
+			sel.title = t('board.laneSortCols', get(locale));
 			const initialCols = laneCols[li];
 			[1, 2, 3].forEach((n) => {
 				const opt = document.createElement('option');
@@ -2435,7 +2437,7 @@
 			// lane 별 정렬 모드 select (Group/All) — 전역 toolbar 의 mode select 와 같은 역할
 			const modeSel = document.createElement('select');
 			modeSel.className = 'lane-mode-sel';
-			modeSel.title = '이 레인 정렬 모드';
+			modeSel.title = t('board.laneSortMode', get(locale));
 			(['group', 'all'] as const).forEach((v) => {
 				const opt = document.createElement('option');
 				opt.value = v;
@@ -2474,7 +2476,7 @@
 			settingsBtn.textContent = '⚙';
 			const setOpenAttrs = () => {
 				const open = lanesSettingsOpen.has(s.slug);
-				settingsBtn.title = open ? '레인 설정 접기' : '레인 설정 펼치기';
+				settingsBtn.title = open ? t('board.laneSettingsCollapse', get(locale)) : t('board.laneSettingsExpand', get(locale));
 				settingsBtn.setAttribute('aria-expanded', String(open));
 				hdr.classList.toggle('settings-open', open);
 			};
@@ -2862,8 +2864,8 @@
 				const names = items.map((it) => it.node.data('questSlug')).join(', ');
 				const msg =
 					items.length === 1
-						? `${names} → "${newStatus.name_en}" 상태로 변경할까요?`
-						: `${items.length}개 퀘스트를 "${newStatus.name_en}" 상태로 변경할까요?\n(${names})`;
+						? `${names} → "${newStatus.name_en}"${t('board.confirmChangeSuffix', $locale)}`
+						: `${items.length}${t('board.confirmChangeCountMid', $locale)}"${newStatus.name_en}"${t('board.confirmChangeSuffix', $locale)}\n(${names})`;
 				if (await showConfirm(msg)) {
 					confirmedLanes.add(laneIdx);
 				} else {
@@ -2895,7 +2897,7 @@
 						// API 실패 (예: DEV-142 미해결 토론으로 완료 차단) → 시작 위치로
 						// 복원 + 사유 toast (이전엔 무경고로 되돌리기만 해 혼란).
 						node.animate({ position: { x: fromPos.x, y: fromPos.y }, duration: 150 });
-						showToast(e instanceof Error ? e.message : '상태 변경 실패', 'error');
+						showToast(e instanceof Error ? e.message : t('common.statusChangeFailed', get(locale)), 'error');
 						continue;
 					}
 				}
@@ -3033,7 +3035,7 @@
 			onmousedown={startCardDrag}
 		>
 			<div class="card-head">
-				<span class="drag-hint" title="드래그하여 이동">⠿</span>
+				<span class="drag-hint" title={t('board.dragToMove', $locale)}>⠿</span>
 				<div class="card-badges">
 					<span class="badge" style:--c={expandedQuest.type_color}>{expandedQuest.quest_id}</span>
 					<span class="badge" style:--c={urgencyColor(expandedQuest.urgency)}
@@ -3043,7 +3045,7 @@
 						>{expandedQuest.status_name_en}</span
 					>
 				</div>
-				<button class="card-close" onclick={closeExpanded} title="닫기 (Esc)">×</button>
+				<button class="card-close" onclick={closeExpanded} title={t('board.closeEsc', $locale)}>×</button>
 			</div>
 
 			<p class="card-title">{expandedQuest.title}</p>
@@ -3059,39 +3061,39 @@
 				class="card-goto"
 				onclick={() => goto(`/quests/${expandedQuest!.quest_id}?from=board`)}
 			>
-				퀘스트 상세 페이지로 이동 →
+				{t('board.gotoDetail', $locale)}
 			</button>
 
 			<div class="card-divider"></div>
 			<p class="card-sec-label">
-				연관 퀘스트 하이라이트 <span class="hl-multi-hint">(다중 선택 가능)</span>
+				{t('board.highlightRelated', $locale)} <span class="hl-multi-hint">{t('board.multiSelect', $locale)}</span>
 			</p>
 
 			<div class="card-hl-grid">
 				<button
 					class="hl-btn all"
 					class:on={activeHighlights.size === 4}
-					onclick={toggleAllHighlights}>연관 전체</button
+					onclick={toggleAllHighlights}>{t('board.allRelated', $locale)}</button
 				>
 				<button
 					class="hl-btn pre"
 					class:on={activeHighlights.has('pre')}
-					onclick={() => toggleHighlight('pre')}>● 선행 퀘스트</button
+					onclick={() => toggleHighlight('pre')}>{t('board.hlPre', $locale)}</button
 				>
 				<button
 					class="hl-btn sub"
 					class:on={activeHighlights.has('sub')}
-					onclick={() => toggleHighlight('sub')}>● 서브 퀘스트</button
+					onclick={() => toggleHighlight('sub')}>{t('board.hlSub', $locale)}</button
 				>
 				<button
 					class="hl-btn next"
 					class:on={activeHighlights.has('next')}
-					onclick={() => toggleHighlight('next')}>● 후속 퀘스트</button
+					onclick={() => toggleHighlight('next')}>{t('board.hlNext', $locale)}</button
 				>
 				<button
 					class="hl-btn parent"
 					class:on={activeHighlights.has('parent')}
-					onclick={() => toggleHighlight('parent')}>● 부모 퀘스트</button
+					onclick={() => toggleHighlight('parent')}>{t('board.hlParent', $locale)}</button
 				>
 			</div>
 
@@ -3100,26 +3102,26 @@
 					<button
 						class="hl-act sel"
 						onclick={selectHighlighted}
-						title="하이라이트된 노드들을 모두 선택 (드래그·상태변경 대상으로)"
+						title={t('board.selectHighlighted', $locale)}
 					>
-						🔘 선택
+						{t('board.selectBtn', $locale)}
 					</button>
 					<button
 						class="hl-act arr"
 						onclick={arrangeHighlightedGroup}
 						disabled={arranging}
-						title="하이라이트된 노드들을 그룹으로 정렬"
+						title={t('board.arrangeHighlighted', $locale)}
 					>
-						⊞ 정렬
+						{t('board.arrangeBtn', $locale)}
 					</button>
-					<button class="hl-act clear" onclick={clearHighlight} title="하이라이트 해제">
-						× 해제
+					<button class="hl-act clear" onclick={clearHighlight} title={t('board.clearHighlightTitle', $locale)}>
+						{t('common.clearBtn', $locale)}
 					</button>
 				</div>
 			{/if}
 
 			<p class="card-note">
-				하이라이트는 선택(파란색)과 별개 — '선택' 버튼을 누르면 드래그·상태변경 대상이 됨
+				{t('board.cardNote', $locale)}
 			</p>
 		</div>
 	{/if}
@@ -3127,15 +3129,15 @@
 	<!-- DEV-135: List 필터 활성 표시 — Board 의 dim 이 '왜' 인지 + 한 클릭 해제. -->
 	{#if filterActive}
 		<div class="filter-chip" role="status">
-			<span class="fc-label">필터 적용 중 — {filterMatchCount}/{filterTotalCount} 매치</span>
-			<button class="fc-clear" onclick={clearBoardFilter} title="필터 모두 해제">× 해제</button>
+			<span class="fc-label">{t('board.filterActivePre', $locale)}{filterMatchCount}/{filterTotalCount}{t('board.filterActivePost', $locale)}</span>
+			<button class="fc-clear" onclick={clearBoardFilter} title={t('common.clearFilter', $locale)}>{t('common.clearBtn', $locale)}</button>
 		</div>
 	{/if}
 	<!-- DEV-073 fix3: New Quest 는 상단 우측 고정 (항상 노출), 나머지 도구바는
 	     그 아래로 내림 (사용자 피드백). 접기 토글로 도구만 숨길 수 있음. -->
 	{#if onNewQuest}
 		<div class="tb-newquest-wrap">
-			<button class="tb-btn tb-new" onclick={onNewQuest} title="새 퀘스트">
+			<button class="tb-btn tb-new" onclick={onNewQuest} title={t('board.newQuest', $locale)}>
 				<span class="icon">+</span><span>New Quest</span>
 			</button>
 		</div>
@@ -3169,7 +3171,7 @@
 				class="tb-btn"
 				class:tb-on={gridSnap}
 				onclick={toggleGridSnap}
-				title="그리드 스냅 — 드래그 종료 시 격자에 정렬 (G)"
+				title={t('board.gridSnap', $locale)}
 			>
 				<span class="icon">⊞</span><span>Snap</span>
 			</button>
@@ -3178,11 +3180,11 @@
 				class="tb-select"
 				value={globalCols}
 				onchange={(e) => setGlobalCols(parseInt((e.currentTarget as HTMLSelectElement).value))}
-				title="레인 그리드 열 수 (그리드만 갱신)"
+				title={t('board.gridCols', $locale)}
 			>
-				<option value={1}>1열</option>
-				<option value={2}>2열</option>
-				<option value={3}>3열</option>
+				<option value={1}>1{t('board.colSuffix', $locale)}</option>
+				<option value={2}>2{t('board.colSuffix', $locale)}</option>
+				<option value={3}>3{t('board.colSuffix', $locale)}</option>
 			</select>
 			<div class="tb-sep"></div>
 			<!-- DEV-056 → DEV-059 fix2: 숨김 + 순서 변경 통합 → '보드 설정'. -->
@@ -3192,9 +3194,9 @@
 					(s) => s.laneHidden || s.hideGroup || s.hideSolo
 				)}
 				onclick={() => (showHideModal = true)}
-				title="레인 순서 / 숨김 / 그룹·단독 노드 가리기"
+				title={t('board.settingsTitle', $locale)}
 			>
-				<span class="icon">⚙</span><span>보드 설정</span>
+				<span class="icon">⚙</span><span>{t('board.settings', $locale)}</span>
 			</button>
 			<div class="tb-sep"></div>
 			<!-- arrange 버튼 + mode select 는 하나의 컨트롤처럼 시각적으로 묶음 -->
@@ -3210,12 +3212,12 @@
 						}
 					}}
 					title={arrangeMode === 'group'
-						? '모든 노드 정렬 — 연관 그룹은 직사각형 영역으로 묶고, isolated 는 위쪽에 배치'
-						: '모든 노드 정렬 — 슬러그 순으로 lane 안에서 왼쪽 위부터 채움'}
+						? t('board.arrangeGroupTitle', $locale)
+						: t('board.arrangeFlatTitle', $locale)}
 				>
 					<span class="icon">⊟</span><span>Arrange</span>
 				</button>
-				<select class="tb-select tb-mode" bind:value={arrangeMode} title="정렬 모드">
+				<select class="tb-select tb-mode" bind:value={arrangeMode} title={t('board.arrangeMode', $locale)}>
 					<option value="group">Group</option>
 					<option value="all">All</option>
 				</select>
@@ -3226,8 +3228,8 @@
 		<button
 			class="tb-btn tb-collapse"
 			onclick={toggleToolbarCollapsed}
-			title={toolbarCollapsed ? '도구바 펼치기' : '도구바 접기 — 레인 라벨이 가려질 때'}
-			aria-label={toolbarCollapsed ? '도구바 펼치기' : '도구바 접기'}
+			title={toolbarCollapsed ? t('board.toolbarExpand', $locale) : t('board.toolbarCollapse', $locale)}
+			aria-label={toolbarCollapsed ? t('board.toolbarExpand', $locale) : t('board.toolbarCollapseShort', $locale)}
 		>
 			<span class="icon">{toolbarCollapsed ? '☰' : '⇥'}</span>
 		</button>
@@ -3245,8 +3247,8 @@
 		<div class="dialog" role="alertdialog" tabindex="-1">
 			<p class="dialog-msg">{confirmDialog.msg}</p>
 			<div class="dialog-btns">
-				<button class="dialog-ok" onclick={() => confirmDialogResolve(true)}>변경</button>
-				<button class="dialog-cancel" onclick={() => confirmDialogResolve(false)}>취소</button>
+				<button class="dialog-ok" onclick={() => confirmDialogResolve(true)}>{t('common.change', $locale)}</button>
+				<button class="dialog-cancel" onclick={() => confirmDialogResolve(false)}>{t('common.cancel', $locale)}</button>
 			</div>
 		</div>
 	</div>
@@ -3263,23 +3265,22 @@
 	>
 		<div class="hide-modal" role="dialog" aria-modal="true" tabindex="-1">
 			<div class="hide-head">
-				<h3 class="hide-title">보드 설정</h3>
-				<button class="hide-close" onclick={() => (showHideModal = false)} aria-label="닫기"
+				<h3 class="hide-title">{t('board.settings', $locale)}</h3>
+				<button class="hide-close" onclick={() => (showHideModal = false)} aria-label={t('common.close', $locale)}
 					>×</button
 				>
 			</div>
 			<p class="hide-help">
-				레인 순서 변경 + 숨김 + 그룹·단독 노드 가리기. ◀ / ▶ 로 좌우 이동, 표시 해제 시 그 레인 전체
-				숨김.
+				{t('board.hideHelp', $locale)}
 			</p>
 			<table class="hide-table">
 				<thead>
 					<tr>
-						<th style="width: 6ch">순서</th>
-						<th style="width: 14ch">레인</th>
-						<th>표시</th>
-						<th>그룹 숨김</th>
-						<th>단독 노드 숨김</th>
+						<th style="width: 6ch">{t('board.colOrder', $locale)}</th>
+						<th style="width: 14ch">{t('board.colLane', $locale)}</th>
+						<th>{t('board.colShow', $locale)}</th>
+						<th>{t('board.colHideGroup', $locale)}</th>
+						<th>{t('board.colHideSolo', $locale)}</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -3292,15 +3293,15 @@
 									class="reorder-btn"
 									onclick={() => swapLane(li, -1)}
 									disabled={li === 0}
-									title="왼쪽으로"
-									aria-label="왼쪽으로">◀</button
+									title={t('board.moveLeft', $locale)}
+									aria-label={t('board.moveLeft', $locale)}>◀</button
 								>
 								<button
 									class="reorder-btn"
 									onclick={() => swapLane(li, 1)}
 									disabled={li === sorted.length - 1}
-									title="오른쪽으로"
-									aria-label="오른쪽으로">▶</button
+									title={t('board.moveRight', $locale)}
+									aria-label={t('board.moveRight', $locale)}>▶</button
 								>
 							</td>
 							<td>
@@ -3311,7 +3312,7 @@
 									type="checkbox"
 									checked={laneVisible}
 									onchange={() => toggleHideSetting(s.slug, 'laneHidden')}
-									title="레인 표시 (체크 해제 시 레인 전체 숨김)"
+									title={t('board.laneShowTitle', $locale)}
 								/>
 							</td>
 							<td>
@@ -3339,17 +3340,16 @@
 			     localStorage 에 반영되어 dim 이 즉시 갱신되고 List 와도 일관. -->
 			<div class="bf-section">
 				<div class="bf-head">
-					<h4 class="bf-title">필터</h4>
+					<h4 class="bf-title">{t('board.filter', $locale)}</h4>
 					{#if filterActive}
-						<span class="bf-count">{filterMatchCount}/{filterTotalCount} 매치</span>
-						<button class="bf-clear" onclick={clearBoardFilter} title="필터 모두 해제"
-							>× 해제</button
+						<span class="bf-count">{filterMatchCount}/{filterTotalCount}{t('board.filterActivePost', $locale)}</span>
+						<button class="bf-clear" onclick={clearBoardFilter} title={t('common.clearFilter', $locale)}
+							>{t('common.clearBtn', $locale)}</button
 						>
 					{/if}
 				</div>
 				<p class="hide-help">
-					매치 안 되는 노드는 보드에서 흐리게 표시됩니다(숨기지 않음). 여기서 바꾼 필터는 리스트와
-					공유됩니다.
+					{t('board.filterHelp', $locale)}
 				</p>
 				<div class="bf-filter">
 					<QuestListFilter
