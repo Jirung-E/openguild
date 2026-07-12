@@ -7,6 +7,8 @@
 	import { campaignsApi } from '$lib/api/campaigns';
 	import type { CampaignHistoryEntry } from '$lib/types';
 	import { formatTs, formatRelative } from '$lib/utils/datetime';
+	// DEV-205: 변경 이력 섹션 i18n (QuestHistory 와 동일 키 재사용).
+	import { locale, t } from '$lib/stores/locale';
 
 	let { campaignSlug }: { campaignSlug: string } = $props();
 
@@ -25,7 +27,7 @@
 				entries = list;
 			})
 			.catch((e) => {
-				error = e instanceof Error ? e.message : '이력 로드 실패';
+				error = e instanceof Error ? e.message : t('history.loadFailed', $locale);
 			})
 			.finally(() => {
 				loading = false;
@@ -33,7 +35,7 @@
 	});
 
 	function statusLabel(value: string | null): string {
-		if (!value) return '(없음)';
+		if (!value) return t('history.none', $locale);
 		if (value === 'active') return 'Active';
 		if (value === 'done') return 'Done';
 		return value;
@@ -57,24 +59,24 @@
 
 <section class="ch-section">
 	<div class="section-head">
-		<h2 class="section-title">변경 이력</h2>
+		<h2 class="section-title">{t('history.title', $locale)}</h2>
 		{#if entries.length > 0}
 			<span class="ch-count">{entries.length}</span>
 		{/if}
 	</div>
 
 	{#if loading}
-		<p class="ch-state">로드 중…</p>
+		<p class="ch-state">{t('history.loading', $locale)}</p>
 	{:else if error}
 		<p class="ch-state error">{error}</p>
 	{:else if entries.length === 0}
-		<p class="ch-state">변경 이력 없음.</p>
+		<p class="ch-state">{t('history.empty', $locale)}</p>
 	{:else}
 		<ul class="ch-list" data-testid="campaign-history-list">
 			{#each entries as e (e.id)}
 				<li class="ch-item" data-testid="ch-item">
 					<time class="ch-ts" datetime={e.ts} title={formatTs(e.ts)}>
-						{formatRelative(e.ts)}
+						{formatRelative(e.ts, undefined, $locale)}
 					</time>
 					{#if opLabel(e.op)}
 						<span class="ch-op">{opLabel(e.op)}</span>
