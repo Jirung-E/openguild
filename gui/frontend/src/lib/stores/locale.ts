@@ -62,6 +62,30 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'quest.section.prerequisites': { ko: '선행 퀘스트', en: 'Prerequisites' },
 	'quest.section.campaigns': { ko: '캠페인', en: 'Campaigns' },
 	'quest.section.successors': { ko: '후속 퀘스트', en: 'Successors' },
+	'quest.section.successorsHint': { ko: '이 퀘스트를 선행으로 가진 퀘스트', en: 'Quests that list this quest as a prerequisite' },
+	'quest.section.tags': { ko: '태그', en: 'Tags' },
+
+	// DEV-205(모듈4 선반영): 퀘스트 상세 태그 섹션 + 삭제 모달. 사용자 보고
+	// (삭제 다이얼로그 라벨 미전환/버튼 순서 불일치, 태그 섹션 위치/색).
+	'quest.tags.add': { ko: '+ 추가', en: '+ Add' },
+	'quest.tags.remove': { ko: '태그 제거', en: 'Remove tag' },
+	'quest.tags.none': { ko: '태그 없음.', en: 'No tags.' },
+	'quest.tags.placeholder': { ko: '새 태그 (공백 구분으로 여러 개)', en: 'New tag (space-separated for multiple)' },
+	'quest.tags.newAria': { ko: '새 태그', en: 'New tag' },
+	'quest.tags.addSubmit': { ko: '추가', en: 'Add' },
+	'quest.delete.msg': { ko: '이 퀘스트를 삭제합니다. 되돌릴 수 없습니다.', en: 'This quest will be deleted. This cannot be undone.' },
+	'quest.delete.subTitle': { ko: '서브퀘스트 처리:', en: 'Sub-quest handling:' },
+	'quest.delete.selectAll': { ko: '전체 선택', en: 'Select all' },
+	'quest.delete.subHelp': { ko: '체크한 항목은 함께 삭제됩니다. 체크하지 않은 항목은 부모에서 분리됩니다.', en: 'Checked items are deleted too; unchecked items are detached from the parent.' },
+	'quest.delete.prereqNote': { ko: '선행 퀘스트들은 별도의 퀘스트이므로 영향받지 않습니다.', en: 'Prerequisite quests are separate and are not affected.' },
+	'quest.delete.deleting': { ko: '삭제 중…', en: 'Deleting…' },
+
+	// DEV-205(모듈2 선반영): 캠페인 삭제 확인 다이얼로그.
+	'campaign.deleteTitle': { ko: '캠페인 삭제', en: 'Delete campaign' },
+	'campaign.deleteMsg1': { ko: '캠페인 "', en: 'Delete campaign "' },
+	'campaign.deleteMsg2': { ko: '" 을(를) 삭제할까요?\n(soft delete — 복원 가능)', en: '"?\n(soft delete — restorable)' },
+	'campaign.checklistDeleteTitle': { ko: '체크리스트 항목 삭제', en: 'Delete checklist item' },
+	'campaign.checklistDeleteMsg': { ko: '이 체크리스트 항목을 삭제할까요?', en: 'Delete this checklist item?' },
 
 	// DEV-205 모듈1: Nav 탭 + 액션.
 	'nav.home': { ko: '홈', en: 'Home' },

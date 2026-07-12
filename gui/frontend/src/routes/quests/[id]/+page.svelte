@@ -936,56 +936,12 @@
 			{/if}
 		</section>
 
-		<!-- DEV-068: 태그 — frontmatter 가 진리원. inline 편집 가능. -->
-		<section>
-			<div class="section-head">
-				<h2 class="section-title tag-label">Tags</h2>
-				{#if !editMode}
-					<button class="sec-add-btn" onclick={() => (tagInputOpen = !tagInputOpen)}>
-						{tagInputOpen ? '취소' : '+ 추가'}
-					</button>
-				{/if}
-			</div>
-			{#if (detail.tags ?? []).length > 0}
-				<ul class="tag-pills">
-					{#each detail.tags ?? [] as t (t)}
-						<li>
-							<span class="tag-pill" style={tagStyle(t)} title={tagTitle(t)}>
-								{t}
-								{#if !editMode}
-									<button
-										class="tag-rm"
-										title="태그 제거"
-										onclick={() => removeTag(t)}
-										aria-label={`${t} 제거`}>×</button
-									>
-								{/if}
-							</span>
-						</li>
-					{/each}
-				</ul>
-			{:else if !tagInputOpen}
-				<p class="no-desc">태그 없음.</p>
-			{/if}
-			{#if tagInputOpen && !editMode}
-				<form class="tag-add-form" onsubmit={addTagFromInput}>
-					<input
-						type="text"
-						bind:value={newTagText}
-						placeholder="새 태그 (공백 구분으로 여러 개)"
-						aria-label="새 태그"
-					/>
-					<button type="submit" disabled={!newTagText.trim()}>추가</button>
-				</form>
-			{/if}
-		</section>
-
 		<!-- DEV-070: 후속 퀘스트 — 본 quest 를 선행으로 가진 quest 들 (역방향
 			참조). DEV-124: 추가 버튼. -->
 		<section>
 			<div class="section-head">
-				<h2 class="section-title prereq-label">{t('quest.section.successors', $locale)}</h2>
-				<span class="sec-hint">이 퀘스트를 선행으로 가진 퀘스트</span>
+				<h2 class="section-title succ-label">{t('quest.section.successors', $locale)}</h2>
+				<span class="sec-hint">{t('quest.section.successorsHint', $locale)}</span>
 				{#if !editMode}
 					<button class="sec-add-btn" onclick={() => openCombo('succ')} title="후속 퀘스트 추가">
 						+ 추가
@@ -1050,6 +1006,52 @@
 				</ul>
 			{:else}
 				<p class="no-desc">연결된 캠페인 없음.</p>
+			{/if}
+		</section>
+
+		<!-- DEV-068: 태그 — frontmatter 가 진리원. inline 편집 가능.
+		     DEV-205: 관계 섹션(선행/후속) 사이에 끼어 있던 위치를 관계 섹션
+		     뒤(메타)로 이동. 루프 변수는 번역 t() 와 충돌 않게 tag 로. -->
+		<section>
+			<div class="section-head">
+				<h2 class="section-title tag-label">{t('quest.section.tags', $locale)}</h2>
+				{#if !editMode}
+					<button class="sec-add-btn" onclick={() => (tagInputOpen = !tagInputOpen)}>
+						{tagInputOpen ? t('common.cancel', $locale) : t('quest.tags.add', $locale)}
+					</button>
+				{/if}
+			</div>
+			{#if (detail.tags ?? []).length > 0}
+				<ul class="tag-pills">
+					{#each detail.tags ?? [] as tag (tag)}
+						<li>
+							<span class="tag-pill" style={tagStyle(tag)} title={tagTitle(tag)}>
+								{tag}
+								{#if !editMode}
+									<button
+										class="tag-rm"
+										title={t('quest.tags.remove', $locale)}
+										onclick={() => removeTag(tag)}
+										aria-label={`${t('quest.tags.remove', $locale)}: ${tag}`}>×</button
+									>
+								{/if}
+							</span>
+						</li>
+					{/each}
+				</ul>
+			{:else if !tagInputOpen}
+				<p class="no-desc">{t('quest.tags.none', $locale)}</p>
+			{/if}
+			{#if tagInputOpen && !editMode}
+				<form class="tag-add-form" onsubmit={addTagFromInput}>
+					<input
+						type="text"
+						bind:value={newTagText}
+						placeholder={t('quest.tags.placeholder', $locale)}
+						aria-label={t('quest.tags.newAria', $locale)}
+					/>
+					<button type="submit" disabled={!newTagText.trim()}>{t('quest.tags.addSubmit', $locale)}</button>
+				</form>
 			{/if}
 		</section>
 
@@ -1173,14 +1175,14 @@
 	<div class="ov" role="presentation">
 		<div class="modal-sm" role="dialog" aria-modal="true" tabindex="-1">
 			<div class="modal-head">
-				<h3 class="del-title">{detail.quest_id} 삭제</h3>
+				<h3 class="del-title">{detail.quest_id} {t('detail.delete', $locale)}</h3>
 				<button class="x" onclick={() => (deleteModal = false)} disabled={deleting}>×</button>
 			</div>
-			<p class="del-msg">이 퀘스트를 삭제합니다. 되돌릴 수 없습니다.</p>
+			<p class="del-msg">{t('quest.delete.msg', $locale)}</p>
 			{#if detail.sub_quests.length > 0}
 				<div class="del-sub">
 					<div class="del-sub-head">
-						<p class="del-sub-title">서브퀘스트 처리:</p>
+						<p class="del-sub-title">{t('quest.delete.subTitle', $locale)}</p>
 						<label class="del-sub-all">
 							<input
 								type="checkbox"
@@ -1189,11 +1191,11 @@
 								onchange={toggleAllCascade}
 								data-testid="cascade-all"
 							/>
-							<span>전체 선택</span>
+							<span>{t('quest.delete.selectAll', $locale)}</span>
 						</label>
 					</div>
 					<p class="del-sub-help">
-						체크한 항목은 함께 삭제됩니다. 체크하지 않은 항목은 부모에서 분리됩니다.
+						{t('quest.delete.subHelp', $locale)}
 					</p>
 					<ul class="del-sub-list" bind:this={delSubListEl}>
 						{#each detail.sub_quests as sq (sq.id)}
@@ -1216,19 +1218,20 @@
 					{/if}
 				</div>
 			{/if}
-			<p class="del-prereq">선행 퀘스트들은 별도의 퀘스트이므로 영향받지 않습니다.</p>
+			<p class="del-prereq">{t('quest.delete.prereqNote', $locale)}</p>
+			<!-- 버튼 순서: [취소][삭제] — ConfirmDialog(캠페인 상세 등)와 통일. -->
 			<div class="del-actions">
+				<button class="btn-del-no" onclick={() => (deleteModal = false)} disabled={deleting}
+					>{t('common.cancel', $locale)}</button
+				>
 				<button
 					class="btn-del-yes"
 					onclick={confirmDelete}
 					disabled={deleting}
 					data-testid="confirm-delete"
 				>
-					{deleting ? '삭제 중…' : '삭제'}
+					{deleting ? t('quest.delete.deleting', $locale) : t('detail.delete', $locale)}
 				</button>
-				<button class="btn-del-no" onclick={() => (deleteModal = false)} disabled={deleting}
-					>취소</button
-				>
 			</div>
 		</div>
 	</div>
@@ -1660,6 +1663,11 @@
 	}
 	.section-title.prereq-label {
 		color: var(--hl-pre);
+	}
+	/* DEV-070/DEV-205: 후속 퀘스트 — QuestBoard/CLI 의 successor(--hl-next) 색.
+	   이전엔 prereq-label 을 재사용해 선행과 색이 같았다(사용자 보고). */
+	.section-title.succ-label {
+		color: var(--hl-next);
 	}
 	/* DEV-070: section header 옆의 부가 설명 hint. */
 	.sec-hint {

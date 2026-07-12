@@ -710,20 +710,20 @@
 <!-- DEV-118: 캠페인 / 체크리스트 삭제 확인 모달. -->
 <ConfirmDialog
 	open={confirmDeleteCampaign}
-	title="캠페인 삭제"
+	title={t('campaign.deleteTitle', $locale)}
 	message={detail
-		? `캠페인 "${detail.title}" 을(를) 삭제할까요?\n(soft delete — restore 가능)`
+		? `${t('campaign.deleteMsg1', $locale)}${detail.title}${t('campaign.deleteMsg2', $locale)}`
 		: ''}
-	confirmLabel="삭제"
+	confirmLabel={t('detail.delete', $locale)}
 	danger
 	onconfirm={deleteCampaign}
 	oncancel={() => (confirmDeleteCampaign = false)}
 />
 <ConfirmDialog
 	open={confirmDeleteChecklistIdx !== null}
-	title="체크리스트 항목 삭제"
-	message="이 체크리스트 항목을 삭제할까요?"
-	confirmLabel="삭제"
+	title={t('campaign.checklistDeleteTitle', $locale)}
+	message={t('campaign.checklistDeleteMsg', $locale)}
+	confirmLabel={t('detail.delete', $locale)}
 	danger
 	onconfirm={removeChecklist}
 	oncancel={() => (confirmDeleteChecklistIdx = null)}
