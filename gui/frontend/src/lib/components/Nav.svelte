@@ -19,8 +19,17 @@
 	// DEV-207 의 guildContextActive(보드/Welcome 마운트가 갱신, 이번에 반응형
 	// 스토어화)를 구독해 활성 전환마다 재조회 / 비활성이면 숨김.
 	import { guildContextActive } from '$lib/stores/guildSession';
+	import { detectEnvironment } from '$lib/api/transport';
 	let guildName = $state('');
 	let isRemoteGuild = $state(false);
+
+	// DEV-253: 커스텀 타이틀바(Windows Tauri)가 있으면 로고/길드 이름을 타이틀바로
+	// 옮겼으므로 Nav 에선 숨긴다. 타이틀바가 없는 환경(브라우저 dev / macOS)에선
+	// Welcome 진입점과 길드 이름이 사라지지 않도록 기존 로고를 그대로 유지.
+	const hasTitleBar =
+		detectEnvironment() === 'tauri' &&
+		typeof navigator !== 'undefined' &&
+		navigator.userAgent.includes('Windows');
 	$effect(() => {
 		if (!$guildContextActive) {
 			guildName = '';
@@ -87,18 +96,22 @@
 </script>
 
 <header>
-	<!-- DEV-052 후속 (4회차): 로고 클릭 → Welcome (다른 길드로 전환 / recent 관리). -->
-	<a href="/welcome" class="logo">
-		openguild
-		<!-- DEV-141: 현재 길드 이름 — 로고 옆 작은 배지로 어느 길드인지 표시. -->
-		{#if guildName}
-			<span class="guild-name" title="현재 길드: {guildName}">{guildName}</span>
-			<!-- DEV-113 후속: 원격 서버에 연결된 상태면 명시 배지. -->
-			{#if isRemoteGuild}
-				<span class="remote-badge" title="원격 서버에 연결됨">🌐 원격</span>
+	<!-- DEV-052 후속 (4회차): 로고 클릭 → Welcome (다른 길드로 전환 / recent 관리).
+	     DEV-253: 커스텀 타이틀바가 있는 환경에선 로고/길드 이름을 타이틀바로 옮겨
+	     여기선 숨김. 타이틀바 없는 환경에서만 fallback 으로 노출. -->
+	{#if !hasTitleBar}
+		<a href="/welcome" class="logo">
+			openguild
+			<!-- DEV-141: 현재 길드 이름 — 로고 옆 작은 배지로 어느 길드인지 표시. -->
+			{#if guildName}
+				<span class="guild-name" title="현재 길드: {guildName}">{guildName}</span>
+				<!-- DEV-113 후속: 원격 서버에 연결된 상태면 명시 배지. -->
+				{#if isRemoteGuild}
+					<span class="remote-badge" title="원격 서버에 연결됨">🌐 원격</span>
+				{/if}
 			{/if}
-		{/if}
-	</a>
+		</a>
+	{/if}
 
 	<nav>
 		<a href="/" class:active={onRootPath && currentView === 'home'}>Home</a>
