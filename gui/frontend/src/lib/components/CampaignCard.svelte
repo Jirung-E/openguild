@@ -12,6 +12,8 @@
 	// BUG-033: goto 제거 — anchor href 로 native navigate.
 	import type { CampaignSummary } from '$lib/types';
 	import { formatRemaining } from '$lib/utils/datetime';
+	// DEV-205 모듈2: 카드 문자열 i18n.
+	import { locale, t } from '$lib/stores/locale';
 	import { isCampaignDone } from '$lib/utils/campaign-progress';
 	// DEV-233 후속: 캐러셀/컨베이어의 transform 이 fixed 기준을 바꿔 툴팁이
 	// 잘리는 문제 — body 직속으로 이동.
@@ -36,14 +38,14 @@
 	function fmtPeriod(): string {
 		const a = summary.started_at?.trim() || '';
 		const b = summary.ended_at?.trim() || '';
-		if (!a && !b) return '기간 미정';
+		if (!a && !b) return t('campaignList.periodUndefined', $locale);
 		if (a && !b) return `${a} ~`;
 		if (!a && b) return `~ ${b}`;
 		return `${a} ~ ${b}`;
 	}
 
 	function progressText(): string {
-		if (summary.checklist_total === 0) return '체크리스트 없음';
+		if (summary.checklist_total === 0) return t('card.noChecklist', $locale);
 		const pct = Math.round(summary.progress * 100);
 		return `${summary.checklist_checked}/${summary.checklist_total} (${pct}%)`;
 	}
@@ -54,7 +56,7 @@
 	let questPct = $derived(summary.quest_progress ?? 0);
 	let questFull = $derived(questTotal > 0 && questDone === questTotal);
 	function questProgressText(): string {
-		if (questTotal === 0) return '링크된 퀘스트 없음';
+		if (questTotal === 0) return t('card.noLinkedQuests', $locale);
 		const pct = Math.round(questPct * 100);
 		return `${questDone}/${questTotal} (${pct}%)`;
 	}
@@ -83,7 +85,7 @@
 
 	function activeRemainingLabel(): string {
 		if (!summary.ended_at?.trim()) return '';
-		return formatRemaining(summary.ended_at, now, 'until-end');
+		return formatRemaining(summary.ended_at, now, 'until-end', $locale);
 	}
 
 	// BUG-031 → DEV-079: 진행중 카드의 남은 기간 색.
@@ -105,7 +107,7 @@
 
 	function upcomingRemainingLabel(): string {
 		if (!summary.started_at?.trim()) return '';
-		return formatRemaining(summary.started_at, now, 'until-start');
+		return formatRemaining(summary.started_at, now, 'until-start', $locale);
 	}
 
 	// DEV-080: 'overdue' 모드용 — "n일 지남". ended_at 기준.
@@ -119,9 +121,10 @@
 		const days = Math.floor(elapsedMs / (24 * 60 * 60 * 1000));
 		if (days < 1) {
 			const hr = Math.floor(elapsedMs / (60 * 60 * 1000));
-			return hr < 1 ? '방금 지남' : `${hr}시간 지남`;
+			if (hr < 1) return t('card.justPassed', $locale);
+			return `${hr}${t('card.hoursPassed', $locale)}`;
 		}
-		return `${days}일 지남`;
+		return `${days}${t('card.daysPassed', $locale)}`;
 	}
 
 	// BUG-033: `<button onclick={goto}>` 대신 native `<a href>` 사용. button +
@@ -156,7 +159,7 @@
 	{#if mode === 'active'}
 		<div class="head">
 			<span class="slug">{summary.campaign_slug}</span>
-			{#if completed}<span class="done-mark" title="완료">✓ 완료</span>{/if}
+			{#if completed}<span class="done-mark" title={t('common.done', $locale)}>{t('common.doneMark', $locale)}</span>{/if}
 		</div>
 		<div class="title">{summary.title}</div>
 		<div class="meta">
@@ -170,8 +173,8 @@
 				{/if}
 			</div>
 			<!-- 체크리스트 progress -->
-			<div class="progress-row" title="체크리스트 진행률">
-				<span class="progress-label">체크</span>
+			<div class="progress-row" title={t('card.checkProgress', $locale)}>
+				<span class="progress-label">{t('card.check', $locale)}</span>
 				<div class="progress-bar">
 					<div
 						class="progress-fill"
@@ -185,8 +188,8 @@
 			</div>
 			<!-- DEV-093: 링크 퀘스트 progress (있을 때만). DEV-233: hover 시 상태별 stacked. -->
 			{#if questTotal > 0}
-				<div class="progress-row" title="링크된 퀘스트의 완료 비율 (status.counts_as_done)">
-					<span class="progress-label">퀘스트</span>
+				<div class="progress-row" title={t('card.questProgress', $locale)}>
+					<span class="progress-label">{t('card.quest', $locale)}</span>
 					<div
 						class="progress-bar"
 						bind:this={questBarEl}
@@ -258,7 +261,7 @@
 				<span class="tooltip-dot" style:background={sc.status_color}></span>
 				<span class="tooltip-name">{sc.status_name_en}</span>
 				<span class="tooltip-count"
-					>{sc.count}개 ({Math.round((sc.count / questTotal) * 100)}%)</span
+					>{sc.count}{t('common.countSuffix', $locale)} ({Math.round((sc.count / questTotal) * 100)}%)</span
 				>
 			</div>
 		{/each}

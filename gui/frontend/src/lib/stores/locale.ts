@@ -237,7 +237,47 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'campaignList.sortManual': { ko: '수동 (display_order)', en: 'Manual (display_order)' },
 	'campaignList.empty': { ko: '캠페인 없음.', en: 'No campaigns.' },
 	'campaignList.periodUndefined': { ko: '기간 미정', en: 'No period set' },
-	'campaignList.orderChangeFailed': { ko: 'order 변경 실패', en: 'Failed to change order' }
+	'campaignList.orderChangeFailed': { ko: 'order 변경 실패', en: 'Failed to change order' },
+
+	// DEV-205 모듈2: 홈 카드/컨베이어 자식 컴포넌트.
+	'common.done': { ko: '완료', en: 'Done' },
+	'card.noChecklist': { ko: '체크리스트 없음', en: 'No checklist' },
+	'card.noLinkedQuests': { ko: '링크된 퀘스트 없음', en: 'No linked quests' },
+	'card.checkProgress': { ko: '체크리스트 진행률', en: 'Checklist progress' },
+	'card.questProgress': { ko: '링크된 퀘스트의 완료 비율', en: 'Completion of linked quests' },
+	'card.check': { ko: '체크', en: 'Check' },
+	'card.quest': { ko: '퀘스트', en: 'Quests' },
+	'card.justPassed': { ko: '방금 지남', en: 'just now' },
+	'card.hoursPassed': { ko: '시간 지남', en: 'h ago' },
+	'card.daysPassed': { ko: '일 지남', en: 'd ago' },
+	'carousel.activeEmpty': { ko: '진행 중인 캠페인이 없습니다.', en: 'No active campaigns.' },
+	'carousel.active': { ko: '진행 중 캠페인', en: 'Active campaigns' },
+	'carousel.prev': { ko: '이전', en: 'Previous' },
+	'carousel.next': { ko: '다음', en: 'Next' },
+	'carousel.play': { ko: '재생', en: 'Play' },
+	'carousel.pause': { ko: '정지', en: 'Pause' },
+	'carousel.autoPlay': { ko: '자동 회전 재생', en: 'Resume auto-rotate' },
+	'carousel.autoPause': { ko: '자동 회전 정지', en: 'Pause auto-rotate' },
+	'conveyor.upcomingEmpty': { ko: '곧 시작 예정인 캠페인이 없습니다.', en: 'No upcoming campaigns.' },
+	'conveyor.overdueCampaigns': { ko: '마감 지난 캠페인', en: 'Overdue campaigns' },
+	'conveyor.upcomingCampaigns': { ko: '곧 시작 캠페인', en: 'Upcoming campaigns' },
+	'conveyor.overdueQuests': { ko: '마감 지남 퀘스트', en: 'Overdue quests' },
+	'conveyor.imminentQuests': { ko: '마감 임박 퀘스트', en: 'Due-soon quests' },
+
+	// DEV-205 모듈2: 작업 기록 요약 카드(홈). worklog 상세는 모듈5/후속.
+	'worklogCard.detailTitle': { ko: '작업 기록 상세', en: 'Worklog detail' },
+	'worklogCard.title': { ko: '🕘 작업 기록', en: '🕘 Worklog' },
+	'worklogCard.rangePre': { ko: '최근 ', en: 'Last ' },
+	'worklogCard.rangeWeeks': { ko: '주 · 총 ', en: ' weeks · ' },
+	'worklogCard.rangeActivities': { ko: ' 활동 ›', en: ' activities ›' },
+	'worklogCard.heatmapAria': { ko: '최근 활동 히트맵', en: 'Recent activity heatmap' },
+	'worklogCard.today': { ko: '오늘', en: 'Today' },
+	'worklogCard.statusChanges': { ko: '상태변경', en: 'status changes' },
+	'worklogCard.comments': { ko: '댓글', en: 'comments' },
+	'worklogCard.created': { ko: '생성', en: 'created' },
+	'worklogCard.lastActivity': { ko: '마지막 활동 ', en: 'Last activity ' },
+	'worklogCard.activityUnit': { ko: '활동 ', en: '' },
+	'worklogCard.activityCount': { ko: '건', en: '' }
 };
 
 /** 현재 locale 기준 번역. 누락 키는 ko 원문 그대로(안전한 fallback). */

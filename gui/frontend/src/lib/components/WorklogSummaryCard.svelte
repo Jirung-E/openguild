@@ -10,6 +10,8 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { worklogApi, type DailyCount, type WorklogReport } from '$lib/api/worklog';
+	// DEV-205 모듈2: 작업 기록 요약 카드 i18n.
+	import { locale, t } from '$lib/stores/locale';
 
 	const WEEKS = 12;
 
@@ -101,19 +103,19 @@
 {#if !loading && grid.length > 0}
 	<section class="block">
 		<div class="card">
-			<button class="head" onclick={() => openDetail()} title="작업 기록 상세">
-				<h2>🕘 작업 기록</h2>
-				<span class="range">최근 {WEEKS}주 · 총 {total} 활동 ›</span>
+			<button class="head" onclick={() => openDetail()} title={t('worklogCard.detailTitle', $locale)}>
+				<h2>{t('worklogCard.title', $locale)}</h2>
+				<span class="range">{t('worklogCard.rangePre', $locale)}{WEEKS}{t('worklogCard.rangeWeeks', $locale)}{total}{t('worklogCard.rangeActivities', $locale)}</span>
 			</button>
-			<div class="heat" role="img" aria-label="최근 {WEEKS}주 활동 히트맵">
+			<div class="heat" role="img" aria-label={t('worklogCard.heatmapAria', $locale)}>
 				{#each grid as col, w (w)}
 					<div class="week">
 						{#each col as cell, d (d)}
 							{#if cell}
 								<button
 									class="cell l{level(cell.count)}"
-									title="{cell.date} — 활동 {cell.count}건"
-									aria-label="{cell.date} 활동 {cell.count}건"
+									title="{cell.date} — {t('worklogCard.activityUnit', $locale)}{cell.count}{t('worklogCard.activityCount', $locale)}"
+									aria-label="{cell.date} {t('worklogCard.activityUnit', $locale)}{cell.count}{t('worklogCard.activityCount', $locale)}"
 									onclick={() => openDetail(cell.date)}
 								></button>
 							{:else}
@@ -125,13 +127,13 @@
 			</div>
 			{#if today}
 				<button class="today" onclick={() => openDetail()}>
-					<span class="lbl">오늘</span>
-					<span><b>{today.counts.status_changes}</b> 상태변경</span>
-					<span><b>{today.counts.comments}</b> 댓글</span>
-					<span><b>{today.counts.created}</b> 생성</span>
+					<span class="lbl">{t('worklogCard.today', $locale)}</span>
+					<span><b>{today.counts.status_changes}</b> {t('worklogCard.statusChanges', $locale)}</span>
+					<span><b>{today.counts.comments}</b> {t('worklogCard.comments', $locale)}</span>
+					<span><b>{today.counts.created}</b> {t('worklogCard.created', $locale)}</span>
 					{#if lastActivity}
 						<span class="last">
-							마지막 활동 {lastActivity.ts.slice(11, 16)} · {lastActivity.slug}
+							{t('worklogCard.lastActivity', $locale)}{lastActivity.ts.slice(11, 16)} · {lastActivity.slug}
 						</span>
 					{/if}
 				</button>

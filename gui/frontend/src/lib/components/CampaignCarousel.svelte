@@ -10,11 +10,13 @@
 	import { onMount, onDestroy } from 'svelte';
 	import type { CampaignSummary } from '$lib/types';
 	import CampaignCard from './CampaignCard.svelte';
+	// DEV-205 모듈2: 캐러셀 라벨 i18n.
+	import { locale, t } from '$lib/stores/locale';
 
 	let {
 		summaries,
 		now,
-		emptyText = '진행 중인 캠페인이 없습니다.',
+		emptyText,
 		autoRotateMs = 3000
 	}: {
 		summaries: CampaignSummary[];
@@ -22,6 +24,8 @@
 		emptyText?: string;
 		autoRotateMs?: number;
 	} = $props();
+
+	const displayEmpty = $derived(emptyText ?? t('carousel.activeEmpty', $locale));
 
 	let idx = $state(0);
 	let hoverPause = $state(false);
@@ -70,12 +74,12 @@
 <div
 	class="carousel"
 	role="region"
-	aria-label="진행 중 캠페인"
+	aria-label={t('carousel.active', $locale)}
 	onmouseenter={() => (hoverPause = true)}
 	onmouseleave={() => (hoverPause = false)}
 >
 	{#if summaries.length === 0}
-		<div class="empty">{emptyText}</div>
+		<div class="empty">{displayEmpty}</div>
 	{:else}
 		<div class="viewport">
 			<div class="track" style:transform={`translateX(-${idx * 100}%)`}>
@@ -89,7 +93,7 @@
 
 		{#if summaries.length > 1}
 			<div class="controls">
-				<button class="arrow" type="button" onclick={prev} aria-label="이전">‹</button>
+				<button class="arrow" type="button" onclick={prev} aria-label={t('carousel.prev', $locale)}>‹</button>
 				<div class="dots" role="tablist">
 					{#each summaries as _s, i (i)}
 						<button
@@ -97,18 +101,18 @@
 							class:active={i === idx}
 							type="button"
 							onclick={() => (idx = i)}
-							aria-label={`캠페인 ${i + 1}`}
+							aria-label={`${t('carousel.active', $locale)} ${i + 1}`}
 						></button>
 					{/each}
 				</div>
-				<button class="arrow" type="button" onclick={next} aria-label="다음">›</button>
+				<button class="arrow" type="button" onclick={next} aria-label={t('carousel.next', $locale)}>›</button>
 				<!-- BUG-027: 자동 회전 정지/재생 토글. -->
 				<button
 					class="play-pause"
 					type="button"
 					onclick={() => (userPaused = !userPaused)}
-					aria-label={userPaused ? '재생' : '정지'}
-					title={userPaused ? '자동 회전 재생' : '자동 회전 정지'}
+					aria-label={userPaused ? t('carousel.play', $locale) : t('carousel.pause', $locale)}
+					title={userPaused ? t('carousel.autoPlay', $locale) : t('carousel.autoPause', $locale)}
 				>
 					{userPaused ? '▶' : '⏸'}
 				</button>

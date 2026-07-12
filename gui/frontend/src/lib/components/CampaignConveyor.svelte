@@ -14,11 +14,13 @@
 	// BUG-117: 카드 슬롯이 px 고정이라 uiScale 시 안의 rem 글자만 커져 넘쳤음
 	// — scale 배율을 곱해 슬롯 폭과 marquee 계산에 함께 반영.
 	import { uiScale } from '$lib/stores/uiScale';
+	// DEV-205 모듈2: 컨베이어 라벨 i18n.
+	import { locale, t } from '$lib/stores/locale';
 
 	let {
 		summaries,
 		now,
-		emptyText = '곧 시작 예정인 캠페인이 없습니다.',
+		emptyText,
 		secondsPerCard = 6,
 		// DEV-080: CampaignCard 의 모드 — 기본 'upcoming'. 'overdue' 도 동일 동작.
 		mode = 'upcoming'
@@ -29,6 +31,8 @@
 		secondsPerCard?: number;
 		mode?: 'upcoming' | 'overdue';
 	} = $props();
+
+	const displayEmpty = $derived(emptyText ?? t('conveyor.upcomingEmpty', $locale));
 
 	const CARD_W = 200;
 	const GAP_PX = 12;
@@ -167,7 +171,7 @@
 </script>
 
 {#if summaries.length === 0}
-	<div class="empty">{emptyText}</div>
+	<div class="empty">{displayEmpty}</div>
 {:else}
 	<div
 		class="conveyor"
@@ -182,7 +186,7 @@
 		onpointercancel={onPointerUp}
 		onclickcapture={onClickCapture}
 		role="region"
-		aria-label={mode === 'overdue' ? '마감 지난 캠페인' : '곧 시작 캠페인'}
+		aria-label={mode === 'overdue' ? t('conveyor.overdueCampaigns', $locale) : t('conveyor.upcomingCampaigns', $locale)}
 	>
 		<div
 			class="track"
@@ -214,8 +218,8 @@
 				class="play-pause"
 				type="button"
 				onclick={() => (userPaused = !userPaused)}
-				aria-label={userPaused ? '재생' : '정지'}
-				title={userPaused ? '자동 회전 재생' : '자동 회전 정지'}
+				aria-label={userPaused ? t('carousel.play', $locale) : t('carousel.pause', $locale)}
+				title={userPaused ? t('carousel.autoPlay', $locale) : t('carousel.autoPause', $locale)}
 			>
 				{userPaused ? '▶' : '⏸'}
 			</button>

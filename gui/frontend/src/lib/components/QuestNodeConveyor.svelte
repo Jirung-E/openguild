@@ -20,6 +20,8 @@
 	// BUG-117: SVG 노드 이미지는 px 고정이라 uiScale(root font-size)이 안
 	// 먹었음 — scale 배율을 직접 곱해 이미지/슬롯 폭 + marquee 계산에 반영.
 	import { uiScale } from '$lib/stores/uiScale';
+	// DEV-205 모듈2: 컨베이어 라벨 i18n.
+	import { locale, t } from '$lib/stores/locale';
 	let effectiveTheme = $derived($effectiveThemeStore);
 
 	let {
@@ -188,7 +190,7 @@
 		onpointercancel={onPointerUp}
 		onclickcapture={onClickCapture}
 		role="region"
-		aria-label={mode === 'overdue' ? '마감 지남 퀘스트' : '마감 임박 퀘스트'}
+		aria-label={mode === 'overdue' ? t('conveyor.overdueQuests', $locale) : t('conveyor.imminentQuests', $locale)}
 	>
 		<div
 			class="track"
@@ -245,8 +247,8 @@
 				class="play-pause"
 				type="button"
 				onclick={() => (userPaused = !userPaused)}
-				aria-label={userPaused ? '재생' : '정지'}
-				title={userPaused ? '자동 회전 재생' : '자동 회전 정지'}
+				aria-label={userPaused ? t('carousel.play', $locale) : t('carousel.pause', $locale)}
+				title={userPaused ? t('carousel.autoPlay', $locale) : t('carousel.autoPause', $locale)}
 			>
 				{userPaused ? '▶' : '⏸'}
 			</button>
