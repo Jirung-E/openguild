@@ -20,7 +20,6 @@
 	import { rulesApi } from '$lib/api/rules';
 	import { libraryApi } from '$lib/api/library';
 	import MarkdownView from './MarkdownView.svelte';
-	import OverlayScrollbar from './OverlayScrollbar.svelte';
 
 	let { onclose }: { onclose: () => void } = $props();
 
@@ -53,7 +52,6 @@
 	let previewBody = $state('');
 	let previewLoading = $state(false);
 	let previewH = $state(220);
-	let previewScrollEl = $state<HTMLElement | null>(null);
 
 	onMount(() => {
 		inputEl?.focus();
@@ -256,13 +254,12 @@
 				<span class="tag">{preview.tags.map((t) => '#' + t).join(' ')}</span>
 			{/if}
 		</div>
-		<div class="dp-body" bind:this={previewScrollEl} style="height:{previewH}px">
+		<div class="dp-body" style="height:{previewH}px">
 			{#if previewLoading}
 				<div class="empty">불러오는 중…</div>
 			{:else}
 				<MarkdownView source={previewBody} />
 			{/if}
-			<OverlayScrollbar target={previewScrollEl} />
 		</div>
 		<div class="dp-foot">
 			<button class="dp-btn" onclick={() => (preview = null)}>← 목록</button>
@@ -420,12 +417,8 @@
 	.dp-body {
 		padding: 0.5rem 0.8rem;
 		overflow-y: auto;
-		/* 기존 커스텀 스크롤바(OverlayScrollbar)가 그림 — native 숨김. */
-		scrollbar-width: none;
-	}
-	.dp-body::-webkit-scrollbar {
-		width: 0;
-		height: 0;
+		/* 스크롤바는 global.css 의 기존 커스텀 ::-webkit-scrollbar 규칙이
+		   컨테이너 안쪽 오른쪽에 그린다(별도 처리 불필요). */
 	}
 	.dp-foot {
 		display: flex;
