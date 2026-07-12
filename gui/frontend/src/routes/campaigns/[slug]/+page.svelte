@@ -83,7 +83,7 @@
 				name
 			});
 		} catch (e) {
-			error = `첨부 실패: ${e}`;
+			error = `${t('campaign.attachFailed', $locale)}: ${e}`;
 		}
 	}
 	let titleEdit = $state('');
@@ -191,7 +191,7 @@
 		if (!detail) return '';
 		const a = detail.started_at?.trim() || '';
 		const b = detail.ended_at?.trim() || '';
-		if (!a && !b) return '기간 미정';
+		if (!a && !b) return t('campaignList.periodUndefined', $locale);
 		if (a && !b) return `${a} ~`;
 		if (!a && b) return `~ ${b}`;
 		return `${a} ~ ${b}`;
@@ -253,14 +253,14 @@
 			const picked = await open({
 				multiple: false,
 				directory: false,
-				filters: [{ name: '이미지', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] }]
+				filters: [{ name: t('campaign.imageFilter', $locale), extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] }]
 			});
 			if (typeof picked === 'string' && picked) {
 				await campaignsApi.setBanner(detail.campaign_slug, picked);
 				await load();
 			}
 		} catch (e) {
-			alert(e instanceof Error ? e.message : '배너 설정 실패');
+			alert(e instanceof Error ? e.message : t('campaign.bannerSetFailed', $locale));
 		} finally {
 			bannerBusy = false;
 		}
@@ -273,7 +273,7 @@
 			await campaignsApi.clearBanner(detail.campaign_slug);
 			await load();
 		} catch (e) {
-			alert(e instanceof Error ? e.message : '배너 제거 실패');
+			alert(e instanceof Error ? e.message : t('campaign.bannerRemoveFailed', $locale));
 		} finally {
 			bannerBusy = false;
 		}
@@ -406,7 +406,7 @@
 			<button
 				class="status-badge status-{detail.status}"
 				onclick={toggleStatus}
-				title="클릭하여 상태 토글"
+				title={t('campaign.statusToggle', $locale)}
 			>
 				{detail.status}
 			</button>
@@ -415,13 +415,13 @@
 				<div class="top-actions">
 					{#if isTauri}
 						<!-- DEV-087: 배너 이미지 — Tauri 전용 (파일 picker). -->
-						<button class="btn-edit" onclick={pickBanner} disabled={bannerBusy}> 🖼 배너 </button>
+						<button class="btn-edit" onclick={pickBanner} disabled={bannerBusy}> 🖼 {t('campaign.banner', $locale)} </button>
 						{#if detail.image_path}
 							<button
 								class="btn-edit"
 								onclick={removeBanner}
 								disabled={bannerBusy}
-								title="배너 제거"
+								title={t('campaign.bannerRemove', $locale)}
 							>
 								🖼 ×
 							</button>
@@ -437,7 +437,7 @@
 	{#if loading}
 		<div class="state">Loading…</div>
 	{:else if error || !detail}
-		<div class="state error">{error ?? '캠페인 없음'}</div>
+		<div class="state error">{error ?? t('campaign.notFound', $locale)}</div>
 	{:else}
 		<!-- BUG-033: 메타 + 본문 통합 편집 (Quest Detail 패턴). 단일 편집 버튼,
 		     단일 저장 / 취소. -->
@@ -454,12 +454,12 @@
 			{#if editMode}
 				<div class="period-row">
 					<label>
-						<span class="lbl">시작</span>
+						<span class="lbl">{t('campaign.start', $locale)}</span>
 						<input type="date" bind:value={startedEdit} disabled={saving} />
 					</label>
 					<span class="dash">~</span>
 					<label>
-						<span class="lbl">종료</span>
+						<span class="lbl">{t('campaign.end', $locale)}</span>
 						<input type="date" bind:value={endedEdit} disabled={saving} />
 					</label>
 				</div>
@@ -475,14 +475,14 @@
 			<!-- BUG-033: 캠페인도 생성 / 변경 시각 표시 (Quest Detail 과 동일). -->
 			<div class="meta-times">
 				<span class="meta-item">
-					<span class="meta-label">생성</span>
+					<span class="meta-label">{t('common.created', $locale)}</span>
 					<time class="meta-val" datetime={detail.created_at} title={formatTs(detail.created_at)}
 						>{formatTs(detail.created_at)}</time
 					>
 				</span>
 				<span class="meta-sep">·</span>
 				<span class="meta-item">
-					<span class="meta-label">변경</span>
+					<span class="meta-label">{t('common.updated', $locale)}</span>
 					<time class="meta-val" datetime={detail.updated_at} title={formatTs(detail.updated_at)}
 						>{formatRelative(detail.updated_at)}</time
 					>
@@ -498,24 +498,24 @@
 				<!-- DEV-202: 편집기 위 '첨부' 버튼 제거 — 아래 첨부 섹션과 중복.
 				     이미지·동영상·파일은 드래그&드랍 / Ctrl+V 로 첨부(attachmentExtension). -->
 				<div class="field-label">
-					<span>본문 (Markdown) — 첨부는 드래그&드랍 / Ctrl+V 또는 아래 첨부 섹션</span>
+					<span>{t('campaign.bodyLabel', $locale)}</span>
 					<MarkdownEditor
 						bind:value={bodyEdit}
-						onError={(msg) => (error = `첨부 업로드 실패: ${msg}`)}
+						onError={(msg) => (error = `${t('campaign.attachUploadFailed', $locale)}: ${msg}`)}
 						onAttach={attachToSection}
 					/>
 				</div>
 				<div class="actions">
 					<button class="btn-save" onclick={saveEdit} disabled={saving || !titleEdit.trim()}>
-						{saving ? '저장…' : '저장'}
+						{saving ? t('common.saving', $locale) : t('common.save', $locale)}
 					</button>
-					<button class="btn-cancel" onclick={exitEditMode} disabled={saving}>취소</button>
+					<button class="btn-cancel" onclick={exitEditMode} disabled={saving}>{t('common.cancel', $locale)}</button>
 				</div>
 			{:else if detail.description && detail.description.trim()}
 				<MarkdownView source={detail.description ?? ''} />
 			{:else}
 				<div class="empty">
-					본문 없음. <button class="link" onclick={enterEditMode}>본문 추가</button>
+					{t('campaign.noBody', $locale)} <button class="link" onclick={enterEditMode}>{t('campaign.addBody', $locale)}</button>
 				</div>
 			{/if}
 		</section>
@@ -532,13 +532,13 @@
 		<!-- 체크리스트 -->
 		<section>
 			<h2 class:done={detail.checklists.length > 0 && detail.checklists.every((c) => c.checked)}>
-				체크리스트 ({detail.checklists.filter((c) => c.checked).length}/{detail.checklists.length})
+				{t('campaign.checklist', $locale)} ({detail.checklists.filter((c) => c.checked).length}/{detail.checklists.length})
 				{#if detail.checklists.length > 0 && detail.checklists.every((c) => c.checked)}
-					<span class="done-mark"> ✓ 완료</span>
+					<span class="done-mark"> {t('common.doneMark', $locale)}</span>
 				{/if}
 			</h2>
 			{#if detail.checklists.length === 0}
-				<p class="empty">항목 없음.</p>
+				<p class="empty">{t('campaign.noItems', $locale)}</p>
 			{:else}
 				<ul class="checklist">
 					{#each detail.checklists as item, idx (item.id)}
@@ -551,7 +551,7 @@
 								/>
 								<span class:checked={item.checked}>{item.text}</span>
 							</label>
-							<button class="rm" title="삭제" onclick={() => askRemoveChecklist(idx)}>×</button>
+							<button class="rm" title={t('detail.delete', $locale)} onclick={() => askRemoveChecklist(idx)}>×</button>
 						</li>
 					{/each}
 				</ul>
@@ -560,17 +560,17 @@
 				<input
 					type="text"
 					bind:value={newChecklistText}
-					placeholder="새 체크리스트 항목..."
+					placeholder={t('campaign.newChecklistItem', $locale)}
 					onkeydown={(e) => e.key === 'Enter' && addChecklist()}
 				/>
-				<button onclick={addChecklist} disabled={!newChecklistText.trim()}>추가</button>
+				<button onclick={addChecklist} disabled={!newChecklistText.trim()}>{t('common.add', $locale)}</button>
 			</div>
 		</section>
 
 		<!-- 연결된 Quest -->
 		<section>
 			<h2 class:done={(detail.quest_total ?? 0) > 0 && detail.quest_done === detail.quest_total}>
-				연결된 퀘스트
+				{t('campaign.linkedQuests', $locale)}
 				{#if (detail.quest_total ?? 0) > 0}
 					({detail.quest_done}/{detail.quest_total}, {Math.round(
 						(detail.quest_progress ?? 0) * 100
@@ -579,7 +579,7 @@
 					({detail.linked_quests.length})
 				{/if}
 				{#if (detail.quest_total ?? 0) > 0 && detail.quest_done === detail.quest_total}
-					<span class="done-mark"> ✓ 완료</span>
+					<span class="done-mark"> {t('common.doneMark', $locale)}</span>
 				{/if}
 			</h2>
 			{#if (detail.quest_total ?? 0) > 0}
@@ -620,14 +620,14 @@
 							<span class="tooltip-dot" style:background={sc.status_color}></span>
 							<span class="tooltip-name">{sc.status_name_en}</span>
 							<span class="tooltip-count"
-								>{sc.count}개 ({Math.round((sc.count / (detail.quest_total ?? 1)) * 100)}%)</span
+								>{sc.count}{t('common.countSuffix', $locale)} ({Math.round((sc.count / (detail.quest_total ?? 1)) * 100)}%)</span
 							>
 						</div>
 					{/each}
 				</div>
 			{/if}
 			{#if detail.linked_quests.length === 0}
-				<p class="empty">연결된 퀘스트 없음.</p>
+				<p class="empty">{t('campaign.noLinkedQuests', $locale)}</p>
 			{:else}
 				<ul class="linked">
 					{#each detail.linked_quests as q (q.id)}
@@ -639,7 +639,7 @@
 								<span class="qtitle">{q.title}</span>
 								<span class="badge status" style:--c={q.status_color}>{q.status_name_en}</span>
 							</a>
-							<button class="rm" title="연결 해제" onclick={() => unlinkQuest(q.quest_id)}>×</button
+							<button class="rm" title={t('campaign.unlinkQuest', $locale)} onclick={() => unlinkQuest(q.quest_id)}>×</button
 							>
 						</li>
 					{/each}
@@ -647,7 +647,7 @@
 			{/if}
 			<div class="add-row">
 				<!-- BUG-023: QuestCombobox 모달 (Quest Detail 과 동일 UI) -->
-				<button class="link-add-btn" onclick={() => (comboOpen = true)}>+ 퀘스트 연결</button>
+				<button class="link-add-btn" onclick={() => (comboOpen = true)}>{t('campaign.linkQuest', $locale)}</button>
 			</div>
 		</section>
 
@@ -667,23 +667,23 @@
 {#if detail && (showTopJump || showCommentsJump || showMemoJump)}
 	<div class="jump-cluster">
 		{#if showTopJump}
-			<button class="jump-btn" onclick={jumpToTop} title="맨 위로" aria-label="맨 위로">
-				<span class="jb-icon">↑</span><span class="jb-label">위</span>
+			<button class="jump-btn" onclick={jumpToTop} title={t('common.jumpTop', $locale)} aria-label={t('common.jumpTop', $locale)}>
+				<span class="jb-icon">↑</span><span class="jb-label">{t('common.jumpTopShort', $locale)}</span>
 			</button>
 		{/if}
 		{#if showCommentsJump}
 			<button
 				class="jump-btn"
 				onclick={jumpToComments}
-				title="댓글로 이동"
-				aria-label="댓글로 이동"
+				title={t('common.jumpComments', $locale)}
+				aria-label={t('common.jumpComments', $locale)}
 			>
-				<span class="jb-icon">💬</span><span class="jb-label">댓글</span>
+				<span class="jb-icon">💬</span><span class="jb-label">{t('common.jumpCommentsShort', $locale)}</span>
 			</button>
 		{/if}
 		{#if showMemoJump}
-			<button class="jump-btn" onclick={jumpToMemo} title="메모로 이동" aria-label="메모로 이동">
-				<span class="jb-icon">📝</span><span class="jb-label">메모</span>
+			<button class="jump-btn" onclick={jumpToMemo} title={t('common.jumpMemo', $locale)} aria-label={t('common.jumpMemo', $locale)}>
+				<span class="jb-icon">📝</span><span class="jb-label">{t('common.jumpMemoShort', $locale)}</span>
 			</button>
 		{/if}
 	</div>
@@ -694,12 +694,12 @@
 	<div class="ov" role="presentation">
 		<div class="modal-sm" role="dialog" aria-modal="true" tabindex="-1">
 			<div class="modal-head">
-				<h3>퀘스트 연결</h3>
+				<h3>{t('campaign.linkQuestTitle', $locale)}</h3>
 				<button class="x" onclick={() => (comboOpen = false)}>×</button>
 			</div>
 			<QuestCombobox
 				quests={linkableQuests}
-				placeholder="ID 또는 제목으로 검색"
+				placeholder={t('campaign.searchPlaceholder', $locale)}
 				onselect={pickQuestToLink}
 				oncancel={() => (comboOpen = false)}
 			/>
