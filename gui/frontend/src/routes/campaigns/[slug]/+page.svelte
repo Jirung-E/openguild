@@ -15,6 +15,8 @@
 	import type { Snapshot } from './$types';
 	import { restoreScroll } from '$lib/utils/scroll-restore';
 	import { campaignsApi } from '$lib/api/campaigns';
+	// DEV-205 / REQ-001: 상세 공통 액션 라벨을 퀘스트 상세와 같은 i18n 사전으로.
+	import { locale, t } from '$lib/stores/locale';
 	import { questsApi } from '$lib/api/quests';
 	import type { CampaignDetail, CampaignLinkedQuest, Quest } from '$lib/types';
 	// BUG-021 fix1: 공유 컴포넌트로 Quest Detail / Campaign Detail 의 markdown
@@ -399,7 +401,7 @@
 
 <div class="page">
 	<div class="top">
-		<button class="back" onclick={() => history.back()}>← 뒤로</button>
+		<button class="back" onclick={() => history.back()}>← {t('detail.back', $locale)}</button>
 		{#if detail}
 			<button
 				class="status-badge status-{detail.status}"
@@ -425,8 +427,8 @@
 							</button>
 						{/if}
 					{/if}
-					<button class="btn-edit" onclick={enterEditMode}>✎ 편집</button>
-					<button class="btn-delete" onclick={askDeleteCampaign}>🗑 삭제</button>
+					<button class="btn-edit" onclick={enterEditMode}>✎ {t('detail.edit', $locale)}</button>
+					<button class="btn-delete" onclick={askDeleteCampaign}>🗑 {t('detail.delete', $locale)}</button>
 				</div>
 			{/if}
 		{/if}

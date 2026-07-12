@@ -9,6 +9,8 @@
 	import { restoreScroll } from '$lib/utils/scroll-restore';
 	import { questsApi } from '$lib/api/quests';
 	import { metaApi } from '$lib/api/meta';
+	// DEV-205 / REQ-001: 상세 화면 라벨을 i18n 사전으로 — 캠페인 상세와 언어 통일.
+	import { locale, t } from '$lib/stores/locale';
 	import { campaignsApi } from '$lib/api/campaigns';
 	// DEV-068: `.guild/tags/{slug}.toml` 정의 — Tag pill 색칠용.
 	import { adminApi } from '$lib/api/admin';
@@ -624,11 +626,11 @@
 	<div class="top-bar">
 		<!-- BUG-015: history.back() 으로 직전 페이지 (List 또는 Board) 복귀.
 		     history 가 비어있으면 (외부 link 직접 진입) Board 로 fallback. -->
-		<button class="back" type="button" onclick={goBack}>← Back</button>
+		<button class="back" type="button" onclick={goBack}>← {t('detail.back', $locale)}</button>
 		{#if detail && !editMode}
 			<div class="top-actions">
-				<button class="btn-edit" onclick={enterEditMode}>✎ Edit</button>
-				<button class="btn-delete" onclick={openDeleteModal}>🗑 Delete</button>
+				<button class="btn-edit" onclick={enterEditMode}>✎ {t('detail.edit', $locale)}</button>
+				<button class="btn-delete" onclick={openDeleteModal}>🗑 {t('detail.delete', $locale)}</button>
 			</div>
 		{/if}
 	</div>
@@ -844,7 +846,7 @@
 		{#if detail.parent}
 			<section>
 				<div class="section-head">
-					<h2 class="section-title parent-label">Parent</h2>
+					<h2 class="section-title parent-label">{t('quest.section.parent', $locale)}</h2>
 				</div>
 				<ul class="quest-list">
 					<li>
@@ -867,7 +869,7 @@
 		<!-- 서브퀘스트 -->
 		<section>
 			<div class="section-head">
-				<h2 class="section-title sub-label">Sub-Quests</h2>
+				<h2 class="section-title sub-label">{t('quest.section.subQuests', $locale)}</h2>
 				{#if !editMode}
 					<button class="sec-add-btn" onclick={() => (showNewSubQuest = true)}>+ 신규</button>
 					<button class="sec-add-btn" onclick={() => openCombo('sub')}>+ 기존 지정</button>
@@ -902,7 +904,7 @@
 		<!-- 선행 퀘스트 -->
 		<section>
 			<div class="section-head">
-				<h2 class="section-title prereq-label">Prerequisites</h2>
+				<h2 class="section-title prereq-label">{t('quest.section.prerequisites', $locale)}</h2>
 				{#if !editMode}
 					<button class="sec-add-btn" onclick={() => openCombo('prereq')}>+ 추가</button>
 				{/if}
@@ -982,7 +984,7 @@
 			참조). DEV-124: 추가 버튼. -->
 		<section>
 			<div class="section-head">
-				<h2 class="section-title prereq-label">Successors</h2>
+				<h2 class="section-title prereq-label">{t('quest.section.successors', $locale)}</h2>
 				<span class="sec-hint">이 퀘스트를 선행으로 가진 퀘스트</span>
 				{#if !editMode}
 					<button class="sec-add-btn" onclick={() => openCombo('succ')} title="후속 퀘스트 추가">
@@ -1012,7 +1014,7 @@
 		<!-- DEV-011: 연결된 캠페인 -->
 		<section>
 			<div class="section-head">
-				<h2 class="section-title campaign-label">Campaigns</h2>
+				<h2 class="section-title campaign-label">{t('quest.section.campaigns', $locale)}</h2>
 				<!-- BUG-031: 버튼 배치를 sub-quest / prereq 와 동일하게 — title 옆 -->
 				{#if !editMode}
 					<button

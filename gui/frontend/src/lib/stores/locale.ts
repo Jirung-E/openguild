@@ -49,7 +49,19 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'settings.uiScale': { ko: 'UI 크기', en: 'UI Scale' },
 	'settings.contentWidth': { ko: '컨텐츠 폭', en: 'Content Width' },
 	'settings.language': { ko: '언어', en: 'Language' },
-	'settings.all': { ko: '전체 설정 →', en: 'All settings →' }
+	'settings.all': { ko: '전체 설정 →', en: 'All settings →' },
+
+	// DEV-205 / REQ-001: 퀘스트·캠페인 상세 공통 액션 + 섹션 라벨. 두 화면이
+	// 영/한 혼재(예: Quest 'Edit'/'Sub-Quests' vs Campaign '편집'/'연결된 퀘스트')
+	// 였던 것을 같은 사전 키로 통일 — 언어 토글에도 함께 전환.
+	'detail.edit': { ko: '편집', en: 'Edit' },
+	'detail.delete': { ko: '삭제', en: 'Delete' },
+	'detail.back': { ko: '뒤로', en: 'Back' },
+	'quest.section.parent': { ko: '부모', en: 'Parent' },
+	'quest.section.subQuests': { ko: '서브퀘스트', en: 'Sub-Quests' },
+	'quest.section.prerequisites': { ko: '선행 퀘스트', en: 'Prerequisites' },
+	'quest.section.campaigns': { ko: '캠페인', en: 'Campaigns' },
+	'quest.section.successors': { ko: '후속 퀘스트', en: 'Successors' }
 };
 
 /** 현재 locale 기준 번역. 누락 키는 ko 원문 그대로(안전한 fallback). */
