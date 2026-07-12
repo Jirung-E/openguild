@@ -61,7 +61,30 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'quest.section.subQuests': { ko: '서브퀘스트', en: 'Sub-Quests' },
 	'quest.section.prerequisites': { ko: '선행 퀘스트', en: 'Prerequisites' },
 	'quest.section.campaigns': { ko: '캠페인', en: 'Campaigns' },
-	'quest.section.successors': { ko: '후속 퀘스트', en: 'Successors' }
+	'quest.section.successors': { ko: '후속 퀘스트', en: 'Successors' },
+
+	// DEV-205 모듈1: Nav 탭 + 액션.
+	'nav.home': { ko: '홈', en: 'Home' },
+	'nav.board': { ko: '퀘스트 보드', en: 'Quest Board' },
+	'nav.list': { ko: '퀘스트 목록', en: 'Quest List' },
+	'nav.admin': { ko: '관리', en: 'Admin' },
+	'nav.rules': { ko: '규칙', en: 'Rules' },
+	'nav.library': { ko: '도서관', en: 'Library' },
+	'nav.settings': { ko: '설정', en: 'Settings' },
+	'nav.currentGuild': { ko: '현재 길드', en: 'Current guild' },
+	'nav.remote': { ko: '원격', en: 'Remote' },
+	'nav.remoteConnected': { ko: '원격 서버에 연결됨', en: 'Connected to remote server' },
+	'nav.reindex.hint': {
+		ko: '캐시 정합 — 외부 편집 / git pull 후 한 번 클릭',
+		en: 'Sync cache — click once after external edits / git pull'
+	},
+	'nav.reindex.done': { ko: '✓ Reindex 완료', en: '✓ Reindex done' },
+	'nav.reindex.failed': { ko: 'Reindex 실패', en: 'Reindex failed' },
+	'nav.reindex.error': { ko: 'reindex 실패', en: 'reindex failed' },
+
+	// DEV-205 모듈1: 공통 확인 모달 기본 라벨.
+	'common.confirm': { ko: '확인', en: 'Confirm' },
+	'common.cancel': { ko: '취소', en: 'Cancel' }
 };
 
 /** 현재 locale 기준 번역. 누락 키는 ko 원문 그대로(안전한 fallback). */

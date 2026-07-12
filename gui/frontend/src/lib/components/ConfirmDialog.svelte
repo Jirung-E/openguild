@@ -29,6 +29,10 @@
   ```
 -->
 <script lang="ts">
+	// DEV-205 모듈1: 기본 라벨 i18n. 호출부가 라벨을 넘기면 그대로 쓰고,
+	// 미지정(undefined)일 때만 locale 사전 기본값으로 대체.
+	import { locale, t } from '$lib/stores/locale';
+
 	type Props = {
 		open: boolean;
 		title?: string;
@@ -42,14 +46,18 @@
 
 	let {
 		open,
-		title = '확인',
+		title,
 		message,
-		confirmLabel = '확인',
-		cancelLabel = '취소',
+		confirmLabel,
+		cancelLabel,
 		danger = false,
 		onconfirm,
 		oncancel
 	}: Props = $props();
+
+	const displayTitle = $derived(title ?? t('common.confirm', $locale));
+	const displayConfirm = $derived(confirmLabel ?? t('common.confirm', $locale));
+	const displayCancel = $derived(cancelLabel ?? t('common.cancel', $locale));
 
 	function close() {
 		oncancel?.();
@@ -81,11 +89,11 @@
 		}}
 	>
 		<div class="modal" role="alertdialog" aria-modal="true" tabindex="-1">
-			<h3 class="modal-title">{title}</h3>
+			<h3 class="modal-title">{displayTitle}</h3>
 			<p class="modal-msg">{message}</p>
 			<div class="modal-actions">
-				<button class="btn-no" onclick={close}>{cancelLabel}</button>
-				<button class="btn-yes" class:danger onclick={confirm}>{confirmLabel}</button>
+				<button class="btn-no" onclick={close}>{displayCancel}</button>
+				<button class="btn-yes" class:danger onclick={confirm}>{displayConfirm}</button>
 			</div>
 		</div>
 	</div>

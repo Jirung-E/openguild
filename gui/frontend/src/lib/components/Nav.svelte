@@ -3,6 +3,8 @@
 	import { adminApi } from '$lib/api/admin';
 	import { metaApi } from '$lib/api/meta';
 	import { bumpReindex } from '$lib/stores/reindex';
+	// DEV-205 모듈1: Nav 문자열 i18n.
+	import { locale, t } from '$lib/stores/locale';
 	// DEV-138: 설정 퀵메뉴 — ⚙ 클릭 시 dropdown (테마/UI크기/폭 + 전체 설정).
 	// DEV-125 의 standalone 테마 순환 버튼은 퀵메뉴로 흡수.
 	import SettingsQuickMenu from './SettingsQuickMenu.svelte';
@@ -89,7 +91,7 @@
 		} catch (e) {
 			reindexState = {
 				status: 'error',
-				message: e instanceof Error ? e.message : 'reindex 실패'
+				message: e instanceof Error ? e.message : t('nav.reindex.error', $locale)
 			};
 		}
 	}
@@ -104,24 +106,24 @@
 			openguild
 			<!-- DEV-141: 현재 길드 이름 — 로고 옆 작은 배지로 어느 길드인지 표시. -->
 			{#if guildName}
-				<span class="guild-name" title="현재 길드: {guildName}">{guildName}</span>
+				<span class="guild-name" title="{t('nav.currentGuild', $locale)}: {guildName}">{guildName}</span>
 				<!-- DEV-113 후속: 원격 서버에 연결된 상태면 명시 배지. -->
 				{#if isRemoteGuild}
-					<span class="remote-badge" title="원격 서버에 연결됨">🌐 원격</span>
+					<span class="remote-badge" title={t('nav.remoteConnected', $locale)}>🌐 {t('nav.remote', $locale)}</span>
 				{/if}
 			{/if}
 		</a>
 	{/if}
 
 	<nav>
-		<a href="/" class:active={onRootPath && currentView === 'home'}>Home</a>
-		<a href="/?view=board" class:active={onRootPath && currentView === 'board'}>Quest Board</a>
-		<a href="/?view=list" class:active={onRootPath && currentView === 'list'}>Quest List</a>
-		<a href="/admin" class:active={onAdminPath}>Admin</a>
+		<a href="/" class:active={onRootPath && currentView === 'home'}>{t('nav.home', $locale)}</a>
+		<a href="/?view=board" class:active={onRootPath && currentView === 'board'}>{t('nav.board', $locale)}</a>
+		<a href="/?view=list" class:active={onRootPath && currentView === 'list'}>{t('nav.list', $locale)}</a>
+		<a href="/admin" class:active={onAdminPath}>{t('nav.admin', $locale)}</a>
 		<!-- DEV-016: 길드 규칙 — 팀 컨벤션 / 그라운드 룰. -->
-		<a href="/rules" class:active={onRulesPath}>Rules</a>
+		<a href="/rules" class:active={onRulesPath}>{t('nav.rules', $locale)}</a>
 		<!-- DEV-217: 도서관 — 프로젝트 참고문서/노트 (BOOK 번호). -->
-		<a href="/library" class:active={onLibraryPath}>Library</a>
+		<a href="/library" class:active={onLibraryPath}>{t('nav.library', $locale)}</a>
 	</nav>
 
 	<div class="nav-right">
@@ -134,10 +136,10 @@
 			onclick={runReindex}
 			disabled={reindexState.status === 'running'}
 			title={reindexState.status === 'error'
-				? `Reindex 실패: ${reindexState.message}`
+				? `${t('nav.reindex.failed', $locale)}: ${reindexState.message}`
 				: reindexState.status === 'done'
-					? '✓ Reindex 완료'
-					: '캐시 정합 — 외부 편집 / git pull 후 한 번 클릭'}
+					? t('nav.reindex.done', $locale)
+					: t('nav.reindex.hint', $locale)}
 			aria-label="Reindex"
 		>
 			{#if reindexState.status === 'running'}
@@ -157,8 +159,8 @@
 				class="btn-settings"
 				class:active={onSettingsPath || quickMenuOpen}
 				onclick={() => (quickMenuOpen = !quickMenuOpen)}
-				title="설정"
-				aria-label="설정"
+				title={t('nav.settings', $locale)}
+				aria-label={t('nav.settings', $locale)}
 				aria-expanded={quickMenuOpen}>⚙</button
 			>
 			{#if quickMenuOpen}
