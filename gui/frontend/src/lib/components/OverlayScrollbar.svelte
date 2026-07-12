@@ -27,6 +27,9 @@
 	// target 의 viewport 내 좌표. null = window 전용 (오른쪽 끝, top 0).
 	let rectTop = $state(0);
 	let rectRight = $state(0);
+	// BUG-138: window 모드에서 sticky 헤더(타이틀바+메뉴바) 높이. 트랙을 그만큼
+	// 아래에서 시작시켜 헤더에 가리거나 겹치지 않게. container 모드는 0.
+	let topInset = $state(0);
 
 	let visible = $state(false);
 	let dragging = $state(false);
@@ -49,12 +52,21 @@
 			const r = target.getBoundingClientRect();
 			rectTop = r.top;
 			rectRight = window.innerWidth - r.right;
+			topInset = 0;
 		} else {
 			scrollTop = window.scrollY;
 			viewportH = window.innerHeight;
 			contentH = document.documentElement.scrollHeight;
 			rectTop = 0;
 			rectRight = 0;
+			// BUG-138: 스크롤바 트랙이 sticky 헤더(타이틀바+메뉴바) 아래에서
+			// 시작하도록 그 높이만큼 inset. main 의 문서상 top(offsetTop) =
+			// 앞선 in-flow sticky 헤더들의 높이 합. getBoundingClientRect+scrollY
+			// 로 offsetParent 와 무관하게 구한다.
+			const mainEl = document.querySelector('main');
+			topInset = mainEl
+				? Math.max(0, mainEl.getBoundingClientRect().top + window.scrollY)
+				: 0;
 		}
 	}
 
@@ -67,13 +79,18 @@
 	}
 
 	let needed = $derived(contentH > viewportH + 1);
+	// BUG-138: 트랙 시작점(baseTop)과 트랙 영역 높이(regionH) — window 모드는
+	// sticky 헤더 아래(topInset)에서 시작하고 그만큼 짧아진다. container 모드는
+	// 기존대로 컨테이너 top(rectTop) 기준 전체 높이.
+	let baseTop = $derived(target ? rectTop : topInset);
+	let regionH = $derived(target ? viewportH : Math.max(0, viewportH - topInset));
 	let thumbH = $derived.by(() => {
 		if (!needed) return 0;
-		return Math.max(32, (viewportH / contentH) * viewportH);
+		return Math.max(32, Math.min(regionH, (viewportH / contentH) * regionH));
 	});
 	let maxScroll = $derived(Math.max(0, contentH - viewportH));
-	let trackH = $derived(Math.max(0, viewportH - thumbH));
-	let thumbTop = $derived(rectTop + (maxScroll > 0 ? (scrollTop / maxScroll) * trackH : 0));
+	let trackH = $derived(Math.max(0, regionH - thumbH));
+	let thumbTop = $derived(baseTop + (maxScroll > 0 ? (scrollTop / maxScroll) * trackH : 0));
 	let thumbRight = $derived(rectRight + 3);
 
 	function showTemp() {
