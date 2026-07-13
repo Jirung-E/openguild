@@ -47,8 +47,13 @@
 		onclick={openPicker}
 		{disabled}
 		aria-label={t('common.pickDate', $locale)}
-		title={t('common.pickDate', $locale)}>📅</button
+		title={t('common.pickDate', $locale)}
 	>
+		<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+			<rect x="2" y="3" width="12" height="11" rx="1.5" />
+			<path d="M2 6.5h12M5 2v2.5M11 2v2.5" />
+		</svg>
+	</button>
 	<!-- 달력 UI 전용 — 시각적으로 숨기되 showPicker 를 위해 렌더는 유지. -->
 	<input class="df-native" type="date" bind:this={nativeEl} bind:value tabindex="-1" aria-hidden="true" />
 </span>
@@ -81,7 +86,7 @@
 		width: 1.5rem;
 		height: 1.5rem;
 		padding: 0;
-		font-size: 0.85rem;
+		color: var(--text-muted);
 		background: var(--bg-subtle);
 		border: 1px solid var(--border);
 		border-radius: 5px;
@@ -89,6 +94,7 @@
 	}
 	.df-btn:hover:not(:disabled) {
 		background: var(--border);
+		color: var(--text);
 	}
 	.datefield.disabled,
 	.df-btn:disabled {
