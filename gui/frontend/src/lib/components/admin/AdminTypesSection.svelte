@@ -3,6 +3,8 @@
 	import { adminApi, type QuestTypeWithCount } from '$lib/api/admin';
 	// DEV-119: window.confirm() 대신 인앱 ConfirmDialog.
 	import ConfirmDialog from '../ConfirmDialog.svelte';
+	// DEV-205 모듈5: 타입 관리 i18n.
+	import { locale, t } from '$lib/stores/locale';
 
 	type Msg = { kind: 'info' | 'success' | 'error'; text: string } | null;
 	let { onmessage }: { onmessage: (m: Msg) => void } = $props();
@@ -56,7 +58,7 @@
 		try {
 			types = await adminApi.listTypes();
 		} catch (e) {
-			onmessage({ kind: 'error', text: `type 목록 조회 실패: ${e}` });
+			onmessage({ kind: 'error', text: `${t('adminTypes.listLoadFailedPre', $locale)}${e}` });
 		}
 	}
 
@@ -94,12 +96,14 @@
 			});
 			onmessage({
 				kind: 'success',
-				text: renaming ? `'${editing}' → '${newPrefix}' 갱신 완료 (cascade)` : `'${editing}' 갱신됨`
+				text: renaming
+					? `${t('adminTypes.updatedCascadePre', $locale)}${editing}' → '${newPrefix}${t('adminTypes.updatedCascadeMid', $locale)}`
+					: `${t('adminTypes.updatedCascadePre', $locale)}${editing}${t('adminTypes.updatedSimplePost', $locale)}`
 			});
 			editing = null;
 			await refresh();
 		} catch (e) {
-			onmessage({ kind: 'error', text: `갱신 실패: ${e}` });
+			onmessage({ kind: 'error', text: `${t('adminTypes.updateFailedPre', $locale)}${e}` });
 		} finally {
 			busy = false;
 		}
@@ -115,7 +119,7 @@
 	async function doCreate() {
 		const prefix = newPrefix.trim().toUpperCase();
 		if (!prefix) {
-			onmessage({ kind: 'error', text: 'prefix 를 입력하세요.' });
+			onmessage({ kind: 'error', text: t('adminTypes.prefixRequired', $locale) });
 			return;
 		}
 		busy = true;
@@ -125,11 +129,11 @@
 				color: newColor,
 				description: newDesc.trim() || null
 			});
-			onmessage({ kind: 'success', text: `'${prefix}' 추가됨` });
+			onmessage({ kind: 'success', text: `${t('adminTypes.addedPre', $locale)}${prefix}${t('adminTypes.addedPost', $locale)}` });
 			creating = false;
 			await refresh();
 		} catch (e) {
-			onmessage({ kind: 'error', text: `추가 실패: ${e}` });
+			onmessage({ kind: 'error', text: `${t('adminTypes.addFailedPre', $locale)}${e}` });
 		} finally {
 			busy = false;
 		}
@@ -146,10 +150,10 @@
 		busy = true;
 		try {
 			await adminApi.deleteType(target.prefix);
-			onmessage({ kind: 'success', text: `'${target.prefix}' 삭제됨` });
+			onmessage({ kind: 'success', text: `${t('adminTypes.deletedPre', $locale)}${target.prefix}${t('adminTypes.deletedPost', $locale)}` });
 			await refresh();
 		} catch (e) {
-			onmessage({ kind: 'error', text: `삭제 실패: ${e}` });
+			onmessage({ kind: 'error', text: `${t('adminTypes.deleteFailedPre', $locale)}${e}` });
 		} finally {
 			busy = false;
 		}
@@ -160,28 +164,28 @@
 	<div class="section-header">
 		<h2>Quest Types</h2>
 		<div class="actions">
-			<button onclick={openCreate} disabled={busy}>+ 새 type</button>
-			<button onclick={refresh} disabled={busy}>새로고침</button>
+			<button onclick={openCreate} disabled={busy}>{t('adminTypes.newType', $locale)}</button>
+			<button onclick={refresh} disabled={busy}>{t('admin.refresh', $locale)}</button>
 		</div>
 	</div>
 
 	{#if types.length === 0}
-		<p class="empty">type 없음.</p>
+		<p class="empty">{t('adminTypes.empty', $locale)}</p>
 	{:else}
 		<table>
 			<thead>
 				<tr>
 					<th style="width: 6ch">prefix</th>
-					<th style="width: 5ch">색</th>
-					<th>설명</th>
-					<th style="width: 8ch">사용 중</th>
+					<th style="width: 5ch">{t('adminTypes.colColor', $locale)}</th>
+					<th>{t('adminTypes.colDesc', $locale)}</th>
+					<th style="width: 8ch">{t('adminTypes.colInUse', $locale)}</th>
 					<th style="width: 14ch"></th>
 				</tr>
 			</thead>
 			<tbody>
-				{#each types as t (t.id)}
+				{#each types as ty (ty.id)}
 					<tr>
-						{#if editing === t.prefix}
+						{#if editing === ty.prefix}
 							<!-- BUG-018: prefix 도 inline 편집 가능. 변경 시 cascade confirm. -->
 							<td>
 								<input
@@ -189,7 +193,7 @@
 									bind:value={editPrefix}
 									maxlength="6"
 									pattern="[A-Z0-9]+"
-									title="대문자/숫자 1~6자"
+									title={t('adminTypes.prefixTitle', $locale)}
 									disabled={busy}
 									class="prefix-input"
 								/>
@@ -198,32 +202,32 @@
 								<input type="color" bind:value={editColor} disabled={busy} />
 							</td>
 							<td>
-								<input type="text" bind:value={editDesc} placeholder="(없음)" disabled={busy} />
+								<input type="text" bind:value={editDesc} placeholder={t('adminTypes.descPlaceholder', $locale)} disabled={busy} />
 							</td>
-							<td class="count">{t.quest_count}</td>
+							<td class="count">{ty.quest_count}</td>
 							<td class="row-actions">
-								<button class="save" onclick={saveEdit} disabled={busy}>저장</button>
-								<button onclick={cancelEdit} disabled={busy}>취소</button>
+								<button class="save" onclick={saveEdit} disabled={busy}>{t('common.save', $locale)}</button>
+								<button onclick={cancelEdit} disabled={busy}>{t('common.cancel', $locale)}</button>
 							</td>
 						{:else}
-							<td><code>{t.prefix}</code></td>
+							<td><code>{ty.prefix}</code></td>
 							<td>
-								<span class="swatch" style="background: {t.color}"></span>
-								<code class="hex">{t.color}</code>
+								<span class="swatch" style="background: {ty.color}"></span>
+								<code class="hex">{ty.color}</code>
 							</td>
-							<td class="desc">{t.description ?? ''}</td>
-							<td class="count">{t.quest_count}</td>
+							<td class="desc">{ty.description ?? ''}</td>
+							<td class="count">{ty.quest_count}</td>
 							<td class="row-actions">
-								<button onclick={() => startEdit(t)} disabled={busy}>수정</button>
+								<button onclick={() => startEdit(ty)} disabled={busy}>{t('adminTypes.edit', $locale)}</button>
 								<button
 									class="danger"
-									onclick={() => askDelete(t)}
-									disabled={busy || t.quest_count > 0}
-									title={t.quest_count > 0
-										? `사용 중 quest ${t.quest_count}개 — 먼저 이동`
-										: '삭제'}
+									onclick={() => askDelete(ty)}
+									disabled={busy || ty.quest_count > 0}
+									title={ty.quest_count > 0
+										? `${t('adminTypes.inUsePre', $locale)}${ty.quest_count}${t('adminTypes.inUsePost', $locale)}`
+										: t('detail.delete', $locale)}
 								>
-									삭제
+									{t('detail.delete', $locale)}
 								</button>
 							</td>
 						{/if}
@@ -231,38 +235,38 @@
 				{/each}
 			</tbody>
 		</table>
-		<p class="hint">prefix 자체 rename 은 quest slug cascade 라 지원 안 함.</p>
+		<p class="hint">{t('adminTypes.renameCascadeHint', $locale)}</p>
 	{/if}
 </section>
 
 {#if creating}
 	<div class="ov" role="presentation">
 		<div class="modal" role="dialog" aria-modal="true" tabindex="-1">
-			<h3 class="modal-title">새 quest type</h3>
+			<h3 class="modal-title">{t('adminTypes.newTypeTitle', $locale)}</h3>
 			<div class="form">
 				<label>
 					<span>prefix</span>
 					<input
 						type="text"
 						bind:value={newPrefix}
-						placeholder="DEV / BUG / REQ 같은 1~6자"
+						placeholder={t('adminTypes.prefixPlaceholder', $locale)}
 						maxlength="6"
 						disabled={busy}
 					/>
 				</label>
 				<label>
-					<span>색</span>
+					<span>{t('adminTypes.colColor', $locale)}</span>
 					<input type="color" bind:value={newColor} disabled={busy} />
 					<code class="hex">{newColor}</code>
 				</label>
 				<label>
-					<span>설명</span>
-					<input type="text" bind:value={newDesc} placeholder="(선택) 짧은 설명" disabled={busy} />
+					<span>{t('adminTypes.colDesc', $locale)}</span>
+					<input type="text" bind:value={newDesc} placeholder={t('adminTypes.descShortPlaceholder', $locale)} disabled={busy} />
 				</label>
 			</div>
 			<div class="modal-actions">
-				<button class="btn-yes" onclick={doCreate} disabled={busy}>추가</button>
-				<button class="btn-no" onclick={() => (creating = false)} disabled={busy}>취소</button>
+				<button class="btn-yes" onclick={doCreate} disabled={busy}>{t('common.add', $locale)}</button>
+				<button class="btn-no" onclick={() => (creating = false)} disabled={busy}>{t('common.cancel', $locale)}</button>
 			</div>
 		</div>
 	</div>
@@ -271,14 +275,14 @@
 {#if confirmDelete}
 	<div class="ov" role="presentation">
 		<div class="modal" role="dialog" aria-modal="true" tabindex="-1">
-			<h3 class="modal-title">Type 삭제</h3>
+			<h3 class="modal-title">{t('adminTypes.deleteTypeTitle', $locale)}</h3>
 			<p class="modal-msg">
-				<strong>{confirmDelete.prefix}</strong> type 을 삭제할까요? <br />
-				디스크의 <code>.guild/types/{confirmDelete.prefix}.toml</code> 파일도 함께 제거됩니다.
+				<strong>{confirmDelete.prefix}</strong>{t('adminTypes.deleteMsg1', $locale)}<br />
+				{t('adminTypes.deleteMsg2', $locale)}<code>.guild/types/{confirmDelete.prefix}.toml</code>{t('adminTypes.deleteMsg3', $locale)}
 			</p>
 			<div class="modal-actions">
-				<button class="btn-yes danger" onclick={doDelete} disabled={busy}>삭제</button>
-				<button class="btn-no" onclick={() => (confirmDelete = null)} disabled={busy}>취소</button>
+				<button class="btn-yes danger" onclick={doDelete} disabled={busy}>{t('detail.delete', $locale)}</button>
+				<button class="btn-no" onclick={() => (confirmDelete = null)} disabled={busy}>{t('common.cancel', $locale)}</button>
 			</div>
 		</div>
 	</div>
@@ -287,15 +291,13 @@
 <!-- DEV-119: prefix rename cascade 확인 — 인앱 모달. -->
 <ConfirmDialog
 	open={confirmRename !== null}
-	title="Type prefix 변경 (cascade)"
+	title={t('adminTypes.renamePrefixTitle', $locale)}
 	message={confirmRename
-		? `'${confirmRename.oldPrefix}' → '${confirmRename.newPrefix}' 로 이름 변경.\n\n` +
-			`이 type 의 모든 quest (${confirmRename.count}개) 의 slug 가 cascade 됩니다 ` +
-			`(파일명 / frontmatter / DB history).\n\n` +
-			`다른 quest 본문 안의 '${confirmRename.oldPrefix}-NNN' mention 은 자동 갱신되지 않습니다 ` +
-			`— 직접 검색/수정 필요.\n\n계속할까요?`
+		? `${t('adminTypes.updatedCascadePre', $locale)}${confirmRename.oldPrefix}' → '${confirmRename.newPrefix}${t('adminTypes.renameConfirmMid', $locale)}` +
+			`${t('adminTypes.renameConfirmCount1', $locale)}${confirmRename.count}${t('adminTypes.renameConfirmCount2', $locale)}` +
+			`${t('adminTypes.renameConfirmMention1', $locale)}${confirmRename.oldPrefix}${t('adminTypes.renameConfirmMention2', $locale)}`
 		: ''}
-	confirmLabel="변경"
+	confirmLabel={t('common.change', $locale)}
 	danger
 	onconfirm={() => {
 		const r = confirmRename;
