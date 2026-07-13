@@ -80,6 +80,39 @@ pub fn save(locale: Locale) -> Result<()> {
     std::fs::write(&path, body).with_context(|| format!("write locale file: {}", path.display()))
 }
 
+// DEV-254: server 는 CLI(전역 static)와 달리 요청마다 다른 언어일 수 있음
+// (Accept-Language 헤더). tokio task-local 로 요청 스코프에 override 를
+// 심어두고, `effective()` 가 이걸 우선 사용 — CLI/기존 코드 경로는 task-local
+// 이 없으므로 그대로 `current()` (env > 저장 파일 > 기본 ko) 로 fallback.
+tokio::task_local! {
+    static REQUEST_LOCALE: Locale;
+}
+
+/// axum handler 를 이 locale 로 스코프 — server 미들웨어가 요청 시작 시 호출.
+pub async fn scoped<F: std::future::Future>(locale: Locale, f: F) -> F::Output {
+    REQUEST_LOCALE.scope(locale, f).await
+}
+
+/// 현재 유효 언어 — 요청 스코프 override(server) > `current()`(CLI 등).
+/// core::ops 의 사용자-노출 에러 메시지(`AppError::NotFound`/`BadRequest`)는
+/// 이걸로 분기해야 서버 응답이 요청자의 Accept-Language 를 따른다.
+pub fn effective() -> Locale {
+    REQUEST_LOCALE.try_with(|l| *l).unwrap_or_else(|_| current())
+}
+
+/// CLI 의 `tf!`(cli/src/main.rs) 와 동일한 최소 침습 이중 언어 헬퍼 — core 의
+/// 사용자-노출 에러 메시지용. `effective()` 로 분기(요청 스코프 > 전역).
+#[macro_export]
+macro_rules! tf {
+    ($ko:literal, $en:literal $(, $arg:expr)* $(,)?) => {
+        if $crate::locale::effective() == $crate::locale::Locale::En {
+            format!($en $(, $arg)*)
+        } else {
+            format!($ko $(, $arg)*)
+        }
+    };
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

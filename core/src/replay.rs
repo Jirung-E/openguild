@@ -102,7 +102,12 @@ async fn resolve_campaign_id(store: &Store, maps: &IdMaps, journal_id: i64) -> A
         .bind(slug)
         .fetch_optional(&store.index_pool)
         .await?;
-    id.ok_or_else(|| AppError::Internal(anyhow!("replay: campaign {slug} 가 복원된 상태에 없음")))
+    id.ok_or_else(|| {
+        AppError::Internal(anyhow!(crate::tf!(
+            "replay: campaign {slug} 가 복원된 상태에 없음",
+            "replay: campaign {slug} not present in restored state"
+        )))
+    })
 }
 
 /// 최신 snapshot 을 복원한 뒤 journal ops 를 `target_ts`(포함)까지 재적용.
@@ -179,8 +184,13 @@ pub async fn replay_to(
 
 /// 단일 op 재적용. journal id 를 현재 id 로 변환 후 해당 ops:: 함수 호출.
 async fn apply_op(store: &Store, maps: &IdMaps, op: &journal::OpRow) -> AppResult<()> {
-    let args: Value = serde_json::from_str(&op.args)
-        .map_err(|e| AppError::Internal(anyhow!("replay: op {} args 파싱 실패: {e}", op.op)))?;
+    let args: Value = serde_json::from_str(&op.args).map_err(|e| {
+        AppError::Internal(anyhow!(crate::tf!(
+            "replay: op {} args 파싱 실패: {e}",
+            "replay: failed to parse op {} args: {e}",
+            op.op
+        )))
+    })?;
 
     match op.op.as_str() {
         "create_quest" => {
@@ -417,10 +427,12 @@ async fn apply_op(store: &Store, maps: &IdMaps, op: &journal::OpRow) -> AppResul
         }
         // 후속 확장 전까지 fail-loud (조용한 부분 복원 금지).
         other => {
-            return Err(AppError::Internal(anyhow!(
+            return Err(AppError::Internal(anyhow!(crate::tf!(
                 "replay: 아직 지원하지 않는 op '{other}'. (현재 quest op 만 replay 가능 — \
-                 이 시점 범위는 full snapshot restore 를 사용하세요.)"
-            )));
+                 이 시점 범위는 full snapshot restore 를 사용하세요.)",
+                "replay: op '{other}' not yet supported. (only quest ops can be replayed — \
+                 use a full snapshot restore for this time range.)"
+            ))));
         }
     }
     Ok(())
@@ -429,22 +441,33 @@ async fn apply_op(store: &Store, maps: &IdMaps, op: &journal::OpRow) -> AppResul
 // ── args 추출 헬퍼 ──
 
 fn arg_i64(args: &Value, key: &str) -> AppResult<i64> {
-    args.get(key)
-        .and_then(Value::as_i64)
-        .ok_or_else(|| AppError::Internal(anyhow!("replay: 인자 '{key}'(i64) 누락")))
+    args.get(key).and_then(Value::as_i64).ok_or_else(|| {
+        AppError::Internal(anyhow!(crate::tf!(
+            "replay: 인자 '{key}'(i64) 누락",
+            "replay: missing arg '{key}' (i64)"
+        )))
+    })
 }
 
 fn arg_u64(args: &Value, key: &str) -> AppResult<u64> {
-    args.get(key)
-        .and_then(Value::as_u64)
-        .ok_or_else(|| AppError::Internal(anyhow!("replay: 인자 '{key}'(u64) 누락")))
+    args.get(key).and_then(Value::as_u64).ok_or_else(|| {
+        AppError::Internal(anyhow!(crate::tf!(
+            "replay: 인자 '{key}'(u64) 누락",
+            "replay: missing arg '{key}' (u64)"
+        )))
+    })
 }
 
 fn arg_str(args: &Value, key: &str) -> AppResult<String> {
     args.get(key)
         .and_then(Value::as_str)
         .map(str::to_string)
-        .ok_or_else(|| AppError::Internal(anyhow!("replay: 인자 '{key}'(str) 누락")))
+        .ok_or_else(|| {
+            AppError::Internal(anyhow!(crate::tf!(
+                "replay: 인자 '{key}'(str) 누락",
+                "replay: missing arg '{key}' (str)"
+            )))
+        })
 }
 
 /// `Option<Option<String>>` 의미: 키 없음/`null` 자체가 아니라 — set_due_dates 는

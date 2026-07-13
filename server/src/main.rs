@@ -28,8 +28,14 @@ mod routes;
 mod tests;
 
 use openguild_core::guild_file;
+use openguild_core::locale::Locale;
 
 use anyhow::{Context, Result};
+use axum::{
+    extract::Request,
+    middleware::{self, Next},
+    response::Response,
+};
 use clap::{Parser, Subcommand};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -39,6 +45,41 @@ use tower_http::{
     set_header::SetResponseHeaderLayer,
     trace::TraceLayer,
 };
+
+// DEV-254: 요청별 언어 — GUI/agent 가 `Accept-Language` 헤더(표준) 또는
+// `?lang=ko|en`(간편 override, 헤더 조작이 번거로운 클라이언트 용)로 지정.
+// 우선순위: `?lang=` > `Accept-Language` > 기본 ko(GUI/CLI 기본값과 동일).
+// core::locale::scoped 로 요청 전체를 감싸 core::tf!() 를 쓰는 모든 에러
+// 메시지(AppError::NotFound/BadRequest)가 이 언어를 따르게 한다.
+fn detect_request_locale(req: &Request) -> Locale {
+    if let Some(q) = req.uri().query() {
+        for pair in q.split('&') {
+            if let Some(v) = pair.strip_prefix("lang=")
+                && let Some(l) = Locale::parse(v)
+            {
+                return l;
+            }
+        }
+    }
+    if let Some(al) = req
+        .headers()
+        .get(axum::http::header::ACCEPT_LANGUAGE)
+        .and_then(|v| v.to_str().ok())
+    {
+        // 가장 앞 태그만 본다 (예: "en-US,en;q=0.9,ko;q=0.8" → "en-US" → en).
+        let first = al.split(',').next().unwrap_or("").trim();
+        let lang = first.split(['-', ';']).next().unwrap_or("");
+        if let Some(l) = Locale::parse(lang) {
+            return l;
+        }
+    }
+    Locale::default()
+}
+
+async fn locale_middleware(req: Request, next: Next) -> Response {
+    let locale = detect_request_locale(&req);
+    openguild_core::locale::scoped(locale, next.run(req)).await
+}
 
 #[derive(Parser, Debug)]
 #[command(
@@ -304,6 +345,7 @@ async fn run_host(
             axum::http::header::CONTENT_SECURITY_POLICY,
             axum::http::HeaderValue::from_static(csp),
         ))
+        .layer(middleware::from_fn(locale_middleware))
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive());
 

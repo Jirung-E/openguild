@@ -400,7 +400,10 @@ pub async fn list_folders(store: &Store) -> AppResult<Vec<LibraryFolderRow>> {
 pub async fn create_folder(store: &Store, path: &str) -> AppResult<LibraryFolderRow> {
     let path = repo::normalize_folder_path(path).map_err(|e| AppError::BadRequest(e.to_string()))?;
     if path.is_empty() {
-        return Err(AppError::BadRequest("루트는 폴더로 만들 수 없습니다".into()));
+        return Err(AppError::BadRequest(crate::tf!(
+            "루트는 폴더로 만들 수 없습니다",
+            "the root cannot be made into a folder"
+        )));
     }
     let exists = sqlx::query_scalar::<_, i64>(
         "SELECT COUNT(*) FROM library_folders WHERE path = ? AND deleted_at IS NULL",
@@ -409,7 +412,10 @@ pub async fn create_folder(store: &Store, path: &str) -> AppResult<LibraryFolder
     .fetch_one(&store.index_pool)
     .await?;
     if exists > 0 {
-        return Err(AppError::BadRequest(format!("이미 존재하는 폴더입니다: {path}")));
+        return Err(AppError::BadRequest(crate::tf!(
+            "이미 존재하는 폴더입니다: {path}",
+            "folder already exists: {path}"
+        )));
     }
 
     let _ = journal::append(
@@ -453,25 +459,27 @@ pub async fn create_folder(store: &Store, path: &str) -> AppResult<LibraryFolder
 pub async fn delete_folder(store: &Store, path: &str) -> AppResult<()> {
     let path = repo::normalize_folder_path(path).map_err(|e| AppError::BadRequest(e.to_string()))?;
     if path.is_empty() {
-        return Err(AppError::BadRequest("루트는 삭제할 수 없습니다".into()));
+        return Err(AppError::BadRequest(crate::tf!("루트는 삭제할 수 없습니다", "the root cannot be deleted")));
     }
     let docs = list_books(store).await?;
     if docs
         .iter()
         .any(|d| repo::path_is_self_or_descendant(&d.path, &path))
     {
-        return Err(AppError::BadRequest(
-            "폴더 안에 문서가 있어 삭제할 수 없습니다 — 먼저 비우세요".into(),
-        ));
+        return Err(AppError::BadRequest(crate::tf!(
+            "폴더 안에 문서가 있어 삭제할 수 없습니다 — 먼저 비우세요",
+            "cannot delete — the folder contains documents. Empty it first."
+        )));
     }
     let folders = list_folders(store).await?;
     if folders
         .iter()
         .any(|f| f.path != path && repo::path_is_self_or_descendant(&f.path, &path))
     {
-        return Err(AppError::BadRequest(
-            "하위 폴더가 있어 삭제할 수 없습니다 — 먼저 비우세요".into(),
-        ));
+        return Err(AppError::BadRequest(crate::tf!(
+            "하위 폴더가 있어 삭제할 수 없습니다 — 먼저 비우세요",
+            "cannot delete — the folder has subfolders. Empty it first."
+        )));
     }
     if !folders.iter().any(|f| f.path == path) {
         return Err(AppError::NotFound(format!("folder not found: {path}")));

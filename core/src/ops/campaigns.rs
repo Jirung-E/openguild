@@ -180,7 +180,7 @@ pub async fn set_banner_image(
         let _ = std::fs::remove_file(store.paths.dot_guild().join(old_rel));
     }
     std::fs::copy(source_path, &dest)
-        .map_err(|e| AppError::Internal(anyhow::anyhow!("이미지 복사 실패: {e}")))?;
+        .map_err(|e| AppError::Internal(anyhow::anyhow!(crate::tf!("이미지 복사 실패: {e}", "image copy failed: {e}"))))?;
 
     // 2. DB + 파일.
     sqlx::query("UPDATE campaigns SET image_path = ? WHERE id = ?")

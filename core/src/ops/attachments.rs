@@ -37,7 +37,7 @@ fn sanitize_ext(ext: &str) -> String {
 pub async fn save_attachment(store: &Store, bytes: &[u8], ext: &str) -> AppResult<String> {
     let ext = sanitize_ext(ext);
     if bytes.is_empty() {
-        return Err(AppError::BadRequest("빈 첨부".into()));
+        return Err(AppError::BadRequest(crate::tf!("빈 첨부", "empty attachment")));
     }
     let _ = journal::append(
         &store.journal_pool,
@@ -61,7 +61,7 @@ pub async fn save_attachment(store: &Store, bytes: &[u8], ext: &str) -> AppResul
         .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
     let path = store.paths.dot_guild().join(&rel);
     std::fs::write(&path, bytes)
-        .map_err(|e| AppError::Internal(anyhow::anyhow!("첨부 write 실패: {e}")))?;
+        .map_err(|e| AppError::Internal(anyhow::anyhow!(crate::tf!("첨부 write 실패: {e}", "attachment write failed: {e}"))))?;
 
     upsert_blob(store, &rel, bytes, repo_fs::mtime_unix_nanos(&path)).await?;
     Ok(rel)
@@ -242,7 +242,7 @@ async fn add_attachment(
     name: &str,
 ) -> AppResult<Vec<QuestAttachment>> {
     if path.trim().is_empty() {
-        return Err(AppError::BadRequest("빈 첨부 경로".into()));
+        return Err(AppError::BadRequest(crate::tf!("빈 첨부 경로", "empty attachment path")));
     }
     let _ = journal::append(
         &store.journal_pool,
