@@ -4694,13 +4694,20 @@ fn run_reindex_cmd(c: &Backend, json: bool) -> Result<()> {
             })
         );
     } else {
-        println!("✓ index.db 재구축 완료");
+        println!("{}", tf!("✓ index.db 재구축 완료", "✓ index.db rebuilt"));
         for line in report.summary_lines() {
             println!("  {line}");
         }
         if !report.skipped.is_empty() {
             println!();
-            println!("⚠ {} 개 파일 skip 됨 (파싱 / 무결성 실패):", report.skipped.len());
+            println!(
+                "{}",
+                tf!(
+                    "⚠ {} 개 파일 skip 됨 (파싱 / 무결성 실패):",
+                    "⚠ {} file(s) skipped (parse / integrity failure):",
+                    report.skipped.len()
+                )
+            );
             for (path, reason) in &report.skipped {
                 println!("  - {path}");
                 println!("    → {reason}");
@@ -4725,14 +4732,17 @@ fn run_check_drift_cmd(c: &Backend, resync: bool, json: bool) -> Result<()> {
             })
         );
     } else if report.is_clean() {
-        println!("✓ index.db 가 파일과 일치 (drift 없음)");
+        println!("{}", tf!("✓ index.db 가 파일과 일치 (drift 없음)", "✓ index.db matches files (no drift)"));
     } else {
-        println!("⚠ drift 발견:");
+        println!("{}", tf!("⚠ drift 발견:", "⚠ drift found:"));
         let sections = [
-            ("파일은 있는데 index 에 없음", &report.missing_in_index),
-            ("index 에 있는데 파일이 없음", &report.stale_in_index),
-            ("파일 mtime > index.db mtime", &report.fresh_files),
-            ("sibling(.comments/.memo) 가 더 새것", &report.fresh_siblings),
+            (tf!("파일은 있는데 index 에 없음", "file exists but missing from index"), &report.missing_in_index),
+            (tf!("index 에 있는데 파일이 없음", "in index but file missing"), &report.stale_in_index),
+            (tf!("파일 mtime > index.db mtime", "file mtime > index.db mtime"), &report.fresh_files),
+            (
+                tf!("sibling(.comments/.memo) 가 더 새것", "sibling (.comments/.memo) is newer"),
+                &report.fresh_siblings,
+            ),
         ];
         for (label, items) in sections {
             if !items.is_empty() {
@@ -4745,11 +4755,11 @@ fn run_check_drift_cmd(c: &Backend, resync: bool, json: bool) -> Result<()> {
         }
         println!();
         if resync {
-            println!("▸ reindex 실행 중...");
+            println!("{}", tf!("▸ reindex 실행 중...", "▸ running reindex..."));
             c.reindex()?;
-            println!("✓ resync 완료");
+            println!("{}", tf!("✓ resync 완료", "✓ resync complete"));
         } else {
-            println!("(--resync 로 자동 reindex 가능)");
+            println!("{}", tf!("(--resync 로 자동 reindex 가능)", "(use --resync to auto-reindex)"));
         }
     }
     Ok(())
@@ -4769,22 +4779,54 @@ fn run_check_counters_cmd(c: &Backend, fix: bool, json: bool) -> Result<()> {
             })
         );
     } else {
-        println!("✓ counter 검증 완료");
-        println!("  검사된 type 수 : {}", report.file_report.types_checked);
+        println!("{}", tf!("✓ counter 검증 완료", "✓ counter check complete"));
         println!(
-            "  발견 이슈     : {} (file) + {} (SQL)",
-            report.file_report.issues.len(),
-            report.sql_drift.len()
+            "{}",
+            tf!(
+                "  검사된 type 수 : {}",
+                "  types checked  : {}",
+                report.file_report.types_checked
+            )
+        );
+        println!(
+            "{}",
+            tf!(
+                "  발견 이슈     : {} (file) + {} (SQL)",
+                "  issues found   : {} (file) + {} (SQL)",
+                report.file_report.issues.len(),
+                report.sql_drift.len()
+            )
         );
         for issue in &report.file_report.issues {
             println!();
             println!("  • type {} [file drift]:", issue.prefix);
-            println!("    저장된 last_number   : {}", issue.stored_last_number);
-            println!("    실제 max quest 번호  : {}", issue.actual_max_number);
+            println!(
+                "{}",
+                tf!(
+                    "    저장된 last_number   : {}",
+                    "    stored last_number   : {}",
+                    issue.stored_last_number
+                )
+            );
+            println!(
+                "{}",
+                tf!(
+                    "    실제 max quest 번호  : {}",
+                    "    actual max quest num : {}",
+                    issue.actual_max_number
+                )
+            );
             if fix {
-                println!("    → {} 으로 보정됨 (file + SQL)", issue.corrected_to);
+                println!(
+                    "{}",
+                    tf!(
+                        "    → {} 으로 보정됨 (file + SQL)",
+                        "    → corrected to {} (file + SQL)",
+                        issue.corrected_to
+                    )
+                );
             } else {
-                println!("    (--fix 로 자동 보정 가능)");
+                println!("{}", tf!("    (--fix 로 자동 보정 가능)", "    (use --fix to auto-correct)"));
             }
         }
         for drift in &report.sql_drift {
@@ -4793,9 +4835,16 @@ fn run_check_counters_cmd(c: &Backend, fix: bool, json: bool) -> Result<()> {
             println!("    file last_number     : {}", drift.file_last_number);
             println!("    SQL  last_number     : {}", drift.sql_last_number);
             if fix {
-                println!("    → {} 으로 보정됨 (SQL ← file)", drift.synced_to);
+                println!(
+                    "{}",
+                    tf!(
+                        "    → {} 으로 보정됨 (SQL ← file)",
+                        "    → corrected to {} (SQL ← file)",
+                        drift.synced_to
+                    )
+                );
             } else {
-                println!("    (--fix 로 자동 보정 가능)");
+                println!("{}", tf!("    (--fix 로 자동 보정 가능)", "    (use --fix to auto-correct)"));
             }
         }
     }
@@ -4815,7 +4864,7 @@ fn run_vacuum_cmd(c: &Backend, json: bool) -> Result<()> {
             })
         );
     } else {
-        println!("✓ VACUUM 완료");
+        println!("{}", tf!("✓ VACUUM 완료", "✓ VACUUM complete"));
         println!("  before : {} bytes", r.before_bytes);
         println!("  after  : {} bytes", r.after_bytes);
         if r.saved() > 0 && r.before_bytes > 0 {
@@ -4825,7 +4874,7 @@ fn run_vacuum_cmd(c: &Backend, json: bool) -> Result<()> {
                 (r.saved() as f64 / r.before_bytes as f64) * 100.0
             );
         } else {
-            println!("  saved  : 0 bytes (이미 dense)");
+            println!("{}", tf!("  saved  : 0 bytes (이미 dense)", "  saved  : 0 bytes (already dense)"));
         }
     }
     Ok(())
@@ -4838,7 +4887,13 @@ fn run_journal_tail_cmd(c: &Backend, count: i64, json: bool) -> Result<()> {
             if json {
                 println!("{}", serde_json::json!({ "exists": false, "rows": [] }));
             } else {
-                println!("(journal.db 없음 — 아직 mutation 안 됐거나 snapshot 직후)");
+                println!(
+                    "{}",
+                    tf!(
+                        "(journal.db 없음 — 아직 mutation 안 됐거나 snapshot 직후)",
+                        "(no journal.db — no mutations yet, or just after a snapshot)"
+                    )
+                );
             }
         }
         Some(t) => {
@@ -5237,7 +5292,14 @@ fn handle_types(c: &Backend, json: bool, sub: TypesCmd) -> Result<()> {
                 println!("{}", json_str(&row));
             } else {
                 let p = colorize(&format!("{:<6}", row.prefix), &row.color);
-                println!("{p} 추가됨 — {}", row.description.as_deref().unwrap_or(""));
+                println!(
+                    "{}",
+                    tf!(
+                        "{p} 추가됨 — {}",
+                        "{p} added — {}",
+                        row.description.as_deref().unwrap_or("")
+                    )
+                );
             }
         }
         TypesCmd::Update {
@@ -5248,7 +5310,10 @@ fn handle_types(c: &Backend, json: bool, sub: TypesCmd) -> Result<()> {
             clear_description,
         } => {
             if clear_description && description.is_some() {
-                bail!("--description 과 --clear-description 동시 사용 불가");
+                bail!(tf!(
+                    "--description 과 --clear-description 동시 사용 불가",
+                    "--description and --clear-description are mutually exclusive"
+                ));
             }
             let desc_arg: Option<Option<String>> = if clear_description {
                 Some(None)
@@ -5272,13 +5337,20 @@ fn handle_types(c: &Backend, json: bool, sub: TypesCmd) -> Result<()> {
                 let p = colorize(&format!("{:<6}", row.prefix), &row.color);
                 if renamed {
                     println!(
-                        "{p} 갱신됨 (rename: '{}' → '{}', 관련 quest slug cascade) — {}",
-                        old_prefix,
-                        row.prefix,
-                        row.description.as_deref().unwrap_or("")
+                        "{}",
+                        tf!(
+                            "{p} 갱신됨 (rename: '{}' → '{}', 관련 quest slug cascade) — {}",
+                            "{p} updated (rename: '{}' → '{}', cascades related quest slugs) — {}",
+                            old_prefix,
+                            row.prefix,
+                            row.description.as_deref().unwrap_or("")
+                        )
                     );
                 } else {
-                    println!("{p} 갱신됨 — {}", row.description.as_deref().unwrap_or(""));
+                    println!(
+                        "{}",
+                        tf!("{p} 갱신됨 — {}", "{p} updated — {}", row.description.as_deref().unwrap_or(""))
+                    );
                 }
             }
         }
@@ -5287,7 +5359,7 @@ fn handle_types(c: &Backend, json: bool, sub: TypesCmd) -> Result<()> {
             if json {
                 println!("{}", serde_json::json!({ "ok": true }));
             } else {
-                println!("'{}' 삭제됨", prefix.trim());
+                println!("{}", tf!("'{}' 삭제됨", "'{}' deleted", prefix.trim()));
             }
         }
     }
@@ -5313,10 +5385,11 @@ fn handle_docs(json: bool, name: Option<String>) -> Result<()> {
         Some(n) => {
             let key = n.to_lowercase();
             let Some((_, _, body)) = DOCS.iter().find(|(k, _, _)| *k == key) else {
-                bail!(
+                bail!(tf!(
                     "알 수 없는 문서 '{n}' — 사용 가능: {}",
+                    "unknown doc '{n}' — available: {}",
                     DOCS.iter().map(|(k, _, _)| *k).collect::<Vec<_>>().join(" | ")
-                );
+                ));
             };
             // 문서 원문 그대로 — json 모드도 raw 출력(문서는 markdown 텍스트).
             print!("{body}");
@@ -5337,7 +5410,7 @@ fn handle_docs(json: bool, name: Option<String>) -> Result<()> {
                 for (k, d, _) in DOCS {
                     println!("{k:<10} {d}");
                 }
-                println!("\n사용: openguild docs <name>");
+                println!("{}", tf!("\n사용: openguild docs <name>", "\nusage: openguild docs <name>"));
             }
         }
     }
@@ -5417,11 +5490,11 @@ fn handle_tag(c: &Backend, json: bool, sub: TagDefCmd) -> Result<()> {
                 );
             } else {
                 if defs.is_empty() {
-                    println!("(정의된 태그 없음)");
+                    println!("{}", tf!("(정의된 태그 없음)", "(no defined tags)"));
                 }
                 for d in &defs {
                     let slug = colorize(&format!("{:<20}", d.slug), &d.color);
-                    let color = if d.color.is_empty() { "(색 없음)" } else { &d.color };
+                    let color = if d.color.is_empty() { tf!("(색 없음)", "(no color)") } else { d.color.clone() };
                     println!("{slug} {:<8} {}", color, d.description);
                 }
                 if used {
@@ -5429,11 +5502,15 @@ fn handle_tag(c: &Backend, json: bool, sub: TagDefCmd) -> Result<()> {
                         defs.iter().map(|d| d.slug.as_str()).collect();
                     let undefined: Vec<&String> =
                         used_tags.iter().filter(|t| !defined.contains(t.as_str())).collect();
-                    println!("-- 사용 중 태그 {}개", used_tags.len());
+                    println!("{}", tf!("-- 사용 중 태그 {}개", "-- {} tag(s) in use", used_tags.len()));
                     if !undefined.is_empty() {
                         println!(
-                            "-- 정의 없이 사용 중: {}",
-                            undefined.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")
+                            "{}",
+                            tf!(
+                                "-- 정의 없이 사용 중: {}",
+                                "-- in use without a definition: {}",
+                                undefined.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")
+                            )
                         );
                     }
                 }
@@ -5441,7 +5518,10 @@ fn handle_tag(c: &Backend, json: bool, sub: TagDefCmd) -> Result<()> {
         }
         TagDefCmd::Add { slug, color, description } => {
             if c.tag_defs()?.iter().any(|d| d.slug == slug) {
-                bail!("태그 정의 '{slug}' 가 이미 있습니다 — 수정은 `tag update`");
+                bail!(tf!(
+                    "태그 정의 '{slug}' 가 이미 있습니다 — 수정은 `tag update`",
+                    "tag def '{slug}' already exists — use `tag update` to modify"
+                ));
             }
             let d = c.tag_def_upsert(
                 &slug,
@@ -5451,16 +5531,25 @@ fn handle_tag(c: &Backend, json: bool, sub: TagDefCmd) -> Result<()> {
             if json {
                 println!("{}", json_str(&d));
             } else {
-                println!("✓ 태그 정의 추가: {}", colorize(&d.slug, &d.color));
+                println!(
+                    "{}",
+                    tf!("✓ 태그 정의 추가: {}", "✓ tag def added: {}", colorize(&d.slug, &d.color))
+                );
             }
         }
         TagDefCmd::Update { slug, color, description } => {
             let defs = c.tag_defs()?;
             let Some(existing) = defs.iter().find(|d| d.slug == slug) else {
-                bail!("태그 정의 '{slug}' 가 없습니다 — 추가는 `tag add`");
+                bail!(tf!(
+                    "태그 정의 '{slug}' 가 없습니다 — 추가는 `tag add`",
+                    "tag def '{slug}' does not exist — use `tag add` to create it"
+                ));
             };
             if color.is_none() && description.is_none() {
-                bail!("--color / --description 중 하나는 지정해야 합니다");
+                bail!(tf!(
+                    "--color / --description 중 하나는 지정해야 합니다",
+                    "specify at least one of --color / --description"
+                ));
             }
             // 지정한 필드만 교체 — upsert 가 전체 교체라 기존값과 merge.
             let d = c.tag_def_upsert(
@@ -5471,7 +5560,10 @@ fn handle_tag(c: &Backend, json: bool, sub: TagDefCmd) -> Result<()> {
             if json {
                 println!("{}", json_str(&d));
             } else {
-                println!("✓ 태그 정의 갱신: {}", colorize(&d.slug, &d.color));
+                println!(
+                    "{}",
+                    tf!("✓ 태그 정의 갱신: {}", "✓ tag def updated: {}", colorize(&d.slug, &d.color))
+                );
             }
         }
         TagDefCmd::Delete { slug } => {
@@ -5479,7 +5571,13 @@ fn handle_tag(c: &Backend, json: bool, sub: TagDefCmd) -> Result<()> {
             if json {
                 println!("{}", serde_json::json!({ "ok": true, "slug": slug }));
             } else {
-                println!("✓ 태그 정의 삭제: {slug} (태그 사용 자체는 보존 — 기본 색으로 표시)");
+                println!(
+                    "{}",
+                    tf!(
+                        "✓ 태그 정의 삭제: {slug} (태그 사용 자체는 보존 — 기본 색으로 표시)",
+                        "✓ tag def deleted: {slug} (existing tag usages are preserved — shown in default color)"
+                    )
+                );
             }
         }
     }
@@ -5542,9 +5640,13 @@ fn handle_statuses(c: &Backend, json: bool, sub: StatusesCmd) -> Result<()> {
             } else {
                 let n = colorize(&format!("{:<14}", row.name_en), &row.color);
                 println!(
-                    "{n} (slug={}) 추가됨 — {}",
-                    row.slug,
-                    if row.name_ko.is_empty() { "-" } else { &row.name_ko }
+                    "{}",
+                    tf!(
+                        "{n} (slug={}) 추가됨 — {}",
+                        "{n} (slug={}) added — {}",
+                        row.slug,
+                        if row.name_ko.is_empty() { "-" } else { &row.name_ko }
+                    )
                 );
             }
         }
@@ -5558,7 +5660,10 @@ fn handle_statuses(c: &Backend, json: bool, sub: StatusesCmd) -> Result<()> {
             clear_name_ko,
         } => {
             if clear_name_ko && name_ko.is_some() {
-                bail!("--name-ko 와 --clear-name-ko 동시 사용 불가");
+                bail!(tf!(
+                    "--name-ko 와 --clear-name-ko 동시 사용 불가",
+                    "--name-ko and --clear-name-ko are mutually exclusive"
+                ));
             }
             let ko_arg = if clear_name_ko {
                 Some(String::new())
@@ -5586,11 +5691,16 @@ fn handle_statuses(c: &Backend, json: bool, sub: StatusesCmd) -> Result<()> {
                 let n = colorize(&format!("{:<14}", row.name_en), &row.color);
                 if renamed {
                     println!(
-                        "{n} 갱신됨 (slug rename: '{}' → '{}', cascade)",
-                        old_slug, row.slug
+                        "{}",
+                        tf!(
+                            "{n} 갱신됨 (slug rename: '{}' → '{}', cascade)",
+                            "{n} updated (slug rename: '{}' → '{}', cascade)",
+                            old_slug,
+                            row.slug
+                        )
                     );
                 } else {
-                    println!("{n} 갱신됨");
+                    println!("{}", tf!("{n} 갱신됨", "{n} updated"));
                 }
             }
         }
@@ -5608,7 +5718,7 @@ fn handle_statuses(c: &Backend, json: bool, sub: StatusesCmd) -> Result<()> {
             if json {
                 println!("{}", serde_json::json!({ "ok": true }));
             } else {
-                println!("'{display}' 삭제됨");
+                println!("{}", tf!("'{display}' 삭제됨", "'{display}' deleted"));
             }
         }
     }
@@ -5635,8 +5745,15 @@ fn handle_template(c: &Backend, json: bool, sub: TemplateCmd) -> Result<()> {
                     })
                 );
             } else if templates.is_empty() {
-                println!("(템플릿 없음 — .guild/templates/{{name}}.md 작성)");
+                println!(
+                    "{}",
+                    tf!(
+                        "(템플릿 없음 — .guild/templates/{{name}}.md 작성)",
+                        "(no templates — create .guild/templates/{{name}}.md)"
+                    )
+                );
             } else {
+                let no_title = tf!("(제목 없음)", "(no title)");
                 for t in &templates {
                     let mut meta = Vec::new();
                     if let Some(ty) = &t.frontmatter.type_prefix {
@@ -5651,7 +5768,7 @@ fn handle_template(c: &Backend, json: bool, sub: TemplateCmd) -> Result<()> {
                     println!(
                         "{}  {}  {}",
                         t.name,
-                        t.frontmatter.title.as_deref().unwrap_or("(제목 없음)"),
+                        t.frontmatter.title.as_deref().unwrap_or(&no_title),
                         meta.join(" ")
                     );
                 }
@@ -5672,7 +5789,8 @@ fn handle_template(c: &Backend, json: bool, sub: TemplateCmd) -> Result<()> {
                     })
                 );
             } else {
-                println!("# {} — {}", t.name, t.frontmatter.title.as_deref().unwrap_or("(제목 없음)"));
+                let no_title = tf!("(제목 없음)", "(no title)");
+                println!("# {} — {}", t.name, t.frontmatter.title.as_deref().unwrap_or(&no_title));
                 println!("{}", t.body);
             }
         }
@@ -5710,7 +5828,10 @@ fn handle_template(c: &Backend, json: bool, sub: TemplateCmd) -> Result<()> {
                     serde_json::json!({ "ok": true, "name": name, "path": path.display().to_string() })
                 );
             } else {
-                println!("✓ 템플릿 '{name}' 저장 — {}", path.display());
+                println!(
+                    "{}",
+                    tf!("✓ 템플릿 '{name}' 저장 — {}", "✓ template '{name}' saved — {}", path.display())
+                );
             }
         }
     }
@@ -5733,7 +5854,7 @@ fn handle_rules(c: &Backend, json: bool, sub: RulesCmd) -> Result<()> {
                     })
                 );
             } else if entries.is_empty() {
-                println!("(규칙 없음)");
+                println!("{}", tf!("(규칙 없음)", "(no rules)"));
             } else {
                 println!("Slug                  Lines  Size");
                 for e in &entries {
@@ -5750,7 +5871,7 @@ fn handle_rules(c: &Backend, json: bool, sub: RulesCmd) -> Result<()> {
         RulesCmd::Show { slug } => {
             let content = c
                 .rules_get(&slug)?
-                .ok_or_else(|| anyhow::anyhow!("규칙 '{slug}' 없음"))?;
+                .ok_or_else(|| anyhow::anyhow!(tf!("규칙 '{slug}' 없음", "rule '{slug}' not found")))?;
             if json {
                 println!(
                     "{}",
@@ -5769,7 +5890,7 @@ fn handle_rules(c: &Backend, json: bool, sub: RulesCmd) -> Result<()> {
             if json {
                 println!("{}", serde_json::json!({ "ok": true, "slug": slug }));
             } else {
-                println!("✓ 규칙 '{slug}' 저장됨");
+                println!("{}", tf!("✓ 규칙 '{slug}' 저장됨", "✓ rule '{slug}' saved"));
             }
         }
         RulesCmd::Create { slug, file, empty } => {
@@ -5782,18 +5903,18 @@ fn handle_rules(c: &Backend, json: bool, sub: RulesCmd) -> Result<()> {
             if json {
                 println!("{}", serde_json::json!({ "ok": true, "slug": slug }));
             } else {
-                println!("✓ 규칙 '{slug}' 생성됨");
+                println!("{}", tf!("✓ 규칙 '{slug}' 생성됨", "✓ rule '{slug}' created"));
             }
         }
         RulesCmd::Delete { slug, force } => {
             if !force {
-                eprint!("규칙 '{slug}' 을 삭제할까요? (y/N) ");
+                eprint!("{}", tf!("규칙 '{slug}' 을 삭제할까요? (y/N) ", "delete rule '{slug}'? (y/N) "));
                 use std::io::Write;
                 std::io::stderr().flush().ok();
                 let mut buf = String::new();
                 std::io::stdin().read_line(&mut buf)?;
                 if !matches!(buf.trim(), "y" | "Y" | "yes") {
-                    println!("(취소)");
+                    println!("{}", tf!("(취소)", "(cancelled)"));
                     return Ok(());
                 }
             }
@@ -5801,7 +5922,7 @@ fn handle_rules(c: &Backend, json: bool, sub: RulesCmd) -> Result<()> {
             if json {
                 println!("{}", serde_json::json!({ "ok": true, "slug": slug }));
             } else {
-                println!("✓ 규칙 '{slug}' 삭제됨");
+                println!("{}", tf!("✓ 규칙 '{slug}' 삭제됨", "✓ rule '{slug}' deleted"));
             }
         }
         RulesCmd::Rename { slug, new_slug } => {
@@ -5814,7 +5935,7 @@ fn handle_rules(c: &Backend, json: bool, sub: RulesCmd) -> Result<()> {
                     })
                 );
             } else {
-                println!("✓ '{slug}' → '{new_slug}' 이름 변경");
+                println!("{}", tf!("✓ '{slug}' → '{new_slug}' 이름 변경", "✓ renamed '{slug}' → '{new_slug}'"));
             }
         }
     }
@@ -5846,7 +5967,7 @@ fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
                     .collect();
                 render_table(&["ID", "UPDATED", "TITLE"], &[false, false], &rows, "docs");
             } else if books.is_empty() {
-                println!("(도서관 문서 없음)");
+                println!("{}", tf!("(도서관 문서 없음)", "(no library docs)"));
             } else {
                 for b in &books {
                     let loc = if b.path.is_empty() {
@@ -5864,8 +5985,9 @@ fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
                 println!("{}", json_str(&b));
             } else {
                 println!("{}  {}", b.book_id, b.title);
-                let loc = if b.path.is_empty() { "(최상위)" } else { &b.path };
-                println!("  경로: {loc}");
+                let top_level = tf!("(최상위)", "(top level)");
+                let loc = if b.path.is_empty() { &top_level } else { &b.path };
+                println!("{}", tf!("  경로: {loc}", "  path: {loc}"));
                 println!("  created: {}  updated: {}", b.created_at, b.updated_at);
                 if !b.body.is_empty() {
                     println!();
@@ -5875,44 +5997,47 @@ fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
         }
         LibraryCmd::New { title, file, path } => {
             let body = match file {
-                Some(p) => std::fs::read_to_string(&p)
-                    .with_context(|| format!("파일 읽기 실패: {}", p.display()))?,
+                Some(p) => std::fs::read_to_string(&p).with_context(|| {
+                    tf!("파일 읽기 실패: {}", "failed to read file: {}", p.display())
+                })?,
                 None => String::new(),
             };
             let b = c.library_new(&title, &body, path.as_deref().unwrap_or(""))?;
             if json {
                 println!("{}", json_str(&b));
             } else {
-                println!("✓ {} 생성됨 — {}", b.book_id, b.title);
+                println!("{}", tf!("✓ {} 생성됨 — {}", "✓ {} created — {}", b.book_id, b.title));
             }
         }
         LibraryCmd::Update { id, title, file, path } => {
             if title.is_none() && file.is_none() && path.is_none() {
-                bail!("변경할 필드가 없습니다 — --title / --file / --path 지정");
+                bail!(tf!(
+                    "변경할 필드가 없습니다 — --title / --file / --path 지정",
+                    "no fields to change — specify --title / --file / --path"
+                ));
             }
             let body = match file {
-                Some(p) => Some(
-                    std::fs::read_to_string(&p)
-                        .with_context(|| format!("파일 읽기 실패: {}", p.display()))?,
-                ),
+                Some(p) => Some(std::fs::read_to_string(&p).with_context(|| {
+                    tf!("파일 읽기 실패: {}", "failed to read file: {}", p.display())
+                })?),
                 None => None,
             };
             let b = c.library_update(&id, title.as_deref(), body.as_deref(), path.as_deref())?;
             if json {
                 println!("{}", json_str(&b));
             } else {
-                println!("✓ {} 수정됨 — {}", b.book_id, b.title);
+                println!("{}", tf!("✓ {} 수정됨 — {}", "✓ {} updated — {}", b.book_id, b.title));
             }
         }
         LibraryCmd::Delete { id, yes } => {
             if !yes {
-                eprint!("도서관 문서 '{id}' 을 삭제할까요? (y/N) ");
+                eprint!("{}", tf!("도서관 문서 '{id}' 을 삭제할까요? (y/N) ", "delete library doc '{id}'? (y/N) "));
                 use std::io::Write;
                 std::io::stderr().flush().ok();
                 let mut input = String::new();
                 std::io::stdin().read_line(&mut input)?;
                 if !input.trim().eq_ignore_ascii_case("y") {
-                    println!("취소됨");
+                    println!("{}", tf!("취소됨", "cancelled"));
                     return Ok(());
                 }
             }
@@ -5920,7 +6045,13 @@ fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
             if json {
                 println!("{}", serde_json::json!({ "ok": true, "book_id": id }));
             } else {
-                println!("✓ '{id}' 삭제됨 (soft delete — 번호는 재사용되지 않음)");
+                println!(
+                    "{}",
+                    tf!(
+                        "✓ '{id}' 삭제됨 (soft delete — 번호는 재사용되지 않음)",
+                        "✓ '{id}' deleted (soft delete — the number is never reused)"
+                    )
+                );
             }
         }
         LibraryCmd::Folder { sub } => match sub {
@@ -5929,7 +6060,7 @@ fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
                 if json {
                     println!("{}", json_str(&folders));
                 } else if folders.is_empty() {
-                    println!("(폴더 없음)");
+                    println!("{}", tf!("(폴더 없음)", "(no folders)"));
                 } else {
                     for f in &folders {
                         println!("{}", f.path);
@@ -5941,18 +6072,18 @@ fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
                 if json {
                     println!("{}", json_str(&f));
                 } else {
-                    println!("✓ 폴더 '{}' 생성됨", f.path);
+                    println!("{}", tf!("✓ 폴더 '{}' 생성됨", "✓ folder '{}' created", f.path));
                 }
             }
             LibraryFolderCmd::Delete { path, yes } => {
                 if !yes {
-                    eprint!("폴더 '{path}' 을 삭제할까요? (y/N) ");
+                    eprint!("{}", tf!("폴더 '{path}' 을 삭제할까요? (y/N) ", "delete folder '{path}'? (y/N) "));
                     use std::io::Write;
                     std::io::stderr().flush().ok();
                     let mut input = String::new();
                     std::io::stdin().read_line(&mut input)?;
                     if !input.trim().eq_ignore_ascii_case("y") {
-                        println!("취소됨");
+                        println!("{}", tf!("취소됨", "cancelled"));
                         return Ok(());
                     }
                 }
@@ -5960,7 +6091,7 @@ fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
                 if json {
                     println!("{}", serde_json::json!({ "ok": true, "path": path }));
                 } else {
-                    println!("✓ 폴더 '{path}' 삭제됨");
+                    println!("{}", tf!("✓ 폴더 '{path}' 삭제됨", "✓ folder '{path}' deleted"));
                 }
             }
         },
@@ -5986,23 +6117,23 @@ fn handle_worklog(c: &Backend, json: bool, sub: WorklogCmd) -> Result<()> {
                 println!("{}", json_str(&report));
             } else {
                 if f == t {
-                    println!("작업 기록 — {f}");
+                    println!("{}", tf!("작업 기록 — {f}", "work log — {f}"));
                 } else {
-                    println!("작업 기록 — {f} ~ {t}");
+                    println!("{}", tf!("작업 기록 — {f} ~ {t}", "work log — {f} ~ {t}"));
                 }
                 // 하루 뷰면 그 날짜의 노트도 함께 (파일 있으면).
                 if f == t
                     && let Ok(Some(note)) = c.worklog_note_get(&f)
                 {
                     println!();
-                    println!("📝 노트:");
+                    println!("{}", tf!("📝 노트:", "📝 note:"));
                     for line in note.lines() {
                         println!("  {line}");
                     }
                 }
                 println!();
                 if report.activities.is_empty() {
-                    println!("(활동 없음)");
+                    println!("{}", tf!("(활동 없음)", "(no activity)"));
                 } else {
                     let mut cur_date = String::new();
                     for a in &report.activities {
@@ -6013,22 +6144,26 @@ fn handle_worklog(c: &Backend, json: bool, sub: WorklogCmd) -> Result<()> {
                         }
                         let hm = a.ts.get(11..16).unwrap_or("--:--");
                         let badge = match a.kind.as_str() {
-                            "status" => "상태",
-                            "type" => "타입",
-                            "comment" => "댓글",
-                            "created" => "생성",
-                            other => other,
+                            "status" => tf!("상태", "status"),
+                            "type" => tf!("타입", "type"),
+                            "comment" => tf!("댓글", "comment"),
+                            "created" => tf!("생성", "created"),
+                            other => other.to_string(),
                         };
                         let first = a.summary.lines().next().unwrap_or("");
                         println!("{hm}  {:<10} [{badge}] {first}", a.slug);
                     }
                     println!();
                     println!(
-                        "요약: 상태변경 {} · 댓글 {} · 생성 {} · done 전환 {}",
-                        report.counts.status_changes,
-                        report.counts.comments,
-                        report.counts.created,
-                        report.counts.done_transitions
+                        "{}",
+                        tf!(
+                            "요약: 상태변경 {} · 댓글 {} · 생성 {} · done 전환 {}",
+                            "summary: status changes {} · comments {} · created {} · done transitions {}",
+                            report.counts.status_changes,
+                            report.counts.comments,
+                            report.counts.created,
+                            report.counts.done_transitions
+                        )
                     );
                 }
             }
@@ -6041,7 +6176,7 @@ fn handle_worklog(c: &Backend, json: bool, sub: WorklogCmd) -> Result<()> {
                 } else {
                     match content {
                         Some(s) => print!("{s}{}", if s.ends_with('\n') { "" } else { "\n" }),
-                        None => println!("(노트 없음)"),
+                        None => println!("{}", tf!("(노트 없음)", "(no note)")),
                     }
                 }
             }
@@ -6051,7 +6186,7 @@ fn handle_worklog(c: &Backend, json: bool, sub: WorklogCmd) -> Result<()> {
                 if json {
                     println!("{}", serde_json::json!({ "ok": true, "date": date }));
                 } else {
-                    println!("✓ {date} 노트 저장됨");
+                    println!("{}", tf!("✓ {date} 노트 저장됨", "✓ {date} note saved"));
                 }
             }
             WorklogNoteCmd::Clear { date } => {
@@ -6059,7 +6194,7 @@ fn handle_worklog(c: &Backend, json: bool, sub: WorklogCmd) -> Result<()> {
                 if json {
                     println!("{}", serde_json::json!({ "ok": true, "date": date }));
                 } else {
-                    println!("✓ {date} 노트 삭제됨");
+                    println!("{}", tf!("✓ {date} 노트 삭제됨", "✓ {date} note cleared"));
                 }
             }
         },
@@ -6084,9 +6219,13 @@ fn handle_backup(c: &Backend, json: bool, sub: BackupCmd) -> Result<()> {
                 );
             } else {
                 println!(
-                    "✓ snapshot 생성: {} ({} bytes)",
-                    openguild_core::snapshot::ts_to_local_display(&info.timestamp),
-                    info.size_bytes
+                    "{}",
+                    tf!(
+                        "✓ snapshot 생성: {} ({} bytes)",
+                        "✓ snapshot created: {} ({} bytes)",
+                        openguild_core::snapshot::ts_to_local_display(&info.timestamp),
+                        info.size_bytes
+                    )
                 );
                 println!("  path: {}", info.path.display());
             }
@@ -6106,11 +6245,17 @@ fn handle_backup(c: &Backend, json: bool, sub: BackupCmd) -> Result<()> {
                     .collect();
                 println!("{}", json_str(&arr));
             } else if list.is_empty() {
-                println!("(사용 가능한 백업 없음)");
+                println!("{}", tf!("(사용 가능한 백업 없음)", "(no backups available)"));
                 println!();
-                println!("`openguild backup create` 으로 생성하세요.");
+                println!(
+                    "{}",
+                    tf!(
+                        "`openguild backup create` 으로 생성하세요.",
+                        "create one with `openguild backup create`."
+                    )
+                );
             } else {
-                println!("백업 목록 (오래된 순):");
+                println!("{}", tf!("백업 목록 (오래된 순):", "backup list (oldest first):"));
                 for s in &list {
                     println!(
                         "  {} — {} bytes",
@@ -6125,7 +6270,7 @@ fn handle_backup(c: &Backend, json: bool, sub: BackupCmd) -> Result<()> {
             if json {
                 println!("{}", serde_json::json!({ "ok": true, "deleted": timestamp }));
             } else {
-                println!("✓ 백업 삭제: {timestamp}");
+                println!("{}", tf!("✓ 백업 삭제: {timestamp}", "✓ backup deleted: {timestamp}"));
             }
         }
     }
@@ -6155,25 +6300,61 @@ fn handle_restore(c: &Backend, json: bool, to: Option<String>, at: Option<String
         } else if is_latest {
             // 최신 복구 = 무손실(상태 동일) — 폐기 경고 없음.
             println!(
-                "✓ 최신 상태로 복구: 최신 스냅샷 + journal op {} 개 재적용",
-                report.applied
+                "{}",
+                tf!(
+                    "✓ 최신 상태로 복구: 최신 스냅샷 + journal op {} 개 재적용",
+                    "✓ restored to latest: latest snapshot + {} journal op(s) replayed",
+                    report.applied
+                )
             );
             println!();
-            println!("참고: 파일 시스템 표시가 안 맞으면 `openguild reindex`.");
+            println!(
+                "{}",
+                tf!(
+                    "참고: 파일 시스템 표시가 안 맞으면 `openguild reindex`.",
+                    "note: if the file system view looks off, run `openguild reindex`."
+                )
+            );
         } else {
             println!(
-                "✓ 시점 복원 완료: {} 까지 journal op {} 개 재적용",
-                report.target_ts, report.applied
+                "{}",
+                tf!(
+                    "✓ 시점 복원 완료: {} 까지 journal op {} 개 재적용",
+                    "✓ point-in-time restore complete: up to {} — {} journal op(s) replayed",
+                    report.target_ts,
+                    report.applied
+                )
             );
             println!();
             if let Some(pb) = &report.pre_backup {
                 // DEV-212: 폐기가 아니라 자동 백업으로 보존됨을 안내.
-                println!("복원 전 상태는 스냅샷 {pb} 로 자동 백업되었습니다.");
-                println!("되돌리려면: openguild restore --to {pb}");
+                println!(
+                    "{}",
+                    tf!(
+                        "복원 전 상태는 스냅샷 {pb} 로 자동 백업되었습니다.",
+                        "the pre-restore state was auto-backed up as snapshot {pb}."
+                    )
+                );
+                println!(
+                    "{}",
+                    tf!("되돌리려면: openguild restore --to {pb}", "to revert: openguild restore --to {pb}")
+                );
             } else {
-                println!("주의: 이 시점 이후의 변경은 폐기되었습니다.");
+                println!(
+                    "{}",
+                    tf!(
+                        "주의: 이 시점 이후의 변경은 폐기되었습니다.",
+                        "note: changes made after this point have been discarded."
+                    )
+                );
             }
-            println!("파일 시스템 표시가 안 맞으면 `openguild reindex`.");
+            println!(
+                "{}",
+                tf!(
+                    "파일 시스템 표시가 안 맞으면 `openguild reindex`.",
+                    "if the file system view looks off, run `openguild reindex`."
+                )
+            );
         }
     } else {
         let info = c.restore_backup(to)?;
@@ -6187,12 +6368,22 @@ fn handle_restore(c: &Backend, json: bool, to: Option<String>, at: Option<String
             );
         } else {
             println!(
-                "✓ 복원 완료: {}",
-                openguild_core::snapshot::ts_to_local_display(&info.timestamp)
+                "{}",
+                tf!(
+                    "✓ 복원 완료: {}",
+                    "✓ restore complete: {}",
+                    openguild_core::snapshot::ts_to_local_display(&info.timestamp)
+                )
             );
             println!();
-            println!("주의: 파일 시스템 (`.guild/quests/*.md`) 자동 갱신 안 됨.");
-            println!("      필요시 `openguild reindex`.");
+            println!(
+                "{}",
+                tf!(
+                    "주의: 파일 시스템 (`.guild/quests/*.md`) 자동 갱신 안 됨.",
+                    "note: the file system (`.guild/quests/*.md`) is not auto-updated."
+                )
+            );
+            println!("{}", tf!("      필요시 `openguild reindex`.", "      run `openguild reindex` if needed."));
         }
     }
     Ok(())
@@ -6214,18 +6405,36 @@ fn handle_migrate_to_files(c: &Backend, json: bool) -> Result<()> {
             })
         );
     } else {
-        println!("✓ 마이그레이션 완료");
+        println!("{}", tf!("✓ 마이그레이션 완료", "✓ migration complete"));
         println!("  legacy DB     : {}", report.legacy_db_path.display());
-        println!("  quests 작성   : {}", report.quests_written);
+        println!(
+            "{}",
+            tf!(
+                "  quests 작성   : {}",
+                "  quests written : {}",
+                report.quests_written
+            )
+        );
         println!(
             "  - alive       : {}",
             report.quests_written - report.deleted_quests_included
         );
         println!("  - soft-deleted: {}", report.deleted_quests_included);
-        println!("  types 갱신    : {} (counter)", report.types_updated);
+        println!(
+            "{}",
+            tf!(
+                "  types 갱신    : {} (counter)",
+                "  types updated  : {} (counter)",
+                report.types_updated
+            )
+        );
         println!(
             "  index.db      : {}",
-            if report.index_db_copied { "복사됨" } else { "이미 존재 — 건드리지 않음" }
+            if report.index_db_copied {
+                tf!("복사됨", "copied")
+            } else {
+                tf!("이미 존재 — 건드리지 않음", "already exists — left untouched")
+            }
         );
     }
     Ok(())
