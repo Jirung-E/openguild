@@ -16,6 +16,7 @@ pub mod file_mtime;
 pub mod health;
 pub mod incremental;
 pub mod guild_file;
+pub mod locale;
 pub mod lock;
 pub mod maintenance;
 pub mod migrate;

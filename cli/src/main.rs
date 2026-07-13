@@ -56,6 +56,28 @@ struct Cli {
 /// 끝나는 CLI 특성상 안전).
 static JSON_COMPACT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+/// DEV-254: 현재 CLI 출력 언어 — `run()` 시작 시 `openguild_core::locale::current()`
+/// 로 1회 설정(JSON_COMPACT 와 동일 패턴). `tf!` 매크로가 참조.
+static LOCALE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false); // true = en
+
+fn current_locale_is_en() -> bool {
+    LOCALE.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// DEV-254: 사람이 읽는 CLI 출력의 ko/en 템플릿을 한 호출로 선택.
+/// `println!("...", args)` 자리를 `println!("{}", tf!("ko 템플릿 {}", "en template {}", args))`
+/// 로 대체하는 식으로 기존 println!/format! 호출부에 최소 침습적으로 적용.
+/// --json 출력(기계 파싱용)은 대상이 아님 — 사람이 읽는 텍스트만.
+macro_rules! tf {
+    ($ko:literal, $en:literal $(, $arg:expr)* $(,)?) => {
+        if current_locale_is_en() {
+            format!($en $(, $arg)*)
+        } else {
+            format!($ko $(, $arg)*)
+        }
+    };
+}
+
 /// JSON 직렬화 — 기본 pretty(2-space, 기존 호환), --compact 면 한 줄.
 fn json_str<T: serde::Serialize>(v: &T) -> String {
     if JSON_COMPACT.load(std::sync::atomic::Ordering::Relaxed) {
@@ -129,6 +151,12 @@ enum Command {
     Docs {
         /// agents | usage | readme | changelog
         name: Option<String>,
+    },
+    /// CLI 출력 언어 — GUI 와 같은 위치(~/.openguild/locale.json)에 저장,
+    /// 이후 모든 CLI 실행이 이 값을 따른다. 인자 없으면 현재 값 출력.
+    Locale {
+        /// ko | en — 미지정 시 현재 값 출력
+        lang: Option<String>,
     },
     /// 작업 기록 — 날짜/기간별 활동 타임라인 + 날짜별 노트.
     Worklog {
@@ -4798,6 +4826,13 @@ fn run() -> Result<()> {
     // DEV-211: --compact — json_str() 이 참조하는 전역 플래그 설정.
     JSON_COMPACT.store(cli.compact, std::sync::atomic::Ordering::Relaxed);
 
+    // DEV-254: 저장된 언어(~/.openguild/locale.json, GUI 와 공유) 로드 —
+    // tf! 매크로가 참조하는 프로세스 전역 플래그 1회 설정.
+    LOCALE.store(
+        openguild_core::locale::current() == openguild_core::locale::Locale::En,
+        std::sync::atomic::Ordering::Relaxed,
+    );
+
     // Init 은 길드 자체를 만드는 명령 — 백엔드 연결 불필요. 먼저 처리.
     if let Command::Init { name } = &cli.command {
         return init_guild(name.clone(), cli.json);
@@ -4805,6 +4840,10 @@ fn run() -> Result<()> {
     // docs 도 길드/백엔드 무관 (embed 문서 출력) — 길드 밖에서도 동작해야 함.
     if let Command::Docs { name } = &cli.command {
         return handle_docs(cli.json, name.clone());
+    }
+    // locale 도 길드/백엔드 무관 — 어디서든 언어 조회/변경 가능해야 함.
+    if let Command::Locale { lang } = &cli.command {
+        return handle_locale(cli.json, lang.clone());
     }
 
     let c = Backend::new(cli.remote.clone(), cli.guild.clone())?;
@@ -4838,6 +4877,7 @@ fn run() -> Result<()> {
         Command::Library { sub } => handle_library(&c, cli.json, sub)?,
         Command::Tag { sub } => handle_tag(&c, cli.json, sub)?,
         Command::Docs { .. } => unreachable!("handled above"),
+        Command::Locale { .. } => unreachable!("handled above"),
         Command::Worklog { sub } => handle_worklog(&c, cli.json, sub)?,
         Command::Backup { sub } => handle_backup(&c, cli.json, sub)?,
         Command::Restore { to, at } => handle_restore(&c, cli.json, to, at)?,
@@ -5203,6 +5243,58 @@ fn handle_docs(json: bool, name: Option<String>) -> Result<()> {
                     println!("{k:<10} {d}");
                 }
                 println!("\n사용: openguild docs <name>");
+            }
+        }
+    }
+    Ok(())
+}
+
+/// DEV-254: CLI 출력 언어 조회/변경 — `~/.openguild/locale.json` (GUI 와
+/// 공유). 인자 없으면 현재 값(저장된 값, env override 는 별도 표시), 있으면
+/// 저장 후 확인 메시지.
+fn handle_locale(json: bool, lang: Option<String>) -> Result<()> {
+    use openguild_core::locale::{self, Locale};
+
+    match lang {
+        None => {
+            let saved = locale::load_saved()?;
+            let effective = locale::current();
+            if json {
+                println!(
+                    "{}",
+                    serde_json::json!({ "saved": saved.as_str(), "effective": effective.as_str() })
+                );
+            } else if saved == effective {
+                println!("{}", tf!("현재 언어: {}", "Current language: {}", saved.as_str()));
+            } else {
+                // OPENGUILD_LOCALE env 가 저장값을 덮어쓴 상태 — 둘 다 보여줌.
+                println!(
+                    "{}",
+                    tf!(
+                        "현재 언어: {} (저장된 값: {}, OPENGUILD_LOCALE 로 재정의됨)",
+                        "Current language: {} (saved: {}, overridden by OPENGUILD_LOCALE)",
+                        effective.as_str(),
+                        saved.as_str()
+                    )
+                );
+            }
+        }
+        Some(l) => {
+            let Some(parsed) = Locale::parse(&l) else {
+                bail!(tf!(
+                    "알 수 없는 언어 '{}' — ko 또는 en 사용",
+                    "Unknown language '{}' — use ko or en",
+                    l
+                ));
+            };
+            locale::save(parsed)?;
+            if json {
+                println!("{}", serde_json::json!({ "ok": true, "locale": parsed.as_str() }));
+            } else {
+                println!(
+                    "{}",
+                    tf!("✓ 언어를 '{}' 로 저장했습니다.", "✓ Language saved as '{}'.", parsed.as_str())
+                );
             }
         }
     }
