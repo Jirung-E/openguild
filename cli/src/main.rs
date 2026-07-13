@@ -3498,7 +3498,7 @@ fn run_attach_cmd(c: &Backend, scope: CommentScope, sub: AttachCmd, json: bool) 
                     })
                 );
             } else if list.is_empty() {
-                println!("(첨부 없음)");
+                println!("{}", tf!("(첨부 없음)", "(no attachments)"));
             } else {
                 for a in &list {
                     println!("- {}  ({})", a.name, a.path);
@@ -3510,7 +3510,10 @@ fn run_attach_cmd(c: &Backend, scope: CommentScope, sub: AttachCmd, json: bool) 
             if json {
                 println!("{}", serde_json::json!({ "ok": true, "count": list.len() }));
             } else {
-                println!("✓ 첨부 추가 — 총 {} 개", list.len());
+                println!(
+                    "{}",
+                    tf!("✓ 첨부 추가 — 총 {} 개", "✓ attachment added — {} total", list.len())
+                );
                 if let Some(a) = list.last() {
                     println!("  {}  ({})", a.name, a.path);
                 }
@@ -3522,15 +3525,19 @@ fn run_attach_cmd(c: &Backend, scope: CommentScope, sub: AttachCmd, json: bool) 
             // 실제로 있는지 확인하고, 없으면 명확히 에러.
             let before = c.attachments_list(scope, &slug)?;
             if !before.iter().any(|a| a.path == path) {
-                return Err(anyhow!(
-                    "그런 첨부 없음: {path}\n  `attach list {slug}` 로 경로를 확인하세요"
-                ));
+                return Err(anyhow!(tf!(
+                    "그런 첨부 없음: {path}\n  `attach list {slug}` 로 경로를 확인하세요",
+                    "no such attachment: {path}\n  check the path with `attach list {slug}`"
+                )));
             }
             let list = c.attachments_remove(scope, &slug, &path)?;
             if json {
                 println!("{}", serde_json::json!({ "ok": true, "count": list.len() }));
             } else {
-                println!("✓ 첨부 제거 — 남은 {} 개", list.len());
+                println!(
+                    "{}",
+                    tf!("✓ 첨부 제거 — 남은 {} 개", "✓ attachment removed — {} remaining", list.len())
+                );
             }
         }
     }
@@ -3543,8 +3550,12 @@ fn parse_comment_depth(s: &str) -> Result<usize, String> {
     if s.eq_ignore_ascii_case("all") {
         return Ok(usize::MAX);
     }
-    s.parse::<usize>()
-        .map_err(|_| format!("'{s}' — 숫자 또는 'all' 이어야 합니다"))
+    s.parse::<usize>().map_err(|_| {
+        tf!(
+            "'{s}' — 숫자 또는 'all' 이어야 합니다",
+            "'{s}' — must be a number or 'all'"
+        )
+    })
 }
 
 /// 댓글 대상(quest/campaign)이 실존하는지 — 미존재 slug 가 "(댓글 없음)" 으로
@@ -3552,12 +3563,20 @@ fn parse_comment_depth(s: &str) -> Result<usize, String> {
 fn ensure_scope_target_exists(c: &Backend, scope: CommentScope, slug: &str) -> Result<()> {
     match scope {
         CommentScope::Quest => {
-            c.quest_by_slug(slug)
-                .map_err(|_| anyhow!("퀘스트 '{slug}' 가 존재하지 않습니다"))?;
+            c.quest_by_slug(slug).map_err(|_| {
+                anyhow!(tf!(
+                    "퀘스트 '{slug}' 가 존재하지 않습니다",
+                    "quest '{slug}' does not exist"
+                ))
+            })?;
         }
         CommentScope::Campaign => {
-            c.campaign_show(slug)
-                .map_err(|_| anyhow!("캠페인 '{slug}' 가 존재하지 않습니다"))?;
+            c.campaign_show(slug).map_err(|_| {
+                anyhow!(tf!(
+                    "캠페인 '{slug}' 가 존재하지 않습니다",
+                    "campaign '{slug}' does not exist"
+                ))
+            })?;
         }
     }
     Ok(())
@@ -3571,7 +3590,11 @@ fn comment_badges(pinned: bool, discussion: bool, resolved: bool) -> String {
         out.push_str(" 📌");
     }
     if discussion {
-        out.push_str(if resolved { " ✓해결" } else { " ●미해결" });
+        out.push_str(&if resolved {
+            tf!(" ✓해결", " ✓resolved")
+        } else {
+            tf!(" ●미해결", " ●unresolved")
+        });
     }
     out
 }
@@ -3650,7 +3673,7 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                             })
                         );
                     } else if entries.is_empty() {
-                        println!("(댓글 없음)");
+                        println!("{}", tf!("(댓글 없음)", "(no comments)"));
                     } else {
                         // 한 줄 렌더 — flat/tree 공용. DEV-250: 📌/토론 배지 추가.
                         let render = |e: &openguild_core::repo::comments::CommentEntry,
@@ -3668,12 +3691,12 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                                 .map(|p| format!(" ↩ #{p}"))
                                 .unwrap_or_default();
                             let author = if e.author.is_empty() {
-                                "(이름 없음)".to_string()
+                                tf!("(이름 없음)", "(no name)")
                             } else {
                                 e.author.clone()
                             };
                             let ts = if e.ts.is_empty() {
-                                "(시각 미상)".to_string()
+                                tf!("(시각 미상)", "(unknown time)")
                             } else {
                                 e.ts.clone()
                             };
@@ -3735,7 +3758,14 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                     let selected: Vec<_> = match id {
                         Some(target) => select_thread(entries, target, depth, with_parents)
                             .ok_or_else(|| {
-                                anyhow::anyhow!("entry #{target} 없음 ({} {slug})", scope.noun())
+                                anyhow::anyhow!(
+                                    "{}",
+                                    tf!(
+                                        "entry #{target} 없음 ({} {slug})",
+                                        "entry #{target} not found ({} {slug})",
+                                        scope.noun()
+                                    )
+                                )
                             })?,
                         None => entries,
                     };
@@ -3758,7 +3788,7 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                             })
                         );
                     } else if selected.is_empty() {
-                        println!("(댓글 없음)");
+                        println!("{}", tf!("(댓글 없음)", "(no comments)"));
                     } else {
                         for (i, e) in selected.iter().enumerate() {
                             if i > 0 {
@@ -3769,7 +3799,7 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                                 .map(|p| format!(" (↩ #{p})"))
                                 .unwrap_or_default();
                             let author = if e.author.is_empty() {
-                                "(이름 없음)".to_string()
+                                tf!("(이름 없음)", "(no name)")
                             } else {
                                 e.author.clone()
                             };
@@ -3809,7 +3839,16 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                             .parent_id
                             .map(|p| format!(" ↩ #{p}"))
                             .unwrap_or_default();
-                        println!("✓ 댓글 추가: #{} ({}{})", entry.id, entry.ts, reply);
+                        println!(
+                            "{}",
+                            tf!(
+                                "✓ 댓글 추가: #{} ({}{})",
+                                "✓ comment added: #{} ({}{})",
+                                entry.id,
+                                entry.ts,
+                                reply
+                            )
+                        );
                     }
                 }
                 CommentCmd::Edit { slug, id, file } => {
@@ -3821,18 +3860,28 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                             serde_json::json!({ "ok": true, "id": entry.id })
                         );
                     } else {
-                        println!("✓ 댓글 #{} 본문 갱신됨", entry.id);
+                        println!(
+                            "{}",
+                            tf!("✓ 댓글 #{} 본문 갱신됨", "✓ comment #{} body updated", entry.id)
+                        );
                     }
                 }
                 CommentCmd::Rm { slug, id, force } => {
                     if !force {
-                        eprint!("댓글 #{id} ({} {slug}) 을 삭제할까요? (y/N) ", scope.noun());
+                        eprint!(
+                            "{}",
+                            tf!(
+                                "댓글 #{id} ({} {slug}) 을 삭제할까요? (y/N) ",
+                                "Delete comment #{id} ({} {slug})? (y/N) ",
+                                scope.noun()
+                            )
+                        );
                         use std::io::Write;
                         std::io::stderr().flush().ok();
                         let mut buf = String::new();
                         std::io::stdin().read_line(&mut buf)?;
                         if !matches!(buf.trim(), "y" | "Y" | "yes") {
-                            println!("(취소)");
+                            println!("{}", tf!("(취소)", "(cancelled)"));
                             return Ok(());
                         }
                     }
@@ -3843,7 +3892,7 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                             serde_json::json!({ "ok": true, "id": id })
                         );
                     } else {
-                        println!("✓ 댓글 #{id} 삭제됨");
+                        println!("{}", tf!("✓ 댓글 #{id} 삭제됨", "✓ comment #{id} deleted"));
                     }
                 }
                 CommentCmd::React { slug, id, emoji, author } => {
@@ -3875,17 +3924,30 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                             })
                         );
                     } else {
+                        let action = if now_on {
+                            tf!("추가", "added")
+                        } else {
+                            tf!("제거", "removed")
+                        };
+                        let agg_label = if agg.is_empty() { tf!("없음", "none") } else { agg };
                         println!(
-                            "✓ #{} {emoji} {} (현재: {})",
-                            entry.id,
-                            if now_on { "추가" } else { "제거" },
-                            if agg.is_empty() { "없음".to_string() } else { agg }
+                            "{}",
+                            tf!(
+                                "✓ #{} {emoji} {} (현재: {})",
+                                "✓ #{} {emoji} {} (now: {})",
+                                entry.id,
+                                action,
+                                agg_label
+                            )
                         );
                     }
                 }
                 CommentCmd::Discussion { slug, id } => {
                     if scope != CommentScope::Quest {
-                        anyhow::bail!("토론(discussion) 토글은 quest 댓글 전용입니다.");
+                        anyhow::bail!(tf!(
+                            "토론(discussion) 토글은 quest 댓글 전용입니다.",
+                            "discussion toggle is only available for quest comments."
+                        ));
                     }
                     let e = c.comments_toggle_discussion(&slug, id)?;
                     if json {
@@ -3894,18 +3956,31 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                             serde_json::json!({ "ok": true, "id": id, "discussion": e.discussion, "resolved": e.resolved })
                         );
                     } else {
-                        println!("✓ 댓글 #{id} 토론 {}", if e.discussion { "표시" } else { "해제" });
+                        let state = if e.discussion {
+                            tf!("표시", "marked")
+                        } else {
+                            tf!("해제", "unmarked")
+                        };
+                        println!("{}", tf!("✓ 댓글 #{id} 토론 {}", "✓ comment #{id} discussion {}", state));
                     }
                 }
                 CommentCmd::Resolved { slug, id } => {
                     if scope != CommentScope::Quest {
-                        anyhow::bail!("resolved 토글은 quest 댓글 전용입니다.");
+                        anyhow::bail!(tf!(
+                            "resolved 토글은 quest 댓글 전용입니다.",
+                            "resolved toggle is only available for quest comments."
+                        ));
                     }
                     let e = c.comments_toggle_resolved(&slug, id)?;
                     if json {
                         println!("{}", serde_json::json!({ "ok": true, "id": id, "resolved": e.resolved }));
                     } else {
-                        println!("✓ 댓글 #{id} {}", if e.resolved { "해결됨" } else { "미해결" });
+                        let state = if e.resolved {
+                            tf!("해결됨", "resolved")
+                        } else {
+                            tf!("미해결", "unresolved")
+                        };
+                        println!("{}", tf!("✓ 댓글 #{id} {}", "✓ comment #{id} {}", state));
                     }
                 }
                 CommentCmd::Pinned { slug, id } => {
@@ -3913,7 +3988,12 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                     if json {
                         println!("{}", serde_json::json!({ "ok": true, "id": id, "pinned": e.pinned }));
                     } else {
-                        println!("✓ 댓글 #{id} {}", if e.pinned { "고정됨" } else { "고정 해제" });
+                        let state = if e.pinned {
+                            tf!("고정됨", "pinned")
+                        } else {
+                            tf!("고정 해제", "unpinned")
+                        };
+                        println!("{}", tf!("✓ 댓글 #{id} {}", "✓ comment #{id} {}", state));
                     }
                 }
     }
@@ -3932,7 +4012,7 @@ fn run_memo_cmd(c: &Backend, scope: CommentScope, sub: MemoCmd, json: bool) -> R
                         );
                     } else if let Some(s) = content {
                         if s.is_empty() {
-                            println!("(메모 비어있음)");
+                            println!("{}", tf!("(메모 비어있음)", "(memo is empty)"));
                         } else {
                             print!("{s}");
                             if !s.ends_with('\n') {
@@ -3940,7 +4020,7 @@ fn run_memo_cmd(c: &Backend, scope: CommentScope, sub: MemoCmd, json: bool) -> R
                             }
                         }
                     } else {
-                        println!("(메모 없음)");
+                        println!("{}", tf!("(메모 없음)", "(no memo)"));
                     }
                 }
                 MemoCmd::Set { slug, file } => {
@@ -3949,7 +4029,10 @@ fn run_memo_cmd(c: &Backend, scope: CommentScope, sub: MemoCmd, json: bool) -> R
                     if json {
                         println!("{}", serde_json::json!({ "ok": true, "slug": slug }));
                     } else {
-                        println!("✓ 메모 저장됨 ({} {slug})", scope.noun());
+                        println!(
+                            "{}",
+                            tf!("✓ 메모 저장됨 ({} {slug})", "✓ memo saved ({} {slug})", scope.noun())
+                        );
                     }
                 }
                 MemoCmd::Clear { slug } => {
@@ -3957,7 +4040,10 @@ fn run_memo_cmd(c: &Backend, scope: CommentScope, sub: MemoCmd, json: bool) -> R
                     if json {
                         println!("{}", serde_json::json!({ "ok": true, "slug": slug }));
                     } else {
-                        println!("✓ 메모 비움 ({} {slug})", scope.noun());
+                        println!(
+                            "{}",
+                            tf!("✓ 메모 비움 ({} {slug})", "✓ memo cleared ({} {slug})", scope.noun())
+                        );
                     }
                 }
     }
@@ -4236,9 +4322,10 @@ fn handle_campaign(c: &Backend, json: bool, sub: CampaignCmd) -> Result<()> {
         }
         CampaignCmd::Delete { slug, yes } => {
             if !yes {
-                return Err(anyhow!(
-                    "삭제하려면 --yes 를 명시하세요 (안전장치). 예: campaign delete {slug} --yes"
-                ));
+                return Err(anyhow!(tf!(
+                    "삭제하려면 --yes 를 명시하세요 (안전장치). 예: campaign delete {slug} --yes",
+                    "specify --yes to delete (safety guard). e.g. campaign delete {slug} --yes"
+                )));
             }
             c.campaign_delete(&slug)?;
             if json {
