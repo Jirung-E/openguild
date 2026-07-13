@@ -57,7 +57,7 @@
 <!-- 바깥 클릭 닫기 — 투명 오버레이. -->
 <div class="qm-ov" role="presentation" onclick={onclose}></div>
 
-<div class="qm" role="menu" aria-label="설정 퀵메뉴">
+<div class="qm" role="menu" aria-label={t('nav.settingsQuickMenu', $locale)}>
 	<div class="qm-row">
 		<span class="qm-label">{t('settings.theme', $locale)}</span>
 		<div class="qm-seg" role="group" aria-label={t('settings.theme', $locale)}>

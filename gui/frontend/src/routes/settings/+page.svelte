@@ -49,7 +49,7 @@
 	import { showToast } from '$lib/stores/toast';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	// DEV-015 (MVP): 언어 토글 — 설정 페이지에도 노출.
-	import { locale, setLocale, type Locale } from '$lib/stores/locale';
+	import { locale, setLocale, t, type Locale } from '$lib/stores/locale';
 	// DEV-130: 편집기 들여쓰기 설정 (tab/space + 2/4칸).
 	import {
 		editorSettings,
@@ -97,11 +97,11 @@
 	function submitCreatePreset() {
 		const name = newPresetName.trim();
 		if (!name) {
-			presetError = '프리셋 이름을 입력하세요.';
+			presetError = t('settings.presetNameRequired', $locale);
 			return;
 		}
 		if ($customThemes.some((p) => p.name === name)) {
-			presetError = '같은 이름의 프리셋이 이미 있습니다.';
+			presetError = t('settings.presetNameExists', $locale);
 			return;
 		}
 		savePreset({ name, base: newPresetBase, overrides: {} });
@@ -137,9 +137,9 @@
 	async function exportPresets() {
 		try {
 			await navigator.clipboard.writeText(exportPresetsJson());
-			showToast('프리셋 JSON 을 클립보드에 복사했습니다.', 'success');
+			showToast(t('settings.copiedJson', $locale), 'success');
 		} catch {
-			showToast('클립보드 복사 실패', 'error');
+			showToast(t('settings.copyFailed', $locale), 'error');
 		}
 	}
 
@@ -148,11 +148,11 @@
 	function importPresets() {
 		try {
 			const n = importPresetsJson(importText);
-			showToast(`프리셋 ${n}개를 가져왔습니다.`, 'success');
+			showToast(`${t('settings.importedPresetsPre', $locale)}${n}${t('settings.importedPresetsPost', $locale)}`, 'success');
 			importText = '';
 			importing = false;
 		} catch (e) {
-			showToast(e instanceof Error ? e.message : 'JSON 형식 오류', 'error');
+			showToast(e instanceof Error ? e.message : t('settings.jsonError', $locale), 'error');
 		}
 	}
 
@@ -186,7 +186,7 @@
 
 	onMount(async () => {
 		if (!isTauri) {
-			appVersion = '개발 (브라우저)';
+			appVersion = t('settings.devBrowser', $locale);
 			return;
 		}
 		try {
@@ -194,7 +194,7 @@
 			appVersion = await getVersion();
 			appName = await getName();
 		} catch {
-			appVersion = '알 수 없음';
+			appVersion = t('settings.unknown', $locale);
 		}
 		try {
 			const { invoke } = await import('@tauri-apps/api/core');
@@ -218,27 +218,27 @@
 
 <div class="settings">
 	<aside class="side">
-		<h1>설정</h1>
+		<h1>{t('settings.title', $locale)}</h1>
 		<nav>
 			<!-- DEV-052 / DEV-101 fix6: 탭 분리 — '정보' / '표시'. -->
 			<button
 				class="tab"
 				class:active={activeTab === 'info'}
 				onclick={() => (activeTab = 'info')}
-				aria-pressed={activeTab === 'info'}>정보</button
+				aria-pressed={activeTab === 'info'}>{t('settings.tabInfo', $locale)}</button
 			>
 			<button
 				class="tab"
 				class:active={activeTab === 'display'}
 				onclick={() => (activeTab = 'display')}
-				aria-pressed={activeTab === 'display'}>표시</button
+				aria-pressed={activeTab === 'display'}>{t('settings.tabDisplay', $locale)}</button
 			>
 			<!-- DEV-130: 편집기 들여쓰기 설정. -->
 			<button
 				class="tab"
 				class:active={activeTab === 'editor'}
 				onclick={() => (activeTab = 'editor')}
-				aria-pressed={activeTab === 'editor'}>편집기</button
+				aria-pressed={activeTab === 'editor'}>{t('settings.tabEditor', $locale)}</button
 			>
 		</nav>
 	</aside>
@@ -246,52 +246,51 @@
 	<section class="panel">
 		{#if activeTab === 'editor'}
 			<!-- DEV-130: 본문 편집기 들여쓰기 — 코드 편집기처럼 tab/space + 칸수 선택. -->
-			<h2>편집기</h2>
+			<h2>{t('settings.editorHeading', $locale)}</h2>
 			<dl class="info-grid">
-				<dt>Tab 동작</dt>
+				<dt>{t('settings.tabBehavior', $locale)}</dt>
 				<dd class="theme-row">
-					<div class="theme-toggle" role="group" aria-label="Tab 동작">
+					<div class="theme-toggle" role="group" aria-label={t('settings.tabBehavior', $locale)}>
 						<button
 							class="th-btn"
 							class:active={$editorSettings.tabMode === 'tab'}
 							onclick={() => setTabMode('tab')}
-							aria-pressed={$editorSettings.tabMode === 'tab'}>탭 문자</button
+							aria-pressed={$editorSettings.tabMode === 'tab'}>{t('settings.tabChar', $locale)}</button
 						>
 						<button
 							class="th-btn"
 							class:active={$editorSettings.tabMode === 'space'}
 							onclick={() => setTabMode('space')}
-							aria-pressed={$editorSettings.tabMode === 'space'}>공백</button
+							aria-pressed={$editorSettings.tabMode === 'space'}>{t('settings.tabSpace', $locale)}</button
 						>
 					</div>
 					<p class="scale-hint">
-						Tab 키를 눌렀을 때 탭 문자(\t)를 넣을지, 공백을 넣을지. 퀘스트 / 캠페인 본문 편집기에
-						적용.
+						{t('settings.tabHint', $locale)}
 					</p>
 				</dd>
-				<dt>들여쓰기 칸수</dt>
+				<dt>{t('settings.indentSize', $locale)}</dt>
 				<dd class="theme-row">
-					<div class="theme-toggle" role="group" aria-label="들여쓰기 칸수">
+					<div class="theme-toggle" role="group" aria-label={t('settings.indentSize', $locale)}>
 						{#each [2, 4] as n (n)}
 							<button
 								class="th-btn"
 								class:active={$editorSettings.indentSize === n}
 								onclick={() => setIndentSize(n as IndentSize)}
-								aria-pressed={$editorSettings.indentSize === n}>{n}칸</button
+								aria-pressed={$editorSettings.indentSize === n}>{n}{t('settings.indentUnit', $locale)}</button
 							>
 						{/each}
 					</div>
 					<p class="scale-hint">
-						공백 모드에서 Tab 한 번에 넣을 공백 개수 (탭 문자 모드에선 표시 폭). 2 / 4 중 선택.
+						{t('settings.indentHint', $locale)}
 					</p>
 				</dd>
 			</dl>
 		{:else if activeTab === 'info'}
-			<h2>정보</h2>
+			<h2>{t('settings.infoHeading', $locale)}</h2>
 			<dl class="info-grid">
-				<dt>앱 이름</dt>
+				<dt>{t('settings.appName', $locale)}</dt>
 				<dd>{appName}</dd>
-				<dt>버전</dt>
+				<dt>{t('settings.version', $locale)}</dt>
 				<dd>
 					<span>{appVersion}</span>
 					{#if isTauri}
@@ -301,7 +300,7 @@
 							onclick={() => checkForUpdate()}
 							disabled={$updateState.status === 'checking' || $updateState.status === 'downloading'}
 						>
-							{$updateState.status === 'checking' ? '확인 중…' : '업데이트 확인'}
+							{$updateState.status === 'checking' ? t('settings.checking', $locale) : t('settings.checkUpdate', $locale)}
 						</button>
 					{/if}
 				</dd>
@@ -310,7 +309,7 @@
 				     별도 '원격 서버' 탭 폐기 — 길드가 열려있을 때만(anyGuildOpen) 한
 				     줄로 통합 표시. 연결/해제는 여전히 Welcome 화면(로고 클릭)에서만. -->
 				{#if isTauri && anyGuildOpen}
-					<dt>{isRemoteActive ? '원격 서버' : '길드 경로'}</dt>
+					<dt>{isRemoteActive ? t('settings.remoteServer', $locale) : t('settings.guildPath', $locale)}</dt>
 					<dd>
 						{#if isRemoteActive}
 							<span class="remote-active">{$remoteServerUrl}</span>
@@ -319,14 +318,14 @@
 						{/if}
 					</dd>
 				{/if}
-				<dt>저장소</dt>
+				<dt>{t('settings.storage', $locale)}</dt>
 				<dd><a href={repoUrl} target="_blank" rel="noreferrer noopener">{repoUrl}</a></dd>
 			</dl>
 		{:else}
 			<!-- DEV-101: UI 크기 (rem scale) — 슬라이더 변경 시 즉시 반영. -->
-			<h2>표시</h2>
+			<h2>{t('settings.displayHeading', $locale)}</h2>
 			<dl class="info-grid">
-				<dt>UI 크기</dt>
+				<dt>{t('settings.uiScale', $locale)}</dt>
 				<dd class="ui-scale">
 					<div class="scale-row">
 						<CustomSlider
@@ -334,7 +333,7 @@
 							min={MIN_SCALE}
 							max={MAX_SCALE}
 							step={0.01}
-							ariaLabel="UI 크기"
+							ariaLabel={t('settings.uiScale', $locale)}
 							onChange={setUiScale}
 						/>
 						<!-- DEV-101 fix4: 직접 숫자 입력. % 단위 (50~200). -->
@@ -349,7 +348,7 @@
 									const n = Number.parseInt(e.currentTarget.value, 10);
 									if (Number.isFinite(n)) setUiScale(n / 100);
 								}}
-								aria-label="UI 크기 (퍼센트)"
+								aria-label={t('settings.uiScalePercentAria', $locale)}
 							/>
 							<span class="unit">%</span>
 						</div>
@@ -357,18 +356,18 @@
 							class="btn-reset"
 							onclick={resetUiScale}
 							disabled={$uiScale === DEFAULT_SCALE}
-							title="100% 로 초기화">초기화</button
+							title={t('settings.resetTo100', $locale)}>{t('settings.reset', $locale)}</button
 						>
 					</div>
 					<p class="scale-hint">
-						전체 UI 의 텍스트 / 여백이 비례 확대·축소됩니다 ({Math.round(
+						{t('settings.uiScaleHintPre', $locale)}{Math.round(
 							MIN_SCALE * 100
-						)}%~{Math.round(MAX_SCALE * 100)}%, 1% 단위). 슬라이더 / 숫자 입력 모두 즉시 적용.
+						)}{t('settings.uiScaleHintPost', $locale)}{Math.round(MAX_SCALE * 100)}{t('settings.uiScaleHintTail', $locale)}
 					</p>
 				</dd>
 
 				<!-- DEV-101 fix2: 컨텐츠 표시 영역 폭 — UI scale 과 별개. -->
-				<dt>컨텐츠 폭</dt>
+				<dt>{t('settings.contentWidth', $locale)}</dt>
 				<dd class="ui-scale">
 					<div class="scale-row">
 						<CustomSlider
@@ -376,7 +375,7 @@
 							min={MIN_CONTENT_WIDTH}
 							max={MAX_CONTENT_WIDTH}
 							step={5}
-							ariaLabel="컨텐츠 폭"
+							ariaLabel={t('settings.contentWidth', $locale)}
 							onChange={setContentWidth}
 						/>
 						<!-- DEV-101 fix4: 직접 숫자 입력. px 단위. -->
@@ -391,7 +390,7 @@
 									const n = Number.parseInt(e.currentTarget.value, 10);
 									if (Number.isFinite(n)) setContentWidth(n);
 								}}
-								aria-label="컨텐츠 폭 (픽셀)"
+								aria-label={t('settings.contentWidthPxAria', $locale)}
 							/>
 							<span class="unit">px</span>
 						</div>
@@ -399,19 +398,18 @@
 							class="btn-reset"
 							onclick={resetContentWidth}
 							disabled={$contentWidth === DEFAULT_CONTENT_WIDTH}
-							title="기본 ({DEFAULT_CONTENT_WIDTH}px) 으로 초기화">초기화</button
+							title="{DEFAULT_CONTENT_WIDTH}px{t('settings.resetToDefaultPx', $locale)}">{t('settings.reset', $locale)}</button
 						>
 					</div>
 					<p class="scale-hint">
-						페이지의 좌우 안전 영역 — 와이드 모니터에서 더 넓게 사용. 범위 {MIN_CONTENT_WIDTH}~{MAX_CONTENT_WIDTH}px,
-						5px 단위.
+						{t('settings.contentWidthHintPre', $locale)}{MIN_CONTENT_WIDTH}{t('settings.contentWidthHintMid', $locale)}{MAX_CONTENT_WIDTH}{t('settings.contentWidthHintTail', $locale)}
 					</p>
 				</dd>
 
 				<!-- DEV-074: 테마 (Dark / Light / System). DEV-114: 커스텀 프리셋도 옆에 노출. -->
-				<dt>테마</dt>
+				<dt>{t('settings.theme', $locale)}</dt>
 				<dd class="theme-row">
-					<div class="theme-toggle" role="group" aria-label="테마">
+					<div class="theme-toggle" role="group" aria-label={t('settings.theme', $locale)}>
 						{#each ['dark', 'light', 'system'] as opt (opt)}
 							<button
 								class="th-btn"
@@ -419,7 +417,7 @@
 								onclick={() => pickBaseTheme(opt as ThemeChoice)}
 								aria-pressed={!$activeCustomTheme && $theme === opt}
 							>
-								{opt === 'dark' ? '다크' : opt === 'light' ? '라이트' : '시스템'}
+								{opt === 'dark' ? t('settings.themeDark', $locale) : opt === 'light' ? t('settings.themeLight', $locale) : t('settings.themeSystem', $locale)}
 							</button>
 						{/each}
 						{#each $customThemes as p (p.name)}
@@ -428,34 +426,34 @@
 								class:active={$activeCustomTheme === p.name}
 								onclick={() => pickCustomPreset(p.name)}
 								aria-pressed={$activeCustomTheme === p.name}
-								title={`커스텀 (${p.base === 'dark' ? '다크' : '라이트'} 기반)`}
+								title={`${t('settings.customBasedOn', $locale)}${p.base === 'dark' ? t('settings.themeDark', $locale) : t('settings.themeLight', $locale)}${t('settings.basedSuffix', $locale)}`}
 							>
 								{p.name}
 							</button>
 						{/each}
 					</div>
-					<p class="scale-hint">CSS 토큰 기반 — 시스템 모드는 OS 설정 따라 자동 전환.</p>
+					<p class="scale-hint">{t('settings.scaleHintTokens', $locale)}</p>
 				</dd>
 
 				<!-- DEV-114: 커스텀 테마 편집기. -->
-				<dt>커스텀 테마</dt>
+				<dt>{t('settings.customTheme', $locale)}</dt>
 				<dd class="theme-row">
 					<div class="ct-actions">
 						{#if !creatingPreset}
-							<button class="th-btn" onclick={() => (creatingPreset = true)}>+ 새 프리셋</button>
+							<button class="th-btn" onclick={() => (creatingPreset = true)}>{t('settings.newPreset', $locale)}</button>
 						{/if}
 						{#if $customThemes.length > 0}
-							<button class="th-btn" onclick={exportPresets}>내보내기 (JSON 복사)</button>
+							<button class="th-btn" onclick={exportPresets}>{t('settings.exportJson', $locale)}</button>
 						{/if}
 						{#if !importing}
-							<button class="th-btn" onclick={() => (importing = true)}>가져오기</button>
+							<button class="th-btn" onclick={() => (importing = true)}>{t('settings.import', $locale)}</button>
 						{/if}
 						{#if activePreset}
 							<button
 								class="th-btn danger"
 								onclick={() => (confirmDeletePresetName = activePreset?.name ?? null)}
 							>
-								'{activePreset.name}' 삭제
+								{t('settings.deletePresetBtnPrefix', $locale)}{activePreset.name}{t('settings.deletePresetBtnSuffix', $locale)}
 							</button>
 						{/if}
 					</div>
@@ -465,28 +463,28 @@
 							<input
 								class="ct-name"
 								type="text"
-								placeholder="프리셋 이름"
+								placeholder={t('settings.presetNamePlaceholder', $locale)}
 								bind:value={newPresetName}
 								onkeydown={(e) => e.key === 'Enter' && submitCreatePreset()}
 							/>
-							<div class="theme-toggle" role="group" aria-label="기반 테마">
+							<div class="theme-toggle" role="group" aria-label={t('settings.basedOnTheme', $locale)}>
 								{#each ['dark', 'light'] as b (b)}
 									<button
 										class="th-btn"
 										class:active={newPresetBase === b}
 										onclick={() => (newPresetBase = b as EffectiveTheme)}
 									>
-										{b === 'dark' ? '다크 기반' : '라이트 기반'}
+										{b === 'dark' ? t('settings.darkBased', $locale) : t('settings.lightBased', $locale)}
 									</button>
 								{/each}
 							</div>
-							<button class="th-btn" onclick={submitCreatePreset}>생성</button>
+							<button class="th-btn" onclick={submitCreatePreset}>{t('settings.createBtn', $locale)}</button>
 							<button
 								class="th-btn"
 								onclick={() => {
 									creatingPreset = false;
 									presetError = null;
-								}}>취소</button
+								}}>{t('common.cancel', $locale)}</button
 							>
 						</div>
 						{#if presetError}<p class="ct-error">{presetError}</p>{/if}
@@ -497,19 +495,19 @@
 							<textarea
 								class="ct-import-text"
 								rows="4"
-								placeholder="내보내기로 복사한 프리셋 JSON 을 붙여넣으세요"
+								placeholder={t('settings.importJsonPlaceholder', $locale)}
 								bind:value={importText}
 							></textarea>
 							<div class="ct-actions">
 								<button class="th-btn" onclick={importPresets} disabled={!importText.trim()}>
-									가져오기
+									{t('settings.import', $locale)}
 								</button>
 								<button
 									class="th-btn"
 									onclick={() => {
 										importing = false;
 										importText = '';
-									}}>취소</button
+									}}>{t('common.cancel', $locale)}</button
 								>
 							</div>
 						</div>
@@ -531,7 +529,7 @@
 										{#if activePreset.overrides[d.token]}
 											<button
 												class="ct-reset"
-												title="기본값으로 되돌리기"
+												title={t('settings.resetToDefaultToken', $locale)}
 												onclick={() => resetToken(d.token)}>↺</button
 											>
 										{/if}
@@ -541,25 +539,23 @@
 						{/key}
 						<label class="ct-advanced">
 							<input type="checkbox" bind:checked={showAdvancedTokens} />
-							고급 토큰 표시 (보드 강조색 등)
+							{t('settings.showAdvancedTokens', $locale)}
 						</label>
 						<p class="scale-hint">
-							색을 바꾸면 즉시 적용되고 프리셋에 저장됩니다. 색점 왼쪽 표시는 기본값에서 변경된
-							토큰. 퀘스트 보드 색은 보드 재진입 시 반영됩니다.
+							{t('settings.tokenHint', $locale)}
 						</p>
 					{:else}
 						<p class="scale-hint">
-							프리셋을 만들거나 선택하면 토큰별 색 편집기가 나타납니다. 프리셋은 이 PC 에만
-							저장되며(개인 취향), 공유는 내보내기/가져오기(JSON)로.
+							{t('settings.presetHint', $locale)}
 						</p>
 					{/if}
 				</dd>
 
-				<!-- DEV-015 (MVP): 언어 토글 — 현재는 이 설정 페이지 라벨 일부에만 적용. -->
-				<dt>언어</dt>
+				<!-- DEV-015: 언어 토글 — DEV-205 로 앱 전역 적용됨. -->
+				<dt>{t('settings.language', $locale)}</dt>
 				<dd class="theme-row">
-					<div class="theme-toggle" role="group" aria-label="언어">
-						<!-- DEV-015 후속: 언어 이름 자체는 번역 대상이 아님 — 항상 고정 표기. -->
+					<div class="theme-toggle" role="group" aria-label={t('settings.language', $locale)}>
+						<!-- 언어 이름 자체는 번역 대상이 아님 — 항상 고정 표기. -->
 						{#each [{ value: 'ko', label: '한국어' }, { value: 'en', label: 'English' }] as opt (opt.value)}
 							<button
 								class="th-btn"
@@ -572,8 +568,7 @@
 						{/each}
 					</div>
 					<p class="scale-hint">
-						현재는 MVP — 일부 화면(이 설정 페이지 등)의 라벨만 전환됩니다. 전체 적용은 후속(DEV-205)
-						작업입니다.
+						{t('settings.languageHint', $locale)}
 					</p>
 				</dd>
 			</dl>
@@ -584,9 +579,9 @@
 <!-- DEV-114: 프리셋 삭제 확인 — 인앱 모달 (no-native-dialogs). -->
 <ConfirmDialog
 	open={confirmDeletePresetName !== null}
-	title="프리셋 삭제"
-	message={`'${confirmDeletePresetName ?? ''}' 프리셋을 삭제할까요? 되돌릴 수 없습니다.`}
-	confirmLabel="삭제"
+	title={t('settings.deletePresetTitle', $locale)}
+	message={`${t('settings.deletePresetMsgPrefix', $locale)}${confirmDeletePresetName ?? ''}${t('settings.deletePresetMsgSuffix', $locale)}`}
+	confirmLabel={t('detail.delete', $locale)}
 	danger
 	onconfirm={doDeletePreset}
 	oncancel={() => (confirmDeletePresetName = null)}
