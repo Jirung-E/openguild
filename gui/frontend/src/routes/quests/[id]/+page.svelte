@@ -93,7 +93,7 @@
 				name
 			});
 		} catch (e) {
-			saveError = `첨부 실패: ${e}`;
+			saveError = `${t('qd.attachFailed', $locale)}: ${e}`;
 		}
 	}
 	let editTitle = $state('');
@@ -420,7 +420,7 @@
 			const relation: CandidateRelation = mode;
 			candidates = await questsApi.candidates(detail.id, relation);
 		} catch (e) {
-			comboError = e instanceof Error ? e.message : '후보 조회 실패';
+			comboError = e instanceof Error ? e.message : t('qd.candidateFailed', $locale);
 		} finally {
 			candidatesLoading = false;
 		}
@@ -448,7 +448,7 @@
 			detail = await questsApi.getBySlug(slug);
 			closeCombo();
 		} catch (e) {
-			comboError = e instanceof Error ? e.message : '추가 실패';
+			comboError = e instanceof Error ? e.message : t('qd.addFailed', $locale);
 		}
 	}
 
@@ -468,7 +468,7 @@
 			await questsApi.changeParent(subId, { parent_quest_id: null });
 			detail = await questsApi.getBySlug(slug);
 		} catch (e) {
-			showToast(e instanceof Error ? e.message : '분리 실패', 'error');
+			showToast(e instanceof Error ? e.message : t('qd.detachFailed', $locale), 'error');
 		}
 	}
 
@@ -552,7 +552,7 @@
 			// query param 분기 (list / board / home / campaign).
 			goBack();
 		} catch (e) {
-			showToast(e instanceof Error ? e.message : '삭제 실패', 'error');
+			showToast(e instanceof Error ? e.message : t('qd.deleteFailed', $locale), 'error');
 			deleting = false;
 		}
 	}
@@ -609,7 +609,7 @@
 			linkedCampaigns = await campaignsApi.forQuest(detail.id);
 			closeCampaignCombo();
 		} catch (e) {
-			campaignLinkError = e instanceof Error ? e.message : 'campaign 연결 실패';
+			campaignLinkError = e instanceof Error ? e.message : t('qd.campaignLinkFailed', $locale);
 		}
 	}
 
@@ -619,7 +619,7 @@
 			await campaignsApi.unlinkQuest(campaignSlug, detail.quest_id);
 			linkedCampaigns = await campaignsApi.forQuest(detail.id);
 		} catch (e) {
-			showToast(e instanceof Error ? e.message : 'campaign 연결 해제 실패', 'error');
+			showToast(e instanceof Error ? e.message : t('qd.campaignUnlinkFailed', $locale), 'error');
 		}
 	}
 </script>
@@ -652,8 +652,8 @@
 				<!-- BUG-060 후속: 원본 urgency 가 범위(1-4) 밖 — clamp 표시 + 경고. -->
 				<span
 					class="urgency-warn"
-					title={`urgency 원본값 ${detail.urgency} 가 유효 범위(1-4) 밖 — clamp 표시 중. .guild 파일의 urgency 를 1~4 로 정정하세요.`}
-					>⚠ 범위 밖</span
+					title={`${t('qd.urgencyClampPre', $locale)}${detail.urgency}${t('qd.urgencyClampPost', $locale)}`}
+					>{t('qd.outOfRange', $locale)}</span
 				>
 			{/if}
 			{#key badgePulse}
@@ -666,7 +666,7 @@
 		<!-- 생성 / 변경 시각 -->
 		<div class="meta-times">
 			<span class="meta-item">
-				<span class="meta-label">생성</span>
+				<span class="meta-label">{t('common.created', $locale)}</span>
 				<time
 					class="meta-val"
 					datetime={detail.created_at}
@@ -678,7 +678,7 @@
 			</span>
 			<span class="meta-sep">·</span>
 			<span class="meta-item">
-				<span class="meta-label">변경</span>
+				<span class="meta-label">{t('common.updated', $locale)}</span>
 				<time
 					class="meta-val"
 					datetime={detail.updated_at}
@@ -694,7 +694,7 @@
 				<!-- DEV-079: 기한 지났으면 빨강 강조 (done/cancelled 제외). -->
 				{#if detail.required_due}
 					<span class="meta-item">
-						<span class="meta-label">필수 기한</span>
+						<span class="meta-label">{t('qd.requiredDue', $locale)}</span>
 						<span
 							class="meta-val due-required"
 							class:overdue={isDateOverdue(detail.required_due, detail.status_slug)}
@@ -704,7 +704,7 @@
 				{/if}
 				{#if detail.desired_due}
 					<span class="meta-item">
-						<span class="meta-label">희망 기한</span>
+						<span class="meta-label">{t('qd.desiredDue', $locale)}</span>
 						<span
 							class="meta-val due-desired"
 							class:overdue={isDateOverdue(detail.desired_due, detail.status_slug)}
@@ -718,12 +718,12 @@
 		{#if editMode}
 			<div class="edit-form">
 				<label class="field-label">
-					<span>제목</span>
+					<span>{t('qd.titleLabel', $locale)}</span>
 					<input class="edit-title" type="text" bind:value={editTitle} />
 				</label>
 
 				<label class="field-label">
-					<span>긴급도</span>
+					<span>{t('filter.urgency', $locale)}</span>
 					<select class="edit-select" bind:value={editUrgency}>
 						{#each [1, 2, 3, 4] as u}
 							<option value={u}>{URGENCY_LABEL[u]}</option>
@@ -735,20 +735,20 @@
 				     slug 가 바뀌는 무거운 동작이라 일반 보기에서 한 클릭 거리는 과함.
 				     기존과 동일하게 confirm 모달 후 즉시 적용 (저장 버튼과 무관). -->
 				<div class="field-label">
-					<span>타입 변경 <span class="hint">(slug 바뀜 — 즉시 적용)</span></span>
+					<span>{t('qd.typeChange', $locale)} <span class="hint">{t('qd.typeChangeHint', $locale)}</span></span>
 					<div class="status-btns">
-						{#each types as t}
+						{#each types as ty}
 							<button
 								class="status-btn"
-								class:active={t.id === detail.quest_type_id}
-								style:--c={t.color}
-								onclick={() => askChangeType(t)}
-								disabled={changingType || t.id === detail.quest_type_id}
-								title={t.id === detail.quest_type_id
-									? '현재 타입'
-									: `${t.prefix} 로 변경 — slug 바뀜`}
+								class:active={ty.id === detail.quest_type_id}
+								style:--c={ty.color}
+								onclick={() => askChangeType(ty)}
+								disabled={changingType || ty.id === detail.quest_type_id}
+								title={ty.id === detail.quest_type_id
+									? t('qd.currentType', $locale)
+									: `${ty.prefix}${t('qd.changeToSuffix', $locale)}`}
 							>
-								{t.prefix}
+								{ty.prefix}
 							</button>
 						{/each}
 					</div>
@@ -757,11 +757,11 @@
 				<!-- DEV-076: 희망 / 필수 기한. 빈 값 = 미설정 / 해제. -->
 				<div class="due-row">
 					<label class="field-label">
-						<span>희망 기한 <span class="hint">(정보성)</span></span>
+						<span>{t('qd.desiredDue', $locale)} <span class="hint">{t('qd.desiredDueHint', $locale)}</span></span>
 						<DateField bind:value={editDesiredDue} />
 					</label>
 					<label class="field-label">
-						<span>필수 기한 <span class="hint">(임박 / Overdue 기준)</span></span>
+						<span>{t('qd.requiredDue', $locale)} <span class="hint">{t('qd.requiredDueHint', $locale)}</span></span>
 						<DateField bind:value={editRequiredDue} />
 					</label>
 				</div>
@@ -771,10 +771,10 @@
 				<!-- DEV-202: 편집기 위 '첨부' 버튼 제거 — 아래 첨부 섹션과 중복.
 				     이미지·동영상·파일은 드래그&드랍 / Ctrl+V 로 첨부(attachmentExtension). -->
 				<div class="field-label">
-					<span>설명 (Markdown) — 첨부는 드래그&드랍 / Ctrl+V 또는 아래 첨부 섹션</span>
+					<span>{t('qd.descLabel', $locale)}</span>
 					<MarkdownEditor
 						bind:value={editDescription}
-						onError={(msg) => (saveError = `첨부 업로드 실패: ${msg}`)}
+						onError={(msg) => (saveError = `${t('qd.attachUploadFailed', $locale)}: ${msg}`)}
 						onAttach={attachToSection}
 					/>
 				</div>
@@ -783,9 +783,9 @@
 
 				<div class="edit-actions">
 					<button class="btn-save" onclick={saveEdit} disabled={saving}>
-						{saving ? '저장 중…' : '저장'}
+						{saving ? t('common.saving', $locale) : t('common.save', $locale)}
 					</button>
-					<button class="btn-cancel" onclick={exitEditMode} disabled={saving}>취소</button>
+					<button class="btn-cancel" onclick={exitEditMode} disabled={saving}>{t('common.cancel', $locale)}</button>
 				</div>
 			</div>
 		{:else}
@@ -802,13 +802,13 @@
 					onclick={() =>
 						navigator.clipboard.writeText(
 							`${detail!.type_prefix}-${String(detail!.number).padStart(3, '0')}`
-						)}>복사</button
+						)}>{t('common.copy', $locale)}</button
 				>
 			</div>
 
 			<!-- 상태 변경 -->
 			<div class="status-row">
-				<span class="branch-label">상태 변경</span>
+				<span class="branch-label">{t('qd.statusChange', $locale)}</span>
 				<div class="status-btns">
 					{#each sortedStatuses as s}
 						<button
@@ -835,7 +835,7 @@
 					<MarkdownView source={detail.description} />
 				{:else}
 					<p class="no-desc">
-						No description. <button class="link-btn" onclick={enterEditMode}>설명 추가하기</button>
+						{t('qd.noDescription', $locale)} <button class="link-btn" onclick={enterEditMode}>{t('qd.addDescription', $locale)}</button>
 					</p>
 				{/if}
 			</div>
@@ -873,8 +873,8 @@
 			<div class="section-head">
 				<h2 class="section-title sub-label">{t('quest.section.subQuests', $locale)}</h2>
 				{#if !editMode}
-					<button class="sec-add-btn" onclick={() => (showNewSubQuest = true)}>+ 신규</button>
-					<button class="sec-add-btn" onclick={() => openCombo('sub')}>+ 기존 지정</button>
+					<button class="sec-add-btn" onclick={() => (showNewSubQuest = true)}>{t('qd.newSub', $locale)}</button>
+					<button class="sec-add-btn" onclick={() => openCombo('sub')}>{t('qd.assignExisting', $locale)}</button>
 				{/if}
 			</div>
 			{#if detail.sub_quests.length > 0}
@@ -890,7 +890,7 @@
 								{#if !editMode}
 									<button
 										class="prereq-rm"
-										title="부모에서 분리"
+										title={t('qd.detachFromParent', $locale)}
 										onclick={() => detachSubQuest(sq.id)}>×</button
 									>
 								{/if}
@@ -899,7 +899,7 @@
 					{/each}
 				</ul>
 			{:else}
-				<p class="no-desc">서브퀘스트 없음.</p>
+				<p class="no-desc">{t('qd.noSubQuests', $locale)}</p>
 			{/if}
 		</section>
 
@@ -908,7 +908,7 @@
 			<div class="section-head">
 				<h2 class="section-title prereq-label">{t('quest.section.prerequisites', $locale)}</h2>
 				{#if !editMode}
-					<button class="sec-add-btn" onclick={() => openCombo('prereq')}>+ 추가</button>
+					<button class="sec-add-btn" onclick={() => openCombo('prereq')}>{t('qd.addBtn', $locale)}</button>
 				{/if}
 			</div>
 
@@ -925,7 +925,7 @@
 								{#if !editMode}
 									<button
 										class="prereq-rm"
-										title="선행 퀘스트 제거"
+										title={t('qd.removePrereq', $locale)}
 										onclick={() => removePrerequisite(pq.id)}>×</button
 									>
 								{/if}
@@ -934,7 +934,7 @@
 					{/each}
 				</ul>
 			{:else}
-				<p class="no-desc">선행 퀘스트 없음.</p>
+				<p class="no-desc">{t('qd.noPrereqs', $locale)}</p>
 			{/if}
 		</section>
 
@@ -945,8 +945,8 @@
 				<h2 class="section-title succ-label">{t('quest.section.successors', $locale)}</h2>
 				<span class="sec-hint">{t('quest.section.successorsHint', $locale)}</span>
 				{#if !editMode}
-					<button class="sec-add-btn" onclick={() => openCombo('succ')} title="후속 퀘스트 추가">
-						+ 추가
+					<button class="sec-add-btn" onclick={() => openCombo('succ')} title={t('qd.addSuccessor', $locale)}>
+						{t('qd.addBtn', $locale)}
 					</button>
 				{/if}
 			</div>
@@ -965,7 +965,7 @@
 					{/each}
 				</ul>
 			{:else}
-				<p class="no-desc">후속 퀘스트 없음.</p>
+				<p class="no-desc">{t('qd.noSuccessors', $locale)}</p>
 			{/if}
 		</section>
 
@@ -980,8 +980,8 @@
 						onclick={openCampaignCombo}
 						disabled={campaignCandidates.length === 0}
 						title={campaignCandidates.length === 0
-							? '연결 가능한 캠페인이 없습니다'
-							: '캠페인 선택'}>+ 연결</button
+							? t('qd.noLinkableCampaigns', $locale)
+							: t('qd.selectCampaign', $locale)}>{t('qd.linkBtn', $locale)}</button
 					>
 				{/if}
 			</div>
@@ -998,7 +998,7 @@
 								{#if !editMode}
 									<button
 										class="prereq-rm"
-										title="캠페인 연결 해제"
+										title={t('qd.unlinkCampaign', $locale)}
 										onclick={() => unlinkCampaign(c.campaign_slug)}>×</button
 									>
 								{/if}
@@ -1007,7 +1007,7 @@
 					{/each}
 				</ul>
 			{:else}
-				<p class="no-desc">연결된 캠페인 없음.</p>
+				<p class="no-desc">{t('qd.noLinkedCampaigns', $locale)}</p>
 			{/if}
 		</section>
 
@@ -1078,17 +1078,16 @@
 		<div class="modal-sm" role="dialog" aria-modal="true" tabindex="-1">
 			<div class="modal-head">
 				<h3>
-					{#if comboMode === 'sub'}기존 퀘스트를 서브퀘스트로 지정{:else if comboMode === 'prereq'}선행
-						퀘스트 추가{:else}후속 퀘스트 추가{/if}
+					{#if comboMode === 'sub'}{t('qd.comboSub', $locale)}{:else if comboMode === 'prereq'}{t('qd.comboPrereq', $locale)}{:else}{t('qd.comboSuccessor', $locale)}{/if}
 				</h3>
 				<button class="x" onclick={closeCombo}>×</button>
 			</div>
 			{#if candidatesLoading}
-				<div class="combo-state">후보 조회 중…</div>
+				<div class="combo-state">{t('qd.loadingCandidates', $locale)}</div>
 			{:else}
 				<QuestCombobox
 					quests={candidates}
-					placeholder="ID 또는 제목으로 검색"
+					placeholder={t('qd.searchByIdTitle', $locale)}
 					onselect={pickCandidate}
 					oncancel={closeCombo}
 				/>
@@ -1103,12 +1102,12 @@
 	<div class="ov" role="presentation">
 		<div class="modal-sm" role="dialog" aria-modal="true" tabindex="-1">
 			<div class="modal-head">
-				<h3>캠페인 연결</h3>
+				<h3>{t('qd.linkCampaignTitle', $locale)}</h3>
 				<button class="x" onclick={closeCampaignCombo}>×</button>
 			</div>
 			<CampaignCombobox
 				campaigns={campaignCandidates}
-				placeholder="C-NNN 또는 캠페인 제목"
+				placeholder={t('qd.campaignSearchPlaceholder', $locale)}
 				onselect={linkCampaign}
 				oncancel={closeCampaignCombo}
 			/>
@@ -1132,40 +1131,39 @@
 	<div class="ov" role="presentation">
 		<div class="modal-sm" role="dialog" aria-modal="true" tabindex="-1">
 			<div class="modal-head">
-				<h3 class="del-title">타입 변경</h3>
+				<h3 class="del-title">{t('qd.changeTypeTitle', $locale)}</h3>
 				<button class="x" onclick={() => (confirmTypeChange = null)} disabled={changingType}
 					>×</button
 				>
 			</div>
 			<p class="del-msg">
-				<code>{detail.quest_id}</code> 의 타입을 <strong>{target.prefix}</strong> 로 변경합니다.
-				슬러그(quest_id) 가 바뀌어
-				<code>{target.prefix}-NNN</code> 형태의 새 번호가 부여됩니다.
+				<code>{detail.quest_id}</code>{t('qd.changeTypeMsg1', $locale)}<strong>{target.prefix}</strong>{t('qd.changeTypeMsg2', $locale)}
+				<code>{target.prefix}-NNN</code>{t('qd.changeTypeMsg3', $locale)}
 			</p>
 			<p class="del-prereq">
-				⚠ 다른 퀘스트 본문 안에 <code>{detail.quest_id}</code> 를 직접 언급(예 "참조") 한 부분은 자동으로
-				갱신되지 않습니다. 필요하면 검색해서 직접 수정하세요. 부모/자식/선행 관계의 auto-block 메타는
-				자동 갱신됩니다.
+				{t('qd.changeTypeWarnPre', $locale)}<code>{detail.quest_id}</code>{t('qd.changeTypeWarnPost', $locale)}
+				{t('qd.autoBlockNote', $locale)}
+				{t('qd.autoUpdated', $locale)}
 			</p>
 			<!-- DEV-133: 타입 변경이 편집 모드 안으로 이동 — 즉시 적용 + 새 slug
 			     로 navigate 되므로 저장 안 한 제목/설명 편집은 유지되지 않음. -->
 			{#if editMode}
 				<p class="del-prereq">
-					⚠ 변경 즉시 새 슬러그 페이지로 이동합니다 — <strong
-						>저장하지 않은 제목/설명 편집은 사라집니다.</strong
-					> 먼저 저장 후 변경을 권장.
+					{t('qd.immediateNavWarn', $locale)}<strong
+						>{t('qd.unsavedWarnStrong', $locale)}</strong
+					>{t('qd.unsavedWarnRest', $locale)}
 				</p>
 			{/if}
 			<div class="del-actions">
 				<button class="btn-del-yes" onclick={doChangeType} disabled={changingType}>
-					{changingType ? '변경 중…' : '변경'}
+					{changingType ? t('qd.changing', $locale) : t('common.change', $locale)}
 				</button>
 				<button
 					class="btn-del-no"
 					onclick={() => (confirmTypeChange = null)}
 					disabled={changingType}
 				>
-					취소
+					{t('common.cancel', $locale)}
 				</button>
 			</div>
 		</div>
@@ -1243,26 +1241,26 @@
 {#if detail && (showTopJump || showCommentsJump || showMemoJump)}
 	<div class="jump-cluster">
 		{#if showTopJump}
-			<button class="jump-btn" onclick={jumpToTop} title="맨 위로" aria-label="맨 위로">
+			<button class="jump-btn" onclick={jumpToTop} title={t('common.jumpTop', $locale)} aria-label={t('common.jumpTop', $locale)}>
 				<span class="jb-icon">↑</span>
-				<span class="jb-label">위</span>
+				<span class="jb-label">{t('common.jumpTopShort', $locale)}</span>
 			</button>
 		{/if}
 		{#if showCommentsJump}
 			<button
 				class="jump-btn"
 				onclick={jumpToComments}
-				title="댓글로 이동"
-				aria-label="댓글로 이동"
+				title={t('common.jumpComments', $locale)}
+				aria-label={t('common.jumpComments', $locale)}
 			>
 				<span class="jb-icon">💬</span>
-				<span class="jb-label">댓글</span>
+				<span class="jb-label">{t('common.jumpCommentsShort', $locale)}</span>
 			</button>
 		{/if}
 		{#if showMemoJump}
-			<button class="jump-btn" onclick={jumpToMemo} title="메모로 이동" aria-label="메모로 이동">
+			<button class="jump-btn" onclick={jumpToMemo} title={t('common.jumpMemo', $locale)} aria-label={t('common.jumpMemo', $locale)}>
 				<span class="jb-icon">📝</span>
-				<span class="jb-label">메모</span>
+				<span class="jb-label">{t('common.jumpMemoShort', $locale)}</span>
 			</button>
 		{/if}
 	</div>
