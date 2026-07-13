@@ -1382,12 +1382,12 @@ impl HttpClient {
         let ts = resp
             .get("restored_to")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow!("server 응답에 restored_to 누락"))?
+            .ok_or_else(|| anyhow!(tf!("server 응답에 restored_to 누락", "server response missing restored_to")))?
             .to_string();
         let list = self.list_snapshots()?;
         list.into_iter()
             .find(|s| s.timestamp == ts)
-            .ok_or_else(|| anyhow!("복원된 snapshot 정보 누락"))
+            .ok_or_else(|| anyhow!(tf!("복원된 snapshot 정보 누락", "restored snapshot info missing")))
     }
 
     /// DEV-022: 시점 복원 (journal replay) — HTTP admin.
@@ -1775,11 +1775,24 @@ impl Backend {
             let problems =
                 l.rt.block_on(openguild_core::health::list_problem_quest_files(&l.store));
             if !problems.is_empty() {
-                eprintln!("⚠ 비정상 파일 {} 개 감지 (캐시에서 제외됨):", problems.len());
+                eprintln!(
+                    "{}",
+                    tf!(
+                        "⚠ 비정상 파일 {} 개 감지 (캐시에서 제외됨):",
+                        "⚠ {} problem file(s) detected (excluded from cache):",
+                        problems.len()
+                    )
+                );
                 for (path, why) in &problems {
                     eprintln!("    - {path}: {why}");
                 }
-                eprintln!("  파일을 고치거나 status 를 정의한 뒤 `openguild reindex` 하세요.");
+                eprintln!(
+                    "{}",
+                    tf!(
+                        "  파일을 고치거나 status 를 정의한 뒤 `openguild reindex` 하세요.",
+                        "  fix the file or define the status, then run `openguild reindex`."
+                    )
+                );
             }
         }
     }
@@ -2391,7 +2404,7 @@ impl Backend {
     /// (HTTP 라우트 없음, comments 전역 검색과 동일 정책).
     fn tags_in_use(&self) -> Result<Vec<String>> {
         let Backend::Local(l) = self else {
-            return Err(anyhow!("--used 는 로컬 모드 전용입니다."));
+            return Err(anyhow!(tf!("--used 는 로컬 모드 전용입니다.", "--used is local-mode only.")));
         };
         let rows: Vec<(String,)> = l.rt.block_on(
             sqlx::query_as(
@@ -2482,7 +2495,7 @@ impl Backend {
                     l.rt.block_on(openguild_core::ops::library::get_book(&l.store, id)),
                 )?;
                 row.map(BookDto::from)
-                    .ok_or_else(|| anyhow!("도서관 문서 '{id}' 없음"))
+                    .ok_or_else(|| anyhow!(tf!("도서관 문서 '{id}' 없음", "library doc '{id}' not found")))
             }
         }
     }
@@ -2670,7 +2683,7 @@ impl Backend {
         slug: &str,
     ) -> Result<Vec<openguild_core::models::quest::QuestAttachment>> {
         match self {
-            Backend::Http(_) => Err(anyhow!("원격 모드에선 미지원 — 로컬에서 실행")),
+            Backend::Http(_) => Err(anyhow!(tf!("원격 모드에선 미지원 — 로컬에서 실행", "not supported in remote mode — run locally"))),
             Backend::Local(l) => Ok(match scope {
                 CommentScope::Quest => {
                     openguild_core::ops::attachments::list_quest_attachments(&l.store, slug)
@@ -2690,7 +2703,7 @@ impl Backend {
         name: Option<String>,
     ) -> Result<Vec<openguild_core::models::quest::QuestAttachment>> {
         match self {
-            Backend::Http(_) => Err(anyhow!("원격 모드에선 미지원 — 로컬에서 실행")),
+            Backend::Http(_) => Err(anyhow!(tf!("원격 모드에선 미지원 — 로컬에서 실행", "not supported in remote mode — run locally"))),
             Backend::Local(l) => {
                 let bytes = std::fs::read(file)
                     .with_context(|| format!("파일 읽기 실패: {}", file.display()))?;
@@ -2737,7 +2750,7 @@ impl Backend {
         path: &str,
     ) -> Result<Vec<openguild_core::models::quest::QuestAttachment>> {
         match self {
-            Backend::Http(_) => Err(anyhow!("원격 모드에선 미지원 — 로컬에서 실행")),
+            Backend::Http(_) => Err(anyhow!(tf!("원격 모드에선 미지원 — 로컬에서 실행", "not supported in remote mode — run locally"))),
             Backend::Local(l) => l
                 .rt
                 .block_on(async {
@@ -2807,7 +2820,7 @@ impl Backend {
         id: u64,
     ) -> Result<openguild_core::repo::comments::CommentEntry> {
         match self {
-            Backend::Http(_) => Err(anyhow!("원격 모드에선 미지원 — 로컬에서 실행")),
+            Backend::Http(_) => Err(anyhow!(tf!("원격 모드에선 미지원 — 로컬에서 실행", "not supported in remote mode — run locally"))),
             Backend::Local(l) => Self::map_err(l.rt.block_on(
                 openguild_core::ops::comments::toggle_comment_discussion(&l.store, slug, id),
             )),
@@ -2820,7 +2833,7 @@ impl Backend {
         id: u64,
     ) -> Result<openguild_core::repo::comments::CommentEntry> {
         match self {
-            Backend::Http(_) => Err(anyhow!("원격 모드에선 미지원 — 로컬에서 실행")),
+            Backend::Http(_) => Err(anyhow!(tf!("원격 모드에선 미지원 — 로컬에서 실행", "not supported in remote mode — run locally"))),
             Backend::Local(l) => Self::map_err(l.rt.block_on(
                 openguild_core::ops::comments::toggle_comment_resolved(&l.store, slug, id),
             )),
@@ -3010,7 +3023,7 @@ impl Backend {
                 // frontmatter 의 tags 가 진리원. file 직접 read.
                 let path = l.store.paths.quest_path(slug);
                 let qf = openguild_core::repo::QuestFile::read(&path)
-                    .map_err(|e| anyhow::anyhow!("quest {slug} 본문 읽기 실패: {e:#}"))?;
+                    .map_err(|e| anyhow::anyhow!(tf!("quest {slug} 본문 읽기 실패: {e:#}", "failed to read quest {slug} body: {e:#}")))?;
                 Ok(qf.frontmatter.tags.clone())
             }
         }
@@ -3041,9 +3054,10 @@ impl Backend {
     /// DEV-095: 파일 → index.db 풀 reindex. Local 전용 (remote 는 서버측 명령).
     fn reindex(&self) -> Result<openguild_core::reindex::ReindexReport> {
         match self {
-            Backend::Http(_) => Err(anyhow!(
-                "원격 모드에선 미지원 — 서버에서 `openguild-server reindex` 사용"
-            )),
+            Backend::Http(_) => Err(anyhow!(tf!(
+                "원격 모드에선 미지원 — 서버에서 `openguild-server reindex` 사용",
+                "not supported in remote mode — use `openguild-server reindex` on the server"
+            ))),
             Backend::Local(l) => l
                 .rt
                 .block_on(openguild_core::reindex::reindex(&l.store))
@@ -3054,9 +3068,10 @@ impl Backend {
     /// DEV-159: index.db ↔ 파일 drift 검사. Local 전용 (remote 는 서버측 명령).
     fn check_drift(&self) -> Result<openguild_core::drift::DriftReport> {
         match self {
-            Backend::Http(_) => Err(anyhow!(
-                "원격 모드에선 미지원 — 서버에서 `openguild-server check-drift` 사용"
-            )),
+            Backend::Http(_) => Err(anyhow!(tf!(
+                "원격 모드에선 미지원 — 서버에서 `openguild-server check-drift` 사용",
+                "not supported in remote mode — use `openguild-server check-drift` on the server"
+            ))),
             Backend::Local(l) => l
                 .rt
                 .block_on(openguild_core::drift::detect_drift(&l.store))
@@ -3067,9 +3082,10 @@ impl Backend {
     /// DEV-162: index.db VACUUM. Local 전용 (실행 중 host 는 HTTP admin 사용).
     fn vacuum(&self) -> Result<openguild_core::maintenance::VacuumReport> {
         match self {
-            Backend::Http(_) => Err(anyhow!(
-                "원격 모드에선 미지원 — 실행 중 host 는 HTTP admin, 오프라인은 로컬에서 실행"
-            )),
+            Backend::Http(_) => Err(anyhow!(tf!(
+                "원격 모드에선 미지원 — 실행 중 host 는 HTTP admin, 오프라인은 로컬에서 실행",
+                "not supported in remote mode — a running host uses HTTP admin, offline runs locally"
+            ))),
             Backend::Local(l) => l
                 .rt
                 .block_on(openguild_core::maintenance::vacuum(&l.store))
@@ -3080,9 +3096,10 @@ impl Backend {
     /// DEV-162: journal.db 최근 op tail. Local 전용.
     fn journal_tail(&self, count: i64) -> Result<Option<openguild_core::maintenance::JournalTail>> {
         match self {
-            Backend::Http(_) => Err(anyhow!(
-                "원격 모드에선 미지원 — 실행 중 host 는 HTTP admin, 오프라인은 로컬에서 실행"
-            )),
+            Backend::Http(_) => Err(anyhow!(tf!(
+                "원격 모드에선 미지원 — 실행 중 host 는 HTTP admin, 오프라인은 로컬에서 실행",
+                "not supported in remote mode — a running host uses HTTP admin, offline runs locally"
+            ))),
             Backend::Local(l) => l
                 .rt
                 .block_on(openguild_core::maintenance::journal_tail(&l.store.paths, count))
@@ -3093,7 +3110,10 @@ impl Backend {
     /// DEV-164: counter 정합 검사 / 보정. Local 전용.
     fn check_counters(&self, fix: bool) -> Result<openguild_core::ops::counter::CombinedReport> {
         match self {
-            Backend::Http(_) => Err(anyhow!("원격 모드에선 미지원 — 오프라인(로컬)에서 실행")),
+            Backend::Http(_) => Err(anyhow!(tf!(
+                "원격 모드에선 미지원 — 오프라인(로컬)에서 실행",
+                "not supported in remote mode — run offline (locally)"
+            ))),
             Backend::Local(l) => l
                 .rt
                 .block_on(openguild_core::ops::check_and_fix_counters(&l.store, fix))
@@ -3105,7 +3125,10 @@ impl Backend {
     /// guild_path 의 quests/ 가 이미 차 있으면(이미 이전됨) 에러.
     fn migrate_to_files(&self) -> Result<openguild_core::migrate::MigrationReport> {
         match self {
-            Backend::Http(_) => Err(anyhow!("원격 모드에선 미지원 — 오프라인(로컬)에서 실행")),
+            Backend::Http(_) => Err(anyhow!(tf!(
+                "원격 모드에선 미지원 — 오프라인(로컬)에서 실행",
+                "not supported in remote mode — run offline (locally)"
+            ))),
             Backend::Local(l) => {
                 let quests_dir = l.guild_path.join(".guild").join("quests");
                 let has_md = std::fs::read_dir(&quests_dir)
@@ -3115,10 +3138,12 @@ impl Backend {
                     .flatten()
                     .any(|e| e.path().extension().and_then(|s| s.to_str()) == Some("md"));
                 if has_md {
-                    return Err(anyhow!(
+                    return Err(anyhow!(tf!(
                         ".guild/quests/ 에 이미 quest 파일이 있습니다 — 마이그레이션은 한 번만. \
-                         덮어쓰려면 quests/ 를 비운 뒤 재시도."
-                    ));
+                         덮어쓰려면 quests/ 를 비운 뒤 재시도.",
+                        ".guild/quests/ already has quest files — migration only runs once. \
+                         To overwrite, empty quests/ and retry."
+                    )));
                 }
                 l.rt
                     .block_on(openguild_core::migrate::migrate_to_files(&l.guild_path))
@@ -3130,9 +3155,10 @@ impl Backend {
     /// DEV-164: 길드 메타 + index.db/snapshot/journal 요약. Local 전용.
     fn info(&self) -> Result<CliInfo> {
         match self {
-            Backend::Http(_) => Err(anyhow!(
-                "원격 모드에선 미지원 — 실행 중 host 정보는 server 측에서 확인"
-            )),
+            Backend::Http(_) => Err(anyhow!(tf!(
+                "원격 모드에선 미지원 — 실행 중 host 정보는 server 측에서 확인",
+                "not supported in remote mode — check a running host's info on the server"
+            ))),
             Backend::Local(l) => l.rt.block_on(async {
                 let guild =
                     openguild_core::guild_file::load(&l.guild_path.to_string_lossy())?;
@@ -3180,12 +3206,11 @@ impl Backend {
                         .iter()
                         .find(|s| s.timestamp == ts)
                         .cloned()
-                        .ok_or_else(|| anyhow!("snapshot 없음: {ts}"))?
+                        .ok_or_else(|| anyhow!(tf!("snapshot 없음: {ts}", "no such snapshot: {ts}")))?
                 } else {
-                    snapshots
-                        .last()
-                        .cloned()
-                        .ok_or_else(|| anyhow!("사용 가능한 snapshot 이 없습니다"))?
+                    snapshots.last().cloned().ok_or_else(|| {
+                        anyhow!(tf!("사용 가능한 snapshot 이 없습니다", "no snapshots available"))
+                    })?
                 };
                 l.rt.block_on(openguild_core::snapshot::restore_snapshot(
                     &l.store, &target,
@@ -3206,12 +3231,15 @@ impl Backend {
             Backend::Local(l) => {
                 let snapshots = openguild_core::snapshot::list_snapshots(&l.store.paths)?;
                 let latest = snapshots.last().cloned().ok_or_else(|| {
-                    anyhow!("사용 가능한 snapshot 이 없습니다 (replay 는 최신 snapshot 기준)")
+                    anyhow!(tf!(
+                        "사용 가능한 snapshot 이 없습니다 (replay 는 최신 snapshot 기준)",
+                        "no snapshots available (replay is based on the latest snapshot)"
+                    ))
                 })?;
                 let report = l
                     .rt
                     .block_on(openguild_core::replay::replay_to(&l.store, &latest, target_ts))
-                    .map_err(|e| anyhow!("replay 실패: {e}"))?;
+                    .map_err(|e| anyhow!(tf!("replay 실패: {e}", "replay failed: {e}")))?;
                 Ok(report)
             }
         }
@@ -3431,10 +3459,20 @@ fn merge_new_quest_inputs(
 ) -> Result<(String, String, Option<String>, i64, Vec<String>)> {
     let type_prefix = type_prefix
         .or_else(|| tpl.and_then(|t| t.frontmatter.type_prefix.clone()))
-        .ok_or_else(|| anyhow!("--type 필요 (또는 type 을 정의한 --template 지정)"))?;
+        .ok_or_else(|| {
+            anyhow!(tf!(
+                "--type 필요 (또는 type 을 정의한 --template 지정)",
+                "--type is required (or specify --template with a type defined)"
+            ))
+        })?;
     let title = title
         .or_else(|| tpl.and_then(|t| t.frontmatter.title.clone()))
-        .ok_or_else(|| anyhow!("--title 필요 (또는 title 을 정의한 --template 지정)"))?;
+        .ok_or_else(|| {
+            anyhow!(tf!(
+                "--title 필요 (또는 title 을 정의한 --template 지정)",
+                "--title is required (or specify --template with a title defined)"
+            ))
+        })?;
     let description =
         description.or_else(|| tpl.map(|t| t.body.clone()).filter(|b| !b.is_empty()));
     let urgency = urgency
@@ -5053,10 +5091,11 @@ fn run() -> Result<()> {
             if cli.json {
                 println!("{}", json_str(&rows));
             } else if rows.is_empty() {
-                println!("(댓글 없음)");
+                println!("{}", tf!("(댓글 없음)", "(no comments)"));
             } else {
+                let no_name = tf!("(이름 없음)", "(no name)");
                 for r in &rows {
-                    let author = if r.author.is_empty() { "(이름 없음)" } else { &r.author };
+                    let author = if r.author.is_empty() { &no_name } else { &r.author };
                     // DEV-250: 📌/토론 배지 + 반응 집계 — comment list/show 와 동일 규칙.
                     let badge = comment_badges(r.pinned, r.discussion, r.resolved);
                     let reactions: Vec<String> = if r.reactions.is_empty() {
@@ -5100,7 +5139,8 @@ fn run() -> Result<()> {
 
 /// 현재 디렉토리를 길드로 초기화. `<name>.guild` 마커 파일 생성.
 fn init_guild(name_arg: Option<String>, json: bool) -> Result<()> {
-    let cwd = std::env::current_dir().context("현재 디렉토리를 확인할 수 없음")?;
+    let cwd = std::env::current_dir()
+        .with_context(|| tf!("현재 디렉토리를 확인할 수 없음", "could not determine current directory"))?;
     let (guild_path, name) = init_guild_at(&cwd, name_arg)?;
 
     if json {
@@ -5136,7 +5176,7 @@ fn init_guild_at(
 ) -> Result<(std::path::PathBuf, String)> {
     // 기존 마커 검색.
     let existing_marker = std::fs::read_dir(cwd)
-        .context("디렉토리 읽기 실패")?
+        .with_context(|| tf!("디렉토리 읽기 실패", "failed to read directory"))?
         .filter_map(|e| e.ok())
         .find(|e| {
             e.path().is_file()
@@ -5150,15 +5190,24 @@ fn init_guild_at(
         // 이미 마커 있음 — 그대로 사용 (--name 지정해도 무시, 기존 이름 보존).
         let path = entry.path();
         let parsed = openguild_core::guild_file::load(cwd.to_str().ok_or_else(|| {
-            anyhow!("디렉토리 경로 인코딩 오류: {}", cwd.display())
+            anyhow!(tf!(
+                "디렉토리 경로 인코딩 오류: {}",
+                "directory path encoding error: {}",
+                cwd.display()
+            ))
         })?)
-        .with_context(|| format!("기존 마커 파싱 실패: {}", path.display()))?;
+        .with_context(|| tf!("기존 마커 파싱 실패: {}", "failed to parse existing marker: {}", path.display()))?;
         if let Some(arg) = &name_arg
             && arg != &parsed.name
         {
             eprintln!(
-                "ℹ︎ 기존 길드 이름 보존: \"{}\" (--name \"{}\" 무시)",
-                parsed.name, arg
+                "{}",
+                tf!(
+                    "ℹ︎ 기존 길드 이름 보존: \"{}\" (--name \"{}\" 무시)",
+                    "ℹ︎ keeping existing guild name: \"{}\" (--name \"{}\" ignored)",
+                    parsed.name,
+                    arg
+                )
             );
         }
         (path, parsed.name)
@@ -5169,22 +5218,28 @@ fn init_guild_at(
             None => cwd
                 .file_name()
                 .and_then(|s| s.to_str())
-                .ok_or_else(|| anyhow!("현재 디렉토리 이름을 추출할 수 없음. --name 으로 지정하세요."))?
+                .ok_or_else(|| {
+                    anyhow!(tf!(
+                        "현재 디렉토리 이름을 추출할 수 없음. --name 으로 지정하세요.",
+                        "could not derive a name from the current directory. Specify --name."
+                    ))
+                })?
                 .to_string(),
         };
         let guild_path = cwd.join(format!("{name}.guild"));
         let today = today_date();
         // DEV-064: 마커 포맷은 core 공용 헬퍼 — schema_version 포함.
         let content = openguild_core::guild_file::marker_content(&name, &today);
-        std::fs::write(&guild_path, content)
-            .with_context(|| format!("길드 파일 작성 실패: {}", guild_path.display()))?;
+        std::fs::write(&guild_path, content).with_context(|| {
+            tf!("길드 파일 작성 실패: {}", "failed to write guild file: {}", guild_path.display())
+        })?;
         (guild_path, name)
     };
 
     // .guild/ 디렉토리 + 기본 시드 (types/statuses) + .gitignore.
     // idempotent — 이미 있는 파일은 건드리지 않음.
     openguild_core::repo::seed_guild_dir(cwd)
-        .with_context(|| format!(".guild/ 시드 실패: {}", cwd.display()))?;
+        .with_context(|| tf!(".guild/ 시드 실패: {}", ".guild/ seed failed: {}", cwd.display()))?;
 
     // BUG-102: 시드 직후 index.db 를 파일 기준으로 재구축. 이걸 안 하면 첫
     // Store::open 의 migration(0001)이 넣는 *구식 기본 statuses(5개)* 가 DB 에
@@ -5195,13 +5250,18 @@ fn init_guild_at(
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
-        .context("tokio runtime 생성 실패")?;
+        .with_context(|| tf!("tokio runtime 생성 실패", "failed to create tokio runtime"))?;
     rt.block_on(async {
         let store = openguild_core::Store::open(cwd).await?;
         let _ = openguild_core::reindex::reindex(&store).await?;
         anyhow::Ok(())
     })
-    .context("init 후 index.db 초기 동기화(reindex) 실패")?;
+    .with_context(|| {
+        tf!(
+            "init 후 index.db 초기 동기화(reindex) 실패",
+            "initial index.db sync (reindex) after init failed"
+        )
+    })?;
 
     Ok((guild_path, name))
 }
