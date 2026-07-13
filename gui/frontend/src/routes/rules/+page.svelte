@@ -17,6 +17,8 @@
 	// 전환 경고는 아래 confirmDiscardSlug 모달이 별도로 담당).
 	import { setUnsaved } from '$lib/stores/unsaved';
 	import { rulesApi, type RuleEntry } from '$lib/api/rules';
+	// DEV-205 모듈5: 규칙 페이지 i18n.
+	import { locale, t } from '$lib/stores/locale';
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	// DEV-203: 편집기 셋업(테마/들여쓰기/첨부/자동완성/높이 영속)은 공통
@@ -104,7 +106,7 @@
 				e.slug === selectedSlug ? { ...e, tags: updated.tags } : e
 			);
 		} catch (e) {
-			showToast(e instanceof Error ? e.message : '태그 저장 실패', 'error');
+			showToast(e instanceof Error ? e.message : t('rules.tagSaveFailed', $locale), 'error');
 		}
 	}
 
@@ -263,7 +265,7 @@
 	async function submitCreate() {
 		const slug = createSlug.trim();
 		if (!slug) {
-			createError = 'slug 를 입력하세요.';
+			createError = t('rules.slugRequired', $locale);
 			return;
 		}
 		try {
@@ -271,7 +273,7 @@
 			creating = false;
 			await loadList(slug); // 새로 만든 것 자동 선택.
 		} catch (e) {
-			createError = e instanceof Error ? e.message : '생성 실패';
+			createError = e instanceof Error ? e.message : t('rules.createFailed', $locale);
 		}
 	}
 
@@ -293,7 +295,7 @@
 			}
 			await loadList();
 		} catch (e) {
-			alert(e instanceof Error ? e.message : '삭제 실패');
+			alert(e instanceof Error ? e.message : t('rules.deleteFailed', $locale));
 		}
 	}
 
@@ -320,7 +322,7 @@
 			renaming = false;
 			await loadList(newSlug);
 		} catch (e) {
-			renameError = e instanceof Error ? e.message : '이름 변경 실패';
+			renameError = e instanceof Error ? e.message : t('rules.renameFailed', $locale);
 		}
 	}
 </script>
@@ -335,37 +337,39 @@
 			<!-- 좌측 sidebar -->
 			<aside class="sidebar">
 				<div class="sidebar-head">
-					<h2>규칙 목록</h2>
-					<button class="btn-new" onclick={openCreate} title="신규 규칙">+ 신규</button>
+					<h2>{t('rules.listHeading', $locale)}</h2>
+					<button class="btn-new" onclick={openCreate} title={t('rules.newRule', $locale)}>{t('rules.newBtn', $locale)}</button>
 				</div>
 				{#if allTagOptions.length > 0}
-					<div class="tag-filter-row" aria-label="태그 필터">
-						{#each allTagOptions as t (t)}
+					<div class="tag-filter-row" aria-label={t('rules.tagFilter', $locale)}>
+						{#each allTagOptions as tag (tag)}
 							<button
 								class="tag-filter-chip"
-								class:active={filterTags.has(t)}
-								onclick={() => toggleTagFilter(t)}
-								title={filterTags.has(t) ? `${t} 필터 해제` : `${t} 필터 추가`}
+								class:active={filterTags.has(tag)}
+								onclick={() => toggleTagFilter(tag)}
+								title={filterTags.has(tag)
+									? `${tag}${t('questList.filterRemoveSuffix', $locale)}`
+									: `${tag}${t('questList.filterAddSuffix', $locale)}`}
 							>
-								{t}
-								<span class="tag-chip-count">{tagCounts.get(t) ?? 0}</span>
+								{tag}
+								<span class="tag-chip-count">{tagCounts.get(tag) ?? 0}</span>
 							</button>
 						{/each}
 						{#if filterTags.size > 0}
 							<button
 								class="tag-clear"
 								onclick={() => (filterTags = new Set())}
-								title="태그 필터 모두 해제"
+								title={t('rules.clearTagFilters', $locale)}
 							>
-								× 전체 해제
+								{t('questList.clearAllBtn', $locale)}
 							</button>
 						{/if}
 					</div>
 				{/if}
 				{#if entries.length === 0}
-					<p class="empty-list">규칙 없음. "+ 신규" 로 만들기.</p>
+					<p class="empty-list">{t('rules.emptyList', $locale)}</p>
 				{:else if filteredEntries.length === 0}
-					<p class="empty-list">태그 필터에 맞는 규칙 없음.</p>
+					<p class="empty-list">{t('rules.emptyFiltered', $locale)}</p>
 				{:else}
 					<ul class="rule-list">
 						{#each filteredEntries as e (e.slug)}
@@ -387,14 +391,14 @@
 						<input
 							class="text-input"
 							type="text"
-							placeholder="slug (예: release-process)"
+							placeholder={t('rules.slugPlaceholder', $locale)}
 							bind:value={createSlug}
 							onkeydown={(e) => e.key === 'Enter' && submitCreate()}
 						/>
 						{#if createError}<p class="err">{createError}</p>{/if}
 						<div class="actions">
-							<button class="btn-save" onclick={submitCreate}>생성</button>
-							<button class="btn-cancel" onclick={cancelCreate}>취소</button>
+							<button class="btn-save" onclick={submitCreate}>{t('rules.create', $locale)}</button>
+							<button class="btn-cancel" onclick={cancelCreate}>{t('common.cancel', $locale)}</button>
 						</div>
 					</div>
 				{/if}
@@ -405,9 +409,9 @@
 				{#if !selectedSlug}
 					<div class="empty">
 						{#if entries.length === 0}
-							"+ 신규" 로 첫 규칙을 만드세요.
+							{t('rules.emptyCreateFirst', $locale)}
 						{:else}
-							좌측에서 규칙을 선택하세요.
+							{t('rules.emptySelect', $locale)}
 						{/if}
 					</div>
 				{:else}
@@ -416,10 +420,10 @@
 						{#if !editMode}
 							<div class="top-actions">
 								<button class="btn-edit" onclick={enterEdit}>
-									{selectedContent && selectedContent.trim() ? '✎ 편집' : '+ 작성'}
+									{selectedContent && selectedContent.trim() ? `✎ ${t('detail.edit', $locale)}` : t('rules.writeBtn', $locale)}
 								</button>
-								<button class="btn-edit" onclick={openRename}>이름 변경</button>
-								<button class="btn-edit danger" onclick={askDeleteSelected}>삭제</button>
+								<button class="btn-edit" onclick={openRename}>{t('rules.rename', $locale)}</button>
+								<button class="btn-edit danger" onclick={askDeleteSelected}>{t('detail.delete', $locale)}</button>
 							</div>
 						{/if}
 					</div>
@@ -428,7 +432,7 @@
 					{#if selectedEntry}
 						<div class="meta-times">
 							<span class="meta-item">
-								<span class="meta-label">생성</span>
+								<span class="meta-label">{t('common.created', $locale)}</span>
 								<time
 									class="meta-val"
 									datetime={selectedEntry.created_at}
@@ -439,13 +443,13 @@
 							</span>
 							<span class="meta-sep">·</span>
 							<span class="meta-item">
-								<span class="meta-label">변경</span>
+								<span class="meta-label">{t('common.updated', $locale)}</span>
 								<time
 									class="meta-val"
 									datetime={selectedEntry.updated_at}
 									title={formatTs(selectedEntry.updated_at)}
 								>
-									{formatRelative(selectedEntry.updated_at)}
+									{formatRelative(selectedEntry.updated_at, undefined, $locale)}
 								</time>
 							</span>
 						</div>
@@ -456,14 +460,14 @@
 							<input
 								class="text-input"
 								type="text"
-								placeholder="새 slug"
+								placeholder={t('rules.newSlugPlaceholder', $locale)}
 								bind:value={renameSlug}
 								onkeydown={(e) => e.key === 'Enter' && submitRename()}
 							/>
 							{#if renameError}<p class="err">{renameError}</p>{/if}
 							<div class="actions">
-								<button class="btn-save" onclick={submitRename}>변경</button>
-								<button class="btn-cancel" onclick={cancelRename}>취소</button>
+								<button class="btn-save" onclick={submitRename}>{t('common.change', $locale)}</button>
+								<button class="btn-cancel" onclick={cancelRename}>{t('common.cancel', $locale)}</button>
 							</div>
 						</div>
 					{/if}
@@ -471,18 +475,18 @@
 					{#if editMode}
 						<div class="edit-form">
 							<div class="field-label">
-								<span>본문 (Markdown) — 첨부는 드래그&드랍 / Ctrl+V</span>
+								<span>{t('rules.bodyLabel', $locale)}</span>
 								<MarkdownEditor
 									bind:value={editText}
 									mediaOnly
-									onError={(msg) => (saveError = `첨부 업로드 실패: ${msg}`)}
+									onError={(msg) => (saveError = `${t('rules.attachUploadFailed', $locale)}: ${msg}`)}
 								/>
 							</div>
 							<div class="actions">
 								<button class="btn-save" onclick={save} disabled={saving}>
-									{saving ? '저장…' : '저장'}
+									{saving ? t('common.saving', $locale) : t('common.save', $locale)}
 								</button>
-								<button class="btn-cancel" onclick={cancelEdit} disabled={saving}> 취소 </button>
+								<button class="btn-cancel" onclick={cancelEdit} disabled={saving}> {t('common.cancel', $locale)} </button>
 							</div>
 							{#if saveError}<p class="err">{saveError}</p>{/if}
 						</div>
@@ -490,8 +494,8 @@
 						<MarkdownView source={selectedContent} />
 					{:else}
 						<div class="empty">
-							아직 작성된 본문이 없습니다.
-							<button class="link" onclick={enterEdit}>지금 작성</button>
+							{t('rules.noBodyYet', $locale)}
+							<button class="link" onclick={enterEdit}>{t('rules.writeNow', $locale)}</button>
 						</div>
 					{/if}
 					{#if !editMode}
@@ -507,9 +511,9 @@
 <!-- DEV-118: 규칙 삭제 확인 모달. -->
 <ConfirmDialog
 	open={confirmDeleteSlug !== null}
-	title="규칙 삭제"
-	message={`'${confirmDeleteSlug ?? ''}' 규칙을 삭제할까요?`}
-	confirmLabel="삭제"
+	title={t('rules.deleteTitle', $locale)}
+	message={`${t('rules.deleteMsgPre', $locale)}${confirmDeleteSlug ?? ''}${t('rules.deleteMsgPost', $locale)}`}
+	confirmLabel={t('detail.delete', $locale)}
 	danger
 	onconfirm={deleteSelected}
 	oncancel={() => (confirmDeleteSlug = null)}
@@ -518,9 +522,9 @@
 <!-- DEV-119: 편집중 다른 slug 선택 시 미저장 확인 모달. -->
 <ConfirmDialog
 	open={confirmDiscardSlug !== null}
-	title="편집중 이동"
-	message="편집 중인 변경 사항이 있습니다. 버리고 이동할까요?"
-	confirmLabel="버리고 이동"
+	title={t('rules.discardEditTitle', $locale)}
+	message={t('rules.discardEditMsg', $locale)}
+	confirmLabel={t('rules.discardAndLeave', $locale)}
 	danger
 	onconfirm={applyPendingSelect}
 	oncancel={() => (confirmDiscardSlug = null)}
