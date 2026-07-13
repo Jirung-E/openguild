@@ -4021,8 +4021,12 @@ fn change_status_with_noop_notice(
             println!("{}", json_str(&detail.quest));
         } else {
             println!(
-                "(이미 {} 상태입니다 — 변경 없음)",
-                colorize(&detail.quest.status_name_en, &detail.quest.status_color)
+                "{}",
+                tf!(
+                    "(이미 {} 상태입니다 — 변경 없음)",
+                    "(already in {} status — no change)",
+                    colorize(&detail.quest.status_name_en, &detail.quest.status_color)
+                )
             );
             print_quest_line(&detail.quest);
         }
@@ -4177,7 +4181,7 @@ fn handle_campaign(c: &Backend, json: bool, sub: CampaignCmd) -> Result<()> {
             if json {
                 println!("{}", json_str(&history));
             } else if history.is_empty() {
-                println!("(이력 없음)");
+                println!("{}", tf!("(이력 없음)", "(no history)"));
             } else {
                 for h in &history {
                     let old = h.old_value.as_deref().unwrap_or("∅");
@@ -4499,7 +4503,11 @@ fn print_quest_detail(d: &QuestDetail, json: bool) {
         );
     } else if let Some(p) = q.parent_quest_id {
         // parent_quest_id 는 있는데 detail.parent 가 None — soft-deleted 부모 등 비정상 case 대비 fallback.
-        println!("  {} : id={p} (불러올 수 없음)", colorize("parent", "#7ee787"));
+        println!(
+            "  {} : id={p} {}",
+            colorize("parent", "#7ee787"),
+            tf!("(불러올 수 없음)", "(could not be loaded)")
+        );
     }
     if let Some(desc) = &q.description
         && !desc.is_empty()
@@ -6229,7 +6237,10 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
             table,
         } => {
             if table && json {
-                return Err(anyhow!("--table 은 --json 과 함께 쓸 수 없습니다"));
+                return Err(anyhow!(tf!(
+                    "--table 은 --json 과 함께 쓸 수 없습니다",
+                    "--table cannot be used together with --json"
+                )));
             }
             let q = ListQuery {
                 r#type: vec_to_csv(type_prefix),
@@ -6315,7 +6326,7 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
             if json {
                 println!("{}", json_str(&history));
             } else if history.is_empty() {
-                println!("(이력 없음)");
+                println!("{}", tf!("(이력 없음)", "(no history)"));
             } else {
                 // DEV-038 follow-up:
                 // - status 값은 slug → name_en + status.color (DEV-042+).
@@ -6398,7 +6409,7 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
             if !tpl_tags.is_empty()
                 && let Err(e) = c.tag_set(&q.quest_id, tpl_tags)
             {
-                eprintln!("[openguild] warn: 템플릿 tags 적용 실패 — {e:#}");
+                eprintln!("[openguild] {}", tf!("warn: 템플릿 tags 적용 실패 — {e:#}", "warn: failed to apply template tags — {e:#}"));
             }
             // multi-line description 도 그대로 보여줘 사용자가 "잘렸다" 오해 방지.
             print_quest_full(&q, json);
@@ -6570,9 +6581,10 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
 
             // 실제 삭제는 --yes 필수
             if !yes {
-                return Err(anyhow!(
-                    "delete 는 위험한 작업입니다. 영향 확인은 --dry-run, 실제 실행은 --yes 를 명시하세요."
-                ));
+                return Err(anyhow!(tf!(
+                    "delete 는 위험한 작업입니다. 영향 확인은 --dry-run, 실제 실행은 --yes 를 명시하세요.",
+                    "delete is a destructive operation. Use --dry-run to preview the impact, --yes to actually run it."
+                )));
             }
 
             let id = detail.quest.id;
@@ -6630,7 +6642,10 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
                 .iter()
                 .find(|q| q.quest_id == slug)
                 .ok_or_else(|| {
-                    anyhow!("'{slug}' is not in the deleted list (또는 이미 alive)")
+                    anyhow!(tf!(
+                        "'{slug}' is not in the deleted list (또는 이미 alive)",
+                        "'{slug}' is not in the deleted list (or is already alive)"
+                    ))
                 })?;
             let restored = c.restore_quest(q.id)?;
             print_quest(&restored, json);
@@ -6639,8 +6654,13 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
             if let Some(target) = status {
                 // DEV-044: deprecated 변경 호출 — `move` 권장 알림.
                 eprintln!(
-                    "warning: `quest status <slug> <status>` 는 deprecated. \
-                     앞으로는 `quest move <slug> <status>` 사용 (혼란 방지)."
+                    "{}",
+                    tf!(
+                        "warning: `quest status <slug> <status>` 는 deprecated. \
+                         앞으로는 `quest move <slug> <status>` 사용 (혼란 방지).",
+                        "warning: `quest status <slug> <status>` is deprecated. \
+                         Use `quest move <slug> <status>` instead (avoids ambiguity)."
+                    )
                 );
                 change_status_with_noop_notice(c, &slug, &target, json)?;
             } else {
@@ -6685,7 +6705,10 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
             detach,
         } => {
             if detach && parent.is_some() {
-                return Err(anyhow!("--detach 와 parent 인자를 동시에 사용할 수 없음"));
+                return Err(anyhow!(tf!(
+                    "--detach 와 parent 인자를 동시에 사용할 수 없음",
+                    "--detach and the parent argument cannot be used together"
+                )));
             }
             let id = c.id_of(&slug)?;
             let parent_id = if detach {
@@ -6694,9 +6717,10 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
                 match parent {
                     Some(p) => Some(c.id_of(&p)?),
                     None => {
-                        return Err(anyhow!(
-                            "부모 슬러그를 지정하거나 --detach 를 사용하세요"
-                        ))
+                        return Err(anyhow!(tf!(
+                            "부모 슬러그를 지정하거나 --detach 를 사용하세요",
+                            "specify a parent slug or use --detach"
+                        )))
                     }
                 }
             };
@@ -6725,11 +6749,12 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
                     });
                     println!("{}", json_str(&payload));
                 } else {
+                    let none_label = tf!("(없음)", "(none)");
                     println!(
                         "{}  desired_due: {}  required_due: {}",
                         colorize(&q.quest_id, &q.type_color),
-                        q.desired_due.as_deref().unwrap_or("(없음)"),
-                        q.required_due.as_deref().unwrap_or("(없음)"),
+                        q.desired_due.as_deref().unwrap_or(&none_label),
+                        q.required_due.as_deref().unwrap_or(&none_label),
                     );
                 }
             } else {
@@ -6753,11 +6778,12 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
                     });
                     println!("{}", json_str(&payload));
                 } else {
+                    let none_label = tf!("(없음)", "(none)");
                     println!(
                         "{}  desired_due: {}  required_due: {}",
                         colorize(&q.quest_id, &q.type_color),
-                        q.desired_due.as_deref().unwrap_or("(없음)"),
-                        q.required_due.as_deref().unwrap_or("(없음)"),
+                        q.desired_due.as_deref().unwrap_or(&none_label),
+                        q.required_due.as_deref().unwrap_or(&none_label),
                     );
                 }
             }
@@ -6775,7 +6801,7 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
                         serde_json::json!({ "slug": slug, "tags": tags })
                     );
                 } else if tags.is_empty() {
-                    println!("(태그 없음)");
+                    println!("{}", tf!("(태그 없음)", "(no tags)"));
                 } else {
                     println!("{}", tags.join(" "));
                 }
@@ -6812,7 +6838,7 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
                 if json {
                     println!("{}", serde_json::json!({ "ok": true, "slug": slug, "tags": after }));
                 } else if after.is_empty() {
-                    println!("✓ {slug} tags: (없음)");
+                    println!("✓ {slug} tags: {}", tf!("(없음)", "(none)"));
                 } else {
                     println!("✓ {slug} tags: {}", after.join(" "));
                 }
@@ -6827,7 +6853,7 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
                 if json {
                     println!("{}", serde_json::json!({ "ok": true, "slug": slug, "tags": flat }));
                 } else if flat.is_empty() {
-                    println!("✓ {slug} tags: (모두 제거)");
+                    println!("✓ {slug} tags: {}", tf!("(모두 제거)", "(all removed)"));
                 } else {
                     println!("✓ {slug} tags: {}", flat.join(" "));
                 }
