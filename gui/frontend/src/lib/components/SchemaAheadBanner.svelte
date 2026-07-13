@@ -85,7 +85,11 @@
 </script>
 
 {#if isAhead && !dismissed}
+	<!-- BUG-139: 상단 in-flow 배너(레이아웃 밀어냄) → UpdateBanner 와 동일한
+	     플로팅 toast 패턴. UpdateBanner(우하단)/ToastHost(우상단)와 안 겹치게
+	     좌상단에 배치. -->
 	<div class="banner" role="alert">
+		<button class="btn-dismiss" onclick={dismiss} aria-label="닫기" title="닫기">×</button>
 		<div class="msg">
 			<strong>⚠ 이 길드 DB 가 현재 GUI 버전보다 새롭습니다</strong>
 			<span class="detail">
@@ -100,55 +104,59 @@
 				적용됨. 일부 데이터가 제대로 표시되지 않거나 reindex 가 실패할 수 있습니다.
 			</span>
 		</div>
-		<div class="actions">
-			<button class="btn-update" onclick={openRelease}> 최신 버전 받기 ↗ </button>
-			<button class="btn-dismiss" onclick={dismiss} aria-label="닫기" title="닫기">×</button>
-		</div>
+		<button class="btn-update" onclick={openRelease}> 최신 버전 받기 ↗ </button>
 	</div>
 {/if}
 
 <style>
+	/* BUG-139: UpdateBanner(.upd-toast, 우하단 fixed)와 동일한 플로팅 카드
+	   패턴 — 레이아웃을 밀어내지 않음. UpdateBanner/ToastHost 와 안 겹치게
+	   좌상단(top-left)에 배치. */
 	.banner {
+		position: fixed;
+		top: calc(1rem + var(--titlebar-h, 0px));
+		left: 1rem;
+		z-index: 60;
 		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		padding: 0.5rem 1rem;
-		background: color-mix(in srgb, var(--orange) 18%, transparent);
-		border-bottom: 1px solid var(--orange);
-		color: var(--orange);
+		flex-direction: column;
+		gap: 0.5rem;
+		max-width: calc(24rem * var(--popup-scale, 1));
+		padding: 0.85rem 2rem 0.85rem 1rem;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-left: 3px solid var(--orange);
+		border-radius: 8px;
+		box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
 		font-size: 0.85rem;
+		color: var(--text);
 	}
 	.msg {
 		display: flex;
 		flex-direction: column;
-		gap: 0.15rem;
-		flex: 1;
+		gap: 0.3rem;
 	}
 	.msg strong {
 		font-weight: 600;
+		color: var(--orange);
 	}
 	.detail {
 		font-size: 0.78rem;
-		color: var(--warning);
+		color: var(--text-muted);
 	}
 	.detail code {
-		background: rgba(0, 0, 0, 0.15);
+		background: color-mix(in srgb, var(--text) 10%, transparent);
 		padding: 0 0.25rem;
 		border-radius: 3px;
 		font-size: 0.85em;
-		color: var(--orange);
-	}
-	.actions {
-		display: flex;
-		align-items: center;
-		gap: 0.4rem;
+		color: var(--text);
 	}
 	.btn-update {
+		align-self: flex-start;
 		background: var(--warning);
 		color: var(--bg);
 		border: none;
 		border-radius: 4px;
-		padding: 0.25rem 0.75rem;
+		padding: 0.3rem 0.85rem;
 		font-size: 0.78rem;
 		font-weight: 600;
 		cursor: pointer;
@@ -157,15 +165,18 @@
 		background: color-mix(in srgb, var(--warning) 80%, white);
 	}
 	.btn-dismiss {
+		position: absolute;
+		top: 0.4rem;
+		right: 0.5rem;
 		background: none;
 		border: none;
-		color: var(--orange);
+		color: var(--text-muted);
 		cursor: pointer;
 		font-size: 1.1rem;
 		line-height: 1;
 		padding: 0 0.3rem;
 	}
 	.btn-dismiss:hover {
-		color: color-mix(in srgb, var(--warning) 80%, white);
+		color: var(--text);
 	}
 </style>
