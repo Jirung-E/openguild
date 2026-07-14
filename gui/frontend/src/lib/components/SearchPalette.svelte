@@ -58,21 +58,24 @@
 		void loadAll();
 	});
 
-	// DEV-255 회귀 수정(2차): 위 onWindowClick 을 `<svelte:window onclick>` 으로
-	// 붙이면 컴포넌트 생성 즉시(=같은 tick) 리스너가 등록된다. 그런데 팔레트를
-	// 여는 그 클릭(타이틀바의 검색 pill) 자체가 아직 window 까지 버블링 중이던
-	// 이벤트라, 새로 등록된 리스너가 그 "여는 클릭"에도 반응해 열리자마자 다시
-	// 닫혀버렸다(afterNavigate 'enter' 버그와 동일 계열 — "검색 팔레트 안
-	// 열림" 재현). 리스너 등록을 한 tick 미뤄(setTimeout 0) 여는 클릭의 버블링이
-	// 다 끝난 뒤에만 붙는다.
+	// DEV-255 회귀 수정(3차): `<svelte:window onclick>` 을 쓰면 컴포넌트 생성
+	// 즉시(=같은 tick) 리스너가 등록된다. 그런데 팔레트를 여는 그 클릭(타이틀바
+	// 검색 pill) 자체가 아직 window 까지 버블링 중이던 이벤트라, 새로 등록된
+	// 리스너가 그 "여는 클릭"에도 반응해 열리자마자 다시 닫혀버렸다("검색
+	// 팔레트 안 열림" 재현). setTimeout(0) 지연으로 임시 봉합했었으나 — 왜
+	// 동작하는지 불분명한 타이밍 hack이라 근본 원인에 맞는 방식으로 교체.
+	//
+	// 근본 원인은 이벤트 종류: 한 번의 클릭은 mousedown → mouseup → click
+	// 순서로 발생하고 그중 click 이 가장 마지막. "여는 클릭"과 같은 이벤트
+	// 종류(click)로 바깥-클릭 감지를 걸면 그 이벤트가 window 까지 버블링되는
+	// 도중에 리스너가 새로 붙어 자기 자신을 잡는다. mousedown 으로 감지하면
+	// 그 시점엔 이미 "여는 클릭"의 mousedown 이 완전히 끝난 뒤라 새로 등록된
+	// 리스너가 되짚어 잡을 이벤트가 없음 — 다음 실제 mousedown 부터만 반응.
+	// 지연/타이머 없이 동작 원리로 해결(Radix/Headless UI 등도 outside-press
+	// 감지에 pointerdown/mousedown 을 쓰는 이유와 동일).
 	onMount(() => {
-		const id = setTimeout(() => {
-			window.addEventListener('click', onWindowClick);
-		}, 0);
-		return () => {
-			clearTimeout(id);
-			window.removeEventListener('click', onWindowClick);
-		};
+		window.addEventListener('mousedown', onWindowMouseDown);
+		return () => window.removeEventListener('mousedown', onWindowMouseDown);
 	});
 
 	// DEV-255 버그 수정: selIndex 가 바뀔 때마다(방향키 이동) 해당 행이 보이도록
@@ -87,7 +90,7 @@
 	// DEV-255 버그 수정: 타이틀바(메뉴 버튼 포함)를 눌러도 팔레트가 안 꺼지던
 	// 문제 — 기존 backdrop 은 titlebar 영역을 제외(inset: titlebar-h)해서
 	// 그 위 클릭이 안 잡혔다. window 레벨로 팔레트 바깥 클릭을 감지해 닫는다.
-	function onWindowClick(e: MouseEvent) {
+	function onWindowMouseDown(e: MouseEvent) {
 		const t = e.target as HTMLElement;
 		if (!t.closest('.palette')) onclose();
 	}
@@ -280,7 +283,8 @@
 </script>
 
 <!-- DEV-255 버그 수정: 팔레트 바깥(타이틀바 포함) 아무 데나 클릭해도 닫힘.
-     리스너는 위 onMount 에서 한 tick 지연 등록(여는 클릭과의 충돌 방지). -->
+     리스너(mousedown, 위 onMount)는 여는 클릭과 이벤트 종류가 달라 자기
+     자신을 잡지 않음 — 상세 이유는 onMount 주석 참고. -->
 
 <!-- 바깥 클릭 / Esc 로 닫기. backdrop 은 투명 — 콘텐츠를 어둡게 덮지 않음. -->
 <div
