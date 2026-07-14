@@ -73,9 +73,20 @@
 	// 리스너가 되짚어 잡을 이벤트가 없음 — 다음 실제 mousedown 부터만 반응.
 	// 지연/타이머 없이 동작 원리로 해결(Radix/Headless UI 등도 outside-press
 	// 감지에 pointerdown/mousedown 을 쓰는 이유와 동일).
+	//
+	// DEV-255 회귀 수정(4차 — "타이틀바 클릭으로 안 닫힘"): Tauri 가 주입하는
+	// drag-region 스크립트(tauri src/window/scripts/drag.js)가 titlebar
+	// (data-tauri-drag-region) 위 mousedown 에서 `e.stopImmediatePropagation()`
+	// 을 호출한다. 그 핸들러는 document(버블)에 붙어 있어, window(버블,
+	// document 다음)에 붙인 우리 리스너에는 이벤트가 아예 도달하지 않았음 —
+	// 타이틀바 빈 영역 클릭이 팔레트를 못 닫던 진짜 원인. capture 단계는
+	// window → document → target 순서로 어떤 핸들러보다도 먼저 실행되고
+	// stopImmediatePropagation 의 영향도 받지 않으므로 capture 로 등록한다.
+	// (여는 클릭의 mousedown 은 mount 이전에 이미 끝났으므로 capture 여도
+	// 자기 자신을 닫는 문제는 재발하지 않음.)
 	onMount(() => {
-		window.addEventListener('mousedown', onWindowMouseDown);
-		return () => window.removeEventListener('mousedown', onWindowMouseDown);
+		window.addEventListener('mousedown', onWindowMouseDown, { capture: true });
+		return () => window.removeEventListener('mousedown', onWindowMouseDown, { capture: true });
 	});
 
 	// DEV-255 버그 수정: selIndex 가 바뀔 때마다(방향키 이동) 해당 행이 보이도록
