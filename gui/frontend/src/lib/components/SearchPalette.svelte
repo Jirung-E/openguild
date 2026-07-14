@@ -21,9 +21,11 @@
 	import { libraryApi } from '$lib/api/library';
 	import MarkdownView from './MarkdownView.svelte';
 	// 크로스링크(`[[kind:ID]]`)와 동일한 네임스페이스 별칭 — 검색 범위 좁히기.
-	import { KIND_ALIASES, KIND_LABEL } from '$lib/stores/questIndex';
+	import { KIND_ALIASES } from '$lib/stores/questIndex';
 	// DEV-255: 결과 열기 방식(미리보기/자식윈도우/페이지이동) 선택 — 공용 헬퍼.
 	import { openInWindow, openInPage } from '$lib/utils/open-item';
+	// DEV-205(3차): i18n — KIND_LABEL(ko 고정) 대신 t() 기반 kindLabel().
+	import { locale, t } from '$lib/stores/locale';
 
 	let { onclose }: { onclose: () => void } = $props();
 
@@ -34,8 +36,18 @@
 		title: string;
 		tags: string[];
 		href: string;
-		meta: string; // 상태 등 짧은 부가 정보
+		// 상태 등 짧은 부가 정보 — 언어 토글에 반응하도록 양쪽 언어를 들고
+		// 렌더 시점에 고른다(목록은 loadAll 1회 적재라 재계산이 안 됨).
+		metaKo: string;
+		metaEn: string;
 		load: () => Promise<string>; // 미리보기 본문(markdown) 지연 로더
+	}
+
+	function kindLabel(k: Kind): string {
+		return t(`kind.${k}`, $locale);
+	}
+	function metaOf(it: Item): string {
+		return $locale === 'en' ? it.metaEn : it.metaKo;
 	}
 
 	let all = $state<Item[]>([]);
@@ -102,8 +114,8 @@
 	// 문제 — 기존 backdrop 은 titlebar 영역을 제외(inset: titlebar-h)해서
 	// 그 위 클릭이 안 잡혔다. window 레벨로 팔레트 바깥 클릭을 감지해 닫는다.
 	function onWindowMouseDown(e: MouseEvent) {
-		const t = e.target as HTMLElement;
-		if (!t.closest('.palette')) onclose();
+		const target = e.target as HTMLElement;
+		if (!target.closest('.palette')) onclose();
 	}
 
 	// DEV-255 버그 수정: 팔레트가 열린 채로 뒤로/앞으로가기(타이틀바 버튼·
@@ -138,7 +150,8 @@
 					// BUG(발견 2026-07-14): 이전엔 q.id(숫자 row id) 사용 — [id] 라우트는
 					// getBySlug(quest_id 문자열) 로 조회해 "이동"/"자식창" 모두 빈 화면.
 					href: `/quests/${q.quest_id}`,
-					meta: q.status_name_ko,
+					metaKo: q.status_name_ko || q.status_name_en,
+					metaEn: q.status_name_en || q.status_name_ko,
 					load: async () => (await questsApi.get(q.id)).description ?? ''
 				});
 			}
@@ -149,7 +162,8 @@
 					title: c.title,
 					tags: [],
 					href: `/campaigns/${encodeURIComponent(c.campaign_slug)}`,
-					meta: String(c.status),
+					metaKo: String(c.status),
+					metaEn: String(c.status),
 					load: async () => (await campaignsApi.get(c.campaign_slug)).description ?? ''
 				});
 			}
@@ -161,7 +175,8 @@
 					title: '',
 					tags: r.tags ?? [],
 					href: `/rules?slug=${encodeURIComponent(r.slug)}`,
-					meta: '규칙',
+					metaKo: '규칙',
+					metaEn: 'Rule',
 					load: async () => r.content ?? ''
 				});
 			}
@@ -172,7 +187,8 @@
 					title: b.title,
 					tags: b.tags ?? [],
 					href: `/library?id=${encodeURIComponent(b.book_id)}`,
-					meta: '도서관',
+					metaKo: '도서관',
+					metaEn: 'Library',
 					load: async () => (await libraryApi.get(b.book_id)).body ?? ''
 				});
 			}
@@ -206,14 +222,14 @@
 		if (term.startsWith('#')) {
 			const tag = term.slice(1).toLowerCase();
 			if (!tag) return pool.filter((i) => i.tags.length > 0);
-			return pool.filter((i) => i.tags.some((t) => t.toLowerCase().includes(tag)));
+			return pool.filter((i) => i.tags.some((tg) => tg.toLowerCase().includes(tag)));
 		}
 		const q = term.toLowerCase();
 		return pool.filter(
 			(i) =>
 				i.title.toLowerCase().includes(q) ||
 				i.label.toLowerCase().includes(q) ||
-				i.tags.some((t) => t.toLowerCase().includes(q))
+				i.tags.some((tg) => tg.toLowerCase().includes(q))
 		);
 	});
 
@@ -228,9 +244,9 @@
 		previewBody = '';
 		try {
 			previewBody = await it.load();
-			if (!previewBody.trim()) previewBody = '_(본문 없음)_';
+			if (!previewBody.trim()) previewBody = t('palette.emptyBody', $locale);
 		} catch {
-			previewBody = '_미리보기를 불러오지 못했습니다._';
+			previewBody = t('palette.previewLoadFail', $locale);
 		} finally {
 			previewLoading = false;
 		}
@@ -302,30 +318,30 @@
 	class="backdrop"
 	role="button"
 	tabindex="-1"
-	aria-label="검색 닫기"
+	aria-label={t('palette.closeAria', $locale)}
 	onclick={onclose}
 	onkeydown={(e) => e.key === 'Escape' && onclose()}
 ></div>
 
-<div class="palette" role="dialog" aria-label="문서 검색">
+<div class="palette" role="dialog" aria-label={t('palette.dialogAria', $locale)}>
 	{#if !preview}
 		<div class="input-wrap">
 			{#if scopeKind}
-				<span class="scope-chip {scopeKind}">{KIND_LABEL[scopeKind]}만</span>
+				<span class="scope-chip {scopeKind}">{kindLabel(scopeKind)}{t('palette.scopeOnly', $locale)}</span>
 			{/if}
 			<input
 				bind:this={inputEl}
 				bind:value={query}
 				onkeydown={onKey}
-				placeholder="검색어 · 범위(rules: · quest: …) · #태그"
+				placeholder={t('palette.placeholder', $locale)}
 				spellcheck="false"
 			/>
 		</div>
 		<div class="rows" bind:this={rowsEl}>
 			{#if loading}
-				<div class="empty">불러오는 중…</div>
+				<div class="empty">{t('palette.loading', $locale)}</div>
 			{:else if filtered.length === 0}
-				<div class="empty">검색 결과 없음</div>
+				<div class="empty">{t('palette.noResults', $locale)}</div>
 			{:else}
 				{#each filtered as it, i (it.kind + it.label)}
 					<!-- DEV-255: 행 = 라벨(기본 클릭 = 미리보기) + 열기 방식 아이콘 3개(항상 노출). -->
@@ -334,29 +350,29 @@
 						<button
 							class="row-main"
 							onclick={() => openPreview(it)}
-							title={displayName(it) + (it.tags.length ? '  ' + it.tags.map((t) => '#' + t).join(' ') : '')}
+							title={displayName(it) + (it.tags.length ? '  ' + it.tags.map((tg) => '#' + tg).join(' ') : '')}
 						>
-							<span class="ptype {it.kind}">{KIND_LABEL[it.kind]}</span>
+							<span class="ptype {it.kind}">{kindLabel(it.kind)}</span>
 							<span class="ptitle">{displayName(it)}</span>
 							{#if it.tags.length}
-								<span class="ptags">{it.tags.map((t) => '#' + t).join(' ')}</span>
+								<span class="ptags">{it.tags.map((tg) => '#' + tg).join(' ')}</span>
 							{/if}
 						</button>
 						<div class="row-actions">
-							<button class="row-act" onclick={() => openPreview(it)} title="미리보기" aria-label="미리보기">
+							<button class="row-act" onclick={() => openPreview(it)} title={t('palette.preview', $locale)} aria-label={t('palette.preview', $locale)}>
 								<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 									<path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8Z" />
 									<circle cx="8" cy="8" r="1.7" />
 								</svg>
 							</button>
-							<button class="row-act" onclick={() => windowItem(it)} title="새 창으로 열기" aria-label="새 창으로 열기">
+							<button class="row-act" onclick={() => windowItem(it)} title={t('palette.openWindow', $locale)} aria-label={t('palette.openWindow', $locale)}>
 								<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 									<path d="M6 3H3.3a.8.8 0 0 0-.8.8v8.4a.8.8 0 0 0 .8.8h8.4a.8.8 0 0 0 .8-.8V10" />
 									<path d="M9 2.5h4.5V7" />
 									<path d="M13.5 2.5 7.2 8.8" />
 								</svg>
 							</button>
-							<button class="row-act" onclick={() => goItem(it)} title="페이지로 이동" aria-label="페이지로 이동">
+							<button class="row-act" onclick={() => goItem(it)} title={t('palette.goPage', $locale)} aria-label={t('palette.goPage', $locale)}>
 								<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 									<path d="M2.5 8h11" />
 									<path d="M9 4.2 12.8 8 9 11.8" />
@@ -369,31 +385,31 @@
 		</div>
 	{:else}
 		<div class="dp-head">
-			<span class="ptype {preview.kind}">{KIND_LABEL[preview.kind]}</span>
+			<span class="ptype {preview.kind}">{kindLabel(preview.kind)}</span>
 			<span class="dp-title" title={displayName(preview)}>{displayName(preview)}</span>
-			<button class="dp-x" onclick={() => (preview = null)} title="목록으로 (Esc)">✕</button>
+			<button class="dp-x" onclick={() => (preview = null)} title={t('palette.backToListTitle', $locale)}>✕</button>
 		</div>
 		<div class="dp-meta">
-			<span>{preview.meta}</span>
+			<span>{metaOf(preview)}</span>
 			{#if preview.tags.length}
-				<span class="tag">{preview.tags.map((t) => '#' + t).join(' ')}</span>
+				<span class="tag">{preview.tags.map((tg) => '#' + tg).join(' ')}</span>
 			{/if}
 		</div>
 		<div class="dp-body" style="height:{previewH}px">
 			{#if previewLoading}
-				<div class="empty">불러오는 중…</div>
+				<div class="empty">{t('palette.loading', $locale)}</div>
 			{:else}
 				<MarkdownView source={previewBody} />
 			{/if}
 		</div>
 		<div class="dp-foot">
-			<button class="dp-btn" onclick={() => (preview = null)}>← 목록</button>
+			<button class="dp-btn" onclick={() => (preview = null)}>{t('palette.backToList', $locale)}</button>
 			<!-- DEV-255: 미리보기에서도 자식윈도우/페이지이동으로 전환 가능. -->
-			<button class="dp-btn" onclick={() => preview && windowItem(preview)}>새 창으로 열기</button>
-			<button class="dp-btn primary" onclick={() => preview && goItem(preview)}>페이지로 이동 →</button>
+			<button class="dp-btn" onclick={() => preview && windowItem(preview)}>{t('palette.openWindow', $locale)}</button>
+			<button class="dp-btn primary" onclick={() => preview && goItem(preview)}>{t('palette.goPageArrow', $locale)}</button>
 		</div>
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div class="dp-resize" onmousedown={startResize} title="아래로 드래그해 크기 조절"></div>
+		<div class="dp-resize" onmousedown={startResize} title={t('palette.resizeHandle', $locale)}></div>
 	{/if}
 </div>
 

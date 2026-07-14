@@ -1039,7 +1039,7 @@
 						<span class="meta-item">
 							<span class="meta-label">{t('library.updated', $locale)}</span>
 							<time class="meta-val" datetime={selected.updated_at} title={formatTs(selected.updated_at)}>
-								{formatRelative(selected.updated_at)}
+								{formatRelative(selected.updated_at, undefined, $locale)}
 							</time>
 						</span>
 					</div>

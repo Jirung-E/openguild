@@ -393,6 +393,7 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'common.no': { ko: '아니요', en: 'No' },
 	'common.close': { ko: '닫기', en: 'Close' },
 	'common.pickDate': { ko: '날짜 선택', en: 'Pick date' },
+	'common.today': { ko: '오늘', en: 'Today' },
 	'common.copy': { ko: '복사', en: 'Copy' },
 	'common.change': { ko: '변경', en: 'Change' },
 	'common.clearBtn': { ko: '× 해제', en: '× Clear' },
@@ -966,7 +967,34 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'library.sort.title': { ko: '이름', en: 'Title' },
 	'library.sort.updated': { ko: '수정', en: 'Updated' },
 	'library.deleteFolderMessagePre': { ko: "폴더 '", en: "Delete folder '" },
-	'library.deleteFolderMessagePost': { ko: "' 를 삭제할까요? (비어 있어야 삭제 가능)", en: "'? (must be empty to delete)" }
+	'library.deleteFolderMessagePost': { ko: "' 를 삭제할까요? (비어 있어야 삭제 가능)", en: "'? (must be empty to delete)" },
+
+	// DEV-205(3차): 검색 팔레트(SearchPalette) + 미리보기 팝업.
+	'kind.quest': { ko: '퀘스트', en: 'Quest' },
+	'kind.campaign': { ko: '캠페인', en: 'Campaign' },
+	'kind.rule': { ko: '규칙', en: 'Rule' },
+	'kind.book': { ko: '도서관', en: 'Library' },
+	'palette.closeAria': { ko: '검색 닫기', en: 'Close search' },
+	'palette.dialogAria': { ko: '문서 검색', en: 'Search documents' },
+	'palette.scopeOnly': { ko: '만', en: ' only' },
+	'palette.placeholder': {
+		ko: '검색어 · 범위(rules: · quest: …) · #태그',
+		en: 'Search · scope (rules: · quest: …) · #tag'
+	},
+	'palette.loading': { ko: '불러오는 중…', en: 'Loading…' },
+	'palette.noResults': { ko: '검색 결과 없음', en: 'No results' },
+	'palette.preview': { ko: '미리보기', en: 'Preview' },
+	'palette.openWindow': { ko: '새 창으로 열기', en: 'Open in new window' },
+	'palette.goPage': { ko: '페이지로 이동', en: 'Go to page' },
+	'palette.backToListTitle': { ko: '목록으로 (Esc)', en: 'Back to list (Esc)' },
+	'palette.backToList': { ko: '← 목록', en: '← List' },
+	'palette.goPageArrow': { ko: '페이지로 이동 →', en: 'Go to page →' },
+	'palette.emptyBody': { ko: '_(본문 없음)_', en: '_(no content)_' },
+	'palette.previewLoadFail': {
+		ko: '_미리보기를 불러오지 못했습니다._',
+		en: '_Failed to load preview._'
+	},
+	'palette.resizeHandle': { ko: '아래로 드래그해 크기 조절', en: 'Drag down to resize' }
 };
 
 /** 현재 locale 기준 번역. 누락 키는 ko 원문 그대로(안전한 fallback). */

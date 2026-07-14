@@ -30,6 +30,8 @@
 	import { crossLinkAutocomplete } from '$lib/utils/editor-links';
 	// DEV-205(2차): i18n.
 	import { locale, t } from '$lib/stores/locale';
+	// DEV-205(3차): 네이티브 date/month input(OS 로케일 고정) → 언어 반응 DateField.
+	import DateField from '$lib/components/DateField.svelte';
 
 	type Unit = 'day' | 'week' | 'month' | 'range';
 	const UNITS: Unit[] = ['day', 'week', 'month', 'range'];
@@ -86,10 +88,11 @@
 		return `${from} ~ ${to}`;
 	});
 
-	// 월 뷰용 — <input type="month"> 는 'YYYY-MM' 값을 쓰므로 anchor 와 변환.
+	// 월 뷰용 — DateField(mode="month") 는 'YYYY-MM' 값을 쓰므로 anchor 와 변환.
+	// DEV-205(3차): 네이티브 <input type="month"> 는 표기/팝업이 OS 로케일 고정
+	// (앱 언어 무시) — 커스텀 달력 팝업을 가진 DateField 로 교체.
 	const anchorMonth = $derived(anchor.slice(0, 7));
-	function onMonthInput(e: Event) {
-		const v = (e.currentTarget as HTMLInputElement).value;
+	function onMonthInput(v: string) {
 		if (!/^\d{4}-\d{2}$/.test(v)) return; // 지움 등 — 무시.
 		anchor = `${v}-01`;
 		syncUrl();
@@ -340,41 +343,34 @@
 			<div class="nav">
 				{#if unit === 'range'}
 					<!-- 임의 구간 (admin 요청) — 시작/끝 날짜 직접 지정. -->
-					<input
-						class="anchor-date"
-						type="date"
+					<DateField
 						bind:value={rangeFrom}
-						onchange={onRangeInput}
-						aria-label={t('worklogPage.rangeStartAria', $locale)}
+						onpick={onRangeInput}
+						ariaLabel={t('worklogPage.rangeStartAria', $locale)}
 					/>
 					<span class="range-tilde">~</span>
-					<input
-						class="anchor-date"
-						type="date"
+					<DateField
 						bind:value={rangeTo}
-						onchange={onRangeInput}
-						aria-label={t('worklogPage.rangeEndAria', $locale)}
+						onpick={onRangeInput}
+						ariaLabel={t('worklogPage.rangeEndAria', $locale)}
 					/>
 				{:else}
 					<button onclick={() => step(-1)} aria-label={t('worklogPage.prevAria', $locale)}>◀</button>
 					{#if unit === 'month'}
-						<!-- 월 뷰는 native month picker — 월만 고름 (admin 요청). -->
-						<input
-							class="anchor-date"
-							type="month"
+						<!-- 월 뷰는 월만 고름 (admin 요청) — DateField month 모드. -->
+						<DateField
+							mode="month"
 							value={anchorMonth}
-							onchange={onMonthInput}
-							aria-label={t('worklogPage.monthSelectAria', $locale)}
+							onpick={onMonthInput}
+							ariaLabel={t('worklogPage.monthSelectAria', $locale)}
 						/>
 					{:else}
-						<!-- 날짜 직접 입력 (admin 요청) — quest 기한 편집과 동일한
-						     native date input. 주 뷰에선 고른 날짜가 속한 주로 이동. -->
-						<input
-							class="anchor-date"
-							type="date"
+						<!-- 날짜 직접 입력 (admin 요청) — quest 기한 편집과 동일한 DateField.
+						     주 뷰에선 고른 날짜가 속한 주로 이동. -->
+						<DateField
 							bind:value={anchor}
-							onchange={onAnchorInput}
-							aria-label={t('worklogPage.dateSelectAria', $locale)}
+							onpick={onAnchorInput}
+							ariaLabel={t('worklogPage.dateSelectAria', $locale)}
 						/>
 					{/if}
 					{#if unit === 'week'}
@@ -541,15 +537,6 @@
 		font-weight: 600;
 		min-width: 7.5rem;
 		text-align: center;
-	}
-	/* 날짜 직접 입력 — quest 기한 편집 input 과 같은 native date/month. */
-	.anchor-date {
-		background: var(--bg);
-		border: 1px solid var(--border);
-		color: var(--text);
-		border-radius: 6px;
-		padding: 0.15rem 0.4rem;
-		font-size: 0.82rem;
 	}
 	.range-tilde {
 		color: var(--text-muted);
