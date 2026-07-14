@@ -58,6 +58,23 @@
 		void loadAll();
 	});
 
+	// DEV-255 회귀 수정(2차): 위 onWindowClick 을 `<svelte:window onclick>` 으로
+	// 붙이면 컴포넌트 생성 즉시(=같은 tick) 리스너가 등록된다. 그런데 팔레트를
+	// 여는 그 클릭(타이틀바의 검색 pill) 자체가 아직 window 까지 버블링 중이던
+	// 이벤트라, 새로 등록된 리스너가 그 "여는 클릭"에도 반응해 열리자마자 다시
+	// 닫혀버렸다(afterNavigate 'enter' 버그와 동일 계열 — "검색 팔레트 안
+	// 열림" 재현). 리스너 등록을 한 tick 미뤄(setTimeout 0) 여는 클릭의 버블링이
+	// 다 끝난 뒤에만 붙는다.
+	onMount(() => {
+		const id = setTimeout(() => {
+			window.addEventListener('click', onWindowClick);
+		}, 0);
+		return () => {
+			clearTimeout(id);
+			window.removeEventListener('click', onWindowClick);
+		};
+	});
+
 	// DEV-255 버그 수정: selIndex 가 바뀔 때마다(방향키 이동) 해당 행이 보이도록
 	// 스크롤. rowsEl.children 순서는 filtered 순서와 항상 일치.
 	$effect(() => {
@@ -262,8 +279,8 @@
 	}
 </script>
 
-<!-- DEV-255 버그 수정: 팔레트 바깥(타이틀바 포함) 아무 데나 클릭해도 닫힘. -->
-<svelte:window onclick={onWindowClick} />
+<!-- DEV-255 버그 수정: 팔레트 바깥(타이틀바 포함) 아무 데나 클릭해도 닫힘.
+     리스너는 위 onMount 에서 한 tick 지연 등록(여는 클릭과의 충돌 방지). -->
 
 <!-- 바깥 클릭 / Esc 로 닫기. backdrop 은 투명 — 콘텐츠를 어둡게 덮지 않음. -->
 <div
