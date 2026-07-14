@@ -78,7 +78,13 @@
 	// DEV-255 버그 수정: 팔레트가 열린 채로 뒤로/앞으로가기(타이틀바 버튼·
 	// 마우스 사이드버튼·단축키 등 어떤 경로든)가 되면 팔레트가 남아있던 문제
 	// — 어떤 이유로든 라우트가 바뀌면 팔레트를 닫는다.
-	afterNavigate(() => {
+	// DEV-255 회귀 수정: `afterNavigate` 는 "컴포넌트가 mount 될 때도" 한 번
+	// 호출된다(SvelteKit 문서: "runs ... when the current component mounts,
+	// and also whenever we navigate") — 그 첫 호출(type === 'enter')까지
+	// onclose() 를 태워서 팔레트가 열리자마자 닫혀버렸다(검색 팔레트 안 열림
+	// 버그). 실제 라우트 전환(mount 이후)만 걸러서 닫는다.
+	afterNavigate((nav) => {
+		if (nav.type === 'enter') return;
 		onclose();
 	});
 
