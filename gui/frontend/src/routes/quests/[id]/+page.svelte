@@ -791,21 +791,6 @@
 		{:else}
 			<h1 class="title">{detail.title}</h1>
 
-			<!-- 권장 브랜치명 -->
-			<div class="branch-row">
-				<span class="branch-label">Branch</span>
-				<code class="branch-name"
-					>{detail.type_prefix}-{String(detail.number).padStart(3, '0')}</code
-				>
-				<button
-					class="copy-btn"
-					onclick={() =>
-						navigator.clipboard.writeText(
-							`${detail!.type_prefix}-${String(detail!.number).padStart(3, '0')}`
-						)}>{t('common.copy', $locale)}</button
-				>
-			</div>
-
 			<!-- 상태 변경 -->
 			<div class="status-row">
 				<span class="branch-label">{t('qd.statusChange', $locale)}</span>
@@ -1386,42 +1371,10 @@
 		line-height: 1.4;
 	}
 
-	.branch-row {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		margin-bottom: 0.75rem;
-		padding: 0.5rem 0.75rem;
-		background: var(--bg-elevated);
-		border: 1px solid var(--bg-subtle);
-		border-radius: 6px;
-	}
 	.branch-label {
 		font-size: 0.75rem;
 		color: var(--text-muted);
 		flex-shrink: 0;
-	}
-	.branch-name {
-		font-family: 'SFMono-Regular', Consolas, monospace;
-		font-size: 0.85rem;
-		color: var(--accent-secondary);
-		flex: 1;
-	}
-	.copy-btn {
-		padding: 0.15rem 0.6rem;
-		border: 1px solid var(--border);
-		border-radius: 4px;
-		background: transparent;
-		color: var(--text-muted);
-		font-size: 0.72rem;
-		cursor: pointer;
-		transition:
-			background 0.1s,
-			color 0.1s;
-	}
-	.copy-btn:hover {
-		background: var(--bg-subtle);
-		color: var(--text);
 	}
 
 	.status-row {
