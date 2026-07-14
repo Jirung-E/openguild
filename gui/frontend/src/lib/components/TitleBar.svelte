@@ -23,6 +23,9 @@
 	// DEV-205: 타이틀바 툴팁/메뉴 i18n.
 	import { locale, t } from '$lib/stores/locale';
 	import SearchPalette from './SearchPalette.svelte';
+	// DEV-255: 자식윈도우(검색 팔레트 "새 창으로 열기")는 단일 문서 보기라
+	// 뒤로/앞으로·☰메뉴·검색 팔레트가 필요 없음 — 판정에 따라 숨김.
+	import { isChildWindow } from '$lib/stores/windowKind';
 
 	let maximized = $state(false);
 
@@ -106,6 +109,9 @@
 	<!-- 앱 아이콘 — 장식(클릭 무동작). 드래그 영역의 일부. -->
 	<img class="tb-appicon" src="/title-icon.png" alt="" data-tauri-drag-region />
 
+	<!-- DEV-255: 자식윈도우(단일 문서 보기)는 홈/뒤로·앞으로/☰메뉴 전부 불필요
+	     — 다른 곳으로 이동할 일이 없는 창이라 통째로 숨김. -->
+	{#if !$isChildWindow}
 	<div class="tb-left">
 		<button class="tb-icon-btn" onclick={() => goto('/welcome')} title={t('titlebar.welcome', $locale)} aria-label={t('titlebar.welcome', $locale)}>
 			<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" aria-hidden="true">
@@ -165,9 +171,11 @@
 		</div>
 		{/if}
 	</div>
+	{/if}
 
-	<!-- 중앙: 길드 이름 pill = 검색 팔레트. 길드 컨텍스트 있을 때만. -->
-	{#if $guildContextActive && guildName}
+	<!-- 중앙: 길드 이름 pill = 검색 팔레트. 길드 컨텍스트 있을 때만, 자식윈도우
+	     에선 숨김(단일 문서 보기 창엔 전체 검색이 무의미). -->
+	{#if $guildContextActive && guildName && !$isChildWindow}
 		<button class="tb-search" class:open={searchOpen} onclick={() => (searchOpen = true)} title={t('titlebar.search', $locale)}>
 			<span class="tb-search-name">{guildName}</span>
 			{#if isRemote}
