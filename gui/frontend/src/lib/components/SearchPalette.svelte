@@ -14,7 +14,7 @@
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { goto } from '$app/navigation';
+	import { goto, afterNavigate } from '$app/navigation';
 	import { questsApi } from '$lib/api/quests';
 	import { campaignsApi } from '$lib/api/campaigns';
 	import { rulesApi } from '$lib/api/rules';
@@ -22,6 +22,8 @@
 	import MarkdownView from './MarkdownView.svelte';
 	// 크로스링크(`[[kind:ID]]`)와 동일한 네임스페이스 별칭 — 검색 범위 좁히기.
 	import { KIND_ALIASES, KIND_LABEL } from '$lib/stores/questIndex';
+	// DEV-255: 결과 열기 방식(미리보기/자식윈도우/페이지이동) 선택 — 공용 헬퍼.
+	import { openInWindow, openInPage } from '$lib/utils/open-item';
 
 	let { onclose }: { onclose: () => void } = $props();
 
@@ -41,6 +43,9 @@
 	let query = $state('');
 	let selIndex = $state(0);
 	let inputEl = $state<HTMLInputElement | null>(null);
+	// DEV-255 버그 수정: 방향키로 선택이 화면 밖으로 나가도 스크롤 안 되던 문제
+	// — 선택 행을 scrollIntoView 하기 위한 목록 컨테이너 참조.
+	let rowsEl = $state<HTMLDivElement | null>(null);
 
 	// 미리보기 상태.
 	let preview = $state<Item | null>(null);
@@ -51,6 +56,30 @@
 	onMount(() => {
 		inputEl?.focus();
 		void loadAll();
+	});
+
+	// DEV-255 버그 수정: selIndex 가 바뀔 때마다(방향키 이동) 해당 행이 보이도록
+	// 스크롤. rowsEl.children 순서는 filtered 순서와 항상 일치.
+	$effect(() => {
+		if (preview || !rowsEl) return;
+		const idx = selIndex;
+		const el = rowsEl.children[idx] as HTMLElement | undefined;
+		el?.scrollIntoView({ block: 'nearest' });
+	});
+
+	// DEV-255 버그 수정: 타이틀바(메뉴 버튼 포함)를 눌러도 팔레트가 안 꺼지던
+	// 문제 — 기존 backdrop 은 titlebar 영역을 제외(inset: titlebar-h)해서
+	// 그 위 클릭이 안 잡혔다. window 레벨로 팔레트 바깥 클릭을 감지해 닫는다.
+	function onWindowClick(e: MouseEvent) {
+		const t = e.target as HTMLElement;
+		if (!t.closest('.palette')) onclose();
+	}
+
+	// DEV-255 버그 수정: 팔레트가 열린 채로 뒤로/앞으로가기(타이틀바 버튼·
+	// 마우스 사이드버튼·단축키 등 어떤 경로든)가 되면 팔레트가 남아있던 문제
+	// — 어떤 이유로든 라우트가 바뀌면 팔레트를 닫는다.
+	afterNavigate(() => {
+		onclose();
 	});
 
 	async function loadAll() {
@@ -69,7 +98,9 @@
 					label: q.quest_id,
 					title: q.title,
 					tags: q.tags ?? [],
-					href: `/quests/${q.id}`,
+					// BUG(발견 2026-07-14): 이전엔 q.id(숫자 row id) 사용 — [id] 라우트는
+					// getBySlug(quest_id 문자열) 로 조회해 "이동"/"자식창" 모두 빈 화면.
+					href: `/quests/${q.quest_id}`,
 					meta: q.status_name_ko,
 					load: async () => (await questsApi.get(q.id)).description ?? ''
 				});
@@ -168,9 +199,16 @@
 		}
 	}
 
+	// DEV-255: 페이지로 이동 — 현재 창 라우팅 + 팔레트 닫기(기존 동작 유지).
 	function goItem(it: Item) {
-		goto(it.href);
+		openInPage(it.href);
 		onclose();
+	}
+
+	// DEV-255: 항목별 새 창 — 팔레트는 열어둔 채 유지(여러 개 동시에 띄우고
+	// 비교하는 사용 흐름 지원, AskUserQuestion 결정).
+	function windowItem(it: Item) {
+		void openInWindow(it.href, displayName(it));
 	}
 
 	// 표시 이름 — 규칙처럼 title 이 비면 label 만(중복/후행 공백 방지).
@@ -218,6 +256,9 @@
 	}
 </script>
 
+<!-- DEV-255 버그 수정: 팔레트 바깥(타이틀바 포함) 아무 데나 클릭해도 닫힘. -->
+<svelte:window onclick={onWindowClick} />
+
 <!-- 바깥 클릭 / Esc 로 닫기. backdrop 은 투명 — 콘텐츠를 어둡게 덮지 않음. -->
 <div
 	class="backdrop"
@@ -242,26 +283,49 @@
 				spellcheck="false"
 			/>
 		</div>
-		<div class="rows">
+		<div class="rows" bind:this={rowsEl}>
 			{#if loading}
 				<div class="empty">불러오는 중…</div>
 			{:else if filtered.length === 0}
 				<div class="empty">검색 결과 없음</div>
 			{:else}
 				{#each filtered as it, i (it.kind + it.label)}
-					<button
-						class="row"
-						class:sel={i === selIndex}
-						onmouseenter={() => (selIndex = i)}
-						onclick={() => openPreview(it)}
-						title={displayName(it) + (it.tags.length ? '  ' + it.tags.map((t) => '#' + t).join(' ') : '')}
-					>
-						<span class="ptype {it.kind}">{KIND_LABEL[it.kind]}</span>
-						<span class="ptitle">{displayName(it)}</span>
-						{#if it.tags.length}
-							<span class="ptags">{it.tags.map((t) => '#' + t).join(' ')}</span>
-						{/if}
-					</button>
+					<!-- DEV-255: 행 = 라벨(기본 클릭 = 미리보기) + 열기 방식 아이콘 3개(항상 노출). -->
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<div class="row" class:sel={i === selIndex} onmouseenter={() => (selIndex = i)}>
+						<button
+							class="row-main"
+							onclick={() => openPreview(it)}
+							title={displayName(it) + (it.tags.length ? '  ' + it.tags.map((t) => '#' + t).join(' ') : '')}
+						>
+							<span class="ptype {it.kind}">{KIND_LABEL[it.kind]}</span>
+							<span class="ptitle">{displayName(it)}</span>
+							{#if it.tags.length}
+								<span class="ptags">{it.tags.map((t) => '#' + t).join(' ')}</span>
+							{/if}
+						</button>
+						<div class="row-actions">
+							<button class="row-act" onclick={() => openPreview(it)} title="미리보기" aria-label="미리보기">
+								<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+									<path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8Z" />
+									<circle cx="8" cy="8" r="1.7" />
+								</svg>
+							</button>
+							<button class="row-act" onclick={() => windowItem(it)} title="새 창으로 열기" aria-label="새 창으로 열기">
+								<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+									<path d="M6 3H3.3a.8.8 0 0 0-.8.8v8.4a.8.8 0 0 0 .8.8h8.4a.8.8 0 0 0 .8-.8V10" />
+									<path d="M9 2.5h4.5V7" />
+									<path d="M13.5 2.5 7.2 8.8" />
+								</svg>
+							</button>
+							<button class="row-act" onclick={() => goItem(it)} title="페이지로 이동" aria-label="페이지로 이동">
+								<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+									<path d="M2.5 8h11" />
+									<path d="M9 4.2 12.8 8 9 11.8" />
+								</svg>
+							</button>
+						</div>
+					</div>
 				{/each}
 			{/if}
 		</div>
@@ -286,6 +350,8 @@
 		</div>
 		<div class="dp-foot">
 			<button class="dp-btn" onclick={() => (preview = null)}>← 목록</button>
+			<!-- DEV-255: 미리보기에서도 자식윈도우/페이지이동으로 전환 가능. -->
+			<button class="dp-btn" onclick={() => preview && windowItem(preview)}>새 창으로 열기</button>
 			<button class="dp-btn primary" onclick={() => preview && goItem(preview)}>페이지로 이동 →</button>
 		</div>
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -367,11 +433,23 @@
 		font-size: 0.82rem;
 		color: var(--text-faint);
 	}
+	/* DEV-255: 행 = row-main(라벨, 기본 클릭 = 미리보기) + row-actions(열기 방식
+	   아이콘 3개). 이전엔 행 전체가 하나의 <button> 이었으나 중첩 버튼이
+	   필요해져 컨테이너를 div 로 변경. */
 	.row {
+		display: flex;
+		align-items: stretch;
+		width: 100%;
+	}
+	.row.sel {
+		background: var(--nav-hover-bg);
+	}
+	.row-main {
 		display: flex;
 		align-items: center;
 		gap: 0.6rem;
-		width: 100%;
+		flex: 1;
+		min-width: 0;
 		padding: 0.45rem 0.8rem;
 		font-size: 0.85rem;
 		background: transparent;
@@ -379,8 +457,28 @@
 		cursor: pointer;
 		text-align: left;
 	}
-	.row.sel {
+	.row-actions {
+		flex: none;
+		display: flex;
+		align-items: center;
+		gap: 0.1rem;
+		padding: 0 0.5rem 0 0;
+	}
+	.row-act {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 22px;
+		height: 22px;
+		color: var(--text-faint);
+		background: transparent;
+		border: none;
+		border-radius: 4px;
+		cursor: pointer;
+	}
+	.row-act:hover {
 		background: var(--nav-hover-bg);
+		color: var(--text);
 	}
 	.ptype {
 		flex: none;

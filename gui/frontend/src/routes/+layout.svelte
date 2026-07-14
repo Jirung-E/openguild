@@ -32,13 +32,33 @@
 	// DEV-205: 앱 언어 → <html lang>. 네이티브 컨트롤(날짜 선택기의 년-월-일
 	// 표기 등)이 앱 언어를 따르도록.
 	import { locale } from '$lib/stores/locale';
+	// DEV-255: 자식윈도우(검색 팔레트 "새 창으로 열기") 판정 — 메뉴바/타이틀바
+	// 일부 숨김에 사용.
+	import { isChildWindow, detectWindowKind } from '$lib/stores/windowKind';
 	import '$lib/styles/global.css';
 
 	let { children } = $props();
 
 	// DEV-052 후속: /welcome 라우트에선 Nav (Board/List/Admin/+New Quest) 숨김.
 	// 길드 컨텍스트가 없는 상태에서 의미 없는 액션 노출 방지.
-	let showNav = $derived($page.url.pathname !== '/welcome');
+	// DEV-255: 자식윈도우(단일 문서 보기)도 메뉴바 불필요 — 함께 숨김.
+	let showNav = $derived($page.url.pathname !== '/welcome' && !$isChildWindow);
+
+	onMount(() => {
+		detectWindowKind();
+	});
+
+	// DEV-255: 검색 팔레트 "새 창으로 열기"가 만든 자식윈도우는 항상 `/`
+	// (어떤 서빙 방식에서도 항상 존재가 보장되는 경로)로 뜬 뒤, 이 쿼리
+	// 파라미터로 실제 목적지를 넘겨받아 client-side goto 로 이동한다 —
+	// Tauri 의 asset protocol 이 임의의 딥링크 경로를 직접 서빙해준다는
+	// 보장이 없어(SPA fallback 미보장), 항상 이미 존재하는 진입점을 먼저
+	// 로드한 뒤 앱 안에서 라우팅하는 편이 dev/HTTP/Tauri 어디서나 동일하게
+	// 동작한다.
+	onMount(() => {
+		const target = $page.url.searchParams.get('winTarget');
+		if (target) void goto(target, { replaceState: true });
+	});
 
 	// 커스텀 타이틀바 — decorations:false 는 Windows 만(tauri.windows.conf.json)
 	// 이므로 플랫폼 판별과 세트. 표시 시 sticky 요소들(Nav 등)의 top offset 용
