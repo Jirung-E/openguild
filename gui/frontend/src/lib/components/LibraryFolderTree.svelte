@@ -11,6 +11,8 @@
 <script lang="ts">
 	import type { FolderNode } from '$lib/utils/library-tree';
 	import LibraryFolderTree from './LibraryFolderTree.svelte';
+	// DEV-205(2차): i18n.
+	import { locale, t } from '$lib/stores/locale';
 
 	let {
 		node,
@@ -63,7 +65,7 @@
 		disabled={!hasChildren}
 		onclick={() => onToggleCollapse(node.path)}
 		aria-expanded={!collapsed}
-		aria-label={collapsed ? '폴더 펼치기' : '폴더 접기'}
+		aria-label={collapsed ? t('library.folderExpand', $locale) : t('library.folderCollapse', $locale)}
 	>
 		{collapsed ? '▶' : '▼'}
 	</button>
@@ -71,7 +73,7 @@
 	<span class="folder-name">{node.name}</span>
 	<button
 		class="folder-del"
-		title="폴더 삭제 (비어 있을 때만)"
+		title={t('library.folderDeleteTitle', $locale)}
 		onclick={() => onDeleteFolder(node.path)}
 	>
 		✕

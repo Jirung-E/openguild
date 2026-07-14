@@ -28,6 +28,8 @@
 	import { detectEnvironment } from '$lib/api/transport';
 	// DEV-074 fix17: release notes <pre> 도 overlay.
 	import OverlayScrollbar from './OverlayScrollbar.svelte';
+	// DEV-205(2차): i18n.
+	import { locale, t } from '$lib/stores/locale';
 
 	let notesEl: HTMLPreElement | undefined = $state(undefined);
 	const isTauri = detectEnvironment() === 'tauri';
@@ -69,16 +71,16 @@
 
 {#if isTauri && $updateState.status !== 'idle'}
 	<div class="upd-toast" class:err={$updateState.status === 'error'} role="status">
-		<button class="upd-toast-x" title="닫기" onclick={() => dismissUpdate()}>×</button>
+		<button class="upd-toast-x" title={t('update.close', $locale)} onclick={() => dismissUpdate()}>×</button>
 		{#if $updateState.status === 'checking'}
-			<p class="t-title">업데이트 확인 중…</p>
+			<p class="t-title">{t('update.checking', $locale)}</p>
 		{:else if $updateState.status === 'uptodate'}
-			<p class="t-title ok">최신 버전입니다.</p>
+			<p class="t-title ok">{t('update.uptodate', $locale)}</p>
 		{:else if $updateState.status === 'available'}
-			<p class="t-title">새 버전 <strong>{$updateState.version}</strong> 사용 가능</p>
+			<p class="t-title">{t('update.availablePre', $locale)}<strong>{$updateState.version}</strong>{t('update.availablePost', $locale)}</p>
 			{#if $updateState.notes}
 				<details>
-					<summary>릴리즈 노트</summary>
+					<summary>{t('update.releaseNotes', $locale)}</summary>
 					<pre bind:this={notesEl}>{$updateState.notes}</pre>
 					{#if notesEl}
 						<OverlayScrollbar target={notesEl} />
@@ -86,16 +88,16 @@
 				</details>
 			{/if}
 			<button class="btn-primary" onclick={() => downloadAndRelaunch()}>
-				지금 업데이트 (다운로드 + 재시작)
+				{t('update.installBtn', $locale)}
 			</button>
 		{:else if $updateState.status === 'downloading'}
 			<p class="t-title">
-				다운로드 중… {$updateState.pct !== null ? `${$updateState.pct}%` : ''}
+				{t('update.downloading', $locale)} {$updateState.pct !== null ? `${$updateState.pct}%` : ''}
 			</p>
 		{:else if $updateState.status === 'ready'}
-			<p class="t-title ok">설치 완료 — 재시작 중…</p>
+			<p class="t-title ok">{t('update.ready', $locale)}</p>
 		{:else if $updateState.status === 'error'}
-			<p class="t-title err">확인 실패</p>
+			<p class="t-title err">{t('update.error', $locale)}</p>
 			<p class="t-msg">{$updateState.message}</p>
 		{/if}
 	</div>

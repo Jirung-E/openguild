@@ -6,6 +6,8 @@
 -->
 <script lang="ts">
 	import type { QuestTagDef } from '$lib/types';
+	// DEV-205(2차): i18n.
+	import { locale, t } from '$lib/stores/locale';
 
 	let {
 		tags,
@@ -21,8 +23,8 @@
 
 	const tagDefMap = $derived(new Map(tagDefs.map((d) => [d.slug, d])));
 
-	function tagStyle(t: string): string {
-		const d = tagDefMap.get(t);
+	function tagStyle(tag: string): string {
+		const d = tagDefMap.get(tag);
 		if (!d || !d.color) return '';
 		const c = d.color.trim();
 		const hex = c.startsWith('#') ? c.slice(1) : c;
@@ -32,8 +34,8 @@
 		const b = parseInt(hex.slice(4, 6), 16);
 		return `background: rgba(${r},${g},${b},0.12); border-color: rgba(${r},${g},${b},0.4); color: ${c};`;
 	}
-	function tagTitle(t: string): string {
-		return tagDefMap.get(t)?.description || t;
+	function tagTitle(tag: string): string {
+		return tagDefMap.get(tag)?.description || tag;
 	}
 
 	let tagInputOpen = $state(false);
@@ -47,15 +49,15 @@
 			.filter((s) => s.length > 0);
 		if (tokens.length === 0) return;
 		const merged = [...tags];
-		for (const t of tokens) {
-			if (!merged.includes(t)) merged.push(t);
+		for (const tag of tokens) {
+			if (!merged.includes(tag)) merged.push(tag);
 		}
 		await onSetTags(merged);
 		newTagText = '';
 		tagInputOpen = false;
 	}
-	async function removeTag(t: string) {
-		await onSetTags(tags.filter((x) => x !== t));
+	async function removeTag(tag: string) {
+		await onSetTags(tags.filter((x) => x !== tag));
 	}
 </script>
 
@@ -64,22 +66,22 @@
 		<h2 class="section-title tag-label">Tags</h2>
 		{#if editable}
 			<button class="sec-add-btn" onclick={() => (tagInputOpen = !tagInputOpen)}>
-				{tagInputOpen ? '취소' : '+ 추가'}
+				{tagInputOpen ? t('tagPills.cancel', $locale) : t('tagPills.add', $locale)}
 			</button>
 		{/if}
 	</div>
 	{#if tags.length > 0}
 		<ul class="tag-pills">
-			{#each tags as t (t)}
+			{#each tags as tag (tag)}
 				<li>
-					<span class="tag-pill" style={tagStyle(t)} title={tagTitle(t)}>
-						{t}
+					<span class="tag-pill" style={tagStyle(tag)} title={tagTitle(tag)}>
+						{tag}
 						{#if editable}
 							<button
 								class="tag-rm"
-								title="태그 제거"
-								onclick={() => removeTag(t)}
-								aria-label={`${t} 제거`}>×</button
+								title={t('tagPills.removeTitle', $locale)}
+								onclick={() => removeTag(tag)}
+								aria-label={`${tag} ${t('tagPills.removeTitle', $locale)}`}>×</button
 							>
 						{/if}
 					</span>
@@ -87,17 +89,17 @@
 			{/each}
 		</ul>
 	{:else if !tagInputOpen}
-		<p class="no-desc">태그 없음.</p>
+		<p class="no-desc">{t('tagPills.none', $locale)}</p>
 	{/if}
 	{#if tagInputOpen && editable}
 		<form class="tag-add-form" onsubmit={addTagFromInput}>
 			<input
 				type="text"
 				bind:value={newTagText}
-				placeholder="새 태그 (공백 구분으로 여러 개)"
-				aria-label="새 태그"
+				placeholder={t('tagPills.newPlaceholder', $locale)}
+				aria-label={t('tagPills.newAria', $locale)}
 			/>
-			<button type="submit" disabled={!newTagText.trim()}>추가</button>
+			<button type="submit" disabled={!newTagText.trim()}>{t('tagPills.add', $locale)}</button>
 		</form>
 	{/if}
 </section>

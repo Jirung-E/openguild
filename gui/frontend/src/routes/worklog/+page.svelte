@@ -28,10 +28,11 @@
 	import { indentExtensions } from '$lib/utils/editor-indent';
 	import { editorSettings } from '$lib/stores/editorSettings';
 	import { crossLinkAutocomplete } from '$lib/utils/editor-links';
+	// DEV-205(2차): i18n.
+	import { locale, t } from '$lib/stores/locale';
 
 	type Unit = 'day' | 'week' | 'month' | 'range';
 	const UNITS: Unit[] = ['day', 'week', 'month', 'range'];
-	const UNIT_LABEL: Record<Unit, string> = { day: '일', week: '주', month: '월', range: '구간' };
 
 	let unit = $state<Unit>('day');
 	/** 기준 날짜 (일 뷰 = 그 날, 주/월 뷰 = 그 날이 속한 기간). */
@@ -267,14 +268,44 @@
 	}
 
 	// ─── 타임라인 표시 ───
-	const KIND_BADGE: Record<string, { label: string; cls: string }> = {
-		status: { label: '상태', cls: 'b-status' },
-		type: { label: '타입', cls: 'b-status' },
-		comment: { label: '댓글', cls: 'b-comment' },
-		created: { label: '생성', cls: 'b-created' },
+	// DEV-205(2차): 라벨은 locale 반응이어야 해서 const 맵 대신 함수로 — cls 는
+	// 언어 무관이라 그대로 정적 맵 유지.
+	const KIND_BADGE_CLS: Record<string, string> = {
+		status: 'b-status',
+		type: 'b-status',
+		comment: 'b-comment',
+		created: 'b-created',
 		// DEV-236: 토론 resolve/reopen 전환.
-		discussion: { label: '토론', cls: 'b-discussion' }
+		discussion: 'b-discussion'
 	};
+	function kindBadgeLabel(kind: string): string {
+		switch (kind) {
+			case 'status':
+				return t('worklogPage.badge.status', $locale);
+			case 'type':
+				return t('worklogPage.badge.type', $locale);
+			case 'comment':
+				return t('worklogPage.badge.comment', $locale);
+			case 'created':
+				return t('worklogPage.badge.created', $locale);
+			case 'discussion':
+				return t('worklogPage.badge.discussion', $locale);
+			default:
+				return kind;
+		}
+	}
+	function unitLabel(u: Unit): string {
+		switch (u) {
+			case 'day':
+				return t('worklogPage.unit.day', $locale);
+			case 'week':
+				return t('worklogPage.unit.week', $locale);
+			case 'month':
+				return t('worklogPage.unit.month', $locale);
+			case 'range':
+				return t('worklogPage.unit.range', $locale);
+		}
+	}
 	function activityHref(a: ActivityRow): string {
 		return /^C-\d+$/.test(a.slug)
 			? `/campaigns/${encodeURIComponent(a.slug)}`
@@ -299,11 +330,11 @@
 
 <div class="page">
 	<div class="hdr">
-		<h1>🕘 작업 기록</h1>
+		<h1>{t('worklogPage.title', $locale)}</h1>
 		<div class="controls">
 			<div class="unit">
 				{#each UNITS as u (u)}
-					<button class:on={unit === u} onclick={() => setUnit(u)}>{UNIT_LABEL[u]}</button>
+					<button class:on={unit === u} onclick={() => setUnit(u)}>{unitLabel(u)}</button>
 				{/each}
 			</div>
 			<div class="nav">
@@ -314,7 +345,7 @@
 						type="date"
 						bind:value={rangeFrom}
 						onchange={onRangeInput}
-						aria-label="구간 시작"
+						aria-label={t('worklogPage.rangeStartAria', $locale)}
 					/>
 					<span class="range-tilde">~</span>
 					<input
@@ -322,10 +353,10 @@
 						type="date"
 						bind:value={rangeTo}
 						onchange={onRangeInput}
-						aria-label="구간 끝"
+						aria-label={t('worklogPage.rangeEndAria', $locale)}
 					/>
 				{:else}
-					<button onclick={() => step(-1)} aria-label="이전">◀</button>
+					<button onclick={() => step(-1)} aria-label={t('worklogPage.prevAria', $locale)}>◀</button>
 					{#if unit === 'month'}
 						<!-- 월 뷰는 native month picker — 월만 고름 (admin 요청). -->
 						<input
@@ -333,7 +364,7 @@
 							type="month"
 							value={anchorMonth}
 							onchange={onMonthInput}
-							aria-label="월 선택"
+							aria-label={t('worklogPage.monthSelectAria', $locale)}
 						/>
 					{:else}
 						<!-- 날짜 직접 입력 (admin 요청) — quest 기한 편집과 동일한
@@ -343,14 +374,14 @@
 							type="date"
 							bind:value={anchor}
 							onchange={onAnchorInput}
-							aria-label="날짜 선택"
+							aria-label={t('worklogPage.dateSelectAria', $locale)}
 						/>
 					{/if}
 					{#if unit === 'week'}
 						<span class="range-label">{rangeLabel}</span>
 					{/if}
-					<button onclick={() => step(1)} aria-label="다음">▶</button>
-					<button onclick={goToday}>오늘</button>
+					<button onclick={() => step(1)} aria-label={t('worklogPage.nextAria', $locale)}>▶</button>
+					<button onclick={goToday}>{t('worklogPage.today', $locale)}</button>
 				{/if}
 			</div>
 		</div>
@@ -365,9 +396,9 @@
 		{#if unit === 'day'}
 			<div class="note">
 				<div class="note-head">
-					<span>📝 노트 — {anchor}</span>
+					<span>{t('worklogPage.notePre', $locale)}{anchor}</span>
 					{#if !editMode}
-						<button class="btn" onclick={enterEdit}>{dayNote ? '편집' : '작성'}</button>
+						<button class="btn" onclick={enterEdit}>{dayNote ? t('worklogPage.noteEdit', $locale) : t('worklogPage.noteWrite', $locale)}</button>
 					{/if}
 				</div>
 				{#if editMode}
@@ -375,21 +406,21 @@
 						<div class="editor-wrap" bind:this={editorContainer}></div>
 						<div class="actions">
 							<button class="btn primary" onclick={saveNote} disabled={saving}>
-								{saving ? '저장…' : '저장'}
+								{saving ? t('worklogPage.saving', $locale) : t('worklogPage.save', $locale)}
 							</button>
-							<button class="btn" onclick={cancelEdit} disabled={saving}>취소</button>
+							<button class="btn" onclick={cancelEdit} disabled={saving}>{t('worklogPage.cancel', $locale)}</button>
 						</div>
 						{#if saveError}<p class="err">{saveError}</p>{/if}
 					</div>
 				{:else if dayNote}
 					<div class="note-body"><MarkdownView source={dayNote} /></div>
 				{:else}
-					<div class="note-body muted">노트 없음 — "작성" 으로 남기기.</div>
+					<div class="note-body muted">{t('worklogPage.noNotePre', $locale)}{t('worklogPage.noteWrite', $locale)}{t('worklogPage.noNotePost', $locale)}</div>
 				{/if}
 			</div>
 		{:else if notes.length > 0}
 			<div class="note">
-				<div class="note-head"><span>📝 기간 내 노트 {notes.length}건</span></div>
+				<div class="note-head"><span>{t('worklogPage.notesInRangePre', $locale)}{notes.length}{t('worklogPage.notesInRangePost', $locale)}</span></div>
 				{#each notes as n (n.date)}
 					<div class="note-day">
 						<!-- BUG-126(admin 요청): 링크일 필요 없음 — 그냥 날짜 표시. -->
@@ -401,9 +432,9 @@
 		{/if}
 
 		<!-- 타임라인 -->
-		<div class="count">활동 {report.activities.length}건</div>
+		<div class="count">{t('worklogPage.activitiesPre', $locale)}{report.activities.length}{t('worklogPage.activitiesPost', $locale)}</div>
 		{#if report.activities.length === 0}
-			<div class="state">활동 없음.</div>
+			<div class="state">{t('worklogPage.noActivity', $locale)}</div>
 		{:else}
 			<div class="timeline">
 				{#each grouped as g (g.date)}
@@ -421,8 +452,8 @@
 					{#each g.rows as a, ri (ri)}
 						<a class="row" href={activityHref(a)}>
 							<span class="ts">{a.ts.slice(11, 16)}</span>
-							<span class="badge {KIND_BADGE[a.kind]?.cls ?? ''}">
-								{KIND_BADGE[a.kind]?.label ?? a.kind}
+							<span class="badge {KIND_BADGE_CLS[a.kind] ?? ''}">
+								{kindBadgeLabel(a.kind)}
 							</span>
 							<span class="slug">{a.slug}</span>
 							<span class="summary">{firstLine(a.summary)}</span>
@@ -431,13 +462,13 @@
 				{/each}
 			</div>
 			<div class="totals">
-				<span><b>{report.counts.status_changes}</b> 상태변경</span>
-				<span><b>{report.counts.comments}</b> 댓글</span>
-				<span><b>{report.counts.created}</b> 생성</span>
+				<span><b>{report.counts.status_changes}</b> {t('worklogPage.summary.statusChanges', $locale)}</span>
+				<span><b>{report.counts.comments}</b> {t('worklogPage.summary.comments', $locale)}</span>
+				<span><b>{report.counts.created}</b> {t('worklogPage.summary.created', $locale)}</span>
 				{#if report.counts.discussion_events > 0}
-					<span><b>{report.counts.discussion_events}</b> 토론 전환</span>
+					<span><b>{report.counts.discussion_events}</b> {t('worklogPage.summary.discussion', $locale)}</span>
 				{/if}
-				<span class="right">done 전환 <b>{report.counts.done_transitions}</b></span>
+				<span class="right">{t('worklogPage.summary.doneTransitions', $locale)} <b>{report.counts.done_transitions}</b></span>
 			</div>
 		{/if}
 	{/if}

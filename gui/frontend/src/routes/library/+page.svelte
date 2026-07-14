@@ -36,6 +36,8 @@
 	import type { QuestTagDef } from '$lib/types';
 	// DEV-182: 생성/변경 시각 표시 — quest 상세와 동일 포맷 유틸.
 	import { formatTs, formatRelative } from '$lib/utils/datetime';
+	// DEV-205(2차): i18n.
+	import { locale, t } from '$lib/stores/locale';
 
 	let loading = $state(true);
 	let error = $state<string | null>(null);
@@ -144,11 +146,12 @@
 			/* ignore */
 		}
 	});
-	const DOC_SORT_LABELS: Record<DocSortKey, string> = {
-		number: '번호',
-		title: '이름',
-		updated: '수정'
-	};
+	// DEV-205(2차): locale 반응이어야 해서 const 맵 대신 $derived.
+	const DOC_SORT_LABELS = $derived<Record<DocSortKey, string>>({
+		number: t('library.sort.number', $locale),
+		title: t('library.sort.title', $locale),
+		updated: t('library.sort.updated', $locale)
+	});
 	const sortedBooks = $derived.by(() => {
 		const cmp = (a: Book, b: Book): number => {
 			switch (docSortKey) {
@@ -275,7 +278,7 @@
 			const updated = await libraryApi.setTags(selectedId, tags);
 			books = books.map((b) => (b.book_id === selectedId ? updated : b));
 		} catch (e) {
-			showToast(e instanceof Error ? e.message : '태그 저장 실패', 'error');
+			showToast(e instanceof Error ? e.message : t('library.tagSaveFail', $locale), 'error');
 		}
 	}
 
@@ -443,7 +446,7 @@
 	async function submitCreate() {
 		const title = createTitle.trim();
 		if (!title) {
-			createError = '제목을 입력하세요.';
+			createError = t('library.titleRequired', $locale);
 			return;
 		}
 		try {
@@ -451,7 +454,7 @@
 			creating = false;
 			await loadList(created.book_id);
 		} catch (e) {
-			createError = e instanceof Error ? e.message : '생성 실패';
+			createError = e instanceof Error ? e.message : t('library.createFail', $locale);
 		}
 	}
 
@@ -470,7 +473,7 @@
 			if (selectedId === target) selectedId = null;
 			await loadList();
 		} catch (e) {
-			showToast(e instanceof Error ? e.message : '삭제 실패', 'error');
+			showToast(e instanceof Error ? e.message : t('library.deleteFail', $locale), 'error');
 		}
 	}
 
@@ -498,7 +501,7 @@
 			retitling = false;
 			loadQuestIndex(true);
 		} catch (e) {
-			retitleError = e instanceof Error ? e.message : '제목 변경 실패';
+			retitleError = e instanceof Error ? e.message : t('library.retitleFail', $locale);
 		}
 	}
 
@@ -520,7 +523,7 @@
 			books = books.map((b) => (b.book_id === selectedId ? updated : b));
 			moving = false;
 		} catch (e) {
-			moveError = e instanceof Error ? e.message : '이동 실패';
+			moveError = e instanceof Error ? e.message : t('library.moveFail', $locale);
 		}
 	}
 
@@ -533,7 +536,7 @@
 			const updated = await libraryApi.update(bookId, { path: targetPath });
 			books = books.map((x) => (x.book_id === bookId ? updated : x));
 		} catch (e) {
-			showToast(e instanceof Error ? e.message : '이동 실패', 'error');
+			showToast(e instanceof Error ? e.message : t('library.moveFail', $locale), 'error');
 		}
 	}
 	// explorer 모드 타일 드롭 시각 강조 + 핸들러.
@@ -558,7 +561,7 @@
 	async function submitCreateFolder() {
 		const name = createFolderPath.trim();
 		if (!name) {
-			createFolderError = '폴더 이름을 입력하세요.';
+			createFolderError = t('library.folderNameRequired', $locale);
 			return;
 		}
 		const parent = viewMode === 'explorer' ? explorerPath : '';
@@ -568,7 +571,7 @@
 			creatingFolder = false;
 			await loadList(selectedId);
 		} catch (e) {
-			createFolderError = e instanceof Error ? e.message : '폴더 생성 실패';
+			createFolderError = e instanceof Error ? e.message : t('library.createFolderFail', $locale);
 		}
 	}
 
@@ -590,7 +593,7 @@
 			}
 			await loadList(selectedId);
 		} catch (e) {
-			showToast(e instanceof Error ? e.message : '폴더 삭제 실패 — 비어 있는지 확인하세요', 'error');
+			showToast(e instanceof Error ? e.message : t('library.deleteFolderFail', $locale), 'error');
 		}
 	}
 </script>
@@ -603,24 +606,24 @@
 	{:else if viewMode === 'explorer' && !selected}
 		<!-- ─── explorer 모드: 폴더/문서 그리드 (문서 선택 전) ─── -->
 		<div class="explorer-toolbar">
-			<h1 class="page-title">도서관</h1>
+			<h1 class="page-title">{t('library.title', $locale)}</h1>
 			<div class="view-toggle">
-				<button class:on={isMode('tree')} onclick={() => setViewMode('tree')} title="트리 보기">☰</button>
-				<button class:on={isMode('explorer')} onclick={() => setViewMode('explorer')} title="아이콘 보기">▦</button>
+				<button class:on={isMode('tree')} onclick={() => setViewMode('tree')} title={t('library.treeView', $locale)}>☰</button>
+				<button class:on={isMode('explorer')} onclick={() => setViewMode('explorer')} title={t('library.iconView', $locale)}>▦</button>
 			</div>
-			<button class="btn-new" onclick={openCreateFolder}>+ 폴더</button>
-			<button class="btn-new" onclick={openCreate}>+ 신규</button>
+			<button class="btn-new" onclick={openCreateFolder}>{t('library.newFolder', $locale)}</button>
+			<button class="btn-new" onclick={openCreate}>{t('library.newDoc', $locale)}</button>
 		</div>
 		<div class="search-row">
 			<input
 				class="search-input"
 				type="search"
-				placeholder="제목/본문 검색"
+				placeholder={t('library.searchPlaceholder', $locale)}
 				bind:value={searchQuery}
 			/>
 			<!-- DEV-251: 문서 정렬 — quest list 의 sort-group 과 동일 패턴. -->
-			<div class="sort-group" aria-label="문서 정렬">
-				<select class="sort-sel" bind:value={docSortKey} title="정렬 기준">
+			<div class="sort-group" aria-label={t('library.sortAria', $locale)}>
+				<select class="sort-sel" bind:value={docSortKey} title={t('library.sortTitle', $locale)}>
 					{#each Object.entries(DOC_SORT_LABELS) as [k, label] (k)}
 						<option value={k}>{label}</option>
 					{/each}
@@ -628,27 +631,27 @@
 				<button
 					class="sort-dir"
 					onclick={() => (docSortDesc = !docSortDesc)}
-					title={docSortDesc ? '내림차순 — 클릭 시 오름차순' : '오름차순 — 클릭 시 내림차순'}
-					aria-label="정렬 방향">{docSortDesc ? '↓' : '↑'}</button
+					title={docSortDesc ? t('library.sortDesc', $locale) : t('library.sortAsc', $locale)}
+					aria-label={t('library.sortDirAria', $locale)}>{docSortDesc ? '↓' : '↑'}</button
 				>
 			</div>
 		</div>
 		{#if allTagOptions.length > 0}
-			<div class="tag-filter-row" aria-label="태그 필터">
-				{#each allTagOptions as t (t)}
+			<div class="tag-filter-row" aria-label={t('library.tagFilterAria', $locale)}>
+				{#each allTagOptions as tag (tag)}
 					<button
 						class="tag-filter-chip"
-						class:active={filterTags.has(t)}
-						onclick={() => toggleTagFilter(t)}
-						title={filterTags.has(t) ? `${t} 필터 해제` : `${t} 필터 추가`}
+						class:active={filterTags.has(tag)}
+						onclick={() => toggleTagFilter(tag)}
+						title={filterTags.has(tag) ? `${tag}${t('library.tagFilterOffPost', $locale)}` : `${tag}${t('library.tagFilterOnPost', $locale)}`}
 					>
-						{t}
-						<span class="tag-chip-count">{tagCounts.get(t) ?? 0}</span>
+						{tag}
+						<span class="tag-chip-count">{tagCounts.get(tag) ?? 0}</span>
 					</button>
 				{/each}
 				{#if filterTags.size > 0}
-					<button class="tag-clear" onclick={() => (filterTags = new Set())} title="태그 필터 모두 해제">
-						× 전체 해제
+					<button class="tag-clear" onclick={() => (filterTags = new Set())} title={t('library.clearTagFiltersTitle', $locale)}>
+						{t('library.clearTagFilters', $locale)}
 					</button>
 				{/if}
 			</div>
@@ -662,7 +665,7 @@
 				class:drag-over={dragOverFolder === parentOf(explorerPath)}
 				onclick={() => gotoFolder(parentOf(explorerPath))}
 				disabled={!explorerPath}
-				title="상위 폴더로"
+				title={t('library.upToParent', $locale)}
 				ondragover={(e) => {
 					if (!explorerPath) return;
 					e.preventDefault();
@@ -684,7 +687,7 @@
 				ondragleave={() => (dragOverFolder = null)}
 				ondrop={(e) => onTileDrop(e, '')}
 			>
-				도서관
+				{t('library.title', $locale)}
 			</button>
 			{#each explorerPath ? explorerPath.split('/') : [] as _seg, i (i)}
 				{@const partial = explorerPath.split('/').slice(0, i + 1).join('/')}
@@ -705,7 +708,7 @@
 			{/each}
 			{#if explorerPath}
 				<button class="btn-del-folder" onclick={() => askDeleteFolder(explorerPath)}>
-					현재 폴더 삭제
+					{t('library.deleteCurrentFolder', $locale)}
 				</button>
 			{/if}
 		</div>
@@ -715,14 +718,14 @@
 				<input
 					class="text-input"
 					type="text"
-					placeholder="새 폴더 이름"
+					placeholder={t('library.newFolderPlaceholder', $locale)}
 					bind:value={createFolderPath}
 					onkeydown={(e) => e.key === 'Enter' && submitCreateFolder()}
 				/>
 				{#if createFolderError}<p class="err">{createFolderError}</p>{/if}
 				<div class="actions">
-					<button class="btn-save" onclick={submitCreateFolder}>생성</button>
-					<button class="btn-cancel" onclick={cancelCreateFolder}>취소</button>
+					<button class="btn-save" onclick={submitCreateFolder}>{t('library.create', $locale)}</button>
+					<button class="btn-cancel" onclick={cancelCreateFolder}>{t('library.cancel', $locale)}</button>
 				</div>
 			</div>
 		{/if}
@@ -731,14 +734,14 @@
 				<input
 					class="text-input"
 					type="text"
-					placeholder="문서 제목"
+					placeholder={t('library.docTitlePlaceholder', $locale)}
 					bind:value={createTitle}
 					onkeydown={(e) => e.key === 'Enter' && submitCreate()}
 				/>
 				{#if createError}<p class="err">{createError}</p>{/if}
 				<div class="actions">
-					<button class="btn-save" onclick={submitCreate}>생성</button>
-					<button class="btn-cancel" onclick={cancelCreate}>취소</button>
+					<button class="btn-save" onclick={submitCreate}>{t('library.create', $locale)}</button>
+					<button class="btn-cancel" onclick={cancelCreate}>{t('library.cancel', $locale)}</button>
 				</div>
 			</div>
 		{/if}
@@ -746,7 +749,7 @@
 		{#if searchResults}
 			<!-- BUG-127: 검색은 현재 폴더(explorerPath) + 하위로 스코프, 폴더 이름도 매칭. -->
 			{#if searchResults.folders.length === 0 && searchResults.books.length === 0}
-				<p class="empty-list">검색 결과 없음.</p>
+				<p class="empty-list">{t('library.noSearchResults', $locale)}</p>
 			{:else}
 				<div class="tile-grid">
 					{#each searchResults.folders as f (f.path)}
@@ -780,7 +783,7 @@
 				</div>
 			{/if}
 		{:else if explorerFolders.length === 0 && explorerDocs.length === 0}
-			<p class="empty-list">비어 있음. "+ 신규" 또는 "+ 폴더" 로 만들기.</p>
+			<p class="empty-list">{t('library.emptyFolder', $locale)}</p>
 		{:else}
 			<div class="tile-grid">
 				{#each explorerFolders as f (f.path)}
@@ -830,27 +833,27 @@
 							ondragleave={() => (dragOverFolder = null)}
 							ondrop={(e) => onTileDrop(e, '')}
 						>
-							도서관
+							{t('library.title', $locale)}
 						</h2>
 						<div class="view-toggle">
-							<button class:on={isMode('tree')} onclick={() => setViewMode('tree')} title="트리 보기">☰</button>
-							<button class:on={isMode('explorer')} onclick={() => setViewMode('explorer')} title="아이콘 보기">▦</button>
+							<button class:on={isMode('tree')} onclick={() => setViewMode('tree')} title={t('library.treeView', $locale)}>☰</button>
+							<button class:on={isMode('explorer')} onclick={() => setViewMode('explorer')} title={t('library.iconView', $locale)}>▦</button>
 						</div>
 					</div>
 					<div class="sidebar-actions">
-						<button class="btn-new" onclick={openCreateFolder} title="새 폴더">+ 폴더</button>
-						<button class="btn-new" onclick={openCreate} title="신규 문서">+ 신규</button>
+						<button class="btn-new" onclick={openCreateFolder} title={t('library.newFolder', $locale)}>{t('library.newFolder', $locale)}</button>
+						<button class="btn-new" onclick={openCreate} title={t('library.newDoc', $locale)}>{t('library.newDoc', $locale)}</button>
 					</div>
 					<div class="search-row">
 						<input
 							class="search-input"
 							type="search"
-							placeholder="제목/본문 검색"
+							placeholder={t('library.searchPlaceholder', $locale)}
 							bind:value={searchQuery}
 						/>
 						<!-- DEV-251: 문서 정렬 — quest list 의 sort-group 과 동일 패턴. -->
-						<div class="sort-group" aria-label="문서 정렬">
-							<select class="sort-sel" bind:value={docSortKey} title="정렬 기준">
+						<div class="sort-group" aria-label={t('library.sortAria', $locale)}>
+							<select class="sort-sel" bind:value={docSortKey} title={t('library.sortTitle', $locale)}>
 								{#each Object.entries(DOC_SORT_LABELS) as [k, label] (k)}
 									<option value={k}>{label}</option>
 								{/each}
@@ -858,31 +861,31 @@
 							<button
 								class="sort-dir"
 								onclick={() => (docSortDesc = !docSortDesc)}
-								title={docSortDesc ? '내림차순 — 클릭 시 오름차순' : '오름차순 — 클릭 시 내림차순'}
-								aria-label="정렬 방향">{docSortDesc ? '↓' : '↑'}</button
+								title={docSortDesc ? t('library.sortDesc', $locale) : t('library.sortAsc', $locale)}
+								aria-label={t('library.sortDirAria', $locale)}>{docSortDesc ? '↓' : '↑'}</button
 							>
 						</div>
 					</div>
 					{#if allTagOptions.length > 0}
-						<div class="tag-filter-row" aria-label="태그 필터">
-							{#each allTagOptions as t (t)}
+						<div class="tag-filter-row" aria-label={t('library.tagFilterAria', $locale)}>
+							{#each allTagOptions as tag (tag)}
 								<button
 									class="tag-filter-chip"
-									class:active={filterTags.has(t)}
-									onclick={() => toggleTagFilter(t)}
-									title={filterTags.has(t) ? `${t} 필터 해제` : `${t} 필터 추가`}
+									class:active={filterTags.has(tag)}
+									onclick={() => toggleTagFilter(tag)}
+									title={filterTags.has(tag) ? `${tag}${t('library.tagFilterOffPost', $locale)}` : `${tag}${t('library.tagFilterOnPost', $locale)}`}
 								>
-									{t}
-									<span class="tag-chip-count">{tagCounts.get(t) ?? 0}</span>
+									{tag}
+									<span class="tag-chip-count">{tagCounts.get(tag) ?? 0}</span>
 								</button>
 							{/each}
 							{#if filterTags.size > 0}
 								<button
 									class="tag-clear"
 									onclick={() => (filterTags = new Set())}
-									title="태그 필터 모두 해제"
+									title={t('library.clearTagFiltersTitle', $locale)}
 								>
-									× 전체 해제
+									{t('library.clearTagFilters', $locale)}
 								</button>
 							{/if}
 						</div>
@@ -891,7 +894,7 @@
 						<!-- BUG-127: tree 모드는 "현재 폴더" 개념이 없어 전역 검색 유지,
 						     폴더 이름도 매칭 — 클릭하면 그 폴더를 펼쳐서 보여줌. -->
 						{#if searchResults.folders.length === 0 && searchResults.books.length === 0}
-							<p class="empty-list">검색 결과 없음.</p>
+							<p class="empty-list">{t('library.noSearchResults', $locale)}</p>
 						{:else}
 							<div class="book-list">
 								{#each searchResults.folders as f (f.path)}
@@ -915,7 +918,7 @@
 							</div>
 						{/if}
 					{:else if books.length === 0 && folders.length === 0}
-						<p class="empty-list">문서 없음. "+ 신규" 로 만들기.</p>
+						<p class="empty-list">{t('library.emptyRoot', $locale)}</p>
 					{:else}
 						<div class="book-list">
 							{#each tree.roots as node (node.path)}
@@ -950,14 +953,14 @@
 							<input
 								class="text-input"
 								type="text"
-								placeholder="새 폴더 경로 (예: 아키텍처/서브)"
+								placeholder={t('library.newFolderPathPlaceholder', $locale)}
 								bind:value={createFolderPath}
 								onkeydown={(e) => e.key === 'Enter' && submitCreateFolder()}
 							/>
 							{#if createFolderError}<p class="err">{createFolderError}</p>{/if}
 							<div class="actions">
-								<button class="btn-save" onclick={submitCreateFolder}>생성</button>
-								<button class="btn-cancel" onclick={cancelCreateFolder}>취소</button>
+								<button class="btn-save" onclick={submitCreateFolder}>{t('library.create', $locale)}</button>
+								<button class="btn-cancel" onclick={cancelCreateFolder}>{t('library.cancel', $locale)}</button>
 							</div>
 						</div>
 					{/if}
@@ -966,20 +969,20 @@
 							<input
 								class="text-input"
 								type="text"
-								placeholder="문서 제목"
+								placeholder={t('library.docTitlePlaceholder', $locale)}
 								bind:value={createTitle}
 								onkeydown={(e) => e.key === 'Enter' && submitCreate()}
 							/>
 							<select class="text-input" bind:value={createPath}>
-								<option value="">(최상위)</option>
+								<option value="">{t('library.topLevel', $locale)}</option>
 								{#each flattenFolderPaths(tree) as p (p)}
 									<option value={p}>{p}</option>
 								{/each}
 							</select>
 							{#if createError}<p class="err">{createError}</p>{/if}
 							<div class="actions">
-								<button class="btn-save" onclick={submitCreate}>생성</button>
-								<button class="btn-cancel" onclick={cancelCreate}>취소</button>
+								<button class="btn-save" onclick={submitCreate}>{t('library.create', $locale)}</button>
+								<button class="btn-cancel" onclick={cancelCreate}>{t('library.cancel', $locale)}</button>
 							</div>
 						</div>
 					{/if}
@@ -991,15 +994,15 @@
 				{#if !selected}
 					<div class="empty">
 						{#if books.length === 0}
-							"+ 신규" 로 첫 문서를 만드세요.
+							{t('library.pickFirstDoc', $locale)}
 						{:else}
-							좌측에서 문서를 선택하세요.
+							{t('library.pickDocFromList', $locale)}
 						{/if}
 					</div>
 				{:else}
 					<div class="top-bar">
 						{#if viewMode === 'explorer'}
-							<button class="btn-edit" onclick={explorerBack}>← 목록</button>
+							<button class="btn-edit" onclick={explorerBack}>{t('library.backToList', $locale)}</button>
 						{/if}
 						<!-- BUG-127(admin 요청): 뷰모드 토글은 트리/탐색기 목록 쪽에만 —
 						     여기(문서 상세)에 중복으로 있을 필요 없음. 아이콘 뷰에서 상세로
@@ -1011,11 +1014,11 @@
 						{#if !editMode}
 							<div class="top-actions">
 								<button class="btn-edit" onclick={enterEdit}>
-									{selected.body.trim() ? '✎ 편집' : '+ 작성'}
+									{selected.body.trim() ? t('library.editDoc', $locale) : t('library.writeDoc', $locale)}
 								</button>
-								<button class="btn-edit" onclick={openRetitle}>제목 변경</button>
-								<button class="btn-edit" onclick={openMove}>폴더 이동</button>
-								<button class="btn-edit danger" onclick={askDeleteSelected}>삭제</button>
+								<button class="btn-edit" onclick={openRetitle}>{t('library.retitle', $locale)}</button>
+								<button class="btn-edit" onclick={openMove}>{t('library.moveFolder', $locale)}</button>
+								<button class="btn-edit danger" onclick={askDeleteSelected}>{t('library.delete', $locale)}</button>
 							</div>
 						{/if}
 					</div>
@@ -1027,14 +1030,14 @@
 					<!-- DEV-182: 생성 / 변경 시각. -->
 					<div class="meta-times">
 						<span class="meta-item">
-							<span class="meta-label">생성</span>
+							<span class="meta-label">{t('library.created', $locale)}</span>
 							<time class="meta-val" datetime={selected.created_at} title={formatTs(selected.created_at)}>
 								{formatTs(selected.created_at)}
 							</time>
 						</span>
 						<span class="meta-sep">·</span>
 						<span class="meta-item">
-							<span class="meta-label">변경</span>
+							<span class="meta-label">{t('library.updated', $locale)}</span>
 							<time class="meta-val" datetime={selected.updated_at} title={formatTs(selected.updated_at)}>
 								{formatRelative(selected.updated_at)}
 							</time>
@@ -1046,14 +1049,14 @@
 							<input
 								class="text-input"
 								type="text"
-								placeholder="새 제목"
+								placeholder={t('library.newTitlePlaceholder', $locale)}
 								bind:value={retitleText}
 								onkeydown={(e) => e.key === 'Enter' && submitRetitle()}
 							/>
 							{#if retitleError}<p class="err">{retitleError}</p>{/if}
 							<div class="actions">
-								<button class="btn-save" onclick={submitRetitle}>변경</button>
-								<button class="btn-cancel" onclick={cancelRetitle}>취소</button>
+								<button class="btn-save" onclick={submitRetitle}>{t('library.change', $locale)}</button>
+								<button class="btn-cancel" onclick={cancelRetitle}>{t('library.cancel', $locale)}</button>
 							</div>
 						</div>
 					{/if}
@@ -1061,15 +1064,15 @@
 					{#if moving}
 						<div class="modal-inline">
 							<select class="text-input" bind:value={movePath}>
-								<option value="">(최상위)</option>
+								<option value="">{t('library.topLevel', $locale)}</option>
 								{#each flattenFolderPaths(tree) as p (p)}
 									<option value={p}>{p}</option>
 								{/each}
 							</select>
 							{#if moveError}<p class="err">{moveError}</p>{/if}
 							<div class="actions">
-								<button class="btn-save" onclick={submitMove}>이동</button>
-								<button class="btn-cancel" onclick={cancelMove}>취소</button>
+								<button class="btn-save" onclick={submitMove}>{t('library.move', $locale)}</button>
+								<button class="btn-cancel" onclick={cancelMove}>{t('library.cancel', $locale)}</button>
 							</div>
 						</div>
 					{/if}
@@ -1077,19 +1080,19 @@
 					{#if editMode}
 						<div class="edit-form">
 							<div class="field-label">
-								<span>본문 (Markdown) — 첨부는 드래그&드랍 / Ctrl+V</span>
+								<span>{t('library.bodyHint', $locale)}</span>
 								<!-- DEV-237: 비미디어 파일은 attachToSection 이 첨부 섹션에 등록. -->
 								<MarkdownEditor
 									bind:value={editText}
-									onError={(msg) => (saveError = `첨부 업로드 실패: ${msg}`)}
+									onError={(msg) => (saveError = `${t('library.attachUploadFail', $locale)}${msg}`)}
 									onAttach={attachToSection}
 								/>
 							</div>
 							<div class="actions">
 								<button class="btn-save" onclick={save} disabled={saving}>
-									{saving ? '저장…' : '저장'}
+									{saving ? t('worklogPage.saving', $locale) : t('worklogPage.save', $locale)}
 								</button>
-								<button class="btn-cancel" onclick={cancelEdit} disabled={saving}> 취소 </button>
+								<button class="btn-cancel" onclick={cancelEdit} disabled={saving}> {t('library.cancel', $locale)} </button>
 							</div>
 							{#if saveError}<p class="err">{saveError}</p>{/if}
 						</div>
@@ -1097,8 +1100,8 @@
 						<MarkdownView source={selected.body} />
 					{:else}
 						<div class="empty">
-							아직 작성된 본문이 없습니다.
-							<button class="link" onclick={enterEdit}>지금 작성</button>
+							{t('library.noBodyYet', $locale)}
+							<button class="link" onclick={enterEdit}>{t('library.writeNow', $locale)}</button>
 						</div>
 					{/if}
 
@@ -1119,9 +1122,9 @@
 
 <ConfirmDialog
 	open={confirmDeleteId !== null}
-	title="문서 삭제"
-	message={`'${confirmDeleteId ?? ''}' 문서를 삭제할까요? (번호는 재사용되지 않습니다)`}
-	confirmLabel="삭제"
+	title={t('library.deleteDocTitle', $locale)}
+	message={`'${confirmDeleteId ?? ''}' ${t('library.deleteDocMessage', $locale)}`}
+	confirmLabel={t('library.delete', $locale)}
 	danger
 	onconfirm={deleteSelected}
 	oncancel={() => (confirmDeleteId = null)}
@@ -1130,9 +1133,9 @@
 <!-- BUG-123: 폴더 삭제 확인도 네이티브 confirm() 대신 인앱 다이얼로그. -->
 <ConfirmDialog
 	open={confirmDeleteFolderPath !== null}
-	title="폴더 삭제"
-	message={`폴더 '${confirmDeleteFolderPath ?? ''}' 를 삭제할까요? (비어 있어야 삭제 가능)`}
-	confirmLabel="삭제"
+	title={t('library.deleteFolderTitle', $locale)}
+	message={`${t('library.deleteFolderMessagePre', $locale)}${confirmDeleteFolderPath ?? ''}${t('library.deleteFolderMessagePost', $locale)}`}
+	confirmLabel={t('library.delete', $locale)}
 	danger
 	onconfirm={deleteFolder}
 	oncancel={() => (confirmDeleteFolderPath = null)}
@@ -1140,9 +1143,9 @@
 
 <ConfirmDialog
 	open={confirmDiscardId !== null || pendingBackToGrid}
-	title="편집중 이동"
-	message="편집 중인 변경 사항이 있습니다. 버리고 이동할까요?"
-	confirmLabel="버리고 이동"
+	title={t('library.editingMoveTitle', $locale)}
+	message={t('library.editingMoveMessage', $locale)}
+	confirmLabel={t('library.discardAndMove', $locale)}
 	danger
 	onconfirm={applyPendingSelect}
 	oncancel={() => {
