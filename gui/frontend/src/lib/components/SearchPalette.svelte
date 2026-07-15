@@ -101,6 +101,22 @@
 		return () => window.removeEventListener('mousedown', onWindowMouseDown, { capture: true });
 	});
 
+	// DEV-255 후속(사용자 요청): Esc 로 닫기 — 이전엔 입력박스의 onkeydown 에만
+	// 걸려 있어 커서가 입력박스 밖(미리보기 스크롤 후 등)이면 Esc 가 안 먹혔다.
+	// window 레벨로 옮겨 포커스 위치와 무관하게 동작. 입력박스에 포커스가 있어도
+	// 이벤트는 여기까지 버블되므로 단일 경로로 처리(onKey/backdrop 의 기존 Esc
+	// 처리는 중복 방지 위해 제거).
+	function onWindowKeyDown(e: KeyboardEvent) {
+		if (e.key !== 'Escape') return;
+		e.preventDefault();
+		if (preview) preview = null;
+		else onclose();
+	}
+	onMount(() => {
+		window.addEventListener('keydown', onWindowKeyDown);
+		return () => window.removeEventListener('keydown', onWindowKeyDown);
+	});
+
 	// DEV-255 버그 수정: selIndex 가 바뀔 때마다(방향키 이동) 해당 행이 보이도록
 	// 스크롤. rowsEl.children 순서는 filtered 순서와 항상 일치.
 	$effect(() => {
@@ -269,13 +285,8 @@
 		return it.title ? `${it.label} ${it.title}` : it.label;
 	}
 
+	// Esc 는 window 레벨(onWindowKeyDown)에서 단일 처리 — 여기선 목록 탐색만.
 	function onKey(e: KeyboardEvent) {
-		if (e.key === 'Escape') {
-			e.preventDefault();
-			if (preview) preview = null;
-			else onclose();
-			return;
-		}
 		if (preview) return;
 		if (e.key === 'ArrowDown') {
 			e.preventDefault();
@@ -313,14 +324,16 @@
      리스너(mousedown, 위 onMount)는 여는 클릭과 이벤트 종류가 달라 자기
      자신을 잡지 않음 — 상세 이유는 onMount 주석 참고. -->
 
-<!-- 바깥 클릭 / Esc 로 닫기. backdrop 은 투명 — 콘텐츠를 어둡게 덮지 않음. -->
+<!-- 바깥 클릭으로 닫기. backdrop 은 투명 — 콘텐츠를 어둡게 덮지 않음.
+     Esc 는 window 레벨(onWindowKeyDown)에서 단일 처리 — 키보드 접근성은
+     그쪽이 담당하므로 backdrop 자체 keydown 은 불필요. -->
+<!-- svelte-ignore a11y_click_events_have_key_events -->
 <div
 	class="backdrop"
 	role="button"
 	tabindex="-1"
 	aria-label={t('palette.closeAria', $locale)}
 	onclick={onclose}
-	onkeydown={(e) => e.key === 'Escape' && onclose()}
 ></div>
 
 <div class="palette" role="dialog" aria-label={t('palette.dialogAria', $locale)}>

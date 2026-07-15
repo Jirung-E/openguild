@@ -796,6 +796,8 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'titlebar.back': { ko: '뒤로', en: 'Back' },
 	'titlebar.forward': { ko: '앞으로', en: 'Forward' },
 	'titlebar.menu': { ko: '메뉴', en: 'Menu' },
+	'titlebar.pin': { ko: '항상 위에 고정', en: 'Pin (always on top)' },
+	'titlebar.unpin': { ko: '고정 해제', en: 'Unpin' },
 	'titlebar.minimize': { ko: '최소화', en: 'Minimize' },
 	'titlebar.maximize': { ko: '최대화', en: 'Maximize' },
 	'titlebar.restore': { ko: '이전 크기로 복원', en: 'Restore' },

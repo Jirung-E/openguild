@@ -95,6 +95,19 @@
 		}
 	}
 
+	// DEV-255 후속(사용자 요청): 자식윈도우 전용 pin — Always on top 토글.
+	// 문서 창을 다른 작업 위에 띄워놓고 참조하는 사용 흐름.
+	let pinned = $state(false);
+	async function togglePin() {
+		try {
+			const { getCurrentWindow } = await import('@tauri-apps/api/window');
+			await getCurrentWindow().setAlwaysOnTop(!pinned);
+			pinned = !pinned;
+		} catch {
+			/* 브라우저 모드 등 — 방어 */
+		}
+	}
+
 	// 메뉴 바깥 클릭 시 닫기.
 	function onWindowClick(e: MouseEvent) {
 		if (!menuOpen) return;
@@ -193,6 +206,28 @@
 	<div class="tb-spacer" data-tauri-drag-region></div>
 
 	<div class="tb-controls">
+		<!-- DEV-255: 자식윈도우 전용 pin(Always on top) — 문서 창을 다른 작업
+		     위에 고정해놓고 참조하는 흐름. -->
+		{#if $isChildWindow}
+			<button
+				class="tb-btn"
+				class:tb-pin-on={pinned}
+				onclick={togglePin}
+				title={pinned ? t('titlebar.unpin', $locale) : t('titlebar.pin', $locale)}
+				aria-label={pinned ? t('titlebar.unpin', $locale) : t('titlebar.pin', $locale)}
+				aria-pressed={pinned}
+			>
+				<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					{#if pinned}
+						<path d="M9.5 2 14 6.5l-2.5.7-2.8 2.8-.4 3.5L3 8.2l3.5-.4 2.3-2.8Z" fill="currentColor" stroke="none" />
+						<path d="M5.5 10.5 2 14" />
+					{:else}
+						<path d="M9.5 2 14 6.5l-2.5.7-2.8 2.8-.4 3.5L3 8.2l3.5-.4 2.3-2.8Z" />
+						<path d="M5.5 10.5 2 14" />
+					{/if}
+				</svg>
+			</button>
+		{/if}
 		<button class="tb-btn" onclick={() => winCtl('min')} title={t('titlebar.minimize', $locale)} aria-label={t('titlebar.minimize', $locale)}>
 			<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
 				<line x1="0" y1="5" x2="10" y2="5" stroke="currentColor" stroke-width="1" />
@@ -375,6 +410,10 @@
 	.tb-btn:hover {
 		background: var(--nav-hover-bg);
 		color: var(--text);
+	}
+	/* DEV-255: pin(Always on top) 켜짐 상태 — 아이콘 채움 + 강조색. */
+	.tb-btn.tb-pin-on {
+		color: var(--accent);
 	}
 	.tb-close:hover {
 		background: var(--danger);
