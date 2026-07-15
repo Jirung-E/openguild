@@ -11,6 +11,8 @@
 	import { metaApi } from '$lib/api/meta';
 	// DEV-205 / REQ-001: 상세 화면 라벨을 i18n 사전으로 — 캠페인 상세와 언어 통일.
 	import { locale, t } from '$lib/stores/locale';
+	// DEV-255: 자식윈도우(검색 팔레트 "새 창으로 열기")에선 뒤로가기 버튼 숨김.
+	import { isChildWindow } from '$lib/stores/windowKind';
 	// DEV-205: 언어 반응 날짜 입력(네이티브 date 대체).
 	import DateField from '$lib/components/DateField.svelte';
 	import { campaignsApi } from '$lib/api/campaigns';
@@ -627,8 +629,11 @@
 <div class="container">
 	<div class="top-bar">
 		<!-- BUG-015: history.back() 으로 직전 페이지 (List 또는 Board) 복귀.
-		     history 가 비어있으면 (외부 link 직접 진입) Board 로 fallback. -->
-		<button class="back" type="button" onclick={goBack}>← {t('detail.back', $locale)}</button>
+		     history 가 비어있으면 (외부 link 직접 진입) Board 로 fallback.
+		     DEV-255: 자식윈도우(단일 문서 보기)는 돌아갈 곳이 없음 — 숨김. -->
+		{#if !$isChildWindow}
+			<button class="back" type="button" onclick={goBack}>← {t('detail.back', $locale)}</button>
+		{/if}
 		{#if detail && !editMode}
 			<div class="top-actions">
 				<button class="btn-edit" onclick={enterEditMode}>✎ {t('detail.edit', $locale)}</button>

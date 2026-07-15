@@ -17,6 +17,8 @@
 	import { campaignsApi } from '$lib/api/campaigns';
 	// DEV-205 / REQ-001: 상세 공통 액션 라벨을 퀘스트 상세와 같은 i18n 사전으로.
 	import { locale, t } from '$lib/stores/locale';
+	// DEV-255: 자식윈도우(검색 팔레트 "새 창으로 열기")에선 뒤로가기 버튼 숨김.
+	import { isChildWindow } from '$lib/stores/windowKind';
 	// DEV-205: 언어 반응 날짜 입력(네이티브 date 대체).
 	import DateField from '$lib/components/DateField.svelte';
 	import { questsApi } from '$lib/api/quests';
@@ -403,7 +405,10 @@
 
 <div class="page">
 	<div class="top">
-		<button class="back" onclick={() => history.back()}>← {t('detail.back', $locale)}</button>
+		<!-- DEV-255: 자식윈도우(단일 문서 보기)는 돌아갈 곳이 없음 — 숨김. -->
+		{#if !$isChildWindow}
+			<button class="back" onclick={() => history.back()}>← {t('detail.back', $locale)}</button>
+		{/if}
 		{#if detail}
 			<button
 				class="status-badge status-{detail.status}"

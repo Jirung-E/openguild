@@ -117,12 +117,19 @@
 		return () => window.removeEventListener('keydown', onWindowKeyDown);
 	});
 
-	// DEV-255 버그 수정: selIndex 가 바뀔 때마다(방향키 이동) 해당 행이 보이도록
-	// 스크롤. rowsEl.children 순서는 filtered 순서와 항상 일치.
+	// DEV-255 버그 수정: 방향키 이동 시 선택 행이 보이도록 스크롤.
+	// DEV-255 후속(사용자 보고 "스크롤이 이상함"): selIndex 는 마우스 호버
+	// (onmouseenter)로도 바뀌는데, 그때마다 scrollIntoView 를 부르면 커서가
+	// 목록 위를 지나갈 때마다 스크롤이 강제로 움직여 덜컥거렸다 — 크로스링크
+	// 자동완성(QuestCommentsSection, BUG-114)에서 이미 확립한 대로 키보드
+	// (↑/↓) 이동일 때만 스크롤하고 마우스 호버는 무시한다.
+	let selFromKeyboard = false;
 	$effect(() => {
+		void selIndex;
 		if (preview || !rowsEl) return;
-		const idx = selIndex;
-		const el = rowsEl.children[idx] as HTMLElement | undefined;
+		if (!selFromKeyboard) return;
+		selFromKeyboard = false;
+		const el = rowsEl.children[selIndex] as HTMLElement | undefined;
 		el?.scrollIntoView({ block: 'nearest' });
 	});
 
@@ -290,9 +297,11 @@
 		if (preview) return;
 		if (e.key === 'ArrowDown') {
 			e.preventDefault();
+			selFromKeyboard = true;
 			selIndex = Math.min(selIndex + 1, filtered.length - 1);
 		} else if (e.key === 'ArrowUp') {
 			e.preventDefault();
+			selFromKeyboard = true;
 			selIndex = Math.max(selIndex - 1, 0);
 		} else if (e.key === 'Enter') {
 			e.preventDefault();
