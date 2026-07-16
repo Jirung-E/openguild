@@ -63,19 +63,35 @@ describe('uiScale store', () => {
 		expect(get(m.uiScale)).toBe(m.DEFAULT_SCALE);
 	});
 
+	// BUG-141: DOM 반영이 rAF 로 병합됨(슬라이더 드래그 시 프레임당 1회) —
+	// 단언 전에 한 프레임 대기.
+	const nextFrame = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
+
 	it('applyUiScaleToDocument writes font-size on documentElement', async () => {
 		const m = await loadFreshStore();
 		m.applyUiScaleToDocument(1.5);
+		await nextFrame();
 		const fs = document.documentElement.style.fontSize;
 		expect(fs).toMatch(/^24(\.00)?px$/);
 		m.applyUiScaleToDocument(0.5);
+		await nextFrame();
 		expect(document.documentElement.style.fontSize).toMatch(/^8(\.00)?px$/);
 	});
 
 	it('applyUiScaleToDocument clamps invalid input', async () => {
 		const m = await loadFreshStore();
 		m.applyUiScaleToDocument(99);
+		await nextFrame();
 		// MAX_SCALE = 2.0 → 16 * 2 = 32 px.
+		expect(document.documentElement.style.fontSize).toMatch(/^32(\.00)?px$/);
+	});
+
+	it('BUG-141: 같은 프레임의 연속 호출은 마지막 값만 반영', async () => {
+		const m = await loadFreshStore();
+		m.applyUiScaleToDocument(1.1);
+		m.applyUiScaleToDocument(1.3);
+		m.applyUiScaleToDocument(2.0);
+		await nextFrame();
 		expect(document.documentElement.style.fontSize).toMatch(/^32(\.00)?px$/);
 	});
 });

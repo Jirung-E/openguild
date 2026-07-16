@@ -230,19 +230,30 @@
 
 	// DEV-101 fix2: 컨텐츠 영역 폭 — `<html>` 의 `--content-max-width` 토큰 갱신.
 	// 페이지 max-width: var(--content-max-width, …) 사용처가 자동 반응.
+	// BUG-141: uiScale 과 동일하게 rAF 병합 — 슬라이더 드래그가 매 pointermove
+	// 마다 CSS 변수를 갱신하면(→ 전체 reflow) Linux(WebKitGTK)에서 버벅였다.
 	onMount(() => {
+		let rafId: number | null = null;
+		let pendingW = 0;
 		const unsub = contentWidth.subscribe((w) => {
-			if (typeof document !== 'undefined') {
-				document.documentElement.style.setProperty('--content-max-width', `${w}px`);
+			if (typeof document === 'undefined') return;
+			pendingW = w;
+			if (rafId !== null) return;
+			rafId = requestAnimationFrame(() => {
+				rafId = null;
+				document.documentElement.style.setProperty('--content-max-width', `${pendingW}px`);
 				// BUG-064 후속: 고정 폭 팝업/모달이 '컨텐츠 폭' 설정에 비례하도록
 				// --popup-scale 토큰 발급. 기준 1100px = 1.0, 0.9~1.3 으로 clamp
 				// (너무 좁거나 과하게 넓어지지 않게). 팝업 width 는
 				// calc(<base>rem * var(--popup-scale)) 로 참조.
-				const scale = Math.max(0.9, Math.min(1.3, w / 1100));
+				const scale = Math.max(0.9, Math.min(1.3, pendingW / 1100));
 				document.documentElement.style.setProperty('--popup-scale', scale.toFixed(3));
-			}
+			});
 		});
-		return () => unsub();
+		return () => {
+			if (rafId !== null) cancelAnimationFrame(rafId);
+			unsub();
+		};
 	});
 
 	// DEV-074: 테마 — store 변경 시 `<html data-theme>` 갱신. 'system' 일 때

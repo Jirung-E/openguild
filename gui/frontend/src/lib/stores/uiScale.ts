@@ -58,9 +58,25 @@ export function resetUiScale() {
 /**
  * `<html>` 의 font-size 를 갱신해서 rem 기반 layout 을 확대/축소.
  * `+layout.svelte` 가 onMount + store subscribe 로 호출.
+ *
+ * BUG-141: root font-size 변경은 앱 전체 reflow — 슬라이더 드래그가 매
+ * pointermove 마다 이걸 호출하면(CustomSlider 는 step 넘을 때마다 onChange)
+ * 프레임당 여러 번 reflow 가 쌓여 Linux(WebKitGTK)에서 심하게 버벅였다.
+ * requestAnimationFrame 으로 병합해 프레임당 최대 1회만 DOM 에 쓴다
+ * (마지막 값만 반영 — 중간 값은 어차피 그 프레임에 안 보임).
  */
+let rafId: number | null = null;
+let pendingScale = DEFAULT_SCALE;
 export function applyUiScaleToDocument(scale: number) {
 	if (typeof document === 'undefined') return;
-	const s = clamp(scale);
-	document.documentElement.style.fontSize = `${(BASE_FONT_PX * s).toFixed(2)}px`;
+	pendingScale = clamp(scale);
+	if (typeof requestAnimationFrame === 'undefined') {
+		document.documentElement.style.fontSize = `${(BASE_FONT_PX * pendingScale).toFixed(2)}px`;
+		return;
+	}
+	if (rafId !== null) return; // 이미 이번 프레임에 예약됨 — 값만 갱신.
+	rafId = requestAnimationFrame(() => {
+		rafId = null;
+		document.documentElement.style.fontSize = `${(BASE_FONT_PX * pendingScale).toFixed(2)}px`;
+	});
 }
