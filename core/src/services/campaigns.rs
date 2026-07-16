@@ -372,6 +372,7 @@ pub async fn list_linked_quests(
                   qt.color  AS type_color,
                   qs.slug    AS status_slug,
                   qs.name_en AS status_name_en,
+                  qs.name_ko AS status_name_ko,
                   qs.color   AS status_color
              FROM campaign_quests cq
              JOIN quests q          ON cq.quest_id = q.id
@@ -524,6 +525,7 @@ pub async fn quest_status_counts(
 ) -> AppResult<Vec<crate::models::CampaignQuestStatusCount>> {
     let rows = sqlx::query_as(
         "SELECT qs.slug AS status_slug, qs.name_en AS status_name_en,
+                qs.name_ko AS status_name_ko,
                 qs.color AS status_color, qs.sort_order, COUNT(*) AS count
            FROM campaign_quests cq
            JOIN quests q ON q.id = cq.quest_id

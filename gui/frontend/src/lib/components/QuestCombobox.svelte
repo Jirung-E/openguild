@@ -14,6 +14,8 @@
 	import OverlayScrollbar from './OverlayScrollbar.svelte';
 	// DEV-205(2차): i18n.
 	import { locale, t } from '$lib/stores/locale';
+	// DEV-015: status 표시 이름 — 언어 반응.
+	import { questStatusLabel } from '$lib/utils/status-label';
 
 	let {
 		quests,
@@ -103,7 +105,7 @@
 					>
 						<span class="badge" style:--c={q.type_color}>{q.quest_id}</span>
 						<span class="title">{q.title}</span>
-						<span class="status" style:--c={q.status_color}>{q.status_name_en}</span>
+						<span class="status" style:--c={q.status_color}>{questStatusLabel(q, $locale)}</span>
 					</button>
 				</li>
 			{/each}

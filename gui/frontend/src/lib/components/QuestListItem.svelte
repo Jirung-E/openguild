@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { urgencyColor, urgencyLabel, urgencyOutOfRange, type Quest } from '$lib/types';
+	// DEV-015: status 표시 이름 — 언어 반응.
+	import { locale } from '$lib/stores/locale';
+	import { questStatusLabel } from '$lib/utils/status-label';
 
 	let {
 		quest,
@@ -81,7 +84,7 @@
 
 	<!-- 상태 -->
 	<span class="badge status" style:--c={quest.status_color}>
-		{quest.status_name_en}
+		{questStatusLabel(quest, $locale)}
 	</span>
 </div>
 

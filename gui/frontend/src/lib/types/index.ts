@@ -239,6 +239,8 @@ export interface CampaignLinkedQuest {
 	type_color: string;
 	status_slug: string;
 	status_name_en: string;
+	/** DEV-015: ko 표시용 — 빈 값이면 en fallback. 구서버 호환 optional. */
+	status_name_ko?: string;
 	status_color: string;
 }
 
@@ -289,6 +291,8 @@ export interface CampaignSummary {
 export interface CampaignQuestStatusCount {
 	status_slug: string;
 	status_name_en: string;
+	/** DEV-015: ko 표시용 — 빈 값이면 en fallback. 구서버 호환 optional. */
+	status_name_ko?: string;
 	status_color: string;
 	sort_order: number;
 	count: number;

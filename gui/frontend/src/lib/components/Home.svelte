@@ -12,6 +12,8 @@
 	import { questsApi } from '$lib/api/quests';
 	// DEV-205 모듈2: 홈 문자열 i18n.
 	import { locale, t } from '$lib/stores/locale';
+	// DEV-015: status 표시 이름 — 언어 반응.
+	import { statusLabel } from '$lib/utils/status-label';
 	// BUG-025: 진행 중 = carousel (좌우 꽉, 1개씩 자동 회전),
 	//          곧 시작 = conveyor (멈춤 없이 흐름).
 	import CampaignCarousel from './CampaignCarousel.svelte';
@@ -248,8 +250,10 @@
 	function typeColor(prefix: string): string {
 		return types.find((t) => t.prefix === prefix)?.color ?? '#666';
 	}
+	// DEV-015: status 표시 이름 — 언어 반응(ko 면 name_ko 우선, 빈 값이면 en).
 	function statusName(slug: string): string {
-		return statuses.find((s) => s.slug === slug)?.name_en ?? slug;
+		const s = statuses.find((x) => x.slug === slug);
+		return s ? statusLabel(s, $locale) : slug;
 	}
 	function statusColor(slug: string): string {
 		return statuses.find((s) => s.slug === slug)?.color ?? '#666';

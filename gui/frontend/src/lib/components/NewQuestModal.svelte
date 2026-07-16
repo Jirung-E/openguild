@@ -3,6 +3,8 @@
 	import { metaApi } from '$lib/api/meta';
 	// DEV-205: 새 퀘스트 모달 i18n.
 	import { locale, t } from '$lib/stores/locale';
+	// DEV-015: status 표시 이름 — 언어 반응.
+	import { statusLabel } from '$lib/utils/status-label';
 	// DEV-130 #2: 설명 textarea 도 Tab = 들여쓰기 (focus 이동 X), 설정 반영.
 	import { tabInsert } from '$lib/actions/tab-insert';
 	import { adminApi } from '$lib/api/admin';
@@ -21,9 +23,10 @@
 	} = $props();
 
 	let types = $state<QuestType[]>([]);
-	// DEV-048: API 가 slug 전용. 표시용 라벨만 별도 보관.
+	// DEV-048: API 가 slug 전용. 표시용은 status 객체를 들고(DEV-015: 언어
+	// 반응 라벨 statusLabel() 을 렌더 시점에 계산) slug 만 별도 보관.
 	let openStatusSlug = $state('');
-	let openStatusLabel = $state('');
+	let openStatus = $state<QuestStatus | null>(null);
 	let loading = $state(true);
 
 	let typeId = $state(0);
@@ -53,7 +56,7 @@
 			const sorted = [...s].sort((a, b) => a.sort_order - b.sort_order);
 			if (sorted.length > 0) {
 				openStatusSlug = sorted[0].slug;
-				openStatusLabel = sorted[0].name_en;
+				openStatus = sorted[0];
 			}
 			// 결과적으로 statuses.length > 0 → 폼이 표시됨 ($derived).
 			queueMicrotask(() => titleInput?.focus());
@@ -149,7 +152,7 @@
 			const sorted = [...s].sort((a: QuestStatus, b: QuestStatus) => a.sort_order - b.sort_order);
 			if (sorted.length > 0) {
 				openStatusSlug = sorted[0].slug;
-				openStatusLabel = sorted[0].name_en;
+				openStatus = sorted[0];
 			}
 			// DEV-060: 템플릿 목록 — 실패해도 모달 자체는 OK.
 			if (isTauri) {
@@ -297,7 +300,7 @@
 					</div>
 					<div class="field" style="flex:1">
 						<span class="field-label">{t('nqm.status', $locale)}</span>
-						<span class="status-fixed" data-testid="new-quest-status">{openStatusLabel}</span>
+						<span class="status-fixed" data-testid="new-quest-status">{openStatus ? statusLabel(openStatus, $locale) : ''}</span>
 					</div>
 				</div>
 

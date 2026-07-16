@@ -13,6 +13,8 @@
 	import { locale, t } from '$lib/stores/locale';
 	// DEV-255: 자식윈도우(검색 팔레트 "새 창으로 열기")에선 뒤로가기 버튼 숨김.
 	import { isChildWindow } from '$lib/stores/windowKind';
+	// DEV-015: status 표시 이름 — 언어 반응(ko 면 name_ko 우선, 빈 값이면 en).
+	import { statusLabel, questStatusLabel } from '$lib/utils/status-label';
 	// DEV-205: 언어 반응 날짜 입력(네이티브 date 대체).
 	import DateField from '$lib/components/DateField.svelte';
 	import { campaignsApi } from '$lib/api/campaigns';
@@ -663,7 +665,7 @@
 			{/if}
 			{#key badgePulse}
 				<span class="badge status pulsing" style:--c={detail.status_color}>
-					{detail.status_name_en}
+					{questStatusLabel(detail, $locale)}
 				</span>
 			{/key}
 		</div>
@@ -811,7 +813,7 @@
 							data-testid="status-btn-{s.id}"
 						>
 							{#if s.id === statusFlashId}✓
-							{/if}{s.name_en}
+							{/if}{statusLabel(s, $locale)}
 						</button>
 					{/each}
 				</div>
@@ -849,7 +851,7 @@
 								>
 								<span class="ql-title">{detail.parent.title}</span>
 								<span class="badge status" style:--c={detail.parent.status_color}
-									>{detail.parent.status_name_en}</span
+									>{questStatusLabel(detail.parent, $locale)}</span
 								>
 							</a>
 						</div>
@@ -875,7 +877,7 @@
 								<a href="/quests/{sq.quest_id}{fromSuffix}" class="prereq-link">
 									<span class="badge type" style:--c={sq.type_color}>{sq.quest_id}</span>
 									<span class="ql-title">{sq.title}</span>
-									<span class="badge status" style:--c={sq.status_color}>{sq.status_name_en}</span>
+									<span class="badge status" style:--c={sq.status_color}>{questStatusLabel(sq, $locale)}</span>
 								</a>
 								{#if !editMode}
 									<button
@@ -910,7 +912,7 @@
 								<a href="/quests/{pq.quest_id}{fromSuffix}" class="prereq-link">
 									<span class="badge type" style:--c={pq.type_color}>{pq.quest_id}</span>
 									<span class="ql-title">{pq.title}</span>
-									<span class="badge status" style:--c={pq.status_color}>{pq.status_name_en}</span>
+									<span class="badge status" style:--c={pq.status_color}>{questStatusLabel(pq, $locale)}</span>
 								</a>
 								{#if !editMode}
 									<button
@@ -948,7 +950,7 @@
 								<a href="/quests/{sq.quest_id}{fromSuffix}" class="prereq-link">
 									<span class="badge type" style:--c={sq.type_color}>{sq.quest_id}</span>
 									<span class="ql-title">{sq.title}</span>
-									<span class="badge status" style:--c={sq.status_color}>{sq.status_name_en}</span>
+									<span class="badge status" style:--c={sq.status_color}>{questStatusLabel(sq, $locale)}</span>
 								</a>
 							</div>
 						</li>

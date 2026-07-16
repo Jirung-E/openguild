@@ -19,6 +19,8 @@
 	import { locale, t } from '$lib/stores/locale';
 	// DEV-255: 자식윈도우(검색 팔레트 "새 창으로 열기")에선 뒤로가기 버튼 숨김.
 	import { isChildWindow } from '$lib/stores/windowKind';
+	// DEV-015: status 표시 이름 — 언어 반응.
+	import { questStatusLabel } from '$lib/utils/status-label';
 	// DEV-205: 언어 반응 날짜 입력(네이티브 date 대체).
 	import DateField from '$lib/components/DateField.svelte';
 	import { questsApi } from '$lib/api/quests';
@@ -362,6 +364,7 @@
 			type_color: q.type_color,
 			status_slug: q.status_slug,
 			status_name_en: q.status_name_en,
+			status_name_ko: q.status_name_ko,
 			status_color: q.status_color
 		};
 		detail.linked_quests.push(linked);
@@ -625,7 +628,7 @@
 					{#each detail.quest_status_counts ?? [] as sc (sc.status_slug)}
 						<div class="tooltip-row">
 							<span class="tooltip-dot" style:background={sc.status_color}></span>
-							<span class="tooltip-name">{sc.status_name_en}</span>
+							<span class="tooltip-name">{questStatusLabel(sc, $locale)}</span>
 							<span class="tooltip-count"
 								>{sc.count}{t('common.countSuffix', $locale)} ({Math.round((sc.count / (detail.quest_total ?? 1)) * 100)}%)</span
 							>
@@ -644,7 +647,7 @@
 							>
 								<span class="badge type" style:--c={q.type_color}>{q.quest_id}</span>
 								<span class="qtitle">{q.title}</span>
-								<span class="badge status" style:--c={q.status_color}>{q.status_name_en}</span>
+								<span class="badge status" style:--c={q.status_color}>{questStatusLabel(q, $locale)}</span>
 							</a>
 							<button class="rm" title={t('campaign.unlinkQuest', $locale)} onclick={() => unlinkQuest(q.quest_id)}>×</button
 							>

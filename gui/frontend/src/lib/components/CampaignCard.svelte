@@ -14,6 +14,8 @@
 	import { formatRemaining } from '$lib/utils/datetime';
 	// DEV-205 모듈2: 카드 문자열 i18n.
 	import { locale, t } from '$lib/stores/locale';
+	// DEV-015: status 표시 이름 — 언어 반응.
+	import { questStatusLabel } from '$lib/utils/status-label';
 	import { isCampaignDone } from '$lib/utils/campaign-progress';
 	// DEV-233 후속: 캐러셀/컨베이어의 transform 이 fixed 기준을 바꿔 툴팁이
 	// 잘리는 문제 — body 직속으로 이동.
@@ -259,7 +261,7 @@
 		{#each summary.quest_status_counts ?? [] as sc (sc.status_slug)}
 			<div class="tooltip-row">
 				<span class="tooltip-dot" style:background={sc.status_color}></span>
-				<span class="tooltip-name">{sc.status_name_en}</span>
+				<span class="tooltip-name">{questStatusLabel(sc, $locale)}</span>
 				<span class="tooltip-count"
 					>{sc.count}{t('common.countSuffix', $locale)} ({Math.round((sc.count / questTotal) * 100)}%)</span
 				>

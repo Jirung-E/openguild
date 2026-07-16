@@ -3,6 +3,8 @@
 	import { urgencyLabel, urgencyColor } from '$lib/types';
 	// DEV-205 모듈3: 필터 문자열 i18n.
 	import { locale, t } from '$lib/stores/locale';
+	// DEV-015: status 표시 이름 — 언어 반응.
+	import { statusLabel } from '$lib/utils/status-label';
 	// DEV-205: 언어 반응 날짜 입력(네이티브 date 대체).
 	import DateField from './DateField.svelte';
 	import type { TriState } from '$lib/utils/quest-list';
@@ -100,7 +102,7 @@
 				style:--c={s.color}
 				onclick={() => (statusIds = toggle(statusIds, s.id))}
 			>
-				{s.name_en}
+				{statusLabel(s, $locale)}
 			</button>
 		{/each}
 	</div>

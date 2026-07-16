@@ -186,7 +186,11 @@
 				<tr>
 					<th style="width: 12ch">slug</th>
 					<th>name_en</th>
-					<th>name_ko</th>
+					<!-- DEV-015: 기본 언어=영어면 name_ko 열 자체를 숨김(시각 잡음 제거).
+					     한국어일 때만 노출 — 여전히 선택 입력. -->
+					{#if $locale === 'ko'}
+						<th>name_ko</th>
+					{/if}
 					<th style="width: 5ch">{t('adminTypes.colColor', $locale)}</th>
 					<!-- DEV-093: 캠페인 진행도용 "완료" 카운트 토글. -->
 					<th style="width: 7ch" title={t('adminStatuses.doneColTitle', $locale)}>{t('adminStatuses.doneCol', $locale)}</th>
@@ -220,9 +224,11 @@
 									disabled={busy}
 								/>
 							</td>
-							<td>
-								<input type="text" bind:value={editNameKo} maxlength="32" disabled={busy} />
-							</td>
+							{#if $locale === 'ko'}
+								<td>
+									<input type="text" bind:value={editNameKo} maxlength="32" disabled={busy} />
+								</td>
+							{/if}
 							<td><input type="color" bind:value={editColor} disabled={busy} /></td>
 							<td style="text-align: center;">
 								<input
@@ -240,7 +246,9 @@
 						{:else}
 							<td><code>{s.slug}</code></td>
 							<td>{s.name_en}</td>
-							<td>{s.name_ko || '—'}</td>
+							{#if $locale === 'ko'}
+								<td>{s.name_ko || '—'}</td>
+							{/if}
 							<td>
 								<span class="swatch" style="background: {s.color}"></span>
 								<code class="hex">{s.color}</code>
@@ -292,16 +300,19 @@
 						disabled={busy}
 					/>
 				</label>
-				<label>
-					<span>name_ko</span>
-					<input
-						type="text"
-						bind:value={newNameKo}
-						placeholder={t('adminStatuses.nameKoPlaceholder', $locale)}
-						maxlength="32"
-						disabled={busy}
-					/>
-				</label>
+				<!-- DEV-015: 기본 언어=영어면 name_ko 입력 자체를 숨김. -->
+				{#if $locale === 'ko'}
+					<label>
+						<span>name_ko</span>
+						<input
+							type="text"
+							bind:value={newNameKo}
+							placeholder={t('adminStatuses.nameKoPlaceholder', $locale)}
+							maxlength="32"
+							disabled={busy}
+						/>
+					</label>
+				{/if}
 				<label>
 					<span>{t('adminTypes.colColor', $locale)}</span>
 					<input type="color" bind:value={newColor} disabled={busy} />

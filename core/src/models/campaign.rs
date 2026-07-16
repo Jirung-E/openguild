@@ -73,6 +73,9 @@ pub struct CampaignLinkedQuest {
     pub type_color: String,
     pub status_slug: String,
     pub status_name_en: String,
+    /// DEV-015: 표시 언어가 ko 면 프론트가 이걸 우선 사용(빈 값이면 en fallback).
+    #[serde(default)]
+    pub status_name_ko: String,
     pub status_color: String,
 }
 
@@ -108,6 +111,9 @@ pub struct CampaignDetail {
 pub struct CampaignQuestStatusCount {
     pub status_slug: String,
     pub status_name_en: String,
+    /// DEV-015: 표시 언어가 ko 면 프론트가 이걸 우선 사용(빈 값이면 en fallback).
+    #[serde(default)]
+    pub status_name_ko: String,
     pub status_color: String,
     pub sort_order: i64,
     pub count: i64,

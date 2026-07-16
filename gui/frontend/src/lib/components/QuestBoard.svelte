@@ -8,6 +8,8 @@
 	import { goto } from '$app/navigation';
 	// DEV-205 모듈3: Quest Board 문자열 i18n.
 	import { locale, t } from '$lib/stores/locale';
+	// DEV-015: status 표시 이름 — 언어 반응(ko 면 name_ko 우선, 빈 값이면 en).
+	import { statusLabel, questStatusLabel } from '$lib/utils/status-label';
 	import { questsApi } from '$lib/api/quests';
 	// DEV-142 후속: 상태 변경 실패(미해결 토론 등) 시 통일된 toast 경고.
 	import { showToast } from '$lib/stores/toast';
@@ -309,6 +311,18 @@
 	function slugOf(statusId: number): string {
 		return sorted.find((s) => s.id === statusId)?.slug ?? '';
 	}
+
+	// DEV-015: 언어 토글 시 레인 라벨 갱신 — 레인 헤더는 buildLaneDivs 가
+	// imperative DOM 으로 만들어 Svelte 반응이 안 닿음. locale 변경에만 반응해
+	// 라벨 텍스트만 다시 쓴다(헤더 DOM 순서 = sorted 순서, buildLaneDivs 참고).
+	$effect(() => {
+		const loc = $locale;
+		if (!headersEl) return;
+		headersEl.querySelectorAll<HTMLElement>('.lane-label').forEach((el, i) => {
+			const s = sorted[i];
+			if (s) el.textContent = statusLabel(s, loc);
+		});
+	});
 
 	// ── 반응형 상태 ──────────────────────────────────────────────
 
@@ -2396,7 +2410,9 @@
 			if (collapsedLanes.has(s.slug)) hdr.classList.add('collapsed');
 			const label = document.createElement('button');
 			label.className = 'lane-label';
-			label.textContent = s.name_en;
+			// DEV-015: 언어 반응 표시 이름(레인 저장 키는 여전히 name_en 기반 —
+			// statusSlug(s.name_en) — 표시만 바뀜).
+			label.textContent = statusLabel(s, get(locale));
 			label.style.color = s.color;
 			// DEV-105: 클릭으로 collapse 토글. label 이 button — keyboard / 접근성 OK.
 			label.type = 'button';
@@ -2864,8 +2880,8 @@
 				const names = items.map((it) => it.node.data('questSlug')).join(', ');
 				const msg =
 					items.length === 1
-						? `${names} → "${newStatus.name_en}"${t('board.confirmChangeSuffix', $locale)}`
-						: `${items.length}${t('board.confirmChangeCountMid', $locale)}"${newStatus.name_en}"${t('board.confirmChangeSuffix', $locale)}\n(${names})`;
+						? `${names} → "${statusLabel(newStatus, $locale)}"${t('board.confirmChangeSuffix', $locale)}`
+						: `${items.length}${t('board.confirmChangeCountMid', $locale)}"${statusLabel(newStatus, $locale)}"${t('board.confirmChangeSuffix', $locale)}\n(${names})`;
 				if (await showConfirm(msg)) {
 					confirmedLanes.add(laneIdx);
 				} else {
@@ -3042,7 +3058,7 @@
 						>{urgencyLabel(expandedQuest.urgency)}</span
 					>
 					<span class="badge" style:--c={expandedQuest.status_color}
-						>{expandedQuest.status_name_en}</span
+						>{questStatusLabel(expandedQuest, $locale)}</span
 					>
 				</div>
 				<button class="card-close" onclick={closeExpanded} title={t('board.closeEsc', $locale)}>×</button>
@@ -3305,7 +3321,7 @@
 								>
 							</td>
 							<td>
-								<span class="hide-lane-name" style:color={s.color}>{s.name_en}</span>
+								<span class="hide-lane-name" style:color={s.color}>{statusLabel(s, $locale)}</span>
 							</td>
 							<td>
 								<input
