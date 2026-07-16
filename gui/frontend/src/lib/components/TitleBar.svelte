@@ -1,6 +1,7 @@
 <!--
-  커스텀 타이틀바 (vscode 식) — Windows 전용 (tauri.windows.conf.json 의
-  decorations:false 와 세트, 호출측 +layout 이 플랫폼 판별).
+  커스텀 타이틀바 (vscode 식) — Windows/Linux (각 tauri.{platform}.conf.json 의
+  decorations:false 와 세트, 호출측 +layout 이 usesCustomTitlebar() 로 판별.
+  BUG-140: Linux 도 커스텀 사용. macOS 는 네이티브 관례 유지로 제외).
 
   배경: 네이티브 타이틀바는 setTheme 동기화가 OS/WebView2 타이밍에 따라
   간헐적으로 어긋났음(admin 보고). HTML/CSS 타이틀바는 테마 토큰을 그대로

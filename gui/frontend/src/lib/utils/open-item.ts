@@ -11,6 +11,8 @@ export type OpenMode = 'preview' | 'window' | 'page';
 
 import { goto } from '$app/navigation';
 import { detectEnvironment } from '$lib/api/transport';
+// BUG-140: 커스텀 타이틀바 플랫폼 판별 — +layout 의 showTitleBar 와 동일 소스.
+import { usesCustomTitlebar } from '$lib/utils/platform';
 
 let windowSeq = 0;
 
@@ -31,9 +33,9 @@ export async function openInWindow(href: string, title: string): Promise<void> {
 	// client-side goto 로 진짜 목적지로 이동시킨다.
 	const url = `/?winTarget=${encodeURIComponent(href)}`;
 	// DEV-255 버그 수정: decorations 기본값(true=네이티브 타이틀바)이라 그
-	// 아래에 앱의 커스텀 타이틀바(Windows 전용)까지 겹쳐 보였다. 메인 창과
-	// 동일하게 Windows 에서만 꺼서 커스텀 타이틀바 하나만 보이게 한다.
-	const isWindows = typeof navigator !== 'undefined' && navigator.userAgent.includes('Windows');
+	// 아래에 앱의 커스텀 타이틀바까지 겹쳐 보였다. 메인 창과 동일한 플랫폼
+	// 판별(usesCustomTitlebar — BUG-140 부터 Windows/Linux)로 꺼서 커스텀
+	// 타이틀바 하나만 보이게 한다.
 	new WebviewWindow(label, {
 		url,
 		title,
@@ -41,7 +43,7 @@ export async function openInWindow(href: string, title: string): Promise<void> {
 		height: 700,
 		minWidth: 480,
 		minHeight: 360,
-		decorations: !isWindows,
+		decorations: !usesCustomTitlebar(),
 		shadow: true
 	});
 }

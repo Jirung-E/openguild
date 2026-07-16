@@ -17,6 +17,8 @@
 	// DEV-074 fix13: window 스크롤 overlay — 컨텐츠 폭 차지 X.
 	import OverlayScrollbar from '$lib/components/OverlayScrollbar.svelte';
 	import { detectEnvironment } from '$lib/api/transport';
+	// BUG-140: 커스텀 타이틀바 플랫폼 판별(Windows/Linux) — 단일 진리원.
+	import { usesCustomTitlebar } from '$lib/utils/platform';
 	import { uiScale, applyUiScaleToDocument } from '$lib/stores/uiScale';
 	import { contentWidth } from '$lib/stores/contentWidth';
 	import {
@@ -60,13 +62,12 @@
 		if (target) void goto(target, { replaceState: true });
 	});
 
-	// 커스텀 타이틀바 — decorations:false 는 Windows 만(tauri.windows.conf.json)
-	// 이므로 플랫폼 판별과 세트. 표시 시 sticky 요소들(Nav 등)의 top offset 용
+	// 커스텀 타이틀바 — decorations:false 인 플랫폼(Windows/Linux, 각
+	// tauri.{platform}.conf.json)과 세트. BUG-140: Linux 도 커스텀 사용
+	// (판별을 usesCustomTitlebar() 로 단일화 — 자식윈도우 decorations 옵션과
+	// 어긋나지 않게). 표시 시 sticky 요소들(Nav 등)의 top offset 용
 	// CSS 변수(--titlebar-h)를 root 에 심는다.
-	const showTitleBar =
-		detectEnvironment() === 'tauri' &&
-		typeof navigator !== 'undefined' &&
-		navigator.userAgent.includes('Windows');
+	const showTitleBar = usesCustomTitlebar();
 	$effect(() => {
 		if (typeof document === 'undefined') return;
 		document.documentElement.style.setProperty(
