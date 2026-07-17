@@ -32,6 +32,7 @@
 	// DEV-114: 커스텀 테마 — 프리셋 저장/활성화 + 토큰 color picker.
 	import {
 		TOKEN_CATALOG,
+		tokenLabel,
 		customThemes,
 		activeCustomTheme,
 		activatePreset,
@@ -523,9 +524,9 @@
 											type="color"
 											value={activePreset.overrides[d.token] ?? computedTokenValue(d.token)}
 											oninput={(e) => onTokenInput(d.token, e)}
-											aria-label={d.label}
+											aria-label={tokenLabel(d, $locale)}
 										/>
-										<span class="ct-token-label" title={d.token}>{d.label}</span>
+										<span class="ct-token-label" title={d.token}>{tokenLabel(d, $locale)}</span>
 										{#if activePreset.overrides[d.token]}
 											<button
 												class="ct-reset"

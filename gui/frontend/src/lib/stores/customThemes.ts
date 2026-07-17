@@ -21,6 +21,8 @@
 // check-no-hex 는 컴포넌트 CSS 만 검사하므로 충돌 없음.
 
 import { writable, get } from 'svelte/store';
+// DEV-205: 사용자 노출 문자열(가져오기 에러) 언어 반응용.
+import { locale } from './locale';
 import {
 	setTheme,
 	setPaletteOverrides,
@@ -31,10 +33,17 @@ import {
 /** 사용자 노출 토큰 정의. palette = themePalette 필드 매핑(보드 연동용). */
 export interface TokenDef {
 	token: string;
+	/** 한국어 라벨. DEV-205: 영어는 labelEn — 렌더 시 tokenLabel() 로 선택. */
 	label: string;
+	labelEn: string;
 	palette?: keyof ThemePalette;
 	/** true = "고급" 토글을 켜야 노출. 기본 노출은 핵심 ~12개만. */
 	advanced?: boolean;
+}
+
+/** DEV-205: 토큰 라벨 — 앱 언어 반응(ko=label, en=labelEn). */
+export function tokenLabel(d: TokenDef, loc: 'ko' | 'en'): string {
+	return loc === 'en' ? d.labelEn : d.label;
 }
 
 // 카탈로그 제약: global.css 에 **리터럴 hex** 로 정의된 토큰만 —
@@ -43,36 +52,36 @@ export interface TokenDef {
 // (--success-strong 등)을 바꾸면 따라온다.
 export const TOKEN_CATALOG: TokenDef[] = [
 	// ─── 핵심 (기본 노출) ───
-	{ token: '--bg', label: '배경', palette: 'bg' },
-	{ token: '--bg-elevated', label: '배경 (카드)', palette: 'bgElevated' },
-	{ token: '--bg-subtle', label: '배경 (강조)' },
-	{ token: '--border', label: '테두리' },
-	{ token: '--text', label: '텍스트', palette: 'text' },
-	{ token: '--text-muted', label: '텍스트 (보조)', palette: 'textMuted' },
-	{ token: '--accent', label: '강조색', palette: 'accent' },
-	{ token: '--success', label: '성공', palette: 'success' },
-	{ token: '--success-strong', label: '성공 (진함/주 버튼)', palette: 'successStrong' },
-	{ token: '--warning', label: '경고', palette: 'warning' },
-	{ token: '--danger', label: '위험', palette: 'danger' },
-	{ token: '--nav-bg', label: '내비게이션 배경' },
+	{ token: '--bg', label: '배경', labelEn: 'Background', palette: 'bg' },
+	{ token: '--bg-elevated', label: '배경 (카드)', labelEn: 'Background (card)', palette: 'bgElevated' },
+	{ token: '--bg-subtle', label: '배경 (강조)', labelEn: 'Background (subtle)' },
+	{ token: '--border', label: '테두리', labelEn: 'Border' },
+	{ token: '--text', label: '텍스트', labelEn: 'Text', palette: 'text' },
+	{ token: '--text-muted', label: '텍스트 (보조)', labelEn: 'Text (muted)', palette: 'textMuted' },
+	{ token: '--accent', label: '강조색', labelEn: 'Accent', palette: 'accent' },
+	{ token: '--success', label: '성공', labelEn: 'Success', palette: 'success' },
+	{ token: '--success-strong', label: '성공 (진함/주 버튼)', labelEn: 'Success (strong/primary button)', palette: 'successStrong' },
+	{ token: '--warning', label: '경고', labelEn: 'Warning', palette: 'warning' },
+	{ token: '--danger', label: '위험', labelEn: 'Danger', palette: 'danger' },
+	{ token: '--nav-bg', label: '내비게이션 배경', labelEn: 'Navigation background' },
 	// ─── 고급 ───
-	{ token: '--text-strong', label: '텍스트 (진함)', advanced: true },
-	{ token: '--text-faint', label: '텍스트 (희미)', palette: 'textFaint', advanced: true },
-	{ token: '--border-muted', label: '테두리 (연함)', advanced: true },
-	{ token: '--accent-strong', label: '강조색 (진함)', advanced: true },
-	{ token: '--accent-secondary', label: '강조색 (보조)', palette: 'accentSecondary', advanced: true },
-	{ token: '--orange', label: '오렌지', palette: 'orange', advanced: true },
-	{ token: '--nav-border', label: '내비게이션 테두리', advanced: true },
-	{ token: '--nav-hover-bg', label: '내비게이션 hover', advanced: true },
-	{ token: '--hl-pre', label: '보드: 선행 강조', palette: 'hlPre', advanced: true },
-	{ token: '--hl-pre-bg', label: '보드: 선행 배경', palette: 'hlPreBg', advanced: true },
-	{ token: '--hl-sub', label: '보드: 서브 강조', palette: 'hlSub', advanced: true },
-	{ token: '--hl-sub-bg', label: '보드: 서브 배경', palette: 'hlSubBg', advanced: true },
-	{ token: '--hl-next', label: '보드: 후속 강조', palette: 'hlNext', advanced: true },
-	{ token: '--hl-next-bg', label: '보드: 후속 배경', palette: 'hlNextBg', advanced: true },
-	{ token: '--hl-parent-bg', label: '보드: 부모 배경', palette: 'hlParentBg', advanced: true },
-	{ token: '--selected-bg', label: '보드: 선택 배경', palette: 'selectedBg', advanced: true },
-	{ token: '--edge-pre', label: '보드: 의존 엣지', palette: 'edgePre', advanced: true }
+	{ token: '--text-strong', label: '텍스트 (진함)', labelEn: 'Text (strong)', advanced: true },
+	{ token: '--text-faint', label: '텍스트 (희미)', labelEn: 'Text (faint)', palette: 'textFaint', advanced: true },
+	{ token: '--border-muted', label: '테두리 (연함)', labelEn: 'Border (muted)', advanced: true },
+	{ token: '--accent-strong', label: '강조색 (진함)', labelEn: 'Accent (strong)', advanced: true },
+	{ token: '--accent-secondary', label: '강조색 (보조)', labelEn: 'Accent (secondary)', palette: 'accentSecondary', advanced: true },
+	{ token: '--orange', label: '오렌지', labelEn: 'Orange', palette: 'orange', advanced: true },
+	{ token: '--nav-border', label: '내비게이션 테두리', labelEn: 'Navigation border', advanced: true },
+	{ token: '--nav-hover-bg', label: '내비게이션 hover', labelEn: 'Navigation hover', advanced: true },
+	{ token: '--hl-pre', label: '보드: 선행 강조', labelEn: 'Board: prereq highlight', palette: 'hlPre', advanced: true },
+	{ token: '--hl-pre-bg', label: '보드: 선행 배경', labelEn: 'Board: prereq background', palette: 'hlPreBg', advanced: true },
+	{ token: '--hl-sub', label: '보드: 서브 강조', labelEn: 'Board: sub highlight', palette: 'hlSub', advanced: true },
+	{ token: '--hl-sub-bg', label: '보드: 서브 배경', labelEn: 'Board: sub background', palette: 'hlSubBg', advanced: true },
+	{ token: '--hl-next', label: '보드: 후속 강조', labelEn: 'Board: successor highlight', palette: 'hlNext', advanced: true },
+	{ token: '--hl-next-bg', label: '보드: 후속 배경', labelEn: 'Board: successor background', palette: 'hlNextBg', advanced: true },
+	{ token: '--hl-parent-bg', label: '보드: 부모 배경', labelEn: 'Board: parent background', palette: 'hlParentBg', advanced: true },
+	{ token: '--selected-bg', label: '보드: 선택 배경', labelEn: 'Board: selection background', palette: 'selectedBg', advanced: true },
+	{ token: '--edge-pre', label: '보드: 의존 엣지', labelEn: 'Board: dependency edge', palette: 'edgePre', advanced: true }
 ];
 
 export interface CustomTheme {
@@ -266,7 +275,9 @@ export function importPresetsJson(json: string): number {
 	const parsed = JSON.parse(json);
 	const arr: unknown[] = Array.isArray(parsed) ? parsed : [parsed];
 	const valid = arr.filter(isValidPreset);
-	if (valid.length === 0) throw new Error('유효한 프리셋이 없습니다.');
+	// DEV-205: 사용자 노출 에러 — 언어 반응.
+	if (valid.length === 0)
+		throw new Error(get(locale) === 'en' ? 'No valid presets found.' : '유효한 프리셋이 없습니다.');
 	for (const p of valid) savePreset(p);
 	return valid.length;
 }
