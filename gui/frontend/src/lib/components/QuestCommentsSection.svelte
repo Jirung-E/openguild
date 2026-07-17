@@ -19,6 +19,8 @@
 	import { isSingleEmoji } from '$lib/utils/emoji';
 	// DEV-153: 작성/편집/답글 중이면 이탈 가드에 보고.
 	import { setUnsaved } from '$lib/stores/unsaved';
+	// DEV-259: alert() 잔재 제거 — 앱 공용 toast 로 통일.
+	import { showToast } from '$lib/stores/toast';
 	import {
 		commentsApi as questCommentsApi,
 		campaignCommentsApi,
@@ -443,7 +445,7 @@
 			const updated = await commentsApi.toggleReaction(slug, id, emoji, currentAuthor());
 			entries = entries.map((e) => (e.id === id ? updated : e));
 		} catch (e) {
-			alert(e instanceof Error ? e.message : 'reaction failed');
+			showToast(e instanceof Error ? e.message : 'reaction failed', 'error');
 		}
 	}
 
@@ -454,7 +456,7 @@
 			const updated = await commentsApi.togglePinned(slug, id);
 			entries = entries.map((e) => (e.id === id ? updated : e));
 		} catch (e) {
-			alert(e instanceof Error ? e.message : 'pin toggle failed');
+			showToast(e instanceof Error ? e.message : 'pin toggle failed', 'error');
 		}
 	}
 
@@ -465,7 +467,7 @@
 			const updated = await commentsApi.toggleDiscussion(slug, id);
 			entries = entries.map((e) => (e.id === id ? updated : e));
 		} catch (e) {
-			alert(e instanceof Error ? e.message : 'discussion toggle failed');
+			showToast(e instanceof Error ? e.message : 'discussion toggle failed', 'error');
 		}
 	}
 	// DEV-142: discussion 댓글 resolve 토글.
@@ -474,7 +476,7 @@
 			const updated = await commentsApi.toggleResolved(slug, id);
 			entries = entries.map((e) => (e.id === id ? updated : e));
 		} catch (e) {
-			alert(e instanceof Error ? e.message : 'resolve toggle failed');
+			showToast(e instanceof Error ? e.message : 'resolve toggle failed', 'error');
 		}
 	}
 
@@ -795,7 +797,7 @@
 			await commentsApi.deleteComment(slug, id);
 			entries = entries.filter((e) => e.id !== id);
 		} catch (e) {
-			alert(e instanceof Error ? e.message : 'delete failed');
+			showToast(e instanceof Error ? e.message : 'delete failed', 'error');
 		}
 	}
 

@@ -1,7 +1,12 @@
 <!--
   앱 공용 toast 표시 영역. layout 에 1회 마운트. showToast() 로 추가된 메시지를
-  우상단에 쌓아 보여주고, 클릭 또는 자동(기본 4초) 으로 닫힘. alert() 대체 —
+  보여주고, 클릭 또는 자동(기본 4초) 으로 닫힘. alert() 대체 —
   모달/보드 어디서든 동일 UI.
+
+  DEV-259(사용자 결정: "업데이트 확인 알림처럼 표시되어야"): 위치/스타일을
+  UpdateBanner(우하단 카드, border-left 강조)와 통일 — 우상단 스택에서
+  우하단 스택(새 항목이 아래)으로 이동. UpdateBanner/SchemaAheadBanner 는
+  행동 필요·상태 유지형이라 별도 유지(동시 발생 정책은 후속 퀘스트).
 -->
 <script lang="ts">
 	import { toasts, dismissToast } from '$lib/stores/toast';
@@ -16,11 +21,13 @@
 </div>
 
 <style>
-	/* 모달(z 100) / admin toast(z 1000) 보다 위. */
+	/* DEV-259: UpdateBanner(.upd-toast)와 동일 계열 — 우하단, 카드형.
+	   UpdateBanner(z 60)보다 위에 잠깐 떠도 자동 소멸되므로 허용(완전한
+	   동시 배치 정책은 알림 시스템 개선 퀘스트에서). */
 	.toast-wrap {
 		position: fixed;
-		top: 1rem;
-		right: 1rem;
+		right: 1.5rem;
+		bottom: 1.5rem;
 		z-index: 2000;
 		display: flex;
 		flex-direction: column;
@@ -30,33 +37,32 @@
 	}
 	.toast {
 		text-align: left;
-		padding: 0.7rem 1rem;
-		border-radius: 6px;
+		padding: 0.85rem 1rem;
+		border-radius: 8px;
 		border: 1px solid var(--border);
+		border-left: 3px solid var(--accent);
 		background: var(--bg-elevated);
-		color: var(--text-strong);
-		font-size: 0.875rem;
+		color: var(--text);
+		font-size: 0.85rem;
 		line-height: 1.45;
-		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+		box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
 		cursor: pointer;
 		pointer-events: auto;
 		white-space: pre-wrap;
 		animation: toast-in 0.18s ease-out;
 	}
 	.toast.error {
-		border-color: color-mix(in srgb, var(--danger) 55%, transparent);
-		background: color-mix(in srgb, var(--danger) 14%, var(--bg-elevated));
+		border-left-color: var(--danger);
 		color: var(--danger);
 	}
 	.toast.success {
-		border-color: color-mix(in srgb, var(--success) 55%, transparent);
-		background: color-mix(in srgb, var(--success) 14%, var(--bg-elevated));
+		border-left-color: var(--success-strong);
 		color: var(--success);
 	}
 	@keyframes toast-in {
 		from {
 			opacity: 0;
-			transform: translateY(-8px);
+			transform: translateY(8px);
 		}
 		to {
 			opacity: 1;

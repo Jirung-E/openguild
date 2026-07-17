@@ -11,6 +11,8 @@
 	import { campaignsApi } from '$lib/api/campaigns';
 	// DEV-205 모듈2: 캠페인 목록 문자열 i18n.
 	import { locale, t } from '$lib/stores/locale';
+	// DEV-259: alert() 잔재 제거 — 앱 공용 toast 로 통일.
+	import { showToast } from '$lib/stores/toast';
 	import type { Campaign } from '$lib/types';
 	import { isDateOverdue } from '$lib/utils/datetime';
 
@@ -55,7 +57,7 @@
 			await campaignsApi.update(c.campaign_slug, { display_order: next });
 			all = await campaignsApi.list();
 		} catch (e) {
-			alert(e instanceof Error ? e.message : t('campaignList.orderChangeFailed', $locale));
+			showToast(e instanceof Error ? e.message : t('campaignList.orderChangeFailed', $locale), 'error');
 		}
 	}
 

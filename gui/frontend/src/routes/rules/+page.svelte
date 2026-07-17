@@ -295,7 +295,7 @@
 			}
 			await loadList();
 		} catch (e) {
-			alert(e instanceof Error ? e.message : t('rules.deleteFailed', $locale));
+			showToast(e instanceof Error ? e.message : t('rules.deleteFailed', $locale), 'error');
 		}
 	}
 

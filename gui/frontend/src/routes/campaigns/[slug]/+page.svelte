@@ -17,6 +17,8 @@
 	import { campaignsApi } from '$lib/api/campaigns';
 	// DEV-205 / REQ-001: 상세 공통 액션 라벨을 퀘스트 상세와 같은 i18n 사전으로.
 	import { locale, t } from '$lib/stores/locale';
+	// DEV-259: alert() 잔재 제거 — 앱 공용 toast 로 통일.
+	import { showToast } from '$lib/stores/toast';
 	// DEV-255: 자식윈도우(검색 팔레트 "새 창으로 열기")에선 뒤로가기 버튼 숨김.
 	import { isChildWindow } from '$lib/stores/windowKind';
 	// DEV-015: status 표시 이름 — 언어 반응.
@@ -229,7 +231,7 @@
 			exitEditMode();
 			await load();
 		} catch (e) {
-			alert(e instanceof Error ? e.message : 'failed');
+			showToast(e instanceof Error ? e.message : 'failed', 'error');
 		} finally {
 			saving = false;
 		}
@@ -242,7 +244,7 @@
 			await campaignsApi.update(detail.campaign_slug, { status: next });
 			await load();
 		} catch (e) {
-			alert(e instanceof Error ? e.message : 'failed');
+			showToast(e instanceof Error ? e.message : 'failed', 'error');
 		}
 	}
 
@@ -266,7 +268,7 @@
 				await load();
 			}
 		} catch (e) {
-			alert(e instanceof Error ? e.message : t('campaign.bannerSetFailed', $locale));
+			showToast(e instanceof Error ? e.message : t('campaign.bannerSetFailed', $locale), 'error');
 		} finally {
 			bannerBusy = false;
 		}
@@ -279,7 +281,7 @@
 			await campaignsApi.clearBanner(detail.campaign_slug);
 			await load();
 		} catch (e) {
-			alert(e instanceof Error ? e.message : t('campaign.bannerRemoveFailed', $locale));
+			showToast(e instanceof Error ? e.message : t('campaign.bannerRemoveFailed', $locale), 'error');
 		} finally {
 			bannerBusy = false;
 		}
@@ -296,7 +298,7 @@
 			detail.checklists.push(added);
 			newChecklistText = '';
 		} catch (e) {
-			alert(e instanceof Error ? e.message : 'failed');
+			showToast(e instanceof Error ? e.message : 'failed', 'error');
 		}
 	}
 	// BUG-046: 체크리스트 토글 / 삭제 시 `load()` 전체 reload 가 detail 객체를
@@ -315,7 +317,7 @@
 		} catch (e) {
 			// 실패 시 원복 — 사용자에게 알림.
 			target.checked = currentlyChecked;
-			alert(e instanceof Error ? e.message : 'failed');
+			showToast(e instanceof Error ? e.message : 'failed', 'error');
 		}
 	}
 	// DEV-118: 인앱 확인 모달. 체크리스트 항목 삭제 / 캠페인 삭제.
@@ -338,7 +340,7 @@
 		} catch (e) {
 			// 실패 시 원복 — 같은 위치에 다시.
 			detail.checklists.splice(idx, 0, removed);
-			alert(e instanceof Error ? e.message : 'failed');
+			showToast(e instanceof Error ? e.message : 'failed', 'error');
 		}
 	}
 
@@ -373,7 +375,7 @@
 		} catch (e) {
 			const i = detail.linked_quests.findIndex((x) => x.quest_id === q.quest_id);
 			if (i >= 0) detail.linked_quests.splice(i, 1);
-			alert(e instanceof Error ? e.message : 'failed');
+			showToast(e instanceof Error ? e.message : 'failed', 'error');
 		}
 	}
 	async function unlinkQuest(qSlug: string) {
@@ -386,7 +388,7 @@
 			await campaignsApi.unlinkQuest(detail.campaign_slug, qSlug);
 		} catch (e) {
 			detail.linked_quests.splice(idx, 0, removed);
-			alert(e instanceof Error ? e.message : 'failed');
+			showToast(e instanceof Error ? e.message : 'failed', 'error');
 		}
 	}
 
@@ -401,7 +403,7 @@
 			await campaignsApi.delete(detail.campaign_slug);
 			goto('/campaigns');
 		} catch (e) {
-			alert(e instanceof Error ? e.message : 'failed');
+			showToast(e instanceof Error ? e.message : 'failed', 'error');
 		}
 	}
 </script>

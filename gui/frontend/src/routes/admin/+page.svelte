@@ -6,6 +6,8 @@
 	import { detectEnvironment } from '$lib/api/transport';
 	// DEV-205 모듈5: Admin 페이지 i18n.
 	import { locale, t } from '$lib/stores/locale';
+	// DEV-259: 로컬 토스트 복제 제거 — 앱 공용 toast 로 위임.
+	import { showToast } from '$lib/stores/toast';
 	// DEV-014: Quest type / status 커스터마이즈 섹션.
 	import AdminTypesSection from '$lib/components/admin/AdminTypesSection.svelte';
 	import AdminStatusesSection from '$lib/components/admin/AdminStatusesSection.svelte';
@@ -21,7 +23,6 @@
 	// reindex 결과의 skipped 로 채워진다.
 	let problemFiles = $state<SkippedFile[]>([]);
 	let busy = $state(false);
-	let message = $state<{ kind: 'info' | 'success' | 'error'; text: string } | null>(null);
 	// DEV-119: 복원 확인 — 인앱 모달. null = 닫힘, 객체 = 열림 ({ts} 는 undefined 면 최신).
 	// reindex 는 사용자 지시로 sweep 제외 (idempotent, 파일 truth 불변).
 	let confirmRestore = $state<{ ts: string | undefined } | null>(null);
@@ -83,17 +84,17 @@
 		return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())} ${p(dt.getHours())}:${p(dt.getMinutes())}:${p(dt.getSeconds())}`;
 	}
 
+	// DEV-259: 페이지 로컬 토스트 복제 구현 제거 — 앱 공용 showToast()/ToastHost
+	// 로 위임(ToastHost 를 고쳐도 admin 에 반영 안 되던 이중 구현이 "알림
+	// 통일했는데 재발"의 원인이었음). 함수명은 유지해 24곳 호출부 무변경.
 	function showSuccess(text: string) {
-		message = { kind: 'success', text };
-		setTimeout(() => (message = null), 4000);
+		showToast(text, 'success');
 	}
 	function showInfo(text: string) {
-		message = { kind: 'info', text };
-		setTimeout(() => (message = null), 4000);
+		showToast(text, 'info');
 	}
 	function showError(text: string) {
-		message = { kind: 'error', text };
-		setTimeout(() => (message = null), 6000);
+		showToast(text, 'error', 6000);
 	}
 
 	async function onCreateSnapshot() {
@@ -229,13 +230,7 @@
 	<title>Admin · openguild</title>
 </svelte:head>
 
-<!-- DEV-014 후속 (fix5): toast 메시지 — 모달이 떠 있어도 위에 표시되도록
-     page 컨테이너 밖 + fixed positioning + 모달보다 높은 z-index. -->
-{#if message}
-	<div class="toast-wrap" role="status" aria-live="polite">
-		<div class="message {message.kind}">{message.text}</div>
-	</div>
-{/if}
+<!-- DEV-259: 페이지 로컬 toast 마크업 제거 — 전역 ToastHost 가 렌더. -->
 
 <div class="page">
 	<h1>{t('admin.title', $locale)}</h1>
@@ -604,45 +599,5 @@
 	.problem-files .reason {
 		color: var(--text-muted);
 	}
-	/* DEV-014 후속 (fix5): toast wrapper — 화면 우상단 고정.
-	   모달 (.ov z-index 100) 보다 높은 z-index 로 가려지지 않게. */
-	.toast-wrap {
-		position: fixed;
-		top: 1rem;
-		right: 1rem;
-		z-index: 1000;
-		max-width: calc(26.25rem * var(--popup-scale, 1)); /* BUG-064 */
-		pointer-events: none;
-	}
-	.message {
-		padding: 0.75rem 1rem;
-		border-radius: 6px;
-		font-size: 0.875rem;
-		color: var(--text-strong);
-		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-		pointer-events: auto;
-		animation: toast-in 0.18s ease-out;
-	}
-	@keyframes toast-in {
-		from {
-			opacity: 0;
-			transform: translateY(-8px);
-		}
-		to {
-			opacity: 1;
-			transform: translateY(0);
-		}
-	}
-	.message.info {
-		background: color-mix(in srgb, var(--accent) 18%, transparent);
-		border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
-	}
-	.message.success {
-		background: color-mix(in srgb, var(--success) 18%, transparent);
-		border: 1px solid color-mix(in srgb, var(--success) 45%, transparent);
-	}
-	.message.error {
-		background: color-mix(in srgb, var(--danger) 18%, transparent);
-		border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
-	}
+	/* DEV-259: 로컬 toast CSS 제거 — 전역 ToastHost 스타일 단일화. */
 </style>
