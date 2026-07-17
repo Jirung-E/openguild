@@ -30,6 +30,15 @@
 
 	let maximized = $state(false);
 
+	// DEV-265: 창 컨트롤 버튼을 OS 관례에 맞춤 — Windows 는 현행(사각 호버,
+	// 닫기 빨강), Linux 는 GNOME/Adwaita 근사(원형 호버 배경, 균일 간격).
+	// decorations:false 상태에선 진짜 시스템 버튼을 그릴 수 없어 근사 구현
+	// (VSCode 도 동일 한계 — 조사는 퀘스트 댓글 참고).
+	const isLinuxControls =
+		typeof navigator !== 'undefined' &&
+		navigator.userAgent.includes('Linux') &&
+		!navigator.userAgent.includes('Android');
+
 	// 길드 이름 / 원격 여부 — Nav 와 동일 소스(guildContextActive 구독).
 	let guildName = $state('');
 	let isRemote = $state(false);
@@ -206,7 +215,7 @@
 
 	<div class="tb-spacer" data-tauri-drag-region></div>
 
-	<div class="tb-controls">
+	<div class="tb-controls" class:linux={isLinuxControls}>
 		<!-- DEV-255: 자식윈도우 전용 pin(Always on top) — 문서 창을 다른 작업
 		     위에 고정해놓고 참조하는 흐름. -->
 		{#if $isChildWindow}
@@ -419,5 +428,32 @@
 	.tb-close:hover {
 		background: var(--danger);
 		color: var(--btn-primary-text);
+	}
+
+	/* ── DEV-265: Linux(GNOME/Adwaita 근사) 창 컨트롤 ──
+	   Windows 관례(풀높이 사각 호버, 닫기 빨강) 대신: 작은 원형 버튼 +
+	   원형 호버 배경, 버튼 간 균일 간격, 닫기도 동일 원형 호버(Adwaita
+	   관례 — 빨강 강조 없음). 진짜 시스템 렌더는 decorations:false 에선
+	   불가하므로 근사. */
+	.tb-controls.linux {
+		align-items: center;
+		gap: 0.45rem;
+		padding: 0 0.6rem 0 0.3rem;
+	}
+	.tb-controls.linux .tb-btn {
+		width: 24px;
+		height: 24px;
+		border-radius: 50%;
+		background: color-mix(in srgb, var(--text) 8%, transparent);
+		color: var(--text);
+		cursor: default;
+	}
+	.tb-controls.linux .tb-btn:hover {
+		background: color-mix(in srgb, var(--text) 18%, transparent);
+		color: var(--text-strong);
+	}
+	.tb-controls.linux .tb-close:hover {
+		background: color-mix(in srgb, var(--text) 18%, transparent);
+		color: var(--text-strong);
 	}
 </style>
