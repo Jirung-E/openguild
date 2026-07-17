@@ -136,6 +136,8 @@
 	{#if defs.length === 0}
 		<p class="empty">{t('adminTags.empty', $locale)}</p>
 	{:else}
+		<!-- BUG-143: 좁은 폭에서 셀 줄바꿈 대신 표 가로 스크롤. -->
+		<div class="table-wrap">
 		<table>
 			<thead>
 				<tr>
@@ -168,7 +170,7 @@
 									<span class="dim">—</span>
 								{/if}
 							</td>
-							<td>{d.description || '—'}</td>
+							<td class="desc">{d.description || '—'}</td>
 							<td class="row-actions">
 								<button onclick={() => startEdit(d)} disabled={busy}>{t('adminTypes.edit', $locale)}</button>
 								<button class="danger" onclick={() => askDelete(d)} disabled={busy}>{t('detail.delete', $locale)}</button>
@@ -178,6 +180,7 @@
 				{/each}
 			</tbody>
 		</table>
+		</div>
 	{/if}
 </section>
 
@@ -299,6 +302,10 @@
 		background: var(--btn-primary-bg-hover);
 		border-color: var(--btn-primary-border-hover);
 	}
+	/* BUG-143: 좁은 폭에선 셀 줄바꿈 대신 표 가로 스크롤 + 셀 nowrap. */
+	.table-wrap {
+		overflow-x: auto;
+	}
 	table {
 		width: 100%;
 		border-collapse: collapse;
@@ -310,6 +317,7 @@
 		padding: 0.5rem 0.6rem;
 		border-bottom: 1px solid var(--border);
 		vertical-align: middle;
+		white-space: nowrap;
 	}
 	th {
 		color: var(--text-muted);
@@ -338,10 +346,17 @@
 	.dim {
 		color: var(--text-muted);
 	}
+	/* 설명은 길 수 있음 — 유일하게 줄바꿈 허용(대신 최소 폭 확보). */
+	.desc {
+		white-space: normal;
+		min-width: 14rem;
+	}
+	/* BUG-143: td 에 display:flex 금지(table-cell 렌더 깨짐 — 구분선 어긋남). */
 	.row-actions {
-		display: flex;
-		gap: 0.3rem;
-		justify-content: flex-end;
+		text-align: right;
+	}
+	.row-actions button + button {
+		margin-left: 0.3rem;
 	}
 	input[type='text'] {
 		width: 100%;

@@ -172,6 +172,9 @@
 	{#if types.length === 0}
 		<p class="empty">{t('adminTypes.empty', $locale)}</p>
 	{:else}
+		<!-- BUG-143: 좁은 폭에서 셀 내용이 줄바꿈되며 깨지는 대신 표 자체를
+		     가로 스크롤 — 셀은 nowrap(아래 CSS)로 고정. -->
+		<div class="table-wrap">
 		<table>
 			<thead>
 				<tr>
@@ -235,6 +238,7 @@
 				{/each}
 			</tbody>
 		</table>
+		</div>
 		<p class="hint">{t('adminTypes.renameCascadeHint', $locale)}</p>
 	{/if}
 </section>
@@ -362,6 +366,11 @@
 		background: var(--btn-primary-bg-hover);
 		border-color: var(--btn-primary-border-hover);
 	}
+	/* BUG-143: 좁은 폭에선 셀 줄바꿈(스와치/hex 쌓임, CJK 버튼 글자 세로
+	   꺾임) 대신 표를 가로 스크롤. */
+	.table-wrap {
+		overflow-x: auto;
+	}
 	table {
 		width: 100%;
 		border-collapse: collapse;
@@ -373,6 +382,8 @@
 		padding: 0.5rem 0.6rem;
 		border-bottom: 1px solid var(--border);
 		vertical-align: middle;
+		/* BUG-143: CJK 는 word-break 없이도 글자 단위로 꺾임 — 명시 nowrap. */
+		white-space: nowrap;
 	}
 	th {
 		color: var(--text-muted);
@@ -400,14 +411,20 @@
 	}
 	.desc {
 		color: var(--text);
+		/* 설명은 길 수 있음 — 유일하게 줄바꿈 허용(대신 최소 폭 확보). */
+		white-space: normal;
+		min-width: 14rem;
 	}
 	.count {
 		color: var(--text-muted);
 	}
+	/* BUG-143: td 에 display:flex 를 걸면 table-cell 렌더가 깨져 행 구분선이
+	   다른 컬럼과 어긋나 보였음 — 일반 셀 + 우측 정렬 + 버튼 간격은 margin. */
 	.row-actions {
-		display: flex;
-		gap: 0.3rem;
-		justify-content: flex-end;
+		text-align: right;
+	}
+	.row-actions button + button {
+		margin-left: 0.3rem;
 	}
 	input[type='text'] {
 		width: 100%;

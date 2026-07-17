@@ -181,6 +181,8 @@
 	{#if statuses.length === 0}
 		<p class="empty">{t('adminStatuses.empty', $locale)}</p>
 	{:else}
+		<!-- BUG-143: 좁은 폭에서 셀 줄바꿈 대신 표 가로 스크롤. -->
+		<div class="table-wrap">
 		<table>
 			<thead>
 				<tr>
@@ -279,6 +281,7 @@
 				{/each}
 			</tbody>
 		</table>
+		</div>
 		<p class="hint">{t('adminStatuses.slugFrozenHint', $locale)}</p>
 	{/if}
 </section>
@@ -419,6 +422,10 @@
 		background: var(--btn-primary-bg-hover);
 		border-color: var(--btn-primary-border-hover);
 	}
+	/* BUG-143: 좁은 폭에선 셀 줄바꿈 대신 표 가로 스크롤 + 셀 nowrap. */
+	.table-wrap {
+		overflow-x: auto;
+	}
 	table {
 		width: 100%;
 		border-collapse: collapse;
@@ -430,6 +437,7 @@
 		padding: 0.5rem 0.6rem;
 		border-bottom: 1px solid var(--border);
 		vertical-align: middle;
+		white-space: nowrap;
 	}
 	th {
 		color: var(--text-muted);
@@ -458,10 +466,12 @@
 	.count {
 		color: var(--text-muted);
 	}
+	/* BUG-143: td 에 display:flex 금지(table-cell 렌더 깨짐 — 구분선 어긋남). */
 	.row-actions {
-		display: flex;
-		gap: 0.3rem;
-		justify-content: flex-end;
+		text-align: right;
+	}
+	.row-actions button + button {
+		margin-left: 0.3rem;
 	}
 	input[type='text'] {
 		width: 100%;
