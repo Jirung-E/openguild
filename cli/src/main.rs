@@ -23,41 +23,13 @@ use serde::{Deserialize, Serialize};
 
 // ─────────────────────────── CLI 정의 ───────────────────────────
 
-#[derive(Parser)]
-#[command(
-    name = "openguild",
-    version,
-    about = "openguild CLI — local + remote guild operations"
-)]
-struct Cli {
-    /// 원격 모드 — 서버 URL 지정 (env: OPENGUILD_REMOTE). 미지정 시 로컬 모드.
-    #[arg(long, global = true, value_name = "URL")]
-    remote: Option<String>,
-
-    /// 로컬 모드에서 사용할 길드 경로. 미지정 시 cwd 부터 .guild 자동 탐색.
-    #[arg(long, global = true, value_name = "PATH")]
-    guild: Option<String>,
-
-    /// JSON 출력 (agent 가 stdout 파싱용)
-    #[arg(long, global = true)]
-    json: bool,
-
-    // DEV-211 — doc 주석에 quest id 금지(help 누출).
-    /// JSON 을 한 줄로 (파이프 / jq / 로그 수집용). --json 필요.
-    #[arg(long, global = true, requires = "json")]
-    compact: bool,
-
-    #[command(subcommand)]
-    command: Command,
-}
-
 /// DEV-211: `--compact` 전역 플래그 — 파싱 직후 1회 설정, json_str() 이 참조.
 /// 30여 개 출력 지점에 bool 을 실어 나르는 대신 프로세스 전역(한 번 실행되고
 /// 끝나는 CLI 특성상 안전).
 static JSON_COMPACT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-/// DEV-254: 현재 CLI 출력 언어 — `run()` 시작 시 `openguild_core::locale::current()`
-/// 로 1회 설정(JSON_COMPACT 와 동일 패턴). `tf!` 매크로가 참조.
+/// DEV-254: 현재 CLI 출력 언어 — `run()` 이 **parse 이전에** 설정(help 렌더도
+/// 언어를 따라야 하므로). `tf!` 매크로가 참조.
 static LOCALE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false); // true = en
 
 fn current_locale_is_en() -> bool {
@@ -68,6 +40,8 @@ fn current_locale_is_en() -> bool {
 /// `println!("...", args)` 자리를 `println!("{}", tf!("ko 템플릿 {}", "en template {}", args))`
 /// 로 대체하는 식으로 기존 println!/format! 호출부에 최소 침습적으로 적용.
 /// --json 출력(기계 파싱용)은 대상이 아님 — 사람이 읽는 텍스트만.
+/// clap 의 `about =`/`help =` 속성에도 사용 가능(파생 매크로가 Command 빌드
+/// 시점에 평가) — 단 LOCALE 이 parse 이전에 로드돼 있어야 함.
 macro_rules! tf {
     ($ko:literal, $en:literal $(, $arg:expr)* $(,)?) => {
         if current_locale_is_en() {
@@ -76,6 +50,35 @@ macro_rules! tf {
             format!($ko $(, $arg)*)
         }
     };
+}
+
+#[derive(Parser)]
+#[command(
+    name = "openguild",
+    version,
+    about = "openguild CLI — local + remote guild operations"
+)]
+struct Cli {
+    // DEV-254: help 도 locale 반응 — doc 주석 대신 help = tf!() (런타임 평가).
+    #[arg(long, global = true, value_name = "URL",
+        help = tf!("원격 모드 — 서버 URL 지정 (env: OPENGUILD_REMOTE). 미지정 시 로컬 모드", "Remote mode — server URL (env: OPENGUILD_REMOTE). Local mode if omitted"))]
+    remote: Option<String>,
+
+    #[arg(long, global = true, value_name = "PATH",
+        help = tf!("로컬 모드에서 사용할 길드 경로. 미지정 시 cwd 부터 .guild 자동 탐색", "Guild path for local mode. Auto-discovers .guild from cwd if omitted"))]
+    guild: Option<String>,
+
+    #[arg(long, global = true,
+        help = tf!("JSON 출력 (agent 가 stdout 파싱용)", "JSON output (for agents parsing stdout)"))]
+    json: bool,
+
+    // DEV-211 — help 문자열에 quest id 금지(누출 테스트).
+    #[arg(long, global = true, requires = "json",
+        help = tf!("JSON 을 한 줄로 (파이프 / jq / 로그 수집용). --json 필요", "Single-line JSON (for pipes / jq / log collection). Requires --json"))]
+    compact: bool,
+
+    #[command(subcommand)]
+    command: Command,
 }
 
 /// JSON 직렬화 — 기본 pretty(2-space, 기존 호환), --compact 면 한 줄.
@@ -92,90 +95,87 @@ fn json_str<T: serde::Serialize>(v: &T) -> String {
 #[allow(clippy::large_enum_variant)]
 #[derive(Subcommand)]
 enum Command {
-    /// 현재 디렉토리를 길드로 초기화 (.guild 마커 파일 생성)
+    // DEV-254: 최상위 help 요약 — doc 주석 대신 about = tf!() (locale 반응).
+    #[command(about = tf!("현재 디렉토리를 길드로 초기화 (.guild 마커 파일 생성)", "Initialize the current directory as a guild (creates .guild marker)"))]
     Init {
-        /// 길드 이름. 미지정 시 현재 디렉토리 이름 사용.
-        #[arg(long)]
+        #[arg(long, help = tf!("길드 이름. 미지정 시 현재 디렉토리 이름 사용", "Guild name. Defaults to the current directory name"))]
         name: Option<String>,
     },
-    /// 퀘스트 관련 명령
+    #[command(about = tf!("퀘스트 관련 명령", "Quest commands"))]
     Quest {
         #[command(subcommand)]
         sub: QuestCmd,
     },
-    /// 퀘스트 타입 — 목록 / 추가 / 수정 / 삭제 / 이름 변경
     // DEV-227: 다른 top-level 명사 그룹(quest/campaign/template/backup/check/
     // index/journal/rule)과의 단수형 일관성 위해 canonical 이름을 단수로 —
     // 기존 스크립트 호환 위해 복수형은 alias 로 유지. sub 도 다른 그룹처럼
     // 필수로 — bare 호출이 조용히 list 로 떨어지던 예전 관행(DEV-062) 제거,
     // `type list` 명시 필요.
-    #[command(name = "type", alias = "types")]
+    #[command(name = "type", alias = "types",
+        about = tf!("퀘스트 타입 — 목록 / 추가 / 수정 / 삭제 / 이름 변경", "Quest types — list / add / update / delete / rename"))]
     Types {
         #[command(subcommand)]
         sub: TypesCmd,
     },
-    /// 퀘스트 상태 — 목록 / 추가 / 수정 / 삭제 / 이름 변경
-    #[command(name = "status", alias = "statuses")]
+    #[command(name = "status", alias = "statuses",
+        about = tf!("퀘스트 상태 — 목록 / 추가 / 수정 / 삭제 / 이름 변경", "Quest statuses — list / add / update / delete / rename"))]
     Statuses {
         #[command(subcommand)]
         sub: StatusesCmd,
     },
-    /// 캠페인 관련 명령
+    #[command(about = tf!("캠페인 관련 명령", "Campaign commands"))]
     Campaign {
         #[command(subcommand)]
         sub: CampaignCmd,
     },
-    // BUG-016: doc comment 의 quest id 가 clap help 로 leak — 외부 사용자에게
-    // internal quest 번호 노출 금지. 기능 설명만 plain `///` 으로.
-    /// 길드 규칙 — `.guild/rules/{slug}.md` 다중 파일 CRUD.
+    // BUG-016: help 문자열에 quest id 노출 금지 — 기능 설명만.
     // DEV-227/DEV-231: canonical 단수형. rules 는 사용자 지시로 alias 도
     // 남기지 않고 완전 제거(type/status 의 복수형 alias 와 다른 결정) —
     // rules 는 원래 bare 호출에 하위호환 관행이 없었으니 남길 이유도 없음.
-    #[command(name = "rule")]
+    #[command(name = "rule",
+        about = tf!("길드 규칙 — `.guild/rules/{{slug}}.md` 다중 파일 CRUD", "Guild rules — multi-file CRUD over `.guild/rules/{{slug}}.md`"))]
     Rules {
         #[command(subcommand)]
         sub: RulesCmd,
     },
-    /// 도서관 — 프로젝트 참고문서/노트 (`.guild/library/`, 자체 BOOK 번호).
+    #[command(about = tf!("도서관 — 프로젝트 참고문서/노트 (`.guild/library/`, 자체 BOOK 번호)", "Library — project reference docs/notes (`.guild/library/`, own BOOK numbers)"))]
     Library {
         #[command(subcommand)]
         sub: LibraryCmd,
     },
-    /// 태그 정의 카탈로그 (`.guild/tags/{slug}.toml`) — quest/도서관/규칙 공유.
+    #[command(about = tf!("태그 정의 카탈로그 (`.guild/tags/{{slug}}.toml`) — quest/도서관/규칙 공유", "Tag definition catalog (`.guild/tags/{{slug}}.toml`) — shared by quests/library/rules"))]
     Tag {
         #[command(subcommand)]
         sub: TagDefCmd,
     },
-    /// 번들 문서를 stdout 으로 출력 — 빌드에 embed 되어 있어 파일 경로/읽기
-    /// 권한이 필요 없음 (agent 친화). 이름 미지정 시 목록.
+    #[command(about = tf!("번들 문서를 stdout 으로 출력 — 빌드에 embed 되어 파일 경로/읽기 권한 불필요 (agent 친화). 이름 미지정 시 목록", "Print bundled docs to stdout — embedded at build time, no file paths/permissions needed (agent friendly). Lists docs if no name"))]
     Docs {
-        /// agents | usage | readme | changelog
+        #[arg(help = tf!("agents | usage | readme | changelog", "agents | usage | readme | changelog"))]
         name: Option<String>,
     },
-    /// CLI 출력 언어 — GUI 와 같은 위치(~/.openguild/locale.json)에 저장,
-    /// 이후 모든 CLI 실행이 이 값을 따른다. 인자 없으면 현재 값 출력.
+    #[command(about = tf!("CLI 출력 언어 — GUI 와 같은 위치(~/.openguild/locale.json)에 저장, 이후 모든 실행이 따름. 인자 없으면 현재 값 출력", "CLI output language — saved to ~/.openguild/locale.json (shared with GUI), applied to all runs. Prints current value if no arg"))]
     Locale {
-        /// ko | en — 미지정 시 현재 값 출력
+        #[arg(help = tf!("ko | en — 미지정 시 현재 값 출력", "ko | en — prints current value if omitted"))]
         lang: Option<String>,
     },
-    /// 작업 기록 — 날짜/기간별 활동 타임라인 + 날짜별 노트.
+    #[command(about = tf!("작업 기록 — 날짜/기간별 활동 타임라인 + 날짜별 노트", "Work log — activity timeline by date/range + per-day notes"))]
     Worklog {
         #[command(subcommand)]
         sub: WorklogCmd,
     },
-    /// 퀘스트 템플릿 — `.guild/templates/{name}.md`. `quest new --template` 으로 사용.
+    #[command(about = tf!("퀘스트 템플릿 — `.guild/templates/{{name}}.md`. `quest new --template` 으로 사용", "Quest templates — `.guild/templates/{{name}}.md`. Used via `quest new --template`"))]
     Template {
         #[command(subcommand)]
         sub: TemplateCmd,
     },
-    /// 서버 상태 확인 (health)
+    #[command(about = tf!("서버 상태 확인 (health)", "Check server health"))]
     Ping,
-    /// 백업(스냅샷) — 생성 / 목록 / 삭제
+    #[command(about = tf!("백업(스냅샷) — 생성 / 목록 / 삭제", "Backups (snapshots) — create / list / delete"))]
     Backup {
         #[command(subcommand)]
         sub: BackupCmd,
     },
-    /// 백업(스냅샷)으로 복원. `--at` 으로 journal replay 시점 복원.
+    #[command(about = tf!("백업(스냅샷)으로 복원. `--at` 으로 journal replay 시점 복원", "Restore from a backup (snapshot). `--at` for point-in-time journal replay"))]
     Restore {
         /// 특정 timestamp (`YYYYMMDD-HHMMSS`). 미지정 시 최신 사용.
         #[arg(long)]
@@ -187,19 +187,19 @@ enum Command {
         #[arg(long, conflicts_with = "to")]
         at: Option<String>,
     },
-    /// 파일 → index.db 캐시 재구축 (외부 편집 / git pull / restore 후 정합). `index rebuild` 와 동일.
+    #[command(about = tf!("파일 → index.db 캐시 재구축 (외부 편집 / git pull / restore 후 정합). `index rebuild` 와 동일", "Rebuild index.db cache from files (after external edits / git pull / restore). Same as `index rebuild`"))]
     Reindex,
-    /// 무결성 점검 — drift / counters.
+    #[command(about = tf!("무결성 점검 — drift / counters", "Integrity checks — drift / counters"))]
     Check {
         #[command(subcommand)]
         sub: CheckCmd,
     },
-    /// index.db 캐시 — rebuild / vacuum.
+    #[command(about = tf!("index.db 캐시 — rebuild / vacuum", "index.db cache — rebuild / vacuum"))]
     Index {
         #[command(subcommand)]
         sub: IndexCmd,
     },
-    /// 길드 전체 댓글 횡단 검색 — quest + campaign, 기본 최신순 20개.
+    #[command(about = tf!("길드 전체 댓글 횡단 검색 — quest + campaign, 기본 최신순 20개", "Search comments across the guild — quest + campaign, latest 20 by default"))]
     Comments {
         /// 작성자 일치 (대소문자 무시 정확 일치).
         #[arg(long)]
@@ -228,17 +228,16 @@ enum Command {
         #[arg(long)]
         summary: bool,
     },
-    /// journal(AOF) — tail. (시점 복원 replay 는 `restore` 에서 처리 예정.)
+    #[command(about = tf!("journal(AOF) — tail. (시점 복원 replay 는 `restore` 에서 처리)", "Journal (AOF) — tail. (point-in-time replay is handled by `restore`)"))]
     Journal {
         #[command(subcommand)]
         sub: JournalCmd,
     },
-    /// legacy guild.db → .guild/quests/*.md 파일 진리원 구조로 일회성 이전.
+    #[command(about = tf!("legacy guild.db → .guild/quests/*.md 파일 진리원 구조로 일회성 이전", "One-time migration: legacy guild.db → .guild/quests/*.md file-truth layout"))]
     MigrateToFiles,
-    /// 길드 메타 / index.db / snapshot / journal 요약 (진단).
+    #[command(about = tf!("길드 메타 / index.db / snapshot / journal 요약 (진단)", "Guild meta / index.db / snapshot / journal summary (diagnostics)"))]
     Info {
-        /// 1 줄 요약만 (script / status bar 친화).
-        #[arg(long)]
+        #[arg(long, help = tf!("1 줄 요약만 (script / status bar 친화)", "One-line summary (script / status bar friendly)"))]
         brief: bool,
     },
 }
@@ -5014,19 +5013,22 @@ fn rewrite_legacy_plural_bare_invocation(args: Vec<String>) -> Vec<String> {
 }
 
 fn run() -> Result<()> {
+    // DEV-254: 저장된 언어(~/.openguild/locale.json, GUI 와 공유) 로드 —
+    // tf! 매크로가 참조하는 프로세스 전역 플래그 1회 설정. 반드시 parse
+    // **이전**: --help/에러 렌더 시점에 clap 이 help = tf!(...) 속성을
+    // 평가하므로, 이후에 로드하면 help 가 항상 기본(ko)으로 나온다
+    // (사용자 보고: "locale 설정해도 한국어로만 나옴").
+    LOCALE.store(
+        openguild_core::locale::current() == openguild_core::locale::Locale::En,
+        std::sync::atomic::Ordering::Relaxed,
+    );
+
     let cli = Cli::parse_from(rewrite_legacy_plural_bare_invocation(
         std::env::args().collect(),
     ));
 
     // DEV-211: --compact — json_str() 이 참조하는 전역 플래그 설정.
     JSON_COMPACT.store(cli.compact, std::sync::atomic::Ordering::Relaxed);
-
-    // DEV-254: 저장된 언어(~/.openguild/locale.json, GUI 와 공유) 로드 —
-    // tf! 매크로가 참조하는 프로세스 전역 플래그 1회 설정.
-    LOCALE.store(
-        openguild_core::locale::current() == openguild_core::locale::Locale::En,
-        std::sync::atomic::Ordering::Relaxed,
-    );
 
     // Init 은 길드 자체를 만드는 명령 — 백엔드 연결 불필요. 먼저 처리.
     if let Command::Init { name } = &cli.command {
