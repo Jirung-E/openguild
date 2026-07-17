@@ -200,6 +200,17 @@ fn attach_parent_console() {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // BUG-144: Linux(WebKitGTK) 전반 버벅임 완화 — WebKitGTK 2.4x 의 DMABUF
+    // renderer 가 특정 드라이버(특히 NVIDIA/일부 Mesa) 조합에서 GPU 가속이
+    // 깨져 소프트웨어 합성으로 떨어지며 캔버스(보드)·스크롤 전반이 심하게
+    // 느려지는 것으로 널리 보고됨(Tauri 커뮤니티 표준 완화책). 사용자가
+    // 직접 지정한 경우는 존중하고, 미지정일 때만 비활성.
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        // SAFETY: 다른 스레드가 생기기 전(run 최초 진입)에 1회 설정.
+        unsafe { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1") };
+    }
+
     // BUG-041 후속: `--version` / `--help` 짧은 flag 처리.
     // Tauri 시동 전에 stdout 으로 답하고 종료 — launcher / 스크립트 친화.
     //
