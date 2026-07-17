@@ -177,6 +177,10 @@ a {
 
 button {
 	cursor: pointer;
+	/* BUG-143: CJK 라벨('수정' 등)은 word-break 없이도 글자 단위로 꺾여
+	   좁은 폭에서 버튼이 세로 2줄이 됨 — 버튼 라벨은 전역 한 줄 고정.
+	   (의도적 다중행 버튼은 개별 white-space 재정의로 opt-out.) */
+	white-space: nowrap;
 }
 
 /* BUG-117: form 컨트롤은 기본적으로 font 를 상속하지 않아(브라우저 고정

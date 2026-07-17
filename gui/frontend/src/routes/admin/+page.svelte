@@ -485,9 +485,13 @@
 		background: var(--btn-warning-bg-hover);
 	}
 	/* DEV-175: 백업 삭제 버튼. */
+	/* BUG-143: td 에 display:flex 금지(table-cell 렌더 깨짐 — 행 구분선
+	   어긋남). 일반 셀 + 버튼 간격은 margin. */
 	.snap-actions {
-		display: flex;
-		gap: 0.4rem;
+		white-space: nowrap;
+	}
+	.snap-actions button + button {
+		margin-left: 0.4rem;
 	}
 	button.del-snap {
 		color: var(--danger);

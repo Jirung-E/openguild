@@ -4279,10 +4279,13 @@
 	/* DEV-074 fix11: 체크박스 기본 스타일은 global.css 로 통일.
 	   hide-table 만의 override 는 없음. */
 	/* DEV-059 fix2: 보드 설정 모달의 lane 순서 변경 버튼. */
+	/* BUG-143: td 에 display:flex 금지(table-cell 렌더 깨짐) — 일반 셀 +
+	   버튼 간격은 margin. */
 	.hide-table .reorder-cell {
-		display: flex;
-		gap: 0.2rem;
-		align-items: center;
+		white-space: nowrap;
+	}
+	.hide-table .reorder-cell button + button {
+		margin-left: 0.2rem;
 	}
 	.hide-table .reorder-btn {
 		padding: 0.1rem 0.4rem;
