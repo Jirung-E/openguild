@@ -782,6 +782,9 @@ enum TagDefCmd {
         /// 쓰인 ad-hoc 태그를 발견하는 용도. 로컬 모드 전용.
         #[arg(long)]
         used: bool,
+        /// 정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.
+        #[arg(long)]
+        table: bool,
     },
     /// 새 태그 정의 추가 (이미 있으면 에러 — 수정은 update)
     Add {
@@ -881,7 +884,11 @@ fn read_content(path: Option<&std::path::Path>) -> Result<String> {
 #[derive(Subcommand)]
 enum RulesCmd {
     /// 모든 규칙 slug 목록 (legacy `.guild/rules.md` 가 있으면 자동 마이그레이션).
-    List,
+    List {
+        /// 정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.
+        #[arg(long)]
+        table: bool,
+    },
     /// 한 규칙의 본문 출력 (stdout). slug 없으면 NotFound.
     Show { slug: String },
     /// 한 규칙 본문 교체 (멱등). 파일이 없으면 만들고 / 있으면 덮어씀.
@@ -5532,7 +5539,7 @@ fn handle_locale(json: bool, lang: Option<String>) -> Result<()> {
 /// 태그 정의 카탈로그 관리 — GUI 어드민 "Tag 정의" 섹션의 CLI 파리티.
 fn handle_tag(c: &Backend, json: bool, sub: TagDefCmd) -> Result<()> {
     match sub {
-        TagDefCmd::List { used } => {
+        TagDefCmd::List { used, table } => {
             let defs = c.tag_defs()?;
             let used_tags = if used { c.tags_in_use()? } else { Vec::new() };
             if json {
@@ -5549,13 +5556,32 @@ fn handle_tag(c: &Backend, json: bool, sub: TagDefCmd) -> Result<()> {
                     })
                 );
             } else {
-                if defs.is_empty() {
-                    println!("{}", tf!("(정의된 태그 없음)", "(no defined tags)"));
-                }
-                for d in &defs {
-                    let slug = colorize(&format!("{:<20}", d.slug), &d.color);
-                    let color = if d.color.is_empty() { tf!("(색 없음)", "(no color)") } else { d.color.clone() };
-                    println!("{slug} {:<8} {}", color, d.description);
+                if table {
+                    // 사용자 피드백: tag list 에 --table 누락 — 다른 목록 명령과
+                    // 동일 렌더. DESCRIPTION 은 한글 가능 → 마지막 컬럼.
+                    let rows: Vec<Vec<TableCell>> = defs
+                        .iter()
+                        .map(|d| {
+                            vec![
+                                (
+                                    d.slug.clone(),
+                                    if d.color.is_empty() { None } else { Some(d.color.clone()) },
+                                ),
+                                (d.color.clone(), None),
+                                (d.description.clone(), None),
+                            ]
+                        })
+                        .collect();
+                    render_table(&["SLUG", "COLOR", "DESCRIPTION"], &[false, false], &rows, "tags");
+                } else {
+                    if defs.is_empty() {
+                        println!("{}", tf!("(정의된 태그 없음)", "(no defined tags)"));
+                    }
+                    for d in &defs {
+                        let slug = colorize(&format!("{:<20}", d.slug), &d.color);
+                        let color = if d.color.is_empty() { tf!("(색 없음)", "(no color)") } else { d.color.clone() };
+                        println!("{slug} {:<8} {}", color, d.description);
+                    }
                 }
                 if used {
                     let defined: std::collections::HashSet<&str> =
@@ -5901,7 +5927,7 @@ fn handle_template(c: &Backend, json: bool, sub: TemplateCmd) -> Result<()> {
 /// BUG-135: run() 스택 프레임 축소 — arm 지역값을 개별 함수 프레임으로.
 fn handle_rules(c: &Backend, json: bool, sub: RulesCmd) -> Result<()> {
     match sub {
-        RulesCmd::List => {
+        RulesCmd::List { table } => {
             let entries = c.rules_list()?;
             if json {
                 println!(
@@ -5913,6 +5939,21 @@ fn handle_rules(c: &Backend, json: bool, sub: RulesCmd) -> Result<()> {
                         })).collect::<Vec<_>>(),
                     })
                 );
+            } else if table {
+                // 사용자 피드백: rule list 에 --table 누락 — 다른 목록 명령과 동일 렌더.
+                // TAGS 는 한글 가능 → 마지막 컬럼(render_table 규칙).
+                let rows: Vec<Vec<TableCell>> = entries
+                    .iter()
+                    .map(|e| {
+                        vec![
+                            (e.slug.clone(), None),
+                            (e.content.lines().count().to_string(), None),
+                            (e.content.len().to_string(), None),
+                            (e.tags.join(" "), None),
+                        ]
+                    })
+                    .collect();
+                render_table(&["SLUG", "LINES", "SIZE", "TAGS"], &[false, true, true], &rows, "rules");
             } else if entries.is_empty() {
                 println!("{}", tf!("(규칙 없음)", "(no rules)"));
             } else {
@@ -8061,8 +8102,25 @@ mod tests {
         }
         let l = Cli::try_parse_from(["openguild", "tag", "list", "--used"]).unwrap();
         match l.command {
-            Command::Tag { sub: TagDefCmd::List { used } } => assert!(used),
+            Command::Tag { sub: TagDefCmd::List { used, table } } => {
+                assert!(used);
+                assert!(!table);
+            }
             _ => panic!("expected tag list"),
+        }
+        // 사용자 피드백: rule/tag list 에도 --table.
+        let lt = Cli::try_parse_from(["openguild", "tag", "list", "--table"]).unwrap();
+        match lt.command {
+            Command::Tag { sub: TagDefCmd::List { used, table } } => {
+                assert!(!used);
+                assert!(table);
+            }
+            _ => panic!("expected tag list --table"),
+        }
+        let rl = Cli::try_parse_from(["openguild", "rule", "list", "--table"]).unwrap();
+        match rl.command {
+            Command::Rules { sub: RulesCmd::List { table } } => assert!(table),
+            _ => panic!("expected rule list --table"),
         }
     }
 
@@ -8926,7 +8984,7 @@ mod tests {
     fn cli_rule_singular_only_no_plural_alias() {
         let cli = Cli::try_parse_from(["openguild", "rule", "list"]).unwrap();
         match cli.command {
-            Command::Rules { sub } => assert!(matches!(sub, RulesCmd::List)),
+            Command::Rules { sub } => assert!(matches!(sub, RulesCmd::List { .. })),
             _ => panic!(),
         }
         assert!(
