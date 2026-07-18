@@ -301,6 +301,3 @@ pub fn set_gtk_application_id(gtk_window: &gtk::ApplicationWindow, app_id: &str)
         xlib::XCloseDisplay(display);
     }
 }
-
-#[cfg(not(target_os = "linux"))]
-pub fn set_gtk_application_id(_gtk_window: &(), _app_id: &str) {}
