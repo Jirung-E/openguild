@@ -23,6 +23,18 @@ export function isMacOverlay(): boolean {
 	return ua().includes('Mac');
 }
 
+// BUG-141: WebKitGTK(리눅스) 한정 성능 우회 분기용 — root font-size 변경
+// 같은 특정 연산이 이 엔진에서만 유독 무거워(Layout 자체가 느림, 빈도 문제
+// 아님), 실시간 미리보기를 포기하고 드래그 종료 시 1회 반영으로 바꿔야
+// 하는데 이건 Windows(WebView2)/macOS(WKWebView)에선 불필요 — 오히려 있던
+// 실시간 미리보기가 사라지는 퇴화이므로 리눅스에서만 적용.
+export function isLinux(): boolean {
+	if (detectEnvironment() !== 'tauri') return false;
+	const s = ua();
+	// 'Linux' 는 Android UA 에도 들어가므로 제외(데스크탑 Tauri 전제지만 방어).
+	return s.includes('Linux') && !s.includes('Android');
+}
+
 export function usesCustomTitlebar(): boolean {
 	if (detectEnvironment() !== 'tauri') return false;
 	const s = ua();

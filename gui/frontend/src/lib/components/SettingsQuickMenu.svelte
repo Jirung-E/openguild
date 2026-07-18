@@ -14,7 +14,14 @@
 		activatePreset,
 		deactivateCustom
 	} from '$lib/stores/customThemes';
-	import { uiScale, setUiScale, MIN_SCALE, MAX_SCALE } from '$lib/stores/uiScale';
+	import {
+		uiScale,
+		setUiScale,
+		beginUiScaleDrag,
+		endUiScaleDrag,
+		MIN_SCALE,
+		MAX_SCALE
+	} from '$lib/stores/uiScale';
 	import {
 		contentWidth,
 		setContentWidth,
@@ -106,6 +113,8 @@
 				step={0.01}
 				ariaLabel={t('settings.uiScale', $locale)}
 				onChange={setUiScale}
+				onDragStart={beginUiScaleDrag}
+				onDragEnd={endUiScaleDrag}
 			/>
 			<span class="qm-val">{Math.round($uiScale * 100)}%</span>
 		</div>

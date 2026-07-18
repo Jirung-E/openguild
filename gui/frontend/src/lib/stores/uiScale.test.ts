@@ -10,6 +10,10 @@ async function loadFreshStore() {
 	return await import('./uiScale');
 }
 
+// BUG-141 후속: persist(localStorage) 도 DOM 반영과 동일하게 rAF 로
+// 병합됨(슬라이더 드래그 시 프레임당 1회) — 단언 전에 한 프레임 대기.
+const nextFrame = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
+
 describe('uiScale store', () => {
 	beforeEach(() => {
 		localStorage.clear();
@@ -52,6 +56,7 @@ describe('uiScale store', () => {
 	it('setUiScale persists to localStorage', async () => {
 		const m = await loadFreshStore();
 		m.setUiScale(1.5);
+		await nextFrame();
 		expect(localStorage.getItem('openguild.uiScale')).toBe('1.5');
 	});
 
@@ -62,10 +67,6 @@ describe('uiScale store', () => {
 		m.resetUiScale();
 		expect(get(m.uiScale)).toBe(m.DEFAULT_SCALE);
 	});
-
-	// BUG-141: DOM 반영이 rAF 로 병합됨(슬라이더 드래그 시 프레임당 1회) —
-	// 단언 전에 한 프레임 대기.
-	const nextFrame = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
 
 	it('applyUiScaleToDocument writes font-size on documentElement', async () => {
 		const m = await loadFreshStore();

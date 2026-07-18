@@ -16,6 +16,8 @@
 		uiScale,
 		setUiScale,
 		resetUiScale,
+		beginUiScaleDrag,
+		endUiScaleDrag,
 		MIN_SCALE,
 		MAX_SCALE,
 		DEFAULT_SCALE
@@ -336,6 +338,8 @@
 							step={0.01}
 							ariaLabel={t('settings.uiScale', $locale)}
 							onChange={setUiScale}
+							onDragStart={beginUiScaleDrag}
+							onDragEnd={endUiScaleDrag}
 						/>
 						<!-- DEV-101 fix4: 직접 숫자 입력. % 단위 (50~200). -->
 						<div class="num-input">
