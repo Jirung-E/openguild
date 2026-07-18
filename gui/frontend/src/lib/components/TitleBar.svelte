@@ -1,7 +1,10 @@
 <!--
-  커스텀 타이틀바 (vscode 식) — Windows/Linux (각 tauri.{platform}.conf.json 의
-  decorations:false 와 세트, 호출측 +layout 이 usesCustomTitlebar() 로 판별.
-  BUG-140: Linux 도 커스텀 사용. macOS 는 네이티브 관례 유지로 제외).
+  커스텀 타이틀바 (vscode 식) — Windows/Linux 는 각 tauri.{platform}.conf.json
+  의 decorations:false 와 세트, 호출측 +layout 이 usesCustomTitlebar() 로
+  판별. BUG-140: Linux 도 커스텀 사용.
+  DEV-265: macOS 는 tauri.macos.conf.json 의 titleBarStyle:"Overlay" 로
+  네이티브 traffic light 는 그대로 두고 이 컴포넌트가 옆/뒤까지 확장 —
+  창 컨트롤 버튼 마크업은 렌더링하지 않음(traffic light 가 이미 있음).
 
   배경: 네이티브 타이틀바는 setTheme 동기화가 OS/WebView2 타이밍에 따라
   간헐적으로 어긋났음(admin 보고). HTML/CSS 타이틀바는 테마 토큰을 그대로
@@ -27,17 +30,65 @@
 	// DEV-255: 자식윈도우(검색 팔레트 "새 창으로 열기")는 단일 문서 보기라
 	// 뒤로/앞으로·☰메뉴·검색 팔레트가 필요 없음 — 판정에 따라 숨김.
 	import { isChildWindow } from '$lib/stores/windowKind';
+	// DEV-265: macOS 는 tauri.macos.conf.json 의 titleBarStyle:"Overlay" 로
+	// 네이티브 traffic light 를 그대로 두고 이 컴포넌트가 그 옆/뒤까지 확장
+	// — 유일하게 "버튼은 네이티브, 나머지는 커스텀"이 성립하는 플랫폼이라
+	// 창 컨트롤 버튼 마크업 자체를 렌더링하지 않는다(traffic light 가 이미
+	// 그 자리에 있음).
+	import { isMacOverlay } from '$lib/utils/platform';
 
 	let maximized = $state(false);
+	const isMac = isMacOverlay();
 
-	// DEV-265: 창 컨트롤 버튼을 OS 관례에 맞춤 — Windows 는 현행(사각 호버,
-	// 닫기 빨강), Linux 는 GNOME/Adwaita 근사(원형 호버 배경, 균일 간격).
-	// decorations:false 상태에선 진짜 시스템 버튼을 그릴 수 없어 근사 구현
-	// (VSCode 도 동일 한계 — 조사는 퀘스트 댓글 참고).
+	// DEV-265: 창 컨트롤 버튼을 OS 관례에 맞춤. decorations:false 상태에선
+	// 버튼 픽셀 자체를 OS(DWM/GTK)가 그려주는 API 가 없음 — WinUI3
+	// ExtendsContentIntoTitleBar 조차 "프레임 제거 후 자체적으로 캡션 버튼을
+	// 그린다"(MS 공식 문서 확인). Windows Terminal/VSCode 도 동일 한계.
+	// 그래서:
+	// - Windows: 아이콘 "모양"만큼은 OS가 실제로 쓰는 폰트 글리프(Segoe Fluent
+	//   Icons / Segoe MDL2 Assets)를 그대로 사용 — 손으로 그린 SVG 근사가
+	//   아니라 OS 네이티브 캡션 버튼과 동일한 글리프. 간격/폭도 네이티브
+	//   캡션 버튼 규격(간격 0, 고정 폭)에 맞춤.
+	// - Linux: 실행 중인 GTK 아이콘 테마에서 실제 아이콘(data URL)과 버튼
+	//   순서/간격을 백엔드(get_native_titlebar_style)로 조회해 그대로 렌더 —
+	//   조회 실패 시(비-GNOME 세션 등) 기존 Adwaita 근사 CSS로 폴백.
 	const isLinuxControls =
 		typeof navigator !== 'undefined' &&
 		navigator.userAgent.includes('Linux') &&
 		!navigator.userAgent.includes('Android');
+
+	// Windows 네이티브 캡션 버튼과 동일한 Segoe Fluent Icons/Segoe MDL2 Assets
+	// 코드포인트(ChromeMinimize/ChromeMaximize/ChromeRestore/ChromeClose).
+	// String.fromCharCode 로 만들어 소스 파일에 눈에 보이지 않는 PUA
+	// (Private Use Area) 문자가 그대로 박히는 걸 피한다.
+	const winIcon = {
+		min: String.fromCharCode(0xe921),
+		max: String.fromCharCode(0xe922),
+		restore: String.fromCharCode(0xe923),
+		close: String.fromCharCode(0xe8bb)
+	};
+
+	// DEV-265(리눅스): 실제 GTK 아이콘 테마 조회 결과. null 이면 아직 못
+	// 받아왔거나 조회 실패 — CSS 근사(Adwaita 흉내)로 폴백.
+	type LinuxTitlebarStyle = {
+		minIcon: string | null; // data:image/... URL
+		maxIcon: string | null;
+		restoreIcon: string | null;
+		closeIcon: string | null;
+		order: Array<'min' | 'max' | 'close'>; // 왼쪽→오른쪽
+		gapPx: number | null;
+		buttonSizePx: number | null;
+	};
+	let linuxStyle = $state<LinuxTitlebarStyle | null>(null);
+
+	if (isLinuxControls && typeof window !== 'undefined') {
+		import('@tauri-apps/api/core')
+			.then(({ invoke }) => invoke<LinuxTitlebarStyle>('get_native_titlebar_style'))
+			.then((s) => (linuxStyle = s))
+			.catch(() => {
+				/* 폴백: 기존 CSS 근사 유지 */
+			});
+	}
 
 	// 길드 이름 / 원격 여부 — Nav 와 동일 소스(guildContextActive 구독).
 	let guildName = $state('');
@@ -80,6 +131,7 @@
 				// 따라오도록 리사이즈 이벤트 구독.
 				const un = await win.onResized(async () => {
 					maximized = await win.isMaximized();
+					await reportMaxButtonRect();
 				});
 				if (disposed) un();
 				else unlisten = un;
@@ -87,6 +139,9 @@
 				/* 브라우저 모드 등 — 호출측이 걸러주지만 방어 */
 			}
 		})();
+		// DEV-265(Windows): 마운트 시 1 회 최대화 버튼 위치를 등록해둬야
+		// 리사이즈 전에도 Snap Layout 호버가 바로 동작.
+		void reportMaxButtonRect();
 		return () => {
 			disposed = true;
 			unlisten?.();
@@ -102,6 +157,29 @@
 			else await win.close();
 		} catch {
 			/* 방어 */
+		}
+	}
+
+	// DEV-265(Windows): 최대화 버튼의 화면 좌표를 Rust 쪽에 알려줘
+	// WM_NCHITTEST 에서 HTMAXBUTTON 을 리턴하게 함 — 진짜 OS Snap Layout
+	// 호버가 뜨도록. Linux/macOS 는 no-op(백엔드에 해당 command 없음).
+	let maxBtnEl = $state<HTMLButtonElement | null>(null);
+	async function reportMaxButtonRect() {
+		if (isLinuxControls || !maxBtnEl) return;
+		try {
+			const r = maxBtnEl.getBoundingClientRect();
+			// Rust 쪽은 ScreenToClient 로 얻은 물리 픽셀 클라이언트 좌표와
+			// 비교하므로 devicePixelRatio 를 반영해 물리 픽셀로 변환해서 보낸다.
+			const dpr = window.devicePixelRatio || 1;
+			const { invoke } = await import('@tauri-apps/api/core');
+			await invoke('set_maximize_hit_rect', {
+				x: Math.round(r.left * dpr),
+				y: Math.round(r.top * dpr),
+				width: Math.round(r.width * dpr),
+				height: Math.round(r.height * dpr)
+			});
+		} catch {
+			/* 방어 — Windows 아닌 빌드엔 이 command 자체가 없음 */
 		}
 	}
 
@@ -126,9 +204,11 @@
 	}
 </script>
 
-<svelte:window onclick={onWindowClick} />
+<svelte:window onclick={onWindowClick} onresize={reportMaxButtonRect} />
 
-<div class="titlebar" data-tauri-drag-region>
+<div class="titlebar" class:mac-overlay={isMac} data-tauri-drag-region>
+	<!-- macOS: 네이티브 traffic light(빨/노/초) 폭만큼 좌측 여백 — CSS 로
+	     처리(.titlebar.mac-overlay padding-left). -->
 	<!-- 앱 아이콘 — 장식(클릭 무동작). 드래그 영역의 일부. -->
 	<img class="tb-appicon" src="/title-icon.png" alt="" data-tauri-drag-region />
 
@@ -215,7 +295,13 @@
 
 	<div class="tb-spacer" data-tauri-drag-region></div>
 
-	<div class="tb-controls" class:linux={isLinuxControls}>
+	<div
+		class="tb-controls"
+		class:linux={isLinuxControls}
+		style={isLinuxControls && linuxStyle?.gapPx != null
+			? `gap:${linuxStyle.gapPx}px;`
+			: undefined}
+	>
 		<!-- DEV-255: 자식윈도우 전용 pin(Always on top) — 문서 창을 다른 작업
 		     위에 고정해놓고 참조하는 흐름. -->
 		{#if $isChildWindow}
@@ -238,34 +324,86 @@
 				</svg>
 			</button>
 		{/if}
-		<button class="tb-btn" onclick={() => winCtl('min')} title={t('titlebar.minimize', $locale)} aria-label={t('titlebar.minimize', $locale)}>
-			<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
-				<line x1="0" y1="5" x2="10" y2="5" stroke="currentColor" stroke-width="1" />
-			</svg>
-		</button>
-		<button
-			class="tb-btn"
-			onclick={() => winCtl('max')}
-			title={maximized ? t('titlebar.restore', $locale) : t('titlebar.maximize', $locale)}
-			aria-label={maximized ? t('titlebar.restore', $locale) : t('titlebar.maximize', $locale)}
-		>
-			{#if maximized}
-				<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
-					<rect x="0" y="2.5" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1" />
-					<path d="M 2.5 2.5 V 0.5 H 9.5 V 7.5 H 7.5" fill="none" stroke="currentColor" stroke-width="1" />
-				</svg>
-			{:else}
-				<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
-					<rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1" />
-				</svg>
-			{/if}
-		</button>
-		<button class="tb-btn tb-close" onclick={() => winCtl('close')} title={t('titlebar.close', $locale)} aria-label={t('titlebar.close', $locale)}>
-			<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
-				<line x1="0" y1="0" x2="10" y2="10" stroke="currentColor" stroke-width="1" />
-				<line x1="10" y1="0" x2="0" y2="10" stroke="currentColor" stroke-width="1" />
-			</svg>
-		</button>
+
+		{#if isMac}
+			<!-- macOS: 아무것도 렌더링하지 않음 — 네이티브 traffic light 가
+			     Overlay 로 이미 이 자리(좌측)에 떠 있음. -->
+		{:else if isLinuxControls}
+			<!-- Linux: 백엔드가 실제 GTK 아이콘 테마를 조회해 순서/아이콘을 주면
+			     그대로, 실패 시 기존 Adwaita 근사 CSS 로 폴백. -->
+			{@const order = linuxStyle?.order ?? ['min', 'max', 'close']}
+			{@const linuxBtnStyle =
+				linuxStyle?.buttonSizePx != null
+					? `width:${linuxStyle.buttonSizePx}px;height:${linuxStyle.buttonSizePx}px;`
+					: undefined}
+			{#each order as action (action)}
+				{#if action === 'min'}
+					<button class="tb-btn" style={linuxBtnStyle} onclick={() => winCtl('min')} title={t('titlebar.minimize', $locale)} aria-label={t('titlebar.minimize', $locale)}>
+						{#if linuxStyle?.minIcon}
+							<img class="tb-nativeicon" src={linuxStyle.minIcon} alt="" aria-hidden="true" />
+						{:else}
+							<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+								<line x1="0" y1="5" x2="10" y2="5" stroke="currentColor" stroke-width="1" />
+							</svg>
+						{/if}
+					</button>
+				{:else if action === 'max'}
+					<button
+						class="tb-btn"
+						style={linuxBtnStyle}
+						onclick={() => winCtl('max')}
+						title={maximized ? t('titlebar.restore', $locale) : t('titlebar.maximize', $locale)}
+						aria-label={maximized ? t('titlebar.restore', $locale) : t('titlebar.maximize', $locale)}
+					>
+						{#if maximized && linuxStyle?.restoreIcon}
+							<img class="tb-nativeicon" src={linuxStyle.restoreIcon} alt="" aria-hidden="true" />
+						{:else if !maximized && linuxStyle?.maxIcon}
+							<img class="tb-nativeicon" src={linuxStyle.maxIcon} alt="" aria-hidden="true" />
+						{:else if maximized}
+							<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+								<rect x="0" y="2.5" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1" />
+								<path d="M 2.5 2.5 V 0.5 H 9.5 V 7.5 H 7.5" fill="none" stroke="currentColor" stroke-width="1" />
+							</svg>
+						{:else}
+							<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+								<rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1" />
+							</svg>
+						{/if}
+					</button>
+				{:else}
+					<button class="tb-btn tb-close" style={linuxBtnStyle} onclick={() => winCtl('close')} title={t('titlebar.close', $locale)} aria-label={t('titlebar.close', $locale)}>
+						{#if linuxStyle?.closeIcon}
+							<img class="tb-nativeicon" src={linuxStyle.closeIcon} alt="" aria-hidden="true" />
+						{:else}
+							<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+								<line x1="0" y1="0" x2="10" y2="10" stroke="currentColor" stroke-width="1" />
+								<line x1="10" y1="0" x2="0" y2="10" stroke="currentColor" stroke-width="1" />
+							</svg>
+						{/if}
+					</button>
+				{/if}
+			{/each}
+		{:else}
+			<!-- Windows: OS 가 실제로 쓰는 Segoe Fluent Icons/Segoe MDL2 Assets
+			     글리프 — 손으로 그린 SVG 근사가 아니라 네이티브 캡션 버튼과
+			     동일한 아이콘 모양. -->
+			<button class="tb-btn" onclick={() => winCtl('min')} title={t('titlebar.minimize', $locale)} aria-label={t('titlebar.minimize', $locale)}>
+				<span class="tb-winicon">{winIcon.min}</span>
+			</button>
+			<button
+				bind:this={maxBtnEl}
+				class="tb-btn"
+				onclick={() => winCtl('max')}
+				onmouseenter={reportMaxButtonRect}
+				title={maximized ? t('titlebar.restore', $locale) : t('titlebar.maximize', $locale)}
+				aria-label={maximized ? t('titlebar.restore', $locale) : t('titlebar.maximize', $locale)}
+			>
+				<span class="tb-winicon">{maximized ? winIcon.restore : winIcon.max}</span>
+			</button>
+			<button class="tb-btn tb-close" onclick={() => winCtl('close')} title={t('titlebar.close', $locale)} aria-label={t('titlebar.close', $locale)}>
+				<span class="tb-winicon">{winIcon.close}</span>
+			</button>
+		{/if}
 	</div>
 </div>
 
@@ -285,6 +423,12 @@
 		/* 타이틀바-메뉴바 구분선 없음 — 같은 배경으로 한 면처럼 이어짐. */
 		user-select: none;
 		-webkit-user-select: none;
+	}
+	/* macOS: titleBarStyle:"Overlay" 로 네이티브 traffic light(빨/노/초)가
+	   좌측 상단에 그대로 떠 있음 — 그 폭만큼 콘텐츠가 안 겹치게 여백. 정확한
+	   폭은 macOS 버전/스케일에 따라 미세하게 다를 수 있어 근사값. */
+	.titlebar.mac-overlay {
+		padding-left: 78px;
 	}
 	.tb-appicon {
 		width: 16px;
@@ -405,6 +549,8 @@
 		display: flex;
 		height: 100%;
 		flex: none;
+		/* Windows 네이티브 캡션 버튼 관례: 버튼 사이 간격 0, 서로 붙어있음. */
+		gap: 0;
 	}
 	.tb-btn {
 		width: 46px;
@@ -421,6 +567,21 @@
 		background: var(--nav-hover-bg);
 		color: var(--text);
 	}
+	/* Windows: OS 캡션 버튼과 동일한 폰트 글리프. */
+	.tb-winicon {
+		font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets', sans-serif;
+		font-size: 10px;
+		font-weight: 400;
+		font-style: normal;
+		line-height: 1;
+	}
+	/* Linux: 백엔드가 조회해 온 실제 시스템 아이콘(data URL). */
+	.tb-nativeicon {
+		width: 16px;
+		height: 16px;
+		-webkit-user-drag: none;
+		pointer-events: none;
+	}
 	/* DEV-255: pin(Always on top) 켜짐 상태 — 아이콘 채움 + 강조색. */
 	.tb-btn.tb-pin-on {
 		color: var(--accent);
@@ -430,11 +591,11 @@
 		color: var(--btn-primary-text);
 	}
 
-	/* ── DEV-265: Linux(GNOME/Adwaita 근사) 창 컨트롤 ──
-	   Windows 관례(풀높이 사각 호버, 닫기 빨강) 대신: 작은 원형 버튼 +
-	   원형 호버 배경, 버튼 간 균일 간격, 닫기도 동일 원형 호버(Adwaita
-	   관례 — 빨강 강조 없음). 진짜 시스템 렌더는 decorations:false 에선
-	   불가하므로 근사. */
+	/* ── DEV-265: Linux 창 컨트롤 폴백(백엔드 조회 실패 시) —
+	   GNOME/Adwaita 근사: 작은 원형 버튼 + 원형 호버 배경, 버튼 간 간격,
+	   닫기도 동일 원형 호버(Adwaita 관례 — 빨강 강조 없음). 백엔드가 실제
+	   gapPx/buttonSizePx 를 주면 인라인 style 로 덮어써야 하지만(추후),
+	   1차는 이 고정값을 폴백으로 유지. */
 	.tb-controls.linux {
 		align-items: center;
 		gap: 0.45rem;

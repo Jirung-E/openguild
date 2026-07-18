@@ -6,6 +6,14 @@
 //! - 단위 테스트에서 핸들러를 호출하기 쉬움
 
 mod commands;
+// DEV-265: Windows Snap Layout 히트테스트 훅 (WM_NCHITTEST) — Windows 전용,
+// windows-sys 의존이라 다른 플랫폼에선 컴파일 대상에서 제외.
+#[cfg(target_os = "windows")]
+mod titlebar_win;
+// DEV-265: Linux 네이티브 GTK 아이콘 테마/버튼 순서 조회 — 내부에서
+// target_os="linux" 로 gtk 의존 부분만 갈라두어 다른 플랫폼에서도 파일
+// 자체는 컴파일된다(스텁 반환).
+mod titlebar_linux;
 
 use openguild_core::recents::strip_verbatim_prefix;
 use openguild_core::Store;
@@ -498,6 +506,10 @@ pub fn run() {
             // BUG-081: 첨부 열기(미리보기) / 다운로드(복사).
             commands::open_guild_file,
             commands::copy_guild_file,
+            // DEV-265: 커스텀 타이틀바 창 컨트롤 — Windows Snap Layout
+            // 히트테스트 / Linux 네이티브 아이콘 테마 조회.
+            commands::set_maximize_hit_rect,
+            commands::get_native_titlebar_style,
         ])
         // DEV-087: asset protocol scope — 길드 경로가 동적이라 (사용자가 임의
         // 폴더 open) config scope 대신 런타임 allow. `.guild/assets/` 의 배너

@@ -12,7 +12,10 @@ export type OpenMode = 'preview' | 'window' | 'page';
 import { goto } from '$app/navigation';
 import { detectEnvironment } from '$lib/api/transport';
 // BUG-140: 커스텀 타이틀바 플랫폼 판별 — +layout 의 showTitleBar 와 동일 소스.
-import { usesCustomTitlebar } from '$lib/utils/platform';
+// DEV-265: macOS 는 usesCustomTitlebar() 도 true(Overlay 적용 대상)이지만
+// decorations:false 로 끄면 안 됨 — 네이티브 traffic light 자체가 사라짐.
+// 대신 decorations:true(기본) + titleBarStyle:'Overlay' 로 메인 창과 동일.
+import { isMacOverlay, usesCustomTitlebar } from '$lib/utils/platform';
 
 let windowSeq = 0;
 
@@ -43,7 +46,8 @@ export async function openInWindow(href: string, title: string): Promise<void> {
 		height: 700,
 		minWidth: 480,
 		minHeight: 360,
-		decorations: !usesCustomTitlebar(),
+		decorations: isMacOverlay() ? true : !usesCustomTitlebar(),
+		...(isMacOverlay() ? { titleBarStyle: 'overlay' as const, hiddenTitle: true } : {}),
 		shadow: true
 	});
 }

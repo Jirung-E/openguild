@@ -2028,3 +2028,44 @@ pub async fn set_campaign_memo(
         content: Some(content),
     })
 }
+
+/// DEV-265 (Windows): 최대화 버튼의 클라이언트 좌표(물리 픽셀)를 등록 —
+/// `WM_NCHITTEST` 가 그 영역을 HTMAXBUTTON 으로 인식해 진짜 OS Snap
+/// Layout 호버가 뜨도록 한다. Linux/macOS 는 no-op 스텁(command 이름은
+/// 모든 플랫폼에 존재해야 invoke_handler! 가 동일하게 컴파일된다).
+#[cfg(target_os = "windows")]
+#[tauri::command]
+pub fn set_maximize_hit_rect(
+    window: tauri::Window,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+) -> Result<(), String> {
+    let hwnd = window.hwnd().map_err(err)?;
+    crate::titlebar_win::set_maximize_hit_rect(hwnd.0 as isize, x, y, width, height);
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+pub fn set_maximize_hit_rect(
+    _window: tauri::Window,
+    _x: i32,
+    _y: i32,
+    _width: i32,
+    _height: i32,
+) -> Result<(), String> {
+    Ok(())
+}
+
+/// DEV-265 (Linux): 실제 GTK 아이콘 테마/버튼 순서/간격 조회. 다른
+/// 플랫폼에선 모든 필드가 None/기본값인 스텁을 반환(프론트는 리눅스일
+/// 때만 이 command 를 호출하므로 실질적으로 안 쓰이지만, invoke_handler!
+/// 목록은 플랫폼 무관하게 동일해야 함).
+#[tauri::command]
+pub fn get_native_titlebar_style(
+    app: tauri::AppHandle,
+) -> Result<crate::titlebar_linux::NativeTitlebarStyle, String> {
+    crate::titlebar_linux::get_native_titlebar_style_blocking(&app)
+}
