@@ -5,6 +5,11 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
 ## Unreleased
 
 ### Added
+- **에이전트용 정식 스킬 패키지** — `docs agents`(AGENTS_OPENGUILD_USAGE.md)
+  문서를 대체해 Claude Code plugin marketplace 구조(`skills/`)로 제공.
+  설치 시 `~/.openguild/skill-marketplace/` 로 동기화되며 `/plugin
+  marketplace add` 로 등록. 기존 `openguild docs agents` 는 제거됨(용도가
+  스킬로 이전). (DEV-264)
 - **Linux 배포 패키지(deb/rpm/AppImage)** 추가 — 기존 Windows NSIS installer
   외에 리눅스에서도 정식 패키지로 배포. (BUG-142)
 - **rule list / tag list `--table` 출력** 추가 — 정렬된 표 형식(사람용).

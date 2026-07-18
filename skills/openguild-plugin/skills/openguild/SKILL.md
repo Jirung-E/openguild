@@ -77,5 +77,7 @@ openguild backup new                             # manual snapshot
 | Forgetting `--yes` on delete | `quest delete`/`campaign delete` refuse to run without it (dry-run works without) |
 | Moving straight to `done` for changes only a human can verify | Move to `testing` with a "## Test plan" section instead, and let the human promote it to `done` |
 
-For the full command catalog, run `openguild --help`, `openguild quest --help`,
-or any subcommand with `--help` — every command documents itself.
+For the full command catalog (relations, due dates, history, campaigns,
+backups, comment filters/reactions, templates, maintenance, rules, library,
+worklog, safety guards, error handling, JSON usage), see `REFERENCE.md` in
+this skill's directory. Any command also documents itself via `--help`.

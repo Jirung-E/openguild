@@ -150,7 +150,7 @@ enum Command {
     },
     #[command(about = tf!("번들 문서를 stdout 으로 출력 — 빌드에 embed 되어 파일 경로/읽기 권한 불필요 (agent 친화). 이름 미지정 시 목록", "Print bundled docs to stdout — embedded at build time, no file paths/permissions needed (agent friendly). Lists docs if no name"))]
     Docs {
-        #[arg(help = tf!("agents | usage | readme | changelog", "agents | usage | readme | changelog"))]
+        #[arg(help = tf!("usage | readme | changelog", "usage | readme | changelog"))]
         name: Option<String>,
     },
     #[command(about = tf!("CLI 출력 언어 — GUI 와 같은 위치(~/.openguild/locale.json)에 저장, 이후 모든 실행이 따름. 인자 없으면 현재 값 출력", "CLI output language — saved to ~/.openguild/locale.json (shared with GUI), applied to all runs. Prints current value if no arg"))]
@@ -5329,11 +5329,6 @@ fn handle_types(c: &Backend, json: bool, sub: TypesCmd) -> Result<()> {
 /// 이 명령은 항상 동작.
 fn handle_docs(json: bool, name: Option<String>) -> Result<()> {
     const DOCS: &[(&str, &str, &str)] = &[
-        (
-            "agents",
-            "AI agent 용 openguild 사용 가이드 (AGENTS_OPENGUILD_USAGE.md)",
-            include_str!("../../docs/AGENTS_OPENGUILD_USAGE.md"),
-        ),
         ("usage", "사용자 매뉴얼 (USAGE.md)", include_str!("../../docs/USAGE.md")),
         ("readme", "프로젝트 소개 (README.md)", include_str!("../../README.md")),
         ("changelog", "변경 이력 (CHANGELOG.md)", include_str!("../../CHANGELOG.md")),
@@ -7970,9 +7965,9 @@ mod tests {
     fn cli_parse_docs() {
         let bare = Cli::try_parse_from(["openguild", "docs"]).unwrap();
         assert!(matches!(bare.command, Command::Docs { name: None }));
-        let named = Cli::try_parse_from(["openguild", "docs", "agents"]).unwrap();
+        let named = Cli::try_parse_from(["openguild", "docs", "usage"]).unwrap();
         match named.command {
-            Command::Docs { name } => assert_eq!(name.as_deref(), Some("agents")),
+            Command::Docs { name } => assert_eq!(name.as_deref(), Some("usage")),
             _ => panic!("expected docs"),
         }
         // 알 수 없는 이름은 파싱은 통과(런타임 에러 담당) — free string 이므로.

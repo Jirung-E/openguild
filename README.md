@@ -81,13 +81,13 @@ openguild campaign checklist add C-001 "Smoke test installer"
 openguild campaign checklist check C-001 1
 ```
 
-Full CLI reference: [`docs/AGENTS_OPENGUILD_USAGE.md`](./docs/AGENTS_OPENGUILD_USAGE.md).
-
 ### Agent skill (Claude Code)
 The installed app (and the source checkout) ships a `skills/` directory
 structured as a Claude Code plugin marketplace, synced to
-`~/.openguild/skill-marketplace/` on first run. To teach an agent how to use
-openguild in your own project, register it from Claude Code:
+`~/.openguild/skill-marketplace/` on first run — this is the full CLI
+reference for agents (command catalog, workflow patterns, safety guards). To
+teach an agent how to use openguild in your own project, register it from
+Claude Code:
 ```
 /plugin marketplace add ~/.openguild/skill-marketplace
 /plugin install openguild-plugin@openguild
@@ -98,7 +98,7 @@ openguild in your own project, register it from Claude Code:
 | File | Audience | Purpose |
 |---|---|---|
 | [`AGENTS.md`](./AGENTS.md) | AI agent | Index — points to other docs |
-| [`docs/AGENTS_OPENGUILD_USAGE.md`](./docs/AGENTS_OPENGUILD_USAGE.md) | AI agent | How an agent uses openguild as a task management tool (CLI guide) |
+| `skills/openguild-plugin/skills/openguild/` | AI agent | How an agent uses openguild as a task management tool (Claude Code skill — see [Agent skill](#agent-skill-claude-code) above) |
 | [`docs/architecture.md`](./docs/architecture.md) | Developers | System architecture, API endpoints, data model |
 | [`docs/storage-design.md`](./docs/storage-design.md) | Developers | File-as-truth + SQLite cache + AOF/RDB design |
 | [`docs/dev-plan.md`](./docs/dev-plan.md) | Developers | Roadmap, progress |
@@ -238,12 +238,11 @@ openguild campaign checklist add C-001 "설치본 smoke test"
 openguild campaign checklist check C-001 1
 ```
 
-전체 CLI 가이드: [`docs/AGENTS_OPENGUILD_USAGE.md`](./docs/AGENTS_OPENGUILD_USAGE.md).
-
 ### 에이전트 스킬 (Claude Code)
 설치된 앱(및 소스 체크아웃)엔 Claude Code plugin marketplace 구조로 만들어진
 `skills/` 디렉토리가 포함돼 있고, 첫 실행 시 `~/.openguild/skill-marketplace/`
-로 동기화된다. 여러분의 프로젝트에서 openguild 사용법을 에이전트에게
+로 동기화된다 — 이게 에이전트용 전체 CLI 가이드(명령어 카탈로그, 워크플로
+패턴, 안전장치)다. 여러분의 프로젝트에서 openguild 사용법을 에이전트에게
 가르치려면 Claude Code 에서 다음을 실행해 등록한다:
 ```
 /plugin marketplace add ~/.openguild/skill-marketplace
@@ -255,7 +254,7 @@ openguild campaign checklist check C-001 1
 | 파일 | 대상 | 내용 |
 |---|---|---|
 | [`AGENTS.md`](./AGENTS.md) | AI agent | 인덱스 — 다른 문서로 가는 진입점 |
-| [`docs/AGENTS_OPENGUILD_USAGE.md`](./docs/AGENTS_OPENGUILD_USAGE.md) | AI agent | agent 가 openguild 를 작업 관리 도구로 사용하는 방법 (CLI 가이드) |
+| `skills/openguild-plugin/skills/openguild/` | AI agent | agent 가 openguild 를 작업 관리 도구로 사용하는 방법 (Claude Code 스킬 — 위 [에이전트 스킬](#에이전트-스킬-claude-code) 참고) |
 | [`docs/architecture.md`](./docs/architecture.md) | 개발자 | 시스템 구조, API 엔드포인트, 데이터 모델 |
 | [`docs/storage-design.md`](./docs/storage-design.md) | 개발자 | 파일 진리원 + SQLite 캐시 + AOF/RDB 설계 |
 | [`docs/dev-plan.md`](./docs/dev-plan.md) | 개발자 | 단계별 개발 계획 + 진행 상태 |

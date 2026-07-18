@@ -68,7 +68,7 @@ Co-Authored-By: ... (해당 시)
 - 외부 todo 도구 / GitHub Issues 보조 사용 X.
 - 새 작업 → 새 quest → 같은 quest_id 의 branch → commit 메시지에 그 ID.
 
-> 📌 **[`docs/AGENTS_OPENGUILD_USAGE.md`](./docs/AGENTS_OPENGUILD_USAGE.md) 의
+> 📌 **[`.agents/skills/openguild-workflow/SKILL.md`](./.agents/skills/openguild-workflow/SKILL.md) 의
 > 워크플로 / 규칙을 따를 것.** 특히 quest 상태 흐름과 testing 단계 처리 방식
 > (자동 테스트 통과 시 done OK, 수동 검증 필요 시 testing 으로 보내고 본문에
 > 테스트 방법 첨부) 을 숙지할 것.
@@ -90,8 +90,8 @@ agent (Claude / 다른 LLM) 가 `Write` / `Edit` 도구로 `.guild/quests/*.md` 
   BUG-049). 단 즉시 일관시키려면 명시적으로 `openguild quest comment add /
   edit / rm` 또는 `openguild quest memo set` 사용 권장. HTML 마커 (`<!-- og-comment
   id=N ts=... -->`) 포맷 깨면 parser 실패.
-- 자세한 표 + 우회 절차는 [`docs/AGENTS_OPENGUILD_USAGE.md` § 4](./docs/AGENTS_OPENGUILD_USAGE.md) 의
-  "🚨 `.guild/` 파일을 직접 편집하지 말 것" 절 참조.
+- 자세한 표 + 우회 절차는 [`.agents/skills/openguild-workflow/SKILL.md`](./.agents/skills/openguild-workflow/SKILL.md) 의
+  "절대 금지" / "함정" 절 참조.
 
 ### status / type slug 는 stable identifier (DEV-042)
 
@@ -147,9 +147,12 @@ openguild/
 
 ### Agent 가 openguild **를 사용** 할 때 (도구로 작업 관리)
 
-| 문서 | 내용 |
-|---|---|
-| `docs/AGENTS_OPENGUILD_USAGE.md` | CLI (`openguild`) 사용법, 워크플로 패턴, 안전장치 |
+CLI 사용법/워크플로 패턴/안전장치는 더 이상 별도 문서가 아니라 **스킬
+패키지**(`skills/openguild-plugin/skills/openguild/SKILL.md` +
+`REFERENCE.md`)로 제공된다 — Claude Code 에서 `/plugin marketplace add
+~/.openguild/skill-marketplace` 로 등록. 이 repo 자체를 개발할 때 쓰는
+`.agents/skills/openguild-workflow/`(위 섹션에서 참조하는 것)와는 별개의
+스킬이니 혼동하지 말 것.
 
 ## 빠른 명령어 참조
 

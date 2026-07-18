@@ -6,7 +6,9 @@ description: openguild 저장소에서 agent 가 퀘스트 기반으로 작업�
 # openguild agent 워크플로
 
 > 상세 규범: [AGENTS.md](../../../AGENTS.md) (절대 규칙) ·
-> [docs/AGENTS_OPENGUILD_USAGE.md](../../../docs/AGENTS_OPENGUILD_USAGE.md) (CLI 전체 카탈로그).
+> [skills/openguild-plugin/skills/openguild/REFERENCE.md](../../../skills/openguild-plugin/skills/openguild/REFERENCE.md)
+> (CLI 전체 카탈로그 — 배포용 `openguild` 스킬의 레퍼런스, 이 repo 개발과
+> 무관하게 CLI 사용법 자체는 동일).
 > 이 스킬은 요약 + 함정 모음 — 충돌 시 AGENTS.md 가 우선.
 
 ## 세션 시작 루틴
