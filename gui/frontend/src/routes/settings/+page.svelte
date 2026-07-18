@@ -5,8 +5,8 @@
   비-주요 기능 묶음 — 상단 nav 의 ⚙ 아이콘으로 진입.
 
   - 정보: 앱 이름 / 버전 / 저장소 링크.
-  - 업데이트: 수동 체크 버튼만 — 결과 표시는 전역 UpdateBanner(우하단
-    floating toast, DEV-194 후속으로 통합)가 담당. Tauri 전용.
+  - 업데이트: 수동 체크 버튼만 — 결과 표시는 전역 알림 호스트(ToastHost,
+    우하단 통합 스택, DEV-259)가 담당. Tauri 전용.
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';

@@ -9,8 +9,8 @@
 	import SettingsQuickMenu from '$lib/components/SettingsQuickMenu.svelte';
 	// DEV-154: 호환 안 되는 길드(더 새 schema) 전용 안내 + 업데이트 확인.
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
-	// DEV-194 후속: 결과 표시는 전역 UpdateBanner(우하단 floating toast,
-	// +layout.svelte 에 mount) 하나로 통합 — 여기선 트리거만.
+	// DEV-259: 결과 표시는 전역 알림 호스트(ToastHost, +layout.svelte 에
+	// mount)가 담당 — 여기선 체크 트리거만.
 	import { checkForUpdate } from '$lib/api/updater';
 	// DEV-113: 원격 서버 연결 — "어떤 길드를 열지" 선택이라 길드 열기와 같은
 	// Welcome 화면에서 처리(설정 페이지에서 연결하는 건 자리가 어색하다는 피드백).

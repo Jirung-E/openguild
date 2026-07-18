@@ -9,11 +9,11 @@
 	// 커스텀 타이틀바 — Windows Tauri 전용 (tauri.windows.conf.json 의
 	// decorations:false 와 세트). 네이티브 타이틀바 테마 어긋남 원천 해소.
 	import TitleBar from '$lib/components/TitleBar.svelte';
-	import UpdateBanner from '$lib/components/UpdateBanner.svelte';
-	// 앱 공용 toast — alert() 대체, 어디서든 동일 UI.
+	// DEV-259: 앱 알림 통합 호스트 — 토스트/업데이트/스키마 알림을 우하단 단일
+	// 스택으로. 업데이트·스키마 watcher 도 이 호스트가 내장(이전의 UpdateBanner/
+	// SchemaAheadBanner 껍데기 컴포넌트 제거).
 	import ToastHost from '$lib/components/ToastHost.svelte';
 	import { showToast } from '$lib/stores/toast';
-	import SchemaAheadBanner from '$lib/components/SchemaAheadBanner.svelte';
 	// DEV-074 fix13: window 스크롤 overlay — 컨텐츠 폭 차지 X.
 	import OverlayScrollbar from '$lib/components/OverlayScrollbar.svelte';
 	import { detectEnvironment } from '$lib/api/transport';
@@ -373,12 +373,6 @@
 {#if showTitleBar}
 	<TitleBar />
 {/if}
-<!-- BUG-041: DB schema 가 binary 보다 새로운 경우 알림 (Tauri 만). 항상 최상단. -->
-<SchemaAheadBanner />
-<!-- DEV-063 / DEV-194 후속: 업데이트 알림 — 우하단 floating toast(레이아웃
-     안 밀어냄), idle 아닌 모든 상태 표시. 모든 라우트(welcome 포함) 공통,
-     단일 mount — 페이지별 중복 토스트 제거됨. -->
-<UpdateBanner />
 {#if showNav}
 	<Nav />
 {/if}
@@ -386,6 +380,8 @@
 	{@render children()}
 </main>
 <OverlayScrollbar />
+<!-- DEV-259: 알림 통합 호스트(토스트/업데이트/스키마) — 우하단 단일 스택.
+     업데이트·스키마 watcher 내장. 모든 라우트 공통 단일 mount. -->
 <ToastHost />
 
 <!-- DEV-153: 미저장 변경 시 라우트 이동 확인 (모든 페이지 공통). -->
