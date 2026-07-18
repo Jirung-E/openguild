@@ -35,6 +35,10 @@ pub struct NativeTitlebarStyle {
     pub restore_icon: Option<String>,
     #[serde(rename = "closeIcon")]
     pub close_icon: Option<String>,
+    /// 창 컨트롤이 놓이는 쪽 — `"left"` | `"right"`. gsettings 의
+    /// button-layout 에서 min/max/close 가 콜론 앞(왼쪽)에 있으면 "left".
+    /// 조회 실패 시 "right"(가장 흔한 GNOME 기본).
+    pub side: String,
     /// 왼쪽 → 오른쪽 순서. gsettings 조회 실패 시 GNOME 기본값.
     pub order: Vec<String>,
     #[serde(rename = "gapPx")]
@@ -44,11 +48,17 @@ pub struct NativeTitlebarStyle {
 }
 
 /// `gsettings get org.gnome.desktop.wm.preferences button-layout` 파싱.
-/// 예: `'close,minimize,maximize:'` (오른쪽 배치, 왼쪽 빈칸) → `["close","minimize","maximize"]`.
-/// 실패(비-GNOME 세션, 명령 없음 등)면 GNOME 기본값으로 폴백.
+/// button-layout 은 `"LEFT:RIGHT"` 형식(콜론 기준 왼쪽/오른쪽 배치):
+///   - `':minimize,maximize,close'` → 오른쪽 배치(가장 흔함)
+///   - `'close,minimize,maximize:'` → 왼쪽 배치(macOS 흉내 등)
+/// min/max/close 가 들어있는 쪽을 창 컨트롤의 배치 쪽으로 보고, 그 순서를
+/// 그대로 쓴다. 실패(비-GNOME 세션, 명령 없음 등)면 오른쪽·GNOME 기본순.
 #[cfg(target_os = "linux")]
-fn read_button_order() -> Vec<String> {
-    let fallback = vec!["minimize".to_string(), "maximize".to_string(), "close".to_string()];
+fn read_button_config() -> (&'static str, Vec<String>) {
+    let fallback = (
+        "right",
+        vec!["minimize".to_string(), "maximize".to_string(), "close".to_string()],
+    );
     let out = match std::process::Command::new("gsettings")
         .args(["get", "org.gnome.desktop.wm.preferences", "button-layout"])
         .output()
@@ -58,18 +68,30 @@ fn read_button_order() -> Vec<String> {
     };
     let raw = String::from_utf8_lossy(&out.stdout);
     let trimmed = raw.trim().trim_matches('\'').trim_matches('"');
-    // "left:right" 형식 — 우리 타이틀바는 버튼이 항상 오른쪽에 있으므로
-    // 오른쪽(콜론 뒤) 절만 사용. 콜론 없으면 전체를 오른쪽으로 취급.
-    let right = trimmed.split(':').nth(1).unwrap_or(trimmed);
-    let names: Vec<String> = right
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .filter(|s| matches!(s.as_str(), "minimize" | "maximize" | "close"))
-        .collect();
-    if names.is_empty() {
-        fallback
+
+    let parse_side = |seg: &str| -> Vec<String> {
+        seg.split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| matches!(s.as_str(), "minimize" | "maximize" | "close"))
+            .collect()
+    };
+
+    // 콜론 앞 = 왼쪽, 콜론 뒤 = 오른쪽. 콜론이 없으면 전체를 오른쪽으로.
+    let (left_seg, right_seg) = match trimmed.split_once(':') {
+        Some((l, r)) => (l, r),
+        None => ("", trimmed),
+    };
+    let left_names = parse_side(left_seg);
+    let right_names = parse_side(right_seg);
+
+    // 창 컨트롤(min/max/close)이 있는 쪽을 배치 쪽으로. 양쪽에 다 있거나
+    // (희귀) 아무 데도 없으면 오른쪽 폴백.
+    if !left_names.is_empty() && right_names.is_empty() {
+        ("left", left_names)
+    } else if !right_names.is_empty() {
+        ("right", right_names)
     } else {
-        names
+        fallback
     }
 }
 
@@ -90,30 +112,65 @@ fn to_action_key(name: &str) -> &'static str {
 fn build_style_on_gtk_thread() -> NativeTitlebarStyle {
     use gtk::prelude::*;
 
-    let order_raw = read_button_order();
+    let (side, order_raw) = read_button_config();
     let order = order_raw.iter().map(|n| to_action_key(n).to_string()).collect();
 
-    let lookup_icon_data_url = |icon_name: &str| -> Option<String> {
+    // 아이콘: 심볼릭 SVG 파일 원문을 그대로 data URL 로 넘긴다(PNG 렌더
+    // 아님). 프론트가 이를 CSS `mask-image` + `currentColor` 로 그려
+    // 버튼 텍스트 색(= 앱 다크/라이트 테마)을 따라가게 한다 — 네이티브
+    // GTK 가 심볼릭 아이콘을 테마 fg 로 recolor 하는 것과 동일한 결과.
+    // (PNG 로 굽던 이전 방식은 색이 박혀 다크 테마에서 안 보였음.)
+    let lookup_icon_svg_data_url = |icon_name: &str| -> Option<String> {
         let theme = gtk::IconTheme::default()?;
         let info = theme.lookup_icon(icon_name, 16, gtk::IconLookupFlags::empty())?;
-        let pixbuf = info.load_icon().ok()?;
-        let bytes = pixbuf.save_to_bufferv("png", &[]).ok()?;
+        let path = info.filename()?;
+        // 심볼릭 아이콘은 항상 .svg — 파일 원문을 그대로 읽는다.
+        let bytes = std::fs::read(&path).ok()?;
         Some(format!(
-            "data:image/png;base64,{}",
+            "data:image/svg+xml;base64,{}",
             base64::engine::general_purpose::STANDARD.encode(bytes)
         ))
     };
 
-    let min_icon = lookup_icon_data_url("window-minimize-symbolic");
-    let max_icon = lookup_icon_data_url("window-maximize-symbolic");
-    let restore_icon = lookup_icon_data_url("window-restore-symbolic")
-        .or_else(|| lookup_icon_data_url("window-unmaximize-symbolic"));
-    let close_icon = lookup_icon_data_url("window-close-symbolic");
+    let min_icon = lookup_icon_svg_data_url("window-minimize-symbolic");
+    let max_icon = lookup_icon_svg_data_url("window-maximize-symbolic");
+    let restore_icon = lookup_icon_svg_data_url("window-restore-symbolic")
+        .or_else(|| lookup_icon_svg_data_url("window-unmaximize-symbolic"));
+    let close_icon = lookup_icon_svg_data_url("window-close-symbolic");
 
-    // 간격/버튼 크기: 실제로 화면에 안 보이는 GtkOffscreenWindow 안에
-    // 진짜 GtkHeaderBar + titlebutton 클래스가 붙은 버튼들을 넣어 CSS가
-    // 계산한 자연 크기를 읽는다 — 특정 테마 수치를 하드코딩하지 않는다.
-    let (gap_px, button_size_px) = (|| -> Option<(f64, f64)> {
+    // 간격/버튼 크기: 화면에 안 보이는 GtkOffscreenWindow 안에 실제
+    // `.titlebutton` 클래스가 붙은 버튼을 만들어 테마 CSS 가 계산한 자연
+    // 크기를 읽는다 — 특정 배포판 수치를 하드코딩하지 않는다.
+    //
+    // 버튼 "크기": 아이콘을 넣은 titlebutton 의 preferred(자연) **가로**
+    // 폭을 쓴다. 이전엔 HeaderBar 안 버튼의 allocation 에서 width.max(height)
+    // 를 썼는데, HeaderBar 는 버튼 세로를 헤더바 높이(≈46)까지 늘려서
+    // 그 값이 잡혀 원형이 과도하게 커졌다 — 실제 원형 지름은 가로 자연폭
+    // (≈34). 그래서 세로 확장이 없는 단독 버튼의 preferred width 를 쓴다.
+    //
+    // 버튼 "간격": HeaderBar 안에 두 버튼을 넣었을 때의 실제 x 간격.
+    let button_size_px = (|| -> Option<f64> {
+        let offscreen = gtk::OffscreenWindow::new();
+        let btn = gtk::Button::new();
+        btn.style_context().add_class("titlebutton");
+        let img = gtk::Image::from_icon_name(
+            Some("window-close-symbolic"),
+            gtk::IconSize::Menu,
+        );
+        btn.add(&img);
+        offscreen.add(&btn);
+        offscreen.show_all();
+        while gtk::events_pending() {
+            gtk::main_iteration();
+        }
+        let (_min, nat) = btn.preferred_size();
+        if nat.width <= 0 {
+            return None;
+        }
+        Some(nat.width as f64)
+    })();
+
+    let gap_px = (|| -> Option<f64> {
         let offscreen = gtk::OffscreenWindow::new();
         let header = gtk::HeaderBar::new();
         header.style_context().add_class("titlebar");
@@ -127,7 +184,6 @@ fn build_style_on_gtk_thread() -> NativeTitlebarStyle {
         header.pack_end(&b1);
         offscreen.add(&header);
         offscreen.show_all();
-        // 레이아웃/스타일 계산이 끝나도록 대기 중인 이벤트를 흘려보낸다.
         while gtk::events_pending() {
             gtk::main_iteration();
         }
@@ -136,18 +192,15 @@ fn build_style_on_gtk_thread() -> NativeTitlebarStyle {
         if alloc1.width() <= 0 || alloc2.width() <= 0 {
             return None;
         }
-        let gap = (alloc2.x() - (alloc1.x() + alloc1.width())).abs() as f64;
-        let size = alloc1.width().max(alloc1.height()) as f64;
-        Some((gap, size))
-    })()
-    .map(|(g, s)| (Some(g), Some(s)))
-    .unwrap_or((None, None));
+        Some((alloc2.x() - (alloc1.x() + alloc1.width())).abs() as f64)
+    })();
 
     NativeTitlebarStyle {
         min_icon,
         max_icon,
         restore_icon,
         close_icon,
+        side: side.to_string(),
         order,
         gap_px,
         button_size_px,

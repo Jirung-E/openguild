@@ -57,6 +57,13 @@
 		navigator.userAgent.includes('Linux') &&
 		!navigator.userAgent.includes('Android');
 
+	// DEV-265: 네이티브 GNOME 타이틀버튼 자연 크기는 ~34px 인데, 커스텀
+	// 타이틀바 높이(--titlebar-h)보다 크면 안 들어가므로 상한. 아이콘/간격은
+	// 사용자 피드백에 맞춰 조정(원 크기는 유지, 아이콘 키우고 간격 넓힘).
+	const LINUX_BTN_CAP = 24; // 원형 버튼 지름 상한(px)
+	const LINUX_ICON_RATIO = 0.65; // 버튼 대비 아이콘 크기 비율
+	const LINUX_BTN_GAP = 13; // 버튼 사이 간격(px)
+
 	// Windows 네이티브 캡션 버튼과 동일한 Segoe Fluent Icons/Segoe MDL2 Assets
 	// 코드포인트(ChromeMinimize/ChromeMaximize/ChromeRestore/ChromeClose).
 	// String.fromCharCode 로 만들어 소스 파일에 눈에 보이지 않는 PUA
@@ -75,11 +82,16 @@
 		maxIcon: string | null;
 		restoreIcon: string | null;
 		closeIcon: string | null;
+		side: 'left' | 'right'; // gsettings button-layout 의 배치 쪽
 		order: Array<'min' | 'max' | 'close'>; // 왼쪽→오른쪽
 		gapPx: number | null;
 		buttonSizePx: number | null;
 	};
 	let linuxStyle = $state<LinuxTitlebarStyle | null>(null);
+
+	// DEV-265: 리눅스에서 시스템 설정(button-layout)이 창 컨트롤을 왼쪽에
+	// 두면 우리도 왼쪽에 그린다. 기본/조회 실패 시 오른쪽.
+	const controlsOnLeft = $derived(isLinuxControls && linuxStyle?.side === 'left');
 
 	if (isLinuxControls && typeof window !== 'undefined') {
 		import('@tauri-apps/api/core')
@@ -207,6 +219,9 @@
 <svelte:window onclick={onWindowClick} onresize={reportMaxButtonRect} />
 
 <div class="titlebar" class:mac-overlay={isMac} data-tauri-drag-region>
+	<!-- DEV-265: 시스템이 창 컨트롤을 왼쪽에 두는 배치면 타이틀바 맨 앞에
+	     렌더(그 외엔 spacer 뒤 오른쪽). -->
+	{#if controlsOnLeft}{@render winControls()}{/if}
 	<!-- macOS: 네이티브 traffic light(빨/노/초) 폭만큼 좌측 여백 — CSS 로
 	     처리(.titlebar.mac-overlay padding-left). -->
 	<!-- 앱 아이콘 — 장식(클릭 무동작). 드래그 영역의 일부. -->
@@ -295,12 +310,16 @@
 
 	<div class="tb-spacer" data-tauri-drag-region></div>
 
+	<!-- 오른쪽 배치(기본) — 왼쪽 배치면 위 타이틀바 시작부에서 렌더됨. -->
+	{#if !controlsOnLeft}{@render winControls()}{/if}
+</div>
+
+{#snippet winControls()}
 	<div
 		class="tb-controls"
 		class:linux={isLinuxControls}
-		style={isLinuxControls && linuxStyle?.gapPx != null
-			? `gap:${linuxStyle.gapPx}px;`
-			: undefined}
+		class:left={controlsOnLeft}
+		style={isLinuxControls ? `gap:${LINUX_BTN_GAP}px;` : undefined}
 	>
 		<!-- DEV-255: 자식윈도우 전용 pin(Always on top) — 문서 창을 다른 작업
 		     위에 고정해놓고 참조하는 흐름. -->
@@ -329,18 +348,20 @@
 			<!-- macOS: 아무것도 렌더링하지 않음 — 네이티브 traffic light 가
 			     Overlay 로 이미 이 자리(좌측)에 떠 있음. -->
 		{:else if isLinuxControls}
-			<!-- Linux: 백엔드가 실제 GTK 아이콘 테마를 조회해 순서/아이콘을 주면
-			     그대로, 실패 시 기존 Adwaita 근사 CSS 로 폴백. -->
+			<!-- Linux: 백엔드가 실제 GTK 아이콘 테마를 조회해 순서/아이콘/크기를
+			     주면 그대로, 실패 시 기존 Adwaita 근사 CSS 로 폴백. 아이콘은
+			     심볼릭 SVG 를 CSS mask 로 그려(background: currentColor) 버튼
+			     텍스트색 = 앱 테마색을 따라간다(네이티브 recolor 와 동일). -->
 			{@const order = linuxStyle?.order ?? ['min', 'max', 'close']}
-			{@const linuxBtnStyle =
-				linuxStyle?.buttonSizePx != null
-					? `width:${linuxStyle.buttonSizePx}px;height:${linuxStyle.buttonSizePx}px;`
-					: undefined}
+			{@const nativeBtn = linuxStyle?.buttonSizePx ?? 34}
+			{@const btnSize = Math.min(nativeBtn, LINUX_BTN_CAP)}
+			{@const iconSize = Math.round(btnSize * LINUX_ICON_RATIO)}
+			{@const linuxBtnStyle = `width:${btnSize}px;height:${btnSize}px;`}
 			{#each order as action (action)}
 				{#if action === 'min'}
 					<button class="tb-btn" style={linuxBtnStyle} onclick={() => winCtl('min')} title={t('titlebar.minimize', $locale)} aria-label={t('titlebar.minimize', $locale)}>
 						{#if linuxStyle?.minIcon}
-							<img class="tb-nativeicon" src={linuxStyle.minIcon} alt="" aria-hidden="true" />
+							<span class="tb-nativeicon" style="width:{iconSize}px;height:{iconSize}px;-webkit-mask-image:url({linuxStyle.minIcon});mask-image:url({linuxStyle.minIcon});" aria-hidden="true"></span>
 						{:else}
 							<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
 								<line x1="0" y1="5" x2="10" y2="5" stroke="currentColor" stroke-width="1" />
@@ -356,9 +377,9 @@
 						aria-label={maximized ? t('titlebar.restore', $locale) : t('titlebar.maximize', $locale)}
 					>
 						{#if maximized && linuxStyle?.restoreIcon}
-							<img class="tb-nativeicon" src={linuxStyle.restoreIcon} alt="" aria-hidden="true" />
+							<span class="tb-nativeicon" style="width:{iconSize}px;height:{iconSize}px;-webkit-mask-image:url({linuxStyle.restoreIcon});mask-image:url({linuxStyle.restoreIcon});" aria-hidden="true"></span>
 						{:else if !maximized && linuxStyle?.maxIcon}
-							<img class="tb-nativeicon" src={linuxStyle.maxIcon} alt="" aria-hidden="true" />
+							<span class="tb-nativeicon" style="width:{iconSize}px;height:{iconSize}px;-webkit-mask-image:url({linuxStyle.maxIcon});mask-image:url({linuxStyle.maxIcon});" aria-hidden="true"></span>
 						{:else if maximized}
 							<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
 								<rect x="0" y="2.5" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1" />
@@ -373,7 +394,7 @@
 				{:else}
 					<button class="tb-btn tb-close" style={linuxBtnStyle} onclick={() => winCtl('close')} title={t('titlebar.close', $locale)} aria-label={t('titlebar.close', $locale)}>
 						{#if linuxStyle?.closeIcon}
-							<img class="tb-nativeicon" src={linuxStyle.closeIcon} alt="" aria-hidden="true" />
+							<span class="tb-nativeicon" style="width:{iconSize}px;height:{iconSize}px;-webkit-mask-image:url({linuxStyle.closeIcon});mask-image:url({linuxStyle.closeIcon});" aria-hidden="true"></span>
 						{:else}
 							<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
 								<line x1="0" y1="0" x2="10" y2="10" stroke="currentColor" stroke-width="1" />
@@ -405,7 +426,7 @@
 			</button>
 		{/if}
 	</div>
-</div>
+{/snippet}
 
 {#if searchOpen}
 	<SearchPalette onclose={() => (searchOpen = false)} />
@@ -575,11 +596,19 @@
 		font-style: normal;
 		line-height: 1;
 	}
-	/* Linux: 백엔드가 조회해 온 실제 시스템 아이콘(data URL). */
+	/* Linux: 백엔드가 조회해 온 실제 시스템 심볼릭 SVG 를 CSS mask 로 그림 —
+	   background:currentColor 라 버튼 텍스트색(= 앱 다크/라이트 테마)을 그대로
+	   따라간다(네이티브 GTK 의 심볼릭 recolor 와 동일 결과). 크기는 인라인
+	   style 로 버튼 크기에 비례해 지정. */
 	.tb-nativeicon {
-		width: 16px;
-		height: 16px;
-		-webkit-user-drag: none;
+		display: inline-block;
+		background-color: currentColor;
+		-webkit-mask-repeat: no-repeat;
+		mask-repeat: no-repeat;
+		-webkit-mask-position: center;
+		mask-position: center;
+		-webkit-mask-size: contain;
+		mask-size: contain;
 		pointer-events: none;
 	}
 	/* DEV-255: pin(Always on top) 켜짐 상태 — 아이콘 채움 + 강조색. */
@@ -591,15 +620,21 @@
 		color: var(--btn-primary-text);
 	}
 
-	/* ── DEV-265: Linux 창 컨트롤 폴백(백엔드 조회 실패 시) —
-	   GNOME/Adwaita 근사: 작은 원형 버튼 + 원형 호버 배경, 버튼 간 간격,
-	   닫기도 동일 원형 호버(Adwaita 관례 — 빨강 강조 없음). 백엔드가 실제
-	   gapPx/buttonSizePx 를 주면 인라인 style 로 덮어써야 하지만(추후),
-	   1차는 이 고정값을 폴백으로 유지. */
+	/* ── DEV-265: Linux 창 컨트롤 — GNOME/Adwaita 근사: 원형 버튼 + 원형
+	   호버 배경, 버튼 간 간격, 닫기도 동일 원형 호버(Adwaita 관례 — 빨강
+	   강조 없음).
+	   크기/간격/패딩 전부 px — 창 컨트롤은 OS 크롬이라 앱 UI 크기(root
+	   font-size = rem) 조절에 영향받지 않아야 top-right 고정이 유지된다.
+	   (이전엔 padding 이 rem 이라 UI 스케일 시 버튼이 좌측으로 밀렸음.) */
 	.tb-controls.linux {
 		align-items: center;
-		gap: 0.45rem;
-		padding: 0 0.6rem 0 0.3rem;
+		gap: 10px;
+		padding: 0 10px 0 5px;
+	}
+	/* 왼쪽 배치(시스템 button-layout 이 왼쪽) — 패딩을 좌우 반전해 창 왼쪽
+	   가장자리와의 간격을 맞춘다. */
+	.tb-controls.linux.left {
+		padding: 0 5px 0 10px;
 	}
 	.tb-controls.linux .tb-btn {
 		width: 24px;

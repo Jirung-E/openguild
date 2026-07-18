@@ -179,7 +179,7 @@
 		align-items: center;
 		gap: 2rem;
 		padding: 0 1.5rem;
-		height: 3.25rem;
+		height: var(--nav-h, 3.25rem);
 		background: var(--nav-bg);
 		border-bottom: 1px solid var(--nav-border);
 		position: sticky;

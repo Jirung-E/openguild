@@ -3432,7 +3432,7 @@
 	.board-wrap {
 		position: relative;
 		width: 100%;
-		height: calc(100vh - 3.25rem - var(--titlebar-h, 0px));
+		height: calc(100vh - var(--nav-h, 3.25rem) - var(--titlebar-h, 0px));
 		background: var(--bg);
 		overflow: hidden;
 	}
@@ -4126,7 +4126,7 @@
 	.overlay {
 		position: fixed;
 		/* Nav(3.25rem) + 커스텀 타이틀바(Windows Tauri, 없으면 0px) 아래부터. */
-		inset: calc(3.25rem + var(--titlebar-h, 0px)) 0 0 0;
+		inset: calc(var(--nav-h, 3.25rem) + var(--titlebar-h, 0px)) 0 0 0;
 		display: flex;
 		align-items: center;
 		justify-content: center;

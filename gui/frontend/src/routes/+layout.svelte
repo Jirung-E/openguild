@@ -18,7 +18,7 @@
 	import OverlayScrollbar from '$lib/components/OverlayScrollbar.svelte';
 	import { detectEnvironment } from '$lib/api/transport';
 	// BUG-140: 커스텀 타이틀바 플랫폼 판별(Windows/Linux) — 단일 진리원.
-	import { usesCustomTitlebar } from '$lib/utils/platform';
+	import { usesCustomTitlebar, isLinux } from '$lib/utils/platform';
 	import { uiScale, applyUiScaleToDocument } from '$lib/stores/uiScale';
 	import { contentWidth } from '$lib/stores/contentWidth';
 	import {
@@ -68,12 +68,16 @@
 	// 어긋나지 않게). 표시 시 sticky 요소들(Nav 등)의 top offset 용
 	// CSS 변수(--titlebar-h)를 root 에 심는다.
 	const showTitleBar = usesCustomTitlebar();
+	// DEV-265: 리눅스는 네이티브 창 버튼을 더 크게 담기 위해 타이틀바를 살짝
+	// 높이고(+8px), 그만큼 메뉴바(Nav) 높이를 줄여(–8px) 콘텐츠 영역 총합은
+	// 그대로 유지한다. Windows/macOS 는 기존 32px 유지.
+	const linuxTitlebar = showTitleBar && isLinux();
 	$effect(() => {
 		if (typeof document === 'undefined') return;
-		document.documentElement.style.setProperty(
-			'--titlebar-h',
-			showTitleBar ? '32px' : '0px'
-		);
+		const root = document.documentElement.style;
+		root.setProperty('--titlebar-h', showTitleBar ? (linuxTitlebar ? '40px' : '32px') : '0px');
+		// Nav 기본 높이 3.25rem(=52px @scale1). 리눅스에서만 8px 줄임.
+		root.setProperty('--nav-h', linuxTitlebar ? 'calc(3.25rem - 8px)' : '3.25rem');
 	});
 
 	// DEV-205: <html lang> 을 앱 언어에 맞춤 — 네이티브 date input 등이 반영.
@@ -397,7 +401,7 @@
 
 <style>
 	main {
-		min-height: calc(100vh - 3.25rem - var(--titlebar-h, 0px));
+		min-height: calc(100vh - var(--nav-h, 3.25rem) - var(--titlebar-h, 0px));
 		background: var(--bg);
 	}
 	main.no-nav {

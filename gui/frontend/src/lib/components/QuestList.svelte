@@ -601,7 +601,7 @@
 	.quest-list {
 		display: flex;
 		flex-direction: column;
-		height: calc(100vh - 3.25rem - var(--titlebar-h, 0px));
+		height: calc(100vh - var(--nav-h, 3.25rem) - var(--titlebar-h, 0px));
 		position: relative; /* DEV-086: New Quest 절대배치 기준. */
 	}
 
