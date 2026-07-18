@@ -49,9 +49,12 @@ use tower_http::{
 
 // DEV-254: 요청별 언어 — GUI/agent 가 `Accept-Language` 헤더(표준) 또는
 // `?lang=ko|en`(간편 override, 헤더 조작이 번거로운 클라이언트 용)로 지정.
-// 우선순위: `?lang=` > `Accept-Language` > 기본 ko(GUI/CLI 기본값과 동일).
-// core::locale::scoped 로 요청 전체를 감싸 core::tf!() 를 쓰는 모든 에러
-// 메시지(AppError::NotFound/BadRequest)가 이 언어를 따르게 한다.
+// 우선순위: `?lang=` > `Accept-Language` > 서버 설정 locale.
+// DEV-254: 이전엔 마지막 폴백이 `Locale::default()`(ko 고정)이라 서버에
+// `OPENGUILD_LOCALE`/`locale.json` 을 설정해도 lang 힌트 없는 요청은 항상
+// ko 였다. CLI 와 동일하게 설정된 locale 을 따르도록 `server_default_locale()`
+// 로 폴백. core::locale::scoped 로 요청 전체를 감싸 core::tf!() 를 쓰는 모든
+// 에러 메시지(AppError::NotFound/BadRequest)가 이 언어를 따른다.
 fn detect_request_locale(req: &Request) -> Locale {
     if let Some(q) = req.uri().query() {
         for pair in q.split('&') {
@@ -74,7 +77,17 @@ fn detect_request_locale(req: &Request) -> Locale {
             return l;
         }
     }
-    Locale::default()
+    server_default_locale()
+}
+
+/// 요청에 lang 힌트가 없을 때의 기본 언어 — CLI 와 공유하는 locale 설정
+/// (`OPENGUILD_LOCALE` env > `~/.openguild/locale.json` > ko)을 따른다.
+/// 서버 구동 중 바뀌지 않으므로 최초 1회 계산해 캐시(요청마다 locale.json
+/// 을 다시 읽지 않도록).
+fn server_default_locale() -> Locale {
+    use std::sync::OnceLock;
+    static DEFAULT: OnceLock<Locale> = OnceLock::new();
+    *DEFAULT.get_or_init(openguild_core::locale::current)
 }
 
 async fn locale_middleware(req: Request, next: Next) -> Response {
