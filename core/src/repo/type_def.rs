@@ -39,11 +39,7 @@ impl TypeFile {
     /// TOML 문자열 직렬화 (위쪽에 counter 관리 경고 헤더 포함).
     pub fn serialize(&self) -> String {
         let body = toml::to_string_pretty(self).expect("type 직렬화 실패");
-        format!(
-            "{HEADER}\n{body}",
-            HEADER = TYPE_FILE_HEADER,
-            body = body
-        )
+        format!("{TYPE_FILE_HEADER}\n{body}")
     }
 
     /// 파일에 atomic 쓰기.

@@ -51,6 +51,7 @@ pub struct NativeTitlebarStyle {
 /// button-layout 은 `"LEFT:RIGHT"` 형식(콜론 기준 왼쪽/오른쪽 배치):
 ///   - `':minimize,maximize,close'` → 오른쪽 배치(가장 흔함)
 ///   - `'close,minimize,maximize:'` → 왼쪽 배치(macOS 흉내 등)
+///
 /// min/max/close 가 들어있는 쪽을 창 컨트롤의 배치 쪽으로 보고, 그 순서를
 /// 그대로 쓴다. 실패(비-GNOME 세션, 명령 없음 등)면 오른쪽·GNOME 기본순.
 #[cfg(target_os = "linux")]

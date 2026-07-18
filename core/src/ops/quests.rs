@@ -1210,13 +1210,11 @@ mod tests {
         let content = std::fs::read_to_string(&path).unwrap();
         assert!(
             content.contains("EXTERNALLY EDITED BODY"),
-            "외부 편집 보존. 실제: {}",
-            content
+            "외부 편집 보존. 실제: {content}"
         );
         assert!(
             !content.contains("initial body"),
-            "옛 DB 값으로 덮어쓰지 않음. 실제: {}",
-            content
+            "옛 DB 값으로 덮어쓰지 않음. 실제: {content}"
         );
 
         // 2) status 변경은 정상 반영.

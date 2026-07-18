@@ -1056,9 +1056,9 @@ impl HttpClient {
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&body)
                 && let Some(err) = v.get("error").and_then(|e| e.as_str())
             {
-                return Err(anyhow!("{}: {}", status, err));
+                return Err(anyhow!("{status}: {err}"));
             }
-            return Err(anyhow!("{}: {}", status, body));
+            return Err(anyhow!("{status}: {body}"));
         }
         if body.is_empty() {
             // 204 No Content 등 — caller 가 () 또는 Option 받기를 기대해야
@@ -1106,9 +1106,9 @@ impl HttpClient {
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&body)
                 && let Some(err) = v.get("error").and_then(|e| e.as_str())
             {
-                return Err(anyhow!("{}: {}", status, err));
+                return Err(anyhow!("{status}: {err}"));
             }
-            return Err(anyhow!("{}: {}", status, body));
+            return Err(anyhow!("{status}: {body}"));
         }
         Ok(())
     }
@@ -1121,9 +1121,9 @@ impl HttpClient {
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&body)
                 && let Some(err) = v.get("error").and_then(|e| e.as_str())
             {
-                return Err(anyhow!("{}: {}", status, err));
+                return Err(anyhow!("{status}: {err}"));
             }
-            return Err(anyhow!("{}: {}", status, body));
+            return Err(anyhow!("{status}: {body}"));
         }
         Ok(())
     }
@@ -1134,7 +1134,7 @@ impl HttpClient {
         let res = self.http.get(self.url("/health")).send()?;
         let status = res.status();
         if !status.is_success() {
-            return Err(anyhow!("{}", status));
+            return Err(anyhow!("{status}"));
         }
         Ok(res.text().unwrap_or_else(|_| "ok".to_string()))
     }
@@ -1222,9 +1222,9 @@ impl HttpClient {
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&body)
                 && let Some(err) = v.get("error").and_then(|e| e.as_str())
             {
-                return Err(anyhow!("{}: {}", status, err));
+                return Err(anyhow!("{status}: {err}"));
             }
-            return Err(anyhow!("{}: {}", status, body));
+            return Err(anyhow!("{status}: {body}"));
         }
         Ok(())
     }
@@ -1660,7 +1660,7 @@ impl Backend {
 
     /// AppError → anyhow::Error 변환.
     fn map_err<T>(r: openguild_core::AppResult<T>) -> Result<T> {
-        r.map_err(|e| anyhow!("{}", e))
+        r.map_err(|e| anyhow!("{e}"))
     }
 
     /// Local 모드에서 비정상 quest 파일 (파싱 실패 / 정의되지 않은 status) 을
@@ -5407,9 +5407,8 @@ fn handle_locale(json: bool, lang: Option<String>) -> Result<()> {
         Some(l) => {
             let Some(parsed) = Locale::parse(&l) else {
                 bail!(tf!(
-                    "알 수 없는 언어 '{}' — ko 또는 en 사용",
-                    "Unknown language '{}' — use ko or en",
-                    l
+                    "알 수 없는 언어 '{l}' — ko 또는 en 사용",
+                    "Unknown language '{l}' — use ko or en"
                 ));
             };
             locale::save(parsed)?;
@@ -6754,13 +6753,13 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
                         })
                     );
                 } else {
-                    println!("[dry-run] update {}", slug);
+                    println!("[dry-run] update {slug}");
                     if let Some(t) = &title {
                         println!("  title:       {:?} → {:?}", detail.quest.title, t);
                     }
                     if let Some(d) = &description {
                         let from = detail.quest.description.as_deref().unwrap_or("");
-                        println!("  description: {:?} → {:?}", from, d);
+                        println!("  description: {from:?} → {d:?}");
                     }
                     if let Some(u) = urgency {
                         // DEV-046: urgency 색 적용 (양쪽).
