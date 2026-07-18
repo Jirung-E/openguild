@@ -343,6 +343,16 @@ pub fn run() {
             Ok(_) => {}
             Err(e) => eprintln!("[openguild-gui] warn: docs sync 실패 — {e:#}"),
         }
+        // DEV-264: 배포용 스킬(Claude Code plugin marketplace 구조)을
+        // ~/.openguild/skill-marketplace/ 로 동기화 — 사용자가 `/plugin
+        // marketplace add ~/.openguild/skill-marketplace` 로 등록 가능.
+        match openguild_core::user_dirs::sync_bundled_skill_marketplace(&dir.join("skills")) {
+            Ok(n) if n > 0 => {
+                eprintln!("[openguild-gui] bundled skills synced to ~/.openguild/skill-marketplace ({n} files)")
+            }
+            Ok(_) => {}
+            Err(e) => eprintln!("[openguild-gui] warn: skills sync 실패 — {e:#}"),
+        }
     }
 
     // DEV-087: setup closure 로 넘길 asset scope 대상 — 길드 root.

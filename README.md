@@ -83,6 +83,16 @@ openguild campaign checklist check C-001 1
 
 Full CLI reference: [`docs/AGENTS_OPENGUILD_USAGE.md`](./docs/AGENTS_OPENGUILD_USAGE.md).
 
+### Agent skill (Claude Code)
+The installed app (and the source checkout) ships a `skills/` directory
+structured as a Claude Code plugin marketplace, synced to
+`~/.openguild/skill-marketplace/` on first run. To teach an agent how to use
+openguild in your own project, register it from Claude Code:
+```
+/plugin marketplace add ~/.openguild/skill-marketplace
+/plugin install openguild-plugin@openguild
+```
+
 ## Documentation
 
 | File | Audience | Purpose |
@@ -229,6 +239,16 @@ openguild campaign checklist check C-001 1
 ```
 
 전체 CLI 가이드: [`docs/AGENTS_OPENGUILD_USAGE.md`](./docs/AGENTS_OPENGUILD_USAGE.md).
+
+### 에이전트 스킬 (Claude Code)
+설치된 앱(및 소스 체크아웃)엔 Claude Code plugin marketplace 구조로 만들어진
+`skills/` 디렉토리가 포함돼 있고, 첫 실행 시 `~/.openguild/skill-marketplace/`
+로 동기화된다. 여러분의 프로젝트에서 openguild 사용법을 에이전트에게
+가르치려면 Claude Code 에서 다음을 실행해 등록한다:
+```
+/plugin marketplace add ~/.openguild/skill-marketplace
+/plugin install openguild-plugin@openguild
+```
 
 ## 문서
 
