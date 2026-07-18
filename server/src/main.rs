@@ -47,14 +47,17 @@ use tower_http::{
     trace::TraceLayer,
 };
 
-// DEV-254: 요청별 언어 — GUI/agent 가 `Accept-Language` 헤더(표준) 또는
-// `?lang=ko|en`(간편 override, 헤더 조작이 번거로운 클라이언트 용)로 지정.
-// 우선순위: `?lang=` > `Accept-Language` > 서버 설정 locale.
-// DEV-254: 이전엔 마지막 폴백이 `Locale::default()`(ko 고정)이라 서버에
-// `OPENGUILD_LOCALE`/`locale.json` 을 설정해도 lang 힌트 없는 요청은 항상
-// ko 였다. CLI 와 동일하게 설정된 locale 을 따르도록 `server_default_locale()`
-// 로 폴백. core::locale::scoped 로 요청 전체를 감싸 core::tf!() 를 쓰는 모든
-// 에러 메시지(AppError::NotFound/BadRequest)가 이 언어를 따른다.
+// DEV-254: 응답 언어 결정. 우선순위: `?lang=ko|en`(명시적 요청 오버라이드)
+// > 서버 설정 locale.
+// openguild-server 는 host 전용(단일 운영자/길드)이라, 운영자가
+// 설정한 locale(`openguild-server locale` / `OPENGUILD_LOCALE` /
+// `~/.openguild/locale.json`)이 응답 언어의 기준이 되어야 한다. 이전엔
+// `Accept-Language` 를 서버 설정보다 먼저 봐서, 브라우저(GUI)가 자동으로
+// 붙이는 Accept-Language 때문에 서버 locale 을 바꿔도 반영이 안 됐다
+// (사용자 보고: "서버 언어 변경 안됨"). Accept-Language 자동 감지를 제거하고
+// 서버 설정을 따르되, 디버깅/명시 제어용 `?lang=` 만 요청별 오버라이드로 남김.
+// core::locale::scoped 로 요청 전체를 감싸 core::tf!() 를 쓰는 에러 메시지
+// (AppError::NotFound/BadRequest)가 이 언어를 따른다.
 fn detect_request_locale(req: &Request) -> Locale {
     if let Some(q) = req.uri().query() {
         for pair in q.split('&') {
@@ -65,29 +68,10 @@ fn detect_request_locale(req: &Request) -> Locale {
             }
         }
     }
-    if let Some(al) = req
-        .headers()
-        .get(axum::http::header::ACCEPT_LANGUAGE)
-        .and_then(|v| v.to_str().ok())
-    {
-        // 가장 앞 태그만 본다 (예: "en-US,en;q=0.9,ko;q=0.8" → "en-US" → en).
-        let first = al.split(',').next().unwrap_or("").trim();
-        let lang = first.split(['-', ';']).next().unwrap_or("");
-        if let Some(l) = Locale::parse(lang) {
-            return l;
-        }
-    }
-    server_default_locale()
-}
-
-/// 요청에 lang 힌트가 없을 때의 기본 언어 — CLI 와 공유하는 locale 설정
-/// (`OPENGUILD_LOCALE` env > `~/.openguild/locale.json` > ko)을 따른다.
-/// 서버 구동 중 바뀌지 않으므로 최초 1회 계산해 캐시(요청마다 locale.json
-/// 을 다시 읽지 않도록).
-fn server_default_locale() -> Locale {
-    use std::sync::OnceLock;
-    static DEFAULT: OnceLock<Locale> = OnceLock::new();
-    *DEFAULT.get_or_init(openguild_core::locale::current)
+    // 서버 설정 locale(env > locale.json > ko). 요청마다 재조회 — 운영자가
+    // `openguild-server locale` 로 바꾸면 재시작 없이 반영(host 전용이라
+    // 트래픽이 적어 파일 조회 비용 무시 가능).
+    openguild_core::locale::current()
 }
 
 async fn locale_middleware(req: Request, next: Next) -> Response {
@@ -95,11 +79,20 @@ async fn locale_middleware(req: Request, next: Next) -> Response {
     openguild_core::locale::scoped(locale, next.run(req)).await
 }
 
+// DEV-254: `--help`/서브커맨드 help 도 locale 반응 — clap 의 `///` doc 주석은
+// 컴파일타임 고정(한글 박제)이라, CLI(cli/src/main.rs)와 동일하게 `about =`/
+// `help =` 런타임 표현식으로 바꿔 `openguild_core::tf!()`(effective locale 로
+// 분기)로 렌더. `Cli::parse()`(=Command 빌드) 시점에 요청 스코프가 없으므로
+// effective() 는 current()(env > locale.json > ko)로 떨어져 서버 설정을 따른다.
+// BUG-016: help 문자열에 quest_id 넣지 말 것(leak 가드 테스트가 스캔).
 #[derive(Parser, Debug)]
 #[command(
     name = "openguild-server",
     version,
-    about = "openguild HTTP API server (host 전용 — 정비/데이터 조작은 openguild CLI)"
+    about = openguild_core::tf!(
+        "openguild HTTP API server (host 전용 — 정비/데이터 조작은 openguild CLI)",
+        "openguild HTTP API server (host only — maintenance/data ops via openguild CLI)"
+    )
 )]
 struct Cli {
     #[command(subcommand)]
@@ -108,28 +101,77 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Command {
-    /// HTTP API 서버 시작
+    #[command(about = openguild_core::tf!("HTTP API 서버 시작", "Start the HTTP API server"))]
     Host {
-        /// 바인드 포트 (env: PORT, 기본 3000)
-        #[arg(long)]
+        #[arg(long, help = openguild_core::tf!(
+            "바인드 포트 (env: PORT, 기본 3000)",
+            "Bind port (env: PORT, default 3000)"
+        ))]
         port: Option<u16>,
         // DEV-195 후속(admin 피드백): `host --host` 처럼 서브커맨드와 이름이
         // 겹치면 어색하다는 지적으로 `--bind` 로 명명.
-        // BUG-016: doc 에 quest_id leak 금지 — 아래 /// 는 기능 설명만.
-        /// 바인드 주소. `local`(=127.0.0.1, 기본 — 의도치 않은 네트워크 노출
-        /// 방지) / `public`(=0.0.0.0, 다른 기기 접근 허용) 별칭 또는 IP
-        /// 리터럴(예: `192.168.1.10`). env: BIND.
-        #[arg(long)]
+        #[arg(long, help = openguild_core::tf!(
+            "바인드 주소. `local`(=127.0.0.1, 기본 — 의도치 않은 네트워크 노출 방지) / `public`(=0.0.0.0, 다른 기기 접근 허용) 별칭 또는 IP 리터럴(예: `192.168.1.10`). env: BIND.",
+            "Bind address. `local`(=127.0.0.1, default — avoids unintended network exposure) / `public`(=0.0.0.0, allows access from other machines) aliases, or an IP literal (e.g. `192.168.1.10`). env: BIND."
+        ))]
         bind: Option<String>,
-        /// frontend 정적 자산 폴더 직접 지정 (env: FRONTEND_DIST). 설정
-        /// 파일/자동 탐색보다 우선.
-        #[arg(long)]
+        #[arg(long, help = openguild_core::tf!(
+            "frontend 정적 자산 폴더 직접 지정 (env: FRONTEND_DIST). 설정 파일/자동 탐색보다 우선.",
+            "Directly specify the frontend static-asset folder (env: FRONTEND_DIST). Takes precedence over config file / auto-discovery."
+        ))]
         frontend_dist: Option<String>,
-        /// 설정 파일(`openguild-server.toml`) 경로 명시. 미지정 시 exe 옆 →
-        /// cwd → ~/.openguild 순으로 자동 탐색(있으면 사용, 없으면 조용히 skip).
-        #[arg(long)]
+        #[arg(long, help = openguild_core::tf!(
+            "설정 파일(`openguild-server.toml`) 경로 명시. 미지정 시 exe 옆 → cwd → ~/.openguild 순으로 자동 탐색(있으면 사용, 없으면 조용히 skip).",
+            "Explicit path to the config file (`openguild-server.toml`). If omitted, auto-discovers next to the exe → cwd → ~/.openguild (uses it if found, silently skips otherwise)."
+        ))]
         config: Option<String>,
     },
+    #[command(about = openguild_core::tf!(
+        "출력/응답 언어 — CLI/GUI 와 같은 위치(`~/.openguild/locale.json`)에 저장, 이후 서버 host 의 기본 응답 언어가 따름. 인자 없으면 현재 값 출력.",
+        "Output/response language — saved to the same place as CLI/GUI (`~/.openguild/locale.json`); the server host's default response language follows it. Prints the current value if no arg."
+    ))]
+    Locale {
+        #[arg(help = openguild_core::tf!(
+            "ko | en — 미지정 시 현재 값 출력.",
+            "ko | en — prints the current value if omitted."
+        ))]
+        lang: Option<String>,
+    },
+}
+
+/// DEV-254: 출력/응답 언어 조회·변경 — `~/.openguild/locale.json`(CLI/GUI 와
+/// 공유). 인자 없으면 현재값(저장값 + env override 표시), 있으면 저장.
+/// CLI 의 `openguild locale` 과 동일 동작 — 서버 바이너리만 있어도 설정 가능.
+fn handle_locale(lang: Option<String>) -> Result<()> {
+    use openguild_core::locale::{self, Locale};
+    match lang {
+        None => {
+            let saved = locale::load_saved()?;
+            let effective = locale::current();
+            if saved == effective {
+                println!("current language: {}", saved.as_str());
+            } else {
+                println!(
+                    "current language: {} (saved: {}, overridden by OPENGUILD_LOCALE)",
+                    effective.as_str(),
+                    saved.as_str()
+                );
+            }
+        }
+        Some(l) => {
+            let Some(parsed) = Locale::parse(&l) else {
+                anyhow::bail!("unknown language '{l}' — use ko or en");
+            };
+            locale::save(parsed)?;
+            // 확인 메시지는 방금 저장한 **새 언어**로 — 이전 언어로 나오면
+            // 혼란(사용자 보고). parsed 기준으로 직접 분기.
+            match parsed {
+                Locale::Ko => println!("✓ 언어를 '{}' 로 저장했습니다.", parsed.as_str()),
+                Locale::En => println!("✓ language saved as '{}'.", parsed.as_str()),
+            }
+        }
+    }
+    Ok(())
 }
 
 /// DEV-229: `openguild-server.toml` 설정 파일 형식.
@@ -165,7 +207,11 @@ fn load_server_config(explicit: Option<&str>) -> Result<Option<(ServerConfig, Pa
     let path = if let Some(p) = explicit {
         let p = PathBuf::from(p);
         if !p.is_file() {
-            anyhow::bail!("--config 로 지정한 파일이 없음: {}", p.display());
+            anyhow::bail!(openguild_core::tf!(
+                "--config 로 지정한 파일이 없음: {}",
+                "no such file specified via --config: {}",
+                p.display()
+            ));
         }
         p
     } else {
@@ -196,6 +242,12 @@ fn load_server_config(explicit: Option<&str>) -> Result<Option<(ServerConfig, Pa
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
+    // DEV-254: locale 은 서버 구동/길드/런타임 무관 — 로그 subscriber 나
+    // tokio 런타임 없이 조기 처리(CLI 의 locale 과 동일 취지).
+    if let Command::Locale { lang } = cli.command {
+        return handle_locale(lang);
+    }
+
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -211,6 +263,7 @@ fn main() -> Result<()> {
         Command::Host { port, bind, frontend_dist, config } => {
             rt.block_on(run_host(port, bind, frontend_dist, config))
         }
+        Command::Locale { .. } => unreachable!("handled above"),
     }
 }
 
@@ -249,8 +302,20 @@ fn load_guild() -> Result<GuildCtx> {
                     .map(|p| p.display().to_string())
                     .unwrap_or_else(|_| guild_path.clone());
                 eprintln!();
-                eprintln!("✗ not an openguild project: no `.guild` file in {abs}");
-                eprintln!("  hint: set GUILD_PATH env var to point at a directory with a `.guild`.");
+                eprintln!(
+                    "{}",
+                    openguild_core::tf!(
+                        "✗ openguild 프로젝트가 아님: {abs} 에 `.guild` 파일이 없음",
+                        "✗ not an openguild project: no `.guild` file in {abs}"
+                    )
+                );
+                eprintln!(
+                    "{}",
+                    openguild_core::tf!(
+                        "  힌트: `.guild` 가 있는 디렉토리를 가리키도록 GUILD_PATH 환경변수를 설정하세요.",
+                        "  hint: set GUILD_PATH env var to point at a directory with a `.guild`."
+                    )
+                );
                 eprintln!();
                 std::process::exit(2);
             }
@@ -388,10 +453,19 @@ async fn run_host(
     if serves_static {
         println!("  static : {dist_path}");
     } else {
-        println!("  static : (none — API-only 모드)");
         println!(
-            "           frontend 자산 없음. --frontend-dist / FRONTEND_DIST env / \
-             openguild-server.toml 의 [server] frontend_dist 로 지정 가능."
+            "{}",
+            openguild_core::tf!(
+                "  static : (none — API-only 모드)",
+                "  static : (none — API-only mode)"
+            )
+        );
+        println!(
+            "{}",
+            openguild_core::tf!(
+                "           frontend 자산 없음. --frontend-dist / FRONTEND_DIST env / openguild-server.toml 의 [server] frontend_dist 로 지정 가능.",
+                "           no frontend assets. Specify via --frontend-dist / FRONTEND_DIST env / [server] frontend_dist in openguild-server.toml."
+            )
         );
     }
     if let Some((_, path)) = &server_config {
@@ -399,12 +473,22 @@ async fn run_host(
     }
     // DEV-163: 정비는 CLI(`openguild ...`) 또는 HTTP admin(`/api/admin/*`).
     println!("  admin  : HTTP /api/admin/* (snapshot/reindex/drift/vacuum/journal)");
-    println!("  maint  : offline 은 `openguild` CLI (backup/restore/reindex/…)");
+    println!(
+        "{}",
+        openguild_core::tf!(
+            "  maint  : offline 은 `openguild` CLI (backup/restore/reindex/…)",
+            "  maint  : offline via the `openguild` CLI (backup/restore/reindex/…)"
+        )
+    );
     // DEV-195: 인증 계층이 없으므로 loopback 밖으로 노출하면 신뢰된 네트워크/
     // 리버스 프록시 뒤에서만 사용 권장 — 시작 시 한 줄로 경고.
     if !bind_ip.is_loopback() {
         println!(
-            "  ⚠ warning: bound to {bind_ip} (네트워크 노출) — 인증 없음, 신뢰된 네트워크에서만 사용하세요."
+            "{}",
+            openguild_core::tf!(
+                "  ⚠ warning: bound to {bind_ip} (네트워크 노출) — 인증 없음, 신뢰된 네트워크에서만 사용하세요.",
+                "  ⚠ warning: bound to {bind_ip} (network-exposed) — no auth; use only on a trusted network."
+            )
         );
     }
     println!();
@@ -428,6 +512,7 @@ mod cli_tests {
                 assert_eq!(port, None);
                 assert_eq!(bind, None);
             }
+            Command::Locale { .. } => unreachable!(),
         }
     }
 
@@ -436,6 +521,7 @@ mod cli_tests {
         let cli = Cli::try_parse_from(["openguild-server", "host", "--port", "3300"]).unwrap();
         match cli.command {
             Command::Host { port, .. } => assert_eq!(port, Some(3300)),
+            Command::Locale { .. } => unreachable!(),
         }
     }
 
@@ -445,6 +531,7 @@ mod cli_tests {
             Cli::try_parse_from(["openguild-server", "host", "--bind", "public"]).unwrap();
         match cli.command {
             Command::Host { bind, .. } => assert_eq!(bind, Some("public".to_string())),
+            Command::Locale { .. } => unreachable!(),
         }
     }
 
@@ -465,6 +552,7 @@ mod cli_tests {
                 assert_eq!(frontend_dist, Some("C:/dist".to_string()));
                 assert_eq!(config, Some("C:/my.toml".to_string()));
             }
+            Command::Locale { .. } => unreachable!(),
         }
     }
 
