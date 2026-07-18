@@ -1734,6 +1734,35 @@
 	//   - 일반 마우스의 plain wheel = 줌(admin 피드백 — 이전 동작 유지)
 	//   - 트랙패드의 plain two-finger 스크롤만 pan
 	// cy.zoom/panBy 는 'pan'/'zoom' 이벤트를 emit → 기존 syncLanes 자동 적용.
+	// BUG-144: 트랙패드 연속 스크롤/줌은 프레임당 여러 wheel 이벤트가 들어오는데,
+	// 매 이벤트마다 cy.zoom()/panBy() 를 동기 호출하면 그만큼 캔버스 전체를
+	// 다시 그려 프레임당 여러 번 렌더 — "연산량 대비 비정상적으로 느림" 체감의
+	// 원인. uiScale.ts 의 rAF 병합(BUG-141)과 같은 패턴: 같은 프레임 안의
+	// wheel 이벤트는 누적만 하고, 실제 cy 반영은 프레임당 1회로 상한.
+	let wheelRaf: number | null = null;
+	let pendingZoom: { level: number; x: number; y: number } | null = null;
+	let pendingPan: { x: number; y: number } | null = null;
+
+	function flushBoardWheel() {
+		wheelRaf = null;
+		if (!cy) {
+			pendingZoom = null;
+			pendingPan = null;
+			return;
+		}
+		if (pendingZoom) {
+			cy.zoom({
+				level: pendingZoom.level,
+				renderedPosition: { x: pendingZoom.x, y: pendingZoom.y }
+			});
+			pendingZoom = null;
+		}
+		if (pendingPan) {
+			cy.panBy(pendingPan);
+			pendingPan = null;
+		}
+	}
+
 	function onBoardWheel(e: WheelEvent) {
 		if (!cy) return;
 		e.preventDefault();
@@ -1748,14 +1777,23 @@
 			// mouse(=wheelDeltaY 120배수)가 아닌 ctrlKey 줌이 여기 해당.
 			const sensitivity = mouse ? 0.0012 : 0.005;
 			const dy = Math.max(-60, Math.min(60, e.deltaY));
-			cy.zoom({
-				level: cy.zoom() * Math.exp(-dy * sensitivity),
-				renderedPosition: { x: e.clientX - rect.left, y: e.clientY - rect.top }
-			});
+			// 같은 프레임에 이미 대기 중인 줌이 있으면 그 위에 누적(합성) —
+			// 아니면 현재 cy 줌에서 시작.
+			const baseLevel = pendingZoom ? pendingZoom.level : cy.zoom();
+			pendingZoom = {
+				level: baseLevel * Math.exp(-dy * sensitivity),
+				x: e.clientX - rect.left,
+				y: e.clientY - rect.top
+			};
 		} else {
 			// 트랙패드 자연 스크롤: 아래로 스크롤(deltaY>0) → 콘텐츠가 위로.
-			cy.panBy({ x: -e.deltaX, y: -e.deltaY });
+			const dx = -e.deltaX;
+			const dy = -e.deltaY;
+			pendingPan = pendingPan
+				? { x: pendingPan.x + dx, y: pendingPan.y + dy }
+				: { x: dx, y: dy };
 		}
+		if (wheelRaf === null) wheelRaf = requestAnimationFrame(flushBoardWheel);
 	}
 
 	// ── 키보드 ─────────────────────────────────────────────────
@@ -2366,6 +2404,7 @@
 	}
 
 	onDestroy(() => {
+		if (wheelRaf !== null) cancelAnimationFrame(wheelRaf); // BUG-144
 		container?.removeEventListener('wheel', onBoardWheel); // BUG-090
 		// DEV-208: 터치 핀치.
 		container?.removeEventListener('touchstart', onBoardTouchStart);
