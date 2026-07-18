@@ -177,14 +177,11 @@ enum Command {
     },
     #[command(about = tf!("백업(스냅샷)으로 복원. `--at` 으로 journal replay 시점 복원", "Restore from a backup (snapshot). `--at` for point-in-time journal replay"))]
     Restore {
-        /// 특정 timestamp (`YYYYMMDD-HHMMSS`). 미지정 시 최신 사용.
-        #[arg(long)]
+        #[arg(long, help = tf!("특정 timestamp (YYYYMMDD-HHMMSS). 미지정 시 최신 사용.", "A specific timestamp (YYYYMMDD-HHMMSS). Uses the latest if omitted."))]
         to: Option<String>,
-        /// 시점 복원 — 최신 snapshot 복원 후 journal(AOF) 을 이 시각(ISO8601
-        /// UTC, 예 `2026-06-27T00:15:00Z`, 포함)까지 재적용. `latest` 키워드 =
-        /// journal 전체 재적용(최신 상태로 복구). 내용 op(댓글/메모 본문)·type
-        /// 변경·첨부가 낀 구간은 안전을 위해 거부됨.
-        #[arg(long, conflicts_with = "to")]
+        #[arg(long, conflicts_with = "to",
+              help = tf!("시점 복원 — 최신 snapshot 복원 후 journal(AOF) 을 이 시각(ISO8601 UTC, 예 2026-06-27T00:15:00Z, 포함)까지 재적용. latest 키워드 = journal 전체 재적용(최신 상태로 복구). 내용 op(댓글/메모 본문)·type 변경·첨부가 낀 구간은 안전을 위해 거부됨.",
+                         "Point-in-time restore — restores the latest snapshot, then replays journal (AOF) up to this time (ISO8601 UTC, e.g. 2026-06-27T00:15:00Z, inclusive). `latest` = replay the entire journal (restore to current state). Rejected for safety if the range includes content ops (comment/memo bodies), type changes, or attachments."))]
         at: Option<String>,
     },
     #[command(about = tf!("파일 → index.db 캐시 재구축 (외부 편집 / git pull / restore 후 정합). `index rebuild` 와 동일", "Rebuild index.db cache from files (after external edits / git pull / restore). Same as `index rebuild`"))]
@@ -201,31 +198,22 @@ enum Command {
     },
     #[command(about = tf!("길드 전체 댓글 횡단 검색 — quest + campaign, 기본 최신순 20개", "Search comments across the guild — quest + campaign, latest 20 by default"))]
     Comments {
-        /// 작성자 일치 (대소문자 무시 정확 일치).
-        #[arg(long)]
+        #[arg(long, help = tf!("작성자 일치 (대소문자 무시 정확 일치).", "Exact author match (case-insensitive)."))]
         author: Option<String>,
-        /// 이 시각 이후 작성분만 — ISO date (`2026-06-01`) 또는 datetime.
-        #[arg(long)]
+        #[arg(long, help = tf!("이 시각 이후 작성분만 — ISO date (2026-06-01) 또는 datetime.", "Only entries created after this time — ISO date (2026-06-01) or datetime."))]
         since: Option<String>,
-        /// 이 시각 이전 작성분만.
-        #[arg(long)]
+        #[arg(long, help = tf!("이 시각 이전 작성분만.", "Only entries created before this time."))]
         until: Option<String>,
-        /// body 부분 일치 (대소문자 무시).
-        #[arg(long)]
+        #[arg(long, help = tf!("body 부분 일치 (대소문자 무시).", "Partial match on body (case-insensitive)."))]
         grep: Option<String>,
-        /// 토론(discussion) 댓글만 (quest 전용 플래그 — campaign 댓글 제외됨).
-        #[arg(long)]
+        #[arg(long, help = tf!("토론(discussion) 댓글만 (quest 전용 플래그 — campaign 댓글 제외됨).", "Discussion comments only (quest-only flag — excludes campaign comments)."))]
         discussion: bool,
-        /// 미해결 토론만 (discussion 포함).
-        #[arg(long, conflicts_with = "discussion")]
+        #[arg(long, conflicts_with = "discussion", help = tf!("미해결 토론만 (discussion 포함).", "Unresolved discussions only (implies discussion)."))]
         unresolved: bool,
-        /// 최대 N 개 (기본 20).
-        #[arg(long, default_value_t = 20)]
+        #[arg(long, default_value_t = 20, help = tf!("최대 N 개 (기본 20).", "Max N entries (default 20)."))]
         limit: usize,
-        /// 첫 줄 60자 요약만 출력 (기본: 본문 전체 — `quest comment list` 와
-        /// 동일). 여러 건 훑어볼 때만 사용 — 요약만 보고 답글 달았다가 뒷내용을
-        /// 놓친 사고(2026-07-05)로 기본을 전체 출력으로 바꿈.
-        #[arg(long)]
+        #[arg(long, help = tf!("첫 줄 60자 요약만 출력 (기본: 본문 전체 — quest comment list 와 동일). 여러 건 훑어볼 때만 사용 — 요약만 보고 답글 달았다가 뒷내용을 놓친 사고(2026-07-05)로 기본을 전체 출력으로 바꿈.",
+                              "Print only a 60-char first-line summary (default: full body, same as `quest comment list`). Use only when skimming many entries — the default was changed to full output after an incident (2026-07-05) where replying based on the summary alone missed the rest of the content."))]
         summary: bool,
     },
     #[command(about = tf!("journal(AOF) — tail. (시점 복원 replay 는 `restore` 에서 처리)", "Journal (AOF) — tail. (point-in-time replay is handled by `restore`)"))]
@@ -245,16 +233,14 @@ enum Command {
 /// DEV-177: 무결성 점검 그룹.
 #[derive(Subcommand)]
 enum CheckCmd {
-    /// 외부 편집 / 손상으로 index.db 가 파일과 어긋났는지 검사 (+ 자동 resync).
+    #[command(about = tf!("외부 편집 / 손상으로 index.db 가 파일과 어긋났는지 검사 (+ 자동 resync).", "Check whether index.db has drifted from the files due to external edits/corruption (+ optional auto-resync)."))]
     Drift {
-        /// 발견된 drift 를 자동으로 reindex 로 해소 (기본: 보고만).
-        #[arg(long)]
+        #[arg(long, help = tf!("발견된 drift 를 자동으로 reindex 로 해소 (기본: 보고만).", "Automatically resolve found drift via reindex (default: report only)."))]
         resync: bool,
     },
-    /// type 의 last_number 가 실제 max quest 번호와 일치하는지 검사 (+ 자동 보정).
+    #[command(about = tf!("type 의 last_number 가 실제 max quest 번호와 일치하는지 검사 (+ 자동 보정).", "Check whether each type's last_number matches the actual max quest number (+ optional auto-fix)."))]
     Counters {
-        /// 발견된 불일치를 파일 + SQL 에 직접 보정 (기본: 보고만).
-        #[arg(long)]
+        #[arg(long, help = tf!("발견된 불일치를 파일 + SQL 에 직접 보정 (기본: 보고만).", "Fix found mismatches directly in files + SQL (default: report only)."))]
         fix: bool,
     },
 }
@@ -262,19 +248,18 @@ enum CheckCmd {
 /// DEV-177: index.db 캐시 그룹.
 #[derive(Subcommand)]
 enum IndexCmd {
-    /// 파일 → index.db 캐시 재구축 (top-level `reindex` 와 동일).
+    #[command(about = tf!("파일 → index.db 캐시 재구축 (top-level `reindex` 와 동일).", "Rebuild the index.db cache from files (same as the top-level `reindex`)."))]
     Rebuild,
-    /// SQLite VACUUM — index.db 의 dead row 제거 + 파일 크기 정리.
+    #[command(about = tf!("SQLite VACUUM — index.db 의 dead row 제거 + 파일 크기 정리.", "SQLite VACUUM — removes dead rows from index.db and shrinks the file."))]
     Vacuum,
 }
 
 /// DEV-177: journal(AOF) 그룹. (replay 는 restore 에서 — DEV-022)
 #[derive(Subcommand)]
 enum JournalCmd {
-    /// journal.db 의 최근 N 개 op 출력 (debug / audit 용).
+    #[command(about = tf!("journal.db 의 최근 N 개 op 출력 (debug / audit 용).", "Print the most recent N ops from journal.db (for debug/audit)."))]
     Tail {
-        /// 출력할 row 수 (기본 50).
-        #[arg(short = 'n', long, default_value_t = 50)]
+        #[arg(short = 'n', long, default_value_t = 50, help = tf!("출력할 row 수 (기본 50).", "Number of rows to print (default 50)."))]
         count: i64,
     },
 }
@@ -282,14 +267,13 @@ enum JournalCmd {
 /// DEV-176: 백업(스냅샷) 서브커맨드 — 다른 명사 그룹(quest/campaign…)과 통일.
 #[derive(Subcommand)]
 enum BackupCmd {
-    /// 백업(스냅샷) 즉시 생성 (quest/campaign 의 `new` 와 통일).
+    #[command(about = tf!("백업(스냅샷) 즉시 생성 (quest/campaign 의 `new` 와 통일).", "Create a backup (snapshot) immediately (consistent with quest/campaign's `new`)."))]
     New,
-    /// 사용 가능한 백업 목록 (오래된 순)
+    #[command(about = tf!("사용 가능한 백업 목록 (오래된 순)", "List available backups (oldest first)"))]
     List,
-    /// 특정 백업 삭제
-    #[command(name = "remove")]
+    #[command(name = "remove", about = tf!("특정 백업 삭제", "Delete a specific backup"))]
     Rm {
-        /// 삭제할 timestamp (`YYYYMMDD-HHMMSS`). `backup list` 로 확인.
+        #[arg(help = tf!("삭제할 timestamp (`YYYYMMDD-HHMMSS`). `backup list` 로 확인.", "Timestamp to delete (`YYYYMMDD-HHMMSS`). Check with `backup list`."))]
         timestamp: String,
     },
 }
@@ -515,27 +499,24 @@ enum QuestCmd {
 
 #[derive(Subcommand)]
 enum TagCmd {
-    /// 현재 quest 의 tag 목록 (공백 구분 1줄).
+    #[command(about = tf!("현재 quest 의 tag 목록 (공백 구분 1줄).", "List the current quest's tags (space-separated, one line)."))]
     List { slug: String },
-    /// tag 1개 또는 여러 개 추가 (기존과 합쳐 dedupe).
+    #[command(about = tf!("tag 1개 또는 여러 개 추가 (기존과 합쳐 dedupe).", "Add one or more tags (merged with existing, deduped)."))]
     Add {
         slug: String,
-        /// 추가할 tag 들. 공백 구분 또는 여러 인자.
-        #[arg(required = true, num_args = 1..)]
+        #[arg(required = true, num_args = 1.., help = tf!("추가할 tag 들. 공백 구분 또는 여러 인자.", "Tags to add. Space-separated or multiple args."))]
         tags: Vec<String>,
     },
-    /// tag 1개 또는 여러 개 제거 (없는 건 무시).
-    #[command(name = "remove")]
+    #[command(name = "remove", about = tf!("tag 1개 또는 여러 개 제거 (없는 건 무시).", "Remove one or more tags (ignores tags that don't exist)."))]
     Rm {
         slug: String,
-        /// 제거할 tag 들.
-        #[arg(required = true, num_args = 1..)]
+        #[arg(required = true, num_args = 1.., help = tf!("제거할 tag 들.", "Tags to remove."))]
         tags: Vec<String>,
     },
-    /// tag 전체 교체 (기존 모두 삭제 후 인자만). 인자 0 개 = 전체 삭제.
+    #[command(about = tf!("tag 전체 교체 (기존 모두 삭제 후 인자만). 인자 0 개 = 전체 삭제.", "Replace all tags (removes existing, keeps only the given args). 0 args = remove all."))]
     Set {
         slug: String,
-        /// 새 tag 들 (공백 구분 또는 여러 인자).
+        #[arg(help = tf!("새 tag 들 (공백 구분 또는 여러 인자).", "New tags (space-separated or multiple args)."))]
         tags: Vec<String>,
     },
 }
@@ -543,194 +524,165 @@ enum TagCmd {
 /// DEV-060: 퀘스트 템플릿.
 #[derive(Subcommand)]
 enum TemplateCmd {
-    /// 템플릿 목록 (이름 / 기본값 요약).
+    #[command(about = tf!("템플릿 목록 (이름 / 기본값 요약).", "Template list (name / default-values summary)."))]
     List,
-    /// 템플릿 본문 출력.
+    #[command(about = tf!("템플릿 본문 출력.", "Print a template's body."))]
     Show { name: String },
-    /// 템플릿 생성/갱신 — `.guild/templates/{name}.md`. 본문은 --file / stdin.
-    /// (독립 엔티티라 quest/campaign 처럼 `new`.)
+    #[command(about = tf!("템플릿 생성/갱신 — .guild/templates/{{name}}.md. 본문은 --file / stdin. (독립 엔티티라 quest/campaign 처럼 new.)",
+                          "Create/update a template — `.guild/templates/{{name}}.md`. Body via --file / stdin. (Independent entity, so `new` like quest/campaign.)"))]
     New {
-        /// 템플릿 이름 (파일명 stem).
+        #[arg(help = tf!("템플릿 이름 (파일명 stem).", "Template name (file stem)."))]
         name: String,
-        /// 기본 type prefix (DEV / BUG ...).
-        #[arg(long = "type")]
+        #[arg(long = "type", help = tf!("기본 type prefix (DEV / BUG ...).", "Default type prefix (DEV / BUG ...)."))]
         type_prefix: Option<String>,
-        /// 새 quest 의 기본 제목.
-        #[arg(long)]
+        #[arg(long, help = tf!("새 quest 의 기본 제목.", "Default title for the new quest."))]
         title: Option<String>,
-        /// 기본 urgency (1=Critical .. 4=Low).
-        #[arg(long)]
+        #[arg(long, help = tf!("기본 urgency (1=Critical .. 4=Low).", "Default urgency (1=Critical .. 4=Low)."))]
         urgency: Option<i64>,
-        /// 기본 tags — 반복 또는 콤마 구분.
-        #[arg(long, value_delimiter = ',')]
+        #[arg(long, value_delimiter = ',', help = tf!("기본 tags — 반복 또는 콤마 구분.", "Default tags — repeat or comma-separated."))]
         tags: Vec<String>,
-        /// 본문 파일. 미지정 시 stdin (파이프 없으면 빈 본문). 한글 등
-        /// 비ASCII 는 --file 권장 — PowerShell 파이프(`echo | ...`)는 인코딩이
-        /// 안 맞아 깨질 수 있음.
-        #[arg(long)]
+        #[arg(long, help = tf!("본문 파일. 미지정 시 stdin (파이프 없으면 빈 본문). 한글 등 비ASCII 는 --file 권장 — PowerShell 파이프(echo | ...)는 인코딩이 안 맞아 깨질 수 있음.",
+                              "Body file. Defaults to stdin (empty body if not piped). --file recommended for non-ASCII (Korean etc.) — PowerShell pipes (`echo | ...`) can mangle encoding."))]
         file: Option<std::path::PathBuf>,
-        /// 이미 있으면 덮어쓰기 허용.
-        #[arg(long)]
+        #[arg(long, help = tf!("이미 있으면 덮어쓰기 허용.", "Allow overwriting if it already exists."))]
         force: bool,
     },
 }
 
 #[derive(Subcommand)]
 enum CommentCmd {
-    /// entry 목록 (id / ts / author / body 요약 1줄). 필터 옵션은 모두 AND 결합.
+    #[command(about = tf!("entry 목록 (id / ts / author / body 요약 1줄). 필터 옵션은 모두 AND 결합.", "Entry list (id / ts / author / one-line body summary). All filter options are AND'd."))]
     List {
         slug: String,
-        /// 작성자 일치 (대소문자 무시 정확 일치).
-        #[arg(long)]
+        #[arg(long, help = tf!("작성자 일치 (대소문자 무시 정확 일치).", "Exact author match (case-insensitive)."))]
         author: Option<String>,
-        /// 이 시각 이후 작성분만 — ISO date (`2026-06-01`) 또는 datetime.
-        #[arg(long)]
+        #[arg(long, help = tf!("이 시각 이후 작성분만 — ISO date (2026-06-01) 또는 datetime.", "Only entries created after this time — ISO date (2026-06-01) or datetime."))]
         since: Option<String>,
-        /// top-level 댓글만 (답글 제외).
-        #[arg(long = "top-only", conflicts_with = "reply_to")]
+        #[arg(long = "top-only", conflicts_with = "reply_to", help = tf!("top-level 댓글만 (답글 제외).", "Top-level comments only (excludes replies)."))]
         top_only: bool,
-        /// 특정 entry 의 답글만.
-        #[arg(long = "reply-to")]
+        #[arg(long = "reply-to", help = tf!("특정 entry 의 답글만.", "Only replies to a specific entry."))]
         reply_to: Option<u64>,
-        /// body 부분 일치 (대소문자 무시).
-        #[arg(long)]
+        #[arg(long, help = tf!("body 부분 일치 (대소문자 무시).", "Partial match on body (case-insensitive)."))]
         grep: Option<String>,
-        /// 최신순 출력 (기본은 오래된 순 = 대화 흐름).
-        #[arg(long)]
+        #[arg(long, help = tf!("최신순 출력 (기본은 오래된 순 = 대화 흐름).", "Newest first (default is oldest first = conversation order)."))]
         reverse: bool,
-        /// 최대 N 개만 (필터/정렬 적용 후).
-        #[arg(long)]
+        #[arg(long, help = tf!("최대 N 개만 (필터/정렬 적용 후).", "Max N entries (after filters/sort are applied)."))]
         limit: Option<usize>,
-        /// 답글을 부모 아래 들여쓰기 트리로 출력. `--reverse` 와 상호배타
-        /// (트리는 대화 흐름 순). 필터로 부모가 빠진 답글은 root 로 표시.
-        #[arg(long, conflicts_with = "reverse")]
+        #[arg(long, conflicts_with = "reverse",
+              help = tf!("답글을 부모 아래 들여쓰기 트리로 출력. --reverse 와 상호배타 (트리는 대화 흐름 순). 필터로 부모가 빠진 답글은 root 로 표시.",
+                         "Print replies as an indented tree under their parent. Mutually exclusive with --reverse (tree is conversation order). Replies whose parent was filtered out are shown as root."))]
         tree: bool,
     },
-    /// entry 본문 전체 또는 단일. `--id` 지정 시 `--depth`/`--with-parents` 로
-    /// 그 entry 의 답글/부모를 얼마나 같이 보여줄지 조절 (기본은 그 entry 만).
+    #[command(about = tf!("entry 본문 전체 또는 단일. --id 지정 시 --depth/--with-parents 로 그 entry 의 답글/부모를 얼마나 같이 보여줄지 조절 (기본은 그 entry 만).",
+                          "Print all entries or a single one. With --id, control how much of that entry's replies/parents to include via --depth/--with-parents (default: just that entry)."))]
     Show {
         slug: String,
-        /// 특정 entry id 만 출력. 미지정 시 모든 entry(이 경우 --depth/--with-parents 무시).
-        #[arg(long)]
+        #[arg(long, help = tf!("특정 entry id 만 출력. 미지정 시 모든 entry(이 경우 --depth/--with-parents 무시).", "Print only this entry id. If omitted, prints all entries (and --depth/--with-parents are ignored)."))]
         id: Option<u64>,
-        /// 답글을 몇 단계까지 함께 출력할지 (0 = 대상 entry 만, 기본값).
-        /// `all` = 무제한 (전체 답글 트리). `--id` 없이는 무시.
-        #[arg(long, default_value = "0", value_parser = parse_comment_depth)]
+        #[arg(long, default_value = "0", value_parser = parse_comment_depth,
+              help = tf!("답글을 몇 단계까지 함께 출력할지 (0 = 대상 entry 만, 기본값). all = 무제한 (전체 답글 트리). --id 없이는 무시.",
+                         "How many levels of replies to include (0 = just the target entry, default). `all` = unlimited (full reply tree). Ignored without --id."))]
         depth: usize,
-        /// 부모 체인(조상, root 까지)도 함께 출력. `--id` 없이는 무시.
-        #[arg(long)]
+        #[arg(long, help = tf!("부모 체인(조상, root 까지)도 함께 출력. --id 없이는 무시.", "Also print the parent chain (ancestors, up to root). Ignored without --id."))]
         with_parents: bool,
     },
-    /// 새 댓글 entry 추가. 본문은 `--file PATH` 또는 stdin.
+    #[command(about = tf!("새 댓글 entry 추가. 본문은 --file PATH 또는 stdin.", "Add a new comment entry. Body via --file PATH or stdin."))]
     Add {
         slug: String,
-        /// 작성자 (자유 문자열, 빈 값 허용).
-        #[arg(long)]
+        #[arg(long, help = tf!("작성자 (자유 문자열, 빈 값 허용).", "Author (free-form string, empty allowed)."))]
         author: Option<String>,
-        /// 답글인 경우 부모 entry id.
-        #[arg(long = "parent-id")]
+        #[arg(long = "parent-id", help = tf!("답글인 경우 부모 entry id.", "Parent entry id, if this is a reply."))]
         parent_id: Option<u64>,
-        /// 본문 파일. 미지정 시 stdin. 한글 등 비ASCII 는 --file 권장 —
-        /// PowerShell 파이프(`echo | ...`)는 인코딩이 안 맞아 깨질 수 있음.
-        #[arg(long)]
+        #[arg(long, help = tf!("본문 파일. 미지정 시 stdin. 한글 등 비ASCII 는 --file 권장 — PowerShell 파이프(echo | ...)는 인코딩이 안 맞아 깨질 수 있음.",
+                              "Body file. Defaults to stdin. --file recommended for non-ASCII (Korean etc.) — PowerShell pipes (`echo | ...`) can mangle encoding."))]
         file: Option<std::path::PathBuf>,
     },
-    /// 기존 entry 의 body 교체. ts / author 보존.
+    #[command(about = tf!("기존 entry 의 body 교체. ts / author 보존.", "Replace an existing entry's body. Keeps ts / author."))]
     Edit {
         slug: String,
         id: u64,
-        /// 본문 파일. 미지정 시 stdin. 한글 등은 --file 권장.
-        #[arg(long)]
+        #[arg(long, help = tf!("본문 파일. 미지정 시 stdin. 한글 등은 --file 권장.", "Body file. Defaults to stdin. --file recommended for non-ASCII."))]
         file: Option<std::path::PathBuf>,
     },
-    /// entry 삭제. `--force` 없으면 prompt.
-    #[command(name = "remove")]
+    #[command(name = "remove", about = tf!("entry 삭제. --force 없으면 prompt.", "Delete an entry. Prompts for confirmation unless --force."))]
     Rm {
         slug: String,
         id: u64,
         #[arg(long)]
         force: bool,
     },
-    /// 이모지 반응 토글 — 이미 눌렀으면 제거 (GUI 와 동일 시맨틱).
+    #[command(about = tf!("이모지 반응 토글 — 이미 눌렀으면 제거 (GUI 와 동일 시맨틱).", "Toggle an emoji reaction — removes it if already set (same semantics as the GUI)."))]
     React {
         slug: String,
         id: u64,
-        /// 이모지 (임의 문자열 허용 — GUI 고정 4종 외에도 가능).
+        #[arg(help = tf!("이모지 (임의 문자열 허용 — GUI 고정 4종 외에도 가능).", "Emoji (any string allowed — not limited to the GUI's fixed set of 4)."))]
         emoji: String,
-        /// 반응 주체 — author 단위 토글이라 필수.
-        #[arg(long)]
+        #[arg(long, help = tf!("반응 주체 — author 단위 토글이라 필수.", "Reaction author — required since toggling is per-author."))]
         author: String,
     },
-    /// 토론(discussion) 플래그 토글 (quest 전용). 미해결 토론이 있으면 그 quest 의
-    /// 완료 전환이 차단됨. discussion 을 끄면 resolved 도 해제.
+    #[command(about = tf!("토론(discussion) 플래그 토글 (quest 전용). 미해결 토론이 있으면 그 quest 의 완료 전환이 차단됨. discussion 을 끄면 resolved 도 해제.",
+                          "Toggle the discussion flag (quest only). An unresolved discussion blocks that quest from moving to Done. Turning discussion off also clears resolved."))]
     Discussion { slug: String, id: u64 },
-    /// discussion 댓글의 resolved 토글 (quest 전용).
+    #[command(about = tf!("discussion 댓글의 resolved 토글 (quest 전용).", "Toggle resolved on a discussion comment (quest only)."))]
     Resolved { slug: String, id: u64 },
-    /// 상단 고정(pin) 토글 — quest/campaign 댓글 둘 다 지원.
+    #[command(about = tf!("상단 고정(pin) 토글 — quest/campaign 댓글 둘 다 지원.", "Toggle pin (pin to top) — supported for both quest and campaign comments."))]
     Pinned { slug: String, id: u64 },
 }
 
 #[derive(Subcommand)]
 enum MemoCmd {
-    /// 메모 본문 stdout. 파일 없으면 "(메모 없음)".
+    #[command(about = tf!("메모 본문 stdout. 파일 없으면 \"(메모 없음)\".", "Print the memo body to stdout. Prints \"(no memo)\" if there's no file."))]
     Show { slug: String },
-    /// 메모 본문 교체. 본문은 `--file PATH` 또는 stdin. 한글 등 비ASCII 는
-    /// --file 권장 — PowerShell 파이프(`echo | ...`)는 인코딩이 안 맞아
-    /// 깨질 수 있음.
+    #[command(about = tf!("메모 본문 교체. 본문은 --file PATH 또는 stdin. 한글 등 비ASCII 는 --file 권장 — PowerShell 파이프(echo | ...)는 인코딩이 안 맞아 깨질 수 있음.",
+                          "Replace the memo body. Body via --file PATH or stdin. --file recommended for non-ASCII (Korean etc.) — PowerShell pipes (`echo | ...`) can mangle encoding."))]
     Set {
         slug: String,
         #[arg(long)]
         file: Option<std::path::PathBuf>,
     },
-    /// 메모 본문 비움 (빈 문자열로 교체 — 파일은 남음).
+    #[command(about = tf!("메모 본문 비움 (빈 문자열로 교체 — 파일은 남음).", "Clear the memo body (replaces with empty string — the file itself remains)."))]
     Clear { slug: String },
 }
 
 #[derive(Subcommand)]
 enum PrereqCmd {
-    /// 선행 퀘스트 추가
+    #[command(about = tf!("선행 퀘스트 추가", "Add a prerequisite quest"))]
     Add { slug: String, prereq: String },
-    /// 선행 퀘스트 제거
-    #[command(name = "remove")]
+    #[command(name = "remove", about = tf!("선행 퀘스트 제거", "Remove a prerequisite quest"))]
     Rm { slug: String, prereq: String },
 }
 
 /// DEV-062: type 관리. DEV-227: sub 필수 — `type list` 명시.
 #[derive(Subcommand)]
 enum TypesCmd {
-    /// 목록
+    #[command(about = tf!("목록", "List"))]
     List {
-        /// 정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.
-        #[arg(long)]
+        #[arg(long, help = tf!("정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json."))]
         table: bool,
     },
-    /// 새 type 추가
+    #[command(about = tf!("새 type 추가", "Add a new type"))]
     Add {
-        /// 대문자/숫자 1~6자 (예: DEV / BUG / REQ)
+        #[arg(help = tf!("대문자/숫자 1~6자 (예: DEV / BUG / REQ)", "1-6 uppercase/digit chars (e.g. DEV / BUG / REQ)"))]
         prefix: String,
-        /// 색 (#RGB 또는 #RRGGBB)
-        #[arg(long)]
+        #[arg(long, help = tf!("색 (#RGB 또는 #RRGGBB)", "Color (#RGB or #RRGGBB)"))]
         color: String,
-        /// 설명 (선택)
-        #[arg(long)]
+        #[arg(long, help = tf!("설명 (선택)", "Description (optional)"))]
         description: Option<String>,
     },
-    /// 기존 type 수정 — color / description / prefix 통합.
-    /// `--prefix` 가 현재와 다르면 그 type 의 모든 quest slug cascade.
+    #[command(about = tf!("기존 type 수정 — color / description / prefix 통합. --prefix 가 현재와 다르면 그 type 의 모든 quest slug cascade.",
+                          "Update an existing type — color / description / prefix combined. If --prefix differs from the current one, cascades to all that type's quest slugs."))]
     Update {
         prefix: String,
-        /// 새 prefix — 지정 시 rename + cascade (파일명 / frontmatter / DB slug).
-        #[arg(long = "prefix")]
+        #[arg(long = "prefix", help = tf!("새 prefix — 지정 시 rename + cascade (파일명 / frontmatter / DB slug).", "New prefix — renames + cascades (filenames / frontmatter / DB slug) if given."))]
         new_prefix: Option<String>,
         #[arg(long)]
         color: Option<String>,
         #[arg(long)]
         description: Option<String>,
-        /// description 을 비움 (--description 과 동시 사용 불가)
-        #[arg(long)]
+        #[arg(long, help = tf!("description 을 비움 (--description 과 동시 사용 불가)", "Clear the description (cannot combine with --description)"))]
         clear_description: bool,
     },
-    /// 사용 중 quest 없는 type 삭제
+    #[command(about = tf!("사용 중 quest 없는 type 삭제", "Delete a type with no quests using it"))]
     Delete { prefix: String },
 }
 
@@ -739,27 +691,24 @@ enum TypesCmd {
 /// (quest 별 태그 부착은 별개 — quest tag 그룹의 TagCmd.)
 #[derive(Subcommand)]
 enum TagDefCmd {
-    /// 정의된 태그 목록 (slug / 색 / 설명)
+    #[command(about = tf!("정의된 태그 목록 (slug / 색 / 설명)", "List defined tags (slug / color / description)"))]
     List {
-        /// 실사용 중인 태그(quest/도서관 frontmatter)도 함께 — 정의 없이
-        /// 쓰인 ad-hoc 태그를 발견하는 용도. 로컬 모드 전용.
-        #[arg(long)]
+        #[arg(long, help = tf!("실사용 중인 태그(quest/도서관 frontmatter)도 함께 — 정의 없이 쓰인 ad-hoc 태그를 발견하는 용도. 로컬 모드 전용.",
+                              "Also include actually-used tags (quest/library frontmatter) — for finding ad-hoc tags used without a definition. Local mode only."))]
         used: bool,
-        /// 정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.
-        #[arg(long)]
+        #[arg(long, help = tf!("정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json."))]
         table: bool,
     },
-    /// 새 태그 정의 추가 (이미 있으면 에러 — 수정은 update)
+    #[command(about = tf!("새 태그 정의 추가 (이미 있으면 에러 — 수정은 update)", "Add a new tag definition (errors if it already exists — use `update` to modify)"))]
     Add {
-        /// 소문자/숫자/_ 만, 최대 32자.
+        #[arg(help = tf!("소문자/숫자/_ 만, 최대 32자.", "Lowercase/digits/_ only, max 32 chars."))]
         slug: String,
-        /// 색 (#RGB 또는 #RRGGBB)
-        #[arg(long)]
+        #[arg(long, help = tf!("색 (#RGB 또는 #RRGGBB)", "Color (#RGB or #RRGGBB)"))]
         color: Option<String>,
         #[arg(long)]
         description: Option<String>,
     },
-    /// 기존 태그 정의 수정 — 지정한 필드만 교체
+    #[command(about = tf!("기존 태그 정의 수정 — 지정한 필드만 교체", "Update an existing tag definition — only the given fields are replaced"))]
     Update {
         slug: String,
         #[arg(long)]
@@ -767,38 +716,34 @@ enum TagDefCmd {
         #[arg(long)]
         description: Option<String>,
     },
-    /// 태그 정의 삭제 (quest 등의 태그 사용 자체는 보존 — 기본 색으로 표시)
+    #[command(about = tf!("태그 정의 삭제 (quest 등의 태그 사용 자체는 보존 — 기본 색으로 표시)", "Delete a tag definition (existing tag usages are preserved — shown in default color)"))]
     Delete { slug: String },
 }
 
 /// DEV-062: status 관리. DEV-227: sub 필수 — `status list` 명시.
 #[derive(Subcommand)]
 enum StatusesCmd {
-    /// 목록
+    #[command(about = tf!("목록", "List"))]
     List {
-        /// 정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.
-        #[arg(long)]
+        #[arg(long, help = tf!("정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json."))]
         table: bool,
     },
-    /// 새 status 추가. slug 는 name_en 에서 자동 생성.
+    #[command(about = tf!("새 status 추가. slug 는 name_en 에서 자동 생성.", "Add a new status. slug is auto-generated from name_en."))]
     Add {
-        /// 영문 이름 (영문자 시작 + 영문/숫자/공백/-/_, 최대 32자).
+        #[arg(help = tf!("영문 이름 (영문자 시작 + 영문/숫자/공백/-/_, 최대 32자).", "English name (starts with a letter, then letters/digits/space/-/_, max 32 chars)."))]
         name_en: String,
         #[arg(long)]
         color: String,
-        /// 한국어 이름 (선택). 한글/영문/숫자/공백/-/_ 만, 최대 32자.
-        #[arg(long = "name-ko")]
+        #[arg(long = "name-ko", help = tf!("한국어 이름 (선택). 한글/영문/숫자/공백/-/_ 만, 최대 32자.", "Korean name (optional). Korean/letters/digits/space/-/_ only, max 32 chars."))]
         name_ko: Option<String>,
-        /// 미지정 시 max(sort_order)+1.
-        #[arg(long = "sort-order")]
+        #[arg(long = "sort-order", help = tf!("미지정 시 max(sort_order)+1.", "Defaults to max(sort_order)+1 if omitted."))]
         sort_order: Option<i64>,
     },
-    /// 기존 status 수정 — name_en / name_ko / color / sort_order / slug 통합.
-    /// `--slug` 가 현재와 다르면 rename + cascade (history / 모든 quest frontmatter).
+    #[command(about = tf!("기존 status 수정 — name_en / name_ko / color / sort_order / slug 통합. --slug 가 현재와 다르면 rename + cascade (history / 모든 quest frontmatter).",
+                          "Update an existing status — name_en / name_ko / color / sort_order / slug combined. If --slug differs from the current one, renames + cascades (history / all quest frontmatter)."))]
     Update {
         slug: String,
-        /// 새 slug — 지정 시 rename + cascade (a-z0-9_, 1~32자).
-        #[arg(long = "slug")]
+        #[arg(long = "slug", help = tf!("새 slug — 지정 시 rename + cascade (a-z0-9_, 1~32자).", "New slug — renames + cascades if given (a-z0-9_, 1-32 chars)."))]
         new_slug: Option<String>,
         #[arg(long = "name-en")]
         name_en: Option<String>,
@@ -808,11 +753,10 @@ enum StatusesCmd {
         color: Option<String>,
         #[arg(long = "sort-order")]
         sort_order: Option<i64>,
-        /// name_ko 를 비움.
-        #[arg(long = "clear-name-ko")]
+        #[arg(long = "clear-name-ko", help = tf!("name_ko 를 비움.", "Clear name_ko."))]
         clear_name_ko: bool,
     },
-    /// 사용 중 quest 없는 status 삭제
+    #[command(about = tf!("사용 중 quest 없는 status 삭제", "Delete a status with no quests using it"))]
     Delete { slug: String },
 }
 
@@ -846,47 +790,42 @@ fn read_content(path: Option<&std::path::Path>) -> Result<String> {
 
 #[derive(Subcommand)]
 enum RulesCmd {
-    /// 모든 규칙 slug 목록 (legacy `.guild/rules.md` 가 있으면 자동 마이그레이션).
+    #[command(about = tf!("모든 규칙 slug 목록 (legacy .guild/rules.md 가 있으면 자동 마이그레이션).", "List all rule slugs (auto-migrates legacy `.guild/rules.md` if present)."))]
     List {
-        /// 정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.
-        #[arg(long)]
+        #[arg(long, help = tf!("정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json."))]
         table: bool,
     },
-    /// 한 규칙의 본문 출력 (stdout). slug 없으면 NotFound.
+    #[command(about = tf!("한 규칙의 본문 출력 (stdout). slug 없으면 NotFound.", "Print a rule's body (stdout). NotFound if the slug doesn't exist."))]
     Show { slug: String },
-    /// 한 규칙 본문 교체 (멱등). 파일이 없으면 만들고 / 있으면 덮어씀.
-    /// 본문은 `--file <PATH>` 또는 stdin (인자 없을 때).
+    #[command(about = tf!("한 규칙 본문 교체 (멱등). 파일이 없으면 만들고 / 있으면 덮어씀. 본문은 --file <PATH> 또는 stdin (인자 없을 때).",
+                          "Replace a rule's body (idempotent). Creates the file if missing, overwrites if present. Body via --file <PATH> or stdin (if no arg)."))]
     Set {
         slug: String,
-        /// 본문이 들어있는 파일. 미지정 시 stdin. 한글 등 비ASCII 는 --file
-        /// 권장 — PowerShell 파이프(`echo | ...`)는 인코딩이 안 맞아 깨질
-        /// 수 있음. `rule show` 로 확인했을 때 깨져 보이면 이 경우임.
-        #[arg(long)]
+        #[arg(long, help = tf!("본문이 들어있는 파일. 미지정 시 stdin. 한글 등 비ASCII 는 --file 권장 — PowerShell 파이프(echo | ...)는 인코딩이 안 맞아 깨질 수 있음. rule show 로 확인했을 때 깨져 보이면 이 경우임.",
+                              "File containing the body. Defaults to stdin. --file recommended for non-ASCII (Korean etc.) — PowerShell pipes (`echo | ...`) can mangle encoding. If `rule show` looks garbled, this is why."))]
         file: Option<std::path::PathBuf>,
     },
-    /// 신규 규칙 생성 — 같은 slug 이미 있으면 에러. 본문은 `--file` / stdin.
-    /// `--empty` 시 본문 없이 빈 규칙 생성.
     // DEV-227/BUG-111/DEV-232: quest/campaign/template/backup 이 전부
     // `new` 를 쓰는데 rules 만 `create` 가 canonical 이라 --help 에 create
     // 가 나왔음 — canonical 을 new 로 스왑. DEV-232: create alias 도
     // 사용자 지시로 완전 제거(rules 와 동일하게 — 남길 이유 없다는 판단).
-    #[command(name = "new")]
+    #[command(name = "new", about = tf!("신규 규칙 생성 — 같은 slug 이미 있으면 에러. 본문은 --file / stdin. --empty 시 본문 없이 빈 규칙 생성.",
+                                        "Create a new rule — errors if the slug already exists. Body via --file / stdin. With --empty, creates an empty rule with no body."))]
     Create {
         slug: String,
-        /// 본문이 들어있는 파일. 미지정 시 stdin. 한글 등은 --file 권장 —
-        /// PowerShell 파이프는 인코딩이 안 맞아 깨질 수 있음.
-        #[arg(long)]
+        #[arg(long, help = tf!("본문이 들어있는 파일. 미지정 시 stdin. 한글 등은 --file 권장 — PowerShell 파이프는 인코딩이 안 맞아 깨질 수 있음.",
+                              "File containing the body. Defaults to stdin. --file recommended for non-ASCII — PowerShell pipes can mangle encoding."))]
         file: Option<std::path::PathBuf>,
         #[arg(long)]
         empty: bool,
     },
-    /// 규칙 삭제. `--force` 없으면 prompt.
+    #[command(about = tf!("규칙 삭제. --force 없으면 prompt.", "Delete a rule. Prompts for confirmation unless --force."))]
     Delete {
         slug: String,
         #[arg(long)]
         force: bool,
     },
-    /// 규칙 slug 변경.
+    #[command(about = tf!("규칙 slug 변경.", "Rename a rule's slug."))]
     Rename {
         slug: String,
         new_slug: String,
@@ -899,47 +838,43 @@ enum RulesCmd {
 /// (quest 번호와 별개, 단조 증가 재사용 금지).
 #[derive(Subcommand)]
 enum LibraryCmd {
-    /// 문서 목록 (번호 / 제목 / 갱신 시각).
+    #[command(about = tf!("문서 목록 (번호 / 제목 / 갱신 시각).", "Document list (number / title / updated time)."))]
     List {
-        /// 정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.
-        #[arg(long)]
+        #[arg(long, help = tf!("정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json."))]
         table: bool,
     },
-    /// 한 문서의 본문 출력 (stdout).
+    #[command(about = tf!("한 문서의 본문 출력 (stdout).", "Print a document's body (stdout)."))]
     Show {
-        /// 문서 ID (BOOK-N 형식).
+        #[arg(help = tf!("문서 ID (BOOK-N 형식).", "Document ID (BOOK-N format)."))]
         id: String,
     },
-    /// 새 문서 생성 — 번호는 자동 부여. 본문은 `--file` (미지정 시 빈 본문).
+    #[command(about = tf!("새 문서 생성 — 번호는 자동 부여. 본문은 --file (미지정 시 빈 본문).", "Create a new document — number is auto-assigned. Body via --file (empty body if omitted)."))]
     New {
         #[arg(long)]
         title: String,
-        /// 본문 파일 (UTF-8). 한글 등 비ASCII 는 stdin 파이프 대신 파일 권장.
-        #[arg(long)]
+        #[arg(long, help = tf!("본문 파일 (UTF-8). 한글 등 비ASCII 는 stdin 파이프 대신 파일 권장.", "Body file (UTF-8). File recommended over stdin pipe for non-ASCII (Korean etc.)."))]
         file: Option<std::path::PathBuf>,
-        /// 소속 폴더 경로 (미지정 = 최상위). 예: `아키텍처/서브`.
-        #[arg(long)]
+        #[arg(long, help = tf!("소속 폴더 경로 (미지정 = 최상위). 예: `아키텍처/서브`.", "Parent folder path (top-level if omitted). e.g. `architecture/sub`."))]
         path: Option<String>,
     },
-    /// 문서 수정 — 제공된 필드만 (title / 본문 파일 / 폴더 이동).
+    #[command(about = tf!("문서 수정 — 제공된 필드만 (title / 본문 파일 / 폴더 이동).", "Update a document — only the fields provided (title / body file / folder move)."))]
     Update {
         id: String,
         #[arg(long)]
         title: Option<String>,
-        /// 새 본문 파일 (UTF-8). 미지정 시 본문 유지.
-        #[arg(long)]
+        #[arg(long, help = tf!("새 본문 파일 (UTF-8). 미지정 시 본문 유지.", "New body file (UTF-8). Keeps the current body if omitted."))]
         file: Option<std::path::PathBuf>,
-        /// 새 폴더 경로로 이동. 빈 문자열("")이면 최상위로 이동. 미지정 시 현재 위치 유지.
-        #[arg(long)]
+        #[arg(long, help = tf!("새 폴더 경로로 이동. 빈 문자열(\"\")이면 최상위로 이동. 미지정 시 현재 위치 유지.",
+                              "Move to a new folder path. Empty string (\"\") moves to top-level. Keeps current location if omitted."))]
         path: Option<String>,
     },
-    /// 문서 삭제 (soft delete — 번호는 재사용되지 않음). `--yes` 없으면 확인.
+    #[command(about = tf!("문서 삭제 (soft delete — 번호는 재사용되지 않음). --yes 없으면 확인.", "Delete a document (soft delete — the number is not reused). Confirms unless --yes."))]
     Delete {
         id: String,
         #[arg(long)]
         yes: bool,
     },
-    /// 폴더(계층) 관리 — 순수 컨테이너, 본문 없음.
+    #[command(about = tf!("폴더(계층) 관리 — 순수 컨테이너, 본문 없음.", "Manage folders (hierarchy) — pure containers, no body."))]
     Folder {
         #[command(subcommand)]
         sub: LibraryFolderCmd,
@@ -948,11 +883,11 @@ enum LibraryCmd {
 
 #[derive(Subcommand)]
 enum LibraryFolderCmd {
-    /// 폴더 목록 (path 순).
+    #[command(about = tf!("폴더 목록 (path 순).", "Folder list (path order)."))]
     List,
-    /// 새 폴더 생성.
+    #[command(about = tf!("새 폴더 생성.", "Create a new folder."))]
     New { path: String },
-    /// 폴더 삭제 — 안에 문서/하위 폴더가 없어야 함.
+    #[command(about = tf!("폴더 삭제 — 안에 문서/하위 폴더가 없어야 함.", "Delete a folder — must contain no documents/sub-folders."))]
     Delete {
         path: String,
         #[arg(long)]
@@ -966,19 +901,16 @@ enum LibraryFolderCmd {
 /// `.guild/worklog/{YYYY-MM-DD}.md` (전역 공유, git tracked).
 #[derive(Subcommand)]
 enum WorklogCmd {
-    /// 기간 내 활동 타임라인 + 집계. 기본: 오늘 하루.
+    #[command(about = tf!("기간 내 활동 타임라인 + 집계. 기본: 오늘 하루.", "Activity timeline + aggregation for a range. Default: today."))]
     Show {
-        /// 특정 날짜 하루 (YYYY-MM-DD). --from/--to 와 상호배타.
-        #[arg(long, conflicts_with_all = ["from", "to"])]
+        #[arg(long, conflicts_with_all = ["from", "to"], help = tf!("특정 날짜 하루 (YYYY-MM-DD). --from/--to 와 상호배타.", "A single date (YYYY-MM-DD). Mutually exclusive with --from/--to."))]
         date: Option<String>,
-        /// 기간 시작 (YYYY-MM-DD).
-        #[arg(long, requires = "to")]
+        #[arg(long, requires = "to", help = tf!("기간 시작 (YYYY-MM-DD).", "Range start (YYYY-MM-DD)."))]
         from: Option<String>,
-        /// 기간 끝 (YYYY-MM-DD, 포함).
-        #[arg(long, requires = "from")]
+        #[arg(long, requires = "from", help = tf!("기간 끝 (YYYY-MM-DD, 포함).", "Range end (YYYY-MM-DD, inclusive)."))]
         to: Option<String>,
     },
-    /// 날짜별 노트 — show / set / clear.
+    #[command(about = tf!("날짜별 노트 — show / set / clear.", "Per-date notes — show / set / clear."))]
     Note {
         #[command(subcommand)]
         sub: WorklogNoteCmd,
@@ -987,19 +919,18 @@ enum WorklogCmd {
 
 #[derive(Subcommand)]
 enum WorklogNoteCmd {
-    /// 노트 본문 출력. 없으면 "(노트 없음)".
+    #[command(about = tf!("노트 본문 출력. 없으면 \"(노트 없음)\".", "Print a note's body. Prints \"(no note)\" if none."))]
     Show {
-        /// YYYY-MM-DD.
+        #[arg(help = tf!("YYYY-MM-DD.", "YYYY-MM-DD."))]
         date: String,
     },
-    /// 노트 본문 교체. 본문은 `--file <PATH>` (UTF-8) — 한글 등은 파일 권장.
+    #[command(about = tf!("노트 본문 교체. 본문은 --file <PATH> (UTF-8) — 한글 등은 파일 권장.", "Replace a note's body. Body via --file <PATH> (UTF-8) — file recommended for non-ASCII."))]
     Set {
         date: String,
-        /// 본문 파일. 미지정 시 stdin.
-        #[arg(long)]
+        #[arg(long, help = tf!("본문 파일. 미지정 시 stdin.", "Body file. Defaults to stdin."))]
         file: Option<std::path::PathBuf>,
     },
-    /// 노트 삭제 (파일 제거).
+    #[command(about = tf!("노트 삭제 (파일 제거).", "Delete a note (removes the file)."))]
     Clear { date: String },
 }
 
@@ -1007,66 +938,62 @@ enum WorklogNoteCmd {
 
 #[derive(Subcommand)]
 enum CampaignCmd {
-    /// 캠페인 공개 댓글 — quest comment 와 동일 형식 / 필터.
+    #[command(about = tf!("캠페인 공개 댓글 — quest comment 와 동일 형식 / 필터.", "Campaign public comments — same format/filters as quest comment."))]
     Comment {
         #[command(subcommand)]
         sub: CommentCmd,
     },
-    /// 캠페인 첨부 — quest attach 와 동일 (list / add / remove).
+    #[command(about = tf!("캠페인 첨부 — quest attach 와 동일 (list / add / remove).", "Campaign attachments — same as quest attach (list / add / remove)."))]
     Attach {
         #[command(subcommand)]
         sub: AttachCmd,
     },
-    /// 캠페인 비공개 메모 — quest memo 와 동일.
+    #[command(about = tf!("캠페인 비공개 메모 — quest memo 와 동일.", "Campaign private memo — same as quest memo."))]
     Memo {
         #[command(subcommand)]
         sub: MemoCmd,
     },
-    /// 새 캠페인 생성 (자동 C-NNN slug)
+    #[command(about = tf!("새 캠페인 생성 (자동 C-NNN slug)", "Create a new campaign (auto C-NNN slug)"))]
     New {
         #[arg(long)]
         title: String,
-        /// ISO 날짜 (YYYY-MM-DD)
-        #[arg(long = "start")]
+        #[arg(long = "start", help = tf!("ISO 날짜 (YYYY-MM-DD)", "ISO date (YYYY-MM-DD)"))]
         started_at: Option<String>,
         #[arg(long = "end")]
         ended_at: Option<String>,
     },
-    /// 캠페인 목록
+    #[command(about = tf!("캠페인 목록", "Campaign list"))]
     List {
-        /// 필터: active | done
-        #[arg(long)]
+        #[arg(long, help = tf!("필터: active | done", "Filter: active | done"))]
         status: Option<String>,
-        /// 정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.
-        #[arg(long)]
+        #[arg(long, help = tf!("정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json."))]
         table: bool,
     },
-    /// 캠페인 상세
+    #[command(about = tf!("캠페인 상세", "Campaign detail"))]
     Show { slug: String },
-    /// 캠페인 상태 변경 이력 — 최신 → 과거 순 (quest history 와 대칭).
+    #[command(about = tf!("캠페인 상태 변경 이력 — 최신 → 과거 순 (quest history 와 대칭).", "Campaign status change history — newest to oldest (mirrors quest history)."))]
     History { slug: String },
-    /// 상태 변경 → active
+    #[command(about = tf!("상태 변경 → active", "Change status → active"))]
     Start { slug: String },
-    /// 상태 변경 → done
+    #[command(about = tf!("상태 변경 → done", "Change status → done"))]
     End { slug: String },
-    /// 캠페인에 quest 연결
+    #[command(about = tf!("캠페인에 quest 연결", "Link a quest to a campaign"))]
     Link {
         campaign_slug: String,
         quest_slug: String,
     },
-    /// 캠페인에서 quest 연결 해제
+    #[command(about = tf!("캠페인에서 quest 연결 해제", "Unlink a quest from a campaign"))]
     Unlink {
         campaign_slug: String,
         quest_slug: String,
     },
-    /// 캠페인 삭제 (soft)
+    #[command(about = tf!("캠페인 삭제 (soft)", "Delete a campaign (soft)"))]
     Delete {
         slug: String,
-        /// 안전장치 — 없으면 거부
-        #[arg(long)]
+        #[arg(long, help = tf!("안전장치 — 없으면 거부", "Safety guard — rejected without it"))]
         yes: bool,
     },
-    /// 체크리스트 명령
+    #[command(about = tf!("체크리스트 명령", "Checklist commands"))]
     Checklist {
         #[command(subcommand)]
         sub: CampaignChecklistCmd,
@@ -1075,23 +1002,22 @@ enum CampaignCmd {
 
 #[derive(Subcommand)]
 enum CampaignChecklistCmd {
-    /// 항목 추가 (캠페인 파일 본문 끝에 `- [ ] {text}` 한 줄 append)
+    #[command(about = tf!("항목 추가 (캠페인 파일 본문 끝에 - [ ] {{text}} 한 줄 append)", "Add an item (appends a `- [ ] {{text}}` line to the end of the campaign file body)"))]
     Add {
         campaign_slug: String,
         text: String,
     },
-    /// N번째 (1-based) 항목 체크
+    #[command(about = tf!("N번째 (1-based) 항목 체크", "Check the Nth (1-based) item"))]
     Check {
         campaign_slug: String,
         index: usize,
     },
-    /// N번째 (1-based) 항목 언체크
+    #[command(about = tf!("N번째 (1-based) 항목 언체크", "Uncheck the Nth (1-based) item"))]
     Uncheck {
         campaign_slug: String,
         index: usize,
     },
-    /// N번째 (1-based) 항목 삭제
-    #[command(name = "remove")]
+    #[command(name = "remove", about = tf!("N번째 (1-based) 항목 삭제", "Delete the Nth (1-based) item"))]
     Rm {
         campaign_slug: String,
         index: usize,
@@ -3471,22 +3397,20 @@ impl CommentScope {
 /// DEV-170: quest / campaign 첨부(섹션) 명령.
 #[derive(Subcommand)]
 enum AttachCmd {
-    /// 첨부 목록 (이름 / 경로).
+    #[command(about = tf!("첨부 목록 (이름 / 경로).", "Attachment list (name / path)."))]
     List { slug: String },
-    /// 로컬 파일을 업로드(.guild/attachments)해 첨부 섹션에 추가.
+    #[command(about = tf!("로컬 파일을 업로드(.guild/attachments)해 첨부 섹션에 추가.", "Upload a local file (into .guild/attachments) and add it to the attachments section."))]
     Add {
         slug: String,
-        /// 첨부할 로컬 파일 경로.
+        #[arg(help = tf!("첨부할 로컬 파일 경로.", "Local file path to attach."))]
         file: std::path::PathBuf,
-        /// 표시 이름 (미지정 시 원본 파일명).
-        #[arg(long)]
+        #[arg(long, help = tf!("표시 이름 (미지정 시 원본 파일명).", "Display name (defaults to the original filename)."))]
         name: Option<String>,
     },
-    /// 첨부 제거. 다른 곳에서 참조 안 하면 실제 파일 + blob 도 삭제(orphan 정리).
-    #[command(name = "remove")]
+    #[command(name = "remove", about = tf!("첨부 제거. 다른 곳에서 참조 안 하면 실제 파일 + blob 도 삭제(orphan 정리).", "Remove an attachment. Also deletes the underlying file + blob if unreferenced elsewhere (orphan cleanup)."))]
     Rm {
         slug: String,
-        /// 제거할 첨부의 경로 (list 의 경로 값).
+        #[arg(help = tf!("제거할 첨부의 경로 (list 의 경로 값).", "Path of the attachment to remove (the path value from `list`)."))]
         path: String,
     },
 }
