@@ -84,7 +84,20 @@ openguild backup new                             # manual snapshot
 | Forgetting `--yes` on delete | `quest delete`/`campaign delete` refuse to run without it (dry-run works without) |
 | Moving straight to `done` for changes only a human can verify | Move to `testing` with a "## Test plan" section instead, and let the human promote it to `done` |
 
-For the full command catalog (relations, due dates, history, campaigns,
-backups, comment filters/reactions, templates, maintenance, rules, library,
-worklog, safety guards, error handling, JSON usage), see `REFERENCE.md` in
-this skill's directory. Any command also documents itself via `--help`.
+## Full reference
+
+Each topic below is its own file under `reference/` in this skill's
+directory — load only the one you need:
+
+- [reference/setup.md](reference/setup.md) — init, local vs. remote mode, env vars/flags
+- [reference/quest.md](reference/quest.md) — quest CRUD, status transitions, relations, due dates, history, workflow examples
+- [reference/campaign.md](reference/campaign.md) — campaigns, checklists, linking quests
+- [reference/comments.md](reference/comments.md) — quest/campaign comments, memos, reactions, discussion threads
+- [reference/templates.md](reference/templates.md) — quest templates
+- [reference/rules.md](reference/rules.md) — project rules/convention docs
+- [reference/library.md](reference/library.md) — reference notes library and folders
+- [reference/worklog.md](reference/worklog.md) — activity history and daily notes
+- [reference/meta-and-maintenance.md](reference/meta-and-maintenance.md) — type/status/tag catalogs, reindex, drift checks, journal
+- [reference/backup-and-safety.md](reference/backup-and-safety.md) — backup/restore, delete safety, never-hand-edit rule, error handling, JSON output
+
+Any command also documents itself via `--help`.
