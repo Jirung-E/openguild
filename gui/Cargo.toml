@@ -61,6 +61,13 @@ windows-sys = { version = "0.59", features = [
 # 의존성으로 끌어오므로 같은 버전대를 명시해 충돌 없이 재사용.
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18"
+# BUG-142: 독바 아이콘 매칭용 `_GTK_APPLICATION_ID` X11 프로퍼티를 직접 써야
+# 해서(아래 titlebar_linux.rs 참조) gdk 의 X11 전용 확장(xid 조회)과 raw
+# Xlib(XChangeProperty)이 필요. wry/tao 가 이미 전이 의존성으로 끌어오는
+# 버전대(gdkx11 0.18.x, x11 2.x)를 그대로 재사용.
+gdkx11 = "0.18"
+gdk = "0.18"
+x11 = { version = "2", features = ["xlib"] }
 
 [features]
 # Production: 미리 빌드된 frontend 자산 임베드

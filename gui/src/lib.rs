@@ -522,6 +522,22 @@ pub fn run() {
                     eprintln!("[openguild-gui] warn: asset scope allow 실패 — {e:#}");
                 }
             }
+            // BUG-142: 독바 아이콘 매칭 — `tauri.linux.conf.json` 에서 메인
+            // 창을 `visible: false` 로 만들어뒀으므로, 아직 화면에 매핑되기
+            // 전에 `_GTK_APPLICATION_ID` 를 쓰고 나서 여기서 직접 보여준다
+            // (타이밍 이유는 titlebar_linux::set_gtk_application_id 참조).
+            #[cfg(target_os = "linux")]
+            {
+                use tauri::Manager;
+                if let Some(w) = app.get_webview_window("main") {
+                    if let Ok(gtk_win) = w.gtk_window() {
+                        titlebar_linux::set_gtk_application_id(&gtk_win, "openguild");
+                    }
+                    if let Err(e) = w.show() {
+                        eprintln!("[openguild-gui] warn: BUG-142 창 show 실패 — {e:#}");
+                    }
+                }
+            }
             Ok(())
         })
         .run(tauri::generate_context!())

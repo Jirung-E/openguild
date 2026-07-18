@@ -2930,6 +2930,8 @@ dependencies = [
  "anyhow",
  "base64 0.22.1",
  "chrono",
+ "gdk",
+ "gdkx11",
  "gtk",
  "openguild-core",
  "serde",
@@ -2941,6 +2943,7 @@ dependencies = [
  "tauri-plugin-process",
  "tauri-plugin-updater",
  "windows-sys 0.59.0",
+ "x11",
 ]
 
 [[package]]
