@@ -296,253 +296,217 @@ enum BackupCmd {
 
 #[derive(Subcommand)]
 enum QuestCmd {
-    /// 퀘스트 목록 (인자 없으면 전체 alive, id DESC).
+    // DEV-254: help 도 locale 반응 — doc 주석 대신 about/help = tf!() (런타임 평가).
+    #[command(about = tf!("퀘스트 목록 (인자 없으면 전체 alive, id DESC).", "Quest list (all alive quests, id DESC, if no args)."))]
     List {
-        /// 타입 prefix 필터 — `DEV` / `BUG` / `REQ`. 다중 입력 가능:
-        ///   `--type DEV BUG` (공백), `--type DEV,BUG` (콤마), `--type DEV --type BUG`.
-        /// 대소문자 무시.
         #[arg(long = "type", value_name = "PREFIX",
-              value_delimiter = ',', num_args = 1..)]
+              value_delimiter = ',', num_args = 1..,
+              help = tf!("타입 prefix 필터 — DEV / BUG / REQ. 다중 입력 가능: --type DEV BUG (공백), --type DEV,BUG (콤마), --type DEV --type BUG. 대소문자 무시.",
+                         "Type prefix filter — DEV / BUG / REQ. Multiple: --type DEV BUG (space), --type DEV,BUG (comma), --type DEV --type BUG (repeat). Case-insensitive."))]
         type_prefix: Vec<String>,
-        /// 상태 필터 — name_en (`Open` / `In Progress`) 또는 slug (`open` /
-        /// `in_progress` / `in-progress`). 다중 입력: 공백 / 콤마 / 반복.
-        /// 대소문자 / 공백 / `_` / `-` 무시.
-        #[arg(long, value_delimiter = ',', num_args = 1..)]
+        #[arg(long, value_delimiter = ',', num_args = 1..,
+              help = tf!("상태 필터 — name_en (Open / In Progress) 또는 slug (open / in_progress / in-progress). 다중 입력: 공백 / 콤마 / 반복. 대소문자 / 공백 / _ / - 무시.",
+                         "Status filter — name_en (Open / In Progress) or slug (open / in_progress / in-progress). Multiple: space / comma / repeat. Case/space/_/- insensitive."))]
         status: Vec<String>,
-        /// urgency 필터 — 단일 (`2`), 다중 CSV (`1,2`), 범위 (`1-3`). 1=Critical, 4=Low.
-        #[arg(long)]
+        #[arg(long, help = tf!("urgency 필터 — 단일 (2), 다중 CSV (1,2), 범위 (1-3). 1=Critical, 4=Low.", "Urgency filter — single (2), CSV (1,2), range (1-3). 1=Critical, 4=Low."))]
         urgency: Option<String>,
-        /// 생성 시점 ≥ ISO date (`2026-05-15` 또는 `2026-05-15T10:00:00Z`).
-        #[arg(long = "created-after", value_name = "ISO")]
+        #[arg(long = "created-after", value_name = "ISO",
+              help = tf!("생성 시점 ≥ ISO date (2026-05-15 또는 2026-05-15T10:00:00Z).", "Created at ≥ ISO date (2026-05-15 or 2026-05-15T10:00:00Z)."))]
         created_after: Option<String>,
-        /// 생성 시점 ≤ ISO date.
-        #[arg(long = "created-before", value_name = "ISO")]
+        #[arg(long = "created-before", value_name = "ISO", help = tf!("생성 시점 ≤ ISO date.", "Created at ≤ ISO date."))]
         created_before: Option<String>,
-        /// 갱신 시점 ≥ ISO date.
-        #[arg(long = "updated-after", value_name = "ISO")]
+        #[arg(long = "updated-after", value_name = "ISO", help = tf!("갱신 시점 ≥ ISO date.", "Updated at ≥ ISO date."))]
         updated_after: Option<String>,
-        /// 갱신 시점 ≤ ISO date.
-        #[arg(long = "updated-before", value_name = "ISO")]
+        #[arg(long = "updated-before", value_name = "ISO", help = tf!("갱신 시점 ≤ ISO date.", "Updated at ≤ ISO date."))]
         updated_before: Option<String>,
-        /// **자식** 표시 — 지정 quest slug 가 parent 인 직계 자식들만 보여줌.
-        /// (`--no-parent` 와 상호배타.)
-        #[arg(long = "child-of", value_name = "SLUG", conflicts_with = "no_parent")]
+        #[arg(long = "child-of", value_name = "SLUG", conflicts_with = "no_parent",
+              help = tf!("자식 표시 — 지정 quest slug 가 parent 인 직계 자식들만 보여줌. (--no-parent 와 상호배타.)",
+                         "Show children — only direct children of the given quest slug. (Mutually exclusive with --no-parent.)"))]
         child_of: Option<String>,
-        /// top-level (parent 없는) quest 만.
-        #[arg(long)]
+        #[arg(long, help = tf!("top-level (parent 없는) quest 만.", "Top-level quests only (no parent)."))]
         no_parent: bool,
-        /// 선행 quest 가 1개 이상 있는 quest 만.
-        #[arg(long = "has-prereq", conflicts_with = "no_prereq")]
+        #[arg(long = "has-prereq", conflicts_with = "no_prereq", help = tf!("선행 quest 가 1개 이상 있는 quest 만.", "Only quests with 1+ prerequisite."))]
         has_prereq: bool,
-        /// 선행 quest 가 없는 quest 만.
-        #[arg(long = "no-prereq")]
+        #[arg(long = "no-prereq", help = tf!("선행 quest 가 없는 quest 만.", "Only quests with no prerequisites."))]
         no_prereq: bool,
-        /// 서브 quest 가 1개 이상 있는 quest 만.
-        #[arg(long = "has-sub", conflicts_with = "no_sub")]
+        #[arg(long = "has-sub", conflicts_with = "no_sub", help = tf!("서브 quest 가 1개 이상 있는 quest 만.", "Only quests with 1+ sub-quest."))]
         has_sub: bool,
-        /// 서브 quest 가 없는 leaf quest 만.
-        #[arg(long = "no-sub")]
+        #[arg(long = "no-sub", help = tf!("서브 quest 가 없는 leaf quest 만.", "Only leaf quests (no sub-quests)."))]
         no_sub: bool,
-        /// title / description 부분 일치 검색. 공백 split AND.
-        #[arg(long)]
+        #[arg(long, help = tf!("title / description 부분 일치 검색. 공백 split AND.", "Partial match on title / description. Space-separated tokens are AND'd."))]
         search: Option<String>,
-        /// `search` 검색을 title 만으로 제한. description 제외.
-        #[arg(long = "title-only")]
+        #[arg(long = "title-only", help = tf!("search 검색을 title 만으로 제한. description 제외.", "Limit `search` to title only, excluding description."))]
         title_only: bool,
-        /// 정렬 키 — `id` (기본) / `urgency` / `status` / `updated` / `created`.
-        /// 다중 입력 가능 (`--sort urgency,id` 또는 `--sort urgency id`). 대소문자 무시.
-        #[arg(long, value_delimiter = ',', num_args = 1..)]
+        #[arg(long, value_delimiter = ',', num_args = 1..,
+              help = tf!("정렬 키 — id (기본) / urgency / status / updated / created. 다중 입력 가능 (--sort urgency,id 또는 --sort urgency id). 대소문자 무시.",
+                         "Sort key — id (default) / urgency / status / updated / created. Multiple: --sort urgency,id or --sort urgency id. Case-insensitive."))]
         sort: Vec<String>,
-        /// 정렬 방향 전체 토글 — 모든 sort 키의 기본 방향 뒤집음.
-        #[arg(long)]
+        #[arg(long, help = tf!("정렬 방향 전체 토글 — 모든 sort 키의 기본 방향 뒤집음.", "Reverse all sort directions."))]
         reverse: bool,
-        /// 결과 최대 행 수.
-        #[arg(long)]
+        #[arg(long, help = tf!("결과 최대 행 수.", "Max result rows."))]
         limit: Option<i64>,
-        /// 페이지네이션 offset.
-        #[arg(long)]
+        #[arg(long, help = tf!("페이지네이션 offset.", "Pagination offset."))]
         offset: Option<i64>,
-        /// quest_id (slug) 만 한 줄씩 출력 — `xargs` / pipe 친화.
-        /// `--count` 와 상호배타. `--json` 과는 무시되고 정상 JSON 출력.
-        #[arg(long, conflicts_with = "count")]
+        #[arg(long, conflicts_with = "count",
+              help = tf!("quest_id (slug) 만 한 줄씩 출력 — xargs / pipe 친화. --count 와 상호배타. --json 과는 무시되고 정상 JSON 출력.",
+                         "Print quest_id (slug) only, one per line — xargs/pipe friendly. Mutually exclusive with --count. Ignored with --json (normal JSON is printed)."))]
         id_only: bool,
-        /// 매칭 개수만 정수로 출력. `--id-only` 와 상호배타.
-        #[arg(long)]
+        #[arg(long, help = tf!("매칭 개수만 정수로 출력. --id-only 와 상호배타.", "Print only the match count as an integer. Mutually exclusive with --id-only."))]
         count: bool,
         // BUG-016: doc 에 quest_id prefix 누출 금지.
-        /// tree 모드 — root quest 부터 들여쓰기로 자식 표시. 기본 flat.
-        /// `--id-only` / `--count` / `--json` 과 함께 쓰면 무시 (구조화 출력 우선).
-        #[arg(long)]
+        #[arg(long, help = tf!("tree 모드 — root quest 부터 들여쓰기로 자식 표시. 기본 flat. --id-only / --count / --json 과 함께 쓰면 무시 (구조화 출력 우선).",
+                               "Tree mode — indent children under root quests. Flat by default. Ignored with --id-only / --count / --json (structured output wins)."))]
         tree: bool,
-        /// 정렬된 표(헤더 + 컬럼 정렬)로 출력 — 사람용. `--json`/`--tree` 와 상호배타.
         // `json` 은 전역 인자라 clap 의 conflicts_with 대상이 못 됨(debug assert
         // 가 subcommand 스코프에서 못 찾음) — 핸들러에서 수동 검증.
-        #[arg(long, conflicts_with_all = ["tree", "id_only", "count"])]
+        #[arg(long, conflicts_with_all = ["tree", "id_only", "count"],
+              help = tf!("정렬된 표(헤더 + 컬럼 정렬)로 출력 — 사람용. --json/--tree 와 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json/--tree."))]
         table: bool,
     },
-    /// 퀘스트 검색 — title / description / slug 부분 일치 (공백 split AND).
-    /// 사실상 `list --search` 의 별칭이지만 발견성을 위해 단독 명령으로 노출.
+    #[command(about = tf!("퀘스트 검색 — title / description / slug 부분 일치 (공백 split AND). 사실상 `list --search` 의 별칭이지만 발견성을 위해 단독 명령으로 노출.",
+                          "Quest search — partial match on title/description/slug (space-separated AND). Effectively an alias for `list --search`, exposed as its own command for discoverability."))]
     Search {
-        /// 검색 키워드. 다중 토큰은 공백 구분 (AND).
+        #[arg(help = tf!("검색 키워드. 다중 토큰은 공백 구분 (AND).", "Search keyword(s). Multiple tokens are space-separated (AND)."))]
         query: String,
-        /// title 만 검사 (description / slug 도 매치하는 기본 동작 비활성).
-        /// 단 slug 매치는 항상 유지 (메타 정보).
-        #[arg(long = "title-only")]
+        #[arg(long = "title-only", help = tf!("title 만 검사 (description / slug 도 매치하는 기본 동작 비활성). 단 slug 매치는 항상 유지 (메타 정보).",
+                                              "Search title only (disables the default match on description/slug). Slug match is always kept (metadata)."))]
         title_only: bool,
-        /// 결과 최대 행 수.
-        #[arg(long)]
+        #[arg(long, help = tf!("결과 최대 행 수.", "Max result rows."))]
         limit: Option<i64>,
-        /// id (slug) 만 출력 — script 친화.
-        #[arg(long = "id-only", conflicts_with = "count")]
+        #[arg(long = "id-only", conflicts_with = "count", help = tf!("id (slug) 만 출력 — script 친화.", "Print id (slug) only — script friendly."))]
         id_only: bool,
-        /// 매칭 개수만 정수로 출력.
-        #[arg(long)]
+        #[arg(long, help = tf!("매칭 개수만 정수로 출력.", "Print only the match count as an integer."))]
         count: bool,
     },
-    /// 퀘스트 상세 (슬러그로 조회).
+    #[command(about = tf!("퀘스트 상세 (슬러그로 조회).", "Quest detail (lookup by slug)."))]
     Show {
         slug: String,
-        /// 단일 필드만 출력 (script / pipe 친화).
-        /// 사용 가능: id / title / status / status_slug / urgency / description /
-        /// type / parent / created_at / updated_at.
-        /// 미지정 시 기본 멀티라인 형식.
-        #[arg(long, value_name = "FIELD")]
+        #[arg(long, value_name = "FIELD",
+              help = tf!("단일 필드만 출력 (script / pipe 친화). 사용 가능: id / title / status / status_slug / urgency / description / type / parent / created_at / updated_at. 미지정 시 기본 멀티라인 형식.",
+                         "Print a single field only (script/pipe friendly). Available: id / title / status / status_slug / urgency / description / type / parent / created_at / updated_at. Defaults to multi-line format if omitted."))]
         field: Option<String>,
     },
-    /// quest 의 변경 이력 — 최신 → 과거 순.
+    #[command(about = tf!("quest 의 변경 이력 — 최신 → 과거 순.", "Quest change history — newest to oldest."))]
     History { slug: String },
-    /// 새 퀘스트 생성
+    #[command(about = tf!("새 퀘스트 생성", "Create a new quest"))]
     New {
-        /// 타입 prefix (DEV / BUG / REQ ...). --template 의 type 으로 대체 가능.
-        #[arg(long = "type", value_name = "PREFIX")]
+        #[arg(long = "type", value_name = "PREFIX",
+              help = tf!("타입 prefix (DEV / BUG / REQ ...). --template 의 type 으로 대체 가능.", "Type prefix (DEV / BUG / REQ ...). Can be overridden by --template's type."))]
         type_prefix: Option<String>,
-        /// 제목. --template 의 title 로 대체 가능.
-        #[arg(long)]
+        #[arg(long, help = tf!("제목. --template 의 title 로 대체 가능.", "Title. Can be overridden by --template's title."))]
         title: Option<String>,
         #[arg(long)]
         description: Option<String>,
-        /// 본문을 UTF-8 파일에서 읽기 — 한글 인코딩/따옴표 이스케이프/
-        /// `--` 로 시작하는 본문의 플래그 오인 회피 (comment add --file 관례).
-        #[arg(long = "description-file", conflicts_with = "description")]
+        #[arg(long = "description-file", conflicts_with = "description",
+              help = tf!("본문을 UTF-8 파일에서 읽기 — 한글 인코딩/따옴표 이스케이프/-- 로 시작하는 본문의 플래그 오인 회피 (comment add --file 관례).",
+                         "Read the body from a UTF-8 file — avoids Korean encoding/quote-escaping issues and flag misparsing for bodies starting with `--` (same convention as `comment add --file`)."))]
         description_file: Option<std::path::PathBuf>,
-        /// 1=Critical 2=High 3=Medium 4=Low (기본 3, 템플릿이 있으면 그 값)
-        #[arg(long)]
+        #[arg(long, help = tf!("1=Critical 2=High 3=Medium 4=Low (기본 3, 템플릿이 있으면 그 값)", "1=Critical 2=High 3=Medium 4=Low (default 3, or the template's value if set)"))]
         urgency: Option<i64>,
-        /// 부모 퀘스트 슬러그 (서브퀘스트로 생성)
-        #[arg(long)]
+        #[arg(long, help = tf!("부모 퀘스트 슬러그 (서브퀘스트로 생성)", "Parent quest slug (creates as a sub-quest)"))]
         parent: Option<String>,
-        /// 템플릿 이름 (`.guild/templates/{name}.md`). 명시 옵션이 템플릿보다 우선.
-        #[arg(long)]
+        #[arg(long, help = tf!("템플릿 이름 (.guild/templates/{{name}}.md). 명시 옵션이 템플릿보다 우선.", "Template name (`.guild/templates/{{name}}.md`). Explicit options override the template."))]
         template: Option<String>,
     },
-    /// 수정 (제공된 필드만)
+    #[command(about = tf!("수정 (제공된 필드만)", "Update (only the fields provided)"))]
     Update {
         slug: String,
         #[arg(long)]
         title: Option<String>,
         #[arg(long)]
         description: Option<String>,
-        /// 본문을 UTF-8 파일에서 읽기 (--description 과 상호배타).
-        #[arg(long = "description-file", conflicts_with = "description")]
+        #[arg(long = "description-file", conflicts_with = "description",
+              help = tf!("본문을 UTF-8 파일에서 읽기 (--description 과 상호배타).", "Read the body from a UTF-8 file (mutually exclusive with --description)."))]
         description_file: Option<std::path::PathBuf>,
         #[arg(long)]
         urgency: Option<i64>,
-        /// 실제 수정 대신 변경 미리보기만 출력
-        #[arg(long)]
+        #[arg(long, help = tf!("실제 수정 대신 변경 미리보기만 출력", "Preview the change instead of applying it"))]
         dry_run: bool,
     },
-    /// 삭제 (soft delete — restore 가능). 안전장치: --yes 없으면 거부
+    #[command(about = tf!("삭제 (soft delete — restore 가능). 안전장치: --yes 없으면 거부", "Delete (soft delete — restorable). Safety: rejected without --yes"))]
     Delete {
         slug: String,
-        /// 같이 삭제할 직계 자식 슬러그 (콤마 구분)
-        #[arg(long, value_delimiter = ',')]
+        #[arg(long, value_delimiter = ',', help = tf!("같이 삭제할 직계 자식 슬러그 (콤마 구분)", "Direct child slugs to delete along with it (comma-separated)"))]
         cascade: Vec<String>,
-        /// 실제 실행 대신 영향 미리보기만 출력 (변경 X)
-        #[arg(long)]
+        #[arg(long, help = tf!("실제 실행 대신 영향 미리보기만 출력 (변경 X)", "Preview the impact instead of executing (no changes)"))]
         dry_run: bool,
-        /// 삭제를 명시적으로 승인. dry-run 이 아닌 모든 실제 삭제에 필수.
-        #[arg(long)]
+        #[arg(long, help = tf!("삭제를 명시적으로 승인. dry-run 이 아닌 모든 실제 삭제에 필수.", "Explicitly confirm the deletion. Required for any real (non-dry-run) delete."))]
         yes: bool,
     },
-    /// 삭제된(soft deleted) 퀘스트 목록
+    #[command(about = tf!("삭제된(soft deleted) 퀘스트 목록", "List soft-deleted quests"))]
     Deleted {
-        /// 정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.
-        #[arg(long)]
+        #[arg(long, help = tf!("정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json."))]
         table: bool,
     },
-    /// 삭제된 퀘스트 복원
+    #[command(about = tf!("삭제된 퀘스트 복원", "Restore a deleted quest"))]
     Restore { slug: String },
-    /// 현재 상태 출력. status 인자 지정 시 변경도 가능 — deprecated,
-    /// `move` 사용 권장.
+    #[command(about = tf!("현재 상태 출력. status 인자 지정 시 변경도 가능 — deprecated, `move` 사용 권장.",
+                          "Print current status. Can also change it if the status arg is given — deprecated, use `move` instead."))]
     Status {
         slug: String,
-        /// (deprecated) 상태 변경 — 새 명령 `quest move <slug> <status>` 사용.
-        /// 인자 미지정 시 현재 상태만 출력.
+        #[arg(help = tf!("(deprecated) 상태 변경 — 새 명령 quest move <slug> <status> 사용. 인자 미지정 시 현재 상태만 출력.",
+                         "(deprecated) Change status — use the new `quest move <slug> <status>` command. Prints current status only if omitted."))]
         status: Option<String>,
     },
-    /// 상태 변경. status: name_en / slug / ID.
+    #[command(about = tf!("상태 변경. status: name_en / slug / ID.", "Change status. status: name_en / slug / ID."))]
     Move { slug: String, status: String },
-    /// 상태를 In Progress 로 변경
+    #[command(about = tf!("상태를 In Progress 로 변경", "Change status to In Progress"))]
     Start { slug: String },
-    /// 상태를 Done 으로 변경
+    #[command(about = tf!("상태를 Done 으로 변경", "Change status to Done"))]
     Done { slug: String },
-    /// 상태를 Open 으로 변경
+    #[command(about = tf!("상태를 Open 으로 변경", "Change status to Open"))]
     Reopen { slug: String },
-    /// 부모 변경 (slug 또는 --detach)
+    #[command(about = tf!("부모 변경 (slug 또는 --detach)", "Change parent (slug or --detach)"))]
     Parent {
         slug: String,
-        /// 새 부모 슬러그
+        #[arg(help = tf!("새 부모 슬러그", "New parent slug"))]
         parent: Option<String>,
-        /// 부모에서 분리
-        #[arg(long)]
+        #[arg(long, help = tf!("부모에서 분리", "Detach from parent"))]
         detach: bool,
     },
-    /// 선행 퀘스트 관리
+    #[command(about = tf!("선행 퀘스트 관리", "Manage prerequisite quests"))]
     Prereq {
         #[command(subcommand)]
         sub: PrereqCmd,
     },
     // BUG-037: doc comment 의 quest id (DEV-076) 가 clap help 로 leak — 외부에
     // 노출되면 안 됨. 일반 doc comment 는 plain 코멘트로 변경.
-    /// 희망 / 필수 기한 조회 / 설정 / 해제.
-    /// 인자 없으면 현재 상태 출력. `--desired` / `--required` 로 설정.
-    /// `--clear-desired` / `--clear-required` 로 해제.
+    #[command(about = tf!("희망 / 필수 기한 조회 / 설정 / 해제. 인자 없으면 현재 상태 출력. --desired / --required 로 설정. --clear-desired / --clear-required 로 해제.",
+                          "View/set/clear desired/required due dates. Prints current state if no args. Set via --desired / --required. Clear via --clear-desired / --clear-required."))]
     Due {
         slug: String,
-        /// 희망 기한 — YYYY-MM-DD. 정보성 (Home 임박 판단에는 사용 안 함).
-        #[arg(long, value_name = "YYYY-MM-DD", conflicts_with = "clear_desired")]
+        #[arg(long, value_name = "YYYY-MM-DD", conflicts_with = "clear_desired",
+              help = tf!("희망 기한 — YYYY-MM-DD. 정보성 (Home 임박 판단에는 사용 안 함).", "Desired due date — YYYY-MM-DD. Informational only (not used for Home's upcoming-deadline logic)."))]
         desired: Option<String>,
-        /// 필수 기한 — YYYY-MM-DD. Home "마감 임박" / "Overdue" 섹션의 기준.
-        #[arg(long, value_name = "YYYY-MM-DD", conflicts_with = "clear_required")]
+        #[arg(long, value_name = "YYYY-MM-DD", conflicts_with = "clear_required",
+              help = tf!("필수 기한 — YYYY-MM-DD. Home \"마감 임박\" / \"Overdue\" 섹션의 기준.", "Required due date — YYYY-MM-DD. Basis for Home's \"upcoming\"/\"overdue\" sections."))]
         required: Option<String>,
-        /// 희망 기한 해제 (NULL).
-        #[arg(long = "clear-desired")]
+        #[arg(long = "clear-desired", help = tf!("희망 기한 해제 (NULL).", "Clear the desired due date (NULL)."))]
         clear_desired: bool,
-        /// 필수 기한 해제 (NULL).
-        #[arg(long = "clear-required")]
+        #[arg(long = "clear-required", help = tf!("필수 기한 해제 (NULL).", "Clear the required due date (NULL)."))]
         clear_required: bool,
     },
     // BUG-016: quest_id leak 방지 — about 에는 기능 설명만.
-    /// 댓글 (entry 단위, 공개) — list / show / add / edit / remove.
-    /// 진리원: `.guild/quests/{slug}.comments.md` (git tracked).
+    #[command(about = tf!("댓글 (entry 단위, 공개) — list / show / add / edit / remove. 진리원: .guild/quests/{{slug}}.comments.md (git tracked).",
+                          "Comments (per-entry, public) — list / show / add / edit / remove. Source of truth: `.guild/quests/{{slug}}.comments.md` (git tracked)."))]
     Comment {
         #[command(subcommand)]
         sub: CommentCmd,
     },
-    /// 첨부 (본문과 별개 섹션) — list / add / remove.
-    /// 진리원: `.guild/quests/{slug}.attachments.json` + `.guild/attachments/`.
+    #[command(about = tf!("첨부 (본문과 별개 섹션) — list / add / remove. 진리원: .guild/quests/{{slug}}.attachments.json + .guild/attachments/.",
+                          "Attachments (separate from the body) — list / add / remove. Source of truth: `.guild/quests/{{slug}}.attachments.json` + `.guild/attachments/`."))]
     Attach {
         #[command(subcommand)]
         sub: AttachCmd,
     },
-    /// 메모 (단일 텍스트, 비공개) — show / set / clear.
-    /// 진리원: `.guild/quests/{slug}.memo.md` (gitignored).
+    #[command(about = tf!("메모 (단일 텍스트, 비공개) — show / set / clear. 진리원: .guild/quests/{{slug}}.memo.md (gitignored).",
+                          "Memo (single private text) — show / set / clear. Source of truth: `.guild/quests/{{slug}}.memo.md` (gitignored)."))]
     Memo {
         #[command(subcommand)]
         sub: MemoCmd,
     },
     // BUG-016: doc 에 quest_id prefix 누출 X.
-    /// 태그 — list / add / remove / set. frontmatter 가 진리원.
+    #[command(about = tf!("태그 — list / add / remove / set. frontmatter 가 진리원.", "Tags — list / add / remove / set. Frontmatter is the source of truth."))]
     Tag {
         #[command(subcommand)]
         sub: TagCmd,
