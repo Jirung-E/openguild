@@ -8840,6 +8840,41 @@ mod tests {
         assert_eq!(find_quest_id("UTF-8 그리고 DEV-001"), Some("DEV-001"));
     }
 
+    /// DEV-263: `openguild docs <name>` 도 help 와 같은 leak 경로 —
+    /// 리포의 md 문서를 컴파일 타임 embed 해 그대로 stdout 출력하므로
+    /// 문서 본문의 quest ID 도 다른 길드 에이전트에겐 오인 소지가 있다.
+    /// CHANGELOG.md 는 성격상 quest ID 인용이 본문 핵심이라 이 가드에서
+    /// 의도적으로 제외(문서 자체가 "이 프로젝트의 변경 이력"임을 전제로
+    /// 하므로 이슈/PR 번호를 다는 여느 오픈소스 CHANGELOG 관례와 동일) —
+    /// usage/readme 만 검사한다.
+    #[test]
+    fn embedded_docs_have_no_quest_id_leaks() {
+        // "DEV-001" 류는 실제 leak 이 아니라 범용 예시 — 어떤 길드든 그
+        // 길드의 첫 DEV quest 는 실제로 DEV-001 이 되므로 특정 정보 노출이
+        // 아님. 이 목록 밖의 새 ID 가 나타나면 이 repo 고유 서사("BUG-041
+        // 후속" 류)일 가능성이 높으므로 테스트를 실패시켜 사람이 판단하게 함.
+        const DOC_ID_ALLOWLIST: &[&str] = &["DEV-001", "BUG-003", "BUG-045", "C-001"];
+
+        for (name, body) in [
+            ("USAGE.md", include_str!("../../docs/USAGE.md")),
+            ("README.md", include_str!("../../README.md")),
+        ] {
+            let mut offset = 0usize;
+            loop {
+                let rest = &body[offset..];
+                let Some(found) = find_quest_id(rest) else { break };
+                assert!(
+                    DOC_ID_ALLOWLIST.contains(&found),
+                    "{name} 에 허용되지 않은 quest id '{found}' 발견 — 이 repo 고유 \
+                     서사(historical citation)인지 확인해 제거하거나, 정말 범용 \
+                     예시면 DOC_ID_ALLOWLIST 에 추가하세요.",
+                );
+                let idx = rest.find(found).expect("find_quest_id 가 찾은 문자열은 반드시 존재");
+                offset += idx + found.len();
+            }
+        }
+    }
+
     #[test]
     fn init_writes_parsable_toml() {
         let dir = fresh_tmp("toml");

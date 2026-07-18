@@ -136,7 +136,7 @@ cargo build --release --bin openguild   # → target/release/openguild
 # or: cargo run --bin openguild -- --help
 ```
 
-### Recovery — older binary refuses to open a guild (BUG-041)
+### Recovery — older binary refuses to open a guild
 
 A binary built before some migration `N` was added refuses to open a guild DB
 that already has migration `N` recorded (sqlx's `VersionMissing(N)` panic).
@@ -293,7 +293,7 @@ cargo build --release --bin openguild   # → target/release/openguild
 # or: cargo run --bin openguild -- --help
 ```
 
-### 복구 — 이전 binary 가 길드를 못 열 때 (BUG-041)
+### 복구 — 이전 binary 가 길드를 못 열 때
 
 이전 release 의 binary 가 (그 시점에 없던) migration `N` 이 적용된 길드 DB 를
 열 때 sqlx 가 `VersionMissing(N)` panic 으로 거부. **v0.1.0-beta 이후 빌드**
