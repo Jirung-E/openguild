@@ -18,7 +18,8 @@
 //!
 //! DEV-229: frontend 위치 지정 우선순위 — `--frontend-dist`/`FRONTEND_DIST`
 //! (CLI/env) > 설정 파일(`openguild-server.toml`, `--config` 로 명시 또는
-//! exe 옆/cwd 자동 탐색) > 기존 자동 탐색(cwd/exe 조상의 `gui/frontend/build`).
+//! exe 옆/cwd/~/.openguild 자동 탐색 — DEV-247) > 기존 자동 탐색(cwd/exe
+//! 조상의 `gui/frontend/build`).
 //! 설정 파일 형식은 [`ServerConfig`] 참조.
 
 mod error;
@@ -112,7 +113,7 @@ enum Command {
         #[arg(long)]
         frontend_dist: Option<String>,
         /// 설정 파일(`openguild-server.toml`) 경로 명시. 미지정 시 exe 옆 →
-        /// cwd 순으로 자동 탐색(있으면 사용, 없으면 조용히 skip).
+        /// cwd → ~/.openguild 순으로 자동 탐색(있으면 사용, 없으면 조용히 skip).
         #[arg(long)]
         config: Option<String>,
     },
