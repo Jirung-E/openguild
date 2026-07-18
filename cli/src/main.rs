@@ -4915,6 +4915,19 @@ fn run() -> Result<()> {
         std::env::args().collect(),
     ));
 
+    // DEV-264: 번들 문서/스킬을 ~/.openguild/ 로 동기화 — 예전엔 GUI 시동
+    // 시에만 돌아서, CLI 만 설치한 사용자(리눅스 deb/rpm/AppImage 등)는
+    // GUI 를 한 번도 안 띄우면 ~/.openguild/skill-marketplace 가 영영 안
+    // 생겼다. CLI 실행 때도 같은 동기화를 태워 어떤 컴포넌트를 쓰든 커버.
+    // mtime 비교라 두 번째 실행부턴 사실상 비용 없음. 실패는 조용히 무시
+    // (부가 기능 — CLI 의 주 기능에 영향 없어야 함).
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(dir) = exe.parent()
+    {
+        let _ = openguild_core::user_dirs::sync_bundled_docs(&dir.join("docs"));
+        let _ = openguild_core::user_dirs::sync_bundled_skill_marketplace(&dir.join("skills"));
+    }
+
     // DEV-211: --compact — json_str() 이 참조하는 전역 플래그 설정.
     JSON_COMPACT.store(cli.compact, std::sync::atomic::Ordering::Relaxed);
 
