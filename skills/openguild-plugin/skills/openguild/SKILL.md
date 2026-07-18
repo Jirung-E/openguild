@@ -1,13 +1,6 @@
 ---
 name: openguild
-description: Manage this project's tasks with openguild (guild/quest/campaign tracker) — create and track quests, comments, campaigns, tags, and docs from the CLI. Use whenever the user asks to track work, file a bug/task, check project status, or run any `openguild` command in a directory containing a `.guild` marker.
-when_to_use: >
-  Also use for: quest/campaign comments or discussions, private memos, tags,
-  due dates/deadlines, quest or campaign history, backups/restore/snapshots,
-  quest templates, project rules or conventions docs (`rule`/`rules`),
-  reference docs or notes library (`library`), work log or activity history
-  (`worklog`), or any request to check/change quest status (open, in
-  progress, testing, done).
+description: Manage this project's tasks with openguild (guild/quest/campaign tracker) — create and track quests, comments, campaigns, tags, and docs from the CLI. Use whenever the user asks to track work, file a bug/task, check project status, or run any `openguild` command in a directory containing a `.guild` marker. Also use for quest/campaign comments or discussions, private memos, tags, due dates/deadlines, quest or campaign history, backups/restore/snapshots, quest templates, project rules or conventions docs (`rule`/`rules`), reference docs or notes library (`library`), work log or activity history (`worklog`), or any request to check/change quest status (open, in progress, testing, done).
 ---
 
 # openguild usage
