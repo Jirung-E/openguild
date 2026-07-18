@@ -5413,6 +5413,13 @@ fn handle_locale(json: bool, lang: Option<String>) -> Result<()> {
                 ));
             };
             locale::save(parsed)?;
+            // DEV-254: 저장 직후 프로세스 locale 플래그도 갱신 — 안 하면 아래
+            // 확인 메시지의 tf! 가 시작 시점의 (이전) 언어로 나온다(사용자 보고:
+            // "전환 완료 안내가 이전 언어로 표시됨").
+            LOCALE.store(
+                parsed == Locale::En,
+                std::sync::atomic::Ordering::Relaxed,
+            );
             if json {
                 println!("{}", serde_json::json!({ "ok": true, "locale": parsed.as_str() }));
             } else {
