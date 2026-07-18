@@ -80,7 +80,9 @@ agent (Claude / 다른 LLM) 가 `Write` / `Edit` 도구로 `.guild/quests/*.md` 
 갈아끼우면 SQL 캐시 / 저널과 drift 발생 → GUI 와 파일 다르게 보임.
 
 - **status / urgency / parent / prereq / delete 변경 = 반드시 CLI**
-  (`openguild quest status / update / parent / prereq / delete`).
+  (status 는 `openguild quest move`(`start`/`done`/`reopen` 단축 포함) —
+  `quest status <slug> <STATUS>` 는 deprecated, 조회 전용으로만 사용;
+  나머지는 `quest update / parent / prereq / delete`).
 - **description 본문만** 부득이 직접 편집 가능 (multi-line 도 `quest update
   --description` 이 정상 저장 — BUG-001 수정됨, 가급적 CLI). 직접 편집 시 직후
   `openguild reindex` 필수 (GUI 는 BUG-049 후 시동 시 자동).

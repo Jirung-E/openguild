@@ -7,9 +7,10 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
 ### Added
 - **에이전트용 정식 스킬 패키지** — `docs agents`(AGENTS_OPENGUILD_USAGE.md)
   문서를 대체해 Claude Code plugin marketplace 구조(`skills/`)로 제공.
-  설치 시 `~/.openguild/skill-marketplace/` 로 동기화되며 `/plugin
-  marketplace add` 로 등록. 기존 `openguild docs agents` 는 제거됨(용도가
-  스킬로 이전). (DEV-264)
+  Windows installer 가 설치 시점에 바로 `~/.openguild/skill-marketplace/`
+  로 복사해둬 앱을 한 번도 안 띄워도 `/plugin marketplace add` 로 바로
+  등록 가능(그 외 플랫폼 + 소스 빌드는 앱 최초 실행 시 동기화). 기존
+  `openguild docs agents` 는 제거됨(용도가 스킬로 이전). (DEV-264)
 - **Linux 배포 패키지(deb/rpm/AppImage)** 추가 — 기존 Windows NSIS installer
   외에 리눅스에서도 정식 패키지로 배포. (BUG-142)
 - **rule list / tag list `--table` 출력** 추가 — 정렬된 표 형식(사람용).
@@ -28,12 +29,15 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
   복원, macOS 는 `titleBarStyle: overlay` 로 네이티브 traffic light 를
   그대로 유지, Linux 는 실행 중인 GTK 아이콘 테마·`gsettings` 버튼 순서를
   실제로 조회해 렌더링(하드코딩 근사 폐기). (DEV-265)
-- **알림 시스템 통합** — 앱 곳곳에 흩어져 있던 개별 toast/`alert()` 구현을
-  `ToastHost` 하나로 정리하고, 업데이트 확인 알림과 동일한 우하단 카드
-  스타일로 통일. (DEV-259)
+- **알림 시스템 통합** — 앱 곳곳에 흩어져 있던 개별 toast/`alert()` 구현과
+  레이아웃을 밀어내던 in-flow 배너(SchemaAheadBanner)를 `ToastHost` 하나로
+  정리하고, 업데이트 확인 알림과 동일한 우하단 카드 스타일로 통일.
+  (DEV-259, BUG-139)
 - **커스텀 테마 에디터 다국어 지원.** (DEV-205)
 - 좁은 창 폭에서 어드민 페이지 등 UI 가 깨지는 문제(줄바꿈/버튼 구분선
   어긋남) 수정. (BUG-143)
+- **메뉴바 상단 로고/길드명 블록 제거** — 타이틀바 pill 과 중복이라 정리
+  (모든 플랫폼·웹 공통). (BUG-146)
 - **cross-link 는 명시 `[[..]]` 만 인식** — bare `DEV-033`(대괄호 없음) 자동
   링크와 일반 타이핑 중 자동완성 팝업을 제거. 자동완성은 `[[` 를 연
   상태에서만. 기존 본문의 bare 참조는 더 이상 링크되지 않음(의도된 변경).
