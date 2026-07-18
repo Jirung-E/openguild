@@ -584,11 +584,39 @@ mod cli_tests {
         assert!(load_server_config(Some("Z:/definitely/does/not/exist.toml")).is_err());
     }
 
-    // DEV-229: 미지정 시 자동 탐색 대상(exe 옆/cwd)에 파일이 없으면 에러 아님 — None.
-    // (이 repo 의 server/ cwd 및 test exe 옆엔 openguild-server.toml 이 없음 전제.)
+    // DEV-229: 미지정 시 자동 탐색 대상(exe 옆/cwd/~/.openguild)에 파일이 없으면
+    // 에러 아님 — None.
+    // BUG-148: 개발 머신에 실제 `~/.openguild/openguild-server.toml` 이 있으면
+    // 탐색이 그걸 찾아 Some 을 반환해 이 테스트가 실패했다(테스트 격리 결함).
+    // `OPENGUILD_HOME` 을 빈 temp 로 격리해 실제 홈을 안 보게 한다(exe 옆/cwd 는
+    // 이 repo 상 원래 openguild-server.toml 이 없음). env 는 프로세스 전역이라
+    // 전용 mutex 로 직렬화.
     #[test]
     fn load_server_config_none_when_not_found_and_not_explicit() {
-        assert!(load_server_config(None).unwrap().is_none());
+        use std::sync::Mutex;
+        static GUARD: Mutex<()> = Mutex::new(());
+        let _lock = GUARD.lock().unwrap();
+
+        let ns = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let home = std::env::temp_dir().join(format!("og-srv-cfg-none-{ns}"));
+        std::fs::create_dir_all(&home).unwrap();
+
+        let prev = std::env::var("OPENGUILD_HOME").ok();
+        // SAFETY: 위 GUARD mutex 로 직렬화.
+        unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+        let result = load_server_config(None);
+        unsafe {
+            match prev {
+                Some(v) => std::env::set_var("OPENGUILD_HOME", v),
+                None => std::env::remove_var("OPENGUILD_HOME"),
+            }
+        }
+        let _ = std::fs::remove_dir_all(&home);
+
+        assert!(result.unwrap().is_none());
     }
 
     // DEV-229: 잘못된 TOML 은 explicit 경로에서 에러.
