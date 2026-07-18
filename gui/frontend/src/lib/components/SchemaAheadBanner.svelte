@@ -85,9 +85,9 @@
 </script>
 
 {#if isAhead && !dismissed}
-	<!-- BUG-139: 상단 in-flow 배너(레이아웃 밀어냄) → UpdateBanner 와 동일한
-	     플로팅 toast 패턴. UpdateBanner(우하단)/ToastHost(우상단)와 안 겹치게
-	     좌상단에 배치. -->
+	<!-- BUG-139: 상단 in-flow 배너(레이아웃 밀어냄) → 앱 표준 알림과 동일하게
+	     우하단 플로팅 카드. ToastHost/UpdateBanner 와 같은 우하단 큐 영역에
+	     쌓이도록 배치(동시 표시는 드묾). -->
 	<div class="banner" role="alert">
 		<button class="btn-dismiss" onclick={dismiss} aria-label="닫기" title="닫기">×</button>
 		<div class="msg">
@@ -110,13 +110,12 @@
 
 <style>
 	/* BUG-139: UpdateBanner(.upd-toast, 우하단 fixed)와 동일한 플로팅 카드
-	   패턴 — 레이아웃을 밀어내지 않음. UpdateBanner/ToastHost 와 안 겹치게
-	   좌상단(top-left)에 배치. */
+	   패턴 — 레이아웃을 밀어내지 않음. 앱 표준 알림 위치인 우하단에 배치. */
 	.banner {
 		position: fixed;
-		top: calc(1rem + var(--titlebar-h, 0px));
-		left: 1rem;
-		z-index: 60;
+		right: 1.5rem;
+		bottom: 1.5rem;
+		z-index: 70;
 		display: flex;
 		flex-direction: column;
 		gap: 0.5rem;
