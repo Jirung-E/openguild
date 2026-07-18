@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { adminApi } from '$lib/api/admin';
-	import { metaApi } from '$lib/api/meta';
 	import { bumpReindex } from '$lib/stores/reindex';
 	// DEV-205 모듈1: Nav 문자열 i18n.
 	import { locale, t } from '$lib/stores/locale';
@@ -10,45 +9,11 @@
 	import SettingsQuickMenu from './SettingsQuickMenu.svelte';
 	let quickMenuOpen = $state(false);
 
-	// DEV-141 / DEV-113 후속(사용자 보고): 현재 길드 이름 — 어느 길드인지
-	// 한눈에. 이전엔 Tauri invoke 만 써서 (a) 브라우저/server 모드는 항상
-	// 미표시, (b) Tauri + 원격 연결 시 Rust 로컬 placeholder 이름
-	// ("openguild-welcome-placeholder")이 잘못 보였다. `metaApi.getGuildDisplayInfo()`
-	// 가 모드별로 올바른 source(Tauri-local invoke vs HTTP)를 골라 항상 실제
-	// 길드 이름을 가져오고, 원격 연결이면 `isRemote` 로 배지도 표시.
-	// BUG-136 후속(admin #2): 다른 길드를 열었다가 Welcome 으로 돌아오면 Nav 에
-	// 이전 길드 이름이 남았음 — onMount 1회 조회는 라우팅 변화를 못 따라감.
-	// DEV-207 의 guildContextActive(보드/Welcome 마운트가 갱신, 이번에 반응형
-	// 스토어화)를 구독해 활성 전환마다 재조회 / 비활성이면 숨김.
-	import { guildContextActive } from '$lib/stores/guildSession';
-	import { detectEnvironment } from '$lib/api/transport';
-	let guildName = $state('');
-	let isRemoteGuild = $state(false);
-
-	// DEV-253: 커스텀 타이틀바(Windows Tauri)가 있으면 로고/길드 이름을 타이틀바로
-	// 옮겼으므로 Nav 에선 숨긴다. 타이틀바가 없는 환경(브라우저 dev / macOS)에선
-	// Welcome 진입점과 길드 이름이 사라지지 않도록 기존 로고를 그대로 유지.
-	const hasTitleBar =
-		detectEnvironment() === 'tauri' &&
-		typeof navigator !== 'undefined' &&
-		navigator.userAgent.includes('Windows');
-	$effect(() => {
-		if (!$guildContextActive) {
-			guildName = '';
-			isRemoteGuild = false;
-			return;
-		}
-		metaApi
-			.getGuildDisplayInfo()
-			.then((info) => {
-				guildName = info.name;
-				isRemoteGuild = info.remote;
-			})
-			.catch(() => {
-				/* 길드 모드 아님 / 조회 실패 — 표시 안 함 */
-				guildName = '';
-			});
-	});
+	// BUG-146: 예전엔 커스텀 타이틀바가 없는 환경(브라우저 dev / 당시엔
+	// macOS/Linux 로 오판)에서 Nav 에 "openguild" 로고 + 길드명을 fallback
+	// 으로 그렸으나, 이제 로고/길드명은 타이틀바(TitleBar)로 일원화. 앱(모든
+	// OS)이든 웹이든 Nav 에는 아예 그리지 않으므로 관련 상태/조회/판별 전부
+	// 제거했다.
 
 	// DEV-011: Home 탭. URL `/` 가 ?view 없으면 home 기본.
 	type View = 'home' | 'board' | 'list';
@@ -98,23 +63,7 @@
 </script>
 
 <header>
-	<!-- DEV-052 후속 (4회차): 로고 클릭 → Welcome (다른 길드로 전환 / recent 관리).
-	     DEV-253: 커스텀 타이틀바가 있는 환경에선 로고/길드 이름을 타이틀바로 옮겨
-	     여기선 숨김. 타이틀바 없는 환경에서만 fallback 으로 노출. -->
-	{#if !hasTitleBar}
-		<a href="/welcome" class="logo">
-			openguild
-			<!-- DEV-141: 현재 길드 이름 — 로고 옆 작은 배지로 어느 길드인지 표시. -->
-			{#if guildName}
-				<span class="guild-name" title="{t('nav.currentGuild', $locale)}: {guildName}">{guildName}</span>
-				<!-- DEV-113 후속: 원격 서버에 연결된 상태면 명시 배지. -->
-				{#if isRemoteGuild}
-					<span class="remote-badge" title={t('nav.remoteConnected', $locale)}>🌐 {t('nav.remote', $locale)}</span>
-				{/if}
-			{/if}
-		</a>
-	{/if}
-
+	<!-- BUG-146: 로고/길드명은 타이틀바로 일원화 — Nav 에는 그리지 않음. -->
 	<nav>
 		<a href="/" class:active={onRootPath && currentView === 'home'}>{t('nav.home', $locale)}</a>
 		<a href="/?view=board" class:active={onRootPath && currentView === 'board'}>{t('nav.board', $locale)}</a>
@@ -186,47 +135,6 @@
 		/* 커스텀 타이틀바(Windows Tauri) 아래에 붙도록 — 없으면 0px. */
 		top: var(--titlebar-h, 0px);
 		z-index: 100;
-	}
-
-	.logo {
-		display: inline-flex;
-		align-items: baseline;
-		gap: 0.5rem;
-		font-size: 1.1rem;
-		font-weight: 700;
-		color: var(--text);
-		text-decoration: none;
-		letter-spacing: 0.02em;
-	}
-
-	/* DEV-141: 현재 길드 이름 배지 — 로고보다 작고 muted, accent 보더로 구분. */
-	.guild-name {
-		font-size: 0.75rem;
-		font-weight: 600;
-		letter-spacing: 0;
-		color: var(--accent);
-		background: color-mix(in srgb, var(--accent) 12%, transparent);
-		border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
-		border-radius: 5px;
-		padding: 0.1rem 0.4rem;
-		max-width: 12rem;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	/* DEV-113 후속: 원격 연결 배지 — guild-name 과 톤 구분(warning 계열,
-		 인증 없는 네트워크 노출 상태라는 의미). */
-	.remote-badge {
-		font-size: 0.7rem;
-		font-weight: 600;
-		letter-spacing: 0;
-		color: var(--warning);
-		background: color-mix(in srgb, var(--warning) 14%, transparent);
-		border: 1px solid color-mix(in srgb, var(--warning) 40%, transparent);
-		border-radius: 5px;
-		padding: 0.1rem 0.4rem;
-		white-space: nowrap;
 	}
 
 	nav {
