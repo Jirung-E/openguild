@@ -41,7 +41,7 @@ openguild --guild ./other-project quest list
 openguild --remote https://openguild.io/alice/monitor quest list
 ```
 
-The GUI (Tauri desktop app, Windows NSIS installer) provides directory selection and a recent guilds list. Build artifacts are attached to each GitHub Release as `openguild_{version}_x64-setup.exe` — the installer offers per-component selection (GUI / CLI / Server) and an optional PATH registration. Installed app auto-checks for updates on startup and every 6 hours (notification only — install requires user click).
+The GUI (Tauri desktop app) provides directory selection and a recent guilds list. Windows installer (`openguild_{version}_x64-setup.exe`, NSIS) offers per-component selection (GUI / CLI / Server) and an optional PATH registration; Linux builds are also attached to each GitHub Release as `.deb` / `.rpm` / AppImage packages. Installed app auto-checks for updates on startup and every 6 hours (notification only — install requires user click).
 
 ### Creating a Quest
 Quests are created within a guild. Each quest has a type prefix and an auto-incremented ID (e.g., `DEV-001`, `BUG-003`).
@@ -188,7 +188,7 @@ openguild --guild ./other-project quest list
 openguild --remote https://openguild.io/alice/monitor quest list
 ```
 
-GUI (Tauri 데스크탑 앱, Windows NSIS installer) 는 디렉터리 선택 + 최근 길드 목록을 제공. 빌드 결과물은 매 GitHub Release 에 `openguild_{version}_x64-setup.exe` 로 첨부됨 — installer 는 컴포넌트 선택 (GUI / CLI / Server) + PATH 등록 옵션 제공. 설치된 앱은 시작 시 + 6시간 간격으로 업데이트 자동 확인 (알림만; 설치는 사용자 클릭).
+GUI (Tauri 데스크탑 앱) 는 디렉터리 선택 + 최근 길드 목록을 제공. Windows installer(`openguild_{version}_x64-setup.exe`, NSIS)는 컴포넌트 선택 (GUI / CLI / Server) + PATH 등록 옵션 제공 — 매 GitHub Release 에 첨부됨. 리눅스 빌드도 각 Release 에 `.deb` / `.rpm` / AppImage 패키지로 첨부. 설치된 앱은 시작 시 + 6시간 간격으로 업데이트 자동 확인 (알림만; 설치는 사용자 클릭).
 
 ### 퀘스트 생성
 퀘스트는 길드 내에서 생성된다. 각 퀘스트는 타입 prefix와 자동 증가 ID를 가진다 (예: `DEV-001`, `BUG-003`).

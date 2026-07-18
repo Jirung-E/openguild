@@ -4,11 +4,40 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
 
 ## Unreleased
 
+### Added
+- **Linux 배포 패키지(deb/rpm/AppImage)** 추가 — 기존 Windows NSIS installer
+  외에 리눅스에서도 정식 패키지로 배포. (BUG-142)
+- **rule list / tag list `--table` 출력** 추가 — 정렬된 표 형식(사람용).
+  (DEV-252)
+- **server 설정 파일(`openguild-server.toml`)** — frontend 정적 자산 위치를
+  `--frontend-dist` / env 외에 설정 파일로도 지정 가능. API-only 모드로
+  떨어졌을 때 원인과 지정 방법을 시동 로그에 안내. (DEV-229)
+
 ### Changed
+- **CLI/서버 메시지 다국어화 확장** — quest/campaign/rule/library/worklog/
+  tag/template 등 모든 서브커맨드의 `--help` 가 `locale` 설정(en/ko)을
+  그대로 따라가도록 전환. (DEV-254)
+- **창 컨트롤 버튼 — 플랫폼별 실제 네이티브화** — Windows 는 OS 가 실제로
+  쓰는 아이콘 폰트(Segoe Fluent Icons/Segoe MDL2 Assets)로 교체하고
+  `WM_NCHITTEST` 훅으로 최대화 버튼 호버 시 진짜 OS Snap Layout 이 뜨도록
+  복원, macOS 는 `titleBarStyle: overlay` 로 네이티브 traffic light 를
+  그대로 유지, Linux 는 실행 중인 GTK 아이콘 테마·`gsettings` 버튼 순서를
+  실제로 조회해 렌더링(하드코딩 근사 폐기). (DEV-265)
+- **알림 시스템 통합** — 앱 곳곳에 흩어져 있던 개별 toast/`alert()` 구현을
+  `ToastHost` 하나로 정리하고, 업데이트 확인 알림과 동일한 우하단 카드
+  스타일로 통일. (DEV-259)
+- **커스텀 테마 에디터 다국어 지원.** (DEV-205)
+- 좁은 창 폭에서 어드민 페이지 등 UI 가 깨지는 문제(줄바꿈/버튼 구분선
+  어긋남) 수정. (BUG-143)
 - **cross-link 는 명시 `[[..]]` 만 인식** — bare `DEV-033`(대괄호 없음) 자동
   링크와 일반 타이핑 중 자동완성 팝업을 제거. 자동완성은 `[[` 를 연
   상태에서만. 기존 본문의 bare 참조는 더 이상 링크되지 않음(의도된 변경).
   (DEV-220)
+
+### Fixed
+- **리눅스 전반 성능 저하** — WebKitGTK 의 DMABUF 렌더러가 일부 GPU 드라이버
+  조합에서 소프트웨어 합성으로 떨어져 보드/스크롤이 심하게 느려지는 문제
+  완화(`WEBKIT_DISABLE_DMABUF_RENDERER=1`). (BUG-144)
 
 ## 0.3.0-beta — 2026-07-02
 
