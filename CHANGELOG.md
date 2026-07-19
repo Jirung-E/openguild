@@ -20,6 +20,10 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
 - **server 설정 파일(`openguild-server.toml`)** — frontend 정적 자산 위치를
   `--frontend-dist` / env 외에 설정 파일로도 지정 가능. API-only 모드로
   떨어졌을 때 원인과 지정 방법을 시동 로그에 안내. (DEV-229)
+- **`library attach` 명령** — 도서관 문서에 큰/바이너리 첨부파일(기획 문서
+  원본, PDF, zip 등)을 붙일 수 있게 CLI에 추가. core/server/GUI 는 이미
+  지원하고 있었는데 CLI만 빠져 있던 걸 `quest attach`/`campaign attach` 와
+  동일한 형태(list/add/remove)로 보완. (BUG-150)
 
 ### Changed
 - **CLI/서버 메시지 다국어화 확장** — quest/campaign/rule/library/worklog/
