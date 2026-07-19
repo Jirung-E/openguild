@@ -39,6 +39,29 @@ output), `--compact` (single-line JSON, requires `--json`).
    the library is to be the project's own source of truth — prefer it over
    an external guess.
 
+## What's worth recording (judgment calls)
+
+Not every observation needs a quest/comment/rule/library entry — use these
+per-type triggers, and skip everything else (don't spam the guild):
+
+- **Quest**: file one when you find an actual bug/task that isn't already
+  tracked and is a distinct scope from what you're doing right now. Don't
+  file a quest for every minor observation along the way.
+- **Comment**: add one on an existing quest when there's a "why"/blocker/
+  decision the description doesn't capture and a future reader would need.
+  Don't restate what's already in the description.
+- **Rule**: propose one when the user corrects your approach, or states a
+  policy/convention meant to apply going forward — not a one-off decision.
+  Don't turn a single call into a permanent rule.
+- **Library**: save research/design notes that can't be re-derived from the
+  code. But even when something *could* technically be re-derived by reading
+  the code, write it down anyway if the codebase is large/complex enough that
+  re-deriving it would cost real time later (a module map, a non-obvious
+  data-flow, a gotcha that took real digging to find) — it pays for itself by
+  making the next problem faster to spot and saving the re-discovery work.
+  For small/simple code, skip it — reading the code is faster than reading a
+  library entry.
+
 ## Quest lifecycle (follow this order)
 
 1. **Create**: `openguild quest new --type <PREFIX> --title "..." [--description-file <PATH>] [--urgency 1-4] [--parent <slug>]`
