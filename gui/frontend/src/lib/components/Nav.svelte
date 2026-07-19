@@ -9,6 +9,22 @@
 	import SettingsQuickMenu from './SettingsQuickMenu.svelte';
 	let quickMenuOpen = $state(false);
 
+	// DEV-271: 검색 팔레트(전 문서 검색)와 ☰ 메뉴(캠페인/작업기록/태그)는
+	// TitleBar.svelte 안에만 있는데, TitleBar 는 usesCustomTitlebar() 가
+	// true 인 Tauri 데스크탑에서만 렌더된다(+layout showTitleBar). 웹
+	// 배포(브라우저)에선 TitleBar 자체가 없어 이 두 기능에 접근할 방법이
+	// 아예 없었다 — Nav 는 웹/앱 모두 항상 렌더되므로 여기에 웹 전용
+	// fallback 을 추가한다(데스크탑엔 이미 TitleBar 로 있으니 중복 방지).
+	// `guildContextActive` 로는 가드하지 않는다 — 그 플래그는 +page.svelte
+	// onMount 가 `detectEnvironment() !== 'tauri'` 면 즉시 return 해버려서
+	// 웹에서는 절대 true 가 안 된다(별도 버그, 범위 밖). 웹 배포는 서버가
+	// 이미 특정 길드 하나에 바인딩된 상태라 "Welcome/길드 미선택" 상태
+	// 자체가 없으므로 showWebExtras 만으로 충분.
+	import SearchPalette from './SearchPalette.svelte';
+	import { usesCustomTitlebar } from '$lib/utils/platform';
+	const showWebExtras = !usesCustomTitlebar();
+	let searchOpen = $state(false);
+
 	// BUG-146: 예전엔 커스텀 타이틀바가 없는 환경(브라우저 dev / 당시엔
 	// macOS/Linux 로 오판)에서 Nav 에 "openguild" 로고 + 길드명을 fallback
 	// 으로 그렸으나, 이제 로고/길드명은 타이틀바(TitleBar)로 일원화. 앱(모든
@@ -73,9 +89,31 @@
 		<a href="/rules" class:active={onRulesPath}>{t('nav.rules', $locale)}</a>
 		<!-- DEV-217: 도서관 — 프로젝트 참고문서/노트 (BOOK 번호). -->
 		<a href="/library" class:active={onLibraryPath}>{t('nav.library', $locale)}</a>
+		<!-- DEV-271: 웹(TitleBar 없음)에선 캠페인/작업기록/태그가 이 목록에도
+		     없으면 아예 못 들어감 — 데스크탑은 TitleBar 의 ☰ 메뉴로 이미
+		     있으니 중복 방지 위해 웹에서만. -->
+		{#if showWebExtras}
+			<a href="/campaigns" class:active={$page.url.pathname.startsWith('/campaigns')}>{t('titlebar.menuCampaigns', $locale)}</a>
+			<a href="/worklog" class:active={$page.url.pathname.startsWith('/worklog')}>{t('titlebar.menuWorklog', $locale)}</a>
+			<a href="/tags" class:active={$page.url.pathname.startsWith('/tags')}>{t('titlebar.menuTags', $locale)}</a>
+		{/if}
 	</nav>
 
 	<div class="nav-right">
+		<!-- DEV-271: 검색 팔레트 — 웹에서만(데스크탑은 TitleBar 중앙 pill로 이미 있음). -->
+		{#if showWebExtras}
+			<button
+				class="btn-search"
+				onclick={() => (searchOpen = true)}
+				title={t('titlebar.search', $locale)}
+				aria-label={t('titlebar.search', $locale)}
+			>
+				<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" aria-hidden="true">
+					<circle cx="7" cy="7" r="4.3" />
+					<path d="M10.2 10.2 14 14" />
+				</svg>
+			</button>
+		{/if}
 		<!-- DEV-095: 외부 편집 후 cache 정합 회복 — 일반 사용자도 한 클릭으로. -->
 		<button
 			class="btn-reindex"
@@ -118,6 +156,10 @@
 		</div>
 	</div>
 </header>
+
+{#if searchOpen}
+	<SearchPalette onclose={() => (searchOpen = false)} />
+{/if}
 
 <style>
 	/* DEV-074: hardcoded color → var() 마이그레이션. */
@@ -202,6 +244,27 @@
 		transform: rotate(45deg);
 	}
 	.btn-settings.active {
+		background: var(--nav-hover-bg);
+		color: var(--text);
+	}
+
+	/* DEV-271: 검색 버튼(웹 전용) — btn-settings 와 동일 규격. */
+	.btn-search {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 2rem;
+		height: 2rem;
+		border-radius: 6px;
+		color: var(--text-muted);
+		background: transparent;
+		border: none;
+		cursor: pointer;
+		transition:
+			background 0.15s,
+			color 0.15s;
+	}
+	.btn-search:hover {
 		background: var(--nav-hover-bg);
 		color: var(--text);
 	}

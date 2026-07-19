@@ -4,6 +4,13 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
 
 ## Unreleased
 
+### Fixed
+- **웹(브라우저) 배포에서 검색 팔레트/캠페인·작업기록·태그 페이지에
+  접근할 방법이 아예 없던 문제** — 이 기능들이 커스텀 타이틀바(Tauri
+  데스크탑 전용, `usesCustomTitlebar()`)에만 있었는데 웹은 그 타이틀바
+  자체가 없었다. Nav 바에 웹 전용 fallback(검색 버튼 + 캠페인/작업기록/
+  태그 링크)을 추가. (DEV-271)
+
 ### Changed
 - **`openguild comments` / `quest comment list` / `quest comment show` 옵션셋
   통일** — `comments` 에 `--top-only`/`--reply-to`/`--reverse`/`--tree` 추가,
