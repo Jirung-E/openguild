@@ -36,6 +36,9 @@
 	// 창 컨트롤 버튼 마크업 자체를 렌더링하지 않는다(traffic light 가 이미
 	// 그 자리에 있음).
 	import { isMacOverlay } from '$lib/utils/platform';
+	// DEV-260: 창 폭이 좁아 메뉴바(Nav)에서 넘친 페이지 링크 — ☰ 메뉴 상단에
+	// 구분선과 함께 렌더(priority+ navigation). Nav 가 폭 변화에 반응해 발행.
+	import { navOverflowItems } from '$lib/stores/navOverflow';
 
 	let maximized = $state(false);
 	const isMac = isMacOverlay();
@@ -263,6 +266,15 @@
 			</button>
 			{#if menuOpen}
 				<div class="tb-menu">
+					<!-- DEV-260: Nav 에서 넘친 페이지 링크 — 상시 항목과 구분선으로 구획. -->
+					{#if $navOverflowItems.length > 0}
+						{#each $navOverflowItems as it (it.href)}
+							<button class:active={it.active} onclick={() => goto(it.href)}>
+								{it.label}
+							</button>
+						{/each}
+						<div class="tb-menu-sep"></div>
+					{/if}
 					<button onclick={() => goto('/campaigns')}>
 						<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 							<rect x="2.5" y="2.5" width="11" height="11" rx="1.5" />
@@ -524,6 +536,16 @@
 	}
 	.tb-menu button:hover svg {
 		color: var(--text);
+	}
+	/* DEV-260: Nav overflow 항목 — 활성 페이지 하이라이트 유지 + 구분선. */
+	.tb-menu button.active {
+		background: var(--nav-hover-bg);
+		color: var(--text-strong);
+	}
+	.tb-menu-sep {
+		height: 1px;
+		margin: 0.25rem 0.3rem;
+		background: var(--border);
 	}
 	/* ── 중앙 검색 pill ── */
 	.tb-search {

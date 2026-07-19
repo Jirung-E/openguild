@@ -119,6 +119,7 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'nav.rules': { ko: '규칙', en: 'Rules' },
 	'nav.library': { ko: '도서관', en: 'Library' },
 	'nav.settings': { ko: '설정', en: 'Settings' },
+	'nav.more': { ko: '더 보기', en: 'More' },
 	'nav.settingsQuickMenu': { ko: '설정 퀵메뉴', en: 'Settings quick menu' },
 
 	// DEV-205 모듈5: 설정 페이지.

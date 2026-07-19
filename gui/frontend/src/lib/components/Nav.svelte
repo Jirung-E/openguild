@@ -1,7 +1,10 @@
 <script lang="ts">
+	import { onMount, tick } from 'svelte';
 	import { page } from '$app/stores';
 	import { adminApi } from '$lib/api/admin';
 	import { bumpReindex } from '$lib/stores/reindex';
+	// DEV-260: Nav overflow → 타이틀바 ☰ 메뉴 공유 스토어.
+	import { navOverflowItems, type NavOverflowItem } from '$lib/stores/navOverflow';
 	// DEV-205 모듈1: Nav 문자열 i18n.
 	import { locale, t } from '$lib/stores/locale';
 	// DEV-138: 설정 퀵메뉴 — ⚙ 클릭 시 dropdown (테마/UI크기/폭 + 전체 설정).
@@ -44,6 +47,98 @@
 	// DEV-217: 도서관 페이지.
 	let onLibraryPath = $derived($page.url.pathname.startsWith('/library'));
 
+	// DEV-260: 창 폭이 좁아 Nav 링크가 가로로 다 안 들어가면 오른쪽(우선순위
+	// 낮은) 항목부터 숨기고, 숨긴 항목을 데스크탑에선 타이틀바 ☰ 메뉴로
+	// (navOverflowItems 스토어), 웹(타이틀바 없음)에선 Nav 자체의 "…" 버튼
+	// 드롭다운으로 옮긴다 — 브라우저 툴바의 priority+ navigation 패턴.
+	//
+	// 측정: 실제 링크와 동일한 마크업의 숨김 measurer 를 nav 안에 항상 전부
+	// 렌더해 자연 폭을 잰다(보이는 목록은 잘려서 전체 폭을 알 수 없음).
+	// ResizeObserver 를 nav(가용 폭 변화)와 measurer(라벨/폰트 변화 — 언어
+	// 토글·UI 크기 변경 시 measurer 자체 크기가 바뀜) 둘 다에 걸어 반응.
+	const navItems = $derived.by((): NavOverflowItem[] => {
+		const items: NavOverflowItem[] = [
+			{ href: '/', label: t('nav.home', $locale), active: onRootPath && currentView === 'home' },
+			{ href: '/?view=board', label: t('nav.board', $locale), active: onRootPath && currentView === 'board' },
+			{ href: '/?view=list', label: t('nav.list', $locale), active: onRootPath && currentView === 'list' },
+			{ href: '/admin', label: t('nav.admin', $locale), active: onAdminPath },
+			{ href: '/rules', label: t('nav.rules', $locale), active: onRulesPath },
+			{ href: '/library', label: t('nav.library', $locale), active: onLibraryPath }
+		];
+		if (showWebExtras) {
+			// DEV-271: 웹 전용 항목 — 데스크탑은 ☰ 메뉴에 상시 존재.
+			items.push(
+				{ href: '/campaigns', label: t('titlebar.menuCampaigns', $locale), active: $page.url.pathname.startsWith('/campaigns') },
+				{ href: '/worklog', label: t('titlebar.menuWorklog', $locale), active: $page.url.pathname.startsWith('/worklog') },
+				{ href: '/tags', label: t('titlebar.menuTags', $locale), active: $page.url.pathname.startsWith('/tags') }
+			);
+		}
+		return items;
+	});
+	let navEl = $state<HTMLElement | null>(null);
+	let measureEl = $state<HTMLElement | null>(null);
+	let visibleCount = $state(99);
+	let moreOpen = $state(false);
+	const MORE_BTN_W = 34; // 웹 fallback "…" 버튼 예약 폭(px) — 대략치면 충분.
+
+	function recomputeOverflow() {
+		if (!navEl || !measureEl) return;
+		const kids = Array.from(measureEl.children) as HTMLElement[];
+		if (kids.length === 0) return;
+		const gap = parseFloat(getComputedStyle(navEl).columnGap || '0') || 0;
+		const available = navEl.clientWidth;
+		let total = 0;
+		const widths = kids.map((k) => k.offsetWidth);
+		for (let i = 0; i < widths.length; i++) total += widths[i] + (i > 0 ? gap : 0);
+		if (total <= available) {
+			visibleCount = widths.length;
+			return;
+		}
+		// 안 들어감 — 웹은 "…" 버튼 폭을 예약(데스크탑은 ☰ 가 타이틀바에 있어 0).
+		const reserve = showWebExtras ? MORE_BTN_W + gap : 0;
+		let used = 0;
+		let fit = 0;
+		for (let i = 0; i < widths.length; i++) {
+			const w = widths[i] + (i > 0 ? gap : 0);
+			if (used + w + reserve > available) break;
+			used += w;
+			fit = i + 1;
+		}
+		visibleCount = fit;
+	}
+
+	onMount(() => {
+		const ro = new ResizeObserver(() => recomputeOverflow());
+		if (navEl) ro.observe(navEl);
+		if (measureEl) ro.observe(measureEl);
+		// 폴백: RO 콜백은 rAF 루프로 전달되는데, 일부 환경(헤드리스/절전
+		// 스로틀)에선 안 올 수 있음 — 가장 흔한 트리거(창 리사이즈)만이라도
+		// 이벤트로 직접 커버.
+		const onResize = () => recomputeOverflow();
+		window.addEventListener('resize', onResize);
+		return () => {
+			ro.disconnect();
+			window.removeEventListener('resize', onResize);
+			// 언마운트 시 ☰ 쪽 잔여 항목 정리.
+			navOverflowItems.set([]);
+		};
+	});
+	// 라벨(언어)/항목 구성이 바뀌면 measurer DOM 반영 후 재측정.
+	$effect(() => {
+		void navItems;
+		tick().then(recomputeOverflow);
+	});
+	const visibleItems = $derived(navItems.slice(0, visibleCount));
+	const overflowItems = $derived(navItems.slice(visibleCount));
+	// 데스크탑: 넘친 항목을 타이틀바 ☰ 로 발행. 웹: 로컬 "…" 드롭다운이 소비.
+	$effect(() => {
+		navOverflowItems.set(showWebExtras ? [] : overflowItems);
+	});
+	// 다 들어가게 되면 열려있던 "…" 드롭다운 닫기.
+	$effect(() => {
+		if (overflowItems.length === 0) moreOpen = false;
+	});
+
 	// DEV-095: Reindex 버튼 — 사용자 의견 "Admin 페이지 아닌 일반 사용자도
 	// 접근 가능". 외부 편집 / `openguild quest new` CLI / git pull 등으로
 	// `.guild/quests/*.md` 가 바뀌었을 때 cache 정합 회복.
@@ -80,23 +175,38 @@
 
 <header>
 	<!-- BUG-146: 로고/길드명은 타이틀바로 일원화 — Nav 에는 그리지 않음. -->
-	<nav>
-		<a href="/" class:active={onRootPath && currentView === 'home'}>{t('nav.home', $locale)}</a>
-		<a href="/?view=board" class:active={onRootPath && currentView === 'board'}>{t('nav.board', $locale)}</a>
-		<a href="/?view=list" class:active={onRootPath && currentView === 'list'}>{t('nav.list', $locale)}</a>
-		<a href="/admin" class:active={onAdminPath}>{t('nav.admin', $locale)}</a>
-		<!-- DEV-016: 길드 규칙 — 팀 컨벤션 / 그라운드 룰. -->
-		<a href="/rules" class:active={onRulesPath}>{t('nav.rules', $locale)}</a>
-		<!-- DEV-217: 도서관 — 프로젝트 참고문서/노트 (BOOK 번호). -->
-		<a href="/library" class:active={onLibraryPath}>{t('nav.library', $locale)}</a>
-		<!-- DEV-271: 웹(TitleBar 없음)에선 캠페인/작업기록/태그가 이 목록에도
-		     없으면 아예 못 들어감 — 데스크탑은 TitleBar 의 ☰ 메뉴로 이미
-		     있으니 중복 방지 위해 웹에서만. -->
-		{#if showWebExtras}
-			<a href="/campaigns" class:active={$page.url.pathname.startsWith('/campaigns')}>{t('titlebar.menuCampaigns', $locale)}</a>
-			<a href="/worklog" class:active={$page.url.pathname.startsWith('/worklog')}>{t('titlebar.menuWorklog', $locale)}</a>
-			<a href="/tags" class:active={$page.url.pathname.startsWith('/tags')}>{t('titlebar.menuTags', $locale)}</a>
+	<!-- DEV-260: 링크 목록은 navItems 로 일원화(홈~도서관 + 웹 전용 DEV-271
+	     항목) — visibleCount 만큼만 보이고 나머지는 ☰(데스크탑)/…(웹)으로. -->
+	<nav bind:this={navEl}>
+		{#each visibleItems as it (it.href)}
+			<a href={it.href} class:active={it.active}>{it.label}</a>
+		{/each}
+		{#if showWebExtras && overflowItems.length > 0}
+			<div class="more-wrap">
+				<button
+					class="btn-more"
+					class:open={moreOpen}
+					onclick={() => (moreOpen = !moreOpen)}
+					title={t('nav.more', $locale)}
+					aria-label={t('nav.more', $locale)}
+					aria-expanded={moreOpen}
+				>⋯</button>
+				{#if moreOpen}
+					<div class="more-menu">
+						{#each overflowItems as it (it.href)}
+							<a href={it.href} class:active={it.active} onclick={() => (moreOpen = false)}>{it.label}</a>
+						{/each}
+					</div>
+				{/if}
+			</div>
 		{/if}
+		<!-- 측정 전용 사본 — 항상 전부 렌더(숨김). 보이는 목록과 동일한
+		     <a> 마크업/스코프 스타일이라 자연 폭이 정확히 일치. -->
+		<div class="nav-measure" bind:this={measureEl} aria-hidden="true">
+			{#each navItems as it (it.href)}
+				<a href={it.href} tabindex="-1">{it.label}</a>
+			{/each}
+		</div>
 	</nav>
 
 	<div class="nav-right">
@@ -183,6 +293,10 @@
 		display: flex;
 		gap: 0.25rem;
 		flex: 1;
+		/* DEV-260: 측정 사본(absolute) 기준점 + 계산 어긋난 순간의 삐져나옴 방지. */
+		position: relative;
+		min-width: 0;
+		overflow: hidden;
 	}
 
 	nav a {
@@ -191,9 +305,78 @@
 		font-size: 0.875rem;
 		color: var(--text-muted);
 		text-decoration: none;
+		/* DEV-260: overflow 계산은 항목 자연 폭 기준 — 줄바꿈/수축 금지. */
+		flex: none;
+		white-space: nowrap;
 		transition:
 			background 0.15s,
 			color 0.15s;
+	}
+
+	/* DEV-260: 측정 전용 숨김 사본 — 흐름/화면 밖, 폭만 정확하게. */
+	.nav-measure {
+		position: absolute;
+		visibility: hidden;
+		pointer-events: none;
+		display: flex;
+		gap: inherit;
+		left: -9999px;
+		top: 0;
+	}
+
+	/* DEV-260: 웹 fallback "…" overflow 버튼 + 드롭다운. */
+	.more-wrap {
+		position: relative;
+		flex: none;
+		display: flex;
+		align-items: center;
+	}
+	.btn-more {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 1.9rem;
+		height: 1.9rem;
+		border-radius: 6px;
+		font-size: 1rem;
+		line-height: 1;
+		color: var(--text-muted);
+		background: transparent;
+		border: none;
+		cursor: pointer;
+	}
+	.btn-more:hover,
+	.btn-more.open {
+		background: var(--nav-hover-bg);
+		color: var(--text);
+	}
+	.more-menu {
+		position: absolute;
+		top: calc(100% + 6px);
+		right: 0;
+		min-width: 10rem;
+		display: flex;
+		flex-direction: column;
+		padding: 0.3rem;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+		z-index: 300;
+	}
+	.more-menu a {
+		padding: 0.4rem 0.7rem;
+		border-radius: 6px;
+		font-size: 0.85rem;
+		color: var(--text);
+		text-decoration: none;
+	}
+	.more-menu a:hover {
+		background: var(--nav-hover-bg);
+	}
+	.more-menu a.active {
+		background: var(--nav-hover-bg);
+		color: var(--text-strong);
 	}
 
 	nav a:hover {
