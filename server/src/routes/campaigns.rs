@@ -15,9 +15,9 @@ use serde::Deserialize;
 
 use crate::error::{AppError, AppResult};
 use openguild_core::models::{
-    AddChecklistRequest, CampaignChecklistItem, CampaignDetail, CampaignRow,
-    CampaignSummary, CreateCampaignRequest, LinkQuestRequest, UpdateCampaignRequest,
-    UpdateChecklistRequest,
+    AddChecklistRequest, CampaignChecklistItem, CampaignDetail, CampaignHistoryEntry,
+    CampaignRow, CampaignSummary, CreateCampaignRequest, LinkQuestRequest,
+    UpdateCampaignRequest, UpdateChecklistRequest,
 };
 use openguild_core::ops::campaigns as ops;
 use openguild_core::services::campaigns as svc;
@@ -74,6 +74,15 @@ pub async fn update_campaign(
 ) -> AppResult<Json<CampaignRow>> {
     let row = svc::fetch_by_slug(&store.index_pool, &slug).await?;
     Ok(Json(ops::update_campaign(&store, row.id, body).await?))
+}
+
+/// DEV-226: GET /api/campaigns/{slug}/history — 캠페인 변경 이력, quest history 와 대칭.
+pub async fn list_history(
+    State(store): State<Store>,
+    Path(slug): Path<String>,
+) -> AppResult<Json<Vec<CampaignHistoryEntry>>> {
+    let row = svc::fetch_by_slug(&store.index_pool, &slug).await?;
+    Ok(Json(svc::list_history(&store.index_pool, row.id).await?))
 }
 
 pub async fn delete_campaign(

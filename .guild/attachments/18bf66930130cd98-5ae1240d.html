@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>worklog 상세 페이지 목업 (DEV-167)</title>
+<style>
+  :root {
+    --bg: #16161a; --surface: #1e1e24; --surface-2: #26262e;
+    --border: #34343e; --text: #e8e8ec; --text-muted: #8b8b96;
+    --accent: #7aa2f7; --success: #9ece6a; --warning: #e0af68;
+  }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; font-size: 14px; margin: 0; padding: 2rem; }
+  .page { max-width: 760px; margin: 0 auto; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .hdr { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .hdr .title { font-weight: 600; }
+  .unit { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .unit button { border: none; background: transparent; color: var(--text-muted); padding: 4px 12px; font-size: 12px; cursor: pointer; }
+  .unit button.on { background: rgba(122,162,247,.18); color: var(--accent); }
+  .nav { display: inline-flex; align-items: center; gap: 6px; margin-left: 12px; }
+  .nav button { border: 1px solid var(--border); background: transparent; color: var(--text); border-radius: 6px; padding: 3px 9px; font-size: 12px; cursor: pointer; }
+  .nav .label { font-size: 13px; font-weight: 600; min-width: 100px; text-align: center; }
+  .note { margin: 12px 16px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
+  .note .nh { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 12px; color: var(--text-muted); }
+  .note .nb { padding: 10px 12px; font-size: 13px; line-height: 1.6; }
+  .note a { color: var(--accent); text-decoration: none; }
+  .cnt { padding: 4px 16px 0; font-size: 12px; color: var(--text-muted); }
+  .tl { padding: 8px 16px 4px; }
+  .row { display: flex; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border); align-items: baseline; }
+  .row:last-child { border-bottom: none; }
+  .ts { font-family: Consolas, monospace; font-size: 12px; color: var(--text-muted); flex: none; width: 42px; }
+  .badge { flex: none; font-size: 11px; padding: 1px 8px; border-radius: 9px; }
+  .b-status { background: rgba(158,206,106,.15); color: var(--success); }
+  .b-comment { background: rgba(122,162,247,.15); color: var(--accent); }
+  .b-create { background: rgba(224,175,104,.15); color: var(--warning); }
+  .qid { color: var(--accent); font-family: Consolas, monospace; font-size: 12px; }
+  .body-line { font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .more { text-align: center; padding: 6px 0 10px; }
+  .more button { border: none; background: transparent; color: var(--text-muted); font-size: 12px; cursor: pointer; }
+  .sum { display: flex; gap: 16px; padding: 10px 16px; border-top: 1px solid var(--border); background: var(--surface-2); font-size: 12px; color: var(--text-muted); }
+  .sum b { color: var(--text); font-weight: 600; }
+  .sum .right { margin-left: auto; }
+</style>
+</head>
+<body>
+<!--
+  DEV-167 worklog 상세 페이지 목업 (admin 확정, 2026-07-05)
+  - route: /worklog (Nav 미노출 — HOME 요약 카드가 유일한 진입점)
+  - 헤더: 일/주/월 토글 + 날짜 네비게이션(◀ ▶ / 오늘)
+  - 노트: .guild/worklog/{date}.md — 인라인 편집(CodeMirror + cross-link 재사용).
+    주/월 뷰에선 기간 내 일별 노트 나열
+  - 타임라인: quest_history(상태변경) + quest/campaign 댓글 + quests.created_at(생성)
+    항목 클릭 → quest 상세 이동. 기본 접힘 + 더 보기
+  - 하단 집계: 종류별 count + done 전환 수
+-->
+<div class="page">
+  <div class="hdr">
+    <span class="title">🕘 작업 기록</span>
+    <span>
+      <span class="unit">
+        <button class="on">일</button><button>주</button><button>월</button>
+      </span>
+      <span class="nav">
+        <button>◀</button><span class="label">2026-07-05 (일)</span><button>▶</button><button>오늘</button>
+      </span>
+    </span>
+  </div>
+
+  <div class="note">
+    <div class="nh">
+      <span>📝 노트 — .guild/worklog/2026-07-05.md</span>
+      <button class="nav-btn" style="border:1px solid var(--border); background:transparent; color:var(--text); border-radius:6px; padding:2px 10px; font-size:12px;">편집</button>
+    </div>
+    <div class="nb">
+      cross-link 자동완성 버그 3건 정리. <a href="#">[[BUG-115]]</a> 는 maxRenderedOptions 가 원인이었음 — tooltip 쪽은 부수 수정.
+    </div>
+  </div>
+
+  <div class="cnt">활동 24건</div>
+
+  <div class="tl">
+    <div class="row"><span class="ts">21:42</span><span class="badge b-status">상태</span><span class="body-line"><span class="qid">BUG-115</span>&nbsp; testing → done</span></div>
+    <div class="row"><span class="ts">21:39</span><span class="badge b-comment">댓글</span><span class="body-line"><span class="qid">BUG-115</span>&nbsp; claude: 1차 수정(tooltips parent)은 실제로는 부수적…</span></div>
+    <div class="row"><span class="ts">21:30</span><span class="badge b-create">생성</span><span class="body-line"><span class="qid">BUG-115</span>&nbsp; [gui] 본문 편집기 cross-link 추천 목록…</span></div>
+    <div class="row"><span class="ts">20:58</span><span class="badge b-status">상태</span><span class="body-line"><span class="qid">DEV-227</span>&nbsp; testing → done</span></div>
+    <div class="row"><span class="ts">19:57</span><span class="badge b-comment">댓글</span><span class="body-line"><span class="qid">DEV-015</span>&nbsp; claude: CLI/server 언어 변경은 이미 DEV-205…</span></div>
+  </div>
+  <div class="more"><button>19건 더 보기 ▾</button></div>
+
+  <div class="sum">
+    <span><b>12</b> 상태변경</span>
+    <span><b>7</b> 댓글</span>
+    <span><b>5</b> 생성</span>
+    <span class="right">done 전환 <b>8</b></span>
+  </div>
+</div>
+</body>
+</html>

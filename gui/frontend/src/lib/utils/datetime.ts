@@ -44,7 +44,12 @@ export function formatTs(s: string | null | undefined): string {
  *
  * Quest Detail / History 에서 absolute + relative 둘 다 보여줄 때 사용.
  */
-export function formatRelative(s: string | null | undefined, now: Date = new Date()): string {
+// DEV-205: loc 파라미터 추가(기본 ko). 호출부가 $locale 을 넘기면 언어 반응.
+export function formatRelative(
+	s: string | null | undefined,
+	now: Date = new Date(),
+	loc: 'ko' | 'en' = 'ko'
+): string {
 	if (!s) return '';
 	const d = new Date(normalize(s));
 	if (Number.isNaN(d.getTime())) return s;
@@ -52,13 +57,13 @@ export function formatRelative(s: string | null | undefined, now: Date = new Dat
 	const diffMs = now.getTime() - d.getTime();
 	const sec = Math.floor(diffMs / 1000);
 	if (sec < 0) return formatTs(s); // 미래 — 절대값만
-	if (sec < 60) return '방금';
+	if (sec < 60) return loc === 'en' ? 'just now' : '방금';
 	const min = Math.floor(sec / 60);
-	if (min < 60) return `${min}분 전`;
+	if (min < 60) return loc === 'en' ? `${min}m ago` : `${min}분 전`;
 	const hr = Math.floor(min / 60);
-	if (hr < 24) return `${hr}시간 전`;
+	if (hr < 24) return loc === 'en' ? `${hr}h ago` : `${hr}시간 전`;
 	const day = Math.floor(hr / 24);
-	if (day < 7) return `${day}일 전`;
+	if (day < 7) return loc === 'en' ? `${day}d ago` : `${day}일 전`;
 	return formatTs(s);
 }
 
@@ -79,10 +84,13 @@ export function formatRelative(s: string | null | undefined, now: Date = new Dat
  * @param now    현재 시각 (테스트 / 매초 갱신용). 기본 `Date.now()`.
  * @param mode   'until-end' 면 날짜에 23:59:59 붙임. 'until-start' 면 00:00:00.
  */
+// DEV-205: 남은 시간 라벨의 언어. 'ko' 기본이라 loc 미지정 기존 호출은 그대로.
+// 호출부(마크업)가 $locale 을 넘기면 언어 토글에 반응한다.
 export function formatRemaining(
 	target: string,
 	now: number = Date.now(),
-	mode: 'until-start' | 'until-end' = 'until-end'
+	mode: 'until-start' | 'until-end' = 'until-end',
+	loc: 'ko' | 'en' = 'ko'
 ): string {
 	if (!target) return '';
 	let iso = target.trim();
@@ -96,13 +104,13 @@ export function formatRemaining(
 	const ms = t - now;
 	if (ms <= 0) return '';
 	const sec = Math.floor(ms / 1000);
-	if (sec < 60) return `${sec}초 남음`;
+	if (sec < 60) return loc === 'en' ? `${sec}s left` : `${sec}초 남음`;
 	const min = Math.floor(sec / 60);
-	if (min < 60) return `${min}분 남음`;
+	if (min < 60) return loc === 'en' ? `${min}m left` : `${min}분 남음`;
 	const hr = Math.floor(min / 60);
-	if (hr < 24) return `${hr}시간 남음`;
+	if (hr < 24) return loc === 'en' ? `${hr}h left` : `${hr}시간 남음`;
 	const day = Math.floor(hr / 24);
-	return `${day}일 남음`;
+	return loc === 'en' ? `${day}d left` : `${day}일 남음`;
 }
 
 /**

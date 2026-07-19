@@ -31,5 +31,6 @@ Thumbs.db
 *.suo
 *.user
 
-# Claude Code 로컬 설정
-.claude/
+# Claude Code 로컬 설정 — 단, skills/ 는 repo 공유 (agent 워크플로 규칙)
+.claude/*
+!.claude/skills/

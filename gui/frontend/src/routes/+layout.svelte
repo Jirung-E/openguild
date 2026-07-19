@@ -6,14 +6,19 @@
 	import { anyUnsaved, clearUnsaved } from '$lib/stores/unsaved';
 	import { onMount } from 'svelte';
 	import Nav from '$lib/components/Nav.svelte';
-	import UpdateBanner from '$lib/components/UpdateBanner.svelte';
-	// 앱 공용 toast — alert() 대체, 어디서든 동일 UI.
+	// 커스텀 타이틀바 — Windows Tauri 전용 (tauri.windows.conf.json 의
+	// decorations:false 와 세트). 네이티브 타이틀바 테마 어긋남 원천 해소.
+	import TitleBar from '$lib/components/TitleBar.svelte';
+	// DEV-259: 앱 알림 통합 호스트 — 토스트/업데이트/스키마 알림을 우하단 단일
+	// 스택으로. 업데이트·스키마 watcher 도 이 호스트가 내장(이전의 UpdateBanner/
+	// SchemaAheadBanner 껍데기 컴포넌트 제거).
 	import ToastHost from '$lib/components/ToastHost.svelte';
 	import { showToast } from '$lib/stores/toast';
-	import SchemaAheadBanner from '$lib/components/SchemaAheadBanner.svelte';
 	// DEV-074 fix13: window 스크롤 overlay — 컨텐츠 폭 차지 X.
 	import OverlayScrollbar from '$lib/components/OverlayScrollbar.svelte';
 	import { detectEnvironment } from '$lib/api/transport';
+	// BUG-140: 커스텀 타이틀바 플랫폼 판별(Windows/Linux) — 단일 진리원.
+	import { usesCustomTitlebar, isLinux } from '$lib/utils/platform';
 	import { uiScale, applyUiScaleToDocument } from '$lib/stores/uiScale';
 	import { contentWidth } from '$lib/stores/contentWidth';
 	import {
@@ -23,14 +28,63 @@
 		resolveTheme,
 		type ThemeChoice
 	} from '$lib/stores/theme';
+	// DEV-114: 커스텀 테마 — 시동 시 활성 프리셋의 토큰 override 복원.
+	import { initCustomTheme } from '$lib/stores/customThemes';
 	import { get } from 'svelte/store';
+	// DEV-205: 앱 언어 → <html lang>. 네이티브 컨트롤(날짜 선택기의 년-월-일
+	// 표기 등)이 앱 언어를 따르도록.
+	import { locale } from '$lib/stores/locale';
+	// DEV-255: 자식윈도우(검색 팔레트 "새 창으로 열기") 판정 — 메뉴바/타이틀바
+	// 일부 숨김에 사용.
+	import { isChildWindow, detectWindowKind } from '$lib/stores/windowKind';
 	import '$lib/styles/global.css';
 
 	let { children } = $props();
 
 	// DEV-052 후속: /welcome 라우트에선 Nav (Board/List/Admin/+New Quest) 숨김.
 	// 길드 컨텍스트가 없는 상태에서 의미 없는 액션 노출 방지.
-	let showNav = $derived($page.url.pathname !== '/welcome');
+	// DEV-255: 자식윈도우(단일 문서 보기)도 메뉴바 불필요 — 함께 숨김.
+	let showNav = $derived($page.url.pathname !== '/welcome' && !$isChildWindow);
+
+	onMount(() => {
+		detectWindowKind();
+	});
+
+	// DEV-255: 검색 팔레트 "새 창으로 열기"가 만든 자식윈도우는 항상 `/`
+	// (어떤 서빙 방식에서도 항상 존재가 보장되는 경로)로 뜬 뒤, 이 쿼리
+	// 파라미터로 실제 목적지를 넘겨받아 client-side goto 로 이동한다 —
+	// Tauri 의 asset protocol 이 임의의 딥링크 경로를 직접 서빙해준다는
+	// 보장이 없어(SPA fallback 미보장), 항상 이미 존재하는 진입점을 먼저
+	// 로드한 뒤 앱 안에서 라우팅하는 편이 dev/HTTP/Tauri 어디서나 동일하게
+	// 동작한다.
+	onMount(() => {
+		const target = $page.url.searchParams.get('winTarget');
+		if (target) void goto(target, { replaceState: true });
+	});
+
+	// 커스텀 타이틀바 — decorations:false 인 플랫폼(Windows/Linux, 각
+	// tauri.{platform}.conf.json)과 세트. BUG-140: Linux 도 커스텀 사용
+	// (판별을 usesCustomTitlebar() 로 단일화 — 자식윈도우 decorations 옵션과
+	// 어긋나지 않게). 표시 시 sticky 요소들(Nav 등)의 top offset 용
+	// CSS 변수(--titlebar-h)를 root 에 심는다.
+	const showTitleBar = usesCustomTitlebar();
+	// DEV-265: 리눅스는 네이티브 창 버튼을 더 크게 담기 위해 타이틀바를 살짝
+	// 높이고(+8px), 그만큼 메뉴바(Nav) 높이를 줄여(–8px) 콘텐츠 영역 총합은
+	// 그대로 유지한다. Windows/macOS 는 기존 32px 유지.
+	const linuxTitlebar = showTitleBar && isLinux();
+	$effect(() => {
+		if (typeof document === 'undefined') return;
+		const root = document.documentElement.style;
+		root.setProperty('--titlebar-h', showTitleBar ? (linuxTitlebar ? '40px' : '32px') : '0px');
+		// Nav 기본 높이 3.25rem(=52px @scale1). 리눅스에서만 8px 줄임.
+		root.setProperty('--nav-h', linuxTitlebar ? 'calc(3.25rem - 8px)' : '3.25rem');
+	});
+
+	// DEV-205: <html lang> 을 앱 언어에 맞춤 — 네이티브 date input 등이 반영.
+	$effect(() => {
+		if (typeof document === 'undefined') return;
+		document.documentElement.lang = $locale;
+	});
 
 	// DEV-153: 미저장 변경 통합 가드. 편집 중(unsaved.ts 에 보고된 dirty)이면
 	// 라우트 이동(링크/뒤로·앞으로가기)을 취소하고 공용 확인 모달을 띄운다.
@@ -180,19 +234,30 @@
 
 	// DEV-101 fix2: 컨텐츠 영역 폭 — `<html>` 의 `--content-max-width` 토큰 갱신.
 	// 페이지 max-width: var(--content-max-width, …) 사용처가 자동 반응.
+	// BUG-141: uiScale 과 동일하게 rAF 병합 — 슬라이더 드래그가 매 pointermove
+	// 마다 CSS 변수를 갱신하면(→ 전체 reflow) Linux(WebKitGTK)에서 버벅였다.
 	onMount(() => {
+		let rafId: number | null = null;
+		let pendingW = 0;
 		const unsub = contentWidth.subscribe((w) => {
-			if (typeof document !== 'undefined') {
-				document.documentElement.style.setProperty('--content-max-width', `${w}px`);
+			if (typeof document === 'undefined') return;
+			pendingW = w;
+			if (rafId !== null) return;
+			rafId = requestAnimationFrame(() => {
+				rafId = null;
+				document.documentElement.style.setProperty('--content-max-width', `${pendingW}px`);
 				// BUG-064 후속: 고정 폭 팝업/모달이 '컨텐츠 폭' 설정에 비례하도록
 				// --popup-scale 토큰 발급. 기준 1100px = 1.0, 0.9~1.3 으로 clamp
 				// (너무 좁거나 과하게 넓어지지 않게). 팝업 width 는
 				// calc(<base>rem * var(--popup-scale)) 로 참조.
-				const scale = Math.max(0.9, Math.min(1.3, w / 1100));
+				const scale = Math.max(0.9, Math.min(1.3, pendingW / 1100));
 				document.documentElement.style.setProperty('--popup-scale', scale.toFixed(3));
-			}
+			});
 		});
-		return () => unsub();
+		return () => {
+			if (rafId !== null) cancelAnimationFrame(rafId);
+			unsub();
+		};
 	});
 
 	// DEV-074: 테마 — store 변경 시 `<html data-theme>` 갱신. 'system' 일 때
@@ -216,9 +281,16 @@
 			void applyWindowTheme(t);
 		};
 		const unsubTheme = theme.subscribe(applyAll);
+		// DEV-114: 활성 커스텀 프리셋 복원 — base 테마 적용(위 subscribe 초기
+		// 발화) 후 override 를 얹는다. DEV-249: Tauri 는 ~/.openguild/themes.json
+		// 로드(async) 포함.
+		void initCustomTheme();
 		const unwatchSys = watchSystemPreference(() => {
 			// system 모드일 때만 재적용 (다른 모드는 사용자가 명시 — OS 변경 무시).
 			// 창 테마는 system=null 이라 OS 가 알아서 따라가므로 document 만 재적용.
+			// BUG-121: JS 가 색을 직접 계산하는 컴포넌트(QuestBoard 의 Cytoscape/SVG)
+			// 는 `effectiveTheme` 스토어를 구독 — 그쪽은 theme.ts 자체에서
+			// matchMedia listener 로 갱신되므로 여기서 별도 처리 불필요.
 			if (get(theme) === 'system') {
 				applyThemeToDocument('system');
 			}
@@ -298,12 +370,9 @@
 	});
 </script>
 
-<!-- BUG-041: DB schema 가 binary 보다 새로운 경우 알림 (Tauri 만). 항상 최상단. -->
-<SchemaAheadBanner />
-<!-- DEV-063 / DEV-194 후속: 업데이트 알림 — 우하단 floating toast(레이아웃
-     안 밀어냄), idle 아닌 모든 상태 표시. 모든 라우트(welcome 포함) 공통,
-     단일 mount — 페이지별 중복 토스트 제거됨. -->
-<UpdateBanner />
+{#if showTitleBar}
+	<TitleBar />
+{/if}
 {#if showNav}
 	<Nav />
 {/if}
@@ -311,6 +380,8 @@
 	{@render children()}
 </main>
 <OverlayScrollbar />
+<!-- DEV-259: 알림 통합 호스트(토스트/업데이트/스키마) — 우하단 단일 스택.
+     업데이트·스키마 watcher 내장. 모든 라우트 공통 단일 mount. -->
 <ToastHost />
 
 <!-- DEV-153: 미저장 변경 시 라우트 이동 확인 (모든 페이지 공통). -->
@@ -326,10 +397,10 @@
 
 <style>
 	main {
-		min-height: calc(100vh - 3.25rem);
+		min-height: calc(100vh - var(--nav-h, 3.25rem) - var(--titlebar-h, 0px));
 		background: var(--bg);
 	}
 	main.no-nav {
-		min-height: 100vh;
+		min-height: calc(100vh - var(--titlebar-h, 0px));
 	}
 </style>

@@ -11,10 +11,18 @@
 	import { onMount, onDestroy, tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import type { Quest } from '$lib/types';
-	import { makeQuestNodeSvgUrl, QUEST_NODE_W, QUEST_NODE_H } from '$lib/utils/quest-node-svg';
+	import { makeQuestNodeSvgUrl, QUEST_NODE_H } from '$lib/utils/quest-node-svg';
 	// DEV-074 fix3: theme 별 노드 색 — store 변경 시 reactive.
-	import { theme, resolveTheme } from '$lib/stores/theme';
-	let effectiveTheme = $derived(resolveTheme($theme));
+	// BUG-121: `theme`(ThemeChoice) 대신 `effectiveTheme` 을 직접 구독 —
+	// system 모드에서 OS 가 테마를 바꿔도 `theme` 값 자체는 'system' 그대로라
+	// $derived 가 재계산되지 않았다(QuestBoard 와 동일 원인).
+	import { effectiveTheme as effectiveThemeStore } from '$lib/stores/theme';
+	// BUG-117: SVG 노드 이미지는 px 고정이라 uiScale(root font-size)이 안
+	// 먹었음 — scale 배율을 직접 곱해 이미지/슬롯 폭 + marquee 계산에 반영.
+	import { uiScale } from '$lib/stores/uiScale';
+	// DEV-205 모듈2: 컨베이어 라벨 i18n.
+	import { locale, t } from '$lib/stores/locale';
+	let effectiveTheme = $derived($effectiveThemeStore);
 
 	let {
 		quests,
@@ -27,7 +35,15 @@
 	} = $props();
 
 	const GAP_PX = 12;
-	const CARD_W = QUEST_NODE_W;
+	// 홈에선 CampaignConveyor 카드(200px)와 비슷한 크기로 — 보드 노드 폭
+	// (QUEST_NODE_W=284)이 과하게 컸음(admin 피드백). SVG layout 폭을 200 으로
+	// 재배치 생성(글자 크기 유지, 제목만 더 일찍 truncate).
+	const CARD_W = 200;
+	// BUG-117: uiScale 반영 실효 크기 — 이미지/슬롯 폭과 marquee 폭·속도
+	// 계산이 같은 값을 봐야 흐름이 일관 (track gap 0.75rem 도 12px×scale).
+	let effCardW = $derived(Math.round(CARD_W * $uiScale));
+	let effCardH = $derived(Math.round(QUEST_NODE_H * $uiScale));
+	let effGap = $derived(GAP_PX * $uiScale);
 
 	let viewportEl: HTMLDivElement | undefined = $state(undefined);
 	let trackEl: HTMLDivElement | undefined = $state(undefined);
@@ -45,10 +61,10 @@
 	let lastFrameTime = 0;
 
 	let cardsOnlyW = $derived(
-		quests.length === 0 ? 0 : quests.length * CARD_W + (quests.length - 1) * GAP_PX
+		quests.length === 0 ? 0 : quests.length * effCardW + (quests.length - 1) * effGap
 	);
 	let needsMarquee = $derived(viewportW > 0 && cardsOnlyW > viewportW);
-	let pixelsPerSec = $derived((CARD_W + GAP_PX) / secondsPerCard);
+	let pixelsPerSec = $derived((effCardW + effGap) / secondsPerCard);
 
 	function isPaused(t: number): boolean {
 		if (isDragging || hoverPause || userPaused) return true;
@@ -174,7 +190,7 @@
 		onpointercancel={onPointerUp}
 		onclickcapture={onClickCapture}
 		role="region"
-		aria-label={mode === 'overdue' ? '마감 지남 퀘스트' : '마감 임박 퀘스트'}
+		aria-label={mode === 'overdue' ? t('conveyor.overdueQuests', $locale) : t('conveyor.imminentQuests', $locale)}
 	>
 		<div
 			class="track"
@@ -188,38 +204,40 @@
 				<button
 					type="button"
 					class="slot"
+					style:flex-basis={`${effCardW}px`}
 					title={`${q.quest_id}  ${q.title}`}
 					onclick={() => openQuest(q)}
 				>
 					<img
-						src={makeQuestNodeSvgUrl(q, overlayFor(q), effectiveTheme)}
+						src={makeQuestNodeSvgUrl(q, overlayFor(q), effectiveTheme, CARD_W)}
 						alt={`${q.quest_id} ${q.title}`}
-						width={CARD_W}
-						height={QUEST_NODE_H}
+						width={effCardW}
+						height={effCardH}
 						draggable="false"
 					/>
 				</button>
 			{/each}
 			{#if needsMarquee}
-				<div class="spacer" aria-hidden="true"></div>
+				<div class="spacer" style:flex-basis={`${effCardW}px`} aria-hidden="true"></div>
 				{#each quests as q, i (`dup-${i}`)}
 					<button
 						type="button"
 						class="slot"
+						style:flex-basis={`${effCardW}px`}
 						aria-hidden="true"
 						tabindex="-1"
 						onclick={() => openQuest(q)}
 					>
 						<img
-							src={makeQuestNodeSvgUrl(q, overlayFor(q), effectiveTheme)}
+							src={makeQuestNodeSvgUrl(q, overlayFor(q), effectiveTheme, CARD_W)}
 							alt=""
-							width={CARD_W}
-							height={QUEST_NODE_H}
+							width={effCardW}
+							height={effCardH}
 							draggable="false"
 						/>
 					</button>
 				{/each}
-				<div class="spacer" aria-hidden="true"></div>
+				<div class="spacer" style:flex-basis={`${effCardW}px`} aria-hidden="true"></div>
 			{/if}
 		</div>
 	</div>
@@ -229,8 +247,8 @@
 				class="play-pause"
 				type="button"
 				onclick={() => (userPaused = !userPaused)}
-				aria-label={userPaused ? '재생' : '정지'}
-				title={userPaused ? '자동 회전 재생' : '자동 회전 정지'}
+				aria-label={userPaused ? t('carousel.play', $locale) : t('carousel.pause', $locale)}
+				title={userPaused ? t('carousel.autoPlay', $locale) : t('carousel.autoPause', $locale)}
 			>
 				{userPaused ? '▶' : '⏸'}
 			</button>
@@ -258,7 +276,7 @@
 		will-change: transform;
 	}
 	.slot {
-		flex: 0 0 284px;
+		flex: 0 0 200px;
 		background: transparent;
 		border: none;
 		padding: 0;
@@ -269,7 +287,7 @@
 		align-items: stretch;
 	}
 	.spacer {
-		flex: 0 0 284px;
+		flex: 0 0 200px;
 	}
 	/* BUG-035: 실제 드래그 중 슬롯 클릭 차단. marquee 가 아닐 땐 자연스러운 click. */
 	.conveyor.marquee.dragging .slot {

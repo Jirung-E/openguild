@@ -10,8 +10,8 @@ use sqlx::SqlitePool;
 
 use crate::error::{AppError, AppResult};
 use crate::models::{
-    AddChecklistRequest, CampaignChecklistItem, CampaignLinkedQuest, CampaignRow,
-    CampaignStatus, CampaignSummary, CreateCampaignRequest, UpdateCampaignRequest,
+    AddChecklistRequest, CampaignChecklistItem, CampaignHistoryEntry, CampaignLinkedQuest,
+    CampaignRow, CampaignStatus, CampaignSummary, CreateCampaignRequest, UpdateCampaignRequest,
     UpdateChecklistRequest,
 };
 
@@ -63,6 +63,18 @@ pub async fn fetch_by_id(pool: &SqlitePool, id: i64) -> AppResult<CampaignRow> {
         .fetch_optional(pool)
         .await?;
     row.ok_or_else(|| AppError::NotFound(format!("campaign id {id} not found")))
+}
+
+/// DEV-226: campaign 의 변경 이력 (최신 → 과거 순). quest 의 list_history 와 동일 패턴.
+pub async fn list_history(pool: &SqlitePool, campaign_id: i64) -> AppResult<Vec<CampaignHistoryEntry>> {
+    let rows = sqlx::query_as::<_, CampaignHistoryEntry>(
+        "SELECT id, campaign_id, campaign_slug, ts, op, old_value, new_value, actor
+         FROM campaign_history WHERE campaign_id = ? ORDER BY ts DESC, id DESC",
+    )
+    .bind(campaign_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
 }
 
 // ─────────────────────── 생성 / 수정 / 삭제 ───────────────────────
@@ -360,6 +372,7 @@ pub async fn list_linked_quests(
                   qt.color  AS type_color,
                   qs.slug    AS status_slug,
                   qs.name_en AS status_name_en,
+                  qs.name_ko AS status_name_ko,
                   qs.color   AS status_color
              FROM campaign_quests cq
              JOIN quests q          ON cq.quest_id = q.id
@@ -503,6 +516,30 @@ pub async fn list_upcoming_summaries(
     Ok(out)
 }
 
+/// DEV-233: 캠페인에 링크된 alive quest 를 상태별로 카운트. sort_order 순
+/// (open → ... → done) — frontend 가 진행바를 안정적인 순서로 렌더.
+/// summarize() 와 ops::campaigns::fetch_detail 이 공유.
+pub async fn quest_status_counts(
+    pool: &SqlitePool,
+    campaign_id: i64,
+) -> AppResult<Vec<crate::models::CampaignQuestStatusCount>> {
+    let rows = sqlx::query_as(
+        "SELECT qs.slug AS status_slug, qs.name_en AS status_name_en,
+                qs.name_ko AS status_name_ko,
+                qs.color AS status_color, qs.sort_order, COUNT(*) AS count
+           FROM campaign_quests cq
+           JOIN quests q ON q.id = cq.quest_id
+           JOIN quest_statuses qs ON qs.id = q.status_id
+          WHERE cq.campaign_id = ? AND q.deleted_at IS NULL
+          GROUP BY qs.id
+          ORDER BY qs.sort_order ASC",
+    )
+    .bind(campaign_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
 async fn summarize(pool: &SqlitePool, c: CampaignRow) -> AppResult<CampaignSummary> {
     let stats: (i64, i64) = sqlx::query_as(
         "SELECT COUNT(*),
@@ -538,6 +575,7 @@ async fn summarize(pool: &SqlitePool, c: CampaignRow) -> AppResult<CampaignSumma
     } else {
         0.0
     };
+    let quest_status_counts = quest_status_counts(pool, c.id).await?;
     Ok(CampaignSummary {
         id: c.id,
         campaign_slug: c.campaign_slug,
@@ -554,5 +592,6 @@ async fn summarize(pool: &SqlitePool, c: CampaignRow) -> AppResult<CampaignSumma
         quest_total,
         quest_done,
         quest_progress,
+        quest_status_counts,
     })
 }

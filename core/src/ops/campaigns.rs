@@ -45,6 +45,8 @@ pub async fn fetch_detail(store: &Store, slug: &str) -> AppResult<CampaignDetail
     } else {
         0.0
     };
+    // DEV-233: 상태별 카운트 — CampaignCard 의 summarize() 와 동일 헬퍼 공유.
+    let quest_status_counts = sql::quest_status_counts(&store.index_pool, row.id).await?;
     Ok(CampaignDetail {
         campaign: row,
         checklists,
@@ -54,6 +56,7 @@ pub async fn fetch_detail(store: &Store, slug: &str) -> AppResult<CampaignDetail
         quest_progress,
         // DEV-156: 첨부는 Store 가진 호출 계층(GUI 커맨드)에서 채움.
         attachments: Vec::new(),
+        quest_status_counts,
     })
 }
 
@@ -86,9 +89,49 @@ pub async fn update_campaign(
     .await
     .map_err(AppError::Internal)?;
 
+    // DEV-226: status 변경 이력 기록 — quest 의 change_status(quest_history)
+    // 와 동일 패턴. status 가 요청에 없거나 현재값과 같으면(no-op) 기록 안 함.
+    let old_status = if body.status.is_some() {
+        Some(sql::fetch_by_id(&store.index_pool, id).await?.status)
+    } else {
+        None
+    };
+    let new_status = body.status.clone();
+
     let description_explicit = body.description.is_some();
     let camp = sql::update(&store.index_pool, id, body).await?;
     write_campaign_file(store, &camp, description_explicit).await?;
+
+    if let (Some(old), Some(new)) = (old_status, new_status)
+        && old != new
+    {
+        let ts = crate::time::now_local_iso8601();
+        sqlx::query(
+            "INSERT INTO campaign_history (campaign_id, campaign_slug, ts, op, old_value, new_value)
+             VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind(id)
+        .bind(&camp.campaign_slug)
+        .bind(&ts)
+        .bind("change_status")
+        .bind(&old)
+        .bind(&new)
+        .execute(&store.index_pool)
+        .await?;
+        // DEV-180 패턴: 파일 사이드카에도 append — 파일이 진리원.
+        crate::repo::history::append(
+            &store.paths,
+            &camp.campaign_slug,
+            &crate::repo::history::HistoryEntry {
+                ts,
+                op: "change_status".into(),
+                old: Some(old),
+                new: Some(new),
+            },
+        )
+        .map_err(AppError::Internal)?;
+    }
+
     Ok(camp)
 }
 
@@ -137,7 +180,7 @@ pub async fn set_banner_image(
         let _ = std::fs::remove_file(store.paths.dot_guild().join(old_rel));
     }
     std::fs::copy(source_path, &dest)
-        .map_err(|e| AppError::Internal(anyhow::anyhow!("이미지 복사 실패: {e}")))?;
+        .map_err(|e| AppError::Internal(anyhow::anyhow!(crate::tf!("이미지 복사 실패: {e}", "image copy failed: {e}"))))?;
 
     // 2. DB + 파일.
     sqlx::query("UPDATE campaigns SET image_path = ? WHERE id = ?")

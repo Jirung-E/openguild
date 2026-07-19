@@ -60,23 +60,25 @@ describe('QuestHistory', () => {
 		expect(mockListHistory).toHaveBeenCalledWith(42);
 	});
 
-	it('change_status (slug) → name_en 으로 렌더', async () => {
+	// DEV-015: status 표시 이름이 언어 반응 — 테스트 기본 locale(ko, localStorage
+	// 빈 상태 기본값) 에선 name_ko 로 렌더된다.
+	it('change_status (slug) → 언어 반응 이름(기본 ko = name_ko) 으로 렌더', async () => {
 		mockListHistory.mockResolvedValue([entry(1, 'change_status', 'open', 'in_progress')]);
 		render(QuestHistory, { props: { questId: 42, statuses } });
 		await waitFor(() => {
-			expect(screen.getByText('Open')).toBeInTheDocument();
-			expect(screen.getByText('In Progress')).toBeInTheDocument();
+			expect(screen.getByText('게시됨')).toBeInTheDocument();
+			expect(screen.getByText('진행중')).toBeInTheDocument();
 		});
 		const items = screen.getAllByTestId('qh-item');
 		expect(items).toHaveLength(1);
 	});
 
-	it('DEV-042 legacy: 숫자 status_id → name_en + "(legacy)" 부착', async () => {
+	it('DEV-042 legacy: 숫자 status_id → 이름 + "(legacy)" 부착', async () => {
 		mockListHistory.mockResolvedValue([entry(1, 'change_status', '1', '2')]);
 		render(QuestHistory, { props: { questId: 42, statuses } });
 		await waitFor(() => {
-			expect(screen.getByText('Open (legacy)')).toBeInTheDocument();
-			expect(screen.getByText('In Progress (legacy)')).toBeInTheDocument();
+			expect(screen.getByText('게시됨 (legacy)')).toBeInTheDocument();
+			expect(screen.getByText('진행중 (legacy)')).toBeInTheDocument();
 		});
 	});
 
@@ -94,7 +96,7 @@ describe('QuestHistory', () => {
 		render(QuestHistory, { props: { questId: 42, statuses } });
 		await waitFor(() => {
 			expect(screen.getByText('(없음)')).toBeInTheDocument();
-			expect(screen.getByText('Open')).toBeInTheDocument();
+			expect(screen.getByText('게시됨')).toBeInTheDocument();
 		});
 	});
 

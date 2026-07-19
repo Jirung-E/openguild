@@ -12,7 +12,14 @@
 	// BUG-033: goto 제거 — anchor href 로 native navigate.
 	import type { CampaignSummary } from '$lib/types';
 	import { formatRemaining } from '$lib/utils/datetime';
+	// DEV-205 모듈2: 카드 문자열 i18n.
+	import { locale, t } from '$lib/stores/locale';
+	// DEV-015: status 표시 이름 — 언어 반응.
+	import { questStatusLabel } from '$lib/utils/status-label';
 	import { isCampaignDone } from '$lib/utils/campaign-progress';
+	// DEV-233 후속: 캐러셀/컨베이어의 transform 이 fixed 기준을 바꿔 툴팁이
+	// 잘리는 문제 — body 직속으로 이동.
+	import { portal } from '$lib/utils/portal';
 
 	let {
 		summary,
@@ -33,14 +40,14 @@
 	function fmtPeriod(): string {
 		const a = summary.started_at?.trim() || '';
 		const b = summary.ended_at?.trim() || '';
-		if (!a && !b) return '기간 미정';
+		if (!a && !b) return t('campaignList.periodUndefined', $locale);
 		if (a && !b) return `${a} ~`;
 		if (!a && b) return `~ ${b}`;
 		return `${a} ~ ${b}`;
 	}
 
 	function progressText(): string {
-		if (summary.checklist_total === 0) return '체크리스트 없음';
+		if (summary.checklist_total === 0) return t('card.noChecklist', $locale);
 		const pct = Math.round(summary.progress * 100);
 		return `${summary.checklist_checked}/${summary.checklist_total} (${pct}%)`;
 	}
@@ -51,14 +58,36 @@
 	let questPct = $derived(summary.quest_progress ?? 0);
 	let questFull = $derived(questTotal > 0 && questDone === questTotal);
 	function questProgressText(): string {
-		if (questTotal === 0) return '링크된 퀘스트 없음';
+		if (questTotal === 0) return t('card.noLinkedQuests', $locale);
 		const pct = Math.round(questPct * 100);
 		return `${questDone}/${questTotal} (${pct}%)`;
 	}
 
+	// DEV-233(기획 변경, admin 2026-07-10): 기본은 기존 단일 채움 그대로 두고,
+	// hover 시에만 상태별 stacked 세그먼트 + 카운트 팝업으로 전환. 마우스가
+	// 바를 벗어나면 원래대로. 완료된 캠페인(questFull)은 hover 해도 기존 초록
+	// 단색 그대로(admin 확인 "완료 시 단색 유지 고려" — 의미 없는 정보라 skip).
+	let questBarEl = $state<HTMLDivElement | null>(null);
+	let questBarHover = $state(false);
+	let tooltipTop = $state(0);
+	let tooltipLeft = $state(0);
+	function onQuestBarEnter() {
+		if (questFull || !questBarEl) return;
+		const r = questBarEl.getBoundingClientRect();
+		tooltipTop = r.top;
+		tooltipLeft = r.left;
+		questBarHover = true;
+	}
+	function onQuestBarLeave() {
+		questBarHover = false;
+	}
+	const showStack = $derived(
+		questBarHover && !questFull && (summary.quest_status_counts?.length ?? 0) > 0
+	);
+
 	function activeRemainingLabel(): string {
 		if (!summary.ended_at?.trim()) return '';
-		return formatRemaining(summary.ended_at, now, 'until-end');
+		return formatRemaining(summary.ended_at, now, 'until-end', $locale);
 	}
 
 	// BUG-031 → DEV-079: 진행중 카드의 남은 기간 색.
@@ -80,7 +109,7 @@
 
 	function upcomingRemainingLabel(): string {
 		if (!summary.started_at?.trim()) return '';
-		return formatRemaining(summary.started_at, now, 'until-start');
+		return formatRemaining(summary.started_at, now, 'until-start', $locale);
 	}
 
 	// DEV-080: 'overdue' 모드용 — "n일 지남". ended_at 기준.
@@ -94,9 +123,10 @@
 		const days = Math.floor(elapsedMs / (24 * 60 * 60 * 1000));
 		if (days < 1) {
 			const hr = Math.floor(elapsedMs / (60 * 60 * 1000));
-			return hr < 1 ? '방금 지남' : `${hr}시간 지남`;
+			if (hr < 1) return t('card.justPassed', $locale);
+			return `${hr}${t('card.hoursPassed', $locale)}`;
 		}
-		return `${days}일 지남`;
+		return `${days}${t('card.daysPassed', $locale)}`;
 	}
 
 	// BUG-033: `<button onclick={goto}>` 대신 native `<a href>` 사용. button +
@@ -131,7 +161,7 @@
 	{#if mode === 'active'}
 		<div class="head">
 			<span class="slug">{summary.campaign_slug}</span>
-			{#if completed}<span class="done-mark" title="완료">✓ 완료</span>{/if}
+			{#if completed}<span class="done-mark" title={t('common.done', $locale)}>{t('common.doneMark', $locale)}</span>{/if}
 		</div>
 		<div class="title">{summary.title}</div>
 		<div class="meta">
@@ -145,8 +175,8 @@
 				{/if}
 			</div>
 			<!-- 체크리스트 progress -->
-			<div class="progress-row" title="체크리스트 진행률">
-				<span class="progress-label">체크</span>
+			<div class="progress-row" title={t('card.checkProgress', $locale)}>
+				<span class="progress-label">{t('card.check', $locale)}</span>
 				<div class="progress-bar">
 					<div
 						class="progress-fill"
@@ -158,16 +188,33 @@
 					{progressText()}
 				</div>
 			</div>
-			<!-- DEV-093: 링크 퀘스트 progress (있을 때만). -->
+			<!-- DEV-093: 링크 퀘스트 progress (있을 때만). DEV-233: hover 시 상태별 stacked. -->
 			{#if questTotal > 0}
-				<div class="progress-row" title="링크된 퀘스트의 완료 비율 (status.counts_as_done)">
-					<span class="progress-label">퀘스트</span>
-					<div class="progress-bar">
-						<div
-							class="progress-fill"
-							class:done={questFull}
-							style:width={`${Math.round(questPct * 100)}%`}
-						></div>
+				<div class="progress-row" title={t('card.questProgress', $locale)}>
+					<span class="progress-label">{t('card.quest', $locale)}</span>
+					<div
+						class="progress-bar"
+						bind:this={questBarEl}
+						role="img"
+						aria-label={questProgressText()}
+						onmouseenter={onQuestBarEnter}
+						onmouseleave={onQuestBarLeave}
+					>
+						{#if showStack}
+							{#each summary.quest_status_counts ?? [] as sc (sc.status_slug)}
+								<div
+									class="progress-seg"
+									style:width={`${(sc.count / questTotal) * 100}%`}
+									style:background={sc.status_color}
+								></div>
+							{/each}
+						{:else}
+							<div
+								class="progress-fill"
+								class:done={questFull}
+								style:width={`${Math.round(questPct * 100)}%`}
+							></div>
+						{/if}
 					</div>
 					<div class="progress-text" class:done-text={questFull}>
 						{questProgressText()}
@@ -198,6 +245,30 @@
 		</div>
 	{/if}
 </a>
+
+<!-- DEV-233: 카드가 overflow:hidden(배너 클립용) 이라 absolute 팝업은 잘림 —
+     position:fixed + 좌표 계산(BUG-125 emoji 팝업과 동일 접근)으로 escape.
+     후속(admin 보고): 홈 캐러셀(.track translateX)/컨베이어(will-change:
+     transform) 안에서는 fixed 의 containing block 이 그 조상으로 바뀌어
+     좌표가 틀어지고 overflow 클리핑까지 받음 — use:portal 로 body 직속 이동. -->
+{#if showStack}
+	<div
+		class="quest-status-tooltip"
+		use:portal
+		style:top={`${tooltipTop}px`}
+		style:left={`${tooltipLeft}px`}
+	>
+		{#each summary.quest_status_counts ?? [] as sc (sc.status_slug)}
+			<div class="tooltip-row">
+				<span class="tooltip-dot" style:background={sc.status_color}></span>
+				<span class="tooltip-name">{questStatusLabel(sc, $locale)}</span>
+				<span class="tooltip-count"
+					>{sc.count}{t('common.countSuffix', $locale)} ({Math.round((sc.count / questTotal) * 100)}%)</span
+				>
+			</div>
+		{/each}
+	</div>
+{/if}
 
 <style>
 	/* BUG-033: `<a>` 로 변경. button 의 default 스타일 / focus outline 제거 +
@@ -376,6 +447,7 @@
 		background: var(--bg-subtle);
 		border-radius: 2px;
 		overflow: hidden;
+		display: flex;
 	}
 	.progress-fill {
 		height: 100%;
@@ -387,6 +459,45 @@
 	/* BUG-025: 100% 시 초록 */
 	.progress-fill.done {
 		background: var(--success-strong);
+	}
+	/* DEV-233: hover 시 상태별 stacked 세그먼트 — progress-fill 대신 렌더. */
+	.progress-seg {
+		height: 100%;
+	}
+	/* DEV-233: 상태별 카운트 팝업 — position:fixed 로 카드의 overflow:hidden 회피. */
+	.quest-status-tooltip {
+		position: fixed;
+		transform: translateY(-100%) translateY(-6px);
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		padding: 0.4rem 0.6rem;
+		font-size: 0.72rem;
+		z-index: 50;
+		box-shadow: 0 4px 12px color-mix(in srgb, black 25%, transparent);
+		pointer-events: none;
+		display: flex;
+		flex-direction: column;
+		gap: 0.2rem;
+		white-space: nowrap;
+	}
+	.tooltip-row {
+		display: flex;
+		align-items: center;
+		gap: 0.35rem;
+	}
+	.tooltip-dot {
+		width: 0.5rem;
+		height: 0.5rem;
+		border-radius: 50%;
+		flex: none;
+	}
+	.tooltip-name {
+		color: var(--text);
+		font-weight: 600;
+	}
+	.tooltip-count {
+		color: var(--text-muted);
 	}
 	.progress-text {
 		font-size: 0.7rem;

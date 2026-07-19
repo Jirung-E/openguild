@@ -6,6 +6,10 @@
 	// Promise 캐싱하므로 별도 캐시 불필요.
 	import type { Core, NodeSingular, Css, StylesheetJson } from 'cytoscape';
 	import { goto } from '$app/navigation';
+	// DEV-205 모듈3: Quest Board 문자열 i18n.
+	import { locale, t } from '$lib/stores/locale';
+	// DEV-015: status 표시 이름 — 언어 반응(ko 면 name_ko 우선, 빈 값이면 en).
+	import { statusLabel, questStatusLabel } from '$lib/utils/status-label';
 	import { questsApi } from '$lib/api/quests';
 	// DEV-142 후속: 상태 변경 실패(미해결 토론 등) 시 통일된 toast 경고.
 	import { showToast } from '$lib/stores/toast';
@@ -227,7 +231,7 @@
   ${
 		urgWarn
 			? `<text x="${ulX + ulW + 5}" y="21.5" fill="${dangerFill}"
-    font-size="12" font-weight="700" font-family="system-ui,sans-serif"><title>urgency 원본값 ${quest.urgency} 가 범위(1-4) 밖 — clamp 표시 중</title>⚠</text>`
+    font-size="12" font-weight="700" font-family="system-ui,sans-serif"><title>${t('board.urgencyClampPre', get(locale))}${quest.urgency}${t('board.urgencyClampPost', get(locale))}</title>⚠</text>`
 			: ''
 	}
   ${
@@ -307,6 +311,18 @@
 	function slugOf(statusId: number): string {
 		return sorted.find((s) => s.id === statusId)?.slug ?? '';
 	}
+
+	// DEV-015: 언어 토글 시 레인 라벨 갱신 — 레인 헤더는 buildLaneDivs 가
+	// imperative DOM 으로 만들어 Svelte 반응이 안 닿음. locale 변경에만 반응해
+	// 라벨 텍스트만 다시 쓴다(헤더 DOM 순서 = sorted 순서, buildLaneDivs 참고).
+	$effect(() => {
+		const loc = $locale;
+		if (!headersEl) return;
+		headersEl.querySelectorAll<HTMLElement>('.lane-label').forEach((el, i) => {
+			const s = sorted[i];
+			if (s) el.textContent = statusLabel(s, loc);
+		});
+	});
 
 	// ── 반응형 상태 ──────────────────────────────────────────────
 
@@ -742,7 +758,10 @@
 
 	// DEV-074 fix: light theme 시 노드 bg 색 light tone 으로. theme store
 	// subscribe — 변경 시 모든 노드 의 urgencyBg data 갱신 + cy.style 적용.
-	import { theme, resolveTheme, themePalette } from '$lib/stores/theme';
+	// BUG-121: `theme`(ThemeChoice) 대신 `effectiveTheme` 을 구독 — system
+	// 모드에서 OS 가 테마를 바꿔도 `theme` 값 자체는 'system' 그대로라
+	// writable 이 재통지하지 않아, 노드/SVG 재생성이 전혀 발화하지 않았다.
+	import { theme, effectiveTheme, resolveTheme, themePalette } from '$lib/stores/theme';
 	function currentEffectiveTheme(): 'dark' | 'light' {
 		return resolveTheme(getStore(theme));
 	}
@@ -905,7 +924,12 @@
 				? absToVisualX(laneFirstCellX(li, cols), statusId)
 				: laneFirstCellX(li, cols);
 		const localX = x - firstX;
-		const colIdx = Math.round(localX / cellW);
+		// BUG-113: colIdx 가 [0, cols-1] 로 안 잘려 있어, 레인 폭 자체는 항상
+		// (더 많은 열도 들어갈 만큼) 넓기 때문에 1/2 열 snap 인 레인에서도 옆쪽에
+		// 드롭하면 반올림된 colIdx 가 그 레인의 col 수를 넘어서 버렸다 —
+		// 그 값이 우연히 3열 grid 의 바깥쪽 셀 위치와 겹쳐 "3열 snap 의 양 끝
+		// 으로 스냅되는" 것처럼 보였음. 레인에 설정된 col 수 범위로 clamp.
+		const colIdx = Math.max(0, Math.min(cols - 1, Math.round(localX / cellW)));
 		const sx = firstX + colIdx * cellW;
 		// Y 그리드 기준: 보드 상단 + NODE_H/2 (첫 셀 중앙)
 		const baseY = LANE_TOP + 16 + NODE_H / 2;
@@ -1034,7 +1058,7 @@
 					node.data('statusId', target.statusId);
 					applyStatusChange(record.questId, target.statusId);
 				} catch (e) {
-					showToast(e instanceof Error ? e.message : '상태 변경 실패', 'error');
+					showToast(e instanceof Error ? e.message : t('common.statusChangeFailed', get(locale)), 'error');
 					busy = false;
 					return;
 				}
@@ -1059,7 +1083,7 @@
 						node.data('statusId', target.statusId);
 						applyStatusChange(item.questId, target.statusId);
 					} catch (e) {
-						showToast(e instanceof Error ? e.message : '상태 변경 실패', 'error');
+						showToast(e instanceof Error ? e.message : t('common.statusChangeFailed', get(locale)), 'error');
 						continue;
 					}
 				}
@@ -1636,6 +1660,53 @@
 		syncExpandedPos();
 	}
 
+	// DEV-208: 터치스크린 핀치-투-줌. 계측으로 WebView2 가 touch 이벤트를 JS 로
+	// 전달함을 확인(touches=2 도달) — 네이티브 변경 없이 커스텀 핸들러로 구현.
+	// cytoscape 는 userZoomingEnabled=false(BUG-090)라 자체 핀치 줌이 없고,
+	// 두 손가락 동안 cytoscape 의 한 손가락 pan 과 싸우지 않도록 pinch 중엔
+	// userPanningEnabled 를 잠시 끈다. 한 손가락 pan/탭/노드 드래그는 cytoscape
+	// 기본 터치 처리 그대로.
+	let pinch: { lastDist: number; lastMidX: number; lastMidY: number } | null = null;
+	function touchDistMid(e: TouchEvent): { dist: number; midX: number; midY: number } {
+		const a = e.touches[0];
+		const b = e.touches[1];
+		return {
+			dist: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY),
+			midX: (a.clientX + b.clientX) / 2,
+			midY: (a.clientY + b.clientY) / 2
+		};
+	}
+	function onBoardTouchStart(e: TouchEvent) {
+		if (!cy || e.touches.length !== 2) return;
+		e.preventDefault(); // 브라우저/WebView2 의 네이티브 제스처 차단.
+		const { dist, midX, midY } = touchDistMid(e);
+		pinch = { lastDist: dist, lastMidX: midX, lastMidY: midY };
+		cy.userPanningEnabled(false);
+	}
+	function onBoardTouchMove(e: TouchEvent) {
+		if (!cy || !pinch || e.touches.length !== 2) return;
+		e.preventDefault();
+		const { dist, midX, midY } = touchDistMid(e);
+		if (pinch.lastDist > 0 && dist > 0) {
+			const rect = container.getBoundingClientRect();
+			// 두 손가락 거리비 = 줌 배율, 중점 기준 줌.
+			cy.zoom({
+				level: cy.zoom() * (dist / pinch.lastDist),
+				renderedPosition: { x: midX - rect.left, y: midY - rect.top }
+			});
+			// 중점 이동분 = pan (핀치하며 끌기).
+			cy.panBy({ x: midX - pinch.lastMidX, y: midY - pinch.lastMidY });
+		}
+		pinch = { lastDist: dist, lastMidX: midX, lastMidY: midY };
+	}
+	function onBoardTouchEnd(e: TouchEvent) {
+		if (e.touches.length >= 2) return;
+		if (pinch) {
+			pinch = null;
+			cy?.userPanningEnabled(true);
+		}
+	}
+
 	// BUG-090(admin 후속): "마우스로 컨트롤시에는 이전과 같이 동작해야함" —
 	// 트랙패드 two-finger 스크롤은 pan, 그러나 일반 마우스의 plain wheel 은
 	// 예전처럼 줌이어야 한다는 피드백. 둘 다 ctrlKey=false 로 들어와 modifier 로는
@@ -1663,6 +1734,35 @@
 	//   - 일반 마우스의 plain wheel = 줌(admin 피드백 — 이전 동작 유지)
 	//   - 트랙패드의 plain two-finger 스크롤만 pan
 	// cy.zoom/panBy 는 'pan'/'zoom' 이벤트를 emit → 기존 syncLanes 자동 적용.
+	// BUG-144: 트랙패드 연속 스크롤/줌은 프레임당 여러 wheel 이벤트가 들어오는데,
+	// 매 이벤트마다 cy.zoom()/panBy() 를 동기 호출하면 그만큼 캔버스 전체를
+	// 다시 그려 프레임당 여러 번 렌더 — "연산량 대비 비정상적으로 느림" 체감의
+	// 원인. uiScale.ts 의 rAF 병합(BUG-141)과 같은 패턴: 같은 프레임 안의
+	// wheel 이벤트는 누적만 하고, 실제 cy 반영은 프레임당 1회로 상한.
+	let wheelRaf: number | null = null;
+	let pendingZoom: { level: number; x: number; y: number } | null = null;
+	let pendingPan: { x: number; y: number } | null = null;
+
+	function flushBoardWheel() {
+		wheelRaf = null;
+		if (!cy) {
+			pendingZoom = null;
+			pendingPan = null;
+			return;
+		}
+		if (pendingZoom) {
+			cy.zoom({
+				level: pendingZoom.level,
+				renderedPosition: { x: pendingZoom.x, y: pendingZoom.y }
+			});
+			pendingZoom = null;
+		}
+		if (pendingPan) {
+			cy.panBy(pendingPan);
+			pendingPan = null;
+		}
+	}
+
 	function onBoardWheel(e: WheelEvent) {
 		if (!cy) return;
 		e.preventDefault();
@@ -1677,14 +1777,23 @@
 			// mouse(=wheelDeltaY 120배수)가 아닌 ctrlKey 줌이 여기 해당.
 			const sensitivity = mouse ? 0.0012 : 0.005;
 			const dy = Math.max(-60, Math.min(60, e.deltaY));
-			cy.zoom({
-				level: cy.zoom() * Math.exp(-dy * sensitivity),
-				renderedPosition: { x: e.clientX - rect.left, y: e.clientY - rect.top }
-			});
+			// 같은 프레임에 이미 대기 중인 줌이 있으면 그 위에 누적(합성) —
+			// 아니면 현재 cy 줌에서 시작.
+			const baseLevel = pendingZoom ? pendingZoom.level : cy.zoom();
+			pendingZoom = {
+				level: baseLevel * Math.exp(-dy * sensitivity),
+				x: e.clientX - rect.left,
+				y: e.clientY - rect.top
+			};
 		} else {
 			// 트랙패드 자연 스크롤: 아래로 스크롤(deltaY>0) → 콘텐츠가 위로.
-			cy.panBy({ x: -e.deltaX, y: -e.deltaY });
+			const dx = -e.deltaX;
+			const dy = -e.deltaY;
+			pendingPan = pendingPan
+				? { x: pendingPan.x + dx, y: pendingPan.y + dy }
+				: { x: dx, y: dy };
 		}
+		if (wheelRaf === null) wheelRaf = requestAnimationFrame(flushBoardWheel);
 	}
 
 	// ── 키보드 ─────────────────────────────────────────────────
@@ -1889,15 +1998,20 @@
 		if (!cy) return;
 		const eff = currentEffectiveTheme();
 		cy.nodes('[questId]').forEach((n) => {
-			const urgency = n.data('urgency') as number | undefined;
-			if (urgency != null) {
-				n.data('urgencyBg', urgencyBgFor(urgency, eff));
-			}
-			// nodeBg SVG 도 theme 색 hardcoded — 다시 생성. quest 데이터 추출.
+			// BUG-122(admin 보고): 원인 — node data 엔 파생값(urgencyColor/urgencyBg)만
+			// 저장하고 원본 `urgency` 는 애초에 저장한 적이 없어(DEV-074 최초 커밋부터),
+			// `n.data('urgency')` 가 항상 undefined → urgencyBg 가 테마 전환 시 절대
+			// 갱신되지 않았다. 노드가 active(클릭) 상태일 때만 이 값이 배경색으로
+			// 노출돼([?active] 셀렉터) 평소엔 안 보이다가, 클릭해야 새로고침 시점
+			// 테마의 색(어두운/밝은 urgency 톤)이 그대로 드러난 것 — 이게 "클릭하면
+			// 까맣게/하얗게 변함" 의 정체. nodeBg 재생성과 동일하게 allQuests 에서
+			// 원본 quest 를 찾아 quest.urgency 를 써야 한다.
 			const qid = n.data('questId') as number | undefined;
-			if (qid != null) {
-				const q = allQuests.find((x) => x.id === qid);
-				if (q) n.data('nodeBg', makeSvgUrl(q));
+			const q = qid != null ? allQuests.find((x) => x.id === qid) : undefined;
+			if (q) {
+				n.data('urgencyBg', urgencyBgFor(q.urgency, eff));
+				// nodeBg SVG 도 theme 색 hardcoded — 다시 생성.
+				n.data('nodeBg', makeSvgUrl(q));
 			}
 		});
 		// stylesheet 자체 교체 — base / highlight / selected 의 hardcoded hex 까지 반영.
@@ -1909,7 +2023,7 @@
 	}
 
 	onMount(() => {
-		const unsubTheme = theme.subscribe(() => refreshNodeBgForTheme());
+		const unsubTheme = effectiveTheme.subscribe(() => refreshNodeBgForTheme());
 
 		// gridSnap 은 guildKeyPrefix 가 두 번째 onMount 에서 set 된 직후 다시
 		// loadGridSnap 호출. 여기서는 listener 만.
@@ -1949,9 +2063,17 @@
 			// DEV-135 fix: 보드로 바로 새로고침/재시작 시 questFilters store 는
 			// 비어 있어 dim 이 안 걸렸다 (List 를 거쳐야만 store 채워짐). store 가
 			// 비었으면 localStorage(List 와 동일 키)에서 필터를 hydrate.
-			if (!isFilterActive(get(questFilters))) {
+			//
+			// BUG-112 fix: questFilters 는 모듈 전역 store 라 다른 길드에서 필터를
+			// 걸어둔 채 그 길드를 나가고 이 길드로 들어와도 메모리에 그대로 남아
+			// 있음 — `!isFilterActive(...)` 가드가 "이미 뭔가 걸려있으면(다른
+			// 길드 값이라도) 건드리지 않는다"로 오작동해, 다른 길드의 필터가
+			// 새 길드에 그대로 유지되는 버그였음. localStorage 는 이미 gk() 로
+			// 길드별로 스코프돼 있으므로, 항상 **이 길드의 저장값**으로 덮어써야
+			// 맞다 — 없으면 EMPTY_FILTER 로 리셋.
+			{
 				const savedFilter = deserializeFilter(localStorage.getItem(gk(FILTER_STORAGE_SUFFIX)));
-				if (savedFilter) questFilters.set(savedFilter);
+				questFilters.set(savedFilter ?? EMPTY_FILTER);
 			}
 			hideSettings = loadHideSettings();
 			globalCols = loadGlobalCols();
@@ -2282,7 +2404,13 @@
 	}
 
 	onDestroy(() => {
+		if (wheelRaf !== null) cancelAnimationFrame(wheelRaf); // BUG-144
 		container?.removeEventListener('wheel', onBoardWheel); // BUG-090
+		// DEV-208: 터치 핀치.
+		container?.removeEventListener('touchstart', onBoardTouchStart);
+		container?.removeEventListener('touchmove', onBoardTouchMove);
+		container?.removeEventListener('touchend', onBoardTouchEnd);
+		container?.removeEventListener('touchcancel', onBoardTouchEnd);
 		cy?.destroy();
 	});
 
@@ -2321,11 +2449,13 @@
 			if (collapsedLanes.has(s.slug)) hdr.classList.add('collapsed');
 			const label = document.createElement('button');
 			label.className = 'lane-label';
-			label.textContent = s.name_en;
+			// DEV-015: 언어 반응 표시 이름(레인 저장 키는 여전히 name_en 기반 —
+			// statusSlug(s.name_en) — 표시만 바뀜).
+			label.textContent = statusLabel(s, get(locale));
 			label.style.color = s.color;
 			// DEV-105: 클릭으로 collapse 토글. label 이 button — keyboard / 접근성 OK.
 			label.type = 'button';
-			label.title = '레인 접기/펼치기';
+			label.title = t('board.laneToggle', get(locale));
 			if (collapsedLanes.has(s.slug)) label.classList.add('collapsed');
 			label.onclick = () => {
 				toggleLaneCollapsed(s.slug);
@@ -2335,12 +2465,12 @@
 			};
 			const sel = document.createElement('select');
 			sel.className = 'lane-cols-sel';
-			sel.title = '이 레인 정렬 열 수';
+			sel.title = t('board.laneSortCols', get(locale));
 			const initialCols = laneCols[li];
 			[1, 2, 3].forEach((n) => {
 				const opt = document.createElement('option');
 				opt.value = String(n);
-				opt.textContent = `${n}열`;
+				opt.textContent = `${n}${t('board.colSuffix', get(locale))}`;
 				if (n === initialCols) opt.selected = true;
 				sel.appendChild(opt);
 			});
@@ -2362,7 +2492,7 @@
 			// lane 별 정렬 모드 select (Group/All) — 전역 toolbar 의 mode select 와 같은 역할
 			const modeSel = document.createElement('select');
 			modeSel.className = 'lane-mode-sel';
-			modeSel.title = '이 레인 정렬 모드';
+			modeSel.title = t('board.laneSortMode', get(locale));
 			(['group', 'all'] as const).forEach((v) => {
 				const opt = document.createElement('option');
 				opt.value = v;
@@ -2401,7 +2531,7 @@
 			settingsBtn.textContent = '⚙';
 			const setOpenAttrs = () => {
 				const open = lanesSettingsOpen.has(s.slug);
-				settingsBtn.title = open ? '레인 설정 접기' : '레인 설정 펼치기';
+				settingsBtn.title = open ? t('board.laneSettingsCollapse', get(locale)) : t('board.laneSettingsExpand', get(locale));
 				settingsBtn.setAttribute('aria-expanded', String(open));
 				hdr.classList.toggle('settings-open', open);
 			};
@@ -2689,6 +2819,13 @@
 		// passive:false — preventDefault 로 페이지 스크롤/브라우저 줌 차단.
 		container.addEventListener('wheel', onBoardWheel, { passive: false });
 
+		// DEV-208: 터치스크린 핀치 = 줌. passive:false — 두 손가락 제스처의
+		// 네이티브(Page Scale) 줌/스크롤을 preventDefault 로 차단.
+		container.addEventListener('touchstart', onBoardTouchStart, { passive: false });
+		container.addEventListener('touchmove', onBoardTouchMove, { passive: false });
+		container.addEventListener('touchend', onBoardTouchEnd);
+		container.addEventListener('touchcancel', onBoardTouchEnd);
+
 		// ── 드래그 이벤트 (다중선택 배치 처리) ─────────────────────
 
 		cy.on('grabon', 'node[questId]', (e) => {
@@ -2782,8 +2919,8 @@
 				const names = items.map((it) => it.node.data('questSlug')).join(', ');
 				const msg =
 					items.length === 1
-						? `${names} → "${newStatus.name_en}" 상태로 변경할까요?`
-						: `${items.length}개 퀘스트를 "${newStatus.name_en}" 상태로 변경할까요?\n(${names})`;
+						? `${names} → "${statusLabel(newStatus, $locale)}"${t('board.confirmChangeSuffix', $locale)}`
+						: `${items.length}${t('board.confirmChangeCountMid', $locale)}"${statusLabel(newStatus, $locale)}"${t('board.confirmChangeSuffix', $locale)}\n(${names})`;
 				if (await showConfirm(msg)) {
 					confirmedLanes.add(laneIdx);
 				} else {
@@ -2815,7 +2952,7 @@
 						// API 실패 (예: DEV-142 미해결 토론으로 완료 차단) → 시작 위치로
 						// 복원 + 사유 toast (이전엔 무경고로 되돌리기만 해 혼란).
 						node.animate({ position: { x: fromPos.x, y: fromPos.y }, duration: 150 });
-						showToast(e instanceof Error ? e.message : '상태 변경 실패', 'error');
+						showToast(e instanceof Error ? e.message : t('common.statusChangeFailed', get(locale)), 'error');
 						continue;
 					}
 				}
@@ -2837,7 +2974,13 @@
 				const maxX = laneLeftVis + LANE_W - LANE_PAD_X - NODE_W / 2;
 				const clampedX = Math.max(minX, Math.min(maxX, snappedX));
 				const finalY = snappedY;
-				if (clampedX !== toPos.x || finalY !== toPos.y) {
+				// BUG-109: applyStatusChange() 가 방금 호출한 applyLaneVisualCompression()
+				// 이 이 node 의 absX(아직 새 값으로 안 바뀐 상태)로 전체 노드 위치를
+				// 재계산해 이전 레인 근처로 되돌려놓는다 — gridSnap 이 켜져있으면
+				// clampedX !== toPos.x 라 아래 조건이 걸려 덮어써지지만, 꺼져있으면
+				// 드롭 위치가 이미 클램프 범위 안이라 조건이 걸리지 않아 되돌아간
+				// 위치가 그대로 남는 버그였음. lane 이 바뀐 경우엔 무조건 재적용.
+				if (laneChanged || clampedX !== toPos.x || finalY !== toPos.y) {
 					node.position({ x: clampedX, y: finalY });
 				}
 
@@ -2947,17 +3090,17 @@
 			onmousedown={startCardDrag}
 		>
 			<div class="card-head">
-				<span class="drag-hint" title="드래그하여 이동">⠿</span>
+				<span class="drag-hint" title={t('board.dragToMove', $locale)}>⠿</span>
 				<div class="card-badges">
 					<span class="badge" style:--c={expandedQuest.type_color}>{expandedQuest.quest_id}</span>
 					<span class="badge" style:--c={urgencyColor(expandedQuest.urgency)}
 						>{urgencyLabel(expandedQuest.urgency)}</span
 					>
 					<span class="badge" style:--c={expandedQuest.status_color}
-						>{expandedQuest.status_name_en}</span
+						>{questStatusLabel(expandedQuest, $locale)}</span
 					>
 				</div>
-				<button class="card-close" onclick={closeExpanded} title="닫기 (Esc)">×</button>
+				<button class="card-close" onclick={closeExpanded} title={t('board.closeEsc', $locale)}>×</button>
 			</div>
 
 			<p class="card-title">{expandedQuest.title}</p>
@@ -2973,39 +3116,39 @@
 				class="card-goto"
 				onclick={() => goto(`/quests/${expandedQuest!.quest_id}?from=board`)}
 			>
-				퀘스트 상세 페이지로 이동 →
+				{t('board.gotoDetail', $locale)}
 			</button>
 
 			<div class="card-divider"></div>
 			<p class="card-sec-label">
-				연관 퀘스트 하이라이트 <span class="hl-multi-hint">(다중 선택 가능)</span>
+				{t('board.highlightRelated', $locale)} <span class="hl-multi-hint">{t('board.multiSelect', $locale)}</span>
 			</p>
 
 			<div class="card-hl-grid">
 				<button
 					class="hl-btn all"
 					class:on={activeHighlights.size === 4}
-					onclick={toggleAllHighlights}>연관 전체</button
+					onclick={toggleAllHighlights}>{t('board.allRelated', $locale)}</button
 				>
 				<button
 					class="hl-btn pre"
 					class:on={activeHighlights.has('pre')}
-					onclick={() => toggleHighlight('pre')}>● 선행 퀘스트</button
+					onclick={() => toggleHighlight('pre')}>{t('board.hlPre', $locale)}</button
 				>
 				<button
 					class="hl-btn sub"
 					class:on={activeHighlights.has('sub')}
-					onclick={() => toggleHighlight('sub')}>● 서브 퀘스트</button
+					onclick={() => toggleHighlight('sub')}>{t('board.hlSub', $locale)}</button
 				>
 				<button
 					class="hl-btn next"
 					class:on={activeHighlights.has('next')}
-					onclick={() => toggleHighlight('next')}>● 후속 퀘스트</button
+					onclick={() => toggleHighlight('next')}>{t('board.hlNext', $locale)}</button
 				>
 				<button
 					class="hl-btn parent"
 					class:on={activeHighlights.has('parent')}
-					onclick={() => toggleHighlight('parent')}>● 부모 퀘스트</button
+					onclick={() => toggleHighlight('parent')}>{t('board.hlParent', $locale)}</button
 				>
 			</div>
 
@@ -3014,26 +3157,26 @@
 					<button
 						class="hl-act sel"
 						onclick={selectHighlighted}
-						title="하이라이트된 노드들을 모두 선택 (드래그·상태변경 대상으로)"
+						title={t('board.selectHighlighted', $locale)}
 					>
-						🔘 선택
+						{t('board.selectBtn', $locale)}
 					</button>
 					<button
 						class="hl-act arr"
 						onclick={arrangeHighlightedGroup}
 						disabled={arranging}
-						title="하이라이트된 노드들을 그룹으로 정렬"
+						title={t('board.arrangeHighlighted', $locale)}
 					>
-						⊞ 정렬
+						{t('board.arrangeBtn', $locale)}
 					</button>
-					<button class="hl-act clear" onclick={clearHighlight} title="하이라이트 해제">
-						× 해제
+					<button class="hl-act clear" onclick={clearHighlight} title={t('board.clearHighlightTitle', $locale)}>
+						{t('common.clearBtn', $locale)}
 					</button>
 				</div>
 			{/if}
 
 			<p class="card-note">
-				하이라이트는 선택(파란색)과 별개 — '선택' 버튼을 누르면 드래그·상태변경 대상이 됨
+				{t('board.cardNote', $locale)}
 			</p>
 		</div>
 	{/if}
@@ -3041,16 +3184,16 @@
 	<!-- DEV-135: List 필터 활성 표시 — Board 의 dim 이 '왜' 인지 + 한 클릭 해제. -->
 	{#if filterActive}
 		<div class="filter-chip" role="status">
-			<span class="fc-label">필터 적용 중 — {filterMatchCount}/{filterTotalCount} 매치</span>
-			<button class="fc-clear" onclick={clearBoardFilter} title="필터 모두 해제">× 해제</button>
+			<span class="fc-label">{t('board.filterActivePre', $locale)}{filterMatchCount}/{filterTotalCount}{t('board.filterActivePost', $locale)}</span>
+			<button class="fc-clear" onclick={clearBoardFilter} title={t('common.clearFilter', $locale)}>{t('common.clearBtn', $locale)}</button>
 		</div>
 	{/if}
 	<!-- DEV-073 fix3: New Quest 는 상단 우측 고정 (항상 노출), 나머지 도구바는
 	     그 아래로 내림 (사용자 피드백). 접기 토글로 도구만 숨길 수 있음. -->
 	{#if onNewQuest}
 		<div class="tb-newquest-wrap">
-			<button class="tb-btn tb-new" onclick={onNewQuest} title="새 퀘스트">
-				<span class="icon">+</span><span>New Quest</span>
+			<button class="tb-btn tb-new" onclick={onNewQuest} title={t('board.newQuest', $locale)}>
+				<span class="icon">+</span><span>{t('board.newQuest', $locale)}</span>
 			</button>
 		</div>
 	{/if}
@@ -3083,7 +3226,7 @@
 				class="tb-btn"
 				class:tb-on={gridSnap}
 				onclick={toggleGridSnap}
-				title="그리드 스냅 — 드래그 종료 시 격자에 정렬 (G)"
+				title={t('board.gridSnap', $locale)}
 			>
 				<span class="icon">⊞</span><span>Snap</span>
 			</button>
@@ -3092,11 +3235,11 @@
 				class="tb-select"
 				value={globalCols}
 				onchange={(e) => setGlobalCols(parseInt((e.currentTarget as HTMLSelectElement).value))}
-				title="레인 그리드 열 수 (그리드만 갱신)"
+				title={t('board.gridCols', $locale)}
 			>
-				<option value={1}>1열</option>
-				<option value={2}>2열</option>
-				<option value={3}>3열</option>
+				<option value={1}>1{t('board.colSuffix', $locale)}</option>
+				<option value={2}>2{t('board.colSuffix', $locale)}</option>
+				<option value={3}>3{t('board.colSuffix', $locale)}</option>
 			</select>
 			<div class="tb-sep"></div>
 			<!-- DEV-056 → DEV-059 fix2: 숨김 + 순서 변경 통합 → '보드 설정'. -->
@@ -3106,9 +3249,9 @@
 					(s) => s.laneHidden || s.hideGroup || s.hideSolo
 				)}
 				onclick={() => (showHideModal = true)}
-				title="레인 순서 / 숨김 / 그룹·단독 노드 가리기"
+				title={t('board.settingsTitle', $locale)}
 			>
-				<span class="icon">⚙</span><span>보드 설정</span>
+				<span class="icon">⚙</span><span>{t('board.settings', $locale)}</span>
 			</button>
 			<div class="tb-sep"></div>
 			<!-- arrange 버튼 + mode select 는 하나의 컨트롤처럼 시각적으로 묶음 -->
@@ -3124,12 +3267,12 @@
 						}
 					}}
 					title={arrangeMode === 'group'
-						? '모든 노드 정렬 — 연관 그룹은 직사각형 영역으로 묶고, isolated 는 위쪽에 배치'
-						: '모든 노드 정렬 — 슬러그 순으로 lane 안에서 왼쪽 위부터 채움'}
+						? t('board.arrangeGroupTitle', $locale)
+						: t('board.arrangeFlatTitle', $locale)}
 				>
 					<span class="icon">⊟</span><span>Arrange</span>
 				</button>
-				<select class="tb-select tb-mode" bind:value={arrangeMode} title="정렬 모드">
+				<select class="tb-select tb-mode" bind:value={arrangeMode} title={t('board.arrangeMode', $locale)}>
 					<option value="group">Group</option>
 					<option value="all">All</option>
 				</select>
@@ -3140,8 +3283,8 @@
 		<button
 			class="tb-btn tb-collapse"
 			onclick={toggleToolbarCollapsed}
-			title={toolbarCollapsed ? '도구바 펼치기' : '도구바 접기 — 레인 라벨이 가려질 때'}
-			aria-label={toolbarCollapsed ? '도구바 펼치기' : '도구바 접기'}
+			title={toolbarCollapsed ? t('board.toolbarExpand', $locale) : t('board.toolbarCollapse', $locale)}
+			aria-label={toolbarCollapsed ? t('board.toolbarExpand', $locale) : t('board.toolbarCollapseShort', $locale)}
 		>
 			<span class="icon">{toolbarCollapsed ? '☰' : '⇥'}</span>
 		</button>
@@ -3159,8 +3302,8 @@
 		<div class="dialog" role="alertdialog" tabindex="-1">
 			<p class="dialog-msg">{confirmDialog.msg}</p>
 			<div class="dialog-btns">
-				<button class="dialog-ok" onclick={() => confirmDialogResolve(true)}>변경</button>
-				<button class="dialog-cancel" onclick={() => confirmDialogResolve(false)}>취소</button>
+				<button class="dialog-ok" onclick={() => confirmDialogResolve(true)}>{t('common.change', $locale)}</button>
+				<button class="dialog-cancel" onclick={() => confirmDialogResolve(false)}>{t('common.cancel', $locale)}</button>
 			</div>
 		</div>
 	</div>
@@ -3177,23 +3320,22 @@
 	>
 		<div class="hide-modal" role="dialog" aria-modal="true" tabindex="-1">
 			<div class="hide-head">
-				<h3 class="hide-title">보드 설정</h3>
-				<button class="hide-close" onclick={() => (showHideModal = false)} aria-label="닫기"
+				<h3 class="hide-title">{t('board.settings', $locale)}</h3>
+				<button class="hide-close" onclick={() => (showHideModal = false)} aria-label={t('common.close', $locale)}
 					>×</button
 				>
 			</div>
 			<p class="hide-help">
-				레인 순서 변경 + 숨김 + 그룹·단독 노드 가리기. ◀ / ▶ 로 좌우 이동, 표시 해제 시 그 레인 전체
-				숨김.
+				{t('board.hideHelp', $locale)}
 			</p>
 			<table class="hide-table">
 				<thead>
 					<tr>
-						<th style="width: 6ch">순서</th>
-						<th style="width: 14ch">레인</th>
-						<th>표시</th>
-						<th>그룹 숨김</th>
-						<th>단독 노드 숨김</th>
+						<th style="width: 6ch">{t('board.colOrder', $locale)}</th>
+						<th style="width: 14ch">{t('board.colLane', $locale)}</th>
+						<th>{t('board.colShow', $locale)}</th>
+						<th>{t('board.colHideGroup', $locale)}</th>
+						<th>{t('board.colHideSolo', $locale)}</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -3206,26 +3348,26 @@
 									class="reorder-btn"
 									onclick={() => swapLane(li, -1)}
 									disabled={li === 0}
-									title="왼쪽으로"
-									aria-label="왼쪽으로">◀</button
+									title={t('board.moveLeft', $locale)}
+									aria-label={t('board.moveLeft', $locale)}>◀</button
 								>
 								<button
 									class="reorder-btn"
 									onclick={() => swapLane(li, 1)}
 									disabled={li === sorted.length - 1}
-									title="오른쪽으로"
-									aria-label="오른쪽으로">▶</button
+									title={t('board.moveRight', $locale)}
+									aria-label={t('board.moveRight', $locale)}>▶</button
 								>
 							</td>
 							<td>
-								<span class="hide-lane-name" style:color={s.color}>{s.name_en}</span>
+								<span class="hide-lane-name" style:color={s.color}>{statusLabel(s, $locale)}</span>
 							</td>
 							<td>
 								<input
 									type="checkbox"
 									checked={laneVisible}
 									onchange={() => toggleHideSetting(s.slug, 'laneHidden')}
-									title="레인 표시 (체크 해제 시 레인 전체 숨김)"
+									title={t('board.laneShowTitle', $locale)}
 								/>
 							</td>
 							<td>
@@ -3253,17 +3395,16 @@
 			     localStorage 에 반영되어 dim 이 즉시 갱신되고 List 와도 일관. -->
 			<div class="bf-section">
 				<div class="bf-head">
-					<h4 class="bf-title">필터</h4>
+					<h4 class="bf-title">{t('board.filter', $locale)}</h4>
 					{#if filterActive}
-						<span class="bf-count">{filterMatchCount}/{filterTotalCount} 매치</span>
-						<button class="bf-clear" onclick={clearBoardFilter} title="필터 모두 해제"
-							>× 해제</button
+						<span class="bf-count">{filterMatchCount}/{filterTotalCount}{t('board.filterActivePost', $locale)}</span>
+						<button class="bf-clear" onclick={clearBoardFilter} title={t('common.clearFilter', $locale)}
+							>{t('common.clearBtn', $locale)}</button
 						>
 					{/if}
 				</div>
 				<p class="hide-help">
-					매치 안 되는 노드는 보드에서 흐리게 표시됩니다(숨기지 않음). 여기서 바꾼 필터는 리스트와
-					공유됩니다.
+					{t('board.filterHelp', $locale)}
 				</p>
 				<div class="bf-filter">
 					<QuestListFilter
@@ -3291,7 +3432,7 @@
 	.board-wrap {
 		position: relative;
 		width: 100%;
-		height: calc(100vh - 3.25rem);
+		height: calc(100vh - var(--nav-h, 3.25rem) - var(--titlebar-h, 0px));
 		background: var(--bg);
 		overflow: hidden;
 	}
@@ -3307,6 +3448,9 @@
 		inset: 0;
 		z-index: 1;
 		background: transparent;
+		/* DEV-208: 브라우저/WebView2 네이티브 터치 제스처(Page Scale 줌·스크롤)
+		   차단 — 터치는 전부 커스텀 핸들러/cytoscape 가 처리. */
+		touch-action: none;
 	}
 	.lane-hdrs {
 		position: absolute;
@@ -3981,7 +4125,8 @@
 
 	.overlay {
 		position: fixed;
-		inset: 3.25rem 0 0 0;
+		/* Nav(3.25rem) + 커스텀 타이틀바(Windows Tauri, 없으면 0px) 아래부터. */
+		inset: calc(var(--nav-h, 3.25rem) + var(--titlebar-h, 0px)) 0 0 0;
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -4173,10 +4318,13 @@
 	/* DEV-074 fix11: 체크박스 기본 스타일은 global.css 로 통일.
 	   hide-table 만의 override 는 없음. */
 	/* DEV-059 fix2: 보드 설정 모달의 lane 순서 변경 버튼. */
+	/* BUG-143: td 에 display:flex 금지(table-cell 렌더 깨짐) — 일반 셀 +
+	   버튼 간격은 margin. */
 	.hide-table .reorder-cell {
-		display: flex;
-		gap: 0.2rem;
-		align-items: center;
+		white-space: nowrap;
+	}
+	.hide-table .reorder-cell button + button {
+		margin-left: 0.2rem;
 	}
 	.hide-table .reorder-btn {
 		padding: 0.1rem 0.4rem;

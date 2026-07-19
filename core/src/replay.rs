@@ -32,7 +32,7 @@ use crate::models::{
 };
 use crate::ops;
 use crate::snapshot::{self, SnapshotInfo};
-use crate::store::{journal, Store};
+use crate::store::{Store, journal};
 
 /// replay 결과 요약.
 #[derive(Debug, Clone)]
@@ -41,6 +41,9 @@ pub struct ReplayReport {
     pub applied: usize,
     /// 복원 목표 시점(포함). journal `ts` 와 동일 포맷(ISO8601 UTC).
     pub target_ts: String,
+    /// DEV-212: restore 직전 현재 상태를 자동 백업한 스냅샷 timestamp
+    /// (`YYYYMMDD-HHMMSS`). journal 이 비어 있었으면(잃을 것 없음) None.
+    pub pre_backup: Option<String>,
 }
 
 /// restore 직전 현재 index.db 에서 떠두는 id → slug 맵.
@@ -99,7 +102,12 @@ async fn resolve_campaign_id(store: &Store, maps: &IdMaps, journal_id: i64) -> A
         .bind(slug)
         .fetch_optional(&store.index_pool)
         .await?;
-    id.ok_or_else(|| AppError::Internal(anyhow!("replay: campaign {slug} 가 복원된 상태에 없음")))
+    id.ok_or_else(|| {
+        AppError::Internal(anyhow!(crate::tf!(
+            "replay: campaign {slug} 가 복원된 상태에 없음",
+            "replay: campaign {slug} not present in restored state"
+        )))
+    })
 }
 
 /// 최신 snapshot 을 복원한 뒤 journal ops 를 `target_ts`(포함)까지 재적용.
@@ -118,10 +126,30 @@ pub async fn replay_to(
     let all = journal::list_all(&store.journal_pool)
         .await
         .map_err(AppError::Internal)?;
+    let had_journal = !all.is_empty();
     let to_apply: Vec<journal::OpRow> = all
         .into_iter()
         .filter(|o| o.ts.as_str() <= target_ts)
         .collect();
+
+    // 1.5 (DEV-212): 파괴적 replay 전 **현재 상태**를 정식 백업으로 자동 보존 —
+    // journal truncate(4단계)로 비가역이 되는 걸 방지. 되돌리려면
+    // `restore --to <pre_backup>`.
+    //  - ops 는 이미 메모리에 확보돼 있어 create_snapshot 의 journal truncate 가
+    //    replay 대상에 영향 없음.
+    //  - 복원할 snapshot(인자)은 호출자가 진입 전에 선택 완료 — 새 스냅샷이
+    //    "최신" 선택을 오염시키지 않음.
+    //  - journal 이 비어 있었으면 현재 = 최신 스냅샷이라 스킵(멱등).
+    let pre_backup = if had_journal {
+        Some(
+            snapshot::create_snapshot(store)
+                .await
+                .map_err(AppError::Internal)?
+                .timestamp,
+        )
+    } else {
+        None
+    };
 
     // 2. 최신 snapshot 복원 (파일 → snapshot 상태, reindex).
     snapshot::restore_snapshot(store, snapshot)
@@ -150,13 +178,19 @@ pub async fn replay_to(
     Ok(ReplayReport {
         applied,
         target_ts: target_ts.to_string(),
+        pre_backup,
     })
 }
 
 /// 단일 op 재적용. journal id 를 현재 id 로 변환 후 해당 ops:: 함수 호출.
 async fn apply_op(store: &Store, maps: &IdMaps, op: &journal::OpRow) -> AppResult<()> {
-    let args: Value = serde_json::from_str(&op.args)
-        .map_err(|e| AppError::Internal(anyhow!("replay: op {} args 파싱 실패: {e}", op.op)))?;
+    let args: Value = serde_json::from_str(&op.args).map_err(|e| {
+        AppError::Internal(anyhow!(crate::tf!(
+            "replay: op {} args 파싱 실패: {e}",
+            "replay: failed to parse op {} args: {e}",
+            op.op
+        )))
+    })?;
 
     match op.op.as_str() {
         "create_quest" => {
@@ -215,8 +249,8 @@ async fn apply_op(store: &Store, maps: &IdMaps, op: &journal::OpRow) -> AppResul
         }
         "delete_quest" => {
             let id = resolve_quest_id(store, maps, arg_i64(&args, "id")?).await?;
-            let raw: Vec<i64> = serde_json::from_value(args["cascade_ids"].clone())
-                .unwrap_or_default();
+            let raw: Vec<i64> =
+                serde_json::from_value(args["cascade_ids"].clone()).unwrap_or_default();
             let mut cascade = Vec::with_capacity(raw.len());
             for c in raw {
                 cascade.push(resolve_quest_id(store, maps, c).await?);
@@ -252,7 +286,8 @@ async fn apply_op(store: &Store, maps: &IdMaps, op: &journal::OpRow) -> AppResul
         }
         "campaign_unlink_quest" => {
             let cid = resolve_campaign_id(store, maps, arg_i64(&args, "campaign_id")?).await?;
-            ops::campaigns::unlink_quest_by_slug(store, cid, &arg_str(&args, "quest_slug")?).await?;
+            ops::campaigns::unlink_quest_by_slug(store, cid, &arg_str(&args, "quest_slug")?)
+                .await?;
         }
         "campaign_checklist_add" => {
             let cid = resolve_campaign_id(store, maps, arg_i64(&args, "campaign_id")?).await?;
@@ -261,7 +296,10 @@ async fn apply_op(store: &Store, maps: &IdMaps, op: &journal::OpRow) -> AppResul
         "campaign_checklist_set" => {
             let cid = resolve_campaign_id(store, maps, arg_i64(&args, "campaign_id")?).await?;
             let index = arg_u64(&args, "index")? as usize;
-            let checked = args.get("checked").and_then(Value::as_bool).unwrap_or(false);
+            let checked = args
+                .get("checked")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
             ops::campaigns::set_checklist_checked_by_index(store, cid, index, checked).await?;
         }
         "campaign_checklist_rm" => {
@@ -293,6 +331,11 @@ async fn apply_op(store: &Store, maps: &IdMaps, op: &journal::OpRow) -> AppResul
             let slug = arg_str(&args, "slug")?;
             ops::comments::toggle_comment_resolved(store, &slug, arg_u64(&args, "id")?).await?;
         }
+        // DEV-234: 상단 고정(pin) 토글 — id 만으로 replayable.
+        "toggle_comment_pinned" => {
+            let slug = arg_str(&args, "slug")?;
+            ops::comments::toggle_comment_pinned(store, &slug, arg_u64(&args, "id")?).await?;
+        }
         "delete_comment_entry" => {
             let slug = arg_str(&args, "slug")?;
             ops::comments::delete_comment_entry(store, &slug, arg_u64(&args, "id")?).await?;
@@ -308,6 +351,10 @@ async fn apply_op(store: &Store, maps: &IdMaps, op: &journal::OpRow) -> AppResul
             )
             .await?;
         }
+        "toggle_campaign_comment_pinned" => {
+            let slug = arg_str(&args, "slug")?;
+            ops::campaign_comments::toggle_pinned(store, &slug, arg_u64(&args, "id")?).await?;
+        }
         "delete_campaign_comment" => {
             let slug = arg_str(&args, "slug")?;
             ops::campaign_comments::delete_entry(store, &slug, arg_u64(&args, "id")?).await?;
@@ -316,6 +363,17 @@ async fn apply_op(store: &Store, maps: &IdMaps, op: &journal::OpRow) -> AppResul
         // ── 길드 규칙: slug 기반. 삭제/이름변경은 내용 불필요 → replayable. ──
         "delete_rule" => {
             ops::rules::delete_rule(store, &arg_str(&args, "slug")?).await?;
+        }
+        // ── DEV-215 도서관: 삭제는 book_id 만으로 replayable (soft delete). ──
+        "delete_book" => {
+            ops::library::delete_book(store, &arg_str(&args, "book_id")?).await?;
+        }
+        // ── DEV-239 도서관 폴더: 본문 없이 path 만으로 완전히 replayable. ──
+        "create_folder" => {
+            let _ = ops::library::create_folder(store, &arg_str(&args, "path")?).await?;
+        }
+        "delete_folder" => {
+            ops::library::delete_folder(store, &arg_str(&args, "path")?).await?;
         }
         "rename_rule" => {
             ops::rules::rename_rule(
@@ -328,9 +386,21 @@ async fn apply_op(store: &Store, maps: &IdMaps, op: &journal::OpRow) -> AppResul
 
         // ── 내용(body)을 journal 에 기록하지 않는 op (audit 로그라 len 만 저장) ──
         // → replay 로 내용을 복원할 수 없음. fail-loud.
-        "set_comments" | "add_comment_entry" | "update_comment_entry" | "set_memo"
-        | "add_campaign_comment" | "update_campaign_comment" | "set_campaign_memo"
-        | "create_rule" | "set_rule" | "set_rules" => {
+        "set_comments"
+        | "add_comment_entry"
+        | "update_comment_entry"
+        | "set_memo"
+        | "add_campaign_comment"
+        | "update_campaign_comment"
+        | "set_campaign_memo"
+        | "create_rule"
+        | "set_rule"
+        | "set_rules"
+        // DEV-215: 도서관 create/update 도 body 를 journal 에 안 실음(len 만).
+        | "create_book"
+        | "update_book"
+        // DEV-167: worklog 노트도 동일 (len 만 기록).
+        | "set_worklog_note" => {
             return Err(AppError::Internal(anyhow!(
                 "replay: '{}' 는 내용(body)이 journal 에 기록되지 않아(감사 로그) \
                  replay 로 복원할 수 없습니다. 이 시점 범위는 full snapshot restore 를 \
@@ -357,10 +427,12 @@ async fn apply_op(store: &Store, maps: &IdMaps, op: &journal::OpRow) -> AppResul
         }
         // 후속 확장 전까지 fail-loud (조용한 부분 복원 금지).
         other => {
-            return Err(AppError::Internal(anyhow!(
+            return Err(AppError::Internal(anyhow!(crate::tf!(
                 "replay: 아직 지원하지 않는 op '{other}'. (현재 quest op 만 replay 가능 — \
-                 이 시점 범위는 full snapshot restore 를 사용하세요.)"
-            )));
+                 이 시점 범위는 full snapshot restore 를 사용하세요.)",
+                "replay: op '{other}' not yet supported. (only quest ops can be replayed — \
+                 use a full snapshot restore for this time range.)"
+            ))));
         }
     }
     Ok(())
@@ -369,22 +441,33 @@ async fn apply_op(store: &Store, maps: &IdMaps, op: &journal::OpRow) -> AppResul
 // ── args 추출 헬퍼 ──
 
 fn arg_i64(args: &Value, key: &str) -> AppResult<i64> {
-    args.get(key)
-        .and_then(Value::as_i64)
-        .ok_or_else(|| AppError::Internal(anyhow!("replay: 인자 '{key}'(i64) 누락")))
+    args.get(key).and_then(Value::as_i64).ok_or_else(|| {
+        AppError::Internal(anyhow!(crate::tf!(
+            "replay: 인자 '{key}'(i64) 누락",
+            "replay: missing arg '{key}' (i64)"
+        )))
+    })
 }
 
 fn arg_u64(args: &Value, key: &str) -> AppResult<u64> {
-    args.get(key)
-        .and_then(Value::as_u64)
-        .ok_or_else(|| AppError::Internal(anyhow!("replay: 인자 '{key}'(u64) 누락")))
+    args.get(key).and_then(Value::as_u64).ok_or_else(|| {
+        AppError::Internal(anyhow!(crate::tf!(
+            "replay: 인자 '{key}'(u64) 누락",
+            "replay: missing arg '{key}' (u64)"
+        )))
+    })
 }
 
 fn arg_str(args: &Value, key: &str) -> AppResult<String> {
     args.get(key)
         .and_then(Value::as_str)
         .map(str::to_string)
-        .ok_or_else(|| AppError::Internal(anyhow!("replay: 인자 '{key}'(str) 누락")))
+        .ok_or_else(|| {
+            AppError::Internal(anyhow!(crate::tf!(
+                "replay: 인자 '{key}'(str) 누락",
+                "replay: missing arg '{key}' (str)"
+            )))
+        })
 }
 
 /// `Option<Option<String>>` 의미: 키 없음/`null` 자체가 아니라 — set_due_dates 는
@@ -491,7 +574,10 @@ mod tests {
         ops::quests::create_quest(&store, new_dev(tid, "second"))
             .await
             .unwrap();
-        assert_eq!(status_of(&store, "DEV-001").await.as_deref(), Some("testing"));
+        assert_eq!(
+            status_of(&store, "DEV-001").await.as_deref(),
+            Some("testing")
+        );
         assert!(exists(&store, "DEV-002").await);
 
         // 먼 미래로 replay → snapshot(DEV-001 open, DEV-002 없음) 복원 후 ops 재적용.
@@ -539,6 +625,49 @@ mod tests {
         assert!(
             !exists(&store, "DEV-002").await,
             "snapshot 이후 생성된 DEV-002 는 미적용"
+        );
+
+        // DEV-212: 파괴적 replay(과거 시점) 전 현재 상태가 자동 백업됨 —
+        // 그 스냅샷으로 restore 하면 폐기됐던 DEV-002 가 되살아난다(가역화).
+        let pre = report
+            .pre_backup
+            .expect("journal 이 있었으므로 자동 백업 생성");
+        let pre_snap = snapshot::list_snapshots(&store.paths)
+            .unwrap()
+            .into_iter()
+            .find(|s| s.timestamp == pre)
+            .expect("자동 백업이 backup 목록에 존재해야");
+        snapshot::restore_snapshot(&store, &pre_snap).await.unwrap();
+        assert!(
+            exists(&store, "DEV-002").await,
+            "pre_backup 복원으로 폐기 전 상태 복귀 (DEV-212)"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-212: journal 이 비어 있으면 자동 백업 스킵 (잃을 것 없음 — 멱등).
+    #[tokio::test]
+    async fn replay_skips_pre_backup_when_journal_empty() {
+        let dir = fresh_tmp("nopre");
+        let store = setup(&dir).await;
+        let tid = dev_type_id(&store).await;
+
+        ops::quests::create_quest(&store, new_dev(tid, "only"))
+            .await
+            .unwrap();
+        // snapshot 생성 = journal truncate → 빈 journal 상태.
+        let snap = snapshot::create_snapshot(&store).await.unwrap();
+        let before = snapshot::list_snapshots(&store.paths).unwrap().len();
+
+        let report = replay_to(&store, &snap, "9999-12-31T23:59:59Z")
+            .await
+            .unwrap();
+        assert!(report.pre_backup.is_none(), "빈 journal — 자동 백업 불필요");
+        assert_eq!(
+            snapshot::list_snapshots(&store.paths).unwrap().len(),
+            before,
+            "스냅샷 수 불변"
         );
 
         let _ = std::fs::remove_dir_all(&dir);

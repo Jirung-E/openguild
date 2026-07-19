@@ -8,7 +8,7 @@
 // system 모드는 `prefers-color-scheme` media query 감지. OS 테마 변경 시 즉시
 // 반영 (matchMedia listener).
 
-import { writable } from 'svelte/store';
+import { writable, get } from 'svelte/store';
 
 export type ThemeChoice = 'dark' | 'light' | 'system';
 export type EffectiveTheme = 'dark' | 'light';
@@ -63,6 +63,34 @@ export function watchSystemPreference(onChange: (eff: EffectiveTheme) => void): 
 	const handler = () => onChange(mq.matches ? 'light' : 'dark');
 	mq.addEventListener('change', handler);
 	return () => mq.removeEventListener('change', handler);
+}
+
+/**
+ * BUG-121: 실제 렌더에 쓰이는 effective theme('dark'/'light') 전용 스토어.
+ *
+ * `theme`(ThemeChoice: 'dark'/'light'/'system')만 구독하면 'system' 모드에서
+ * OS 가 테마를 바꿔도 `theme` 스토어 값 자체는 그대로 'system' 이라 svelte
+ * writable 이 (같은 값 재-set 은 무시) 구독자에게 전혀 알리지 않는다 — CSS
+ * variable(`<html data-theme>`, +layout 에서 별도 처리)은 문제없지만, JS 가
+ * 색을 직접 계산해야 하는 곳(Cytoscape/SVG data URL 등, `var()` 미지원)은
+ * 이 신호를 못 받아 OS 테마 전환 시 갱신되지 않았다(사용자 보고 — Quest
+ * Board 노드가 테마 변경에 반응 안 함).
+ *
+ * `theme` 변경 + OS preference 변경(단, 'system' 모드일 때만) 둘 다 반영해
+ * 실제로 값이 바뀔 때만 set — safe_not_equal 체크를 자연히 통과.
+ */
+export const effectiveTheme = writable<EffectiveTheme>(resolveTheme(get(theme)));
+
+theme.subscribe((t) => {
+	effectiveTheme.set(resolveTheme(t));
+});
+
+if (typeof matchMedia !== 'undefined') {
+	matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
+		if (get(theme) === 'system') {
+			effectiveTheme.set(systemPreference());
+		}
+	});
 }
 
 export function setTheme(t: ThemeChoice) {
@@ -161,6 +189,16 @@ const LIGHT_PALETTE: ThemePalette = {
 	edgePre: '#0969da'
 };
 
+// DEV-114: 커스텀 테마의 palette 연동 — CSS var() 를 못 쓰는 소비처
+// (Cytoscape/SVG data URL)에도 사용자 override 가 반영되도록 themePalette()
+// 결과에 병합. customThemes 스토어(activate/deactivate)가 설정/해제.
+let paletteOverrides: Partial<ThemePalette> = {};
+
+export function setPaletteOverrides(overrides: Partial<ThemePalette>) {
+	paletteOverrides = overrides;
+}
+
 export function themePalette(eff: EffectiveTheme): ThemePalette {
-	return eff === 'light' ? LIGHT_PALETTE : DARK_PALETTE;
+	const base = eff === 'light' ? LIGHT_PALETTE : DARK_PALETTE;
+	return Object.keys(paletteOverrides).length === 0 ? base : { ...base, ...paletteOverrides };
 }

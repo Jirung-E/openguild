@@ -7,7 +7,21 @@
 -->
 <script lang="ts">
 	import { theme, setTheme, type ThemeChoice } from '$lib/stores/theme';
-	import { uiScale, setUiScale, MIN_SCALE, MAX_SCALE } from '$lib/stores/uiScale';
+	// DEV-114: 커스텀 프리셋 — 기본 3개 옆에 노출 + 기본 테마 클릭 시 커스텀 해제.
+	import {
+		customThemes,
+		activeCustomTheme,
+		activatePreset,
+		deactivateCustom
+	} from '$lib/stores/customThemes';
+	import {
+		uiScale,
+		setUiScale,
+		beginUiScaleDrag,
+		endUiScaleDrag,
+		MIN_SCALE,
+		MAX_SCALE
+	} from '$lib/stores/uiScale';
 	import {
 		contentWidth,
 		setContentWidth,
@@ -50,15 +64,26 @@
 <!-- 바깥 클릭 닫기 — 투명 오버레이. -->
 <div class="qm-ov" role="presentation" onclick={onclose}></div>
 
-<div class="qm" role="menu" aria-label="설정 퀵메뉴">
+<div class="qm" role="menu" aria-label={t('nav.settingsQuickMenu', $locale)}>
 	<div class="qm-row">
 		<span class="qm-label">{t('settings.theme', $locale)}</span>
 		<div class="qm-seg" role="group" aria-label={t('settings.theme', $locale)}>
 			{#each THEME_OPTIONS as o (o.value)}
 				<button
 					class="qm-seg-btn"
-					class:active={$theme === o.value}
-					onclick={() => setTheme(o.value)}>{o.label}</button
+					class:active={!$activeCustomTheme && $theme === o.value}
+					onclick={() => {
+						// DEV-114: 커스텀 활성 중 기본 테마 클릭 → override 해제 후 전환.
+						if ($activeCustomTheme) deactivateCustom();
+						setTheme(o.value);
+					}}>{o.label}</button
+				>
+			{/each}
+			{#each $customThemes as p (p.name)}
+				<button
+					class="qm-seg-btn qm-custom"
+					class:active={$activeCustomTheme === p.name}
+					onclick={() => activatePreset(p.name)}>{p.name}</button
 				>
 			{/each}
 		</div>
@@ -88,6 +113,8 @@
 				step={0.01}
 				ariaLabel={t('settings.uiScale', $locale)}
 				onChange={setUiScale}
+				onDragStart={beginUiScaleDrag}
+				onDragEnd={endUiScaleDrag}
 			/>
 			<span class="qm-val">{Math.round($uiScale * 100)}%</span>
 		</div>
@@ -171,6 +198,10 @@
 		background: color-mix(in srgb, var(--accent) 15%, transparent);
 		border-color: var(--accent);
 		color: var(--accent);
+	}
+	/* DEV-114: 커스텀 프리셋 버튼 — 좁은 메뉴라 최소 폭만 확보, 이름은 ellipsis. */
+	.qm-seg-btn.qm-custom {
+		padding: 0.3rem 0.35rem;
 	}
 	.qm-slider {
 		display: flex;

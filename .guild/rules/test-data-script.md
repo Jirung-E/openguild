@@ -1,3 +1,7 @@
++++
+created_at = "2026-07-07T09:32:56+09:00"
+updated_at = "2026-07-07T09:32:56+09:00"
++++
 # 테스트 데이터 주입 스크립트 — 운영 규칙
 
 `scripts/seed-test-data.ps1` 의 목적 / 갱신 절차 / 검증 범위. DEV-075 의 산출
@@ -25,7 +29,7 @@ pwsh -File <openguild repo>/scripts/seed-test-data.ps1
 `OPENGUILD_BIN` > `target/release/openguild.exe` > `target/debug/openguild.exe`
 > PATH 의 `openguild`.
 
-## 검증 단계 (= 스크립트의 8 단계)
+## 검증 단계 (= 스크립트의 10 단계)
 
 | 단계 | 내용 | 검증 대상 UI |
 |------|------|--------------|
@@ -37,6 +41,8 @@ pwsh -File <openguild repo>/scripts/seed-test-data.ps1
 | 6 | campaign ↔ quest 연결 | Quest Detail 의 Campaigns 섹션 / Campaign Detail 의 Quests |
 | 7 | **DEV-094/099/102** 첫 quest 에 댓글 2 (top + reply) + 메모 1 | Quest Detail 댓글/메모 섹션 + DB 캐시 sync (snapshot 안 살아남는지) |
 | 8 | **DEV-016 multi-file** sample 규칙 3 개 (branch-policy / code-review / release-checklist) | Rules 페이지 sidebar / 선택 / 편집 |
+| 9 | **DEV-215~218, DEV-239** 도서관 문서 3 개(본문+[[cross-link]] / 빈 본문 / 폴더 안) + 폴더 1개 + 댓글의 [[BOOK-001]] 참조 | Library 페이지 목록/편집 / 딥링크 / 렌더·자동완성의 도서관 링크 / 폴더 트리·탐색기 보기 토글 / 경로 기반 자동완성 |
+| 10 | **DEV-167** worklog 노트 2 개 (오늘/이틀 전) — 활동은 스크립트 실행 자체가 생성 | HOME 히트맵 카드 / /worklog 상세 (일/주 뷰, 노트, 타임라인) |
 
 ## 갱신 절차 — 신규 기능 추가 시
 
@@ -69,7 +75,9 @@ pwsh -File <openguild repo>/scripts/seed-test-data.ps1
 - **댓글 답글의 본격 threading** — top + 1 reply 만 주입. 다단 / 답글의 답글
   flatten 동작은 수동 확인.
 - **태그 (DEV-068)** — open 상태 / CLI 없음.
-- **첨부파일 (DEV-097)** — open 상태 / 기능 미구현.
+- **첨부파일 — 이미지/동영상 외 임의 파일 (DEV-237)** — open 상태 / 기능
+  미구현 (도서관 문서에 이미지/동영상은 이미 됨, 그 외 파일 타입만 미구현).
+- **도서관 검색 (DEV-238)** — open 상태 / 기능 미구현.
 - **외부 편집 후 자동 reindex (BUG-049)** — GUI 가 Store::open 직후 자동
   `drift::auto_resync`. 본 스크립트 후엔 별도 호출 불필요.
 - **schema ahead banner (BUG-041)** — 같은 binary 가 만든 DB 라 ahead 안 됨;
@@ -80,6 +88,10 @@ pwsh -File <openguild repo>/scripts/seed-test-data.ps1
 
 ## 최근 변경
 
+- 2026-07-07 (DEV-239): 도서관 폴더 기능 — 단계 9 에 폴더 1개(아키텍처) +
+  그 안 문서 1개(BOOK-003) 추가. 표 갱신, "첨부파일(DEV-097)" 한계 항목을
+  DEV-237(임의 파일 첨부 — 이미지/동영상은 이미 지원)로 정정, DEV-238(검색)
+  한계 항목 추가.
 - 2026-06-03: DEV-076 due date / DEV-016 multi-file rules 단계 추가.
   스크립트 단계 5 → 7 로 확장. 본 규칙 신설 (DEV-075 quest 본문은 그대로).
 - 2026-06-05 (DEV-104): DEV-099 의 댓글/메모 CLI 단계 추가 (단계 7) →

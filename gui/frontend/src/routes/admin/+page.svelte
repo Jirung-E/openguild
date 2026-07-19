@@ -4,6 +4,10 @@
 	import type { SkippedFile, JournalTail } from '$lib/api/admin';
 	import type { DriftReport, SnapshotInfo } from '$lib/types';
 	import { detectEnvironment } from '$lib/api/transport';
+	// DEV-205 모듈5: Admin 페이지 i18n.
+	import { locale, t } from '$lib/stores/locale';
+	// DEV-259: 로컬 토스트 복제 제거 — 앱 공용 toast 로 위임.
+	import { showToast } from '$lib/stores/toast';
 	// DEV-014: Quest type / status 커스터마이즈 섹션.
 	import AdminTypesSection from '$lib/components/admin/AdminTypesSection.svelte';
 	import AdminStatusesSection from '$lib/components/admin/AdminStatusesSection.svelte';
@@ -19,7 +23,6 @@
 	// reindex 결과의 skipped 로 채워진다.
 	let problemFiles = $state<SkippedFile[]>([]);
 	let busy = $state(false);
-	let message = $state<{ kind: 'info' | 'success' | 'error'; text: string } | null>(null);
 	// DEV-119: 복원 확인 — 인앱 모달. null = 닫힘, 객체 = 열림 ({ts} 는 undefined 면 최신).
 	// reindex 는 사용자 지시로 sweep 제외 (idempotent, 파일 truth 불변).
 	let confirmRestore = $state<{ ts: string | undefined } | null>(null);
@@ -53,7 +56,7 @@
 		try {
 			snapshots = await adminApi.listSnapshots();
 		} catch (e) {
-			showError(`목록 조회 실패: ${e}`);
+			showError(`${t('admin.listLoadFailedPre', $locale)}${e}`);
 		}
 	}
 
@@ -81,27 +84,27 @@
 		return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())} ${p(dt.getHours())}:${p(dt.getMinutes())}:${p(dt.getSeconds())}`;
 	}
 
+	// DEV-259: 페이지 로컬 토스트 복제 구현 제거 — 앱 공용 showToast()/ToastHost
+	// 로 위임(ToastHost 를 고쳐도 admin 에 반영 안 되던 이중 구현이 "알림
+	// 통일했는데 재발"의 원인이었음). 함수명은 유지해 24곳 호출부 무변경.
 	function showSuccess(text: string) {
-		message = { kind: 'success', text };
-		setTimeout(() => (message = null), 4000);
+		showToast(text, 'success');
 	}
 	function showInfo(text: string) {
-		message = { kind: 'info', text };
-		setTimeout(() => (message = null), 4000);
+		showToast(text, 'info');
 	}
 	function showError(text: string) {
-		message = { kind: 'error', text };
-		setTimeout(() => (message = null), 6000);
+		showToast(text, 'error', 6000);
 	}
 
 	async function onCreateSnapshot() {
 		busy = true;
 		try {
 			const info = await adminApi.createSnapshot();
-			showSuccess(`백업 생성: ${formatTimestamp(info.timestamp)}`);
+			showSuccess(`${t('admin.backupCreatedPre', $locale)}${formatTimestamp(info.timestamp)}`);
 			await refresh();
 		} catch (e) {
-			showError(`백업 생성 실패: ${e}`);
+			showError(`${t('admin.backupCreateFailedPre', $locale)}${e}`);
 		} finally {
 			busy = false;
 		}
@@ -119,11 +122,11 @@
 			// BUG-076: restore 가 파일 복구 + reindex(캐시 재구축)까지 수행. 별도
 			// reindex 안내(데이터 소실 위험) 제거. 파일/DB 변경 반영 위해 새로고침.
 			showSuccess(
-				`복원 완료: ${formatTimestamp(res.restored_to)} — 파일 복구 + 재색인 완료. 새로고침합니다.`
+				`${t('admin.restoreDonePre', $locale)}${formatTimestamp(res.restored_to)}${t('admin.restoreDonePost', $locale)}`
 			);
 			setTimeout(() => window.location.reload(), 800);
 		} catch (e) {
-			showError(`복원 실패: ${e}`);
+			showError(`${t('admin.restoreFailedPre', $locale)}${e}`);
 		} finally {
 			busy = false;
 		}
@@ -136,9 +139,9 @@
 		try {
 			await adminApi.deleteSnapshot(ts);
 			snapshots = await adminApi.listSnapshots();
-			showSuccess(`백업 삭제: ${formatTimestamp(ts)}`);
+			showSuccess(`${t('admin.backupDeletedPre', $locale)}${formatTimestamp(ts)}`);
 		} catch (e) {
-			showError(`백업 삭제 실패: ${e}`);
+			showError(`${t('admin.backupDeleteFailedPre', $locale)}${e}`);
 		} finally {
 			busy = false;
 		}
@@ -151,19 +154,19 @@
 			const total =
 				drift.fresh_files.length + drift.missing_in_index.length + drift.stale_in_index.length;
 			if (total === 0) {
-				showSuccess('drift 없음 — 파일과 캐시 일치');
+				showSuccess(t('admin.driftOkMsg', $locale));
 			} else {
-				showInfo(`${total} 항목 drift 발견 — 아래 보고서 확인`);
+				showInfo(`${total}${t('admin.driftFoundPost', $locale)}`);
 			}
 		} catch (e) {
-			showError(`drift 검사 실패: ${e}`);
+			showError(`${t('admin.driftCheckFailedPre', $locale)}${e}`);
 		} finally {
 			busy = false;
 		}
 	}
 
 	async function onReindex() {
-		if (!confirm('파일들로부터 index.db 를 재구축합니다. 계속할까요?')) return;
+		if (!confirm(t('admin.reindexConfirm', $locale))) return;
 		busy = true;
 		try {
 			const result = await adminApi.reindex();
@@ -175,15 +178,15 @@
 			// 안 해서 수동 Ctrl+R 전까지 상세가 안 보였음.) 데이터 stale 도 해소.
 			if (result.skipped.length > 0) {
 				showError(
-					`reindex — 비정상 파일 ${result.skipped.length}개 건너뜀. 새로고침 후 상세 표시.`
+					`${t('admin.reindexSkippedPre', $locale)}${result.skipped.length}${t('admin.reindexSkippedPost', $locale)}`
 				);
 			} else {
-				showSuccess('reindex 완료 — 데이터 새로고침');
+				showSuccess(t('admin.reindexDone', $locale));
 			}
 			// 토스트가 잠깐 보이도록 짧은 지연 후 full reload.
 			setTimeout(() => window.location.reload(), 800);
 		} catch (e) {
-			showError(`reindex 실패: ${e}`);
+			showError(`${t('admin.reindexFailedPre', $locale)}${e}`);
 		} finally {
 			busy = false;
 		}
@@ -196,12 +199,12 @@
 			const r = await adminApi.vacuum();
 			const pct = r.before_bytes > 0 ? ((r.saved_bytes / r.before_bytes) * 100).toFixed(1) : '0';
 			if (r.saved_bytes > 0) {
-				showSuccess(`VACUUM 완료 — ${r.saved_bytes.toLocaleString()} bytes 회수 (${pct}%)`);
+				showSuccess(`${t('admin.vacuumDonePre', $locale)}${r.saved_bytes.toLocaleString()}${t('admin.vacuumDoneMid', $locale)}${pct}${t('admin.vacuumDonePost', $locale)}`);
 			} else {
-				showInfo('VACUUM 완료 — 회수 공간 없음 (이미 dense)');
+				showInfo(t('admin.vacuumNoSpace', $locale));
 			}
 		} catch (e) {
-			showError(`VACUUM 실패: ${e}`);
+			showError(`${t('admin.vacuumFailedPre', $locale)}${e}`);
 		} finally {
 			busy = false;
 		}
@@ -213,10 +216,10 @@
 		try {
 			journal = await adminApi.journalTail(50);
 			if (journal.total === 0) {
-				showInfo('journal.db 비어 있음 (snapshot 직후 또는 mutation 없음)');
+				showInfo(t('admin.journalEmptyMsg', $locale));
 			}
 		} catch (e) {
-			showError(`journal 조회 실패: ${e}`);
+			showError(`${t('admin.journalLoadFailedPre', $locale)}${e}`);
 		} finally {
 			busy = false;
 		}
@@ -227,17 +230,11 @@
 	<title>Admin · openguild</title>
 </svelte:head>
 
-<!-- DEV-014 후속 (fix5): toast 메시지 — 모달이 떠 있어도 위에 표시되도록
-     page 컨테이너 밖 + fixed positioning + 모달보다 높은 z-index. -->
-{#if message}
-	<div class="toast-wrap" role="status" aria-live="polite">
-		<div class="message {message.kind}">{message.text}</div>
-	</div>
-{/if}
+<!-- DEV-259: 페이지 로컬 toast 마크업 제거 — 전역 ToastHost 가 렌더. -->
 
 <div class="page">
-	<h1>관리자 (Admin)</h1>
-	<p class="note">⚠ 인증 없음 — MVP 단계. 멀티유저로 확장 시 보호 필요.</p>
+	<h1>{t('admin.title', $locale)}</h1>
+	<p class="note">{t('admin.noAuthWarn', $locale)}</p>
 
 	<AdminTypesSection onmessage={onSectionMessage} />
 	<AdminStatusesSection onmessage={onSectionMessage} />
@@ -245,21 +242,21 @@
 
 	<section>
 		<div class="section-header">
-			<h2>백업 (Snapshots)</h2>
+			<h2>{t('admin.backupsHeading', $locale)}</h2>
 			<div class="actions">
-				<button onclick={onCreateSnapshot} disabled={busy}>+ 새 백업</button>
-				<button onclick={refresh} disabled={busy}>새로고침</button>
+				<button onclick={onCreateSnapshot} disabled={busy}>{t('admin.newBackup', $locale)}</button>
+				<button onclick={refresh} disabled={busy}>{t('admin.refresh', $locale)}</button>
 			</div>
 		</div>
 
 		{#if snapshots.length === 0}
-			<p class="empty">백업 없음. "+ 새 백업" 을 눌러 첫 백업을 생성하세요.</p>
+			<p class="empty">{t('admin.noBackups', $locale)}</p>
 		{:else}
 			<table>
 				<thead>
 					<tr>
-						<th>시간</th>
-						<th>크기</th>
+						<th>{t('admin.colTime', $locale)}</th>
+						<th>{t('admin.colSize', $locale)}</th>
 						<th></th>
 					</tr>
 				</thead>
@@ -270,38 +267,37 @@
 							<td>{formatSize(s.size_bytes)}</td>
 							<td class="snap-actions">
 								<button class="restore" onclick={() => onRestore(s.timestamp)} disabled={busy}
-									>복원</button
+									>{t('admin.restore', $locale)}</button
 								>
 								<button
 									class="del-snap"
-									title="이 백업 삭제"
+									title={t('admin.deleteThisBackup', $locale)}
 									onclick={() => (confirmDeleteSnap = s.timestamp)}
-									disabled={busy}>삭제</button
+									disabled={busy}>{t('detail.delete', $locale)}</button
 								>
 							</td>
 						</tr>
 					{/each}
 				</tbody>
 			</table>
-			<p class="hint">자동 백업: 매 mutation 후 정책 검사 (ops 50 회 OR 24 시간 도달 시).</p>
+			<p class="hint">{t('admin.autoBackupHint', $locale)}</p>
 		{/if}
 	</section>
 
 	<section>
 		<div class="section-header">
-			<h2>Drift 검사</h2>
+			<h2>{t('admin.driftHeading', $locale)}</h2>
 			<div class="actions">
-				<button onclick={onCheckDrift} disabled={busy}>검사</button>
+				<button onclick={onCheckDrift} disabled={busy}>{t('admin.check', $locale)}</button>
 				<button onclick={onReindex} disabled={busy}>Reindex</button>
 			</div>
 		</div>
 
 		{#if problemFiles.length > 0}
 			<div class="problem-files" role="alert">
-				<h3>⚠ 비정상 파일 {problemFiles.length}개 — 캐시에서 제외됨</h3>
+				<h3>{t('admin.problemFilesPre', $locale)}{problemFiles.length}{t('admin.problemFilesPost', $locale)}</h3>
 				<p class="hint">
-					아래 파일은 파싱 실패 / 정의되지 않은 status 로 reindex·동기화에서 건너뛰어집니다. 파일을
-					고치거나 status 를 정의한 뒤 Reindex 하세요.
+					{t('admin.problemFilesHint', $locale)}
 				</p>
 				<ul>
 					{#each problemFiles as p (p.path)}
@@ -312,17 +308,17 @@
 		{/if}
 
 		{#if drift === null}
-			<p class="empty">파일 vs index.db 일치성 검사. 외부 편집 / git pull 후 활용.</p>
+			<p class="empty">{t('admin.driftEmpty', $locale)}</p>
 		{:else}
 			{@const total =
 				drift.fresh_files.length + drift.missing_in_index.length + drift.stale_in_index.length}
 			{#if total === 0}
-				<p class="ok">✓ drift 없음</p>
+				<p class="ok">{t('admin.driftOk', $locale)}</p>
 			{:else}
 				<div class="drift-report">
 					{#if drift.missing_in_index.length > 0}
 						<div>
-							<h3>파일은 있는데 index 에 없음 ({drift.missing_in_index.length})</h3>
+							<h3>{t('admin.missingInIndex', $locale)}{drift.missing_in_index.length})</h3>
 							<ul>
 								{#each drift.missing_in_index as slug}<li><code>{slug}</code></li>{/each}
 							</ul>
@@ -330,7 +326,7 @@
 					{/if}
 					{#if drift.stale_in_index.length > 0}
 						<div>
-							<h3>index 에 있는데 파일이 없음 ({drift.stale_in_index.length})</h3>
+							<h3>{t('admin.staleInIndex', $locale)}{drift.stale_in_index.length})</h3>
 							<ul>
 								{#each drift.stale_in_index as slug}<li><code>{slug}</code></li>{/each}
 							</ul>
@@ -338,13 +334,13 @@
 					{/if}
 					{#if drift.fresh_files.length > 0}
 						<div>
-							<h3>파일이 index 보다 새것 ({drift.fresh_files.length})</h3>
+							<h3>{t('admin.freshFiles', $locale)}{drift.fresh_files.length})</h3>
 							<ul>
 								{#each drift.fresh_files as slug}<li><code>{slug}</code></li>{/each}
 							</ul>
 						</div>
 					{/if}
-					<p class="hint">Reindex 버튼으로 캐시를 파일 기준으로 재구축할 수 있습니다.</p>
+					<p class="hint">{t('admin.reindexHint', $locale)}</p>
 				</div>
 			{/if}
 		{/if}
@@ -353,22 +349,22 @@
 	<!-- DEV-162: 런타임 정비 — VACUUM + journal(AOF) tail. -->
 	<section>
 		<div class="section-header">
-			<h2>정비 / 진단</h2>
+			<h2>{t('admin.maintHeading', $locale)}</h2>
 			<div class="actions">
-				<button onclick={onVacuum} disabled={busy}>정리 (VACUUM)</button>
-				<button onclick={onJournalTail} disabled={busy}>최근 작업 (저널)</button>
+				<button onclick={onVacuum} disabled={busy}>{t('admin.vacuum', $locale)}</button>
+				<button onclick={onJournalTail} disabled={busy}>{t('admin.recentOps', $locale)}</button>
 			</div>
 		</div>
 
 		{#if journal === null}
 			<p class="empty">
-				VACUUM: index.db 의 dead row 공간 회수. 저널: journal.db 의 최근 변경 op (AOF).
+				{t('admin.maintEmptyHint', $locale)}
 			</p>
 		{:else if journal.total === 0}
-			<p class="ok">저널 비어 있음 (snapshot 직후 또는 mutation 없음)</p>
+			<p class="ok">{t('admin.journalEmptyMsg', $locale)}</p>
 		{:else}
 			<p class="hint">
-				journal.db: {journal.total} op 중 최근 {journal.rows.length} 개 (오래된 → 최신)
+				{t('admin.journalTotalPre', $locale)}{journal.total}{t('admin.journalTotalMid', $locale)}{journal.rows.length}{t('admin.journalTotalPost', $locale)}
 			</p>
 			<ul class="journal">
 				{#each journal.rows as op (op.id)}
@@ -386,12 +382,12 @@
 <!-- DEV-119: backup 복원 확인 — 인앱 모달. -->
 <ConfirmDialog
 	open={confirmRestore !== null}
-	title="백업 복원"
+	title={t('admin.restoreTitle', $locale)}
 	message={confirmRestore
-		? `정말 "${confirmRestore.ts ? formatTimestamp(confirmRestore.ts) : '최신'}" 백업으로 복원하시겠습니까?\n\n` +
-			`현재 상태가 덮어써집니다 (직전 .pre-restore.db 로 자동 백업됨).`
+		? `${t('admin.restoreConfirmPre', $locale)}${confirmRestore.ts ? formatTimestamp(confirmRestore.ts) : t('admin.latest', $locale)}${t('admin.restoreConfirmMid', $locale)}` +
+			t('admin.restoreConfirmPost', $locale)
 		: ''}
-	confirmLabel="복원"
+	confirmLabel={t('admin.restore', $locale)}
 	danger
 	onconfirm={() => {
 		const r = confirmRestore;
@@ -404,11 +400,11 @@
 <!-- DEV-175: 백업 삭제 확인 — 인앱 모달. -->
 <ConfirmDialog
 	open={confirmDeleteSnap !== null}
-	title="백업 삭제"
+	title={t('admin.deleteTitle', $locale)}
 	message={confirmDeleteSnap
-		? `"${formatTimestamp(confirmDeleteSnap)}" 백업을 삭제할까요?\n\n이 백업 파일이 영구 삭제됩니다 (되돌릴 수 없음).`
+		? `${t('admin.deleteConfirmPre', $locale)}${formatTimestamp(confirmDeleteSnap)}${t('admin.deleteConfirmPost', $locale)}`
 		: ''}
-	confirmLabel="삭제"
+	confirmLabel={t('detail.delete', $locale)}
 	danger
 	onconfirm={() => {
 		const ts = confirmDeleteSnap;
@@ -489,9 +485,13 @@
 		background: var(--btn-warning-bg-hover);
 	}
 	/* DEV-175: 백업 삭제 버튼. */
+	/* BUG-143: td 에 display:flex 금지(table-cell 렌더 깨짐 — 행 구분선
+	   어긋남). 일반 셀 + 버튼 간격은 margin. */
 	.snap-actions {
-		display: flex;
-		gap: 0.4rem;
+		white-space: nowrap;
+	}
+	.snap-actions button + button {
+		margin-left: 0.4rem;
 	}
 	button.del-snap {
 		color: var(--danger);
@@ -603,45 +603,5 @@
 	.problem-files .reason {
 		color: var(--text-muted);
 	}
-	/* DEV-014 후속 (fix5): toast wrapper — 화면 우상단 고정.
-	   모달 (.ov z-index 100) 보다 높은 z-index 로 가려지지 않게. */
-	.toast-wrap {
-		position: fixed;
-		top: 1rem;
-		right: 1rem;
-		z-index: 1000;
-		max-width: calc(26.25rem * var(--popup-scale, 1)); /* BUG-064 */
-		pointer-events: none;
-	}
-	.message {
-		padding: 0.75rem 1rem;
-		border-radius: 6px;
-		font-size: 0.875rem;
-		color: var(--text-strong);
-		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-		pointer-events: auto;
-		animation: toast-in 0.18s ease-out;
-	}
-	@keyframes toast-in {
-		from {
-			opacity: 0;
-			transform: translateY(-8px);
-		}
-		to {
-			opacity: 1;
-			transform: translateY(0);
-		}
-	}
-	.message.info {
-		background: color-mix(in srgb, var(--accent) 18%, transparent);
-		border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
-	}
-	.message.success {
-		background: color-mix(in srgb, var(--success) 18%, transparent);
-		border: 1px solid color-mix(in srgb, var(--success) 45%, transparent);
-	}
-	.message.error {
-		background: color-mix(in srgb, var(--danger) 18%, transparent);
-		border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
-	}
+	/* DEV-259: 로컬 toast CSS 제거 — 전역 ToastHost 스타일 단일화. */
 </style>

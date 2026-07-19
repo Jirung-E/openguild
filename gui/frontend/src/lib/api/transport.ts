@@ -125,7 +125,15 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 			};
 		}
 	}
-	if (parts[0] === 'api' && parts[1] === 'rules' && parts[2]) {
+	// DEV-243: /api/rules/{slug}/tags — sub-path 라 일반 slug 블록보다 먼저 검사.
+	if (parts[0] === 'api' && parts[1] === 'rules' && parts[2] && parts[3] === 'tags') {
+		const slug = decodeURIComponent(parts[2]);
+		if (method === 'PUT') {
+			const tags = (body as { tags?: string[] } | undefined)?.tags ?? [];
+			return { cmd: 'set_rule_tags', args: { slug, tags } };
+		}
+	}
+	if (parts[0] === 'api' && parts[1] === 'rules' && parts[2] && !parts[3]) {
 		const slug = decodeURIComponent(parts[2]);
 		if (method === 'GET') return { cmd: 'get_rule', args: { slug } };
 		if (method === 'PUT') {
@@ -146,6 +154,105 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 		if (method === 'PUT') {
 			const content = (body as { content?: string } | undefined)?.content ?? '';
 			return { cmd: 'set_rules', args: { content } };
+		}
+	}
+
+	// DEV-217: 도서관 — server routes/library.rs 와 1:1.
+	if (pathOnly === '/api/library') {
+		if (method === 'GET') return { cmd: 'list_books', args: {} };
+		if (method === 'POST') {
+			const b = (body as { title?: string; body?: string; path?: string } | undefined) ?? {};
+			return {
+				cmd: 'create_book',
+				args: { title: b.title ?? '', body: b.body ?? '', path: b.path ?? '' }
+			};
+		}
+	}
+	// DEV-239: 도서관 폴더 — bookId 라우트와 겹치지 않도록 `folders` 정적 경로를 먼저 검사.
+	if (pathOnly === '/api/library/folders') {
+		if (method === 'GET') return { cmd: 'list_library_folders', args: {} };
+		if (method === 'POST') {
+			const b = (body as { path?: string } | undefined) ?? {};
+			return { cmd: 'create_library_folder', args: { path: b.path ?? '' } };
+		}
+		if (method === 'DELETE') {
+			return { cmd: 'delete_library_folder', args: { path: query.get('path') ?? '' } };
+		}
+	}
+	// DEV-243: /api/library/{bookId}/tags — sub-path 라 일반 bookId 블록보다 먼저 검사.
+	if (parts[0] === 'api' && parts[1] === 'library' && parts[2] && parts[3] === 'tags') {
+		const bookId = decodeURIComponent(parts[2]);
+		if (method === 'PATCH') {
+			const tags = (body as { tags?: string[] } | undefined)?.tags ?? [];
+			return { cmd: 'set_book_tags', args: { bookId, tags } };
+		}
+	}
+	// DEV-237: /api/library/{bookId}/attachments — book_id 뒤에 sub-path 가 붙는
+	// 첫 케이스라 아래 일반 bookId 블록보다 먼저 검사해야 한다(안 그러면
+	// GET 등이 parts[3] 를 무시하고 get_book 으로 잘못 매칭됨).
+	if (
+		parts[0] === 'api' &&
+		parts[1] === 'library' &&
+		parts[2] &&
+		parts[3] === 'attachments'
+	) {
+		const bookId = decodeURIComponent(parts[2]);
+		if (method === 'POST') {
+			const b = (body as { path?: string; name?: string } | undefined) ?? {};
+			return {
+				cmd: 'add_book_attachment',
+				args: { bookId, path: b.path ?? '', name: b.name ?? '' }
+			};
+		}
+		if (method === 'DELETE') {
+			return {
+				cmd: 'remove_book_attachment',
+				args: { bookId, path: query.get('path') ?? '' }
+			};
+		}
+	}
+	if (parts[0] === 'api' && parts[1] === 'library' && parts[2] && !parts[3]) {
+		const bookId = decodeURIComponent(parts[2]);
+		if (method === 'GET') return { cmd: 'get_book', args: { bookId } };
+		if (method === 'PATCH') {
+			const b =
+				(body as { title?: string | null; body?: string | null; path?: string | null } | undefined) ??
+				{};
+			return {
+				cmd: 'update_book',
+				args: { bookId, title: b.title ?? null, body: b.body ?? null, path: b.path ?? null }
+			};
+		}
+		if (method === 'DELETE') {
+			return { cmd: 'delete_book', args: { bookId } };
+		}
+	}
+
+	// DEV-167: 작업 기록 — server routes/worklog.rs 와 1:1.
+	if (method === 'GET' && pathOnly === '/api/worklog') {
+		return {
+			cmd: 'worklog_activities',
+			args: { from: query.get('from') ?? '', to: query.get('to') ?? '' }
+		};
+	}
+	if (method === 'GET' && pathOnly === '/api/worklog/summary') {
+		return {
+			cmd: 'worklog_summary',
+			args: { from: query.get('from') ?? '', to: query.get('to') ?? '' }
+		};
+	}
+	if (method === 'GET' && pathOnly === '/api/worklog/notes') {
+		return {
+			cmd: 'worklog_notes',
+			args: { from: query.get('from') ?? '', to: query.get('to') ?? '' }
+		};
+	}
+	if (parts[0] === 'api' && parts[1] === 'worklog' && parts[2] === 'note' && parts[3]) {
+		const date = decodeURIComponent(parts[3]);
+		if (method === 'GET') return { cmd: 'worklog_note_get', args: { date } };
+		if (method === 'PUT') {
+			const content = (body as { content?: string } | undefined)?.content ?? '';
+			return { cmd: 'worklog_note_set', args: { date, content } };
 		}
 	}
 
@@ -218,6 +325,10 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 			// /comments/{id}/resolved (DEV-142: 토론 resolve 토글)
 			if (parts[5] && /^\d+$/.test(parts[5]) && parts[6] === 'resolved' && method === 'POST') {
 				return { cmd: 'toggle_comment_resolved', args: { slug, id: Number(parts[5]) } };
+			}
+			// /comments/{id}/pinned (DEV-234: 상단 고정 토글)
+			if (parts[5] && /^\d+$/.test(parts[5]) && parts[6] === 'pinned' && method === 'POST') {
+				return { cmd: 'toggle_comment_pinned', args: { slug, id: Number(parts[5]) } };
 			}
 			// /comments/{id} (수정 / 삭제)
 			if (parts[5] && /^\d+$/.test(parts[5]) && !parts[6]) {
@@ -436,6 +547,10 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 			if (method === 'PATCH') return { cmd: 'update_campaign', args: { slug, body } };
 			if (method === 'DELETE') return { cmd: 'delete_campaign', args: { slug } };
 		}
+		// DEV-226: 캠페인 변경 이력.
+		if (sub === 'history' && method === 'GET') {
+			return { cmd: 'campaign_history', args: { slug } };
+		}
 		// .../quests  → link / unlink
 		if (sub === 'quests') {
 			if (method === 'POST') return { cmd: 'campaign_link_quest', args: { slug, body } };
@@ -471,6 +586,13 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 				return {
 					cmd: 'toggle_campaign_comment_reaction',
 					args: { slug, id, emoji: rb.emoji ?? '', author: rb.author ?? '' }
+				};
+			}
+			// DEV-234: /comments/{id}/pinned — 상단 고정 토글.
+			if (parts[4] && /^\d+$/.test(parts[4]) && parts[5] === 'pinned' && method === 'POST') {
+				return {
+					cmd: 'toggle_campaign_comment_pinned',
+					args: { slug, id: Number(parts[4]) }
 				};
 			}
 			if (parts[4] && /^\d+$/.test(parts[4]) && !parts[5]) {

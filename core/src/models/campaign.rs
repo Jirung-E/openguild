@@ -73,6 +73,9 @@ pub struct CampaignLinkedQuest {
     pub type_color: String,
     pub status_slug: String,
     pub status_name_en: String,
+    /// DEV-015: 표시 언어가 ko 면 프론트가 이걸 우선 사용(빈 값이면 en fallback).
+    #[serde(default)]
+    pub status_name_ko: String,
     pub status_color: String,
 }
 
@@ -96,6 +99,24 @@ pub struct CampaignDetail {
     /// 채로 두고 Store 가진 호출 계층에서 채운다.
     #[serde(default)]
     pub attachments: Vec<crate::models::QuestAttachment>,
+    /// DEV-233: 링크 퀘스트 상태별 카운트 — 진행바 hover 시 stacked 표시용.
+    #[serde(default)]
+    pub quest_status_counts: Vec<CampaignQuestStatusCount>,
+}
+
+/// DEV-233: 링크 퀘스트 상태별 카운트 — 진행바 hover 시 stacked 세그먼트 표시용.
+/// `sort_order` 는 quest_statuses 정렬(open → ... → done) 그대로 — 바가
+/// 안정적으로 읽히도록 프론트에서 이 순서로 렌더.
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow, Clone)]
+pub struct CampaignQuestStatusCount {
+    pub status_slug: String,
+    pub status_name_en: String,
+    /// DEV-015: 표시 언어가 ko 면 프론트가 이걸 우선 사용(빈 값이면 en fallback).
+    #[serde(default)]
+    pub status_name_ko: String,
+    pub status_color: String,
+    pub sort_order: i64,
+    pub count: i64,
 }
 
 /// Home / 카드 표시용 압축 요약.
@@ -127,6 +148,9 @@ pub struct CampaignSummary {
     /// DEV-093: quest_done / quest_total. quest_total = 0 이면 0.0.
     #[serde(default)]
     pub quest_progress: f64,
+    /// DEV-233: 링크 퀘스트 상태별 카운트 — 진행바 hover 시 stacked 표시용.
+    #[serde(default)]
+    pub quest_status_counts: Vec<CampaignQuestStatusCount>,
 }
 
 // --- 요청 바디 ---
@@ -166,4 +190,17 @@ pub struct UpdateChecklistRequest {
 pub struct LinkQuestRequest {
     /// quest slug ("DEV-001") — server / CLI 가 ID 로 resolve.
     pub quest_slug: String,
+}
+
+/// DEV-226: Campaign 변경 이력 한 행 — quest_history(QuestHistoryEntry) 패턴.
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow, Clone)]
+pub struct CampaignHistoryEntry {
+    pub id: i64,
+    pub campaign_id: i64,
+    pub campaign_slug: String,
+    pub ts: String,
+    pub op: String,
+    pub old_value: Option<String>,
+    pub new_value: Option<String>,
+    pub actor: Option<String>,
 }

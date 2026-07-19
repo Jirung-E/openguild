@@ -2,9 +2,11 @@ pub mod admin;
 pub mod attachments;
 pub mod campaigns;
 pub mod comments;
+pub mod library;
 pub mod meta;
 pub mod quests;
 pub mod rules;
+pub mod worklog;
 
 use axum::{
     routing::{delete, get, patch, post, put},
@@ -56,10 +58,40 @@ pub fn create_router(store: Store) -> Router {
                 .patch(rules::rename_rule)
                 .delete(rules::delete_rule),
         )
+        // DEV-243: 규칙 태그 전체 교체.
+        .route("/api/rules/{slug}/tags", put(rules::set_tags))
         // DEV-016 legacy 단일 파일 — 기존 호출자 호환.
         .route(
             "/api/rules-single",
             get(rules::get_rules).put(rules::set_rules),
+        )
+        // DEV-216: 도서관 — `.guild/library/{BOOK-NNN}.md`.
+        .route(
+            "/api/library",
+            get(library::list_books).post(library::create_book),
+        )
+        .route(
+            "/api/library/{book_id}",
+            get(library::get_book)
+                .patch(library::update_book)
+                .delete(library::delete_book),
+        )
+        // DEV-243: 도서관 문서 태그 전체 교체.
+        .route("/api/library/{book_id}/tags", patch(library::set_tags))
+        // DEV-239: 도서관 폴더(계층) — `.guild/library/folders.toml`.
+        .route(
+            "/api/library/folders",
+            get(library::list_folders)
+                .post(library::create_folder)
+                .delete(library::delete_folder),
+        )
+        // DEV-167: 작업 기록 — 활동 타임라인 / 히트맵 집계 / 날짜별 노트.
+        .route("/api/worklog", get(worklog::get_activities))
+        .route("/api/worklog/summary", get(worklog::get_summary))
+        .route("/api/worklog/notes", get(worklog::list_notes))
+        .route(
+            "/api/worklog/note/{date}",
+            get(worklog::get_note).put(worklog::set_note),
         )
         // DEV-012 / DEV-094: Quest 댓글 (entry 단위, tracked) + 메모 (단일, gitignored).
         // GET = entries 목록, POST = 새 entry 추가.
@@ -85,6 +117,11 @@ pub fn create_router(store: Store) -> Router {
             "/api/quests/by/{slug}/comments/{id}/resolved",
             post(comments::toggle_resolved),
         )
+        // DEV-234: 상단 고정(pin) 토글 — quest 전용 게이트 없음.
+        .route(
+            "/api/quests/by/{slug}/comments/{id}/pinned",
+            post(comments::toggle_pinned),
+        )
         .route(
             "/api/quests/by/{slug}/memo",
             get(comments::get_memo).put(comments::set_memo),
@@ -102,6 +139,11 @@ pub fn create_router(store: Store) -> Router {
         .route(
             "/api/campaigns/{slug}/comments/{id}/reactions",
             post(comments::camp_toggle_reaction),
+        )
+        // DEV-234: 상단 고정(pin) 토글.
+        .route(
+            "/api/campaigns/{slug}/comments/{id}/pinned",
+            post(comments::camp_toggle_pinned),
         )
         .route(
             "/api/campaigns/{slug}/memo",
@@ -124,6 +166,11 @@ pub fn create_router(store: Store) -> Router {
             "/api/campaigns/{slug}/attachments",
             post(attachments::add_campaign_attachment)
                 .delete(attachments::remove_campaign_attachment),
+        )
+        // DEV-237: 도서관 문서 첨부 — 이미지/동영상 외 임의 파일.
+        .route(
+            "/api/library/{book_id}/attachments",
+            post(attachments::add_book_attachment).delete(attachments::remove_book_attachment),
         )
         // quests
         .route("/api/quests", get(quests::list_quests).post(quests::create_quest))
@@ -170,6 +217,8 @@ pub fn create_router(store: Store) -> Router {
                 .patch(campaigns::update_campaign)
                 .delete(campaigns::delete_campaign),
         )
+        // DEV-226: 캠페인 변경 이력 — quest history 와 대칭.
+        .route("/api/campaigns/{slug}/history", get(campaigns::list_history))
         .route("/api/campaigns/{slug}/quests", post(campaigns::link_quest))
         .route(
             "/api/campaigns/{slug}/quests/{quest_slug}",

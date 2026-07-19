@@ -8,10 +8,10 @@ use crate::models::{
     AddPrerequisiteRequest, ChangeParentRequest, ChangeStatusRequest, ChangeTypeRequest,
     CreateQuestRequest, QuestRow, UpdateQuestRequest,
 };
-use crate::repo::{auto, QuestFile, QuestFrontmatter, QuestRef, QuestRelations};
+use crate::repo::{QuestFile, QuestFrontmatter, QuestRef, QuestRelations, auto};
 use crate::services::quests as sql;
 use crate::snapshot;
-use crate::store::{journal, Store};
+use crate::store::{Store, journal};
 use serde_json::json;
 use sqlx::SqlitePool;
 
@@ -59,6 +59,11 @@ pub async fn create_quest(store: &Store, body: CreateQuestRequest) -> AppResult<
     // 3. 새 파일 작성. description 은 create body 가 명시 (Some 또는 None).
     write_quest_file(store, &quest, true).await?;
 
+    // 3b. DEV-242: type 파일 counter 도 함께 갱신 — 이전엔 DB(quest_counters)
+    // 만 올라가고 파일은 `check counters --fix` 를 수동 실행해야만 갱신돼
+    // file-truth 원칙(§1: mutation 은 파일+DB 동시 기록)과 어긋난 채 낡았음.
+    sync_type_counter_file(store, &quest.type_prefix, quest.number);
+
     // 4. parent 있으면 부모 파일의 auto 블록 갱신. parent description 은 안 건드림.
     if let Some(pid) = parent_id {
         let parent = sql::fetch_by_id(&store.index_pool, pid).await?;
@@ -69,12 +74,27 @@ pub async fn create_quest(store: &Store, body: CreateQuestRequest) -> AppResult<
     Ok(quest)
 }
 
+/// DEV-242: `.guild/types/{prefix}.toml` 의 `[counter].last_number` 를 새로
+/// 부여된 번호로 끌어올린다(파일 값이 더 크면 보존 — 단조 증가). 실패는
+/// 경고만 — 번호 부여의 실제 정합성은 DB counter + self-heal 이 담당하고,
+/// 파일 counter 는 백업/표시 값이라 생성 자체를 막을 이유가 없음.
+fn sync_type_counter_file(store: &Store, prefix: &str, number: i64) {
+    let path = store.paths.type_path(prefix);
+    match crate::repo::TypeFile::read(&path) {
+        Ok(mut tf) => {
+            if tf.counter.last_number < number {
+                tf.counter.last_number = number;
+                if let Err(e) = tf.write(&path) {
+                    tracing::warn!("type counter 파일 갱신 실패 ({prefix}): {e:#}");
+                }
+            }
+        }
+        Err(e) => tracing::warn!("type 파일 읽기 실패 ({prefix}): {e:#}"),
+    }
+}
+
 /// Quest 의 title / description / urgency 수정.
-pub async fn update_quest(
-    store: &Store,
-    id: i64,
-    body: UpdateQuestRequest,
-) -> AppResult<QuestRow> {
+pub async fn update_quest(store: &Store, id: i64, body: UpdateQuestRequest) -> AppResult<QuestRow> {
     let _ = journal::append(
         &store.journal_pool,
         "update_quest",
@@ -121,11 +141,7 @@ pub async fn set_due_dates(
 /// 입력 tags 는 trim + 빈 문자열 제거 + 중복 제거 후 stable order 보존
 /// (들어온 순서대로, 같은 tag 의 첫 등장만). 새 tags 가 비면 frontmatter
 /// 에서 키 자체 생략.
-pub async fn set_quest_tags(
-    store: &Store,
-    id: i64,
-    tags: Vec<String>,
-) -> AppResult<QuestRow> {
+pub async fn set_quest_tags(store: &Store, id: i64, tags: Vec<String>) -> AppResult<QuestRow> {
     use std::collections::HashSet;
 
     // 정규화: trim + 빈 거 제거 + 중복 제거 (순서 보존).
@@ -278,6 +294,18 @@ pub async fn change_status(
     .bind(&new_status_slug)
     .execute(&store.index_pool)
     .await?;
+    // DEV-180: 파일 사이드카에도 append — 파일이 진리원, quest_history 는 캐시.
+    crate::repo::history::append(
+        &store.paths,
+        &quest.quest_id,
+        &crate::repo::history::HistoryEntry {
+            ts: ts.clone(),
+            op: "change_status".into(),
+            old: old_status_slug.clone(),
+            new: Some(new_status_slug.clone()),
+        },
+    )
+    .map_err(crate::error::AppError::Internal)?;
 
     write_quest_file(store, &quest, false).await?;
     after_mutation(store).await;
@@ -334,6 +362,20 @@ pub async fn change_quest_type(
     .bind(&new_slug)
     .execute(&store.index_pool)
     .await?;
+    // DEV-180: 사이드카도 rename cascade 후 append (파일이 진리원).
+    crate::repo::history::rename(&store.paths, &old_slug, &new_slug)
+        .map_err(crate::error::AppError::Internal)?;
+    crate::repo::history::append(
+        &store.paths,
+        &new_slug,
+        &crate::repo::history::HistoryEntry {
+            ts: ts.clone(),
+            op: "change_type".into(),
+            old: Some(old_slug.clone()),
+            new: Some(new_slug.clone()),
+        },
+    )
+    .map_err(crate::error::AppError::Internal)?;
 
     // 파일: 새 slug 로 새 파일 쓰고 옛 파일 삭제.
     let old_path = store.paths.quest_path(&old_slug);
@@ -359,6 +401,8 @@ pub async fn change_quest_type(
     if old_path != new_path {
         let _ = std::fs::remove_file(&old_path);
     }
+    // DEV-242: 대상 type 에 새 번호가 부여됐으므로 그 type 파일 counter 도 갱신.
+    sync_type_counter_file(store, &quest.type_prefix, quest.number);
 
     // 관련 quest 파일 갱신 — auto-block 안 sub-quests / prerequisites / parent
     // 표기에 본인 slug 가 들어가므로 새 slug 로 갱신되어야.
@@ -440,11 +484,7 @@ pub async fn change_parent(
 /// - cascade 안 한 직계 자식: parent 분리 → 그들 파일도 갱신 (Parent 섹션 사라짐)
 /// - 본인을 prereq 로 가진 다른 quest 들: 자기 파일 prereq 목록은 SQL 단에서 유지 (관계 끊지 않음 — 본인이 사라지면 표시만 안 됨).
 ///   다만 다른 quest 의 auto 블록에서 본인이 표시되었었는데 이젠 deleted_at IS NULL 필터로 안 보임 → 갱신 필요.
-pub async fn delete_quest(
-    store: &Store,
-    id: i64,
-    cascade_ids: &[i64],
-) -> AppResult<()> {
+pub async fn delete_quest(store: &Store, id: i64, cascade_ids: &[i64]) -> AppResult<()> {
     let _ = journal::append(
         &store.journal_pool,
         "delete_quest",
@@ -456,12 +496,10 @@ pub async fn delete_quest(
 
     // 영향받는 quest id 들 (cascade 안 된 자식, 본인을 prereq 으로 갖는 quests) 사전 수집.
     let detached_children: Vec<i64> = if cascade_ids.is_empty() {
-        sqlx::query_scalar(
-            "SELECT id FROM quests WHERE parent_quest_id = ? AND deleted_at IS NULL",
-        )
-        .bind(id)
-        .fetch_all(&store.index_pool)
-        .await?
+        sqlx::query_scalar("SELECT id FROM quests WHERE parent_quest_id = ? AND deleted_at IS NULL")
+            .bind(id)
+            .fetch_all(&store.index_pool)
+            .await?
     } else {
         let placeholders = cascade_ids
             .iter()
@@ -591,10 +629,7 @@ pub async fn remove_prerequisite(store: &Store, id: i64, prereq_id: i64) -> AppR
 /// soft-deleted quest 의 파일을 frontmatter `deleted: true` 로 작성.
 /// 본인은 더 이상 alive 가 아니므로 `write_quest_file` 의 fetch_relations 가
 /// 본인을 못 찾을 가능성 (deleted_at filter). 직접 frontmatter 만 갱신.
-async fn write_quest_file_as_deleted(
-    store: &Store,
-    quest: &QuestRow,
-) -> AppResult<()> {
+async fn write_quest_file_as_deleted(store: &Store, quest: &QuestRow) -> AppResult<()> {
     // BUG-012 와 동일 — DB 의 description 이 truth. 기존 파일 fallback 제거.
     let path = store.paths.quest_path(&quest.quest_id);
     let frontmatter = QuestFrontmatter {
@@ -717,8 +752,7 @@ pub(crate) async fn write_quest_file(
         auto_block,
     };
 
-    qf.write(&path)
-        .map_err(crate::error::AppError::Internal)?;
+    qf.write(&path).map_err(crate::error::AppError::Internal)?;
 
     // drift/DEV-121: 방금 쓴 파일의 mtime 을 cached_mtime 에 기록. detect_drift 와
     // incremental sync 가 per-row cached_mtime 으로 "파일이 DB 보다 새것인가" 를
@@ -884,15 +918,13 @@ mod tests {
         .unwrap();
 
         // 자식 파일은 parent 표시
-        let child_content =
-            std::fs::read_to_string(dir.join(".guild/quests/DEV-002.md")).unwrap();
+        let child_content = std::fs::read_to_string(dir.join(".guild/quests/DEV-002.md")).unwrap();
         assert!(child_content.contains("parent = \"DEV-001\""));
         assert!(child_content.contains("## Parent"));
         assert!(child_content.contains("[DEV-001](DEV-001.md)"));
 
         // 부모 파일은 sub-quest 목록 갱신됨
-        let parent_content =
-            std::fs::read_to_string(dir.join(".guild/quests/DEV-001.md")).unwrap();
+        let parent_content = std::fs::read_to_string(dir.join(".guild/quests/DEV-001.md")).unwrap();
         assert!(parent_content.contains("[DEV-002](DEV-002.md)"));
         assert!(parent_content.contains("child"));
 
@@ -924,9 +956,15 @@ mod tests {
         .await
         .unwrap();
 
-        change_status(&store, q.id, ChangeStatusRequest { status_slug: "in_progress".into() })
-            .await
-            .unwrap();
+        change_status(
+            &store,
+            q.id,
+            ChangeStatusRequest {
+                status_slug: "in_progress".into(),
+            },
+        )
+        .await
+        .unwrap();
 
         let content = std::fs::read_to_string(dir.join(".guild/quests/DEV-001.md")).unwrap();
         assert!(content.contains("status = \"in_progress\""));
@@ -970,21 +1008,40 @@ mod tests {
             .unwrap();
 
         // done(counts_as_done) 전환 → 차단.
-        let blocked = change_status(&store, q.id, ChangeStatusRequest { status_slug: "done".into() }).await;
+        let blocked = change_status(
+            &store,
+            q.id,
+            ChangeStatusRequest {
+                status_slug: "done".into(),
+            },
+        )
+        .await;
         assert!(blocked.is_err(), "미해결 discussion 이면 완료 차단되어야");
 
         // in_progress(counts_as_done=false) 전환 → 허용 (게이트는 완료에만 적용).
-        change_status(&store, q.id, ChangeStatusRequest { status_slug: "in_progress".into() })
-            .await
-            .expect("non-done 전환은 허용");
+        change_status(
+            &store,
+            q.id,
+            ChangeStatusRequest {
+                status_slug: "in_progress".into(),
+            },
+        )
+        .await
+        .expect("non-done 전환은 허용");
 
         // resolve 후 done 전환 → 통과.
         crate::ops::comments::toggle_comment_resolved(&store, &slug, c.id)
             .await
             .unwrap();
-        change_status(&store, q.id, ChangeStatusRequest { status_slug: "done".into() })
-            .await
-            .expect("resolve 후엔 완료 가능");
+        change_status(
+            &store,
+            q.id,
+            ChangeStatusRequest {
+                status_slug: "done".into(),
+            },
+        )
+        .await
+        .expect("resolve 후엔 완료 가능");
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1061,8 +1118,14 @@ mod tests {
         .unwrap();
 
         let content = std::fs::read_to_string(dir.join(".guild/quests/DEV-001.md")).unwrap();
-        assert!(content.contains("new body"), "새 description 이 파일에 반영");
-        assert!(!content.contains("original body"), "옛 description 은 사라져야");
+        assert!(
+            content.contains("new body"),
+            "새 description 이 파일에 반영"
+        );
+        assert!(
+            !content.contains("original body"),
+            "옛 description 은 사라져야"
+        );
 
         // 2차 수정: new → newer.
         update_quest(
@@ -1095,7 +1158,10 @@ mod tests {
         .unwrap();
         let content = std::fs::read_to_string(dir.join(".guild/quests/DEV-001.md")).unwrap();
         assert!(content.contains("renamed"));
-        assert!(content.contains("newer body"), "description 안 건드린 mutation 에선 보존");
+        assert!(
+            content.contains("newer body"),
+            "description 안 건드린 mutation 에선 보존"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1144,13 +1210,11 @@ mod tests {
         let content = std::fs::read_to_string(&path).unwrap();
         assert!(
             content.contains("EXTERNALLY EDITED BODY"),
-            "외부 편집 보존. 실제: {}",
-            content
+            "외부 편집 보존. 실제: {content}"
         );
         assert!(
             !content.contains("initial body"),
-            "옛 DB 값으로 덮어쓰지 않음. 실제: {}",
-            content
+            "옛 DB 값으로 덮어쓰지 않음. 실제: {content}"
         );
 
         // 2) status 변경은 정상 반영.
@@ -1245,7 +1309,10 @@ mod tests {
 
         // 자식 c 는 alive 지만 parent 가 없음
         let c_content = std::fs::read_to_string(dir.join(".guild/quests/DEV-002.md")).unwrap();
-        assert!(!c_content.contains("parent ="), "parent should be omitted: {c_content}");
+        assert!(
+            !c_content.contains("parent ="),
+            "parent should be omitted: {c_content}"
+        );
         assert!(!c_content.contains("deleted = true"));
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -1308,7 +1375,9 @@ mod tests {
         let _ = change_status(
             &store,
             q.id,
-            ChangeStatusRequest { status_slug: "in_progress".into() },
+            ChangeStatusRequest {
+                status_slug: "in_progress".into(),
+            },
         )
         .await
         .unwrap();
@@ -1317,39 +1386,51 @@ mod tests {
         let updated = change_quest_type(
             &store,
             q.id,
-            ChangeTypeRequest { new_type_prefix: "BUG".into() },
+            ChangeTypeRequest {
+                new_type_prefix: "BUG".into(),
+            },
         )
         .await
         .unwrap();
 
-        assert_eq!(updated.quest_id, "BUG-001", "새 slug 부여 (BUG counter=0+1)");
+        assert_eq!(
+            updated.quest_id, "BUG-001",
+            "새 slug 부여 (BUG counter=0+1)"
+        );
         assert_eq!(updated.type_prefix, "BUG");
         assert_eq!(updated.number, 1);
 
         // 파일 rename 확인.
-        assert!(!dir.join(".guild/quests/DEV-001.md").exists(), "옛 파일 삭제");
-        assert!(dir.join(".guild/quests/BUG-001.md").exists(), "새 파일 생성");
+        assert!(
+            !dir.join(".guild/quests/DEV-001.md").exists(),
+            "옛 파일 삭제"
+        );
+        assert!(
+            dir.join(".guild/quests/BUG-001.md").exists(),
+            "새 파일 생성"
+        );
         let content = std::fs::read_to_string(dir.join(".guild/quests/BUG-001.md")).unwrap();
         assert!(content.contains("quest_id = \"BUG-001\""));
 
         // quest_history.quest_slug 가 cascade.
-        let slugs: Vec<String> = sqlx::query_scalar(
-            "SELECT quest_slug FROM quest_history WHERE quest_id = ?",
-        )
-        .bind(q.id)
-        .fetch_all(&store.index_pool)
-        .await
-        .unwrap();
-        assert!(slugs.iter().all(|s| s == "BUG-001"), "history slug cascade: {slugs:?}");
+        let slugs: Vec<String> =
+            sqlx::query_scalar("SELECT quest_slug FROM quest_history WHERE quest_id = ?")
+                .bind(q.id)
+                .fetch_all(&store.index_pool)
+                .await
+                .unwrap();
+        assert!(
+            slugs.iter().all(|s| s == "BUG-001"),
+            "history slug cascade: {slugs:?}"
+        );
 
         // change_type 자체도 history 에 기록됨.
-        let ops: Vec<String> = sqlx::query_scalar(
-            "SELECT op FROM quest_history WHERE quest_id = ? ORDER BY id",
-        )
-        .bind(q.id)
-        .fetch_all(&store.index_pool)
-        .await
-        .unwrap();
+        let ops: Vec<String> =
+            sqlx::query_scalar("SELECT op FROM quest_history WHERE quest_id = ? ORDER BY id")
+                .bind(q.id)
+                .fetch_all(&store.index_pool)
+                .await
+                .unwrap();
         assert!(ops.contains(&"change_type".to_string()), "ops: {ops:?}");
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -1371,7 +1452,9 @@ mod tests {
         let result = change_quest_type(
             &store,
             q.id,
-            ChangeTypeRequest { new_type_prefix: "dev".into() }, // 대소문자 무시.
+            ChangeTypeRequest {
+                new_type_prefix: "dev".into(),
+            }, // 대소문자 무시.
         )
         .await
         .unwrap();
@@ -1397,7 +1480,9 @@ mod tests {
         let err = change_quest_type(
             &store,
             q.id,
-            ChangeTypeRequest { new_type_prefix: "NOPE".into() },
+            ChangeTypeRequest {
+                new_type_prefix: "NOPE".into(),
+            },
         )
         .await
         .unwrap_err();
@@ -1413,14 +1498,18 @@ mod tests {
         let store = setup_store(&dir).await;
 
         let parent = create_quest(&store, mk("p", None)).await.unwrap(); // DEV-001
-        let child = create_quest(&store, mk("c", Some(parent.id))).await.unwrap(); // DEV-002
+        let child = create_quest(&store, mk("c", Some(parent.id)))
+            .await
+            .unwrap(); // DEV-002
         let prereq = create_quest(&store, mk("pre", None)).await.unwrap(); // DEV-003
 
         // child 에 prereq 추가.
         add_prerequisite(
             &store,
             child.id,
-            AddPrerequisiteRequest { prerequisite_id: prereq.id },
+            AddPrerequisiteRequest {
+                prerequisite_id: prereq.id,
+            },
         )
         .await
         .unwrap();
@@ -1429,16 +1518,20 @@ mod tests {
         let updated = change_quest_type(
             &store,
             child.id,
-            ChangeTypeRequest { new_type_prefix: "BUG".into() },
+            ChangeTypeRequest {
+                new_type_prefix: "BUG".into(),
+            },
         )
         .await
         .unwrap();
         assert_eq!(updated.quest_id, "BUG-001");
 
         // 부모 파일의 sub-quest 목록에 새 slug (BUG-001) 표시.
-        let parent_content =
-            std::fs::read_to_string(dir.join(".guild/quests/DEV-001.md")).unwrap();
-        assert!(parent_content.contains("BUG-001"), "parent.sub 갱신:\n{parent_content}");
+        let parent_content = std::fs::read_to_string(dir.join(".guild/quests/DEV-001.md")).unwrap();
+        assert!(
+            parent_content.contains("BUG-001"),
+            "parent.sub 갱신:\n{parent_content}"
+        );
         assert!(!parent_content.contains("DEV-002"), "옛 slug 사라져야");
 
         // prereq 파일의 (dependent 표기는 auto-block 에 없을 수도 — render 확인).
@@ -1483,6 +1576,45 @@ mod tests {
         .unwrap();
         let content = std::fs::read_to_string(dir.join(".guild/quests/DEV-001.md")).unwrap();
         assert!(content.contains("custom body"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-242: quest 생성이 type 파일의 [counter].last_number 도 갱신 —
+    /// 이전엔 DB 만 올라가고 파일은 --fix 수동 실행 전까지 낡아 있었음.
+    #[tokio::test]
+    async fn create_quest_syncs_type_counter_file() {
+        let dir = fresh_tmp("counter-file");
+        let store = setup_store(&dir).await;
+
+        let before = crate::repo::TypeFile::read(store.paths.type_path("DEV")).unwrap();
+        assert_eq!(before.counter.last_number, 0);
+
+        let q = create_quest(
+            &store,
+            CreateQuestRequest {
+                quest_type_id: 1,
+                title: "counter sync".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(q.number, 1);
+
+        let after = crate::repo::TypeFile::read(store.paths.type_path("DEV")).unwrap();
+        assert_eq!(after.counter.last_number, 1, "파일 counter 도 함께 갱신");
+
+        // 파일 counter 가 더 크면(수동 --fix 등) 보존 — 단조 증가.
+        let mut tf = crate::repo::TypeFile::read(store.paths.type_path("DEV")).unwrap();
+        tf.counter.last_number = 99;
+        tf.write(store.paths.type_path("DEV")).unwrap();
+        sync_type_counter_file(&store, "DEV", 2);
+        let kept = crate::repo::TypeFile::read(store.paths.type_path("DEV")).unwrap();
+        assert_eq!(kept.counter.last_number, 99, "더 큰 파일 값은 안 내림");
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1547,4 +1679,3 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
-

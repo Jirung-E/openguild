@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/stores';
-	import { onMount, onDestroy, tick } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	// DEV-153: 편집 중이면 이탈 가드에 보고.
 	import { setUnsaved } from '$lib/stores/unsaved';
 	import { goto } from '$app/navigation';
@@ -9,35 +9,29 @@
 	import { restoreScroll } from '$lib/utils/scroll-restore';
 	import { questsApi } from '$lib/api/quests';
 	import { metaApi } from '$lib/api/meta';
+	// DEV-205 / REQ-001: 상세 화면 라벨을 i18n 사전으로 — 캠페인 상세와 언어 통일.
+	import { locale, t } from '$lib/stores/locale';
+	// DEV-255: 자식윈도우(검색 팔레트 "새 창으로 열기")에선 뒤로가기 버튼 숨김.
+	import { isChildWindow } from '$lib/stores/windowKind';
+	// DEV-015: status 표시 이름 — 언어 반응(ko 면 name_ko 우선, 빈 값이면 en).
+	import { statusLabel, questStatusLabel } from '$lib/utils/status-label';
+	// DEV-205: 언어 반응 날짜 입력(네이티브 date 대체).
+	import DateField from '$lib/components/DateField.svelte';
 	import { campaignsApi } from '$lib/api/campaigns';
 	// DEV-068: `.guild/tags/{slug}.toml` 정의 — Tag pill 색칠용.
 	import { adminApi } from '$lib/api/admin';
 	import type { QuestTagDef } from '$lib/types';
-	// DEV-074 fix4: CodeMirror oneDark 는 라이트모드에 부적합 — theme 따라 분기.
-	import { theme } from '$lib/stores/theme';
-	// DEV-074 fix15: 편집창 native scrollbar 대신 overlay.
+	// DEV-074 fix17: 삭제 cascade 모달의 sub-quest list overlay scrollbar.
 	import OverlayScrollbar from '$lib/components/OverlayScrollbar.svelte';
 	// BUG-021 fix1: marked 직접 호출 대신 공유 컴포넌트 MarkdownView 사용.
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	// DEV-156: 본문 아래 첨부 섹션 (Jira 식).
 	import AttachmentSection from '$lib/components/AttachmentSection.svelte';
-	import { EditorView, basicSetup } from 'codemirror';
-	import { markdown } from '@codemirror/lang-markdown';
-	// 편집기 테마 — Compartment 로 다크/라이트 라이브 전환 (재생성 X).
-	import { editorThemeCompartment, editorThemeExtension } from '$lib/utils/editor-theme';
-	// DEV-117: CodeMirror 의 기본 historyKeymap 은 Windows 에서 Ctrl+Y 만 redo —
-	// Ctrl+Shift+Z 는 Mac 전용. 양쪽 모두 지원하려면 keymap 추가.
-	import { keymap } from '@codemirror/view';
-	import { redo } from '@codemirror/commands';
-	// DEV-069: 편집기 첨부 — 클립보드 이미지 paste / 파일 drag&drop / '첨부' 버튼.
-	import { attachmentExtension } from '$lib/utils/editor-attach';
-	// DEV-140: 본문 cross-link — XXX-NNN 타이핑 시 [[...]] 링크 자동완성.
-	import { crossLinkAutocomplete } from '$lib/utils/editor-links';
-	// DEV-130: 편집기 들여쓰기 설정 (tab/space + 2/4칸).
-	import { indentExtensions } from '$lib/utils/editor-indent';
+	// DEV-203: 편집기 셋업(테마/들여쓰기/첨부/자동완성/redo/높이/overlay 스크롤)은
+	// 공통 MarkdownEditor 컴포넌트로 단일화.
+	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
 	// alert() 대신 통일된 toast (UI 일관성 — DEV-142 완료 차단 경고 등).
 	import { showToast } from '$lib/stores/toast';
-	import { editorSettings } from '$lib/stores/editorSettings';
 	import {
 		URGENCY_LABEL,
 		urgencyColor,
@@ -103,7 +97,7 @@
 				name
 			});
 		} catch (e) {
-			saveError = `첨부 실패: ${e}`;
+			saveError = `${t('qd.attachFailed', $locale)}: ${e}`;
 		}
 	}
 	let editTitle = $state('');
@@ -142,11 +136,6 @@
 	let deleting = $state(false);
 	let cascadeSet = $state<Set<number>>(new Set());
 
-	// CodeMirror
-	let editorContainer: HTMLDivElement | undefined = $state(undefined);
-	let editorView: EditorView | null = null;
-	// DEV-074 fix15: `.cm-scroller` 의 OverlayScrollbar target.
-	let cmScroller: HTMLElement | null = $state(null);
 	// DEV-074 fix17: 삭제 cascade 모달의 sub-quest list overlay scrollbar.
 	let delSubListEl: HTMLUListElement | undefined = $state(undefined);
 
@@ -319,7 +308,9 @@
 
 	// --- 편집 모드 ---
 
-	async function enterEditMode() {
+	// DEV-203: 편집기 생성/파괴/높이 영속/설정·테마 반응은 MarkdownEditor
+	// 컴포넌트가 {#if editMode} 수명주기로 자동 처리.
+	function enterEditMode() {
 		if (!detail) return;
 		editTitle = detail.title;
 		editUrgency = detail.urgency;
@@ -328,102 +319,9 @@
 		editDesiredDue = detail.desired_due ?? '';
 		editRequiredDue = detail.required_due ?? '';
 		editMode = true;
-		await tick();
-		initEditor();
-	}
-
-	// DEV-057: 편집창 사용자 크기 영속화.
-	const EDITOR_HEIGHT_KEY = 'openguild.questEditorHeight';
-	let editorHeightSaveTimer: ReturnType<typeof setTimeout> | null = null;
-	function loadEditorHeight(): number {
-		try {
-			const raw = localStorage.getItem(EDITOR_HEIGHT_KEY);
-			const n = raw ? parseInt(raw, 10) : NaN;
-			// 합리적 범위만 — 200~2000px.
-			if (Number.isFinite(n) && n >= 200 && n <= 2000) return n;
-		} catch {
-			/* 무시 */
-		}
-		return 480;
-	}
-	function scheduleEditorHeightSave(px: number) {
-		if (editorHeightSaveTimer) clearTimeout(editorHeightSaveTimer);
-		editorHeightSaveTimer = setTimeout(() => {
-			try {
-				localStorage.setItem(EDITOR_HEIGHT_KEY, String(Math.round(px)));
-			} catch {
-				/* 무시 */
-			}
-		}, 250);
-	}
-	let editorResizeObserver: ResizeObserver | null = null;
-	// DEV-130: 들여쓰기 설정 변경 시 편집 중이면 editor 재생성.
-	$effect(() => {
-		const _ = $editorSettings;
-		if (editMode && editorView) {
-			// 현재 내용 보존.
-			editDescription = editorView.state.doc.toString();
-			initEditor();
-		}
-	});
-	// 테마 변경 시 재생성 없이 테마 확장만 교체 (커서/스크롤/undo 보존).
-	$effect(() => {
-		const t = $theme;
-		editorView?.dispatch({
-			effects: editorThemeCompartment.reconfigure(editorThemeExtension(t))
-		});
-	});
-
-	function initEditor() {
-		if (!editorContainer) return;
-		if (editorView) {
-			editorView.destroy();
-			editorView = null;
-		}
-		// DEV-057: parent (.editor-wrap) 가 height 결정. cm-scroller 는 fill.
-		// 이전엔 cm-scroller maxHeight 480px 가 고정 한계 — parent resize 시 의미 없음.
-		editorContainer.style.height = `${loadEditorHeight()}px`;
-		editorView = new EditorView({
-			doc: editDescription,
-			extensions: [
-				basicSetup,
-				markdown(),
-				// 테마 — Compartment 로 다크/라이트 라이브 전환 (재생성 X).
-				editorThemeCompartment.of(editorThemeExtension($theme)),
-				// DEV-117: Windows 표준 redo. (Tab 들여쓰기는 indentExtensions 가 담당.)
-				keymap.of([{ key: 'Mod-Shift-z', run: redo, preventDefault: true }]),
-				// DEV-130: tab/space + 2/4칸 들여쓰기 — Tab 키맵 + indentUnit/tabSize.
-				indentExtensions($editorSettings),
-				// DEV-069: 클립보드 이미지 paste / 파일 drag&drop → 첨부 업로드.
-				attachmentExtension((msg) => (saveError = `첨부 업로드 실패: ${msg}`), attachToSection),
-				// DEV-140: XXX-NNN 타이핑 → [[...]] cross-link 자동완성.
-				crossLinkAutocomplete(),
-				EditorView.theme({
-					'&': { fontSize: '0.875rem', borderRadius: '6px', height: '100%' },
-					'.cm-editor': { borderRadius: '6px', height: '100%' },
-					'.cm-scroller': { overflow: 'auto' }
-				})
-			],
-			parent: editorContainer
-		});
-		// DEV-074 fix15: .cm-scroller ref → OverlayScrollbar target.
-		cmScroller = editorContainer.querySelector('.cm-scroller') as HTMLElement | null;
-		// 사용자가 resize 핸들로 크기 바꿀 때마다 영속화.
-		editorResizeObserver?.disconnect();
-		editorResizeObserver = new ResizeObserver((entries) => {
-			for (const entry of entries) {
-				scheduleEditorHeightSave(entry.contentRect.height);
-			}
-		});
-		editorResizeObserver.observe(editorContainer);
 	}
 
 	function exitEditMode() {
-		cmScroller = null;
-		editorView?.destroy();
-		editorView = null;
-		editorResizeObserver?.disconnect();
-		editorResizeObserver = null;
 		editMode = false;
 		saveError = null;
 	}
@@ -433,7 +331,7 @@
 		saving = true;
 		saveError = null;
 		try {
-			const desc = editorView ? editorView.state.doc.toString() : editDescription;
+			const desc = editDescription;
 			await questsApi.update(detail.id, {
 				title: editTitle.trim() || detail.title,
 				description: desc || undefined,
@@ -526,7 +424,7 @@
 			const relation: CandidateRelation = mode;
 			candidates = await questsApi.candidates(detail.id, relation);
 		} catch (e) {
-			comboError = e instanceof Error ? e.message : '후보 조회 실패';
+			comboError = e instanceof Error ? e.message : t('qd.candidateFailed', $locale);
 		} finally {
 			candidatesLoading = false;
 		}
@@ -554,7 +452,7 @@
 			detail = await questsApi.getBySlug(slug);
 			closeCombo();
 		} catch (e) {
-			comboError = e instanceof Error ? e.message : '추가 실패';
+			comboError = e instanceof Error ? e.message : t('qd.addFailed', $locale);
 		}
 	}
 
@@ -574,7 +472,7 @@
 			await questsApi.changeParent(subId, { parent_quest_id: null });
 			detail = await questsApi.getBySlug(slug);
 		} catch (e) {
-			showToast(e instanceof Error ? e.message : '분리 실패', 'error');
+			showToast(e instanceof Error ? e.message : t('qd.detachFailed', $locale), 'error');
 		}
 	}
 
@@ -658,7 +556,7 @@
 			// query param 분기 (list / board / home / campaign).
 			goBack();
 		} catch (e) {
-			showToast(e instanceof Error ? e.message : '삭제 실패', 'error');
+			showToast(e instanceof Error ? e.message : t('qd.deleteFailed', $locale), 'error');
 			deleting = false;
 		}
 	}
@@ -715,7 +613,7 @@
 			linkedCampaigns = await campaignsApi.forQuest(detail.id);
 			closeCampaignCombo();
 		} catch (e) {
-			campaignLinkError = e instanceof Error ? e.message : 'campaign 연결 실패';
+			campaignLinkError = e instanceof Error ? e.message : t('qd.campaignLinkFailed', $locale);
 		}
 	}
 
@@ -725,7 +623,7 @@
 			await campaignsApi.unlinkQuest(campaignSlug, detail.quest_id);
 			linkedCampaigns = await campaignsApi.forQuest(detail.id);
 		} catch (e) {
-			showToast(e instanceof Error ? e.message : 'campaign 연결 해제 실패', 'error');
+			showToast(e instanceof Error ? e.message : t('qd.campaignUnlinkFailed', $locale), 'error');
 		}
 	}
 </script>
@@ -733,12 +631,15 @@
 <div class="container">
 	<div class="top-bar">
 		<!-- BUG-015: history.back() 으로 직전 페이지 (List 또는 Board) 복귀.
-		     history 가 비어있으면 (외부 link 직접 진입) Board 로 fallback. -->
-		<button class="back" type="button" onclick={goBack}>← Back</button>
+		     history 가 비어있으면 (외부 link 직접 진입) Board 로 fallback.
+		     DEV-255: 자식윈도우(단일 문서 보기)는 돌아갈 곳이 없음 — 숨김. -->
+		{#if !$isChildWindow}
+			<button class="back" type="button" onclick={goBack}>← {t('detail.back', $locale)}</button>
+		{/if}
 		{#if detail && !editMode}
 			<div class="top-actions">
-				<button class="btn-edit" onclick={enterEditMode}>✎ Edit</button>
-				<button class="btn-delete" onclick={openDeleteModal}>🗑 Delete</button>
+				<button class="btn-edit" onclick={enterEditMode}>✎ {t('detail.edit', $locale)}</button>
+				<button class="btn-delete" onclick={openDeleteModal}>🗑 {t('detail.delete', $locale)}</button>
 			</div>
 		{/if}
 	</div>
@@ -758,13 +659,13 @@
 				<!-- BUG-060 후속: 원본 urgency 가 범위(1-4) 밖 — clamp 표시 + 경고. -->
 				<span
 					class="urgency-warn"
-					title={`urgency 원본값 ${detail.urgency} 가 유효 범위(1-4) 밖 — clamp 표시 중. .guild 파일의 urgency 를 1~4 로 정정하세요.`}
-					>⚠ 범위 밖</span
+					title={`${t('qd.urgencyClampPre', $locale)}${detail.urgency}${t('qd.urgencyClampPost', $locale)}`}
+					>{t('qd.outOfRange', $locale)}</span
 				>
 			{/if}
 			{#key badgePulse}
 				<span class="badge status pulsing" style:--c={detail.status_color}>
-					{detail.status_name_en}
+					{questStatusLabel(detail, $locale)}
 				</span>
 			{/key}
 		</div>
@@ -772,7 +673,7 @@
 		<!-- 생성 / 변경 시각 -->
 		<div class="meta-times">
 			<span class="meta-item">
-				<span class="meta-label">생성</span>
+				<span class="meta-label">{t('common.created', $locale)}</span>
 				<time
 					class="meta-val"
 					datetime={detail.created_at}
@@ -784,14 +685,14 @@
 			</span>
 			<span class="meta-sep">·</span>
 			<span class="meta-item">
-				<span class="meta-label">변경</span>
+				<span class="meta-label">{t('common.updated', $locale)}</span>
 				<time
 					class="meta-val"
 					datetime={detail.updated_at}
 					title={formatTs(detail.updated_at)}
 					data-testid="updated-at"
 				>
-					{formatRelative(detail.updated_at)}
+					{formatRelative(detail.updated_at, undefined, $locale)}
 				</time>
 			</span>
 			{#if detail.desired_due || detail.required_due}
@@ -800,7 +701,7 @@
 				<!-- DEV-079: 기한 지났으면 빨강 강조 (done/cancelled 제외). -->
 				{#if detail.required_due}
 					<span class="meta-item">
-						<span class="meta-label">필수 기한</span>
+						<span class="meta-label">{t('qd.requiredDue', $locale)}</span>
 						<span
 							class="meta-val due-required"
 							class:overdue={isDateOverdue(detail.required_due, detail.status_slug)}
@@ -810,7 +711,7 @@
 				{/if}
 				{#if detail.desired_due}
 					<span class="meta-item">
-						<span class="meta-label">희망 기한</span>
+						<span class="meta-label">{t('qd.desiredDue', $locale)}</span>
 						<span
 							class="meta-val due-desired"
 							class:overdue={isDateOverdue(detail.desired_due, detail.status_slug)}
@@ -824,12 +725,12 @@
 		{#if editMode}
 			<div class="edit-form">
 				<label class="field-label">
-					<span>제목</span>
+					<span>{t('qd.titleLabel', $locale)}</span>
 					<input class="edit-title" type="text" bind:value={editTitle} />
 				</label>
 
 				<label class="field-label">
-					<span>긴급도</span>
+					<span>{t('filter.urgency', $locale)}</span>
 					<select class="edit-select" bind:value={editUrgency}>
 						{#each [1, 2, 3, 4] as u}
 							<option value={u}>{URGENCY_LABEL[u]}</option>
@@ -841,20 +742,20 @@
 				     slug 가 바뀌는 무거운 동작이라 일반 보기에서 한 클릭 거리는 과함.
 				     기존과 동일하게 confirm 모달 후 즉시 적용 (저장 버튼과 무관). -->
 				<div class="field-label">
-					<span>타입 변경 <span class="hint">(slug 바뀜 — 즉시 적용)</span></span>
+					<span>{t('qd.typeChange', $locale)} <span class="hint">{t('qd.typeChangeHint', $locale)}</span></span>
 					<div class="status-btns">
-						{#each types as t}
+						{#each types as ty}
 							<button
 								class="status-btn"
-								class:active={t.id === detail.quest_type_id}
-								style:--c={t.color}
-								onclick={() => askChangeType(t)}
-								disabled={changingType || t.id === detail.quest_type_id}
-								title={t.id === detail.quest_type_id
-									? '현재 타입'
-									: `${t.prefix} 로 변경 — slug 바뀜`}
+								class:active={ty.id === detail.quest_type_id}
+								style:--c={ty.color}
+								onclick={() => askChangeType(ty)}
+								disabled={changingType || ty.id === detail.quest_type_id}
+								title={ty.id === detail.quest_type_id
+									? t('qd.currentType', $locale)
+									: `${ty.prefix}${t('qd.changeToSuffix', $locale)}`}
 							>
-								{t.prefix}
+								{ty.prefix}
 							</button>
 						{/each}
 					</div>
@@ -863,12 +764,12 @@
 				<!-- DEV-076: 희망 / 필수 기한. 빈 값 = 미설정 / 해제. -->
 				<div class="due-row">
 					<label class="field-label">
-						<span>희망 기한 <span class="hint">(정보성)</span></span>
-						<input class="edit-date" type="date" bind:value={editDesiredDue} />
+						<span>{t('qd.desiredDue', $locale)} <span class="hint">{t('qd.desiredDueHint', $locale)}</span></span>
+						<DateField bind:value={editDesiredDue} />
 					</label>
 					<label class="field-label">
-						<span>필수 기한 <span class="hint">(임박 / Overdue 기준)</span></span>
-						<input class="edit-date" type="date" bind:value={editRequiredDue} />
+						<span>{t('qd.requiredDue', $locale)} <span class="hint">{t('qd.requiredDueHint', $locale)}</span></span>
+						<DateField bind:value={editRequiredDue} />
 					</label>
 				</div>
 
@@ -877,44 +778,29 @@
 				<!-- DEV-202: 편집기 위 '첨부' 버튼 제거 — 아래 첨부 섹션과 중복.
 				     이미지·동영상·파일은 드래그&드랍 / Ctrl+V 로 첨부(attachmentExtension). -->
 				<div class="field-label">
-					<span>설명 (Markdown) — 첨부는 드래그&드랍 / Ctrl+V 또는 아래 첨부 섹션</span>
-					<div class="editor-wrap" bind:this={editorContainer}></div>
-					<!-- DEV-074 fix15: CodeMirror native scrollbar 대신 overlay. -->
-					{#if cmScroller}
-						<OverlayScrollbar target={cmScroller} />
-					{/if}
+					<span>{t('qd.descLabel', $locale)}</span>
+					<MarkdownEditor
+						bind:value={editDescription}
+						onError={(msg) => (saveError = `${t('qd.attachUploadFailed', $locale)}: ${msg}`)}
+						onAttach={attachToSection}
+					/>
 				</div>
 
 				{#if saveError}<p class="save-error">{saveError}</p>{/if}
 
 				<div class="edit-actions">
 					<button class="btn-save" onclick={saveEdit} disabled={saving}>
-						{saving ? '저장 중…' : '저장'}
+						{saving ? t('common.saving', $locale) : t('common.save', $locale)}
 					</button>
-					<button class="btn-cancel" onclick={exitEditMode} disabled={saving}>취소</button>
+					<button class="btn-cancel" onclick={exitEditMode} disabled={saving}>{t('common.cancel', $locale)}</button>
 				</div>
 			</div>
 		{:else}
 			<h1 class="title">{detail.title}</h1>
 
-			<!-- 권장 브랜치명 -->
-			<div class="branch-row">
-				<span class="branch-label">Branch</span>
-				<code class="branch-name"
-					>{detail.type_prefix}-{String(detail.number).padStart(3, '0')}</code
-				>
-				<button
-					class="copy-btn"
-					onclick={() =>
-						navigator.clipboard.writeText(
-							`${detail!.type_prefix}-${String(detail!.number).padStart(3, '0')}`
-						)}>복사</button
-				>
-			</div>
-
 			<!-- 상태 변경 -->
 			<div class="status-row">
-				<span class="branch-label">상태 변경</span>
+				<span class="branch-label">{t('qd.statusChange', $locale)}</span>
 				<div class="status-btns">
 					{#each sortedStatuses as s}
 						<button
@@ -927,7 +813,7 @@
 							data-testid="status-btn-{s.id}"
 						>
 							{#if s.id === statusFlashId}✓
-							{/if}{s.name_en}
+							{/if}{statusLabel(s, $locale)}
 						</button>
 					{/each}
 				</div>
@@ -941,7 +827,7 @@
 					<MarkdownView source={detail.description} />
 				{:else}
 					<p class="no-desc">
-						No description. <button class="link-btn" onclick={enterEditMode}>설명 추가하기</button>
+						{t('qd.noDescription', $locale)} <button class="link-btn" onclick={enterEditMode}>{t('qd.addDescription', $locale)}</button>
 					</p>
 				{/if}
 			</div>
@@ -954,7 +840,7 @@
 		{#if detail.parent}
 			<section>
 				<div class="section-head">
-					<h2 class="section-title parent-label">Parent</h2>
+					<h2 class="section-title parent-label">{t('quest.section.parent', $locale)}</h2>
 				</div>
 				<ul class="quest-list">
 					<li>
@@ -965,7 +851,7 @@
 								>
 								<span class="ql-title">{detail.parent.title}</span>
 								<span class="badge status" style:--c={detail.parent.status_color}
-									>{detail.parent.status_name_en}</span
+									>{questStatusLabel(detail.parent, $locale)}</span
 								>
 							</a>
 						</div>
@@ -977,10 +863,10 @@
 		<!-- 서브퀘스트 -->
 		<section>
 			<div class="section-head">
-				<h2 class="section-title sub-label">Sub-Quests</h2>
+				<h2 class="section-title sub-label">{t('quest.section.subQuests', $locale)}</h2>
 				{#if !editMode}
-					<button class="sec-add-btn" onclick={() => (showNewSubQuest = true)}>+ 신규</button>
-					<button class="sec-add-btn" onclick={() => openCombo('sub')}>+ 기존 지정</button>
+					<button class="sec-add-btn" onclick={() => (showNewSubQuest = true)}>{t('qd.newSub', $locale)}</button>
+					<button class="sec-add-btn" onclick={() => openCombo('sub')}>{t('qd.assignExisting', $locale)}</button>
 				{/if}
 			</div>
 			{#if detail.sub_quests.length > 0}
@@ -991,12 +877,12 @@
 								<a href="/quests/{sq.quest_id}{fromSuffix}" class="prereq-link">
 									<span class="badge type" style:--c={sq.type_color}>{sq.quest_id}</span>
 									<span class="ql-title">{sq.title}</span>
-									<span class="badge status" style:--c={sq.status_color}>{sq.status_name_en}</span>
+									<span class="badge status" style:--c={sq.status_color}>{questStatusLabel(sq, $locale)}</span>
 								</a>
 								{#if !editMode}
 									<button
 										class="prereq-rm"
-										title="부모에서 분리"
+										title={t('qd.detachFromParent', $locale)}
 										onclick={() => detachSubQuest(sq.id)}>×</button
 									>
 								{/if}
@@ -1005,16 +891,16 @@
 					{/each}
 				</ul>
 			{:else}
-				<p class="no-desc">서브퀘스트 없음.</p>
+				<p class="no-desc">{t('qd.noSubQuests', $locale)}</p>
 			{/if}
 		</section>
 
 		<!-- 선행 퀘스트 -->
 		<section>
 			<div class="section-head">
-				<h2 class="section-title prereq-label">Prerequisites</h2>
+				<h2 class="section-title prereq-label">{t('quest.section.prerequisites', $locale)}</h2>
 				{#if !editMode}
-					<button class="sec-add-btn" onclick={() => openCombo('prereq')}>+ 추가</button>
+					<button class="sec-add-btn" onclick={() => openCombo('prereq')}>{t('qd.addBtn', $locale)}</button>
 				{/if}
 			</div>
 
@@ -1026,12 +912,12 @@
 								<a href="/quests/{pq.quest_id}{fromSuffix}" class="prereq-link">
 									<span class="badge type" style:--c={pq.type_color}>{pq.quest_id}</span>
 									<span class="ql-title">{pq.title}</span>
-									<span class="badge status" style:--c={pq.status_color}>{pq.status_name_en}</span>
+									<span class="badge status" style:--c={pq.status_color}>{questStatusLabel(pq, $locale)}</span>
 								</a>
 								{#if !editMode}
 									<button
 										class="prereq-rm"
-										title="선행 퀘스트 제거"
+										title={t('qd.removePrereq', $locale)}
 										onclick={() => removePrerequisite(pq.id)}>×</button
 									>
 								{/if}
@@ -1040,51 +926,7 @@
 					{/each}
 				</ul>
 			{:else}
-				<p class="no-desc">선행 퀘스트 없음.</p>
-			{/if}
-		</section>
-
-		<!-- DEV-068: 태그 — frontmatter 가 진리원. inline 편집 가능. -->
-		<section>
-			<div class="section-head">
-				<h2 class="section-title tag-label">Tags</h2>
-				{#if !editMode}
-					<button class="sec-add-btn" onclick={() => (tagInputOpen = !tagInputOpen)}>
-						{tagInputOpen ? '취소' : '+ 추가'}
-					</button>
-				{/if}
-			</div>
-			{#if (detail.tags ?? []).length > 0}
-				<ul class="tag-pills">
-					{#each detail.tags ?? [] as t (t)}
-						<li>
-							<span class="tag-pill" style={tagStyle(t)} title={tagTitle(t)}>
-								{t}
-								{#if !editMode}
-									<button
-										class="tag-rm"
-										title="태그 제거"
-										onclick={() => removeTag(t)}
-										aria-label={`${t} 제거`}>×</button
-									>
-								{/if}
-							</span>
-						</li>
-					{/each}
-				</ul>
-			{:else if !tagInputOpen}
-				<p class="no-desc">태그 없음.</p>
-			{/if}
-			{#if tagInputOpen && !editMode}
-				<form class="tag-add-form" onsubmit={addTagFromInput}>
-					<input
-						type="text"
-						bind:value={newTagText}
-						placeholder="새 태그 (공백 구분으로 여러 개)"
-						aria-label="새 태그"
-					/>
-					<button type="submit" disabled={!newTagText.trim()}>추가</button>
-				</form>
+				<p class="no-desc">{t('qd.noPrereqs', $locale)}</p>
 			{/if}
 		</section>
 
@@ -1092,11 +934,11 @@
 			참조). DEV-124: 추가 버튼. -->
 		<section>
 			<div class="section-head">
-				<h2 class="section-title prereq-label">Successors</h2>
-				<span class="sec-hint">이 퀘스트를 선행으로 가진 퀘스트</span>
+				<h2 class="section-title succ-label">{t('quest.section.successors', $locale)}</h2>
+				<span class="sec-hint">{t('quest.section.successorsHint', $locale)}</span>
 				{#if !editMode}
-					<button class="sec-add-btn" onclick={() => openCombo('succ')} title="후속 퀘스트 추가">
-						+ 추가
+					<button class="sec-add-btn" onclick={() => openCombo('succ')} title={t('qd.addSuccessor', $locale)}>
+						{t('qd.addBtn', $locale)}
 					</button>
 				{/if}
 			</div>
@@ -1108,21 +950,21 @@
 								<a href="/quests/{sq.quest_id}{fromSuffix}" class="prereq-link">
 									<span class="badge type" style:--c={sq.type_color}>{sq.quest_id}</span>
 									<span class="ql-title">{sq.title}</span>
-									<span class="badge status" style:--c={sq.status_color}>{sq.status_name_en}</span>
+									<span class="badge status" style:--c={sq.status_color}>{questStatusLabel(sq, $locale)}</span>
 								</a>
 							</div>
 						</li>
 					{/each}
 				</ul>
 			{:else}
-				<p class="no-desc">후속 퀘스트 없음.</p>
+				<p class="no-desc">{t('qd.noSuccessors', $locale)}</p>
 			{/if}
 		</section>
 
 		<!-- DEV-011: 연결된 캠페인 -->
 		<section>
 			<div class="section-head">
-				<h2 class="section-title campaign-label">Campaigns</h2>
+				<h2 class="section-title campaign-label">{t('quest.section.campaigns', $locale)}</h2>
 				<!-- BUG-031: 버튼 배치를 sub-quest / prereq 와 동일하게 — title 옆 -->
 				{#if !editMode}
 					<button
@@ -1130,8 +972,8 @@
 						onclick={openCampaignCombo}
 						disabled={campaignCandidates.length === 0}
 						title={campaignCandidates.length === 0
-							? '연결 가능한 캠페인이 없습니다'
-							: '캠페인 선택'}>+ 연결</button
+							? t('qd.noLinkableCampaigns', $locale)
+							: t('qd.selectCampaign', $locale)}>{t('qd.linkBtn', $locale)}</button
 					>
 				{/if}
 			</div>
@@ -1148,7 +990,7 @@
 								{#if !editMode}
 									<button
 										class="prereq-rm"
-										title="캠페인 연결 해제"
+										title={t('qd.unlinkCampaign', $locale)}
 										onclick={() => unlinkCampaign(c.campaign_slug)}>×</button
 									>
 								{/if}
@@ -1157,7 +999,53 @@
 					{/each}
 				</ul>
 			{:else}
-				<p class="no-desc">연결된 캠페인 없음.</p>
+				<p class="no-desc">{t('qd.noLinkedCampaigns', $locale)}</p>
+			{/if}
+		</section>
+
+		<!-- DEV-068: 태그 — frontmatter 가 진리원. inline 편집 가능.
+		     DEV-205: 관계 섹션(선행/후속) 사이에 끼어 있던 위치를 관계 섹션
+		     뒤(메타)로 이동. 루프 변수는 번역 t() 와 충돌 않게 tag 로. -->
+		<section>
+			<div class="section-head">
+				<h2 class="section-title tag-label">{t('quest.section.tags', $locale)}</h2>
+				{#if !editMode}
+					<button class="sec-add-btn" onclick={() => (tagInputOpen = !tagInputOpen)}>
+						{tagInputOpen ? t('common.cancel', $locale) : t('quest.tags.add', $locale)}
+					</button>
+				{/if}
+			</div>
+			{#if (detail.tags ?? []).length > 0}
+				<ul class="tag-pills">
+					{#each detail.tags ?? [] as tag (tag)}
+						<li>
+							<span class="tag-pill" style={tagStyle(tag)} title={tagTitle(tag)}>
+								{tag}
+								{#if !editMode}
+									<button
+										class="tag-rm"
+										title={t('quest.tags.remove', $locale)}
+										onclick={() => removeTag(tag)}
+										aria-label={`${t('quest.tags.remove', $locale)}: ${tag}`}>×</button
+									>
+								{/if}
+							</span>
+						</li>
+					{/each}
+				</ul>
+			{:else if !tagInputOpen}
+				<p class="no-desc">{t('quest.tags.none', $locale)}</p>
+			{/if}
+			{#if tagInputOpen && !editMode}
+				<form class="tag-add-form" onsubmit={addTagFromInput}>
+					<input
+						type="text"
+						bind:value={newTagText}
+						placeholder={t('quest.tags.placeholder', $locale)}
+						aria-label={t('quest.tags.newAria', $locale)}
+					/>
+					<button type="submit" disabled={!newTagText.trim()}>{t('quest.tags.addSubmit', $locale)}</button>
+				</form>
 			{/if}
 		</section>
 
@@ -1182,17 +1070,16 @@
 		<div class="modal-sm" role="dialog" aria-modal="true" tabindex="-1">
 			<div class="modal-head">
 				<h3>
-					{#if comboMode === 'sub'}기존 퀘스트를 서브퀘스트로 지정{:else if comboMode === 'prereq'}선행
-						퀘스트 추가{:else}후속 퀘스트 추가{/if}
+					{#if comboMode === 'sub'}{t('qd.comboSub', $locale)}{:else if comboMode === 'prereq'}{t('qd.comboPrereq', $locale)}{:else}{t('qd.comboSuccessor', $locale)}{/if}
 				</h3>
 				<button class="x" onclick={closeCombo}>×</button>
 			</div>
 			{#if candidatesLoading}
-				<div class="combo-state">후보 조회 중…</div>
+				<div class="combo-state">{t('qd.loadingCandidates', $locale)}</div>
 			{:else}
 				<QuestCombobox
 					quests={candidates}
-					placeholder="ID 또는 제목으로 검색"
+					placeholder={t('qd.searchByIdTitle', $locale)}
 					onselect={pickCandidate}
 					oncancel={closeCombo}
 				/>
@@ -1207,12 +1094,12 @@
 	<div class="ov" role="presentation">
 		<div class="modal-sm" role="dialog" aria-modal="true" tabindex="-1">
 			<div class="modal-head">
-				<h3>캠페인 연결</h3>
+				<h3>{t('qd.linkCampaignTitle', $locale)}</h3>
 				<button class="x" onclick={closeCampaignCombo}>×</button>
 			</div>
 			<CampaignCombobox
 				campaigns={campaignCandidates}
-				placeholder="C-NNN 또는 캠페인 제목"
+				placeholder={t('qd.campaignSearchPlaceholder', $locale)}
 				onselect={linkCampaign}
 				oncancel={closeCampaignCombo}
 			/>
@@ -1236,40 +1123,39 @@
 	<div class="ov" role="presentation">
 		<div class="modal-sm" role="dialog" aria-modal="true" tabindex="-1">
 			<div class="modal-head">
-				<h3 class="del-title">타입 변경</h3>
+				<h3 class="del-title">{t('qd.changeTypeTitle', $locale)}</h3>
 				<button class="x" onclick={() => (confirmTypeChange = null)} disabled={changingType}
 					>×</button
 				>
 			</div>
 			<p class="del-msg">
-				<code>{detail.quest_id}</code> 의 타입을 <strong>{target.prefix}</strong> 로 변경합니다.
-				슬러그(quest_id) 가 바뀌어
-				<code>{target.prefix}-NNN</code> 형태의 새 번호가 부여됩니다.
+				<code>{detail.quest_id}</code>{t('qd.changeTypeMsg1', $locale)}<strong>{target.prefix}</strong>{t('qd.changeTypeMsg2', $locale)}
+				<code>{target.prefix}-NNN</code>{t('qd.changeTypeMsg3', $locale)}
 			</p>
 			<p class="del-prereq">
-				⚠ 다른 퀘스트 본문 안에 <code>{detail.quest_id}</code> 를 직접 언급(예 "참조") 한 부분은 자동으로
-				갱신되지 않습니다. 필요하면 검색해서 직접 수정하세요. 부모/자식/선행 관계의 auto-block 메타는
-				자동 갱신됩니다.
+				{t('qd.changeTypeWarnPre', $locale)}<code>{detail.quest_id}</code>{t('qd.changeTypeWarnPost', $locale)}
+				{t('qd.autoBlockNote', $locale)}
+				{t('qd.autoUpdated', $locale)}
 			</p>
 			<!-- DEV-133: 타입 변경이 편집 모드 안으로 이동 — 즉시 적용 + 새 slug
 			     로 navigate 되므로 저장 안 한 제목/설명 편집은 유지되지 않음. -->
 			{#if editMode}
 				<p class="del-prereq">
-					⚠ 변경 즉시 새 슬러그 페이지로 이동합니다 — <strong
-						>저장하지 않은 제목/설명 편집은 사라집니다.</strong
-					> 먼저 저장 후 변경을 권장.
+					{t('qd.immediateNavWarn', $locale)}<strong
+						>{t('qd.unsavedWarnStrong', $locale)}</strong
+					>{t('qd.unsavedWarnRest', $locale)}
 				</p>
 			{/if}
 			<div class="del-actions">
 				<button class="btn-del-yes" onclick={doChangeType} disabled={changingType}>
-					{changingType ? '변경 중…' : '변경'}
+					{changingType ? t('qd.changing', $locale) : t('common.change', $locale)}
 				</button>
 				<button
 					class="btn-del-no"
 					onclick={() => (confirmTypeChange = null)}
 					disabled={changingType}
 				>
-					취소
+					{t('common.cancel', $locale)}
 				</button>
 			</div>
 		</div>
@@ -1281,14 +1167,14 @@
 	<div class="ov" role="presentation">
 		<div class="modal-sm" role="dialog" aria-modal="true" tabindex="-1">
 			<div class="modal-head">
-				<h3 class="del-title">{detail.quest_id} 삭제</h3>
+				<h3 class="del-title">{detail.quest_id} {t('detail.delete', $locale)}</h3>
 				<button class="x" onclick={() => (deleteModal = false)} disabled={deleting}>×</button>
 			</div>
-			<p class="del-msg">이 퀘스트를 삭제합니다. 되돌릴 수 없습니다.</p>
+			<p class="del-msg">{t('quest.delete.msg', $locale)}</p>
 			{#if detail.sub_quests.length > 0}
 				<div class="del-sub">
 					<div class="del-sub-head">
-						<p class="del-sub-title">서브퀘스트 처리:</p>
+						<p class="del-sub-title">{t('quest.delete.subTitle', $locale)}</p>
 						<label class="del-sub-all">
 							<input
 								type="checkbox"
@@ -1297,11 +1183,11 @@
 								onchange={toggleAllCascade}
 								data-testid="cascade-all"
 							/>
-							<span>전체 선택</span>
+							<span>{t('quest.delete.selectAll', $locale)}</span>
 						</label>
 					</div>
 					<p class="del-sub-help">
-						체크한 항목은 함께 삭제됩니다. 체크하지 않은 항목은 부모에서 분리됩니다.
+						{t('quest.delete.subHelp', $locale)}
 					</p>
 					<ul class="del-sub-list" bind:this={delSubListEl}>
 						{#each detail.sub_quests as sq (sq.id)}
@@ -1324,19 +1210,20 @@
 					{/if}
 				</div>
 			{/if}
-			<p class="del-prereq">선행 퀘스트들은 별도의 퀘스트이므로 영향받지 않습니다.</p>
+			<p class="del-prereq">{t('quest.delete.prereqNote', $locale)}</p>
+			<!-- 버튼 순서: [취소][삭제] — ConfirmDialog(캠페인 상세 등)와 통일. -->
 			<div class="del-actions">
+				<button class="btn-del-no" onclick={() => (deleteModal = false)} disabled={deleting}
+					>{t('common.cancel', $locale)}</button
+				>
 				<button
 					class="btn-del-yes"
 					onclick={confirmDelete}
 					disabled={deleting}
 					data-testid="confirm-delete"
 				>
-					{deleting ? '삭제 중…' : '삭제'}
+					{deleting ? t('quest.delete.deleting', $locale) : t('detail.delete', $locale)}
 				</button>
-				<button class="btn-del-no" onclick={() => (deleteModal = false)} disabled={deleting}
-					>취소</button
-				>
 			</div>
 		</div>
 	</div>
@@ -1346,26 +1233,26 @@
 {#if detail && (showTopJump || showCommentsJump || showMemoJump)}
 	<div class="jump-cluster">
 		{#if showTopJump}
-			<button class="jump-btn" onclick={jumpToTop} title="맨 위로" aria-label="맨 위로">
+			<button class="jump-btn" onclick={jumpToTop} title={t('common.jumpTop', $locale)} aria-label={t('common.jumpTop', $locale)}>
 				<span class="jb-icon">↑</span>
-				<span class="jb-label">위</span>
+				<span class="jb-label">{t('common.jumpTopShort', $locale)}</span>
 			</button>
 		{/if}
 		{#if showCommentsJump}
 			<button
 				class="jump-btn"
 				onclick={jumpToComments}
-				title="댓글로 이동"
-				aria-label="댓글로 이동"
+				title={t('common.jumpComments', $locale)}
+				aria-label={t('common.jumpComments', $locale)}
 			>
 				<span class="jb-icon">💬</span>
-				<span class="jb-label">댓글</span>
+				<span class="jb-label">{t('common.jumpCommentsShort', $locale)}</span>
 			</button>
 		{/if}
 		{#if showMemoJump}
-			<button class="jump-btn" onclick={jumpToMemo} title="메모로 이동" aria-label="메모로 이동">
+			<button class="jump-btn" onclick={jumpToMemo} title={t('common.jumpMemo', $locale)} aria-label={t('common.jumpMemo', $locale)}>
 				<span class="jb-icon">📝</span>
-				<span class="jb-label">메모</span>
+				<span class="jb-label">{t('common.jumpMemoShort', $locale)}</span>
 			</button>
 		{/if}
 	</div>
@@ -1491,42 +1378,10 @@
 		line-height: 1.4;
 	}
 
-	.branch-row {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		margin-bottom: 0.75rem;
-		padding: 0.5rem 0.75rem;
-		background: var(--bg-elevated);
-		border: 1px solid var(--bg-subtle);
-		border-radius: 6px;
-	}
 	.branch-label {
 		font-size: 0.75rem;
 		color: var(--text-muted);
 		flex-shrink: 0;
-	}
-	.branch-name {
-		font-family: 'SFMono-Regular', Consolas, monospace;
-		font-size: 0.85rem;
-		color: var(--accent-secondary);
-		flex: 1;
-	}
-	.copy-btn {
-		padding: 0.15rem 0.6rem;
-		border: 1px solid var(--border);
-		border-radius: 4px;
-		background: transparent;
-		color: var(--text-muted);
-		font-size: 0.72rem;
-		cursor: pointer;
-		transition:
-			background 0.1s,
-			color 0.1s;
-	}
-	.copy-btn:hover {
-		background: var(--bg-subtle);
-		color: var(--text);
 	}
 
 	.status-row {
@@ -1704,32 +1559,7 @@
 		color: var(--danger);
 		font-weight: 700;
 	}
-	/* DEV-069: 편집기 위 첨부 툴바. */
-	.editor-wrap {
-		/* DEV-057: 사용자 drag 로 height 조절. CodeMirror 의 cm-scroller 는
-		   parent height 100% 따라가서 늘어남. ResizeObserver 가 변경 감지 →
-		   localStorage 영속. */
-		border: 1px solid var(--border);
-		border-radius: 6px;
-		overflow: hidden;
-		min-height: 200px;
-		max-height: 90vh;
-		resize: vertical;
-	}
-	.editor-wrap :global(.cm-editor) {
-		outline: none;
-	}
-	.editor-wrap :global(.cm-editor.cm-focused) {
-		outline: none;
-		border: none;
-	}
-	/* DEV-074 fix15: native scrollbar 숨김 — OverlayScrollbar 가 대신 그림. */
-	.editor-wrap :global(.cm-scroller) {
-		scrollbar-width: none;
-	}
-	.editor-wrap :global(.cm-scroller::-webkit-scrollbar) {
-		display: none;
-	}
+	/* DEV-203: .editor-wrap CSS 는 공통 MarkdownEditor 컴포넌트로 이동. */
 	.save-error {
 		color: var(--danger);
 		font-size: 0.8rem;
@@ -1793,6 +1623,11 @@
 	}
 	.section-title.prereq-label {
 		color: var(--hl-pre);
+	}
+	/* DEV-070/DEV-205: 후속 퀘스트 — QuestBoard/CLI 의 successor(--hl-next) 색.
+	   이전엔 prereq-label 을 재사용해 선행과 색이 같았다(사용자 보고). */
+	.section-title.succ-label {
+		color: var(--hl-next);
 	}
 	/* DEV-070: section header 옆의 부가 설명 hint. */
 	.sec-hint {

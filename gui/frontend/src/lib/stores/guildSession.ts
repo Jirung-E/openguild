@@ -11,9 +11,26 @@
 // board 의 onMount 가 bounce 안 하면 active 로, welcome 의 onMount 는
 // 항상 inactive 로 마크.
 
+import { writable } from 'svelte/store';
+
 const KEY = 'openguild.guildContextActive';
 
+function readFlag(): boolean {
+	if (typeof sessionStorage === 'undefined') return false;
+	try {
+		return sessionStorage.getItem(KEY) === '1';
+	} catch {
+		return false;
+	}
+}
+
+/// BUG-136 후속(admin #2): mark* 는 sessionStorage 만 바꿔서 구독자에게
+/// 신호가 안 갔음 — Nav 의 길드 이름이 Welcome 복귀 후에도 남는 원인.
+/// 반응형 스토어를 함께 갱신해 마운트 순서와 무관하게 구독자가 따라오게.
+export const guildContextActive = writable<boolean>(readFlag());
+
 export function markGuildContextActive(): void {
+	guildContextActive.set(true);
 	if (typeof sessionStorage === 'undefined') return;
 	try {
 		sessionStorage.setItem(KEY, '1');
@@ -23,6 +40,7 @@ export function markGuildContextActive(): void {
 }
 
 export function markGuildContextInactive(): void {
+	guildContextActive.set(false);
 	if (typeof sessionStorage === 'undefined') return;
 	try {
 		sessionStorage.removeItem(KEY);

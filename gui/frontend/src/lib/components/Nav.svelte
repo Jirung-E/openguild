@@ -1,31 +1,19 @@
 <script lang="ts">
 	import { page } from '$app/stores';
-	import { onMount } from 'svelte';
 	import { adminApi } from '$lib/api/admin';
-	import { metaApi } from '$lib/api/meta';
 	import { bumpReindex } from '$lib/stores/reindex';
+	// DEV-205 모듈1: Nav 문자열 i18n.
+	import { locale, t } from '$lib/stores/locale';
 	// DEV-138: 설정 퀵메뉴 — ⚙ 클릭 시 dropdown (테마/UI크기/폭 + 전체 설정).
 	// DEV-125 의 standalone 테마 순환 버튼은 퀵메뉴로 흡수.
 	import SettingsQuickMenu from './SettingsQuickMenu.svelte';
 	let quickMenuOpen = $state(false);
 
-	// DEV-141 / DEV-113 후속(사용자 보고): 현재 길드 이름 — 어느 길드인지
-	// 한눈에. 이전엔 Tauri invoke 만 써서 (a) 브라우저/server 모드는 항상
-	// 미표시, (b) Tauri + 원격 연결 시 Rust 로컬 placeholder 이름
-	// ("openguild-welcome-placeholder")이 잘못 보였다. `metaApi.getGuildDisplayInfo()`
-	// 가 모드별로 올바른 source(Tauri-local invoke vs HTTP)를 골라 항상 실제
-	// 길드 이름을 가져오고, 원격 연결이면 `isRemote` 로 배지도 표시.
-	let guildName = $state('');
-	let isRemoteGuild = $state(false);
-	onMount(async () => {
-		try {
-			const info = await metaApi.getGuildDisplayInfo();
-			guildName = info.name;
-			isRemoteGuild = info.remote;
-		} catch {
-			/* 길드 모드 아님 / 조회 실패 — 표시 안 함 */
-		}
-	});
+	// BUG-146: 예전엔 커스텀 타이틀바가 없는 환경(브라우저 dev / 당시엔
+	// macOS/Linux 로 오판)에서 Nav 에 "openguild" 로고 + 길드명을 fallback
+	// 으로 그렸으나, 이제 로고/길드명은 타이틀바(TitleBar)로 일원화. 앱(모든
+	// OS)이든 웹이든 Nav 에는 아예 그리지 않으므로 관련 상태/조회/판별 전부
+	// 제거했다.
 
 	// DEV-011: Home 탭. URL `/` 가 ?view 없으면 home 기본.
 	type View = 'home' | 'board' | 'list';
@@ -37,6 +25,8 @@
 	let onSettingsPath = $derived($page.url.pathname.startsWith('/settings'));
 	// DEV-016: 길드 규칙 페이지.
 	let onRulesPath = $derived($page.url.pathname.startsWith('/rules'));
+	// DEV-217: 도서관 페이지.
+	let onLibraryPath = $derived($page.url.pathname.startsWith('/library'));
 
 	// DEV-095: Reindex 버튼 — 사용자 의견 "Admin 페이지 아닌 일반 사용자도
 	// 접근 가능". 외부 편집 / `openguild quest new` CLI / git pull 등으로
@@ -66,33 +56,23 @@
 		} catch (e) {
 			reindexState = {
 				status: 'error',
-				message: e instanceof Error ? e.message : 'reindex 실패'
+				message: e instanceof Error ? e.message : t('nav.reindex.error', $locale)
 			};
 		}
 	}
 </script>
 
 <header>
-	<!-- DEV-052 후속 (4회차): 로고 클릭 → Welcome (다른 길드로 전환 / recent 관리). -->
-	<a href="/welcome" class="logo">
-		openguild
-		<!-- DEV-141: 현재 길드 이름 — 로고 옆 작은 배지로 어느 길드인지 표시. -->
-		{#if guildName}
-			<span class="guild-name" title="현재 길드: {guildName}">{guildName}</span>
-			<!-- DEV-113 후속: 원격 서버에 연결된 상태면 명시 배지. -->
-			{#if isRemoteGuild}
-				<span class="remote-badge" title="원격 서버에 연결됨">🌐 원격</span>
-			{/if}
-		{/if}
-	</a>
-
+	<!-- BUG-146: 로고/길드명은 타이틀바로 일원화 — Nav 에는 그리지 않음. -->
 	<nav>
-		<a href="/" class:active={onRootPath && currentView === 'home'}>Home</a>
-		<a href="/?view=board" class:active={onRootPath && currentView === 'board'}>Quest Board</a>
-		<a href="/?view=list" class:active={onRootPath && currentView === 'list'}>Quest List</a>
-		<a href="/admin" class:active={onAdminPath}>Admin</a>
+		<a href="/" class:active={onRootPath && currentView === 'home'}>{t('nav.home', $locale)}</a>
+		<a href="/?view=board" class:active={onRootPath && currentView === 'board'}>{t('nav.board', $locale)}</a>
+		<a href="/?view=list" class:active={onRootPath && currentView === 'list'}>{t('nav.list', $locale)}</a>
+		<a href="/admin" class:active={onAdminPath}>{t('nav.admin', $locale)}</a>
 		<!-- DEV-016: 길드 규칙 — 팀 컨벤션 / 그라운드 룰. -->
-		<a href="/rules" class:active={onRulesPath}>Rules</a>
+		<a href="/rules" class:active={onRulesPath}>{t('nav.rules', $locale)}</a>
+		<!-- DEV-217: 도서관 — 프로젝트 참고문서/노트 (BOOK 번호). -->
+		<a href="/library" class:active={onLibraryPath}>{t('nav.library', $locale)}</a>
 	</nav>
 
 	<div class="nav-right">
@@ -105,10 +85,10 @@
 			onclick={runReindex}
 			disabled={reindexState.status === 'running'}
 			title={reindexState.status === 'error'
-				? `Reindex 실패: ${reindexState.message}`
+				? `${t('nav.reindex.failed', $locale)}: ${reindexState.message}`
 				: reindexState.status === 'done'
-					? '✓ Reindex 완료'
-					: '캐시 정합 — 외부 편집 / git pull 후 한 번 클릭'}
+					? t('nav.reindex.done', $locale)
+					: t('nav.reindex.hint', $locale)}
 			aria-label="Reindex"
 		>
 			{#if reindexState.status === 'running'}
@@ -128,8 +108,8 @@
 				class="btn-settings"
 				class:active={onSettingsPath || quickMenuOpen}
 				onclick={() => (quickMenuOpen = !quickMenuOpen)}
-				title="설정"
-				aria-label="설정"
+				title={t('nav.settings', $locale)}
+				aria-label={t('nav.settings', $locale)}
 				aria-expanded={quickMenuOpen}>⚙</button
 			>
 			{#if quickMenuOpen}
@@ -148,53 +128,13 @@
 		align-items: center;
 		gap: 2rem;
 		padding: 0 1.5rem;
-		height: 3.25rem;
+		height: var(--nav-h, 3.25rem);
 		background: var(--nav-bg);
 		border-bottom: 1px solid var(--nav-border);
 		position: sticky;
-		top: 0;
+		/* 커스텀 타이틀바(Windows Tauri) 아래에 붙도록 — 없으면 0px. */
+		top: var(--titlebar-h, 0px);
 		z-index: 100;
-	}
-
-	.logo {
-		display: inline-flex;
-		align-items: baseline;
-		gap: 0.5rem;
-		font-size: 1.1rem;
-		font-weight: 700;
-		color: var(--text);
-		text-decoration: none;
-		letter-spacing: 0.02em;
-	}
-
-	/* DEV-141: 현재 길드 이름 배지 — 로고보다 작고 muted, accent 보더로 구분. */
-	.guild-name {
-		font-size: 0.75rem;
-		font-weight: 600;
-		letter-spacing: 0;
-		color: var(--accent);
-		background: color-mix(in srgb, var(--accent) 12%, transparent);
-		border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
-		border-radius: 5px;
-		padding: 0.1rem 0.4rem;
-		max-width: 12rem;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	/* DEV-113 후속: 원격 연결 배지 — guild-name 과 톤 구분(warning 계열,
-		 인증 없는 네트워크 노출 상태라는 의미). */
-	.remote-badge {
-		font-size: 0.7rem;
-		font-weight: 600;
-		letter-spacing: 0;
-		color: var(--warning);
-		background: color-mix(in srgb, var(--warning) 14%, transparent);
-		border: 1px solid color-mix(in srgb, var(--warning) 40%, transparent);
-		border-radius: 5px;
-		padding: 0.1rem 0.4rem;
-		white-space: nowrap;
 	}
 
 	nav {

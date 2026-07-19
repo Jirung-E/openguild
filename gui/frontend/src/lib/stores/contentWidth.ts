@@ -36,13 +36,31 @@ function loadInitial(): number {
 
 export const contentWidth = writable<number>(loadInitial());
 
+// BUG-141 후속(uiScale.ts 와 동일 이유): 동기 localStorage.setItem 이 슬라이더
+// 드래그 중 매 pointermove 마다 그대로 실행되던 것을 rAF 병합으로 프레임당
+// 1회로 상한.
+let persistRafId: number | null = null;
+let pendingPersist = DEFAULT_CONTENT_WIDTH;
 contentWidth.subscribe((w) => {
 	if (typeof localStorage === 'undefined') return;
-	try {
-		localStorage.setItem(KEY, String(w));
-	} catch {
-		/* 무시 */
+	pendingPersist = w;
+	if (typeof requestAnimationFrame === 'undefined') {
+		try {
+			localStorage.setItem(KEY, String(pendingPersist));
+		} catch {
+			/* 무시 */
+		}
+		return;
 	}
+	if (persistRafId !== null) return;
+	persistRafId = requestAnimationFrame(() => {
+		persistRafId = null;
+		try {
+			localStorage.setItem(KEY, String(pendingPersist));
+		} catch {
+			/* 무시 */
+		}
+	});
 });
 
 export function setContentWidth(w: number) {

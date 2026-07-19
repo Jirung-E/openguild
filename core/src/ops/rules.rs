@@ -21,6 +21,11 @@ pub fn get_rule(store: &Store, slug: &str) -> AppResult<Option<String>> {
     repo::read_rule(&store.paths, slug).map_err(AppError::Internal)
 }
 
+/// DEV-243: 태그 포함 전체 조회.
+pub fn get_rule_entry(store: &Store, slug: &str) -> AppResult<Option<RuleEntry>> {
+    repo::read_rule_entry(&store.paths, slug).map_err(AppError::Internal)
+}
+
 pub async fn set_rule(store: &Store, slug: &str, content: String) -> AppResult<()> {
     let _ = journal::append(
         &store.journal_pool,
@@ -71,6 +76,19 @@ pub async fn rename_rule(
     .await
     .map_err(AppError::Internal)?;
     repo::rename_rule(&store.paths, old_slug, new_slug).map_err(AppError::Internal)
+}
+
+/// DEV-243: 규칙 태그 전체 교체.
+pub async fn set_rule_tags(store: &Store, slug: &str, tags: Vec<String>) -> AppResult<RuleEntry> {
+    let _ = journal::append(
+        &store.journal_pool,
+        "set_rule_tags",
+        &json!({ "slug": slug, "tags": &tags }),
+        None::<&serde_json::Value>,
+    )
+    .await
+    .map_err(AppError::Internal)?;
+    repo::set_rule_tags(&store.paths, slug, tags).map_err(AppError::Internal)
 }
 
 // ─── (deprecated) 단일 파일 API ───

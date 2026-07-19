@@ -1,0 +1,2 @@
+{"ts":"2026-07-09T00:11:11+09:00","op":"change_status","old":"open","new":"testing"}
+{"ts":"2026-07-09T00:25:12+09:00","op":"change_status","old":"testing","new":"done"}

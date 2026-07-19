@@ -110,14 +110,18 @@ export function effectiveQuestDue(quest: Quest): {
 export function makeQuestNodeSvgUrl(
 	quest: Quest,
 	overlayColor?: string,
-	theme: 'dark' | 'light' = 'dark'
+	theme: 'dark' | 'light' = 'dark',
+	// 홈 conveyor 처럼 좁은 카드로 렌더할 때의 layout 폭 — 글자 크기는
+	// 유지한 채 제목 truncation/배지 위치만 이 폭에 맞춰 재배치
+	// (전체 축소 스케일이 아님 — 글자가 작아지지 않는다).
+	width: number = NODE_W
 ): string {
 	// DEV-074 fix20: themePalette 단일 source 사용. 이전엔 inline 분기.
 	const palette = themePalette(theme);
 	const bgFill = palette.bg;
 	const titleFill = palette.text;
 	const defaultDueColor = palette.textMuted;
-	const W = NODE_W;
+	const W = width;
 	const H = NODE_H;
 	// BUG-057: HiDPI — SVG 를 dpr 배 사이즈로 발급 + viewBox 로 좌표 보존.
 	// Cytoscape / `<img src>` 가 그 사이즈 raster cache → 표시 사이즈로 다운샘플 → 선명.
@@ -148,7 +152,8 @@ export function makeQuestNodeSvgUrl(
 	const dX = W - 10 - dW;
 
 	const full = quest.title;
-	const MAX_PX = 260;
+	// W=284(보드 기본)일 때 기존값 260 과 동일 — 좁은 폭에도 같은 여백 유지.
+	const MAX_PX = W - 24;
 	const [line1, rest1] = splitByPixelWidthAtWord(full, MAX_PX);
 	const [rawL2, rest2] = splitByPixelWidthAtWord(rest1, MAX_PX);
 	const line2 = rest2.length > 0 ? splitByPixelWidth(rawL2, MAX_PX - 10)[0] + '…' : rawL2;

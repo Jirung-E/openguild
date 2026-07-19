@@ -41,7 +41,7 @@ openguild --guild ./other-project quest list
 openguild --remote https://openguild.io/alice/monitor quest list
 ```
 
-The GUI (Tauri desktop app, Windows NSIS installer) provides directory selection and a recent guilds list. Build artifacts are attached to each GitHub Release as `openguild_{version}_x64-setup.exe` — the installer offers per-component selection (GUI / CLI / Server) and an optional PATH registration. Installed app auto-checks for updates on startup and every 6 hours (notification only — install requires user click).
+The GUI (Tauri desktop app) provides directory selection and a recent guilds list. Windows installer (`openguild_{version}_x64-setup.exe`, NSIS) offers per-component selection (GUI / CLI / Server) and an optional PATH registration; Linux builds are also attached to each GitHub Release as `.deb` / `.rpm` / AppImage packages. Installed app auto-checks for updates on startup and every 6 hours (notification only — install requires user click).
 
 ### Creating a Quest
 Quests are created within a guild. Each quest has a type prefix and an auto-incremented ID (e.g., `DEV-001`, `BUG-003`).
@@ -81,14 +81,24 @@ openguild campaign checklist add C-001 "Smoke test installer"
 openguild campaign checklist check C-001 1
 ```
 
-Full CLI reference: [`docs/AGENTS_OPENGUILD_USAGE.md`](./docs/AGENTS_OPENGUILD_USAGE.md).
+### Agent skill (Claude Code)
+The installed app (and the source checkout) ships a `skills/` directory
+structured as a Claude Code plugin marketplace, synced to
+`~/.openguild/skill-marketplace/` on first run — this is the full CLI
+reference for agents (command catalog, workflow patterns, safety guards). To
+teach an agent how to use openguild in your own project, register it from
+Claude Code:
+```
+/plugin marketplace add ~/.openguild/skill-marketplace
+/plugin install openguild-plugin@openguild
+```
 
 ## Documentation
 
 | File | Audience | Purpose |
 |---|---|---|
 | [`AGENTS.md`](./AGENTS.md) | AI agent | Index — points to other docs |
-| [`docs/AGENTS_OPENGUILD_USAGE.md`](./docs/AGENTS_OPENGUILD_USAGE.md) | AI agent | How an agent uses openguild as a task management tool (CLI guide) |
+| `skills/openguild-plugin/skills/openguild/` | AI agent | How an agent uses openguild as a task management tool (Claude Code skill — see [Agent skill](#agent-skill-claude-code) above) |
 | [`docs/architecture.md`](./docs/architecture.md) | Developers | System architecture, API endpoints, data model |
 | [`docs/storage-design.md`](./docs/storage-design.md) | Developers | File-as-truth + SQLite cache + AOF/RDB design |
 | [`docs/dev-plan.md`](./docs/dev-plan.md) | Developers | Roadmap, progress |
@@ -126,7 +136,7 @@ cargo build --release --bin openguild   # → target/release/openguild
 # or: cargo run --bin openguild -- --help
 ```
 
-### Recovery — older binary refuses to open a guild (BUG-041)
+### Recovery — older binary refuses to open a guild
 
 A binary built before some migration `N` was added refuses to open a guild DB
 that already has migration `N` recorded (sqlx's `VersionMissing(N)` panic).
@@ -188,7 +198,7 @@ openguild --guild ./other-project quest list
 openguild --remote https://openguild.io/alice/monitor quest list
 ```
 
-GUI (Tauri 데스크탑 앱, Windows NSIS installer) 는 디렉터리 선택 + 최근 길드 목록을 제공. 빌드 결과물은 매 GitHub Release 에 `openguild_{version}_x64-setup.exe` 로 첨부됨 — installer 는 컴포넌트 선택 (GUI / CLI / Server) + PATH 등록 옵션 제공. 설치된 앱은 시작 시 + 6시간 간격으로 업데이트 자동 확인 (알림만; 설치는 사용자 클릭).
+GUI (Tauri 데스크탑 앱) 는 디렉터리 선택 + 최근 길드 목록을 제공. Windows installer(`openguild_{version}_x64-setup.exe`, NSIS)는 컴포넌트 선택 (GUI / CLI / Server) + PATH 등록 옵션 제공 — 매 GitHub Release 에 첨부됨. 리눅스 빌드도 각 Release 에 `.deb` / `.rpm` / AppImage 패키지로 첨부. 설치된 앱은 시작 시 + 6시간 간격으로 업데이트 자동 확인 (알림만; 설치는 사용자 클릭).
 
 ### 퀘스트 생성
 퀘스트는 길드 내에서 생성된다. 각 퀘스트는 타입 prefix와 자동 증가 ID를 가진다 (예: `DEV-001`, `BUG-003`).
@@ -228,14 +238,23 @@ openguild campaign checklist add C-001 "설치본 smoke test"
 openguild campaign checklist check C-001 1
 ```
 
-전체 CLI 가이드: [`docs/AGENTS_OPENGUILD_USAGE.md`](./docs/AGENTS_OPENGUILD_USAGE.md).
+### 에이전트 스킬 (Claude Code)
+설치된 앱(및 소스 체크아웃)엔 Claude Code plugin marketplace 구조로 만들어진
+`skills/` 디렉토리가 포함돼 있고, 첫 실행 시 `~/.openguild/skill-marketplace/`
+로 동기화된다 — 이게 에이전트용 전체 CLI 가이드(명령어 카탈로그, 워크플로
+패턴, 안전장치)다. 여러분의 프로젝트에서 openguild 사용법을 에이전트에게
+가르치려면 Claude Code 에서 다음을 실행해 등록한다:
+```
+/plugin marketplace add ~/.openguild/skill-marketplace
+/plugin install openguild-plugin@openguild
+```
 
 ## 문서
 
 | 파일 | 대상 | 내용 |
 |---|---|---|
 | [`AGENTS.md`](./AGENTS.md) | AI agent | 인덱스 — 다른 문서로 가는 진입점 |
-| [`docs/AGENTS_OPENGUILD_USAGE.md`](./docs/AGENTS_OPENGUILD_USAGE.md) | AI agent | agent 가 openguild 를 작업 관리 도구로 사용하는 방법 (CLI 가이드) |
+| `skills/openguild-plugin/skills/openguild/` | AI agent | agent 가 openguild 를 작업 관리 도구로 사용하는 방법 (Claude Code 스킬 — 위 [에이전트 스킬](#에이전트-스킬-claude-code) 참고) |
 | [`docs/architecture.md`](./docs/architecture.md) | 개발자 | 시스템 구조, API 엔드포인트, 데이터 모델 |
 | [`docs/storage-design.md`](./docs/storage-design.md) | 개발자 | 파일 진리원 + SQLite 캐시 + AOF/RDB 설계 |
 | [`docs/dev-plan.md`](./docs/dev-plan.md) | 개발자 | 단계별 개발 계획 + 진행 상태 |
@@ -274,7 +293,7 @@ cargo build --release --bin openguild   # → target/release/openguild
 # or: cargo run --bin openguild -- --help
 ```
 
-### 복구 — 이전 binary 가 길드를 못 열 때 (BUG-041)
+### 복구 — 이전 binary 가 길드를 못 열 때
 
 이전 release 의 binary 가 (그 시점에 없던) migration `N` 이 적용된 길드 DB 를
 열 때 sqlx 가 `VersionMissing(N)` panic 으로 거부. **v0.1.0-beta 이후 빌드**

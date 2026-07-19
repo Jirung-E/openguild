@@ -11,6 +11,10 @@
 	import { questsApi } from '$lib/api/quests';
 	import type { QuestHistoryEntry, QuestStatus } from '$lib/types';
 	import { formatTs, formatRelative } from '$lib/utils/datetime';
+	// DEV-205: 변경 이력 섹션 i18n.
+	import { locale, t } from '$lib/stores/locale';
+	// DEV-015: status 표시 이름 — 언어 반응(로컬 statusLabel 헬퍼와 이름 충돌 방지 alias).
+	import { statusLabel as localizedStatusLabel } from '$lib/utils/status-label';
 
 	let { questId, statuses = [] }: { questId: number; statuses?: QuestStatus[] } = $props();
 
@@ -34,7 +38,7 @@
 				entries = list;
 			})
 			.catch((e) => {
-				error = e instanceof Error ? e.message : '이력 로드 실패';
+				error = e instanceof Error ? e.message : t('history.loadFailed', $locale);
 			})
 			.finally(() => {
 				loading = false;
@@ -42,17 +46,18 @@
 	});
 
 	/**
-	 * DEV-042: history 값은 slug (예 "open", "testing"). 표시 시 status name_en 으로 변환.
+	 * DEV-042: history 값은 slug (예 "open", "testing"). 표시 시 status 이름으로 변환.
+	 * DEV-015: 이름은 언어 반응(ko 면 name_ko 우선) — 공용 util 사용.
 	 * 폴백: 숫자로 보이면 legacy (DEV-042 이전 기록) — id 로 lookup, 표기에 (legacy) 부착.
 	 */
 	function statusLabel(value: string | null): string {
-		if (!value) return '(없음)';
+		if (!value) return t('history.none', $locale);
 		const bySlug = statusBySlug.get(value);
-		if (bySlug) return bySlug.name_en;
+		if (bySlug) return localizedStatusLabel(bySlug, $locale);
 		if (/^\d+$/.test(value)) {
 			const id = Number(value);
 			const s = statusById.get(id);
-			if (s) return `${s.name_en} (legacy)`;
+			if (s) return `${localizedStatusLabel(s, $locale)} (legacy)`;
 		}
 		return value;
 	}
@@ -84,24 +89,24 @@
 
 <section class="qh-section">
 	<div class="section-head">
-		<h2 class="section-title">변경 이력</h2>
+		<h2 class="section-title">{t('history.title', $locale)}</h2>
 		{#if entries.length > 0}
 			<span class="qh-count">{entries.length}</span>
 		{/if}
 	</div>
 
 	{#if loading}
-		<p class="qh-state">로드 중…</p>
+		<p class="qh-state">{t('history.loading', $locale)}</p>
 	{:else if error}
 		<p class="qh-state error">{error}</p>
 	{:else if entries.length === 0}
-		<p class="qh-state">변경 이력 없음.</p>
+		<p class="qh-state">{t('history.empty', $locale)}</p>
 	{:else}
 		<ul class="qh-list" data-testid="quest-history-list">
 			{#each entries as e (e.id)}
 				<li class="qh-item" data-testid="qh-item">
 					<time class="qh-ts" datetime={e.ts} title={formatTs(e.ts)}>
-						{formatRelative(e.ts)}
+						{formatRelative(e.ts, undefined, $locale)}
 					</time>
 					{#if opLabel(e.op)}
 						<span class="qh-op">{opLabel(e.op)}</span>

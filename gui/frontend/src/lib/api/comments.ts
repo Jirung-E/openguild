@@ -26,6 +26,10 @@ export interface CommentEntry {
 	discussion?: boolean;
 	/** DEV-142: 토론 해결 여부. discussion 이 아닐 땐 무의미. */
 	resolved?: boolean;
+	/** DEV-234: 상단 고정(pin) 여부. quest/campaign 댓글 둘 다 지원. */
+	pinned?: boolean;
+	/** DEV-182: 본문 편집 시각. 한 번도 수정 안 했으면 undefined. */
+	edited_at?: string;
 }
 
 export interface CommentsListResponse {
@@ -57,6 +61,9 @@ function makeCommentsApi(base: (slug: string) => string) {
 			api.post<CommentEntry>(`${base(slug)}/comments/${id}/discussion`, {}),
 		toggleResolved: (slug: string, id: number) =>
 			api.post<CommentEntry>(`${base(slug)}/comments/${id}/resolved`, {}),
+		// DEV-234: 상단 고정(pin) 토글 — quest/campaign 둘 다 지원.
+		togglePinned: (slug: string, id: number) =>
+			api.post<CommentEntry>(`${base(slug)}/comments/${id}/pinned`, {}),
 
 		// ─── DEV-012: 메모 (단일 텍스트) ───
 		getMemo: (slug: string) => api.get<ContentResponse>(`${base(slug)}/memo`),

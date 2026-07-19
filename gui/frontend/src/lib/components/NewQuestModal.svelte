@@ -1,6 +1,10 @@
 <script lang="ts">
 	import { questsApi } from '$lib/api/quests';
 	import { metaApi } from '$lib/api/meta';
+	// DEV-205: 새 퀘스트 모달 i18n.
+	import { locale, t } from '$lib/stores/locale';
+	// DEV-015: status 표시 이름 — 언어 반응.
+	import { statusLabel } from '$lib/utils/status-label';
 	// DEV-130 #2: 설명 textarea 도 Tab = 들여쓰기 (focus 이동 X), 설정 반영.
 	import { tabInsert } from '$lib/actions/tab-insert';
 	import { adminApi } from '$lib/api/admin';
@@ -19,9 +23,10 @@
 	} = $props();
 
 	let types = $state<QuestType[]>([]);
-	// DEV-048: API 가 slug 전용. 표시용 라벨만 별도 보관.
+	// DEV-048: API 가 slug 전용. 표시용은 status 객체를 들고(DEV-015: 언어
+	// 반응 라벨 statusLabel() 을 렌더 시점에 계산) slug 만 별도 보관.
 	let openStatusSlug = $state('');
-	let openStatusLabel = $state('');
+	let openStatus = $state<QuestStatus | null>(null);
 	let loading = $state(true);
 
 	let typeId = $state(0);
@@ -51,7 +56,7 @@
 			const sorted = [...s].sort((a, b) => a.sort_order - b.sort_order);
 			if (sorted.length > 0) {
 				openStatusSlug = sorted[0].slug;
-				openStatusLabel = sorted[0].name_en;
+				openStatus = sorted[0];
 			}
 			// 결과적으로 statuses.length > 0 → 폼이 표시됨 ($derived).
 			queueMicrotask(() => titleInput?.focus());
@@ -102,7 +107,7 @@
 
 	async function saveAsTemplate(force = false) {
 		if (!tplName.trim()) {
-			tplMsg = '템플릿 이름을 입력하세요.';
+			tplMsg = t('nqm.tplNameRequired', $locale);
 			return;
 		}
 		savingTpl = true;
@@ -128,7 +133,7 @@
 			if (!force && msg.includes('이미 존재')) {
 				// 네이티브 confirm() 회피 (BUG-075) — 인라인 '덮어쓰기' 버튼으로 처리.
 				tplExists = true;
-				tplMsg = `'${tplName.trim()}' 이미 있음 — 덮어쓰시겠습니까?`;
+				tplMsg = `${t('nqm.tplExistsPre', $locale)}${tplName.trim()}${t('nqm.tplExistsPost', $locale)}`;
 			} else {
 				tplMsg = msg;
 			}
@@ -147,7 +152,7 @@
 			const sorted = [...s].sort((a: QuestStatus, b: QuestStatus) => a.sort_order - b.sort_order);
 			if (sorted.length > 0) {
 				openStatusSlug = sorted[0].slug;
-				openStatusLabel = sorted[0].name_en;
+				openStatus = sorted[0];
 			}
 			// DEV-060: 템플릿 목록 — 실패해도 모달 자체는 OK.
 			if (isTauri) {
@@ -162,17 +167,17 @@
 
 	async function create() {
 		if (!title.trim()) {
-			saveError = '제목을 입력해주세요.';
+			saveError = t('nqm.titleRequired', $locale);
 			return;
 		}
 		// DEV-014 후속: 검증 메시지 분리 — 이전엔 두 조건이 한 메시지("타입을 선택")
 		// 로 묶여서 status 가 0개인데 type 만 있는 경우에도 오해 메시지가 나왔음.
 		if (!typeId) {
-			saveError = '타입을 선택해주세요.';
+			saveError = t('nqm.typeRequired', $locale);
 			return;
 		}
 		if (!openStatusSlug) {
-			saveError = '상태가 없습니다. 먼저 상태를 추가하세요.';
+			saveError = t('nqm.noStatusError', $locale);
 			return;
 		}
 		saving = true;
@@ -210,8 +215,8 @@
 <div class="overlay" role="dialog" aria-modal="true">
 	<div class="modal" role="document">
 		<div class="modal-head">
-			<h2 class="modal-title">{parentQuestId ? 'New Sub-Quest' : 'New Quest'}</h2>
-			<button class="close-btn" onclick={onclose} aria-label="닫기">×</button>
+			<h2 class="modal-title">{parentQuestId ? t('nqm.newSubQuest', $locale) : t('nqm.newQuest', $locale)}</h2>
+			<button class="close-btn" onclick={onclose} aria-label={t('nqm.close', $locale)}>×</button>
 		</div>
 
 		{#if loading}
@@ -220,25 +225,21 @@
 			<!-- DEV-014 후속: type 0개 — admin 으로 안내 (prefix 정책 결정이 필요해
 			     여기서 자동 생성 안 함). -->
 			<div class="empty-state">
-				<p class="empty-title">퀘스트 타입이 없습니다</p>
+				<p class="empty-title">{t('nqm.noTypes', $locale)}</p>
 				<p class="empty-msg">
-					Quest type (DEV / BUG / REQ 같은 prefix) 이 하나도 정의되어 있지 않아 새 퀘스트를 만들 수
-					없습니다. 먼저 Admin 페이지에서 type 을 추가하세요.
+					{t('nqm.noTypesMsg', $locale)}
 				</p>
 				<div class="form-actions">
-					<a class="btn-create" href="/admin" onclick={onclose}>Admin 으로 가기</a>
-					<button class="btn-cancel" onclick={onclose}>닫기</button>
+					<a class="btn-create" href="/admin" onclick={onclose}>{t('nqm.goToAdmin', $locale)}</a>
+					<button class="btn-cancel" onclick={onclose}>{t('nqm.close', $locale)}</button>
 				</div>
 			</div>
 		{:else if !openStatusSlug}
 			<!-- DEV-014 후속: status 0개 — "기본 Open 만들고 계속" 한 번에 처리. -->
 			<div class="empty-state">
-				<p class="empty-title">퀘스트 상태가 없습니다</p>
+				<p class="empty-title">{t('nqm.noStatuses', $locale)}</p>
 				<p class="empty-msg">
-					Quest status 가 하나도 정의되어 있지 않아 새 퀘스트를 만들 수 없습니다. 기본 <strong
-						>'Open'</strong
-					> (게시됨, 회색) 을 만들고 계속할까요? 필요하면 그 뒤 Admin 페이지에서 색 / 이름을 바꾸거나
-					다른 상태를 추가할 수 있습니다.
+					{t('nqm.noStatusMsg1', $locale)}<strong>'Open'</strong>{t('nqm.noStatusMsg2', $locale)}
 				</p>
 				{#if bootstrapError}
 					<p class="save-error">{bootstrapError}</p>
@@ -249,10 +250,10 @@
 						onclick={bootstrapDefaultStatus}
 						disabled={creatingDefaultStatus}
 					>
-						{creatingDefaultStatus ? '추가 중…' : "기본 'Open' 추가하고 계속"}
+						{creatingDefaultStatus ? t('nqm.addingStatus', $locale) : t('nqm.addDefaultStatus', $locale)}
 					</button>
-					<a class="btn-cancel" href="/admin" onclick={onclose}>Admin 으로 가기</a>
-					<button class="btn-cancel" onclick={onclose}>닫기</button>
+					<a class="btn-cancel" href="/admin" onclick={onclose}>{t('nqm.goToAdmin', $locale)}</a>
+					<button class="btn-cancel" onclick={onclose}>{t('nqm.close', $locale)}</button>
 				</div>
 			</div>
 		{:else}
@@ -262,13 +263,13 @@
 				{#if isTauri && templates.length > 0}
 					<div class="field">
 						<label class="field-label">
-							<span>템플릿</span>
+							<span>{t('nqm.template', $locale)}</span>
 							<select
 								class="sel"
 								bind:value={selectedTemplate}
 								onchange={() => applyTemplate(selectedTemplate)}
 							>
-								<option value="">(템플릿 없이)</option>
+								<option value="">{t('nqm.noTemplate', $locale)}</option>
 								{#each templates as t (t.name)}
 									<option value={t.name}>{t.name}{t.title ? ` — ${t.title}` : ''}</option>
 								{/each}
@@ -279,7 +280,7 @@
 				<div class="field-row">
 					<div class="field">
 						<label class="field-label">
-							<span>타입</span>
+							<span>{t('nqm.type', $locale)}</span>
 							<select class="sel" bind:value={typeId}>
 								{#each types as t}
 									<option value={t.id} style:color={t.color}>{t.prefix}</option>
@@ -289,7 +290,7 @@
 					</div>
 					<div class="field" style="flex:1">
 						<label class="field-label">
-							<span>긴급도</span>
+							<span>{t('filter.urgency', $locale)}</span>
 							<select class="sel" bind:value={urgency}>
 								{#each [1, 2, 3, 4] as u}
 									<option value={u}>{URGENCY_LABEL[u]}</option>
@@ -298,19 +299,19 @@
 						</label>
 					</div>
 					<div class="field" style="flex:1">
-						<span class="field-label">상태</span>
-						<span class="status-fixed" data-testid="new-quest-status">{openStatusLabel}</span>
+						<span class="field-label">{t('nqm.status', $locale)}</span>
+						<span class="status-fixed" data-testid="new-quest-status">{openStatus ? statusLabel(openStatus, $locale) : ''}</span>
 					</div>
 				</div>
 
 				<div class="field">
 					<label class="field-label">
-						<span>제목 *</span>
+						<span>{t('nqm.title', $locale)}</span>
 						<input
 							bind:this={titleInput}
 							class="inp"
 							type="text"
-							placeholder="퀘스트 제목을 입력하세요"
+							placeholder={t('nqm.titlePlaceholder', $locale)}
 							bind:value={title}
 						/>
 					</label>
@@ -318,12 +319,12 @@
 
 				<div class="field">
 					<label class="field-label">
-						<span>설명 (선택)</span>
+						<span>{t('nqm.descOptional', $locale)}</span>
 						<textarea
 							use:tabInsert
 							class="ta"
 							rows="5"
-							placeholder="Markdown 형식으로 작성할 수 있습니다"
+							placeholder={t('nqm.descPlaceholder', $locale)}
 							bind:value={description}
 						></textarea>
 					</label>
@@ -335,9 +336,9 @@
 
 				<div class="form-actions">
 					<button class="btn-create" onclick={create} disabled={saving || !title.trim()}>
-						{saving ? '생성 중…' : '퀘스트 생성'}
+						{saving ? t('nqm.creating', $locale) : t('nqm.create', $locale)}
 					</button>
-					<button class="btn-cancel" onclick={onclose} disabled={saving}>취소</button>
+					<button class="btn-cancel" onclick={onclose} disabled={saving}>{t('common.cancel', $locale)}</button>
 					{#if isTauri}
 						<button
 							class="btn-tpl"
@@ -349,7 +350,7 @@
 							}}
 							disabled={saving}
 						>
-							{showSaveTpl ? '템플릿 저장 닫기' : '템플릿으로 저장'}
+							{showSaveTpl ? t('nqm.closeSaveTpl', $locale) : t('nqm.saveAsTpl', $locale)}
 						</button>
 					{/if}
 				</div>
@@ -360,7 +361,7 @@
 						<input
 							class="inp"
 							type="text"
-							placeholder="템플릿 이름 (예: bug-report)"
+							placeholder={t('nqm.tplNamePlaceholder', $locale)}
 							bind:value={tplName}
 							onkeydown={(e) => {
 								if (e.key === 'Enter') saveAsTemplate(false);
@@ -372,7 +373,7 @@
 							onclick={() => saveAsTemplate(false)}
 							disabled={savingTpl || !tplName.trim()}
 						>
-							{savingTpl ? '저장 중…' : '저장'}
+							{savingTpl ? t('common.saving', $locale) : t('common.save', $locale)}
 						</button>
 						{#if tplExists}
 							<button

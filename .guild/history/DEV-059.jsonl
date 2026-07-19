@@ -1,0 +1,3 @@
+{"ts":"2026-06-06T17:26:17+09:00","op":"change_status","old":"open","new":"testing"}
+{"ts":"2026-06-06T17:51:01+09:00","op":"change_status","old":"testing","new":"returned"}
+{"ts":"2026-06-07T00:34:11+09:00","op":"change_status","old":"returned","new":"done"}

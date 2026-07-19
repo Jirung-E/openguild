@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>타이틀바/메뉴바 통합 샘플 v2</title>
+<style>
+  :root {
+    --bg: #0d1117; --bg-elevated: #161b22; --bg-subtle: #21262d;
+    --border: #30363d; --text: #c9d1d9; --text-strong: #e6edf3;
+    --text-muted: #8b949e; --text-faint: #484f58; --accent: #58a6ff;
+    --nav-bg: #1a1a2e; --nav-border: #2a2a4a; --nav-hover-bg: #2a2a4a;
+    --danger: #f85149; --success-strong: #238636; --warning: #d29922;
+    /* 기존 프로젝트 커스텀 스크롤바 토큰 (global.css) */
+    --scrollbar-thumb: rgba(139, 148, 158, 0.35);
+    --scrollbar-thumb-hover: rgba(139, 148, 158, 0.6);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #05070c; color: var(--text); font-family: 'Segoe UI', sans-serif; padding: 28px; }
+  h2 { font-size: 0.95rem; color: var(--text-muted); margin: 26px 0 10px; font-weight: 600; }
+  h2:first-child { margin-top: 0; }
+  .frame {
+    border: 1px solid #000; border-radius: 8px; overflow: hidden;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.6); max-width: 980px; position: relative;
+  }
+  /* ── 타이틀바 ── */
+  .titlebar {
+    height: 34px; display: flex; align-items: center;
+    background: var(--nav-bg); user-select: none; position: relative;
+  }
+  .tb-icon { width: 16px; height: 16px; margin: 0 6px 0 10px; flex: none; }
+  /* 왼쪽 버튼 클러스터: 홈 / 뒤로 / 앞으로 / 메뉴 */
+  .tb-left { display: flex; align-items: center; gap: 2px; }
+  .tb-icon-btn {
+    width: 30px; height: 26px; display: inline-flex; align-items: center; justify-content: center;
+    color: var(--text-muted); background: transparent; border: none; border-radius: 5px;
+    font-size: .85rem;
+  }
+  .tb-icon-btn:hover { background: var(--nav-hover-bg); color: var(--text); }
+  .tb-icon-btn.disabled { color: var(--text-faint); }
+  /* 중앙: vscode 식 검색 필(길드 이름) — 절대 중앙 정렬 */
+  .tb-search {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    height: 24px; min-width: 300px; max-width: 42%; padding: 0 12px;
+    background: rgba(255,255,255,.05); border: 1px solid var(--nav-border);
+    border-radius: 6px; font-size: .72rem; color: var(--text-muted); cursor: pointer;
+  }
+  .tb-search:hover { background: rgba(255,255,255,.09); color: var(--text); }
+  /* 원격 배지 — 검색 필 오른쪽 끝에 고정 (단색 지구본 아이콘) */
+  .tb-search .remote { position: absolute; right: 8px; display: inline-flex; color: var(--text-muted); }
+  .tb-spacer { flex: 1; }
+  /* 오른쪽: 창 컨트롤 */
+  .tb-btn {
+    width: 46px; height: 34px; display: inline-flex; align-items: center; justify-content: center;
+    color: var(--text-muted); background: transparent; border: none;
+  }
+  .tb-btn:hover { background: var(--nav-hover-bg); color: var(--text); }
+  .tb-close:hover { background: var(--danger); color: #fff; }
+  .tb-title-old { padding: 0 0.9rem; font-size: 0.75rem; color: var(--text-muted); }
+  /* ── 메뉴바(Nav) ── */
+  .nav {
+    height: 52px; display: flex; align-items: center; gap: 2rem; padding: 0 1.5rem;
+    background: var(--nav-bg); border-bottom: 1px solid var(--nav-border);
+  }
+  .logo { font-size: 1.1rem; font-weight: 700; color: var(--text-strong); display: inline-flex; align-items: baseline; gap: .5rem; }
+  .guild-badge {
+    font-size: .75rem; font-weight: 600; color: var(--accent);
+    background: rgba(88,166,255,.12); border: 1px solid rgba(88,166,255,.35);
+    border-radius: 5px; padding: .1rem .4rem;
+  }
+  .tabs { display: flex; gap: .25rem; flex: 1; }
+  .tabs a { padding: .35rem .85rem; border-radius: 6px; font-size: .875rem; color: var(--text-muted); text-decoration: none; }
+  .tabs a.active { background: var(--nav-hover-bg); color: var(--text-strong); }
+  .tabs a:hover:not(.active) { color: var(--text); }
+  .nav-right { display: flex; align-items: center; gap: .6rem; }
+  .btn-reindex {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 2rem; height: 2rem; border-radius: 6px; font-size: 1.05rem;
+    color: var(--text-muted); background: transparent; border: none;
+  }
+  .gear { font-size: 1rem; color: var(--text-muted); }
+  /* 콘텐츠 자리 */
+  .content { height: 120px; background: var(--bg); display: flex; align-items: flex-start; justify-content: center; padding-top: 3rem; color: var(--text-faint); font-size: .85rem; }
+  .content.tall { height: 300px; }
+  /* ── 검색 팝업 (vscode Quick Open 식) ──
+     타이틀바 바로 아래에서 드롭 — 메뉴바는 그대로 있고 팝업이 위에 겹칠 뿐
+     (폭을 제한해 뒤의 메뉴바가 양옆으로 보이게) */
+  .palette {
+    position: absolute; top: 38px; left: 50%; transform: translateX(-50%);
+    width: min(560px, 62%); background: var(--bg-elevated); border: 1px solid var(--border);
+    border-radius: 8px; box-shadow: 0 10px 34px rgba(0,0,0,.7); z-index: 20; overflow: hidden;
+  }
+  .palette input {
+    width: 100%; padding: .55rem .8rem; font-size: .85rem; border: none; outline: none;
+    background: var(--bg-subtle); color: var(--text-strong); border-bottom: 1px solid var(--border);
+  }
+  .palette input::placeholder { color: var(--text-faint); }
+  .p-row { display: flex; align-items: center; gap: .6rem; padding: .45rem .8rem; font-size: .8rem; }
+  .p-row.sel { background: var(--nav-hover-bg); }
+  .p-row:hover { background: var(--nav-hover-bg); }
+  .p-type {
+    flex: none; width: 3.6rem; text-align: center; font-size: .65rem; font-weight: 600;
+    border-radius: 4px; padding: .1rem 0;
+  }
+  .p-type.quest { color: var(--accent); background: rgba(88,166,255,.12); }
+  .p-type.campaign { color: #d2a8ff; background: rgba(210,168,255,.12); }
+  .p-type.rule { color: #7ee787; background: rgba(126,231,135,.12); }
+  .p-type.book { color: var(--warning); background: rgba(210,153,34,.12); }
+  .p-title { color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .p-tags { flex: none; font-size: .68rem; color: var(--text-faint); }
+  /* ── 문서 미리보기 팝업 (검색 결과 Enter/클릭) ── */
+  .doc-pop {
+    position: absolute; top: 38px; left: 50%; transform: translateX(-50%);
+    width: min(640px, 70%); background: var(--bg-elevated); border: 1px solid var(--border);
+    border-radius: 8px; box-shadow: 0 10px 34px rgba(0,0,0,.7); z-index: 20; overflow: hidden;
+  }
+  .dp-head { display: flex; align-items: center; gap: .6rem; padding: .6rem .9rem; border-bottom: 1px solid var(--border); }
+  .dp-head .p-type { width: auto; padding: .1rem .45rem; }
+  .dp-title { font-size: .92rem; font-weight: 600; color: var(--text-strong); flex: 1; }
+  .dp-x { color: var(--text-muted); font-size: .85rem; background: none; border: none; }
+  .dp-meta { display: flex; gap: .9rem; padding: .45rem .9rem; font-size: .7rem; color: var(--text-muted); border-bottom: 1px solid var(--border); }
+  .dp-meta .tag { color: var(--accent); }
+  .dp-body { padding: .8rem .9rem; font-size: .8rem; line-height: 1.65; color: var(--text);
+    height: 150px; overflow: auto; }
+  .dp-body h4 { font-size: .82rem; color: var(--text-strong); margin-bottom: .3rem; }
+  .dp-body li { margin-left: 1.1rem; }
+  /* 기존 프로젝트 커스텀 스크롤바 (global.css 규칙 그대로) */
+  .dp-body { scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) transparent; }
+  .dp-body::-webkit-scrollbar { width: 10px; height: 10px; background: transparent; }
+  .dp-body::-webkit-scrollbar-track { background: transparent; }
+  .dp-body::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb); border-radius: 8px;
+    border: 2px solid transparent; background-clip: content-box;
+  }
+  .dp-body::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); background-clip: content-box; }
+  .dp-foot { display: flex; justify-content: flex-end; gap: .5rem; padding: .55rem .9rem; border-top: 1px solid var(--border); }
+  /* 팝업 아래 가장자리 = 세로 크기 조절 핸들 */
+  .dp-resize {
+    height: 7px; cursor: ns-resize; background: var(--bg-subtle);
+    border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: center;
+  }
+  .dp-resize::before { content: ""; width: 34px; height: 3px; border-radius: 2px; background: var(--text-faint); }
+  .dp-resize:hover::before { background: var(--text-muted); }
+  .dp-btn { font-size: .75rem; padding: .3rem .7rem; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--text); }
+  .dp-btn.primary { background: var(--success-strong); border-color: transparent; color: #fff; }
+  /* ── ☰ 메뉴 드롭다운 ── */
+  .menu-pop {
+    position: absolute; top: 38px; left: 96px; width: 180px;
+    background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px;
+    box-shadow: 0 10px 34px rgba(0,0,0,.7); z-index: 20; padding: .3rem; font-size: .82rem;
+  }
+  .menu-pop a { display: flex; align-items: center; gap: .55rem; padding: .4rem .6rem; border-radius: 5px; color: var(--text); text-decoration: none; }
+  .menu-pop a svg { flex: none; color: var(--text-muted); }
+  .menu-pop a:hover { background: var(--nav-hover-bg); }
+  .note { max-width: 980px; margin-top: 8px; font-size: .8rem; color: var(--text-muted); line-height: 1.6; }
+  .note b { color: var(--text); }
+</style>
+</head>
+<body>
+
+<h2>현재 (참고)</h2>
+<div class="frame">
+  <div class="titlebar" style="border-bottom:1px solid var(--nav-border);">
+    <span class="tb-title-old">openguild</span>
+    <span class="tb-spacer"></span>
+    <span class="tb-btn"><svg width="10" height="10" viewBox="0 0 10 10"><line x1="0" y1="5" x2="10" y2="5" stroke="currentColor" stroke-width="1"/></svg></span>
+    <span class="tb-btn"><svg width="10" height="10" viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1"/></svg></span>
+    <span class="tb-btn tb-close"><svg width="10" height="10" viewBox="0 0 10 10"><line x1="0" y1="0" x2="10" y2="10" stroke="currentColor" stroke-width="1"/><line x1="10" y1="0" x2="0" y2="10" stroke="currentColor" stroke-width="1"/></svg></span>
+  </div>
+  <div class="nav">
+    <span class="logo">openguild <span class="guild-badge">coco-ai</span></span>
+    <nav class="tabs">
+      <a href="#" class="active">Home</a><a href="#">Quest Board</a><a href="#">Quest List</a>
+      <a href="#">Admin</a><a href="#">Rules</a><a href="#">Library</a>
+    </nav>
+    <span class="nav-right"><button class="btn-reindex">⟲</button><span class="gear">⚙</span></span>
+  </div>
+  <div class="content">(페이지 콘텐츠)</div>
+</div>
+
+<h2>제안 — 기본 상태: 앱 아이콘(장식) · 🏠 Welcome · ◀ ▶ 페이지 이동 · ☰ 메뉴 · 중앙 길드 이름(검색 팔레트)</h2>
+<div class="frame">
+  <div class="titlebar">
+    <img class="tb-icon" alt="" src="data:image/png;base64,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" />
+    <span class="tb-left">
+      <button class="tb-icon-btn" title="Welcome"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 8.2 L8 2.6 L14 8.2"/><path d="M3.6 7 V13.4 H12.4 V7"/></svg></button>
+      <button class="tb-icon-btn disabled" title="뒤로"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3 L5.5 8 L10 13"/></svg></button>
+      <button class="tb-icon-btn disabled" title="앞으로"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3 L10.5 8 L6 13"/></svg></button>
+      <button class="tb-icon-btn" title="메뉴">☰</button>
+    </span>
+    <span class="tb-search">coco-ai</span>
+    <span class="tb-spacer"></span>
+    <span class="tb-btn"><svg width="10" height="10" viewBox="0 0 10 10"><line x1="0" y1="5" x2="10" y2="5" stroke="currentColor" stroke-width="1"/></svg></span>
+    <span class="tb-btn"><svg width="10" height="10" viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1"/></svg></span>
+    <span class="tb-btn tb-close"><svg width="10" height="10" viewBox="0 0 10 10"><line x1="0" y1="0" x2="10" y2="10" stroke="currentColor" stroke-width="1"/><line x1="10" y1="0" x2="0" y2="10" stroke="currentColor" stroke-width="1"/></svg></span>
+  </div>
+  <div class="nav">
+    <nav class="tabs">
+      <a href="#" class="active">Home</a><a href="#">Quest Board</a><a href="#">Quest List</a>
+      <a href="#">Admin</a><a href="#">Rules</a><a href="#">Library</a>
+    </nav>
+    <span class="nav-right"><button class="btn-reindex">⟲</button><span class="gear">⚙</span></span>
+  </div>
+  <div class="content">(페이지 콘텐츠)</div>
+</div>
+
+<h2>제안 — ☰ 메뉴 열림 (메뉴바에 없는 페이지 모음)</h2>
+<div class="frame">
+  <div class="titlebar">
+    <img class="tb-icon" alt="" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAbXSURBVFhHrZXbblvHGYX/5eFQDOBYpCVRSSzrYEvWwUoRXwqyTbXwawTuhQsnKoLCtkQlvSj6GLlKZBdN+gDtUxRtEkviQTxIIiWeKR42xXCTe0bFDDdVcSuoKiQLWOC+mv/DmvUPiX4BPX16+NHKSvnV48eVYCBQWQ8EyuuBQGWt55WVyqv/uvwqECivPXly/IdgMHvfedaVtbRUeDAycrLvdndKnFtZzq0M59YR59Yh51aacyvFeSfFuXXAubXPubXHuZUcGOikp6aaW87zriy/33hBJMpEcsf2tu0tIvmWSP5AJL+3/R2R/DeR/BeR/CdjVsp53pXl8zXXAVkgkmFlQIYAuQPIbUBuAfKtcg8EkN8pKxDGxJ7zvCurCyBKgIwSyQhwAeIMxJkGY2Lfed6VZQOoK9hVEEAfhAZRV3IOQiWiQRgTB87zriyfrxkExDGRjAF9EJemwZj4+R24QfIzIllRCRB1r8HuQ0j/ovvt7IZKgjGRdp73k3p6+PSjlfLKq+Xy8sajyqP1R2XlwPrj/JONX23++e/jL98YE2ubJe3118WJ4GZx6sU3Bf/i4Z4No6HOQ6gtYUwcOWdd0FJh6cHIyci+u+MucYtnucUz3HId8Y77iDdulHj1ZoWX/HWeHm/zg8kOP5hs872pzkD6dmfs+9+YNxdSfRB2GnplGRMZ57wL8tf8L0hQmSTt2N4mSVsksE1Nzy7l/BmK36nTznyLtu6b9Pa+SVuLLfphscXSY53h3/0tbw8+X1ANwpjIOuddkK/pW4dEgSSFSVJIGQpEXNtB850YcqNZxO8YCM2Z2LlvQkFsLWoIlppoe1dfqzdCdaNXUA2ioBgTeee8C/I1fOsQKJGkiDIkwlAgAiE034mj6M8iMWUgPGvSznwbO/MaRKXBUuMd76dvFIAqaKy3Kb2yMiYKznkXpBMQUFewS5KikIhApSEQpqYngcJwDslJgyKzJkJzbYTm2xSaVzAmS493vKuvi/bwuDKgvzUEY6LonHdBvoYvCIFjkhSDxC4kougmEUHLnUDZl8HB7RqiMy1E75kaRKURmmuxo1vqChSAGpwEZALQIBqCMVFzzrsoeeMzklTpJWBfhd0H7KL+bgo5fxGp2zXsTRgqDSSn6pSYrLNjX33w+V8MIlkDRB1Qv6dVQFYAaXg8VkjPOPz44weVQGCturz8eWV5eaPy8GGw8vhhMP/r5S82//ThP9ZejxvBr8dLwa8nSutfjZc2vhovvvzrVGExNXpA0hWHcT2FY1+GSkNZKg5nURjOUnEkw+qD1fe+3PjWRXLV5WqvDgz0bCk/Gx39cYoKS0sPmiMj6Y7bXbU4L1ic5y0Xz3fcPN94l1dqXl6r3ORG9gPePhrjnfRtbilnPhiw3q7cMhdSQ/skEIPpTlDLk4DqRcsTp5YnxhrXK7OnI791htonw+9/eUpUlUQR22FJFBKgcMtD8cIw5ZKTZETukRmZJTM8S2ZojsydOTIz71+znn8znFdXorpBAlEIVVKESSLELFdu+mT6E+fMPjV9vqAAyhLYlUBUAhFJCAtQpOlBojiM3N4kjOgMzPAs2uFZmOE5aIjDMdb5/aZXvRFqM3aht0R/654wyf4vgHUBHEsiBdCFIEQEEG16kCwMI5+cRGN3BmakC2BDkHk0xjqrm96iKigk1JboTemVlQlWmD6Z/tQ5s08qAdkFiNkAu5IQ7QEUh5Dfm7AB7qEdmSUNEZqlduaWTkABqMEJSMTPQzDBitMn06vOmX2yr6AiieJnEKSugqItN5JlH7KpMdTjd6ilIHZnyIzOkKk6kX2ftW0ANTipIOzvmEqFCVa727j7zDmzTzaAKmFCQwAxSd0kOi6K168jnRtBKT1Gtf1xGHsTZCQn9G+96mX1528GDZJUg0QNAjWcogqJCiQMj+UJLVQXpp0z+9T0+TYEUDsD0O5CiGsUM91IKohjL2VKN5ErDlGuOIRscYiy9Rus9uXGe9+SdK0OWAOrA23b6tsaeDb64+iUc94FKQDZBUhKQEEkJKAhBCgmriHWcSFuuinR9FCy5aFEy4N400Pxk+uscjoy+7/3/DI1fL7PBVCXRHsaogegIejsOtR2CJAqZ0RCr2nYcrHcyfQla3aZml0AQwMAXYi+JM4Vk0ivqHon9GPFfjmAhiTa1wBddyHOJ9Fb0bPHisKCsfzPBmh4vX+UCgA40BC9JM5D9LZDJ6EfLJVGRDBWOJm+ZM8vU3NwcE0CbUl0oCGAHoQC6E/iPARRxGKs2rh7yZ5fJsPr/bDjch0KoradhKE7oYoJ1E6Bqnon9GOlXkygrP471OpaHs92deGSPb9E/wGso9oZe3inmgAAAABJRU5ErkJggg==" />
+    <span class="tb-left">
+      <button class="tb-icon-btn" title="Welcome"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 8.2 L8 2.6 L14 8.2"/><path d="M3.6 7 V13.4 H12.4 V7"/></svg></button>
+      <button class="tb-icon-btn" title="뒤로"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3 L5.5 8 L10 13"/></svg></button>
+      <button class="tb-icon-btn disabled" title="앞으로"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3 L10.5 8 L6 13"/></svg></button>
+      <button class="tb-icon-btn" title="메뉴" style="background:var(--nav-hover-bg);color:var(--text);">☰</button>
+    </span>
+    <span class="tb-search">coco-ai <span class="remote" title="원격 서버에 연결됨"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="5.7"/><ellipse cx="8" cy="8" rx="2.4" ry="5.7"/><path d="M2.5 8h11"/></svg></span></span>
+    <span class="tb-spacer"></span>
+    <span class="tb-btn"><svg width="10" height="10" viewBox="0 0 10 10"><line x1="0" y1="5" x2="10" y2="5" stroke="currentColor" stroke-width="1"/></svg></span>
+    <span class="tb-btn"><svg width="10" height="10" viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1"/></svg></span>
+    <span class="tb-btn tb-close"><svg width="10" height="10" viewBox="0 0 10 10"><line x1="0" y1="0" x2="10" y2="10" stroke="currentColor" stroke-width="1"/><line x1="10" y1="0" x2="0" y2="10" stroke="currentColor" stroke-width="1"/></svg></span>
+  </div>
+  <div class="menu-pop">
+    <a href="#"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="2.5" width="11" height="11" rx="1.5"/><path d="M5 6h6M5 8.5h6M5 11h3.5"/></svg>캠페인 목록</a>
+    <a href="#"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.5"/><path d="M8 4.8V8l2.2 1.6"/></svg>작업기록</a>
+    <a href="#"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.3 2.5H3.2A.7.7 0 0 0 2.5 3.2v5.1a1 1 0 0 0 .3.7l4.9 4.9a1 1 0 0 0 1.4 0l4.4-4.4a1 1 0 0 0 0-1.4L9 2.8a1 1 0 0 0-.7-.3Z"/><circle cx="5.4" cy="5.4" r=".9"/></svg>태그 목록</a>
+  </div>
+  <div class="nav">
+    <nav class="tabs">
+      <a href="#" class="active">Home</a><a href="#">Quest Board</a><a href="#">Quest List</a>
+      <a href="#">Admin</a><a href="#">Rules</a><a href="#">Library</a>
+    </nav>
+    <span class="nav-right"><button class="btn-reindex">⟲</button><span class="gear">⚙</span></span>
+  </div>
+  <div class="content">(페이지 콘텐츠)</div>
+</div>
+
+<h2>제안 — 길드 이름 클릭: 전 문서 검색 팔레트 (퀘스트/캠페인/규칙/도서관, #태그 검색)</h2>
+<div class="frame">
+  <div class="titlebar">
+    <img class="tb-icon" alt="" src="data:image/png;base64,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" />
+    <span class="tb-left">
+      <button class="tb-icon-btn" title="Welcome"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 8.2 L8 2.6 L14 8.2"/><path d="M3.6 7 V13.4 H12.4 V7"/></svg></button>
+      <button class="tb-icon-btn" title="뒤로"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3 L5.5 8 L10 13"/></svg></button>
+      <button class="tb-icon-btn disabled" title="앞으로"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3 L10.5 8 L6 13"/></svg></button>
+      <button class="tb-icon-btn" title="메뉴">☰</button>
+    </span>
+    <span class="tb-search" style="background:rgba(255,255,255,.09);color:var(--text);">coco-ai</span>
+    <span class="tb-spacer"></span>
+    <span class="tb-btn"><svg width="10" height="10" viewBox="0 0 10 10"><line x1="0" y1="5" x2="10" y2="5" stroke="currentColor" stroke-width="1"/></svg></span>
+    <span class="tb-btn"><svg width="10" height="10" viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1"/></svg></span>
+    <span class="tb-btn tb-close"><svg width="10" height="10" viewBox="0 0 10 10"><line x1="0" y1="0" x2="10" y2="10" stroke="currentColor" stroke-width="1"/><line x1="10" y1="0" x2="0" y2="10" stroke="currentColor" stroke-width="1"/></svg></span>
+  </div>
+  <div class="nav">
+    <nav class="tabs">
+      <a href="#" class="active">Home</a><a href="#">Quest Board</a><a href="#">Quest List</a>
+      <a href="#">Admin</a><a href="#">Rules</a><a href="#">Library</a>
+    </nav>
+    <span class="nav-right"><button class="btn-reindex">⟲</button><span class="gear">⚙</span></span>
+  </div>
+  <div class="palette">
+    <input placeholder="검색어 또는 #태그 입력…" />
+    <div class="p-row sel"><span class="p-type quest">퀘스트</span><span class="p-title">DEV-253 GUI 커스텀 타이틀바 (vscode 식)</span><span class="p-tags">#gui #tauri</span></div>
+    <div class="p-row"><span class="p-type quest">퀘스트</span><span class="p-title">DEV-201 데스크톱 창 테마 동기화</span><span class="p-tags">#gui</span></div>
+    <div class="p-row"><span class="p-type campaign">캠페인</span><span class="p-title">CAMP-004 GUI 폴리싱</span><span class="p-tags"></span></div>
+    <div class="p-row"><span class="p-type rule">규칙</span><span class="p-title">cli-list-command-options</span><span class="p-tags"></span></div>
+    <div class="p-row"><span class="p-type book">도서관</span><span class="p-title">BOOK-012 Tauri v2 창 관리 노트</span><span class="p-tags">#tauri</span></div>
+  </div>
+  <div class="content tall">(페이지 콘텐츠 — 팝업이 이 영역 위에만 겹침)</div>
+</div>
+
+<h2>제안 — 검색 결과 선택(Enter/클릭): 문서 미리보기 팝업</h2>
+<div class="frame">
+  <div class="titlebar">
+    <img class="tb-icon" alt="" src="data:image/png;base64,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" />
+    <span class="tb-left">
+      <button class="tb-icon-btn" title="Welcome"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M2 8.2 L8 2.6 L14 8.2"/><path d="M3.6 7 V13.4 H12.4 V7"/></svg></button>
+      <button class="tb-icon-btn" title="뒤로"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3 L5.5 8 L10 13"/></svg></button>
+      <button class="tb-icon-btn disabled" title="앞으로"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3 L10.5 8 L6 13"/></svg></button>
+      <button class="tb-icon-btn" title="메뉴">☰</button>
+    </span>
+    <span class="tb-search" style="background:rgba(255,255,255,.09);color:var(--text);">coco-ai</span>
+    <span class="tb-spacer"></span>
+    <span class="tb-btn"><svg width="10" height="10" viewBox="0 0 10 10"><line x1="0" y1="5" x2="10" y2="5" stroke="currentColor" stroke-width="1"/></svg></span>
+    <span class="tb-btn"><svg width="10" height="10" viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1"/></svg></span>
+    <span class="tb-btn tb-close"><svg width="10" height="10" viewBox="0 0 10 10"><line x1="0" y1="0" x2="10" y2="10" stroke="currentColor" stroke-width="1"/><line x1="10" y1="0" x2="0" y2="10" stroke="currentColor" stroke-width="1"/></svg></span>
+  </div>
+  <div class="nav">
+    <nav class="tabs">
+      <a href="#" class="active">Home</a><a href="#">Quest Board</a><a href="#">Quest List</a>
+      <a href="#">Admin</a><a href="#">Rules</a><a href="#">Library</a>
+    </nav>
+    <span class="nav-right"><button class="btn-reindex">⟲</button><span class="gear">⚙</span></span>
+  </div>
+  <div class="doc-pop">
+    <div class="dp-head">
+      <span class="p-type quest">퀘스트</span>
+      <span class="dp-title">DEV-253 GUI 커스텀 타이틀바 (vscode 식)</span>
+      <button class="dp-x">✕</button>
+    </div>
+    <div class="dp-meta">
+      <span>상태: Testing</span>
+      <span>담당: claude</span>
+      <span>생성: 2026-07-11</span>
+      <span class="tag">#gui #tauri</span>
+    </div>
+    <div class="dp-body">
+      <h4>목표</h4>
+      네이티브 타이틀바를 제거하고 HTML/CSS 커스텀 타이틀바로 교체한다.
+      테마 토큰을 그대로 따르므로 다크/라이트/커스텀 테마 전환이 항상 즉시 반영된다.
+      <h4 style="margin-top:.6rem;">완료 조건</h4>
+      <li>Windows 에서 decorations 제거 + 드래그/더블클릭 최대화 동작</li>
+      <li>최소화 / 최대화(복원) / 닫기 버튼 구현</li>
+      <li>기존 페이지 sticky / 100vh 레이아웃 어긋남 없음</li>
+    </div>
+    <div class="dp-foot">
+      <button class="dp-btn">닫기 (Esc)</button>
+      <button class="dp-btn primary">페이지로 이동 →</button>
+    </div>
+    <div class="dp-resize" title="아래로 드래그해 크기 조절"></div>
+  </div>
+  <div class="content tall">(페이지 콘텐츠)</div>
+</div>
+
+<script>
+  // 미리보기 팝업: 아래 가장자리(.dp-resize) 드래그로 본문(.dp-body) 세로 크기 조절.
+  document.querySelectorAll('.dp-resize').forEach((handle) => {
+    handle.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      const body = handle.closest('.doc-pop').querySelector('.dp-body');
+      const startY = e.clientY;
+      const startH = body.getBoundingClientRect().height;
+      const onMove = (ev) => {
+        const h = Math.max(70, Math.min(460, startH + (ev.clientY - startY)));
+        body.style.height = h + 'px';
+      };
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        document.body.style.userSelect = '';
+      };
+      document.body.style.userSelect = 'none';
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  });
+</script>
+
+<p class="note">
+  <b>동작 정리:</b>
+  앱 아이콘은 순수 장식(클릭 무동작, 드래그 영역) ·
+  🏠 = Welcome 페이지 ·
+  ‹ › = 브라우저 식 페이지 앞/뒤 이동(이동 불가 시 흐리게) ·
+  ☰ = 메뉴바에 없는 페이지 드롭다운 ·
+  중앙 길드 이름 = 클릭 시 전 문서 검색 팔레트(제목/내용/<b>#태그</b> 검색, 항목 선택 시 페이지 이동 없이 내용 미리보기 팝업).
+  원격 연결 시엔 검색 필 오른쪽 끝에 단색 지구본 배지가 붙습니다(☰ 메뉴 열림 프레임 참고).
+  나머지 영역은 전부 창 드래그 영역이며, 타이틀바-메뉴바 사이 구분선은 없습니다.
+</p>
+
+</body>
+</html>

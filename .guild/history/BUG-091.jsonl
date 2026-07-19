@@ -1,0 +1,5 @@
+{"ts":"2026-06-27T17:34:41+09:00","op":"change_status","old":"open","new":"in_progress"}
+{"ts":"2026-06-27T17:37:15+09:00","op":"change_status","old":"in_progress","new":"testing"}
+{"ts":"2026-06-30T22:35:33+09:00","op":"change_status","old":"testing","new":"returned"}
+{"ts":"2026-06-30T22:55:54+09:00","op":"change_status","old":"returned","new":"testing"}
+{"ts":"2026-07-02T21:10:08+09:00","op":"change_status","old":"testing","new":"done"}

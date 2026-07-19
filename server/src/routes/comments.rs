@@ -141,6 +141,16 @@ pub async fn toggle_resolved(
     Ok(Json(entry))
 }
 
+// ─── DEV-234: 상단 고정(pin) 토글 ───
+
+pub async fn toggle_pinned(
+    State(store): State<Store>,
+    Path((slug, id)): Path<(String, u64)>,
+) -> AppResult<Json<CommentEntry>> {
+    let entry = ops::toggle_comment_pinned(&store, &slug, id).await?;
+    Ok(Json(entry))
+}
+
 // ─── DEV-100: Campaign 댓글 / 메모 — quest 와 동일 형식 ───
 
 use openguild_core::ops::campaign_comments as cops;
@@ -185,6 +195,15 @@ pub async fn camp_toggle_reaction(
     Json(body): Json<ToggleReactionRequest>,
 ) -> AppResult<Json<CommentEntry>> {
     let entry = cops::toggle_reaction(&store, &slug, id, &body.emoji, &body.author).await?;
+    Ok(Json(entry))
+}
+
+// DEV-234: 캠페인 댓글도 pin 지원 (discussion 과 달리 quest 전용 아님).
+pub async fn camp_toggle_pinned(
+    State(store): State<Store>,
+    Path((slug, id)): Path<(String, u64)>,
+) -> AppResult<Json<CommentEntry>> {
+    let entry = cops::toggle_pinned(&store, &slug, id).await?;
     Ok(Json(entry))
 }
 

@@ -3,6 +3,8 @@
 	import { adminApi, type QuestStatusWithCount } from '$lib/api/admin';
 	// DEV-119: window.confirm() 대신 인앱 ConfirmDialog.
 	import ConfirmDialog from '../ConfirmDialog.svelte';
+	// DEV-205 모듈5: 상태 관리 i18n.
+	import { locale, t } from '$lib/stores/locale';
 
 	type Msg = { kind: 'info' | 'success' | 'error'; text: string } | null;
 	let { onmessage }: { onmessage: (m: Msg) => void } = $props();
@@ -59,7 +61,7 @@
 		try {
 			statuses = await adminApi.listStatuses();
 		} catch (e) {
-			onmessage({ kind: 'error', text: `status 목록 조회 실패: ${e}` });
+			onmessage({ kind: 'error', text: `${t('adminStatuses.listLoadFailedPre', $locale)}${e}` });
 		}
 	}
 
@@ -101,12 +103,14 @@
 			});
 			onmessage({
 				kind: 'success',
-				text: renaming ? `'${editing}' → '${newSlug}' 갱신 완료 (cascade)` : `'${editing}' 갱신됨`
+				text: renaming
+					? `${t('adminTypes.updatedCascadePre', $locale)}${editing}' → '${newSlug}${t('adminTypes.updatedCascadeMid', $locale)}`
+					: `${t('adminTypes.updatedCascadePre', $locale)}${editing}${t('adminTypes.updatedSimplePost', $locale)}`
 			});
 			editing = null;
 			await refresh();
 		} catch (e) {
-			onmessage({ kind: 'error', text: `갱신 실패: ${e}` });
+			onmessage({ kind: 'error', text: `${t('adminStatuses.updateFailedPre', $locale)}${e}` });
 		} finally {
 			busy = false;
 		}
@@ -124,7 +128,7 @@
 		const ko = newNameKo.trim();
 		// DEV-014 후속: name_ko 는 선택 (한국어 입력 없어도 추가 가능).
 		if (!en) {
-			onmessage({ kind: 'error', text: 'name_en 은 필수.' });
+			onmessage({ kind: 'error', text: t('adminStatuses.nameEnRequired', $locale) });
 			return;
 		}
 		busy = true;
@@ -134,11 +138,11 @@
 				name_ko: ko,
 				color: newColor
 			});
-			onmessage({ kind: 'success', text: `'${en}' 추가됨` });
+			onmessage({ kind: 'success', text: `${t('adminTypes.addedPre', $locale)}${en}${t('adminTypes.addedPost', $locale)}` });
 			creating = false;
 			await refresh();
 		} catch (e) {
-			onmessage({ kind: 'error', text: `추가 실패: ${e}` });
+			onmessage({ kind: 'error', text: `${t('adminStatuses.addFailedPre', $locale)}${e}` });
 		} finally {
 			busy = false;
 		}
@@ -155,10 +159,10 @@
 		busy = true;
 		try {
 			await adminApi.deleteStatus(target.slug);
-			onmessage({ kind: 'success', text: `'${target.slug}' 삭제됨` });
+			onmessage({ kind: 'success', text: `${t('adminTypes.deletedPre', $locale)}${target.slug}${t('adminTypes.deletedPost', $locale)}` });
 			await refresh();
 		} catch (e) {
-			onmessage({ kind: 'error', text: `삭제 실패: ${e}` });
+			onmessage({ kind: 'error', text: `${t('adminStatuses.deleteFailedPre', $locale)}${e}` });
 		} finally {
 			busy = false;
 		}
@@ -169,24 +173,30 @@
 	<div class="section-header">
 		<h2>Quest Statuses</h2>
 		<div class="actions">
-			<button onclick={openCreate} disabled={busy}>+ 새 status</button>
-			<button onclick={refresh} disabled={busy}>새로고침</button>
+			<button onclick={openCreate} disabled={busy}>{t('adminStatuses.newStatus', $locale)}</button>
+			<button onclick={refresh} disabled={busy}>{t('admin.refresh', $locale)}</button>
 		</div>
 	</div>
 
 	{#if statuses.length === 0}
-		<p class="empty">status 없음.</p>
+		<p class="empty">{t('adminStatuses.empty', $locale)}</p>
 	{:else}
+		<!-- BUG-143: 좁은 폭에서 셀 줄바꿈 대신 표 가로 스크롤. -->
+		<div class="table-wrap">
 		<table>
 			<thead>
 				<tr>
 					<th style="width: 12ch">slug</th>
 					<th>name_en</th>
-					<th>name_ko</th>
-					<th style="width: 5ch">색</th>
+					<!-- DEV-015: 기본 언어=영어면 name_ko 열 자체를 숨김(시각 잡음 제거).
+					     한국어일 때만 노출 — 여전히 선택 입력. -->
+					{#if $locale === 'ko'}
+						<th>name_ko</th>
+					{/if}
+					<th style="width: 5ch">{t('adminTypes.colColor', $locale)}</th>
 					<!-- DEV-093: 캠페인 진행도용 "완료" 카운트 토글. -->
-					<th style="width: 7ch" title="캠페인 진행도 계산 시 '완료' 로 카운트되는 status">완료</th>
-					<th style="width: 8ch">사용 중</th>
+					<th style="width: 7ch" title={t('adminStatuses.doneColTitle', $locale)}>{t('adminStatuses.doneCol', $locale)}</th>
+					<th style="width: 8ch">{t('adminTypes.colInUse', $locale)}</th>
 					<th style="width: 14ch"></th>
 				</tr>
 			</thead>
@@ -201,7 +211,7 @@
 									bind:value={editSlug}
 									maxlength="32"
 									pattern="[a-z0-9_]+"
-									title="소문자/숫자/'_' 만, 최대 32자"
+									title={t('adminStatuses.slugTitle', $locale)}
 									disabled={busy}
 									class="slug-input"
 								/>
@@ -212,54 +222,58 @@
 									bind:value={editNameEn}
 									maxlength="32"
 									pattern="[A-Za-z][A-Za-z0-9 _\-]*"
-									title="영문자로 시작 + 영문 / 숫자 / 공백 / '-' / '_' 만, 최대 32자"
+									title={t('adminStatuses.nameEnTitle', $locale)}
 									disabled={busy}
 								/>
 							</td>
-							<td>
-								<input type="text" bind:value={editNameKo} maxlength="32" disabled={busy} />
-							</td>
+							{#if $locale === 'ko'}
+								<td>
+									<input type="text" bind:value={editNameKo} maxlength="32" disabled={busy} />
+								</td>
+							{/if}
 							<td><input type="color" bind:value={editColor} disabled={busy} /></td>
 							<td style="text-align: center;">
 								<input
 									type="checkbox"
 									bind:checked={editCountsAsDone}
 									disabled={busy}
-									title="캠페인 진행도 계산 시 '완료' 로 카운트"
+									title={t('adminStatuses.countsAsDoneTitle', $locale)}
 								/>
 							</td>
 							<td class="count">{s.quest_count}</td>
 							<td class="row-actions">
-								<button class="save" onclick={saveEdit} disabled={busy}>저장</button>
-								<button onclick={cancelEdit} disabled={busy}>취소</button>
+								<button class="save" onclick={saveEdit} disabled={busy}>{t('common.save', $locale)}</button>
+								<button onclick={cancelEdit} disabled={busy}>{t('common.cancel', $locale)}</button>
 							</td>
 						{:else}
 							<td><code>{s.slug}</code></td>
 							<td>{s.name_en}</td>
-							<td>{s.name_ko || '—'}</td>
+							{#if $locale === 'ko'}
+								<td>{s.name_ko || '—'}</td>
+							{/if}
 							<td>
 								<span class="swatch" style="background: {s.color}"></span>
 								<code class="hex">{s.color}</code>
 							</td>
 							<td style="text-align: center;">
 								{#if s.counts_as_done}
-									<span class="done-mark" title="이 status 는 완료로 카운트">✓</span>
+									<span class="done-mark" title={t('adminStatuses.countsAsDoneMark', $locale)}>✓</span>
 								{:else}
 									<span class="dim">—</span>
 								{/if}
 							</td>
 							<td class="count">{s.quest_count}</td>
 							<td class="row-actions">
-								<button onclick={() => startEdit(s)} disabled={busy}>수정</button>
+								<button onclick={() => startEdit(s)} disabled={busy}>{t('adminTypes.edit', $locale)}</button>
 								<button
 									class="danger"
 									onclick={() => askDelete(s)}
 									disabled={busy || s.quest_count > 0}
 									title={s.quest_count > 0
-										? `사용 중 quest ${s.quest_count}개 — 먼저 이동`
-										: '삭제'}
+										? `${t('adminTypes.inUsePre', $locale)}${s.quest_count}${t('adminTypes.inUsePost', $locale)}`
+										: t('detail.delete', $locale)}
 								>
-									삭제
+									{t('detail.delete', $locale)}
 								</button>
 							</td>
 						{/if}
@@ -267,47 +281,51 @@
 				{/each}
 			</tbody>
 		</table>
-		<p class="hint">slug 는 frozen — history / 파일 frontmatter 가 참조하므로 rename 안 됨.</p>
+		</div>
+		<p class="hint">{t('adminStatuses.slugFrozenHint', $locale)}</p>
 	{/if}
 </section>
 
 {#if creating}
 	<div class="ov" role="presentation">
 		<div class="modal" role="dialog" aria-modal="true" tabindex="-1">
-			<h3 class="modal-title">새 quest status</h3>
+			<h3 class="modal-title">{t('adminStatuses.newStatusTitle', $locale)}</h3>
 			<div class="form">
 				<label>
 					<span>name_en</span>
 					<input
 						type="text"
 						bind:value={newNameEn}
-						placeholder="Blocked / In Review 등"
+						placeholder={t('adminStatuses.nameEnPlaceholder', $locale)}
 						maxlength="32"
 						pattern="[A-Za-z][A-Za-z0-9 _\-]*"
-						title="영문자로 시작 + 영문 / 숫자 / 공백 / '-' / '_' 만, 최대 32자"
+						title={t('adminStatuses.nameEnTitle', $locale)}
 						disabled={busy}
 					/>
 				</label>
+				<!-- DEV-015: 기본 언어=영어면 name_ko 입력 자체를 숨김. -->
+				{#if $locale === 'ko'}
+					<label>
+						<span>name_ko</span>
+						<input
+							type="text"
+							bind:value={newNameKo}
+							placeholder={t('adminStatuses.nameKoPlaceholder', $locale)}
+							maxlength="32"
+							disabled={busy}
+						/>
+					</label>
+				{/if}
 				<label>
-					<span>name_ko</span>
-					<input
-						type="text"
-						bind:value={newNameKo}
-						placeholder="(선택) 막힘 / 리뷰 중 등"
-						maxlength="32"
-						disabled={busy}
-					/>
-				</label>
-				<label>
-					<span>색</span>
+					<span>{t('adminTypes.colColor', $locale)}</span>
 					<input type="color" bind:value={newColor} disabled={busy} />
 					<code class="hex">{newColor}</code>
 				</label>
 			</div>
-			<p class="form-note">새 status 는 목록 맨 뒤에 추가됩니다.</p>
+			<p class="form-note">{t('adminStatuses.newStatusNote', $locale)}</p>
 			<div class="modal-actions">
-				<button class="btn-yes" onclick={doCreate} disabled={busy}>추가</button>
-				<button class="btn-no" onclick={() => (creating = false)} disabled={busy}>취소</button>
+				<button class="btn-yes" onclick={doCreate} disabled={busy}>{t('common.add', $locale)}</button>
+				<button class="btn-no" onclick={() => (creating = false)} disabled={busy}>{t('common.cancel', $locale)}</button>
 			</div>
 		</div>
 	</div>
@@ -316,15 +334,15 @@
 {#if confirmDelete}
 	<div class="ov" role="presentation">
 		<div class="modal" role="dialog" aria-modal="true" tabindex="-1">
-			<h3 class="modal-title">Status 삭제</h3>
+			<h3 class="modal-title">{t('adminStatuses.deleteStatusTitle', $locale)}</h3>
 			<p class="modal-msg">
-				<strong>{confirmDelete.name_en}</strong> (<code>{confirmDelete.slug}</code>) 을 삭제할까요?
+				<strong>{confirmDelete.name_en}</strong> (<code>{confirmDelete.slug}</code>){t('adminStatuses.deleteMsg1', $locale)}
 				<br />
-				디스크의 <code>.guild/statuses/</code> 내 파일도 함께 제거됩니다.
+				{t('adminStatuses.deleteMsg2', $locale)}<code>.guild/statuses/</code>{t('adminStatuses.deleteMsg3', $locale)}
 			</p>
 			<div class="modal-actions">
-				<button class="btn-yes danger" onclick={doDelete} disabled={busy}>삭제</button>
-				<button class="btn-no" onclick={() => (confirmDelete = null)} disabled={busy}>취소</button>
+				<button class="btn-yes danger" onclick={doDelete} disabled={busy}>{t('detail.delete', $locale)}</button>
+				<button class="btn-no" onclick={() => (confirmDelete = null)} disabled={busy}>{t('common.cancel', $locale)}</button>
 			</div>
 		</div>
 	</div>
@@ -333,13 +351,12 @@
 <!-- DEV-119: slug rename cascade 확인 — 인앱 모달. -->
 <ConfirmDialog
 	open={confirmRename !== null}
-	title="Status slug 변경 (cascade)"
+	title={t('adminStatuses.renameSlugTitle', $locale)}
 	message={confirmRename
-		? `'${confirmRename.oldSlug}' → '${confirmRename.newSlug}' 로 slug 변경.\n\n` +
-			`${confirmRename.count}개 quest 의 frontmatter status + history 의 old/new value + ` +
-			`statuses 파일명 모두 cascade.\n\n계속할까요?`
+		? `'${confirmRename.oldSlug}' → '${confirmRename.newSlug}'${t('adminStatuses.renameSlugConfirm1', $locale)}` +
+			`${confirmRename.count}${t('adminStatuses.renameSlugConfirm2', $locale)}`
 		: ''}
-	confirmLabel="변경"
+	confirmLabel={t('common.change', $locale)}
 	danger
 	onconfirm={() => {
 		const r = confirmRename;
@@ -405,6 +422,10 @@
 		background: var(--btn-primary-bg-hover);
 		border-color: var(--btn-primary-border-hover);
 	}
+	/* BUG-143: 좁은 폭에선 셀 줄바꿈 대신 표 가로 스크롤 + 셀 nowrap. */
+	.table-wrap {
+		overflow-x: auto;
+	}
 	table {
 		width: 100%;
 		border-collapse: collapse;
@@ -416,6 +437,7 @@
 		padding: 0.5rem 0.6rem;
 		border-bottom: 1px solid var(--border);
 		vertical-align: middle;
+		white-space: nowrap;
 	}
 	th {
 		color: var(--text-muted);
@@ -444,10 +466,12 @@
 	.count {
 		color: var(--text-muted);
 	}
+	/* BUG-143: td 에 display:flex 금지(table-cell 렌더 깨짐 — 구분선 어긋남). */
 	.row-actions {
-		display: flex;
-		gap: 0.3rem;
-		justify-content: flex-end;
+		text-align: right;
+	}
+	.row-actions button + button {
+		margin-left: 0.3rem;
 	}
 	input[type='text'] {
 		width: 100%;

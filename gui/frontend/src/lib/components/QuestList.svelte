@@ -9,12 +9,15 @@
 		serializeFilter,
 		deserializeFilter,
 		FILTER_STORAGE_SUFFIX,
+		EMPTY_FILTER,
 		type QuestFilterState
 	} from '$lib/stores/quest-filter';
 	// DEV-033 #2: 필터를 길드별 localStorage 에 영속 — Ctrl+R / 앱 재시작 후에도 유지.
 	import { resolveGuildKeyPrefix, guildKey } from '$lib/utils/guild-storage';
 	import { questsApi } from '$lib/api/quests';
 	import { metaApi } from '$lib/api/meta';
+	// DEV-205 모듈3: Quest List 문자열 i18n.
+	import { locale, t } from '$lib/stores/locale';
 	import type { Quest, QuestStatus, QuestType } from '$lib/types';
 	import {
 		ancestorIdsOf,
@@ -121,13 +124,13 @@
 	// DEV-033: 정렬 — CLI --sort 와 1:1. URL ?sort= / ?desc=1 + localStorage 영속.
 	const SORT_KEY = 'openguild.questListSort';
 	const SORT_KEYS: SortKey[] = ['id', 'urgency', 'status', 'updated', 'created'];
-	const SORT_LABELS: Record<SortKey, string> = {
-		id: 'ID (생성 순)',
-		urgency: '긴급도',
-		status: '상태',
-		updated: '갱신 시각',
-		created: '생성 시각'
-	};
+	const SORT_LABELS: Record<SortKey, string> = $derived({
+		id: t('questList.sortId', $locale),
+		urgency: t('questList.sortUrgency', $locale),
+		status: t('questList.sortStatus', $locale),
+		updated: t('questList.sortUpdated', $locale),
+		created: t('questList.sortCreated', $locale)
+	});
 	let sortKey = $state<SortKey>('id');
 	let sortDesc = $state(false);
 
@@ -213,9 +216,14 @@
 		// DEV-135: 공유 store → state 복원 (view 전환 시 in-memory 일관성).
 		applyFilter(get(questFilters));
 		// DEV-033 #2: 영속된 필터가 있으면 우선 적용 — 전체 리로드(Ctrl+R)/앱
-		// 재시작 시 store 는 비어 있으므로 localStorage 가 진짜 복원원.
+		// 재시작 시 store 는 비어 있으므로 localStorage 가 진짜 복원.
+		//
+		// BUG-112 fix: questFilters 는 모듈 전역 store 라 다른 길드에서 필터를
+		// 걸어두고 나가면 메모리에 남아있다 — 이 길드에 저장된 필터가 없으면
+		// (savedFilter === null) 방금 위에서 복원한 다른 길드의 값이 그대로
+		// 남는 버그였음. 없으면 EMPTY_FILTER 로 명시 리셋.
 		const savedFilter = loadFilterFromStorage();
-		if (savedFilter) applyFilter(savedFilter);
+		applyFilter(savedFilter ?? EMPTY_FILTER);
 		// URL → state (초기 로드). DEV-135 #4 fix: param 이 '있을 때만' 덮어씀.
 		// 이전엔 ?? '' 로 무조건 덮어써, /?view=list 처럼 param 없는 nav 후
 		// localStorage 에서 복원한 검색어가 매번 지워졌다 (다른 필터는 유지되는데
@@ -472,8 +480,8 @@
 	     + 동일 크기. 페이지 전환 시 버튼이 안 흔들리도록. filter-bar 위에 떠 있되
 	     filter-bar 가 우측 130px padding 으로 자리 비워둠. -->
 	{#if onNewQuest}
-		<button class="qb-new" onclick={onNewQuest} title="새 퀘스트">
-			<span class="qb-new-icon">+</span><span>New Quest</span>
+		<button class="qb-new" onclick={onNewQuest} title={t('questList.newQuest', $locale)}>
+			<span class="qb-new-icon">+</span><span>{t('questList.newQuest', $locale)}</span>
 		</button>
 	{/if}
 
@@ -495,29 +503,29 @@
 
 	<!-- DEV-065 / DEV-068: 뷰 모드 토글 + tag 필터 chip 들 — filter-bar 아래. -->
 	<div class="view-toggle-row">
-		<div class="view-toggle" role="group" aria-label="뷰 모드">
+		<div class="view-toggle" role="group" aria-label={t('questList.viewMode', $locale)}>
 			<button
 				class="vt-btn"
 				class:active={viewMode === 'tree'}
 				onclick={() => (viewMode = 'tree')}
-				title="트리 — 부모 아래로 자식 들여쓰기"
+				title={t('questList.treeTitle', $locale)}
 				aria-pressed={viewMode === 'tree'}
 			>
-				<span class="vt-icon">⇲</span><span>Tree</span>
+				<span class="vt-icon">⇲</span><span>{t('questList.tree', $locale)}</span>
 			</button>
 			<button
 				class="vt-btn"
 				class:active={viewMode === 'list'}
 				onclick={() => (viewMode = 'list')}
-				title="리스트 — 모든 퀘스트 평면"
+				title={t('questList.listTitle', $locale)}
 				aria-pressed={viewMode === 'list'}
 			>
-				<span class="vt-icon">≡</span><span>List</span>
+				<span class="vt-icon">≡</span><span>{t('questList.list', $locale)}</span>
 			</button>
 		</div>
 		<!-- DEV-033: 정렬 — CLI --sort 와 1:1. 방향 토글 = --reverse. -->
-		<div class="sort-group" aria-label="정렬">
-			<select class="sort-sel" bind:value={sortKey} title="정렬 기준">
+		<div class="sort-group" aria-label={t('questList.sort', $locale)}>
+			<select class="sort-sel" bind:value={sortKey} title={t('questList.sortBy', $locale)}>
 				{#each SORT_KEYS as k (k)}
 					<option value={k}>{SORT_LABELS[k]}</option>
 				{/each}
@@ -525,31 +533,33 @@
 			<button
 				class="sort-dir"
 				onclick={() => (sortDesc = !sortDesc)}
-				title={sortDesc ? '내림차순 — 클릭 시 오름차순' : '오름차순 — 클릭 시 내림차순'}
-				aria-label="정렬 방향">{sortDesc ? '↓' : '↑'}</button
+				title={sortDesc ? t('questList.sortDesc', $locale) : t('questList.sortAsc', $locale)}
+				aria-label={t('questList.sortDir', $locale)}>{sortDesc ? '↓' : '↑'}</button
 			>
 		</div>
 		<!-- DEV-068: 모든 quest 의 unique tag 들. 클릭으로 필터 토글 (AND). -->
 		{#if allTagOptions.length > 0}
-			<div class="tag-filter-row" aria-label="태그 필터">
-				{#each allTagOptions as t (t)}
+			<div class="tag-filter-row" aria-label={t('questList.tagFilter', $locale)}>
+				{#each allTagOptions as tag (tag)}
 					<button
 						class="tag-filter-chip"
-						class:active={filterTags.has(t)}
-						onclick={() => toggleTagFilter(t)}
-						title={filterTags.has(t) ? `${t} 필터 해제` : `${t} 필터 추가`}
+						class:active={filterTags.has(tag)}
+						onclick={() => toggleTagFilter(tag)}
+						title={filterTags.has(tag)
+							? `${tag}${t('questList.filterRemoveSuffix', $locale)}`
+							: `${tag}${t('questList.filterAddSuffix', $locale)}`}
 					>
-						{t}
-						<span class="tag-chip-count">{tagCounts.get(t) ?? 0}</span>
+						{tag}
+						<span class="tag-chip-count">{tagCounts.get(tag) ?? 0}</span>
 					</button>
 				{/each}
 				{#if filterTags.size > 0}
 					<button
 						class="tag-clear"
 						onclick={() => (filterTags = new Set())}
-						title="태그 필터 모두 해제"
+						title={t('questList.clearTagFilters', $locale)}
 					>
-						× 전체 해제
+						{t('questList.clearAllBtn', $locale)}
 					</button>
 				{/if}
 			</div>
@@ -591,7 +601,7 @@
 	.quest-list {
 		display: flex;
 		flex-direction: column;
-		height: calc(100vh - 3.25rem);
+		height: calc(100vh - var(--nav-h, 3.25rem) - var(--titlebar-h, 0px));
 		position: relative; /* DEV-086: New Quest 절대배치 기준. */
 	}
 

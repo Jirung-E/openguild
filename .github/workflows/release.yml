@@ -1,17 +1,19 @@
 name: release
 
 # DEV-071: tag v* push → Windows NSIS installer 자동 빌드 + GitHub Release 첨부.
+# BUG-149: linux job 추가 — deb/rpm/AppImage 도 같은 태그 릴리즈에 첨부.
 #
 # 동작 모드:
-#   - tag push (`v*`): 전체 파이프라인. setup.exe 빌드 후 GitHub Release 생성.
+#   - tag push (`v*`): 전체 파이프라인. 각 job 이 자기 플랫폼 패키지를 빌드해
+#     같은 GitHub Release 에 첨부.
 #   - workflow_dispatch (수동): 빌드만 수행, Release 생성 안 함. Artifact 로
-#     setup.exe 업로드 (dry-run 검증용).
+#     패키지 업로드 (dry-run 검증용).
 #
 # 후속 작업 (이 quest 범위 외):
 #   - 코드 사이닝 (Windows EV 인증서) — Windows SmartScreen "알 수 없는 게시자" 경고 제거.
-#   - multi-arch (aarch64-pc-windows-msvc) — matrix 확장.
-#   - macOS / Linux runner — matrix 확장.
-#   - auto-updater (DEV-063) — release 첨부물에 latest.json 추가.
+#   - multi-arch (aarch64-pc-windows-msvc / aarch64 Linux) — matrix 확장.
+#   - macOS runner — matrix 확장.
+#   - auto-updater (DEV-063) — Linux 첨부물에도 latest.json 추가(현재 Windows 전용).
 
 on:
   push:
@@ -138,6 +140,81 @@ jobs:
             target/release/bundle/nsis/*-setup.exe
             target/release/bundle/nsis/*-setup.exe.sig
             target/release/bundle/nsis/latest.json
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: false
+
+  linux:
+    name: build & release (linux-x64)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: gui/frontend/package-lock.json
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: '. -> target'
+          cache-bin: true
+
+      # Tauri v2 공식 Linux 빌드 사전 요구사항 (Debian/Ubuntu).
+      - name: Install Tauri Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: npm ci (frontend)
+        working-directory: gui/frontend
+        run: npm ci
+
+      - name: Install tauri-cli
+        run: cargo install tauri-cli --version '^2' --locked
+
+      # `gui/tauri.conf.json` 의 bundle.targets 에 deb/rpm/appimage 가 이미
+      # 있음(BUG-142). 여긴 Linux 러너에서 그 세 타깃만 명시적으로 빌드.
+      # NSIS 와 달리 CLI/서버 바이너리를 별도로 bundle 에 끼워넣지 않음 —
+      # deb/rpm/appimage 는 GUI 앱만 패키징(기존 범위와 동일).
+      - name: Tauri build (deb/rpm/AppImage)
+        working-directory: gui
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: cargo tauri build --bundles deb,rpm,appimage
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: openguild-linux-x64-packages
+          path: |
+            target/release/bundle/deb/*.deb
+            target/release/bundle/rpm/*.rpm
+            target/release/bundle/appimage/*.AppImage
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            target/release/bundle/deb/*.deb
+            target/release/bundle/rpm/*.rpm
+            target/release/bundle/appimage/*.AppImage
           generate_release_notes: true
           draft: false
           prerelease: false

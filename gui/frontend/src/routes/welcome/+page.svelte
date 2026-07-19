@@ -1,14 +1,16 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
+	// DEV-205 모듈1: Welcome 문자열 i18n.
+	import { locale, t } from '$lib/stores/locale';
 	import { recentsApi, type Recent } from '$lib/api/recents';
 	import { detectEnvironment } from '$lib/api/transport';
 	// DEV-138: welcome 에서도 ⚙ 퀵메뉴 (Nav 와 동일 컴포넌트).
 	import SettingsQuickMenu from '$lib/components/SettingsQuickMenu.svelte';
 	// DEV-154: 호환 안 되는 길드(더 새 schema) 전용 안내 + 업데이트 확인.
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
-	// DEV-194 후속: 결과 표시는 전역 UpdateBanner(우하단 floating toast,
-	// +layout.svelte 에 mount) 하나로 통합 — 여기선 트리거만.
+	// DEV-259: 결과 표시는 전역 알림 호스트(ToastHost, +layout.svelte 에
+	// mount)가 담당 — 여기선 체크 트리거만.
 	import { checkForUpdate } from '$lib/api/updater';
 	// DEV-113: 원격 서버 연결 — "어떤 길드를 열지" 선택이라 길드 열기와 같은
 	// Welcome 화면에서 처리(설정 페이지에서 연결하는 건 자리가 어색하다는 피드백).
@@ -143,7 +145,7 @@
 		openErr = null;
 		try {
 			if (env !== 'tauri') {
-				throw new Error('Tauri 데스크톱 앱에서만 동작합니다.');
+				throw new Error(t('welcome.tauriOnly', $locale));
 			}
 			// DEV-113 후속: local 길드를 열 때는 이전에 연결해둔 원격 서버
 			// override 를 반드시 끈다 — 안 그러면 Rust 의 Store 는 이 local
@@ -167,7 +169,7 @@
 		if (!uninitPath || initRunning) return;
 		const name = initName.trim();
 		if (!name) {
-			initErr = '길드 이름을 입력하세요.';
+			initErr = t('welcome.enterGuildName', $locale);
 			return;
 		}
 		initRunning = true;
@@ -190,7 +192,7 @@
 	async function pickFolder() {
 		if (pickRunning) return;
 		if (env !== 'tauri') {
-			pickErr = 'Tauri 데스크톱 앱에서만 동작합니다.';
+			pickErr = t('welcome.tauriOnly', $locale);
 			return;
 		}
 		pickRunning = true;
@@ -200,7 +202,7 @@
 			const selected = await open({
 				directory: true,
 				multiple: false,
-				title: '길드 폴더 선택'
+				title: t('welcome.pickDialogTitle', $locale)
 			});
 			if (!selected) return; // 취소.
 			const dir = typeof selected === 'string' ? selected : selected[0];
@@ -215,7 +217,7 @@
 			}>('inspect_guild_path', { path: dir });
 
 			if (!info.is_dir) {
-				pickErr = `선택된 경로가 유효한 디렉토리가 아닙니다: ${info.resolved_path}`;
+				pickErr = `${t('welcome.notValidDir', $locale)}: ${info.resolved_path}`;
 				return;
 			}
 			if (info.has_marker) {
@@ -311,7 +313,7 @@
 		try {
 			const ok = await pingRemoteServer(url);
 			remoteCheckState = ok ? 'ok' : 'fail';
-			if (!ok) remoteCheckMsg = '서버가 응답했지만 예상한 형식이 아닙니다.';
+			if (!ok) remoteCheckMsg = t('welcome.badResponse', $locale);
 		} catch (e) {
 			remoteCheckState = 'fail';
 			remoteCheckMsg = e instanceof Error ? e.message : String(e);
@@ -356,7 +358,7 @@
 		<div class="title-row">
 			<div>
 				<h1>openguild</h1>
-				<p class="sub">최근 작업한 길드</p>
+				<p class="sub">{t('welcome.sub', $locale)}</p>
 			</div>
 			<!-- DEV-052 fix → DEV-138: welcome 에서도 ⚙ 가 퀵메뉴 (Nav 와 동일).
 				 Nav 가 가려져 있으므로 페이지 자체에 톱니바퀴. -->
@@ -365,8 +367,8 @@
 					class="settings-link"
 					class:active={quickMenuOpen}
 					onclick={() => (quickMenuOpen = !quickMenuOpen)}
-					title="설정"
-					aria-label="설정"
+					title={t('nav.settings', $locale)}
+					aria-label={t('nav.settings', $locale)}
 					aria-expanded={quickMenuOpen}>⚙</button
 				>
 				{#if quickMenuOpen}
@@ -382,10 +384,10 @@
 		     단일 폴더 다이얼로그로 되돌림. -->
 		<section class="picker">
 			<button class="btn-pick" onclick={pickFolder} disabled={pickRunning}>
-				{pickRunning ? '여는 중…' : '📁 폴더에서 열기'}
+				{pickRunning ? t('welcome.opening', $locale) : t('welcome.pickFolder', $locale)}
 			</button>
 			<span class="picker-hint">
-				기존 길드 폴더를 선택하면 바로 열고, 길드가 아닌 폴더면 초기화 안내가 표시됩니다.
+				{t('welcome.pickHint', $locale)}
 			</span>
 			{#if pickErr}
 				<p class="err">{pickErr}</p>
@@ -404,25 +406,24 @@
 			<div class="remote-input-row">
 				<input
 					type="text"
-					placeholder="원격 서버 주소 — http://192.168.1.10:3000"
+					placeholder={t('welcome.remotePlaceholder', $locale)}
 					bind:value={remoteInput}
-					aria-label="원격 서버 URL"
+					aria-label={t('welcome.remoteAria', $locale)}
 				/>
 				<button class="btn-pick alt" onclick={checkRemote} disabled={!remoteInput.trim()}>
-					{remoteCheckState === 'checking' ? '확인 중…' : '연결 확인'}
+					{remoteCheckState === 'checking' ? t('welcome.checking', $locale) : t('welcome.checkConn', $locale)}
 				</button>
 				<button class="btn-pick" onclick={connectRemote} disabled={!remoteInput.trim()}>
-					연결
+					{t('welcome.connect', $locale)}
 				</button>
 			</div>
 			{#if remoteCheckState === 'ok'}
-				<p class="remote-check ok">✓ 연결 확인됨.</p>
+				<p class="remote-check ok">{t('welcome.connOk', $locale)}</p>
 			{:else if remoteCheckState === 'fail'}
-				<p class="remote-check err">연결 실패{remoteCheckMsg ? `: ${remoteCheckMsg}` : ''}</p>
+				<p class="remote-check err">{t('welcome.connFail', $locale)}{remoteCheckMsg ? `: ${remoteCheckMsg}` : ''}</p>
 			{/if}
 			<span class="picker-hint">
-				openguild-server 의 주소. 연결하면 아래 "최근 길드" 목록에 등록되어 다음부터는 클릭만으로
-				다시 열 수 있습니다. <strong>인증이 없으니 신뢰된 네트워크에서만</strong> 사용하세요.
+				{t('welcome.remoteHint1', $locale)}<strong>{t('welcome.remoteHintStrong', $locale)}</strong>{t('welcome.remoteHint2', $locale)}
 			</span>
 		</section>
 	{/if}
@@ -430,14 +431,13 @@
 	{#if uninitPath}
 		<!-- DEV-052 후속: 길드 마커 없는 디렉토리에서 시작 → 초기화 prompt. -->
 		<section class="uninit">
-			<h2>이 위치를 길드로 초기화할까요?</h2>
+			<h2>{t('welcome.uninitTitle', $locale)}</h2>
 			<p class="uninit-path">{uninitPath}</p>
 			<p class="uninit-desc">
-				지정한 디렉토리에 openguild 마커 파일(<code>이름.guild</code>)이 없습니다. 초기화하면 마커 +
-				<code>.guild/</code> 데이터 폴더가 생성되어 바로 작업할 수 있습니다.
+				{t('welcome.uninitDesc1', $locale)}<code>{t('welcome.markerExample', $locale)}</code>{t('welcome.uninitDesc2', $locale)}<code>.guild/</code>{t('welcome.uninitDesc3', $locale)}
 			</p>
 			<label class="uninit-name">
-				<span>길드 이름</span>
+				<span>{t('welcome.guildName', $locale)}</span>
 				<input type="text" bind:value={initName} placeholder="guild" disabled={initRunning} />
 			</label>
 			{#if initErr}
@@ -445,27 +445,26 @@
 			{/if}
 			<div class="uninit-actions">
 				<button class="btn-yes" onclick={initUninit} disabled={initRunning}>
-					{initRunning ? '초기화 중…' : '초기화하고 열기'}
+					{initRunning ? t('welcome.initializing', $locale) : t('welcome.initAndOpen', $locale)}
 				</button>
-				<button class="btn-no" onclick={declineUninit} disabled={initRunning}>아니요</button>
+				<button class="btn-no" onclick={declineUninit} disabled={initRunning}>{t('common.no', $locale)}</button>
 			</div>
 		</section>
 	{/if}
 
 	{#if loading}
-		<p class="loading">불러오는 중...</p>
+		<p class="loading">{t('welcome.loading', $locale)}</p>
 	{:else if err}
 		<p class="err">{err}</p>
 	{:else if env !== 'tauri'}
 		<p class="info">
-			Recent guild 목록은 desktop 앱 (Tauri) 에서만 동작합니다.<br />
-			브라우저 모드에선 현재 server 가 호스팅한 길드만 표시됩니다.
+			{t('welcome.browserInfo1', $locale)}<br />
+			{t('welcome.browserInfo2', $locale)}
 		</p>
 	{:else if unified.length === 0}
 		<p class="empty">
-			아직 열어본 길드가 없습니다.<br />
-			<code>openguild init</code> 으로 새 길드를 만들거나, <code>openguild-gui &lt;path&gt;</code>
-			로 기존 길드를 열거나, 위에서 원격 서버에 연결해 보세요.
+			{t('welcome.empty1', $locale)}<br />
+			<code>openguild init</code>{t('welcome.empty2', $locale)}<code>openguild-gui &lt;path&gt;</code>{t('welcome.empty3', $locale)}
 		</p>
 	{:else}
 		<!-- DEV-113 후속: local + remote 를 하나의 목록으로(최근 연 순). -->
@@ -481,8 +480,8 @@
 							onclick={() => openRecent(entry.path)}
 							disabled={opening !== null || entry.missing}
 							title={entry.missing
-								? '경로를 찾을 수 없습니다 — 이동 / 삭제됐을 수 있음'
-								: '현재 창에서 이 길드를 엽니다'}
+								? t('welcome.pathMissing', $locale)
+								: t('welcome.openInWindow', $locale)}
 						>
 							<div class="row">
 								<span class="name">{entry.name}</span>
@@ -490,10 +489,10 @@
 							</div>
 							<div class="path">{entry.path}</div>
 							{#if entry.missing}
-								<div class="missing-label">⚠ 경로를 찾을 수 없습니다</div>
+								<div class="missing-label">{t('welcome.pathNotFound', $locale)}</div>
 							{/if}
 							{#if opening === entry.path}
-								<div class="opening">길드 여는 중…</div>
+								<div class="opening">{t('welcome.guildOpening', $locale)}</div>
 							{/if}
 						</button>
 					{:else}
@@ -503,10 +502,10 @@
 							onclick={() => openRemoteEntry(entry.url)}
 							disabled={opening !== null || !remoteOk}
 							title={!remoteChecked
-								? '연결 확인 중…'
+								? t('welcome.checkingConn', $locale)
 								: remoteOk
-									? '이 원격 서버에 연결합니다'
-									: '서버에 연결할 수 없습니다'}
+									? t('welcome.connectRemote', $locale)
+									: t('welcome.serverUnreachable', $locale)}
 						>
 							<div class="row">
 								<span class="name">🌐 {entry.name}</span>
@@ -514,9 +513,9 @@
 							</div>
 							<div class="path">{entry.url}</div>
 							{#if !remoteChecked}
-								<div class="checking-label">연결 확인 중…</div>
+								<div class="checking-label">{t('welcome.checkingConn', $locale)}</div>
 							{:else if !remoteOk}
-								<div class="missing-label">⚠ 서버에 연결할 수 없습니다</div>
+								<div class="missing-label">{t('welcome.serverUnreachableWarn', $locale)}</div>
 							{/if}
 						</button>
 					{/if}
@@ -525,8 +524,8 @@
 						class="recent-remove"
 						type="button"
 						onclick={() => askRemove(entry)}
-						title="목록에서 제거"
-						aria-label="목록에서 제거"
+						title={t('welcome.removeFromList', $locale)}
+						aria-label={t('welcome.removeFromList', $locale)}
 					>
 						×
 					</button>
@@ -536,11 +535,11 @@
 		{#if openErr}
 			<p class="err">{openErr}</p>
 		{/if}
-		<button class="clear" onclick={askClear}>전체 비우기</button>
+		<button class="clear" onclick={askClear}>{t('welcome.clearAll', $locale)}</button>
 	{/if}
 
 	<footer class="hint">
-		<p>항목을 클릭하면 현재 창에서 그 길드를 엽니다.</p>
+		<p>{t('welcome.footerHint', $locale)}</p>
 	</footer>
 </main>
 
@@ -548,11 +547,11 @@
 	<!-- DEV-052 후속: 브라우저 confirm() 대신 인앱 스타일 모달. -->
 	<div class="ov" role="presentation">
 		<div class="modal" role="dialog" aria-modal="true" tabindex="-1">
-			<h3 class="modal-title">최근 길드 목록 비우기</h3>
-			<p class="modal-msg">최근 길드 목록(로컬 + 원격)을 모두 비울까요? 되돌릴 수 없습니다.</p>
+			<h3 class="modal-title">{t('welcome.clearTitle', $locale)}</h3>
+			<p class="modal-msg">{t('welcome.clearMsg', $locale)}</p>
 			<div class="modal-actions">
-				<button class="btn-yes" onclick={doClear}>비우기</button>
-				<button class="btn-no" onclick={cancelClear}>취소</button>
+				<button class="btn-yes" onclick={doClear}>{t('welcome.clearConfirm', $locale)}</button>
+				<button class="btn-no" onclick={cancelClear}>{t('common.cancel', $locale)}</button>
 			</div>
 		</div>
 	</div>
@@ -562,21 +561,21 @@
 	<!-- DEV-052 후속 (5회차): 단일 항목 제거 확인. -->
 	<div class="ov" role="presentation">
 		<div class="modal" role="dialog" aria-modal="true" tabindex="-1">
-			<h3 class="modal-title">최근 길드에서 제거</h3>
+			<h3 class="modal-title">{t('welcome.removeTitle', $locale)}</h3>
 			<p class="modal-msg">
-				<strong>{confirmRemove.name}</strong> 을 최근 목록에서 제거할까요?
+				<strong>{confirmRemove.name}</strong>{t('welcome.removeSuffix', $locale)}
 			</p>
 			<p class="modal-path">
 				{confirmRemove.kind === 'local' ? confirmRemove.path : confirmRemove.url}
 			</p>
 			<p class="modal-msg modal-note">
 				{confirmRemove.kind === 'local'
-					? '디스크의 길드 파일은 그대로 두고, Recent 목록에서만 빠집니다.'
-					: '서버 연결 자체에는 영향 없고, Recent 목록에서만 빠집니다.'}
+					? t('welcome.removeNoteLocal', $locale)
+					: t('welcome.removeNoteRemote', $locale)}
 			</p>
 			<div class="modal-actions">
-				<button class="btn-yes" onclick={doRemove}>제거</button>
-				<button class="btn-no" onclick={cancelRemove}>취소</button>
+				<button class="btn-yes" onclick={doRemove}>{t('welcome.remove', $locale)}</button>
+				<button class="btn-no" onclick={cancelRemove}>{t('common.cancel', $locale)}</button>
 			</div>
 		</div>
 	</div>
@@ -585,9 +584,9 @@
 <!-- DEV-154: 더 새 schema 길드 — 전용 안내 + 업데이트 확인 (DEV-063). -->
 <ConfirmDialog
 	open={incompatibleMsg !== null}
-	title="호환되지 않는 길드"
+	title={t('welcome.incompatTitle', $locale)}
 	message={incompatibleMsg ?? ''}
-	confirmLabel="업데이트 확인"
+	confirmLabel={t('welcome.updateCheck', $locale)}
 	oncancel={() => (incompatibleMsg = null)}
 	onconfirm={runUpdateCheck}
 />

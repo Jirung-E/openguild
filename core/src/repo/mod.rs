@@ -10,6 +10,8 @@ pub mod auto;
 pub mod campaign;
 pub mod comments;
 pub mod fs;
+pub mod history;
+pub mod library;
 pub mod quest;
 pub mod rules;
 pub mod seed;
@@ -76,6 +78,54 @@ impl GuildPaths {
 
     pub fn backups_dir(&self) -> PathBuf {
         self.dot_guild().join("backups")
+    }
+
+    /// DEV-215: 도서관 문서 디렉토리 (`.guild/library/`). git tracked.
+    pub fn library_dir(&self) -> PathBuf {
+        self.dot_guild().join("library")
+    }
+
+    /// DEV-215: 한 도서관 문서 (`.guild/library/{BOOK-NNN}.md`).
+    pub fn book_path(&self, book_id: &str) -> PathBuf {
+        self.library_dir().join(format!("{book_id}.md"))
+    }
+
+    /// DEV-215: 도서관 번호 카운터 (`.guild/library/.counter.toml`).
+    /// quest_types 의 counter 와 완전히 별개 — 단조 증가, 재사용 금지.
+    pub fn library_counter_path(&self) -> PathBuf {
+        self.library_dir().join(".counter.toml")
+    }
+
+    /// DEV-239: 도서관 폴더(빈 폴더 포함) 레지스트리 (`.guild/library/folders.toml`).
+    /// 폴더는 순수 컨테이너(본문 없음, BOOK 슬롯 없음) — 문서 path 필드만으로는
+    /// 빈 폴더를 표현할 수 없어 별도 파일로 명시적 존재를 기록.
+    pub fn library_folders_path(&self) -> PathBuf {
+        self.library_dir().join("folders.toml")
+    }
+
+    /// DEV-167: 작업 기록 노트 디렉토리 (`.guild/worklog/`). git tracked.
+    /// `{YYYY-MM-DD}.md` — 날짜별 수동 노트 (전역 공유; quest memo 와 달리
+    /// 개인 노트가 아님 — 그래서 이름도 note 로 구분, admin 결정).
+    pub fn worklog_dir(&self) -> PathBuf {
+        self.dot_guild().join("worklog")
+    }
+
+    /// DEV-167: 한 날짜의 노트 (`.guild/worklog/{YYYY-MM-DD}.md`).
+    pub fn worklog_note_path(&self, date: &str) -> PathBuf {
+        self.worklog_dir().join(format!("{date}.md"))
+    }
+
+    /// DEV-180: 퀘스트 이력 사이드카 디렉토리 (`.guild/history/`). git tracked.
+    /// `.guild/quests/` 에 comments/memo/attachments 사이드카가 이미 있어
+    /// 4번째 파일 종류를 더하면 디렉토리가 난잡해지므로, backups/ 처럼
+    /// 최상위에 전용 디렉토리를 둔다.
+    pub fn history_dir(&self) -> PathBuf {
+        self.dot_guild().join("history")
+    }
+
+    /// DEV-180: 한 퀘스트의 이력 사이드카 (`.guild/history/{slug}.jsonl`).
+    pub fn quest_history_sidecar_path(&self, slug: &str) -> PathBuf {
+        self.history_dir().join(format!("{slug}.jsonl"))
     }
 
     pub fn journal_db(&self) -> PathBuf {
@@ -166,6 +216,11 @@ impl GuildPaths {
     /// DEV-156: Campaign 별 첨부 목록 sidecar.
     pub fn campaign_attachments_meta_path(&self, slug: &str) -> PathBuf {
         self.campaigns_dir().join(format!("{slug}.attachments.json"))
+    }
+
+    /// DEV-237: 도서관 문서 별 첨부 목록 sidecar (`.guild/library/{BOOK-NNN}.attachments.json`).
+    pub fn book_attachments_meta_path(&self, book_id: &str) -> PathBuf {
+        self.library_dir().join(format!("{book_id}.attachments.json"))
     }
 
     /// DEV-100: Campaign 별 공개 댓글 (`.guild/campaigns/{slug}.comments.md`).

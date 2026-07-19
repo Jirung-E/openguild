@@ -8,7 +8,7 @@
 
 use openguild_core::models::{
     AddChecklistRequest, AddPrerequisiteRequest, CampaignChecklistItem, CampaignDetail,
-    CampaignRow, CampaignSummary, ChangeParentRequest, ChangeStatusRequest,
+    CampaignHistoryEntry, CampaignRow, CampaignSummary, ChangeParentRequest, ChangeStatusRequest,
     CreateCampaignRequest, CreateQuestRequest, LinkQuestRequest, ListQuery, QuestDependency,
     QuestDetail, QuestHistoryEntry, QuestPosition, QuestRow, QuestStatus, QuestTagDef, QuestType,
     UpdateCampaignRequest, UpdatePositionRequest, UpdateQuestRequest,
@@ -138,6 +138,30 @@ pub async fn remove_campaign_attachment(
     path: String,
 ) -> Result<Vec<openguild_core::models::QuestAttachment>, String> {
     openguild_core::ops::attachments::remove_campaign_attachment(&store, &slug, &path)
+        .await
+        .map_err(err)
+}
+
+/// DEV-237: 도서관 문서 첨부 — 이미지/동영상 외 임의 파일.
+#[tauri::command]
+pub async fn add_book_attachment(
+    store: State<'_, Store>,
+    book_id: String,
+    path: String,
+    name: String,
+) -> Result<Vec<openguild_core::models::QuestAttachment>, String> {
+    openguild_core::ops::attachments::add_book_attachment(&store, &book_id, &path, &name)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn remove_book_attachment(
+    store: State<'_, Store>,
+    book_id: String,
+    path: String,
+) -> Result<Vec<openguild_core::models::QuestAttachment>, String> {
+    openguild_core::ops::attachments::remove_book_attachment(&store, &book_id, &path)
         .await
         .map_err(err)
 }
@@ -799,11 +823,43 @@ pub fn current_guild_path(store: State<'_, Store>) -> String {
 
 /// DEV-141: 현재 길드 이름 — `{name}.guild` 마커의 stem 또는 디렉토리명
 /// (recents 의 표시명과 동일 규칙). Nav 에서 어느 길드에 들어와 있는지 표시용.
-/// Welcome / Uninit 모드의 placeholder 경로면 의미 없는 값일 수 있으므로
-/// frontend 는 `launch_mode.mode === "guild"` 일 때만 사용.
+///
+/// BUG-136: 이전엔 "frontend 가 launch_mode 를 확인하고 쓰라"는 주석 계약만
+/// 있었는데 Nav 가 확인 안 해서 Welcome 상태에서 placeholder 디렉토리명
+/// ("openguild-welcome-placeholder")이 그대로 노출됐다 — 백엔드에서 강제:
+/// guild 모드가 아니면 빈 문자열(Nav 는 빈 이름이면 배지 숨김).
 #[tauri::command]
-pub fn current_guild_name(store: State<'_, Store>) -> String {
+pub fn current_guild_name(
+    store: State<'_, Store>,
+    launch: State<'_, crate::LaunchInfo>,
+) -> String {
+    if launch.mode != "guild" {
+        return String::new();
+    }
     openguild_core::recents::guess_name(&store.paths.guild_root)
+}
+
+// ─── DEV-249: 커스텀 테마 프리셋 파일 (~/.openguild/themes.json) ───
+// localStorage(WebView2 LevelDB — 사람이 열람/백업 불가) 대신 파일 저장.
+// 내용의 파싱/검증은 frontend(customThemes.ts)가 담당 — 여기는 raw IO 만.
+
+#[tauri::command]
+pub fn load_custom_themes() -> Result<Option<String>, String> {
+    let path = openguild_core::user_dirs::openguild_home()
+        .map_err(err)?
+        .join("themes.json");
+    if !path.is_file() {
+        return Ok(None);
+    }
+    std::fs::read_to_string(&path).map(Some).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn save_custom_themes(content: String) -> Result<(), String> {
+    let path = openguild_core::user_dirs::openguild_home()
+        .map_err(err)?
+        .join("themes.json");
+    openguild_core::repo::fs::write_atomic(&path, &content).map_err(err)
 }
 
 /// BUG-041: DB schema 가 현재 binary 가 모르는 migration 까지 적용된 상태인지.
@@ -1056,6 +1112,20 @@ pub async fn delete_campaign(
     camp_ops::delete_campaign(&store, row.id).await.map_err(err)
 }
 
+/// DEV-226: 캠페인 변경 이력 — quest history 와 대칭.
+#[tauri::command]
+pub async fn campaign_history(
+    store: State<'_, Store>,
+    slug: String,
+) -> Result<Vec<CampaignHistoryEntry>, String> {
+    let row = camp_svc::fetch_by_slug(&store.index_pool, &slug)
+        .await
+        .map_err(err)?;
+    camp_svc::list_history(&store.index_pool, row.id)
+        .await
+        .map_err(err)
+}
+
 #[tauri::command]
 pub async fn campaign_link_quest(
     store: State<'_, Store>,
@@ -1202,6 +1272,14 @@ pub struct RulesListResponse {
 pub struct RuleResponse {
     pub slug: String,
     pub content: Option<String>,
+    /// DEV-243: 자유 태그.
+    #[serde(default)]
+    pub tags: Vec<String>,
+    /// DEV-182: 생성 / 마지막 본문 저장 시각. 파일 부재 시 빈 문자열.
+    #[serde(default)]
+    pub created_at: String,
+    #[serde(default)]
+    pub updated_at: String,
 }
 
 #[tauri::command]
@@ -1212,8 +1290,23 @@ pub fn list_rules(store: State<'_, Store>) -> Result<RulesListResponse, String> 
 
 #[tauri::command]
 pub fn get_rule(store: State<'_, Store>, slug: String) -> Result<RuleResponse, String> {
-    let content = openguild_core::ops::rules::get_rule(&store, &slug).map_err(err)?;
-    Ok(RuleResponse { slug, content })
+    let entry = openguild_core::ops::rules::get_rule_entry(&store, &slug).map_err(err)?;
+    Ok(match entry {
+        Some(e) => RuleResponse {
+            slug: e.slug,
+            content: Some(e.content),
+            tags: e.tags,
+            created_at: e.created_at,
+            updated_at: e.updated_at,
+        },
+        None => RuleResponse {
+            slug,
+            content: None,
+            tags: vec![],
+            created_at: String::new(),
+            updated_at: String::new(),
+        },
+    })
 }
 
 #[tauri::command]
@@ -1225,9 +1318,14 @@ pub async fn set_rule(
     openguild_core::ops::rules::set_rule(&store, &slug, content.clone())
         .await
         .map_err(err)?;
+    // BUG-134 패턴: 본문 저장은 tags 를 보존하지만, 응답엔 실제 현재 tags/시각을 재조회.
+    let entry = openguild_core::ops::rules::get_rule_entry(&store, &slug).map_err(err)?;
     Ok(RuleResponse {
         slug,
         content: Some(content),
+        tags: entry.as_ref().map(|e| e.tags.clone()).unwrap_or_default(),
+        created_at: entry.as_ref().map(|e| e.created_at.clone()).unwrap_or_default(),
+        updated_at: entry.map(|e| e.updated_at).unwrap_or_default(),
     })
 }
 
@@ -1241,9 +1339,13 @@ pub async fn create_rule(
     openguild_core::ops::rules::create_rule(&store, &slug, c.clone())
         .await
         .map_err(err)?;
+    let entry = openguild_core::ops::rules::get_rule_entry(&store, &slug).map_err(err)?;
     Ok(RuleResponse {
         slug,
         content: Some(c),
+        tags: vec![],
+        created_at: entry.as_ref().map(|e| e.created_at.clone()).unwrap_or_default(),
+        updated_at: entry.map(|e| e.updated_at).unwrap_or_default(),
     })
 }
 
@@ -1263,11 +1365,287 @@ pub async fn rename_rule(
     openguild_core::ops::rules::rename_rule(&store, &slug, &new_slug)
         .await
         .map_err(err)?;
-    let content = openguild_core::ops::rules::get_rule(&store, &new_slug).map_err(err)?;
-    Ok(RuleResponse {
-        slug: new_slug,
-        content,
+    let entry = openguild_core::ops::rules::get_rule_entry(&store, &new_slug).map_err(err)?;
+    Ok(match entry {
+        Some(e) => RuleResponse {
+            slug: e.slug,
+            content: Some(e.content),
+            tags: e.tags,
+            created_at: e.created_at,
+            updated_at: e.updated_at,
+        },
+        None => RuleResponse {
+            slug: new_slug,
+            content: None,
+            tags: vec![],
+            created_at: String::new(),
+            updated_at: String::new(),
+        },
     })
+}
+
+/// DEV-243: 규칙 태그 전체 교체.
+#[tauri::command]
+pub async fn set_rule_tags(
+    store: State<'_, Store>,
+    slug: String,
+    tags: Vec<String>,
+) -> Result<RuleResponse, String> {
+    let entry = openguild_core::ops::rules::set_rule_tags(&store, &slug, tags)
+        .await
+        .map_err(err)?;
+    Ok(RuleResponse {
+        slug: entry.slug,
+        content: Some(entry.content),
+        tags: entry.tags,
+        created_at: entry.created_at,
+        updated_at: entry.updated_at,
+    })
+}
+
+// ─────────────────────── DEV-217: 도서관 (Library) ───────────────────────
+// server routes/library.rs 의 BookResponse 와 동일 형태 — transport.ts 가
+// HTTP/invoke 를 투명하게 스위칭할 수 있게 (DEV-193 파리티 원칙).
+
+#[derive(serde::Serialize)]
+pub struct BookResponse {
+    pub book_id: String,
+    pub number: i64,
+    pub title: String,
+    pub body: String,
+    /// DEV-239: 소속 폴더 경로 ("" = 최상위).
+    pub path: String,
+    pub created_at: String,
+    pub updated_at: String,
+    pub deleted_at: Option<String>,
+    /// DEV-237: 첨부 목록 — get_book 에서만 채움(list_books 는 빈 배열).
+    pub attachments: Vec<openguild_core::models::QuestAttachment>,
+    /// DEV-243: 자유 태그.
+    #[serde(default)]
+    pub tags: Vec<String>,
+}
+
+impl From<openguild_core::ops::library::LibraryDocRow> for BookResponse {
+    fn from(r: openguild_core::ops::library::LibraryDocRow) -> Self {
+        Self {
+            book_id: r.book_id(),
+            number: r.number,
+            title: r.title,
+            body: r.body,
+            path: r.path,
+            created_at: r.created_at,
+            updated_at: r.updated_at,
+            deleted_at: r.deleted_at,
+            attachments: Vec::new(),
+            tags: r.tags,
+        }
+    }
+}
+
+#[derive(serde::Serialize)]
+pub struct FolderResponse {
+    pub path: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+impl From<openguild_core::ops::library::LibraryFolderRow> for FolderResponse {
+    fn from(r: openguild_core::ops::library::LibraryFolderRow) -> Self {
+        Self {
+            path: r.path,
+            created_at: r.created_at,
+            updated_at: r.updated_at,
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn list_books(store: State<'_, Store>) -> Result<Vec<BookResponse>, String> {
+    let rows = openguild_core::ops::library::list_books(&store)
+        .await
+        .map_err(err)?;
+    Ok(rows.into_iter().map(BookResponse::from).collect())
+}
+
+#[tauri::command]
+pub async fn get_book(store: State<'_, Store>, book_id: String) -> Result<BookResponse, String> {
+    let mut resp: BookResponse = openguild_core::ops::library::get_book(&store, &book_id)
+        .await
+        .map_err(err)?
+        .map(BookResponse::from)
+        .ok_or_else(|| format!("도서관 문서 '{book_id}' 없음"))?;
+    resp.attachments = openguild_core::ops::attachments::list_book_attachments(&store, &book_id);
+    Ok(resp)
+}
+
+#[tauri::command]
+pub async fn create_book(
+    store: State<'_, Store>,
+    title: String,
+    body: Option<String>,
+    path: Option<String>,
+) -> Result<BookResponse, String> {
+    let row = openguild_core::ops::library::create_book(
+        &store,
+        &title,
+        body.as_deref().unwrap_or(""),
+        path.as_deref().unwrap_or(""),
+    )
+    .await
+    .map_err(err)?;
+    Ok(row.into())
+}
+
+#[tauri::command]
+pub async fn update_book(
+    store: State<'_, Store>,
+    book_id: String,
+    title: Option<String>,
+    body: Option<String>,
+    path: Option<String>,
+) -> Result<BookResponse, String> {
+    let row = openguild_core::ops::library::update_book(
+        &store,
+        &book_id,
+        title.as_deref(),
+        body.as_deref(),
+        path.as_deref(),
+    )
+    .await
+    .map_err(err)?;
+    // BUG-124(admin 보고): server/routes/library.rs 의 update_book 과 동일한
+    // 원인 — attachments 를 빈 배열로 둬서(get_book 만 채우는 게 원칙이었는데
+    // update 도 그렇게 취급) 저장할 때마다 클라이언트가 book 객체 전체를
+    // 이 응답으로 교체하며 기존 첨부파일 목록이 화면에서 사라졌다.
+    let mut resp: BookResponse = row.into();
+    resp.attachments = openguild_core::ops::attachments::list_book_attachments(&store, &book_id);
+    Ok(resp)
+}
+
+#[tauri::command]
+pub async fn delete_book(store: State<'_, Store>, book_id: String) -> Result<(), String> {
+    openguild_core::ops::library::delete_book(&store, &book_id)
+        .await
+        .map_err(err)
+}
+
+/// DEV-243: 도서관 문서 태그 전체 교체.
+#[tauri::command]
+pub async fn set_book_tags(
+    store: State<'_, Store>,
+    book_id: String,
+    tags: Vec<String>,
+) -> Result<BookResponse, String> {
+    let row = openguild_core::ops::library::set_book_tags(&store, &book_id, tags)
+        .await
+        .map_err(err)?;
+    let mut resp: BookResponse = row.into();
+    resp.attachments = openguild_core::ops::attachments::list_book_attachments(&store, &book_id);
+    Ok(resp)
+}
+
+// ─────────────────────── DEV-239: 도서관 폴더 ───────────────────────
+
+#[tauri::command]
+pub async fn list_library_folders(store: State<'_, Store>) -> Result<Vec<FolderResponse>, String> {
+    let rows = openguild_core::ops::library::list_folders(&store)
+        .await
+        .map_err(err)?;
+    Ok(rows.into_iter().map(FolderResponse::from).collect())
+}
+
+#[tauri::command]
+pub async fn create_library_folder(
+    store: State<'_, Store>,
+    path: String,
+) -> Result<FolderResponse, String> {
+    openguild_core::ops::library::create_folder(&store, &path)
+        .await
+        .map(FolderResponse::from)
+        .map_err(err)
+}
+
+#[tauri::command]
+pub async fn delete_library_folder(store: State<'_, Store>, path: String) -> Result<(), String> {
+    openguild_core::ops::library::delete_folder(&store, &path)
+        .await
+        .map_err(err)
+}
+
+// ─────────────────────── DEV-167: 작업 기록 (Worklog) ───────────────────────
+// server routes/worklog.rs 와 1:1 (transport.ts 스위칭용).
+
+#[tauri::command]
+pub async fn worklog_activities(
+    store: State<'_, Store>,
+    from: String,
+    to: String,
+) -> Result<openguild_core::ops::worklog::WorklogReport, String> {
+    openguild_core::ops::worklog::activities(&store, &from, &to)
+        .await
+        .map_err(err)
+}
+
+#[derive(serde::Serialize)]
+pub struct DailyCount {
+    pub date: String,
+    pub count: i64,
+}
+
+#[tauri::command]
+pub async fn worklog_summary(
+    store: State<'_, Store>,
+    from: String,
+    to: String,
+) -> Result<Vec<DailyCount>, String> {
+    let rows = openguild_core::ops::worklog::daily_summary(&store, &from, &to)
+        .await
+        .map_err(err)?;
+    Ok(rows
+        .into_iter()
+        .map(|(date, count)| DailyCount { date, count })
+        .collect())
+}
+
+#[derive(serde::Serialize)]
+pub struct WorklogNoteResponse {
+    pub date: String,
+    pub content: Option<String>,
+}
+
+#[tauri::command]
+pub fn worklog_note_get(
+    store: State<'_, Store>,
+    date: String,
+) -> Result<WorklogNoteResponse, String> {
+    let content = openguild_core::ops::worklog::get_note(&store, &date).map_err(err)?;
+    Ok(WorklogNoteResponse { date, content })
+}
+
+#[tauri::command]
+pub async fn worklog_note_set(
+    store: State<'_, Store>,
+    date: String,
+    content: String,
+) -> Result<WorklogNoteResponse, String> {
+    openguild_core::ops::worklog::set_note(&store, &date, content)
+        .await
+        .map_err(err)?;
+    let content = openguild_core::ops::worklog::get_note(&store, &date).map_err(err)?;
+    Ok(WorklogNoteResponse { date, content })
+}
+
+#[tauri::command]
+pub fn worklog_notes(
+    store: State<'_, Store>,
+    from: String,
+    to: String,
+) -> Result<Vec<WorklogNoteResponse>, String> {
+    let notes = openguild_core::ops::worklog::list_notes(&store, &from, &to).map_err(err)?;
+    Ok(notes
+        .into_iter()
+        .map(|(date, content)| WorklogNoteResponse { date, content: Some(content) })
+        .collect())
 }
 
 // ─────────────────────── DEV-012 / DEV-094: 댓글 / 메모 ───────────────────────
@@ -1395,6 +1773,18 @@ pub async fn toggle_comment_resolved(
         .map_err(err)
 }
 
+/// DEV-234: 상단 고정(pin) 토글 — quest 전용 게이트 없음.
+#[tauri::command]
+pub async fn toggle_comment_pinned(
+    store: State<'_, Store>,
+    slug: String,
+    id: u64,
+) -> Result<CommentEntry, String> {
+    openguild_core::ops::comments::toggle_comment_pinned(&store, &slug, id)
+        .await
+        .map_err(err)
+}
+
 // ─── DEV-100: Campaign 댓글 / 메모 — quest 패턴 미러 ───
 
 #[tauri::command]
@@ -1458,6 +1848,18 @@ pub async fn toggle_campaign_comment_reaction(
     author: String,
 ) -> Result<CommentEntry, String> {
     openguild_core::ops::campaign_comments::toggle_reaction(&store, &slug, id, &emoji, &author)
+        .await
+        .map_err(err)
+}
+
+/// DEV-234: 캠페인 댓글 상단 고정(pin) 토글.
+#[tauri::command]
+pub async fn toggle_campaign_comment_pinned(
+    store: State<'_, Store>,
+    slug: String,
+    id: u64,
+) -> Result<CommentEntry, String> {
+    openguild_core::ops::campaign_comments::toggle_pinned(&store, &slug, id)
         .await
         .map_err(err)
 }
@@ -1625,4 +2027,45 @@ pub async fn set_campaign_memo(
     Ok(ContentResponse {
         content: Some(content),
     })
+}
+
+/// DEV-265 (Windows): 최대화 버튼의 클라이언트 좌표(물리 픽셀)를 등록 —
+/// `WM_NCHITTEST` 가 그 영역을 HTMAXBUTTON 으로 인식해 진짜 OS Snap
+/// Layout 호버가 뜨도록 한다. Linux/macOS 는 no-op 스텁(command 이름은
+/// 모든 플랫폼에 존재해야 invoke_handler! 가 동일하게 컴파일된다).
+#[cfg(target_os = "windows")]
+#[tauri::command]
+pub fn set_maximize_hit_rect(
+    window: tauri::Window,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+) -> Result<(), String> {
+    let hwnd = window.hwnd().map_err(err)?;
+    crate::titlebar_win::set_maximize_hit_rect(hwnd.0 as isize, x, y, width, height);
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+pub fn set_maximize_hit_rect(
+    _window: tauri::Window,
+    _x: i32,
+    _y: i32,
+    _width: i32,
+    _height: i32,
+) -> Result<(), String> {
+    Ok(())
+}
+
+/// DEV-265 (Linux): 실제 GTK 아이콘 테마/버튼 순서/간격 조회. 다른
+/// 플랫폼에선 모든 필드가 None/기본값인 스텁을 반환(프론트는 리눅스일
+/// 때만 이 command 를 호출하므로 실질적으로 안 쓰이지만, invoke_handler!
+/// 목록은 플랫폼 무관하게 동일해야 함).
+#[tauri::command]
+pub fn get_native_titlebar_style(
+    app: tauri::AppHandle,
+) -> Result<crate::titlebar_linux::NativeTitlebarStyle, String> {
+    crate::titlebar_linux::get_native_titlebar_style_blocking(&app)
 }

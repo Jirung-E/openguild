@@ -177,7 +177,21 @@ a {
 
 button {
 	cursor: pointer;
-	font-family: inherit;
+	/* BUG-143: CJK 라벨('수정' 등)은 word-break 없이도 글자 단위로 꺾여
+	   좁은 폭에서 버튼이 세로 2줄이 됨 — 버튼 라벨은 전역 한 줄 고정.
+	   (의도적 다중행 버튼은 개별 white-space 재정의로 opt-out.) */
+	white-space: nowrap;
+}
+
+/* BUG-117: form 컨트롤은 기본적으로 font 를 상속하지 않아(브라우저 고정
+   13.33px 등) uiScale(root font-size 스케일)이 안 먹었다 — font-size 명시
+   없는 버튼('본문 추가' 등)이 대표 사례. 전역 상속으로 일괄 해결.
+   각 컴포넌트의 명시 font-size(rem)는 그대로 우선. */
+button,
+input,
+select,
+textarea {
+	font: inherit;
 }
 
 /* BUG-026 → BUG-031 → DEV-074: <input type="date"> picker icon.

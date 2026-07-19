@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>HOME 작업 기록 요약 카드 목업 (DEV-167)</title>
+<style>
+  :root {
+    --bg: #16161a; --surface: #1e1e24; --surface-2: #26262e;
+    --border: #34343e; --text: #e8e8ec; --text-muted: #8b8b96;
+    --accent: #7aa2f7;
+    --g0: #26262e; --g1: #27500a; --g2: #3b6d11; --g3: #639922; --g4: #97c459;
+  }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; font-size: 14px; margin: 0; padding: 2rem; }
+  .card { max-width: 720px; margin: 0 auto; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; cursor: pointer; }
+  .card:hover { border-color: var(--accent); }
+  .ch { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .ch .t { font-weight: 600; font-size: 14px; }
+  .ch .r { font-size: 12px; color: var(--text-muted); }
+  .heat { display: grid; grid-template-rows: repeat(7, 11px); grid-auto-flow: column; grid-auto-columns: 11px; gap: 3px; margin-bottom: 10px; }
+  .heat div { width: 11px; height: 11px; border-radius: 2px; border: 1px solid var(--border); }
+  .today { display: flex; align-items: center; gap: 14px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-muted); }
+  .today b { color: var(--text); font-weight: 600; }
+  .today .last { margin-left: auto; }
+</style>
+</head>
+<body>
+<!--
+  DEV-167 HOME 요약 카드 목업 (admin 확정, 2026-07-05)
+  - HOME 화면(기존 캠페인 carousel / 마감 임박 아래)에 GitHub 잔디 스타일 카드
+  - 히트맵: 최근 12주, 하루 활동량(상태변경+댓글+생성) 합산으로 농도 5단계
+  - 카드 클릭 → /worklog 상세로 이동. 히트맵의 특정 날짜 칸 클릭 시 그 날짜가
+    선택된 채 열림 (?date=YYYY-MM-DD)
+  - 아래 줄: 오늘 집계 + 마지막 활동 — 데이터는 상세 페이지 쿼리의 집계 버전이라
+    별도 저장소/코어 작업 없음
+-->
+<div class="card" title="클릭 → /worklog">
+  <div class="ch">
+    <span class="t">🕘 작업 기록</span>
+    <span class="r">최근 12주 · 총 486 활동 ›</span>
+  </div>
+  <div class="heat" id="heat"></div>
+  <div class="today">
+    <span>오늘</span>
+    <span><b>12</b> 상태변경</span>
+    <span><b>7</b> 댓글</span>
+    <span><b>5</b> 생성</span>
+    <span class="last">마지막 활동 21:42 · BUG-115 done</span>
+  </div>
+</div>
+<script>
+  const heat = document.getElementById('heat');
+  const ramp = ['var(--g0)', 'var(--g1)', 'var(--g2)', 'var(--g3)', 'var(--g4)'];
+  let seed = 7;
+  function rand() { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }
+  for (let i = 0; i < 12 * 7; i++) {
+    const d = document.createElement('div');
+    const r = rand();
+    const lvl = r < 0.28 ? 0 : r < 0.55 ? 1 : r < 0.78 ? 2 : r < 0.93 ? 3 : 4;
+    d.style.background = ramp[lvl];
+    d.title = `활동 ${lvl * 4}건`;
+    heat.appendChild(d);
+  }
+</script>
+</body>
+</html>

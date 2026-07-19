@@ -2021,6 +2021,55 @@ async fn test_campaign_create_get_update_delete() {
     assert!(list.as_array().unwrap().is_empty());
 }
 
+// DEV-226: 캠페인 status 변경 시 이력이 기록되고, no-op(같은 status 로
+// 재요청)/status 없는 update 는 기록 안 됨. quest_history 와 대칭.
+#[tokio::test]
+async fn test_campaign_history_records_status_change_only() {
+    let app = setup().await;
+    let (_, c) = post(app.clone(), "/api/campaigns", json!({ "title": "beta" })).await;
+    let slug = c["campaign_slug"].as_str().unwrap().to_string();
+
+    // title 만 바꾸는 update — 이력 없음.
+    patch(
+        app.clone(),
+        &format!("/api/campaigns/{slug}"),
+        json!({ "title": "beta v2" }),
+    )
+    .await;
+    let (status, history) = get(app.clone(), &format!("/api/campaigns/{slug}/history")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(history.as_array().unwrap().is_empty());
+
+    // 같은 status("active")로 재요청 — no-op, 이력 없음.
+    patch(
+        app.clone(),
+        &format!("/api/campaigns/{slug}"),
+        json!({ "status": "active" }),
+    )
+    .await;
+    let (_, history) = get(app.clone(), &format!("/api/campaigns/{slug}/history")).await;
+    assert!(history.as_array().unwrap().is_empty());
+
+    // 실제 status 변경 — 이력 1건.
+    let (status, updated) = patch(
+        app.clone(),
+        &format!("/api/campaigns/{slug}"),
+        json!({ "status": "done" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(updated["status"], "done");
+
+    let (status, history) = get(app, &format!("/api/campaigns/{slug}/history")).await;
+    assert_eq!(status, StatusCode::OK);
+    let entries = history.as_array().unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0]["op"], "change_status");
+    assert_eq!(entries[0]["old_value"], "active");
+    assert_eq!(entries[0]["new_value"], "done");
+    assert_eq!(entries[0]["campaign_slug"], slug);
+}
+
 #[tokio::test]
 async fn test_campaign_list_filter_by_status() {
     let app = setup().await;
@@ -2132,6 +2181,60 @@ async fn test_campaign_summaries_active_and_upcoming() {
     assert_eq!(status, StatusCode::OK);
 }
 
+// DEV-233: 캠페인 진행바 hover 시 상태별 stacked 표시용 — summary/detail 둘 다
+// 링크 퀘스트 상태별 카운트를 노출해야 함.
+#[tokio::test]
+async fn test_campaign_quest_status_counts_in_summary_and_detail() {
+    let app = setup().await;
+    post(
+        app.clone(),
+        "/api/quests",
+        json!({ "quest_type_id": 1, "title": "q1", "status_slug": "open" }),
+    )
+    .await;
+    post(
+        app.clone(),
+        "/api/quests",
+        json!({ "quest_type_id": 1, "title": "q2", "status_slug": "open" }),
+    )
+    .await;
+    post(app.clone(), "/api/campaigns", json!({ "title": "camp" })).await;
+    post(
+        app.clone(),
+        "/api/campaigns/C-001/quests",
+        json!({ "quest_slug": "DEV-001" }),
+    )
+    .await;
+    post(
+        app.clone(),
+        "/api/campaigns/C-001/quests",
+        json!({ "quest_slug": "DEV-002" }),
+    )
+    .await;
+    // 하나만 상태 변경 — open 1개 + in_progress 1개가 되도록.
+    let (_, q2) = get(app.clone(), "/api/quests/by/DEV-002").await;
+    let q2_id = q2["id"].as_i64().unwrap();
+    let (patch_status, patch_body) = patch(
+        app.clone(),
+        &format!("/api/quests/{q2_id}/status"),
+        json!({ "status_slug": "in_progress" }),
+    )
+    .await;
+    assert_eq!(patch_status, StatusCode::OK, "body={patch_body:?}");
+
+    let (status, summaries) = get(app.clone(), "/api/campaigns/summaries/active").await;
+    assert_eq!(status, StatusCode::OK);
+    let counts = summaries[0]["quest_status_counts"].as_array().unwrap();
+    assert_eq!(counts.len(), 2, "open + in_progress 두 상태");
+    let total: i64 = counts.iter().map(|c| c["count"].as_i64().unwrap()).sum();
+    assert_eq!(total, 2);
+
+    let (status, detail) = get(app, "/api/campaigns/C-001").await;
+    assert_eq!(status, StatusCode::OK);
+    let counts = detail["quest_status_counts"].as_array().unwrap();
+    assert_eq!(counts.len(), 2);
+}
+
 #[tokio::test]
 async fn test_campaign_list_for_quest() {
     let app = setup().await;
@@ -2215,6 +2318,37 @@ async fn test_quest_comment_add_list_update_delete() {
     assert_eq!(status, StatusCode::NO_CONTENT);
     let (_, list) = get(app, "/api/quests/by/DEV-001/comments").await;
     assert!(list["entries"].as_array().unwrap().is_empty());
+}
+
+// DEV-182: 댓글 수정 시 edited_at 이 기록되고, 아직 안 고친 댓글은 없어야 함.
+#[tokio::test]
+async fn test_quest_comment_edited_at_set_on_update_only() {
+    let app = seed_quest(setup().await).await;
+    let (_, entry) = post(
+        app.clone(),
+        "/api/quests/by/DEV-001/comments",
+        json!({ "author": "alice", "body": "hello" }),
+    )
+    .await;
+    let id = entry["id"].as_u64().unwrap();
+    assert!(entry.get("edited_at").is_none(), "생성 직후엔 edited_at 없음");
+
+    let (status, updated) = patch(
+        app.clone(),
+        &format!("/api/quests/by/DEV-001/comments/{id}"),
+        json!({ "body": "edited" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        updated["edited_at"].as_str().is_some_and(|s| !s.is_empty()),
+        "수정 후엔 edited_at 이 기록돼야 함"
+    );
+
+    let (_, list) = get(app, "/api/quests/by/DEV-001/comments").await;
+    let entries = list["entries"].as_array().unwrap();
+    assert_eq!(entries.len(), 1);
+    assert!(entries[0]["edited_at"].as_str().is_some_and(|s| !s.is_empty()));
 }
 
 #[tokio::test]
@@ -2321,6 +2455,39 @@ async fn test_quest_comment_discussion_and_resolved_toggle() {
     assert_eq!(status, StatusCode::OK);
 }
 
+/// DEV-234: 상단 고정(pin) 토글 — discussion 과 달리 quest 완료 전환 게이트 없음.
+#[tokio::test]
+async fn test_quest_comment_pinned_toggle() {
+    let app = seed_quest(setup().await).await;
+    let (_, entry) = post(
+        app.clone(),
+        "/api/quests/by/DEV-001/comments",
+        json!({ "author": "a", "body": "결정사항" }),
+    )
+    .await;
+    let id = entry["id"].as_u64().unwrap();
+
+    let (status, on) = post(
+        app.clone(),
+        &format!("/api/quests/by/DEV-001/comments/{id}/pinned"),
+        json!({}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(on["pinned"], true);
+
+    let (status, off) = post(
+        app,
+        &format!("/api/quests/by/DEV-001/comments/{id}/pinned"),
+        json!({}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    // pinned=false 는 discussion/resolved 와 같은 skip_serializing_if 라 필드
+    // 자체가 응답에서 생략됨(null) — "true 아님"으로 검증.
+    assert!(!off["pinned"].as_bool().unwrap_or(false));
+}
+
 #[tokio::test]
 async fn test_quest_memo_get_set() {
     let app = seed_quest(setup().await).await;
@@ -2396,6 +2563,28 @@ async fn test_campaign_comment_reaction_toggle() {
     assert_eq!(after["reactions"].as_array().unwrap().len(), 1);
 }
 
+/// DEV-234: 캠페인 댓글도 pin 지원 (discussion 과 달리 quest 전용 아님).
+#[tokio::test]
+async fn test_campaign_comment_pinned_toggle() {
+    let app = setup().await;
+    post(app.clone(), "/api/campaigns", json!({ "title": "camp" })).await;
+    let (_, entry) = post(
+        app.clone(),
+        "/api/campaigns/C-001/comments",
+        json!({ "author": "a", "body": "x" }),
+    )
+    .await;
+    let id = entry["id"].as_u64().unwrap();
+    let (status, on) = post(
+        app,
+        &format!("/api/campaigns/C-001/comments/{id}/pinned"),
+        json!({}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(on["pinned"], true);
+}
+
 #[tokio::test]
 async fn test_campaign_memo_get_set() {
     let app = setup().await;
@@ -2459,6 +2648,391 @@ async fn test_rules_multi_file_crud() {
 
     let status = delete(app, "/api/rules/renamed-rule").await;
     assert_eq!(status, StatusCode::NO_CONTENT);
+}
+
+/// DEV-243: 규칙 태그 — PUT /api/rules/{slug}/tags, 본문 저장은 보존.
+#[tokio::test]
+async fn test_rule_tags_set_and_preserved_on_body_save() {
+    let app = setup().await;
+    let (_, _) = post(
+        app.clone(),
+        "/api/rules",
+        json!({ "slug": "tagged-rule", "content": "본문" }),
+    )
+    .await;
+
+    let (status, updated) = put(
+        app.clone(),
+        "/api/rules/tagged-rule/tags",
+        json!({ "tags": ["git", "convention"] }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(updated["tags"], json!(["git", "convention"]));
+
+    let (status, got) = get(app.clone(), "/api/rules/tagged-rule").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(got["tags"], json!(["git", "convention"]));
+
+    // 본문만 저장 — 태그는 그대로 남아야 함.
+    let (status, saved) = put(
+        app,
+        "/api/rules/tagged-rule",
+        json!({ "content": "새 본문" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(saved["tags"], json!(["git", "convention"]), "본문 저장이 태그를 지우면 안 됨");
+}
+
+// DEV-182: 규칙 생성 시 created_at/updated_at 이 기록되고, 본문 재저장 시
+// created_at 은 보존, updated_at 만 갱신.
+#[tokio::test]
+async fn test_rule_timestamps_created_preserved_updated_bumped() {
+    let app = setup().await;
+    let (_, created) = post(
+        app.clone(),
+        "/api/rules",
+        json!({ "slug": "timed-rule", "content": "v1" }),
+    )
+    .await;
+    let created_at = created["created_at"].as_str().unwrap().to_string();
+    assert!(!created_at.is_empty());
+    assert_eq!(created["updated_at"].as_str().unwrap(), created_at, "생성 직후엔 동일");
+
+    // 초 단위 포맷이라 같은 초 안에 재저장하면 updated_at 이 안 갈릴 수 있음.
+    tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+    let (status, saved) = put(app, "/api/rules/timed-rule", json!({ "content": "v2" })).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(saved["created_at"], created_at, "created_at 은 보존");
+    assert_ne!(
+        saved["updated_at"].as_str().unwrap(),
+        created_at,
+        "본문 재저장은 updated_at 을 갱신해야 함"
+    );
+}
+
+/// DEV-216: 도서관 CRUD — 생성/목록/조회/수정/soft delete + 번호 재사용 금지.
+#[tokio::test]
+async fn test_library_crud_and_number_monotonic() {
+    let app = setup().await;
+
+    let (status, b1) = post(
+        app.clone(),
+        "/api/library",
+        json!({ "title": "설계 결정", "body": "본문 A" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(b1["book_id"], "BOOK-001");
+    assert_eq!(b1["title"], "설계 결정");
+    assert_eq!(b1["body"], "본문 A");
+
+    let (status, _) = post(app.clone(), "/api/library", json!({ "title": "둘째" })).await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let (status, list) = get(app.clone(), "/api/library").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(list.as_array().unwrap().len(), 2);
+
+    let (status, got) = get(app.clone(), "/api/library/BOOK-001").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(got["body"], "본문 A");
+
+    let (status, updated) = patch(
+        app.clone(),
+        "/api/library/BOOK-001",
+        json!({ "title": "바뀐 제목" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(updated["title"], "바뀐 제목");
+    assert_eq!(updated["body"], "본문 A", "body 미지정 시 보존");
+
+    let status = delete(app.clone(), "/api/library/BOOK-001").await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, _) = get(app.clone(), "/api/library/BOOK-001").await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "soft delete 후 조회 제외");
+
+    // 삭제된 번호 재사용 금지 — 카운터 단조 증가.
+    let (_, b3) = post(app.clone(), "/api/library", json!({ "title": "셋째" })).await;
+    assert_eq!(b3["book_id"], "BOOK-003");
+
+    // 잘못된 id 형식.
+    let (status, _) = get(app, "/api/library/DEV-001").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+/// DEV-237: 도서관 문서 첨부 — 이미지/동영상 외 임의 파일(zip)도 등록/삭제.
+#[tokio::test]
+async fn test_library_attachment_add_remove() {
+    let app = setup().await;
+    let (_, b1) = post(app.clone(), "/api/library", json!({ "title": "설계" })).await;
+    let book_id = b1["book_id"].as_str().unwrap().to_string();
+
+    let (status, list) = post(
+        app.clone(),
+        &format!("/api/library/{book_id}/attachments"),
+        json!({ "path": "attachments/spec.zip", "name": "spec.zip" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(list.as_array().unwrap().len(), 1);
+    assert_eq!(list[0]["name"], "spec.zip");
+
+    let (status, after) = delete_with_body(
+        app,
+        &format!("/api/library/{book_id}/attachments?path=attachments/spec.zip"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(after.as_array().unwrap().is_empty());
+}
+
+/// BUG-124(admin 보고): 첨부가 있는 문서를 본문/제목/폴더 수정(PATCH)하면
+/// 응답의 attachments 가 빈 배열이라 GUI 가 book 객체를 통째로 교체하며
+/// 화면에서 기존 첨부파일이 사라졌음 — update_book 도 get_book 처럼 항상
+/// 채워야 한다.
+#[tokio::test]
+async fn test_library_update_preserves_attachments_in_response() {
+    let app = setup().await;
+    let (_, b1) = post(app.clone(), "/api/library", json!({ "title": "설계" })).await;
+    let book_id = b1["book_id"].as_str().unwrap().to_string();
+
+    let (_, list) = post(
+        app.clone(),
+        &format!("/api/library/{book_id}/attachments"),
+        json!({ "path": "attachments/spec.zip", "name": "spec.zip" }),
+    )
+    .await;
+    assert_eq!(list.as_array().unwrap().len(), 1);
+
+    let (status, updated) = patch(
+        app.clone(),
+        &format!("/api/library/{book_id}"),
+        json!({ "body": "새 본문" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        updated["attachments"].as_array().unwrap().len(),
+        1,
+        "PATCH 응답도 get_book 처럼 attachments 를 채워야 함"
+    );
+    assert_eq!(updated["attachments"][0]["name"], "spec.zip");
+
+    // list_books 는 여전히 payload 절약을 위해 빈 배열 유지(의도적, 회귀 아님).
+    let (_, list_resp) = get(app.clone(), "/api/library").await;
+    assert!(list_resp[0]["attachments"].as_array().unwrap().is_empty());
+}
+
+/// DEV-243: 도서관 문서 태그 — PATCH /api/library/{book_id}/tags, 본문 저장은 보존.
+#[tokio::test]
+async fn test_library_tags_set_and_preserved_on_update() {
+    let app = setup().await;
+    let (_, b1) = post(app.clone(), "/api/library", json!({ "title": "설계" })).await;
+    let book_id = b1["book_id"].as_str().unwrap().to_string();
+    assert!(b1["tags"].as_array().unwrap().is_empty());
+
+    let (status, updated) = patch(
+        app.clone(),
+        &format!("/api/library/{book_id}/tags"),
+        json!({ "tags": ["architecture", "decision"] }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(updated["tags"], json!(["architecture", "decision"]));
+
+    // 본문만 수정 — 태그는 그대로 남아야 함.
+    let (status, saved) = patch(
+        app.clone(),
+        &format!("/api/library/{book_id}"),
+        json!({ "body": "새 본문" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        saved["tags"],
+        json!(["architecture", "decision"]),
+        "본문 저장이 태그를 지우면 안 됨"
+    );
+
+    let (_, got) = get(app.clone(), &format!("/api/library/{book_id}")).await;
+    assert_eq!(got["tags"], json!(["architecture", "decision"]));
+}
+
+/// DEV-239: 도서관 폴더 — 생성/목록/삭제 + 문서 path 이동, 빈 폴더만 삭제 허용.
+#[tokio::test]
+async fn test_library_folders_and_doc_path() {
+    let app = setup().await;
+
+    let (status, folder) =
+        post(app.clone(), "/api/library/folders", json!({ "path": "아키텍처" })).await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(folder["path"], "아키텍처");
+
+    let (status, list) = get(app.clone(), "/api/library/folders").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(list.as_array().unwrap().len(), 1);
+
+    let (status, b1) = post(
+        app.clone(),
+        "/api/library",
+        json!({ "title": "라우터 설계", "path": "아키텍처" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(b1["path"], "아키텍처");
+
+    // 문서가 있으면 폴더 삭제 거부.
+    let status = delete(app.clone(), "/api/library/folders?path=아키텍처").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // 루트로 이동.
+    let (status, moved) = patch(
+        app.clone(),
+        &format!("/api/library/{}", b1["book_id"].as_str().unwrap()),
+        json!({ "path": "" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(moved["path"], "");
+
+    // 이제 비었으니 삭제 가능.
+    let status = delete(app.clone(), "/api/library/folders?path=아키텍처").await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+}
+
+/// DEV-239: 잘못된 폴더 경로(`..`)는 400, 하위 폴더 있으면(문서 없어도) 삭제 거부.
+#[tokio::test]
+async fn test_library_folder_path_validation_and_subfolder_guard() {
+    let app = setup().await;
+
+    let (status, _) = post(
+        app.clone(),
+        "/api/library",
+        json!({ "title": "잘못된 경로", "path": "아키텍처/.." }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    let (status, _) =
+        post(app.clone(), "/api/library/folders", json!({ "path": "아키텍처" })).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let (status, _) =
+        post(app.clone(), "/api/library/folders", json!({ "path": "아키텍처/서브" })).await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let status = delete(app.clone(), "/api/library/folders?path=아키텍처").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    let status = delete(app.clone(), "/api/library/folders?path=아키텍처/서브").await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let status = delete(app, "/api/library/folders?path=아키텍처").await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+}
+
+/// DEV-167: worklog — 활동 타임라인/집계/히트맵 + 날짜별 노트 CRUD.
+#[tokio::test]
+async fn test_worklog_activities_and_note() {
+    let app = setup().await;
+
+    // quest 생성 + done 전환 → created/status 활동 발생.
+    let (_, created) = post(
+        app.clone(),
+        "/api/quests",
+        json!({ "quest_type_id": 1, "title": "작업기록", "status_slug": "open" }),
+    )
+    .await;
+    let qid = created["id"].as_i64().unwrap();
+    let (status, _) = patch(
+        app.clone(),
+        &format!("/api/quests/{qid}/status"),
+        json!({ "status_slug": "done" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let today = &openguild_core::time::now_local_iso8601()[..10];
+
+    let (status, report) =
+        get(app.clone(), &format!("/api/worklog?from={today}&to={today}")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(report["counts"]["created"], 1);
+    assert_eq!(report["counts"]["status_changes"], 1);
+    assert_eq!(report["counts"]["done_transitions"], 1);
+    assert!(!report["activities"].as_array().unwrap().is_empty());
+
+    let (status, summary) =
+        get(app.clone(), &format!("/api/worklog/summary?from={today}&to={today}")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(summary.as_array().unwrap().len(), 1);
+    assert_eq!(summary[0]["date"], today.to_string());
+
+    // 노트 CRUD.
+    let (status, note) = put(
+        app.clone(),
+        &format!("/api/worklog/note/{today}"),
+        json!({ "content": "오늘 노트" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(note["content"], "오늘 노트");
+    let (_, got) = get(app.clone(), &format!("/api/worklog/note/{today}")).await;
+    assert_eq!(got["content"], "오늘 노트");
+    let (_, notes) =
+        get(app.clone(), &format!("/api/worklog/notes?from={today}&to={today}")).await;
+    assert_eq!(notes.as_array().unwrap().len(), 1);
+    // 빈 본문 = 삭제.
+    let (_, cleared) = put(
+        app.clone(),
+        &format!("/api/worklog/note/{today}"),
+        json!({ "content": "" }),
+    )
+    .await;
+    assert!(cleared["content"].is_null());
+
+    // 잘못된 날짜 형식.
+    let (status, _) = get(app, "/api/worklog/note/evil..path").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+/// DEV-236: 토론 resolve 전환이 worklog 타임라인/집계에 나타남 (이전엔 journal
+/// 감사로그에만 남아 안 보였던 설계 공백).
+#[tokio::test]
+async fn test_worklog_shows_discussion_resolve_events() {
+    let app = seed_quest(setup().await).await;
+    let (_, entry) = post(
+        app.clone(),
+        "/api/quests/by/DEV-001/comments",
+        json!({ "author": "a", "body": "결정 필요" }),
+    )
+    .await;
+    let id = entry["id"].as_u64().unwrap();
+    post(
+        app.clone(),
+        &format!("/api/quests/by/DEV-001/comments/{id}/discussion"),
+        json!({}),
+    )
+    .await;
+    post(
+        app.clone(),
+        &format!("/api/quests/by/DEV-001/comments/{id}/resolved"),
+        json!({}),
+    )
+    .await;
+
+    let today = &openguild_core::time::now_local_iso8601()[..10];
+    let (status, report) =
+        get(app, &format!("/api/worklog?from={today}&to={today}")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(report["counts"]["discussion_events"], 1);
+    let activities = report["activities"].as_array().unwrap();
+    let ev = activities
+        .iter()
+        .find(|a| a["kind"] == "discussion")
+        .expect("discussion 활동이 있어야");
+    assert!(ev["summary"].as_str().unwrap().contains("해결"));
 }
 
 #[tokio::test]
@@ -2575,12 +3149,28 @@ async fn test_admin_restore_at_replays_journal_to_timestamp() {
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["applied"], 1);
+    // DEV-212: journal 이 있었으므로 실행 직전 자동 백업 스냅샷 ts 가 응답에 포함.
+    assert!(
+        body["pre_backup"].as_str().is_some(),
+        "pre_backup 이 응답에 있어야 (DEV-212): {body}"
+    );
 
-    let (_, after) = get(app, "/api/quests").await;
+    let (_, after) = get(app.clone(), "/api/quests").await;
     assert_eq!(
         after.as_array().unwrap().len(),
         2,
         "replay 가 DEV-002 생성을 재적용해야"
+    );
+
+    // DEV-212: pre_backup 스냅샷이 backup 목록에 실재.
+    let pre = body["pre_backup"].as_str().unwrap().to_string();
+    let (_, list) = get(app, "/api/admin/snapshots").await;
+    assert!(
+        list.as_array()
+            .unwrap()
+            .iter()
+            .any(|s| s["timestamp"] == pre.as_str()),
+        "자동 백업이 snapshot 목록에 존재해야 (DEV-212)"
     );
 }
 

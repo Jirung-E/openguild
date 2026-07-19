@@ -1,6 +1,6 @@
 [package]
 name = "openguild-server"
-version = "0.3.0-beta"
+version = "0.4.0-beta"
 license = "MIT"
 edition = "2024"
 description = "openguild HTTP API 서버"
@@ -17,7 +17,7 @@ clap = { version = "4", features = ["derive"] }
 # 웹 프레임워크
 axum = "0.8"
 tokio = { version = "1", features = ["full"] }
-tower-http = { version = "0.6", features = ["cors", "trace", "fs"] }
+tower-http = { version = "0.6", features = ["cors", "trace", "fs", "set-header"] }
 
 # DB
 sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "migrate"] }
@@ -25,6 +25,8 @@ sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "migrate"] }
 # 직렬화
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# DEV-229: openguild-server.toml 설정 파일 파싱.
+toml = "0.8"
 
 # DEV-152: 첨부 업로드 — Tauri invoke 와 동일 시그니처(base64 JSON body) 유지.
 base64 = "0.22"

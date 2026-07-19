@@ -80,8 +80,9 @@ pub async fn create_type(
             .fetch_optional(&store.index_pool)
             .await?;
     if exists.is_some() {
-        return Err(AppError::BadRequest(format!(
-            "이미 존재하는 type prefix: {prefix}"
+        return Err(AppError::BadRequest(crate::tf!(
+            "이미 존재하는 type prefix: {prefix}",
+            "type prefix already exists: {prefix}"
         )));
     }
 
@@ -183,8 +184,9 @@ pub async fn delete_type(store: &Store, prefix: String) -> AppResult<()> {
     let row = fetch_type_by_prefix(&store.index_pool, &prefix).await?;
     let count = count_quests_by_type(&store.index_pool, row.id).await?;
     if count > 0 {
-        return Err(AppError::BadRequest(format!(
-            "type '{prefix}' 는 {count} 개 quest 가 사용 중 — 먼저 다른 type 으로 이동시키거나 삭제하세요."
+        return Err(AppError::BadRequest(crate::tf!(
+            "type '{prefix}' 는 {count} 개 quest 가 사용 중 — 먼저 다른 type 으로 이동시키거나 삭제하세요.",
+            "type '{prefix}' is used by {count} quest(s) — move or delete them first."
         )));
     }
 
@@ -236,8 +238,9 @@ pub async fn rename_type(
     .fetch_optional(&store.index_pool)
     .await?;
     if exists.is_some() {
-        return Err(AppError::BadRequest(format!(
-            "이미 존재하는 type prefix: {new_prefix}"
+        return Err(AppError::BadRequest(crate::tf!(
+            "이미 존재하는 type prefix: {new_prefix}",
+            "type prefix already exists: {new_prefix}"
         )));
     }
 
@@ -394,8 +397,9 @@ pub async fn rename_status_slug(
     .fetch_optional(&store.index_pool)
     .await?;
     if exists.is_some() {
-        return Err(AppError::BadRequest(format!(
-            "이미 존재하는 status slug: {new_slug}"
+        return Err(AppError::BadRequest(crate::tf!(
+            "이미 존재하는 status slug: {new_slug}",
+            "status slug already exists: {new_slug}"
         )));
     }
 
@@ -461,16 +465,19 @@ pub async fn rename_status_slug(
 /// status slug validation — `slugify` 가 만드는 형식과 동일하게 강제.
 fn validate_status_slug(slug: &str) -> AppResult<()> {
     if slug.is_empty() || slug.chars().count() > 32 {
-        return Err(AppError::BadRequest(
-            "status slug 는 1~32자".into(),
-        ));
+        return Err(AppError::BadRequest(crate::tf!(
+            "status slug 는 1~32자",
+            "status slug must be 1-32 characters"
+        )));
     }
     for c in slug.chars() {
         let ok = c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_';
         if !ok {
-            return Err(AppError::BadRequest(format!(
+            return Err(AppError::BadRequest(crate::tf!(
                 "status slug 에 허용되지 않은 문자 '{c}'. \
-                 소문자 / 숫자 / '_' 만 사용."
+                 소문자 / 숫자 / '_' 만 사용.",
+                "status slug has an invalid character '{c}'. \
+                 Only lowercase letters, digits, and '_' are allowed."
             )));
         }
     }
@@ -493,19 +500,33 @@ async fn fetch_type_by_prefix(pool: &SqlitePool, prefix: &str) -> AppResult<Ques
         .bind(prefix)
         .fetch_optional(pool)
         .await?
-        .ok_or_else(|| AppError::NotFound(format!("type 없음: {prefix}")))
+        .ok_or_else(|| AppError::NotFound(crate::tf!("type 없음: {prefix}", "type not found: {prefix}")))
 }
+
+/// DEV-219: 캠페인(C-NNN)/도서관(BOOK-NNN) 이 이미 쓰는 prefix — quest type
+/// 으로 등록/rename 하면 무접두 `[[ID]]` cross-link 가 모호해진다(우선순위로
+/// 해소는 되지만 사용자 혼란). 최소한만 예약 — 나머지 충돌은 `[[kind:ID]]`
+/// 네임스페이스로 구분(admin/claude 합의, DEV-219 댓글 #2~#4).
+const RESERVED_TYPE_PREFIXES: &[&str] = &["C", "BOOK"];
 
 fn validate_prefix(prefix: &str) -> AppResult<()> {
     if prefix.is_empty() || prefix.len() > 6 {
-        return Err(AppError::BadRequest(
-            "type prefix 는 1~6자".into(),
-        ));
+        return Err(AppError::BadRequest(crate::tf!(
+            "type prefix 는 1~6자",
+            "type prefix must be 1-6 characters"
+        )));
     }
     if !prefix.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()) {
-        return Err(AppError::BadRequest(
-            "type prefix 는 대문자 또는 숫자만 (예: DEV, BUG, REQ)".into(),
-        ));
+        return Err(AppError::BadRequest(crate::tf!(
+            "type prefix 는 대문자 또는 숫자만 (예: DEV, BUG, REQ)",
+            "type prefix must be uppercase letters or digits only (e.g. DEV, BUG, REQ)"
+        )));
+    }
+    if RESERVED_TYPE_PREFIXES.contains(&prefix) {
+        return Err(AppError::BadRequest(crate::tf!(
+            "'{prefix}' 는 예약된 prefix (캠페인/도서관) — 다른 prefix 를 사용하세요.",
+            "'{prefix}' is a reserved prefix (campaign/library) — use a different prefix."
+        )));
     }
     Ok(())
 }
@@ -516,25 +537,29 @@ fn validate_prefix(prefix: &str) -> AppResult<()> {
 /// 문자 거부. slugify 결과의 안정성과 파일명 / URL 친화성 둘 다 만족.
 fn validate_status_name_en(s: &str) -> AppResult<()> {
     if s.is_empty() {
-        return Err(AppError::BadRequest("name_en 은 필수".into()));
+        return Err(AppError::BadRequest(crate::tf!("name_en 은 필수", "name_en is required")));
     }
     if s.chars().count() > 32 {
-        return Err(AppError::BadRequest(
-            "name_en 은 최대 32자".into(),
-        ));
+        return Err(AppError::BadRequest(crate::tf!(
+            "name_en 은 최대 32자",
+            "name_en must be at most 32 characters"
+        )));
     }
     let first = s.chars().next().unwrap();
     if !first.is_ascii_alphabetic() {
-        return Err(AppError::BadRequest(
-            "name_en 은 영문자로 시작해야 함 (한글 / 숫자 / 특수문자 불가)".into(),
-        ));
+        return Err(AppError::BadRequest(crate::tf!(
+            "name_en 은 영문자로 시작해야 함 (한글 / 숫자 / 특수문자 불가)",
+            "name_en must start with a letter (no Hangul, digits, or special characters)"
+        )));
     }
     for c in s.chars() {
         let ok = c.is_ascii_alphanumeric() || c == ' ' || c == '-' || c == '_';
         if !ok {
-            return Err(AppError::BadRequest(format!(
+            return Err(AppError::BadRequest(crate::tf!(
                 "name_en 에 허용되지 않은 문자 '{c}'. \
-                 영문 / 숫자 / 공백 / '-' / '_' 만 사용 가능."
+                 영문 / 숫자 / 공백 / '-' / '_' 만 사용 가능.",
+                "name_en has an invalid character '{c}'. \
+                 Only letters, digits, spaces, '-', and '_' are allowed."
             )));
         }
     }
@@ -548,9 +573,10 @@ fn validate_status_name_en(s: &str) -> AppResult<()> {
 /// 향후 다른 언어 (일본어 등) 추가 시 같은 규칙 — 해당 언어 글자 추가.
 fn validate_status_name_ko(s: &str) -> AppResult<()> {
     if s.chars().count() > 32 {
-        return Err(AppError::BadRequest(
-            "name_ko 는 최대 32자".into(),
-        ));
+        return Err(AppError::BadRequest(crate::tf!(
+            "name_ko 는 최대 32자",
+            "name_ko must be at most 32 characters"
+        )));
     }
     for c in s.chars() {
         let ok = is_hangul(c)
@@ -559,9 +585,11 @@ fn validate_status_name_ko(s: &str) -> AppResult<()> {
             || c == '-'
             || c == '_';
         if !ok {
-            return Err(AppError::BadRequest(format!(
+            return Err(AppError::BadRequest(crate::tf!(
                 "name_ko 에 허용되지 않은 문자 '{c}'. \
-                 한글 / 영문 / 숫자 / 공백 / '-' / '_' 만 사용 가능."
+                 한글 / 영문 / 숫자 / 공백 / '-' / '_' 만 사용 가능.",
+                "name_ko has an invalid character '{c}'. \
+                 Only Hangul, letters, digits, spaces, '-', and '_' are allowed."
             )));
         }
     }
@@ -582,14 +610,13 @@ fn is_hangul(c: char) -> bool {
 fn validate_color(color: &str) -> AppResult<()> {
     let s = color.trim();
     if !s.starts_with('#') || (s.len() != 4 && s.len() != 7) {
-        return Err(AppError::BadRequest(
-            "color 는 #RGB 또는 #RRGGBB 형식".into(),
-        ));
+        return Err(AppError::BadRequest(crate::tf!(
+            "color 는 #RGB 또는 #RRGGBB 형식",
+            "color must be in #RGB or #RRGGBB format"
+        )));
     }
     if !s[1..].chars().all(|c| c.is_ascii_hexdigit()) {
-        return Err(AppError::BadRequest(
-            "color hex 가 잘못됨".into(),
-        ));
+        return Err(AppError::BadRequest(crate::tf!("color hex 가 잘못됨", "invalid color hex")));
     }
     Ok(())
 }
@@ -615,8 +642,9 @@ pub async fn create_status(
     let slug = slugify(&name_en);
     if slug.is_empty() {
         // validate_status_name_en 통과 후엔 사실상 도달 불가 — 방어적.
-        return Err(AppError::BadRequest(format!(
-            "name_en '{name_en}' 에서 slug 를 추출할 수 없음"
+        return Err(AppError::BadRequest(crate::tf!(
+            "name_en '{name_en}' 에서 slug 를 추출할 수 없음",
+            "could not derive a slug from name_en '{name_en}'"
         )));
     }
 
@@ -627,8 +655,9 @@ pub async fn create_status(
             .fetch_optional(&store.index_pool)
             .await?;
     if exists.is_some() {
-        return Err(AppError::BadRequest(format!(
-            "이미 존재하는 status slug: {slug} (name_en 을 다르게)"
+        return Err(AppError::BadRequest(crate::tf!(
+            "이미 존재하는 status slug: {slug} (name_en 을 다르게)",
+            "status slug already exists: {slug} (use a different name_en)"
         )));
     }
 
@@ -800,8 +829,9 @@ pub async fn delete_status(store: &Store, slug: String) -> AppResult<()> {
     let row = fetch_status_by_slug(&store.index_pool, &slug).await?;
     let count = count_quests_by_status(&store.index_pool, row.id).await?;
     if count > 0 {
-        return Err(AppError::BadRequest(format!(
-            "status '{slug}' 는 {count} 개 quest 가 사용 중 — 먼저 다른 status 로 이동시키세요."
+        return Err(AppError::BadRequest(crate::tf!(
+            "status '{slug}' 는 {count} 개 quest 가 사용 중 — 먼저 다른 status 로 이동시키세요.",
+            "status '{slug}' is used by {count} quest(s) — move them first."
         )));
     }
 
@@ -834,7 +864,7 @@ async fn fetch_status_by_slug(pool: &SqlitePool, slug: &str) -> AppResult<QuestS
         .await
         .context("fetch status")
         .map_err(AppError::Internal)?
-        .ok_or_else(|| AppError::NotFound(format!("status 없음: {slug}")))
+        .ok_or_else(|| AppError::NotFound(crate::tf!("status 없음: {slug}", "status not found: {slug}")))
 }
 
 // ─────────────────────── DEV-068: Tag defs ───────────────────────
@@ -842,16 +872,18 @@ async fn fetch_status_by_slug(pool: &SqlitePool, slug: &str) -> AppResult<QuestS
 /// tag slug 검증 — 소문자/숫자/`-`/`_` 만, 1-32자.
 fn validate_tag_slug(slug: &str) -> AppResult<()> {
     if slug.is_empty() || slug.len() > 32 {
-        return Err(AppError::BadRequest(format!(
-            "tag slug 길이 1-32 만 (입력: {slug:?})"
+        return Err(AppError::BadRequest(crate::tf!(
+            "tag slug 길이 1-32 만 (입력: {slug:?})",
+            "tag slug must be 1-32 chars (got: {slug:?})"
         )));
     }
     if !slug
         .chars()
         .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
     {
-        return Err(AppError::BadRequest(format!(
-            "tag slug 는 소문자/숫자/`-`/`_` 만 (입력: {slug:?})"
+        return Err(AppError::BadRequest(crate::tf!(
+            "tag slug 는 소문자/숫자/`-`/`_` 만 (입력: {slug:?})",
+            "tag slug must be lowercase letters/digits/`-`/`_` only (got: {slug:?})"
         )));
     }
     Ok(())
@@ -1012,6 +1044,29 @@ mod tests {
                 .unwrap_err();
             assert!(matches!(err, AppError::BadRequest(_)), "bad={bad}");
         }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn create_type_rejects_reserved_prefix() {
+        // DEV-219: C(캠페인)/BOOK(도서관) 은 quest type prefix 로 예약.
+        let (dir, store) = fresh_store("type-reserved").await;
+        for reserved in &["C", "BOOK"] {
+            let err = create_type(&store, (*reserved).into(), "#000".into(), None)
+                .await
+                .unwrap_err();
+            assert!(matches!(err, AppError::BadRequest(_)), "reserved={reserved}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn rename_type_rejects_reserved_prefix() {
+        let (dir, store) = fresh_store("type-rename-reserved").await;
+        let err = rename_type(&store, "BUG".into(), "BOOK".into())
+            .await
+            .unwrap_err();
+        assert!(matches!(err, AppError::BadRequest(_)));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

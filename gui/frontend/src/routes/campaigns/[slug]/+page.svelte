@@ -6,7 +6,7 @@
    - 연결된 quest 표시 + 추가 / 제거
 -->
 <script lang="ts">
-	import { onMount, onDestroy, tick } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	// DEV-153: 편집 중이면 이탈 가드에 보고.
 	import { setUnsaved } from '$lib/stores/unsaved';
 	import { goto } from '$app/navigation';
@@ -15,6 +15,16 @@
 	import type { Snapshot } from './$types';
 	import { restoreScroll } from '$lib/utils/scroll-restore';
 	import { campaignsApi } from '$lib/api/campaigns';
+	// DEV-205 / REQ-001: 상세 공통 액션 라벨을 퀘스트 상세와 같은 i18n 사전으로.
+	import { locale, t } from '$lib/stores/locale';
+	// DEV-259: alert() 잔재 제거 — 앱 공용 toast 로 통일.
+	import { showToast } from '$lib/stores/toast';
+	// DEV-255: 자식윈도우(검색 팔레트 "새 창으로 열기")에선 뒤로가기 버튼 숨김.
+	import { isChildWindow } from '$lib/stores/windowKind';
+	// DEV-015: status 표시 이름 — 언어 반응.
+	import { questStatusLabel } from '$lib/utils/status-label';
+	// DEV-205: 언어 반응 날짜 입력(네이티브 date 대체).
+	import DateField from '$lib/components/DateField.svelte';
 	import { questsApi } from '$lib/api/quests';
 	import type { CampaignDetail, CampaignLinkedQuest, Quest } from '$lib/types';
 	// BUG-021 fix1: 공유 컴포넌트로 Quest Detail / Campaign Detail 의 markdown
@@ -30,26 +40,38 @@
 	// DEV-100: 캠페인 댓글 / 메모 — quest 컴포넌트 재사용 (scope prop).
 	import QuestCommentsSection from '$lib/components/QuestCommentsSection.svelte';
 	import QuestNoteSection from '$lib/components/QuestNoteSection.svelte';
-	// BUG-021: Quest Detail 과 동일한 CodeMirror editor (라인 번호 + markdown
-	// syntax highlighting) 로 통일.
-	import { EditorView, basicSetup } from 'codemirror';
-	import { markdown } from '@codemirror/lang-markdown';
-	// BUG: 편집창 띄운 채 다크/라이트 전환 시 테마 안 바뀌던 문제 — Compartment 로 라이브 교체.
-	import { theme } from '$lib/stores/theme';
-	import { editorThemeCompartment, editorThemeExtension } from '$lib/utils/editor-theme';
-	// DEV-130: Tab = 들여쓰기 — indentExtensions 가 Tab 키맵 포함 (focus 이동 X).
-	// DEV-069: 편집기 첨부 — 클립보드 이미지 paste / 파일 drag&drop 업로드.
-	import { attachmentExtension } from '$lib/utils/editor-attach';
-	// DEV-140: 본문 cross-link — XXX-NNN 타이핑 시 [[...]] 링크 자동완성.
-	import { crossLinkAutocomplete } from '$lib/utils/editor-links';
-	// DEV-130: 편집기 들여쓰기 설정 (tab/space + 2/4칸).
-	import { indentExtensions } from '$lib/utils/editor-indent';
-	import { editorSettings } from '$lib/stores/editorSettings';
+	import CampaignHistory from '$lib/components/CampaignHistory.svelte';
+	// DEV-203: 편집기 셋업(테마/들여쓰기/첨부/자동완성/redo/높이/overlay 스크롤)은
+	// 공통 MarkdownEditor 컴포넌트로 단일화.
+	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
 
 	let slug = $derived($page.params.slug ?? '');
 	let detail = $state<CampaignDetail | null>(null);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
+
+	// DEV-233: 링크 퀘스트 진행바 hover 시 상태별 stacked + 카운트 팝업 —
+	// CampaignCard 와 동일 UX(기본은 단일 채움, hover 시에만 전환).
+	let questBarEl = $state<HTMLDivElement | null>(null);
+	let questBarHover = $state(false);
+	let tooltipTop = $state(0);
+	let tooltipLeft = $state(0);
+	function onQuestBarEnter() {
+		if (!detail || detail.quest_done === detail.quest_total || !questBarEl) return;
+		const r = questBarEl.getBoundingClientRect();
+		tooltipTop = r.top;
+		tooltipLeft = r.left;
+		questBarHover = true;
+	}
+	function onQuestBarLeave() {
+		questBarHover = false;
+	}
+	const showQuestStack = $derived(
+		questBarHover &&
+			!!detail &&
+			detail.quest_done !== detail.quest_total &&
+			(detail.quest_status_counts?.length ?? 0) > 0
+	);
 
 	// BUG-033: edit mode 통합 — Quest Detail 과 동일하게 단일 editMode 가
 	// 제목 / 기간 / 본문 모두 묶음. 이전엔 editMeta / editBody 분리되어 통일감 X.
@@ -69,7 +91,7 @@
 				name
 			});
 		} catch (e) {
-			error = `첨부 실패: ${e}`;
+			error = `${t('campaign.attachFailed', $locale)}: ${e}`;
 		}
 	}
 	let titleEdit = $state('');
@@ -78,82 +100,8 @@
 	let bodyEdit = $state('');
 	let saving = $state(false);
 
-	// BUG-021: CodeMirror editor (Quest Detail 패턴 그대로).
-	// EDITOR_HEIGHT_KEY 는 Quest Detail 과 공유 — 일관 사용자 경험.
-	const EDITOR_HEIGHT_KEY = 'openguild.questEditorHeight';
-	let editorContainer: HTMLDivElement | undefined = $state(undefined);
-	let editorView: EditorView | null = null;
-	let editorResizeObserver: ResizeObserver | null = null;
-	let editorHeightSaveTimer: ReturnType<typeof setTimeout> | null = null;
-	function loadEditorHeight(): number {
-		try {
-			const raw = localStorage.getItem(EDITOR_HEIGHT_KEY);
-			const n = raw ? parseInt(raw, 10) : NaN;
-			if (Number.isFinite(n) && n >= 200 && n <= 2000) return n;
-		} catch {
-			/* 무시 */
-		}
-		return 480;
-	}
-	function scheduleEditorHeightSave(px: number) {
-		if (editorHeightSaveTimer) clearTimeout(editorHeightSaveTimer);
-		editorHeightSaveTimer = setTimeout(() => {
-			try {
-				localStorage.setItem(EDITOR_HEIGHT_KEY, String(Math.round(px)));
-			} catch {
-				/* 무시 */
-			}
-		}, 250);
-	}
-	function initEditor() {
-		if (!editorContainer) return;
-		if (editorView) {
-			editorView.destroy();
-			editorView = null;
-		}
-		editorContainer.style.height = `${loadEditorHeight()}px`;
-		editorView = new EditorView({
-			doc: bodyEdit,
-			extensions: [
-				basicSetup,
-				markdown(),
-				// 테마 — Compartment 로 다크/라이트 라이브 전환.
-				editorThemeCompartment.of(editorThemeExtension($theme)),
-				// DEV-130: tab/space + 2/4칸 들여쓰기 — Tab 키맵 + indentUnit/tabSize.
-				indentExtensions($editorSettings),
-				// DEV-069: 클립보드 이미지 paste / 파일 drag&drop → 첨부 업로드.
-				attachmentExtension((msg) => (error = `첨부 업로드 실패: ${msg}`), attachToSection),
-				// DEV-140: XXX-NNN 타이핑 → [[...]] cross-link 자동완성.
-				crossLinkAutocomplete(),
-				EditorView.theme({
-					'&': { fontSize: '0.875rem', borderRadius: '6px', height: '100%' },
-					'.cm-editor': { borderRadius: '6px', height: '100%' },
-					'.cm-scroller': { overflow: 'auto' }
-				})
-			],
-			parent: editorContainer
-		});
-		editorResizeObserver?.disconnect();
-		editorResizeObserver = new ResizeObserver((entries) => {
-			for (const entry of entries) {
-				scheduleEditorHeightSave(entry.contentRect.height);
-			}
-		});
-		editorResizeObserver.observe(editorContainer);
-	}
-	function destroyEditor() {
-		editorView?.destroy();
-		editorView = null;
-		editorResizeObserver?.disconnect();
-		editorResizeObserver = null;
-	}
-	// 테마 변경 시 editor 재생성 없이 테마 확장만 교체 (커서/스크롤/undo 보존).
-	$effect(() => {
-		const t = $theme;
-		editorView?.dispatch({
-			effects: editorThemeCompartment.reconfigure(editorThemeExtension(t))
-		});
-	});
+	// DEV-203: 편집기 생성/파괴/높이 영속/설정·테마 반응은 MarkdownEditor
+	// 컴포넌트가 {#if editMode} 수명주기로 자동 처리.
 
 	// 체크리스트 추가 입력
 	let newChecklistText = $state('');
@@ -251,33 +199,29 @@
 		if (!detail) return '';
 		const a = detail.started_at?.trim() || '';
 		const b = detail.ended_at?.trim() || '';
-		if (!a && !b) return '기간 미정';
+		if (!a && !b) return t('campaignList.periodUndefined', $locale);
 		if (a && !b) return `${a} ~`;
 		if (!a && b) return `~ ${b}`;
 		return `${a} ~ ${b}`;
 	}
 
 	// BUG-033: editMeta + editBody → 단일 editMode. Quest Detail 패턴 그대로.
-	async function enterEditMode() {
+	function enterEditMode() {
 		if (!detail) return;
 		titleEdit = detail.title;
 		startedEdit = detail.started_at ?? '';
 		endedEdit = detail.ended_at ?? '';
 		bodyEdit = detail.description ?? '';
 		editMode = true;
-		// CodeMirror 컨테이너는 {#if editMode} 가 true 되어야 mount → tick 후 init.
-		await tick();
-		initEditor();
 	}
 	function exitEditMode() {
-		destroyEditor();
 		editMode = false;
 	}
 	async function saveEdit() {
 		if (!detail) return;
 		saving = true;
 		try {
-			const desc = editorView ? editorView.state.doc.toString() : bodyEdit;
+			const desc = bodyEdit;
 			await campaignsApi.update(detail.campaign_slug, {
 				title: titleEdit.trim() || detail.title,
 				started_at: startedEdit,
@@ -287,7 +231,7 @@
 			exitEditMode();
 			await load();
 		} catch (e) {
-			alert(e instanceof Error ? e.message : 'failed');
+			showToast(e instanceof Error ? e.message : 'failed', 'error');
 		} finally {
 			saving = false;
 		}
@@ -300,7 +244,7 @@
 			await campaignsApi.update(detail.campaign_slug, { status: next });
 			await load();
 		} catch (e) {
-			alert(e instanceof Error ? e.message : 'failed');
+			showToast(e instanceof Error ? e.message : 'failed', 'error');
 		}
 	}
 
@@ -317,14 +261,14 @@
 			const picked = await open({
 				multiple: false,
 				directory: false,
-				filters: [{ name: '이미지', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] }]
+				filters: [{ name: t('campaign.imageFilter', $locale), extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] }]
 			});
 			if (typeof picked === 'string' && picked) {
 				await campaignsApi.setBanner(detail.campaign_slug, picked);
 				await load();
 			}
 		} catch (e) {
-			alert(e instanceof Error ? e.message : '배너 설정 실패');
+			showToast(e instanceof Error ? e.message : t('campaign.bannerSetFailed', $locale), 'error');
 		} finally {
 			bannerBusy = false;
 		}
@@ -337,7 +281,7 @@
 			await campaignsApi.clearBanner(detail.campaign_slug);
 			await load();
 		} catch (e) {
-			alert(e instanceof Error ? e.message : '배너 제거 실패');
+			showToast(e instanceof Error ? e.message : t('campaign.bannerRemoveFailed', $locale), 'error');
 		} finally {
 			bannerBusy = false;
 		}
@@ -354,7 +298,7 @@
 			detail.checklists.push(added);
 			newChecklistText = '';
 		} catch (e) {
-			alert(e instanceof Error ? e.message : 'failed');
+			showToast(e instanceof Error ? e.message : 'failed', 'error');
 		}
 	}
 	// BUG-046: 체크리스트 토글 / 삭제 시 `load()` 전체 reload 가 detail 객체를
@@ -373,7 +317,7 @@
 		} catch (e) {
 			// 실패 시 원복 — 사용자에게 알림.
 			target.checked = currentlyChecked;
-			alert(e instanceof Error ? e.message : 'failed');
+			showToast(e instanceof Error ? e.message : 'failed', 'error');
 		}
 	}
 	// DEV-118: 인앱 확인 모달. 체크리스트 항목 삭제 / 캠페인 삭제.
@@ -396,7 +340,7 @@
 		} catch (e) {
 			// 실패 시 원복 — 같은 위치에 다시.
 			detail.checklists.splice(idx, 0, removed);
-			alert(e instanceof Error ? e.message : 'failed');
+			showToast(e instanceof Error ? e.message : 'failed', 'error');
 		}
 	}
 
@@ -422,6 +366,7 @@
 			type_color: q.type_color,
 			status_slug: q.status_slug,
 			status_name_en: q.status_name_en,
+			status_name_ko: q.status_name_ko,
 			status_color: q.status_color
 		};
 		detail.linked_quests.push(linked);
@@ -430,7 +375,7 @@
 		} catch (e) {
 			const i = detail.linked_quests.findIndex((x) => x.quest_id === q.quest_id);
 			if (i >= 0) detail.linked_quests.splice(i, 1);
-			alert(e instanceof Error ? e.message : 'failed');
+			showToast(e instanceof Error ? e.message : 'failed', 'error');
 		}
 	}
 	async function unlinkQuest(qSlug: string) {
@@ -443,7 +388,7 @@
 			await campaignsApi.unlinkQuest(detail.campaign_slug, qSlug);
 		} catch (e) {
 			detail.linked_quests.splice(idx, 0, removed);
-			alert(e instanceof Error ? e.message : 'failed');
+			showToast(e instanceof Error ? e.message : 'failed', 'error');
 		}
 	}
 
@@ -458,19 +403,22 @@
 			await campaignsApi.delete(detail.campaign_slug);
 			goto('/campaigns');
 		} catch (e) {
-			alert(e instanceof Error ? e.message : 'failed');
+			showToast(e instanceof Error ? e.message : 'failed', 'error');
 		}
 	}
 </script>
 
 <div class="page">
 	<div class="top">
-		<button class="back" onclick={() => history.back()}>← 뒤로</button>
+		<!-- DEV-255: 자식윈도우(단일 문서 보기)는 돌아갈 곳이 없음 — 숨김. -->
+		{#if !$isChildWindow}
+			<button class="back" onclick={() => history.back()}>← {t('detail.back', $locale)}</button>
+		{/if}
 		{#if detail}
 			<button
 				class="status-badge status-{detail.status}"
 				onclick={toggleStatus}
-				title="클릭하여 상태 토글"
+				title={t('campaign.statusToggle', $locale)}
 			>
 				{detail.status}
 			</button>
@@ -479,20 +427,20 @@
 				<div class="top-actions">
 					{#if isTauri}
 						<!-- DEV-087: 배너 이미지 — Tauri 전용 (파일 picker). -->
-						<button class="btn-edit" onclick={pickBanner} disabled={bannerBusy}> 🖼 배너 </button>
+						<button class="btn-edit" onclick={pickBanner} disabled={bannerBusy}> 🖼 {t('campaign.banner', $locale)} </button>
 						{#if detail.image_path}
 							<button
 								class="btn-edit"
 								onclick={removeBanner}
 								disabled={bannerBusy}
-								title="배너 제거"
+								title={t('campaign.bannerRemove', $locale)}
 							>
 								🖼 ×
 							</button>
 						{/if}
 					{/if}
-					<button class="btn-edit" onclick={enterEditMode}>✎ 편집</button>
-					<button class="btn-delete" onclick={askDeleteCampaign}>🗑 삭제</button>
+					<button class="btn-edit" onclick={enterEditMode}>✎ {t('detail.edit', $locale)}</button>
+					<button class="btn-delete" onclick={askDeleteCampaign}>🗑 {t('detail.delete', $locale)}</button>
 				</div>
 			{/if}
 		{/if}
@@ -501,7 +449,7 @@
 	{#if loading}
 		<div class="state">Loading…</div>
 	{:else if error || !detail}
-		<div class="state error">{error ?? '캠페인 없음'}</div>
+		<div class="state error">{error ?? t('campaign.notFound', $locale)}</div>
 	{:else}
 		<!-- BUG-033: 메타 + 본문 통합 편집 (Quest Detail 패턴). 단일 편집 버튼,
 		     단일 저장 / 취소. -->
@@ -518,13 +466,13 @@
 			{#if editMode}
 				<div class="period-row">
 					<label>
-						<span class="lbl">시작</span>
-						<input type="date" bind:value={startedEdit} disabled={saving} />
+						<span class="lbl">{t('campaign.start', $locale)}</span>
+						<DateField bind:value={startedEdit} disabled={saving} />
 					</label>
 					<span class="dash">~</span>
 					<label>
-						<span class="lbl">종료</span>
-						<input type="date" bind:value={endedEdit} disabled={saving} />
+						<span class="lbl">{t('campaign.end', $locale)}</span>
+						<DateField bind:value={endedEdit} disabled={saving} />
 					</label>
 				</div>
 			{:else}
@@ -539,16 +487,16 @@
 			<!-- BUG-033: 캠페인도 생성 / 변경 시각 표시 (Quest Detail 과 동일). -->
 			<div class="meta-times">
 				<span class="meta-item">
-					<span class="meta-label">생성</span>
+					<span class="meta-label">{t('common.created', $locale)}</span>
 					<time class="meta-val" datetime={detail.created_at} title={formatTs(detail.created_at)}
 						>{formatTs(detail.created_at)}</time
 					>
 				</span>
 				<span class="meta-sep">·</span>
 				<span class="meta-item">
-					<span class="meta-label">변경</span>
+					<span class="meta-label">{t('common.updated', $locale)}</span>
 					<time class="meta-val" datetime={detail.updated_at} title={formatTs(detail.updated_at)}
-						>{formatRelative(detail.updated_at)}</time
+						>{formatRelative(detail.updated_at, undefined, $locale)}</time
 					>
 				</span>
 			</div>
@@ -562,20 +510,24 @@
 				<!-- DEV-202: 편집기 위 '첨부' 버튼 제거 — 아래 첨부 섹션과 중복.
 				     이미지·동영상·파일은 드래그&드랍 / Ctrl+V 로 첨부(attachmentExtension). -->
 				<div class="field-label">
-					<span>본문 (Markdown) — 첨부는 드래그&드랍 / Ctrl+V 또는 아래 첨부 섹션</span>
-					<div class="editor-wrap" bind:this={editorContainer}></div>
+					<span>{t('campaign.bodyLabel', $locale)}</span>
+					<MarkdownEditor
+						bind:value={bodyEdit}
+						onError={(msg) => (error = `${t('campaign.attachUploadFailed', $locale)}: ${msg}`)}
+						onAttach={attachToSection}
+					/>
 				</div>
 				<div class="actions">
 					<button class="btn-save" onclick={saveEdit} disabled={saving || !titleEdit.trim()}>
-						{saving ? '저장…' : '저장'}
+						{saving ? t('common.saving', $locale) : t('common.save', $locale)}
 					</button>
-					<button class="btn-cancel" onclick={exitEditMode} disabled={saving}>취소</button>
+					<button class="btn-cancel" onclick={exitEditMode} disabled={saving}>{t('common.cancel', $locale)}</button>
 				</div>
 			{:else if detail.description && detail.description.trim()}
 				<MarkdownView source={detail.description ?? ''} />
 			{:else}
 				<div class="empty">
-					본문 없음. <button class="link" onclick={enterEditMode}>본문 추가</button>
+					{t('campaign.noBody', $locale)} <button class="link" onclick={enterEditMode}>{t('campaign.addBody', $locale)}</button>
 				</div>
 			{/if}
 		</section>
@@ -592,13 +544,13 @@
 		<!-- 체크리스트 -->
 		<section>
 			<h2 class:done={detail.checklists.length > 0 && detail.checklists.every((c) => c.checked)}>
-				체크리스트 ({detail.checklists.filter((c) => c.checked).length}/{detail.checklists.length})
+				{t('campaign.checklist', $locale)} ({detail.checklists.filter((c) => c.checked).length}/{detail.checklists.length})
 				{#if detail.checklists.length > 0 && detail.checklists.every((c) => c.checked)}
-					<span class="done-mark"> ✓ 완료</span>
+					<span class="done-mark"> {t('common.doneMark', $locale)}</span>
 				{/if}
 			</h2>
 			{#if detail.checklists.length === 0}
-				<p class="empty">항목 없음.</p>
+				<p class="empty">{t('campaign.noItems', $locale)}</p>
 			{:else}
 				<ul class="checklist">
 					{#each detail.checklists as item, idx (item.id)}
@@ -611,7 +563,7 @@
 								/>
 								<span class:checked={item.checked}>{item.text}</span>
 							</label>
-							<button class="rm" title="삭제" onclick={() => askRemoveChecklist(idx)}>×</button>
+							<button class="rm" title={t('detail.delete', $locale)} onclick={() => askRemoveChecklist(idx)}>×</button>
 						</li>
 					{/each}
 				</ul>
@@ -620,17 +572,17 @@
 				<input
 					type="text"
 					bind:value={newChecklistText}
-					placeholder="새 체크리스트 항목..."
+					placeholder={t('campaign.newChecklistItem', $locale)}
 					onkeydown={(e) => e.key === 'Enter' && addChecklist()}
 				/>
-				<button onclick={addChecklist} disabled={!newChecklistText.trim()}>추가</button>
+				<button onclick={addChecklist} disabled={!newChecklistText.trim()}>{t('common.add', $locale)}</button>
 			</div>
 		</section>
 
 		<!-- 연결된 Quest -->
 		<section>
 			<h2 class:done={(detail.quest_total ?? 0) > 0 && detail.quest_done === detail.quest_total}>
-				연결된 퀘스트
+				{t('campaign.linkedQuests', $locale)}
 				{#if (detail.quest_total ?? 0) > 0}
 					({detail.quest_done}/{detail.quest_total}, {Math.round(
 						(detail.quest_progress ?? 0) * 100
@@ -639,21 +591,55 @@
 					({detail.linked_quests.length})
 				{/if}
 				{#if (detail.quest_total ?? 0) > 0 && detail.quest_done === detail.quest_total}
-					<span class="done-mark"> ✓ 완료</span>
+					<span class="done-mark"> {t('common.doneMark', $locale)}</span>
 				{/if}
 			</h2>
 			{#if (detail.quest_total ?? 0) > 0}
-				<!-- DEV-093: progress bar — 체크리스트 옆 같은 시각. -->
-				<div class="quest-progress-bar">
-					<div
-						class="quest-progress-fill"
-						class:done={detail.quest_done === detail.quest_total}
-						style:width={`${Math.round((detail.quest_progress ?? 0) * 100)}%`}
-					></div>
+				<!-- DEV-093: progress bar — 체크리스트 옆 같은 시각. DEV-233: hover 시 상태별 stacked. -->
+				<div
+					class="quest-progress-bar"
+					bind:this={questBarEl}
+					role="img"
+					aria-label={`${detail.quest_done}/${detail.quest_total}`}
+					onmouseenter={onQuestBarEnter}
+					onmouseleave={onQuestBarLeave}
+				>
+					{#if showQuestStack}
+						{#each detail.quest_status_counts ?? [] as sc (sc.status_slug)}
+							<div
+								class="quest-progress-seg"
+								style:width={`${(sc.count / (detail.quest_total ?? 1)) * 100}%`}
+								style:background={sc.status_color}
+							></div>
+						{/each}
+					{:else}
+						<div
+							class="quest-progress-fill"
+							class:done={detail.quest_done === detail.quest_total}
+							style:width={`${Math.round((detail.quest_progress ?? 0) * 100)}%`}
+						></div>
+					{/if}
+				</div>
+			{/if}
+			{#if showQuestStack}
+				<div
+					class="quest-status-tooltip"
+					style:top={`${tooltipTop}px`}
+					style:left={`${tooltipLeft}px`}
+				>
+					{#each detail.quest_status_counts ?? [] as sc (sc.status_slug)}
+						<div class="tooltip-row">
+							<span class="tooltip-dot" style:background={sc.status_color}></span>
+							<span class="tooltip-name">{questStatusLabel(sc, $locale)}</span>
+							<span class="tooltip-count"
+								>{sc.count}{t('common.countSuffix', $locale)} ({Math.round((sc.count / (detail.quest_total ?? 1)) * 100)}%)</span
+							>
+						</div>
+					{/each}
 				</div>
 			{/if}
 			{#if detail.linked_quests.length === 0}
-				<p class="empty">연결된 퀘스트 없음.</p>
+				<p class="empty">{t('campaign.noLinkedQuests', $locale)}</p>
 			{:else}
 				<ul class="linked">
 					{#each detail.linked_quests as q (q.id)}
@@ -663,9 +649,9 @@
 							>
 								<span class="badge type" style:--c={q.type_color}>{q.quest_id}</span>
 								<span class="qtitle">{q.title}</span>
-								<span class="badge status" style:--c={q.status_color}>{q.status_name_en}</span>
+								<span class="badge status" style:--c={q.status_color}>{questStatusLabel(q, $locale)}</span>
 							</a>
-							<button class="rm" title="연결 해제" onclick={() => unlinkQuest(q.quest_id)}>×</button
+							<button class="rm" title={t('campaign.unlinkQuest', $locale)} onclick={() => unlinkQuest(q.quest_id)}>×</button
 							>
 						</li>
 					{/each}
@@ -673,7 +659,7 @@
 			{/if}
 			<div class="add-row">
 				<!-- BUG-023: QuestCombobox 모달 (Quest Detail 과 동일 UI) -->
-				<button class="link-add-btn" onclick={() => (comboOpen = true)}>+ 퀘스트 연결</button>
+				<button class="link-add-btn" onclick={() => (comboOpen = true)}>{t('campaign.linkQuest', $locale)}</button>
 			</div>
 		</section>
 
@@ -683,6 +669,9 @@
 		<QuestCommentsSection slug={detail.campaign_slug} scope="campaign" />
 		<div bind:this={memoAnchorEl} id="campaign-memo-anchor"></div>
 		<QuestNoteSection slug={detail.campaign_slug} mode="memo" scope="campaign" />
+
+		<!-- DEV-226: 변경 이력. -->
+		<CampaignHistory campaignSlug={detail.campaign_slug} />
 	{/if}
 </div>
 
@@ -690,23 +679,23 @@
 {#if detail && (showTopJump || showCommentsJump || showMemoJump)}
 	<div class="jump-cluster">
 		{#if showTopJump}
-			<button class="jump-btn" onclick={jumpToTop} title="맨 위로" aria-label="맨 위로">
-				<span class="jb-icon">↑</span><span class="jb-label">위</span>
+			<button class="jump-btn" onclick={jumpToTop} title={t('common.jumpTop', $locale)} aria-label={t('common.jumpTop', $locale)}>
+				<span class="jb-icon">↑</span><span class="jb-label">{t('common.jumpTopShort', $locale)}</span>
 			</button>
 		{/if}
 		{#if showCommentsJump}
 			<button
 				class="jump-btn"
 				onclick={jumpToComments}
-				title="댓글로 이동"
-				aria-label="댓글로 이동"
+				title={t('common.jumpComments', $locale)}
+				aria-label={t('common.jumpComments', $locale)}
 			>
-				<span class="jb-icon">💬</span><span class="jb-label">댓글</span>
+				<span class="jb-icon">💬</span><span class="jb-label">{t('common.jumpCommentsShort', $locale)}</span>
 			</button>
 		{/if}
 		{#if showMemoJump}
-			<button class="jump-btn" onclick={jumpToMemo} title="메모로 이동" aria-label="메모로 이동">
-				<span class="jb-icon">📝</span><span class="jb-label">메모</span>
+			<button class="jump-btn" onclick={jumpToMemo} title={t('common.jumpMemo', $locale)} aria-label={t('common.jumpMemo', $locale)}>
+				<span class="jb-icon">📝</span><span class="jb-label">{t('common.jumpMemoShort', $locale)}</span>
 			</button>
 		{/if}
 	</div>
@@ -717,12 +706,12 @@
 	<div class="ov" role="presentation">
 		<div class="modal-sm" role="dialog" aria-modal="true" tabindex="-1">
 			<div class="modal-head">
-				<h3>퀘스트 연결</h3>
+				<h3>{t('campaign.linkQuestTitle', $locale)}</h3>
 				<button class="x" onclick={() => (comboOpen = false)}>×</button>
 			</div>
 			<QuestCombobox
 				quests={linkableQuests}
-				placeholder="ID 또는 제목으로 검색"
+				placeholder={t('campaign.searchPlaceholder', $locale)}
 				onselect={pickQuestToLink}
 				oncancel={() => (comboOpen = false)}
 			/>
@@ -733,20 +722,20 @@
 <!-- DEV-118: 캠페인 / 체크리스트 삭제 확인 모달. -->
 <ConfirmDialog
 	open={confirmDeleteCampaign}
-	title="캠페인 삭제"
+	title={t('campaign.deleteTitle', $locale)}
 	message={detail
-		? `캠페인 "${detail.title}" 을(를) 삭제할까요?\n(soft delete — restore 가능)`
+		? `${t('campaign.deleteMsg1', $locale)}${detail.title}${t('campaign.deleteMsg2', $locale)}`
 		: ''}
-	confirmLabel="삭제"
+	confirmLabel={t('detail.delete', $locale)}
 	danger
 	onconfirm={deleteCampaign}
 	oncancel={() => (confirmDeleteCampaign = false)}
 />
 <ConfirmDialog
 	open={confirmDeleteChecklistIdx !== null}
-	title="체크리스트 항목 삭제"
-	message="이 체크리스트 항목을 삭제할까요?"
-	confirmLabel="삭제"
+	title={t('campaign.checklistDeleteTitle', $locale)}
+	message={t('campaign.checklistDeleteMsg', $locale)}
+	confirmLabel={t('detail.delete', $locale)}
 	danger
 	onconfirm={removeChecklist}
 	oncancel={() => (confirmDeleteChecklistIdx = null)}
@@ -937,14 +926,6 @@
 		gap: 0.5rem;
 		margin-bottom: 0.5rem;
 	}
-	.period-row input {
-		background: var(--bg);
-		border: 1px solid var(--border);
-		color: var(--text);
-		border-radius: 6px;
-		padding: 0.3rem 0.5rem;
-	}
-
 	.actions {
 		display: flex;
 		gap: 0.4rem;
@@ -979,23 +960,7 @@
 
 	/* BUG-021: textarea 는 CodeMirror 로 교체. CSS 미사용 selector 정리. */
 
-	/* BUG-021: CodeMirror editor (Quest Detail 패턴 — DEV-057 의 height 영속). */
-	/* DEV-069: 편집기 위 첨부 툴바. */
-	.editor-wrap {
-		border: 1px solid var(--border);
-		border-radius: 6px;
-		overflow: hidden;
-		min-height: 200px;
-		max-height: 90vh;
-		resize: vertical;
-	}
-	.editor-wrap :global(.cm-editor) {
-		outline: none;
-	}
-	.editor-wrap :global(.cm-editor.cm-focused) {
-		outline: none;
-		border: none;
-	}
+	/* DEV-203: .editor-wrap CSS 는 공통 MarkdownEditor 컴포넌트로 이동. */
 
 	/* BUG-021 fix1: .md CSS 는 공유 컴포넌트 MarkdownView 로 이동. */
 
@@ -1176,6 +1141,7 @@
 		border-radius: 3px;
 		overflow: hidden;
 		margin: 0 0 0.75rem;
+		display: flex;
 	}
 	.quest-progress-fill {
 		height: 100%;
@@ -1186,6 +1152,44 @@
 	}
 	.quest-progress-fill.done {
 		background: var(--success-strong);
+	}
+	/* DEV-233: hover 시 상태별 stacked 세그먼트 — CampaignCard 와 동일 패턴. */
+	.quest-progress-seg {
+		height: 100%;
+	}
+	.quest-status-tooltip {
+		position: fixed;
+		transform: translateY(-100%) translateY(-6px);
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		padding: 0.4rem 0.6rem;
+		font-size: 0.72rem;
+		z-index: 50;
+		box-shadow: 0 4px 12px color-mix(in srgb, black 25%, transparent);
+		pointer-events: none;
+		display: flex;
+		flex-direction: column;
+		gap: 0.2rem;
+		white-space: nowrap;
+	}
+	.tooltip-row {
+		display: flex;
+		align-items: center;
+		gap: 0.35rem;
+	}
+	.tooltip-dot {
+		width: 0.5rem;
+		height: 0.5rem;
+		border-radius: 50%;
+		flex: none;
+	}
+	.tooltip-name {
+		color: var(--text);
+		font-weight: 600;
+	}
+	.tooltip-count {
+		color: var(--text-muted);
 	}
 
 	/* DEV-144: 우하단 floating 점프 cluster (quest 상세와 동일). */

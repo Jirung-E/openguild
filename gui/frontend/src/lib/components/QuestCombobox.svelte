@@ -12,10 +12,14 @@
 	import { onMount, tick } from 'svelte';
 	// DEV-074 fix16: 검색 결과 list 도 overlay scrollbar.
 	import OverlayScrollbar from './OverlayScrollbar.svelte';
+	// DEV-205(2차): i18n.
+	import { locale, t } from '$lib/stores/locale';
+	// DEV-015: status 표시 이름 — 언어 반응.
+	import { questStatusLabel } from '$lib/utils/status-label';
 
 	let {
 		quests,
-		placeholder = '퀘스트 검색 (ID 또는 제목)',
+		placeholder,
 		onselect,
 		oncancel
 	}: {
@@ -24,6 +28,8 @@
 		onselect: (questId: number) => void;
 		oncancel: () => void;
 	} = $props();
+
+	const effectivePlaceholder = $derived(placeholder ?? t('combobox.questPlaceholder', $locale));
 
 	let query = $state('');
 	let highlightIdx = $state(0);
@@ -79,13 +85,13 @@
 		bind:value={query}
 		class="cb-input"
 		type="text"
-		{placeholder}
+		placeholder={effectivePlaceholder}
 		onkeydown={onKeydown}
 		data-testid="quest-combobox-input"
 	/>
 
 	{#if filtered().length === 0}
-		<div class="cb-empty">결과 없음</div>
+		<div class="cb-empty">{t('combobox.noResults', $locale)}</div>
 	{:else}
 		<ul class="cb-list" role="listbox" bind:this={listEl}>
 			{#each filtered() as q, i (q.id)}
@@ -99,7 +105,7 @@
 					>
 						<span class="badge" style:--c={q.type_color}>{q.quest_id}</span>
 						<span class="title">{q.title}</span>
-						<span class="status" style:--c={q.status_color}>{q.status_name_en}</span>
+						<span class="status" style:--c={q.status_color}>{questStatusLabel(q, $locale)}</span>
 					</button>
 				</li>
 			{/each}

@@ -1,0 +1,7 @@
+{"ts":"2026-06-27T12:37:59+09:00","op":"change_status","old":"open","new":"in_progress"}
+{"ts":"2026-06-27T12:39:39+09:00","op":"change_status","old":"in_progress","new":"testing"}
+{"ts":"2026-06-28T15:21:48+09:00","op":"change_status","old":"testing","new":"in_progress"}
+{"ts":"2026-06-28T15:23:57+09:00","op":"change_status","old":"in_progress","new":"testing"}
+{"ts":"2026-06-30T22:35:32+09:00","op":"change_status","old":"testing","new":"returned"}
+{"ts":"2026-07-01T00:28:39+09:00","op":"change_status","old":"returned","new":"testing"}
+{"ts":"2026-07-01T21:37:35+09:00","op":"change_status","old":"testing","new":"done"}

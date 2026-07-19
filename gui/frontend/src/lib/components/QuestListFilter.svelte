@@ -1,6 +1,12 @@
 <script lang="ts">
 	import type { QuestStatus, QuestType } from '$lib/types';
 	import { urgencyLabel, urgencyColor } from '$lib/types';
+	// DEV-205 모듈3: 필터 문자열 i18n.
+	import { locale, t } from '$lib/stores/locale';
+	// DEV-015: status 표시 이름 — 언어 반응.
+	import { statusLabel } from '$lib/utils/status-label';
+	// DEV-205: 언어 반응 날짜 입력(네이티브 date 대체).
+	import DateField from './DateField.svelte';
 	import type { TriState } from '$lib/utils/quest-list';
 
 	let {
@@ -53,7 +59,11 @@
 			updatedBefore !== ''
 	);
 
-	const TRI_LABEL: Record<TriState, string> = { any: '전체', has: '있음', none: '없음' };
+	const TRI_LABEL: Record<TriState, string> = $derived({
+		any: t('filter.triAny', $locale),
+		has: t('filter.triHas', $locale),
+		none: t('filter.triNone', $locale)
+	});
 	function cycleTri(cur: TriState): TriState {
 		return cur === 'any' ? 'has' : cur === 'has' ? 'none' : 'any';
 	}
@@ -92,7 +102,7 @@
 				style:--c={s.color}
 				onclick={() => (statusIds = toggle(statusIds, s.id))}
 			>
-				{s.name_en}
+				{statusLabel(s, $locale)}
 			</button>
 		{/each}
 	</div>
@@ -102,11 +112,11 @@
 	<!-- DEV-037: 검색 -->
 	<div class="search-group">
 		<label class="search-input-wrap">
-			<span class="sr-only">검색</span>
+			<span class="sr-only">{t('filter.search', $locale)}</span>
 			<input
 				type="search"
 				class="search-input"
-				placeholder="검색 (제목 / 본문)"
+				placeholder={t('filter.searchPlaceholder', $locale)}
 				bind:value={search}
 				data-testid="quest-search-input"
 			/>
@@ -114,7 +124,7 @@
 				<button
 					type="button"
 					class="search-clear"
-					title="검색어 지우기"
+					title={t('filter.clearSearch', $locale)}
 					onclick={() => (search = '')}
 					data-testid="quest-search-clear">×</button
 				>
@@ -122,7 +132,7 @@
 		</label>
 		<label class="search-opt">
 			<input type="checkbox" bind:checked={titleOnly} data-testid="quest-search-title-only" />
-			<span>제목만</span>
+			<span>{t('filter.titleOnly', $locale)}</span>
 		</label>
 	</div>
 
@@ -131,14 +141,14 @@
 		class="adv-toggle"
 		class:active={advancedActive}
 		onclick={() => (advancedOpen = !advancedOpen)}
-		aria-expanded={advancedOpen}>{advancedOpen ? '▾' : '▸'} 고급{advancedActive ? ' ●' : ''}</button
+		aria-expanded={advancedOpen}>{advancedOpen ? '▾' : '▸'} {t('filter.advanced', $locale)}{advancedActive ? ' ●' : ''}</button
 	>
 </div>
 
 {#if advancedOpen}
 	<div class="adv-bar">
 		<!-- urgency 다중 -->
-		<div class="filter-group" aria-label="긴급도">
+		<div class="filter-group" aria-label={t('filter.urgency', $locale)}>
 			{#each [1, 2, 3, 4] as u (u)}
 				<button
 					class:active={urgencies.has(u)}
@@ -153,30 +163,30 @@
 			class="tri"
 			class:active={prereqState !== 'any'}
 			onclick={() => (prereqState = cycleTri(prereqState))}
-			title="선행 quest 보유 여부 (전체 → 있음 → 없음)"
+			title={t('filter.prereqTitle', $locale)}
 		>
-			선행: {TRI_LABEL[prereqState]}
+			{t('filter.prereqLabel', $locale)}: {TRI_LABEL[prereqState]}
 		</button>
 		<button
 			class="tri"
 			class:active={subState !== 'any'}
 			onclick={() => (subState = cycleTri(subState))}
-			title="서브 quest 보유 여부 (전체 → 있음 → 없음)"
+			title={t('filter.subTitle', $locale)}
 		>
-			서브: {TRI_LABEL[subState]}
+			{t('filter.subLabel', $locale)}: {TRI_LABEL[subState]}
 		</button>
 		<div class="divider"></div>
 		<!-- 날짜 범위 -->
 		<label class="date-range"
-			>생성 <input type="date" bind:value={createdAfter} /> ~
-			<input type="date" bind:value={createdBefore} /></label
+			>{t('filter.created', $locale)} <DateField bind:value={createdAfter} /> ~
+			<DateField bind:value={createdBefore} /></label
 		>
 		<label class="date-range"
-			>갱신 <input type="date" bind:value={updatedAfter} /> ~
-			<input type="date" bind:value={updatedBefore} /></label
+			>{t('filter.updated', $locale)} <DateField bind:value={updatedAfter} /> ~
+			<DateField bind:value={updatedBefore} /></label
 		>
 		{#if advancedActive}
-			<button class="adv-clear" onclick={clearAdvanced} title="고급 필터 모두 해제">× 해제</button>
+			<button class="adv-clear" onclick={clearAdvanced} title={t('filter.clearAdvanced', $locale)}>{t('filter.clearBtn', $locale)}</button>
 		{/if}
 	</div>
 {/if}
@@ -342,14 +352,6 @@
 		gap: 0.3rem;
 		font-size: 0.78rem;
 		color: var(--text-muted);
-	}
-	.date-range input {
-		padding: 0.2rem 0.4rem;
-		background: var(--bg);
-		border: 1px solid var(--border);
-		border-radius: 6px;
-		color: var(--text);
-		font-size: 0.75rem;
 	}
 	.adv-clear {
 		color: var(--danger);

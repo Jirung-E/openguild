@@ -67,6 +67,8 @@ pub async fn restore(
         return Ok(Json(json!({
             "replayed_to": report.target_ts,
             "applied": report.applied,
+            // DEV-212: restore 직전 자동 백업 스냅샷 ts (journal 비어있었으면 null).
+            "pre_backup": report.pre_backup,
         })));
     }
     let snapshots = snapshot::list_snapshots(&store.paths)

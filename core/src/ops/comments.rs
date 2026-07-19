@@ -45,15 +45,18 @@ async fn upsert_comment_entry_db(
     };
     sqlx::query(
         "INSERT INTO quest_comments
-            (quest_id, entry_id, ts, author, body, parent_id, discussion, resolved)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (quest_id, entry_id, ts, author, body, parent_id, discussion, resolved, pinned, edited_at, reactions)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(quest_id, entry_id) DO UPDATE SET
              ts         = excluded.ts,
              author     = excluded.author,
              body       = excluded.body,
              parent_id  = excluded.parent_id,
              discussion = excluded.discussion,
-             resolved   = excluded.resolved",
+             resolved   = excluded.resolved,
+             pinned     = excluded.pinned,
+             edited_at  = excluded.edited_at,
+             reactions  = excluded.reactions",
     )
     .bind(qid)
     .bind(entry.id as i64)
@@ -63,6 +66,9 @@ async fn upsert_comment_entry_db(
     .bind(entry.parent_id.map(|n| n as i64))
     .bind(entry.discussion as i64)
     .bind(entry.resolved as i64)
+    .bind(entry.pinned as i64)
+    .bind(&entry.edited_at)
+    .bind(entry.reactions.join(","))
     .execute(&store.index_pool)
     .await
     .map_err(|e| AppError::Internal(anyhow::anyhow!("upsert quest_comments: {e}")))?;
@@ -125,8 +131,8 @@ async fn replace_comments_db(store: &Store, slug: &str) -> AppResult<()> {
     for entry in &entries {
         sqlx::query(
             "INSERT INTO quest_comments
-                (quest_id, entry_id, ts, author, body, parent_id, discussion, resolved)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (quest_id, entry_id, ts, author, body, parent_id, discussion, resolved, pinned)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(qid)
         .bind(entry.id as i64)
@@ -136,6 +142,7 @@ async fn replace_comments_db(store: &Store, slug: &str) -> AppResult<()> {
         .bind(entry.parent_id.map(|n| n as i64))
         .bind(entry.discussion as i64)
         .bind(entry.resolved as i64)
+        .bind(entry.pinned as i64)
         .execute(&mut *tx)
         .await
         .map_err(|e| AppError::Internal(anyhow::anyhow!("insert quest_comments: {e}")))?;
@@ -368,6 +375,81 @@ pub async fn toggle_comment_resolved(
     let _ = crate::file_mtime::touch(store, &store.paths.comments_path(slug)).await;
     // DEV-142 후속: discussion/resolved 를 DB 캐시에도 반영 (목록/홈 집계용).
     upsert_comment_entry_db(store, slug, &updated).await?;
+    // DEV-236: resolve/reopen 전환을 quest_history 에 기록 — worklog 가 이미
+    // quest_history 를 소스로 쓰므로 이것만으로 타임라인에 표출됨. discussion
+    // 최초 표시(marked)는 범위 밖(admin 결정 — "과기록은 노이즈, 우선 resolve
+    // 전환만").
+    let op = if updated.resolved { "discussion_resolved" } else { "discussion_reopened" };
+    record_discussion_history(store, slug, op, id).await?;
+    Ok(updated)
+}
+
+/// DEV-236: discussion resolve/reopen 전환을 quest_history(+ 사이드카)에 기록.
+/// worklog 활동 타임라인이 이미 quest_history 를 소스로 쓰므로 kind 매핑만
+/// 추가하면(ops::worklog) 자동 표출된다. quest 가 drift 상태(캐시에 없음)면
+/// silently skip — 다음 reindex 가 일관시킴(다른 history 기록과 동일 정책).
+async fn record_discussion_history(
+    store: &Store,
+    slug: &str,
+    op: &str,
+    comment_id: u64,
+) -> AppResult<()> {
+    let Some(qid) = lookup_quest_id(store, slug).await? else {
+        return Ok(());
+    };
+    let ts = crate::time::now_local_iso8601();
+    let comment_id_str = comment_id.to_string();
+    sqlx::query(
+        "INSERT INTO quest_history (quest_id, quest_slug, ts, op, old_value, new_value)
+         VALUES (?, ?, ?, ?, NULL, ?)",
+    )
+    .bind(qid)
+    .bind(slug)
+    .bind(&ts)
+    .bind(op)
+    .bind(&comment_id_str)
+    .execute(&store.index_pool)
+    .await
+    .map_err(|e| AppError::Internal(anyhow::anyhow!("insert quest_history (discussion): {e}")))?;
+    crate::repo::history::append(
+        &store.paths,
+        slug,
+        &crate::repo::history::HistoryEntry {
+            ts,
+            op: op.to_string(),
+            old: None,
+            new: Some(comment_id_str),
+        },
+    )
+    .map_err(AppError::Internal)?;
+    Ok(())
+}
+
+/// DEV-234: 댓글 상단 고정(pin) 토글. discussion 과 달리 quest 전용 게이트
+/// 없음 — root/답글 무관하게 켤 수 있고, 실제 "몇 개까지" "root 만" 같은
+/// 제약은 GUI 가 담당(pin 버튼을 root 댓글에만 노출).
+pub async fn toggle_comment_pinned(store: &Store, slug: &str, id: u64) -> AppResult<CommentEntry> {
+    let _ = journal::append(
+        &store.journal_pool,
+        "toggle_comment_pinned",
+        &json!({ "slug": slug, "id": id }),
+        None::<&serde_json::Value>,
+    )
+    .await
+    .map_err(AppError::Internal)?;
+
+    let mut entries = svc::list_entries(store, slug)?;
+    let entry = entries
+        .iter_mut()
+        .find(|e| e.id == id)
+        .ok_or_else(|| AppError::NotFound(format!("comment {id} not found for {slug}")))?;
+    entry.pinned = !entry.pinned;
+    let updated = entry.clone();
+    crate::repo::comments::write_entries(&store.paths, slug, &entries)
+        .map_err(AppError::Internal)?;
+    // BUG-068: sibling 파일 mtime 캐시 동기화 (drift 오탐 방지).
+    let _ = crate::file_mtime::touch(store, &store.paths.comments_path(slug)).await;
+    upsert_comment_entry_db(store, slug, &updated).await?;
     Ok(updated)
 }
 
@@ -584,6 +666,79 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(parent_id, Some(top.id as i64));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-234: pin 토글 — 파일 attr + DB 캐시 모두 반영, discussion 과 달리
+    /// 게이트 없이 아무 entry 나 켤 수 있음.
+    #[tokio::test]
+    async fn toggle_pinned_roundtrip_and_syncs_db_cache() {
+        let (dir, store, slug) = fresh("pin").await;
+        let e = add_comment_entry(&store, &slug, "a".into(), "결정사항".into(), None)
+            .await
+            .unwrap();
+        assert!(!e.pinned);
+
+        let on = toggle_comment_pinned(&store, &slug, e.id).await.unwrap();
+        assert!(on.pinned);
+        let cached: i64 =
+            sqlx::query_scalar("SELECT pinned FROM quest_comments WHERE entry_id = ?")
+                .bind(e.id as i64)
+                .fetch_one(&store.index_pool)
+                .await
+                .unwrap();
+        assert_eq!(cached, 1);
+        // 파일에서 다시 읽어도 유지.
+        let listed = list_comment_entries(&store, &slug).unwrap();
+        assert!(listed[0].pinned);
+
+        let off = toggle_comment_pinned(&store, &slug, e.id).await.unwrap();
+        assert!(!off.pinned);
+
+        assert!(toggle_comment_pinned(&store, &slug, 999).await.is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-236: resolve/reopen 전환이 quest_history 에 기록되는지(설계 공백
+    /// 수정 — 이전엔 journal 감사로그에만 남아 worklog 에 안 잡혔음).
+    #[tokio::test]
+    async fn toggle_resolved_records_quest_history() {
+        let (dir, store, slug) = fresh("history").await;
+        let e = add_comment_entry(&store, &slug, "a".into(), "토론 필요".into(), None)
+            .await
+            .unwrap();
+        toggle_comment_discussion(&store, &slug, e.id).await.unwrap();
+        // discussion 최초 표시는 기록 대상 아님(admin 결정 — 과기록 방지).
+        let n0: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM quest_history WHERE quest_slug = ?")
+            .bind(&slug)
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(n0, 0);
+
+        toggle_comment_resolved(&store, &slug, e.id).await.unwrap();
+        let rows: Vec<(String, Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT op, old_value, new_value FROM quest_history WHERE quest_slug = ? ORDER BY id",
+        )
+        .bind(&slug)
+        .fetch_all(&store.index_pool)
+        .await
+        .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].0, "discussion_resolved");
+        assert_eq!(rows[0].2.as_deref(), Some(e.id.to_string().as_str()));
+
+        // 재개(unresolve) 도 기록.
+        toggle_comment_resolved(&store, &slug, e.id).await.unwrap();
+        let rows2: Vec<String> = sqlx::query_scalar(
+            "SELECT op FROM quest_history WHERE quest_slug = ? ORDER BY id",
+        )
+        .bind(&slug)
+        .fetch_all(&store.index_pool)
+        .await
+        .unwrap();
+        assert_eq!(rows2, vec!["discussion_resolved", "discussion_reopened"]);
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

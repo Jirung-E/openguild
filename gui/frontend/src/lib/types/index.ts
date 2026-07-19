@@ -192,6 +192,18 @@ export interface QuestHistoryEntry {
 	actor: string | null;
 }
 
+// DEV-226: Campaign 변경 이력 한 행 — QuestHistoryEntry 와 동일 패턴.
+export interface CampaignHistoryEntry {
+	id: number;
+	campaign_id: number;
+	campaign_slug: string;
+	ts: string;
+	op: string;
+	old_value: string | null;
+	new_value: string | null;
+	actor: string | null;
+}
+
 // ─── DEV-011: Campaign ──────────────────────────────────
 
 export type CampaignStatus = 'active' | 'done';
@@ -227,6 +239,8 @@ export interface CampaignLinkedQuest {
 	type_color: string;
 	status_slug: string;
 	status_name_en: string;
+	/** DEV-015: ko 표시용 — 빈 값이면 en fallback. 구서버 호환 optional. */
+	status_name_ko?: string;
 	status_color: string;
 }
 
@@ -241,6 +255,8 @@ export interface CampaignDetail extends Campaign {
 	quest_progress?: number;
 	/** DEV-156: 본문과 별개 첨부 목록 (Jira 식 섹션). */
 	attachments?: QuestAttachment[];
+	/** DEV-233: 상태별 카운트 — 진행바 hover 시 stacked 표시용. sort_order 순. */
+	quest_status_counts?: CampaignQuestStatusCount[];
 }
 
 export interface CampaignSummary {
@@ -267,6 +283,19 @@ export interface CampaignSummary {
 	quest_done?: number;
 	/** DEV-093: quest_done / quest_total. */
 	quest_progress?: number;
+	/** DEV-233: 상태별 카운트 — 진행바 hover 시 stacked 표시용. sort_order 순. */
+	quest_status_counts?: CampaignQuestStatusCount[];
+}
+
+/** DEV-233: 캠페인 링크 퀘스트 상태별 카운트 한 행. */
+export interface CampaignQuestStatusCount {
+	status_slug: string;
+	status_name_en: string;
+	/** DEV-015: ko 표시용 — 빈 값이면 en fallback. 구서버 호환 optional. */
+	status_name_ko?: string;
+	status_color: string;
+	sort_order: number;
+	count: number;
 }
 
 export interface CreateCampaignRequest {

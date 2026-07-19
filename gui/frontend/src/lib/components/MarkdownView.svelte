@@ -12,9 +12,19 @@
 	import hljs from 'highlight.js';
 	import { tick } from 'svelte';
 	// DEV-111: mermaid 다이어그램 렌더링 — lazy import (~700KB), 블록 있을 때만.
-	import { theme, resolveTheme } from '$lib/stores/theme';
+	// BUG-121: `theme`(ThemeChoice) 대신 `effectiveTheme` 구독 — system 모드에서
+	// OS 가 테마를 바꿔도 `theme` 값 자체는 'system' 그대로라 재통지가 안 됨.
+	import { effectiveTheme } from '$lib/stores/theme';
 	// DEV-140: 본문 cross-link — [[DEV-033]] / [[C-001]] 위키문법을 링크로.
-	import { questIndex, loadQuestIndex, lookupRef, refHref } from '$lib/stores/questIndex';
+	// DEV-219: [[kind:ID]] 명시 네임스페이스 지원 — resolveCrossLinkToken 이 접두
+	// 유무와 무관하게 kind/ref 를 함께 풀어준다.
+	import {
+		questIndex,
+		loadQuestIndex,
+		refHref,
+		resolveCrossLinkToken,
+		KIND_LABEL
+	} from '$lib/stores/questIndex';
 
 	let { source }: { source: string } = $props();
 
@@ -53,7 +63,7 @@
 		const blocks = container.querySelectorAll<HTMLElement>('pre > code.language-mermaid');
 		if (blocks.length === 0) return;
 		const { default: mermaid } = await import('mermaid');
-		const eff = resolveTheme($theme);
+		const eff = $effectiveTheme;
 		mermaid.initialize({
 			startOnLoad: false,
 			theme: eff === 'dark' ? 'dark' : 'default',
@@ -110,7 +120,7 @@
 	$effect(() => {
 		// html / theme / 인덱스 변경 시 재렌더.
 		void html;
-		void $theme;
+		void $effectiveTheme;
 		void $questIndex;
 		tick().then(() => {
 			renderMermaidBlocks();
@@ -119,22 +129,25 @@
 		});
 	});
 
-	// DEV-140: `[[DEV-033]]` / `[[C-001]]` → 내부 링크. 미존재 ID 는 빨강.
+	// DEV-140: `[[DEV-033]]` / `[[C-001]]` / `[[규칙slug]]` → 내부 링크.
+	// 실재=파랑 / 미존재=빨강.
 	//
 	// marked 는 `[[...]]` 를 링크로 해석하지 않아 본문에 리터럴 텍스트로 남음.
 	// 렌더 후 텍스트 노드만 훑어 토큰을 anchor 로 치환 (code/pre/기존 a 안은 제외).
-	// DEV-140 후속: 두 형태를 모두 인식.
-	//  1) `[[DEV-033]]` (명시 위키링크) — 실재=파랑 / 미존재=빨강.
-	//  2) bare `DEV-033` (대괄호 없이) — **실재하는 ID 만** 링크(파랑). 미존재
-	//     bare 는 일반 텍스트로 둔다(오탐 방지). 앞뒤가 단어문자/하이픈이면 제외
-	//     (`MYDEV-1` / `DEV-1a` 등 단어 일부 안 잡음).
-	const CROSS_LINK_RE = /\[\[([A-Za-z]{1,}-\d+)\]\]|(?<![\w-])([A-Za-z]{1,}-\d+)(?![\w-])/g;
+	// DEV-220(사용자 결정): **명시 `[[..]]` 만 인식** — bare `DEV-033`(대괄호 없음)
+	// 자동 링크는 제거(의도치 않은 링크화가 불편). slug 는 한글 등 비ASCII 허용
+	// (공백/대괄호 제외 — DEV-173).
+	// DEV-219: 접두 `kind:` (quest/q, campaign/c, rules/rule/r, library/lib/book)
+	// 를 허용 — 나머지 문자 클래스는 기존과 동일(공백/대괄호 제외).
+	const CROSS_LINK_RE = /\[\[([^[\]\s]{1,64})\]\]/g;
 	// 별도 non-global tester — /g 의 lastIndex 부작용 없이 acceptNode 에서 검사.
-	const CROSS_LINK_TEST = /\[\[[A-Za-z]{1,}-\d+\]\]|(?<![\w-])[A-Za-z]{1,}-\d+(?![\w-])/;
-	function guessKind(id: string): 'quest' | 'campaign' {
-		const ref = lookupRef(id);
-		if (ref) return ref.kind;
-		// 미존재 — slug 형태로 추정 (C-NNN 은 캠페인, 그 외 퀘스트).
+	const CROSS_LINK_TEST = /\[\[[^[\]\s]{1,64}\]\]/;
+	// quest/campaign 추적번호 형식 (XXX-NNN). 이 형식이 아니면 규칙 slug 로 본다.
+	const ID_TOKEN_RE = /^[A-Za-z]{1,}-\d+$/;
+	// DEV-219: 접두 없을 때만 쓰는 형태 추정 fallback (미존재 ID 용).
+	function guessKindByShape(id: string): 'quest' | 'campaign' | 'rule' | 'book' {
+		if (!ID_TOKEN_RE.test(id)) return 'rule';
+		if (/^BOOK-\d+$/i.test(id)) return 'book';
 		return /^C-\d+$/i.test(id) ? 'campaign' : 'quest';
 	}
 	function rewriteCrossLinks() {
@@ -162,25 +175,25 @@
 			let m: RegExpExecArray | null;
 			while ((m = CROSS_LINK_RE.exec(text))) {
 				const whole = m[0];
-				const bracketed = m[1]; // [[ID]] 안
-				const bare = m[2]; // 대괄호 없는 ID
-				const rawId = bracketed ?? bare;
+				const rawToken = m[1]; // [[token]] 안 — kind: 접두 있을 수 있음(DEV-219)
+				const resolved = resolveCrossLinkToken(rawToken);
+				const ref = resolved.ref;
+				const rawId = resolved.id;
 				const id = rawId.toUpperCase();
-				const ref = lookupRef(id);
-				// bare 인데 실재하지 않으면 링크하지 않음 — 텍스트로 남긴다(오탐 방지).
-				// (다음 append 에서 text.slice 로 자동 포함되므로 last 갱신 안 함.)
-				if (!bracketed && !ref) continue;
 				if (m.index > last) {
 					frag.appendChild(document.createTextNode(text.slice(last, m.index)));
 				}
-				const kind = guessKind(id);
+				// 접두가 있었으면 그 kind 를 그대로 신뢰(존재 여부와 무관), 없었고
+				// 미존재면 형태로 추정.
+				const kind = resolved.kind ?? guessKindByShape(id);
 				const a = document.createElement('a');
-				a.href = refHref(id, kind);
-				a.textContent = id;
+				a.href = refHref(id, kind, ref?.slug ?? rawId);
+				// DEV-173: 규칙 slug 는 소문자가 정체성 — 원문 그대로 표시.
+				a.textContent = kind === 'rule' ? (ref?.slug ?? rawId) : id;
 				a.className = ref ? 'xlink' : 'xlink missing';
 				a.title = ref
-					? `${kind === 'campaign' ? '캠페인' : '퀘스트'}: ${ref.title}`
-					: `존재하지 않는 ${kind === 'campaign' ? '캠페인' : '퀘스트'} — ${id}`;
+					? `${KIND_LABEL[kind]}: ${ref.title}`
+					: `존재하지 않는 ${KIND_LABEL[kind]} — ${kind === 'rule' ? rawId : id}`;
 				frag.appendChild(a);
 				last = m.index + whole.length;
 			}

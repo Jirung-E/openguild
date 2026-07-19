@@ -16,6 +16,7 @@ pub mod file_mtime;
 pub mod health;
 pub mod incremental;
 pub mod guild_file;
+pub mod locale;
 pub mod lock;
 pub mod maintenance;
 pub mod migrate;
@@ -29,6 +30,7 @@ pub mod services;
 pub mod snapshot;
 pub mod store;
 pub mod time;
+pub mod user_dirs;
 
 pub use error::{AppError, AppResult};
 pub use store::Store;

@@ -6,6 +6,14 @@
 //! - 단위 테스트에서 핸들러를 호출하기 쉬움
 
 mod commands;
+// DEV-265: Windows Snap Layout 히트테스트 훅 (WM_NCHITTEST) — Windows 전용,
+// windows-sys 의존이라 다른 플랫폼에선 컴파일 대상에서 제외.
+#[cfg(target_os = "windows")]
+mod titlebar_win;
+// DEV-265: Linux 네이티브 GTK 아이콘 테마/버튼 순서 조회 — 내부에서
+// target_os="linux" 로 gtk 의존 부분만 갈라두어 다른 플랫폼에서도 파일
+// 자체는 컴파일된다(스텁 반환).
+mod titlebar_linux;
 
 use openguild_core::recents::strip_verbatim_prefix;
 use openguild_core::Store;
@@ -200,6 +208,17 @@ fn attach_parent_console() {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // BUG-144: Linux(WebKitGTK) 전반 버벅임 완화 — WebKitGTK 2.4x 의 DMABUF
+    // renderer 가 특정 드라이버(특히 NVIDIA/일부 Mesa) 조합에서 GPU 가속이
+    // 깨져 소프트웨어 합성으로 떨어지며 캔버스(보드)·스크롤 전반이 심하게
+    // 느려지는 것으로 널리 보고됨(Tauri 커뮤니티 표준 완화책). 사용자가
+    // 직접 지정한 경우는 존중하고, 미지정일 때만 비활성.
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        // SAFETY: 다른 스레드가 생기기 전(run 최초 진입)에 1회 설정.
+        unsafe { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1") };
+    }
+
     // BUG-041 후속: `--version` / `--help` 짧은 flag 처리.
     // Tauri 시동 전에 stdout 으로 답하고 종료 — launcher / 스크립트 친화.
     //
@@ -310,6 +329,32 @@ pub fn run() {
         }
     }
 
+    // DEV-247: 번들 문서(설치 폴더 docs/)를 ~/.openguild/docs/ 로 동기화 —
+    // 에이전트가 설치 폴더(%LOCALAPPDATA%) 접근에서 샌드박스 권한 문제를
+    // 겪는 것 회피(admin 보고). 첫 실행 복사 + 앱 업데이트 후 갱신 반영.
+    // 개발 실행(docs/ 없음)이나 실패는 조용히 skip — 부가 기능.
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(dir) = exe.parent()
+    {
+        match openguild_core::user_dirs::sync_bundled_docs(&dir.join("docs")) {
+            Ok(n) if n > 0 => {
+                eprintln!("[openguild-gui] bundled docs synced to ~/.openguild/docs ({n} files)")
+            }
+            Ok(_) => {}
+            Err(e) => eprintln!("[openguild-gui] warn: docs sync 실패 — {e:#}"),
+        }
+        // DEV-264: 배포용 스킬(Claude Code plugin marketplace 구조)을
+        // ~/.openguild/skill-marketplace/ 로 동기화 — 사용자가 `/plugin
+        // marketplace add ~/.openguild/skill-marketplace` 로 등록 가능.
+        match openguild_core::user_dirs::sync_bundled_skill_marketplace(&dir.join("skills")) {
+            Ok(n) if n > 0 => {
+                eprintln!("[openguild-gui] bundled skills synced to ~/.openguild/skill-marketplace ({n} files)")
+            }
+            Ok(_) => {}
+            Err(e) => eprintln!("[openguild-gui] warn: skills sync 실패 — {e:#}"),
+        }
+    }
+
     // DEV-087: setup closure 로 넘길 asset scope 대상 — 길드 root.
     let asset_scope_path = store_path.clone();
 
@@ -344,6 +389,8 @@ pub fn run() {
             commands::remove_quest_attachment,
             commands::add_campaign_attachment,
             commands::remove_campaign_attachment,
+            commands::add_book_attachment,
+            commands::remove_book_attachment,
             commands::list_quest_candidates,
             commands::list_quest_positions,
             commands::list_quest_dependencies,
@@ -397,6 +444,10 @@ pub fn run() {
             commands::get_campaign,
             commands::update_campaign,
             commands::delete_campaign,
+            commands::campaign_history,
+            // DEV-249: 커스텀 테마 프리셋 파일 IO.
+            commands::load_custom_themes,
+            commands::save_custom_themes,
             commands::campaign_link_quest,
             commands::campaign_unlink_quest,
             commands::campaign_checklist_add,
@@ -415,6 +466,24 @@ pub fn run() {
             commands::create_rule,
             commands::delete_rule,
             commands::rename_rule,
+            commands::set_rule_tags,
+            // DEV-217: 도서관.
+            commands::list_books,
+            commands::get_book,
+            commands::create_book,
+            commands::update_book,
+            commands::delete_book,
+            commands::set_book_tags,
+            // DEV-239: 도서관 폴더.
+            commands::list_library_folders,
+            commands::create_library_folder,
+            commands::delete_library_folder,
+            // DEV-167: 작업 기록.
+            commands::worklog_activities,
+            commands::worklog_summary,
+            commands::worklog_note_get,
+            commands::worklog_note_set,
+            commands::worklog_notes,
             // DEV-012 / DEV-094: 메모 (단일 텍스트) + 댓글 (entry 단위).
             commands::get_memo,
             commands::set_memo,
@@ -425,12 +494,14 @@ pub fn run() {
             commands::toggle_comment_reaction,
             commands::toggle_comment_discussion,
             commands::toggle_comment_resolved,
+            commands::toggle_comment_pinned,
             // DEV-100: 캠페인 댓글 / 메모.
             commands::list_campaign_comments,
             commands::add_campaign_comment,
             commands::update_campaign_comment,
             commands::delete_campaign_comment,
             commands::toggle_campaign_comment_reaction,
+            commands::toggle_campaign_comment_pinned,
             commands::get_campaign_memo,
             commands::set_campaign_memo,
             // DEV-087: 캠페인 배너 이미지 (파일 선택은 frontend dialog plugin).
@@ -445,6 +516,10 @@ pub fn run() {
             // BUG-081: 첨부 열기(미리보기) / 다운로드(복사).
             commands::open_guild_file,
             commands::copy_guild_file,
+            // DEV-265: 커스텀 타이틀바 창 컨트롤 — Windows Snap Layout
+            // 히트테스트 / Linux 네이티브 아이콘 테마 조회.
+            commands::set_maximize_hit_rect,
+            commands::get_native_titlebar_style,
         ])
         // DEV-087: asset protocol scope — 길드 경로가 동적이라 (사용자가 임의
         // 폴더 open) config scope 대신 런타임 allow. `.guild/assets/` 의 배너
@@ -455,6 +530,22 @@ pub fn run() {
                 let scope = app.asset_protocol_scope();
                 if let Err(e) = scope.allow_directory(p, true) {
                     eprintln!("[openguild-gui] warn: asset scope allow 실패 — {e:#}");
+                }
+            }
+            // BUG-142: 독바 아이콘 매칭 — `tauri.linux.conf.json` 에서 메인
+            // 창을 `visible: false` 로 만들어뒀으므로, 아직 화면에 매핑되기
+            // 전에 `_GTK_APPLICATION_ID` 를 쓰고 나서 여기서 직접 보여준다
+            // (타이밍 이유는 titlebar_linux::set_gtk_application_id 참조).
+            #[cfg(target_os = "linux")]
+            {
+                use tauri::Manager;
+                if let Some(w) = app.get_webview_window("main") {
+                    if let Ok(gtk_win) = w.gtk_window() {
+                        titlebar_linux::set_gtk_application_id(&gtk_win, "openguild");
+                    }
+                    if let Err(e) = w.show() {
+                        eprintln!("[openguild-gui] warn: BUG-142 창 show 실패 — {e:#}");
+                    }
                 }
             }
             Ok(())

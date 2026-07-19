@@ -370,6 +370,129 @@ describe('TauriTransport', () => {
 			args: {}
 		});
 	});
+
+	it('routeToInvoke — 도서관 CRUD 매핑 (DEV-217)', () => {
+		expect(__test_only.routeToInvoke({ method: 'GET', path: '/api/library' })).toEqual({
+			cmd: 'list_books',
+			args: {}
+		});
+		expect(
+			__test_only.routeToInvoke({
+				method: 'POST',
+				path: '/api/library',
+				body: { title: '제목', body: '본문' }
+			})
+		).toEqual({ cmd: 'create_book', args: { title: '제목', body: '본문', path: '' } });
+		expect(__test_only.routeToInvoke({ method: 'GET', path: '/api/library/BOOK-001' })).toEqual({
+			cmd: 'get_book',
+			args: { bookId: 'BOOK-001' }
+		});
+		expect(
+			__test_only.routeToInvoke({
+				method: 'PATCH',
+				path: '/api/library/BOOK-001',
+				body: { title: '새 제목' }
+			})
+		).toEqual({
+			cmd: 'update_book',
+			args: { bookId: 'BOOK-001', title: '새 제목', body: null, path: null }
+		});
+		expect(
+			__test_only.routeToInvoke({ method: 'DELETE', path: '/api/library/BOOK-001' })
+		).toEqual({ cmd: 'delete_book', args: { bookId: 'BOOK-001' } });
+	});
+
+	it('routeToInvoke — 도서관 폴더 매핑 (DEV-239)', () => {
+		expect(__test_only.routeToInvoke({ method: 'GET', path: '/api/library/folders' })).toEqual({
+			cmd: 'list_library_folders',
+			args: {}
+		});
+		expect(
+			__test_only.routeToInvoke({
+				method: 'POST',
+				path: '/api/library/folders',
+				body: { path: '아키텍처' }
+			})
+		).toEqual({ cmd: 'create_library_folder', args: { path: '아키텍처' } });
+		expect(
+			__test_only.routeToInvoke({
+				method: 'DELETE',
+				path: '/api/library/folders?path=아키텍처'
+			})
+		).toEqual({ cmd: 'delete_library_folder', args: { path: '아키텍처' } });
+	});
+
+	it('routeToInvoke — 도서관 첨부 매핑 (DEV-237, book_id 뒤 sub-path 우선 매칭)', () => {
+		expect(
+			__test_only.routeToInvoke({
+				method: 'POST',
+				path: '/api/library/BOOK-001/attachments',
+				body: { path: 'attachments/a.zip', name: 'a.zip' }
+			})
+		).toEqual({
+			cmd: 'add_book_attachment',
+			args: { bookId: 'BOOK-001', path: 'attachments/a.zip', name: 'a.zip' }
+		});
+		expect(
+			__test_only.routeToInvoke({
+				method: 'DELETE',
+				path: '/api/library/BOOK-001/attachments?path=attachments/a.zip'
+			})
+		).toEqual({
+			cmd: 'remove_book_attachment',
+			args: { bookId: 'BOOK-001', path: 'attachments/a.zip' }
+		});
+		// sub-path 가 있는데 get_book(bookId 만 매칭하는 일반 블록)으로 새지 않는지.
+		expect(
+			__test_only.routeToInvoke({ method: 'GET', path: '/api/library/BOOK-001' })
+		).toEqual({ cmd: 'get_book', args: { bookId: 'BOOK-001' } });
+	});
+
+	it('routeToInvoke — 작업 기록 매핑 (DEV-167)', () => {
+		expect(
+			__test_only.routeToInvoke({
+				method: 'GET',
+				path: '/api/worklog?from=2026-07-01&to=2026-07-05'
+			})
+		).toEqual({ cmd: 'worklog_activities', args: { from: '2026-07-01', to: '2026-07-05' } });
+		expect(
+			__test_only.routeToInvoke({
+				method: 'GET',
+				path: '/api/worklog/summary?from=2026-04-13&to=2026-07-05'
+			})
+		).toEqual({ cmd: 'worklog_summary', args: { from: '2026-04-13', to: '2026-07-05' } });
+		expect(
+			__test_only.routeToInvoke({
+				method: 'GET',
+				path: '/api/worklog/notes?from=2026-07-01&to=2026-07-05'
+			})
+		).toEqual({ cmd: 'worklog_notes', args: { from: '2026-07-01', to: '2026-07-05' } });
+		expect(
+			__test_only.routeToInvoke({ method: 'GET', path: '/api/worklog/note/2026-07-05' })
+		).toEqual({ cmd: 'worklog_note_get', args: { date: '2026-07-05' } });
+		expect(
+			__test_only.routeToInvoke({
+				method: 'PUT',
+				path: '/api/worklog/note/2026-07-05',
+				body: { content: '노트' }
+			})
+		).toEqual({ cmd: 'worklog_note_set', args: { date: '2026-07-05', content: '노트' } });
+	});
+
+	it('routeToInvoke — 댓글 pin 토글 매핑 (DEV-234, quest/campaign 둘 다)', () => {
+		expect(
+			__test_only.routeToInvoke({
+				method: 'POST',
+				path: '/api/quests/by/DEV-001/comments/3/pinned'
+			})
+		).toEqual({ cmd: 'toggle_comment_pinned', args: { slug: 'DEV-001', id: 3 } });
+		expect(
+			__test_only.routeToInvoke({
+				method: 'POST',
+				path: '/api/campaigns/C-001/comments/3/pinned'
+			})
+		).toEqual({ cmd: 'toggle_campaign_comment_pinned', args: { slug: 'C-001', id: 3 } });
+	});
 });
 
 // DEV-113 (MVP): 원격 서버 모드 — `transport` (동적 위임)이 Tauri 환경에서도

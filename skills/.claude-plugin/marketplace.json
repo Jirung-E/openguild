@@ -1,0 +1,15 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "openguild",
+  "owner": {
+    "name": "openguild"
+  },
+  "description": "openguild — a local-first quest/guild project tracker. Adds a skill that teaches an agent how to use the openguild CLI/GUI in your own project.",
+  "plugins": [
+    {
+      "name": "openguild-plugin",
+      "source": "./openguild-plugin",
+      "description": "Teaches an agent how to manage a project with openguild (guilds, quests, campaigns, comments)."
+    }
+  ]
+}

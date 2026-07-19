@@ -325,7 +325,7 @@ if ($secondQuest -and $secondQuest -ne $questForComments) {
 }
 
 # ── 8) DEV-016 (multi-file): sample 길드 규칙 (Rules 페이지 검증) ──
-Write-Host "`n=== [8/8] 길드 규칙 (DEV-016 multi-file) ===" -ForegroundColor Green
+Write-Host "`n=== [8/10] 길드 규칙 (DEV-016 multi-file) ===" -ForegroundColor Green
 
 # 짧은 sample 들 — 다중 파일 sidebar / 선택 / 편집 / 신규 / 이름변경 / 삭제
 # 의 좌측 목록 정렬 / 선택 동작 검증. 본문은 의미 있는 minimal markdown 으로.
@@ -336,12 +336,68 @@ $ruleSamples = @{
 }
 
 foreach ($slug in $ruleSamples.Keys) {
-    # CLI 가 stdin 으로 본문 읽음.
+    # CLI 가 stdin 으로 본문 읽음. DEV-231: top-level 은 `rule` 단수형만.
     $body = $ruleSamples[$slug]
-    Write-Host "[og] rules create $slug" -ForegroundColor DarkGray
-    $body | & $bin rules create $slug
-    if ($LASTEXITCODE -ne 0) { throw "rules create 실패: $slug" }
+    Write-Host "[og] rule new $slug" -ForegroundColor DarkGray
+    $body | & $bin rule new $slug
+    if ($LASTEXITCODE -ne 0) { throw "rule new 실패: $slug" }
 }
+
+# ── 9) DEV-215~218, DEV-239: 도서관 (Library 페이지 + 폴더 + cross-link 검증) ──
+Write-Host "`n=== [9/10] 도서관 (DEV-215~218, DEV-239) ===" -ForegroundColor Green
+
+# BOOK-001: cross-link 대상 — quest 본문/댓글에서 [[BOOK-001]] 로 참조 검증.
+# BOOK-002: 목록 정렬/선택 + 빈 본문 문서의 '+ 작성' 흐름 검증.
+$bookBody1 = @"
+# 설계 결정 기록
+
+프로젝트의 주요 설계 결정 모음.
+
+- 파일이 진리원, index.db 는 캐시.
+- 관련 quest: [[$questForComments]]
+"@
+$tmpBook = Join-Path $env:TEMP "og-seed-book-$PID.md"
+Set-Content -Path $tmpBook -Value $bookBody1 -Encoding utf8
+Write-Host "[og] library new (BOOK-001)" -ForegroundColor DarkGray
+& $bin library new --title "설계 결정 기록" --file $tmpBook | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "library new 실패 (1)" }
+Remove-Item $tmpBook -Force -ErrorAction SilentlyContinue
+
+Write-Host "[og] library new (BOOK-002, 빈 본문)" -ForegroundColor DarkGray
+& $bin library new --title "온보딩 가이드 (작성 예정)" | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "library new 실패 (2)" }
+
+# 첫 quest 댓글에서 도서관 문서 참조 — [[BOOK-001]] 렌더/자동완성 검증.
+"참고 문서 정리함: [[BOOK-001]] 확인." | & $bin quest comment add $questForComments --author alice
+if ($LASTEXITCODE -ne 0) { throw "book cross-link comment 실패" }
+
+# DEV-239: 폴더 — 트리/탐색기 보기 토글, 폴더 안 문서 배치, 경로 기반
+# cross-link 자동완성([[아키텍처/ 타이핑) 검증용.
+Write-Host "[og] library folder new (아키텍처)" -ForegroundColor DarkGray
+& $bin library folder new "아키텍처" | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "library folder new 실패" }
+
+Write-Host "[og] library new (BOOK-003, 폴더 안)" -ForegroundColor DarkGray
+& $bin library new --title "라우터 설계" --path "아키텍처" | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "library new 실패 (3, path)" }
+
+# ── 10) DEV-167: 작업 기록 (HOME 히트맵 카드 + /worklog 상세 검증) ──
+Write-Host "`n=== [10/10] 작업 기록 (DEV-167) ===" -ForegroundColor Green
+
+# 활동(생성/상태변경/댓글)은 이 스크립트 실행 자체가 오늘 날짜로 잔뜩 만들어
+# 놓음 — 히트맵의 오늘 칸 + 타임라인이 저절로 채워짐. 노트만 추가로:
+# 오늘(일 뷰 기본) + 이틀 전(주 뷰의 일별 노트 나열 검증).
+$today = Get-Date -Format "yyyy-MM-dd"
+$past = (Get-Date).AddDays(-2).ToString("yyyy-MM-dd")
+$tmpNote = Join-Path $env:TEMP "og-seed-note-$PID.md"
+Set-Content -Path $tmpNote -Value "시드 데이터 주입 완료. 세부는 [[$questForComments]] 참고." -Encoding utf8
+Write-Host "[og] worklog note set $today" -ForegroundColor DarkGray
+& $bin worklog note set $today --file $tmpNote | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "worklog note set 실패 (today)" }
+Set-Content -Path $tmpNote -Value "이틀 전 노트 — 주/월 뷰의 일별 노트 나열 검증용." -Encoding utf8
+& $bin worklog note set $past --file $tmpNote | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "worklog note set 실패 (past)" }
+Remove-Item $tmpNote -Force -ErrorAction SilentlyContinue
 
 # ── 완료 요약 ────────────────────────────────────────────────
 Write-Host "`n=== 완료 ===" -ForegroundColor Green
@@ -360,6 +416,8 @@ Write-Host "Tags    : 2 quest 에 태그 — 칩 / 필터 검증."
 Write-Host "Deleted : 1 quest soft-delete — 삭제 목록 / 복원 검증."
 Write-Host "Template: bug-report 1 개 — NewQuestModal 드롭다운 검증 (DEV-060/158)."
 Write-Host "Rules   : $($ruleSamples.Count) 개 sample (branch-policy / code-review / release-checklist)"
+Write-Host "Library : 3 개 (BOOK-001 본문+cross-link / BOOK-002 빈 본문 / BOOK-003 폴더 안) + 폴더 1(아키텍처) + 댓글의 [[BOOK-001]] 참조."
+Write-Host "Worklog : 노트 2 (오늘/이틀 전) — 활동은 이 스크립트 실행 자체가 오늘 날짜로 생성."
 Write-Host ""
 Write-Host "GUI 열어서 Home / Rules 페이지 확인:"
 Write-Host "  cd `"$(Get-Location)`""

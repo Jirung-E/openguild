@@ -75,6 +75,13 @@ const SOURCE_SUBDIRS: &[&str] = &[
     "types",
     "statuses",
     "attachments",
+    // DEV-180: 이력 사이드카가 quests/ 밖 전용 디렉토리로 분리돼 별도 등록
+    // 필요 — 빠뜨리면 snapshot/restore 가 조용히 history/ 를 건너뛴다.
+    "history",
+    // DEV-215: 도서관 문서 (+.counter.toml — copy_tree 가 숨김 파일도 복사).
+    "library",
+    // DEV-167: 작업 기록 노트.
+    "worklog",
 ];
 
 /// dir 트리를 통째로 복사 (대상에 병합 생성). 파일/하위디렉토리 재귀.
@@ -164,11 +171,25 @@ fn clear_guild_source(paths: &GuildPaths) -> Result<()> {
 /// Retention 7 개 — 8 번째 이상 오래된 것 삭제.
 pub async fn create_snapshot(store: &Store) -> Result<SnapshotInfo> {
     let paths = &store.paths;
-    let ts = now_compact();
-    let target = paths.snapshots_dir().join(&ts);
 
     std::fs::create_dir_all(paths.snapshots_dir())
         .with_context(|| format!("snapshots 디렉토리 생성 실패: {}", paths.snapshots_dir().display()))?;
+
+    // BUG-108: now_compact() 는 초 단위라 짧은 시간 안에 snapshot 이 두 번
+    // 생성되면(테스트, 또는 replay_to 의 pre_backup 처럼 한 호출 안에서
+    // 연달아) 같은 디렉토리 이름이 나온다. copy_tree 는 대상을 비우지 않고
+    // 병합만 하므로, 충돌 시 이전 snapshot 이 이후 상태로 오염된다
+    // (replay_to 가 과거 snapshot 을 복원해도 그 사이 생성된 quest 가 남는
+    // 버그로 발현). 디렉토리가 이미 있으면 `-01`, `-02` ... 접미사로 유니크화.
+    let base_ts = now_compact();
+    let mut ts = base_ts.clone();
+    let mut target = paths.snapshots_dir().join(&ts);
+    let mut n = 1u32;
+    while target.exists() {
+        ts = format!("{base_ts}-{n:02}");
+        target = paths.snapshots_dir().join(&ts);
+        n += 1;
+    }
 
     copy_guild_source(paths, &target).context("snapshot 소스 복사 실패")?;
     let size_bytes = tree_size(&target);
@@ -230,23 +251,34 @@ pub async fn maybe_auto_snapshot(
 /// BUG-086(후속): 타임스탬프는 **정규형 UTC** 로 저장(now_compact). 디렉토리명이
 /// offset 마커를 못 담으므로 UTC 규약으로 통일 — tz/DST 무관하게 정렬 단조 +
 /// 모호성 없음. 사람에게 보일 때만 로컬 변환(ts_to_local_display).
+///
+/// BUG-108: 같은 초 충돌 시 `-01` 접미사가 붙을 수 있어 앞 15자(고정폭
+/// "YYYYMMDD-HHMMSS")만 파싱 대상으로 삼는다.
 fn snapshot_time(timestamp: &str) -> Option<std::time::SystemTime> {
     use chrono::TimeZone;
-    let naive = chrono::NaiveDateTime::parse_from_str(timestamp, "%Y%m%d-%H%M%S").ok()?;
+    let base = timestamp.get(0..15)?;
+    let naive = chrono::NaiveDateTime::parse_from_str(base, "%Y%m%d-%H%M%S").ok()?;
     Some(chrono::Utc.from_utc_datetime(&naive).into())
 }
 
-/// BUG-086(후속): 저장된 UTC compact 타임스탬프(`YYYYMMDD-HHMMSS`)를 사람용
-/// 로컬 표시 문자열(`YYYY-MM-DD HH:MM:SS`)로 변환. 파싱 실패 시 원본 그대로.
-/// CLI / GUI 의 표시 계층에서 사용 (저장값은 UTC 정규형 유지).
+/// BUG-086(후속): 저장된 UTC compact 타임스탬프(`YYYYMMDD-HHMMSS`, BUG-108 이후
+/// 충돌 시 `-01` 접미사 가능)를 사람용 로컬 표시 문자열로 변환. 파싱 실패 시
+/// 원본 그대로. CLI / GUI 의 표시 계층에서 사용 (저장값은 UTC 정규형 유지).
 pub fn ts_to_local_display(ts: &str) -> String {
     use chrono::TimeZone;
-    match chrono::NaiveDateTime::parse_from_str(ts, "%Y%m%d-%H%M%S") {
-        Ok(naive) => chrono::Utc
-            .from_utc_datetime(&naive)
-            .with_timezone(&chrono::Local)
-            .format("%Y-%m-%d %H:%M:%S")
-            .to_string(),
+    let Some(base) = ts.get(0..15) else {
+        return ts.to_string();
+    };
+    let suffix = &ts[15.min(ts.len())..];
+    match chrono::NaiveDateTime::parse_from_str(base, "%Y%m%d-%H%M%S") {
+        Ok(naive) => {
+            let display = chrono::Utc
+                .from_utc_datetime(&naive)
+                .with_timezone(&chrono::Local)
+                .format("%Y-%m-%d %H:%M:%S")
+                .to_string();
+            format!("{display}{suffix}")
+        }
         Err(_) => ts.to_string(),
     }
 }
@@ -798,6 +830,137 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(memo_content, "private note");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-180: history 사이드카(`.guild/history/`)가 quests/ 밖으로 분리된
+    /// 뒤 SOURCE_SUBDIRS 에 등록을 빠뜨리면 snapshot/restore 가 조용히
+    /// history/ 를 건너뛴다 — 회귀 방지.
+    #[tokio::test]
+    async fn snapshot_preserves_history_sidecar() {
+        use crate::models::CreateQuestRequest;
+        use crate::ops::quests as quest_ops;
+
+        let dir = fresh_tmp("snap-history");
+        let store = setup(&dir).await;
+        // change_status 대상 "testing" 이 DB 에 있어야 — 시드된 status 파일을
+        // index.db 로 반영.
+        crate::reindex::reindex(&store).await.unwrap();
+
+        let q = quest_ops::create_quest(
+            &store,
+            CreateQuestRequest {
+                quest_type_id: 1,
+                title: "for history backup".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        // change_status 가 사이드카에 append.
+        quest_ops::change_status(
+            &store,
+            q.id,
+            crate::models::ChangeStatusRequest {
+                status_slug: "testing".into(),
+            },
+        )
+        .await
+        .unwrap();
+
+        let sidecar = store.paths.quest_history_sidecar_path(&q.quest_id);
+        assert!(sidecar.exists(), "change_status 가 사이드카를 생성해야");
+
+        let snap = create_snapshot(&store).await.unwrap();
+        assert!(
+            snap.path.join(".guild/history").join(format!("{}.jsonl", q.quest_id)).exists(),
+            "snapshot 이 .guild/history/ 를 포함해야 (SOURCE_SUBDIRS 등록 확인)"
+        );
+
+        // DB 캐시만 손실 시나리오: quest_history 를 비우고 restore 가 사이드카에서
+        // 되살리는지 확인.
+        sqlx::query("DELETE FROM quest_history")
+            .execute(&store.index_pool)
+            .await
+            .unwrap();
+
+        restore_snapshot(&store, &snap).await.unwrap();
+
+        let store2 = Store::open(&dir).await.unwrap();
+        let n: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM quest_history WHERE quest_slug = ?",
+        )
+        .bind(&q.quest_id)
+        .fetch_one(&store2.index_pool)
+        .await
+        .unwrap();
+        assert_eq!(n, 1, "restore 후 사이드카 기반으로 quest_history 복원돼야");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 도서관(library) 백업 확인 — 문서(폴더 안) + 첨부(DEV-237)까지 snapshot/
+    /// restore 후 살아남고, DB 캐시(library_docs/library_folders)도
+    /// reindex 로 재구축되는지. SOURCE_SUBDIRS 에 "library" 는 있지만
+    /// "attachments"(첨부 실제 bytes) 까지 같이 살아야 첨부가 진짜 복원.
+    #[tokio::test]
+    async fn snapshot_preserves_library_docs_folders_and_attachments() {
+        use crate::ops::{attachments as att_ops, library as lib_ops};
+
+        let dir = fresh_tmp("snap-library");
+        let store = setup(&dir).await;
+
+        lib_ops::create_folder(&store, "아키텍처").await.unwrap();
+        let book = lib_ops::create_book(&store, "라우터 설계", "본문", "아키텍처")
+            .await
+            .unwrap();
+        let rel = att_ops::save_attachment(&store, b"SPEC-BYTES", "pdf")
+            .await
+            .unwrap();
+        att_ops::add_book_attachment(&store, &book.book_id(), &rel, "spec.pdf")
+            .await
+            .unwrap();
+
+        let snap = create_snapshot(&store).await.unwrap();
+        assert!(
+            snap.path.join(".guild/library").join(format!("{}.md", book.book_id())).exists(),
+            "snapshot 이 도서관 문서를 포함해야"
+        );
+        assert!(
+            snap.path
+                .join(".guild/library")
+                .join(format!("{}.attachments.json", book.book_id()))
+                .exists(),
+            "snapshot 이 도서관 첨부 sidecar 를 포함해야"
+        );
+        assert!(
+            snap.path.join(".guild/attachments").join(rel.trim_start_matches("attachments/")).exists(),
+            "snapshot 이 첨부 실제 bytes 도 포함해야"
+        );
+
+        // DB 캐시만 손실 시나리오.
+        sqlx::query("DELETE FROM library_docs").execute(&store.index_pool).await.unwrap();
+        sqlx::query("DELETE FROM library_folders").execute(&store.index_pool).await.unwrap();
+
+        restore_snapshot(&store, &snap).await.unwrap();
+
+        let store2 = Store::open(&dir).await.unwrap();
+        let restored = lib_ops::get_book(&store2, &book.book_id()).await.unwrap().unwrap();
+        assert_eq!(restored.title, "라우터 설계");
+        assert_eq!(restored.path, "아키텍처", "폴더 소속도 복원돼야");
+
+        let folders = lib_ops::list_folders(&store2).await.unwrap();
+        assert!(folders.iter().any(|f| f.path == "아키텍처"));
+
+        let atts = att_ops::list_book_attachments(&store2, &book.book_id());
+        assert_eq!(atts.len(), 1);
+        assert_eq!(atts[0].name, "spec.pdf");
+        let abs = store2.paths.dot_guild().join(&rel);
+        assert_eq!(std::fs::read(&abs).unwrap(), b"SPEC-BYTES", "첨부 bytes 자체도 복원돼야");
 
         let _ = std::fs::remove_dir_all(&dir);
     }

@@ -1,10 +1,12 @@
 <script lang="ts">
 	// DEV-068: `.guild/tags/{slug}.toml` — 사용자가 정의하는 태그.
-	// quest_tag_defs 캐시 + 파일 진리원. quest 의 frontmatter 의 tag 사용 자체는
-	// def 없어도 정상 (UI 가 fallback 색으로 표시).
+	// quest_tag_defs 캐시 + 파일 진리원. DEV-243 부터 도서관/규칙 태그도 이 registry 공유.
+	// frontmatter 의 tag 사용 자체는 def 없어도 정상 (UI 가 fallback 색으로 표시).
 	import { onMount } from 'svelte';
 	import { adminApi } from '$lib/api/admin';
 	import type { QuestTagDef } from '$lib/types';
+	// DEV-205 모듈5: 태그 정의 관리 i18n.
+	import { locale, t } from '$lib/stores/locale';
 
 	type Msg = { kind: 'info' | 'success' | 'error'; text: string } | null;
 	let { onmessage }: { onmessage: (m: Msg) => void } = $props();
@@ -28,7 +30,7 @@
 		try {
 			defs = await adminApi.listTagDefs();
 		} catch (e) {
-			onmessage({ kind: 'error', text: `tag 정의 조회 실패: ${e}` });
+			onmessage({ kind: 'error', text: `${t('adminTags.listLoadFailedPre', $locale)}${e}` });
 		}
 	}
 
@@ -51,11 +53,11 @@
 				color: editColor,
 				description: editDescription
 			});
-			onmessage({ kind: 'success', text: `'${editing}' 갱신됨` });
+			onmessage({ kind: 'success', text: `${t('adminTags.updatedPre', $locale)}${editing}${t('adminTags.updatedPost', $locale)}` });
 			editing = null;
 			await refresh();
 		} catch (e) {
-			onmessage({ kind: 'error', text: `갱신 실패: ${e}` });
+			onmessage({ kind: 'error', text: `${t('adminTags.updateFailedPre', $locale)}${e}` });
 		} finally {
 			busy = false;
 		}
@@ -71,11 +73,11 @@
 	async function doCreate() {
 		const slug = newSlug.trim().toLowerCase();
 		if (!slug) {
-			onmessage({ kind: 'error', text: 'slug 는 필수.' });
+			onmessage({ kind: 'error', text: t('adminTags.slugRequired', $locale) });
 			return;
 		}
 		if (!/^[a-z0-9_]+$/.test(slug)) {
-			onmessage({ kind: 'error', text: 'slug 는 소문자/숫자/_ 만 (최대 32자).' });
+			onmessage({ kind: 'error', text: t('adminTags.slugPattern', $locale) });
 			return;
 		}
 		busy = true;
@@ -85,11 +87,11 @@
 				color: newColor,
 				description: newDescription
 			});
-			onmessage({ kind: 'success', text: `'${slug}' 추가됨` });
+			onmessage({ kind: 'success', text: `${t('adminTags.addedPre', $locale)}${slug}${t('adminTags.addedPost', $locale)}` });
 			creating = false;
 			await refresh();
 		} catch (e) {
-			onmessage({ kind: 'error', text: `추가 실패: ${e}` });
+			onmessage({ kind: 'error', text: `${t('adminTags.addFailedPre', $locale)}${e}` });
 		} finally {
 			busy = false;
 		}
@@ -108,11 +110,11 @@
 			await adminApi.deleteTagDef(target.slug);
 			onmessage({
 				kind: 'success',
-				text: `'${target.slug}' 정의 삭제됨 (quest 사용은 보존)`
+				text: `${t('adminTags.deletedDefPre', $locale)}${target.slug}${t('adminTags.deletedDefPost', $locale)}`
 			});
 			await refresh();
 		} catch (e) {
-			onmessage({ kind: 'error', text: `삭제 실패: ${e}` });
+			onmessage({ kind: 'error', text: `${t('adminTags.deleteFailedPre', $locale)}${e}` });
 		} finally {
 			busy = false;
 		}
@@ -121,26 +123,27 @@
 
 <section>
 	<div class="section-header">
-		<h2>Quest Tag 정의</h2>
+		<h2>{t('adminTags.heading', $locale)}</h2>
 		<div class="actions">
-			<button onclick={openCreate} disabled={busy}>+ 새 tag 정의</button>
-			<button onclick={refresh} disabled={busy}>새로고침</button>
+			<button onclick={openCreate} disabled={busy}>{t('adminTags.newTagDef', $locale)}</button>
+			<button onclick={refresh} disabled={busy}>{t('admin.refresh', $locale)}</button>
 		</div>
 	</div>
 	<p class="intro">
-		<code>.guild/tags/&lt;slug&gt;.toml</code> 의 색 / 설명. 정의가 없는 tag 도 quest 가 사용 가능 (UI
-		기본 색으로 표시).
+		<code>.guild/tags/&lt;slug&gt;.toml</code>{t('adminTags.pathHintPost', $locale)}{t('adminTags.introTail', $locale)}
 	</p>
 
 	{#if defs.length === 0}
-		<p class="empty">정의된 tag 없음.</p>
+		<p class="empty">{t('adminTags.empty', $locale)}</p>
 	{:else}
+		<!-- BUG-143: 좁은 폭에서 셀 줄바꿈 대신 표 가로 스크롤. -->
+		<div class="table-wrap">
 		<table>
 			<thead>
 				<tr>
 					<th style="width: 16ch">slug</th>
-					<th style="width: 5ch">색</th>
-					<th>설명</th>
+					<th style="width: 5ch">{t('adminTypes.colColor', $locale)}</th>
+					<th>{t('adminTypes.colDesc', $locale)}</th>
 					<th style="width: 14ch"></th>
 				</tr>
 			</thead>
@@ -154,8 +157,8 @@
 								<input type="text" bind:value={editDescription} maxlength="200" disabled={busy} />
 							</td>
 							<td class="row-actions">
-								<button class="save" onclick={saveEdit} disabled={busy}>저장</button>
-								<button onclick={cancelEdit} disabled={busy}>취소</button>
+								<button class="save" onclick={saveEdit} disabled={busy}>{t('common.save', $locale)}</button>
+								<button onclick={cancelEdit} disabled={busy}>{t('common.cancel', $locale)}</button>
 							</td>
 						{:else}
 							<td><code>{d.slug}</code></td>
@@ -167,56 +170,57 @@
 									<span class="dim">—</span>
 								{/if}
 							</td>
-							<td>{d.description || '—'}</td>
+							<td class="desc">{d.description || '—'}</td>
 							<td class="row-actions">
-								<button onclick={() => startEdit(d)} disabled={busy}>수정</button>
-								<button class="danger" onclick={() => askDelete(d)} disabled={busy}>삭제</button>
+								<button onclick={() => startEdit(d)} disabled={busy}>{t('adminTypes.edit', $locale)}</button>
+								<button class="danger" onclick={() => askDelete(d)} disabled={busy}>{t('detail.delete', $locale)}</button>
 							</td>
 						{/if}
 					</tr>
 				{/each}
 			</tbody>
 		</table>
+		</div>
 	{/if}
 </section>
 
 {#if creating}
 	<div class="ov" role="presentation">
 		<div class="modal" role="dialog" aria-modal="true" tabindex="-1">
-			<h3 class="modal-title">새 tag 정의</h3>
+			<h3 class="modal-title">{t('adminTags.newTagDefTitle', $locale)}</h3>
 			<div class="form">
 				<label>
 					<span>slug</span>
 					<input
 						type="text"
 						bind:value={newSlug}
-						placeholder="frontend / urgent 등"
+						placeholder={t('adminTags.slugPlaceholder', $locale)}
 						maxlength="32"
 						pattern="[a-z0-9_]+"
-						title="소문자 / 숫자 / '_' 만, 최대 32자"
+						title={t('adminTags.slugTitle', $locale)}
 						disabled={busy}
 					/>
 				</label>
 				<label>
-					<span>색</span>
+					<span>{t('adminTypes.colColor', $locale)}</span>
 					<input type="color" bind:value={newColor} disabled={busy} />
 					<code class="hex">{newColor}</code>
 				</label>
 				<label>
-					<span>설명</span>
+					<span>{t('adminTypes.colDesc', $locale)}</span>
 					<input
 						type="text"
 						bind:value={newDescription}
-						placeholder="(선택) 이 tag 의 용도"
+						placeholder={t('adminTags.descPurposePlaceholder', $locale)}
 						maxlength="200"
 						disabled={busy}
 					/>
 				</label>
 			</div>
-			<p class="form-note">파일 <code>.guild/tags/&lt;slug&gt;.toml</code> 로 저장됩니다.</p>
+			<p class="form-note">{t('adminTags.savedAsFilePre', $locale)}<code>.guild/tags/&lt;slug&gt;.toml</code>{t('adminTags.savedAsFilePost', $locale)}</p>
 			<div class="modal-actions">
-				<button class="btn-yes" onclick={doCreate} disabled={busy}>추가</button>
-				<button class="btn-no" onclick={() => (creating = false)} disabled={busy}>취소</button>
+				<button class="btn-yes" onclick={doCreate} disabled={busy}>{t('common.add', $locale)}</button>
+				<button class="btn-no" onclick={() => (creating = false)} disabled={busy}>{t('common.cancel', $locale)}</button>
 			</div>
 		</div>
 	</div>
@@ -225,14 +229,14 @@
 {#if confirmDelete}
 	<div class="ov" role="presentation">
 		<div class="modal" role="dialog" aria-modal="true" tabindex="-1">
-			<h3 class="modal-title">Tag 정의 삭제</h3>
+			<h3 class="modal-title">{t('adminTags.deleteTagDefTitle', $locale)}</h3>
 			<p class="modal-msg">
-				<code>{confirmDelete.slug}</code> 정의를 삭제할까요? <br />
-				기존 quest 의 tag 사용은 그대로 (fallback 색).
+				<code>{confirmDelete.slug}</code>{t('adminTags.deleteMsg1', $locale)} <br />
+				{t('adminTags.deleteMsg2', $locale)}
 			</p>
 			<div class="modal-actions">
-				<button class="btn-yes danger" onclick={doDelete} disabled={busy}>삭제</button>
-				<button class="btn-no" onclick={() => (confirmDelete = null)} disabled={busy}>취소</button>
+				<button class="btn-yes danger" onclick={doDelete} disabled={busy}>{t('detail.delete', $locale)}</button>
+				<button class="btn-no" onclick={() => (confirmDelete = null)} disabled={busy}>{t('common.cancel', $locale)}</button>
 			</div>
 		</div>
 	</div>
@@ -298,6 +302,10 @@
 		background: var(--btn-primary-bg-hover);
 		border-color: var(--btn-primary-border-hover);
 	}
+	/* BUG-143: 좁은 폭에선 셀 줄바꿈 대신 표 가로 스크롤 + 셀 nowrap. */
+	.table-wrap {
+		overflow-x: auto;
+	}
 	table {
 		width: 100%;
 		border-collapse: collapse;
@@ -309,6 +317,7 @@
 		padding: 0.5rem 0.6rem;
 		border-bottom: 1px solid var(--border);
 		vertical-align: middle;
+		white-space: nowrap;
 	}
 	th {
 		color: var(--text-muted);
@@ -337,10 +346,17 @@
 	.dim {
 		color: var(--text-muted);
 	}
+	/* 설명은 길 수 있음 — 유일하게 줄바꿈 허용(대신 최소 폭 확보). */
+	.desc {
+		white-space: normal;
+		min-width: 14rem;
+	}
+	/* BUG-143: td 에 display:flex 금지(table-cell 렌더 깨짐 — 구분선 어긋남). */
 	.row-actions {
-		display: flex;
-		gap: 0.3rem;
-		justify-content: flex-end;
+		text-align: right;
+	}
+	.row-actions button + button {
+		margin-left: 0.3rem;
 	}
 	input[type='text'] {
 		width: 100%;

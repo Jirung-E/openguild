@@ -41,7 +41,7 @@
 //! 실패로 안 잡히던" BUG-049 / BUG-059 의 핵심 시나리오를 해결.
 
 use crate::error::AppResult;
-use crate::repo::{fs as repo_fs, QuestFile};
+use crate::repo::{QuestFile, fs as repo_fs};
 use crate::store::Store;
 
 /// BUG-080: 외부 편집된 quest 파일의 frontmatter `updated_at` 을 파일 mtime 으로
@@ -90,6 +90,103 @@ fn replace_frontmatter_updated_at(src: &str, new_ts: &str) -> Option<String> {
         out.push_str(line);
     }
     replaced.then_some(out)
+}
+
+/// BUG-103: 파싱된 quest 파일이 DB 캐시와 내용 동일한지.
+///
+/// git checkout/pull/restore 는 **내용이 같아도 mtime 을 바꾼다** — mtime 만으로
+/// "외부 편집"을 판정해 updated_at 을 mtime 으로 write-back(BUG-080)하면, 브랜치
+/// 전환 한 번에 전체 quest 의 updated_at 이 일괄 변조된다(2026-07-03 실사고,
+/// 200+ 파일). write-back 전에 이 함수로 내용을 비교해 동일하면 updated_at 을
+/// 건드리지 않고 cached_mtime 만 갱신한다.
+///
+/// 비교 대상: frontmatter 전 필드(title/status/urgency/parent/prereq/dates/
+/// deleted/tags) + 본문(description). prereq/tags 는 나머지가 전부 같을 때만
+/// 조회(2쿼리 — 드문 경로라 저렴).
+async fn is_content_identical_to_db(
+    pool: &sqlx::SqlitePool,
+    id: i64,
+    qf: &QuestFile,
+) -> AppResult<bool> {
+    #[derive(sqlx::FromRow)]
+    struct Row {
+        title: String,
+        description: Option<String>,
+        status_slug: String,
+        urgency: i64,
+        parent_slug: Option<String>,
+        created_at: String,
+        updated_at: String,
+        deleted: bool,
+        desired_due: Option<String>,
+        required_due: Option<String>,
+    }
+    let Some(row) = sqlx::query_as::<_, Row>(
+        "SELECT q.title, q.description, s.slug AS status_slug, q.urgency,
+                (SELECT pt.prefix || '-' || printf('%03d', p.number)
+                   FROM quests p JOIN quest_types pt ON pt.id = p.quest_type_id
+                  WHERE p.id = q.parent_quest_id) AS parent_slug,
+                q.created_at, q.updated_at,
+                q.deleted_at IS NOT NULL AS deleted,
+                q.desired_due, q.required_due
+         FROM quests q JOIN quest_statuses s ON s.id = q.status_id
+         WHERE q.id = ?",
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await?
+    else {
+        return Ok(false);
+    };
+
+    let fm = &qf.frontmatter;
+    // due 는 빈 문자열 ↔ None 정규화 차이를 흡수.
+    let norm_due = |v: &Option<String>| {
+        v.as_deref()
+            .filter(|s| !s.trim().is_empty())
+            .map(String::from)
+    };
+    if row.title != fm.title
+        || row.description.as_deref().unwrap_or("") != qf.description
+        || row.status_slug != fm.status
+        || row.urgency != fm.urgency
+        || row.parent_slug != fm.parent
+        || row.created_at != crate::time::normalize_legacy_ts(&fm.created_at)
+        || row.updated_at != crate::time::normalize_legacy_ts(&fm.updated_at)
+        || row.deleted != fm.deleted
+        || norm_due(&row.desired_due) != norm_due(&fm.desired_due)
+        || norm_due(&row.required_due) != norm_due(&fm.required_due)
+    {
+        return Ok(false);
+    }
+
+    // prereq / tags — 정렬 후 비교 (저장 순서 무관).
+    let mut db_prereqs: Vec<String> = sqlx::query_scalar(
+        "SELECT qt.prefix || '-' || printf('%03d', p.number)
+         FROM quest_dependencies d
+         JOIN quests p ON p.id = d.prerequisite_id
+         JOIN quest_types qt ON qt.id = p.quest_type_id
+         WHERE d.quest_id = ?",
+    )
+    .bind(id)
+    .fetch_all(pool)
+    .await?;
+    let mut fm_prereqs = fm.prerequisites.clone();
+    db_prereqs.sort();
+    fm_prereqs.sort();
+    if db_prereqs != fm_prereqs {
+        return Ok(false);
+    }
+
+    let mut db_tags: Vec<String> =
+        sqlx::query_scalar("SELECT tag FROM quest_tags WHERE quest_id = ?")
+            .bind(id)
+            .fetch_all(pool)
+            .await?;
+    let mut fm_tags = fm.tags.clone();
+    db_tags.sort();
+    fm_tags.sort();
+    Ok(db_tags == fm_tags)
 }
 
 #[derive(Debug, Default, Clone)]
@@ -145,16 +242,26 @@ pub async fn sync_changed_quest_files(store: &Store) -> AppResult<IncrementalRep
             }
             Some(&(id, cached_mtime)) => {
                 if file_mtime > cached_mtime {
-                    // 외부 편집. parse + UPDATE.
+                    // 외부 편집 후보. parse + UPDATE.
                     match QuestFile::read(path) {
                         Ok(qf) => {
+                            // BUG-103: 내용이 DB 와 동일하면(git checkout 등 mtime 만
+                            // 변경) updated_at write-back 하지 않고 cached_mtime 만
+                            // 갱신 — 다음 sync 재감지 방지.
+                            if is_content_identical_to_db(pool, id, &qf).await? {
+                                sqlx::query("UPDATE quests SET cached_mtime = ? WHERE id = ?")
+                                    .bind(file_mtime)
+                                    .bind(id)
+                                    .execute(pool)
+                                    .await?;
+                                continue;
+                            }
                             // status_id 결정.
-                            let status_id: Option<i64> = sqlx::query_scalar(
-                                "SELECT id FROM quest_statuses WHERE slug = ?",
-                            )
-                            .bind(&qf.frontmatter.status)
-                            .fetch_optional(pool)
-                            .await?;
+                            let status_id: Option<i64> =
+                                sqlx::query_scalar("SELECT id FROM quest_statuses WHERE slug = ?")
+                                    .bind(&qf.frontmatter.status)
+                                    .fetch_optional(pool)
+                                    .await?;
                             let Some(status_id) = status_id else {
                                 report.needs_full_reindex = true; // status 가 없으면 풀 reindex 필요
                                 report.skipped.push((
@@ -169,14 +276,16 @@ pub async fn sync_changed_quest_files(store: &Store) -> AppResult<IncrementalRep
                             // 풀 reindex 로 처리 — Phase 1 의 의도적 단순화.
                             let parent_slug = qf.frontmatter.parent.clone();
                             let parent_id: Option<i64> = match parent_slug {
-                                Some(s) => sqlx::query_scalar(
-                                    "SELECT q.id FROM quests q
+                                Some(s) => {
+                                    sqlx::query_scalar(
+                                        "SELECT q.id FROM quests q
                                      JOIN quest_types qt ON qt.id = q.quest_type_id
                                      WHERE qt.prefix || '-' || printf('%03d', q.number) = ?",
-                                )
-                                .bind(&s)
-                                .fetch_optional(pool)
-                                .await?,
+                                    )
+                                    .bind(&s)
+                                    .fetch_optional(pool)
+                                    .await?
+                                }
                                 None => None,
                             };
 
@@ -280,13 +389,16 @@ pub async fn refresh_quest_if_stale(store: &Store, slug: &str) -> AppResult<bool
     // 외부 편집(file_mtime > cached_mtime)일 때만.
     let externally_edited = file_mtime > cached_mtime;
 
-    let qf = QuestFile::read(&path)
-        .map_err(crate::error::AppError::Internal)?;
-    let status_id: Option<i64> =
-        sqlx::query_scalar("SELECT id FROM quest_statuses WHERE slug = ?")
-            .bind(&qf.frontmatter.status)
-            .fetch_optional(&store.index_pool)
-            .await?;
+    let qf = QuestFile::read(&path).map_err(crate::error::AppError::Internal)?;
+    // BUG-103: mtime 이 앞서도 내용이 DB 와 동일하면(git checkout 등) 외부 편집
+    // 아님 — write-back 하지 않는다. cached_mtime 은 아래 UPDATE 의
+    // effective_mtime(max) 경로로 자연 갱신.
+    let externally_edited =
+        externally_edited && !is_content_identical_to_db(&store.index_pool, id, &qf).await?;
+    let status_id: Option<i64> = sqlx::query_scalar("SELECT id FROM quest_statuses WHERE slug = ?")
+        .bind(&qf.frontmatter.status)
+        .fetch_optional(&store.index_pool)
+        .await?;
     let Some(status_id) = status_id else {
         return Ok(false); // unknown status — 풀 reindex 가 처리할 영역.
     };
@@ -296,14 +408,19 @@ pub async fn refresh_quest_if_stale(store: &Store, slug: &str) -> AppResult<bool
     let (updated_at, effective_mtime) = if externally_edited {
         let (edit_iso, eff) = writeback_external_edit_ts(&path);
         if edit_iso.is_empty() {
-            (crate::time::normalize_legacy_ts(&qf.frontmatter.updated_at), eff)
+            (
+                crate::time::normalize_legacy_ts(&qf.frontmatter.updated_at),
+                eff,
+            )
         } else {
             (edit_iso, eff)
         }
     } else {
         (
             crate::time::normalize_legacy_ts(&qf.frontmatter.updated_at),
-            cached_mtime,
+            // BUG-103: 내용 동일 + mtime 만 앞선 경우 file_mtime 으로 올려
+            // 다음 진입마다 내용 비교를 반복하지 않게 한다.
+            cached_mtime.max(file_mtime),
         )
     };
     let deleted_at: Option<String> = qf.frontmatter.deleted.then(|| updated_at.clone());
@@ -357,11 +474,10 @@ pub async fn refresh_campaign_if_stale(store: &Store, slug: &str) -> AppResult<b
     };
 
     // campaigns 행 존재 확인 (신규/삭제는 reindex 영역).
-    let id: Option<i64> =
-        sqlx::query_scalar("SELECT id FROM campaigns WHERE campaign_slug = ?")
-            .bind(slug)
-            .fetch_optional(&store.index_pool)
-            .await?;
+    let id: Option<i64> = sqlx::query_scalar("SELECT id FROM campaigns WHERE campaign_slug = ?")
+        .bind(slug)
+        .fetch_optional(&store.index_pool)
+        .await?;
     let Some(id) = id else {
         return Ok(false);
     };
@@ -409,8 +525,7 @@ pub async fn refresh_campaign_if_stale(store: &Store, slug: &str) -> AppResult<b
 
     // 체크리스트 (본문) + linked_quests (frontmatter) re-sync.
     let items = crate::repo::extract_checklist_items(&cf.body);
-    crate::services::campaigns::replace_checklists_from_file(&store.index_pool, id, &items)
-        .await?;
+    crate::services::campaigns::replace_checklists_from_file(&store.index_pool, id, &items).await?;
     sqlx::query("DELETE FROM campaign_quests WHERE campaign_id = ?")
         .bind(id)
         .execute(&store.index_pool)
@@ -465,7 +580,7 @@ pub async fn sync_on_open(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::repo::{seed_guild_dir, QuestFile, QuestFrontmatter};
+    use crate::repo::{QuestFile, QuestFrontmatter, seed_guild_dir};
 
     fn fresh_tmp(label: &str) -> std::path::PathBuf {
         let ns = std::time::SystemTime::now()
@@ -579,6 +694,81 @@ mod tests {
         // 두 번째 호출 — 변경 없음 (write-back 후 cached_mtime 갱신 → churn 없음).
         let report2 = sync_changed_quest_files(&store).await.unwrap();
         assert_eq!(report2.updated, 0);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-103: git checkout/pull 시뮬레이션 — **내용은 동일한데 mtime 만 갱신**된
+    /// 파일은 외부 편집이 아님. updated_at write-back 없이 cached_mtime 만 갱신.
+    #[tokio::test]
+    async fn same_content_new_mtime_does_not_rewrite_updated_at() {
+        let dir = fresh_tmp("bug103");
+        let store = setup(&dir).await;
+        let paths = store.paths.clone();
+
+        let qf = QuestFile {
+            frontmatter: QuestFrontmatter {
+                quest_id: "DEV-001".into(),
+                title: "original".into(),
+                status: "open".into(),
+                urgency: 3,
+                parent: None,
+                prerequisites: vec![],
+                created_at: "2026-01-01T00:00:00Z".into(),
+                updated_at: "2026-01-01T00:00:00Z".into(),
+                deleted: false,
+                desired_due: None,
+                required_due: None,
+                tags: vec![],
+            },
+            description: "body v1".into(),
+            auto_block: String::new(),
+        };
+        qf.write(paths.quest_path("DEV-001")).unwrap();
+        crate::reindex::reindex(&store).await.unwrap();
+        let before: String = sqlx::query_scalar("SELECT updated_at FROM quests WHERE id = 1")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+
+        // git checkout 시뮬레이션: 동일 내용 재작성 → mtime 만 전진.
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        qf.write(paths.quest_path("DEV-001")).unwrap();
+
+        let report = sync_changed_quest_files(&store).await.unwrap();
+        assert_eq!(
+            report.updated, 0,
+            "내용 동일 — 외부 편집으로 세면 안 됨 (BUG-103)"
+        );
+        assert!(!report.needs_full_reindex, "내용 동일 — 풀 reindex 불필요");
+
+        // updated_at 은 DB / 파일 모두 원래 값 그대로.
+        let after: String = sqlx::query_scalar("SELECT updated_at FROM quests WHERE id = 1")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(before, after, "updated_at 변조 금지 (BUG-103)");
+        let on_disk = std::fs::read_to_string(paths.quest_path("DEV-001")).unwrap();
+        assert!(
+            on_disk.contains("updated_at = \"2026-01-01T00:00:00Z\""),
+            "파일 frontmatter updated_at 도 원본 유지"
+        );
+
+        // cached_mtime 은 갱신되어 재감지 churn 없음.
+        let report2 = sync_changed_quest_files(&store).await.unwrap();
+        assert_eq!(report2.updated, 0);
+
+        // refresh_quest_if_stale 도 동일 게이트 — 재작성(mtime 전진) 후 진입해도
+        // 외부 편집 아님으로 판정.
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        qf.write(paths.quest_path("DEV-001")).unwrap();
+        let edited = refresh_quest_if_stale(&store, "DEV-001").await.unwrap();
+        assert!(!edited, "내용 동일 — refresh 도 외부 편집 아님 (BUG-103)");
+        let after2: String = sqlx::query_scalar("SELECT updated_at FROM quests WHERE id = 1")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(before, after2);
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -742,11 +932,12 @@ mod tests {
 
         // 감지 → true, DB 갱신.
         assert!(refresh_campaign_if_stale(&store, "C-001").await.unwrap());
-        let (title, desc): (String, Option<String>) =
-            sqlx::query_as("SELECT title, description FROM campaigns WHERE campaign_slug = 'C-001'")
-                .fetch_one(&store.index_pool)
-                .await
-                .unwrap();
+        let (title, desc): (String, Option<String>) = sqlx::query_as(
+            "SELECT title, description FROM campaigns WHERE campaign_slug = 'C-001'",
+        )
+        .fetch_one(&store.index_pool)
+        .await
+        .unwrap();
         assert_eq!(title, "edited externally");
         assert_eq!(desc.as_deref(), Some("body v2"));
 
@@ -870,12 +1061,16 @@ mod tests {
 
         // 게이트상 외부편집 아님(false) — 그러나 콘텐츠 re-sync 되어야.
         let edited = refresh_campaign_if_stale(&store, "C-001").await.unwrap();
-        assert!(!edited, "file_mtime <= cached(touch) → write-back 안 함(false)");
-        let (title, desc): (String, Option<String>) =
-            sqlx::query_as("SELECT title, description FROM campaigns WHERE campaign_slug = 'C-001'")
-                .fetch_one(&store.index_pool)
-                .await
-                .unwrap();
+        assert!(
+            !edited,
+            "file_mtime <= cached(touch) → write-back 안 함(false)"
+        );
+        let (title, desc): (String, Option<String>) = sqlx::query_as(
+            "SELECT title, description FROM campaigns WHERE campaign_slug = 'C-001'",
+        )
+        .fetch_one(&store.index_pool)
+        .await
+        .unwrap();
         assert_eq!(
             title, "edited by other process",
             "게이트가 닫혀도 콘텐츠는 항상 re-read 되어야 (BUG-089)"

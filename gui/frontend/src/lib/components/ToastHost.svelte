@@ -1,66 +1,362 @@
 <!--
-  앱 공용 toast 표시 영역. layout 에 1회 마운트. showToast() 로 추가된 메시지를
-  우상단에 쌓아 보여주고, 클릭 또는 자동(기본 4초) 으로 닫힘. alert() 대체 —
-  모달/보드 어디서든 동일 UI.
+  DEV-259: 앱 알림 통합 호스트 (layout 에 1회 마운트).
+  `notifications` 스토어(도착순)를 우하단 한 컬럼으로 렌더 — 새 알림이 맨
+  아래(코너)에, 기존은 위로 밀림. 종류(kind)별로 렌더:
+   - toast : 텍스트(자동 소멸). showToast() 로 추가.
+   - update: 업데이터 상태 카드.
+   - schema: DB schema-ahead 경고 카드.
+  업데이트·스키마 알림의 소스 watcher(주기 체크 / schema 조회 → 스토어
+  upsert)도 이 호스트가 내장한다(이전의 UpdateBanner/SchemaAheadBanner
+  껍데기 컴포넌트를 흡수·제거).
 -->
 <script lang="ts">
-	import { toasts, dismissToast } from '$lib/stores/toast';
+	import { onMount } from 'svelte';
+	import { get } from 'svelte/store';
+	import {
+		notifications,
+		upsertNotif,
+		dismissNotif,
+		dismissSchema,
+		schemaSig,
+		isSchemaDismissed
+	} from '$lib/stores/toast';
+	import {
+		updateState,
+		checkForUpdate,
+		downloadAndRelaunch,
+		dismissUpdate
+	} from '$lib/api/updater';
+	import { detectEnvironment } from '$lib/api/transport';
+	import OverlayScrollbar from './OverlayScrollbar.svelte';
+	import { locale, t } from '$lib/stores/locale';
+
+	const RELEASE_URL = 'https://github.com/Jirung-E/openguild/releases/latest';
+	const isTauri = detectEnvironment() === 'tauri';
+
+	let notesEl: HTMLPreElement | undefined = $state(undefined);
+
+	// 스키마 경고의 "최신 버전 받기" — 시스템 브라우저로. (button 이라 layout 의
+	// anchor intercept 를 안 타서 명시 호출.)
+	async function openRelease() {
+		try {
+			const { openUrl } = await import('@tauri-apps/plugin-opener');
+			await openUrl(RELEASE_URL);
+		} catch {
+			try {
+				window.open(RELEASE_URL, '_blank');
+			} catch {
+				/* ignore */
+			}
+		}
+	}
+
+	// ── DEV-259: 알림 소스 watcher 를 이 호스트로 흡수 ──────────────────
+	// 이전엔 UpdateBanner/SchemaAheadBanner 가 아무것도 렌더 안 하면서 로직만
+	// 돌리는 껍데기 컴포넌트였음 → 여기로 합쳐 두 컴포넌트를 제거.
+
+	// DEV-083: 주기적 업데이트 재확인 간격(6시간 타협점).
+	const PERIODIC_CHECK_MS = 6 * 60 * 60 * 1000;
+	// BUG-096: uptodate/error 는 정보성이라 일정 시간 후 자동으로 idle 로.
+	const AUTO_DISMISS_MS = 5000;
+
+	// DEV-063/DEV-259: 업데이터 상태 → 'update' 알림 presence(제자리 갱신).
+	$effect(() => {
+		if (!isTauri) return;
+		if ($updateState.status === 'idle') {
+			dismissNotif('update');
+		} else {
+			upsertNotif({ id: 'update', kind: 'update' });
+		}
+	});
+	// BUG-096: uptodate/error 자동 닫힘(→ idle → 위 effect 가 알림 제거).
+	$effect(() => {
+		const s = $updateState.status;
+		if (s !== 'uptodate' && s !== 'error') return;
+		const handle = setTimeout(() => dismissUpdate(), AUTO_DISMISS_MS);
+		return () => clearTimeout(handle);
+	});
+
+	// BUG-041/BUG-139: DB schema 가 binary 보다 앞서면 'schema' 알림.
+	async function checkSchema() {
+		if (!isTauri) return;
+		try {
+			const { invoke } = await import('@tauri-apps/api/core');
+			const status = (await invoke('get_db_schema_status')) as {
+				is_ahead: boolean;
+				ahead_versions: number[];
+				binary_version: string;
+				latest_known_migration: number | null;
+			};
+			if (!status.is_ahead) {
+				dismissNotif('schema');
+				return;
+			}
+			const ahead = status.ahead_versions ?? [];
+			const binaryVersion = status.binary_version ?? '';
+			if (isSchemaDismissed(schemaSig(binaryVersion, ahead))) return;
+			upsertNotif({
+				id: 'schema',
+				kind: 'schema',
+				binaryVersion,
+				aheadVersions: ahead,
+				latestKnown: status.latest_known_migration
+			});
+		} catch {
+			// 명령 미존재(구 backend) — 조용히 무시.
+		}
+	}
+
+	onMount(() => {
+		checkSchema();
+		if (!isTauri) return; // 브라우저 모드 — 업데이트 개념 없음.
+		checkForUpdate({ silent: true });
+		const handle = setInterval(() => {
+			const s = get(updateState).status;
+			if (s === 'available' || s === 'downloading' || s === 'ready') return;
+			checkForUpdate({ silent: true });
+		}, PERIODIC_CHECK_MS);
+		return () => clearInterval(handle);
+	});
 </script>
 
-<div class="toast-wrap" role="status" aria-live="polite">
-	{#each $toasts as t (t.id)}
-		<button class="toast {t.variant}" onclick={() => dismissToast(t.id)} title="닫기">
-			{t.message}
-		</button>
+<div class="notif-stack" role="status" aria-live="polite">
+	{#each $notifications as n (n.id)}
+		{#if n.kind === 'toast'}
+			<button
+				class="card toast {n.variant}"
+				onclick={() => dismissNotif(n.id)}
+				title={t('update.close', $locale)}
+			>
+				{n.message}
+			</button>
+		{:else if n.kind === 'update'}
+			<div class="card upd" class:err={$updateState.status === 'error'} role="status">
+				<button class="card-x" title={t('update.close', $locale)} onclick={() => dismissUpdate()}>×</button>
+				{#if $updateState.status === 'checking'}
+					<p class="t-title">{t('update.checking', $locale)}</p>
+				{:else if $updateState.status === 'uptodate'}
+					<p class="t-title ok">{t('update.uptodate', $locale)}</p>
+				{:else if $updateState.status === 'available'}
+					<p class="t-title">{t('update.availablePre', $locale)}<strong>{$updateState.version}</strong>{t('update.availablePost', $locale)}</p>
+					{#if $updateState.notes}
+						<details>
+							<summary>{t('update.releaseNotes', $locale)}</summary>
+							<pre bind:this={notesEl}>{$updateState.notes}</pre>
+							{#if notesEl}
+								<OverlayScrollbar target={notesEl} />
+							{/if}
+						</details>
+					{/if}
+					<button class="btn-primary" onclick={() => downloadAndRelaunch()}>
+						{t('update.installBtn', $locale)}
+					</button>
+				{:else if $updateState.status === 'downloading'}
+					<p class="t-title">
+						{t('update.downloading', $locale)} {$updateState.pct !== null ? `${$updateState.pct}%` : ''}
+					</p>
+				{:else if $updateState.status === 'ready'}
+					<p class="t-title ok">{t('update.ready', $locale)}</p>
+				{:else if $updateState.status === 'error'}
+					<p class="t-title err">{t('update.error', $locale)}</p>
+					<p class="t-msg">{$updateState.message}</p>
+				{/if}
+			</div>
+		{:else if n.kind === 'schema'}
+			<div class="card schema" role="alert">
+				<button
+					class="card-x"
+					onclick={() => dismissSchema(schemaSig(n.binaryVersion, n.aheadVersions))}
+					aria-label={t('update.close', $locale)}
+					title={t('update.close', $locale)}>×</button
+				>
+				<div class="msg">
+					<strong>⚠ 이 길드 DB 가 현재 GUI 버전보다 새롭습니다</strong>
+					<span class="detail">
+						현재 GUI: <code>v{n.binaryVersion}</code>
+						{#if n.latestKnown != null}
+							(migration {n.latestKnown} 까지 인식)
+						{/if}
+						· 이 길드 DB: migration <strong>{Math.max(...n.aheadVersions)}</strong>
+						{#if n.aheadVersions.length > 1}
+							(+{n.aheadVersions.length - 1} more)
+						{/if}
+						적용됨. 일부 데이터가 제대로 표시되지 않거나 reindex 가 실패할 수 있습니다.
+					</span>
+				</div>
+				<button class="btn-update" onclick={openRelease}> 최신 버전 받기 ↗ </button>
+			</div>
+		{/if}
 	{/each}
 </div>
 
 <style>
-	/* 모달(z 100) / admin toast(z 1000) 보다 위. */
-	.toast-wrap {
+	/* DEV-259: 우하단 단일 스택. bottom 고정 + column → 새 항목이 코너에,
+	   기존은 위로 밀림. */
+	.notif-stack {
 		position: fixed;
-		top: 1rem;
-		right: 1rem;
+		right: 1.5rem;
+		bottom: 1.5rem;
 		z-index: 2000;
 		display: flex;
 		flex-direction: column;
 		gap: 0.5rem;
-		max-width: calc(26.25rem * var(--popup-scale, 1)); /* BUG-064 */
+		align-items: stretch;
+		width: calc(26.25rem * var(--popup-scale, 1)); /* BUG-064 */
+		max-width: calc(100vw - 3rem);
 		pointer-events: none;
 	}
-	.toast {
+	.card {
+		position: relative;
 		text-align: left;
-		padding: 0.7rem 1rem;
-		border-radius: 6px;
+		border-radius: 8px;
 		border: 1px solid var(--border);
 		background: var(--bg-elevated);
-		color: var(--text-strong);
-		font-size: 0.875rem;
-		line-height: 1.45;
-		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-		cursor: pointer;
+		box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+		color: var(--text);
+		font-size: 0.85rem;
 		pointer-events: auto;
-		white-space: pre-wrap;
-		animation: toast-in 0.18s ease-out;
+		animation: notif-in 0.18s ease-out;
 	}
-	.toast.error {
-		border-color: color-mix(in srgb, var(--danger) 55%, transparent);
-		background: color-mix(in srgb, var(--danger) 14%, var(--bg-elevated));
-		color: var(--danger);
-	}
-	.toast.success {
-		border-color: color-mix(in srgb, var(--success) 55%, transparent);
-		background: color-mix(in srgb, var(--success) 14%, var(--bg-elevated));
-		color: var(--success);
-	}
-	@keyframes toast-in {
+	@keyframes notif-in {
 		from {
 			opacity: 0;
-			transform: translateY(-8px);
+			transform: translateY(8px);
 		}
 		to {
 			opacity: 1;
 			transform: translateY(0);
 		}
+	}
+	.card-x {
+		position: absolute;
+		top: 0.4rem;
+		right: 0.5rem;
+		background: none;
+		border: none;
+		color: var(--text-faint);
+		font-size: 1.1rem;
+		line-height: 1;
+		cursor: pointer;
+		padding: 0 0.3rem;
+	}
+	.card-x:hover {
+		color: var(--text);
+	}
+
+	/* ── toast ── */
+	.toast {
+		padding: 0.85rem 1rem;
+		border-left: 3px solid var(--accent);
+		line-height: 1.45;
+		cursor: pointer;
+		white-space: pre-wrap;
+	}
+	.toast.error {
+		border-left-color: var(--danger);
+		color: var(--danger);
+	}
+	.toast.success {
+		border-left-color: var(--success-strong);
+		color: var(--success);
+	}
+
+	/* ── update ── */
+	.upd {
+		padding: 0.85rem 2rem 0.85rem 1rem;
+		border-left: 3px solid var(--success-strong);
+	}
+	.upd.err {
+		border-left-color: var(--danger);
+	}
+	.upd .t-title {
+		margin: 0;
+		font-weight: 600;
+	}
+	.upd .t-title.ok {
+		color: var(--success);
+	}
+	.upd .t-title.err {
+		color: var(--danger);
+	}
+	.upd .t-msg {
+		margin: 0.35rem 0 0;
+		color: var(--text-muted);
+		font-size: 0.8rem;
+		word-break: break-word;
+	}
+	.upd details {
+		margin: 0.5rem 0;
+		color: var(--text-muted);
+	}
+	.upd pre {
+		white-space: pre-wrap;
+		background: var(--bg);
+		border: 1px solid var(--bg-subtle);
+		border-radius: 6px;
+		padding: 0.5rem 0.75rem;
+		max-height: 8rem;
+		overflow-y: auto;
+		margin: 0.4rem 0 0;
+		scrollbar-width: none;
+	}
+	.upd pre::-webkit-scrollbar {
+		display: none;
+	}
+	.upd .btn-primary {
+		margin-top: 0.5rem;
+		padding: 0.4rem 0.9rem;
+		background: var(--btn-primary-bg);
+		border: 1px solid var(--btn-primary-border);
+		border-radius: 6px;
+		color: var(--btn-primary-text);
+		font-size: 0.85rem;
+		cursor: pointer;
+	}
+	.upd .btn-primary:hover {
+		background: var(--btn-primary-bg-hover);
+		border-color: var(--btn-primary-border-hover);
+	}
+
+	/* ── schema ── */
+	.schema {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		padding: 0.85rem 2rem 0.85rem 1rem;
+		border-left: 3px solid var(--orange);
+	}
+	.schema .msg {
+		display: flex;
+		flex-direction: column;
+		gap: 0.3rem;
+	}
+	.schema .msg strong {
+		font-weight: 600;
+		color: var(--orange);
+	}
+	.schema .detail {
+		font-size: 0.78rem;
+		color: var(--text-muted);
+	}
+	.schema .detail code {
+		background: color-mix(in srgb, var(--text) 10%, transparent);
+		padding: 0 0.25rem;
+		border-radius: 3px;
+		font-size: 0.85em;
+		color: var(--text);
+	}
+	.schema .btn-update {
+		align-self: flex-start;
+		background: var(--warning);
+		color: var(--bg);
+		border: none;
+		border-radius: 4px;
+		padding: 0.3rem 0.85rem;
+		font-size: 0.78rem;
+		font-weight: 600;
+		cursor: pointer;
+	}
+	.schema .btn-update:hover {
+		background: color-mix(in srgb, var(--warning) 80%, white);
 	}
 </style>
