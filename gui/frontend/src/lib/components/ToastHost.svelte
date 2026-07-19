@@ -18,7 +18,10 @@
 		dismissNotif,
 		dismissSchema,
 		schemaSig,
-		isSchemaDismissed
+		isSchemaDismissed,
+		computeVisible,
+		MAX_VISIBLE_NOTIFS,
+		showToast
 	} from '$lib/stores/toast';
 	import {
 		updateState,
@@ -60,8 +63,9 @@
 	const AUTO_DISMISS_MS = 5000;
 
 	// DEV-063/DEV-259: 업데이터 상태 → 'update' 알림 presence(제자리 갱신).
+	// DEV-266: dev 모드는 브라우저에서도 허용 — __ogNotify.update() 트리거용.
 	$effect(() => {
-		if (!isTauri) return;
+		if (!isTauri && !import.meta.env.DEV) return;
 		if ($updateState.status === 'idle') {
 			dismissNotif('update');
 		} else {
@@ -106,8 +110,41 @@
 		}
 	}
 
+	// ── DEV-266: 표시 상한 + "+N개 더" 축약 ─────────────────────────────
+	// 동시 다발 알림이 스택을 무한정 키우지 않게 computeVisible 로 접는다.
+	// 칩 클릭 시 임시 전체 펼침 — 개수가 상한 아래로 내려가면 자동 복귀.
+	let expanded = $state(false);
+	const view = $derived(computeVisible($notifications, expanded));
+	$effect(() => {
+		if ($notifications.length <= MAX_VISIBLE_NOTIFS) expanded = false;
+	});
+
 	onMount(() => {
 		checkSchema();
+		// DEV-266: dev 전용 알림 트리거 — schema-ahead 는 '구버전 binary + 신버전
+		// DB', 업데이트 카드는 실제 릴리즈가 있어야만 떠서 동시 발생 조합을
+		// 실기로 재현하기 어렵다. 개발 모드에서만 콘솔 헬퍼를 노출해 임의
+		// 조합을 수동 재현할 수 있게 한다. 예:
+		//   __ogNotify.toast('hello', 'error'); __ogNotify.schema(); __ogNotify.update('available');
+		if (import.meta.env.DEV && typeof window !== 'undefined') {
+			(window as unknown as Record<string, unknown>).__ogNotify = {
+				toast: showToast,
+				schema: () =>
+					upsertNotif({
+						id: 'schema',
+						kind: 'schema',
+						binaryVersion: '0.0.0-dev',
+						aheadVersions: [99],
+						latestKnown: 1
+					}),
+				update: (status = 'available') =>
+					updateState.set(
+						status === 'available'
+							? { status: 'available', version: '9.9.9-dev', notes: 'dev trigger' }
+							: ({ status } as never)
+					)
+			};
+		}
 		if (!isTauri) return; // 브라우저 모드 — 업데이트 개념 없음.
 		checkForUpdate({ silent: true });
 		const handle = setInterval(() => {
@@ -120,7 +157,14 @@
 </script>
 
 <div class="notif-stack" role="status" aria-live="polite">
-	{#each $notifications as n (n.id)}
+	<!-- DEV-266: 상한 초과분 축약 칩 — 클릭 시 전체 펼침. 스택 맨 위(코너
+	     반대쪽)에 둬 최신/지속 알림을 가리지 않는다. -->
+	{#if view.hidden > 0}
+		<button class="card more-chip" onclick={() => (expanded = true)}>
+			{t('notif.more', $locale).replace('{n}', String(view.hidden))}
+		</button>
+	{/if}
+	{#each view.visible as n (n.id)}
 		{#if n.kind === 'toast'}
 			<button
 				class="card toast {n.variant}"
@@ -128,6 +172,10 @@
 				title={t('update.close', $locale)}
 			>
 				{n.message}
+				{#if n.count > 1}
+					<!-- DEV-266: 중복 억제 — 같은 알림 재발생 횟수 뱃지. -->
+					<span class="count">×{n.count}</span>
+				{/if}
 			</button>
 		{:else if n.kind === 'update'}
 			<div class="card upd" class:err={$updateState.status === 'error'} role="status">
@@ -258,6 +306,27 @@
 	.toast.success {
 		border-left-color: var(--success-strong);
 		color: var(--success);
+	}
+	/* DEV-266: 같은 알림 재발생 횟수 뱃지. */
+	.toast .count {
+		margin-left: 0.4rem;
+		font-size: 0.72rem;
+		font-weight: 700;
+		color: var(--text-muted);
+		background: color-mix(in srgb, var(--text) 10%, transparent);
+		border-radius: 999px;
+		padding: 0.05rem 0.4rem;
+	}
+	/* DEV-266: "+N개 더" 축약 칩. */
+	.more-chip {
+		align-self: flex-end;
+		padding: 0.3rem 0.7rem;
+		font-size: 0.75rem;
+		color: var(--text-muted);
+		cursor: pointer;
+	}
+	.more-chip:hover {
+		color: var(--text);
 	}
 
 	/* ── update ── */

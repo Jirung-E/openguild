@@ -120,6 +120,8 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'nav.library': { ko: '도서관', en: 'Library' },
 	'nav.settings': { ko: '설정', en: 'Settings' },
 	'nav.more': { ko: '더 보기', en: 'More' },
+	// DEV-266: 알림 스택 상한 초과 축약 칩 — {n} 은 렌더 시 치환.
+	'notif.more': { ko: '+{n}개 더 보기', en: '+{n} more' },
 	'nav.settingsQuickMenu': { ko: '설정 퀵메뉴', en: 'Settings quick menu' },
 
 	// DEV-205 모듈5: 설정 페이지.
