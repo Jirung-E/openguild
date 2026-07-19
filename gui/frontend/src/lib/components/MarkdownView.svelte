@@ -23,10 +23,73 @@
 		loadQuestIndex,
 		refHref,
 		resolveCrossLinkToken,
-		KIND_LABEL
+		KIND_LABEL,
+		type Kind
 	} from '$lib/stores/questIndex';
 
 	let { source }: { source: string } = $props();
+
+	// DEV-256: 크로스링크 호버 미리보기 — 실재하는 링크(a.xlink, missing 제외)에
+	// 마우스를 잠시(280ms) 올리면 검색 팔레트식 미리보기 팝업을 앵커 근처에
+	// 띄운다. 링크/팝업 둘 다에서 벗어나면 지연(300ms) 후 닫힘 — 링크→팝업으로
+	// 마우스를 옮기는 동안 닫히지 않게. 팝업 컴포넌트는 동적 import — 정적
+	// 순환 의존(LinkPreviewPopup ↔ MarkdownView) 회피 + 첫 호버 전 비용 0.
+	type HoverTarget = {
+		kind: Kind;
+		id: string;
+		slug?: string;
+		title: string;
+		href: string;
+		anchorRect: { left: number; right: number; top: number; bottom: number };
+	};
+	let PopupComp = $state<typeof import('./LinkPreviewPopup.svelte').default | null>(null);
+	let hoverTarget = $state<HoverTarget | null>(null);
+	let openTimer: ReturnType<typeof setTimeout> | null = null;
+	let closeTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function cancelClose() {
+		if (closeTimer) {
+			clearTimeout(closeTimer);
+			closeTimer = null;
+		}
+	}
+	function scheduleClose() {
+		cancelClose();
+		closeTimer = setTimeout(() => (hoverTarget = null), 300);
+	}
+	function onContainerOver(e: MouseEvent) {
+		const a = (e.target as HTMLElement).closest?.('a.xlink') as HTMLAnchorElement | null;
+		if (!a || !container?.contains(a) || !a.dataset.xkind) return;
+		cancelClose();
+		if (openTimer) clearTimeout(openTimer);
+		openTimer = setTimeout(async () => {
+			openTimer = null;
+			if (!PopupComp) PopupComp = (await import('./LinkPreviewPopup.svelte')).default;
+			const r = a.getBoundingClientRect();
+			hoverTarget = {
+				kind: a.dataset.xkind as Kind,
+				id: a.dataset.xid ?? '',
+				slug: a.dataset.xslug,
+				title: a.dataset.xtitle ?? '',
+				href: a.getAttribute('href') ?? '#',
+				anchorRect: { left: r.left, right: r.right, top: r.top, bottom: r.bottom }
+			};
+		}, 280);
+	}
+	function onContainerOut(e: MouseEvent) {
+		const a = (e.target as HTMLElement).closest?.('a.xlink');
+		if (!a) return;
+		if (openTimer) {
+			clearTimeout(openTimer);
+			openTimer = null;
+		}
+		if (hoverTarget) scheduleClose();
+	}
+	$effect(() => () => {
+		// 언마운트 시 타이머 정리.
+		if (openTimer) clearTimeout(openTimer);
+		if (closeTimer) clearTimeout(closeTimer);
+	});
 
 	// DEV-183: highlight.js 연동 marked 인스턴스. language-mermaid 는 mermaid 가
 	// 따로 렌더 — plaintext 로 하이라이트돼도 innerText 가 보존돼 영향 없음.
@@ -150,8 +213,46 @@
 		if (/^BOOK-\d+$/i.test(id)) return 'book';
 		return /^C-\d+$/i.test(id) ? 'campaign' : 'quest';
 	}
+	// DEV-256에서 발견한 기존 레이스: 첫 렌더 시점에 인덱스가 아직 적재 전이면
+	// 링크가 missing(빨강)으로 만들어지는데, 인덱스 적재 후 effect 가 재실행돼도
+	// 원본 텍스트 노드는 이미 anchor 로 치환된 뒤라 TreeWalker 가 다시 잡지
+	// 못했다 — missing 상태가 영구 고착. anchor 에 원본 토큰(data-xtoken)을
+	// 남겨두고, 재실행 시 기존 anchor 들을 다시 resolve 해 갱신한다(reindex 후
+	// 존재→미존재 전환도 같은 경로로 반영).
+	function applyRefToAnchor(a: HTMLAnchorElement, rawToken: string) {
+		const resolved = resolveCrossLinkToken(rawToken);
+		const ref = resolved.ref;
+		const rawId = resolved.id;
+		const id = rawId.toUpperCase();
+		const kind = resolved.kind ?? guessKindByShape(id);
+		a.href = refHref(id, kind, ref?.slug ?? rawId);
+		// DEV-173: 규칙 slug 는 소문자가 정체성 — 원문 그대로 표시.
+		a.textContent = kind === 'rule' ? (ref?.slug ?? rawId) : id;
+		a.className = ref ? 'xlink' : 'xlink missing';
+		a.title = ref
+			? `${KIND_LABEL[kind]}: ${ref.title}`
+			: `존재하지 않는 ${KIND_LABEL[kind]} — ${kind === 'rule' ? rawId : id}`;
+		a.dataset.xtoken = rawToken;
+		// DEV-256: 실재 링크만 호버 미리보기 대상 — 팝업이 읽을 메타를
+		// data 속성으로 실어둔다(missing 은 보여줄 본문이 없음).
+		if (ref) {
+			a.dataset.xkind = kind;
+			a.dataset.xid = kind === 'rule' ? (ref.slug ?? rawId) : id;
+			if (ref.slug) a.dataset.xslug = ref.slug;
+			a.dataset.xtitle = ref.title;
+		} else {
+			delete a.dataset.xkind;
+			delete a.dataset.xid;
+			delete a.dataset.xslug;
+			delete a.dataset.xtitle;
+		}
+	}
 	function rewriteCrossLinks() {
 		if (!container) return;
+		// 이미 만들어진 anchor 갱신 — 인덱스 늦은 적재/reindex 반영.
+		for (const a of Array.from(container.querySelectorAll<HTMLAnchorElement>('a.xlink'))) {
+			if (a.dataset.xtoken) applyRefToAnchor(a, a.dataset.xtoken);
+		}
 		const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
 			acceptNode(node) {
 				const parent = node.parentElement;
@@ -176,24 +277,13 @@
 			while ((m = CROSS_LINK_RE.exec(text))) {
 				const whole = m[0];
 				const rawToken = m[1]; // [[token]] 안 — kind: 접두 있을 수 있음(DEV-219)
-				const resolved = resolveCrossLinkToken(rawToken);
-				const ref = resolved.ref;
-				const rawId = resolved.id;
-				const id = rawId.toUpperCase();
 				if (m.index > last) {
 					frag.appendChild(document.createTextNode(text.slice(last, m.index)));
 				}
 				// 접두가 있었으면 그 kind 를 그대로 신뢰(존재 여부와 무관), 없었고
-				// 미존재면 형태로 추정.
-				const kind = resolved.kind ?? guessKindByShape(id);
+				// 미존재면 형태로 추정 — 상세는 applyRefToAnchor.
 				const a = document.createElement('a');
-				a.href = refHref(id, kind, ref?.slug ?? rawId);
-				// DEV-173: 규칙 slug 는 소문자가 정체성 — 원문 그대로 표시.
-				a.textContent = kind === 'rule' ? (ref?.slug ?? rawId) : id;
-				a.className = ref ? 'xlink' : 'xlink missing';
-				a.title = ref
-					? `${KIND_LABEL[kind]}: ${ref.title}`
-					: `존재하지 않는 ${KIND_LABEL[kind]} — ${kind === 'rule' ? rawId : id}`;
+				applyRefToAnchor(a, rawToken);
 				frag.appendChild(a);
 				last = m.index + whole.length;
 			}
@@ -235,7 +325,22 @@
 	}
 </script>
 
-<div class="md" bind:this={container}>{@html html}</div>
+<!-- DEV-256: mouseover/out 델리게이션 — 동적 생성되는 a.xlink 에 개별 리스너를
+     달 수 없어 컨테이너에서 위임. 키보드 접근성은 링크 자체가 anchor 라 기본
+     포커스/이동으로 이미 제공됨(팝업은 마우스 보조 UI). -->
+<!-- svelte-ignore a11y_mouse_events_have_key_events, a11y_no_static_element_interactions -->
+<div class="md" bind:this={container} onmouseover={onContainerOver} onmouseout={onContainerOut}>
+	{@html html}
+</div>
+
+{#if PopupComp && hoverTarget}
+	<PopupComp
+		{...hoverTarget}
+		onenter={cancelClose}
+		onleave={scheduleClose}
+		onnavigate={() => (hoverTarget = null)}
+	/>
+{/if}
 
 <style>
 	.md {
