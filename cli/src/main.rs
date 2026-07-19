@@ -210,7 +210,18 @@ enum Command {
         discussion: bool,
         #[arg(long, conflicts_with = "discussion", help = tf!("미해결 토론만 (discussion 포함).", "Unresolved discussions only (implies discussion)."))]
         unresolved: bool,
-        #[arg(long, default_value_t = 20, help = tf!("최대 N 개 (기본 20).", "Max N entries (default 20)."))]
+        // DEV-262: quest comment list 와 옵션셋 통일.
+        #[arg(long = "top-only", conflicts_with = "reply_to", help = tf!("top-level 댓글만 (답글 제외).", "Top-level comments only (excludes replies)."))]
+        top_only: bool,
+        #[arg(long = "reply-to", help = tf!("특정 entry 의 답글만 (entry_id).", "Only replies to a specific entry (entry_id)."))]
+        reply_to: Option<i64>,
+        #[arg(long, help = tf!("최신순 출력 (기본은 오래된 순 = 대화 흐름 — quest comment list 와 동일).", "Newest first (default is oldest first = conversation order, same as `quest comment list`)."))]
+        reverse: bool,
+        #[arg(long, conflicts_with = "reverse",
+              help = tf!("같은 slug 끼리 묶어 답글을 부모 아래 들여쓰기 트리로 출력. --reverse 와 상호배타.",
+                         "Group by slug and print replies as an indented tree under their parent. Mutually exclusive with --reverse."))]
+        tree: bool,
+        #[arg(long, default_value_t = 20, help = tf!("최대 N 개 (기본 20, 필터/정렬 적용 후).", "Max N entries (default 20, after filters/sort)."))]
         limit: usize,
         #[arg(long, help = tf!("첫 줄 60자 요약만 출력 (기본: 본문 전체 — quest comment list 와 동일). 여러 건 훑어볼 때만 사용 — 요약만 보고 답글 달았다가 뒷내용을 놓친 사고(2026-07-05)로 기본을 전체 출력으로 바꿈.",
                               "Print only a 60-char first-line summary (default: full body, same as `quest comment list`). Use only when skimming many entries — the default was changed to full output after an incident (2026-07-05) where replying based on the summary alone missed the rest of the content."))]
@@ -558,12 +569,19 @@ enum CommentCmd {
         author: Option<String>,
         #[arg(long, help = tf!("이 시각 이후 작성분만 — ISO date (2026-06-01) 또는 datetime.", "Only entries created after this time — ISO date (2026-06-01) or datetime."))]
         since: Option<String>,
+        // DEV-262: 전역 `comments` 와 옵션셋 통일.
+        #[arg(long, help = tf!("이 시각 이전 작성분만.", "Only entries created before this time."))]
+        until: Option<String>,
         #[arg(long = "top-only", conflicts_with = "reply_to", help = tf!("top-level 댓글만 (답글 제외).", "Top-level comments only (excludes replies)."))]
         top_only: bool,
         #[arg(long = "reply-to", help = tf!("특정 entry 의 답글만.", "Only replies to a specific entry."))]
         reply_to: Option<u64>,
         #[arg(long, help = tf!("body 부분 일치 (대소문자 무시).", "Partial match on body (case-insensitive)."))]
         grep: Option<String>,
+        #[arg(long, help = tf!("토론(discussion) 댓글만.", "Discussion comments only."))]
+        discussion: bool,
+        #[arg(long, conflicts_with = "discussion", help = tf!("미해결 토론만 (discussion 포함).", "Unresolved discussions only (implies discussion)."))]
+        unresolved: bool,
         #[arg(long, help = tf!("최신순 출력 (기본은 오래된 순 = 대화 흐름).", "Newest first (default is oldest first = conversation order)."))]
         reverse: bool,
         #[arg(long, help = tf!("최대 N 개만 (필터/정렬 적용 후).", "Max N entries (after filters/sort are applied)."))]
@@ -572,6 +590,9 @@ enum CommentCmd {
               help = tf!("답글을 부모 아래 들여쓰기 트리로 출력. --reverse 와 상호배타 (트리는 대화 흐름 순). 필터로 부모가 빠진 답글은 root 로 표시.",
                          "Print replies as an indented tree under their parent. Mutually exclusive with --reverse (tree is conversation order). Replies whose parent was filtered out are shown as root."))]
         tree: bool,
+        #[arg(long, help = tf!("첫 줄 60자 요약만 출력 (기본: 본문 전체 — 전역 `comments` 와 동일).",
+                              "Print only a 60-char first-line summary (default: full body, same as the global `comments` command)."))]
+        summary: bool,
     },
     #[command(about = tf!("entry 본문 전체 또는 단일. --id 지정 시 --depth/--with-parents 로 그 entry 의 답글/부모를 얼마나 같이 보여줄지 조절 (기본은 그 entry 만).",
                           "Print all entries or a single one. With --id, control how much of that entry's replies/parents to include via --depth/--with-parents (default: just that entry)."))]
@@ -585,6 +606,9 @@ enum CommentCmd {
         depth: usize,
         #[arg(long, help = tf!("부모 체인(조상, root 까지)도 함께 출력. --id 없이는 무시.", "Also print the parent chain (ancestors, up to root). Ignored without --id."))]
         with_parents: bool,
+        // DEV-262: --id 없이 실행하면 기본은 최근 20개만 — 전체는 --all 로 명시.
+        #[arg(long, conflicts_with = "id", help = tf!("--id 없이 실행 시 기본 최근 20개 제한을 풀고 전체 출력.", "Without --id, lift the default recent-20 limit and print everything."))]
+        all: bool,
     },
     #[command(about = tf!("새 댓글 entry 추가. 본문은 --file PATH 또는 stdin.", "Add a new comment entry. Body via --file PATH or stdin."))]
     Add {
@@ -1704,8 +1728,14 @@ impl Backend {
 
     // ── 도메인 메서드 ──────────────────────────────────────
 
-    /// DEV-221: 길드 전체 댓글 횡단 검색 — quest + campaign 캐시 UNION, 최신순.
+    /// DEV-221: 길드 전체 댓글 횡단 검색 — quest + campaign 캐시 UNION.
     /// 로컬 전용 (index.db 직접 쿼리). 원격은 후속(HTTP 라우트 파리티) 전까지 미지원.
+    ///
+    /// DEV-262: `quest comment list` 와 옵션셋/정렬 정책을 통일 — SQL 은 값
+    /// 필터(author/since/until/grep/discussion/unresolved)만 적용하고, 정렬
+    /// (기본 오래된순 = 대화 흐름, `--reverse` 로 최신순) 과 개수 제한은
+    /// `quest comment list` 와 동일하게 **Rust 쪽에서 필터 적용 후** 처리 —
+    /// top_only/reply_to 필터가 limit 보다 먼저 걸리게 하기 위함.
     #[allow(clippy::too_many_arguments)]
     fn comments_search(
         &self,
@@ -1715,7 +1745,6 @@ impl Backend {
         grep: Option<&str>,
         discussion: bool,
         unresolved: bool,
-        limit: usize,
     ) -> Result<Vec<GlobalComment>> {
         let Backend::Local(l) = self else {
             return Err(anyhow!(
@@ -1779,8 +1808,7 @@ impl Backend {
                  JOIN campaigns ca ON ca.id = c.campaign_id
                 WHERE 1 = 1{conds_c}
              )
-             ORDER BY ts DESC
-             LIMIT ?"
+             ORDER BY ts ASC"
         );
         let rows = l.rt.block_on(async {
             let mut q = sqlx::query_as::<_, GlobalComment>(&sql);
@@ -1790,7 +1818,6 @@ impl Backend {
             for b in &binds {
                 q = q.bind(b); // campaign 절 (동일 값 재바인드)
             }
-            q = q.bind(limit as i64);
             q.fetch_all(&l.store.index_pool).await
         })?;
         Ok(rows)
@@ -3690,7 +3717,10 @@ fn reactions_summary(reactions: &[String]) -> String {
 
 fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool) -> Result<()> {
     match sub {
-                CommentCmd::List { slug, author, since, top_only, reply_to, grep, reverse, limit, tree } => {
+                CommentCmd::List {
+                    slug, author, since, until, top_only, reply_to, grep,
+                    discussion, unresolved, reverse, limit, tree, summary,
+                } => {
                     let mut entries = c.comments_list_scoped(scope, &slug)?;
                     // DEV-250: 미존재 slug 가 "(댓글 없음)" 으로 침묵 통과하면
                     // 오타를 들고 계속 진행하게 됨(특히 agent) — 빈 결과일 때만
@@ -3698,7 +3728,7 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                     if entries.is_empty() {
                         ensure_scope_target_exists(c, scope, &slug)?;
                     }
-                    // DEV-110: 필터 — 모두 AND.
+                    // DEV-110/262: 필터 — 모두 AND. 전역 `comments` 와 옵션셋 통일.
                     if let Some(a) = &author {
                         entries.retain(|e| e.author.eq_ignore_ascii_case(a));
                     }
@@ -3707,6 +3737,16 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                         // 단일 TZ 운용 전제). date 만 입력 시 그 날 00:00 기준.
                         let threshold = openguild_core::time::normalize_filter_ts(s);
                         entries.retain(|e| e.ts.as_str() >= threshold.as_str());
+                    }
+                    if let Some(u) = &until {
+                        let threshold = openguild_core::time::normalize_filter_ts(u);
+                        entries.retain(|e| e.ts.as_str() <= threshold.as_str());
+                    }
+                    if discussion {
+                        entries.retain(|e| e.discussion);
+                    }
+                    if unresolved {
+                        entries.retain(|e| e.discussion && !e.resolved);
                     }
                     if top_only {
                         entries.retain(|e| e.parent_id.is_none());
@@ -3746,17 +3786,11 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                     } else if entries.is_empty() {
                         println!("{}", tf!("(댓글 없음)", "(no comments)"));
                     } else {
-                        // 한 줄 렌더 — flat/tree 공용. DEV-250: 📌/토론 배지 추가.
+                        // 헤더 렌더 — flat/tree 공용. DEV-250: 📌/토론 배지 추가.
+                        // DEV-262: 기본은 본문 전체 출력(전역 `comments` 와 통일),
+                        // --summary 시에만 첫 줄 60자 요약.
                         let render = |e: &openguild_core::repo::comments::CommentEntry,
                                       prefix: &str| {
-                            let summary = e
-                                .body
-                                .lines()
-                                .next()
-                                .unwrap_or("")
-                                .chars()
-                                .take(60)
-                                .collect::<String>();
                             let reply = e
                                 .parent_id
                                 .map(|p| format!(" ↩ #{p}"))
@@ -3775,9 +3809,21 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                             // DEV-199: 반응 집계 표시 — 👍2 ✅1 형태.
                             let reacts = reactions_summary(&e.reactions);
                             println!(
-                                "{prefix}#{}  {}  {}{}{}  {}{}",
-                                e.id, ts, author, reply, badges, summary, reacts
+                                "{prefix}#{}  {}  {}{}{}",
+                                e.id, ts, author, reply, badges
                             );
+                            if summary {
+                                let s: String =
+                                    e.body.lines().next().unwrap_or("").chars().take(60).collect();
+                                println!("{prefix}  {s}{reacts}");
+                            } else {
+                                for line in e.body.lines() {
+                                    println!("{prefix}  {line}");
+                                }
+                                if !reacts.is_empty() {
+                                    println!("{prefix}  {}", reacts.trim_start());
+                                }
+                            }
                         };
                         if tree {
                             // DEV-250: parent_id 들여쓰기 트리 (대화 흐름 순).
@@ -3820,12 +3866,15 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                         }
                     }
                 }
-                CommentCmd::Show { slug, id, depth, with_parents } => {
+                CommentCmd::Show { slug, id, depth, with_parents, all } => {
                     let entries = c.comments_list_scoped(scope, &slug)?;
                     // DEV-250: 미존재 slug 침묵 통과 방지 (list 와 동일).
                     if entries.is_empty() {
                         ensure_scope_target_exists(c, scope, &slug)?;
                     }
+                    // DEV-262: --id 없을 때 전체 출력은 과함 — 전역 `comments` 와
+                    // 동일하게 기본 최근 20개만, --all 로 전체 해제.
+                    const DEFAULT_SHOW_LIMIT: usize = 20;
                     let selected: Vec<_> = match id {
                         Some(target) => select_thread(entries, target, depth, with_parents)
                             .ok_or_else(|| {
@@ -3838,7 +3887,11 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                                     )
                                 )
                             })?,
-                        None => entries,
+                        None if all || entries.len() <= DEFAULT_SHOW_LIMIT => entries,
+                        None => {
+                            let start = entries.len() - DEFAULT_SHOW_LIMIT;
+                            entries.into_iter().skip(start).collect()
+                        }
                     };
                     if json {
                         println!(
@@ -5127,23 +5180,36 @@ fn run() -> Result<()> {
             IndexCmd::Rebuild => run_reindex_cmd(&c, cli.json)?,
             IndexCmd::Vacuum => run_vacuum_cmd(&c, cli.json)?,
         },
-        Command::Comments { author, since, until, grep, discussion, unresolved, limit, summary } => {
-            let rows = c.comments_search(
+        Command::Comments {
+            author, since, until, grep, discussion, unresolved,
+            top_only, reply_to, reverse, tree, limit, summary,
+        } => {
+            let mut rows = c.comments_search(
                 author.as_deref(),
                 since.as_deref(),
                 until.as_deref(),
                 grep.as_deref(),
                 discussion,
                 unresolved,
-                limit,
             )?;
+            // DEV-262: quest comment list 와 동일 순서 — 필터 → reverse → limit.
+            if top_only {
+                rows.retain(|r| r.parent_id.is_none());
+            }
+            if let Some(p) = reply_to {
+                rows.retain(|r| r.parent_id == Some(p));
+            }
+            if reverse {
+                rows.reverse();
+            }
+            rows.truncate(limit);
             if cli.json {
                 println!("{}", json_str(&rows));
             } else if rows.is_empty() {
                 println!("{}", tf!("(댓글 없음)", "(no comments)"));
             } else {
                 let no_name = tf!("(이름 없음)", "(no name)");
-                for r in &rows {
+                let render = |r: &GlobalComment, prefix: &str| {
                     let author = if r.author.is_empty() { &no_name } else { &r.author };
                     // DEV-250: 📌/토론 배지 + 반응 집계 — comment list/show 와 동일 규칙.
                     let badge = comment_badges(r.pinned, r.discussion, r.resolved);
@@ -5156,7 +5222,7 @@ fn run() -> Result<()> {
                     // BUG-110: quest comment list 와 동일하게 답글이면 부모 표시.
                     let reply = r.parent_id.map(|p| format!(" ↩ #{p}")).unwrap_or_default();
                     println!(
-                        "{:<9} #{:<3}{}  {}  {}{}{}",
+                        "{prefix}{:<9} #{:<3}{}  {}  {}{}{}",
                         r.slug, r.entry_id, reply, r.ts, author, badge, reacts
                     );
                     // 기본은 본문 전체 (quest comment list 와 동일) — --summary 시
@@ -5164,11 +5230,62 @@ fn run() -> Result<()> {
                     // (2026-07-05) 이후 기본을 전체로 바꿈.
                     if summary {
                         let s: String = r.body.lines().next().unwrap_or("").chars().take(60).collect();
-                        println!("  {s}");
+                        println!("{prefix}  {s}");
                     } else {
                         for line in r.body.lines() {
-                            println!("  {line}");
+                            println!("{prefix}  {line}");
                         }
+                    }
+                };
+                if tree {
+                    // DEV-262: quest comment list 의 --tree 와 동일 취지지만,
+                    // 여기는 여러 slug 가 섞여 있어 slug 단위로 먼저 묶고 그 안에서
+                    // 부모/자식 트리를 만든다. 필터로 부모가 결과에서 빠진 답글은
+                    // 그 slug 그룹의 root 로 표시.
+                    use std::collections::{HashMap, HashSet};
+                    let mut slug_order: Vec<&str> = Vec::new();
+                    let mut by_slug: HashMap<&str, Vec<&GlobalComment>> = HashMap::new();
+                    for r in &rows {
+                        by_slug.entry(r.slug.as_str()).or_insert_with(|| {
+                            slug_order.push(r.slug.as_str());
+                            Vec::new()
+                        }).push(r);
+                    }
+                    fn walk<'a>(
+                        r: &'a GlobalComment,
+                        depth: usize,
+                        children: &HashMap<i64, Vec<&'a GlobalComment>>,
+                        render: &impl Fn(&GlobalComment, &str),
+                    ) {
+                        let prefix = if depth == 0 {
+                            String::new()
+                        } else {
+                            format!("{}└─ ", "   ".repeat(depth - 1))
+                        };
+                        render(r, &prefix);
+                        for kid in children.get(&r.entry_id).into_iter().flatten() {
+                            walk(kid, depth + 1, children, render);
+                        }
+                    }
+                    for slug in slug_order {
+                        let entries = &by_slug[slug];
+                        println!("== {slug} ==");
+                        let ids: HashSet<i64> = entries.iter().map(|r| r.entry_id).collect();
+                        let mut children: HashMap<i64, Vec<&GlobalComment>> = HashMap::new();
+                        let mut roots: Vec<&GlobalComment> = Vec::new();
+                        for r in entries {
+                            match r.parent_id {
+                                Some(p) if ids.contains(&p) => children.entry(p).or_default().push(r),
+                                _ => roots.push(r),
+                            }
+                        }
+                        for r in roots {
+                            walk(r, 0, &children, &render);
+                        }
+                    }
+                } else {
+                    for r in &rows {
+                        render(r, "");
                     }
                 }
             }
@@ -7884,8 +8001,10 @@ mod tests {
         assert!(tags.is_empty());
     }
 
-    /// DEV-221: comments_search — quest/campaign UNION + 필터 + 최신순.
-    /// 캐시 테이블에 직접 INSERT 해 SQL 조합을 검증 (파일 IO 없이).
+    /// DEV-221/262: comments_search — quest/campaign UNION + 필터 + 정렬(오래된순).
+    /// 캐시 테이블에 직접 INSERT 해 SQL 조합을 검증 (파일 IO 없이). limit/reverse/
+    /// top_only/reply_to 는 이제 comments_search 밖(CLI 핸들러)에서 적용되므로
+    /// 여기선 검증하지 않는다.
     #[test]
     fn comments_search_union_filters_and_order() {
         let dir = fresh_tmp("comsearch");
@@ -7946,12 +8065,13 @@ mod tests {
             guild_path: dir.clone(),
         });
 
-        // 전체 — quest+campaign UNION, 최신순.
+        // 전체 — quest+campaign UNION. DEV-262: 기본 오래된순(대화 흐름) —
+        // `quest comment list` 의 기본 정렬과 통일.
         let all = backend
-            .comments_search(None, None, None, None, false, false, 20)
+            .comments_search(None, None, None, None, false, false)
             .unwrap();
         assert_eq!(all.len(), 4);
-        assert_eq!(all[0].ts, "2026-01-05T00:00:00+09:00", "최신순 정렬");
+        assert_eq!(all[0].ts, "2026-01-01T00:00:00+09:00", "오래된순 정렬 (DEV-262)");
         assert!(all.iter().any(|c| c.scope == "campaign" && c.slug == "C-001"));
         // BUG-110: 답글(entry 3)은 parent_id 가 실려야, 답글 아닌 것들은 None.
         assert_eq!(
@@ -7965,28 +8085,22 @@ mod tests {
 
         // author 필터 (대소문자 무시) — quest 2 + campaign 1.
         let admins = backend
-            .comments_search(Some("ADMIN"), None, None, None, false, false, 20)
+            .comments_search(Some("ADMIN"), None, None, None, false, false)
             .unwrap();
         assert_eq!(admins.len(), 3);
 
         // 미해결 토론만 — campaign 은 discussion 개념이 없어 자연 제외.
         let unresolved = backend
-            .comments_search(None, None, None, None, false, true, 20)
+            .comments_search(None, None, None, None, false, true)
             .unwrap();
         assert_eq!(unresolved.len(), 1);
         assert_eq!(unresolved[0].entry_id, 2);
 
         // grep + since 조합.
         let hits = backend
-            .comments_search(None, Some("2026-01-02"), None, Some("토론"), false, false, 20)
+            .comments_search(None, Some("2026-01-02"), None, Some("토론"), false, false)
             .unwrap();
         assert_eq!(hits.len(), 2);
-
-        // limit.
-        let limited = backend
-            .comments_search(None, None, None, None, false, false, 2)
-            .unwrap();
-        assert_eq!(limited.len(), 2);
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -8050,7 +8164,7 @@ mod tests {
         ])
         .unwrap();
         match cli.command {
-            Command::Quest { sub: QuestCmd::Comment { sub: CommentCmd::List { slug, author, since, top_only, reply_to, grep, reverse, limit, tree } } } => {
+            Command::Quest { sub: QuestCmd::Comment { sub: CommentCmd::List { slug, author, since, top_only, reply_to, grep, reverse, limit, tree, .. } } } => {
                 assert_eq!(slug, "DEV-001");
                 assert_eq!(author.as_deref(), Some("claude"));
                 assert_eq!(since.as_deref(), Some("2026-06-01"));
@@ -8068,6 +8182,86 @@ mod tests {
         assert!(Cli::try_parse_from([
             "openguild", "quest", "comment", "list", "DEV-001",
             "--top-only", "--reply-to", "3",
+        ])
+        .is_err());
+    }
+
+    /// DEV-262: quest comment list 에 전역 `comments` 옵션(until/discussion/
+    /// unresolved/summary) 추가된 것 파싱 확인.
+    #[test]
+    fn cli_parse_comment_list_dev262_added_filters() {
+        let cli = Cli::try_parse_from([
+            "openguild", "quest", "comment", "list", "DEV-001",
+            "--until", "2026-07-01", "--discussion", "--summary",
+        ])
+        .unwrap();
+        match cli.command {
+            Command::Quest { sub: QuestCmd::Comment { sub: CommentCmd::List { until, discussion, unresolved, summary, .. } } } => {
+                assert_eq!(until.as_deref(), Some("2026-07-01"));
+                assert!(discussion);
+                assert!(!unresolved);
+                assert!(summary);
+            }
+            _ => panic!("expected comment list"),
+        }
+
+        // --unresolved 와 --discussion 동시 지정은 상호배타(기존 --discussion
+        // 규약과 동일하게 --unresolved 가 --discussion 을 이미 내포).
+        assert!(Cli::try_parse_from([
+            "openguild", "quest", "comment", "list", "DEV-001",
+            "--discussion", "--unresolved",
+        ])
+        .is_err());
+    }
+
+    /// DEV-262: comment show --id 없이 실행 시 기본 최근 20개 제한 — --all 로 해제.
+    /// --all 과 --id 는 상호배타(전체 스레드 보기와 단일 entry 보기는 별개 모드).
+    #[test]
+    fn cli_parse_comment_show_all_flag() {
+        let cli = Cli::try_parse_from([
+            "openguild", "quest", "comment", "show", "DEV-001", "--all",
+        ])
+        .unwrap();
+        match cli.command {
+            Command::Quest { sub: QuestCmd::Comment { sub: CommentCmd::Show { all, id, .. } } } => {
+                assert!(all);
+                assert!(id.is_none());
+            }
+            _ => panic!("expected comment show"),
+        }
+
+        assert!(Cli::try_parse_from([
+            "openguild", "quest", "comment", "show", "DEV-001", "--id", "1", "--all",
+        ])
+        .is_err());
+    }
+
+    /// DEV-262: 전역 `comments` 에 quest comment list 옵션(top-only/reply-to/
+    /// reverse/tree) 추가된 것 파싱 확인.
+    #[test]
+    fn cli_parse_global_comments_dev262_added_options() {
+        let cli = Cli::try_parse_from([
+            "openguild", "comments", "--top-only", "--reverse",
+        ])
+        .unwrap();
+        match cli.command {
+            Command::Comments { top_only, reply_to, reverse, tree, .. } => {
+                assert!(top_only);
+                assert!(reply_to.is_none());
+                assert!(reverse);
+                assert!(!tree);
+            }
+            _ => panic!("expected comments"),
+        }
+
+        // --top-only 와 --reply-to 상호배타, --tree 와 --reverse 상호배타
+        // (quest comment list 와 동일 규칙).
+        assert!(Cli::try_parse_from([
+            "openguild", "comments", "--top-only", "--reply-to", "3",
+        ])
+        .is_err());
+        assert!(Cli::try_parse_from([
+            "openguild", "comments", "--tree", "--reverse",
         ])
         .is_err());
     }
@@ -8214,7 +8408,7 @@ mod tests {
         .unwrap();
         match cli.command {
             Command::Quest {
-                sub: QuestCmd::Comment { sub: CommentCmd::Show { slug, id, depth, with_parents } },
+                sub: QuestCmd::Comment { sub: CommentCmd::Show { slug, id, depth, with_parents, .. } },
             } => {
                 assert_eq!(slug, "DEV-001");
                 assert_eq!(id, Some(3));

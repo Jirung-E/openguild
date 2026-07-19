@@ -4,6 +4,16 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
 
 ## Unreleased
 
+### Changed
+- **`openguild comments` / `quest comment list` / `quest comment show` 옵션셋
+  통일** — `comments` 에 `--top-only`/`--reply-to`/`--reverse`/`--tree` 추가,
+  `quest comment list` 에 `--until`/`--discussion`/`--unresolved`/`--summary`
+  추가. `comments` 기본 정렬을 최신순 → 오래된순(대화 흐름)으로 변경해
+  `quest comment list` 와 통일(`--reverse` 로 최신순 전환은 그대로 가능).
+  `quest comment show`/`campaign comment show` 는 `--id` 없이 실행 시
+  기본 최근 20개만 출력(전체는 `--all`)하도록 변경 — 기존엔 무제한 전체
+  출력. (DEV-262)
+
 ### Fixed
 - **GUI/CLI/서버 시동 sync 가 무관한 quest `updated_at` 을 일괄 변조하던
   문제(BUG-103 재발)** — 콘텐츠 동일성 비교에 `updated_at` 자기 자신이
