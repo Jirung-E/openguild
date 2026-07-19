@@ -34,10 +34,10 @@ output), `--compact` (single-line JSON, requires `--json`).
    override generic assumptions you'd otherwise make.
 2. **When a question comes up mid-task, check the library before searching
    elsewhere**: run `openguild library list` / `openguild library show
-   <name>` first. Only fall back to web search, general knowledge, or asking
-   the user if the guild's rules/library don't answer it. The whole point of
-   the library is to be the project's own source of truth — prefer it over
-   an external guess.
+   <book-id>` first. Only fall back to web search, general knowledge, or
+   asking the user if the guild's rules/library don't answer it. The whole
+   point of the library is to be the project's own source of truth — prefer
+   it over an external guess.
 
 ## What's worth recording (judgment calls)
 
@@ -60,7 +60,9 @@ per-type triggers, and skip everything else (don't spam the guild):
   data-flow, a gotcha that took real digging to find) — it pays for itself by
   making the next problem faster to spot and saving the re-discovery work.
   For small/simple code, skip it — reading the code is faster than reading a
-  library entry.
+  library entry. This is also where large/binary material belongs — planning
+  docs, spec PDFs, design mockups, zipped assets — via `library attach`
+  rather than pasting into a quest description or the markdown body.
 
 ## Quest lifecycle (follow this order)
 
@@ -125,7 +127,7 @@ directory — load only the one you need:
 - [reference/comments.md](reference/comments.md) — quest/campaign comments, memos, reactions, discussion threads
 - [reference/templates.md](reference/templates.md) — quest templates
 - [reference/rules.md](reference/rules.md) — project rules/convention docs
-- [reference/library.md](reference/library.md) — reference notes library and folders
+- [reference/library.md](reference/library.md) — reference notes library, folders, and file attachments (large/binary material)
 - [reference/worklog.md](reference/worklog.md) — activity history and daily notes
 - [reference/meta-and-maintenance.md](reference/meta-and-maintenance.md) — type/status/tag catalogs, reindex, drift checks, journal
 - [reference/backup-and-safety.md](reference/backup-and-safety.md) — backup/restore, delete safety, never-hand-edit rule, error handling, JSON output
