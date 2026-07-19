@@ -12,7 +12,17 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
   Windows installer 가 설치 시점에 바로 `~/.openguild/skill-marketplace/`
   로 복사해둬 앱을 한 번도 안 띄워도 `/plugin marketplace add` 로 바로
   등록 가능(그 외 플랫폼 + 소스 빌드는 앱 최초 실행 시 동기화). 기존
-  `openguild docs agents` 는 제거됨(용도가 스킬로 이전). (DEV-264)
+  `openguild docs agents` 는 제거됨(용도가 스킬로 이전). 스킬 자체에도
+  작업 전 규칙/도서관 확인 체크리스트, 무엇을 quest/댓글/규칙/도서관으로
+  남길지에 대한 판단 기준, 첨부파일 사용법을 추가로 다듬음.
+  (DEV-264, DEV-268/269/270)
+- **도서관(Library)** — 프로젝트 참고문서/노트 저장소 신설. 파일 진리원 +
+  index.db 캐시(core), CLI `library` 명령군 + 서버 `/api/library` 라우트,
+  GUI `/library` 페이지까지 전 구간 지원. 폴더 계층, 전문 검색(현재
+  폴더+하위 범위, 폴더명 검색), 정렬 옵션(번호/이름/수정순), cross-link
+  (`[[BOOK-NNN]]`) 통합 + 자동완성, 태그, 임의 파일 첨부(이미지/동영상
+  외 포함, `library attach`), 백업/복원 대상 포함.
+  (DEV-215/216/217/218/219/237/238/239/240/243/251)
 - **Linux 배포 패키지(deb/rpm/AppImage)** 추가 — 기존 Windows NSIS installer
   외에 리눅스에서도 정식 패키지로 배포. (BUG-142)
 - **rule list / tag list `--table` 출력** 추가 — 정렬된 표 형식(사람용).
@@ -24,17 +34,41 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
   원본, PDF, zip 등)을 붙일 수 있게 CLI에 추가. core/server/GUI 는 이미
   지원하고 있었는데 CLI만 빠져 있던 걸 `quest attach`/`campaign attach` 와
   동일한 형태(list/add/remove)로 보완. (BUG-150)
+- **`openguild docs <name>`** — usage/readme/changelog 번들 문서를 CLI에서
+  바로 embed 출력. (DEV-248)
+- **길드 전체 tag 관리 top-level 명령** 신설(`tag list/add/update/delete`).
+  (DEV-228)
 
 ### Changed
 - **CLI/서버 메시지 다국어화 확장** — quest/campaign/rule/library/worklog/
   tag/template 등 모든 서브커맨드의 `--help` 가 `locale` 설정(en/ko)을
   그대로 따라가도록 전환. (DEV-254)
+- **커스텀 타이틀바 도입(VSCode 식)** — 플랫폼별 네이티브 타이틀바 테마
+  어긋남을 원천 해소. 리눅스에서 커스텀 대신 네이티브로 표시되던 문제도
+  함께 수정. (DEV-253, BUG-140)
 - **창 컨트롤 버튼 — 플랫폼별 실제 네이티브화** — Windows 는 OS 가 실제로
   쓰는 아이콘 폰트(Segoe Fluent Icons/Segoe MDL2 Assets)로 교체하고
   `WM_NCHITTEST` 훅으로 최대화 버튼 호버 시 진짜 OS Snap Layout 이 뜨도록
   복원, macOS 는 `titleBarStyle: overlay` 로 네이티브 traffic light 를
   그대로 유지, Linux 는 실행 중인 GTK 아이콘 테마·`gsettings` 버튼 순서를
   실제로 조회해 렌더링(하드코딩 근사 폐기). (DEV-265)
+- **댓글 시스템 대폭 개선** — 길드 전체 검색(`comments`), 기본 출력을
+  요약 대신 본문 전체로(`--summary` 로 축약 선택), 핀(고정)/토론 필터,
+  접기 상태 localStorage 영속, 답글 depth·부모 포함 출력 옵션(`--tree`,
+  `--depth all`, `--with-parents`), 토론 해결/재개 전환의 이력 기록.
+  (DEV-213/214/221/230/234/235/236/241/250)
+- **CLI 명령 체계 재정리** — type/status/rule top-level 명령을 단수형으로
+  통일(복수형은 alias 유지), `rule` 복수형 alias(`rules`) 및 `create`
+  alias 완전 제거, quest 본문 `--description-file` 입력 지원.
+  (DEV-222/227/231/232)
+- **캠페인** — 퀘스트 진행바를 상태별 색 누적 바로 교체, 상태 변경도
+  `quest_history` 패턴으로 이력 기록. (DEV-226/233)
+- **커스텀 테마 프리셋을 `~/.openguild/themes.json` 파일로 이전**
+  (기존 `localStorage`). (DEV-249)
+- **사용자 데이터 위치를 `~/.openguild/` 로 일원화** — 설치 시 기존
+  `docs`/recents 데이터 마이그레이션. (DEV-247)
+- 퀘스트 상세의 '브랜치 이름' 섹션 제거, 검색 팔레트 결과 열기 방식
+  선택 옵션(미리보기/자식윈도우/페이지이동) 추가. (DEV-255/258)
 - **알림 시스템 통합** — 앱 곳곳에 흩어져 있던 개별 toast/`alert()` 구현과
   레이아웃을 밀어내던 in-flow 배너(SchemaAheadBanner)를 `ToastHost` 하나로
   정리하고, 업데이트 확인 알림과 동일한 우하단 카드 스타일로 통일.
@@ -49,13 +83,39 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
   얘기로 오인할 수 있어 삭제. (DEV-263)
 - **cross-link 는 명시 `[[..]]` 만 인식** — bare `DEV-033`(대괄호 없음) 자동
   링크와 일반 타이핑 중 자동완성 팝업을 제거. 자동완성은 `[[` 를 연
-  상태에서만. 기존 본문의 bare 참조는 더 이상 링크되지 않음(의도된 변경).
-  (DEV-220)
+  상태에서만, 빈 `[[` 트리거와 `]]` 중복 방지도 함께 정리. 기존 본문의
+  bare 참조는 더 이상 링크되지 않음(의도된 변경). (DEV-220, DEV-223)
 
 ### Fixed
 - **리눅스 전반 성능 저하** — WebKitGTK 의 DMABUF 렌더러가 일부 GPU 드라이버
   조합에서 소프트웨어 합성으로 떨어져 보드/스크롤이 심하게 느려지는 문제
   완화(`WEBKIT_DISABLE_DMABUF_RENDERER=1`). (BUG-144)
+- **도서관 관련 다수 수정** — 도서관/규칙/작업기록 페이지에서 뒤로가기가
+  페이지를 그냥 나가버리던 문제, 트리뷰 폴더 접기 누락, 폴더 안 검색 시
+  자기 자신이 결과에 뜨던 문제, 검색 범위가 전체 길드로 새던 문제,
+  드래그앤드롭 폴더 이동, 뷰모드 토글 중복, 본문 저장/reindex 후 첨부파일
+  목록이 사라지거나 재조회 안 되던 문제, JS 색 계산이 OS 테마 전환에
+  반응 안 하던 문제.
+  (BUG-119/120/121/122/123/124/126/127/128/129/130/133/134)
+- **댓글 UI 다수 수정** — cross-link 추천 목록이 스크롤 안 되거나 조상
+  overflow 에 잘려 표시되던 문제, 이모지 반응 팝업의 방향/화면밖
+  클리핑/스크롤 추종/화면밖 클릭 시 안 닫히던 문제, 답글의 답글 입력창이
+  스레드 맨 아래로 튀던 문제, 전역 댓글 검색에서 답글의 부착 위치가 안
+  보이던 문제. (BUG-110/114/115/116/125/131/132)
+- 보드(Board) grid snap 관련 노드 위치 오류 2건, 다른 길드로 전환해도
+  보드/리스트 필터가 남아있던 문제. (BUG-109/112/113)
+- 규칙 페이지에서 다른 규칙 `[[링크]]` 클릭 시 이동 안 되던 문제,
+  `rule new` 실행이 멈추던 문제(create/new canonical 뒤바뀜),
+  debug 빌드가 모든 명령에서 stack overflow 나던 문제(`run()` 단일
+  프레임 1MB 초과), 신규 클론에서 dev-frontend API 가 404 나던 문제
+  (`VITE_API_URL` 미설정), 웹 dev(SSR) 모드가 SPA 인데 `ssr=false` 를
+  안 줘서 크래시 나던 문제, 오버레이 스크롤바가 타이틀바/메뉴바 위에
+  그려지던 문제, justfile 빌드 레시피의 의존성 순서 오류, 서버 설정
+  테스트가 `~/.openguild` 를 격리하지 않아 실기서 실패하던 문제, snapshot
+  디렉토리명이 초 단위로 충돌해 과거 snapshot 을 오염시키던 문제,
+  `change_status` 이력 append 타입 오류로 workspace 빌드가 안 되던 문제,
+  Welcome 상태에서 설정 진입 시 길드 이름이 placeholder 로 뜨던 문제.
+  (BUG-103/104/105/106/107/108/111/117/118/135/136/137/138/147/148)
 
 ## 0.3.0-beta — 2026-07-02
 
