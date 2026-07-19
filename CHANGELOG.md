@@ -4,6 +4,8 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
 
 ## Unreleased
 
+## 0.4.0-beta — 2026-07-19
+
 ### Added
 - **에이전트용 정식 스킬 패키지** — `docs agents`(AGENTS_OPENGUILD_USAGE.md)
   문서를 대체해 Claude Code plugin marketplace 구조(`skills/`)로 제공.
