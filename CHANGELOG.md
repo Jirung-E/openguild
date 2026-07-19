@@ -4,6 +4,13 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
 
 ## Unreleased
 
+### Fixed
+- **GUI/CLI/서버 시동 sync 가 무관한 quest `updated_at` 을 일괄 변조하던
+  문제(BUG-103 재발)** — 콘텐츠 동일성 비교에 `updated_at` 자기 자신이
+  껴 있어, DB 캐시가 한 번이라도 어긋나면 브랜치 전환/실행할 때마다
+  영원히 재발하는 자기강화 루프가 있었다. 비교 대상에서 제외해 근본
+  수정. (BUG-145)
+
 ## 0.4.0-beta — 2026-07-19
 
 ### Added
