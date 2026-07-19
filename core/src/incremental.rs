@@ -116,7 +116,6 @@ async fn is_content_identical_to_db(
         urgency: i64,
         parent_slug: Option<String>,
         created_at: String,
-        updated_at: String,
         deleted: bool,
         desired_due: Option<String>,
         required_due: Option<String>,
@@ -126,7 +125,7 @@ async fn is_content_identical_to_db(
                 (SELECT pt.prefix || '-' || printf('%03d', p.number)
                    FROM quests p JOIN quest_types pt ON pt.id = p.quest_type_id
                   WHERE p.id = q.parent_quest_id) AS parent_slug,
-                q.created_at, q.updated_at,
+                q.created_at,
                 q.deleted_at IS NOT NULL AS deleted,
                 q.desired_due, q.required_due
          FROM quests q JOIN quest_statuses s ON s.id = q.status_id
@@ -146,13 +145,19 @@ async fn is_content_identical_to_db(
             .filter(|s| !s.trim().is_empty())
             .map(String::from)
     };
+    // BUG-145: `updated_at` 은 의도적으로 비교 대상에서 제외 — 이 필드 자체가
+    // write-back 이 매번 다시 쓰는 대상이라, 포함시키면 한 번이라도 오탐성
+    // write-back 이 일어난 뒤부터는 DB 캐시의 updated_at 이 git 커밋된 파일의
+    // 실제 값과 영원히 어긋나 매번 "내용이 다르다"고 오판 → 다시 write-back →
+    // 다시 어긋남, 의 무한 재발 루프가 생긴다(브랜치 전환마다 무관한 quest 수십
+    // 개가 계속 변조되던 원인). 진짜 콘텐츠(title/description/status/urgency/
+    // parent/prereq/dates/deleted/tags)만 같으면 "동일"로 본다.
     if row.title != fm.title
         || row.description.as_deref().unwrap_or("") != qf.description
         || row.status_slug != fm.status
         || row.urgency != fm.urgency
         || row.parent_slug != fm.parent
         || row.created_at != crate::time::normalize_legacy_ts(&fm.created_at)
-        || row.updated_at != crate::time::normalize_legacy_ts(&fm.updated_at)
         || row.deleted != fm.deleted
         || norm_due(&row.desired_due) != norm_due(&fm.desired_due)
         || norm_due(&row.required_due) != norm_due(&fm.required_due)
@@ -769,6 +774,70 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(before, after2);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-145: BUG-103 재발 — DB 의 cached `updated_at` 이 (과거의 오탐성
+    /// write-back 등으로) 파일의 실제 committed 값과 이미 어긋나 있는 상태에서,
+    /// 진짜 콘텐츠(title/description/...)는 파일과 DB 가 동일하면 — mtime 만
+    /// 앞서 있어도(git checkout 시뮬레이션) 여전히 "동일"로 보고 파일을
+    /// write-back 하면 안 된다. `updated_at` 을 비교에 포함시키면 이 케이스가
+    /// 매번 "다르다"로 오판되어 checkout 할 때마다 무관한 quest 파일이 계속
+    /// 변조되는 무한 재발 루프가 생긴다.
+    #[tokio::test]
+    async fn bug145_stale_cached_updated_at_does_not_perpetually_rewrite() {
+        let dir = fresh_tmp("bug145");
+        let store = setup(&dir).await;
+        let paths = store.paths.clone();
+
+        let qf = QuestFile {
+            frontmatter: QuestFrontmatter {
+                quest_id: "DEV-001".into(),
+                title: "original".into(),
+                status: "open".into(),
+                urgency: 3,
+                parent: None,
+                prerequisites: vec![],
+                created_at: "2026-01-01T00:00:00Z".into(),
+                updated_at: "2026-01-01T00:00:00Z".into(),
+                deleted: false,
+                desired_due: None,
+                required_due: None,
+                tags: vec![],
+            },
+            description: "body v1".into(),
+            auto_block: String::new(),
+        };
+        qf.write(paths.quest_path("DEV-001")).unwrap();
+        crate::reindex::reindex(&store).await.unwrap();
+
+        // DB 의 cached updated_at 을 파일과 어긋나게 직접 오염 — 과거의 오탐성
+        // write-back 이 이미 한 번 일어난 상태를 시뮬레이션.
+        sqlx::query("UPDATE quests SET updated_at = ? WHERE id = 1")
+            .bind("2026-07-19T09:00:00+09:00")
+            .execute(&store.index_pool)
+            .await
+            .unwrap();
+
+        // git checkout 시뮬레이션: 파일은 원래(committed) 내용 그대로 재작성 →
+        // mtime 만 전진. 내용(title/description/...)은 DB 와 여전히 동일 —
+        // 어긋난 건 오직 DB 의 updated_at 뿐.
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        qf.write(paths.quest_path("DEV-001")).unwrap();
+
+        let report = sync_changed_quest_files(&store).await.unwrap();
+        assert_eq!(
+            report.updated, 0,
+            "updated_at 만 DB 와 어긋난 상태 — 진짜 콘텐츠가 같으면 외부 편집으로 세면 안 됨 (BUG-145)"
+        );
+
+        // 파일이 write-back 되지 않아야 — 원본 그대로.
+        let on_disk = std::fs::read_to_string(paths.quest_path("DEV-001")).unwrap();
+        assert!(
+            on_disk.contains("updated_at = \"2026-01-01T00:00:00Z\""),
+            "파일 frontmatter 가 재기록되면 안 됨 (BUG-145 재발 방지)"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
