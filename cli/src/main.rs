@@ -90,6 +90,17 @@ fn json_str<T: serde::Serialize>(v: &T) -> String {
     }
 }
 
+/// DEV-261: 예전엔 `serde_json::json!(...)` 로 만든 값을 `println!` 로 바로
+/// Display 했는데, serde_json::Value 의 Display 가 항상 compact 라
+/// `--compact` 플래그(JSON_COMPACT) 여부와 무관하게 늘 한 줄로 나오는 버그
+/// 경로였다. 이 매크로로 강제로 `json_str` 를 거치게 해 pretty/compact 를
+/// 실제로 존중하게 한다.
+macro_rules! json_println {
+    ($v:expr) => {
+        println!("{}", json_str(&$v))
+    };
+}
+
 // QuestCmd 가 ListQuery 등 큰 필터 구조체를 포함하므로 다른 variant 와 크기 차가
 // 크지만, CLI 는 한 번 실행되고 끝 — 메모리 영향 무시 가능. 박싱 회피.
 #[allow(clippy::large_enum_variant)]
@@ -3527,9 +3538,7 @@ fn run_attach_cmd(c: &Backend, scope: CommentScope, sub: AttachCmd, json: bool) 
         AttachCmd::List { slug } => {
             let list = c.attachments_list(scope, &slug)?;
             if json {
-                println!(
-                    "{}",
-                    serde_json::json!({
+                json_println!(serde_json::json!({
                         "attachments": list.iter()
                             .map(|a| serde_json::json!({ "name": a.name, "path": a.path }))
                             .collect::<Vec<_>>(),
@@ -3546,7 +3555,7 @@ fn run_attach_cmd(c: &Backend, scope: CommentScope, sub: AttachCmd, json: bool) 
         AttachCmd::Add { slug, file, name } => {
             let list = c.attachments_add(scope, &slug, &file, name)?;
             if json {
-                println!("{}", serde_json::json!({ "ok": true, "count": list.len() }));
+                json_println!(serde_json::json!({ "ok": true, "count": list.len() }));
             } else {
                 println!(
                     "{}",
@@ -3570,7 +3579,7 @@ fn run_attach_cmd(c: &Backend, scope: CommentScope, sub: AttachCmd, json: bool) 
             }
             let list = c.attachments_remove(scope, &slug, &path)?;
             if json {
-                println!("{}", serde_json::json!({ "ok": true, "count": list.len() }));
+                json_println!(serde_json::json!({ "ok": true, "count": list.len() }));
             } else {
                 println!(
                     "{}",
@@ -3604,9 +3613,7 @@ fn run_book_attach_cmd(c: &Backend, sub: AttachCmd, json: bool) -> Result<()> {
         AttachCmd::List { slug: book_id } => {
             let list = c.book_attachments_list(&book_id)?;
             if json {
-                println!(
-                    "{}",
-                    serde_json::json!({
+                json_println!(serde_json::json!({
                         "attachments": list.iter()
                             .map(|a| serde_json::json!({ "name": a.name, "path": a.path }))
                             .collect::<Vec<_>>(),
@@ -3623,7 +3630,7 @@ fn run_book_attach_cmd(c: &Backend, sub: AttachCmd, json: bool) -> Result<()> {
         AttachCmd::Add { slug: book_id, file, name } => {
             let list = c.book_attachments_add(&book_id, &file, name)?;
             if json {
-                println!("{}", serde_json::json!({ "ok": true, "count": list.len() }));
+                json_println!(serde_json::json!({ "ok": true, "count": list.len() }));
             } else {
                 println!(
                     "{}",
@@ -3644,7 +3651,7 @@ fn run_book_attach_cmd(c: &Backend, sub: AttachCmd, json: bool) -> Result<()> {
             }
             let list = c.book_attachments_remove(&book_id, &path)?;
             if json {
-                println!("{}", serde_json::json!({ "ok": true, "count": list.len() }));
+                json_println!(serde_json::json!({ "ok": true, "count": list.len() }));
             } else {
                 println!(
                     "{}",
@@ -3766,9 +3773,7 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                         entries.truncate(n);
                     }
                     if json {
-                        println!(
-                            "{}",
-                            serde_json::json!({
+                        json_println!(serde_json::json!({
                                 "entries": entries.iter().map(|e| serde_json::json!({
                                     "id": e.id,
                                     "ts": e.ts,
@@ -3894,9 +3899,7 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                         }
                     };
                     if json {
-                        println!(
-                            "{}",
-                            serde_json::json!({
+                        json_println!(serde_json::json!({
                                 "entries": selected.iter().map(|e| serde_json::json!({
                                     "id": e.id,
                                     "ts": e.ts,
@@ -3949,9 +3952,7 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                     let entry =
                         c.comments_add_scoped(scope, &slug, author.unwrap_or_default(), body, parent_id)?;
                     if json {
-                        println!(
-                            "{}",
-                            serde_json::json!({
+                        json_println!(serde_json::json!({
                                 "ok": true,
                                 "id": entry.id,
                                 "ts": entry.ts,
@@ -3979,9 +3980,7 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                     let body = read_content(file.as_deref())?;
                     let entry = c.comments_edit_scoped(scope, &slug, id, body)?;
                     if json {
-                        println!(
-                            "{}",
-                            serde_json::json!({ "ok": true, "id": entry.id })
+                        json_println!(serde_json::json!({ "ok": true, "id": entry.id })
                         );
                     } else {
                         println!(
@@ -4011,9 +4010,7 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                     }
                     c.comments_delete_scoped(scope, &slug, id)?;
                     if json {
-                        println!(
-                            "{}",
-                            serde_json::json!({ "ok": true, "id": id })
+                        json_println!(serde_json::json!({ "ok": true, "id": id })
                         );
                     } else {
                         println!("{}", tf!("✓ 댓글 #{id} 삭제됨", "✓ comment #{id} deleted"));
@@ -4037,9 +4034,7 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                         .collect::<Vec<_>>()
                         .join(" ");
                     if json {
-                        println!(
-                            "{}",
-                            serde_json::json!({
+                        json_println!(serde_json::json!({
                                 "ok": true,
                                 "id": entry.id,
                                 "emoji": emoji,
@@ -4075,9 +4070,7 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                     }
                     let e = c.comments_toggle_discussion(&slug, id)?;
                     if json {
-                        println!(
-                            "{}",
-                            serde_json::json!({ "ok": true, "id": id, "discussion": e.discussion, "resolved": e.resolved })
+                        json_println!(serde_json::json!({ "ok": true, "id": id, "discussion": e.discussion, "resolved": e.resolved })
                         );
                     } else {
                         let state = if e.discussion {
@@ -4097,7 +4090,7 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                     }
                     let e = c.comments_toggle_resolved(&slug, id)?;
                     if json {
-                        println!("{}", serde_json::json!({ "ok": true, "id": id, "resolved": e.resolved }));
+                        json_println!(serde_json::json!({ "ok": true, "id": id, "resolved": e.resolved }));
                     } else {
                         let state = if e.resolved {
                             tf!("해결됨", "resolved")
@@ -4110,7 +4103,7 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                 CommentCmd::Pinned { slug, id } => {
                     let e = c.comments_toggle_pinned_scoped(scope, &slug, id)?;
                     if json {
-                        println!("{}", serde_json::json!({ "ok": true, "id": id, "pinned": e.pinned }));
+                        json_println!(serde_json::json!({ "ok": true, "id": id, "pinned": e.pinned }));
                     } else {
                         let state = if e.pinned {
                             tf!("고정됨", "pinned")
@@ -4130,9 +4123,7 @@ fn run_memo_cmd(c: &Backend, scope: CommentScope, sub: MemoCmd, json: bool) -> R
                 MemoCmd::Show { slug } => {
                     let content = c.memo_get_scoped(scope, &slug)?;
                     if json {
-                        println!(
-                            "{}",
-                            serde_json::json!({ "slug": slug, "content": content })
+                        json_println!(serde_json::json!({ "slug": slug, "content": content })
                         );
                     } else if let Some(s) = content {
                         if s.is_empty() {
@@ -4151,7 +4142,7 @@ fn run_memo_cmd(c: &Backend, scope: CommentScope, sub: MemoCmd, json: bool) -> R
                     let content = read_content(file.as_deref())?;
                     c.memo_set_scoped(scope, &slug, content)?;
                     if json {
-                        println!("{}", serde_json::json!({ "ok": true, "slug": slug }));
+                        json_println!(serde_json::json!({ "ok": true, "slug": slug }));
                     } else {
                         println!(
                             "{}",
@@ -4162,7 +4153,7 @@ fn run_memo_cmd(c: &Backend, scope: CommentScope, sub: MemoCmd, json: bool) -> R
                 MemoCmd::Clear { slug } => {
                     c.memo_set_scoped(scope, &slug, String::new())?;
                     if json {
-                        println!("{}", serde_json::json!({ "ok": true, "slug": slug }));
+                        json_println!(serde_json::json!({ "ok": true, "slug": slug }));
                     } else {
                         println!(
                             "{}",
@@ -4416,9 +4407,7 @@ fn handle_campaign(c: &Backend, json: bool, sub: CampaignCmd) -> Result<()> {
         } => {
             c.campaign_link(&campaign_slug, &quest_slug)?;
             if json {
-                println!(
-                    "{}",
-                    serde_json::json!({
+                json_println!(serde_json::json!({
                         "ok": true,
                         "linked": { "campaign": campaign_slug, "quest": quest_slug }
                     })
@@ -4433,9 +4422,7 @@ fn handle_campaign(c: &Backend, json: bool, sub: CampaignCmd) -> Result<()> {
         } => {
             c.campaign_unlink(&campaign_slug, &quest_slug)?;
             if json {
-                println!(
-                    "{}",
-                    serde_json::json!({
+                json_println!(serde_json::json!({
                         "ok": true,
                         "unlinked": { "campaign": campaign_slug, "quest": quest_slug }
                     })
@@ -4453,7 +4440,7 @@ fn handle_campaign(c: &Backend, json: bool, sub: CampaignCmd) -> Result<()> {
             }
             c.campaign_delete(&slug)?;
             if json {
-                println!("{}", serde_json::json!({ "ok": true, "deleted": slug }));
+                json_println!(serde_json::json!({ "ok": true, "deleted": slug }));
             } else {
                 println!("✓ deleted: {slug}");
             }
@@ -4481,9 +4468,7 @@ fn handle_campaign(c: &Backend, json: bool, sub: CampaignCmd) -> Result<()> {
             } => {
                 c.campaign_checklist_set(&campaign_slug, index, true)?;
                 if json {
-                    println!(
-                        "{}",
-                        serde_json::json!({ "ok": true, "checked": index, "campaign": campaign_slug })
+                    json_println!(serde_json::json!({ "ok": true, "checked": index, "campaign": campaign_slug })
                     );
                 } else {
                     println!("✓ [{index}] {campaign_slug} checked");
@@ -4495,9 +4480,7 @@ fn handle_campaign(c: &Backend, json: bool, sub: CampaignCmd) -> Result<()> {
             } => {
                 c.campaign_checklist_set(&campaign_slug, index, false)?;
                 if json {
-                    println!(
-                        "{}",
-                        serde_json::json!({ "ok": true, "unchecked": index, "campaign": campaign_slug })
+                    json_println!(serde_json::json!({ "ok": true, "unchecked": index, "campaign": campaign_slug })
                     );
                 } else {
                     println!("✓ [{index}] {campaign_slug} unchecked");
@@ -4509,9 +4492,7 @@ fn handle_campaign(c: &Backend, json: bool, sub: CampaignCmd) -> Result<()> {
             } => {
                 c.campaign_checklist_rm(&campaign_slug, index)?;
                 if json {
-                    println!(
-                        "{}",
-                        serde_json::json!({ "ok": true, "removed": index, "campaign": campaign_slug })
+                    json_println!(serde_json::json!({ "ok": true, "removed": index, "campaign": campaign_slug })
                     );
                 } else {
                     println!("✓ [{index}] {campaign_slug} removed");
@@ -4801,9 +4782,7 @@ fn quest_field_value(d: &QuestDetail, field: &str) -> Result<String> {
 fn run_reindex_cmd(c: &Backend, json: bool) -> Result<()> {
     let report = c.reindex()?;
     if json {
-        println!(
-            "{}",
-            serde_json::json!({
+        json_println!(serde_json::json!({
                 "ok": true,
                 "types": report.types_loaded,
                 "statuses": report.statuses_loaded,
@@ -4847,9 +4826,7 @@ fn run_check_drift_cmd(c: &Backend, resync: bool, json: bool) -> Result<()> {
         if resync && !report.is_clean() {
             c.reindex()?;
         }
-        println!(
-            "{}",
-            serde_json::json!({
+        json_println!(serde_json::json!({
                 "clean": report.is_clean(),
                 "resynced": resync && !report.is_clean(),
                 "report": report,
@@ -4892,9 +4869,7 @@ fn run_check_drift_cmd(c: &Backend, resync: bool, json: bool) -> Result<()> {
 fn run_check_counters_cmd(c: &Backend, fix: bool, json: bool) -> Result<()> {
     let report = c.check_counters(fix)?;
     if json {
-        println!(
-            "{}",
-            serde_json::json!({
+        json_println!(serde_json::json!({
                 "ok": true,
                 "types_checked": report.file_report.types_checked,
                 "file_issues": report.file_report.issues.len(),
@@ -4978,9 +4953,7 @@ fn run_check_counters_cmd(c: &Backend, fix: bool, json: bool) -> Result<()> {
 fn run_vacuum_cmd(c: &Backend, json: bool) -> Result<()> {
     let r = c.vacuum()?;
     if json {
-        println!(
-            "{}",
-            serde_json::json!({
+        json_println!(serde_json::json!({
                 "ok": true,
                 "before_bytes": r.before_bytes,
                 "after_bytes": r.after_bytes,
@@ -5009,7 +4982,7 @@ fn run_journal_tail_cmd(c: &Backend, count: i64, json: bool) -> Result<()> {
     match tail {
         None => {
             if json {
-                println!("{}", serde_json::json!({ "exists": false, "rows": [] }));
+                json_println!(serde_json::json!({ "exists": false, "rows": [] }));
             } else {
                 println!(
                     "{}",
@@ -5022,9 +4995,7 @@ fn run_journal_tail_cmd(c: &Backend, count: i64, json: bool) -> Result<()> {
         }
         Some(t) => {
             if json {
-                println!(
-                    "{}",
-                    serde_json::json!({
+                json_println!(serde_json::json!({
                         "exists": true,
                         "total": t.total,
                         "rows": t.rows.iter().map(|o| serde_json::json!({
@@ -5154,7 +5125,7 @@ fn run() -> Result<()> {
         Command::Ping => {
             let s = c.ping()?;
             if cli.json {
-                println!("{}", serde_json::json!({ "ok": true, "body": s }));
+                json_println!(serde_json::json!({ "ok": true, "body": s }));
             } else {
                 println!("ok ({s})");
             }
@@ -5310,9 +5281,7 @@ fn init_guild(name_arg: Option<String>, json: bool) -> Result<()> {
     let (guild_path, name) = init_guild_at(&cwd, name_arg)?;
 
     if json {
-        println!(
-            "{}",
-            serde_json::json!({
+        json_println!(serde_json::json!({
                 "ok": true,
                 "guild_path": guild_path.to_string_lossy(),
                 "name": name,
@@ -5583,7 +5552,7 @@ fn handle_types(c: &Backend, json: bool, sub: TypesCmd) -> Result<()> {
         TypesCmd::Delete { prefix } => {
             c.delete_type(prefix.trim().to_string())?;
             if json {
-                println!("{}", serde_json::json!({ "ok": true }));
+                json_println!(serde_json::json!({ "ok": true }));
             } else {
                 println!("{}", tf!("'{}' 삭제됨", "'{}' deleted", prefix.trim()));
             }
@@ -5620,9 +5589,7 @@ fn handle_docs(json: bool, name: Option<String>) -> Result<()> {
         }
         None => {
             if json {
-                println!(
-                    "{}",
-                    serde_json::json!(DOCS
+                json_println!(serde_json::json!(DOCS
                         .iter()
                         .map(|(k, d, _)| serde_json::json!({ "name": k, "description": d }))
                         .collect::<Vec<_>>())
@@ -5649,9 +5616,7 @@ fn handle_locale(json: bool, lang: Option<String>) -> Result<()> {
             let saved = locale::load_saved()?;
             let effective = locale::current();
             if json {
-                println!(
-                    "{}",
-                    serde_json::json!({ "saved": saved.as_str(), "effective": effective.as_str() })
+                json_println!(serde_json::json!({ "saved": saved.as_str(), "effective": effective.as_str() })
                 );
             } else if saved == effective {
                 println!("{}", tf!("현재 언어: {}", "Current language: {}", saved.as_str()));
@@ -5684,7 +5649,7 @@ fn handle_locale(json: bool, lang: Option<String>) -> Result<()> {
                 std::sync::atomic::Ordering::Relaxed,
             );
             if json {
-                println!("{}", serde_json::json!({ "ok": true, "locale": parsed.as_str() }));
+                json_println!(serde_json::json!({ "ok": true, "locale": parsed.as_str() }));
             } else {
                 println!(
                     "{}",
@@ -5707,9 +5672,7 @@ fn handle_tag(c: &Backend, json: bool, sub: TagDefCmd) -> Result<()> {
                     defs.iter().map(|d| d.slug.as_str()).collect();
                 let undefined: Vec<&String> =
                     used_tags.iter().filter(|t| !defined.contains(t.as_str())).collect();
-                println!(
-                    "{}",
-                    serde_json::json!({
+                json_println!(serde_json::json!({
                         "defs": defs,
                         "used": if used { Some(&used_tags) } else { None },
                         "undefined_in_use": if used { Some(undefined) } else { None },
@@ -5815,7 +5778,7 @@ fn handle_tag(c: &Backend, json: bool, sub: TagDefCmd) -> Result<()> {
         TagDefCmd::Delete { slug } => {
             c.tag_def_delete(&slug)?;
             if json {
-                println!("{}", serde_json::json!({ "ok": true, "slug": slug }));
+                json_println!(serde_json::json!({ "ok": true, "slug": slug }));
             } else {
                 println!(
                     "{}",
@@ -5962,7 +5925,7 @@ fn handle_statuses(c: &Backend, json: bool, sub: StatusesCmd) -> Result<()> {
                 .unwrap_or_else(|| resolved_slug.clone());
             c.delete_status(resolved_slug)?;
             if json {
-                println!("{}", serde_json::json!({ "ok": true }));
+                json_println!(serde_json::json!({ "ok": true }));
             } else {
                 println!("{}", tf!("'{display}' 삭제됨", "'{display}' deleted"));
             }
@@ -5977,9 +5940,7 @@ fn handle_template(c: &Backend, json: bool, sub: TemplateCmd) -> Result<()> {
         TemplateCmd::List => {
             let templates = c.templates_list()?;
             if json {
-                println!(
-                    "{}",
-                    serde_json::json!({
+                json_println!(serde_json::json!({
                         "templates": templates.iter().map(|t| serde_json::json!({
                             "name": t.name,
                             "title": t.frontmatter.title,
@@ -6023,9 +5984,7 @@ fn handle_template(c: &Backend, json: bool, sub: TemplateCmd) -> Result<()> {
         TemplateCmd::Show { name } => {
             let t = c.template_load(&name)?;
             if json {
-                println!(
-                    "{}",
-                    serde_json::json!({
+                json_println!(serde_json::json!({
                         "name": t.name,
                         "title": t.frontmatter.title,
                         "type": t.frontmatter.type_prefix,
@@ -6069,9 +6028,7 @@ fn handle_template(c: &Backend, json: bool, sub: TemplateCmd) -> Result<()> {
             };
             let path = c.template_save(&tpl, force)?;
             if json {
-                println!(
-                    "{}",
-                    serde_json::json!({ "ok": true, "name": name, "path": path.display().to_string() })
+                json_println!(serde_json::json!({ "ok": true, "name": name, "path": path.display().to_string() })
                 );
             } else {
                 println!(
@@ -6090,9 +6047,7 @@ fn handle_rules(c: &Backend, json: bool, sub: RulesCmd) -> Result<()> {
         RulesCmd::List { table } => {
             let entries = c.rules_list()?;
             if json {
-                println!(
-                    "{}",
-                    serde_json::json!({
+                json_println!(serde_json::json!({
                         "entries": entries.iter().map(|e| serde_json::json!({
                             "slug": e.slug,
                             "len": e.content.len(),
@@ -6134,9 +6089,7 @@ fn handle_rules(c: &Backend, json: bool, sub: RulesCmd) -> Result<()> {
                 .rules_get(&slug)?
                 .ok_or_else(|| anyhow::anyhow!(tf!("규칙 '{slug}' 없음", "rule '{slug}' not found")))?;
             if json {
-                println!(
-                    "{}",
-                    serde_json::json!({ "slug": slug, "content": content })
+                json_println!(serde_json::json!({ "slug": slug, "content": content })
                 );
             } else {
                 print!("{content}");
@@ -6149,7 +6102,7 @@ fn handle_rules(c: &Backend, json: bool, sub: RulesCmd) -> Result<()> {
             let content = read_content(file.as_deref())?;
             c.rules_set(&slug, content)?;
             if json {
-                println!("{}", serde_json::json!({ "ok": true, "slug": slug }));
+                json_println!(serde_json::json!({ "ok": true, "slug": slug }));
             } else {
                 println!("{}", tf!("✓ 규칙 '{slug}' 저장됨", "✓ rule '{slug}' saved"));
             }
@@ -6162,7 +6115,7 @@ fn handle_rules(c: &Backend, json: bool, sub: RulesCmd) -> Result<()> {
             };
             c.rules_create(&slug, content)?;
             if json {
-                println!("{}", serde_json::json!({ "ok": true, "slug": slug }));
+                json_println!(serde_json::json!({ "ok": true, "slug": slug }));
             } else {
                 println!("{}", tf!("✓ 규칙 '{slug}' 생성됨", "✓ rule '{slug}' created"));
             }
@@ -6181,7 +6134,7 @@ fn handle_rules(c: &Backend, json: bool, sub: RulesCmd) -> Result<()> {
             }
             c.rules_delete(&slug)?;
             if json {
-                println!("{}", serde_json::json!({ "ok": true, "slug": slug }));
+                json_println!(serde_json::json!({ "ok": true, "slug": slug }));
             } else {
                 println!("{}", tf!("✓ 규칙 '{slug}' 삭제됨", "✓ rule '{slug}' deleted"));
             }
@@ -6189,9 +6142,7 @@ fn handle_rules(c: &Backend, json: bool, sub: RulesCmd) -> Result<()> {
         RulesCmd::Rename { slug, new_slug } => {
             c.rules_rename(&slug, &new_slug)?;
             if json {
-                println!(
-                    "{}",
-                    serde_json::json!({
+                json_println!(serde_json::json!({
                         "ok": true, "from": slug, "to": new_slug,
                     })
                 );
@@ -6304,7 +6255,7 @@ fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
             }
             c.library_delete(&id)?;
             if json {
-                println!("{}", serde_json::json!({ "ok": true, "book_id": id }));
+                json_println!(serde_json::json!({ "ok": true, "book_id": id }));
             } else {
                 println!(
                     "{}",
@@ -6350,7 +6301,7 @@ fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
                 }
                 c.library_folder_delete(&path)?;
                 if json {
-                    println!("{}", serde_json::json!({ "ok": true, "path": path }));
+                    json_println!(serde_json::json!({ "ok": true, "path": path }));
                 } else {
                     println!("{}", tf!("✓ 폴더 '{path}' 삭제됨", "✓ folder '{path}' deleted"));
                 }
@@ -6434,7 +6385,7 @@ fn handle_worklog(c: &Backend, json: bool, sub: WorklogCmd) -> Result<()> {
             WorklogNoteCmd::Show { date } => {
                 let content = c.worklog_note_get(&date)?;
                 if json {
-                    println!("{}", serde_json::json!({ "date": date, "content": content }));
+                    json_println!(serde_json::json!({ "date": date, "content": content }));
                 } else {
                     match content {
                         Some(s) => print!("{s}{}", if s.ends_with('\n') { "" } else { "\n" }),
@@ -6446,7 +6397,7 @@ fn handle_worklog(c: &Backend, json: bool, sub: WorklogCmd) -> Result<()> {
                 let content = read_content(file.as_deref())?;
                 c.worklog_note_set(&date, content)?;
                 if json {
-                    println!("{}", serde_json::json!({ "ok": true, "date": date }));
+                    json_println!(serde_json::json!({ "ok": true, "date": date }));
                 } else {
                     println!("{}", tf!("✓ {date} 노트 저장됨", "✓ {date} note saved"));
                 }
@@ -6454,7 +6405,7 @@ fn handle_worklog(c: &Backend, json: bool, sub: WorklogCmd) -> Result<()> {
             WorklogNoteCmd::Clear { date } => {
                 c.worklog_note_set(&date, String::new())?;
                 if json {
-                    println!("{}", serde_json::json!({ "ok": true, "date": date }));
+                    json_println!(serde_json::json!({ "ok": true, "date": date }));
                 } else {
                     println!("{}", tf!("✓ {date} 노트 삭제됨", "✓ {date} note cleared"));
                 }
@@ -6470,9 +6421,7 @@ fn handle_backup(c: &Backend, json: bool, sub: BackupCmd) -> Result<()> {
         BackupCmd::New => {
             let info = c.create_backup()?;
             if json {
-                println!(
-                    "{}",
-                    serde_json::json!({
+                json_println!(serde_json::json!({
                         "ok": true,
                         "timestamp": info.timestamp,
                         "size_bytes": info.size_bytes,
@@ -6530,7 +6479,7 @@ fn handle_backup(c: &Backend, json: bool, sub: BackupCmd) -> Result<()> {
         BackupCmd::Rm { timestamp } => {
             c.delete_backup(&timestamp)?;
             if json {
-                println!("{}", serde_json::json!({ "ok": true, "deleted": timestamp }));
+                json_println!(serde_json::json!({ "ok": true, "deleted": timestamp }));
             } else {
                 println!("{}", tf!("✓ 백업 삭제: {timestamp}", "✓ backup deleted: {timestamp}"));
             }
@@ -6549,9 +6498,7 @@ fn handle_restore(c: &Backend, json: bool, to: Option<String>, at: Option<String
         let ts = resolve_at_keyword(&ts);
         let report = c.restore_to_point(&ts)?;
         if json {
-            println!(
-                "{}",
-                serde_json::json!({
+            json_println!(serde_json::json!({
                     "ok": true,
                     "latest": is_latest,
                     "replayed_to": report.target_ts,
@@ -6621,9 +6568,7 @@ fn handle_restore(c: &Backend, json: bool, to: Option<String>, at: Option<String
     } else {
         let info = c.restore_backup(to)?;
         if json {
-            println!(
-                "{}",
-                serde_json::json!({
+            json_println!(serde_json::json!({
                     "ok": true,
                     "restored_to": info.timestamp,
                 })
@@ -6655,9 +6600,7 @@ fn handle_restore(c: &Backend, json: bool, to: Option<String>, at: Option<String
 fn handle_migrate_to_files(c: &Backend, json: bool) -> Result<()> {
     let report = c.migrate_to_files()?;
     if json {
-        println!(
-            "{}",
-            serde_json::json!({
+        json_println!(serde_json::json!({
                 "ok": true,
                 "legacy_db": report.legacy_db_path.display().to_string(),
                 "quests_written": report.quests_written,
@@ -6714,9 +6657,7 @@ fn handle_info(c: &Backend, json: bool, brief: bool) -> Result<()> {
         .unwrap_or_else(|| "(none)".to_string());
     let schema = i.summary.schema_version.as_deref();
     if json {
-        println!(
-            "{}",
-            serde_json::json!({
+        json_println!(serde_json::json!({
                 "guild": i.guild.name,
                 "version": i.guild.version,
                 "created_at": i.guild.created_at,
@@ -7009,9 +6950,7 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
                             serde_json::json!({ "from": detail.quest.urgency, "to": u }),
                         );
                     }
-                    println!(
-                        "{}",
-                        serde_json::json!({
+                    json_println!(serde_json::json!({
                             "dry_run": true,
                             "slug": slug,
                             "changes": diff,
@@ -7080,9 +7019,7 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
             // dry-run: 무조건 출력만, 변경 X
             if dry_run {
                 if json {
-                    println!(
-                        "{}",
-                        serde_json::json!({
+                    json_println!(serde_json::json!({
                             "dry_run": true,
                             "would_delete": detail.quest.quest_id,
                             "cascade_delete": cascade_subs.iter().map(|s| &s.quest_id).collect::<Vec<_>>(),
@@ -7152,9 +7089,7 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
             }
             c.delete_quest(id, &cascade_ids)?;
             if json {
-                println!(
-                    "{}",
-                    serde_json::json!({
+                json_println!(serde_json::json!({
                         "ok": true,
                         "deleted": slug,
                         "cascade_deleted": cascade_subs.iter().map(|s| &s.quest_id).collect::<Vec<_>>(),
@@ -7354,9 +7289,7 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
             TagCmd::List { slug } => {
                 let tags = c.tag_list(&slug)?;
                 if json {
-                    println!(
-                        "{}",
-                        serde_json::json!({ "slug": slug, "tags": tags })
+                    json_println!(serde_json::json!({ "slug": slug, "tags": tags })
                     );
                 } else if tags.is_empty() {
                     println!("{}", tf!("(태그 없음)", "(no tags)"));
@@ -7377,7 +7310,7 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
                 }
                 c.tag_set(&slug, existing.clone())?;
                 if json {
-                    println!("{}", serde_json::json!({ "ok": true, "slug": slug, "tags": existing }));
+                    json_println!(serde_json::json!({ "ok": true, "slug": slug, "tags": existing }));
                 } else {
                     println!("✓ {slug} tags: {}", existing.join(" "));
                 }
@@ -7394,7 +7327,7 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
                     .collect();
                 c.tag_set(&slug, after.clone())?;
                 if json {
-                    println!("{}", serde_json::json!({ "ok": true, "slug": slug, "tags": after }));
+                    json_println!(serde_json::json!({ "ok": true, "slug": slug, "tags": after }));
                 } else if after.is_empty() {
                     println!("✓ {slug} tags: {}", tf!("(없음)", "(none)"));
                 } else {
@@ -7409,7 +7342,7 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
                     .collect();
                 c.tag_set(&slug, flat.clone())?;
                 if json {
-                    println!("{}", serde_json::json!({ "ok": true, "slug": slug, "tags": flat }));
+                    json_println!(serde_json::json!({ "ok": true, "slug": slug, "tags": flat }));
                 } else if flat.is_empty() {
                     println!("✓ {slug} tags: {}", tf!("(모두 제거)", "(all removed)"));
                 } else {
@@ -7423,9 +7356,7 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
                 let pid = c.id_of(&prereq)?;
                 c.add_prerequisite(id, pid)?;
                 if json {
-                    println!(
-                        "{}",
-                        serde_json::json!({ "ok": true, "added": prereq, "to": slug })
+                    json_println!(serde_json::json!({ "ok": true, "added": prereq, "to": slug })
                     );
                 } else {
                     println!("{slug} prereq + {prereq}");
@@ -7436,9 +7367,7 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
                 let pid = c.id_of(&prereq)?;
                 c.remove_prerequisite(id, pid)?;
                 if json {
-                    println!(
-                        "{}",
-                        serde_json::json!({ "ok": true, "removed": prereq, "from": slug })
+                    json_println!(serde_json::json!({ "ok": true, "removed": prereq, "from": slug })
                     );
                 } else {
                     println!("{slug} prereq - {prereq}");
@@ -9030,6 +8959,53 @@ mod tests {
         assert!(dir.join(".guild/statuses/1-open.toml").is_file());
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-261: 예전엔 `serde_json::json!(...)` 로 만든 값을 `println!` 로
+    /// 바로 Display 하는 곳이 곳곳에 있었는데, serde_json::Value 의 Display
+    /// 가 항상 compact 라 `--compact` 플래그(JSON_COMPACT) 여부와 무관하게
+    /// 늘 한 줄로 나오는 버그 경로였다(json_str 미경유). 새로 추가되는
+    /// println 이 이 함정에 다시 빠지지 않게, 자기 소스를 스캔해 회귀를 잡는다.
+    #[test]
+    fn no_bare_println_json_value_regression() {
+        let src = include_str!("main.rs");
+        let re_bare = find_bare_println_json_lines(src);
+        assert!(
+            re_bare.is_empty(),
+            "println!(\"{{}}\", serde_json::json!(...)) 직접 사용 발견 (json_str 미경유,\n\
+             --compact 무시됨) — json_println!(...) 매크로로 바꾸세요:\n{}",
+            re_bare.join("\n")
+        );
+    }
+
+    /// 위 테스트 전용 — 정규식 크레이트 의존 없이 간단한 상태 기계로
+    /// `println!(` 뒤에 (공백 무관) `"{}"` , (공백 무관) `serde_json::json!(`
+    /// 이 이어지는 위치를 찾아 그 줄 번호 목록을 반환.
+    fn find_bare_println_json_lines(src: &str) -> Vec<String> {
+        let mut hits = Vec::new();
+        let bytes = src.as_bytes();
+        let needle = "println!(";
+        let mut i = 0;
+        while let Some(rel) = src[i..].find(needle) {
+            let start = i + rel;
+            let mut j = start + needle.len();
+            // 공백/개행 skip.
+            while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+                j += 1;
+            }
+            if src[j..].starts_with("\"{}\"") {
+                let mut k = j + 4;
+                while k < bytes.len() && (bytes[k].is_ascii_whitespace() || bytes[k] == b',') {
+                    k += 1;
+                }
+                if src[k..].starts_with("serde_json::json!(") {
+                    let line = src[..start].matches('\n').count() + 1;
+                    hits.push(format!("line {line}"));
+                }
+            }
+            i = start + needle.len();
+        }
+        hits
     }
 
     /// BUG-016: clap doc comment (`/// ...`) 에 적힌 quest 번호가 사용자
