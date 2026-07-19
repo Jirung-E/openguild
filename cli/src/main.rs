@@ -879,6 +879,15 @@ enum LibraryCmd {
         #[command(subcommand)]
         sub: LibraryFolderCmd,
     },
+    // BUG-150: quest/campaign 첨부(DEV-170)와 동일한 명령 — list / add / remove.
+    // core(ops::attachments::*_book_attachment)/server/GUI 는 이미 지원했는데
+    // CLI만 빠져 있었음.
+    #[command(about = tf!("첨부 (본문과 별개 섹션, 큰 파일용) — list / add / remove. 진리원: .guild/library/{{id}}.attachments.json + .guild/attachments/.",
+                          "Attachments (separate from the body, for large files) — list / add / remove. Source of truth: `.guild/library/{{id}}.attachments.json` + `.guild/attachments/`."))]
+    Attach {
+        #[command(subcommand)]
+        sub: AttachCmd,
+    },
 }
 
 #[derive(Subcommand)]
@@ -2669,6 +2678,76 @@ impl Backend {
         }
     }
 
+    // ── BUG-150: 도서관 문서 첨부 — Local 전용 (quest/campaign 첨부와 동일 패턴) ──
+
+    fn book_attachments_list(
+        &self,
+        book_id: &str,
+    ) -> Result<Vec<openguild_core::models::quest::QuestAttachment>> {
+        match self {
+            Backend::Http(_) => Err(anyhow!(tf!("원격 모드에선 미지원 — 로컬에서 실행", "not supported in remote mode — run locally"))),
+            Backend::Local(l) => Ok(openguild_core::ops::attachments::list_book_attachments(
+                &l.store, book_id,
+            )),
+        }
+    }
+
+    fn book_attachments_add(
+        &self,
+        book_id: &str,
+        file: &std::path::Path,
+        name: Option<String>,
+    ) -> Result<Vec<openguild_core::models::quest::QuestAttachment>> {
+        match self {
+            Backend::Http(_) => Err(anyhow!(tf!("원격 모드에선 미지원 — 로컬에서 실행", "not supported in remote mode — run locally"))),
+            Backend::Local(l) => {
+                let bytes = std::fs::read(file)
+                    .with_context(|| format!("파일 읽기 실패: {}", file.display()))?;
+                let ext = file
+                    .extension()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("bin");
+                let display = name.unwrap_or_else(|| {
+                    file.file_name()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("attachment")
+                        .to_string()
+                });
+                l.rt
+                    .block_on(async {
+                        let rel = openguild_core::ops::attachments::save_attachment(
+                            &l.store, &bytes, ext,
+                        )
+                        .await?;
+                        openguild_core::ops::attachments::add_book_attachment(
+                            &l.store, book_id, &rel, &display,
+                        )
+                        .await
+                    })
+                    .map_err(|e| anyhow!(e))
+            }
+        }
+    }
+
+    fn book_attachments_remove(
+        &self,
+        book_id: &str,
+        path: &str,
+    ) -> Result<Vec<openguild_core::models::quest::QuestAttachment>> {
+        match self {
+            Backend::Http(_) => Err(anyhow!(tf!("원격 모드에선 미지원 — 로컬에서 실행", "not supported in remote mode — run locally"))),
+            Backend::Local(l) => l
+                .rt
+                .block_on(async {
+                    openguild_core::ops::attachments::remove_book_attachment(
+                        &l.store, book_id, path,
+                    )
+                    .await
+                })
+                .map_err(|e| anyhow!(e)),
+        }
+    }
+
     // ── DEV-100: scope dispatch — quest / campaign 공용 ──
 
     fn comments_list_scoped(
@@ -3488,6 +3567,66 @@ fn parse_comment_depth(s: &str) -> Result<usize, String> {
             "'{s}' — must be a number or 'all'"
         )
     })
+}
+
+/// BUG-150: 도서관 문서 첨부 명령 핸들러 — `run_attach_cmd` 와 동일 구조지만
+/// scope 없이 book_id 하나만 다룬다(도서관 첨부는 quest/campaign 첨부와 달리
+/// 대상 종류가 하나뿐).
+fn run_book_attach_cmd(c: &Backend, sub: AttachCmd, json: bool) -> Result<()> {
+    match sub {
+        AttachCmd::List { slug: book_id } => {
+            let list = c.book_attachments_list(&book_id)?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "attachments": list.iter()
+                            .map(|a| serde_json::json!({ "name": a.name, "path": a.path }))
+                            .collect::<Vec<_>>(),
+                    })
+                );
+            } else if list.is_empty() {
+                println!("{}", tf!("(첨부 없음)", "(no attachments)"));
+            } else {
+                for a in &list {
+                    println!("- {}  ({})", a.name, a.path);
+                }
+            }
+        }
+        AttachCmd::Add { slug: book_id, file, name } => {
+            let list = c.book_attachments_add(&book_id, &file, name)?;
+            if json {
+                println!("{}", serde_json::json!({ "ok": true, "count": list.len() }));
+            } else {
+                println!(
+                    "{}",
+                    tf!("✓ 첨부 추가 — 총 {} 개", "✓ attachment added — {} total", list.len())
+                );
+                if let Some(a) = list.last() {
+                    println!("  {}  ({})", a.name, a.path);
+                }
+            }
+        }
+        AttachCmd::Rm { slug: book_id, path } => {
+            let before = c.book_attachments_list(&book_id)?;
+            if !before.iter().any(|a| a.path == path) {
+                return Err(anyhow!(tf!(
+                    "그런 첨부 없음: {path}\n  `library attach list {book_id}` 로 경로를 확인하세요",
+                    "no such attachment: {path}\n  check the path with `library attach list {book_id}`"
+                )));
+            }
+            let list = c.book_attachments_remove(&book_id, &path)?;
+            if json {
+                println!("{}", serde_json::json!({ "ok": true, "count": list.len() }));
+            } else {
+                println!(
+                    "{}",
+                    tf!("✓ 첨부 제거 — 남은 {} 개", "✓ attachment removed — {} remaining", list.len())
+                );
+            }
+        }
+    }
+    Ok(())
 }
 
 /// 댓글 대상(quest/campaign)이 실존하는지 — 미존재 slug 가 "(댓글 없음)" 으로
@@ -6100,6 +6239,7 @@ fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
                 }
             }
         },
+        LibraryCmd::Attach { sub } => run_book_attach_cmd(c, sub, json)?,
     }
     Ok(())
 }
