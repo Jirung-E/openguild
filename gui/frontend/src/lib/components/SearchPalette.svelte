@@ -457,6 +457,12 @@
 		box-shadow: 0 10px 34px rgba(0, 0, 0, 0.45);
 		overflow: hidden;
 	}
+	/* DEV-257: 모바일 폭에선 62vw 가 너무 좁음(375px 기준 232px) — 거의 전폭. */
+	@media (max-width: 640px) {
+		.palette {
+			width: calc(100vw - 16px);
+		}
+	}
 	.input-wrap {
 		display: flex;
 		align-items: center;

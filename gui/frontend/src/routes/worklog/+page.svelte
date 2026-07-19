@@ -493,6 +493,10 @@
 		display: flex;
 		align-items: center;
 		gap: 0.75rem;
+		/* DEV-257: 모바일 폭에서 단위 토글/기간 이동 묶음이 화면 밖으로
+		   밀리지 않게 줄바꿈 허용. */
+		flex-wrap: wrap;
+		row-gap: 0.4rem;
 	}
 	.unit {
 		display: inline-flex;

@@ -220,8 +220,11 @@
 
 	.today {
 		display: flex;
+		/* DEV-257: 좁은(모바일) 폭에서 마지막 활동 표시가 화면 밖으로 밀리지
+		   않게 줄바꿈 허용. */
+		flex-wrap: wrap;
 		align-items: center;
-		gap: 0.9rem;
+		gap: 0.35rem 0.9rem;
 		width: 100%;
 		padding: 0.55rem 0 0;
 		border: none;
