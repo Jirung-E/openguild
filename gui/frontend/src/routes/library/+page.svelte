@@ -1382,6 +1382,16 @@
 		text-align: center;
 		line-height: 1.3;
 		word-break: break-word;
+		/* BUG-153: align-items:center 인 column flex 에선 자식이 content 폭을
+		   그대로 가져 긴 제목이 타일(92px) 밖 옆 타일 영역까지 침범했다 —
+		   타일 폭으로 제한해야 word-break 가 실제로 줄바꿈한다. 과도하게 긴
+		   제목은 3줄에서 말줄임. */
+		max-width: 100%;
+		display: -webkit-box;
+		-webkit-line-clamp: 3;
+		line-clamp: 3;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
 	}
 	.tile-sub {
 		font-family: 'SFMono-Regular', Consolas, monospace;
