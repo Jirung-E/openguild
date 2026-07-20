@@ -209,14 +209,28 @@
 	}
 
 	// 메뉴 바깥 클릭 시 닫기.
-	function onWindowClick(e: MouseEvent) {
+	//
+	// BUG-155: 이전엔 window 'click'(버블) 리스너였는데, Tauri 가 주입하는
+	// drag-region 스크립트가 타이틀바(data-tauri-drag-region) 위 mousedown
+	// 에서 stopImmediatePropagation() 을 호출 + 창 드래그를 시작해버려
+	// 타이틀바 빈 영역 클릭으로는 이벤트가 window 까지 오지 않았다(드래그가
+	// 시작되면 click 자체가 발생하지 않기도 함) — ☰ 메뉴가 안 닫히던 원인.
+	// SearchPalette(DEV-255 4차)와 동일하게 window 'mousedown' 을 **capture**
+	// 단계로 등록 — capture 는 window→document→target 순서라 drag 스크립트
+	// (document 버블)보다 먼저 실행되고 stopImmediatePropagation 의 영향도
+	// 받지 않는다.
+	function onWindowMouseDown(e: MouseEvent) {
 		if (!menuOpen) return;
 		const t = e.target as HTMLElement;
 		if (!t.closest('.tb-menu-wrap')) menuOpen = false;
 	}
+	onMount(() => {
+		window.addEventListener('mousedown', onWindowMouseDown, { capture: true });
+		return () => window.removeEventListener('mousedown', onWindowMouseDown, { capture: true });
+	});
 </script>
 
-<svelte:window onclick={onWindowClick} onresize={reportMaxButtonRect} />
+<svelte:window onresize={reportMaxButtonRect} />
 
 <div class="titlebar" class:mac-overlay={isMac} data-tauri-drag-region>
 	<!-- DEV-265: 시스템이 창 컨트롤을 왼쪽에 두는 배치면 타이틀바 맨 앞에
