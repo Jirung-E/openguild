@@ -113,6 +113,7 @@ openguild backup new                             # manual snapshot
 | Piping non-ASCII text as a shell argument or via stdin can get mangled by console encoding | Always write the text to a UTF-8 file first and pass `--description-file` / `--file` |
 | A `--description`/body value that starts with `-` gets misread as a flag | Use `--description-file <PATH>` (or `--description=...` with an equals sign) |
 | Editing `.guild/**` frontmatter (status/urgency/parent/etc.) by hand | Always use the CLI — the frontmatter is derived state, not a plain file |
+| Reading/grepping `.guild/**` files directly to inspect data (library docs, comments, quests) | Use the CLI for reads too — `library list`/`library show <book-id>`, `quest comment list <slug>`, `comments`, `quest show <slug>`. Raw files bypass sidecars/cache, so you miss reactions, discussion state, and ordering the user actually sees |
 | Forgetting `--yes` on delete | `quest delete`/`campaign delete` refuse to run without it (dry-run works without) |
 | Moving straight to `done` for changes only a human can verify | Move to `testing` with a "## Test plan" section instead, and let the human promote it to `done` |
 
