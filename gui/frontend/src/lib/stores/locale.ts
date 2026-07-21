@@ -379,6 +379,12 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'settings.contentWidthHintPre': { ko: '페이지의 좌우 안전 영역 — 와이드 모니터에서 더 넓게 사용. 범위 ', en: 'Safe left/right margin for pages — use wider on wide monitors. Range ' },
 	'settings.contentWidthHintMid': { ko: '~', en: '–' },
 	'settings.contentWidthHintTail': { ko: 'px, 5px 단위.', en: 'px, 5px steps.' },
+	// DEV-275: 슬라이더 최대값 = 폭 제한 해제(화면 전체).
+	'settings.contentWidthFull': { ko: '전체', en: 'Full' },
+	'settings.contentWidthFullHint': {
+		ko: '맨 오른쪽은 "전체" — 창 폭을 그대로 사용합니다.',
+		en: 'The far right is "Full" — uses the entire window width.'
+	},
 	'nav.currentGuild': { ko: '현재 길드', en: 'Current guild' },
 	'nav.remote': { ko: '원격', en: 'Remote' },
 	'nav.remoteConnected': { ko: '원격 서버에 연결됨', en: 'Connected to remote server' },
@@ -806,6 +812,8 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'titlebar.restore': { ko: '이전 크기로 복원', en: 'Restore' },
 	'titlebar.close': { ko: '닫기', en: 'Close' },
 	'titlebar.search': { ko: '문서 검색', en: 'Search documents' },
+	// DEV-276: 최근 본 문서 드롭다운.
+	'titlebar.recent': { ko: '최근 본 문서', en: 'Recently viewed' },
 	'titlebar.menuCampaigns': { ko: '캠페인 목록', en: 'Campaigns' },
 	'titlebar.menuWorklog': { ko: '작업기록', en: 'Worklog' },
 	'titlebar.menuTags': { ko: '태그 목록', en: 'Tags' },

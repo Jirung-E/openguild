@@ -28,6 +28,7 @@
 		resetContentWidth,
 		MIN_CONTENT_WIDTH,
 		MAX_CONTENT_WIDTH,
+		isFullWidth,
 		DEFAULT_CONTENT_WIDTH
 	} from '$lib/stores/contentWidth';
 	import { theme, setTheme, type ThemeChoice, type EffectiveTheme } from '$lib/stores/theme';
@@ -383,22 +384,30 @@
 							ariaLabel={t('settings.contentWidth', $locale)}
 							onChange={setContentWidth}
 						/>
-						<!-- DEV-101 fix4: 직접 숫자 입력. px 단위. -->
-						<div class="num-input">
-							<input
-								type="number"
-								min={MIN_CONTENT_WIDTH}
-								max={MAX_CONTENT_WIDTH}
-								step="5"
-								value={$contentWidth}
-								oninput={(e) => {
-									const n = Number.parseInt(e.currentTarget.value, 10);
-									if (Number.isFinite(n)) setContentWidth(n);
-								}}
-								aria-label={t('settings.contentWidthPxAria', $locale)}
-							/>
-							<span class="unit">px</span>
-						</div>
+						<!-- DEV-101 fix4: 직접 숫자 입력. px 단위.
+						     DEV-275: 최대값은 "화면 전체"(폭 제한 없음) — 숫자 대신
+						     라벨을 보여줘야 슬라이더 끝의 의미가 드러난다. -->
+						{#if isFullWidth($contentWidth)}
+							<div class="num-input full-label">
+								<span>{t('settings.contentWidthFull', $locale)}</span>
+							</div>
+						{:else}
+							<div class="num-input">
+								<input
+									type="number"
+									min={MIN_CONTENT_WIDTH}
+									max={MAX_CONTENT_WIDTH}
+									step="5"
+									value={$contentWidth}
+									oninput={(e) => {
+										const n = Number.parseInt(e.currentTarget.value, 10);
+										if (Number.isFinite(n)) setContentWidth(n);
+									}}
+									aria-label={t('settings.contentWidthPxAria', $locale)}
+								/>
+								<span class="unit">px</span>
+							</div>
+						{/if}
 						<button
 							class="btn-reset"
 							onclick={resetContentWidth}
@@ -408,6 +417,8 @@
 					</div>
 					<p class="scale-hint">
 						{t('settings.contentWidthHintPre', $locale)}{MIN_CONTENT_WIDTH}{t('settings.contentWidthHintMid', $locale)}{MAX_CONTENT_WIDTH}{t('settings.contentWidthHintTail', $locale)}
+						<!-- DEV-275: 슬라이더 끝 = 폭 제한 해제. -->
+						{t('settings.contentWidthFullHint', $locale)}
 					</p>
 				</dd>
 
@@ -739,6 +750,15 @@
 	.ui-scale .num-input .unit {
 		color: var(--text-muted);
 		font-size: 0.8rem;
+	}
+	/* DEV-275: 최대값("전체")일 때 숫자 입력 대신 표시하는 라벨 — 숫자
+	   입력칸과 같은 자리/크기를 차지해 슬라이더가 밀리지 않게. */
+	.ui-scale .num-input.full-label {
+		justify-content: center;
+		min-width: 7ch;
+		color: var(--accent);
+		font-size: 0.85rem;
+		font-weight: 600;
 	}
 	.ui-scale .btn-reset {
 		padding: 0.2rem 0.6rem;

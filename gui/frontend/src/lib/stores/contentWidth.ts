@@ -13,9 +13,31 @@ import { writable } from 'svelte/store';
 
 const KEY = 'openguild.contentWidth';
 export const MIN_CONTENT_WIDTH = 600;
-export const MAX_CONTENT_WIDTH = 1800;
+/**
+ * DEV-275: 상한 1800 → 3200. 1800 은 1080p~1440p 기준이라 울트라와이드/4K
+ * (3440·3840px)에서 양옆 여백이 과하게 남는다는 사용자 요청.
+ *
+ * 그리고 이 **최대값은 "화면 전체"(폭 제한 없음)** 로 취급한다 — 모니터가
+ * 얼마나 넓든 슬라이더 끝까지 밀면 창 전체를 쓰게 되므로, 특정 픽셀값이
+ * 또 부족해지는 일이 없다(`isFullWidth` / `contentWidthCss` 참조).
+ */
+export const MAX_CONTENT_WIDTH = 3200;
 /** 기본 컨텐츠 폭 (px). 1100 = 기존 Home / Campaigns 페이지의 max-width 와 일치. */
 export const DEFAULT_CONTENT_WIDTH = 1100;
+
+/** DEV-275: 최대값 = 폭 제한 해제("화면 전체"). */
+export function isFullWidth(w: number): boolean {
+	return w >= MAX_CONTENT_WIDTH;
+}
+
+/**
+ * DEV-275: `--content-max-width` 에 넣을 CSS 값. 최대값이면 `none` 을 줘서
+ * 각 페이지의 `max-width: var(--content-max-width, …)` 가 제한 없이 창을
+ * 꽉 채우게 한다.
+ */
+export function contentWidthCss(w: number): string {
+	return isFullWidth(w) ? 'none' : `${w}px`;
+}
 
 function clamp(n: number): number {
 	if (!Number.isFinite(n)) return DEFAULT_CONTENT_WIDTH;
