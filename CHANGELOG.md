@@ -48,6 +48,12 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
   태그 링크)을 추가. (DEV-271)
 
 ### Changed
+- **`openguild docs <name>` 기본 출력이 전체 본문 → 목차로 변경** —
+  늘 전체를 뱉어 사람은 스크롤, 에이전트는 토큰을 낭비했다. 이제 기본은
+  번호가 붙은 목차(제목만), 특정 절은 `--section <번호|제목>`(하위 절
+  포함, 제목은 대소문자·공백 무시 부분일치), 전체는 `--full`.
+  목차/섹션은 `--json` 으로 구조화 출력도 지원. **주의: 전체 본문을
+  기대하던 기존 호출은 `--full` 을 붙여야 한다.** (DEV-274)
 - **`openguild comments` / `quest comment list` / `quest comment show` 옵션셋
   통일** — `comments` 에 `--top-only`/`--reply-to`/`--reverse`/`--tree` 추가,
   `quest comment list` 에 `--until`/`--discussion`/`--unresolved`/`--summary`

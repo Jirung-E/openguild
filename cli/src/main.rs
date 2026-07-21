@@ -159,10 +159,16 @@ enum Command {
         #[command(subcommand)]
         sub: TagDefCmd,
     },
-    #[command(about = tf!("번들 문서를 stdout 으로 출력 — 빌드에 embed 되어 파일 경로/읽기 권한 불필요 (agent 친화). 이름 미지정 시 목록", "Print bundled docs to stdout — embedded at build time, no file paths/permissions needed (agent friendly). Lists docs if no name"))]
+    #[command(about = tf!("번들 문서를 stdout 으로 출력 — 빌드에 embed 되어 파일 경로/읽기 권한 불필요 (agent 친화). 이름 미지정 시 문서 목록, 이름만 주면 목차(제목만), 전체는 --full, 특정 절은 --section", "Print bundled docs to stdout — embedded at build time, no file paths/permissions needed (agent friendly). No name: doc list. Name only: table of contents (headings). Full body: --full. One section: --section"))]
     Docs {
         #[arg(help = tf!("usage | readme | changelog", "usage | readme | changelog"))]
         name: Option<String>,
+        // DEV-274: 기본은 목차만 — 전체를 늘 뱉으면 사람도 스크롤, agent 도
+        // 토큰 낭비. 전체/섹션은 명시 옵션으로 분리.
+        #[arg(long, conflicts_with = "section", help = tf!("문서 전체 본문 출력 (기본은 목차만).", "Print the full document body (default is table of contents only)."))]
+        full: bool,
+        #[arg(long, value_name = "HEADING", help = tf!("특정 절만 출력 — 제목(대소문자·공백 무시 부분일치) 또는 목차 번호. 하위 절 포함.", "Print one section only — by heading (case/space-insensitive substring) or its TOC number. Includes sub-sections."))]
+        section: Option<String>,
     },
     #[command(about = tf!("CLI 출력 언어 — GUI 와 같은 위치(~/.openguild/locale.json)에 저장, 이후 모든 실행이 따름. 인자 없으면 현재 값 출력", "CLI output language — saved to ~/.openguild/locale.json (shared with GUI), applied to all runs. Prints current value if no arg"))]
     Locale {
@@ -5099,8 +5105,8 @@ fn run() -> Result<()> {
         return init_guild(name.clone(), cli.json);
     }
     // docs 도 길드/백엔드 무관 (embed 문서 출력) — 길드 밖에서도 동작해야 함.
-    if let Command::Docs { name } = &cli.command {
-        return handle_docs(cli.json, name.clone());
+    if let Command::Docs { name, full, section } = &cli.command {
+        return handle_docs(cli.json, name.clone(), *full, section.clone());
     }
     // locale 도 길드/백엔드 무관 — 어디서든 언어 조회/변경 가능해야 함.
     if let Command::Locale { lang } = &cli.command {
@@ -5565,42 +5571,198 @@ fn handle_types(c: &Backend, json: bool, sub: TypesCmd) -> Result<()> {
 /// 그대로 담으므로** 진리원은 기존 문서 파일 하나뿐(이중 관리 없음). 문서를
 /// 고치면 다음 빌드가 자동 반영. 설치 폴더의 docs/ 복사본이 유실/차단돼도
 /// 이 명령은 항상 동작.
-fn handle_docs(json: bool, name: Option<String>) -> Result<()> {
+/// DEV-274: markdown 문서에서 ATX 제목(`#`~`######`)을 뽑아 (레벨, 텍스트,
+/// 시작 라인) 목록으로. 코드펜스(``` / ~~~) 안의 `#` 은 제목이 아니므로 제외.
+fn doc_headings(body: &str) -> Vec<(usize, String, usize)> {
+    let mut out = Vec::new();
+    let mut in_fence = false;
+    let mut fence_marker = "";
+    for (i, raw) in body.lines().enumerate() {
+        let trimmed = raw.trim_start();
+        // 코드펜스 토글 — ``` 또는 ~~~ 로 시작하는 줄.
+        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
+            let marker = if trimmed.starts_with("```") { "```" } else { "~~~" };
+            if !in_fence {
+                in_fence = true;
+                fence_marker = marker;
+            } else if marker == fence_marker {
+                in_fence = false;
+            }
+            continue;
+        }
+        if in_fence {
+            continue;
+        }
+        // ATX heading: 1~6 개의 `#` 뒤 공백 + 제목.
+        let hashes = trimmed.chars().take_while(|c| *c == '#').count();
+        if (1..=6).contains(&hashes) {
+            let rest = &trimmed[hashes..];
+            if rest.starts_with(' ') || rest.is_empty() {
+                let text = rest.trim().trim_end_matches('#').trim().to_string();
+                if !text.is_empty() {
+                    out.push((hashes, text, i));
+                }
+            }
+        }
+    }
+    out
+}
+
+fn handle_docs(json: bool, name: Option<String>, full: bool, section: Option<String>) -> Result<()> {
     const DOCS: &[(&str, &str, &str)] = &[
         ("usage", "사용자 매뉴얼 (USAGE.md)", include_str!("../../docs/USAGE.md")),
         ("readme", "프로젝트 소개 (README.md)", include_str!("../../README.md")),
         ("changelog", "변경 이력 (CHANGELOG.md)", include_str!("../../CHANGELOG.md")),
     ];
-    match name {
-        Some(n) => {
-            let key = n.to_lowercase();
-            let Some((_, _, body)) = DOCS.iter().find(|(k, _, _)| *k == key) else {
-                bail!(tf!(
-                    "알 수 없는 문서 '{n}' — 사용 가능: {}",
-                    "unknown doc '{n}' — available: {}",
-                    DOCS.iter().map(|(k, _, _)| *k).collect::<Vec<_>>().join(" | ")
-                ));
-            };
-            // 문서 원문 그대로 — json 모드도 raw 출력(문서는 markdown 텍스트).
+    let Some(n) = name else {
+        // 이름 미지정 — 문서 목록.
+        if json {
+            json_println!(serde_json::json!(DOCS
+                    .iter()
+                    .map(|(k, d, _)| serde_json::json!({ "name": k, "description": d }))
+                    .collect::<Vec<_>>())
+            );
+        } else {
+            for (k, d, _) in DOCS {
+                println!("{k:<10} {d}");
+            }
+            println!(
+                "{}",
+                tf!(
+                    "\n사용: openguild docs <name>         # 목차\n      openguild docs <name> --full  # 전체\n      openguild docs <name> --section <제목>",
+                    "\nusage: openguild docs <name>         # table of contents\n       openguild docs <name> --full  # full body\n       openguild docs <name> --section <heading>"
+                )
+            );
+        }
+        return Ok(());
+    };
+    let key = n.to_lowercase();
+    let Some((_, _, body)) = DOCS.iter().find(|(k, _, _)| *k == key) else {
+        bail!(tf!(
+            "알 수 없는 문서 '{n}' — 사용 가능: {}",
+            "unknown doc '{n}' — available: {}",
+            DOCS.iter().map(|(k, _, _)| *k).collect::<Vec<_>>().join(" | ")
+        ));
+    };
+
+    // --section: 특정 절만.
+    if let Some(sec) = section {
+        return docs_print_section(json, &n, body, &sec);
+    }
+    // --full: 전체 본문.
+    if full {
+        if json {
+            json_println!(serde_json::json!({ "name": key, "body": body }));
+        } else {
             print!("{body}");
             if !body.ends_with('\n') {
                 println!();
             }
         }
-        None => {
-            if json {
-                json_println!(serde_json::json!(DOCS
-                        .iter()
-                        .map(|(k, d, _)| serde_json::json!({ "name": k, "description": d }))
-                        .collect::<Vec<_>>())
-                );
-            } else {
-                for (k, d, _) in DOCS {
-                    println!("{k:<10} {d}");
-                }
-                println!("{}", tf!("\n사용: openguild docs <name>", "\nusage: openguild docs <name>"));
+        return Ok(());
+    }
+    // 기본(옵션 없음): 목차만.
+    let headings = doc_headings(body);
+    if json {
+        json_println!(serde_json::json!({
+            "name": key,
+            "toc": headings.iter().enumerate().map(|(idx, (level, text, line))| serde_json::json!({
+                "n": idx + 1,
+                "level": level,
+                "title": text,
+                "line": line + 1,
+            })).collect::<Vec<_>>(),
+        }));
+    } else if headings.is_empty() {
+        println!("{}", tf!("(제목 없음 — --full 로 전체 출력)", "(no headings — use --full for the whole body)"));
+    } else {
+        for (idx, (level, text, _)) in headings.iter().enumerate() {
+            // 목차 번호 + 레벨 들여쓰기.
+            let indent = "  ".repeat(level.saturating_sub(1));
+            println!("{:>3}. {indent}{text}", idx + 1);
+        }
+        println!(
+            "{}",
+            tf!(
+                "\n특정 절: openguild docs {n} --section <번호|제목>  ·  전체: --full",
+                "\nsection: openguild docs {n} --section <number|heading>  ·  full: --full"
+            )
+        );
+    }
+    Ok(())
+}
+
+/// DEV-274: `--section` — 제목(부분일치) 또는 목차 번호로 한 절을 잘라 출력.
+/// 그 제목 라인부터 "같거나 더 상위 레벨의 다음 제목" 직전까지(= 하위 절 포함).
+fn docs_print_section(json: bool, doc_name: &str, body: &str, query: &str) -> Result<()> {
+    let headings = doc_headings(body);
+    if headings.is_empty() {
+        bail!(tf!(
+            "'{doc_name}' 에 제목이 없어 --section 을 쓸 수 없습니다 — --full 사용",
+            "'{doc_name}' has no headings, --section is not usable — use --full"
+        ));
+    }
+    // 번호 우선 매칭, 아니면 제목 부분일치(대소문자·공백 무시).
+    let q = query.trim();
+    let idx = if let Ok(num) = q.parse::<usize>() {
+        if num == 0 || num > headings.len() {
+            bail!(tf!(
+                "절 번호 {num} 범위 밖 (1..={}) — `openguild docs {doc_name}` 로 목차 확인",
+                "section number {num} out of range (1..={}) — run `openguild docs {doc_name}` for the TOC",
+                headings.len()
+            ));
+        }
+        num - 1
+    } else {
+        let norm = |s: &str| s.to_lowercase().split_whitespace().collect::<String>();
+        let nq = norm(q);
+        let matches: Vec<usize> = headings
+            .iter()
+            .enumerate()
+            .filter(|(_, (_, text, _))| norm(text).contains(&nq))
+            .map(|(i, _)| i)
+            .collect();
+        match matches.as_slice() {
+            [] => bail!(tf!(
+                "'{query}' 와 일치하는 절 없음 — `openguild docs {doc_name}` 로 목차 확인",
+                "no section matching '{query}' — run `openguild docs {doc_name}` for the TOC"
+            )),
+            [one] => *one,
+            many => {
+                // 여러 개면 후보 안내(모호함을 침묵 통과시키지 않음).
+                let list = many
+                    .iter()
+                    .map(|i| format!("{}. {}", i + 1, headings[*i].1))
+                    .collect::<Vec<_>>()
+                    .join("\n  ");
+                bail!(tf!(
+                    "'{query}' 가 여러 절과 일치 — 번호로 지정하세요:\n  {list}",
+                    "'{query}' matches multiple sections — pick one by number:\n  {list}"
+                ));
             }
         }
+    };
+
+    let (level, _title, start_line) = &headings[idx];
+    // 다음 "같거나 상위 레벨" 제목의 시작 라인 = 이 절의 끝(exclusive).
+    let end_line = headings[idx + 1..]
+        .iter()
+        .find(|(lvl, _, _)| lvl <= level)
+        .map(|(_, _, line)| *line)
+        .unwrap_or(body.lines().count());
+
+    let lines: Vec<&str> = body.lines().collect();
+    let slice = lines[*start_line..end_line].join("\n");
+    let slice = slice.trim_end();
+    if json {
+        json_println!(serde_json::json!({
+            "name": doc_name,
+            "section": headings[idx].1,
+            "n": idx + 1,
+            "body": slice,
+        }));
+    } else {
+        println!("{slice}");
     }
     Ok(())
 }
@@ -8237,17 +8399,54 @@ mod tests {
     }
 
     /// admin 요청: docs 명령 — 이름 optional, 목록/본문 파싱.
+    /// DEV-274: --full / --section 추가 + 상호배타.
     #[test]
     fn cli_parse_docs() {
         let bare = Cli::try_parse_from(["openguild", "docs"]).unwrap();
-        assert!(matches!(bare.command, Command::Docs { name: None }));
+        assert!(matches!(bare.command, Command::Docs { name: None, .. }));
         let named = Cli::try_parse_from(["openguild", "docs", "usage"]).unwrap();
         match named.command {
-            Command::Docs { name } => assert_eq!(name.as_deref(), Some("usage")),
+            Command::Docs { name, full, section } => {
+                assert_eq!(name.as_deref(), Some("usage"));
+                assert!(!full);
+                assert!(section.is_none());
+            }
             _ => panic!("expected docs"),
         }
         // 알 수 없는 이름은 파싱은 통과(런타임 에러 담당) — free string 이므로.
         assert!(Cli::try_parse_from(["openguild", "docs", "nope"]).is_ok());
+        // DEV-274: --full / --section 파싱.
+        match Cli::try_parse_from(["openguild", "docs", "usage", "--full"])
+            .unwrap()
+            .command
+        {
+            Command::Docs { full, .. } => assert!(full),
+            _ => panic!("expected docs"),
+        }
+        match Cli::try_parse_from(["openguild", "docs", "usage", "--section", "Setup"])
+            .unwrap()
+            .command
+        {
+            Command::Docs { section, .. } => assert_eq!(section.as_deref(), Some("Setup")),
+            _ => panic!("expected docs"),
+        }
+        // --full 과 --section 은 상호배타.
+        assert!(
+            Cli::try_parse_from(["openguild", "docs", "usage", "--full", "--section", "x"]).is_err()
+        );
+    }
+
+    /// DEV-274: doc_headings — 코드펜스 안의 `#` 제외, ATX 레벨/텍스트/라인 추출.
+    #[test]
+    fn doc_headings_skips_code_fences() {
+        let md = "# Title\n\nintro\n\n## Sec A\n\n```\n# not a heading\n```\n\n## Sec B\n### Sub\n";
+        let hs = doc_headings(md);
+        let titles: Vec<&str> = hs.iter().map(|(_, t, _)| t.as_str()).collect();
+        assert_eq!(titles, vec!["Title", "Sec A", "Sec B", "Sub"]);
+        assert_eq!(hs[0].0, 1); // # Title = level 1
+        assert_eq!(hs[3].0, 3); // ### Sub = level 3
+        // 라인 번호(0-based) 정확성 — Sec A 는 4번째 라인(index 4).
+        assert_eq!(hs[1].2, 4);
     }
 
     /// admin 요청: top-level tag 그룹 — 단수형 + sub 필수 규칙 준수.
