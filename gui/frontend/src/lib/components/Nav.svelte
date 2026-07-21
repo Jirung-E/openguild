@@ -27,6 +27,16 @@
 	import { usesCustomTitlebar } from '$lib/utils/platform';
 	const showWebExtras = !usesCustomTitlebar();
 	let searchOpen = $state(false);
+	// DEV-276: 최근 본 문서 드롭다운(웹 fallback — 데스크탑은 TitleBar 담당).
+	import { goto } from '$app/navigation';
+	import { recentDocs } from '$lib/stores/recentDocs';
+	let recentOpen = $state(false);
+	// 라우트가 바뀌면 닫기 — $page 구독으로 자동 반응.
+	$effect(() => {
+		void $page.url.pathname;
+		void $page.url.search;
+		recentOpen = false;
+	});
 
 	// BUG-146: 예전엔 커스텀 타이틀바가 없는 환경(브라우저 dev / 당시엔
 	// macOS/Linux 로 오판)에서 Nav 에 "openguild" 로고 + 길드명을 fallback
@@ -223,6 +233,36 @@
 					<path d="M10.2 10.2 14 14" />
 				</svg>
 			</button>
+			<!-- DEV-276: 최근 본 문서 — 데스크탑은 TitleBar 검색 pill 옆에 있고,
+			     웹은 타이틀바 자체가 없어 여기로(DEV-271 과 같은 fallback 규칙). -->
+			{#if $recentDocs.length > 0}
+				<div class="recent-wrap">
+					<button
+						class="btn-search"
+						class:active={recentOpen}
+						onclick={() => (recentOpen = !recentOpen)}
+						title={t('titlebar.recent', $locale)}
+						aria-label={t('titlebar.recent', $locale)}
+						aria-expanded={recentOpen}
+					>
+						<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+							<circle cx="8" cy="8" r="5.6" />
+							<path d="M8 4.6V8l2.4 1.5" />
+						</svg>
+					</button>
+					{#if recentOpen}
+						<div class="recent-menu">
+							{#each $recentDocs as d (d.href)}
+								<button class="recent-item" onclick={() => { recentOpen = false; goto(d.href); }}>
+									<span class="rk {d.kind}">{t(`kind.${d.kind}`, $locale)}</span>
+									<span class="rlabel">{d.label}</span>
+									{#if d.title}<span class="rtitle">{d.title}</span>{/if}
+								</button>
+							{/each}
+						</div>
+					{/if}
+				</div>
+			{/if}
 		{/if}
 		<!-- DEV-095: 외부 편집 후 cache 정합 회복 — 일반 사용자도 한 클릭으로. -->
 		<button
@@ -447,9 +487,86 @@
 			background 0.15s,
 			color 0.15s;
 	}
-	.btn-search:hover {
+	.btn-search:hover,
+	.btn-search.active {
 		background: var(--nav-hover-bg);
 		color: var(--text);
+	}
+
+	/* DEV-276: 최근 본 문서 드롭다운 (웹 fallback). TitleBar 의 .tb-recent 와
+	   같은 구성이지만 Nav 우측 정렬 기준. */
+	.recent-wrap {
+		position: relative;
+		display: inline-flex;
+	}
+	.recent-menu {
+		position: absolute;
+		top: calc(100% + 6px);
+		right: 0;
+		width: 280px;
+		max-height: 320px;
+		overflow-y: auto;
+		display: flex;
+		flex-direction: column;
+		padding: 0.3rem;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+		z-index: 300;
+	}
+	.recent-item {
+		display: flex;
+		align-items: center;
+		gap: 0.45rem;
+		width: 100%;
+		padding: 0.35rem 0.5rem;
+		border-radius: 5px;
+		background: transparent;
+		border: none;
+		cursor: pointer;
+		text-align: left;
+		color: var(--text);
+		font-size: 0.8rem;
+	}
+	.recent-item:hover {
+		background: var(--nav-hover-bg);
+	}
+	.recent-item .rk {
+		flex: none;
+		min-width: 3.2rem;
+		text-align: center;
+		font-size: 0.64rem;
+		font-weight: 600;
+		border-radius: 4px;
+		padding: 0.05rem 0.3rem;
+		color: var(--accent);
+		background: color-mix(in srgb, var(--accent) 14%, transparent);
+	}
+	.recent-item .rk.campaign {
+		color: var(--hl-pre);
+		background: color-mix(in srgb, var(--hl-pre) 14%, transparent);
+	}
+	.recent-item .rk.rule {
+		color: var(--success);
+		background: color-mix(in srgb, var(--success) 14%, transparent);
+	}
+	.recent-item .rk.book {
+		color: var(--warning);
+		background: color-mix(in srgb, var(--warning) 14%, transparent);
+	}
+	.recent-item .rlabel {
+		flex: none;
+		font-family: 'SFMono-Regular', Consolas, monospace;
+		font-size: 0.72rem;
+		color: var(--text-muted);
+	}
+	.recent-item .rtitle {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	/* DEV-095: Reindex 버튼 — 설정 옆. */

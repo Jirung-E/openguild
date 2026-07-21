@@ -39,6 +39,8 @@
 	// DEV-260: 창 폭이 좁아 메뉴바(Nav)에서 넘친 페이지 링크 — ☰ 메뉴 상단에
 	// 구분선과 함께 렌더(priority+ navigation). Nav 가 폭 변화에 반응해 발행.
 	import { navOverflowItems } from '$lib/stores/navOverflow';
+	// DEV-276: 최근 본 문서 목록 — 검색 pill 옆 시계 버튼.
+	import { recentDocs } from '$lib/stores/recentDocs';
 
 	let maximized = $state(false);
 	const isMac = isMacOverlay();
@@ -128,10 +130,13 @@
 
 	let menuOpen = $state(false);
 	let searchOpen = $state(false);
+	// DEV-276: 최근 본 문서 드롭다운.
+	let recentOpen = $state(false);
 
 	// 라우트 이동 시 메뉴 닫기.
 	afterNavigate(() => {
 		menuOpen = false;
+		recentOpen = false;
 	});
 
 	onMount(() => {
@@ -223,9 +228,11 @@
 	// (document 버블)보다 먼저 실행되고 stopImmediatePropagation 의 영향도
 	// 받지 않는다.
 	function onWindowMouseDown(e: MouseEvent) {
-		if (!menuOpen) return;
+		if (!menuOpen && !recentOpen) return;
 		const t = e.target as HTMLElement;
-		if (!t.closest('.tb-menu-wrap')) menuOpen = false;
+		if (menuOpen && !t.closest('.tb-menu-wrap')) menuOpen = false;
+		// DEV-276: 최근 문서 드롭다운도 같은 경로로 바깥 클릭 닫기.
+		if (recentOpen && !t.closest('.tb-recent-wrap')) recentOpen = false;
 	}
 	onMount(() => {
 		window.addEventListener('mousedown', onWindowMouseDown, { capture: true });
@@ -317,21 +324,54 @@
 	</div>
 	{/if}
 
-	<!-- 중앙: 길드 이름 pill = 검색 팔레트. 길드 컨텍스트 있을 때만, 자식윈도우
-	     에선 숨김(단일 문서 보기 창엔 전체 검색이 무의미). -->
+	<!-- 중앙: 길드 이름 pill = 검색 팔레트 (+ DEV-276 최근 문서 버튼).
+	     길드 컨텍스트 있을 때만, 자식윈도우에선 숨김(단일 문서 보기 창엔
+	     전체 검색/최근 목록이 무의미). -->
 	{#if $guildContextActive && guildName && !$isChildWindow}
-		<button class="tb-search" class:open={searchOpen} onclick={() => (searchOpen = true)} title={t('titlebar.search', $locale)}>
-			<span class="tb-search-name">{guildName}</span>
-			{#if isRemote}
-				<span class="tb-remote" title={t('nav.remoteConnected', $locale)}>
-					<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">
-						<circle cx="8" cy="8" r="5.7" />
-						<ellipse cx="8" cy="8" rx="2.4" ry="5.7" />
-						<path d="M2.5 8h11" />
-					</svg>
-				</span>
+		<div class="tb-center">
+			<button class="tb-search" class:open={searchOpen} onclick={() => (searchOpen = true)} title={t('titlebar.search', $locale)}>
+				<span class="tb-search-name">{guildName}</span>
+				{#if isRemote}
+					<span class="tb-remote" title={t('nav.remoteConnected', $locale)}>
+						<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">
+							<circle cx="8" cy="8" r="5.7" />
+							<ellipse cx="8" cy="8" rx="2.4" ry="5.7" />
+							<path d="M2.5 8h11" />
+						</svg>
+					</span>
+				{/if}
+			</button>
+			<!-- DEV-276: 최근 본 문서 — 뒤로가기는 한 칸씩만 가므로 "아까 그
+			     문서"로 바로 점프하는 수단. 기록이 없으면 버튼 자체를 숨김. -->
+			{#if $recentDocs.length > 0}
+				<div class="tb-recent-wrap">
+					<button
+						class="tb-icon-btn"
+						class:active={recentOpen}
+						onclick={() => (recentOpen = !recentOpen)}
+						title={t('titlebar.recent', $locale)}
+						aria-label={t('titlebar.recent', $locale)}
+						aria-expanded={recentOpen}
+					>
+						<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+							<circle cx="8" cy="8" r="5.6" />
+							<path d="M8 4.6V8l2.4 1.5" />
+						</svg>
+					</button>
+					{#if recentOpen}
+						<div class="tb-recent">
+							{#each $recentDocs as d (d.href)}
+								<button class="tb-recent-item" onclick={() => { recentOpen = false; goto(d.href); }}>
+									<span class="rk {d.kind}">{t(`kind.${d.kind}`, $locale)}</span>
+									<span class="rlabel">{d.label}</span>
+									{#if d.title}<span class="rtitle">{d.title}</span>{/if}
+								</button>
+							{/each}
+						</div>
+					{/if}
+				</div>
 			{/if}
-		</button>
+		</div>
 	{/if}
 
 	<div class="tb-spacer" data-tauri-drag-region></div>
@@ -561,17 +601,100 @@
 		margin: 0.25rem 0.3rem;
 		background: var(--border);
 	}
+
+	/* ── DEV-276: 최근 본 문서 드롭다운 ── */
+	.tb-recent-wrap {
+		position: relative;
+		flex: none;
+	}
+	.tb-recent {
+		position: absolute;
+		top: 26px;
+		/* 검색 pill 이 중앙이라 오른쪽 정렬해야 화면 밖으로 덜 나간다. */
+		right: 0;
+		width: 280px;
+		max-height: 320px;
+		overflow-y: auto;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		box-shadow: 0 10px 34px rgba(0, 0, 0, 0.45);
+		padding: 0.3rem;
+		z-index: 1200;
+	}
+	.tb-recent-item {
+		display: flex;
+		align-items: center;
+		gap: 0.45rem;
+		width: 100%;
+		padding: 0.35rem 0.5rem;
+		border-radius: 5px;
+		background: transparent;
+		border: none;
+		cursor: pointer;
+		text-align: left;
+		color: var(--text);
+		font-size: 0.8rem;
+	}
+	.tb-recent-item:hover {
+		background: var(--nav-hover-bg);
+	}
+	/* 종류 칩 — 검색 팔레트(.ptype)와 같은 색 규칙. */
+	.tb-recent-item .rk {
+		flex: none;
+		min-width: 3.2rem;
+		text-align: center;
+		font-size: 0.64rem;
+		font-weight: 600;
+		border-radius: 4px;
+		padding: 0.05rem 0.3rem;
+		color: var(--accent);
+		background: color-mix(in srgb, var(--accent) 14%, transparent);
+	}
+	.tb-recent-item .rk.campaign {
+		color: var(--hl-pre);
+		background: color-mix(in srgb, var(--hl-pre) 14%, transparent);
+	}
+	.tb-recent-item .rk.rule {
+		color: var(--success);
+		background: color-mix(in srgb, var(--success) 14%, transparent);
+	}
+	.tb-recent-item .rk.book {
+		color: var(--warning);
+		background: color-mix(in srgb, var(--warning) 14%, transparent);
+	}
+	.tb-recent-item .rlabel {
+		flex: none;
+		font-family: 'SFMono-Regular', Consolas, monospace;
+		font-size: 0.72rem;
+		color: var(--text-muted);
+	}
+	.tb-recent-item .rtitle {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
 	/* ── 중앙 검색 pill ── */
-	.tb-search {
+	/* DEV-276: 검색 pill + 최근 버튼을 한 묶음으로 중앙 정렬 — 예전엔 pill
+	   자체가 absolute 였으나, 옆에 버튼이 붙으면서 wrapper 로 옮겼다. */
+	.tb-center {
 		position: absolute;
 		left: 50%;
 		transform: translateX(-50%);
 		display: inline-flex;
 		align-items: center;
+		gap: 4px;
+		max-width: 52%;
+	}
+	.tb-search {
+		display: inline-flex;
+		align-items: center;
 		justify-content: center;
 		height: 22px;
 		min-width: 260px;
-		max-width: 42%;
+		max-width: 100%;
 		padding: 0 12px;
 		background: rgba(255, 255, 255, 0.05);
 		border: 1px solid var(--nav-border);

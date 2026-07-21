@@ -4,7 +4,9 @@
 	// DEV-153: 미저장 변경 통합 가드.
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { anyUnsaved, clearUnsaved } from '$lib/stores/unsaved';
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
+	// DEV-276: 최근 본 문서 추적.
+	import { pushRecentDoc, classifyDocRoute } from '$lib/stores/recentDocs';
 	import Nav from '$lib/components/Nav.svelte';
 	// 커스텀 타이틀바 — Windows Tauri 전용 (tauri.windows.conf.json 의
 	// decorations:false 와 세트). 네이티브 타이틀바 테마 어긋남 원천 해소.
@@ -20,7 +22,7 @@
 	// BUG-140: 커스텀 타이틀바 플랫폼 판별(Windows/Linux) — 단일 진리원.
 	import { usesCustomTitlebar, isLinux } from '$lib/utils/platform';
 	import { uiScale, applyUiScaleToDocument } from '$lib/stores/uiScale';
-	import { contentWidth } from '$lib/stores/contentWidth';
+	import { contentWidth, contentWidthCss } from '$lib/stores/contentWidth';
 	import {
 		theme,
 		applyThemeToDocument,
@@ -131,6 +133,41 @@
 	}
 	onMount(sweepMermaidLeftovers);
 	afterNavigate(sweepMermaidLeftovers);
+
+	// DEV-276: 최근 본 문서 기록 — "최근" 버튼(타이틀바/Nav)의 소스.
+	// 문서 성격 라우트(퀘스트/캠페인 상세·규칙·도서관)만 기록하고, 목록/보드/
+	// 설정 같은 탐색 화면은 제외(classifyDocRoute 가 판별).
+	//
+	// 제목 보강: 대부분의 페이지가 document.title 을 설정하지 않아(실측: 퀘스트
+	// 상세도 빈 문자열) 화면의 `main h1` 을 우선 읽고 document.title 은 폴백.
+	// 본문은 라우트 전환 직후엔 아직 비어 있어(API 로드 대기) 짧게 재시도한다 —
+	// 실패해도 라벨(DEV-001 등)만으로 목록은 성립하므로 조용히 포기.
+	function readDocTitle(): string {
+		const h1 = document.querySelector('main h1')?.textContent?.trim();
+		if (h1) return h1;
+		return (document.title || '').replace(/\s*·\s*openguild\s*$/i, '').trim();
+	}
+	function trackRecentDoc() {
+		if ($isChildWindow) return; // 자식창(단일 문서 보기)은 목록을 쌓을 필요 없음
+		const href = $page.url.pathname + $page.url.search;
+		const hit = classifyDocRoute(href);
+		if (!hit) return;
+		pushRecentDoc({ href, kind: hit.kind, label: hit.label, title: '' });
+		let tries = 0;
+		const enrich = () => {
+			// 라우트가 이미 바뀌었으면 이 문서의 제목을 쓰면 안 됨.
+			if ($page.url.pathname + $page.url.search !== href) return;
+			const t = readDocTitle();
+			if (t) {
+				pushRecentDoc({ href, kind: hit.kind, label: hit.label, title: t });
+				return;
+			}
+			if (++tries < 10) setTimeout(enrich, 150);
+		};
+		tick().then(enrich);
+	}
+	afterNavigate(trackRecentDoc);
+	onMount(trackRecentDoc);
 
 	// 비정상 quest 파일(정의되지 않은 status / 파싱 실패) 감지 시 시동 알림.
 	// 그런 파일은 reindex/sync 에서 조용히 skip 되므로 사용자에게 안 보임 → toast.
@@ -245,7 +282,11 @@
 			if (rafId !== null) return;
 			rafId = requestAnimationFrame(() => {
 				rafId = null;
-				document.documentElement.style.setProperty('--content-max-width', `${pendingW}px`);
+				// DEV-275: 최대값이면 'none' — 폭 제한 해제(화면 전체).
+				document.documentElement.style.setProperty(
+					'--content-max-width',
+					contentWidthCss(pendingW)
+				);
 				// BUG-064 후속: 고정 폭 팝업/모달이 '컨텐츠 폭' 설정에 비례하도록
 				// --popup-scale 토큰 발급. 기준 1100px = 1.0, 0.9~1.3 으로 clamp
 				// (너무 좁거나 과하게 넓어지지 않게). 팝업 width 는
