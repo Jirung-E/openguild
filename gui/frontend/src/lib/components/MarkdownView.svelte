@@ -139,9 +139,13 @@
 	// (공백/대괄호 제외 — DEV-173).
 	// DEV-219: 접두 `kind:` (quest/q, campaign/c, rules/rule/r, library/lib/book)
 	// 를 허용 — 나머지 문자 클래스는 기존과 동일(공백/대괄호 제외).
-	const CROSS_LINK_RE = /\[\[([^[\]\s]{1,64})\]\]/g;
+	// BUG-156: 규칙 slug 는 파일명이라 **공백을 포함할 수 있다**(예: `[[코딩 규칙]]`).
+	// 예전 문자 클래스가 `\s` 를 통째로 배제해 띄어쓰기 있는 규칙은 cross-link
+	// 자체가 불가능했다. 줄바꿈만 배제(한 줄 안에서만 매칭 — 문단을 가로질러
+	// `[[` … `]]` 가 엮이는 오탐 방지)하고 공백/탭은 허용.
+	const CROSS_LINK_RE = /\[\[([^[\]\n\r]{1,64})\]\]/g;
 	// 별도 non-global tester — /g 의 lastIndex 부작용 없이 acceptNode 에서 검사.
-	const CROSS_LINK_TEST = /\[\[[^[\]\s]{1,64}\]\]/;
+	const CROSS_LINK_TEST = /\[\[[^[\]\n\r]{1,64}\]\]/;
 	// quest/campaign 추적번호 형식 (XXX-NNN). 이 형식이 아니면 규칙 slug 로 본다.
 	const ID_TOKEN_RE = /^[A-Za-z]{1,}-\d+$/;
 	// DEV-219: 접두 없을 때만 쓰는 형태 추정 fallback (미존재 ID 용).
@@ -175,7 +179,14 @@
 			let m: RegExpExecArray | null;
 			while ((m = CROSS_LINK_RE.exec(text))) {
 				const whole = m[0];
-				const rawToken = m[1]; // [[token]] 안 — kind: 접두 있을 수 있음(DEV-219)
+				// [[token]] 안 — kind: 접두 있을 수 있음(DEV-219).
+				// BUG-156: 공백 허용 이후 `[[ 규칙명 ]]` 처럼 여백을 준 표기도
+				// 같은 대상으로 풀리도록 trim (내부 공백은 slug 의 일부라 보존).
+				const rawToken = m[1].trim();
+				if (!rawToken) {
+					// `[[   ]]` 같은 빈 토큰은 링크로 만들지 않고 원문 유지.
+					continue;
+				}
 				const resolved = resolveCrossLinkToken(rawToken);
 				const ref = resolved.ref;
 				const rawId = resolved.id;
