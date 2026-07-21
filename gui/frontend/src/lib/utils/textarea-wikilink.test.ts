@@ -11,8 +11,22 @@ describe('wikiMatch', () => {
 		// DEV-218: 도서관 문서 — BOOK-NNN 은 XXX-NNN 형식이라 기존 매칭에 자동 포함.
 		['BOOK-001', { title: '설계 결정 기록', kind: 'book' }],
 		// DEV-239: 폴더 있는 도서관 문서 — 경로 기반 매칭 테스트용.
-		['BOOK-014', { title: '라우터 설계', kind: 'book', path: '아키텍처' }]
+		['BOOK-014', { title: '라우터 설계', kind: 'book', path: '아키텍처' }],
+		// BUG-156: 띄어쓰기 포함 규칙 slug — 예전엔 `\s` 배제로 매칭 자체가 끊겼다.
+		['코딩 규칙', { title: '코딩 규칙', kind: 'rule', slug: '코딩 규칙' }]
 	]);
+
+	// BUG-156: 규칙 slug 는 파일명이라 공백을 포함할 수 있다.
+	it('[[ 컨텍스트에서 띄어쓰기 있는 규칙 slug 도 매칭 (BUG-156)', () => {
+		const v = '자세한 건 [[코딩 규';
+		const m = wikiMatch(v, v.length, index);
+		expect(m).not.toBeNull();
+		// 공백 이후로도 매칭이 이어져야 — 예전 정규식은 여기서 null.
+		expect(v.slice(m!.from, m!.to)).toBe('[[코딩 규');
+		const rule = m!.items.find((i) => i.kind === 'rule' && i.id === '코딩 규칙');
+		expect(rule).toBeDefined();
+		expect(rule!.insert).toBe('rules:코딩 규칙');
+	});
 
 	// DEV-220: bare 토큰(대괄호 없음)은 더 이상 자동완성 트리거가 아님.
 	it('bare 토큰은 제안하지 않음 (DEV-220 — [[ 컨텍스트 전용)', () => {

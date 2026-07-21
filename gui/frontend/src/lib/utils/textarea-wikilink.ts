@@ -15,10 +15,12 @@ import {
 } from '$lib/stores/questIndex';
 
 /** DEV-173: `[[` 바로 안(아직 안 닫힘)의 부분 slug — 규칙 포함 전체 인덱스 제안.
- *  규칙 slug 는 한글 등 비ASCII 가능 — 공백/대괄호 제외 모든 문자 허용.
+ *  규칙 slug 는 한글 등 비ASCII 가능 — 대괄호 제외 모든 문자 허용.
  *  DEV-220(사용자 결정): bare 토큰(XXX-NNN 그냥 타이핑) 트리거는 제거 —
- *  자동완성은 `[[` 컨텍스트에서만. */
-const BEFORE_CURSOR_WIKI = /\[\[([^[\]\s]*)$/;
+ *  자동완성은 `[[` 컨텍스트에서만.
+ *  BUG-156: 공백 포함 규칙 slug(`[[코딩 규칙]]`) 지원 — editor-links.ts 와
+ *  동일하게 줄바꿈만 배제 + 64자 상한. */
+const BEFORE_CURSOR_WIKI = /\[\[([^[\]\n\r]{0,64})$/;
 
 export interface WikiItem {
 	id: string;
