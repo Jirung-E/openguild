@@ -703,8 +703,10 @@
 
 <!-- BUG-023: Quest 연결 콤보 모달 (Quest Detail 패턴 그대로) -->
 {#if comboOpen && detail}
-	<div class="ov" role="presentation">
-		<div class="modal-sm" role="dialog" aria-modal="true" tabindex="-1">
+	<!-- BUG-160: 바깥(백드롭) 클릭으로 닫기 — ConfirmDialog 와 동일 패턴.
+	     e.target === e.currentTarget 가드로 내부 클릭 버블링은 제외. -->
+	<div class="ov" role="presentation" onclick={(e) => { if (e.target === e.currentTarget) comboOpen = false; }}>
+		<div class="modal-sm modal-combo" role="dialog" aria-modal="true" tabindex="-1">
 			<div class="modal-head">
 				<h3>{t('campaign.linkQuestTitle', $locale)}</h3>
 				<button class="x" onclick={() => (comboOpen = false)}>×</button>
@@ -1084,6 +1086,10 @@
 		max-width: calc(30rem * var(--popup-scale, 1)); /* BUG-064 */
 		padding: 1rem 1.25rem 1rem;
 		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
+	}
+	/* BUG-160: 콤보박스 팝업 넓은 변형 — quests/[id] 와 동일 수치. */
+	.modal-combo {
+		max-width: calc(56rem * var(--popup-scale, 1));
 	}
 	.modal-head {
 		display: flex;

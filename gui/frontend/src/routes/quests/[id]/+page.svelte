@@ -1066,8 +1066,11 @@
 
 <!-- 콤보박스 모달 -->
 {#if comboMode && detail}
-	<div class="ov" role="presentation">
-		<div class="modal-sm" role="dialog" aria-modal="true" tabindex="-1">
+	<!-- BUG-160: 바깥(백드롭) 클릭으로 닫기 — ConfirmDialog 와 동일 패턴.
+	     e.target === e.currentTarget 가드가 핵심: 모달 내부 클릭이 버블링돼
+	     닫히는 걸 막는다. -->
+	<div class="ov" role="presentation" onclick={(e) => { if (e.target === e.currentTarget) closeCombo(); }}>
+		<div class="modal-sm modal-combo" role="dialog" aria-modal="true" tabindex="-1">
 			<div class="modal-head">
 				<h3>
 					{#if comboMode === 'sub'}{t('qd.comboSub', $locale)}{:else if comboMode === 'prereq'}{t('qd.comboPrereq', $locale)}{:else}{t('qd.comboSuccessor', $locale)}{/if}
@@ -1091,8 +1094,8 @@
 
 <!-- BUG-030: 캠페인 연결 콤보박스 모달 (sub/prereq 와 동일 패턴) -->
 {#if showCampaignCombo && detail}
-	<div class="ov" role="presentation">
-		<div class="modal-sm" role="dialog" aria-modal="true" tabindex="-1">
+	<div class="ov" role="presentation" onclick={(e) => { if (e.target === e.currentTarget) closeCampaignCombo(); }}>
+		<div class="modal-sm modal-combo" role="dialog" aria-modal="true" tabindex="-1">
 			<div class="modal-head">
 				<h3>{t('qd.linkCampaignTitle', $locale)}</h3>
 				<button class="x" onclick={closeCampaignCombo}>×</button>
@@ -1120,7 +1123,9 @@
 <!-- DEV-055: type 변경 확인 모달 -->
 {#if confirmTypeChange && detail}
 	{@const target = confirmTypeChange}
-	<div class="ov" role="presentation">
+	<!-- BUG-160: 바깥 클릭 = 취소. 단 변경이 진행 중이면 닫지 않는다
+	     (요청은 계속 날아가는데 UI 만 사라져 결과를 못 보는 상태 방지). -->
+	<div class="ov" role="presentation" onclick={(e) => { if (e.target === e.currentTarget && !changingType) confirmTypeChange = null; }}>
 		<div class="modal-sm" role="dialog" aria-modal="true" tabindex="-1">
 			<div class="modal-head">
 				<h3 class="del-title">{t('qd.changeTypeTitle', $locale)}</h3>
@@ -1164,7 +1169,8 @@
 
 <!-- 삭제 모달 -->
 {#if deleteModal && detail}
-	<div class="ov" role="presentation">
+	<!-- BUG-160: 바깥 클릭 = 취소. 삭제 진행 중엔 닫지 않음(위와 동일 이유). -->
+	<div class="ov" role="presentation" onclick={(e) => { if (e.target === e.currentTarget && !deleting) deleteModal = false; }}>
 		<div class="modal-sm" role="dialog" aria-modal="true" tabindex="-1">
 			<div class="modal-head">
 				<h3 class="del-title">{detail.quest_id} {t('detail.delete', $locale)}</h3>
@@ -1853,6 +1859,12 @@
 		max-width: calc(30rem * var(--popup-scale, 1)); /* BUG-064 */
 		padding: 1rem 1.25rem 1rem;
 		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
+	}
+	/* BUG-160: 콤보박스 팝업은 "목록"이 본문이라 확인 모달용 30rem 로는 좁다 —
+	   퀘스트 제목이 잘리고 후보가 스크롤 뒤로 숨었다(사용자 지적). 넓은 변형을
+	   따로 둬서 삭제/타입변경 등 다른 modal-sm 사용처는 그대로 유지. */
+	.modal-combo {
+		max-width: calc(56rem * var(--popup-scale, 1));
 	}
 	.modal-head {
 		display: flex;
