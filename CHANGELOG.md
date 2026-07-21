@@ -33,6 +33,9 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
   `quest list` 의 기본 정렬은 그대로(필요하면 `--sort updated`). (DEV-277)
 
 ### Fixed
+- **`openguild init` 이 만드는 `.gitignore` 에 openguild 자체 개발용
+  이슈 번호와 한국어 주석이 들어가던 문제** — 사용자 저장소에 생성돼
+  팀과 공유되는 파일이라 영어로 교체. (BUG-161)
 - **데스크탑 앱에서 퀘스트 목록 API 의 정렬/필터 파라미터가 무시되던
   문제** — Tauri 경로가 query string 을 버리고 있었다(서버 모드는 정상).
   (DEV-277 작업 중 발견)

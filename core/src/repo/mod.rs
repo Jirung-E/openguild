@@ -242,15 +242,22 @@ impl GuildPaths {
 
     /// `.guild/.gitignore` 의 표준 내용.
     /// DEV-012: `quests/*.memo.md` 추가 — 비공개 메모 (개인 노트, 팀 공유 X).
+    /// BUG-161: 이 파일은 **사용자 저장소에 생성되어 팀과 공유**된다.
+    ///
+    /// 예전엔 이 repo 의 퀘스트 번호(`DEV-012`/`DEV-100`)를 주석에 달고
+    /// 한국어로 썼는데, 둘 다 남의 길드에서는 의미가 없다 — 번호는 다른
+    /// 길드 사용자가 자기 길드 얘기로 오인하고(BUG-016/DEV-263 과 같은
+    /// leak), 언어는 `init` 을 누가 실행했는지에 따라 팀 공유 파일 내용이
+    /// 달라지는 게 이상하다. gitignore 는 관례대로 영어로 고정하고 주석은
+    /// "무엇이 왜 제외되는지"만 남긴다.
     pub fn gitignore_content() -> &'static str {
-        "# openguild — 내부 캐시 / UI 상태 / 백업 (git 추적 X)\n\
+        "# openguild - local cache / UI state / backups (not tracked)\n\
          index.db\n\
          positions.json\n\
          backups/\n\
          .lock\n\
-         # DEV-012: 비공개 메모 (개인 노트)\n\
+         # Private notes - personal, never shared\n\
          quests/*.memo.md\n\
-         # DEV-100: 캠페인 비공개 메모\n\
          campaigns/*.memo.md\n"
     }
 }
@@ -288,5 +295,44 @@ mod tests {
         assert!(s.contains("positions.json"));
         assert!(s.contains("backups/"));
         assert!(s.contains(".lock"));
+        assert!(s.contains("quests/*.memo.md"));
+        assert!(s.contains("campaigns/*.memo.md"));
+    }
+
+    /// BUG-161: 이 파일은 사용자 저장소에 생성되어 팀과 공유된다 — 이 repo
+    /// 고유의 퀘스트 번호나 한국어가 들어가면 안 된다(다른 길드 사용자가
+    /// 자기 길드 얘기로 오인, BUG-016/DEV-263 과 같은 leak).
+    #[test]
+    fn gitignore_content_has_no_quest_ids_or_non_ascii() {
+        let s = GuildPaths::gitignore_content();
+        // `<PREFIX>-<숫자>` 패턴 — 정규식 크레이트 없이 수동 스캔.
+        let bytes = s.as_bytes();
+        for (i, w) in bytes.windows(2).enumerate() {
+            if w[1] != b'-' {
+                continue;
+            }
+            let prefix_end = i + 1;
+            let prefix_start = s[..prefix_end]
+                .rfind(|c: char| !c.is_ascii_uppercase())
+                .map(|p| p + 1)
+                .unwrap_or(0);
+            let prefix_len = prefix_end - prefix_start;
+            let digits_after = s[prefix_end + 1..]
+                .chars()
+                .take_while(|c| c.is_ascii_digit())
+                .count();
+            assert!(
+                !(prefix_len >= 2 && digits_after > 0),
+                "생성되는 .gitignore 에 quest id 형태('{}-{}...')가 있습니다 — 남의 길드에선 \
+                 의미 없는 참조라 제거하세요:\n{s}",
+                &s[prefix_start..prefix_end],
+                &s[prefix_end + 1..prefix_end + 1 + digits_after],
+            );
+        }
+        assert!(
+            s.is_ascii(),
+            "생성되는 .gitignore 는 ASCII(영문)여야 합니다 — 팀 공유 파일이라 \
+             init 을 실행한 사람의 언어에 따라 내용이 달라지면 안 됩니다:\n{s}"
+        );
     }
 }
