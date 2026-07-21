@@ -2,6 +2,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { get } from 'svelte/store';
+import type { RecentDoc, RecentKind } from './recentDocs';
 
 async function loadFresh() {
 	vi.resetModules();
@@ -65,16 +66,43 @@ describe('recentDocs store', () => {
 		expect(list[0].label).toBe('DEV-001');
 	});
 
-	it('제목은 빈 값으로 덮어쓰지 않음 — 나중에 로드된 제목 보존', async () => {
+	// BUG-159: 제목은 저장하지 않고 표시 시점에 cross-link 인덱스에서 조회.
+	it('recentDocTitle — 인덱스의 제목을 kind:ID 로 정확히 조회', async () => {
 		const m = await loadFresh();
-		// 라우트 전환 직후엔 제목이 아직 없음.
-		m.pushRecentDoc({ href: '/quests/DEV-001', kind: 'quest', label: 'DEV-001', title: '' });
-		// 로드 후 제목 보강.
-		m.pushRecentDoc({ href: '/quests/DEV-001', kind: 'quest', label: 'DEV-001', title: '제목' });
-		expect(get(m.recentDocs)[0].title).toBe('제목');
-		// 다시 빈 제목으로 들어와도 기존 제목 유지.
-		m.pushRecentDoc({ href: '/quests/DEV-001', kind: 'quest', label: 'DEV-001', title: '' });
-		expect(get(m.recentDocs)[0].title).toBe('제목');
+		const ns = new Map([
+			['quest:DEV-001', { title: '첫 번째 퀘스트', kind: 'quest' as const }],
+			['book:BOOK-001', { title: '설계 결정 기록', kind: 'book' as const }],
+			// 같은 번호라도 종류가 다르면 별개 — 네임스페이스 조회라 안 섞인다.
+			['campaign:C-001', { title: '베타 0.4.0', kind: 'campaign' as const }]
+		]);
+		const doc = (kind: RecentKind, label: string): RecentDoc => ({
+			href: `/x/${label}`,
+			kind,
+			label,
+			ts: 0
+		});
+		expect(m.recentDocTitle(doc('quest', 'DEV-001'), ns)).toBe('첫 번째 퀘스트');
+		expect(m.recentDocTitle(doc('book', 'BOOK-001'), ns)).toBe('설계 결정 기록');
+		expect(m.recentDocTitle(doc('campaign', 'C-001'), ns)).toBe('베타 0.4.0');
+	});
+
+	it('recentDocTitle — 인덱스에 없으면 예전 세션 저장값 폴백, 그것도 없으면 빈 문자열', async () => {
+		const m = await loadFresh();
+		const empty = new Map();
+		expect(
+			m.recentDocTitle({ href: '/x', kind: 'quest', label: 'DEV-9', title: '옛 제목', ts: 0 }, empty)
+		).toBe('옛 제목');
+		expect(m.recentDocTitle({ href: '/x', kind: 'quest', label: 'DEV-9', ts: 0 }, empty)).toBe('');
+	});
+
+	it('recentDocTitle — 규칙 slug 는 대소문자 무시 조회', async () => {
+		const m = await loadFresh();
+		const ns = new Map([
+			['rule:릴리즈-절차', { title: '릴리즈 패키지 절차', kind: 'rule' as const, slug: '릴리즈-절차' }]
+		]);
+		expect(
+			m.recentDocTitle({ href: '/rules?slug=릴리즈-절차', kind: 'rule', label: '릴리즈-절차', ts: 0 }, ns)
+		).toBe('릴리즈 패키지 절차');
 	});
 
 	it('상한 초과 시 오래된 항목부터 밀려남', async () => {

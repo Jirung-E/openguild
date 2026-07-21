@@ -138,33 +138,17 @@
 	// 문서 성격 라우트(퀘스트/캠페인 상세·규칙·도서관)만 기록하고, 목록/보드/
 	// 설정 같은 탐색 화면은 제외(classifyDocRoute 가 판별).
 	//
-	// 제목 보강: 대부분의 페이지가 document.title 을 설정하지 않아(실측: 퀘스트
-	// 상세도 빈 문자열) 화면의 `main h1` 을 우선 읽고 document.title 은 폴백.
-	// 본문은 라우트 전환 직후엔 아직 비어 있어(API 로드 대기) 짧게 재시도한다 —
-	// 실패해도 라벨(DEV-001 등)만으로 목록은 성립하므로 조용히 포기.
-	function readDocTitle(): string {
-		const h1 = document.querySelector('main h1')?.textContent?.trim();
-		if (h1) return h1;
-		return (document.title || '').replace(/\s*·\s*openguild\s*$/i, '').trim();
-	}
+	// BUG-159: 제목은 여기서 저장하지 않는다 — 예전엔 화면의 `main h1` 을
+	// 긁었는데 페이지마다 h1 의미가 달라 엉뚱한 값이 들어갔다(규칙은
+	// `# {slug}` 로 라벨 중복, 도서관은 첫 h1 이 페이지 제목 "도서관"이라
+	// 모든 문서가 같게 보임). 이제 표시 시점에 cross-link 인덱스에서 조회
+	// (recentDocTitle) — 정확하고 이름 변경도 자동 반영.
 	function trackRecentDoc() {
 		if ($isChildWindow) return; // 자식창(단일 문서 보기)은 목록을 쌓을 필요 없음
 		const href = $page.url.pathname + $page.url.search;
 		const hit = classifyDocRoute(href);
 		if (!hit) return;
-		pushRecentDoc({ href, kind: hit.kind, label: hit.label, title: '' });
-		let tries = 0;
-		const enrich = () => {
-			// 라우트가 이미 바뀌었으면 이 문서의 제목을 쓰면 안 됨.
-			if ($page.url.pathname + $page.url.search !== href) return;
-			const t = readDocTitle();
-			if (t) {
-				pushRecentDoc({ href, kind: hit.kind, label: hit.label, title: t });
-				return;
-			}
-			if (++tries < 10) setTimeout(enrich, 150);
-		};
-		tick().then(enrich);
+		pushRecentDoc({ href, kind: hit.kind, label: hit.label });
 	}
 	afterNavigate(trackRecentDoc);
 	onMount(trackRecentDoc);

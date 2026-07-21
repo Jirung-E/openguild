@@ -40,7 +40,10 @@
 	// 구분선과 함께 렌더(priority+ navigation). Nav 가 폭 변화에 반응해 발행.
 	import { navOverflowItems } from '$lib/stores/navOverflow';
 	// DEV-276: 최근 본 문서 목록 — 검색 pill 옆 시계 버튼.
-	import { recentDocs } from '$lib/stores/recentDocs';
+	// BUG-159: 제목은 cross-link 인덱스에서 조회(저장값 아님) — 목록을 열 때
+	// 인덱스가 아직 없으면 조용히 적재(이미 있으면 memo 라 비용 0).
+	import { recentDocs, recentDocTitle } from '$lib/stores/recentDocs';
+	import { questIndexNs, loadQuestIndex } from '$lib/stores/questIndex';
 
 	let maximized = $state(false);
 	const isMac = isMacOverlay();
@@ -348,7 +351,10 @@
 					<button
 						class="tb-icon-btn"
 						class:active={recentOpen}
-						onclick={() => (recentOpen = !recentOpen)}
+						onclick={() => {
+							recentOpen = !recentOpen;
+							if (recentOpen) void loadQuestIndex();
+						}}
 						title={t('titlebar.recent', $locale)}
 						aria-label={t('titlebar.recent', $locale)}
 						aria-expanded={recentOpen}
@@ -361,10 +367,12 @@
 					{#if recentOpen}
 						<div class="tb-recent">
 							{#each $recentDocs as d (d.href)}
+								{@const rtitle = recentDocTitle(d, $questIndexNs)}
 								<button class="tb-recent-item" onclick={() => { recentOpen = false; goto(d.href); }}>
 									<span class="rk {d.kind}">{t(`kind.${d.kind}`, $locale)}</span>
 									<span class="rlabel">{d.label}</span>
-									{#if d.title}<span class="rtitle">{d.title}</span>{/if}
+									<!-- BUG-159: 규칙처럼 제목이 곧 slug 면 라벨과 중복이라 생략. -->
+									{#if rtitle && rtitle !== d.label}<span class="rtitle">{rtitle}</span>{/if}
 								</button>
 							{/each}
 						</div>
@@ -603,8 +611,17 @@
 	}
 
 	/* ── DEV-276: 최근 본 문서 드롭다운 ── */
+	/* BUG-158: pill 오른쪽 **바깥**에 절대 배치 — 흐름에서 빠지므로 버튼이
+	   생겨도 pill 중앙 위치가 그대로다. left:50% 는 폭 0 앵커의 중앙이고,
+	   translateX 로 pill 반폭(21vw = max-width 42vw 의 절반) 만큼 밀어
+	   오른쪽 끝에 붙인다 — pill 이 min-width 로 더 좁을 땐 그만큼 간격이
+	   생기지만 겹치지는 않는다. */
 	.tb-recent-wrap {
-		position: relative;
+		position: absolute;
+		left: 50%;
+		transform: translateX(min(21vw, 134px));
+		display: inline-flex;
+		align-items: center;
 		flex: none;
 	}
 	.tb-recent {
@@ -677,16 +694,21 @@
 		white-space: nowrap;
 	}
 	/* ── 중앙 검색 pill ── */
-	/* DEV-276: 검색 pill + 최근 버튼을 한 묶음으로 중앙 정렬 — 예전엔 pill
-	   자체가 absolute 였으나, 옆에 버튼이 붙으면서 wrapper 로 옮겼다. */
+	/* DEV-276 → BUG-158: 검색 pill 은 **항상 화면 중앙 고정**.
+	   처음엔 pill + 최근 버튼을 한 wrapper 로 묶어 통째로 중앙 정렬했는데,
+	   그러면 최근 버튼이 생기거나 사라질 때마다 묶음 폭이 바뀌어 pill 이
+	   좌우로 밀렸다(사용자 지적). wrapper 자체를 폭 0 의 중앙 앵커로 두고
+	   pill 은 그 앵커 기준 중앙, 최근 버튼은 pill 오른쪽 바깥에 absolute
+	   로 띄운다 — 버튼 유무가 pill 위치에 전혀 영향을 주지 않는다. */
 	.tb-center {
 		position: absolute;
 		left: 50%;
 		transform: translateX(-50%);
-		display: inline-flex;
+		display: flex;
 		align-items: center;
-		gap: 4px;
-		max-width: 52%;
+		justify-content: center;
+		/* 폭 0 앵커 — 자식이 넘쳐도 레이아웃에 영향 없음. */
+		width: 0;
 	}
 	.tb-search {
 		display: inline-flex;
@@ -694,8 +716,10 @@
 		justify-content: center;
 		height: 22px;
 		min-width: 260px;
-		max-width: 100%;
+		max-width: 42vw;
 		padding: 0 12px;
+		/* 폭 0 앵커 안에서 자기 폭만큼 좌우로 균등하게 삐져나오도록. */
+		flex: none;
 		background: rgba(255, 255, 255, 0.05);
 		border: 1px solid var(--nav-border);
 		border-radius: 6px;

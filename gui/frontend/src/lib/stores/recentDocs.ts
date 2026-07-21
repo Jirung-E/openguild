@@ -12,6 +12,8 @@
 // 앱을 껐다 켜면 초기화되는 게 자연스럽다(recents(길드 목록)와 별개).
 
 import { writable, get } from 'svelte/store';
+// BUG-159: 제목은 cross-link 인덱스에서 조회 — DOM 스크래핑보다 정확/최신.
+import { questIndexNs, type IndexedRef } from '$lib/stores/questIndex';
 
 export type RecentKind = 'quest' | 'campaign' | 'rule' | 'book';
 
@@ -21,8 +23,19 @@ export interface RecentDoc {
 	kind: RecentKind;
 	/** 식별자 — DEV-001 / C-001 / 규칙 slug / BOOK-001. */
 	label: string;
-	/** 제목 — 로드 전이면 빈 문자열(라벨만 표시). */
-	title: string;
+	/**
+	 * 제목 — **저장하지 않고 표시 시점에 인덱스에서 조회**(recentDocTitle).
+	 *
+	 * BUG-159: 예전엔 방문 시 화면의 `main h1` 을 긁어 저장했는데 페이지마다
+	 * h1 의 의미가 달라 엉뚱한 값이 들어갔다 — 규칙은 `# {slug}`(라벨과 중복),
+	 * 도서관은 첫 h1 이 페이지 제목 "도서관"이라 모든 문서가 같은 제목으로
+	 * 보였다. cross-link 인덱스(questIndexNs)가 이미 ID→제목을 들고 있고
+	 * reindex 시 갱신되므로 그걸 쓰는 게 정확하고 최신이다(문서 이름을
+	 * 바꿔도 목록이 따라온다).
+	 *
+	 * 하위호환: 예전 세션이 남긴 값이 있으면 인덱스 조회 실패 시 폴백.
+	 */
+	title?: string;
 	/** 마지막 방문 시각(ms) — 정렬용. */
 	ts: number;
 }
@@ -64,24 +77,38 @@ function persist(list: RecentDoc[]) {
 	}
 }
 
-/**
- * 방문 기록. 같은 href 는 새로 쌓지 않고 맨 앞으로 끌어올린다(재방문).
- * `title` 이 나중에 로드되는 경우가 많아, 기존 항목의 제목은 비어있지 않은
- * 새 값이 올 때만 덮어쓴다(빈 값으로 지워지지 않게).
- */
+/** 방문 기록. 같은 href 는 새로 쌓지 않고 맨 앞으로 끌어올린다(재방문). */
 export function pushRecentDoc(doc: Omit<RecentDoc, 'ts'>): void {
 	if (!doc.href) return;
 	recentDocs.update((list) => {
 		const prev = list.find((d) => d.href === doc.href);
 		const merged: RecentDoc = {
 			...doc,
-			title: doc.title || prev?.title || '',
+			// 예전 세션이 저장해둔 제목은 인덱스 조회 실패 시 폴백용으로만 보존.
+			title: doc.title || prev?.title,
 			ts: Date.now()
 		};
 		const next = [merged, ...list.filter((d) => d.href !== doc.href)].slice(0, MAX_RECENT_DOCS);
 		persist(next);
 		return next;
 	});
+}
+
+/**
+ * BUG-159: 표시용 제목 — cross-link 인덱스(kind:ID 네임스페이스)에서 조회.
+ * 없으면 예전 세션 값 → 그것도 없으면 빈 문자열(라벨만 표시).
+ *
+ * 인덱스는 `[[..]]` 렌더/자동완성이 쓰는 것과 같은 캐시라, 목록을 여는
+ * 시점에 이미 적재돼 있는 경우가 대부분이고 reindex 시 자동 갱신된다.
+ */
+export function recentDocTitle(d: RecentDoc, ns: Map<string, IndexedRef>): string {
+	const ref = ns.get(`${d.kind}:${d.label.toUpperCase()}`);
+	return ref?.title || d.title || '';
+}
+
+/** 표시용 제목(스토어 직접 조회 — 컴포넌트 밖에서 쓸 때). */
+export function recentDocTitleNow(d: RecentDoc): string {
+	return recentDocTitle(d, get(questIndexNs));
 }
 
 /** 삭제된 문서 등으로 더 이상 유효하지 않은 항목 제거 — 목록에서 직접 X. */

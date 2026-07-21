@@ -29,7 +29,9 @@
 	let searchOpen = $state(false);
 	// DEV-276: 최근 본 문서 드롭다운(웹 fallback — 데스크탑은 TitleBar 담당).
 	import { goto } from '$app/navigation';
-	import { recentDocs } from '$lib/stores/recentDocs';
+	// BUG-159: 제목은 cross-link 인덱스 조회 — TitleBar 와 동일 규칙.
+	import { recentDocs, recentDocTitle } from '$lib/stores/recentDocs';
+	import { questIndexNs, loadQuestIndex } from '$lib/stores/questIndex';
 	let recentOpen = $state(false);
 	// 라우트가 바뀌면 닫기 — $page 구독으로 자동 반응.
 	$effect(() => {
@@ -240,7 +242,10 @@
 					<button
 						class="btn-search"
 						class:active={recentOpen}
-						onclick={() => (recentOpen = !recentOpen)}
+						onclick={() => {
+							recentOpen = !recentOpen;
+							if (recentOpen) void loadQuestIndex();
+						}}
 						title={t('titlebar.recent', $locale)}
 						aria-label={t('titlebar.recent', $locale)}
 						aria-expanded={recentOpen}
@@ -253,10 +258,12 @@
 					{#if recentOpen}
 						<div class="recent-menu">
 							{#each $recentDocs as d (d.href)}
+								{@const rtitle = recentDocTitle(d, $questIndexNs)}
 								<button class="recent-item" onclick={() => { recentOpen = false; goto(d.href); }}>
 									<span class="rk {d.kind}">{t(`kind.${d.kind}`, $locale)}</span>
 									<span class="rlabel">{d.label}</span>
-									{#if d.title}<span class="rtitle">{d.title}</span>{/if}
+									<!-- BUG-159: 규칙처럼 제목이 곧 slug 면 라벨과 중복이라 생략. -->
+									{#if rtitle && rtitle !== d.label}<span class="rtitle">{rtitle}</span>{/if}
 								</button>
 							{/each}
 						</div>
