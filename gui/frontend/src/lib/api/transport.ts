@@ -265,7 +265,17 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 
 	// ───── list level ─────
 	if (method === 'GET' && pathOnly === '/api/quests') {
-		return { cmd: 'list_quests', args: {} };
+		// DEV-277: 예전엔 query string 을 통째로 버려(args: {}) 데스크탑에서만
+		// 정렬/필터 지정이 무시됐다 — 서버 모드는 Query<ListQuery> 로 그대로
+		// 받는데 Tauri 만 달라지는 비대칭. list_quests 커맨드는 이미
+		// `query: Option<ListQuery>` 를 받으므로 넘겨주기만 하면 된다.
+		// 값이 하나도 없으면 None 과 동일하게 두어 기존 동작 유지.
+		const q: Record<string, string> = {};
+		for (const [k, v] of query.entries()) q[k] = v;
+		return {
+			cmd: 'list_quests',
+			args: Object.keys(q).length > 0 ? { query: q } : {}
+		};
 	}
 	if (method === 'POST' && pathOnly === '/api/quests') {
 		return { cmd: 'create_quest', args: { body } };

@@ -113,6 +113,25 @@ describe('TauriTransport', () => {
 		expect(result).toEqual([{ id: 1 }]);
 	});
 
+	// DEV-277: 예전엔 query string 을 통째로 버려 데스크탑에서만 정렬/필터가
+	// 무시됐다(서버 모드는 Query<ListQuery> 로 그대로 받음).
+	it('GET /api/quests?sort=updated → query 를 list_quests 로 전달', async () => {
+		mockInvoke.mockResolvedValue([]);
+		await new TauriTransport().call({ method: 'GET', path: '/api/quests?sort=updated' });
+		expect(mockInvoke).toHaveBeenCalledWith('list_quests', { query: { sort: 'updated' } });
+	});
+
+	it('GET /api/quests?sort=updated&limit=5 → 여러 파라미터도 그대로', async () => {
+		mockInvoke.mockResolvedValue([]);
+		await new TauriTransport().call({
+			method: 'GET',
+			path: '/api/quests?sort=updated&limit=5'
+		});
+		expect(mockInvoke).toHaveBeenCalledWith('list_quests', {
+			query: { sort: 'updated', limit: '5' }
+		});
+	});
+
 	it('GET /api/quests/42 → get_quest with id', async () => {
 		mockInvoke.mockResolvedValue({ id: 42 });
 		await new TauriTransport().call({ method: 'GET', path: '/api/quests/42' });

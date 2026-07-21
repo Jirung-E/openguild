@@ -17,6 +17,17 @@ import type {
 export const questsApi = {
 	list: () => api.get<Quest[]>('/api/quests'),
 
+	/**
+	 * DEV-277: 최근 갱신순 목록 — 검색 팔레트처럼 "고르는" UI 용.
+	 *
+	 * `list()` 의 기본 정렬은 `id DESC`(생성 역순)라 방금 만든 퀘스트가 위로
+	 * 온다. 무언가를 찾아 고르는 화면에서는 최근에 손댄 것이 위에 있는 편이
+	 * 유용해 명시적으로 sort 를 지정한다. CLI `quest list` 의 기본값은 기존
+	 * 스크립트 호환을 위해 그대로 두고(필요하면 `--sort updated`), 이 UI 만
+	 * 다른 정렬을 요청한다.
+	 */
+	listRecent: () => api.get<Quest[]>('/api/quests?sort=updated'),
+
 	get: (id: number) => api.get<QuestDetail>(`/api/quests/${id}`),
 
 	getBySlug: (slug: string) => api.get<QuestDetail>(`/api/quests/by/${slug}`),

@@ -163,7 +163,8 @@
 		loading = true;
 		try {
 			const [quests, camps, rules, books] = await Promise.all([
-				questsApi.list().catch(() => []),
+				// DEV-277: 최근 갱신순 — 검색 전 첫 화면에 최근 손댄 문서가 위로.
+				questsApi.listRecent().catch(() => []),
 				campaignsApi.list().catch(() => []),
 				rulesApi.list().catch(() => ({ entries: [] })),
 				libraryApi.list().catch(() => [])

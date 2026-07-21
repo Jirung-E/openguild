@@ -1082,8 +1082,13 @@ pub async fn list_candidates(
     relation: &str,
 ) -> AppResult<Vec<QuestRow>> {
     let target = fetch_by_id(pool, id).await?;
+    // DEV-277: 예전엔 `q.id DESC`(= 생성 역순)였다. "연관 퀘스트를 고르는"
+    // 맥락에서는 방금 만든 것보다 **최근에 손댄 것**을 먼저 보여주는 편이
+    // 맞다(사용자 결정) — 오래된 퀘스트를 연결하려고 긴 목록을 뒤지는 일이
+    // 줄어든다. 검색어를 치면 어차피 필터되므로 이 정렬은 "검색 전 첫 화면"
+    // 의 유용성을 좌우한다. id 는 안정 정렬용 tiebreaker.
     let all = sqlx::query_as::<_, QuestRow>(&format!(
-        "{QUEST_SELECT} WHERE q.deleted_at IS NULL ORDER BY q.id DESC"
+        "{QUEST_SELECT} WHERE q.deleted_at IS NULL ORDER BY q.updated_at DESC, q.id DESC"
     ))
     .fetch_all(pool)
     .await?;
