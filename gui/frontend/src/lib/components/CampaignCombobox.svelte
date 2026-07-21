@@ -162,7 +162,8 @@
 		list-style: none;
 		margin: 0;
 		padding: 0;
-		max-height: 220px;
+		/* BUG-160: QuestCombobox 와 동일 — 220px(5줄)은 너무 좁았다. */
+		max-height: min(70vh, 600px);
 		overflow-y: auto;
 		/* DEV-074 fix16: native scrollbar 숨김 — OverlayScrollbar 가 대신 그림. */
 		scrollbar-width: none;
