@@ -221,8 +221,8 @@ pub struct LibraryCounter {
 }
 
 const COUNTER_HEADER: &str = "\
-# ⚠️ 자동 관리 파일 — 절대 수동으로 수정하지 마십시오.
-# last_number 는 부여된 BOOK ID 가 재사용되지 않도록 보호하는 단조 증가 카운터.
+# WARNING: auto-managed file. Do not edit it by hand.
+# last_number is a monotonic counter that keeps issued BOOK IDs from being reused.
 ";
 
 pub fn read_counter(paths: &GuildPaths) -> Result<LibraryCounter> {
