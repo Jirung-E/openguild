@@ -12,19 +12,19 @@ pub fn default_types() -> Vec<TypeFile> {
         TypeFile {
             prefix: "DEV".into(),
             color: "#4A90D9".into(),
-            description: Some("일반 개발 작업".into()),
+            description: Some("Development work".into()),
             counter: Counter { last_number: 0 },
         },
         TypeFile {
             prefix: "BUG".into(),
             color: "#E94F4F".into(),
-            description: Some("버그 보고".into()),
+            description: Some("Bug report".into()),
             counter: Counter { last_number: 0 },
         },
         TypeFile {
             prefix: "REQ".into(),
             color: "#7BB87F".into(),
-            description: Some("기능 요청".into()),
+            description: Some("Feature request".into()),
             counter: Counter { last_number: 0 },
         },
     ]
@@ -257,6 +257,59 @@ mod tests {
         assert_eq!(open_st.name_en, "Open");
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-162 (BUG-161 후속): init 이 사용자 길드에 기록하는 types/*.toml 은
+    /// 이 repo 관리자 언어(한글)나 이 repo 전용 quest ID 를 담으면 안 됨 —
+    /// 완전히 다른 프로젝트에서 쓰이므로 무의미하고 혼란만 준다.
+    /// (statuses 의 name_ko 는 설계상 이중언어 데이터 필드라 예외.)
+    #[test]
+    fn seeded_type_files_have_no_quest_ids_or_non_ascii() {
+        let dir = fresh_tmp("ascii");
+        seed_guild_dir(&dir).unwrap();
+        let paths = GuildPaths::new(&dir);
+
+        let quest_id = regex_lite_quest_id;
+        for prefix in ["DEV", "BUG", "REQ"] {
+            let body = std::fs::read_to_string(paths.type_path(prefix)).unwrap();
+            assert!(
+                body.is_ascii(),
+                "types/{prefix}.toml has non-ASCII content (maintainer-language leak):\n{body}"
+            );
+            assert!(
+                !quest_id(&body),
+                "types/{prefix}.toml leaks a repo quest ID:\n{body}"
+            );
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// `<PREFIX 2+ 대문자>-<숫자>` 패턴(예: DEV-12, BUG-3) 검출 — 외부 crate 없이.
+    fn regex_lite_quest_id(s: &str) -> bool {
+        let bytes = s.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() {
+            // 대문자 연속 길이
+            let start = i;
+            while i < bytes.len() && bytes[i].is_ascii_uppercase() {
+                i += 1;
+            }
+            let letters = i - start;
+            if letters >= 2 && i < bytes.len() && bytes[i] == b'-' {
+                let mut j = i + 1;
+                while j < bytes.len() && bytes[j].is_ascii_digit() {
+                    j += 1;
+                }
+                if j > i + 1 {
+                    return true;
+                }
+            }
+            if i == start {
+                i += 1;
+            }
+        }
+        false
     }
 
     #[test]
