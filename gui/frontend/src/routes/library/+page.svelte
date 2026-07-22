@@ -809,9 +809,9 @@
 						ondragstart={(e) => e.dataTransfer?.setData('text/plain', b.book_id)}
 						onclick={() => select(b.book_id)}
 					>
+						<span class="tile-sub">{b.book_id}</span>
 						<span class="tile-icon" aria-hidden="true">📄</span>
 						<span class="tile-label" title={b.title}>{b.title}</span>
-						<span class="tile-sub">{b.book_id}</span>
 					</button>
 				{/each}
 			</div>
