@@ -3,7 +3,7 @@ book_id = "BOOK-001"
 title = "index.db 는 파일의 일방향·폐기가능 투영이다 (아키텍처 불변식)"
 path = ""
 created_at = "2026-07-22T22:30:00+09:00"
-updated_at = "2026-07-22T22:32:47+09:00"
+updated_at = "2026-07-22T22:58:06+09:00"
 deleted = false
 +++
 
@@ -56,13 +56,17 @@ mutation 의 파일 쓰기(파일=진리 정상 경로).
 - **퀘스트/캠페인/규칙/도서관 등 `.guild` 변경은 develop(추적 브랜치)에서만.**
 - 브랜치 전환 후에는 `rm .guild/index.db && openguild reindex` 로 투영 재생성.
 
-### [미확정] release 브랜치와 `.guild`
+### release 브랜치와 `.guild` (2026-07-22 결정)
 
 기존 규칙 `release-process` 는 **별도 release 브랜치 없이** develop→master
-FF merge + tag 모델이다. 0.4.1 에서 시도한 "master 에서 release 브랜치 컷 +
-소스 체리픽" 은 이와 **다른 모델**이고, 이 모델을 채택한다면 `.guild` 는
-piecemeal 체리픽하지 말고 develop 것을 **통째로** 동기화해야 A1/A2/B 발산을
-막는다. 어느 릴리스 모델로 갈지는 `release-process` 규칙과 함께 별도 확정 필요.
+FF merge + tag 모델이다. **0.4.1 은 이번 한정 예외** — `release-0.4.1` 브랜치를
+쓰되 **버그수정만** 담는다. 위 역류 4경로 수정(A1/A2/A3/B1)을 포함한 이번
+개선은 0.4.1 에 넣지 않고 **0.5.0(develop)** 에서 적용한다. 상시 release
+브랜치 채택 여부(정식 모델)는 0.5.0 시점에 `release-process` 와 함께 재확정.
+
+예외 브랜치에서도 운영 규칙은 그대로 — `.guild` 변경은 develop 에서만,
+브랜치 전환 시 `rm .guild/index.db && reindex`. release-0.4.1 에 `.guild` 를
+가져와야 하면 piecemeal 체리픽 말고 develop 것을 통째 동기화.
 
 ## 관련
 
