@@ -765,7 +765,7 @@
 							ondrop={(e) => onTileDrop(e, f.path)}
 						>
 							<span class="tile-icon" aria-hidden="true">📁</span>
-							<span class="tile-label">{f.name}</span>
+							<span class="tile-label" title={f.name}>{f.name}</span>
 						</button>
 					{/each}
 					{#each searchResults.books as b (b.book_id)}
@@ -776,7 +776,7 @@
 							onclick={() => select(b.book_id)}
 						>
 							<span class="tile-icon" aria-hidden="true">📄</span>
-							<span class="tile-label">{b.title}</span>
+							<span class="tile-label" title={b.title}>{b.title}</span>
 							<span class="tile-sub">{b.book_id}</span>
 						</button>
 					{/each}
@@ -799,7 +799,7 @@
 						ondrop={(e) => onTileDrop(e, f.path)}
 					>
 						<span class="tile-icon" aria-hidden="true">📁</span>
-						<span class="tile-label">{f.name}</span>
+						<span class="tile-label" title={f.name}>{f.name}</span>
 					</button>
 				{/each}
 				{#each explorerDocs as b (b.book_id)}
@@ -810,7 +810,7 @@
 						onclick={() => select(b.book_id)}
 					>
 						<span class="tile-icon" aria-hidden="true">📄</span>
-						<span class="tile-label">{b.title}</span>
+						<span class="tile-label" title={b.title}>{b.title}</span>
 						<span class="tile-sub">{b.book_id}</span>
 					</button>
 				{/each}
