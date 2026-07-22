@@ -73,7 +73,19 @@
 		void wiki;
 		if (!wikiSelFromKeyboard) return;
 		wikiSelFromKeyboard = false;
-		wikiPopEl?.querySelector('.wiki-opt.sel')?.scrollIntoView({ block: 'nearest' });
+		// BUG-163: scrollIntoView({block:'nearest'}) 가 WebView 에서 항목 높이가
+		// 아니라 팝업 높이만큼 스크롤해 여러 항목을 건너뛰었다. 팝업 스크롤을
+		// 직접 계산 — 선택 항목이 보이는 영역 위/아래로 벗어난 만큼만 이동.
+		const pop = wikiPopEl;
+		const sel = pop?.querySelector<HTMLElement>('.wiki-opt.sel');
+		if (!pop || !sel) return;
+		const itemTop = sel.offsetTop;
+		const itemBottom = itemTop + sel.offsetHeight;
+		if (itemTop < pop.scrollTop) {
+			pop.scrollTop = itemTop;
+		} else if (itemBottom > pop.scrollTop + pop.clientHeight) {
+			pop.scrollTop = itemBottom - pop.clientHeight;
+		}
 	});
 
 	// DEV-171 후속: Esc/클릭아웃으로 닫은 토큰 — 같은 토큰에선 재오픈 안 함
