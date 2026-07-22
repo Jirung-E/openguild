@@ -1856,7 +1856,11 @@
 		border: 1px solid var(--border);
 		border-radius: 10px;
 		width: 100%;
-		max-width: calc(30rem * var(--popup-scale, 1)); /* BUG-064 */
+		/* BUG-160: 뷰포트보다 크면 창을 따라 줄어들도록 vw 상한 + 높이 상한 —
+		   작은 창에서 팝업이 그대로 커서 화면에 꽉 차던 문제. */
+		max-width: min(calc(30rem * var(--popup-scale, 1)), 92vw); /* BUG-064 */
+		max-height: 92vh;
+		overflow-y: auto;
 		padding: 1rem 1.25rem 1rem;
 		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
 	}
@@ -1864,7 +1868,7 @@
 	   퀘스트 제목이 잘리고 후보가 스크롤 뒤로 숨었다(사용자 지적). 넓은 변형을
 	   따로 둬서 삭제/타입변경 등 다른 modal-sm 사용처는 그대로 유지. */
 	.modal-combo {
-		max-width: calc(56rem * var(--popup-scale, 1));
+		max-width: min(calc(56rem * var(--popup-scale, 1)), 92vw);
 	}
 	.modal-head {
 		display: flex;

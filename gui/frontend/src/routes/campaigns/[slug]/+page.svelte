@@ -1083,13 +1083,16 @@
 		border: 1px solid var(--border);
 		border-radius: 10px;
 		width: 100%;
-		max-width: calc(30rem * var(--popup-scale, 1)); /* BUG-064 */
+		/* BUG-160: 뷰포트보다 크면 창을 따라 줄어들도록 vw 상한 + 높이 상한. */
+		max-width: min(calc(30rem * var(--popup-scale, 1)), 92vw); /* BUG-064 */
+		max-height: 92vh;
+		overflow-y: auto;
 		padding: 1rem 1.25rem 1rem;
 		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
 	}
 	/* BUG-160: 콤보박스 팝업 넓은 변형 — quests/[id] 와 동일 수치. */
 	.modal-combo {
-		max-width: calc(56rem * var(--popup-scale, 1));
+		max-width: min(calc(56rem * var(--popup-scale, 1)), 92vw);
 	}
 	.modal-head {
 		display: flex;
