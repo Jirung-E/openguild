@@ -109,8 +109,8 @@ mod tests {
             counter: Counter { last_number: 3 },
         };
         let s = t.serialize();
-        // 경고 헤더 포함
-        assert!(s.starts_with("# ⚠️"));
+        // 경고 헤더 포함 (BUG-162: ASCII 영어)
+        assert!(s.starts_with("# WARNING"));
         let parsed = TypeFile::parse(&s).unwrap();
         assert_eq!(parsed, t);
     }
@@ -140,8 +140,8 @@ mod tests {
             counter: Counter { last_number: 1 },
         };
         let s = t.serialize();
-        assert!(s.contains("자동 관리"));
-        assert!(s.contains("수동으로 수정하지 마"));
+        assert!(s.contains("auto-managed"));
+        assert!(s.contains("Do not edit it by hand"));
         assert!(s.contains("last_number"));
     }
 
