@@ -1288,6 +1288,15 @@ pub fn list_rules(store: State<'_, Store>) -> Result<RulesListResponse, String> 
     Ok(RulesListResponse { entries })
 }
 
+/// DEV-290: 규칙 변경 이력(최신→과거).
+#[tauri::command]
+pub fn rule_history(
+    store: State<'_, Store>,
+    slug: String,
+) -> Result<Vec<openguild_core::repo::history::HistoryEntry>, String> {
+    openguild_core::ops::rules::history(&store, &slug).map_err(err)
+}
+
 #[tauri::command]
 pub fn get_rule(store: State<'_, Store>, slug: String) -> Result<RuleResponse, String> {
     let entry = openguild_core::ops::rules::get_rule_entry(&store, &slug).map_err(err)?;
@@ -1465,6 +1474,15 @@ pub async fn list_books(store: State<'_, Store>) -> Result<Vec<BookResponse>, St
         .await
         .map_err(err)?;
     Ok(rows.into_iter().map(BookResponse::from).collect())
+}
+
+/// DEV-290: 도서관 문서 변경 이력(최신→과거).
+#[tauri::command]
+pub fn library_history(
+    store: State<'_, Store>,
+    book_id: String,
+) -> Result<Vec<openguild_core::repo::history::HistoryEntry>, String> {
+    openguild_core::ops::library::history(&store, &book_id).map_err(err)
 }
 
 #[tauri::command]

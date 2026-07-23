@@ -216,6 +216,15 @@ pub async fn set_book_tags(
 
 /// 새 문서 생성 — 카운터에서 번호 할당, 파일 작성, 캐시 INSERT.
 /// `path` — 소속 폴더 ("" = 최상위).
+/// DEV-290: BOOK 의 변경 이력 (최신 → 과거). 도서관도 DB history 테이블이 없어
+/// `.guild/history/{book_id}.jsonl` 사이드카에서 직접 읽는다(append-only 라 역순).
+pub fn history(store: &Store, book_id: &str) -> AppResult<Vec<hist::HistoryEntry>> {
+    let path = hist::history_path(&store.paths, book_id);
+    let mut v = hist::read_all(&path).map_err(AppError::Internal)?;
+    v.reverse();
+    Ok(v)
+}
+
 pub async fn create_book(
     store: &Store,
     title: &str,

@@ -21,6 +21,7 @@
 	import { buildLibraryTree, flattenFolderPaths, searchLibrary } from '$lib/utils/library-tree';
 	import LibraryFolderTree from '$lib/components/LibraryFolderTree.svelte';
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
+	import SidecarHistory from '$lib/components/SidecarHistory.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import AttachmentSection from '$lib/components/AttachmentSection.svelte';
 	// DEV-203: 편집기 셋업(테마/들여쓰기/첨부/자동완성/redo/높이/overlay 스크롤)은
@@ -1114,6 +1115,9 @@
 						scope="library"
 						bind:attachments={selected.attachments}
 					/>
+
+					<!-- DEV-290: BOOK 변경 이력. -->
+					<SidecarHistory kind="book" id={selected.book_id} />
 				{/if}
 			</section>
 		</div>

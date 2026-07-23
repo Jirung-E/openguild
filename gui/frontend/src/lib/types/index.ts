@@ -204,6 +204,15 @@ export interface CampaignHistoryEntry {
 	actor: string | null;
 }
 
+// DEV-290: 규칙/BOOK 이력 한 행 — 사이드카(.jsonl) 직독이라 DB 컬럼(id/actor)
+// 없이 원본 이벤트 형태 그대로. op = create/update/delete/rename.
+export interface SidecarHistoryEntry {
+	ts: string;
+	op: string;
+	old?: string | null;
+	new?: string | null;
+}
+
 // ─── DEV-011: Campaign ──────────────────────────────────
 
 export type CampaignStatus = 'active' | 'done';

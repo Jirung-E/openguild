@@ -2,6 +2,7 @@
 // content === null = 파일 부재.
 
 import { api } from './client';
+import type { SidecarHistoryEntry } from '$lib/types';
 
 export interface RuleEntry {
 	slug: string;
@@ -36,6 +37,9 @@ export const rulesApi = {
 	// ─── multi-file CRUD ───
 	list: () => api.get<RulesListResponse>('/api/rules'),
 	get: (slug: string) => api.get<RuleResponse>(`/api/rules/${encodeURIComponent(slug)}`),
+	// DEV-290: 규칙 변경 이력(최신→과거).
+	history: (slug: string) =>
+		api.get<SidecarHistoryEntry[]>(`/api/rules/${encodeURIComponent(slug)}/history`),
 	set: (slug: string, content: string) =>
 		api.put<RuleResponse>(`/api/rules/${encodeURIComponent(slug)}`, { content }),
 	create: (slug: string, content = '') => api.post<RuleResponse>('/api/rules', { slug, content }),

@@ -82,6 +82,14 @@ pub async fn get_rule(
     }))
 }
 
+/// DEV-290: GET /api/rules/{slug}/history — 규칙 변경 이력(최신→과거).
+pub async fn list_history(
+    State(store): State<Store>,
+    Path(slug): Path<String>,
+) -> AppResult<Json<Vec<openguild_core::repo::history::HistoryEntry>>> {
+    Ok(Json(ops::history(&store, &slug)?))
+}
+
 pub async fn set_rule(
     State(store): State<Store>,
     Path(slug): Path<String>,

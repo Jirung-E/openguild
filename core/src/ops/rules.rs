@@ -22,6 +22,15 @@ pub fn get_rule(store: &Store, slug: &str) -> AppResult<Option<String>> {
     repo::read_rule(&store.paths, slug).map_err(AppError::Internal)
 }
 
+/// DEV-290: 규칙의 변경 이력 (최신 → 과거). 규칙은 DB history 테이블이 없어
+/// `.guild/history/{slug}.jsonl` 사이드카에서 직접 읽는다(append-only 라 역순).
+pub fn history(store: &Store, slug: &str) -> AppResult<Vec<hist::HistoryEntry>> {
+    let path = hist::history_path(&store.paths, slug);
+    let mut v = hist::read_all(&path).map_err(AppError::Internal)?;
+    v.reverse();
+    Ok(v)
+}
+
 /// DEV-243: 태그 포함 전체 조회.
 pub fn get_rule_entry(store: &Store, slug: &str) -> AppResult<Option<RuleEntry>> {
     repo::read_rule_entry(&store.paths, slug).map_err(AppError::Internal)

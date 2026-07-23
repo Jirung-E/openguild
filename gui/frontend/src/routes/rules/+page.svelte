@@ -20,6 +20,7 @@
 	// DEV-205 모듈5: 규칙 페이지 i18n.
 	import { locale, t } from '$lib/stores/locale';
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
+	import SidecarHistory from '$lib/components/SidecarHistory.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	// DEV-203: 편집기 셋업(테마/들여쓰기/첨부/자동완성/높이 영속)은 공통
 	// MarkdownEditor 컴포넌트로 단일화.
@@ -501,6 +502,10 @@
 					{#if !editMode}
 						<!-- DEV-243: 태그. -->
 						<TagPills tags={selectedTags} {tagDefs} onSetTags={setRuleTags} />
+						<!-- DEV-290: 규칙 변경 이력. -->
+						{#if selectedSlug}
+							<SidecarHistory kind="rule" id={selectedSlug} />
+						{/if}
 					{/if}
 				{/if}
 			</section>

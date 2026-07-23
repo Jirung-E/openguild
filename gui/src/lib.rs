@@ -462,6 +462,7 @@ pub fn run() {
             // DEV-016 (multi-file): 다중 규칙 CRUD.
             commands::list_rules,
             commands::get_rule,
+            commands::rule_history,
             commands::set_rule,
             commands::create_rule,
             commands::delete_rule,
@@ -470,6 +471,7 @@ pub fn run() {
             // DEV-217: 도서관.
             commands::list_books,
             commands::get_book,
+            commands::library_history,
             commands::create_book,
             commands::update_book,
             commands::delete_book,

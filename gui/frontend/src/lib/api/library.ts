@@ -4,7 +4,7 @@
 // DEV-237: 첨부(이미지/동영상 외 임의 파일) — quest/campaign 과 동일 sidecar 패턴.
 
 import { api } from './client';
-import type { QuestAttachment } from '$lib/types';
+import type { QuestAttachment, SidecarHistoryEntry } from '$lib/types';
 
 export interface Book {
 	book_id: string;
@@ -31,6 +31,9 @@ export interface LibraryFolder {
 export const libraryApi = {
 	list: () => api.get<Book[]>('/api/library'),
 	get: (bookId: string) => api.get<Book>(`/api/library/${encodeURIComponent(bookId)}`),
+	// DEV-290: BOOK 변경 이력(최신→과거).
+	history: (bookId: string) =>
+		api.get<SidecarHistoryEntry[]>(`/api/library/${encodeURIComponent(bookId)}/history`),
 	create: (title: string, body = '', path = '') =>
 		api.post<Book>('/api/library', { title, body, path }),
 	update: (bookId: string, fields: { title?: string; body?: string; path?: string }) =>

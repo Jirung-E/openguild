@@ -60,6 +60,8 @@ pub fn create_router(store: Store) -> Router {
         )
         // DEV-243: 규칙 태그 전체 교체.
         .route("/api/rules/{slug}/tags", put(rules::set_tags))
+        // DEV-290: 규칙 변경 이력.
+        .route("/api/rules/{slug}/history", get(rules::list_history))
         // DEV-016 legacy 단일 파일 — 기존 호출자 호환.
         .route(
             "/api/rules-single",
@@ -78,6 +80,8 @@ pub fn create_router(store: Store) -> Router {
         )
         // DEV-243: 도서관 문서 태그 전체 교체.
         .route("/api/library/{book_id}/tags", patch(library::set_tags))
+        // DEV-290: 도서관 문서 변경 이력.
+        .route("/api/library/{book_id}/history", get(library::list_history))
         // DEV-239: 도서관 폴더(계층) — `.guild/library/folders.toml`.
         .route(
             "/api/library/folders",

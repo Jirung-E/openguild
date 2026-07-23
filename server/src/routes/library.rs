@@ -83,6 +83,14 @@ pub async fn get_book(
     Ok(Json(resp))
 }
 
+/// DEV-290: GET /api/library/{book_id}/history — BOOK 변경 이력(최신→과거).
+pub async fn list_history(
+    State(store): State<Store>,
+    Path(book_id): Path<String>,
+) -> AppResult<Json<Vec<openguild_core::repo::history::HistoryEntry>>> {
+    Ok(Json(ops::history(&store, &book_id)?))
+}
+
 pub async fn create_book(
     State(store): State<Store>,
     Json(body): Json<CreateBookRequest>,
