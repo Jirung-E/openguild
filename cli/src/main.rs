@@ -90,6 +90,25 @@ fn json_str<T: serde::Serialize>(v: &T) -> String {
     }
 }
 
+/// DEV-290: 규칙/BOOK 사이드카 이력 출력 (quest history 와 톤 맞춤). op 은
+/// create/update/delete/rename — rename 만 old→new 를 가진다.
+fn print_sidecar_history(history: &[openguild_core::repo::history::HistoryEntry], json: bool) {
+    if json {
+        println!("{}", json_str(&history));
+    } else if history.is_empty() {
+        println!("{}", tf!("(이력 없음)", "(no history)"));
+    } else {
+        for h in history {
+            let rel = openguild_core::time::format_relative(&h.ts).unwrap_or_else(|| "—".into());
+            match (h.old.as_deref(), h.new.as_deref()) {
+                (Some(o), Some(n)) => println!("{}  {:<10} [{}] {} → {}", h.ts, rel, h.op, o, n),
+                _ => println!("{}  {:<10} [{}]", h.ts, rel, h.op),
+            }
+        }
+        println!("-- {} {}", history.len(), tf!("건", "entries"));
+    }
+}
+
 /// DEV-261: 예전엔 `serde_json::json!(...)` 로 만든 값을 `println!` 로 바로
 /// Display 했는데, serde_json::Value 의 Display 가 항상 compact 라
 /// `--compact` 플래그(JSON_COMPACT) 여부와 무관하게 늘 한 줄로 나오는 버그
@@ -838,6 +857,8 @@ enum RulesCmd {
     },
     #[command(about = tf!("한 규칙의 본문 출력 (stdout). slug 없으면 NotFound.", "Print a rule's body (stdout). NotFound if the slug doesn't exist."))]
     Show { slug: String },
+    #[command(about = tf!("규칙의 변경 이력 — 최신 → 과거 순.", "Rule change history — newest to oldest."))]
+    History { slug: String },
     #[command(about = tf!("한 규칙 본문 교체 (멱등). 파일이 없으면 만들고 / 있으면 덮어씀. 본문은 --file <PATH> 또는 stdin (인자 없을 때).",
                           "Replace a rule's body (idempotent). Creates the file if missing, overwrites if present. Body via --file <PATH> or stdin (if no arg)."))]
     Set {
@@ -886,6 +907,11 @@ enum LibraryCmd {
     },
     #[command(about = tf!("한 문서의 본문 출력 (stdout).", "Print a document's body (stdout)."))]
     Show {
+        #[arg(help = tf!("문서 ID (BOOK-N 형식).", "Document ID (BOOK-N format)."))]
+        id: String,
+    },
+    #[command(about = tf!("문서의 변경 이력 — 최신 → 과거 순.", "Document change history — newest to oldest."))]
+    History {
         #[arg(help = tf!("문서 ID (BOOK-N 형식).", "Document ID (BOOK-N format)."))]
         id: String,
     },
@@ -2424,6 +2450,19 @@ impl Backend {
         }
     }
 
+    /// DEV-290: 규칙 변경 이력(최신→과거). 사이드카 직독이라 sync.
+    fn rule_history(
+        &self,
+        slug: &str,
+    ) -> Result<Vec<openguild_core::repo::history::HistoryEntry>> {
+        match self {
+            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Local(l) => {
+                Self::map_err(openguild_core::ops::rules::history(&l.store, slug))
+            }
+        }
+    }
+
     // ── DEV-216: 도서관 — local + remote(HTTP /api/library) 둘 다 지원 ──
 
     fn library_list(&self) -> Result<Vec<BookDto>> {
@@ -2445,6 +2484,19 @@ impl Backend {
                 )?;
                 row.map(BookDto::from)
                     .ok_or_else(|| anyhow!(tf!("도서관 문서 '{id}' 없음", "library doc '{id}' not found")))
+            }
+        }
+    }
+
+    /// DEV-290: BOOK 변경 이력(최신→과거). local + remote(HTTP) 둘 다.
+    fn library_history(
+        &self,
+        id: &str,
+    ) -> Result<Vec<openguild_core::repo::history::HistoryEntry>> {
+        match self {
+            Backend::Http(c) => c.get(&format!("/api/library/{id}/history")),
+            Backend::Local(l) => {
+                Self::map_err(openguild_core::ops::library::history(&l.store, id))
             }
         }
     }
@@ -6260,6 +6312,10 @@ fn handle_rules(c: &Backend, json: bool, sub: RulesCmd) -> Result<()> {
                 }
             }
         }
+        RulesCmd::History { slug } => {
+            let history = c.rule_history(&slug)?;
+            print_sidecar_history(&history, json);
+        }
         RulesCmd::Set { slug, file } => {
             let content = read_content(file.as_deref())?;
             c.rules_set(&slug, content)?;
@@ -6368,6 +6424,10 @@ fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
                     println!("{}", b.body);
                 }
             }
+        }
+        LibraryCmd::History { id } => {
+            let history = c.library_history(&id)?;
+            print_sidecar_history(&history, json);
         }
         LibraryCmd::New { title, file, path } => {
             let body = match file {
