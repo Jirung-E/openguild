@@ -597,6 +597,7 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'comment.bodyRequired': { ko: '본문을 입력하세요.', en: 'Please enter a body.' },
 	'comment.bodyMarkdown': { ko: '본문 (markdown)', en: 'Body (markdown)' },
 	'comment.writePlaceholder': { ko: '댓글 작성 (markdown 사용 가능)', en: 'Write a comment (markdown supported)' },
+	'comment.toggleEditor': { ko: '입력 방식 전환 (일반 ↔ 마크다운 편집기)', en: 'Toggle input (plain ↔ markdown editor)' },
 	'comment.addComment': { ko: '+ 댓글 추가', en: '+ Add comment' },
 	'comment.adding': { ko: '추가…', en: 'Adding…' },
 	'comment.addReply': { ko: '답글 추가', en: 'Add reply' },

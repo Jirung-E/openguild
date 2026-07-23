@@ -32,6 +32,8 @@
 	import { tabInsert } from '$lib/actions/tab-insert';
 	// DEV-151: 댓글 textarea 첨부 — paste/drag&drop/버튼.
 	import { textareaAttach } from '$lib/utils/editor-attach';
+	// DEV-289: 댓글 입력창을 마크다운 편집기로 토글 (본문/메모와 동일 컴포넌트).
+	import MarkdownEditor from './MarkdownEditor.svelte';
 	// DEV-140/171: 댓글 textarea cross-link 자동완성 — caret 위치 팝업 + 실재 ID 제안.
 	import {
 		wikiMatch,
@@ -552,6 +554,10 @@
 	let newBody = $state('');
 	let saving = $state(false);
 	let saveError = $state<string | null>(null);
+	// DEV-289: 각 댓글 입력창의 마크다운 편집기 토글 상태.
+	let newRich = $state(false);
+	let editRich = $state(false);
+	let replyRich = $state(false);
 
 	// 개별 편집 — 한 번에 하나만.
 	let editingId = $state<number | null>(null);
@@ -881,22 +887,36 @@
 				disabled={replySaving}
 			/>
 		</div>
-		<textarea
-			use:tabInsert
-			use:textareaAttach={{
-				onError: (m) => (replyError = `${t('campaign.attachFailed', $locale)}: ${m}`),
-				mediaOnly: true
-			}}
-			class="body-input"
-			bind:value={replyBody}
-			oninput={onWikiInput}
-			onkeyup={onWikiInput}
-			onclick={onWikiInput}
-			onkeydowncapture={onWikiKeydown}
-			rows="3"
-			placeholder={`↩ #${replyTarget?.id ?? rootId} ${replyTarget?.author || ''}${t('comment.replyToSuffix', $locale)}`}
-			disabled={replySaving}
-		></textarea>
+		<div class="ce-head">
+			<button
+				type="button"
+				class="ce-toggle"
+				class:active={replyRich}
+				onclick={() => (replyRich = !replyRich)}
+				title={t('comment.toggleEditor', $locale)}
+				aria-pressed={replyRich}>M↓</button
+			>
+		</div>
+		{#if replyRich}
+			<MarkdownEditor bind:value={replyBody} onError={(m) => (replyError = m)} mediaOnly defaultHeight={160} />
+		{:else}
+			<textarea
+				use:tabInsert
+				use:textareaAttach={{
+					onError: (m) => (replyError = `${t('campaign.attachFailed', $locale)}: ${m}`),
+					mediaOnly: true
+				}}
+				class="body-input"
+				bind:value={replyBody}
+				oninput={onWikiInput}
+				onkeyup={onWikiInput}
+				onclick={onWikiInput}
+				onkeydowncapture={onWikiKeydown}
+				rows="3"
+				placeholder={`↩ #${replyTarget?.id ?? rootId} ${replyTarget?.author || ''}${t('comment.replyToSuffix', $locale)}`}
+				disabled={replySaving}
+			></textarea>
+		{/if}
 		{#if replyError}<p class="state err">{replyError}</p>{/if}
 		<div class="actions">
 			<button
@@ -972,18 +992,32 @@
 			{/if}
 		</div>
 		{#if editingId === e.id}
-			<textarea
-				use:tabInsert
-				use:textareaAttach={{ onError: (m) => (editError = `${t('campaign.attachFailed', $locale)}: ${m}`), mediaOnly: true }}
-				class="body-input"
-				bind:value={editBody}
-				oninput={onWikiInput}
-				onkeyup={onWikiInput}
-				onclick={onWikiInput}
-				onkeydowncapture={onWikiKeydown}
-				rows="4"
-				placeholder={t('comment.bodyMarkdown', $locale)}
-			></textarea>
+			<div class="ce-head">
+				<button
+					type="button"
+					class="ce-toggle"
+					class:active={editRich}
+					onclick={() => (editRich = !editRich)}
+					title={t('comment.toggleEditor', $locale)}
+					aria-pressed={editRich}>M↓</button
+				>
+			</div>
+			{#if editRich}
+				<MarkdownEditor bind:value={editBody} onError={(m) => (editError = m)} mediaOnly defaultHeight={200} />
+			{:else}
+				<textarea
+					use:tabInsert
+					use:textareaAttach={{ onError: (m) => (editError = `${t('campaign.attachFailed', $locale)}: ${m}`), mediaOnly: true }}
+					class="body-input"
+					bind:value={editBody}
+					oninput={onWikiInput}
+					onkeyup={onWikiInput}
+					onclick={onWikiInput}
+					onkeydowncapture={onWikiKeydown}
+					rows="4"
+					placeholder={t('comment.bodyMarkdown', $locale)}
+				></textarea>
+			{/if}
 			{#if editError}<p class="state err">{editError}</p>{/if}
 			<div class="actions">
 				<button class="btn-save" onclick={() => saveEdit(e.id)} disabled={editSaving}>
@@ -1262,19 +1296,33 @@
 						disabled={saving}
 					/>
 				</div>
-				<textarea
-					use:tabInsert
-					use:textareaAttach={{ onError: (m) => (saveError = `${t('campaign.attachFailed', $locale)}: ${m}`), mediaOnly: true }}
-					class="body-input"
-					bind:value={newBody}
-					oninput={onWikiInput}
-					onkeyup={onWikiInput}
-					onclick={onWikiInput}
-					onkeydowncapture={onWikiKeydown}
-					rows="3"
-					placeholder={t('comment.writePlaceholder', $locale)}
-					disabled={saving}
-				></textarea>
+				<div class="ce-head">
+					<button
+						type="button"
+						class="ce-toggle"
+						class:active={newRich}
+						onclick={() => (newRich = !newRich)}
+						title={t('comment.toggleEditor', $locale)}
+						aria-pressed={newRich}>M↓</button
+					>
+				</div>
+				{#if newRich}
+					<MarkdownEditor bind:value={newBody} onError={(m) => (saveError = m)} mediaOnly defaultHeight={160} />
+				{:else}
+					<textarea
+						use:tabInsert
+						use:textareaAttach={{ onError: (m) => (saveError = `${t('campaign.attachFailed', $locale)}: ${m}`), mediaOnly: true }}
+						class="body-input"
+						bind:value={newBody}
+						oninput={onWikiInput}
+						onkeyup={onWikiInput}
+						onclick={onWikiInput}
+						onkeydowncapture={onWikiKeydown}
+						rows="3"
+						placeholder={t('comment.writePlaceholder', $locale)}
+						disabled={saving}
+					></textarea>
+				{/if}
 				{#if saveError}<p class="state err">{saveError}</p>{/if}
 				<div class="actions">
 					<button class="btn-save" onclick={add} disabled={saving || !newBody.trim()}>
@@ -1916,6 +1964,30 @@
 		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 		resize: vertical;
 		min-height: 4rem;
+	}
+	/* DEV-289: 댓글 입력창 마크다운 편집기 토글 버튼. */
+	.ce-head {
+		display: flex;
+		justify-content: flex-end;
+		margin-bottom: 0.25rem;
+	}
+	.ce-toggle {
+		font-size: 0.68rem;
+		font-family: 'SFMono-Regular', Consolas, monospace;
+		padding: 0.1rem 0.4rem;
+		border: 1px solid var(--border);
+		border-radius: 4px;
+		background: transparent;
+		color: var(--text-muted);
+		cursor: pointer;
+	}
+	.ce-toggle:hover {
+		color: var(--text);
+	}
+	.ce-toggle.active {
+		background: color-mix(in srgb, var(--accent) 18%, transparent);
+		border-color: var(--accent);
+		color: var(--text);
 	}
 	.actions {
 		display: flex;
