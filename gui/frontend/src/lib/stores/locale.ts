@@ -57,7 +57,7 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'detail.edit': { ko: '편집', en: 'Edit' },
 	'detail.delete': { ko: '삭제', en: 'Delete' },
 	'detail.back': { ko: '뒤로', en: 'Back' },
-	'quest.section.parent': { ko: '부모', en: 'Parent' },
+	'quest.section.parent': { ko: '부모 퀘스트', en: 'Parent Quest' },
 	'quest.section.subQuests': { ko: '서브퀘스트', en: 'Sub-Quests' },
 	'quest.section.prerequisites': { ko: '선행 퀘스트', en: 'Prerequisites' },
 	'quest.section.campaigns': { ko: '캠페인', en: 'Campaigns' },
