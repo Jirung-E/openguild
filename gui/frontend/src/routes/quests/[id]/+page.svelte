@@ -729,14 +729,24 @@
 					<input class="edit-title" type="text" bind:value={editTitle} />
 				</label>
 
-				<label class="field-label">
+				<div class="field-label">
 					<span>{t('filter.urgency', $locale)}</span>
-					<select class="edit-select" bind:value={editUrgency}>
+					<!-- DEV-287: 드롭다운 대신 pill 버튼 — 타입 변경 UI 와 통일.
+					     선택만 바꾸고 적용은 기존대로 저장 시. -->
+					<div class="status-btns">
 						{#each [1, 2, 3, 4] as u}
-							<option value={u}>{URGENCY_LABEL[u]}</option>
+							<button
+								type="button"
+								class="status-btn"
+								class:active={u === editUrgency}
+								style:--c={urgencyColor(u)}
+								onclick={() => (editUrgency = u)}
+							>
+								{URGENCY_LABEL[u]}
+							</button>
 						{/each}
-					</select>
-				</label>
+					</div>
+				</div>
 
 				<!-- DEV-055 → DEV-133: 타입 변경 — 편집 모드에서만 노출 (사용자 요청).
 				     slug 가 바뀌는 무거운 동작이라 일반 보기에서 한 클릭 거리는 과함.
