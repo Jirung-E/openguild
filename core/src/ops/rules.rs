@@ -6,6 +6,7 @@
 use serde_json::json;
 
 use crate::error::{AppError, AppResult};
+use crate::repo::history as hist;
 use crate::repo::rules as repo;
 use crate::store::{journal, Store};
 
@@ -35,7 +36,10 @@ pub async fn set_rule(store: &Store, slug: &str, content: String) -> AppResult<(
     )
     .await
     .map_err(AppError::Internal)?;
-    repo::write_rule(&store.paths, slug, &content).map_err(AppError::Internal)
+    repo::write_rule(&store.paths, slug, &content).map_err(AppError::Internal)?;
+    // DEV-288: 활동 기록. set 은 upsert 라 신규/수정 겸용이지만 update 로 기록.
+    hist::record(&store.paths, slug, "update", None, None);
+    Ok(())
 }
 
 pub async fn create_rule(store: &Store, slug: &str, content: String) -> AppResult<()> {
@@ -47,7 +51,9 @@ pub async fn create_rule(store: &Store, slug: &str, content: String) -> AppResul
     )
     .await
     .map_err(AppError::Internal)?;
-    repo::create_rule(&store.paths, slug, &content).map_err(AppError::Internal)
+    repo::create_rule(&store.paths, slug, &content).map_err(AppError::Internal)?;
+    hist::record(&store.paths, slug, "create", None, None); // DEV-288
+    Ok(())
 }
 
 pub async fn delete_rule(store: &Store, slug: &str) -> AppResult<()> {
@@ -59,7 +65,9 @@ pub async fn delete_rule(store: &Store, slug: &str) -> AppResult<()> {
     )
     .await
     .map_err(AppError::Internal)?;
-    repo::delete_rule(&store.paths, slug).map_err(AppError::Internal)
+    repo::delete_rule(&store.paths, slug).map_err(AppError::Internal)?;
+    hist::record(&store.paths, slug, "delete", None, None); // DEV-288
+    Ok(())
 }
 
 pub async fn rename_rule(
@@ -75,7 +83,17 @@ pub async fn rename_rule(
     )
     .await
     .map_err(AppError::Internal)?;
-    repo::rename_rule(&store.paths, old_slug, new_slug).map_err(AppError::Internal)
+    repo::rename_rule(&store.paths, old_slug, new_slug).map_err(AppError::Internal)?;
+    // DEV-288: 사이드카도 새 slug 로 옮기고 rename 이벤트 기록 (quest change_type 패턴).
+    let _ = hist::rename(&store.paths, old_slug, new_slug);
+    hist::record(
+        &store.paths,
+        new_slug,
+        "rename",
+        Some(old_slug.to_string()),
+        Some(new_slug.to_string()),
+    );
+    Ok(())
 }
 
 /// DEV-243: 규칙 태그 전체 교체.

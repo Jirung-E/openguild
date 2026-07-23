@@ -43,6 +43,21 @@ pub fn history_path(paths: &GuildPaths, slug: &str) -> PathBuf {
     paths.quest_history_sidecar_path(slug)
 }
 
+/// DEV-288: 편의 함수 — 현재 시각으로 이벤트 1건 기록. best-effort(실패해도
+/// mutation 은 진행 — 활동 기록은 부가 정보이지 진리원이 아님). 규칙/도서관
+/// 등 quest/campaign 외 엔티티의 활동 기록에 사용.
+pub fn record(paths: &GuildPaths, slug: &str, op: &str, old: Option<String>, new: Option<String>) {
+    let entry = HistoryEntry {
+        ts: crate::time::now_local_iso8601(),
+        op: op.to_string(),
+        old,
+        new,
+    };
+    if let Err(e) = append(paths, slug, &entry) {
+        tracing::warn!("history 기록 실패 ({slug}, {op}): {e:#}");
+    }
+}
+
 /// 이벤트 1건 append (파일 없으면 생성; 디렉토리도 최초 1회 생성).
 pub fn append(paths: &GuildPaths, slug: &str, entry: &HistoryEntry) -> Result<()> {
     let path = history_path(paths, slug);

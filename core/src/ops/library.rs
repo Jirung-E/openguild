@@ -7,6 +7,7 @@
 use serde_json::json;
 
 use crate::error::{AppError, AppResult};
+use crate::repo::history as hist;
 use crate::repo::library as repo;
 use crate::repo::library::{book_slug, BookFile, BookFrontmatter, FolderEntry};
 use crate::store::{journal, Store};
@@ -266,6 +267,8 @@ pub async fn create_book(
     .execute(&store.index_pool)
     .await?;
 
+    hist::record(&store.paths, &book_id, "create", None, None); // DEV-288
+
     get_book(store, &book_id)
         .await?
         .ok_or_else(|| AppError::Internal(anyhow::anyhow!("created book not found: {book_id}")))
@@ -337,6 +340,8 @@ pub async fn update_book(
     .execute(&store.index_pool)
     .await?;
 
+    hist::record(&store.paths, book_id, "update", None, None); // DEV-288
+
     get_book(store, book_id)
         .await?
         .ok_or_else(|| AppError::Internal(anyhow::anyhow!("updated book not found: {book_id}")))
@@ -380,6 +385,7 @@ pub async fn delete_book(store: &Store, book_id: &str) -> AppResult<()> {
         .bind(existing.number)
         .execute(&store.index_pool)
         .await?;
+    hist::record(&store.paths, book_id, "delete", None, None); // DEV-288
     Ok(())
 }
 
