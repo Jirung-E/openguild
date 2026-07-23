@@ -18,6 +18,8 @@
 #      + DEV-156/170: 첫 quest 에 첨부파일 1개 (본문 아래 첨부 섹션 데모)
 #      + snapshot 백업 회귀.
 #   6. DEV-016 (multi-file): sample 길드 규칙 생성 — Rules 페이지 검증.
+#   7. DEV-288/290: 규칙/BOOK 변경 이력 — create/update/rename 을 일으켜
+#      상세의 '변경 이력' 섹션 + rule/library history (CLI·서버·GUI) 검증.
 #
 # 바이너리 선택 (첫 위치 인자 = 바이너리 폴더):
 #   - 인자 없음            → PATH 의 'openguild' 사용 (기본).
@@ -343,6 +345,19 @@ foreach ($slug in $ruleSamples.Keys) {
     if ($LASTEXITCODE -ne 0) { throw "rule new 실패: $slug" }
 }
 
+# DEV-288/290: 규칙 변경 이력 데모 — create 만으론 이력이 1건이라 규칙 상세의
+# '변경 이력' 섹션(.guild/history/{slug}.jsonl, 최신→과거)이 비어 보인다. 한
+# 규칙에 create → update → rename 을 모두 일으켜 op 3종을 채운다. branch-policy
+# 에도 update 1건.
+Write-Host "[og] rule 변경 이력 데모 (DEV-288/290)" -ForegroundColor DarkGray
+"# 브랜치 정책 (개정)`n`n- branch 이름 = quest_id.`n- 개정: FF-merge 원칙 명문화.`n" | & $bin rule set branch-policy
+if ($LASTEXITCODE -ne 0) { throw "rule set (history demo) 실패" }
+"# 팀 컨벤션 초안" | & $bin rule new history-demo
+if ($LASTEXITCODE -ne 0) { throw "rule new (history-demo) 실패" }
+"# 팀 컨벤션 초안 (수정)" | & $bin rule set history-demo
+if ($LASTEXITCODE -ne 0) { throw "rule set (history-demo) 실패" }
+Invoke-Og rule rename history-demo team-conventions
+
 # ── 9) DEV-215~218, DEV-239: 도서관 (Library 페이지 + 폴더 + cross-link 검증) ──
 Write-Host "`n=== [9/10] 도서관 (DEV-215~218, DEV-239) ===" -ForegroundColor Green
 
@@ -381,6 +396,12 @@ Write-Host "[og] library new (BOOK-003, 폴더 안)" -ForegroundColor DarkGray
 & $bin library new --title "라우터 설계" --path "아키텍처" | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "library new 실패 (3, path)" }
 
+# DEV-288/290: 도서관 변경 이력 데모 — BOOK-001 제목을 한 번 수정해 문서 상세의
+# '변경 이력' 섹션에 create → update 가 쌓이게. (규칙과 동일 사이드카 메커니즘.)
+Write-Host "[og] library update (BOOK-001 변경 이력 데모, DEV-288/290)" -ForegroundColor DarkGray
+& $bin library update BOOK-001 --title "설계 결정 기록 (개정)" | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "library update (history demo) 실패" }
+
 # ── 10) DEV-167: 작업 기록 (HOME 히트맵 카드 + /worklog 상세 검증) ──
 Write-Host "`n=== [10/10] 작업 기록 (DEV-167) ===" -ForegroundColor Green
 
@@ -415,8 +436,9 @@ Write-Host "관계    : 하위 2 + 선행 2 — 보드 엣지 / 트리 / 의존�
 Write-Host "Tags    : 2 quest 에 태그 — 칩 / 필터 검증."
 Write-Host "Deleted : 1 quest soft-delete — 삭제 목록 / 복원 검증."
 Write-Host "Template: bug-report 1 개 — NewQuestModal 드롭다운 검증 (DEV-060/158)."
-Write-Host "Rules   : $($ruleSamples.Count) 개 sample (branch-policy / code-review / release-checklist)"
+Write-Host "Rules   : $($ruleSamples.Count) 개 sample + team-conventions (branch-policy / code-review / release-checklist / team-conventions)"
 Write-Host "Library : 3 개 (BOOK-001 본문+cross-link / BOOK-002 빈 본문 / BOOK-003 폴더 안) + 폴더 1(아키텍처) + 댓글의 [[BOOK-001]] 참조."
+Write-Host "History : 규칙/BOOK 변경 이력 데모 (DEV-288/290) — team-conventions(create→update→rename) / branch-policy(update) / BOOK-001(update). 상세의 '변경 이력' 섹션 + rule/library history CLI 검증."
 Write-Host "Worklog : 노트 2 (오늘/이틀 전) — 활동은 이 스크립트 실행 자체가 오늘 날짜로 생성."
 Write-Host ""
 Write-Host "GUI 열어서 Home / Rules 페이지 확인:"
