@@ -2450,13 +2450,15 @@ impl Backend {
         }
     }
 
-    /// DEV-290: 규칙 변경 이력(최신→과거). 사이드카 직독이라 sync.
+    /// DEV-290: 규칙 변경 이력(최신→과거). local + remote(HTTP) 둘 다 —
+    /// 서버에 `/api/rules/{slug}/history` 라우트가 있으므로(다른 rules CLI 가
+    /// 원격 미지원인 건 별개 버그). Local 은 사이드카 직독이라 sync.
     fn rule_history(
         &self,
         slug: &str,
     ) -> Result<Vec<openguild_core::repo::history::HistoryEntry>> {
         match self {
-            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Http(c) => c.get(&format!("/api/rules/{slug}/history")),
             Backend::Local(l) => {
                 Self::map_err(openguild_core::ops::rules::history(&l.store, slug))
             }
