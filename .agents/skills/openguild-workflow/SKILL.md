@@ -12,9 +12,24 @@ description: openguild 저장소에서 agent 가 퀘스트 기반으로 작업�
 > 자체는 동일).
 > 이 스킬은 요약 + 함정 모음 — 충돌 시 AGENTS.md 가 우선.
 
+## ⚠️ 코드 보기 전에 — 도서관(library) 먼저
+
+**설계/아키텍처/구조와 관련된 작업을 시작하기 전에 반드시 `openguild library
+list` 로 도서관 문서(BOOK)를 먼저 확인**하고 관련 문서를 읽어라. 도서관엔
+코드만 봐서는 안 보이는 **설계 불변식·결정 기록·함정**이 있다(예: BOOK-001
+"index.db 는 파일의 일방향 투영" 불변식). 코드부터 파고들면 도서관에만 있는
+결정을 어기게 된다 — **실사고 있음.** 순서: `library list` → 관련 BOOK
+`library show` → 그 다음에 코드.
+
+```bash
+openguild library list                        # 설계·불변식 문서(BOOK) — 코드 읽기 전에 먼저
+openguild library show BOOK-1                  # 관련 문서 정독
+```
+
 ## 세션 시작 루틴
 
 ```bash
+openguild library list                                     # 설계 문서(BOOK) — 항상 먼저
 openguild quest list --sort updated --reverse --limit 10   # 최근 움직인 퀘스트
 openguild quest list --status testing,returned             # 검증 대기/반려
 openguild comments --author admin --limit 10               # 최근 사용자 피드백 (DEV-221)
@@ -23,6 +38,19 @@ openguild comments --unresolved                            # 미해결 토론 �
 
 `comments` 기본 출력은 본문 **전체**(DEV-230, 요약만 보고 뒷줄 놓쳐 오답한
 사고 이후 변경) — 여러 건 훑어볼 땐 `--summary` 로 첫 줄만.
+
+## 길드 위치 — 이름만 주어졌을 때
+
+cwd 에 `.guild` 가 없고 사용자가 길드 **이름**만 준 경우, `~/.openguild/
+recents.json` 을 읽어 위치를 알아낸다. 이 파일은 GUI/CLI 가 최근 연 길드
+목록으로, 배열 `[{ "name": ..., "path": ..., "last_opened": ... }]` 형식.
+`name` 이 일치(부분 일치 시 사용자 확인)하는 항목의 `path` 를 찾아
+`openguild --guild <path> ...` 로 실행한다.
+
+```bash
+# 예: 사용자가 "coco-ai 길드 상태 봐줘" → recents 에서 path 조회 후
+openguild --guild <recents 에서 찾은 path> quest list --status testing
+```
 
 ## 퀘스트 수명주기 (필수 순서)
 

@@ -25,6 +25,14 @@ openguild --remote https://host/path quest list
 Global flags: `--guild <PATH>` (explicit guild path), `--json` (machine
 output), `--compact` (single-line JSON, requires `--json`).
 
+**Locating a guild by name.** If the current directory has no `.guild` and
+the user refers to a guild by name (e.g. "check my `foo` guild"), resolve its
+path from `~/.openguild/recents.json` — an array of recently opened guilds,
+`[{ "name": ..., "path": ..., "last_opened": ... }]`. Find the entry whose
+`name` matches (confirm with the user on a partial/ambiguous match), then run
+`openguild --guild <path> ...`. This is how the GUI/CLI remember guild
+locations, so you don't need the user to give a full path.
+
 ## Before you start (do this first, every time)
 
 1. **Check project rules before doing any real work**: run
@@ -32,12 +40,15 @@ output), `--compact` (single-line JSON, requires `--json`).
    <name>`) *before* writing code, filing a quest, or making a decision on
    this project. Rules encode this project's own conventions — they can
    override generic assumptions you'd otherwise make.
-2. **When a question comes up mid-task, check the library before searching
-   elsewhere**: run `openguild library list` / `openguild library show
-   <book-id>` first. Only fall back to web search, general knowledge, or
-   asking the user if the guild's rules/library don't answer it. The whole
-   point of the library is to be the project's own source of truth — prefer
-   it over an external guess.
+2. **Check the library BEFORE reading the code** (and before web search or
+   asking): run `openguild library list` first, and `openguild library show
+   <book-id>` on anything relevant, *before* diving into the source for a
+   design/architecture/structure question. The library holds design
+   invariants, decision records, and gotchas that the code alone does not
+   show — skipping it and going straight to the code leads to violating
+   decisions that only live in the library. Order: `library list` → read the
+   relevant book → *then* the code. Only fall back to web search, general
+   knowledge, or asking the user if the guild's rules/library don't answer it.
 
 ## What's worth recording (judgment calls)
 
