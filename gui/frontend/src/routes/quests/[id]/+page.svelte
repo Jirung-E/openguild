@@ -486,6 +486,29 @@
 		}
 	}
 
+	// BUG-165: 부모 섹션에서 이 퀘스트의 부모 연결을 해제 (자식 입장에서 부모 끊기).
+	async function detachParent() {
+		if (!detail) return;
+		try {
+			await questsApi.changeParent(detail.id, { parent_quest_id: null });
+			detail = await questsApi.getBySlug(slug);
+		} catch (e) {
+			showToast(e instanceof Error ? e.message : t('qd.detachFailed', $locale), 'error');
+		}
+	}
+
+	// BUG-165: 후속 섹션에서 연결 해제 — 후속(succId) 의 prerequisites 에서 이
+	// 퀘스트를 제거 = 선행 입장에서 후속 끊기.
+	async function removeSuccessor(succId: number) {
+		if (!detail) return;
+		try {
+			await questsApi.removePrerequisite(succId, detail.id);
+			detail = await questsApi.getBySlug(slug);
+		} catch (e) {
+			showToast(e instanceof Error ? e.message : t('qd.detachFailed', $locale), 'error');
+		}
+	}
+
 	// --- DEV-068: 태그 ---
 	let tagInputOpen = $state(false);
 	let newTagText = $state('');
@@ -864,6 +887,13 @@
 									>{questStatusLabel(detail.parent, $locale)}</span
 								>
 							</a>
+							{#if !editMode}
+								<button
+									class="prereq-rm"
+									title={t('qd.detachFromParent', $locale)}
+									onclick={detachParent}>×</button
+								>
+							{/if}
 						</div>
 					</li>
 				</ul>
@@ -962,6 +992,13 @@
 									<span class="ql-title">{sq.title}</span>
 									<span class="badge status" style:--c={sq.status_color}>{questStatusLabel(sq, $locale)}</span>
 								</a>
+								{#if !editMode}
+									<button
+										class="prereq-rm"
+										title={t('qd.removeSuccessor', $locale)}
+										onclick={() => removeSuccessor(sq.id)}>×</button
+									>
+								{/if}
 							</div>
 						</li>
 					{/each}

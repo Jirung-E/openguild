@@ -769,6 +769,7 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'qd.noSubQuests': { ko: '서브퀘스트 없음.', en: 'No sub-quests.' },
 	'qd.addBtn': { ko: '+ 추가', en: '+ Add' },
 	'qd.removePrereq': { ko: '선행 퀘스트 제거', en: 'Remove prerequisite' },
+	'qd.removeSuccessor': { ko: '후속 연결 해제', en: 'Unlink successor' },
 	'qd.noPrereqs': { ko: '선행 퀘스트 없음.', en: 'No prerequisites.' },
 	'qd.addSuccessor': { ko: '후속 퀘스트 추가', en: 'Add successor' },
 	'qd.noSuccessors': { ko: '후속 퀘스트 없음.', en: 'No successors.' },
