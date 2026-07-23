@@ -27,6 +27,7 @@
 	// DEV-205: 타이틀바 툴팁/메뉴 i18n.
 	import { locale, t } from '$lib/stores/locale';
 	import SearchPalette from './SearchPalette.svelte';
+	import NewQuestModal from './NewQuestModal.svelte';
 	// DEV-255: 자식윈도우(검색 팔레트 "새 창으로 열기")는 단일 문서 보기라
 	// 뒤로/앞으로·☰메뉴·검색 팔레트가 필요 없음 — 판정에 따라 숨김.
 	import { isChildWindow } from '$lib/stores/windowKind';
@@ -133,6 +134,8 @@
 
 	let menuOpen = $state(false);
 	let searchOpen = $state(false);
+	// DEV-286: 타이틀바에서 전역 퀘스트 생성.
+	let newQuestOpen = $state(false);
 	// DEV-276: 최근 본 문서 드롭다운.
 	let recentOpen = $state(false);
 
@@ -332,6 +335,20 @@
 	     전체 검색/최근 목록이 무의미). -->
 	{#if $guildContextActive && guildName && !$isChildWindow}
 		<div class="tb-center">
+			<!-- DEV-286: 검색 pill 왼쪽 바깥에 '퀘스트 추가' 버튼. BUG-158 과 동일하게
+			     절대 배치라 버튼 유무가 pill 중앙 위치에 영향을 주지 않는다. -->
+			<div class="tb-add-wrap">
+				<button
+					class="tb-icon-btn"
+					onclick={() => (newQuestOpen = true)}
+					title={t('titlebar.newQuest', $locale)}
+					aria-label={t('titlebar.newQuest', $locale)}
+				>
+					<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+						<path d="M8 3.3v9.4M3.3 8h9.4" />
+					</svg>
+				</button>
+			</div>
 			<button class="tb-search" class:open={searchOpen} onclick={() => (searchOpen = true)} title={t('titlebar.search', $locale)}>
 				<span class="tb-search-name">{guildName}</span>
 				{#if isRemote}
@@ -502,6 +519,13 @@
 	</div>
 {/snippet}
 
+{#if newQuestOpen}
+	<NewQuestModal
+		onclose={() => (newQuestOpen = false)}
+		oncreated={(quest) => goto('/quests/' + quest.quest_id)}
+	/>
+{/if}
+
 {#if searchOpen}
 	<SearchPalette onclose={() => (searchOpen = false)} />
 {/if}
@@ -616,6 +640,16 @@
 	   translateX 로 pill 반폭(21vw = max-width 42vw 의 절반) 만큼 밀어
 	   오른쪽 끝에 붙인다 — pill 이 min-width 로 더 좁을 땐 그만큼 간격이
 	   생기지만 겹치지는 않는다. */
+	/* DEV-286: 최근 버튼(오른쪽)의 좌우 대칭 — pill 왼쪽 바깥에 절대 배치.
+	   `-100%` 로 자기 폭만큼 더 왼쪽으로 빼 오른쪽 끝을 pill 왼쪽에 붙인다. */
+	.tb-add-wrap {
+		position: absolute;
+		left: 50%;
+		transform: translateX(calc(-1 * min(21vw, 134px) - 100% - 4px));
+		display: inline-flex;
+		align-items: center;
+		flex: none;
+	}
 	.tb-recent-wrap {
 		position: absolute;
 		left: 50%;

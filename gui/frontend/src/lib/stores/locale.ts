@@ -815,6 +815,7 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'titlebar.search': { ko: '문서 검색', en: 'Search documents' },
 	// DEV-276: 최근 본 문서 드롭다운.
 	'titlebar.recent': { ko: '최근 본 문서', en: 'Recently viewed' },
+	'titlebar.newQuest': { ko: '퀘스트 추가', en: 'New quest' },
 	'titlebar.menuCampaigns': { ko: '캠페인 목록', en: 'Campaigns' },
 	'titlebar.menuWorklog': { ko: '작업기록', en: 'Worklog' },
 	'titlebar.menuTags': { ko: '태그 목록', en: 'Tags' },
