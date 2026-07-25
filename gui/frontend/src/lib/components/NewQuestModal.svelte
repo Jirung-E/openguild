@@ -9,7 +9,7 @@
 	import { tabInsert } from '$lib/actions/tab-insert';
 	import { adminApi } from '$lib/api/admin';
 	import { onMount } from 'svelte';
-	import { URGENCY_LABEL, type Quest, type QuestType, type QuestStatus } from '$lib/types';
+	import { urgencyColor, urgencyLabel, type Quest, type QuestType, type QuestStatus } from '$lib/types';
 
 	let {
 		onclose,
@@ -278,27 +278,40 @@
 					</div>
 				{/if}
 				<div class="field-row">
+					<!-- DEV-293: 타입/긴급도 드롭다운 → pill (상세 페이지 상태/타입 변경과 통일). -->
 					<div class="field">
-						<label class="field-label">
-							<span>{t('nqm.type', $locale)}</span>
-							<select class="sel" bind:value={typeId}>
-								{#each types as t}
-									<option value={t.id} style:color={t.color}>{t.prefix}</option>
-								{/each}
-							</select>
-						</label>
+						<span class="field-label"><span>{t('nqm.type', $locale)}</span></span>
+						<div class="pill-btns">
+							{#each types as ty (ty.id)}
+								<button
+									type="button"
+									class="pill-btn"
+									class:active={ty.id === typeId}
+									style:--c={ty.color}
+									onclick={() => (typeId = ty.id)}
+								>
+									{ty.prefix}
+								</button>
+							{/each}
+						</div>
 					</div>
 					<div class="field" style="flex:1">
-						<label class="field-label">
-							<span>{t('filter.urgency', $locale)}</span>
-							<select class="sel" bind:value={urgency}>
-								{#each [1, 2, 3, 4] as u}
-									<option value={u}>{URGENCY_LABEL[u]}</option>
-								{/each}
-							</select>
-						</label>
+						<span class="field-label"><span>{t('filter.urgency', $locale)}</span></span>
+						<div class="pill-btns">
+							{#each [1, 2, 3, 4] as u (u)}
+								<button
+									type="button"
+									class="pill-btn"
+									class:active={u === urgency}
+									style:--c={urgencyColor(u)}
+									onclick={() => (urgency = u)}
+								>
+									{urgencyLabel(u, $locale)}
+								</button>
+							{/each}
+						</div>
 					</div>
-					<div class="field" style="flex:1">
+					<div class="field">
 						<span class="field-label">{t('nqm.status', $locale)}</span>
 						<span class="status-fixed" data-testid="new-quest-status">{openStatus ? statusLabel(openStatus, $locale) : ''}</span>
 					</div>
@@ -492,6 +505,35 @@
 	span.field-label {
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
+	}
+
+	/* DEV-293: 타입/긴급도 pill — quest 상세의 status-btn 과 동일 감각. */
+	.pill-btns {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.35rem;
+	}
+	.pill-btn {
+		padding: 0.15rem 0.7rem;
+		border-radius: 20px;
+		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
+		background: transparent;
+		color: color-mix(in srgb, var(--c) 70%, var(--text-muted));
+		font-size: 0.75rem;
+		cursor: pointer;
+		transition:
+			background 0.12s,
+			color 0.12s;
+	}
+	.pill-btn:hover {
+		background: color-mix(in srgb, var(--c) 15%, transparent);
+		color: var(--c);
+	}
+	.pill-btn.active {
+		background: color-mix(in srgb, var(--c) 18%, transparent);
+		color: var(--c);
+		font-weight: 600;
+		cursor: default;
 	}
 
 	.sel {
