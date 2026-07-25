@@ -7,7 +7,10 @@
 //
 // 결과: data:image/svg+xml URL. `<img src={url} />` 로 표시.
 
+import { get } from 'svelte/store';
+
 import { urgencyColor, urgencyLabel, urgencyOutOfRange, type Quest } from '../types';
+import { locale } from '../stores/locale';
 import { themePalette } from '../stores/theme';
 
 const NODE_W = 284;
@@ -132,7 +135,7 @@ export function makeQuestNodeSvgUrl(
 	// BUG-060 후속: clamp 표시(범위 밖이면 1~4 로) + 원본 범위 밖이면 ⚠ 경고.
 	const uc = urgencyColor(quest.urgency);
 	const tc = quest.type_color;
-	const ul = urgencyLabel(quest.urgency);
+	const ul = urgencyLabel(quest.urgency, get(locale)); // DEV-295: 다국어
 	const urgWarn = urgencyOutOfRange(quest.urgency);
 	const qid = quest.quest_id;
 

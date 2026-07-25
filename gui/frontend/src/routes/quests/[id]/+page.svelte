@@ -33,7 +33,6 @@
 	// alert() 대신 통일된 toast (UI 일관성 — DEV-142 완료 차단 경고 등).
 	import { showToast } from '$lib/stores/toast';
 	import {
-		URGENCY_LABEL,
 		urgencyColor,
 		urgencyLabel,
 		urgencyOutOfRange,
@@ -676,7 +675,7 @@
 		<div class="header">
 			<span class="badge type" style:--c={detail.type_color}>{detail.quest_id}</span>
 			<span class="badge urgency" style:--c={urgencyColor(detail.urgency)}>
-				{urgencyLabel(detail.urgency)}
+				{urgencyLabel(detail.urgency, $locale)}
 			</span>
 			{#if urgencyOutOfRange(detail.urgency)}
 				<!-- BUG-060 후속: 원본 urgency 가 범위(1-4) 밖 — clamp 표시 + 경고. -->
@@ -765,7 +764,7 @@
 								style:--c={urgencyColor(u)}
 								onclick={() => (editUrgency = u)}
 							>
-								{URGENCY_LABEL[u]}
+								{urgencyLabel(u, $locale)}
 							</button>
 						{/each}
 					</div>

@@ -153,7 +153,7 @@
 				<button
 					class:active={urgencies.has(u)}
 					style:--c={urgencyColor(u)}
-					onclick={() => (urgencies = toggle(urgencies, u))}>{urgencyLabel(u)}</button
+					onclick={() => (urgencies = toggle(urgencies, u))}>{urgencyLabel(u, $locale)}</button
 				>
 			{/each}
 		</div>

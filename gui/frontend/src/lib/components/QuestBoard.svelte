@@ -156,7 +156,7 @@
 		// 아래 .length 에서 폭발 (보드 mount 실패).
 		const uc = urgencyColor(quest.urgency);
 		const tc = quest.type_color;
-		const ul = urgencyLabel(quest.urgency);
+		const ul = urgencyLabel(quest.urgency, get(locale)); // DEV-295: 다국어
 		// BUG-060 후속: 원본 urgency 가 범위(1-4) 밖이면 clamp 표시 + ⚠ 경고.
 		const urgWarn = urgencyOutOfRange(quest.urgency);
 		const qid = quest.quest_id;
@@ -3094,7 +3094,7 @@
 				<div class="card-badges">
 					<span class="badge" style:--c={expandedQuest.type_color}>{expandedQuest.quest_id}</span>
 					<span class="badge" style:--c={urgencyColor(expandedQuest.urgency)}
-						>{urgencyLabel(expandedQuest.urgency)}</span
+						>{urgencyLabel(expandedQuest.urgency, $locale)}</span
 					>
 					<span class="badge" style:--c={expandedQuest.status_color}
 						>{questStatusLabel(expandedQuest, $locale)}</span

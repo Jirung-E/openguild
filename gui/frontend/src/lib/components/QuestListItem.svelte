@@ -79,7 +79,7 @@
 
 	<!-- 긴급도 -->
 	<span class="badge urgency" style:--c={urgencyColor(quest.urgency)}>
-		{urgencyLabel(quest.urgency)}
+		{urgencyLabel(quest.urgency, $locale)}
 	</span>
 
 	<!-- 상태 -->

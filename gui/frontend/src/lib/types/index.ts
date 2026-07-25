@@ -156,6 +156,15 @@ export const URGENCY_LABEL: Record<number, string> = {
 	4: 'Low'
 };
 
+// DEV-295: 긴급도 라벨 다국어 — locale 스토어를 직접 import 하지 않고(순환
+// 의존 회피) 호출측이 locale 을 넘긴다. 미지정 시 en(기존 동작).
+export const URGENCY_LABEL_KO: Record<number, string> = {
+	1: '긴급',
+	2: '높음',
+	3: '보통',
+	4: '낮음'
+};
+
 export interface QuestDependency {
 	quest_id: number;
 	prerequisite_id: number;
@@ -373,8 +382,9 @@ export function urgencyClamp(u: number): 1 | 2 | 3 | 4 {
 	if (n > 4) return 4;
 	return n as 1 | 2 | 3 | 4;
 }
-export function urgencyLabel(u: number): string {
-	return URGENCY_LABEL[urgencyClamp(u)];
+export function urgencyLabel(u: number, loc?: 'ko' | 'en'): string {
+	const n = urgencyClamp(u);
+	return loc === 'ko' ? URGENCY_LABEL_KO[n] : URGENCY_LABEL[n];
 }
 export function urgencyColor(u: number): string {
 	return URGENCY_COLOR[urgencyClamp(u)];
