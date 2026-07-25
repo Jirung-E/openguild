@@ -1385,19 +1385,15 @@
 		font-size: 0.75rem;
 		text-align: center;
 		line-height: 1.3;
-		/* BUG-153: flex item(span)이 align-items:center 라 content 폭을 그대로
-		   가져(shrink-to-fit) 긴 제목이 옆 타일까지 넘쳤고 max-width:100% 는
-		   안 먹었다. 확정 width:100% 로 타일 폭에 고정 + overflow-wrap 로 줄바꿈.
-		   제목은 3줄까지만(line-clamp) 표시하고 넘치면 말줄임 — 전체는 hover
-		   툴팁으로 확인. */
-		width: 100%;
-		min-width: 0;
-		box-sizing: border-box;
+		/* BUG-153: 제목은 타일 폭 안에서 줄바꿈 + 3줄 말줄임, 전체는 hover 툴팁.
+		   주의 — legacy -webkit-box 는 width:100%/min-width:0/overflow-wrap 과
+		   섞으면 1줄로 붕괴하는 회귀가 있었다(사용자 재보고). 검증된 조합
+		   (max-width:100% + word-break + -webkit-line-clamp 3형제)만 사용하고
+		   표준 line-clamp 속성은 함께 두지 않는다. */
+		max-width: 100%;
 		word-break: break-word;
-		overflow-wrap: anywhere;
 		display: -webkit-box;
 		-webkit-line-clamp: 3;
-		line-clamp: 3;
 		-webkit-box-orient: vertical;
 		overflow: hidden;
 	}
