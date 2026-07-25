@@ -27,6 +27,7 @@
 	// DEV-205: 타이틀바 툴팁/메뉴 i18n.
 	import { locale, t } from '$lib/stores/locale';
 	import SearchPalette from './SearchPalette.svelte';
+	import OverlayScrollbar from './OverlayScrollbar.svelte';
 	import NewQuestModal from './NewQuestModal.svelte';
 	// DEV-255: 자식윈도우(검색 팔레트 "새 창으로 열기")는 단일 문서 보기라
 	// 뒤로/앞으로·☰메뉴·검색 팔레트가 필요 없음 — 판정에 따라 숨김.
@@ -136,6 +137,8 @@
 	let searchOpen = $state(false);
 	// DEV-286: 타이틀바에서 전역 퀘스트 생성.
 	let newQuestOpen = $state(false);
+	// BUG-157: 최근 본 문서 목록 overlay 스크롤바용.
+	let recentListEl = $state<HTMLDivElement | null>(null);
 	// DEV-276: 최근 본 문서 드롭다운.
 	let recentOpen = $state(false);
 
@@ -382,10 +385,14 @@
 						</svg>
 					</button>
 					{#if recentOpen}
-						<div class="tb-recent">
+						<div class="tb-recent" bind:this={recentListEl}>
 							{#each $recentDocs as d (d.href)}
 								{@const rtitle = recentDocTitle(d, $questIndexNs)}
-								<button class="tb-recent-item" onclick={() => { recentOpen = false; goto(d.href); }}>
+								<button
+									class="tb-recent-item"
+									title={rtitle && rtitle !== d.label ? `${d.label} — ${rtitle}` : d.label}
+									onclick={() => { recentOpen = false; goto(d.href); }}
+								>
 									<span class="rk {d.kind}">{t(`kind.${d.kind}`, $locale)}</span>
 									<span class="rlabel">{d.label}</span>
 									<!-- BUG-159: 규칙처럼 제목이 곧 slug 면 라벨과 중복이라 생략. -->
@@ -393,6 +400,8 @@
 								</button>
 							{/each}
 						</div>
+						<!-- BUG-157: overlay 스크롤바 (native 숨김). -->
+						<OverlayScrollbar target={recentListEl ?? null} />
 					{/if}
 				</div>
 			{/if}
@@ -663,9 +672,13 @@
 		top: 26px;
 		/* 검색 pill 이 중앙이라 오른쪽 정렬해야 화면 밖으로 덜 나간다. */
 		right: 0;
-		width: 280px;
+		/* DEV-294: 280px 는 제목이 거의 안 보였다 — 검색 팔레트와 같은 감각의
+		   폭으로 확대(뷰포트 좁으면 축소). */
+		width: min(480px, 72vw);
 		max-height: 320px;
 		overflow-y: auto;
+		/* BUG-157: native scrollbar 숨김 — OverlayScrollbar 가 대신 그린다. */
+		scrollbar-width: none;
 		background: var(--bg-elevated);
 		border: 1px solid var(--border);
 		border-radius: 8px;

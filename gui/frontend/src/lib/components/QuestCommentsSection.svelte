@@ -34,6 +34,8 @@
 	import { textareaAttach } from '$lib/utils/editor-attach';
 	// DEV-289: 댓글 입력창을 마크다운 편집기로 토글 (본문/메모와 동일 컴포넌트).
 	import MarkdownEditor from './MarkdownEditor.svelte';
+	// BUG-157: cross-link 자동완성 팝업 스크롤도 커스텀(overlay)으로 통일.
+	import OverlayScrollbar from './OverlayScrollbar.svelte';
 	// DEV-140/171: 댓글 textarea cross-link 자동완성 — caret 위치 팝업 + 실재 ID 제안.
 	import {
 		wikiMatch,
@@ -558,6 +560,10 @@
 	let newRich = $state(false);
 	let editRich = $state(false);
 	let replyRich = $state(false);
+	// BUG-157: 댓글 textarea 도 overlay 스크롤바로 통일.
+	let newBodyEl = $state<HTMLTextAreaElement | null>(null);
+	let editBodyEl = $state<HTMLTextAreaElement | null>(null);
+	let replyBodyEl = $state<HTMLTextAreaElement | null>(null);
 
 	// 개별 편집 — 한 번에 하나만.
 	let editingId = $state<number | null>(null);
@@ -907,6 +913,7 @@
 					mediaOnly: true
 				}}
 				class="body-input"
+				bind:this={replyBodyEl}
 				bind:value={replyBody}
 				oninput={onWikiInput}
 				onkeyup={onWikiInput}
@@ -916,6 +923,7 @@
 				placeholder={`↩ #${replyTarget?.id ?? rootId} ${replyTarget?.author || ''}${t('comment.replyToSuffix', $locale)}`}
 				disabled={replySaving}
 			></textarea>
+			<OverlayScrollbar target={replyBodyEl ?? null} />
 		{/if}
 		{#if replyError}<p class="state err">{replyError}</p>{/if}
 		<div class="actions">
@@ -1009,6 +1017,7 @@
 					use:tabInsert
 					use:textareaAttach={{ onError: (m) => (editError = `${t('campaign.attachFailed', $locale)}: ${m}`), mediaOnly: true }}
 					class="body-input"
+					bind:this={editBodyEl}
 					bind:value={editBody}
 					oninput={onWikiInput}
 					onkeyup={onWikiInput}
@@ -1017,6 +1026,7 @@
 					rows="4"
 					placeholder={t('comment.bodyMarkdown', $locale)}
 				></textarea>
+				<OverlayScrollbar target={editBodyEl ?? null} />
 			{/if}
 			{#if editError}<p class="state err">{editError}</p>{/if}
 			<div class="actions">
@@ -1313,6 +1323,7 @@
 						use:tabInsert
 						use:textareaAttach={{ onError: (m) => (saveError = `${t('campaign.attachFailed', $locale)}: ${m}`), mediaOnly: true }}
 						class="body-input"
+						bind:this={newBodyEl}
 						bind:value={newBody}
 						oninput={onWikiInput}
 						onkeyup={onWikiInput}
@@ -1322,6 +1333,7 @@
 						placeholder={t('comment.writePlaceholder', $locale)}
 						disabled={saving}
 					></textarea>
+					<OverlayScrollbar target={newBodyEl ?? null} />
 				{/if}
 				{#if saveError}<p class="state err">{saveError}</p>{/if}
 				<div class="actions">
@@ -1365,6 +1377,7 @@
 						applyWiki(it);
 					}}
 					onmouseenter={() => (wikiSel = i)}
+					title={`${it.insert ?? it.id}${it.title ? ` — ${it.title}` : ''}`}
 				>
 					<span class="wiki-id" class:missing={!it.exists}
 						>{it.nsPrefix ? '🏷️' : '🔗'} {it.insert ?? it.id}</span
@@ -1380,6 +1393,8 @@
 			</li>
 		{/each}
 	</ul>
+	<!-- BUG-157: 팝업 native 스크롤바 대신 overlay thumb. -->
+	<OverlayScrollbar target={wikiPopEl ?? null} />
 {/if}
 
 <style>
@@ -1964,6 +1979,11 @@
 		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 		resize: vertical;
 		min-height: 4rem;
+		/* BUG-157: native scrollbar 숨김 — OverlayScrollbar 가 대신 그린다. */
+		scrollbar-width: none;
+	}
+	.body-input::-webkit-scrollbar {
+		display: none;
 	}
 	/* DEV-289: 댓글 입력창 마크다운 편집기 토글 버튼. */
 	.ce-head {
@@ -2005,6 +2025,11 @@
 		max-width: 22rem;
 		max-height: 14rem;
 		overflow-y: auto;
+		/* BUG-157: native scrollbar 숨김 — OverlayScrollbar 가 대신 그린다. */
+		scrollbar-width: none;
+	}
+	.wiki-pop::-webkit-scrollbar {
+		display: none;
 		background: var(--bg-elevated);
 		border: 1px solid var(--border);
 		border-radius: 8px;

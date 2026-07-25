@@ -21,6 +21,21 @@
 	type Props = { target?: HTMLElement | null | undefined };
 	let { target = null }: Props = $props();
 
+	// BUG-157: thumb 는 position:fixed + viewport 좌표(getBoundingClientRect)로
+	// 그리는데, 조상에 transform/backdrop-filter 가 있으면(검색 팔레트의
+	// translateX(-50%) 등) fixed 의 기준이 그 조상으로 바뀌어 thumb 가 화면 밖에
+	// 그려졌다(= "스크롤바 안 보임"). DOM 위치와 무관하게 viewport 기준이 되도록
+	// thumb 를 document.body 로 포털한다 — 이벤트 리스너는 노드에 붙어 있어 이동
+	// 후에도 유지되고, svelte scoped class 도 노드에 hash 로 박혀 있어 스타일 유지.
+	function portalToBody(node: HTMLElement) {
+		document.body.appendChild(node);
+		return {
+			destroy() {
+				node.remove();
+			}
+		};
+	}
+
 	let scrollTop = $state(0);
 	let viewportH = $state(0);
 	let contentH = $state(0);
@@ -187,6 +202,7 @@
 
 {#if needed}
 	<div
+		use:portalToBody
 		class="overlay-thumb"
 		class:visible
 		class:dragging
