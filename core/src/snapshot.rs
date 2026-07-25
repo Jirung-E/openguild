@@ -227,12 +227,14 @@ pub async fn maybe_auto_snapshot(
     // 2. age trigger: 마지막 snapshot 으로부터 N 시간 + ops > 0 이면 fire.
     //    snapshot 한 번도 없는 경우엔 age trigger 안 함 — ops 임계치 도달까지 대기
     //    (사용자가 첫 mutation 마다 즉시 snapshot 생기는 게 아닌, 의미 있는 양 쌓인 뒤에).
-    let latest = latest_snapshot(&store.paths)?;
+    // BUG-167: latest_snapshot() 은 스냅샷 전체 tree_size(재귀 stat)를 계산해
+    // 매 mutation 이 ~0.5s 까지 느려졌다 — age trigger 는 timestamp 만 필요.
+    let latest = latest_snapshot_timestamp(&store.paths)?;
     let age_trigger = match &latest {
         None => false,
-        Some(s) => {
+        Some(ts) => {
             let age = std::time::SystemTime::now()
-                .duration_since(snapshot_time(&s.timestamp).unwrap_or(std::time::UNIX_EPOCH))
+                .duration_since(snapshot_time(ts).unwrap_or(std::time::UNIX_EPOCH))
                 .unwrap_or(Duration::ZERO);
             age >= Duration::from_secs(policy.max_age_hours * 3600) && ops_count > 0
         }
@@ -317,6 +319,32 @@ pub fn list_snapshots(paths: &GuildPaths) -> Result<Vec<SnapshotInfo>> {
 /// 가장 최근 snapshot. 없으면 None.
 pub fn latest_snapshot(paths: &GuildPaths) -> Result<Option<SnapshotInfo>> {
     Ok(list_snapshots(paths)?.into_iter().last())
+}
+
+/// BUG-167: 가장 최근 snapshot 의 timestamp 만 — size 계산 없이.
+///
+/// `latest_snapshot`(→`list_snapshots`)은 스냅샷마다 `tree_size` 로 **전체
+/// 파일을 재귀 stat** 한다. 스냅샷은 길드 소스 전체 복사본(수백 파일)이라
+/// 이 비용이 (스냅샷 수 × 길드 파일 수)에 비례 — `after_mutation` 이 매
+/// mutation 마다 이걸 불러 상태변경/관계변경이 실측 ~0.5s 까지 느려졌다.
+/// age trigger 는 timestamp(디렉토리 이름)만 필요하므로 이름 스캔만 한다.
+pub fn latest_snapshot_timestamp(paths: &GuildPaths) -> Result<Option<String>> {
+    let dir = paths.snapshots_dir();
+    if !dir.exists() {
+        return Ok(None);
+    }
+    let mut latest: Option<String> = None;
+    for e in std::fs::read_dir(&dir)?.filter_map(|e| e.ok()) {
+        if !e.path().is_dir() {
+            continue;
+        }
+        let name = e.file_name().to_string_lossy().to_string();
+        // 이름이 "YYYYMMDD-HHMMSS[-NN]" 정렬 단조(UTC 정규형, BUG-086) — 문자열 max = 최신.
+        if latest.as_deref().is_none_or(|cur| name.as_str() > cur) {
+            latest = Some(name);
+        }
+    }
+    Ok(latest)
 }
 
 /// DEV-175: 특정 snapshot 삭제 — `snapshots/{timestamp}/` 디렉토리 제거.
