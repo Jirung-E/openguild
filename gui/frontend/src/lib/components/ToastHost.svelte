@@ -62,10 +62,23 @@
 	// BUG-096: uptodate/error 는 정보성이라 일정 시간 후 자동으로 idle 로.
 	const AUTO_DISMISS_MS = 5000;
 
+	// BUG-170: 디버그 훅 opt-in — dev 서버는 항상, 릴리스 빌드는 사용자가
+	// `__ogEnableDebug()` 로 켠 경우에만. (localStorage 플래그)
+	const DEBUG_HOOKS_KEY = 'openguild.debugHooks';
+	function debugHooksEnabled(): boolean {
+		if (import.meta.env.DEV) return true;
+		try {
+			return localStorage.getItem(DEBUG_HOOKS_KEY) === '1';
+		} catch {
+			return false;
+		}
+	}
+
 	// DEV-063/DEV-259: 업데이터 상태 → 'update' 알림 presence(제자리 갱신).
 	// DEV-266: dev 모드는 브라우저에서도 허용 — __ogNotify.update() 트리거용.
+	// BUG-170: 디버그 훅을 켠 릴리스 빌드에서도 동일하게 허용(트리거 검증).
 	$effect(() => {
-		if (!isTauri && !import.meta.env.DEV) return;
+		if (!isTauri && !debugHooksEnabled()) return;
 		if ($updateState.status === 'idle') {
 			dismissNotif('update');
 		} else {
@@ -126,7 +139,25 @@
 		// 실기로 재현하기 어렵다. 개발 모드에서만 콘솔 헬퍼를 노출해 임의
 		// 조합을 수동 재현할 수 있게 한다. 예:
 		//   __ogNotify.toast('hello', 'error'); __ogNotify.schema(); __ogNotify.update('available');
-		if (import.meta.env.DEV && typeof window !== 'undefined') {
+		// BUG-170: 기존엔 `import.meta.env.DEV` 로만 게이트해서 실제 릴리스
+		// 빌드(just build → exe)에는 훅이 아예 없었고, DEV-266 의 "테스트 방법"
+		// 대로 콘솔에서 호출하면 `__ogNotify is not defined` 였다(사용자 보고).
+		// 알림 스택은 실기 빌드에서 확인해야 의미가 있으므로, 릴리스 빌드에서도
+		// **사용자가 명시적으로 켰을 때만** 노출한다:
+		//   __ogEnableDebug()  →  reload  →  __ogNotify.* 사용 가능
+		// 기본값은 여전히 꺼짐이라 일반 사용자 콘솔은 깨끗하다.
+		if (typeof window !== 'undefined') {
+			(window as unknown as Record<string, unknown>).__ogEnableDebug = (on = true) => {
+				try {
+					if (on) localStorage.setItem(DEBUG_HOOKS_KEY, '1');
+					else localStorage.removeItem(DEBUG_HOOKS_KEY);
+				} catch {
+					/* private 모드 등 — 무시 */
+				}
+				location.reload();
+			};
+		}
+		if (debugHooksEnabled() && typeof window !== 'undefined') {
 			(window as unknown as Record<string, unknown>).__ogNotify = {
 				toast: showToast,
 				schema: () =>
