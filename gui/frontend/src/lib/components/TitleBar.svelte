@@ -27,7 +27,6 @@
 	// DEV-205: 타이틀바 툴팁/메뉴 i18n.
 	import { locale, t } from '$lib/stores/locale';
 	import SearchPalette from './SearchPalette.svelte';
-	import OverlayScrollbar from './OverlayScrollbar.svelte';
 	import NewQuestModal from './NewQuestModal.svelte';
 	// DEV-255: 자식윈도우(검색 팔레트 "새 창으로 열기")는 단일 문서 보기라
 	// 뒤로/앞으로·☰메뉴·검색 팔레트가 필요 없음 — 판정에 따라 숨김.
@@ -44,8 +43,8 @@
 	// DEV-276: 최근 본 문서 목록 — 검색 pill 옆 시계 버튼.
 	// BUG-159: 제목은 cross-link 인덱스에서 조회(저장값 아님) — 목록을 열 때
 	// 인덱스가 아직 없으면 조용히 적재(이미 있으면 memo 라 비용 0).
-	import { recentDocs, recentDocTitle } from '$lib/stores/recentDocs';
-	import { questIndexNs, loadQuestIndex } from '$lib/stores/questIndex';
+	import { recentDocs } from '$lib/stores/recentDocs';
+	import { loadQuestIndex } from '$lib/stores/questIndex';
 
 	let maximized = $state(false);
 	const isMac = isMacOverlay();
@@ -137,8 +136,6 @@
 	let searchOpen = $state(false);
 	// DEV-286: 타이틀바에서 전역 퀘스트 생성.
 	let newQuestOpen = $state(false);
-	// BUG-157: 최근 본 문서 목록 overlay 스크롤바용.
-	let recentListEl = $state<HTMLDivElement | null>(null);
 	// DEV-276: 최근 본 문서 드롭다운.
 	let recentOpen = $state(false);
 
@@ -368,41 +365,23 @@
 			     문서"로 바로 점프하는 수단. 기록이 없으면 버튼 자체를 숨김. -->
 			{#if $recentDocs.length > 0}
 				<div class="tb-recent-wrap">
+					<!-- DEV-294: 전용 드롭다운(폭 좁아 제목이 안 보였음) 대신 검색
+					     팔레트를 recent 모드로 재사용 — 레이아웃/미리보기/스크롤 공유. -->
 					<button
 						class="tb-icon-btn"
 						class:active={recentOpen}
 						onclick={() => {
-							recentOpen = !recentOpen;
-							if (recentOpen) void loadQuestIndex();
+							recentOpen = true;
+							void loadQuestIndex();
 						}}
 						title={t('titlebar.recent', $locale)}
 						aria-label={t('titlebar.recent', $locale)}
-						aria-expanded={recentOpen}
 					>
 						<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 							<circle cx="8" cy="8" r="5.6" />
 							<path d="M8 4.6V8l2.4 1.5" />
 						</svg>
 					</button>
-					{#if recentOpen}
-						<div class="tb-recent" bind:this={recentListEl}>
-							{#each $recentDocs as d (d.href)}
-								{@const rtitle = recentDocTitle(d, $questIndexNs)}
-								<button
-									class="tb-recent-item"
-									title={rtitle && rtitle !== d.label ? `${d.label} — ${rtitle}` : d.label}
-									onclick={() => { recentOpen = false; goto(d.href); }}
-								>
-									<span class="rk {d.kind}">{t(`kind.${d.kind}`, $locale)}</span>
-									<span class="rlabel">{d.label}</span>
-									<!-- BUG-159: 규칙처럼 제목이 곧 slug 면 라벨과 중복이라 생략. -->
-									{#if rtitle && rtitle !== d.label}<span class="rtitle">{rtitle}</span>{/if}
-								</button>
-							{/each}
-						</div>
-						<!-- BUG-157: overlay 스크롤바 (native 숨김). -->
-						<OverlayScrollbar target={recentListEl ?? null} />
-					{/if}
 				</div>
 			{/if}
 		</div>
@@ -539,6 +518,11 @@
 	<SearchPalette onclose={() => (searchOpen = false)} />
 {/if}
 
+<!-- DEV-294: 최근 본 문서 = 같은 팔레트의 recent 모드. -->
+{#if recentOpen}
+	<SearchPalette mode="recent" onclose={() => (recentOpen = false)} />
+{/if}
+
 <style>
 	.titlebar {
 		position: sticky;
@@ -666,79 +650,6 @@
 		display: inline-flex;
 		align-items: center;
 		flex: none;
-	}
-	.tb-recent {
-		position: absolute;
-		top: 26px;
-		/* 검색 pill 이 중앙이라 오른쪽 정렬해야 화면 밖으로 덜 나간다. */
-		right: 0;
-		/* DEV-294: 280px 는 제목이 거의 안 보였다 — 검색 팔레트와 같은 감각의
-		   폭으로 확대(뷰포트 좁으면 축소). */
-		width: min(480px, 72vw);
-		max-height: 320px;
-		overflow-y: auto;
-		/* BUG-157: native scrollbar 숨김 — OverlayScrollbar 가 대신 그린다. */
-		scrollbar-width: none;
-		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 8px;
-		box-shadow: 0 10px 34px rgba(0, 0, 0, 0.45);
-		padding: 0.3rem;
-		z-index: 1200;
-	}
-	.tb-recent-item {
-		display: flex;
-		align-items: center;
-		gap: 0.45rem;
-		width: 100%;
-		padding: 0.35rem 0.5rem;
-		border-radius: 5px;
-		background: transparent;
-		border: none;
-		cursor: pointer;
-		text-align: left;
-		color: var(--text);
-		font-size: 0.8rem;
-	}
-	.tb-recent-item:hover {
-		background: var(--nav-hover-bg);
-	}
-	/* 종류 칩 — 검색 팔레트(.ptype)와 같은 색 규칙. */
-	.tb-recent-item .rk {
-		flex: none;
-		min-width: 3.2rem;
-		text-align: center;
-		font-size: 0.64rem;
-		font-weight: 600;
-		border-radius: 4px;
-		padding: 0.05rem 0.3rem;
-		color: var(--accent);
-		background: color-mix(in srgb, var(--accent) 14%, transparent);
-	}
-	.tb-recent-item .rk.campaign {
-		color: var(--hl-pre);
-		background: color-mix(in srgb, var(--hl-pre) 14%, transparent);
-	}
-	.tb-recent-item .rk.rule {
-		color: var(--success);
-		background: color-mix(in srgb, var(--success) 14%, transparent);
-	}
-	.tb-recent-item .rk.book {
-		color: var(--warning);
-		background: color-mix(in srgb, var(--warning) 14%, transparent);
-	}
-	.tb-recent-item .rlabel {
-		flex: none;
-		font-family: 'SFMono-Regular', Consolas, monospace;
-		font-size: 0.72rem;
-		color: var(--text-muted);
-	}
-	.tb-recent-item .rtitle {
-		flex: 1;
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
 	}
 	/* ── 중앙 검색 pill ── */
 	/* DEV-276 → BUG-158: 검색 pill 은 **항상 화면 중앙 고정**.

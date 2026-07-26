@@ -22,6 +22,8 @@
 	import LibraryFolderTree from '$lib/components/LibraryFolderTree.svelte';
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	import SidecarHistory from '$lib/components/SidecarHistory.svelte';
+	// DEV-297: 잘린 타일 제목은 커스텀 팝업으로 전체 표시.
+	import { titlePopup } from '$lib/actions/title-popup';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import AttachmentSection from '$lib/components/AttachmentSection.svelte';
 	// DEV-203: 편집기 셋업(테마/들여쓰기/첨부/자동완성/redo/높이/overlay 스크롤)은
@@ -766,7 +768,7 @@
 							ondrop={(e) => onTileDrop(e, f.path)}
 						>
 							<span class="tile-icon" aria-hidden="true">📁</span>
-							<span class="tile-label" title={f.name}>{f.name}</span>
+							<span class="tile-label" use:titlePopup={f.name}>{f.name}</span>
 						</button>
 					{/each}
 					{#each searchResults.books as b (b.book_id)}
@@ -778,7 +780,7 @@
 						>
 							<span class="tile-sub">{b.book_id}</span>
 							<span class="tile-icon" aria-hidden="true">📄</span>
-							<span class="tile-label" title={b.title}>{b.title}</span>
+							<span class="tile-label" use:titlePopup={b.title}>{b.title}</span>
 						</button>
 					{/each}
 				</div>
@@ -800,7 +802,7 @@
 						ondrop={(e) => onTileDrop(e, f.path)}
 					>
 						<span class="tile-icon" aria-hidden="true">📁</span>
-						<span class="tile-label" title={f.name}>{f.name}</span>
+						<span class="tile-label" use:titlePopup={f.name}>{f.name}</span>
 					</button>
 				{/each}
 				{#each explorerDocs as b (b.book_id)}
@@ -812,7 +814,7 @@
 					>
 						<span class="tile-sub">{b.book_id}</span>
 						<span class="tile-icon" aria-hidden="true">📄</span>
-						<span class="tile-label" title={b.title}>{b.title}</span>
+						<span class="tile-label" use:titlePopup={b.title}>{b.title}</span>
 					</button>
 				{/each}
 			</div>
@@ -1385,16 +1387,19 @@
 		font-size: 0.75rem;
 		text-align: center;
 		line-height: 1.3;
-		/* BUG-153: 제목은 타일 폭 안에서 줄바꿈 + 3줄 말줄임, 전체는 hover 툴팁.
-		   주의 — legacy -webkit-box 는 width:100%/min-width:0/overflow-wrap 과
-		   섞으면 1줄로 붕괴하는 회귀가 있었다(사용자 재보고). 검증된 조합
-		   (max-width:100% + word-break + -webkit-line-clamp 3형제)만 사용하고
-		   표준 line-clamp 속성은 함께 두지 않는다. */
-		max-width: 100%;
+		/* BUG-153: -webkit-box(line-clamp) 를 쓰지 않는다 — 3회 재발한 "1줄만
+		   표시" 의 원인. `.tile` 은 align-items:center 인 column flex 라 라벨의
+		   폭이 shrink-to-fit 인데, legacy -webkit-box 는 이 계산에서 max-content
+		   로 부풀어 폭 제한이 안 먹고 overflow:hidden 이 첫 줄만 남겼다.
+		   대신 (1) align-self:stretch 로 폭을 타일에 확정시키고 (2) 평범한 block
+		   레이아웃으로 줄바꿈시킨 뒤 (3) max-height 로 3줄에서 자른다.
+		   1.3em × 3 = 3.9em (line-height 1.3 기준 정확히 3줄). */
+		align-self: stretch;
+		min-width: 0;
+		display: block;
 		word-break: break-word;
-		display: -webkit-box;
-		-webkit-line-clamp: 3;
-		-webkit-box-orient: vertical;
+		overflow-wrap: anywhere;
+		max-height: 3.9em;
 		overflow: hidden;
 	}
 	.tile-sub {

@@ -1,0 +1,104 @@
+// DEV-297: 네이티브 `title` 툴팁 대신 앱 스타일의 커스텀 팝업.
+//
+// 네이티브 툴팁은 (1) OS 기본 스타일이라 앱 테마와 따로 놀고 (2) 뜨는 데
+// ~1초 걸리며 (3) 위치를 제어할 수 없다. 전체 제목을 보여주는 용도
+// (cross-link 자동완성 · 검색 팔레트 행 · 도서관 타일 등)엔 부적합해서
+// 공용 액션으로 대체한다 — `use:titlePopup={'전체 제목'}`.
+//
+// 구현 메모:
+// - 팝업은 document.body 에 append + position:fixed. 조상의 transform 이
+//   fixed 기준을 바꾸는 함정(BUG-157 과 동일)을 피하려면 body 여야 한다.
+// - scoped CSS 가 안 먹는 위치라 스타일은 인라인. 색은 테마 토큰(var(--…))을
+//   그대로 참조하므로 테마 전환에 자동 반응.
+// - hover 뿐 아니라 keyboard focus 에서도 뜬다(사용자 요청: "포커스 또는 호버").
+
+const SHOW_DELAY_MS = 220;
+const GAP = 6;
+
+let current: HTMLDivElement | null = null;
+
+function destroyPopup() {
+	current?.remove();
+	current = null;
+}
+
+function createPopup(text: string, anchor: HTMLElement) {
+	destroyPopup();
+	const el = document.createElement('div');
+	el.textContent = text;
+	el.setAttribute('role', 'tooltip');
+	el.style.cssText = [
+		'position:fixed',
+		'z-index:12000',
+		'max-width:min(520px,80vw)',
+		'padding:0.3rem 0.55rem',
+		'border-radius:6px',
+		'background:var(--bg-elevated)',
+		'color:var(--text)',
+		'border:1px solid var(--border)',
+		'box-shadow:0 6px 20px rgba(0,0,0,0.35)',
+		'font-size:0.78rem',
+		'line-height:1.4',
+		'white-space:pre-wrap',
+		'overflow-wrap:anywhere',
+		'pointer-events:none'
+	].join(';');
+	document.body.appendChild(el);
+	current = el;
+
+	// 앵커 기준 배치 — 아래 공간이 부족하면 위로, 좌우는 뷰포트 안으로 clamp.
+	const r = anchor.getBoundingClientRect();
+	const pr = el.getBoundingClientRect();
+	const below = r.bottom + GAP;
+	const top = below + pr.height <= window.innerHeight ? below : Math.max(GAP, r.top - GAP - pr.height);
+	const left = Math.min(Math.max(GAP, r.left), Math.max(GAP, window.innerWidth - pr.width - GAP));
+	el.style.top = `${Math.round(top)}px`;
+	el.style.left = `${Math.round(left)}px`;
+}
+
+export function titlePopup(node: HTMLElement, text: string | null | undefined) {
+	let label = text ?? '';
+	let timer: ReturnType<typeof setTimeout> | null = null;
+
+	const clearTimer = () => {
+		if (timer !== null) {
+			clearTimeout(timer);
+			timer = null;
+		}
+	};
+	const show = () => {
+		if (!label.trim()) return;
+		clearTimer();
+		timer = setTimeout(() => createPopup(label, node), SHOW_DELAY_MS);
+	};
+	const hide = () => {
+		clearTimer();
+		destroyPopup();
+	};
+
+	node.addEventListener('mouseenter', show);
+	node.addEventListener('mouseleave', hide);
+	node.addEventListener('focus', show);
+	node.addEventListener('blur', hide);
+	// 클릭/스크롤/휠로 맥락이 바뀌면 즉시 숨김(떠 있는 채 남는 것 방지).
+	node.addEventListener('click', hide);
+	window.addEventListener('scroll', hide, true);
+	window.addEventListener('wheel', hide, { passive: true });
+
+	return {
+		update(next: string | null | undefined) {
+			label = next ?? '';
+			if (current) createPopup(label, node); // 떠 있는 동안 내용 변경 반영
+		},
+		destroy() {
+			hide();
+			node.removeEventListener('mouseenter', show);
+			node.removeEventListener('mouseleave', hide);
+			node.removeEventListener('focus', show);
+			node.removeEventListener('blur', hide);
+			node.removeEventListener('click', hide);
+			window.removeEventListener('scroll', hide, true);
+			window.removeEventListener('wheel', hide);
+		}
+	};
+}

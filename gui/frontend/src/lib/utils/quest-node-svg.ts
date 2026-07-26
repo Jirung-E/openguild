@@ -13,6 +13,20 @@ import { urgencyColor, urgencyLabel, urgencyOutOfRange, type Quest } from '../ty
 import { locale } from '../stores/locale';
 import { themePalette } from '../stores/theme';
 
+/**
+ * DEV-295 후속: 보드 노드의 pill 폭 — CJK 글자는 라틴보다 훨씬 넓다(대략
+ * font-size 1배 ≈ 10px vs 라틴 0.56배). 글자 수 × 라틴 폭으로만 계산하면
+ * 한국어 라벨("긴급"/"보통")이 pill 에 꽉 차 보인다(사용자 지적). CJK 범위
+ * 문자는 별도 가중치로 센다.
+ */
+export function pillTextWidth(s: string, latin = 5.6, cjk = 10.5): number {
+	let w = 0;
+	for (const ch of s) {
+		w += /[ᄀ-ᇿ⺀-鿿가-힯＀-￯]/.test(ch) ? cjk : latin;
+	}
+	return Math.ceil(w);
+}
+
 const NODE_W = 284;
 const NODE_H = 80;
 const TITLE_FONT = '12px system-ui, -apple-system, sans-serif';
@@ -141,7 +155,7 @@ export function makeQuestNodeSvgUrl(
 
 	const xEsc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 	const qidW = Math.ceil(qid.length * 6.4) + 16;
-	const ulW = Math.ceil(ul.length * 5.6) + 14;
+	const ulW = pillTextWidth(ul) + 14; // DEV-295: CJK 폭 반영
 	const ulX = 10 + qidW + 6;
 
 	// DEV-142 후속 / DEV-150: 토론 배지 — 일반 댓글과 별도. 미해결>0 면 ✗(빨강),

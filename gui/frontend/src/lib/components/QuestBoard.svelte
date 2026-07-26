@@ -16,7 +16,7 @@
 	import { metaApi } from '$lib/api/meta';
 	import { detectEnvironment } from '$lib/api/transport';
 	// BUG-034: 유효 기한 (퀘스트 required_due vs 연결 캠페인 ended_at) 계산 헬퍼.
-	import { effectiveQuestDue } from '$lib/utils/quest-node-svg';
+	import { effectiveQuestDue, pillTextWidth } from '$lib/utils/quest-node-svg';
 	import {
 		loadLaneOrder as loadLaneOrderShared,
 		saveLaneOrder as saveLaneOrderShared
@@ -169,7 +169,7 @@
 
 		const x = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 		const qidW = Math.ceil(qid.length * 6.4) + 16;
-		const ulW = Math.ceil(ul.length * 5.6) + 14;
+		const ulW = pillTextWidth(ul) + 14; // DEV-295: CJK 폭 반영
 		const ulX = 10 + qidW + 6;
 
 		// DEV-116: 댓글 개수 badge — 상단 우측. 0 이면 표시 X.
@@ -2024,6 +2024,16 @@
 
 	onMount(() => {
 		const unsubTheme = effectiveTheme.subscribe(() => refreshNodeBgForTheme());
+		// DEV-295: 노드 SVG 안의 긴급도 라벨은 생성 시점 locale 로 구워지므로
+		// 언어를 바꿔도 그대로였다(사용자 지적). 테마 전환과 동일하게 재생성.
+		let localeInit = true;
+		const unsubLocale = locale.subscribe(() => {
+			if (localeInit) {
+				localeInit = false;
+				return; // 최초 구독 호출은 mount 시점 — 재생성 불필요.
+			}
+			refreshNodeBgForTheme();
+		});
 
 		// gridSnap 은 guildKeyPrefix 가 두 번째 onMount 에서 set 된 직후 다시
 		// loadGridSnap 호출. 여기서는 listener 만.
@@ -2035,6 +2045,7 @@
 		container.addEventListener('mousedown', onBoxMouseDown, { capture: true });
 		return () => {
 			unsubTheme();
+			unsubLocale(); // DEV-295
 			window.removeEventListener('keydown', handleKeydown);
 			window.removeEventListener('keyup', handleKeyup);
 			window.removeEventListener('blur', onCtrlUp);
@@ -3204,11 +3215,11 @@
 		 함. flex 의 자연스러운 row 순서로 우측 anchor + 토글 항상 우측 끝. -->
 	<div class="toolbar" class:collapsed={toolbarCollapsed} class:has-newquest={!!onNewQuest}>
 		{#if !toolbarCollapsed}
-			<button class="tb-btn" onclick={fitView} title="Fit view (F)"
+			<button class="tb-btn" onclick={fitView} title={t('board.fitView', $locale)}
 				><span class="icon">⊞</span></button
 			>
 			<div class="tb-sep"></div>
-			<button class="tb-btn" onclick={undo} disabled={undoStack.length === 0} title="Undo (Ctrl+Z)">
+			<button class="tb-btn" onclick={undo} disabled={undoStack.length === 0} title={t('board.undo', $locale)}>
 				<span class="icon">↩</span>
 				{#if undoStack.length > 0}<span class="count">{undoStack.length}</span>{/if}
 			</button>
@@ -3216,7 +3227,7 @@
 				class="tb-btn"
 				onclick={redo}
 				disabled={redoStack.length === 0}
-				title="Redo (Ctrl+Shift+Z)"
+				title={t('board.redo', $locale)}
 			>
 				<span class="icon">↪</span>
 				{#if redoStack.length > 0}<span class="count">{redoStack.length}</span>{/if}
@@ -3228,7 +3239,7 @@
 				onclick={toggleGridSnap}
 				title={t('board.gridSnap', $locale)}
 			>
-				<span class="icon">⊞</span><span>Snap</span>
+				<span class="icon">⊞</span><span>{t('board.snapBtn', $locale)}</span>
 			</button>
 			<div class="tb-sep"></div>
 			<select
@@ -3270,11 +3281,11 @@
 						? t('board.arrangeGroupTitle', $locale)
 						: t('board.arrangeFlatTitle', $locale)}
 				>
-					<span class="icon">⊟</span><span>Arrange</span>
+					<span class="icon">⊟</span><span>{t('board.arrangeToolbarBtn', $locale)}</span>
 				</button>
 				<select class="tb-select tb-mode" bind:value={arrangeMode} title={t('board.arrangeMode', $locale)}>
-					<option value="group">Group</option>
-					<option value="all">All</option>
+					<option value="group">{t('board.arrangeModeGroup', $locale)}</option>
+					<option value="all">{t('board.arrangeModeAll', $locale)}</option>
 				</select>
 			</div>
 			<div class="tb-sep"></div>

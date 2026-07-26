@@ -277,44 +277,47 @@
 						</label>
 					</div>
 				{/if}
-				<div class="field-row">
-					<!-- DEV-293: 타입/긴급도 드롭다운 → pill (상세 페이지 상태/타입 변경과 통일). -->
-					<div class="field">
-						<span class="field-label"><span>{t('nqm.type', $locale)}</span></span>
-						<div class="pill-btns">
-							{#each types as ty (ty.id)}
-								<button
-									type="button"
-									class="pill-btn"
-									class:active={ty.id === typeId}
-									style:--c={ty.color}
-									onclick={() => (typeId = ty.id)}
-								>
-									{ty.prefix}
-								</button>
-							{/each}
-						</div>
+				<!-- DEV-293: 타입/긴급도 드롭다운 → pill (상세 페이지 상태/타입 변경과 통일).
+				     재지적 — 같은 줄에 나란히 두니 어느 pill 이 어느 항목인지 헷갈려서
+				     각각 자기 라벨과 함께 별도 행으로 분리. 상태는 값 하나뿐이라 라벨
+				     옆에 인라인. -->
+				<div class="field pill-field">
+					<span class="field-label"><span>{t('nqm.type', $locale)}</span></span>
+					<div class="pill-btns">
+						{#each types as ty (ty.id)}
+							<button
+								type="button"
+								class="pill-btn"
+								class:active={ty.id === typeId}
+								style:--c={ty.color}
+								onclick={() => (typeId = ty.id)}
+							>
+								{ty.prefix}
+							</button>
+						{/each}
 					</div>
-					<div class="field" style="flex:1">
-						<span class="field-label"><span>{t('filter.urgency', $locale)}</span></span>
-						<div class="pill-btns">
-							{#each [1, 2, 3, 4] as u (u)}
-								<button
-									type="button"
-									class="pill-btn"
-									class:active={u === urgency}
-									style:--c={urgencyColor(u)}
-									onclick={() => (urgency = u)}
-								>
-									{urgencyLabel(u, $locale)}
-								</button>
-							{/each}
-						</div>
+				</div>
+				<div class="field pill-field">
+					<span class="field-label"><span>{t('filter.urgency', $locale)}</span></span>
+					<div class="pill-btns">
+						{#each [1, 2, 3, 4] as u (u)}
+							<button
+								type="button"
+								class="pill-btn"
+								class:active={u === urgency}
+								style:--c={urgencyColor(u)}
+								onclick={() => (urgency = u)}
+							>
+								{urgencyLabel(u, $locale)}
+							</button>
+						{/each}
 					</div>
-					<div class="field">
-						<span class="field-label">{t('nqm.status', $locale)}</span>
-						<span class="status-fixed" data-testid="new-quest-status">{openStatus ? statusLabel(openStatus, $locale) : ''}</span>
-					</div>
+				</div>
+				<div class="field status-field">
+					<span class="field-label">{t('nqm.status', $locale)}</span>
+					<span class="status-fixed" data-testid="new-quest-status"
+						>{openStatus ? statusLabel(openStatus, $locale) : ''}</span
+					>
 				</div>
 
 				<div class="field">
@@ -484,11 +487,6 @@
 		gap: 0.85rem;
 	}
 
-	.field-row {
-		display: flex;
-		gap: 0.75rem;
-		align-items: flex-end;
-	}
 	.field {
 		display: flex;
 		flex-direction: column;
@@ -507,7 +505,16 @@
 		letter-spacing: 0.05em;
 	}
 
-	/* DEV-293: 타입/긴급도 pill — quest 상세의 status-btn 과 동일 감각. */
+	/* DEV-293: 타입/긴급도 pill — quest 상세의 status-btn 과 동일 감각.
+	   각각 자기 라벨과 한 행(가로 나열 금지 — 어느 pill 이 어느 항목인지 혼동). */
+	.pill-field {
+		gap: 0.25rem;
+	}
+	.status-field {
+		flex-direction: row;
+		align-items: baseline;
+		gap: 0.5rem;
+	}
 	.pill-btns {
 		display: flex;
 		flex-wrap: wrap;

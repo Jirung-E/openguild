@@ -29,8 +29,16 @@
 	import { openInWindow, openInPage } from '$lib/utils/open-item';
 	// DEV-205(3차): i18n — KIND_LABEL(ko 고정) 대신 t() 기반 kindLabel().
 	import { locale, t } from '$lib/stores/locale';
+	// DEV-294: recent 모드에서 최근 본 문서 순서 소스.
+	import { recentDocs } from '$lib/stores/recentDocs';
+	// DEV-297: 전체 제목은 네이티브 title 대신 앱 스타일 커스텀 팝업으로.
+	import { titlePopup } from '$lib/actions/title-popup';
 
-	let { onclose }: { onclose: () => void } = $props();
+	// DEV-294: `mode='recent'` — 별도 드롭다운을 만들지 않고 이 팔레트를 그대로
+	// 재사용해 "최근 본 문서"를 보여준다(폭·행 레이아웃·미리보기·스크롤 전부 공유).
+	// 검색어를 입력하는 순간 일반 검색과 동일하게 동작.
+	let { onclose, mode = 'search' }: { onclose: () => void; mode?: 'search' | 'recent' } =
+		$props();
 
 	type Kind = 'quest' | 'campaign' | 'rule' | 'book';
 	interface Item {
@@ -245,6 +253,13 @@
 
 	const filtered = $derived.by(() => {
 		const { kind, term } = parsed;
+		// DEV-294: recent 모드 + 검색어 없음 → 최근 본 문서만, 최근순.
+		if (mode === 'recent' && !term && !kind) {
+			const order = new Map($recentDocs.map((d, i) => [d.href, i]));
+			return all
+				.filter((i) => order.has(i.href))
+				.sort((a, b) => (order.get(a.href) ?? 0) - (order.get(b.href) ?? 0));
+		}
 		const pool = kind ? all.filter((i) => i.kind === kind) : all;
 		// 결과 개수 상한 없음 — 단순 행이라 문서가 많아도 렌더 부담 미미, 영역 스크롤.
 		if (!term) return pool;
@@ -361,7 +376,10 @@
 				bind:this={inputEl}
 				bind:value={query}
 				onkeydown={onKey}
-				placeholder={t('palette.placeholder', $locale)}
+				placeholder={t(
+					mode === 'recent' ? 'palette.placeholderRecent' : 'palette.placeholder',
+					$locale
+				)}
 				spellcheck="false"
 			/>
 		</div>
@@ -369,7 +387,12 @@
 			{#if loading}
 				<div class="empty">{t('palette.loading', $locale)}</div>
 			{:else if filtered.length === 0}
-				<div class="empty">{t('palette.noResults', $locale)}</div>
+				<div class="empty">
+					{t(
+						mode === 'recent' && !query.trim() ? 'palette.noRecent' : 'palette.noResults',
+						$locale
+					)}
+				</div>
 			{:else}
 				{#each filtered as it, i (it.kind + it.label)}
 					<!-- DEV-255: 행 = 라벨(기본 클릭 = 미리보기) + 열기 방식 아이콘 3개(항상 노출). -->
@@ -378,7 +401,7 @@
 						<button
 							class="row-main"
 							onclick={() => openPreview(it)}
-							title={displayName(it) + (it.tags.length ? '  ' + it.tags.map((tg) => '#' + tg).join(' ') : '')}
+							use:titlePopup={displayName(it) + (it.tags.length ? '  ' + it.tags.map((tg) => '#' + tg).join(' ') : '')}
 						>
 							<span class="ptype {it.kind}">{kindLabel(it.kind)}</span>
 							<span class="ptitle">{displayName(it)}</span>
@@ -418,7 +441,7 @@
 	{:else}
 		<div class="dp-head">
 			<span class="ptype {preview.kind}">{kindLabel(preview.kind)}</span>
-			<span class="dp-title" title={displayName(preview)}>{displayName(preview)}</span>
+			<span class="dp-title" use:titlePopup={displayName(preview)}>{displayName(preview)}</span>
 			<button class="dp-x" onclick={() => (preview = null)} title={t('palette.backToListTitle', $locale)}>✕</button>
 		</div>
 		<div class="dp-meta">

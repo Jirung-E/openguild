@@ -36,6 +36,8 @@
 	import MarkdownEditor from './MarkdownEditor.svelte';
 	// BUG-157: cross-link 자동완성 팝업 스크롤도 커스텀(overlay)으로 통일.
 	import OverlayScrollbar from './OverlayScrollbar.svelte';
+	// DEV-297: 전체 제목은 네이티브 title 대신 앱 스타일 커스텀 팝업으로.
+	import { titlePopup } from '$lib/actions/title-popup';
 	// DEV-140/171: 댓글 textarea cross-link 자동완성 — caret 위치 팝업 + 실재 ID 제안.
 	import {
 		wikiMatch,
@@ -1377,7 +1379,7 @@
 						applyWiki(it);
 					}}
 					onmouseenter={() => (wikiSel = i)}
-					title={`${it.insert ?? it.id}${it.title ? ` — ${it.title}` : ''}`}
+					use:titlePopup={`${it.insert ?? it.id}${it.title ? ` — ${it.title}` : ''}`}
 				>
 					<span class="wiki-id" class:missing={!it.exists}
 						>{it.nsPrefix ? '🏷️' : '🔗'} {it.insert ?? it.id}</span
@@ -2027,13 +2029,13 @@
 		overflow-y: auto;
 		/* BUG-157: native scrollbar 숨김 — OverlayScrollbar 가 대신 그린다. */
 		scrollbar-width: none;
-	}
-	.wiki-pop::-webkit-scrollbar {
-		display: none;
 		background: var(--bg-elevated);
 		border: 1px solid var(--border);
 		border-radius: 8px;
 		box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+	}
+	.wiki-pop::-webkit-scrollbar {
+		display: none;
 	}
 	.wiki-opt {
 		display: flex;

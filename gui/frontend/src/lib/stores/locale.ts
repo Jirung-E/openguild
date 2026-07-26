@@ -716,6 +716,14 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'board.arrangeGroupTitle': { ko: '모든 노드 정렬 — 연관 그룹은 직사각형 영역으로 묶고, isolated 는 위쪽에 배치', en: 'Arrange all nodes — related groups boxed, isolated on top' },
 	'board.arrangeFlatTitle': { ko: '모든 노드 정렬 — 슬러그 순으로 lane 안에서 왼쪽 위부터 채움', en: 'Arrange all nodes — fill each lane top-left by slug order' },
 	'board.arrangeMode': { ko: '정렬 모드', en: 'Arrange mode' },
+	// 사용자 지적: 툴바 버튼 라벨이 영어 하드코딩이라 한글 로케일에서도 영문.
+	'board.snapBtn': { ko: '스냅', en: 'Snap' },
+	'board.arrangeToolbarBtn': { ko: '정렬', en: 'Arrange' },
+	'board.arrangeModeGroup': { ko: '그룹', en: 'Group' },
+	'board.arrangeModeAll': { ko: '전체', en: 'All' },
+	'board.fitView': { ko: '화면에 맞추기 (F)', en: 'Fit view (F)' },
+	'board.undo': { ko: '실행 취소 (Ctrl+Z)', en: 'Undo (Ctrl+Z)' },
+	'board.redo': { ko: '다시 실행 (Ctrl+Shift+Z)', en: 'Redo (Ctrl+Shift+Z)' },
 	'board.toolbarExpand': { ko: '도구바 펼치기', en: 'Expand toolbar' },
 	'board.toolbarCollapse': { ko: '도구바 접기 — 레인 라벨이 가려질 때', en: 'Collapse toolbar — when lane labels are hidden' },
 	'board.toolbarCollapseShort': { ko: '도구바 접기', en: 'Collapse toolbar' },
@@ -997,6 +1005,12 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		ko: '검색어 · 범위(rules: · quest: …) · #태그',
 		en: 'Search · scope (rules: · quest: …) · #tag'
 	},
+	// DEV-294: recent 모드 — 같은 팔레트를 최근 본 문서 목록으로 재사용.
+	'palette.placeholderRecent': {
+		ko: '최근 본 문서 · 입력하면 전체 검색',
+		en: 'Recently viewed · type to search everything'
+	},
+	'palette.noRecent': { ko: '최근 본 문서 없음', en: 'No recently viewed documents' },
 	'palette.loading': { ko: '불러오는 중…', en: 'Loading…' },
 	'palette.noResults': { ko: '검색 결과 없음', en: 'No results' },
 	'palette.preview': { ko: '미리보기', en: 'Preview' },
