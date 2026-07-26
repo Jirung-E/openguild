@@ -1399,9 +1399,15 @@
 		   버튼 content box)을 주 수단으로 쓰고, stretch 는 보조로만 남긴다.
 		   그러면 폭이 확정되어 평범한 block 레이아웃이 줄바꿈하고,
 		   max-height(1.3em × 3 = 3.9em)가 정확히 3줄에서 자른다. */
+		/* ★ BUG-153 (5차, 진짜 원인): global.css 의 `button { white-space: nowrap }`
+		   (BUG-143 — CJK 버튼 라벨이 두 줄 되는 것 방지)가 `.tile`(=<button>)
+		   에서 이 라벨로 **상속**돼 줄바꿈이 원천 차단돼 있었다. 폭을 어떻게
+		   확정해도(max-width/width/stretch) nowrap 이면 절대 안 꺾이고
+		   overflow:hidden 이 한 줄로 자른다 — 1~4차 수정이 전부 이것 때문에
+		   실패. 그 전역 규칙 주석이 안내한 대로 여기서 opt-out 한다. */
+		white-space: normal;
 		width: 100%;
 		max-width: 100%;
-		align-self: stretch;
 		box-sizing: border-box;
 		min-width: 0;
 		display: block;

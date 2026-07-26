@@ -20,6 +20,8 @@
 	import { rulesApi } from '$lib/api/rules';
 	import { libraryApi } from '$lib/api/library';
 	import MarkdownView from './MarkdownView.svelte';
+	// BUG-157: 결과 목록/미리보기 본문도 앱 공통 overlay 스크롤바(native 숨김).
+	import OverlayScrollbar from './OverlayScrollbar.svelte';
 	// 크로스링크(`[[kind:ID]]`)와 동일한 네임스페이스 별칭 — 검색 범위 좁히기.
 	import { KIND_ALIASES } from '$lib/stores/questIndex';
 	// DEV-255: 결과 열기 방식(미리보기/자식윈도우/페이지이동) 선택 — 공용 헬퍼.
@@ -55,6 +57,8 @@
 	let query = $state('');
 	let selIndex = $state(0);
 	let inputEl = $state<HTMLInputElement | null>(null);
+	// BUG-157: 미리보기 본문 overlay 스크롤바 대상.
+	let previewBodyEl = $state<HTMLDivElement | null>(null);
 	// DEV-255 버그 수정: 방향키로 선택이 화면 밖으로 나가도 스크롤 안 되던 문제
 	// — 선택 행을 scrollIntoView 하기 위한 목록 컨테이너 참조.
 	let rowsEl = $state<HTMLDivElement | null>(null);
@@ -405,6 +409,10 @@
 				{/each}
 			{/if}
 		</div>
+		<!-- BUG-157: 결과 목록 overlay 스크롤바 (native 는 CSS 로 숨김). -->
+		{#if rowsEl}
+			<OverlayScrollbar target={rowsEl} />
+		{/if}
 	{:else}
 		<div class="dp-head">
 			<span class="ptype {preview.kind}">{kindLabel(preview.kind)}</span>
@@ -417,13 +425,17 @@
 				<span class="tag">{preview.tags.map((tg) => '#' + tg).join(' ')}</span>
 			{/if}
 		</div>
-		<div class="dp-body" style="height:{previewH}px">
+		<div class="dp-body" bind:this={previewBodyEl} style="height:{previewH}px">
 			{#if previewLoading}
 				<div class="empty">{t('palette.loading', $locale)}</div>
 			{:else}
 				<MarkdownView source={previewBody} />
 			{/if}
 		</div>
+		<!-- BUG-157: 미리보기 본문 overlay 스크롤바. -->
+		{#if previewBodyEl}
+			<OverlayScrollbar target={previewBodyEl} />
+		{/if}
 		<div class="dp-foot">
 			<button class="dp-btn" onclick={() => (preview = null)}>{t('palette.backToList', $locale)}</button>
 			<!-- DEV-255: 미리보기에서도 자식윈도우/페이지이동으로 전환 가능. -->
@@ -502,6 +514,12 @@
 	.rows {
 		max-height: 340px;
 		overflow-y: auto;
+		/* BUG-157: native scrollbar 숨김 — OverlayScrollbar 가 대신 그린다
+		   (컨텐츠 폭 0 차지, 콤보박스 등 다른 스크롤 영역과 같은 규칙). */
+		scrollbar-width: none;
+	}
+	.rows::-webkit-scrollbar {
+		display: none;
 	}
 	.empty {
 		padding: 0.9rem;
@@ -643,8 +661,12 @@
 	.dp-body {
 		padding: 0.5rem 0.8rem;
 		overflow-y: auto;
-		/* 스크롤바는 global.css 의 기존 커스텀 ::-webkit-scrollbar 규칙이
-		   컨테이너 안쪽 오른쪽에 그린다(별도 처리 불필요). */
+		/* BUG-157: 결과 목록과 마찬가지로 native scrollbar 숨김 —
+		   OverlayScrollbar 로 통일(컨텐츠 폭 0 차지). */
+		scrollbar-width: none;
+	}
+	.dp-body::-webkit-scrollbar {
+		display: none;
 	}
 	.dp-foot {
 		display: flex;
