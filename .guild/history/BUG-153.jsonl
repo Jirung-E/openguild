@@ -5,3 +5,4 @@
 {"ts":"2026-07-23T01:15:12+09:00","op":"change_status","old":"testing","new":"in_progress"}
 {"ts":"2026-07-23T01:15:58+09:00","op":"change_status","old":"in_progress","new":"testing"}
 {"ts":"2026-07-26T16:09:57+09:00","op":"change_status","old":"testing","new":"in_progress"}
+{"ts":"2026-07-26T16:46:58+09:00","op":"change_status","old":"in_progress","new":"testing"}
