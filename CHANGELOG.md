@@ -24,6 +24,11 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
   `openguild rule history <slug>` / `openguild library history <book-id>`
   로, 원격(`--remote`)·서버 API(`GET /api/rules/{slug}/history`,
   `GET /api/library/{book_id}/history`) 모두 지원. (DEV-288, DEV-290)
+- **첨부 업로드 진행 표시** — 대용량 파일은 저장이 끝날 때까지 버튼 라벨만
+  '처리 중…' 으로 바뀌어 멈춘 것처럼 보였다. 첨부 섹션에 현재 파일명과
+  `n / N` 순번, 진행 바를 표시한다(스크린리더에도 알림). 세 전송 경로 모두
+  진행률(%)을 관측할 수 없어 불확정 바 — 실제 %는 청크 업로드 API 가 필요해
+  후속. (DEV-298)
 - **크로스링크 자동완성 후보의 전체 제목 표시** — 후보 폭에 잘려 어떤
   문서인지 구분이 안 되던 것을, 마우스 호버 **또는 키보드 포커스** 시
   테마를 따르는 팝업으로 전체 제목을 띄운다(OS 기본 툴팁이 아니라 커스텀

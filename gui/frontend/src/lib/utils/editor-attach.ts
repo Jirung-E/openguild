@@ -162,7 +162,7 @@ function uploadAndInsert(
 	onError: (msg: string) => void
 ): number {
 	// 고유 번호 — 같은 파일명 여러 개 동시 업로드 시 치환 대상 구분.
-	const placeholder = `![업로드 중… ${up.name} #${++uploadSeq}]()`;
+	const placeholder = `![${t('attach.uploading', get(locale))} ${up.name} #${++uploadSeq}]()`;
 	view.dispatch({ changes: { from: pos, insert: placeholder } });
 	void (async () => {
 		try {
@@ -233,21 +233,37 @@ async function uploadAttachmentPath(path: string): Promise<{ rel: string; name: 
  *   한정이고 파일 선택은 예외로 명시돼 있다.
  * - 브라우저 / Tauri+원격: 숨은 `<input type=file>` → bytes 업로드.
  *
- * 각 파일이 저장될 때마다 `onOne` 이 호출된다(파일별 진행 표시 가능).
+ * 각 파일이 저장될 때마다 `onOne` 이 호출된다.
+ *
+ * DEV-298: 대용량 파일은 저장이 끝날 때까지 아무 반응이 없어 "진행 중인지
+ * 멈춘 건지" 알 수 없었다. 파일 하나를 시작할 때마다 `onProgress` 로 현재
+ * 파일명과 순번을 알리고, 전부 끝나면 `null` 을 준다(표시 해제 신호).
  */
-export async function pickAndUploadAttachments(
-	onOne: (r: { rel: string; name: string }) => Promise<void> | void,
-	onError: (msg: string) => void
-): Promise<void> {
-	for (const up of await pickUploads()) {
-		try {
-			const rel = await up.run();
-			await onOne({ rel, name: up.name || rel.split('/').pop() || rel });
-		} catch (e) {
-			onError(e instanceof Error ? e.message : String(e));
+export async function pickAndUploadAttachments(handlers: {
+	onOne: (r: { rel: string; name: string }) => Promise<void> | void;
+	onError: (msg: string) => void;
+	onProgress?: (p: AttachProgress | null) => void;
+}): Promise<void> {
+	const { onOne, onError, onProgress } = handlers;
+	const picked = await pickUploads();
+	try {
+		for (let i = 0; i < picked.length; i++) {
+			const up = picked[i];
+			onProgress?.({ name: up.name, index: i + 1, total: picked.length });
+			try {
+				const rel = await up.run();
+				await onOne({ rel, name: up.name || rel.split('/').pop() || rel });
+			} catch (e) {
+				onError(e instanceof Error ? e.message : String(e));
+			}
 		}
+	} finally {
+		onProgress?.(null);
 	}
 }
+
+/** DEV-298: 업로드 진행 상태 — 현재 파일명 + 몇 번째/전체 몇 개. */
+export type AttachProgress = { name: string; index: number; total: number };
 
 /** 숨은 file input 으로 File 목록 받기 — 취소 시 빈 배열. */
 function pickFilesViaInput(): Promise<File[]> {
@@ -330,7 +346,7 @@ function uploadAndInsertTextarea(
 	up: Upload,
 	onError: (msg: string) => void
 ) {
-	const placeholder = `![업로드 중… ${up.name} #${++uploadSeq}]()`;
+	const placeholder = `![${t('attach.uploading', get(locale))} ${up.name} #${++uploadSeq}]()`;
 	insertIntoTextarea(ta, placeholder);
 	void (async () => {
 		try {

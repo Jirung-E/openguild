@@ -7,7 +7,7 @@
 -->
 <script lang="ts">
 	import { guildFileUrl } from '$lib/utils/banner';
-	import { pickAndUploadAttachments } from '$lib/utils/editor-attach';
+	import { pickAndUploadAttachments, type AttachProgress } from '$lib/utils/editor-attach';
 	import { detectEnvironment } from '$lib/api/transport';
 	import { getRemoteServerUrl } from '$lib/stores/remoteServer';
 	import { api } from '$lib/api/client';
@@ -35,6 +35,8 @@
 
 	let busy = $state(false);
 	let error = $state<string | null>(null);
+	// DEV-298: 업로드 진행 표시 — null 이면 진행 중 아님.
+	let progress = $state<AttachProgress | null>(null);
 	let urls = $state<Record<string, string>>({});
 
 	const IMG = /\.(png|jpe?g|gif|webp|bmp|svg)$/i;
@@ -73,16 +75,21 @@
 		busy = true;
 		error = null;
 		try {
-			await pickAndUploadAttachments(
-				async ({ rel, name }) => {
+			await pickAndUploadAttachments({
+				onOne: async ({ rel, name }) => {
 					attachments = await api.post<Attachment[]>(attachPath, { path: rel, name });
 				},
-				(msg) => {
+				onError: (msg) => {
 					error = msg;
+				},
+				// DEV-298: 대용량은 저장이 끝날 때까지 반응이 없어 멈춘 것처럼 보였다.
+				onProgress: (p) => {
+					progress = p;
 				}
-			);
+			});
 		} finally {
 			busy = false;
+			progress = null;
 		}
 	}
 
@@ -193,6 +200,17 @@
 			</button>
 		</div>
 	</div>
+	<!-- DEV-298: 업로드 진행 표시 — 대용량은 완료까지 수 초 걸려 멈춘 것처럼
+	     보였다. 현재 파일명 + 순번 + 진행 바(불확정)로 "돌고 있음"을 알린다. -->
+	{#if progress}
+		<div class="uploading" role="status" aria-live="polite">
+			<span class="up-name" title={progress.name}>{progress.name}</span>
+			{#if progress.total > 1}
+				<span class="up-count">{progress.index} / {progress.total}</span>
+			{/if}
+			<span class="up-bar"><span class="up-fill"></span></span>
+		</div>
+	{/if}
 	{#if error}<p class="err">{error}</p>{/if}
 	{#if list.length === 0}
 		<p class="empty">{t('attach.empty', $locale)}</p>
@@ -253,6 +271,58 @@
 		margin: 0;
 		font-size: 0.95rem;
 		color: var(--text-strong);
+	}
+	/* DEV-298: 업로드 진행 표시. 진행률을 알 수 없는 전송(경로 기반 복사 /
+	   base64 IPC)이라 불확정(indeterminate) 바 — 목적은 "돌고 있음"의 확인. */
+	.uploading {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-top: 0.6rem;
+		font-size: 0.8rem;
+		color: var(--text-muted);
+	}
+	.up-name {
+		max-width: 22rem;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.up-count {
+		flex: none;
+		font-variant-numeric: tabular-nums;
+	}
+	.up-bar {
+		flex: 1;
+		min-width: 4rem;
+		height: 3px;
+		border-radius: 2px;
+		background: var(--bg-subtle);
+		overflow: hidden;
+	}
+	.up-fill {
+		display: block;
+		width: 35%;
+		height: 100%;
+		border-radius: 2px;
+		background: var(--accent);
+		animation: up-slide 1.1s ease-in-out infinite;
+	}
+	@keyframes up-slide {
+		0% {
+			transform: translateX(-100%);
+		}
+		100% {
+			transform: translateX(300%);
+		}
+	}
+	/* 모션 축소 선호 시 애니메이션 대신 정적 바. */
+	@media (prefers-reduced-motion: reduce) {
+		.up-fill {
+			animation: none;
+			width: 100%;
+			opacity: 0.6;
+		}
 	}
 	.count {
 		color: var(--text-muted);

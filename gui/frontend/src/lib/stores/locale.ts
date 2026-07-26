@@ -571,6 +571,8 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	// BUG-168: 한도 초과 안내 — axum 원문(413) 노출 대신 크기를 밝힌다.
 	'attach.tooLarge': { ko: '첨부 파일이 너무 큽니다', en: 'Attachment file is too large' },
 	'attach.pickFile': { ko: '첨부할 파일 선택', en: 'Choose files to attach' },
+	// DEV-298: 편집기 인라인 placeholder — 업로드가 끝나면 마크다운으로 치환된다.
+	'attach.uploading': { ko: '업로드 중…', en: 'Uploading…' },
 
 	'history.title': { ko: '변경 이력', en: 'Change history' },
 	'history.loading': { ko: '로드 중…', en: 'Loading…' },
