@@ -77,10 +77,26 @@ per-type triggers, and skip everything else (don't spam the guild):
 
 ## Quest lifecycle (follow this order)
 
+> **Keep the board honest — move the quest before and after you work.**
+> The status is how the human tracks progress, so it must reflect reality:
+> - **Before touching any code/files**, move the quest to **In Progress**.
+>   Not after finishing, not "later" — first, then work. This is the step
+>   agents skip most often, especially when doing several quests in a row:
+>   do it again for *each* quest.
+> - **When the implementation is done**, move it to **Testing**. Leave `done`
+>   to the human unless automated tests fully cover it (see step 3).
+>
+> **Exception — the guild renamed or removed these statuses.** Statuses are
+> per-guild configurable. Run `openguild status list` if unsure: if there is
+> no In Progress / Testing equivalent, this rule does not apply — use the
+> guild's own nearest stage, or leave the status alone rather than inventing
+> one. Never create or rename statuses just to satisfy this rule.
+
 1. **Create**: `openguild quest new --type <PREFIX> --title "..." [--description-file <PATH>] [--urgency 1-4] [--parent <slug>]`
    - Use `--description-file <UTF8-PATH>` for any non-ASCII body text — piping
      text through stdin/shell quoting can mangle encoding.
-2. **Start work**: `openguild quest start <slug>` (→ In Progress).
+2. **Start work**: `openguild quest start <slug>` (→ In Progress) — *before*
+   the first edit, not after.
 3. **Finished**:
    - If fully covered by automated tests you already ran: `openguild quest done <slug>`.
    - If it needs a human to look at it (UI, UX, anything not automatable):

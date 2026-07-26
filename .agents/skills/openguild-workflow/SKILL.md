@@ -54,7 +54,22 @@ openguild --guild <recents 에서 찾은 path> quest list --status testing
 
 ## 퀘스트 수명주기 (필수 순서)
 
-1. **착수**: `git checkout develop && git checkout -b {QUEST_ID}` (브랜치명 = quest_id 그대로) → `openguild quest start {ID}`
+> **보드는 현실과 일치해야 한다 — 일하기 전과 후에 상태를 옮겨라.**
+> - **코드/파일을 한 줄이라도 건드리기 전에 In Progress 로.** 끝내고 나서가
+>   아니라 착수 직전. 에이전트가 가장 자주 빼먹는 단계이고, 특히 여러
+>   퀘스트를 연달아 처리할 때 앞 퀘스트 흐름에 휩쓸려 건너뛴다 — **퀘스트마다
+>   매번** 다시 한다. (실사고로 두 번 지적받음)
+> - **구현이 끝나면 Testing 으로.** done 은 사용자 검증 몫(자동 테스트로
+>   충분한 경우만 예외 — 아래 3번).
+> - 소급으로 가짜 타임스탬프 이력을 만들지 말 것. 빼먹었으면 지금 옮기고 진행.
+>
+> **예외 — 길드가 상태 이름을 바꿨거나 없앤 경우.** 상태는 길드마다 설정
+> 가능하다. 확실치 않으면 `openguild status list` 로 확인하고, In Progress /
+> Testing 에 해당하는 상태가 없으면 이 규칙은 적용 대상이 아니다 — 그 길드의
+> 대응 단계를 쓰거나 상태를 건드리지 않는다. 이 규칙을 지키려고 상태를 새로
+> 만들거나 이름을 바꾸지 말 것.
+
+1. **착수**: `git checkout develop && git checkout -b {QUEST_ID}` (브랜치명 = quest_id 그대로) → `openguild quest start {ID}` (**첫 수정 전에**)
 2. **구현** → 수동 검증 필요하면 본문에 **"## 테스트 방법"** 추가 후 `openguild quest move {ID} testing`. 자동 테스트로 충분하면 통과 확인 후 done 가능.
 3. **사용자 검증 후**: `openguild quest done {ID}`
 4. **커밋은 사용자가 명시 지시할 때만.** 형식:
