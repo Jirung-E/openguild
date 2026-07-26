@@ -16,7 +16,7 @@
   라이브러리 X — 순수 Svelte + CSS, 약 130 LOC.
 -->
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
+	import { onDestroy } from 'svelte';
 
 	type Props = { target?: HTMLElement | null | undefined };
 	let { target = null }: Props = $props();
@@ -55,7 +55,6 @@
 	// 건 못 잡는다 (= thumb 크기가 안 갱신돼 끝까지 안 내려가는 버그). 자식
 	// 추가/삭제(childList) 를 MutationObserver 로 잡아 재측정.
 	let mo: MutationObserver | null = null;
-	let scrollUnsub: (() => void) | null = null;
 	let rafHandle: number | null = null;
 
 	function measure() {
@@ -169,32 +168,49 @@
 		showTemp();
 	}
 
-	onMount(() => {
+	// BUG-157 (재수정, 사용자 검증 완료): 배선을 onMount 로 **한 번만** 하던 것이
+	// 컨테이너 모드가 통째로 죽어 있던 진짜 원인이다.
+	//
+	// 호출측은 `<div bind:this={rowsEl}>` … `<OverlayScrollbar target={rowsEl} />`
+	// 형태인데, 자식 컴포넌트의 onMount 시점엔 아직 `rowsEl` 이 null 이다.
+	// 그래서 measure()/리스너/옵저버가 전부 **window 모드**로 붙어버리고,
+	// 이후 prop 이 실제 엘리먼트로 갱신돼도 다시 배선하는 코드가 없었다.
+	// 결과: 컨테이너 크기가 아니라 문서 전체 기준으로 계산 → 대개
+	// `needed === false` → thumb 자체가 렌더되지 않음(= "스크롤바 안 보임").
+	//
+	// `$effect` 로 옮겨 target 이 바뀔 때마다 재측정 + 재배선한다(이전 배선은
+	// cleanup 에서 해제). null → 엘리먼트 전환이 자동으로 처리된다.
+	$effect(() => {
+		const t = target; // 의존성 등록 — t 가 바뀌면 cleanup 후 재실행.
+		if (typeof window === 'undefined') return;
 		measure();
-		const scrollSrc: Window | HTMLElement = target ?? window;
+
+		const scrollSrc: Window | HTMLElement = t ?? window;
 		const handler = onScroll;
 		scrollSrc.addEventListener('scroll', handler, { passive: true });
-		scrollUnsub = () => scrollSrc.removeEventListener('scroll', handler);
 		window.addEventListener('resize', onWinResize);
-		// target 모드: window 스크롤로 target 의 위치 변하면 fixed thumb 좌표도 갱신.
-		if (target) {
-			window.addEventListener('scroll', onWinScroll, { passive: true });
-		}
-		ro = new ResizeObserver(scheduleRemeasure);
-		ro.observe(target ?? document.documentElement);
-		if (!target) ro.observe(document.body);
+		// target 모드: window 스크롤로 target 의 위치가 변하면 fixed thumb 좌표도 갱신.
+		if (t) window.addEventListener('scroll', onWinScroll, { passive: true });
+
+		const localRo = new ResizeObserver(scheduleRemeasure);
+		localRo.observe(t ?? document.documentElement);
+		if (!t) localRo.observe(document.body);
 		// 컨텐츠 mutation (행 추가/삭제, 댓글 접기/펼치기 등) → 재측정.
-		const moTarget = target ?? document.body;
-		mo = new MutationObserver(scheduleRemeasure);
-		mo.observe(moTarget, { childList: true, subtree: true });
+		const localMo = new MutationObserver(scheduleRemeasure);
+		localMo.observe(t ?? document.body, { childList: true, subtree: true });
+		ro = localRo;
+		mo = localMo;
+
+		return () => {
+			scrollSrc.removeEventListener('scroll', handler);
+			window.removeEventListener('resize', onWinResize);
+			if (t) window.removeEventListener('scroll', onWinScroll);
+			localRo.disconnect();
+			localMo.disconnect();
+		};
 	});
 
 	onDestroy(() => {
-		scrollUnsub?.();
-		window.removeEventListener('resize', onWinResize);
-		if (target) window.removeEventListener('scroll', onWinScroll);
-		ro?.disconnect();
-		mo?.disconnect();
 		if (hideTimer) clearTimeout(hideTimer);
 		if (rafHandle !== null) cancelAnimationFrame(rafHandle);
 	});

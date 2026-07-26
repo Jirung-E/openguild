@@ -767,6 +767,10 @@
 							ondragleave={() => (dragOverFolder = null)}
 							ondrop={(e) => onTileDrop(e, f.path)}
 						>
+							<!-- BUG-153: 문서 타일은 아이콘 위에 BOOK 번호(.tile-sub)가 있어서, 폴더에
+							     같은 자리가 비면 아이콘 높이가 서로 어긋난다(사용자 지적). 빈
+							     자리표시자로 높이를 맞춘다. -->
+							<span class="tile-sub" aria-hidden="true"></span>
 							<span class="tile-icon" aria-hidden="true">📁</span>
 							<span class="tile-label" use:titlePopup={f.name}>{f.name}</span>
 						</button>
@@ -801,6 +805,10 @@
 						ondragleave={() => (dragOverFolder = null)}
 						ondrop={(e) => onTileDrop(e, f.path)}
 					>
+						<!-- BUG-153: 문서 타일은 아이콘 위에 BOOK 번호(.tile-sub)가 있어서, 폴더에
+						     같은 자리가 비면 아이콘 높이가 서로 어긋난다(사용자 지적). 빈
+						     자리표시자로 높이를 맞춘다. -->
+						<span class="tile-sub" aria-hidden="true"></span>
 						<span class="tile-icon" aria-hidden="true">📁</span>
 						<span class="tile-label" use:titlePopup={f.name}>{f.name}</span>
 					</button>
@@ -1387,14 +1395,19 @@
 		font-size: 0.75rem;
 		text-align: center;
 		line-height: 1.3;
-		/* BUG-153: -webkit-box(line-clamp) 를 쓰지 않는다 — 3회 재발한 "1줄만
-		   표시" 의 원인. `.tile` 은 align-items:center 인 column flex 라 라벨의
-		   폭이 shrink-to-fit 인데, legacy -webkit-box 는 이 계산에서 max-content
-		   로 부풀어 폭 제한이 안 먹고 overflow:hidden 이 첫 줄만 남겼다.
-		   대신 (1) align-self:stretch 로 폭을 타일에 확정시키고 (2) 평범한 block
-		   레이아웃으로 줄바꿈시킨 뒤 (3) max-height 로 3줄에서 자른다.
-		   1.3em × 3 = 3.9em (line-height 1.3 기준 정확히 3줄). */
-		align-self: stretch;
+		/* ★ BUG-153 (진짜 원인, 사용자 검증 완료): global.css 의
+		   `button { white-space: nowrap }`(BUG-143 — CJK 버튼 라벨이 두 줄 되는
+		   것 방지)이 `.tile`(=<button>)에서 이 라벨로 **상속**돼 줄바꿈이 원천
+		   차단돼 있었다. nowrap 이면 폭을 어떻게 확정해도(max-width/width/
+		   align-self) 절대 안 꺾이고 overflow:hidden 이 한 줄로 자른다 — 앞선
+		   시도들이 전부 이것 때문에 실패. 그 전역 규칙 주석이 안내한 대로
+		   여기서 opt-out 한다.
+		   폭은 정렬 방식에 의존하지 않는 퍼센트로 확정(버튼의 anonymous content
+		   box 때문에 stretch 만으로는 불안정), 3줄은 max-height(1.3em × 3). */
+		white-space: normal;
+		width: 100%;
+		max-width: 100%;
+		box-sizing: border-box;
 		min-width: 0;
 		display: block;
 		word-break: break-word;
@@ -1406,6 +1419,9 @@
 		font-family: 'SFMono-Regular', Consolas, monospace;
 		font-size: 0.62rem;
 		color: var(--text-muted);
+		/* BUG-153: 폴더 타일은 내용이 빈 자리표시자 — 빈 인라인 요소는 높이가
+		   0 이라 문서/폴더 아이콘 높이가 어긋난다. 한 줄 높이를 확보. */
+		min-height: 1.2em;
 	}
 
 	.top-bar {
