@@ -1381,20 +1381,19 @@
 		font-size: 0.75rem;
 		text-align: center;
 		line-height: 1.3;
-		/* BUG-153: flex item(span)이 align-items:center 라 content 폭을 그대로
-		   가져(shrink-to-fit) 긴 제목이 옆 타일까지 넘쳤고 max-width:100% 는
-		   안 먹었다. 확정 width:100% 로 타일 폭에 고정 + overflow-wrap 로 줄바꿈.
-		   제목은 3줄까지만(line-clamp) 표시하고 넘치면 말줄임 — 전체는 hover
-		   툴팁으로 확인. */
-		width: 100%;
+		/* BUG-153: -webkit-box(line-clamp) 를 쓰지 않는다 — 3회 재발한 "1줄만
+		   표시" 의 원인. `.tile` 은 align-items:center 인 column flex 라 라벨의
+		   폭이 shrink-to-fit 인데, legacy -webkit-box 는 이 계산에서 max-content
+		   로 부풀어 폭 제한이 안 먹고 overflow:hidden 이 첫 줄만 남겼다.
+		   대신 (1) align-self:stretch 로 폭을 타일에 확정시키고 (2) 평범한 block
+		   레이아웃으로 줄바꿈시킨 뒤 (3) max-height 로 3줄에서 자른다.
+		   1.3em × 3 = 3.9em (line-height 1.3 기준 정확히 3줄). */
+		align-self: stretch;
 		min-width: 0;
-		box-sizing: border-box;
+		display: block;
 		word-break: break-word;
 		overflow-wrap: anywhere;
-		display: -webkit-box;
-		-webkit-line-clamp: 3;
-		line-clamp: 3;
-		-webkit-box-orient: vertical;
+		max-height: 3.9em;
 		overflow: hidden;
 	}
 	.tile-sub {
