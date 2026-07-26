@@ -108,6 +108,34 @@ per-type triggers, and skip everything else (don't spam the guild):
    case/spacing-insensitive). The old `quest status <slug> <STATUS>` form is
    deprecated; use `move`.
 
+## Cross-links `[[…]]` — follow them, don't skip them
+
+Guild documents reference each other with double-bracket tokens. When you read
+a quest body, comment, rule, or library doc and hit one of these, it is a
+**pointer to another document in this same guild** — the author put it there
+because that document matters here. **Fetch it** before acting, unless you
+already know its content or it is clearly irrelevant to the current task.
+Do not treat it as plain text, and do not guess what it says from the ID alone.
+
+Resolve by prefix (`kind:` is optional; without it, infer from the ID shape):
+
+| Token | Meaning | Read it with |
+|---|---|---|
+| `[[DEV-001]]`, `[[BUG-003]]`, `[[quest:DEV-001]]` | quest | `openguild quest show DEV-001` |
+| `[[C-001]]`, `[[campaign:C-001]]` | campaign | `openguild campaign show C-001` |
+| `[[BOOK-012]]`, `[[library:BOOK-012]]` | library doc | `openguild library show BOOK-012` |
+| `[[some-rule]]`, `[[rules:some-rule]]` | project rule | `openguild rule show some-rule` |
+
+Accepted prefixes: `quest`/`q`, `campaign`/`c`, `rule`/`rules`/`r`,
+`book`/`library`/`lib`. Rule slugs may contain spaces (`[[coding style]]`).
+A token pointing at something that doesn't exist is shown in red in the GUI —
+if you meant to reference a real document, check the ID; if you are recording
+a to-be-created item, that's fine.
+
+**When writing**, link instead of duplicating: reference `[[BOOK-012]]` rather
+than pasting its content into a quest description, and cross-link related
+quests so the next reader (human or agent) can follow the trail.
+
 ## Everyday commands
 
 ```bash
