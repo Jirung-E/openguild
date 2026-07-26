@@ -57,6 +57,29 @@ openguild comments --unresolved                            # 미해결 토론 �
    적용되어야 하므로 특정 브랜드를 하드코딩하지 않는다.)
    conventional-commits 금지. 퀘스트별 브랜치 커밋 → develop 에 `git merge --ff-only`. 머지된 브랜치 삭제 금지.
 
+## cross-link `[[…]]` — 보이면 따라가라
+
+퀘스트 본문·댓글·규칙·도서관 문서에서 `[[…]]` 토큰을 만나면 그건 **같은 길드의
+다른 문서를 가리키는 포인터**다. 작성자가 "여기서 그 문서가 필요하다"고 붙여둔
+것이므로, 이미 내용을 알거나 현재 작업과 명백히 무관한 경우가 아니면 **읽고
+나서 판단한다.** 평문으로 넘기거나 ID 만 보고 내용을 추측하지 말 것.
+
+| 토큰 | 대상 | 읽는 명령 |
+|------|------|-----------|
+| `[[DEV-001]]` · `[[quest:DEV-001]]` | 퀘스트 | `openguild quest show DEV-001` |
+| `[[C-001]]` · `[[campaign:C-001]]` | 캠페인 | `openguild campaign show C-001` |
+| `[[BOOK-012]]` · `[[library:BOOK-012]]` | 도서관 문서 | `openguild library show BOOK-012` |
+| `[[some-rule]]` · `[[rules:some-rule]]` | 규칙 | `openguild rule show some-rule` |
+
+접두 별칭: `quest`/`q`, `campaign`/`c`, `rule`/`rules`/`r`, `book`/`library`/`lib`
+(접두 생략 시 ID 형태로 판별). 규칙 slug 는 공백 포함 가능(`[[코딩 규칙]]`,
+BUG-156). 대상이 없는 토큰은 GUI 에서 빨간 링크 — 실재 문서를 참조할 의도였다면
+ID 를 확인한다.
+
+**쓸 때도** 내용을 복사하지 말고 링크한다 — 도서관 문서 본문을 퀘스트 설명에
+붙여넣는 대신 `[[BOOK-012]]` 로 참조하고, 관련 퀘스트끼리 cross-link 를 걸어
+다음 사람(또는 에이전트)이 흐름을 따라갈 수 있게 한다.
+
 ## 절대 금지
 
 - **커밋/푸시/빌드/테스트 명령을 시키지 않았는데 실행** (cargo build/test, npm test 포함 — 수정 후 자동 검증 금지, 검증 명령만 안내)
