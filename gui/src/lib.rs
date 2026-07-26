@@ -374,6 +374,8 @@ pub fn run() {
             commands::current_guild_name,
             // BUG-041: DB schema 가 binary 보다 새로운지 — banner 표시용.
             commands::get_db_schema_status,
+            // BUG-170: 디버그 빌드 여부(프런트 디버그 훅 노출 조건).
+            commands::is_debug_build,
             commands::inspect_guild_path,
             commands::open_guild_in_current_window,
             commands::init_and_open_guild,

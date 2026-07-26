@@ -882,6 +882,19 @@ pub struct DbSchemaStatus {
     pub latest_known_migration: Option<i64>,
 }
 
+/// BUG-170: 이 바이너리가 디버그 빌드인지 — 프런트의 디버그 훅
+/// (`window.__ogNotify`) 노출 조건.
+///
+/// 프런트의 `import.meta.env.DEV` 는 **번들 모드**(vite dev server)라
+/// Rust 프로파일과 무관하다. `cargo tauri build --debug` 처럼 디버그
+/// 빌드로 패키징해도 프런트엔드는 production 번들이라 DEV=false 가 되어
+/// 훅이 사라졌다(사용자 보고). 빌드 프로파일은 Rust 만 알고 있으므로
+/// 여기서 알려준다 — 릴리스 빌드면 false 라 훅이 노출되지 않는다.
+#[tauri::command]
+pub fn is_debug_build() -> bool {
+    cfg!(debug_assertions)
+}
+
 #[tauri::command]
 pub fn get_db_schema_status(store: State<'_, Store>) -> DbSchemaStatus {
     let ahead = store.db_ahead_versions.clone();

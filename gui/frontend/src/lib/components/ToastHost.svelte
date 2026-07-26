@@ -62,23 +62,42 @@
 	// BUG-096: uptodate/error 는 정보성이라 일정 시간 후 자동으로 idle 로.
 	const AUTO_DISMISS_MS = 5000;
 
-	// BUG-170: 디버그 훅 opt-in — dev 서버는 항상, 릴리스 빌드는 사용자가
-	// `__ogEnableDebug()` 로 켠 경우에만. (localStorage 플래그)
-	const DEBUG_HOOKS_KEY = 'openguild.debugHooks';
-	function debugHooksEnabled(): boolean {
-		if (import.meta.env.DEV) return true;
-		try {
-			return localStorage.getItem(DEBUG_HOOKS_KEY) === '1';
-		} catch {
-			return false;
-		}
+	// BUG-170: 디버그 훅(`window.__ogNotify`) 노출 조건 = **디버그 빌드**.
+	//
+	// 이전엔 `import.meta.env.DEV` 로만 게이트했는데 이 값은 프런트 **번들
+	// 모드**(vite dev server)라 Rust 빌드 프로파일과 무관하다 — 디버그로
+	// 패키징한 앱도 프런트는 production 번들이라 훅이 사라졌다(사용자 보고:
+	// "난 디버그 기준으로 말한 건데"). 빌드 프로파일은 Rust 만 아니까
+	// `is_debug_build` 로 물어본다. 릴리스 빌드면 false → 훅 없음.
+	let debugHooks = $state(import.meta.env.DEV);
+
+	/** DEV-266 의 콘솔 트리거 헬퍼 — 디버그 빌드에서만 window 에 붙인다. */
+	function exposeDebugHooks() {
+		if (typeof window === 'undefined') return;
+		(window as unknown as Record<string, unknown>).__ogNotify = {
+			toast: showToast,
+			schema: () =>
+				upsertNotif({
+					id: 'schema',
+					kind: 'schema',
+					binaryVersion: '0.0.0-dev',
+					aheadVersions: [99],
+					latestKnown: 1
+				}),
+			update: (status = 'available') =>
+				updateState.set(
+					status === 'available'
+						? { status: 'available', version: '9.9.9-dev', notes: 'dev trigger' }
+						: ({ status } as never)
+				)
+		};
 	}
 
 	// DEV-063/DEV-259: 업데이터 상태 → 'update' 알림 presence(제자리 갱신).
 	// DEV-266: dev 모드는 브라우저에서도 허용 — __ogNotify.update() 트리거용.
-	// BUG-170: 디버그 훅을 켠 릴리스 빌드에서도 동일하게 허용(트리거 검증).
+	// BUG-170: 디버그 빌드에서도 동일하게 허용(트리거 검증).
 	$effect(() => {
-		if (!isTauri && !debugHooksEnabled()) return;
+		if (!isTauri && !debugHooks) return;
 		if ($updateState.status === 'idle') {
 			dismissNotif('update');
 		} else {
@@ -139,43 +158,20 @@
 		// 실기로 재현하기 어렵다. 개발 모드에서만 콘솔 헬퍼를 노출해 임의
 		// 조합을 수동 재현할 수 있게 한다. 예:
 		//   __ogNotify.toast('hello', 'error'); __ogNotify.schema(); __ogNotify.update('available');
-		// BUG-170: 기존엔 `import.meta.env.DEV` 로만 게이트해서 실제 릴리스
-		// 빌드(just build → exe)에는 훅이 아예 없었고, DEV-266 의 "테스트 방법"
-		// 대로 콘솔에서 호출하면 `__ogNotify is not defined` 였다(사용자 보고).
-		// 알림 스택은 실기 빌드에서 확인해야 의미가 있으므로, 릴리스 빌드에서도
-		// **사용자가 명시적으로 켰을 때만** 노출한다:
-		//   __ogEnableDebug()  →  reload  →  __ogNotify.* 사용 가능
-		// 기본값은 여전히 꺼짐이라 일반 사용자 콘솔은 깨끗하다.
-		if (typeof window !== 'undefined') {
-			(window as unknown as Record<string, unknown>).__ogEnableDebug = (on = true) => {
+		// BUG-170: dev 서버뿐 아니라 **디버그 빌드로 패키징한 앱**에서도 노출.
+		// (import.meta.env.DEV 는 번들 모드라 패키징하면 항상 false — 그래서
+		// 디버그 빌드에서도 훅이 없었다. Rust 에 빌드 프로파일을 물어본다.)
+		void (async () => {
+			if (!debugHooks) {
 				try {
-					if (on) localStorage.setItem(DEBUG_HOOKS_KEY, '1');
-					else localStorage.removeItem(DEBUG_HOOKS_KEY);
+					const { invoke } = await import('@tauri-apps/api/core');
+					debugHooks = await invoke<boolean>('is_debug_build');
 				} catch {
-					/* private 모드 등 — 무시 */
+					/* 브라우저 모드 / 구 backend — 훅 없음 */
 				}
-				location.reload();
-			};
-		}
-		if (debugHooksEnabled() && typeof window !== 'undefined') {
-			(window as unknown as Record<string, unknown>).__ogNotify = {
-				toast: showToast,
-				schema: () =>
-					upsertNotif({
-						id: 'schema',
-						kind: 'schema',
-						binaryVersion: '0.0.0-dev',
-						aheadVersions: [99],
-						latestKnown: 1
-					}),
-				update: (status = 'available') =>
-					updateState.set(
-						status === 'available'
-							? { status: 'available', version: '9.9.9-dev', notes: 'dev trigger' }
-							: ({ status } as never)
-					)
-			};
-		}
+			}
+			if (debugHooks) exposeDebugHooks();
+		})();
 		if (!isTauri) return; // 브라우저 모드 — 업데이트 개념 없음.
 		checkForUpdate({ silent: true });
 		const handle = setInterval(() => {
