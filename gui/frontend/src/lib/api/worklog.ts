@@ -18,6 +18,8 @@ export interface ActivityCounts {
 	done_transitions: number;
 	/** DEV-236: 토론 resolve/reopen 전환 수. */
 	discussion_events: number;
+	/** DEV-288: 규칙·도서관 문서 변경 수. */
+	doc_changes: number;
 }
 
 export interface WorklogReport {

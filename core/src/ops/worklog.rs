@@ -36,9 +36,10 @@ pub fn validate_date(date: &str) -> AppResult<()> {
 pub struct ActivityRow {
     /// 발생 시각 (로컬 ISO8601).
     pub ts: String,
-    /// "status"(상태변경) | "type"(타입변경) | "comment" | "created".
+    /// "status"(상태변경) | "type"(타입변경) | "comment" | "created" |
+    /// "discussion" | DEV-288: "rule" | "book"(문서 변경).
     pub kind: String,
-    /// 소속 슬러그 (DEV-001 / C-001).
+    /// 소속 슬러그 (DEV-001 / C-001 / rule slug / BOOK-001).
     pub slug: String,
     /// 한 줄 표시용: status = "old → new", comment = "author: 본문(앞부분)",
     /// created = 제목.
@@ -55,6 +56,9 @@ pub struct ActivityCounts {
     pub done_transitions: i64,
     /// DEV-236: 토론 댓글 resolve/reopen 전환 수.
     pub discussion_events: i64,
+    /// DEV-288: 규칙·도서관 문서 변경(create/update/delete/rename) 수.
+    #[serde(default)]
+    pub doc_changes: i64,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -114,9 +118,22 @@ pub async fn activities(store: &Store, from: &str, to: &str) -> AppResult<Worklo
                   COALESCE(ch.old_value,'?') || ' → ' || COALESCE(ch.new_value,'?')
              FROM campaign_history ch
             WHERE substr(ch.ts,1,10) BETWEEN ? AND ?
+           UNION ALL
+           -- DEV-288: 규칙/도서관 변경도 활동 타임라인에 (사이드카 → doc_history).
+           SELECT d.ts,
+                  CASE d.kind WHEN 'rule' THEN 'rule' ELSE 'book' END,
+                  d.slug,
+                  CASE d.op
+                    WHEN 'rename' THEN COALESCE(d.old_value,'?') || ' → ' || COALESCE(d.new_value,'?')
+                    ELSE d.op
+                  END
+             FROM doc_history d
+            WHERE substr(d.ts,1,10) BETWEEN ? AND ?
          )
          ORDER BY ts",
     )
+    .bind(from)
+    .bind(to)
     .bind(from)
     .bind(to)
     .bind(from)
@@ -142,6 +159,8 @@ pub async fn activities(store: &Store, from: &str, to: &str) -> AppResult<Worklo
             "discussion" => counts.discussion_events += 1,
             "comment" => counts.comments += 1,
             "created" => counts.created += 1,
+            // DEV-288: 규칙/도서관 변경 — 문서 편집 활동으로 따로 집계.
+            "rule" | "book" => counts.doc_changes += 1,
             _ => {}
         }
     }
@@ -180,9 +199,15 @@ pub async fn daily_summary(
            -- DEV-226 후속: 캠페인 상태 변경도 히트맵 집계에.
            SELECT substr(ch.ts,1,10) FROM campaign_history ch
             WHERE substr(ch.ts,1,10) BETWEEN ? AND ?
+           UNION ALL
+           -- DEV-288: 규칙/도서관 변경도 히트맵 집계에.
+           SELECT substr(d2.ts,1,10) FROM doc_history d2
+            WHERE substr(d2.ts,1,10) BETWEEN ? AND ?
          )
          GROUP BY d ORDER BY d",
     )
+    .bind(from)
+    .bind(to)
     .bind(from)
     .bind(to)
     .bind(from)

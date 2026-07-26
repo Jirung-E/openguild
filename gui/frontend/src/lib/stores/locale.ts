@@ -883,6 +883,9 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'worklogPage.badge.comment': { ko: '댓글', en: 'Comment' },
 	'worklogPage.badge.created': { ko: '생성', en: 'Created' },
 	'worklogPage.badge.discussion': { ko: '토론', en: 'Discussion' },
+	// DEV-288: 규칙·도서관 변경 활동.
+	'worklogPage.badge.rule': { ko: '규칙', en: 'Rule' },
+	'worklogPage.badge.book': { ko: '문서', en: 'Doc' },
 	'worklogPage.title': { ko: '🕘 작업 기록', en: '🕘 Work Log' },
 	'worklogPage.rangeStartAria': { ko: '구간 시작', en: 'Range start' },
 	'worklogPage.rangeEndAria': { ko: '구간 끝', en: 'Range end' },
@@ -908,6 +911,7 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'worklogPage.summary.comments': { ko: '댓글', en: 'comments' },
 	'worklogPage.summary.created': { ko: '생성', en: 'created' },
 	'worklogPage.summary.discussion': { ko: '토론 전환', en: 'discussion toggles' },
+	'worklogPage.summary.docChanges': { ko: '문서 변경', en: 'doc changes' },
 	'worklogPage.summary.doneTransitions': { ko: 'done 전환', en: 'done transitions' },
 
 	// DEV-205(2차): TagPills 공용 컴포넌트(규칙/도서관 태그 편집).

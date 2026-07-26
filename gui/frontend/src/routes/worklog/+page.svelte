@@ -279,7 +279,10 @@
 		comment: 'b-comment',
 		created: 'b-created',
 		// DEV-236: 토론 resolve/reopen 전환.
-		discussion: 'b-discussion'
+		discussion: 'b-discussion',
+		// DEV-288: 규칙·도서관 문서 변경.
+		rule: 'b-doc',
+		book: 'b-doc'
 	};
 	function kindBadgeLabel(kind: string): string {
 		switch (kind) {
@@ -293,6 +296,11 @@
 				return t('worklogPage.badge.created', $locale);
 			case 'discussion':
 				return t('worklogPage.badge.discussion', $locale);
+			// DEV-288: 규칙/도서관 변경.
+			case 'rule':
+				return t('worklogPage.badge.rule', $locale);
+			case 'book':
+				return t('worklogPage.badge.book', $locale);
 			default:
 				return kind;
 		}
@@ -310,6 +318,9 @@
 		}
 	}
 	function activityHref(a: ActivityRow): string {
+		// DEV-288: 규칙/도서관 활동은 해당 문서 페이지로(딥링크 쿼리는 각 페이지가 처리).
+		if (a.kind === 'rule') return `/rules?slug=${encodeURIComponent(a.slug)}`;
+		if (a.kind === 'book') return `/library?id=${encodeURIComponent(a.slug)}`;
 		return /^C-\d+$/.test(a.slug)
 			? `/campaigns/${encodeURIComponent(a.slug)}`
 			: `/quests/${encodeURIComponent(a.slug)}`;
@@ -461,6 +472,11 @@
 				<span><b>{report.counts.status_changes}</b> {t('worklogPage.summary.statusChanges', $locale)}</span>
 				<span><b>{report.counts.comments}</b> {t('worklogPage.summary.comments', $locale)}</span>
 				<span><b>{report.counts.created}</b> {t('worklogPage.summary.created', $locale)}</span>
+				{#if report.counts.doc_changes > 0}
+					<span
+						><b>{report.counts.doc_changes}</b> {t('worklogPage.summary.docChanges', $locale)}</span
+					>
+				{/if}
 				{#if report.counts.discussion_events > 0}
 					<span><b>{report.counts.discussion_events}</b> {t('worklogPage.summary.discussion', $locale)}</span>
 				{/if}
@@ -654,6 +670,11 @@
 	.b-discussion {
 		background: color-mix(in srgb, var(--danger) 15%, transparent);
 		color: var(--danger);
+	}
+	/* DEV-288: 규칙·도서관 문서 변경. */
+	.b-doc {
+		background: color-mix(in srgb, var(--accent) 15%, transparent);
+		color: var(--accent);
 	}
 	.slug {
 		flex: none;

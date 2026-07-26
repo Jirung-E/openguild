@@ -160,6 +160,10 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
     sqlx::query("DELETE FROM library_docs")
         .execute(&mut *tx)
         .await?;
+    // DEV-288: 규칙/도서관 이력 캐시도 wipe — 사이드카에서 재구축(6d).
+    sqlx::query("DELETE FROM doc_history")
+        .execute(&mut *tx)
+        .await?;
     // DEV-243: 도서관 태그 캐시도 wipe — frontmatter 의 tags 배열로부터 재구축.
     sqlx::query("DELETE FROM library_tags")
         .execute(&mut *tx)
@@ -950,6 +954,58 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
             }
         }
     }
+
+    // 6d. DEV-288: 규칙/도서관 변경 이력 사이드카 → doc_history 캐시.
+    //     quest/campaign 이 아닌 slug 의 사이드카(rule slug · BOOK-NNN)를 담당.
+    //     BOOK-001 불변식대로 **파일 → DB 일방향** — 여기서 파일로 되쓰는 경로는
+    //     없다(quest 쪽 5d(a) 의 export 같은 자가치유 없음: 규칙/BOOK 이력은
+    //     처음부터 사이드카가 진리원이라 되살릴 레거시 DB 행이 존재하지 않음).
+    {
+        use crate::repo::history as hist;
+        // 현재 존재하는 rule slug / BOOK id 집합 — dangling 사이드카는 skip.
+        let rule_slugs: std::collections::HashSet<String> =
+            crate::repo::rules::list_rules(paths)
+                .map(|v| v.into_iter().map(|r| r.slug).collect())
+                .unwrap_or_default();
+        let book_ids: std::collections::HashSet<String> = crate::repo::library::list_book_files(paths)
+            .map(|v| {
+                v.into_iter()
+                    .filter_map(|p| {
+                        p.file_stem()
+                            .and_then(|s| s.to_str())
+                            .map(|s| s.to_string())
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        for (slug, path) in hist::list_sidecars(paths) {
+            let kind = if rule_slugs.contains(&slug) {
+                "rule"
+            } else if book_ids.contains(&slug) {
+                "book"
+            } else {
+                continue; // quest/campaign slug 이거나 삭제된 문서 — 여기 대상 아님.
+            };
+            let entries = hist::read_all(&path).map_err(crate::error::AppError::Internal)?;
+            for e in &entries {
+                sqlx::query(
+                    "INSERT INTO doc_history (kind, slug, ts, op, old_value, new_value)
+                     VALUES (?, ?, ?, ?, ?, ?)",
+                )
+                .bind(kind)
+                .bind(&slug)
+                .bind(&e.ts)
+                .bind(&e.op)
+                .bind(&e.old)
+                .bind(&e.new)
+                .execute(&mut *tx)
+                .await?;
+                report.history_loaded += 1;
+            }
+        }
+    }
+
     // campaign_counters self-heal — alive campaign 의 최대 번호로.
     if max_camp_num > 0 {
         sqlx::query(

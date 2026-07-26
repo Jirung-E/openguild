@@ -6591,6 +6591,7 @@ fn handle_worklog(c: &Backend, json: bool, sub: WorklogCmd) -> Result<()> {
                         println!("{hm}  {:<10} [{badge}] {first}", a.slug);
                     }
                     println!();
+                    // DEV-288: 규칙/도서관 변경(doc_changes)도 요약에 — 0 이면 생략.
                     println!(
                         "{}",
                         tf!(
@@ -6602,6 +6603,16 @@ fn handle_worklog(c: &Backend, json: bool, sub: WorklogCmd) -> Result<()> {
                             report.counts.done_transitions
                         )
                     );
+                    if report.counts.doc_changes > 0 {
+                        println!(
+                            "{}",
+                            tf!(
+                                "        문서 변경(규칙·도서관) {}",
+                                "        doc changes (rules · library) {}",
+                                report.counts.doc_changes
+                            )
+                        );
+                    }
                 }
             }
         }
