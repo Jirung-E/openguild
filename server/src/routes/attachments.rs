@@ -17,6 +17,22 @@ use openguild_core::models::QuestAttachment;
 use openguild_core::ops::attachments as ops;
 use openguild_core::Store;
 
+/// BUG-168: 이 라우트가 허용하는 **원본 파일** 최대 크기.
+///
+/// axum 기본 body limit 은 2 MiB 라, base64(4/3 팽창)를 감싸면 원본 1.5 MB
+/// 정도에서 413 이 났다(사진 한 장에도 걸리는 수준 — 실측 경계 2,097,152 B).
+/// bytes 를 받는 라우트는 이 라우트뿐이므로 여기에만 한도를 명시하고 나머지는
+/// 기본값(2 MiB)을 유지한다.
+///
+/// 무제한으로 두지 않는 이유: 첨부는 `attachment_blobs` 로 index.db 에도
+/// 복사되므로(DEV-284) 스냅샷 용량이 같이 커진다.
+pub const MAX_ATTACHMENT_BYTES: usize = 64 * 1024 * 1024;
+
+/// 위 원본 한도를 base64 로 감싼 JSON body 의 상한 — base64 는 3바이트를
+/// 4바이트로 부풀리고, 여기에 JSON 래퍼(`{"data_base64":"…","ext":"…"}`)와
+/// 여유를 더한다.
+pub const MAX_ATTACHMENT_BODY_BYTES: usize = MAX_ATTACHMENT_BYTES / 3 * 4 + 64 * 1024;
+
 #[derive(Debug, Deserialize)]
 pub struct SaveAttachmentRequest {
     pub data_base64: String,
@@ -37,6 +53,17 @@ pub async fn save_attachment(
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(&body.data_base64)
         .map_err(|e| AppError::BadRequest(format!("base64 디코드 실패: {e}")))?;
+    // BUG-168: body limit(=base64 기준)만으로는 413 원문("Failed to buffer the
+    // request body")이 그대로 노출된다. 원본 기준으로 한 번 더 확인해 한도를
+    // 밝힌 메시지를 준다.
+    if bytes.len() > MAX_ATTACHMENT_BYTES {
+        return Err(AppError::BadRequest(openguild_core::tf!(
+            "첨부 파일이 너무 큽니다 ({} MB) — 최대 {} MB",
+            "attachment too large ({} MB) — maximum {} MB",
+            bytes.len() / (1024 * 1024),
+            MAX_ATTACHMENT_BYTES / (1024 * 1024)
+        )));
+    }
     let rel = ops::save_attachment(&store, &bytes, &body.ext).await?;
     Ok(Json(rel))
 }

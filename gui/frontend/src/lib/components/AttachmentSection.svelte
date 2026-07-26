@@ -7,7 +7,7 @@
 -->
 <script lang="ts">
 	import { guildFileUrl } from '$lib/utils/banner';
-	import { uploadAttachmentFile } from '$lib/utils/editor-attach';
+	import { pickAndUploadAttachments } from '$lib/utils/editor-attach';
 	import { detectEnvironment } from '$lib/api/transport';
 	import { getRemoteServerUrl } from '$lib/stores/remoteServer';
 	import { api } from '$lib/api/client';
@@ -66,30 +66,24 @@
 				: `/api/quests/by/${slug}/attachments`
 	);
 
+	// BUG-168: 대용량 첨부 실패 — 로컬 Tauri 에서는 bytes 를 IPC 로 보내지 않고
+	// 경로만 넘긴다(pickAndUploadAttachments 가 환경별로 분기). 파일 하나가 끝날
+	// 때마다 목록이 갱신되므로 여러 개를 고르면 진행 상황이 눈에 보인다.
 	async function pickAndAdd() {
-		const input = document.createElement('input');
-		input.type = 'file';
-		input.multiple = true;
-		input.style.display = 'none';
-		input.onchange = async () => {
-			const files = Array.from(input.files ?? []);
-			input.remove();
-			if (files.length === 0) return;
-			busy = true;
-			error = null;
-			try {
-				for (const file of files) {
-					const { rel, name } = await uploadAttachmentFile(file);
+		busy = true;
+		error = null;
+		try {
+			await pickAndUploadAttachments(
+				async ({ rel, name }) => {
 					attachments = await api.post<Attachment[]>(attachPath, { path: rel, name });
+				},
+				(msg) => {
+					error = msg;
 				}
-			} catch (e) {
-				error = e instanceof Error ? e.message : String(e);
-			} finally {
-				busy = false;
-			}
-		};
-		document.body.appendChild(input);
-		input.click();
+			);
+		} finally {
+			busy = false;
+		}
 	}
 
 	async function remove(path: string) {

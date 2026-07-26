@@ -2002,6 +2002,35 @@ pub async fn save_attachment(
         .map_err(err)
 }
 
+/// BUG-168: 로컬 파일 **경로**로 첨부 저장 — bytes 를 IPC 로 보내지 않는다.
+///
+/// `save_attachment` 는 파일을 base64 문자열로 감싸 IPC 로 넘기므로, 대용량에서
+/// 파일 크기의 5~6배 메모리가 JS/Rust 양쪽에 동시에 잡히고 실패한다(BUG-168).
+/// 파일 선택 다이얼로그 경로는 이미 실제 경로를 알고 있으므로, 경로만 넘기고
+/// 읽기·복사는 여기서 한다 — IPC payload 가 파일 크기와 무관하게 상수다.
+///
+/// 반환: 본문 참조용 `.guild` 상대 경로 (`attachments/...`) — `save_attachment`
+/// 와 동일해 호출부가 두 경로를 같은 방식으로 다룰 수 있다.
+#[tauri::command]
+pub async fn save_attachment_from_path(
+    store: State<'_, Store>,
+    path: String,
+) -> Result<String, String> {
+    let src = std::path::PathBuf::from(&path);
+    if !src.is_file() {
+        return Err(format!("파일 없음: {path}"));
+    }
+    // 확장자는 원본 파일명에서 — core 의 sanitize_ext 가 정규화한다.
+    let ext = src
+        .extension()
+        .map(|e| e.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let bytes = std::fs::read(&src).map_err(|e| format!("파일 읽기 실패: {e}"))?;
+    openguild_core::ops::attachments::save_attachment(&store, &bytes, &ext)
+        .await
+        .map_err(err)
+}
+
 /// DEV-171/BUG-081: `.guild` 상대 경로를 절대 경로로 해석 (traversal 가드 + 존재 확인).
 fn resolve_guild_rel(store: &Store, rel: &str) -> Result<std::path::PathBuf, String> {
     if rel.contains("..") {

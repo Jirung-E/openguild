@@ -16,6 +16,33 @@
 import { EditorView } from '@codemirror/view';
 import type { Extension } from '@codemirror/state';
 import { api } from '$lib/api/client';
+import { detectEnvironment } from '$lib/api/transport';
+import { getRemoteServerUrl } from '$lib/stores/remoteServer';
+import { get } from 'svelte/store';
+import { locale, t } from '$lib/stores/locale';
+
+/**
+ * BUG-168: bytes 경로(붙여넣기·드래그&드랍·브라우저 파일선택)의 원본 크기 상한.
+ *
+ * server `routes/attachments.rs` 의 `MAX_ATTACHMENT_BYTES` 와 같은 값이어야
+ * 한다 — 여기서 미리 걸러 axum 원문 413("Failed to buffer the request body")이
+ * 노출되는 걸 막는다. 값을 바꿀 땐 양쪽을 같이 바꿀 것.
+ *
+ * Tauri 데스크탑의 파일선택은 경로 기반(`uploadAttachmentPath`)이라 이 상한과
+ * 무관하다 — IPC 로 bytes 를 보내지 않기 때문.
+ */
+export const MAX_ATTACHMENT_BYTES = 64 * 1024 * 1024;
+
+/** 로컬 Tauri(원격 연결 아님) — 경로 기반 업로드가 가능한 환경. */
+function isLocalTauri(): boolean {
+	return detectEnvironment() === 'tauri' && !getRemoteServerUrl();
+}
+
+function tooLargeMessage(file: File): string {
+	const mb = (n: number) => Math.round((n / (1024 * 1024)) * 10) / 10;
+	const loc = get(locale);
+	return `${t('attach.tooLarge', loc)} (${mb(file.size)} MB / max ${mb(MAX_ATTACHMENT_BYTES)} MB)`;
+}
 
 // DEV-069 후속(admin #8): 임의 파일 첨부 허용. 미디어(이미지/동영상)는 본문에
 // embed, 그 외는 다운로드 링크로 삽입. backend(save_attachment)도 화이트리스트
@@ -41,17 +68,20 @@ const EXT_BY_MIME: Record<string, string> = {
 	'application/pdf': 'pdf'
 };
 
-/** MIME 우선, 없으면 파일명 확장자. 확장자 없으면 'bin'. (임의 파일 허용.) */
-function extOf(file: File): string {
-	const byMime = EXT_BY_MIME[file.type];
-	if (byMime) return byMime;
-	const dot = file.name.lastIndexOf('.');
+/** 파일명 확장자. 없으면 'bin'. (임의 파일 허용.) */
+function extOfName(name: string): string {
+	const dot = name.lastIndexOf('.');
 	if (dot < 0) return 'bin';
-	const ext = file.name
+	const ext = name
 		.slice(dot + 1)
 		.toLowerCase()
 		.replace(/[^a-z0-9]/g, '');
 	return ext || 'bin';
+}
+
+/** MIME 우선, 없으면 파일명 확장자. 확장자 없으면 'bin'. (임의 파일 허용.) */
+function extOf(file: File): string {
+	return EXT_BY_MIME[file.type] ?? extOfName(file.name);
 }
 
 /** ArrayBuffer → base64 — 큰 파일도 안전하게 청크 단위 변환. */
@@ -71,10 +101,40 @@ function toBase64(buf: ArrayBuffer): string {
  * `POST /api/attachments` 로 자동 분기(호출부는 환경 무지).
  */
 async function saveAttachmentBytes(file: File, ext: string): Promise<string> {
+	// BUG-168: 한도를 넘으면 base64 변환(파일 크기의 5~6배 메모리)조차 하지 않고
+	// 바로 안내한다 — 서버까지 보내면 axum 원문 413 이 그대로 노출된다.
+	if (file.size > MAX_ATTACHMENT_BYTES) throw new Error(tooLargeMessage(file));
 	const data_base64 = toBase64(await file.arrayBuffer());
 	// HTTP body 필드는 이 프로젝트 컨벤션상 snake_case(server 의 axum Deserialize
 	// 와 1:1) — transport.ts 의 routeToInvoke 가 Tauri invoke 용 camelCase args 로 변환.
 	return api.post<string>('/api/attachments', { data_base64, ext });
+}
+
+/**
+ * BUG-168: 업로드 1건 — "무엇을 어떻게 올릴지"를 감싼 단위.
+ *
+ * bytes(붙여넣기·드래그&드랍·브라우저 파일선택)와 경로(로컬 Tauri 파일선택)는
+ * 전송 방식이 전혀 다른데 삽입/치환 로직은 같다. 호출부가 분기하지 않도록
+ * `run()` 뒤로 숨긴다 — 반환값은 양쪽 모두 `.guild` 상대 경로.
+ */
+type Upload = { name: string; ext: string; run: () => Promise<string> };
+
+function uploadFromFile(file: File): Upload {
+	const ext = extOf(file);
+	return {
+		name: file.name || 'clipboard',
+		ext,
+		run: () => saveAttachmentBytes(file, ext)
+	};
+}
+
+function uploadFromPath(path: string): Upload {
+	const name = path.split(/[\\/]/).pop() || path;
+	return {
+		name,
+		ext: extOfName(name),
+		run: async () => (await uploadAttachmentPath(path)).rel
+	};
 }
 
 /** rel 경로 → 본문 삽입용 마크다운. 이미지는 `![]()`, 동영상은 video, 그 외 링크. */
@@ -97,18 +157,17 @@ let uploadSeq = 0;
  */
 function uploadAndInsert(
 	view: EditorView,
-	file: File,
-	ext: string,
+	up: Upload,
 	pos: number,
 	onError: (msg: string) => void
 ): number {
 	// 고유 번호 — 같은 파일명 여러 개 동시 업로드 시 치환 대상 구분.
-	const placeholder = `![업로드 중… ${file.name || 'clipboard'} #${++uploadSeq}]()`;
+	const placeholder = `![업로드 중… ${up.name} #${++uploadSeq}]()`;
 	view.dispatch({ changes: { from: pos, insert: placeholder } });
 	void (async () => {
 		try {
-			const rel = await saveAttachmentBytes(file, ext);
-			const md = markdownFor(rel, ext, file.name || rel.split('/').pop() || rel);
+			const rel = await up.run();
+			const md = markdownFor(rel, up.ext, up.name || rel.split('/').pop() || rel);
 			replacePlaceholder(view, placeholder, md);
 		} catch (e) {
 			replacePlaceholder(view, placeholder, '');
@@ -126,9 +185,26 @@ function replacePlaceholder(view: EditorView, placeholder: string, md: string) {
 }
 
 /** FileList → 첨부 대상(임의 파일 허용). */
-function allowedFiles(files: FileList | null | undefined): { file: File; ext: string }[] {
+function allowedFiles(files: FileList | null | undefined): Upload[] {
 	if (!files) return [];
-	return Array.from(files).map((file) => ({ file, ext: extOf(file) }));
+	return Array.from(files).map(uploadFromFile);
+}
+
+/**
+ * BUG-168: 환경에 맞는 파일 선택 — 로컬 Tauri 는 네이티브 다이얼로그로 경로를
+ * 받아 경로 기반(크기 무관), 그 외는 숨은 file input 으로 bytes 기반.
+ *
+ * `no-native-dialogs` 규칙은 확인/경고 다이얼로그에 한정이고 파일 선택은
+ * 예외로 명시돼 있다.
+ */
+async function pickUploads(): Promise<Upload[]> {
+	if (isLocalTauri()) {
+		const { open } = await import('@tauri-apps/plugin-dialog');
+		const picked = await open({ multiple: true, title: t('attach.pickFile', get(locale)) });
+		const paths = Array.isArray(picked) ? picked : picked ? [picked] : [];
+		return paths.map(uploadFromPath);
+	}
+	return (await pickFilesViaInput()).map(uploadFromFile);
 }
 
 function isMedia(ext: string): boolean {
@@ -136,14 +212,63 @@ function isMedia(ext: string): boolean {
 }
 
 /**
- * DEV-156/152: 파일 1개 업로드(저장) — `.guild/attachments/` 상대 경로 + 표시
- * 파일명 반환. 첨부 섹션(AttachmentSection)이 직접 업로드할 때 재사용.
- * Tauri + 브라우저 모두 지원.
+ * BUG-168: 로컬 파일 **경로**로 첨부 저장 — 로컬 Tauri 전용.
+ *
+ * bytes 를 IPC 로 보내지 않으므로 파일 크기와 무관하게 payload 가 상수다
+ * (base64 경로는 파일 크기의 5~6배 메모리를 JS/Rust 양쪽에 동시에 잡는다).
+ * bytes 경로(`saveAttachmentBytes`)와 같은 `.guild` 상대 경로를 반환한다.
  */
-export async function uploadAttachmentFile(file: File): Promise<{ rel: string; name: string }> {
-	const ext = extOf(file);
-	const rel = await saveAttachmentBytes(file, ext);
-	return { rel, name: file.name || rel.split('/').pop() || rel };
+async function uploadAttachmentPath(path: string): Promise<{ rel: string; name: string }> {
+	const { invoke } = await import('@tauri-apps/api/core');
+	const rel = await invoke<string>('save_attachment_from_path', { path });
+	const name = path.split(/[\\/]/).pop() || rel;
+	return { rel, name };
+}
+
+/**
+ * BUG-168: '첨부 추가' 공통 파일 선택 — 환경에 맞는 경로를 자동 선택한다.
+ *
+ * - 로컬 Tauri: 네이티브 파일 다이얼로그로 **경로**를 받아 경로 기반 업로드
+ *   (크기 제한 없음, 빠름). `no-native-dialogs` 규칙은 확인/경고 다이얼로그에
+ *   한정이고 파일 선택은 예외로 명시돼 있다.
+ * - 브라우저 / Tauri+원격: 숨은 `<input type=file>` → bytes 업로드.
+ *
+ * 각 파일이 저장될 때마다 `onOne` 이 호출된다(파일별 진행 표시 가능).
+ */
+export async function pickAndUploadAttachments(
+	onOne: (r: { rel: string; name: string }) => Promise<void> | void,
+	onError: (msg: string) => void
+): Promise<void> {
+	for (const up of await pickUploads()) {
+		try {
+			const rel = await up.run();
+			await onOne({ rel, name: up.name || rel.split('/').pop() || rel });
+		} catch (e) {
+			onError(e instanceof Error ? e.message : String(e));
+		}
+	}
+}
+
+/** 숨은 file input 으로 File 목록 받기 — 취소 시 빈 배열. */
+function pickFilesViaInput(): Promise<File[]> {
+	return new Promise((resolve) => {
+		const input = document.createElement('input');
+		input.type = 'file';
+		input.multiple = true;
+		input.style.display = 'none';
+		// 취소를 눌러도 promise 가 남지 않도록 cancel 도 함께 처리.
+		input.oncancel = () => {
+			input.remove();
+			resolve([]);
+		};
+		input.onchange = () => {
+			const files = Array.from(input.files ?? []);
+			input.remove();
+			resolve(files);
+		};
+		document.body.appendChild(input);
+		input.click();
+	});
 }
 
 /**
@@ -151,15 +276,14 @@ export async function uploadAttachmentFile(file: File): Promise<{ rel: string; n
  * onAttach 콜백에 전달. 콜백이 Tauri add_*_attachment 커맨드 호출 + 목록 갱신.
  */
 function uploadToSection(
-	file: File,
-	ext: string,
+	up: Upload,
 	onAttach: (rel: string, name: string) => void,
 	onError: (msg: string) => void
 ): void {
 	void (async () => {
 		try {
-			const rel = await saveAttachmentBytes(file, ext);
-			onAttach(rel, file.name || rel.split('/').pop() || rel);
+			const rel = await up.run();
+			onAttach(rel, up.name || rel.split('/').pop() || rel);
 		} catch (e) {
 			onError(typeof e === 'string' ? e : ((e as Error).message ?? String(e)));
 		}
@@ -203,16 +327,15 @@ function replaceInTextarea(ta: HTMLTextAreaElement, placeholder: string, md: str
 
 function uploadAndInsertTextarea(
 	ta: HTMLTextAreaElement,
-	file: File,
-	ext: string,
+	up: Upload,
 	onError: (msg: string) => void
 ) {
-	const placeholder = `![업로드 중… ${file.name || 'clipboard'} #${++uploadSeq}]()`;
+	const placeholder = `![업로드 중… ${up.name} #${++uploadSeq}]()`;
 	insertIntoTextarea(ta, placeholder);
 	void (async () => {
 		try {
-			const rel = await saveAttachmentBytes(file, ext);
-			const md = markdownFor(rel, ext, file.name || rel.split('/').pop() || rel);
+			const rel = await up.run();
+			const md = markdownFor(rel, up.ext, up.name || rel.split('/').pop() || rel);
 			replaceInTextarea(ta, placeholder, md);
 		} catch (e) {
 			replaceInTextarea(ta, placeholder, '');
@@ -236,26 +359,26 @@ export function textareaAttach(
 	const onError = opts.onError ?? ((m) => console.error('첨부 업로드 실패:', m));
 	// BUG-083(잠정): 댓글은 mediaOnly — 이미지/동영상만 인라인 임베드, 비미디어 차단.
 	// (per-comment 첨부 기능은 On Hold.) onAttach 분기는 추후 재작업용으로 유지.
-	const place = (file: File, ext: string) => {
-		if (opts.mediaOnly && !isMedia(ext)) {
+	const place = (up: Upload) => {
+		if (opts.mediaOnly && !isMedia(up.ext)) {
 			onError(MEDIA_ONLY_MSG);
 			return;
 		}
-		if (opts.onAttach && !isMedia(ext)) uploadToSection(file, ext, opts.onAttach, onError);
-		else uploadAndInsertTextarea(ta, file, ext, onError);
+		if (opts.onAttach && !isMedia(up.ext)) uploadToSection(up, opts.onAttach, onError);
+		else uploadAndInsertTextarea(ta, up, onError);
 	};
 	const onPaste = (e: ClipboardEvent) => {
 		const picked = allowedFiles(e.clipboardData?.files);
 		if (picked.length === 0) return; // 일반 텍스트 paste 는 기본 동작.
 		e.preventDefault();
-		for (const { file, ext } of picked) place(file, ext);
+		for (const up of picked) place(up);
 	};
 	const onDrop = (e: DragEvent) => {
 		const picked = allowedFiles(e.dataTransfer?.files);
 		if (picked.length === 0) return;
 		e.preventDefault();
 		ta.focus();
-		for (const { file, ext } of picked) place(file, ext);
+		for (const up of picked) place(up);
 	};
 	ta.addEventListener('paste', onPaste);
 	ta.addEventListener('drop', onDrop);
@@ -267,38 +390,35 @@ export function textareaAttach(
 	};
 }
 
-/** '첨부' 버튼 — textarea 커서 위치에 파일(다중) 업로드/삽입. */
+/**
+ * '첨부' 버튼 — textarea 커서 위치에 파일(다중) 업로드/삽입.
+ * BUG-168: 파일 선택은 `pickUploads()` 로 — 로컬 Tauri 는 경로 기반(크기 무관).
+ */
 export function pickAndAttachTextarea(
 	ta: HTMLTextAreaElement | undefined | null,
 	onError: (msg: string) => void = (m) => console.error('첨부 업로드 실패:', m),
 	onAttach?: (rel: string, name: string) => void
 ): void {
 	if (!ta) return;
-	const input = document.createElement('input');
-	input.type = 'file';
-	input.multiple = true;
-	input.style.display = 'none';
-	input.onchange = () => {
-		const picked = allowedFiles(input.files);
-		input.remove();
+	void (async () => {
+		const picked = await pickUploads();
 		if (picked.length === 0) return;
 		// BUG-083: onAttach 가 있으면 본문 첨부 버튼과 동일하게 (미디어 포함) 모두
 		// 첨부 섹션으로. 없으면 커서 위치 인라인 삽입 (fallback).
 		if (onAttach) {
-			for (const { file, ext } of picked) uploadToSection(file, ext, onAttach, onError);
+			for (const up of picked) uploadToSection(up, onAttach, onError);
 			return;
 		}
 		ta.focus();
-		for (const { file, ext } of picked) uploadAndInsertTextarea(ta, file, ext, onError);
-	};
-	document.body.appendChild(input);
-	input.click();
+		for (const up of picked) uploadAndInsertTextarea(ta, up, onError);
+	})();
 }
 
 /**
- * DEV-069 후속(admin #8): '첨부파일 추가' 버튼 핸들러. 숨은 file input 으로
- * 임의 파일(다중) 선택 → 커서 위치에 업로드/삽입. CodeMirror 편집기 전용
- * (quest/campaign 본문, 규칙). 미디어는 embed, 그 외는 링크.
+ * DEV-069 후속(admin #8): '첨부파일 추가' 버튼 핸들러. 파일(다중) 선택 →
+ * 커서 위치에 업로드/삽입. CodeMirror 편집기 전용 (quest/campaign 본문, 규칙).
+ * 미디어는 embed, 그 외는 링크.
+ * BUG-168: 파일 선택은 `pickUploads()` 로 — 로컬 Tauri 는 경로 기반(크기 무관).
  */
 export function pickAndAttach(
 	view: EditorView,
@@ -306,40 +426,33 @@ export function pickAndAttach(
 	onAttach?: (rel: string, name: string) => void,
 	opts: { mediaOnly?: boolean } = {}
 ): void {
-	const input = document.createElement('input');
-	input.type = 'file';
-	input.multiple = true;
-	input.style.display = 'none';
-	input.onchange = () => {
-		const picked = allowedFiles(input.files);
-		input.remove();
+	void (async () => {
+		const picked = await pickUploads();
 		if (picked.length === 0) return;
 		// BUG-083: 첨부 섹션 없는 편집기(메모·규칙)는 미디어만 인라인 허용, 비미디어 차단.
 		if (opts.mediaOnly) {
 			view.focus();
 			let pos = view.state.selection.main.head;
-			for (const { file, ext } of picked) {
-				if (!isMedia(ext)) {
+			for (const up of picked) {
+				if (!isMedia(up.ext)) {
 					onError(MEDIA_ONLY_MSG);
 					continue;
 				}
-				pos += uploadAndInsert(view, file, ext, pos, onError);
+				pos += uploadAndInsert(view, up, pos, onError);
 			}
 			return;
 		}
 		// DEV-156: onAttach 가 있으면 버튼 첨부는 (미디어 포함) 모두 '첨부 섹션'으로.
 		if (onAttach) {
-			for (const { file, ext } of picked) uploadToSection(file, ext, onAttach, onError);
+			for (const up of picked) uploadToSection(up, onAttach, onError);
 			return;
 		}
 		view.focus();
 		let pos = view.state.selection.main.head;
-		for (const { file, ext } of picked) {
-			pos += uploadAndInsert(view, file, ext, pos, onError);
+		for (const up of picked) {
+			pos += uploadAndInsert(view, up, pos, onError);
 		}
-	};
-	document.body.appendChild(input);
-	input.click();
+	})();
 }
 
 /**
@@ -355,16 +468,16 @@ export function attachmentExtension(
 	//  · mediaOnly(메모·규칙): 미디어만 인라인, 비미디어 차단 + 안내.
 	//  · onAttach(quest/campaign 본문): 미디어 인라인, 비미디어는 첨부 섹션.
 	//  · 둘 다 없으면: 모두 인라인 (fallback).
-	const place = (view: EditorView, file: File, ext: string, pos: number): number => {
-		if (opts.mediaOnly && !isMedia(ext)) {
+	const place = (view: EditorView, up: Upload, pos: number): number => {
+		if (opts.mediaOnly && !isMedia(up.ext)) {
 			onError(MEDIA_ONLY_MSG);
 			return 0;
 		}
-		if (onAttach && !isMedia(ext)) {
-			uploadToSection(file, ext, onAttach, onError);
+		if (onAttach && !isMedia(up.ext)) {
+			uploadToSection(up, onAttach, onError);
 			return 0;
 		}
-		return uploadAndInsert(view, file, ext, pos, onError);
+		return uploadAndInsert(view, up, pos, onError);
 	};
 	return EditorView.domEventHandlers({
 		paste(event, view) {
@@ -372,7 +485,7 @@ export function attachmentExtension(
 			if (picked.length === 0) return false; // 일반 텍스트 paste 는 기본 동작.
 			event.preventDefault();
 			let pos = view.state.selection.main.head;
-			for (const { file, ext } of picked) pos += place(view, file, ext, pos);
+			for (const up of picked) pos += place(view, up, pos);
 			return true;
 		},
 		drop(event, view) {
@@ -381,7 +494,7 @@ export function attachmentExtension(
 			event.preventDefault();
 			let pos =
 				view.posAtCoords({ x: event.clientX, y: event.clientY }) ?? view.state.selection.main.head;
-			for (const { file, ext } of picked) pos += place(view, file, ext, pos);
+			for (const up of picked) pos += place(view, up, pos);
 			return true;
 		}
 	});

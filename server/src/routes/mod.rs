@@ -9,6 +9,7 @@ pub mod rules;
 pub mod worklog;
 
 use axum::{
+    extract::DefaultBodyLimit,
     routing::{delete, get, patch, post, put},
     Router,
 };
@@ -161,7 +162,14 @@ pub fn create_router(store: Store) -> Router {
         // DEV-069: 본문 첨부 / 자산 — attachments/ + assets/ 한정 서빙.
         .route("/api/guild-files/{*rel}", get(admin::get_guild_file))
         // DEV-152: 첨부 업로드(remote 모드) — bytes 저장 + quest/campaign 목록 등록.
-        .route("/api/attachments", post(attachments::save_attachment))
+        // BUG-168: bytes 를 받는 유일한 라우트 — axum 기본 body limit(2 MiB)은
+        // base64 팽창까지 감안하면 원본 1.5 MB 에서 413 이 난다. 이 라우트에만
+        // 한도를 올리고 나머지는 기본값을 유지한다.
+        .route(
+            "/api/attachments",
+            post(attachments::save_attachment)
+                .layer(DefaultBodyLimit::max(attachments::MAX_ATTACHMENT_BODY_BYTES)),
+        )
         .route(
             "/api/quests/by/{slug}/attachments",
             post(attachments::add_quest_attachment).delete(attachments::remove_quest_attachment),

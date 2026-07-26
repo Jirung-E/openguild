@@ -568,6 +568,9 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'attach.openFailed': { ko: '열기 실패', en: 'Failed to open' },
 	'attach.downloadFailed': { ko: '다운로드 실패', en: 'Download failed' },
 	'attach.downloadAllFailed': { ko: '전체 다운로드 실패', en: 'Download all failed' },
+	// BUG-168: 한도 초과 안내 — axum 원문(413) 노출 대신 크기를 밝힌다.
+	'attach.tooLarge': { ko: '첨부 파일이 너무 큽니다', en: 'Attachment file is too large' },
+	'attach.pickFile': { ko: '첨부할 파일 선택', en: 'Choose files to attach' },
 
 	'history.title': { ko: '변경 이력', en: 'Change history' },
 	'history.loading': { ko: '로드 중…', en: 'Loading…' },
