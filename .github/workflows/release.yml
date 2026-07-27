@@ -127,6 +127,23 @@ jobs:
           Write-Host "latest.json 생성:"
           Get-Content $out
 
+      # BUG-171: 릴리스 노트를 CHANGELOG.md 에서 뽑아 본문으로 명시한다.
+      # generate_release_notes 를 쓰면 windows/linux 두 잡이 같은 릴리스를
+      # 각각 갱신하면서 "기존 본문 + 새로 생성한 노트" 가 되어 두 번 표시됐다
+      # (액션 규칙: body 가 있으면 자동 생성 노트 앞에 붙는다). 본문을 명시하면
+      # 나중 잡이 같은 내용으로 덮어써서 잡 순서와 무관하게 항상 하나다.
+      # 덤으로, 자동 생성 노트는 PR 목록 기반이라 PR 없이 직접 커밋하는 이
+      # 저장소에서는 compare 링크 한 줄뿐이었다 — CHANGELOG 가 릴리스 페이지에
+      # 전혀 표시되지 않던 것도 같이 해결된다.
+      - name: Extract release notes
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: >
+          ./scripts/extract-release-notes.ps1
+          -Tag "${{ github.ref_name }}"
+          -Repo "${{ github.repository }}"
+          -OutFile release-notes.md
+
       # tag push 일 때만 GitHub Release 생성 + 첨부.
       # workflow_dispatch (dry-run) 는 위의 artifact 까지만.
       # DEV-063: latest.json + *.sig 도 첨부 (updater endpoint 가 fetch).
@@ -140,7 +157,8 @@ jobs:
             target/release/bundle/nsis/*-setup.exe
             target/release/bundle/nsis/*-setup.exe.sig
             target/release/bundle/nsis/latest.json
-          generate_release_notes: true
+          body_path: release-notes.md
+          append_body: false
           draft: false
           prerelease: false
           fail_on_unmatched_files: false
@@ -207,6 +225,17 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      # BUG-171: windows 잡과 동일 — CHANGELOG 절을 본문으로 명시(같은 내용으로
+      # 덮어쓰므로 두 잡의 실행 순서와 무관하게 본문은 항상 하나).
+      - name: Extract release notes
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: >
+          ./scripts/extract-release-notes.ps1
+          -Tag "${{ github.ref_name }}"
+          -Repo "${{ github.repository }}"
+          -OutFile release-notes.md
+
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
@@ -215,7 +244,8 @@ jobs:
             target/release/bundle/deb/*.deb
             target/release/bundle/rpm/*.rpm
             target/release/bundle/appimage/*.AppImage
-          generate_release_notes: true
+          body_path: release-notes.md
+          append_body: false
           draft: false
           prerelease: false
           fail_on_unmatched_files: false

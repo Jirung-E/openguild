@@ -1,6 +1,6 @@
 +++
 created_at = "2026-06-23T01:30:44+09:00"
-updated_at = "2026-07-27T00:40:54+09:00"
+updated_at = "2026-07-27T20:57:38+09:00"
 +++
 # 릴리즈 패키지 절차
 
@@ -68,7 +68,13 @@ git push origin master --tags
 ## GitHub Release artifact
 
 - DEV-034 의 workflow 가 tag push 트리거로 installer 자동 첨부.
-- description: `CHANGELOG.md` 의 해당 버전 절 그대로.
+- description: `CHANGELOG.md` 의 해당 버전 절 그대로 — **자동화됨**(BUG-171).
+  `scripts/extract-release-notes.ps1` 이 태그(`vX.Y.Z`)에 맞는 `## X.Y.Z` 절을
+  뽑아 릴리스 본문으로 쓰고 compare 링크를 붙인다. 따라서:
+  - 태그를 밀기 전에 CHANGELOG 절이 **반드시** 있어야 한다 — 없거나 헤딩이
+    태그와 안 맞으면 릴리스 잡이 그 자리에서 실패한다(의도된 가드).
+  - `generate_release_notes` 는 쓰지 않는다. 플랫폼별 잡이 같은 릴리스를 각각
+    갱신하는 구조라, 자동 생성을 켜면 본문이 잡 수만큼 중복된다(0.4.1 실사고).
 - **`latest.json` 도 attach** — Tauri updater 가 `endpoints` 로 가리키는 파일.
   형식:
   ```json
