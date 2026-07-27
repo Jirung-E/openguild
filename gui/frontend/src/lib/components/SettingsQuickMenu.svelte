@@ -26,7 +26,8 @@
 		contentWidth,
 		setContentWidth,
 		MIN_CONTENT_WIDTH,
-		MAX_CONTENT_WIDTH
+		MAX_CONTENT_WIDTH,
+		isFullWidth
 	} from '$lib/stores/contentWidth';
 	// DEV-015 (MVP): 언어 토글 — 이 메뉴의 라벨들을 t() 로 전환. 전역 스윕은 후속(DEV-205).
 	import { locale, setLocale, t, type Locale } from '$lib/stores/locale';
@@ -131,7 +132,17 @@
 				ariaLabel={t('settings.contentWidth', $locale)}
 				onChange={setContentWidth}
 			/>
-			<span class="qm-val">{$contentWidth}px</span>
+			<!-- DEV-275(사용자 보고): 설정 페이지에는 최대값에서 "전체" 라벨이
+			     나오는데 이 퀵메뉴만 `3200px` 숫자를 그대로 보여줘서, 끝까지 밀어도
+			     3200 에서 멈춘 것처럼 보였다. 같은 설정의 두 UI 가 다르게 표시되던
+			     문제 — 판정은 설정 페이지와 동일한 isFullWidth() 로 통일. -->
+			<span class="qm-val">
+				{#if isFullWidth($contentWidth)}
+					{t('settings.contentWidthFull', $locale)}
+				{:else}
+					{$contentWidth}px
+				{/if}
+			</span>
 		</div>
 	</div>
 
