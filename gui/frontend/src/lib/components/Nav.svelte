@@ -27,17 +27,43 @@
 	import { usesCustomTitlebar } from '$lib/utils/platform';
 	const showWebExtras = !usesCustomTitlebar();
 	let searchOpen = $state(false);
-	// DEV-276: 최근 본 문서 드롭다운(웹 fallback — 데스크탑은 TitleBar 담당).
+	// DEV-276: 최근 본 문서 — 버튼만 여기, 목록은 검색 팔레트의 recent 모드
+	// (DEV-294). 자체 드롭다운이 없어졌으므로 제목 조회(recentDocTitle /
+	// questIndexNs)는 팔레트가 담당한다 — 여기서는 인덱스 선로드만.
 	import { goto } from '$app/navigation';
-	// BUG-159: 제목은 cross-link 인덱스 조회 — TitleBar 와 동일 규칙.
-	import { recentDocs, recentDocTitle } from '$lib/stores/recentDocs';
-	import { questIndexNs, loadQuestIndex } from '$lib/stores/questIndex';
+	import { recentDocs } from '$lib/stores/recentDocs';
+	import { loadQuestIndex } from '$lib/stores/questIndex';
 	let recentOpen = $state(false);
 	// 라우트가 바뀌면 닫기 — $page 구독으로 자동 반응.
 	$effect(() => {
 		void $page.url.pathname;
 		void $page.url.search;
 		recentOpen = false;
+	});
+
+	// DEV-271(사용자 피드백): 웹의 검색/추가/최근 버튼을 데스크탑 TitleBar 와
+	// **같은 배치**로 — 검색 pill 은 항상 화면 중앙, 그 좌우 바깥에 '퀘스트
+	// 추가'(왼쪽)와 '최근 본 문서'(오른쪽) 아이콘 버튼. 이전엔 오른쪽 끝에
+	// 작은 돋보기 버튼 + 자체 드롭다운이라 데스크탑과 완전히 달랐다.
+	import NewQuestModal from './NewQuestModal.svelte';
+	import { metaApi } from '$lib/api/meta';
+	let newQuestOpen = $state(false);
+	// pill 라벨 = 길드 이름. TitleBar 는 `$guildContextActive` 로 가드하지만
+	// 웹에선 그 플래그가 절대 true 가 안 되므로(위 주석) 무조건 조회한다.
+	let guildName = $state('');
+	let isRemote = $state(false);
+	$effect(() => {
+		if (!showWebExtras) return;
+		metaApi
+			.getGuildDisplayInfo()
+			.then((info) => {
+				guildName = info.name;
+				isRemote = info.remote;
+			})
+			.catch(() => {
+				guildName = '';
+				isRemote = false;
+			});
 	});
 
 	// BUG-146: 예전엔 커스텀 타이틀바가 없는 환경(브라우저 dev / 당시엔
@@ -91,14 +117,40 @@
 	let measureEl = $state<HTMLElement | null>(null);
 	let visibleCount = $state(99);
 	let moreOpen = $state(false);
-	const MORE_BTN_W = 34; // 웹 fallback "…" 버튼 예약 폭(px) — 대략치면 충분.
+	const MORE_BTN_W = 34; // 웹 fallback ☰ 버튼 예약 폭(px) — 대략치면 충분.
+	// 중앙 pill 그룹의 왼쪽 끝을 재기 위한 참조 — 절대 배치라 레이아웃에는
+	// 영향을 주지 않으므로 nav 의 clientWidth 로는 겹침을 알 수 없다.
+	let addWrapEl = $state<HTMLElement | null>(null);
+	let pillEl = $state<HTMLElement | null>(null);
+
+	/**
+	 * nav 링크가 실제로 쓸 수 있는 가로 폭.
+	 *
+	 * DEV-271(사용자 피드백 "검색팔레트랑 위치가 겹쳐지는 메뉴는 접기"):
+	 * 검색 pill 은 화면 중앙에 **절대 배치**돼 흐름에서 빠져 있어 nav 의
+	 * clientWidth 를 줄이지 않는다. 그래서 링크가 pill 아래로 파고들어 겹쳤다.
+	 * pill 그룹의 실측 왼쪽 끝까지를 가용 폭으로 삼아, 겹칠 항목이 자연히
+	 * ☰ 로 접히게 한다(CSS 상수를 JS 에 복제하지 않으려고 rect 로 측정).
+	 */
+	function availableNavWidth(gap: number): number {
+		if (!navEl) return 0;
+		const navRect = navEl.getBoundingClientRect();
+		let limit = navRect.right;
+		for (const el of [addWrapEl, pillEl]) {
+			if (!el) continue;
+			const r = el.getBoundingClientRect();
+			// 폭 0(미렌더/숨김) 요소는 좌표가 의미 없으므로 제외.
+			if (r.width > 0) limit = Math.min(limit, r.left);
+		}
+		return Math.max(0, Math.min(navEl.clientWidth, limit - navRect.left - gap));
+	}
 
 	function recomputeOverflow() {
 		if (!navEl || !measureEl) return;
 		const kids = Array.from(measureEl.children) as HTMLElement[];
 		if (kids.length === 0) return;
 		const gap = parseFloat(getComputedStyle(navEl).columnGap || '0') || 0;
-		const available = navEl.clientWidth;
+		const available = availableNavWidth(gap);
 		let total = 0;
 		const widths = kids.map((k) => k.offsetWidth);
 		for (let i = 0; i < widths.length; i++) total += widths[i] + (i > 0 ? gap : 0);
@@ -106,7 +158,10 @@
 			visibleCount = widths.length;
 			return;
 		}
-		// 안 들어감 — 웹은 "…" 버튼 폭을 예약(데스크탑은 ☰ 가 타이틀바에 있어 0).
+		// 안 들어감 — 웹은 ☰ 버튼 폭을 예약(데스크탑은 ☰ 가 타이틀바에 있어 0).
+		// 버튼이 nav **밖**(header 자식)이라 nav 폭에 이미 반영되지만, 버튼은
+		// overflowItems 가 생긴 뒤에 나타나므로 첫 계산 시점엔 아직 없다 —
+		// 그 폭을 미리 빼 두지 않으면 나타났다 사라졌다 하며 진동한다.
 		const reserve = showWebExtras ? MORE_BTN_W + gap : 0;
 		let used = 0;
 		let fit = 0;
@@ -193,25 +248,6 @@
 		{#each visibleItems as it (it.href)}
 			<a href={it.href} class:active={it.active}>{it.label}</a>
 		{/each}
-		{#if showWebExtras && overflowItems.length > 0}
-			<div class="more-wrap">
-				<button
-					class="btn-more"
-					class:open={moreOpen}
-					onclick={() => (moreOpen = !moreOpen)}
-					title={t('nav.more', $locale)}
-					aria-label={t('nav.more', $locale)}
-					aria-expanded={moreOpen}
-				>⋯</button>
-				{#if moreOpen}
-					<div class="more-menu">
-						{#each overflowItems as it (it.href)}
-							<a href={it.href} class:active={it.active} onclick={() => (moreOpen = false)}>{it.label}</a>
-						{/each}
-					</div>
-				{/if}
-			</div>
-		{/if}
 		<!-- 측정 전용 사본 — 항상 전부 렌더(숨김). 보이는 목록과 동일한
 		     <a> 마크업/스코프 스타일이라 자연 폭이 정확히 일치. -->
 		<div class="nav-measure" bind:this={measureEl} aria-hidden="true">
@@ -221,56 +257,91 @@
 		</div>
 	</nav>
 
-	<div class="nav-right">
-		<!-- DEV-271: 검색 팔레트 — 웹에서만(데스크탑은 TitleBar 중앙 pill로 이미 있음). -->
-		{#if showWebExtras}
+	<!-- DEV-271(사용자 피드백 "접힌 메뉴 클릭해도 안펼쳐짐"): 이 버튼은 원래
+	     <nav> 안에 있었는데 nav 에는 `overflow: hidden`(넘친 링크 클립용)이
+	     걸려 있어서, 드롭다운이 열려도 잘려 보이지 않았다. nav 형제로 빼서
+	     클리핑을 벗어난다. 아이콘도 ⋯ → ☰ 로 — 데스크탑 타이틀바와 동일. -->
+	{#if showWebExtras && overflowItems.length > 0}
+		<div class="more-wrap">
 			<button
-				class="btn-search"
+				class="btn-more"
+				class:open={moreOpen}
+				onclick={() => (moreOpen = !moreOpen)}
+				title={t('nav.more', $locale)}
+				aria-label={t('nav.more', $locale)}
+				aria-expanded={moreOpen}
+			>☰</button>
+			{#if moreOpen}
+				<div class="more-menu">
+					{#each overflowItems as it (it.href)}
+						<a href={it.href} class:active={it.active} onclick={() => (moreOpen = false)}>{it.label}</a>
+					{/each}
+				</div>
+			{/if}
+		</div>
+	{/if}
+
+	<!-- DEV-271(사용자 피드백): 데스크탑 TitleBar 의 중앙 배치를 그대로 —
+	     폭 0 앵커를 화면 중앙에 두고 pill 은 그 중앙, 좌우 버튼은 pill 바깥에
+	     절대 배치. 버튼 유무가 pill 위치를 흔들지 않는다(BUG-158 과 동일 이유). -->
+	{#if showWebExtras && guildName}
+		<div class="nav-center">
+			<!-- DEV-286: 검색 pill 왼쪽 바깥 '퀘스트 추가'. -->
+			<div class="nav-add-wrap" bind:this={addWrapEl}>
+				<button
+					class="nav-icon-btn"
+					onclick={() => (newQuestOpen = true)}
+					title={t('titlebar.newQuest', $locale)}
+					aria-label={t('titlebar.newQuest', $locale)}
+				>
+					<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+						<path d="M8 3.3v9.4M3.3 8h9.4" />
+					</svg>
+				</button>
+			</div>
+			<button
+				class="nav-pill"
+				class:open={searchOpen}
+				bind:this={pillEl}
 				onclick={() => (searchOpen = true)}
 				title={t('titlebar.search', $locale)}
-				aria-label={t('titlebar.search', $locale)}
 			>
-				<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" aria-hidden="true">
-					<circle cx="7" cy="7" r="4.3" />
-					<path d="M10.2 10.2 14 14" />
-				</svg>
+				<span class="nav-pill-name">{guildName}</span>
+				{#if isRemote}
+					<span class="nav-remote" title={t('nav.remoteConnected', $locale)}>
+						<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">
+							<circle cx="8" cy="8" r="5.7" />
+							<ellipse cx="8" cy="8" rx="2.4" ry="5.7" />
+							<path d="M2.5 8h11" />
+						</svg>
+					</span>
+				{/if}
 			</button>
-			<!-- DEV-276: 최근 본 문서 — 데스크탑은 TitleBar 검색 pill 옆에 있고,
-			     웹은 타이틀바 자체가 없어 여기로(DEV-271 과 같은 fallback 규칙). -->
+			<!-- DEV-276/294: 최근 본 문서 — 전용 드롭다운 대신 검색 팔레트의
+			     recent 모드(데스크탑과 동일). -->
 			{#if $recentDocs.length > 0}
-				<div class="recent-wrap">
+				<div class="nav-recent-wrap">
 					<button
-						class="btn-search"
+						class="nav-icon-btn"
 						class:active={recentOpen}
 						onclick={() => {
-							recentOpen = !recentOpen;
-							if (recentOpen) void loadQuestIndex();
+							recentOpen = true;
+							void loadQuestIndex();
 						}}
 						title={t('titlebar.recent', $locale)}
 						aria-label={t('titlebar.recent', $locale)}
-						aria-expanded={recentOpen}
 					>
 						<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 							<circle cx="8" cy="8" r="5.6" />
 							<path d="M8 4.6V8l2.4 1.5" />
 						</svg>
 					</button>
-					{#if recentOpen}
-						<div class="recent-menu">
-							{#each $recentDocs as d (d.href)}
-								{@const rtitle = recentDocTitle(d, $questIndexNs)}
-								<button class="recent-item" onclick={() => { recentOpen = false; goto(d.href); }}>
-									<span class="rk {d.kind}">{t(`kind.${d.kind}`, $locale)}</span>
-									<span class="rlabel">{d.label}</span>
-									<!-- BUG-159: 규칙처럼 제목이 곧 slug 면 라벨과 중복이라 생략. -->
-									{#if rtitle && rtitle !== d.label}<span class="rtitle">{rtitle}</span>{/if}
-								</button>
-							{/each}
-						</div>
-					{/if}
 				</div>
 			{/if}
-		{/if}
+		</div>
+	{/if}
+
+	<div class="nav-right">
 		<!-- DEV-095: 외부 편집 후 cache 정합 회복 — 일반 사용자도 한 클릭으로. -->
 		<button
 			class="btn-reindex"
@@ -316,6 +387,19 @@
 
 {#if searchOpen}
 	<SearchPalette onclose={() => (searchOpen = false)} />
+{/if}
+
+<!-- DEV-294: 최근 본 문서 = 같은 팔레트의 recent 모드(데스크탑과 동일). -->
+{#if recentOpen}
+	<SearchPalette mode="recent" onclose={() => (recentOpen = false)} />
+{/if}
+
+<!-- DEV-286: 웹에서도 어느 화면에서든 퀘스트 생성. -->
+{#if newQuestOpen}
+	<NewQuestModal
+		onclose={() => (newQuestOpen = false)}
+		oncreated={(quest) => goto('/quests/' + quest.quest_id)}
+	/>
 {/if}
 
 <style>
@@ -478,13 +562,75 @@
 		color: var(--text);
 	}
 
-	/* DEV-271: 검색 버튼(웹 전용) — btn-settings 와 동일 규격. */
-	.btn-search {
+	/* DEV-271(사용자 피드백): 중앙 검색 pill + 좌우 아이콘 버튼 — 데스크탑
+	   TitleBar 의 .tb-center / .tb-search / .tb-icon-btn 과 같은 배치.
+	   폭 0 앵커를 중앙에 두고 pill 은 그 중앙, 버튼은 pill 바깥에 절대 배치해
+	   버튼 유무가 pill 위치를 흔들지 않게 한다(BUG-158). */
+	.nav-center {
+		position: absolute;
+		left: 50%;
+		transform: translateX(-50%);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 0;
+	}
+	.nav-add-wrap {
+		position: absolute;
+		left: 50%;
+		transform: translateX(calc(-1 * min(21vw, 134px) - 100% - 4px));
+		display: inline-flex;
+		align-items: center;
+		flex: none;
+	}
+	.nav-recent-wrap {
+		position: absolute;
+		left: 50%;
+		transform: translateX(min(21vw, 134px));
+		display: inline-flex;
+		align-items: center;
+		flex: none;
+	}
+	.nav-pill {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 2rem;
-		height: 2rem;
+		position: relative;
+		height: 1.55rem;
+		min-width: 260px;
+		max-width: 42vw;
+		padding: 0 12px;
+		flex: none;
+		background: var(--bg-subtle);
+		border: 1px solid var(--nav-border);
+		border-radius: 6px;
+		color: var(--text-muted);
+		cursor: pointer;
+	}
+	.nav-pill:hover,
+	.nav-pill.open {
+		border-color: var(--accent);
+		color: var(--text);
+	}
+	.nav-pill-name {
+		font-size: 0.72rem;
+		letter-spacing: 0.02em;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.nav-remote {
+		position: absolute;
+		right: 8px;
+		display: inline-flex;
+		color: var(--text-muted);
+	}
+	.nav-icon-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 1.7rem;
+		height: 1.55rem;
 		border-radius: 6px;
 		color: var(--text-muted);
 		background: transparent;
@@ -494,86 +640,10 @@
 			background 0.15s,
 			color 0.15s;
 	}
-	.btn-search:hover,
-	.btn-search.active {
+	.nav-icon-btn:hover,
+	.nav-icon-btn.active {
 		background: var(--nav-hover-bg);
 		color: var(--text);
-	}
-
-	/* DEV-276: 최근 본 문서 드롭다운 (웹 fallback). TitleBar 의 .tb-recent 와
-	   같은 구성이지만 Nav 우측 정렬 기준. */
-	.recent-wrap {
-		position: relative;
-		display: inline-flex;
-	}
-	.recent-menu {
-		position: absolute;
-		top: calc(100% + 6px);
-		right: 0;
-		width: 280px;
-		max-height: 320px;
-		overflow-y: auto;
-		display: flex;
-		flex-direction: column;
-		padding: 0.3rem;
-		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 8px;
-		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-		z-index: 300;
-	}
-	.recent-item {
-		display: flex;
-		align-items: center;
-		gap: 0.45rem;
-		width: 100%;
-		padding: 0.35rem 0.5rem;
-		border-radius: 5px;
-		background: transparent;
-		border: none;
-		cursor: pointer;
-		text-align: left;
-		color: var(--text);
-		font-size: 0.8rem;
-	}
-	.recent-item:hover {
-		background: var(--nav-hover-bg);
-	}
-	.recent-item .rk {
-		flex: none;
-		min-width: 3.2rem;
-		text-align: center;
-		font-size: 0.64rem;
-		font-weight: 600;
-		border-radius: 4px;
-		padding: 0.05rem 0.3rem;
-		color: var(--accent);
-		background: color-mix(in srgb, var(--accent) 14%, transparent);
-	}
-	.recent-item .rk.campaign {
-		color: var(--hl-pre);
-		background: color-mix(in srgb, var(--hl-pre) 14%, transparent);
-	}
-	.recent-item .rk.rule {
-		color: var(--success);
-		background: color-mix(in srgb, var(--success) 14%, transparent);
-	}
-	.recent-item .rk.book {
-		color: var(--warning);
-		background: color-mix(in srgb, var(--warning) 14%, transparent);
-	}
-	.recent-item .rlabel {
-		flex: none;
-		font-family: 'SFMono-Regular', Consolas, monospace;
-		font-size: 0.72rem;
-		color: var(--text-muted);
-	}
-	.recent-item .rtitle {
-		flex: 1;
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
 	}
 
 	/* DEV-095: Reindex 버튼 — 설정 옆. */
