@@ -1,6 +1,6 @@
 +++
 created_at = "2026-06-23T01:30:44+09:00"
-updated_at = "2026-07-27T20:57:38+09:00"
+updated_at = "2026-07-27T21:02:48+09:00"
 +++
 # 릴리즈 패키지 절차
 
@@ -141,3 +141,22 @@ master 에서 따서 필요한 커밋만 체리픽해 채우면 아래가 전부
    상위집합이 아닐 수 있다) · **카운터는 큰 쪽**(단조 증가).
 4. 브랜치 전환/머지 후 `rm .guild/index.db && openguild reindex` →
    `openguild check drift` + `openguild check counters` 로 확인.
+
+## 릴리스 파이프라인을 "시험용 태그"로 테스트하지 말 것 (BUG-171)
+
+updater 엔드포인트가 `releases/latest/download/latest.json` 이고 워크플로가
+`prerelease: false` 로 하드코딩돼 있다. 즉 **아무 태그나 밀면 그게 곧
+"latest"** 가 되어 모든 사용자 앱이 그 버전을 업데이트로 제안한다. 파이프라인
+검증용 태그(`v0.0.0-test` 등)를 밀면 사용자에게 시험 빌드가 배포된다.
+
+대신 릴리스 없이 검증하는 경로를 쓴다:
+
+- `check` 워크플로의 **release notes extraction** 잡 — 매 push 마다 CHANGELOG
+  최신 출시 버전으로 추출을 돌리고 compare 링크·인코딩 손상까지 검사한다.
+  결과 본문은 `release-notes-preview` artifact 로 확인.
+- `release` 워크플로를 **workflow_dispatch** 로 수동 실행 — 릴리스는 만들지
+  않고(태그 gate) 추출만 돌려 `release-notes-{OS}` artifact 로 실제 러너의
+  본문을 확인할 수 있다.
+
+정말 태그 기반 검증이 필요하면 그때는 `prerelease: true` 를 먼저 넣고
+(latest 에서 제외됨) 검증 후 태그·릴리스를 삭제한다.

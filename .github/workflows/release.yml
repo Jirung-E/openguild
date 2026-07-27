@@ -135,14 +135,29 @@ jobs:
       # 덤으로, 자동 생성 노트는 PR 목록 기반이라 PR 없이 직접 커밋하는 이
       # 저장소에서는 compare 링크 한 줄뿐이었다 — CHANGELOG 가 릴리스 페이지에
       # 전혀 표시되지 않던 것도 같이 해결된다.
+      # workflow_dispatch(dry-run)에서도 돌린다 — 태그를 밀지 않고 실제 러너에서
+      # 본문을 만들어 artifact 로 확인할 수 있다. dispatch 시 ref_name 은 브랜치
+      # 이름이라 CHANGELOG 의 최신 출시 버전을 태그로 대신 쓴다.
       - name: Extract release notes
-        if: startsWith(github.ref, 'refs/tags/')
         shell: pwsh
-        run: >
-          ./scripts/extract-release-notes.ps1
-          -Tag "${{ github.ref_name }}"
-          -Repo "${{ github.repository }}"
-          -OutFile release-notes.md
+        run: |
+          $tag = "${{ github.ref_name }}"
+          if (-not ("${{ github.ref }}").StartsWith('refs/tags/')) {
+            $m = Select-String -Path CHANGELOG.md -Pattern '^## (\d+\.\d+\.\d+\S*)' |
+              Select-Object -First 1
+            if (-not $m) { throw "CHANGELOG 에 출시 버전 헤딩(## X.Y.Z)이 없음" }
+            $tag = "v$($m.Matches[0].Groups[1].Value)"
+            Write-Host "dry-run — CHANGELOG 최신 출시 버전으로 대체: $tag"
+          }
+          ./scripts/extract-release-notes.ps1 `
+            -Tag $tag -Repo "${{ github.repository }}" -OutFile release-notes.md
+
+      - name: Upload release notes preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes-${{ runner.os }}
+          path: release-notes.md
+          retention-days: 7
 
       # tag push 일 때만 GitHub Release 생성 + 첨부.
       # workflow_dispatch (dry-run) 는 위의 artifact 까지만.
@@ -227,14 +242,29 @@ jobs:
 
       # BUG-171: windows 잡과 동일 — CHANGELOG 절을 본문으로 명시(같은 내용으로
       # 덮어쓰므로 두 잡의 실행 순서와 무관하게 본문은 항상 하나).
+      # workflow_dispatch(dry-run)에서도 돌린다 — 태그를 밀지 않고 실제 러너에서
+      # 본문을 만들어 artifact 로 확인할 수 있다. dispatch 시 ref_name 은 브랜치
+      # 이름이라 CHANGELOG 의 최신 출시 버전을 태그로 대신 쓴다.
       - name: Extract release notes
-        if: startsWith(github.ref, 'refs/tags/')
         shell: pwsh
-        run: >
-          ./scripts/extract-release-notes.ps1
-          -Tag "${{ github.ref_name }}"
-          -Repo "${{ github.repository }}"
-          -OutFile release-notes.md
+        run: |
+          $tag = "${{ github.ref_name }}"
+          if (-not ("${{ github.ref }}").StartsWith('refs/tags/')) {
+            $m = Select-String -Path CHANGELOG.md -Pattern '^## (\d+\.\d+\.\d+\S*)' |
+              Select-Object -First 1
+            if (-not $m) { throw "CHANGELOG 에 출시 버전 헤딩(## X.Y.Z)이 없음" }
+            $tag = "v$($m.Matches[0].Groups[1].Value)"
+            Write-Host "dry-run — CHANGELOG 최신 출시 버전으로 대체: $tag"
+          }
+          ./scripts/extract-release-notes.ps1 `
+            -Tag $tag -Repo "${{ github.repository }}" -OutFile release-notes.md
+
+      - name: Upload release notes preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes-${{ runner.os }}
+          path: release-notes.md
+          retention-days: 7
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')

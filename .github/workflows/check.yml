@@ -118,3 +118,38 @@ jobs:
 
       - name: vite build
         run: npm run build
+
+  # BUG-171: 릴리스 노트 추출 스모크 테스트.
+  # 릴리스 본문은 태그 push 때만 만들어지므로, 스크립트가 깨져도 다음 릴리스
+  # 까지 모른다(실제로 그래서 0.4.1 이 중복 본문으로 나갔다). CHANGELOG 의
+  # 최신 출시 버전으로 매 push 마다 추출을 돌려 회귀를 잡는다 — 빌드가 없어
+  # 몇 초면 끝난다. 러너의 pwsh 7 + BOM 없는 UTF-8 경로도 여기서 검증된다.
+  release-notes:
+    name: release notes extraction
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Extract notes for latest released version
+        shell: pwsh
+        run: |
+          $m = Select-String -Path CHANGELOG.md -Pattern '^## (\d+\.\d+\.\d+\S*)' |
+            Select-Object -First 1
+          if (-not $m) { throw "CHANGELOG 에 출시 버전 헤딩(## X.Y.Z)이 없음" }
+          $version = $m.Matches[0].Groups[1].Value
+          Write-Host "최신 출시 버전: $version"
+          ./scripts/extract-release-notes.ps1 `
+            -Tag "v$version" -Repo "${{ github.repository }}" -OutFile release-notes.md
+          $body = Get-Content release-notes.md -Raw
+          if ($body -notmatch 'Full Changelog') { throw "compare 링크 누락" }
+          # 한글이 깨졌는지 — U+FFFD(치환 문자)가 있으면 인코딩 사고.
+          if ($body -match [char]0xFFFD) { throw "인코딩 손상(U+FFFD 발견)" }
+          Write-Host "--- 릴리스 본문 미리보기 (앞 40줄) ---"
+          Get-Content release-notes.md -TotalCount 40
+
+      - name: Upload notes preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes-preview
+          path: release-notes.md
+          retention-days: 7
