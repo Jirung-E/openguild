@@ -195,6 +195,22 @@
 		void navItems;
 		tick().then(recomputeOverflow);
 	});
+	// 중앙 pill 그룹은 **절대 배치**라 등장하거나 폭이 바뀌어도 nav/measurer 의
+	// 크기가 변하지 않는다 → onMount 의 ResizeObserver 로는 절대 안 잡힌다.
+	// 게다가 pill 은 길드 이름을 받아온 뒤에야 렌더되므로 `bind:this` 가
+	// onMount 시점엔 null 이다(BUG-157 과 같은 함정). 실측했더니 최초 계산이
+	// pill 없는 상태로 굳어 링크가 전부 ☰ 로 접힌 채였다 — 창을 리사이즈해야
+	// 정상이 됐다. refs/길드명을 의존성으로 추적해 재계산하고, pill 자체에도
+	// RO 를 걸어 폭 변화(긴 이름·vw 변화)에 반응한다.
+	$effect(() => {
+		void guildName;
+		const els = [addWrapEl, pillEl].filter((e): e is HTMLElement => !!e);
+		tick().then(recomputeOverflow);
+		if (els.length === 0) return;
+		const ro = new ResizeObserver(() => recomputeOverflow());
+		for (const el of els) ro.observe(el);
+		return () => ro.disconnect();
+	});
 	const visibleItems = $derived(navItems.slice(0, visibleCount));
 	const overflowItems = $derived(navItems.slice(visibleCount));
 	// 데스크탑: 넘친 항목을 타이틀바 ☰ 로 발행. 웹: 로컬 "…" 드롭다운이 소비.
