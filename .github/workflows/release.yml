@@ -14,6 +14,13 @@ name: release
 #   - multi-arch (aarch64-pc-windows-msvc / aarch64 Linux) — matrix 확장.
 #   - macOS runner — matrix 확장.
 #   - auto-updater (DEV-063) — Linux 첨부물에도 latest.json 추가(현재 Windows 전용).
+#
+# BUG-172: Node 20 deprecation 경고 대응 — node20 런타임 액션만 상향.
+#   upload-artifact v4 → v7, action-gh-release v2 → v3.
+#   (checkout/setup-node/cache v5, Swatinem/rust-cache v2 는 이미 node24,
+#    dtolnay/rust-toolchain 은 composite 라 해당 없음.)
+#   주의: upload-artifact **v5 는 여전히 node20** 이라 경고가 안 사라진다 —
+#   node24 가 기본인 v6 이상이 필요하다. v7 은 v6 + `archive`(옵트인)/ESM 뿐.
 
 on:
   push:
@@ -81,7 +88,7 @@ jobs:
 
       # Artifact 는 항상 업로드 (workflow_dispatch dry-run 도 검증 가능).
       - name: Upload installer artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: openguild-windows-x64-installer
           path: |
@@ -153,7 +160,7 @@ jobs:
             -Tag $tag -Repo "${{ github.repository }}" -OutFile release-notes.md
 
       - name: Upload release notes preview
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-notes-${{ runner.os }}
           path: release-notes.md
@@ -166,7 +173,7 @@ jobs:
       # latest.json 이 없어도 release 는 성공 (일반 installer 만 첨부).
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             target/release/bundle/nsis/*-setup.exe
@@ -230,7 +237,7 @@ jobs:
         run: cargo tauri build --bundles deb,rpm,appimage
 
       - name: Upload package artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: openguild-linux-x64-packages
           path: |
@@ -260,7 +267,7 @@ jobs:
             -Tag $tag -Repo "${{ github.repository }}" -OutFile release-notes.md
 
       - name: Upload release notes preview
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-notes-${{ runner.os }}
           path: release-notes.md
@@ -268,7 +275,7 @@ jobs:
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             target/release/bundle/deb/*.deb

@@ -8,6 +8,13 @@ name: check
 #     job 안에서 먼저 frontend build 후 cargo test.
 #   - actions/* v4 → v5 (Node 24 default 라 deprecation 경고 사라짐).
 #     v5 가 없으면 GitHub 가 v4 로 resolve 함 — 안전.
+#
+# BUG-172: Node 20 deprecation 경고 대응 — node20 런타임 액션만 상향.
+#   upload-artifact v4 → v7, action-gh-release v2 → v3.
+#   (checkout/setup-node/cache v5, Swatinem/rust-cache v2 는 이미 node24,
+#    dtolnay/rust-toolchain 은 composite 라 해당 없음.)
+#   주의: upload-artifact **v5 는 여전히 node20** 이라 경고가 안 사라진다 —
+#   node24 가 기본인 v6 이상이 필요하다. v7 은 v6 + `archive`(옵트인)/ESM 뿐.
 
 on:
   pull_request:
@@ -148,7 +155,7 @@ jobs:
           Get-Content release-notes.md -TotalCount 40
 
       - name: Upload notes preview
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-notes-preview
           path: release-notes.md
