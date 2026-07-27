@@ -24,7 +24,39 @@ async fn after_mutation(store: &Store) {
         return;
     }
     let policy = snapshot::AutoSnapshotPolicy::from_env();
-    match snapshot::maybe_auto_snapshot(store, policy).await {
+
+    // DEV-299: 스냅샷 생성은 ~2초 걸린다(BUG-167 이 줄인 건 매 mutation 의
+    // *검사* 비용이고, 임계치에 걸렸을 때의 실제 생성은 여전히 동기다).
+    // 서버/GUI 처럼 프로세스가 살아 있는 환경에서는 백그라운드로 돌려 응답을
+    // 막지 않는다. CLI 는 명령이 끝나면 런타임째 종료돼 spawn 한 task 가
+    // 유실되므로 기본(동기)을 유지한다 — 그래서 opt-in 이다.
+    if store.background_snapshots_enabled() {
+        use std::sync::atomic::Ordering;
+        // 이미 돌고 있으면 건너뛴다 — 연속 mutation 이 스냅샷을 겹쳐 실행하면
+        // 디스크 I/O 가 중복되고 journal truncate 와 맞물릴 수 있다.
+        // 다음 mutation 이 다시 판단하므로 스냅샷을 영구히 놓치지는 않는다.
+        if store
+            .snapshot_in_flight
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+        {
+            return;
+        }
+        let bg = store.clone();
+        tokio::spawn(async move {
+            let result = snapshot::maybe_auto_snapshot(&bg, policy).await;
+            bg.snapshot_in_flight.store(false, Ordering::SeqCst);
+            report_snapshot(result);
+        });
+        return;
+    }
+
+    report_snapshot(snapshot::maybe_auto_snapshot(store, policy).await);
+}
+
+/// DEV-299: 동기/백그라운드 양쪽이 같은 형식으로 보고하도록 분리.
+fn report_snapshot(result: anyhow::Result<Option<crate::snapshot::SnapshotInfo>>) {
+    match result {
         Ok(Some(info)) => {
             eprintln!(
                 "[auto-backup] snapshot 생성됨: {} ({} bytes)",
@@ -826,6 +858,13 @@ async fn parent_id_of(pool: &SqlitePool, id: i64) -> AppResult<Option<i64>> {
 mod tests {
     use super::*;
     use crate::repo::seed_guild_dir;
+
+    /// DEV-299: auto-snapshot 정책은 프로세스 전역 env 로 읽는다
+    /// (`AutoSnapshotPolicy::from_env`). 테스트는 같은 프로세스에서 병렬 실행되므로
+    /// env 를 만지는 테스트끼리는 직렬화해야 한다 — locale.rs 의 ENV_LOCK 과 같은 패턴.
+    /// await 를 건너 유지되므로 async-aware Mutex 를 쓴다(std Mutex 는 clippy
+    /// `await_holding_lock` 위반이자 실제로 런타임을 막을 수 있다).
+    static ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
     fn fresh_tmp(label: &str) -> std::path::PathBuf {
         let ns = std::time::SystemTime::now()
@@ -1676,6 +1715,113 @@ mod tests {
         assert_eq!(q2.number, 6, "self-heal 이 max(actual)+1 부여해야");
         assert_eq!(q2.quest_id, "DEV-006");
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-299: 백그라운드 모드에서 auto-snapshot 은 mutation 을 막지 않는다.
+    ///
+    /// 기본(동기)에서는 임계치에 걸린 mutation 이 스냅샷 생성(~2초)만큼 멈춘다.
+    /// 여기서는 "mutation 반환 시점에 스냅샷이 아직 안 끝났을 수 있고, 잠시 뒤엔
+    /// 완료된다"를 확인한다 — journal truncate 로 관측.
+    #[tokio::test]
+    async fn background_snapshot_does_not_block_mutation() {
+        let dir = fresh_tmp("bg-snap");
+        let store = setup_store(&dir).await;
+        store.set_background_snapshots(true);
+        // SAFETY: 이 테스트 프로세스 안에서만 정책을 낮춘다(임계치 1회 도달용).
+        let _guard = ENV_LOCK.lock().await;
+        // SAFETY: ENV_LOCK 으로 직렬화된 구간 — 정책 임계치를 1로 낮춘다.
+        unsafe {
+            std::env::set_var("OPENGUILD_AUTO_BACKUP_OPS", "1");
+        }
+
+        for i in 0..3 {
+            create_quest(
+                &store,
+                CreateQuestRequest {
+                    quest_type_id: 1,
+                    title: format!("q{i}"),
+                    description: None,
+                    status_slug: "open".into(),
+                    urgency: Some(3),
+                    parent_quest_id: None,
+                },
+            )
+            .await
+            .unwrap();
+        }
+
+        // 백그라운드 task 가 끝날 시간을 준다(스냅샷은 파일 복사라 짧다).
+        for _ in 0..40 {
+            if !store
+                .snapshot_in_flight
+                .load(std::sync::atomic::Ordering::SeqCst)
+                && crate::snapshot::latest_snapshot_timestamp(&store.paths)
+                    .ok()
+                    .flatten()
+                    .is_some()
+            {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+
+        assert!(
+            crate::snapshot::latest_snapshot_timestamp(&store.paths)
+                .unwrap()
+                .is_some(),
+            "백그라운드 스냅샷이 실제로 생성돼야 한다(유실 금지)"
+        );
+
+        unsafe {
+            std::env::remove_var("OPENGUILD_AUTO_BACKUP_OPS");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-299: 기본값은 동기 — CLI 처럼 즉시 종료되는 프로세스에서 스냅샷이
+    /// 유실되면 안 되므로, 켜지 않으면 mutation 반환 시점에 이미 끝나 있어야 한다.
+    #[tokio::test]
+    async fn snapshot_is_synchronous_by_default() {
+        let dir = fresh_tmp("sync-snap");
+        let store = setup_store(&dir).await;
+        assert!(
+            !store.background_snapshots_enabled(),
+            "기본값이 백그라운드면 CLI 에서 스냅샷이 유실된다"
+        );
+        let _guard = ENV_LOCK.lock().await;
+        // SAFETY: ENV_LOCK 으로 직렬화된 구간 — 정책 임계치를 1로 낮춘다.
+        unsafe {
+            std::env::set_var("OPENGUILD_AUTO_BACKUP_OPS", "1");
+        }
+
+        for i in 0..3 {
+            create_quest(
+                &store,
+                CreateQuestRequest {
+                    quest_type_id: 1,
+                    title: format!("q{i}"),
+                    description: None,
+                    status_slug: "open".into(),
+                    urgency: Some(3),
+                    parent_quest_id: None,
+                },
+            )
+            .await
+            .unwrap();
+        }
+
+        // 대기 없이 즉시 — 동기라면 이미 존재해야 한다.
+        assert!(
+            crate::snapshot::latest_snapshot_timestamp(&store.paths)
+                .unwrap()
+                .is_some(),
+            "동기 모드는 mutation 반환 전에 스냅샷이 끝나 있어야 한다"
+        );
+
+        unsafe {
+            std::env::remove_var("OPENGUILD_AUTO_BACKUP_OPS");
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

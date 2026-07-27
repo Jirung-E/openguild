@@ -342,6 +342,9 @@ async fn run_host(
     let ctx = load_guild()?;
     // Store 는 .guild/index.db + journal.db 둘 다 자동 마이그레이션.
     let store = openguild_core::Store::open(&ctx.guild_path).await?;
+    // DEV-299: 서버는 프로세스가 계속 살아 있으므로 auto-snapshot 을
+    // 백그라운드로 — 임계치에 걸린 요청 하나가 ~2초 멈추던 것을 없앤다.
+    store.set_background_snapshots(true);
 
     // 라우터. (audit middleware 폐기 — journal.db 의 ops 가 그 역할.
     //          auto-backup task 폐기 — HTTP admin / CLI 로 명시적 실행.)

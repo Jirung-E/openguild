@@ -1098,7 +1098,7 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
                 .fetch_all(&store.index_pool)
                 .await?;
         for (type_id, prefix) in rows {
-            let Ok(tf) = TypeFile::read(&paths.type_path(&prefix)) else {
+            let Ok(tf) = TypeFile::read(paths.type_path(&prefix)) else {
                 continue;
             };
             sqlx::query(
@@ -1770,7 +1770,7 @@ mod tests {
 
         crate::reindex::reindex(&store).await.unwrap();
 
-        let tf = TypeFile::read(&paths.type_path("DEV")).unwrap();
+        let tf = TypeFile::read(paths.type_path("DEV")).unwrap();
         assert_eq!(
             tf.counter.last_number, 2,
             "DB(900)가 파일로 역류하면 A2 실패 — 파일은 실존 최대(2)여야 한다"

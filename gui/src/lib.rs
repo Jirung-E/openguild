@@ -302,6 +302,10 @@ pub fn run() {
     })
     .expect("Store::open 실패 — guild 디렉토리 손상 또는 권한 없음");
 
+    // DEV-299: GUI 도 장수 프로세스 — auto-snapshot 을 백그라운드로 돌려
+    // 상태 변경/관계 변경이 스냅샷 생성(~2초) 때문에 멈추지 않게 한다.
+    store.set_background_snapshots(true);
+
     // Recent guild 자동 등록 (DEV-006). Welcome / Uninit 은 placeholder 라 등록 안 함.
     if let Some(p) = &store_path
         && let Err(e) = openguild_core::recents::add(p)

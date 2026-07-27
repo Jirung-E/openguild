@@ -38,9 +38,38 @@ pub struct Store {
     /// journal 을 truncate 하면 남은 ops 가 사라져 replay 가 깨지기 때문.
     /// `Arc` 라 `Clone` 된 Store 들이 같은 플래그를 공유한다.
     pub replaying: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// DEV-299: auto-snapshot 을 백그라운드 task 로 돌릴지.
+    ///
+    /// 스냅샷 생성 자체가 ~2초 걸려서, 임계치에 걸린 mutation 하나가 그만큼
+    /// 멈춘다(BUG-167 은 매 mutation 의 *검사* 비용을 없앤 것이고, 실제 생성은
+    /// 여전히 동기다). 서버/GUI 처럼 프로세스가 살아 있는 환경에서는
+    /// 백그라운드로 돌려 응답을 막지 않는다.
+    ///
+    /// **기본값은 false** — CLI 는 명령이 끝나면 런타임째 종료되므로 spawn 한
+    /// task 가 실행되지 못하고 조용히 사라진다(스냅샷 유실). 켜는 쪽이
+    /// 명시적으로 켠다.
+    pub background_snapshots: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// DEV-299: 스냅샷이 이미 돌고 있는지 — 백그라운드 모드에서 mutation 이
+    /// 연달아 오면 스냅샷이 겹쳐 실행돼 디스크 I/O 가 중복되고 journal
+    /// truncate 와 맞물릴 수 있다. 하나만 돌게 하는 가드.
+    pub snapshot_in_flight: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Store {
+    /// DEV-299: auto-snapshot 백그라운드 실행 on/off.
+    ///
+    /// 프로세스가 살아 있는 호출자(서버 host, GUI)만 켠다. CLI 는 켜면 안 된다
+    /// — 명령 종료 시 런타임이 드롭되며 spawn 된 스냅샷이 유실된다.
+    pub fn set_background_snapshots(&self, on: bool) {
+        self.background_snapshots
+            .store(on, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// DEV-299: 백그라운드 스냅샷이 켜져 있는지.
+    pub fn background_snapshots_enabled(&self) -> bool {
+        self.background_snapshots
+            .load(std::sync::atomic::Ordering::SeqCst)
+    }
     /// DEV-022: replay 모드 on/off (자동 스냅샷 억제용).
     pub fn set_replaying(&self, on: bool) {
         self.replaying
@@ -118,6 +147,9 @@ impl Store {
             journal_pool,
             db_ahead_versions,
             replaying: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            // DEV-299: 기본 동기 — 켜는 쪽(서버/GUI)이 명시적으로 켠다.
+            background_snapshots: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            snapshot_in_flight: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         })
     }
 
@@ -175,6 +207,9 @@ impl Store {
             journal_pool,
             db_ahead_versions,
             replaying: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            // DEV-299: 기본 동기 — 켜는 쪽(서버/GUI)이 명시적으로 켠다.
+            background_snapshots: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            snapshot_in_flight: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         })
     }
 }

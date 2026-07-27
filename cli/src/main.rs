@@ -4932,6 +4932,40 @@ fn print_quest_detail(d: &QuestDetail, json: bool) {
             );
         }
     }
+    // DEV-291: 후속(successors) — 이 퀘스트를 선행으로 가지는 퀘스트들.
+    //
+    // 파생 전용이라 프론트매터에도 auto-block 에도 없어서, CLI 로는 **무엇이
+    // 나를 선행으로 잡고 있는지 볼 방법이 아예 없었다**. BUG-165 로 GUI 에는
+    // 반대방향 해제가 생겼지만 CLI 는 `quest prereq remove <후속> <자기>` 를
+    // 쓰려 해도 그 <후속> 을 찾을 수가 없었다. QuestDetail 은 이미 채우고
+    // 있었으므로 출력만 추가한다.
+    //
+    // 색은 선행(#a371f7 보라)과 짝이 되도록 주황 계열로 — 방향이 반대임을
+    // 한눈에 구분.
+    if !d.successors.is_empty() {
+        println!(
+            "  {} ({}):",
+            colorize("successors", "#f0883e"),
+            d.successors.len()
+        );
+        for s in &d.successors {
+            println!(
+                "    - {} [{}] {}",
+                colorize(&s.quest_id, &s.type_color),
+                colorize(&s.status_name_en, &s.status_color),
+                s.title
+            );
+        }
+        // 반대방향 해제 힌트 — 이 명령을 찾기 어렵다는 게 DEV-291 의 출발점.
+        println!(
+            "    {}",
+            tf!(
+                "(해제: openguild quest prereq remove <후속> {})",
+                "(detach: openguild quest prereq remove <successor> {})",
+                q.quest_id
+            )
+        );
+    }
 }
 
 /// DEV-043: `quest show --field <name>` — 단일 필드 raw 값 출력 (pipe 친화).
@@ -4960,6 +4994,26 @@ fn quest_field_value(d: &QuestDetail, field: &str) -> Result<String> {
         },
         "created_at" | "created" => q.created_at.clone(),
         "updated_at" | "updated" => q.updated_at.clone(),
+        // DEV-291: 관계 slug 목록 — 스크립트로 반대방향 해제를 돌릴 수 있게
+        // 한 줄에 하나씩(파이프 친화, 빈 관계면 빈 출력).
+        "successors" => d
+            .successors
+            .iter()
+            .map(|r| r.quest_id.as_str())
+            .collect::<Vec<_>>()
+            .join("\n"),
+        "prerequisites" | "prereqs" => d
+            .prerequisites
+            .iter()
+            .map(|r| r.quest_id.as_str())
+            .collect::<Vec<_>>()
+            .join("\n"),
+        "sub_quests" | "children" => d
+            .sub_quests
+            .iter()
+            .map(|r| r.quest_id.as_str())
+            .collect::<Vec<_>>()
+            .join("\n"),
         other => {
             return Err(anyhow!(
                 "unknown field '{other}'. available: id title status status_slug \
