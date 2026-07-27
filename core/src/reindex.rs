@@ -677,7 +677,31 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
                 .or_default()
                 .push(hist::HistoryEntry { ts, op, old, new });
         }
+        // DEV-281 (A1): export 를 **현재 브랜치에 실존하는 퀘스트**로 게이트.
+        //
+        // index.db 는 branch-blind 다(BOOK-001). 브랜치를 전환하면 이전 브랜치
+        // 퀘스트의 quest_history 행이 캐시에 그대로 남아 있는데, 그 slug 의
+        // 사이드카는 현재 브랜치에 없으므로 이 export 가 **없는 퀘스트의
+        // `.jsonl` 을 새로 만들어낸다**. 그 untracked 파일이 다음 checkout 을
+        // 막는 실사고가 났다(유령 부활).
+        //
+        // DEV-180 이전 레거시 이력 보존이라는 원래 목적은 유지된다 — 그때 데이터도
+        // 퀘스트 파일 자체는 존재하기 때문. 파일이 없는 slug 는 보존할 대상이
+        // 아니라 다른 브랜치의 잔여물이다.
+        //
+        // 판정은 quests 테이블이 아니라 **디스크의 퀘스트 파일 목록**(위에서
+        // 스캔한 quest_files)으로 한다 — 테이블도 같은 캐시라 순환이 된다.
+        let live_slugs: std::collections::HashSet<&str> = quest_files
+            .iter()
+            .map(|(_, qf)| qf.frontmatter.quest_id.as_str())
+            .collect();
         for (slug, entries) in &by_slug {
+            if !live_slugs.contains(slug.as_str()) {
+                // 현재 브랜치에 퀘스트 파일이 없음 — 다른 브랜치의 캐시 잔여물.
+                // 사이드카를 만들지 않는다(DB 행은 다음 wipe 에서 정리된다).
+                tracing::debug!("history export skip (파일 없는 slug): {slug}");
+                continue;
+            }
             let path = hist::history_path(paths, slug);
             if !path.exists() {
                 for e in entries {
@@ -1032,37 +1056,59 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
 
     tx.commit().await?;
 
-    // DEV-242: counter 양방향 self-heal — (a) DB counter 를 실제 max(number)
-    // 까지 끌어올리고(외부 편집/git pull 로 큰 번호 파일이 들어온 경우),
-    // (b) type 파일의 [counter].last_number 가 DB 보다 낡았으면 write-back.
-    // 이전엔 파일 counter 를 `check counters --fix` 수동 실행으로만 갱신할 수
-    // 있어 늘 낡아 있었음(파일이 진리원이라는 원칙과 어긋남).
-    sqlx::query(
-        "UPDATE quest_counters
-            SET last_number = MAX(
-                last_number,
-                COALESCE((SELECT MAX(q.number) FROM quests q
-                           WHERE q.quest_type_id = quest_counters.quest_type_id), 0))",
-    )
-    .execute(&store.index_pool)
-    .await?;
-    {
-        let rows: Vec<(String, i64)> = sqlx::query_as(
-            "SELECT t.prefix, c.last_number FROM quest_counters c
-              JOIN quest_types t ON t.id = c.quest_type_id",
-        )
-        .fetch_all(&store.index_pool)
-        .await?;
-        for (prefix, db_last) in rows {
-            let path = paths.type_path(&prefix);
-            if let Ok(mut tf) = TypeFile::read(&path)
-                && tf.counter.last_number < db_last
-            {
-                tf.counter.last_number = db_last;
-                if let Err(e) = tf.write(&path) {
-                    tracing::warn!("type counter 파일 write-back 실패 ({prefix}): {e:#}");
-                }
+    // DEV-282 (A2, DEV-242 대체): counter self-heal 을 **파일-로컬**로.
+    //
+    // 이전 구현은 (a) DB counter 를 DB 의 max(number) 로 끌어올린 뒤
+    // (b) 파일 counter 가 DB 보다 낡으면 **DB 값을 파일에 write-back** 했다.
+    // index.db 는 branch-blind 라(BOOK-001) 다른 브랜치에서 발급된 큰 번호가
+    // 캐시에 남아 있으면 그 값이 현재 브랜치의 `types/*.toml` 로 역류한다.
+    // 실사고: 잘못된 브랜치에서 `quest new` → 카운터가 현재 브랜치 파일보다
+    // 앞서 → ID 어긋남.
+    //
+    // 새 규칙: 파일 카운터는 **디스크에 실존하는 최대 번호**만 반영한다.
+    // DB 는 참조하지 않으므로 DB→파일 역류 경로가 사라진다.
+    //
+    // 발급 시 다음 ID 는 `max(파일 카운터, 실존 최대번호) + 1` 이므로,
+    // 파일 카운터가 실존 최대보다 **큰** 경우(삭제된 퀘스트의 번호를 재사용하지
+    // 않기 위해)는 그대로 둔다 — 낮추면 삭제된 ID 를 재발급하게 된다.
+    let mut max_number_by_prefix: HashMap<String, i64> = HashMap::new();
+    for (_, qf) in &quest_files {
+        if let (Some(prefix), Ok(n)) = (qf.type_prefix(), qf.number()) {
+            let e = max_number_by_prefix.entry(prefix.to_string()).or_insert(0);
+            *e = (*e).max(n);
+        }
+    }
+    for (prefix, file_max) in &max_number_by_prefix {
+        let path = paths.type_path(prefix);
+        if let Ok(mut tf) = TypeFile::read(&path)
+            && tf.counter.last_number < *file_max
+        {
+            tf.counter.last_number = *file_max;
+            if let Err(e) = tf.write(&path) {
+                tracing::warn!("type counter 파일 heal 실패 ({prefix}): {e:#}");
             }
+        }
+    }
+    // DB counter 는 파일에서 재투영한다(파일 → DB 방향만). 파일 카운터가
+    // 진리이므로 DB 를 그 값으로 맞춘다 — 이전처럼 DB 의 max(number) 로
+    // 끌어올리지 않는다(그 값이 파일로 역류하던 경로를 없앴으므로 불필요).
+    {
+        let rows: Vec<(i64, String)> =
+            sqlx::query_as("SELECT id, prefix FROM quest_types")
+                .fetch_all(&store.index_pool)
+                .await?;
+        for (type_id, prefix) in rows {
+            let Ok(tf) = TypeFile::read(&paths.type_path(&prefix)) else {
+                continue;
+            };
+            sqlx::query(
+                "INSERT INTO quest_counters (quest_type_id, last_number) VALUES (?, ?)
+                 ON CONFLICT(quest_type_id) DO UPDATE SET last_number = excluded.last_number",
+            )
+            .bind(type_id)
+            .bind(tf.counter.last_number)
+            .execute(&store.index_pool)
+            .await?;
         }
     }
 
@@ -1601,6 +1647,165 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(n_statuses, 7);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-281 (A1): 브랜치 전환으로 파일이 사라진 slug 의 quest_history 캐시
+    /// 행은 사이드카로 export 되지 **않아야** 한다.
+    ///
+    /// 예전엔 사이드카 없는 slug 를 무조건 파일로 내보내서, 다른 브랜치 퀘스트의
+    /// 잔여 캐시가 현재 브랜치에 `.jsonl` 을 만들어냈다(untracked 파일이 다음
+    /// checkout 을 막는 실사고). `quest_history` 는 전역 wipe 대상이 아니라
+    /// 실제로 살아남는다.
+    #[tokio::test]
+    async fn history_export_skips_slugs_without_quest_file() {
+        use crate::repo::history as hist;
+        let dir = fresh_tmp("a1-gate");
+        let store = setup_store(&dir).await;
+        let paths = GuildPaths::new(&dir);
+
+        let mk = |id: &str| QuestFile {
+            frontmatter: QuestFrontmatter {
+                quest_id: id.into(),
+                title: id.into(),
+                status: "open".into(),
+                urgency: 2,
+                parent: None,
+                prerequisites: vec![],
+                created_at: "2026-05-16T15:00:00Z".into(),
+                updated_at: "2026-05-16T15:00:00Z".into(),
+                deleted: false,
+                desired_due: None,
+                required_due: None,
+                tags: vec![],
+            },
+            description: String::new(),
+            auto_block: String::new(),
+        };
+        // 두 퀘스트가 존재하던 시점(= 다른 브랜치) 을 재현.
+        mk("DEV-001").write(paths.quest_path("DEV-001")).unwrap();
+        mk("DEV-002").write(paths.quest_path("DEV-002")).unwrap();
+        crate::reindex::reindex(&store).await.unwrap();
+
+        for slug in ["DEV-001", "DEV-002"] {
+            let qid: i64 = sqlx::query_scalar(
+                "SELECT q.id FROM quests q JOIN quest_types qt ON qt.id = q.quest_type_id
+                  WHERE qt.prefix || '-' || printf('%03d', q.number) = ?",
+            )
+            .bind(slug)
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+            sqlx::query(
+                "INSERT INTO quest_history (quest_id, quest_slug, ts, op, old_value, new_value)
+                 VALUES (?, ?, '2026-05-16T16:00:00Z', 'status', 'open', 'done')",
+            )
+            .bind(qid)
+            .bind(slug)
+            .execute(&store.index_pool)
+            .await
+            .unwrap();
+            // 사이드카는 없는 상태로 둔다(DEV-180 이전 데이터 재현).
+            let _ = std::fs::remove_file(hist::history_path(&paths, slug));
+        }
+
+        // 브랜치 전환 시뮬레이션 — DEV-002 파일만 사라진다(캐시 행은 남는다).
+        std::fs::remove_file(paths.quest_path("DEV-002")).unwrap();
+        crate::reindex::reindex(&store).await.unwrap();
+
+        assert!(
+            hist::history_path(&paths, "DEV-001").exists(),
+            "실존 퀘스트의 레거시 이력은 계속 export 돼야 한다(DEV-180 목적 유지)"
+        );
+        assert!(
+            !hist::history_path(&paths, "DEV-002").exists(),
+            "파일 없는 slug 의 사이드카를 만들면 유령 부활 — A1 게이트 실패"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-282 (A2): 파일 카운터는 **디스크 실존 최대 번호**로만 치유되고,
+    /// DB 카운터가 더 크더라도 파일로 역류하지 않아야 한다.
+    #[tokio::test]
+    async fn counter_heal_is_file_local_not_db_writeback() {
+        use crate::repo::TypeFile;
+        let dir = fresh_tmp("a2-local");
+        let store = setup_store(&dir).await;
+        let paths = GuildPaths::new(&dir);
+        crate::reindex::reindex(&store).await.unwrap();
+
+        // 디스크에는 DEV-002 까지만 존재.
+        for (id, ts) in [("DEV-001", "15:00:00"), ("DEV-002", "15:01:00")] {
+            let q = QuestFile {
+                frontmatter: QuestFrontmatter {
+                    quest_id: id.into(),
+                    title: id.into(),
+                    status: "open".into(),
+                    urgency: 2,
+                    parent: None,
+                    prerequisites: vec![],
+                    created_at: format!("2026-05-16T{ts}Z"),
+                    updated_at: format!("2026-05-16T{ts}Z"),
+                    deleted: false,
+                    desired_due: None,
+                    required_due: None,
+                    tags: vec![],
+                },
+                description: String::new(),
+                auto_block: String::new(),
+            };
+            q.write(paths.quest_path(id)).unwrap();
+        }
+
+        // 다른 브랜치에서 발급된 것처럼 DB 카운터만 크게 오염시킨다.
+        sqlx::query(
+            "UPDATE quest_counters SET last_number = 900
+               WHERE quest_type_id = (SELECT id FROM quest_types WHERE prefix = 'DEV')",
+        )
+        .execute(&store.index_pool)
+        .await
+        .unwrap();
+
+        crate::reindex::reindex(&store).await.unwrap();
+
+        let tf = TypeFile::read(&paths.type_path("DEV")).unwrap();
+        assert_eq!(
+            tf.counter.last_number, 2,
+            "DB(900)가 파일로 역류하면 A2 실패 — 파일은 실존 최대(2)여야 한다"
+        );
+        let db_last: i64 = sqlx::query_scalar(
+            "SELECT last_number FROM quest_counters
+               WHERE quest_type_id = (SELECT id FROM quest_types WHERE prefix = 'DEV')",
+        )
+        .fetch_one(&store.index_pool)
+        .await
+        .unwrap();
+        assert_eq!(db_last, 2, "DB 는 파일에서 재투영돼야 한다(파일 → DB 방향)");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-282 (A2) 보완: 파일 카운터가 실존 최대보다 **큰** 경우는 낮추지 않는다
+    /// — 삭제된 퀘스트의 번호를 재발급하면 안 되므로.
+    #[tokio::test]
+    async fn counter_heal_never_lowers_file_counter() {
+        use crate::repo::TypeFile;
+        let dir = fresh_tmp("a2-nolower");
+        let store = setup_store(&dir).await;
+        let paths = GuildPaths::new(&dir);
+        crate::reindex::reindex(&store).await.unwrap();
+
+        let path = paths.type_path("DEV");
+        let mut tf = TypeFile::read(&path).unwrap();
+        tf.counter.last_number = 50; // 과거에 50번까지 발급했고 파일은 지워진 상태
+        tf.write(&path).unwrap();
+
+        crate::reindex::reindex(&store).await.unwrap();
+
+        let tf = TypeFile::read(&path).unwrap();
+        assert_eq!(tf.counter.last_number, 50, "낮추면 삭제된 ID 를 재발급하게 된다");
 
         let _ = std::fs::remove_dir_all(&dir);
     }

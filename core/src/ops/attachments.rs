@@ -128,12 +128,14 @@ pub async fn sync_attachment_blobs(store: &Store) -> AppResult<(usize, usize)> {
     }
 
     // 2. blob 만 남은 것 (파일 소실).
+    // DEV-284 (A3): 참조 판정을 **파일에서** 한 번에 모아 쓴다(위 주석 참조).
+    let refs = referenced_attachments(store);
     for (rel, _) in db {
         // BUG-087: 어떤 sidecar/본문에서도 참조 안 되는 orphan 은 복원하지 않고
         // GC. 안 그러면 (수동 삭제했거나 BUG-084 이전 생성된) orphan 파일이 매
         // reindex 의 self-heal 로 부활한다. 참조 중인 것만 복원(snapshot 복원 후
         // 파일 소실 케이스가 본래 의도).
-        if !attachment_referenced(store, &rel).await {
+        if !refs.contains(&rel) {
             let _ = sqlx::query("DELETE FROM attachment_blobs WHERE rel_path = ?")
                 .bind(&rel)
                 .execute(&store.index_pool)
@@ -330,6 +332,62 @@ async fn gc_attachment_file(store: &Store, path: &str) {
 }
 
 /// path 가 다른 첨부 sidecar(quest/campaign) 또는 본문(description)에서 참조되는지.
+/// DEV-284 (A3): 현재 **디스크 파일**이 참조하는 첨부 경로 집합.
+///
+/// 이전엔 orphan blob 하나하나에 대해 (a) 사이드카 파일 스캔 + (b) `quests` /
+/// `campaigns` / `library_docs` **테이블 본문 LIKE 쿼리**로 판정했다. (b) 는
+/// index.db 를 읽으므로 branch-blind 다(BOOK-001) — 지금은 유일한 호출자인
+/// reindex 가 "테이블을 파일에서 재구축한 뒤" 호출해서 우연히 맞지만,
+/// **호출 순서에 정합성이 의존**한다. 다른 경로에서 부르면 다른 브랜치의 캐시
+/// 본문이 "참조 중"으로 잡혀 현재 브랜치에 없는 첨부 파일을 되살릴 수 있다.
+///
+/// 그래서 판정을 파일로만 한다 — 본문 `.md` 와 사이드카를 한 번 훑어 참조된
+/// `attachments/...` 경로를 모은다. blob 개수 × 쿼리 대신 디스크 1회 패스라
+/// 비용도 줄어든다.
+fn referenced_attachments(store: &Store) -> std::collections::HashSet<String> {
+    let mut refs: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for dir in [
+        store.paths.quests_dir(),
+        store.paths.campaigns_dir(),
+        store.paths.library_dir(),
+    ] {
+        let Ok(rd) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for e in rd.flatten() {
+            let p = e.path();
+            let Some(name) = p.file_name().and_then(|s| s.to_str()) else {
+                continue;
+            };
+            // 첨부 목록 사이드카 — 구조화된 목록이므로 그대로 수집.
+            if name.ends_with(".attachments.json") {
+                for a in read_attachment_list(&p) {
+                    refs.insert(a.path);
+                }
+                continue;
+            }
+            // 본문(.md) — 인라인 참조(`![](attachments/xxx)`)를 텍스트에서 추출.
+            if !name.ends_with(".md") {
+                continue;
+            }
+            let Ok(text) = std::fs::read_to_string(&p) else {
+                continue;
+            };
+            for (i, _) in text.match_indices("attachments/") {
+                let rest = &text[i..];
+                let end = rest
+                    .find(|c: char| {
+                        c.is_whitespace() || matches!(c, ')' | '"' | '\'' | '>' | ']' | '`')
+                    })
+                    .unwrap_or(rest.len());
+                refs.insert(rest[..end].to_string());
+            }
+        }
+    }
+    refs
+}
+
+#[allow(dead_code)] // DEV-284 로 referenced_attachments 로 대체 — 참고용으로 남김.
 async fn attachment_referenced(store: &Store, path: &str) -> bool {
     // DEV-237: 도서관 문서(sidecar + body)도 스캔 대상 — 그래야 도서관에서만
     // 쓰이는 첨부를 다른 sidecar/본문에서 안 쓴다고 오판해 GC 하지 않는다.
