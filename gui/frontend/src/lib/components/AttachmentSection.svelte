@@ -6,6 +6,7 @@
   BUG-081: 클릭 미리보기/열기(로컬 OS 기본앱 · 원격 새 탭) + 다운로드(전체/개별).
 -->
 <script lang="ts">
+	import Icon from './Icon.svelte';
 	import { guildFileUrl } from '$lib/utils/banner';
 	import { pickAndUploadAttachments, type AttachProgress } from '$lib/utils/editor-attach';
 	import { detectEnvironment } from '$lib/api/transport';
@@ -229,7 +230,7 @@
 						{:else if isVideo(a.path) && urls[a.path]}
 							<video src={urls[a.path]} muted></video>
 						{:else}
-							<span class="file-ico">📄</span>
+							<span class="file-ico"><Icon name="doc" size={26} /></span>
 						{/if}
 					</button>
 					<button

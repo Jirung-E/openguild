@@ -120,6 +120,10 @@ jobs:
       - name: check no hex in component CSS
         run: npm run check:no-hex
 
+      # BUG-169: 마크업 안 컬러 이모지 아이콘 차단 (Icon.svelte / 인라인 SVG).
+      - name: check no emoji icons in markup
+        run: npm run check:no-emoji
+
       - name: vitest
         run: npm test -- --run
 

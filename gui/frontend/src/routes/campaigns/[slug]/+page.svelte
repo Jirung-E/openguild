@@ -6,6 +6,7 @@
    - 연결된 quest 표시 + 추가 / 제거
 -->
 <script lang="ts">
+	import Icon from '$lib/components/Icon.svelte';
 	import { onMount, onDestroy } from 'svelte';
 	// DEV-153: 편집 중이면 이탈 가드에 보고.
 	import { setUnsaved } from '$lib/stores/unsaved';
@@ -427,7 +428,7 @@
 				<div class="top-actions">
 					{#if isTauri}
 						<!-- DEV-087: 배너 이미지 — Tauri 전용 (파일 picker). -->
-						<button class="btn-edit" onclick={pickBanner} disabled={bannerBusy}> 🖼 {t('campaign.banner', $locale)} </button>
+						<button class="btn-edit" onclick={pickBanner} disabled={bannerBusy}><Icon name="image" /> {t('campaign.banner', $locale)} </button>
 						{#if detail.image_path}
 							<button
 								class="btn-edit"
@@ -435,12 +436,12 @@
 								disabled={bannerBusy}
 								title={t('campaign.bannerRemove', $locale)}
 							>
-								🖼 ×
+								<Icon name="image" /> ×
 							</button>
 						{/if}
 					{/if}
 					<button class="btn-edit" onclick={enterEditMode}>✎ {t('detail.edit', $locale)}</button>
-					<button class="btn-delete" onclick={askDeleteCampaign}>🗑 {t('detail.delete', $locale)}</button>
+					<button class="btn-delete" onclick={askDeleteCampaign}><Icon name="trash" /> {t('detail.delete', $locale)}</button>
 				</div>
 			{/if}
 		{/if}
@@ -690,12 +691,12 @@
 				title={t('common.jumpComments', $locale)}
 				aria-label={t('common.jumpComments', $locale)}
 			>
-				<span class="jb-icon">💬</span><span class="jb-label">{t('common.jumpCommentsShort', $locale)}</span>
+				<span class="jb-icon"><Icon name="comment" /></span><span class="jb-label">{t('common.jumpCommentsShort', $locale)}</span>
 			</button>
 		{/if}
 		{#if showMemoJump}
 			<button class="jump-btn" onclick={jumpToMemo} title={t('common.jumpMemo', $locale)} aria-label={t('common.jumpMemo', $locale)}>
-				<span class="jb-icon">📝</span><span class="jb-label">{t('common.jumpMemoShort', $locale)}</span>
+				<span class="jb-icon"><Icon name="memo" /></span><span class="jb-label">{t('common.jumpMemoShort', $locale)}</span>
 			</button>
 		{/if}
 	</div>

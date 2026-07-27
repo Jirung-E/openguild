@@ -13,6 +13,7 @@
   ↩ #id 링크가 실제 답글 대상을 가리킨다. parent_id 체인은 데이터에 그대로 기록.
 -->
 <script lang="ts">
+	import Icon from './Icon.svelte';
 	import { tick, onDestroy, onMount } from 'svelte';
 	import MarkdownView from './MarkdownView.svelte';
 	// DEV-132 후속(admin 보고): 커스텀 반응 입력을 이모지 1개로 제한.
@@ -993,7 +994,7 @@
 							class:on={e.discussion}
 							onclick={() => toggleDiscussion(e.id)}
 							title={e.discussion ? t('comment.unmarkDiscussion', $locale) : t('comment.markDiscussion', $locale)}
-							>💬 {t('comment.discussion', $locale)}</button
+							><Icon name="comment" size={12} /> {t('comment.discussion', $locale)}</button
 						>
 					{/if}
 					<button class="link-btn" onclick={() => enterEdit(e)}>✎ {t('detail.edit', $locale)}</button>
@@ -1180,7 +1181,7 @@
 						class:on={e.pinned}
 						onclick={() => togglePinned(e.id)}
 						title={e.pinned ? t('comment.unpin', $locale) : t('comment.pin', $locale)}
-						>📌</button
+						><Icon name="pin" size={12} /></button
 					>
 				</div>
 			</div>
@@ -1219,7 +1220,7 @@
 					? t('comment.showAll', $locale)
 					: t('comment.showDiscussionOnly', $locale)}
 			>
-				💬 {t('comment.discussionOnly', $locale)} {discussionCount}{#if unresolvedCount > 0}&nbsp;({t('comment.unresolvedWord', $locale)}
+				<Icon name="comment" size={12} /> {t('comment.discussionOnly', $locale)} {discussionCount}{#if unresolvedCount > 0}&nbsp;({t('comment.unresolvedWord', $locale)}
 					{unresolvedCount}){/if}
 			</button>
 		{/if}
@@ -1381,8 +1382,11 @@
 					onmouseenter={() => (wikiSel = i)}
 					use:titlePopup={`${it.insert ?? it.id}${it.title ? ` — ${it.title}` : ''}`}
 				>
-					<span class="wiki-id" class:missing={!it.exists}
-						>{it.nsPrefix ? '🏷️' : '🔗'} {it.insert ?? it.id}</span
+					<!-- BUG-169: 🏷️/🔗 는 컬러 이모지로 렌더돼 OS 마다 크기·기준선이
+					     달랐다 — currentColor SVG 로 교체. -->
+					<span class="wiki-id" class:missing={!it.exists}>
+						<Icon name={it.nsPrefix ? 'tag' : 'link'} size={12} />
+						{it.insert ?? it.id}</span
 					>
 					<span class="wiki-meta">
 						{it.nsPrefix

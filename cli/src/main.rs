@@ -1047,6 +1047,24 @@ enum CampaignCmd {
     },
     #[command(about = tf!("캠페인 상세", "Campaign detail"))]
     Show { slug: String },
+    // DEV-280: core `update_campaign` 은 title/description/기간을 모두 받고
+    // 서버(PATCH)·GUI 는 이미 노출하는데 CLI 만 상태 변경(start/end)밖에
+    // 없었다 — quest update 와 같은 옵션 규약으로 맞춘다.
+    #[command(about = tf!("캠페인 제목 / 본문 / 기간 수정", "Update campaign title / body / dates"))]
+    Update {
+        slug: String,
+        #[arg(long)]
+        title: Option<String>,
+        #[arg(long)]
+        description: Option<String>,
+        #[arg(long = "description-file", conflicts_with = "description",
+              help = tf!("본문을 UTF-8 파일에서 읽기 (--description 과 상호배타).", "Read the body from a UTF-8 file (mutually exclusive with --description)."))]
+        description_file: Option<std::path::PathBuf>,
+        #[arg(long = "start", help = tf!("ISO 날짜 (YYYY-MM-DD)", "ISO date (YYYY-MM-DD)"))]
+        started_at: Option<String>,
+        #[arg(long = "end")]
+        ended_at: Option<String>,
+    },
     #[command(about = tf!("캠페인 상태 변경 이력 — 최신 → 과거 순 (quest history 와 대칭).", "Campaign status change history — newest to oldest (mirrors quest history)."))]
     History { slug: String },
     #[command(about = tf!("상태 변경 → active", "Change status → active"))]
@@ -1633,6 +1651,39 @@ struct GlobalComment {
     reactions: String,
 }
 
+/// BUG-166: 규칙 원격(HTTP) 응답 DTO — server `routes/rules.rs` 의
+/// RulesListResponse / RuleResponse 와 1:1. 필요한 필드만 받는다(serde 는
+/// 나머지를 무시하므로 서버가 필드를 더해도 안 깨진다).
+#[derive(Debug, Deserialize)]
+struct RulesListDto {
+    entries: Vec<openguild_core::repo::rules::RuleEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RuleDto {
+    /// 파일 부재 시 null — 로컬 모드의 `Option<String>` 과 같은 의미.
+    content: Option<String>,
+}
+
+/// BUG-166: URL 경로 세그먼트 인코딩.
+///
+/// 규칙 slug 는 **공백을 포함할 수 있다**(`[[코딩 규칙]]` 처럼 파일명이 곧
+/// slug — BUG-156). 그대로 경로에 끼우면 원격 요청이 깨지므로 unreserved
+/// 문자(RFC 3986: ALPHA / DIGIT / `-` `.` `_` `~`)만 남기고 나머지는 %XX 로
+/// 바꾼다. 의존성을 새로 넣지 않기 위한 최소 구현.
+fn urlenc(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.as_bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                out.push(*b as char)
+            }
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
+}
+
 /// DEV-216: 도서관 문서 DTO — 서버 응답(BookResponse: book_id + flatten row)과
 /// 동일 형태. 로컬 모드는 LibraryDocRow 에서 변환.
 #[derive(Debug, Serialize, Deserialize)]
@@ -2199,6 +2250,26 @@ impl Backend {
         }
     }
 
+    /// DEV-280: 임의 필드 수정 — Http 는 기존 `campaign_update` 를 그대로,
+    /// Local 은 slug→id 해석 후 core ops 호출(campaign_set_status 와 같은 흐름).
+    fn campaign_update(
+        &self,
+        slug: &str,
+        req: openguild_core::models::UpdateCampaignRequest,
+    ) -> Result<openguild_core::models::CampaignRow> {
+        match self {
+            Backend::Http(c) => c.campaign_update(slug, &req),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(async {
+                let row = openguild_core::services::campaigns::fetch_by_slug(
+                    &l.store.index_pool,
+                    slug,
+                )
+                .await?;
+                openguild_core::ops::campaigns::update_campaign(&l.store, row.id, req).await
+            })),
+        }
+    }
+
     fn campaign_set_status(
         &self,
         slug: &str,
@@ -2396,18 +2467,33 @@ impl Backend {
 
     // ── DEV-016 (multi-file): 길드 규칙 — local 전용 (HTTP 미지원 우선) ──
 
+    // ── BUG-166: rules 도 local + remote(HTTP /api/rules) 둘 다 지원 ──
+    //
+    // 서버에는 처음부터 `/api/rules*` 라우트가 다 있는데 CLI 만
+    // http_unsupported_meta() 로 막고 있었다(도서관·댓글 등은 원격을 지원해
+    // 비대칭). 응답 DTO 는 server `routes/rules.rs` 와 1:1 로 맞춘다.
+
+    /// `GET /api/rules` → `{ entries: [...] }`.
     fn rules_list(&self) -> Result<Vec<openguild_core::repo::rules::RuleEntry>> {
         match self {
-            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Http(c) => {
+                let resp: RulesListDto = c.get("/api/rules")?;
+                Ok(resp.entries)
+            }
             Backend::Local(l) => Self::map_err(Ok::<_, openguild_core::error::AppError>(
                 openguild_core::ops::rules::list_rules(&l.store)?,
             )),
         }
     }
 
+    /// `GET /api/rules/{slug}` → `{ slug, content: null 가능, ... }`.
+    /// 파일 부재는 `content: null` 로 오므로 Option 그대로 전달한다.
     fn rules_get(&self, slug: &str) -> Result<Option<String>> {
         match self {
-            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Http(c) => {
+                let resp: RuleDto = c.get(&format!("/api/rules/{}", urlenc(slug)))?;
+                Ok(resp.content)
+            }
             Backend::Local(l) => Self::map_err(Ok::<_, openguild_core::error::AppError>(
                 openguild_core::ops::rules::get_rule(&l.store, slug)?,
             )),
@@ -2416,7 +2502,11 @@ impl Backend {
 
     fn rules_set(&self, slug: &str, content: String) -> Result<()> {
         match self {
-            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Http(c) => {
+                let _: RuleDto =
+                    c.put(&format!("/api/rules/{}", urlenc(slug)), &serde_json::json!({ "content": content }))?;
+                Ok(())
+            }
             Backend::Local(l) => Self::map_err(l.rt.block_on(
                 openguild_core::ops::rules::set_rule(&l.store, slug, content),
             )),
@@ -2425,7 +2515,11 @@ impl Backend {
 
     fn rules_create(&self, slug: &str, content: String) -> Result<()> {
         match self {
-            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Http(c) => {
+                let _: RuleDto =
+                    c.post("/api/rules", &serde_json::json!({ "slug": slug, "content": content }))?;
+                Ok(())
+            }
             Backend::Local(l) => Self::map_err(l.rt.block_on(
                 openguild_core::ops::rules::create_rule(&l.store, slug, content),
             )),
@@ -2434,7 +2528,7 @@ impl Backend {
 
     fn rules_delete(&self, slug: &str) -> Result<()> {
         match self {
-            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Http(c) => c.delete_no_body(&format!("/api/rules/{}", urlenc(slug))),
             Backend::Local(l) => Self::map_err(l.rt.block_on(
                 openguild_core::ops::rules::delete_rule(&l.store, slug),
             )),
@@ -2443,7 +2537,13 @@ impl Backend {
 
     fn rules_rename(&self, old_slug: &str, new_slug: &str) -> Result<()> {
         match self {
-            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Http(c) => {
+                let _: RuleDto = c.patch(
+                    &format!("/api/rules/{}", urlenc(old_slug)),
+                    &serde_json::json!({ "new_slug": new_slug }),
+                )?;
+                Ok(())
+            }
             Backend::Local(l) => Self::map_err(l.rt.block_on(
                 openguild_core::ops::rules::rename_rule(&l.store, old_slug, new_slug),
             )),
@@ -2458,7 +2558,7 @@ impl Backend {
         slug: &str,
     ) -> Result<Vec<openguild_core::repo::history::HistoryEntry>> {
         match self {
-            Backend::Http(c) => c.get(&format!("/api/rules/{slug}/history")),
+            Backend::Http(c) => c.get(&format!("/api/rules/{}/history", urlenc(slug))),
             Backend::Local(l) => {
                 Self::map_err(openguild_core::ops::rules::history(&l.store, slug))
             }
@@ -4391,6 +4491,39 @@ fn handle_campaign(c: &Backend, json: bool, sub: CampaignCmd) -> Result<()> {
                 started_at,
                 ended_at,
             })?;
+            print_row(&row, json);
+        }
+        // DEV-280: 제목 / 본문 / 기간 수정. 아무 필드도 안 주면 no-op 이 되어
+        // "고쳤다고 착각"하기 쉬우므로 거부한다.
+        CampaignCmd::Update {
+            slug,
+            title,
+            description,
+            description_file,
+            started_at,
+            ended_at,
+        } => {
+            let description = resolve_description_input(description, description_file)?;
+            if title.is_none()
+                && description.is_none()
+                && started_at.is_none()
+                && ended_at.is_none()
+            {
+                return Err(anyhow!(tf!(
+                    "수정할 항목이 없음 — --title / --description(-file) / --start / --end 중 하나는 필요",
+                    "nothing to update — one of --title / --description(-file) / --start / --end is required"
+                )));
+            }
+            let row = c.campaign_update(
+                &slug,
+                openguild_core::models::UpdateCampaignRequest {
+                    title,
+                    description,
+                    started_at,
+                    ended_at,
+                    ..Default::default()
+                },
+            )?;
             print_row(&row, json);
         }
         CampaignCmd::List { status, table } => {

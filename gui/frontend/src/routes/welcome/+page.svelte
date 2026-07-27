@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '$lib/components/Icon.svelte';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	// DEV-205 모듈1: Welcome 문자열 i18n.
@@ -508,7 +509,7 @@
 									: t('welcome.serverUnreachable', $locale)}
 						>
 							<div class="row">
-								<span class="name">🌐 {entry.name}</span>
+								<span class="name"><Icon name="globe" /> {entry.name}</span>
 								<span class="last">{fmtDate(entry.last_opened)}</span>
 							</div>
 							<div class="path">{entry.url}</div>

@@ -8,6 +8,7 @@
   - overdue 인 항목은 빨간 stroke 강조 (overlayColor).
 -->
 <script lang="ts">
+	import PlayPauseIcon from './PlayPauseIcon.svelte';
 	import { onMount, onDestroy, tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import type { Quest } from '$lib/types';
@@ -250,7 +251,7 @@
 				aria-label={userPaused ? t('carousel.play', $locale) : t('carousel.pause', $locale)}
 				title={userPaused ? t('carousel.autoPlay', $locale) : t('carousel.autoPause', $locale)}
 			>
-				{userPaused ? '▶' : '⏸'}
+				<PlayPauseIcon paused={userPaused} />
 			</button>
 		</div>
 	{/if}

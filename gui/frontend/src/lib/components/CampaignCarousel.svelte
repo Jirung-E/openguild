@@ -7,6 +7,7 @@
   - 카드 1개면 화살표 / dots 숨김.
 -->
 <script lang="ts">
+	import PlayPauseIcon from './PlayPauseIcon.svelte';
 	import { onMount, onDestroy } from 'svelte';
 	import type { CampaignSummary } from '$lib/types';
 	import CampaignCard from './CampaignCard.svelte';
@@ -114,7 +115,7 @@
 					aria-label={userPaused ? t('carousel.play', $locale) : t('carousel.pause', $locale)}
 					title={userPaused ? t('carousel.autoPlay', $locale) : t('carousel.autoPause', $locale)}
 				>
-					{userPaused ? '▶' : '⏸'}
+					<PlayPauseIcon paused={userPaused} />
 				</button>
 			</div>
 		{/if}

@@ -13,6 +13,7 @@
   (cross-link 대상 — DEV-218).
 -->
 <script lang="ts">
+	import Icon from '$lib/components/Icon.svelte';
 	import { onMount, onDestroy } from 'svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
@@ -677,7 +678,7 @@
 				ondragleave={() => (dragOverFolder = null)}
 				ondrop={(e) => explorerPath && onTileDrop(e, parentOf(explorerPath))}
 			>
-				⬆
+				<Icon name="up" />
 			</button>
 			<button
 				class="crumb"
@@ -771,7 +772,7 @@
 							     같은 자리가 비면 아이콘 높이가 서로 어긋난다(사용자 지적). 빈
 							     자리표시자로 높이를 맞춘다. -->
 							<span class="tile-sub" aria-hidden="true"></span>
-							<span class="tile-icon" aria-hidden="true">📁</span>
+							<span class="tile-icon" aria-hidden="true"><Icon name="folder" size={28} /></span>
 							<span class="tile-label" use:titlePopup={f.name}>{f.name}</span>
 						</button>
 					{/each}
@@ -783,7 +784,7 @@
 							onclick={() => select(b.book_id)}
 						>
 							<span class="tile-sub">{b.book_id}</span>
-							<span class="tile-icon" aria-hidden="true">📄</span>
+							<span class="tile-icon" aria-hidden="true"><Icon name="doc" size={28} /></span>
 							<span class="tile-label" use:titlePopup={b.title}>{b.title}</span>
 						</button>
 					{/each}
@@ -809,7 +810,7 @@
 						     같은 자리가 비면 아이콘 높이가 서로 어긋난다(사용자 지적). 빈
 						     자리표시자로 높이를 맞춘다. -->
 						<span class="tile-sub" aria-hidden="true"></span>
-						<span class="tile-icon" aria-hidden="true">📁</span>
+						<span class="tile-icon" aria-hidden="true"><Icon name="folder" size={28} /></span>
 						<span class="tile-label" use:titlePopup={f.name}>{f.name}</span>
 					</button>
 				{/each}
@@ -821,7 +822,7 @@
 						onclick={() => select(b.book_id)}
 					>
 						<span class="tile-sub">{b.book_id}</span>
-						<span class="tile-icon" aria-hidden="true">📄</span>
+						<span class="tile-icon" aria-hidden="true"><Icon name="doc" size={28} /></span>
 						<span class="tile-label" use:titlePopup={b.title}>{b.title}</span>
 					</button>
 				{/each}
@@ -910,7 +911,7 @@
 							<div class="book-list">
 								{#each searchResults.folders as f (f.path)}
 									<button class="book-item" onclick={() => revealFolder(f.path)}>
-										<span class="book-id">📁</span>
+										<span class="book-id"><Icon name="folder" /></span>
 										<span class="book-title">{f.name}</span>
 										<span class="book-path">{f.path}</span>
 									</button>
@@ -1035,7 +1036,7 @@
 					</div>
 
 					{#if selected.path}
-						<p class="doc-path">📁 {selected.path}</p>
+						<p class="doc-path"><Icon name="folder" /> {selected.path}</p>
 					{/if}
 
 					<!-- DEV-182: 생성 / 변경 시각. -->

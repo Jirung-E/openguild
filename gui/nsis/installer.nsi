@@ -14,6 +14,9 @@ ManifestDPIAwareness PerMonitorV2
 !endif
 
 !include MUI2.nsh
+; BUG-151: SF_SELECTED / SECTION_OFF (섹션 선택 플래그) — MUI2 는 이 헤더를
+; 포함하지 않는다. 중복 include 는 헤더 자체 가드로 무해.
+!include Sections.nsh
 !include FileFunc.nsh
 !include x64.nsh
 !include WordFunc.nsh
@@ -521,11 +524,26 @@ Function .onInit
     Call RestorePreviousInstallLocation
   ${EndIf}
 
+  ; BUG-151: /UPDATE (Tauri auto-update) skips MUI_PAGE_COMPONENTS because it
+  ; runs passive, so section defaults apply. SecServer is `Section /o`
+  ; (unchecked by default) and update mode never uninstalls the old files, so a
+  ; user who originally chose the HTTP server ended up with a NEW gui/cli but a
+  ; STALE openguild-server.exe — a silent version skew that can reproduce the
+  ; schema-ahead class of bugs (BUG-041).
+  ;
+  ; Restore what was actually installed instead of the defaults:
+  ;   1. registry marker written by each section (authoritative, added here), or
+  ;   2. file presence in $INSTDIR (fallback for installs predating the marker).
+  ; Must run after $INSTDIR is resolved above, and before the components page.
+  ${If} $UpdateMode = 1
+    Call RestoreComponentSelection
+  ${EndIf}
 
   !if "${INSTALLMODE}" == "both"
     !insertmacro MULTIUSER_INIT
   !endif
 FunctionEnd
+
 
 
 Section EarlyChecks
@@ -749,12 +767,18 @@ SectionEnd
 Section "Command-Line Tool (openguild)" SecCli
   SetOutPath $INSTDIR
   File "/oname=openguild.exe" "..\..\openguild.exe"
+  ; BUG-151: record the choice so /UPDATE can restore it (see
+  ; RestoreComponentSelection). Written on every install/update run.
+  WriteRegDWORD SHCTX "${UNINSTKEY}" "CompCli" 1
 SectionEnd
 
 ; DEV-034: Section /o "HTTP Server (openguild-server)" — default UNCHECKED (/o).
 Section /o "HTTP Server (openguild-server)" SecServer
   SetOutPath $INSTDIR
   File "/oname=openguild-server.exe" "..\..\openguild-server.exe"
+  ; BUG-151: record the choice so /UPDATE keeps the server updated instead of
+  ; leaving a stale binary behind.
+  WriteRegDWORD SHCTX "${UNINSTKEY}" "CompServer" 1
 SectionEnd
 
 ; DEV-034: Section "Add to PATH" — default checked.
@@ -794,6 +818,62 @@ LangString DESC_SecPath ${LANG_ENGLISH} "Add openguild install dir to system PAT
   !insertmacro MUI_DESCRIPTION_TEXT ${SecServer} $(DESC_SecServer)
   !insertmacro MUI_DESCRIPTION_TEXT ${SecPath} $(DESC_SecPath)
 !insertmacro MUI_FUNCTION_DESCRIPTION_END
+
+; BUG-151: 섹션 선언(`Section ... SecServer`) 뒤에 둬야 한다 — `${SecServer}`
+; 같은 섹션 인덱스 define 은 그 Section 을 파싱할 때 생기므로, 위쪽에 두면
+; 컴파일 시점에 미정의가 된다. `.onInit` 의 Call 은 전방 참조가 허용된다.
+; BUG-151: turn a section's selected flag on/off.
+!macro SetSectionSelected SECID SELECTED
+  SectionGetFlags ${SECID} $R9
+  !if "${SELECTED}" == "1"
+    IntOp $R9 $R9 | ${SF_SELECTED}
+  !else
+    IntOp $R9 $R9 & ${SECTION_OFF}
+  !endif
+  SectionSetFlags ${SECID} $R9
+!macroend
+
+; BUG-151: keep the previous component choice on update.
+;
+; `$R8` = 1/0 decision per component. Registry marker wins; when it is absent
+; (older install) fall back to whether the binary is on disk — its presence is
+; proof the component was selected before.
+Function RestoreComponentSelection
+  ; ── HTTP server ──
+  ClearErrors
+  ReadRegDWORD $R8 SHCTX "${UNINSTKEY}" "CompServer"
+  ${If} ${Errors}
+    ${If} ${FileExists} "$INSTDIR\openguild-server.exe"
+      StrCpy $R8 1
+    ${Else}
+      StrCpy $R8 0
+    ${EndIf}
+  ${EndIf}
+  ${If} $R8 = 1
+    DetailPrint "Update: keeping HTTP server component"
+    !insertmacro SetSectionSelected ${SecServer} 1
+  ${Else}
+    !insertmacro SetSectionSelected ${SecServer} 0
+  ${EndIf}
+
+  ; ── CLI ── (reverse case: user deselected it, but SecCli defaults to checked
+  ; so an update would silently add it)
+  ClearErrors
+  ReadRegDWORD $R8 SHCTX "${UNINSTKEY}" "CompCli"
+  ${If} ${Errors}
+    ${If} ${FileExists} "$INSTDIR\openguild.exe"
+      StrCpy $R8 1
+    ${Else}
+      StrCpy $R8 0
+    ${EndIf}
+  ${EndIf}
+  ${If} $R8 = 1
+    !insertmacro SetSectionSelected ${SecCli} 1
+  ${Else}
+    DetailPrint "Update: CLI was not installed — skipping"
+    !insertmacro SetSectionSelected ${SecCli} 0
+  ${EndIf}
+FunctionEnd
 
 Function .onInstSuccess
   ; Check for `/R` flag only in silent and passive installers because

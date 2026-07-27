@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '$lib/components/Icon.svelte';
 	import { page } from '$app/stores';
 	import { onMount, onDestroy } from 'svelte';
 	// DEV-153: 편집 중이면 이탈 가드에 보고.
@@ -661,7 +662,7 @@
 		{#if detail && !editMode}
 			<div class="top-actions">
 				<button class="btn-edit" onclick={enterEditMode}>✎ {t('detail.edit', $locale)}</button>
-				<button class="btn-delete" onclick={openDeleteModal}>🗑 {t('detail.delete', $locale)}</button>
+				<button class="btn-delete" onclick={openDeleteModal}><Icon name="trash" /> {t('detail.delete', $locale)}</button>
 			</div>
 		{/if}
 	</div>
@@ -1297,13 +1298,13 @@
 				title={t('common.jumpComments', $locale)}
 				aria-label={t('common.jumpComments', $locale)}
 			>
-				<span class="jb-icon">💬</span>
+				<span class="jb-icon"><Icon name="comment" /></span>
 				<span class="jb-label">{t('common.jumpCommentsShort', $locale)}</span>
 			</button>
 		{/if}
 		{#if showMemoJump}
 			<button class="jump-btn" onclick={jumpToMemo} title={t('common.jumpMemo', $locale)} aria-label={t('common.jumpMemo', $locale)}>
-				<span class="jb-icon">📝</span>
+				<span class="jb-icon"><Icon name="memo" /></span>
 				<span class="jb-label">{t('common.jumpMemoShort', $locale)}</span>
 			</button>
 		{/if}

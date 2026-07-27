@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from './Icon.svelte';
 	import { goto } from '$app/navigation';
 	import { urgencyColor, urgencyLabel, urgencyOutOfRange, type Quest } from '$lib/types';
 	// DEV-015: status 표시 이름 — 언어 반응.
@@ -64,7 +65,7 @@
 	<!-- DEV-116: 댓글 개수 — 0 이면 표시 X. -->
 	{#if (quest.comment_count ?? 0) > 0}
 		<span class="comment-count" title={`댓글 ${quest.comment_count}개`}>
-			<span class="cc-icon">💬</span><span>{quest.comment_count}</span>
+			<span class="cc-icon"><Icon name="comment" size={12} /></span><span>{quest.comment_count}</span>
 		</span>
 	{/if}
 

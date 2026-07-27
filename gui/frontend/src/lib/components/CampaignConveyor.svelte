@@ -8,6 +8,7 @@
    - 정지/재생 버튼 추가 (CampaignCarousel 과 동일 패턴).
 -->
 <script lang="ts">
+	import PlayPauseIcon from './PlayPauseIcon.svelte';
 	import { onMount, onDestroy, tick } from 'svelte';
 	import type { CampaignSummary } from '$lib/types';
 	import CampaignCard from './CampaignCard.svelte';
@@ -221,7 +222,7 @@
 				aria-label={userPaused ? t('carousel.play', $locale) : t('carousel.pause', $locale)}
 				title={userPaused ? t('carousel.autoPlay', $locale) : t('carousel.autoPause', $locale)}
 			>
-				{userPaused ? '▶' : '⏸'}
+				<PlayPauseIcon paused={userPaused} />
 			</button>
 		</div>
 	{/if}

@@ -9,6 +9,7 @@
   (기존 "폴더 이동" 버튼과 동일 동작 — HTML5 드래그&드롭 문법).
 -->
 <script lang="ts">
+	import Icon from './Icon.svelte';
 	import type { FolderNode } from '$lib/utils/library-tree';
 	import LibraryFolderTree from './LibraryFolderTree.svelte';
 	// DEV-205(2차): i18n.
@@ -69,7 +70,7 @@
 	>
 		{collapsed ? '▶' : '▼'}
 	</button>
-	<span class="folder-icon" aria-hidden="true">📁</span>
+	<span class="folder-icon" aria-hidden="true"><Icon name="folder" /></span>
 	<span class="folder-name">{node.name}</span>
 	<button
 		class="folder-del"
