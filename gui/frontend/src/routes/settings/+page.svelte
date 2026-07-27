@@ -651,6 +651,36 @@
 		flex: 1;
 		min-width: 0;
 	}
+	/* DEV-257(사용자 보고): 375px 급 화면에서 160px 고정 탭 열이 화면의 절반
+	   가까이를 먹어 설정 내용이 밀렸다. 좁은 화면에서는 탭을 위로 올려 가로
+	   한 줄(넘치면 그 줄만 스크롤)로 두고 본문이 전폭을 쓰게 한다. */
+	@media (max-width: 640px) {
+		.settings {
+			flex-direction: column;
+			gap: 1rem;
+			padding: 1rem;
+		}
+		.side {
+			flex: none;
+		}
+		.side h1 {
+			margin-bottom: 0.5rem;
+		}
+		.side nav {
+			flex-direction: row;
+			overflow-x: auto;
+			/* 탭이 세로로 눌리지 않게 — 줄바꿈 대신 그 줄만 스크롤. */
+			padding-bottom: 0.25rem;
+			scrollbar-width: none;
+		}
+		.side nav::-webkit-scrollbar {
+			display: none;
+		}
+		.tab {
+			flex: none;
+			white-space: nowrap;
+		}
+	}
 	.panel h2 {
 		font-size: 1rem;
 		color: var(--text);

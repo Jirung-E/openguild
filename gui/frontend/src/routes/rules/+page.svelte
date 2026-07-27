@@ -547,6 +547,22 @@
 		gap: 1.25rem;
 		min-height: 70vh;
 	}
+	/* DEV-257(사용자 보고): 도서관과 동일 — 좁은 화면에서 240px 고정 열이
+	   화면 대부분을 먹고 컨텐츠가 화면 밖으로 밀려 가로 스크롤/메뉴바 잘림이
+	   생겼다. 한 열로 쌓고 sidebar 는 자체 스크롤로 높이 제한. */
+	@media (max-width: 640px) {
+		.layout {
+			grid-template-columns: 1fr;
+		}
+		.sidebar {
+			border-right: none;
+			border-bottom: 1px solid var(--bg-subtle);
+			padding-right: 0;
+			padding-bottom: 0.75rem;
+			max-height: 40vh;
+			overflow-y: auto;
+		}
+	}
 	.sidebar {
 		border-right: 1px solid var(--bg-subtle);
 		padding-right: 1rem;

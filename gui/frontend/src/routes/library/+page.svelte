@@ -1183,6 +1183,26 @@
 	.layout.single {
 		grid-template-columns: 1fr;
 	}
+	/* DEV-257(사용자 보고): 375px 급 화면에서 260px 고정 sidebar 가 화면의
+	   2/3 를 먹고, 남은 `1fr` 열은 min-content 아래로 못 줄어들어 컨텐츠가
+	   화면 밖으로 밀렸다 — 페이지에 가로 스크롤이 생기고 sticky 메뉴바까지
+	   잘려 보였다. 좁은 화면에서는 위/아래로 쌓고, sidebar 는 자체 스크롤
+	   영역으로 높이를 제한해 컨텐츠가 화면 아래로 밀려나지 않게 한다. */
+	@media (max-width: 640px) {
+		.layout,
+		.layout.single {
+			grid-template-columns: 1fr;
+		}
+		/* 두 열이 한 열로 쌓이면 세로 구분선이 의미를 잃는다. */
+		.sidebar {
+			border-right: none;
+			border-bottom: 1px solid var(--bg-subtle);
+			padding-right: 0;
+			padding-bottom: 0.75rem;
+			max-height: 45vh;
+			overflow-y: auto;
+		}
+	}
 	.sidebar {
 		border-right: 1px solid var(--bg-subtle);
 		padding-right: 1rem;
