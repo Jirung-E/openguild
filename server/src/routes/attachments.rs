@@ -57,12 +57,15 @@ pub async fn save_attachment(
     // request body")이 그대로 노출된다. 원본 기준으로 한 번 더 확인해 한도를
     // 밝힌 메시지를 준다.
     if bytes.len() > MAX_ATTACHMENT_BYTES {
+        // handler 의 Err 타입은 HttpError — `?` 는 From 으로 자동 변환되지만
+        // 명시적 return 은 변환이 없어 .into() 가 필요하다.
         return Err(AppError::BadRequest(openguild_core::tf!(
             "첨부 파일이 너무 큽니다 ({} MB) — 최대 {} MB",
             "attachment too large ({} MB) — maximum {} MB",
             bytes.len() / (1024 * 1024),
             MAX_ATTACHMENT_BYTES / (1024 * 1024)
-        )));
+        ))
+        .into());
     }
     let rel = ops::save_attachment(&store, &bytes, &body.ext).await?;
     Ok(Json(rel))

@@ -100,6 +100,18 @@ if ([string]::IsNullOrWhiteSpace($body)) {
     throw "'## $version' 절이 비어 있음 — 릴리스 노트 없이 배포하지 않는다"
 }
 
+# 절이 곧바로 `### Added` 로 시작하면 요약 문단이 없다는 뜻. 카테고리별 목록만
+# 나열하면 릴리스 페이지에서 "이번 버전이 뭘 바꿨는지"가 안 읽힌다 — 사람이
+# 직접 써야 하는 부분이라 자동 생성하지 않고 여기서 막는다(release-process 규칙).
+if ($body -match '^###\s') {
+    throw @"
+'## $version' 절에 요약 문단이 없다 — 카테고리 목록(### …) 앞에 이번 릴리스의
+요약을 먼저 쓸 것. 형식은 release-process 규칙 참고:
+  1) 2~4줄 문단 — 이 릴리스가 무엇을 바꿨는지, 사용자 관점으로.
+  2) '**주요 변경점**' + 3~5개 불릿 — 굵은 제목 + 무엇이 달라졌는지 + (퀘스트 ID).
+"@
+}
+
 # 자동 생성 노트가 붙여주던 compare 링크를 직접 붙인다(이전 버전이 있을 때만).
 if ($Repo -and $prevVersion) {
     $body += "`n`n**Full Changelog**: https://github.com/$Repo/compare/v$prevVersion...$Tag"
