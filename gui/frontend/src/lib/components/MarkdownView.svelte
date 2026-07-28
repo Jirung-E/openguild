@@ -23,6 +23,8 @@
 		loadQuestIndex,
 		refHref,
 		resolveCrossLinkToken,
+		// BUG-173: missing 발견 시 쿨다운 1회 재적재(자가 치유).
+		refreshIndexForMissing,
 		KIND_LABEL,
 		type Kind
 	} from '$lib/stores/questIndex';
@@ -302,6 +304,15 @@
 				frag.appendChild(document.createTextNode(text.slice(last)));
 			}
 			textNode.parentNode?.replaceChild(frag, textNode);
+		}
+
+		// BUG-173: missing 이 하나라도 남았으면 인덱스를 한 번 다시 받아본다.
+		// 인덱스는 세션당 1회 적재라, GUI 를 켜둔 채 CLI/에이전트가 만든 문서를
+		// 가리키는 링크는 실재하는데도 계속 빨강이었다. 쿨다운이 있어 매 렌더마다
+		// 네트워크를 때리지 않고, 성공 시 $questIndex 변경 → 위 재-resolve 경로로
+		// 자동 반영된다(진짜 없는 링크는 그대로 빨강).
+		if (container.querySelector('a.xlink.missing')) {
+			refreshIndexForMissing();
 		}
 	}
 

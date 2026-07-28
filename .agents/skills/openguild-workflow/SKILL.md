@@ -142,9 +142,13 @@ ID 를 확인한다.
 ```bash
 # 퀘스트 생성 (본문이 - 로 시작하면 = 형식)
 openguild quest new --type DEV --urgency 3 --title "..." "--description=..."
-# 댓글 (한글은 반드시 파일 경유)
+# 댓글 — `--author` 는 **항상 필수**(누가 썼는지 남지 않으면 나중에 추적 불가).
+# 한글 본문은 반드시 파일 경유(stdin/인자는 콘솔 인코딩에 깨짐).
 openguild quest comment add {ID} --author {자기 이름} --file /path/utf8.md
 openguild quest comment add {ID} --author {자기 이름} --parent-id N --file ...   # 답글
+# 메모/반응도 동일 — 댓글 계열 명령은 전부 --author 를 붙인다.
+openguild quest memo set {ID} --author {자기 이름} --file /path/utf8.md
+openguild quest comment react {ID} {댓글번호} --emoji 👍 --author {자기 이름}
 # 계획/설계는 본문 확정사항, 논의/보고는 댓글 — 사용자 피드백엔 답글(parent-id)로
 openguild campaign list && openguild campaign show C-XXX   # 현재 마일스톤 파악
 openguild rule show restore-behavior                       # restore 동작 정리 문서 (DEV-231: `rules` alias 제거됨 — `rule` 만)

@@ -98,22 +98,46 @@ function nsKey(kind: Kind, id: string): string {
 
 /**
  * 인덱스 적재 — 최초 1회 fetch 후 메모. `force` 면 재적재 (reindex 후).
- * 실패해도 조용히 빈 채로 둔다 (cross-link 은 보조 기능, 본문 표시 방해 X).
+ *
+ * BUG-173: 실패는 **조용히 넘기되 memo 하지 않는다**. 예전엔 어떤 이유로든
+ * 실패해도 `loaded` 판정이 어긋나 인덱스가 굳어버려, 실재하는 문서의
+ * cross-link 가 계속 빨강으로 남았다. 아래 세 가지를 지킨다:
+ *
+ * 1. **네 소스 모두 개별 catch** — 하나가 실패해도 나머지는 인덱스에 들어간다
+ *    (예전엔 quests/campaigns 에 catch 가 없어 하나만 실패해도 `Promise.all`
+ *    이 reject → 인덱스가 통째로 빈 채로 남았다).
+ * 2. **하나라도 실패하면 `loaded` 를 세우지 않는다** — 다음 호출이 재시도한다.
+ *    예전엔 rules/library 가 null 이어도 `loaded = true` 라 그 종류의 링크는
+ *    세션 내내 빨강으로 고착됐다.
+ * 3. **실패분은 기존 값을 보존** — 새로 못 받은 종류는 이전 인덱스 항목을
+ *    유지해, 일시적 실패가 이미 잘 보이던 링크를 빨갛게 만들지 않는다.
  */
 export async function loadQuestIndex(force = false): Promise<void> {
 	if (loaded && !force) return;
 	if (inflight) return inflight;
 	inflight = (async () => {
 		try {
-			// DEV-173: 규칙도 인덱스에 — 실패해도 quest/campaign 은 살린다
-			// (rules 는 보조 대상이라 개별 catch).
+			// BUG-173: 네 소스 모두 개별 catch — 부분 실패를 전체 실패로 만들지 않는다.
 			const [quests, campaigns, rules, books] = await Promise.all([
-				questsApi.list(),
-				campaignsApi.list(),
-				rulesApi.list().catch(() => null),
+				questsApi.list().catch((e) => {
+					console.warn('[questIndex] quests 적재 실패 — 재시도 예정', e);
+					return null;
+				}),
+				campaignsApi.list().catch((e) => {
+					console.warn('[questIndex] campaigns 적재 실패 — 재시도 예정', e);
+					return null;
+				}),
+				rulesApi.list().catch((e) => {
+					console.warn('[questIndex] rules 적재 실패 — 재시도 예정', e);
+					return null;
+				}),
 				// DEV-218: 도서관 — rules 와 같은 이유로 개별 catch.
-				libraryApi.list().catch(() => null)
+				libraryApi.list().catch((e) => {
+					console.warn('[questIndex] library 적재 실패 — 재시도 예정', e);
+					return null;
+				})
 			]);
+			const allOk = !!quests && !!campaigns && !!rules && !!books;
 			const ns = new Map<string, IndexedRef>();
 			const bare = new Map<string, IndexedRef>();
 			// DEV-219: bare 맵은 quest > campaign > library > rules 우선순위 —
@@ -132,26 +156,61 @@ export async function loadQuestIndex(force = false): Promise<void> {
 				ns.set(nsKey('book', b.book_id), ref);
 				bare.set(b.book_id.toUpperCase(), ref);
 			}
-			for (const c of campaigns) {
+			for (const c of campaigns ?? []) {
 				const ref: IndexedRef = { title: c.title, kind: 'campaign' };
 				ns.set(nsKey('campaign', c.campaign_slug), ref);
 				bare.set(c.campaign_slug.toUpperCase(), ref);
 			}
-			for (const q of quests) {
+			for (const q of quests ?? []) {
 				const ref: IndexedRef = { title: q.title, kind: 'quest' };
 				ns.set(nsKey('quest', q.quest_id), ref);
 				bare.set(q.quest_id.toUpperCase(), ref);
 			}
+			// BUG-173(3): 실패한 종류는 이전 값을 보존 — 일시 실패가 이미 잘
+			// 보이던 링크를 빨갛게 만들지 않도록 기존 항목 위에 덮어쓴다.
+			if (!allOk) {
+				for (const [k, v] of get(questIndex)) if (!bare.has(k)) bare.set(k, v);
+				for (const [k, v] of get(questIndexNs)) if (!ns.has(k)) ns.set(k, v);
+			}
 			questIndex.set(bare);
 			questIndexNs.set(ns);
-			loaded = true;
-		} catch {
-			/* 보조 기능 — 실패 시 빈 인덱스 유지 */
+			// BUG-173(2): 전부 성공했을 때만 memo — 아니면 다음 호출이 재시도.
+			loaded = allOk;
+		} catch (e) {
+			// 개별 catch 가 있어 여기까지 오는 건 예기치 못한 경우 — 조용히
+			// 삼키지 말고 남긴다(진단 불가가 이 버그의 원인 중 하나였다).
+			console.warn('[questIndex] 인덱스 적재 중 예기치 못한 오류', e);
 		} finally {
 			inflight = null;
 		}
 	})();
 	return inflight;
+}
+
+/**
+ * BUG-173: "실재하는데 빨강" 자가 치유 — missing 링크를 만났을 때 한 번만
+ * 인덱스를 다시 받아본다.
+ *
+ * 인덱스는 세션당 1회만 적재(memo)되는데, 이 프로젝트는 **CLI/에이전트가 GUI 를
+ * 켜둔 채로 퀘스트·문서를 계속 만든다**. 그렇게 나중에 생긴 문서를 가리키는
+ * cross-link 는 인덱스에 없으니 빨강으로 남고, 새로고침 타이밍에 따라 "될 때도
+ * 안 될 때도" 있는 것처럼 보였다.
+ *
+ * 그래서 렌더 결과에 missing 이 하나라도 있으면 **쿨다운(기본 15초) 안에서 1회**
+ * 강제 재적재를 예약한다. 성공하면 `questIndex` 가 갱신되고, 이미 그려진 anchor
+ * 들은 DEV-256 의 재-resolve 경로로 자동으로 파랑이 된다.
+ *
+ * 진짜로 없는 링크(오타 등)는 재적재해도 그대로 빨강이며, 쿨다운 때문에 매
+ * 렌더마다 네트워크를 때리지 않는다.
+ */
+const REFRESH_COOLDOWN_MS = 15_000;
+let lastMissingRefreshAt = 0;
+
+export function refreshIndexForMissing(): void {
+	const now = Date.now();
+	if (now - lastMissingRefreshAt < REFRESH_COOLDOWN_MS) return;
+	lastMissingRefreshAt = now;
+	void loadQuestIndex(true);
 }
 
 // reindex 후 인덱스 갱신 — 새로 추가된 퀘스트가 빨강 표시에서 벗어나도록.
