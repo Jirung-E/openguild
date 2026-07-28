@@ -129,7 +129,15 @@
 	let comboError = $state<string | null>(null);
 
 	// 서브퀘스트 신규 생성 모달
-	let showNewSubQuest = $state(false);
+	// DEV-278: 신규 생성으로 추가할 연관 종류. 예전엔 서브퀘스트 전용
+	// (`showNewSubQuest: boolean`)이라 선행/후속은 "이미 있는 퀘스트 연결"만
+	// 가능했다 — 아직 없는 선행을 만들려면 목록으로 나가 만들고 돌아와야 했다.
+	let newRelMode = $state<ComboMode | null>(null);
+	// 모달이 onclose→oncreated 순으로 부르는 탓에 newRelMode 는 콜백 시점에
+	// 이미 비어 있다. 생성 후 어떤 연관을 맺을지 기억해 두는 별도 변수.
+	let pendingRelMode: ComboMode | null = null;
+	// DEV-279: '연관 추가' 드롭다운 열림 상태.
+	let relMenuOpen = $state(false);
 
 	// 삭제 모달
 	let deleteModal = $state(false);
@@ -274,7 +282,7 @@
 		// 편집/모달 상태는 페이지 변경 시 모두 닫는다 (이전 quest 의 상태가 새 quest 에 누수되지 않도록)
 		editMode = false;
 		comboMode = null;
-		showNewSubQuest = false;
+		newRelMode = null;
 		deleteModal = false;
 		loading = true;
 		error = null;
@@ -458,9 +466,32 @@
 
 	// --- 서브퀘스트 생성 모달 ---
 
-	async function onSubQuestCreated() {
+	/**
+	 * DEV-278: 신규 생성 모달에서 퀘스트가 만들어진 뒤 연관을 맺는다.
+	 *
+	 * 서브퀘스트는 모달에 `parentQuestId` 를 넘겨 생성 시점에 이미 부모가
+	 * 잡히지만, 선행/후속은 생성 후 별도로 의존 관계를 걸어야 한다
+	 * (방향 주의: 선행 = 새 퀘스트가 이 퀘스트의 prereq,
+	 *            후속 = 이 퀘스트가 새 퀘스트의 prereq).
+	 */
+	async function onRelQuestCreated(created?: { id: number }) {
+		// NewQuestModal 은 `onclose()` 를 먼저 부르고 `oncreated()` 를 뒤에 부른다
+		// — onclose 가 newRelMode 를 이미 null 로 만들어 버려서, 여기서 읽으면
+		// 종류를 알 수 없다(실기에서 퀘스트는 생성됐는데 연결이 안 됐다).
+		// 그래서 모달을 열 때의 종류를 따로 붙잡아 둔다.
+		const mode = pendingRelMode;
+		pendingRelMode = null;
+		newRelMode = null;
+		try {
+			if (detail && created && mode === 'prereq') {
+				await questsApi.addPrerequisite(detail.id, created.id);
+			} else if (detail && created && mode === 'succ') {
+				await questsApi.addPrerequisite(created.id, detail.id);
+			}
+		} catch (e) {
+			showToast(e instanceof Error ? e.message : t('qd.addFailed', $locale), 'error');
+		}
 		// onclose 가 직접 호출돼도 reload 하도록 (oncreated 가 있어도 닫힘)
-		showNewSubQuest = false;
 		if (detail) detail = await questsApi.getBySlug(slug);
 	}
 
@@ -900,12 +931,14 @@
 			</section>
 		{/if}
 
-		<!-- 서브퀘스트 -->
+		<!-- DEV-279: 비어 있는 연관 섹션은 아예 숨긴다 — '없음' 문구가 세 줄
+		     차지해 정작 내용이 아래로 밀렸다. 추가는 '연관 추가' 메뉴로. -->
+		{#if detail.sub_quests.length > 0}
 		<section>
 			<div class="section-head">
 				<h2 class="section-title sub-label">{t('quest.section.subQuests', $locale)}</h2>
 				{#if !editMode}
-					<button class="sec-add-btn" onclick={() => (showNewSubQuest = true)}>{t('qd.newSub', $locale)}</button>
+					<button class="sec-add-btn" onclick={() => { pendingRelMode = 'sub'; newRelMode = 'sub'; }}>{t('qd.newSub', $locale)}</button>
 					<button class="sec-add-btn" onclick={() => openCombo('sub')}>{t('qd.assignExisting', $locale)}</button>
 				{/if}
 			</div>
@@ -930,12 +963,12 @@
 						</li>
 					{/each}
 				</ul>
-			{:else}
-				<p class="no-desc">{t('qd.noSubQuests', $locale)}</p>
 			{/if}
 		</section>
+		{/if}
 
 		<!-- 선행 퀘스트 -->
+		{#if detail.prerequisites.length > 0}
 		<section>
 			<div class="section-head">
 				<h2 class="section-title prereq-label">{t('quest.section.prerequisites', $locale)}</h2>
@@ -965,13 +998,13 @@
 						</li>
 					{/each}
 				</ul>
-			{:else}
-				<p class="no-desc">{t('qd.noPrereqs', $locale)}</p>
 			{/if}
 		</section>
+		{/if}
 
 		<!-- DEV-070: 후속 퀘스트 — 본 quest 를 선행으로 가진 quest 들 (역방향
 			참조). DEV-124: 추가 버튼. -->
+		{#if (detail.successors ?? []).length > 0}
 		<section>
 			<div class="section-head">
 				<h2 class="section-title succ-label">{t('quest.section.successors', $locale)}</h2>
@@ -1003,10 +1036,55 @@
 						</li>
 					{/each}
 				</ul>
-			{:else}
-				<p class="no-desc">{t('qd.noSuccessors', $locale)}</p>
 			{/if}
 		</section>
+		{/if}
+
+		<!-- DEV-279: 연관 추가 진입점. 빈 섹션을 숨겼으므로 "아직 없는 종류"를
+		     추가할 자리가 필요하다 — 한 버튼에서 종류를 고른다.
+		     DEV-278: 종류마다 '기존 연결'과 '새로 만들기' 두 갈래. 예전엔 신규
+		     생성이 서브퀘스트에만 있어, 아직 없는 선행을 만들려면 목록으로
+		     나갔다 돌아와야 했다. -->
+		{#if !editMode}
+			<div class="rel-add">
+				<button
+					class="sec-add-btn rel-add-btn"
+					aria-expanded={relMenuOpen}
+					onclick={() => (relMenuOpen = !relMenuOpen)}>{t('qd.addRelation', $locale)}</button
+				>
+				{#if relMenuOpen}
+					<!-- 바깥 클릭으로 닫기 — BUG-160 과 같은 규칙. -->
+					<button
+						class="rel-menu-ov"
+						aria-label={t('common.close', $locale)}
+						onclick={() => (relMenuOpen = false)}
+					></button>
+					<div class="rel-menu" role="menu">
+						<div class="rel-menu-title">{t('qd.addRelationTitle', $locale)}</div>
+						{#each [{ mode: 'sub' as ComboMode, label: t('quest.section.subQuests', $locale) }, { mode: 'prereq' as ComboMode, label: t('quest.section.prerequisites', $locale) }, { mode: 'succ' as ComboMode, label: t('quest.section.successors', $locale) }] as row (row.mode)}
+							<div class="rel-menu-row">
+								<span class="rel-menu-kind">{row.label}</span>
+								<button
+									class="rel-menu-act"
+									onclick={() => {
+										relMenuOpen = false;
+										openCombo(row.mode);
+									}}>{t('qd.relLinkExisting', $locale)}</button
+								>
+								<button
+									class="rel-menu-act"
+									onclick={() => {
+										relMenuOpen = false;
+										pendingRelMode = row.mode;
+										newRelMode = row.mode;
+									}}>{t('qd.relCreateNew', $locale)}</button
+								>
+							</div>
+						{/each}
+					</div>
+				{/if}
+			</div>
+		{/if}
 
 		<!-- DEV-011: 연결된 캠페인 -->
 		<section>
@@ -1158,12 +1236,13 @@
 	</div>
 {/if}
 
-<!-- 서브퀘스트 신규 생성 모달 -->
-{#if showNewSubQuest && detail}
+<!-- DEV-278: 연관 퀘스트 신규 생성 모달 — 서브/선행/후속 공용.
+     서브만 생성 시점에 부모를 넘기고, 선행/후속은 생성 후 연결한다. -->
+{#if newRelMode && detail}
 	<NewQuestModal
-		parentQuestId={detail.id}
-		onclose={() => (showNewSubQuest = false)}
-		oncreated={onSubQuestCreated}
+		parentQuestId={newRelMode === 'sub' ? detail.id : undefined}
+		onclose={() => (newRelMode = null)}
+		oncreated={onRelQuestCreated}
 	/>
 {/if}
 
@@ -1778,6 +1857,67 @@
 	}
 	/* BUG-030 + BUG-031: campaign-add wrapper 도 제거됨 — 버튼은 .section-head
 	   안으로 이동 (sub-quest / prereq 와 동일 배치). */
+	/* DEV-279: 연관 추가 진입점 + 종류 선택 드롭다운. */
+	.rel-add {
+		position: relative;
+		margin: 0.25rem 0 1.25rem;
+	}
+	.rel-add-btn {
+		font-size: 0.8rem;
+	}
+	/* 바깥 클릭 감지용 투명 오버레이 — 메뉴보다 아래(z-index) */
+	.rel-menu-ov {
+		position: fixed;
+		inset: 0;
+		z-index: 40;
+		background: transparent;
+		border: none;
+		cursor: default;
+	}
+	.rel-menu {
+		position: absolute;
+		top: calc(100% + 4px);
+		left: 0;
+		z-index: 41;
+		min-width: 20rem;
+		padding: 0.5rem;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+	}
+	.rel-menu-title {
+		font-size: 0.72rem;
+		color: var(--text-muted);
+		padding: 0.1rem 0.35rem 0.35rem;
+	}
+	.rel-menu-row {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		padding: 0.25rem 0.35rem;
+	}
+	.rel-menu-kind {
+		flex: 1;
+		min-width: 0;
+		font-size: 0.82rem;
+		color: var(--text);
+	}
+	.rel-menu-act {
+		flex: none;
+		padding: 0.2rem 0.5rem;
+		font-size: 0.76rem;
+		border-radius: 5px;
+		border: 1px solid var(--border);
+		background: transparent;
+		color: var(--text-muted);
+		cursor: pointer;
+	}
+	.rel-menu-act:hover {
+		border-color: var(--accent);
+		color: var(--text);
+	}
+
 	.sec-add-btn {
 		padding: 0.15rem 0.6rem;
 		border: 1px solid var(--border);
