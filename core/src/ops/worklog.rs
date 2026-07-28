@@ -44,6 +44,11 @@ pub struct ActivityRow {
     /// 한 줄 표시용: status = "old → new", comment = "author: 본문(앞부분)",
     /// created = 제목.
     pub summary: String,
+    /// DEV-296: 대상 식별자 — 지금은 **댓글 번호**(kind="comment"/"discussion").
+    /// 작업기록에서 그 항목을 클릭하면 해당 댓글로 바로 스크롤하기 위해 필요하다
+    /// (slug 만으로는 문서까지만 갈 수 있다). 그 외 kind 는 None.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ref_id: Option<i64>,
 }
 
 /// 종류별 집계 (타임라인과 함께 반환).
@@ -88,34 +93,45 @@ pub async fn activities(store: &Store, from: &str, to: &str) -> AppResult<Worklo
                     WHEN 'discussion_resolved' THEN '댓글 #' || COALESCE(h.new_value,'?') || ' 토론 해결'
                     WHEN 'discussion_reopened' THEN '댓글 #' || COALESCE(h.new_value,'?') || ' 토론 재개(미해결)'
                     ELSE COALESCE(h.old_value,'?') || ' → ' || COALESCE(h.new_value,'?')
-                  END AS summary
+                  END AS summary,
+                  -- DEV-296: 토론 해결/재개는 new_value 가 댓글 번호다.
+                  CASE h.op
+                    WHEN 'discussion_resolved' THEN CAST(h.new_value AS INTEGER)
+                    WHEN 'discussion_reopened' THEN CAST(h.new_value AS INTEGER)
+                    ELSE NULL
+                  END AS ref_id
              FROM quest_history h
             WHERE h.quest_slug IS NOT NULL
               AND substr(h.ts,1,10) BETWEEN ? AND ?
            UNION ALL
            SELECT c.ts, 'comment',
                   qt.prefix || '-' || printf('%03d', q.number),
-                  c.author || ': ' || substr(c.body, 1, 200)
+                  c.author || ': ' || substr(c.body, 1, 200),
+                  -- DEV-296: UI 앵커(`#comment-N`)는 **퀘스트별 번호**(entry_id)를
+                  -- 쓴다. 전역 rowid(c.id)를 보내면 딥링크가 아무 데도 안 걸린다.
+                  c.entry_id
              FROM quest_comments c
              JOIN quests q ON q.id = c.quest_id
              JOIN quest_types qt ON qt.id = q.quest_type_id
             WHERE substr(c.ts,1,10) BETWEEN ? AND ?
            UNION ALL
            SELECT c.ts, 'comment', ca.campaign_slug,
-                  c.author || ': ' || substr(c.body, 1, 200)
+                  c.author || ': ' || substr(c.body, 1, 200),
+                  c.entry_id
              FROM campaign_comments c
              JOIN campaigns ca ON ca.id = c.campaign_id
             WHERE substr(c.ts,1,10) BETWEEN ? AND ?
            UNION ALL
            SELECT q.created_at, 'created',
-                  qt.prefix || '-' || printf('%03d', q.number), q.title
+                  qt.prefix || '-' || printf('%03d', q.number), q.title, NULL
              FROM quests q
              JOIN quest_types qt ON qt.id = q.quest_type_id
             WHERE substr(q.created_at,1,10) BETWEEN ? AND ?
            UNION ALL
            -- DEV-226 후속(admin 보고): 캠페인 상태 변경도 활동 타임라인에.
            SELECT ch.ts, 'status', ch.campaign_slug,
-                  COALESCE(ch.old_value,'?') || ' → ' || COALESCE(ch.new_value,'?')
+                  COALESCE(ch.old_value,'?') || ' → ' || COALESCE(ch.new_value,'?'),
+                  NULL
              FROM campaign_history ch
             WHERE substr(ch.ts,1,10) BETWEEN ? AND ?
            UNION ALL
@@ -126,7 +142,8 @@ pub async fn activities(store: &Store, from: &str, to: &str) -> AppResult<Worklo
                   CASE d.op
                     WHEN 'rename' THEN COALESCE(d.old_value,'?') || ' → ' || COALESCE(d.new_value,'?')
                     ELSE d.op
-                  END
+                  END,
+                  NULL
              FROM doc_history d
             WHERE substr(d.ts,1,10) BETWEEN ? AND ?
          )

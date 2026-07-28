@@ -15,6 +15,8 @@
 <script lang="ts">
 	import Icon from './Icon.svelte';
 	import { tick, onDestroy, onMount } from 'svelte';
+	// DEV-296: `?comment=N` 딥링크 — 작업기록에서 그 댓글로 바로 스크롤.
+	import { page } from '$app/stores';
 	import MarkdownView from './MarkdownView.svelte';
 	// DEV-132 후속(admin 보고): 커스텀 반응 입력을 이모지 1개로 제한.
 	import { isSingleEmoji } from '$lib/utils/emoji';
@@ -602,6 +604,41 @@
 	$effect(() => {
 		void slug;
 		load();
+	});
+
+	// DEV-296: 작업기록에서 댓글 활동을 클릭하면 `?comment=N` 으로 들어온다 —
+	// 문서까지만 이동하고 끝나면 긴 문서에서 그 댓글을 다시 찾아야 했다.
+	//
+	// 댓글은 비동기로 로드되므로 URL 만 보고 스크롤하면 대상 노드가 아직 없다.
+	// `entries` 가 채워진 뒤(= 앵커 `#comment-N` 이 렌더된 뒤) 스크롤한다.
+	// 같은 id 에 대해 한 번만 — 댓글 추가/새로고침 때마다 다시 튀지 않도록.
+	let scrolledToCommentId: number | null = $state(null);
+	$effect(() => {
+		const raw = $page.url.searchParams.get('comment');
+		const target = raw ? Number(raw) : NaN;
+		if (!Number.isFinite(target) || entries.length === 0) return;
+		if (scrolledToCommentId === target) return;
+		// 접혀 있으면 펼쳐야 앵커가 보인다.
+		if (collapsed) collapsed = false;
+		// 앵커가 실제로 그려질 때까지 짧게 재시도한다. `entries` 가 채워진 직후
+		// 한 번(tick)만 보면 놓친다 — 댓글은 groups 파생 → 중첩 snippet 순으로
+		// 그려져 DOM 반영이 한 프레임 뒤일 수 있고, 접힌 스레드가 펼쳐지는 것도
+		// 기다려야 한다. 실기에서 단발 tick 은 스크롤이 아예 안 걸렸다.
+		const deadline = Date.now() + 3000;
+		const tryScroll = () => {
+			const el = document.getElementById(`comment-${target}`);
+			if (!el) {
+				if (Date.now() < deadline) requestAnimationFrame(tryScroll);
+				return;
+			}
+			scrolledToCommentId = target;
+			const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+			el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'center' });
+			// 어느 댓글로 왔는지 잠깐 강조 — 스크롤만으로는 눈에 안 띈다.
+			el.classList.add('jump-target');
+			setTimeout(() => el.classList.remove('jump-target'), 2200);
+		};
+		void tick().then(tryScroll);
 	});
 
 	// 화면 구조 (DEV-200: 2단 들여쓰기):
@@ -1549,6 +1586,29 @@
 	}
 	.entry {
 		border-radius: 6px;
+	}
+
+	/* DEV-296: 작업기록에서 점프해 온 댓글을 잠깐 강조 — 스크롤만으로는
+	   어느 것인지 눈에 안 띈다. 2.2초 뒤 클래스가 제거된다. */
+	.entry:global(.jump-target) {
+		animation: jump-flash 2.2s ease-out;
+	}
+	@keyframes jump-flash {
+		0%,
+		35% {
+			background: color-mix(in srgb, var(--accent) 18%, transparent);
+			box-shadow: 0 0 0 2px var(--accent);
+		}
+		100% {
+			background: transparent;
+			box-shadow: none;
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.entry:global(.jump-target) {
+			animation: none;
+			box-shadow: 0 0 0 2px var(--accent);
+		}
 	}
 	/* DEV-234 후속(admin 요청): 답글도 고정 가능 — root 는 entry-card.pinned 로
 	   이미 강조되니, 답글(.entry.reply)만 자체 테두리로 강조. */

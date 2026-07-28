@@ -9,6 +9,12 @@ export interface ActivityRow {
 	kind: string;
 	slug: string;
 	summary: string;
+	/**
+	 * DEV-296: 대상 식별자 — 지금은 댓글 번호(kind="comment"/"discussion").
+	 * 작업기록에서 그 항목을 누르면 `?comment=N` 딥링크로 해당 댓글까지 이동한다.
+	 * 그 외 kind 는 서버가 생략(undefined).
+	 */
+	ref_id?: number | null;
 }
 
 export interface ActivityCounts {

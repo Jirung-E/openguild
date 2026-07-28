@@ -321,9 +321,12 @@
 		// DEV-288: 규칙/도서관 활동은 해당 문서 페이지로(딥링크 쿼리는 각 페이지가 처리).
 		if (a.kind === 'rule') return `/rules?slug=${encodeURIComponent(a.slug)}`;
 		if (a.kind === 'book') return `/library?id=${encodeURIComponent(a.slug)}`;
-		return /^C-\d+$/.test(a.slug)
+		const base = /^C-\d+$/.test(a.slug)
 			? `/campaigns/${encodeURIComponent(a.slug)}`
 			: `/quests/${encodeURIComponent(a.slug)}`;
+		// DEV-296: 댓글/토론 활동은 그 댓글까지 — 문서만 열면 긴 목록에서 다시
+		// 찾아야 했다. 댓글 섹션이 `?comment=N` 을 보고 스크롤 + 강조한다.
+		return a.ref_id != null ? `${base}?comment=${a.ref_id}` : base;
 	}
 	function firstLine(s: string): string {
 		return s.split('\n', 1)[0] ?? '';
