@@ -57,3 +57,16 @@ export async function currentGuildId(): Promise<GuildId | null> {
 		return null;
 	}
 }
+
+/**
+ * BUG-176 후속: 이 환경에서 "길드 전환" 이 일어날 수 있는가.
+ *
+ * 데스크탑(Tauri)만 프로세스 안에서 길드를 갈아끼운다. 브라우저 배포는 서버가
+ * 길드 하나에 바인딩돼 있어 전환 자체가 없으므로 히스토리 가드도 불필요하다.
+ *
+ * `currentGuildId()` 와 달리 **동기** — `beforeNavigate` 처럼 즉시 판단해야
+ * 하는 곳에서 쓴다(비동기로 판단하면 이미 렌더가 시작돼 깜빡인다).
+ */
+export function guildSwitchingPossible(): boolean {
+	return detectEnvironment() === 'tauri';
+}

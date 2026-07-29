@@ -2,7 +2,7 @@
 	import { page } from '$app/stores';
 	import { afterNavigate, beforeNavigate, goto, replaceState } from '$app/navigation';
 	// BUG-176: 히스토리 항목의 길드 표식 비교.
-	import { currentGuildId, sameGuild } from '$lib/stores/guildIdentity';
+	import { currentGuildId, sameGuild, guildSwitchingPossible } from '$lib/stores/guildIdentity';
 	// DEV-153: 미저장 변경 통합 가드.
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { anyUnsaved, clearUnsaved } from '$lib/stores/unsaved';
@@ -96,7 +96,28 @@
 	let showUnsavedModal = $state(false);
 	// 확인 시 실행할 동작 (라우트 이동 / 창 닫기 등) — 모달 일반화.
 	let pendingAction: (() => void) | null = null;
+	// BUG-176 후속(사용자 지적: "웰컴에서 뒤로가기를 누르면 깜빡거림"):
+	// afterNavigate 에서 되돌리면 **이전 길드 화면이 한 프레임 그려진 뒤**
+	// 웰컴으로 돌아온다 — 깜빡임이자, 우리가 안 보여주려던 그 화면을 잠깐
+	// 보여주는 셈이다.
+	//
+	// 히스토리를 실제로 비울 수는 없다(브라우저가 허용하지 않음). 대신 웰컴에
+	// 있는 동안은 뒤로가기를 **렌더 전에 취소**한다 — 히스토리를 비운 것과
+	// 같은 체감이 되고 깜빡임도 없다.
+	//
+	// 웰컴에서의 뒤로가기가 갈 곳은 결국 이전 길드의 항목뿐인데, 그 항목은
+	// URL 에 길드 정보가 없어 지금 열린 길드가 그려진다(이 버그의 본체).
+	// 그러니 여기서 막는 것이 곧 올바른 동작이다. 길드 선택은 웰컴 화면에서
+	// 명시적으로 한다.
 	beforeNavigate((nav) => {
+		if (
+			nav.type === 'popstate' &&
+			guildSwitchingPossible() &&
+			$page.url.pathname === '/welcome'
+		) {
+			nav.cancel();
+			return;
+		}
 		if (!anyUnsaved() || nav.willUnload) return;
 		const url = nav.to?.url;
 		if (!url) return;
