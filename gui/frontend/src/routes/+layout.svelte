@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { page } from '$app/stores';
-	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
+	import { afterNavigate, beforeNavigate, goto, replaceState } from '$app/navigation';
+	// BUG-176: 히스토리 항목의 길드 표식 비교.
+	import { currentGuildId, sameGuild } from '$lib/stores/guildIdentity';
 	// DEV-153: 미저장 변경 통합 가드.
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { anyUnsaved, clearUnsaved } from '$lib/stores/unsaved';
@@ -152,6 +154,38 @@
 	}
 	afterNavigate(trackRecentDoc);
 	onMount(trackRecentDoc);
+
+	// BUG-176: 길드를 바꾼 뒤 뒤로가기로 **이전 길드의 히스토리 항목**에 가면,
+	// URL 은 그대로인데(길드 정보가 URL 에 없다) 내용은 지금 열린 길드가
+	// 그려진다 — 사용자는 "뒤로가기가 안 먹는다"로 인식한다(A → Welcome → B
+	// 후 뒤로가기가 B).
+	//
+	// 뒤로가기가 길드를 되돌리게 만드는 방법도 있지만, 그러면 뒤로가기 한 번이
+	// 길드 재오픈(무거움 + 폴더 삭제/권한 실패 가능)을 유발한다. 여기서는
+	// **잘못된 화면을 보여주지 않는 것**까지만 한다 — 다른 길드의 항목이면
+	// 웰컴으로 보내 거기서 명시적으로 고르게 한다.
+	//
+	// 구현: 네비게이션마다 현재 길드를 항목 state 에 남기고(스탬프), popstate
+	// 로 도달한 항목의 스탬프가 지금 길드와 다르면 웰컴으로.
+	async function guardGuildHistory(nav: { type: string }) {
+		const cur = await currentGuildId();
+		if (!cur) return; // 브라우저 모드 / 길드 미오픈 — 전환 개념 없음.
+		const stamped = $page.state.guild;
+		if (!stamped) {
+			// 아직 표식이 없는 항목(길드를 연 직후, 콜드 스타트 등) — 현재 길드로
+			// 표시만 남기고 통과. replaceState 라 히스토리가 늘지 않는다.
+			replaceState('', { ...$page.state, guild: cur });
+			return;
+		}
+		if (sameGuild(stamped, cur)) return;
+		// 다른 길드의 항목 — 뒤로/앞으로 이동으로 도달했을 때만 개입한다.
+		// (링크 클릭으로 이런 상태가 되는 경로는 없다.)
+		if (nav.type !== 'popstate') return;
+		goto('/welcome', { replaceState: true });
+	}
+	afterNavigate((nav) => {
+		void guardGuildHistory(nav);
+	});
 
 	// 비정상 quest 파일(정의되지 않은 status / 파싱 실패) 감지 시 시동 알림.
 	// 그런 파일은 reindex/sync 에서 조용히 skip 되므로 사용자에게 안 보임 → toast.

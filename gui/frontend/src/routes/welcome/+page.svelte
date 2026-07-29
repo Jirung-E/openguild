@@ -2,6 +2,8 @@
 	import Icon from '$lib/components/Icon.svelte';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
+	// BUG-176: 길드 전환 시 식별 캐시 무효화 — 히스토리 표식이 새 길드로 남도록.
+	import { invalidateCurrentGuild } from '$lib/stores/guildIdentity';
 	// DEV-205 모듈1: Welcome 문자열 i18n.
 	import { locale, t } from '$lib/stores/locale';
 	import { recentsApi, type Recent } from '$lib/api/recents';
@@ -157,8 +159,11 @@
 			setRemoteServerUrl(null);
 			const { invoke } = await import('@tauri-apps/api/core');
 			await invoke('open_guild_in_current_window', { path });
+			// BUG-176: Store 가 바뀌었으니 길드 식별 캐시를 버리고, 새 항목에
+			// 새 길드를 표식으로 남긴다 — 이전 길드의 히스토리 항목과 구분된다.
+			invalidateCurrentGuild();
 			// 성공: 현재 process 의 Store 가 swap 됐음. 보드로 이동.
-			goto('/');
+			goto('/', { state: { guild: { kind: 'local', path } } });
 		} catch (e) {
 			openErr = handleOpenError(e);
 		} finally {
@@ -179,8 +184,10 @@
 			setRemoteServerUrl(null); // DEV-113 후속 — openRecent 와 동일 이유.
 			const { invoke } = await import('@tauri-apps/api/core');
 			await invoke('init_and_open_guild', { path: uninitPath, name });
+			// BUG-176: 새로 만든 길드로 표식 갱신.
+			invalidateCurrentGuild();
 			// 성공: store swap 됨. 보드로.
-			goto('/');
+			goto('/', { state: { guild: { kind: 'local', path: uninitPath } } });
 		} catch (e) {
 			initErr = handleOpenError(e);
 		} finally {
@@ -225,7 +232,8 @@
 				// 기존 길드 → 바로 현재 창에서 열기.
 				setRemoteServerUrl(null); // DEV-113 후속 — openRecent 와 동일 이유.
 				await invoke('open_guild_in_current_window', { path: info.resolved_path });
-				goto('/');
+				invalidateCurrentGuild(); // BUG-176
+				goto('/', { state: { guild: { kind: 'local', path: info.resolved_path } } });
 			} else {
 				// 마커 없음 → 인라인 초기화 prompt 활성화.
 				uninitPath = info.resolved_path;
@@ -333,7 +341,9 @@
 		setRemoteServerUrl(url);
 		registerRemoteGuild(url);
 		remoteGuildList = listRemoteGuilds();
-		goto('/');
+		// BUG-176: 원격도 같은 규칙 — 이 항목은 이 원격 길드의 것.
+		invalidateCurrentGuild();
+		goto('/', { state: { guild: { kind: 'remote', url } } });
 	}
 
 	// 새 URL 연결 — 확인(ping) 없이도 시도 가능(신뢰된 서버 주소를 이미 아는 경우).
