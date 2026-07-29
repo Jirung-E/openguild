@@ -12,6 +12,8 @@
 	import { onMount } from 'svelte';
 	import { detectEnvironment } from '$lib/api/transport';
 	import { updateState, checkForUpdate } from '$lib/api/updater';
+	// DEV-305: 업데이트 자동 확인 on/off.
+	import { autoUpdateCheck, setAutoUpdateCheck } from '$lib/stores/updateSettings';
 	import {
 		uiScale,
 		setUiScale,
@@ -308,6 +310,26 @@
 						</button>
 					{/if}
 				</dd>
+				<!-- DEV-305: 자동 확인 on/off. 끄면 시동/주기 확인을 건너뛴다 —
+				     위의 '지금 확인'(수동)은 이 설정과 무관하게 계속 동작한다. -->
+				{#if isTauri}
+					<dt>{t('settings.autoUpdateCheck', $locale)}</dt>
+					<dd class="theme-row">
+						<div class="theme-toggle" role="group" aria-label={t('settings.autoUpdateCheck', $locale)}>
+							<button
+								class:active={$autoUpdateCheck}
+								onclick={() => setAutoUpdateCheck(true)}
+								aria-pressed={$autoUpdateCheck}>{t('settings.on', $locale)}</button
+							>
+							<button
+								class:active={!$autoUpdateCheck}
+								onclick={() => setAutoUpdateCheck(false)}
+								aria-pressed={!$autoUpdateCheck}>{t('settings.off', $locale)}</button
+							>
+						</div>
+						<span class="hint">{t('settings.autoUpdateCheckHint', $locale)}</span>
+					</dd>
+				{/if}
 				<!-- DEV-207(사용자 피드백: "정보 탭에 원격이면 주소, 로컬이면 경로
 				     출력하고, 웰컴페이지에서 들어간거면 표시 안하면 되는거 아님?"):
 				     별도 '원격 서버' 탭 폐기 — 길드가 열려있을 때만(anyGuildOpen) 한

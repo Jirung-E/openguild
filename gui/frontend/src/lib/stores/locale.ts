@@ -139,6 +139,14 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'settings.version': { ko: '버전', en: 'Version' },
 	'settings.checking': { ko: '확인 중…', en: 'Checking…' },
 	'settings.checkUpdate': { ko: '업데이트 확인', en: 'Check for updates' },
+	// DEV-305: 업데이트 자동 확인 on/off.
+	'settings.autoUpdateCheck': { ko: '업데이트 자동 확인', en: 'Automatic update check' },
+	'settings.autoUpdateCheckHint': {
+		ko: '끄면 시작할 때와 주기적으로 확인하지 않습니다. 위 「업데이트 확인」은 계속 쓸 수 있습니다.',
+		en: 'When off, no check on startup or periodically. The button above still works.'
+	},
+	'settings.on': { ko: '켜기', en: 'On' },
+	'settings.off': { ko: '끄기', en: 'Off' },
 	'settings.remoteServer': { ko: '원격 서버', en: 'Remote server' },
 	'settings.guildPath': { ko: '길드 경로', en: 'Guild path' },
 	'settings.storage': { ko: '저장소', en: 'Storage' },

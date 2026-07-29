@@ -29,6 +29,8 @@
 		downloadAndRelaunch,
 		dismissUpdate
 	} from '$lib/api/updater';
+	// DEV-305: 자동 확인 on/off.
+	import { isAutoUpdateCheckEnabled } from '$lib/stores/updateSettings';
 	import { detectEnvironment } from '$lib/api/transport';
 	import OverlayScrollbar from './OverlayScrollbar.svelte';
 	import { locale, t } from '$lib/stores/locale';
@@ -173,8 +175,13 @@
 			if (debugHooks) exposeDebugHooks();
 		})();
 		if (!isTauri) return; // 브라우저 모드 — 업데이트 개념 없음.
+		// DEV-305: 자동 확인이 꺼져 있으면 시동/주기 확인을 건너뛴다.
+		// 매 호출 시점에 다시 읽는다 — 설정을 끄면 앱 재시작 없이 즉시 멈춘다.
+		// (설정 화면의 '지금 확인'은 이 설정과 무관하게 계속 동작한다.)
+		if (!isAutoUpdateCheckEnabled()) return;
 		checkForUpdate({ silent: true });
 		const handle = setInterval(() => {
+			if (!isAutoUpdateCheckEnabled()) return;
 			const s = get(updateState).status;
 			if (s === 'available' || s === 'downloading' || s === 'ready') return;
 			checkForUpdate({ silent: true });
