@@ -1286,7 +1286,11 @@
 					{#each orderedRoots as root (root.id)}
 						{#if !discussionOnly || discussionRoots.has(root.id)}
 							{@const childCount = (groups.childrenByRoot.get(root.id) ?? []).length}
-							{@const isCollapsed = !discussionOnly && collapsedRoots.has(root.id)}
+							<!-- BUG-178: 예전엔 `!discussionOnly &&` 가 붙어 '토론만' 모드에서 접힘
+							     상태가 무조건 무시됐다 — 전체접기를 눌러도 답글이 그대로 펼쳐져
+							     있었다. dim(필터의 표현)과 접기(사용자가 누른 동작)는 다른 축이라
+							     필터가 접기를 덮어쓸 이유가 없다(DEV-213 은 '숨기지 말 것'까지다). -->
+							{@const isCollapsed = collapsedRoots.has(root.id)}
 							<!-- DEV-139: root + 답글을 하나의 카드로 — 댓글 간 시각 구분.
 							     DEV-234: pinned 면 강조 테두리(하이라이트) 도 함께. -->
 							<li class="entry-card" class:pinned={root.pinned}>
