@@ -16,10 +16,12 @@
 #      뱃지 검증.
 #   5. DEV-094/099/102: 첫 quest 에 댓글 (top + reply) + 메모 — DB 캐시 sync
 #      + DEV-156/170: 첫 quest 에 첨부파일 1개 (본문 아래 첨부 섹션 데모)
-#      + snapshot 백업 회귀.
+#      + BUG-178: 토론 댓글에 답글 1개 — '토론만' 필터 + '전체 접기' 회귀.
 #   6. DEV-016 (multi-file): sample 길드 규칙 생성 — Rules 페이지 검증.
 #   7. DEV-288/290: 규칙/BOOK 변경 이력 — create/update/rename 을 일으켜
 #      상세의 '변경 이력' 섹션 + rule/library history (CLI·서버·GUI) 검증.
+#   8. DEV-306: 백업 스냅샷 1개 — 설정 > 백업 목록/복원 UI 검증 (스냅샷은
+#      폴더가 아니라 파일 1개: `.guild/backups/snapshots/{ts}.db`).
 #
 # 바이너리 선택 (첫 위치 인자 = 바이너리 폴더):
 #   - 인자 없음            → PATH 의 'openguild' 사용 (기본).
@@ -87,11 +89,11 @@ function Invoke-Og {
 function Day { param([int]$Offset) (Get-Date).AddDays($Offset).ToString("yyyy-MM-dd") }
 
 # ── 1) init ─────────────────────────────────────────────────
-Write-Host "`n=== [1/8] init ===" -ForegroundColor Green
+Write-Host "`n=== [1/11] init ===" -ForegroundColor Green
 Invoke-Og init --name $Name
 
 # ── 2) Quest 생성 (다양한 타입 / 상태) ────────────────────────
-Write-Host "`n=== [2/8] Quests ===" -ForegroundColor Green
+Write-Host "`n=== [2/11] Quests ===" -ForegroundColor Green
 
 # 최근 추가된 퀘스트 목록 (Home 하단) 검증용. 10개 이상 만들어
 # slice(0, 10) 잘림 확인.
@@ -125,7 +127,7 @@ Invoke-Og quest new --type DEV --title "본문 cross-link 데모 (DEV-140)" --ur
 Start-Sleep -Milliseconds 50
 
 # 일부는 상태 변경해서 다양성 확보.
-Write-Host "`n=== [3/8] Quest 상태 전환 ===" -ForegroundColor Green
+Write-Host "`n=== [3/11] Quest 상태 전환 ===" -ForegroundColor Green
 # 가장 최신 슬러그를 모르므로 list 로 가져옴.
 $listOut = & $bin quest list --json 2>$null
 $quests = $listOut | ConvertFrom-Json
@@ -137,7 +139,7 @@ if ($quests.Count -ge 3) {
 }
 
 # ── 4) DEV-076: 희망 / 필수 기한 (Home 임박 / Overdue 검증) ────
-Write-Host "`n=== [4/8] Quest 기한 설정 (DEV-076) ===" -ForegroundColor Green
+Write-Host "`n=== [4/11] Quest 기한 설정 (DEV-076) ===" -ForegroundColor Green
 # Home 의 "마감 임박" 뱃지 / Overdue 표시 / 정렬 검증.
 # - 과거 일자 (Overdue) 1개
 # - 1~3일 내 (Critical 임박) 2개
@@ -161,7 +163,7 @@ if ($quests.Count -ge 6) {
 }
 
 # ── 5) Campaign 생성 (Home carousel / conveyor 모두 검증) ────
-Write-Host "`n=== [5/8] Campaigns ===" -ForegroundColor Green
+Write-Host "`n=== [5/11] Campaigns ===" -ForegroundColor Green
 
 # 진행 중 캠페인 (carousel): 5개 — 자동 회전 + dots / 화살표 검증.
 $activeCampaigns = @(
@@ -220,7 +222,7 @@ foreach ($c in $upcomingCampaigns) {
 New-CampaignWithChecklist -Title $futureCampaign.title -Start $futureCampaign.start -End $futureCampaign.end -Progress 0.0 -Items 3 | Out-Null
 
 # ── 6) 캠페인 ↔ 퀘스트 연결 (Quest Detail 의 Campaigns 섹션 검증) ──
-Write-Host "`n=== [6/8] Campaign ↔ Quest 연결 ===" -ForegroundColor Green
+Write-Host "`n=== [6/11] Campaign ↔ Quest 연결 ===" -ForegroundColor Green
 $campList = & $bin campaign list --status active --json 2>$null | ConvertFrom-Json
 $questList = & $bin quest list --json 2>$null | ConvertFrom-Json
 
@@ -254,7 +256,7 @@ Write-Host "[og] template new bug-report" -ForegroundColor DarkGray
 if ($LASTEXITCODE -ne 0) { throw "template new 실패" }
 
 # ── 7) DEV-099 / DEV-102: 댓글 + 메모 (CLI + DB cache sync) ──
-Write-Host "`n=== [7/8] 댓글 / 메모 (DEV-094/099/102) ===" -ForegroundColor Green
+Write-Host "`n=== [7/11] 댓글 / 메모 (DEV-094/099/102) ===" -ForegroundColor Green
 
 # DEV-094 entry 단위 댓글 + 답글, DEV-099 CLI, DEV-102 DB 캐시 + snapshot 백업.
 # Quest Detail 의 댓글 섹션 / 답글 / 메모 영역 + drift::auto_resync 도 검증.
@@ -292,6 +294,12 @@ if ($questForComments) {
     Invoke-Og quest comment discussion $questForComments 4   # id 4 → 토론
     Invoke-Og quest comment resolved $questForComments 4     # → 해결
 
+    # BUG-178: '토론만' 필터를 켠 상태에서 '전체 접기' 회귀 데이터.
+    # 토론 댓글(id 3) 아래에 답글이 있어야 접힘 여부를 눈으로 확인할 수 있다.
+    Write-Host "[og] 토론 댓글 답글 (BUG-178 전체접기 회귀)" -ForegroundColor DarkGray
+    "그럼 이 스레드에서 결론 내자. (토론 답글)" | & $bin quest comment add $questForComments --author erin --parent-id 3
+    if ($LASTEXITCODE -ne 0) { throw "discussion reply add 실패" }
+
     # DEV-069/156: 이미지 첨부 — 인라인 미리보기/임베드 경로 검증 (PNG 생성).
     Write-Host "[og] 이미지 첨부 (PNG)" -ForegroundColor DarkGray
     $imgTmp = Join-Path ([System.IO.Path]::GetTempPath()) "openguild-seed-image.png"
@@ -327,7 +335,7 @@ if ($secondQuest -and $secondQuest -ne $questForComments) {
 }
 
 # ── 8) DEV-016 (multi-file): sample 길드 규칙 (Rules 페이지 검증) ──
-Write-Host "`n=== [8/10] 길드 규칙 (DEV-016 multi-file) ===" -ForegroundColor Green
+Write-Host "`n=== [8/11] 길드 규칙 (DEV-016 multi-file) ===" -ForegroundColor Green
 
 # 짧은 sample 들 — 다중 파일 sidebar / 선택 / 편집 / 신규 / 이름변경 / 삭제
 # 의 좌측 목록 정렬 / 선택 동작 검증. 본문은 의미 있는 minimal markdown 으로.
@@ -359,7 +367,7 @@ if ($LASTEXITCODE -ne 0) { throw "rule set (history-demo) 실패" }
 Invoke-Og rule rename history-demo team-conventions
 
 # ── 9) DEV-215~218, DEV-239: 도서관 (Library 페이지 + 폴더 + cross-link 검증) ──
-Write-Host "`n=== [9/10] 도서관 (DEV-215~218, DEV-239) ===" -ForegroundColor Green
+Write-Host "`n=== [9/11] 도서관 (DEV-215~218, DEV-239) ===" -ForegroundColor Green
 
 # BOOK-001: cross-link 대상 — quest 본문/댓글에서 [[BOOK-001]] 로 참조 검증.
 # BOOK-002: 목록 정렬/선택 + 빈 본문 문서의 '+ 작성' 흐름 검증.
@@ -403,7 +411,7 @@ Write-Host "[og] library update (BOOK-001 변경 이력 데모, DEV-288/290)" -F
 if ($LASTEXITCODE -ne 0) { throw "library update (history demo) 실패" }
 
 # ── 10) DEV-167: 작업 기록 (HOME 히트맵 카드 + /worklog 상세 검증) ──
-Write-Host "`n=== [10/10] 작업 기록 (DEV-167) ===" -ForegroundColor Green
+Write-Host "`n=== [10/11] 작업 기록 (DEV-167) ===" -ForegroundColor Green
 
 # 활동(생성/상태변경/댓글)은 이 스크립트 실행 자체가 오늘 날짜로 잔뜩 만들어
 # 놓음 — 히트맵의 오늘 칸 + 타임라인이 저절로 채워짐. 노트만 추가로:
@@ -420,6 +428,18 @@ Set-Content -Path $tmpNote -Value "이틀 전 노트 — 주/월 뷰의 일별 �
 if ($LASTEXITCODE -ne 0) { throw "worklog note set 실패 (past)" }
 Remove-Item $tmpNote -Force -ErrorAction SilentlyContinue
 
+# ── 11) DEV-306: 백업 스냅샷 1개 ──────────────────────────────
+Write-Host "`n=== [11/11] 백업 스냅샷 (DEV-306) ===" -ForegroundColor Green
+
+# 설정 > 백업 화면이 빈 목록이면 복원/삭제 UI 를 볼 수 없다. 스냅샷 1개를 미리
+# 만들어 둔다. DEV-306 이후 스냅샷은 폴더가 아니라 파일 1개(`snapshots/{ts}.db`)
+# 이므로, 목록에 뜨는 크기/개수가 파일 기준으로 맞는지도 여기서 확인 가능.
+Invoke-Og backup new
+$backupList = & $bin backup list --json 2>$null
+$backupCount = 0
+try { $backupCount = (@($backupList | ConvertFrom-Json)).Count } catch { $backupCount = 0 }
+if ($backupCount -lt 1) { throw "backup new 후에도 목록이 비어 있음" }
+
 # ── 완료 요약 ────────────────────────────────────────────────
 Write-Host "`n=== 완료 ===" -ForegroundColor Green
 Write-Host "Guild   : $Name ($(Get-Location))"
@@ -428,9 +448,10 @@ Write-Host "Active  : $($activeCampaigns.Count) 개 캠페인 (carousel 회전)"
 Write-Host "Upcoming: $($upcomingCampaigns.Count) 개 (1주 내 시작 — marquee 임계값 테스트)"
 Write-Host "Future  : 1개 (1주 이후 fallback — 위 set 가 채우므로 노출은 안 됨)"
 Write-Host "Due     : 일부 quest 에 과거/임박/미래 기한 — Home 임박 뱃지 / Overdue 검증."
-Write-Host "Comments: 첫 quest 댓글 4 (top+reply+토론 미해결/해결) + 둘째 quest 댓글 1 — DB 캐시 sync."
+Write-Host "Comments: 첫 quest 댓글 5 (top+reply+토론 미해결/해결+토론 답글) + 둘째 quest 댓글 1 — DB 캐시 sync."
 Write-Host "Memo    : 2 quest 에 메모."
-Write-Host "토론    : 미해결 1 (홈 토론 섹션/완료 게이트) + 해결 1 (DEV-142/148/185)."
+Write-Host "토론    : 미해결 1 (홈 토론 섹션/완료 게이트) + 해결 1 (DEV-142/148/185) + 미해결 토론에 답글 1 (BUG-178)."
+Write-Host "Backup  : 스냅샷 1개 ($backupCount) — 설정 > 백업 목록/복원 (DEV-306, 파일 1개 형식)."
 Write-Host "Attach  : 첫 quest 에 3개 — .md / 이미지 .png(미리보기) / .json (DEV-156/170)."
 Write-Host "관계    : 하위 2 + 선행 2 — 보드 엣지 / 트리 / 의존성 그래프 / candidates 검증."
 Write-Host "Tags    : 2 quest 에 태그 — 칩 / 필터 검증."
