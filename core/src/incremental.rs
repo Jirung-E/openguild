@@ -198,11 +198,153 @@ async fn is_content_identical_to_db(
 pub struct IncrementalReport {
     /// 외부 편집 감지되어 re-parse + UPDATE 한 quest slug 수.
     pub updated: usize,
+    /// DEV-246: 새로 발견해 INSERT 한 quest 수.
+    pub inserted: usize,
+    /// DEV-246: 파일이 사라져 DELETE 한 quest 수.
+    pub deleted: usize,
     /// 신규 / 삭제 등 본 모듈 범위 외 — 호출자가 drift::auto_resync 로
     /// 풀 reindex 트리거 권장.
     pub needs_full_reindex: bool,
     /// 파싱 실패 등으로 skip 한 항목.
     pub skipped: Vec<(String, String)>,
+}
+
+/// DEV-246: 신규 quest 파일 1개를 index.db 에 INSERT.
+///
+/// 반환:
+/// - `Ok(Some((id, qf)))` — 삽입 성공(관계는 호출자가 2-pass 로 해석).
+/// - `Ok(None)` — 타입/상태 정의가 없어 증분으로 표현 불가 → 호출자가 풀
+///   reindex 로 넘긴다(정의 파일 변경은 이 함수 범위가 아니다).
+///
+/// 부모/선행은 여기서 세우지 않는다 — 같은 배치의 다른 신규 퀘스트를 가리킬 수
+/// 있어서, 행이 모두 생긴 뒤 `resync_quest_relations` 가 해석한다.
+async fn insert_new_quest(
+    store: &Store,
+    path: &std::path::Path,
+) -> AppResult<Option<(i64, QuestFile)>> {
+    let pool = &store.index_pool;
+    let qf = QuestFile::read(path).map_err(crate::error::AppError::Internal)?;
+
+    let Some(prefix) = qf.type_prefix() else {
+        return Ok(None);
+    };
+    let type_id: Option<i64> = sqlx::query_scalar("SELECT id FROM quest_types WHERE prefix = ?")
+        .bind(prefix)
+        .fetch_optional(pool)
+        .await?;
+    let Some(type_id) = type_id else {
+        return Ok(None); // 타입 정의가 아직 없음 — 풀 reindex 가 처리.
+    };
+    let number = qf.number().map_err(crate::error::AppError::Internal)?;
+    let status_id: Option<i64> = sqlx::query_scalar("SELECT id FROM quest_statuses WHERE slug = ?")
+        .bind(&qf.frontmatter.status)
+        .fetch_optional(pool)
+        .await?;
+    let Some(status_id) = status_id else {
+        return Ok(None); // 상태 정의가 아직 없음 — 풀 reindex 가 처리.
+    };
+
+    let created_at = crate::time::normalize_legacy_ts(&qf.frontmatter.created_at);
+    let updated_at = crate::time::normalize_legacy_ts(&qf.frontmatter.updated_at);
+    let deleted_at: Option<String> = qf.frontmatter.deleted.then(|| updated_at.clone());
+    let cached_mtime = repo_fs::mtime_unix_nanos(path);
+
+    let id: i64 = sqlx::query_scalar(
+        "INSERT INTO quests
+           (quest_type_id, number, title, description, status_id, urgency,
+            parent_quest_id, created_at, updated_at, deleted_at,
+            desired_due, required_due, cached_mtime)
+         VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)
+         RETURNING id",
+    )
+    .bind(type_id)
+    .bind(number)
+    .bind(&qf.frontmatter.title)
+    .bind(&qf.description)
+    .bind(status_id)
+    .bind(qf.frontmatter.urgency)
+    .bind(&created_at)
+    .bind(&updated_at)
+    .bind(deleted_at)
+    .bind(qf.frontmatter.desired_due.as_deref())
+    .bind(qf.frontmatter.required_due.as_deref())
+    .bind(cached_mtime)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(Some((id, qf)))
+}
+
+/// DEV-246: 한 quest 의 부모/선행/태그 캐시를 frontmatter 기준으로 재구성.
+///
+/// 예전에는 이 cascade 를 증분으로 못 해서 "파일이 하나라도 수정되면 풀
+/// reindex" 였다. 관계는 **해당 퀘스트 것만** 지우고 다시 넣으므로 다른 퀘스트의
+/// 캐시를 건드리지 않는다.
+///
+/// 아직 존재하지 않는 slug 를 가리키는 부모/선행은 조용히 건너뛴다 — 파일이
+/// 진리원이고, 대상이 나중에 생기면 그때 그 파일의 sync 가 다시 해석한다.
+async fn resync_quest_relations(store: &Store, id: i64, qf: &QuestFile) -> AppResult<()> {
+    let pool = &store.index_pool;
+
+    let resolve = |slug: String| async move {
+        sqlx::query_scalar::<_, i64>(
+            "SELECT q.id FROM quests q JOIN quest_types qt ON qt.id = q.quest_type_id
+              WHERE qt.prefix || '-' || printf('%03d', q.number) = ?",
+        )
+        .bind(slug)
+        .fetch_optional(&store.index_pool)
+        .await
+    };
+
+    // 부모.
+    let parent_id: Option<i64> = match qf.frontmatter.parent.clone() {
+        Some(s) => resolve(s).await?,
+        None => None,
+    };
+    sqlx::query("UPDATE quests SET parent_quest_id = ? WHERE id = ?")
+        .bind(parent_id)
+        .bind(id)
+        .execute(pool)
+        .await?;
+
+    // 선행 — 이 퀘스트의 행만 교체.
+    sqlx::query("DELETE FROM quest_dependencies WHERE quest_id = ?")
+        .bind(id)
+        .execute(pool)
+        .await?;
+    for slug in &qf.frontmatter.prerequisites {
+        if let Some(pid) = resolve(slug.clone()).await? {
+            sqlx::query(
+                "INSERT OR IGNORE INTO quest_dependencies (quest_id, prerequisite_id) VALUES (?, ?)",
+            )
+            .bind(id)
+            .bind(pid)
+            .execute(pool)
+            .await?;
+        }
+    }
+
+    // 태그 — 이 퀘스트의 행만 교체.
+    // 정규화는 **reindex 와 동일하게 trim 만** 한다(reindex.rs:394). 소문자화를
+    // 넣으면 같은 파일이 sync 경로냐 reindex 경로냐에 따라 다른 값이 들어가
+    // drift 로 잡힌다.
+    sqlx::query("DELETE FROM quest_tags WHERE quest_id = ?")
+        .bind(id)
+        .execute(pool)
+        .await?;
+    for tag in &qf.frontmatter.tags {
+        let normalized = tag.trim();
+        if normalized.is_empty() {
+            continue;
+        }
+        sqlx::query("INSERT OR IGNORE INTO quest_tags (quest_id, tag) VALUES (?, ?)")
+            .bind(id)
+            .bind(normalized)
+            .execute(pool)
+            .await?;
+    }
+
+    Ok(())
 }
 
 /// 변경된 파일만 동기화. 신규 / 삭제는 본 함수가 안 하고 `needs_full_reindex`
@@ -217,10 +359,16 @@ pub async fn sync_changed_quest_files(store: &Store) -> AppResult<IncrementalRep
         .map_err(crate::error::AppError::Internal)?;
 
     // DB 의 slug → (id, cached_mtime) 맵.
+    // DEV-246: soft-deleted(`deleted = true`) 행도 포함해야 한다.
+    //
+    // 예전엔 `WHERE q.deleted_at IS NULL` 로 걸렀는데, soft-delete 된 퀘스트는
+    // **파일이 그대로 남아 있다**(진리원이므로). 그래서 그 파일이 매번 "신규"로
+    // 취급돼 (a) 예전 코드에서는 needs_full_reindex 가 서서 **soft-delete 가
+    // 하나만 있어도 열 때마다 전체 재구축**이 돌았고, (b) 증분 INSERT 를 붙인
+    // 뒤에는 UNIQUE(quest_type_id, number) 충돌로 6건이 skip 됐다(실측).
     let db_rows: Vec<(i64, String, i64)> = sqlx::query_as(
         "SELECT q.id, qt.prefix || '-' || printf('%03d', q.number) AS slug, q.cached_mtime
-         FROM quests q JOIN quest_types qt ON qt.id = q.quest_type_id
-         WHERE q.deleted_at IS NULL",
+         FROM quests q JOIN quest_types qt ON qt.id = q.quest_type_id",
     )
     .fetch_all(pool)
     .await?;
@@ -230,6 +378,10 @@ pub async fn sync_changed_quest_files(store: &Store) -> AppResult<IncrementalRep
         .collect();
 
     // 파일 → DB row 매칭 + mtime 비교.
+    // DEV-246: 신규 파일은 2-pass 로 처리(부모/선행이 같은 배치를 가리킬 수 있음),
+    // 삽입·수정된 퀘스트는 관계 재구성 대상으로 모아둔다.
+    let mut new_paths: Vec<std::path::PathBuf> = Vec::new();
+    let mut touched: Vec<(i64, QuestFile)> = Vec::new();
     let mut file_slugs = std::collections::HashSet::new();
     for path in &quest_paths {
         let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
@@ -242,8 +394,12 @@ pub async fn sync_changed_quest_files(store: &Store) -> AppResult<IncrementalRep
 
         match db_map.get(&slug) {
             None => {
-                // 신규 파일 — 본 함수 범위 외. drift::auto_resync 가 처리.
-                report.needs_full_reindex = true;
+                // DEV-246: 신규 파일도 여기서 처리한다. 예전엔 파일 1개가 추가된
+                // 것만으로 전체 reindex(이 길드 기준 warm 1.3s / cold 10.2s)로
+                // 빠졌다 — git pull / 브랜치 전환 / 에이전트의 quest new 마다.
+                // 부모·선행이 같은 배치의 신규 퀘스트를 가리킬 수 있으므로
+                // **행 삽입을 먼저 모두 끝낸 뒤** 관계를 해석한다(2-pass).
+                new_paths.push(path.clone());
             }
             Some(&(id, cached_mtime)) => {
                 if file_mtime > cached_mtime {
@@ -330,10 +486,10 @@ pub async fn sync_changed_quest_files(store: &Store) -> AppResult<IncrementalRep
                             .execute(pool)
                             .await?;
 
-                            // prereq / tag cascade 는 Phase 1 범위 X — 풀 reindex 권장.
-                            // (사용자가 frontmatter 의 prereq / tag 만 바꾼 경우엔 풀 reindex 필요.)
-                            report.needs_full_reindex = true;
-
+                            // DEV-246: prereq/tag cascade 도 증분으로. 예전엔 여기서
+                            // 무조건 풀 reindex 를 요청해서, **파일이 하나라도 수정되면**
+                            // 전체 재구축이 돌았다(실사용에서 거의 항상).
+                            touched.push((id, qf.clone()));
                             report.updated += 1;
                         }
                         Err(e) => {
@@ -348,12 +504,39 @@ pub async fn sync_changed_quest_files(store: &Store) -> AppResult<IncrementalRep
         }
     }
 
-    // DB 에만 있고 파일 사라진 — drift::auto_resync 가 처리.
-    for slug in db_map.keys() {
+    // DEV-246: 파일이 사라진 행은 직접 삭제한다(예전엔 풀 reindex 트리거).
+    // quest_tags / quest_dependencies / quest_positions 는 FK ON DELETE CASCADE.
+    for (slug, &(id, _)) in &db_map {
         if !file_slugs.contains(slug) {
-            report.needs_full_reindex = true;
-            break;
+            sqlx::query("DELETE FROM quests WHERE id = ?")
+                .bind(id)
+                .execute(pool)
+                .await?;
+            report.deleted += 1;
         }
+    }
+
+    // ── DEV-246 2-pass: 신규 행 삽입 → 관계(부모/선행/태그) 해석 ──
+    for path in &new_paths {
+        match insert_new_quest(store, path).await {
+            Ok(Some((id, qf))) => {
+                touched.push((id, qf));
+                report.inserted += 1;
+            }
+            Ok(None) => {
+                // 타입/상태 정의가 없는 등 증분으로 표현 불가 — 안전망으로 넘긴다.
+                report.needs_full_reindex = true;
+            }
+            Err(e) => {
+                report
+                    .skipped
+                    .push((path.display().to_string(), format!("{e:#}")));
+                report.needs_full_reindex = true;
+            }
+        }
+    }
+    for (id, qf) in &touched {
+        resync_quest_relations(store, *id, qf).await?;
     }
 
     Ok(report)
@@ -618,6 +801,199 @@ mod tests {
     #[test]
     fn replace_frontmatter_updated_at_none_without_frontmatter() {
         assert!(replace_frontmatter_updated_at("no frontmatter here\n", "x").is_none());
+    }
+
+    fn mk_quest(id: &str, title: &str, parent: Option<&str>, prereqs: &[&str], tags: &[&str]) -> QuestFile {
+        QuestFile {
+            frontmatter: QuestFrontmatter {
+                quest_id: id.into(),
+                title: title.into(),
+                status: "open".into(),
+                urgency: 3,
+                parent: parent.map(str::to_string),
+                prerequisites: prereqs.iter().map(|s| s.to_string()).collect(),
+                created_at: "2026-01-01T00:00:00Z".into(),
+                updated_at: "2026-01-01T00:00:00Z".into(),
+                deleted: false,
+                desired_due: None,
+                required_due: None,
+                tags: tags.iter().map(|s| s.to_string()).collect(),
+            },
+            description: format!("body of {id}"),
+            auto_block: String::new(),
+        }
+    }
+
+    /// DEV-246: 신규 파일이 **풀 reindex 없이** 적재된다.
+    ///
+    /// 예전엔 파일 1개 추가만으로 needs_full_reindex 가 서서 전체 재구축(이 길드
+    /// 기준 warm 1.3s / cold 10.2s)이 돌았다 — git pull/브랜치 전환/CLI 생성마다.
+    #[tokio::test]
+    async fn new_file_inserted_without_full_reindex() {
+        let dir = fresh_tmp("new-file");
+        let store = setup(&dir).await;
+        let paths = store.paths.clone();
+
+        mk_quest("DEV-001", "brand new", None, &[], &["alpha"])
+            .write(paths.quest_path("DEV-001"))
+            .unwrap();
+
+        let report = sync_changed_quest_files(&store).await.unwrap();
+        assert_eq!(report.inserted, 1, "신규 파일이 INSERT 돼야");
+        assert!(
+            !report.needs_full_reindex,
+            "신규 파일 하나로 풀 reindex 를 요청하면 DEV-246 실패"
+        );
+
+        let title: String = sqlx::query_scalar("SELECT title FROM quests WHERE title = 'brand new'")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(title, "brand new");
+        // 태그 캐시도 함께 (증분 cascade).
+        let tag: String = sqlx::query_scalar("SELECT tag FROM quest_tags LIMIT 1")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(tag, "alpha");
+    }
+
+    /// DEV-246: 파일이 사라지면 해당 행만 DELETE — 역시 풀 reindex 없이.
+    #[tokio::test]
+    async fn deleted_file_removes_row_without_full_reindex() {
+        let dir = fresh_tmp("del-file");
+        let store = setup(&dir).await;
+        let paths = store.paths.clone();
+
+        mk_quest("DEV-001", "keep", None, &[], &[])
+            .write(paths.quest_path("DEV-001"))
+            .unwrap();
+        mk_quest("DEV-002", "will vanish", None, &[], &[])
+            .write(paths.quest_path("DEV-002"))
+            .unwrap();
+        crate::reindex::reindex(&store).await.unwrap();
+
+        std::fs::remove_file(paths.quest_path("DEV-002")).unwrap();
+        let report = sync_changed_quest_files(&store).await.unwrap();
+        assert_eq!(report.deleted, 1);
+        assert!(!report.needs_full_reindex, "삭제 하나로 풀 reindex 금지");
+
+        let n: i64 = sqlx::query_scalar("SELECT count(*) FROM quests WHERE title = 'will vanish'")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(n, 0);
+        let kept: i64 = sqlx::query_scalar("SELECT count(*) FROM quests WHERE title = 'keep'")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(kept, 1, "남은 퀘스트는 그대로여야");
+    }
+
+    /// DEV-246: frontmatter 의 선행/태그만 바꿔도 증분으로 반영된다.
+    /// (예전엔 이 경우가 풀 reindex 트리거였다 — 사실상 매번.)
+    #[tokio::test]
+    async fn prereq_and_tag_change_syncs_incrementally() {
+        let dir = fresh_tmp("cascade");
+        let store = setup(&dir).await;
+        let paths = store.paths.clone();
+
+        mk_quest("DEV-001", "base", None, &[], &[])
+            .write(paths.quest_path("DEV-001"))
+            .unwrap();
+        mk_quest("DEV-002", "dependent", None, &[], &["old"])
+            .write(paths.quest_path("DEV-002"))
+            .unwrap();
+        crate::reindex::reindex(&store).await.unwrap();
+
+        // 외부 편집: DEV-002 에 선행(DEV-001) + 태그 교체.
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        mk_quest("DEV-002", "dependent", None, &["DEV-001"], &["fresh"])
+            .write(paths.quest_path("DEV-002"))
+            .unwrap();
+
+        let report = sync_changed_quest_files(&store).await.unwrap();
+        assert!(
+            !report.needs_full_reindex,
+            "선행/태그 변경으로 풀 reindex 를 요청하면 DEV-246 실패"
+        );
+
+        let deps: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM quest_dependencies d
+               JOIN quests q ON q.id = d.quest_id
+              WHERE q.title = 'dependent'",
+        )
+        .fetch_one(&store.index_pool)
+        .await
+        .unwrap();
+        assert_eq!(deps, 1, "선행 관계가 증분으로 들어가야");
+
+        let tags: Vec<String> = sqlx::query_scalar(
+            "SELECT tag FROM quest_tags t JOIN quests q ON q.id = t.quest_id
+              WHERE q.title = 'dependent'",
+        )
+        .fetch_all(&store.index_pool)
+        .await
+        .unwrap();
+        assert_eq!(tags, vec!["fresh".to_string()], "옛 태그는 사라지고 새 태그만");
+    }
+
+    /// DEV-246: 신규 퀘스트가 **같은 배치의 다른 신규 퀘스트**를 부모/선행으로
+    /// 가리켜도 해석된다(2-pass). git pull 로 여러 파일이 함께 들어오는 경우.
+    #[tokio::test]
+    async fn new_files_referencing_each_other_resolve() {
+        let dir = fresh_tmp("batch");
+        let store = setup(&dir).await;
+        let paths = store.paths.clone();
+
+        // 부모가 목록 뒤쪽에 오도록 일부러 자식을 먼저 쓴다.
+        mk_quest("DEV-002", "child", Some("DEV-001"), &["DEV-001"], &[])
+            .write(paths.quest_path("DEV-002"))
+            .unwrap();
+        mk_quest("DEV-001", "parent", None, &[], &[])
+            .write(paths.quest_path("DEV-001"))
+            .unwrap();
+
+        let report = sync_changed_quest_files(&store).await.unwrap();
+        assert_eq!(report.inserted, 2);
+        assert!(!report.needs_full_reindex);
+
+        let parent_title: String = sqlx::query_scalar(
+            "SELECT p.title FROM quests c JOIN quests p ON p.id = c.parent_quest_id
+              WHERE c.title = 'child'",
+        )
+        .fetch_one(&store.index_pool)
+        .await
+        .unwrap();
+        assert_eq!(parent_title, "parent", "같은 배치의 부모도 연결돼야");
+
+        let deps: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM quest_dependencies d JOIN quests q ON q.id = d.quest_id
+              WHERE q.title = 'child'",
+        )
+        .fetch_one(&store.index_pool)
+        .await
+        .unwrap();
+        assert_eq!(deps, 1, "같은 배치의 선행도 연결돼야");
+    }
+
+    /// DEV-246: 증분으로 표현 불가능한 경우(정의에 없는 상태)는 안전망으로
+    /// 여전히 풀 reindex 를 요청한다 — 조용히 틀린 상태로 두지 않는다.
+    #[tokio::test]
+    async fn unknown_status_still_falls_back() {
+        let dir = fresh_tmp("unknown-status");
+        let store = setup(&dir).await;
+        let paths = store.paths.clone();
+
+        let mut qf = mk_quest("DEV-001", "weird", None, &[], &[]);
+        qf.frontmatter.status = "no-such-status".into();
+        qf.write(paths.quest_path("DEV-001")).unwrap();
+
+        let report = sync_changed_quest_files(&store).await.unwrap();
+        assert!(
+            report.needs_full_reindex,
+            "정의에 없는 상태는 안전망(풀 reindex)으로 넘겨야"
+        );
     }
 
     /// 외부 편집된 파일이 정확히 UPDATE 되고 cached_mtime 이 갱신.
@@ -926,9 +1302,11 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// 신규 파일은 본 함수 범위 X — needs_full_reindex flag.
+    /// DEV-246 이전에는 "신규 파일 → needs_full_reindex" 를 고정하던 테스트였다.
+    /// 이제 신규 파일도 증분으로 INSERT 하므로 **반대**를 검증한다 — updated 는
+    /// 0(수정이 아니므로)이고 inserted 가 1, 풀 reindex 는 요청하지 않는다.
     #[tokio::test]
-    async fn new_file_triggers_full_reindex_flag() {
+    async fn new_file_inserted_not_full_reindex() {
         let dir = fresh_tmp("new");
         let store = setup(&dir).await;
 
@@ -954,8 +1332,12 @@ mod tests {
         qf.write(store.paths.quest_path("DEV-001")).unwrap();
 
         let report = sync_changed_quest_files(&store).await.unwrap();
-        assert_eq!(report.updated, 0);
-        assert!(report.needs_full_reindex, "신규 파일은 풀 reindex flag");
+        assert_eq!(report.updated, 0, "신규는 updated 가 아니라 inserted");
+        assert_eq!(report.inserted, 1);
+        assert!(
+            !report.needs_full_reindex,
+            "DEV-246: 신규 파일 하나로 전체 재구축을 요청하지 않는다"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
