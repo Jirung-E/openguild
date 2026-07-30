@@ -23,7 +23,14 @@ async fn after_mutation(store: &Store) {
     if store.is_replaying() {
         return;
     }
-    let policy = snapshot::AutoSnapshotPolicy::from_env();
+    let mut policy = snapshot::AutoSnapshotPolicy::from_env();
+    // DEV-299 후속: Store 별 override 가 있으면 env/기본값보다 우선.
+    let ov = store
+        .auto_snapshot_ops_override
+        .load(std::sync::atomic::Ordering::SeqCst);
+    if ov > 0 {
+        policy.max_ops_since_last = ov;
+    }
 
     // DEV-299: 스냅샷 생성은 ~2초 걸린다(BUG-167 이 줄인 건 매 mutation 의
     // *검사* 비용이고, 임계치에 걸렸을 때의 실제 생성은 여전히 동기다).
@@ -858,13 +865,6 @@ async fn parent_id_of(pool: &SqlitePool, id: i64) -> AppResult<Option<i64>> {
 mod tests {
     use super::*;
     use crate::repo::seed_guild_dir;
-
-    /// DEV-299: auto-snapshot 정책은 프로세스 전역 env 로 읽는다
-    /// (`AutoSnapshotPolicy::from_env`). 테스트는 같은 프로세스에서 병렬 실행되므로
-    /// env 를 만지는 테스트끼리는 직렬화해야 한다 — locale.rs 의 ENV_LOCK 과 같은 패턴.
-    /// await 를 건너 유지되므로 async-aware Mutex 를 쓴다(std Mutex 는 clippy
-    /// `await_holding_lock` 위반이자 실제로 런타임을 막을 수 있다).
-    static ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
     fn fresh_tmp(label: &str) -> std::path::PathBuf {
         let ns = std::time::SystemTime::now()
@@ -1729,11 +1729,9 @@ mod tests {
         let store = setup_store(&dir).await;
         store.set_background_snapshots(true);
         // SAFETY: 이 테스트 프로세스 안에서만 정책을 낮춘다(임계치 1회 도달용).
-        let _guard = ENV_LOCK.lock().await;
-        // SAFETY: ENV_LOCK 으로 직렬화된 구간 — 정책 임계치를 1로 낮춘다.
-        unsafe {
-            std::env::set_var("OPENGUILD_AUTO_BACKUP_OPS", "1");
-        }
+        // DEV-299 후속: 전역 env 대신 이 Store 에만 임계치를 지정 — 병렬 실행
+        // 중 다른 테스트(replay 등)가 예기치 않게 스냅샷을 만들지 않는다.
+        store.set_auto_snapshot_ops(1);
 
         for i in 0..3 {
             create_quest(
@@ -1773,9 +1771,6 @@ mod tests {
             "백그라운드 스냅샷이 실제로 생성돼야 한다(유실 금지)"
         );
 
-        unsafe {
-            std::env::remove_var("OPENGUILD_AUTO_BACKUP_OPS");
-        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1789,11 +1784,9 @@ mod tests {
             !store.background_snapshots_enabled(),
             "기본값이 백그라운드면 CLI 에서 스냅샷이 유실된다"
         );
-        let _guard = ENV_LOCK.lock().await;
-        // SAFETY: ENV_LOCK 으로 직렬화된 구간 — 정책 임계치를 1로 낮춘다.
-        unsafe {
-            std::env::set_var("OPENGUILD_AUTO_BACKUP_OPS", "1");
-        }
+        // DEV-299 후속: 전역 env 대신 이 Store 에만 임계치를 지정 — 병렬 실행
+        // 중 다른 테스트(replay 등)가 예기치 않게 스냅샷을 만들지 않는다.
+        store.set_auto_snapshot_ops(1);
 
         for i in 0..3 {
             create_quest(
@@ -1819,9 +1812,6 @@ mod tests {
             "동기 모드는 mutation 반환 전에 스냅샷이 끝나 있어야 한다"
         );
 
-        unsafe {
-            std::env::remove_var("OPENGUILD_AUTO_BACKUP_OPS");
-        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

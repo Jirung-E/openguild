@@ -53,6 +53,13 @@ pub struct Store {
     /// 연달아 오면 스냅샷이 겹쳐 실행돼 디스크 I/O 가 중복되고 journal
     /// truncate 와 맞물릴 수 있다. 하나만 돌게 하는 가드.
     pub snapshot_in_flight: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// DEV-299 후속: auto-snapshot 의 ops 임계치 override (0 = 미설정 → env/기본값).
+    ///
+    /// 예전엔 테스트가 `OPENGUILD_AUTO_BACKUP_OPS` 를 세워 임계치를 낮췄는데,
+    /// env 는 **프로세스 전역**이라 병렬 실행 중 무관한 테스트(replay 등)가
+    /// 예기치 않게 스냅샷을 만들어 실패했다. Store 별로 지정할 수 있게 해
+    /// 오염을 없앤다. 서버/GUI 도 필요하면 코드로 정책을 줄 수 있다.
+    pub auto_snapshot_ops_override: std::sync::Arc<std::sync::atomic::AtomicI64>,
 }
 
 impl Store {
@@ -63,6 +70,12 @@ impl Store {
     pub fn set_background_snapshots(&self, on: bool) {
         self.background_snapshots
             .store(on, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// DEV-299 후속: auto-snapshot ops 임계치를 이 Store 에만 지정(0 = 해제).
+    pub fn set_auto_snapshot_ops(&self, n: i64) {
+        self.auto_snapshot_ops_override
+            .store(n, std::sync::atomic::Ordering::SeqCst);
     }
 
     /// DEV-299: 백그라운드 스냅샷이 켜져 있는지.
@@ -150,6 +163,7 @@ impl Store {
             // DEV-299: 기본 동기 — 켜는 쪽(서버/GUI)이 명시적으로 켠다.
             background_snapshots: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             snapshot_in_flight: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            auto_snapshot_ops_override: std::sync::Arc::new(std::sync::atomic::AtomicI64::new(0)),
         })
     }
 
@@ -210,6 +224,7 @@ impl Store {
             // DEV-299: 기본 동기 — 켜는 쪽(서버/GUI)이 명시적으로 켠다.
             background_snapshots: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             snapshot_in_flight: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            auto_snapshot_ops_override: std::sync::Arc::new(std::sync::atomic::AtomicI64::new(0)),
         })
     }
 }

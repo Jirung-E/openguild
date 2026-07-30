@@ -124,6 +124,129 @@ fn tree_size(dir: &std::path::Path) -> u64 {
 /// 길드의 소스 파일(진실)을 `dst` 로 복사 — 루트 마커 `*.guild` + `.guild/` 의
 /// SOURCE_SUBDIRS. index.db/journal.db/backups 는 제외. 레이아웃 보존:
 /// `dst/{marker}.guild`, `dst/.guild/{subdir}/...`.
+/// DEV-306: 스냅샷 1개 = **SQLite 파일 1개**(`snapshots/{ts}.db`).
+///
+/// 예전에는 `.guild/` 소스 트리를 **파일 단위로 복사**했다(BUG-076). 진리원인
+/// 파일을 담는다는 판단은 맞지만, 담는 방식이 문제였다:
+///
+/// - 이 길드 기준 소스가 파일 1,100여 개인데 스냅샷마다 그 수만큼 create+write
+///   가 일어난다(측정: 2,054ms).
+/// - exFAT/128KB 클러스터 볼륨에서는 평균 2KB 파일이 각각 128KB 를 점유해
+///   스냅샷 하나가 137MB, 보관 7개가 **957MB** 였다(실데이터는 1.5MB).
+///
+/// 그래서 파일 내용을 그대로 DB 한 개에 담는다 — 담는 대상(진리원 파일)은
+/// 동일하고, 파일 개수만 1,100 → 1 로 줄어든다.
+///
+/// **journal.db 와 합치지 않고 스냅샷마다 별 파일로 둔 이유**(사용자 결정: 분리):
+/// journal 은 스냅샷마다 truncate 되는 파일이라 보관 정책이 섞이면 서로 얽힌다.
+/// 스냅샷별 파일이면 (a) 목록/보관 정리가 파일 이름·삭제로 끝나 mutation 마다
+/// 도는 `latest_snapshot_timestamp` 가 DB 를 열지 않아도 되고, (b) 스냅샷 하나가
+/// 손상돼도 나머지가 안전하다.
+///
+/// 스키마:
+///   files(rel_path PK, content BLOB)  — rel_path 는 길드 루트 기준 상대 경로
+///   meta(key PK, value)               — ts / created_at / file_count / bytes
+async fn snapshot_db_write(
+    paths: &GuildPaths,
+    db_path: &std::path::Path,
+    ts: &str,
+) -> Result<(u64, u64)> {
+    let files = collect_guild_source_files(paths)?;
+    let pool = crate::db::create_pool_from_path(db_path, false)
+        .await
+        .with_context(|| format!("snapshot db 생성 실패: {}", db_path.display()))?;
+    sqlx::query("CREATE TABLE IF NOT EXISTS files (rel_path TEXT PRIMARY KEY, content BLOB NOT NULL)")
+        .execute(&pool)
+        .await?;
+    sqlx::query("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        .execute(&pool)
+        .await?;
+
+    let mut total: u64 = 0;
+    let mut tx = pool.begin().await?;
+    for (rel, bytes) in &files {
+        total += bytes.len() as u64;
+        sqlx::query("INSERT OR REPLACE INTO files (rel_path, content) VALUES (?, ?)")
+            .bind(rel)
+            .bind(&bytes[..])
+            .execute(&mut *tx)
+            .await?;
+    }
+    let count = files.len() as u64;
+    for (k, v) in [
+        ("ts", ts.to_string()),
+        ("created_at", chrono::Utc::now().to_rfc3339()),
+        ("file_count", count.to_string()),
+        ("bytes", total.to_string()),
+    ] {
+        sqlx::query("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)")
+            .bind(k)
+            .bind(v)
+            .execute(&mut *tx)
+            .await?;
+    }
+    tx.commit().await?;
+    pool.close().await;
+    Ok((count, total))
+}
+
+/// 스냅샷 DB → `(길드 루트 기준 상대경로, 내용)` 목록.
+async fn snapshot_db_read(db_path: &std::path::Path) -> Result<Vec<(String, Vec<u8>)>> {
+    let pool = crate::db::create_pool_from_path(db_path, true)
+        .await
+        .with_context(|| format!("snapshot db 열기 실패: {}", db_path.display()))?;
+    let rows: Vec<(String, Vec<u8>)> =
+        sqlx::query_as("SELECT rel_path, content FROM files ORDER BY rel_path")
+            .fetch_all(&pool)
+            .await?;
+    pool.close().await;
+    Ok(rows)
+}
+
+/// 스냅샷에 담을 파일 전체 — 루트 마커 `*.guild` + `.guild/<SOURCE_SUBDIRS>/**`.
+/// 반환 경로는 **길드 루트 기준 상대 경로**(복원이 그대로 되붙일 수 있게),
+/// 구분자는 `/` 로 정규화(플랫폼 간 이동 가능).
+fn collect_guild_source_files(paths: &GuildPaths) -> Result<Vec<(String, Vec<u8>)>> {
+    let mut out: Vec<(String, Vec<u8>)> = Vec::new();
+    // 루트 마커.
+    if let Ok(rd) = std::fs::read_dir(&paths.guild_root) {
+        for e in rd.filter_map(|e| e.ok()) {
+            let p = e.path();
+            if p.is_file() && p.extension().and_then(|x| x.to_str()) == Some("guild") {
+                let name = e.file_name().to_string_lossy().to_string();
+                out.push((name, std::fs::read(&p)?));
+            }
+        }
+    }
+    // `.guild/<subdir>/**`.
+    for sub in SOURCE_SUBDIRS {
+        let base = paths.dot_guild().join(sub);
+        collect_dir_files(&base, &format!(".guild/{sub}"), &mut out)?;
+    }
+    Ok(out)
+}
+
+fn collect_dir_files(
+    dir: &std::path::Path,
+    rel_prefix: &str,
+    out: &mut Vec<(String, Vec<u8>)>,
+) -> Result<()> {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return Ok(()); // 없는 하위디렉토리는 조용히 skip (기존 copy_tree 와 동일).
+    };
+    for e in rd.filter_map(|e| e.ok()) {
+        let p = e.path();
+        let name = e.file_name().to_string_lossy().to_string();
+        let rel = format!("{rel_prefix}/{name}");
+        if p.is_dir() {
+            collect_dir_files(&p, &rel, out)?;
+        } else if p.is_file() {
+            out.push((rel, std::fs::read(&p)?));
+        }
+    }
+    Ok(())
+}
+
 fn copy_guild_source(paths: &GuildPaths, dst: &std::path::Path) -> Result<()> {
     std::fs::create_dir_all(dst)?;
     // 루트 마커 `*.guild`.
@@ -183,16 +306,19 @@ pub async fn create_snapshot(store: &Store) -> Result<SnapshotInfo> {
     // 버그로 발현). 디렉토리가 이미 있으면 `-01`, `-02` ... 접미사로 유니크화.
     let base_ts = now_compact();
     let mut ts = base_ts.clone();
-    let mut target = paths.snapshots_dir().join(&ts);
+    let mut target = paths.snapshots_dir().join(format!("{ts}.db"));
     let mut n = 1u32;
-    while target.exists() {
+    // 레거시 디렉토리 스냅샷과도 이름이 겹치지 않게 둘 다 확인.
+    while target.exists() || paths.snapshots_dir().join(&ts).exists() {
         ts = format!("{base_ts}-{n:02}");
-        target = paths.snapshots_dir().join(&ts);
+        target = paths.snapshots_dir().join(format!("{ts}.db"));
         n += 1;
     }
 
-    copy_guild_source(paths, &target).context("snapshot 소스 복사 실패")?;
-    let size_bytes = tree_size(&target);
+    // DEV-306: 파일 트리 복사 → SQLite 파일 1개.
+    let (_count, size_bytes) = snapshot_db_write(paths, &target, &ts)
+        .await
+        .context("snapshot db 기록 실패")?;
 
     // journal truncate (AOF 리셋 — 이 snapshot 이후 ops 만 쌓이도록).
     journal::truncate(&store.journal_pool)
@@ -285,28 +411,45 @@ pub fn ts_to_local_display(ts: &str) -> String {
     }
 }
 
+/// DEV-306: 스냅샷 경로 → timestamp. `{ts}.db`(신규) 와 `{ts}/`(레거시) 모두.
+fn snapshot_timestamp_of(path: &std::path::Path) -> Option<String> {
+    if path.is_dir() {
+        return path.file_name().and_then(|s| s.to_str()).map(str::to_string);
+    }
+    if path.extension().and_then(|x| x.to_str()) != Some("db") {
+        return None;
+    }
+    path.file_stem().and_then(|s| s.to_str()).map(str::to_string)
+}
+
 /// 사용 가능한 snapshot 목록 (오래된 순부터).
 pub fn list_snapshots(paths: &GuildPaths) -> Result<Vec<SnapshotInfo>> {
     let dir = paths.snapshots_dir();
     if !dir.exists() {
         return Ok(Vec::new());
     }
-    // BUG-076: snapshot 은 이제 `{ts}/` 디렉토리 (소스 파일 묶음).
+    // DEV-306: snapshot 은 `{ts}.db` 파일 1개. BUG-076 시절의 `{ts}/` 디렉토리
+    // 스냅샷도 계속 목록/복원 대상으로 둔다(이미 만들어진 것을 버리지 않는다).
     let mut entries: Vec<_> = std::fs::read_dir(&dir)?
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().is_dir())
+        .filter(|e| {
+            let p = e.path();
+            p.is_dir() || p.extension().and_then(|x| x.to_str()) == Some("db")
+        })
         .collect();
     entries.sort_by_key(|e| e.file_name());
 
     let mut out = Vec::new();
     for e in entries {
         let path = e.path();
-        let timestamp = path
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("")
-            .to_string();
-        let size_bytes = tree_size(&path);
+        // DEV-306: `{ts}.db` 는 stem 이 timestamp, 레거시 `{ts}/` 는 디렉토리명.
+        let timestamp = snapshot_timestamp_of(&path).unwrap_or_default();
+        // 파일 스냅샷은 metadata 한 번이면 끝 — 레거시 디렉토리만 재귀 합산.
+        let size_bytes = if path.is_dir() {
+            tree_size(&path)
+        } else {
+            std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0)
+        };
         out.push(SnapshotInfo {
             timestamp,
             path,
@@ -335,10 +478,11 @@ pub fn latest_snapshot_timestamp(paths: &GuildPaths) -> Result<Option<String>> {
     }
     let mut latest: Option<String> = None;
     for e in std::fs::read_dir(&dir)?.filter_map(|e| e.ok()) {
-        if !e.path().is_dir() {
+        // DEV-306: `{ts}.db`(신규) 또는 `{ts}/`(레거시) — 어느 쪽이든 이름만 본다.
+        // 이 함수는 매 mutation 마다 호출되므로 **DB 를 열지 않는다**(BUG-167 취지).
+        let Some(name) = snapshot_timestamp_of(&e.path()) else {
             continue;
-        }
-        let name = e.file_name().to_string_lossy().to_string();
+        };
         // 이름이 "YYYYMMDD-HHMMSS[-NN]" 정렬 단조(UTC 정규형, BUG-086) — 문자열 max = 최신.
         if latest.as_deref().is_none_or(|cur| name.as_str() > cur) {
             latest = Some(name);
@@ -356,6 +500,13 @@ pub fn delete_snapshot(paths: &GuildPaths, timestamp: &str) -> Result<()> {
         || timestamp.contains("..")
     {
         anyhow::bail!("잘못된 snapshot timestamp: {timestamp}");
+    }
+    // DEV-306: `{ts}.db` 파일 우선, 없으면 레거시 `{ts}/` 디렉토리.
+    let db = paths.snapshots_dir().join(format!("{timestamp}.db"));
+    if db.is_file() {
+        std::fs::remove_file(&db)
+            .with_context(|| format!("snapshot 삭제 실패: {}", db.display()))?;
+        return Ok(());
     }
     let target = paths.snapshots_dir().join(timestamp);
     if !target.is_dir() {
@@ -391,22 +542,48 @@ pub async fn restore_snapshot(store: &Store, snapshot: &SnapshotInfo) -> Result<
     // 2. 현재 소스 제거 (index.db/journal.db/backups 는 보존).
     clear_guild_source(paths)?;
 
-    // 3. snapshot 소스를 길드 루트로 복원 (마커 + .guild/<subdir>).
+    // 3. snapshot 의 파일들을 길드 루트로 되돌린다.
     let dot_dst = paths.dot_guild();
     std::fs::create_dir_all(&dot_dst)?;
-    // 루트 마커.
-    if let Ok(rd) = std::fs::read_dir(&snapshot.path) {
-        for e in rd.filter_map(|e| e.ok()) {
-            let p = e.path();
-            if p.is_file() && p.extension().and_then(|x| x.to_str()) == Some("guild") {
-                let _ = std::fs::copy(&p, paths.guild_root.join(e.file_name()));
+    if snapshot.path.is_dir() {
+        // 레거시(BUG-076) 디렉토리 스냅샷 — 기존 트리 복사 경로 유지.
+        // 루트 마커.
+        if let Ok(rd) = std::fs::read_dir(&snapshot.path) {
+            for e in rd.filter_map(|e| e.ok()) {
+                let p = e.path();
+                if p.is_file() && p.extension().and_then(|x| x.to_str()) == Some("guild") {
+                    let _ = std::fs::copy(&p, paths.guild_root.join(e.file_name()));
+                }
             }
         }
-    }
-    // .guild/<subdir>.
-    let snap_dot = snapshot.path.join(".guild");
-    for sub in SOURCE_SUBDIRS {
-        copy_tree(&snap_dot.join(sub), &dot_dst.join(sub))?;
+        let snap_dot = snapshot.path.join(".guild");
+        for sub in SOURCE_SUBDIRS {
+            copy_tree(&snap_dot.join(sub), &dot_dst.join(sub))?;
+        }
+    } else {
+        // DEV-306: DB 스냅샷 — 경로+내용 행을 그대로 되붙인다.
+        let files = snapshot_db_read(&snapshot.path)
+            .await
+            .context("snapshot db 읽기 실패")?;
+        if files.is_empty() {
+            anyhow::bail!(
+                "snapshot 이 비어 있음(파일 0개): {} — 복원을 중단한다",
+                snapshot.path.display()
+            );
+        }
+        for (rel, content) in files {
+            // rel 은 우리가 만든 정규형(길드 루트 기준, `/` 구분자)이지만
+            // 방어적으로 traversal 을 거른다.
+            if rel.contains("..") || rel.starts_with('/') || rel.contains(':') {
+                anyhow::bail!("snapshot 안에 잘못된 경로: {rel}");
+            }
+            let dst = paths.guild_root.join(rel.replace('/', std::path::MAIN_SEPARATOR_STR));
+            if let Some(parent) = dst.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(&dst, &content)
+                .with_context(|| format!("복원 write 실패: {}", dst.display()))?;
+        }
     }
 
     // 4. index.db 재구축 (파일 → DB). live pool 사용 — fs::copy 로 덮어쓰지
@@ -420,14 +597,21 @@ pub async fn restore_snapshot(store: &Store, snapshot: &SnapshotInfo) -> Result<
 
 /// snapshot 디렉토리 시간 정렬 후 N 개 이상 오래된 것 삭제.
 fn prune_old_snapshots(paths: &GuildPaths, keep: usize) -> Result<()> {
+    // DEV-306: `{ts}.db` 와 레거시 `{ts}/` 가 섞여 있을 수 있다 — 둘 다 세고
+    // 오래된 것부터 지운다(보관 개수는 합계 기준).
     let mut entries: Vec<_> = std::fs::read_dir(paths.snapshots_dir())?
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().is_dir())
+        .filter(|e| snapshot_timestamp_of(&e.path()).is_some())
         .collect();
-    entries.sort_by_key(|e| e.file_name());
+    entries.sort_by_key(|e| snapshot_timestamp_of(&e.path()).unwrap_or_default());
     while entries.len() > keep {
         let old = entries.remove(0);
-        let _ = std::fs::remove_dir_all(old.path());
+        let p = old.path();
+        if p.is_dir() {
+            let _ = std::fs::remove_dir_all(&p);
+        } else {
+            let _ = std::fs::remove_file(&p);
+        }
     }
     Ok(())
 }
@@ -442,6 +626,15 @@ fn now_compact() -> String {
 
 #[cfg(test)]
 mod tests {
+    /// DEV-306: 스냅샷이 파일 트리에서 DB 파일 1개로 바뀌었으므로, "이 파일이
+    /// 담겼는가" 검사는 경로 존재 대신 DB 조회로 한다.
+    async fn snapshot_contains(snap: &super::SnapshotInfo, rel_path: &str) -> bool {
+        super::snapshot_db_read(&snap.path)
+            .await
+            .map(|files| files.iter().any(|(p, _)| p == rel_path))
+            .unwrap_or(false)
+    }
+
     use super::*;
     use crate::repo::seed_guild_dir;
 
@@ -905,7 +1098,7 @@ mod tests {
 
         let snap = create_snapshot(&store).await.unwrap();
         assert!(
-            snap.path.join(".guild/history").join(format!("{}.jsonl", q.quest_id)).exists(),
+            snapshot_contains(&snap, &format!(".guild/history/{}.jsonl", q.quest_id)).await,
             "snapshot 이 .guild/history/ 를 포함해야 (SOURCE_SUBDIRS 등록 확인)"
         );
 
@@ -954,19 +1147,25 @@ mod tests {
             .unwrap();
 
         let snap = create_snapshot(&store).await.unwrap();
+        // DEV-306: 경로 존재 대신 DB 내용 조회.
         assert!(
-            snap.path.join(".guild/library").join(format!("{}.md", book.book_id())).exists(),
+            snapshot_contains(&snap, &format!(".guild/library/{}.md", book.book_id())).await,
             "snapshot 이 도서관 문서를 포함해야"
         );
         assert!(
-            snap.path
-                .join(".guild/library")
-                .join(format!("{}.attachments.json", book.book_id()))
-                .exists(),
+            snapshot_contains(
+                &snap,
+                &format!(".guild/library/{}.attachments.json", book.book_id())
+            )
+            .await,
             "snapshot 이 도서관 첨부 sidecar 를 포함해야"
         );
         assert!(
-            snap.path.join(".guild/attachments").join(rel.trim_start_matches("attachments/")).exists(),
+            snapshot_contains(
+                &snap,
+                &format!(".guild/attachments/{}", rel.trim_start_matches("attachments/"))
+            )
+            .await,
             "snapshot 이 첨부 실제 bytes 도 포함해야"
         );
 
