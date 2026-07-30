@@ -10,6 +10,8 @@
 import { get } from 'svelte/store';
 
 import { urgencyColor, urgencyLabel, urgencyOutOfRange, type Quest } from '../types';
+// DEV-302: 문자열로 조립하는 SVG 도 Icon.svelte 와 같은 도형을 쓴다.
+import { iconSvgGroup } from './icon-paths';
 import { locale } from '../stores/locale';
 import { themePalette } from '../stores/theme';
 
@@ -176,13 +178,14 @@ export function makeQuestNodeSvgUrl(
 	const line2 = rest2.length > 0 ? splitByPixelWidth(rawL2, MAX_PX - 10)[0] + '…' : rawL2;
 
 	// BUG-034: 유효 기한 (= min(required_due, earliest_campaign_due)) 표시.
-	// 색은 지남=빨강 / ≤ 7일=주황 / 그 외=회색. source='campaign' 이면 prefix
-	// '⛺' 아이콘 — 캠페인 기한이 더 가까워서 그게 표시되고 있다는 시각 단서.
+	// 색은 지남=빨강 / ≤ 7일=주황 / 그 외=회색. DEV-302: 아이콘은 이모지(⏱/⛺)
+	// 대신 SVG — source='campaign' 이면 텐트 아이콘으로 "캠페인 기한이 더 가까워
+	// 그게 표시되고 있다"는 단서를 준다(quest 면 시계).
 	const { date: due, source } = effectiveQuestDue(quest);
 	let dueText = '';
 	let dueColor = defaultDueColor;
 	if (due) {
-		dueText = source === 'campaign' ? `⛺ ${due}` : due;
+		dueText = due;
 		const dueMs = new Date(`${due}T23:59:59`).getTime();
 		if (!Number.isNaN(dueMs)) {
 			const daysLeft = Math.floor((dueMs - Date.now()) / (24 * 60 * 60 * 1000));
@@ -241,9 +244,15 @@ export function makeQuestNodeSvgUrl(
 	}
   ${
 		dueText
-			? `<text x="${W - 10}" y="${H - 8}" text-anchor="end"
+			? `${iconSvgGroup(source === 'campaign' ? 'campaign' : 'clock', {
+					x: W - 10 - pillTextWidth(dueText) - 13,
+					y: H - 18,
+					size: 10,
+					color: dueColor
+				})}
+  <text x="${W - 10}" y="${H - 8}" text-anchor="end"
        fill="${dueColor}" font-size="10" font-weight="500"
-       font-family="system-ui,sans-serif">⏱ ${xEsc(dueText)}</text>`
+       font-family="system-ui,sans-serif">${xEsc(dueText)}</text>`
 			: ''
 	}
   ${overlay}

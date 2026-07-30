@@ -394,7 +394,10 @@
 		     "revert 해라"): .guild 마커 파일 직접 선택 옵션은 폐기 — 원래의
 		     단일 폴더 다이얼로그로 되돌림. -->
 		<section class="picker">
+			<!-- DEV-302: 라벨 문자열에 섞여 있던 📁 를 아이콘으로 분리 —
+			     번역 문구와 아이콘은 관심사가 다르다. -->
 			<button class="btn-pick" onclick={pickFolder} disabled={pickRunning}>
+				{#if !pickRunning}<Icon name="folder" size={13} />{/if}
 				{pickRunning ? t('welcome.opening', $locale) : t('welcome.pickFolder', $locale)}
 			</button>
 			<span class="picker-hint">
@@ -422,7 +425,9 @@
 					aria-label={t('welcome.remoteAria', $locale)}
 				/>
 				<button class="btn-pick alt" onclick={checkRemote} disabled={!remoteInput.trim()}>
-					{remoteCheckState === 'checking' ? t('welcome.checking', $locale) : t('welcome.checkConn', $locale)}
+					{remoteCheckState === 'checking'
+						? t('welcome.checking', $locale)
+						: t('welcome.checkConn', $locale)}
 				</button>
 				<button class="btn-pick" onclick={connectRemote} disabled={!remoteInput.trim()}>
 					{t('welcome.connect', $locale)}
@@ -431,10 +436,13 @@
 			{#if remoteCheckState === 'ok'}
 				<p class="remote-check ok">{t('welcome.connOk', $locale)}</p>
 			{:else if remoteCheckState === 'fail'}
-				<p class="remote-check err">{t('welcome.connFail', $locale)}{remoteCheckMsg ? `: ${remoteCheckMsg}` : ''}</p>
+				<p class="remote-check err">
+					{t('welcome.connFail', $locale)}{remoteCheckMsg ? `: ${remoteCheckMsg}` : ''}
+				</p>
 			{/if}
 			<span class="picker-hint">
-				{t('welcome.remoteHint1', $locale)}<strong>{t('welcome.remoteHintStrong', $locale)}</strong>{t('welcome.remoteHint2', $locale)}
+				{t('welcome.remoteHint1', $locale)}<strong>{t('welcome.remoteHintStrong', $locale)}</strong
+				>{t('welcome.remoteHint2', $locale)}
 			</span>
 		</section>
 	{/if}
@@ -445,7 +453,10 @@
 			<h2>{t('welcome.uninitTitle', $locale)}</h2>
 			<p class="uninit-path">{uninitPath}</p>
 			<p class="uninit-desc">
-				{t('welcome.uninitDesc1', $locale)}<code>{t('welcome.markerExample', $locale)}</code>{t('welcome.uninitDesc2', $locale)}<code>.guild/</code>{t('welcome.uninitDesc3', $locale)}
+				{t('welcome.uninitDesc1', $locale)}<code>{t('welcome.markerExample', $locale)}</code>{t(
+					'welcome.uninitDesc2',
+					$locale
+				)}<code>.guild/</code>{t('welcome.uninitDesc3', $locale)}
 			</p>
 			<label class="uninit-name">
 				<span>{t('welcome.guildName', $locale)}</span>
@@ -458,7 +469,9 @@
 				<button class="btn-yes" onclick={initUninit} disabled={initRunning}>
 					{initRunning ? t('welcome.initializing', $locale) : t('welcome.initAndOpen', $locale)}
 				</button>
-				<button class="btn-no" onclick={declineUninit} disabled={initRunning}>{t('common.no', $locale)}</button>
+				<button class="btn-no" onclick={declineUninit} disabled={initRunning}
+					>{t('common.no', $locale)}</button
+				>
 			</div>
 		</section>
 	{/if}
@@ -475,7 +488,9 @@
 	{:else if unified.length === 0}
 		<p class="empty">
 			{t('welcome.empty1', $locale)}<br />
-			<code>openguild init</code>{t('welcome.empty2', $locale)}<code>openguild-gui &lt;path&gt;</code>{t('welcome.empty3', $locale)}
+			<code>openguild init</code>{t('welcome.empty2', $locale)}<code
+				>openguild-gui &lt;path&gt;</code
+			>{t('welcome.empty3', $locale)}
 		</p>
 	{:else}
 		<!-- DEV-113 후속: local + remote 를 하나의 목록으로(최근 연 순). -->
@@ -807,6 +822,10 @@
 		border-radius: 8px;
 	}
 	.btn-pick {
+		/* DEV-302: 아이콘 + 라벨 기준선 정렬. */
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4em;
 		padding: 0.5rem 1rem;
 		background: var(--accent-strong);
 		border: 1px solid var(--accent);

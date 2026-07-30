@@ -434,7 +434,7 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	// DEV-205 모듈1: Welcome 페이지.
 	'welcome.sub': { ko: '최근 작업한 길드', en: 'Recently opened guilds' },
 	'welcome.opening': { ko: '여는 중…', en: 'Opening…' },
-	'welcome.pickFolder': { ko: '📁 폴더에서 열기', en: '📁 Open from folder' },
+	'welcome.pickFolder': { ko: '폴더에서 열기', en: 'Open from folder' },
 	'welcome.pickHint': {
 		ko: '기존 길드 폴더를 선택하면 바로 열고, 길드가 아닌 폴더면 초기화 안내가 표시됩니다.',
 		en: 'Pick an existing guild folder to open it, or a non-guild folder to see init guidance.'
@@ -548,7 +548,7 @@ const DICT: Record<string, { ko: string; en: string }> = {
 
 	// DEV-205 모듈2: 작업 기록 요약 카드(홈). worklog 상세는 모듈5/후속.
 	'worklogCard.detailTitle': { ko: '작업 기록 상세', en: 'Worklog detail' },
-	'worklogCard.title': { ko: '🕘 작업 기록', en: '🕘 Worklog' },
+	'worklogCard.title': { ko: '작업 기록', en: 'Worklog' },
 	'worklogCard.rangePre': { ko: '최근 ', en: 'Last ' },
 	'worklogCard.rangeWeeks': { ko: '주 · 총 ', en: ' weeks · ' },
 	'worklogCard.rangeActivities': { ko: ' 활동 ›', en: ' activities ›' },
@@ -706,7 +706,7 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'board.highlightRelated': { ko: '연관 퀘스트 하이라이트', en: 'Highlight related quests' },
 	'board.multiSelect': { ko: '(다중 선택 가능)', en: '(multi-select)' },
 	'board.gotoDetail': { ko: '퀘스트 상세 페이지로 이동 →', en: 'Go to quest detail page →' },
-	'board.selectBtn': { ko: '🔘 선택', en: '🔘 Select' },
+	'board.selectBtn': { ko: '선택', en: 'Select' },
 	'board.arrangeBtn': { ko: '⊞ 정렬', en: '⊞ Arrange' },
 	'board.cardNote': { ko: "하이라이트는 선택(파란색)과 별개 — '선택' 버튼을 누르면 드래그·상태변경 대상이 됨", en: "Highlight is separate from selection (blue) — press 'Select' to make them drag / status-change targets" },
 	'board.allRelated': { ko: '연관 전체', en: 'All related' },
@@ -905,7 +905,7 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	// DEV-288: 규칙·도서관 변경 활동.
 	'worklogPage.badge.rule': { ko: '규칙', en: 'Rule' },
 	'worklogPage.badge.book': { ko: '문서', en: 'Doc' },
-	'worklogPage.title': { ko: '🕘 작업 기록', en: '🕘 Work Log' },
+	'worklogPage.title': { ko: '작업 기록', en: 'Work Log' },
 	'worklogPage.rangeStartAria': { ko: '구간 시작', en: 'Range start' },
 	'worklogPage.rangeEndAria': { ko: '구간 끝', en: 'Range end' },
 	'worklogPage.prevAria': { ko: '이전', en: 'Previous' },
@@ -913,7 +913,7 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'worklogPage.dateSelectAria': { ko: '날짜 선택', en: 'Select date' },
 	'worklogPage.nextAria': { ko: '다음', en: 'Next' },
 	'worklogPage.today': { ko: '오늘', en: 'Today' },
-	'worklogPage.notePre': { ko: '📝 노트 — ', en: '📝 Note — ' },
+	'worklogPage.notePre': { ko: '노트 — ', en: 'Note — ' },
 	'worklogPage.noteEdit': { ko: '편집', en: 'Edit' },
 	'worklogPage.noteWrite': { ko: '작성', en: 'Write' },
 	'worklogPage.saving': { ko: '저장…', en: 'Saving…' },
@@ -921,7 +921,7 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'worklogPage.cancel': { ko: '취소', en: 'Cancel' },
 	'worklogPage.noNotePre': { ko: '노트 없음 — "', en: 'No note — click "' },
 	'worklogPage.noNotePost': { ko: '" 으로 남기기.', en: '" to write one.' },
-	'worklogPage.notesInRangePre': { ko: '📝 기간 내 노트 ', en: '📝 Notes in range: ' },
+	'worklogPage.notesInRangePre': { ko: '기간 내 노트 ', en: 'Notes in range: ' },
 	'worklogPage.notesInRangePost': { ko: '건', en: '' },
 	'worklogPage.activitiesPre': { ko: '활동 ', en: 'Activities: ' },
 	'worklogPage.activitiesPost': { ko: '건', en: '' },

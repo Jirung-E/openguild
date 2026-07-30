@@ -73,7 +73,11 @@ function wikiContextCompletion(context: CompletionContext): CompletionResult | n
 			const nsInsert = `${canonical}:`;
 			options.push({
 				label: nsInsert,
-				displayLabel: `🏷️ ${nsInsert}`,
+				// DEV-302: 라벨의 🏷️ 제거 — CodeMirror 자동완성은 문자열만 받으므로
+				// 아이콘은 `type` 에 딸린 `.cm-completionIcon-namespace` 로 CSS 에서
+				// 그린다(global.css). 예전 `type:'keyword'` 은 CM 기본 글리프가
+				// 🔑(+U+FE0E) 라 OS 에 따라 컬러 이모지로 떴다.
+				displayLabel: nsInsert,
 				detail: `네임스페이스 — ${KIND_LABEL[kind]}만 보기`,
 				apply: (view: EditorView, _c: Completion, from: number, to: number) => {
 					view.dispatch({
@@ -82,7 +86,7 @@ function wikiContextCompletion(context: CompletionContext): CompletionResult | n
 					});
 					startCompletion(view);
 				},
-				type: 'keyword'
+				type: 'namespace'
 			});
 		}
 	}
@@ -100,7 +104,7 @@ function wikiContextCompletion(context: CompletionContext): CompletionResult | n
 		const insert = `${KIND_NAMESPACE[ref.kind]}:${ref.kind === 'rule' ? (ref.slug ?? id.toLowerCase()) : id}`;
 		options.push({
 			label: pathMatch && !idMatch ? pathLabel! : id,
-			displayLabel: `🔗 ${insert}`,
+			displayLabel: insert,
 			detail: `${KIND_LABEL[ref.kind]} · ${ref.title}`,
 			// DEV-223: closeBrackets 가 `[[` 입력 시 `]]` 를 자동 삽입해두므로,
 			// 문자열 apply(`insert]]`)를 쓰면 [[slug]]]] 로 중복된다 — 커서 뒤에
@@ -117,8 +121,8 @@ function wikiContextCompletion(context: CompletionContext): CompletionResult | n
 	}
 	if (options.length === 0) return null;
 	options.sort((a, b) => {
-		const ak = a.type === 'keyword' ? 0 : 1;
-		const bk = b.type === 'keyword' ? 0 : 1;
+		const ak = a.type === 'namespace' ? 0 : 1;
+		const bk = b.type === 'namespace' ? 0 : 1;
 		return ak !== bk ? ak - bk : a.label.localeCompare(b.label);
 	});
 	// DEV-239: label 이 id 또는 폴더 경로 둘 중 하나라 CodeMirror 기본 fuzzy

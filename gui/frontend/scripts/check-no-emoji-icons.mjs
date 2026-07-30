@@ -34,10 +34,7 @@ const COLOR_RANGES = [
 // 의도적으로 이모지를 쓰는 파일 — 교체 대상이 아니다.
 //  · QuestCommentsSection: 댓글 반응(REACTION_SET) 자체가 이모지.
 //  · Icon/PlayPauseIcon: 주석에서 교체 대상 문자를 인용한다.
-const ALLOW_FILES = new Set([
-	'lib/components/Icon.svelte',
-	'lib/components/PlayPauseIcon.svelte'
-]);
+const ALLOW_FILES = new Set(['lib/components/Icon.svelte', 'lib/components/PlayPauseIcon.svelte']);
 
 const isColorEmoji = (cp) => COLOR_RANGES.some(([a, b]) => cp >= a && cp <= b);
 
@@ -47,6 +44,34 @@ function markupOnly(text) {
 		.replace(/<script[\s\S]*?<\/script>/g, (m) => m.replace(/[^\n]/g, ' '))
 		.replace(/<style[\s\S]*?<\/style>/g, (m) => m.replace(/[^\n]/g, ' '))
 		.replace(/<!--[\s\S]*?-->/g, (m) => m.replace(/[^\n]/g, ' '));
+}
+
+/**
+ * DEV-302: 마크업만으로는 부족하다 — 보드 노드처럼 SVG 를 **문자열로 조립**하는
+ * 코드나 i18n 라벨 문자열에 이모지를 넣으면 그대로 렌더된다(실제로 ⏱ ⛺ 💬 🔘
+ * 등이 이 경로로 남아 있었다). 주석은 교체 대상 문자를 인용할 수 있으므로
+ * 제외하고 코드만 검사한다.
+ *
+ * 주석 제거는 naive — 문자열 안의 `//`(URL 등)를 주석으로 오인해 뒤를 지울 수
+ * 있다. 지워지면 검사에서 빠질 뿐(오탐이 아니라 미탐) 이라 감수한다.
+ */
+function codeOnly(text) {
+	return text
+		.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+		.replace(/(^|[^:])\/\/[^\n]*/g, (m, p1) => p1 + ' '.repeat(m.length - p1.length));
+}
+
+/** .svelte 의 <script> 블록만 (주석 제거). */
+function scriptOnly(text) {
+	const out = [];
+	const re = /<script[^>]*>([\s\S]*?)<\/script>/g;
+	let m;
+	while ((m = re.exec(text)) !== null) {
+		const before = text.slice(0, m.index + m[0].indexOf(m[1]));
+		const startLine = before.split('\n').length;
+		out.push({ startLine, body: codeOnly(m[1]) });
+	}
+	return out;
 }
 
 const violations = [];
@@ -60,20 +85,39 @@ function walk(dir) {
 			walk(p);
 			continue;
 		}
-		if (!name.endsWith('.svelte')) continue;
+		const isSvelte = name.endsWith('.svelte');
+		const isTs = name.endsWith('.ts') && !name.endsWith('.d.ts') && !name.includes('.test.');
+		if (!isSvelte && !isTs) continue;
 		const rel = relative(SRC, p).replace(/\\/g, '/');
 		if (ALLOW_FILES.has(rel)) continue;
-		const lines = markupOnly(readFileSync(p, 'utf8')).split('\n');
-		lines.forEach((line, i) => {
-			for (const ch of line) {
-				const cp = ch.codePointAt(0);
-				if (isColorEmoji(cp)) {
-					violations.push(`${rel}:${i + 1}  U+${cp.toString(16).toUpperCase()}  ${line.trim().slice(0, 80)}`);
-					break;
-				}
-			}
-		});
+		const text = readFileSync(p, 'utf8');
+		const orig = text.split('\n');
+		if (isSvelte) {
+			scan(rel, markupOnly(text), 1, orig);
+			// DEV-302: <script> 안의 코드도 — 문자열로 조립하는 SVG / 라벨.
+			for (const { startLine, body } of scriptOnly(text)) scan(rel, body, startLine, orig);
+		} else {
+			scan(rel, codeOnly(text), 1, orig);
+		}
 	}
+}
+
+function scan(rel, text, startLine, origLines) {
+	text.split('\n').forEach((line, i) => {
+		// DEV-302: 그 줄이 의도적인 이모지면 `emoji-ok` 주석으로 표시 — 파일 전체를
+		// ALLOW_FILES 로 빼면 같은 파일의 나머지 마크업까지 검사에서 빠진다.
+		// (주석은 위에서 지워지므로 원본 줄에서 확인.)
+		if (origLines[startLine + i - 1]?.includes('emoji-ok')) return;
+		for (const ch of line) {
+			const cp = ch.codePointAt(0);
+			if (isColorEmoji(cp)) {
+				violations.push(
+					`${rel}:${startLine + i}  U+${cp.toString(16).toUpperCase()}  ${line.trim().slice(0, 80)}`
+				);
+				break;
+			}
+		}
+	});
 }
 
 walk(SRC);

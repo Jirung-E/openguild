@@ -17,6 +17,10 @@
 	import { detectEnvironment } from '$lib/api/transport';
 	// BUG-034: 유효 기한 (퀘스트 required_due vs 연결 캠페인 ended_at) 계산 헬퍼.
 	import { effectiveQuestDue, pillTextWidth } from '$lib/utils/quest-node-svg';
+	// DEV-302: 노드 SVG 를 문자열로 조립하므로 Icon.svelte 대신 같은 도형의 문자열판.
+	// (마크업 쪽 버튼 라벨엔 컴포넌트를 그대로 쓴다.)
+	import { iconSvgGroup } from '$lib/utils/icon-paths';
+	import Icon from './Icon.svelte';
 	import {
 		loadLaneOrder as loadLaneOrderShared,
 		saveLaneOrder as saveLaneOrderShared
@@ -173,12 +177,14 @@
 		const ulX = 10 + qidW + 6;
 
 		// DEV-116: 댓글 개수 badge — 상단 우측. 0 이면 표시 X.
+		// DEV-302: 아이콘은 이모지(💬) 대신 SVG — 아이콘 + 개수 텍스트.
 		const cc = quest.comment_count ?? 0;
-		const ccText = cc > 0 ? `💬 ${cc}` : '';
-		const ccW = ccText ? Math.ceil(ccText.length * 6.0) + 14 : 0;
+		const ccText = cc > 0 ? String(cc) : '';
+		const CC_ICON = 10;
+		const ccW = ccText ? CC_ICON + 3 + Math.ceil(ccText.length * 6.0) + 12 : 0;
 		const ccX = W - 10 - ccW;
 		const ccFill = dueMutedFill;
-		// DEV-142 후속 / DEV-150: 토론 배지 — 일반 댓글(💬)과 별도. 미해결>0 면
+		// DEV-142 후속 / DEV-150: 토론 배지 — 일반 댓글 배지와 별도. 미해결>0 면
 		// ✗(빨강), 아니면 해결>0 면 ✓(초록). 텍스트 글리프라 fill 로 색이 입혀짐
 		// (이모지와 달리 테마색 그대로). 💬 배지 왼쪽(없으면 우측 끝)에 둔다.
 		const du = quest.discussion_unresolved ?? 0;
@@ -199,12 +205,13 @@
 		const line2 = rest2.length > 0 ? splitByPixelWidth(rawL2, MAX_PX - 10)[0] + '…' : rawL2;
 
 		// BUG-034: 유효 기한 (= min(required_due, earliest_campaign_due)) 표시.
-		// source='campaign' 이면 prefix '⛺' — 캠페인이 더 가까워 그게 우세함을 시각 단서로.
+		// DEV-302: 아이콘은 SVG — source='campaign' 이면 텐트(캠페인 기한이 더
+		// 가까워 그게 우세함), quest 면 시계. (예전엔 ⛺/⏱ 이모지.)
 		const { date: due, source: dueSrc } = effectiveQuestDue(quest);
 		let dueText = '';
 		let dueColor = dueMutedFill;
 		if (due) {
-			dueText = dueSrc === 'campaign' ? `⛺ ${due}` : due;
+			dueText = due;
 			const dueMs = new Date(`${due}T23:59:59`).getTime();
 			if (!Number.isNaN(dueMs)) {
 				const daysLeft = Math.floor((dueMs - Date.now()) / (24 * 60 * 60 * 1000));
@@ -236,7 +243,13 @@
 	}
   ${
 		ccText
-			? `<text x="${ccX + ccW / 2}" y="21.5" text-anchor="middle"
+			? `${iconSvgGroup('comment', {
+					x: ccX + 6,
+					y: 12.5,
+					size: CC_ICON,
+					color: ccFill
+				})}
+  <text x="${ccX + 6 + CC_ICON + 3}" y="21.5"
     fill="${ccFill}" font-size="10" font-weight="500"
     font-family="system-ui,sans-serif">${x(ccText)}</text>`
 			: ''
@@ -260,9 +273,15 @@
 	}
   ${
 		dueText
-			? `<text x="${W - 10}" y="${H - 8}" text-anchor="end"
+			? `${iconSvgGroup(dueSrc === 'campaign' ? 'campaign' : 'clock', {
+					x: W - 10 - pillTextWidth(dueText) - 13,
+					y: H - 18,
+					size: 10,
+					color: dueColor
+				})}
+  <text x="${W - 10}" y="${H - 8}" text-anchor="end"
        fill="${dueColor}" font-size="10" font-weight="500"
-       font-family="system-ui,sans-serif">⏱ ${x(dueText)}</text>`
+       font-family="system-ui,sans-serif">${x(dueText)}</text>`
 			: ''
 	}
 </svg>`;
@@ -1058,7 +1077,10 @@
 					node.data('statusId', target.statusId);
 					applyStatusChange(record.questId, target.statusId);
 				} catch (e) {
-					showToast(e instanceof Error ? e.message : t('common.statusChangeFailed', get(locale)), 'error');
+					showToast(
+						e instanceof Error ? e.message : t('common.statusChangeFailed', get(locale)),
+						'error'
+					);
 					busy = false;
 					return;
 				}
@@ -1083,7 +1105,10 @@
 						node.data('statusId', target.statusId);
 						applyStatusChange(item.questId, target.statusId);
 					} catch (e) {
-						showToast(e instanceof Error ? e.message : t('common.statusChangeFailed', get(locale)), 'error');
+						showToast(
+							e instanceof Error ? e.message : t('common.statusChangeFailed', get(locale)),
+							'error'
+						);
 						continue;
 					}
 				}
@@ -1789,9 +1814,7 @@
 			// 트랙패드 자연 스크롤: 아래로 스크롤(deltaY>0) → 콘텐츠가 위로.
 			const dx = -e.deltaX;
 			const dy = -e.deltaY;
-			pendingPan = pendingPan
-				? { x: pendingPan.x + dx, y: pendingPan.y + dy }
-				: { x: dx, y: dy };
+			pendingPan = pendingPan ? { x: pendingPan.x + dx, y: pendingPan.y + dy } : { x: dx, y: dy };
 		}
 		if (wheelRaf === null) wheelRaf = requestAnimationFrame(flushBoardWheel);
 	}
@@ -2542,7 +2565,9 @@
 			settingsBtn.textContent = '⚙';
 			const setOpenAttrs = () => {
 				const open = lanesSettingsOpen.has(s.slug);
-				settingsBtn.title = open ? t('board.laneSettingsCollapse', get(locale)) : t('board.laneSettingsExpand', get(locale));
+				settingsBtn.title = open
+					? t('board.laneSettingsCollapse', get(locale))
+					: t('board.laneSettingsExpand', get(locale));
 				settingsBtn.setAttribute('aria-expanded', String(open));
 				hdr.classList.toggle('settings-open', open);
 			};
@@ -2963,7 +2988,10 @@
 						// API 실패 (예: DEV-142 미해결 토론으로 완료 차단) → 시작 위치로
 						// 복원 + 사유 toast (이전엔 무경고로 되돌리기만 해 혼란).
 						node.animate({ position: { x: fromPos.x, y: fromPos.y }, duration: 150 });
-						showToast(e instanceof Error ? e.message : t('common.statusChangeFailed', get(locale)), 'error');
+						showToast(
+							e instanceof Error ? e.message : t('common.statusChangeFailed', get(locale)),
+							'error'
+						);
 						continue;
 					}
 				}
@@ -3111,7 +3139,9 @@
 						>{questStatusLabel(expandedQuest, $locale)}</span
 					>
 				</div>
-				<button class="card-close" onclick={closeExpanded} title={t('board.closeEsc', $locale)}>×</button>
+				<button class="card-close" onclick={closeExpanded} title={t('board.closeEsc', $locale)}
+					>×</button
+				>
 			</div>
 
 			<p class="card-title">{expandedQuest.title}</p>
@@ -3132,7 +3162,8 @@
 
 			<div class="card-divider"></div>
 			<p class="card-sec-label">
-				{t('board.highlightRelated', $locale)} <span class="hl-multi-hint">{t('board.multiSelect', $locale)}</span>
+				{t('board.highlightRelated', $locale)}
+				<span class="hl-multi-hint">{t('board.multiSelect', $locale)}</span>
 			</p>
 
 			<div class="card-hl-grid">
@@ -3170,6 +3201,8 @@
 						onclick={selectHighlighted}
 						title={t('board.selectHighlighted', $locale)}
 					>
+						<!-- DEV-302: 라벨의 🔘 를 아이콘으로 분리. -->
+						<Icon name="select" size={11} />
 						{t('board.selectBtn', $locale)}
 					</button>
 					<button
@@ -3180,7 +3213,11 @@
 					>
 						{t('board.arrangeBtn', $locale)}
 					</button>
-					<button class="hl-act clear" onclick={clearHighlight} title={t('board.clearHighlightTitle', $locale)}>
+					<button
+						class="hl-act clear"
+						onclick={clearHighlight}
+						title={t('board.clearHighlightTitle', $locale)}
+					>
 						{t('common.clearBtn', $locale)}
 					</button>
 				</div>
@@ -3195,8 +3232,15 @@
 	<!-- DEV-135: List 필터 활성 표시 — Board 의 dim 이 '왜' 인지 + 한 클릭 해제. -->
 	{#if filterActive}
 		<div class="filter-chip" role="status">
-			<span class="fc-label">{t('board.filterActivePre', $locale)}{filterMatchCount}/{filterTotalCount}{t('board.filterActivePost', $locale)}</span>
-			<button class="fc-clear" onclick={clearBoardFilter} title={t('common.clearFilter', $locale)}>{t('common.clearBtn', $locale)}</button>
+			<span class="fc-label"
+				>{t('board.filterActivePre', $locale)}{filterMatchCount}/{filterTotalCount}{t(
+					'board.filterActivePost',
+					$locale
+				)}</span
+			>
+			<button class="fc-clear" onclick={clearBoardFilter} title={t('common.clearFilter', $locale)}
+				>{t('common.clearBtn', $locale)}</button
+			>
 		</div>
 	{/if}
 	<!-- DEV-073 fix3: New Quest 는 상단 우측 고정 (항상 노출), 나머지 도구바는
@@ -3219,7 +3263,12 @@
 				><span class="icon">⊞</span></button
 			>
 			<div class="tb-sep"></div>
-			<button class="tb-btn" onclick={undo} disabled={undoStack.length === 0} title={t('board.undo', $locale)}>
+			<button
+				class="tb-btn"
+				onclick={undo}
+				disabled={undoStack.length === 0}
+				title={t('board.undo', $locale)}
+			>
 				<span class="icon">↩</span>
 				{#if undoStack.length > 0}<span class="count">{undoStack.length}</span>{/if}
 			</button>
@@ -3283,7 +3332,11 @@
 				>
 					<span class="icon">⊟</span><span>{t('board.arrangeToolbarBtn', $locale)}</span>
 				</button>
-				<select class="tb-select tb-mode" bind:value={arrangeMode} title={t('board.arrangeMode', $locale)}>
+				<select
+					class="tb-select tb-mode"
+					bind:value={arrangeMode}
+					title={t('board.arrangeMode', $locale)}
+				>
 					<option value="group">{t('board.arrangeModeGroup', $locale)}</option>
 					<option value="all">{t('board.arrangeModeAll', $locale)}</option>
 				</select>
@@ -3294,8 +3347,12 @@
 		<button
 			class="tb-btn tb-collapse"
 			onclick={toggleToolbarCollapsed}
-			title={toolbarCollapsed ? t('board.toolbarExpand', $locale) : t('board.toolbarCollapse', $locale)}
-			aria-label={toolbarCollapsed ? t('board.toolbarExpand', $locale) : t('board.toolbarCollapseShort', $locale)}
+			title={toolbarCollapsed
+				? t('board.toolbarExpand', $locale)
+				: t('board.toolbarCollapse', $locale)}
+			aria-label={toolbarCollapsed
+				? t('board.toolbarExpand', $locale)
+				: t('board.toolbarCollapseShort', $locale)}
 		>
 			<span class="icon">{toolbarCollapsed ? '☰' : '⇥'}</span>
 		</button>
@@ -3313,8 +3370,12 @@
 		<div class="dialog" role="alertdialog" tabindex="-1">
 			<p class="dialog-msg">{confirmDialog.msg}</p>
 			<div class="dialog-btns">
-				<button class="dialog-ok" onclick={() => confirmDialogResolve(true)}>{t('common.change', $locale)}</button>
-				<button class="dialog-cancel" onclick={() => confirmDialogResolve(false)}>{t('common.cancel', $locale)}</button>
+				<button class="dialog-ok" onclick={() => confirmDialogResolve(true)}
+					>{t('common.change', $locale)}</button
+				>
+				<button class="dialog-cancel" onclick={() => confirmDialogResolve(false)}
+					>{t('common.cancel', $locale)}</button
+				>
 			</div>
 		</div>
 	</div>
@@ -3332,8 +3393,10 @@
 		<div class="hide-modal" role="dialog" aria-modal="true" tabindex="-1">
 			<div class="hide-head">
 				<h3 class="hide-title">{t('board.settings', $locale)}</h3>
-				<button class="hide-close" onclick={() => (showHideModal = false)} aria-label={t('common.close', $locale)}
-					>×</button
+				<button
+					class="hide-close"
+					onclick={() => (showHideModal = false)}
+					aria-label={t('common.close', $locale)}>×</button
 				>
 			</div>
 			<p class="hide-help">
@@ -3408,9 +3471,13 @@
 				<div class="bf-head">
 					<h4 class="bf-title">{t('board.filter', $locale)}</h4>
 					{#if filterActive}
-						<span class="bf-count">{filterMatchCount}/{filterTotalCount}{t('board.filterActivePost', $locale)}</span>
-						<button class="bf-clear" onclick={clearBoardFilter} title={t('common.clearFilter', $locale)}
-							>{t('common.clearBtn', $locale)}</button
+						<span class="bf-count"
+							>{filterMatchCount}/{filterTotalCount}{t('board.filterActivePost', $locale)}</span
+						>
+						<button
+							class="bf-clear"
+							onclick={clearBoardFilter}
+							title={t('common.clearFilter', $locale)}>{t('common.clearBtn', $locale)}</button
 						>
 					{/if}
 				</div>
@@ -3921,6 +3988,11 @@
 	}
 	.hl-act {
 		flex: 1;
+		/* DEV-302: 아이콘 + 라벨 정렬. */
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.3em;
 		padding: 4px 6px;
 		background: var(--bg);
 		border: 1px solid var(--border);

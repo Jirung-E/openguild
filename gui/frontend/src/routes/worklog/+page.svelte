@@ -21,6 +21,8 @@
 		type ActivityRow
 	} from '$lib/api/worklog';
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
+	// DEV-302: 제목/노트 라벨에 섞여 있던 이모지(🕘/📝)를 아이콘으로 분리.
+	import Icon from '$lib/components/Icon.svelte';
 	import { EditorView, basicSetup } from 'codemirror';
 	import { markdown } from '@codemirror/lang-markdown';
 	import { theme } from '$lib/stores/theme';
@@ -347,7 +349,7 @@
 
 <div class="page">
 	<div class="hdr">
-		<h1>{t('worklogPage.title', $locale)}</h1>
+		<h1><Icon name="clock" size={16} />{t('worklogPage.title', $locale)}</h1>
 		<div class="controls">
 			<div class="unit">
 				{#each UNITS as u (u)}
@@ -369,7 +371,8 @@
 						ariaLabel={t('worklogPage.rangeEndAria', $locale)}
 					/>
 				{:else}
-					<button onclick={() => step(-1)} aria-label={t('worklogPage.prevAria', $locale)}>◀</button>
+					<button onclick={() => step(-1)} aria-label={t('worklogPage.prevAria', $locale)}>◀</button
+					>
 					{#if unit === 'month'}
 						<!-- 월 뷰는 월만 고름 (admin 요청) — DateField month 모드. -->
 						<DateField
@@ -406,9 +409,13 @@
 		{#if unit === 'day'}
 			<div class="note">
 				<div class="note-head">
-					<span>{t('worklogPage.notePre', $locale)}{anchor}</span>
+					<span><Icon name="memo" size={12} />{t('worklogPage.notePre', $locale)}{anchor}</span>
 					{#if !editMode}
-						<button class="btn" onclick={enterEdit}>{dayNote ? t('worklogPage.noteEdit', $locale) : t('worklogPage.noteWrite', $locale)}</button>
+						<button class="btn" onclick={enterEdit}
+							>{dayNote
+								? t('worklogPage.noteEdit', $locale)
+								: t('worklogPage.noteWrite', $locale)}</button
+						>
 					{/if}
 				</div>
 				{#if editMode}
@@ -418,19 +425,33 @@
 							<button class="btn primary" onclick={saveNote} disabled={saving}>
 								{saving ? t('worklogPage.saving', $locale) : t('worklogPage.save', $locale)}
 							</button>
-							<button class="btn" onclick={cancelEdit} disabled={saving}>{t('worklogPage.cancel', $locale)}</button>
+							<button class="btn" onclick={cancelEdit} disabled={saving}
+								>{t('worklogPage.cancel', $locale)}</button
+							>
 						</div>
 						{#if saveError}<p class="err">{saveError}</p>{/if}
 					</div>
 				{:else if dayNote}
 					<div class="note-body"><MarkdownView source={dayNote} /></div>
 				{:else}
-					<div class="note-body muted">{t('worklogPage.noNotePre', $locale)}{t('worklogPage.noteWrite', $locale)}{t('worklogPage.noNotePost', $locale)}</div>
+					<div class="note-body muted">
+						{t('worklogPage.noNotePre', $locale)}{t('worklogPage.noteWrite', $locale)}{t(
+							'worklogPage.noNotePost',
+							$locale
+						)}
+					</div>
 				{/if}
 			</div>
 		{:else if notes.length > 0}
 			<div class="note">
-				<div class="note-head"><span>{t('worklogPage.notesInRangePre', $locale)}{notes.length}{t('worklogPage.notesInRangePost', $locale)}</span></div>
+				<div class="note-head">
+					<span
+						><Icon name="memo" size={12} />{t(
+							'worklogPage.notesInRangePre',
+							$locale
+						)}{notes.length}{t('worklogPage.notesInRangePost', $locale)}</span
+					>
+				</div>
 				{#each notes as n (n.date)}
 					<div class="note-day">
 						<!-- BUG-126(admin 요청): 링크일 필요 없음 — 그냥 날짜 표시. -->
@@ -442,7 +463,12 @@
 		{/if}
 
 		<!-- 타임라인 -->
-		<div class="count">{t('worklogPage.activitiesPre', $locale)}{report.activities.length}{t('worklogPage.activitiesPost', $locale)}</div>
+		<div class="count">
+			{t('worklogPage.activitiesPre', $locale)}{report.activities.length}{t(
+				'worklogPage.activitiesPost',
+				$locale
+			)}
+		</div>
 		{#if report.activities.length === 0}
 			<div class="state">{t('worklogPage.noActivity', $locale)}</div>
 		{:else}
@@ -472,7 +498,10 @@
 				{/each}
 			</div>
 			<div class="totals">
-				<span><b>{report.counts.status_changes}</b> {t('worklogPage.summary.statusChanges', $locale)}</span>
+				<span
+					><b>{report.counts.status_changes}</b>
+					{t('worklogPage.summary.statusChanges', $locale)}</span
+				>
 				<span><b>{report.counts.comments}</b> {t('worklogPage.summary.comments', $locale)}</span>
 				<span><b>{report.counts.created}</b> {t('worklogPage.summary.created', $locale)}</span>
 				{#if report.counts.doc_changes > 0}
@@ -481,9 +510,15 @@
 					>
 				{/if}
 				{#if report.counts.discussion_events > 0}
-					<span><b>{report.counts.discussion_events}</b> {t('worklogPage.summary.discussion', $locale)}</span>
+					<span
+						><b>{report.counts.discussion_events}</b>
+						{t('worklogPage.summary.discussion', $locale)}</span
+					>
 				{/if}
-				<span class="right">{t('worklogPage.summary.doneTransitions', $locale)} <b>{report.counts.done_transitions}</b></span>
+				<span class="right"
+					>{t('worklogPage.summary.doneTransitions', $locale)}
+					<b>{report.counts.done_transitions}</b></span
+				>
 			</div>
 		{/if}
 	{/if}
@@ -503,6 +538,10 @@
 		flex-wrap: wrap;
 	}
 	.hdr h1 {
+		/* DEV-302: 아이콘 + 제목 정렬. */
+		display: inline-flex;
+		align-items: center;
+		gap: 0.35em;
 		font-size: 1.15rem;
 		font-weight: 600;
 		margin: 0;
@@ -576,10 +615,17 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
+		/* DEV-302: 라벨 앞 아이콘 정렬 — span 안에서 함께 흐르게. */
+		gap: 0.5rem;
 		padding: 0.5rem 0.75rem;
 		border-bottom: 1px solid var(--border);
 		font-size: 0.78rem;
 		color: var(--text-muted);
+	}
+	.note-head > span {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.35em;
 	}
 	.note-body {
 		padding: 0.6rem 0.75rem;

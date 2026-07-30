@@ -320,7 +320,7 @@
 	// "자주 쓰는 이모지" 개념이라 scope/slug 로 나누지 않음). localStorage
 	// 영속 — 저장 포맷(reactions attr)은 이미 임의 문자열이라 backend 변경 없음.
 	// DEV-139: 전체 노출 대신 slack 스타일 — 활성 pill + '+' popup picker.
-	const REACTION_SET = ['👍', '✅', '❓', '❌'];
+	const REACTION_SET = ['👍', '✅', '❓', '❌']; // emoji-ok: 반응 자체가 이모지 (DEV-108)
 	let customReactions = $state<string[]>([]);
 	function customReactionsKey(): string {
 		return guildKey(guildKeyPrefix, 'commentCustomReactions');
@@ -369,9 +369,11 @@
 	// CSS `right:0` 로 여전히 버튼 왼쪽으로(=화면 밖으로) 펼쳐졌음. 자동완성
 	// 팝업(placeWiki)과 동일하게 버튼 위치에서 JS 로 계산 + 화면 경계 clamp —
 	// 오른쪽으로 펼치되 뷰포트를 넘지 않도록.
-	let reactionPickerPos = $state<{ left: number; top: number | null; bottom: number | null } | null>(
-		null
-	);
+	let reactionPickerPos = $state<{
+		left: number;
+		top: number | null;
+		bottom: number | null;
+	} | null>(null);
 	// BUG-131(admin 보고): "자동완성 팝업이랑 같은 방식" 이라고 해놓고 정작
 	// scroll 추종(repositionWiki 에 해당하는 부분)을 안 만들었다 — 열 때 딱
 	// 한 번만 위치를 계산해서, 목록을 스크롤하면 버튼은 움직이는데 팝업만
@@ -944,7 +946,12 @@
 			>
 		</div>
 		{#if replyRich}
-			<MarkdownEditor bind:value={replyBody} onError={(m) => (replyError = m)} mediaOnly defaultHeight={160} />
+			<MarkdownEditor
+				bind:value={replyBody}
+				onError={(m) => (replyError = m)}
+				mediaOnly
+				defaultHeight={160}
+			/>
 		{:else}
 			<textarea
 				use:tabInsert
@@ -974,7 +981,9 @@
 			>
 				{replySaving ? t('common.saving', $locale) : t('comment.addReply', $locale)}
 			</button>
-			<button class="btn-cancel" onclick={cancelReply} disabled={replySaving}> {t('common.cancel', $locale)} </button>
+			<button class="btn-cancel" onclick={cancelReply} disabled={replySaving}>
+				{t('common.cancel', $locale)}
+			</button>
 		</div>
 	</div>
 {/snippet}
@@ -995,12 +1004,15 @@
 				class="entry-no"
 				onclick={() => toggleBodyCollapsed(e.id)}
 				aria-expanded={!collapsedBodies.has(e.id)}
-				title={collapsedBodies.has(e.id) ? `#${e.id} ${t('comment.expandBody', $locale)}` : `#${e.id} ${t('comment.collapseBody', $locale)}`}
-				>#{e.id}</button
+				title={collapsedBodies.has(e.id)
+					? `#${e.id} ${t('comment.expandBody', $locale)}`
+					: `#${e.id} ${t('comment.collapseBody', $locale)}`}>#{e.id}</button
 			>
 			{#if e.parent_id != null}
-				<a class="reply-to" href={`#comment-${e.parent_id}`} title={`#${e.parent_id} ${t('comment.jumpToComment', $locale)}`}
-					>↩ #{e.parent_id}</a
+				<a
+					class="reply-to"
+					href={`#comment-${e.parent_id}`}
+					title={`#${e.parent_id} ${t('comment.jumpToComment', $locale)}`}>↩ #{e.parent_id}</a
 				>
 			{/if}
 			<span class="author">{e.author || t('comment.noName', $locale)}</span>
@@ -1008,7 +1020,11 @@
 			<time class="ts" datetime={e.ts}>{formatTs(e.ts)}</time>
 			<!-- DEV-182: 편집된 댓글 표시 — hover 시 편집 시각. -->
 			{#if e.edited_at}
-				<span class="edited-marker" title={`${t('comment.editedTitle', $locale)}${formatTs(e.edited_at)}`}>{t('comment.edited', $locale)}</span>
+				<span
+					class="edited-marker"
+					title={`${t('comment.editedTitle', $locale)}${formatTs(e.edited_at)}`}
+					>{t('comment.edited', $locale)}</span
+				>
 			{/if}
 			<!-- DEV-142: 토론 댓글 상태 배지 — 미해결이면 완료 차단 (quest 한정).
 			     클릭으로 resolve 토글. -->
@@ -1030,12 +1046,18 @@
 							class="link-btn"
 							class:on={e.discussion}
 							onclick={() => toggleDiscussion(e.id)}
-							title={e.discussion ? t('comment.unmarkDiscussion', $locale) : t('comment.markDiscussion', $locale)}
+							title={e.discussion
+								? t('comment.unmarkDiscussion', $locale)
+								: t('comment.markDiscussion', $locale)}
 							><Icon name="comment" size={12} /> {t('comment.discussion', $locale)}</button
 						>
 					{/if}
-					<button class="link-btn" onclick={() => enterEdit(e)}>✎ {t('detail.edit', $locale)}</button>
-					<button class="link-btn danger" onclick={() => askRemove(e.id)}>× {t('detail.delete', $locale)}</button>
+					<button class="link-btn" onclick={() => enterEdit(e)}
+						>✎ {t('detail.edit', $locale)}</button
+					>
+					<button class="link-btn danger" onclick={() => askRemove(e.id)}
+						>× {t('detail.delete', $locale)}</button
+					>
 				</div>
 			{/if}
 		</div>
@@ -1051,11 +1073,19 @@
 				>
 			</div>
 			{#if editRich}
-				<MarkdownEditor bind:value={editBody} onError={(m) => (editError = m)} mediaOnly defaultHeight={200} />
+				<MarkdownEditor
+					bind:value={editBody}
+					onError={(m) => (editError = m)}
+					mediaOnly
+					defaultHeight={200}
+				/>
 			{:else}
 				<textarea
 					use:tabInsert
-					use:textareaAttach={{ onError: (m) => (editError = `${t('campaign.attachFailed', $locale)}: ${m}`), mediaOnly: true }}
+					use:textareaAttach={{
+						onError: (m) => (editError = `${t('campaign.attachFailed', $locale)}: ${m}`),
+						mediaOnly: true
+					}}
 					class="body-input"
 					bind:this={editBodyEl}
 					bind:value={editBody}
@@ -1073,12 +1103,18 @@
 				<button class="btn-save" onclick={() => saveEdit(e.id)} disabled={editSaving}>
 					{editSaving ? t('common.saving', $locale) : t('common.save', $locale)}
 				</button>
-				<button class="btn-cancel" onclick={cancelEdit} disabled={editSaving}>{t('common.cancel', $locale)}</button>
+				<button class="btn-cancel" onclick={cancelEdit} disabled={editSaving}
+					>{t('common.cancel', $locale)}</button
+				>
 			</div>
 		{:else if collapsedBodies.has(e.id)}
 			<!-- DEV-129: 접힌 본문 — 1줄 미리보기, 클릭으로 펼침.
 			     DEV-214: 이 entry 자신이 토론이면 상태 글리프를 미리보기 앞에. -->
-			<button class="body-collapsed" onclick={() => toggleBodyCollapsed(e.id)} title={t('comment.expandContent', $locale)}>
+			<button
+				class="body-collapsed"
+				onclick={() => toggleBodyCollapsed(e.id)}
+				title={t('comment.expandContent', $locale)}
+			>
 				{#if e.discussion}
 					<span class="disc-flag" class:unresolved={!e.resolved} class:resolved={e.resolved}
 						>{e.resolved ? '✓' : '✗'}</span
@@ -1105,23 +1141,32 @@
 								class="tri-btn"
 								onclick={() => toggleRootCollapsed(e.id)}
 								aria-expanded={!isThreadCollapsed}
-								title={isThreadCollapsed ? t('comment.expandReplies', $locale) : t('comment.collapseReplies', $locale)}
-								>{isThreadCollapsed ? '▶' : '▼'}</button
+								title={isThreadCollapsed
+									? t('comment.expandReplies', $locale)
+									: t('comment.collapseReplies', $locale)}>{isThreadCollapsed ? '▶' : '▼'}</button
 							>
 							<span class="reply-count">{t('comment.replies', $locale)} {childCount}</span>
 							<!-- DEV-214: 접힌 답글 안에 토론 있으면 상태 글리프. -->
 							{#if isThreadCollapsed}
 								{@const disc = threadDiscState.get(e.id)}
 								{#if disc === 'unresolved'}
-									<span class="disc-flag unresolved" title={t('comment.collapsedHasUnresolved', $locale)}>✗</span>
+									<span
+										class="disc-flag unresolved"
+										title={t('comment.collapsedHasUnresolved', $locale)}>✗</span
+									>
 								{:else if disc === 'resolved'}
-									<span class="disc-flag resolved" title={t('comment.collapsedAllResolved', $locale)}>✓</span>
+									<span
+										class="disc-flag resolved"
+										title={t('comment.collapsedAllResolved', $locale)}>✓</span
+									>
 								{/if}
 							{/if}
 						{/if}
 					{/if}
 					<!-- DEV-200: 답글에도 답글 쓰기 — parent_id 로 대상 기록, 표시는 2단까지. -->
-					<button class="reply-write-btn" onclick={() => enterReply(e.id)}>{t('comment.writeReply', $locale)}</button>
+					<button class="reply-write-btn" onclick={() => enterReply(e.id)}
+						>{t('comment.writeReply', $locale)}</button
+					>
 					<!-- DEV-132 후속(admin 요청): 이모지(반응 추가) 버튼을 답글 쓰기
 					     버튼 오른쪽으로 이동 — foot-right 에서 여기로. -->
 					<div class="picker-wrap">
@@ -1204,7 +1249,9 @@
 							class="reaction-pill"
 							class:mine={reactedByMe(r.authors)}
 							onclick={() => toggleReaction(e.id, r.emoji)}
-							title={r.authors.length ? `${r.authors.join(', ')} · ${t('comment.clickToggle', $locale)}` : t('comment.clickToggle', $locale)}
+							title={r.authors.length
+								? `${r.authors.join(', ')} · ${t('comment.clickToggle', $locale)}`
+								: t('comment.clickToggle', $locale)}
 						>
 							{r.emoji}{#if r.authors.length > 1}<span class="rc">{r.authors.length}</span>{/if}
 						</button>
@@ -1234,7 +1281,9 @@
 			class="section-toggle"
 			onclick={toggleCollapsed}
 			aria-expanded={!collapsed}
-			title={collapsed ? t('comment.expandComments', $locale) : t('comment.collapseComments', $locale)}
+			title={collapsed
+				? t('comment.expandComments', $locale)
+				: t('comment.collapseComments', $locale)}
 		>
 			<span class="toggle-icon" class:collapsed>▼</span>
 			<h2 class="section-title">{t('comment.title', $locale)}</h2>
@@ -1242,8 +1291,12 @@
 		<span class="count">{entries.length}</span>
 		<!-- DEV-214: 섹션이 접혀 있어도 미해결 토론은 보이게 (완료 차단과 직결). -->
 		{#if collapsed && unresolvedCount > 0}
-			<span class="disc-flag unresolved" title="{t('comment.unresolvedPre', $locale)}{unresolvedCount}{t('comment.unresolvedPost', $locale)}"
-				>✗ {unresolvedCount}</span
+			<span
+				class="disc-flag unresolved"
+				title="{t('comment.unresolvedPre', $locale)}{unresolvedCount}{t(
+					'comment.unresolvedPost',
+					$locale
+				)}">✗ {unresolvedCount}</span
 			>
 		{/if}
 		<!-- DEV-213: 토론만 모아보기 — quest 전용, 토론 댓글이 있을 때만 노출. -->
@@ -1257,7 +1310,9 @@
 					? t('comment.showAll', $locale)
 					: t('comment.showDiscussionOnly', $locale)}
 			>
-				<Icon name="comment" size={12} /> {t('comment.discussionOnly', $locale)} {discussionCount}{#if unresolvedCount > 0}&nbsp;({t('comment.unresolvedWord', $locale)}
+				<Icon name="comment" size={12} />
+				{t('comment.discussionOnly', $locale)}
+				{discussionCount}{#if unresolvedCount > 0}&nbsp;({t('comment.unresolvedWord', $locale)}
 					{unresolvedCount}){/if}
 			</button>
 		{/if}
@@ -1266,7 +1321,9 @@
 			<button
 				class="collapse-all-btn"
 				onclick={toggleCollapseAll}
-				title={allCollapsed ? t('comment.expandAllTitle', $locale) : t('comment.collapseAllTitle', $locale)}
+				title={allCollapsed
+					? t('comment.expandAllTitle', $locale)
+					: t('comment.collapseAllTitle', $locale)}
 			>
 				{allCollapsed ? t('comment.expandAll', $locale) : t('comment.collapseAll', $locale)}
 			</button>
@@ -1361,11 +1418,19 @@
 					>
 				</div>
 				{#if newRich}
-					<MarkdownEditor bind:value={newBody} onError={(m) => (saveError = m)} mediaOnly defaultHeight={160} />
+					<MarkdownEditor
+						bind:value={newBody}
+						onError={(m) => (saveError = m)}
+						mediaOnly
+						defaultHeight={160}
+					/>
 				{:else}
 					<textarea
 						use:tabInsert
-						use:textareaAttach={{ onError: (m) => (saveError = `${t('campaign.attachFailed', $locale)}: ${m}`), mediaOnly: true }}
+						use:textareaAttach={{
+							onError: (m) => (saveError = `${t('campaign.attachFailed', $locale)}: ${m}`),
+							mediaOnly: true
+						}}
 						class="body-input"
 						bind:this={newBodyEl}
 						bind:value={newBody}

@@ -12,6 +12,7 @@
 	import { worklogApi, type DailyCount, type WorklogReport } from '$lib/api/worklog';
 	// DEV-205 모듈2: 작업 기록 요약 카드 i18n.
 	import { locale, t } from '$lib/stores/locale';
+	import Icon from './Icon.svelte';
 
 	const WEEKS = 12;
 
@@ -94,18 +95,26 @@
 	}
 
 	const lastActivity = $derived(
-		today && today.activities.length > 0
-			? today.activities[today.activities.length - 1]
-			: null
+		today && today.activities.length > 0 ? today.activities[today.activities.length - 1] : null
 	);
 </script>
 
 {#if !loading && grid.length > 0}
 	<section class="block">
 		<div class="card">
-			<button class="head" onclick={() => openDetail()} title={t('worklogCard.detailTitle', $locale)}>
-				<h2>{t('worklogCard.title', $locale)}</h2>
-				<span class="range">{t('worklogCard.rangePre', $locale)}{WEEKS}{t('worklogCard.rangeWeeks', $locale)}{total}{t('worklogCard.rangeActivities', $locale)}</span>
+			<button
+				class="head"
+				onclick={() => openDetail()}
+				title={t('worklogCard.detailTitle', $locale)}
+			>
+				<!-- DEV-302: 라벨의 🕘 를 아이콘으로 분리. -->
+				<h2><Icon name="clock" size={14} />{t('worklogCard.title', $locale)}</h2>
+				<span class="range"
+					>{t('worklogCard.rangePre', $locale)}{WEEKS}{t(
+						'worklogCard.rangeWeeks',
+						$locale
+					)}{total}{t('worklogCard.rangeActivities', $locale)}</span
+				>
 			</button>
 			<div class="heat" role="img" aria-label={t('worklogCard.heatmapAria', $locale)}>
 				{#each grid as col, w (w)}
@@ -114,8 +123,14 @@
 							{#if cell}
 								<button
 									class="cell l{level(cell.count)}"
-									title="{cell.date} — {t('worklogCard.activityUnit', $locale)}{cell.count}{t('worklogCard.activityCount', $locale)}"
-									aria-label="{cell.date} {t('worklogCard.activityUnit', $locale)}{cell.count}{t('worklogCard.activityCount', $locale)}"
+									title="{cell.date} — {t('worklogCard.activityUnit', $locale)}{cell.count}{t(
+										'worklogCard.activityCount',
+										$locale
+									)}"
+									aria-label="{cell.date} {t('worklogCard.activityUnit', $locale)}{cell.count}{t(
+										'worklogCard.activityCount',
+										$locale
+									)}"
 									onclick={() => openDetail(cell.date)}
 								></button>
 							{:else}
@@ -128,7 +143,8 @@
 			{#if today}
 				<button class="today" onclick={() => openDetail()}>
 					<span class="lbl">{t('worklogCard.today', $locale)}</span>
-					<span><b>{today.counts.status_changes}</b> {t('worklogCard.statusChanges', $locale)}</span>
+					<span><b>{today.counts.status_changes}</b> {t('worklogCard.statusChanges', $locale)}</span
+					>
 					<span><b>{today.counts.comments}</b> {t('worklogCard.comments', $locale)}</span>
 					<span><b>{today.counts.created}</b> {t('worklogCard.created', $locale)}</span>
 					{#if lastActivity}
@@ -164,6 +180,10 @@
 		color: var(--text);
 	}
 	.head h2 {
+		/* DEV-302: 아이콘 + 제목 정렬. */
+		display: inline-flex;
+		align-items: center;
+		gap: 0.35em;
 		font-size: 0.95rem;
 		font-weight: 600;
 		margin: 0;
