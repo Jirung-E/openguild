@@ -314,6 +314,48 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// BUG-177: `quest new` 는 `.guild/types/{prefix}.toml` 의 counter 도 쓴다
+    /// (DEV-242). 그때 mtime 캐시를 갱신하지 않으면 **퀘스트를 만들 때마다**
+    /// drift 거짓 경고가 떠서 사용자가 `--resync`(=전체 reindex) 를 돌리게 된다.
+    #[tokio::test]
+    async fn type_counter_write_does_not_cause_drift() {
+        let dir = fresh_tmp("type-counter-drift");
+        let store = setup(&dir).await;
+
+        let mk = |title: &str| crate::models::CreateQuestRequest {
+            quest_type_id: 1,
+            title: title.into(),
+            description: None,
+            status_slug: "open".into(),
+            urgency: Some(3),
+            parent_quest_id: None,
+        };
+
+        // 첫 quest — counter 파일이 실제로 갱신되는(last_number 0 → 1) 경로.
+        ops::create_quest(&store, mk("첫 퀘스트")).await.unwrap();
+        let r1 = detect_drift(&store).await.unwrap();
+        assert!(
+            r1.is_clean(),
+            "quest new 직후 drift 오탐: fresh={:?} siblings={:?} missing={:?}",
+            r1.fresh_files,
+            r1.fresh_siblings,
+            r1.missing_in_index
+        );
+
+        // 두 번째도 동일 — counter 가 매번 올라가므로 매번 파일이 다시 쓰인다.
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        ops::create_quest(&store, mk("둘째 퀘스트")).await.unwrap();
+        let r2 = detect_drift(&store).await.unwrap();
+        assert!(
+            r2.is_clean(),
+            "두 번째 quest new 후 drift 오탐: fresh={:?} siblings={:?}",
+            r2.fresh_files,
+            r2.fresh_siblings
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// BUG-068: ops 로 쓴 sibling(댓글) 은 file_mtime_cache 가 같이 갱신돼
     /// fresh_siblings 오탐 X. ops 밖에서 파일을 더 새로 바꾼 경우만 fresh.
     #[tokio::test]
