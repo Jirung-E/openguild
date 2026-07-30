@@ -30,10 +30,12 @@ fn main() {
         println!("open         : {open_ms} ms");
         println!("sync_on_open : {sync_ms} ms");
         println!(
-            "  updated={} inserted={} deleted={} skipped={} needs_full={}",
+            "  updated={} inserted={} deleted={} siblings={} campaigns={} skipped={} needs_full={}",
             inc.updated,
             inc.inserted,
             inc.deleted,
+            inc.siblings_synced,
+            inc.campaigns_synced,
             inc.skipped.len(),
             inc.needs_full_reindex
         );

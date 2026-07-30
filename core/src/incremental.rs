@@ -4,12 +4,17 @@
 //! file mtime 을 읽어 SQLite 의 `quests.cached_mtime` (Unix nanos) 와 비교 —
 //! microsecond 비용 / 파일.
 //!
-//! ## Scope (Phase 1)
+//! ## Scope
 //!
-//! 본 모듈은 **`.guild/quests/*.md` (body files only)** 만 처리.
-//! statuses / types / tags / campaigns / sibling (`{slug}.comments.md` /
-//! `{slug}.memo.md`) 는 양이 적거나 (수~수십개) parse 비용이 작아 기존
-//! `reindex` / `drift` 경로로 처리. 추후 Phase 1b 로 확장 가능.
+//! - `.guild/quests/*.md` (본문) — 수정 / 신규 / 삭제 (DEV-121, DEV-246).
+//! - `{slug}.comments.md` / `{slug}.memo.md` (quest + campaign) — 수정 / 삭제
+//!   (DEV-310).
+//! - `campaigns/{slug}.md` (본문) — 외부 편집 반영 (DEV-310). 신규/삭제는 행
+//!   생성·연쇄 삭제가 얽혀 아직 full reindex.
+//!
+//! 아직 full reindex 로 넘기는 것: 캠페인 신규/삭제, statuses / types / tags
+//! 정의, 도서관·규칙 문서, worklog. 정의 파일은 바뀌면 해석 자체가 달라지므로
+//! (상태 slug 등) 안전망을 유지하는 편이 맞고, 나머지는 후속 항목.
 //!
 //! ## 시간 비교 안전성 (timezone)
 //!
@@ -207,6 +212,21 @@ pub struct IncrementalReport {
     pub needs_full_reindex: bool,
     /// 파싱 실패 등으로 skip 한 항목.
     pub skipped: Vec<(String, String)>,
+    /// DEV-310: 재적재한 sibling 파일 수 (`{slug}.comments.md` / `.memo.md`,
+    /// quest + campaign). 삭제 반영도 포함.
+    pub siblings_synced: usize,
+    /// DEV-310: 외부 편집이 반영된 캠페인 본문 수.
+    pub campaigns_synced: usize,
+}
+
+/// DEV-310: sibling 파일의 종류 — 어느 캐시 테이블을 다시 채울지.
+/// (quest/campaign 구분은 파일명이 아니라 어느 디렉토리에서 나열됐는지로 정한다.)
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum SiblingKind {
+    QuestComments,
+    QuestMemo,
+    CampaignComments,
+    CampaignMemo,
 }
 
 /// DEV-246: 신규 quest 파일 1개를 index.db 에 INSERT.
@@ -646,6 +666,20 @@ pub async fn refresh_quest_if_stale(store: &Store, slug: &str) -> AppResult<bool
 /// sibling 과 동일한 범용 `file_mtime_cache`(BUG-068) 로 비교한다. 캐시에 아직
 /// 없으면(첫 진입) 한 번 갱신 후 touch — 이후 churn 없음.
 pub async fn refresh_campaign_if_stale(store: &Store, slug: &str) -> AppResult<bool> {
+    refresh_campaign(store, slug, true).await
+}
+
+/// DEV-310: 위와 같은 재적재를 **파일을 건드리지 않고** 수행 — 길드 열기 경로용.
+///
+/// 열기 경로에서 write-back 을 하면 `git pull` 로 mtime 만 바뀐 캠페인 파일의
+/// frontmatter `updated_at` 이 일괄 변조된다(quest 본문에서 실제로 터졌던
+/// BUG-103 과 같은 사고 — 그쪽은 내용 비교 가드로 막았고, 캠페인엔 그 가드가
+/// 아직 없다). 상세 진입은 사용자가 그 문서를 보는 시점이라 기존 동작을 유지.
+async fn refresh_campaign_row_no_writeback(store: &Store, slug: &str) -> AppResult<bool> {
+    refresh_campaign(store, slug, false).await
+}
+
+async fn refresh_campaign(store: &Store, slug: &str, writeback: bool) -> AppResult<bool> {
     let path = store.paths.campaign_path(slug);
     if !path.exists() {
         return Ok(false);
@@ -679,7 +713,7 @@ pub async fn refresh_campaign_if_stale(store: &Store, slug: &str) -> AppResult<b
 
     // BUG-080 + BUG-089: 외부 편집일 때만 파일 mtime 으로 updated_at 보정 +
     // frontmatter write-back (write-back 은 파일 재기록 → churn 방지 위해 게이트).
-    let updated_at = if externally_edited {
+    let updated_at = if externally_edited && writeback {
         let (edit_iso, _) = writeback_external_edit_ts(&path);
         if edit_iso.is_empty() {
             crate::time::normalize_legacy_ts(&cf.frontmatter.updated_at)
@@ -744,17 +778,342 @@ pub async fn refresh_campaign_if_stale(store: &Store, slug: &str) -> AppResult<b
     Ok(externally_edited)
 }
 
-/// Store::open 후 통합 sync. Phase 1: incremental + 필요 시 fallback reindex.
+/// DEV-310: 캠페인 본문(`campaigns/{slug}.md`) 외부 편집을 증분 반영.
+///
+/// 행 갱신 자체는 상세 진입용 `refresh_campaign_if_stale` 을 그대로 쓴다(제목/
+/// 본문/기간/체크리스트/linked_quests + updated_at write-back 까지 동일 규칙).
+/// 여기서 하는 일은 **어느 캠페인을 그 함수에 넘길지 고르는 것** — 캠페인 수가
+/// 적어도 매 열기마다 전부 UPDATE 할 이유는 없다.
+///
+/// 신규/삭제된 캠페인 파일은 행 생성·연쇄 삭제가 얽혀 있어 그대로 full reindex
+/// 로 넘긴다(빈도가 낮다).
+async fn sync_changed_campaign_files(
+    store: &Store,
+    report: &mut IncrementalReport,
+) -> AppResult<()> {
+    let paths = &store.paths;
+    let cache = crate::file_mtime::load_all(store).await;
+    let Ok(files) = repo_fs::list_quest_body_files(paths.campaigns_dir()) else {
+        return Ok(());
+    };
+    let mut alive: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for path in &files {
+        let rel = crate::file_mtime::rel_key(paths, path);
+        alive.insert(rel.clone());
+        let fresh = match cache.get(&rel) {
+            Some(&cached) => repo_fs::mtime_unix_nanos(path) > cached,
+            // 캐시에 없음 = 아직 한 번도 반영 안 된 파일(신규일 수 있다).
+            None => true,
+        };
+        if !fresh {
+            continue;
+        }
+        let Some(slug) = path.file_stem().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        let exists: Option<i64> =
+            sqlx::query_scalar("SELECT id FROM campaigns WHERE campaign_slug = ?")
+                .bind(slug)
+                .fetch_optional(&store.index_pool)
+                .await?;
+        if exists.is_none() {
+            report.needs_full_reindex = true; // 신규 캠페인 파일 — reindex 담당.
+            continue;
+        }
+        if refresh_campaign_row_no_writeback(store, slug).await? {
+            report.campaigns_synced += 1;
+        }
+    }
+    // 캐시에는 있는데 파일이 사라진 캠페인 — 연쇄 삭제가 얽혀 full reindex 로.
+    if cache
+        .keys()
+        .any(|rel| is_campaign_body_rel(rel) && !alive.contains(rel))
+    {
+        report.needs_full_reindex = true;
+    }
+    Ok(())
+}
+
+/// `campaigns/C-001.md` 처럼 캠페인 **본문** rel 인지 (sibling `.comments.md` 제외).
+fn is_campaign_body_rel(rel: &str) -> bool {
+    let Some(name) = rel.strip_prefix("campaigns/") else {
+        return false;
+    };
+    name.ends_with(".md") && name.matches('.').count() == 1
+}
+
+/// DEV-310: sibling 파일(`{slug}.comments.md` / `{slug}.memo.md`) 변경을 증분
+/// 반영한다. quest 본문(DEV-246)에 이어 **빈도가 가장 높은** 부류 — 댓글 하나를
+/// 외부에서 고치거나 git pull 로 들어오면 예전엔 전체 재색인이 돌았다.
+///
+/// 판정은 `detect_drift` 와 같은 기준(per-file `file_mtime_cache`):
+/// - 캐시에 없거나 파일이 더 새것 → 그 파일만 다시 파싱해 해당 행을 교체
+/// - 캐시에 있는데 파일이 사라짐 → 그 행 삭제 + 캐시 row 제거
+///
+/// 대상 quest/campaign 이 index 에 없으면 증분으로 표현할 수 없으니
+/// `needs_full_reindex` 로 넘긴다(본문 파일 신규 적재는 quest 쪽 경로의 일).
+async fn sync_changed_sibling_files(store: &Store, report: &mut IncrementalReport) -> AppResult<()> {
+    use crate::repo::fs as rfs;
+    let paths = &store.paths;
+    let pool = &store.index_pool;
+    let cache = crate::file_mtime::load_all(store).await;
+
+    // (디렉토리, 종류) 별로 현존 파일을 나열 — 파일명만으로는 quest/campaign 을
+    // 구분할 수 없다(둘 다 `{slug}.comments.md`).
+    let mut targets: Vec<(std::path::PathBuf, SiblingKind)> = Vec::new();
+    for (dir, comments, memo) in [
+        (
+            paths.quests_dir(),
+            SiblingKind::QuestComments,
+            SiblingKind::QuestMemo,
+        ),
+        (
+            paths.campaigns_dir(),
+            SiblingKind::CampaignComments,
+            SiblingKind::CampaignMemo,
+        ),
+    ] {
+        if let Ok(files) = rfs::list_quest_comment_files(&dir) {
+            targets.extend(files.into_iter().map(|p| (p, comments)));
+        }
+        if let Ok(files) = rfs::list_quest_memo_files(&dir) {
+            targets.extend(files.into_iter().map(|p| (p, memo)));
+        }
+    }
+
+    let mut alive: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for (path, kind) in &targets {
+        let rel = crate::file_mtime::rel_key(paths, path);
+        alive.insert(rel.clone());
+        let file_mtime = rfs::mtime_unix_nanos(path);
+        let fresh = match cache.get(&rel) {
+            Some(&cached) => file_mtime > cached,
+            None => true,
+        };
+        if !fresh {
+            continue;
+        }
+        let Some(slug) = rfs::quest_slug_from_sibling_path(path) else {
+            continue;
+        };
+        let owner = owner_id(pool, *kind, &slug).await?;
+        let Some(owner) = owner else {
+            // 본문이 아직 index 에 없다 — 이번 열기의 quest 경로가 방금 넣었을
+            // 수도 있고(그럼 다음 열기에 잡힌다), 캠페인처럼 아직 증분 대상이
+            // 아닐 수도 있다. 안전하게 풀 reindex 로.
+            report.needs_full_reindex = true;
+            continue;
+        };
+        match replace_sibling_rows(store, *kind, owner, path).await {
+            Ok(()) => {
+                let _ = crate::file_mtime::touch(store, path).await;
+                report.siblings_synced += 1;
+            }
+            Err(e) => report.skipped.push((path.display().to_string(), e.to_string())),
+        }
+    }
+
+    // 캐시에 남아 있는데 파일은 사라진 sibling — 그 행을 지운다.
+    // (primary cached 파일(캠페인 본문/정의 toml)은 이 모듈 범위가 아니므로
+    //  sibling 이름 규칙에 맞는 rel 만 본다.)
+    for rel in cache.keys() {
+        if alive.contains(rel) {
+            continue;
+        }
+        let Some(kind) = sibling_kind_from_rel(rel) else {
+            continue;
+        };
+        let slug = rel
+            .rsplit('/')
+            .next()
+            .and_then(|n| n.split('.').next())
+            .unwrap_or_default()
+            .to_string();
+        if slug.is_empty() {
+            continue;
+        }
+        if let Some(owner) = owner_id(pool, kind, &slug).await? {
+            delete_sibling_rows(pool, kind, owner).await?;
+        }
+        sqlx::query("DELETE FROM file_mtime_cache WHERE rel_path = ?")
+            .bind(rel)
+            .execute(pool)
+            .await?;
+        report.siblings_synced += 1;
+    }
+    Ok(())
+}
+
+/// rel_path(`quests/DEV-001.comments.md`) → sibling 종류. sibling 이 아니면 None.
+fn sibling_kind_from_rel(rel: &str) -> Option<SiblingKind> {
+    let (dir, name) = rel.split_once('/')?;
+    let comments = name.ends_with(".comments.md");
+    let memo = name.ends_with(".memo.md");
+    match (dir, comments, memo) {
+        ("quests", true, _) => Some(SiblingKind::QuestComments),
+        ("quests", _, true) => Some(SiblingKind::QuestMemo),
+        ("campaigns", true, _) => Some(SiblingKind::CampaignComments),
+        ("campaigns", _, true) => Some(SiblingKind::CampaignMemo),
+        _ => None,
+    }
+}
+
+/// slug → 소유 행 id (quest 는 삭제된 것도 포함 — 파일이 진리원이라 남아 있다).
+async fn owner_id(
+    pool: &sqlx::SqlitePool,
+    kind: SiblingKind,
+    slug: &str,
+) -> AppResult<Option<i64>> {
+    let id = match kind {
+        SiblingKind::QuestComments | SiblingKind::QuestMemo => {
+            // quest 는 (prefix, number) 복합키 — slug 를 쪼개서 찾는다.
+            let Some((prefix, number)) = slug
+                .rsplit_once('-')
+                .and_then(|(p, n)| n.parse::<i64>().ok().map(|n| (p, n)))
+            else {
+                return Ok(None);
+            };
+            sqlx::query_scalar::<_, i64>(
+                "SELECT q.id FROM quests q JOIN quest_types qt ON qt.id = q.quest_type_id
+                 WHERE qt.prefix = ? AND q.number = ?",
+            )
+            .bind(prefix)
+            .bind(number)
+            .fetch_optional(pool)
+            .await?
+        }
+        SiblingKind::CampaignComments | SiblingKind::CampaignMemo => {
+            sqlx::query_scalar::<_, i64>("SELECT id FROM campaigns WHERE campaign_slug = ?")
+                .bind(slug)
+                .fetch_optional(pool)
+                .await?
+        }
+    };
+    Ok(id)
+}
+
+async fn delete_sibling_rows(
+    pool: &sqlx::SqlitePool,
+    kind: SiblingKind,
+    owner: i64,
+) -> AppResult<()> {
+    let sql = match kind {
+        SiblingKind::QuestComments => "DELETE FROM quest_comments WHERE quest_id = ?",
+        SiblingKind::QuestMemo => "DELETE FROM quest_memos WHERE quest_id = ?",
+        SiblingKind::CampaignComments => "DELETE FROM campaign_comments WHERE campaign_id = ?",
+        SiblingKind::CampaignMemo => "DELETE FROM campaign_memos WHERE campaign_id = ?",
+    };
+    sqlx::query(sql).bind(owner).execute(pool).await?;
+    Ok(())
+}
+
+/// 파일 1개 → 그 소유자의 캐시 행 전체 교체 (delete + insert). reindex 의
+/// 같은 부분(5b' / 6b)과 동일한 컬럼·의미를 유지해야 한다.
+async fn replace_sibling_rows(
+    store: &Store,
+    kind: SiblingKind,
+    owner: i64,
+    path: &std::path::Path,
+) -> AppResult<()> {
+    let pool = &store.index_pool;
+    let raw = std::fs::read_to_string(path)
+        .map_err(|e| crate::error::AppError::Internal(anyhow::anyhow!(e)))?;
+    let mut tx = pool.begin().await?;
+    match kind {
+        SiblingKind::QuestComments => {
+            sqlx::query("DELETE FROM quest_comments WHERE quest_id = ?")
+                .bind(owner)
+                .execute(&mut *tx)
+                .await?;
+            for entry in crate::repo::comments::parse_entries(&raw) {
+                sqlx::query(
+                    "INSERT INTO quest_comments
+                        (quest_id, entry_id, ts, author, body, parent_id, discussion, resolved, pinned, edited_at, reactions)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                )
+                .bind(owner)
+                .bind(entry.id as i64)
+                .bind(&entry.ts)
+                .bind(&entry.author)
+                .bind(&entry.body)
+                .bind(entry.parent_id.map(|n| n as i64))
+                .bind(entry.discussion as i64)
+                .bind(entry.resolved as i64)
+                .bind(entry.pinned as i64)
+                .bind(&entry.edited_at)
+                .bind(entry.reactions.join(","))
+                .execute(&mut *tx)
+                .await?;
+            }
+        }
+        SiblingKind::CampaignComments => {
+            sqlx::query("DELETE FROM campaign_comments WHERE campaign_id = ?")
+                .bind(owner)
+                .execute(&mut *tx)
+                .await?;
+            for entry in crate::repo::comments::parse_entries(&raw) {
+                sqlx::query(
+                    "INSERT INTO campaign_comments
+                        (campaign_id, entry_id, ts, author, body, parent_id, pinned, edited_at, reactions)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                )
+                .bind(owner)
+                .bind(entry.id as i64)
+                .bind(&entry.ts)
+                .bind(&entry.author)
+                .bind(&entry.body)
+                .bind(entry.parent_id.map(|n| n as i64))
+                .bind(entry.pinned as i64)
+                .bind(&entry.edited_at)
+                .bind(entry.reactions.join(","))
+                .execute(&mut *tx)
+                .await?;
+            }
+        }
+        SiblingKind::QuestMemo | SiblingKind::CampaignMemo => {
+            // 메모는 파일 하나당 행 하나. updated_at 은 reindex 와 같이 mtime 근사.
+            let updated_at = crate::repo::fs::mtime_iso8601(path).unwrap_or_default();
+            let (del, ins) = if kind == SiblingKind::QuestMemo {
+                (
+                    "DELETE FROM quest_memos WHERE quest_id = ?",
+                    "INSERT INTO quest_memos (quest_id, user_id, content, updated_at) VALUES (?, 0, ?, ?)",
+                )
+            } else {
+                (
+                    "DELETE FROM campaign_memos WHERE campaign_id = ?",
+                    "INSERT INTO campaign_memos (campaign_id, user_id, content, updated_at) VALUES (?, 0, ?, ?)",
+                )
+            };
+            sqlx::query(del).bind(owner).execute(&mut *tx).await?;
+            sqlx::query(ins)
+                .bind(owner)
+                .bind(&raw)
+                .bind(&updated_at)
+                .execute(&mut *tx)
+                .await?;
+        }
+    }
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Store::open 후 통합 sync — 증분 처리 + 필요할 때만 fallback reindex.
 ///
 /// 흐름:
-/// 1. `sync_changed_quest_files` — modified file 들 cheap 처리.
-/// 2. needs_full_reindex 면 `drift::auto_resync` — 신규/삭제/다른 테이블 처리.
+/// 1. `sync_changed_quest_files` — quest 본문의 수정/신규/삭제 (DEV-246).
+/// 2. `sync_changed_sibling_files` — 댓글/메모 파일 (DEV-310).
+/// 3. 둘 중 하나라도 증분으로 표현 못 하는 변화를 만났으면 `drift::auto_resync`.
 ///
 /// 통합 호출자는 `Store::open_with_sync` (store.rs).
 pub async fn sync_on_open(
     store: &Store,
 ) -> AppResult<(IncrementalReport, Option<crate::reindex::ReindexReport>)> {
-    let inc = sync_changed_quest_files(store).await?;
+    let mut inc = sync_changed_quest_files(store).await?;
+    // DEV-310: 캠페인 본문 → sibling 순서. 캠페인 행이 먼저 최신이어야 그 캠페인의
+    // 댓글도 같은 열기에서 반영된다(순서가 반대면 소유자가 없어 full 로 넘어간다).
+    sync_changed_campaign_files(store, &mut inc).await?;
+    sync_changed_sibling_files(store, &mut inc).await?;
+    let inc = inc;
     let reindex_report = if inc.needs_full_reindex {
         crate::drift::auto_resync(store)
             .await
@@ -1527,6 +1886,278 @@ mod tests {
             "게이트가 닫혀도 콘텐츠는 항상 re-read 되어야 (BUG-089)"
         );
         assert_eq!(desc.as_deref(), Some("body v2"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ─── DEV-310: sibling(.comments.md / .memo.md) 증분 ───
+
+    /// 외부 편집 시뮬 — ops 밖에서 파일을 쓰고 mtime 이 캐시보다 새것이 되게 한다.
+    /// (마커 없는 댓글 파일은 전체가 entry 1개로 파싱된다 — repo::comments)
+    fn write_external(path: &std::path::Path, body: &str) {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        std::fs::write(path, body).unwrap();
+    }
+
+    async fn mk_one_quest(store: &Store) -> String {
+        crate::ops::create_quest(
+            store,
+            crate::models::CreateQuestRequest {
+                quest_type_id: 1,
+                title: "sibling 대상".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap()
+        .quest_id
+    }
+
+    #[tokio::test]
+    async fn external_comment_edit_syncs_without_full_reindex() {
+        let dir = fresh_tmp("sib-comment");
+        let store = setup(&dir).await;
+        let slug = mk_one_quest(&store).await;
+        let path = store.paths.dot_guild().join(format!("quests/{slug}.comments.md"));
+
+        write_external(&path, "외부에서 쓴 댓글\n");
+        let (inc, full) = sync_on_open(&store).await.unwrap();
+        assert!(
+            !inc.needs_full_reindex && full.is_none(),
+            "댓글 파일 하나 때문에 풀 reindex 가 돌면 DEV-310 실패: {inc:?}"
+        );
+        assert!(inc.siblings_synced >= 1);
+        let bodies: Vec<String> =
+            sqlx::query_scalar("SELECT body FROM quest_comments ORDER BY entry_id")
+                .fetch_all(&store.index_pool)
+                .await
+                .unwrap();
+        assert_eq!(bodies.len(), 1);
+        assert!(bodies[0].contains("외부에서 쓴 댓글"), "실제 내용: {bodies:?}");
+
+        // 두 번째 편집도 반영되고(내용 교체, 중복 누적 X), 아무 변화 없으면 skip.
+        write_external(&path, "고친 댓글\n");
+        let (inc2, _) = sync_on_open(&store).await.unwrap();
+        assert!(!inc2.needs_full_reindex);
+        let bodies: Vec<String> = sqlx::query_scalar("SELECT body FROM quest_comments")
+            .fetch_all(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(bodies.len(), 1, "행이 누적되면 안 됨: {bodies:?}");
+        assert!(bodies[0].contains("고친 댓글"));
+
+        let (inc3, _) = sync_on_open(&store).await.unwrap();
+        assert_eq!(inc3.siblings_synced, 0, "변화 없으면 다시 읽지 않아야");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn deleted_comment_file_clears_rows_without_full_reindex() {
+        let dir = fresh_tmp("sib-delete");
+        let store = setup(&dir).await;
+        let slug = mk_one_quest(&store).await;
+        let path = store.paths.dot_guild().join(format!("quests/{slug}.comments.md"));
+
+        write_external(&path, "지워질 댓글\n");
+        sync_on_open(&store).await.unwrap();
+
+        std::fs::remove_file(&path).unwrap();
+        let (inc, full) = sync_on_open(&store).await.unwrap();
+        assert!(
+            !inc.needs_full_reindex && full.is_none(),
+            "sibling 삭제로 풀 reindex 를 타면 안 됨: {inc:?}"
+        );
+        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM quest_comments")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(n, 0, "파일이 사라졌으면 캐시 행도 사라져야");
+        // 캐시 row 도 정리 — 안 지우면 매번 '사라진 파일' 로 다시 잡힌다.
+        let (inc2, _) = sync_on_open(&store).await.unwrap();
+        assert_eq!(inc2.siblings_synced, 0);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn external_memo_edit_syncs_incrementally() {
+        let dir = fresh_tmp("sib-memo");
+        let store = setup(&dir).await;
+        let slug = mk_one_quest(&store).await;
+        let path = store.paths.dot_guild().join(format!("quests/{slug}.memo.md"));
+
+        write_external(&path, "메모 v1\n");
+        let (inc, _) = sync_on_open(&store).await.unwrap();
+        assert!(!inc.needs_full_reindex);
+        let content: String = sqlx::query_scalar("SELECT content FROM quest_memos")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert!(content.contains("메모 v1"));
+
+        write_external(&path, "메모 v2\n");
+        sync_on_open(&store).await.unwrap();
+        let rows: Vec<String> = sqlx::query_scalar("SELECT content FROM quest_memos")
+            .fetch_all(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(rows.len(), 1, "메모는 파일 하나당 행 하나여야: {rows:?}");
+        assert!(rows[0].contains("메모 v2"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn external_campaign_comment_edit_syncs_incrementally() {
+        let dir = fresh_tmp("sib-camp");
+        let store = setup(&dir).await;
+        let camp = crate::ops::campaigns::create_campaign(
+            &store,
+            crate::models::CreateCampaignRequest {
+                title: "캠페인".into(),
+                description: None,
+                started_at: None,
+                ended_at: None,
+            },
+        )
+        .await
+        .unwrap();
+        let path = store
+            .paths
+            .dot_guild()
+            .join(format!("campaigns/{}.comments.md", camp.campaign_slug));
+
+        write_external(&path, "캠페인 댓글\n");
+        let (inc, full) = sync_on_open(&store).await.unwrap();
+        assert!(
+            !inc.needs_full_reindex && full.is_none(),
+            "캠페인 sibling 도 증분이어야: {inc:?}"
+        );
+        let bodies: Vec<String> = sqlx::query_scalar("SELECT body FROM campaign_comments")
+            .fetch_all(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(bodies.len(), 1);
+        assert!(bodies[0].contains("캠페인 댓글"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn external_campaign_body_edit_syncs_without_full_reindex() {
+        let dir = fresh_tmp("camp-body");
+        let store = setup(&dir).await;
+        let camp = crate::ops::campaigns::create_campaign(
+            &store,
+            crate::models::CreateCampaignRequest {
+                title: "원래 제목".into(),
+                description: None,
+                started_at: None,
+                ended_at: None,
+            },
+        )
+        .await
+        .unwrap();
+        let path = store.paths.campaign_path(&camp.campaign_slug);
+
+        // 외부 편집 — 제목만 바꿔 다시 쓴다.
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let src = std::fs::read_to_string(&path).unwrap();
+        std::fs::write(&path, src.replace("원래 제목", "고친 제목")).unwrap();
+
+        let (inc, full) = sync_on_open(&store).await.unwrap();
+        assert!(
+            !inc.needs_full_reindex && full.is_none(),
+            "캠페인 본문 편집으로 풀 reindex 를 타면 안 됨: {inc:?}"
+        );
+        assert_eq!(inc.campaigns_synced, 1);
+        let title: String = sqlx::query_scalar("SELECT title FROM campaigns WHERE id = ?")
+            .bind(camp.id)
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(title, "고친 제목");
+
+        // 변화 없으면 다시 UPDATE 하지 않는다.
+        let (inc2, _) = sync_on_open(&store).await.unwrap();
+        assert_eq!(inc2.campaigns_synced, 0);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn open_path_does_not_rewrite_campaign_file() {
+        // git pull 처럼 mtime 만 바뀐 경우에도 열기 경로가 파일을 다시 쓰면
+        // frontmatter updated_at 이 일괄 변조된다(BUG-103 의 캠페인판).
+        let dir = fresh_tmp("camp-nowrite");
+        let store = setup(&dir).await;
+        let camp = crate::ops::campaigns::create_campaign(
+            &store,
+            crate::models::CreateCampaignRequest {
+                title: "제목".into(),
+                description: None,
+                started_at: None,
+                ended_at: None,
+            },
+        )
+        .await
+        .unwrap();
+        let path = store.paths.campaign_path(&camp.campaign_slug);
+
+        // 내용 그대로 재기록 = mtime 만 갱신 (git checkout 시뮬).
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let before = std::fs::read_to_string(&path).unwrap();
+        std::fs::write(&path, &before).unwrap();
+
+        let (inc, full) = sync_on_open(&store).await.unwrap();
+        assert!(!inc.needs_full_reindex && full.is_none());
+        let after = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(after, before, "열기 경로가 캠페인 파일을 다시 쓰면 안 됨");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn new_campaign_file_still_falls_back() {
+        // 캠페인 신규/삭제는 아직 증분 범위가 아니다 — 안전망이 살아있는지 확인.
+        let dir = fresh_tmp("camp-new");
+        let store = setup(&dir).await;
+        let path = store.paths.campaign_path("C-042");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &path,
+            "+++\ncampaign_id = \"C-042\"\ntitle = \"손으로 넣은 캠페인\"\nstatus = \"active\"\ncreated_at = \"2026-01-01T00:00:00Z\"\nupdated_at = \"2026-01-01T00:00:00Z\"\n+++\n\n본문\n",
+        )
+        .unwrap();
+
+        let mut report = IncrementalReport::default();
+        sync_changed_campaign_files(&store, &mut report).await.unwrap();
+        assert!(
+            report.needs_full_reindex,
+            "index 에 없는 캠페인 파일은 풀 reindex 로 넘겨야"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn orphan_sibling_falls_back_to_full_reindex() {
+        // 소유 quest 가 index 에 없는 sibling — 증분으로 표현 불가 → 안전망.
+        let dir = fresh_tmp("sib-orphan");
+        let store = setup(&dir).await;
+        let path = store.paths.dot_guild().join("quests/DEV-999.comments.md");
+        write_external(&path, "주인 없는 댓글\n");
+
+        let mut report = IncrementalReport::default();
+        sync_changed_sibling_files(&store, &mut report).await.unwrap();
+        assert!(
+            report.needs_full_reindex,
+            "본문 없는 sibling 은 풀 reindex 로 넘겨야"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
