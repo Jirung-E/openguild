@@ -6,6 +6,8 @@
 	// DEV-153: 미저장 변경 통합 가드.
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { anyUnsaved, clearUnsaved } from '$lib/stores/unsaved';
+	// BUG-179: 데스크탑에서 새로고침 단축키만 가로채기 위한 판정.
+	import { isReloadShortcut } from '$lib/utils/reload-shortcut';
 	import { onMount, tick } from 'svelte';
 	// DEV-276: 최근 본 문서 추적.
 	import { pushRecentDoc, classifyDocRoute } from '$lib/stores/recentDocs';
@@ -110,11 +112,7 @@
 	// 그러니 여기서 막는 것이 곧 올바른 동작이다. 길드 선택은 웰컴 화면에서
 	// 명시적으로 한다.
 	beforeNavigate((nav) => {
-		if (
-			nav.type === 'popstate' &&
-			guildSwitchingPossible() &&
-			$page.url.pathname === '/welcome'
-		) {
+		if (nav.type === 'popstate' && guildSwitchingPossible() && $page.url.pathname === '/welcome') {
 			nav.cancel();
 			return;
 		}
@@ -136,9 +134,36 @@
 		showUnsavedModal = false;
 		pendingAction = null;
 	}
-	// BUG: 창 닫기(onCloseRequested) / beforeunload 가드는 제거됨 — WebView2 에서
-	// 창이 안 닫히는 회귀(admin 보고). 미저장 경고는 SPA 라우트 이동(beforeNavigate)
-	// 으로만 — 앱 종료/새로고침은 절대 막지 않는다.
+	// BUG-075: 창 닫기(onCloseRequested) 가드는 제거된 상태로 둔다 — WebView2 에서
+	// 창이 안 닫히는 회귀(심각도 1). 앱 종료는 어떤 경우에도 막지 않는다.
+	//
+	// BUG-179: 다만 **새로고침**은 그때 같이 빠져서, 편집 중 F5 를 누르면 경고
+	// 없이 내용이 사라졌다(BUG-075 커밋이 "안전한 방법 확보 후 재도입" 이라고
+	// 남긴 부분). 환경별로 창 닫기와 무관한 수단만 쓴다:
+	//  - 브라우저/서버 모드: beforeunload (Tauri 창과 무관 → BUG-075 와 충돌 없음)
+	//  - Tauri: 새로고침 단축키만 keydown 에서 가로채 공용 모달로. beforeunload /
+	//    onCloseRequested 는 건드리지 않는다.
+	onMount(() => {
+		if (detectEnvironment() !== 'tauri') {
+			const guard = (e: BeforeUnloadEvent) => {
+				if (!anyUnsaved()) return;
+				e.preventDefault();
+				e.returnValue = '';
+			};
+			window.addEventListener('beforeunload', guard);
+			return () => window.removeEventListener('beforeunload', guard);
+		}
+		const onKeyDown = (e: KeyboardEvent) => {
+			if (!isReloadShortcut(e) || !anyUnsaved()) return;
+			e.preventDefault();
+			// discardAndProceed 가 clearUnsaved() 후 이 동작을 실행한다.
+			pendingAction = () => window.location.reload();
+			showUnsavedModal = true;
+		};
+		// capture — CodeMirror 등이 먼저 삼키지 않도록.
+		window.addEventListener('keydown', onKeyDown, true);
+		return () => window.removeEventListener('keydown', onKeyDown, true);
+	});
 
 	// DEV-111 fix1: mermaid 가 render() 중 실패하면 body 끝에 leftover 임시
 	// 컨테이너 (bomb 아이콘 + "Syntax error in text mermaid version X.Y.Z") 가
