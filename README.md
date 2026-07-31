@@ -41,7 +41,15 @@ openguild --guild ./other-project quest list
 openguild --remote https://openguild.io/alice/monitor quest list
 ```
 
-The GUI (Tauri desktop app) provides directory selection and a recent guilds list. Windows installer (`openguild_{version}_x64-setup.exe`, NSIS) offers per-component selection (GUI / CLI / Server) and an optional PATH registration; Linux builds are also attached to each GitHub Release as `.deb` / `.rpm` / AppImage packages. Installed app auto-checks for updates on startup and every 6 hours (notification only — install requires user click).
+The GUI (Tauri desktop app) provides directory selection and a recent guilds list. Windows installer (`openguild_{version}_x64-setup.exe`, NSIS) offers per-component selection (GUI / CLI / Server) and an optional PATH registration; Linux builds are also attached to each GitHub Release as `.deb` / `.rpm` / AppImage packages, and macOS (Apple Silicon) as a `.dmg`. Installed app auto-checks for updates on startup and every 6 hours (notification only — install requires user click).
+
+**macOS note.** Builds are for Apple Silicon (arm64) only and are **not code-signed** — the app is not registered with Apple, so the first launch is blocked by Gatekeeper ("cannot be opened because the developer cannot be verified"). Open it once via **right-click (or Control-click) → Open → Open**, or clear the quarantine attribute:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/openguild.app
+```
+
+Only the GUI ships in the `.dmg`. For the `openguild` CLI and `openguild-server` on macOS, build from source (`cargo build --release -p openguild-cli -p openguild-server`).
 
 ### Creating a Quest
 Quests are created within a guild. Each quest has a type prefix and an auto-incremented ID (e.g., `DEV-001`, `BUG-003`).
@@ -136,6 +144,19 @@ cargo build --release --bin openguild   # → target/release/openguild
 # or: cargo run --bin openguild -- --help
 ```
 
+**Desktop app bundle (macOS, Apple Silicon)**
+
+Requires Xcode Command Line Tools (`xcode-select --install`) and Node 20+.
+
+```bash
+cargo install tauri-cli --version '^2' --locked
+cd gui && cargo tauri build          # → target/release/bundle/{dmg,macos}
+```
+
+`gui/tauri.macos.conf.json` pins the bundle targets to `app` + `dmg`, so a plain
+`cargo tauri build` on macOS produces the same artifacts CI does. The build is
+unsigned; see the macOS note above for the first-launch step.
+
 ### Recovery — older binary refuses to open a guild
 
 A binary built before some migration `N` was added refuses to open a guild DB
@@ -198,7 +219,15 @@ openguild --guild ./other-project quest list
 openguild --remote https://openguild.io/alice/monitor quest list
 ```
 
-GUI (Tauri 데스크탑 앱) 는 디렉터리 선택 + 최근 길드 목록을 제공. Windows installer(`openguild_{version}_x64-setup.exe`, NSIS)는 컴포넌트 선택 (GUI / CLI / Server) + PATH 등록 옵션 제공 — 매 GitHub Release 에 첨부됨. 리눅스 빌드도 각 Release 에 `.deb` / `.rpm` / AppImage 패키지로 첨부. 설치된 앱은 시작 시 + 6시간 간격으로 업데이트 자동 확인 (알림만; 설치는 사용자 클릭).
+GUI (Tauri 데스크탑 앱) 는 디렉터리 선택 + 최근 길드 목록을 제공. Windows installer(`openguild_{version}_x64-setup.exe`, NSIS)는 컴포넌트 선택 (GUI / CLI / Server) + PATH 등록 옵션 제공 — 매 GitHub Release 에 첨부됨. 리눅스 빌드도 각 Release 에 `.deb` / `.rpm` / AppImage 패키지로, macOS(Apple Silicon)는 `.dmg` 로 첨부. 설치된 앱은 시작 시 + 6시간 간격으로 업데이트 자동 확인 (알림만; 설치는 사용자 클릭).
+
+**macOS 안내.** Apple Silicon(arm64) 전용이며 **코드 서명을 하지 않는다** — Apple 에 등록된 앱이 아니라서 첫 실행이 Gatekeeper 에 막힌다("개발자를 확인할 수 없기 때문에 열 수 없습니다"). 처음 한 번만 **우클릭(또는 Control-클릭) → 열기 → 열기** 로 실행하거나, 격리 속성을 지운다:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/openguild.app
+```
+
+`.dmg` 에는 GUI 만 들어 있다. macOS 에서 `openguild`(CLI)·`openguild-server` 가 필요하면 소스에서 빌드한다(`cargo build --release -p openguild-cli -p openguild-server`).
 
 ### 퀘스트 생성
 퀘스트는 길드 내에서 생성된다. 각 퀘스트는 타입 prefix와 자동 증가 ID를 가진다 (예: `DEV-001`, `BUG-003`).
@@ -292,6 +321,19 @@ cd gui/frontend && npm run dev
 cargo build --release --bin openguild   # → target/release/openguild
 # or: cargo run --bin openguild -- --help
 ```
+
+**데스크탑 앱 번들 (macOS, Apple Silicon)**
+
+Xcode Command Line Tools (`xcode-select --install`) 와 Node 20+ 필요.
+
+```bash
+cargo install tauri-cli --version '^2' --locked
+cd gui && cargo tauri build          # → target/release/bundle/{dmg,macos}
+```
+
+`gui/tauri.macos.conf.json` 이 번들 타깃을 `app` + `dmg` 로 고정하므로 맥에서
+그냥 `cargo tauri build` 만 해도 CI 와 같은 산출물이 나온다. 서명은 하지 않으니
+첫 실행 절차는 위 macOS 안내 참고.
 
 ### 복구 — 이전 binary 가 길드를 못 열 때
 

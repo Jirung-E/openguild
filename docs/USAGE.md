@@ -9,6 +9,28 @@
 설치 후 시작 메뉴 또는 바탕화면에서 **openguild** 를 실행하면 Welcome 화면이
 열립니다. 길드를 새로 만들거나, 기존 길드 폴더를 열 수 있습니다.
 
+### 플랫폼별 설치본
+
+| 플랫폼 | 첨부 파일 | 비고 |
+|--------|----------|------|
+| Windows x64 | `openguild_{version}_x64-setup.exe` | GUI / CLI / 서버 선택 설치 + PATH 등록 옵션 |
+| Linux x64 | `.deb` / `.rpm` / `.AppImage` | GUI 만 포함 |
+| macOS (Apple Silicon) | `openguild_{version}_aarch64.dmg` | GUI 만 포함. Intel 맥은 대상 외 |
+
+**macOS 첫 실행 — Gatekeeper.** 코드 서명을 하지 않은 빌드라 그냥 더블클릭하면
+"개발자를 확인할 수 없기 때문에 열 수 없습니다" 로 막힙니다. 둘 중 하나로 한 번만
+통과시키면 그 뒤로는 평범하게 열립니다.
+
+1. Applications 에서 openguild 를 **우클릭(또는 Control-클릭) → 열기 → 열기**
+2. 또는 터미널에서 격리 속성 제거:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/openguild.app
+```
+
+macOS 에서 CLI(`openguild`)·서버(`openguild-server`)는 dmg 에 들어 있지 않습니다 —
+필요하면 소스에서 `cargo build --release -p openguild-cli -p openguild-server`.
+
 ### 길드 만들기
 
 길드 = 한 프로젝트 단위. (예: "내 개인 프로젝트", "팀 X 의 사이드 프로젝트")
@@ -158,6 +180,7 @@ openguild quest list
 
 설치된 사본 위치 기본값:
 `C:\Program Files\openguild\` (Windows) — 단 사용자 설정으로 변경 가능.
+macOS 는 `/Applications/openguild.app`.
 
 ---
 

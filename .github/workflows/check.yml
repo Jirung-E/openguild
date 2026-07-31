@@ -91,6 +91,52 @@ jobs:
         # multi-thread 안전. `--test-threads=1` 강제 제거 (CI 시간 단축).
         run: cargo test --workspace
 
+  # DEV-313: macOS 컴파일 검증. 플랫폼 분기(`titlebar_win`/`titlebar_linux` 와
+  # non-Windows 스텁, `lock.rs` 의 windows/not-windows)가 macOS 에서 깨지면
+  # 릴리스 태그를 밀 때가 아니라 여기서 잡혀야 한다.
+  #
+  # clippy 는 리눅스 잡이 워크스페이스 전체를 이미 본다 — 여기선 macOS 에서만
+  # 달라지는 것(컴파일 성립 + 런타임 동작)에 집중해 test 까지만 돌린다.
+  macos:
+    name: cargo (macos-arm64)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: gui/frontend/package-lock.json
+
+      # gui crate 의 `tauri::generate_context!` 가 frontendDist 존재를 빌드
+      # 시점에 검증 — 리눅스 잡과 같은 이유로 프론트를 먼저 만든다.
+      - name: Frontend build (gui crate 가 의존)
+        working-directory: gui/frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: cargo build (workspace)
+        run: cargo build --workspace --all-targets
+
+      - name: cargo test
+        run: cargo test --workspace
+
   gui-frontend:
     name: gui/frontend (svelte-kit)
     runs-on: ubuntu-latest

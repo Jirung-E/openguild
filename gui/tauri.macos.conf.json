@@ -14,5 +14,11 @@
         "hiddenTitle": true
       }
     ]
+  },
+  "bundle": {
+    "targets": ["app", "dmg"],
+    "macOS": {
+      "minimumSystemVersion": "11.0"
+    }
   }
 }

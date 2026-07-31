@@ -1,6 +1,6 @@
 +++
 created_at = "2026-06-23T01:30:44+09:00"
-updated_at = "2026-07-27T21:23:20+09:00"
+updated_at = "2026-07-31T23:59:03+09:00"
 +++
 # 릴리즈 패키지 절차
 
@@ -85,17 +85,35 @@ git push origin master --tags
     "platforms": {
       "windows-x86_64": {
         "signature": "<minisign>",
-        "url": "https://github.com/.../openguild-gui_X.Y.Z_x64-setup.nsis.zip"
+        "url": "https://github.com/.../openguild_X.Y.Z_x64-setup.exe"
+      },
+      "darwin-aarch64": {
+        "signature": "<minisign>",
+        "url": "https://github.com/.../openguild.app.tar.gz"
       }
     }
   }
   ```
+- **`latest.json` 은 빌드 잡이 만들지 않는다** (DEV-314). updater 엔드포인트는
+  파일 하나(`releases/latest/download/latest.json`)뿐이라, 플랫폼별 잡이 각자
+  같은 이름으로 올리면 **마지막 잡이 이겨서 나머지 플랫폼이 통째로 사라진다.**
+  빌드 잡은 설치 파일과 `.sig` 만 릴리스에 올리고, 마지막 `updater-manifest`
+  잡이 **릴리스에 실제로 올라간 `*.sig` 자산**을 읽어 하나로 합친다.
+  - 새 플랫폼을 추가할 때 손댈 곳은 그 잡의 `platform_of()` 매핑 한 줄
+    (자산 이름 접미사 → updater 플랫폼 키)이다.
+  - 서명 시크릿이 없으면 `.sig` 자체가 없으므로 `latest.json` 없이 릴리스가
+    끝난다 — 설치 파일은 정상, 자동 업데이트만 비활성.
 - BUG-045 (예정): `latest.json` 가 없으면 사용자 GUI 의 "업데이트 확인" 이 그냥
   실패. 첫 release 에서 반드시 포함.
 
 ## 사후 점검
 
 - [ ] release page 에서 installer 다운로드 / 설치 / 실행 확인.
+- [ ] `latest.json` 의 `platforms` 에 **그 릴리스가 지원하는 플랫폼이 전부**
+      들어 있는지 (DEV-314 이전엔 한 플랫폼만 남는 사고가 가능한 구조였다).
+      현재 대상: `windows-x86_64`, `darwin-aarch64`.
+- [ ] macOS: dmg 열기 → Applications 로 드래그 → 첫 실행이 Gatekeeper 안내대로
+      우클릭>열기로 통과되는지 (미서명 배포라 정상 동작이다).
 - [ ] `openguild-gui --version` 출력이 새 version 맞는지.
 - [ ] BUG-041 의 SchemaAheadBanner 가 구버전 길드 열 때 정상 표시되는지.
 - [ ] Tauri updater (구 release 에서) 새 release 감지 동작 확인.
