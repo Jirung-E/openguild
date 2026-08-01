@@ -77,6 +77,26 @@ function persist(list: RecentDoc[]) {
 	}
 }
 
+/**
+ * BUG-181: kind/label → 정규 href. SearchPalette 의 전역 인덱스(`all`)가 문서당
+ * 하나의 정규 href 를 쓰는 것과 **반드시 문자열까지 일치**해야 recent 모드의
+ * `order.has(i.href)` 매칭이 성립한다. 퀘스트 네비게이션(Board/List/Nav 등)이
+ * `?from=board` 류 추적 쿼리를 붙이는데, 그 원본 URL 을 그대로 저장하면 인덱스의
+ * 쿼리 없는 href 와 영영 안 맞아 "최근 본 문서"에서 퀘스트만 누락됐다.
+ */
+export function canonicalDocHref(kind: RecentKind, label: string): string {
+	switch (kind) {
+		case 'quest':
+			return `/quests/${label}`;
+		case 'campaign':
+			return `/campaigns/${encodeURIComponent(label)}`;
+		case 'rule':
+			return `/rules?slug=${encodeURIComponent(label)}`;
+		case 'book':
+			return `/library?id=${encodeURIComponent(label)}`;
+	}
+}
+
 /** 방문 기록. 같은 href 는 새로 쌓지 않고 맨 앞으로 끌어올린다(재방문). */
 export function pushRecentDoc(doc: Omit<RecentDoc, 'ts'>): void {
 	if (!doc.href) return;

@@ -10,7 +10,7 @@
 	import { isReloadShortcut } from '$lib/utils/reload-shortcut';
 	import { onMount, tick } from 'svelte';
 	// DEV-276: 최근 본 문서 추적.
-	import { pushRecentDoc, classifyDocRoute } from '$lib/stores/recentDocs';
+	import { pushRecentDoc, classifyDocRoute, canonicalDocHref } from '$lib/stores/recentDocs';
 	import Nav from '$lib/components/Nav.svelte';
 	// 커스텀 타이틀바 — Windows Tauri 전용 (tauri.windows.conf.json 의
 	// decorations:false 와 세트). 네이티브 타이틀바 테마 어긋남 원천 해소.
@@ -193,10 +193,12 @@
 	// (recentDocTitle) — 정확하고 이름 변경도 자동 반영.
 	function trackRecentDoc() {
 		if ($isChildWindow) return; // 자식창(단일 문서 보기)은 목록을 쌓을 필요 없음
-		const href = $page.url.pathname + $page.url.search;
-		const hit = classifyDocRoute(href);
+		const hit = classifyDocRoute($page.url.pathname + $page.url.search);
 		if (!hit) return;
-		pushRecentDoc({ href, kind: hit.kind, label: hit.label });
+		// BUG-181: `?from=` 같은 추적 쿼리가 섞인 원본 URL 대신 정규 href 로
+		// 저장 — SearchPalette 전역 인덱스의 href 와 문자열이 일치해야 recent
+		// 모드에서 매칭된다(불일치 시 퀘스트가 조용히 누락됨).
+		pushRecentDoc({ href: canonicalDocHref(hit.kind, hit.label), kind: hit.kind, label: hit.label });
 	}
 	afterNavigate(trackRecentDoc);
 	onMount(trackRecentDoc);
