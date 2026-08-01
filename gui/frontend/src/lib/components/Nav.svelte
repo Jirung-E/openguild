@@ -283,42 +283,47 @@
 	     타이틀바의 ☰(항상 좌측 고정) 위치와 맞춤. 원래 <nav> 뒤에 있었는데
 	     그러면 링크 목록 오른쪽에 붙어 "맨 왼쪽" 요구와 안 맞았음.
 	     DEV-271(당시 이유였던 "클릭해도 안펼쳐짐"): nav 의 overflow:hidden
-	     클리핑을 피해야 하므로 여전히 nav 형제(밖)로 유지. -->
-	{#if showWebExtras && overflowItems.length > 0}
-		<div class="more-wrap">
-			<button
-				class="btn-more"
-				class:open={moreOpen}
-				onclick={() => (moreOpen = !moreOpen)}
-				title={t('nav.more', $locale)}
-				aria-label={t('nav.more', $locale)}
-				aria-expanded={moreOpen}
-			>☰</button>
-			{#if moreOpen}
-				<div class="more-menu">
-					{#each overflowItems as it (it.href)}
-						<a href={it.href} class:active={it.active} onclick={() => (moreOpen = false)}>{it.label}</a>
-					{/each}
-				</div>
-			{/if}
-		</div>
-	{/if}
+	     클리핑을 피해야 하므로 여전히 nav 형제(밖)로 유지 — 대신 별도
+	     wrapper(.nav-group)로 묶어 header 의 큰 gap(2rem, 다음 섹션과의
+	     간격용) 대신 좁은 자체 gap 을 준다(사용자 지적: "간격이 너무 넓음").
+	-->
+	<div class="nav-group">
+		{#if showWebExtras && overflowItems.length > 0}
+			<div class="more-wrap">
+				<button
+					class="btn-more"
+					class:open={moreOpen}
+					onclick={() => (moreOpen = !moreOpen)}
+					title={t('nav.more', $locale)}
+					aria-label={t('nav.more', $locale)}
+					aria-expanded={moreOpen}
+				>☰</button>
+				{#if moreOpen}
+					<div class="more-menu">
+						{#each overflowItems as it (it.href)}
+							<a href={it.href} class:active={it.active} onclick={() => (moreOpen = false)}>{it.label}</a>
+						{/each}
+					</div>
+				{/if}
+			</div>
+		{/if}
 
-	<!-- DEV-260: 링크 목록은 navItems 로 일원화(홈~도서관) — visibleCount
-	     만큼만 보이고 나머지는 ☰(데스크탑)/…(웹)으로. BUG-186: 캠페인/
-	     작업기록/태그는 여기 안 들어감 — 항상 접힌 메뉴(위 more-wrap). -->
-	<nav bind:this={navEl}>
-		{#each visibleItems as it (it.href)}
-			<a href={it.href} class:active={it.active}>{it.label}</a>
-		{/each}
-		<!-- 측정 전용 사본 — 항상 전부 렌더(숨김). 보이는 목록과 동일한
-		     <a> 마크업/스코프 스타일이라 자연 폭이 정확히 일치. -->
-		<div class="nav-measure" bind:this={measureEl} aria-hidden="true">
-			{#each navItems as it (it.href)}
-				<a href={it.href} tabindex="-1">{it.label}</a>
+		<!-- DEV-260: 링크 목록은 navItems 로 일원화(홈~도서관) — visibleCount
+		     만큼만 보이고 나머지는 ☰(데스크탑)/…(웹)으로. BUG-186: 캠페인/
+		     작업기록/태그는 여기 안 들어감 — 항상 접힌 메뉴(위 more-wrap). -->
+		<nav bind:this={navEl}>
+			{#each visibleItems as it (it.href)}
+				<a href={it.href} class:active={it.active}>{it.label}</a>
 			{/each}
-		</div>
-	</nav>
+			<!-- 측정 전용 사본 — 항상 전부 렌더(숨김). 보이는 목록과 동일한
+			     <a> 마크업/스코프 스타일이라 자연 폭이 정확히 일치. -->
+			<div class="nav-measure" bind:this={measureEl} aria-hidden="true">
+				{#each navItems as it (it.href)}
+					<a href={it.href} tabindex="-1">{it.label}</a>
+				{/each}
+			</div>
+		</nav>
+	</div>
 
 	<!-- DEV-271(사용자 피드백): 데스크탑 TitleBar 의 중앙 배치를 그대로 —
 	     폭 0 앵커를 화면 중앙에 두고 pill 은 그 중앙, 좌우 버튼은 pill 바깥에
@@ -457,6 +462,17 @@
 		/* 커스텀 타이틀바(Windows Tauri) 아래에 붙도록 — 없으면 0px. */
 		top: var(--titlebar-h, 0px);
 		z-index: 100;
+	}
+
+	/* BUG-186: more-wrap + nav 를 묶어서 header 의 큰 gap(2rem, 다음 섹션과의
+	   간격) 대신 좁은 자체 gap 사용. header 안에서의 flex-grow 몫은 nav 가
+	   아니라 이 wrapper 가 가져간다(이전엔 nav 자체가 flex:1). */
+	.nav-group {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		flex: 1;
+		min-width: 0;
 	}
 
 	nav {
