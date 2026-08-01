@@ -317,11 +317,13 @@
 					<dd class="theme-row">
 						<div class="theme-toggle" role="group" aria-label={t('settings.autoUpdateCheck', $locale)}>
 							<button
+								class="th-btn"
 								class:active={$autoUpdateCheck}
 								onclick={() => setAutoUpdateCheck(true)}
 								aria-pressed={$autoUpdateCheck}>{t('settings.on', $locale)}</button
 							>
 							<button
+								class="th-btn"
 								class:active={!$autoUpdateCheck}
 								onclick={() => setAutoUpdateCheck(false)}
 								aria-pressed={!$autoUpdateCheck}>{t('settings.off', $locale)}</button
