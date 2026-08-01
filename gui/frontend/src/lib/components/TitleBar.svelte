@@ -253,9 +253,12 @@
 	     렌더(그 외엔 spacer 뒤 오른쪽). -->
 	{#if controlsOnLeft}{@render winControls()}{/if}
 	<!-- macOS: 네이티브 traffic light(빨/노/초) 폭만큼 좌측 여백 — CSS 로
-	     처리(.titlebar.mac-overlay padding-left). -->
+	     처리(.titlebar.mac-overlay padding-left). traffic light 옆에 또
+	     아이콘을 붙이면 중복돼 보여서 macOS 는 렌더하지 않음. -->
 	<!-- 앱 아이콘 — 장식(클릭 무동작). 드래그 영역의 일부. -->
+	{#if !isMac}
 	<img class="tb-appicon" src="/title-icon.png" alt="" data-tauri-drag-region />
+	{/if}
 
 	<!-- DEV-255: 자식윈도우(단일 문서 보기)는 홈/뒤로·앞으로/☰메뉴 전부 불필요
 	     — 다른 곳으로 이동할 일이 없는 창이라 통째로 숨김. -->
