@@ -16,8 +16,19 @@ dev-frontend:
     cd gui/frontend && npm run dev
 
 # Tauri desktop 앱 dev 모드 (frontend 자동 동반 실행)
+# OPENGUILD_SKIP_FRONTEND=1 필수: cargo tauri dev 는 beforeDevCommand
+# (npm run dev) 로 이미 frontend 를 서빙하는데, gui/build.rs 의 BUG-038
+# npm-build 안전망까지 같이 돌면 그 결과물(frontend/build) 변경을 watcher
+# 가 다시 감지해 재빌드 → 다시 npm build → 다시 변경 감지... 무한루프에
+# 빠짐(macOS 에서 재현 — 흰 화면에서 멈춘 것처럼 보임). dev 모드는 embed
+# 자산이 필요 없어 안전하게 skip 가능.
+[unix]
 dev-desktop:
-    cd gui && cargo tauri dev
+    cd gui && OPENGUILD_SKIP_FRONTEND=1 cargo tauri dev
+
+[windows]
+dev-desktop:
+    cd gui && set OPENGUILD_SKIP_FRONTEND=1 && cargo tauri dev
 
 # API 서버 dev 모드 (cwd 의 .guild 사용)
 dev-server:
