@@ -190,6 +190,18 @@
 			navOverflowItems.set([]);
 		};
 	});
+	// BUG-185(사용자 보고, 웹): "…" 접힌 메뉴가 열린 채로 바깥을 클릭해도
+	// 안 닫힘 — 드롭다운 안 링크 클릭 시 닫는 핸들러만 있고 바깥 클릭
+	// 핸들러 자체가 없었음. TitleBar.svelte 의 ☰ 메뉴와 동일 패턴.
+	function onWindowMouseDown(e: MouseEvent) {
+		if (!moreOpen) return;
+		const t = e.target as HTMLElement;
+		if (!t.closest('.more-wrap')) moreOpen = false;
+	}
+	onMount(() => {
+		window.addEventListener('mousedown', onWindowMouseDown, { capture: true });
+		return () => window.removeEventListener('mousedown', onWindowMouseDown, { capture: true });
+	});
 	// 라벨(언어)/항목 구성이 바뀌면 measurer DOM 반영 후 재측정.
 	$effect(() => {
 		void navItems;
