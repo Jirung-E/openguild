@@ -49,6 +49,16 @@
 	let maximized = $state(false);
 	const isMac = isMacOverlay();
 
+	// BUG-187: 검색 pill 좌우 버튼 오프셋을 pill 실제 폭과 무관한
+	// `min(21vw, 134px)` 근사치로 계산했음 — pill 은 min-width:260px 라
+	// 좁은 창에서도 안 줄어드는데 21vw 항은 계속 줄어들어 버튼이 pill
+	// 가장자리 안쪽으로 파고든다(Nav.svelte 웹 메뉴바에서 먼저 발견·수정된
+	// 것과 동일 버그). 데스크탑은 tauri.*.conf.json 의 minWidth:800 때문에
+	// 지금은 발현되지 않지만, 나중에 최소폭 제약이 바뀌면 똑같이 터지므로
+	// 선제적으로 같은 방식(pill 실측 + CSS 변수)으로 고쳐둔다.
+	let tbSearchEl = $state<HTMLElement | null>(null);
+	let pillHalfWidth = $state(134);
+
 	// DEV-265: 창 컨트롤 버튼을 OS 관례에 맞춤. decorations:false 상태에선
 	// 버튼 픽셀 자체를 OS(DWM/GTK)가 그려주는 API 가 없음 — WinUI3
 	// ExtendsContentIntoTitleBar 조차 "프레임 제거 후 자체적으로 캡션 버튼을
@@ -244,6 +254,17 @@
 		window.addEventListener('mousedown', onWindowMouseDown, { capture: true });
 		return () => window.removeEventListener('mousedown', onWindowMouseDown, { capture: true });
 	});
+
+	// BUG-187: pill 폭이 바뀔 때마다(콘텐츠 길이·창 크기) 절반 폭을 실측.
+	$effect(() => {
+		if (!tbSearchEl) return;
+		const el = tbSearchEl;
+		const update = () => (pillHalfWidth = el.offsetWidth / 2);
+		update();
+		const ro = new ResizeObserver(update);
+		ro.observe(el);
+		return () => ro.disconnect();
+	});
 </script>
 
 <svelte:window onresize={reportMaxButtonRect} />
@@ -337,7 +358,7 @@
 	     길드 컨텍스트 있을 때만, 자식윈도우에선 숨김(단일 문서 보기 창엔
 	     전체 검색/최근 목록이 무의미). -->
 	{#if $guildContextActive && guildName && !$isChildWindow}
-		<div class="tb-center">
+		<div class="tb-center" style="--pill-half-w: {pillHalfWidth}px">
 			<!-- DEV-286: 검색 pill 왼쪽 바깥에 '퀘스트 추가' 버튼. BUG-158 과 동일하게
 			     절대 배치라 버튼 유무가 pill 중앙 위치에 영향을 주지 않는다. -->
 			<div class="tb-add-wrap">
@@ -352,7 +373,7 @@
 					</svg>
 				</button>
 			</div>
-			<button class="tb-search" class:open={searchOpen} onclick={() => (searchOpen = true)} title={t('titlebar.search', $locale)}>
+			<button class="tb-search" class:open={searchOpen} bind:this={tbSearchEl} onclick={() => (searchOpen = true)} title={t('titlebar.search', $locale)}>
 				<span class="tb-search-name">{guildName}</span>
 				{#if isRemote}
 					<span class="tb-remote" title={t('nav.remoteConnected', $locale)}>
@@ -641,7 +662,9 @@
 	.tb-add-wrap {
 		position: absolute;
 		left: 50%;
-		transform: translateX(calc(-1 * min(21vw, 134px) - 100% - 4px));
+		/* BUG-187: vw 근사 대신 JS 로 실측한 pill 절반 폭(--pill-half-w) 사용 —
+		   pill 의 min-width/max-width/내용 길이와 무관하게 항상 가장자리 밖. */
+		transform: translateX(calc(-1 * var(--pill-half-w, 134px) - 100% - 4px));
 		display: inline-flex;
 		align-items: center;
 		flex: none;
@@ -649,7 +672,7 @@
 	.tb-recent-wrap {
 		position: absolute;
 		left: 50%;
-		transform: translateX(min(21vw, 134px));
+		transform: translateX(var(--pill-half-w, 134px));
 		display: inline-flex;
 		align-items: center;
 		flex: none;
