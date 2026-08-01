@@ -219,12 +219,29 @@
 	// pill 없는 상태로 굳어 링크가 전부 ☰ 로 접힌 채였다 — 창을 리사이즈해야
 	// 정상이 됐다. refs/길드명을 의존성으로 추적해 재계산하고, pill 자체에도
 	// RO 를 걸어 폭 변화(긴 이름·vw 변화)에 반응한다.
+	// BUG-187(사용자 보고: "좁은 창에서 퀘스트 추가/최근 문서 버튼이 검색
+	// pill 과 너무 가까워지다 못해 pill 안으로 들어감"): 버튼 오프셋을
+	// pill 실제 폭과 무관한 `min(21vw, 134px)` 근사치로 계산했었음 — pill
+	// 은 `min-width:260px` 라 좁은 뷰포트에서도 260px 밑으로 안 줄어드는데,
+	// `21vw` 는 계속 줄어들어(뷰포트 620px 미만이면 130px 밑으로) 버튼이
+	// pill 의 실제 절반 폭보다 안쪽으로 파고들었다. pill 을 실측해 그 절반
+	// 폭을 CSS 변수로 흘려보내 항상 정확히 pill 가장자리 밖에 위치하게 함.
+	let pillHalfWidth = $state(134);
+	function updatePillHalfWidth() {
+		if (pillEl) pillHalfWidth = pillEl.offsetWidth / 2;
+	}
 	$effect(() => {
 		void guildName;
 		const els = [addWrapEl, pillEl].filter((e): e is HTMLElement => !!e);
-		tick().then(recomputeOverflow);
+		tick().then(() => {
+			recomputeOverflow();
+			updatePillHalfWidth();
+		});
 		if (els.length === 0) return;
-		const ro = new ResizeObserver(() => recomputeOverflow());
+		const ro = new ResizeObserver(() => {
+			recomputeOverflow();
+			updatePillHalfWidth();
+		});
 		for (const el of els) ro.observe(el);
 		return () => ro.disconnect();
 	});
@@ -329,7 +346,7 @@
 	     폭 0 앵커를 화면 중앙에 두고 pill 은 그 중앙, 좌우 버튼은 pill 바깥에
 	     절대 배치. 버튼 유무가 pill 위치를 흔들지 않는다(BUG-158 과 동일 이유). -->
 	{#if showWebExtras && guildName}
-		<div class="nav-center">
+		<div class="nav-center" style="--pill-half-w: {pillHalfWidth}px">
 			<!-- DEV-286: 검색 pill 왼쪽 바깥 '퀘스트 추가'. -->
 			<div class="nav-add-wrap" bind:this={addWrapEl}>
 				<button
@@ -635,7 +652,9 @@
 	.nav-add-wrap {
 		position: absolute;
 		left: 50%;
-		transform: translateX(calc(-1 * min(21vw, 134px) - 100% - 4px));
+		/* BUG-187: vw 근사 대신 JS 로 실측한 pill 절반 폭(--pill-half-w) 사용 —
+		   pill 의 min-width/max-width/내용 길이와 무관하게 항상 가장자리 밖. */
+		transform: translateX(calc(-1 * var(--pill-half-w, 134px) - 100% - 4px));
 		display: inline-flex;
 		align-items: center;
 		flex: none;
@@ -643,7 +662,7 @@
 	.nav-recent-wrap {
 		position: absolute;
 		left: 50%;
-		transform: translateX(min(21vw, 134px));
+		transform: translateX(var(--pill-half-w, 134px));
 		display: inline-flex;
 		align-items: center;
 		flex: none;
