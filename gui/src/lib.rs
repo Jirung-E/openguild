@@ -683,7 +683,13 @@ mod tests {
         let argv: Vec<std::ffi::OsString> = vec!["program".into()];
         let got = resolve_launch_mode(argv, Some(dir.to_string_lossy().into_owned())).unwrap();
         match got {
-            LaunchMode::Guild(p) => assert_eq!(p, dir),
+            // absolutize() 가 canonicalize 하므로 (macOS: /var -> /private/var
+            // 심링크 해소) 기대값도 같이 canonicalize 해서 비교 — 위/아래 다른
+            // 테스트들과 동일 패턴.
+            LaunchMode::Guild(p) => assert_eq!(
+                std::fs::canonicalize(p).unwrap(),
+                std::fs::canonicalize(&dir).unwrap()
+            ),
             _ => panic!("expected Guild"),
         }
         let _ = std::fs::remove_dir_all(&dir);
