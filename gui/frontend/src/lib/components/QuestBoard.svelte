@@ -285,7 +285,18 @@
 			: ''
 	}
 </svg>`;
-		return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+		const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+		// DEV-316: 이 SVG 를 cytoscape 캔버스가 실제로 그리는(canvas
+		// drawImage) 시점은 그 노드가 처음 화면에 들어올 때인데, 그때 브라우저가
+		// 그제서야 디코딩하면 눈에 띄게 느림(특히 화면 밖에 있다가 pan 으로
+		// 한꺼번에 여러 노드가 들어올 때) — 여기서 미리 Image 객체로 로드시켜
+		// 브라우저 디코드 캐시를 데워둔다. 같은 URL 문자열이면 대부분의 엔진이
+		// 디코드 결과를 캐시에서 재사용한다.
+		if (typeof Image !== 'undefined') {
+			const preload = new Image();
+			preload.src = url;
+		}
+		return url;
 	}
 	const NODE_GAP = 28;
 	const LANE_PAD_X = 20; // lane 양쪽 가장자리 여백 (한쪽)
@@ -1768,6 +1779,23 @@
 	let pendingZoom: { level: number; x: number; y: number } | null = null;
 	let pendingPan: { x: number; y: number } | null = null;
 
+	// DEV-316(BUG-180 후속) 시도 기록: cy.png() 스냅샷 오버레이 → 더블버퍼링
+	// → CSS transform 가상 상태 → 직접 cy 호출 → CSS transform + 유예시간
+	// 추측 → 주기적 재캡처 가리개까지 여러 단계를 돌았지만, 매번 다른
+	// 방식으로 "캔버스가 화면에 언제 반영될지"를 감추거나 우회하려는
+	// 시도가 새 문제(느려짐/깜빡임/크롬에서까지 저하)를 만들어냈다.
+	// cy.png() 자체가 반복 호출하기엔 생각보다 비싸다는 게 최종 확인됨
+	// (120ms 간격도 크롬에서 체감 저하 발생).
+	//
+	// lane 배경(순수 DOM + CSS transform, 캔버스 아님)은 애초에 이 문제가
+	// 없다는 게 이번 조사 내내 확인된 사실 — 진짜 근본 해결은 노드도
+	// cytoscape 캔버스가 아니라 DOM 으로 그리는 것으로 보이나(사용자 제안),
+	// 이는 보드 렌더링 아키텍처를 통째로 바꾸는 별도 규모의 작업이라 이
+	// 세션 범위 밖. BUG-144 원안(직접 cy 호출, 아래)으로 되돌리고
+	// makeSvgUrl 사전 디코드(위)만 유지 — WebKit 계열에서의 잔여 지연은
+	// BUG-144/BUG-141 선례와 동일하게 플랫폼 한계로 남겨둠. DOM 기반 노드
+	// 렌더링은 별도 후속 퀘스트로 분리 예정.
+
 	function flushBoardWheel() {
 		wheelRaf = null;
 		if (!cy) {
@@ -2839,6 +2867,15 @@
 			// 잡혀 erratic. 대신 onBoardWheel 에서 pinch=줌 / 스크롤=pan 직접 처리.
 			userZoomingEnabled: false,
 			boxSelectionEnabled: false,
+			// BUG-180: 트랙패드 2손가락 pan/zoom 중 노드가 배경보다 느리게
+			// 따라오는 문제 — textureOnViewport/hideEdgesOnViewport/webgl:true
+			// 전부 시도했으나 무효(화질만 저하되고 지연은 그대로). BUG-144
+			// (2026-07-18, 리눅스)에서 WebKit Inspector Timeline 으로 이미
+			// 실측 — Painting 지배적, 렌더 "방식"을 바꿔도(Canvas2D↔WebGL) 안
+			// 바뀌는 걸 보면 병목이 cytoscape 그리기 파이프라인이 아니라 WebKit
+			// (Safari/WKWebView/WebKitGTK 공통) 이 제스처 입력을 처리/스케줄링
+			// 하는 더 아래 레이어에 있음 — 앱 코드로 손댈 수 있는 범위 밖.
+			// 자세한 시도 이력은 커밋 b672033 + BUG-180 퀘스트 참조.
 			// BUG-057: HiDPI 캔버스. 기본 'auto' 가 WebView2 에서 1 로 떨어지는
 			// 사례 있어 명시. 노드 SVG 도 dpr 배 사이즈로 발급 (makeSvgUrl) →
 			// 보더 / 그림자 / 텍스트 모두 또렷. fix2: 하한 2 (makeSvgUrl 과 동일
