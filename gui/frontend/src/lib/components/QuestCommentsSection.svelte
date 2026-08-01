@@ -40,7 +40,7 @@
 	// BUG-157: cross-link 자동완성 팝업 스크롤도 커스텀(overlay)으로 통일.
 	import OverlayScrollbar from './OverlayScrollbar.svelte';
 	// DEV-297: 전체 제목은 네이티브 title 대신 앱 스타일 커스텀 팝업으로.
-	import { titlePopup } from '$lib/actions/title-popup';
+	import { titlePopup, showTitlePopupNow, hideTitlePopupNow } from '$lib/actions/title-popup';
 	// DEV-140/171: 댓글 textarea cross-link 자동완성 — caret 위치 팝업 + 실재 ID 제안.
 	import {
 		wikiMatch,
@@ -80,6 +80,12 @@
 	$effect(() => {
 		void wikiSel;
 		void wiki;
+		// DEV-297 후속: 자동완성 자체가 닫히면(선택 적용/Esc/바깥 클릭) 키보드로
+		// 띄워둔 수동 팝업이 남아있을 수 있음 — 정리.
+		if (!wiki) {
+			hideTitlePopupNow();
+			return;
+		}
 		if (!wikiSelFromKeyboard) return;
 		wikiSelFromKeyboard = false;
 		// BUG-163: scrollIntoView({block:'nearest'}) 가 WebView 에서 항목 높이가
@@ -95,6 +101,10 @@
 		} else if (itemBottom > pop.scrollTop + pop.clientHeight) {
 			pop.scrollTop = itemBottom - pop.clientHeight;
 		}
+		// DEV-297 후속: 가상 포커스라 focus 이벤트가 안 뜨는 이 목록에선 hover 용
+		// use:titlePopup 이 키보드 이동을 못 잡는다 — 여기서 수동으로 띄움.
+		const it = wiki?.items[wikiSel];
+		if (it) showTitlePopupNow(sel, `${it.insert ?? it.id}${it.title ? ` — ${it.title}` : ''}`);
 	});
 
 	// DEV-171 후속: Esc/클릭아웃으로 닫은 토큰 — 같은 토큰에선 재오픈 안 함

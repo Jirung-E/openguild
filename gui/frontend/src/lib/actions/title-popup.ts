@@ -56,6 +56,19 @@ function createPopup(text: string, anchor: HTMLElement) {
 	el.style.left = `${Math.round(left)}px`;
 }
 
+// DEV-297 후속: "가상 포커스"(DOM focus 는 그대로 두고 하이라이트
+// 클래스만 옮기는 방식, 예: textarea 를 유지한 채 ↑/↓ 로 자동완성 항목만
+// 이동)인 목록에선 focus/blur 이벤트 자체가 안 뜬다 — hover 는 되는데
+// 키보드만 안 되는 문제(cross-link 자동완성). 그런 곳에서 호출측이 직접
+// 팝업을 띄우기 위한 수동 트리거.
+export function showTitlePopupNow(node: HTMLElement, text: string | null | undefined) {
+	if (!text?.trim()) return;
+	createPopup(text, node);
+}
+export function hideTitlePopupNow() {
+	destroyPopup();
+}
+
 export function titlePopup(node: HTMLElement, text: string | null | undefined) {
 	let label = text ?? '';
 	let timer: ReturnType<typeof setTimeout> | null = null;
