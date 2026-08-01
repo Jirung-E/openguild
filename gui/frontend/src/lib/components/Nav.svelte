@@ -94,25 +94,30 @@
 	// 렌더해 자연 폭을 잰다(보이는 목록은 잘려서 전체 폭을 알 수 없음).
 	// ResizeObserver 를 nav(가용 폭 변화)와 measurer(라벨/폰트 변화 — 언어
 	// 토글·UI 크기 변경 시 measurer 자체 크기가 바뀜) 둘 다에 걸어 반응.
-	const navItems = $derived.by((): NavOverflowItem[] => {
-		const items: NavOverflowItem[] = [
-			{ href: '/', label: t('nav.home', $locale), active: onRootPath && currentView === 'home' },
-			{ href: '/?view=board', label: t('nav.board', $locale), active: onRootPath && currentView === 'board' },
-			{ href: '/?view=list', label: t('nav.list', $locale), active: onRootPath && currentView === 'list' },
-			{ href: '/admin', label: t('nav.admin', $locale), active: onAdminPath },
-			{ href: '/rules', label: t('nav.rules', $locale), active: onRulesPath },
-			{ href: '/library', label: t('nav.library', $locale), active: onLibraryPath }
-		];
-		if (showWebExtras) {
-			// DEV-271: 웹 전용 항목 — 데스크탑은 ☰ 메뉴에 상시 존재.
-			items.push(
-				{ href: '/campaigns', label: t('titlebar.menuCampaigns', $locale), active: $page.url.pathname.startsWith('/campaigns') },
-				{ href: '/worklog', label: t('titlebar.menuWorklog', $locale), active: $page.url.pathname.startsWith('/worklog') },
-				{ href: '/tags', label: t('titlebar.menuTags', $locale), active: $page.url.pathname.startsWith('/tags') }
-			);
-		}
-		return items;
-	});
+	// BUG-186: 너비에 따라 접히는 "핵심" 항목만 — 캠페인/작업기록/태그는
+	// 여기 안 넣는다(아래 alwaysOverflowItems). 측정(measureEl)도 이
+	// 배열만 대상으로 하므로, 창이 아무리 넓어도 그 3개는 폭 계산에
+	// 끼지 않고 항상 접힌 메뉴로만 간다 — TitleBar.svelte(데스크탑) 의
+	// "하드코딩 3개 + 응답형 나머지" 패턴과 동일하게 맞춤.
+	const navItems = $derived.by((): NavOverflowItem[] => [
+		{ href: '/', label: t('nav.home', $locale), active: onRootPath && currentView === 'home' },
+		{ href: '/?view=board', label: t('nav.board', $locale), active: onRootPath && currentView === 'board' },
+		{ href: '/?view=list', label: t('nav.list', $locale), active: onRootPath && currentView === 'list' },
+		{ href: '/admin', label: t('nav.admin', $locale), active: onAdminPath },
+		{ href: '/rules', label: t('nav.rules', $locale), active: onRulesPath },
+		{ href: '/library', label: t('nav.library', $locale), active: onLibraryPath }
+	]);
+	// DEV-271: 웹 전용 — 데스크탑은 TitleBar.svelte 의 ☰ 메뉴에 상시 존재
+	// (하드코딩). 웹은 타이틀바가 없어 이 Nav 의 접힌 메뉴에 상시 존재.
+	const alwaysOverflowItems = $derived.by((): NavOverflowItem[] =>
+		showWebExtras
+			? [
+					{ href: '/campaigns', label: t('titlebar.menuCampaigns', $locale), active: $page.url.pathname.startsWith('/campaigns') },
+					{ href: '/worklog', label: t('titlebar.menuWorklog', $locale), active: $page.url.pathname.startsWith('/worklog') },
+					{ href: '/tags', label: t('titlebar.menuTags', $locale), active: $page.url.pathname.startsWith('/tags') }
+				]
+			: []
+	);
 	let navEl = $state<HTMLElement | null>(null);
 	let measureEl = $state<HTMLElement | null>(null);
 	let visibleCount = $state(99);
@@ -224,10 +229,14 @@
 		return () => ro.disconnect();
 	});
 	const visibleItems = $derived(navItems.slice(0, visibleCount));
-	const overflowItems = $derived(navItems.slice(visibleCount));
-	// 데스크탑: 넘친 항목을 타이틀바 ☰ 로 발행. 웹: 로컬 "…" 드롭다운이 소비.
+	// BUG-186: 너비 때문에 넘친 핵심 항목 + 항상 접히는 3개(웹 전용, 데스크탑은
+	// 빈 배열) — 순서상 항상-접힘 항목이 뒤에 오도록(핵심 항목의 접힘 순서를
+	// 안 흔들기 위해).
+	const overflowItems = $derived([...navItems.slice(visibleCount), ...alwaysOverflowItems]);
+	// 데스크탑: 넘친 핵심 항목만 타이틀바 ☰ 로 발행(항상-접힘 3개는 거기서
+	// 이미 하드코딩돼 있어 중복 발행 금지). 웹: 로컬 "…" 드롭다운이 overflowItems 전체 소비.
 	$effect(() => {
-		navOverflowItems.set(showWebExtras ? [] : overflowItems);
+		navOverflowItems.set(showWebExtras ? [] : navItems.slice(visibleCount));
 	});
 	// 다 들어가게 되면 열려있던 "…" 드롭다운 닫기.
 	$effect(() => {
@@ -270,25 +279,11 @@
 
 <header>
 	<!-- BUG-146: 로고/길드명은 타이틀바로 일원화 — Nav 에는 그리지 않음. -->
-	<!-- DEV-260: 링크 목록은 navItems 로 일원화(홈~도서관 + 웹 전용 DEV-271
-	     항목) — visibleCount 만큼만 보이고 나머지는 ☰(데스크탑)/…(웹)으로. -->
-	<nav bind:this={navEl}>
-		{#each visibleItems as it (it.href)}
-			<a href={it.href} class:active={it.active}>{it.label}</a>
-		{/each}
-		<!-- 측정 전용 사본 — 항상 전부 렌더(숨김). 보이는 목록과 동일한
-		     <a> 마크업/스코프 스타일이라 자연 폭이 정확히 일치. -->
-		<div class="nav-measure" bind:this={measureEl} aria-hidden="true">
-			{#each navItems as it (it.href)}
-				<a href={it.href} tabindex="-1">{it.label}</a>
-			{/each}
-		</div>
-	</nav>
-
-	<!-- DEV-271(사용자 피드백 "접힌 메뉴 클릭해도 안펼쳐짐"): 이 버튼은 원래
-	     <nav> 안에 있었는데 nav 에는 `overflow: hidden`(넘친 링크 클립용)이
-	     걸려 있어서, 드롭다운이 열려도 잘려 보이지 않았다. nav 형제로 빼서
-	     클리핑을 벗어난다. 아이콘도 ⋯ → ☰ 로 — 데스크탑 타이틀바와 동일. -->
+	<!-- BUG-186(사용자 요청): 웹은 접힌 메뉴 버튼을 header 맨 왼쪽에 — 데스크탑
+	     타이틀바의 ☰(항상 좌측 고정) 위치와 맞춤. 원래 <nav> 뒤에 있었는데
+	     그러면 링크 목록 오른쪽에 붙어 "맨 왼쪽" 요구와 안 맞았음.
+	     DEV-271(당시 이유였던 "클릭해도 안펼쳐짐"): nav 의 overflow:hidden
+	     클리핑을 피해야 하므로 여전히 nav 형제(밖)로 유지. -->
 	{#if showWebExtras && overflowItems.length > 0}
 		<div class="more-wrap">
 			<button
@@ -308,6 +303,22 @@
 			{/if}
 		</div>
 	{/if}
+
+	<!-- DEV-260: 링크 목록은 navItems 로 일원화(홈~도서관) — visibleCount
+	     만큼만 보이고 나머지는 ☰(데스크탑)/…(웹)으로. BUG-186: 캠페인/
+	     작업기록/태그는 여기 안 들어감 — 항상 접힌 메뉴(위 more-wrap). -->
+	<nav bind:this={navEl}>
+		{#each visibleItems as it (it.href)}
+			<a href={it.href} class:active={it.active}>{it.label}</a>
+		{/each}
+		<!-- 측정 전용 사본 — 항상 전부 렌더(숨김). 보이는 목록과 동일한
+		     <a> 마크업/스코프 스타일이라 자연 폭이 정확히 일치. -->
+		<div class="nav-measure" bind:this={measureEl} aria-hidden="true">
+			{#each navItems as it (it.href)}
+				<a href={it.href} tabindex="-1">{it.label}</a>
+			{/each}
+		</div>
+	</nav>
 
 	<!-- DEV-271(사용자 피드백): 데스크탑 TitleBar 의 중앙 배치를 그대로 —
 	     폭 0 앵커를 화면 중앙에 두고 pill 은 그 중앙, 좌우 버튼은 pill 바깥에
@@ -512,7 +523,9 @@
 	.more-menu {
 		position: absolute;
 		top: calc(100% + 6px);
-		right: 0;
+		/* BUG-186: 버튼이 header 맨 왼쪽으로 이동 — right:0 이면 팝업이 화면
+		   밖(왼쪽)으로 나갈 수 있어 left:0 으로 오른쪽으로 펼침. */
+		left: 0;
 		min-width: 10rem;
 		display: flex;
 		flex-direction: column;
