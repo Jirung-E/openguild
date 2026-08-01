@@ -1,3 +1,4 @@
 {"ts":"2026-07-29T20:07:15+09:00","op":"change_status","old":"open","new":"testing"}
 {"ts":"2026-08-01T13:09:19+09:00","op":"change_status","old":"testing","new":"in_progress"}
 {"ts":"2026-08-01T14:06:37+09:00","op":"change_status","old":"in_progress","new":"testing"}
+{"ts":"2026-08-01T22:57:49+09:00","op":"change_status","old":"testing","new":"done"}
