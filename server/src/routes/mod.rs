@@ -218,6 +218,9 @@ pub fn create_router(store: Store) -> Router {
             "/api/campaigns",
             get(campaigns::list_campaigns).post(campaigns::create_campaign),
         )
+        // 목록 화면용 — 전체(진행도 포함). `/active` 보다 먼저 둘 필요는 없지만
+        // 같은 접두를 쓰므로 함께 모아 둔다.
+        .route("/api/campaigns/summaries", get(campaigns::list_all_summaries))
         .route("/api/campaigns/summaries/active", get(campaigns::list_active_summaries))
         .route(
             "/api/campaigns/summaries/upcoming",

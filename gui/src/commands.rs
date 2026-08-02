@@ -1210,6 +1210,16 @@ pub async fn campaign_checklist_rm(
         .map_err(err)
 }
 
+/// 캠페인 목록 화면용 — 전체 캠페인 summary(진행도 포함).
+#[tauri::command]
+pub async fn list_campaign_all_summaries(
+    store: State<'_, Store>,
+) -> Result<Vec<CampaignSummary>, String> {
+    camp_svc::list_all_summaries(&store.index_pool)
+        .await
+        .map_err(err)
+}
+
 #[tauri::command]
 pub async fn list_campaign_active_summaries(
     store: State<'_, Store>,

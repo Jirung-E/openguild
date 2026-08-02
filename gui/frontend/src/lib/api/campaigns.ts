@@ -16,6 +16,12 @@ export const campaignsApi = {
 		return api.get<Campaign[]>(`/api/campaigns${qs}`);
 	},
 
+	/**
+	 * 목록 화면용 — 전체 캠페인 summary(진행도 포함, admin 요청).
+	 * `list()` 는 진행도가 없는 원본 행이라 목록에서 진행바를 못 그린다.
+	 */
+	listSummaries: () => api.get<CampaignSummary[]>('/api/campaigns/summaries'),
+
 	get: (slug: string) => api.get<CampaignDetail>(`/api/campaigns/${encodeURIComponent(slug)}`),
 
 	create: (body: CreateCampaignRequest) => api.post<Campaign>('/api/campaigns', body),

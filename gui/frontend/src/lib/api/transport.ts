@@ -540,6 +540,11 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 
 	// ───── campaigns (DEV-011) ─────
 	// summaries — list 보다 먼저 매칭 (slug 자리에 'summaries' 가 옴).
+	// 목록 화면용 전체 summary — `/active` 보다 **먼저** 검사할 필요는 없지만
+	// 정적 경로끼리라 순서 무관.
+	if (method === 'GET' && pathOnly === '/api/campaigns/summaries') {
+		return { cmd: 'list_campaign_all_summaries', args: {} };
+	}
 	if (method === 'GET' && pathOnly === '/api/campaigns/summaries/active') {
 		return { cmd: 'list_campaign_active_summaries', args: {} };
 	}

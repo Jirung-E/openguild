@@ -161,6 +161,14 @@ pub struct UpcomingQuery {
     pub days: Option<i64>,
 }
 
+/// 캠페인 **목록 화면**용 — 모든 캠페인의 summary(진행도 포함).
+/// active 전용인 아래 라우트와 달리 done 도 포함한다.
+pub async fn list_all_summaries(
+    State(store): State<Store>,
+) -> AppResult<Json<Vec<CampaignSummary>>> {
+    Ok(Json(svc::list_all_summaries(&store.index_pool).await?))
+}
+
 pub async fn list_active_summaries(
     State(store): State<Store>,
 ) -> AppResult<Json<Vec<CampaignSummary>>> {

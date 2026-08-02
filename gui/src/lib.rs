@@ -459,6 +459,7 @@ pub fn run() {
             commands::campaign_checklist_add,
             commands::campaign_checklist_set,
             commands::campaign_checklist_rm,
+            commands::list_campaign_all_summaries,
             commands::list_campaign_active_summaries,
             commands::list_campaign_upcoming_summaries,
             commands::list_campaigns_for_quest,

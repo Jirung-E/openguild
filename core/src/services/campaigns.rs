@@ -466,6 +466,24 @@ pub async fn list_active_summaries(pool: &SqlitePool) -> AppResult<Vec<CampaignS
     Ok(out)
 }
 
+/// 캠페인 목록 화면용 — **모든** 캠페인(alive) 의 summary.
+///
+/// 목록에서도 진행도를 보여달라는 요청(admin). active 전용인
+/// `list_active_summaries` 와 달리 done 도 포함한다 — 목록은 상태 필터를
+/// 화면에서 따로 하므로 여기서 거르지 않는다.
+///
+/// 비용: 캠페인 하나당 3 쿼리(체크리스트·퀘스트 집계·상태별 카운트)로
+/// `summarize` 를 그대로 재사용한다. 목록 규모(수십 개)에서는 문제가 없고,
+/// 진행도 계산 규칙이 카드/상세와 갈라지지 않는 편이 중요하다.
+pub async fn list_all_summaries(pool: &SqlitePool) -> AppResult<Vec<CampaignSummary>> {
+    let all = list_alive(pool).await?;
+    let mut out = Vec::with_capacity(all.len());
+    for c in all {
+        out.push(summarize(pool, c).await?);
+    }
+    Ok(out)
+}
+
 /// 곧 시작하는 캠페인 (started_at 이 향후 `days_ahead` 일 이내). 없으면
 /// 가장 가까운 미래 시작일 1개 fallback. 모두 미래 시작일 없으면 빈 벡터.
 pub async fn list_upcoming_summaries(

@@ -13,7 +13,9 @@
 	import { locale, t } from '$lib/stores/locale';
 	// DEV-259: alert() 잔재 제거 — 앱 공용 toast 로 통일.
 	import { showToast } from '$lib/stores/toast';
-	import type { Campaign } from '$lib/types';
+	import type { Campaign, CampaignSummary } from '$lib/types';
+	// 진행도 완료 판정 — 카드/상세와 같은 규칙(체크리스트+퀘스트 둘 다 고려).
+	import { isCampaignDone } from '$lib/utils/campaign-progress';
 	import { isDateOverdue } from '$lib/utils/datetime';
 
 	// BUG-025: sort 옵션을 localStorage 에 저장 (lib/utils/campaign-sort) →
@@ -25,7 +27,9 @@
 		type CampaignSortMode
 	} from '$lib/utils/campaign-sort';
 
-	let all = $state<Campaign[]>([]);
+	// admin 요청: 목록에서도 진행도를 보여준다. `list()` 는 진행도가 없는 원본
+	// 행이라 summary 엔드포인트로 바꿨다(카드/상세와 같은 계산을 재사용).
+	let all = $state<CampaignSummary[]>([]);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let sort = $state<CampaignSortMode>(loadCampaignSort());
@@ -38,7 +42,7 @@
 
 	onMount(async () => {
 		try {
-			all = await campaignsApi.list();
+			all = await campaignsApi.listSummaries();
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'failed to load';
 		} finally {
@@ -51,11 +55,11 @@
 		return sortCampaigns(base, sort);
 	});
 
-	async function moveOrder(c: Campaign, delta: number) {
+	async function moveOrder(c: CampaignSummary, delta: number) {
 		const next = (c.display_order ?? 0) + delta;
 		try {
 			await campaignsApi.update(c.campaign_slug, { display_order: next });
-			all = await campaignsApi.list();
+			all = await campaignsApi.listSummaries();
 		} catch (e) {
 			showToast(
 				e instanceof Error ? e.message : t('campaignList.orderChangeFailed', $locale),
@@ -64,7 +68,21 @@
 		}
 	}
 
-	function fmtPeriod(c: Campaign): string {
+	/**
+	 * 목록 행에 보여줄 진행도 — 체크리스트와 연결 퀘스트를 **합쳐** 하나로.
+	 * 카드(CampaignCard)는 둘을 따로 두 줄로 보여주지만, 목록은 한 줄이라
+	 * 항목 수 기준으로 합산한다(둘 다 있으면 총합 대비 완료 수).
+	 * 둘 다 없으면 null → 바를 그리지 않는다.
+	 */
+	function progressOf(c: CampaignSummary): { done: number; total: number; ratio: number } | null {
+		const total = (c.checklist_total ?? 0) + (c.quest_total ?? 0);
+		if (total === 0) return null;
+		const done = (c.checklist_checked ?? 0) + (c.quest_done ?? 0);
+		return { done, total, ratio: done / total };
+	}
+
+	/** 기간 표시 — 목록은 summary 를 쓰므로 두 타입에 공통인 필드만 받는다. */
+	function fmtPeriod(c: { started_at: string | null; ended_at: string | null }): string {
 		const a = c.started_at?.trim() || '';
 		const b = c.ended_at?.trim() || '';
 		if (!a && !b) return t('campaignList.periodUndefined', $locale);
@@ -125,6 +143,25 @@
 							>
 						</span>
 						<span class="title">{c.title}</span>
+						<!-- admin 요청: 목록에서도 진행도. 체크리스트 + 연결 퀘스트를
+						     합산한 하나의 바 + `완료/전체` 숫자. 둘 다 없으면 생략. -->
+						{#if progressOf(c)}
+							{@const p = progressOf(c)!}
+							<span class="prog">
+								<span
+									class="prog-bar"
+									role="img"
+									aria-label={`${Math.round(p.ratio * 100)}% (${p.done}/${p.total})`}
+								>
+									<span
+										class="prog-fill"
+										class:done={isCampaignDone(c)}
+										style:width={`${Math.round(p.ratio * 100)}%`}
+									></span>
+								</span>
+								<span class="prog-text">{p.done}/{p.total}</span>
+							</span>
+						{/if}
 					</a>
 					{#if sort === 'manual'}
 						<div class="reorder">
@@ -229,6 +266,38 @@
 	.main:hover {
 		border-color: var(--text-faint);
 		background: var(--bg-subtle);
+	}
+
+	/* 진행도 — 제목 아래 얇은 바 + 완료/전체. 카드의 progress-bar 와 같은 결. */
+	.prog {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-top: 0.1rem;
+	}
+	.prog-bar {
+		flex: 1;
+		min-width: 3rem;
+		height: 4px;
+		border-radius: 2px;
+		background: var(--bg-subtle);
+		overflow: hidden;
+	}
+	.prog-fill {
+		display: block;
+		height: 100%;
+		border-radius: 2px;
+		background: var(--accent);
+		transition: width 0.2s;
+	}
+	.prog-fill.done {
+		background: var(--success);
+	}
+	.prog-text {
+		flex: none;
+		font-size: 0.72rem;
+		color: var(--text-muted);
+		font-variant-numeric: tabular-nums;
 	}
 
 	/* 메타 줄 — 좁으면 기간이 다음 줄로 넘어간다(제목 줄은 건드리지 않는다). */
