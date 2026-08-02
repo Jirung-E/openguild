@@ -79,7 +79,9 @@
 	// DEV-297 수정: 키보드로 고른 항목은 **제자리에서 펼쳐** 전체 제목을 보여준다.
 	// 예전엔 위/아래에 팝업을 띄웠는데 그게 이웃 항목을 통째로 가렸다(admin 보고).
 	// 마우스 호버는 팝업 그대로 — 훑는 동작이라 높이가 계속 바뀌면 더 어지럽다.
-	let wikiNavMode = $state<'keyboard' | 'mouse'>('mouse');
+	// 팔레트와 같은 이유로 기본이 'keyboard' — 팝업이 열린 순간 이미 0번이
+	// 선택돼 있는데, 그걸 마우스 선택으로 보면 첫 항목만 안 펼쳐진다.
+	let wikiNavMode = $state<'keyboard' | 'mouse'>('keyboard');
 	// DEV-171 후속: ↑/↓ 로 선택 이동 시 선택 항목이 팝업 스크롤 밖이면 보이도록 스크롤.
 	$effect(() => {
 		void wikiSel;
@@ -144,6 +146,9 @@
 		wikiDismissed = null;
 		wiki = placeWiki(el, m.from, m.to, m.items);
 		wikiSel = 0;
+		// 새로 열리거나 후보가 바뀌면 선택이 0 으로 돌아간다 — 이것도 앱이 고른
+		// 선택이므로 펼침 대상.
+		wikiNavMode = 'keyboard';
 	}
 
 	// caret 기준 팝업 위치 — 화면 밖이면 숨김 + 좌우 clamp.
@@ -2251,9 +2256,18 @@
 	}
 	/* DEV-297 수정: 키보드로 선택된 항목만 말줄임을 풀어 제자리에서 펼친다.
 	   팝업으로 띄우면 위/아래 항목을 가렸다. 높이는 내용만큼만 늘어나고,
-	   선택이 옮겨가면 다시 한 줄로 돌아온다. */
+	   선택이 옮겨가면 다시 한 줄로 돌아온다.
+
+	   admin 후속: 한 줄(`SLUG 제목`)로 펼치면 slug 가 길 때 제목 자리가 거의
+	   안 남는다 — **펼쳤을 때만** slug 와 제목을 위아래로 쌓는다(접힌 항목은
+	   기존처럼 한 줄이라 목록 훑기가 흐트러지지 않는다). */
 	.wiki-opt.expanded {
-		align-items: flex-start;
+		flex-direction: column;
+		align-items: stretch;
+		gap: 0.15rem;
+	}
+	.wiki-opt.expanded .wiki-id {
+		flex: none;
 	}
 	.wiki-opt.expanded .wiki-meta {
 		overflow: visible;

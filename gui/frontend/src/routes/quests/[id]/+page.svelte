@@ -693,7 +693,9 @@
 		{#if detail && !editMode}
 			<div class="top-actions">
 				<button class="btn-edit" onclick={enterEditMode}>✎ {t('detail.edit', $locale)}</button>
-				<button class="btn-delete" onclick={openDeleteModal}><Icon name="trash" /> {t('detail.delete', $locale)}</button>
+				<button class="btn-delete" onclick={openDeleteModal}
+					><Icon name="trash" /> {t('detail.delete', $locale)}</button
+				>
 			</div>
 		{/if}
 	</div>
@@ -806,7 +808,10 @@
 				     slug 가 바뀌는 무거운 동작이라 일반 보기에서 한 클릭 거리는 과함.
 				     기존과 동일하게 confirm 모달 후 즉시 적용 (저장 버튼과 무관). -->
 				<div class="field-label">
-					<span>{t('qd.typeChange', $locale)} <span class="hint">{t('qd.typeChangeHint', $locale)}</span></span>
+					<span
+						>{t('qd.typeChange', $locale)}
+						<span class="hint">{t('qd.typeChangeHint', $locale)}</span></span
+					>
 					<div class="status-btns">
 						{#each types as ty}
 							<button
@@ -828,11 +833,17 @@
 				<!-- DEV-076: 희망 / 필수 기한. 빈 값 = 미설정 / 해제. -->
 				<div class="due-row">
 					<label class="field-label">
-						<span>{t('qd.desiredDue', $locale)} <span class="hint">{t('qd.desiredDueHint', $locale)}</span></span>
+						<span
+							>{t('qd.desiredDue', $locale)}
+							<span class="hint">{t('qd.desiredDueHint', $locale)}</span></span
+						>
 						<DateField bind:value={editDesiredDue} />
 					</label>
 					<label class="field-label">
-						<span>{t('qd.requiredDue', $locale)} <span class="hint">{t('qd.requiredDueHint', $locale)}</span></span>
+						<span
+							>{t('qd.requiredDue', $locale)}
+							<span class="hint">{t('qd.requiredDueHint', $locale)}</span></span
+						>
 						<DateField bind:value={editRequiredDue} />
 					</label>
 				</div>
@@ -856,7 +867,9 @@
 					<button class="btn-save" onclick={saveEdit} disabled={saving}>
 						{saving ? t('common.saving', $locale) : t('common.save', $locale)}
 					</button>
-					<button class="btn-cancel" onclick={exitEditMode} disabled={saving}>{t('common.cancel', $locale)}</button>
+					<button class="btn-cancel" onclick={exitEditMode} disabled={saving}
+						>{t('common.cancel', $locale)}</button
+					>
 				</div>
 			</div>
 		{:else}
@@ -891,7 +904,10 @@
 					<MarkdownView source={detail.description} />
 				{:else}
 					<p class="no-desc">
-						{t('qd.noDescription', $locale)} <button class="link-btn" onclick={enterEditMode}>{t('qd.addDescription', $locale)}</button>
+						{t('qd.noDescription', $locale)}
+						<button class="link-btn" onclick={enterEditMode}
+							>{t('qd.addDescription', $locale)}</button
+						>
 					</p>
 				{/if}
 			</div>
@@ -934,110 +950,130 @@
 		<!-- DEV-279: 비어 있는 연관 섹션은 아예 숨긴다 — '없음' 문구가 세 줄
 		     차지해 정작 내용이 아래로 밀렸다. 추가는 '연관 추가' 메뉴로. -->
 		{#if detail.sub_quests.length > 0}
-		<section>
-			<div class="section-head">
-				<h2 class="section-title sub-label">{t('quest.section.subQuests', $locale)}</h2>
-				{#if !editMode}
-					<button class="sec-add-btn" onclick={() => { pendingRelMode = 'sub'; newRelMode = 'sub'; }}>{t('qd.newSub', $locale)}</button>
-					<button class="sec-add-btn" onclick={() => openCombo('sub')}>{t('qd.assignExisting', $locale)}</button>
+			<section>
+				<div class="section-head">
+					<h2 class="section-title sub-label">{t('quest.section.subQuests', $locale)}</h2>
+					{#if !editMode}
+						<button
+							class="sec-add-btn"
+							onclick={() => {
+								pendingRelMode = 'sub';
+								newRelMode = 'sub';
+							}}>{t('qd.newSub', $locale)}</button
+						>
+						<button class="sec-add-btn" onclick={() => openCombo('sub')}
+							>{t('qd.assignExisting', $locale)}</button
+						>
+					{/if}
+				</div>
+				{#if detail.sub_quests.length > 0}
+					<ul class="quest-list">
+						{#each detail.sub_quests as sq (sq.id)}
+							<li>
+								<div class="prereq-row">
+									<a href="/quests/{sq.quest_id}{fromSuffix}" class="prereq-link">
+										<span class="badge type" style:--c={sq.type_color}>{sq.quest_id}</span>
+										<span class="ql-title">{sq.title}</span>
+										<span class="badge status" style:--c={sq.status_color}
+											>{questStatusLabel(sq, $locale)}</span
+										>
+									</a>
+									{#if !editMode}
+										<button
+											class="prereq-rm"
+											title={t('qd.detachFromParent', $locale)}
+											onclick={() => detachSubQuest(sq.id)}>×</button
+										>
+									{/if}
+								</div>
+							</li>
+						{/each}
+					</ul>
 				{/if}
-			</div>
-			{#if detail.sub_quests.length > 0}
-				<ul class="quest-list">
-					{#each detail.sub_quests as sq (sq.id)}
-						<li>
-							<div class="prereq-row">
-								<a href="/quests/{sq.quest_id}{fromSuffix}" class="prereq-link">
-									<span class="badge type" style:--c={sq.type_color}>{sq.quest_id}</span>
-									<span class="ql-title">{sq.title}</span>
-									<span class="badge status" style:--c={sq.status_color}>{questStatusLabel(sq, $locale)}</span>
-								</a>
-								{#if !editMode}
-									<button
-										class="prereq-rm"
-										title={t('qd.detachFromParent', $locale)}
-										onclick={() => detachSubQuest(sq.id)}>×</button
-									>
-								{/if}
-							</div>
-						</li>
-					{/each}
-				</ul>
-			{/if}
-		</section>
+			</section>
 		{/if}
 
 		<!-- 선행 퀘스트 -->
 		{#if detail.prerequisites.length > 0}
-		<section>
-			<div class="section-head">
-				<h2 class="section-title prereq-label">{t('quest.section.prerequisites', $locale)}</h2>
-				{#if !editMode}
-					<button class="sec-add-btn" onclick={() => openCombo('prereq')}>{t('qd.addBtn', $locale)}</button>
-				{/if}
-			</div>
+			<section>
+				<div class="section-head">
+					<h2 class="section-title prereq-label">{t('quest.section.prerequisites', $locale)}</h2>
+					{#if !editMode}
+						<button class="sec-add-btn" onclick={() => openCombo('prereq')}
+							>{t('qd.addBtn', $locale)}</button
+						>
+					{/if}
+				</div>
 
-			{#if detail.prerequisites.length > 0}
-				<ul class="quest-list">
-					{#each detail.prerequisites as pq (pq.id)}
-						<li>
-							<div class="prereq-row">
-								<a href="/quests/{pq.quest_id}{fromSuffix}" class="prereq-link">
-									<span class="badge type" style:--c={pq.type_color}>{pq.quest_id}</span>
-									<span class="ql-title">{pq.title}</span>
-									<span class="badge status" style:--c={pq.status_color}>{questStatusLabel(pq, $locale)}</span>
-								</a>
-								{#if !editMode}
-									<button
-										class="prereq-rm"
-										title={t('qd.removePrereq', $locale)}
-										onclick={() => removePrerequisite(pq.id)}>×</button
-									>
-								{/if}
-							</div>
-						</li>
-					{/each}
-				</ul>
-			{/if}
-		</section>
+				{#if detail.prerequisites.length > 0}
+					<ul class="quest-list">
+						{#each detail.prerequisites as pq (pq.id)}
+							<li>
+								<div class="prereq-row">
+									<a href="/quests/{pq.quest_id}{fromSuffix}" class="prereq-link">
+										<span class="badge type" style:--c={pq.type_color}>{pq.quest_id}</span>
+										<span class="ql-title">{pq.title}</span>
+										<span class="badge status" style:--c={pq.status_color}
+											>{questStatusLabel(pq, $locale)}</span
+										>
+									</a>
+									{#if !editMode}
+										<button
+											class="prereq-rm"
+											title={t('qd.removePrereq', $locale)}
+											onclick={() => removePrerequisite(pq.id)}>×</button
+										>
+									{/if}
+								</div>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			</section>
 		{/if}
 
 		<!-- DEV-070: 후속 퀘스트 — 본 quest 를 선행으로 가진 quest 들 (역방향
 			참조). DEV-124: 추가 버튼. -->
 		{#if (detail.successors ?? []).length > 0}
-		<section>
-			<div class="section-head">
-				<h2 class="section-title succ-label">{t('quest.section.successors', $locale)}</h2>
-				<span class="sec-hint">{t('quest.section.successorsHint', $locale)}</span>
-				{#if !editMode}
-					<button class="sec-add-btn" onclick={() => openCombo('succ')} title={t('qd.addSuccessor', $locale)}>
-						{t('qd.addBtn', $locale)}
-					</button>
+			<section>
+				<div class="section-head">
+					<h2 class="section-title succ-label">{t('quest.section.successors', $locale)}</h2>
+					<span class="sec-hint">{t('quest.section.successorsHint', $locale)}</span>
+					{#if !editMode}
+						<button
+							class="sec-add-btn"
+							onclick={() => openCombo('succ')}
+							title={t('qd.addSuccessor', $locale)}
+						>
+							{t('qd.addBtn', $locale)}
+						</button>
+					{/if}
+				</div>
+				{#if (detail.successors ?? []).length > 0}
+					<ul class="quest-list">
+						{#each detail.successors ?? [] as sq (sq.id)}
+							<li>
+								<div class="prereq-row">
+									<a href="/quests/{sq.quest_id}{fromSuffix}" class="prereq-link">
+										<span class="badge type" style:--c={sq.type_color}>{sq.quest_id}</span>
+										<span class="ql-title">{sq.title}</span>
+										<span class="badge status" style:--c={sq.status_color}
+											>{questStatusLabel(sq, $locale)}</span
+										>
+									</a>
+									{#if !editMode}
+										<button
+											class="prereq-rm"
+											title={t('qd.removeSuccessor', $locale)}
+											onclick={() => removeSuccessor(sq.id)}>×</button
+										>
+									{/if}
+								</div>
+							</li>
+						{/each}
+					</ul>
 				{/if}
-			</div>
-			{#if (detail.successors ?? []).length > 0}
-				<ul class="quest-list">
-					{#each detail.successors ?? [] as sq (sq.id)}
-						<li>
-							<div class="prereq-row">
-								<a href="/quests/{sq.quest_id}{fromSuffix}" class="prereq-link">
-									<span class="badge type" style:--c={sq.type_color}>{sq.quest_id}</span>
-									<span class="ql-title">{sq.title}</span>
-									<span class="badge status" style:--c={sq.status_color}>{questStatusLabel(sq, $locale)}</span>
-								</a>
-								{#if !editMode}
-									<button
-										class="prereq-rm"
-										title={t('qd.removeSuccessor', $locale)}
-										onclick={() => removeSuccessor(sq.id)}>×</button
-									>
-								{/if}
-							</div>
-						</li>
-					{/each}
-				</ul>
-			{/if}
-		</section>
+			</section>
 		{/if}
 
 		<!-- DEV-279: 연관 추가 진입점. 빈 섹션을 숨겼으므로 "아직 없는 종류"를
@@ -1169,7 +1205,9 @@
 						placeholder={t('quest.tags.placeholder', $locale)}
 						aria-label={t('quest.tags.newAria', $locale)}
 					/>
-					<button type="submit" disabled={!newTagText.trim()}>{t('quest.tags.addSubmit', $locale)}</button>
+					<button type="submit" disabled={!newTagText.trim()}
+						>{t('quest.tags.addSubmit', $locale)}</button
+					>
 				</form>
 			{/if}
 		</section>
@@ -1194,11 +1232,20 @@
 	<!-- BUG-160: 바깥(백드롭) 클릭으로 닫기 — ConfirmDialog 와 동일 패턴.
 	     e.target === e.currentTarget 가드가 핵심: 모달 내부 클릭이 버블링돼
 	     닫히는 걸 막는다. -->
-	<div class="ov" role="presentation" onclick={(e) => { if (e.target === e.currentTarget) closeCombo(); }}>
+	<div
+		class="ov"
+		role="presentation"
+		onclick={(e) => {
+			if (e.target === e.currentTarget) closeCombo();
+		}}
+	>
 		<div class="modal-sm modal-combo" role="dialog" aria-modal="true" tabindex="-1">
 			<div class="modal-head">
 				<h3>
-					{#if comboMode === 'sub'}{t('qd.comboSub', $locale)}{:else if comboMode === 'prereq'}{t('qd.comboPrereq', $locale)}{:else}{t('qd.comboSuccessor', $locale)}{/if}
+					{#if comboMode === 'sub'}{t('qd.comboSub', $locale)}{:else if comboMode === 'prereq'}{t(
+							'qd.comboPrereq',
+							$locale
+						)}{:else}{t('qd.comboSuccessor', $locale)}{/if}
 				</h3>
 				<button class="x" onclick={closeCombo}>×</button>
 			</div>
@@ -1219,7 +1266,13 @@
 
 <!-- BUG-030: 캠페인 연결 콤보박스 모달 (sub/prereq 와 동일 패턴) -->
 {#if showCampaignCombo && detail}
-	<div class="ov" role="presentation" onclick={(e) => { if (e.target === e.currentTarget) closeCampaignCombo(); }}>
+	<div
+		class="ov"
+		role="presentation"
+		onclick={(e) => {
+			if (e.target === e.currentTarget) closeCampaignCombo();
+		}}
+	>
 		<div class="modal-sm modal-combo" role="dialog" aria-modal="true" tabindex="-1">
 			<div class="modal-head">
 				<h3>{t('qd.linkCampaignTitle', $locale)}</h3>
@@ -1251,7 +1304,13 @@
 	{@const target = confirmTypeChange}
 	<!-- BUG-160: 바깥 클릭 = 취소. 단 변경이 진행 중이면 닫지 않는다
 	     (요청은 계속 날아가는데 UI 만 사라져 결과를 못 보는 상태 방지). -->
-	<div class="ov" role="presentation" onclick={(e) => { if (e.target === e.currentTarget && !changingType) confirmTypeChange = null; }}>
+	<div
+		class="ov"
+		role="presentation"
+		onclick={(e) => {
+			if (e.target === e.currentTarget && !changingType) confirmTypeChange = null;
+		}}
+	>
 		<div class="modal-sm" role="dialog" aria-modal="true" tabindex="-1">
 			<div class="modal-head">
 				<h3 class="del-title">{t('qd.changeTypeTitle', $locale)}</h3>
@@ -1260,11 +1319,16 @@
 				>
 			</div>
 			<p class="del-msg">
-				<code>{detail.quest_id}</code>{t('qd.changeTypeMsg1', $locale)}<strong>{target.prefix}</strong>{t('qd.changeTypeMsg2', $locale)}
+				<code>{detail.quest_id}</code>{t('qd.changeTypeMsg1', $locale)}<strong
+					>{target.prefix}</strong
+				>{t('qd.changeTypeMsg2', $locale)}
 				<code>{target.prefix}-NNN</code>{t('qd.changeTypeMsg3', $locale)}
 			</p>
 			<p class="del-prereq">
-				{t('qd.changeTypeWarnPre', $locale)}<code>{detail.quest_id}</code>{t('qd.changeTypeWarnPost', $locale)}
+				{t('qd.changeTypeWarnPre', $locale)}<code>{detail.quest_id}</code>{t(
+					'qd.changeTypeWarnPost',
+					$locale
+				)}
 				{t('qd.autoBlockNote', $locale)}
 				{t('qd.autoUpdated', $locale)}
 			</p>
@@ -1272,8 +1336,7 @@
 			     로 navigate 되므로 저장 안 한 제목/설명 편집은 유지되지 않음. -->
 			{#if editMode}
 				<p class="del-prereq">
-					{t('qd.immediateNavWarn', $locale)}<strong
-						>{t('qd.unsavedWarnStrong', $locale)}</strong
+					{t('qd.immediateNavWarn', $locale)}<strong>{t('qd.unsavedWarnStrong', $locale)}</strong
 					>{t('qd.unsavedWarnRest', $locale)}
 				</p>
 			{/if}
@@ -1296,7 +1359,13 @@
 <!-- 삭제 모달 -->
 {#if deleteModal && detail}
 	<!-- BUG-160: 바깥 클릭 = 취소. 삭제 진행 중엔 닫지 않음(위와 동일 이유). -->
-	<div class="ov" role="presentation" onclick={(e) => { if (e.target === e.currentTarget && !deleting) deleteModal = false; }}>
+	<div
+		class="ov"
+		role="presentation"
+		onclick={(e) => {
+			if (e.target === e.currentTarget && !deleting) deleteModal = false;
+		}}
+	>
 		<div class="modal-sm" role="dialog" aria-modal="true" tabindex="-1">
 			<div class="modal-head">
 				<h3 class="del-title">{detail.quest_id} {t('detail.delete', $locale)}</h3>
@@ -1365,7 +1434,12 @@
 {#if detail && (showTopJump || showCommentsJump || showMemoJump)}
 	<div class="jump-cluster">
 		{#if showTopJump}
-			<button class="jump-btn" onclick={jumpToTop} title={t('common.jumpTop', $locale)} aria-label={t('common.jumpTop', $locale)}>
+			<button
+				class="jump-btn"
+				onclick={jumpToTop}
+				title={t('common.jumpTop', $locale)}
+				aria-label={t('common.jumpTop', $locale)}
+			>
 				<span class="jb-icon">↑</span>
 				<span class="jb-label">{t('common.jumpTopShort', $locale)}</span>
 			</button>
@@ -1382,7 +1456,12 @@
 			</button>
 		{/if}
 		{#if showMemoJump}
-			<button class="jump-btn" onclick={jumpToMemo} title={t('common.jumpMemo', $locale)} aria-label={t('common.jumpMemo', $locale)}>
+			<button
+				class="jump-btn"
+				onclick={jumpToMemo}
+				title={t('common.jumpMemo', $locale)}
+				aria-label={t('common.jumpMemo', $locale)}
+			>
 				<span class="jb-icon"><Icon name="memo" /></span>
 				<span class="jb-label">{t('common.jumpMemoShort', $locale)}</span>
 			</button>
@@ -2251,5 +2330,23 @@
 	}
 	.jump-btn .jb-label {
 		line-height: 1;
+	}
+
+	/* admin 요청: 좁은 화면에서 `SLUG 배지들` / `제목` 2단으로.
+	   한 줄에 다 넣으면 배지들이 자리를 먼저 가져가 제목이 몇 글자만 남는다.
+	   마크업은 그대로 두고 wrap + order 로만 바꾼다 — 제목만 마지막 순서로
+	   보내고 폭을 100% 로 주면 자기 줄을 통째로 쓴다.
+	   (미디어 쿼리는 기본 규칙보다 **뒤**에 둔다 — 특이성이 같으면 순서가
+	    이긴다. BUG-200 에서 이걸 놓쳐 수정이 통째로 무효였다.) */
+	@media (max-width: 640px) {
+		.prereq-link {
+			flex-wrap: wrap;
+			row-gap: 0.15rem;
+		}
+		.ql-title {
+			order: 10;
+			flex: 1 1 100%;
+			min-width: 0;
+		}
 	}
 </style>

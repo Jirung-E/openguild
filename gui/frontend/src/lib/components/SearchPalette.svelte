@@ -138,7 +138,10 @@
 	let selFromKeyboard = false;
 	// DEV-297 수정: 키보드로 고른 행은 팝업 대신 **제자리에서 펼쳐** 전체 제목을
 	// 보여준다 — 팝업이 위/아래 행을 통째로 가렸다(admin 보고). 호버는 팝업 유지.
-	let navMode = $state<'keyboard' | 'mouse'>('mouse');
+	// 처음 열렸을 때의 선택(0번)도 **사용자가 마우스로 고른 게 아니라** 앱이
+	// 고른 것이므로 키보드와 같게 다룬다 — admin 보고: "맨 처음 선택되어 있는
+	// 항목은 펼쳐지지 않고, 방향키로 다시 고르면 그때 펼쳐진다".
+	let navMode = $state<'keyboard' | 'mouse'>('keyboard');
 	$effect(() => {
 		void selIndex;
 		if (preview || !rowsEl) return;
@@ -282,8 +285,13 @@
 	});
 
 	// 필터가 바뀌어 선택 index 가 범위를 벗어나면 리셋.
+	// 이 리셋도 '앱이 고른 선택'이므로 펼침 대상이다(위 navMode 주석 참조) —
+	// 검색어를 고쳐 목록이 바뀔 때마다 맨 위 항목이 제자리에서 펼쳐진다.
 	$effect(() => {
-		if (selIndex >= filtered.length) selIndex = 0;
+		if (selIndex >= filtered.length) {
+			selIndex = 0;
+			navMode = 'keyboard';
+		}
 	});
 
 	async function openPreview(it: Item) {

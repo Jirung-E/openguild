@@ -268,11 +268,16 @@
 	{:else}
 		<!-- ── 진행 중 캠페인 ─────────────────────────── -->
 		<section class="block">
-			<h2>{t('home.activeCampaigns', $locale)} <span class="count">({currentActive.length})</span></h2>
+			<h2>
+				{t('home.activeCampaigns', $locale)} <span class="count">({currentActive.length})</span>
+			</h2>
 			<CampaignCarousel summaries={currentActive} {now} />
 
 			<!-- ── 곧 시작 ─────────────────────────────── -->
-			<h3>{t('home.upcomingCampaigns', $locale)} <span class="count">({upcomingSummaries.length})</span></h3>
+			<h3>
+				{t('home.upcomingCampaigns', $locale)}
+				<span class="count">({upcomingSummaries.length})</span>
+			</h3>
 			<CampaignConveyor summaries={upcomingSummaries} {now} />
 
 			<!-- ── DEV-080: 마감 지난 캠페인 (있을 때만). 모양 / 동작은 곧 시작과 동일. ── -->
@@ -494,5 +499,23 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+
+	/* admin 요청: 좁은 화면에서 `SLUG 배지들` / `제목` 2단으로.
+	   한 줄에 다 넣으면 배지들이 자리를 먼저 가져가 제목이 몇 글자만 남는다.
+	   마크업은 그대로 두고 wrap + order 로만 바꾼다 — 제목만 마지막 순서로
+	   보내고 폭을 100% 로 주면 자기 줄을 통째로 쓴다.
+	   (미디어 쿼리는 기본 규칙보다 **뒤**에 둔다 — 특이성이 같으면 순서가
+	    이긴다. BUG-200 에서 이걸 놓쳐 수정이 통째로 무효였다.) */
+	@media (max-width: 640px) {
+		.quest-row {
+			flex-wrap: wrap;
+			row-gap: 0.15rem;
+		}
+		.title {
+			order: 10;
+			flex: 1 1 100%;
+			min-width: 0;
+		}
 	}
 </style>

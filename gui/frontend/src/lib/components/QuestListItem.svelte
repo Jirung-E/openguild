@@ -65,7 +65,9 @@
 	<!-- DEV-116: 댓글 개수 — 0 이면 표시 X. -->
 	{#if (quest.comment_count ?? 0) > 0}
 		<span class="comment-count" title={`댓글 ${quest.comment_count}개`}>
-			<span class="cc-icon"><Icon name="comment" size={12} /></span><span>{quest.comment_count}</span>
+			<span class="cc-icon"><Icon name="comment" size={12} /></span><span
+				>{quest.comment_count}</span
+			>
 		</span>
 	{/if}
 
@@ -190,5 +192,23 @@
 		font-size: 0.85rem;
 		line-height: 1;
 		cursor: help;
+	}
+
+	/* admin 요청: 좁은 화면에서 `SLUG 배지들` / `제목` 2단으로.
+	   한 줄에 다 넣으면 배지들이 자리를 먼저 가져가 제목이 몇 글자만 남는다.
+	   마크업은 그대로 두고 wrap + order 로만 바꾼다 — 제목만 마지막 순서로
+	   보내고 폭을 100% 로 주면 자기 줄을 통째로 쓴다.
+	   (미디어 쿼리는 기본 규칙보다 **뒤**에 둔다 — 특이성이 같으면 순서가
+	    이긴다. BUG-200 에서 이걸 놓쳐 수정이 통째로 무효였다.) */
+	@media (max-width: 640px) {
+		.item {
+			flex-wrap: wrap;
+			row-gap: 0.15rem;
+		}
+		.title {
+			order: 10;
+			flex: 1 1 100%;
+			min-width: 0;
+		}
 	}
 </style>

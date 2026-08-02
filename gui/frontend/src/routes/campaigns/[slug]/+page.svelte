@@ -262,7 +262,12 @@
 			const picked = await open({
 				multiple: false,
 				directory: false,
-				filters: [{ name: t('campaign.imageFilter', $locale), extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] }]
+				filters: [
+					{
+						name: t('campaign.imageFilter', $locale),
+						extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp']
+					}
+				]
 			});
 			if (typeof picked === 'string' && picked) {
 				await campaignsApi.setBanner(detail.campaign_slug, picked);
@@ -282,7 +287,10 @@
 			await campaignsApi.clearBanner(detail.campaign_slug);
 			await load();
 		} catch (e) {
-			showToast(e instanceof Error ? e.message : t('campaign.bannerRemoveFailed', $locale), 'error');
+			showToast(
+				e instanceof Error ? e.message : t('campaign.bannerRemoveFailed', $locale),
+				'error'
+			);
 		} finally {
 			bannerBusy = false;
 		}
@@ -428,7 +436,9 @@
 				<div class="top-actions">
 					{#if isTauri}
 						<!-- DEV-087: 배너 이미지 — Tauri 전용 (파일 picker). -->
-						<button class="btn-edit" onclick={pickBanner} disabled={bannerBusy}><Icon name="image" /> {t('campaign.banner', $locale)} </button>
+						<button class="btn-edit" onclick={pickBanner} disabled={bannerBusy}
+							><Icon name="image" /> {t('campaign.banner', $locale)}
+						</button>
 						{#if detail.image_path}
 							<button
 								class="btn-edit"
@@ -441,7 +451,9 @@
 						{/if}
 					{/if}
 					<button class="btn-edit" onclick={enterEditMode}>✎ {t('detail.edit', $locale)}</button>
-					<button class="btn-delete" onclick={askDeleteCampaign}><Icon name="trash" /> {t('detail.delete', $locale)}</button>
+					<button class="btn-delete" onclick={askDeleteCampaign}
+						><Icon name="trash" /> {t('detail.delete', $locale)}</button
+					>
 				</div>
 			{/if}
 		{/if}
@@ -522,13 +534,16 @@
 					<button class="btn-save" onclick={saveEdit} disabled={saving || !titleEdit.trim()}>
 						{saving ? t('common.saving', $locale) : t('common.save', $locale)}
 					</button>
-					<button class="btn-cancel" onclick={exitEditMode} disabled={saving}>{t('common.cancel', $locale)}</button>
+					<button class="btn-cancel" onclick={exitEditMode} disabled={saving}
+						>{t('common.cancel', $locale)}</button
+					>
 				</div>
 			{:else if detail.description && detail.description.trim()}
 				<MarkdownView source={detail.description ?? ''} />
 			{:else}
 				<div class="empty">
-					{t('campaign.noBody', $locale)} <button class="link" onclick={enterEditMode}>{t('campaign.addBody', $locale)}</button>
+					{t('campaign.noBody', $locale)}
+					<button class="link" onclick={enterEditMode}>{t('campaign.addBody', $locale)}</button>
 				</div>
 			{/if}
 		</section>
@@ -545,7 +560,8 @@
 		<!-- 체크리스트 -->
 		<section>
 			<h2 class:done={detail.checklists.length > 0 && detail.checklists.every((c) => c.checked)}>
-				{t('campaign.checklist', $locale)} ({detail.checklists.filter((c) => c.checked).length}/{detail.checklists.length})
+				{t('campaign.checklist', $locale)} ({detail.checklists.filter((c) => c.checked)
+					.length}/{detail.checklists.length})
 				{#if detail.checklists.length > 0 && detail.checklists.every((c) => c.checked)}
 					<span class="done-mark"> {t('common.doneMark', $locale)}</span>
 				{/if}
@@ -564,7 +580,11 @@
 								/>
 								<span class:checked={item.checked}>{item.text}</span>
 							</label>
-							<button class="rm" title={t('detail.delete', $locale)} onclick={() => askRemoveChecklist(idx)}>×</button>
+							<button
+								class="rm"
+								title={t('detail.delete', $locale)}
+								onclick={() => askRemoveChecklist(idx)}>×</button
+							>
 						</li>
 					{/each}
 				</ul>
@@ -576,7 +596,9 @@
 					placeholder={t('campaign.newChecklistItem', $locale)}
 					onkeydown={(e) => e.key === 'Enter' && addChecklist()}
 				/>
-				<button onclick={addChecklist} disabled={!newChecklistText.trim()}>{t('common.add', $locale)}</button>
+				<button onclick={addChecklist} disabled={!newChecklistText.trim()}
+					>{t('common.add', $locale)}</button
+				>
 			</div>
 		</section>
 
@@ -633,7 +655,9 @@
 							<span class="tooltip-dot" style:background={sc.status_color}></span>
 							<span class="tooltip-name">{questStatusLabel(sc, $locale)}</span>
 							<span class="tooltip-count"
-								>{sc.count}{t('common.countSuffix', $locale)} ({Math.round((sc.count / (detail.quest_total ?? 1)) * 100)}%)</span
+								>{sc.count}{t('common.countSuffix', $locale)} ({Math.round(
+									(sc.count / (detail.quest_total ?? 1)) * 100
+								)}%)</span
 							>
 						</div>
 					{/each}
@@ -650,9 +674,14 @@
 							>
 								<span class="badge type" style:--c={q.type_color}>{q.quest_id}</span>
 								<span class="qtitle">{q.title}</span>
-								<span class="badge status" style:--c={q.status_color}>{questStatusLabel(q, $locale)}</span>
+								<span class="badge status" style:--c={q.status_color}
+									>{questStatusLabel(q, $locale)}</span
+								>
 							</a>
-							<button class="rm" title={t('campaign.unlinkQuest', $locale)} onclick={() => unlinkQuest(q.quest_id)}>×</button
+							<button
+								class="rm"
+								title={t('campaign.unlinkQuest', $locale)}
+								onclick={() => unlinkQuest(q.quest_id)}>×</button
 							>
 						</li>
 					{/each}
@@ -660,7 +689,9 @@
 			{/if}
 			<div class="add-row">
 				<!-- BUG-023: QuestCombobox 모달 (Quest Detail 과 동일 UI) -->
-				<button class="link-add-btn" onclick={() => (comboOpen = true)}>{t('campaign.linkQuest', $locale)}</button>
+				<button class="link-add-btn" onclick={() => (comboOpen = true)}
+					>{t('campaign.linkQuest', $locale)}</button
+				>
 			</div>
 		</section>
 
@@ -680,8 +711,15 @@
 {#if detail && (showTopJump || showCommentsJump || showMemoJump)}
 	<div class="jump-cluster">
 		{#if showTopJump}
-			<button class="jump-btn" onclick={jumpToTop} title={t('common.jumpTop', $locale)} aria-label={t('common.jumpTop', $locale)}>
-				<span class="jb-icon">↑</span><span class="jb-label">{t('common.jumpTopShort', $locale)}</span>
+			<button
+				class="jump-btn"
+				onclick={jumpToTop}
+				title={t('common.jumpTop', $locale)}
+				aria-label={t('common.jumpTop', $locale)}
+			>
+				<span class="jb-icon">↑</span><span class="jb-label"
+					>{t('common.jumpTopShort', $locale)}</span
+				>
 			</button>
 		{/if}
 		{#if showCommentsJump}
@@ -691,12 +729,21 @@
 				title={t('common.jumpComments', $locale)}
 				aria-label={t('common.jumpComments', $locale)}
 			>
-				<span class="jb-icon"><Icon name="comment" /></span><span class="jb-label">{t('common.jumpCommentsShort', $locale)}</span>
+				<span class="jb-icon"><Icon name="comment" /></span><span class="jb-label"
+					>{t('common.jumpCommentsShort', $locale)}</span
+				>
 			</button>
 		{/if}
 		{#if showMemoJump}
-			<button class="jump-btn" onclick={jumpToMemo} title={t('common.jumpMemo', $locale)} aria-label={t('common.jumpMemo', $locale)}>
-				<span class="jb-icon"><Icon name="memo" /></span><span class="jb-label">{t('common.jumpMemoShort', $locale)}</span>
+			<button
+				class="jump-btn"
+				onclick={jumpToMemo}
+				title={t('common.jumpMemo', $locale)}
+				aria-label={t('common.jumpMemo', $locale)}
+			>
+				<span class="jb-icon"><Icon name="memo" /></span><span class="jb-label"
+					>{t('common.jumpMemoShort', $locale)}</span
+				>
 			</button>
 		{/if}
 	</div>
@@ -706,7 +753,13 @@
 {#if comboOpen && detail}
 	<!-- BUG-160: 바깥(백드롭) 클릭으로 닫기 — ConfirmDialog 와 동일 패턴.
 	     e.target === e.currentTarget 가드로 내부 클릭 버블링은 제외. -->
-	<div class="ov" role="presentation" onclick={(e) => { if (e.target === e.currentTarget) comboOpen = false; }}>
+	<div
+		class="ov"
+		role="presentation"
+		onclick={(e) => {
+			if (e.target === e.currentTarget) comboOpen = false;
+		}}
+	>
 		<div class="modal-sm modal-combo" role="dialog" aria-modal="true" tabindex="-1">
 			<div class="modal-head">
 				<h3>{t('campaign.linkQuestTitle', $locale)}</h3>
@@ -1243,5 +1296,23 @@
 	}
 	.jump-btn .jb-label {
 		line-height: 1;
+	}
+
+	/* admin 요청: 좁은 화면에서 `SLUG 배지들` / `제목` 2단으로.
+	   한 줄에 다 넣으면 배지들이 자리를 먼저 가져가 제목이 몇 글자만 남는다.
+	   마크업은 그대로 두고 wrap + order 로만 바꾼다 — 제목만 마지막 순서로
+	   보내고 폭을 100% 로 주면 자기 줄을 통째로 쓴다.
+	   (미디어 쿼리는 기본 규칙보다 **뒤**에 둔다 — 특이성이 같으면 순서가
+	    이긴다. BUG-200 에서 이걸 놓쳐 수정이 통째로 무효였다.) */
+	@media (max-width: 640px) {
+		.linked li a {
+			flex-wrap: wrap;
+			row-gap: 0.15rem;
+		}
+		.qtitle {
+			order: 10;
+			flex: 1 1 100%;
+			min-width: 0;
+		}
 	}
 </style>
