@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { lockBodyScroll } from '$lib/utils/body-scroll-lock';
 	import { questsApi } from '$lib/api/quests';
 	import { metaApi } from '$lib/api/meta';
 	// DEV-205: 새 퀘스트 모달 i18n.
@@ -9,7 +10,13 @@
 	import { tabInsert } from '$lib/actions/tab-insert';
 	import { adminApi } from '$lib/api/admin';
 	import { onMount } from 'svelte';
-	import { urgencyColor, urgencyLabel, type Quest, type QuestType, type QuestStatus } from '$lib/types';
+	import {
+		urgencyColor,
+		urgencyLabel,
+		type Quest,
+		type QuestType,
+		type QuestStatus
+	} from '$lib/types';
 
 	let {
 		onclose,
@@ -207,6 +214,10 @@
 	function onKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') onclose();
 	}
+
+	// BUG-199: 팝업이 떠 있는 동안 배경 페이지 스크롤 잠금 — 모바일에서 팝업
+	// 안을 밀면 뒤 페이지가 움직였다.
+	onMount(() => lockBodyScroll());
 </script>
 
 <svelte:window onkeydown={onKeydown} />
@@ -215,7 +226,9 @@
 <div class="overlay" role="dialog" aria-modal="true">
 	<div class="modal" role="document">
 		<div class="modal-head">
-			<h2 class="modal-title">{parentQuestId ? t('nqm.newSubQuest', $locale) : t('nqm.newQuest', $locale)}</h2>
+			<h2 class="modal-title">
+				{parentQuestId ? t('nqm.newSubQuest', $locale) : t('nqm.newQuest', $locale)}
+			</h2>
 			<button class="close-btn" onclick={onclose} aria-label={t('nqm.close', $locale)}>×</button>
 		</div>
 
@@ -250,7 +263,9 @@
 						onclick={bootstrapDefaultStatus}
 						disabled={creatingDefaultStatus}
 					>
-						{creatingDefaultStatus ? t('nqm.addingStatus', $locale) : t('nqm.addDefaultStatus', $locale)}
+						{creatingDefaultStatus
+							? t('nqm.addingStatus', $locale)
+							: t('nqm.addDefaultStatus', $locale)}
 					</button>
 					<a class="btn-cancel" href="/admin" onclick={onclose}>{t('nqm.goToAdmin', $locale)}</a>
 					<button class="btn-cancel" onclick={onclose}>{t('nqm.close', $locale)}</button>
@@ -354,7 +369,9 @@
 					<button class="btn-create" onclick={create} disabled={saving || !title.trim()}>
 						{saving ? t('nqm.creating', $locale) : t('nqm.create', $locale)}
 					</button>
-					<button class="btn-cancel" onclick={onclose} disabled={saving}>{t('common.cancel', $locale)}</button>
+					<button class="btn-cancel" onclick={onclose} disabled={saving}
+						>{t('common.cancel', $locale)}</button
+					>
 					{#if isTauri}
 						<button
 							class="btn-tpl"
@@ -418,12 +435,19 @@
 		background: rgba(0, 0, 0, 0.65);
 		z-index: 200;
 		display: flex;
-		align-items: center;
+		/* BUG-199: 화면보다 긴 팝업은 오버레이 자체가 스크롤을 맡는다. 가운데
+		   정렬(center)이면 넘칠 때 위쪽이 잘려 닫기 버튼에 못 닿는다 — 위 정렬
+		   + auto 여백으로, 짧을 땐 가운데처럼 보이고 길면 위부터 보인다. */
+		align-items: flex-start;
 		justify-content: center;
 		padding: 1rem;
+		overflow-y: auto;
+		overscroll-behavior: contain;
 	}
 
 	.modal {
+		/* BUG-199: 짧으면 세로 가운데처럼 보이도록(위 flex-start 와 짝). */
+		margin: auto;
 		background: var(--bg-elevated);
 		border: 1px solid var(--border);
 		border-radius: 12px;

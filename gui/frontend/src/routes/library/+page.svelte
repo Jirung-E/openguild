@@ -1533,6 +1533,10 @@
 		align-items: center;
 		gap: 0.75rem;
 		margin-bottom: 1rem;
+		/* BUG-197: 좁은 화면에서 제목과 버튼 4개가 한 줄을 다투면 제목이 0 폭까지
+		   눌려 **글자마다 줄바꿈**됐다(세로 한 줄로 보임). 줄바꿈을 허용하고
+		   제목에 최소 폭을 줘서, 자리가 모자라면 버튼이 다음 줄로 내려가게 한다. */
+		flex-wrap: wrap;
 	}
 	.doc-title {
 		font-size: 1.1rem;
@@ -1542,7 +1546,11 @@
 		display: flex;
 		align-items: baseline;
 		gap: 0.5rem;
-		min-width: 0;
+		/* BUG-197: min-width:0 만 있으면 "얼마든지 줄어도 된다"는 뜻이라 한 글자
+		   폭까지 눌린다. 최소 폭 + 늘어남으로 바꿔 버튼 쪽이 밀려나게. */
+		flex: 1 1 14rem;
+		min-width: 10rem;
+		overflow-wrap: anywhere;
 	}
 	.doc-id {
 		font-family: 'SFMono-Regular', Consolas, monospace;

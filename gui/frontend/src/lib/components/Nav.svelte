@@ -101,9 +101,16 @@
 	// "하드코딩 3개 + 응답형 나머지" 패턴과 동일하게 맞춤.
 	const navItems = $derived.by((): NavOverflowItem[] => [
 		{ href: '/', label: t('nav.home', $locale), active: onRootPath && currentView === 'home' },
-		{ href: '/?view=board', label: t('nav.board', $locale), active: onRootPath && currentView === 'board' },
-		{ href: '/?view=list', label: t('nav.list', $locale), active: onRootPath && currentView === 'list' },
-		{ href: '/admin', label: t('nav.admin', $locale), active: onAdminPath },
+		{
+			href: '/?view=board',
+			label: t('nav.board', $locale),
+			active: onRootPath && currentView === 'board'
+		},
+		{
+			href: '/?view=list',
+			label: t('nav.list', $locale),
+			active: onRootPath && currentView === 'list'
+		},
 		{ href: '/rules', label: t('nav.rules', $locale), active: onRulesPath },
 		{ href: '/library', label: t('nav.library', $locale), active: onLibraryPath }
 	]);
@@ -112,9 +119,24 @@
 	const alwaysOverflowItems = $derived.by((): NavOverflowItem[] =>
 		showWebExtras
 			? [
-					{ href: '/campaigns', label: t('titlebar.menuCampaigns', $locale), active: $page.url.pathname.startsWith('/campaigns') },
-					{ href: '/worklog', label: t('titlebar.menuWorklog', $locale), active: $page.url.pathname.startsWith('/worklog') },
-					{ href: '/tags', label: t('titlebar.menuTags', $locale), active: $page.url.pathname.startsWith('/tags') }
+					// BUG-201(admin 지시): 어드민도 캠페인/작업기록/태그처럼 창 폭과
+					// 무관하게 항상 접힌 메뉴 안에 둔다 — 자주 쓰는 곳이 아니다.
+					{ href: '/admin', label: t('nav.admin', $locale), active: onAdminPath },
+					{
+						href: '/campaigns',
+						label: t('titlebar.menuCampaigns', $locale),
+						active: $page.url.pathname.startsWith('/campaigns')
+					},
+					{
+						href: '/worklog',
+						label: t('titlebar.menuWorklog', $locale),
+						active: $page.url.pathname.startsWith('/worklog')
+					},
+					{
+						href: '/tags',
+						label: t('titlebar.menuTags', $locale),
+						active: $page.url.pathname.startsWith('/tags')
+					}
 				]
 			: []
 	);
@@ -313,12 +335,14 @@
 					onclick={() => (moreOpen = !moreOpen)}
 					title={t('nav.more', $locale)}
 					aria-label={t('nav.more', $locale)}
-					aria-expanded={moreOpen}
-				>☰</button>
+					aria-expanded={moreOpen}>☰</button
+				>
 				{#if moreOpen}
 					<div class="more-menu">
 						{#each overflowItems as it (it.href)}
-							<a href={it.href} class:active={it.active} onclick={() => (moreOpen = false)}>{it.label}</a>
+							<a href={it.href} class:active={it.active} onclick={() => (moreOpen = false)}
+								>{it.label}</a
+							>
 						{/each}
 					</div>
 				{/if}
@@ -355,7 +379,16 @@
 					title={t('titlebar.newQuest', $locale)}
 					aria-label={t('titlebar.newQuest', $locale)}
 				>
-					<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+					<svg
+						width="15"
+						height="15"
+						viewBox="0 0 16 16"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1.5"
+						stroke-linecap="round"
+						aria-hidden="true"
+					>
 						<path d="M8 3.3v9.4M3.3 8h9.4" />
 					</svg>
 				</button>
@@ -370,7 +403,15 @@
 				<span class="nav-pill-name">{guildName}</span>
 				{#if isRemote}
 					<span class="nav-remote" title={t('nav.remoteConnected', $locale)}>
-						<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">
+						<svg
+							width="13"
+							height="13"
+							viewBox="0 0 16 16"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.2"
+							aria-hidden="true"
+						>
 							<circle cx="8" cy="8" r="5.7" />
 							<ellipse cx="8" cy="8" rx="2.4" ry="5.7" />
 							<path d="M2.5 8h11" />
@@ -392,7 +433,17 @@
 						title={t('titlebar.recent', $locale)}
 						aria-label={t('titlebar.recent', $locale)}
 					>
-						<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						<svg
+							width="15"
+							height="15"
+							viewBox="0 0 16 16"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.3"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							aria-hidden="true"
+						>
 							<circle cx="8" cy="8" r="5.6" />
 							<path d="M8 4.6V8l2.4 1.5" />
 						</svg>

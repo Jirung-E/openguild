@@ -278,80 +278,187 @@
 	     아이콘을 붙이면 중복돼 보여서 macOS 는 렌더하지 않음. -->
 	<!-- 앱 아이콘 — 장식(클릭 무동작). 드래그 영역의 일부. -->
 	{#if !isMac}
-	<img class="tb-appicon" src="/title-icon.png" alt="" data-tauri-drag-region />
+		<img class="tb-appicon" src="/title-icon.png" alt="" data-tauri-drag-region />
 	{/if}
 
 	<!-- DEV-255: 자식윈도우(단일 문서 보기)는 홈/뒤로·앞으로/☰메뉴 전부 불필요
 	     — 다른 곳으로 이동할 일이 없는 창이라 통째로 숨김. -->
 	{#if !$isChildWindow}
-	<div class="tb-left">
-		<button class="tb-icon-btn" onclick={() => goto('/welcome')} title={t('titlebar.welcome', $locale)} aria-label={t('titlebar.welcome', $locale)}>
-			<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" aria-hidden="true">
-				<path d="M2 8.2 L8 2.6 L14 8.2" />
-				<path d="M3.6 7 V13.4 H12.4 V7" />
-			</svg>
-		</button>
-		<button class="tb-icon-btn" onclick={() => history.back()} title={t('titlebar.back', $locale)} aria-label={t('titlebar.back', $locale)}>
-			<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-				<path d="M10 3 L5.5 8 L10 13" />
-			</svg>
-		</button>
-		<button class="tb-icon-btn" onclick={() => history.forward()} title={t('titlebar.forward', $locale)} aria-label={t('titlebar.forward', $locale)}>
-			<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-				<path d="M6 3 L10.5 8 L6 13" />
-			</svg>
-		</button>
-		{#if $guildContextActive}
-		<div class="tb-menu-wrap">
+		<div class="tb-left">
 			<button
 				class="tb-icon-btn"
-				class:active={menuOpen}
-				onclick={() => (menuOpen = !menuOpen)}
-				title={t('titlebar.menu', $locale)}
-				aria-label={t('titlebar.menu', $locale)}
-				aria-expanded={menuOpen}
+				onclick={() => goto('/welcome')}
+				title={t('titlebar.welcome', $locale)}
+				aria-label={t('titlebar.welcome', $locale)}
 			>
-				<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" aria-hidden="true">
-					<path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11" />
+				<svg
+					width="15"
+					height="15"
+					viewBox="0 0 16 16"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.2"
+					stroke-linejoin="round"
+					aria-hidden="true"
+				>
+					<path d="M2 8.2 L8 2.6 L14 8.2" />
+					<path d="M3.6 7 V13.4 H12.4 V7" />
 				</svg>
 			</button>
-			{#if menuOpen}
-				<div class="tb-menu">
-					<!-- DEV-260: Nav 에서 넘친 페이지 링크 — 상시 항목과 구분선으로 구획. -->
-					{#if $navOverflowItems.length > 0}
-						{#each $navOverflowItems as it (it.href)}
-							<button class:active={it.active} onclick={() => goto(it.href)}>
-								{it.label}
+			<button
+				class="tb-icon-btn"
+				onclick={() => history.back()}
+				title={t('titlebar.back', $locale)}
+				aria-label={t('titlebar.back', $locale)}
+			>
+				<svg
+					width="15"
+					height="15"
+					viewBox="0 0 16 16"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.5"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+					aria-hidden="true"
+				>
+					<path d="M10 3 L5.5 8 L10 13" />
+				</svg>
+			</button>
+			<button
+				class="tb-icon-btn"
+				onclick={() => history.forward()}
+				title={t('titlebar.forward', $locale)}
+				aria-label={t('titlebar.forward', $locale)}
+			>
+				<svg
+					width="15"
+					height="15"
+					viewBox="0 0 16 16"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.5"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+					aria-hidden="true"
+				>
+					<path d="M6 3 L10.5 8 L6 13" />
+				</svg>
+			</button>
+			{#if $guildContextActive}
+				<div class="tb-menu-wrap">
+					<button
+						class="tb-icon-btn"
+						class:active={menuOpen}
+						onclick={() => (menuOpen = !menuOpen)}
+						title={t('titlebar.menu', $locale)}
+						aria-label={t('titlebar.menu', $locale)}
+						aria-expanded={menuOpen}
+					>
+						<svg
+							width="15"
+							height="15"
+							viewBox="0 0 16 16"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.3"
+							stroke-linecap="round"
+							aria-hidden="true"
+						>
+							<path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11" />
+						</svg>
+					</button>
+					{#if menuOpen}
+						<div class="tb-menu">
+							<!-- DEV-260: Nav 에서 넘친 페이지 링크 — 상시 항목과 구분선으로 구획. -->
+							{#if $navOverflowItems.length > 0}
+								{#each $navOverflowItems as it (it.href)}
+									<button class:active={it.active} onclick={() => goto(it.href)}>
+										{it.label}
+									</button>
+								{/each}
+								<div class="tb-menu-sep"></div>
+							{/if}
+							<!-- BUG-201(admin 지시): 어드민은 창 폭과 무관하게 항상 이 메뉴 안에.
+					     Nav 의 응답형 목록에서 빠졌으므로 여기 상시 항목으로 둔다
+					     (데스크탑·웹 양쪽에서 같은 자리). -->
+							<button onclick={() => goto('/admin')}>
+								<svg
+									width="15"
+									height="15"
+									viewBox="0 0 16 16"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									aria-hidden="true"
+								>
+									<path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11" />
+									<circle cx="5.5" cy="4.5" r="1.4" />
+									<circle cx="10.5" cy="8" r="1.4" />
+									<circle cx="6.5" cy="11.5" r="1.4" />
+								</svg>
+								{t('nav.admin', $locale)}
 							</button>
-						{/each}
-						<div class="tb-menu-sep"></div>
+							<button onclick={() => goto('/campaigns')}>
+								<svg
+									width="15"
+									height="15"
+									viewBox="0 0 16 16"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									aria-hidden="true"
+								>
+									<rect x="2.5" y="2.5" width="11" height="11" rx="1.5" />
+									<path d="M5 6h6M5 8.5h6M5 11h3.5" />
+								</svg>
+								{t('titlebar.menuCampaigns', $locale)}
+							</button>
+							<button onclick={() => goto('/worklog')}>
+								<svg
+									width="15"
+									height="15"
+									viewBox="0 0 16 16"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									aria-hidden="true"
+								>
+									<circle cx="8" cy="8" r="5.5" />
+									<path d="M8 4.8V8l2.2 1.6" />
+								</svg>
+								{t('titlebar.menuWorklog', $locale)}
+							</button>
+							<button onclick={() => goto('/tags')}>
+								<svg
+									width="15"
+									height="15"
+									viewBox="0 0 16 16"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									aria-hidden="true"
+								>
+									<path
+										d="M8.3 2.5H3.2A.7.7 0 0 0 2.5 3.2v5.1a1 1 0 0 0 .3.7l4.9 4.9a1 1 0 0 0 1.4 0l4.4-4.4a1 1 0 0 0 0-1.4L9 2.8a1 1 0 0 0-.7-.3Z"
+									/>
+									<circle cx="5.4" cy="5.4" r=".9" />
+								</svg>
+								{t('titlebar.menuTags', $locale)}
+							</button>
+						</div>
 					{/if}
-					<button onclick={() => goto('/campaigns')}>
-						<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-							<rect x="2.5" y="2.5" width="11" height="11" rx="1.5" />
-							<path d="M5 6h6M5 8.5h6M5 11h3.5" />
-						</svg>
-						{t('titlebar.menuCampaigns', $locale)}
-					</button>
-					<button onclick={() => goto('/worklog')}>
-						<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-							<circle cx="8" cy="8" r="5.5" />
-							<path d="M8 4.8V8l2.2 1.6" />
-						</svg>
-						{t('titlebar.menuWorklog', $locale)}
-					</button>
-					<button onclick={() => goto('/tags')}>
-						<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-							<path d="M8.3 2.5H3.2A.7.7 0 0 0 2.5 3.2v5.1a1 1 0 0 0 .3.7l4.9 4.9a1 1 0 0 0 1.4 0l4.4-4.4a1 1 0 0 0 0-1.4L9 2.8a1 1 0 0 0-.7-.3Z" />
-							<circle cx="5.4" cy="5.4" r=".9" />
-						</svg>
-						{t('titlebar.menuTags', $locale)}
-					</button>
 				</div>
 			{/if}
 		</div>
-		{/if}
-	</div>
 	{/if}
 
 	<!-- 중앙: 길드 이름 pill = 검색 팔레트 (+ DEV-276 최근 문서 버튼).
@@ -368,16 +475,39 @@
 					title={t('titlebar.newQuest', $locale)}
 					aria-label={t('titlebar.newQuest', $locale)}
 				>
-					<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+					<svg
+						width="15"
+						height="15"
+						viewBox="0 0 16 16"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1.5"
+						stroke-linecap="round"
+						aria-hidden="true"
+					>
 						<path d="M8 3.3v9.4M3.3 8h9.4" />
 					</svg>
 				</button>
 			</div>
-			<button class="tb-search" class:open={searchOpen} bind:this={tbSearchEl} onclick={() => (searchOpen = true)} title={t('titlebar.search', $locale)}>
+			<button
+				class="tb-search"
+				class:open={searchOpen}
+				bind:this={tbSearchEl}
+				onclick={() => (searchOpen = true)}
+				title={t('titlebar.search', $locale)}
+			>
 				<span class="tb-search-name">{guildName}</span>
 				{#if isRemote}
 					<span class="tb-remote" title={t('nav.remoteConnected', $locale)}>
-						<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">
+						<svg
+							width="13"
+							height="13"
+							viewBox="0 0 16 16"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.2"
+							aria-hidden="true"
+						>
 							<circle cx="8" cy="8" r="5.7" />
 							<ellipse cx="8" cy="8" rx="2.4" ry="5.7" />
 							<path d="M2.5 8h11" />
@@ -401,7 +531,17 @@
 						title={t('titlebar.recent', $locale)}
 						aria-label={t('titlebar.recent', $locale)}
 					>
-						<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						<svg
+							width="15"
+							height="15"
+							viewBox="0 0 16 16"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.3"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							aria-hidden="true"
+						>
 							<circle cx="8" cy="8" r="5.6" />
 							<path d="M8 4.6V8l2.4 1.5" />
 						</svg>
@@ -435,9 +575,23 @@
 				aria-label={pinned ? t('titlebar.unpin', $locale) : t('titlebar.pin', $locale)}
 				aria-pressed={pinned}
 			>
-				<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+				<svg
+					width="11"
+					height="11"
+					viewBox="0 0 16 16"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.3"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+					aria-hidden="true"
+				>
 					{#if pinned}
-						<path d="M9.5 2 14 6.5l-2.5.7-2.8 2.8-.4 3.5L3 8.2l3.5-.4 2.3-2.8Z" fill="currentColor" stroke="none" />
+						<path
+							d="M9.5 2 14 6.5l-2.5.7-2.8 2.8-.4 3.5L3 8.2l3.5-.4 2.3-2.8Z"
+							fill="currentColor"
+							stroke="none"
+						/>
 						<path d="M5.5 10.5 2 14" />
 					{:else}
 						<path d="M9.5 2 14 6.5l-2.5.7-2.8 2.8-.4 3.5L3 8.2l3.5-.4 2.3-2.8Z" />
@@ -462,9 +616,19 @@
 			{@const linuxBtnStyle = `width:${btnSize}px;height:${btnSize}px;`}
 			{#each order as action (action)}
 				{#if action === 'min'}
-					<button class="tb-btn" style={linuxBtnStyle} onclick={() => winCtl('min')} title={t('titlebar.minimize', $locale)} aria-label={t('titlebar.minimize', $locale)}>
+					<button
+						class="tb-btn"
+						style={linuxBtnStyle}
+						onclick={() => winCtl('min')}
+						title={t('titlebar.minimize', $locale)}
+						aria-label={t('titlebar.minimize', $locale)}
+					>
 						{#if linuxStyle?.minIcon}
-							<span class="tb-nativeicon" style="width:{iconSize}px;height:{iconSize}px;-webkit-mask-image:url({linuxStyle.minIcon});mask-image:url({linuxStyle.minIcon});" aria-hidden="true"></span>
+							<span
+								class="tb-nativeicon"
+								style="width:{iconSize}px;height:{iconSize}px;-webkit-mask-image:url({linuxStyle.minIcon});mask-image:url({linuxStyle.minIcon});"
+								aria-hidden="true"
+							></span>
 						{:else}
 							<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
 								<line x1="0" y1="5" x2="10" y2="5" stroke="currentColor" stroke-width="1" />
@@ -477,27 +641,68 @@
 						style={linuxBtnStyle}
 						onclick={() => winCtl('max')}
 						title={maximized ? t('titlebar.restore', $locale) : t('titlebar.maximize', $locale)}
-						aria-label={maximized ? t('titlebar.restore', $locale) : t('titlebar.maximize', $locale)}
+						aria-label={maximized
+							? t('titlebar.restore', $locale)
+							: t('titlebar.maximize', $locale)}
 					>
 						{#if maximized && linuxStyle?.restoreIcon}
-							<span class="tb-nativeicon" style="width:{iconSize}px;height:{iconSize}px;-webkit-mask-image:url({linuxStyle.restoreIcon});mask-image:url({linuxStyle.restoreIcon});" aria-hidden="true"></span>
+							<span
+								class="tb-nativeicon"
+								style="width:{iconSize}px;height:{iconSize}px;-webkit-mask-image:url({linuxStyle.restoreIcon});mask-image:url({linuxStyle.restoreIcon});"
+								aria-hidden="true"
+							></span>
 						{:else if !maximized && linuxStyle?.maxIcon}
-							<span class="tb-nativeicon" style="width:{iconSize}px;height:{iconSize}px;-webkit-mask-image:url({linuxStyle.maxIcon});mask-image:url({linuxStyle.maxIcon});" aria-hidden="true"></span>
+							<span
+								class="tb-nativeicon"
+								style="width:{iconSize}px;height:{iconSize}px;-webkit-mask-image:url({linuxStyle.maxIcon});mask-image:url({linuxStyle.maxIcon});"
+								aria-hidden="true"
+							></span>
 						{:else if maximized}
 							<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
-								<rect x="0" y="2.5" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1" />
-								<path d="M 2.5 2.5 V 0.5 H 9.5 V 7.5 H 7.5" fill="none" stroke="currentColor" stroke-width="1" />
+								<rect
+									x="0"
+									y="2.5"
+									width="7"
+									height="7"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1"
+								/>
+								<path
+									d="M 2.5 2.5 V 0.5 H 9.5 V 7.5 H 7.5"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1"
+								/>
 							</svg>
 						{:else}
 							<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
-								<rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1" />
+								<rect
+									x="0.5"
+									y="0.5"
+									width="9"
+									height="9"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1"
+								/>
 							</svg>
 						{/if}
 					</button>
 				{:else}
-					<button class="tb-btn tb-close" style={linuxBtnStyle} onclick={() => winCtl('close')} title={t('titlebar.close', $locale)} aria-label={t('titlebar.close', $locale)}>
+					<button
+						class="tb-btn tb-close"
+						style={linuxBtnStyle}
+						onclick={() => winCtl('close')}
+						title={t('titlebar.close', $locale)}
+						aria-label={t('titlebar.close', $locale)}
+					>
 						{#if linuxStyle?.closeIcon}
-							<span class="tb-nativeicon" style="width:{iconSize}px;height:{iconSize}px;-webkit-mask-image:url({linuxStyle.closeIcon});mask-image:url({linuxStyle.closeIcon});" aria-hidden="true"></span>
+							<span
+								class="tb-nativeicon"
+								style="width:{iconSize}px;height:{iconSize}px;-webkit-mask-image:url({linuxStyle.closeIcon});mask-image:url({linuxStyle.closeIcon});"
+								aria-hidden="true"
+							></span>
 						{:else}
 							<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
 								<line x1="0" y1="0" x2="10" y2="10" stroke="currentColor" stroke-width="1" />
@@ -511,7 +716,12 @@
 			<!-- Windows: OS 가 실제로 쓰는 Segoe Fluent Icons/Segoe MDL2 Assets
 			     글리프 — 손으로 그린 SVG 근사가 아니라 네이티브 캡션 버튼과
 			     동일한 아이콘 모양. -->
-			<button class="tb-btn" onclick={() => winCtl('min')} title={t('titlebar.minimize', $locale)} aria-label={t('titlebar.minimize', $locale)}>
+			<button
+				class="tb-btn"
+				onclick={() => winCtl('min')}
+				title={t('titlebar.minimize', $locale)}
+				aria-label={t('titlebar.minimize', $locale)}
+			>
 				<span class="tb-winicon">{winIcon.min}</span>
 			</button>
 			<button
@@ -524,7 +734,12 @@
 			>
 				<span class="tb-winicon">{maximized ? winIcon.restore : winIcon.max}</span>
 			</button>
-			<button class="tb-btn tb-close" onclick={() => winCtl('close')} title={t('titlebar.close', $locale)} aria-label={t('titlebar.close', $locale)}>
+			<button
+				class="tb-btn tb-close"
+				onclick={() => winCtl('close')}
+				title={t('titlebar.close', $locale)}
+				aria-label={t('titlebar.close', $locale)}
+			>
 				<span class="tb-winicon">{winIcon.close}</span>
 			</button>
 		{/if}

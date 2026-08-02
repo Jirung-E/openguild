@@ -579,7 +579,8 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		ko: '"+ 신규" 로 첫 규칙을 만드세요.',
 		en: 'Use "+ New" to create your first rule.'
 	},
-	'rules.emptySelect': { ko: '좌측에서 규칙을 선택하세요.', en: 'Select a rule on the left.' },
+	// BUG-203: 규칙 페이지도 같은 이유(모바일은 목록이 위).
+	'rules.emptySelect': { ko: '목록에서 규칙을 선택하세요.', en: 'Select a rule from the list.' },
 	'rules.noBodyYet': { ko: '아직 작성된 본문이 없습니다.', en: 'No body written yet.' },
 	'settings.jsonError': { ko: 'JSON 형식 오류', en: 'Invalid JSON format' },
 	'settings.copiedJson': {
@@ -1465,8 +1466,9 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		ko: '"+ 신규" 로 첫 문서를 만드세요.',
 		en: 'Create your first document with "+ New".'
 	},
+	// BUG-203: 모바일은 목록이 위에 오므로 '좌측에서' 가 맞지 않는다 — 방향을 뺀다.
 	'library.pickDocFromList': {
-		ko: '좌측에서 문서를 선택하세요.',
+		ko: '목록에서 문서를 선택하세요.',
 		en: 'Select a document from the list.'
 	},
 	'library.backToList': { ko: '← 목록', en: '← List' },

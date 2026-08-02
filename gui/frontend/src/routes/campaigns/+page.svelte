@@ -57,7 +57,10 @@
 			await campaignsApi.update(c.campaign_slug, { display_order: next });
 			all = await campaignsApi.list();
 		} catch (e) {
-			showToast(e instanceof Error ? e.message : t('campaignList.orderChangeFailed', $locale), 'error');
+			showToast(
+				e instanceof Error ? e.message : t('campaignList.orderChangeFailed', $locale),
+				'error'
+			);
 		}
 	}
 
@@ -74,7 +77,9 @@
 <div class="page">
 	<div class="header">
 		<h1>{t('campaignList.title', $locale)}</h1>
-		<button class="btn-primary" onclick={() => goto('/campaigns/new')}>{t('campaignList.new', $locale)}</button>
+		<button class="btn-primary" onclick={() => goto('/campaigns/new')}
+			>{t('campaignList.new', $locale)}</button
+		>
 	</div>
 
 	<div class="controls">
@@ -227,6 +232,11 @@
 	.title {
 		color: var(--text);
 		font-size: 0.9rem;
+		/* BUG-198: 좁은 화면에서 상태 pill·기간이 자리를 먼저 가져가면 제목이
+		   한 글자 폭까지 눌려 세로로 흩어졌다(도서관 상세와 같은 원인). */
+		flex: 1 1 8rem;
+		min-width: 6rem;
+		overflow-wrap: anywhere;
 	}
 	/* BUG-021: Quest List 의 pill 스타일 통일. */
 	.status {

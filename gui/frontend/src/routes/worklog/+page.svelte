@@ -740,10 +740,17 @@
 
 	.totals {
 		display: flex;
-		gap: 1rem;
+		/* BUG-202: 좁은 화면에서 한 줄에 안 들어가면 항목 **안에서** 줄바꿈돼
+		   숫자와 라벨이 따로 흩어졌다. 항목 단위로 줄을 넘기고, 항목 내부는
+		   붙여 둔다. */
+		flex-wrap: wrap;
+		gap: 0.35rem 1rem;
 		padding: 0.6rem 0.2rem;
 		font-size: 0.75rem;
 		color: var(--text-muted);
+	}
+	.totals > span {
+		white-space: nowrap;
 	}
 	.totals b {
 		color: var(--text);
@@ -751,6 +758,12 @@
 	}
 	.totals .right {
 		margin-left: auto;
+	}
+	@media (max-width: 640px) {
+		/* 줄이 바뀌면 auto 여백이 그 줄만 밀어 어색해진다 — 좁을 땐 그냥 흐름대로. */
+		.totals .right {
+			margin-left: 0;
+		}
 	}
 
 	.state {
