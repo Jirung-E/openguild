@@ -7,6 +7,7 @@ use serde_json::json;
 
 use crate::error::{AppError, AppResult};
 use crate::repo::history as hist;
+use crate::ops::doc_history::{self, DocKind};
 use crate::repo::rules as repo;
 use crate::store::{journal, Store};
 
@@ -47,7 +48,9 @@ pub async fn set_rule(store: &Store, slug: &str, content: String) -> AppResult<(
     .map_err(AppError::Internal)?;
     repo::write_rule(&store.paths, slug, &content).map_err(AppError::Internal)?;
     // DEV-288: 활동 기록. set 은 upsert 라 신규/수정 겸용이지만 update 로 기록.
-    hist::record(&store.paths, slug, "update", None, None);
+    // BUG-189: 사이드카뿐 아니라 doc_history 캐시에도 즉시 투영 — 예전엔 reindex 를
+    // 돌기 전까지 작업기록에 안 떴다.
+    doc_history::record(store, DocKind::Rule, slug, "update", None, None).await;
     Ok(())
 }
 
@@ -61,7 +64,7 @@ pub async fn create_rule(store: &Store, slug: &str, content: String) -> AppResul
     .await
     .map_err(AppError::Internal)?;
     repo::create_rule(&store.paths, slug, &content).map_err(AppError::Internal)?;
-    hist::record(&store.paths, slug, "create", None, None); // DEV-288
+    doc_history::record(store, DocKind::Rule, slug, "create", None, None).await; // BUG-189
     Ok(())
 }
 
@@ -75,7 +78,9 @@ pub async fn delete_rule(store: &Store, slug: &str) -> AppResult<()> {
     .await
     .map_err(AppError::Internal)?;
     repo::delete_rule(&store.paths, slug).map_err(AppError::Internal)?;
-    hist::record(&store.paths, slug, "delete", None, None); // DEV-288
+    doc_history::record(store, DocKind::Rule, slug, "delete", None, None).await;
+    // 문서가 사라졌으니 캐시 행도 정리 — reindex 가 dangling 사이드카를 skip 하는 것과 같은 결과.
+    doc_history::purge(store, slug).await;
     Ok(())
 }
 
@@ -95,13 +100,18 @@ pub async fn rename_rule(
     repo::rename_rule(&store.paths, old_slug, new_slug).map_err(AppError::Internal)?;
     // DEV-288: 사이드카도 새 slug 로 옮기고 rename 이벤트 기록 (quest change_type 패턴).
     let _ = hist::rename(&store.paths, old_slug, new_slug);
-    hist::record(
-        &store.paths,
+    // BUG-189: 캐시의 옛 slug 행도 함께 옮긴다 — 안 그러면 작업기록의 지난 항목이
+    // 지금은 없는 slug 를 가리켜 클릭해도 안 열린다.
+    doc_history::rename(store, old_slug, new_slug).await;
+    doc_history::record(
+        store,
+        DocKind::Rule,
         new_slug,
         "rename",
         Some(old_slug.to_string()),
         Some(new_slug.to_string()),
-    );
+    )
+    .await;
     Ok(())
 }
 

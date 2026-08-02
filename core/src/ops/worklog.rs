@@ -534,4 +534,52 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// BUG-189: 규칙/BOOK 변경이 **reindex 없이** 바로 작업기록에 뜨는지.
+    ///
+    /// DEV-288 은 사이드카만 쓰고 캐시 투영을 reindex 에 맡겼는데, 평소 reindex
+    /// 를 돌 일이 없어 사용자 눈엔 기록이 안 남는 것과 같았다.
+    #[tokio::test]
+    async fn rule_and_book_changes_appear_without_reindex() {
+        let dir = fresh_tmp("doc-hist");
+        let store = setup(&dir).await;
+        let d = today();
+
+        crate::ops::rules::create_rule(&store, "my-rule", "본문".into())
+            .await
+            .unwrap();
+        crate::ops::library::create_book(&store, "문서 하나", "본문", "")
+            .await
+            .unwrap();
+        crate::ops::rules::set_rule(&store, "my-rule", "고침".into())
+            .await
+            .unwrap();
+
+        let r = activities(&store, &d, &d).await.unwrap();
+        assert_eq!(r.counts.doc_changes, 3, "활동: {:?}", r.activities);
+        let kinds: Vec<&str> = r.activities.iter().map(|a| a.kind.as_str()).collect();
+        assert!(kinds.contains(&"rule") && kinds.contains(&"book"), "{kinds:?}");
+
+        // reindex 는 캐시를 파일에서 재구축한다 — 같은 이벤트가 두 번 세어지면 안 된다.
+        crate::reindex::reindex(&store).await.unwrap();
+        let after = activities(&store, &d, &d).await.unwrap();
+        assert_eq!(after.counts.doc_changes, 3, "reindex 후 중복: {:?}", after.activities);
+
+        // rename 하면 지난 항목도 새 slug 를 가리켜야 (안 그러면 클릭해도 안 열린다).
+        crate::ops::rules::rename_rule(&store, "my-rule", "renamed-rule")
+            .await
+            .unwrap();
+        let renamed = activities(&store, &d, &d).await.unwrap();
+        assert!(
+            renamed
+                .activities
+                .iter()
+                .filter(|a| a.kind == "rule")
+                .all(|a| a.slug == "renamed-rule"),
+            "옛 slug 가 남음: {:?}",
+            renamed.activities
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

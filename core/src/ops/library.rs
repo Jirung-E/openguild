@@ -8,6 +8,7 @@ use serde_json::json;
 
 use crate::error::{AppError, AppResult};
 use crate::repo::history as hist;
+use crate::ops::doc_history::{self, DocKind};
 use crate::repo::library as repo;
 use crate::repo::library::{book_slug, BookFile, BookFrontmatter, FolderEntry};
 use crate::store::{journal, Store};
@@ -276,7 +277,7 @@ pub async fn create_book(
     .execute(&store.index_pool)
     .await?;
 
-    hist::record(&store.paths, &book_id, "create", None, None); // DEV-288
+    doc_history::record(store, DocKind::Book, &book_id, "create", None, None).await; // BUG-189
 
     get_book(store, &book_id)
         .await?
@@ -349,7 +350,7 @@ pub async fn update_book(
     .execute(&store.index_pool)
     .await?;
 
-    hist::record(&store.paths, book_id, "update", None, None); // DEV-288
+    doc_history::record(store, DocKind::Book, book_id, "update", None, None).await; // BUG-189
 
     get_book(store, book_id)
         .await?
@@ -394,7 +395,8 @@ pub async fn delete_book(store: &Store, book_id: &str) -> AppResult<()> {
         .bind(existing.number)
         .execute(&store.index_pool)
         .await?;
-    hist::record(&store.paths, book_id, "delete", None, None); // DEV-288
+    doc_history::record(store, DocKind::Book, book_id, "delete", None, None).await;
+    doc_history::purge(store, book_id).await; // BUG-189
     Ok(())
 }
 
