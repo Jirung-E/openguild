@@ -746,21 +746,6 @@
 			flex: none;
 			white-space: nowrap;
 		}
-		/* BUG-200: '표시' 탭이 좁은 화면에서 삐져나오던 문제. 라벨 열 6rem 고정 +
-		   값 열의 컨트롤(슬라이더·버튼 묶음)이 최소 폭을 요구해 그리드가 화면보다
-		   넓어졌다. 좁을 땐 라벨/값을 위아래로 쌓고, 값 쪽은 줄어들 수 있게 한다. */
-		.info-grid {
-			grid-template-columns: 1fr;
-			gap: 0.25rem 0;
-		}
-		.info-grid dt {
-			margin-top: 0.5rem;
-		}
-		.info-grid dd,
-		.info-grid dd > * {
-			min-width: 0;
-			max-width: 100%;
-		}
 	}
 	.panel h2 {
 		font-size: 1rem;
@@ -1040,5 +1025,36 @@
 		font-size: 0.8rem;
 		color: var(--text-muted);
 		cursor: pointer;
+	}
+
+	/* BUG-200 (재수정, admin 제안): 설정 페이지 전체를 좁은 화면에서
+	   `제목 / 내용` **세로 2단**으로.
+	   
+	   1차 시도는 같은 override 를 위쪽 @media 블록에 넣었는데, 기본
+	   `.info-grid { grid-template-columns: 6rem 1fr }` 이 파일에서 **더 뒤에**
+	   있어 같은 특이성에서 나중 규칙이 이겼다(실측: 좁은 화면에서도
+	   `96px 231px` 그대로). 그래서 스타일 맨 끝으로 옮긴다.
+	   
+	   라벨 열(6rem) + 값 열의 컨트롤(슬라이더·버튼 묶음) 최소 폭이 겹쳐
+	   그리드가 화면보다 넓어지던 것도 이걸로 사라진다. */
+	@media (max-width: 640px) {
+		.info-grid {
+			grid-template-columns: 1fr;
+			gap: 0.15rem 0;
+		}
+		.info-grid dt {
+			margin-top: 0.6rem;
+		}
+		.info-grid dt:first-child {
+			margin-top: 0;
+		}
+		/* 값 쪽은 남는 폭 안에서 줄어들 수 있어야 한다(슬라이더·버튼 묶음). */
+		.info-grid dd {
+			min-width: 0;
+			max-width: 100%;
+		}
+		.info-grid dd > * {
+			max-width: 100%;
+		}
 	}
 </style>
