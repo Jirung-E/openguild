@@ -74,7 +74,11 @@ const SOURCE_SUBDIRS: &[&str] = &[
     "tags",
     "types",
     "statuses",
-    "attachments",
+    // BUG-188: `attachments` 는 **의도적으로 빠져 있다** — 첨부는 백업 대상이
+    // 아니다(admin 결정). 크기 상한이 없는 유일한 데이터라, 담기 시작하면
+    // 스냅샷 하나가 수 GB 가 되고 SQLite blob 상한(약 1GB)에 걸려 백업 자체가
+    // 실패한다. 파일은 `.guild/attachments/` 에 그대로 남고 보관은 git/사용자
+    // 몫이며, 어드민 > 백업 화면이 이 사실을 밝힌다. 다시 넣지 말 것.
     // DEV-180: 이력 사이드카가 quests/ 밖 전용 디렉토리로 분리돼 별도 등록
     // 필요 — 빠뜨리면 snapshot/restore 가 조용히 history/ 를 건너뛴다.
     "history",
@@ -669,6 +673,32 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// BUG-188: 첨부는 백업에 담지 않는다 — 크기 상한이 없는 유일한 데이터라
+    /// 스냅샷을 GB 단위로 부풀리고 SQLite blob 상한에 걸려 백업 자체를 깨뜨렸다.
+    /// 복원도 첨부 파일을 건드리지 않는다(지우지도, 되살리지도 않는다).
+    #[tokio::test]
+    async fn snapshot_excludes_attachments() {
+        let dir = fresh_tmp("no-attach");
+        let store = setup(&dir).await;
+        let rel = crate::ops::attachments::save_attachment(&store, b"BIGFILE", "zip")
+            .await
+            .unwrap();
+        let abs = store.paths.dot_guild().join(&rel);
+        assert!(abs.exists());
+
+        let info = create_snapshot(&store).await.unwrap();
+        assert!(
+            !snapshot_contains(&info, &format!(".guild/{rel}")).await,
+            "첨부가 스냅샷에 들어갔다 — SOURCE_SUBDIRS 에 attachments 를 다시 넣지 말 것"
+        );
+
+        // 복원해도 첨부 파일은 그대로 남아 있어야 한다(백업 대상이 아니므로
+        // 스냅샷의 '없음'이 삭제를 뜻하지 않는다).
+        restore_snapshot(&store, &info).await.unwrap();
+        assert!(abs.exists(), "복원이 첨부를 지우면 안 됨");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// BUG-076: 소스 파일을 지운 뒤 restore 가 파일을 복구 + index.db 재구축.
     #[tokio::test]
     async fn restore_recovers_deleted_source_files() {
@@ -1124,10 +1154,12 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// 도서관(library) 백업 확인 — 문서(폴더 안) + 첨부(DEV-237)까지 snapshot/
-    /// restore 후 살아남고, DB 캐시(library_docs/library_folders)도
-    /// reindex 로 재구축되는지. SOURCE_SUBDIRS 에 "library" 는 있지만
-    /// "attachments"(첨부 실제 bytes) 까지 같이 살아야 첨부가 진짜 복원.
+    /// 도서관(library) 백업 확인 — 문서(폴더 안) + 첨부 **목록**(DEV-237)이
+    /// snapshot/restore 후 살아남고, DB 캐시(library_docs/library_folders)도
+    /// reindex 로 재구축되는지.
+    ///
+    /// BUG-188: 첨부의 **실제 bytes** 는 백업 대상이 아니다 — 목록 sidecar 만
+    /// 복원되고 파일 자체는 원래 자리에 그대로 있으면 된다.
     #[tokio::test]
     async fn snapshot_preserves_library_docs_folders_and_attachments() {
         use crate::ops::{attachments as att_ops, library as lib_ops};
@@ -1160,13 +1192,15 @@ mod tests {
             .await,
             "snapshot 이 도서관 첨부 sidecar 를 포함해야"
         );
+        // BUG-188: 첨부 **실제 bytes** 는 더 이상 담지 않는다 — 목록(sidecar)만
+        // 백업되고 파일은 백업 대상 외다. 자세한 배경은 SOURCE_SUBDIRS 주석.
         assert!(
-            snapshot_contains(
+            !snapshot_contains(
                 &snap,
                 &format!(".guild/attachments/{}", rel.trim_start_matches("attachments/"))
             )
             .await,
-            "snapshot 이 첨부 실제 bytes 도 포함해야"
+            "첨부 bytes 는 스냅샷에 들어가면 안 됨"
         );
 
         // DB 캐시만 손실 시나리오.

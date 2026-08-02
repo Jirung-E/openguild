@@ -1,6 +1,6 @@
 +++
 created_at = "2026-07-05T01:46:48+09:00"
-updated_at = "2026-07-05T01:46:48+09:00"
+updated_at = "2026-08-02T16:20:26+09:00"
 +++
 # restore 동작 정리
 
@@ -24,6 +24,11 @@ updated_at = "2026-07-05T01:46:48+09:00"
   - `--at` → journal truncate — 단 실행 직전 현재 상태가 자동 백업되어(DEV-212)
     `restore --to <pre_backup>` 으로 복귀 가능(가역화). journal 이 비어있으면 백업 스킵.
 - 모든 경로가 내부적으로 `.pre-restore/` 롤백 슬롯(현재 소스 + index.db) 1개를 남김. 단 **임시**(다음 restore 시 덮어씀) + 백업 목록엔 안 뜸 + journal 미포함.
+- **첨부파일은 백업/복원 대상이 아니다** (BUG-188). 스냅샷은 첨부 목록
+  사이드카(`{slug}.attachments.json`)만 담고 `.guild/attachments/` 의 실제
+  파일은 담지 않는다 — 복원해도 그 파일들은 **그대로 남는다**(지워지지도,
+  되살아나지도 않는다). 스냅샷에 없다는 사실이 삭제를 뜻하지 않는 유일한
+  예외이므로, 복원 로직에 "스냅샷에 없으면 지운다" 를 넣지 말 것.
 - 스냅샷 timestamp 는 `backup list` 로 확인 → `--to` 에 사용. 스냅샷 즉시 생성은 `backup new`.
 - 복원 의도별 요약: **최신으로 복구(손상 복구)** = `restore --at latest` (= 최신 스냅샷 + journal 전체 replay — DEV-210). **특정 백업으로 되돌리기** = `restore --to <ts>`(가역).
 

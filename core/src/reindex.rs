@@ -36,9 +36,8 @@ pub struct ReindexReport {
     pub memos_loaded: usize,
     /// DEV-068: frontmatter tags 에서 적재된 tag 수 (quest 전체 합산, 중복 dedupe 후).
     pub tags_loaded: usize,
-    /// DEV-069: attachment blob 백업 갱신 수 / blob 에서 복원된 파일 수.
-    pub attachments_backed_up: usize,
-    pub attachments_restored: usize,
+    // BUG-188: attachments_backed_up / attachments_restored 는 제거됐다 —
+    // 첨부 blob 백업 자체가 없어졌다(첨부는 백업 대상 외).
     /// DEV-180: `{slug}.history.jsonl` 사이드카에서 재구축된 history 이벤트 수
     /// / 사이드카 없던 slug 의 DB 행을 파일로 export 한 수 (일회성 자가 치유).
     pub history_loaded: usize,
@@ -68,10 +67,6 @@ impl ReindexReport {
             ),
             format!("tags         : {}", self.tags_loaded),
             format!("library      : {}", self.library_loaded),
-            format!(
-                "attachments  : {} backed up / {} restored",
-                self.attachments_backed_up, self.attachments_restored
-            ),
             format!(
                 "positions    : {} 복원 (board UI 상태)",
                 self.positions_restored
@@ -1112,12 +1107,10 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
         }
     }
 
-    // DEV-069: 첨부 blob 양방향 self-heal — 새/변경 파일 → blob 백업,
-    // blob 만 남은 것 (snapshot 복원 직후 등) → 파일 복원.
-    // sync_attachment_blobs 는 store.index_pool 을 직접 쓰므로 commit 이후 호출.
-    let (backed_up, restored) = crate::ops::attachments::sync_attachment_blobs(store).await?;
-    report.attachments_backed_up = backed_up;
-    report.attachments_restored = restored;
+    // BUG-188: 첨부 blob self-heal 은 없어졌다 — 첨부는 백업 대상이 아니라
+    // 파일만 진리원이다(자세한 배경은 ops::attachments 모듈 doc). 예전엔 여기서
+    // 모든 첨부를 index.db 에 통째로 넣었는데, 1GB 를 넘는 파일이 하나라도 있으면
+    // SQLite blob 상한에 걸려 **재색인 자체가 실패**했다.
 
     // BUG-068: sibling(댓글/메모) 파일 mtime 캐시 재구성 — detect_drift 의
     // fresh_siblings 가 per-file 로 비교하도록. (pool 직접 사용 → commit 이후.)

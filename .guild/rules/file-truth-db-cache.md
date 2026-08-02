@@ -1,6 +1,6 @@
 +++
 created_at = "2026-06-23T01:30:44+09:00"
-updated_at = "2026-06-23T01:30:44+09:00"
+updated_at = "2026-08-02T16:19:39+09:00"
 +++
 # 파일 진리 / DB 캐시 (저장소 불변 규칙)
 
@@ -26,7 +26,12 @@ ops 경로(journal append → SQL → 파일 atomic write → auto-block 재생�
 
 - 캐시: `index.db` (gitignore, 재생성 가능, 손실 무해).
 - 백업: `backups/journal.db`(AOF) + `snapshots/*.db`(RDB).
-- `index.db` 를 백업처럼 의존 금지. 첨부 blob 같은 "파일 백업" 도 snapshot 합류로 (DEV-069).
+- `index.db` 를 백업처럼 의존 금지 — 언제든 파일에서 재생성되는 파생 캐시다.
+- **첨부파일(`.guild/attachments`)은 백업 대상이 아니다** (BUG-188). 예전엔 첨부
+  바이트를 index.db 의 blob 으로 넣어 snapshot 에 합류시켰는데(DEV-069), 크기
+  상한이 없는 데이터라 1GB 를 넘는 파일 하나로 **첨부 저장·재색인·백업이 모두**
+  실패했다. 지금은 파일만 두고 보관은 git/사용자 몫 — 어드민 백업 화면이 이
+  범위를 밝힌다. "큰 바이너리를 캐시에 욱여넣어 백업을 대신하게 하지 말 것".
 
 ## 4. 읽기는 eventually-consistent — 신선도는 sync 지점으로
 

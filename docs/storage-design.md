@@ -587,19 +587,30 @@ openguild migrate-to-files
   / `[name](attachments/y.pdf)` 로 참조. GUI 의 `MarkdownView.rewriteLocalMedia`
   가 `attachments/` 상대 src 를 Tauri asset URL (또는 server `/api/guild-files/`)
   로 재작성해 표시.
-- **백업 = `attachment_blobs` BLOB 캐시** (migration 0018). **git 은 선택사항**
-  이므로 (사용자 결정) 첨부도 snapshot 만으로 복원 가능해야 함 — 댓글/메모와
-  달리 첨부는 바이너리라 파일 자체를 DB 에 담아야 snapshot 에 합류.
-  - `rel_path` PK / `bytes` BLOB / `mtime` (Unix nanos, `cached_mtime` 규약).
-  - `ops::attachments::save_attachment` = 확장자 검증 (이미지/동영상/pdf 화이트
-    리스트) + journal append + 파일 write + blob UPSERT.
-  - `reindex` 가 `sync_attachment_blobs` 로 **양방향 self-heal**:
-    1. 디렉토리의 새/변경 (mtime) 파일 → blob UPSERT (외부에서 직접 넣은
-       첨부도 백업에 합류).
-    2. blob 만 있고 파일이 사라짐 (snapshot restore 직후 등) → 파일 복원 →
-       복원 후 새 mtime 으로 blob 갱신 (다음 sync 가 재-upsert 안 하게).
-  - snapshot = `index.db` binary copy 라 blob 자동 포함. git 없이 snapshot
-    복원만으로 첨부 전체 부활.
+- **백업 대상이 아니다 — BUG-188 (admin 결정).** 첨부는 파일만 진리원이고,
+  스냅샷에도 index.db 에도 담지 않는다. 보관은 git 또는 사용자 몫.
+  - `ops::attachments::save_attachment` = 확장자 정규화 + journal append +
+    파일 write. 경로를 아는 데스크탑은 `save_attachment_from_file` 이
+    `std::fs::copy` 로 옮긴다(대용량을 메모리에 올리지 않는다).
+  - 첨부 **목록**(`{slug}.attachments.json` 사이드카)은 다른 문서와 같이
+    백업된다 — 복원하면 "무엇이 붙어 있었는지"는 남고 파일 바이트만 원래
+    자리에 있어야 한다.
+  - 어드민 > 백업 화면이 이 범위를 명시한다(`admin.backupScopeHint`).
+  - <details><summary>왜 폐기했나 (2026-08, migration 0018 → 0029)</summary>
+
+    원래는 `attachment_blobs` 테이블에 파일 바이트를 통째로 넣어 "git 없이
+    스냅샷만으로 첨부까지 복원"을 노렸다. 첨부는 **크기 상한이 없는 유일한
+    데이터**라 두 군데서 깨졌다:
+
+    1. SQLite blob 상한(약 1GB) — 1.5GB 파일 첨부가 `code 18: string or blob
+       too big` 으로 실패(admin 보고). 파일 write 는 이미 끝난 뒤라 참조 없는
+       대용량 파일이 남고, 그 뒤로는 reindex 의 self-heal 과 스냅샷이 **계속**
+       같은 에러로 실패했다.
+    2. 용량 — 첨부 하나가 index.db 와 매 스냅샷을 그 크기만큼 부풀린다.
+
+    임계값(예: 64MB 이상만 제외)도 검토했지만, "백업에 있는 것과 없는 것"이
+    크기에 따라 갈리는 상태가 설명하기 어렵다는 판단으로 전면 제외를 택했다.
+    </details>
 - **업로드 UX** (GUI, Tauri 전용): quest / campaign 상세 편집기 (CodeMirror)
   에 `editor-attach.ts` 의 `attachmentExtension` — 클립보드 이미지 Ctrl+V
   paste + 파일 drag&drop → base64 → `save_attachment` invoke → 반환 rel 경로를

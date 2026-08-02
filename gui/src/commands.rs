@@ -2025,8 +2025,9 @@ pub async fn save_attachment_from_path(
         .extension()
         .map(|e| e.to_string_lossy().to_string())
         .unwrap_or_default();
-    let bytes = std::fs::read(&src).map_err(|e| format!("파일 읽기 실패: {e}"))?;
-    openguild_core::ops::attachments::save_attachment(&store, &bytes, &ext)
+    // BUG-188: 파일을 통째로 읽지 않는다 — 1.5GB 파일이면 그만큼 메모리를 잡았다.
+    // core 가 `std::fs::copy` 로 옮기므로 사용량이 파일 크기와 무관하다.
+    openguild_core::ops::attachments::save_attachment_from_file(&store, &src, &ext)
         .await
         .map_err(err)
 }

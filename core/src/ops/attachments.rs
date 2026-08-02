@@ -1,13 +1,24 @@
-//! DEV-069: 본문 첨부파일 — 저장 + blob 백업 + self-heal.
+//! DEV-069 / BUG-188: 본문 첨부파일 — 파일 저장만 한다.
 //!
-//! 원칙 (사용자 댓글 #3): **git 은 선택사항** — 첨부도 snapshot 만으로 복원
-//! 가능해야 함. 파일 (`.guild/attachments/**`) 이 진리원, `attachment_blobs`
-//! 가 백업 캐시 (index.db → snapshot 에 자동 포함).
+//! 파일(`.guild/attachments/**`)이 진리원인 건 그대로다. 달라진 건 **백업**이다.
+//!
+//! 예전엔 같은 바이트를 `attachment_blobs` 테이블에도 넣어 스냅샷이 첨부까지
+//! 담게 했다("git 은 선택사항 — 스냅샷만으로 복원 가능해야 한다"). 그런데
+//! 첨부는 크기 상한이 없는 유일한 데이터라, 이 설계는 두 군데서 깨진다:
+//!
+//! - SQLite blob 상한(약 1GB) — 1.5GB 파일 첨부가 `code 18: string or blob too
+//!   big` 으로 실패했다(admin 보고). 게다가 파일 write 는 이미 끝난 뒤라
+//!   참조 없는 대용량 파일이 남아 **이후 모든 reindex/백업을 계속 깨뜨렸다.**
+//! - 용량 — 첨부 하나가 index.db 와 매 스냅샷을 그 크기만큼 부풀린다.
+//!
+//! admin 결정: **첨부파일은 백업 대상에서 제외한다.** 임계값을 두는 대신 아예
+//! 뺀다. 그래서 여기선 blob 을 만들지 않고, 스냅샷도 `attachments/` 를 담지
+//! 않는다(snapshot.rs 의 SOURCE_SUBDIRS). 사용자에게는 어드민 > 백업 화면에서
+//! "백업에 첨부는 포함되지 않는다"고 밝힌다.
 
 use serde_json::json;
 
 use crate::error::{AppError, AppResult};
-use crate::repo::fs as repo_fs;
 use crate::store::{journal, Store};
 
 /// 확장자를 파일명에 안전하게 쓸 수 있도록 정규화 — ascii 영숫자만, 소문자,
@@ -32,8 +43,22 @@ fn sanitize_ext(ext: &str) -> String {
     }
 }
 
-/// 첨부 저장 — bytes 를 `.guild/attachments/{nanos}-{rand}.{ext}` 로 write
-/// + blob UPSERT. 반환: `.guild/` 상대 경로 (본문 참조용 `attachments/...`).
+/// 저장 파일명 — 시각 + 난수 (충돌 회피, 사용자 입력 없음 → traversal 불가).
+/// 반환은 `.guild/` 상대 경로(`attachments/…`).
+fn new_attachment_rel(ext: &str) -> String {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let rand: u32 = (nanos as u32) ^ 0x5bd1_e995;
+    format!("attachments/{nanos:x}-{rand:08x}.{ext}")
+}
+
+/// 첨부 저장 — bytes 를 `.guild/attachments/{nanos}-{rand}.{ext}` 로 write.
+/// 반환: `.guild/` 상대 경로 (본문 참조용 `attachments/...`).
+///
+/// 경로를 이미 아는 데스크탑은 `save_attachment_from_file` 을 쓴다 — 큰 파일을
+/// 메모리에 올리지 않는다.
 pub async fn save_attachment(store: &Store, bytes: &[u8], ext: &str) -> AppResult<String> {
     let ext = sanitize_ext(ext);
     if bytes.is_empty() {
@@ -48,14 +73,7 @@ pub async fn save_attachment(store: &Store, bytes: &[u8], ext: &str) -> AppResul
     .await
     .map_err(AppError::Internal)?;
 
-    // 파일명 — 시각 + 난수 (충돌 회피, 사용자 입력 없음 → traversal 불가).
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let rand: u32 = (nanos as u32) ^ 0x5bd1_e995;
-    let name = format!("{nanos:x}-{rand:08x}.{ext}");
-    let rel = format!("attachments/{name}");
+    let rel = new_attachment_rel(&ext);
 
     std::fs::create_dir_all(store.paths.attachments_dir())
         .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
@@ -63,108 +81,57 @@ pub async fn save_attachment(store: &Store, bytes: &[u8], ext: &str) -> AppResul
     std::fs::write(&path, bytes)
         .map_err(|e| AppError::Internal(anyhow::anyhow!(crate::tf!("첨부 write 실패: {e}", "attachment write failed: {e}"))))?;
 
-    upsert_blob(store, &rel, bytes, repo_fs::mtime_unix_nanos(&path)).await?;
     Ok(rel)
 }
 
-async fn upsert_blob(store: &Store, rel: &str, bytes: &[u8], mtime: i64) -> AppResult<()> {
-    sqlx::query(
-        "INSERT INTO attachment_blobs (rel_path, bytes, mtime) VALUES (?, ?, ?)
-         ON CONFLICT(rel_path) DO UPDATE SET bytes = excluded.bytes, mtime = excluded.mtime",
+/// BUG-188: 원본 **경로**에서 첨부 저장 — 바이트를 메모리에 올리지 않는다.
+///
+/// 데스크탑은 파일 선택 다이얼로그가 경로를 주므로 이 경로를 쓴다. 예전엔
+/// 경로를 받고도 `std::fs::read` 로 통째로 읽어 `save_attachment` 에 넘겨,
+/// 1.5GB 파일이면 그만큼 메모리를 잡았다(그리고 blob INSERT 에서 터졌다).
+/// `std::fs::copy` 는 OS 의 복사 경로를 타서 파일 크기와 무관하게 일정하다.
+///
+/// 실패 시 부분 복사본을 남기지 않는다 — 디스크가 꽉 차면 조각 파일이
+/// `.guild/attachments/` 에 남고, 그건 아무도 참조하지 않는 쓰레기가 된다.
+pub async fn save_attachment_from_file(
+    store: &Store,
+    src: &std::path::Path,
+    ext: &str,
+) -> AppResult<String> {
+    let ext = sanitize_ext(ext);
+    let meta = std::fs::metadata(src)
+        .map_err(|e| AppError::Internal(anyhow::anyhow!(crate::tf!("첨부 원본 확인 실패: {e}", "attachment source stat failed: {e}"))))?;
+    if meta.len() == 0 {
+        return Err(AppError::BadRequest(crate::tf!("빈 첨부", "empty attachment")));
+    }
+    let _ = journal::append(
+        &store.journal_pool,
+        "save_attachment",
+        &json!({ "ext": ext, "len": meta.len() }),
+        None::<&serde_json::Value>,
     )
-    .bind(rel)
-    .bind(bytes)
-    .bind(mtime)
-    .execute(&store.index_pool)
-    .await?;
-    Ok(())
+    .await
+    .map_err(AppError::Internal)?;
+
+    let rel = new_attachment_rel(&ext);
+    std::fs::create_dir_all(store.paths.attachments_dir())
+        .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
+    let dst = store.paths.dot_guild().join(&rel);
+    if let Err(e) = std::fs::copy(src, &dst) {
+        let _ = std::fs::remove_file(&dst);
+        return Err(AppError::Internal(anyhow::anyhow!(crate::tf!(
+            "첨부 복사 실패: {e}",
+            "attachment copy failed: {e}"
+        ))));
+    }
+    Ok(rel)
 }
 
-/// 양방향 self-heal — reindex 가 호출.
-///
-/// 1. 디렉토리의 새 / 변경 (mtime) 파일 → blob UPSERT.
-/// 2. blob 만 있고 파일이 사라진 경우 → 파일 복원 (snapshot restore 후
-///    git 없이도 첨부가 돌아오는 경로).
-///
-/// 반환: (blob 갱신 수, 파일 복원 수).
-pub async fn sync_attachment_blobs(store: &Store) -> AppResult<(usize, usize)> {
-    let dir = store.paths.attachments_dir();
-    let mut upserted = 0usize;
-    let mut restored = 0usize;
-
-    // DB 의 rel → mtime.
-    let rows: Vec<(String, i64)> =
-        sqlx::query_as("SELECT rel_path, mtime FROM attachment_blobs")
-            .fetch_all(&store.index_pool)
-            .await?;
-    let mut db: std::collections::HashMap<String, i64> = rows.into_iter().collect();
-
-    // 1. 파일 → blob.
-    if dir.exists() {
-        for entry in std::fs::read_dir(&dir)
-            .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?
-            .flatten()
-        {
-            let path = entry.path();
-            if !path.is_file() {
-                continue;
-            }
-            let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
-                continue;
-            };
-            let rel = format!("attachments/{name}");
-            let mtime = repo_fs::mtime_unix_nanos(&path);
-            let stale = match db.remove(&rel) {
-                Some(db_mtime) => mtime > db_mtime,
-                None => true,
-            };
-            if stale {
-                let bytes = std::fs::read(&path)
-                    .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
-                upsert_blob(store, &rel, &bytes, mtime).await?;
-                upserted += 1;
-            }
-        }
-    }
-
-    // 2. blob 만 남은 것 (파일 소실).
-    // DEV-284 (A3): 참조 판정을 **파일에서** 한 번에 모아 쓴다(위 주석 참조).
-    let refs = referenced_attachments(store);
-    for (rel, _) in db {
-        // BUG-087: 어떤 sidecar/본문에서도 참조 안 되는 orphan 은 복원하지 않고
-        // GC. 안 그러면 (수동 삭제했거나 BUG-084 이전 생성된) orphan 파일이 매
-        // reindex 의 self-heal 로 부활한다. 참조 중인 것만 복원(snapshot 복원 후
-        // 파일 소실 케이스가 본래 의도).
-        if !refs.contains(&rel) {
-            let _ = sqlx::query("DELETE FROM attachment_blobs WHERE rel_path = ?")
-                .bind(&rel)
-                .execute(&store.index_pool)
-                .await;
-            continue;
-        }
-        let bytes: Vec<u8> =
-            sqlx::query_scalar("SELECT bytes FROM attachment_blobs WHERE rel_path = ?")
-                .bind(&rel)
-                .fetch_one(&store.index_pool)
-                .await?;
-        let path = store.paths.dot_guild().join(&rel);
-        if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        if std::fs::write(&path, &bytes).is_ok() {
-            // 복원된 파일의 새 mtime 으로 갱신 — 다음 sync 가 재-upsert 안 하게.
-            upsert_blob(store, &rel, &bytes, repo_fs::mtime_unix_nanos(&path)).await?;
-            restored += 1;
-        }
-    }
-
-    Ok((upserted, restored))
-}
 
 // ───────────────────────── DEV-156: 첨부 목록 (Jira 식) ─────────────────────────
 // 본문과 별개로 quest/campaign 에 "첨부된" 파일 목록. 진리원은 sidecar
 // `.guild/{quests|campaigns}/{slug}.attachments.json`. 파일 바이트는 DEV-069 의
-// save_attachment 가 `.guild/attachments/` 에 저장 + blob 백업하므로, 여기서는
+// save_attachment 가 `.guild/attachments/` 에 저장하므로, 여기서는
 // (경로, 원본 파일명) 메타만 관리한다.
 
 use crate::models::QuestAttachment;
@@ -318,76 +285,18 @@ async fn remove_attachment(
     Ok(list)
 }
 
-/// BUG-084: path 가 어떤 첨부 sidecar / 본문에서도 참조 안 되면 실제 파일 + blob 삭제.
+/// BUG-084: path 가 어떤 첨부 sidecar / 본문에서도 참조 안 되면 실제 파일 삭제.
+/// (BUG-188 이후 blob 사본이 없으므로 지울 것은 파일 하나뿐이다.)
 async fn gc_attachment_file(store: &Store, path: &str) {
     if path.trim().is_empty() || attachment_referenced(store, path).await {
         return;
     }
     let abs = store.paths.dot_guild().join(path);
     let _ = std::fs::remove_file(&abs);
-    let _ = sqlx::query("DELETE FROM attachment_blobs WHERE rel_path = ?")
-        .bind(path)
-        .execute(&store.index_pool)
-        .await;
 }
 
-/// path 가 다른 첨부 sidecar(quest/campaign) 또는 본문(description)에서 참조되는지.
-/// DEV-284 (A3): 현재 **디스크 파일**이 참조하는 첨부 경로 집합.
-///
-/// 이전엔 orphan blob 하나하나에 대해 (a) 사이드카 파일 스캔 + (b) `quests` /
-/// `campaigns` / `library_docs` **테이블 본문 LIKE 쿼리**로 판정했다. (b) 는
-/// index.db 를 읽으므로 branch-blind 다(BOOK-001) — 지금은 유일한 호출자인
-/// reindex 가 "테이블을 파일에서 재구축한 뒤" 호출해서 우연히 맞지만,
-/// **호출 순서에 정합성이 의존**한다. 다른 경로에서 부르면 다른 브랜치의 캐시
-/// 본문이 "참조 중"으로 잡혀 현재 브랜치에 없는 첨부 파일을 되살릴 수 있다.
-///
-/// 그래서 판정을 파일로만 한다 — 본문 `.md` 와 사이드카를 한 번 훑어 참조된
-/// `attachments/...` 경로를 모은다. blob 개수 × 쿼리 대신 디스크 1회 패스라
-/// 비용도 줄어든다.
-fn referenced_attachments(store: &Store) -> std::collections::HashSet<String> {
-    let mut refs: std::collections::HashSet<String> = std::collections::HashSet::new();
-    for dir in [
-        store.paths.quests_dir(),
-        store.paths.campaigns_dir(),
-        store.paths.library_dir(),
-    ] {
-        let Ok(rd) = std::fs::read_dir(&dir) else {
-            continue;
-        };
-        for e in rd.flatten() {
-            let p = e.path();
-            let Some(name) = p.file_name().and_then(|s| s.to_str()) else {
-                continue;
-            };
-            // 첨부 목록 사이드카 — 구조화된 목록이므로 그대로 수집.
-            if name.ends_with(".attachments.json") {
-                for a in read_attachment_list(&p) {
-                    refs.insert(a.path);
-                }
-                continue;
-            }
-            // 본문(.md) — 인라인 참조(`![](attachments/xxx)`)를 텍스트에서 추출.
-            if !name.ends_with(".md") {
-                continue;
-            }
-            let Ok(text) = std::fs::read_to_string(&p) else {
-                continue;
-            };
-            for (i, _) in text.match_indices("attachments/") {
-                let rest = &text[i..];
-                let end = rest
-                    .find(|c: char| {
-                        c.is_whitespace() || matches!(c, ')' | '"' | '\'' | '>' | ']' | '`')
-                    })
-                    .unwrap_or(rest.len());
-                refs.insert(rest[..end].to_string());
-            }
-        }
-    }
-    refs
-}
-
-#[allow(dead_code)] // DEV-284 로 referenced_attachments 로 대체 — 참고용으로 남김.
+/// path 가 어떤 첨부 sidecar(quest/campaign) 또는 본문에서도 참조되지 않는지 —
+/// GC 판정용. (BUG-188 로 blob self-heal 이 사라져 이 per-path 판정만 남았다.)
 async fn attachment_referenced(store: &Store, path: &str) -> bool {
     // DEV-237: 도서관 문서(sidecar + body)도 스캔 대상 — 그래야 도서관에서만
     // 쓰이는 첨부를 다른 sidecar/본문에서 안 쓴다고 오판해 GC 하지 않는다.
@@ -450,16 +359,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn save_writes_file_and_blob() {
+    async fn save_writes_file() {
         let (dir, store) = setup("save").await;
         let rel = save_attachment(&store, b"PNGDATA", "png").await.unwrap();
         assert!(rel.starts_with("attachments/") && rel.ends_with(".png"));
         assert!(store.paths.dot_guild().join(&rel).exists());
-        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM attachment_blobs")
-            .fetch_one(&store.index_pool)
-            .await
-            .unwrap();
-        assert_eq!(n, 1);
         // DEV-069 후속(admin #8): 임의 확장자 허용 — 미디어 외 파일도 첨부 가능.
         let z = save_attachment(&store, b"ZIPDATA", "zip").await.unwrap();
         assert!(z.ends_with(".zip"));
@@ -506,9 +410,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// BUG-084: 어디서도 참조 안 되면 remove 가 실제 파일 + blob 삭제.
+    /// BUG-084: 어디서도 참조 안 되면 remove 가 실제 파일까지 삭제.
     #[tokio::test]
-    async fn remove_deletes_orphan_file_and_blob() {
+    async fn remove_deletes_orphan_file() {
         let (dir, store) = setup("gc").await;
         let rel = save_attachment(&store, b"DATA", "zip").await.unwrap();
         add_quest_attachment(&store, "DEV-001", &rel, "f.zip").await.unwrap();
@@ -517,12 +421,33 @@ mod tests {
 
         remove_quest_attachment(&store, "DEV-001", &rel).await.unwrap();
         assert!(!abs.exists(), "orphan 파일이 삭제되어야");
-        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM attachment_blobs WHERE rel_path = ?")
-            .bind(&rel)
-            .fetch_one(&store.index_pool)
-            .await
-            .unwrap();
-        assert_eq!(n, 0, "blob 도 삭제 (self-heal 복원 방지)");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-188: 경로 기반 저장 — 원본을 복사하고 내용이 보존되는지.
+    /// (데스크탑 첨부가 타는 경로. 큰 파일을 메모리에 올리지 않는 게 목적이라
+    ///  여기선 동작 계약만 고정한다.)
+    #[tokio::test]
+    async fn save_from_file_copies_source() {
+        let (dir, store) = setup("from-file").await;
+        let src = dir.join("원본.ZIP");
+        std::fs::write(&src, b"ZIPBYTES").unwrap();
+
+        let rel = save_attachment_from_file(&store, &src, "ZIP").await.unwrap();
+        assert!(rel.ends_with(".zip"), "확장자는 소문자로 정규화: {rel}");
+        let dst = store.paths.dot_guild().join(&rel);
+        assert_eq!(std::fs::read(&dst).unwrap(), b"ZIPBYTES");
+        assert!(src.exists(), "원본은 그대로 있어야(복사이므로)");
+
+        // 빈 파일 / 없는 파일은 거부.
+        let empty = dir.join("empty.bin");
+        std::fs::write(&empty, b"").unwrap();
+        assert!(save_attachment_from_file(&store, &empty, "bin").await.is_err());
+        assert!(
+            save_attachment_from_file(&store, &dir.join("없는파일.zip"), "zip")
+                .await
+                .is_err()
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -540,47 +465,30 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// self-heal — 참조 중인 첨부는 파일 삭제 후 sync 가 blob 에서 복원.
+    /// BUG-188: 첨부는 백업 대상이 아니다 — 저장이 index.db 를 건드리지 않고,
+    /// 파일이 사라져도 되살아나지 않는다(예전엔 blob self-heal 이 복원했다).
+    ///
+    /// blob 테이블 자체가 사라졌으므로(마이그레이션 0029) "저장 후에도 첨부
+    /// 테이블이 없다" 로 정책을 고정한다.
     #[tokio::test]
-    async fn sync_restores_missing_file_from_blob() {
-        let (dir, store) = setup("heal").await;
+    async fn attachments_are_not_backed_up_into_index_db() {
+        let (dir, store) = setup("no-blob").await;
         let rel = save_attachment(&store, b"IMAGE", "png").await.unwrap();
-        // BUG-087: 참조돼야 복원 대상. (sidecar 에 등록 → attachment_referenced=true)
         add_quest_attachment(&store, "DEV-001", &rel, "img.png").await.unwrap();
+
+        let tables: Vec<String> = sqlx::query_scalar(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'attachment_blobs'",
+        )
+        .fetch_all(&store.index_pool)
+        .await
+        .unwrap();
+        assert!(tables.is_empty(), "attachment_blobs 가 남아 있으면 안 됨: {tables:?}");
+
+        // 파일을 지우면 그걸로 끝 — 재색인이 되살리지 않는다.
         let path = store.paths.dot_guild().join(&rel);
         std::fs::remove_file(&path).unwrap();
-
-        let (up, restored) = sync_attachment_blobs(&store).await.unwrap();
-        assert_eq!((up, restored), (0, 1));
-        assert_eq!(std::fs::read(&path).unwrap(), b"IMAGE");
-
-        // 외부 추가 파일 → blob 으로.
-        std::fs::write(store.paths.attachments_dir().join("manual.png"), b"M").unwrap();
-        let (up2, _) = sync_attachment_blobs(&store).await.unwrap();
-        assert_eq!(up2, 1);
-
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    /// BUG-087: 어디서도 참조 안 되는 orphan blob 은 sync 가 복원하지 않고 GC —
-    /// 매 reindex 마다 파일이 부활하던 문제.
-    #[tokio::test]
-    async fn sync_gcs_unreferenced_orphan_blob() {
-        let (dir, store) = setup("gc-orphan").await;
-        let rel = save_attachment(&store, b"DATA", "zip").await.unwrap();
-        let path = store.paths.dot_guild().join(&rel);
-        // 어떤 sidecar/본문에도 등록 안 함 + 파일 삭제 → orphan blob 만 남음.
-        std::fs::remove_file(&path).unwrap();
-
-        let (_up, restored) = sync_attachment_blobs(&store).await.unwrap();
-        assert_eq!(restored, 0, "미참조 orphan 은 복원하지 않아야");
-        assert!(!path.exists(), "orphan 파일이 부활하면 안 됨");
-        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM attachment_blobs WHERE rel_path = ?")
-            .bind(&rel)
-            .fetch_one(&store.index_pool)
-            .await
-            .unwrap();
-        assert_eq!(n, 0, "orphan blob 은 GC 되어 다음 reindex 부활을 막아야");
+        crate::reindex::reindex(&store).await.unwrap();
+        assert!(!path.exists(), "첨부는 복원 대상이 아니다");
 
         let _ = std::fs::remove_dir_all(&dir);
     }

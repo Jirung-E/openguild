@@ -199,7 +199,9 @@
 			const r = await adminApi.vacuum();
 			const pct = r.before_bytes > 0 ? ((r.saved_bytes / r.before_bytes) * 100).toFixed(1) : '0';
 			if (r.saved_bytes > 0) {
-				showSuccess(`${t('admin.vacuumDonePre', $locale)}${r.saved_bytes.toLocaleString()}${t('admin.vacuumDoneMid', $locale)}${pct}${t('admin.vacuumDonePost', $locale)}`);
+				showSuccess(
+					`${t('admin.vacuumDonePre', $locale)}${r.saved_bytes.toLocaleString()}${t('admin.vacuumDoneMid', $locale)}${pct}${t('admin.vacuumDonePost', $locale)}`
+				);
 			} else {
 				showInfo(t('admin.vacuumNoSpace', $locale));
 			}
@@ -249,6 +251,11 @@
 			</div>
 		</div>
 
+		<!-- BUG-188: 백업 범위 안내 — 첨부는 백업 대상이 아니다. 목록이 비어
+		     있을 때도 보여야 하므로 {#if} 밖에 둔다(백업을 처음 만들기 전에
+		     알아야 할 정보다). -->
+		<p class="hint scope">{t('admin.backupScopeHint', $locale)}</p>
+
 		{#if snapshots.length === 0}
 			<p class="empty">{t('admin.noBackups', $locale)}</p>
 		{:else}
@@ -295,7 +302,12 @@
 
 		{#if problemFiles.length > 0}
 			<div class="problem-files" role="alert">
-				<h3>{t('admin.problemFilesPre', $locale)}{problemFiles.length}{t('admin.problemFilesPost', $locale)}</h3>
+				<h3>
+					{t('admin.problemFilesPre', $locale)}{problemFiles.length}{t(
+						'admin.problemFilesPost',
+						$locale
+					)}
+				</h3>
 				<p class="hint">
 					{t('admin.problemFilesHint', $locale)}
 				</p>
@@ -364,7 +376,10 @@
 			<p class="ok">{t('admin.journalEmptyMsg', $locale)}</p>
 		{:else}
 			<p class="hint">
-				{t('admin.journalTotalPre', $locale)}{journal.total}{t('admin.journalTotalMid', $locale)}{journal.rows.length}{t('admin.journalTotalPost', $locale)}
+				{t('admin.journalTotalPre', $locale)}{journal.total}{t(
+					'admin.journalTotalMid',
+					$locale
+				)}{journal.rows.length}{t('admin.journalTotalPost', $locale)}
 			</p>
 			<ul class="journal">
 				{#each journal.rows as op (op.id)}
@@ -532,6 +547,11 @@
 		color: var(--text-muted);
 		font-size: 0.825rem;
 		margin-top: 0.75rem;
+	}
+	/* BUG-188: 백업 범위 안내는 목록 위에 오므로 아래 여백으로 목록과 띄운다. */
+	.hint.scope {
+		margin: 0 0 0.75rem;
+		line-height: 1.5;
 	}
 	.drift-report ul {
 		margin: 0.25rem 0 0.75rem 1.25rem;
