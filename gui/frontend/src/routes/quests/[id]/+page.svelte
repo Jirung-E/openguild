@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
 	import Icon from '$lib/components/Icon.svelte';
 	import { page } from '$app/stores';
 	import { onMount, onDestroy } from 'svelte';
@@ -1234,6 +1235,7 @@
 	     닫히는 걸 막는다. -->
 	<div
 		class="ov"
+		use:modalScrollLock
 		role="presentation"
 		onclick={(e) => {
 			if (e.target === e.currentTarget) closeCombo();
@@ -1268,6 +1270,7 @@
 {#if showCampaignCombo && detail}
 	<div
 		class="ov"
+		use:modalScrollLock
 		role="presentation"
 		onclick={(e) => {
 			if (e.target === e.currentTarget) closeCampaignCombo();
@@ -1306,6 +1309,7 @@
 	     (요청은 계속 날아가는데 UI 만 사라져 결과를 못 보는 상태 방지). -->
 	<div
 		class="ov"
+		use:modalScrollLock
 		role="presentation"
 		onclick={(e) => {
 			if (e.target === e.currentTarget && !changingType) confirmTypeChange = null;
@@ -1361,6 +1365,7 @@
 	<!-- BUG-160: 바깥 클릭 = 취소. 삭제 진행 중엔 닫지 않음(위와 동일 이유). -->
 	<div
 		class="ov"
+		use:modalScrollLock
 		role="presentation"
 		onclick={(e) => {
 			if (e.target === e.currentTarget && !deleting) deleteModal = false;
@@ -2113,7 +2118,12 @@
 		background: rgba(0, 0, 0, 0.6);
 		z-index: 100;
 		display: flex;
-		align-items: center;
+		/* BUG-199 후속: 화면보다 긴 모달은 오버레이가 스크롤을 맡는다. 가운데
+		   정렬이면 넘칠 때 위쪽(닫기/제목)이 잘려 손댈 수 없다 — 위 정렬 +
+		   modal 의 margin:auto 로, 짧으면 가운데처럼 보이고 길면 위부터 보인다. */
+		align-items: flex-start;
+		overflow-y: auto;
+		overscroll-behavior: contain;
 		justify-content: center;
 		padding: 1rem;
 	}

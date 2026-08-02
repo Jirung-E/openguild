@@ -29,6 +29,7 @@
   ```
 -->
 <script lang="ts">
+	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
 	// DEV-205 모듈1: 기본 라벨 i18n. 호출부가 라벨을 넘기면 그대로 쓰고,
 	// 미지정(undefined)일 때만 locale 사전 기본값으로 대체.
 	import { locale, t } from '$lib/stores/locale';
@@ -83,6 +84,7 @@
 {#if open}
 	<div
 		class="ov"
+		use:modalScrollLock
 		role="presentation"
 		onclick={(e) => {
 			if (e.target === e.currentTarget) close();
@@ -106,11 +108,18 @@
 		background: rgba(0, 0, 0, 0.55);
 		z-index: 200;
 		display: flex;
-		align-items: center;
+		/* BUG-199 후속: 화면보다 긴 모달은 오버레이가 스크롤을 맡는다. 가운데
+		   정렬이면 넘칠 때 위쪽(닫기/제목)이 잘려 손댈 수 없다 — 위 정렬 +
+		   modal 의 margin:auto 로, 짧으면 가운데처럼 보이고 길면 위부터 보인다. */
+		align-items: flex-start;
+		overflow-y: auto;
+		overscroll-behavior: contain;
 		justify-content: center;
 		padding: 1rem;
 	}
 	.modal {
+		/* BUG-199: 위 정렬과 짝 — 짧으면 세로 가운데처럼 보인다. */
+		margin: auto;
 		background: var(--bg-elevated);
 		border: 1px solid var(--border);
 		border-radius: 10px;

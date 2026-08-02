@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { lockBodyScroll } from '$lib/utils/body-scroll-lock';
+	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
 	import { questsApi } from '$lib/api/quests';
 	import { metaApi } from '$lib/api/meta';
 	// DEV-205: 새 퀘스트 모달 i18n.
@@ -215,15 +215,15 @@
 		if (e.key === 'Escape') onclose();
 	}
 
-	// BUG-199: 팝업이 떠 있는 동안 배경 페이지 스크롤 잠금 — 모바일에서 팝업
-	// 안을 밀면 뒤 페이지가 움직였다.
-	onMount(() => lockBodyScroll());
+	// BUG-199: 배경 스크롤 잠금은 오버레이 엘리먼트에 건 액션(use:modalScrollLock)이
+	// 담당한다 — 어드민 모달들처럼 "컴포넌트는 살아 있고 오버레이만 나타나는"
+	// 경우까지 같은 방식으로 덮기 위해 한 패턴으로 통일했다.
 </script>
 
 <svelte:window onkeydown={onKeydown} />
 
 <!-- 배경 오버레이 -->
-<div class="overlay" role="dialog" aria-modal="true">
+<div class="overlay" role="dialog" aria-modal="true" use:modalScrollLock>
 	<div class="modal" role="document">
 		<div class="modal-head">
 			<h2 class="modal-title">

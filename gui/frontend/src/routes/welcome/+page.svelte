@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
 	import Icon from '$lib/components/Icon.svelte';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
@@ -571,7 +572,7 @@
 
 {#if confirmOpen}
 	<!-- DEV-052 후속: 브라우저 confirm() 대신 인앱 스타일 모달. -->
-	<div class="ov" role="presentation">
+	<div class="ov" role="presentation" use:modalScrollLock>
 		<div class="modal" role="dialog" aria-modal="true" tabindex="-1">
 			<h3 class="modal-title">{t('welcome.clearTitle', $locale)}</h3>
 			<p class="modal-msg">{t('welcome.clearMsg', $locale)}</p>
@@ -585,7 +586,7 @@
 
 {#if confirmRemove}
 	<!-- DEV-052 후속 (5회차): 단일 항목 제거 확인. -->
-	<div class="ov" role="presentation">
+	<div class="ov" role="presentation" use:modalScrollLock>
 		<div class="modal" role="dialog" aria-modal="true" tabindex="-1">
 			<h3 class="modal-title">{t('welcome.removeTitle', $locale)}</h3>
 			<p class="modal-msg">
@@ -963,11 +964,18 @@
 		background: rgba(0, 0, 0, 0.6);
 		z-index: 100;
 		display: flex;
-		align-items: center;
+		/* BUG-199 후속: 화면보다 긴 모달은 오버레이가 스크롤을 맡는다. 가운데
+		   정렬이면 넘칠 때 위쪽(닫기/제목)이 잘려 손댈 수 없다 — 위 정렬 +
+		   modal 의 margin:auto 로, 짧으면 가운데처럼 보이고 길면 위부터 보인다. */
+		align-items: flex-start;
+		overflow-y: auto;
+		overscroll-behavior: contain;
 		justify-content: center;
 		padding: 1rem;
 	}
 	.modal {
+		/* BUG-199: 위 정렬과 짝 — 짧으면 세로 가운데처럼 보인다. */
+		margin: auto;
 		background: var(--bg-elevated);
 		border: 1px solid var(--border);
 		border-radius: 10px;

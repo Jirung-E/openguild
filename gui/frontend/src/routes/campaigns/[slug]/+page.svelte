@@ -6,6 +6,7 @@
    - 연결된 quest 표시 + 추가 / 제거
 -->
 <script lang="ts">
+	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
 	import Icon from '$lib/components/Icon.svelte';
 	import { onMount, onDestroy } from 'svelte';
 	// DEV-153: 편집 중이면 이탈 가드에 보고.
@@ -755,6 +756,7 @@
 	     e.target === e.currentTarget 가드로 내부 클릭 버블링은 제외. -->
 	<div
 		class="ov"
+		use:modalScrollLock
 		role="presentation"
 		onclick={(e) => {
 			if (e.target === e.currentTarget) comboOpen = false;
@@ -1128,7 +1130,12 @@
 		background: rgba(0, 0, 0, 0.6);
 		z-index: 100;
 		display: flex;
-		align-items: center;
+		/* BUG-199 후속: 화면보다 긴 모달은 오버레이가 스크롤을 맡는다. 가운데
+		   정렬이면 넘칠 때 위쪽(닫기/제목)이 잘려 손댈 수 없다 — 위 정렬 +
+		   modal 의 margin:auto 로, 짧으면 가운데처럼 보이고 길면 위부터 보인다. */
+		align-items: flex-start;
+		overflow-y: auto;
+		overscroll-behavior: contain;
 		justify-content: center;
 		padding: 1rem;
 	}
