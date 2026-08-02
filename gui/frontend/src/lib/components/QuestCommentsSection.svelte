@@ -76,6 +76,10 @@
 	// 항목 위를 지나칠 때마다 스크롤이 강제로 되돌아가 — 스크롤바를 움직일 수
 	// 없는 것처럼 보였다. 키보드(↑/↓) 이동일 때만 스크롤, 마우스 호버는 무시.
 	let wikiSelFromKeyboard = false;
+	// DEV-297 수정: 키보드로 고른 항목은 **제자리에서 펼쳐** 전체 제목을 보여준다.
+	// 예전엔 위/아래에 팝업을 띄웠는데 그게 이웃 항목을 통째로 가렸다(admin 보고).
+	// 마우스 호버는 팝업 그대로 — 훑는 동작이라 높이가 계속 바뀌면 더 어지럽다.
+	let wikiNavMode = $state<'keyboard' | 'mouse'>('mouse');
 	// DEV-171 후속: ↑/↓ 로 선택 이동 시 선택 항목이 팝업 스크롤 밖이면 보이도록 스크롤.
 	$effect(() => {
 		void wikiSel;
@@ -101,10 +105,10 @@
 		} else if (itemBottom > pop.scrollTop + pop.clientHeight) {
 			pop.scrollTop = itemBottom - pop.clientHeight;
 		}
-		// DEV-297 후속: 가상 포커스라 focus 이벤트가 안 뜨는 이 목록에선 hover 용
-		// use:titlePopup 이 키보드 이동을 못 잡는다 — 여기서 수동으로 띄움.
-		const it = wiki?.items[wikiSel];
-		if (it) showTitlePopupNow(sel, `${it.insert ?? it.id}${it.title ? ` — ${it.title}` : ''}`);
+		// DEV-297 수정: 예전엔 여기서 팝업을 띄웠지만(가상 포커스라 focus 이벤트가
+		// 안 뜬다), 그 팝업이 이웃 항목을 가렸다. 이제 선택 항목 자체가 펼쳐지므로
+		// 남은 팝업만 정리한다.
+		hideTitlePopupNow();
 	});
 
 	// DEV-171 후속: Esc/클릭아웃으로 닫은 토큰 — 같은 토큰에선 재오픈 안 함
@@ -218,10 +222,14 @@
 		if (e.key === 'ArrowDown') {
 			e.preventDefault();
 			wikiSelFromKeyboard = true;
+			wikiNavMode = 'keyboard';
+			hideTitlePopupNow(); // 호버 팝업이 남아 가리지 않도록
 			wikiSel = (wikiSel + 1) % n;
 		} else if (e.key === 'ArrowUp') {
 			e.preventDefault();
 			wikiSelFromKeyboard = true;
+			wikiNavMode = 'keyboard';
+			hideTitlePopupNow(); // 호버 팝업이 남아 가리지 않도록
 			wikiSel = (wikiSel - 1 + n) % n;
 		} else if (e.key === 'Enter' || e.key === 'Tab') {
 			// Tab 도 적용. tabInsert(use:action) 의 탭 삽입을 막으려 즉시 전파 중단.
@@ -1491,12 +1499,18 @@
 					type="button"
 					class="wiki-opt"
 					class:sel={i === wikiSel}
+					class:expanded={i === wikiSel && wikiNavMode === 'keyboard'}
 					onmousedown={(ev) => {
 						ev.preventDefault();
 						applyWiki(it);
 					}}
-					onmouseenter={() => (wikiSel = i)}
-					use:titlePopup={`${it.insert ?? it.id}${it.title ? ` — ${it.title}` : ''}`}
+					onmouseenter={() => {
+						wikiNavMode = 'mouse';
+						wikiSel = i;
+					}}
+					use:titlePopup={wikiNavMode === 'keyboard'
+						? null
+						: `${it.insert ?? it.id}${it.title ? ` — ${it.title}` : ''}`}
 				>
 					<!-- BUG-169: 🏷️/🔗 는 컬러 이모지로 렌더돼 OS 마다 크기·기준선이
 					     달랐다 — currentColor SVG 로 교체. -->
@@ -2214,6 +2228,22 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+	/* DEV-297 수정: 키보드로 선택된 항목만 말줄임을 풀어 제자리에서 펼친다.
+	   팝업으로 띄우면 위/아래 항목을 가렸다. 높이는 내용만큼만 늘어나고,
+	   선택이 옮겨가면 다시 한 줄로 돌아온다. */
+	.wiki-opt.expanded {
+		align-items: flex-start;
+	}
+	.wiki-opt.expanded .wiki-meta {
+		overflow: visible;
+		text-overflow: clip;
+		white-space: normal;
+		overflow-wrap: anywhere;
+	}
+	.wiki-opt.expanded .wiki-id {
+		white-space: normal;
+		overflow-wrap: anywhere;
 	}
 	.btn-save {
 		padding: 0.3rem 0.85rem;

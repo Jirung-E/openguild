@@ -32,13 +32,12 @@
 	// DEV-294: recent 모드에서 최근 본 문서 순서 소스.
 	import { recentDocs } from '$lib/stores/recentDocs';
 	// DEV-297: 전체 제목은 네이티브 title 대신 앱 스타일 커스텀 팝업으로.
-	import { titlePopup } from '$lib/actions/title-popup';
+	import { titlePopup, hideTitlePopupNow } from '$lib/actions/title-popup';
 
 	// DEV-294: `mode='recent'` — 별도 드롭다운을 만들지 않고 이 팔레트를 그대로
 	// 재사용해 "최근 본 문서"를 보여준다(폭·행 레이아웃·미리보기·스크롤 전부 공유).
 	// 검색어를 입력하는 순간 일반 검색과 동일하게 동작.
-	let { onclose, mode = 'search' }: { onclose: () => void; mode?: 'search' | 'recent' } =
-		$props();
+	let { onclose, mode = 'search' }: { onclose: () => void; mode?: 'search' | 'recent' } = $props();
 
 	type Kind = 'quest' | 'campaign' | 'rule' | 'book';
 	interface Item {
@@ -137,13 +136,18 @@
 	// 자동완성(QuestCommentsSection, BUG-114)에서 이미 확립한 대로 키보드
 	// (↑/↓) 이동일 때만 스크롤하고 마우스 호버는 무시한다.
 	let selFromKeyboard = false;
+	// DEV-297 수정: 키보드로 고른 행은 팝업 대신 **제자리에서 펼쳐** 전체 제목을
+	// 보여준다 — 팝업이 위/아래 행을 통째로 가렸다(admin 보고). 호버는 팝업 유지.
+	let navMode = $state<'keyboard' | 'mouse'>('mouse');
 	$effect(() => {
 		void selIndex;
 		if (preview || !rowsEl) return;
 		if (!selFromKeyboard) return;
 		selFromKeyboard = false;
 		const el = rowsEl.children[selIndex] as HTMLElement | undefined;
-		el?.scrollIntoView({ block: 'nearest' });
+		// DEV-297 수정: 펼침으로 행 높이가 바뀐 **뒤** 위치를 재계산해야 늘어난
+		// 행이 화면 밖으로 밀리지 않는다.
+		requestAnimationFrame(() => el?.scrollIntoView({ block: 'nearest' }));
 	});
 
 	// DEV-255 버그 수정: 타이틀바(메뉴 버튼 포함)를 눌러도 팔레트가 안 꺼지던
@@ -319,10 +323,18 @@
 		if (e.key === 'ArrowDown') {
 			e.preventDefault();
 			selFromKeyboard = true;
+			// DEV-297 수정: 호버로 이미 떠 있던 팝업은 키보드로 넘어가는 순간 치운다 —
+			// 안 그러면 펼침과 팝업이 같이 떠서 여전히 이웃 항목을 가린다.
+			navMode = 'keyboard';
+			hideTitlePopupNow();
 			selIndex = Math.min(selIndex + 1, filtered.length - 1);
 		} else if (e.key === 'ArrowUp') {
 			e.preventDefault();
 			selFromKeyboard = true;
+			// DEV-297 수정: 호버로 이미 떠 있던 팝업은 키보드로 넘어가는 순간 치운다 —
+			// 안 그러면 펼침과 팝업이 같이 떠서 여전히 이웃 항목을 가린다.
+			navMode = 'keyboard';
+			hideTitlePopupNow();
 			selIndex = Math.max(selIndex - 1, 0);
 		} else if (e.key === 'Enter') {
 			e.preventDefault();
@@ -370,7 +382,9 @@
 	{#if !preview}
 		<div class="input-wrap">
 			{#if scopeKind}
-				<span class="scope-chip {scopeKind}">{kindLabel(scopeKind)}{t('palette.scopeOnly', $locale)}</span>
+				<span class="scope-chip {scopeKind}"
+					>{kindLabel(scopeKind)}{t('palette.scopeOnly', $locale)}</span
+				>
 			{/if}
 			<input
 				bind:this={inputEl}
@@ -397,11 +411,22 @@
 				{#each filtered as it, i (it.kind + it.label)}
 					<!-- DEV-255: 행 = 라벨(기본 클릭 = 미리보기) + 열기 방식 아이콘 3개(항상 노출). -->
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<div class="row" class:sel={i === selIndex} onmouseenter={() => (selIndex = i)}>
+					<div
+						class="row"
+						class:sel={i === selIndex}
+						class:expanded={i === selIndex && navMode === 'keyboard'}
+						onmouseenter={() => {
+							navMode = 'mouse';
+							selIndex = i;
+						}}
+					>
 						<button
 							class="row-main"
 							onclick={() => openPreview(it)}
-							use:titlePopup={displayName(it) + (it.tags.length ? '  ' + it.tags.map((tg) => '#' + tg).join(' ') : '')}
+							use:titlePopup={navMode === 'keyboard'
+								? null
+								: displayName(it) +
+									(it.tags.length ? '  ' + it.tags.map((tg) => '#' + tg).join(' ') : '')}
 						>
 							<span class="ptype {it.kind}">{kindLabel(it.kind)}</span>
 							<span class="ptitle">{displayName(it)}</span>
@@ -410,21 +435,66 @@
 							{/if}
 						</button>
 						<div class="row-actions">
-							<button class="row-act" onclick={() => openPreview(it)} title={t('palette.preview', $locale)} aria-label={t('palette.preview', $locale)}>
-								<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+							<button
+								class="row-act"
+								onclick={() => openPreview(it)}
+								title={t('palette.preview', $locale)}
+								aria-label={t('palette.preview', $locale)}
+							>
+								<svg
+									width="13"
+									height="13"
+									viewBox="0 0 16 16"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.3"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									aria-hidden="true"
+								>
 									<path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8Z" />
 									<circle cx="8" cy="8" r="1.7" />
 								</svg>
 							</button>
-							<button class="row-act" onclick={() => windowItem(it)} title={t('palette.openWindow', $locale)} aria-label={t('palette.openWindow', $locale)}>
-								<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+							<button
+								class="row-act"
+								onclick={() => windowItem(it)}
+								title={t('palette.openWindow', $locale)}
+								aria-label={t('palette.openWindow', $locale)}
+							>
+								<svg
+									width="13"
+									height="13"
+									viewBox="0 0 16 16"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.3"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									aria-hidden="true"
+								>
 									<path d="M6 3H3.3a.8.8 0 0 0-.8.8v8.4a.8.8 0 0 0 .8.8h8.4a.8.8 0 0 0 .8-.8V10" />
 									<path d="M9 2.5h4.5V7" />
 									<path d="M13.5 2.5 7.2 8.8" />
 								</svg>
 							</button>
-							<button class="row-act" onclick={() => goItem(it)} title={t('palette.goPage', $locale)} aria-label={t('palette.goPage', $locale)}>
-								<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+							<button
+								class="row-act"
+								onclick={() => goItem(it)}
+								title={t('palette.goPage', $locale)}
+								aria-label={t('palette.goPage', $locale)}
+							>
+								<svg
+									width="13"
+									height="13"
+									viewBox="0 0 16 16"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.4"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									aria-hidden="true"
+								>
 									<path d="M2.5 8h11" />
 									<path d="M9 4.2 12.8 8 9 11.8" />
 								</svg>
@@ -442,7 +512,11 @@
 		<div class="dp-head">
 			<span class="ptype {preview.kind}">{kindLabel(preview.kind)}</span>
 			<span class="dp-title" use:titlePopup={displayName(preview)}>{displayName(preview)}</span>
-			<button class="dp-x" onclick={() => (preview = null)} title={t('palette.backToListTitle', $locale)}>✕</button>
+			<button
+				class="dp-x"
+				onclick={() => (preview = null)}
+				title={t('palette.backToListTitle', $locale)}>✕</button
+			>
 		</div>
 		<div class="dp-meta">
 			<span>{metaOf(preview)}</span>
@@ -461,13 +535,23 @@
 			<OverlayScrollbar target={previewBodyEl} />
 		{/if}
 		<div class="dp-foot">
-			<button class="dp-btn" onclick={() => (preview = null)}>{t('palette.backToList', $locale)}</button>
+			<button class="dp-btn" onclick={() => (preview = null)}
+				>{t('palette.backToList', $locale)}</button
+			>
 			<!-- DEV-255: 미리보기에서도 자식윈도우/페이지이동으로 전환 가능. -->
-			<button class="dp-btn" onclick={() => preview && windowItem(preview)}>{t('palette.openWindow', $locale)}</button>
-			<button class="dp-btn primary" onclick={() => preview && goItem(preview)}>{t('palette.goPageArrow', $locale)}</button>
+			<button class="dp-btn" onclick={() => preview && windowItem(preview)}
+				>{t('palette.openWindow', $locale)}</button
+			>
+			<button class="dp-btn primary" onclick={() => preview && goItem(preview)}
+				>{t('palette.goPageArrow', $locale)}</button
+			>
 		</div>
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div class="dp-resize" onmousedown={startResize} title={t('palette.resizeHandle', $locale)}></div>
+		<div
+			class="dp-resize"
+			onmousedown={startResize}
+			title={t('palette.resizeHandle', $locale)}
+		></div>
 	{/if}
 </div>
 
@@ -636,6 +720,18 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+	/* DEV-297 수정: 키보드로 선택된 행만 말줄임을 풀어 제자리에서 펼친다.
+	   행 높이는 내용만큼만 늘고, 선택이 옮겨가면 다시 한 줄. 우측 액션 버튼이
+	   따라 내려가지 않도록 정렬만 위로 붙인다. */
+	.row.expanded {
+		align-items: flex-start;
+	}
+	.row.expanded .ptitle {
+		overflow: visible;
+		text-overflow: clip;
+		white-space: normal;
+		overflow-wrap: anywhere;
 	}
 	.ptags {
 		flex: none;
