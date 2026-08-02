@@ -1077,9 +1077,13 @@
 						<!-- BUG-127(admin 요청): 뷰모드 토글은 트리/탐색기 목록 쪽에만 —
 						     여기(문서 상세)에 중복으로 있을 필요 없음. 아이콘 뷰에서 상세로
 						     들어가면 토글이 안 보이게 되는데, 그건 의도된 동작(admin 확인). -->
+						<!-- admin 요청: `SLUG 제목` 한 줄 → slug 위, 제목 아래 2단
+						     (모바일·PC 공통). 제목 텍스트는 스타일을 걸 수 있도록
+						     span 으로 감싼다 — 벌거벗은 텍스트 노드는 익명 flex
+						     item 이 되어 폭/줄바꿈 제어가 어렵다. -->
 						<h1 class="doc-title">
 							<span class="doc-id">{selected.book_id}</span>
-							{selected.title}
+							<span class="doc-title-text">{selected.title}</span>
 						</h1>
 						{#if !editMode}
 							<div class="top-actions">
@@ -1548,13 +1552,18 @@
 		color: var(--text);
 		margin: 0;
 		display: flex;
-		align-items: baseline;
-		gap: 0.5rem;
+		/* admin 요청: slug 위 / 제목 아래. 화면 폭과 무관하게 항상 2단. */
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 0.1rem;
 		/* BUG-197: min-width:0 만 있으면 "얼마든지 줄어도 된다"는 뜻이라 한 글자
 		   폭까지 눌린다. 최소 폭 + 늘어남으로 바꿔 버튼 쪽이 밀려나게. */
 		flex: 1 1 14rem;
 		min-width: 10rem;
 		overflow-wrap: anywhere;
+	}
+	.doc-title-text {
+		line-height: 1.3;
 	}
 	.doc-id {
 		font-family: 'SFMono-Regular', Consolas, monospace;
