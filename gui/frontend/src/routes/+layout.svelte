@@ -24,7 +24,7 @@
 	import OverlayScrollbar from '$lib/components/OverlayScrollbar.svelte';
 	import { detectEnvironment } from '$lib/api/transport';
 	// BUG-140: 커스텀 타이틀바 플랫폼 판별(Windows/Linux) — 단일 진리원.
-	import { usesCustomTitlebar, isLinux } from '$lib/utils/platform';
+	import { usesCustomTitlebar, isLinux, hasCoarsePointer } from '$lib/utils/platform';
 	import { uiScale, applyUiScaleToDocument } from '$lib/stores/uiScale';
 	import { contentWidth, contentWidthCss } from '$lib/stores/contentWidth';
 	import {
@@ -74,6 +74,20 @@
 	// 어긋나지 않게). 표시 시 sticky 요소들(Nav 등)의 top offset 용
 	// CSS 변수(--titlebar-h)를 root 에 심는다.
 	const showTitleBar = usesCustomTitlebar();
+	// 모바일 수정(admin 보고): 터치 기기는 브라우저가 스크롤 인디케이터를 스스로
+	// 그리므로 페이지 전체용 커스텀 스크롤바까지 그리면 두 개가 겹쳐 보인다.
+	// 컨테이너(검색 팔레트·자동완성 팝업·목록 등)의 커스텀 스크롤바는 그대로 —
+	// 그쪽은 브라우저가 대신 그려주지 않는다.
+	let coarsePointer = $state(false);
+	$effect(() => {
+		if (typeof window === 'undefined' || !window.matchMedia) return;
+		const mq = window.matchMedia('(pointer: coarse)');
+		const sync = () => (coarsePointer = mq.matches);
+		sync();
+		mq.addEventListener('change', sync);
+		return () => mq.removeEventListener('change', sync);
+	});
+
 	// DEV-265: 리눅스는 네이티브 창 버튼을 더 크게 담기 위해 타이틀바를 살짝
 	// 높이고(+8px), 그만큼 메뉴바(Nav) 높이를 줄여(–8px) 콘텐츠 영역 총합은
 	// 그대로 유지한다. Windows/macOS 는 기존 32px 유지.
@@ -198,7 +212,11 @@
 		// BUG-181: `?from=` 같은 추적 쿼리가 섞인 원본 URL 대신 정규 href 로
 		// 저장 — SearchPalette 전역 인덱스의 href 와 문자열이 일치해야 recent
 		// 모드에서 매칭된다(불일치 시 퀘스트가 조용히 누락됨).
-		pushRecentDoc({ href: canonicalDocHref(hit.kind, hit.label), kind: hit.kind, label: hit.label });
+		pushRecentDoc({
+			href: canonicalDocHref(hit.kind, hit.label),
+			kind: hit.kind,
+			label: hit.label
+		});
 	}
 	afterNavigate(trackRecentDoc);
 	onMount(trackRecentDoc);
@@ -486,7 +504,9 @@
 <main class:no-nav={!showNav}>
 	{@render children()}
 </main>
-<OverlayScrollbar />
+{#if !coarsePointer}
+	<OverlayScrollbar />
+{/if}
 <!-- DEV-259: 알림 통합 호스트(토스트/업데이트/스키마) — 우하단 단일 스택.
      업데이트·스키마 watcher 내장. 모든 라우트 공통 단일 mount. -->
 <ToastHost />

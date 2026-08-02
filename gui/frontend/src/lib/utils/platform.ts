@@ -42,3 +42,20 @@ export function usesCustomTitlebar(): boolean {
 	// 'Linux' 는 Android UA 에도 들어가므로 제외(데스크탑 Tauri 전제지만 방어).
 	return s.includes('Windows') || (s.includes('Linux') && !s.includes('Android')) || isMacOverlay();
 }
+
+/**
+ * 모바일 수정(admin 보고 "모바일에서 커스텀 스크롤바와 앱 기본 스크롤바가 같이
+ * 보인다"): 터치 기기는 브라우저가 스크롤 인디케이터를 스스로 띄우므로, 페이지
+ * 전체용 커스텀 스크롤바까지 그리면 두 개가 겹쳐 보인다.
+ *
+ * 판정은 화면 폭이 아니라 **포인터 종류**로 한다 — 폭으로 나누면 데스크탑 창을
+ * 좁혔을 때도 우리 것이 사라지는데, 브라우저 기본 스크롤바는 global.css 가 이미
+ * 숨겨 놔서 **아무 스크롤바도 없는** 상태가 된다.
+ *
+ * 컨테이너(검색 팔레트·자동완성 팝업·목록 등)의 커스텀 스크롤바는 이 판정과
+ * 무관하게 그대로 둔다 — 그쪽은 브라우저가 대신 그려주지 않는다.
+ */
+export function hasCoarsePointer(): boolean {
+	if (typeof window === 'undefined' || !window.matchMedia) return false;
+	return window.matchMedia('(pointer: coarse)').matches;
+}

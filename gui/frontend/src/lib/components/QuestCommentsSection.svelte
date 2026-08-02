@@ -166,7 +166,12 @@
 		const estH = Math.min(items.length * 30 + 8, 224); // flip 판단용 높이 추정.
 		const flipUp = caretBottom + estH > window.innerHeight && caretTop - estH > 0;
 		const rawLeft = rect.left + c.left - el.scrollLeft;
-		const left = Math.max(4, Math.min(rawLeft, window.innerWidth - 240));
+		// 모바일 수정: 예전엔 팝업 폭을 240px 로 **가정**하고 clamp 해서, 실제
+		// 폭(최대 22rem=352px)이 더 크면 오른쪽이 화면 밖으로 나갔다. CSS 상한과
+		// 같은 식으로 실제 폭을 구해 그만큼 물린다.
+		const MARGIN = 8;
+		const popW = Math.min(352, window.innerWidth - MARGIN * 2);
+		const left = Math.max(MARGIN, Math.min(rawLeft, window.innerWidth - popW - MARGIN));
 		return flipUp
 			? { el, from, to, items, left, top: null, bottom: window.innerHeight - caretTop }
 			: { el, from, to, items, left, top: caretBottom, bottom: null };
@@ -2191,9 +2196,13 @@
 		margin: 0;
 		padding: 0.2rem;
 		list-style: none;
-		min-width: 14rem;
-		max-width: 22rem;
-		max-height: 14rem;
+		/* 모바일 수정: 예전엔 min 14rem / max 22rem 고정이라 375px 화면에서 팝업이
+		   화면을 거의 덮고 오른쪽으로 넘쳐 나갔다. 뷰포트를 넘지 않도록 상한을
+		   함께 건다(양옆 8px 여백). min-width 도 같은 이유로 뷰포트에 양보. */
+		min-width: min(14rem, calc(100vw - 16px));
+		max-width: min(22rem, calc(100vw - 16px));
+		/* 짧은 화면(가로 모드 등)에서 팝업이 화면 높이를 넘지 않게. */
+		max-height: min(14rem, 45vh);
 		overflow-y: auto;
 		/* BUG-157: native scrollbar 숨김 — OverlayScrollbar 가 대신 그린다. */
 		scrollbar-width: none;

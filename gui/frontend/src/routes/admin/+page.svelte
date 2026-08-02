@@ -512,6 +512,26 @@
 	.snap-actions button + button {
 		margin-left: 0.4rem;
 	}
+	/* BUG-196 후속(admin 재보고 "백업 섹션이 아직 삐져나옴"): 영어에서 Restore +
+	   Delete 를 nowrap 으로 한 줄에 묶으면 그 칸만 180px 를 요구하고, table 은
+	   width:100% 라도 내용 최소폭 아래로 못 줄어들어 **표가 섹션 밖으로** 나갔다
+	   (그때 tr 아래 테두리가 같이 나가 '구분선이 삐져나온' 것처럼 보인다).
+	   좁은 화면에선 버튼이 쌓이도록 풀고 셀 여백도 줄인다. */
+	@media (max-width: 640px) {
+		.snap-actions {
+			white-space: normal;
+			display: flex;
+			flex-wrap: wrap;
+			gap: 0.35rem;
+		}
+		.snap-actions button + button {
+			margin-left: 0;
+		}
+		th,
+		td {
+			padding: 0.45rem 0.4rem;
+		}
+	}
 	button.del-snap {
 		color: var(--danger);
 		border-color: color-mix(in srgb, var(--danger) 45%, transparent);
