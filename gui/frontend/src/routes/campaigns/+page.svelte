@@ -14,8 +14,6 @@
 	// DEV-259: alert() 잔재 제거 — 앱 공용 toast 로 통일.
 	import { showToast } from '$lib/stores/toast';
 	import type { Campaign, CampaignSummary } from '$lib/types';
-	// 진행도 완료 판정 — 카드/상세와 같은 규칙(체크리스트+퀘스트 둘 다 고려).
-	import { isCampaignDone } from '$lib/utils/campaign-progress';
 	import { isDateOverdue } from '$lib/utils/datetime';
 
 	// BUG-025: sort 옵션을 localStorage 에 저장 (lib/utils/campaign-sort) →
@@ -69,16 +67,37 @@
 	}
 
 	/**
-	 * 목록 행에 보여줄 진행도 — 체크리스트와 연결 퀘스트를 **합쳐** 하나로.
-	 * 카드(CampaignCard)는 둘을 따로 두 줄로 보여주지만, 목록은 한 줄이라
-	 * 항목 수 기준으로 합산한다(둘 다 있으면 총합 대비 완료 수).
-	 * 둘 다 없으면 null → 바를 그리지 않는다.
+	 * 목록 행에 보여줄 진행도 — 체크리스트와 연결 퀘스트를 **따로**(admin 결정).
+	 * 카드(CampaignCard)와 같은 구성이라 두 화면의 읽는 법이 같아진다.
+	 * 항목이 없는 쪽은 줄 자체를 만들지 않는다(둘 다 없으면 빈 배열).
 	 */
-	function progressOf(c: CampaignSummary): { done: number; total: number; ratio: number } | null {
-		const total = (c.checklist_total ?? 0) + (c.quest_total ?? 0);
-		if (total === 0) return null;
-		const done = (c.checklist_checked ?? 0) + (c.quest_done ?? 0);
-		return { done, total, ratio: done / total };
+	function progressRows(
+		c: CampaignSummary
+	): { key: 'checklist' | 'quest'; done: number; total: number; ratio: number; full: boolean }[] {
+		const rows: {
+			key: 'checklist' | 'quest';
+			done: number;
+			total: number;
+			ratio: number;
+			full: boolean;
+		}[] = [];
+		const cTotal = c.checklist_total ?? 0;
+		if (cTotal > 0) {
+			const done = c.checklist_checked ?? 0;
+			rows.push({
+				key: 'checklist',
+				done,
+				total: cTotal,
+				ratio: done / cTotal,
+				full: done === cTotal
+			});
+		}
+		const qTotal = c.quest_total ?? 0;
+		if (qTotal > 0) {
+			const done = c.quest_done ?? 0;
+			rows.push({ key: 'quest', done, total: qTotal, ratio: done / qTotal, full: done === qTotal });
+		}
+		return rows;
 	}
 
 	/** 기간 표시 — 목록은 summary 를 쓰므로 두 타입에 공통인 필드만 받는다. */
@@ -145,9 +164,13 @@
 						<span class="title">{c.title}</span>
 						<!-- admin 요청: 목록에서도 진행도. 체크리스트 + 연결 퀘스트를
 						     합산한 하나의 바 + `완료/전체` 숫자. 둘 다 없으면 생략. -->
-						{#if progressOf(c)}
-							{@const p = progressOf(c)!}
+						{#each progressRows(c) as p (p.key)}
 							<span class="prog">
+								<span class="prog-label"
+									>{p.key === 'checklist'
+										? t('campaignList.progressChecklist', $locale)
+										: t('campaignList.progressQuests', $locale)}</span
+								>
 								<span
 									class="prog-bar"
 									role="img"
@@ -155,13 +178,13 @@
 								>
 									<span
 										class="prog-fill"
-										class:done={isCampaignDone(c)}
+										class:done={p.full}
 										style:width={`${Math.round(p.ratio * 100)}%`}
 									></span>
 								</span>
 								<span class="prog-text">{p.done}/{p.total}</span>
 							</span>
-						{/if}
+						{/each}
 					</a>
 					{#if sort === 'manual'}
 						<div class="reorder">
@@ -274,6 +297,12 @@
 		align-items: center;
 		gap: 0.5rem;
 		margin-top: 0.1rem;
+	}
+	.prog-label {
+		flex: none;
+		min-width: 3.2rem;
+		font-size: 0.72rem;
+		color: var(--text-faint);
 	}
 	.prog-bar {
 		flex: 1;

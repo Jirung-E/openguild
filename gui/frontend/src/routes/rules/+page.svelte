@@ -103,9 +103,7 @@
 		if (!selectedSlug) return;
 		try {
 			const updated = await rulesApi.setTags(selectedSlug, tags);
-			entries = entries.map((e) =>
-				e.slug === selectedSlug ? { ...e, tags: updated.tags } : e
-			);
+			entries = entries.map((e) => (e.slug === selectedSlug ? { ...e, tags: updated.tags } : e));
 		} catch (e) {
 			showToast(e instanceof Error ? e.message : t('rules.tagSaveFailed', $locale), 'error');
 		}
@@ -339,7 +337,9 @@
 			<aside class="sidebar">
 				<div class="sidebar-head">
 					<h2>{t('rules.listHeading', $locale)}</h2>
-					<button class="btn-new" onclick={openCreate} title={t('rules.newRule', $locale)}>{t('rules.newBtn', $locale)}</button>
+					<button class="btn-new" onclick={openCreate} title={t('rules.newRule', $locale)}
+						>{t('rules.newBtn', $locale)}</button
+					>
 				</div>
 				{#if allTagOptions.length > 0}
 					<div class="tag-filter-row" aria-label={t('rules.tagFilter', $locale)}>
@@ -399,7 +399,9 @@
 						{#if createError}<p class="err">{createError}</p>{/if}
 						<div class="actions">
 							<button class="btn-save" onclick={submitCreate}>{t('rules.create', $locale)}</button>
-							<button class="btn-cancel" onclick={cancelCreate}>{t('common.cancel', $locale)}</button>
+							<button class="btn-cancel" onclick={cancelCreate}
+								>{t('common.cancel', $locale)}</button
+							>
 						</div>
 					</div>
 				{/if}
@@ -421,10 +423,14 @@
 						{#if !editMode}
 							<div class="top-actions">
 								<button class="btn-edit" onclick={enterEdit}>
-									{selectedContent && selectedContent.trim() ? `✎ ${t('detail.edit', $locale)}` : t('rules.writeBtn', $locale)}
+									{selectedContent && selectedContent.trim()
+										? `✎ ${t('detail.edit', $locale)}`
+										: t('rules.writeBtn', $locale)}
 								</button>
 								<button class="btn-edit" onclick={openRename}>{t('rules.rename', $locale)}</button>
-								<button class="btn-edit danger" onclick={askDeleteSelected}>{t('detail.delete', $locale)}</button>
+								<button class="btn-edit danger" onclick={askDeleteSelected}
+									>{t('detail.delete', $locale)}</button
+								>
 							</div>
 						{/if}
 					</div>
@@ -467,8 +473,12 @@
 							/>
 							{#if renameError}<p class="err">{renameError}</p>{/if}
 							<div class="actions">
-								<button class="btn-save" onclick={submitRename}>{t('common.change', $locale)}</button>
-								<button class="btn-cancel" onclick={cancelRename}>{t('common.cancel', $locale)}</button>
+								<button class="btn-save" onclick={submitRename}
+									>{t('common.change', $locale)}</button
+								>
+								<button class="btn-cancel" onclick={cancelRename}
+									>{t('common.cancel', $locale)}</button
+								>
 							</div>
 						</div>
 					{/if}
@@ -480,14 +490,17 @@
 								<MarkdownEditor
 									bind:value={editText}
 									mediaOnly
-									onError={(msg) => (saveError = `${t('rules.attachUploadFailed', $locale)}: ${msg}`)}
+									onError={(msg) =>
+										(saveError = `${t('rules.attachUploadFailed', $locale)}: ${msg}`)}
 								/>
 							</div>
 							<div class="actions">
 								<button class="btn-save" onclick={save} disabled={saving}>
 									{saving ? t('common.saving', $locale) : t('common.save', $locale)}
 								</button>
-								<button class="btn-cancel" onclick={cancelEdit} disabled={saving}> {t('common.cancel', $locale)} </button>
+								<button class="btn-cancel" onclick={cancelEdit} disabled={saving}>
+									{t('common.cancel', $locale)}
+								</button>
 							</div>
 							{#if saveError}<p class="err">{saveError}</p>{/if}
 						</div>
@@ -547,7 +560,18 @@
 		gap: 1.25rem;
 		min-height: 70vh;
 	}
-	/* DEV-257(사용자 보고): 도서관과 동일 — 좁은 화면에서 240px 고정 열이
+	.sidebar {
+		border-right: 1px solid var(--bg-subtle);
+		padding-right: 1rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	/* BUG-200 후속 감사: 이 미디어 블록이 기본 `.sidebar` 규칙보다 **앞**에 있어
+	   border-right / padding-right override 가 순서에서 지고 있었다(좁은 화면에서도
+	   우측 테두리·여백이 남음). 기본 규칙 뒤로 옮긴다.
+	   DEV-257(사용자 보고): 도서관과 동일 — 좁은 화면에서 240px 고정 열이
 	   화면 대부분을 먹고 컨텐츠가 화면 밖으로 밀려 가로 스크롤/메뉴바 잘림이
 	   생겼다. 한 열로 쌓고 sidebar 는 자체 스크롤로 높이 제한. */
 	@media (max-width: 640px) {
@@ -562,13 +586,6 @@
 			max-height: 40vh;
 			overflow-y: auto;
 		}
-	}
-	.sidebar {
-		border-right: 1px solid var(--bg-subtle);
-		padding-right: 1rem;
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
 	}
 	.sidebar-head {
 		display: flex;

@@ -517,21 +517,6 @@
 	   width:100% 라도 내용 최소폭 아래로 못 줄어들어 **표가 섹션 밖으로** 나갔다
 	   (그때 tr 아래 테두리가 같이 나가 '구분선이 삐져나온' 것처럼 보인다).
 	   좁은 화면에선 버튼이 쌓이도록 풀고 셀 여백도 줄인다. */
-	@media (max-width: 640px) {
-		.snap-actions {
-			white-space: normal;
-			display: flex;
-			flex-wrap: wrap;
-			gap: 0.35rem;
-		}
-		.snap-actions button + button {
-			margin-left: 0;
-		}
-		th,
-		td {
-			padding: 0.45rem 0.4rem;
-		}
-	}
 	button.del-snap {
 		color: var(--danger);
 		border-color: color-mix(in srgb, var(--danger) 45%, transparent);
@@ -648,4 +633,22 @@
 		color: var(--text-muted);
 	}
 	/* DEV-259: 로컬 toast CSS 제거 — 전역 ToastHost 스타일 단일화. */
+
+	/* 위 주석의 수정 본체 — BUG-200 후속 감사에서 **순서 때문에 죽어 있던** 걸
+	   발견해 스타일 끝으로 옮겼다(th/td 여백 축소가 아래 기본 규칙에 밀렸다). */
+	@media (max-width: 640px) {
+		.snap-actions {
+			white-space: normal;
+			display: flex;
+			flex-wrap: wrap;
+			gap: 0.35rem;
+		}
+		.snap-actions button + button {
+			margin-left: 0;
+		}
+		th,
+		td {
+			padding: 0.45rem 0.4rem;
+		}
+	}
 </style>

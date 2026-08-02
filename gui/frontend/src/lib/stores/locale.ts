@@ -810,6 +810,9 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'campaignList.sortRemaining': { ko: '남은 날짜 순', en: 'Time remaining' },
 	'campaignList.sortManual': { ko: '수동 (display_order)', en: 'Manual (display_order)' },
 	'campaignList.empty': { ko: '캠페인 없음.', en: 'No campaigns.' },
+	// 목록 진행도 라벨 — 체크리스트/퀘스트를 따로 보여준다(admin 결정).
+	'campaignList.progressChecklist': { ko: '체크', en: 'Check' },
+	'campaignList.progressQuests': { ko: '퀘스트', en: 'Quests' },
 	'campaignList.periodUndefined': { ko: '기간 미정', en: 'No period set' },
 	'campaignList.orderChangeFailed': { ko: 'order 변경 실패', en: 'Failed to change order' },
 

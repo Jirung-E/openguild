@@ -1272,6 +1272,17 @@
 	   화면 밖으로 밀렸다 — 페이지에 가로 스크롤이 생기고 sticky 메뉴바까지
 	   잘려 보였다. 좁은 화면에서는 위/아래로 쌓고, sidebar 는 자체 스크롤
 	   영역으로 높이를 제한해 컨텐츠가 화면 아래로 밀려나지 않게 한다. */
+	.sidebar {
+		border-right: 1px solid var(--bg-subtle);
+		padding-right: 1rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	/* BUG-200 후속 감사(규칙 페이지와 동일): 이 블록이 기본 `.sidebar` 규칙보다
+	   **앞**에 있어 border-right / padding-right override 가 순서에서 지고 있었다.
+	   기본 규칙 뒤로 옮긴다 — 같은 우선순위면 뒤가 이긴다. */
 	@media (max-width: 640px) {
 		.layout,
 		.layout.single {
@@ -1286,13 +1297,6 @@
 			max-height: 45vh;
 			overflow-y: auto;
 		}
-	}
-	.sidebar {
-		border-right: 1px solid var(--bg-subtle);
-		padding-right: 1rem;
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
 	}
 	.sidebar-head {
 		display: flex;
