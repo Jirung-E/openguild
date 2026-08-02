@@ -11,36 +11,47 @@
 		depth,
 		hasChildren,
 		expanded,
-		ontoggle
+		ontoggle,
+		// admin 요청: 리스트 뷰는 접기/펼치기가 없으므로 토글 자리를 아예 비운다
+		// — 트리 뷰에서만 필요한 들여쓰기다.
+		flat = false
 	}: {
 		quest: Quest;
 		depth: number;
 		hasChildren: boolean;
 		expanded: boolean;
 		ontoggle: () => void;
+		flat?: boolean;
 	} = $props();
+
+	/** 2단(모바일) 배치에서 제목을 SLUG 와 같은 x 에 맞추기 위한 들여쓰기.
+	 *  트리 뷰는 토글 폭(20px) + gap(0.6rem) 만큼, 리스트 뷰는 0. */
+	const titleIndent = $derived(flat ? '0px' : 'calc(20px + 0.6rem)');
 </script>
 
 <div
 	class="item"
 	style:padding-left={`${depth * 1.5 + 1}rem`}
+	style:--title-indent={titleIndent}
 	role="button"
 	tabindex="0"
 	onclick={() => goto(`/quests/${quest.quest_id}?from=list`)}
 	onkeydown={(e) => e.key === 'Enter' && goto(`/quests/${quest.quest_id}?from=list`)}
 >
-	<!-- 접기/펼치기 -->
-	<button
-		class="toggle"
-		class:invisible={!hasChildren}
-		onclick={(e) => {
-			e.stopPropagation();
-			ontoggle();
-		}}
-		aria-label={expanded ? 'collapse' : 'expand'}
-	>
-		{expanded ? '▾' : '▸'}
-	</button>
+	<!-- 접기/펼치기 — 리스트 뷰에선 렌더하지 않는다(자리도 차지하지 않게). -->
+	{#if !flat}
+		<button
+			class="toggle"
+			class:invisible={!hasChildren}
+			onclick={(e) => {
+				e.stopPropagation();
+				ontoggle();
+			}}
+			aria-label={expanded ? 'collapse' : 'expand'}
+		>
+			{expanded ? '▾' : '▸'}
+		</button>
+	{/if}
 
 	<!-- 타입 뱃지 -->
 	<span class="badge type" style:--c={quest.type_color}>{quest.quest_id}</span>
@@ -209,6 +220,10 @@
 			order: 10;
 			flex: 1 1 100%;
 			min-width: 0;
+			/* admin 요청: 제목이 SLUG 보다 왼쪽에서 시작해 어긋나 보였다.
+			   트리 뷰는 토글 폭만큼 밀어 SLUG 와 같은 x 에서 시작하게 하고,
+			   리스트 뷰는 토글이 없으니 0(둘 다 왼쪽 끝). */
+			padding-left: var(--title-indent, 0px);
 		}
 	}
 </style>

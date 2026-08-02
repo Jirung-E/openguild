@@ -587,6 +587,7 @@
 					hasChildren={node.hasChildren}
 					expanded={expanded.has(node.quest.id)}
 					ontoggle={() => toggle(node.quest.id)}
+					flat={viewMode === 'list'}
 				/>
 			{/each}
 		</div>
