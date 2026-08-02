@@ -204,7 +204,9 @@
 	// explorer 모드 전용 — 현재 탐색 중인 폴더 경로("" = 최상위).
 	let explorerPath = $state('');
 	const explorerNode = $derived(explorerPath ? (tree.nodeMap.get(explorerPath) ?? null) : null);
-	const explorerFolders = $derived(explorerPath === '' ? tree.roots : (explorerNode?.children ?? []));
+	const explorerFolders = $derived(
+		explorerPath === '' ? tree.roots : (explorerNode?.children ?? [])
+	);
 	const explorerDocs = $derived(explorerPath === '' ? tree.rootDocs : (explorerNode?.docs ?? []));
 
 	// DEV-238 → BUG-127 후속(admin 보고): 예전엔 항상 전역 검색이었음 — 이제
@@ -612,8 +614,16 @@
 		<div class="explorer-toolbar">
 			<h1 class="page-title">{t('library.title', $locale)}</h1>
 			<div class="view-toggle">
-				<button class:on={isMode('tree')} onclick={() => setViewMode('tree')} title={t('library.treeView', $locale)}>☰</button>
-				<button class:on={isMode('explorer')} onclick={() => setViewMode('explorer')} title={t('library.iconView', $locale)}>▦</button>
+				<button
+					class:on={isMode('tree')}
+					onclick={() => setViewMode('tree')}
+					title={t('library.treeView', $locale)}>☰</button
+				>
+				<button
+					class:on={isMode('explorer')}
+					onclick={() => setViewMode('explorer')}
+					title={t('library.iconView', $locale)}>▦</button
+				>
 			</div>
 			<button class="btn-new" onclick={openCreateFolder}>{t('library.newFolder', $locale)}</button>
 			<button class="btn-new" onclick={openCreate}>{t('library.newDoc', $locale)}</button>
@@ -647,14 +657,20 @@
 						class="tag-filter-chip"
 						class:active={filterTags.has(tag)}
 						onclick={() => toggleTagFilter(tag)}
-						title={filterTags.has(tag) ? `${tag}${t('library.tagFilterOffPost', $locale)}` : `${tag}${t('library.tagFilterOnPost', $locale)}`}
+						title={filterTags.has(tag)
+							? `${tag}${t('library.tagFilterOffPost', $locale)}`
+							: `${tag}${t('library.tagFilterOnPost', $locale)}`}
 					>
 						{tag}
 						<span class="tag-chip-count">{tagCounts.get(tag) ?? 0}</span>
 					</button>
 				{/each}
 				{#if filterTags.size > 0}
-					<button class="tag-clear" onclick={() => (filterTags = new Set())} title={t('library.clearTagFiltersTitle', $locale)}>
+					<button
+						class="tag-clear"
+						onclick={() => (filterTags = new Set())}
+						title={t('library.clearTagFiltersTitle', $locale)}
+					>
 						{t('library.clearTagFilters', $locale)}
 					</button>
 				{/if}
@@ -694,7 +710,10 @@
 				{t('library.title', $locale)}
 			</button>
 			{#each explorerPath ? explorerPath.split('/') : [] as _seg, i (i)}
-				{@const partial = explorerPath.split('/').slice(0, i + 1).join('/')}
+				{@const partial = explorerPath
+					.split('/')
+					.slice(0, i + 1)
+					.join('/')}
 				<span class="crumb-sep">›</span>
 				<button
 					class="crumb"
@@ -728,8 +747,12 @@
 				/>
 				{#if createFolderError}<p class="err">{createFolderError}</p>{/if}
 				<div class="actions">
-					<button class="btn-save" onclick={submitCreateFolder}>{t('library.create', $locale)}</button>
-					<button class="btn-cancel" onclick={cancelCreateFolder}>{t('library.cancel', $locale)}</button>
+					<button class="btn-save" onclick={submitCreateFolder}
+						>{t('library.create', $locale)}</button
+					>
+					<button class="btn-cancel" onclick={cancelCreateFolder}
+						>{t('library.cancel', $locale)}</button
+					>
 				</div>
 			</div>
 		{/if}
@@ -772,7 +795,8 @@
 							     같은 자리가 비면 아이콘 높이가 서로 어긋난다(사용자 지적). 빈
 							     자리표시자로 높이를 맞춘다. -->
 							<span class="tile-sub" aria-hidden="true"></span>
-							<span class="tile-icon" aria-hidden="true"><Icon name="folder" size={28} /></span>
+							<!-- emoji-ok: DEV-326 admin 결정 — 도서관 타일은 이전(이모지) 모양 유지 -->
+							<span class="tile-icon" aria-hidden="true">📁</span>
 							<span class="tile-label" use:titlePopup={f.name}>{f.name}</span>
 						</button>
 					{/each}
@@ -784,7 +808,8 @@
 							onclick={() => select(b.book_id)}
 						>
 							<span class="tile-sub">{b.book_id}</span>
-							<span class="tile-icon" aria-hidden="true"><Icon name="doc" size={28} /></span>
+							<!-- emoji-ok: DEV-326 admin 결정 — 도서관 타일은 이전(이모지) 모양 유지 -->
+							<span class="tile-icon" aria-hidden="true">📄</span>
 							<span class="tile-label" use:titlePopup={b.title}>{b.title}</span>
 						</button>
 					{/each}
@@ -810,7 +835,8 @@
 						     같은 자리가 비면 아이콘 높이가 서로 어긋난다(사용자 지적). 빈
 						     자리표시자로 높이를 맞춘다. -->
 						<span class="tile-sub" aria-hidden="true"></span>
-						<span class="tile-icon" aria-hidden="true"><Icon name="folder" size={28} /></span>
+						<!-- emoji-ok: DEV-326 admin 결정 — 도서관 타일은 이전(이모지) 모양 유지 -->
+						<span class="tile-icon" aria-hidden="true">📁</span>
 						<span class="tile-label" use:titlePopup={f.name}>{f.name}</span>
 					</button>
 				{/each}
@@ -822,7 +848,8 @@
 						onclick={() => select(b.book_id)}
 					>
 						<span class="tile-sub">{b.book_id}</span>
-						<span class="tile-icon" aria-hidden="true"><Icon name="doc" size={28} /></span>
+						<!-- emoji-ok: DEV-326 admin 결정 — 도서관 타일은 이전(이모지) 모양 유지 -->
+						<span class="tile-icon" aria-hidden="true">📄</span>
 						<span class="tile-label" use:titlePopup={b.title}>{b.title}</span>
 					</button>
 				{/each}
@@ -848,13 +875,27 @@
 							{t('library.title', $locale)}
 						</h2>
 						<div class="view-toggle">
-							<button class:on={isMode('tree')} onclick={() => setViewMode('tree')} title={t('library.treeView', $locale)}>☰</button>
-							<button class:on={isMode('explorer')} onclick={() => setViewMode('explorer')} title={t('library.iconView', $locale)}>▦</button>
+							<button
+								class:on={isMode('tree')}
+								onclick={() => setViewMode('tree')}
+								title={t('library.treeView', $locale)}>☰</button
+							>
+							<button
+								class:on={isMode('explorer')}
+								onclick={() => setViewMode('explorer')}
+								title={t('library.iconView', $locale)}>▦</button
+							>
 						</div>
 					</div>
 					<div class="sidebar-actions">
-						<button class="btn-new" onclick={openCreateFolder} title={t('library.newFolder', $locale)}>{t('library.newFolder', $locale)}</button>
-						<button class="btn-new" onclick={openCreate} title={t('library.newDoc', $locale)}>{t('library.newDoc', $locale)}</button>
+						<button
+							class="btn-new"
+							onclick={openCreateFolder}
+							title={t('library.newFolder', $locale)}>{t('library.newFolder', $locale)}</button
+						>
+						<button class="btn-new" onclick={openCreate} title={t('library.newDoc', $locale)}
+							>{t('library.newDoc', $locale)}</button
+						>
 					</div>
 					<div class="search-row">
 						<input
@@ -865,7 +906,11 @@
 						/>
 						<!-- DEV-251: 문서 정렬 — quest list 의 sort-group 과 동일 패턴. -->
 						<div class="sort-group" aria-label={t('library.sortAria', $locale)}>
-							<select class="sort-sel" bind:value={docSortKey} title={t('library.sortTitle', $locale)}>
+							<select
+								class="sort-sel"
+								bind:value={docSortKey}
+								title={t('library.sortTitle', $locale)}
+							>
 								{#each Object.entries(DOC_SORT_LABELS) as [k, label] (k)}
 									<option value={k}>{label}</option>
 								{/each}
@@ -885,7 +930,9 @@
 									class="tag-filter-chip"
 									class:active={filterTags.has(tag)}
 									onclick={() => toggleTagFilter(tag)}
-									title={filterTags.has(tag) ? `${tag}${t('library.tagFilterOffPost', $locale)}` : `${tag}${t('library.tagFilterOnPost', $locale)}`}
+									title={filterTags.has(tag)
+										? `${tag}${t('library.tagFilterOffPost', $locale)}`
+										: `${tag}${t('library.tagFilterOnPost', $locale)}`}
 								>
 									{tag}
 									<span class="tag-chip-count">{tagCounts.get(tag) ?? 0}</span>
@@ -911,7 +958,8 @@
 							<div class="book-list">
 								{#each searchResults.folders as f (f.path)}
 									<button class="book-item" onclick={() => revealFolder(f.path)}>
-										<span class="book-id"><Icon name="folder" /></span>
+										<!-- emoji-ok: DEV-326 admin 결정 — 도서관 타일은 이전(이모지) 모양 유지 -->
+										<span class="book-id">📁</span>
 										<span class="book-title">{f.name}</span>
 										<span class="book-path">{f.path}</span>
 									</button>
@@ -971,8 +1019,12 @@
 							/>
 							{#if createFolderError}<p class="err">{createFolderError}</p>{/if}
 							<div class="actions">
-								<button class="btn-save" onclick={submitCreateFolder}>{t('library.create', $locale)}</button>
-								<button class="btn-cancel" onclick={cancelCreateFolder}>{t('library.cancel', $locale)}</button>
+								<button class="btn-save" onclick={submitCreateFolder}
+									>{t('library.create', $locale)}</button
+								>
+								<button class="btn-cancel" onclick={cancelCreateFolder}
+									>{t('library.cancel', $locale)}</button
+								>
 							</div>
 						</div>
 					{/if}
@@ -993,8 +1045,12 @@
 							</select>
 							{#if createError}<p class="err">{createError}</p>{/if}
 							<div class="actions">
-								<button class="btn-save" onclick={submitCreate}>{t('library.create', $locale)}</button>
-								<button class="btn-cancel" onclick={cancelCreate}>{t('library.cancel', $locale)}</button>
+								<button class="btn-save" onclick={submitCreate}
+									>{t('library.create', $locale)}</button
+								>
+								<button class="btn-cancel" onclick={cancelCreate}
+									>{t('library.cancel', $locale)}</button
+								>
 							</div>
 						</div>
 					{/if}
@@ -1014,7 +1070,9 @@
 				{:else}
 					<div class="top-bar">
 						{#if viewMode === 'explorer'}
-							<button class="btn-edit" onclick={explorerBack}>{t('library.backToList', $locale)}</button>
+							<button class="btn-edit" onclick={explorerBack}
+								>{t('library.backToList', $locale)}</button
+							>
 						{/if}
 						<!-- BUG-127(admin 요청): 뷰모드 토글은 트리/탐색기 목록 쪽에만 —
 						     여기(문서 상세)에 중복으로 있을 필요 없음. 아이콘 뷰에서 상세로
@@ -1026,31 +1084,48 @@
 						{#if !editMode}
 							<div class="top-actions">
 								<button class="btn-edit" onclick={enterEdit}>
-									{selected.body.trim() ? t('library.editDoc', $locale) : t('library.writeDoc', $locale)}
+									{selected.body.trim()
+										? t('library.editDoc', $locale)
+										: t('library.writeDoc', $locale)}
 								</button>
-								<button class="btn-edit" onclick={openRetitle}>{t('library.retitle', $locale)}</button>
-								<button class="btn-edit" onclick={openMove}>{t('library.moveFolder', $locale)}</button>
-								<button class="btn-edit danger" onclick={askDeleteSelected}>{t('library.delete', $locale)}</button>
+								<button class="btn-edit" onclick={openRetitle}
+									>{t('library.retitle', $locale)}</button
+								>
+								<button class="btn-edit" onclick={openMove}
+									>{t('library.moveFolder', $locale)}</button
+								>
+								<button class="btn-edit danger" onclick={askDeleteSelected}
+									>{t('library.delete', $locale)}</button
+								>
 							</div>
 						{/if}
 					</div>
 
 					{#if selected.path}
-						<p class="doc-path"><Icon name="folder" /> {selected.path}</p>
+						<!-- emoji-ok: DEV-326 admin 결정 — 도서관 타일은 이전(이모지) 모양 유지 -->
+						<p class="doc-path">📁 {selected.path}</p>
 					{/if}
 
 					<!-- DEV-182: 생성 / 변경 시각. -->
 					<div class="meta-times">
 						<span class="meta-item">
 							<span class="meta-label">{t('library.created', $locale)}</span>
-							<time class="meta-val" datetime={selected.created_at} title={formatTs(selected.created_at)}>
+							<time
+								class="meta-val"
+								datetime={selected.created_at}
+								title={formatTs(selected.created_at)}
+							>
 								{formatTs(selected.created_at)}
 							</time>
 						</span>
 						<span class="meta-sep">·</span>
 						<span class="meta-item">
 							<span class="meta-label">{t('library.updated', $locale)}</span>
-							<time class="meta-val" datetime={selected.updated_at} title={formatTs(selected.updated_at)}>
+							<time
+								class="meta-val"
+								datetime={selected.updated_at}
+								title={formatTs(selected.updated_at)}
+							>
 								{formatRelative(selected.updated_at, undefined, $locale)}
 							</time>
 						</span>
@@ -1067,8 +1142,12 @@
 							/>
 							{#if retitleError}<p class="err">{retitleError}</p>{/if}
 							<div class="actions">
-								<button class="btn-save" onclick={submitRetitle}>{t('library.change', $locale)}</button>
-								<button class="btn-cancel" onclick={cancelRetitle}>{t('library.cancel', $locale)}</button>
+								<button class="btn-save" onclick={submitRetitle}
+									>{t('library.change', $locale)}</button
+								>
+								<button class="btn-cancel" onclick={cancelRetitle}
+									>{t('library.cancel', $locale)}</button
+								>
 							</div>
 						</div>
 					{/if}
@@ -1084,7 +1163,9 @@
 							{#if moveError}<p class="err">{moveError}</p>{/if}
 							<div class="actions">
 								<button class="btn-save" onclick={submitMove}>{t('library.move', $locale)}</button>
-								<button class="btn-cancel" onclick={cancelMove}>{t('library.cancel', $locale)}</button>
+								<button class="btn-cancel" onclick={cancelMove}
+									>{t('library.cancel', $locale)}</button
+								>
 							</div>
 						</div>
 					{/if}
@@ -1104,7 +1185,9 @@
 								<button class="btn-save" onclick={save} disabled={saving}>
 									{saving ? t('worklogPage.saving', $locale) : t('worklogPage.save', $locale)}
 								</button>
-								<button class="btn-cancel" onclick={cancelEdit} disabled={saving}> {t('library.cancel', $locale)} </button>
+								<button class="btn-cancel" onclick={cancelEdit} disabled={saving}>
+									{t('library.cancel', $locale)}
+								</button>
 							</div>
 							{#if saveError}<p class="err">{saveError}</p>{/if}
 						</div>

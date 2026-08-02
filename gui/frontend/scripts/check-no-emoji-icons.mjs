@@ -107,7 +107,12 @@ function scan(rel, text, startLine, origLines) {
 		// DEV-302: 그 줄이 의도적인 이모지면 `emoji-ok` 주석으로 표시 — 파일 전체를
 		// ALLOW_FILES 로 빼면 같은 파일의 나머지 마크업까지 검사에서 빠진다.
 		// (주석은 위에서 지워지므로 원본 줄에서 확인.)
-		if (origLines[startLine + i - 1]?.includes('emoji-ok')) return;
+		//
+		// DEV-326: **바로 윗줄**도 본다 — prettier 가 긴 줄을 접으면서 같은 줄에
+		// 둔 주석을 위로 밀어내기 때문에, 같은 줄만 보면 포맷 한 번에 표식이
+		// 떨어져 나간다.
+		const idx = startLine + i - 1;
+		if (origLines[idx]?.includes('emoji-ok') || origLines[idx - 1]?.includes('emoji-ok')) return;
 		for (const ch of line) {
 			const cp = ch.codePointAt(0);
 			if (isColorEmoji(cp)) {
