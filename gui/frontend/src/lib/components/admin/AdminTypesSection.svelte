@@ -129,7 +129,10 @@
 				color: newColor,
 				description: newDesc.trim() || null
 			});
-			onmessage({ kind: 'success', text: `${t('adminTypes.addedPre', $locale)}${prefix}${t('adminTypes.addedPost', $locale)}` });
+			onmessage({
+				kind: 'success',
+				text: `${t('adminTypes.addedPre', $locale)}${prefix}${t('adminTypes.addedPost', $locale)}`
+			});
 			creating = false;
 			await refresh();
 		} catch (e) {
@@ -150,7 +153,10 @@
 		busy = true;
 		try {
 			await adminApi.deleteType(target.prefix);
-			onmessage({ kind: 'success', text: `${t('adminTypes.deletedPre', $locale)}${target.prefix}${t('adminTypes.deletedPost', $locale)}` });
+			onmessage({
+				kind: 'success',
+				text: `${t('adminTypes.deletedPre', $locale)}${target.prefix}${t('adminTypes.deletedPost', $locale)}`
+			});
 			await refresh();
 		} catch (e) {
 			onmessage({ kind: 'error', text: `${t('adminTypes.deleteFailedPre', $locale)}${e}` });
@@ -175,69 +181,79 @@
 		<!-- BUG-143: 좁은 폭에서 셀 내용이 줄바꿈되며 깨지는 대신 표 자체를
 		     가로 스크롤 — 셀은 nowrap(아래 CSS)로 고정. -->
 		<div class="table-wrap">
-		<table>
-			<thead>
-				<tr>
-					<th style="width: 6ch">prefix</th>
-					<th style="width: 5ch">{t('adminTypes.colColor', $locale)}</th>
-					<th>{t('adminTypes.colDesc', $locale)}</th>
-					<th style="width: 8ch">{t('adminTypes.colInUse', $locale)}</th>
-					<th style="width: 14ch"></th>
-				</tr>
-			</thead>
-			<tbody>
-				{#each types as ty (ty.id)}
+			<table>
+				<thead>
 					<tr>
-						{#if editing === ty.prefix}
-							<!-- BUG-018: prefix 도 inline 편집 가능. 변경 시 cascade confirm. -->
-							<td>
-								<input
-									type="text"
-									bind:value={editPrefix}
-									maxlength="6"
-									pattern="[A-Z0-9]+"
-									title={t('adminTypes.prefixTitle', $locale)}
-									disabled={busy}
-									class="prefix-input"
-								/>
-							</td>
-							<td>
-								<input type="color" bind:value={editColor} disabled={busy} />
-							</td>
-							<td>
-								<input type="text" bind:value={editDesc} placeholder={t('adminTypes.descPlaceholder', $locale)} disabled={busy} />
-							</td>
-							<td class="count">{ty.quest_count}</td>
-							<td class="row-actions">
-								<button class="save" onclick={saveEdit} disabled={busy}>{t('common.save', $locale)}</button>
-								<button onclick={cancelEdit} disabled={busy}>{t('common.cancel', $locale)}</button>
-							</td>
-						{:else}
-							<td><code>{ty.prefix}</code></td>
-							<td>
-								<span class="swatch" style="background: {ty.color}"></span>
-								<code class="hex">{ty.color}</code>
-							</td>
-							<td class="desc">{ty.description ?? ''}</td>
-							<td class="count">{ty.quest_count}</td>
-							<td class="row-actions">
-								<button onclick={() => startEdit(ty)} disabled={busy}>{t('adminTypes.edit', $locale)}</button>
-								<button
-									class="danger"
-									onclick={() => askDelete(ty)}
-									disabled={busy || ty.quest_count > 0}
-									title={ty.quest_count > 0
-										? `${t('adminTypes.inUsePre', $locale)}${ty.quest_count}${t('adminTypes.inUsePost', $locale)}`
-										: t('detail.delete', $locale)}
-								>
-									{t('detail.delete', $locale)}
-								</button>
-							</td>
-						{/if}
+						<th style="width: 6ch">prefix</th>
+						<th style="width: 5ch">{t('adminTypes.colColor', $locale)}</th>
+						<th>{t('adminTypes.colDesc', $locale)}</th>
+						<th style="width: 8ch">{t('adminTypes.colInUse', $locale)}</th>
+						<th style="width: 14ch"></th>
 					</tr>
-				{/each}
-			</tbody>
-		</table>
+				</thead>
+				<tbody>
+					{#each types as ty (ty.id)}
+						<tr>
+							{#if editing === ty.prefix}
+								<!-- BUG-018: prefix 도 inline 편집 가능. 변경 시 cascade confirm. -->
+								<td>
+									<input
+										type="text"
+										bind:value={editPrefix}
+										maxlength="6"
+										pattern="[A-Z0-9]+"
+										title={t('adminTypes.prefixTitle', $locale)}
+										disabled={busy}
+										class="prefix-input"
+									/>
+								</td>
+								<td>
+									<input type="color" bind:value={editColor} disabled={busy} />
+								</td>
+								<td>
+									<input
+										type="text"
+										bind:value={editDesc}
+										placeholder={t('adminTypes.descPlaceholder', $locale)}
+										disabled={busy}
+									/>
+								</td>
+								<td class="count">{ty.quest_count}</td>
+								<td class="row-actions">
+									<button class="save" onclick={saveEdit} disabled={busy}
+										>{t('common.save', $locale)}</button
+									>
+									<button onclick={cancelEdit} disabled={busy}>{t('common.cancel', $locale)}</button
+									>
+								</td>
+							{:else}
+								<td><code>{ty.prefix}</code></td>
+								<td>
+									<span class="swatch" style="background: {ty.color}"></span>
+									<code class="hex">{ty.color}</code>
+								</td>
+								<td class="desc">{ty.description ?? ''}</td>
+								<td class="count">{ty.quest_count}</td>
+								<td class="row-actions">
+									<button onclick={() => startEdit(ty)} disabled={busy}
+										>{t('adminTypes.edit', $locale)}</button
+									>
+									<button
+										class="danger"
+										onclick={() => askDelete(ty)}
+										disabled={busy || ty.quest_count > 0}
+										title={ty.quest_count > 0
+											? `${t('adminTypes.inUsePre', $locale)}${ty.quest_count}${t('adminTypes.inUsePost', $locale)}`
+											: t('detail.delete', $locale)}
+									>
+										{t('detail.delete', $locale)}
+									</button>
+								</td>
+							{/if}
+						</tr>
+					{/each}
+				</tbody>
+			</table>
 		</div>
 		<p class="hint">{t('adminTypes.renameCascadeHint', $locale)}</p>
 	{/if}
@@ -265,12 +281,21 @@
 				</label>
 				<label>
 					<span>{t('adminTypes.colDesc', $locale)}</span>
-					<input type="text" bind:value={newDesc} placeholder={t('adminTypes.descShortPlaceholder', $locale)} disabled={busy} />
+					<input
+						type="text"
+						bind:value={newDesc}
+						placeholder={t('adminTypes.descShortPlaceholder', $locale)}
+						disabled={busy}
+					/>
 				</label>
 			</div>
 			<div class="modal-actions">
-				<button class="btn-yes" onclick={doCreate} disabled={busy}>{t('common.add', $locale)}</button>
-				<button class="btn-no" onclick={() => (creating = false)} disabled={busy}>{t('common.cancel', $locale)}</button>
+				<button class="btn-yes" onclick={doCreate} disabled={busy}
+					>{t('common.add', $locale)}</button
+				>
+				<button class="btn-no" onclick={() => (creating = false)} disabled={busy}
+					>{t('common.cancel', $locale)}</button
+				>
 			</div>
 		</div>
 	</div>
@@ -282,11 +307,16 @@
 			<h3 class="modal-title">{t('adminTypes.deleteTypeTitle', $locale)}</h3>
 			<p class="modal-msg">
 				<strong>{confirmDelete.prefix}</strong>{t('adminTypes.deleteMsg1', $locale)}<br />
-				{t('adminTypes.deleteMsg2', $locale)}<code>.guild/types/{confirmDelete.prefix}.toml</code>{t('adminTypes.deleteMsg3', $locale)}
+				{t('adminTypes.deleteMsg2', $locale)}<code>.guild/types/{confirmDelete.prefix}.toml</code
+				>{t('adminTypes.deleteMsg3', $locale)}
 			</p>
 			<div class="modal-actions">
-				<button class="btn-yes danger" onclick={doDelete} disabled={busy}>{t('detail.delete', $locale)}</button>
-				<button class="btn-no" onclick={() => (confirmDelete = null)} disabled={busy}>{t('common.cancel', $locale)}</button>
+				<button class="btn-yes danger" onclick={doDelete} disabled={busy}
+					>{t('detail.delete', $locale)}</button
+				>
+				<button class="btn-no" onclick={() => (confirmDelete = null)} disabled={busy}
+					>{t('common.cancel', $locale)}</button
+				>
 			</div>
 		</div>
 	</div>
@@ -321,6 +351,9 @@
 	}
 	.section-header {
 		display: flex;
+		/* BUG-196: 라벨이 긴 언어(영어)에서 제목+버튼이 한 줄을 넘겨 섹션 밖으로
+		   삐져나왔다. 줄바꿈을 허용해 버튼 묶음이 아래로 내려가게. */
+		flex-wrap: wrap;
 		align-items: center;
 		justify-content: space-between;
 		margin-bottom: 1rem;
@@ -331,6 +364,7 @@
 	}
 	.actions {
 		display: flex;
+		flex-wrap: wrap;
 		gap: 0.5rem;
 	}
 	button {

@@ -4128,6 +4128,13 @@
 		align-items: center;
 		gap: 4px;
 		pointer-events: auto;
+		/* BUG-193: 좁은 화면에서 툴바가 한 줄로 뻗어 화면 왼쪽 밖으로 나갔다
+		   (오른쪽 고정이라 넘치는 쪽이 왼쪽). 왼쪽 경계를 주고 줄바꿈을 허용해
+		   넘치는 버튼이 아랫줄로 내려가게 한다. */
+		left: 14px;
+		flex-wrap: wrap;
+		justify-content: flex-end;
+		row-gap: 4px;
 	}
 	/* New Quest 가 있으면 도구바를 그 아래로 내림 — 새 퀘스트 버튼 높이 (~32px) + 여백. */
 	.toolbar.has-newquest {

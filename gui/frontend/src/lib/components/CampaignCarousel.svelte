@@ -70,6 +70,31 @@
 	function next() {
 		idx = (idx + 1) % summaries.length;
 	}
+
+	// BUG-191: 폰에서 카드를 손가락으로 넘길 수 없었다(화살표/점만 가능).
+	// 가로 스와이프를 좌우 이동으로 해석한다 — 세로 스크롤은 브라우저에 그대로
+	// 넘기려고 touch-action: pan-y 를 함께 둔다(아래 CSS).
+	const SWIPE_MIN_PX = 40;
+	let swipeStartX = 0;
+	let swipeStartY = 0;
+	let swiping = false;
+	function onSwipeStart(e: PointerEvent) {
+		if (summaries.length < 2) return;
+		swiping = true;
+		swipeStartX = e.clientX;
+		swipeStartY = e.clientY;
+	}
+	function onSwipeEnd(e: PointerEvent) {
+		if (!swiping) return;
+		swiping = false;
+		const dx = e.clientX - swipeStartX;
+		const dy = e.clientY - swipeStartY;
+		// 세로가 더 큰 움직임은 스크롤 의도 — 무시.
+		if (Math.abs(dx) < SWIPE_MIN_PX || Math.abs(dx) <= Math.abs(dy)) return;
+		userPaused = true; // 직접 넘겼으면 자동 회전은 멈춘다(기존 화살표와 동일).
+		if (dx < 0) next();
+		else prev();
+	}
 </script>
 
 <div
@@ -78,6 +103,9 @@
 	aria-label={t('carousel.active', $locale)}
 	onmouseenter={() => (hoverPause = true)}
 	onmouseleave={() => (hoverPause = false)}
+	onpointerdown={onSwipeStart}
+	onpointerup={onSwipeEnd}
+	onpointercancel={() => (swiping = false)}
 >
 	{#if summaries.length === 0}
 		<div class="empty">{displayEmpty}</div>
@@ -94,7 +122,9 @@
 
 		{#if summaries.length > 1}
 			<div class="controls">
-				<button class="arrow" type="button" onclick={prev} aria-label={t('carousel.prev', $locale)}>‹</button>
+				<button class="arrow" type="button" onclick={prev} aria-label={t('carousel.prev', $locale)}
+					>‹</button
+				>
 				<div class="dots" role="tablist">
 					{#each summaries as _s, i (i)}
 						<button
@@ -106,7 +136,9 @@
 						></button>
 					{/each}
 				</div>
-				<button class="arrow" type="button" onclick={next} aria-label={t('carousel.next', $locale)}>›</button>
+				<button class="arrow" type="button" onclick={next} aria-label={t('carousel.next', $locale)}
+					>›</button
+				>
 				<!-- BUG-027: 자동 회전 정지/재생 토글. -->
 				<button
 					class="play-pause"
@@ -128,6 +160,8 @@
 		flex-direction: column;
 		gap: 0.5rem;
 		padding: 0.25rem 0 0.5rem 0;
+		/* BUG-191: 가로 스와이프는 우리가, 세로 스크롤은 브라우저가. */
+		touch-action: pan-y;
 	}
 	.empty {
 		color: var(--text-faint);

@@ -678,6 +678,27 @@
 		gap: 0.3rem;
 		align-items: center;
 	}
+	/* BUG-194: 좁은 화면에선 머리말이 목록을 밀어낸다 — 여백을 줄이고 태그 칩은
+	   줄바꿈 대신 그 줄만 가로 스크롤(설정 페이지 탭과 같은 방식). */
+	@media (max-width: 640px) {
+		.view-toggle-row {
+			gap: 0.5rem;
+			margin: 0.3rem 0 0.5rem;
+			padding: 0 0.75rem;
+		}
+		.tag-filter-row {
+			flex-wrap: nowrap;
+			overflow-x: auto;
+			scrollbar-width: none;
+			max-width: 100%;
+		}
+		.tag-filter-row::-webkit-scrollbar {
+			display: none;
+		}
+		.tag-filter-chip {
+			flex: none;
+		}
+	}
 	/* DEV-033: 정렬 select + 방향 토글. */
 	.sort-group {
 		display: flex;

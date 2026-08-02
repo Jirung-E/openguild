@@ -138,7 +138,10 @@
 				name_ko: ko,
 				color: newColor
 			});
-			onmessage({ kind: 'success', text: `${t('adminTypes.addedPre', $locale)}${en}${t('adminTypes.addedPost', $locale)}` });
+			onmessage({
+				kind: 'success',
+				text: `${t('adminTypes.addedPre', $locale)}${en}${t('adminTypes.addedPost', $locale)}`
+			});
 			creating = false;
 			await refresh();
 		} catch (e) {
@@ -159,7 +162,10 @@
 		busy = true;
 		try {
 			await adminApi.deleteStatus(target.slug);
-			onmessage({ kind: 'success', text: `${t('adminTypes.deletedPre', $locale)}${target.slug}${t('adminTypes.deletedPost', $locale)}` });
+			onmessage({
+				kind: 'success',
+				text: `${t('adminTypes.deletedPre', $locale)}${target.slug}${t('adminTypes.deletedPost', $locale)}`
+			});
 			await refresh();
 		} catch (e) {
 			onmessage({ kind: 'error', text: `${t('adminStatuses.deleteFailedPre', $locale)}${e}` });
@@ -183,104 +189,113 @@
 	{:else}
 		<!-- BUG-143: 좁은 폭에서 셀 줄바꿈 대신 표 가로 스크롤. -->
 		<div class="table-wrap">
-		<table>
-			<thead>
-				<tr>
-					<th style="width: 12ch">slug</th>
-					<th>name_en</th>
-					<!-- DEV-015: 기본 언어=영어면 name_ko 열 자체를 숨김(시각 잡음 제거).
-					     한국어일 때만 노출 — 여전히 선택 입력. -->
-					{#if $locale === 'ko'}
-						<th>name_ko</th>
-					{/if}
-					<th style="width: 5ch">{t('adminTypes.colColor', $locale)}</th>
-					<!-- DEV-093: 캠페인 진행도용 "완료" 카운트 토글. -->
-					<th style="width: 7ch" title={t('adminStatuses.doneColTitle', $locale)}>{t('adminStatuses.doneCol', $locale)}</th>
-					<th style="width: 8ch">{t('adminTypes.colInUse', $locale)}</th>
-					<th style="width: 14ch"></th>
-				</tr>
-			</thead>
-			<tbody>
-				{#each statuses as s (s.id)}
+			<table>
+				<thead>
 					<tr>
-						{#if editing === s.slug}
-							<!-- BUG-018: slug 도 inline 편집 가능. 변경 시 cascade confirm. -->
-							<td>
-								<input
-									type="text"
-									bind:value={editSlug}
-									maxlength="32"
-									pattern="[a-z0-9_]+"
-									title={t('adminStatuses.slugTitle', $locale)}
-									disabled={busy}
-									class="slug-input"
-								/>
-							</td>
-							<td>
-								<input
-									type="text"
-									bind:value={editNameEn}
-									maxlength="32"
-									pattern="[A-Za-z][A-Za-z0-9 _\-]*"
-									title={t('adminStatuses.nameEnTitle', $locale)}
-									disabled={busy}
-								/>
-							</td>
-							{#if $locale === 'ko'}
+						<th style="width: 12ch">slug</th>
+						<th>name_en</th>
+						<!-- DEV-015: 기본 언어=영어면 name_ko 열 자체를 숨김(시각 잡음 제거).
+					     한국어일 때만 노출 — 여전히 선택 입력. -->
+						{#if $locale === 'ko'}
+							<th>name_ko</th>
+						{/if}
+						<th style="width: 5ch">{t('adminTypes.colColor', $locale)}</th>
+						<!-- DEV-093: 캠페인 진행도용 "완료" 카운트 토글. -->
+						<th style="width: 7ch" title={t('adminStatuses.doneColTitle', $locale)}
+							>{t('adminStatuses.doneCol', $locale)}</th
+						>
+						<th style="width: 8ch">{t('adminTypes.colInUse', $locale)}</th>
+						<th style="width: 14ch"></th>
+					</tr>
+				</thead>
+				<tbody>
+					{#each statuses as s (s.id)}
+						<tr>
+							{#if editing === s.slug}
+								<!-- BUG-018: slug 도 inline 편집 가능. 변경 시 cascade confirm. -->
 								<td>
-									<input type="text" bind:value={editNameKo} maxlength="32" disabled={busy} />
+									<input
+										type="text"
+										bind:value={editSlug}
+										maxlength="32"
+										pattern="[a-z0-9_]+"
+										title={t('adminStatuses.slugTitle', $locale)}
+										disabled={busy}
+										class="slug-input"
+									/>
+								</td>
+								<td>
+									<input
+										type="text"
+										bind:value={editNameEn}
+										maxlength="32"
+										pattern="[A-Za-z][A-Za-z0-9 _\-]*"
+										title={t('adminStatuses.nameEnTitle', $locale)}
+										disabled={busy}
+									/>
+								</td>
+								{#if $locale === 'ko'}
+									<td>
+										<input type="text" bind:value={editNameKo} maxlength="32" disabled={busy} />
+									</td>
+								{/if}
+								<td><input type="color" bind:value={editColor} disabled={busy} /></td>
+								<td style="text-align: center;">
+									<input
+										type="checkbox"
+										bind:checked={editCountsAsDone}
+										disabled={busy}
+										title={t('adminStatuses.countsAsDoneTitle', $locale)}
+									/>
+								</td>
+								<td class="count">{s.quest_count}</td>
+								<td class="row-actions">
+									<button class="save" onclick={saveEdit} disabled={busy}
+										>{t('common.save', $locale)}</button
+									>
+									<button onclick={cancelEdit} disabled={busy}>{t('common.cancel', $locale)}</button
+									>
+								</td>
+							{:else}
+								<td><code>{s.slug}</code></td>
+								<td>{s.name_en}</td>
+								{#if $locale === 'ko'}
+									<td>{s.name_ko || '—'}</td>
+								{/if}
+								<td>
+									<span class="swatch" style="background: {s.color}"></span>
+									<code class="hex">{s.color}</code>
+								</td>
+								<td style="text-align: center;">
+									{#if s.counts_as_done}
+										<span class="done-mark" title={t('adminStatuses.countsAsDoneMark', $locale)}
+											>✓</span
+										>
+									{:else}
+										<span class="dim">—</span>
+									{/if}
+								</td>
+								<td class="count">{s.quest_count}</td>
+								<td class="row-actions">
+									<button onclick={() => startEdit(s)} disabled={busy}
+										>{t('adminTypes.edit', $locale)}</button
+									>
+									<button
+										class="danger"
+										onclick={() => askDelete(s)}
+										disabled={busy || s.quest_count > 0}
+										title={s.quest_count > 0
+											? `${t('adminTypes.inUsePre', $locale)}${s.quest_count}${t('adminTypes.inUsePost', $locale)}`
+											: t('detail.delete', $locale)}
+									>
+										{t('detail.delete', $locale)}
+									</button>
 								</td>
 							{/if}
-							<td><input type="color" bind:value={editColor} disabled={busy} /></td>
-							<td style="text-align: center;">
-								<input
-									type="checkbox"
-									bind:checked={editCountsAsDone}
-									disabled={busy}
-									title={t('adminStatuses.countsAsDoneTitle', $locale)}
-								/>
-							</td>
-							<td class="count">{s.quest_count}</td>
-							<td class="row-actions">
-								<button class="save" onclick={saveEdit} disabled={busy}>{t('common.save', $locale)}</button>
-								<button onclick={cancelEdit} disabled={busy}>{t('common.cancel', $locale)}</button>
-							</td>
-						{:else}
-							<td><code>{s.slug}</code></td>
-							<td>{s.name_en}</td>
-							{#if $locale === 'ko'}
-								<td>{s.name_ko || '—'}</td>
-							{/if}
-							<td>
-								<span class="swatch" style="background: {s.color}"></span>
-								<code class="hex">{s.color}</code>
-							</td>
-							<td style="text-align: center;">
-								{#if s.counts_as_done}
-									<span class="done-mark" title={t('adminStatuses.countsAsDoneMark', $locale)}>✓</span>
-								{:else}
-									<span class="dim">—</span>
-								{/if}
-							</td>
-							<td class="count">{s.quest_count}</td>
-							<td class="row-actions">
-								<button onclick={() => startEdit(s)} disabled={busy}>{t('adminTypes.edit', $locale)}</button>
-								<button
-									class="danger"
-									onclick={() => askDelete(s)}
-									disabled={busy || s.quest_count > 0}
-									title={s.quest_count > 0
-										? `${t('adminTypes.inUsePre', $locale)}${s.quest_count}${t('adminTypes.inUsePost', $locale)}`
-										: t('detail.delete', $locale)}
-								>
-									{t('detail.delete', $locale)}
-								</button>
-							</td>
-						{/if}
-					</tr>
-				{/each}
-			</tbody>
-		</table>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
 		</div>
 		<p class="hint">{t('adminStatuses.slugFrozenHint', $locale)}</p>
 	{/if}
@@ -324,8 +339,12 @@
 			</div>
 			<p class="form-note">{t('adminStatuses.newStatusNote', $locale)}</p>
 			<div class="modal-actions">
-				<button class="btn-yes" onclick={doCreate} disabled={busy}>{t('common.add', $locale)}</button>
-				<button class="btn-no" onclick={() => (creating = false)} disabled={busy}>{t('common.cancel', $locale)}</button>
+				<button class="btn-yes" onclick={doCreate} disabled={busy}
+					>{t('common.add', $locale)}</button
+				>
+				<button class="btn-no" onclick={() => (creating = false)} disabled={busy}
+					>{t('common.cancel', $locale)}</button
+				>
 			</div>
 		</div>
 	</div>
@@ -336,13 +355,23 @@
 		<div class="modal" role="dialog" aria-modal="true" tabindex="-1">
 			<h3 class="modal-title">{t('adminStatuses.deleteStatusTitle', $locale)}</h3>
 			<p class="modal-msg">
-				<strong>{confirmDelete.name_en}</strong> (<code>{confirmDelete.slug}</code>){t('adminStatuses.deleteMsg1', $locale)}
+				<strong>{confirmDelete.name_en}</strong> (<code>{confirmDelete.slug}</code>){t(
+					'adminStatuses.deleteMsg1',
+					$locale
+				)}
 				<br />
-				{t('adminStatuses.deleteMsg2', $locale)}<code>.guild/statuses/</code>{t('adminStatuses.deleteMsg3', $locale)}
+				{t('adminStatuses.deleteMsg2', $locale)}<code>.guild/statuses/</code>{t(
+					'adminStatuses.deleteMsg3',
+					$locale
+				)}
 			</p>
 			<div class="modal-actions">
-				<button class="btn-yes danger" onclick={doDelete} disabled={busy}>{t('detail.delete', $locale)}</button>
-				<button class="btn-no" onclick={() => (confirmDelete = null)} disabled={busy}>{t('common.cancel', $locale)}</button>
+				<button class="btn-yes danger" onclick={doDelete} disabled={busy}
+					>{t('detail.delete', $locale)}</button
+				>
+				<button class="btn-no" onclick={() => (confirmDelete = null)} disabled={busy}
+					>{t('common.cancel', $locale)}</button
+				>
 			</div>
 		</div>
 	</div>
@@ -376,6 +405,9 @@
 	}
 	.section-header {
 		display: flex;
+		/* BUG-196: 라벨이 긴 언어(영어)에서 제목+버튼이 한 줄을 넘겨 섹션 밖으로
+		   삐져나왔다. 줄바꿈을 허용해 버튼 묶음이 아래로 내려가게. */
+		flex-wrap: wrap;
 		align-items: center;
 		justify-content: space-between;
 		margin-bottom: 1rem;
@@ -386,6 +418,7 @@
 	}
 	.actions {
 		display: flex;
+		flex-wrap: wrap;
 		gap: 0.5rem;
 	}
 	button {

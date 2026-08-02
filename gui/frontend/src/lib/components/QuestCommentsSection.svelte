@@ -1760,7 +1760,18 @@
 		font-size: 0.78rem;
 		color: var(--text-muted);
 		margin-bottom: 0.4rem;
+		/* BUG-195: 좁은 화면에서 한 줄에 안 들어가면 날짜가 "2026. 8." / "2. 오후" /
+		   "7:08:32" 처럼 조각나 세 줄로 흩어졌고, 영어 UI 에선 액션(Discussion/
+		   Edit/Delete)이 화면 밖으로 나가 가로 스크롤이 생겼다. 줄바꿈을 허용하고
+		   각 조각은 붙여 둔다. */
+		flex-wrap: wrap;
+		row-gap: 0.25rem;
 	}
+	.entry-head > * {
+		/* 날짜·작성자·번호가 조각나지 않게 — 줄바꿈은 항목 사이에서만. */
+		white-space: nowrap;
+	}
+
 	.author {
 		font-weight: 600;
 		color: var(--text);

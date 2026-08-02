@@ -465,12 +465,16 @@
 	}
 	.section-header {
 		display: flex;
+		/* BUG-196: 라벨이 긴 언어(영어)에서 제목+버튼이 한 줄을 넘겨 섹션 밖으로
+		   삐져나왔다. 줄바꿈을 허용해 버튼 묶음이 아래로 내려가게. */
+		flex-wrap: wrap;
 		align-items: center;
 		justify-content: space-between;
 		margin-bottom: 1rem;
 	}
 	.actions {
 		display: flex;
+		flex-wrap: wrap;
 		gap: 0.5rem;
 	}
 	button {

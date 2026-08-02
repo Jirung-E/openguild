@@ -1045,6 +1045,8 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'filter.clearSearch': { ko: '검색어 지우기', en: 'Clear search' },
 	'filter.titleOnly': { ko: '제목만', en: 'Title only' },
 	'filter.advanced': { ko: '고급', en: 'Advanced' },
+	// BUG-194: 좁은 화면에서 타입/상태 칩 줄을 접는 토글 라벨.
+	'filter.chips': { ko: '필터', en: 'Filters' },
 	'filter.urgency': { ko: '긴급도', en: 'Urgency' },
 	'filter.prereqLabel': { ko: '선행', en: 'Prereq' },
 	'filter.subLabel': { ko: '서브', en: 'Sub' },

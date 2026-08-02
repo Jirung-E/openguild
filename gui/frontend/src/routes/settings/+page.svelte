@@ -154,7 +154,10 @@
 	function importPresets() {
 		try {
 			const n = importPresetsJson(importText);
-			showToast(`${t('settings.importedPresetsPre', $locale)}${n}${t('settings.importedPresetsPost', $locale)}`, 'success');
+			showToast(
+				`${t('settings.importedPresetsPre', $locale)}${n}${t('settings.importedPresetsPost', $locale)}`,
+				'success'
+			);
 			importText = '';
 			importing = false;
 		} catch (e) {
@@ -261,13 +264,15 @@
 							class="th-btn"
 							class:active={$editorSettings.tabMode === 'tab'}
 							onclick={() => setTabMode('tab')}
-							aria-pressed={$editorSettings.tabMode === 'tab'}>{t('settings.tabChar', $locale)}</button
+							aria-pressed={$editorSettings.tabMode === 'tab'}
+							>{t('settings.tabChar', $locale)}</button
 						>
 						<button
 							class="th-btn"
 							class:active={$editorSettings.tabMode === 'space'}
 							onclick={() => setTabMode('space')}
-							aria-pressed={$editorSettings.tabMode === 'space'}>{t('settings.tabSpace', $locale)}</button
+							aria-pressed={$editorSettings.tabMode === 'space'}
+							>{t('settings.tabSpace', $locale)}</button
 						>
 					</div>
 					<p class="scale-hint">
@@ -282,7 +287,8 @@
 								class="th-btn"
 								class:active={$editorSettings.indentSize === n}
 								onclick={() => setIndentSize(n as IndentSize)}
-								aria-pressed={$editorSettings.indentSize === n}>{n}{t('settings.indentUnit', $locale)}</button
+								aria-pressed={$editorSettings.indentSize === n}
+								>{n}{t('settings.indentUnit', $locale)}</button
 							>
 						{/each}
 					</div>
@@ -306,7 +312,9 @@
 							onclick={() => checkForUpdate()}
 							disabled={$updateState.status === 'checking' || $updateState.status === 'downloading'}
 						>
-							{$updateState.status === 'checking' ? t('settings.checking', $locale) : t('settings.checkUpdate', $locale)}
+							{$updateState.status === 'checking'
+								? t('settings.checking', $locale)
+								: t('settings.checkUpdate', $locale)}
 						</button>
 					{/if}
 				</dd>
@@ -315,7 +323,11 @@
 				{#if isTauri}
 					<dt>{t('settings.autoUpdateCheck', $locale)}</dt>
 					<dd class="theme-row">
-						<div class="theme-toggle" role="group" aria-label={t('settings.autoUpdateCheck', $locale)}>
+						<div
+							class="theme-toggle"
+							role="group"
+							aria-label={t('settings.autoUpdateCheck', $locale)}
+						>
 							<button
 								class="th-btn"
 								class:active={$autoUpdateCheck}
@@ -337,7 +349,11 @@
 				     별도 '원격 서버' 탭 폐기 — 길드가 열려있을 때만(anyGuildOpen) 한
 				     줄로 통합 표시. 연결/해제는 여전히 Welcome 화면(로고 클릭)에서만. -->
 				{#if isTauri && anyGuildOpen}
-					<dt>{isRemoteActive ? t('settings.remoteServer', $locale) : t('settings.guildPath', $locale)}</dt>
+					<dt>
+						{isRemoteActive
+							? t('settings.remoteServer', $locale)
+							: t('settings.guildPath', $locale)}
+					</dt>
 					<dd>
 						{#if isRemoteActive}
 							<span class="remote-active">{$remoteServerUrl}</span>
@@ -390,9 +406,10 @@
 						>
 					</div>
 					<p class="scale-hint">
-						{t('settings.uiScaleHintPre', $locale)}{Math.round(
-							MIN_SCALE * 100
-						)}{t('settings.uiScaleHintPost', $locale)}{Math.round(MAX_SCALE * 100)}{t('settings.uiScaleHintTail', $locale)}
+						{t('settings.uiScaleHintPre', $locale)}{Math.round(MIN_SCALE * 100)}{t(
+							'settings.uiScaleHintPost',
+							$locale
+						)}{Math.round(MAX_SCALE * 100)}{t('settings.uiScaleHintTail', $locale)}
 					</p>
 				</dd>
 
@@ -436,11 +453,15 @@
 							class="btn-reset"
 							onclick={resetContentWidth}
 							disabled={$contentWidth === DEFAULT_CONTENT_WIDTH}
-							title="{DEFAULT_CONTENT_WIDTH}px{t('settings.resetToDefaultPx', $locale)}">{t('settings.reset', $locale)}</button
+							title="{DEFAULT_CONTENT_WIDTH}px{t('settings.resetToDefaultPx', $locale)}"
+							>{t('settings.reset', $locale)}</button
 						>
 					</div>
 					<p class="scale-hint">
-						{t('settings.contentWidthHintPre', $locale)}{MIN_CONTENT_WIDTH}{t('settings.contentWidthHintMid', $locale)}{MAX_CONTENT_WIDTH}{t('settings.contentWidthHintTail', $locale)}
+						{t('settings.contentWidthHintPre', $locale)}{MIN_CONTENT_WIDTH}{t(
+							'settings.contentWidthHintMid',
+							$locale
+						)}{MAX_CONTENT_WIDTH}{t('settings.contentWidthHintTail', $locale)}
 						<!-- DEV-275: 슬라이더 끝 = 폭 제한 해제. -->
 						{t('settings.contentWidthFullHint', $locale)}
 					</p>
@@ -457,7 +478,11 @@
 								onclick={() => pickBaseTheme(opt as ThemeChoice)}
 								aria-pressed={!$activeCustomTheme && $theme === opt}
 							>
-								{opt === 'dark' ? t('settings.themeDark', $locale) : opt === 'light' ? t('settings.themeLight', $locale) : t('settings.themeSystem', $locale)}
+								{opt === 'dark'
+									? t('settings.themeDark', $locale)
+									: opt === 'light'
+										? t('settings.themeLight', $locale)
+										: t('settings.themeSystem', $locale)}
 							</button>
 						{/each}
 						{#each $customThemes as p (p.name)}
@@ -480,20 +505,29 @@
 				<dd class="theme-row">
 					<div class="ct-actions">
 						{#if !creatingPreset}
-							<button class="th-btn" onclick={() => (creatingPreset = true)}>{t('settings.newPreset', $locale)}</button>
+							<button class="th-btn" onclick={() => (creatingPreset = true)}
+								>{t('settings.newPreset', $locale)}</button
+							>
 						{/if}
 						{#if $customThemes.length > 0}
-							<button class="th-btn" onclick={exportPresets}>{t('settings.exportJson', $locale)}</button>
+							<button class="th-btn" onclick={exportPresets}
+								>{t('settings.exportJson', $locale)}</button
+							>
 						{/if}
 						{#if !importing}
-							<button class="th-btn" onclick={() => (importing = true)}>{t('settings.import', $locale)}</button>
+							<button class="th-btn" onclick={() => (importing = true)}
+								>{t('settings.import', $locale)}</button
+							>
 						{/if}
 						{#if activePreset}
 							<button
 								class="th-btn danger"
 								onclick={() => (confirmDeletePresetName = activePreset?.name ?? null)}
 							>
-								{t('settings.deletePresetBtnPrefix', $locale)}{activePreset.name}{t('settings.deletePresetBtnSuffix', $locale)}
+								{t('settings.deletePresetBtnPrefix', $locale)}{activePreset.name}{t(
+									'settings.deletePresetBtnSuffix',
+									$locale
+								)}
 							</button>
 						{/if}
 					</div>
@@ -507,18 +541,26 @@
 								bind:value={newPresetName}
 								onkeydown={(e) => e.key === 'Enter' && submitCreatePreset()}
 							/>
-							<div class="theme-toggle" role="group" aria-label={t('settings.basedOnTheme', $locale)}>
+							<div
+								class="theme-toggle"
+								role="group"
+								aria-label={t('settings.basedOnTheme', $locale)}
+							>
 								{#each ['dark', 'light'] as b (b)}
 									<button
 										class="th-btn"
 										class:active={newPresetBase === b}
 										onclick={() => (newPresetBase = b as EffectiveTheme)}
 									>
-										{b === 'dark' ? t('settings.darkBased', $locale) : t('settings.lightBased', $locale)}
+										{b === 'dark'
+											? t('settings.darkBased', $locale)
+											: t('settings.lightBased', $locale)}
 									</button>
 								{/each}
 							</div>
-							<button class="th-btn" onclick={submitCreatePreset}>{t('settings.createBtn', $locale)}</button>
+							<button class="th-btn" onclick={submitCreatePreset}
+								>{t('settings.createBtn', $locale)}</button
+							>
 							<button
 								class="th-btn"
 								onclick={() => {
@@ -703,6 +745,21 @@
 		.tab {
 			flex: none;
 			white-space: nowrap;
+		}
+		/* BUG-200: '표시' 탭이 좁은 화면에서 삐져나오던 문제. 라벨 열 6rem 고정 +
+		   값 열의 컨트롤(슬라이더·버튼 묶음)이 최소 폭을 요구해 그리드가 화면보다
+		   넓어졌다. 좁을 땐 라벨/값을 위아래로 쌓고, 값 쪽은 줄어들 수 있게 한다. */
+		.info-grid {
+			grid-template-columns: 1fr;
+			gap: 0.25rem 0;
+		}
+		.info-grid dt {
+			margin-top: 0.5rem;
+		}
+		.info-grid dd,
+		.info-grid dd > * {
+			min-width: 0;
+			max-width: 100%;
 		}
 	}
 	.panel h2 {

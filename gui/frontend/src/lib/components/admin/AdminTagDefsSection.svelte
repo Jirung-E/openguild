@@ -53,7 +53,10 @@
 				color: editColor,
 				description: editDescription
 			});
-			onmessage({ kind: 'success', text: `${t('adminTags.updatedPre', $locale)}${editing}${t('adminTags.updatedPost', $locale)}` });
+			onmessage({
+				kind: 'success',
+				text: `${t('adminTags.updatedPre', $locale)}${editing}${t('adminTags.updatedPost', $locale)}`
+			});
 			editing = null;
 			await refresh();
 		} catch (e) {
@@ -87,7 +90,10 @@
 				color: newColor,
 				description: newDescription
 			});
-			onmessage({ kind: 'success', text: `${t('adminTags.addedPre', $locale)}${slug}${t('adminTags.addedPost', $locale)}` });
+			onmessage({
+				kind: 'success',
+				text: `${t('adminTags.addedPre', $locale)}${slug}${t('adminTags.addedPost', $locale)}`
+			});
 			creating = false;
 			await refresh();
 		} catch (e) {
@@ -130,7 +136,10 @@
 		</div>
 	</div>
 	<p class="intro">
-		<code>.guild/tags/&lt;slug&gt;.toml</code>{t('adminTags.pathHintPost', $locale)}{t('adminTags.introTail', $locale)}
+		<code>.guild/tags/&lt;slug&gt;.toml</code>{t('adminTags.pathHintPost', $locale)}{t(
+			'adminTags.introTail',
+			$locale
+		)}
 	</p>
 
 	{#if defs.length === 0}
@@ -138,48 +147,55 @@
 	{:else}
 		<!-- BUG-143: 좁은 폭에서 셀 줄바꿈 대신 표 가로 스크롤. -->
 		<div class="table-wrap">
-		<table>
-			<thead>
-				<tr>
-					<th style="width: 16ch">slug</th>
-					<th style="width: 5ch">{t('adminTypes.colColor', $locale)}</th>
-					<th>{t('adminTypes.colDesc', $locale)}</th>
-					<th style="width: 14ch"></th>
-				</tr>
-			</thead>
-			<tbody>
-				{#each defs as d (d.slug)}
+			<table>
+				<thead>
 					<tr>
-						{#if editing === d.slug}
-							<td><code>{d.slug}</code></td>
-							<td><input type="color" bind:value={editColor} disabled={busy} /></td>
-							<td>
-								<input type="text" bind:value={editDescription} maxlength="200" disabled={busy} />
-							</td>
-							<td class="row-actions">
-								<button class="save" onclick={saveEdit} disabled={busy}>{t('common.save', $locale)}</button>
-								<button onclick={cancelEdit} disabled={busy}>{t('common.cancel', $locale)}</button>
-							</td>
-						{:else}
-							<td><code>{d.slug}</code></td>
-							<td>
-								{#if d.color}
-									<span class="swatch" style="background: {d.color}"></span>
-									<code class="hex">{d.color}</code>
-								{:else}
-									<span class="dim">—</span>
-								{/if}
-							</td>
-							<td class="desc">{d.description || '—'}</td>
-							<td class="row-actions">
-								<button onclick={() => startEdit(d)} disabled={busy}>{t('adminTypes.edit', $locale)}</button>
-								<button class="danger" onclick={() => askDelete(d)} disabled={busy}>{t('detail.delete', $locale)}</button>
-							</td>
-						{/if}
+						<th style="width: 16ch">slug</th>
+						<th style="width: 5ch">{t('adminTypes.colColor', $locale)}</th>
+						<th>{t('adminTypes.colDesc', $locale)}</th>
+						<th style="width: 14ch"></th>
 					</tr>
-				{/each}
-			</tbody>
-		</table>
+				</thead>
+				<tbody>
+					{#each defs as d (d.slug)}
+						<tr>
+							{#if editing === d.slug}
+								<td><code>{d.slug}</code></td>
+								<td><input type="color" bind:value={editColor} disabled={busy} /></td>
+								<td>
+									<input type="text" bind:value={editDescription} maxlength="200" disabled={busy} />
+								</td>
+								<td class="row-actions">
+									<button class="save" onclick={saveEdit} disabled={busy}
+										>{t('common.save', $locale)}</button
+									>
+									<button onclick={cancelEdit} disabled={busy}>{t('common.cancel', $locale)}</button
+									>
+								</td>
+							{:else}
+								<td><code>{d.slug}</code></td>
+								<td>
+									{#if d.color}
+										<span class="swatch" style="background: {d.color}"></span>
+										<code class="hex">{d.color}</code>
+									{:else}
+										<span class="dim">—</span>
+									{/if}
+								</td>
+								<td class="desc">{d.description || '—'}</td>
+								<td class="row-actions">
+									<button onclick={() => startEdit(d)} disabled={busy}
+										>{t('adminTypes.edit', $locale)}</button
+									>
+									<button class="danger" onclick={() => askDelete(d)} disabled={busy}
+										>{t('detail.delete', $locale)}</button
+									>
+								</td>
+							{/if}
+						</tr>
+					{/each}
+				</tbody>
+			</table>
 		</div>
 	{/if}
 </section>
@@ -217,10 +233,19 @@
 					/>
 				</label>
 			</div>
-			<p class="form-note">{t('adminTags.savedAsFilePre', $locale)}<code>.guild/tags/&lt;slug&gt;.toml</code>{t('adminTags.savedAsFilePost', $locale)}</p>
+			<p class="form-note">
+				{t('adminTags.savedAsFilePre', $locale)}<code>.guild/tags/&lt;slug&gt;.toml</code>{t(
+					'adminTags.savedAsFilePost',
+					$locale
+				)}
+			</p>
 			<div class="modal-actions">
-				<button class="btn-yes" onclick={doCreate} disabled={busy}>{t('common.add', $locale)}</button>
-				<button class="btn-no" onclick={() => (creating = false)} disabled={busy}>{t('common.cancel', $locale)}</button>
+				<button class="btn-yes" onclick={doCreate} disabled={busy}
+					>{t('common.add', $locale)}</button
+				>
+				<button class="btn-no" onclick={() => (creating = false)} disabled={busy}
+					>{t('common.cancel', $locale)}</button
+				>
 			</div>
 		</div>
 	</div>
@@ -235,8 +260,12 @@
 				{t('adminTags.deleteMsg2', $locale)}
 			</p>
 			<div class="modal-actions">
-				<button class="btn-yes danger" onclick={doDelete} disabled={busy}>{t('detail.delete', $locale)}</button>
-				<button class="btn-no" onclick={() => (confirmDelete = null)} disabled={busy}>{t('common.cancel', $locale)}</button>
+				<button class="btn-yes danger" onclick={doDelete} disabled={busy}
+					>{t('detail.delete', $locale)}</button
+				>
+				<button class="btn-no" onclick={() => (confirmDelete = null)} disabled={busy}
+					>{t('common.cancel', $locale)}</button
+				>
 			</div>
 		</div>
 	</div>
@@ -252,6 +281,9 @@
 	}
 	.section-header {
 		display: flex;
+		/* BUG-196: 라벨이 긴 언어(영어)에서 제목+버튼이 한 줄을 넘겨 섹션 밖으로
+		   삐져나왔다. 줄바꿈을 허용해 버튼 묶음이 아래로 내려가게. */
+		flex-wrap: wrap;
 		align-items: center;
 		justify-content: space-between;
 		margin-bottom: 0.5rem;
@@ -267,6 +299,7 @@
 	}
 	.actions {
 		display: flex;
+		flex-wrap: wrap;
 		gap: 0.5rem;
 	}
 	button {

@@ -187,7 +187,9 @@
 		onpointercancel={onPointerUp}
 		onclickcapture={onClickCapture}
 		role="region"
-		aria-label={mode === 'overdue' ? t('conveyor.overdueCampaigns', $locale) : t('conveyor.upcomingCampaigns', $locale)}
+		aria-label={mode === 'overdue'
+			? t('conveyor.overdueCampaigns', $locale)
+			: t('conveyor.upcomingCampaigns', $locale)}
 	>
 		<div
 			class="track"
@@ -237,6 +239,11 @@
 
 	.conveyor {
 		overflow: hidden;
+		/* BUG-191: 터치에서 손가락을 대면 브라우저가 기본 제스처(세로 스크롤)로
+		   포인터를 가져가 pointermove 가 끊기고, 자동 흐름만 멈춘 채 아무 일도
+		   안 일어났다(admin 보고). 가로는 우리가 처리하니 세로만 브라우저에
+		   넘긴다. */
+		touch-action: pan-y;
 		padding: 0.25rem 0 0.5rem 0;
 		user-select: none;
 	}

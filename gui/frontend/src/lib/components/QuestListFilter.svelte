@@ -47,6 +47,22 @@
 		return next;
 	}
 
+	// BUG-194: 좁은 화면에선 타입/상태 칩만으로도 화면 절반을 먹어 목록이 거의
+	// 안 보였다(admin 보고). 폭이 좁으면 칩 줄을 접고 '필터' 토글로 여닫는다.
+	// 검색은 가장 자주 쓰므로 접힘과 무관하게 항상 보인다.
+	let narrow = $state(false);
+	let chipsOpen = $state(false);
+	$effect(() => {
+		if (typeof window === 'undefined' || !window.matchMedia) return;
+		const mq = window.matchMedia('(max-width: 640px)');
+		const sync = () => (narrow = mq.matches);
+		sync();
+		mq.addEventListener('change', sync);
+		return () => mq.removeEventListener('change', sync);
+	});
+	/** 접힘 상태에서 보여줄 '몇 개 걸려 있는지'. 0 이면 표시 안 함. */
+	const activeChipCount = $derived(typeIds.size + statusIds.size);
+
 	// DEV-033: 고급 행 접기. 필터 활성이면 라벨에 표시.
 	let advancedOpen = $state(false);
 	let advancedActive = $derived(
@@ -79,33 +95,48 @@
 </script>
 
 <div class="filter-bar">
-	<div class="filter-group">
-		<button class:active={typeIds.size === 0} onclick={() => (typeIds = new Set())}>All</button>
-		{#each types as t}
-			<button
-				class:active={typeIds.has(t.id)}
-				style:--c={t.color}
-				onclick={() => (typeIds = toggle(typeIds, t.id))}
-			>
-				{t.prefix}
-			</button>
-		{/each}
-	</div>
+	<!-- BUG-194: 좁은 화면 — 칩 줄을 접고 토글로. -->
+	{#if narrow}
+		<button
+			class="adv-toggle chips-toggle"
+			class:active={activeChipCount > 0}
+			onclick={() => (chipsOpen = !chipsOpen)}
+			aria-expanded={chipsOpen}
+			>{chipsOpen ? '▾' : '▸'}
+			{t('filter.chips', $locale)}{activeChipCount > 0 ? ` (${activeChipCount})` : ''}</button
+		>
+	{/if}
+	{#if !narrow || chipsOpen}
+		<div class="filter-group">
+			<button class:active={typeIds.size === 0} onclick={() => (typeIds = new Set())}>All</button>
+			{#each types as t}
+				<button
+					class:active={typeIds.has(t.id)}
+					style:--c={t.color}
+					onclick={() => (typeIds = toggle(typeIds, t.id))}
+				>
+					{t.prefix}
+				</button>
+			{/each}
+		</div>
 
-	<div class="divider"></div>
+		<div class="divider"></div>
 
-	<div class="filter-group">
-		<button class:active={statusIds.size === 0} onclick={() => (statusIds = new Set())}>All</button>
-		{#each statuses as s}
-			<button
-				class:active={statusIds.has(s.id)}
-				style:--c={s.color}
-				onclick={() => (statusIds = toggle(statusIds, s.id))}
+		<div class="filter-group">
+			<button class:active={statusIds.size === 0} onclick={() => (statusIds = new Set())}
+				>All</button
 			>
-				{statusLabel(s, $locale)}
-			</button>
-		{/each}
-	</div>
+			{#each statuses as s}
+				<button
+					class:active={statusIds.has(s.id)}
+					style:--c={s.color}
+					onclick={() => (statusIds = toggle(statusIds, s.id))}
+				>
+					{statusLabel(s, $locale)}
+				</button>
+			{/each}
+		</div>
+	{/if}
 
 	<div class="divider"></div>
 
@@ -141,7 +172,8 @@
 		class="adv-toggle"
 		class:active={advancedActive}
 		onclick={() => (advancedOpen = !advancedOpen)}
-		aria-expanded={advancedOpen}>{advancedOpen ? '▾' : '▸'} {t('filter.advanced', $locale)}{advancedActive ? ' ●' : ''}</button
+		aria-expanded={advancedOpen}
+		>{advancedOpen ? '▾' : '▸'} {t('filter.advanced', $locale)}{advancedActive ? ' ●' : ''}</button
 	>
 </div>
 
@@ -178,15 +210,19 @@
 		<div class="divider"></div>
 		<!-- 날짜 범위 -->
 		<label class="date-range"
-			>{t('filter.created', $locale)} <DateField bind:value={createdAfter} /> ~
+			>{t('filter.created', $locale)}
+			<DateField bind:value={createdAfter} /> ~
 			<DateField bind:value={createdBefore} /></label
 		>
 		<label class="date-range"
-			>{t('filter.updated', $locale)} <DateField bind:value={updatedAfter} /> ~
+			>{t('filter.updated', $locale)}
+			<DateField bind:value={updatedAfter} /> ~
 			<DateField bind:value={updatedBefore} /></label
 		>
 		{#if advancedActive}
-			<button class="adv-clear" onclick={clearAdvanced} title={t('filter.clearAdvanced', $locale)}>{t('filter.clearBtn', $locale)}</button>
+			<button class="adv-clear" onclick={clearAdvanced} title={t('filter.clearAdvanced', $locale)}
+				>{t('filter.clearBtn', $locale)}</button
+			>
 		{/if}
 	</div>
 {/if}
@@ -202,6 +238,19 @@
 		background: var(--bg-elevated);
 		border-bottom: 1px solid var(--bg-subtle);
 		flex-wrap: wrap;
+	}
+	/* BUG-194: 좁은 화면에선 세로 공간이 귀하다 — 여백을 줄이고 검색은 한 줄 전체. */
+	@media (max-width: 640px) {
+		.filter-bar {
+			gap: 0.5rem;
+			padding: 0.5rem 0.75rem;
+		}
+		.filter-bar .search-group {
+			flex: 1 1 100%;
+		}
+		.filter-bar .divider {
+			display: none;
+		}
 	}
 
 	.filter-group {

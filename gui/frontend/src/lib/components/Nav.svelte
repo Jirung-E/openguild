@@ -727,6 +727,15 @@
 		min-width: 260px;
 		max-width: 42vw;
 		padding: 0 12px;
+
+		/* BUG-192: 좁은 화면에서 pill 의 min-width(260px) 가 양옆 공간을 다 먹어,
+		   pill 바깥에 절대 배치되는 ＋(퀘스트 추가)·시계(최근 문서)가 ☰·⚙ 위로
+		   겹쳐 그려졌다. 필요한 자리(양옆 아이콘 3개 + 여백 ≈ 12rem)를 남기고
+		   pill 이 줄어들게 한다. */
+		@media (max-width: 640px) {
+			min-width: 0;
+			max-width: calc(100vw - 12rem);
+		}
 		flex: none;
 		background: var(--bg-subtle);
 		border: 1px solid var(--nav-border);
