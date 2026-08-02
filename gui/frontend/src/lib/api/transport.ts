@@ -65,6 +65,11 @@ export class HttpTransport implements Transport {
 	// 입력한 URL)에서도 같은 클래스를 재사용. 기본값은 기존 VITE_API_URL.
 	constructor(private base: string = DEFAULT_HTTP_BASE) {}
 
+	/** DEV-321: XHR 로 직접 보내야 하는 경로(업로드 진행률)가 base 를 알아야 한다. */
+	get baseUrl(): string {
+		return this.base;
+	}
+
 	async call<T>(req: ApiCall): Promise<T> {
 		const res = await fetch(`${this.base}${req.path}`, {
 			method: req.method,
@@ -200,12 +205,7 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 	// DEV-237: /api/library/{bookId}/attachments — book_id 뒤에 sub-path 가 붙는
 	// 첫 케이스라 아래 일반 bookId 블록보다 먼저 검사해야 한다(안 그러면
 	// GET 등이 parts[3] 를 무시하고 get_book 으로 잘못 매칭됨).
-	if (
-		parts[0] === 'api' &&
-		parts[1] === 'library' &&
-		parts[2] &&
-		parts[3] === 'attachments'
-	) {
+	if (parts[0] === 'api' && parts[1] === 'library' && parts[2] && parts[3] === 'attachments') {
 		const bookId = decodeURIComponent(parts[2]);
 		if (method === 'POST') {
 			const b = (body as { path?: string; name?: string } | undefined) ?? {};
@@ -226,8 +226,9 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 		if (method === 'GET') return { cmd: 'get_book', args: { bookId } };
 		if (method === 'PATCH') {
 			const b =
-				(body as { title?: string | null; body?: string | null; path?: string | null } | undefined) ??
-				{};
+				(body as
+					| { title?: string | null; body?: string | null; path?: string | null }
+					| undefined) ?? {};
 			return {
 				cmd: 'update_book',
 				args: { bookId, title: b.title ?? null, body: b.body ?? null, path: b.path ?? null }
@@ -737,3 +738,63 @@ export const transport: Transport = {
 		return resolveTransport().call<T>(req);
 	}
 };
+
+/**
+ * DEV-321: 업로드 **진행률을 관측할 수 있는** POST.
+ *
+ * `fetch` 는 업로드 진행을 알려주지 않는다(스트리밍 응답은 되지만 요청 본문은
+ * 관측 불가) — 그래서 이 한 경로만 `XMLHttpRequest` 로 보낸다. `upload.onprogress`
+ * 는 실제 전송된 바이트를 준다.
+ *
+ * Tauri invoke 경로(로컬 데스크탑)는 진행을 알 방법이 없으므로 기존 호출로
+ * 넘긴다 — `onProgress` 가 한 번도 안 불릴 수 있고, 호출부는 그걸 "불확정"
+ * 으로 다뤄야 한다. (로컬 데스크탑의 파일 선택은 경로 기반이라 이 경로를 타지
+ * 않는다. 붙여넣기/드래그&드랍만 해당.)
+ */
+export async function postWithUploadProgress<T>(
+	path: string,
+	body: unknown,
+	onProgress?: (sent: number, total: number) => void
+): Promise<T> {
+	const t = resolveTransport();
+	if (!(t instanceof HttpTransport) || typeof XMLHttpRequest === 'undefined') {
+		return t.call<T>({ method: 'POST', path, body });
+	}
+	const url = `${t.baseUrl}${path}`;
+	const payload = JSON.stringify(body);
+	return new Promise<T>((resolve, reject) => {
+		const xhr = new XMLHttpRequest();
+		xhr.open('POST', url, true);
+		xhr.setRequestHeader('Content-Type', 'application/json');
+		xhr.upload.onprogress = (e) => {
+			// lengthComputable 이 false 면 총량을 모른다 — 보고하지 않는다
+			// (0 을 total 로 넘기면 호출부에서 0 나눗셈/NaN 이 된다).
+			if (e.lengthComputable) onProgress?.(e.loaded, e.total);
+		};
+		xhr.onload = () => {
+			const text = xhr.responseText;
+			if (xhr.status < 200 || xhr.status >= 300) {
+				let msg = xhr.statusText || 'request failed';
+				try {
+					msg = (JSON.parse(text) as { error?: string }).error ?? msg;
+				} catch {
+					/* 본문이 JSON 이 아니면 statusText 유지 */
+				}
+				reject(new Error(msg));
+				return;
+			}
+			if (xhr.status === 204 || !text) {
+				resolve(undefined as T);
+				return;
+			}
+			try {
+				resolve(JSON.parse(text) as T);
+			} catch {
+				reject(new Error('invalid JSON response'));
+			}
+		};
+		xhr.onerror = () => reject(new Error('network error'));
+		xhr.onabort = () => reject(new Error('aborted'));
+		xhr.send(payload);
+	});
+}

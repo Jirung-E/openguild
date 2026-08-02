@@ -878,6 +878,9 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'attach.pickFile': { ko: '첨부할 파일 선택', en: 'Choose files to attach' },
 	// DEV-298: 편집기 인라인 placeholder — 업로드가 끝나면 마크다운으로 치환된다.
 	'attach.uploading': { ko: '업로드 중…', en: 'Uploading…' },
+	// DEV-321: 브라우저 경로는 전송 전에 파일을 base64 로 바꾸는 구간이 있다 —
+	// 그동안은 진행률을 알 수 없어 0% 로 멈춘 것처럼 보이므로 단계를 밝힌다.
+	'attach.preparing': { ko: '준비 중…', en: 'Preparing…' },
 
 	'history.title': { ko: '변경 이력', en: 'Change history' },
 	'history.loading': { ko: '로드 중…', en: 'Loading…' },

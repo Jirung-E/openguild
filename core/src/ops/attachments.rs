@@ -98,6 +98,23 @@ pub async fn save_attachment_from_file(
     src: &std::path::Path,
     ext: &str,
 ) -> AppResult<String> {
+    save_attachment_from_file_with_progress(store, src, ext, |_copied, _total| {}).await
+}
+
+/// DEV-321: 위와 같되 진행 상황을 알린다 — `on_progress(복사된 바이트, 전체)`.
+///
+/// 대용량 첨부는 저장이 수 초 걸리는데 예전엔 "돌고 있음"밖에 알릴 수 없었다
+/// (DEV-298 의 불확정 바). `std::fs::copy` 는 한 번에 끝나 중간을 관측할 수
+/// 없으므로, 여기서 버퍼 단위로 직접 옮기며 진행을 흘린다.
+///
+/// 호출 빈도는 청크 수만큼이다 — 이벤트로 내보낼 쪽(GUI)에서 throttle 한다.
+/// core 는 Tauri 를 모르므로 콜백까지만 책임진다.
+pub async fn save_attachment_from_file_with_progress(
+    store: &Store,
+    src: &std::path::Path,
+    ext: &str,
+    mut on_progress: impl FnMut(u64, u64),
+) -> AppResult<String> {
     let ext = sanitize_ext(ext);
     let meta = std::fs::metadata(src)
         .map_err(|e| AppError::Internal(anyhow::anyhow!(crate::tf!("첨부 원본 확인 실패: {e}", "attachment source stat failed: {e}"))))?;
@@ -117,7 +134,7 @@ pub async fn save_attachment_from_file(
     std::fs::create_dir_all(store.paths.attachments_dir())
         .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
     let dst = store.paths.dot_guild().join(&rel);
-    if let Err(e) = std::fs::copy(src, &dst) {
+    if let Err(e) = copy_with_progress(src, &dst, meta.len(), &mut on_progress) {
         let _ = std::fs::remove_file(&dst);
         return Err(AppError::Internal(anyhow::anyhow!(crate::tf!(
             "첨부 복사 실패: {e}",
@@ -125,6 +142,39 @@ pub async fn save_attachment_from_file(
         ))));
     }
     Ok(rel)
+}
+
+/// 진행 보고가 가능한 파일 복사. 버퍼는 4 MiB — 너무 작으면 콜백/syscall 이
+/// 잦아지고, 너무 크면 진행이 뚝뚝 끊겨 보인다.
+///
+/// `total` 은 시작 시점의 크기다. 복사 중에 원본이 커지면 실제 복사량이 이를
+/// 넘을 수 있으므로, 보고 값은 total 로 clamp 해서 100%를 넘지 않게 한다.
+fn copy_with_progress(
+    src: &std::path::Path,
+    dst: &std::path::Path,
+    total: u64,
+    on_progress: &mut impl FnMut(u64, u64),
+) -> std::io::Result<()> {
+    use std::io::{Read, Write};
+
+    const BUF: usize = 4 * 1024 * 1024;
+    let mut reader = std::io::BufReader::with_capacity(64 * 1024, std::fs::File::open(src)?);
+    let mut writer = std::io::BufWriter::with_capacity(64 * 1024, std::fs::File::create(dst)?);
+    let mut buf = vec![0u8; BUF];
+    let mut copied: u64 = 0;
+
+    on_progress(0, total);
+    loop {
+        let n = reader.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        writer.write_all(&buf[..n])?;
+        copied = copied.saturating_add(n as u64).min(total.max(1));
+        on_progress(copied, total);
+    }
+    writer.flush()?;
+    Ok(())
 }
 
 
@@ -421,6 +471,40 @@ mod tests {
 
         remove_quest_attachment(&store, "DEV-001", &rel).await.unwrap();
         assert!(!abs.exists(), "orphan 파일이 삭제되어야");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-321: 진행 콜백 — 0 에서 시작해 단조 증가하고 전체 크기로 끝난다.
+    /// (여기가 깨지면 UI 진행률이 뒤로 가거나 100% 에 못 닿는다.)
+    #[tokio::test]
+    async fn save_from_file_reports_progress() {
+        let (dir, store) = setup("progress").await;
+        // 버퍼(4 MiB)를 여러 번 도는 크기로 — 청크가 1개면 계약을 못 본다.
+        let size = 10 * 1024 * 1024 + 12_345;
+        let src = dir.join("big.bin");
+        std::fs::write(&src, vec![7u8; size]).unwrap();
+
+        let mut seen: Vec<(u64, u64)> = Vec::new();
+        let rel = save_attachment_from_file_with_progress(&store, &src, "bin", |c, t| {
+            seen.push((c, t))
+        })
+        .await
+        .unwrap();
+
+        assert!(seen.len() > 2, "청크마다 보고되어야: {}", seen.len());
+        assert_eq!(seen.first().unwrap().0, 0, "0 에서 시작");
+        assert_eq!(seen.last().unwrap().0, size as u64, "전체 크기로 끝나야");
+        assert!(
+            seen.iter().all(|&(_, t)| t == size as u64),
+            "total 은 내내 같아야"
+        );
+        assert!(
+            seen.windows(2).all(|w| w[0].0 <= w[1].0),
+            "진행률이 뒤로 가면 안 됨"
+        );
+        // 내용도 그대로.
+        let dst = store.paths.dot_guild().join(&rel);
+        assert_eq!(std::fs::metadata(&dst).unwrap().len(), size as u64);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

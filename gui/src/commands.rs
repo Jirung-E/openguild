@@ -2011,10 +2011,24 @@ pub async fn save_attachment(
 ///
 /// 반환: 본문 참조용 `.guild` 상대 경로 (`attachments/...`) — `save_attachment`
 /// 와 동일해 호출부가 두 경로를 같은 방식으로 다룰 수 있다.
+/// DEV-321: 업로드 진행 이벤트 payload. `upload_id` 는 프론트가 만든 값 —
+/// 여러 파일을 연달아 올릴 때 어느 업로드의 진행인지 구분한다.
+#[derive(Clone, Serialize)]
+pub struct AttachmentProgress {
+    pub upload_id: String,
+    pub copied: u64,
+    pub total: u64,
+}
+
+/// DEV-321 진행 이벤트 이름. 프론트의 `listen()` 과 문자열이 일치해야 한다.
+pub const ATTACHMENT_PROGRESS_EVENT: &str = "attachment://progress";
+
 #[tauri::command]
 pub async fn save_attachment_from_path(
+    app: tauri::AppHandle,
     store: State<'_, Store>,
     path: String,
+    upload_id: Option<String>,
 ) -> Result<String, String> {
     let src = std::path::PathBuf::from(&path);
     if !src.is_file() {
@@ -2026,10 +2040,46 @@ pub async fn save_attachment_from_path(
         .map(|e| e.to_string_lossy().to_string())
         .unwrap_or_default();
     // BUG-188: 파일을 통째로 읽지 않는다 — 1.5GB 파일이면 그만큼 메모리를 잡았다.
-    // core 가 `std::fs::copy` 로 옮기므로 사용량이 파일 크기와 무관하다.
-    openguild_core::ops::attachments::save_attachment_from_file(&store, &src, &ext)
-        .await
-        .map_err(err)
+    // core 가 버퍼 단위로 옮기므로 사용량이 파일 크기와 무관하다.
+    //
+    // DEV-321: 복사하며 진행을 이벤트로 흘린다. 청크마다 그대로 보내면 초당
+    // 수백 건이 되므로 **100ms 또는 1% 단위**로만 내보낸다(마지막 값은 항상).
+    let Some(upload_id) = upload_id else {
+        return openguild_core::ops::attachments::save_attachment_from_file(&store, &src, &ext)
+            .await
+            .map_err(err);
+    };
+    use tauri::Emitter;
+    let mut last_emit = std::time::Instant::now();
+    let mut last_pct = -1i64;
+    let emit = |copied: u64, total: u64| {
+        let _ = app.emit(
+            ATTACHMENT_PROGRESS_EVENT,
+            AttachmentProgress {
+                upload_id: upload_id.clone(),
+                copied,
+                total,
+            },
+        );
+    };
+    openguild_core::ops::attachments::save_attachment_from_file_with_progress(
+        &store,
+        &src,
+        &ext,
+        |copied, total| {
+            // total=0(빈 파일)은 core 가 미리 걸러내지만, 여기서 나눗셈이
+            // 터지면 업로드 전체가 죽으므로 방어적으로 100%로 본다.
+            let pct = (copied * 100).checked_div(total).unwrap_or(100) as i64;
+            let done = copied >= total;
+            if done || pct != last_pct || last_emit.elapsed().as_millis() >= 100 {
+                last_pct = pct;
+                last_emit = std::time::Instant::now();
+                emit(copied, total);
+            }
+        },
+    )
+    .await
+    .map_err(err)
 }
 
 /// DEV-171/BUG-081: `.guild` 상대 경로를 절대 경로로 해석 (traversal 가드 + 존재 확인).

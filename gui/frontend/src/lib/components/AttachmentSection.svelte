@@ -23,8 +23,11 @@
 		slug,
 		scope = 'quest',
 		attachments = $bindable([])
-	}: { slug: string; scope?: 'quest' | 'campaign' | 'library'; attachments?: Attachment[] } =
-		$props();
+	}: {
+		slug: string;
+		scope?: 'quest' | 'campaign' | 'library';
+		attachments?: Attachment[];
+	} = $props();
 
 	const list = $derived(attachments ?? []);
 	// BUG-097(사용자 보고: "이미지 첨부한게 표시가 안된다"): Tauri + 원격
@@ -120,7 +123,7 @@
 				window.open(url, '_blank', 'noopener');
 			}
 		} catch (e) {
-			error = `${t("attach.openFailed", $locale)}: ${e instanceof Error ? e.message : String(e)}`;
+			error = `${t('attach.openFailed', $locale)}: ${e instanceof Error ? e.message : String(e)}`;
 		}
 	}
 
@@ -147,7 +150,7 @@
 				browserDownload(await guildFileUrl(att.path), att.name);
 			}
 		} catch (e) {
-			error = `${t("attach.downloadFailed", $locale)}: ${e instanceof Error ? e.message : String(e)}`;
+			error = `${t('attach.downloadFailed', $locale)}: ${e instanceof Error ? e.message : String(e)}`;
 		}
 	}
 
@@ -158,7 +161,7 @@
 		if (isTauri) {
 			try {
 				const { open } = await import('@tauri-apps/plugin-dialog');
-				const dir = await open({ directory: true, title: t("attach.saveDir", $locale) });
+				const dir = await open({ directory: true, title: t('attach.saveDir', $locale) });
 				if (!dir || typeof dir !== 'string') return;
 				const { invoke } = await import('@tauri-apps/api/core');
 				busy = true;
@@ -166,7 +169,7 @@
 					await invoke('copy_guild_file', { rel: a.path, dest: `${dir}/${a.name}` });
 				}
 			} catch (e) {
-				error = `${t("attach.downloadAllFailed", $locale)}: ${e instanceof Error ? e.message : String(e)}`;
+				error = `${t('attach.downloadAllFailed', $locale)}: ${e instanceof Error ? e.message : String(e)}`;
 			} finally {
 				busy = false;
 			}
@@ -182,7 +185,8 @@
 <section class="attachments">
 	<div class="head">
 		<h3>
-			{t('attach.title', $locale)} {#if list.length > 0}<span class="count">({list.length})</span>{/if}
+			{t('attach.title', $locale)}
+			{#if list.length > 0}<span class="count">({list.length})</span>{/if}
 		</h3>
 		<div class="head-actions">
 			{#if list.length > 0}
@@ -204,12 +208,37 @@
 	<!-- DEV-298: 업로드 진행 표시 — 대용량은 완료까지 수 초 걸려 멈춘 것처럼
 	     보였다. 현재 파일명 + 순번 + 진행 바(불확정)로 "돌고 있음"을 알린다. -->
 	{#if progress}
-		<div class="uploading" role="status" aria-live="polite">
+		{@const pct = progress.percent}
+		<div
+			class="uploading"
+			role="progressbar"
+			aria-live="polite"
+			aria-valuemin={0}
+			aria-valuemax={100}
+			aria-valuenow={pct == null ? undefined : Math.round(pct)}
+			aria-valuetext={pct == null ? t('attach.preparing', $locale) : `${Math.round(pct)}%`}
+		>
 			<span class="up-name" title={progress.name}>{progress.name}</span>
 			{#if progress.total > 1}
 				<span class="up-count">{progress.index} / {progress.total}</span>
 			{/if}
-			<span class="up-bar"><span class="up-fill"></span></span>
+			<!-- DEV-321: %를 알면 결정형 바 + 숫자, 모르면 기존 불확정 바.
+			     브라우저 경로는 전송 전에 base64 변환 구간이 있어 그동안은
+			     '준비 중' 으로 알린다(0% 에서 멈춘 것처럼 보이지 않게). -->
+			<span class="up-bar">
+				<span
+					class="up-fill"
+					class:determinate={pct != null}
+					style={pct != null ? `width:${pct}%` : undefined}
+				></span>
+			</span>
+			<span class="up-pct">
+				{pct == null
+					? progress.phase === 'preparing'
+						? t('attach.preparing', $locale)
+						: ''
+					: `${Math.round(pct)}%`}
+			</span>
 		</div>
 	{/if}
 	{#if error}<p class="err">{error}</p>{/if}
@@ -308,6 +337,20 @@
 		border-radius: 2px;
 		background: var(--accent);
 		animation: up-slide 1.1s ease-in-out infinite;
+	}
+	/* DEV-321: 실제 %를 아는 동안은 흐르는 애니메이션 대신 채워지는 바.
+	   너비는 인라인 style 로 매 진행마다 갱신된다. */
+	.up-fill.determinate {
+		width: 0;
+		animation: none;
+		transition: width 0.15s linear;
+	}
+	.up-pct {
+		flex: 0 0 auto;
+		min-width: 2.5rem;
+		text-align: right;
+		font-variant-numeric: tabular-nums;
+		color: var(--text-muted);
 	}
 	@keyframes up-slide {
 		0% {

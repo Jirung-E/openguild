@@ -16,7 +16,7 @@
 import { EditorView } from '@codemirror/view';
 import type { Extension } from '@codemirror/state';
 import { api } from '$lib/api/client';
-import { detectEnvironment } from '$lib/api/transport';
+import { detectEnvironment, postWithUploadProgress } from '$lib/api/transport';
 import { getRemoteServerUrl } from '$lib/stores/remoteServer';
 import { get } from 'svelte/store';
 import { locale, t } from '$lib/stores/locale';
@@ -100,14 +100,24 @@ function toBase64(buf: ArrayBuffer): string {
  * transport.ts 를 거쳐 Tauri 면 invoke('save_attachment', ...), 브라우저면
  * `POST /api/attachments` 로 자동 분기(호출부는 환경 무지).
  */
-async function saveAttachmentBytes(file: File, ext: string): Promise<string> {
+async function saveAttachmentBytes(
+	file: File,
+	ext: string,
+	report?: UploadReport
+): Promise<string> {
 	// BUG-168: 한도를 넘으면 base64 변환(파일 크기의 5~6배 메모리)조차 하지 않고
 	// 바로 안내한다 — 서버까지 보내면 axum 원문 413 이 그대로 노출된다.
 	if (file.size > MAX_ATTACHMENT_BYTES) throw new Error(tooLargeMessage(file));
+	// DEV-321: base64 변환은 전송 **전**이고 진행을 관측할 수 없다 — 큰 파일이면
+	// 여기서 수 초 멈춘 것처럼 보이므로 '준비 중' 단계로 따로 알린다.
+	report?.({ phase: 'preparing', percent: null });
 	const data_base64 = toBase64(await file.arrayBuffer());
+	report?.({ phase: 'uploading', percent: 0 });
 	// HTTP body 필드는 이 프로젝트 컨벤션상 snake_case(server 의 axum Deserialize
 	// 와 1:1) — transport.ts 의 routeToInvoke 가 Tauri invoke 용 camelCase args 로 변환.
-	return api.post<string>('/api/attachments', { data_base64, ext });
+	return postWithUploadProgress<string>('/api/attachments', { data_base64, ext }, (sent, total) =>
+		report?.({ phase: 'uploading', percent: total > 0 ? (sent / total) * 100 : null })
+	);
 }
 
 /**
@@ -117,14 +127,17 @@ async function saveAttachmentBytes(file: File, ext: string): Promise<string> {
  * 전송 방식이 전혀 다른데 삽입/치환 로직은 같다. 호출부가 분기하지 않도록
  * `run()` 뒤로 숨긴다 — 반환값은 양쪽 모두 `.guild` 상대 경로.
  */
-type Upload = { name: string; ext: string; run: () => Promise<string> };
+type Upload = { name: string; ext: string; run: (report?: UploadReport) => Promise<string> };
+
+/** DEV-321: 업로드 1건의 진행 보고 — 단계 + 퍼센트(모르면 null). */
+export type UploadReport = (p: { phase: AttachPhase; percent: number | null }) => void;
 
 function uploadFromFile(file: File): Upload {
 	const ext = extOf(file);
 	return {
 		name: file.name || 'clipboard',
 		ext,
-		run: () => saveAttachmentBytes(file, ext)
+		run: (report) => saveAttachmentBytes(file, ext, report)
 	};
 }
 
@@ -133,7 +146,7 @@ function uploadFromPath(path: string): Upload {
 	return {
 		name,
 		ext: extOfName(name),
-		run: async () => (await uploadAttachmentPath(path)).rel
+		run: async (report) => (await uploadAttachmentPath(path, report)).rel
 	};
 }
 
@@ -218,11 +231,35 @@ function isMedia(ext: string): boolean {
  * (base64 경로는 파일 크기의 5~6배 메모리를 JS/Rust 양쪽에 동시에 잡는다).
  * bytes 경로(`saveAttachmentBytes`)와 같은 `.guild` 상대 경로를 반환한다.
  */
-async function uploadAttachmentPath(path: string): Promise<{ rel: string; name: string }> {
+async function uploadAttachmentPath(
+	path: string,
+	report?: UploadReport
+): Promise<{ rel: string; name: string }> {
 	const { invoke } = await import('@tauri-apps/api/core');
-	const rel = await invoke<string>('save_attachment_from_path', { path });
-	const name = path.split(/[\\/]/).pop() || rel;
-	return { rel, name };
+	const name = path.split(/[\\/]/).pop() || path;
+	if (!report) {
+		const rel = await invoke<string>('save_attachment_from_path', { path });
+		return { rel, name };
+	}
+	// DEV-321: Rust 가 버퍼 단위로 복사하며 진행을 이벤트로 보낸다. 여러 파일을
+	// 연달아 올릴 때 섞이지 않도록 uploadId 로 자기 것만 걸러낸다.
+	const { listen } = await import('@tauri-apps/api/event');
+	const uploadId = `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+	report({ phase: 'uploading', percent: 0 });
+	const unlisten = await listen<{ upload_id: string; copied: number; total: number }>(
+		'attachment://progress',
+		(e) => {
+			if (e.payload.upload_id !== uploadId) return;
+			const { copied, total } = e.payload;
+			report({ phase: 'uploading', percent: total > 0 ? (copied / total) * 100 : null });
+		}
+	);
+	try {
+		const rel = await invoke<string>('save_attachment_from_path', { path, uploadId });
+		return { rel, name };
+	} finally {
+		unlisten();
+	}
 }
 
 /**
@@ -249,9 +286,11 @@ export async function pickAndUploadAttachments(handlers: {
 	try {
 		for (let i = 0; i < picked.length; i++) {
 			const up = picked[i];
-			onProgress?.({ name: up.name, index: i + 1, total: picked.length });
+			const base = { name: up.name, index: i + 1, total: picked.length };
+			// DEV-321: 시작 시점엔 아직 %를 모른다 — 첫 보고가 오면 결정형으로 바뀐다.
+			onProgress?.({ ...base, phase: 'uploading', percent: null });
 			try {
-				const rel = await up.run();
+				const rel = await up.run((p) => onProgress?.({ ...base, ...p }));
 				await onOne({ rel, name: up.name || rel.split('/').pop() || rel });
 			} catch (e) {
 				onError(e instanceof Error ? e.message : String(e));
@@ -262,8 +301,24 @@ export async function pickAndUploadAttachments(handlers: {
 	}
 }
 
-/** DEV-298: 업로드 진행 상태 — 현재 파일명 + 몇 번째/전체 몇 개. */
-export type AttachProgress = { name: string; index: number; total: number };
+/**
+ * DEV-321: 업로드 단계.
+ * - `preparing` — 아직 보내기 전(브라우저 경로의 base64 변환). %를 알 수 없다.
+ * - `uploading` — 실제 전송/복사 중. 보통 %가 함께 온다.
+ */
+export type AttachPhase = 'preparing' | 'uploading';
+
+/**
+ * DEV-298: 업로드 진행 상태 — 현재 파일명 + 몇 번째/전체 몇 개.
+ * DEV-321: + 단계와 퍼센트. `percent === null` 이면 관측 불가(불확정 바).
+ */
+export type AttachProgress = {
+	name: string;
+	index: number;
+	total: number;
+	phase: AttachPhase;
+	percent: number | null;
+};
 
 /** 숨은 file input 으로 File 목록 받기 — 취소 시 빈 배열. */
 function pickFilesViaInput(): Promise<File[]> {
