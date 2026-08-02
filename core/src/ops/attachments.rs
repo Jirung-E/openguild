@@ -43,15 +43,66 @@ fn sanitize_ext(ext: &str) -> String {
     }
 }
 
-/// 저장 파일명 — 시각 + 난수 (충돌 회피, 사용자 입력 없음 → traversal 불가).
+/// DEV-324: 파일명에서 저장용 stem 을 만든다 — **원본 이름을 알아볼 수 있게**
+/// 살리되, 파일 시스템에 안전한 문자만 남긴다.
+///
+/// 예전엔 `{nanos}-{rand}.{ext}` 라 `.guild/attachments/` 를 열어봐도 무엇이
+/// 무엇인지 알 수 없었다(admin 보고). 그렇다고 원본 이름을 그대로 쓸 수는 없다 —
+/// 경로 구분자·제어문자·상대경로(`..`)는 traversal 이 되고, 같은 이름을 두 번
+/// 올리면 덮어쓴다. 그래서 "정리한 원본 이름 + 짧은 고유값" 으로 간다.
+///
+/// - 경로 구분자(`/`, `\`)와 제어문자, 예약문자(`:*?"<>|`)는 `_` 로.
+/// - 앞뒤 공백/점 제거(윈도우는 끝점을 허용하지 않는다).
+/// - 유니코드는 그대로 둔다(한글 파일명이 흔하다). NFC/NFD 정규화는 하지 않는다 —
+///   표시가 목적이고, 고유성은 뒤에 붙는 값이 보장한다.
+/// - 60자로 자른다(경로 길이 상한 여유 + 목록에서 읽기 좋은 길이).
+/// - 비면 `file` 로. 윈도우 예약명(CON 등)도 뒤에 `-{고유값}` 이 붙어 안전하다.
+fn sanitize_stem(name: &str) -> String {
+    // `Path::file_stem` 을 쓰지 않는다 — 윈도우에서 `a:b.zip` 의 `a:` 를 드라이브
+    // 접두로 보고 통째로 버린다(실측). 신뢰할 수 없는 입력이므로 직접 자른다.
+    let base = name.rsplit(['/', '\\']).next().unwrap_or(name);
+    // 마지막 `.` 앞까지가 stem. 선행 `.`(숨김 파일)은 확장자로 보지 않는다.
+    let stem = match base.rfind('.') {
+        Some(i) if i > 0 => &base[..i],
+        _ => base,
+    };
+    let cleaned: String = stem
+        .chars()
+        .map(|c| {
+            if c.is_control() || matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect();
+    let trimmed = cleaned.trim().trim_matches('.').trim();
+    let mut out: String = trimmed.chars().take(60).collect();
+    // take(60) 이 문자 경계에서 끝나므로 재-trim 만 하면 된다.
+    out = out.trim().trim_matches('.').trim().to_string();
+    if out.is_empty() {
+        "file".into()
+    } else {
+        out
+    }
+}
+
+/// 저장 파일명 — `{정리한 원본 이름}-{고유값}.{ext}`.
+/// 원본 이름을 모르면(붙여넣기 등) 예전처럼 고유값만 쓴다.
 /// 반환은 `.guild/` 상대 경로(`attachments/…`).
-fn new_attachment_rel(ext: &str) -> String {
+fn new_attachment_rel(ext: &str, orig_name: Option<&str>) -> String {
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
     let rand: u32 = (nanos as u32) ^ 0x5bd1_e995;
-    format!("attachments/{nanos:x}-{rand:08x}.{ext}")
+    // 고유값은 짧게 — 이름이 길어지면 목록에서 원본을 알아보기 어려워진다.
+    // 시각 하위 8자리(hex) + 난수 8자리면 같은 밀리초 안의 충돌도 사실상 없다.
+    let uniq = format!("{:08x}{rand:08x}", (nanos as u64) & 0xffff_ffff);
+    match orig_name.map(sanitize_stem) {
+        Some(stem) => format!("attachments/{stem}-{uniq}.{ext}"),
+        None => format!("attachments/{uniq}.{ext}"),
+    }
 }
 
 /// 첨부 저장 — bytes 를 `.guild/attachments/{nanos}-{rand}.{ext}` 로 write.
@@ -59,7 +110,12 @@ fn new_attachment_rel(ext: &str) -> String {
 ///
 /// 경로를 이미 아는 데스크탑은 `save_attachment_from_file` 을 쓴다 — 큰 파일을
 /// 메모리에 올리지 않는다.
-pub async fn save_attachment(store: &Store, bytes: &[u8], ext: &str) -> AppResult<String> {
+pub async fn save_attachment(
+    store: &Store,
+    bytes: &[u8],
+    ext: &str,
+    orig_name: Option<&str>,
+) -> AppResult<String> {
     let ext = sanitize_ext(ext);
     if bytes.is_empty() {
         return Err(AppError::BadRequest(crate::tf!("빈 첨부", "empty attachment")));
@@ -73,7 +129,7 @@ pub async fn save_attachment(store: &Store, bytes: &[u8], ext: &str) -> AppResul
     .await
     .map_err(AppError::Internal)?;
 
-    let rel = new_attachment_rel(&ext);
+    let rel = new_attachment_rel(&ext, orig_name);
 
     std::fs::create_dir_all(store.paths.attachments_dir())
         .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
@@ -130,7 +186,10 @@ pub async fn save_attachment_from_file_with_progress(
     .await
     .map_err(AppError::Internal)?;
 
-    let rel = new_attachment_rel(&ext);
+    let rel = new_attachment_rel(
+        &ext,
+        src.file_name().and_then(|n| n.to_str()),
+    );
     std::fs::create_dir_all(store.paths.attachments_dir())
         .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
     let dst = store.paths.dot_guild().join(&rel);
@@ -411,17 +470,17 @@ mod tests {
     #[tokio::test]
     async fn save_writes_file() {
         let (dir, store) = setup("save").await;
-        let rel = save_attachment(&store, b"PNGDATA", "png").await.unwrap();
+        let rel = save_attachment(&store, b"PNGDATA", "png", None).await.unwrap();
         assert!(rel.starts_with("attachments/") && rel.ends_with(".png"));
         assert!(store.paths.dot_guild().join(&rel).exists());
         // DEV-069 후속(admin #8): 임의 확장자 허용 — 미디어 외 파일도 첨부 가능.
-        let z = save_attachment(&store, b"ZIPDATA", "zip").await.unwrap();
+        let z = save_attachment(&store, b"ZIPDATA", "zip", None).await.unwrap();
         assert!(z.ends_with(".zip"));
         // 확장자 없으면 .bin 으로 정규화.
-        let b = save_attachment(&store, b"RAW", "").await.unwrap();
+        let b = save_attachment(&store, b"RAW", "", None).await.unwrap();
         assert!(b.ends_with(".bin"));
         // 빈 바이트는 여전히 거부.
-        assert!(save_attachment(&store, b"", "png").await.is_err());
+        assert!(save_attachment(&store, b"", "png", None).await.is_err());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -464,7 +523,7 @@ mod tests {
     #[tokio::test]
     async fn remove_deletes_orphan_file() {
         let (dir, store) = setup("gc").await;
-        let rel = save_attachment(&store, b"DATA", "zip").await.unwrap();
+        let rel = save_attachment(&store, b"DATA", "zip", None).await.unwrap();
         add_quest_attachment(&store, "DEV-001", &rel, "f.zip").await.unwrap();
         let abs = store.paths.dot_guild().join(&rel);
         assert!(abs.exists());
@@ -472,6 +531,43 @@ mod tests {
         remove_quest_attachment(&store, "DEV-001", &rel).await.unwrap();
         assert!(!abs.exists(), "orphan 파일이 삭제되어야");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-324: 저장 파일명에 원본 이름이 남는다 — `.guild/attachments/` 를
+    /// 열어봐도 무엇이 무엇인지 알 수 있어야 한다(admin 보고).
+    #[test]
+    fn attachment_name_keeps_original_and_stays_safe() {
+        let rel = |name: Option<&str>| super::new_attachment_rel("zip", name);
+
+        // 원본 이름이 앞에 남고, 뒤에 고유값이 붙는다.
+        let r = rel(Some("설계 문서 v2.zip"));
+        assert!(r.starts_with("attachments/설계 문서 v2-"), "{r}");
+        assert!(r.ends_with(".zip"), "{r}");
+
+        // 경로 구분자·상위 이동은 파일명 안에 남으면 안 된다(traversal).
+        let evil = rel(Some("../../etc/passwd.zip"));
+        assert!(!evil.contains(".."), "{evil}");
+        assert_eq!(evil.matches('/').count(), 1, "attachments/ 외 구분자 없음: {evil}");
+
+        // 윈도우 예약문자/제어문자는 치환.
+        let weird = rel(Some("a:b*c?d\u{7}e.zip"));
+        assert!(weird.starts_with("attachments/a_b_c_d_e-"), "{weird}");
+
+        // 이름을 모르면 예전처럼 고유값만.
+        let anon = rel(None);
+        assert!(anon.starts_with("attachments/") && anon.ends_with(".zip"), "{anon}");
+        assert!(!anon.contains('-'), "이름 없는 첨부에 구분자가 붙음: {anon}");
+
+        // 같은 이름을 두 번 올려도 서로 다른 파일이어야 한다.
+        assert_ne!(rel(Some("같은이름.zip")), rel(Some("같은이름.zip")));
+
+        // 아주 긴 이름은 잘린다(경로 길이 상한 여유).
+        let long = rel(Some(&format!("{}.zip", "가".repeat(200))));
+        let stem = long.trim_start_matches("attachments/");
+        assert!(stem.chars().count() < 90, "너무 긴 파일명: {}", stem.chars().count());
+
+        // 점/공백만 있는 이름도 파일명이 성립해야.
+        assert!(rel(Some("....zip")).starts_with("attachments/file-"));
     }
 
     /// DEV-321: 진행 콜백 — 0 에서 시작해 단조 증가하고 전체 크기로 끝난다.
@@ -539,7 +635,7 @@ mod tests {
     #[tokio::test]
     async fn remove_keeps_referenced_file() {
         let (dir, store) = setup("gckeep").await;
-        let rel = save_attachment(&store, b"DATA", "zip").await.unwrap();
+        let rel = save_attachment(&store, b"DATA", "zip", None).await.unwrap();
         add_quest_attachment(&store, "DEV-001", &rel, "f.zip").await.unwrap();
         add_quest_attachment(&store, "DEV-002", &rel, "f.zip").await.unwrap();
         let abs = store.paths.dot_guild().join(&rel);
@@ -557,7 +653,7 @@ mod tests {
     #[tokio::test]
     async fn attachments_are_not_backed_up_into_index_db() {
         let (dir, store) = setup("no-blob").await;
-        let rel = save_attachment(&store, b"IMAGE", "png").await.unwrap();
+        let rel = save_attachment(&store, b"IMAGE", "png", None).await.unwrap();
         add_quest_attachment(&store, "DEV-001", &rel, "img.png").await.unwrap();
 
         let tables: Vec<String> = sqlx::query_scalar(
@@ -583,7 +679,7 @@ mod tests {
         let (dir, store) = setup("book-attach").await;
         assert!(list_book_attachments(&store, "BOOK-001").is_empty());
 
-        let rel = save_attachment(&store, b"DOC", "pdf").await.unwrap();
+        let rel = save_attachment(&store, b"DOC", "pdf", None).await.unwrap();
         let list = add_book_attachment(&store, "BOOK-001", &rel, "spec.pdf")
             .await
             .unwrap();
@@ -602,7 +698,7 @@ mod tests {
     #[tokio::test]
     async fn book_attachment_referenced_keeps_quest_attachment() {
         let (dir, store) = setup("book-xref").await;
-        let rel = save_attachment(&store, b"DATA", "zip").await.unwrap();
+        let rel = save_attachment(&store, b"DATA", "zip", None).await.unwrap();
         add_quest_attachment(&store, "DEV-001", &rel, "f.zip").await.unwrap();
         add_book_attachment(&store, "BOOK-001", &rel, "f.zip").await.unwrap();
         let abs = store.paths.dot_guild().join(&rel);

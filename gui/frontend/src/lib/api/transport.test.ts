@@ -314,7 +314,22 @@ describe('TauriTransport', () => {
 	});
 
 	// DEV-152: 첨부 업로드 — 브라우저(server) 모드 지원 매핑.
+	// DEV-324: 원본 파일명(name)도 함께 넘어가야 저장 파일명에 남는다.
 	it('POST /api/attachments → save_attachment', async () => {
+		mockInvoke.mockResolvedValue('attachments/abc.png');
+		await new TauriTransport().call({
+			method: 'POST',
+			path: '/api/attachments',
+			body: { data_base64: 'QUJD', ext: 'png', name: '스크린샷.png' }
+		});
+		expect(mockInvoke).toHaveBeenCalledWith('save_attachment', {
+			dataBase64: 'QUJD',
+			ext: 'png',
+			name: '스크린샷.png'
+		});
+	});
+
+	it('이름 없는 첨부(붙여넣기)는 name=null 로 넘어간다', async () => {
 		mockInvoke.mockResolvedValue('attachments/abc.png');
 		await new TauriTransport().call({
 			method: 'POST',
@@ -323,7 +338,8 @@ describe('TauriTransport', () => {
 		});
 		expect(mockInvoke).toHaveBeenCalledWith('save_attachment', {
 			dataBase64: 'QUJD',
-			ext: 'png'
+			ext: 'png',
+			name: null
 		});
 	});
 

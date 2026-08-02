@@ -530,10 +530,11 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 	// HTTP body 는 snake_case(server Deserialize 와 1:1) — invoke args 는 Tauri
 	// 컨벤션대로 camelCase 로 변환.
 	if (method === 'POST' && pathOnly === '/api/attachments') {
-		const b = (body as { data_base64?: string; ext?: string } | undefined) ?? {};
+		const b = (body as { data_base64?: string; ext?: string; name?: string } | undefined) ?? {};
 		return {
 			cmd: 'save_attachment',
-			args: { dataBase64: b.data_base64 ?? '', ext: b.ext ?? '' }
+			// DEV-324: name(원본 파일명)도 넘긴다 — 저장 파일명에 남는다.
+			args: { dataBase64: b.data_base64 ?? '', ext: b.ext ?? '', name: b.name ?? null }
 		};
 	}
 

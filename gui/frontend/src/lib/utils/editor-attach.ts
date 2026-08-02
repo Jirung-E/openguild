@@ -115,7 +115,10 @@ async function saveAttachmentBytes(
 	report?.({ phase: 'uploading', percent: 0 });
 	// HTTP body 필드는 이 프로젝트 컨벤션상 snake_case(server 의 axum Deserialize
 	// 와 1:1) — transport.ts 의 routeToInvoke 가 Tauri invoke 용 camelCase args 로 변환.
-	return postWithUploadProgress<string>('/api/attachments', { data_base64, ext }, (sent, total) =>
+	// DEV-324: 원본 파일명도 보낸다 — 저장 파일명에 남아 나중에 알아볼 수 있다.
+	// 붙여넣기처럼 이름이 없으면(빈 문자열) 보내지 않는다.
+	const name = file.name || undefined;
+	return postWithUploadProgress<string>('/api/attachments', { data_base64, ext, name }, (sent, total) =>
 		report?.({ phase: 'uploading', percent: total > 0 ? (sent / total) * 100 : null })
 	);
 }

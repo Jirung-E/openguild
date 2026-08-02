@@ -1992,12 +1992,14 @@ pub async fn save_attachment(
     store: State<'_, Store>,
     data_base64: String,
     ext: String,
+    // DEV-324: 원본 파일명(있으면) — 저장 파일명에 남긴다.
+    name: Option<String>,
 ) -> Result<String, String> {
     use base64::Engine as _;
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(data_base64.as_bytes())
         .map_err(|e| format!("base64 decode 실패: {e}"))?;
-    openguild_core::ops::attachments::save_attachment(&store, &bytes, &ext)
+    openguild_core::ops::attachments::save_attachment(&store, &bytes, &ext, name.as_deref())
         .await
         .map_err(err)
 }

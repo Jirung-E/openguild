@@ -37,6 +37,10 @@ pub const MAX_ATTACHMENT_BODY_BYTES: usize = MAX_ATTACHMENT_BYTES / 3 * 4 + 64 *
 pub struct SaveAttachmentRequest {
     pub data_base64: String,
     pub ext: String,
+    /// DEV-324: 원본 파일명 — 저장 파일명에 남겨 나중에 알아볼 수 있게.
+    /// 예전 클라이언트는 안 보내므로 optional.
+    #[serde(default)]
+    pub name: Option<String>,
 }
 
 /// `POST /api/attachments` — bytes(base64) 를 `.guild/attachments/` 에 저장.
@@ -67,7 +71,7 @@ pub async fn save_attachment(
         ))
         .into());
     }
-    let rel = ops::save_attachment(&store, &bytes, &body.ext).await?;
+    let rel = ops::save_attachment(&store, &bytes, &body.ext, body.name.as_deref()).await?;
     Ok(Json(rel))
 }
 

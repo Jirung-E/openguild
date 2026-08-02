@@ -680,7 +680,7 @@ mod tests {
     async fn snapshot_excludes_attachments() {
         let dir = fresh_tmp("no-attach");
         let store = setup(&dir).await;
-        let rel = crate::ops::attachments::save_attachment(&store, b"BIGFILE", "zip")
+        let rel = crate::ops::attachments::save_attachment(&store, b"BIGFILE", "zip", None)
             .await
             .unwrap();
         let abs = store.paths.dot_guild().join(&rel);
@@ -1171,7 +1171,7 @@ mod tests {
         let book = lib_ops::create_book(&store, "라우터 설계", "본문", "아키텍처")
             .await
             .unwrap();
-        let rel = att_ops::save_attachment(&store, b"SPEC-BYTES", "pdf")
+        let rel = att_ops::save_attachment(&store, b"SPEC-BYTES", "pdf", None)
             .await
             .unwrap();
         att_ops::add_book_attachment(&store, &book.book_id(), &rel, "spec.pdf")

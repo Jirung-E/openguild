@@ -2823,7 +2823,11 @@ impl Backend {
                 l.rt
                     .block_on(async {
                         let rel = openguild_core::ops::attachments::save_attachment(
-                            &l.store, &bytes, ext,
+                            &l.store,
+                            &bytes,
+                            ext,
+                            // DEV-324: 저장 파일명에 원본 이름을 남긴다.
+                            Some(display.as_str()),
                         )
                         .await?;
                         match scope {
@@ -2914,7 +2918,11 @@ impl Backend {
                 l.rt
                     .block_on(async {
                         let rel = openguild_core::ops::attachments::save_attachment(
-                            &l.store, &bytes, ext,
+                            &l.store,
+                            &bytes,
+                            ext,
+                            // DEV-324: 저장 파일명에 원본 이름을 남긴다.
+                            Some(display.as_str()),
                         )
                         .await?;
                         openguild_core::ops::attachments::add_book_attachment(
