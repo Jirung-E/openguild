@@ -218,27 +218,33 @@
 			aria-valuenow={pct == null ? undefined : Math.round(pct)}
 			aria-valuetext={pct == null ? t('attach.preparing', $locale) : `${Math.round(pct)}%`}
 		>
-			<span class="up-name" title={progress.name}>{progress.name}</span>
-			{#if progress.total > 1}
-				<span class="up-count">{progress.index} / {progress.total}</span>
-			{/if}
+			<!-- BUG-190: 파일명과 진행 바를 **다른 줄**로. 한 줄에 두면 이름이 긴
+			     파일에서 바가 밀려 거의 안 보였다(admin 보고). -->
+			<div class="up-line">
+				<span class="up-name" title={progress.name}>{progress.name}</span>
+				{#if progress.total > 1}
+					<span class="up-count">{progress.index} / {progress.total}</span>
+				{/if}
+			</div>
 			<!-- DEV-321: %를 알면 결정형 바 + 숫자, 모르면 기존 불확정 바.
 			     브라우저 경로는 전송 전에 base64 변환 구간이 있어 그동안은
 			     '준비 중' 으로 알린다(0% 에서 멈춘 것처럼 보이지 않게). -->
-			<span class="up-bar">
-				<span
-					class="up-fill"
-					class:determinate={pct != null}
-					style={pct != null ? `width:${pct}%` : undefined}
-				></span>
-			</span>
-			<span class="up-pct">
-				{pct == null
-					? progress.phase === 'preparing'
-						? t('attach.preparing', $locale)
-						: ''
-					: `${Math.round(pct)}%`}
-			</span>
+			<div class="up-line">
+				<span class="up-bar">
+					<span
+						class="up-fill"
+						class:determinate={pct != null}
+						style={pct != null ? `width:${pct}%` : undefined}
+					></span>
+				</span>
+				<span class="up-pct">
+					{pct == null
+						? progress.phase === 'preparing'
+							? t('attach.preparing', $locale)
+							: ''
+						: `${Math.round(pct)}%`}
+				</span>
+			</div>
 		</div>
 	{/if}
 	{#if error}<p class="err">{error}</p>{/if}
@@ -305,15 +311,23 @@
 	/* DEV-298: 업로드 진행 표시. 진행률을 알 수 없는 전송(경로 기반 복사 /
 	   base64 IPC)이라 불확정(indeterminate) 바 — 목적은 "돌고 있음"의 확인. */
 	.uploading {
+		/* BUG-190: 이름 줄 / 진행 줄 2단. */
 		display: flex;
-		align-items: center;
-		gap: 0.5rem;
+		flex-direction: column;
+		gap: 0.3rem;
 		margin-top: 0.6rem;
 		font-size: 0.8rem;
 		color: var(--text-muted);
 	}
+	.up-line {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
 	.up-name {
-		max-width: 22rem;
+		/* 이름 줄을 통째로 쓰되 넘치면 말줄임 — 바를 밀어내지 않는다. */
+		flex: 1;
+		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
