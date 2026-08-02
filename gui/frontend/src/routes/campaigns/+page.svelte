@@ -111,14 +111,20 @@
 		<ul class="list">
 			{#each filtered as c (c.id)}
 				<li class="row">
+					<!-- admin 요청: 한 줄에 다 넣지 않고 2단으로 —
+					     1행 [슬러그 · 상태 · 기간] / 2행 [제목].
+					     제목이 가장 길고 중요한데 예전 배치에선 가운데에서 눌려
+					     잘리기 쉬웠다(BUG-198 의 세로 출력도 같은 자리). -->
 					<a class="main" href={`/campaigns/${encodeURIComponent(c.campaign_slug)}`}>
-						<span class="slug">{c.campaign_slug}</span>
+						<span class="meta-line">
+							<span class="slug">{c.campaign_slug}</span>
+							<span class="status status-{c.status}">{c.status}</span>
+							<!-- DEV-079: 종료 기한 지났는데 status != done 이면 period 빨강. -->
+							<span class="period" class:overdue={isDateOverdue(c.ended_at, c.status)}
+								>{fmtPeriod(c)}</span
+							>
+						</span>
 						<span class="title">{c.title}</span>
-						<span class="status status-{c.status}">{c.status}</span>
-						<!-- DEV-079: 종료 기한 지났는데 status != done 이면 period 빨강. -->
-						<span class="period" class:overdue={isDateOverdue(c.ended_at, c.status)}
-							>{fmtPeriod(c)}</span
-						>
 					</a>
 					{#if sort === 'manual'}
 						<div class="reorder">
@@ -208,10 +214,11 @@
 	}
 	.main {
 		flex: 1;
-		display: grid;
-		grid-template-columns: 5rem 1fr auto auto;
-		gap: 0.75rem;
-		align-items: center;
+		/* admin 요청: 2단 배치 — 위 줄에 메타(슬러그·상태·기간), 아래 줄에 제목. */
+		display: flex;
+		flex-direction: column;
+		gap: 0.3rem;
+		align-items: stretch;
 		padding: 0.6rem 0.85rem;
 		background: var(--bg-elevated);
 		border: 1px solid var(--bg-subtle);
@@ -224,18 +231,25 @@
 		background: var(--bg-subtle);
 	}
 
+	/* 메타 줄 — 좁으면 기간이 다음 줄로 넘어간다(제목 줄은 건드리지 않는다). */
+	.meta-line {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+	}
 	.slug {
 		font-size: 0.75rem;
 		color: var(--text-muted);
 		font-family: 'JetBrains Mono', ui-monospace, monospace;
+		flex: none;
 	}
 	.title {
 		color: var(--text);
 		font-size: 0.9rem;
-		/* BUG-198: 좁은 화면에서 상태 pill·기간이 자리를 먼저 가져가면 제목이
-		   한 글자 폭까지 눌려 세로로 흩어졌다(도서관 상세와 같은 원인). */
-		flex: 1 1 8rem;
-		min-width: 6rem;
+		/* BUG-198: 예전엔 한 줄 안에서 pill·기간에 밀려 한 글자 폭까지 눌렸다.
+		   이제 제목이 자기 줄을 통째로 쓰므로 그럴 일이 없다. 아주 긴 제목만
+		   자연스럽게 감싸도록. */
 		overflow-wrap: anywhere;
 	}
 	/* BUG-021: Quest List 의 pill 스타일 통일. */
