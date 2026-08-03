@@ -59,7 +59,7 @@
 	let renameSlug = $state('');
 	let renameError = $state<string | null>(null);
 
-	async function loadList(preferSlug?: string | null) {
+	async function loadList(preferSlug?: string | null, mutated = false) {
 		loading = true;
 		error = null;
 		try {
@@ -72,9 +72,13 @@
 				selectedSlug = entries[0]?.slug ?? null;
 			}
 			refreshSelectedContent();
-			// DEV-173 후속: 목록이 바뀌었을 수 있으니(생성/삭제/이름변경 후 재호출됨)
-			// cross-link 인덱스도 재적재.
-			loadQuestIndex(true);
+			// BUG-210: 예전엔 여기서 무조건 `loadQuestIndex(true)` 를 불렀다.
+			// 이 함수는 **생성/삭제/이름변경 후에도, 페이지 진입 때도** 호출되는데
+			// force 는 memo 를 무시하므로 페이지에 들어갈 때마다 quests/campaigns/
+			// rules/library 4종을 통째로 다시 받았다(퀘스트 531건 기준 /api/quests
+			// 응답만 1.1MB, 라우트 이동 1회당 힙 +2.5MB). 실제로 목록이 바뀐
+			// 호출에서만 force 한다.
+			loadQuestIndex(mutated);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'failed to load';
 		} finally {
@@ -270,7 +274,7 @@
 		try {
 			await rulesApi.create(slug, '');
 			creating = false;
-			await loadList(slug); // 새로 만든 것 자동 선택.
+			await loadList(slug, true); // 새로 만든 것 자동 선택.
 		} catch (e) {
 			createError = e instanceof Error ? e.message : t('rules.createFailed', $locale);
 		}
@@ -292,7 +296,7 @@
 				selectedSlug = null;
 				selectedContent = null;
 			}
-			await loadList();
+			await loadList(null, true);
 		} catch (e) {
 			showToast(e instanceof Error ? e.message : t('rules.deleteFailed', $locale), 'error');
 		}
@@ -319,7 +323,7 @@
 		try {
 			await rulesApi.rename(selectedSlug, newSlug);
 			renaming = false;
-			await loadList(newSlug);
+			await loadList(newSlug, true);
 		} catch (e) {
 			renameError = e instanceof Error ? e.message : t('rules.renameFailed', $locale);
 		}

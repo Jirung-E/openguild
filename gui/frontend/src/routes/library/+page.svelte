@@ -244,7 +244,7 @@
 	let createFolderPath = $state('');
 	let createFolderError = $state<string | null>(null);
 
-	async function loadList(preferId?: string | null) {
+	async function loadList(preferId?: string | null, mutated = false) {
 		loading = true;
 		error = null;
 		try {
@@ -256,9 +256,13 @@
 			} else if (selectedId == null || !books.some((b2) => b2.book_id === selectedId)) {
 				selectedId = viewMode === 'tree' ? (books[0]?.book_id ?? null) : null;
 			}
-			// 목록 변동(생성/삭제/제목변경) → cross-link 인덱스 재적재 (DEV-218 대비,
-			// rules 페이지의 DEV-173 후속과 동일 이유).
-			loadQuestIndex(true);
+			// BUG-210: 예전엔 여기서 무조건 `loadQuestIndex(true)` 를 불렀다.
+			// 이 함수는 **생성/삭제/이름변경 후에도, 페이지 진입 때도** 호출되는데
+			// force 는 memo 를 무시하므로 페이지에 들어갈 때마다 quests/campaigns/
+			// rules/library 4종을 통째로 다시 받았다(퀘스트 531건 기준 /api/quests
+			// 응답만 1.1MB, 라우트 이동 1회당 힙 +2.5MB). 실제로 목록이 바뀐
+			// 호출에서만 force 한다.
+			loadQuestIndex(mutated);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'failed to load';
 		} finally {
@@ -458,7 +462,7 @@
 		try {
 			const created = await libraryApi.create(title, '', createPath);
 			creating = false;
-			await loadList(created.book_id);
+			await loadList(created.book_id, true);
 		} catch (e) {
 			createError = e instanceof Error ? e.message : t('library.createFail', $locale);
 		}
@@ -477,7 +481,7 @@
 		try {
 			await libraryApi.delete(target);
 			if (selectedId === target) selectedId = null;
-			await loadList();
+			await loadList(null, true);
 		} catch (e) {
 			showToast(e instanceof Error ? e.message : t('library.deleteFail', $locale), 'error');
 		}
@@ -575,7 +579,7 @@
 		try {
 			await libraryApi.folders.create(path);
 			creatingFolder = false;
-			await loadList(selectedId);
+			await loadList(selectedId, true);
 		} catch (e) {
 			createFolderError = e instanceof Error ? e.message : t('library.createFolderFail', $locale);
 		}
@@ -597,7 +601,7 @@
 				explorerPath = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
 				syncUrl();
 			}
-			await loadList(selectedId);
+			await loadList(selectedId, true);
 		} catch (e) {
 			showToast(e instanceof Error ? e.message : t('library.deleteFolderFail', $locale), 'error');
 		}
