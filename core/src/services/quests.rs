@@ -338,6 +338,15 @@ pub async fn list(pool: &SqlitePool, query: &ListQuery) -> AppResult<Vec<QuestRo
             }
         }
     }
+    // BUG-210: slim — 본문을 응답에서 뺀다. SELECT 에서 빼지 않고 여기서
+    // 지우는 이유는 검색(`search`)이 description 을 봐야 하고, SQL 분기를
+    // 늘리면 필터 조합마다 경로가 갈라지기 때문. 로컬 SQLite 읽기는 싸고
+    // 실제 비용은 네트워크/직렬화 쪽이다.
+    if query.slim {
+        for q in &mut quests {
+            q.description = None;
+        }
+    }
     Ok(quests)
 }
 

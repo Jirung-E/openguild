@@ -43,7 +43,7 @@
 		loading = true;
 		try {
 			const [quests, rules, books, defs] = await Promise.all([
-				questsApi.list().catch(() => []),
+				questsApi.list(true).catch(() => []),
 				rulesApi.list().catch(() => ({ entries: [] })),
 				libraryApi.list().catch(() => []),
 				adminApi.listTagDefs().catch(() => [])

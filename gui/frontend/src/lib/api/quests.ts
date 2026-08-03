@@ -15,7 +15,13 @@ import type {
 } from '../types';
 
 export const questsApi = {
-	list: () => api.get<Quest[]>('/api/quests'),
+	/**
+	 * BUG-210: `slim` 이면 응답에서 `description` 을 뺀다. 목록·보드·홈·
+	 * cross-link 인덱스는 제목과 메타만 쓰는데 본문까지 실려 나와, 퀘스트
+	 * 531건 기준 응답이 1.13MB(그중 본문 0.58MB)였다. 필터·검색은 서버가
+	 * 하므로 클라이언트가 본문을 들고 있을 이유가 없다.
+	 */
+	list: (slim = false) => api.get<Quest[]>(`/api/quests${slim ? '?slim=true' : ''}`),
 
 	/**
 	 * DEV-277: 최근 갱신순 목록 — 검색 팔레트처럼 "고르는" UI 용.
@@ -26,7 +32,8 @@ export const questsApi = {
 	 * 스크립트 호환을 위해 그대로 두고(필요하면 `--sort updated`), 이 UI 만
 	 * 다른 정렬을 요청한다.
 	 */
-	listRecent: () => api.get<Quest[]>('/api/quests?sort=updated'),
+	listRecent: (slim = false) =>
+		api.get<Quest[]>(`/api/quests?sort=updated${slim ? '&slim=true' : ''}`),
 
 	get: (id: number) => api.get<QuestDetail>(`/api/quests/${id}`),
 

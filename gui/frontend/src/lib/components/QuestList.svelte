@@ -192,7 +192,7 @@
 	async function loadData() {
 		try {
 			const [q, t, s, deps] = await Promise.all([
-				questsApi.list(),
+				questsApi.list(true),
 				metaApi.getQuestTypes(),
 				metaApi.getQuestStatuses(),
 				// DEV-033: 선행 tri-state 용. 실패해도 목록 자체는 OK.

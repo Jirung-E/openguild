@@ -7191,6 +7191,8 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
                 reverse,
                 limit,
                 offset,
+                // CLI 는 본문을 출력/검색에 쓰므로 slim 아님 (BUG-210).
+                slim: false,
             };
             let quests = c.list_quests(&q)?;
             if count {

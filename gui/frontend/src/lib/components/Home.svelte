@@ -57,7 +57,7 @@
 		try {
 			const [a, q, t, s] = await Promise.all([
 				campaignsApi.activeSummaries(),
-				questsApi.list(),
+				questsApi.list(true),
 				metaApi.getQuestTypes(),
 				metaApi.getQuestStatuses()
 			]);

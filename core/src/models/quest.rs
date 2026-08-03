@@ -10,6 +10,8 @@ pub struct QuestRow {
     pub type_color: String,
     pub number: i64,
     pub title: String,
+    /// BUG-210: slim 목록에서는 아예 직렬화하지 않는다(None).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     pub status_id: i64,
     /// DEV-046: stable identifier (예: "open", "testing"). status_id 와 달리
@@ -186,6 +188,13 @@ pub struct ListQuery {
     pub limit: Option<i64>,
     /// 페이지네이션 — `limit` 와 같이 사용.
     pub offset: Option<i64>,
+    /// BUG-210: 목록 응답에서 `description` 을 뺀다 (`?slim=true`).
+    ///
+    /// 목록·보드·홈·cross-link 인덱스는 제목과 메타만 쓰는데 본문까지 실려
+    /// 나갔다 — 531건 기준 응답 1.13MB 중 약 0.58MB 가 본문이다. 필터/검색은
+    /// 서버에서 하므로 본문을 내려보낼 이유가 없다. 상세(`/api/quests/{id}`)
+    /// 는 영향 없음.
+    pub slim: bool,
 }
 
 #[derive(Debug, Deserialize)]

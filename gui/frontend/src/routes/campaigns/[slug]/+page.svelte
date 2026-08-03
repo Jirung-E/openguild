@@ -116,7 +116,7 @@
 	async function load() {
 		loading = true;
 		try {
-			const [d, qs] = await Promise.all([campaignsApi.get(slug), questsApi.list()]);
+			const [d, qs] = await Promise.all([campaignsApi.get(slug), questsApi.list(true)]);
 			detail = d;
 			allQuests = qs;
 		} catch (e) {

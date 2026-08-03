@@ -119,7 +119,7 @@ export async function loadQuestIndex(force = false): Promise<void> {
 		try {
 			// BUG-173: 네 소스 모두 개별 catch — 부분 실패를 전체 실패로 만들지 않는다.
 			const [quests, campaigns, rules, books] = await Promise.all([
-				questsApi.list().catch((e) => {
+				questsApi.list(true).catch((e) => {
 					console.warn('[questIndex] quests 적재 실패 — 재시도 예정', e);
 					return null;
 				}),

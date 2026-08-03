@@ -2162,7 +2162,7 @@
 
 	async function loadBoardData() {
 		const [quests, statuses, positions, dependencies, types] = await Promise.all([
-			questsApi.list(),
+			questsApi.list(true),
 			metaApi.getQuestStatuses(),
 			questsApi.listPositions(),
 			questsApi.listDependencies(),
@@ -2392,7 +2392,7 @@
 			let quest = allQuests.find((q) => q.id === qid);
 			if (!quest) {
 				// 보드 init 후 만들어진 새 quest — 목록 다시 가져오기
-				const fresh = await questsApi.list();
+				const fresh = await questsApi.list(true);
 				allQuests = fresh;
 				quest = fresh.find((q) => q.id === qid);
 			}

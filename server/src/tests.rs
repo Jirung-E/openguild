@@ -725,6 +725,47 @@ async fn test_list_search_title_only_multi_token_and() {
     assert_eq!(arr[0]["title"], "Quest list 검색");
 }
 
+// === BUG-210: slim 목록 — 응답에서 description 제외 ===
+
+#[tokio::test]
+async fn test_list_slim_omits_description() {
+    let app = setup_for_search().await;
+    // 기본(비-slim) 은 본문 포함.
+    let (_, full) = get(app.clone(), "/api/quests").await;
+    let full = full.as_array().unwrap();
+    assert!(
+        full.iter().any(|q| q["description"].is_string()),
+        "기본 목록은 description 을 실어야 한다"
+    );
+
+    // slim 은 필드 자체가 없어야 한다 (null 이 아니라 부재).
+    let (_, slim) = get(app.clone(), "/api/quests?slim=true").await;
+    let slim = slim.as_array().unwrap();
+    assert_eq!(slim.len(), full.len(), "slim 이 행 수를 바꾸면 안 된다");
+    for q in slim {
+        assert!(
+            q.get("description").is_none(),
+            "slim 응답에 description 이 남아 있다: {q}"
+        );
+        // 목록 렌더에 필요한 필드는 그대로.
+        assert!(q["title"].is_string());
+        assert!(q["quest_id"].is_string());
+        assert!(q["status_slug"].is_string());
+    }
+}
+
+#[tokio::test]
+async fn test_list_slim_still_searches_description() {
+    // slim 은 "응답에서 빼는" 것이지 "검색 대상에서 빼는" 것이 아니다.
+    // description 에만 있는 토큰으로도 계속 매치돼야 한다.
+    let app = setup_for_search().await;
+    let (_, body) = get(app, "/api/quests?slim=true&search=commands.rs").await;
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0]["title"], "Tauri invoke handler");
+    assert!(arr[0].get("description").is_none());
+}
+
 // === DEV-040: slug (quest_id) 검색 ===
 
 #[tokio::test]

@@ -32,7 +32,9 @@ export interface Quest {
 	type_color: string;
 	number: number;
 	title: string;
-	description: string | null;
+	/** BUG-210: slim 목록 응답(`?slim=true`)에는 이 필드가 아예 없다.
+	 *  본문이 필요한 화면은 상세(`/api/quests/{id}`)를 쓴다. */
+	description?: string | null;
 	status_id: number;
 	/** DEV-046: stable identifier (예: "open", "testing"). status_id 와 달리 reorder 안전. */
 	status_slug: string;
