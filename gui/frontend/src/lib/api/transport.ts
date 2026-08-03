@@ -107,6 +107,43 @@ export class HttpTransport implements Transport {
  */
 import { invoke } from '@tauri-apps/api/core';
 
+/**
+ * BUG-211: `ListQuery`(core/src/models/quest.rs) 의 bool / 정수 필드.
+ *
+ * Tauri 경로는 args 를 JSON 으로 역직렬화하므로 타입이 정확해야 한다.
+ * 여기 빠진 필드는 문자열로 넘어가 `invalid type: string "true", expected a
+ * boolean` 으로 즉사한다 — **ListQuery 에 필드를 추가하면 여기도 갱신할 것.**
+ */
+const LIST_QUERY_BOOLS = new Set([
+	'title_only',
+	'no_parent',
+	'has_prereq',
+	'no_prereq',
+	'has_sub',
+	'no_sub',
+	'reverse',
+	'slim'
+]);
+const LIST_QUERY_NUMBERS = new Set(['limit', 'offset']);
+
+/** 쿼리스트링 → `list_quests` 의 `query` args (bool / 정수 타입 복원). */
+export function questListQueryToArgs(query: URLSearchParams): Record<string, unknown> {
+	const q: Record<string, unknown> = {};
+	for (const [k, v] of query.entries()) {
+		if (LIST_QUERY_BOOLS.has(k)) {
+			// serde_urlencoded 가 HTTP 경로에서 받아주는 표기와 맞춘다.
+			q[k] = v === '' || v === '1' || v.toLowerCase() === 'true';
+		} else if (LIST_QUERY_NUMBERS.has(k)) {
+			const n = Number(v);
+			// 숫자가 아니면 서버 쪽 에러 메시지를 그대로 보게 두는 편이 낫다.
+			q[k] = Number.isFinite(n) ? n : v;
+		} else {
+			q[k] = v;
+		}
+	}
+	return q;
+}
+
 /** path + method → (invoke 명, args). 매칭 실패 시 null. */
 function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknown> } | null {
 	const { method, path, body } = req;
@@ -281,8 +318,15 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 		// 받는데 Tauri 만 달라지는 비대칭. list_quests 커맨드는 이미
 		// `query: Option<ListQuery>` 를 받으므로 넘겨주기만 하면 된다.
 		// 값이 하나도 없으면 None 과 동일하게 두어 기존 동작 유지.
-		const q: Record<string, string> = {};
-		for (const [k, v] of query.entries()) q[k] = v;
+		//
+		// BUG-211: 다만 **타입을 맞춰서** 넘겨야 한다. HTTP 경로는
+		// `Query<ListQuery>`(serde_urlencoded)라 `"true"` → bool, `"10"` → i64
+		// 로 알아서 강제 변환되지만, Tauri 경로는 이 객체가 JSON 으로 그대로
+		// 역직렬화되므로 문자열이 오면 그 자리에서 실패한다:
+		//   invalid type: string "true", expected a boolean
+		// slim(BUG-210) 때문에 처음 드러났지만 title_only / no_parent / reverse
+		// 같은 기존 bool 필터도 데스크탑에선 똑같이 깨져 있었다.
+		const q = questListQueryToArgs(query);
 		return {
 			cmd: 'list_quests',
 			args: Object.keys(q).length > 0 ? { query: q } : {}
