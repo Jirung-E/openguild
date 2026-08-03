@@ -65,10 +65,51 @@
 		to: number;
 		items: WikiItem[];
 		left: number;
-		// 아래로 뜨면 top, 위로 뜨면 bottom 으로 anchor (위로는 높이 무관하게 caret 위).
-		top: number | null;
-		bottom: number | null;
+		// BUG-209: 예전엔 여기서 top/bottom 을 **높이 추정치로** 정해버렸다. 항목
+		// 높이가 30px 이라는 가정이 DEV-297(선택 항목 펼침)로 깨지면서 팝업이 화면
+		// 밖으로 삐져나갔다. 이제 caret 좌표만 들고 있고, 실제 렌더 높이를 재서
+		// 배치한다(아래 wikiPlace).
+		caretTop: number;
+		caretBottom: number;
 	} | null>(null);
+	/** 팝업의 **실제** 콘텐츠 높이(max-height 로 잘리기 전). ResizeObserver 로 갱신. */
+	let wikiPopH = $state(0);
+	/** 뷰포트 가장자리 여백 — 좌우 clamp 와 같은 값. */
+	const WIKI_MARGIN = 8;
+	/** CSS 의 상한(14rem)과 같은 값 — 공간이 남아도 이 이상은 키우지 않는다. */
+	const WIKI_MAX_H = 224;
+	// BUG-209: 배치는 "추정" 이 아니라 "측정". 아래 공간에 실제 높이가 안 들어가고
+	// 위가 더 넓으면 위로 띄우고, 어느 쪽이든 남은 공간만큼 max-height 를 물려
+	// 팝업이 뷰포트를 벗어나지 못하게 한다. 항목이 펼쳐져 높이가 변해도 스스로
+	// 다시 맞춰지므로 같은 문제가 재발하지 않는다.
+	let wikiPlace = $derived.by(() => {
+		if (!wiki) return null;
+		const below = window.innerHeight - wiki.caretBottom - WIKI_MARGIN;
+		const above = wiki.caretTop - WIKI_MARGIN;
+		// 아직 렌더 전이면 항목 수로 어림잡되, 렌더 직후 측정값으로 교체된다.
+		const h = wikiPopH || Math.min(wiki.items.length * 30 + 8, WIKI_MAX_H);
+		const flipUp = h > below && above > below;
+		const space = flipUp ? above : below;
+		// 너무 납작해지면 오히려 못 쓰므로 하한(2항목분) 은 둔다.
+		// 45vh 는 기존 모바일 CSS 상한과 같은 뜻 — 화면 절반 이상 덮지 않기.
+		const maxH = Math.max(68, Math.min(WIKI_MAX_H, space, window.innerHeight * 0.45));
+		return flipUp
+			? { top: null as number | null, bottom: window.innerHeight - wiki.caretTop, maxH }
+			: { top: wiki.caretBottom, bottom: null as number | null, maxH };
+	});
+	// 펼침/접힘으로 콘텐츠 높이가 바뀌면 다시 배치.
+	$effect(() => {
+		const pop = wikiPopEl;
+		if (!pop || !wiki) {
+			wikiPopH = 0;
+			return;
+		}
+		const measure = () => (wikiPopH = pop.scrollHeight);
+		measure();
+		const ro = new ResizeObserver(measure);
+		ro.observe(pop);
+		return () => ro.disconnect();
+	});
 	let wikiSel = $state(0);
 	let wikiPopEl = $state<HTMLUListElement | undefined>(undefined);
 	// BUG-114: mouseenter(호버)로도 wikiSel 이 바뀌는데, 이 effect 가 그때마다
@@ -146,6 +187,11 @@
 		wikiDismissed = null;
 		wiki = placeWiki(el, m.from, m.to, m.items);
 		wikiSel = 0;
+		// BUG-209: 팝업 <ul> 은 후보가 바뀌어도 같은 엘리먼트라 **이전 스크롤 위치가
+		// 남는다**. 그러면 선택은 0 번인데 화면엔 중간이 보여 "팝업 밖 항목이
+		// 선택된" 상태가 되고, 다음 ↑/↓ 이 엉뚱하게 튀는 것처럼 보였다. 키보드
+		// 이동과 같은 경로로 선택 항목을 보이는 위치까지 스크롤시킨다.
+		wikiSelFromKeyboard = true;
 		// 새로 열리거나 후보가 바뀌면 선택이 0 으로 돌아간다 — 이것도 앱이 고른
 		// 선택이므로 펼침 대상.
 		wikiNavMode = 'keyboard';
@@ -168,18 +214,15 @@
 		const visTop = Math.max(rect.top, 0);
 		const visBottom = Math.min(rect.bottom, window.innerHeight);
 		if (caretBottom < visTop || caretTop > visBottom) return null;
-		const estH = Math.min(items.length * 30 + 8, 224); // flip 판단용 높이 추정.
-		const flipUp = caretBottom + estH > window.innerHeight && caretTop - estH > 0;
 		const rawLeft = rect.left + c.left - el.scrollLeft;
 		// 모바일 수정: 예전엔 팝업 폭을 240px 로 **가정**하고 clamp 해서, 실제
 		// 폭(최대 22rem=352px)이 더 크면 오른쪽이 화면 밖으로 나갔다. CSS 상한과
 		// 같은 식으로 실제 폭을 구해 그만큼 물린다.
-		const MARGIN = 8;
+		const MARGIN = WIKI_MARGIN;
 		const popW = Math.min(352, window.innerWidth - MARGIN * 2);
 		const left = Math.max(MARGIN, Math.min(rawLeft, window.innerWidth - popW - MARGIN));
-		return flipUp
-			? { el, from, to, items, left, top: null, bottom: window.innerHeight - caretTop }
-			: { el, from, to, items, left, top: caretBottom, bottom: null };
+		// 세로 배치는 wikiPlace 가 실제 높이를 재서 결정한다 — 여기선 caret 좌표만.
+		return { el, from, to, items, left, caretTop, caretBottom };
 	}
 
 	function repositionWiki() {
@@ -1499,9 +1542,9 @@
 	<ul
 		class="wiki-pop"
 		bind:this={wikiPopEl}
-		style="left:{wiki.left}px; {wiki.bottom != null
-			? `bottom:${wiki.bottom}px`
-			: `top:${wiki.top}px`}"
+		style="left:{wiki.left}px; {wikiPlace?.bottom != null
+			? `bottom:${wikiPlace.bottom}px`
+			: `top:${wikiPlace?.top ?? wiki.caretBottom}px`}; max-height:{wikiPlace?.maxH ?? 224}px"
 	>
 		{#each wiki.items as it, i (it.id)}
 			<li>
