@@ -1595,6 +1595,14 @@
 		align-items: center;
 		gap: 0.5rem;
 		margin-bottom: 0.5rem;
+		/* BUG-216: 좁은 화면에서 헤더 버튼(토론만 / 전체 접기)이 옆으로 밀려
+		   페이지 전체에 가로 스크롤을 만들었다(admin 스크린샷). 줄로 흘린다. */
+		flex-wrap: wrap;
+		row-gap: 0.35rem;
+	}
+	/* 제목 자체도 줄어들 수 있어야 버튼이 다음 줄로 안 밀리고 먼저 좁아진다. */
+	.section-toggle {
+		min-width: 0;
 	}
 	/* DEV-107: 섹션 토글 — title 자체를 button 으로 만들어 클릭 가능. */
 	.section-toggle {
