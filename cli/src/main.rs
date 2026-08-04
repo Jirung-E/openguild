@@ -892,6 +892,14 @@ enum RulesCmd {
         slug: String,
         new_slug: String,
     },
+    // DEV-333: 코어(set_rule_tags)·서버(PUT /api/rules/{slug}/tags)·GUI 에는
+    // 있는데 CLI 만 없었다.
+    #[command(about = tf!("태그 — list / add / remove / set. 진리원은 frontmatter.",
+                          "Tags — list / add / remove / set. Frontmatter is the source of truth."))]
+    Tag {
+        #[command(subcommand)]
+        sub: TagCmd,
+    },
 }
 
 // ─────────────────────────── Library 서브명령 ───────────────────────────
@@ -954,6 +962,14 @@ enum LibraryCmd {
     Attach {
         #[command(subcommand)]
         sub: AttachCmd,
+    },
+    // DEV-333: 코어(set_book_tags)·서버(PATCH /api/library/{id}/tags)·GUI 에는
+    // 있는데 CLI 만 없었다 — BUG-150(첨부)과 같은 종류의 파리티 구멍.
+    #[command(about = tf!("태그 — list / add / remove / set. 진리원은 frontmatter.",
+                          "Tags — list / add / remove / set. Frontmatter is the source of truth."))]
+    Tag {
+        #[command(subcommand)]
+        sub: TagCmd,
     },
 }
 
@@ -1665,6 +1681,13 @@ struct RuleDto {
     content: Option<String>,
 }
 
+/// DEV-333: 규칙 1건 — 태그 조회/설정 응답용(원격 모드).
+#[derive(Debug, Deserialize)]
+struct RuleEntryDto {
+    #[serde(default)]
+    tags: Vec<String>,
+}
+
 /// BUG-166: URL 경로 세그먼트 인코딩.
 ///
 /// 규칙 slug 는 **공백을 포함할 수 있다**(`[[코딩 규칙]]` 처럼 파일명이 곧
@@ -1692,6 +1715,9 @@ struct BookDto {
     number: i64,
     title: String,
     body: String,
+    /// DEV-333: 태그 — 원격 응답에도 실려 온다(BookResponse 가 LibraryDocRow flatten).
+    #[serde(default)]
+    tags: Vec<String>,
     /// DEV-239: 소속 폴더 경로 ("" = 최상위).
     #[serde(default)]
     path: String,
@@ -1707,6 +1733,7 @@ impl From<openguild_core::ops::library::LibraryDocRow> for BookDto {
             number: r.number,
             title: r.title,
             body: r.body,
+            tags: r.tags,
             path: r.path,
             created_at: r.created_at,
             updated_at: r.updated_at,
@@ -3219,6 +3246,76 @@ impl Backend {
                     openguild_core::ops::set_quest_tags(&l.store, id, tags),
                 ))?;
                 Ok(())
+            }
+        }
+    }
+
+    /// DEV-333: 도서관 문서 태그 조회. 진리원은 frontmatter — 로컬은 코어 조회,
+    /// 원격은 문서 GET 응답의 tags.
+    fn library_tag_list(&self, id: &str) -> Result<Vec<String>> {
+        match self {
+            Backend::Http(_) => Ok(self.library_get(id)?.tags),
+            Backend::Local(l) => {
+                let row = Self::map_err(
+                    l.rt.block_on(openguild_core::ops::library::get_book(&l.store, id)),
+                )?
+                .ok_or_else(|| anyhow!(tf!("문서 없음: {id}", "document not found: {id}")))?;
+                Ok(row.tags)
+            }
+        }
+    }
+
+    fn library_tag_set(&self, id: &str, tags: Vec<String>) -> Result<Vec<String>> {
+        match self {
+            Backend::Http(c) => {
+                let dto: BookDto = c.patch(
+                    &format!("/api/library/{}/tags", urlenc(id)),
+                    &serde_json::json!({ "tags": tags }),
+                )?;
+                Ok(dto.tags)
+            }
+            Backend::Local(l) => {
+                let row = Self::map_err(l.rt.block_on(
+                    openguild_core::ops::library::set_book_tags(&l.store, id, tags),
+                ))?;
+                Ok(row.tags)
+            }
+        }
+    }
+
+    /// DEV-333: 규칙 태그. 규칙은 DB 캐시 없이 파일 직독이라 조회도 파일 기준.
+    fn rule_tag_list(&self, slug: &str) -> Result<Vec<String>> {
+        match self {
+            Backend::Http(c) => {
+                let e: RuleEntryDto = c.get(&format!("/api/rules/{}", urlenc(slug)))?;
+                Ok(e.tags)
+            }
+            Backend::Local(l) => {
+                let entries =
+                    Self::map_err(openguild_core::ops::rules::list_rules(&l.store))?;
+                entries
+                    .into_iter()
+                    .find(|e| e.slug == slug)
+                    .map(|e| e.tags)
+                    .ok_or_else(|| anyhow!(tf!("규칙 없음: {slug}", "rule not found: {slug}")))
+            }
+        }
+    }
+
+    fn rule_tag_set(&self, slug: &str, tags: Vec<String>) -> Result<Vec<String>> {
+        match self {
+            Backend::Http(c) => {
+                let e: RuleEntryDto = c.put(
+                    &format!("/api/rules/{}/tags", urlenc(slug)),
+                    &serde_json::json!({ "tags": tags }),
+                )?;
+                Ok(e.tags)
+            }
+            Backend::Local(l) => {
+                let e = Self::map_err(l.rt.block_on(
+                    openguild_core::ops::rules::set_rule_tags(&l.store, slug, tags),
+                ))?;
+                Ok(e.tags)
             }
         }
     }
@@ -6457,9 +6554,83 @@ fn handle_template(c: &Backend, json: bool, sub: TemplateCmd) -> Result<()> {
     Ok(())
 }
 
+/// DEV-333: 도서관/규칙 태그 서브명령 — quest tag 와 같은 동작.
+///
+/// `list`/`add`/`remove`/`set` 의 의미와 출력 형식을 quest 와 일치시킨다
+/// (공백 구분 인자 허용, add 는 dedupe + 순서 보존, set 은 인자 0개면 전체 제거).
+fn run_doc_tag_cmd(
+    label: &str,
+    sub: TagCmd,
+    json: bool,
+    list: impl Fn(&str) -> Result<Vec<String>>,
+    set: impl Fn(&str, Vec<String>) -> Result<Vec<String>>,
+) -> Result<()> {
+    let flat = |v: &[String]| -> Vec<String> {
+        v.iter()
+            .flat_map(|t| t.split_whitespace().map(|s| s.to_string()))
+            .collect()
+    };
+    let report = |id: &str, tags: &[String], empty_msg: &str| {
+        if json {
+            json_println!(serde_json::json!({ "ok": true, "id": id, "tags": tags }));
+        } else if tags.is_empty() {
+            println!("✓ {id} tags: {empty_msg}");
+        } else {
+            println!("✓ {id} tags: {}", tags.join(" "));
+        }
+    };
+    match sub {
+        TagCmd::List { slug } => {
+            let tags = list(&slug)?;
+            if json {
+                json_println!(serde_json::json!({ "id": slug, "tags": tags }));
+            } else if tags.is_empty() {
+                println!("{}", tf!("(태그 없음)", "(no tags)"));
+            } else {
+                println!("{}", tags.join(" "));
+            }
+        }
+        TagCmd::Add { slug, tags } => {
+            let mut existing = list(&slug)?;
+            for t in flat(&tags) {
+                if !existing.contains(&t) {
+                    existing.push(t);
+                }
+            }
+            let after = set(&slug, existing)?;
+            report(&slug, &after, &tf!("(없음)", "(none)"));
+        }
+        TagCmd::Rm { slug, tags } => {
+            let remove: std::collections::HashSet<String> = flat(&tags).into_iter().collect();
+            let after: Vec<String> = list(&slug)?
+                .into_iter()
+                .filter(|t| !remove.contains(t))
+                .collect();
+            let after = set(&slug, after)?;
+            report(&slug, &after, &tf!("(없음)", "(none)"));
+        }
+        TagCmd::Set { slug, tags } => {
+            let after = set(&slug, flat(&tags))?;
+            report(&slug, &after, &tf!("(모두 제거)", "(all removed)"));
+        }
+    }
+    let _ = label;
+    Ok(())
+}
+
 /// BUG-135: run() 스택 프레임 축소 — arm 지역값을 개별 함수 프레임으로.
 fn handle_rules(c: &Backend, json: bool, sub: RulesCmd) -> Result<()> {
     match sub {
+        // DEV-333: 규칙 태그 — 코어/서버/GUI 에 있던 기능의 CLI 배선.
+        RulesCmd::Tag { sub } => {
+            return run_doc_tag_cmd(
+                "rule",
+                sub,
+                json,
+                |slug| c.rule_tag_list(slug),
+                |slug, tags| c.rule_tag_set(slug, tags),
+            )
+        }
         RulesCmd::List { table } => {
             let entries = c.rules_list()?;
             if json {
@@ -6732,6 +6903,14 @@ fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
             }
         },
         LibraryCmd::Attach { sub } => run_book_attach_cmd(c, sub, json)?,
+        // DEV-333: 도서관 태그 — 코어/서버/GUI 에 있던 기능의 CLI 배선.
+        LibraryCmd::Tag { sub } => run_doc_tag_cmd(
+            "library",
+            sub,
+            json,
+            |id| c.library_tag_list(id),
+            |id, tags| c.library_tag_set(id, tags),
+        )?,
     }
     Ok(())
 }
@@ -7842,6 +8021,91 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── DEV-333: 도서관/규칙 태그 명령 ──
+    //
+    // 실제 길드 없이 list/set 을 클로저로 갈아끼워 **동작 계약**만 검증한다:
+    // 공백 구분 인자, add 의 dedupe + 순서 보존, remove 의 없는 태그 무시,
+    // set 의 전체 교체(인자 0개 = 전체 삭제).
+
+    /// 태그를 들고 있는 가짜 저장소 — run_doc_tag_cmd 의 list/set 을 대신한다.
+    fn tag_fixture(
+        init: &[&str],
+    ) -> std::rc::Rc<std::cell::RefCell<Vec<String>>> {
+        std::rc::Rc::new(std::cell::RefCell::new(
+            init.iter().map(|s| s.to_string()).collect(),
+        ))
+    }
+
+    fn run_tag(store: &std::rc::Rc<std::cell::RefCell<Vec<String>>>, sub: TagCmd) -> Vec<String> {
+        let l = store.clone();
+        let s2 = store.clone();
+        run_doc_tag_cmd(
+            "test",
+            sub,
+            true, // json — stdout 만 쓰고 검증은 store 로 한다
+            move |_id| Ok(l.borrow().clone()),
+            move |_id, tags| {
+                *s2.borrow_mut() = tags.clone();
+                Ok(tags)
+            },
+        )
+        .unwrap();
+        store.borrow().clone()
+    }
+
+    #[test]
+    fn doc_tag_add_dedupes_and_keeps_order() {
+        let store = tag_fixture(&["rust"]);
+        let after = run_tag(
+            &store,
+            TagCmd::Add {
+                slug: "BOOK-001".into(),
+                // 공백 구분 한 인자 + 기존과 중복되는 값.
+                tags: vec!["cli docs".into(), "rust".into()],
+            },
+        );
+        assert_eq!(after, vec!["rust", "cli", "docs"], "중복 없이 뒤에 붙어야");
+    }
+
+    #[test]
+    fn doc_tag_remove_ignores_missing() {
+        let store = tag_fixture(&["rust", "cli", "docs"]);
+        let after = run_tag(
+            &store,
+            TagCmd::Rm {
+                slug: "BOOK-001".into(),
+                tags: vec!["cli 없는태그".into()],
+            },
+        );
+        assert_eq!(after, vec!["rust", "docs"]);
+    }
+
+    #[test]
+    fn doc_tag_set_replaces_all() {
+        let store = tag_fixture(&["rust", "cli"]);
+        let after = run_tag(
+            &store,
+            TagCmd::Set {
+                slug: "BOOK-001".into(),
+                tags: vec!["최종 확정".into()],
+            },
+        );
+        assert_eq!(after, vec!["최종", "확정"]);
+    }
+
+    #[test]
+    fn doc_tag_set_with_no_args_clears() {
+        let store = tag_fixture(&["rust"]);
+        let after = run_tag(
+            &store,
+            TagCmd::Set {
+                slug: "BOOK-001".into(),
+                tags: vec![],
+            },
+        );
+        assert!(after.is_empty(), "인자 0개면 전체 삭제");
+    }
 
     fn st(id: i64, en: &str) -> QuestStatus {
         QuestStatus {
