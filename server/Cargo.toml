@@ -17,7 +17,15 @@ clap = { version = "4", features = ["derive"] }
 # 웹 프레임워크
 axum = "0.8"
 tokio = { version = "1", features = ["full"] }
-tower-http = { version = "0.6", features = ["cors", "trace", "fs", "set-header"] }
+tower-http = { version = "0.6", features = [
+    "cors",
+    "trace",
+    "fs",
+    "set-header",
+    # DEV-332: 응답 gzip 압축. 우리 응답은 대부분 한글 JSON/마크다운이라
+    # 압축률이 특히 좋다(원격 접속 체감).
+    "compression-gzip",
+] }
 
 # DB
 sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "migrate"] }

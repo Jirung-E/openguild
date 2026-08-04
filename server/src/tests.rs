@@ -725,6 +725,80 @@ async fn test_list_search_title_only_multi_token_and() {
     assert_eq!(arr[0]["title"], "Quest list 검색");
 }
 
+// === DEV-332: 응답 gzip 압축 ===
+
+/// 압축 레이어까지 얹은 라우터 — main.rs 와 같은 구성.
+/// 퀘스트가 있는 픽스처를 쓴다: 빈 목록 `[]` 은 2바이트라 `DefaultPredicate`
+/// 의 32바이트 하한에 걸려 압축되지 않는다(정상 동작).
+async fn setup_compressed() -> Router {
+    setup_for_search().await.layer(routes::compression_layer())
+}
+
+#[tokio::test]
+async fn test_gzip_applied_to_json() {
+    let app = setup_compressed().await;
+    let res = app
+        .oneshot(
+            Request::get("/api/quests")
+                .header("accept-encoding", "gzip")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(
+        res.headers()
+            .get("content-encoding")
+            .map(|v| v.to_str().unwrap()),
+        Some("gzip"),
+        "JSON 응답은 gzip 으로 나가야 한다"
+    );
+}
+
+#[tokio::test]
+async fn test_no_gzip_without_accept_encoding() {
+    // 클라이언트가 요청하지 않았으면 그대로 — 압축은 협상 결과다.
+    let app = setup_compressed().await;
+    let res = app
+        .oneshot(Request::get("/api/quests").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert!(res.headers().get("content-encoding").is_none());
+}
+
+#[test]
+fn test_compression_predicate_skips_already_compressed_types() {
+    // BUG-188 의 대용량 첨부(zip 등)는 이미 압축된 바이트다. 다시 압축하면
+    // CPU 만 쓰고 크기는 오히려 늘 수 있다. `/api/guild-files/{*rel}` 는
+    // 확장자를 못 알아보면 octet-stream 으로 주므로 그 경로가 여기 걸린다.
+    use tower_http::compression::predicate::Predicate;
+    let pred = routes::compression_predicate();
+    // `SizeAbove`(기본 32바이트 하한)는 헤더가 아니라 **body size hint** 를 본다
+    // — 빈 body 로 만들면 content-length 를 붙여도 압축 대상에서 빠진다.
+    let res = |ct: &str| {
+        axum::http::Response::builder()
+            .header("content-type", ct)
+            .body(Body::from(vec![b'x'; 100_000]))
+            .unwrap()
+    };
+    for ct in [
+        "application/octet-stream",
+        "application/zip",
+        "video/mp4",
+        "audio/mpeg",
+        "image/png",
+    ] {
+        assert!(
+            !pred.should_compress(&res(ct)),
+            "{ct} 은 압축 대상이 아니어야 한다"
+        );
+    }
+    for ct in ["application/json", "text/html", "text/markdown"] {
+        assert!(pred.should_compress(&res(ct)), "{ct} 은 압축돼야 한다");
+    }
+}
+
 // === BUG-210: slim 목록 — 응답에서 description 제외 ===
 
 #[tokio::test]

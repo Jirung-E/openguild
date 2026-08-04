@@ -429,7 +429,11 @@ async fn run_host(
         ))
         .layer(middleware::from_fn(locale_middleware))
         .layer(TraceLayer::new_for_http())
-        .layer(CorsLayer::permissive());
+        .layer(CorsLayer::permissive())
+        // DEV-332: 압축은 가장 바깥 — 정적 자산(fallback_service)까지 덮는다.
+        // axum 의 `layer` 는 그 시점까지 등록된 라우트를 감싸므로, 정적 fallback
+        // 이 이미 붙은 뒤인 여기서 걸어야 _app/*.js 도 압축된다.
+        .layer(routes::compression_layer());
 
     let port: u16 = port_arg
         .or_else(|| std::env::var("PORT").ok().and_then(|p| p.parse().ok()))

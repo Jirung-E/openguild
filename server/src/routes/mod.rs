@@ -13,7 +13,36 @@ use axum::{
     routing::{delete, get, patch, post, put},
     Router,
 };
+use tower_http::compression::{
+    predicate::{DefaultPredicate, NotForContentType, Predicate},
+    CompressionLayer,
+};
 use openguild_core::Store;
+
+/// DEV-332: 응답 gzip 압축 레이어.
+///
+/// 우리 응답은 대부분 한글 JSON / 마크다운이고 압축을 전혀 하지 않고 있었다
+/// (`content-encoding` 헤더 없음). 원격 접속(폰 등)에서 체감이 큰 부분이라
+/// 붙인다. 정적 자산(_app/*.js)도 같이 이득을 본다.
+///
+/// **압축 제외 대상**: 이미 압축된 바이트를 다시 압축하면 CPU 만 쓰고 크기는
+/// 오히려 늘 수 있다. `DefaultPredicate` 가 32바이트 미만 / gRPC / `image/*` /
+/// SSE 를 걸러주므로, 여기에 첨부 다운로드에서 나오는 타입들을 더한다
+/// (`/api/guild-files/{*rel}` 는 확장자를 못 알아보면 octet-stream 으로 준다 —
+/// zip·동영상 첨부가 그 경로로 나간다. BUG-188 의 1.5GB 첨부를 생각하면
+/// 스트림을 통째로 압축하는 일은 반드시 피해야 한다).
+pub fn compression_layer() -> CompressionLayer<impl Predicate> {
+    CompressionLayer::new().compress_when(compression_predicate())
+}
+
+/// 위 레이어가 쓰는 판정만 따로 — 테스트에서 content-type 별로 직접 확인한다.
+pub fn compression_predicate() -> impl Predicate {
+    DefaultPredicate::new()
+        .and(NotForContentType::const_new("application/octet-stream"))
+        .and(NotForContentType::const_new("application/zip"))
+        .and(NotForContentType::const_new("video/"))
+        .and(NotForContentType::const_new("audio/"))
+}
 
 pub fn create_router(store: Store) -> Router {
     Router::new()
