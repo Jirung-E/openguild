@@ -282,25 +282,78 @@ async function uploadAttachmentPath(
 export async function pickAndUploadAttachments(handlers: {
 	onOne: (r: { rel: string; name: string }) => Promise<void> | void;
 	onError: (msg: string) => void;
-	onProgress?: (p: AttachProgress | null) => void;
+	onQueue?: (q: AttachQueueItem[] | null) => void;
 }): Promise<void> {
-	const { onOne, onError, onProgress } = handlers;
+	const { onOne, onError, onQueue } = handlers;
 	const picked = await pickUploads();
+	if (picked.length === 0) return;
+	// DEV-322: 고른 파일 **전체**를 먼저 목록으로 보여준다. 예전엔 현재 파일
+	// 하나와 순번(n/N)만 보여서 "무엇이 남았는지" 를 알 수 없었다(admin 보고).
+	const queue: AttachQueueItem[] = picked.map((up, i) => ({
+		id: i,
+		name: up.name,
+		status: 'pending',
+		phase: null,
+		percent: null
+	}));
+	const emit = () => onQueue?.(queue.map((it) => ({ ...it })));
+	emit();
+	let failed = false;
+	// DEV-322: 병렬 업로드 — 실측 결과 순차보다 빨랐다(로컬 HTTP 9~24%,
+	// 디스크 복사 28~52%. 상세는 퀘스트 댓글). 다만 **환경에 따라 위험이 다르다**:
+	//
+	// - 데스크톱(경로 기반): Rust 가 4MiB 버퍼로 스트리밍 복사하므로 파일 크기와
+	//   무관하게 메모리가 상수다 → 동시 3개까지 안전.
+	// - 브라우저(bytes 기반): 파일을 통째로 읽어 base64(약 1.33배)로 만들어
+	//   보낸다. 동시에 돌리면 그만큼 메모리가 배로 늘어난다 — BUG-168 이
+	//   1.5GB 첨부였던 걸 생각하면 여기서 동시성을 올리면 안 된다 → 1개씩.
+	const concurrency = isLocalTauri() ? 3 : 1;
+	// 등록(onOne)은 첨부 목록 sidecar 를 read-modify-write 하므로 동시에 부르면
+	// lost update 가 난다. 업로드만 병렬로 하고 등록은 이 체인으로 직렬화한다.
+	let registerChain: Promise<void> = Promise.resolve();
+	const runOne = async (it: AttachQueueItem) => {
+		const up = picked[it.id];
+		it.status = 'uploading';
+		it.phase = 'uploading';
+		emit();
+		try {
+			const rel = await up.run((p) => {
+				it.phase = p.phase;
+				it.percent = p.percent;
+				emit();
+			});
+			it.status = 'done';
+			it.percent = 100;
+			emit();
+			const name = up.name || rel.split('/').pop() || rel;
+			registerChain = registerChain.then(() => onOne({ rel, name }));
+			await registerChain;
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : String(e);
+			it.status = 'error';
+			it.error = msg;
+			failed = true;
+			emit();
+			onError(msg);
+		}
+	};
 	try {
-		for (let i = 0; i < picked.length; i++) {
-			const up = picked[i];
-			const base = { name: up.name, index: i + 1, total: picked.length };
-			// DEV-321: 시작 시점엔 아직 %를 모른다 — 첫 보고가 오면 결정형으로 바뀐다.
-			onProgress?.({ ...base, phase: 'uploading', percent: null });
-			try {
-				const rel = await up.run((p) => onProgress?.({ ...base, ...p }));
-				await onOne({ rel, name: up.name || rel.split('/').pop() || rel });
-			} catch (e) {
-				onError(e instanceof Error ? e.message : String(e));
-			}
+		if (concurrency <= 1) {
+			for (const it of queue) await runOne(it);
+		} else {
+			// 고정 크기 워커 — 앞에서부터 하나씩 집어간다.
+			let next = 0;
+			const worker = async () => {
+				while (next < queue.length) await runOne(queue[next++]);
+			};
+			await Promise.all(
+				Array.from({ length: Math.min(concurrency, queue.length) }, () => worker())
+			);
 		}
 	} finally {
-		onProgress?.(null);
+		// 전부 성공했으면 목록을 걷는다. 실패가 있으면 **남겨둔다** — 어떤 파일이
+		// 실패했는지가 배너 메시지 하나보다 중요하다.
+		if (!failed) onQueue?.(null);
 	}
 }
 
@@ -312,15 +365,21 @@ export async function pickAndUploadAttachments(handlers: {
 export type AttachPhase = 'preparing' | 'uploading';
 
 /**
- * DEV-298: 업로드 진행 상태 — 현재 파일명 + 몇 번째/전체 몇 개.
- * DEV-321: + 단계와 퍼센트. `percent === null` 이면 관측 불가(불확정 바).
+ * DEV-322: 업로드 대기열 한 줄.
+ *
+ * DEV-298/321 에서는 "현재 파일 하나" 만 보고했는데, 여러 개를 고르면 남은
+ * 것들이 안 보였다. 이제 고른 파일 전체가 이 목록으로 나가고 각 항목이 자기
+ * 상태를 들고 있다. `percent === null` 이면 관측 불가(불확정 바).
  */
-export type AttachProgress = {
+export type AttachItemStatus = 'pending' | 'uploading' | 'done' | 'error';
+export type AttachQueueItem = {
+	/** picked 배열의 인덱스 — 목록 key. */
+	id: number;
 	name: string;
-	index: number;
-	total: number;
-	phase: AttachPhase;
+	status: AttachItemStatus;
+	phase: AttachPhase | null;
 	percent: number | null;
+	error?: string;
 };
 
 /** 숨은 file input 으로 File 목록 받기 — 취소 시 빈 배열. */

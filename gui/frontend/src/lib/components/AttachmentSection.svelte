@@ -8,7 +8,7 @@
 <script lang="ts">
 	import Icon from './Icon.svelte';
 	import { guildFileUrl } from '$lib/utils/banner';
-	import { pickAndUploadAttachments, type AttachProgress } from '$lib/utils/editor-attach';
+	import { pickAndUploadAttachments, type AttachQueueItem } from '$lib/utils/editor-attach';
 	import { detectEnvironment } from '$lib/api/transport';
 	import { getRemoteServerUrl } from '$lib/stores/remoteServer';
 	import { api } from '$lib/api/client';
@@ -39,8 +39,9 @@
 
 	let busy = $state(false);
 	let error = $state<string | null>(null);
-	// DEV-298: 업로드 진행 표시 — null 이면 진행 중 아님.
-	let progress = $state<AttachProgress | null>(null);
+	// DEV-298 → DEV-322: 업로드 대기열 — null 이면 표시 안 함. 고른 파일 전체가
+	// 여기 들어오고 각 줄이 자기 상태(대기/진행/완료/실패)를 들고 있다.
+	let queue = $state<AttachQueueItem[] | null>(null);
 	let urls = $state<Record<string, string>>({});
 
 	const IMG = /\.(png|jpe?g|gif|webp|bmp|svg)$/i;
@@ -87,13 +88,15 @@
 					error = msg;
 				},
 				// DEV-298: 대용량은 저장이 끝날 때까지 반응이 없어 멈춘 것처럼 보였다.
-				onProgress: (p) => {
-					progress = p;
+				// DEV-322: 이제 고른 파일 전체가 목록으로 온다.
+				onQueue: (q) => {
+					queue = q;
 				}
 			});
 		} finally {
 			busy = false;
-			progress = null;
+			// 실패가 있으면 pickAndUploadAttachments 가 목록을 남겨둔다 — 여기서
+			// 지우면 어떤 파일이 실패했는지 사라지므로 건드리지 않는다.
 		}
 	}
 
@@ -205,47 +208,59 @@
 			</button>
 		</div>
 	</div>
-	<!-- DEV-298: 업로드 진행 표시 — 대용량은 완료까지 수 초 걸려 멈춘 것처럼
-	     보였다. 현재 파일명 + 순번 + 진행 바(불확정)로 "돌고 있음"을 알린다. -->
-	{#if progress}
-		{@const pct = progress.percent}
-		<div
-			class="uploading"
-			role="progressbar"
-			aria-live="polite"
-			aria-valuemin={0}
-			aria-valuemax={100}
-			aria-valuenow={pct == null ? undefined : Math.round(pct)}
-			aria-valuetext={pct == null ? t('attach.preparing', $locale) : `${Math.round(pct)}%`}
-		>
-			<!-- BUG-190: 파일명과 진행 바를 **다른 줄**로. 한 줄에 두면 이름이 긴
-			     파일에서 바가 밀려 거의 안 보였다(admin 보고). -->
-			<div class="up-line">
-				<span class="up-name" title={progress.name}>{progress.name}</span>
-				{#if progress.total > 1}
-					<span class="up-count">{progress.index} / {progress.total}</span>
-				{/if}
-			</div>
-			<!-- DEV-321: %를 알면 결정형 바 + 숫자, 모르면 기존 불확정 바.
-			     브라우저 경로는 전송 전에 base64 변환 구간이 있어 그동안은
-			     '준비 중' 으로 알린다(0% 에서 멈춘 것처럼 보이지 않게). -->
-			<div class="up-line">
-				<span class="up-bar">
-					<span
-						class="up-fill"
-						class:determinate={pct != null}
-						style={pct != null ? `width:${pct}%` : undefined}
-					></span>
-				</span>
-				<span class="up-pct">
-					{pct == null
-						? progress.phase === 'preparing'
-							? t('attach.preparing', $locale)
-							: ''
-						: `${Math.round(pct)}%`}
-				</span>
-			</div>
-		</div>
+	<!-- DEV-298 → DEV-322: 업로드 대기열. 예전엔 현재 파일 하나와 순번만 보여
+	     무엇이 남았는지 알 수 없었다. 이제 고른 파일 전체를 상태와 함께 보여준다. -->
+	{#if queue && queue.length > 0}
+		<ul class="upq" aria-live="polite">
+			{#each queue as it (it.id)}
+				{@const pct = it.percent}
+				<li class="upq-item" class:failed={it.status === 'error'}>
+					<!-- BUG-190: 파일명과 진행 바는 **다른 줄**. 한 줄에 두면 이름이 긴
+					     파일에서 바가 밀려 거의 안 보였다(admin 보고). -->
+					<div class="up-line">
+						<span class="up-name" title={it.name}>{it.name}</span>
+						<span class="up-state">
+							{it.status === 'pending'
+								? t('attach.queued', $locale)
+								: it.status === 'done'
+									? '✓'
+									: it.status === 'error'
+										? '✕'
+										: ''}
+						</span>
+					</div>
+					{#if it.status === 'uploading' || it.status === 'done'}
+						<!-- DEV-321: %를 알면 결정형 바 + 숫자, 모르면 불확정 바. 브라우저
+						     경로는 전송 전 base64 변환 구간이 있어 그동안 '준비 중'. -->
+						<div
+							class="up-line"
+							role="progressbar"
+							aria-valuemin={0}
+							aria-valuemax={100}
+							aria-valuenow={pct == null ? undefined : Math.round(pct)}
+							aria-valuetext={pct == null ? t('attach.preparing', $locale) : `${Math.round(pct)}%`}
+						>
+							<span class="up-bar">
+								<span
+									class="up-fill"
+									class:determinate={pct != null}
+									style={pct != null ? `width:${pct}%` : undefined}
+								></span>
+							</span>
+							<span class="up-pct">
+								{pct == null
+									? it.phase === 'preparing'
+										? t('attach.preparing', $locale)
+										: ''
+									: `${Math.round(pct)}%`}
+							</span>
+						</div>
+					{:else if it.status === 'error' && it.error}
+						<div class="up-line"><span class="up-err">{it.error}</span></div>
+					{/if}
+				</li>
+			{/each}
+		</ul>
 	{/if}
 	{#if error}<p class="err">{error}</p>{/if}
 	{#if list.length === 0}
@@ -308,16 +323,37 @@
 		font-size: 0.95rem;
 		color: var(--text-strong);
 	}
-	/* DEV-298: 업로드 진행 표시. 진행률을 알 수 없는 전송(경로 기반 복사 /
-	   base64 IPC)이라 불확정(indeterminate) 바 — 목적은 "돌고 있음"의 확인. */
-	.uploading {
+	/* DEV-298 → DEV-322: 업로드 대기열. 진행률을 알 수 없는 구간(경로 기반 복사
+	   시작 전 / base64 변환)에서는 불확정 바 — 목적은 "돌고 있음"의 확인. */
+	.upq {
+		list-style: none;
+		margin: 0.6rem 0 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.45rem;
+		font-size: 0.8rem;
+		color: var(--text-muted);
+		/* 많이 고르면 섹션이 통째로 길어지므로 자체 스크롤. */
+		max-height: 11rem;
+		overflow-y: auto;
+	}
+	.upq-item {
 		/* BUG-190: 이름 줄 / 진행 줄 2단. */
 		display: flex;
 		flex-direction: column;
-		gap: 0.3rem;
-		margin-top: 0.6rem;
-		font-size: 0.8rem;
-		color: var(--text-muted);
+		gap: 0.25rem;
+	}
+	.upq-item.failed .up-name {
+		color: var(--danger, #e5534b);
+	}
+	.up-state {
+		flex: none;
+		font-variant-numeric: tabular-nums;
+	}
+	.up-err {
+		color: var(--danger, #e5534b);
+		overflow-wrap: anywhere;
 	}
 	.up-line {
 		display: flex;
@@ -331,10 +367,6 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-	}
-	.up-count {
-		flex: none;
-		font-variant-numeric: tabular-nums;
 	}
 	.up-bar {
 		flex: 1;
