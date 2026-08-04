@@ -121,15 +121,25 @@ describe('TauriTransport', () => {
 		expect(mockInvoke).toHaveBeenCalledWith('list_quests', { query: { sort: 'updated' } });
 	});
 
-	it('GET /api/quests?sort=updated&limit=5 → 여러 파라미터도 그대로', async () => {
+	// BUG-211: 예전엔 `limit: '5'` (문자열) 을 기대했는데, 그게 바로 버그였다.
+	// Tauri args 는 JSON 으로 ListQuery 에 역직렬화되므로 정수/bool 은 타입이
+	// 맞아야 한다 — 문자열이면 "invalid type: string ..., expected a boolean"
+	// 으로 커맨드 자체가 실패한다(데스크톱에서 길드가 안 열렸다).
+	it('GET /api/quests?sort=updated&limit=5 → 정수는 number 로 변환', async () => {
 		mockInvoke.mockResolvedValue([]);
 		await new TauriTransport().call({
 			method: 'GET',
 			path: '/api/quests?sort=updated&limit=5'
 		});
 		expect(mockInvoke).toHaveBeenCalledWith('list_quests', {
-			query: { sort: 'updated', limit: '5' }
+			query: { sort: 'updated', limit: 5 }
 		});
+	});
+
+	it('GET /api/quests?slim=true → bool 은 boolean 으로 변환 (BUG-211)', async () => {
+		mockInvoke.mockResolvedValue([]);
+		await new TauriTransport().call({ method: 'GET', path: '/api/quests?slim=true' });
+		expect(mockInvoke).toHaveBeenCalledWith('list_quests', { query: { slim: true } });
 	});
 
 	it('GET /api/quests/42 → get_quest with id', async () => {

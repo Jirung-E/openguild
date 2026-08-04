@@ -3574,6 +3574,11 @@ fn list_query_to_querystring(q: &ListQuery) -> String {
     if let Some(o) = q.offset {
         parts.push(format!("offset={o}"));
     }
+    // BUG-210: CLI 는 본문을 출력/검색에 쓰므로 보통 false 지만, 필드가 생기면
+    // 여기도 같이 실어야 원격 모드가 로컬 모드와 어긋나지 않는다.
+    if q.slim {
+        parts.push("slim=true".into());
+    }
     parts.join("&")
 }
 
@@ -8173,6 +8178,7 @@ mod tests {
             reverse: true,
             limit: Some(5),
             offset: Some(10),
+            slim: false,
         };
         let qs = list_query_to_querystring(&q);
         assert_eq!(
