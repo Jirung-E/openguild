@@ -42,8 +42,12 @@
 	// DEV-298 → DEV-322: 업로드 대기열 — null 이면 표시 안 함. 고른 파일 전체가
 	// 여기 들어오고 각 줄이 자기 상태(대기/진행/완료/실패)를 들고 있다.
 	let queue = $state<AttachQueueItem[] | null>(null);
-	// DEV-323: 업로드가 도는 동안만 채워지는 취소 손잡이.
-	let cancelUpload = $state<(() => void) | null>(null);
+	// DEV-323 / DEV-338: 업로드가 도는 동안만 채워지는 취소 손잡이.
+	// 전체 취소 + 항목별 취소.
+	let cancelHandle = $state<{
+		cancelAll: () => void;
+		cancelOne: (id: number) => void;
+	} | null>(null);
 	let urls = $state<Record<string, string>>({});
 
 	const IMG = /\.(png|jpe?g|gif|webp|bmp|svg)$/i;
@@ -94,9 +98,9 @@
 				onQueue: (q) => {
 					queue = q;
 				},
-				// DEV-323: 진행 중 + 대기 중 전부 취소.
-				onCancelHandle: (fn) => {
-					cancelUpload = fn;
+				// DEV-323/338: 진행 중 + 대기 중 전부 취소, 또는 항목 하나만 취소.
+				onCancelHandle: (h) => {
+					cancelHandle = h;
 				}
 			});
 		} finally {
@@ -217,10 +221,10 @@
 	<!-- DEV-298 → DEV-322: 업로드 대기열. 예전엔 현재 파일 하나와 순번만 보여
 	     무엇이 남았는지 알 수 없었다. 이제 고른 파일 전체를 상태와 함께 보여준다. -->
 	{#if queue && queue.length > 0}
-		{#if cancelUpload}
+		{#if cancelHandle}
 			<div class="upq-head">
 				<span>{t('attach.uploading', $locale)}</span>
-				<button type="button" class="upq-cancel" onclick={() => cancelUpload?.()}>
+				<button type="button" class="upq-cancel" onclick={() => cancelHandle?.cancelAll()}>
 					{t('attach.cancelAll', $locale)}
 				</button>
 			</div>
@@ -237,6 +241,16 @@
 					     파일에서 바가 밀려 거의 안 보였다(admin 보고). -->
 					<div class="up-line">
 						<span class="up-name" title={it.name}>{it.name}</span>
+						<!-- DEV-338: 이 항목만 취소. 끝난(완료/실패/취소) 항목엔 안 보인다. -->
+						{#if cancelHandle && (it.status === 'pending' || it.status === 'uploading')}
+							<button
+								type="button"
+								class="upq-cancel-one"
+								title={t('attach.cancelOne', $locale)}
+								aria-label="{t('attach.cancelOne', $locale)}: {it.name}"
+								onclick={() => cancelHandle?.cancelOne(it.id)}>✕</button
+							>
+						{/if}
 						<span class="up-state">
 							{it.status === 'pending'
 								? t('attach.queued', $locale)
@@ -393,6 +407,20 @@
 	.upq-cancel:hover {
 		color: var(--text);
 		border-color: var(--text-muted);
+	}
+	/* DEV-338: 항목별 취소 — 이름 줄 오른쪽의 작은 ✕. */
+	.upq-cancel-one {
+		flex: none;
+		background: none;
+		border: none;
+		padding: 0 0.2rem;
+		font-size: 0.8rem;
+		line-height: 1;
+		color: var(--text-muted);
+		cursor: pointer;
+	}
+	.upq-cancel-one:hover {
+		color: var(--danger, #e5534b);
 	}
 	.up-state {
 		flex: none;

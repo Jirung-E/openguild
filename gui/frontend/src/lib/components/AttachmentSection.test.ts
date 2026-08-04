@@ -129,11 +129,12 @@ describe('AttachmentSection 업로드 진행 표시', () => {
 	});
 
 	// DEV-323: 취소 버튼은 업로드가 도는 동안만 보이고, 누르면 손잡이가 호출된다.
-	it('취소 버튼이 취소 손잡이를 부른다', async () => {
+	it('전체 취소 버튼이 취소 손잡이를 부른다', async () => {
 		const cancelAll = vi.fn();
+		const cancelOne = vi.fn();
 		let release!: () => void;
 		vi.mocked(pickAndUploadAttachments).mockImplementation(async (handlers) => {
-			handlers.onCancelHandle?.(cancelAll);
+			handlers.onCancelHandle?.({ cancelAll, cancelOne });
 			handlers.onQueue?.(one({ percent: 10 }));
 			await new Promise<void>((r) => (release = r));
 		});
@@ -143,6 +144,37 @@ describe('AttachmentSection 업로드 진행 표시', () => {
 		await waitFor(() => expect(container.querySelector('.upq-cancel')).not.toBeNull());
 		container.querySelector<HTMLButtonElement>('.upq-cancel')!.click();
 		expect(cancelAll).toHaveBeenCalledOnce();
+		expect(cancelOne).not.toHaveBeenCalled();
+
+		release();
+	});
+
+	// DEV-338: 여러 개 중 **하나만** 취소 — 전부 취소하고 다시 고르는 수밖에
+	// 없던 문제(admin 보고).
+	it('항목별 취소 버튼이 그 항목 id 로 호출된다', async () => {
+		const cancelAll = vi.fn();
+		const cancelOne = vi.fn();
+		let release!: () => void;
+		vi.mocked(pickAndUploadAttachments).mockImplementation(async (handlers) => {
+			handlers.onCancelHandle?.({ cancelAll, cancelOne });
+			handlers.onQueue?.([
+				{ id: 0, name: 'done.zip', status: 'done', phase: null, percent: 100 },
+				{ id: 1, name: 'running.zip', status: 'uploading', phase: 'uploading', percent: 40 },
+				{ id: 2, name: 'waiting.zip', status: 'pending', phase: null, percent: null }
+			]);
+			await new Promise<void>((r) => (release = r));
+		});
+		const { container, getByText } = render(AttachmentSection, { props: { slug: 'DEV-001' } });
+		getByText('+ 첨부').click();
+
+		// 끝난 항목엔 취소 버튼이 없어야 한다 — 진행/대기 2개만.
+		await waitFor(() =>
+			expect(container.querySelectorAll('.upq-cancel-one')).toHaveLength(2)
+		);
+		// 두 번째 버튼 = 대기 중 항목(id 2).
+		container.querySelectorAll<HTMLButtonElement>('.upq-cancel-one')[1].click();
+		expect(cancelOne).toHaveBeenCalledWith(2);
+		expect(cancelAll).not.toHaveBeenCalled();
 
 		release();
 	});

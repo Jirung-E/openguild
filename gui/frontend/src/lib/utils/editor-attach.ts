@@ -304,8 +304,14 @@ export async function pickAndUploadAttachments(handlers: {
 	/**
 	 * DEV-323: 취소 손잡이를 호출부(UI)에 넘긴다. 파일 선택 직후 한 번 호출되며,
 	 * 업로드가 끝나면 `null` 로 다시 호출해 버튼을 걷게 한다.
+	 *
+	 * DEV-338: 전체 취소(`cancelAll`)와 **항목별 취소**(`cancelOne(id)`)를 함께
+	 * 넘긴다. 여러 개를 올리는 중 하나만 빼려면 전부 취소하고 다시 고르는 수밖에
+	 * 없었다(admin 보고).
 	 */
-	onCancelHandle?: (cancelAll: (() => void) | null) => void;
+	onCancelHandle?: (
+		h: { cancelAll: () => void; cancelOne: (id: number) => void } | null
+	) => void;
 }): Promise<void> {
 	const { onOne, onError, onQueue, onCancelHandle } = handlers;
 	const picked = await pickUploads();
@@ -321,16 +327,34 @@ export async function pickAndUploadAttachments(handlers: {
 	}));
 	const emit = () => onQueue?.(queue.map((it) => ({ ...it })));
 	emit();
-	// DEV-323: 진행 중인 것은 abort, 아직 시작 안 한 것은 시작 자체를 막는다.
-	const abort = new AbortController();
-	let cancelled = false;
-	onCancelHandle?.(() => {
-		cancelled = true;
-		abort.abort();
-		// 대기 중이던 항목은 바로 '취소됨' 으로 — 시작도 안 했으니 정리할 것이 없다.
-		for (const it of queue) if (it.status === 'pending') it.status = 'cancelled';
+	// DEV-323 / DEV-338: 취소는 **항목마다** AbortController 를 둔다. 하나만
+	// 끊어도 나머지는 계속 진행돼야 하기 때문. 전체 취소는 이것들을 모두 끊는다.
+	const aborts = queue.map(() => new AbortController());
+	let cancelledAll = false;
+	/** 아직 시작 안 한 항목은 시작 자체를 막는다 — 정리할 것이 없다. */
+	const markCancelled = (it: AttachQueueItem) => {
+		if (it.status === 'pending' || it.status === 'uploading') {
+			it.status = 'cancelled';
+			it.percent = null;
+		}
+	};
+	const cancelOne = (id: number) => {
+		const it = queue[id];
+		if (!it || it.status === 'done' || it.status === 'error') return;
+		aborts[id].abort();
+		markCancelled(it);
 		emit();
-	});
+	};
+	const cancelAll = () => {
+		cancelledAll = true;
+		for (const it of queue) {
+			if (it.status === 'done' || it.status === 'error') continue;
+			aborts[it.id].abort();
+			markCancelled(it);
+		}
+		emit();
+	};
+	onCancelHandle?.({ cancelAll, cancelOne });
 	let failed = false;
 	// DEV-322: 병렬 업로드 — 실측 결과 순차보다 빨랐다(로컬 HTTP 9~24%,
 	// 디스크 복사 28~52%. 상세는 퀘스트 댓글). 다만 **환경에 따라 위험이 다르다**:
@@ -345,8 +369,9 @@ export async function pickAndUploadAttachments(handlers: {
 	// lost update 가 난다. 업로드만 병렬로 하고 등록은 이 체인으로 직렬화한다.
 	let registerChain: Promise<void> = Promise.resolve();
 	const runOne = async (it: AttachQueueItem) => {
-		if (cancelled) {
-			it.status = 'cancelled';
+		// 이미 취소된 항목(전체 취소 포함)은 시작하지 않는다.
+		if (cancelledAll || it.status === 'cancelled' || aborts[it.id].signal.aborted) {
+			markCancelled(it);
 			emit();
 			return;
 		}
@@ -359,7 +384,7 @@ export async function pickAndUploadAttachments(handlers: {
 				it.phase = p.phase;
 				it.percent = p.percent;
 				emit();
-			}, abort.signal);
+			}, aborts[it.id].signal);
 			it.status = 'done';
 			it.percent = 100;
 			emit();
@@ -369,7 +394,7 @@ export async function pickAndUploadAttachments(handlers: {
 		} catch (e) {
 			// DEV-323: 취소는 실패가 아니다 — 배너를 띄우지 않고 상태만 바꾼다.
 			// 브라우저는 AbortError, 데스크톱은 Rust 의 AppError::Cancelled 문자열.
-			if (isCancellation(e, cancelled)) {
+			if (isCancellation(e, aborts[it.id].signal.aborted)) {
 				it.status = 'cancelled';
 				it.percent = null;
 				emit();
@@ -401,7 +426,8 @@ export async function pickAndUploadAttachments(handlers: {
 		// 전부 성공했으면 목록을 걷는다. 실패가 있으면 **남겨둔다** — 어떤 파일이
 		// 실패했는지가 배너 메시지 하나보다 중요하다. 취소도 남긴다(무엇이
 		// 올라갔고 무엇이 안 올라갔는지가 사용자에게 필요한 정보다).
-		if (!failed && !cancelled) onQueue?.(null);
+		const anyCancelled = queue.some((it) => it.status === 'cancelled');
+		if (!failed && !anyCancelled) onQueue?.(null);
 	}
 }
 

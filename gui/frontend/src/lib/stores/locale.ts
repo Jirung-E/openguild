@@ -890,6 +890,8 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	// DEV-323: 업로드 취소.
 	'attach.cancelAll': { ko: '취소', en: 'Cancel' },
 	'attach.cancelled': { ko: '취소됨', en: 'Cancelled' },
+	// DEV-338: 항목별 취소.
+	'attach.cancelOne': { ko: '이 항목 취소', en: 'Cancel this item' },
 
 	'history.title': { ko: '변경 이력', en: 'Change history' },
 	'history.loading': { ko: '로드 중…', en: 'Loading…' },
