@@ -18,6 +18,9 @@
 	// DEV-205: 메모 섹션 i18n.
 	import { locale, t } from '$lib/stores/locale';
 	import MarkdownView from './MarkdownView.svelte';
+	// BUG-214: 고정 모드의 내부 스크롤도 앱 공통 overlay 스크롤바로 — 이 영역만
+	// OS 기본 스크롤바가 나와 튀었다(admin 보고).
+	import OverlayScrollbar from './OverlayScrollbar.svelte';
 	import { commentsApi as questCommentsApi, campaignCommentsApi } from '$lib/api/comments';
 	// DEV-203: 편집기 셋업(테마/들여쓰기/첨부/자동완성/redo/높이/overlay 스크롤)은
 	// 공통 MarkdownEditor 컴포넌트로 단일화.
@@ -236,6 +239,9 @@
 			>
 				<MarkdownView source={content} />
 			</div>
+			{#if heightMode === 'fixed'}
+				<OverlayScrollbar target={memoBodyEl ?? null} />
+			{/if}
 		{:else}
 			<p class="no-desc">
 				{label.emptyHint}
@@ -322,12 +328,18 @@
 	   style 로 지정되며 resize 핸들로 드래그 조절 가능(영속). */
 	.memo-body.fixed {
 		overflow-y: auto;
+		/* BUG-214: native 스크롤바 숨김 — OverlayScrollbar 가 대신 그린다
+		   (앱의 다른 스크롤 영역과 같은 처리). */
+		scrollbar-width: none;
 		resize: vertical;
 		min-height: 120px;
 		max-height: 2000px;
 		border: 1px solid var(--border);
 		border-radius: 6px;
 		padding: 0.25rem 0.75rem;
+	}
+	.memo-body.fixed::-webkit-scrollbar {
+		display: none;
 	}
 
 	.state {

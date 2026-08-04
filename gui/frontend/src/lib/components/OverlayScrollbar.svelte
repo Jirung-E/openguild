@@ -116,11 +116,10 @@
 	}
 
 	function onScroll() {
-		if (target) {
-			scrollTop = target.scrollTop;
-		} else {
-			scrollTop = window.scrollY;
-		}
+		// BUG-213: scrollTop 만 갱신하면 contentH 가 마운트 시점 값에 고정된다.
+		// textarea 처럼 mutation 없이 내용이 바뀌는 대상에서 thumb 이 아예 안
+		// 그려지던 원인 — 스크롤 중에는 항상 다시 잰다(rect 1회 읽기라 저렴).
+		measure();
 		showTemp();
 	}
 
@@ -198,6 +197,11 @@
 		// 컨텐츠 mutation (행 추가/삭제, 댓글 접기/펼치기 등) → 재측정.
 		const localMo = new MutationObserver(scheduleRemeasure);
 		localMo.observe(t ?? document.body, { childList: true, subtree: true });
+		// BUG-213: **textarea/input 의 값은 자식 노드가 아니라서** MutationObserver
+		// 로 안 잡힌다. CodeMirror(마크다운 모드)는 줄마다 DOM 이 생겨 잡혔지만
+		// 일반 댓글 입력창은 타이핑해도 재측정이 안 돼 thumb 이 영영 안 그려졌다.
+		// input 이벤트는 버블링되므로 컨테이너 target 에도 그대로 유효하다.
+		if (t) t.addEventListener('input', scheduleRemeasure);
 		ro = localRo;
 		mo = localMo;
 
@@ -205,6 +209,7 @@
 			scrollSrc.removeEventListener('scroll', handler);
 			window.removeEventListener('resize', onWinResize);
 			if (t) window.removeEventListener('scroll', onWinScroll);
+			if (t) t.removeEventListener('input', scheduleRemeasure);
 			localRo.disconnect();
 			localMo.disconnect();
 		};
