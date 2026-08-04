@@ -123,7 +123,9 @@
 	let historyVersion = $state(0);
 
 	// 콤보박스 / 후보 (DEV-124: succ 추가)
-	type ComboMode = 'sub' | 'prereq' | 'succ';
+	// DEV-339: 부모 지정도 같은 흐름으로 — API(`candidates?relation=parent`,
+	// `changeParent`)는 이미 있었고 메뉴에만 빠져 있었다.
+	type ComboMode = 'parent' | 'sub' | 'prereq' | 'succ';
 	let comboMode = $state<ComboMode | null>(null);
 	let candidates = $state<Quest[]>([]);
 	let candidatesLoading = $state(false);
@@ -449,7 +451,10 @@
 		if (!detail || !comboMode) return;
 		const mode = comboMode;
 		try {
-			if (mode === 'sub') {
+			if (mode === 'parent') {
+				// DEV-339: 고른 퀘스트를 **이 퀘스트의 부모**로 (sub 와 방향이 반대).
+				await questsApi.changeParent(detail.id, { parent_quest_id: questId });
+			} else if (mode === 'sub') {
 				// 기존 퀘스트를 이 퀘스트의 서브로 지정 = 그 퀘스트의 부모를 이 퀘스트로
 				await questsApi.changeParent(questId, { parent_quest_id: detail.id });
 			} else if (mode === 'prereq') {
@@ -484,7 +489,10 @@
 		pendingRelMode = null;
 		newRelMode = null;
 		try {
-			if (detail && created && mode === 'prereq') {
+			if (detail && created && mode === 'parent') {
+				// DEV-339: 새로 만든 퀘스트를 이 퀘스트의 부모로.
+				await questsApi.changeParent(detail.id, { parent_quest_id: created.id });
+			} else if (detail && created && mode === 'prereq') {
 				await questsApi.addPrerequisite(detail.id, created.id);
 			} else if (detail && created && mode === 'succ') {
 				await questsApi.addPrerequisite(created.id, detail.id);
@@ -1098,7 +1106,7 @@
 					></button>
 					<div class="rel-menu" role="menu">
 						<div class="rel-menu-title">{t('qd.addRelationTitle', $locale)}</div>
-						{#each [{ mode: 'sub' as ComboMode, label: t('quest.section.subQuests', $locale) }, { mode: 'prereq' as ComboMode, label: t('quest.section.prerequisites', $locale) }, { mode: 'succ' as ComboMode, label: t('quest.section.successors', $locale) }] as row (row.mode)}
+						{#each [...(detail.parent ? [] : [{ mode: 'parent' as ComboMode, label: t('quest.section.parent', $locale) }]), { mode: 'sub' as ComboMode, label: t('quest.section.subQuests', $locale) }, { mode: 'prereq' as ComboMode, label: t('quest.section.prerequisites', $locale) }, { mode: 'succ' as ComboMode, label: t('quest.section.successors', $locale) }] as row (row.mode)}
 							<div class="rel-menu-row">
 								<span class="rel-menu-kind">{row.label}</span>
 								<button
@@ -1244,7 +1252,10 @@
 		<div class="modal-sm modal-combo" role="dialog" aria-modal="true" tabindex="-1">
 			<div class="modal-head">
 				<h3>
-					{#if comboMode === 'sub'}{t('qd.comboSub', $locale)}{:else if comboMode === 'prereq'}{t(
+					{#if comboMode === 'parent'}{t('qd.comboParent', $locale)}{:else if comboMode === 'sub'}{t(
+							'qd.comboSub',
+							$locale
+						)}{:else if comboMode === 'prereq'}{t(
 							'qd.comboPrereq',
 							$locale
 						)}{:else}{t('qd.comboSuccessor', $locale)}{/if}

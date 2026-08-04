@@ -1251,6 +1251,8 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		en: 'Assign existing quest as sub-quest'
 	},
 	'qd.comboPrereq': { ko: '선행 퀘스트 추가', en: 'Add prerequisite' },
+	// DEV-339: 상위(부모) 퀘스트 지정.
+	'qd.comboParent': { ko: '상위 퀘스트 지정', en: 'Set parent quest' },
 	'qd.comboSuccessor': { ko: '후속 퀘스트 추가', en: 'Add successor' },
 	'qd.slugChangeSuffix': {
 		ko: ' 슬러그(quest_id) 가 바뀌어',
