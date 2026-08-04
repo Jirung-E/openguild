@@ -19,6 +19,20 @@ openguild library folder new <path>
 openguild library folder delete <path> --yes
 ```
 
+## Tags
+
+Library docs share the free-tag catalog with quests and rules. Frontmatter
+is the source of truth; works in local and remote (`--remote`) mode.
+
+```bash
+openguild library tag list <book-id>
+openguild library tag add <book-id> <tag...>       # merged with existing, deduped
+openguild library tag remove <book-id> <tag...>    # missing tags are ignored
+openguild library tag set <book-id> [tag...]       # replace all; 0 args = clear
+```
+
+## Attachments
+
 `--file` is for the markdown body (UTF-8 text). For large or binary files,
 use attachments instead — a separate section from the body, same mechanism
 as `quest attach`/`campaign attach`:
@@ -32,3 +46,7 @@ openguild library attach remove <book-id> <path>          # path from `attach li
 Attachments are local-mode only (no remote-server support). Files are
 copied into `.guild/attachments/`; removing the last reference to a file
 also deletes the underlying blob (orphan cleanup).
+
+Attachment bytes are **not** included in backups/snapshots — the files in
+`.guild/attachments/` are the only copy, so back them up with the rest of
+your project (git or otherwise).

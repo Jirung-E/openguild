@@ -25,8 +25,12 @@ use openguild_core::Store;
 /// bytes 를 받는 라우트는 이 라우트뿐이므로 여기에만 한도를 명시하고 나머지는
 /// 기본값(2 MiB)을 유지한다.
 ///
-/// 무제한으로 두지 않는 이유: 첨부는 `attachment_blobs` 로 index.db 에도
-/// 복사되므로(DEV-284) 스냅샷 용량이 같이 커진다.
+/// **이 상한은 이 라우트(base64 JSON)에만 남아 있다.** 원래 근거였던 "첨부가
+/// index.db 에 blob 으로 복사돼 스냅샷이 커진다"(DEV-284)는 BUG-188 에서 blob
+/// 백업을 없애며 사라졌다. 지금 남은 제약은 크기가 아니라 **body 를 통째로
+/// 버퍼링하는 방식**이다(base64 문자열 + 디코드 버퍼로 피크에 파일 크기의 2배
+/// 이상). 크기 제한 없는 업로드는 DEV-337 의 `POST /api/attachments/stream` —
+/// 이 라우트는 구버전 클라이언트 호환으로 유지한다.
 pub const MAX_ATTACHMENT_BYTES: usize = 64 * 1024 * 1024;
 
 /// 위 원본 한도를 base64 로 감싼 JSON body 의 상한 — base64 는 3바이트를

@@ -154,6 +154,9 @@ openguild quest comment list <slug>
 openguild quest comment react <slug> <id> --emoji <emoji> --author <name>
 openguild quest memo set <slug> --author <name> --file <PATH>   # private note, not shown to others
 openguild quest tag add <slug> <tag...>
+# Tags work the same on library docs and rules (list/add/remove/set).
+openguild library tag add <book-id> <tag...>
+openguild rule tag add <name> <tag...>
 
 openguild campaign new --title "..." [--start YYYY-MM-DD] [--end YYYY-MM-DD]
 openguild campaign link <campaign-slug> <quest-slug>
