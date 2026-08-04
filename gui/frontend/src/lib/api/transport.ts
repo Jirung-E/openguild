@@ -804,12 +804,16 @@ export const transport: Transport = {
 export async function postWithUploadProgress<T>(
 	path: string,
 	body: unknown,
-	onProgress?: (sent: number, total: number) => void
+	onProgress?: (sent: number, total: number) => void,
+	// DEV-323: 업로드 취소 — abort 되면 요청을 즉시 끊는다. 서버는 body 를 다
+	// 받지 못하므로 첨부가 저장되지 않는다(조각 파일도 안 생긴다).
+	signal?: AbortSignal
 ): Promise<T> {
 	const t = resolveTransport();
 	if (!(t instanceof HttpTransport) || typeof XMLHttpRequest === 'undefined') {
 		return t.call<T>({ method: 'POST', path, body });
 	}
+	if (signal?.aborted) return Promise.reject(new DOMException('aborted', 'AbortError'));
 	const url = `${t.baseUrl}${path}`;
 	const payload = JSON.stringify(body);
 	return new Promise<T>((resolve, reject) => {
@@ -844,7 +848,10 @@ export async function postWithUploadProgress<T>(
 			}
 		};
 		xhr.onerror = () => reject(new Error('network error'));
-		xhr.onabort = () => reject(new Error('aborted'));
+		// DEV-323: 취소는 실패와 구분되어야 한다 — 호출부가 조용히 정리하도록
+		// AbortError 로 던진다(에러 배너를 띄우지 않게).
+		xhr.onabort = () => reject(new DOMException('aborted', 'AbortError'));
+		signal?.addEventListener('abort', () => xhr.abort(), { once: true });
 		xhr.send(payload);
 	});
 }

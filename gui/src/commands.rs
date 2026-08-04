@@ -2032,6 +2032,23 @@ pub struct AttachmentProgress {
     pub total: u64,
 }
 
+/// DEV-323: 진행 중인 업로드의 취소 플래그 — `upload_id` → 취소 요청 여부.
+///
+/// 복사 루프가 4MiB 청크마다 이 값을 보고 중단한다. 취소된 항목은 core 가
+/// 조각 파일을 지우고 `AppError::Cancelled` 를 돌려준다.
+static UPLOAD_CANCELS: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<std::sync::atomic::AtomicBool>>>,
+> = std::sync::LazyLock::new(Default::default);
+
+/// DEV-323: 업로드 취소 요청. 아직 시작 안 했거나 이미 끝난 id 는 조용히 무시된다
+/// (사용자가 끝나는 순간에 눌러도 에러가 뜨지 않게).
+#[tauri::command]
+pub fn cancel_attachment_upload(upload_id: String) {
+    if let Some(flag) = UPLOAD_CANCELS.lock().ok().and_then(|m| m.get(&upload_id).cloned()) {
+        flag.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
 /// DEV-321 진행 이벤트 이름. 프론트의 `listen()` 과 문자열이 일치해야 한다.
 pub const ATTACHMENT_PROGRESS_EVENT: &str = "attachment://progress";
 
@@ -2074,7 +2091,12 @@ pub async fn save_attachment_from_path(
             },
         );
     };
-    openguild_core::ops::attachments::save_attachment_from_file_with_progress(
+    // DEV-323: 이 업로드의 취소 플래그를 등록하고, 끝나면 반드시 걷는다.
+    let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    if let Ok(mut m) = UPLOAD_CANCELS.lock() {
+        m.insert(upload_id.clone(), cancel.clone());
+    }
+    let result = openguild_core::ops::attachments::save_attachment_from_file_cancellable(
         &store,
         &src,
         &ext,
@@ -2089,9 +2111,13 @@ pub async fn save_attachment_from_path(
                 emit(copied, total);
             }
         },
+        || cancel.load(std::sync::atomic::Ordering::Relaxed),
     )
-    .await
-    .map_err(err)
+    .await;
+    if let Ok(mut m) = UPLOAD_CANCELS.lock() {
+        m.remove(&upload_id);
+    }
+    result.map_err(err)
 }
 
 /// DEV-171/BUG-081: `.guild` 상대 경로를 절대 경로로 해석 (traversal 가드 + 존재 확인).

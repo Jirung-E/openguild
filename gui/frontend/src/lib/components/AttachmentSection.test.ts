@@ -128,6 +128,48 @@ describe('AttachmentSection 업로드 진행 표시', () => {
 		release();
 	});
 
+	// DEV-323: 취소 버튼은 업로드가 도는 동안만 보이고, 누르면 손잡이가 호출된다.
+	it('취소 버튼이 취소 손잡이를 부른다', async () => {
+		const cancelAll = vi.fn();
+		let release!: () => void;
+		vi.mocked(pickAndUploadAttachments).mockImplementation(async (handlers) => {
+			handlers.onCancelHandle?.(cancelAll);
+			handlers.onQueue?.(one({ percent: 10 }));
+			await new Promise<void>((r) => (release = r));
+		});
+		const { container, getByText } = render(AttachmentSection, { props: { slug: 'DEV-001' } });
+		getByText('+ 첨부').click();
+
+		await waitFor(() => expect(container.querySelector('.upq-cancel')).not.toBeNull());
+		container.querySelector<HTMLButtonElement>('.upq-cancel')!.click();
+		expect(cancelAll).toHaveBeenCalledOnce();
+
+		release();
+	});
+
+	// DEV-323: 취소된 항목은 실패가 아니라 '취소됨' 으로 남는다 — 무엇이 올라갔고
+	// 무엇이 안 올라갔는지가 사용자에게 필요한 정보다.
+	it('취소된 항목을 취소됨으로 표시한다', async () => {
+		let release!: () => void;
+		drive(async (push) => {
+			push([
+				{ id: 0, name: 'done.zip', status: 'done', phase: null, percent: 100 },
+				{ id: 1, name: 'stopped.zip', status: 'cancelled', phase: null, percent: null },
+				{ id: 2, name: 'never.zip', status: 'cancelled', phase: null, percent: null }
+			]);
+			await new Promise<void>((r) => (release = r));
+		});
+		const { container, getByText } = render(AttachmentSection, { props: { slug: 'DEV-001' } });
+		getByText('+ 첨부').click();
+
+		await waitFor(() => expect(container.querySelectorAll('.upq-item.cancelled')).toHaveLength(2));
+		expect(container.textContent).toContain('취소됨');
+		// 취소는 실패가 아니므로 실패 표시가 붙으면 안 된다.
+		expect(container.querySelector('.upq-item.failed')).toBeNull();
+
+		release();
+	});
+
 	it('끝나면 진행 표시가 사라진다', async () => {
 		drive(async (push) => {
 			push(one({ name: 'a.zip', status: 'done', percent: 100 }));

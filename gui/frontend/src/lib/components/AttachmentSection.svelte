@@ -42,6 +42,8 @@
 	// DEV-298 → DEV-322: 업로드 대기열 — null 이면 표시 안 함. 고른 파일 전체가
 	// 여기 들어오고 각 줄이 자기 상태(대기/진행/완료/실패)를 들고 있다.
 	let queue = $state<AttachQueueItem[] | null>(null);
+	// DEV-323: 업로드가 도는 동안만 채워지는 취소 손잡이.
+	let cancelUpload = $state<(() => void) | null>(null);
 	let urls = $state<Record<string, string>>({});
 
 	const IMG = /\.(png|jpe?g|gif|webp|bmp|svg)$/i;
@@ -91,6 +93,10 @@
 				// DEV-322: 이제 고른 파일 전체가 목록으로 온다.
 				onQueue: (q) => {
 					queue = q;
+				},
+				// DEV-323: 진행 중 + 대기 중 전부 취소.
+				onCancelHandle: (fn) => {
+					cancelUpload = fn;
 				}
 			});
 		} finally {
@@ -211,10 +217,22 @@
 	<!-- DEV-298 → DEV-322: 업로드 대기열. 예전엔 현재 파일 하나와 순번만 보여
 	     무엇이 남았는지 알 수 없었다. 이제 고른 파일 전체를 상태와 함께 보여준다. -->
 	{#if queue && queue.length > 0}
+		{#if cancelUpload}
+			<div class="upq-head">
+				<span>{t('attach.uploading', $locale)}</span>
+				<button type="button" class="upq-cancel" onclick={() => cancelUpload?.()}>
+					{t('attach.cancelAll', $locale)}
+				</button>
+			</div>
+		{/if}
 		<ul class="upq" aria-live="polite">
 			{#each queue as it (it.id)}
 				{@const pct = it.percent}
-				<li class="upq-item" class:failed={it.status === 'error'}>
+				<li
+					class="upq-item"
+					class:failed={it.status === 'error'}
+					class:cancelled={it.status === 'cancelled'}
+				>
 					<!-- BUG-190: 파일명과 진행 바는 **다른 줄**. 한 줄에 두면 이름이 긴
 					     파일에서 바가 밀려 거의 안 보였다(admin 보고). -->
 					<div class="up-line">
@@ -226,7 +244,9 @@
 									? '✓'
 									: it.status === 'error'
 										? '✕'
-										: ''}
+										: it.status === 'cancelled'
+											? t('attach.cancelled', $locale)
+											: ''}
 						</span>
 					</div>
 					{#if it.status === 'uploading' || it.status === 'done'}
@@ -346,6 +366,33 @@
 	}
 	.upq-item.failed .up-name {
 		color: var(--danger, #e5534b);
+	}
+	.upq-item.cancelled .up-name {
+		text-decoration: line-through;
+		opacity: 0.7;
+	}
+	.upq-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem;
+		margin-top: 0.6rem;
+		font-size: 0.8rem;
+		color: var(--text-muted);
+	}
+	.upq-cancel {
+		flex: none;
+		background: none;
+		border: 1px solid var(--border);
+		border-radius: 4px;
+		padding: 0.1rem 0.45rem;
+		font-size: 0.75rem;
+		color: var(--text-muted);
+		cursor: pointer;
+	}
+	.upq-cancel:hover {
+		color: var(--text);
+		border-color: var(--text-muted);
 	}
 	.up-state {
 		flex: none;

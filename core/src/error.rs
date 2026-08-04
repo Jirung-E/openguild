@@ -20,6 +20,11 @@ pub enum AppError {
     #[error("{0}")]
     IncompatibleGuild(String),
 
+    /// DEV-323: 사용자가 중단시킨 작업(첨부 업로드 취소 등). 실패가 아니라
+    /// **의도된 중단**이라 호출부가 에러 배너 대신 조용히 정리하도록 구분한다.
+    #[error("{0}")]
+    Cancelled(String),
+
     #[error("internal error: {0:#}")]
     Internal(#[from] anyhow::Error),
 }

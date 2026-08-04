@@ -887,6 +887,9 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'attach.preparing': { ko: '준비 중…', en: 'Preparing…' },
 	// DEV-322: 대기열에서 아직 시작 안 한 항목.
 	'attach.queued': { ko: '대기', en: 'Queued' },
+	// DEV-323: 업로드 취소.
+	'attach.cancelAll': { ko: '취소', en: 'Cancel' },
+	'attach.cancelled': { ko: '취소됨', en: 'Cancelled' },
 
 	'history.title': { ko: '변경 이력', en: 'Change history' },
 	'history.loading': { ko: '로드 중…', en: 'Loading…' },

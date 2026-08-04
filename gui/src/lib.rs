@@ -523,6 +523,8 @@ pub fn run() {
             // DEV-069: 본문 첨부 (paste / drag&drop 업로드).
             commands::save_attachment,
             commands::save_attachment_from_path,
+            // DEV-323: 진행 중 업로드 취소.
+            commands::cancel_attachment_upload,
             // BUG-081: 첨부 열기(미리보기) / 다운로드(복사).
             commands::open_guild_file,
             commands::copy_guild_file,

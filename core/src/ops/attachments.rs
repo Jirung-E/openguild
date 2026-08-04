@@ -169,7 +169,25 @@ pub async fn save_attachment_from_file_with_progress(
     store: &Store,
     src: &std::path::Path,
     ext: &str,
+    on_progress: impl FnMut(u64, u64),
+) -> AppResult<String> {
+    save_attachment_from_file_cancellable(store, src, ext, on_progress, || false).await
+}
+
+/// DEV-323: 위와 같되 중간에 취소할 수 있다 — `is_cancelled()` 가 true 를 반환하면
+/// 복사를 멈춘다.
+///
+/// 취소는 **조각 파일을 남기지 않는다**. 대용량 첨부를 취소했는데 반쪽짜리
+/// 파일이 `.guild/attachments/` 에 남으면 그 자체가 BUG-168 에서 겪은 문제
+/// (고아 파일이 reindex/스냅샷을 깨뜨림)를 다시 만든다. 복사 실패 경로와 같은
+/// 정리를 타되, 반환은 `AppError::Cancelled` 로 구분한다 — 호출부가 에러 배너
+/// 대신 조용히 정리하도록.
+pub async fn save_attachment_from_file_cancellable(
+    store: &Store,
+    src: &std::path::Path,
+    ext: &str,
     mut on_progress: impl FnMut(u64, u64),
+    is_cancelled: impl Fn() -> bool,
 ) -> AppResult<String> {
     let ext = sanitize_ext(ext);
     let meta = std::fs::metadata(src)
@@ -193,12 +211,23 @@ pub async fn save_attachment_from_file_with_progress(
     std::fs::create_dir_all(store.paths.attachments_dir())
         .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
     let dst = store.paths.dot_guild().join(&rel);
-    if let Err(e) = copy_with_progress(src, &dst, meta.len(), &mut on_progress) {
-        let _ = std::fs::remove_file(&dst);
-        return Err(AppError::Internal(anyhow::anyhow!(crate::tf!(
-            "첨부 복사 실패: {e}",
-            "attachment copy failed: {e}"
-        ))));
+    match copy_with_progress(src, &dst, meta.len(), &mut on_progress, &is_cancelled) {
+        Err(e) => {
+            let _ = std::fs::remove_file(&dst);
+            return Err(AppError::Internal(anyhow::anyhow!(crate::tf!(
+                "첨부 복사 실패: {e}",
+                "attachment copy failed: {e}"
+            ))));
+        }
+        Ok(false) => {
+            // DEV-323: 취소 — 조각 파일을 반드시 지운다.
+            let _ = std::fs::remove_file(&dst);
+            return Err(AppError::Cancelled(crate::tf!(
+                "업로드 취소됨",
+                "upload cancelled"
+            )));
+        }
+        Ok(true) => {}
     }
     Ok(rel)
 }
@@ -208,12 +237,14 @@ pub async fn save_attachment_from_file_with_progress(
 ///
 /// `total` 은 시작 시점의 크기다. 복사 중에 원본이 커지면 실제 복사량이 이를
 /// 넘을 수 있으므로, 보고 값은 total 로 clamp 해서 100%를 넘지 않게 한다.
+/// 반환값 `Ok(false)` = 취소로 중단(호출부가 조각 파일을 지운다).
 fn copy_with_progress(
     src: &std::path::Path,
     dst: &std::path::Path,
     total: u64,
     on_progress: &mut impl FnMut(u64, u64),
-) -> std::io::Result<()> {
+    is_cancelled: &impl Fn() -> bool,
+) -> std::io::Result<bool> {
     use std::io::{Read, Write};
 
     const BUF: usize = 4 * 1024 * 1024;
@@ -224,6 +255,10 @@ fn copy_with_progress(
 
     on_progress(0, total);
     loop {
+        // 청크 경계에서만 확인 — 4MiB 단위라 취소 반응은 한 청크 이내다.
+        if is_cancelled() {
+            return Ok(false);
+        }
         let n = reader.read(&mut buf)?;
         if n == 0 {
             break;
@@ -233,7 +268,7 @@ fn copy_with_progress(
         on_progress(copied, total);
     }
     writer.flush()?;
-    Ok(())
+    Ok(true)
 }
 
 
@@ -568,6 +603,58 @@ mod tests {
 
         // 점/공백만 있는 이름도 파일명이 성립해야.
         assert!(rel(Some("....zip")).starts_with("attachments/file-"));
+    }
+
+    /// DEV-323: 취소하면 **조각 파일이 남지 않는다**.
+    ///
+    /// 반쪽짜리 파일이 `.guild/attachments/` 에 남으면 BUG-168 에서 겪은 고아
+    /// 파일 문제(reindex/스냅샷이 깨짐)를 다시 만든다. 취소 경로도 실패 경로와
+    /// 같은 정리를 반드시 타야 한다.
+    #[tokio::test]
+    async fn cancel_removes_partial_file() {
+        let (dir, store) = setup("cancel").await;
+        // 청크(4MiB)를 여러 번 도는 크기 — 중간에 취소할 여지가 있어야 한다.
+        let size = 12 * 1024 * 1024;
+        let src = dir.join("big.bin");
+        std::fs::write(&src, vec![3u8; size]).unwrap();
+
+        let before: Vec<_> = std::fs::read_dir(store.paths.attachments_dir())
+            .map(|d| d.flatten().map(|e| e.path()).collect())
+            .unwrap_or_default();
+
+        // 첫 청크가 지나간 뒤 취소를 건다.
+        let seen = std::cell::Cell::new(0u32);
+        let err = save_attachment_from_file_cancellable(
+            &store,
+            &src,
+            "bin",
+            |_c, _t| seen.set(seen.get() + 1),
+            || seen.get() >= 2,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(
+            matches!(err, AppError::Cancelled(_)),
+            "취소는 실패가 아니라 Cancelled 여야: {err:?}"
+        );
+
+        let after: Vec<_> = std::fs::read_dir(store.paths.attachments_dir())
+            .map(|d| d.flatten().map(|e| e.path()).collect())
+            .unwrap_or_default();
+        assert_eq!(after.len(), before.len(), "조각 파일이 남았다: {after:?}");
+    }
+
+    /// 취소 플래그가 false 면 평소대로 끝까지 복사한다(위 테스트의 대조군).
+    #[tokio::test]
+    async fn not_cancelled_completes() {
+        let (dir, store) = setup("nocancel").await;
+        let src = dir.join("small.bin");
+        std::fs::write(&src, vec![1u8; 1024]).unwrap();
+        let rel = save_attachment_from_file_cancellable(&store, &src, "bin", |_, _| {}, || false)
+            .await
+            .unwrap();
+        assert!(store.paths.dot_guild().join(&rel).is_file());
     }
 
     /// DEV-321: 진행 콜백 — 0 에서 시작해 단조 증가하고 전체 크기로 끝난다.

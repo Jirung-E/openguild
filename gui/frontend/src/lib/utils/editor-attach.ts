@@ -103,7 +103,8 @@ function toBase64(buf: ArrayBuffer): string {
 async function saveAttachmentBytes(
 	file: File,
 	ext: string,
-	report?: UploadReport
+	report?: UploadReport,
+	signal?: AbortSignal
 ): Promise<string> {
 	// BUG-168: 한도를 넘으면 base64 변환(파일 크기의 5~6배 메모리)조차 하지 않고
 	// 바로 안내한다 — 서버까지 보내면 axum 원문 413 이 그대로 노출된다.
@@ -118,8 +119,12 @@ async function saveAttachmentBytes(
 	// DEV-324: 원본 파일명도 보낸다 — 저장 파일명에 남아 나중에 알아볼 수 있다.
 	// 붙여넣기처럼 이름이 없으면(빈 문자열) 보내지 않는다.
 	const name = file.name || undefined;
-	return postWithUploadProgress<string>('/api/attachments', { data_base64, ext, name }, (sent, total) =>
-		report?.({ phase: 'uploading', percent: total > 0 ? (sent / total) * 100 : null })
+	return postWithUploadProgress<string>(
+		'/api/attachments',
+		{ data_base64, ext, name },
+		(sent, total) =>
+			report?.({ phase: 'uploading', percent: total > 0 ? (sent / total) * 100 : null }),
+		signal
 	);
 }
 
@@ -130,7 +135,12 @@ async function saveAttachmentBytes(
  * 전송 방식이 전혀 다른데 삽입/치환 로직은 같다. 호출부가 분기하지 않도록
  * `run()` 뒤로 숨긴다 — 반환값은 양쪽 모두 `.guild` 상대 경로.
  */
-type Upload = { name: string; ext: string; run: (report?: UploadReport) => Promise<string> };
+type Upload = {
+	name: string;
+	ext: string;
+	/** DEV-323: `signal` 이 abort 되면 전송/복사를 중단한다(AbortError 로 reject). */
+	run: (report?: UploadReport, signal?: AbortSignal) => Promise<string>;
+};
 
 /** DEV-321: 업로드 1건의 진행 보고 — 단계 + 퍼센트(모르면 null). */
 export type UploadReport = (p: { phase: AttachPhase; percent: number | null }) => void;
@@ -140,7 +150,7 @@ function uploadFromFile(file: File): Upload {
 	return {
 		name: file.name || 'clipboard',
 		ext,
-		run: (report) => saveAttachmentBytes(file, ext, report)
+		run: (report, signal) => saveAttachmentBytes(file, ext, report, signal)
 	};
 }
 
@@ -149,7 +159,7 @@ function uploadFromPath(path: string): Upload {
 	return {
 		name,
 		ext: extOfName(name),
-		run: async (report) => (await uploadAttachmentPath(path, report)).rel
+		run: async (report, signal) => (await uploadAttachmentPath(path, report, signal)).rel
 	};
 }
 
@@ -236,11 +246,14 @@ function isMedia(ext: string): boolean {
  */
 async function uploadAttachmentPath(
 	path: string,
-	report?: UploadReport
+	report?: UploadReport,
+	signal?: AbortSignal
 ): Promise<{ rel: string; name: string }> {
 	const { invoke } = await import('@tauri-apps/api/core');
 	const name = path.split(/[\\/]/).pop() || path;
-	if (!report) {
+	// DEV-323: signal 이 있으면 취소를 위해 uploadId 경로를 타야 한다(플래그를
+	// 걸 대상이 있어야 하므로).
+	if (!report && !signal) {
 		const rel = await invoke<string>('save_attachment_from_path', { path });
 		return { rel, name };
 	}
@@ -248,20 +261,25 @@ async function uploadAttachmentPath(
 	// 연달아 올릴 때 섞이지 않도록 uploadId 로 자기 것만 걸러낸다.
 	const { listen } = await import('@tauri-apps/api/event');
 	const uploadId = `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-	report({ phase: 'uploading', percent: 0 });
+	report?.({ phase: 'uploading', percent: 0 });
 	const unlisten = await listen<{ upload_id: string; copied: number; total: number }>(
 		'attachment://progress',
 		(e) => {
 			if (e.payload.upload_id !== uploadId) return;
 			const { copied, total } = e.payload;
-			report({ phase: 'uploading', percent: total > 0 ? (copied / total) * 100 : null });
+			report?.({ phase: 'uploading', percent: total > 0 ? (copied / total) * 100 : null });
 		}
 	);
+	// DEV-323: 취소는 Rust 쪽 플래그로 전달한다 — 복사 루프가 4MiB 청크마다
+	// 확인하고 멈추면서 **조각 파일을 지운다**(core 의 cancel_removes_partial_file).
+	const onAbort = () => void invoke('cancel_attachment_upload', { uploadId });
+	signal?.addEventListener('abort', onAbort, { once: true });
 	try {
 		const rel = await invoke<string>('save_attachment_from_path', { path, uploadId });
 		return { rel, name };
 	} finally {
 		unlisten();
+		signal?.removeEventListener('abort', onAbort);
 	}
 }
 
@@ -283,8 +301,13 @@ export async function pickAndUploadAttachments(handlers: {
 	onOne: (r: { rel: string; name: string }) => Promise<void> | void;
 	onError: (msg: string) => void;
 	onQueue?: (q: AttachQueueItem[] | null) => void;
+	/**
+	 * DEV-323: 취소 손잡이를 호출부(UI)에 넘긴다. 파일 선택 직후 한 번 호출되며,
+	 * 업로드가 끝나면 `null` 로 다시 호출해 버튼을 걷게 한다.
+	 */
+	onCancelHandle?: (cancelAll: (() => void) | null) => void;
 }): Promise<void> {
-	const { onOne, onError, onQueue } = handlers;
+	const { onOne, onError, onQueue, onCancelHandle } = handlers;
 	const picked = await pickUploads();
 	if (picked.length === 0) return;
 	// DEV-322: 고른 파일 **전체**를 먼저 목록으로 보여준다. 예전엔 현재 파일
@@ -298,6 +321,16 @@ export async function pickAndUploadAttachments(handlers: {
 	}));
 	const emit = () => onQueue?.(queue.map((it) => ({ ...it })));
 	emit();
+	// DEV-323: 진행 중인 것은 abort, 아직 시작 안 한 것은 시작 자체를 막는다.
+	const abort = new AbortController();
+	let cancelled = false;
+	onCancelHandle?.(() => {
+		cancelled = true;
+		abort.abort();
+		// 대기 중이던 항목은 바로 '취소됨' 으로 — 시작도 안 했으니 정리할 것이 없다.
+		for (const it of queue) if (it.status === 'pending') it.status = 'cancelled';
+		emit();
+	});
 	let failed = false;
 	// DEV-322: 병렬 업로드 — 실측 결과 순차보다 빨랐다(로컬 HTTP 9~24%,
 	// 디스크 복사 28~52%. 상세는 퀘스트 댓글). 다만 **환경에 따라 위험이 다르다**:
@@ -312,6 +345,11 @@ export async function pickAndUploadAttachments(handlers: {
 	// lost update 가 난다. 업로드만 병렬로 하고 등록은 이 체인으로 직렬화한다.
 	let registerChain: Promise<void> = Promise.resolve();
 	const runOne = async (it: AttachQueueItem) => {
+		if (cancelled) {
+			it.status = 'cancelled';
+			emit();
+			return;
+		}
 		const up = picked[it.id];
 		it.status = 'uploading';
 		it.phase = 'uploading';
@@ -321,7 +359,7 @@ export async function pickAndUploadAttachments(handlers: {
 				it.phase = p.phase;
 				it.percent = p.percent;
 				emit();
-			});
+			}, abort.signal);
 			it.status = 'done';
 			it.percent = 100;
 			emit();
@@ -329,6 +367,14 @@ export async function pickAndUploadAttachments(handlers: {
 			registerChain = registerChain.then(() => onOne({ rel, name }));
 			await registerChain;
 		} catch (e) {
+			// DEV-323: 취소는 실패가 아니다 — 배너를 띄우지 않고 상태만 바꾼다.
+			// 브라우저는 AbortError, 데스크톱은 Rust 의 AppError::Cancelled 문자열.
+			if (isCancellation(e, cancelled)) {
+				it.status = 'cancelled';
+				it.percent = null;
+				emit();
+				return;
+			}
 			const msg = e instanceof Error ? e.message : String(e);
 			it.status = 'error';
 			it.error = msg;
@@ -351,10 +397,20 @@ export async function pickAndUploadAttachments(handlers: {
 			);
 		}
 	} finally {
+		onCancelHandle?.(null);
 		// 전부 성공했으면 목록을 걷는다. 실패가 있으면 **남겨둔다** — 어떤 파일이
-		// 실패했는지가 배너 메시지 하나보다 중요하다.
-		if (!failed) onQueue?.(null);
+		// 실패했는지가 배너 메시지 하나보다 중요하다. 취소도 남긴다(무엇이
+		// 올라갔고 무엇이 안 올라갔는지가 사용자에게 필요한 정보다).
+		if (!failed && !cancelled) onQueue?.(null);
 	}
+}
+
+/** 취소로 인한 중단인지 — 실패 배너를 띄우지 않기 위한 판정. */
+function isCancellation(e: unknown, cancelled: boolean): boolean {
+	if (e instanceof DOMException && e.name === 'AbortError') return true;
+	// Rust 쪽은 문자열로 넘어온다(AppError::Cancelled 의 tf! 메시지).
+	const msg = e instanceof Error ? e.message : String(e);
+	return cancelled && /취소|cancel/i.test(msg);
 }
 
 /**
@@ -371,7 +427,7 @@ export type AttachPhase = 'preparing' | 'uploading';
  * 것들이 안 보였다. 이제 고른 파일 전체가 이 목록으로 나가고 각 항목이 자기
  * 상태를 들고 있다. `percent === null` 이면 관측 불가(불확정 바).
  */
-export type AttachItemStatus = 'pending' | 'uploading' | 'done' | 'error';
+export type AttachItemStatus = 'pending' | 'uploading' | 'done' | 'error' | 'cancelled';
 export type AttachQueueItem = {
 	/** picked 배열의 인덱스 — 목록 key. */
 	id: number;

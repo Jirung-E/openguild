@@ -28,6 +28,11 @@ impl IntoResponse for HttpError {
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
             // DEV-064: 길드가 서버보다 새 schema — 서버 업데이트 필요.
             AppError::IncompatibleGuild(msg) => (StatusCode::CONFLICT, msg),
+            // DEV-323: 클라이언트가 스스로 중단한 요청 — nginx 관례인 499.
+            AppError::Cancelled(msg) => (
+                StatusCode::from_u16(499).unwrap_or(StatusCode::BAD_REQUEST),
+                msg,
+            ),
             AppError::Internal(err) => {
                 tracing::error!("internal error: {err:#}");
                 (
