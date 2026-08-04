@@ -30,6 +30,9 @@
 	import { editorSettings } from '$lib/stores/editorSettings';
 	import { attachmentExtension } from '$lib/utils/editor-attach';
 	import { crossLinkAutocomplete } from '$lib/utils/editor-links';
+	// BUG-215: 터치 기기에서는 drawSelection 을 뺀 구성을 쓴다 — 네이티브 선택이
+	// 살아 있어야 "길게 눌러 선택" 이 동작한다.
+	import { isCoarsePointer, touchSetup } from '$lib/utils/editor-setup';
 	import OverlayScrollbar from './OverlayScrollbar.svelte';
 
 	let {
@@ -93,7 +96,8 @@
 			// 키 입력마다(value 동기화) 편집기가 재생성되는 루프가 된다.
 			doc: untrack(() => value),
 			extensions: [
-				basicSetup,
+				// BUG-215: 데스크톱은 기존 basicSetup 그대로, 터치만 변형.
+				isCoarsePointer() ? touchSetup() : basicSetup,
 				markdown(),
 				// 테마 — Compartment 로 다크/라이트 라이브 전환 (재생성 X).
 				editorThemeCompartment.of(editorThemeExtension(untrack(() => $theme))),
