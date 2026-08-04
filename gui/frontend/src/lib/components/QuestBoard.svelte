@@ -305,6 +305,32 @@
 	const LANE_STRIDE = LANE_W + LANE_GAP; // 한 lane 의 X 단위 (다음 lane 시작점까지)
 	// DEV-105: collapsed lane 의 좁은 폭 — 세로 라벨 한 줄 들어갈 정도.
 	const LANE_COLLAPSED_W = 40;
+	/**
+	 * DEV-334: 화면과 내용에 맞춘 최소 zoom.
+	 *
+	 * "전체가 화면에 들어오는 zoom" 보다 조금 더(70%) 축소할 수 있게 잡는다 —
+	 * 전체 보기 + 주변 여유까지는 항상 가능해야 한다. 레인 수, 한 레인에 쌓인
+	 * 퀘스트 수, 화면 크기가 바뀌어도 자동으로 따라간다.
+	 *
+	 * **가로만 보면 안 된다** — 실측에서 375px 화면의 제약은 세로였다(보드
+	 * 6,504 x 17,364). 그래서 cy 가 있으면 실제 bounding box 로 계산하고,
+	 * 아직 없으면(최초 생성 시점) 레인 폭으로 어림잡는다.
+	 *
+	 * 상한은 기존 하한(0.25) — 넓은 화면에서 쓸데없이 깊게 축소되지 않게.
+	 * 하한 0.02 는 안전장치.
+	 */
+	function computeMinZoom(): number {
+		const vw = container?.clientWidth || window.innerWidth || 1;
+		const vh = container?.clientHeight || window.innerHeight || 1;
+		let fitZoom: number;
+		const bb = cy?.elements().nonempty() ? cy.elements().boundingBox() : null;
+		if (bb && bb.w > 0 && bb.h > 0) {
+			fitZoom = Math.min(vw / bb.w, vh / bb.h);
+		} else {
+			fitZoom = vw / (LANE_STRIDE * Math.max(1, sorted.length));
+		}
+		return Math.max(0.02, Math.min(0.25, fitZoom * 0.7));
+	}
 	const LANE_TOP = 52;
 	const CARD_W = 300;
 	const MAX_HISTORY = 50;
@@ -2625,6 +2651,9 @@
 
 	function syncLanes() {
 		if (!cy) return;
+		// DEV-334: 레인 수/화면 폭이 바뀌면 최소 zoom 도 따라가야 한다(상태 추가,
+		// 창 크기 변경, 폰 회전). syncLanes 는 그 모든 경우에 호출된다.
+		cy.minZoom(computeMinZoom());
 		const pan = cy.pan(),
 			zoom = cy.zoom();
 
@@ -2861,7 +2890,11 @@
 			elements,
 			style: buildCyStyle(currentEffectiveTheme()),
 			layout: { name: 'preset' },
-			minZoom: 0.25,
+			// DEV-334: 하한을 고정값(0.25)으로 두면 좁은 화면에서 전체를 볼 수
+			// 없다 — 레인 하나가 984px 라 상태 6개면 보드 폭이 6,000px 인데
+			// 375px 화면에서 0.25 는 레인 1.5개 분량이다. cytoscape 의 fit()
+			// 도 minZoom 에 걸리므로 "전체 보기" 가 전체를 못 보여줬다.
+			minZoom: computeMinZoom(),
 			maxZoom: 2,
 			// BUG-090: 기본 wheel 줌 비활성 — 트랙패드 two-finger 스크롤까지 줌으로
 			// 잡혀 erratic. 대신 onBoardWheel 에서 pinch=줌 / 스크롤=pan 직접 처리.
