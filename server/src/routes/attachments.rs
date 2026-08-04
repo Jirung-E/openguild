@@ -6,6 +6,7 @@
 //! 유지해 frontend `transport.ts` 의 routeToInvoke 매핑이 1:1 로 대응된다.
 
 use axum::{
+    body::Body,
     extract::{Path, Query, State},
     Json,
 };
@@ -32,6 +33,69 @@ pub const MAX_ATTACHMENT_BYTES: usize = 64 * 1024 * 1024;
 /// 4바이트로 부풀리고, 여기에 JSON 래퍼(`{"data_base64":"…","ext":"…"}`)와
 /// 여유를 더한다.
 pub const MAX_ATTACHMENT_BODY_BYTES: usize = MAX_ATTACHMENT_BYTES / 3 * 4 + 64 * 1024;
+
+/// DEV-337: 스트리밍 업로드 — `POST /api/attachments/stream`.
+///
+/// 위 base64 라우트의 64MB 상한은 **원래 근거가 사라진 값**이다(첨부를 index.db
+/// 에 blob 으로 복사하던 것 — BUG-188 에서 제거). 남은 진짜 제약은 크기가
+/// 아니라 "body 를 통째로 메모리에 올린다" 는 방식이었다.
+///
+/// 이 라우트는 body 를 청크 단위로 받아 파일로 바로 흘려쓴다. 메모리는 파일
+/// 크기와 무관하게 상수고, base64 왕복이 없어 전송량도 25% 줄어든다. 그래서
+/// 크기 상한을 두지 않는다(데스크톱 경로가 이미 그렇다 — BUG-168).
+///
+/// 파일명/확장자는 body 가 원문이라 쿼리로 받는다: `?ext=zip&name=foo.zip`.
+///
+/// 예전 base64 라우트는 그대로 남긴다 — 구버전 클라이언트 호환.
+#[derive(Debug, Deserialize)]
+pub struct StreamAttachmentQuery {
+    pub ext: String,
+    #[serde(default)]
+    pub name: Option<String>,
+}
+
+pub async fn save_attachment_stream(
+    State(store): State<Store>,
+    Query(q): Query<StreamAttachmentQuery>,
+    body: Body,
+) -> AppResult<Json<String>> {
+    use futures_util::StreamExt as _;
+    use tokio::io::AsyncWriteExt as _;
+
+    let (rel, abs) = ops::new_attachment_dest(&store, &q.ext, q.name.as_deref()).await?;
+    let mut file = tokio::fs::File::create(&abs)
+        .await
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("첨부 파일 생성 실패: {e}")))?;
+
+    let mut stream = body.into_data_stream();
+    let mut written: u64 = 0;
+    while let Some(chunk) = stream.next().await {
+        // 도중에 끊기면 **조각 파일을 남기지 않는다** — 아무도 참조하지 않는
+        // 쓰레기가 reindex/스냅샷에 계속 끌려다닌다(DEV-323 과 같은 이유).
+        let chunk = match chunk {
+            Ok(c) => c,
+            Err(e) => {
+                let _ = tokio::fs::remove_file(&abs).await;
+                return Err(AppError::Cancelled(format!("업로드 중단됨: {e}")).into());
+            }
+        };
+        if let Err(e) = file.write_all(&chunk).await {
+            let _ = tokio::fs::remove_file(&abs).await;
+            return Err(AppError::Internal(anyhow::anyhow!("첨부 write 실패: {e}")).into());
+        }
+        written += chunk.len() as u64;
+    }
+    if let Err(e) = file.flush().await {
+        let _ = tokio::fs::remove_file(&abs).await;
+        return Err(AppError::Internal(anyhow::anyhow!("첨부 flush 실패: {e}")).into());
+    }
+    drop(file);
+    if written == 0 {
+        let _ = tokio::fs::remove_file(&abs).await;
+        return Err(AppError::BadRequest(openguild_core::tf!("빈 첨부", "empty attachment")).into());
+    }
+    Ok(Json(rel))
+}
 
 #[derive(Debug, Deserialize)]
 pub struct SaveAttachmentRequest {

@@ -27,6 +27,9 @@ tower-http = { version = "0.6", features = [
     "compression-gzip",
 ] }
 
+# DEV-337: 스트리밍 업로드 — body 를 청크 단위로 받아 파일로 흘려쓴다.
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+
 # DB
 sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "migrate"] }
 

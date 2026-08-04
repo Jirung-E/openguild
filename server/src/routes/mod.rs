@@ -194,6 +194,12 @@ pub fn create_router(store: Store) -> Router {
         // BUG-168: bytes 를 받는 유일한 라우트 — axum 기본 body limit(2 MiB)은
         // base64 팽창까지 감안하면 원본 1.5 MB 에서 413 이 난다. 이 라우트에만
         // 한도를 올리고 나머지는 기본값을 유지한다.
+        // DEV-337: 스트리밍 업로드 — base64 왕복 없이 원문 body 를 파일로 흘려쓴다.
+        // DefaultBodyLimit::disable() — 크기 상한 없음(메모리는 상수).
+        .route(
+            "/api/attachments/stream",
+            post(attachments::save_attachment_stream).layer(DefaultBodyLimit::disable()),
+        )
         .route(
             "/api/attachments",
             post(attachments::save_attachment)

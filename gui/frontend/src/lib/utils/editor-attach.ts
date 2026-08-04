@@ -106,8 +106,25 @@ async function saveAttachmentBytes(
 	report?: UploadReport,
 	signal?: AbortSignal
 ): Promise<string> {
-	// BUG-168: 한도를 넘으면 base64 변환(파일 크기의 5~6배 메모리)조차 하지 않고
-	// 바로 안내한다 — 서버까지 보내면 axum 원문 413 이 그대로 노출된다.
+	// DEV-337: **HTTP(원격/브라우저)는 스트리밍 라우트로 원문을 그대로 보낸다.**
+	// 예전엔 파일을 통째로 읽어 base64(약 1.33배)로 만들어 JSON 에 담았고, 그
+	// 방식 때문에 64MB 상한이 붙어 있었다(원래 명분이던 index.db blob 백업은
+	// BUG-188 에서 이미 사라진 상태였다). 원문 전송은 메모리가 상수고 전송량도
+	// 25% 줄며, 진행률(upload.onprogress)도 그대로 동작한다.
+	if (detectEnvironment() === 'http' || getRemoteServerUrl()) {
+		report?.({ phase: 'uploading', percent: 0 });
+		const qs = new URLSearchParams({ ext });
+		if (file.name) qs.set('name', file.name);
+		return postWithUploadProgress<string>(
+			`/api/attachments/stream?${qs.toString()}`,
+			file,
+			(sent, total) =>
+				report?.({ phase: 'uploading', percent: total > 0 ? (sent / total) * 100 : null }),
+			signal
+		);
+	}
+	// Tauri + 로컬(원격 아님)에서 붙여넣기/드래그&드랍으로 들어온 bytes — invoke
+	// 경로라 base64 를 그대로 쓴다. 여기엔 IPC payload 한도가 있어 상한 유지.
 	if (file.size > MAX_ATTACHMENT_BYTES) throw new Error(tooLargeMessage(file));
 	// DEV-321: base64 변환은 전송 **전**이고 진행을 관측할 수 없다 — 큰 파일이면
 	// 여기서 수 초 멈춘 것처럼 보이므로 '준비 중' 단계로 따로 알린다.

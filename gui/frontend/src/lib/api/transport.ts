@@ -815,11 +815,14 @@ export async function postWithUploadProgress<T>(
 	}
 	if (signal?.aborted) return Promise.reject(new DOMException('aborted', 'AbortError'));
 	const url = `${t.baseUrl}${path}`;
-	const payload = JSON.stringify(body);
+	// DEV-337: Blob/File 이면 **원문 그대로** 보낸다(스트리밍 업로드). JSON 이면
+	// 기존처럼 직렬화. base64 왕복이 없어 메모리도 전송량도 줄어든다.
+	const raw = body instanceof Blob;
+	const payload = raw ? (body as Blob) : JSON.stringify(body);
 	return new Promise<T>((resolve, reject) => {
 		const xhr = new XMLHttpRequest();
 		xhr.open('POST', url, true);
-		xhr.setRequestHeader('Content-Type', 'application/json');
+		xhr.setRequestHeader('Content-Type', raw ? 'application/octet-stream' : 'application/json');
 		xhr.upload.onprogress = (e) => {
 			// lengthComputable 이 false 면 총량을 모른다 — 보고하지 않는다
 			// (0 을 total 로 넘기면 호출부에서 0 나눗셈/NaN 이 된다).

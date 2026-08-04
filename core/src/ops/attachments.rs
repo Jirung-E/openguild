@@ -140,6 +140,41 @@ pub async fn save_attachment(
     Ok(rel)
 }
 
+/// DEV-337: 스트리밍 업로드용 — 저장할 **목적지 경로만** 먼저 잡는다.
+///
+/// 원격(HTTP) 업로드는 지금까지 base64 JSON 을 통째로 버퍼링해 받았다.
+/// 그래서 64MB 상한이 붙어 있었는데(원래 근거였던 index.db blob 백업은
+/// BUG-188 에서 이미 사라졌다), 진짜 제약은 크기가 아니라 **메모리에 다 올린다**
+/// 는 방식이었다. 호출부(서버)가 body 를 청크 단위로 이 경로에 흘려쓰면
+/// 메모리가 파일 크기와 무관해진다.
+///
+/// 반환: `(rel, abs)` — `rel` 은 `.guild` 상대 경로(첨부 목록에 넣는 값),
+/// `abs` 는 실제 파일 경로. 디렉터리는 만들어 둔다.
+///
+/// 쓰기 도중 실패하면 **호출부가 조각 파일을 지워야 한다**(DEV-323 의 취소
+/// 경로와 같은 이유 — 아무도 참조하지 않는 쓰레기가 남으면 reindex/스냅샷이
+/// 그걸 계속 끌고 다닌다).
+pub async fn new_attachment_dest(
+    store: &Store,
+    ext: &str,
+    orig_name: Option<&str>,
+) -> AppResult<(String, std::path::PathBuf)> {
+    let ext = sanitize_ext(ext);
+    let _ = journal::append(
+        &store.journal_pool,
+        "save_attachment",
+        &json!({ "ext": ext, "stream": true }),
+        None::<&serde_json::Value>,
+    )
+    .await
+    .map_err(AppError::Internal)?;
+    std::fs::create_dir_all(store.paths.attachments_dir())
+        .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
+    let rel = new_attachment_rel(&ext, orig_name);
+    let abs = store.paths.dot_guild().join(&rel);
+    Ok((rel, abs))
+}
+
 /// BUG-188: 원본 **경로**에서 첨부 저장 — 바이트를 메모리에 올리지 않는다.
 ///
 /// 데스크탑은 파일 선택 다이얼로그가 경로를 주므로 이 경로를 쓴다. 예전엔

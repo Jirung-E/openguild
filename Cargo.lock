@@ -2968,6 +2968,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "clap",
+ "futures-util",
  "http-body-util",
  "openguild-core",
  "serde",

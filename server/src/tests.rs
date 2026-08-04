@@ -725,6 +725,60 @@ async fn test_list_search_title_only_multi_token_and() {
     assert_eq!(arr[0]["title"], "Quest list 검색");
 }
 
+// === DEV-337: 스트리밍 첨부 업로드 ===
+
+#[tokio::test]
+async fn test_stream_upload_saves_file_and_returns_rel() {
+    let app = setup().await;
+    // base64 라우트의 예전 body limit(2 MiB 기본)을 넘는 크기로 — 스트리밍
+    // 라우트는 DefaultBodyLimit::disable() 이라 통과해야 한다.
+    let payload = vec![7u8; 3 * 1024 * 1024];
+    let res = app
+        .clone()
+        .oneshot(
+            Request::post("/api/attachments/stream?ext=bin&name=big.bin")
+                .header("content-type", "application/octet-stream")
+                .body(Body::from(payload.clone()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let bytes = res.into_body().collect().await.unwrap().to_bytes();
+    let rel: String = serde_json::from_slice(&bytes).unwrap();
+    assert!(rel.starts_with("attachments/"), "rel: {rel}");
+    // DEV-324: 원본 이름이 저장 파일명에 남는다.
+    assert!(rel.contains("big"), "원본 이름이 없다: {rel}");
+
+    // 저장된 내용이 보낸 바이트와 같아야 한다 — 다운로드 경로로 확인.
+    let res = app
+        .oneshot(
+            Request::get(format!("/api/guild-files/{rel}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let got = res.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(got.len(), payload.len());
+}
+
+#[tokio::test]
+async fn test_stream_upload_rejects_empty_body() {
+    // 빈 첨부는 만들지 않는다 — 조각 파일도 남기지 않아야 한다.
+    let app = setup().await;
+    let res = app
+        .oneshot(
+            Request::post("/api/attachments/stream?ext=bin")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+}
+
 // === DEV-332: 응답 gzip 압축 ===
 
 /// 압축 레이어까지 얹은 라우터 — main.rs 와 같은 구성.
