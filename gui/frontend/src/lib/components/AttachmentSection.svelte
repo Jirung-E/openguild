@@ -379,7 +379,7 @@
 		gap: 0.25rem;
 	}
 	.upq-item.failed .up-name {
-		color: var(--danger, #e5534b);
+		color: var(--danger);
 	}
 	.upq-item.cancelled .up-name {
 		text-decoration: line-through;
@@ -420,14 +420,14 @@
 		cursor: pointer;
 	}
 	.upq-cancel-one:hover {
-		color: var(--danger, #e5534b);
+		color: var(--danger);
 	}
 	.up-state {
 		flex: none;
 		font-variant-numeric: tabular-nums;
 	}
 	.up-err {
-		color: var(--danger, #e5534b);
+		color: var(--danger);
 		overflow-wrap: anywhere;
 	}
 	.up-line {
