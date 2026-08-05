@@ -87,18 +87,29 @@ fn sanitize_stem(name: &str) -> String {
     }
 }
 
+/// BUG-219: 프로세스 전역 카운터 — 클럭 해상도가 성겨 연속 호출이 같은
+/// `nanos` 값을 읽어도(실기 확인됨) 이 카운터만으로 항상 다른 uniq 가 나온다.
+static ATTACHMENT_SEQ: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
 /// 저장 파일명 — `{정리한 원본 이름}-{고유값}.{ext}`.
 /// 원본 이름을 모르면(붙여넣기 등) 예전처럼 고유값만 쓴다.
 /// 반환은 `.guild/` 상대 경로(`attachments/…`).
+///
+/// BUG-219: 예전엔 두 번째 hex 파트("rand")가 `nanos` 를 상수로 XOR 한
+/// 값이라 실제로는 난수가 아니라 첫 파트와 동일한 정보였다 — 두 호출의
+/// `nanos` 하위 32비트가 같으면(클럭 해상도가 성기면 실제 발생) uniq 전체가
+/// 완전히 같아졌다. 이제 프로세스 전역 카운터를 섞어 클럭 값과 무관하게
+/// in-process 유일성을 보장한다.
 fn new_attachment_rel(ext: &str, orig_name: Option<&str>) -> String {
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    let rand: u32 = (nanos as u32) ^ 0x5bd1_e995;
+    let seq = ATTACHMENT_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     // 고유값은 짧게 — 이름이 길어지면 목록에서 원본을 알아보기 어려워진다.
-    // 시각 하위 8자리(hex) + 난수 8자리면 같은 밀리초 안의 충돌도 사실상 없다.
-    let uniq = format!("{:08x}{rand:08x}", (nanos as u64) & 0xffff_ffff);
+    // 시각 하위 8자리(hex) + 카운터 8자리 — 카운터는 nanos 와 무관하게
+    // 매 호출 +1 이라 클럭 해상도에 상관없이 절대 겹치지 않는다.
+    let uniq = format!("{:08x}{seq:08x}", (nanos as u64) & 0xffff_ffff);
     match orig_name.map(sanitize_stem) {
         Some(stem) => format!("attachments/{stem}-{uniq}.{ext}"),
         None => format!("attachments/{uniq}.{ext}"),
