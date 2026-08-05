@@ -1,9 +1,6 @@
-// DEV-076: Quest Board 의 노드 SVG 를 다른 곳 (Home 마감 임박 / Overdue 섹션)
-// 에서도 동일한 모양으로 렌더링하기 위해 추출. 호환성 위해 동일한 dimension /
-// font / palette 사용.
-//
-// QuestBoard.svelte 의 makeSvgUrl 과 의도적으로 동일 — 단순 이전이 아니라
-// duplicate 라 동기화는 수동 (Home 카드 모양이 board 와 살짝 달라도 됨).
+// DEV-076: 원래 Quest Board 의 노드 SVG 를 Home 마감 임박 / Overdue 섹션에서도
+// 사용하려고 추출한 helper. DEV-317 에서 Board 는 실제 DOM 카드로 전환했으므로
+// 지금은 Home 등 이미지가 필요한 화면의 호환 렌더러로만 남는다.
 //
 // 결과: data:image/svg+xml URL. `<img src={url} />` 로 표시.
 
@@ -121,7 +118,7 @@ export function effectiveQuestDue(quest: Quest): {
 }
 
 /**
- * Quest Board 의 노드와 동일한 모양으로 quest 를 SVG data URL 로 렌더링.
+ * 기존 Quest Board 카드 모양을 SVG data URL 로 렌더링 (Home 등 이미지용).
  *
  * @param overlayColor 옵션. 'overdue' = 빨간 외곽선 강조, undefined = 기본.
  * @param theme DEV-074: 'dark' (기본) / 'light'. light 면 node bg 흰색, text 검정.

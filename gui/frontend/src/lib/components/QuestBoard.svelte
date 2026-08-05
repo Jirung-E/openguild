@@ -1,10 +1,7 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
+	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import { get } from 'svelte/store';
-	// DEV-026: cytoscape 는 ~600KB 청크 — board route 진입 시 동적 import.
-	// 타입은 erased 라 정적 import 유지, 런타임은 lazy. 반복 호출 시 Vite 가
-	// Promise 캐싱하므로 별도 캐시 불필요.
-	import type { Core, NodeSingular, Css, StylesheetJson } from 'cytoscape';
 	import { goto } from '$app/navigation';
 	// DEV-205 모듈3: Quest Board 문자열 i18n.
 	import { locale, t } from '$lib/stores/locale';
@@ -16,10 +13,17 @@
 	import { metaApi } from '$lib/api/meta';
 	import { detectEnvironment } from '$lib/api/transport';
 	// BUG-034: 유효 기한 (퀘스트 required_due vs 연결 캠페인 ended_at) 계산 헬퍼.
-	import { effectiveQuestDue, pillTextWidth } from '$lib/utils/quest-node-svg';
-	// DEV-302: 노드 SVG 를 문자열로 조립하므로 Icon.svelte 대신 같은 도형의 문자열판.
-	// (마크업 쪽 버튼 라벨엔 컴포넌트를 그대로 쓴다.)
-	import { iconSvgGroup } from '$lib/utils/icon-paths';
+	import { effectiveQuestDue } from '$lib/utils/quest-node-svg';
+	import {
+		BOARD_NODE_HEIGHT,
+		BOARD_NODE_WIDTH,
+		BoardGraph,
+		BoardNode,
+		type BoardElementDefinition,
+		type BoardPoint
+	} from '$lib/utils/quest-board-model';
+	import { boardEdgePath, parallelEdgeBends } from '$lib/utils/quest-board-render';
+	import { isBoardPanSurfaceTarget } from '$lib/utils/quest-board-input';
 	import Icon from './Icon.svelte';
 	import {
 		loadLaneOrder as loadLaneOrderShared,
@@ -27,12 +31,9 @@
 	} from '$lib/utils/lane-order';
 	import { flashQuestId } from '$lib/stores';
 	import {
-		URGENCY_COLOR,
 		urgencyColor,
 		urgencyLabel,
 		urgencyOutOfRange,
-		URGENCY_BG,
-		URGENCY_LABEL,
 		urgencyBgFor,
 		type Quest,
 		type QuestDependency,
@@ -46,258 +47,12 @@
 	// DEV-084: New Quest 버튼이 toolbar 로 이동 — 클릭 시 부모 (+page) 의 모달 오픈.
 	let { onNewQuest }: { onNewQuest?: () => void } = $props();
 
-	const NODE_W = 284;
-	const NODE_H = 80;
+	const NODE_W = BOARD_NODE_WIDTH;
+	const NODE_H = BOARD_NODE_HEIGHT;
 	/// 정렬 animate 의 duration (ms). 가드 (`arranging`) 가 이 시간만큼 유지되어
 	/// 빠른 더블클릭이 진행 중 animate 중간에 새 animate 를 trigger 하지 않도록.
 	const ARRANGE_ANIM_MS = 200;
 
-	// 노드 제목 줄바꿈을 실제 픽셀 폭 기준으로 — Canvas measureText API 사용.
-	// SVG 의 font 와 동일한 설정으로 ctx.font 잡고 substring 폭 측정.
-	const TITLE_FONT = '12px system-ui, -apple-system, sans-serif';
-	let _measureCtx: CanvasRenderingContext2D | null = null;
-
-	function getMeasureCtx(): CanvasRenderingContext2D | null {
-		if (_measureCtx) return _measureCtx;
-		if (typeof document === 'undefined') return null; // SSR
-		const c = document.createElement('canvas');
-		const ctx = c.getContext('2d');
-		if (!ctx) return null;
-		ctx.font = TITLE_FONT;
-		_measureCtx = ctx;
-		return ctx;
-	}
-
-	/**
-	 * s 를 maxPx 픽셀 폭 안에 맞게 [head, tail] 로 분할.
-	 * binary search 로 가장 긴 prefix 찾음 — O(log n) measureText 호출.
-	 * SSR / canvas 미지원 시 폴백 (char 기반 휴리스틱).
-	 *
-	 * **단어 경계 미고려** — mid-word 에서 자름. 사용자 친화 분할은
-	 * `splitByPixelWidthAtWord` 사용.
-	 */
-	function splitByPixelWidth(s: string, maxPx: number): [string, string] {
-		const ctx = getMeasureCtx();
-		if (!ctx) {
-			// 폴백: ASCII=6.5px, CJK=12px 추정
-			const maxUnits = Math.floor(maxPx / 6.5);
-			let acc = 0;
-			for (let i = 0; i < s.length; i++) {
-				const code = s.charCodeAt(i);
-				const w =
-					(code >= 0x1100 && code <= 0x11ff) ||
-					(code >= 0x2e80 && code <= 0x9fff) ||
-					(code >= 0xa960 && code <= 0xa97f) ||
-					(code >= 0xac00 && code <= 0xd7af) ||
-					(code >= 0xf900 && code <= 0xfaff) ||
-					(code >= 0xff00 && code <= 0xff60)
-						? 2
-						: 1;
-				if (acc + w > maxUnits) return [s.slice(0, i), s.slice(i)];
-				acc += w;
-			}
-			return [s, ''];
-		}
-		if (ctx.measureText(s).width <= maxPx) return [s, ''];
-		// 가장 긴 prefix 가 maxPx 안에 들어가는지 binary search.
-		let lo = 0;
-		let hi = s.length;
-		while (lo < hi) {
-			const mid = (lo + hi + 1) >> 1;
-			if (ctx.measureText(s.slice(0, mid)).width <= maxPx) {
-				lo = mid;
-			} else {
-				hi = mid - 1;
-			}
-		}
-		return [s.slice(0, lo), s.slice(lo)];
-	}
-
-	/**
-	 * 단어 경계 우선 분할 — `splitByPixelWidth` 결과를 받아 마지막 whitespace 까지
-	 * 되돌려 word-break 유도. 단일 단어가 maxPx 보다 길면 어쩔 수 없이 mid-word.
-	 *
-	 * 한글 등 공백 없는 텍스트는 fallback 으로 mid-char 분할 (동작 동일).
-	 * 영문 / 혼합 텍스트는 단어 단위로 끊김.
-	 */
-	function splitByPixelWidthAtWord(s: string, maxPx: number): [string, string] {
-		const [hardHead, hardTail] = splitByPixelWidth(s, maxPx);
-		if (!hardTail) return [hardHead, '']; // 전체 fit
-
-		// 경계가 이미 공백이면 OK — 공백은 head 끝에 두고 tail 의 leading 공백 제거.
-		if (/^\s/.test(hardTail)) {
-			return [hardHead.replace(/\s+$/, ''), hardTail.replace(/^\s+/, '')];
-		}
-
-		// hardHead 가 단어 중간에서 잘림 — 직전 공백까지 백오프.
-		const lastWs = hardHead.search(/\s\S*$/);
-		if (lastWs > 0) {
-			const head = hardHead.slice(0, lastWs);
-			const tail = hardHead.slice(lastWs + 1) + hardTail; // +1: 공백 자체는 버림
-			return [head.replace(/\s+$/, ''), tail];
-		}
-
-		// hardHead 에 공백이 전혀 없음 — 한글 또는 단어 하나가 너무 김. mid-char 유지.
-		return [hardHead, hardTail];
-	}
-
-	// BUG-057: HiDPI 노드 — SVG 를 dpr 배 사이즈로 발급 (viewBox 로 좌표계 보존).
-	// Cytoscape 가 background-image 를 그 사이즈로 raster cache 하므로 표시 시
-	// (cover fit, NODE_W × NODE_H) 다운샘플 → 텍스트 또렷.
-	function makeSvgUrl(quest: Quest): string {
-		const W = NODE_W,
-			H = NODE_H;
-		// devicePixelRatio 한도 — 과한 사이즈는 메모리 낭비. 상한 3.
-		// BUG-057 fix2: 하한을 2 로 — WebView2 가 HiDPI / OS 배율(125%·150%)
-		// 디스플레이에서도 devicePixelRatio 를 1 로 보고하는 사례가 있어, 1×
-		// 텍스처는 OS 가 창을 확대할 때 번진다. 최소 2× 슈퍼샘플로 발급해 두면
-		// cover 다운샘플 후에도 텍스트가 또렷.
-		const dpr = Math.max(2, Math.min(3, window.devicePixelRatio || 1));
-		const Wpx = Math.round(W * dpr);
-		const Hpx = Math.round(H * dpr);
-		// BUG-060: 유효 범위 밖 데이터에도 안전한 헬퍼 사용 — 이전엔 bare access
-		// 로 인해 urgency=5 같은 invalid row 가 들어오면 ul/uc 가 undefined →
-		// 아래 .length 에서 폭발 (보드 mount 실패).
-		const uc = urgencyColor(quest.urgency);
-		const tc = quest.type_color;
-		const ul = urgencyLabel(quest.urgency, get(locale)); // DEV-295: 다국어
-		// BUG-060 후속: 원본 urgency 가 범위(1-4) 밖이면 clamp 표시 + ⚠ 경고.
-		const urgWarn = urgencyOutOfRange(quest.urgency);
-		const qid = quest.quest_id;
-		// DEV-074 fix: SVG data URL 안에선 CSS var() 컴퓨팅 X — 명시 색.
-		// DEV-074 fix20: themePalette 단일 source 사용.
-		const palette = themePalette(currentEffectiveTheme());
-		const textFill = palette.text;
-		const dueMutedFill = palette.textMuted;
-		const dangerFill = palette.danger;
-
-		const x = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-		const qidW = Math.ceil(qid.length * 6.4) + 16;
-		const ulW = pillTextWidth(ul) + 14; // DEV-295: CJK 폭 반영
-		const ulX = 10 + qidW + 6;
-
-		// DEV-116: 댓글 개수 badge — 상단 우측. 0 이면 표시 X.
-		// DEV-302: 아이콘은 이모지(💬) 대신 SVG — 아이콘 + 개수 텍스트.
-		const cc = quest.comment_count ?? 0;
-		const ccText = cc > 0 ? String(cc) : '';
-		const CC_ICON = 10;
-		const ccW = ccText ? CC_ICON + 3 + Math.ceil(ccText.length * 6.0) + 12 : 0;
-		const ccX = W - 10 - ccW;
-		const ccFill = dueMutedFill;
-		// DEV-142 후속 / DEV-150: 토론 배지 — 일반 댓글 배지와 별도. 미해결>0 면
-		// ✗(빨강), 아니면 해결>0 면 ✓(초록). 텍스트 글리프라 fill 로 색이 입혀짐
-		// (이모지와 달리 테마색 그대로). 💬 배지 왼쪽(없으면 우측 끝)에 둔다.
-		const du = quest.discussion_unresolved ?? 0;
-		const dr = quest.discussion_resolved ?? 0;
-		const dColor = du > 0 ? palette.danger : dr > 0 ? palette.success : '';
-		const dText = dColor ? `${du > 0 ? '✗' : '✓'} ${du > 0 ? du : dr}` : '';
-		const dW = dText ? Math.ceil(dText.length * 6.0) + 14 : 0;
-		const dX = dText ? (ccText ? ccX - 6 - dW : W - 10 - dW) : 0;
-
-		// 제목 가용 폭: NODE_W - 좌 padding(10) - 우 minimum margin(14) = 260px.
-		// 단어 경계 우선 — 공백 있는 텍스트는 단어 단위로, 한글 / 긴 단어는 mid-char.
-		const full = quest.title;
-		const MAX_PX = 260;
-		const [line1, rest1] = splitByPixelWidthAtWord(full, MAX_PX);
-		const [rawL2, rest2] = splitByPixelWidthAtWord(rest1, MAX_PX);
-		// rest2 가 남았으면 2줄도 넘침 → ellipsis 자리만큼 줄여 자름.
-		// 여긴 어차피 잘림 표시이므로 word-break 강제 안 함 (mid-char OK).
-		const line2 = rest2.length > 0 ? splitByPixelWidth(rawL2, MAX_PX - 10)[0] + '…' : rawL2;
-
-		// BUG-034: 유효 기한 (= min(required_due, earliest_campaign_due)) 표시.
-		// DEV-302: 아이콘은 SVG — source='campaign' 이면 텐트(캠페인 기한이 더
-		// 가까워 그게 우세함), quest 면 시계. (예전엔 ⛺/⏱ 이모지.)
-		const { date: due, source: dueSrc } = effectiveQuestDue(quest);
-		let dueText = '';
-		let dueColor = dueMutedFill;
-		if (due) {
-			dueText = due;
-			const dueMs = new Date(`${due}T23:59:59`).getTime();
-			if (!Number.isNaN(dueMs)) {
-				const daysLeft = Math.floor((dueMs - Date.now()) / (24 * 60 * 60 * 1000));
-				if (daysLeft < 0) dueColor = dangerFill;
-				else if (daysLeft <= 7) dueColor = '#f0883e';
-			}
-		}
-		const titleY = dueText ? (line2 ? 40 : 46) : line2 ? 44 : 52;
-
-		// DEV-081: 좌측 urgency 색 strip 제거 — cytoscape 의 node border (urgencyColor)
-		// 만으로 강조 충분. 카드 안쪽 strip 은 중복 시각 노이즈.
-		// BUG-057: width/height = px (dpr 배), viewBox = logical (W × H) — 좌표 그대로 사용.
-		const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${Wpx}" height="${Hpx}" viewBox="0 0 ${W} ${H}">
-  <rect x="10" y="9" width="${qidW}" height="17" rx="8.5"
-    fill="${tc}" fill-opacity="0.16" stroke="${tc}" stroke-opacity="0.55" stroke-width="1"/>
-  <text x="${10 + qidW / 2}" y="21.5" text-anchor="middle"
-    fill="${tc}" font-size="10" font-weight="600"
-    font-family="'SFMono-Regular',Consolas,monospace">${x(qid)}</text>
-  <rect x="${ulX}" y="9" width="${ulW}" height="17" rx="8.5"
-    fill="${uc}" fill-opacity="0.16" stroke="${uc}" stroke-opacity="0.55" stroke-width="1"/>
-  <text x="${ulX + ulW / 2}" y="21.5" text-anchor="middle"
-    fill="${uc}" font-size="10" font-weight="500"
-    font-family="system-ui,sans-serif">${x(ul)}</text>
-  ${
-		urgWarn
-			? `<text x="${ulX + ulW + 5}" y="21.5" fill="${dangerFill}"
-    font-size="12" font-weight="700" font-family="system-ui,sans-serif"><title>${t('board.urgencyClampPre', get(locale))}${quest.urgency}${t('board.urgencyClampPost', get(locale))}</title>⚠</text>`
-			: ''
-	}
-  ${
-		ccText
-			? `${iconSvgGroup('comment', {
-					x: ccX + 6,
-					y: 12.5,
-					size: CC_ICON,
-					color: ccFill
-				})}
-  <text x="${ccX + 6 + CC_ICON + 3}" y="21.5"
-    fill="${ccFill}" font-size="10" font-weight="500"
-    font-family="system-ui,sans-serif">${x(ccText)}</text>`
-			: ''
-	}
-  ${
-		dText
-			? `<rect x="${dX}" y="9" width="${dW}" height="17" rx="8.5"
-    fill="${dColor}" fill-opacity="0.16" stroke="${dColor}" stroke-opacity="0.6" stroke-width="1"/>
-  <text x="${dX + dW / 2}" y="21.5" text-anchor="middle"
-    fill="${dColor}" font-size="10" font-weight="600"
-    font-family="system-ui,sans-serif">${x(dText)}</text>`
-			: ''
-	}
-  <text x="10" y="${titleY}" fill="${textFill}" font-size="12"
-    font-family="system-ui,-apple-system,sans-serif">${x(line1)}</text>
-  ${
-		line2
-			? `<text x="10" y="${titleY + 16}" fill="${textFill}" font-size="12"
-    font-family="system-ui,-apple-system,sans-serif">${x(line2)}</text>`
-			: ''
-	}
-  ${
-		dueText
-			? `${iconSvgGroup(dueSrc === 'campaign' ? 'campaign' : 'clock', {
-					x: W - 10 - pillTextWidth(dueText) - 13,
-					y: H - 18,
-					size: 10,
-					color: dueColor
-				})}
-  <text x="${W - 10}" y="${H - 8}" text-anchor="end"
-       fill="${dueColor}" font-size="10" font-weight="500"
-       font-family="system-ui,sans-serif">${x(dueText)}</text>`
-			: ''
-	}
-</svg>`;
-		const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
-		// DEV-316: 이 SVG 를 cytoscape 캔버스가 실제로 그리는(canvas
-		// drawImage) 시점은 그 노드가 처음 화면에 들어올 때인데, 그때 브라우저가
-		// 그제서야 디코딩하면 눈에 띄게 느림(특히 화면 밖에 있다가 pan 으로
-		// 한꺼번에 여러 노드가 들어올 때) — 여기서 미리 Image 객체로 로드시켜
-		// 브라우저 디코드 캐시를 데워둔다. 같은 URL 문자열이면 대부분의 엔진이
-		// 디코드 결과를 캐시에서 재사용한다.
-		if (typeof Image !== 'undefined') {
-			const preload = new Image();
-			preload.src = url;
-		}
-		return url;
-	}
 	const NODE_GAP = 28;
 	const LANE_PAD_X = 20; // lane 양쪽 가장자리 여백 (한쪽)
 	const LANE_W = NODE_W * 3 + NODE_GAP * 2 + LANE_PAD_X * 2; // 948px
@@ -356,9 +111,164 @@
 	// ── DOM refs ─────────────────────────────────────────────────
 
 	let container: HTMLDivElement;
+	let boardWrapEl: HTMLDivElement;
+	let worldViewportEl: HTMLDivElement;
+	let worldEl: HTMLDivElement;
 	let lanesEl: HTMLDivElement;
+	let gridLanesEl: HTMLDivElement;
 	let headersEl: HTMLDivElement;
-	let cy: Core | null = null;
+	let cy: BoardGraph | null = null;
+
+	// DEV-317: lane, edge, node 를 한 DOM world 에 두고 같은 transform 을 적용한다.
+	// BoardGraph 는 렌더러가 아닌 위치/선택/viewport 상태 모델이다.
+	interface DomNodeView {
+		id: number;
+		quest: Quest;
+		x: number;
+		y: number;
+		urgencyColor: string;
+		urgencyBg: string;
+		highlightType: HighlightType | 'dim' | '';
+		active: boolean;
+		selected: boolean;
+		fdim: boolean;
+		flash: boolean;
+		hidden: boolean;
+		zIndex: number;
+	}
+	interface DomEdgeView {
+		id: string;
+		sourceId: number;
+		targetId: number;
+		path: string;
+		bend: number;
+		etype: 'pre' | 'sub';
+		dimmed: boolean;
+		fdim: boolean;
+		hidden: boolean;
+	}
+	let domNodes = $state<DomNodeView[]>([]);
+	let domEdges = $state<DomEdgeView[]>([]);
+	let domGraphRaf: number | null = null;
+	let fullDomSyncPending = false;
+	const dirtyDomNodeIds = new SvelteSet<number>();
+
+	function dueState(date: string | null): 'overdue' | 'soon' | 'normal' {
+		if (!date) return 'normal';
+		const dueMs = new Date(`${date}T23:59:59`).getTime();
+		if (Number.isNaN(dueMs)) return 'normal';
+		const daysLeft = Math.floor((dueMs - Date.now()) / (24 * 60 * 60 * 1000));
+		if (daysLeft < 0) return 'overdue';
+		if (daysLeft <= 7) return 'soon';
+		return 'normal';
+	}
+
+	function syncDomGraphNow() {
+		fullDomSyncPending = false;
+		dirtyDomNodeIds.clear();
+		if (!cy) {
+			domNodes = [];
+			domEdges = [];
+			return;
+		}
+		const positions = new SvelteMap<number, { x: number; y: number; hidden: boolean }>();
+		domNodes = cy
+			.nodes('[questId]')
+			.toArray()
+			.map((raw) => {
+				const n = raw as BoardNode;
+				const id = n.data('questId') as number;
+				const pos = n.position();
+				const hidden = n.style('display') === 'none';
+				positions.set(id, { ...pos, hidden });
+				const quest = allQuests.find((q) => q.id === id)!;
+				return {
+					id,
+					quest,
+					x: pos.x,
+					y: pos.y,
+					urgencyColor: n.data('urgencyColor') as string,
+					urgencyBg: n.data('urgencyBg') as string,
+					highlightType: (n.data('highlightType') ?? '') as DomNodeView['highlightType'],
+					active: Boolean(n.data('active')),
+					selected: n.selected(),
+					fdim: Boolean(n.data('fdim')),
+					flash: Boolean(n.data('flash')),
+					hidden,
+					zIndex: Number(n.style('z-index')) || 10
+				};
+			});
+		const rawEdges = cy.edges().toArray();
+		const bends = parallelEdgeBends(
+			rawEdges.map((raw) => ({
+				id: raw.id(),
+				sourceId: raw.source().data('questId') as number,
+				targetId: raw.target().data('questId') as number
+			}))
+		);
+		domEdges = rawEdges.map((raw) => {
+			const sourceId = raw.source().data('questId') as number;
+			const targetId = raw.target().data('questId') as number;
+			const source = positions.get(sourceId);
+			const target = positions.get(targetId);
+			const id = raw.id();
+			const bend = bends.get(id) ?? 0;
+			return {
+				id,
+				sourceId,
+				targetId,
+				path:
+					source && target
+						? boardEdgePath(source.x, source.y, target.x, target.y, bend, NODE_W, NODE_H)
+						: '',
+				bend,
+				etype: raw.data('etype') as 'pre' | 'sub',
+				dimmed: Boolean(raw.data('dimmed')),
+				fdim: Boolean(raw.data('fdim')),
+				hidden: !source || !target || source.hidden || target.hidden
+			};
+		});
+	}
+
+	function flushDomGraphSync() {
+		domGraphRaf = null;
+		if (fullDomSyncPending) {
+			syncDomGraphNow();
+			return;
+		}
+		if (!cy || dirtyDomNodeIds.size === 0) return;
+		const moved = new SvelteMap<number, { x: number; y: number }>();
+		for (const id of dirtyDomNodeIds) {
+			const node = cy.getElementById(`q-${id}`) as BoardNode;
+			if (node.length > 0) moved.set(id, { ...node.position() });
+		}
+		dirtyDomNodeIds.clear();
+		domNodes = domNodes.map((node) => {
+			const pos = moved.get(node.id);
+			return pos ? { ...node, ...pos } : node;
+		});
+		domEdges = domEdges.map((edge) => {
+			if (!moved.has(edge.sourceId) && !moved.has(edge.targetId)) return edge;
+			const source = moved.get(edge.sourceId) ?? domNodes.find((n) => n.id === edge.sourceId);
+			const target = moved.get(edge.targetId) ?? domNodes.find((n) => n.id === edge.targetId);
+			return source && target
+				? {
+						...edge,
+						path: boardEdgePath(source.x, source.y, target.x, target.y, edge.bend, NODE_W, NODE_H)
+					}
+				: edge;
+		});
+	}
+
+	function scheduleDomGraphSync() {
+		fullDomSyncPending = true;
+		if (domGraphRaf === null) domGraphRaf = requestAnimationFrame(flushDomGraphSync);
+	}
+
+	function scheduleDomPositionSync(node: BoardNode) {
+		dirtyDomNodeIds.add(node.data('questId') as number);
+		if (domGraphRaf === null) domGraphRaf = requestAnimationFrame(flushDomGraphSync);
+	}
 	// BUG: sorted 가 일반 let — svelte 5 reactive 안 됨 (npm check warning). $state 로.
 	let sorted: QuestStatus[] = $state([]);
 	let laneOf = new Map<number, number>();
@@ -615,8 +525,8 @@
 	}
 
 	/**
-	 * 결정된 hidden set 을 cytoscape + lane DIV 에 적용.
-	 * cytoscape display: 'none' 노드는 자동으로 연결된 edge 도 안 보임.
+	 * 결정된 hidden set 을 BoardGraph + lane DOM 에 적용.
+	 * 숨긴 노드에 연결된 SVG edge도 DOM snapshot에서 함께 제외된다.
 	 *
 	 * DEV-105 fix9: collapsed lane 의 노드도 자동 hide. 이전엔 status 변경 후
 	 * applyHideSettings 가 호출되면 그 노드가 다시 'element' 로 표시되어 접힌
@@ -643,12 +553,14 @@
 	}
 
 	function applyLaneVisibility() {
-		if (!lanesEl || !headersEl) return;
+		if (!lanesEl || !gridLanesEl || !headersEl) return;
 		sorted.forEach((s, li) => {
 			const setting = getHideSetting(s.slug);
 			const col = lanesEl.children[li] as HTMLDivElement | undefined;
+			const gridCol = gridLanesEl.children[li] as HTMLDivElement | undefined;
 			const hdr = headersEl.children[li] as HTMLDivElement | undefined;
 			if (col) col.style.display = setting.laneHidden ? 'none' : '';
+			if (gridCol) gridCol.style.display = setting.laneHidden ? 'none' : '';
 			if (hdr) hdr.style.display = setting.laneHidden ? 'none' : '';
 		});
 	}
@@ -670,7 +582,7 @@
 	//
 	// 두 좌표계:
 	// - **absolute X** = DB positions.x. laneOf 기반 absolute lane left + offset.
-	// - **visual X**   = cytoscape position.x. visible lane left + offset.
+	// - **visual X**   = BoardNode position.x. visible lane left + offset.
 	//
 	// hideSettings 없을 땐 둘이 같음. laneHidden lane 이 생기면 visible 압축
 	// 으로 그 lane 뒤의 노드 X 가 STRIDE 만큼 왼쪽으로 시프트.
@@ -1014,15 +926,20 @@
 	// 자동 정렬 진행 중 — 정렬 버튼의 disabled 반응성 위해 $state 필요 (BUG-006).
 	let arranging = $state(false);
 	let ctrlHeld = false;
-	let ctrlClickNode: NodeSingular | null = null;
-	let boxDragEl: HTMLDivElement | null = null;
+	let boxDrag = $state<{
+		left: number;
+		top: number;
+		width: number;
+		height: number;
+		color: string;
+	} | null>(null);
 	let boxDragStart: { x: number; y: number } | null = null;
 
 	// 드래그 시작 상태 (노드별 Map)
 	const dragStartMap = new Map<number, { x: number; y: number; statusId: number }>();
 	// DEV-105 fix11: 드래그 중인 노드가 놓일 예정인 lane 의 slug — UI 하이라이트용.
 	let dragHighlightSlug = $state<string | null>(null);
-	// DEV-115: 최근 움직인 노드를 위로 — 단조 증가 카운터. 기본 z-index 는 10 (cy.style()).
+	// DEV-115: 최근 움직인 노드를 위로 — 단조 증가 카운터. 기본 z-index 는 10.
 	let recentMoveZ = 10;
 	// slug 변경 시 lane-col DOM 에 `.drag-target` 토글. lanesEl 의 children 순서
 	// 가 sorted 와 동일 (buildLaneDivs).
@@ -1037,7 +954,7 @@
 	});
 	// 배치 dragfree 수집
 	type PendingDragItem = {
-		node: NodeSingular;
+		node: BoardNode;
 		questId: number;
 		fromPos: { x: number; y: number };
 		fromStatus: number;
@@ -1046,12 +963,26 @@
 	};
 	let pendingDragBatch: PendingDragItem[] = [];
 	let pendingDragTimer: ReturnType<typeof setTimeout> | null = null;
+	type BoardInteraction =
+		| {
+				kind: 'pan';
+				sx: number;
+				sy: number;
+				startPan: BoardPoint;
+				moved: boolean;
+		  }
+		| {
+				kind: 'node';
+				sx: number;
+				sy: number;
+				primaryId: number;
+				additive: boolean;
+				moved: boolean;
+		  };
+	let boardInteraction: BoardInteraction | null = null;
 
 	// 카드 드래그
 	let cardDrag = $state<{ sx: number; sy: number; px: number; py: number } | null>(null);
-
-	// 프로그램적으로 select() 를 호출할 때, 'select' 핸들러가 자동 해제하지 않도록 잠시 끔.
-	let suppressUnselect = false;
 
 	function startCardDrag(e: MouseEvent) {
 		const t = e.target as HTMLElement;
@@ -1103,7 +1034,7 @@
 		busy = true;
 		if (record.type === 'single') {
 			const target = direction === 'undo' ? record.from : record.to;
-			const node = cy.getElementById(`q-${record.questId}`) as NodeSingular;
+			const node = cy.getElementById(`q-${record.questId}`) as BoardNode;
 			if (node.length === 0) {
 				busy = false;
 				return;
@@ -1133,7 +1064,7 @@
 		} else {
 			const promises: Promise<unknown>[] = [];
 			for (const item of record.items) {
-				const node = cy!.getElementById(`q-${item.questId}`) as NodeSingular;
+				const node = cy!.getElementById(`q-${item.questId}`) as BoardNode;
 				if (node.length === 0) continue;
 				const target = direction === 'undo' ? item.from : item.to;
 				if (item.from.statusId !== item.to.statusId) {
@@ -1196,20 +1127,6 @@
 
 	// ── 박스 선택 + Ctrl+클릭 ──────────────────────────────────
 
-	function getNodeAtScreenPos(sx: number, sy: number): NodeSingular | null {
-		if (!cy) return null;
-		const zoom = cy.zoom(),
-			pan = cy.pan();
-		const mx = (sx - pan.x) / zoom,
-			my = (sy - pan.y) / zoom;
-		let found: NodeSingular | null = null;
-		cy.nodes('[questId]').forEach((n) => {
-			const bb = n.boundingBox();
-			if (mx >= bb.x1 && mx <= bb.x2 && my >= bb.y1 && my <= bb.y2) found = n as NodeSingular;
-		});
-		return found;
-	}
-
 	function selectNodesInBox(sx1: number, sy1: number, sx2: number, sy2: number) {
 		if (!cy) return;
 		const zoom = cy.zoom(),
@@ -1225,57 +1142,207 @@
 	}
 
 	function cancelBoxSelection() {
-		boxDragEl?.remove();
-		boxDragEl = null;
+		boxDrag = null;
 		boxDragStart = null;
-		cy?.panningEnabled(true);
 	}
 
-	function onBoxMouseDown(e: MouseEvent) {
-		if (!ctrlHeld || e.button !== 0) return;
-		const rect = container.getBoundingClientRect();
-		const sx = e.clientX - rect.left,
-			sy = e.clientY - rect.top;
-		const node = getNodeAtScreenPos(sx, sy);
-		if (node) {
-			ctrlClickNode = node;
-			e.stopPropagation();
+	function openNode(node: BoardNode) {
+		if (!cy || node.length === 0) return;
+		const quest = allQuests.find((q) => q.id === node.data('questId'));
+		if (!quest) return;
+		cy.nodes('[questId]').data('active', false).data('highlightType', '');
+		cy.edges().data('dimmed', false);
+		node.data('active', true);
+		expandedQuest = quest;
+		activeHighlights = new Set();
+		cardPinned = false;
+		cardDrag = null;
+		syncExpandedPos();
+	}
+
+	function beginNodeInteraction(
+		node: BoardNode,
+		clientX: number,
+		clientY: number,
+		additive: boolean
+	) {
+		if (!cy || node.length === 0) return;
+		const questId = node.data<number>('questId');
+		dragStartMap.clear();
+		dragStartMap.set(questId, {
+			...node.position(),
+			statusId: node.data<number>('statusId')
+		});
+		cy.nodes('[questId]:selected').forEach((selected) => {
+			const id = selected.data<number>('questId');
+			if (!dragStartMap.has(id)) {
+				dragStartMap.set(id, {
+					...selected.position(),
+					statusId: selected.data<number>('statusId')
+				});
+			}
+		});
+		boardInteraction = {
+			kind: 'node',
+			sx: clientX,
+			sy: clientY,
+			primaryId: questId,
+			additive,
+			moved: false
+		};
+	}
+
+	function beginPanInteraction(clientX: number, clientY: number) {
+		if (!cy) return;
+		boardInteraction = {
+			kind: 'pan',
+			sx: clientX,
+			sy: clientY,
+			startPan: cy.pan(),
+			moved: false
+		};
+	}
+
+	function moveBoardInteraction(clientX: number, clientY: number) {
+		if (!cy || !boardInteraction) return;
+		const dx = clientX - boardInteraction.sx;
+		const dy = clientY - boardInteraction.sy;
+		if (Math.hypot(dx, dy) > 3) boardInteraction.moved = true;
+		if (boardInteraction.kind === 'pan') {
+			cy.viewport({
+				zoom: cy.zoom(),
+				pan: {
+					x: boardInteraction.startPan.x + dx,
+					y: boardInteraction.startPan.y + dy
+				}
+			});
 			return;
 		}
+		const zoom = cy.zoom();
+		const worldDx = dx / zoom;
+		const worldDy = dy / zoom;
+		for (const [id, start] of dragStartMap) {
+			const moving = cy.getElementById(`q-${id}`);
+			if (moving.length > 0) {
+				moving.position({ x: start.x + worldDx, y: start.y + worldDy });
+			}
+		}
+		const primary = cy.getElementById(`q-${boardInteraction.primaryId}`);
+		const visIdx = visibleLaneIdxAtVisualX(primary.position().x);
+		const sid = statusIdAtVisibleIdx(visIdx);
+		const slug = sid === null ? null : (sorted.find((status) => status.id === sid)?.slug ?? null);
+		if (slug !== dragHighlightSlug) dragHighlightSlug = slug;
+	}
+
+	function queueFinishedNodeDrag() {
+		if (!cy || dragStartMap.size === 0) return;
+		dragHighlightSlug = null;
+		for (const [qid, fromState] of dragStartMap) {
+			const node = cy.getElementById(`q-${qid}`);
+			if (node.length === 0) continue;
+			const pos = node.position();
+			const visMax = Math.max(0, visibleLaneCount() - 1);
+			const visIdx = Math.max(0, Math.min(visibleLaneIdxAtVisualX(pos.x), visMax));
+			const targetStatusId = statusIdAtVisibleIdx(visIdx) ?? fromState.statusId;
+			pendingDragBatch.push({
+				node,
+				questId: qid,
+				fromPos: { x: fromState.x, y: fromState.y },
+				fromStatus: fromState.statusId,
+				toPos: { ...pos },
+				toLaneIdx: laneOf.get(targetStatusId) ?? 0
+			});
+			recentMoveZ += 1;
+			node.style('z-index', recentMoveZ);
+		}
+		dragStartMap.clear();
+		if (pendingDragTimer !== null) clearTimeout(pendingDragTimer);
+		pendingDragTimer = setTimeout(() => {
+			pendingDragTimer = null;
+			void processPendingDrags();
+		}, 0);
+	}
+
+	function endBoardInteraction() {
+		if (!cy || !boardInteraction) return;
+		const interaction = boardInteraction;
+		boardInteraction = null;
+		if (interaction.kind === 'node') {
+			const node = cy.getElementById(`q-${interaction.primaryId}`);
+			if (interaction.moved) {
+				queueFinishedNodeDrag();
+			} else {
+				dragStartMap.clear();
+				dragHighlightSlug = null;
+				if (interaction.additive) {
+					if (node.selected()) node.unselect();
+					else node.select();
+				} else {
+					openNode(node);
+				}
+			}
+			return;
+		}
+		if (!interaction.moved) {
+			cy.elements().unselect();
+			closeExpanded();
+		}
+	}
+
+	function onNodeMouseDown(e: MouseEvent, nodeId: number) {
+		if (!cy || e.button !== 0) return;
 		e.preventDefault();
-		cy?.panningEnabled(false);
-		// DEV-074 fix20: themePalette 사용 — 이전엔 #4a90d9 hardcoded (다크 전용).
-		const ePal = themePalette(currentEffectiveTheme());
-		boxDragEl = document.createElement('div');
-		boxDragEl.style.cssText =
-			`position:absolute;left:${sx}px;top:${sy}px;width:0;height:0;` +
-			`border:1.5px dashed ${ePal.edgePre};` +
-			`background:color-mix(in srgb, ${ePal.edgePre} 10%, transparent);` +
-			`pointer-events:none;z-index:100;box-sizing:border-box;`;
-		container.appendChild(boxDragEl);
-		boxDragStart = { x: sx, y: sy };
+		e.stopPropagation();
+		beginNodeInteraction(
+			cy.getElementById(`q-${nodeId}`),
+			e.clientX,
+			e.clientY,
+			e.ctrlKey || e.metaKey
+		);
+	}
+
+	function onBoardMouseDown(e: MouseEvent) {
+		if (!cy || e.button !== 0) return;
+		if (e.ctrlKey || e.metaKey || ctrlHeld) {
+			const rect = container.getBoundingClientRect();
+			const sx = e.clientX - rect.left;
+			const sy = e.clientY - rect.top;
+			const palette = themePalette(currentEffectiveTheme());
+			boxDrag = { left: sx, top: sy, width: 0, height: 0, color: palette.edgePre };
+			boxDragStart = { x: sx, y: sy };
+		} else {
+			beginPanInteraction(e.clientX, e.clientY);
+		}
+		e.preventDefault();
 	}
 
 	function onBoxMouseMove(e: MouseEvent) {
 		if (cardDrag) {
-			const cw = container.clientWidth,
-				ch = container.clientHeight;
+			const cw = container.clientWidth;
+			const ch = container.clientHeight;
 			expandedPos = {
 				x: Math.max(0, Math.min(cw - CARD_W - 8, cardDrag.px + e.clientX - cardDrag.sx)),
 				y: Math.max(0, Math.min(ch - 120, cardDrag.py + e.clientY - cardDrag.sy))
 			};
 			return;
 		}
-		if (!boxDragEl || !boxDragStart) return;
+		if (boardInteraction) {
+			moveBoardInteraction(e.clientX, e.clientY);
+			return;
+		}
+		if (!boxDrag || !boxDragStart) return;
 		const rect = container.getBoundingClientRect();
-		const sx = e.clientX - rect.left,
-			sy = e.clientY - rect.top;
-		const x1 = Math.min(boxDragStart.x, sx),
-			y1 = Math.min(boxDragStart.y, sy);
-		boxDragEl.style.left = `${x1}px`;
-		boxDragEl.style.top = `${y1}px`;
-		boxDragEl.style.width = `${Math.abs(sx - boxDragStart.x)}px`;
-		boxDragEl.style.height = `${Math.abs(sy - boxDragStart.y)}px`;
+		const sx = e.clientX - rect.left;
+		const sy = e.clientY - rect.top;
+		const x1 = Math.min(boxDragStart.x, sx);
+		const y1 = Math.min(boxDragStart.y, sy);
+		boxDrag = {
+			...boxDrag,
+			left: x1,
+			top: y1,
+			width: Math.abs(sx - boxDragStart.x),
+			height: Math.abs(sy - boxDragStart.y)
+		};
 	}
 
 	function onBoxMouseUp(e: MouseEvent) {
@@ -1283,28 +1350,118 @@
 			cardDrag = null;
 			return;
 		}
-		if (ctrlClickNode) {
-			ctrlClickNode.selected() ? ctrlClickNode.unselect() : ctrlClickNode.select();
-			ctrlClickNode = null;
+		if (boardInteraction) {
+			endBoardInteraction();
 			return;
 		}
-		if (!boxDragEl || !boxDragStart) return;
+		if (!boxDrag || !boxDragStart) return;
 		const rect = container.getBoundingClientRect();
-		const sx = e.clientX - rect.left,
-			sy = e.clientY - rect.top;
-		const x1 = Math.min(boxDragStart.x, sx),
-			y1 = Math.min(boxDragStart.y, sy);
-		const x2 = Math.max(boxDragStart.x, sx),
-			y2 = Math.max(boxDragStart.y, sy);
+		const sx = e.clientX - rect.left;
+		const sy = e.clientY - rect.top;
+		const x1 = Math.min(boxDragStart.x, sx);
+		const y1 = Math.min(boxDragStart.y, sy);
+		const x2 = Math.max(boxDragStart.x, sx);
+		const y2 = Math.max(boxDragStart.y, sy);
 		if (x2 - x1 > 4 || y2 - y1 > 4) selectNodesInBox(x1, y1, x2, y2);
 		cancelBoxSelection();
+	}
+
+	async function processPendingDrags() {
+		const batch = pendingDragBatch.splice(0);
+		if (batch.length === 0) return;
+		const laneChanges = new Map<number, PendingDragItem[]>();
+		for (const item of batch) {
+			if (sorted[item.toLaneIdx].id !== item.fromStatus) {
+				const existing = laneChanges.get(item.toLaneIdx) ?? [];
+				existing.push(item);
+				laneChanges.set(item.toLaneIdx, existing);
+			}
+		}
+
+		const confirmedLanes = new Set<number>();
+		const rejectedLanes = new Set<number>();
+		for (const [laneIdx, items] of laneChanges) {
+			const newStatus = sorted[laneIdx];
+			const names = items.map((item) => item.node.data<string>('questSlug')).join(', ');
+			const msg =
+				items.length === 1
+					? `${names} → "${statusLabel(newStatus, $locale)}"${t('board.confirmChangeSuffix', $locale)}`
+					: `${items.length}${t('board.confirmChangeCountMid', $locale)}"${statusLabel(newStatus, $locale)}"${t('board.confirmChangeSuffix', $locale)}\n(${names})`;
+			if (await showConfirm(msg)) confirmedLanes.add(laneIdx);
+			else rejectedLanes.add(laneIdx);
+		}
+
+		const historyItems: BatchMove['items'] = [];
+		const posUpdates: Promise<unknown>[] = [];
+		for (const item of batch) {
+			const { node, questId, fromPos, fromStatus, toPos, toLaneIdx } = item;
+			const newStatus = sorted[toLaneIdx];
+			const laneChanged = newStatus.id !== fromStatus;
+			if (laneChanged && rejectedLanes.has(toLaneIdx)) {
+				node.animate({ position: fromPos, duration: 150 });
+				continue;
+			}
+			if (laneChanged && confirmedLanes.has(toLaneIdx)) {
+				try {
+					await questsApi.changeStatus(questId, { status_slug: newStatus.slug });
+					node.data('statusId', newStatus.id);
+					applyStatusChange(questId, newStatus.id);
+				} catch (error) {
+					node.animate({ position: fromPos, duration: 150 });
+					showToast(
+						error instanceof Error ? error.message : t('common.statusChangeFailed', get(locale)),
+						'error'
+					);
+					continue;
+				}
+			}
+
+			const snapped = gridSnap ? snapToGrid(toPos.x, toPos.y) : toPos;
+			const finalStatusId =
+				laneChanged && confirmedLanes.has(toLaneIdx) ? newStatus.id : fromStatus;
+			const laneLeftVis = visibleLaneLeftOfStatus(finalStatusId);
+			const minX = laneLeftVis + LANE_PAD_X + NODE_W / 2;
+			const maxX = laneLeftVis + LANE_W - LANE_PAD_X - NODE_W / 2;
+			const clampedX = Math.max(minX, Math.min(maxX, snapped.x));
+			const finalY = snapped.y;
+			if (laneChanged || clampedX !== toPos.x || finalY !== toPos.y) {
+				node.position({ x: clampedX, y: finalY });
+			}
+			const moved = fromPos.x !== clampedX || fromPos.y !== finalY || fromStatus !== finalStatusId;
+			if (!moved) continue;
+			const absX = visualToAbsX(clampedX, finalStatusId);
+			node.data('absX', absX);
+			historyItems.push({
+				questId,
+				from: { x: fromPos.x, y: fromPos.y, statusId: fromStatus },
+				to: { x: clampedX, y: finalY, statusId: finalStatusId }
+			});
+			posUpdates.push(questsApi.updatePosition(questId, { x: absX, y: finalY }).catch(() => {}));
+		}
+
+		if (historyItems.length > 0) {
+			const record: HistoryRecord =
+				historyItems.length === 1
+					? {
+							type: 'single',
+							questId: historyItems[0].questId,
+							from: historyItems[0].from,
+							to: historyItems[0].to
+						}
+					: { type: 'batch', items: historyItems };
+			undoStack.push(record);
+			if (undoStack.length > MAX_HISTORY) undoStack.shift();
+			redoStack.length = 0;
+		}
+		await Promise.all(posUpdates);
+		syncExpandedPos();
 	}
 
 	// ── 노드 확장 카드 ──────────────────────────────────────────
 
 	function syncExpandedPos() {
 		if (!cy || !expandedQuest || cardPinned) return;
-		const node = cy.getElementById(`q-${expandedQuest.id}`) as NodeSingular;
+		const node = cy.getElementById(`q-${expandedQuest.id}`) as BoardNode;
 		if (node.length === 0) return;
 		const rpos = node.renderedPosition();
 		const cw = container.clientWidth;
@@ -1352,7 +1509,7 @@
 			typeMap.set(expandedQuest.parent_quest_id, 'parent');
 
 		cy.nodes('[questId]').forEach((n) => {
-			const node = n as NodeSingular;
+			const node = n as BoardNode;
 			const nId = node.data('questId') as number;
 			node.data('highlightType', nId === qId ? '' : (typeMap.get(nId) ?? 'dim'));
 		});
@@ -1400,48 +1557,16 @@
 		return ids;
 	}
 
-	/** 현재 highlight 된 노드들을 모두 Cytoscape selected 상태로 만든다. */
+	/** 현재 highlight 된 노드들을 모두 선택 상태로 만든다. */
 	function selectHighlighted() {
 		if (!cy) return;
 		const ids = getHighlightedNodeIds();
 		if (ids.size === 0) return;
-		// suppressUnselect 동안은 select 핸들러의 자동 해제 로직을 건너뛴다.
-		suppressUnselect = true;
-		try {
-			cy.nodes('[questId]:selected').unselect();
-			ids.forEach((id) => {
-				const n = cy!.getElementById(`q-${id}`);
-				if (n.length > 0) n.select();
-			});
-		} finally {
-			suppressUnselect = false;
-		}
-	}
-
-	/**
-	 * cluster size N 에 대해 lane cols 이하 범위에서 직사각형 (c × r) 결정.
-	 *  - c * r >= N
-	 *  - 영역(c * r) 최소
-	 *  - tiebreaker: |c - r| 작은 쪽 (정사각형에 가까움)
-	 */
-	function bestRect(n: number, maxCols: number): { cols: number; rows: number } {
-		let bestC = 1;
-		let bestR = n;
-		let bestArea = n;
-		let bestAspect = Math.abs(1 - n);
-		const cap = Math.min(n, Math.max(1, maxCols));
-		for (let c = 1; c <= cap; c++) {
-			const r = Math.ceil(n / c);
-			const area = c * r;
-			const aspect = Math.abs(c - r);
-			if (area < bestArea || (area === bestArea && aspect < bestAspect)) {
-				bestC = c;
-				bestR = r;
-				bestArea = area;
-				bestAspect = aspect;
-			}
-		}
-		return { cols: bestC, rows: bestR };
+		cy.nodes('[questId]:selected').unselect();
+		ids.forEach((id) => {
+			const node = cy!.getElementById(`q-${id}`);
+			if (node.length > 0) node.select();
+		});
 	}
 
 	/**
@@ -1464,7 +1589,7 @@
 	 *                       (cross-lane edge 가 외부 노드와 연결돼있어도 외부는 안 건드림)
 	 * @param _cols          사용 안 함 — lane 의 laneCols 가 기준
 	 */
-	async function arrangeNodesGrouped(nodesToArrange: NodeSingular[], _cols: number) {
+	async function arrangeNodesGrouped(nodesToArrange: BoardNode[], _cols: number) {
 		void _cols;
 		if (!cy || arranging) return;
 		// DEV-056 fix1: hidden 노드 제외 — 정렬 시 자리 안 차지하도록.
@@ -1512,14 +1637,14 @@
 			const clusters: number[][] = Array.from(clusterMap.values());
 
 			const slugOf = (qid: number) =>
-				(cy!.getElementById(`q-${qid}`) as NodeSingular).data('questSlug') as string;
+				(cy!.getElementById(`q-${qid}`) as BoardNode).data('questSlug') as string;
 			const statusOf = (qid: number) =>
-				(cy!.getElementById(`q-${qid}`) as NodeSingular).data('statusId') as number;
+				(cy!.getElementById(`q-${qid}`) as BoardNode).data('statusId') as number;
 
 			const batchItems: BatchMove['items'] = [];
 			const savePromises: Promise<unknown>[] = [];
 			const place = (qid: number, col: number, row: number) => {
-				const node = cy!.getElementById(`q-${qid}`) as NodeSingular;
+				const node = cy!.getElementById(`q-${qid}`) as BoardNode;
 				if (node.length === 0) return;
 				const sid = node.data('statusId') as number;
 				const li = laneOf.get(sid) ?? 0;
@@ -1633,9 +1758,9 @@
 		if (!cy) return;
 		const ids = getHighlightedNodeIds();
 		if (ids.size === 0) return;
-		const nodes: NodeSingular[] = [];
+		const nodes: BoardNode[] = [];
 		for (const id of ids) {
-			const n = cy.getElementById(`q-${id}`) as NodeSingular;
+			const n = cy.getElementById(`q-${id}`) as BoardNode;
 			if (n.length > 0) nodes.push(n);
 		}
 		await arrangeNodesGrouped(nodes, globalCols);
@@ -1668,15 +1793,15 @@
 			// DEV-056 fix1: hidden 노드 제외 — 정렬 시 자리 안 차지하도록.
 			const nodes = cy
 				.nodes(`[statusId = ${statusId}]`)
-				.filter((n) => (n as NodeSingular).style('display') !== 'none');
+				.filter((n) => (n as BoardNode).style('display') !== 'none');
 			if (nodes.length === 0) continue;
 			const sortedNodes = nodes.toArray().sort((a, b) => {
-				const sa = (a as NodeSingular).data('questSlug') as string;
-				const sb = (b as NodeSingular).data('questSlug') as string;
+				const sa = (a as BoardNode).data('questSlug') as string;
+				const sb = (b as BoardNode).data('questSlug') as string;
 				return sa.localeCompare(sb);
 			});
 			sortedNodes.forEach((n, idx) => {
-				const node = n as NodeSingular;
+				const node = n as BoardNode;
 				const fromPos = { ...node.position() };
 				const col = idx % cols,
 					row = Math.floor(idx / cols);
@@ -1722,12 +1847,8 @@
 		syncExpandedPos();
 	}
 
-	// DEV-208: 터치스크린 핀치-투-줌. 계측으로 WebView2 가 touch 이벤트를 JS 로
-	// 전달함을 확인(touches=2 도달) — 네이티브 변경 없이 커스텀 핸들러로 구현.
-	// cytoscape 는 userZoomingEnabled=false(BUG-090)라 자체 핀치 줌이 없고,
-	// 두 손가락 동안 cytoscape 의 한 손가락 pan 과 싸우지 않도록 pinch 중엔
-	// userPanningEnabled 를 잠시 끈다. 한 손가락 pan/탭/노드 드래그는 cytoscape
-	// 기본 터치 처리 그대로.
+	// DEV-208/317: 터치스크린의 한 손가락 pan/노드 drag와 두 손가락 pinch를
+	// BoardGraph viewport에 직접 반영한다.
 	let pinch: { lastDist: number; lastMidX: number; lastMidY: number } | null = null;
 	function touchDistMid(e: TouchEvent): { dist: number; midX: number; midY: number } {
 		const a = e.touches[0];
@@ -1739,34 +1860,73 @@
 		};
 	}
 	function onBoardTouchStart(e: TouchEvent) {
-		if (!cy || e.touches.length !== 2) return;
-		e.preventDefault(); // 브라우저/WebView2 의 네이티브 제스처 차단.
-		const { dist, midX, midY } = touchDistMid(e);
-		pinch = { lastDist: dist, lastMidX: midX, lastMidY: midY };
-		cy.userPanningEnabled(false);
+		if (!cy) return;
+		const target = e.target as HTMLElement;
+		const nodeEl = target.closest<HTMLElement>('.board-node');
+		// pan/pinch는 노드 또는 명시적인 빈 보드 입력면에서 시작할 때만 받는다.
+		// 나머지 UI에서는 preventDefault하지 않아 브라우저가 tap 뒤 click을 만든다.
+		if (!nodeEl && !isBoardPanSurfaceTarget(target)) return;
+		if (e.touches.length === 2) {
+			e.preventDefault();
+			// 한 손가락 node drag 도중 두 번째 손가락이 들어오면, pinch 로 전환하기
+			// 전 아직 확정하지 않은 이동을 시작 좌표로 되돌린다.
+			if (boardInteraction?.kind === 'node') {
+				for (const [id, start] of dragStartMap) {
+					const node = cy.getElementById(`q-${id}`);
+					if (node.length > 0) node.position({ x: start.x, y: start.y });
+				}
+			}
+			boardInteraction = null;
+			dragStartMap.clear();
+			dragHighlightSlug = null;
+			const { dist, midX, midY } = touchDistMid(e);
+			pinch = { lastDist: dist, lastMidX: midX, lastMidY: midY };
+			return;
+		}
+		if (e.touches.length !== 1) return;
+		const touch = e.touches[0];
+		if (nodeEl?.dataset.nodeId) {
+			beginNodeInteraction(
+				cy.getElementById(`q-${nodeEl.dataset.nodeId}`),
+				touch.clientX,
+				touch.clientY,
+				false
+			);
+		} else {
+			beginPanInteraction(touch.clientX, touch.clientY);
+		}
+		e.preventDefault();
 	}
 	function onBoardTouchMove(e: TouchEvent) {
-		if (!cy || !pinch || e.touches.length !== 2) return;
-		e.preventDefault();
-		const { dist, midX, midY } = touchDistMid(e);
-		if (pinch.lastDist > 0 && dist > 0) {
-			const rect = container.getBoundingClientRect();
-			// 두 손가락 거리비 = 줌 배율, 중점 기준 줌.
-			cy.zoom({
-				level: cy.zoom() * (dist / pinch.lastDist),
-				renderedPosition: { x: midX - rect.left, y: midY - rect.top }
-			});
-			// 중점 이동분 = pan (핀치하며 끌기).
-			cy.panBy({ x: midX - pinch.lastMidX, y: midY - pinch.lastMidY });
+		if (!cy) return;
+		if (pinch && e.touches.length === 2) {
+			e.preventDefault();
+			const { dist, midX, midY } = touchDistMid(e);
+			if (pinch.lastDist > 0 && dist > 0) {
+				const rect = container.getBoundingClientRect();
+				cy.zoom({
+					level: cy.zoom() * (dist / pinch.lastDist),
+					renderedPosition: { x: midX - rect.left, y: midY - rect.top }
+				});
+				cy.panBy({ x: midX - pinch.lastMidX, y: midY - pinch.lastMidY });
+			}
+			pinch = { lastDist: dist, lastMidX: midX, lastMidY: midY };
+			return;
 		}
-		pinch = { lastDist: dist, lastMidX: midX, lastMidY: midY };
+		if (e.touches.length === 1 && boardInteraction) {
+			e.preventDefault();
+			moveBoardInteraction(e.touches[0].clientX, e.touches[0].clientY);
+		}
 	}
 	function onBoardTouchEnd(e: TouchEvent) {
-		if (e.touches.length >= 2) return;
-		if (pinch) {
+		if (pinch && e.touches.length < 2) {
 			pinch = null;
-			cy?.userPanningEnabled(true);
+			if (e.touches.length === 1) {
+				beginPanInteraction(e.touches[0].clientX, e.touches[0].clientY);
+			}
+			return;
 		}
+		if (e.touches.length === 0 && boardInteraction) endBoardInteraction();
 	}
 
 	// BUG-090(admin 후속): "마우스로 컨트롤시에는 이전과 같이 동작해야함" —
@@ -1787,40 +1947,20 @@
 		return w !== 0 && w % 120 === 0; // ±120 배수 = 마우스 노치
 	}
 
-	// BUG-090: 트랙패드/마우스 줌 표준화. cytoscape 기본 wheel 줌은 트랙패드의
-	// two-finger 스크롤(plain wheel)도 줌으로 해석해 노트북에서 erratic.
-	// → userZoomingEnabled=false 로 끄고 직접 처리(Figma/Miro 관례):
+	// BUG-090: 트랙패드/마우스 줌 표준화(Figma/Miro 관례):
 	//   - Ctrl + wheel = 커서 기준 줌. 트랙패드 줌은 Ctrl+two-finger 스크롤로 함
 	//     (WebView2 는 트랙패드 pinch 를 Page Scale 줌으로 자체 소비해 DOM wheel
 	//     이벤트로 안 내려보냄 — JS 에서 가로챌 수 없는 플랫폼 한계라 Ctrl+스크롤로 대체).
 	//   - 일반 마우스의 plain wheel = 줌(admin 피드백 — 이전 동작 유지)
 	//   - 트랙패드의 plain two-finger 스크롤만 pan
-	// cy.zoom/panBy 는 'pan'/'zoom' 이벤트를 emit → 기존 syncLanes 자동 적용.
 	// BUG-144: 트랙패드 연속 스크롤/줌은 프레임당 여러 wheel 이벤트가 들어오는데,
-	// 매 이벤트마다 cy.zoom()/panBy() 를 동기 호출하면 그만큼 캔버스 전체를
-	// 다시 그려 프레임당 여러 번 렌더 — "연산량 대비 비정상적으로 느림" 체감의
-	// 원인. uiScale.ts 의 rAF 병합(BUG-141)과 같은 패턴: 같은 프레임 안의
-	// wheel 이벤트는 누적만 하고, 실제 cy 반영은 프레임당 1회로 상한.
+	// 같은 프레임 안 이벤트를 누적하고 BoardGraph viewport 반영을 1회로 제한.
 	let wheelRaf: number | null = null;
 	let pendingZoom: { level: number; x: number; y: number } | null = null;
 	let pendingPan: { x: number; y: number } | null = null;
 
-	// DEV-316(BUG-180 후속) 시도 기록: cy.png() 스냅샷 오버레이 → 더블버퍼링
-	// → CSS transform 가상 상태 → 직접 cy 호출 → CSS transform + 유예시간
-	// 추측 → 주기적 재캡처 가리개까지 여러 단계를 돌았지만, 매번 다른
-	// 방식으로 "캔버스가 화면에 언제 반영될지"를 감추거나 우회하려는
-	// 시도가 새 문제(느려짐/깜빡임/크롬에서까지 저하)를 만들어냈다.
-	// cy.png() 자체가 반복 호출하기엔 생각보다 비싸다는 게 최종 확인됨
-	// (120ms 간격도 크롬에서 체감 저하 발생).
-	//
-	// lane 배경(순수 DOM + CSS transform, 캔버스 아님)은 애초에 이 문제가
-	// 없다는 게 이번 조사 내내 확인된 사실 — 진짜 근본 해결은 노드도
-	// cytoscape 캔버스가 아니라 DOM 으로 그리는 것으로 보이나(사용자 제안),
-	// 이는 보드 렌더링 아키텍처를 통째로 바꾸는 별도 규모의 작업이라 이
-	// 세션 범위 밖. BUG-144 원안(직접 cy 호출, 아래)으로 되돌리고
-	// makeSvgUrl 사전 디코드(위)만 유지 — WebKit 계열에서의 잔여 지연은
-	// BUG-144/BUG-141 선례와 동일하게 플랫폼 한계로 남겨둠. DOM 기반 노드
-	// 렌더링은 별도 후속 퀘스트로 분리 예정.
+	// DEV-317: Canvas 경로가 완전히 사라졌으므로 아래 rAF는 순수하게 같은
+	// 프레임의 wheel 입력을 한 viewport transform으로 합치는 역할만 한다.
 
 	function flushBoardWheel() {
 		wheelRaf = null;
@@ -1851,7 +1991,7 @@
 		if (e.ctrlKey || mouse) {
 			const rect = container.getBoundingClientRect();
 			// 감도 분리: 마우스 노치는 deltaY≈100(캡 60) 으로 변화폭이 커서 둔감하게
-			// (0.0012 — 캡 60 기준 ≈7%, cytoscape 옛 wheelSensitivity=2.5 체감 복원).
+			// (0.0012 — 캡 60 기준 약 7%, 기존 보드 체감 복원).
 			// 트랙패드 Ctrl+스크롤은 deltaY 가 연속적이라(노치 아님) 민감하게(0.005) —
 			// mouse(=wheelDeltaY 120배수)가 아닌 ctrlKey 줌이 여기 해당.
 			const sensitivity = mouse ? 0.0012 : 0.005;
@@ -1899,177 +2039,7 @@
 	}
 
 	// ── 초기화 ──────────────────────────────────────────────────
-
-	// DEV-074 fix3: Cytoscape style 의 색 값 — theme 별 hex 직접 명시.
-	// `var(--bg)` 같은 CSS 변수는 Cytoscape style 시스템이 컴퓨팅 못 함 (DEV-074
-	// 코멘트 참조) → 모든 색을 명시 hex 로 지정 + theme 변경 시 cy.style() 교체.
-	function buildCyStyle(eff: 'dark' | 'light'): StylesheetJson {
-		// DEV-074 fix20: themePalette 단일 source. 이전엔 컴포넌트별 inline 분기.
-		const p = themePalette(eff);
-		const bg = p.bg;
-		const accent = p.accent;
-		const success = p.success;
-		const textFaint = p.textFaint;
-		const preBg = p.hlPreBg;
-		const preBorder = p.hlPre;
-		const subBg = p.hlSubBg;
-		const subBorder = p.hlSub;
-		const nextBg = p.hlNextBg;
-		const nextBorder = p.hlNext;
-		const parentBg = p.hlParentBg;
-		const selectedBg = p.selectedBg;
-		const flashBorder = p.accentSecondary;
-		const edgePre = p.edgePre;
-		return [
-			{
-				selector: 'node[questId]',
-				style: {
-					'background-color': bg,
-					// DEV-112: 노드 위치가 자유로워 겹칠 수 있음 — 뒤 노드 윤곽이
-					// 비치도록 살짝 투명. border (urgency 색) 는 fully opaque 유지.
-					'background-opacity': 0.92,
-					'background-image': 'data(nodeBg)',
-					'background-fit': 'cover',
-					'background-image-opacity': 0.88,
-					'border-color': 'data(urgencyColor)',
-					'border-width': 2,
-					width: NODE_W,
-					height: NODE_H,
-					shape: 'round-rectangle',
-					label: '',
-					'z-index': 10
-				}
-			},
-			{ selector: 'node[questId]:active', style: { 'overlay-opacity': 0 } },
-			{
-				selector: 'node[questId][?active]',
-				style: {
-					'background-color': 'data(urgencyBg)',
-					'border-color': 'data(urgencyColor)',
-					'border-width': 3,
-					'shadow-blur': 18,
-					'shadow-color': 'data(urgencyColor)',
-					'shadow-opacity': 0.85,
-					'shadow-offset-x': 0,
-					'shadow-offset-y': 0
-				} as Css.Node
-			},
-			{
-				selector: 'node[questId][highlightType = "pre"]',
-				style: {
-					'background-color': preBg,
-					'border-color': preBorder,
-					'border-width': 3,
-					'shadow-blur': 12,
-					'shadow-color': preBorder,
-					'shadow-opacity': 0.65,
-					'shadow-offset-x': 0,
-					'shadow-offset-y': 0
-				} as Css.Node
-			},
-			{
-				selector: 'node[questId][highlightType = "sub"]',
-				style: {
-					'background-color': subBg,
-					'border-color': subBorder,
-					'border-width': 3,
-					'shadow-blur': 12,
-					'shadow-color': subBorder,
-					'shadow-opacity': 0.65,
-					'shadow-offset-x': 0,
-					'shadow-offset-y': 0
-				} as Css.Node
-			},
-			{
-				selector: 'node[questId][highlightType = "next"]',
-				style: {
-					'background-color': nextBg,
-					'border-color': nextBorder,
-					'border-width': 3,
-					'shadow-blur': 12,
-					'shadow-color': nextBorder,
-					'shadow-opacity': 0.65,
-					'shadow-offset-x': 0,
-					'shadow-offset-y': 0
-				} as Css.Node
-			},
-			{
-				selector: 'node[questId][highlightType = "parent"]',
-				style: {
-					'background-color': parentBg,
-					'border-color': success,
-					'border-width': 3,
-					'shadow-blur': 12,
-					'shadow-color': success,
-					'shadow-opacity': 0.65,
-					'shadow-offset-x': 0,
-					'shadow-offset-y': 0
-				} as Css.Node
-			},
-			{
-				selector: 'node[questId][highlightType = "dim"]',
-				style: { opacity: 0.15 } as Css.Node
-			},
-			// DEV-033: List 필터 미스매치 dim — relation highlight 의 dim 과 독립.
-			{
-				selector: 'node[questId][?fdim]',
-				style: { opacity: 0.12 } as Css.Node
-			},
-			{
-				selector: 'node[questId]:selected',
-				style: {
-					'background-color': selectedBg,
-					'border-color': accent,
-					'border-width': 3,
-					'shadow-blur': 14,
-					'shadow-color': accent,
-					'shadow-opacity': 0.65,
-					'shadow-offset-x': 0,
-					'shadow-offset-y': 0
-				} as Css.Node
-			},
-			{
-				selector: 'node[questId][?flash]',
-				style: {
-					'border-color': flashBorder,
-					'border-width': 5,
-					'shadow-blur': 28,
-					'shadow-color': flashBorder,
-					'shadow-opacity': 1,
-					'shadow-offset-x': 0,
-					'shadow-offset-y': 0
-				} as Css.Node
-			},
-			{ selector: 'edge[?dimmed]', style: { opacity: 0.07 } },
-			// BUG-078: 필터 미스매치 edge 디밍 (relation dim 과 독립, node fdim 과 짝).
-			{ selector: 'edge[?fdim]', style: { opacity: 0.07 } },
-			{
-				selector: 'edge[etype = "pre"]',
-				style: {
-					'line-color': edgePre,
-					'target-arrow-color': edgePre,
-					'target-arrow-shape': 'triangle',
-					'line-style': 'solid',
-					'curve-style': 'bezier',
-					width: 2
-				}
-			},
-			{
-				selector: 'edge[etype = "sub"]',
-				style: {
-					'line-color': textFaint,
-					'target-arrow-color': textFaint,
-					'target-arrow-shape': 'vee',
-					'line-style': 'dashed',
-					'line-dash-pattern': [6, 3],
-					'curve-style': 'bezier',
-					width: 1.5
-				}
-			}
-		];
-	}
-
-	// DEV-074 fix: theme 변경 시 모든 노드의 urgencyBg + nodeBg (SVG) 재생성.
+	// DEV-074 fix: theme 변경 시 모든 노드의 urgencyBg 를 갱신.
 	// DEV-074 fix3: cy.style() 전체 교체 — Cytoscape 자체 색 값도 theme 반영.
 	function refreshNodeBgForTheme() {
 		if (!cy) return;
@@ -2081,18 +2051,14 @@
 			// 갱신되지 않았다. 노드가 active(클릭) 상태일 때만 이 값이 배경색으로
 			// 노출돼([?active] 셀렉터) 평소엔 안 보이다가, 클릭해야 새로고침 시점
 			// 테마의 색(어두운/밝은 urgency 톤)이 그대로 드러난 것 — 이게 "클릭하면
-			// 까맣게/하얗게 변함" 의 정체. nodeBg 재생성과 동일하게 allQuests 에서
+			// 까맣게/하얗게 변함" 의 정체. allQuests 에서
 			// 원본 quest 를 찾아 quest.urgency 를 써야 한다.
 			const qid = n.data('questId') as number | undefined;
 			const q = qid != null ? allQuests.find((x) => x.id === qid) : undefined;
 			if (q) {
 				n.data('urgencyBg', urgencyBgFor(q.urgency, eff));
-				// nodeBg SVG 도 theme 색 hardcoded — 다시 생성.
-				n.data('nodeBg', makeSvgUrl(q));
 			}
 		});
-		// stylesheet 자체 교체 — base / highlight / selected 의 hardcoded hex 까지 반영.
-		cy.style().fromJson(buildCyStyle(eff)).update();
 		// DEV-074 fix20: grid snap SVG 의 dot 색도 palette 의존이라 theme 변경 시
 		// 캐시 무효화 → 다음 syncLanes 가 새 색으로 재생성.
 		gridBgCache.clear();
@@ -2101,16 +2067,8 @@
 
 	onMount(() => {
 		const unsubTheme = effectiveTheme.subscribe(() => refreshNodeBgForTheme());
-		// DEV-295: 노드 SVG 안의 긴급도 라벨은 생성 시점 locale 로 구워지므로
-		// 언어를 바꿔도 그대로였다(사용자 지적). 테마 전환과 동일하게 재생성.
-		let localeInit = true;
-		const unsubLocale = locale.subscribe(() => {
-			if (localeInit) {
-				localeInit = false;
-				return; // 최초 구독 호출은 mount 시점 — 재생성 불필요.
-			}
-			refreshNodeBgForTheme();
-		});
+		// DEV-317: locale 문자열은 실제 DOM text 라 $locale 변경에 Svelte 가
+		// 직접 반응한다. 예전 SVG data URL 재생성 구독은 더 이상 필요 없다.
 
 		// gridSnap 은 guildKeyPrefix 가 두 번째 onMount 에서 set 된 직후 다시
 		// loadGridSnap 호출. 여기서는 listener 만.
@@ -2119,16 +2077,25 @@
 		window.addEventListener('blur', onCtrlUp);
 		window.addEventListener('mousemove', onBoxMouseMove);
 		window.addEventListener('mouseup', onBoxMouseUp);
-		container.addEventListener('mousedown', onBoxMouseDown, { capture: true });
+		container.addEventListener('mousedown', onBoardMouseDown);
+		boardWrapEl.addEventListener('wheel', onBoardWheel, { passive: false });
+		boardWrapEl.addEventListener('touchstart', onBoardTouchStart, { passive: false });
+		boardWrapEl.addEventListener('touchmove', onBoardTouchMove, { passive: false });
+		boardWrapEl.addEventListener('touchend', onBoardTouchEnd);
+		boardWrapEl.addEventListener('touchcancel', onBoardTouchEnd);
 		return () => {
 			unsubTheme();
-			unsubLocale(); // DEV-295
 			window.removeEventListener('keydown', handleKeydown);
 			window.removeEventListener('keyup', handleKeyup);
 			window.removeEventListener('blur', onCtrlUp);
 			window.removeEventListener('mousemove', onBoxMouseMove);
 			window.removeEventListener('mouseup', onBoxMouseUp);
-			container.removeEventListener('mousedown', onBoxMouseDown, { capture: true });
+			container.removeEventListener('mousedown', onBoardMouseDown);
+			boardWrapEl.removeEventListener('wheel', onBoardWheel);
+			boardWrapEl.removeEventListener('touchstart', onBoardTouchStart);
+			boardWrapEl.removeEventListener('touchmove', onBoardTouchMove);
+			boardWrapEl.removeEventListener('touchend', onBoardTouchEnd);
+			boardWrapEl.removeEventListener('touchcancel', onBoardTouchEnd);
 		};
 	});
 
@@ -2427,14 +2394,14 @@
 				return;
 			}
 
-			let node = cy.getElementById(`q-${qid}`) as NodeSingular;
+			let node = cy.getElementById(`q-${qid}`) as BoardNode;
 			if (node.length === 0) {
 				// 보드에 없는 노드 — 적당한 위치에 추가하고 위치 저장
 				const li = laneOf.get(quest.status_id) ?? 0;
 				// 같은 레인의 기존 노드들 아래에 자연스럽게 배치
 				const existing = cy.nodes(`[statusId = ${quest.status_id}]`).toArray();
 				const maxY = existing.reduce(
-					(m, n) => Math.max(m, (n as NodeSingular).position().y),
+					(m, n) => Math.max(m, (n as BoardNode).position().y),
 					LANE_TOP + NODE_H / 2
 				);
 				// DEV-067: absX = absolute, visualX = absolute → visual 변환.
@@ -2453,7 +2420,6 @@
 						urgencyColor: urgencyColor(quest.urgency),
 						urgencyBg: urgencyBgFor(quest.urgency, currentEffectiveTheme()),
 						typeColor: quest.type_color,
-						nodeBg: makeSvgUrl(quest),
 						highlightType: '',
 						active: false,
 						absX
@@ -2473,11 +2439,11 @@
 				}
 				// DEV-067: DB 는 absolute X.
 				questsApi.updatePosition(qid, { x: absX, y }).catch(() => {});
-				node = cy.getElementById(`q-${qid}`) as NodeSingular;
+				node = cy.getElementById(`q-${qid}`) as BoardNode;
 			}
 
 			// panTo (해당 노드를 화면 중앙으로)
-			cy.animate({ center: { eles: node }, duration: 400 } as Parameters<Core['animate']>[0]);
+			cy.center(node);
 
 			// 시각 강조 — 1.5초 동안 flash data on, 그 후 off
 			node.data('flash', true);
@@ -2493,12 +2459,13 @@
 
 	onDestroy(() => {
 		if (wheelRaf !== null) cancelAnimationFrame(wheelRaf); // BUG-144
-		container?.removeEventListener('wheel', onBoardWheel); // BUG-090
+		if (domGraphRaf !== null) cancelAnimationFrame(domGraphRaf); // DEV-317
+		boardWrapEl?.removeEventListener('wheel', onBoardWheel); // BUG-090
 		// DEV-208: 터치 핀치.
-		container?.removeEventListener('touchstart', onBoardTouchStart);
-		container?.removeEventListener('touchmove', onBoardTouchMove);
-		container?.removeEventListener('touchend', onBoardTouchEnd);
-		container?.removeEventListener('touchcancel', onBoardTouchEnd);
+		boardWrapEl?.removeEventListener('touchstart', onBoardTouchStart);
+		boardWrapEl?.removeEventListener('touchmove', onBoardTouchMove);
+		boardWrapEl?.removeEventListener('touchend', onBoardTouchEnd);
+		boardWrapEl?.removeEventListener('touchcancel', onBoardTouchEnd);
 		cy?.destroy();
 	});
 
@@ -2512,16 +2479,20 @@
 		// 안 보이던 원인. DOM 재생성과 함께 캐시도 항상 무효화.
 		gridBgCache.clear();
 		lanesEl.innerHTML = '';
+		gridLanesEl.innerHTML = '';
 		sorted.forEach(() => {
 			const col = document.createElement('div');
 			col.className = 'lane-col';
+			lanesEl.appendChild(col);
+			const gridCol = document.createElement('div');
+			gridCol.className = 'lane-grid-col';
 			// DEV-105 fix13: grid snap dot 표시를 lane-col 의 background 에서 자식
 			// `.lane-dots` 의 transform 으로 분리. background-position 변경은 매
 			// frame paint → 빠른 pan 추적 안 됨. transform 은 GPU composite.
 			const dots = document.createElement('div');
 			dots.className = 'lane-dots';
-			col.appendChild(dots);
-			lanesEl.appendChild(col);
+			gridCol.appendChild(dots);
+			gridLanesEl.appendChild(gridCol);
 		});
 		headersEl.innerHTML = '';
 		// laneCols / laneArrangeModes 초기값.
@@ -2598,7 +2569,7 @@
 				const mode = laneArrangeModes[li] ?? arrangeMode;
 				if (mode === 'group' && cy) {
 					// 이 lane 의 노드만으로 group 정렬 (cross-lane edge 무시)
-					const laneNodes = cy.nodes(`[statusId = ${s.id}]`).toArray() as NodeSingular[];
+					const laneNodes = cy.nodes(`[statusId = ${s.id}]`).toArray() as BoardNode[];
 					arrangeNodesGrouped(laneNodes, cols);
 				} else {
 					arrangeNodes([s.id], cols);
@@ -2641,32 +2612,25 @@
 		});
 	}
 
-	// DEV-105 fix12: grid snap SVG 의 zoom/cols 별 캐시 — pan 도중엔 재생성 안 함.
-	// 이전엔 매 pan 이벤트마다 lane 마다 encodeURIComponent + setBackgroundImage 발생 →
-	// snap dot 표시가 빠른 pan 을 못 따라옴. 캐시는 (laneIdx → {zoom, cols, dataUri, svgW, svgH, bgX}).
+	// DEV-317: grid 는 world 좌표로 한 번만 만들고 부모 transform 을 함께 탄다.
+	// 따라서 zoom 별 bitmap 재생성이나 pan 별 background-position 갱신이 없다.
 	const gridBgCache = new Map<
 		number,
-		{ zoom: number; cols: number; dataUri: string; svgW: number; svgH: number; bgX: number }
+		{ cols: number; dataUri: string; svgW: number; svgH: number; bgX: number }
 	>();
 
-	function syncLanes() {
+	/** 제스처 hot path: 모든 world 요소가 공유하는 transform 하나만 갱신. */
+	function syncViewportVisuals() {
 		if (!cy) return;
-		// DEV-334: 레인 수/화면 폭이 바뀌면 최소 zoom 도 따라가야 한다(상태 추가,
-		// 창 크기 변경, 폰 회전). syncLanes 는 그 모든 경우에 호출된다.
-		cy.minZoom(computeMinZoom());
-		const pan = cy.pan(),
-			zoom = cy.zoom();
-
-		// 그리드 스냅 시각화: lane-col 의 background 으로 dot 패턴.
-		// 가로 dot 수가 정확히 lane 의 cols 와 일치하도록, cols 개 dot 가 들어간 SVG 를 한 row 로 두고
-		// 세로 방향만 repeat. lane 마다 cols 가 다를 수 있어 lane 별로 SVG 합성.
-		const cellHPx = (NODE_H + NODE_GAP) * zoom;
-		const dotR = Math.max(1, 1.5 * zoom);
-
-		// DEV-067: laneHidden 인 lane 의 col 은 display:none + 위치 skip.
-		// DEV-105: collapsed lane 은 좁은 폭으로 표시.
-		let curLeft = 0;
-		lanesEl.querySelectorAll<HTMLElement>('.lane-col').forEach((col, i) => {
+		const pan = cy.pan();
+		const zoom = cy.zoom();
+		if (worldViewportEl) {
+			worldViewportEl.style.transform = `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom})`;
+		}
+		// lane의 단색 배경/경계는 세로 camera pan과 무관하게 viewport 전체를
+		// 채운다. grid dot만 world 안에서 노드와 함께 세로 이동한다.
+		let laneLeft = 0;
+		lanesEl?.querySelectorAll<HTMLElement>('.lane-col').forEach((col, i) => {
 			const s = sorted[i];
 			const laneHidden = s ? getHideSetting(s.slug).laneHidden : false;
 			if (laneHidden) {
@@ -2675,70 +2639,14 @@
 			}
 			const w = s ? laneWidth(s.slug) : LANE_W;
 			col.style.display = '';
-			col.style.left = `${curLeft * zoom + pan.x}px`;
+			col.style.left = `${laneLeft * zoom + pan.x}px`;
 			col.style.width = `${w * zoom}px`;
-			curLeft += w + LANE_GAP;
-			const dotsEl = col.firstElementChild as HTMLElement | null;
-			if (gridSnap && dotsEl) {
-				const cols = laneCols[i] ?? 2;
-				const cellWPx = (NODE_W + NODE_GAP) * zoom;
-				const cached = gridBgCache.get(i);
-				let entry: typeof cached;
-				if (cached && cached.zoom === zoom && cached.cols === cols) {
-					entry = cached;
-				} else {
-					// zoom 또는 cols 변경 — SVG 재생성. 첫 dot center (lane-col local X) =
-					// laneFirstCellX - i*LANE_STRIDE (보드→local 변환 후 zoom).
-					const firstCxLocal = (laneFirstCellX(i, cols) - i * LANE_STRIDE) * zoom;
-					const svgW = cellWPx * cols;
-					const svgH = cellHPx;
-					// DEV-074 fix20: dot 색은 palette.warning. 이전엔 rgba(245,166,35,...)
-					// 다크 전용. 캐시는 zoom/cols 외에 theme 변경 시 buildCyStyle 가
-					// gridBgCache.clear() 호출 (아래 cy.style 갱신 직후) — 즉시 다시 그림.
-					const palette = themePalette(currentEffectiveTheme());
-					const dotFill = `color-mix(in srgb, ${palette.warning} 55%, transparent)`;
-					const dots = Array.from({ length: cols }, (_, c) => {
-						const cx = c * cellWPx + cellWPx / 2;
-						const cy = cellHPx / 2;
-						return `<circle cx="${cx}" cy="${cy}" r="${dotR}" fill="${dotFill}"/>`;
-					}).join('');
-					const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${svgW}' height='${svgH}'>${dots}</svg>`;
-					const dataUri = `url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}")`;
-					const bgX = firstCxLocal - cellWPx / 2;
-					entry = { zoom, cols, dataUri, svgW, svgH, bgX };
-					gridBgCache.set(i, entry);
-					dotsEl.style.display = '';
-					dotsEl.style.backgroundImage = dataUri;
-					dotsEl.style.backgroundSize = `${svgW}px ${svgH}px`;
-					dotsEl.style.backgroundRepeat = 'repeat-y';
-					// 가로 위치 = bgX 는 zoom 만 의존 → 한 번만 설정.
-					dotsEl.style.left = `${bgX}px`;
-					dotsEl.style.width = `${svgW}px`;
-					// DEV-105 fix14: dotsEl 을 cellH 만큼 위로 빼서 wrappedBgY ∈ [0, cellH)
-					// 만으로 정확한 정렬 가능 (pattern 의 cellH 주기성 활용). 이전 fix13 의
-					// top: -200vh 는 200vh 가 cellH 의 정수배가 아니라 fractional 잔여만큼
-					// dot 위치 어긋남 — 노드 snap 위치와 불일치 원인.
-					dotsEl.style.top = `${-cellHPx}px`;
-					dotsEl.style.bottom = '0';
-				}
-				// pan 매 프레임 — transform: translateY 만 변경 (composite-only, no paint).
-				// bgY 를 cellHPx 로 modulo → wrappedBgY ∈ [0, cellH). pattern 주기성
-				// (repeat-y 매 cellH) 으로 정수 cellH 시프트는 시각 동일.
-				const localCyPx = (LANE_TOP + 16 + NODE_H / 2) * zoom + pan.y;
-				const bgY = localCyPx - cellHPx / 2;
-				const wrappedBgY = ((bgY % cellHPx) + cellHPx) % cellHPx;
-				dotsEl.style.transform = `translateY(${wrappedBgY}px)`;
-			} else if (dotsEl) {
-				dotsEl.style.display = 'none';
-				gridBgCache.delete(i);
-			}
+			laneLeft += w + LANE_GAP;
 		});
-		// DEV-067: header 도 visible 압축. DEV-105: collapsed lane 폭 적용.
-		// DEV-105 fix3: 사용자 피드백 — 보드 확대 시 lane 제목 / 제목바도 같이
-		// 커지는 게 부자연스러움. 폭 / 좌표만 board 좌표계 반영 (가로 정렬 OK),
-		// 높이 / 글자 / 컨트롤 크기는 zoom 무관 (UI overlay).
+		// Header 는 확대해도 글자/버튼 크기를 유지하는 screen-space UI 이므로
+		// world 밖에 둔다. lane/card/edge 와 달리 X/폭만 viewport 를 따른다.
 		let hdrLeft = 0;
-		headersEl.querySelectorAll<HTMLElement>('.lane-hdr').forEach((hdr, i) => {
+		headersEl?.querySelectorAll<HTMLElement>('.lane-hdr').forEach((hdr, i) => {
 			const s = sorted[i];
 			const laneHidden = s ? getHideSetting(s.slug).laneHidden : false;
 			if (laneHidden) {
@@ -2749,13 +2657,90 @@
 			hdr.style.display = '';
 			hdr.style.left = `${hdrLeft * zoom + pan.x}px`;
 			hdr.style.width = `${w * zoom}px`;
-			// 높이 / 글자 크기 inline 설정 제거 — CSS 의 고정값 사용.
 			hdrLeft += w + LANE_GAP;
 		});
 		syncExpandedPos();
 	}
 
-	// ── Cytoscape 초기화 ────────────────────────────────────────
+	function syncLanes() {
+		if (!cy) return;
+		// DEV-334: 레인 수/화면 폭이 바뀌면 최소 zoom 도 따라가야 한다(상태 추가,
+		// 창 크기 변경, 폰 회전). syncLanes 는 그 모든 경우에 호출된다.
+		cy.minZoom(computeMinZoom());
+
+		const cellH = NODE_H + NODE_GAP;
+		const dotR = 1.5;
+		const bb = cy.elements().nonempty() ? cy.elements().boundingBox() : null;
+		const worldHeight = Math.max(
+			container.clientHeight / Math.max(computeMinZoom(), 0.02) + 200,
+			(bb?.y2 ?? 0) + NODE_H + 600,
+			2000
+		);
+
+		// DEV-067: laneHidden 인 lane 의 col 은 display:none + 위치 skip.
+		// DEV-105: collapsed lane 은 좁은 폭으로 표시.
+		let curLeft = 0;
+		gridLanesEl.querySelectorAll<HTMLElement>('.lane-grid-col').forEach((gridCol, i) => {
+			const s = sorted[i];
+			const laneHidden = s ? getHideSetting(s.slug).laneHidden : false;
+			if (laneHidden) {
+				gridCol.style.display = 'none';
+				return;
+			}
+			const w = s ? laneWidth(s.slug) : LANE_W;
+			gridCol.style.display = '';
+			gridCol.style.left = `${curLeft}px`;
+			gridCol.style.width = `${w}px`;
+			gridCol.style.height = `${worldHeight}px`;
+			curLeft += w + LANE_GAP;
+			const dotsEl = gridCol.firstElementChild as HTMLElement | null;
+			if (gridSnap && dotsEl) {
+				const cols = laneCols[i] ?? 2;
+				const cellW = NODE_W + NODE_GAP;
+				const cached = gridBgCache.get(i);
+				if (!cached || cached.cols !== cols) {
+					const firstCxLocal = laneFirstCellX(i, cols) - i * LANE_STRIDE;
+					const svgW = cellW * cols;
+					const svgH = cellH;
+					// DEV-074 fix20: dot 색은 palette.warning. 이전엔 rgba(245,166,35,...)
+					// 다크 전용. theme 변경 시 gridBgCache.clear()로 즉시 다시 그림.
+					const palette = themePalette(currentEffectiveTheme());
+					const dotFill = `color-mix(in srgb, ${palette.warning} 55%, transparent)`;
+					const dots = Array.from({ length: cols }, (_, c) => {
+						const cx = c * cellW + cellW / 2;
+						const cy = cellH / 2;
+						return `<circle cx="${cx}" cy="${cy}" r="${dotR}" fill="${dotFill}"/>`;
+					}).join('');
+					const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${svgW}' height='${svgH}'>${dots}</svg>`;
+					const dataUri = `url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}")`;
+					const bgX = firstCxLocal - cellW / 2;
+					const entry = { cols, dataUri, svgW, svgH, bgX };
+					gridBgCache.set(i, entry);
+					dotsEl.style.display = '';
+					dotsEl.style.backgroundImage = dataUri;
+					dotsEl.style.backgroundSize = `${svgW}px ${svgH}px`;
+					dotsEl.style.backgroundRepeat = 'repeat-y';
+					// 가로 위치도 world 좌표 — 부모 scale 을 그대로 따른다.
+					dotsEl.style.left = `${bgX}px`;
+					dotsEl.style.width = `${svgW}px`;
+					// SVG 첫 dot(center=cellH/2)이 첫 snap row 중심과 일치.
+					dotsEl.style.top = `${LANE_TOP + 16 + NODE_H / 2 - cellH / 2}px`;
+					dotsEl.style.bottom = '0';
+				}
+				dotsEl.style.height = `${worldHeight - (LANE_TOP + 16)}px`;
+			} else if (dotsEl) {
+				dotsEl.style.display = 'none';
+				gridBgCache.delete(i);
+			}
+		});
+		if (worldEl) {
+			worldEl.style.width = `${Math.max(curLeft - LANE_GAP, 1)}px`;
+			worldEl.style.height = `${worldHeight}px`;
+		}
+		syncViewportVisuals();
+	}
+
+	// ── Board model 초기화 ──────────────────────────────────────
 
 	async function init(
 		quests: Quest[],
@@ -2763,8 +2748,6 @@
 		positions: QuestPosition[],
 		dependencies: QuestDependency[]
 	) {
-		// DEV-026: cytoscape 동적 import — board 진입 시점에 fetch.
-		const { default: cytoscape } = await import('cytoscape');
 		// DEV-059: 사용자가 lane 순서 바꾼 결과 (localStorage) 가 있으면 그것 우선,
 		// 없는 status (새로 추가됨) 는 sort_order 기준으로 뒤에 append.
 		const userOrder = loadLaneOrder();
@@ -2814,7 +2797,7 @@
 			laneNextY.set(quest.status_id, Math.max(cur, y + NODE_H + NODE_GAP));
 		});
 		const autoCount = new Map<number, number>();
-		const elements: cytoscape.ElementDefinition[] = [];
+		const elements: BoardElementDefinition[] = [];
 
 		// lane 안의 3개 열 (col 0/1/2) 중심 x — 자동 배치 시 골고루 채워 1열 stacking 방지.
 		const COL_OFFSETS = [
@@ -2839,7 +2822,7 @@
 				autoCount.set(q.status_id, n + 1);
 			}
 			// DEV-067: pos.x 는 absolute (DB positions.x). data.absX 진리원으로
-			// 저장. cytoscape position 은 visual 좌표 — applyLaneVisualCompression
+			// 저장. BoardNode position 은 visual 좌표 — applyLaneVisualCompression
 			// 이 init 끝에서 일관 변환.
 			elements.push({
 				data: {
@@ -2851,7 +2834,6 @@
 					urgencyColor: urgencyColor(q.urgency),
 					urgencyBg: urgencyBgFor(q.urgency, currentEffectiveTheme()),
 					typeColor: q.type_color,
-					nodeBg: makeSvgUrl(q),
 					highlightType: '',
 					active: false,
 					absX: pos.x
@@ -2885,279 +2867,18 @@
 				});
 			});
 
-		cy = cytoscape({
-			container,
+		cy?.destroy();
+		cy = new BoardGraph(
 			elements,
-			style: buildCyStyle(currentEffectiveTheme()),
-			layout: { name: 'preset' },
-			// DEV-334: 하한을 고정값(0.25)으로 두면 좁은 화면에서 전체를 볼 수
-			// 없다 — 레인 하나가 984px 라 상태 6개면 보드 폭이 6,000px 인데
-			// 375px 화면에서 0.25 는 레인 1.5개 분량이다. cytoscape 의 fit()
-			// 도 minZoom 에 걸리므로 "전체 보기" 가 전체를 못 보여줬다.
-			minZoom: computeMinZoom(),
-			maxZoom: 2,
-			// BUG-090: 기본 wheel 줌 비활성 — 트랙패드 two-finger 스크롤까지 줌으로
-			// 잡혀 erratic. 대신 onBoardWheel 에서 pinch=줌 / 스크롤=pan 직접 처리.
-			userZoomingEnabled: false,
-			boxSelectionEnabled: false,
-			// BUG-180: 트랙패드 2손가락 pan/zoom 중 노드가 배경보다 느리게
-			// 따라오는 문제 — textureOnViewport/hideEdgesOnViewport/webgl:true
-			// 전부 시도했으나 무효(화질만 저하되고 지연은 그대로). BUG-144
-			// (2026-07-18, 리눅스)에서 WebKit Inspector Timeline 으로 이미
-			// 실측 — Painting 지배적, 렌더 "방식"을 바꿔도(Canvas2D↔WebGL) 안
-			// 바뀌는 걸 보면 병목이 cytoscape 그리기 파이프라인이 아니라 WebKit
-			// (Safari/WKWebView/WebKitGTK 공통) 이 제스처 입력을 처리/스케줄링
-			// 하는 더 아래 레이어에 있음 — 앱 코드로 손댈 수 있는 범위 밖.
-			// 자세한 시도 이력은 커밋 b672033 + BUG-180 퀘스트 참조.
-			// BUG-057: HiDPI 캔버스. 기본 'auto' 가 WebView2 에서 1 로 떨어지는
-			// 사례 있어 명시. 노드 SVG 도 dpr 배 사이즈로 발급 (makeSvgUrl) →
-			// 보더 / 그림자 / 텍스트 모두 또렷. fix2: 하한 2 (makeSvgUrl 과 동일
-			// 이유 — dpr=1 보고 시에도 캔버스 보더/엣지가 OS 확대로 번지지 않게).
-			pixelRatio: Math.max(2, Math.min(3, window.devicePixelRatio || 1))
-		});
-
-		cy.on('pan zoom', () => {
-			syncLanes();
-			scheduleViewportSave(); // DEV-058
-		});
-
-		// BUG-090: 트랙패드 pinch / Ctrl+wheel = 줌, 그 외 스크롤 = pan.
-		// passive:false — preventDefault 로 페이지 스크롤/브라우저 줌 차단.
-		container.addEventListener('wheel', onBoardWheel, { passive: false });
-
-		// DEV-208: 터치스크린 핀치 = 줌. passive:false — 두 손가락 제스처의
-		// 네이티브(Page Scale) 줌/스크롤을 preventDefault 로 차단.
-		container.addEventListener('touchstart', onBoardTouchStart, { passive: false });
-		container.addEventListener('touchmove', onBoardTouchMove, { passive: false });
-		container.addEventListener('touchend', onBoardTouchEnd);
-		container.addEventListener('touchcancel', onBoardTouchEnd);
-
-		// ── 드래그 이벤트 (다중선택 배치 처리) ─────────────────────
-
-		cy.on('grabon', 'node[questId]', (e) => {
-			const node = e.target as NodeSingular;
-			const questId = node.data('questId') as number;
-			// grabbed 노드 + 현재 selected 노드 전부를 시작 상태로 기록.
-			// (Cytoscape의 ctrl-click 토글, single-mode 자동 unselect 등으로
-			//  selected 상태가 grab 시점에 변할 수 있으므로 여기서 한 번에 캡처.)
-			dragStartMap.set(questId, { ...node.position(), statusId: node.data('statusId') as number });
-			cy!.nodes('[questId]:selected').forEach((n) => {
-				const qid = n.data('questId') as number;
-				if (dragStartMap.has(qid)) return;
-				dragStartMap.set(qid, { ...n.position(), statusId: n.data('statusId') as number });
-			});
-		});
-
-		// DEV-105 fix11: 드래그 중인 노드의 현재 visual 위치를 기반으로 놓일 lane
-		// 미리보기 — slug 설정 → CSS 가 `.lane-col.drag-target` 으로 강조.
-		cy.on('drag', 'node[questId]', (e) => {
-			if (dragStartMap.size === 0) return;
-			const n = e.target as NodeSingular;
-			const pos = n.position();
-			const visIdx = visibleLaneIdxAtVisualX(pos.x);
-			const sid = statusIdAtVisibleIdx(visIdx);
-			if (sid === null) return;
-			const s = sorted.find((x) => x.id === sid);
-			const slug = s?.slug ?? null;
-			if (slug !== dragHighlightSlug) dragHighlightSlug = slug;
-		});
-
-		cy.on('dragfree', 'node[questId]', () => {
-			// dragStartMap은 단일 source of truth.
-			// 첫 dragfree 이벤트 때 모든 항목을 일괄 처리하고 비운다.
-			// 이후 co-dragged 노드의 dragfree 이벤트가 추가로 와도 size===0이라 무시.
-			if (dragStartMap.size === 0) return;
-			// DEV-105 fix11: 드래그 끝 — 하이라이트 해제.
-			dragHighlightSlug = null;
-
-			for (const [qid, fromState] of dragStartMap) {
-				const n = cy!.getElementById(`q-${qid}`) as NodeSingular;
-				if (n.length === 0) continue;
-				const pos = n.position();
-				// DEV-067: visual idx → status_id → absolute lane idx.
-				// pos.x 는 visual 좌표 — visible lane 기준 idx 가 사용자 시각의 lane.
-				// DEV-105 fix10: 가변 폭 collapsed lane 인식.
-				const visMax = Math.max(0, visibleLaneCount() - 1);
-				const visIdx = Math.max(0, Math.min(visibleLaneIdxAtVisualX(pos.x), visMax));
-				const targetStatusId = statusIdAtVisibleIdx(visIdx) ?? fromState.statusId;
-				const li = laneOf.get(targetStatusId) ?? 0;
-				pendingDragBatch.push({
-					node: n,
-					questId: qid,
-					fromPos: { x: fromState.x, y: fromState.y },
-					fromStatus: fromState.statusId,
-					toPos: { ...pos },
-					toLaneIdx: li
-				});
-				// DEV-115: 방금 움직인 노드 위로. 단조 증가 z-index 로 최근성 보존.
-				recentMoveZ += 1;
-				n.style('z-index', recentMoveZ);
+			() => ({ width: container.clientWidth, height: container.clientHeight }),
+			scheduleDomPositionSync,
+			scheduleDomGraphSync,
+			() => {
+				syncViewportVisuals();
+				scheduleViewportSave();
 			}
-			dragStartMap.clear();
-
-			// 이번 tick에 발생한 모든 dragfree가 모이면 한 번에 처리
-			if (pendingDragTimer !== null) clearTimeout(pendingDragTimer);
-			pendingDragTimer = setTimeout(() => {
-				pendingDragTimer = null;
-				processPendingDrags();
-			}, 0);
-		});
-
-		async function processPendingDrags() {
-			const batch = pendingDragBatch.splice(0);
-			if (batch.length === 0) return;
-
-			// 레인이 바뀐 항목들을 레인 인덱스별로 그룹화
-			const laneChanges = new Map<number, PendingDragItem[]>();
-			for (const item of batch) {
-				if (sorted[item.toLaneIdx].id !== item.fromStatus) {
-					const existing = laneChanges.get(item.toLaneIdx) ?? [];
-					existing.push(item);
-					laneChanges.set(item.toLaneIdx, existing);
-				}
-			}
-
-			// 레인 변경 그룹마다 한 번의 확인 다이얼로그 (인앱)
-			const confirmedLanes = new Set<number>();
-			const rejectedLanes = new Set<number>();
-			for (const [laneIdx, items] of laneChanges) {
-				const newStatus = sorted[laneIdx];
-				const names = items.map((it) => it.node.data('questSlug')).join(', ');
-				const msg =
-					items.length === 1
-						? `${names} → "${statusLabel(newStatus, $locale)}"${t('board.confirmChangeSuffix', $locale)}`
-						: `${items.length}${t('board.confirmChangeCountMid', $locale)}"${statusLabel(newStatus, $locale)}"${t('board.confirmChangeSuffix', $locale)}\n(${names})`;
-				if (await showConfirm(msg)) {
-					confirmedLanes.add(laneIdx);
-				} else {
-					rejectedLanes.add(laneIdx);
-				}
-			}
-
-			// 각 항목 처리
-			const historyItems: BatchMove['items'] = [];
-			const posUpdates: Promise<unknown>[] = [];
-
-			for (const item of batch) {
-				const { node, questId, fromPos, fromStatus, toPos, toLaneIdx } = item;
-				const newStatus = sorted[toLaneIdx];
-				const laneChanged = newStatus.id !== fromStatus;
-
-				if (laneChanged && rejectedLanes.has(toLaneIdx)) {
-					// 거부 → 드래그 시작 위치로 정확히 복원
-					node.animate({ position: { x: fromPos.x, y: fromPos.y }, duration: 150 });
-					continue;
-				}
-
-				if (laneChanged && confirmedLanes.has(toLaneIdx)) {
-					try {
-						await questsApi.changeStatus(questId, { status_slug: newStatus.slug });
-						node.data('statusId', newStatus.id);
-						applyStatusChange(questId, newStatus.id);
-					} catch (e) {
-						// API 실패 (예: DEV-142 미해결 토론으로 완료 차단) → 시작 위치로
-						// 복원 + 사유 toast (이전엔 무경고로 되돌리기만 해 혼란).
-						node.animate({ position: { x: fromPos.x, y: fromPos.y }, duration: 150 });
-						showToast(
-							e instanceof Error ? e.message : t('common.statusChangeFailed', get(locale)),
-							'error'
-						);
-						continue;
-					}
-				}
-
-				// 그리드 스냅 (옵션)
-				let snappedX = toPos.x;
-				let snappedY = toPos.y;
-				if (gridSnap) {
-					const s = snapToGrid(toPos.x, toPos.y);
-					snappedX = s.x;
-					snappedY = s.y;
-				}
-				// DEV-067: clamp 는 visual 좌표 기준 (cytoscape position 이 visual).
-				// laneLeft = visibleLaneLeftOfStatus(targetStatusId).
-				const finalStatusId =
-					laneChanged && confirmedLanes.has(toLaneIdx) ? newStatus.id : fromStatus;
-				const laneLeftVis = visibleLaneLeftOfStatus(finalStatusId);
-				const minX = laneLeftVis + LANE_PAD_X + NODE_W / 2;
-				const maxX = laneLeftVis + LANE_W - LANE_PAD_X - NODE_W / 2;
-				const clampedX = Math.max(minX, Math.min(maxX, snappedX));
-				const finalY = snappedY;
-				// BUG-109: applyStatusChange() 가 방금 호출한 applyLaneVisualCompression()
-				// 이 이 node 의 absX(아직 새 값으로 안 바뀐 상태)로 전체 노드 위치를
-				// 재계산해 이전 레인 근처로 되돌려놓는다 — gridSnap 이 켜져있으면
-				// clampedX !== toPos.x 라 아래 조건이 걸려 덮어써지지만, 꺼져있으면
-				// 드롭 위치가 이미 클램프 범위 안이라 조건이 걸리지 않아 되돌아간
-				// 위치가 그대로 남는 버그였음. lane 이 바뀐 경우엔 무조건 재적용.
-				if (laneChanged || clampedX !== toPos.x || finalY !== toPos.y) {
-					node.position({ x: clampedX, y: finalY });
-				}
-
-				const moved =
-					fromPos.x !== clampedX || fromPos.y !== finalY || fromStatus !== finalStatusId;
-				if (moved) {
-					// DB save 는 absolute X. node.data.absX 도 동기화.
-					const absX = visualToAbsX(clampedX, finalStatusId);
-					node.data('absX', absX);
-					historyItems.push({
-						questId,
-						from: { x: fromPos.x, y: fromPos.y, statusId: fromStatus },
-						to: { x: clampedX, y: finalY, statusId: finalStatusId }
-					});
-					posUpdates.push(
-						questsApi.updatePosition(questId, { x: absX, y: finalY }).catch(() => {})
-					);
-				}
-			}
-
-			if (historyItems.length > 0) {
-				const record: HistoryRecord =
-					historyItems.length === 1
-						? {
-								type: 'single',
-								questId: historyItems[0].questId,
-								from: historyItems[0].from,
-								to: historyItems[0].to
-							}
-						: { type: 'batch', items: historyItems };
-				undoStack.push(record);
-				if (undoStack.length > MAX_HISTORY) undoStack.shift();
-				redoStack.length = 0;
-			}
-
-			await Promise.all(posUpdates);
-			syncExpandedPos();
-		}
-
-		// Ctrl 없는 클릭으로 인한 선택은 즉시 해제 (mousedown → select 순서로 발생)
-		// Ctrl+클릭은 이동용 선택이므로 허용.
-		// suppressUnselect=true 일 때는 프로그램적 select() 호출이므로 그대로 둔다.
-		cy.on('select', 'node[questId]', (e) => {
-			if (suppressUnselect) return;
-			if (!ctrlHeld) (e.target as NodeSingular).unselect();
-		});
-
-		// 일반 클릭 → 확장 카드 열기
-		cy.on('tap', 'node[questId]', (e) => {
-			const node = e.target as NodeSingular;
-			const quest = allQuests.find((q) => q.id === node.data('questId'));
-			if (!quest) return;
-			cy!.nodes('[questId]').data('active', false).data('highlightType', '');
-			cy!.edges().data('dimmed', false);
-			node.data('active', true);
-			expandedQuest = quest;
-			activeHighlights = new Set();
-			cardPinned = false;
-			cardDrag = null;
-			syncExpandedPos();
-		});
-
-		cy.on('tap', (e) => {
-			if (e.target === cy) {
-				cy!.elements().unselect();
-				closeExpanded();
-			}
-		});
+		);
+		cy.minZoom(computeMinZoom());
 
 		// DEV-058: 저장된 viewport 가 있으면 복원, 없으면 fit().
 		const savedViewport = loadViewport();
@@ -3176,15 +2897,137 @@
 		// 일관 재계산. syncLanes 도 visible 압축 반영.
 		applyLaneVisualCompression();
 		syncLanes();
+		syncDomGraphNow();
 		// DEV-135 fix: 렌더 완료(노드 생성) 직후 현재 필터로 dim 적용 —
 		// effect 만으론 cy 준비 전에 돌고 끝나 List→Board 전환 시 dim 누락됨.
 		applyFilterDim();
 	}
 </script>
 
-<div class="board-wrap">
+<div class="board-wrap" bind:this={boardWrapEl}>
+	<!-- lane 단색 배경은 세로 pan과 무관하게 viewport 높이를 항상 채운다. -->
 	<div class="lanes-bg" bind:this={lanesEl}></div>
+	<!-- DEV-317: lane grid + SVG edge + DOM node가 이 transform 하나를 공유한다. -->
+	<div class="board-world-viewport" bind:this={worldViewportEl}>
+		<div class="board-world" bind:this={worldEl}>
+			<div class="lane-grid-layer" bind:this={gridLanesEl}></div>
+			<svg class="edge-layer" width="100%" height="100%">
+				<defs>
+					<marker
+						id="arrow-pre"
+						viewBox="0 0 10 10"
+						refX="9"
+						refY="5"
+						markerWidth="7"
+						markerHeight="7"
+						orient="auto-start-reverse"
+					>
+						<path d="M 0 0 L 10 5 L 0 10 z" fill="var(--edge-pre)" />
+					</marker>
+					<marker
+						id="arrow-sub"
+						viewBox="0 0 10 10"
+						refX="9"
+						refY="5"
+						markerWidth="7"
+						markerHeight="7"
+						orient="auto-start-reverse"
+					>
+						<path d="M 1 1 L 9 5 L 1 9" fill="none" stroke="var(--text-faint)" stroke-width="2" />
+					</marker>
+				</defs>
+				{#each domEdges as edge (edge.id)}
+					{#if !edge.hidden}
+						<path
+							class="board-edge {edge.etype}"
+							class:dimmed={edge.dimmed}
+							class:filter-dim={edge.fdim}
+							d={edge.path}
+							marker-end={edge.etype === 'pre' ? 'url(#arrow-pre)' : 'url(#arrow-sub)'}
+						/>
+					{/if}
+				{/each}
+			</svg>
+			<div class="node-layer">
+				{#each domNodes as node (node.id)}
+					{#if !node.hidden}
+						{@const q = node.quest}
+						{@const due = effectiveQuestDue(q)}
+						{@const unresolved = q.discussion_unresolved ?? 0}
+						{@const resolved = q.discussion_resolved ?? 0}
+						<div
+							class="board-node {node.highlightType ? `hl-${node.highlightType}` : ''}"
+							class:active={node.active}
+							class:selected={node.selected}
+							class:filter-dim={node.fdim}
+							class:flash={node.flash}
+							style:left="{node.x - NODE_W / 2}px"
+							style:top="{node.y - NODE_H / 2}px"
+							style:z-index={node.zIndex}
+							style:--node-border={node.urgencyColor}
+							style:--node-active-bg={node.urgencyBg}
+							role="button"
+							tabindex="0"
+							data-node-id={node.id}
+							aria-label={`${q.quest_id}: ${q.title}`}
+							onmousedown={(event) => onNodeMouseDown(event, node.id)}
+							onkeydown={(event) => {
+								if (event.key === 'Enter' || event.key === ' ') {
+									event.preventDefault();
+									if (cy) openNode(cy.getElementById(`q-${node.id}`));
+								}
+							}}
+						>
+							<div class="node-topline">
+								<span class="node-pill mono" style:--pill-color={q.type_color}>{q.quest_id}</span>
+								<span class="node-pill" style:--pill-color={urgencyColor(q.urgency)}
+									>{urgencyLabel(q.urgency, $locale)}</span
+								>
+								{#if urgencyOutOfRange(q.urgency)}
+									<span
+										class="urgency-warning"
+										title={`${t('board.urgencyClampPre', $locale)}${q.urgency}${t('board.urgencyClampPost', $locale)}`}
+										>⚠</span
+									>
+								{/if}
+								<span class="node-metrics">
+									{#if unresolved > 0}
+										<span class="discussion-count unresolved">✗ {unresolved}</span>
+									{:else if resolved > 0}
+										<span class="discussion-count resolved">✓ {resolved}</span>
+									{/if}
+									{#if (q.comment_count ?? 0) > 0}
+										<span class="comment-count"
+											><Icon name="comment" size={10} />{q.comment_count}</span
+										>
+									{/if}
+								</span>
+							</div>
+							<div class="node-title" class:with-due={!!due.date}>{q.title}</div>
+							{#if due.date}
+								<div class="node-due {dueState(due.date)}">
+									<Icon name={due.source === 'campaign' ? 'campaign' : 'clock'} size={10} />
+									<span>{due.date}</span>
+								</div>
+							{/if}
+						</div>
+					{/if}
+				{/each}
+			</div>
+		</div>
+	</div>
+	<!-- 노드 사이의 빈 영역에서 pan / box selection 을 받는 입력면. -->
 	<div class="board" bind:this={container}></div>
+	{#if boxDrag}
+		<div
+			class="box-selection"
+			style:left="{boxDrag.left}px"
+			style:top="{boxDrag.top}px"
+			style:width="{boxDrag.width}px"
+			style:height="{boxDrag.height}px"
+			style:--box-color={boxDrag.color}
+		></div>
+	{/if}
 	<div class="lane-hdrs" bind:this={headersEl}></div>
 
 	<!-- 노드 확장 카드 (z:6, 노드 위에 플로팅) -->
@@ -3391,7 +3234,7 @@
 					onclick={() => {
 						if (!cy) return;
 						if (arrangeMode === 'group') {
-							arrangeNodesGrouped(cy.nodes('[questId]').toArray() as NodeSingular[], globalCols);
+							arrangeNodesGrouped(cy.nodes('[questId]').toArray() as BoardNode[], globalCols);
 						} else {
 							arrangeNodes(null, globalCols);
 						}
@@ -3583,9 +3426,32 @@
 		height: calc(100vh - var(--nav-h, 3.25rem) - var(--titlebar-h, 0px));
 		background: var(--bg);
 		overflow: hidden;
+		touch-action: none;
+	}
+	.board-world-viewport {
+		position: absolute;
+		top: 0;
+		left: 0;
+		z-index: 2;
+		transform-origin: 0 0;
+		pointer-events: none;
+	}
+	.board-world {
+		position: absolute;
+		top: 0;
+		left: 0;
+		transform-origin: 0 0;
+		pointer-events: none;
 	}
 
 	.lanes-bg {
+		position: absolute;
+		inset: 0;
+		z-index: 0;
+		pointer-events: none;
+		overflow: hidden;
+	}
+	.lane-grid-layer {
 		position: absolute;
 		inset: 0;
 		z-index: 0;
@@ -3596,16 +3462,201 @@
 		inset: 0;
 		z-index: 1;
 		background: transparent;
-		/* DEV-208: 브라우저/WebView2 네이티브 터치 제스처(Page Scale 줌·스크롤)
-		   차단 — 터치는 전부 커스텀 핸들러/cytoscape 가 처리. */
+		/* DEV-208/317: 네이티브 Page Scale 대신 보드 viewport가 직접 처리. */
 		touch-action: none;
+	}
+	.box-selection {
+		position: absolute;
+		z-index: 100;
+		box-sizing: border-box;
+		border: 1.5px dashed var(--box-color);
+		background: color-mix(in srgb, var(--box-color) 10%, transparent);
+		pointer-events: none;
 	}
 	.lane-hdrs {
 		position: absolute;
 		inset: 0;
-		z-index: 2;
+		z-index: 3;
 		pointer-events: none;
 		overflow: hidden;
+	}
+
+	.edge-layer,
+	.node-layer {
+		position: absolute;
+		inset: 0;
+		pointer-events: none;
+	}
+	.edge-layer {
+		z-index: 1;
+		overflow: visible;
+	}
+	.node-layer {
+		z-index: 2;
+	}
+	.board-edge {
+		fill: none;
+		transition: opacity 0.12s;
+	}
+	.board-edge.pre {
+		stroke: var(--edge-pre);
+		stroke-width: 2px;
+	}
+	.board-edge.sub {
+		stroke: var(--text-faint);
+		stroke-width: 1.5px;
+		stroke-dasharray: 6 3;
+	}
+	.board-edge.dimmed,
+	.board-edge.filter-dim {
+		opacity: 0.07;
+	}
+	.board-node {
+		position: absolute;
+		width: 284px;
+		height: 80px;
+		box-sizing: border-box;
+		border: 2px solid var(--node-border);
+		border-radius: 12px;
+		background: color-mix(in srgb, var(--bg) 92%, transparent);
+		overflow: hidden;
+		pointer-events: auto;
+		cursor: grab;
+		user-select: none;
+		transition:
+			opacity 0.12s,
+			border-color 0.12s,
+			box-shadow 0.12s,
+			background 0.12s;
+	}
+	.board-node:active {
+		cursor: grabbing;
+	}
+	.node-topline {
+		position: absolute;
+		top: 7px;
+		left: 8px;
+		right: 8px;
+		display: flex;
+		align-items: center;
+		gap: 5px;
+		height: 18px;
+		white-space: nowrap;
+	}
+	.node-pill,
+	.discussion-count {
+		display: inline-flex;
+		align-items: center;
+		height: 17px;
+		padding: 0 7px;
+		box-sizing: border-box;
+		border: 1px solid color-mix(in srgb, var(--pill-color) 55%, transparent);
+		border-radius: 9px;
+		background: color-mix(in srgb, var(--pill-color) 16%, transparent);
+		color: var(--pill-color);
+		font-size: 10px;
+		font-weight: 500;
+		line-height: 1;
+	}
+	.node-pill.mono {
+		font-family: 'SFMono-Regular', Consolas, monospace;
+		font-weight: 600;
+	}
+	.urgency-warning {
+		color: var(--danger);
+		font-size: 12px;
+		font-weight: 700;
+	}
+	.node-metrics {
+		margin-left: auto;
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		color: var(--text-muted);
+		font-size: 10px;
+	}
+	.discussion-count {
+		--pill-color: var(--success);
+		font-weight: 600;
+	}
+	.discussion-count.unresolved {
+		--pill-color: var(--danger);
+	}
+	.comment-count,
+	.node-due {
+		display: inline-flex;
+		align-items: center;
+		gap: 3px;
+	}
+	.node-title {
+		position: absolute;
+		top: 33px;
+		left: 9px;
+		right: 9px;
+		display: -webkit-box;
+		overflow: hidden;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		color: var(--text);
+		font-size: 12px;
+		line-height: 15px;
+		overflow-wrap: anywhere;
+	}
+	.node-title.with-due {
+		bottom: 17px;
+	}
+	.node-due {
+		position: absolute;
+		right: 8px;
+		bottom: 6px;
+		color: var(--text-muted);
+		font-size: 10px;
+		font-weight: 500;
+	}
+	.node-due.soon {
+		color: var(--orange);
+	}
+	.node-due.overdue {
+		color: var(--danger);
+	}
+	.board-node.active {
+		border-width: 3px;
+		background: var(--node-active-bg);
+		box-shadow: 0 0 18px var(--node-border);
+	}
+	.board-node.hl-pre {
+		border: 3px solid var(--hl-pre);
+		background: var(--hl-pre-bg);
+		box-shadow: 0 0 12px var(--hl-pre);
+	}
+	.board-node.hl-sub {
+		border: 3px solid var(--hl-sub);
+		background: var(--hl-sub-bg);
+		box-shadow: 0 0 12px var(--hl-sub);
+	}
+	.board-node.hl-next {
+		border: 3px solid var(--hl-next);
+		background: var(--hl-next-bg);
+		box-shadow: 0 0 12px var(--hl-next);
+	}
+	.board-node.hl-parent {
+		border: 3px solid var(--success);
+		background: var(--hl-parent-bg);
+		box-shadow: 0 0 12px var(--success);
+	}
+	.board-node.hl-dim,
+	.board-node.filter-dim {
+		opacity: 0.12;
+	}
+	.board-node.selected {
+		border: 3px solid var(--accent);
+		background: var(--selected-bg);
+		box-shadow: 0 0 14px var(--accent);
+	}
+	.board-node.flash {
+		border: 5px solid var(--accent-secondary);
+		box-shadow: 0 0 28px var(--accent-secondary);
 	}
 
 	:global(.lane-col) {
@@ -3621,23 +3672,24 @@
 			box-shadow 0.12s;
 		overflow: hidden;
 	}
-	/* DEV-105 fix13/fix14: grid snap dot 표시. background-position 변경은 매
-	   frame paint → 느림. 자식 div 의 transform: translateY (modulo cellH) 로
-	   전환 → GPU composite + pattern 주기성으로 정확한 정렬.
-	   top / left / width / bottom 은 JS 에서 zoom 기반 동적 설정 (cellHPx 만큼
-	   위로). */
+	:global(.lane-grid-col) {
+		position: absolute;
+		top: 0;
+		pointer-events: none;
+	}
+	/* DEV-317: grid snap dot 도 world 좌표에 고정. pan/zoom 중 이 요소 자체는
+	   갱신하지 않고 board-world 부모 transform 만 따른다. */
 	:global(.lane-dots) {
 		position: absolute;
 		pointer-events: none;
 		background-repeat: repeat-y;
-		will-change: transform;
 	}
 	/* DEV-105 fix11: 드래그 중 노드가 놓일 lane 강조. */
 	:global(.lane-col.drag-target) {
 		background: color-mix(in srgb, var(--accent) 14%, var(--bg-elevated));
 		box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
 	}
-	/* DEV-101 fix8: 헤더 height 는 cytoscape `LANE_TOP=52` 와 정렬 위해 px 고정
+	/* DEV-101 fix8: 헤더 height 는 보드 `LANE_TOP=52` 와 정렬 위해 px 고정
 	   (스케일하면 노드와 겹침). 내부 padding/gap/font 만 rem 으로 — UI 크기에
 	   비례해 컨텐츠가 자연스럽게 자람 (max 2x 까지 38px 안에 fit). */
 	:global(.lane-hdr) {
@@ -3660,7 +3712,10 @@
 		display: none !important;
 	}
 	:global(.lane-hdr.collapsed) {
-		padding: 0 0.25rem;
+		/* 화면 맞춤으로 zoom 이 작아지면 collapsed 폭(40px * zoom)이 좌우
+		   padding 합보다 작아져 label content box가 0px가 될 수 있다. 이때
+		   다시 펼칠 hit-area 자체가 사라지므로 padding은 label 안으로 옮긴다. */
+		padding: 0;
 		justify-content: center;
 	}
 	:global(.lane-label) {
@@ -3686,6 +3741,12 @@
 	   DEV-105 fix4: max-height 60px 가 lane-hdr (38px) 보다 커서 긴 이름이 위로
 	   삐져나가 잘림. 헤더 안에 들어가도록 28px 로 축소 + ellipsis. */
 	:global(.lane-label.collapsed) {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		min-height: 100%;
+		box-sizing: border-box;
 		writing-mode: vertical-rl;
 		text-orientation: mixed;
 		white-space: nowrap;
@@ -3693,7 +3754,7 @@
 		   align-items:center 무시하고 위에 붙여, 긴 이름은 아래로 자연스럽게
 		   넘어가게 (lane-hdrs 가 board 전체를 덮어 아래 overflow 는 보임). */
 		align-self: flex-start;
-		padding-top: 4px;
+		padding: 4px 0 0;
 	}
 	/* DEV-105 fix5: 레인별 설정 토글 ⚙ — 항상 보임, 작은 라벨 옆 버튼. */
 	:global(.lane-settings-btn) {

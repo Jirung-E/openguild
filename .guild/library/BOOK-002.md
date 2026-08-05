@@ -3,7 +3,7 @@ book_id = "BOOK-002"
 title = "Quest Board 2손가락 트랙패드 제스처 지연 — 조사 전체 기록"
 path = ""
 created_at = "2026-08-01T22:37:23+09:00"
-updated_at = "2026-08-01T22:37:23+09:00"
+updated_at = "2026-08-05T10:00:17+09:00"
 deleted = false
 +++
 
@@ -122,3 +122,324 @@ DOM)은 즉시 움직이는데 **노드(카드)는 한 박자 늦게 따라옴**
   렌더링 성능 한계, textureOnViewport 검토 후 기각)에 이미 도달했었으나
   퀘스트 요약에는 안 남고 커밋 본문에만 있어 이번 조사 초반에 놓쳤음.
   향후 유사 조사 시 `git log` 커밋 본문까지 검색할 것.
+
+## 후속 재검토 — Canvas 제거와 DOM/SVG 단일 월드 설계 (2026-08-05)
+
+[[BUG-180]] / [[DEV-316]] / [[DEV-317]] 기록과 현재 코드를 다시 검토하고
+사용자와 증상을 단계별로 재정리했다.
+
+### 원인 설명의 정정·구체화
+
+현재 보드는 하나처럼 보이지만 두 렌더링 계층이 섞여 있다.
+
+```text
+Quest Board
+├─ 레인/헤더/그리드: DOM/CSS
+└─ 노드/관계선: Cytoscape Canvas
+```
+
+wheel 입력으로 pan/zoom 값이 바뀌면 DOM 레인은 기존 픽셀의 위치만 CSS로
+합성할 수 있지만, Cytoscape는 고정 크기 Canvas 내부 카메라를 바꾸고 노드와
+관계선을 새 프레임으로 다시 그려 화면에 제출해야 한다. WebKit의 두 손가락
+scroll gesture 중 이 새 Canvas 프레임의 repaint 또는 화면 합성 반영이 늦어져
+새 위치의 DOM 레인과 이전 Canvas 프레임의 노드가 잠시 함께 보이는 것이
+디싱크의 핵심으로 판단된다.
+
+따라서 "제스처 중 Canvas가 아예 다시 그려지지 않는다"까지는 확정할 수 없다.
+논리 상태, Canvas backing frame 생성, 최종 compositor 표시 중 정확히 어느
+경계에서 지연되는지는 미확정이다. 다만 `cy.png()`가 새 논리 상태를 정확히
+담고, Canvas2D와 WebGL에서 동일하며, CSS transform으로 기존 Canvas surface
+자체를 움직였을 때 제스처 중 버벅임이 사라졌다는 실기 결과는 "새 Canvas
+프레임의 화면 반영 경로"가 문제라는 설명과 일치한다.
+
+### 현재 최우선 해결 방향
+
+레인·노드·관계선을 같은 렌더링 방식과 월드 좌표계로 통일한다.
+
+```text
+board viewport
+└─ board-world              ← pan/zoom 시 이 부모 transform 하나만 갱신
+   ├─ DOM lane layer
+   ├─ SVG edge layer
+   └─ DOM quest-card layer
+```
+
+- 노드는 absolute-positioned Svelte/HTML 카드로 렌더하고 `left/top`은 월드
+  좌표로 유지한다.
+- 관계선은 같은 월드 좌표계의 SVG `<path>`로 렌더한다.
+- pan/zoom마다 노드 각각의 style이나 SVG path를 갱신하지 않고
+  `board-world`의 `translate3d(...) scale(...)`만 한 번 변경한다.
+- 카드 드래그/자동 배치/상태 변경 때만 카드 좌표와 연결된 path를 갱신한다.
+- 레인·노드·관계선이 같은 부모 transform을 공유하므로 서로 다른 시각
+  프레임으로 어긋날 수 없고, 제스처 중 Canvas repaint/commit 경로도 제거된다.
+
+기존 [[DEV-317]] 본문의 "pan/zoom 이벤트마다 각 DOM 노드 transform 갱신"은
+O(N) style write가 되므로 폐기하고, 부모 transform 1회 원칙으로 수정한다.
+
+### 구현 선택 — 외부 노드 에디터보다 기존 Svelte UI 재사용 우선
+
+Svelte Flow는 DOM custom node, SVG edge, pan/zoom, 드래그, 박스/다중 선택,
+visible-only rendering을 제공해 기술적으로 유력한 대안이다. 그러나 이번
+보드는 범용 flow editor보다 프로젝트 전용 보드 성격이 강하다.
+
+- 기존 Quest 카드/확장 팝업/버튼/배지/테마/i18n 구현을 그대로 활용해야 한다.
+- 레인 접기·숨김, grid snap, 상태 변경 확인, 저장 좌표 변환, highlight/dim,
+  undo/redo 등 프로젝트 고유 동작이 이미 앱 코드에 깊게 구현돼 있다.
+- 범용 라이브러리에 이 동작들을 맞추면 기존 Cytoscape 의존을 다른 렌더러
+  의존으로 교체하면서 adapter와 상태 동기화 계층을 새로 만들 가능성이 높다.
+- 현재 Cytoscape 레이아웃도 자동 그래프 레이아웃이 아니라 `preset`이며,
+  좌표·레인·상호작용의 상당 부분을 앱이 이미 직접 관리한다.
+
+따라서 **운영 구현은 기존 Svelte 컴포넌트와 보드 로직을 재사용하는 직접
+DOM/SVG renderer를 우선**한다. Svelte Flow는 직접 구현 전에 별도 POC로
+성능/행동을 비교하거나, 직접 구현의 입력·선택 로직이 예상보다 커질 때
+재검토하는 후보로 남긴다.
+
+### 대안의 우선순위
+
+1. 기존 Svelte 카드/팝업/버튼을 재사용한 직접 DOM node + SVG edge renderer.
+2. 필요하면 D3 Zoom 같은 작은 도구만 pan/zoom 수학에 제한적으로 사용.
+3. Svelte Flow는 비교 POC 또는 직접 구현 복잡도가 과도할 때 검토.
+4. SVG 단일 renderer는 텍스트 줄바꿈·버튼·접근성·Safari `foreignObject`
+   위험 때문에 우선하지 않는다.
+5. 네이티브 overflow 스크롤이나 Tauri native wgpu surface는 DOM/SVG 방식의
+   실기 결과가 불충분할 때 후속 대안으로 남긴다.
+
+### POC 검증 기준
+
+- Safari/WKWebView 두 손가락 pan/zoom에서 레인·카드·관계선이 같은 프레임으로
+  움직일 것.
+- 프레임당 시각 갱신은 부모 transform 1회일 것.
+- 50/200/500개 카드에서 FPS·메인 스레드·메모리를 측정할 것.
+- 카드별 `will-change`나 개별 합성 레이어 승격은 피하고, 큰 월드 전체가
+  과도한 backing layer가 되는지 Web Inspector Layers에서 확인할 것.
+- 기존 팝업/버튼, 단일·다중 드래그, 박스 선택, grid snap, 상태 변경,
+  edge highlight, viewport 저장/복원을 회귀 항목으로 둘 것.
+
+## DEV-317 구현 완료 — Canvas 없는 직접 DOM/SVG 보드 (2026-08-05)
+
+위 설계를 실제 구현으로 전환했다. 최종 구조에는 Quest Board용 Cytoscape가
+남아 있지 않다.
+
+```text
+board viewport
+└─ board-world                 ← 제스처 중 이 transform만 변경
+   ├─ DOM lane/grid
+   ├─ SVG relationship paths
+   └─ DOM quest cards
+```
+
+`BoardGraph`는 renderer가 아니라 위치, 선택, viewport, collection 연산만 보존한
+앱 전용 상태 모델이다. mouse/touch drag, wheel pan/zoom, pinch, Ctrl/Meta 선택,
+박스 선택은 컴포넌트가 직접 처리한다. 노드 drag와 자동 배치처럼 월드 좌표가
+실제로 바뀔 때만 해당 카드와 연결 path를 rAF로 갱신한다. pan/zoom은 카드 수와
+무관하게 부모 transform 한 번이다.
+
+### 검증 결과
+
+- self guild에서 DOM card 546개, SVG edge 183개가 렌더됐고 보드 내부 Canvas는
+  0개였다.
+- mouse drag pan, trackpad형 wheel pan, Ctrl+wheel zoom, popup, Ctrl/Meta 선택이
+  실제 브라우저에서 동작했고 console warning/error는 0건이었다.
+- 500-node 테스트에서 pan+zoom은 node position/graph 갱신을 전혀 유발하지 않고
+  viewport callback만 호출했다.
+- frontend 365 tests, Rust workspace 709 tests, svelte-check, production build,
+  theme token 검사가 통과했다.
+
+### 의존성과 메모리 판단
+
+`cytoscape`와 `@types/cytoscape`는 직접 의존성에서 제거했다. `npm ls`에 남는
+Cytoscape는 Markdown 다이어그램용 Mermaid의 전이 의존성이라 Quest Board와는
+무관하다.
+
+Canvas 한 장보다 DOM 546개와 SVG path 183개의 최초 mount/style/layout 메모리는
+더 클 수 있다. 대신 이전의 노드별 고해상도 SVG data image/raster decode와
+Cytoscape Canvas backing store를 보드에서 없앴고, 카드별 `will-change`도 쓰지
+않는다. 핵심 제스처 경로는 전체 노드 재렌더가 아닌 부모 합성 1회라 이번 프레임
+드롭 원인에는 직접 대응한다. 수천 개 노드에서 문제가 생길 때만 overscan 가상화를
+추가하되, 제스처 중 mount/unmount는 하지 않는 것이 원칙이다.
+
+남은 완료 조건은 macOS release 앱/Safari의 실제 두 손가락 트랙패드 실기와 전체
+drag/drop·snap·undo/redo 회귀 확인이다. 구현 퀘스트 [[DEV-317]]은 그 확인을 위해
+Testing 상태로 둔다.
+
+## 2026-08-05 추가 검증 — native WKWebView / 격리 UI 회귀
+
+현재 소스로 debug `openguild-gui`를 다시 빌드하고 실제 저장소 경로를 넘겨
+Tauri의 guild launch 경로가 정상 기동되는 것을 확인했다.
+
+macOS의 실제 `WKWebView`를 사용하는 스냅샷 하네스에서는 self guild 기준
+DOM card 547개, SVG edge 183개, 보드 Canvas 0개를 확인했다. 트랙패드와 같은
+작은 delta의 wheel 입력 24회를 연속 전달했을 때 `board-world` transform도
+24개의 서로 다른 값으로 진행했고, 시작/중간/끝 스냅샷에서 lane/card/edge가
+같은 위치 관계를 유지한 채 함께 이동했다.
+
+다만 자동화용 WKWebView는 창이 숨김 상태라 `requestAnimationFrame`이 정지했다.
+하네스에서 이 부분만 timer로 대체했고 wheel도 합성 입력을 썼으므로, 이 결과를
+사람이 보이는 Tauri 창에서 실제 두 손가락 트랙패드를 사용한 검증으로 과장하지
+않는다.
+
+별도의 6-quest/2-edge 길드에서는 실제 브라우저 포인터 입력과 API 저장값을 함께
+대조해 다음 회귀를 확인했다.
+
+- 같은 lane drag가 DB 좌표를 변경하고, undo는 기준 좌표로, redo는 이동 좌표로
+  정확히 복원했다.
+- Meta 다중 선택과 popup의 `연관 전체 → 선택`이 동작했고, DEV-001과 선행
+  DEV-006이 함께 선택됐다.
+- 다른 lane drop 취소는 status/좌표를 모두 유지했다. 확정은 DEV-001을
+  `open → in_progress`와 새 좌표로 저장했고, undo가 status와 좌표를 함께 복원했다.
+- grid snap은 드롭 좌표를 실제 격자 중심 `(318, 324)`에 저장했다.
+- 전체 정렬은 모든 대상 좌표를 저장했고, undo가 정렬 전 좌표 전부를 복원했다.
+
+초기 하네스에서 undo 좌표가 복원되지 않은 것처럼 보였던 값은 Svelte DOM 반영을
+기다리지 않고 읽은 테스트 오류였다. 실제 포인터 입력 뒤 DOM과 API를 충분히
+기다려 대조하자 정상 복원이 확인됐다.
+
+현재 자동화 드라이버는 보조키를 누른 채 포인터 drag하는 입력을 WKWebView에
+유지하지 못해 box selection 실입력 검증은 완료하지 못했다. 따라서 남은 수동
+완료 조건은 다음과 같다.
+
+1. 보이는 macOS release Tauri/Safari 창에서 실제 두 손가락 pan/zoom 시
+   lane/card/edge가 같은 프레임에 붙어 움직이는지 확인.
+2. 실제 `Ctrl/Meta + drag` box selection과 실제 터치 장치 pinch 확인.
+3. filter, lane 숨김·접기·순서 변경, dark/light 및 한국어/영어 조합의 최종
+   육안 점검과 필요 시 Web Inspector Memory/Layers 비교.
+
+자동 회귀와 native WebKit 구조 검증은 통과했지만 1번이 이 버그의 핵심 재현
+조건이므로 [[DEV-317]]은 `Testing` 상태를 유지한다.
+
+## 2026-08-05 표시 설정·메모리 기준·collapsed lane 회귀
+
+self guild의 production bundle에서 표시 설정 회귀와 메모리 기준을 추가로
+확인했다.
+
+- 보드 기본 상태는 DOM node 547개, SVG edge path 185개, 보드 Canvas 0개였고
+  페이지 전체 DOM element는 4,412개였다.
+- release Tauri 앱의 idle RSS 한 번 측정값은 main 115,600 KiB,
+  WebContent 90,672 KiB, Networking 13,648 KiB였다. 합계는 219,920 KiB
+  (약 214.8 MiB)다. 이는 현재 규모의 기준점일 뿐, 이전 Canvas 구현과 동일
+  조건 비교나 leak 판정값은 아니다.
+- dark theme와 English로 전환해도 node 547 / edge 185 / Canvas 0을 유지했고,
+  lane 및 toolbar 문구가 영어로 전환됐다. 이후 System theme와 한국어로 원복했다.
+- `진행 중` lane 숨김 시 node 547→544, edge 185→160으로 관련 DOM/SVG가 함께
+  제외됐고 재표시 후 547/185로 복원됐다.
+- `진행 중` lane을 왼쪽으로 이동했을 때 header 순서가 실제로 바뀌고, 오른쪽으로
+  이동하면 원래 순서로 복원됐다.
+- DEV type filter는 node 수를 유지한 채 213개 node에 `filter-dim`을 적용했고,
+  All로 원복하면 dim 0이 됐다.
+
+레인 접기 회귀 중에는 별도 hit-area 문제를 발견해 함께 수정했다. 모든 lane을
+화면에 맞춘 저배율에서 collapsed lane의 화면 폭이 7.59px인데 header의 기존
+좌우 padding 합은 8px여서, 다시 펼치는 `.lane-label`의 실제 폭이 0px가 됐다.
+
+collapsed header의 padding을 제거하고 label을 header 전체 폭의 absolute
+hit-area로 만들었다. production rebuild/reload 후 같은 조건에서 label 폭이
+0→6.59px로 유지됐고, 실제 browser click으로 collapsed `진행 중` lane이 다시
+펼쳐졌다. 테스트를 위해 숨긴 lane과 collapsed 상태는 모두 원복했으며 최종
+상태는 node 547 / edge 185 / hidden 0 / collapsed 0 / Canvas 0이다.
+
+수정 후 `svelte-check` 0 errors/0 warnings, frontend 34 files/365 tests,
+production build, `git diff --check`가 다시 통과했다. 실제 두 손가락 트랙패드와
+실제 터치 pinch만 하드웨어 수동 확인으로 남기고 [[DEV-317]]은 `Testing`으로
+돌린다.
+
+## 2026-08-05 실제 트랙패드 확인 후 표시·GPU 회귀 수정
+
+사용자가 macOS release 앱에서 실제 두 손가락 제스처를 확인한 결과, 원래 문제인
+lane/card/edge의 서로 다른 프레임 이동은 해소됐다. Canvas를 제거하고 세 요소를
+같은 DOM/SVG world에 둔 방향이 핵심 증상에는 유효했다.
+
+그 뒤 세 가지 회귀가 발견됐다. 화살표가 기존보다 과하게 휘었고, 확대 시 HTML
+노드가 흐렸으며, 깊은 축소 시 GPU 사용량과 버벅임이 커졌다.
+
+### 원인과 수정
+
+1. 새 edge 함수가 모든 관계에 최소 18px bend를 강제했다. 기존 Cytoscape
+   bezier의 시각 결과처럼 단일 관계는 직선으로 복원하고, 동일한 두 노드 사이에
+   병렬 관계가 있을 때만 40px 간격으로 대칭 분리했다.
+2. SVG edge의 `vector-effect: non-scaling-stroke`를 제거했다. 이 옵션은 깊게
+   축소해도 화면상 선 굵기를 고정해 논리 좌표에서는 매우 굵은 curve를 계속
+   restroke하게 만든다. 이제 선과 marker도 월드 배율을 함께 따른다.
+3. `board-world`를 `will-change: transform` 영구 GPU layer로 두던 구조를
+   `board-world-viewport`(제스처 중 임시 transform)와 안쪽 `board-world`
+   (확정 CSS `zoom`)로 분리했다. 연속 zoom 중 배율 차가 20~25% 이상이고 80ms
+   간격을 넘을 때만 중간 raster 배율을 확정하고, 입력이 120ms 멈추면 최종
+   배율로 확정한다. 매 frame layout/paint를 피하면서 확대 시 현재 배율로
+   선명하게 재래스터하고, 축소 시 거대한 원본 backing layer의 장기 합성을
+   피하는 절충이다.
+
+### 검증과 남은 조건
+
+self guild production bundle은 DOM node 547개, SVG edge 183개, Canvas 0개다.
+현재 데이터에는 병렬 관계가 없어 183개 edge가 모두 직선이며,
+`non-scaling-stroke`와 강제 `will-change`는 모두 0이다. 저장된 전체보기 배율
+0.0309255에서 논리 world 6,852×25,514px의 실제 렌더 영역은 약 212×789px로
+줄어, 전체 논리 크기의 GPU backing layer를 유지하지 않는다.
+
+`svelte-check` 0 errors/0 warnings, frontend 35 files/367 tests, production
+build, `git diff --check`, release GUI rebuild가 통과했다. 화살표 모양, 확대 후
+선명도, 깊은 축소의 GPU 사용량과 체감 프레임은 새 release 앱에서 실제
+트랙패드로 다시 확인해야 하므로 [[DEV-317]]은 Testing으로 이동한다.
+
+## 2026-08-05 CSS zoom 후속 회귀 — 내부 배율·레인 잘림
+
+GPU/선명도 보정에 사용한 CSS `zoom`은 world 전체를 단순 camera transform하는
+것이 아니라 자식의 layout과 font를 새 배율로 다시 계산했다. 실제 release 앱에서
+노드 외곽과 pill/font가 다른 비율로 변하고 lane 단색 배경의 위/아래가 잘리는
+회귀가 확인돼 이 선택을 철회했다.
+
+- 안쪽 world의 확정 배율을 `zoom`에서 `transform: scale(...)`로 변경했다.
+  제스처 중에는 바깥 viewport가 임시 배율 차이만 보간하고, 주기적으로 안쪽
+  transform scale을 확정한다. 따라서 카드 외곽·pill·font·SVG가 동일한 기하학적
+  배율을 따른다.
+- lane은 viewport 전체 높이를 채우는 screen-space 단색 배경과, 카드와 함께
+  움직이는 world-space grid dot으로 분리했다. 단색 배경은 X/폭만 pan/zoom을
+  따라 위·아래가 잘리지 않고, dot은 기존 world transform을 유지한다.
+
+production bundle의 zoom 0.0309255에서 node 284×80px는 화면
+8.7828×2.4740px였고, pill/title 높이를 같은 배율로 역산하면 각각
+17.0003/30.0000px였다. 첫 lane의 top/bottom은 board-wrap의 52/720px와
+정확히 일치했다. screen lane 7, world grid lane 7, Canvas 0도 확인했다.
+
+`svelte-check` 0/0, frontend 35 files/367 tests, production build, release GUI
+rebuild가 통과했다. 새 release 앱에서 실제 트랙패드 육안 확인을 남겨
+[[DEV-317]]은 Testing으로 이동한다.
+
+## 2026-08-05 최종 단순화 — 중첩 scale도 제거
+
+CSS `zoom`을 안쪽 `transform: scale()`로 교체한 뒤에도 실제 release 앱에서
+pill/font가 노드 외곽과 따로 변하는 현상이 유지됐다. 최종 배율의 수학적 곱은
+같더라도 WebKit이 바깥 임시 scale과 안쪽 확정 scale을 별도 layer로 raster할
+수 있으므로, 80ms 중간 확정·120ms 종료 확정 및 배율 상태를 모두 제거했다.
+
+현재 카드·내부 요소·SVG edge·grid dot은 오직
+`board-world-viewport: translate3d(pan) scale(zoom)` 하나만 공유한다. 안쪽
+`board-world`에는 inline transform과 CSS zoom이 없다. 단색 lane 배경만
+viewport 높이를 채우기 위해 screen-space로 두고 X/폭을 같은 pan/zoom 값에서
+갱신한다.
+
+Tailscale 전용 주소 `http://100.78.25.64:34173`에 production 서버를 띄워
+실제 그 주소로 접속했다. viewport transform 하나, 안쪽 transform/zoom 없음,
+node 547 / edge 183 / Canvas 0을 확인했다. node와 pill의 측정 배율도 일치했다.
+frontend 367 tests, svelte-check, production/release GUI/server build가 통과했다.
+
+서버는 인증이 없으므로 모든 인터페이스 `0.0.0.0` 대신 Tailscale IP
+`100.78.25.64`에만 바인딩했다. 외부 기기 실측을 위해 [[DEV-317]]은
+Testing으로 이동한다.
+
+## 2026-08-05 터치 UI click 회귀 — 제스처 입력 경계 제한
+
+외부 터치 장치에서 노드만 클릭되고 새 퀘스트, 레인 제목, 보드 도구와 팝업
+버튼이 동작하지 않는 회귀가 발견됐다. 보드 전체에 등록된 `touchstart`가 노드
+외의 모든 터치를 pan으로 간주해 `preventDefault()`를 호출하면서, 브라우저의
+후속 `click` 합성을 막고 있었다.
+
+예외 버튼 selector를 계속 늘리는 방식은 새 UI가 추가될 때 같은 버그를 반복한다.
+따라서 허용 목록의 방향을 뒤집어, 제스처 시작점을 실제 노드 `.board-node`와
+빈 보드 입력면 `.board` 두 곳으로만 제한했다. toolbar/lane/dialog 등 나머지는
+기본 tap/click 경로를 유지하며, pinch 역시 같은 입력 경계를 따른다.
+
+전용 입력 경계 테스트를 포함해 frontend 36 files/370 tests와 svelte-check,
+production/release GUI/server build, `git diff --check`가 통과했다. 갱신한
+Tailscale production 주소에서 새 퀘스트 모달 열기/취소, 보드 설정 모달 열기,
+노드 팝업 닫기를 확인했다. 실제 터치 장치에서 최종 확인한다.
