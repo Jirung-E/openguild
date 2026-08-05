@@ -167,6 +167,12 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'settings.tabChar': { ko: '탭 문자', en: 'Tab character' },
 	'settings.tabSpace': { ko: '공백', en: 'Space' },
 	'settings.indentSize': { ko: '들여쓰기 칸수', en: 'Indent size' },
+	// DEV-336: 목록 이어쓰기 / Enter 자동 들여쓰기 / 재들여쓰기 통합 토글.
+	'settings.autoFormat': { ko: '자동 서식', en: 'Auto-formatting' },
+	'settings.autoFormatHint': {
+		ko: '끄면 목록·인용 이어쓰기, Enter 시 자동 들여쓰기, 타이핑 중 재들여쓰기가 모두 꺼집니다.',
+		en: 'When off, list/quote continuation, auto-indent on Enter, and re-indent while typing are all disabled.'
+	},
 	'settings.infoHeading': { ko: '정보', en: 'Info' },
 	'settings.appName': { ko: '앱 이름', en: 'App name' },
 	'settings.version': { ko: '버전', en: 'Version' },

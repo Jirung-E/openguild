@@ -3,6 +3,9 @@
 // - tabMode: 'tab' = Tab 키가 탭 문자(\t) 삽입 / 'space' = 공백 N칸 삽입.
 // - indentSize: 들여쓰기 칸수 (2 또는 4). space 모드의 공백 개수 + tab 모드의
 //   표시 폭(tabSize) 양쪽에 적용.
+// - autoFormat (DEV-336): false 면 목록/인용 이어쓰기, Enter 시 자동 들여쓰기,
+//   타이핑 중 재들여쓰기를 모두 끈다 — 사용자가 "자동으로 뭐가 입력되는 게
+//   싫다"는 단일 의도로 켜고 끄는 성격이라 세부 옵션으로 안 나눔.
 //
 // 영속화: localStorage. quest / campaign 상세 편집기가 initEditor 에서 구독.
 
@@ -14,10 +17,15 @@ export type IndentSize = 2 | 4;
 export interface EditorSettings {
 	tabMode: TabMode;
 	indentSize: IndentSize;
+	autoFormat: boolean;
 }
 
 const KEY = 'openguild.editorSettings';
-export const DEFAULT_EDITOR_SETTINGS: EditorSettings = { tabMode: 'tab', indentSize: 4 };
+export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
+	tabMode: 'tab',
+	indentSize: 4,
+	autoFormat: true
+};
 
 function loadInitial(): EditorSettings {
 	if (typeof localStorage === 'undefined') return { ...DEFAULT_EDITOR_SETTINGS };
@@ -27,7 +35,8 @@ function loadInitial(): EditorSettings {
 		const parsed = JSON.parse(raw) as Partial<EditorSettings>;
 		const tabMode: TabMode = parsed.tabMode === 'space' ? 'space' : 'tab';
 		const indentSize: IndentSize = parsed.indentSize === 2 ? 2 : 4;
-		return { tabMode, indentSize };
+		const autoFormat: boolean = parsed.autoFormat !== false;
+		return { tabMode, indentSize, autoFormat };
 	} catch {
 		return { ...DEFAULT_EDITOR_SETTINGS };
 	}
@@ -50,6 +59,10 @@ export function setTabMode(mode: TabMode) {
 
 export function setIndentSize(size: IndentSize) {
 	editorSettings.update((s) => ({ ...s, indentSize: size }));
+}
+
+export function setAutoFormat(on: boolean) {
+	editorSettings.update((s) => ({ ...s, autoFormat: on }));
 }
 
 /**
