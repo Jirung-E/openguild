@@ -26,6 +26,7 @@
 	// BUG-140: 커스텀 타이틀바 플랫폼 판별(Windows/Linux) — 단일 진리원.
 	import { usesCustomTitlebar, isLinux, hasCoarsePointer } from '$lib/utils/platform';
 	import { uiScale, applyUiScaleToDocument } from '$lib/stores/uiScale';
+	import { hdrLimit, applyHdrLimitToDocument } from '$lib/stores/hdrSettings';
 	import { contentWidth, contentWidthCss } from '$lib/stores/contentWidth';
 	import {
 		theme,
@@ -350,6 +351,12 @@
 	onMount(() => {
 		const unsub = uiScale.subscribe(applyUiScaleToDocument);
 		// 첫 mount 시 한 번 더 — onMount 보다 store 가 먼저 init 됐다면 noop.
+		return () => unsub();
+	});
+
+	// DEV-335: 첨부 이미지 HDR 표시 제한 — `<html>` 의 `--hdr-limit` 갱신.
+	onMount(() => {
+		const unsub = hdrLimit.subscribe(applyHdrLimitToDocument);
 		return () => unsub();
 	});
 

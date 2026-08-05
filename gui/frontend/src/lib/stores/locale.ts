@@ -42,6 +42,15 @@ export function setLocale(l: Locale) {
  * 추가(DEV-205). 누락 키는 ko 텍스트를 그대로 반환(항상 안전한 fallback).
  */
 const DICT: Record<string, { ko: string; en: string }> = {
+	// DEV-335: 첨부 이미지 HDR 표시 제한.
+	'settings.hdrLimit': { ko: '첨부 이미지 HDR', en: 'Attachment image HDR' },
+	'settings.hdrLimitOn': { ko: '사용', en: 'On' },
+	'settings.hdrLimitConstrained': { ko: '제한', en: 'Constrained' },
+	'settings.hdrLimitOff': { ko: '끄기', en: 'Off' },
+	'settings.hdrLimitHint': {
+		ko: '끄면(제한/끄기) HDR 화면에서도 이미지가 과도하게 밝게 보이지 않습니다. 지원하는 브라우저에서만 표시됩니다.',
+		en: 'Constrained/off keeps images from looking overly bright on HDR displays. Only shown when the browser supports it.'
+	},
 	'settings.theme': { ko: '테마', en: 'Theme' },
 	'settings.theme.system': { ko: '시스템', en: 'System' },
 	'settings.theme.light': { ko: '라이트', en: 'Light' },

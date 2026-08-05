@@ -24,6 +24,8 @@
 		MAX_SCALE,
 		DEFAULT_SCALE
 	} from '$lib/stores/uiScale';
+	// DEV-335: 첨부 이미지 HDR 표시 제한.
+	import { hdrLimit, setHdrLimit, isHdrLimitSupported } from '$lib/stores/hdrSettings';
 	import {
 		contentWidth,
 		setContentWidth,
@@ -192,6 +194,12 @@
 	let localGuildOpen = $state(false);
 	// DEV-207: 로컬일 때 보여줄 실제 길드 경로.
 	let guildPath = $state<string | null>(null);
+
+	// DEV-335: dynamic-range-limit 지원 여부 — 미지원이면 설정 항목 자체 숨김.
+	let hdrSupported = $state(false);
+	onMount(() => {
+		hdrSupported = isHdrLimitSupported();
+	});
 
 	onMount(async () => {
 		if (!isTauri) {
@@ -466,6 +474,38 @@
 						{t('settings.contentWidthFullHint', $locale)}
 					</p>
 				</dd>
+
+				<!-- DEV-335: 첨부 이미지 HDR 표시 제한 — 미지원 브라우저에서는 항목 자체 숨김. -->
+				{#if hdrSupported}
+					<dt>{t('settings.hdrLimit', $locale)}</dt>
+					<dd class="theme-row">
+						<div class="theme-toggle" role="group" aria-label={t('settings.hdrLimit', $locale)}>
+							<button
+								class="th-btn"
+								class:active={$hdrLimit === 'no-limit'}
+								onclick={() => setHdrLimit('no-limit')}
+								aria-pressed={$hdrLimit === 'no-limit'}>{t('settings.hdrLimitOn', $locale)}</button
+							>
+							<button
+								class="th-btn"
+								class:active={$hdrLimit === 'constrained'}
+								onclick={() => setHdrLimit('constrained')}
+								aria-pressed={$hdrLimit === 'constrained'}
+								>{t('settings.hdrLimitConstrained', $locale)}</button
+							>
+							<button
+								class="th-btn"
+								class:active={$hdrLimit === 'standard'}
+								onclick={() => setHdrLimit('standard')}
+								aria-pressed={$hdrLimit === 'standard'}
+								>{t('settings.hdrLimitOff', $locale)}</button
+							>
+						</div>
+						<p class="scale-hint">
+							{t('settings.hdrLimitHint', $locale)}
+						</p>
+					</dd>
+				{/if}
 
 				<!-- DEV-074: 테마 (Dark / Light / System). DEV-114: 커스텀 프리셋도 옆에 노출. -->
 				<dt>{t('settings.theme', $locale)}</dt>

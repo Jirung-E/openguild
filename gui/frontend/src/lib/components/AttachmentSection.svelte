@@ -560,6 +560,11 @@
 		height: 100%;
 		object-fit: cover;
 	}
+	/* DEV-335: 첨부 이미지 HDR 표시 제한 — MarkdownView 의 본문 이미지와 같은
+	   `--hdr-limit` custom property 를 따라간다(hdrSettings 스토어). */
+	.thumb img {
+		dynamic-range-limit: var(--hdr-limit, no-limit);
+	}
 	.file-ico {
 		font-size: 1.8rem;
 	}
