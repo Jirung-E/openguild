@@ -2582,6 +2582,14 @@
 			arrangeWrap.appendChild(btn);
 			arrangeWrap.appendChild(modeSel);
 
+			// BUG: cols-sel + arrange-group 을 헤더와 같은 줄에 인라인으로 두면
+			// lane 폭(zoom 에 비례, 모바일에서 매우 좁아짐)이 실제 필요폭보다 작을 때
+			// 옆 lane 헤더 밑으로 잘려서 안 보임 — 헤더 아래로 뜨는 팝오버로 분리.
+			const pop = document.createElement('div');
+			pop.className = 'lane-settings-pop';
+			pop.appendChild(sel);
+			pop.appendChild(arrangeWrap);
+
 			// DEV-105 fix5: 레인별 설정 (cols-sel + arrange-group) 토글 ⚙.
 			// 자주 안 쓰는데 영역만 차지하므로 기본 접힘 — 사용자가 펼침.
 			const settingsBtn = document.createElement('button');
@@ -2600,14 +2608,21 @@
 			settingsBtn.onclick = () => {
 				toggleLaneSettings(s.slug);
 				setOpenAttrs();
+				if (lanesSettingsOpen.has(s.slug)) {
+					// 우측 lane 은 팝오버가 화면 밖으로 나갈 수 있어 좌측 정렬로 flip.
+					pop.classList.remove('pop-right');
+					requestAnimationFrame(() => {
+						const r = pop.getBoundingClientRect();
+						if (r.right > window.innerWidth - 4) pop.classList.add('pop-right');
+					});
+				}
 			};
 
 			// DEV-059 fix2: lane 순서 변경은 '보드 설정' 모달로 이전 — 헤더에 ◀ ▶ 안 둠.
 			// 헤더 폭이 좁아질 때 라벨이 가려지는 문제 회피.
 			hdr.appendChild(label);
 			hdr.appendChild(settingsBtn);
-			hdr.appendChild(sel); // cols select 는 별개 (그리드만 갱신)
-			hdr.appendChild(arrangeWrap);
+			hdr.appendChild(pop);
 			headersEl.appendChild(hdr);
 		});
 	}
@@ -3315,6 +3330,7 @@
 			<p class="hide-help">
 				{t('board.hideHelp', $locale)}
 			</p>
+			<div class="hide-table-wrap">
 			<table class="hide-table">
 				<thead>
 					<tr>
@@ -3377,6 +3393,7 @@
 					{/each}
 				</tbody>
 			</table>
+			</div>
 
 			<!-- DEV-135: 보드 필터 — List 와 동일한 필터 UI. 변경 시 공유 store +
 			     localStorage 에 반영되어 dim 이 즉시 갱신되고 List 와도 일관. -->
@@ -3479,6 +3496,12 @@
 		z-index: 3;
 		pointer-events: none;
 		overflow: hidden;
+	}
+	/* BUG: .toolbar 가 z-index:10 로 헤더 위를 덮어, 헤더 밑에 뜨는 레인 설정
+	   팝오버(.lane-settings-pop)가 그 뒤에 가려짐 — 팝오버가 열려 있는 동안만
+	   레인 헤더 레이어 전체를 toolbar 위로 올린다. */
+	:global(.lane-hdrs:has(.lane-hdr.settings-open)) {
+		z-index: 11;
 	}
 
 	.edge-layer,
@@ -3783,10 +3806,35 @@
 		background: var(--bg-subtle);
 		border-color: var(--border);
 	}
-	/* settings 가 닫혀 있으면 cols-sel + arrange-group 숨김. */
-	:global(.lane-hdr:not(.settings-open) .lane-cols-sel),
-	:global(.lane-hdr:not(.settings-open) .lane-arrange-group) {
-		display: none !important;
+	/* BUG: lane 폭이 좁으면(모바일 저배율) cols-sel + arrange-group 이 헤더 한 줄에
+	   안 들어가 옆 헤더에 가려 안 보이던 문제 — 헤더 아래로 뜨는 팝오버로 분리.
+	   settings-open 인 헤더만 다른 헤더 위로 올라오도록 z-index 도 올림. */
+	:global(.lane-hdr.settings-open) {
+		z-index: 5;
+	}
+	:global(.lane-settings-pop) {
+		display: none;
+		position: absolute;
+		top: 100%;
+		left: 0;
+		margin-top: 2px;
+		flex-direction: column;
+		gap: 4px;
+		align-items: stretch;
+		padding: 6px;
+		width: max-content;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+		pointer-events: auto;
+	}
+	:global(.lane-settings-pop.pop-right) {
+		left: auto;
+		right: 0;
+	}
+	:global(.lane-hdr.settings-open .lane-settings-pop) {
+		display: flex;
 	}
 	:global(.lane-cols-sel) {
 		flex-shrink: 0;
@@ -4429,13 +4477,16 @@
 		border: 1px solid var(--border);
 		border-radius: 10px;
 		padding: 1.25rem 1.5rem 1.25rem;
-		min-width: calc(30rem * var(--popup-scale, 1));
-		max-width: calc(40rem * var(--popup-scale, 1)); /* BUG-064 */
+		/* 모바일: 30~40rem 고정폭이 좁은 화면에서 밖으로 삐져나감 — 뷰포트 폭 안으로 clamp. */
+		width: min(calc(40rem * var(--popup-scale, 1)), calc(100vw - 2rem));
+		min-width: min(calc(30rem * var(--popup-scale, 1)), calc(100vw - 2rem));
+		max-width: calc(100vw - 2rem);
 		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
 		display: flex;
 		flex-direction: column;
 		gap: 0.75rem;
 		color: var(--text);
+		box-sizing: border-box;
 		/* DEV-135: 필터 섹션 추가로 길어질 수 있어 모달 자체 스크롤. */
 		max-height: calc(100vh - 4rem);
 		overflow-y: auto;
@@ -4513,8 +4564,14 @@
 		color: var(--text-muted);
 		line-height: 1.45;
 	}
+	.hide-table-wrap {
+		/* 모바일: 컬럼 최소폭 합이 모달폭을 넘으면 테이블만 가로 스크롤 (모달 자체는 안 넘침). */
+		max-width: 100%;
+		overflow-x: auto;
+	}
 	.hide-table {
 		width: 100%;
+		min-width: 26rem;
 		border-collapse: collapse;
 		font-size: 0.875rem;
 	}
