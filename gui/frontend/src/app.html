@@ -3,6 +3,10 @@
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<!-- BUG: 삼성 인터넷 등 '웹사이트 다크 모드' 강제 반전 기능이 자체 다크
+		     테마(CSS color-scheme)를 무시하고 색을 덮어써 텍스트/배경이
+		     구분 안 되는 사례 방지 — meta 로도 명시적 선언. -->
+		<meta name="color-scheme" content="dark light" />
 		<link rel="icon" href="/favicon.ico" sizes="any" />
 		<link rel="icon" href="/favicon.png" type="image/png" />
 		<meta name="text-scale" content="scale" />

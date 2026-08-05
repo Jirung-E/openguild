@@ -98,7 +98,7 @@
 	<!-- BUG-194: 좁은 화면 — 칩 줄을 접고 토글로. -->
 	{#if narrow}
 		<button
-			class="adv-toggle chips-toggle"
+			class="xfilter-toggle chips-toggle"
 			class:active={activeChipCount > 0}
 			onclick={() => (chipsOpen = !chipsOpen)}
 			aria-expanded={chipsOpen}
@@ -169,7 +169,7 @@
 
 	<!-- DEV-033: 고급 필터 토글. -->
 	<button
-		class="adv-toggle"
+		class="xfilter-toggle"
 		class:active={advancedActive}
 		onclick={() => (advancedOpen = !advancedOpen)}
 		aria-expanded={advancedOpen}
@@ -178,7 +178,7 @@
 </div>
 
 {#if advancedOpen}
-	<div class="adv-bar">
+	<div class="xfilter-panel">
 		<!-- urgency 다중 -->
 		<div class="filter-group" aria-label={t('filter.urgency', $locale)}>
 			{#each [1, 2, 3, 4] as u (u)}
@@ -220,7 +220,7 @@
 			<DateField bind:value={updatedBefore} /></label
 		>
 		{#if advancedActive}
-			<button class="adv-clear" onclick={clearAdvanced} title={t('filter.clearAdvanced', $locale)}
+			<button class="xfilter-clear" onclick={clearAdvanced} title={t('filter.clearAdvanced', $locale)}
 				>{t('filter.clearBtn', $locale)}</button
 			>
 		{/if}
@@ -360,16 +360,16 @@
 	}
 
 	/* --- DEV-033: 고급 필터 --- */
-	.adv-toggle {
+	.xfilter-toggle {
 		border-style: dashed;
 		color: var(--text-faint);
 	}
-	.adv-toggle.active {
+	.xfilter-toggle.active {
 		color: var(--accent);
 		border-color: var(--accent);
 		background: transparent;
 	}
-	.adv-bar {
+	.xfilter-panel {
 		display: flex;
 		align-items: center;
 		gap: 0.75rem;
@@ -378,7 +378,7 @@
 		background: var(--bg-elevated);
 		border-bottom: 1px solid var(--bg-subtle);
 	}
-	.adv-bar button {
+	.xfilter-panel button {
 		padding: 0.25rem 0.65rem;
 		border: 1px solid var(--border);
 		border-radius: 20px;
@@ -387,7 +387,7 @@
 		font-size: 0.8rem;
 		cursor: pointer;
 	}
-	.adv-bar button.active {
+	.xfilter-panel button.active {
 		background: color-mix(in srgb, var(--c, var(--accent)) 20%, transparent);
 		border-color: var(--c, var(--accent));
 		color: var(--c, var(--accent));
@@ -402,8 +402,18 @@
 		font-size: 0.78rem;
 		color: var(--text-muted);
 	}
-	.adv-clear {
+	.xfilter-clear {
 		color: var(--danger);
 		border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+	}
+
+	/* BUG: .filter-bar 는 위쪽에 좁은 화면용 padding 축소 쿼리가 있는데 .xfilter-panel 는
+	   빠져 있었음 — New Quest 버튼용 130px 우측 padding이 좁은 화면에서도 그대로
+	   남아 실사용 폭이 거의 0으로 줄어 고급 필터 행이 사실상 안 보이는 원인이었다.
+	   (base .xfilter-panel 규칙보다 반드시 뒤에 와야 캐스케이드에서 이김.) */
+	@media (max-width: 640px) {
+		.xfilter-panel {
+			padding: 0.5rem 0.75rem;
+		}
 	}
 </style>

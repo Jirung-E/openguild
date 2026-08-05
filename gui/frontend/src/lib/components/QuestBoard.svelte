@@ -4530,7 +4530,7 @@
 	}
 	/* QuestListFilter 는 본래 가로 바 — 모달 안에선 우측 130px 예약 padding 불필요. */
 	.bf-filter :global(.filter-bar),
-	.bf-filter :global(.adv-bar) {
+	.bf-filter :global(.xfilter-panel) {
 		padding-right: 1rem;
 		background: transparent;
 		border-bottom: none;
