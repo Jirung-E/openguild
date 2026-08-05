@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { nextTabStopSpaces } from './editorSettings';
+import { nextTabStopSpaces, DEFAULT_EDITOR_SETTINGS, editorSettings, setAutoFormat } from './editorSettings';
+import { get } from 'svelte/store';
 
 describe('DEV-130 nextTabStopSpaces (VSCode 식 탭 정지점)', () => {
 	it('indentSize=4: 다음 4의 배수까지의 공백 수', () => {
@@ -22,5 +23,18 @@ describe('DEV-130 nextTabStopSpaces (VSCode 식 탭 정지점)', () => {
 		expect(nextTabStopSpaces('\t', 4)).toBe(4);
 		// '\t' + 'a' → 열 5. 다음 정지점(8)까지 3.
 		expect(nextTabStopSpaces('\ta', 4)).toBe(3);
+	});
+});
+
+describe('DEV-336 autoFormat', () => {
+	it('기본값은 켜짐(true) — 기존 동작 유지', () => {
+		expect(DEFAULT_EDITOR_SETTINGS.autoFormat).toBe(true);
+	});
+
+	it('setAutoFormat 이 store 를 갱신한다', () => {
+		setAutoFormat(false);
+		expect(get(editorSettings).autoFormat).toBe(false);
+		setAutoFormat(true);
+		expect(get(editorSettings).autoFormat).toBe(true);
 	});
 });

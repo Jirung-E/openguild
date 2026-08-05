@@ -63,6 +63,7 @@
 		editorSettings,
 		setTabMode,
 		setIndentSize,
+		setAutoFormat,
 		type IndentSize
 	} from '$lib/stores/editorSettings';
 	// DEV-101 fix2: native input[type=range] 의 drag 문제 (값 재바인딩 →
@@ -302,6 +303,28 @@
 					</div>
 					<p class="scale-hint">
 						{t('settings.indentHint', $locale)}
+					</p>
+				</dd>
+				<!-- DEV-336: 목록 이어쓰기 / Enter 자동 들여쓰기 / 타이핑 중 재들여쓰기를
+				     하나로 묶어 켜고 끔. -->
+				<dt>{t('settings.autoFormat', $locale)}</dt>
+				<dd class="theme-row">
+					<div class="theme-toggle" role="group" aria-label={t('settings.autoFormat', $locale)}>
+						<button
+							class="th-btn"
+							class:active={$editorSettings.autoFormat}
+							onclick={() => setAutoFormat(true)}
+							aria-pressed={$editorSettings.autoFormat}>{t('settings.on', $locale)}</button
+						>
+						<button
+							class="th-btn"
+							class:active={!$editorSettings.autoFormat}
+							onclick={() => setAutoFormat(false)}
+							aria-pressed={!$editorSettings.autoFormat}>{t('settings.off', $locale)}</button
+						>
+					</div>
+					<p class="scale-hint">
+						{t('settings.autoFormatHint', $locale)}
 					</p>
 				</dd>
 			</dl>

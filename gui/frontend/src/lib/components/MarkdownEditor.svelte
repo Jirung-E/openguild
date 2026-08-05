@@ -20,10 +20,9 @@
 -->
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { EditorView, basicSetup } from 'codemirror';
+	import { EditorView } from 'codemirror';
 	import { keymap } from '@codemirror/view';
 	import { redo } from '@codemirror/commands';
-	import { markdown } from '@codemirror/lang-markdown';
 	import { theme } from '$lib/stores/theme';
 	import { editorThemeCompartment, editorThemeExtension } from '$lib/utils/editor-theme';
 	import { indentExtensions } from '$lib/utils/editor-indent';
@@ -32,7 +31,8 @@
 	import { crossLinkAutocomplete } from '$lib/utils/editor-links';
 	// BUG-215: 터치 기기에서는 drawSelection 을 뺀 구성을 쓴다 — 네이티브 선택이
 	// 살아 있어야 "길게 눌러 선택" 이 동작한다.
-	import { isCoarsePointer, touchSetup } from '$lib/utils/editor-setup';
+	// DEV-336: markdownEditorExtensions 가 touch + autoFormat 설정을 함께 반영.
+	import { isCoarsePointer, markdownEditorExtensions } from '$lib/utils/editor-setup';
 	import OverlayScrollbar from './OverlayScrollbar.svelte';
 
 	let {
@@ -97,8 +97,11 @@
 			doc: untrack(() => value),
 			extensions: [
 				// BUG-215: 데스크톱은 기존 basicSetup 그대로, 터치만 변형.
-				isCoarsePointer() ? touchSetup() : basicSetup,
-				markdown(),
+				// DEV-336: autoFormat 설정 꺼지면 목록 이어쓰기/자동 들여쓰기/재들여쓰기 제외.
+				markdownEditorExtensions({
+					touch: isCoarsePointer(),
+					autoFormat: untrack(() => $editorSettings.autoFormat)
+				}),
 				// 테마 — Compartment 로 다크/라이트 라이브 전환 (재생성 X).
 				editorThemeCompartment.of(editorThemeExtension(untrack(() => $theme))),
 				// DEV-117: Windows 표준 redo. (Tab 들여쓰기는 indentExtensions.)
