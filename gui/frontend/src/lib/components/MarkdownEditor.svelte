@@ -190,6 +190,11 @@
 		min-height: 200px;
 		max-height: 90vh;
 		resize: vertical;
+		/* BUG-220: 배경 미지정 + 라이트 테마는 CodeMirror 자체 배경도 없어서,
+		   고정(pin)된 댓글처럼 부모가 틴트 배경(.entry-card.pinned)을 가지면
+		   그게 편집기 영역까지 그대로 비쳐 보였다. 일반 textarea 모드
+		   (.body-input)와 같은 불투명 배경을 명시.*/
+		background: var(--bg);
 	}
 	.editor-wrap :global(.cm-editor) {
 		outline: none;
