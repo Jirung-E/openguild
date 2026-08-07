@@ -9,12 +9,31 @@
 //! - `.guild/quests/*.md` (본문) — 수정 / 신규 / 삭제 (DEV-121, DEV-246).
 //! - `{slug}.comments.md` / `{slug}.memo.md` (quest + campaign) — 수정 / 삭제
 //!   (DEV-310).
-//! - `campaigns/{slug}.md` (본문) — 외부 편집 반영 (DEV-310). 신규/삭제는 행
-//!   생성·연쇄 삭제가 얽혀 아직 full reindex.
+//! - `campaigns/{slug}.md` (본문) — 수정 / 신규 / 삭제 (DEV-310 수정, DEV-311
+//!   신규·삭제). 신규는 행 + 체크리스트 + `campaign_quests` 링크까지 한
+//!   트랜잭션으로 INSERT. 삭제(파일 소멸 또는 외부에서 `deleted=true`)는 행
+//!   DELETE — `campaign_checklists`/`campaign_quests`/`campaign_comments`/
+//!   `campaign_memos` 는 FK `ON DELETE CASCADE`, `campaign_history` 는 quest
+//!   와 동일하게 FK 없이 보존.
+//! - `library/{BOOK-NNN}.md` (본문) — 수정 / 신규 / 삭제 (DEV-311). soft-delete
+//!   된 문서도(reindex 와 동일하게) 행을 유지 — 번호 충돌 검증에 필요.
 //!
-//! 아직 full reindex 로 넘기는 것: 캠페인 신규/삭제, statuses / types / tags
-//! 정의, 도서관·규칙 문서, worklog. 정의 파일은 바뀌면 해석 자체가 달라지므로
-//! (상태 slug 등) 안전망을 유지하는 편이 맞고, 나머지는 후속 항목.
+//! 아직 full reindex 로 넘기는 것: statuses / types / tags 정의. 정의 파일이
+//! 바뀌면 해석 자체가 달라지므로(상태 slug 등) 안전망을 유지하는 편이 맞다.
+//!
+//! DEV-311 조사 결과 **범위에서 뺀 것** (할 일이 아니라 애초에 캐시가 없음):
+//! - **규칙 문서**(`rules/**`) — `repo::rules` 자체가 "파일 진리원, DB 캐시
+//!   없음"(server/GUI 가 파일을 직접 읽음) 이라 동기화할 대상이 없다.
+//! - **worklog 노트**(`worklog/*.md`) — `ops::worklog` 도 동일 패턴(파일 직독,
+//!   `activities()`/`daily_summary()` 는 이미 동기화된 다른 테이블 위의 순수
+//!   조회 쿼리). 그 테이블들이 최신이면 worklog 조회는 별도 작업 없이 최신.
+//! - **doc_history 사이드카**(`.guild/history/*.jsonl`) **외부 편집** 반영 —
+//!   `ops::doc_history` 가 앱 내부 mutation(rule/book create·update·delete)은
+//!   이미 증분 반영한다(BUG-189). 하지만 사이드카 파일을 외부(git pull 등)에서
+//!   직접 편집하는 경우는 quest_history/campaign_history 도 동일하게 전체
+//!   재구축 전용 — 부분(추가된 줄만) 반영 메커니즘이 이 코드베이스 어디에도
+//!   없다. 새로 만들기엔 범위가 크고 빈도가 낮아 이번엔 안전망(full reindex)
+//!   유지.
 //!
 //! ## 시간 비교 안전성 (timezone)
 //!
@@ -217,6 +236,16 @@ pub struct IncrementalReport {
     pub siblings_synced: usize,
     /// DEV-310: 외부 편집이 반영된 캠페인 본문 수.
     pub campaigns_synced: usize,
+    /// DEV-311: 새로 발견해 INSERT 한 캠페인 수.
+    pub campaigns_inserted: usize,
+    /// DEV-311: 파일이 사라지거나 외부에서 soft-delete 되어 DELETE 한 캠페인 수.
+    pub campaigns_deleted: usize,
+    /// DEV-311: 외부 편집이 반영된 도서관 문서 수.
+    pub library_synced: usize,
+    /// DEV-311: 새로 발견해 INSERT 한 도서관 문서 수.
+    pub library_inserted: usize,
+    /// DEV-311: 파일이 사라져 DELETE 한 도서관 문서 수.
+    pub library_deleted: usize,
 }
 
 /// DEV-310: sibling 파일의 종류 — 어느 캐시 테이블을 다시 채울지.
@@ -679,6 +708,122 @@ async fn refresh_campaign_row_no_writeback(store: &Store, slug: &str) -> AppResu
     refresh_campaign(store, slug, false).await
 }
 
+/// DEV-311: `campaign_checklists` 를 트랜잭션 안에서 통째로 교체.
+///
+/// `services::campaigns::replace_checklists_from_file` 과 같은 일을 하지만
+/// **자기 트랜잭션을 열지 않는다** — 이미 연 트랜잭션 안에서 호출돼야 하는
+/// `refresh_campaign`/`insert_new_campaign` 전용. (그 함수는 `&SqlitePool` 을
+/// 받아 스스로 `pool.begin()` 하므로, 이미 트랜잭션이 열린 채로 호출하면 같은
+/// pool 에서 커밋 안 된 쓰기 락을 다른 커넥션이 기다리게 되어 교착 위험이
+/// 있다 — 그래서 별도로 트랜잭션-바인딩 버전을 둔다.)
+async fn replace_checklists_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    campaign_id: i64,
+    lines: &[crate::repo::ChecklistLine],
+) -> AppResult<()> {
+    sqlx::query("DELETE FROM campaign_checklists WHERE campaign_id = ?")
+        .bind(campaign_id)
+        .execute(&mut **tx)
+        .await?;
+    for line in lines {
+        sqlx::query(
+            "INSERT INTO campaign_checklists (campaign_id, text, checked, order_idx)
+             VALUES (?, ?, ?, ?)",
+        )
+        .bind(campaign_id)
+        .bind(&line.text)
+        .bind(if line.checked { 1 } else { 0 })
+        .bind(line.order_idx)
+        .execute(&mut **tx)
+        .await?;
+    }
+    Ok(())
+}
+
+/// DEV-311: `linked_quests`(frontmatter) → `campaign_quests` re-sync, 트랜잭션 안.
+async fn resync_campaign_quests_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    campaign_id: i64,
+    linked_quests: &[String],
+) -> AppResult<()> {
+    sqlx::query("DELETE FROM campaign_quests WHERE campaign_id = ?")
+        .bind(campaign_id)
+        .execute(&mut **tx)
+        .await?;
+    for qslug in linked_quests {
+        let qid: Option<i64> = sqlx::query_scalar(
+            "SELECT q.id FROM quests q JOIN quest_types qt ON qt.id = q.quest_type_id
+             WHERE qt.prefix || '-' || printf('%03d', q.number) = ?",
+        )
+        .bind(qslug)
+        .fetch_optional(&mut **tx)
+        .await?;
+        if let Some(qid) = qid {
+            sqlx::query(
+                "INSERT OR IGNORE INTO campaign_quests (campaign_id, quest_id) VALUES (?, ?)",
+            )
+            .bind(campaign_id)
+            .bind(qid)
+            .execute(&mut **tx)
+            .await?;
+        }
+        // unresolved slug 는 조용히 skip — reindex.rs 의 같은 루프와 동일.
+    }
+    Ok(())
+}
+
+/// 캠페인 행 + 자식(체크리스트/링크/댓글/메모) 삭제. `campaign_history` 는
+/// quest_history 와 동일하게 FK 없이 보존(audit 가치, DEV-226 결정).
+async fn delete_campaign_row(store: &Store, id: i64) -> AppResult<()> {
+    sqlx::query("DELETE FROM campaigns WHERE id = ?")
+        .bind(id)
+        .execute(&store.index_pool)
+        .await?;
+    Ok(())
+}
+
+/// DEV-311: 캠페인 본문(`campaigns/{slug}.md`) 1개를 index.db 에 INSERT —
+/// `sync_changed_campaign_files` 가 DB 에 없는 새 파일을 발견했을 때 호출.
+/// soft-deleted(`deleted=true`) 로 갓 만들어진 파일은 reindex 와 동일하게
+/// 삽입하지 않는다(`Ok(None)`) — 애초에 살아있던 적 없는 캠페인이라 행이
+/// 필요 없다.
+async fn insert_new_campaign(store: &Store, path: &std::path::Path) -> AppResult<Option<i64>> {
+    let cf = crate::repo::CampaignFile::read(path).map_err(crate::error::AppError::Internal)?;
+    if cf.frontmatter.deleted {
+        return Ok(None);
+    }
+    let mut tx = store.index_pool.begin().await?;
+    let id: i64 = sqlx::query_scalar(
+        "INSERT INTO campaigns
+           (campaign_slug, title, description, status,
+            started_at, ended_at, display_order, image_path, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         RETURNING id",
+    )
+    .bind(&cf.frontmatter.campaign_id)
+    .bind(&cf.frontmatter.title)
+    .bind(&cf.body)
+    .bind(&cf.frontmatter.status)
+    .bind((!cf.frontmatter.started_at.is_empty()).then_some(&cf.frontmatter.started_at))
+    .bind((!cf.frontmatter.ended_at.is_empty()).then_some(&cf.frontmatter.ended_at))
+    .bind(cf.frontmatter.display_order)
+    .bind(cf.frontmatter.image.as_deref())
+    .bind(&cf.frontmatter.created_at)
+    .bind(&cf.frontmatter.updated_at)
+    .fetch_one(&mut *tx)
+    .await?;
+
+    let items = crate::repo::extract_checklist_items(&cf.body);
+    replace_checklists_in_tx(&mut tx, id, &items).await?;
+    resync_campaign_quests_in_tx(&mut tx, id, &cf.frontmatter.linked_quests).await?;
+    tx.commit().await?;
+    Ok(Some(id))
+}
+
+/// DEV-311(perf): 예전엔 UPDATE + 체크리스트 교체(자체 트랜잭션) + `campaign_quests`
+/// DELETE + 링크당 SELECT/INSERT 가 **전부 별도(autocommit) 트랜잭션** 이었다 —
+/// 링크 46개짜리 캠페인 재적재가 533ms(문장당 fsync ~95회). 지금은 한
+/// 트랜잭션으로 묶는다(reindex() 의 전체 재구축과 동일한 패턴).
 async fn refresh_campaign(store: &Store, slug: &str, writeback: bool) -> AppResult<bool> {
     let path = store.paths.campaign_path(slug);
     if !path.exists() {
@@ -695,7 +840,7 @@ async fn refresh_campaign(store: &Store, slug: &str, writeback: bool) -> AppResu
         None => true, // 첫 진입(캐시 없음) — 갱신 + touch.
     };
 
-    // campaigns 행 존재 확인 (신규/삭제는 reindex 영역).
+    // campaigns 행 존재 확인 (신규는 insert_new_campaign 영역).
     let id: Option<i64> = sqlx::query_scalar("SELECT id FROM campaigns WHERE campaign_slug = ?")
         .bind(slug)
         .fetch_optional(&store.index_pool)
@@ -707,8 +852,11 @@ async fn refresh_campaign(store: &Store, slug: &str, writeback: bool) -> AppResu
         return Ok(false); // 파싱 실패 — reindex 가 skip 경고로 처리.
     };
     if cf.frontmatter.deleted {
-        // 외부에서 soft-delete — 행 제거는 auto_resync/reindex 영역.
-        return Ok(false);
+        // DEV-311: 외부에서 soft-delete(파일에 deleted=true) — reindex 가 이런
+        // 캠페인을 skip(=insert 안 함)하는 것과 동치이니 행을 직접 지운다.
+        delete_campaign_row(store, id).await?;
+        let _ = crate::file_mtime::touch(store, &path).await;
+        return Ok(true);
     }
 
     // BUG-080 + BUG-089: 외부 편집일 때만 파일 mtime 으로 updated_at 보정 +
@@ -724,6 +872,7 @@ async fn refresh_campaign(store: &Store, slug: &str, writeback: bool) -> AppResu
         crate::time::normalize_legacy_ts(&cf.frontmatter.updated_at)
     };
 
+    let mut tx = store.index_pool.begin().await?;
     // 행 UPDATE — reindex 의 per-campaign INSERT 와 동일 필드.
     sqlx::query(
         "UPDATE campaigns SET
@@ -742,34 +891,14 @@ async fn refresh_campaign(store: &Store, slug: &str, writeback: bool) -> AppResu
     .bind(&cf.frontmatter.created_at)
     .bind(&updated_at)
     .bind(id)
-    .execute(&store.index_pool)
+    .execute(&mut *tx)
     .await?;
 
-    // 체크리스트 (본문) + linked_quests (frontmatter) re-sync.
+    // 체크리스트 (본문) + linked_quests (frontmatter) re-sync — 같은 트랜잭션.
     let items = crate::repo::extract_checklist_items(&cf.body);
-    crate::services::campaigns::replace_checklists_from_file(&store.index_pool, id, &items).await?;
-    sqlx::query("DELETE FROM campaign_quests WHERE campaign_id = ?")
-        .bind(id)
-        .execute(&store.index_pool)
-        .await?;
-    for qslug in &cf.frontmatter.linked_quests {
-        let qid: Option<i64> = sqlx::query_scalar(
-            "SELECT q.id FROM quests q JOIN quest_types qt ON qt.id = q.quest_type_id
-             WHERE qt.prefix || '-' || printf('%03d', q.number) = ?",
-        )
-        .bind(qslug)
-        .fetch_optional(&store.index_pool)
-        .await?;
-        if let Some(qid) = qid {
-            sqlx::query(
-                "INSERT OR IGNORE INTO campaign_quests (campaign_id, quest_id) VALUES (?, ?)",
-            )
-            .bind(id)
-            .bind(qid)
-            .execute(&store.index_pool)
-            .await?;
-        }
-    }
+    replace_checklists_in_tx(&mut tx, id, &items).await?;
+    resync_campaign_quests_in_tx(&mut tx, id, &cf.frontmatter.linked_quests).await?;
+    tx.commit().await?;
 
     // 캐시 갱신 — 외부 편집 시에만 (다음 진입 churn 방지).
     if externally_edited {
@@ -778,15 +907,16 @@ async fn refresh_campaign(store: &Store, slug: &str, writeback: bool) -> AppResu
     Ok(externally_edited)
 }
 
-/// DEV-310: 캠페인 본문(`campaigns/{slug}.md`) 외부 편집을 증분 반영.
+/// DEV-310/DEV-311: 캠페인 본문(`campaigns/{slug}.md`) 의 수정/신규/삭제를 증분 반영.
 ///
-/// 행 갱신 자체는 상세 진입용 `refresh_campaign_if_stale` 을 그대로 쓴다(제목/
-/// 본문/기간/체크리스트/linked_quests + updated_at write-back 까지 동일 규칙).
-/// 여기서 하는 일은 **어느 캠페인을 그 함수에 넘길지 고르는 것** — 캠페인 수가
-/// 적어도 매 열기마다 전부 UPDATE 할 이유는 없다.
-///
-/// 신규/삭제된 캠페인 파일은 행 생성·연쇄 삭제가 얽혀 있어 그대로 full reindex
-/// 로 넘긴다(빈도가 낮다).
+/// 기존 캠페인의 편집은 상세 진입용 `refresh_campaign_if_stale` 과 같은 코어
+/// (`refresh_campaign`) 를 쓴다(제목/본문/기간/체크리스트/linked_quests +
+/// updated_at write-back 까지 동일 규칙). DEV-311 부터는 신규 파일도 여기서
+/// `insert_new_campaign` 으로 바로 INSERT하고, 파일이 사라지거나 외부에서
+/// soft-delete 된 캠페인도 행을 직접 DELETE한다 — 예전엔 둘 다 "행 생성·연쇄
+/// 삭제가 얽혀 있다"는 이유로 full reindex 로 미뤘지만, 자식 테이블
+/// (`campaign_checklists`/`campaign_quests`/`campaign_comments`/`campaign_memos`)
+/// 이 전부 FK `ON DELETE CASCADE` 라 실제로는 quest 삭제와 같은 수준으로 단순하다.
 async fn sync_changed_campaign_files(
     store: &Store,
     report: &mut IncrementalReport,
@@ -817,19 +947,59 @@ async fn sync_changed_campaign_files(
                 .fetch_optional(&store.index_pool)
                 .await?;
         if exists.is_none() {
-            report.needs_full_reindex = true; // 신규 캠페인 파일 — reindex 담당.
+            match insert_new_campaign(store, path).await {
+                Ok(Some(_id)) => {
+                    report.campaigns_inserted += 1;
+                    let _ = crate::file_mtime::touch(store, path).await;
+                }
+                Ok(None) => {
+                    // 신규 파일이 이미 deleted=true — 넣을 행이 없다. 다음 sync 에서
+                    // 재검사하지 않도록만 캐시 갱신.
+                    let _ = crate::file_mtime::touch(store, path).await;
+                }
+                Err(e) => {
+                    report
+                        .skipped
+                        .push((path.display().to_string(), format!("{e:#}")));
+                    report.needs_full_reindex = true;
+                }
+            }
             continue;
         }
         if refresh_campaign_row_no_writeback(store, slug).await? {
-            report.campaigns_synced += 1;
+            // refresh_campaign 은 "외부 편집 반영" 과 "외부 soft-delete로 행 삭제"
+            // 둘 다 true 를 반환한다 — 행이 아직 있는지로 구분해 카운터를 나눈다.
+            let still_alive: Option<i64> =
+                sqlx::query_scalar("SELECT id FROM campaigns WHERE campaign_slug = ?")
+                    .bind(slug)
+                    .fetch_optional(&store.index_pool)
+                    .await?;
+            if still_alive.is_some() {
+                report.campaigns_synced += 1;
+            } else {
+                report.campaigns_deleted += 1;
+            }
         }
     }
-    // 캐시에는 있는데 파일이 사라진 캠페인 — 연쇄 삭제가 얽혀 full reindex 로.
-    if cache
-        .keys()
-        .any(|rel| is_campaign_body_rel(rel) && !alive.contains(rel))
-    {
-        report.needs_full_reindex = true;
+    // 캐시에는 있는데 파일이 사라진 캠페인 — 행 직접 삭제(FK cascade 로 자식도 정리).
+    for rel in cache.keys() {
+        if !is_campaign_body_rel(rel) || alive.contains(rel) {
+            continue;
+        }
+        let Some(slug) = rel.strip_prefix("campaigns/").and_then(|s| s.strip_suffix(".md"))
+        else {
+            continue;
+        };
+        let id: Option<i64> = sqlx::query_scalar("SELECT id FROM campaigns WHERE campaign_slug = ?")
+            .bind(slug)
+            .fetch_optional(&store.index_pool)
+            .await?;
+        if let Some(id) = id {
+            delete_campaign_row(store, id).await?;
+            report.campaigns_deleted += 1;
+        }
+        let path = paths.campaign_path(slug);
+        let _ = crate::file_mtime::touch(store, &path).await; // 파일 없음 → 캐시 row 제거.
     }
     Ok(())
 }
@@ -840,6 +1010,138 @@ fn is_campaign_body_rel(rel: &str) -> bool {
         return false;
     };
     name.ends_with(".md") && name.matches('.').count() == 1
+}
+
+/// `library/BOOK-001.md` 처럼 도서관 문서 rel 인지.
+fn is_library_body_rel(rel: &str) -> bool {
+    let Some(name) = rel.strip_prefix("library/") else {
+        return false;
+    };
+    let Some(stem) = name.strip_suffix(".md") else {
+        return false;
+    };
+    crate::repo::library::parse_book_slug(stem).is_some()
+}
+
+/// DEV-311: 도서관 문서(`library/{BOOK-NNN}.md`) 1개를 index.db 에 INSERT —
+/// `sync_changed_library_files` 가 DB 에 없는 새 파일을 발견했을 때 호출.
+/// reindex.rs 와 동일하게 soft-deleted(`deleted=true`) 문서도 (deleted_at 채워)
+/// 삽입한다 — 파일이 존재하는 한 번호 충돌 검증/복원을 위해 캐시에 실려야 한다
+/// (campaigns 와 달리 skip 하지 않음).
+async fn insert_new_library_doc(store: &Store, path: &std::path::Path) -> AppResult<i64> {
+    let bf = crate::repo::library::BookFile::read(path).map_err(crate::error::AppError::Internal)?;
+    let number = bf.number().map_err(crate::error::AppError::Internal)?;
+    let deleted_at: Option<String> = bf.frontmatter.deleted.then(|| bf.frontmatter.updated_at.clone());
+
+    let mut tx = store.index_pool.begin().await?;
+    let id: i64 = sqlx::query_scalar(
+        "INSERT INTO library_docs (number, title, body, path, created_at, updated_at, deleted_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         RETURNING id",
+    )
+    .bind(number)
+    .bind(&bf.frontmatter.title)
+    .bind(&bf.body)
+    .bind(&bf.frontmatter.path)
+    .bind(&bf.frontmatter.created_at)
+    .bind(&bf.frontmatter.updated_at)
+    .bind(deleted_at)
+    .fetch_one(&mut *tx)
+    .await?;
+    for tag in &bf.frontmatter.tags {
+        let normalized = tag.trim();
+        if normalized.is_empty() {
+            continue;
+        }
+        sqlx::query("INSERT OR IGNORE INTO library_tags (book_id, tag) VALUES (?, ?)")
+            .bind(id)
+            .bind(normalized)
+            .execute(&mut *tx)
+            .await?;
+    }
+    tx.commit().await?;
+    Ok(id)
+}
+
+/// DEV-311: 도서관 문서(`library/{BOOK-NNN}.md`) 의 수정/신규/삭제를 증분 반영.
+///
+/// 기존 문서의 "수정"은 상세 조회용 `ops::library::get_book` 이 이미 하는 일
+/// (파일 재-read + UPDATE + tags sync, BUG-134) 을 그대로 재사용한다 — 문서
+/// 상세를 안 열어도 열기 시점에 한 번 훑어 최신화해둔다. 신규/삭제는 이
+/// 함수가 직접 처리한다(`get_book` 은 상세 진입 케이스라 신규 INSERT 를
+/// 의도적으로 안 함 — 그 함수 주석 참고).
+async fn sync_changed_library_files(store: &Store, report: &mut IncrementalReport) -> AppResult<()> {
+    let paths = &store.paths;
+    let cache = crate::file_mtime::load_all(store).await;
+    let Ok(files) = crate::repo::library::list_book_files(paths) else {
+        return Ok(());
+    };
+    let mut alive: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for path in &files {
+        let rel = crate::file_mtime::rel_key(paths, path);
+        alive.insert(rel.clone());
+        let fresh = match cache.get(&rel) {
+            Some(&cached) => repo_fs::mtime_unix_nanos(path) > cached,
+            None => true, // 캐시에 없음 = 아직 한 번도 반영 안 된 파일(신규일 수 있다).
+        };
+        if !fresh {
+            continue;
+        }
+        let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        let Some(number) = crate::repo::library::parse_book_slug(stem) else {
+            continue;
+        };
+        let exists: Option<i64> = sqlx::query_scalar("SELECT id FROM library_docs WHERE number = ?")
+            .bind(number)
+            .fetch_optional(&store.index_pool)
+            .await?;
+        if exists.is_none() {
+            match insert_new_library_doc(store, path).await {
+                Ok(_id) => report.library_inserted += 1,
+                Err(e) => {
+                    report
+                        .skipped
+                        .push((path.display().to_string(), format!("{e:#}")));
+                    report.needs_full_reindex = true;
+                    continue;
+                }
+            }
+        } else {
+            match crate::ops::library::get_book(store, stem).await {
+                Ok(_) => report.library_synced += 1,
+                Err(e) => {
+                    report
+                        .skipped
+                        .push((path.display().to_string(), format!("{e:#}")));
+                    continue;
+                }
+            }
+        }
+        let _ = crate::file_mtime::touch(store, path).await;
+    }
+    // 캐시에는 있는데 파일이 사라진 문서 — 행 hard delete(library_tags 는 FK cascade).
+    for rel in cache.keys() {
+        if !is_library_body_rel(rel) || alive.contains(rel) {
+            continue;
+        }
+        let Some(book_id) = rel.strip_prefix("library/").and_then(|s| s.strip_suffix(".md")) else {
+            continue;
+        };
+        if let Some(number) = crate::repo::library::parse_book_slug(book_id) {
+            let result = sqlx::query("DELETE FROM library_docs WHERE number = ?")
+                .bind(number)
+                .execute(&store.index_pool)
+                .await?;
+            if result.rows_affected() > 0 {
+                report.library_deleted += 1;
+            }
+        }
+        let path = paths.book_path(book_id);
+        let _ = crate::file_mtime::touch(store, &path).await; // 파일 없음 → 캐시 row 제거.
+    }
+    Ok(())
 }
 
 /// DEV-310: sibling 파일(`{slug}.comments.md` / `{slug}.memo.md`) 변경을 증분
@@ -1101,8 +1403,11 @@ async fn replace_sibling_rows(
 ///
 /// 흐름:
 /// 1. `sync_changed_quest_files` — quest 본문의 수정/신규/삭제 (DEV-246).
-/// 2. `sync_changed_sibling_files` — 댓글/메모 파일 (DEV-310).
-/// 3. 둘 중 하나라도 증분으로 표현 못 하는 변화를 만났으면 `drift::auto_resync`.
+/// 2. `sync_changed_campaign_files` — 캠페인 본문의 수정/신규/삭제 (DEV-310/311).
+/// 3. `sync_changed_sibling_files` — 댓글/메모 파일 (DEV-310).
+/// 4. `sync_changed_library_files` — 도서관 문서의 수정/신규/삭제 (DEV-311).
+///    quest/campaign 과 독립(참조 관계 없음) — 순서 무관.
+/// 5. 위 중 하나라도 증분으로 표현 못 하는 변화를 만났으면 `drift::auto_resync`.
 ///
 /// 통합 호출자는 `Store::open_with_sync` (store.rs).
 pub async fn sync_on_open(
@@ -1113,6 +1418,7 @@ pub async fn sync_on_open(
     // 댓글도 같은 열기에서 반영된다(순서가 반대면 소유자가 없어 full 로 넘어간다).
     sync_changed_campaign_files(store, &mut inc).await?;
     sync_changed_sibling_files(store, &mut inc).await?;
+    sync_changed_library_files(store, &mut inc).await?;
     let inc = inc;
     let reindex_report = if inc.needs_full_reindex {
         crate::drift::auto_resync(store)
@@ -2121,25 +2427,297 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// DEV-311: 손으로 만든(index 에 없는) 캠페인 파일이 **풀 reindex 없이** INSERT.
     #[tokio::test]
-    async fn new_campaign_file_still_falls_back() {
-        // 캠페인 신규/삭제는 아직 증분 범위가 아니다 — 안전망이 살아있는지 확인.
+    async fn new_campaign_file_inserted_without_full_reindex() {
         let dir = fresh_tmp("camp-new");
         let store = setup(&dir).await;
+        let quest_slug = mk_one_quest(&store).await;
         let path = store.paths.campaign_path("C-042");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(
             &path,
-            "+++\ncampaign_id = \"C-042\"\ntitle = \"손으로 넣은 캠페인\"\nstatus = \"active\"\ncreated_at = \"2026-01-01T00:00:00Z\"\nupdated_at = \"2026-01-01T00:00:00Z\"\n+++\n\n본문\n",
+            format!(
+                "+++\ncampaign_id = \"C-042\"\ntitle = \"손으로 넣은 캠페인\"\nstatus = \"active\"\ncreated_at = \"2026-01-01T00:00:00Z\"\nupdated_at = \"2026-01-01T00:00:00Z\"\nlinked_quests = [\"{quest_slug}\"]\n+++\n\n- [ ] 할 일 1\n- [x] 할 일 2\n"
+            ),
         )
         .unwrap();
 
         let mut report = IncrementalReport::default();
         sync_changed_campaign_files(&store, &mut report).await.unwrap();
+        assert!(!report.needs_full_reindex, "신규 캠페인 파일도 증분 INSERT 여야: {report:?}");
+        assert_eq!(report.campaigns_inserted, 1);
+
+        let row: (String, i64) =
+            sqlx::query_as("SELECT title, id FROM campaigns WHERE campaign_slug = 'C-042'")
+                .fetch_one(&store.index_pool)
+                .await
+                .unwrap();
+        assert_eq!(row.0, "손으로 넣은 캠페인");
+        let checklist_n: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM campaign_checklists WHERE campaign_id = ?")
+                .bind(row.1)
+                .fetch_one(&store.index_pool)
+                .await
+                .unwrap();
+        assert_eq!(checklist_n, 2, "체크리스트도 같이 들어가야");
+        let linked_n: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM campaign_quests WHERE campaign_id = ?")
+                .bind(row.1)
+                .fetch_one(&store.index_pool)
+                .await
+                .unwrap();
+        assert_eq!(linked_n, 1, "linked_quests 도 같이 연결돼야");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-311: 캠페인 파일이 사라지면 행 + 체크리스트/링크가 풀 reindex 없이 DELETE.
+    #[tokio::test]
+    async fn deleted_campaign_file_removes_row_without_full_reindex() {
+        let dir = fresh_tmp("camp-del");
+        let store = setup(&dir).await;
+        let camp = crate::ops::campaigns::create_campaign(
+            &store,
+            crate::models::CreateCampaignRequest {
+                title: "지워질 캠페인".into(),
+                description: None,
+                started_at: None,
+                ended_at: None,
+            },
+        )
+        .await
+        .unwrap();
+        let path = store.paths.campaign_path(&camp.campaign_slug);
+        crate::ops::campaigns::add_checklist_line(&store, camp.id, "체크")
+            .await
+            .unwrap();
+        // sibling 테스트와 동일 패턴 — 삭제 감지는 file_mtime_cache 에 이전 항목이
+        // 있어야 하니, 먼저 한 번 sync 로 캐시를 "정착"시킨다(재기동 시나리오).
+        sync_on_open(&store).await.unwrap();
+
+        std::fs::remove_file(&path).unwrap();
+        let (inc, full) = sync_on_open(&store).await.unwrap();
         assert!(
-            report.needs_full_reindex,
-            "index 에 없는 캠페인 파일은 풀 reindex 로 넘겨야"
+            !inc.needs_full_reindex && full.is_none(),
+            "캠페인 파일 삭제로 풀 reindex 를 타면 안 됨: {inc:?}"
         );
+        assert_eq!(inc.campaigns_deleted, 1);
+        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM campaigns WHERE id = ?")
+            .bind(camp.id)
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(n, 0);
+        let checklist_n: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM campaign_checklists WHERE campaign_id = ?")
+                .bind(camp.id)
+                .fetch_one(&store.index_pool)
+                .await
+                .unwrap();
+        assert_eq!(checklist_n, 0, "FK cascade 로 체크리스트도 같이 지워져야");
+
+        // 캐시 row 도 정리 — 안 지우면 매번 '사라진 파일' 로 다시 잡힘.
+        let (inc2, _) = sync_on_open(&store).await.unwrap();
+        assert_eq!(inc2.campaigns_deleted, 0);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-311: 외부에서 캠페인 파일에 `deleted = true` 를 써넣으면 행이 DELETE.
+    #[tokio::test]
+    async fn externally_soft_deleted_campaign_removes_row() {
+        let dir = fresh_tmp("camp-extdel");
+        let store = setup(&dir).await;
+        let camp = crate::ops::campaigns::create_campaign(
+            &store,
+            crate::models::CreateCampaignRequest {
+                title: "제목".into(),
+                description: None,
+                started_at: None,
+                ended_at: None,
+            },
+        )
+        .await
+        .unwrap();
+        let path = store.paths.campaign_path(&camp.campaign_slug);
+
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let src = std::fs::read_to_string(&path).unwrap();
+        // frontmatter 는 이미 기본값 `deleted = false` 를 직렬화해 담고 있다
+        // (serde default 는 역직렬화만 관여, 직렬화는 항상 씀) — 새 줄을 더하면
+        // TOML 중복 키로 파싱이 깨지니 기존 줄을 바꿔치기한다.
+        let edited = src.replace("deleted = false", "deleted = true");
+        assert_ne!(edited, src, "deleted = false 줄을 못 찾음: {src}");
+        std::fs::write(&path, edited).unwrap();
+
+        let (inc, full) = sync_on_open(&store).await.unwrap();
+        assert!(!inc.needs_full_reindex && full.is_none(), "{inc:?}");
+        assert_eq!(inc.campaigns_deleted, 1);
+        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM campaigns WHERE id = ?")
+            .bind(camp.id)
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(n, 0);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-311(perf): 트랜잭션 리팩터 후에도 링크 여러 개짜리 캠페인 재적재가
+    /// 정확한지 — UPDATE + 체크리스트 교체 + campaign_quests 재연결이 전부
+    /// 한 커밋 안에서 일관되게 반영되는지 확인(부분 반영/롤백 없음).
+    #[tokio::test]
+    async fn campaign_refresh_with_many_links_is_transactionally_consistent() {
+        let dir = fresh_tmp("camp-perf");
+        let store = setup(&dir).await;
+        let mut slugs = Vec::new();
+        for i in 0..10 {
+            slugs.push(mk_one_quest(&store).await);
+            let _ = i;
+        }
+        let camp = crate::ops::campaigns::create_campaign(
+            &store,
+            crate::models::CreateCampaignRequest {
+                title: "링크 많은 캠페인".into(),
+                description: None,
+                started_at: None,
+                ended_at: None,
+            },
+        )
+        .await
+        .unwrap();
+        let path = store.paths.campaign_path(&camp.campaign_slug);
+
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let linked = slugs
+            .iter()
+            .map(|s| format!("\"{s}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let src = std::fs::read_to_string(&path).unwrap();
+        // frontmatter 는 이미 기본값 `linked_quests = []` 을 직렬화해 담고 있다 —
+        // 새 줄을 더하면 TOML 중복 키로 파싱이 깨지니 기존 줄을 바꿔치기한다.
+        let edited = src.replace("linked_quests = []", &format!("linked_quests = [{linked}]"));
+        assert_ne!(edited, src, "linked_quests = [] 줄을 못 찾음: {src}");
+        std::fs::write(&path, edited).unwrap();
+
+        let (inc, full) = sync_on_open(&store).await.unwrap();
+        assert!(!inc.needs_full_reindex && full.is_none(), "{inc:?}");
+        assert_eq!(inc.campaigns_synced, 1);
+        let linked_n: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM campaign_quests WHERE campaign_id = ?")
+                .bind(camp.id)
+                .fetch_one(&store.index_pool)
+                .await
+                .unwrap();
+        assert_eq!(linked_n, slugs.len() as i64, "링크 10개가 전부 반영돼야");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ─── DEV-311: 도서관(library) 문서 증분 ───
+
+    /// 손으로 만든(index 에 없는) 도서관 문서 파일이 **풀 reindex 없이** INSERT.
+    #[tokio::test]
+    async fn new_library_file_inserted_without_full_reindex() {
+        let dir = fresh_tmp("lib-new");
+        let store = setup(&dir).await;
+        let path = store.paths.book_path("BOOK-042");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &path,
+            "+++\nbook_id = \"BOOK-042\"\ntitle = \"손으로 넣은 문서\"\npath = \"\"\ncreated_at = \"2026-01-01T00:00:00Z\"\nupdated_at = \"2026-01-01T00:00:00Z\"\ntags = [\"architecture\"]\n+++\n\n본문 내용\n",
+        )
+        .unwrap();
+
+        let mut report = IncrementalReport::default();
+        sync_changed_library_files(&store, &mut report).await.unwrap();
+        assert!(!report.needs_full_reindex, "신규 문서 파일도 증분 INSERT 여야: {report:?}");
+        assert_eq!(report.library_inserted, 1);
+
+        let row: (String, i64) =
+            sqlx::query_as("SELECT title, id FROM library_docs WHERE number = 42")
+                .fetch_one(&store.index_pool)
+                .await
+                .unwrap();
+        assert_eq!(row.0, "손으로 넣은 문서");
+        let tags: Vec<String> = sqlx::query_scalar("SELECT tag FROM library_tags WHERE book_id = ?")
+            .bind(row.1)
+            .fetch_all(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(tags, vec!["architecture".to_string()]);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 외부 편집(제목 변경)이 열기 경로에서 증분 반영.
+    #[tokio::test]
+    async fn external_library_edit_syncs_without_full_reindex() {
+        let dir = fresh_tmp("lib-edit");
+        let store = setup(&dir).await;
+        let book = crate::ops::library::create_book(&store, "원래 제목", "본문", "").await.unwrap();
+        let path = store.paths.book_path(&book.book_id());
+
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let src = std::fs::read_to_string(&path).unwrap();
+        std::fs::write(&path, src.replace("원래 제목", "고친 제목")).unwrap();
+
+        let (inc, full) = sync_on_open(&store).await.unwrap();
+        assert!(
+            !inc.needs_full_reindex && full.is_none(),
+            "도서관 문서 편집으로 풀 reindex 를 타면 안 됨: {inc:?}"
+        );
+        assert_eq!(inc.library_synced, 1);
+        let title: String = sqlx::query_scalar("SELECT title FROM library_docs WHERE id = ?")
+            .bind(book.id)
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(title, "고친 제목");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 도서관 문서 파일이 사라지면 행 + 태그가 풀 reindex 없이 DELETE.
+    #[tokio::test]
+    async fn deleted_library_file_removes_row_without_full_reindex() {
+        let dir = fresh_tmp("lib-del");
+        let store = setup(&dir).await;
+        let book = crate::ops::library::create_book(&store, "지워질 문서", "본문", "").await.unwrap();
+        crate::ops::library::set_book_tags(&store, &book.book_id(), vec!["temp".into()])
+            .await
+            .unwrap();
+        let path = store.paths.book_path(&book.book_id());
+        // 삭제 감지는 file_mtime_cache 에 이전 항목이 있어야 하니, 먼저 한 번
+        // sync 로 캐시를 "정착"시킨다(재기동 시나리오 — ops::library 는 생성
+        // 시점에 이 캐시를 안 건드림, get_book 의 lazy refresh 만 씀).
+        sync_on_open(&store).await.unwrap();
+
+        std::fs::remove_file(&path).unwrap();
+        let (inc, full) = sync_on_open(&store).await.unwrap();
+        assert!(
+            !inc.needs_full_reindex && full.is_none(),
+            "도서관 문서 파일 삭제로 풀 reindex 를 타면 안 됨: {inc:?}"
+        );
+        assert_eq!(inc.library_deleted, 1);
+        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM library_docs WHERE id = ?")
+            .bind(book.id)
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(n, 0);
+        let tag_n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM library_tags WHERE book_id = ?")
+            .bind(book.id)
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(tag_n, 0, "FK cascade 로 태그도 같이 지워져야");
+
+        // 캐시 row 도 정리 — 안 지우면 매번 '사라진 파일' 로 다시 잡힘.
+        let (inc2, _) = sync_on_open(&store).await.unwrap();
+        assert_eq!(inc2.library_deleted, 0);
 
         let _ = std::fs::remove_dir_all(&dir);
     }

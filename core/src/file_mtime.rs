@@ -51,12 +51,13 @@ pub async fn touch(store: &Store, abs: &Path) -> Result<(), sqlx::Error> {
 }
 
 /// DEV-178: per-file mtime 캐시로 외부편집을 감지할 "primary" 파일들 —
-/// 캠페인 본문(`campaigns/{slug}.md`) + types/statuses/tags 정의(`*.toml`).
+/// 캠페인 본문(`campaigns/{slug}.md`) + types/statuses/tags 정의(`*.toml`) +
+/// DEV-311: 도서관 문서(`library/{BOOK-NNN}.md`).
 ///
 /// quest 본문은 per-row `cached_mtime`(quests 테이블)으로, sibling 댓글/메모는
 /// 아래 sync_all 이 별도로 다룬다. 그 외 DB 캐시로 읽히는 파일들(캠페인 본문 +
-/// 메타 정의)은 per-row mtime 컬럼이 없어 여기서 file_mtime_cache 로 커버한다.
-/// detect_drift 와 sync_all 이 같은 목록을 쓰도록 한 곳에 모은다.
+/// 메타 정의 + 도서관 문서)은 per-row mtime 컬럼이 없어 여기서 file_mtime_cache
+/// 로 커버한다. detect_drift 와 sync_all 이 같은 목록을 쓰도록 한 곳에 모은다.
 pub fn list_primary_cached_files(paths: &GuildPaths) -> Vec<std::path::PathBuf> {
     let mut files = Vec::new();
     // 캠페인 본문 (sibling `.comments.md` / `.memo.md` 제외 — stem 에 '.' 없는 .md).
@@ -68,6 +69,10 @@ pub fn list_primary_cached_files(paths: &GuildPaths) -> Vec<std::path::PathBuf> 
         if let Ok(t) = repo_fs::list_with_extension(&dir, "toml") {
             files.extend(t);
         }
+    }
+    // DEV-311: 도서관 문서.
+    if let Ok(b) = crate::repo::library::list_book_files(paths) {
+        files.extend(b);
     }
     files
 }
