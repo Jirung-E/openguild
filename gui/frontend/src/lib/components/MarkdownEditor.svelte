@@ -363,6 +363,21 @@
 		});
 	});
 
+	// BUG-222: value 는 그동안 CM → value 단방향(updateListener)으로만
+	// 동기화됐다 — 호출측이 저장/등록 후 `value = ''` 처럼 **외부에서**
+	// 리셋해도 CM 문서엔 반영할 경로가 없어(마운트 시 1회 doc: value 만
+	// 반영) 입력창이 안 비워진 채로 남았다. value 변경을 감시해 CM 문서와
+	// 다르면 통째로 치환 — updateListener 가 타이핑마다 value 를 CM 과
+	// 동일하게 맞춰두므로(같으면 skip) 무한 루프는 없다.
+	$effect(() => {
+		const v = value;
+		if (!view) return;
+		if (view.state.doc.toString() === v) return;
+		view.dispatch({
+			changes: { from: 0, to: view.state.doc.length, insert: v }
+		});
+	});
+
 	// DEV-130: 들여쓰기 설정 변경 시 재생성 — value 가 실시간 동기화되므로
 	// 내용은 보존됨. 최초 구독(마운트 직후)은 skip.
 	let prevSettings: unknown = undefined;
