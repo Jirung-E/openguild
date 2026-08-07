@@ -10,6 +10,7 @@
 	import { tabInsert } from '$lib/actions/tab-insert';
 	import { adminApi } from '$lib/api/admin';
 	import { onMount } from 'svelte';
+	import { get } from 'svelte/store';
 	import {
 		urgencyColor,
 		urgencyLabel,
@@ -17,6 +18,13 @@
 		type QuestType,
 		type QuestStatus
 	} from '$lib/types';
+	// DEV-344: 설명 textarea 도 댓글(DEV-171/172)과 같은 cross-link 자동완성
+	// caret 팝업을 쓴다 — 이미 프레임워크 무관하게 뽑아둔 유틸 재사용.
+	import { wikiMatch, applyWikiLink, applyWikiPrefix, caretXY, type WikiItem } from '$lib/utils/textarea-wikilink';
+	import { computeWikiPlace, clampWikiLeft, isWikiCaretVisible } from '$lib/utils/wiki-popup-place';
+	import { questIndex, loadQuestIndex } from '$lib/stores/questIndex';
+	import { hideTitlePopupNow } from '$lib/actions/title-popup';
+	import WikiAutocompletePopup from './WikiAutocompletePopup.svelte';
 
 	let {
 		onclose,
@@ -43,6 +51,171 @@
 
 	let saving = $state(false);
 	let saveError = $state<string | null>(null);
+
+	// DEV-344: 설명 textarea cross-link 자동완성 — QuestCommentsSection(DEV-171)
+	// 과 동일한 패턴, 유틸/팝업만 공유.
+	loadQuestIndex();
+	let wiki = $state<{
+		el: HTMLTextAreaElement;
+		from: number;
+		to: number;
+		items: WikiItem[];
+		left: number;
+		caretTop: number;
+		caretBottom: number;
+	} | null>(null);
+	let wikiPopH = $state(0);
+	let wikiPlace = $derived.by(() =>
+		wiki ? computeWikiPlace(wiki.caretTop, wiki.caretBottom, wiki.items.length, wikiPopH) : null
+	);
+	let wikiSel = $state(0);
+	let wikiPopEl = $state<HTMLUListElement | undefined>(undefined);
+	let wikiSelFromKeyboard = false;
+	let wikiNavMode = $state<'keyboard' | 'mouse'>('keyboard');
+	let wikiDismissed = $state<string | null>(null);
+
+	$effect(() => {
+		const pop = wikiPopEl;
+		if (!pop || !wiki) {
+			wikiPopH = 0;
+			return;
+		}
+		const measure = () => (wikiPopH = pop.scrollHeight);
+		measure();
+		const ro = new ResizeObserver(measure);
+		ro.observe(pop);
+		return () => ro.disconnect();
+	});
+	$effect(() => {
+		void wikiSel;
+		void wiki;
+		if (!wiki) {
+			hideTitlePopupNow();
+			return;
+		}
+		if (!wikiSelFromKeyboard) return;
+		wikiSelFromKeyboard = false;
+		const pop = wikiPopEl;
+		const sel = pop?.querySelector<HTMLElement>('.wiki-opt.sel');
+		if (!pop || !sel) return;
+		const itemTop = sel.offsetTop;
+		const itemBottom = itemTop + sel.offsetHeight;
+		if (itemTop < pop.scrollTop) {
+			pop.scrollTop = itemTop;
+		} else if (itemBottom > pop.scrollTop + pop.clientHeight) {
+			pop.scrollTop = itemBottom - pop.clientHeight;
+		}
+		hideTitlePopupNow();
+	});
+	$effect(() => {
+		if (!wiki) return;
+		const onMove = () => repositionWiki();
+		const onDown = (ev: MouseEvent) => {
+			if (!wiki) return;
+			const tgt = ev.target as Node;
+			if (wikiPopEl?.contains(tgt) || wiki.el === tgt) return;
+			dismissWiki();
+		};
+		window.addEventListener('scroll', onMove, true);
+		window.addEventListener('resize', onMove);
+		window.addEventListener('mousedown', onDown, true);
+		return () => {
+			window.removeEventListener('scroll', onMove, true);
+			window.removeEventListener('resize', onMove);
+			window.removeEventListener('mousedown', onDown, true);
+		};
+	});
+
+	function onWikiInput(e: Event) {
+		if (
+			e instanceof KeyboardEvent &&
+			wiki &&
+			(e.key === 'ArrowDown' ||
+				e.key === 'ArrowUp' ||
+				e.key === 'Enter' ||
+				e.key === 'Tab' ||
+				e.key === 'Escape')
+		)
+			return;
+		const el = e.currentTarget as HTMLTextAreaElement;
+		const caret = el.selectionStart ?? 0;
+		const m = wikiMatch(el.value, caret, get(questIndex));
+		if (!m) {
+			wiki = null;
+			wikiDismissed = null;
+			return;
+		}
+		const token = el.value.slice(m.from, m.to);
+		if (wikiDismissed === token) {
+			wiki = null;
+			return;
+		}
+		wikiDismissed = null;
+		wiki = placeWiki(el, m.from, m.to, m.items);
+		wikiSel = 0;
+		wikiSelFromKeyboard = true;
+		wikiNavMode = 'keyboard';
+	}
+
+	function placeWiki(
+		el: HTMLTextAreaElement,
+		from: number,
+		to: number,
+		items: WikiItem[]
+	): typeof wiki {
+		const c = caretXY(el, to);
+		const rect = el.getBoundingClientRect();
+		const caretTop = rect.top + c.top - el.scrollTop;
+		const caretBottom = caretTop + c.height;
+		if (!isWikiCaretVisible(caretTop, caretBottom, rect.top, rect.bottom)) return null;
+		const rawLeft = rect.left + c.left - el.scrollLeft;
+		const left = clampWikiLeft(rawLeft);
+		return { el, from, to, items, left, caretTop, caretBottom };
+	}
+
+	function repositionWiki() {
+		if (!wiki) return;
+		wiki = placeWiki(wiki.el, wiki.from, wiki.to, wiki.items);
+	}
+	function dismissWiki() {
+		if (wiki) wikiDismissed = wiki.el.value.slice(wiki.from, wiki.to);
+		wiki = null;
+	}
+	function applyWiki(item: WikiItem) {
+		if (!wiki) return;
+		if (item.nsPrefix) {
+			applyWikiPrefix(wiki.el, wiki.from, wiki.to, item.insert ?? item.id);
+			return;
+		}
+		applyWikiLink(wiki.el, wiki.from, wiki.to, item.insert ?? item.id);
+		wiki = null;
+		wikiDismissed = null;
+	}
+	function onWikiKeydown(e: KeyboardEvent) {
+		if (!wiki) return;
+		const n = wiki.items.length;
+		if (e.key === 'ArrowDown') {
+			e.preventDefault();
+			wikiSelFromKeyboard = true;
+			wikiNavMode = 'keyboard';
+			hideTitlePopupNow();
+			wikiSel = (wikiSel + 1) % n;
+		} else if (e.key === 'ArrowUp') {
+			e.preventDefault();
+			wikiSelFromKeyboard = true;
+			wikiNavMode = 'keyboard';
+			hideTitlePopupNow();
+			wikiSel = (wikiSel - 1 + n) % n;
+		} else if (e.key === 'Enter' || e.key === 'Tab') {
+			e.preventDefault();
+			e.stopImmediatePropagation();
+			applyWiki(wiki.items[wikiSel]);
+		} else if (e.key === 'Escape') {
+			e.preventDefault();
+			e.stopImmediatePropagation();
+			dismissWiki();
+		}
+	}
 
 	// DEV-014 후속: meta (type / status) 가 비어있을 때의 empty-state.
 	// 0개면 quest 생성 자체가 불가 → 입력 폼 대신 안내 + 액션.
@@ -357,6 +530,10 @@
 							rows="5"
 							placeholder={t('nqm.descPlaceholder', $locale)}
 							bind:value={description}
+							oninput={onWikiInput}
+							onkeyup={onWikiInput}
+							onclick={onWikiInput}
+							onkeydowncapture={onWikiKeydown}
 						></textarea>
 					</label>
 				</div>
@@ -427,6 +604,24 @@
 		{/if}
 	</div>
 </div>
+<!-- DEV-344: cross-link 자동완성 팝업 — 댓글/본문과 같은 공유 컴포넌트. -->
+{#if wiki}
+	<WikiAutocompletePopup
+		items={wiki.items}
+		left={wiki.left}
+		top={wikiPlace?.top ?? wiki.caretBottom}
+		bottom={wikiPlace?.bottom ?? null}
+		maxH={wikiPlace?.maxH ?? 224}
+		selectedIndex={wikiSel}
+		navMode={wikiNavMode}
+		onSelect={applyWiki}
+		onHoverSelect={(i) => {
+			wikiNavMode = 'mouse';
+			wikiSel = i;
+		}}
+		bind:popupEl={wikiPopEl}
+	/>
+{/if}
 
 <style>
 	.overlay {
