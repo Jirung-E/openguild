@@ -1,0 +1,171 @@
+<!--
+  DEV-172: cross-link 자동완성 팝업 UI — DEV-171(댓글 textarea)에서 만든 걸
+  본문 편집기(CodeMirror, MarkdownEditor.svelte)와 공유하기 위해 추출.
+
+  이 컴포넌트는 **렌더링만** 한다 — 후보 매칭(wikiMatch), caret 위치 계산,
+  키보드 네비게이션, 적용(insert)은 전부 호출측 책임. 그래야 textarea 기반
+  (comments) 과 CodeMirror 기반(MarkdownEditor) 이 서로 다른 캐럿/삽입 API 를
+  쓰면서도 같은 팝업을 그릴 수 있다.
+-->
+<script lang="ts">
+	import Icon from './Icon.svelte';
+	import OverlayScrollbar from './OverlayScrollbar.svelte';
+	import { titlePopup } from '$lib/actions/title-popup';
+	import { locale, t } from '$lib/stores/locale';
+	import type { WikiItem } from '$lib/utils/textarea-wikilink';
+
+	let {
+		items,
+		left,
+		top = null,
+		bottom = null,
+		maxH = 224,
+		selectedIndex,
+		navMode,
+		onSelect,
+		onHoverSelect,
+		popupEl = $bindable<HTMLUListElement | undefined>(undefined)
+	}: {
+		items: WikiItem[];
+		/** viewport 기준 px. */
+		left: number;
+		/** top 배치일 때 px, 아니면 null(=bottom 배치 중). */
+		top?: number | null;
+		/** bottom 배치일 때 px, 아니면 null(=top 배치 중). */
+		bottom?: number | null;
+		maxH?: number;
+		selectedIndex: number;
+		navMode: 'keyboard' | 'mouse';
+		onSelect: (item: WikiItem, index: number) => void;
+		onHoverSelect: (index: number) => void;
+		popupEl?: HTMLUListElement;
+	} = $props();
+</script>
+
+<ul
+	class="wiki-pop"
+	bind:this={popupEl}
+	style="left:{left}px; {bottom != null
+		? `bottom:${bottom}px`
+		: `top:${top ?? 0}px`}; max-height:{maxH}px"
+>
+	{#each items as it, i (it.id)}
+		<li>
+			<button
+				type="button"
+				class="wiki-opt"
+				class:sel={i === selectedIndex}
+				class:expanded={i === selectedIndex && navMode === 'keyboard'}
+				onmousedown={(ev) => {
+					ev.preventDefault();
+					onSelect(it, i);
+				}}
+				onmouseenter={() => onHoverSelect(i)}
+				use:titlePopup={navMode === 'keyboard'
+					? null
+					: `${it.insert ?? it.id}${it.title ? ` — ${it.title}` : ''}`}
+			>
+				<!-- BUG-169: 🏷️/🔗 는 컬러 이모지로 렌더돼 OS 마다 크기·기준선이
+				     달랐다 — currentColor SVG 로 교체. -->
+				<span class="wiki-id" class:missing={!it.exists}>
+					<Icon name={it.nsPrefix ? 'tag' : 'link'} size={12} />
+					{it.insert ?? it.id}</span
+				>
+				<span class="wiki-meta">
+					{it.nsPrefix
+						? it.title
+						: it.exists
+							? `${it.kind === 'rule' ? t('comment.ruleLinkPrefix', $locale) : it.kind === 'book' ? t('comment.bookLinkPrefix', $locale) : ''}${it.title}`
+							: t('comment.newLink', $locale)}
+				</span>
+			</button>
+		</li>
+	{/each}
+</ul>
+<!-- BUG-157: 팝업 native 스크롤바 대신 overlay thumb. -->
+<OverlayScrollbar target={popupEl ?? null} />
+
+<style>
+	.wiki-pop {
+		position: fixed;
+		z-index: 50;
+		margin: 0;
+		padding: 0.2rem;
+		list-style: none;
+		/* 모바일 수정: 예전엔 min 14rem / max 22rem 고정이라 375px 화면에서 팝업이
+		   화면을 거의 덮고 오른쪽으로 넘쳐 나갔다. 뷰포트를 넘지 않도록 상한을
+		   함께 건다(양옆 8px 여백). min-width 도 같은 이유로 뷰포트에 양보. */
+		min-width: min(14rem, calc(100vw - 16px));
+		max-width: min(22rem, calc(100vw - 16px));
+		/* 짧은 화면(가로 모드 등)에서 팝업이 화면 높이를 넘지 않게. */
+		max-height: min(14rem, 45vh);
+		overflow-y: auto;
+		/* BUG-157: native scrollbar 숨김 — OverlayScrollbar 가 대신 그린다. */
+		scrollbar-width: none;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+	}
+	.wiki-pop::-webkit-scrollbar {
+		display: none;
+	}
+	.wiki-opt {
+		display: flex;
+		align-items: baseline;
+		gap: 0.5rem;
+		width: 100%;
+		padding: 0.3rem 0.5rem;
+		border: none;
+		border-radius: 5px;
+		background: transparent;
+		color: var(--text);
+		cursor: pointer;
+		text-align: left;
+	}
+	.wiki-opt.sel,
+	.wiki-opt:hover {
+		background: color-mix(in srgb, var(--accent) 18%, transparent);
+	}
+	.wiki-id {
+		flex: none;
+		font-family: 'SFMono-Regular', Consolas, monospace;
+		font-size: 0.8rem;
+		color: var(--accent);
+	}
+	.wiki-id.missing {
+		color: var(--danger);
+	}
+	.wiki-meta {
+		flex: 1;
+		min-width: 0;
+		font-size: 0.78rem;
+		color: var(--text-muted);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	/* DEV-297 수정: 키보드로 선택된 항목만 말줄임을 풀어 제자리에서 펼친다.
+	   팝업으로 띄우면 위/아래 항목을 가렸다. 높이는 내용만큼만 늘어나고,
+	   선택이 옮겨가면 다시 한 줄로 돌아온다.
+
+	   admin 후속: 한 줄(`SLUG 제목`)로 펼치면 slug 가 길 때 제목 자리가 거의
+	   안 남는다 — **펼쳤을 때만** slug 와 제목을 위아래로 쌓는다(접힌 항목은
+	   기존처럼 한 줄이라 목록 훑기가 흐트러지지 않는다). */
+	.wiki-opt.expanded {
+		flex-direction: column;
+		align-items: stretch;
+		gap: 0.15rem;
+	}
+	.wiki-opt.expanded .wiki-id {
+		flex: none;
+		white-space: normal;
+		overflow-wrap: anywhere;
+	}
+	.wiki-opt.expanded .wiki-meta {
+		overflow: visible;
+		text-overflow: clip;
+		white-space: normal;
+		overflow-wrap: anywhere;
+	}
+</style>

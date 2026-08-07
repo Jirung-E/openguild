@@ -40,7 +40,7 @@
 	// BUG-157: cross-link 자동완성 팝업 스크롤도 커스텀(overlay)으로 통일.
 	import OverlayScrollbar from './OverlayScrollbar.svelte';
 	// DEV-297: 전체 제목은 네이티브 title 대신 앱 스타일 커스텀 팝업으로.
-	import { titlePopup, showTitlePopupNow, hideTitlePopupNow } from '$lib/actions/title-popup';
+	import { hideTitlePopupNow } from '$lib/actions/title-popup';
 	// DEV-140/171: 댓글 textarea cross-link 자동완성 — caret 위치 팝업 + 실재 ID 제안.
 	import {
 		wikiMatch,
@@ -49,6 +49,9 @@
 		caretXY,
 		type WikiItem
 	} from '$lib/utils/textarea-wikilink';
+	// DEV-172: 팝업 배치 계산 + UI 는 본문 편집기(MarkdownEditor)와 공유.
+	import { computeWikiPlace, clampWikiLeft, isWikiCaretVisible } from '$lib/utils/wiki-popup-place';
+	import WikiAutocompletePopup from './WikiAutocompletePopup.svelte';
 	import { questIndex, loadQuestIndex } from '$lib/stores/questIndex';
 	import { get } from 'svelte/store';
 	// DEV-205(모듈4): 댓글 섹션 i18n.
@@ -74,29 +77,10 @@
 	} | null>(null);
 	/** 팝업의 **실제** 콘텐츠 높이(max-height 로 잘리기 전). ResizeObserver 로 갱신. */
 	let wikiPopH = $state(0);
-	/** 뷰포트 가장자리 여백 — 좌우 clamp 와 같은 값. */
-	const WIKI_MARGIN = 8;
-	/** CSS 의 상한(14rem)과 같은 값 — 공간이 남아도 이 이상은 키우지 않는다. */
-	const WIKI_MAX_H = 224;
-	// BUG-209: 배치는 "추정" 이 아니라 "측정". 아래 공간에 실제 높이가 안 들어가고
-	// 위가 더 넓으면 위로 띄우고, 어느 쪽이든 남은 공간만큼 max-height 를 물려
-	// 팝업이 뷰포트를 벗어나지 못하게 한다. 항목이 펼쳐져 높이가 변해도 스스로
-	// 다시 맞춰지므로 같은 문제가 재발하지 않는다.
-	let wikiPlace = $derived.by(() => {
-		if (!wiki) return null;
-		const below = window.innerHeight - wiki.caretBottom - WIKI_MARGIN;
-		const above = wiki.caretTop - WIKI_MARGIN;
-		// 아직 렌더 전이면 항목 수로 어림잡되, 렌더 직후 측정값으로 교체된다.
-		const h = wikiPopH || Math.min(wiki.items.length * 30 + 8, WIKI_MAX_H);
-		const flipUp = h > below && above > below;
-		const space = flipUp ? above : below;
-		// 너무 납작해지면 오히려 못 쓰므로 하한(2항목분) 은 둔다.
-		// 45vh 는 기존 모바일 CSS 상한과 같은 뜻 — 화면 절반 이상 덮지 않기.
-		const maxH = Math.max(68, Math.min(WIKI_MAX_H, space, window.innerHeight * 0.45));
-		return flipUp
-			? { top: null as number | null, bottom: window.innerHeight - wiki.caretTop, maxH }
-			: { top: wiki.caretBottom, bottom: null as number | null, maxH };
-	});
+	// DEV-172: 배치 계산은 MarkdownEditor(CodeMirror) 와 공유하는 순수 함수로 이전.
+	let wikiPlace = $derived.by(() =>
+		wiki ? computeWikiPlace(wiki.caretTop, wiki.caretBottom, wiki.items.length, wikiPopH) : null
+	);
 	// 펼침/접힘으로 콘텐츠 높이가 바뀌면 다시 배치.
 	$effect(() => {
 		const pop = wikiPopEl;
@@ -211,16 +195,9 @@
 		const caretTop = rect.top + c.top - el.scrollTop;
 		const caretBottom = caretTop + c.height;
 		// caret(자동완성 대상)이 입력창 보이는 영역 ∩ 뷰포트 밖이면 팝업 숨김.
-		const visTop = Math.max(rect.top, 0);
-		const visBottom = Math.min(rect.bottom, window.innerHeight);
-		if (caretBottom < visTop || caretTop > visBottom) return null;
+		if (!isWikiCaretVisible(caretTop, caretBottom, rect.top, rect.bottom)) return null;
 		const rawLeft = rect.left + c.left - el.scrollLeft;
-		// 모바일 수정: 예전엔 팝업 폭을 240px 로 **가정**하고 clamp 해서, 실제
-		// 폭(최대 22rem=352px)이 더 크면 오른쪽이 화면 밖으로 나갔다. CSS 상한과
-		// 같은 식으로 실제 폭을 구해 그만큼 물린다.
-		const MARGIN = WIKI_MARGIN;
-		const popW = Math.min(352, window.innerWidth - MARGIN * 2);
-		const left = Math.max(MARGIN, Math.min(rawLeft, window.innerWidth - popW - MARGIN));
+		const left = clampWikiLeft(rawLeft);
 		// 세로 배치는 wikiPlace 가 실제 높이를 재서 결정한다 — 여기선 caret 좌표만.
 		return { el, from, to, items, left, caretTop, caretBottom };
 	}
@@ -1537,53 +1514,24 @@
 	oncancel={() => (confirmDeleteId = null)}
 />
 
-<!-- DEV-171: cross-link 자동완성 팝업 — caret 위치에 떠서 실재 ID 후보 표시. -->
+<!-- DEV-171/172: cross-link 자동완성 팝업 — caret 위치에 떠서 실재 ID 후보 표시
+     (MarkdownEditor 와 공유하는 WikiAutocompletePopup). -->
 {#if wiki}
-	<ul
-		class="wiki-pop"
-		bind:this={wikiPopEl}
-		style="left:{wiki.left}px; {wikiPlace?.bottom != null
-			? `bottom:${wikiPlace.bottom}px`
-			: `top:${wikiPlace?.top ?? wiki.caretBottom}px`}; max-height:{wikiPlace?.maxH ?? 224}px"
-	>
-		{#each wiki.items as it, i (it.id)}
-			<li>
-				<button
-					type="button"
-					class="wiki-opt"
-					class:sel={i === wikiSel}
-					class:expanded={i === wikiSel && wikiNavMode === 'keyboard'}
-					onmousedown={(ev) => {
-						ev.preventDefault();
-						applyWiki(it);
-					}}
-					onmouseenter={() => {
-						wikiNavMode = 'mouse';
-						wikiSel = i;
-					}}
-					use:titlePopup={wikiNavMode === 'keyboard'
-						? null
-						: `${it.insert ?? it.id}${it.title ? ` — ${it.title}` : ''}`}
-				>
-					<!-- BUG-169: 🏷️/🔗 는 컬러 이모지로 렌더돼 OS 마다 크기·기준선이
-					     달랐다 — currentColor SVG 로 교체. -->
-					<span class="wiki-id" class:missing={!it.exists}>
-						<Icon name={it.nsPrefix ? 'tag' : 'link'} size={12} />
-						{it.insert ?? it.id}</span
-					>
-					<span class="wiki-meta">
-						{it.nsPrefix
-							? it.title
-							: it.exists
-								? `${it.kind === 'rule' ? t('comment.ruleLinkPrefix', $locale) : it.kind === 'book' ? t('comment.bookLinkPrefix', $locale) : ''}${it.title}`
-								: t('comment.newLink', $locale)}
-					</span>
-				</button>
-			</li>
-		{/each}
-	</ul>
-	<!-- BUG-157: 팝업 native 스크롤바 대신 overlay thumb. -->
-	<OverlayScrollbar target={wikiPopEl ?? null} />
+	<WikiAutocompletePopup
+		items={wiki.items}
+		left={wiki.left}
+		top={wikiPlace?.top ?? wiki.caretBottom}
+		bottom={wikiPlace?.bottom ?? null}
+		maxH={wikiPlace?.maxH ?? 224}
+		selectedIndex={wikiSel}
+		navMode={wikiNavMode}
+		onSelect={applyWiki}
+		onHoverSelect={(i) => {
+			wikiNavMode = 'mouse';
+			wikiSel = i;
+		}}
+		bind:popupEl={wikiPopEl}
+	/>
 {/if}
 
 <style>
@@ -2244,91 +2192,6 @@
 		display: flex;
 		gap: 0.4rem;
 		margin-top: 0.35rem;
-	}
-	/* DEV-171: cross-link 자동완성 팝업 (caret 위치, VS 식). */
-	.wiki-pop {
-		position: fixed;
-		z-index: 50;
-		margin: 0;
-		padding: 0.2rem;
-		list-style: none;
-		/* 모바일 수정: 예전엔 min 14rem / max 22rem 고정이라 375px 화면에서 팝업이
-		   화면을 거의 덮고 오른쪽으로 넘쳐 나갔다. 뷰포트를 넘지 않도록 상한을
-		   함께 건다(양옆 8px 여백). min-width 도 같은 이유로 뷰포트에 양보. */
-		min-width: min(14rem, calc(100vw - 16px));
-		max-width: min(22rem, calc(100vw - 16px));
-		/* 짧은 화면(가로 모드 등)에서 팝업이 화면 높이를 넘지 않게. */
-		max-height: min(14rem, 45vh);
-		overflow-y: auto;
-		/* BUG-157: native scrollbar 숨김 — OverlayScrollbar 가 대신 그린다. */
-		scrollbar-width: none;
-		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 8px;
-		box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
-	}
-	.wiki-pop::-webkit-scrollbar {
-		display: none;
-	}
-	.wiki-opt {
-		display: flex;
-		align-items: baseline;
-		gap: 0.5rem;
-		width: 100%;
-		padding: 0.3rem 0.5rem;
-		border: none;
-		border-radius: 5px;
-		background: transparent;
-		color: var(--text);
-		cursor: pointer;
-		text-align: left;
-	}
-	.wiki-opt.sel,
-	.wiki-opt:hover {
-		background: color-mix(in srgb, var(--accent) 18%, transparent);
-	}
-	.wiki-id {
-		flex: none;
-		font-family: 'SFMono-Regular', Consolas, monospace;
-		font-size: 0.8rem;
-		color: var(--accent);
-	}
-	.wiki-id.missing {
-		color: var(--danger);
-	}
-	.wiki-meta {
-		flex: 1;
-		min-width: 0;
-		font-size: 0.78rem;
-		color: var(--text-muted);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-	/* DEV-297 수정: 키보드로 선택된 항목만 말줄임을 풀어 제자리에서 펼친다.
-	   팝업으로 띄우면 위/아래 항목을 가렸다. 높이는 내용만큼만 늘어나고,
-	   선택이 옮겨가면 다시 한 줄로 돌아온다.
-
-	   admin 후속: 한 줄(`SLUG 제목`)로 펼치면 slug 가 길 때 제목 자리가 거의
-	   안 남는다 — **펼쳤을 때만** slug 와 제목을 위아래로 쌓는다(접힌 항목은
-	   기존처럼 한 줄이라 목록 훑기가 흐트러지지 않는다). */
-	.wiki-opt.expanded {
-		flex-direction: column;
-		align-items: stretch;
-		gap: 0.15rem;
-	}
-	.wiki-opt.expanded .wiki-id {
-		flex: none;
-	}
-	.wiki-opt.expanded .wiki-meta {
-		overflow: visible;
-		text-overflow: clip;
-		white-space: normal;
-		overflow-wrap: anywhere;
-	}
-	.wiki-opt.expanded .wiki-id {
-		white-space: normal;
-		overflow-wrap: anywhere;
 	}
 	.btn-save {
 		padding: 0.3rem 0.85rem;

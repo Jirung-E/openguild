@@ -9,7 +9,10 @@
   - basicSetup + markdown()
   - 테마 Compartment (다크/라이트 라이브 전환, 커서/undo 보존)
   - indentExtensions(editorSettings) — 설정 변경 시 내용 보존 재생성
-  - crossLinkAutocomplete (XXX-NNN → [[...]])
+  - DEV-172: cross-link 자동완성 — CM 네이티브 autocompletion 대신 댓글(DEV-171)과
+    동일한 caret 팝업(WikiAutocompletePopup + wiki-popup-place)을 view.coordsAtPos
+    로 구동. worklog(+page.svelte)는 별도 CM 인스턴스라 기존 crossLinkAutocomplete
+    (editor-links.ts) 를 그대로 씀 — 여긴 범위 밖(퀘스트 설명: 본문/규칙/메모 3곳).
   - attachmentExtension (paste/drag&drop — mediaOnly 또는 첨부 섹션 콜백)
   - Mod-Shift-z redo (Windows 표준)
   - 높이 localStorage 영속 (모든 편집기 공유 key) + resize 핸들
@@ -20,20 +23,28 @@
 -->
 <script lang="ts">
 	import { untrack } from 'svelte';
+	import { get } from 'svelte/store';
 	import { EditorView } from 'codemirror';
-	import { keymap } from '@codemirror/view';
+	import { keymap, type ViewUpdate } from '@codemirror/view';
+	import { Prec } from '@codemirror/state';
 	import { redo } from '@codemirror/commands';
 	import { theme } from '$lib/stores/theme';
 	import { editorThemeCompartment, editorThemeExtension } from '$lib/utils/editor-theme';
 	import { indentExtensions } from '$lib/utils/editor-indent';
 	import { editorSettings } from '$lib/stores/editorSettings';
 	import { attachmentExtension } from '$lib/utils/editor-attach';
-	import { crossLinkAutocomplete } from '$lib/utils/editor-links';
 	// BUG-215: 터치 기기에서는 drawSelection 을 뺀 구성을 쓴다 — 네이티브 선택이
 	// 살아 있어야 "길게 눌러 선택" 이 동작한다.
 	// DEV-336: markdownEditorExtensions 가 touch + autoFormat 설정을 함께 반영.
 	import { isCoarsePointer, markdownEditorExtensions } from '$lib/utils/editor-setup';
 	import OverlayScrollbar from './OverlayScrollbar.svelte';
+	// DEV-172: cross-link 자동완성 — 댓글(DEV-171)과 공유하는 caret 팝업.
+	import { wikiMatch, type WikiItem } from '$lib/utils/textarea-wikilink';
+	import { applyWikiLinkCM, applyWikiPrefixCM } from '$lib/utils/editor-wikilink';
+	import { computeWikiPlace, clampWikiLeft, isWikiCaretVisible } from '$lib/utils/wiki-popup-place';
+	import { questIndex, loadQuestIndex } from '$lib/stores/questIndex';
+	import { hideTitlePopupNow } from '$lib/actions/title-popup';
+	import WikiAutocompletePopup from './WikiAutocompletePopup.svelte';
 
 	let {
 		value = $bindable(''),
@@ -56,6 +67,195 @@
 		/** 저장된 높이가 없을 때 초기 높이(px). */
 		defaultHeight?: number;
 	} = $props();
+
+	// DEV-172: cross-link 자동완성 상태 — QuestCommentsSection(DEV-171)과 동일한
+	// 패턴(caret 좌표 + 후보 + 선택 index)이나, caret 좌표는 mirror-div 대신
+	// CM 의 view.coordsAtPos 로 구한다.
+	loadQuestIndex();
+	let wiki = $state<{
+		from: number;
+		to: number;
+		items: WikiItem[];
+		left: number;
+		caretTop: number;
+		caretBottom: number;
+	} | null>(null);
+	/** 팝업의 **실제** 콘텐츠 높이(max-height 로 잘리기 전). ResizeObserver 로 갱신. */
+	let wikiPopH = $state(0);
+	let wikiPlace = $derived.by(() =>
+		wiki ? computeWikiPlace(wiki.caretTop, wiki.caretBottom, wiki.items.length, wikiPopH) : null
+	);
+	let wikiSel = $state(0);
+	let wikiPopEl = $state<HTMLUListElement | undefined>(undefined);
+	// BUG-114 패턴: 키보드 이동일 때만 팝업 스크롤, 마우스 호버는 무시.
+	let wikiSelFromKeyboard = false;
+	let wikiNavMode = $state<'keyboard' | 'mouse'>('keyboard');
+	// Esc/클릭아웃으로 닫은 토큰 — 같은 토큰에선 재오픈 안 함.
+	let wikiDismissed = $state<string | null>(null);
+
+	// 펼침/접힘으로 콘텐츠 높이가 바뀌면 다시 배치.
+	$effect(() => {
+		const pop = wikiPopEl;
+		if (!pop || !wiki) {
+			wikiPopH = 0;
+			return;
+		}
+		const measure = () => (wikiPopH = pop.scrollHeight);
+		measure();
+		const ro = new ResizeObserver(measure);
+		ro.observe(pop);
+		return () => ro.disconnect();
+	});
+	// ↑/↓ 로 선택 이동 시 선택 항목이 팝업 스크롤 밖이면 보이도록 스크롤.
+	$effect(() => {
+		void wikiSel;
+		void wiki;
+		if (!wiki) {
+			hideTitlePopupNow();
+			return;
+		}
+		if (!wikiSelFromKeyboard) return;
+		wikiSelFromKeyboard = false;
+		const pop = wikiPopEl;
+		const sel = pop?.querySelector<HTMLElement>('.wiki-opt.sel');
+		if (!pop || !sel) return;
+		const itemTop = sel.offsetTop;
+		const itemBottom = itemTop + sel.offsetHeight;
+		if (itemTop < pop.scrollTop) {
+			pop.scrollTop = itemTop;
+		} else if (itemBottom > pop.scrollTop + pop.clientHeight) {
+			pop.scrollTop = itemBottom - pop.clientHeight;
+		}
+		hideTitlePopupNow();
+	});
+	// 스크롤/리사이즈로 caret 이 움직이면 재배치, 팝업/편집기 밖 클릭이면 닫기.
+	$effect(() => {
+		if (!wiki || !view) return;
+		const v = view;
+		const onMove = () => {
+			wiki = wiki ? placeWikiCM(v, wiki.from, wiki.to, wiki.items) : null;
+		};
+		const onDown = (ev: MouseEvent) => {
+			if (!wiki) return;
+			const tgt = ev.target as Node;
+			// 팝업/편집기 내부 클릭(옵션 선택·캐럿 이동)은 닫지 않음.
+			if (wikiPopEl?.contains(tgt) || v.dom.contains(tgt)) return;
+			dismissWiki(v);
+		};
+		window.addEventListener('scroll', onMove, true);
+		window.addEventListener('resize', onMove);
+		window.addEventListener('mousedown', onDown, true);
+		return () => {
+			window.removeEventListener('scroll', onMove, true);
+			window.removeEventListener('resize', onMove);
+			window.removeEventListener('mousedown', onDown, true);
+		};
+	});
+
+	/** caret 좌표(view.coordsAtPos) 기준 팝업 위치. 편집기 보이는 영역 밖이면 null. */
+	function placeWikiCM(v: EditorView, from: number, to: number, items: WikiItem[]): typeof wiki {
+		const coords = v.coordsAtPos(to);
+		if (!coords) return null;
+		const editorRect = v.dom.getBoundingClientRect();
+		if (!isWikiCaretVisible(coords.top, coords.bottom, editorRect.top, editorRect.bottom)) {
+			return null;
+		}
+		const left = clampWikiLeft(coords.left);
+		return { from, to, items, left, caretTop: coords.top, caretBottom: coords.bottom };
+	}
+
+	function dismissWiki(v: EditorView) {
+		if (wiki) wikiDismissed = v.state.sliceDoc(wiki.from, wiki.to);
+		wiki = null;
+	}
+
+	function applyWiki(v: EditorView, item: WikiItem) {
+		if (!wiki) return;
+		if (item.nsPrefix) {
+			// nsPrefix(네임스페이스 접두)는 `]]` 를 안 닫는다 — dispatch 가 동기로
+			// updateListener 를 태우므로, 그 kind 로 필터된 다음 후보가 바로 이어진다.
+			applyWikiPrefixCM(v, wiki.from, wiki.to, item.insert ?? item.id);
+			return;
+		}
+		applyWikiLinkCM(v, wiki.from, wiki.to, item.insert ?? item.id);
+		wiki = null;
+		wikiDismissed = null;
+	}
+
+	/** 문서/선택이 바뀔 때마다 caret 앞 `[[` 컨텍스트를 재평가 (댓글 onWikiInput 과 동형). */
+	function onWikiUpdate(u: ViewUpdate) {
+		if (!u.docChanged && !u.selectionSet) return;
+		const pos = u.state.selection.main.head;
+		const m = wikiMatch(u.state.doc.toString(), pos, get(questIndex));
+		if (!m) {
+			wiki = null;
+			wikiDismissed = null;
+			return;
+		}
+		const token = u.state.doc.sliceString(m.from, m.to);
+		if (wikiDismissed === token) {
+			wiki = null;
+			return;
+		}
+		wikiDismissed = null;
+		wiki = placeWikiCM(u.view, m.from, m.to, m.items);
+		wikiSel = 0;
+		wikiSelFromKeyboard = true;
+		wikiNavMode = 'keyboard';
+	}
+
+	// VS 식 키보드 네비/적용 — basicSetup 의 기본 화살표/Enter/Tab 바인딩보다
+	// 먼저 가로채야 하므로 Prec.highest.
+	const wikiKeymap = Prec.highest(
+		keymap.of([
+			{
+				key: 'ArrowDown',
+				run: () => {
+					if (!wiki) return false;
+					wikiSelFromKeyboard = true;
+					wikiNavMode = 'keyboard';
+					hideTitlePopupNow();
+					wikiSel = (wikiSel + 1) % wiki.items.length;
+					return true;
+				}
+			},
+			{
+				key: 'ArrowUp',
+				run: () => {
+					if (!wiki) return false;
+					wikiSelFromKeyboard = true;
+					wikiNavMode = 'keyboard';
+					hideTitlePopupNow();
+					wikiSel = (wikiSel - 1 + wiki.items.length) % wiki.items.length;
+					return true;
+				}
+			},
+			{
+				key: 'Enter',
+				run: (v) => {
+					if (!wiki) return false;
+					applyWiki(v, wiki.items[wikiSel]);
+					return true;
+				}
+			},
+			{
+				key: 'Tab',
+				run: (v) => {
+					if (!wiki) return false;
+					applyWiki(v, wiki.items[wikiSel]);
+					return true;
+				}
+			},
+			{
+				key: 'Escape',
+				run: (v) => {
+					if (!wiki) return false;
+					dismissWiki(v);
+					return true;
+				}
+			}
+		])
+	);
 
 	// DEV-057: 편집창 사용자 크기 영속화 — 모든 마크다운 편집기가 공유(일관 UX).
 	const HEIGHT_KEY = 'openguild.questEditorHeight';
@@ -90,6 +290,7 @@
 		if (!container) return;
 		view?.destroy();
 		view = null;
+		wiki = null;
 		container.style.height = `${loadHeight()}px`;
 		view = new EditorView({
 			// untrack — $effect 안에서 호출되므로 value 를 그대로 읽으면
@@ -110,8 +311,10 @@
 				indentExtensions(untrack(() => $editorSettings)),
 				// DEV-069: 클립보드 paste / 파일 drag&drop → 첨부 업로드.
 				attachmentExtension(onError, onAttach, { mediaOnly }),
-				// DEV-140: XXX-NNN 타이핑 → [[...]] cross-link 자동완성.
-				crossLinkAutocomplete(),
+				// DEV-140/172: XXX-NNN 타이핑 → [[...]] cross-link 자동완성 —
+				// 댓글(DEV-171)과 같은 caret 팝업. 네비 키 가로채기 + 매칭 갱신.
+				wikiKeymap,
+				EditorView.updateListener.of(onWikiUpdate),
 				// CM ↔ value 실시간 동기화 — 호출측 저장 로직이 view 를 직접
 				// 만질 필요 없이 bind:value 만 읽으면 됨.
 				EditorView.updateListener.of((u) => {
@@ -145,6 +348,7 @@
 			cmScroller = null;
 			view?.destroy();
 			view = null;
+			wiki = null;
 			resizeObserver?.disconnect();
 			resizeObserver = null;
 			if (heightSaveTimer) clearTimeout(heightSaveTimer);
@@ -179,6 +383,26 @@
 <!-- DEV-074 fix15: CodeMirror native scrollbar 대신 overlay. -->
 {#if cmScroller}
 	<OverlayScrollbar target={cmScroller} />
+{/if}
+<!-- DEV-172: cross-link 자동완성 팝업 — 댓글(DEV-171)과 같은 컴포넌트.
+     view 는 wiki 가 세팅될 때 이미 존재함(onWikiUpdate 가 view 를 받아야만
+     wiki 를 채움) — view 자체를 반응형으로 만들 필요 없이 wiki 만으로 게이팅. -->
+{#if wiki}
+	<WikiAutocompletePopup
+		items={wiki.items}
+		left={wiki.left}
+		top={wikiPlace?.top ?? wiki.caretBottom}
+		bottom={wikiPlace?.bottom ?? null}
+		maxH={wikiPlace?.maxH ?? 224}
+		selectedIndex={wikiSel}
+		navMode={wikiNavMode}
+		onSelect={(item) => applyWiki(view!, item)}
+		onHoverSelect={(i) => {
+			wikiNavMode = 'mouse';
+			wikiSel = i;
+		}}
+		bind:popupEl={wikiPopEl}
+	/>
 {/if}
 
 <style>
