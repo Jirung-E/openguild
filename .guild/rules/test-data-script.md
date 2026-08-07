@@ -1,11 +1,14 @@
 +++
 created_at = "2026-07-07T09:32:56+09:00"
-updated_at = "2026-07-07T09:32:56+09:00"
+updated_at = "2026-08-06T12:50:03+09:00"
 +++
 # 테스트 데이터 주입 스크립트 — 운영 규칙
 
-`scripts/seed-test-data.ps1` 의 목적 / 갱신 절차 / 검증 범위. DEV-075 의 산출
+`scripts/seed-test-data.mjs` 의 목적 / 갱신 절차 / 검증 범위. DEV-075 의 산출
 산물이지만 매 신규 기능마다 sync 필요한 운영 규칙이라 길드 룰로 정착.
+DEV-320(2026-08-06)에서 PowerShell(`seed-test-data.ps1`)에서 Node 로 재작성 —
+pwsh 가 로컬 mac/linux 개발 환경에 기본 설치돼 있지 않고, 이식성 버그(바이너리
+탐색 `.exe` 하드코딩, `$env:TEMP` 가 mac/linux 에서 빈 값)도 있었다.
 
 ## 목적
 
@@ -20,16 +23,24 @@ updated_at = "2026-07-07T09:32:56+09:00"
 
 ## 실행
 
-```powershell
+```sh
 cd <빈 폴더>
-pwsh -File <openguild repo>/scripts/seed-test-data.ps1
+node <openguild repo>/scripts/seed-test-data.mjs
 ```
 
-환경 변수 `OPENGUILD_BIN` 으로 binary 경로 override 가능. 기본 우선순위:
-`OPENGUILD_BIN` > `target/release/openguild.exe` > `target/debug/openguild.exe`
-> PATH 의 `openguild`.
+바이너리 선택 (첫 위치 인자 = 바이너리가 들어있는 폴더):
 
-## 검증 단계 (= 스크립트의 10 단계)
+- 인자 없음 → PATH 의 `openguild` 사용 (기본).
+- `node seed-test-data.mjs <폴더>` → 그 폴더의 `openguild`(윈도우는
+  `openguild.exe`, 플랫폼별로 자동 판단).
+- 둘째 인자로 길드 이름 지정 가능 (기본 `test-guild`):
+  `node seed-test-data.mjs <바이너리폴더> my-guild`.
+
+순수 Node 내장 모듈(child_process/fs/os/path)만 사용 — `npm install` 불필요.
+`npm run dev`/`cargo build` 등으로 이미 최신 빌드가 있다면 그 폴더
+(`target/debug` 또는 `target/release`)를 첫 인자로 지정.
+
+## 검증 단계 (= 스크립트의 11 단계)
 
 | 단계 | 내용 | 검증 대상 UI |
 |------|------|--------------|
@@ -37,12 +48,13 @@ pwsh -File <openguild repo>/scripts/seed-test-data.ps1
 | 2 | 12 quest 생성 (DEV/BUG/REQ 혼합, urgency 1~4) | Quest List / Board / Home 의 "최근 퀘스트" |
 | 3 | 일부 quest status 전환 (in_progress / on_hold) | status badge 색상 / 정렬 |
 | 4 | **DEV-076** 일부 quest 에 due date (과거/임박/미래) | Home 의 "마감 임박" / Overdue 뱃지 |
-| 5 | 12 campaign 생성 (active 5 + upcoming 7 + future 1) + 체크리스트 / 진행률 | Home carousel / conveyor / marquee 임계값 |
-| 6 | campaign ↔ quest 연결 | Quest Detail 의 Campaigns 섹션 / Campaign Detail 의 Quests |
-| 7 | **DEV-094/099/102** 첫 quest 에 댓글 2 (top + reply) + 메모 1 | Quest Detail 댓글/메모 섹션 + DB 캐시 sync (snapshot 안 살아남는지) |
-| 8 | **DEV-016 multi-file** sample 규칙 3 개 (branch-policy / code-review / release-checklist) | Rules 페이지 sidebar / 선택 / 편집 |
+| 5 | 13 campaign 생성 (active 5 + upcoming 7 + future 1) + 체크리스트 / 진행률 | Home carousel / conveyor / marquee 임계값 |
+| 6 | campaign ↔ quest 연결 + 관계(하위/선행)/태그/soft-delete/템플릿 | Quest Detail 의 Campaigns 섹션 / 보드 엣지·트리·의존성 그래프 / 태그 칩 / 삭제 목록 / NewQuestModal 템플릿 드롭다운 |
+| 7 | **DEV-094/099/102** 첫 quest 에 댓글(top+reply+토론 미해결/해결+토론 답글) + 메모 + 첨부 3개 | Quest Detail 댓글/메모/첨부 섹션 + DB 캐시 sync (snapshot 안 살아남는지) |
+| 8 | **DEV-016 multi-file** sample 규칙 3 개 + 변경 이력 데모 | Rules 페이지 sidebar / 선택 / 편집 / 상세의 변경 이력 |
 | 9 | **DEV-215~218, DEV-239** 도서관 문서 3 개(본문+[[cross-link]] / 빈 본문 / 폴더 안) + 폴더 1개 + 댓글의 [[BOOK-001]] 참조 | Library 페이지 목록/편집 / 딥링크 / 렌더·자동완성의 도서관 링크 / 폴더 트리·탐색기 보기 토글 / 경로 기반 자동완성 |
 | 10 | **DEV-167** worklog 노트 2 개 (오늘/이틀 전) — 활동은 스크립트 실행 자체가 생성 | HOME 히트맵 카드 / /worklog 상세 (일/주 뷰, 노트, 타임라인) |
+| 11 | **DEV-306** 백업 스냅샷 1개 | 설정 > 백업 목록/복원 UI |
 
 ## 갱신 절차 — 신규 기능 추가 시
 
@@ -63,10 +75,7 @@ pwsh -File <openguild repo>/scripts/seed-test-data.ps1
 ## 안전장치
 
 - `.guild` 가 이미 있는 폴더에서 거부 (실수 덮어쓰기 방지).
-- 각 명령 실패 시 즉시 throw (`$ErrorActionPreference = "Stop"` + `$LASTEXITCODE`
-  체크).
-- PowerShell 5.1 의 cp949 stdout 깨짐 방지 — UTF-8 강제 설정 (`[Console]::
-  OutputEncoding = UTF8` + `chcp 65001`).
+- 각 명령 실패 시 즉시 throw + 0 아닌 exit code (`spawnSync` 의 `status` 체크).
 
 ## 한계 / 비검증
 
@@ -88,6 +97,12 @@ pwsh -File <openguild repo>/scripts/seed-test-data.ps1
 
 ## 최근 변경
 
+- 2026-08-06 (DEV-320): PowerShell → Node 재작성(`seed-test-data.ps1` →
+  `.mjs`). 실행법을 `node ...` 로 갱신, 이전에 문서에만 있고 실제로는
+  구현된 적 없던 `OPENGUILD_BIN`/release-debug 우선순위 자동탐색 설명을
+  제거(실제 동작 = 위치 인자로 바이너리 폴더 지정 또는 PATH) — 문서와 실제
+  스크립트가 어긋나 있었다. 단계 수 표기를 10 → 11 로 정정(백업 스냅샷
+  단계가 표에서 누락돼 있었음), 6/6b 단계 설명도 실제 스크립트에 맞게 보강.
 - 2026-07-07 (DEV-239): 도서관 폴더 기능 — 단계 9 에 폴더 1개(아키텍처) +
   그 안 문서 1개(BOOK-003) 추가. 표 갱신, "첨부파일(DEV-097)" 한계 항목을
   DEV-237(임의 파일 첨부 — 이미지/동영상은 이미 지원)로 정정, DEV-238(검색)

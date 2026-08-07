@@ -167,7 +167,7 @@ openguild/
 │               └── utils/               ← datetime / quest-node-svg / quest-list /
 │                                          campaign-sort
 ├── scripts/
-│   └── seed-test-data.ps1           ← DEV-075: 테스트 데이터 자동 주입
+│   └── seed-test-data.mjs           ← DEV-075/DEV-320: 테스트 데이터 자동 주입
 ├── docs/
 ├── justfile
 └── README.md
