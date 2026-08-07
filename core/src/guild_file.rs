@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
@@ -91,6 +91,56 @@ pub fn find_from(start: &Path) -> Option<PathBuf> {
 pub fn find_from_cwd() -> Option<PathBuf> {
     let cwd = std::env::current_dir().ok()?;
     find_from(&cwd)
+}
+
+/// DEV-319: `--guild` 값을 경로 또는 길드 **이름**으로 해석.
+///
+/// 1. 그대로 경로로 봤을 때 `find_from(&pb) == Some(pb)` (그 디렉토리 자체에
+///    `.guild` 마커) 면 그 경로 사용 — 기존 동작 그대로.
+/// 2. 아니면 최근 접속 길드 목록(`recents`)에서 `name` 이 정확히 일치하는
+///    항목을 찾는다.
+///    - 정확히 하나 → 그 경로(단, 지금도 유효한 `.guild` 인지 재확인 —
+///      이동/삭제됐을 수 있어서).
+///    - 둘 이상 → 에러(모호함 — 경로로 지정하라고 안내).
+///    - 없음 → 기존 "경로에 .guild 없음" 에러.
+///
+/// `recents` 는 **읽기만** 한다 — CLI 실행이 recents 를 갱신하지 않는다는
+/// 기존 정책(DEV-117, `cli/src/main.rs` 의 `Backend::new` 주석 참고)은 그대로
+/// 유지한다. 즉 GUI 로 한 번도 안 연 길드는 이름으로 못 찾는다 — 알려진 한계.
+/// 경로로 지정하면 항상 동작하니 폴백은 있다.
+pub fn resolve_guild_ref(raw: &str) -> Result<PathBuf> {
+    let pb = PathBuf::from(raw);
+    if find_from(&pb).is_some_and(|f| f == pb) {
+        return Ok(pb);
+    }
+
+    let recents = crate::recents::list().unwrap_or_default();
+    let matches: Vec<&crate::recents::Recent> = recents.iter().filter(|r| r.name == raw).collect();
+    match matches.len() {
+        0 => Err(anyhow!(
+            "no .guild file at {raw} (use `openguild init` first, or check the name with `openguild guild list`)"
+        )),
+        1 => {
+            let candidate = PathBuf::from(&matches[0].path);
+            if find_from(&candidate).is_some_and(|f| f == candidate) {
+                Ok(candidate)
+            } else {
+                Err(anyhow!(
+                    "guild {raw:?} was found in recents but no longer has a valid .guild marker at {} \
+                     (moved or deleted? try the path directly, or re-open it once via the GUI to refresh recents)",
+                    candidate.display()
+                ))
+            }
+        }
+        _ => {
+            let paths: Vec<String> = matches.iter().map(|r| r.path.clone()).collect();
+            Err(anyhow!(
+                "guild name {raw:?} matches {} guilds — specify the path instead:\n{}",
+                matches.len(),
+                paths.join("\n")
+            ))
+        }
+    }
 }
 
 fn has_guild_file(dir: &Path) -> bool {
@@ -218,5 +268,110 @@ mod tests {
             );
         }
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    // ─── DEV-319: resolve_guild_ref (경로 또는 이름) ───
+
+    /// BUG-048: `recents::list/add` 가 읽는 `OPENGUILD_RECENTS_DIR` 는
+    /// process-global env — `recents::tests` 의 **같은** Mutex 를 공유해야
+    /// 직렬화가 실제로 걸린다(별개 Mutex 를 두면 서로를 못 막아 두 모듈
+    /// 테스트가 동시에 env 를 건드리는 형태로 재발 — 실사고로 확인).
+    use crate::recents::tests::with_env as with_recents_env;
+
+    #[test]
+    fn resolve_guild_ref_accepts_direct_path() {
+        let dir = tmp_dir();
+        fs::write(
+            dir.join("m.guild"),
+            "name = \"M\"\nversion = \"1.0\"\ncreated_at = \"2026-01-01\"\n",
+        )
+        .unwrap();
+        let resolved = resolve_guild_ref(dir.to_str().unwrap()).unwrap();
+        assert_eq!(resolved, dir);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resolve_guild_ref_resolves_by_name_from_recents() {
+        let recents_dir = tmp_dir();
+        let guild_dir = tmp_dir();
+        fs::write(
+            guild_dir.join("my-project.guild"),
+            "name = \"my-project\"\nversion = \"1.0\"\ncreated_at = \"2026-01-01\"\n",
+        )
+        .unwrap();
+        with_recents_env(&recents_dir, || {
+            crate::recents::add(&guild_dir).unwrap();
+            let resolved = resolve_guild_ref("my-project").unwrap();
+            // recents 는 canonicalize 된 경로를 저장(macOS 는 /var → /private/var
+            // symlink 라 raw guild_dir 과 바이트가 다를 수 있음) — 같은 정규화로 비교.
+            assert_eq!(resolved.to_str().unwrap(), normalize_abs_for_test(&guild_dir));
+        });
+        let _ = fs::remove_dir_all(&recents_dir);
+        let _ = fs::remove_dir_all(&guild_dir);
+    }
+
+    #[test]
+    fn resolve_guild_ref_ambiguous_name_errors_with_paths() {
+        let recents_dir = tmp_dir();
+        let a = tmp_dir();
+        let b = tmp_dir();
+        for d in [&a, &b] {
+            fs::write(
+                d.join("dup.guild"),
+                "name = \"dup\"\nversion = \"1.0\"\ncreated_at = \"2026-01-01\"\n",
+            )
+            .unwrap();
+        }
+        with_recents_env(&recents_dir, || {
+            crate::recents::add(&a).unwrap();
+            crate::recents::add(&b).unwrap();
+            let err = resolve_guild_ref("dup").unwrap_err();
+            let msg = err.to_string();
+            assert!(msg.contains("matches 2 guilds"), "{msg}");
+            assert!(msg.contains(a.to_str().unwrap()) || msg.contains(&normalize_abs_for_test(&a)));
+        });
+        let _ = fs::remove_dir_all(&recents_dir);
+        let _ = fs::remove_dir_all(&a);
+        let _ = fs::remove_dir_all(&b);
+    }
+
+    #[test]
+    fn resolve_guild_ref_unknown_name_errors() {
+        let recents_dir = tmp_dir();
+        with_recents_env(&recents_dir, || {
+            let err = resolve_guild_ref("no-such-guild").unwrap_err();
+            assert!(err.to_string().contains("no .guild file"));
+        });
+        let _ = fs::remove_dir_all(&recents_dir);
+    }
+
+    #[test]
+    fn resolve_guild_ref_stale_recents_entry_errors() {
+        // recents 엔 있지만 실제로 그 경로에 .guild 마커가 이제 없는 경우
+        // (디렉토리를 지웠거나 옮김) — 조용히 잘못된 경로로 넘기면 안 된다.
+        let recents_dir = tmp_dir();
+        let guild_dir = tmp_dir();
+        fs::write(
+            guild_dir.join("gone.guild"),
+            "name = \"gone\"\nversion = \"1.0\"\ncreated_at = \"2026-01-01\"\n",
+        )
+        .unwrap();
+        with_recents_env(&recents_dir, || {
+            crate::recents::add(&guild_dir).unwrap();
+        });
+        fs::remove_dir_all(&guild_dir).unwrap(); // 마커가 사라짐.
+        with_recents_env(&recents_dir, || {
+            let err = resolve_guild_ref("gone").unwrap_err();
+            assert!(err.to_string().contains("no longer has a valid"), "{}", err);
+        });
+        let _ = fs::remove_dir_all(&recents_dir);
+    }
+
+    /// `recents::add` 는 canonicalize 된 절대경로를 저장하므로, tmp_dir()(이미
+    /// 절대경로) 를 대조할 땐 symlink 해소(macOS `/tmp` → `/private/tmp`) 차이가
+    /// 있을 수 있어 같은 정규화를 거쳐 비교한다.
+    fn normalize_abs_for_test(p: &Path) -> String {
+        crate::recents::normalize_abs(p)
     }
 }

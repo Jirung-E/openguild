@@ -215,8 +215,14 @@ fn days_to_ymd(mut days: i64) -> (i32, u32, u32) {
     (y as i32, m as u32, d as u32)
 }
 
+// DEV-319: guild_file.rs 의 resolve_guild_ref 테스트도 이 crate 의 같은
+// `OPENGUILD_RECENTS_DIR` process-global env 를 건드린다 — 아래 tests 모듈의
+// env_lock/with_env 를 `pub(crate)` 로 공유해 **하나의 Mutex** 로 직렬화한다.
+// 모듈마다 별개 Mutex 를 두면 서로를 못 막아 BUG-048 이 형태만 바꿔 재발한다
+// (실사고 — 처음엔 guild_file.rs 에 복제했다가 recents::tests 와 경합해
+// tmp 파일 write 가 간헐적으로 실패했다).
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     /// BUG-091: UNC 네트워크 경로의 `\\?\UNC\` verbatim 마커는 `\\` 로
@@ -258,12 +264,12 @@ mod tests {
     /// `%LOCALAPPDATA%\openguild\openguild\data\recents.json` 를 건드려
     /// 사용자 머신을 오염시키고 본 테스트 결과도 비결정.
     /// → process 안의 static Mutex 로 직렬화. 단일 스레드 효과.
-    fn env_lock() -> &'static std::sync::Mutex<()> {
+    pub(crate) fn env_lock() -> &'static std::sync::Mutex<()> {
         static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
         LOCK.get_or_init(|| std::sync::Mutex::new(()))
     }
 
-    fn with_env<F: FnOnce()>(dir: &Path, f: F) {
+    pub(crate) fn with_env<F: FnOnce()>(dir: &Path, f: F) {
         // BUG-048: env 변수 critical section. 다른 테스트가 unset 한 순간
         // 본 add() 가 default ProjectDirs 경로 (= 실제 사용자 recents) 를 쓰지
         // 않도록 보호. 한 테스트가 panic 해도 다른 테스트 안 깨지게 PoisonError

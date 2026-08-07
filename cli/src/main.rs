@@ -275,6 +275,21 @@ enum Command {
         #[arg(long, help = tf!("1 줄 요약만 (script / status bar 친화)", "One-line summary (script / status bar friendly)"))]
         brief: bool,
     },
+    // DEV-319: 길드 자체(어느 길드를 열지)에 관한 명령 — 이 그룹은 특정 길드가
+    // 열려있을 필요가 없다(quest/campaign 등과 다름). `--guild`/cwd 탐색보다
+    // 먼저, Backend::new() 호출 전에 처리된다.
+    #[command(about = tf!("길드 자체(어느 길드를 열지) 관련 명령 — 특정 길드를 열지 않고도 동작", "Commands about guilds themselves (which one to open) — work without opening a specific guild"))]
+    Guild {
+        #[command(subcommand)]
+        sub: GuildCmd,
+    },
+}
+
+/// DEV-319: 길드(어느 길드를 열지) 그룹. Backend/Store 무관 — recents.json 만 읽는다.
+#[derive(Subcommand, Clone)]
+enum GuildCmd {
+    #[command(about = tf!("최근 접속한 길드 목록 (이름 + 경로). `--guild <이름>` 에 쓸 수 있는 이름이 여기 나온다.", "Recently opened guilds (name + path). Names usable with `--guild <name>` are listed here."))]
+    List,
 }
 
 /// DEV-177: 무결성 점검 그룹.
@@ -1769,16 +1784,12 @@ impl Backend {
             return Ok(Backend::Http(HttpClient::new(url)));
         }
 
-        // 로컬 모드 — 길드 경로 결정
+        // 로컬 모드 — 길드 경로 결정.
+        // DEV-319: `--guild` 값이 경로로 안 풀리면 길드 "이름"으로도 시도
+        // (최근 접속 길드 목록에서 매칭). `resolve_guild_ref` 가 경로/이름
+        // 판정과 모호함/미발견 에러 메시지까지 전부 처리.
         let guild_path = if let Some(p) = guild_arg {
-            let pb = std::path::PathBuf::from(p);
-            if openguild_core::guild_file::find_from(&pb).is_none_or(|f| f != pb) {
-                return Err(anyhow!(
-                    "no .guild file at {} (use `openguild init` first)",
-                    pb.display()
-                ));
-            }
-            pb
+            openguild_core::guild_file::resolve_guild_ref(&p)?
         } else {
             openguild_core::guild_file::find_from_cwd().ok_or_else(|| {
                 anyhow!(
@@ -5463,6 +5474,11 @@ fn run() -> Result<()> {
     if let Command::Locale { lang } = &cli.command {
         return handle_locale(cli.json, lang.clone());
     }
+    // DEV-319: guild 그룹도 특정 길드를 여는 게 아니라 recents.json 조회 —
+    // Backend 불필요.
+    if let Command::Guild { sub } = &cli.command {
+        return handle_guild(cli.json, sub.clone());
+    }
 
     let c = Backend::new(cli.remote.clone(), cli.guild.clone())?;
 
@@ -5496,6 +5512,7 @@ fn run() -> Result<()> {
         Command::Tag { sub } => handle_tag(&c, cli.json, sub)?,
         Command::Docs { .. } => unreachable!("handled above"),
         Command::Locale { .. } => unreachable!("handled above"),
+        Command::Guild { .. } => unreachable!("handled above"),
         Command::Worklog { sub } => handle_worklog(&c, cli.json, sub)?,
         Command::Backup { sub } => handle_backup(&c, cli.json, sub)?,
         Command::Restore { to, at } => handle_restore(&c, cli.json, to, at)?,
@@ -6168,6 +6185,36 @@ fn handle_locale(json: bool, lang: Option<String>) -> Result<()> {
                     "{}",
                     tf!("✓ 언어를 '{}' 로 저장했습니다.", "✓ Language saved as '{}'.", parsed.as_str())
                 );
+            }
+        }
+    }
+    Ok(())
+}
+
+/// DEV-319: 길드 자체(어느 길드를 열지) 명령 — recents.json 만 읽는다,
+/// Backend/Store 불필요.
+fn handle_guild(json: bool, sub: GuildCmd) -> Result<()> {
+    match sub {
+        GuildCmd::List => {
+            let list = openguild_core::recents::list().unwrap_or_default();
+            if json {
+                let arr: Vec<_> = list
+                    .iter()
+                    .map(|r| {
+                        serde_json::json!({
+                            "name": r.name,
+                            "path": r.path,
+                            "last_opened": r.last_opened,
+                        })
+                    })
+                    .collect();
+                json_println!(arr);
+            } else if list.is_empty() {
+                println!("{}", tf!("(최근 접속한 길드 없음)", "(no recently opened guilds)"));
+            } else {
+                for r in &list {
+                    println!("{}  {}", r.name, r.path);
+                }
             }
         }
     }
@@ -10064,6 +10111,14 @@ mod tests {
             }
             _ => panic!(),
         }
+    }
+
+    /// DEV-319: `guild` 는 하위 명령 필수(다른 명사 그룹과 동일 컨벤션).
+    #[test]
+    fn cli_guild_list_parses() {
+        assert!(Cli::try_parse_from(["openguild", "guild"]).is_err(), "sub 필수");
+        let cli = Cli::try_parse_from(["openguild", "guild", "list"]).unwrap();
+        assert!(matches!(cli.command, Command::Guild { sub: GuildCmd::List }));
     }
 
     /// 작업 기록 명령 파싱 — show 의 date/from-to 상호배타, note sub 필수.
