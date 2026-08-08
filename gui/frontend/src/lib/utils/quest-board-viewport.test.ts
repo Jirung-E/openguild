@@ -11,9 +11,10 @@ import {
 describe('quest board viewport helpers', () => {
 	it('깊은 축소에서는 overview, 중간은 compact, 확대에서는 detail LOD를 쓴다', () => {
 		expect(boardLodForZoom(0.03)).toBe('overview');
-		expect(boardLodForZoom(0.16)).toBe('compact');
-		expect(boardLodForZoom(0.54)).toBe('compact');
-		expect(boardLodForZoom(0.55)).toBe('detail');
+		expect(boardLodForZoom(0.099)).toBe('overview');
+		expect(boardLodForZoom(0.1)).toBe('compact');
+		expect(boardLodForZoom(0.239)).toBe('compact');
+		expect(boardLodForZoom(0.24)).toBe('detail');
 	});
 
 	it('screen grid는 점 크기를 화면 px로 유지한다', () => {
