@@ -71,8 +71,9 @@ openguild --guild <recents 에서 찾은 path> quest list --status testing
 
 1. **착수**: `git checkout develop && git checkout -b {QUEST_ID}` (브랜치명 = quest_id 그대로) → `openguild quest start {ID}` (**첫 수정 전에, 착수 당시 상태가 Open 이든 On Hold 든 무관하게 항상**)
 2. **구현** → 수동 검증 필요하면 본문에 **"## 테스트 방법"** 추가 후 `openguild quest move {ID} testing`. 자동 테스트로 충분하면 통과 확인 후 done 가능.
-3. **Testing 전환 직후 — 묻지 말고 바로 커밋 (2026-08-08 확정, 유일한 자동 커밋 지점).**
-   형식:
+3. **Testing 전환 직후 — 묻지 말고 바로 커밋 + develop 에 merge 까지
+   (2026-08-08 확정, 유일한 자동 커밋/merge 지점).**
+   커밋 형식:
    ```
    [{QUEST_ID}][{scope}] 한 줄 요약
 
@@ -83,7 +84,9 @@ openguild --guild <recents 에서 찾은 path> quest list --status testing
    (마지막 줄은 고정 문자열이 아니라 지금 이 작업을 하고 있는 에이전트가
    자기 자신의 이름/모델로 채워 넣는다 — 어떤 에이전트가 실행하든 동일하게
    적용되어야 하므로 특정 브랜드를 하드코딩하지 않는다.)
-   conventional-commits 금지. 퀘스트별 브랜치 커밋 → develop 에 `git merge --ff-only`. 머지된 브랜치 삭제 금지.
+   conventional-commits 금지. 커밋 직후 곧바로 `git checkout develop && git
+   merge --ff-only {QUEST_ID}` 도 묻지 않고 실행 — 커밋만 하고 merge 는
+   빼먹지 말 것. 머지된 브랜치 삭제 금지.
 4. **사용자 검증 후**: `openguild quest done {ID}`. **이 전환 및 그 커밋은
    자동 아님 — 사용자에게 커밋해도 될지 먼저 물어본다** (예외는 3번 하나뿐).
    여러 퀘스트를 모아 한번에 처리하는 경우, chore 성 변경(퀘스트 등록,
