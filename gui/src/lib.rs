@@ -536,11 +536,19 @@ pub fn run() {
         // DEV-087: asset protocol scope — 길드 경로가 동적이라 (사용자가 임의
         // 폴더 open) config scope 대신 런타임 allow. `.guild/assets/` 의 배너
         // 이미지와 (DEV-069) 본문 로컬 이미지를 convertFileSrc 로 표시 가능.
+        //
+        // BUG-223: guild_root 자체가 아니라 **`guild_root/.guild`** 를
+        // allow_directory 해야 한다. Tauri 의 asset scope 매칭은
+        // require_literal_leading_dot 이 Unix 기본값 true 라 `*`/`**` 와일드
+        // 카드가 `.` 로 시작하는 경로 컴포넌트(`.guild`)를 건너뛰지 못한다 —
+        // guild_root 기준으로 허용하면 그 아래 `.guild/**` 전체가 매칭 안 돼
+        // 첨부/본문 이미지가 전부 깨졌다. `.guild` 를 패턴에 리터럴로 넣어야
+        // (와일드카드가 아니라 실제 문자로 존재) 옵션과 무관하게 매칭된다.
         .setup(move |app| {
             if let Some(p) = &asset_scope_path {
                 use tauri::Manager;
                 let scope = app.asset_protocol_scope();
-                if let Err(e) = scope.allow_directory(p, true) {
+                if let Err(e) = scope.allow_directory(p.join(".guild"), true) {
                     eprintln!("[openguild-gui] warn: asset scope allow 실패 — {e:#}");
                 }
             }

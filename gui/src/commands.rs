@@ -965,7 +965,9 @@ pub fn init_and_open_guild(
     app.manage(store);
     // DEV-087 fix2: 새/초기화한 길드 디렉토리를 asset protocol scope 에 추가
     // (open_guild_in_current_window 와 동일 이유 — 배너/첨부 asset:// 차단 방지).
-    if let Err(e) = app.asset_protocol_scope().allow_directory(p, true) {
+    // BUG-223: guild_root 가 아니라 guild_root/.guild 를 허용해야 함(숨김
+    // 디렉터리는 와일드카드 매칭에서 제외되므로 리터럴로 넣어야 함).
+    if let Err(e) = app.asset_protocol_scope().allow_directory(p.join(".guild"), true) {
         eprintln!("[openguild-gui] warn: asset scope allow 실패 — {e:#}");
     }
     app.unmanage::<crate::LaunchInfo>();
@@ -1042,7 +1044,9 @@ pub fn open_guild_in_current_window(
     // startup 의 asset scope 는 초기 길드만 allow 하므로, Welcome 에서 다른
     // 길드를 열면 그 길드의 `.guild/assets|attachments` 가 scope 밖이 되어
     // 배너/첨부의 asset:// URL 이 차단됐다 (이미지 안 뜸). swap 마다 재적용.
-    if let Err(e) = app.asset_protocol_scope().allow_directory(p, true) {
+    // BUG-223: guild_root 가 아니라 guild_root/.guild 를 허용해야 함(숨김
+    // 디렉터리는 와일드카드 매칭에서 제외되므로 리터럴로 넣어야 함).
+    if let Err(e) = app.asset_protocol_scope().allow_directory(p.join(".guild"), true) {
         eprintln!("[openguild-gui] warn: asset scope allow 실패 — {e:#}");
     }
 
