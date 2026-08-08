@@ -3,7 +3,7 @@ book_id = "BOOK-002"
 title = "Quest Board 2손가락 트랙패드 제스처 지연 — 조사 전체 기록"
 path = ""
 created_at = "2026-08-01T22:37:23+09:00"
-updated_at = "2026-08-08T20:20:19+09:00"
+updated_at = "2026-08-08T20:44:03+09:00"
 deleted = false
 +++
 
@@ -523,3 +523,20 @@ Wry의 `backgroundThrottling`은 window 밖/비활성 webview 정책이므로 fo
 브라우저 실화면에서 laneCols=3일 때 각 레인의 세 dot column, debug shortcut
 on/off, 툴바 성능 버튼 미존재를 확인했다. viewport helper 6 tests,
 svelte-check, production build와 diff/format check가 통과했다.
+
+## 2026-08-08 snap 구조 최종 정리 — 추가 DOM 제거
+
+명시적 세로 dot column DOM으로 3열 표시를 먼저 확인한 뒤, 스냅 점을 위해 자식
+DOM이 필요한지 다시 검토했다. CSS가 그려질 기존 레인 컨테이너가 이미 있으므로
+열별 자식 요소는 불필요했다.
+
+최종 구조는 `.lane-grid-col` 하나에 laneCols만큼 독립적인 CSS
+`radial-gradient` background layer를 겹친다. 각 layer는 열 중심 X를 명시하고
+`repeat-y`만 사용하므로, 예전처럼 단일 배경의 가로 타일 반복에 의존하지 않으면서
+1/2/3열을 표현한다. 위치·폭·클리핑·점 paint가 레인 요소 하나에 합쳐지고 스냅
+전용 자식 DOM은 0개다. pseudo-element도 사용하지 않는다.
+
+이 변경은 DOM 수뿐 아니라 viewport 갱신 시 열마다 수행하던 style write를
+레인당 background size/position 갱신으로 합친다. 반면 CSS gradient layer 자체의
+paint 비용은 열 수만큼 존재하므로 GPU 비용이 단순히 DOM 감소 비율만큼 줄어드는
+것은 아니다. 핵심 이득은 구조 단순화와 bounded element 수 유지다.

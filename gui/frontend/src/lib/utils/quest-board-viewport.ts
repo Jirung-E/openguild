@@ -1,12 +1,9 @@
 export type BoardLod = 'detail' | 'compact' | 'overview';
 
 export interface ScreenGridMetrics {
-	stepX: number;
 	stepY: number;
 	phaseY: number;
 	dotRadius: number;
-	top: number;
-	height: number;
 }
 
 export interface BoardFrameStats {
@@ -37,24 +34,18 @@ export function screenGridMetrics(
 	zoom: number,
 	panY: number,
 	baseY: number,
-	cellW: number,
-	cellH: number,
-	viewportHeight: number
+	cellH: number
 ): ScreenGridMetrics {
 	const safeZoom = Math.max(zoom, 0.0001);
-	const stepX = Math.max(cellW * safeZoom, 1);
 	const stepY = Math.max(cellH * safeZoom, 1);
 	const screenBaseY = panY + baseY * safeZoom;
-	// dots element는 -stepY에서 시작하고 각 tile 중앙에 점이 있다.
+	// background tile 중앙의 점이 screenBaseY 행에 오도록 phase를 감싼다.
 	const phaseY = positiveModulo(screenBaseY + stepY / 2, stepY);
 	const dotRadius = Math.max(0.55, Math.min(1.35, stepY * 0.18));
 	return {
-		stepX,
 		stepY,
 		phaseY,
-		dotRadius,
-		top: -stepY,
-		height: Math.max(viewportHeight, 1) + stepY * 2
+		dotRadius
 	};
 }
 

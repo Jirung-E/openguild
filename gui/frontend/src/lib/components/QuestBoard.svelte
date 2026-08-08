@@ -2565,14 +2565,8 @@
 			const gridCol = document.createElement('div');
 			gridCol.className = 'lane-grid-col';
 			// BUG-225: viewport 크기의 CSS grid만 유지한다. 거대한 world bitmap을
-			// 만들지 않고 phase transform만 움직여 무한 grid처럼 보이게 한다.
-			// CSS background의 가로 repeat는 WKWebView에서 한 열만 보인 사례가 있어
-			// 지원 가능한 최대 3열을 실제 DOM 열로 만든다. sync에서 laneCols만큼 노출.
-			for (let column = 0; column < 3; column += 1) {
-				const dots = document.createElement('div');
-				dots.className = 'lane-dot-column';
-				gridCol.appendChild(dots);
-			}
+			// 만들지 않는다. 자식 DOM 없이 이 레인 요소의 CSS 다중 background만
+			// laneCols만큼 겹쳐 세로 반복한다.
 			gridLanesEl.appendChild(gridCol);
 		});
 		headersEl.innerHTML = '';
@@ -2716,9 +2710,7 @@
 			zoom,
 			pan.y,
 			LANE_TOP + 16 + NODE_H / 2,
-			cellW,
-			cellH,
-			container.clientHeight
+			cellH
 		);
 		let laneLeft = 0;
 		gridLanesEl.querySelectorAll<HTMLElement>('.lane-grid-col').forEach((gridCol, i) => {
@@ -2730,34 +2722,27 @@
 			}
 			const w = s ? laneWidth(s.slug) : LANE_W;
 			const collapsed = s ? collapsedLanes.has(s.slug) : false;
-			const dotColumns = gridCol.querySelectorAll<HTMLElement>('.lane-dot-column');
-			if (!gridSnap || collapsed || dotColumns.length === 0) {
+			if (!gridSnap || collapsed) {
 				gridCol.style.display = 'none';
 				laneLeft += w + LANE_GAP;
 				return;
 			}
 
-			const cols = laneCols[i] ?? 2;
+			const cols = Math.max(1, Math.min(3, laneCols[i] ?? 2));
 			const firstCxLocal = laneFirstCellX(i, cols) - i * LANE_STRIDE;
 			const columnCenters = screenGridColumnCenters(firstCxLocal, cellW, zoom, cols);
 			const columnWidth = metrics.dotRadius * 2 + 1.1;
+			const backgroundY = metrics.phaseY - metrics.stepY / 2;
 			gridCol.style.display = '';
 			gridCol.style.left = `${laneLeft * zoom + pan.x}px`;
 			gridCol.style.width = `${w * zoom}px`;
-			dotColumns.forEach((dotsEl, column) => {
-				if (column >= columnCenters.length) {
-					dotsEl.style.display = 'none';
-					return;
-				}
-				dotsEl.style.display = '';
-				dotsEl.style.left = `${columnCenters[column]}px`;
-				dotsEl.style.top = `${metrics.top}px`;
-				dotsEl.style.width = `${columnWidth}px`;
-				dotsEl.style.height = `${metrics.height}px`;
-				dotsEl.style.backgroundSize = `${columnWidth}px ${metrics.stepY}px`;
-				dotsEl.style.transform = `translate3d(${-columnWidth / 2}px, ${metrics.phaseY}px, 0)`;
-				dotsEl.style.setProperty('--grid-dot-radius', `${metrics.dotRadius}px`);
-			});
+			gridCol.classList.remove('grid-cols-1', 'grid-cols-2', 'grid-cols-3');
+			gridCol.classList.add(`grid-cols-${cols}`);
+			gridCol.style.backgroundSize = `${columnWidth}px ${metrics.stepY}px`;
+			gridCol.style.backgroundPosition = columnCenters
+				.map((centerX) => `${centerX - columnWidth / 2}px ${backgroundY}px`)
+				.join(', ');
+			gridCol.style.setProperty('--grid-dot-radius', `${metrics.dotRadius}px`);
 			laneLeft += w + LANE_GAP;
 		});
 	}
@@ -3579,21 +3564,27 @@
 		overflow: hidden;
 	}
 	:global(.lane-grid-col) {
+		--grid-dot-image: radial-gradient(
+			circle at center,
+			color-mix(in srgb, var(--warning) 68%, transparent) 0 var(--grid-dot-radius),
+			transparent calc(var(--grid-dot-radius) + 0.55px)
+		);
 		position: absolute;
 		top: 0;
 		bottom: 0;
 		overflow: hidden;
 		contain: strict;
-	}
-	:global(.lane-dot-column) {
-		position: absolute;
-		background-image: radial-gradient(
-			circle at center,
-			color-mix(in srgb, var(--warning) 68%, transparent) 0 var(--grid-dot-radius),
-			transparent calc(var(--grid-dot-radius) + 0.55px)
-		);
 		background-repeat: repeat-y;
-		will-change: transform;
+		pointer-events: none;
+	}
+	:global(.lane-grid-col.grid-cols-1) {
+		background-image: var(--grid-dot-image);
+	}
+	:global(.lane-grid-col.grid-cols-2) {
+		background-image: var(--grid-dot-image), var(--grid-dot-image);
+	}
+	:global(.lane-grid-col.grid-cols-3) {
+		background-image: var(--grid-dot-image), var(--grid-dot-image), var(--grid-dot-image);
 	}
 	.board {
 		position: absolute;
@@ -3859,18 +3850,6 @@
 			background 0.12s,
 			box-shadow 0.12s;
 		overflow: hidden;
-	}
-	:global(.lane-grid-col) {
-		position: absolute;
-		top: 0;
-		pointer-events: none;
-	}
-	/* DEV-317: grid snap dot 도 world 좌표에 고정. pan/zoom 중 이 요소 자체는
-	   갱신하지 않고 board-world 부모 transform 만 따른다. */
-	:global(.lane-dot-column) {
-		position: absolute;
-		pointer-events: none;
-		background-repeat: repeat-y;
 	}
 	/* DEV-105 fix11: 드래그 중 노드가 놓일 lane 강조. */
 	:global(.lane-col.drag-target) {

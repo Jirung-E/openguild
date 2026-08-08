@@ -16,15 +16,12 @@ describe('quest board viewport helpers', () => {
 		expect(boardLodForZoom(0.55)).toBe('detail');
 	});
 
-	it('screen grid는 점 크기를 화면 px로 유지하고 viewport보다 넉넉히 덮는다', () => {
-		const metrics = screenGridMetrics(0.03, -200, 108, 312, 108, 800);
-		expect(metrics.stepX).toBeCloseTo(9.36);
+	it('screen grid는 점 크기를 화면 px로 유지한다', () => {
+		const metrics = screenGridMetrics(0.03, -200, 108, 108);
 		expect(metrics.stepY).toBeCloseTo(3.24);
 		expect(metrics.dotRadius).toBeCloseTo(0.5832);
 		expect(metrics.phaseY).toBeGreaterThanOrEqual(0);
 		expect(metrics.phaseY).toBeLessThan(metrics.stepY);
-		expect(metrics.top).toBeCloseTo(-3.24);
-		expect(metrics.height).toBeGreaterThan(800);
 	});
 
 	it('레인의 열 수만큼 독립적인 screen-space 스냅 열 중심을 만든다', () => {
@@ -41,7 +38,7 @@ describe('quest board viewport helpers', () => {
 
 	it('grid phase는 큰 양수/음수 pan에서도 한 tile 범위로 감싼다', () => {
 		for (const panY of [-100_000, -1, 0, 100_000]) {
-			const metrics = screenGridMetrics(0.2, panY, 108, 312, 108, 600);
+			const metrics = screenGridMetrics(0.2, panY, 108, 108);
 			expect(metrics.phaseY).toBeGreaterThanOrEqual(0);
 			expect(metrics.phaseY).toBeLessThan(metrics.stepY);
 		}
