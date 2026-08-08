@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { boardLodForZoom, screenGridMetrics, summarizeBoardFrames } from './quest-board-viewport';
+import {
+	boardLodForZoom,
+	isPerformanceMonitorShortcut,
+	screenGridColumnCenters,
+	screenGridMetrics,
+	summarizeBoardFrames
+} from './quest-board-viewport';
 
 describe('quest board viewport helpers', () => {
 	it('깊은 축소에서는 overview, 중간은 compact, 확대에서는 detail LOD를 쓴다', () => {
@@ -14,11 +20,23 @@ describe('quest board viewport helpers', () => {
 		const metrics = screenGridMetrics(0.03, -200, 108, 312, 108, 800);
 		expect(metrics.stepX).toBeCloseTo(9.36);
 		expect(metrics.stepY).toBeCloseTo(3.24);
-		expect(metrics.dotRadius).toBeCloseTo(0.9072);
+		expect(metrics.dotRadius).toBeCloseTo(0.5832);
 		expect(metrics.phaseY).toBeGreaterThanOrEqual(0);
 		expect(metrics.phaseY).toBeLessThan(metrics.stepY);
 		expect(metrics.top).toBeCloseTo(-3.24);
 		expect(metrics.height).toBeGreaterThan(800);
+	});
+
+	it('레인의 열 수만큼 독립적인 screen-space 스냅 열 중심을 만든다', () => {
+		expect(screenGridColumnCenters(170, 328, 0.5, 3)).toEqual([85, 249, 413]);
+		expect(screenGridColumnCenters(170, 328, 0.5, 1)).toEqual([85]);
+	});
+
+	it('성능 HUD 단축키는 디버그 빌드의 Cmd/Ctrl+Shift+H에서만 동작한다', () => {
+		expect(isPerformanceMonitorShortcut('KeyH', false, true, true, true)).toBe(true);
+		expect(isPerformanceMonitorShortcut('KeyH', true, false, true, true)).toBe(true);
+		expect(isPerformanceMonitorShortcut('KeyH', false, true, true, false)).toBe(false);
+		expect(isPerformanceMonitorShortcut('KeyH', false, true, false, true)).toBe(false);
 	});
 
 	it('grid phase는 큰 양수/음수 pan에서도 한 tile 범위로 감싼다', () => {

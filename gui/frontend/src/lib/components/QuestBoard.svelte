@@ -26,6 +26,8 @@
 	import { isBoardPanSurfaceTarget } from '$lib/utils/quest-board-input';
 	import {
 		boardLodForZoom,
+		isPerformanceMonitorShortcut,
+		screenGridColumnCenters,
 		screenGridMetrics,
 		summarizeBoardFrames,
 		type BoardFrameStats,
@@ -128,6 +130,9 @@
 	let boardLod = $state<BoardLod>('detail');
 
 	let performanceVisible = $state(false);
+	// import.meta.env.DEV는 브라우저 dev server용. 패키징된 Tauri debug는
+	// Rust의 is_debug_build를 onMount에서 조회해 true로 바꾼다.
+	let performanceEnabled = $state(import.meta.env.DEV);
 	let performanceStats = $state<BoardFrameStats>({
 		rafHz: 0,
 		medianMs: 0,
@@ -136,6 +141,7 @@
 	});
 	let performanceViewportHz = $state(0);
 	let performanceZoom = $state(1);
+	let performancePageState = $state('visible/focus');
 	let performanceRaf: number | null = null;
 	let performanceLastFrame = 0;
 	let performanceWindowStarted = 0;
@@ -165,12 +171,14 @@
 			performanceViewportHz =
 				((viewportVisualUpdateCount - performanceViewportStart) * 1000) / Math.max(elapsed, 1);
 			performanceZoom = cy?.zoom() ?? 1;
+			performancePageState = `${document.visibilityState}/${document.hasFocus() ? 'focus' : 'blur'}`;
 			resetPerformanceWindow(now);
 		}
 		performanceRaf = requestAnimationFrame(samplePerformanceFrame);
 	}
 
 	function togglePerformanceMonitor() {
+		if (!performanceEnabled) return;
 		performanceVisible = !performanceVisible;
 		if (performanceVisible) {
 			resetPerformanceWindow(performance.now());
@@ -2082,7 +2090,12 @@
 		const tag = (e.target as HTMLElement).tagName;
 		if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
 		const ctrl = e.ctrlKey || e.metaKey;
-		if (ctrl && e.code === 'KeyZ' && !e.shiftKey) {
+		if (
+			isPerformanceMonitorShortcut(e.code, e.ctrlKey, e.metaKey, e.shiftKey, performanceEnabled)
+		) {
+			e.preventDefault();
+			togglePerformanceMonitor();
+		} else if (ctrl && e.code === 'KeyZ' && !e.shiftKey) {
 			e.preventDefault();
 			undo();
 		} else if (ctrl && e.code === 'KeyZ' && e.shiftKey) {
@@ -2126,6 +2139,17 @@
 
 	onMount(() => {
 		const unsubTheme = effectiveTheme.subscribe(() => refreshNodeBgForTheme());
+		// BUG-225: 릴리스 빌드에서는 HUD 진입 경로 자체가 없다. Vite dev가 아닌
+		// 패키징 debug 앱은 Rust 프로파일을 조회해야 정확히 판별할 수 있다.
+		void (async () => {
+			if (performanceEnabled || detectEnvironment() !== 'tauri') return;
+			try {
+				const { invoke } = await import('@tauri-apps/api/core');
+				performanceEnabled = await invoke<boolean>('is_debug_build');
+			} catch {
+				/* 브라우저 production / 구 backend — HUD 비활성 유지 */
+			}
+		})();
 		// DEV-317: locale 문자열은 실제 DOM text 라 $locale 변경에 Svelte 가
 		// 직접 반응한다. 예전 SVG data URL 재생성 구독은 더 이상 필요 없다.
 
@@ -2542,9 +2566,13 @@
 			gridCol.className = 'lane-grid-col';
 			// BUG-225: viewport 크기의 CSS grid만 유지한다. 거대한 world bitmap을
 			// 만들지 않고 phase transform만 움직여 무한 grid처럼 보이게 한다.
-			const dots = document.createElement('div');
-			dots.className = 'lane-dots';
-			gridCol.appendChild(dots);
+			// CSS background의 가로 repeat는 WKWebView에서 한 열만 보인 사례가 있어
+			// 지원 가능한 최대 3열을 실제 DOM 열로 만든다. sync에서 laneCols만큼 노출.
+			for (let column = 0; column < 3; column += 1) {
+				const dots = document.createElement('div');
+				dots.className = 'lane-dot-column';
+				gridCol.appendChild(dots);
+			}
 			gridLanesEl.appendChild(gridCol);
 		});
 		headersEl.innerHTML = '';
@@ -2702,8 +2730,8 @@
 			}
 			const w = s ? laneWidth(s.slug) : LANE_W;
 			const collapsed = s ? collapsedLanes.has(s.slug) : false;
-			const dotsEl = gridCol.firstElementChild as HTMLElement | null;
-			if (!gridSnap || collapsed || !dotsEl) {
+			const dotColumns = gridCol.querySelectorAll<HTMLElement>('.lane-dot-column');
+			if (!gridSnap || collapsed || dotColumns.length === 0) {
 				gridCol.style.display = 'none';
 				laneLeft += w + LANE_GAP;
 				return;
@@ -2711,16 +2739,25 @@
 
 			const cols = laneCols[i] ?? 2;
 			const firstCxLocal = laneFirstCellX(i, cols) - i * LANE_STRIDE;
+			const columnCenters = screenGridColumnCenters(firstCxLocal, cellW, zoom, cols);
+			const columnWidth = metrics.dotRadius * 2 + 1.1;
 			gridCol.style.display = '';
 			gridCol.style.left = `${laneLeft * zoom + pan.x}px`;
 			gridCol.style.width = `${w * zoom}px`;
-			dotsEl.style.left = `${(firstCxLocal - cellW / 2) * zoom}px`;
-			dotsEl.style.top = `${metrics.top}px`;
-			dotsEl.style.width = `${metrics.stepX * cols}px`;
-			dotsEl.style.height = `${metrics.height}px`;
-			dotsEl.style.backgroundSize = `${metrics.stepX}px ${metrics.stepY}px`;
-			dotsEl.style.transform = `translate3d(0, ${metrics.phaseY}px, 0)`;
-			dotsEl.style.setProperty('--grid-dot-radius', `${metrics.dotRadius}px`);
+			dotColumns.forEach((dotsEl, column) => {
+				if (column >= columnCenters.length) {
+					dotsEl.style.display = 'none';
+					return;
+				}
+				dotsEl.style.display = '';
+				dotsEl.style.left = `${columnCenters[column]}px`;
+				dotsEl.style.top = `${metrics.top}px`;
+				dotsEl.style.width = `${columnWidth}px`;
+				dotsEl.style.height = `${metrics.height}px`;
+				dotsEl.style.backgroundSize = `${columnWidth}px ${metrics.stepY}px`;
+				dotsEl.style.transform = `translate3d(${-columnWidth / 2}px, ${metrics.phaseY}px, 0)`;
+				dotsEl.style.setProperty('--grid-dot-radius', `${metrics.dotRadius}px`);
+			});
 			laneLeft += w + LANE_GAP;
 		});
 	}
@@ -3235,6 +3272,7 @@
 			<span>&gt;12.5 ms {performanceStats.missed120Percent.toFixed(0)}%</span>
 			<span>viewport {performanceViewportHz.toFixed(0)}/s</span>
 			<span>zoom {performanceZoom.toFixed(3)} · {boardLod}</span>
+			<span>page {performancePageState}</span>
 		</div>
 	{/if}
 	<!-- DEV-073 fix3: New Quest 는 상단 우측 고정 (항상 노출), 나머지 도구바는
@@ -3335,16 +3373,6 @@
 					<option value="all">{t('board.arrangeModeAll', $locale)}</option>
 				</select>
 			</div>
-			<div class="tb-sep"></div>
-			<button
-				class="tb-btn"
-				class:tb-on={performanceVisible}
-				onclick={togglePerformanceMonitor}
-				title={t('board.performanceMonitorTitle', $locale)}
-			>
-				<span class="icon perf-icon">Hz</span><span>{t('board.performanceMonitor', $locale)}</span>
-			</button>
-			<div class="tb-sep"></div>
 		{/if}
 		<!-- 토글 버튼 — 항상 우측 끝 (collapsed / expanded 동일 위치, 사용자 피드백). -->
 		<button
@@ -3557,14 +3585,14 @@
 		overflow: hidden;
 		contain: strict;
 	}
-	:global(.lane-dots) {
+	:global(.lane-dot-column) {
 		position: absolute;
 		background-image: radial-gradient(
 			circle at center,
 			color-mix(in srgb, var(--warning) 68%, transparent) 0 var(--grid-dot-radius),
 			transparent calc(var(--grid-dot-radius) + 0.55px)
 		);
-		background-repeat: repeat;
+		background-repeat: repeat-y;
 		will-change: transform;
 	}
 	.board {
@@ -3839,7 +3867,7 @@
 	}
 	/* DEV-317: grid snap dot 도 world 좌표에 고정. pan/zoom 중 이 요소 자체는
 	   갱신하지 않고 board-world 부모 transform 만 따른다. */
-	:global(.lane-dots) {
+	:global(.lane-dot-column) {
 		position: absolute;
 		pointer-events: none;
 		background-repeat: repeat-y;
@@ -4494,11 +4522,6 @@
 	.tb-btn .icon {
 		font-size: 0.95rem;
 		line-height: 1;
-	}
-	.tb-btn .perf-icon {
-		font-family: 'SFMono-Regular', Consolas, monospace;
-		font-size: 0.7rem;
-		font-weight: 700;
 	}
 	.tb-btn .count {
 		font-size: 0.7rem;

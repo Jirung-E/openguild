@@ -3,7 +3,7 @@ book_id = "BOOK-002"
 title = "Quest Board 2손가락 트랙패드 제스처 지연 — 조사 전체 기록"
 path = ""
 created_at = "2026-08-01T22:37:23+09:00"
-updated_at = "2026-08-08T19:55:11+09:00"
+updated_at = "2026-08-08T20:20:19+09:00"
 deleted = false
 +++
 
@@ -486,3 +486,40 @@ Inspector Timelines/Layers와 함께 판단한다. HUD는 꺼져 있을 때 rAF 
 frontend 39 files/399 tests, `svelte-check`, production build, release GUI build,
 `git diff --check`가 통과했다. 인앱 브라우저는 120Hz까지 확인했으며 macOS
 Tauri의 실제 값은 release 앱에서 HUD를 켜 확인한다.
+
+## 2026-08-08 BUG-225 후속 — 명시적 3열 snap과 debug 전용 HUD
+
+실제 macOS Tauri 확인에서 두 가지 후속 차이가 발견됐다. snap은 laneCols=3이어도
+CSS radial-gradient의 가로 반복이 한 열처럼 보였고, 점 반지름 0.9~2.25 화면
+px는 특히 축소 화면에서 지나치게 굵었다. 또한 ProMotion(최대 120Hz) MacBook
+Pro의 Tauri 앱에서 rAF HUD가 정확히 30Hz로 고정됐다.
+
+snap은 가로 background repeat에 기대지 않도록 바꿨다. 레인마다 최대 세 개의
+독립적인 세로 dot column DOM을 만들고 laneCols=1/2/3만큼만 표시한다. 각 열의
+중심 X는 첫 cell 중심과 cell 폭으로 직접 계산하므로 3열 설정이면 구조적으로 세
+열이 존재한다. 점 반지름은 screen-space 0.55~1.35px로 줄였다. 저배율에서도
+최소 1.1px 지름은 유지하지만 이전 최대 지름 4.5px보다 훨씬 작다.
+
+성능 HUD는 일반 사용자 기능이 아니라 진단 장치로 제한했다. 툴바 버튼과 번역
+라벨을 제거하고, Vite dev 또는 Rust debug build에서만 `Cmd/Ctrl+Shift+H`로
+토글한다. packaged debug는 frontend의 `import.meta.env.DEV`로 판별할 수 없으므로
+Tauri `is_debug_build` command를 사용한다. release build에서는 상태가 활성화되지
+않아 단축키도 동작하지 않는다. HUD에는 page visibility/focus도 함께 표시한다.
+
+보드 구현에는 30fps timer나 cap이 없다. wheel 이벤트는 같은 display frame의
+입력을 requestAnimationFrame 한 번으로 합칠 뿐이고, HUD 역시 rAF callback 간격을
+직접 잰다. 동일 보드의 인앱 Chromium dev 화면은 120Hz, median 8.3ms로 측정됐기
+때문에 Tauri의 30Hz는 보드 로직이 아니라 macOS WKWebView의 frame scheduling
+경로 차이다.
+
+WebKit 공개 이슈 294338은 hybrid WKWebView가 기본 약 60fps에 제한되고 120Hz를
+요청할 공개 API가 아직 없다고 기록한다. Safari의 관련 feature flag도 embedded
+WKWebView에는 적용되지 않는다. 30Hz는 이 60Hz 상한보다도 낮으므로, HUD가
+`visible/focus`인지 확인하고 macOS 저전력/열/부하 상태를 함께 비교해야 한다.
+Wry의 `backgroundThrottling`은 window 밖/비활성 webview 정책이므로 foreground
+30Hz 해결책으로 임의 적용하지 않는다. private WebKit preference를 쓰는 우회는
+깨지기 쉽고 배포 안정성이 없어 현재 범위에서는 채택하지 않는다.
+
+브라우저 실화면에서 laneCols=3일 때 각 레인의 세 dot column, debug shortcut
+on/off, 툴바 성능 버튼 미존재를 확인했다. viewport helper 6 tests,
+svelte-check, production build와 diff/format check가 통과했다.

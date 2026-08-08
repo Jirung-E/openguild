@@ -47,7 +47,7 @@ export function screenGridMetrics(
 	const screenBaseY = panY + baseY * safeZoom;
 	// dots element는 -stepY에서 시작하고 각 tile 중앙에 점이 있다.
 	const phaseY = positiveModulo(screenBaseY + stepY / 2, stepY);
-	const dotRadius = Math.max(0.9, Math.min(2.25, stepY * 0.28));
+	const dotRadius = Math.max(0.55, Math.min(1.35, stepY * 0.18));
 	return {
 		stepX,
 		stepY,
@@ -56,6 +56,30 @@ export function screenGridMetrics(
 		top: -stepY,
 		height: Math.max(viewportHeight, 1) + stepY * 2
 	};
+}
+
+/** 레인 안의 스냅 열 중심을 screen-space x 좌표로 바꾼다. */
+export function screenGridColumnCenters(
+	firstCenterX: number,
+	cellW: number,
+	zoom: number,
+	cols: number
+): number[] {
+	return Array.from(
+		{ length: Math.max(0, Math.floor(cols)) },
+		(_, column) => (firstCenterX + column * cellW) * zoom
+	);
+}
+
+/** 성능 HUD는 디버그 빌드에서만 Cmd/Ctrl+Shift+H로 토글한다. */
+export function isPerformanceMonitorShortcut(
+	code: string,
+	ctrlKey: boolean,
+	metaKey: boolean,
+	shiftKey: boolean,
+	debugEnabled: boolean
+): boolean {
+	return debugEnabled && (ctrlKey || metaKey) && shiftKey && code === 'KeyH';
 }
 
 function percentile(sorted: number[], ratio: number): number {

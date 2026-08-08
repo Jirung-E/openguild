@@ -1150,11 +1150,6 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'board.arrangeModeGroup': { ko: '그룹', en: 'Group' },
 	'board.arrangeModeAll': { ko: '전체', en: 'All' },
 	'board.fitView': { ko: '화면에 맞추기 (F)', en: 'Fit view (F)' },
-	'board.performanceMonitor': { ko: '성능', en: 'Performance' },
-	'board.performanceMonitorTitle': {
-		ko: '보드 rAF 주기와 viewport 갱신 횟수 표시',
-		en: 'Show board rAF timing and viewport update rate'
-	},
 	'board.undo': { ko: '실행 취소 (Ctrl+Z)', en: 'Undo (Ctrl+Z)' },
 	'board.redo': { ko: '다시 실행 (Ctrl+Shift+Z)', en: 'Redo (Ctrl+Shift+Z)' },
 	'board.toolbarExpand': { ko: '도구바 펼치기', en: 'Expand toolbar' },
