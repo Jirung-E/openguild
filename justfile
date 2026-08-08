@@ -57,6 +57,11 @@ build-rust:
 # frontend 를 먼저 만들어야 build-rust 가 성공 (BUG-107).
 build: build-frontend build-rust
 
+# 전체 debug 빌드 (frontend 정적 자산 + Rust workspace debug profile)
+# desktop bundle/app 패키징은 하지 않는다.
+build-debug: build-frontend
+    cargo build --workspace
+
 # --- 테스트 (test) ---
 
 # Rust workspace 전체 테스트 (release — debug 산출물이 디스크를 너무 차지).
