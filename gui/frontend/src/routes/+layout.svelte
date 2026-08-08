@@ -169,8 +169,16 @@
 			return () => window.removeEventListener('beforeunload', guard);
 		}
 		const onKeyDown = (e: KeyboardEvent) => {
-			if (!isReloadShortcut(e) || !anyUnsaved()) return;
+			if (!isReloadShortcut(e)) return;
 			e.preventDefault();
+			// DEV-345: 미저장 변경이 없으면 확인 모달 없이 바로 새로고침.
+			// 예전엔 이 분기가 없어서 Cmd+R 이 (미저장 상태일 때만 동작하는
+			// 모달 경로 말고는) 아무 반응도 없었다 — Tauri 는 브라우저와 달리
+			// Cmd+R 기본 동작이 없어 직접 reload() 를 호출해야 함.
+			if (!anyUnsaved()) {
+				window.location.reload();
+				return;
+			}
 			// discardAndProceed 가 clearUnsaved() 후 이 동작을 실행한다.
 			pendingAction = () => window.location.reload();
 			showUnsavedModal = true;
