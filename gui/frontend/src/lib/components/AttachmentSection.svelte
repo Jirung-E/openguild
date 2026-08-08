@@ -560,9 +560,11 @@
 		height: 100%;
 		object-fit: cover;
 	}
-	/* DEV-335: 첨부 이미지 HDR 표시 제한 — MarkdownView 의 본문 이미지와 같은
-	   `--hdr-limit` custom property 를 따라간다(hdrSettings 스토어). */
-	.thumb img {
+	/* DEV-335/BUG-224: 첨부 이미지·동영상 HDR 표시 제한 — MarkdownView 의
+	   본문 이미지와 같은 `--hdr-limit` custom property 를 따라간다
+	   (hdrSettings 스토어). 원래 img 만 걸려있었음 — HDR 동영상엔 안 먹힘. */
+	.thumb img,
+	.thumb video {
 		dynamic-range-limit: var(--hdr-limit, no-limit);
 	}
 	.file-ico {

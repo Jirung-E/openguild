@@ -510,10 +510,14 @@
 	.md :global(th) {
 		background: var(--bg-elevated);
 	}
-	/* DEV-335: 첨부 이미지 HDR 표시 제한 — 설정(hdrSettings)이 `<html>` 에 쓰는
-	   `--hdr-limit` 를 따라간다. 미지원 브라우저는 프로퍼티 자체가 무시됨. */
+	/* DEV-335/BUG-224: 첨부 이미지·동영상 HDR 표시 제한 — 설정(hdrSettings)이
+	   `<html>` 에 쓰는 `--hdr-limit` 를 따라간다. 미지원 브라우저는 프로퍼티
+	   자체가 무시됨. 원래 img 만 걸려있었음 — HDR 동영상엔 안 먹힘. */
 	.md :global(img) {
 		max-width: 100%;
+	}
+	.md :global(img),
+	.md :global(video) {
 		dynamic-range-limit: var(--hdr-limit, no-limit);
 	}
 	/* DEV-111: mermaid 다이어그램 렌더 영역. */
