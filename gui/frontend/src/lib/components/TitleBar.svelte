@@ -244,11 +244,9 @@
 	// (document 버블)보다 먼저 실행되고 stopImmediatePropagation 의 영향도
 	// 받지 않는다.
 	function onWindowMouseDown(e: MouseEvent) {
-		if (!menuOpen && !recentOpen) return;
+		if (!menuOpen) return;
 		const t = e.target as HTMLElement;
-		if (menuOpen && !t.closest('.tb-menu-wrap')) menuOpen = false;
-		// DEV-276: 최근 문서 드롭다운도 같은 경로로 바깥 클릭 닫기.
-		if (recentOpen && !t.closest('.tb-recent-wrap')) recentOpen = false;
+		if (!t.closest('.tb-menu-wrap')) menuOpen = false;
 	}
 	onMount(() => {
 		window.addEventListener('mousedown', onWindowMouseDown, { capture: true });
