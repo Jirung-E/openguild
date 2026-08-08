@@ -25,10 +25,10 @@
 	import { boardEdgePath, parallelEdgeBends } from '$lib/utils/quest-board-render';
 	import { isBoardPanSurfaceTarget } from '$lib/utils/quest-board-input';
 	import {
-		boardLodForZoom,
-		isPerformanceMonitorShortcut,
-		screenGridColumnCenters,
-		screenGridMetrics,
+	boardLodForZoom,
+	isPerformanceMonitorShortcut,
+	screenGridColumnCenters,
+	screenGridMetrics,
 		summarizeBoardFrames,
 		type BoardFrameStats,
 		type BoardLod
@@ -148,6 +148,8 @@
 	let performanceViewportStart = 0;
 	let viewportVisualUpdateCount = 0;
 	let performanceIntervals: number[] = [];
+	let gridZoomActive = false;
+	let gridZoomEndTimer: ReturnType<typeof setTimeout> | null = null;
 
 	function resetPerformanceWindow(now: number) {
 		performanceLastFrame = now;
@@ -1950,6 +1952,7 @@
 			dragStartMap.clear();
 			dragHighlightSlug = null;
 			const { dist, midX, midY } = touchDistMid(e);
+			beginGridZoomTransform();
 			pinch = { lastDist: dist, lastMidX: midX, lastMidY: midY };
 			return;
 		}
@@ -1991,6 +1994,7 @@
 	function onBoardTouchEnd(e: TouchEvent) {
 		if (pinch && e.touches.length < 2) {
 			pinch = null;
+			finishGridZoomTransform();
 			if (e.touches.length === 1) {
 				beginPanInteraction(e.touches[0].clientX, e.touches[0].clientY);
 			}
@@ -2059,6 +2063,8 @@
 		// Ctrl+wheel(트랙패드 Ctrl+스크롤 또는 마우스 Ctrl+휠) 또는 plain 마우스 휠 = 줌.
 		// 그 외(트랙패드 plain two-finger 스크롤) = pan.
 		if (e.ctrlKey || mouse) {
+			beginGridZoomTransform();
+			scheduleGridZoomFinish();
 			const rect = container.getBoundingClientRect();
 			// 감도 분리: 마우스 노치는 deltaY≈100(캡 60) 으로 변화폭이 커서 둔감하게
 			// (0.0012 — 캡 60 기준 약 7%, 기존 보드 체감 복원).
@@ -2544,6 +2550,7 @@
 		if (wheelRaf !== null) cancelAnimationFrame(wheelRaf); // BUG-144
 		if (domGraphRaf !== null) cancelAnimationFrame(domGraphRaf); // DEV-317
 		if (performanceRaf !== null) cancelAnimationFrame(performanceRaf); // BUG-225
+		if (gridZoomEndTimer !== null) clearTimeout(gridZoomEndTimer); // BUG-225
 		boardWrapEl?.removeEventListener('wheel', onBoardWheel); // BUG-090
 		// DEV-208: 터치 핀치.
 		boardWrapEl?.removeEventListener('touchstart', onBoardTouchStart);
@@ -2706,12 +2713,16 @@
 		if (!gridLanesEl) return;
 		const cellW = NODE_W + NODE_GAP;
 		const cellH = NODE_H + NODE_GAP;
-		const metrics = screenGridMetrics(
-			zoom,
-			pan.y,
-			LANE_TOP + 16 + NODE_H / 2,
-			cellH
-		);
+		const baseY = LANE_TOP + 16 + NODE_H / 2;
+		const safeZoom = Math.max(zoom, 0.0001);
+		const metrics = screenGridMetrics(safeZoom, cellH);
+		const viewportWorldHeight = Math.max(container.clientHeight / safeZoom, 1);
+		const verticalOverscan = viewportWorldHeight;
+		const gridTop = -pan.y / safeZoom - verticalOverscan;
+		const gridHeight = viewportWorldHeight + verticalOverscan * 2;
+		const dotRadiusWorld = metrics.dotRadius / safeZoom;
+		const dotFeatherWorld = 0.55 / safeZoom;
+		const columnWidth = dotRadiusWorld * 2 + dotFeatherWorld * 2;
 		let laneLeft = 0;
 		gridLanesEl.querySelectorAll<HTMLElement>('.lane-grid-col').forEach((gridCol, i) => {
 			const s = sorted[i];
@@ -2730,21 +2741,50 @@
 
 			const cols = Math.max(1, Math.min(3, laneCols[i] ?? 2));
 			const firstCxLocal = laneFirstCellX(i, cols) - i * LANE_STRIDE;
-			const columnCenters = screenGridColumnCenters(firstCxLocal, cellW, zoom, cols);
-			const columnWidth = metrics.dotRadius * 2 + 1.1;
-			const backgroundY = metrics.phaseY - metrics.stepY / 2;
+			const columnCenters = screenGridColumnCenters(firstCxLocal, cellW, 1, cols);
 			gridCol.style.display = '';
-			gridCol.style.left = `${laneLeft * zoom + pan.x}px`;
-			gridCol.style.width = `${w * zoom}px`;
+			gridCol.style.left = `${laneLeft}px`;
+			gridCol.style.width = `${w}px`;
+			gridCol.style.top = `${gridTop}px`;
+			gridCol.style.height = `${gridHeight}px`;
+			gridCol.style.bottom = '';
 			gridCol.classList.remove('grid-cols-1', 'grid-cols-2', 'grid-cols-3');
 			gridCol.classList.add(`grid-cols-${cols}`);
-			gridCol.style.backgroundSize = `${columnWidth}px ${metrics.stepY}px`;
+			gridCol.style.backgroundSize = `${columnWidth}px ${cellH}px`;
 			gridCol.style.backgroundPosition = columnCenters
-				.map((centerX) => `${centerX - columnWidth / 2}px ${backgroundY}px`)
+				.map((centerX) => `${centerX - columnWidth / 2}px ${baseY - gridTop - cellH / 2}px`)
 				.join(', ');
-			gridCol.style.setProperty('--grid-dot-radius', `${metrics.dotRadius}px`);
+			gridCol.style.setProperty('--grid-dot-radius', `${dotRadiusWorld}px`);
+			gridCol.style.setProperty('--grid-dot-feather', `${dotFeatherWorld}px`);
 			laneLeft += w + LANE_GAP;
 		});
+	}
+
+	/**
+	 * zoom gesture 시작 순간의 world-space grid를 texture로 고정한다.
+	 * 제스처 중에는 radial-gradient를 매 프레임 재 paint하지 않고
+	 * 부모에 노드 월드와 동일한 pan/zoom transform만 적용한다.
+	 */
+	function beginGridZoomTransform() {
+		if (!cy || !gridLanesEl || gridZoomActive) return;
+		const pan = cy.pan();
+		const zoom = cy.zoom();
+		syncScreenGrid(pan, zoom);
+		gridZoomActive = true;
+	}
+
+	function finishGridZoomTransform() {
+		if (gridZoomEndTimer !== null) {
+			clearTimeout(gridZoomEndTimer);
+			gridZoomEndTimer = null;
+		}
+		gridZoomActive = false;
+		if (cy) syncViewportVisuals();
+	}
+
+	function scheduleGridZoomFinish() {
+		if (gridZoomEndTimer !== null) clearTimeout(gridZoomEndTimer);
+		gridZoomEndTimer = setTimeout(finishGridZoomTransform, 120);
 	}
 
 	/** 제스처 hot path: 모든 world 요소가 공유하는 transform 하나만 갱신. */
@@ -2756,9 +2796,16 @@
 		const nextLod = boardLodForZoom(zoom);
 		if (nextLod !== boardLod) boardLod = nextLod;
 		if (worldViewportEl) {
-			worldViewportEl.style.transform = `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom})`;
+			// 제스처 중에만 3D compositor layer를 사용한다. 종료 후
+			// 동일한 pan/zoom의 2D transform으로 바꿔 WebKit backing layer를
+			// 다시 구성하되 폰트/노드 layout 크기는 절대 변경하지 않는다.
+			worldViewportEl.style.transform = gridZoomActive
+				? `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom})`
+				: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`;
 		}
-		syncScreenGrid(pan, zoom);
+		if (!gridZoomActive) {
+			syncScreenGrid(pan, zoom);
+		}
 		// lane의 단색 배경/경계와 grid는 viewport 높이를 채우고 X만 camera를 따른다.
 		let laneLeft = 0;
 		lanesEl?.querySelectorAll<HTMLElement>('.lane-col').forEach((col, i) => {
@@ -2994,10 +3041,10 @@
 >
 	<!-- lane 단색 배경은 세로 pan과 무관하게 viewport 높이를 항상 채운다. -->
 	<div class="lanes-bg" bind:this={lanesEl}></div>
-	<!-- BUG-225: snap grid는 화면 픽셀 좌표로 그려 최소 배율에서도 선명하다. -->
-	<div class="lane-grid-layer" bind:this={gridLanesEl}></div>
-	<!-- DEV-317: SVG edge + DOM node가 이 transform 하나를 공유한다. -->
+	<!-- DEV-317/BUG-225: snap + SVG edge + DOM node가 이 transform 하나를 공유한다. -->
 	<div class="board-world-viewport" bind:this={worldViewportEl}>
+		<!-- 점 중심은 world 좌표, 굵기는 gesture 종료 시 screen px에 맞춘다. -->
+		<div class="lane-grid-layer" bind:this={gridLanesEl}></div>
 		<div class="board-world" bind:this={worldEl}>
 			<svg class="edge-layer" width="100%" height="100%">
 				<defs>
@@ -3545,6 +3592,7 @@
 		position: absolute;
 		top: 0;
 		left: 0;
+		z-index: 1;
 		transform-origin: 0 0;
 		pointer-events: none;
 	}
@@ -3558,16 +3606,17 @@
 	}
 	.lane-grid-layer {
 		position: absolute;
-		inset: 0;
-		z-index: 1;
+		top: 0;
+		left: 0;
+		z-index: 0;
 		pointer-events: none;
-		overflow: hidden;
+		overflow: visible;
 	}
 	:global(.lane-grid-col) {
 		--grid-dot-image: radial-gradient(
 			circle at center,
 			color-mix(in srgb, var(--warning) 68%, transparent) 0 var(--grid-dot-radius),
-			transparent calc(var(--grid-dot-radius) + 0.55px)
+			transparent calc(var(--grid-dot-radius) + var(--grid-dot-feather))
 		);
 		position: absolute;
 		top: 0;

@@ -17,11 +17,9 @@ describe('quest board viewport helpers', () => {
 	});
 
 	it('screen grid는 점 크기를 화면 px로 유지한다', () => {
-		const metrics = screenGridMetrics(0.03, -200, 108, 108);
+		const metrics = screenGridMetrics(0.03, 108);
 		expect(metrics.stepY).toBeCloseTo(3.24);
 		expect(metrics.dotRadius).toBeCloseTo(0.5832);
-		expect(metrics.phaseY).toBeGreaterThanOrEqual(0);
-		expect(metrics.phaseY).toBeLessThan(metrics.stepY);
 	});
 
 	it('레인의 열 수만큼 독립적인 screen-space 스냅 열 중심을 만든다', () => {
@@ -34,14 +32,6 @@ describe('quest board viewport helpers', () => {
 		expect(isPerformanceMonitorShortcut('KeyH', true, false, true, true)).toBe(true);
 		expect(isPerformanceMonitorShortcut('KeyH', false, true, true, false)).toBe(false);
 		expect(isPerformanceMonitorShortcut('KeyH', false, true, false, true)).toBe(false);
-	});
-
-	it('grid phase는 큰 양수/음수 pan에서도 한 tile 범위로 감싼다', () => {
-		for (const panY of [-100_000, -1, 0, 100_000]) {
-			const metrics = screenGridMetrics(0.2, panY, 108, 108);
-			expect(metrics.phaseY).toBeGreaterThanOrEqual(0);
-			expect(metrics.phaseY).toBeLessThan(metrics.stepY);
-		}
 	});
 
 	it('frame interval에서 실제 rAF Hz와 120Hz 누락 비율을 계산한다', () => {

@@ -2,7 +2,6 @@ export type BoardLod = 'detail' | 'compact' | 'overview';
 
 export interface ScreenGridMetrics {
 	stepY: number;
-	phaseY: number;
 	dotRadius: number;
 }
 
@@ -22,29 +21,20 @@ export function boardLodForZoom(zoom: number): BoardLod {
 	return 'detail';
 }
 
-function positiveModulo(value: number, divisor: number): number {
-	return ((value % divisor) + divisor) % divisor;
-}
-
 /**
  * 월드 격자를 현재 viewport에만 그리기 위한 screen-space 수치.
- * 점의 반지름은 화면 px 기준으로 유지하고, 첫 행 phase는 음수 pan도 끊김 없이 감싼다.
+ * 점의 반지름은 화면 px 기준으로 유지하고, 배경 offset은 pan/zoom에
+ * 따라 연속적으로 변한다.
  */
 export function screenGridMetrics(
 	zoom: number,
-	panY: number,
-	baseY: number,
 	cellH: number
 ): ScreenGridMetrics {
 	const safeZoom = Math.max(zoom, 0.0001);
 	const stepY = Math.max(cellH * safeZoom, 1);
-	const screenBaseY = panY + baseY * safeZoom;
-	// background tile 중앙의 점이 screenBaseY 행에 오도록 phase를 감싼다.
-	const phaseY = positiveModulo(screenBaseY + stepY / 2, stepY);
 	const dotRadius = Math.max(0.55, Math.min(1.35, stepY * 0.18));
 	return {
 		stepY,
-		phaseY,
 		dotRadius
 	};
 }
