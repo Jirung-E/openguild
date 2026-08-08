@@ -3148,7 +3148,6 @@
 								{/if}
 							{:else if boardLod === 'compact'}
 								<div class="node-compact-id mono">{q.quest_id}</div>
-								<div class="node-compact-title">{q.title}</div>
 							{/if}
 						</div>
 					{/if}
@@ -3809,30 +3808,19 @@
 		background: var(--node-active-bg);
 		box-shadow: 0 0 18px var(--node-border);
 	}
-	/* BUG-225: 중간 배율에서는 pill/icon/date를 만들지 않고 핵심 텍스트만 칠한다. */
+	/* BUG-225: 중간 배율에서는 추적번호만 크게 표시한다. */
 	.lod-compact .board-node {
 		background: color-mix(in srgb, var(--bg) 97%, var(--node-border));
 		transition: none;
 	}
 	.node-compact-id {
 		position: absolute;
-		top: 10px;
-		left: 12px;
+		inset: 0;
+		display: grid;
+		place-items: center;
 		color: var(--node-border);
-		font-size: 18px;
+		font-size: 32px;
 		font-weight: 800;
-	}
-	.node-compact-title {
-		position: absolute;
-		left: 12px;
-		right: 12px;
-		bottom: 9px;
-		overflow: hidden;
-		color: var(--text);
-		font-size: 20px;
-		font-weight: 650;
-		line-height: 24px;
-		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
 	/* 전체 보기에서는 카드 하나를 단순한 색 marker 하나로 축약한다. */

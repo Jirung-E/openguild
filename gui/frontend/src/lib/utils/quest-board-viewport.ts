@@ -12,8 +12,8 @@ export interface BoardFrameStats {
 	missed120Percent: number;
 }
 
-const OVERVIEW_ZOOM = 0.16;
-const DETAIL_ZOOM = 0.55;
+const OVERVIEW_ZOOM = 0.1;
+const DETAIL_ZOOM = 0.24;
 
 export function boardLodForZoom(zoom: number): BoardLod {
 	if (zoom < OVERVIEW_ZOOM) return 'overview';
