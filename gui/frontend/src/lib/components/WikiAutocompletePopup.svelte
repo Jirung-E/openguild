@@ -88,7 +88,13 @@
 <style>
 	.wiki-pop {
 		position: fixed;
-		z-index: 50;
+		/* DEV-344 후속: 원래 z-index:50 이었는데, 이 컴포넌트가 쓰이는 곳 중
+		   NewQuestModal(퀘스트 생성 팝업)은 자체 오버레이가 z-index:200 이라
+		   그 뒤에 가려 안 보였다(DOM 에는 있고 동작도 하는데 시각적으로만
+		   숨음 — Playwright 의 isVisible() 는 elementFromPoint 겹침을 안 봐서
+		   그때는 놓쳤다). 이 팝업이 쓰이는 모든 곳(댓글/본문/생성 모달)의
+		   오버레이보다 확실히 위에 오도록 상향.*/
+		z-index: 250;
 		margin: 0;
 		padding: 0.2rem;
 		list-style: none;
