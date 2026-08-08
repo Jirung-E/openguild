@@ -3,7 +3,7 @@ book_id = "BOOK-001"
 title = "index.db 는 파일의 일방향·폐기가능 투영이다 (아키텍처 불변식)"
 path = ""
 created_at = "2026-07-22T22:30:00+09:00"
-updated_at = "2026-07-22T22:58:06+09:00"
+updated_at = "2026-08-08T23:30:51+09:00"
 deleted = false
 +++
 
@@ -46,7 +46,18 @@ git 진리로 전파. 둘 중 하나만 없애도 문제는 사라진다. git �
 | A2 | counter write-back | reindex.rs `counter self-heal`(DEV-242) | 파일 카운터 < DB | 파일 카운터 신선도 | **파일-로컬 heal 로 교체**(디스크 실존 최대번호 기준). DB→파일 역류 제거. 다음 ID = `max(파일 카운터, 실존 최대번호)+1` |
 | A3 | attachment blob 복원 | ops/attachments.rs `sync_attachment_blobs`(DEV-069) | 참조 첨부 파일 없음 | 실수 삭제 복구 | 유지하되 명시적/게이트 검토 (자동 복원이 브랜치 전환과 충돌하는지) |
 | A4 | auto-block 재작성 | reindex.rs 7단계 | — | — | 현재 **비활성**(no-op). 재활성 금지 또는 파일-멱등만 |
-| B1 | `updated_at` write-back | incremental.rs 외부편집 동기화 | 파일 mtime > cached | 외부 `.md` 편집 시각 정확도 | 내용-비교 가드 **강화 또는 폐지**. BUG-145(브랜치 checkout mtime 변조 → 무관 퀘스트 일괄 오염)의 근원 |
+| B1 | `updated_at` write-back | incremental.rs 외부편집 동기화 | 파일 mtime > cached | 외부 `.md` 편집 시각 정확도 | **폐지 완료 (DEV-283)**. quest/campaign 모두 파일을 쓰지 않고 frontmatter `updated_at`을 DB에 그대로 투영 |
+
+### B1 해결 — DEV-283
+
+- incremental 시동 sync와 상세 lazy refresh에서 `updated_at` mtime 보정과
+  tracked 파일 write-back을 제거했다.
+- mtime은 재파싱 후보와 `cached_mtime` 갱신에만 쓴다. 권위 값은
+  title/본문/상태/`updated_at` 모두 파일에서 DB로만 흐른다.
+- DB의 `updated_at`이 파일과 어긋난 경우도 파일을 쓰지 않고 DB를
+  파일 값으로 복구한다.
+- 트레이드오프: 외부 편집기가 frontmatter `updated_at`을 바꾸지 않으면
+  편집 시각도 바뀌지 않는다. git 진리와 재생성을 위해 의도한 정책이다.
 
 명시적/정당 복원은 역류 아님: 스냅샷·journal replay(사용자 호출), 일반
 mutation 의 파일 쓰기(파일=진리 정상 경로).

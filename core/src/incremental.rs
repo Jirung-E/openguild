@@ -68,66 +68,17 @@ use crate::error::AppResult;
 use crate::repo::{QuestFile, fs as repo_fs};
 use crate::store::Store;
 
-/// BUG-080: 외부 편집된 quest 파일의 frontmatter `updated_at` 을 파일 mtime 으로
-/// write-back (파일 = 진리원). frontmatter 의 `updated_at` 한 줄만 교체하고
-/// 본문 / auto-block 은 건드리지 않는다. 반환: `(기록할 updated_at iso, write 후
-/// mtime nanos)`. write 가 파일 mtime 을 다시 바꾸므로 반환된 새 mtime 을
-/// cached_mtime 으로 저장해야 다음 sync 가 같은 편집을 재감지(churn)하지 않는다.
-fn writeback_external_edit_ts(path: &std::path::Path) -> (String, i64) {
-    let edit_iso = repo_fs::mtime_iso8601(path).unwrap_or_default();
-    if !edit_iso.is_empty()
-        && let Ok(src) = std::fs::read_to_string(path)
-        && let Some(updated) = replace_frontmatter_updated_at(&src, &edit_iso)
-    {
-        let _ = repo_fs::write_atomic(path, &updated);
-    }
-    (edit_iso, repo_fs::mtime_unix_nanos(path))
-}
-
-/// frontmatter(맨 위 `+++ … +++`) 안의 `updated_at = "…"` 한 줄만 교체.
-/// 본문은 그대로. updated_at 줄이 없으면 None(변경 안 함).
-fn replace_frontmatter_updated_at(src: &str, new_ts: &str) -> Option<String> {
-    if !src.trim_start().starts_with("+++") {
-        return None;
-    }
-    let mut out = String::with_capacity(src.len() + 16);
-    let mut opened = false;
-    let mut in_fm = false;
-    let mut replaced = false;
-    for line in src.split_inclusive('\n') {
-        let body = line.trim_end_matches(['\r', '\n']);
-        if body.trim() == "+++" {
-            if !opened {
-                opened = true;
-                in_fm = true;
-            } else if in_fm {
-                in_fm = false;
-            }
-            out.push_str(line);
-            continue;
-        }
-        if in_fm && !replaced && body.trim_start().starts_with("updated_at") {
-            out.push_str(&format!("updated_at = \"{new_ts}\"\n"));
-            replaced = true;
-            continue;
-        }
-        out.push_str(line);
-    }
-    replaced.then_some(out)
-}
-
-/// BUG-103: 파싱된 quest 파일이 DB 캐시와 내용 동일한지.
+/// 파싱된 quest 파일의 권위 필드가 DB 투영과 동일한지.
 ///
-/// git checkout/pull/restore 는 **내용이 같아도 mtime 을 바꾼다** — mtime 만으로
-/// "외부 편집"을 판정해 updated_at 을 mtime 으로 write-back(BUG-080)하면, 브랜치
-/// 전환 한 번에 전체 quest 의 updated_at 이 일괄 변조된다(2026-07-03 실사고,
-/// 200+ 파일). write-back 전에 이 함수로 내용을 비교해 동일하면 updated_at 을
-/// 건드리지 않고 cached_mtime 만 갱신한다.
+/// git checkout/pull/restore 는 **내용이 같아도 mtime 을 바꾼다**. 따라서
+/// mtime 은 재파싱 후보를 고르는 힌트로만 쓰고, 실제 필드 차이로 DB 갱신
+/// 여부를 결정한다. DEV-283 이후 sync 는 파일을 절대 재기록하지 않고,
+/// 차이가 있으면 파일 값을 DB에 투영한다.
 ///
 /// 비교 대상: frontmatter 전 필드(title/status/urgency/parent/prereq/dates/
-/// deleted/tags) + 본문(description). prereq/tags 는 나머지가 전부 같을 때만
+/// deleted/tags/updated_at) + 본문(description). prereq/tags 는 나머지가 전부 같을 때만
 /// 조회(2쿼리 — 드문 경로라 저렴).
-async fn is_content_identical_to_db(
+async fn is_file_projection_identical_to_db(
     pool: &sqlx::SqlitePool,
     id: i64,
     qf: &QuestFile,
@@ -140,6 +91,7 @@ async fn is_content_identical_to_db(
         urgency: i64,
         parent_slug: Option<String>,
         created_at: String,
+        updated_at: String,
         deleted: bool,
         desired_due: Option<String>,
         required_due: Option<String>,
@@ -149,7 +101,7 @@ async fn is_content_identical_to_db(
                 (SELECT pt.prefix || '-' || printf('%03d', p.number)
                    FROM quests p JOIN quest_types pt ON pt.id = p.quest_type_id
                   WHERE p.id = q.parent_quest_id) AS parent_slug,
-                q.created_at,
+                q.created_at, q.updated_at,
                 q.deleted_at IS NOT NULL AS deleted,
                 q.desired_due, q.required_due
          FROM quests q JOIN quest_statuses s ON s.id = q.status_id
@@ -169,19 +121,16 @@ async fn is_content_identical_to_db(
             .filter(|s| !s.trim().is_empty())
             .map(String::from)
     };
-    // BUG-145: `updated_at` 은 의도적으로 비교 대상에서 제외 — 이 필드 자체가
-    // write-back 이 매번 다시 쓰는 대상이라, 포함시키면 한 번이라도 오탐성
-    // write-back 이 일어난 뒤부터는 DB 캐시의 updated_at 이 git 커밋된 파일의
-    // 실제 값과 영원히 어긋나 매번 "내용이 다르다"고 오판 → 다시 write-back →
-    // 다시 어긋남, 의 무한 재발 루프가 생긴다(브랜치 전환마다 무관한 quest 수십
-    // 개가 계속 변조되던 원인). 진짜 콘텐츠(title/description/status/urgency/
-    // parent/prereq/dates/deleted/tags)만 같으면 "동일"로 본다.
+    // DEV-283: updated_at도 파일이 권위를 갖는다. BUG-145 때는 DB 값이
+    // 다르면 파일을 다시 썼기 때문에 비교에서 제외했지만, write-back 자체를
+    // 제거한 후에는 비교해야 DB 캐시가 파일 값으로 복구된다.
     if row.title != fm.title
         || row.description.as_deref().unwrap_or("") != qf.description
         || row.status_slug != fm.status
         || row.urgency != fm.urgency
         || row.parent_slug != fm.parent
         || row.created_at != crate::time::normalize_legacy_ts(&fm.created_at)
+        || row.updated_at != crate::time::normalize_legacy_ts(&fm.updated_at)
         || row.deleted != fm.deleted
         || norm_due(&row.desired_due) != norm_due(&fm.desired_due)
         || norm_due(&row.required_due) != norm_due(&fm.required_due)
@@ -455,10 +404,9 @@ pub async fn sync_changed_quest_files(store: &Store) -> AppResult<IncrementalRep
                     // 외부 편집 후보. parse + UPDATE.
                     match QuestFile::read(path) {
                         Ok(qf) => {
-                            // BUG-103: 내용이 DB 와 동일하면(git checkout 등 mtime 만
-                            // 변경) updated_at write-back 하지 않고 cached_mtime 만
-                            // 갱신 — 다음 sync 재감지 방지.
-                            if is_content_identical_to_db(pool, id, &qf).await? {
+                            // BUG-103: 파일 투영과 DB 가 동일하면(git checkout 등
+                            // mtime 만 변경) cached_mtime 만 갱신해 재감지를 막는다.
+                            if is_file_projection_identical_to_db(pool, id, &qf).await? {
                                 sqlx::query("UPDATE quests SET cached_mtime = ? WHERE id = ?")
                                     .bind(file_mtime)
                                     .bind(id)
@@ -501,14 +449,10 @@ pub async fn sync_changed_quest_files(store: &Store) -> AppResult<IncrementalRep
 
                             let created_at =
                                 crate::time::normalize_legacy_ts(&qf.frontmatter.created_at);
-                            // BUG-080: 외부 편집은 frontmatter updated_at 을 안 바꾸므로
-                            // 파일 mtime 으로 보정 + frontmatter write-back (파일=진리원).
-                            let (edit_iso, effective_mtime) = writeback_external_edit_ts(path);
-                            let updated_at = if edit_iso.is_empty() {
-                                crate::time::normalize_legacy_ts(&qf.frontmatter.updated_at)
-                            } else {
-                                edit_iso
-                            };
+                            // DEV-283: updated_at 도 파일 frontmatter 값을 그대로 투영.
+                            // mtime 으로 보정하거나 tracked 파일을 다시 쓰지 않는다.
+                            let updated_at =
+                                crate::time::normalize_legacy_ts(&qf.frontmatter.updated_at);
                             let deleted_at: Option<String> =
                                 qf.frontmatter.deleted.then(|| updated_at.clone());
 
@@ -530,7 +474,7 @@ pub async fn sync_changed_quest_files(store: &Store) -> AppResult<IncrementalRep
                             .bind(deleted_at)
                             .bind(qf.frontmatter.desired_due.as_deref())
                             .bind(qf.frontmatter.required_due.as_deref())
-                            .bind(effective_mtime)
+                            .bind(file_mtime)
                             .bind(id)
                             .execute(pool)
                             .await?;
@@ -595,8 +539,8 @@ pub async fn sync_changed_quest_files(store: &Store) -> AppResult<IncrementalRep
 ///
 /// BUG-089: 상세 진입 시 그 quest 파일 하나를 *항상* re-parse + UPDATE 한다
 /// (파일 1개라 저렴). mtime 게이트로 건너뛰면 다른 openguild 프로세스(CLI/server)
-/// 의 편집을 놓치기 때문. mtime 비교는 파일 write-back(updated_at 보정) 여부에만
-/// 쓰고, 반환값 = '외부 편집 감지 여부'. 파일 없음 / DB 에 없음 → `false`.
+/// 의 편집을 놓치기 때문. mtime 비교는 외부 편집 감지와 cached_mtime 갱신에만
+/// 쓰고, tracked 파일은 절대 쓰지 않는다. 파일 없음 / DB 에 없음 → `false`.
 ///
 /// Phase 1 과 동일한 의도적 한계: frontmatter 의 prereq / tags / parent
 /// cascade 는 여기서 재계산하지 않음 — 그건 시동 sync 의 풀 reindex fallback
@@ -622,16 +566,13 @@ pub async fn refresh_quest_if_stale(store: &Store, slug: &str) -> AppResult<bool
     // 게이트로 re-read 를 건너뛰면, 다른 openguild 프로세스(CLI/server)가 파일 +
     // cached_mtime 을 함께 갱신한 경우 이 프로세스의 index.db 뷰가 stale 인 채
     // 남는다(게이트가 "이미 동기화됨"으로 오판). 파일 1개 re-parse 는 저렴.
-    // 단, 파일 write-back(updated_at 보정)은 매 진입 churn 을 유발하므로 실제
-    // 외부 편집(file_mtime > cached_mtime)일 때만.
     let externally_edited = file_mtime > cached_mtime;
 
     let qf = QuestFile::read(&path).map_err(crate::error::AppError::Internal)?;
-    // BUG-103: mtime 이 앞서도 내용이 DB 와 동일하면(git checkout 등) 외부 편집
-    // 아님 — write-back 하지 않는다. cached_mtime 은 아래 UPDATE 의
-    // effective_mtime(max) 경로로 자연 갱신.
-    let externally_edited =
-        externally_edited && !is_content_identical_to_db(&store.index_pool, id, &qf).await?;
+    // BUG-103: mtime 이 앞서도 파일 투영과 DB 가 동일하면 외부 편집으로
+    // 세지 않는다. updated_at도 파일 권위 필드라 비교에 포함된다.
+    let externally_edited = externally_edited
+        && !is_file_projection_identical_to_db(&store.index_pool, id, &qf).await?;
     let status_id: Option<i64> = sqlx::query_scalar("SELECT id FROM quest_statuses WHERE slug = ?")
         .bind(&qf.frontmatter.status)
         .fetch_optional(&store.index_pool)
@@ -640,26 +581,11 @@ pub async fn refresh_quest_if_stale(store: &Store, slug: &str) -> AppResult<bool
         return Ok(false); // unknown status — 풀 reindex 가 처리할 영역.
     };
     let created_at = crate::time::normalize_legacy_ts(&qf.frontmatter.created_at);
-    // BUG-080 + BUG-089: 외부 편집일 때만 파일 mtime 으로 updated_at 보정 +
-    // frontmatter write-back (write-back 은 파일 재기록이라 churn 방지 위해 게이트).
-    let (updated_at, effective_mtime) = if externally_edited {
-        let (edit_iso, eff) = writeback_external_edit_ts(&path);
-        if edit_iso.is_empty() {
-            (
-                crate::time::normalize_legacy_ts(&qf.frontmatter.updated_at),
-                eff,
-            )
-        } else {
-            (edit_iso, eff)
-        }
-    } else {
-        (
-            crate::time::normalize_legacy_ts(&qf.frontmatter.updated_at),
-            // BUG-103: 내용 동일 + mtime 만 앞선 경우 file_mtime 으로 올려
-            // 다음 진입마다 내용 비교를 반복하지 않게 한다.
-            cached_mtime.max(file_mtime),
-        )
-    };
+    // DEV-283: updated_at은 frontmatter 값을 그대로 투영하고 파일은 쓰지 않는다.
+    let updated_at = crate::time::normalize_legacy_ts(&qf.frontmatter.updated_at);
+    // 내용 동일 + mtime 만 앞선 경우도 다음 진입에서 재비교하지 않도록
+    // 캐시 mtime을 단조 증가시킨다.
+    let effective_mtime = cached_mtime.max(file_mtime);
     let deleted_at: Option<String> = qf.frontmatter.deleted.then(|| updated_at.clone());
 
     sqlx::query(
@@ -688,24 +614,14 @@ pub async fn refresh_quest_if_stale(store: &Store, slug: &str) -> AppResult<bool
 /// DEV-178: 단일 campaign 의 lazy refresh — 상세 페이지 진입 시 호출
 /// (`refresh_quest_if_stale` 의 campaign 판). BUG-089: 상세 진입 시 그 캠페인
 /// 본문 파일 하나를 *항상* re-parse + UPDATE (체크리스트 / linked_quests 포함).
-/// `file_mtime_cache` 비교는 파일 write-back / touch 여부에만 쓰고 반환값 =
-/// '외부 편집 감지 여부'.
+/// `file_mtime_cache` 비교는 외부 편집 감지 / touch 여부에만 쓰고 tracked
+/// 파일은 쓰지 않는다. 반환값 = '외부 편집 감지 여부'.
 ///
 /// quest 본문은 per-row `cached_mtime` 를 쓰지만 campaigns 테이블엔 그 컬럼이 없어
 /// sibling 과 동일한 범용 `file_mtime_cache`(BUG-068) 로 비교한다. 캐시에 아직
 /// 없으면(첫 진입) 한 번 갱신 후 touch — 이후 churn 없음.
 pub async fn refresh_campaign_if_stale(store: &Store, slug: &str) -> AppResult<bool> {
-    refresh_campaign(store, slug, true).await
-}
-
-/// DEV-310: 위와 같은 재적재를 **파일을 건드리지 않고** 수행 — 길드 열기 경로용.
-///
-/// 열기 경로에서 write-back 을 하면 `git pull` 로 mtime 만 바뀐 캠페인 파일의
-/// frontmatter `updated_at` 이 일괄 변조된다(quest 본문에서 실제로 터졌던
-/// BUG-103 과 같은 사고 — 그쪽은 내용 비교 가드로 막았고, 캠페인엔 그 가드가
-/// 아직 없다). 상세 진입은 사용자가 그 문서를 보는 시점이라 기존 동작을 유지.
-async fn refresh_campaign_row_no_writeback(store: &Store, slug: &str) -> AppResult<bool> {
-    refresh_campaign(store, slug, false).await
+    refresh_campaign(store, slug).await
 }
 
 /// DEV-311: `campaign_checklists` 를 트랜잭션 안에서 통째로 교체.
@@ -824,7 +740,7 @@ async fn insert_new_campaign(store: &Store, path: &std::path::Path) -> AppResult
 /// DELETE + 링크당 SELECT/INSERT 가 **전부 별도(autocommit) 트랜잭션** 이었다 —
 /// 링크 46개짜리 캠페인 재적재가 533ms(문장당 fsync ~95회). 지금은 한
 /// 트랜잭션으로 묶는다(reindex() 의 전체 재구축과 동일한 패턴).
-async fn refresh_campaign(store: &Store, slug: &str, writeback: bool) -> AppResult<bool> {
+async fn refresh_campaign(store: &Store, slug: &str) -> AppResult<bool> {
     let path = store.paths.campaign_path(slug);
     if !path.exists() {
         return Ok(false);
@@ -834,7 +750,7 @@ async fn refresh_campaign(store: &Store, slug: &str, writeback: bool) -> AppResu
     let cache = crate::file_mtime::load_all(store).await;
     // BUG-089: 콘텐츠 re-read + UPDATE(체크리스트/linked_quests 포함)는 상세 진입
     // 시 *항상* 수행 — mtime 게이트로 건너뛰면 다른 openguild 프로세스(CLI/server)
-    // 의 편집을 놓친다. write-back/touch(파일 재기록·캐시 갱신)만 외부 편집 시로.
+    // 의 편집을 놓친다. touch만 외부 편집 시에 하고 파일은 재기록하지 않는다.
     let externally_edited = match cache.get(&rel) {
         Some(&cached) => file_mtime > cached,
         None => true, // 첫 진입(캐시 없음) — 갱신 + touch.
@@ -859,18 +775,8 @@ async fn refresh_campaign(store: &Store, slug: &str, writeback: bool) -> AppResu
         return Ok(true);
     }
 
-    // BUG-080 + BUG-089: 외부 편집일 때만 파일 mtime 으로 updated_at 보정 +
-    // frontmatter write-back (write-back 은 파일 재기록 → churn 방지 위해 게이트).
-    let updated_at = if externally_edited && writeback {
-        let (edit_iso, _) = writeback_external_edit_ts(&path);
-        if edit_iso.is_empty() {
-            crate::time::normalize_legacy_ts(&cf.frontmatter.updated_at)
-        } else {
-            edit_iso
-        }
-    } else {
-        crate::time::normalize_legacy_ts(&cf.frontmatter.updated_at)
-    };
+    // DEV-283: campaign도 frontmatter updated_at을 그대로 투영하고 파일은 쓰지 않는다.
+    let updated_at = crate::time::normalize_legacy_ts(&cf.frontmatter.updated_at);
 
     let mut tx = store.index_pool.begin().await?;
     // 행 UPDATE — reindex 의 per-campaign INSERT 와 동일 필드.
@@ -910,8 +816,8 @@ async fn refresh_campaign(store: &Store, slug: &str, writeback: bool) -> AppResu
 /// DEV-310/DEV-311: 캠페인 본문(`campaigns/{slug}.md`) 의 수정/신규/삭제를 증분 반영.
 ///
 /// 기존 캠페인의 편집은 상세 진입용 `refresh_campaign_if_stale` 과 같은 코어
-/// (`refresh_campaign`) 를 쓴다(제목/본문/기간/체크리스트/linked_quests +
-/// updated_at write-back 까지 동일 규칙). DEV-311 부터는 신규 파일도 여기서
+/// (`refresh_campaign`) 를 쓴다(제목/본문/기간/체크리스트/linked_quests/
+/// updated_at 파일 투영). DEV-311 부터는 신규 파일도 여기서
 /// `insert_new_campaign` 으로 바로 INSERT하고, 파일이 사라지거나 외부에서
 /// soft-delete 된 캠페인도 행을 직접 DELETE한다 — 예전엔 둘 다 "행 생성·연쇄
 /// 삭제가 얽혀 있다"는 이유로 full reindex 로 미뤘지만, 자식 테이블
@@ -966,7 +872,7 @@ async fn sync_changed_campaign_files(
             }
             continue;
         }
-        if refresh_campaign_row_no_writeback(store, slug).await? {
+        if refresh_campaign(store, slug).await? {
             // refresh_campaign 은 "외부 편집 반영" 과 "외부 soft-delete로 행 삭제"
             // 둘 다 true 를 반환한다 — 행이 아직 있는지로 구분해 카운터를 나눈다.
             let still_alive: Option<i64> =
@@ -986,14 +892,17 @@ async fn sync_changed_campaign_files(
         if !is_campaign_body_rel(rel) || alive.contains(rel) {
             continue;
         }
-        let Some(slug) = rel.strip_prefix("campaigns/").and_then(|s| s.strip_suffix(".md"))
+        let Some(slug) = rel
+            .strip_prefix("campaigns/")
+            .and_then(|s| s.strip_suffix(".md"))
         else {
             continue;
         };
-        let id: Option<i64> = sqlx::query_scalar("SELECT id FROM campaigns WHERE campaign_slug = ?")
-            .bind(slug)
-            .fetch_optional(&store.index_pool)
-            .await?;
+        let id: Option<i64> =
+            sqlx::query_scalar("SELECT id FROM campaigns WHERE campaign_slug = ?")
+                .bind(slug)
+                .fetch_optional(&store.index_pool)
+                .await?;
         if let Some(id) = id {
             delete_campaign_row(store, id).await?;
             report.campaigns_deleted += 1;
@@ -1029,9 +938,13 @@ fn is_library_body_rel(rel: &str) -> bool {
 /// 삽입한다 — 파일이 존재하는 한 번호 충돌 검증/복원을 위해 캐시에 실려야 한다
 /// (campaigns 와 달리 skip 하지 않음).
 async fn insert_new_library_doc(store: &Store, path: &std::path::Path) -> AppResult<i64> {
-    let bf = crate::repo::library::BookFile::read(path).map_err(crate::error::AppError::Internal)?;
+    let bf =
+        crate::repo::library::BookFile::read(path).map_err(crate::error::AppError::Internal)?;
     let number = bf.number().map_err(crate::error::AppError::Internal)?;
-    let deleted_at: Option<String> = bf.frontmatter.deleted.then(|| bf.frontmatter.updated_at.clone());
+    let deleted_at: Option<String> = bf
+        .frontmatter
+        .deleted
+        .then(|| bf.frontmatter.updated_at.clone());
 
     let mut tx = store.index_pool.begin().await?;
     let id: i64 = sqlx::query_scalar(
@@ -1070,7 +983,10 @@ async fn insert_new_library_doc(store: &Store, path: &std::path::Path) -> AppRes
 /// 상세를 안 열어도 열기 시점에 한 번 훑어 최신화해둔다. 신규/삭제는 이
 /// 함수가 직접 처리한다(`get_book` 은 상세 진입 케이스라 신규 INSERT 를
 /// 의도적으로 안 함 — 그 함수 주석 참고).
-async fn sync_changed_library_files(store: &Store, report: &mut IncrementalReport) -> AppResult<()> {
+async fn sync_changed_library_files(
+    store: &Store,
+    report: &mut IncrementalReport,
+) -> AppResult<()> {
     let paths = &store.paths;
     let cache = crate::file_mtime::load_all(store).await;
     let Ok(files) = crate::repo::library::list_book_files(paths) else {
@@ -1093,10 +1009,11 @@ async fn sync_changed_library_files(store: &Store, report: &mut IncrementalRepor
         let Some(number) = crate::repo::library::parse_book_slug(stem) else {
             continue;
         };
-        let exists: Option<i64> = sqlx::query_scalar("SELECT id FROM library_docs WHERE number = ?")
-            .bind(number)
-            .fetch_optional(&store.index_pool)
-            .await?;
+        let exists: Option<i64> =
+            sqlx::query_scalar("SELECT id FROM library_docs WHERE number = ?")
+                .bind(number)
+                .fetch_optional(&store.index_pool)
+                .await?;
         if exists.is_none() {
             match insert_new_library_doc(store, path).await {
                 Ok(_id) => report.library_inserted += 1,
@@ -1126,7 +1043,10 @@ async fn sync_changed_library_files(store: &Store, report: &mut IncrementalRepor
         if !is_library_body_rel(rel) || alive.contains(rel) {
             continue;
         }
-        let Some(book_id) = rel.strip_prefix("library/").and_then(|s| s.strip_suffix(".md")) else {
+        let Some(book_id) = rel
+            .strip_prefix("library/")
+            .and_then(|s| s.strip_suffix(".md"))
+        else {
             continue;
         };
         if let Some(number) = crate::repo::library::parse_book_slug(book_id) {
@@ -1154,7 +1074,10 @@ async fn sync_changed_library_files(store: &Store, report: &mut IncrementalRepor
 ///
 /// 대상 quest/campaign 이 index 에 없으면 증분으로 표현할 수 없으니
 /// `needs_full_reindex` 로 넘긴다(본문 파일 신규 적재는 quest 쪽 경로의 일).
-async fn sync_changed_sibling_files(store: &Store, report: &mut IncrementalReport) -> AppResult<()> {
+async fn sync_changed_sibling_files(
+    store: &Store,
+    report: &mut IncrementalReport,
+) -> AppResult<()> {
     use crate::repo::fs as rfs;
     let paths = &store.paths;
     let pool = &store.index_pool;
@@ -1211,7 +1134,9 @@ async fn sync_changed_sibling_files(store: &Store, report: &mut IncrementalRepor
                 let _ = crate::file_mtime::touch(store, path).await;
                 report.siblings_synced += 1;
             }
-            Err(e) => report.skipped.push((path.display().to_string(), e.to_string())),
+            Err(e) => report
+                .skipped
+                .push((path.display().to_string(), e.to_string())),
         }
     }
 
@@ -1452,23 +1377,13 @@ mod tests {
         store
     }
 
-    #[test]
-    fn replace_frontmatter_updated_at_swaps_only_that_line() {
-        let src = "+++\nquest_id = \"DEV-001\"\nupdated_at = \"2020-01-01T00:00:00Z\"\ndeleted = false\n+++\n\nbody updated_at = stays\n";
-        let out = replace_frontmatter_updated_at(src, "2026-06-19T12:00:00+09:00").unwrap();
-        assert!(out.contains("updated_at = \"2026-06-19T12:00:00+09:00\""));
-        assert!(!out.contains("2020-01-01T00:00:00Z"));
-        // 본문의 'updated_at' 텍스트는 그대로.
-        assert!(out.contains("body updated_at = stays"));
-        assert!(out.contains("quest_id = \"DEV-001\""));
-    }
-
-    #[test]
-    fn replace_frontmatter_updated_at_none_without_frontmatter() {
-        assert!(replace_frontmatter_updated_at("no frontmatter here\n", "x").is_none());
-    }
-
-    fn mk_quest(id: &str, title: &str, parent: Option<&str>, prereqs: &[&str], tags: &[&str]) -> QuestFile {
+    fn mk_quest(
+        id: &str,
+        title: &str,
+        parent: Option<&str>,
+        prereqs: &[&str],
+        tags: &[&str],
+    ) -> QuestFile {
         QuestFile {
             frontmatter: QuestFrontmatter {
                 quest_id: id.into(),
@@ -1510,10 +1425,11 @@ mod tests {
             "신규 파일 하나로 풀 reindex 를 요청하면 DEV-246 실패"
         );
 
-        let title: String = sqlx::query_scalar("SELECT title FROM quests WHERE title = 'brand new'")
-            .fetch_one(&store.index_pool)
-            .await
-            .unwrap();
+        let title: String =
+            sqlx::query_scalar("SELECT title FROM quests WHERE title = 'brand new'")
+                .fetch_one(&store.index_pool)
+                .await
+                .unwrap();
         assert_eq!(title, "brand new");
         // 태그 캐시도 함께 (증분 cascade).
         let tag: String = sqlx::query_scalar("SELECT tag FROM quest_tags LIMIT 1")
@@ -1600,7 +1516,11 @@ mod tests {
         .fetch_all(&store.index_pool)
         .await
         .unwrap();
-        assert_eq!(tags, vec!["fresh".to_string()], "옛 태그는 사라지고 새 태그만");
+        assert_eq!(
+            tags,
+            vec!["fresh".to_string()],
+            "옛 태그는 사라지고 새 태그만"
+        );
     }
 
     /// DEV-246: 신규 퀘스트가 **같은 배치의 다른 신규 퀘스트**를 부모/선행으로
@@ -1711,6 +1631,7 @@ mod tests {
             auto_block: String::new(),
         };
         qf2.write(paths.quest_path("DEV-001")).unwrap();
+        let before_sync = std::fs::read_to_string(paths.quest_path("DEV-001")).unwrap();
 
         let report = sync_changed_quest_files(&store).await.unwrap();
         assert_eq!(report.updated, 1, "modified file 1건 UPDATE 되어야");
@@ -1723,21 +1644,19 @@ mod tests {
                 .unwrap();
         assert_eq!(row.0, "edited externally");
         assert_eq!(row.1, 2);
-        // BUG-080: updated_at 은 stale frontmatter(2026-01-02)가 아니라 파일 mtime 보정.
-        assert_ne!(
+        assert_eq!(
             row.2, "2026-01-02T00:00:00Z",
-            "updated_at 이 파일 mtime 으로 갱신되어야"
+            "updated_at도 파일 frontmatter 값을 그대로 투영해야"
         );
-        // 파일 frontmatter 도 write-back — DB 와 동일 값, 본문은 보존.
+        // DEV-283: sync 전후 tracked 파일의 바이트가 완전히 같아야 한다.
         let on_disk = std::fs::read_to_string(paths.quest_path("DEV-001")).unwrap();
-        assert!(
-            !on_disk.contains("updated_at = \"2026-01-02T00:00:00Z\""),
-            "frontmatter updated_at 이 write-back 되어야"
+        assert_eq!(
+            on_disk, before_sync,
+            "incremental sync가 quest 파일을 쓰면 안 됨"
         );
-        assert!(on_disk.contains(&format!("updated_at = \"{}\"", row.2)));
         assert!(on_disk.contains("body v2"), "본문은 보존되어야");
 
-        // 두 번째 호출 — 변경 없음 (write-back 후 cached_mtime 갱신 → churn 없음).
+        // 두 번째 호출 — cached_mtime 갱신으로 재감지 없음.
         let report2 = sync_changed_quest_files(&store).await.unwrap();
         assert_eq!(report2.updated, 0);
 
@@ -1745,7 +1664,7 @@ mod tests {
     }
 
     /// BUG-103: git checkout/pull 시뮬레이션 — **내용은 동일한데 mtime 만 갱신**된
-    /// 파일은 외부 편집이 아님. updated_at write-back 없이 cached_mtime 만 갱신.
+    /// 파일은 외부 편집이 아님. tracked 파일 변경 없이 cached_mtime만 갱신.
     #[tokio::test]
     async fn same_content_new_mtime_does_not_rewrite_updated_at() {
         let dir = fresh_tmp("bug103");
@@ -1819,15 +1738,11 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// BUG-145: BUG-103 재발 — DB 의 cached `updated_at` 이 (과거의 오탐성
-    /// write-back 등으로) 파일의 실제 committed 값과 이미 어긋나 있는 상태에서,
-    /// 진짜 콘텐츠(title/description/...)는 파일과 DB 가 동일하면 — mtime 만
-    /// 앞서 있어도(git checkout 시뮬레이션) 여전히 "동일"로 보고 파일을
-    /// write-back 하면 안 된다. `updated_at` 을 비교에 포함시키면 이 케이스가
-    /// 매번 "다르다"로 오판되어 checkout 할 때마다 무관한 quest 파일이 계속
-    /// 변조되는 무한 재발 루프가 생긴다.
+    /// DEV-283/BUG-145: DB updated_at이 파일과 어긋나도 파일을 재기록하지
+    /// 않고 DB를 파일 값으로 복구한다. write-back을 제거했으므로 updated_at도
+    /// 다른 권위 필드와 같이 비교해야 캐시 drift를 바로잡을 수 있다.
     #[tokio::test]
-    async fn bug145_stale_cached_updated_at_does_not_perpetually_rewrite() {
+    async fn stale_cached_updated_at_repairs_db_from_file_without_writeback() {
         let dir = fresh_tmp("bug145");
         let store = setup(&dir).await;
         let paths = store.paths.clone();
@@ -1866,18 +1781,25 @@ mod tests {
         // 어긋난 건 오직 DB 의 updated_at 뿐.
         std::thread::sleep(std::time::Duration::from_millis(20));
         qf.write(paths.quest_path("DEV-001")).unwrap();
+        let before_sync = std::fs::read_to_string(paths.quest_path("DEV-001")).unwrap();
 
         let report = sync_changed_quest_files(&store).await.unwrap();
         assert_eq!(
-            report.updated, 0,
-            "updated_at 만 DB 와 어긋난 상태 — 진짜 콘텐츠가 같으면 외부 편집으로 세면 안 됨 (BUG-145)"
+            report.updated, 1,
+            "updated_at drift도 파일을 권위로 DB에 투영해야"
         );
 
-        // 파일이 write-back 되지 않아야 — 원본 그대로.
+        let db_updated: String = sqlx::query_scalar("SELECT updated_at FROM quests WHERE id = 1")
+            .fetch_one(&store.index_pool)
+            .await
+            .unwrap();
+        assert_eq!(db_updated, "2026-01-01T00:00:00Z");
+
+        // 파일은 재기록되지 않고 원본 바이트를 유지.
         let on_disk = std::fs::read_to_string(paths.quest_path("DEV-001")).unwrap();
-        assert!(
-            on_disk.contains("updated_at = \"2026-01-01T00:00:00Z\""),
-            "파일 frontmatter 가 재기록되면 안 됨 (BUG-145 재발 방지)"
+        assert_eq!(
+            on_disk, before_sync,
+            "DB drift 복구가 quest 파일을 쓰면 안 됨"
         );
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -2045,6 +1967,7 @@ mod tests {
         cf2.frontmatter.title = "edited externally".into();
         cf2.body = "body v2".into();
         cf2.write(paths.campaign_path("C-001")).unwrap();
+        let before_refresh = std::fs::read_to_string(paths.campaign_path("C-001")).unwrap();
 
         // 감지 → true, DB 갱신.
         assert!(refresh_campaign_if_stale(&store, "C-001").await.unwrap());
@@ -2057,21 +1980,18 @@ mod tests {
         assert_eq!(title, "edited externally");
         assert_eq!(desc.as_deref(), Some("body v2"));
 
-        // BUG-080: updated_at 이 stale frontmatter(2026-01-01)가 아니라 파일 mtime 보정.
+        // DEV-283: campaign updated_at도 frontmatter 값을 그대로 투영.
         let db_updated: String =
             sqlx::query_scalar("SELECT updated_at FROM campaigns WHERE campaign_slug = 'C-001'")
                 .fetch_one(&store.index_pool)
                 .await
                 .unwrap();
-        assert_ne!(
-            db_updated, "2026-01-01T00:00:00Z",
-            "updated_at 이 파일 mtime 으로 보정되어야"
-        );
-        // 파일 frontmatter 도 write-back, 본문 보존.
+        assert_eq!(db_updated, "2026-01-01T00:00:00Z");
+        // 상세 refresh도 campaign 파일을 재기록하지 않는다.
         let on_disk = std::fs::read_to_string(paths.campaign_path("C-001")).unwrap();
-        assert!(
-            !on_disk.contains("updated_at = \"2026-01-01T00:00:00Z\""),
-            "frontmatter updated_at 이 write-back 되어야"
+        assert_eq!(
+            on_disk, before_refresh,
+            "campaign refresh가 파일을 쓰면 안 됨"
         );
         assert!(on_disk.contains("body v2"), "본문은 보존되어야");
 
@@ -2086,7 +2006,7 @@ mod tests {
 
     /// BUG-089: mtime 게이트가 닫혀 있어도(다른 openguild 프로세스가 파일 +
     /// cached_mtime 을 함께 갱신한 상황) 상세 refresh 는 콘텐츠를 *항상* re-read 해
-    /// DB 에 반영한다. 파일 write-back(churn)은 없음(false 반환).
+    /// DB 에 반영한다. mtime 기준 외부 편집은 아니므로 false를 반환.
     #[tokio::test]
     async fn refresh_quest_resyncs_content_even_when_gate_closed() {
         let dir = fresh_tmp("lazy-poison");
@@ -2128,7 +2048,7 @@ mod tests {
 
         // 게이트상 외부편집 아님(false) — 그러나 콘텐츠는 re-sync 되어야.
         let edited = refresh_quest_if_stale(&store, "DEV-001").await.unwrap();
-        assert!(!edited, "file_mtime <= cached → write-back 안 함(false)");
+        assert!(!edited, "file_mtime <= cached → 외부 편집 반환값 false");
         let title: String = sqlx::query_scalar("SELECT title FROM quests WHERE id = 1")
             .fetch_one(&store.index_pool)
             .await
@@ -2179,7 +2099,7 @@ mod tests {
         let edited = refresh_campaign_if_stale(&store, "C-001").await.unwrap();
         assert!(
             !edited,
-            "file_mtime <= cached(touch) → write-back 안 함(false)"
+            "file_mtime <= cached(touch) → 외부 편집 반환값 false"
         );
         let (title, desc): (String, Option<String>) = sqlx::query_as(
             "SELECT title, description FROM campaigns WHERE campaign_slug = 'C-001'",
@@ -2227,7 +2147,10 @@ mod tests {
         let dir = fresh_tmp("sib-comment");
         let store = setup(&dir).await;
         let slug = mk_one_quest(&store).await;
-        let path = store.paths.dot_guild().join(format!("quests/{slug}.comments.md"));
+        let path = store
+            .paths
+            .dot_guild()
+            .join(format!("quests/{slug}.comments.md"));
 
         write_external(&path, "외부에서 쓴 댓글\n");
         let (inc, full) = sync_on_open(&store).await.unwrap();
@@ -2242,7 +2165,10 @@ mod tests {
                 .await
                 .unwrap();
         assert_eq!(bodies.len(), 1);
-        assert!(bodies[0].contains("외부에서 쓴 댓글"), "실제 내용: {bodies:?}");
+        assert!(
+            bodies[0].contains("외부에서 쓴 댓글"),
+            "실제 내용: {bodies:?}"
+        );
 
         // 두 번째 편집도 반영되고(내용 교체, 중복 누적 X), 아무 변화 없으면 skip.
         write_external(&path, "고친 댓글\n");
@@ -2266,7 +2192,10 @@ mod tests {
         let dir = fresh_tmp("sib-delete");
         let store = setup(&dir).await;
         let slug = mk_one_quest(&store).await;
-        let path = store.paths.dot_guild().join(format!("quests/{slug}.comments.md"));
+        let path = store
+            .paths
+            .dot_guild()
+            .join(format!("quests/{slug}.comments.md"));
 
         write_external(&path, "지워질 댓글\n");
         sync_on_open(&store).await.unwrap();
@@ -2294,7 +2223,10 @@ mod tests {
         let dir = fresh_tmp("sib-memo");
         let store = setup(&dir).await;
         let slug = mk_one_quest(&store).await;
-        let path = store.paths.dot_guild().join(format!("quests/{slug}.memo.md"));
+        let path = store
+            .paths
+            .dot_guild()
+            .join(format!("quests/{slug}.memo.md"));
 
         write_external(&path, "메모 v1\n");
         let (inc, _) = sync_on_open(&store).await.unwrap();
@@ -2444,8 +2376,13 @@ mod tests {
         .unwrap();
 
         let mut report = IncrementalReport::default();
-        sync_changed_campaign_files(&store, &mut report).await.unwrap();
-        assert!(!report.needs_full_reindex, "신규 캠페인 파일도 증분 INSERT 여야: {report:?}");
+        sync_changed_campaign_files(&store, &mut report)
+            .await
+            .unwrap();
+        assert!(
+            !report.needs_full_reindex,
+            "신규 캠페인 파일도 증분 INSERT 여야: {report:?}"
+        );
         assert_eq!(report.campaigns_inserted, 1);
 
         let row: (String, i64) =
@@ -2632,8 +2569,13 @@ mod tests {
         .unwrap();
 
         let mut report = IncrementalReport::default();
-        sync_changed_library_files(&store, &mut report).await.unwrap();
-        assert!(!report.needs_full_reindex, "신규 문서 파일도 증분 INSERT 여야: {report:?}");
+        sync_changed_library_files(&store, &mut report)
+            .await
+            .unwrap();
+        assert!(
+            !report.needs_full_reindex,
+            "신규 문서 파일도 증분 INSERT 여야: {report:?}"
+        );
         assert_eq!(report.library_inserted, 1);
 
         let row: (String, i64) =
@@ -2642,11 +2584,12 @@ mod tests {
                 .await
                 .unwrap();
         assert_eq!(row.0, "손으로 넣은 문서");
-        let tags: Vec<String> = sqlx::query_scalar("SELECT tag FROM library_tags WHERE book_id = ?")
-            .bind(row.1)
-            .fetch_all(&store.index_pool)
-            .await
-            .unwrap();
+        let tags: Vec<String> =
+            sqlx::query_scalar("SELECT tag FROM library_tags WHERE book_id = ?")
+                .bind(row.1)
+                .fetch_all(&store.index_pool)
+                .await
+                .unwrap();
         assert_eq!(tags, vec!["architecture".to_string()]);
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -2657,7 +2600,9 @@ mod tests {
     async fn external_library_edit_syncs_without_full_reindex() {
         let dir = fresh_tmp("lib-edit");
         let store = setup(&dir).await;
-        let book = crate::ops::library::create_book(&store, "원래 제목", "본문", "").await.unwrap();
+        let book = crate::ops::library::create_book(&store, "원래 제목", "본문", "")
+            .await
+            .unwrap();
         let path = store.paths.book_path(&book.book_id());
 
         std::thread::sleep(std::time::Duration::from_millis(20));
@@ -2685,7 +2630,9 @@ mod tests {
     async fn deleted_library_file_removes_row_without_full_reindex() {
         let dir = fresh_tmp("lib-del");
         let store = setup(&dir).await;
-        let book = crate::ops::library::create_book(&store, "지워질 문서", "본문", "").await.unwrap();
+        let book = crate::ops::library::create_book(&store, "지워질 문서", "본문", "")
+            .await
+            .unwrap();
         crate::ops::library::set_book_tags(&store, &book.book_id(), vec!["temp".into()])
             .await
             .unwrap();
@@ -2731,7 +2678,9 @@ mod tests {
         write_external(&path, "주인 없는 댓글\n");
 
         let mut report = IncrementalReport::default();
-        sync_changed_sibling_files(&store, &mut report).await.unwrap();
+        sync_changed_sibling_files(&store, &mut report)
+            .await
+            .unwrap();
         assert!(
             report.needs_full_reindex,
             "본문 없는 sibling 은 풀 reindex 로 넘겨야"

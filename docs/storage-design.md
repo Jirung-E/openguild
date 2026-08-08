@@ -375,13 +375,17 @@ openguild restore --list                       # 사용 가능 snapshot 목록
 
 사용자가 `.guild/quests/DEV-001.md` 를 직접 편집:
 
-1. 다음 CLI 명령 시작 시 모든 quest 파일 mtime vs index.db 의 updated_at 비교.
+1. 다음 CLI 명령 시작 시 quest 파일 mtime을 index.db의 per-row
+   `cached_mtime`과 비교한다.
 2. 파일이 새것 → 그 quest 만 re-parse + re-validate + index 갱신.
-3. 검증 실패 (잘못된 YAML / 존재하지 않는 참조 / 사이클):
+   title/본문/`updated_at` 포함 모든 값은 파일을 그대로 투영한다.
+3. sync는 tracked 파일을 절대 다시 쓰지 않는다(DEV-283). 외부 편집 시각을
+   반영하려면 편집 주체가 frontmatter `updated_at`을 함께 갱신해야 한다.
+4. 검증 실패 (잘못된 YAML / 존재하지 않는 참조 / 사이클):
    - stderr 경고
    - 그 quest 는 index 에서 제외 (다른 quest 정상 동작)
    - 복구 안내 (구문 수정 또는 `openguild restore`).
-4. journal 에 `external_edit` op 기록 (선택적, 추후 결정).
+5. journal 에 `external_edit` op 기록 (선택적, 추후 결정).
 
 ### 동시 접근
 
