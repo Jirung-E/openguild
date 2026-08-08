@@ -24,6 +24,13 @@
 	} from '$lib/utils/quest-board-model';
 	import { boardEdgePath, parallelEdgeBends } from '$lib/utils/quest-board-render';
 	import { isBoardPanSurfaceTarget } from '$lib/utils/quest-board-input';
+	import {
+		boardLodForZoom,
+		screenGridMetrics,
+		summarizeBoardFrames,
+		type BoardFrameStats,
+		type BoardLod
+	} from '$lib/utils/quest-board-viewport';
 	import Icon from './Icon.svelte';
 	import {
 		loadLaneOrder as loadLaneOrderShared,
@@ -118,6 +125,61 @@
 	let gridLanesEl: HTMLDivElement;
 	let headersEl: HTMLDivElement;
 	let cy: BoardGraph | null = null;
+	let boardLod = $state<BoardLod>('detail');
+
+	let performanceVisible = $state(false);
+	let performanceStats = $state<BoardFrameStats>({
+		rafHz: 0,
+		medianMs: 0,
+		p95Ms: 0,
+		missed120Percent: 0
+	});
+	let performanceViewportHz = $state(0);
+	let performanceZoom = $state(1);
+	let performanceRaf: number | null = null;
+	let performanceLastFrame = 0;
+	let performanceWindowStarted = 0;
+	let performanceViewportStart = 0;
+	let viewportVisualUpdateCount = 0;
+	let performanceIntervals: number[] = [];
+
+	function resetPerformanceWindow(now: number) {
+		performanceLastFrame = now;
+		performanceWindowStarted = now;
+		performanceViewportStart = viewportVisualUpdateCount;
+		performanceIntervals = [];
+	}
+
+	function samplePerformanceFrame(now: number) {
+		if (!performanceVisible) {
+			performanceRaf = null;
+			return;
+		}
+		if (performanceWindowStarted === 0) resetPerformanceWindow(now);
+		else if (performanceLastFrame > 0) performanceIntervals.push(now - performanceLastFrame);
+		performanceLastFrame = now;
+
+		const elapsed = now - performanceWindowStarted;
+		if (elapsed >= 1000) {
+			performanceStats = summarizeBoardFrames(performanceIntervals);
+			performanceViewportHz =
+				((viewportVisualUpdateCount - performanceViewportStart) * 1000) / Math.max(elapsed, 1);
+			performanceZoom = cy?.zoom() ?? 1;
+			resetPerformanceWindow(now);
+		}
+		performanceRaf = requestAnimationFrame(samplePerformanceFrame);
+	}
+
+	function togglePerformanceMonitor() {
+		performanceVisible = !performanceVisible;
+		if (performanceVisible) {
+			resetPerformanceWindow(performance.now());
+			performanceRaf = requestAnimationFrame(samplePerformanceFrame);
+		} else if (performanceRaf !== null) {
+			cancelAnimationFrame(performanceRaf);
+			performanceRaf = null;
+		}
+	}
 
 	// DEV-317: lane, edge, node 를 한 DOM world 에 두고 같은 transform 을 적용한다.
 	// BoardGraph 는 렌더러가 아닌 위치/선택/viewport 상태 모델이다.
@@ -2059,10 +2121,7 @@
 				n.data('urgencyBg', urgencyBgFor(q.urgency, eff));
 			}
 		});
-		// DEV-074 fix20: grid snap SVG 의 dot 색도 palette 의존이라 theme 변경 시
-		// 캐시 무효화 → 다음 syncLanes 가 새 색으로 재생성.
-		gridBgCache.clear();
-		syncLanes();
+		// BUG-225: grid 점은 CSS palette를 직접 쓰므로 theme 전환 시 재생성 불필요.
 	}
 
 	onMount(() => {
@@ -2460,6 +2519,7 @@
 	onDestroy(() => {
 		if (wheelRaf !== null) cancelAnimationFrame(wheelRaf); // BUG-144
 		if (domGraphRaf !== null) cancelAnimationFrame(domGraphRaf); // DEV-317
+		if (performanceRaf !== null) cancelAnimationFrame(performanceRaf); // BUG-225
 		boardWrapEl?.removeEventListener('wheel', onBoardWheel); // BUG-090
 		// DEV-208: 터치 핀치.
 		boardWrapEl?.removeEventListener('touchstart', onBoardTouchStart);
@@ -2472,12 +2532,6 @@
 	// ── 레인 HTML ───────────────────────────────────────────────
 
 	function buildLaneDivs(sorted: QuestStatus[]) {
-		// BUG-092: lane-col DOM 을 통째로 새로 만드는데, syncLanes() 의 grid snap
-		// 그리기 캐시(gridBgCache, lane index 키)는 안 지워지면 새로 생성된(아직
-		// backgroundImage 미설정) dotsEl 에 대해 캐시 히트로 오판해 실제 그리기를
-		// 건너뛴다(zoom/cols 가 이전과 같으면) — reindex/swapLane 후 grid snap 점이
-		// 안 보이던 원인. DOM 재생성과 함께 캐시도 항상 무효화.
-		gridBgCache.clear();
 		lanesEl.innerHTML = '';
 		gridLanesEl.innerHTML = '';
 		sorted.forEach(() => {
@@ -2486,9 +2540,8 @@
 			lanesEl.appendChild(col);
 			const gridCol = document.createElement('div');
 			gridCol.className = 'lane-grid-col';
-			// DEV-105 fix13: grid snap dot 표시를 lane-col 의 background 에서 자식
-			// `.lane-dots` 의 transform 으로 분리. background-position 변경은 매
-			// frame paint → 빠른 pan 추적 안 됨. transform 은 GPU composite.
+			// BUG-225: viewport 크기의 CSS grid만 유지한다. 거대한 world bitmap을
+			// 만들지 않고 phase transform만 움직여 무한 grid처럼 보이게 한다.
 			const dots = document.createElement('div');
 			dots.className = 'lane-dots';
 			gridCol.appendChild(dots);
@@ -2627,23 +2680,64 @@
 		});
 	}
 
-	// DEV-317: grid 는 world 좌표로 한 번만 만들고 부모 transform 을 함께 탄다.
-	// 따라서 zoom 별 bitmap 재생성이나 pan 별 background-position 갱신이 없다.
-	const gridBgCache = new Map<
-		number,
-		{ cols: number; dataUri: string; svgW: number; svgH: number; bgX: number }
-	>();
+	function syncScreenGrid(pan: BoardPoint, zoom: number) {
+		if (!gridLanesEl) return;
+		const cellW = NODE_W + NODE_GAP;
+		const cellH = NODE_H + NODE_GAP;
+		const metrics = screenGridMetrics(
+			zoom,
+			pan.y,
+			LANE_TOP + 16 + NODE_H / 2,
+			cellW,
+			cellH,
+			container.clientHeight
+		);
+		let laneLeft = 0;
+		gridLanesEl.querySelectorAll<HTMLElement>('.lane-grid-col').forEach((gridCol, i) => {
+			const s = sorted[i];
+			const laneHidden = s ? getHideSetting(s.slug).laneHidden : false;
+			if (laneHidden) {
+				gridCol.style.display = 'none';
+				return;
+			}
+			const w = s ? laneWidth(s.slug) : LANE_W;
+			const collapsed = s ? collapsedLanes.has(s.slug) : false;
+			const dotsEl = gridCol.firstElementChild as HTMLElement | null;
+			if (!gridSnap || collapsed || !dotsEl) {
+				gridCol.style.display = 'none';
+				laneLeft += w + LANE_GAP;
+				return;
+			}
+
+			const cols = laneCols[i] ?? 2;
+			const firstCxLocal = laneFirstCellX(i, cols) - i * LANE_STRIDE;
+			gridCol.style.display = '';
+			gridCol.style.left = `${laneLeft * zoom + pan.x}px`;
+			gridCol.style.width = `${w * zoom}px`;
+			dotsEl.style.left = `${(firstCxLocal - cellW / 2) * zoom}px`;
+			dotsEl.style.top = `${metrics.top}px`;
+			dotsEl.style.width = `${metrics.stepX * cols}px`;
+			dotsEl.style.height = `${metrics.height}px`;
+			dotsEl.style.backgroundSize = `${metrics.stepX}px ${metrics.stepY}px`;
+			dotsEl.style.transform = `translate3d(0, ${metrics.phaseY}px, 0)`;
+			dotsEl.style.setProperty('--grid-dot-radius', `${metrics.dotRadius}px`);
+			laneLeft += w + LANE_GAP;
+		});
+	}
 
 	/** 제스처 hot path: 모든 world 요소가 공유하는 transform 하나만 갱신. */
 	function syncViewportVisuals() {
 		if (!cy) return;
 		const pan = cy.pan();
 		const zoom = cy.zoom();
+		viewportVisualUpdateCount += 1;
+		const nextLod = boardLodForZoom(zoom);
+		if (nextLod !== boardLod) boardLod = nextLod;
 		if (worldViewportEl) {
 			worldViewportEl.style.transform = `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom})`;
 		}
-		// lane의 단색 배경/경계는 세로 camera pan과 무관하게 viewport 전체를
-		// 채운다. grid dot만 world 안에서 노드와 함께 세로 이동한다.
+		syncScreenGrid(pan, zoom);
+		// lane의 단색 배경/경계와 grid는 viewport 높이를 채우고 X만 camera를 따른다.
 		let laneLeft = 0;
 		lanesEl?.querySelectorAll<HTMLElement>('.lane-col').forEach((col, i) => {
 			const s = sorted[i];
@@ -2683,8 +2777,6 @@
 		// 창 크기 변경, 폰 회전). syncLanes 는 그 모든 경우에 호출된다.
 		cy.minZoom(computeMinZoom());
 
-		const cellH = NODE_H + NODE_GAP;
-		const dotR = 1.5;
 		const bb = cy.elements().nonempty() ? cy.elements().boundingBox() : null;
 		const worldHeight = Math.max(
 			container.clientHeight / Math.max(computeMinZoom(), 0.02) + 200,
@@ -2692,61 +2784,14 @@
 			2000
 		);
 
-		// DEV-067: laneHidden 인 lane 의 col 은 display:none + 위치 skip.
-		// DEV-105: collapsed lane 은 좁은 폭으로 표시.
 		let curLeft = 0;
-		gridLanesEl.querySelectorAll<HTMLElement>('.lane-grid-col').forEach((gridCol, i) => {
-			const s = sorted[i];
-			const laneHidden = s ? getHideSetting(s.slug).laneHidden : false;
+		sorted.forEach((s) => {
+			const laneHidden = getHideSetting(s.slug).laneHidden;
 			if (laneHidden) {
-				gridCol.style.display = 'none';
 				return;
 			}
-			const w = s ? laneWidth(s.slug) : LANE_W;
-			gridCol.style.display = '';
-			gridCol.style.left = `${curLeft}px`;
-			gridCol.style.width = `${w}px`;
-			gridCol.style.height = `${worldHeight}px`;
+			const w = laneWidth(s.slug);
 			curLeft += w + LANE_GAP;
-			const dotsEl = gridCol.firstElementChild as HTMLElement | null;
-			if (gridSnap && dotsEl) {
-				const cols = laneCols[i] ?? 2;
-				const cellW = NODE_W + NODE_GAP;
-				const cached = gridBgCache.get(i);
-				if (!cached || cached.cols !== cols) {
-					const firstCxLocal = laneFirstCellX(i, cols) - i * LANE_STRIDE;
-					const svgW = cellW * cols;
-					const svgH = cellH;
-					// DEV-074 fix20: dot 색은 palette.warning. 이전엔 rgba(245,166,35,...)
-					// 다크 전용. theme 변경 시 gridBgCache.clear()로 즉시 다시 그림.
-					const palette = themePalette(currentEffectiveTheme());
-					const dotFill = `color-mix(in srgb, ${palette.warning} 55%, transparent)`;
-					const dots = Array.from({ length: cols }, (_, c) => {
-						const cx = c * cellW + cellW / 2;
-						const cy = cellH / 2;
-						return `<circle cx="${cx}" cy="${cy}" r="${dotR}" fill="${dotFill}"/>`;
-					}).join('');
-					const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${svgW}' height='${svgH}'>${dots}</svg>`;
-					const dataUri = `url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}")`;
-					const bgX = firstCxLocal - cellW / 2;
-					const entry = { cols, dataUri, svgW, svgH, bgX };
-					gridBgCache.set(i, entry);
-					dotsEl.style.display = '';
-					dotsEl.style.backgroundImage = dataUri;
-					dotsEl.style.backgroundSize = `${svgW}px ${svgH}px`;
-					dotsEl.style.backgroundRepeat = 'repeat-y';
-					// 가로 위치도 world 좌표 — 부모 scale 을 그대로 따른다.
-					dotsEl.style.left = `${bgX}px`;
-					dotsEl.style.width = `${svgW}px`;
-					// SVG 첫 dot(center=cellH/2)이 첫 snap row 중심과 일치.
-					dotsEl.style.top = `${LANE_TOP + 16 + NODE_H / 2 - cellH / 2}px`;
-					dotsEl.style.bottom = '0';
-				}
-				dotsEl.style.height = `${worldHeight - (LANE_TOP + 16)}px`;
-			} else if (dotsEl) {
-				dotsEl.style.display = 'none';
-				gridBgCache.delete(i);
-			}
 		});
 		if (worldEl) {
 			worldEl.style.width = `${Math.max(curLeft - LANE_GAP, 1)}px`;
@@ -2919,13 +2964,19 @@
 	}
 </script>
 
-<div class="board-wrap" bind:this={boardWrapEl}>
+<div
+	class="board-wrap"
+	class:lod-compact={boardLod === 'compact'}
+	class:lod-overview={boardLod === 'overview'}
+	bind:this={boardWrapEl}
+>
 	<!-- lane 단색 배경은 세로 pan과 무관하게 viewport 높이를 항상 채운다. -->
 	<div class="lanes-bg" bind:this={lanesEl}></div>
-	<!-- DEV-317: lane grid + SVG edge + DOM node가 이 transform 하나를 공유한다. -->
+	<!-- BUG-225: snap grid는 화면 픽셀 좌표로 그려 최소 배율에서도 선명하다. -->
+	<div class="lane-grid-layer" bind:this={gridLanesEl}></div>
+	<!-- DEV-317: SVG edge + DOM node가 이 transform 하나를 공유한다. -->
 	<div class="board-world-viewport" bind:this={worldViewportEl}>
 		<div class="board-world" bind:this={worldEl}>
-			<div class="lane-grid-layer" bind:this={gridLanesEl}></div>
 			<svg class="edge-layer" width="100%" height="100%">
 				<defs>
 					<marker
@@ -2993,37 +3044,42 @@
 								}
 							}}
 						>
-							<div class="node-topline">
-								<span class="node-pill mono" style:--pill-color={q.type_color}>{q.quest_id}</span>
-								<span class="node-pill" style:--pill-color={urgencyColor(q.urgency)}
-									>{urgencyLabel(q.urgency, $locale)}</span
-								>
-								{#if urgencyOutOfRange(q.urgency)}
-									<span
-										class="urgency-warning"
-										title={`${t('board.urgencyClampPre', $locale)}${q.urgency}${t('board.urgencyClampPost', $locale)}`}
-										>⚠</span
+							{#if boardLod === 'detail'}
+								<div class="node-topline">
+									<span class="node-pill mono" style:--pill-color={q.type_color}>{q.quest_id}</span>
+									<span class="node-pill" style:--pill-color={urgencyColor(q.urgency)}
+										>{urgencyLabel(q.urgency, $locale)}</span
 									>
-								{/if}
-								<span class="node-metrics">
-									{#if unresolved > 0}
-										<span class="discussion-count unresolved">✗ {unresolved}</span>
-									{:else if resolved > 0}
-										<span class="discussion-count resolved">✓ {resolved}</span>
-									{/if}
-									{#if (q.comment_count ?? 0) > 0}
-										<span class="comment-count"
-											><Icon name="comment" size={10} />{q.comment_count}</span
+									{#if urgencyOutOfRange(q.urgency)}
+										<span
+											class="urgency-warning"
+											title={`${t('board.urgencyClampPre', $locale)}${q.urgency}${t('board.urgencyClampPost', $locale)}`}
+											>⚠</span
 										>
 									{/if}
-								</span>
-							</div>
-							<div class="node-title" class:with-due={!!due.date}>{q.title}</div>
-							{#if due.date}
-								<div class="node-due {dueState(due.date)}">
-									<Icon name={due.source === 'campaign' ? 'campaign' : 'clock'} size={10} />
-									<span>{due.date}</span>
+									<span class="node-metrics">
+										{#if unresolved > 0}
+											<span class="discussion-count unresolved">✗ {unresolved}</span>
+										{:else if resolved > 0}
+											<span class="discussion-count resolved">✓ {resolved}</span>
+										{/if}
+										{#if (q.comment_count ?? 0) > 0}
+											<span class="comment-count"
+												><Icon name="comment" size={10} />{q.comment_count}</span
+											>
+										{/if}
+									</span>
 								</div>
+								<div class="node-title" class:with-due={!!due.date}>{q.title}</div>
+								{#if due.date}
+									<div class="node-due {dueState(due.date)}">
+										<Icon name={due.source === 'campaign' ? 'campaign' : 'clock'} size={10} />
+										<span>{due.date}</span>
+									</div>
+								{/if}
+							{:else if boardLod === 'compact'}
+								<div class="node-compact-id mono">{q.quest_id}</div>
+								<div class="node-compact-title">{q.title}</div>
 							{/if}
 						</div>
 					{/if}
@@ -3171,6 +3227,16 @@
 			>
 		</div>
 	{/if}
+	{#if performanceVisible}
+		<div class="performance-hud" role="status" aria-live="polite">
+			<strong>{performanceStats.rafHz.toFixed(0)} Hz</strong>
+			<span>median {performanceStats.medianMs.toFixed(1)} ms</span>
+			<span>p95 {performanceStats.p95Ms.toFixed(1)} ms</span>
+			<span>&gt;12.5 ms {performanceStats.missed120Percent.toFixed(0)}%</span>
+			<span>viewport {performanceViewportHz.toFixed(0)}/s</span>
+			<span>zoom {performanceZoom.toFixed(3)} · {boardLod}</span>
+		</div>
+	{/if}
 	<!-- DEV-073 fix3: New Quest 는 상단 우측 고정 (항상 노출), 나머지 도구바는
 	     그 아래로 내림 (사용자 피드백). 접기 토글로 도구만 숨길 수 있음. -->
 	{#if onNewQuest}
@@ -3269,6 +3335,15 @@
 					<option value="all">{t('board.arrangeModeAll', $locale)}</option>
 				</select>
 			</div>
+			<div class="tb-sep"></div>
+			<button
+				class="tb-btn"
+				class:tb-on={performanceVisible}
+				onclick={togglePerformanceMonitor}
+				title={t('board.performanceMonitorTitle', $locale)}
+			>
+				<span class="icon perf-icon">Hz</span><span>{t('board.performanceMonitor', $locale)}</span>
+			</button>
 			<div class="tb-sep"></div>
 		{/if}
 		<!-- 토글 버튼 — 항상 우측 끝 (collapsed / expanded 동일 위치, 사용자 피드백). -->
@@ -3471,8 +3546,26 @@
 	.lane-grid-layer {
 		position: absolute;
 		inset: 0;
-		z-index: 0;
+		z-index: 1;
 		pointer-events: none;
+		overflow: hidden;
+	}
+	:global(.lane-grid-col) {
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		overflow: hidden;
+		contain: strict;
+	}
+	:global(.lane-dots) {
+		position: absolute;
+		background-image: radial-gradient(
+			circle at center,
+			color-mix(in srgb, var(--warning) 68%, transparent) 0 var(--grid-dot-radius),
+			transparent calc(var(--grid-dot-radius) + 0.55px)
+		);
+		background-repeat: repeat;
+		will-change: transform;
 	}
 	.board {
 		position: absolute;
@@ -3647,6 +3740,50 @@
 		border-width: 3px;
 		background: var(--node-active-bg);
 		box-shadow: 0 0 18px var(--node-border);
+	}
+	/* BUG-225: 중간 배율에서는 pill/icon/date를 만들지 않고 핵심 텍스트만 칠한다. */
+	.lod-compact .board-node {
+		background: color-mix(in srgb, var(--bg) 97%, var(--node-border));
+		transition: none;
+	}
+	.node-compact-id {
+		position: absolute;
+		top: 10px;
+		left: 12px;
+		color: var(--node-border);
+		font-size: 18px;
+		font-weight: 800;
+	}
+	.node-compact-title {
+		position: absolute;
+		left: 12px;
+		right: 12px;
+		bottom: 9px;
+		overflow: hidden;
+		color: var(--text);
+		font-size: 20px;
+		font-weight: 650;
+		line-height: 24px;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	/* 전체 보기에서는 카드 하나를 단순한 색 marker 하나로 축약한다. */
+	.board-wrap.lod-overview .board-node {
+		border: 0;
+		border-radius: 14px;
+		background: var(--node-border);
+		box-shadow: none;
+		transition: none;
+	}
+	.board-wrap.lod-overview .board-node.active,
+	.board-wrap.lod-overview .board-node.selected {
+		background: var(--node-border);
+		box-shadow: none;
+		outline: 5px solid var(--accent);
+		outline-offset: 4px;
+	}
+	.lod-overview .board-node.filter-dim {
+		opacity: 0.2;
 	}
 	.board-node.hl-pre {
 		border: 3px solid var(--hl-pre);
@@ -4253,6 +4390,31 @@
 	.fc-clear:hover {
 		color: var(--danger);
 	}
+	.performance-hud {
+		position: absolute;
+		left: 14px;
+		bottom: 14px;
+		z-index: 10;
+		display: grid;
+		grid-template-columns: auto auto;
+		gap: 3px 12px;
+		padding: 8px 10px;
+		border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+		border-radius: 7px;
+		background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
+		box-shadow: 0 4px 18px rgba(0, 0, 0, 0.28);
+		color: var(--text-muted);
+		font-family: 'SFMono-Regular', Consolas, monospace;
+		font-size: 11px;
+		font-variant-numeric: tabular-nums;
+		line-height: 1.35;
+		pointer-events: none;
+		backdrop-filter: blur(8px);
+	}
+	.performance-hud strong {
+		color: var(--accent);
+		font-size: 13px;
+	}
 
 	.tb-newquest-wrap {
 		position: absolute;
@@ -4332,6 +4494,11 @@
 	.tb-btn .icon {
 		font-size: 0.95rem;
 		line-height: 1;
+	}
+	.tb-btn .perf-icon {
+		font-family: 'SFMono-Regular', Consolas, monospace;
+		font-size: 0.7rem;
+		font-weight: 700;
 	}
 	.tb-btn .count {
 		font-size: 0.7rem;

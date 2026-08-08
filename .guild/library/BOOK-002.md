@@ -3,7 +3,7 @@ book_id = "BOOK-002"
 title = "Quest Board 2손가락 트랙패드 제스처 지연 — 조사 전체 기록"
 path = ""
 created_at = "2026-08-01T22:37:23+09:00"
-updated_at = "2026-08-05T10:00:17+09:00"
+updated_at = "2026-08-08T19:55:11+09:00"
 deleted = false
 +++
 
@@ -443,3 +443,46 @@ Testing으로 이동한다.
 production/release GUI/server build, `git diff --check`가 통과했다. 갱신한
 Tailscale production 주소에서 새 퀘스트 모달 열기/취소, 보드 설정 모달 열기,
 노드 팝업 닫기를 확인했다. 실제 터치 장치에서 최종 확인한다.
+
+## 2026-08-08 저배율 후속 — screen-space grid, 노드 LOD, 120Hz HUD
+
+[[DEV-317]]의 단일 DOM/SVG world는 원래 Canvas 제스처 지연을 해결했지만,
+self guild처럼 노드가 560개인 보드를 깊게 축소하면 다음 후속 문제가 드러났다.
+
+- grid snap 점은 고정 높이의 world SVG bitmap이라 멀리 위·아래로 pan하면
+  끊겼고, world와 함께 축소되어 zoom 0.03에서 반지름이 약 0.05 화면 px까지
+  작아졌다.
+- collapsed lane은 노드만 숨기고 grid 시각 레이어는 숨기지 않았다.
+- 전체 보기에서도 모든 카드의 pill, icon, 날짜, 제목 DOM을 계속 paint했다.
+- 실제 Tauri/WebKit이 60Hz에 제한됐는지, 120Hz 중 프레임을 놓치는지 앱 안에서
+  구분할 수단이 없었다.
+
+[[BUG-225]]에서 grid를 world transform 밖의 viewport-space 레이어로 옮겼다.
+각 visible/non-collapsed lane만 화면 높이와 두 타일의 overscan을 갖고, CSS
+radial-gradient의 작은 반복 타일과 Y phase transform으로 무한 grid처럼 보인다.
+점 반지름은 화면 px 기준 0.9~2.25px로 clamp해 저배율에서도 식별 가능하다.
+따라서 world 전체 높이의 bitmap/DOM을 만들지 않고, 접힌 레인의 점도 즉시
+사라진다.
+
+노드는 zoom에 따라 세 단계 LOD를 사용한다.
+
+- `detail`(0.55 이상): 기존 pill/icon/date/title 카드.
+- `compact`(0.16~0.55): ID와 제목만 있는 단순 카드.
+- `overview`(0.16 미만): hit-test 가능한 urgency 색 marker만 유지.
+
+375×720 viewport의 실제 fit zoom 0.0253429에서 node 560개는 유지하되 내부
+자식 element가 1,120개에서 0개로 줄었다. grid 점은 반지름 0.9px로 유지됐고,
+위·아래 pan 뒤에도 dot layer가 viewport 양쪽을 넘겨 덮었다. 41-point drag
+실측에서 rAF 120Hz, median 8.3ms, p95 9.7ms, 12.5ms 초과 0%, viewport update
+40/s였다.
+
+도구바의 `Hz 성능` HUD는 1초 창의 rAF Hz, median/p95 frame interval,
+12.5ms 초과 비율, viewport transform 갱신 수, zoom과 LOD를 표시한다. 120Hz라면
+median이 약 8.3ms, 60Hz cap이면 약 16.7ms와 60Hz로 보인다. rAF 수치는 실제
+화면 scan-out 자체의 증명은 아니므로 Tauri에서 60Hz가 나오면 Safari Web
+Inspector Timelines/Layers와 함께 판단한다. HUD는 꺼져 있을 때 rAF loop를
+유지하지 않는다.
+
+frontend 39 files/399 tests, `svelte-check`, production build, release GUI build,
+`git diff --check`가 통과했다. 인앱 브라우저는 120Hz까지 확인했으며 macOS
+Tauri의 실제 값은 release 앱에서 HUD를 켜 확인한다.
