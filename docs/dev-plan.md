@@ -81,7 +81,7 @@
 - ✅ `.guild/quests/{slug}.md` 가 진리원, SQLite 는 index 캐시
 - ✅ types/statuses 도 파일로 (`.guild/types/`, `.guild/statuses/`)
 - ✅ AOF journal (`backups/journal.db`) + RDB snapshot 으로 git 모르는 사용자도 안전
-- ✅ auto 블록으로 sub/parent/prereq 사람 가독성
+- ✅ auto 블록으로 sub/parent/prereq/successor 사람 가독성 (ID 링크만 표시)
 - ✅ `core::ops` (mutation orchestration), `repo`, `store`, `snapshot`, `reindex`, `drift`, `counter`, `lock`, `migrate` 신설
 - ✅ 자동 백업 정책 (`maybe_auto_snapshot` — ops 50 / 24h)
 - ✅ CLI `backup` / `backups` / `restore` 명령 (Http + Local 둘 다)

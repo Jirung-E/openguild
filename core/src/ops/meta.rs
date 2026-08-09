@@ -247,7 +247,7 @@ pub async fn rename_type(
     let old_row = fetch_type_by_prefix(&store.index_pool, &old_prefix).await?;
 
     // 영향받는 quest id 들 미리 수집 — auto-block 재생성 대상 결정용.
-    // (그 type 의 모든 quest + 그 quest 들을 parent / sub / prereq 로 가진 quest)
+    // (그 type 의 모든 quest + 네 방향 관계로 연결된 quest)
     let own_ids: Vec<i64> = sqlx::query_scalar(
         "SELECT id FROM quests WHERE quest_type_id = ? AND deleted_at IS NULL",
     )
@@ -255,7 +255,7 @@ pub async fn rename_type(
     .fetch_all(&store.index_pool)
     .await?;
 
-    // (own_ids 와 관계된 다른 alive quest)
+    // (own_ids 와 parent / sub / prerequisite / successor 로 연결된 다른 alive quest)
     let related_ids: Vec<i64> = if own_ids.is_empty() {
         Vec::new()
     } else {
@@ -266,7 +266,15 @@ pub async fn rename_type(
              WHERE q.deleted_at IS NULL
                AND q.id NOT IN ({placeholders})
                AND (
-                 q.parent_quest_id IN ({placeholders})
+                 q.id IN (
+                   SELECT parent_quest_id FROM quests
+                    WHERE id IN ({placeholders})
+                 )
+                 OR q.parent_quest_id IN ({placeholders})
+                 OR q.id IN (
+                   SELECT prerequisite_id FROM quest_dependencies
+                    WHERE quest_id IN ({placeholders})
+                 )
                  OR q.id IN (
                    SELECT quest_id FROM quest_dependencies
                     WHERE prerequisite_id IN ({placeholders})
@@ -275,7 +283,7 @@ pub async fn rename_type(
             "#
         );
         let mut q = sqlx::query_scalar(&sql_str);
-        for _ in 0..3 {
+        for _ in 0..5 {
             for id in &own_ids {
                 q = q.bind(*id);
             }
@@ -361,7 +369,8 @@ pub async fn rename_type(
         }
     }
 
-    // 3. 관련 다른 quest 의 auto-block 재생성 (parent / sub / prereq mention).
+    // 3. 관련 다른 quest 의 auto-block 재생성
+    //    (parent / sub / prerequisite / successor mention).
     for rid in &related_ids {
         if let Ok(q) = sql::fetch_by_id(&store.index_pool, *rid).await {
             crate::ops::quests::write_quest_file(store, &q, false).await?;

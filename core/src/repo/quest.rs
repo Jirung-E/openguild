@@ -11,7 +11,7 @@
 //! (사용자가 작성하는 description)
 //!
 //! <!-- openguild:auto-begin -->
-//! ## Sub-quests / Parent / Prerequisites 등 — 자동 생성
+//! ## Sub-quests / Parent / Prerequisites / Successors 등 — 자동 생성
 //! <!-- openguild:auto-end -->
 //! ```
 //!

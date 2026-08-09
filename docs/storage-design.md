@@ -154,7 +154,9 @@ frontend 의 api 호출이 invoke 로 → core::services::* 직접 실행
 - `<!-- openguild:auto-begin -->` ~ `<!-- openguild:auto-end -->` 사이는 도구가 매 mutation 시 재생성.
 - 사용자가 description 은 블록 밖에 작성 (위/아래 자유).
 - 자기 자신이 root quest (parent == null) 면 "Parent" 섹션 생략.
-- 자식/선행/의존 없을 때 "(없음)" 표시 (또는 섹션 자체 생략 — 구현 시 결정).
+- 관계는 제목을 중복하지 않고 quest slug 상대 링크만 표시 (`[DEV-001](DEV-001.md)`).
+- `Parent` / `Sub-quests` / `Prerequisites` / `Successors` 네 방향을 표시.
+- 자식/선행/후속 관계가 없을 때 해당 섹션에 "(없음)" 표시.
 
 #### Soft delete
 
@@ -341,6 +343,7 @@ CREATE INDEX idx_ops_ts ON ops (ts);
 4. types/DEV.toml 의 last_number 갱신 (atomic write 같은 식)
 5. 영향받는 다른 quest 파일들의 auto 블록 재생성:
    - 부모 있으면 부모 파일 (Sub-quests 목록에 추가)
+   - 선행 관계가 바뀌면 선행 파일 (Successors 목록 갱신)
 6. index.db UPDATE — 캐시 동기화
 7. stdout 출력
 ```

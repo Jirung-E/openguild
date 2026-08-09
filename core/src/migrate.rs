@@ -5,7 +5,7 @@
 //!
 //! 알고리즘:
 //! 1. legacy `guild.db` 에서 모든 quest / type / status / dependency 로드.
-//! 2. id → slug / id → title 룩업 빌드.
+//! 2. id → slug 룩업 빌드.
 //! 3. 각 quest 마다 `QuestFile` 구성 (frontmatter + auto block) → `.guild/quests/{slug}.md` 작성.
 //! 4. `.guild/types/{prefix}.toml` 의 `[counter].last_number` 를 `quest_counters` 에서 가져와 갱신.
 //! 5. `.guild/index.db` 가 비어있으면 legacy guild.db 를 복사 (캐시 즉시 정상 상태).
@@ -98,11 +98,6 @@ pub async fn migrate_to_files<P: AsRef<Path>>(guild_root: P) -> Result<Migration
         .iter()
         .map(|q| (q.id, q.slug.clone()))
         .collect();
-    let id_to_title: HashMap<i64, String> = quests
-        .iter()
-        .map(|q| (q.id, q.title.clone()))
-        .collect();
-
     let mut prereqs_by_quest: HashMap<i64, Vec<i64>> = HashMap::new();
     let mut dependents_by_prereq: HashMap<i64, Vec<i64>> = HashMap::new();
     for (qid, pid) in &deps {
@@ -128,8 +123,8 @@ pub async fn migrate_to_files<P: AsRef<Path>>(guild_root: P) -> Result<Migration
         let qf = build_quest_file(
             q,
             &id_to_slug,
-            &id_to_title,
             &prereqs_by_quest,
+            &dependents_by_prereq,
             &children_by_parent,
         )?;
         let path = paths.quest_path(&q.slug);
@@ -192,15 +187,14 @@ struct QuestRowFlat {
 fn build_quest_file(
     q: &QuestRowFlat,
     id_to_slug: &HashMap<i64, String>,
-    id_to_title: &HashMap<i64, String>,
     prereqs_by_quest: &HashMap<i64, Vec<i64>>,
+    dependents_by_prereq: &HashMap<i64, Vec<i64>>,
     children_by_parent: &HashMap<i64, Vec<i64>>,
 ) -> Result<QuestFile> {
-    // 참조 헬퍼: id → QuestRef (slug + title). 누락된 id (== legacy DB 무결성 깨짐) 는 panic 대신 skip.
+    // 참조 헬퍼: id → QuestRef (slug). 누락된 id (== legacy DB 무결성 깨짐) 는 panic 대신 skip.
     let to_ref = |id: i64| -> Option<QuestRef> {
         let slug = id_to_slug.get(&id)?.clone();
-        let title = id_to_title.get(&id).cloned().unwrap_or_default();
-        Some(QuestRef::new(slug, title))
+        Some(QuestRef::new(slug))
     };
 
     let parent_ref = q.parent_quest_id.and_then(to_ref);
@@ -212,11 +206,16 @@ fn build_quest_file(
         .get(&q.id)
         .map(|v| v.iter().filter_map(|id| to_ref(*id)).collect())
         .unwrap_or_default();
+    let successor_refs: Vec<QuestRef> = dependents_by_prereq
+        .get(&q.id)
+        .map(|v| v.iter().filter_map(|id| to_ref(*id)).collect())
+        .unwrap_or_default();
 
     let relations = QuestRelations {
         parent: parent_ref.clone(),
         sub_quests: sub_refs,
         prerequisites: prereq_refs.clone(),
+        successors: successor_refs,
     };
     let auto_block = auto::render(&relations).trim().to_string();
 
@@ -377,6 +376,10 @@ mod tests {
         // 부모 파일은 sub-quest 로 child 표시
         let parent = std::fs::read_to_string(dir.join(".guild/quests/DEV-001.md")).unwrap();
         assert!(parent.contains("[DEV-002](DEV-002.md)"));
+
+        // 선행 파일은 child 를 successor 로 표시
+        let prereq = std::fs::read_to_string(dir.join(".guild/quests/DEV-003.md")).unwrap();
+        assert!(prereq.contains("## Successors\n- [DEV-002](DEV-002.md)"));
 
         let _ = std::fs::remove_dir_all(&dir);
     }

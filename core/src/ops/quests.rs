@@ -528,8 +528,8 @@ pub async fn change_parent(
 /// - 본인: soft-deleted (frontmatter deleted: true)
 /// - cascade 자식: 같이 soft-deleted
 /// - cascade 안 한 직계 자식: parent 분리 → 그들 파일도 갱신 (Parent 섹션 사라짐)
-/// - 본인을 prereq 로 가진 다른 quest 들: 자기 파일 prereq 목록은 SQL 단에서 유지 (관계 끊지 않음 — 본인이 사라지면 표시만 안 됨).
-///   다만 다른 quest 의 auto 블록에서 본인이 표시되었었는데 이젠 deleted_at IS NULL 필터로 안 보임 → 갱신 필요.
+/// - 삭제 대상과 prerequisite 관계로 연결된 alive quest 들: Prerequisites / Successors
+///   표시에서 삭제 대상이 빠지도록 양쪽 파일 갱신.
 pub async fn delete_quest(store: &Store, id: i64, cascade_ids: &[i64]) -> AppResult<()> {
     let _ = journal::append(
         &store.journal_pool,
@@ -540,7 +540,8 @@ pub async fn delete_quest(store: &Store, id: i64, cascade_ids: &[i64]) -> AppRes
     .await
     .map_err(crate::error::AppError::Internal)?;
 
-    // 영향받는 quest id 들 (cascade 안 된 자식, 본인을 prereq 으로 갖는 quests) 사전 수집.
+    // 영향받는 quest id 들 (cascade 안 된 자식, 삭제 대상과 prerequisite 관계로
+    // 연결된 quest 들) 사전 수집.
     let detached_children: Vec<i64> = if cascade_ids.is_empty() {
         sqlx::query_scalar("SELECT id FROM quests WHERE parent_quest_id = ? AND deleted_at IS NULL")
             .bind(id)
@@ -562,13 +563,26 @@ pub async fn delete_quest(store: &Store, id: i64, cascade_ids: &[i64]) -> AppRes
         q.fetch_all(&store.index_pool).await?
     };
 
-    let dependents: Vec<i64> = sqlx::query_scalar(
-        "SELECT q.id FROM quests q JOIN quest_dependencies d ON q.id = d.quest_id
-         WHERE d.prerequisite_id = ? AND q.deleted_at IS NULL",
-    )
-    .bind(id)
-    .fetch_all(&store.index_pool)
-    .await?;
+    let mut relation_neighbours: Vec<i64> = Vec::new();
+    for deleted_id in std::iter::once(&id).chain(cascade_ids.iter()) {
+        let neighbours: Vec<i64> = sqlx::query_scalar(
+            "SELECT q.id FROM quests q
+             JOIN quest_dependencies d
+               ON q.id = d.quest_id OR q.id = d.prerequisite_id
+             WHERE (d.quest_id = ? OR d.prerequisite_id = ?)
+               AND q.id != ? AND q.deleted_at IS NULL",
+        )
+        .bind(deleted_id)
+        .bind(deleted_id)
+        .bind(deleted_id)
+        .fetch_all(&store.index_pool)
+        .await?;
+        for neighbour in neighbours {
+            if !relation_neighbours.contains(&neighbour) {
+                relation_neighbours.push(neighbour);
+            }
+        }
+    }
 
     // 본인 quest_id slug (deleted 표시할 때 frontmatter 갱신용)
     let self_quest = sql::fetch_by_id(&store.index_pool, id).await?;
@@ -597,9 +611,9 @@ pub async fn delete_quest(store: &Store, id: i64, cascade_ids: &[i64]) -> AppRes
             write_quest_file(store, &q, false).await?;
         }
     }
-    // 본인 / 자식들을 prereq 으로 가진 quest 들의 auto 블록 갱신.
-    for did in dependents {
-        if let Ok(q) = sql::fetch_by_id(&store.index_pool, did).await {
+    // 삭제 대상과 prerequisite 관계로 연결된 quest 들의 auto 블록 갱신.
+    for related_id in relation_neighbours {
+        if let Ok(q) = sql::fetch_by_id(&store.index_pool, related_id).await {
             write_quest_file(store, &q, false).await?;
         }
     }
@@ -620,11 +634,30 @@ pub async fn restore_quest(store: &Store, id: i64) -> AppResult<QuestRow> {
 
     let quest = sql::restore(&store.index_pool, id).await?;
     write_quest_file(store, &quest, false).await?;
-    // 부모 / dependent 영향 — restore 가 alive 상태로 되돌리므로 부모의 sub 목록에 다시 포함됨.
+    // 부모 영향 — restore 가 alive 상태로 되돌리므로 부모의 sub 목록에 다시 포함됨.
     if let Some(pid) = parent_id_of(&store.index_pool, id).await?
         && let Ok(p) = sql::fetch_by_id(&store.index_pool, pid).await
     {
         write_quest_file(store, &p, false).await?;
+    }
+    // prerequisite 관계 양쪽 영향 — 이 퀘스트가 다시 Prerequisites / Successors
+    // 목록에 나타나므로 연결된 alive quest 파일을 모두 갱신.
+    let relation_neighbours: Vec<i64> = sqlx::query_scalar(
+        "SELECT DISTINCT q.id FROM quests q
+         JOIN quest_dependencies d
+           ON q.id = d.quest_id OR q.id = d.prerequisite_id
+         WHERE (d.quest_id = ? OR d.prerequisite_id = ?)
+           AND q.id != ? AND q.deleted_at IS NULL",
+    )
+    .bind(id)
+    .bind(id)
+    .bind(id)
+    .fetch_all(&store.index_pool)
+    .await?;
+    for related_id in relation_neighbours {
+        if let Ok(q) = sql::fetch_by_id(&store.index_pool, related_id).await {
+            write_quest_file(store, &q, false).await?;
+        }
     }
     after_mutation(store).await;
     Ok(quest)
@@ -635,19 +668,22 @@ pub async fn add_prerequisite(
     id: i64,
     body: AddPrerequisiteRequest,
 ) -> AppResult<()> {
+    let prereq_id = body.prerequisite_id;
     let _ = journal::append(
         &store.journal_pool,
         "add_prerequisite",
-        &json!({ "id": id, "prerequisite_id": body.prerequisite_id }),
+        &json!({ "id": id, "prerequisite_id": prereq_id }),
         None::<&serde_json::Value>,
     )
     .await
     .map_err(crate::error::AppError::Internal)?;
 
     sql::add_prerequisite(&store.index_pool, id, body).await?;
-    // 본인 파일만 갱신 (frontmatter prerequisites 배열 추가).
+    // 본인 prerequisites 와 선행 퀘스트의 successors 를 함께 갱신.
     let quest = sql::fetch_by_id(&store.index_pool, id).await?;
     write_quest_file(store, &quest, false).await?;
+    let prereq = sql::fetch_by_id(&store.index_pool, prereq_id).await?;
+    write_quest_file(store, &prereq, false).await?;
     after_mutation(store).await;
     Ok(())
 }
@@ -665,6 +701,9 @@ pub async fn remove_prerequisite(store: &Store, id: i64, prereq_id: i64) -> AppR
     sql::remove_prerequisite(&store.index_pool, id, prereq_id).await?;
     if let Ok(q) = sql::fetch_by_id(&store.index_pool, id).await {
         write_quest_file(store, &q, false).await?;
+    }
+    if let Ok(prereq) = sql::fetch_by_id(&store.index_pool, prereq_id).await {
+        write_quest_file(store, &prereq, false).await?;
     }
     after_mutation(store).await;
     Ok(())
@@ -817,14 +856,14 @@ async fn fetch_relations(pool: &SqlitePool, id: i64) -> AppResult<QuestRelations
     // parent
     let parent = if let Some(pid) = parent_id_of(pool, id).await? {
         let p = sql::fetch_by_id(pool, pid).await?;
-        Some(QuestRef::new(p.quest_id, p.title))
+        Some(QuestRef::new(p.quest_id))
     } else {
         None
     };
 
     // sub-quests (alive children whose parent_quest_id == id)
-    let subs: Vec<(String, String)> = sqlx::query_as::<_, (String, String)>(
-        "SELECT qt.prefix || '-' || printf('%03d', q.number), q.title
+    let subs: Vec<String> = sqlx::query_scalar(
+        "SELECT qt.prefix || '-' || printf('%03d', q.number)
          FROM quests q JOIN quest_types qt ON q.quest_type_id = qt.id
          WHERE q.parent_quest_id = ? AND q.deleted_at IS NULL
          ORDER BY q.id",
@@ -834,8 +873,8 @@ async fn fetch_relations(pool: &SqlitePool, id: i64) -> AppResult<QuestRelations
     .await?;
 
     // prerequisites
-    let prereqs: Vec<(String, String)> = sqlx::query_as::<_, (String, String)>(
-        "SELECT qt.prefix || '-' || printf('%03d', q.number), q.title
+    let prereqs: Vec<String> = sqlx::query_scalar(
+        "SELECT qt.prefix || '-' || printf('%03d', q.number)
          FROM quests q JOIN quest_types qt ON q.quest_type_id = qt.id
          JOIN quest_dependencies d ON q.id = d.prerequisite_id
          WHERE d.quest_id = ? AND q.deleted_at IS NULL
@@ -845,16 +884,23 @@ async fn fetch_relations(pool: &SqlitePool, id: i64) -> AppResult<QuestRelations
     .fetch_all(pool)
     .await?;
 
+    // successors (alive quests that have id as a prerequisite)
+    let successors: Vec<String> = sqlx::query_scalar(
+        "SELECT qt.prefix || '-' || printf('%03d', q.number)
+         FROM quests q JOIN quest_types qt ON q.quest_type_id = qt.id
+         JOIN quest_dependencies d ON q.id = d.quest_id
+         WHERE d.prerequisite_id = ? AND q.deleted_at IS NULL
+         ORDER BY q.id",
+    )
+    .bind(id)
+    .fetch_all(pool)
+    .await?;
+
     Ok(QuestRelations {
         parent,
-        sub_quests: subs
-            .into_iter()
-            .map(|(id, t)| QuestRef::new(id, t))
-            .collect(),
-        prerequisites: prereqs
-            .into_iter()
-            .map(|(id, t)| QuestRef::new(id, t))
-            .collect(),
+        sub_quests: subs.into_iter().map(QuestRef::new).collect(),
+        prerequisites: prereqs.into_iter().map(QuestRef::new).collect(),
+        successors: successors.into_iter().map(QuestRef::new).collect(),
     })
 }
 
@@ -972,7 +1018,10 @@ mod tests {
         // 부모 파일은 sub-quest 목록 갱신됨
         let parent_content = std::fs::read_to_string(dir.join(".guild/quests/DEV-001.md")).unwrap();
         assert!(parent_content.contains("[DEV-002](DEV-002.md)"));
-        assert!(parent_content.contains("child"));
+        assert!(
+            !parent_content.contains("child"),
+            "auto-block 에 관계 quest 제목을 중복하지 않아야 함"
+        );
 
         // journal: 2 ops
         let count = journal::count(&store.journal_pool).await.unwrap();
@@ -1398,10 +1447,15 @@ mod tests {
         let q1_content = std::fs::read_to_string(dir.join(".guild/quests/DEV-001.md")).unwrap();
         assert!(q1_content.contains("prerequisites = [\"DEV-002\"]"));
         assert!(q1_content.contains("[DEV-002](DEV-002.md)"));
+        let q2_content = std::fs::read_to_string(dir.join(".guild/quests/DEV-002.md")).unwrap();
+        assert!(q2_content.contains("## Successors\n- [DEV-001](DEV-001.md)"));
 
         remove_prerequisite(&store, q1.id, q2.id).await.unwrap();
         let q1_after = std::fs::read_to_string(dir.join(".guild/quests/DEV-001.md")).unwrap();
         assert!(q1_after.contains("prerequisites = []"));
+        let q2_after = std::fs::read_to_string(dir.join(".guild/quests/DEV-002.md")).unwrap();
+        assert!(q2_after.contains("## Successors\n- (없음)"));
+        assert!(!q2_after.contains("[DEV-001](DEV-001.md)"));
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1580,8 +1634,11 @@ mod tests {
         );
         assert!(!parent_content.contains("DEV-002"), "옛 slug 사라져야");
 
-        // prereq 파일의 (dependent 표기는 auto-block 에 없을 수도 — render 확인).
-        // 본 테스트는 parent 만 핵심으로 검증.
+        // prereq 파일의 successor 목록도 새 slug 로 갱신.
+        let prereq_content =
+            std::fs::read_to_string(dir.join(".guild/quests/DEV-003.md")).unwrap();
+        assert!(prereq_content.contains("## Successors\n- [BUG-001](BUG-001.md)"));
+        assert!(!prereq_content.contains("DEV-002"), "옛 slug 사라져야");
 
         let _ = std::fs::remove_dir_all(&dir);
     }
