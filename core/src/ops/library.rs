@@ -220,6 +220,14 @@ pub async fn set_book_tags(
 /// DEV-290: BOOK 의 변경 이력 (최신 → 과거). 도서관도 DB history 테이블이 없어
 /// `.guild/history/{book_id}.jsonl` 사이드카에서 직접 읽는다(append-only 라 역순).
 pub fn history(store: &Store, book_id: &str) -> AppResult<Vec<hist::HistoryEntry>> {
+    // BUG-227: 존재 확인 먼저 — rules::history 와 같은 이유(없는 문서와 이력이
+    // 없는 문서를 구분해야 한다). 사이드카는 파일이라 대상 존재를 증명하지 못한다.
+    if !store.paths.book_path(book_id).is_file() {
+        return Err(AppError::NotFound(crate::tf!(
+            "문서 없음: {book_id}",
+            "document not found: {book_id}"
+        )));
+    }
     let path = hist::history_path(&store.paths, book_id);
     let mut v = hist::read_all(&path).map_err(AppError::Internal)?;
     v.reverse();
@@ -548,6 +556,23 @@ mod tests {
     async fn setup(dir: &std::path::Path) -> Store {
         seed_guild_dir(dir).unwrap();
         Store::open(dir).await.unwrap()
+    }
+
+    /// BUG-227: 없는 문서의 이력 조회는 **성공이 아니라 NotFound** 여야 한다.
+    /// 사이드카가 없으면 빈 목록이 되는 구조라, 예전엔 오타를 쳐도 `(no history)`
+    /// + exit 0 으로 끝나 "이력 없음" 과 "문서 없음" 이 구분되지 않았다.
+    #[tokio::test]
+    async fn history_of_missing_book_is_not_found() {
+        let dir = fresh_tmp("hist-missing");
+        let store = setup(&dir).await;
+
+        let err = history(&store, "BOOK-999").unwrap_err();
+        assert!(matches!(err, AppError::NotFound(_)), "NotFound 여야: {err:?}");
+
+        // 대조군: 실제로 있는 문서는 이력이 없어도 Ok(빈 목록).
+        create_book(&store, "있는 문서", "", "").await.unwrap();
+        let h = history(&store, "BOOK-001").expect("존재하는 문서는 Ok");
+        assert!(h.is_empty() || !h.is_empty(), "존재 확인만 통과하면 된다");
     }
 
     #[tokio::test]

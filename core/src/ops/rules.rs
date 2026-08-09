@@ -26,6 +26,19 @@ pub fn get_rule(store: &Store, slug: &str) -> AppResult<Option<String>> {
 /// DEV-290: 규칙의 변경 이력 (최신 → 과거). 규칙은 DB history 테이블이 없어
 /// `.guild/history/{slug}.jsonl` 사이드카에서 직접 읽는다(append-only 라 역순).
 pub fn history(store: &Store, slug: &str) -> AppResult<Vec<hist::HistoryEntry>> {
+    // BUG-227: 존재 확인이 먼저다. 사이드카가 없으면 빈 목록이 되므로, 예전에는
+    // **오타를 쳐도 `(no history)` + 성공(exit 0)** 으로 끝났다 — "이력이 없는
+    // 문서" 와 "없는 문서" 가 구분되지 않아 스크립트가 조용히 잘못된 결론을
+    // 낸다. quest show 처럼 없는 대상은 NotFound 로 돌려준다.
+    if repo::read_rule_entry(&store.paths, slug)
+        .map_err(AppError::Internal)?
+        .is_none()
+    {
+        return Err(AppError::NotFound(crate::tf!(
+            "규칙 없음: {slug}",
+            "rule not found: {slug}"
+        )));
+    }
     let path = hist::history_path(&store.paths, slug);
     let mut v = hist::read_all(&path).map_err(AppError::Internal)?;
     v.reverse();
@@ -145,4 +158,41 @@ pub async fn set_rules(store: &Store, content: String) -> AppResult<()> {
     .await
     .map_err(AppError::Internal)?;
     repo::write(&store.paths, &content).map_err(AppError::Internal)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::repo::seed_guild_dir;
+
+    async fn setup(label: &str) -> (std::path::PathBuf, Store) {
+        let ns = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("og-ruleops-{label}-{ns}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        seed_guild_dir(&dir).unwrap();
+        let store = Store::open(&dir).await.unwrap();
+        (dir, store)
+    }
+
+    /// BUG-227: 없는 규칙의 이력 조회는 **성공이 아니라 NotFound**.
+    ///
+    /// 이력은 사이드카 파일을 읽는 구조라 파일이 없으면 빈 목록이 된다. 그래서
+    /// 예전엔 오타를 쳐도 `(no history)` + exit 0 으로 끝나, "이력이 없는 규칙"
+    /// 과 "없는 규칙" 이 구분되지 않았다(스크립트가 조용히 잘못된 결론을 낸다).
+    #[tokio::test]
+    async fn history_of_missing_rule_is_not_found() {
+        let (_dir, store) = setup("hist-missing").await;
+
+        let err = history(&store, "존재하지-않는-규칙").unwrap_err();
+        assert!(matches!(err, AppError::NotFound(_)), "NotFound 여야: {err:?}");
+
+        // 대조군: 실제로 있는 규칙은 이력이 없어도 Ok.
+        set_rule(&store, "코딩-규칙", "# 코딩 규칙\n".into())
+            .await
+            .unwrap();
+        history(&store, "코딩-규칙").expect("존재하는 규칙은 Ok");
+    }
 }
