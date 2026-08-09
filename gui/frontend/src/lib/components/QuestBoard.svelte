@@ -4475,7 +4475,12 @@
 		display: flex;
 		align-items: center;
 		gap: 4px;
-		pointer-events: auto;
+		/* BUG-226: 이 컨테이너는 클릭을 **통과시킨다**. BUG-193 으로 left 가
+		   생기면서 툴바가 보드 전체 폭을 덮는 띠가 됐는데, 여기서 클릭을 받으면
+		   버튼이 없는 빈 구간(대부분)에서도 노드를 고를 수 없다 — 사용자에겐
+		   "아무것도 없는데 클릭이 안 먹는" 것으로 보인다. 실제 컨트롤에만
+		   pointer-events 를 되살린다(아래 `.toolbar > *`). */
+		pointer-events: none;
 		/* BUG-193: 좁은 화면에서 툴바가 한 줄로 뻗어 화면 왼쪽 밖으로 나갔다
 		   (오른쪽 고정이라 넘치는 쪽이 왼쪽). 왼쪽 경계를 주고 줄바꿈을 허용해
 		   넘치는 버튼이 아랫줄로 내려가게 한다. */
@@ -4483,6 +4488,10 @@
 		flex-wrap: wrap;
 		justify-content: flex-end;
 		row-gap: 4px;
+	}
+	/* BUG-226: 버튼·셀렉트 등 실제 컨트롤만 클릭을 받는다. */
+	.toolbar > * {
+		pointer-events: auto;
 	}
 	/* New Quest 가 있으면 도구바를 그 아래로 내림 — 새 퀘스트 버튼 높이 (~32px) + 여백. */
 	.toolbar.has-newquest {
