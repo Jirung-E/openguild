@@ -178,16 +178,10 @@ enum Command {
         #[command(subcommand)]
         sub: TagDefCmd,
     },
-    #[command(about = tf!("번들 문서를 stdout 으로 출력 — 빌드에 embed 되어 파일 경로/읽기 권한 불필요 (agent 친화). 이름 미지정 시 문서 목록, 이름만 주면 목차(제목만), 전체는 --full, 특정 절은 --section", "Print bundled docs to stdout — embedded at build time, no file paths/permissions needed (agent friendly). No name: doc list. Name only: table of contents (headings). Full body: --full. One section: --section"))]
+    #[command(about = tf!("번들 문서를 stdout 으로 출력 — 빌드에 embed 되어 파일 경로/읽기 권한 불필요 (agent 친화). `docs list` 목록, `docs show <name>` 목차, 전체는 --full, 특정 절은 --section", "Print bundled docs to stdout — embedded at build time, no file paths/permissions needed (agent friendly). `docs list` for the list, `docs show <name>` for the TOC, --full for the body, --section for one section"))]
     Docs {
-        #[arg(help = tf!("usage | readme | changelog", "usage | readme | changelog"))]
-        name: Option<String>,
-        // DEV-274: 기본은 목차만 — 전체를 늘 뱉으면 사람도 스크롤, agent 도
-        // 토큰 낭비. 전체/섹션은 명시 옵션으로 분리.
-        #[arg(long, conflicts_with = "section", help = tf!("문서 전체 본문 출력 (기본은 목차만).", "Print the full document body (default is table of contents only)."))]
-        full: bool,
-        #[arg(long, value_name = "HEADING", help = tf!("특정 절만 출력 — 제목(대소문자·공백 무시 부분일치) 또는 목차 번호. 하위 절 포함.", "Print one section only — by heading (case/space-insensitive substring) or its TOC number. Includes sub-sections."))]
-        section: Option<String>,
+        #[command(subcommand)]
+        sub: DocsCmd,
     },
     #[command(about = tf!("CLI 출력 언어 — GUI 와 같은 위치(~/.openguild/locale.json)에 저장, 이후 모든 실행이 따름. 인자 없으면 현재 값 출력", "CLI output language — saved to ~/.openguild/locale.json (shared with GUI), applied to all runs. Prints current value if no arg"))]
     Locale {
@@ -427,10 +421,17 @@ enum QuestCmd {
     #[command(about = tf!("퀘스트 상세 (슬러그로 조회).", "Quest detail (lookup by slug)."))]
     Show {
         slug: String,
-        #[arg(long, value_name = "FIELD",
-              help = tf!("단일 필드만 출력 (script / pipe 친화). 사용 가능: id / title / status / status_slug / urgency / description / type / parent / created_at / updated_at. 미지정 시 기본 멀티라인 형식.",
-                         "Print a single field only (script/pipe friendly). Available: id / title / status / status_slug / urgency / description / type / parent / created_at / updated_at. Defaults to multi-line format if omitted."))]
-        field: Option<String>,
+        // DEV-347: 여러 개를 한 번에 받는다 (`--field title status parent`).
+        // 하나만 주면 값만 그대로 출력(기존 동작 — 파이프 친화), 여러 개면
+        // `field: value` 형태로 준다.
+        #[arg(long, value_name = "FIELD", num_args = 1..,
+              help = tf!("지정한 필드만 출력 (script / pipe 친화, 여러 개 가능). 사용 가능: id / title / status / status_ko / status_slug / urgency / description / type / parent / sub_quests / prerequisites / successors / created_at / updated_at. 하나면 값만, 여러 개면 `필드: 값`.",
+                         "Print only the given fields (script/pipe friendly, repeatable). Available: id / title / status / status_ko / status_slug / urgency / description / type / parent / sub_quests / prerequisites / successors / created_at / updated_at. One field prints the bare value; several print `field: value`."))]
+        field: Vec<String>,
+        // DEV-347: 기본 출력은 요약. 예전의 전부 쏟아내던 형식은 여기로.
+        #[arg(long, help = tf!("본문·관계·태그·기한까지 전체 출력 (예전 기본 형식).",
+                               "Print everything — body, relations, tags, due dates (the old default)."))]
+        full: bool,
     },
     #[command(about = tf!("quest 의 변경 이력 — 최신 → 과거 순.", "Quest change history — newest to oldest."))]
     History { slug: String },
@@ -862,6 +863,27 @@ fn read_content(path: Option<&std::path::Path>) -> Result<String> {
 }
 
 // ─────────────────────────── Rules 서브명령 (DEV-016 multi-file) ───────────────────────────
+
+/// DEV-348: `docs` 하위 명령 — 다른 명령(`quest`, `library`, `rule`, `campaign`)
+/// 이 전부 `명사 동사` 꼴인데 docs 만 위치 인자(`docs usage`)라 형태가 어긋났다.
+/// 하위 명령을 기대한 사용자는 `docs list` 를 쳤다가 실패를 본다(admin 지적).
+#[derive(Subcommand, Clone)]
+enum DocsCmd {
+    #[command(about = tf!("번들 문서 목록.", "List bundled docs."))]
+    List,
+    #[command(about = tf!("문서 출력 — 기본은 목차, 전체는 --full, 특정 절은 --section.",
+                          "Print a doc — table of contents by default, --full for the body, --section for one section."))]
+    Show {
+        #[arg(help = tf!("usage | readme | changelog", "usage | readme | changelog"))]
+        name: String,
+        // DEV-274: 기본은 목차만 — 전체를 늘 뱉으면 사람도 스크롤, agent 도
+        // 토큰 낭비. 전체/섹션은 명시 옵션으로 분리.
+        #[arg(long, conflicts_with = "section", help = tf!("문서 전체 본문 출력 (기본은 목차만).", "Print the full document body (default is table of contents only)."))]
+        full: bool,
+        #[arg(long, value_name = "HEADING", help = tf!("특정 절만 출력 — 제목(대소문자·공백 무시 부분일치) 또는 목차 번호. 하위 절 포함.", "Print one section only — by heading (case/space-insensitive substring) or its TOC number. Includes sub-sections."))]
+        section: Option<String>,
+    },
+}
 
 #[derive(Subcommand)]
 enum RulesCmd {
@@ -4974,6 +4996,47 @@ fn print_quest_tree(quests: &[Quest]) {
     }
 }
 
+/// DEV-347: `quest show` 의 기본 출력 — 요약.
+///
+/// 예전 기본은 본문·관계·태그·기한까지 전부 쏟아내 목록에서 하나 찍어볼 때
+/// 읽기 어려웠다(admin 지적). 여기서는 **id / title / status / urgency** 와
+/// 관계 요약 한 줄만 준다. 관계 요약을 남긴 이유: 관계가 있는지조차 안 보이면
+/// 결국 `--full` 을 다시 치게 되기 때문. 전체는 `--full`.
+fn print_quest_summary(d: &QuestDetail, json: bool) {
+    if json {
+        println!("{}", json_str(d));
+        return;
+    }
+    let q = &d.quest;
+    println!("{}  {}", colorize(&q.quest_id, &q.type_color), q.title);
+    println!(
+        "  status   : {} ({})",
+        colorize(&q.status_name_en, &q.status_color),
+        q.status_name_ko
+    );
+    println!(
+        "  urgency  : {}",
+        colorize(&q.urgency.to_string(), urgency_color(q.urgency))
+    );
+    // 관계 요약 — 있는 것만. 부모는 slug, 나머지는 개수.
+    let mut rel: Vec<String> = Vec::new();
+    if let Some(p) = &d.parent {
+        rel.push(format!("parent {}", colorize(&p.quest_id, &p.type_color)));
+    }
+    if !d.sub_quests.is_empty() {
+        rel.push(format!("sub {}", d.sub_quests.len()));
+    }
+    if !d.prerequisites.is_empty() {
+        rel.push(format!("prereq {}", d.prerequisites.len()));
+    }
+    if !d.successors.is_empty() {
+        rel.push(format!("succ {}", d.successors.len()));
+    }
+    if !rel.is_empty() {
+        println!("  relations: {}", rel.join("  ·  "));
+    }
+}
+
 fn print_quest_detail(d: &QuestDetail, json: bool) {
     if json {
         println!("{}", json_str(d));
@@ -5467,8 +5530,15 @@ fn run() -> Result<()> {
         return init_guild(name.clone(), cli.json);
     }
     // docs 도 길드/백엔드 무관 (embed 문서 출력) — 길드 밖에서도 동작해야 함.
-    if let Command::Docs { name, full, section } = &cli.command {
-        return handle_docs(cli.json, name.clone(), *full, section.clone());
+    if let Command::Docs { sub } = &cli.command {
+        return match sub.clone() {
+            DocsCmd::List => handle_docs(cli.json, None, false, None),
+            DocsCmd::Show {
+                name,
+                full,
+                section,
+            } => handle_docs(cli.json, Some(name), full, section),
+        };
     }
     // locale 도 길드/백엔드 무관 — 어디서든 언어 조회/변경 가능해야 함.
     if let Command::Locale { lang } = &cli.command {
@@ -5997,8 +6067,8 @@ fn handle_docs(json: bool, name: Option<String>, full: bool, section: Option<Str
             println!(
                 "{}",
                 tf!(
-                    "\n사용: openguild docs <name>         # 목차\n      openguild docs <name> --full  # 전체\n      openguild docs <name> --section <제목>",
-                    "\nusage: openguild docs <name>         # table of contents\n       openguild docs <name> --full  # full body\n       openguild docs <name> --section <heading>"
+                    "\n사용: openguild docs show <name>         # 목차\n      openguild docs show <name> --full  # 전체\n      openguild docs show <name> --section <제목>",
+                    "\nusage: openguild docs show <name>         # table of contents\n       openguild docs show <name> --full  # full body\n       openguild docs show <name> --section <heading>"
                 )
             );
         }
@@ -6052,8 +6122,8 @@ fn handle_docs(json: bool, name: Option<String>, full: bool, section: Option<Str
         println!(
             "{}",
             tf!(
-                "\n특정 절: openguild docs {n} --section <번호|제목>  ·  전체: --full",
-                "\nsection: openguild docs {n} --section <number|heading>  ·  full: --full"
+                "\n특정 절: openguild docs show {n} --section <번호|제목>  ·  전체: --full",
+                "\nsection: openguild docs show {n} --section <number|heading>  ·  full: --full"
             )
         );
     }
@@ -6075,8 +6145,8 @@ fn docs_print_section(json: bool, doc_name: &str, body: &str, query: &str) -> Re
     let idx = if let Ok(num) = q.parse::<usize>() {
         if num == 0 || num > headings.len() {
             bail!(tf!(
-                "절 번호 {num} 범위 밖 (1..={}) — `openguild docs {doc_name}` 로 목차 확인",
-                "section number {num} out of range (1..={}) — run `openguild docs {doc_name}` for the TOC",
+                "절 번호 {num} 범위 밖 (1..={}) — `openguild docs show {doc_name}` 로 목차 확인",
+                "section number {num} out of range (1..={}) — run `openguild docs show {doc_name}` for the TOC",
                 headings.len()
             ));
         }
@@ -6092,8 +6162,8 @@ fn docs_print_section(json: bool, doc_name: &str, body: &str, query: &str) -> Re
             .collect();
         match matches.as_slice() {
             [] => bail!(tf!(
-                "'{query}' 와 일치하는 절 없음 — `openguild docs {doc_name}` 로 목차 확인",
-                "no section matching '{query}' — run `openguild docs {doc_name}` for the TOC"
+                "'{query}' 와 일치하는 절 없음 — `openguild docs show {doc_name}` 로 목차 확인",
+                "no section matching '{query}' — run `openguild docs show {doc_name}` for the TOC"
             )),
             [one] => *one,
             many => {
@@ -7468,18 +7538,52 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
                 print_quest_list(&quests, json);
             }
         }
-        QuestCmd::Show { slug, field } => {
+        QuestCmd::Show { slug, field, full } => {
             let d = c.quest_by_slug(&slug)?;
-            if let Some(name) = field {
-                let v = quest_field_value(&d, &name)?;
-                if json {
-                    println!("{}", serde_json::to_string(&v).unwrap());
-                } else {
-                    // raw — multi-line (description 등) 그대로.
-                    println!("{v}");
+            match field.len() {
+                0 => {
+                    // DEV-347: 기본은 요약, 전체는 --full.
+                    if full {
+                        print_quest_detail(&d, json);
+                    } else {
+                        print_quest_summary(&d, json);
+                    }
                 }
-            } else {
-                print_quest_detail(&d, json);
+                1 => {
+                    let v = quest_field_value(&d, &field[0])?;
+                    if json {
+                        println!("{}", serde_json::to_string(&v).unwrap());
+                    } else {
+                        // raw — multi-line (description 등) 그대로.
+                        println!("{v}");
+                    }
+                }
+                _ => {
+                    // DEV-347: 여러 필드 — JSON 은 객체, 텍스트는 `필드: 값`.
+                    // 값이 여러 줄(description, 관계 목록)이면 라벨 아래로 들여쓴다.
+                    let mut pairs: Vec<(String, String)> = Vec::new();
+                    for name in &field {
+                        pairs.push((name.clone(), quest_field_value(&d, name)?));
+                    }
+                    if json {
+                        let map: serde_json::Map<String, serde_json::Value> = pairs
+                            .into_iter()
+                            .map(|(k, v)| (k, serde_json::Value::String(v)))
+                            .collect();
+                        json_println!(serde_json::Value::Object(map));
+                    } else {
+                        for (k, v) in pairs {
+                            if v.contains('\n') {
+                                println!("{k}:");
+                                for line in v.lines() {
+                                    println!("  {line}");
+                                }
+                            } else {
+                                println!("{k}: {v}");
+                            }
+                        }
+                    }
+                }
             }
         }
         QuestCmd::History { slug } => {
@@ -8099,6 +8203,50 @@ mod tests {
         )
         .unwrap();
         store.borrow().clone()
+    }
+
+    // ── DEV-347: quest show 필드 선택 ──
+
+    fn qd(title: &str) -> QuestDetail {
+        let q = serde_json::from_value(serde_json::json!({
+            "id": 1, "quest_id": "DEV-001", "quest_type_id": 1, "type_prefix": "DEV",
+            "type_color": "#000", "number": 1, "title": title, "description": "본문
+둘째 줄",
+            "status_id": 1, "status_slug": "open", "status_name_en": "Open",
+            "status_name_ko": "게시됨", "status_color": "#000", "urgency": 2,
+            "parent_quest_id": null, "created_at": "t", "updated_at": "t"
+        }))
+        .unwrap();
+        QuestDetail {
+            quest: q,
+            parent: None,
+            sub_quests: vec![],
+            prerequisites: vec![],
+            successors: vec![],
+            tags: vec![],
+            attachments: vec![],
+            position: None,
+        }
+    }
+
+    #[test]
+    fn quest_field_value_covers_documented_fields() {
+        // --help 에 적어둔 이름은 전부 실제로 동작해야 한다. 예전엔 관계 필드가
+        // 구현돼 있는데 help 에 없었다(admin 이 "parent 말고 없냐" 고 물은 이유).
+        let d = qd("제목");
+        for f in [
+            "id", "title", "status", "status_ko", "status_slug", "urgency",
+            "description", "type", "parent", "sub_quests", "prerequisites",
+            "successors", "created_at", "updated_at",
+        ] {
+            quest_field_value(&d, f).unwrap_or_else(|e| panic!("{f} 실패: {e}"));
+        }
+    }
+
+    #[test]
+    fn quest_field_value_rejects_unknown() {
+        let d = qd("제목");
+        assert!(quest_field_value(&d, "없는필드").is_err());
     }
 
     #[test]
@@ -8985,42 +9133,61 @@ mod tests {
         }
     }
 
-    /// admin 요청: docs 명령 — 이름 optional, 목록/본문 파싱.
-    /// DEV-274: --full / --section 추가 + 상호배타.
+    /// admin 요청: docs 명령 파싱.
+    /// DEV-274: --full / --section + 상호배타.
+    /// DEV-348: 위치 인자(`docs usage`) → 하위 명령(`docs list` / `docs show usage`).
     #[test]
     fn cli_parse_docs() {
-        let bare = Cli::try_parse_from(["openguild", "docs"]).unwrap();
-        assert!(matches!(bare.command, Command::Docs { name: None, .. }));
-        let named = Cli::try_parse_from(["openguild", "docs", "usage"]).unwrap();
-        match named.command {
-            Command::Docs { name, full, section } => {
-                assert_eq!(name.as_deref(), Some("usage"));
+        // 목록.
+        match Cli::try_parse_from(["openguild", "docs", "list"]).unwrap().command {
+            Command::Docs { sub: DocsCmd::List } => {}
+            _ => panic!("expected docs list"),
+        }
+        // 이름만 = 목차.
+        match Cli::try_parse_from(["openguild", "docs", "show", "usage"])
+            .unwrap()
+            .command
+        {
+            Command::Docs {
+                sub: DocsCmd::Show { name, full, section },
+            } => {
+                assert_eq!(name, "usage");
                 assert!(!full);
                 assert!(section.is_none());
             }
-            _ => panic!("expected docs"),
+            _ => panic!("expected docs show"),
         }
-        // 알 수 없는 이름은 파싱은 통과(런타임 에러 담당) — free string 이므로.
-        assert!(Cli::try_parse_from(["openguild", "docs", "nope"]).is_ok());
-        // DEV-274: --full / --section 파싱.
-        match Cli::try_parse_from(["openguild", "docs", "usage", "--full"])
+        // 알 수 없는 이름도 파싱은 통과(런타임 에러 담당) — free string.
+        assert!(Cli::try_parse_from(["openguild", "docs", "show", "nope"]).is_ok());
+        // --full / --section.
+        match Cli::try_parse_from(["openguild", "docs", "show", "usage", "--full"])
             .unwrap()
             .command
         {
-            Command::Docs { full, .. } => assert!(full),
-            _ => panic!("expected docs"),
+            Command::Docs {
+                sub: DocsCmd::Show { full, .. },
+            } => assert!(full),
+            _ => panic!("expected docs show"),
         }
-        match Cli::try_parse_from(["openguild", "docs", "usage", "--section", "Setup"])
+        match Cli::try_parse_from(["openguild", "docs", "show", "usage", "--section", "Setup"])
             .unwrap()
             .command
         {
-            Command::Docs { section, .. } => assert_eq!(section.as_deref(), Some("Setup")),
-            _ => panic!("expected docs"),
+            Command::Docs {
+                sub: DocsCmd::Show { section, .. },
+            } => assert_eq!(section.as_deref(), Some("Setup")),
+            _ => panic!("expected docs show"),
         }
-        // --full 과 --section 은 상호배타.
+        // 상호배타 유지.
         assert!(
-            Cli::try_parse_from(["openguild", "docs", "usage", "--full", "--section", "x"]).is_err()
+            Cli::try_parse_from([
+                "openguild", "docs", "show", "usage", "--full", "--section", "x"
+            ])
+            .is_err()
         );
+        // DEV-348: 하위 명령 없는 옛 형태는 더 이상 받지 않는다(형태 통일).
+        assert!(Cli::try_parse_from(["openguild", "docs", "usage"]).is_err());
+        assert!(Cli::try_parse_from(["openguild", "docs"]).is_err());
     }
 
     /// DEV-274: doc_headings — 코드펜스 안의 `#` 제외, ATX 레벨/텍스트/라인 추출.
@@ -9936,7 +10103,7 @@ mod tests {
         assert_eq!(find_quest_id("UTF-8 그리고 DEV-001"), Some("DEV-001"));
     }
 
-    /// DEV-263: `openguild docs <name>` 도 help 와 같은 leak 경로 —
+    /// DEV-263: `openguild docs show <name>` 도 help 와 같은 leak 경로 —
     /// 리포의 md 문서를 컴파일 타임 embed 해 그대로 stdout 출력하므로
     /// 문서 본문의 quest ID 도 다른 길드 에이전트에겐 오인 소지가 있다.
     /// CHANGELOG.md 는 성격상 quest ID 인용이 본문 핵심이라 이 가드에서

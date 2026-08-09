@@ -7,7 +7,9 @@ openguild quest list [--status open,in_progress] [--type DEV,BUG] [--urgency 1-2
                       [--search "keyword"] [--sort urgency,id --reverse]
                       [--table]     # aligned table for humans
                       [--json]      # machine-readable
-openguild quest show <slug> [--field title]
+openguild quest show <slug>                # summary — id/title/status/urgency + relation counts
+openguild quest show <slug> --full         # everything (body, relations, tags, due dates)
+openguild quest show <slug> --field <f>...  # only the given fields
 openguild quest new --type <PREFIX> --title "..." [--description-file <PATH>]
                      [--urgency 1-4] [--parent <slug>]
 openguild quest update <slug> [--title ...] [--description-file <PATH>] [--urgency N]
@@ -103,3 +105,17 @@ openguild quest list --status in_progress --json | jq '.[] | .id'
 # express a prerequisite
 openguild quest prereq add DEV-049 DEV-048
 ```
+
+## Fields (`--field`)
+
+`--field` takes one or more names. A single field prints the bare value
+(pipe friendly); several print `field: value` lines, and `--json` gives an
+object.
+
+```
+id  title  status  status_ko  status_slug  urgency  description  type
+parent  sub_quests  prerequisites  successors  created_at  updated_at
+```
+
+Relation fields print one slug per line — `--field sub_quests` is the way to
+script over children/prereqs/successors.
