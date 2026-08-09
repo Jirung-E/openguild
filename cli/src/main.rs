@@ -4480,6 +4480,14 @@ fn colorize(text: &str, hex: &str) -> String {
     format!("\x1b[38;2;{r};{g};{b}m{text}\x1b[0m")
 }
 
+/// 관계 라벨 색 — 요약(`quest show`)과 전체(`--full`)가 **같은 팔레트**를 써야
+/// 한다. 같은 관계가 화면마다 다른 색이면 눈이 다시 읽어야 한다. GUI
+/// QuestBoard 의 다중-선택 하이라이트 팔레트와도 일치.
+const REL_COLOR_PARENT: &str = "#7ee787";
+const REL_COLOR_SUB: &str = "#3dc9b0";
+const REL_COLOR_PREREQ: &str = "#a371f7";
+const REL_COLOR_SUCC: &str = "#f0883e";
+
 /// urgency 등급별 색 — GUI 의 URGENCY_COLOR 와 동일.
 fn urgency_color(urgency: i64) -> &'static str {
     match urgency {
@@ -5019,18 +5027,38 @@ fn print_quest_summary(d: &QuestDetail, json: bool) {
         colorize(&q.urgency.to_string(), urgency_color(q.urgency))
     );
     // 관계 요약 — 있는 것만. 부모는 slug, 나머지는 개수.
+    //
+    // 라벨 색은 `--full`(print_quest_detail)의 섹션 라벨과 **같은 팔레트**를 쓴다
+    // (parent 초록 / sub 청록 / prereq 보라 / succ 주황). 요약과 전체에서 같은
+    // 관계가 다른 색으로 보이면 눈이 다시 읽어야 한다.
     let mut rel: Vec<String> = Vec::new();
     if let Some(p) = &d.parent {
-        rel.push(format!("parent {}", colorize(&p.quest_id, &p.type_color)));
+        rel.push(format!(
+            "{} {}",
+            colorize("parent", REL_COLOR_PARENT),
+            colorize(&p.quest_id, &p.type_color)
+        ));
     }
     if !d.sub_quests.is_empty() {
-        rel.push(format!("sub {}", d.sub_quests.len()));
+        rel.push(format!(
+            "{} {}",
+            colorize("sub", REL_COLOR_SUB),
+            d.sub_quests.len()
+        ));
     }
     if !d.prerequisites.is_empty() {
-        rel.push(format!("prereq {}", d.prerequisites.len()));
+        rel.push(format!(
+            "{} {}",
+            colorize("prereq", REL_COLOR_PREREQ),
+            d.prerequisites.len()
+        ));
     }
     if !d.successors.is_empty() {
-        rel.push(format!("succ {}", d.successors.len()));
+        rel.push(format!(
+            "{} {}",
+            colorize("succ", REL_COLOR_SUCC),
+            d.successors.len()
+        ));
     }
     if !rel.is_empty() {
         println!("  relations: {}", rel.join("  ·  "));
@@ -5065,7 +5093,7 @@ fn print_quest_detail(d: &QuestDetail, json: bool) {
     if let Some(parent) = &d.parent {
         println!(
             "  {} : {} [{}] {}",
-            colorize("parent", "#7ee787"),
+            colorize("parent", REL_COLOR_PARENT),
             colorize(&parent.quest_id, &parent.type_color),
             colorize(&parent.status_name_en, &parent.status_color),
             parent.title
@@ -5074,7 +5102,7 @@ fn print_quest_detail(d: &QuestDetail, json: bool) {
         // parent_quest_id 는 있는데 detail.parent 가 None — soft-deleted 부모 등 비정상 case 대비 fallback.
         println!(
             "  {} : id={p} {}",
-            colorize("parent", "#7ee787"),
+            colorize("parent", REL_COLOR_PARENT),
             tf!("(불러올 수 없음)", "(could not be loaded)")
         );
     }
@@ -5089,7 +5117,7 @@ fn print_quest_detail(d: &QuestDetail, json: bool) {
     if !d.sub_quests.is_empty() {
         println!(
             "  {} ({}):",
-            colorize("sub-quests", "#3dc9b0"),
+            colorize("sub-quests", REL_COLOR_SUB),
             d.sub_quests.len()
         );
         for s in &d.sub_quests {
@@ -5104,7 +5132,7 @@ fn print_quest_detail(d: &QuestDetail, json: bool) {
     if !d.prerequisites.is_empty() {
         println!(
             "  {} ({}):",
-            colorize("prerequisites", "#a371f7"),
+            colorize("prerequisites", REL_COLOR_PREREQ),
             d.prerequisites.len()
         );
         for p in &d.prerequisites {
@@ -5129,7 +5157,7 @@ fn print_quest_detail(d: &QuestDetail, json: bool) {
     if !d.successors.is_empty() {
         println!(
             "  {} ({}):",
-            colorize("successors", "#f0883e"),
+            colorize("successors", REL_COLOR_SUCC),
             d.successors.len()
         );
         for s in &d.successors {
@@ -8203,6 +8231,33 @@ mod tests {
         )
         .unwrap();
         store.borrow().clone()
+    }
+
+    // ── DEV-347: 관계 라벨 색 ──
+
+    /// 요약(`quest show`)과 전체(`--full`)가 같은 팔레트를 쓰는지 — 상수를
+    /// 공유하므로 값이 갈라질 수 없고, 여기서는 그 상수가 실제로 색으로
+    /// 해석되는 hex 인지까지 확인한다(오타로 조용히 무색이 되는 걸 막는다:
+    /// colorize 는 파싱 실패 시 원문을 그대로 돌려준다).
+    #[test]
+    fn relation_label_colors_are_valid_hex() {
+        for c in [
+            REL_COLOR_PARENT,
+            REL_COLOR_SUB,
+            REL_COLOR_PREREQ,
+            REL_COLOR_SUCC,
+        ] {
+            assert!(hex_rgb(c).is_some(), "잘못된 색 상수: {c}");
+        }
+        // 네 관계가 서로 구분되어야 한다.
+        let all = [
+            REL_COLOR_PARENT,
+            REL_COLOR_SUB,
+            REL_COLOR_PREREQ,
+            REL_COLOR_SUCC,
+        ];
+        let uniq: std::collections::HashSet<_> = all.iter().collect();
+        assert_eq!(uniq.len(), all.len(), "관계 색이 겹친다");
     }
 
     // ── DEV-347: quest show 필드 선택 ──
