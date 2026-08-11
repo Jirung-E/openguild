@@ -99,7 +99,7 @@ jobs:
   # 달라지는 것(컴파일 성립 + 런타임 동작)에 집중해 test 까지만 돌린다.
   macos:
     name: cargo (macos-arm64)
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v5
 

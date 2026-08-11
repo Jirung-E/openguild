@@ -151,7 +151,7 @@ jobs:
           prerelease: false
           fail_on_unmatched_files: false
 
-  # DEV-313: macOS(Apple Silicon) — macos-15 러너가 arm64 네이티브다.
+  # DEV-313: macOS(Apple Silicon) — macos-26 러너가 arm64 네이티브다.
   # macos-14 는 2026-11-02 지원 종료 예정이라 0.5.0 릴리스 전에 전환했다.
   # Intel 맥은 대상 외(admin 결정) — universal 로 만들면 용량이 두 배가 된다.
   #
@@ -161,7 +161,7 @@ jobs:
   # 되고, 나머지 파이프라인은 그대로다.
   macos:
     name: build & release (macos-arm64)
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v5
 
