@@ -6,8 +6,8 @@ name: release
 # 동작 모드:
 #   - tag push (`v*`): 전체 파이프라인. 각 job 이 자기 플랫폼 패키지를 빌드해
 #     같은 GitHub Release 에 첨부.
-#   - workflow_dispatch (수동): 빌드만 수행, Release 생성 안 함. Artifact 로
-#     패키지 업로드 (dry-run 검증용).
+#   - workflow_dispatch (수동): Release 는 만들지 않고 패키지와 통합
+#     latest.json 미리보기를 Artifact 로 업로드 (dry-run 검증용).
 #
 # 후속 작업 (이 quest 범위 외):
 #   - 코드 사이닝 (Windows EV 인증서) — Windows SmartScreen "알 수 없는 게시자" 경고 제거.
@@ -366,25 +366,61 @@ jobs:
     name: updater manifest (latest.json)
     runs-on: ubuntu-latest
     needs: [windows, macos]
-    if: startsWith(github.ref, 'refs/tags/')
     steps:
+      - uses: actions/checkout@v5
+
       # 조각 파일을 잡 사이로 나르지 않는다 — 빌드 잡들이 이미 릴리스에 올린
       # `*.sig` 자산이 진리원이다. 실제로 배포된 파일에서 매니페스트를 만드므로
       # "artifact 는 있는데 릴리스엔 안 올라간" 어긋남이 원천적으로 없다.
-      - name: Compose latest.json from release assets
-        id: compose
+      - name: Download signatures from release assets
+        if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          set -euo pipefail
-          tag="${{ github.ref_name }}"
-          version="${tag#v}"
-          repo="${{ github.repository }}"
           mkdir -p sigs
-          gh release download "$tag" --repo "$repo" --pattern '*.sig' --dir sigs || true
-          shopt -s nullglob
-          files=(sigs/*.sig)
+          gh release download "${{ github.ref_name }}" \
+            --repo "${{ github.repository }}" \
+            --pattern '*.sig' \
+            --dir sigs || true
+
+      # workflow_dispatch 에서는 Release 자체가 없으므로 같은 실행의 빌드
+      # artifact 에서 서명을 모은다. 실제 태그 경로와 입력 출처만 다르고,
+      # 아래 compose 코드는 완전히 같아 릴리스 전에 플랫폼 병합을 검증한다.
+      - name: Download Windows updater artifacts (dry-run)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/download-artifact@v7
+        with:
+          name: openguild-windows-x64-installer
+          path: sigs
+
+      - name: Download macOS updater artifacts (dry-run)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/download-artifact@v7
+        with:
+          name: openguild-macos-arm64-packages
+          path: sigs
+
+      - name: Compose latest.json
+        id: compose
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="${{ github.repository }}"
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            tag="${{ github.ref_name }}"
+            version="${tag#v}"
+          else
+            version="$(awk -F'\"' '/^version = "/ { print $2; exit }' cli/Cargo.toml)"
+            if [[ -z "$version" ]]; then
+              echo "cli/Cargo.toml에서 version을 읽지 못했습니다." >&2
+              exit 1
+            fi
+            tag="v$version"
+            echo "dry-run — 예상 릴리스 태그: $tag"
+          fi
+
+          mapfile -d '' files < <(find sigs -type f -name '*.sig' -print0 | sort -z)
           if [ ${#files[@]} -eq 0 ]; then
             echo "::warning::서명(*.sig) 자산 없음 — latest.json 생략(자동 업데이트 비활성)."
             echo "has_manifest=false" >> "$GITHUB_OUTPUT"
@@ -418,6 +454,13 @@ jobs:
           if not platforms:
               raise SystemExit('서명은 있는데 updater 플랫폼으로 해석된 게 없음')
 
+          expected = {'windows-x86_64', 'darwin-aarch64'}
+          missing = expected - platforms.keys()
+          if missing:
+              raise SystemExit(
+                  'updater 플랫폼 누락: ' + ', '.join(sorted(missing))
+              )
+
           manifest = {
               'version': version,
               'notes': 'See the release page for details.',
@@ -432,8 +475,20 @@ jobs:
           PY
           echo "has_manifest=true" >> "$GITHUB_OUTPUT"
 
+      - name: Upload latest.json preview
+        if: >-
+          github.event_name == 'workflow_dispatch' &&
+          steps.compose.outputs.has_manifest == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: updater-manifest-preview
+          path: latest.json
+          retention-days: 7
+
       - name: Attach latest.json to release
-        if: steps.compose.outputs.has_manifest == 'true'
+        if: >-
+          startsWith(github.ref, 'refs/tags/') &&
+          steps.compose.outputs.has_manifest == 'true'
         uses: softprops/action-gh-release@v3
         with:
           files: latest.json
