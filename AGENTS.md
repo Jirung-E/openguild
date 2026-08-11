@@ -96,7 +96,7 @@ agent (Claude / 다른 LLM) 가 `Write` / `Edit` 도구로 `.guild/quests/*.md` 
   캐시 (`quest_comments` / `quest_memos`) sync** + snapshot 백업. 직접 편집 후엔
   `drift::auto_resync` 가 자동 reindex (GUI 시동 + server / cli 진입 hook —
   BUG-049). 단 즉시 일관시키려면 명시적으로 `openguild quest comment add /
-  edit / rm` 또는 `openguild quest memo set` 사용 권장. HTML 마커 (`<!-- og-comment
+  edit / remove` 또는 `openguild quest memo set` 사용 권장. HTML 마커 (`<!-- og-comment
   id=N ts=... -->`) 포맷 깨면 parser 실패.
 - 자세한 표 + 우회 절차는 [`.agents/skills/openguild-workflow/SKILL.md`](./.agents/skills/openguild-workflow/SKILL.md) 의
   "절대 금지" / "함정" 절 참조.

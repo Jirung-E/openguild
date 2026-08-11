@@ -41,7 +41,7 @@ listing/filtering until a `reindex`.
 | description | `quest update --description` / `--description-file` |
 | urgency | `quest update --urgency` |
 | parent | `quest parent` / `quest parent --detach` |
-| prerequisites | `quest prereq add` / `quest prereq rm` |
+| prerequisites | `quest prereq add` / `quest prereq remove` |
 | delete / restore | `quest delete` / `quest restore` |
 | type catalog | `type add` / `type update` / `type delete` |
 | status catalog | `status add` / `status update` / `status delete` |

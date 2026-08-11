@@ -256,7 +256,7 @@ openguild 의 첫 베타 마일스톤.
 
 #### 본문 체크리스트 (단방향 sync)
 
-- 파일이 진리원 — `campaign checklist add/check/uncheck/rm` 가 body 의 `- [ ]` 줄을 수정.
+- 파일이 진리원 — `campaign checklist add/check/uncheck/remove` 가 body 의 `- [ ]` 줄을 수정.
 - reindex 시 body 의 모든 `- [ ]` / `- [x]` 줄을 순서대로 `campaign_checklists` 테이블에 적재.
 - 본문 prose 와 자유롭게 섞을 수 있음 (heading / paragraph / list / 체크리스트 혼재 가능).
 - 진행률 = `checked / total` (Home 카드 progress bar).

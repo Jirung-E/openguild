@@ -65,7 +65,7 @@ section listing:
 openguild quest parent <slug> <parent-slug>
 openguild quest parent <slug> --detach
 openguild quest prereq add <slug> <prereq-slug>
-openguild quest prereq rm <slug> <prereq-slug>
+openguild quest prereq remove <slug> <prereq-slug>
 ```
 
 ## Due dates

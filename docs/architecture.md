@@ -204,7 +204,7 @@ openguild/
 >   update 로 fix.
 > - 2026-06-05 DEV-101 UI 크기 슬라이더 + localStorage (rem scale).
 > - 2026-06-05 DEV-068 태그 풀스택 — migration 0010 + ops::set_quest_tags +
->   CLI (`quest tag add/rm/list/set`) + HTTP `/api/quests/:id/tags` + Tauri command
+>   CLI (`quest tag add/remove/list/set`) + HTTP `/api/quests/:id/tags` + Tauri command
 >   + Quest Detail tag pill UI + Quest List tag chip 필터 (AND).
 > - 2026-06-06 DEV-074 다크 / 라이트 / 시스템 테마 — CSS variable token + store +
 >   `<html data-theme>` + 25+ component 의 hardcoded color → var() 마이그레이션.
