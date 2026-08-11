@@ -53,8 +53,9 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
 - **macOS(Apple Silicon) 지원** — 매 릴리스에 `.dmg` 가 첨부되고, 자동 업데이트도
   Windows 와 동일하게 동작한다. 코드 서명은 하지 않으므로 **첫 실행만** 우클릭 →
   열기(또는 `xattr -dr com.apple.quarantine`)가 필요하다 — 설치 안내는 README 와
-  사용 가이드에 있다. dmg 에는 GUI 만 들어 있고, Intel 맥은 대상이 아니다.
-  (DEV-312, DEV-313, DEV-314, DEV-315)
+  사용 가이드에 있다. dmg 에는 GUI 만 들어 있고, CLI·Server는 Rust/Cargo 없이
+  설치할 수 있는 Apple Silicon tar.gz를 함께 제공한다. Intel 맥은 대상이 아니다.
+  (DEV-312, DEV-313, DEV-314, DEV-315, DEV-349)
 - **최근 본 문서 목록** — 타이틀바 검색 pill 옆(웹은 메뉴바 우측)의 시계
   버튼으로 최근 방문한 퀘스트/캠페인/규칙/도서관 문서를 바로 열 수 있다.
   뒤로가기는 한 칸씩만 가므로 "아까 그 문서"로 점프하는 수단. 목록/보드/

@@ -16,6 +16,7 @@
 | Windows x64 | `openguild_{version}_x64-setup.exe` | GUI / CLI / 서버 선택 설치 + PATH 등록 옵션 |
 | Linux x64 | `.deb` / `.rpm` / `.AppImage` | GUI 만 포함 |
 | macOS (Apple Silicon) | `openguild_{version}_aarch64.dmg` | GUI 만 포함. Intel 맥은 대상 외 |
+| macOS CLI / Server | `openguild_{version}_macos_arm64_cli-server.tar.gz` | 사전 빌드된 실행 파일. Rust/Cargo 불필요 |
 
 **macOS 첫 실행 — Gatekeeper.** 코드 서명을 하지 않은 빌드라 그냥 더블클릭하면
 "개발자를 확인할 수 없기 때문에 열 수 없습니다" 로 막힙니다. 둘 중 하나로 한 번만
@@ -28,8 +29,17 @@
 xattr -dr com.apple.quarantine /Applications/openguild.app
 ```
 
-macOS 에서 CLI(`openguild`)·서버(`openguild-server`)는 dmg 에 들어 있지 않습니다 —
-필요하면 소스에서 `cargo build --release -p openguild-cli -p openguild-server`.
+macOS 에서 CLI(`openguild`)·서버(`openguild-server`)는 dmg 에 들어 있지 않습니다.
+같은 Release의 tar.gz를 내려받아 설치합니다.
+
+```bash
+tar -xzf openguild_*_macos_arm64_cli-server.tar.gz
+cd openguild_*_macos_arm64_cli-server
+sudo install -d /usr/local/bin
+sudo install -m 755 openguild openguild-server /usr/local/bin/
+openguild --version
+openguild-server --version
+```
 
 ### 길드 만들기
 
@@ -107,8 +117,10 @@ my-app/
 
 ## 4. CLI 도구
 
-GUI 와 함께 `openguild` (CLI) + `openguild-server` (HTTP 서버) 가 설치됩니다.
-설치 시 "Add to PATH" 옵션을 체크했으면 명령 프롬프트에서 바로 실행 가능.
+Windows installer에서는 GUI와 함께 `openguild`(CLI)와
+`openguild-server`(HTTP 서버)를 선택 설치할 수 있습니다. "Add to PATH"를
+체크하면 명령 프롬프트에서 바로 실행됩니다. macOS는 위 tar.gz를 별도로
+설치하며, Linux GUI 패키지에는 CLI와 Server가 포함되지 않습니다.
 
 ### 자주 쓰는 명령
 

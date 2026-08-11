@@ -49,7 +49,18 @@ The GUI (Tauri desktop app) provides directory selection and a recent guilds lis
 xattr -dr com.apple.quarantine /Applications/openguild.app
 ```
 
-Only the GUI ships in the `.dmg`. For the `openguild` CLI and `openguild-server` on macOS, build from source (`cargo build --release -p openguild-cli -p openguild-server`).
+Only the GUI ships in the `.dmg`. The same Release provides
+`openguild_<version>_macos_arm64_cli-server.tar.gz` with prebuilt CLI and Server
+binaries, so Rust/Cargo is not required:
+
+```bash
+tar -xzf openguild_*_macos_arm64_cli-server.tar.gz
+cd openguild_*_macos_arm64_cli-server
+sudo install -d /usr/local/bin
+sudo install -m 755 openguild openguild-server /usr/local/bin/
+openguild --version
+openguild-server --version
+```
 
 ### Creating a Quest
 Quests are created within a guild. Each quest has a type prefix and an auto-incremented ID (e.g., `DEV-001`, `BUG-003`).
@@ -227,7 +238,18 @@ GUI (Tauri 데스크탑 앱) 는 디렉터리 선택 + 최근 길드 목록을 �
 xattr -dr com.apple.quarantine /Applications/openguild.app
 ```
 
-`.dmg` 에는 GUI 만 들어 있다. macOS 에서 `openguild`(CLI)·`openguild-server` 가 필요하면 소스에서 빌드한다(`cargo build --release -p openguild-cli -p openguild-server`).
+`.dmg` 에는 GUI 만 들어 있다. 같은 Release의
+`openguild_<version>_macos_arm64_cli-server.tar.gz`에는 미리 빌드된 CLI와
+Server가 들어 있어 Rust/Cargo 없이 설치할 수 있다.
+
+```bash
+tar -xzf openguild_*_macos_arm64_cli-server.tar.gz
+cd openguild_*_macos_arm64_cli-server
+sudo install -d /usr/local/bin
+sudo install -m 755 openguild openguild-server /usr/local/bin/
+openguild --version
+openguild-server --version
+```
 
 ### 퀘스트 생성
 퀘스트는 길드 내에서 생성된다. 각 퀘스트는 타입 prefix와 자동 증가 ID를 가진다 (예: `DEV-001`, `BUG-003`).
