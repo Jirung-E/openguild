@@ -12,7 +12,7 @@ name: release
 # 후속 작업 (이 quest 범위 외):
 #   - 코드 사이닝 (Windows EV 인증서) — Windows SmartScreen "알 수 없는 게시자" 경고 제거.
 #   - multi-arch (aarch64-pc-windows-msvc / aarch64 Linux) — matrix 확장.
-#   - auto-updater (DEV-063) — Linux 첨부물에도 latest.json 추가.
+# DEV-063/DEV-314: updater 는 Windows x64 / macOS arm64 / Linux x64 지원.
 #
 # BUG-172: Node 20 deprecation 경고 대응 — node20 런타임 액션만 상향.
 #   upload-artifact v4 → v7, action-gh-release v2 → v3.
@@ -296,6 +296,8 @@ jobs:
       # 있음(BUG-142). 여긴 Linux 러너에서 그 세 타깃만 명시적으로 빌드.
       # NSIS 와 달리 CLI/서버 바이너리를 별도로 bundle 에 끼워넣지 않음 —
       # deb/rpm/appimage 는 GUI 앱만 패키징(기존 범위와 동일).
+      # createUpdaterArtifacts:true + signing key 로 AppImage 를 updater bundle 로
+      # 재사용하는 `.AppImage.sig`도 생성한다(DEV-314).
       - name: Tauri build (deb/rpm/AppImage)
         working-directory: gui
         env:
@@ -311,6 +313,7 @@ jobs:
             target/release/bundle/deb/*.deb
             target/release/bundle/rpm/*.rpm
             target/release/bundle/appimage/*.AppImage
+            target/release/bundle/appimage/*.AppImage.sig
           if-no-files-found: error
           retention-days: 7
 
@@ -348,6 +351,7 @@ jobs:
             target/release/bundle/deb/*.deb
             target/release/bundle/rpm/*.rpm
             target/release/bundle/appimage/*.AppImage
+            target/release/bundle/appimage/*.AppImage.sig
           body_path: release-notes.md
           append_body: false
           draft: false
@@ -365,7 +369,7 @@ jobs:
   updater-manifest:
     name: updater manifest (latest.json)
     runs-on: ubuntu-latest
-    needs: [windows, macos]
+    needs: [windows, macos, linux]
     steps:
       - uses: actions/checkout@v5
 
@@ -399,6 +403,13 @@ jobs:
         uses: actions/download-artifact@v7
         with:
           name: openguild-macos-arm64-packages
+          path: sigs
+
+      - name: Download Linux updater artifacts (dry-run)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/download-artifact@v7
+        with:
+          name: openguild-linux-x64-packages
           path: sigs
 
       - name: Compose latest.json
@@ -437,7 +448,9 @@ jobs:
                   return 'windows-x86_64'
               if asset.endswith('.app.tar.gz'):
                   return 'darwin-aarch64'
-              return None  # deb/rpm/AppImage 는 updater 대상이 아니다.
+              if asset.endswith('.AppImage'):
+                  return 'linux-x86_64'
+              return None  # deb/rpm 은 updater 대상이 아니다.
 
           platforms = {}
           for path in sys.argv[4:]:
@@ -454,7 +467,7 @@ jobs:
           if not platforms:
               raise SystemExit('서명은 있는데 updater 플랫폼으로 해석된 게 없음')
 
-          expected = {'windows-x86_64', 'darwin-aarch64'}
+          expected = {'windows-x86_64', 'darwin-aarch64', 'linux-x86_64'}
           missing = expected - platforms.keys()
           if missing:
               raise SystemExit(

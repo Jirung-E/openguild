@@ -1,6 +1,6 @@
 +++
 created_at = "2026-06-23T01:30:44+09:00"
-updated_at = "2026-07-31T23:59:03+09:00"
+updated_at = "2026-08-12T09:38:34+09:00"
 +++
 # 릴리즈 패키지 절차
 
@@ -90,6 +90,10 @@ git push origin master --tags
       "darwin-aarch64": {
         "signature": "<minisign>",
         "url": "https://github.com/.../openguild.app.tar.gz"
+      },
+      "linux-x86_64": {
+        "signature": "<minisign>",
+        "url": "https://github.com/.../openguild.AppImage"
       }
     }
   }
@@ -99,8 +103,9 @@ git push origin master --tags
   같은 이름으로 올리면 **마지막 잡이 이겨서 나머지 플랫폼이 통째로 사라진다.**
   빌드 잡은 설치 파일과 `.sig` 만 릴리스에 올리고, 마지막 `updater-manifest`
   잡이 **릴리스에 실제로 올라간 `*.sig` 자산**을 읽어 하나로 합친다.
-  - 새 플랫폼을 추가할 때 손댈 곳은 그 잡의 `platform_of()` 매핑 한 줄
-    (자산 이름 접미사 → updater 플랫폼 키)이다.
+  - 새 플랫폼 추가 시 해당 빌드 잡의 artifact/Release `.sig` 업로드,
+    `workflow_dispatch` artifact 다운로드, `platform_of()` 매핑과 expected set을
+    함께 갱신한다.
   - 서명 시크릿이 없으면 `.sig` 자체가 없으므로 `latest.json` 없이 릴리스가
     끝난다 — 설치 파일은 정상, 자동 업데이트만 비활성.
 - BUG-045 (예정): `latest.json` 가 없으면 사용자 GUI 의 "업데이트 확인" 이 그냥
@@ -111,7 +116,7 @@ git push origin master --tags
 - [ ] release page 에서 installer 다운로드 / 설치 / 실행 확인.
 - [ ] `latest.json` 의 `platforms` 에 **그 릴리스가 지원하는 플랫폼이 전부**
       들어 있는지 (DEV-314 이전엔 한 플랫폼만 남는 사고가 가능한 구조였다).
-      현재 대상: `windows-x86_64`, `darwin-aarch64`.
+      현재 대상: `windows-x86_64`, `darwin-aarch64`, `linux-x86_64`.
 - [ ] macOS: dmg 열기 → Applications 로 드래그 → 첫 실행이 Gatekeeper 안내대로
       우클릭>열기로 통과되는지 (미서명 배포라 정상 동작이다).
 - [ ] `openguild-gui --version` 출력이 새 version 맞는지.
@@ -174,7 +179,8 @@ updater 엔드포인트가 `releases/latest/download/latest.json` 이고 워크�
   결과 본문은 `release-notes-preview` artifact 로 확인.
 - `release` 워크플로를 **workflow_dispatch** 로 수동 실행 — 릴리스는 만들지
   않고(태그 gate) 추출만 돌려 `release-notes-{OS}` artifact 로 실제 러너의
-  본문을 확인할 수 있다.
+  본문을 확인할 수 있다. 같은 실행의 `updater-manifest-preview`에는 Windows,
+  macOS, Linux 서명을 합친 `latest.json`이 들어간다.
 
 정말 태그 기반 검증이 필요하면 그때는 `prerelease: true` 를 먼저 넣고
 (latest 에서 제외됨) 검증 후 태그·릴리스를 삭제한다.
