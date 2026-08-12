@@ -1,6 +1,6 @@
 +++
 created_at = "2026-06-23T01:30:44+09:00"
-updated_at = "2026-08-12T09:38:34+09:00"
+updated_at = "2026-08-12T10:08:15+09:00"
 +++
 # 릴리즈 패키지 절차
 
@@ -69,12 +69,16 @@ git push origin master --tags
 
 - DEV-034 의 workflow 가 tag push 트리거로 installer 자동 첨부.
 - description: `CHANGELOG.md` 의 해당 버전 절 그대로 — **자동화됨**(BUG-171).
-  `scripts/extract-release-notes.ps1` 이 태그(`vX.Y.Z`)에 맞는 `## X.Y.Z` 절을
-  뽑아 릴리스 본문으로 쓰고 compare 링크를 붙인다. 따라서:
+  `release-notes` 잡이 `scripts/extract-release-notes.ps1` 로 태그(`vX.Y.Z`)에 맞는
+  `## X.Y.Z` 절과 compare 링크를 한 번만 생성한다. 따라서:
   - 태그를 밀기 전에 CHANGELOG 절이 **반드시** 있어야 한다 — 없거나 헤딩이
     태그와 안 맞으면 릴리스 잡이 그 자리에서 실패한다(의도된 가드).
-  - `generate_release_notes` 는 쓰지 않는다. 플랫폼별 잡이 같은 릴리스를 각각
-    갱신하는 구조라, 자동 생성을 켜면 본문이 잡 수만큼 중복된다(0.4.1 실사고).
+  - `generate_release_notes` 는 쓰지 않는다. 자동 생성을 플랫폼별로 실행하면
+    본문이 잡 수만큼 중복된다(0.4.1 실사고).
+  - 수동 실행의 미리보기 artifact도 OS별 복사본이 아니라
+    `release-notes-preview` 하나만 만든다.
+- Windows/macOS/Linux 잡은 패키지만 artifact로 올린다. 마지막
+  `publish-release` 잡만 실제 GitHub Release를 한 번 생성·갱신한다.
 - **`latest.json` 도 attach** — Tauri updater 가 `endpoints` 로 가리키는 파일.
   형식:
   ```json
@@ -101,11 +105,12 @@ git push origin master --tags
 - **`latest.json` 은 빌드 잡이 만들지 않는다** (DEV-314). updater 엔드포인트는
   파일 하나(`releases/latest/download/latest.json`)뿐이라, 플랫폼별 잡이 각자
   같은 이름으로 올리면 **마지막 잡이 이겨서 나머지 플랫폼이 통째로 사라진다.**
-  빌드 잡은 설치 파일과 `.sig` 만 릴리스에 올리고, 마지막 `updater-manifest`
-  잡이 **릴리스에 실제로 올라간 `*.sig` 자산**을 읽어 하나로 합친다.
-  - 새 플랫폼 추가 시 해당 빌드 잡의 artifact/Release `.sig` 업로드,
-    `workflow_dispatch` artifact 다운로드, `platform_of()` 매핑과 expected set을
-    함께 갱신한다.
+  빌드 잡은 패키지와 `.sig`를 플랫폼 artifact로만 올린다. 마지막
+  `publish-release` 잡이 세 artifact를 내려받아 `*.sig`를 하나의
+  `latest.json`으로 합치고, 그 입력 패키지와 manifest를 같은 Release에 함께
+  게시한다. manifest가 가리키는 파일과 실제 배포 파일이 동일한 입력에서 나온다.
+  - 새 플랫폼 추가 시 해당 빌드 artifact의 `.sig` 업로드, `publish-release`의
+    artifact 다운로드, `platform_of()` 매핑과 expected set을 함께 갱신한다.
   - 서명 시크릿이 없으면 `.sig` 자체가 없으므로 `latest.json` 없이 릴리스가
     끝난다 — 설치 파일은 정상, 자동 업데이트만 비활성.
 - BUG-045 (예정): `latest.json` 가 없으면 사용자 GUI 의 "업데이트 확인" 이 그냥
@@ -178,9 +183,9 @@ updater 엔드포인트가 `releases/latest/download/latest.json` 이고 워크�
   최신 출시 버전으로 추출을 돌리고 compare 링크·인코딩 손상까지 검사한다.
   결과 본문은 `release-notes-preview` artifact 로 확인.
 - `release` 워크플로를 **workflow_dispatch** 로 수동 실행 — 릴리스는 만들지
-  않고(태그 gate) 추출만 돌려 `release-notes-{OS}` artifact 로 실제 러너의
-  본문을 확인할 수 있다. 같은 실행의 `updater-manifest-preview`에는 Windows,
-  macOS, Linux 서명을 합친 `latest.json`이 들어간다.
+  않는다(태그 gate). `release-notes-preview` 하나로 본문을 확인하고, 마지막
+  `assemble & publish release` 잡이 세 플랫폼 artifact를 합쳐
+  `updater-manifest-preview`를 만든다.
 
 정말 태그 기반 검증이 필요하면 그때는 `prerelease: true` 를 먼저 넣고
 (latest 에서 제외됨) 검증 후 태그·릴리스를 삭제한다.
