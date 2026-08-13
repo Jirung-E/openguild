@@ -383,6 +383,15 @@ openguild/
 | PATCH  | `/api/quests/:id/tags` | DEV-068: 태그 전체 교체 (body `{tags: string[]}`) |
 | GET    | `/api/quests/:id/campaigns` | DEV-011: 이 quest 가 속한 캠페인 목록 |
 
+### CLI 원격 파리티 (BUG-231)
+
+| Method | Path | 설명 |
+|---|---|---|
+| GET | `/api/comments` | Quest/Campaign 댓글 횡단 검색 (`author/since/until/grep/discussion/unresolved`) |
+| GET/POST | `/api/templates` | 템플릿 목록/저장 (`force` query로 덮어쓰기) |
+| GET | `/api/templates/:name` | 템플릿 단건 조회 (`quest new --template` 포함) |
+| GET | `/api/tags/used` | Quest/Library에서 실제 사용 중인 태그 목록 |
+
 ### Campaign (DEV-011)
 
 | Method | Path | 설명 |
@@ -410,6 +419,10 @@ openguild/
 | POST   | `/api/admin/restore` | `{to?: TS}` snapshot 복원 (미지정 시 최신) |
 | GET    | `/api/admin/drift` | 파일 vs index.db 일치성 검사 |
 | POST   | `/api/admin/reindex` | 파일 → index.db 재구축 |
+| POST   | `/api/admin/vacuum` | index.db VACUUM |
+| GET    | `/api/admin/journal` | journal 최근 작업 목록 (`count` query) |
+| POST   | `/api/admin/counters` | Type 파일/SQL counter 검사 및 선택적 보정 (`fix`) |
+| GET    | `/api/admin/info` | 길드 메타 + index/snapshot/journal 요약 |
 
 ## 데이터 모델
 

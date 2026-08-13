@@ -6,6 +6,7 @@ pub mod library;
 pub mod meta;
 pub mod quests;
 pub mod rules;
+pub mod templates;
 pub mod worklog;
 
 use axum::{
@@ -75,6 +76,14 @@ pub fn create_router(store: Store) -> Router {
             get(meta::list_tag_defs).post(meta::upsert_tag_def),
         )
         .route("/api/tag-defs/{slug}", delete(meta::delete_tag_def))
+        .route("/api/tags/used", get(meta::list_tags_in_use))
+        // BUG-231: CLI template list/show/new 및 quest new --template 원격 파리티.
+        .route(
+            "/api/templates",
+            get(templates::list_templates).post(templates::save_template),
+        )
+        .route("/api/templates/{name}", get(templates::get_template))
+        .route("/api/comments", get(comments::search_comments))
         // DEV-016 (multi-file): 길드 규칙 — `.guild/rules/{slug}.md`.
         // 단일 (legacy) endpoint 도 backward compat 으로 다른 경로에 유지.
         .route(
@@ -289,6 +298,8 @@ pub fn create_router(store: Store) -> Router {
         // DEV-162: 런타임 정비 — vacuum / journal tail.
         .route("/api/admin/vacuum", post(admin::vacuum))
         .route("/api/admin/journal", get(admin::journal_tail))
+        .route("/api/admin/counters", post(admin::check_counters))
+        .route("/api/admin/info", get(admin::info))
         .with_state(store)
 }
 

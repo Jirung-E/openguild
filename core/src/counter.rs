@@ -10,7 +10,7 @@ use std::collections::HashMap;
 
 use crate::repo::{fs as repo_fs, GuildPaths, QuestFile, TypeFile};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CounterIssue {
     pub prefix: String,
     pub stored_last_number: i64,
@@ -18,7 +18,7 @@ pub struct CounterIssue {
     pub corrected_to: i64,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CheckReport {
     pub types_checked: usize,
     pub issues: Vec<CounterIssue>,

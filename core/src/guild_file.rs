@@ -11,7 +11,7 @@ fn default_schema_version() -> i64 {
     1
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, serde::Serialize, Deserialize)]
 pub struct GuildFile {
     pub name: String,
     pub version: String,

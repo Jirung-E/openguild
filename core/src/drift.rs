@@ -20,7 +20,7 @@ use crate::store::Store;
 // last_indexed_at 기반 fetch 헬퍼는 제거됨. last_indexed_at 마커 자체는 reindex
 // 가 계속 기록(다른 용도 가능).
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DriftReport {
     pub fresh_files: Vec<String>, // quest_id slug 들
     pub missing_in_index: Vec<String>, // 파일은 있는데 index 에 없음

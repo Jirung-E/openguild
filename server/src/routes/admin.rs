@@ -3,7 +3,7 @@
 //! **인증 없음** (현 MVP). 멀티유저 단계 진입 시 토큰 / role 가드 필요.
 
 use axum::{extract::{Path, Query, State}, Json};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::error::AppResult;
@@ -115,6 +115,14 @@ pub async fn run_reindex(
         "statuses_loaded": report.statuses_loaded,
         "quests_loaded": report.quests_loaded,
         "dependencies_loaded": report.dependencies_loaded,
+        "positions_restored": report.positions_restored,
+        "campaigns_loaded": report.campaigns_loaded,
+        "comments_loaded": report.comments_loaded,
+        "memos_loaded": report.memos_loaded,
+        "tags_loaded": report.tags_loaded,
+        "history_loaded": report.history_loaded,
+        "history_exported": report.history_exported,
+        "library_loaded": report.library_loaded,
         "skipped": report.skipped.iter().map(|(p, r)| json!({ "path": p, "reason": r })).collect::<Vec<_>>(),
     })))
 }
@@ -147,6 +155,49 @@ pub async fn journal_tail(
         .map_err(openguild_core::AppError::Internal)?
         .unwrap_or_default();
     Ok(Json(tail))
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct CounterCheckRequest {
+    #[serde(default)]
+    pub fix: bool,
+}
+
+/// BUG-231: file/SQL counter 정합 검사 및 선택적 보정.
+pub async fn check_counters(
+    State(store): State<Store>,
+    Json(body): Json<CounterCheckRequest>,
+) -> AppResult<Json<openguild_core::ops::counter::CombinedReport>> {
+    Ok(Json(
+        openguild_core::ops::check_and_fix_counters(&store, body.fix).await?,
+    ))
+}
+
+#[derive(Debug, Serialize)]
+pub struct InfoResponse {
+    pub path: std::path::PathBuf,
+    pub guild: openguild_core::guild_file::GuildFile,
+    pub summary: openguild_core::maintenance::IndexSummary,
+    pub snapshots: Vec<SnapshotInfo>,
+    pub journal_total: i64,
+}
+
+/// BUG-231: 로컬 `info`와 같은 호스트 길드/캐시/백업 요약.
+pub async fn info(State(store): State<Store>) -> AppResult<Json<InfoResponse>> {
+    let guild = openguild_core::guild_file::load(&store.paths.guild_root.to_string_lossy())?;
+    let summary = maintenance::index_summary(&store).await?;
+    let snapshots = snapshot::list_snapshots(&store.paths)?;
+    let journal_total = maintenance::journal_tail(&store.paths, 0)
+        .await?
+        .map(|tail| tail.total)
+        .unwrap_or(0);
+    Ok(Json(InfoResponse {
+        path: store.paths.guild_root.clone(),
+        guild,
+        summary,
+        snapshots,
+        journal_total,
+    }))
 }
 
 // ─── DEV-069: 본문 첨부 / 자산 파일 서빙 (브라우저 모드) ───

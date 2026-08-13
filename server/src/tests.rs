@@ -779,6 +779,37 @@ async fn test_stream_upload_rejects_empty_body() {
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
 }
 
+#[tokio::test]
+async fn test_stream_upload_can_be_linked_to_quest() {
+    let app = seed_quest(setup().await).await;
+    let res = app
+        .clone()
+        .oneshot(
+            Request::post("/api/attachments/stream?ext=txt&name=remote.txt")
+                .header("content-type", "application/octet-stream")
+                .body(Body::from("remote attachment"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let bytes = res.into_body().collect().await.unwrap().to_bytes();
+    let rel: String = serde_json::from_slice(&bytes).unwrap();
+
+    let (status, attachments) = post(
+        app.clone(),
+        "/api/quests/by/DEV-001/attachments",
+        json!({ "path": rel, "name": "remote.txt" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(attachments.as_array().unwrap().len(), 1);
+
+    let (status, detail) = get(app, "/api/quests/by/DEV-001").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(detail["attachments"][0]["name"], "remote.txt");
+}
+
 // === DEV-332: 응답 gzip 압축 ===
 
 /// 압축 레이어까지 얹은 라우터 — main.rs 와 같은 구성.
@@ -2771,6 +2802,115 @@ async fn test_campaign_memo_get_set() {
     assert_eq!(got["content"], set["content"]);
 }
 
+// ═══════════════════ BUG-231: CLI remote parity endpoints ═══════════════════
+
+#[tokio::test]
+async fn test_global_comments_search_filters_quest_comments() {
+    let app = setup().await;
+    let _ = seed_quest(app.clone()).await;
+    post(
+        app.clone(),
+        "/api/quests/by/DEV-001/comments",
+        json!({ "author": "tester", "body": "remote parity needle" }),
+    )
+    .await;
+
+    let (status, comments) = get(app, "/api/comments?grep=needle&author=tester").await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = comments.as_array().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["scope"], "quest");
+    assert_eq!(rows[0]["slug"], "DEV-001");
+}
+
+#[tokio::test]
+async fn test_template_create_list_show() {
+    let app = setup().await;
+    let payload = json!({
+        "name": "remote-bug",
+        "frontmatter": {
+            "title": "Remote bug",
+            "type": "BUG",
+            "urgency": 2,
+            "tags": ["remote"]
+        },
+        "body": "## Reproduction"
+    });
+    let (status, saved) = post(app.clone(), "/api/templates", payload).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(saved["path"], ".guild/templates/remote-bug.md");
+
+    let (status, list) = get(app.clone(), "/api/templates").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(list.as_array().unwrap().len(), 1);
+
+    let (status, shown) = get(app, "/api/templates/remote-bug").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(shown["frontmatter"]["type"], "BUG");
+    assert_eq!(shown["body"], "## Reproduction");
+}
+
+#[tokio::test]
+async fn test_tags_in_use_endpoint() {
+    let app = seed_quest(setup().await).await;
+    let (_, quest) = get(app.clone(), "/api/quests/by/DEV-001").await;
+    let id = quest["id"].as_i64().unwrap();
+    patch(
+        app.clone(),
+        &format!("/api/quests/{id}/tags"),
+        json!({ "tags": ["remote_used"] }),
+    )
+    .await;
+
+    let (status, tags) = get(app, "/api/tags/used").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(tags.as_array().unwrap().iter().any(|tag| tag == "remote_used"));
+}
+
+#[tokio::test]
+async fn test_admin_type_and_status_crud_endpoints() {
+    let app = setup().await;
+    let (status, created_type) = post(
+        app.clone(),
+        "/api/admin/types",
+        json!({ "prefix": "TMP", "color": "#123456", "description": "temporary" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(created_type["prefix"], "TMP");
+    let (status, updated_type) = patch(
+        app.clone(),
+        "/api/admin/types/TMP",
+        json!({ "new_prefix": "TMPX", "description": null }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(updated_type["prefix"], "TMPX");
+    assert!(updated_type["description"].is_null());
+    assert_eq!(delete(app.clone(), "/api/admin/types/TMPX").await, StatusCode::OK);
+
+    let (status, created_status) = post(
+        app.clone(),
+        "/api/admin/statuses",
+        json!({ "name_en": "Remote QA", "name_ko": "원격 QA", "color": "#654321" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let slug = created_status["slug"].as_str().unwrap();
+    let (status, updated_status) = patch(
+        app.clone(),
+        &format!("/api/admin/statuses/{slug}"),
+        json!({ "name_ko": "원격 검증" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(updated_status["name_ko"], "원격 검증");
+    assert_eq!(
+        delete(app, &format!("/api/admin/statuses/{slug}")).await,
+        StatusCode::OK
+    );
+}
+
 // ═══════════════════ DEV-196: rules ═══════════════════
 
 #[tokio::test]
@@ -3374,6 +3514,26 @@ async fn test_admin_journal_tail() {
     let (status, tail) = get(app, "/api/admin/journal?count=10").await;
     assert_eq!(status, StatusCode::OK);
     assert!(tail.is_object());
+}
+
+#[tokio::test]
+async fn test_admin_counters_check() {
+    let app = setup().await;
+    let (status, report) = post(app, "/api/admin/counters", json!({ "fix": false })).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(report["file_report"]["types_checked"].as_u64().unwrap() >= 1);
+    assert!(report["sql_drift"].is_array());
+}
+
+#[tokio::test]
+async fn test_admin_info() {
+    let app = setup().await;
+    let (status, info) = get(app, "/api/admin/info").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(info["guild"]["name"].as_str().is_some());
+    assert!(info["summary"]["quests_alive"].as_i64().is_some());
+    assert!(info["snapshots"].is_array());
+    assert!(info["journal_total"].as_i64().is_some());
 }
 
 // ═══════════════════ DEV-196: assets (guild-files) ═══════════════════

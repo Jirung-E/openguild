@@ -68,6 +68,20 @@ pub async fn delete_tag_def(
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
+/// BUG-231: quest/library frontmatter 캐시에 실제로 사용 중인 태그 distinct 목록.
+pub async fn list_tags_in_use(
+    State(store): State<Store>,
+) -> AppResult<Json<Vec<String>>> {
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT DISTINCT tag FROM quest_tags
+         UNION SELECT DISTINCT tag FROM library_tags
+         ORDER BY tag",
+    )
+    .fetch_all(&store.index_pool)
+    .await?;
+    Ok(Json(rows.into_iter().map(|(tag,)| tag).collect()))
+}
+
 // ─────────────────────── admin: types/statuses (DEV-193) ───────────────────────
 //
 // 브라우저/원격(HTTP) 모드의 admin 페이지가 Tauri invoke 와 동일하게 쓸 수

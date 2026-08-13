@@ -38,7 +38,7 @@ pub struct TemplateFrontmatter {
     pub tags: Vec<String>,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TemplateFile {
     /// 파일명 stem (`bug-report.md` → `bug-report`).
     pub name: String,
@@ -133,6 +133,23 @@ pub fn list_templates(paths: &super::GuildPaths) -> Result<Vec<TemplateFile>> {
     Ok(out)
 }
 
+/// 템플릿 이름은 `.guild/templates` 바로 아래의 파일명 stem 하나여야 한다.
+pub fn validate_template_name(name: &str) -> Result<&str> {
+    let name = name.trim();
+    if name.is_empty() {
+        anyhow::bail!("템플릿 이름이 비어 있음");
+    }
+    if name == "."
+        || name == ".."
+        || name.contains('/')
+        || name.contains('\\')
+        || name.chars().any(|ch| ch.is_control())
+    {
+        anyhow::bail!("유효하지 않은 템플릿 이름: '{name}'");
+    }
+    Ok(name)
+}
+
 /// DEV-158: 템플릿 저장 — `.guild/templates/{name}.md`. 디렉토리 자동 생성.
 /// `overwrite=false` 인데 파일이 이미 있으면 에러. 반환: 쓰여진 경로.
 pub fn save_template(
@@ -140,10 +157,10 @@ pub fn save_template(
     tpl: &TemplateFile,
     overwrite: bool,
 ) -> Result<PathBuf> {
-    if tpl.name.trim().is_empty() {
-        anyhow::bail!("템플릿 이름이 비어 있음");
-    }
-    let path = paths.template_path(&tpl.name);
+    // 파일명이 곧 식별자다. 경로 구분자/상위 디렉터리를 허용하면 HTTP 입력으로
+    // `.guild/templates` 밖에 쓸 수 있으므로 단일 안전한 path segment만 받는다.
+    let name = validate_template_name(&tpl.name)?;
+    let path = paths.template_path(name);
     if path.exists() && !overwrite {
         anyhow::bail!(
             "템플릿 '{}' 이미 존재 — 덮어쓰려면 force 사용 ({})",
@@ -181,6 +198,14 @@ mod tests {
         let t = TemplateFile::parse("plain", "## 그냥 본문\n내용").unwrap();
         assert!(t.frontmatter.title.is_none());
         assert_eq!(t.body, "## 그냥 본문\n내용");
+    }
+
+    #[test]
+    fn template_name_rejects_path_segments() {
+        assert!(validate_template_name("../escape").is_err());
+        assert!(validate_template_name("nested/name").is_err());
+        assert!(validate_template_name(r"nested\name").is_err());
+        assert_eq!(validate_template_name("bug-report").unwrap(), "bug-report");
     }
 
     #[test]

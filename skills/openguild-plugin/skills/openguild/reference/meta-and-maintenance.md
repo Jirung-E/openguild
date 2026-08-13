@@ -26,3 +26,7 @@ openguild index vacuum
 openguild journal tail            # tail the append-only journal
 openguild info                    # guild summary (path, counts, version)
 ```
+
+Catalog mutations and all diagnostics above work in local and remote
+(`--remote`) mode. `migrate-to-files` is intentionally local-only because it
+is a one-time offline migration of a guild directory.

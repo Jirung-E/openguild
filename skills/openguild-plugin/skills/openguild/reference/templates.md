@@ -10,3 +10,6 @@ openguild quest new --type <PREFIX> --title "..." --template <name>
 
 Merge priority when creating from a template: explicit flags (e.g.
 `--description-file`) > template content > built-in default.
+
+Template list/show/new and `quest new --template` work in local and remote
+(`--remote`) mode.

@@ -9,7 +9,7 @@ use anyhow::Result;
 use crate::repo::GuildPaths;
 use crate::store::Store;
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct VacuumReport {
     pub before_bytes: u64,
     pub after_bytes: u64,
@@ -44,7 +44,7 @@ pub async fn vacuum(store: &Store) -> Result<VacuumReport> {
 }
 
 /// DEV-164: `info` 진단용 index.db 요약 (호스트 전용 항목 제외 — CLI/GUI 공용).
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct IndexSummary {
     pub quests_alive: i64,
     pub quests_deleted: i64,
@@ -84,7 +84,7 @@ pub async fn index_summary(store: &Store) -> Result<IndexSummary> {
     })
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct JournalOp {
     pub id: i64,
     pub ts: String,
@@ -93,7 +93,7 @@ pub struct JournalOp {
     pub result: Option<String>,
 }
 
-#[derive(Debug, Clone, Default, serde::Serialize)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct JournalTail {
     /// journal.db 의 전체 op 수.
     pub total: i64,

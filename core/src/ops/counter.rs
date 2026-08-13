@@ -20,7 +20,7 @@ use crate::repo::{fs as repo_fs, TypeFile};
 use crate::Store;
 
 /// SQL 단독 drift 보고.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SqlDriftIssue {
     pub prefix: String,
     pub file_last_number: i64,
@@ -28,7 +28,7 @@ pub struct SqlDriftIssue {
     pub synced_to: i64,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CombinedReport {
     /// file-level (last_number < actual max).
     pub file_report: CheckReport,

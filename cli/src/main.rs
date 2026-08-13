@@ -769,8 +769,8 @@ enum TypesCmd {
 enum TagDefCmd {
     #[command(about = tf!("정의된 태그 목록 (slug / 색 / 설명)", "List defined tags (slug / color / description)"))]
     List {
-        #[arg(long, help = tf!("실사용 중인 태그(quest/도서관 frontmatter)도 함께 — 정의 없이 쓰인 ad-hoc 태그를 발견하는 용도. 로컬 모드 전용.",
-                              "Also include actually-used tags (quest/library frontmatter) — for finding ad-hoc tags used without a definition. Local mode only."))]
+        #[arg(long, help = tf!("실사용 중인 태그(quest/도서관 frontmatter)도 함께 — 정의 없이 쓰인 ad-hoc 태그를 발견하는 용도.",
+                              "Also include actually-used tags (quest/library frontmatter) — for finding ad-hoc tags used without a definition."))]
         used: bool,
         #[arg(long, help = tf!("정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json."))]
         table: bool,
@@ -1220,6 +1220,15 @@ impl HttpClient {
         self.handle(res)
     }
 
+    fn get_query<Q: Serialize + ?Sized, T: for<'de> Deserialize<'de>>(
+        &self,
+        path: &str,
+        query: &Q,
+    ) -> Result<T> {
+        let res = self.http.get(self.url(path)).query(query).send()?;
+        self.handle(res)
+    }
+
     fn post<B: Serialize, T: for<'de> Deserialize<'de>>(
         &self,
         path: &str,
@@ -1258,6 +1267,15 @@ impl HttpClient {
             return Err(anyhow!("{status}: {body}"));
         }
         Ok(())
+    }
+
+    fn delete_query<T: for<'de> Deserialize<'de>>(
+        &self,
+        path: &str,
+        query: &[(&str, &str)],
+    ) -> Result<T> {
+        let res = self.http.delete(self.url(path)).query(query).send()?;
+        self.handle(res)
     }
 
     fn delete_no_body(&self, path: &str) -> Result<()> {
@@ -1301,7 +1319,7 @@ impl HttpClient {
     }
 
     fn quest_by_slug(&self, slug: &str) -> Result<QuestDetail> {
-        self.get(&format!("/api/quests/by/{slug}"))
+        self.get(&format!("/api/quests/by/{}", urlenc(slug)))
     }
 
     fn list_quest_history(&self, id: i64) -> Result<Vec<openguild_core::models::QuestHistoryEntry>> {
@@ -1570,7 +1588,26 @@ impl HttpClient {
     }
 
     fn tag_def_delete(&self, slug: &str) -> Result<()> {
-        self.delete_no_body(&format!("/api/tag-defs/{slug}"))
+        self.delete_no_body(&format!("/api/tag-defs/{}", urlenc(slug)))
+    }
+
+    /// BUG-231: 파일 원문을 HTTP body로 바로 흘려보내 Vec/base64 메모리 복제를 피한다.
+    fn upload_attachment_stream(
+        &self,
+        file: &std::path::Path,
+        ext: &str,
+        name: &str,
+    ) -> Result<String> {
+        let body = std::fs::File::open(file)
+            .with_context(|| format!("파일 열기 실패: {}", file.display()))?;
+        let res = self
+            .http
+            .post(self.url("/api/attachments/stream"))
+            .query(&[("ext", ext), ("name", name)])
+            .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
+            .body(reqwest::blocking::Body::new(body))
+            .send()?;
+        self.handle(res)
     }
 }
 
@@ -1683,7 +1720,7 @@ fn select_thread(
 }
 
 /// DEV-221: 전역 댓글 검색 결과 한 건 (quest/campaign 통합).
-#[derive(sqlx::FromRow, serde::Serialize)]
+#[derive(sqlx::FromRow, serde::Serialize, serde::Deserialize)]
 struct GlobalComment {
     /// "quest" | "campaign"
     scope: String,
@@ -1761,6 +1798,8 @@ struct BookDto {
     created_at: String,
     updated_at: String,
     deleted_at: Option<String>,
+    #[serde(default)]
+    attachments: Vec<openguild_core::models::quest::QuestAttachment>,
 }
 
 impl From<openguild_core::ops::library::LibraryDocRow> for BookDto {
@@ -1775,6 +1814,83 @@ impl From<openguild_core::ops::library::LibraryDocRow> for BookDto {
             created_at: r.created_at,
             updated_at: r.updated_at,
             deleted_at: r.deleted_at,
+            attachments: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct CommentsListDto {
+    entries: Vec<openguild_core::repo::comments::CommentEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ContentDto {
+    content: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ReindexSkippedDto {
+    path: String,
+    reason: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ReindexHttpDto {
+    types_loaded: usize,
+    statuses_loaded: usize,
+    quests_loaded: usize,
+    dependencies_loaded: usize,
+    #[serde(default)]
+    positions_restored: usize,
+    #[serde(default)]
+    campaigns_loaded: usize,
+    #[serde(default)]
+    comments_loaded: usize,
+    #[serde(default)]
+    memos_loaded: usize,
+    #[serde(default)]
+    tags_loaded: usize,
+    #[serde(default)]
+    history_loaded: usize,
+    #[serde(default)]
+    history_exported: usize,
+    #[serde(default)]
+    library_loaded: usize,
+    #[serde(default)]
+    skipped: Vec<ReindexSkippedDto>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SaveTemplateDto {
+    path: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct InfoHttpDto {
+    path: std::path::PathBuf,
+    guild: openguild_core::guild_file::GuildFile,
+    summary: openguild_core::maintenance::IndexSummary,
+    snapshots: Vec<openguild_core::snapshot::SnapshotInfo>,
+    journal_total: i64,
+}
+
+impl From<ReindexHttpDto> for openguild_core::reindex::ReindexReport {
+    fn from(r: ReindexHttpDto) -> Self {
+        Self {
+            types_loaded: r.types_loaded,
+            statuses_loaded: r.statuses_loaded,
+            quests_loaded: r.quests_loaded,
+            dependencies_loaded: r.dependencies_loaded,
+            positions_restored: r.positions_restored,
+            campaigns_loaded: r.campaigns_loaded,
+            comments_loaded: r.comments_loaded,
+            memos_loaded: r.memos_loaded,
+            tags_loaded: r.tags_loaded,
+            history_loaded: r.history_loaded,
+            history_exported: r.history_exported,
+            library_loaded: r.library_loaded,
+            skipped: r.skipped.into_iter().map(|s| (s.path, s.reason)).collect(),
         }
     }
 }
@@ -1883,7 +1999,6 @@ impl Backend {
     // ── 도메인 메서드 ──────────────────────────────────────
 
     /// DEV-221: 길드 전체 댓글 횡단 검색 — quest + campaign 캐시 UNION.
-    /// 로컬 전용 (index.db 직접 쿼리). 원격은 후속(HTTP 라우트 파리티) 전까지 미지원.
     ///
     /// DEV-262: `quest comment list` 와 옵션셋/정렬 정책을 통일 — SQL 은 값
     /// 필터(author/since/until/grep/discussion/unresolved)만 적용하고, 정렬
@@ -1900,11 +2015,29 @@ impl Backend {
         discussion: bool,
         unresolved: bool,
     ) -> Result<Vec<GlobalComment>> {
-        let Backend::Local(l) = self else {
-            return Err(anyhow!(
-                "comments 전역 검색은 로컬 모드 전용입니다 (원격 HTTP 파리티는 후속)."
-            ));
-        };
+        if let Backend::Http(c) = self {
+            let mut query: Vec<(&str, String)> = Vec::new();
+            if let Some(value) = author {
+                query.push(("author", value.to_string()));
+            }
+            if let Some(value) = since {
+                query.push(("since", value.to_string()));
+            }
+            if let Some(value) = until {
+                query.push(("until", value.to_string()));
+            }
+            if let Some(value) = grep {
+                query.push(("grep", value.to_string()));
+            }
+            if discussion {
+                query.push(("discussion", "true".to_string()));
+            }
+            if unresolved {
+                query.push(("unresolved", "true".to_string()));
+            }
+            return c.get_query("/api/comments", &query);
+        }
+        let Backend::Local(l) = self else { unreachable!() };
         // quest / campaign 캐시 UNION. campaign_comments 엔 discussion 컬럼이
         // 없어 상수 0 — --discussion/--unresolved 필터 시 자연 제외.
         let mut conds_q = String::new();
@@ -2143,17 +2276,7 @@ impl Backend {
         }
     }
 
-    // ── DEV-062: type / status 관리 (local 전용) ──
-    //
-    // remote (HTTP) backend 는 별도 quest — 본 quest 범위는 local 모드.
-    // Backend::Http 호출 시 명시적 에러로 사용자 안내.
-
-    fn http_unsupported_meta() -> anyhow::Error {
-        anyhow::anyhow!(
-            "remote 모드에서는 type/status 관리 미지원 (별도 quest). \
-             local 모드 (--guild 또는 cwd 의 .guild) 에서 사용하세요."
-        )
-    }
+    // ── BUG-231: type / status 관리 — local + remote ──
 
     fn create_type(
         &self,
@@ -2162,7 +2285,14 @@ impl Backend {
         description: Option<String>,
     ) -> Result<QuestType> {
         match self {
-            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Http(c) => c.post(
+                "/api/admin/types",
+                &serde_json::json!({
+                    "prefix": prefix,
+                    "color": color,
+                    "description": description,
+                }),
+            ),
             Backend::Local(l) => Self::map_err(l.rt.block_on(
                 openguild_core::ops::create_type(&l.store, prefix, color, description),
             )),
@@ -2177,7 +2307,23 @@ impl Backend {
         description: Option<Option<String>>,
     ) -> Result<QuestType> {
         match self {
-            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Http(c) => {
+                let mut body = serde_json::Map::new();
+                if let Some(v) = new_prefix {
+                    body.insert("new_prefix".into(), serde_json::Value::String(v));
+                }
+                if let Some(v) = color {
+                    body.insert("color".into(), serde_json::Value::String(v));
+                }
+                // 생략=유지, null=설명 해제라 키 존재 여부를 보존한다.
+                if let Some(v) = description {
+                    body.insert("description".into(), serde_json::to_value(v)?);
+                }
+                c.patch(
+                    &format!("/api/admin/types/{}", urlenc(&prefix)),
+                    &serde_json::Value::Object(body),
+                )
+            }
             Backend::Local(l) => Self::map_err(l.rt.block_on(
                 openguild_core::ops::update_type(
                     &l.store,
@@ -2192,7 +2338,10 @@ impl Backend {
 
     fn delete_type(&self, prefix: String) -> Result<()> {
         match self {
-            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Http(c) => c.delete_no_body(&format!(
+                "/api/admin/types/{}",
+                urlenc(&prefix)
+            )),
             Backend::Local(l) => Self::map_err(
                 l.rt.block_on(openguild_core::ops::delete_type(&l.store, prefix)),
             ),
@@ -2207,7 +2356,15 @@ impl Backend {
         sort_order: Option<i64>,
     ) -> Result<QuestStatus> {
         match self {
-            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Http(c) => c.post(
+                "/api/admin/statuses",
+                &serde_json::json!({
+                    "name_en": name_en,
+                    "name_ko": name_ko,
+                    "color": color,
+                    "sort_order": sort_order,
+                }),
+            ),
             Backend::Local(l) => Self::map_err(l.rt.block_on(
                 openguild_core::ops::create_status(
                     &l.store, name_en, name_ko, color, sort_order,
@@ -2227,7 +2384,16 @@ impl Backend {
         sort_order: Option<i64>,
     ) -> Result<QuestStatus> {
         match self {
-            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Http(c) => c.patch(
+                &format!("/api/admin/statuses/{}", urlenc(&slug)),
+                &serde_json::json!({
+                    "new_slug": new_slug,
+                    "name_en": name_en,
+                    "name_ko": name_ko,
+                    "color": color,
+                    "sort_order": sort_order,
+                }),
+            ),
             Backend::Local(l) => Self::map_err(l.rt.block_on(
                 openguild_core::ops::update_status(
                     &l.store, slug, new_slug, name_en, name_ko, color, sort_order,
@@ -2239,7 +2405,10 @@ impl Backend {
 
     fn delete_status(&self, slug: String) -> Result<()> {
         match self {
-            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Http(c) => c.delete_no_body(&format!(
+                "/api/admin/statuses/{}",
+                urlenc(&slug)
+            )),
             Backend::Local(l) => Self::map_err(
                 l.rt.block_on(openguild_core::ops::delete_status(&l.store, slug)),
             ),
@@ -2506,32 +2675,29 @@ impl Backend {
         }
     }
 
-    /// 실사용 중 태그(quest/도서관 frontmatter 캐시) distinct — 로컬 전용
-    /// (HTTP 라우트 없음, comments 전역 검색과 동일 정책).
+    /// 실사용 중 태그(quest/도서관 frontmatter 캐시) distinct.
     fn tags_in_use(&self) -> Result<Vec<String>> {
-        let Backend::Local(l) = self else {
-            return Err(anyhow!(tf!("--used 는 로컬 모드 전용입니다.", "--used is local-mode only.")));
-        };
-        let rows: Vec<(String,)> = l.rt.block_on(
-            sqlx::query_as(
-                "SELECT DISTINCT tag FROM quest_tags
-                 UNION SELECT DISTINCT tag FROM library_tags
-                 ORDER BY tag",
-            )
-            .fetch_all(&l.store.index_pool),
-        )?;
-        Ok(rows.into_iter().map(|(t,)| t).collect())
+        match self {
+            Backend::Http(c) => c.get("/api/tags/used"),
+            Backend::Local(l) => {
+                let rows: Vec<(String,)> = l.rt.block_on(
+                    sqlx::query_as(
+                        "SELECT DISTINCT tag FROM quest_tags
+                         UNION SELECT DISTINCT tag FROM library_tags
+                         ORDER BY tag",
+                    )
+                    .fetch_all(&l.store.index_pool),
+                )?;
+                Ok(rows.into_iter().map(|(t,)| t).collect())
+            }
+        }
     }
 
     // ── 백업 / 복원 ──────────────────────────────────────
 
-    // ── DEV-016 (multi-file): 길드 규칙 — local 전용 (HTTP 미지원 우선) ──
-
     // ── BUG-166: rules 도 local + remote(HTTP /api/rules) 둘 다 지원 ──
     //
-    // 서버에는 처음부터 `/api/rules*` 라우트가 다 있는데 CLI 만
-    // http_unsupported_meta() 로 막고 있었다(도서관·댓글 등은 원격을 지원해
-    // 비대칭). 응답 DTO 는 server `routes/rules.rs` 와 1:1 로 맞춘다.
+    // 응답 DTO 는 server `routes/rules.rs` 와 1:1 로 맞춘다.
 
     /// `GET /api/rules` → `{ entries: [...] }`.
     fn rules_list(&self) -> Result<Vec<openguild_core::repo::rules::RuleEntry>> {
@@ -2785,11 +2951,11 @@ impl Backend {
         }
     }
 
-    // ── DEV-060: 템플릿 — local 전용 (HTTP 미지원 우선) ──
+    // ── DEV-060 / BUG-231: 템플릿 — local + remote ──
 
     fn templates_list(&self) -> Result<Vec<openguild_core::repo::TemplateFile>> {
         match self {
-            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Http(c) => c.get("/api/templates"),
             Backend::Local(l) => {
                 openguild_core::repo::list_templates(&l.store.paths)
             }
@@ -2798,7 +2964,7 @@ impl Backend {
 
     fn template_load(&self, name: &str) -> Result<openguild_core::repo::TemplateFile> {
         match self {
-            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Http(c) => c.get(&format!("/api/templates/{}", urlenc(name))),
             Backend::Local(l) => {
                 let path = l.store.paths.template_path(name);
                 if !path.exists() {
@@ -2830,7 +2996,13 @@ impl Backend {
         force: bool,
     ) -> Result<std::path::PathBuf> {
         match self {
-            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Http(c) => {
+                let response: SaveTemplateDto = c.post(
+                    &format!("/api/templates?force={force}"),
+                    tpl,
+                )?;
+                Ok(response.path.into())
+            }
             Backend::Local(l) => {
                 openguild_core::repo::save_template(&l.store.paths, tpl, force)
             }
@@ -2838,7 +3010,7 @@ impl Backend {
     }
 
 
-    // ── DEV-170: 첨부 (quest / campaign 공용) — Local 전용 ──
+    // ── BUG-231: 첨부 (quest / campaign 공용) — local + remote ──
 
     fn attachments_list(
         &self,
@@ -2846,7 +3018,17 @@ impl Backend {
         slug: &str,
     ) -> Result<Vec<openguild_core::models::quest::QuestAttachment>> {
         match self {
-            Backend::Http(_) => Err(anyhow!(tf!("원격 모드에선 미지원 — 로컬에서 실행", "not supported in remote mode — run locally"))),
+            Backend::Http(c) => Ok(match scope {
+                CommentScope::Quest => c
+                    .get::<QuestDetail>(&format!("/api/quests/by/{}", urlenc(slug)))?
+                    .attachments,
+                CommentScope::Campaign => c
+                    .get::<openguild_core::models::CampaignDetail>(&format!(
+                        "/api/campaigns/{}",
+                        urlenc(slug)
+                    ))?
+                    .attachments,
+            }),
             Backend::Local(l) => Ok(match scope {
                 CommentScope::Quest => {
                     openguild_core::ops::attachments::list_quest_attachments(&l.store, slug)
@@ -2865,21 +3047,34 @@ impl Backend {
         file: &std::path::Path,
         name: Option<String>,
     ) -> Result<Vec<openguild_core::models::quest::QuestAttachment>> {
+        let ext = file.extension().and_then(|s| s.to_str()).unwrap_or("bin");
+        let display = name.unwrap_or_else(|| {
+            file.file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("attachment")
+                .to_string()
+        });
         match self {
-            Backend::Http(_) => Err(anyhow!(tf!("원격 모드에선 미지원 — 로컬에서 실행", "not supported in remote mode — run locally"))),
+            Backend::Http(c) => {
+                let rel = c.upload_attachment_stream(file, ext, &display)?;
+                let endpoint = match scope {
+                    CommentScope::Quest => format!(
+                        "/api/quests/by/{}/attachments",
+                        urlenc(slug)
+                    ),
+                    CommentScope::Campaign => format!(
+                        "/api/campaigns/{}/attachments",
+                        urlenc(slug)
+                    ),
+                };
+                c.post(
+                    &endpoint,
+                    &serde_json::json!({ "path": rel, "name": display }),
+                )
+            }
             Backend::Local(l) => {
                 let bytes = std::fs::read(file)
                     .with_context(|| format!("파일 읽기 실패: {}", file.display()))?;
-                let ext = file
-                    .extension()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("bin");
-                let display = name.unwrap_or_else(|| {
-                    file.file_name()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("attachment")
-                        .to_string()
-                });
                 l.rt
                     .block_on(async {
                         let rel = openguild_core::ops::attachments::save_attachment(
@@ -2917,7 +3112,19 @@ impl Backend {
         path: &str,
     ) -> Result<Vec<openguild_core::models::quest::QuestAttachment>> {
         match self {
-            Backend::Http(_) => Err(anyhow!(tf!("원격 모드에선 미지원 — 로컬에서 실행", "not supported in remote mode — run locally"))),
+            Backend::Http(c) => {
+                let endpoint = match scope {
+                    CommentScope::Quest => format!(
+                        "/api/quests/by/{}/attachments",
+                        urlenc(slug)
+                    ),
+                    CommentScope::Campaign => format!(
+                        "/api/campaigns/{}/attachments",
+                        urlenc(slug)
+                    ),
+                };
+                c.delete_query(&endpoint, &[("path", path)])
+            }
             Backend::Local(l) => l
                 .rt
                 .block_on(async {
@@ -2940,14 +3147,16 @@ impl Backend {
         }
     }
 
-    // ── BUG-150: 도서관 문서 첨부 — Local 전용 (quest/campaign 첨부와 동일 패턴) ──
+    // ── BUG-231: 도서관 문서 첨부 — local + remote ──
 
     fn book_attachments_list(
         &self,
         book_id: &str,
     ) -> Result<Vec<openguild_core::models::quest::QuestAttachment>> {
         match self {
-            Backend::Http(_) => Err(anyhow!(tf!("원격 모드에선 미지원 — 로컬에서 실행", "not supported in remote mode — run locally"))),
+            Backend::Http(c) => Ok(c
+                .get::<BookDto>(&format!("/api/library/{}", urlenc(book_id)))?
+                .attachments),
             Backend::Local(l) => Ok(openguild_core::ops::attachments::list_book_attachments(
                 &l.store, book_id,
             )),
@@ -2960,21 +3169,24 @@ impl Backend {
         file: &std::path::Path,
         name: Option<String>,
     ) -> Result<Vec<openguild_core::models::quest::QuestAttachment>> {
+        let ext = file.extension().and_then(|s| s.to_str()).unwrap_or("bin");
+        let display = name.unwrap_or_else(|| {
+            file.file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("attachment")
+                .to_string()
+        });
         match self {
-            Backend::Http(_) => Err(anyhow!(tf!("원격 모드에선 미지원 — 로컬에서 실행", "not supported in remote mode — run locally"))),
+            Backend::Http(c) => {
+                let rel = c.upload_attachment_stream(file, ext, &display)?;
+                c.post(
+                    &format!("/api/library/{}/attachments", urlenc(book_id)),
+                    &serde_json::json!({ "path": rel, "name": display }),
+                )
+            }
             Backend::Local(l) => {
                 let bytes = std::fs::read(file)
                     .with_context(|| format!("파일 읽기 실패: {}", file.display()))?;
-                let ext = file
-                    .extension()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("bin");
-                let display = name.unwrap_or_else(|| {
-                    file.file_name()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("attachment")
-                        .to_string()
-                });
                 l.rt
                     .block_on(async {
                         let rel = openguild_core::ops::attachments::save_attachment(
@@ -3001,7 +3213,10 @@ impl Backend {
         path: &str,
     ) -> Result<Vec<openguild_core::models::quest::QuestAttachment>> {
         match self {
-            Backend::Http(_) => Err(anyhow!(tf!("원격 모드에선 미지원 — 로컬에서 실행", "not supported in remote mode — run locally"))),
+            Backend::Http(c) => c.delete_query(
+                &format!("/api/library/{}/attachments", urlenc(book_id)),
+                &[("path", path)],
+            ),
             Backend::Local(l) => l
                 .rt
                 .block_on(async {
@@ -3021,14 +3236,20 @@ impl Backend {
         scope: CommentScope,
         slug: &str,
     ) -> Result<Vec<openguild_core::repo::comments::CommentEntry>> {
-        match scope {
-            CommentScope::Quest => self.comments_list(slug),
-            CommentScope::Campaign => match self {
-                Backend::Http(_) => Err(Self::http_unsupported_meta()),
-                Backend::Local(l) => Self::map_err(Ok::<_, openguild_core::error::AppError>(
-                    openguild_core::ops::campaign_comments::list_entries(&l.store, slug)?,
-                )),
-            },
+        match self {
+            Backend::Http(c) => Ok(c
+                .get::<CommentsListDto>(&comments_api_base(scope, slug))?
+                .entries),
+            Backend::Local(l) => Self::map_err(Ok::<_, openguild_core::error::AppError>(
+                match scope {
+                    CommentScope::Quest => {
+                        openguild_core::ops::comments::list_comment_entries(&l.store, slug)?
+                    }
+                    CommentScope::Campaign => {
+                        openguild_core::ops::campaign_comments::list_entries(&l.store, slug)?
+                    }
+                },
+            )),
         }
     }
 
@@ -3040,11 +3261,22 @@ impl Backend {
         body: String,
         parent_id: Option<u64>,
     ) -> Result<openguild_core::repo::comments::CommentEntry> {
-        match scope {
-            CommentScope::Quest => self.comments_add(slug, author, body, parent_id),
-            CommentScope::Campaign => match self {
-                Backend::Http(_) => Err(Self::http_unsupported_meta()),
-                Backend::Local(l) => Self::map_err(l.rt.block_on(
+        match self {
+            Backend::Http(c) => c.post(
+                &comments_api_base(scope, slug),
+                &serde_json::json!({
+                    "author": author,
+                    "body": body,
+                    "parent_id": parent_id,
+                }),
+            ),
+            Backend::Local(l) => match scope {
+                CommentScope::Quest => Self::map_err(l.rt.block_on(
+                    openguild_core::ops::comments::add_comment_entry(
+                        &l.store, slug, author, body, parent_id,
+                    ),
+                )),
+                CommentScope::Campaign => Self::map_err(l.rt.block_on(
                     openguild_core::ops::campaign_comments::add_entry(
                         &l.store, slug, author, body, parent_id,
                     ),
@@ -3053,15 +3285,20 @@ impl Backend {
         }
     }
 
-    // DEV-185: 토론/해결 토글 — discussion 은 quest 전용 기능이라 scope 없음.
-    // 원격(Http)은 GUI 가 직접 HTTP 로 처리하므로 CLI 는 Local 만 지원.
+    // DEV-185/BUG-231: 토론/해결 토글 — discussion은 quest 전용, 원격 지원.
     fn comments_toggle_discussion(
         &self,
         slug: &str,
         id: u64,
     ) -> Result<openguild_core::repo::comments::CommentEntry> {
         match self {
-            Backend::Http(_) => Err(anyhow!(tf!("원격 모드에선 미지원 — 로컬에서 실행", "not supported in remote mode — run locally"))),
+            Backend::Http(c) => c.post(
+                &format!(
+                    "/api/quests/by/{}/comments/{id}/discussion",
+                    urlenc(slug)
+                ),
+                &serde_json::json!({}),
+            ),
             Backend::Local(l) => Self::map_err(l.rt.block_on(
                 openguild_core::ops::comments::toggle_comment_discussion(&l.store, slug, id),
             )),
@@ -3074,31 +3311,39 @@ impl Backend {
         id: u64,
     ) -> Result<openguild_core::repo::comments::CommentEntry> {
         match self {
-            Backend::Http(_) => Err(anyhow!(tf!("원격 모드에선 미지원 — 로컬에서 실행", "not supported in remote mode — run locally"))),
+            Backend::Http(c) => c.post(
+                &format!(
+                    "/api/quests/by/{}/comments/{id}/resolved",
+                    urlenc(slug)
+                ),
+                &serde_json::json!({}),
+            ),
             Backend::Local(l) => Self::map_err(l.rt.block_on(
                 openguild_core::ops::comments::toggle_comment_resolved(&l.store, slug, id),
             )),
         }
     }
 
-    /// DEV-234: 상단 고정(pin) 토글 — discussion 과 달리 quest 전용 아님, scope
-    /// 로 quest/campaign 분기. React 와 동일하게 Local 전용.
+    /// DEV-234/BUG-231: 상단 고정(pin) 토글 — quest/campaign, local/remote 공용.
     fn comments_toggle_pinned_scoped(
         &self,
         scope: CommentScope,
         slug: &str,
         id: u64,
     ) -> Result<openguild_core::repo::comments::CommentEntry> {
-        let Backend::Local(l) = self else {
-            return Err(Self::http_unsupported_meta());
-        };
-        match scope {
-            CommentScope::Quest => Self::map_err(l.rt.block_on(
-                openguild_core::ops::comments::toggle_comment_pinned(&l.store, slug, id),
-            )),
-            CommentScope::Campaign => Self::map_err(l.rt.block_on(
-                openguild_core::ops::campaign_comments::toggle_pinned(&l.store, slug, id),
-            )),
+        match self {
+            Backend::Http(c) => c.post(
+                &format!("{}/{id}/pinned", comments_api_base(scope, slug)),
+                &serde_json::json!({}),
+            ),
+            Backend::Local(l) => match scope {
+                CommentScope::Quest => Self::map_err(l.rt.block_on(
+                    openguild_core::ops::comments::toggle_comment_pinned(&l.store, slug, id),
+                )),
+                CommentScope::Campaign => Self::map_err(l.rt.block_on(
+                    openguild_core::ops::campaign_comments::toggle_pinned(&l.store, slug, id),
+                )),
+            },
         }
     }
 
@@ -3109,19 +3354,28 @@ impl Backend {
         id: u64,
         body: String,
     ) -> Result<openguild_core::repo::comments::CommentEntry> {
-        match scope {
-            CommentScope::Quest => self.comments_edit(slug, id, body),
-            CommentScope::Campaign => match self {
-                Backend::Http(_) => Err(Self::http_unsupported_meta()),
-                Backend::Local(l) => Self::map_err(l.rt.block_on(
-                    openguild_core::ops::campaign_comments::update_entry(&l.store, slug, id, body),
+        match self {
+            Backend::Http(c) => c.patch(
+                &format!("{}/{id}", comments_api_base(scope, slug)),
+                &serde_json::json!({ "body": body }),
+            ),
+            Backend::Local(l) => match scope {
+                CommentScope::Quest => Self::map_err(l.rt.block_on(
+                    openguild_core::ops::comments::update_comment_entry(
+                        &l.store, slug, id, body,
+                    ),
+                )),
+                CommentScope::Campaign => Self::map_err(l.rt.block_on(
+                    openguild_core::ops::campaign_comments::update_entry(
+                        &l.store, slug, id, body,
+                    ),
                 )),
             },
         }
     }
 
     /// DEV-199: 이모지 반응 토글 — GUI invoke / HTTP 와 동일한 core 함수 재사용.
-    /// 다른 댓글 mutation 과 동일하게 Local 전용.
+    /// BUG-231: 다른 댓글 mutation과 함께 원격 HTTP도 지원.
     fn comments_react_scoped(
         &self,
         scope: CommentScope,
@@ -3130,29 +3384,36 @@ impl Backend {
         emoji: &str,
         author: &str,
     ) -> Result<openguild_core::repo::comments::CommentEntry> {
-        let Backend::Local(l) = self else {
-            return Err(Self::http_unsupported_meta());
-        };
-        match scope {
-            CommentScope::Quest => Self::map_err(l.rt.block_on(
-                openguild_core::ops::comments::toggle_comment_reaction(
-                    &l.store, slug, id, emoji, author,
-                ),
-            )),
-            CommentScope::Campaign => Self::map_err(l.rt.block_on(
-                openguild_core::ops::campaign_comments::toggle_reaction(
-                    &l.store, slug, id, emoji, author,
-                ),
-            )),
+        match self {
+            Backend::Http(c) => c.post(
+                &format!("{}/{id}/reactions", comments_api_base(scope, slug)),
+                &serde_json::json!({ "emoji": emoji, "author": author }),
+            ),
+            Backend::Local(l) => match scope {
+                CommentScope::Quest => Self::map_err(l.rt.block_on(
+                    openguild_core::ops::comments::toggle_comment_reaction(
+                        &l.store, slug, id, emoji, author,
+                    ),
+                )),
+                CommentScope::Campaign => Self::map_err(l.rt.block_on(
+                    openguild_core::ops::campaign_comments::toggle_reaction(
+                        &l.store, slug, id, emoji, author,
+                    ),
+                )),
+            },
         }
     }
 
     fn comments_delete_scoped(&self, scope: CommentScope, slug: &str, id: u64) -> Result<()> {
-        match scope {
-            CommentScope::Quest => self.comments_delete(slug, id),
-            CommentScope::Campaign => match self {
-                Backend::Http(_) => Err(Self::http_unsupported_meta()),
-                Backend::Local(l) => Self::map_err(l.rt.block_on(
+        match self {
+            Backend::Http(c) => {
+                c.delete_no_body(&format!("{}/{id}", comments_api_base(scope, slug)))
+            }
+            Backend::Local(l) => match scope {
+                CommentScope::Quest => Self::map_err(l.rt.block_on(
+                    openguild_core::ops::comments::delete_comment_entry(&l.store, slug, id),
+                )),
+                CommentScope::Campaign => Self::map_err(l.rt.block_on(
                     openguild_core::ops::campaign_comments::delete_entry(&l.store, slug, id),
                 )),
             },
@@ -3160,106 +3421,46 @@ impl Backend {
     }
 
     fn memo_get_scoped(&self, scope: CommentScope, slug: &str) -> Result<Option<String>> {
-        match scope {
-            CommentScope::Quest => self.memo_get(slug),
-            CommentScope::Campaign => match self {
-                Backend::Http(_) => Err(Self::http_unsupported_meta()),
-                Backend::Local(l) => Self::map_err(Ok::<_, openguild_core::error::AppError>(
-                    openguild_core::ops::campaign_comments::get_memo(&l.store, slug)?,
-                )),
-            },
+        match self {
+            Backend::Http(c) => Ok(c.get::<ContentDto>(&memo_api_path(scope, slug))?.content),
+            Backend::Local(l) => Self::map_err(Ok::<_, openguild_core::error::AppError>(
+                match scope {
+                    CommentScope::Quest => {
+                        openguild_core::ops::comments::get_memo(&l.store, slug)?
+                    }
+                    CommentScope::Campaign => {
+                        openguild_core::ops::campaign_comments::get_memo(&l.store, slug)?
+                    }
+                },
+            )),
         }
     }
 
     fn memo_set_scoped(&self, scope: CommentScope, slug: &str, content: String) -> Result<()> {
-        match scope {
-            CommentScope::Quest => self.memo_set(slug, content),
-            CommentScope::Campaign => match self {
-                Backend::Http(_) => Err(Self::http_unsupported_meta()),
-                Backend::Local(l) => Self::map_err(l.rt.block_on(
+        match self {
+            Backend::Http(c) => {
+                let _: ContentDto = c.put(
+                    &memo_api_path(scope, slug),
+                    &serde_json::json!({ "content": content }),
+                )?;
+                Ok(())
+            }
+            Backend::Local(l) => match scope {
+                CommentScope::Quest => Self::map_err(l.rt.block_on(
+                    openguild_core::ops::comments::set_memo(&l.store, slug, content),
+                )),
+                CommentScope::Campaign => Self::map_err(l.rt.block_on(
                     openguild_core::ops::campaign_comments::set_memo(&l.store, slug, content),
                 )),
             },
         }
     }
-    // ── DEV-099: 댓글 / 메모 — local 전용 (HTTP 미지원 우선) ──
-
-    fn comments_list(
-        &self,
-        slug: &str,
-    ) -> Result<Vec<openguild_core::repo::comments::CommentEntry>> {
-        match self {
-            Backend::Http(_) => Err(Self::http_unsupported_meta()),
-            Backend::Local(l) => Self::map_err(Ok::<_, openguild_core::error::AppError>(
-                openguild_core::ops::comments::list_comment_entries(&l.store, slug)?,
-            )),
-        }
-    }
-
-    fn comments_add(
-        &self,
-        slug: &str,
-        author: String,
-        body: String,
-        parent_id: Option<u64>,
-    ) -> Result<openguild_core::repo::comments::CommentEntry> {
-        match self {
-            Backend::Http(_) => Err(Self::http_unsupported_meta()),
-            Backend::Local(l) => Self::map_err(l.rt.block_on(
-                openguild_core::ops::comments::add_comment_entry(
-                    &l.store, slug, author, body, parent_id,
-                ),
-            )),
-        }
-    }
-
-    fn comments_edit(
-        &self,
-        slug: &str,
-        id: u64,
-        body: String,
-    ) -> Result<openguild_core::repo::comments::CommentEntry> {
-        match self {
-            Backend::Http(_) => Err(Self::http_unsupported_meta()),
-            Backend::Local(l) => Self::map_err(l.rt.block_on(
-                openguild_core::ops::comments::update_comment_entry(
-                    &l.store, slug, id, body,
-                ),
-            )),
-        }
-    }
-
-    fn comments_delete(&self, slug: &str, id: u64) -> Result<()> {
-        match self {
-            Backend::Http(_) => Err(Self::http_unsupported_meta()),
-            Backend::Local(l) => Self::map_err(l.rt.block_on(
-                openguild_core::ops::comments::delete_comment_entry(&l.store, slug, id),
-            )),
-        }
-    }
-
-    fn memo_get(&self, slug: &str) -> Result<Option<String>> {
-        match self {
-            Backend::Http(_) => Err(Self::http_unsupported_meta()),
-            Backend::Local(l) => Self::map_err(Ok::<_, openguild_core::error::AppError>(
-                openguild_core::ops::comments::get_memo(&l.store, slug)?,
-            )),
-        }
-    }
-
-    fn memo_set(&self, slug: &str, content: String) -> Result<()> {
-        match self {
-            Backend::Http(_) => Err(Self::http_unsupported_meta()),
-            Backend::Local(l) => Self::map_err(l.rt.block_on(
-                openguild_core::ops::comments::set_memo(&l.store, slug, content),
-            )),
-        }
-    }
-
     // DEV-068: tag — frontmatter 에서 read, ops::set_quest_tags 로 write.
     fn tag_list(&self, slug: &str) -> Result<Vec<String>> {
         match self {
-            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Http(c) => Ok(c
+                .get::<QuestDetail>(&format!("/api/quests/by/{}", urlenc(slug)))?
+                .tags),
             Backend::Local(l) => {
                 // frontmatter 의 tags 가 진리원. file 직접 read.
                 let path = l.store.paths.quest_path(slug);
@@ -3272,7 +3473,14 @@ impl Backend {
 
     fn tag_set(&self, slug: &str, tags: Vec<String>) -> Result<()> {
         match self {
-            Backend::Http(_) => Err(Self::http_unsupported_meta()),
+            Backend::Http(c) => {
+                let id = self.id_of(slug)?;
+                let _: Quest = c.patch(
+                    &format!("/api/quests/{id}/tags"),
+                    &serde_json::json!({ "tags": tags }),
+                )?;
+                Ok(())
+            }
             Backend::Local(l) => {
                 let id = self.id_of(slug)?;
                 Self::map_err(l.rt.block_on(
@@ -3362,13 +3570,12 @@ impl Backend {
         }
     }
 
-    /// DEV-095: 파일 → index.db 풀 reindex. Local 전용 (remote 는 서버측 명령).
+    /// DEV-095: 파일 → index.db 풀 reindex.
     fn reindex(&self) -> Result<openguild_core::reindex::ReindexReport> {
         match self {
-            Backend::Http(_) => Err(anyhow!(tf!(
-                "원격 모드에선 미지원 — 서버에서 `openguild-server reindex` 사용",
-                "not supported in remote mode — use `openguild-server reindex` on the server"
-            ))),
+            Backend::Http(c) => c
+                .post::<ReindexHttpDto, _>("/api/admin/reindex", &serde_json::json!({}))
+                .map(Into::into),
             Backend::Local(l) => l
                 .rt
                 .block_on(openguild_core::reindex::reindex(&l.store))
@@ -3376,13 +3583,10 @@ impl Backend {
         }
     }
 
-    /// DEV-159: index.db ↔ 파일 drift 검사. Local 전용 (remote 는 서버측 명령).
+    /// DEV-159: index.db ↔ 파일 drift 검사.
     fn check_drift(&self) -> Result<openguild_core::drift::DriftReport> {
         match self {
-            Backend::Http(_) => Err(anyhow!(tf!(
-                "원격 모드에선 미지원 — 서버에서 `openguild-server check-drift` 사용",
-                "not supported in remote mode — use `openguild-server check-drift` on the server"
-            ))),
+            Backend::Http(c) => c.get("/api/admin/drift"),
             Backend::Local(l) => l
                 .rt
                 .block_on(openguild_core::drift::detect_drift(&l.store))
@@ -3390,13 +3594,10 @@ impl Backend {
         }
     }
 
-    /// DEV-162: index.db VACUUM. Local 전용 (실행 중 host 는 HTTP admin 사용).
+    /// DEV-162: index.db VACUUM.
     fn vacuum(&self) -> Result<openguild_core::maintenance::VacuumReport> {
         match self {
-            Backend::Http(_) => Err(anyhow!(tf!(
-                "원격 모드에선 미지원 — 실행 중 host 는 HTTP admin, 오프라인은 로컬에서 실행",
-                "not supported in remote mode — a running host uses HTTP admin, offline runs locally"
-            ))),
+            Backend::Http(c) => c.post("/api/admin/vacuum", &serde_json::json!({})),
             Backend::Local(l) => l
                 .rt
                 .block_on(openguild_core::maintenance::vacuum(&l.store))
@@ -3404,13 +3605,12 @@ impl Backend {
         }
     }
 
-    /// DEV-162: journal.db 최근 op tail. Local 전용.
+    /// DEV-162: journal.db 최근 op tail.
     fn journal_tail(&self, count: i64) -> Result<Option<openguild_core::maintenance::JournalTail>> {
         match self {
-            Backend::Http(_) => Err(anyhow!(tf!(
-                "원격 모드에선 미지원 — 실행 중 host 는 HTTP admin, 오프라인은 로컬에서 실행",
-                "not supported in remote mode — a running host uses HTTP admin, offline runs locally"
-            ))),
+            Backend::Http(c) => c
+                .get(&format!("/api/admin/journal?count={count}"))
+                .map(Some),
             Backend::Local(l) => l
                 .rt
                 .block_on(openguild_core::maintenance::journal_tail(&l.store.paths, count))
@@ -3418,13 +3618,13 @@ impl Backend {
         }
     }
 
-    /// DEV-164: counter 정합 검사 / 보정. Local 전용.
+    /// DEV-164: counter 정합 검사 / 보정.
     fn check_counters(&self, fix: bool) -> Result<openguild_core::ops::counter::CombinedReport> {
         match self {
-            Backend::Http(_) => Err(anyhow!(tf!(
-                "원격 모드에선 미지원 — 오프라인(로컬)에서 실행",
-                "not supported in remote mode — run offline (locally)"
-            ))),
+            Backend::Http(c) => c.post(
+                "/api/admin/counters",
+                &serde_json::json!({ "fix": fix }),
+            ),
             Backend::Local(l) => l
                 .rt
                 .block_on(openguild_core::ops::check_and_fix_counters(&l.store, fix))
@@ -3463,13 +3663,19 @@ impl Backend {
         }
     }
 
-    /// DEV-164: 길드 메타 + index.db/snapshot/journal 요약. Local 전용.
+    /// DEV-164: 길드 메타 + index.db/snapshot/journal 요약.
     fn info(&self) -> Result<CliInfo> {
         match self {
-            Backend::Http(_) => Err(anyhow!(tf!(
-                "원격 모드에선 미지원 — 실행 중 host 정보는 server 측에서 확인",
-                "not supported in remote mode — check a running host's info on the server"
-            ))),
+            Backend::Http(c) => {
+                let response: InfoHttpDto = c.get("/api/admin/info")?;
+                Ok(CliInfo {
+                    path: response.path,
+                    guild: response.guild,
+                    summary: response.summary,
+                    snapshots: response.snapshots,
+                    journal_total: response.journal_total,
+                })
+            }
             Backend::Local(l) => l.rt.block_on(async {
                 let guild =
                     openguild_core::guild_file::load(&l.guild_path.to_string_lossy())?;
@@ -3811,6 +4017,20 @@ impl CommentScope {
             CommentScope::Quest => "quest",
             CommentScope::Campaign => "campaign",
         }
+    }
+}
+
+fn comments_api_base(scope: CommentScope, slug: &str) -> String {
+    match scope {
+        CommentScope::Quest => format!("/api/quests/by/{}/comments", urlenc(slug)),
+        CommentScope::Campaign => format!("/api/campaigns/{}/comments", urlenc(slug)),
+    }
+}
+
+fn memo_api_path(scope: CommentScope, slug: &str) -> String {
+    match scope {
+        CommentScope::Quest => format!("/api/quests/by/{}/memo", urlenc(slug)),
+        CommentScope::Campaign => format!("/api/campaigns/{}/memo", urlenc(slug)),
     }
 }
 

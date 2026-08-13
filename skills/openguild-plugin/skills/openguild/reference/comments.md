@@ -7,10 +7,11 @@ private notes not shown to others.
 non-ASCII bodies, write the text to a UTF-8 file and use `--file`/
 `--description-file` rather than piping through stdin/shell args.
 
-## Cross-guild search
+## Guild-wide search
 
 Same filter/sort/tree option set as `quest comment list` below — `comments`
-is the cross-guild version (spans every quest and campaign).
+spans every quest and campaign in the selected guild. It works in local and
+remote (`--remote`) mode.
 
 ```bash
 openguild comments [--author <name>] [--since <ts>] [--until <ts>] [--grep "text"]

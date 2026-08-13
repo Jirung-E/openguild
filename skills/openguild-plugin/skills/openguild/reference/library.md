@@ -43,9 +43,10 @@ openguild library attach add <book-id> <local-file-path> [--name "display name"]
 openguild library attach remove <book-id> <path>          # path from `attach list`
 ```
 
-Attachments are local-mode only (no remote-server support). Files are
-copied into `.guild/attachments/`; removing the last reference to a file
-also deletes the underlying blob (orphan cleanup).
+Attachments work in local and remote (`--remote`) mode. Remote uploads stream
+the file body instead of buffering/base64-encoding the whole file. Files are
+copied into `.guild/attachments/`; removing the last reference to a file also
+deletes the underlying blob (orphan cleanup).
 
 Attachment bytes are **not** included in backups/snapshots — the files in
 `.guild/attachments/` are the only copy, so back them up with the rest of
