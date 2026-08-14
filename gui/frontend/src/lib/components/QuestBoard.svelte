@@ -4763,9 +4763,14 @@
 	.toolbar.has-newquest {
 		top: 50px;
 	}
-	/* DEV-073: collapsed 시 ⊟ 한 버튼만. 배경 / 그림자도 최소화해서 lane 영역 가림 최소. */
+	/* DEV-073, DEV-352: collapsed 시 토글 버튼만 남기고 바깥 패널은 완전히 숨긴다. */
 	.toolbar.collapsed {
 		gap: 0;
+		padding: 0;
+		background: transparent;
+		border: 0;
+		border-radius: 0;
+		box-shadow: none;
 	}
 	/* DEV-073: 접기 토글 — 항상 표시. */
 	.tb-btn.tb-collapse {
