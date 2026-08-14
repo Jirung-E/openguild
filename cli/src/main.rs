@@ -229,7 +229,7 @@ enum Command {
         #[command(subcommand)]
         sub: IndexCmd,
     },
-    #[command(about = tf!("길드 전체 댓글 횡단 검색 — quest + campaign, 기본 최신순 20개", "Search comments across the guild — quest + campaign, latest 20 by default"))]
+    #[command(about = tf!("길드 전체 댓글 횡단 검색 — quest + campaign, 기본 오래된 순 20개", "Search comments across the guild — quest + campaign, oldest 20 by default"))]
     Comments {
         #[arg(long, help = tf!("작성자 일치 (대소문자 무시 정확 일치).", "Exact author match (case-insensitive)."))]
         author: Option<String>,
@@ -617,7 +617,7 @@ enum TemplateCmd {
 
 #[derive(Subcommand)]
 enum CommentCmd {
-    #[command(about = tf!("entry 목록 (id / ts / author / body 요약 1줄). 필터 옵션은 모두 AND 결합.", "Entry list (id / ts / author / one-line body summary). All filter options are AND'd."))]
+    #[command(about = tf!("entry 목록 (id / ts / author / 기본 본문 전체). --summary일 때만 첫 줄 60자. 필터 옵션은 모두 AND 결합.", "Entry list (id / ts / author / full body by default). Only --summary uses a 60-char first-line summary. All filter options are AND'd."))]
     List {
         slug: String,
         #[arg(long, help = tf!("작성자 일치 (대소문자 무시 정확 일치).", "Exact author match (case-insensitive)."))]
@@ -7350,8 +7350,8 @@ fn handle_backup(c: &Backend, json: bool, sub: BackupCmd) -> Result<()> {
                 println!(
                     "{}",
                     tf!(
-                        "`openguild backup create` 으로 생성하세요.",
-                        "create one with `openguild backup create`."
+                        "`openguild backup new` 로 생성하세요.",
+                        "create one with `openguild backup new`."
                     )
                 );
             } else {
@@ -7475,11 +7475,11 @@ fn handle_restore(c: &Backend, json: bool, to: Option<String>, at: Option<String
             println!(
                 "{}",
                 tf!(
-                    "주의: 파일 시스템 (`.guild/quests/*.md`) 자동 갱신 안 됨.",
-                    "note: the file system (`.guild/quests/*.md`) is not auto-updated."
+                    "파일 진리원과 index.db 캐시를 snapshot 시점으로 복원했습니다.",
+                    "the file source of truth and index.db cache were restored to the snapshot."
                 )
             );
-            println!("{}", tf!("      필요시 `openguild reindex`.", "      run `openguild reindex` if needed."));
+            println!("{}", tf!("journal 은 보존됩니다.", "the journal is preserved."));
         }
     }
     Ok(())

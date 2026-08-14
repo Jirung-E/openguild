@@ -5,27 +5,36 @@
 ```bash
 openguild backup new
 openguild backup list
-openguild backup remove <id>
+openguild backup remove <YYYYMMDD-HHMMSS>
 
-openguild restore --to <id>
-openguild restore --at YYYY-MM-DD
-openguild restore --at latest
+openguild restore                              # latest snapshot only; journal preserved
+openguild restore --to <YYYYMMDD-HHMMSS>      # exact snapshot; journal preserved
+openguild restore --at <ISO8601-UTC>           # latest snapshot + journal replay through time
+openguild restore --at latest                  # latest snapshot + complete journal replay
 ```
 
-Backups are also taken automatically on risky operations (policy controlled
-by env vars — see `--help` on `backup`/`restore` for the current defaults).
+Use `backup list` to obtain snapshot timestamps. `--to` selects one exact
+snapshot; it is not point-in-time journal replay. `--at` always starts from
+the latest snapshot, replays the journal through the inclusive UTC timestamp
+(for example `2026-06-27T00:15:00Z`), and then truncates the journal. Before a
+destructive `--at` replay, the current state is automatically saved as a new
+snapshot when the journal is non-empty.
 
 ## Safety guards
 
 | Guard | Behavior |
 |---|---|
-| Soft delete | `quest delete`/`campaign delete` mark deleted, don't erase — restorable |
-| `--yes` required | Delete commands refuse to run without it (dry-run works without) |
-| `--dry-run` | Preview a mutating command's effect without applying it (also supports `--json`) |
-| Auto-backup | A snapshot is taken before destructive operations |
+| `quest delete` | Requires `--yes` for a real delete; uniquely supports `--dry-run`; soft-deleted quests can be restored |
+| `campaign delete` | Requires `--yes`; no `--dry-run` option |
+| `library delete` / `library folder delete` | Prompts interactively unless `--yes` is supplied |
+| `rule delete` / `comment remove` | Prompts interactively unless `--force` is supplied |
+| `tag delete` / `backup remove` | Executes immediately; no confirmation flag |
+| Quest auto-snapshot | After quest mutations, the count/time policy may create a snapshot; this is not a per-delete confirmation or rollback guarantee |
 | Journal (AOF) | Every mutation is appended to a journal before the cache is updated, for crash recovery |
 
-Recommended pattern: dry-run first, review, then re-run with `--yes`.
+Only use the dry-run/re-run pattern for commands that actually expose
+`--dry-run` (currently `quest delete`). For other commands, check their
+`--help` and use the confirmation mechanism shown above.
 
 ### Never edit `.guild/**` frontmatter by hand
 

@@ -139,7 +139,7 @@ ID 를 확인한다.
 | checkout 이 미커밋 .guild 와 충돌해 Abort → 그대로 커밋하면 develop 직접 커밋 사고 | checkout 후 **반드시 `git branch --show-current` 확인** |
 | 댓글 작성자 누락 | 항상 `--author {에이전트 자신의 이름, 소문자}` |
 | `cargo fmt`(인자 무시하고 **워크스페이스 전체** 포맷) → repo 가 fmt-clean 이 아니라 50파일 노이즈 diff (2회 실사고) | 단일 파일은 `rustfmt --edition 2024 <파일>` 만 사용, `cargo fmt` 금지 |
-| 파괴적 restore | `restore --at` 은 journal truncate(비가역) — 스크래치 길드에서만 실험 |
+| 파괴적 restore | `restore --at` 은 journal 을 truncate한다. 현재 상태의 자동 pre-backup으로 되돌릴 수 있지만, 검증은 여전히 스크래치 길드에서만 수행 |
 | CLI top-level 이름 헷갈림 — `type`/`status` 는 `types`/`statuses` alias 가 **있음**, `rule` 은 `rules`/`create` alias 가 **없음**(DEV-231/232, 사용자가 케이스별로 결정) | 예전 예시나 스크립트에 `rules ...`/`rule create ...` 가 있으면 깨짐 — `rule ...`/`rule new ...` 로 |
 | `comments`(전역 검색) 요약 60자만 보고 답글 달았다가 뒷줄 놓침(실사고, BUG-105) | DEV-230 이후 기본이 본문 전체로 바뀜 — 그래도 여러 건 훑을 땐 뒷줄까지 있는지 항상 의심 |
 | `echo "한글" \| openguild ...` 파이프 → PowerShell 콘솔 인코딩에 따라 깨짐 (comment/memo/rule 전부 같은 read_content 헬퍼 사용) | `--file <UTF8파일>` 로 넘기기 — 해당 명령들 `--help` 에도 이제 이 안내가 있음(DEV-232) |
@@ -149,13 +149,13 @@ ID 를 확인한다.
 ```bash
 # 퀘스트 생성 (본문이 - 로 시작하면 = 형식)
 openguild quest new --type DEV --urgency 3 --title "..." "--description=..."
-# 댓글 — `--author` 는 **항상 필수**(누가 썼는지 남지 않으면 나중에 추적 불가).
+# 댓글 작성 정책 — comment add 는 CLI 문법상 optional 이지만 agent 는 항상
+# `--author` 를 전달. reaction 은 CLI 필수, memo 는 author 필드 자체가 없음.
 # 한글 본문은 반드시 파일 경유(stdin/인자는 콘솔 인코딩에 깨짐).
 openguild quest comment add {ID} --author {자기 이름} --file /path/utf8.md
 openguild quest comment add {ID} --author {자기 이름} --parent-id N --file ...   # 답글
-# 메모/반응도 동일 — 댓글 계열 명령은 전부 --author 를 붙인다.
-openguild quest memo set {ID} --author {자기 이름} --file /path/utf8.md
-openguild quest comment react {ID} {댓글번호} --emoji 👍 --author {자기 이름}
+openguild quest memo set {ID} --file /path/utf8.md
+openguild quest comment react {ID} {댓글번호} 👍 --author {자기 이름}
 # 계획/설계는 본문 확정사항, 논의/보고는 댓글 — 사용자 피드백엔 답글(parent-id)로
 openguild campaign list && openguild campaign show C-XXX   # 현재 마일스톤 파악
 openguild rule show restore-behavior                       # restore 동작 정리 문서 (DEV-231: `rules` alias 제거됨 — `rule` 만)

@@ -87,7 +87,8 @@ agent (Claude / 다른 LLM) 가 `Write` / `Edit` 도구로 `.guild/quests/*.md` 
 
 - **status / urgency / parent / prereq / delete 변경 = 반드시 CLI**
   (status 는 `openguild quest move`(`start`/`done`/`reopen` 단축 포함) —
-  `quest status <slug> <STATUS>` 는 deprecated, 조회 전용으로만 사용;
+  `quest status <slug>` 는 조회 전용, `<STATUS>`까지 주는 변경 형식은
+  deprecated이지만 실제 mutation이므로 사용 금지;
   나머지는 `quest update / parent / prereq / delete`).
 - **description 본문만** 부득이 직접 편집 가능 (multi-line 도 `quest update
   --description` 이 정상 저장 — BUG-001 수정됨, 가급적 CLI). 직접 편집 시 직후

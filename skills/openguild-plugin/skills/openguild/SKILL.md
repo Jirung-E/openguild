@@ -150,11 +150,12 @@ openguild quest update <slug> [--title ...] [--description-file <PATH>] [--urgen
 openguild quest delete <slug> --yes             # soft delete, restorable
 openguild quest restore <slug>
 
-# `--author` is REQUIRED on every comment-family command (see Pitfalls).
+# Agent policy: always attribute comment add. Reaction syntax requires author;
+# memo has no author field.
 openguild quest comment add <slug> --author <name> --file <PATH>   # non-ASCII body → file
 openguild quest comment list <slug>
-openguild quest comment react <slug> <id> --emoji <emoji> --author <name>
-openguild quest memo set <slug> --author <name> --file <PATH>   # private note, not shown to others
+openguild quest comment react <slug> <id> <emoji> --author <name>
+openguild quest memo set <slug> --file <PATH>   # private note, no author field
 openguild quest tag add <slug> <tag...>
 # Tags work the same on library docs and rules (list/add/remove/set).
 openguild library tag add <book-id> <tag...>
@@ -164,7 +165,7 @@ openguild campaign new --title "..." [--start YYYY-MM-DD] [--end YYYY-MM-DD]
 openguild campaign link <campaign-slug> <quest-slug>
 openguild campaign checklist add <campaign-slug> "text"
 
-openguild comments --unresolved                  # cross-project comment search
+openguild comments --unresolved                  # selected guild: quest + campaign search
 openguild backup new                             # manual snapshot
 ```
 
@@ -172,7 +173,9 @@ openguild backup new                             # manual snapshot
 
 | Pitfall | Fix |
 |---|---|
-| Writing a comment/memo/reaction without `--author` | Always pass `--author <your name>` — every comment-family command takes it. Without it the entry has no attribution, so nobody can tell later who said what (and you cannot filter with `comments --author`). Use the same name consistently for yourself |
+| Omitting `--author` from `comment add` | The CLI permits an empty author, but agent policy requires attribution. Always pass your consistent author name |
+| Omitting `--author` from `comment react` | Reaction toggling is per author, so this option is required by the CLI |
+| Passing `--author` to `memo set` | Memos have no author field; omit the unsupported option |
 | Piping non-ASCII text as a shell argument or via stdin can get mangled by console encoding | Always write the text to a UTF-8 file first and pass `--description-file` / `--file` |
 | A `--description`/body value that starts with `-` gets misread as a flag | Use `--description-file <PATH>` (or `--description=...` with an equals sign) |
 | Editing `.guild/**` frontmatter (status/urgency/parent/etc.) by hand | Always use the CLI — the frontmatter is derived state, not a plain file |

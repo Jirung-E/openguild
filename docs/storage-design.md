@@ -164,7 +164,8 @@ frontend 의 api 호출이 invoke 로 → core::services::* 직접 실행
 - 파일 위치 변경 X — git diff 깨끗.
 - list / show 명령 기본적으로 숨김.
 - `openguild quest deleted` 로 목록 / `openguild quest restore` 로 복원.
-- 영구 삭제 (`openguild quest purge --force`): 파일 삭제 + journal 에 `purge_quest` op 기록.
+- 영구 삭제(purge)는 미구현 계획이다. 현재 CLI에는 `quest purge`가 없으며,
+  `quest delete`의 soft delete와 `quest restore`만 지원한다.
 
 ### Type (`.guild/types/{prefix}.toml`)
 
@@ -351,28 +352,35 @@ CREATE INDEX idx_ops_ts ON ops (ts);
 ### Snapshot (수동 또는 자동)
 
 ```
-1. .guild/index.db 의 무결성 검증 (PRAGMA integrity_check)
-2. cp .guild/index.db → .guild/backups/snapshots/{now}.db
-3. DELETE FROM journal.db.ops  (truncate)
-4. 오래된 snapshot 제거 (7개 retention)
-5. stdout 알림
+1. `.guild/`의 파일 진리원(quest/campaign/rule/library/정의/사이드카 등)을
+   `.guild/backups/snapshots/{now}.db`의 경로+내용 행으로 저장한다.
+2. `index.db`/`journal.db`/`backups`와 실제 첨부파일 바이트는 제외한다.
+3. `journal.db.ops`를 truncate한다.
+4. 오래된 snapshot을 제거한다(7개 retention).
+5. stdout 알림.
 ```
 
 ### Restore
 
 ```bash
-openguild restore                              # 최신 snapshot + 현 journal 로 재구축
-openguild restore --to 20260517-150000        # 그 시점까지만
-openguild restore --list                       # 사용 가능 snapshot 목록
+openguild backup list                         # 사용 가능한 snapshot timestamp
+openguild restore                             # 최신 snapshot만 복원, journal 보존
+openguild restore --to 20260517-150000        # 지정한 snapshot만 복원, journal 보존
+openguild restore --at 2026-05-17T15:00:00Z   # 최신 snapshot + 해당 UTC 시각까지 replay
+openguild restore --at latest                  # 최신 snapshot + journal 전체 replay
 ```
 
 알고리즘:
-1. 대상 snapshot 선택 (가장 늦은 ≤ target 시각).
-2. snapshot.db → temp index.db 로 복사.
-3. journal.db 에서 `ts <= target` 인 ops 를 순서대로 apply.
-4. `.guild/quests/`, `types/`, `statuses/` 비우고 temp index.db 에서 재출력 (frontmatter + auto 블록 포함).
-5. temp → `.guild/index.db` 로 이동.
-6. journal.db 절단 (이미 적용된 ops 제거 또는 truncate).
+1. `restore`/`--to`: 최신 또는 정확히 지정한 snapshot의 파일들을 `.guild/`에
+   복원하고 파일에서 `index.db`를 재구축한다. journal은 재생·절단하지 않는다.
+2. `--at`: 실행 전 현재 id→slug와 journal op를 메모리에 확보하고, 항상 최신
+   snapshot을 기준으로 선택한다. journal이 비어 있지 않으면 현재 상태를 정식
+   snapshot으로 먼저 백업한다.
+3. 최신 snapshot의 파일을 복원하고 `index.db`를 재구축한 뒤,
+   `ts <= target`인 op를 시간순으로 적용한다. `latest`는 journal 전체를 뜻한다.
+4. replay가 끝나면 복원된 상태를 새 baseline으로 삼아 journal을 truncate한다.
+5. 모든 복원 경로는 임시 `.pre-restore/` 롤백 슬롯을 남긴다. 실제 첨부파일은
+   snapshot 대상이 아니므로 복원 과정에서도 삭제하거나 되살리지 않는다.
 
 ### 외부 편집 처리
 
@@ -479,7 +487,7 @@ openguild migrate-to-files
 | File watching (양방향 자동 sync) | Phase 5 (미래) | 단방향 (DB→파일) 안정화 후 |
 | auto 블록에 상태 표시 (✅ 🟡) | 옵션 — 추후 추가 | F4 안정화 후 |
 | Quest body 의 markdown 렌더링 호환성 (GitHub web 등) | 표준 GFM 만 사용 → 자동 호환 | — |
-| Permanent delete (purge) | `--force` 옵션 으로 가능 | F3 시 함께 |
+| Permanent delete (purge) | 미구현 — 현재 CLI에 명령 없음 | F3 시 함께 |
 | 다중 CLI 동시 read | lock 안 잡음 (read-only) — write 만 lock | — |
 
 ---

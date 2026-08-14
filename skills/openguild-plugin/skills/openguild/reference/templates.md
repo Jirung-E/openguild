@@ -3,8 +3,8 @@
 Templates live at `.guild/templates/<name>.md` and pre-fill new quests.
 
 ```bash
-openguild quest template list
-openguild quest template show <name>
+openguild template list
+openguild template show <name>
 openguild quest new --type <PREFIX> --title "..." --template <name>
 ```
 

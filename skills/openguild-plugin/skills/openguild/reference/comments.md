@@ -3,15 +3,18 @@
 Comments are visible discussion attached to a quest or campaign. Memos are
 private notes not shown to others.
 
-**Always pass `--author <name>`** — comments/memos need attribution. For
-non-ASCII bodies, write the text to a UTF-8 file and use `--file`/
-`--description-file` rather than piping through stdin/shell args.
+For agent-authored comments, **always pass `--author <name>`** even though
+`comment add` permits an empty author at the CLI syntax level. Reactions
+require `--author` because toggling is per author. Memos have no author field
+and therefore do not accept `--author`. For non-ASCII bodies, write the text
+to a UTF-8 file and use `--file`/`--description-file` rather than piping
+through stdin/shell args.
 
 ## Guild-wide search
 
 Same filter/sort/tree option set as `quest comment list` below — `comments`
-spans every quest and campaign in the selected guild. It works in local and
-remote (`--remote`) mode.
+spans every quest and campaign in the selected guild (not other guilds). It
+works in local and remote (`--remote`) mode.
 
 ```bash
 openguild comments [--author <name>] [--since <ts>] [--until <ts>] [--grep "text"]
@@ -35,12 +38,12 @@ openguild quest comment show <slug> [--id <id> [--depth N] [--with-parents] | --
 openguild quest comment add <slug> --author <name> --file <PATH> [--parent-id <id>]
 openguild quest comment edit <slug> <id> --file <PATH>
 openguild quest comment remove <slug> <id>
-openguild quest comment react <slug> <id> --emoji <emoji> --author <name>
+openguild quest comment react <slug> <id> <emoji> --author <name>
 openguild quest comment discussion <slug> <id>   # toggle
 openguild quest comment resolved <slug> <id>     # toggle
 openguild quest comment pinned <slug> <id>       # toggle
 
-openguild quest memo set <slug> --author <name> --file <PATH>
+openguild quest memo set <slug> --file <PATH>
 ```
 
 `quest comment show` without `--id` prints the most recent 20 entries by
@@ -57,10 +60,10 @@ openguild campaign comment show <campaign-slug> [--id <id> [--depth N] [--with-p
 openguild campaign comment add <campaign-slug> --author <name> --file <PATH> [--parent-id <id>]
 openguild campaign comment edit <campaign-slug> <id> --file <PATH>
 openguild campaign comment remove <campaign-slug> <id>
-openguild campaign comment react <campaign-slug> <id> --emoji <emoji> --author <name>
+openguild campaign comment react <campaign-slug> <id> <emoji> --author <name>
 openguild campaign comment pinned <campaign-slug> <id>   # toggle
 
-openguild campaign memo set <campaign-slug> --author <name> --file <PATH>
+openguild campaign memo set <campaign-slug> --file <PATH>
 ```
 
 (Campaigns don't have a discussion/resolved flag — that's quest-only.)

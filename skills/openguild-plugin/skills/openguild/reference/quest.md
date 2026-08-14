@@ -38,8 +38,9 @@ openguild quest done <slug>            # shortcut for move → done
 openguild quest reopen <slug>          # shortcut for move → open
 ```
 
-`openguild quest status <slug> <STATUS>` is **deprecated** — read-only lookup
-now; use `move`/`start`/`done`/`reopen` to change status.
+`openguild quest status <slug>` is still a read-only lookup. Supplying the
+optional `<STATUS>` argument still changes status, but that mutating form is
+**deprecated**. Do not use it; use `move`/`start`/`done`/`reopen` instead.
 
 **When to self-promote to `done` vs. stop at `testing`**: if the change is
 fully covered by automated tests you already ran, go straight to `done`. If it
