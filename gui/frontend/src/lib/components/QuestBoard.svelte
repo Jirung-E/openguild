@@ -4738,16 +4738,19 @@
 		display: flex;
 		align-items: center;
 		gap: 4px;
-		/* BUG-226: 이 컨테이너는 클릭을 **통과시킨다**. BUG-193 으로 left 가
-		   생기면서 툴바가 보드 전체 폭을 덮는 띠가 됐는데, 여기서 클릭을 받으면
-		   버튼이 없는 빈 구간(대부분)에서도 노드를 고를 수 없다 — 사용자에겐
-		   "아무것도 없는데 클릭이 안 먹는" 것으로 보인다. 실제 컨트롤에만
-		   pointer-events 를 되살린다(아래 `.toolbar > *`). */
-		pointer-events: none;
-		/* BUG-193: 좁은 화면에서 툴바가 한 줄로 뻗어 화면 왼쪽 밖으로 나갔다
-		   (오른쪽 고정이라 넘치는 쪽이 왼쪽). 왼쪽 경계를 주고 줄바꿈을 허용해
-		   넘치는 버튼이 아랫줄로 내려가게 한다. */
-		left: 14px;
+		/* DEV-352: 레인 위에 버튼이 낱개로 떠 보이지 않도록 실제 컨트롤 크기의
+		   불투명 surface로 묶는다. width:max-content를 쓰되 max-width로 좁은
+		   화면에서는 기존처럼 줄바꿈한다. 화면 전체 폭의 클릭 띠를 만들지 않으므로
+		   BUG-226의 빈 보드 클릭 회귀도 피한다. */
+		left: auto;
+		width: max-content;
+		max-width: calc(100% - 28px);
+		padding: 4px;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-radius: 9px;
+		box-shadow: 0 4px 14px color-mix(in srgb, var(--text) 16%, transparent);
+		pointer-events: auto;
 		flex-wrap: wrap;
 		justify-content: flex-end;
 		row-gap: 4px;
@@ -4766,10 +4769,7 @@
 	}
 	/* DEV-073: 접기 토글 — 항상 표시. */
 	.tb-btn.tb-collapse {
-		opacity: 0.7;
 		padding: 4px 8px;
-	}
-	.tb-btn.tb-collapse:hover {
 		opacity: 1;
 	}
 	.tb-btn {
@@ -4777,7 +4777,7 @@
 		align-items: center;
 		gap: 4px;
 		padding: 4px 10px;
-		background: var(--bg-elevated);
+		background: var(--bg-subtle);
 		border: 1px solid var(--border);
 		border-radius: 6px;
 		color: var(--text-muted);
@@ -4789,21 +4789,24 @@
 			border-color 0.1s;
 	}
 	.tb-btn:hover:not(:disabled) {
-		background: var(--bg-subtle);
+		background: color-mix(in srgb, var(--accent) 8%, var(--bg-subtle));
 		border-color: var(--text-faint);
 		color: var(--text);
 	}
 	.tb-btn:disabled {
-		opacity: 0.35;
+		opacity: 1;
+		background: color-mix(in srgb, var(--bg-subtle) 70%, var(--bg-elevated));
+		border-color: var(--border);
+		color: var(--text-faint);
 		cursor: default;
 	}
 	.tb-btn.tb-on {
-		background: color-mix(in srgb, var(--warning) 12%, transparent);
-		border-color: color-mix(in srgb, var(--warning) 55%, transparent);
+		background: color-mix(in srgb, var(--warning) 14%, var(--bg-subtle));
+		border-color: color-mix(in srgb, var(--warning) 55%, var(--border));
 		color: var(--warning);
 	}
 	.tb-btn.tb-on:hover:not(:disabled) {
-		background: color-mix(in srgb, var(--warning) 18%, transparent);
+		background: color-mix(in srgb, var(--warning) 22%, var(--bg-subtle));
 		border-color: var(--warning);
 		color: var(--orange);
 	}
@@ -4840,7 +4843,7 @@
 	}
 	.tb-select {
 		padding: 3px 6px;
-		background: var(--bg-elevated);
+		background: var(--bg-subtle);
 		border: 1px solid var(--border);
 		border-radius: 6px;
 		color: var(--text-muted);
