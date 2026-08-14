@@ -1117,6 +1117,16 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'board.filterActivePre': { ko: '필터 적용 중 — ', en: 'Filter active — ' },
 	'board.filterActivePost': { ko: ' 매치', en: ' matched' },
 	'board.newQuest': { ko: '새 퀘스트', en: 'New quest' },
+	'board.columns': { ko: '세로 열', en: 'Columns' },
+	'board.rows': { ko: '가로 행', en: 'Rows' },
+	'board.orientationSwitchRows': {
+		ko: '상태 레인을 가로 행으로 전환',
+		en: 'Switch status lanes to horizontal rows'
+	},
+	'board.orientationSwitchColumns': {
+		ko: '상태 레인을 세로 열로 전환',
+		en: 'Switch status lanes to vertical columns'
+	},
 	'board.gridSnap': {
 		ko: '그리드 스냅 — 드래그 종료 시 격자에 정렬 (G)',
 		en: 'Grid snap — align to grid on drag end (G)'
@@ -1125,7 +1135,12 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		ko: '레인 그리드 열 수 (그리드만 갱신)',
 		en: 'Lane grid columns (grid only)'
 	},
+	'board.gridRows': {
+		ko: '레인 그리드 행 수 (그리드만 갱신)',
+		en: 'Lane grid rows (grid only)'
+	},
 	'board.colSuffix': { ko: '열', en: ' col' },
+	'board.rowSuffix': { ko: '행', en: ' row' },
 	'board.settingsTitle': {
 		ko: '레인 순서 / 숨김 / 그룹·단독 노드 가리기',
 		en: 'Lane order / hide / hide group·solo nodes'
@@ -1134,6 +1149,10 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'board.hideHelp': {
 		ko: '레인 순서 변경 + 숨김 + 그룹·단독 노드 가리기. ◀ / ▶ 로 좌우 이동, 표시 해제 시 그 레인 전체 숨김.',
 		en: 'Reorder lanes + hide + hide group/solo nodes. ◀ / ▶ to move, unchecking Show hides the whole lane.'
+	},
+	'board.hideHelpRows': {
+		ko: '레인 순서 변경 + 숨김 + 그룹·단독 노드 가리기. ▲ / ▼ 로 위아래 이동, 표시 해제 시 그 레인 전체 숨김.',
+		en: 'Reorder lanes + hide + hide group/solo nodes. ▲ / ▼ to move, unchecking Show hides the whole lane.'
 	},
 	'board.arrangeGroupTitle': {
 		ko: '모든 노드 정렬 — 연관 그룹은 직사각형 영역으로 묶고, isolated 는 위쪽에 배치',
@@ -1165,6 +1184,8 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'board.colHideSolo': { ko: '단독 노드 숨김', en: 'Hide solo' },
 	'board.moveLeft': { ko: '왼쪽으로', en: 'Move left' },
 	'board.moveRight': { ko: '오른쪽으로', en: 'Move right' },
+	'board.moveUp': { ko: '위로', en: 'Move up' },
+	'board.moveDown': { ko: '아래로', en: 'Move down' },
 	'board.laneShowTitle': {
 		ko: '레인 표시 (체크 해제 시 레인 전체 숨김)',
 		en: 'Show lane (unchecking hides the whole lane)'
@@ -1176,6 +1197,7 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	},
 	'board.laneToggle': { ko: '레인 접기/펼치기', en: 'Collapse/expand lane' },
 	'board.laneSortCols': { ko: '이 레인 정렬 열 수', en: 'Sort columns for this lane' },
+	'board.laneSortRows': { ko: '이 레인 정렬 행 수', en: 'Sort rows for this lane' },
 	'board.laneSortMode': { ko: '이 레인 정렬 모드', en: 'Sort mode for this lane' },
 	'board.laneSettingsCollapse': { ko: '레인 설정 접기', en: 'Collapse lane settings' },
 	'board.laneSettingsExpand': { ko: '레인 설정 펼치기', en: 'Expand lane settings' },

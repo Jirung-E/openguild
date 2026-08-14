@@ -25,10 +25,20 @@
 	import { boardEdgePath, parallelEdgeBends } from '$lib/utils/quest-board-render';
 	import { isBoardPanSurfaceTarget } from '$lib/utils/quest-board-input';
 	import {
-	boardLodForZoom,
-	isPerformanceMonitorShortcut,
-	screenGridColumnCenters,
-	screenGridMetrics,
+		boardPointToCanonical,
+		canonicalGridBaseY,
+		canonicalToBoardPoint,
+		laneIndexAtCrossCoordinate,
+		rowGridBaseX,
+		rowLaneHeight,
+		type BoardOrientation,
+		type BoardOrientationMetrics
+	} from '$lib/utils/quest-board-orientation';
+	import {
+		boardLodForZoom,
+		isPerformanceMonitorShortcut,
+		screenGridColumnCenters,
+		screenGridMetrics,
 		summarizeBoardFrames,
 		type BoardFrameStats,
 		type BoardLod
@@ -83,6 +93,19 @@
 	 * 상한은 기존 하한(0.25) — 넓은 화면에서 쓸데없이 깊게 축소되지 않게.
 	 * 하한 0.02 는 안전장치.
 	 */
+	const LANE_TOP = 52;
+	const ORIENTATION_METRICS: BoardOrientationMetrics = {
+		nodeWidth: NODE_W,
+		nodeHeight: NODE_H,
+		nodeGap: NODE_GAP,
+		lanePadding: LANE_PAD_X,
+		columnLaneWidth: LANE_W,
+		columnLaneStride: LANE_STRIDE,
+		laneHeaderSize: LANE_TOP
+	};
+	const ROW_LANE_H = rowLaneHeight(ORIENTATION_METRICS);
+	let boardOrientation = $state<BoardOrientation>('columns');
+
 	function computeMinZoom(): number {
 		const vw = container?.clientWidth || window.innerWidth || 1;
 		const vh = container?.clientHeight || window.innerHeight || 1;
@@ -91,11 +114,13 @@
 		if (bb && bb.w > 0 && bb.h > 0) {
 			fitZoom = Math.min(vw / bb.w, vh / bb.h);
 		} else {
-			fitZoom = vw / (LANE_STRIDE * Math.max(1, sorted.length));
+			fitZoom =
+				boardOrientation === 'columns'
+					? vw / (LANE_STRIDE * Math.max(1, sorted.length))
+					: vh / ((ROW_LANE_H + LANE_GAP) * Math.max(1, sorted.length));
 		}
 		return Math.max(0.02, Math.min(0.25, fitZoom * 0.7));
 	}
-	const LANE_TOP = 52;
 	const CARD_W = 300;
 	const MAX_HISTORY = 50;
 
@@ -387,6 +412,20 @@
 	function gk(suffix: string): string {
 		return guildKeyPrefix ? `openguild.${guildKeyPrefix}.${suffix}` : `openguild.${suffix}`;
 	}
+	function loadBoardOrientation(): BoardOrientation {
+		try {
+			return localStorage.getItem(gk('boardOrientation')) === 'rows' ? 'rows' : 'columns';
+		} catch {
+			return 'columns';
+		}
+	}
+	function saveBoardOrientation() {
+		try {
+			localStorage.setItem(gk('boardOrientation'), boardOrientation);
+		} catch {
+			/* 무시 */
+		}
+	}
 
 	// ── lane cols 영속화 헬퍼 (BUG-009) ─────────────────────────
 	// status slug 를 키로 — sort_order / id 가 reindex / 시드 변경 시 흔들리므로.
@@ -475,9 +514,13 @@
 		pan: { x: number; y: number };
 		zoom: number;
 	}
+	function viewportStorageKey(orientation = boardOrientation): string {
+		// 기존 key는 columns용으로 유지해 이전 버전의 viewport를 그대로 복원한다.
+		return gk(orientation === 'columns' ? 'boardViewport' : 'boardViewport.rows');
+	}
 	function loadViewport(): BoardViewport | null {
 		try {
-			const raw = localStorage.getItem(gk('boardViewport'));
+			const raw = localStorage.getItem(viewportStorageKey());
 			if (!raw) return null;
 			const v = JSON.parse(raw) as BoardViewport;
 			if (
@@ -494,16 +537,19 @@
 		return null;
 	}
 	let viewportSaveTimer: ReturnType<typeof setTimeout> | null = null;
+	function saveViewportNow(orientation = boardOrientation) {
+		if (!cy) return;
+		try {
+			const v: BoardViewport = { pan: cy.pan(), zoom: cy.zoom() };
+			localStorage.setItem(viewportStorageKey(orientation), JSON.stringify(v));
+		} catch {
+			/* 무시 */
+		}
+	}
 	function scheduleViewportSave() {
 		if (viewportSaveTimer) clearTimeout(viewportSaveTimer);
 		viewportSaveTimer = setTimeout(() => {
-			if (!cy) return;
-			try {
-				const v: BoardViewport = { pan: cy.pan(), zoom: cy.zoom() };
-				localStorage.setItem(gk('boardViewport'), JSON.stringify(v));
-			} catch {
-				/* 무시 */
-			}
+			saveViewportNow();
 		}, 250); // debounce 250ms — 연속 pan/zoom 시 저장 폭주 방지.
 	}
 
@@ -650,21 +696,9 @@
 		}
 	}
 
-	// ── DEV-067: lane 시각 압축 (laneHidden 인 lane 자리 회수) ────
-	//
-	// 두 좌표계:
-	// - **absolute X** = DB positions.x. laneOf 기반 absolute lane left + offset.
-	// - **visual X**   = BoardNode position.x. visible lane left + offset.
-	//
-	// hideSettings 없을 땐 둘이 같음. laneHidden lane 이 생기면 visible 압축
-	// 으로 그 lane 뒤의 노드 X 가 STRIDE 만큼 왼쪽으로 시프트.
-	//
-	// 변환:
-	//   visualX = absX - absoluteLaneLeftOfStatus(sid) + visibleLaneLeftOfStatus(sid)
-	//   absX    = visualX + absoluteLaneLeftOfStatus(sid) - visibleLaneLeftOfStatus(sid)
-	//
-	// 모든 사이트 (init / drag dragfree / arrange / DB save / snapToGrid /
-	// flashToQuest 의 새 노드 추가) 가 이 변환 사용.
+	// ── lane 좌표계 ─────────────────────────────────────────────
+	// DB의 x/y는 기존 columns 좌표를 정본으로 유지한다. rows는 저장 좌표를
+	// 복제하지 않고 canonicalToBoardPoint로 화면에서만 축을 교환한다.
 
 	function absoluteLaneLeftOfStatus(statusId: number): number {
 		return (laneOf.get(statusId) ?? 0) * LANE_STRIDE;
@@ -676,6 +710,12 @@
 	}
 	function laneStride(slug: string): number {
 		return laneWidth(slug) + LANE_GAP;
+	}
+	function rowHeight(slug: string): number {
+		return collapsedLanes.has(slug) ? LANE_COLLAPSED_W : ROW_LANE_H;
+	}
+	function rowStride(slug: string): number {
+		return rowHeight(slug) + LANE_GAP;
 	}
 
 	function visibleLaneLeftOfStatus(statusId: number): number {
@@ -695,12 +735,44 @@
 		return 0;
 	}
 
-	function absToVisualX(absX: number, statusId: number): number {
-		return absX - absoluteLaneLeftOfStatus(statusId) + visibleLaneLeftOfStatus(statusId);
+	function visibleLaneTopOfStatus(statusId: number): number {
+		let top = 0;
+		let lastTop = 0;
+		for (const s of sorted) {
+			const setting = getHideSetting(s.slug);
+			if (s.id === statusId) return setting.laneHidden ? lastTop : top;
+			if (!setting.laneHidden) {
+				lastTop = top;
+				top += rowStride(s.slug);
+			}
+		}
+		return 0;
 	}
 
-	function visualToAbsX(visualX: number, statusId: number): number {
-		return visualX + absoluteLaneLeftOfStatus(statusId) - visibleLaneLeftOfStatus(statusId);
+	function visibleLaneStartOfStatus(statusId: number): number {
+		return boardOrientation === 'columns'
+			? visibleLaneLeftOfStatus(statusId)
+			: visibleLaneTopOfStatus(statusId);
+	}
+
+	function canonicalToVisual(absX: number, absY: number, statusId: number): BoardPoint {
+		return canonicalToBoardPoint(
+			{ x: absX, y: absY },
+			absoluteLaneLeftOfStatus(statusId),
+			visibleLaneStartOfStatus(statusId),
+			boardOrientation,
+			ORIENTATION_METRICS
+		);
+	}
+
+	function visualToCanonical(visualX: number, visualY: number, statusId: number): BoardPoint {
+		return boardPointToCanonical(
+			{ x: visualX, y: visualY },
+			absoluteLaneLeftOfStatus(statusId),
+			visibleLaneStartOfStatus(statusId),
+			boardOrientation,
+			ORIENTATION_METRICS
+		);
 	}
 
 	/** visible lane index (drag drop 시 사용자 시각 위치) → status_id. */
@@ -724,21 +796,15 @@
 	 * 시각 영역 (40px) 뒤로 클릭/드롭해도 같은 lane 으로 잡혀 "실제 영역은
 	 * 그대로 차지" 현상.
 	 */
-	function visibleLaneIdxAtVisualX(visualX: number): number {
-		let left = 0;
-		let visIdx = 0;
-		for (const s of sorted) {
-			if (getHideSetting(s.slug).laneHidden) continue;
-			const stride = laneStride(s.slug);
-			if (visualX < left + stride) return visIdx;
-			left += stride;
-			visIdx++;
-		}
-		return Math.max(0, visIdx - 1);
+	function visibleLaneIdxAtVisualPoint(point: BoardPoint): number {
+		const cross = boardOrientation === 'columns' ? point.x : point.y;
+		const strides = sorted
+			.filter((s) => !getHideSetting(s.slug).laneHidden)
+			.map((s) => (boardOrientation === 'columns' ? laneStride(s.slug) : rowStride(s.slug)));
+		return laneIndexAtCrossCoordinate(cross, strides);
 	}
 
-	/** 모든 노드의 visual position 을 현재 hide settings 기준으로 재계산.
-	 * 노드 data.absX 가 진리원 (DB 와 같은 좌표계). */
+	/** 모든 노드의 visual position을 현재 orientation/hide settings로 재계산. */
 	function applyLaneVisualCompression() {
 		const c = cy;
 		if (!c) return;
@@ -746,9 +812,10 @@
 			c.nodes('[questId]').forEach((n) => {
 				const sid = n.data('statusId') as number;
 				const absX = (n.data('absX') as number | undefined) ?? n.position().x;
-				const newX = absToVisualX(absX, sid);
-				const p = n.position();
-				if (newX !== p.x) n.position({ x: newX, y: p.y });
+				const absY = (n.data('absY') as number | undefined) ?? n.position().y;
+				const next = canonicalToVisual(absX, absY, sid);
+				const current = n.position();
+				if (next.x !== current.x || next.y !== current.y) n.position(next);
 			});
 		});
 	}
@@ -784,6 +851,29 @@
 		}
 	}
 
+	function toggleBoardOrientation() {
+		if (!cy) return;
+		if (viewportSaveTimer) {
+			clearTimeout(viewportSaveTimer);
+			viewportSaveTimer = null;
+		}
+		const previous = boardOrientation;
+		saveViewportNow(previous);
+		boardOrientation = previous === 'columns' ? 'rows' : 'columns';
+		saveBoardOrientation();
+		// 이력의 좌표는 당시 화면 orientation 기준이므로 모드 경계를 넘겨 재생하지 않는다.
+		undoStack = [];
+		redoStack = [];
+		buildLaneDivs(sorted);
+		applyHideSettings();
+		applyLaneVisualCompression();
+		syncLanes();
+		const saved = loadViewport();
+		if (saved) cy.viewport(saved);
+		else cy.fit(undefined, 60);
+		syncLanes();
+	}
+
 	// DEV-073: toolbar 접기 — 우상단 toolbar 가 첫 lane 의 header 라벨을 가리는
 	// 문제. 접으면 ⊟ 한 버튼만 남고 나머지 숨김. localStorage 영구화.
 	let toolbarCollapsed = $state(false);
@@ -808,8 +898,7 @@
 	// svelte/store get 임포트 alias.
 	import { get as getStore } from 'svelte/store';
 
-	// DEV-105 (partial): lane 접기 — collapsed 시 그 lane 의 노드 hide + label
-	// 90도 회전. lane 폭 자체 축소는 미지원 (LANE_W 상수 retrofit 필요 — 별도).
+	// DEV-105: lane 접기 — columns에서는 폭, rows에서는 높이를 40px로 축소한다.
 	let collapsedLanes = $state(new Set<string>());
 	function loadCollapsedLanes(): Set<string> {
 		try {
@@ -882,10 +971,10 @@
 						n.style('display', hidden!.has(qid) ? 'none' : 'element');
 					}
 				}
-				// 모든 노드의 visualX 재계산 — collapsed 변경이 lane left 누적에 영향.
+				// 모든 노드의 화면 좌표 재계산 — collapsed가 lane 누적 크기에 영향.
 				const absX = (n.data('absX') as number | undefined) ?? n.position().x;
-				const visX = absToVisualX(absX, sid);
-				n.animate({ position: { x: visX, y: n.position().y }, duration: 150 });
+				const absY = (n.data('absY') as number | undefined) ?? n.position().y;
+				n.animate({ position: canonicalToVisual(absX, absY, sid), duration: 150 });
 			});
 			syncLanes();
 		}
@@ -909,6 +998,7 @@
 	function swapLane(li: number, dir: -1 | 1) {
 		const target = li + dir;
 		if (target < 0 || target >= sorted.length) return;
+		const oldLaneOf = new Map(laneOf);
 		const next = [...sorted];
 		[next[li], next[target]] = [next[target], next[li]];
 		sorted = next;
@@ -919,18 +1009,17 @@
 		// 지금: buildLaneDivs 가 새 sorted 순서대로 lane-col / lane-hdr 재구성. syncLanes 로 좌표.
 		if (cy) {
 			buildLaneDivs(sorted);
-			// 모든 노드 의 lane 의 새 좌표로 animate (즉시 jump 가 아니라 부드러운 이동 — 사용자가 이동 인지).
+			// 정본 좌표의 lane-local offset을 보존하고 새 lane 순서에 맞춰 평행이동.
 			cy.nodes('[questId]').forEach((n) => {
 				const sid = n.data('statusId') as number;
 				const newLi = laneOf.get(sid) ?? 0;
-				const absX = (n.data('absX') as number) ?? n.position().x;
-				const oldX = n.position().x;
-				// absX 의 lane-local X 를 새 lane 의 left 로.
-				const oldLaneLeft = Math.floor(oldX / LANE_STRIDE) * LANE_STRIDE;
-				const localX = oldX - oldLaneLeft;
-				const newVisX = newLi * LANE_STRIDE + localX;
-				n.animate({ position: { x: newVisX, y: n.position().y }, duration: 200 });
-				n.data('absX', newLi * LANE_STRIDE + (absX - Math.floor(absX / LANE_STRIDE) * LANE_STRIDE));
+				const oldLi = oldLaneOf.get(sid) ?? 0;
+				const absX = (n.data('absX') as number | undefined) ?? oldLi * LANE_STRIDE + LANE_W / 2;
+				const absY =
+					(n.data('absY') as number | undefined) ?? canonicalGridBaseY(ORIENTATION_METRICS);
+				const nextAbsX = newLi * LANE_STRIDE + (absX - oldLi * LANE_STRIDE);
+				n.data('absX', nextAbsX);
+				n.animate({ position: canonicalToVisual(nextAbsX, absY, sid), duration: 200 });
 			});
 			syncLanes();
 		}
@@ -951,31 +1040,26 @@
 	function snapToGrid(x: number, y: number): { x: number; y: number } {
 		const cellW = NODE_W + NODE_GAP;
 		const cellH = NODE_H + NODE_GAP;
-		// DEV-067: input x 는 visual. visible lane idx → status → absolute lane idx.
-		// DEV-105 fix10: 가변 폭 collapsed lane 인식 — 균등 LANE_STRIDE 가정 제거.
 		const visCount = Math.max(1, visibleLaneCount());
-		const visIdx = Math.max(0, Math.min(visCount - 1, visibleLaneIdxAtVisualX(x)));
+		const visIdx = Math.max(0, Math.min(visCount - 1, visibleLaneIdxAtVisualPoint({ x, y })));
 		const statusId = statusIdAtVisibleIdx(visIdx);
 		const li = statusId !== null ? (laneOf.get(statusId) ?? 0) : 0;
 		const cols = laneCols[li] ?? 2;
-		// laneFirstCellX(li, cols) 는 absolute X. visible 압축 적용해서 visual X 로 변환.
-		const firstX =
-			statusId !== null
-				? absToVisualX(laneFirstCellX(li, cols), statusId)
-				: laneFirstCellX(li, cols);
-		const localX = x - firstX;
+		const sid = statusId ?? sorted[li]?.id ?? 0;
+		const canonical = visualToCanonical(x, y, sid);
+		const firstX = laneFirstCellX(li, cols);
+		const localX = canonical.x - firstX;
 		// BUG-113: colIdx 가 [0, cols-1] 로 안 잘려 있어, 레인 폭 자체는 항상
 		// (더 많은 열도 들어갈 만큼) 넓기 때문에 1/2 열 snap 인 레인에서도 옆쪽에
 		// 드롭하면 반올림된 colIdx 가 그 레인의 col 수를 넘어서 버렸다 —
 		// 그 값이 우연히 3열 grid 의 바깥쪽 셀 위치와 겹쳐 "3열 snap 의 양 끝
 		// 으로 스냅되는" 것처럼 보였음. 레인에 설정된 col 수 범위로 clamp.
 		const colIdx = Math.max(0, Math.min(cols - 1, Math.round(localX / cellW)));
-		const sx = firstX + colIdx * cellW;
-		// Y 그리드 기준: 보드 상단 + NODE_H/2 (첫 셀 중앙)
-		const baseY = LANE_TOP + 16 + NODE_H / 2;
-		const rowIdx = Math.round((y - baseY) / cellH);
-		const sy = baseY + rowIdx * cellH;
-		return { x: sx, y: sy };
+		const absX = firstX + colIdx * cellW;
+		const baseY = canonicalGridBaseY(ORIENTATION_METRICS);
+		const rowIdx = Math.round((canonical.y - baseY) / cellH);
+		const absY = baseY + rowIdx * cellH;
+		return canonicalToVisual(absX, absY, sid);
 	}
 
 	// ── 인앱 확인 다이얼로그 ────────────────────────────────────
@@ -1126,10 +1210,10 @@
 				}
 			}
 			node.animate({ position: { x: target.x, y: target.y }, duration: 120 });
-			// DEV-067: record.to.x 는 visual. DB 는 absolute.
-			const absX = visualToAbsX(target.x, target.statusId);
-			node.data('absX', absX);
-			questsApi.updatePosition(record.questId, { x: absX, y: target.y }).catch(() => {});
+			const canonical = visualToCanonical(target.x, target.y, target.statusId);
+			node.data('absX', canonical.x);
+			node.data('absY', canonical.y);
+			questsApi.updatePosition(record.questId, canonical).catch(() => {});
 			// DEV-115: undo/redo 로 움직인 노드도 위로.
 			recentMoveZ += 1;
 			node.style('z-index', recentMoveZ);
@@ -1153,12 +1237,10 @@
 					}
 				}
 				node.animate({ position: { x: target.x, y: target.y }, duration: 200 });
-				// DEV-067: target.x 는 visual. DB 는 absolute.
-				const absX = visualToAbsX(target.x, target.statusId);
-				node.data('absX', absX);
-				promises.push(
-					questsApi.updatePosition(item.questId, { x: absX, y: target.y }).catch(() => {})
-				);
+				const canonical = visualToCanonical(target.x, target.y, target.statusId);
+				node.data('absX', canonical.x);
+				node.data('absY', canonical.y);
+				promises.push(questsApi.updatePosition(item.questId, canonical).catch(() => {}));
 				// DEV-115: 배치 undo/redo 도 위로.
 				recentMoveZ += 1;
 				node.style('z-index', recentMoveZ);
@@ -1300,7 +1382,7 @@
 			}
 		}
 		const primary = cy.getElementById(`q-${boardInteraction.primaryId}`);
-		const visIdx = visibleLaneIdxAtVisualX(primary.position().x);
+		const visIdx = visibleLaneIdxAtVisualPoint(primary.position());
 		const sid = statusIdAtVisibleIdx(visIdx);
 		const slug = sid === null ? null : (sorted.find((status) => status.id === sid)?.slug ?? null);
 		if (slug !== dragHighlightSlug) dragHighlightSlug = slug;
@@ -1314,7 +1396,7 @@
 			if (node.length === 0) continue;
 			const pos = node.position();
 			const visMax = Math.max(0, visibleLaneCount() - 1);
-			const visIdx = Math.max(0, Math.min(visibleLaneIdxAtVisualX(pos.x), visMax));
+			const visIdx = Math.max(0, Math.min(visibleLaneIdxAtVisualPoint(pos), visMax));
 			const targetStatusId = statusIdAtVisibleIdx(visIdx) ?? fromState.statusId;
 			pendingDragBatch.push({
 				node,
@@ -1491,24 +1573,27 @@
 			const snapped = gridSnap ? snapToGrid(toPos.x, toPos.y) : toPos;
 			const finalStatusId =
 				laneChanged && confirmedLanes.has(toLaneIdx) ? newStatus.id : fromStatus;
-			const laneLeftVis = visibleLaneLeftOfStatus(finalStatusId);
-			const minX = laneLeftVis + LANE_PAD_X + NODE_W / 2;
-			const maxX = laneLeftVis + LANE_W - LANE_PAD_X - NODE_W / 2;
-			const clampedX = Math.max(minX, Math.min(maxX, snapped.x));
-			const finalY = snapped.y;
-			if (laneChanged || clampedX !== toPos.x || finalY !== toPos.y) {
-				node.position({ x: clampedX, y: finalY });
+			const canonical = visualToCanonical(snapped.x, snapped.y, finalStatusId);
+			const laneAbsLeft = absoluteLaneLeftOfStatus(finalStatusId);
+			canonical.x = Math.max(
+				laneAbsLeft + LANE_PAD_X + NODE_W / 2,
+				Math.min(laneAbsLeft + LANE_W - LANE_PAD_X - NODE_W / 2, canonical.x)
+			);
+			const finalPoint = canonicalToVisual(canonical.x, canonical.y, finalStatusId);
+			if (laneChanged || finalPoint.x !== toPos.x || finalPoint.y !== toPos.y) {
+				node.position(finalPoint);
 			}
-			const moved = fromPos.x !== clampedX || fromPos.y !== finalY || fromStatus !== finalStatusId;
+			const moved =
+				fromPos.x !== finalPoint.x || fromPos.y !== finalPoint.y || fromStatus !== finalStatusId;
 			if (!moved) continue;
-			const absX = visualToAbsX(clampedX, finalStatusId);
-			node.data('absX', absX);
+			node.data('absX', canonical.x);
+			node.data('absY', canonical.y);
 			historyItems.push({
 				questId,
 				from: { x: fromPos.x, y: fromPos.y, statusId: fromStatus },
-				to: { x: clampedX, y: finalY, statusId: finalStatusId }
+				to: { x: finalPoint.x, y: finalPoint.y, statusId: finalStatusId }
 			});
-			posUpdates.push(questsApi.updatePosition(questId, { x: absX, y: finalY }).catch(() => {}));
+			posUpdates.push(questsApi.updatePosition(questId, canonical).catch(() => {}));
 		}
 
 		if (historyItems.length > 0) {
@@ -1673,7 +1758,7 @@
 		try {
 			const cellW = NODE_W + NODE_GAP;
 			const cellH = NODE_H + NODE_GAP;
-			const baseY = LANE_TOP + 16 + NODE_H / 2;
+			const baseY = canonicalGridBaseY(ORIENTATION_METRICS);
 
 			const allNodes = nodesToArrange;
 			const allIds = new Set(allNodes.map((n) => n.data('questId') as number));
@@ -1722,20 +1807,20 @@
 				const li = laneOf.get(sid) ?? 0;
 				const lcols = laneCols[li] ?? 2;
 				const firstX = laneFirstCellX(li, lcols);
-				// DEV-067: absolute → visual 변환.
 				const absX = firstX + col * cellW;
-				const visX = absToVisualX(absX, sid);
-				const y = baseY + row * cellH;
+				const absY = baseY + row * cellH;
+				const visual = canonicalToVisual(absX, absY, sid);
 				const fromPos = { ...node.position() };
-				if (Math.abs(fromPos.x - visX) < 0.5 && Math.abs(fromPos.y - y) < 0.5) return;
+				if (Math.abs(fromPos.x - visual.x) < 0.5 && Math.abs(fromPos.y - visual.y) < 0.5) return;
 				node.data('absX', absX);
+				node.data('absY', absY);
 				batchItems.push({
 					questId: qid,
 					from: { ...fromPos, statusId: sid },
-					to: { x: visX, y, statusId: sid }
+					to: { ...visual, statusId: sid }
 				});
-				node.animate({ position: { x: visX, y }, duration: 200 });
-				savePromises.push(questsApi.updatePosition(qid, { x: absX, y }).catch(() => {}));
+				node.animate({ position: visual, duration: 200 });
+				savePromises.push(questsApi.updatePosition(qid, { x: absX, y: absY }).catch(() => {}));
 			};
 
 			// 3) isolated 를 lane 별로 묶어서 row 0 부터 채움
@@ -1851,7 +1936,7 @@
 		if (!cy || arranging) return;
 		arranging = true;
 		const ids = targetStatusIds ?? sorted.map((s) => s.id);
-		const startY = LANE_TOP + 16 + NODE_H / 2;
+		const startY = canonicalGridBaseY(ORIENTATION_METRICS);
 		const cellW = NODE_W + NODE_GAP;
 		const cellH = NODE_H + NODE_GAP;
 		const batchItems: BatchMove['items'] = [];
@@ -1877,20 +1962,22 @@
 				const fromPos = { ...node.position() };
 				const col = idx % cols,
 					row = Math.floor(idx / cols);
-				// DEV-067: x = firstX(absolute) → visual 변환. DB save 는 absolute.
 				const absX = firstX + col * cellW;
 				const sid = node.data('statusId') as number;
-				const visX = absToVisualX(absX, sid);
-				const y = startY + row * cellH;
+				const absY = startY + row * cellH;
+				const visual = canonicalToVisual(absX, absY, sid);
 				node.data('absX', absX);
+				node.data('absY', absY);
 				batchItems.push({
 					questId: node.data('questId') as number,
 					from: { ...fromPos, statusId: sid },
-					to: { x: visX, y, statusId: sid }
+					to: { ...visual, statusId: sid }
 				});
-				node.animate({ position: { x: visX, y }, duration: 200 });
+				node.animate({ position: visual, duration: 200 });
 				savePromises.push(
-					questsApi.updatePosition(node.data('questId') as number, { x: absX, y }).catch(() => {})
+					questsApi
+						.updatePosition(node.data('questId') as number, { x: absX, y: absY })
+						.catch(() => {})
 				);
 			});
 		}
@@ -2221,6 +2308,7 @@
 			}
 			hideSettings = loadHideSettings();
 			globalCols = loadGlobalCols();
+			boardOrientation = loadBoardOrientation();
 			// DEV-105 fix4: collapsed lane 상태 복원이 누락되어 새로고침 시
 			// 모든 lane 이 펼쳐진 상태로 초기화되던 버그.
 			collapsedLanes = loadCollapsedLanes();
@@ -2489,14 +2577,18 @@
 				const li = laneOf.get(quest.status_id) ?? 0;
 				// 같은 레인의 기존 노드들 아래에 자연스럽게 배치
 				const existing = cy.nodes(`[statusId = ${quest.status_id}]`).toArray();
-				const maxY = existing.reduce(
-					(m, n) => Math.max(m, (n as BoardNode).position().y),
-					LANE_TOP + NODE_H / 2
+				const maxAbsY = existing.reduce(
+					(m, n) =>
+						Math.max(
+							m,
+							((n as BoardNode).data('absY') as number | undefined) ??
+								canonicalGridBaseY(ORIENTATION_METRICS)
+						),
+					canonicalGridBaseY(ORIENTATION_METRICS) - NODE_H - NODE_GAP
 				);
-				// DEV-067: absX = absolute, visualX = absolute → visual 변환.
 				const absX = li * LANE_STRIDE + LANE_W / 2;
-				const visX = absToVisualX(absX, quest.status_id);
-				const y = maxY + NODE_H + NODE_GAP;
+				const absY = maxAbsY + NODE_H + NODE_GAP;
+				const visual = canonicalToVisual(absX, absY, quest.status_id);
 
 				cy.add({
 					group: 'nodes',
@@ -2511,9 +2603,10 @@
 						typeColor: quest.type_color,
 						highlightType: '',
 						active: false,
-						absX
+						absX,
+						absY
 					},
-					position: { x: visX, y }
+					position: visual
 				});
 				if (quest.parent_quest_id) {
 					cy.add({
@@ -2527,7 +2620,7 @@
 					});
 				}
 				// DEV-067: DB 는 absolute X.
-				questsApi.updatePosition(qid, { x: absX, y }).catch(() => {});
+				questsApi.updatePosition(qid, { x: absX, y: absY }).catch(() => {});
 				node = cy.getElementById(`q-${qid}`) as BoardNode;
 			}
 
@@ -2571,6 +2664,7 @@
 			lanesEl.appendChild(col);
 			const gridCol = document.createElement('div');
 			gridCol.className = 'lane-grid-col';
+			gridCol.classList.toggle('orientation-rows', boardOrientation === 'rows');
 			// BUG-225: viewport 크기의 CSS grid만 유지한다. 거대한 world bitmap을
 			// 만들지 않는다. 자식 DOM 없이 이 레인 요소의 CSS 다중 background만
 			// laneCols만큼 겹쳐 세로 반복한다.
@@ -2606,12 +2700,18 @@
 			};
 			const sel = document.createElement('select');
 			sel.className = 'lane-cols-sel';
-			sel.title = t('board.laneSortCols', get(locale));
+			sel.title = t(
+				boardOrientation === 'columns' ? 'board.laneSortCols' : 'board.laneSortRows',
+				get(locale)
+			);
 			const initialCols = laneCols[li];
 			[1, 2, 3].forEach((n) => {
 				const opt = document.createElement('option');
 				opt.value = String(n);
-				opt.textContent = `${n}${t('board.colSuffix', get(locale))}`;
+				opt.textContent = `${n}${t(
+					boardOrientation === 'columns' ? 'board.colSuffix' : 'board.rowSuffix',
+					get(locale)
+				)}`;
 				if (n === initialCols) opt.selected = true;
 				sel.appendChild(opt);
 			});
@@ -2713,17 +2813,19 @@
 		if (!gridLanesEl) return;
 		const cellW = NODE_W + NODE_GAP;
 		const cellH = NODE_H + NODE_GAP;
-		const baseY = LANE_TOP + 16 + NODE_H / 2;
+		const baseY = canonicalGridBaseY(ORIENTATION_METRICS);
 		const safeZoom = Math.max(zoom, 0.0001);
-		const metrics = screenGridMetrics(safeZoom, cellH);
-		const viewportWorldHeight = Math.max(container.clientHeight / safeZoom, 1);
-		const verticalOverscan = viewportWorldHeight;
-		const gridTop = -pan.y / safeZoom - verticalOverscan;
-		const gridHeight = viewportWorldHeight + verticalOverscan * 2;
+		const metrics = screenGridMetrics(safeZoom, boardOrientation === 'columns' ? cellH : cellW);
 		const dotRadiusWorld = metrics.dotRadius / safeZoom;
 		const dotFeatherWorld = 0.55 / safeZoom;
-		const columnWidth = dotRadiusWorld * 2 + dotFeatherWorld * 2;
-		let laneLeft = 0;
+		const dotBand = dotRadiusWorld * 2 + dotFeatherWorld * 2;
+		const viewportWorldHeight = Math.max(container.clientHeight / safeZoom, 1);
+		const viewportWorldWidth = Math.max(container.clientWidth / safeZoom, 1);
+		const gridTop = -pan.y / safeZoom - viewportWorldHeight;
+		const gridHeight = viewportWorldHeight * 3;
+		const gridLeft = -pan.x / safeZoom - viewportWorldWidth;
+		const gridWidth = viewportWorldWidth * 3;
+		let laneStart = 0;
 		gridLanesEl.querySelectorAll<HTMLElement>('.lane-grid-col').forEach((gridCol, i) => {
 			const s = sorted[i];
 			const laneHidden = s ? getHideSetting(s.slug).laneHidden : false;
@@ -2731,32 +2833,66 @@
 				gridCol.style.display = 'none';
 				return;
 			}
-			const w = s ? laneWidth(s.slug) : LANE_W;
+			const laneSize = s
+				? boardOrientation === 'columns'
+					? laneWidth(s.slug)
+					: rowHeight(s.slug)
+				: boardOrientation === 'columns'
+					? LANE_W
+					: ROW_LANE_H;
 			const collapsed = s ? collapsedLanes.has(s.slug) : false;
 			if (!gridSnap || collapsed) {
 				gridCol.style.display = 'none';
-				laneLeft += w + LANE_GAP;
+				laneStart += laneSize + LANE_GAP;
 				return;
 			}
 
 			const cols = Math.max(1, Math.min(3, laneCols[i] ?? 2));
-			const firstCxLocal = laneFirstCellX(i, cols) - i * LANE_STRIDE;
-			const columnCenters = screenGridColumnCenters(firstCxLocal, cellW, 1, cols);
 			gridCol.style.display = '';
-			gridCol.style.left = `${laneLeft}px`;
-			gridCol.style.width = `${w}px`;
-			gridCol.style.top = `${gridTop}px`;
-			gridCol.style.height = `${gridHeight}px`;
 			gridCol.style.bottom = '';
+			gridCol.style.right = '';
 			gridCol.classList.remove('grid-cols-1', 'grid-cols-2', 'grid-cols-3');
 			gridCol.classList.add(`grid-cols-${cols}`);
-			gridCol.style.backgroundSize = `${columnWidth}px ${cellH}px`;
-			gridCol.style.backgroundPosition = columnCenters
-				.map((centerX) => `${centerX - columnWidth / 2}px ${baseY - gridTop - cellH / 2}px`)
-				.join(', ');
+			if (boardOrientation === 'columns') {
+				const firstCxLocal = laneFirstCellX(i, cols) - i * LANE_STRIDE;
+				const columnCenters = screenGridColumnCenters(firstCxLocal, cellW, 1, cols);
+				gridCol.style.left = `${laneStart}px`;
+				gridCol.style.width = `${laneSize}px`;
+				gridCol.style.top = `${gridTop}px`;
+				gridCol.style.height = `${gridHeight}px`;
+				gridCol.style.backgroundSize = `${dotBand}px ${cellH}px`;
+				gridCol.style.backgroundPosition = columnCenters
+					.map((centerX) => `${centerX - dotBand / 2}px ${baseY - gridTop - cellH / 2}px`)
+					.join(', ');
+			} else if (s) {
+				const absoluteStart = absoluteLaneLeftOfStatus(s.id);
+				const firstX = laneFirstCellX(i, cols);
+				const rowCenters = Array.from(
+					{ length: cols },
+					(_, row) =>
+						canonicalToBoardPoint(
+							{ x: firstX + row * cellW, y: baseY },
+							absoluteStart,
+							laneStart,
+							'rows',
+							ORIENTATION_METRICS
+						).y - laneStart
+				);
+				gridCol.style.left = `${gridLeft}px`;
+				gridCol.style.width = `${gridWidth}px`;
+				gridCol.style.top = `${laneStart}px`;
+				gridCol.style.height = `${laneSize}px`;
+				gridCol.style.backgroundSize = `${cellW}px ${dotBand}px`;
+				gridCol.style.backgroundPosition = rowCenters
+					.map(
+						(centerY) =>
+							`${rowGridBaseX(ORIENTATION_METRICS) - gridLeft - cellW / 2}px ${centerY - dotBand / 2}px`
+					)
+					.join(', ');
+			}
 			gridCol.style.setProperty('--grid-dot-radius', `${dotRadiusWorld}px`);
 			gridCol.style.setProperty('--grid-dot-feather', `${dotFeatherWorld}px`);
-			laneLeft += w + LANE_GAP;
+			laneStart += laneSize + LANE_GAP;
 		});
 	}
 
@@ -2806,8 +2942,8 @@
 		if (!gridZoomActive) {
 			syncScreenGrid(pan, zoom);
 		}
-		// lane의 단색 배경/경계와 grid는 viewport 높이를 채우고 X만 camera를 따른다.
-		let laneLeft = 0;
+		// 단색 lane은 교차축만 camera를 따르고 반대축은 viewport를 채운다.
+		let laneStart = 0;
 		lanesEl?.querySelectorAll<HTMLElement>('.lane-col').forEach((col, i) => {
 			const s = sorted[i];
 			const laneHidden = s ? getHideSetting(s.slug).laneHidden : false;
@@ -2815,15 +2951,33 @@
 				col.style.display = 'none';
 				return;
 			}
-			const w = s ? laneWidth(s.slug) : LANE_W;
+			const size = s
+				? boardOrientation === 'columns'
+					? laneWidth(s.slug)
+					: rowHeight(s.slug)
+				: boardOrientation === 'columns'
+					? LANE_W
+					: ROW_LANE_H;
 			col.style.display = '';
-			col.style.left = `${laneLeft * zoom + pan.x}px`;
-			col.style.width = `${w * zoom}px`;
-			laneLeft += w + LANE_GAP;
+			if (boardOrientation === 'columns') {
+				col.style.left = `${laneStart * zoom + pan.x}px`;
+				col.style.width = `${size * zoom}px`;
+				col.style.top = '0';
+				col.style.bottom = '0';
+				col.style.right = '';
+				col.style.height = '';
+			} else {
+				col.style.left = '0';
+				col.style.right = '0';
+				col.style.width = '';
+				col.style.top = `${laneStart * zoom + pan.y}px`;
+				col.style.height = `${size * zoom}px`;
+				col.style.bottom = '';
+			}
+			laneStart += size + LANE_GAP;
 		});
-		// Header 는 확대해도 글자/버튼 크기를 유지하는 screen-space UI 이므로
-		// world 밖에 둔다. lane/card/edge 와 달리 X/폭만 viewport 를 따른다.
-		let hdrLeft = 0;
+		// Header는 screen-space 크기를 유지하고 lane의 교차축 위치만 따른다.
+		let headerStart = 0;
 		headersEl?.querySelectorAll<HTMLElement>('.lane-hdr').forEach((hdr, i) => {
 			const s = sorted[i];
 			const laneHidden = s ? getHideSetting(s.slug).laneHidden : false;
@@ -2831,11 +2985,28 @@
 				hdr.style.display = 'none';
 				return;
 			}
-			const w = s ? laneWidth(s.slug) : LANE_W;
+			const size = s
+				? boardOrientation === 'columns'
+					? laneWidth(s.slug)
+					: rowHeight(s.slug)
+				: boardOrientation === 'columns'
+					? LANE_W
+					: ROW_LANE_H;
 			hdr.style.display = '';
-			hdr.style.left = `${hdrLeft * zoom + pan.x}px`;
-			hdr.style.width = `${w * zoom}px`;
-			hdrLeft += w + LANE_GAP;
+			if (boardOrientation === 'columns') {
+				hdr.style.left = `${headerStart * zoom + pan.x}px`;
+				hdr.style.width = `${size * zoom}px`;
+				hdr.style.top = '0';
+				hdr.style.right = '';
+				hdr.style.height = '38px';
+			} else {
+				hdr.style.left = '0';
+				hdr.style.right = '0';
+				hdr.style.width = '';
+				hdr.style.top = `${headerStart * zoom + pan.y}px`;
+				hdr.style.height = `${Math.min(38, Math.max(size * zoom, 1))}px`;
+			}
+			headerStart += size + LANE_GAP;
 		});
 		syncExpandedPos();
 	}
@@ -2847,23 +3018,25 @@
 		cy.minZoom(computeMinZoom());
 
 		const bb = cy.elements().nonempty() ? cy.elements().boundingBox() : null;
-		const worldHeight = Math.max(
-			container.clientHeight / Math.max(computeMinZoom(), 0.02) + 200,
-			(bb?.y2 ?? 0) + NODE_H + 600,
-			2000
-		);
-
-		let curLeft = 0;
+		const minZoom = Math.max(computeMinZoom(), 0.02);
+		let laneExtent = 0;
 		sorted.forEach((s) => {
 			const laneHidden = getHideSetting(s.slug).laneHidden;
-			if (laneHidden) {
-				return;
-			}
-			const w = laneWidth(s.slug);
-			curLeft += w + LANE_GAP;
+			if (laneHidden) return;
+			laneExtent +=
+				(boardOrientation === 'columns' ? laneWidth(s.slug) : rowHeight(s.slug)) + LANE_GAP;
 		});
+		laneExtent = Math.max(laneExtent - LANE_GAP, 1);
+		const worldWidth =
+			boardOrientation === 'columns'
+				? laneExtent
+				: Math.max(container.clientWidth / minZoom + 200, (bb?.x2 ?? 0) + NODE_W + 600, 2000);
+		const worldHeight =
+			boardOrientation === 'columns'
+				? Math.max(container.clientHeight / minZoom + 200, (bb?.y2 ?? 0) + NODE_H + 600, 2000)
+				: laneExtent;
 		if (worldEl) {
-			worldEl.style.width = `${Math.max(curLeft - LANE_GAP, 1)}px`;
+			worldEl.style.width = `${worldWidth}px`;
 			worldEl.style.height = `${worldHeight}px`;
 		}
 		syncViewportVisuals();
@@ -2918,11 +3091,12 @@
 
 		buildLaneDivs(sorted);
 
-		const laneNextY = new Map<number, number>(sorted.map((s) => [s.id, LANE_TOP + 20]));
+		const initialY = canonicalGridBaseY(ORIENTATION_METRICS);
+		const laneNextY = new Map<number, number>(sorted.map((s) => [s.id, initialY]));
 		posMap.forEach(({ y }, questId) => {
 			const quest = quests.find((q) => q.id === questId);
 			if (!quest) return;
-			const cur = laneNextY.get(quest.status_id) ?? LANE_TOP + 20;
+			const cur = laneNextY.get(quest.status_id) ?? initialY;
 			laneNextY.set(quest.status_id, Math.max(cur, y + NODE_H + NODE_GAP));
 		});
 		const autoCount = new Map<number, number>();
@@ -2940,7 +3114,7 @@
 			let pos = posMap.get(q.id);
 			if (!pos) {
 				const n = autoCount.get(q.status_id) ?? 0;
-				const startY = laneNextY.get(q.status_id) ?? LANE_TOP + 20;
+				const startY = laneNextY.get(q.status_id) ?? initialY;
 				const col = n % 3;
 				const row = Math.floor(n / 3);
 				const laneLeft = li * LANE_STRIDE;
@@ -2950,9 +3124,7 @@
 				};
 				autoCount.set(q.status_id, n + 1);
 			}
-			// DEV-067: pos.x 는 absolute (DB positions.x). data.absX 진리원으로
-			// 저장. BoardNode position 은 visual 좌표 — applyLaneVisualCompression
-			// 이 init 끝에서 일관 변환.
+			// DB x/y를 정본으로 data에 보관하고, init 끝에서 orientation 화면 좌표로 변환.
 			elements.push({
 				data: {
 					id: `q-${q.id}`,
@@ -2965,7 +3137,8 @@
 					typeColor: q.type_color,
 					highlightType: '',
 					active: false,
-					absX: pos.x
+					absX: pos.x,
+					absY: pos.y
 				},
 				position: pos // 초기엔 absolute 그대로. applyLaneVisualCompression 이 visual 변환.
 			});
@@ -3009,14 +3182,6 @@
 		);
 		cy.minZoom(computeMinZoom());
 
-		// DEV-058: 저장된 viewport 가 있으면 복원, 없으면 fit().
-		const savedViewport = loadViewport();
-		if (savedViewport) {
-			cy.viewport({ pan: savedViewport.pan, zoom: savedViewport.zoom });
-		} else {
-			cy.fit(undefined, 60);
-		}
-
 		// DEV-056: hide settings 적용. computeGroups → applyHideSettings.
 		// DEV-105 fix8/9: applyHideSettings 가 이제 collapsedLanes 도 인식 — 별도
 		// 코드 불필요.
@@ -3025,6 +3190,11 @@
 		// DEV-067: visible lane 압축 (laneHidden 자리 회수). 노드 visual 좌표
 		// 일관 재계산. syncLanes 도 visible 압축 반영.
 		applyLaneVisualCompression();
+		syncLanes();
+		// orientation 변환이 끝난 실제 node bounds 기준으로 viewport를 복원/계산한다.
+		const savedViewport = loadViewport();
+		if (savedViewport) cy.viewport(savedViewport);
+		else cy.fit(undefined, 60);
 		syncLanes();
 		syncDomGraphNow();
 		// DEV-135 fix: 렌더 완료(노드 생성) 직후 현재 필터로 dim 적용 —
@@ -3037,9 +3207,10 @@
 	class="board-wrap"
 	class:lod-compact={boardLod === 'compact'}
 	class:lod-overview={boardLod === 'overview'}
+	class:orientation-rows={boardOrientation === 'rows'}
 	bind:this={boardWrapEl}
 >
-	<!-- lane 단색 배경은 세로 pan과 무관하게 viewport 높이를 항상 채운다. -->
+	<!-- lane 단색 배경은 orientation 반대축의 viewport를 항상 채운다. -->
 	<div class="lanes-bg" bind:this={lanesEl}></div>
 	<!-- DEV-317/BUG-225: snap + SVG edge + DOM node가 이 transform 하나를 공유한다. -->
 	<div class="board-world-viewport" bind:this={worldViewportEl}>
@@ -3325,6 +3496,20 @@
 			<button class="tb-btn" onclick={fitView} title={t('board.fitView', $locale)}
 				><span class="icon">⊞</span></button
 			>
+			<button
+				class="tb-btn"
+				class:tb-on={boardOrientation === 'rows'}
+				onclick={toggleBoardOrientation}
+				title={t(
+					boardOrientation === 'columns'
+						? 'board.orientationSwitchRows'
+						: 'board.orientationSwitchColumns',
+					$locale
+				)}
+			>
+				<span class="icon">{boardOrientation === 'columns' ? '↕' : '↔'}</span>
+				<span>{t(boardOrientation === 'columns' ? 'board.columns' : 'board.rows', $locale)}</span>
+			</button>
 			<div class="tb-sep"></div>
 			<button
 				class="tb-btn"
@@ -3358,11 +3543,26 @@
 				class="tb-select"
 				value={globalCols}
 				onchange={(e) => setGlobalCols(parseInt((e.currentTarget as HTMLSelectElement).value))}
-				title={t('board.gridCols', $locale)}
+				title={t(boardOrientation === 'columns' ? 'board.gridCols' : 'board.gridRows', $locale)}
 			>
-				<option value={1}>1{t('board.colSuffix', $locale)}</option>
-				<option value={2}>2{t('board.colSuffix', $locale)}</option>
-				<option value={3}>3{t('board.colSuffix', $locale)}</option>
+				<option value={1}
+					>1{t(
+						boardOrientation === 'columns' ? 'board.colSuffix' : 'board.rowSuffix',
+						$locale
+					)}</option
+				>
+				<option value={2}
+					>2{t(
+						boardOrientation === 'columns' ? 'board.colSuffix' : 'board.rowSuffix',
+						$locale
+					)}</option
+				>
+				<option value={3}
+					>3{t(
+						boardOrientation === 'columns' ? 'board.colSuffix' : 'board.rowSuffix',
+						$locale
+					)}</option
+				>
 			</select>
 			<div class="tb-sep"></div>
 			<!-- DEV-056 → DEV-059 fix2: 숨김 + 순서 변경 통합 → '보드 설정'. -->
@@ -3462,71 +3662,84 @@
 				>
 			</div>
 			<p class="hide-help">
-				{t('board.hideHelp', $locale)}
+				{t(boardOrientation === 'columns' ? 'board.hideHelp' : 'board.hideHelpRows', $locale)}
 			</p>
 			<div class="hide-table-wrap">
-			<table class="hide-table">
-				<thead>
-					<tr>
-						<th style="width: 6ch">{t('board.colOrder', $locale)}</th>
-						<th style="width: 14ch">{t('board.colLane', $locale)}</th>
-						<th>{t('board.colShow', $locale)}</th>
-						<th>{t('board.colHideGroup', $locale)}</th>
-						<th>{t('board.colHideSolo', $locale)}</th>
-					</tr>
-				</thead>
-				<tbody>
-					{#each sorted as s, li (s.id)}
-						{@const setting = getHideSetting(s.slug)}
-						{@const laneVisible = !setting.laneHidden}
-						<tr class:lane-off={!laneVisible}>
-							<td class="reorder-cell">
-								<button
-									class="reorder-btn"
-									onclick={() => swapLane(li, -1)}
-									disabled={li === 0}
-									title={t('board.moveLeft', $locale)}
-									aria-label={t('board.moveLeft', $locale)}>◀</button
-								>
-								<button
-									class="reorder-btn"
-									onclick={() => swapLane(li, 1)}
-									disabled={li === sorted.length - 1}
-									title={t('board.moveRight', $locale)}
-									aria-label={t('board.moveRight', $locale)}>▶</button
-								>
-							</td>
-							<td>
-								<span class="hide-lane-name" style:color={s.color}>{statusLabel(s, $locale)}</span>
-							</td>
-							<td>
-								<input
-									type="checkbox"
-									checked={laneVisible}
-									onchange={() => toggleHideSetting(s.slug, 'laneHidden')}
-									title={t('board.laneShowTitle', $locale)}
-								/>
-							</td>
-							<td>
-								<input
-									type="checkbox"
-									checked={setting.hideGroup}
-									disabled={!laneVisible}
-									onchange={() => toggleHideSetting(s.slug, 'hideGroup')}
-								/>
-							</td>
-							<td>
-								<input
-									type="checkbox"
-									checked={setting.hideSolo}
-									disabled={!laneVisible}
-									onchange={() => toggleHideSetting(s.slug, 'hideSolo')}
-								/>
-							</td>
+				<table class="hide-table">
+					<thead>
+						<tr>
+							<th style="width: 6ch">{t('board.colOrder', $locale)}</th>
+							<th style="width: 14ch">{t('board.colLane', $locale)}</th>
+							<th>{t('board.colShow', $locale)}</th>
+							<th>{t('board.colHideGroup', $locale)}</th>
+							<th>{t('board.colHideSolo', $locale)}</th>
 						</tr>
-					{/each}
-				</tbody>
-			</table>
+					</thead>
+					<tbody>
+						{#each sorted as s, li (s.id)}
+							{@const setting = getHideSetting(s.slug)}
+							{@const laneVisible = !setting.laneHidden}
+							<tr class:lane-off={!laneVisible}>
+								<td class="reorder-cell">
+									<button
+										class="reorder-btn"
+										onclick={() => swapLane(li, -1)}
+										disabled={li === 0}
+										title={t(
+											boardOrientation === 'columns' ? 'board.moveLeft' : 'board.moveUp',
+											$locale
+										)}
+										aria-label={t(
+											boardOrientation === 'columns' ? 'board.moveLeft' : 'board.moveUp',
+											$locale
+										)}>{boardOrientation === 'columns' ? '◀' : '▲'}</button
+									>
+									<button
+										class="reorder-btn"
+										onclick={() => swapLane(li, 1)}
+										disabled={li === sorted.length - 1}
+										title={t(
+											boardOrientation === 'columns' ? 'board.moveRight' : 'board.moveDown',
+											$locale
+										)}
+										aria-label={t(
+											boardOrientation === 'columns' ? 'board.moveRight' : 'board.moveDown',
+											$locale
+										)}>{boardOrientation === 'columns' ? '▶' : '▼'}</button
+									>
+								</td>
+								<td>
+									<span class="hide-lane-name" style:color={s.color}>{statusLabel(s, $locale)}</span
+									>
+								</td>
+								<td>
+									<input
+										type="checkbox"
+										checked={laneVisible}
+										onchange={() => toggleHideSetting(s.slug, 'laneHidden')}
+										title={t('board.laneShowTitle', $locale)}
+									/>
+								</td>
+								<td>
+									<input
+										type="checkbox"
+										checked={setting.hideGroup}
+										disabled={!laneVisible}
+										onchange={() => toggleHideSetting(s.slug, 'hideGroup')}
+									/>
+								</td>
+								<td>
+									<input
+										type="checkbox"
+										checked={setting.hideSolo}
+										disabled={!laneVisible}
+										onchange={() => toggleHideSetting(s.slug, 'hideSolo')}
+									/>
+								</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
 			</div>
 
 			<!-- DEV-135: 보드 필터 — List 와 동일한 필터 UI. 변경 시 공유 store +
@@ -3633,6 +3846,9 @@
 	}
 	:global(.lane-grid-col.grid-cols-3) {
 		background-image: var(--grid-dot-image), var(--grid-dot-image), var(--grid-dot-image);
+	}
+	:global(.lane-grid-col.orientation-rows) {
+		background-repeat: repeat-x;
 	}
 	.board {
 		position: absolute;
@@ -3888,6 +4104,10 @@
 			box-shadow 0.12s;
 		overflow: hidden;
 	}
+	.orientation-rows :global(.lane-col) {
+		border-right: 0;
+		border-bottom: 1px solid var(--bg-subtle);
+	}
 	/* DEV-105 fix11: 드래그 중 노드가 놓일 lane 강조. */
 	:global(.lane-col.drag-target) {
 		background: color-mix(in srgb, var(--accent) 14%, var(--bg-elevated));
@@ -3909,6 +4129,9 @@
 		box-sizing: border-box;
 		background: var(--bg-elevated);
 		pointer-events: none;
+	}
+	.orientation-rows :global(.lane-hdr) {
+		border-right: 0;
 	}
 	/* DEV-105 fix2: 접혔을 때 label 만 표시 — 다른 컨트롤 (cols-sel, arrange-group)
 	   은 좁은 폭에서 시각적으로 깨지고 label 을 가려서 다시 펼치기가 어려워짐. */
@@ -3959,6 +4182,16 @@
 		   넘어가게 (lane-hdrs 가 board 전체를 덮어 아래 overflow 는 보임). */
 		align-self: flex-start;
 		padding: 4px 0 0;
+	}
+	.orientation-rows :global(.lane-label.collapsed) {
+		position: relative;
+		inset: auto;
+		width: auto;
+		min-height: 0;
+		writing-mode: horizontal-tb;
+		text-orientation: mixed;
+		padding: 0 0.875rem;
+		align-self: auto;
 	}
 	/* DEV-105 fix5: 레인별 설정 토글 ⚙ — 항상 보임, 작은 라벨 옆 버튼. */
 	:global(.lane-settings-btn) {
