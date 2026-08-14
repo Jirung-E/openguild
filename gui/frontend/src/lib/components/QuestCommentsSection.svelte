@@ -1110,19 +1110,22 @@
 						>× {t('detail.delete', $locale)}</button
 					>
 				</div>
+			{:else}
+				<!-- BUG-232 후속: 편집기 토글도 작성자·시각과 같은 헤더 행에 둔다.
+				     별도 ce-head 행이 본문 위에 빈 세로 간격을 만들던 원인이었다. -->
+				<div class="entry-actions">
+					<button
+						type="button"
+						class="ce-toggle"
+						class:active={editRich}
+						onclick={() => (editRich = !editRich)}
+						title={t('comment.toggleEditor', $locale)}
+						aria-pressed={editRich}>M↓</button
+					>
+				</div>
 			{/if}
 		</div>
 		{#if editingId === e.id}
-			<div class="ce-head">
-				<button
-					type="button"
-					class="ce-toggle"
-					class:active={editRich}
-					onclick={() => (editRich = !editRich)}
-					title={t('comment.toggleEditor', $locale)}
-					aria-pressed={editRich}>M↓</button
-				>
-			</div>
 			{#if editRich}
 				<MarkdownEditor
 					bind:value={editBody}
@@ -2176,11 +2179,6 @@
 		display: none;
 	}
 	/* DEV-289: 댓글 입력창 마크다운 편집기 토글 버튼. */
-	.ce-head {
-		display: flex;
-		justify-content: flex-end;
-		margin-bottom: 0.25rem;
-	}
 	.ce-toggle {
 		font-size: 0.68rem;
 		font-family: 'SFMono-Regular', Consolas, monospace;
