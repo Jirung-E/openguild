@@ -384,6 +384,7 @@
 		headersEl.querySelectorAll<HTMLElement>('.lane-label').forEach((el, i) => {
 			const s = sorted[i];
 			if (s) el.textContent = statusLabel(s, loc);
+			el.classList.toggle('lane-label-en', loc === 'en');
 		});
 	});
 
@@ -2684,6 +2685,7 @@
 			if (collapsedLanes.has(s.slug)) hdr.classList.add('collapsed');
 			const label = document.createElement('button');
 			label.className = 'lane-label';
+			label.classList.toggle('lane-label-en', get(locale) === 'en');
 			// DEV-015: 언어 반응 표시 이름(레인 저장 키는 여전히 name_en 기반 —
 			// statusSlug(s.name_en) — 표시만 바뀜).
 			label.textContent = statusLabel(s, get(locale));
@@ -4176,6 +4178,12 @@
 		text-align: start;
 		writing-mode: vertical-rl;
 		text-orientation: mixed;
+	}
+	/* vertical-rl의 Latin 문자는 오른쪽으로 눕는다. 영어만 180도 뒤집어
+	   왼쪽으로 90도 회전한 방향(아래에서 위로 읽는 방향)으로 표시한다. */
+	.orientation-rows :global(.lane-label.lane-label-en) {
+		transform: rotate(180deg);
+		transform-origin: center;
 	}
 	/* DEV-105: collapsed 시 90도 회전 (세로) + 글자 한 줄 압축.
 	   DEV-105 fix4: max-height 60px 가 lane-hdr (38px) 보다 커서 긴 이름이 위로

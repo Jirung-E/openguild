@@ -16,3 +16,5 @@
 {"ts":"2026-08-14T10:41:13+09:00","op":"change_status","old":"in_progress","new":"testing"}
 {"ts":"2026-08-14T19:13:32+09:00","op":"change_status","old":"testing","new":"in_progress"}
 {"ts":"2026-08-14T19:18:54+09:00","op":"change_status","old":"in_progress","new":"testing"}
+{"ts":"2026-08-14T19:22:54+09:00","op":"change_status","old":"testing","new":"in_progress"}
+{"ts":"2026-08-14T19:23:37+09:00","op":"change_status","old":"in_progress","new":"testing"}
