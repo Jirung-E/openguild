@@ -4182,6 +4182,9 @@
 	/* vertical-rl의 Latin 문자는 오른쪽으로 눕는다. 영어만 180도 뒤집어
 	   왼쪽으로 90도 회전한 방향(아래에서 위로 읽는 방향)으로 표시한다. */
 	.orientation-rows :global(.lane-label.lane-label-en) {
+		/* 요소 전체를 뒤집으면 inline-start도 아래로 뒤집힌다. 회전 전에는
+		   끝에 정렬해야 화면에서는 레인 위쪽에 붙는다. */
+		text-align: end;
 		transform: rotate(180deg);
 		transform-origin: center;
 	}
