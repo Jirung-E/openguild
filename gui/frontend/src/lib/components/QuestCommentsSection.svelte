@@ -22,6 +22,7 @@
 	import { isSingleEmoji } from '$lib/utils/emoji';
 	// DEV-153: 작성/편집/답글 중이면 이탈 가드에 보고.
 	import { setUnsaved } from '$lib/stores/unsaved';
+	import { saveShortcut } from '$lib/utils/save-shortcut';
 	// DEV-259: alert() 잔재 제거 — 앱 공용 toast 로 통일.
 	import { showToast } from '$lib/stores/toast';
 	import {
@@ -880,7 +881,8 @@
 		editError = null;
 	}
 
-	async function saveEdit(id: number) {
+	async function saveEdit(id: number, keepEditing = false) {
+		if (editSaving) return;
 		if (!editBody.trim()) {
 			editError = t('comment.bodyRequired', $locale);
 			return;
@@ -890,14 +892,13 @@
 		try {
 			const updated = await commentsApi.updateComment(slug, id, editBody);
 			entries = entries.map((e) => (e.id === id ? updated : e));
-			cancelEdit();
+			if (!keepEditing) cancelEdit();
 		} catch (e) {
 			editError = e instanceof Error ? e.message : 'save failed';
 		} finally {
 			editSaving = false;
 		}
 	}
-
 	// DEV-118: 인앱 confirm 모달용 state.
 	let confirmDeleteId = $state<number | null>(null);
 	function askRemove(id: number) {
@@ -1041,6 +1042,10 @@
 		class="entry"
 		class:reply={isReply}
 		class:dimmed={discussionOnly && !e.discussion}
+		use:saveShortcut={{
+			disabled: editingId !== e.id || editSaving,
+			onSave: () => void saveEdit(e.id, true)
+		}}
 		class:pinned={isReply && e.pinned}
 		id={`comment-${e.id}`}
 	>

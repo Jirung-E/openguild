@@ -58,6 +58,7 @@
 	// 반영. 없으면 sort_order fallback. (보드와 같은 공유 헬퍼/키 사용.)
 	import { loadLaneOrder, orderStatusesByLane } from '$lib/utils/lane-order';
 	import { resolveGuildKeyPrefix } from '$lib/utils/guild-storage';
+	import { saveShortcut } from '$lib/utils/save-shortcut';
 
 	let slug = $derived($page.params.id ?? '');
 	// BUG-015 fix1: parent / sub / prereq link 가 같은 origin 을 propagate 해서
@@ -337,8 +338,8 @@
 		saveError = null;
 	}
 
-	async function saveEdit() {
-		if (!detail) return;
+	async function saveEdit(keepEditing = false) {
+		if (!detail || saving) return;
 		saving = true;
 		saveError = null;
 		try {
@@ -361,7 +362,7 @@
 				await questsApi.setDueDates(detail.id, body);
 			}
 			detail = await questsApi.getBySlug(slug);
-			exitEditMode();
+			if (!keepEditing) exitEditMode();
 		} catch (e) {
 			saveError = e instanceof Error ? e.message : 'save failed';
 		} finally {
@@ -788,7 +789,10 @@
 		</div>
 
 		{#if editMode}
-			<div class="edit-form">
+			<div
+				class="edit-form"
+				use:saveShortcut={{ disabled: saving, onSave: () => void saveEdit(true) }}
+			>
 				<label class="field-label">
 					<span>{t('qd.titleLabel', $locale)}</span>
 					<input class="edit-title" type="text" bind:value={editTitle} />
@@ -873,7 +877,7 @@
 				{#if saveError}<p class="save-error">{saveError}</p>{/if}
 
 				<div class="edit-actions">
-					<button class="btn-save" onclick={saveEdit} disabled={saving}>
+					<button class="btn-save" onclick={() => saveEdit()} disabled={saving}>
 						{saving ? t('common.saving', $locale) : t('common.save', $locale)}
 					</button>
 					<button class="btn-cancel" onclick={exitEditMode} disabled={saving}
@@ -1252,13 +1256,16 @@
 		<div class="modal-sm modal-combo" role="dialog" aria-modal="true" tabindex="-1">
 			<div class="modal-head">
 				<h3>
-					{#if comboMode === 'parent'}{t('qd.comboParent', $locale)}{:else if comboMode === 'sub'}{t(
+					{#if comboMode === 'parent'}{t(
+							'qd.comboParent',
+							$locale
+						)}{:else if comboMode === 'sub'}{t(
 							'qd.comboSub',
 							$locale
-						)}{:else if comboMode === 'prereq'}{t(
-							'qd.comboPrereq',
+						)}{:else if comboMode === 'prereq'}{t('qd.comboPrereq', $locale)}{:else}{t(
+							'qd.comboSuccessor',
 							$locale
-						)}{:else}{t('qd.comboSuccessor', $locale)}{/if}
+						)}{/if}
 				</h3>
 				<button class="x" onclick={closeCombo}>×</button>
 			</div>

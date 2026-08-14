@@ -15,6 +15,7 @@
 	import { onDestroy } from 'svelte';
 	// DEV-153: 메모 편집 중이면 이탈 가드에 보고.
 	import { setUnsaved } from '$lib/stores/unsaved';
+	import { saveShortcut } from '$lib/utils/save-shortcut';
 	// DEV-205: 메모 섹션 i18n.
 	import { locale, t } from '$lib/stores/locale';
 	import MarkdownView from './MarkdownView.svelte';
@@ -153,21 +154,21 @@
 		saveError = null;
 	}
 
-	async function save() {
+	async function save(keepEditing = false) {
+		if (saving) return;
 		saving = true;
 		saveError = null;
 		try {
 			const text = editText;
 			const res = await commentsApi.setMemo(slug, text);
 			content = res.content;
-			cancelEdit();
+			if (!keepEditing) cancelEdit();
 		} catch (e) {
 			saveError = e instanceof Error ? e.message : 'save failed';
 		} finally {
 			saving = false;
 		}
 	}
-
 </script>
 
 <section class="note-sec">
@@ -208,26 +209,30 @@
 		{:else if loadError}
 			<p class="state err">{loadError}</p>
 		{:else if editMode}
-			<!-- BUG: editor 섹션은 <label> 금지 — 안의 '📎 첨부' 버튼(labelable)이
-		     라벨 클릭마다 활성화돼 파일창이 뜬다(admin #13). div 로. -->
-			<div class="field-label">
-				<!-- DEV-188: '첨부' 버튼 제거(메모는 개인용). 이미지·동영상은
-				     드래그&드랍 / Ctrl+V 로 첨부 가능(attachmentExtension). -->
-				<span>{label.help} {t('note.helpAttach', $locale)}</span>
-				<MarkdownEditor
-					bind:value={editText}
-					mediaOnly
-					defaultHeight={360}
-					onError={(msg) => (saveError = `${t('campaign.attachFailed', $locale)}: ${msg}`)}
-				/>
+			<div class="note-edit" use:saveShortcut={{ disabled: saving, onSave: () => void save(true) }}>
+				<!-- BUG: editor 섹션은 <label> 금지 — 안의 '📎 첨부' 버튼(labelable)이
+			     라벨 클릭마다 활성화돼 파일창이 뜬다(admin #13). div 로. -->
+				<div class="field-label">
+					<!-- DEV-188: '첨부' 버튼 제거(메모는 개인용). 이미지·동영상은
+					     드래그&드랍 / Ctrl+V 로 첨부 가능(attachmentExtension). -->
+					<span>{label.help} {t('note.helpAttach', $locale)}</span>
+					<MarkdownEditor
+						bind:value={editText}
+						mediaOnly
+						defaultHeight={360}
+						onError={(msg) => (saveError = `${t('campaign.attachFailed', $locale)}: ${msg}`)}
+					/>
+				</div>
+				<div class="actions">
+					<button class="btn-save" onclick={() => save()} disabled={saving}>
+						{saving ? t('common.saving', $locale) : t('common.save', $locale)}
+					</button>
+					<button class="btn-cancel" onclick={cancelEdit} disabled={saving}
+						>{t('common.cancel', $locale)}</button
+					>
+				</div>
+				{#if saveError}<p class="state err">{saveError}</p>{/if}
 			</div>
-			<div class="actions">
-				<button class="btn-save" onclick={save} disabled={saving}>
-					{saving ? t('common.saving', $locale) : t('common.save', $locale)}
-				</button>
-				<button class="btn-cancel" onclick={cancelEdit} disabled={saving}>{t('common.cancel', $locale)}</button>
-			</div>
-			{#if saveError}<p class="state err">{saveError}</p>{/if}
 		{:else if content && content.trim()}
 			<!-- DEV-189: 'fixed' 모드면 고정 높이 + 내부 스크롤(드래그로 크기 조절),
 			     'expand' 면 전체 높이. -->
@@ -252,6 +257,9 @@
 </section>
 
 <style>
+	.note-edit {
+		display: contents;
+	}
 	.note-sec {
 		margin-bottom: 1.5rem;
 	}

@@ -11,6 +11,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	// DEV-153: 편집 중이면 이탈 가드에 보고.
 	import { setUnsaved } from '$lib/stores/unsaved';
+	import { saveShortcut } from '$lib/utils/save-shortcut';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	// DEV-192: 스크롤 위치 복원용 snapshot 타입 + 견고 복원 유틸.
@@ -219,26 +220,31 @@
 	function exitEditMode() {
 		editMode = false;
 	}
-	async function saveEdit() {
-		if (!detail) return;
+	async function saveEdit(keepEditing = false) {
+		if (!detail || saving) return;
 		saving = true;
 		try {
 			const desc = bodyEdit;
-			await campaignsApi.update(detail.campaign_slug, {
+			const updated = await campaignsApi.update(detail.campaign_slug, {
 				title: titleEdit.trim() || detail.title,
 				started_at: startedEdit,
 				ended_at: endedEdit,
 				description: desc
 			});
-			exitEditMode();
-			await load();
+			if (keepEditing) {
+				// load()는 loading 분기에서 편집기를 unmount해 커서·undo를 잃는다.
+				// 응답 필드만 현재 detail에 합쳐 편집기는 그대로 유지한다.
+				detail = { ...detail, ...updated };
+			} else {
+				exitEditMode();
+				await load();
+			}
 		} catch (e) {
 			showToast(e instanceof Error ? e.message : 'failed', 'error');
 		} finally {
 			saving = false;
 		}
 	}
-
 	async function toggleStatus() {
 		if (!detail) return;
 		const next = detail.status === 'active' ? 'done' : 'active';
@@ -467,7 +473,13 @@
 	{:else}
 		<!-- BUG-033: 메타 + 본문 통합 편집 (Quest Detail 패턴). 단일 편집 버튼,
 		     단일 저장 / 취소. -->
-		<section class="meta">
+		<section
+			class="meta"
+			use:saveShortcut={{
+				disabled: !editMode || saving || !titleEdit.trim(),
+				onSave: () => void saveEdit(true)
+			}}
+		>
 			<!-- BUG-035: 편집 버튼은 top-bar 로 이동 — title-row 에서 제거. -->
 			<div class="title-row">
 				<span class="slug">{detail.campaign_slug}</span>
@@ -517,7 +529,13 @@
 		</section>
 
 		<!-- 본문 markdown — editMode 면 같은 form 안의 editor. -->
-		<section class="body">
+		<section
+			class="body"
+			use:saveShortcut={{
+				disabled: !editMode || saving || !titleEdit.trim(),
+				onSave: () => void saveEdit(true)
+			}}
+		>
 			{#if editMode}
 				<!-- CodeMirror 가 div 안에 textarea 를 동적 생성 — svelte 정적
 				     분석으로는 label 의 associated control 미확인. ignore. -->
@@ -532,7 +550,11 @@
 					/>
 				</div>
 				<div class="actions">
-					<button class="btn-save" onclick={saveEdit} disabled={saving || !titleEdit.trim()}>
+					<button
+						class="btn-save"
+						onclick={() => saveEdit()}
+						disabled={saving || !titleEdit.trim()}
+					>
 						{saving ? t('common.saving', $locale) : t('common.save', $locale)}
 					</button>
 					<button class="btn-cancel" onclick={exitEditMode} disabled={saving}

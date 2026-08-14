@@ -16,6 +16,7 @@
 	// DEV-153: 편집 중이면 이탈 가드에 보고 (라우트 이탈용. 같은 페이지 내 규칙
 	// 전환 경고는 아래 confirmDiscardSlug 모달이 별도로 담당).
 	import { setUnsaved } from '$lib/stores/unsaved';
+	import { saveShortcut } from '$lib/utils/save-shortcut';
 	import { rulesApi, type RuleEntry } from '$lib/api/rules';
 	// DEV-205 모듈5: 규칙 페이지 i18n.
 	import { locale, t } from '$lib/stores/locale';
@@ -235,8 +236,8 @@
 		saveError = null;
 	}
 
-	async function save() {
-		if (!selectedSlug) return;
+	async function save(keepEditing = false) {
+		if (!selectedSlug || saving) return;
 		saving = true;
 		saveError = null;
 		try {
@@ -247,14 +248,13 @@
 			entries = entries.map((e) => (e.slug === selectedSlug ? { ...e, content: text } : e));
 			// DEV-173 후속: 제목(첫 # 헤딩)이 바뀌었을 수 있음 — 인덱스 재적재.
 			loadQuestIndex(true);
-			cancelEdit();
+			if (!keepEditing) cancelEdit();
 		} catch (e) {
 			saveError = e instanceof Error ? e.message : 'save failed';
 		} finally {
 			saving = false;
 		}
 	}
-
 	// ─── 신규 ───
 	function openCreate() {
 		creating = true;
@@ -488,7 +488,10 @@
 					{/if}
 
 					{#if editMode}
-						<div class="edit-form">
+						<div
+							class="edit-form"
+							use:saveShortcut={{ disabled: saving, onSave: () => void save(true) }}
+						>
 							<div class="field-label">
 								<span>{t('rules.bodyLabel', $locale)}</span>
 								<MarkdownEditor
@@ -499,7 +502,7 @@
 								/>
 							</div>
 							<div class="actions">
-								<button class="btn-save" onclick={save} disabled={saving}>
+								<button class="btn-save" onclick={() => save()} disabled={saving}>
 									{saving ? t('common.saving', $locale) : t('common.save', $locale)}
 								</button>
 								<button class="btn-cancel" onclick={cancelEdit} disabled={saving}>

@@ -18,6 +18,7 @@
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { setUnsaved } from '$lib/stores/unsaved';
+	import { saveShortcut } from '$lib/utils/save-shortcut';
 	import { libraryApi, type Book, type LibraryFolder } from '$lib/api/library';
 	import { buildLibraryTree, flattenFolderPaths, searchLibrary } from '$lib/utils/library-tree';
 	import LibraryFolderTree from '$lib/components/LibraryFolderTree.svelte';
@@ -425,8 +426,8 @@
 		saveError = null;
 	}
 
-	async function save() {
-		if (!selectedId) return;
+	async function save(keepEditing = false) {
+		if (!selectedId || saving) return;
 		saving = true;
 		saveError = null;
 		try {
@@ -434,14 +435,13 @@
 			const updated = await libraryApi.update(selectedId, { body: text });
 			books = books.map((b) => (b.book_id === selectedId ? updated : b));
 			loadQuestIndex(true);
-			cancelEdit();
+			if (!keepEditing) cancelEdit();
 		} catch (e) {
 			saveError = e instanceof Error ? e.message : 'save failed';
 		} finally {
 			saving = false;
 		}
 	}
-
 	// ─── 신규 ───
 	function openCreate() {
 		creating = true;
@@ -1179,7 +1179,10 @@
 					{/if}
 
 					{#if editMode}
-						<div class="edit-form">
+						<div
+							class="edit-form"
+							use:saveShortcut={{ disabled: saving, onSave: () => void save(true) }}
+						>
 							<div class="field-label">
 								<span>{t('library.bodyHint', $locale)}</span>
 								<!-- DEV-237: 비미디어 파일은 attachToSection 이 첨부 섹션에 등록. -->
@@ -1190,7 +1193,7 @@
 								/>
 							</div>
 							<div class="actions">
-								<button class="btn-save" onclick={save} disabled={saving}>
+								<button class="btn-save" onclick={() => save()} disabled={saving}>
 									{saving ? t('worklogPage.saving', $locale) : t('worklogPage.save', $locale)}
 								</button>
 								<button class="btn-cancel" onclick={cancelEdit} disabled={saving}>

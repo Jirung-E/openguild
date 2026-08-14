@@ -14,6 +14,7 @@
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { setUnsaved } from '$lib/stores/unsaved';
+	import { saveShortcut } from '$lib/utils/save-shortcut';
 	import {
 		worklogApi,
 		type WorklogReport,
@@ -257,21 +258,27 @@
 		editMode = false;
 		saveError = null;
 	}
-	async function saveNote() {
+	async function saveNote(keepEditing = false) {
+		if (saving) return;
 		saving = true;
 		saveError = null;
 		try {
 			const text = editorView ? editorView.state.doc.toString() : '';
 			await worklogApi.noteSet(anchor, text);
-			cancelEdit();
-			await load();
+			if (keepEditing) {
+				// load()는 loading 분기로 편집기를 파괴하므로 단축키 저장에서는
+				// 표시용 원본만 갱신하고 현재 EditorView를 유지한다.
+				dayNote = text;
+			} else {
+				cancelEdit();
+				await load();
+			}
 		} catch (e) {
 			saveError = e instanceof Error ? e.message : 'save failed';
 		} finally {
 			saving = false;
 		}
 	}
-
 	// ─── 타임라인 표시 ───
 	// DEV-205(2차): 라벨은 locale 반응이어야 해서 const 맵 대신 함수로 — cls 는
 	// 언어 무관이라 그대로 정적 맵 유지.
@@ -419,10 +426,13 @@
 					{/if}
 				</div>
 				{#if editMode}
-					<div class="note-edit">
+					<div
+						class="note-edit"
+						use:saveShortcut={{ disabled: saving, onSave: () => void saveNote(true) }}
+					>
 						<div class="editor-wrap" bind:this={editorContainer}></div>
 						<div class="actions">
-							<button class="btn primary" onclick={saveNote} disabled={saving}>
+							<button class="btn primary" onclick={() => saveNote()} disabled={saving}>
 								{saving ? t('worklogPage.saving', $locale) : t('worklogPage.save', $locale)}
 							</button>
 							<button class="btn" onclick={cancelEdit} disabled={saving}
