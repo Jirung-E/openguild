@@ -267,8 +267,12 @@
 			await worklogApi.noteSet(anchor, text);
 			if (keepEditing) {
 				// load()는 loading 분기로 편집기를 파괴하므로 단축키 저장에서는
-				// 표시용 원본만 갱신하고 현재 EditorView를 유지한다.
-				dayNote = text;
+				// 원본 notes 배열만 갱신해 파생 dayNote와 미저장 판정을 맞추고,
+				// 현재 EditorView와 커서는 그대로 유지한다.
+				const existing = notes.some((note) => note.date === anchor);
+				notes = existing
+					? notes.map((note) => (note.date === anchor ? { ...note, content: text } : note))
+					: [...notes, { date: anchor, content: text }];
 			} else {
 				cancelEdit();
 				await load();
