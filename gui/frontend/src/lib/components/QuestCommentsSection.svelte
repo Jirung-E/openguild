@@ -982,8 +982,6 @@
 				bind:value={replyAuthor}
 				disabled={replySaving}
 			/>
-		</div>
-		<div class="ce-head">
 			<button
 				type="button"
 				class="ce-toggle"
@@ -1454,8 +1452,6 @@
 						bind:value={newAuthor}
 						disabled={saving}
 					/>
-				</div>
-				<div class="ce-head">
 					<button
 						type="button"
 						class="ce-toggle"
@@ -1749,6 +1745,16 @@
 	.reply-author {
 		display: flex;
 		gap: 0.4rem;
+	}
+	.reply-author .author-input,
+	.new-row .author-input {
+		min-width: 0;
+	}
+	.reply-author .ce-toggle,
+	.new-row .ce-toggle {
+		flex-shrink: 0;
+		align-self: center;
+		margin-left: auto;
 	}
 
 	.orphan-card {
