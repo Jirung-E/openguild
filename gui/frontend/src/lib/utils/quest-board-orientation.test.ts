@@ -31,15 +31,19 @@ describe('quest board orientation geometry', () => {
 		expect(
 			canonicalToBoardPoint({ x: 984 + 162, y: 108 }, 984, laneStart, 'rows', metrics)
 		).toEqual({
-			x: 162,
-			y: laneStart + 108
+			x: 210,
+			y: laneStart + 60
 		});
 		expect(
 			canonicalToBoardPoint({ x: 984 + 474, y: 216 }, 984, laneStart, 'rows', metrics)
 		).toEqual({
-			x: 474,
-			y: laneStart + 216
+			x: 522,
+			y: laneStart + 168
 		});
+	});
+
+	it('rows 레인 높이는 왼쪽 헤더가 아니라 카드 3행과 상하 여백으로 계산한다', () => {
+		expect(rowLaneHeight(metrics)).toBe(336);
 	});
 
 	it('자유 배치 좌표도 orientation 왕복 시 정본 좌표가 보존된다', () => {

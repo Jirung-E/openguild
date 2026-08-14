@@ -3001,10 +3001,10 @@
 				hdr.style.height = '38px';
 			} else {
 				hdr.style.left = '0';
-				hdr.style.right = '0';
-				hdr.style.width = '';
+				hdr.style.right = '';
+				hdr.style.width = '38px';
 				hdr.style.top = `${headerStart * zoom + pan.y}px`;
-				hdr.style.height = `${Math.min(38, Math.max(size * zoom, 1))}px`;
+				hdr.style.height = `${Math.max(size * zoom, 1)}px`;
 			}
 			headerStart += size + LANE_GAP;
 		});
@@ -4131,7 +4131,11 @@
 		pointer-events: none;
 	}
 	.orientation-rows :global(.lane-hdr) {
-		border-right: 0;
+		border-right: 1px solid var(--bg-subtle);
+		flex-direction: column;
+		justify-content: center;
+		gap: 0.25rem;
+		padding: 0.375rem 0;
 	}
 	/* DEV-105 fix2: 접혔을 때 label 만 표시 — 다른 컨트롤 (cols-sel, arrange-group)
 	   은 좁은 폭에서 시각적으로 깨지고 label 을 가려서 다시 펼치기가 어려워짐. */
@@ -4164,6 +4168,15 @@
 	:global(.lane-label:hover) {
 		opacity: 0.75;
 	}
+	.orientation-rows :global(.lane-label) {
+		flex: 1 1 auto;
+		width: 100%;
+		min-height: 0;
+		padding: 0.25rem 0;
+		text-align: start;
+		writing-mode: vertical-rl;
+		text-orientation: mixed;
+	}
 	/* DEV-105: collapsed 시 90도 회전 (세로) + 글자 한 줄 압축.
 	   DEV-105 fix4: max-height 60px 가 lane-hdr (38px) 보다 커서 긴 이름이 위로
 	   삐져나가 잘림. 헤더 안에 들어가도록 28px 로 축소 + ellipsis. */
@@ -4184,14 +4197,14 @@
 		padding: 4px 0 0;
 	}
 	.orientation-rows :global(.lane-label.collapsed) {
-		position: relative;
-		inset: auto;
-		width: auto;
-		min-height: 0;
-		writing-mode: horizontal-tb;
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		min-height: 100%;
+		writing-mode: vertical-rl;
 		text-orientation: mixed;
-		padding: 0 0.875rem;
-		align-self: auto;
+		padding: 4px 0 0;
+		align-self: flex-start;
 	}
 	/* DEV-105 fix5: 레인별 설정 토글 ⚙ — 항상 보임, 작은 라벨 옆 버튼. */
 	:global(.lane-settings-btn) {
@@ -4246,6 +4259,12 @@
 	:global(.lane-settings-pop.pop-right) {
 		left: auto;
 		right: 0;
+	}
+	.orientation-rows :global(.lane-settings-pop) {
+		top: 0;
+		left: 100%;
+		margin-top: 0;
+		margin-left: 2px;
 	}
 	:global(.lane-hdr.settings-open .lane-settings-pop) {
 		display: flex;

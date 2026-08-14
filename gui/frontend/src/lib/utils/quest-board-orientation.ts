@@ -15,9 +15,9 @@ export interface BoardCoordinate {
 	y: number;
 }
 
-/** 가로 행 하나가 세 개의 카드 행과 헤더를 수용하는 높이. */
+/** 가로 행 하나가 세 개의 카드 행을 수용하는 높이. 헤더는 행 왼쪽에 놓인다. */
 export function rowLaneHeight(metrics: BoardOrientationMetrics): number {
-	return metrics.laneHeaderSize + 16 + metrics.nodeHeight * 3 + metrics.nodeGap * 2 + 16;
+	return metrics.lanePadding * 2 + metrics.nodeHeight * 3 + metrics.nodeGap * 2;
 }
 
 export function canonicalGridBaseY(metrics: BoardOrientationMetrics): number {
@@ -25,11 +25,15 @@ export function canonicalGridBaseY(metrics: BoardOrientationMetrics): number {
 }
 
 export function rowGridBaseX(metrics: BoardOrientationMetrics): number {
+	return metrics.laneHeaderSize + 16 + metrics.nodeWidth / 2;
+}
+
+export function canonicalGridBaseX(metrics: BoardOrientationMetrics): number {
 	return metrics.lanePadding + metrics.nodeWidth / 2;
 }
 
-export function rowContentCenterY(metrics: BoardOrientationMetrics): number {
-	return metrics.laneHeaderSize + 16 + (metrics.nodeHeight * 3 + metrics.nodeGap * 2) / 2;
+export function rowGridBaseY(metrics: BoardOrientationMetrics): number {
+	return metrics.lanePadding + metrics.nodeHeight / 2;
 }
 
 /**
@@ -56,8 +60,8 @@ export function canonicalToBoardPoint(
 		x: rowGridBaseX(metrics) + (point.y - canonicalGridBaseY(metrics)) * (cellW / cellH),
 		y:
 			visibleLaneStart +
-			rowContentCenterY(metrics) +
-			(point.x - absoluteLaneStart - metrics.columnLaneWidth / 2) * (cellH / cellW)
+			rowGridBaseY(metrics) +
+			(point.x - absoluteLaneStart - canonicalGridBaseX(metrics)) * (cellH / cellW)
 	};
 }
 
@@ -81,8 +85,8 @@ export function boardPointToCanonical(
 	return {
 		x:
 			absoluteLaneStart +
-			metrics.columnLaneWidth / 2 +
-			(point.y - visibleLaneStart - rowContentCenterY(metrics)) * (cellW / cellH),
+			canonicalGridBaseX(metrics) +
+			(point.y - visibleLaneStart - rowGridBaseY(metrics)) * (cellW / cellH),
 		y: canonicalGridBaseY(metrics) + (point.x - rowGridBaseX(metrics)) * (cellH / cellW)
 	};
 }
