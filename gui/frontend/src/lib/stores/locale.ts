@@ -913,6 +913,16 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'history.empty': { ko: '변경 이력 없음.', en: 'No change history.' },
 	'history.loadFailed': { ko: '이력 로드 실패', en: 'Failed to load history' },
 	'history.none': { ko: '(없음)', en: '(none)' },
+	// DEV-355: 데스크톱 히스토리 이동 중 해당 길드 자동 복원.
+	'history.switchingGuild': { ko: '길드 전환 중…', en: 'Switching guild…' },
+	'history.switchFailed': {
+		ko: '히스토리의 길드를 열지 못했습니다',
+		en: 'Could not open the guild from history'
+	},
+	'history.guildUnreachable': {
+		ko: '원격 서버에 연결할 수 없습니다',
+		en: 'Cannot reach the remote server'
+	},
 
 	'note.heading': { ko: '메모 (Memo)', en: 'Memo' },
 	'note.emptyAction': { ko: '메모 작성', en: 'Write memo' },

@@ -1,8 +1,19 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { afterNavigate, beforeNavigate, goto, replaceState } from '$app/navigation';
-	// BUG-176: 히스토리 항목의 길드 표식 비교.
-	import { currentGuildId, sameGuild, guildSwitchingPossible } from '$lib/stores/guildIdentity';
+	// BUG-176 / DEV-355: 히스토리 항목의 길드 표식 비교 + 길드 복원.
+	import {
+		currentGuildId,
+		invalidateCurrentGuild,
+		sameGuild,
+		guildSwitchingPossible,
+		type GuildId
+	} from '$lib/stores/guildIdentity';
+	import {
+		markRemoteSessionActive,
+		pingRemoteServer,
+		setRemoteServerUrl
+	} from '$lib/stores/remoteServer';
 	// DEV-153: 미저장 변경 통합 가드.
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { anyUnsaved, clearUnsaved } from '$lib/stores/unsaved';
@@ -40,18 +51,23 @@
 	import { get } from 'svelte/store';
 	// DEV-205: 앱 언어 → <html lang>. 네이티브 컨트롤(날짜 선택기의 년-월-일
 	// 표기 등)이 앱 언어를 따르도록.
-	import { locale } from '$lib/stores/locale';
+	import { locale, t } from '$lib/stores/locale';
 	// DEV-255: 자식윈도우(검색 팔레트 "새 창으로 열기") 판정 — 메뉴바/타이틀바
 	// 일부 숨김에 사용.
 	import { isChildWindow, detectWindowKind } from '$lib/stores/windowKind';
 	import '$lib/styles/global.css';
 
 	let { children } = $props();
+	// DEV-355: 다른 길드의 히스토리 항목으로 이동하는 동안, 새 URL 과 아직
+	// 전환되지 않은 Store 가 섞인 화면을 mount 하지 않는다.
+	let historyGuildSwitching = $state(false);
 
 	// DEV-052 후속: /welcome 라우트에선 Nav (Board/List/Admin/+New Quest) 숨김.
 	// 길드 컨텍스트가 없는 상태에서 의미 없는 액션 노출 방지.
 	// DEV-255: 자식윈도우(단일 문서 보기)도 메뉴바 불필요 — 함께 숨김.
-	let showNav = $derived($page.url.pathname !== '/welcome' && !$isChildWindow);
+	let showNav = $derived(
+		$page.url.pathname !== '/welcome' && !$isChildWindow && !historyGuildSwitching
+	);
 
 	onMount(() => {
 		detectWindowKind();
@@ -113,30 +129,35 @@
 	let showUnsavedModal = $state(false);
 	// 확인 시 실행할 동작 (라우트 이동 / 창 닫기 등) — 모달 일반화.
 	let pendingAction: (() => void) | null = null;
-	// BUG-176 후속(사용자 지적: "웰컴에서 뒤로가기를 누르면 깜빡거림"):
-	// afterNavigate 에서 되돌리면 **이전 길드 화면이 한 프레임 그려진 뒤**
-	// 웰컴으로 돌아온다 — 깜빡임이자, 우리가 안 보여주려던 그 화면을 잠깐
-	// 보여주는 셈이다.
+	// DEV-355: BUG-176 당시에는 길드 재오픈의 전체 reindex 비용을 피하려고
+	// Welcome 의 popstate 를 모두 막았다. 지금은 sync_on_open 이 일반 변경을
+	// 증분 동기화하므로, 해당 히스토리 항목에 기록된 길드를 실제로 복원한다.
 	//
-	// 히스토리를 실제로 비울 수는 없다(브라우저가 허용하지 않음). 대신 웰컴에
-	// 있는 동안은 뒤로가기를 **렌더 전에 취소**한다 — 히스토리를 비운 것과
-	// 같은 체감이 되고 깜빡임도 없다.
-	//
-	// 웰컴에서의 뒤로가기가 갈 곳은 결국 이전 길드의 항목뿐인데, 그 항목은
-	// URL 에 길드 정보가 없어 지금 열린 길드가 그려진다(이 버그의 본체).
-	// 그러니 여기서 막는 것이 곧 올바른 동작이다. 길드 선택은 웰컴 화면에서
-	// 명시적으로 한다.
+	// SvelteKit 의 공개 NavigationTarget 에는 target PageState 가 없다.
+	// popstate 원본 event 의 SvelteKit state 를 읽어 **라우트가 렌더되기 전에**
+	// 전환 화면으로 바꾼다. 그래야 이전 URL + 현재 Store 조합이 한 프레임도
+	// 보이지 않고, 해당 페이지 컴포넌트의 API 요청도 잘못된 길드로 나가지 않는다.
 	beforeNavigate((nav) => {
-		if (nav.type === 'popstate' && guildSwitchingPossible() && $page.url.pathname === '/welcome') {
+		if (anyUnsaved() && !nav.willUnload) {
+			const url = nav.to?.url;
+			if (!url) return;
+			nav.cancel();
+			pendingAction = () => goto(url);
+			showUnsavedModal = true;
+			return;
+		}
+
+		if (nav.type !== 'popstate' || !guildSwitchingPossible()) return;
+		if (historyGuildSwitching) {
+			// 길드 open/ping 중 연속 뒤로가기 — 첫 전환이 끝날 때까지 현재 항목 유지.
 			nav.cancel();
 			return;
 		}
-		if (!anyUnsaved() || nav.willUnload) return;
-		const url = nav.to?.url;
-		if (!url) return;
-		nav.cancel();
-		pendingAction = () => goto(url);
-		showUnsavedModal = true;
+		const targetGuild = nav.event.state?.['sveltekit:states']?.guild as GuildId | undefined;
+		const currentStamp = $page.state.guild as GuildId | undefined;
+		if (targetGuild && !sameGuild(targetGuild, currentStamp)) {
+			historyGuildSwitching = true;
+		}
 	});
 	function discardAndProceed() {
 		showUnsavedModal = false;
@@ -230,33 +251,64 @@
 	afterNavigate(trackRecentDoc);
 	onMount(trackRecentDoc);
 
-	// BUG-176: 길드를 바꾼 뒤 뒤로가기로 **이전 길드의 히스토리 항목**에 가면,
-	// URL 은 그대로인데(길드 정보가 URL 에 없다) 내용은 지금 열린 길드가
-	// 그려진다 — 사용자는 "뒤로가기가 안 먹는다"로 인식한다(A → Welcome → B
-	// 후 뒤로가기가 B).
-	//
-	// 뒤로가기가 길드를 되돌리게 만드는 방법도 있지만, 그러면 뒤로가기 한 번이
-	// 길드 재오픈(무거움 + 폴더 삭제/권한 실패 가능)을 유발한다. 여기서는
-	// **잘못된 화면을 보여주지 않는 것**까지만 한다 — 다른 길드의 항목이면
-	// 웰컴으로 보내 거기서 명시적으로 고르게 한다.
-	//
-	// 구현: 네비게이션마다 현재 길드를 항목 state 에 남기고(스탬프), popstate
-	// 로 도달한 항목의 스탬프가 지금 길드와 다르면 웰컴으로.
+	// DEV-355: 네비게이션마다 현재 길드를 항목 state 에 남긴다. popstate 로
+	// 다른 길드의 항목에 도달하면 그 길드를 다시 연 뒤 reload 한다. reload 가
+	// 필요한 이유는 같은 URL 이 길드마다 존재할 수 있고, 여러 페이지가
+	// onMount 에서만 데이터를 읽기 때문 — Store 만 바꾸고 invalidateAll 해서는
+	// 같은 route component 가 옛 길드의 로컬 상태를 계속 들고 있을 수 있다.
+	async function reopenGuildFromHistory(target: GuildId): Promise<void> {
+		if (target.kind === 'local') {
+			const { invoke } = await import('@tauri-apps/api/core');
+			await invoke('open_guild_in_current_window', { path: target.path });
+			// open 성공 뒤에만 remote override 를 끈다. 실패했을 때 현재 원격
+			// 세션까지 잃어버리지 않기 위함이다.
+			setRemoteServerUrl(null);
+		} else {
+			const reachable = await pingRemoteServer(target.url);
+			if (!reachable) throw new Error(t('history.guildUnreachable', $locale));
+			markRemoteSessionActive();
+			setRemoteServerUrl(target.url);
+		}
+		invalidateCurrentGuild();
+	}
+
 	async function guardGuildHistory(nav: { type: string }) {
 		const cur = await currentGuildId();
-		if (!cur) return; // 브라우저 모드 / 길드 미오픈 — 전환 개념 없음.
-		const stamped = $page.state.guild;
+		if (!cur) {
+			historyGuildSwitching = false;
+			return; // 브라우저 모드 / 길드 미오픈 — 전환 개념 없음.
+		}
+		const stamped = $page.state.guild as GuildId | undefined;
 		if (!stamped) {
 			// 아직 표식이 없는 항목(길드를 연 직후, 콜드 스타트 등) — 현재 길드로
 			// 표시만 남기고 통과. replaceState 라 히스토리가 늘지 않는다.
 			replaceState('', { ...$page.state, guild: cur });
+			historyGuildSwitching = false;
 			return;
 		}
-		if (sameGuild(stamped, cur)) return;
+		if (sameGuild(stamped, cur)) {
+			historyGuildSwitching = false;
+			return;
+		}
 		// 다른 길드의 항목 — 뒤로/앞으로 이동으로 도달했을 때만 개입한다.
 		// (링크 클릭으로 이런 상태가 되는 경로는 없다.)
-		if (nav.type !== 'popstate') return;
-		goto('/welcome', { replaceState: true });
+		if (nav.type !== 'popstate') {
+			historyGuildSwitching = false;
+			return;
+		}
+
+		historyGuildSwitching = true;
+		try {
+			await reopenGuildFromHistory(stamped);
+			// 전환 상태를 유지한 채 전체 route tree 를 새 길드 기준으로 재생성.
+			window.location.reload();
+		} catch (error) {
+			console.error('[guild-history] 길드 복원 실패', error);
+			historyGuildSwitching = false;
+			const detail = error instanceof Error ? error.message : String(error);
+			showToast(`${t('history.switchFailed', $locale)}: ${detail}`, 'error');
+			void goto('/welcome', { replaceState: true, state: { guild: cur } });
+		}
 	}
 	afterNavigate((nav) => {
 		void guardGuildHistory(nav);
@@ -517,7 +569,14 @@
 	<Nav />
 {/if}
 <main class:no-nav={!showNav}>
-	{@render children()}
+	{#if historyGuildSwitching}
+		<div class="history-guild-switch" role="status" aria-live="polite">
+			<span class="history-guild-spinner" aria-hidden="true"></span>
+			{t('history.switchingGuild', $locale)}
+		</div>
+	{:else}
+		{@render children()}
+	{/if}
 </main>
 {#if !coarsePointer}
 	<OverlayScrollbar />
@@ -544,5 +603,27 @@
 	}
 	main.no-nav {
 		min-height: calc(100vh - var(--titlebar-h, 0px));
+	}
+	.history-guild-switch {
+		display: flex;
+		min-height: inherit;
+		align-items: center;
+		justify-content: center;
+		gap: 0.65rem;
+		color: var(--text-muted);
+		font-size: 0.9rem;
+	}
+	.history-guild-spinner {
+		width: 1rem;
+		height: 1rem;
+		border: 2px solid var(--border);
+		border-top-color: var(--accent);
+		border-radius: 50%;
+		animation: history-guild-spin 0.75s linear infinite;
+	}
+	@keyframes history-guild-spin {
+		to {
+			transform: rotate(360deg);
+		}
 	}
 </style>
