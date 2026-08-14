@@ -1361,6 +1361,21 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		ko: 'Markdown 형식으로 작성할 수 있습니다',
 		en: 'You can write in Markdown'
 	},
+	'nqm.relationsOptional': { ko: '연관관계 (선택)', en: 'Relations (optional)' },
+	'nqm.relationsHint': {
+		ko: '생성과 함께 상위·하위·선행·후속 퀘스트를 연결합니다.',
+		en: 'Link parent, sub-quests, prerequisites, and successors on creation.'
+	},
+	'nqm.relationAdd': { ko: '+ 선택', en: '+ Select' },
+	'nqm.relationRemove': { ko: '연관 제거', en: 'Remove relation' },
+	'nqm.relationPartialFailPre': {
+		ko: '퀘스트는 생성됐지만 연관관계 ',
+		en: 'The quest was created, but '
+	},
+	'nqm.relationPartialFailPost': {
+		ko: '개를 연결하지 못했습니다. 상세 화면에서 다시 추가해주세요.',
+		en: ' relation(s) could not be linked. Add them again from the detail page.'
+	},
 	'nqm.creating': { ko: '생성 중…', en: 'Creating…' },
 	'nqm.create': { ko: '퀘스트 생성', en: 'Create quest' },
 	'nqm.saveAsTpl': { ko: '템플릿으로 저장', en: 'Save as template' },

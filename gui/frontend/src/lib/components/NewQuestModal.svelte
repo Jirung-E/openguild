@@ -20,11 +20,19 @@
 	} from '$lib/types';
 	// DEV-344: 설명 textarea 도 댓글(DEV-171/172)과 같은 cross-link 자동완성
 	// caret 팝업을 쓴다 — 이미 프레임워크 무관하게 뽑아둔 유틸 재사용.
-	import { wikiMatch, applyWikiLink, applyWikiPrefix, caretXY, type WikiItem } from '$lib/utils/textarea-wikilink';
+	import {
+		wikiMatch,
+		applyWikiLink,
+		applyWikiPrefix,
+		caretXY,
+		type WikiItem
+	} from '$lib/utils/textarea-wikilink';
 	import { computeWikiPlace, clampWikiLeft, isWikiCaretVisible } from '$lib/utils/wiki-popup-place';
 	import { questIndex, loadQuestIndex } from '$lib/stores/questIndex';
 	import { hideTitlePopupNow } from '$lib/actions/title-popup';
 	import WikiAutocompletePopup from './WikiAutocompletePopup.svelte';
+	import QuestCombobox from './QuestCombobox.svelte';
+	import { showToast } from '$lib/stores/toast';
 
 	let {
 		onclose,
@@ -48,6 +56,69 @@
 	let title = $state('');
 	let description = $state('');
 	let urgency = $state(3);
+
+	// DEV-354: 생성과 함께 연결할 관계. 새 퀘스트는 아직 id가 없으므로 후보
+	// API 대신 전체 slim 목록에서 고르고, 생성 직후 상세 화면과 같은 mutation
+	// API를 방향에 맞게 호출한다.
+	type RelationMode = 'parent' | 'sub' | 'prereq' | 'succ';
+	let relationQuests = $state<Quest[]>([]);
+	let relationMode = $state<RelationMode | null>(null);
+	let selectedParent = $state<Quest | null>(null);
+	let selectedSubs = $state<Quest[]>([]);
+	let selectedPrereqs = $state<Quest[]>([]);
+	let selectedSuccessors = $state<Quest[]>([]);
+	let fixedParent = $derived(
+		parentQuestId ? (relationQuests.find((q) => q.id === parentQuestId) ?? null) : null
+	);
+
+	function selectedFor(mode: RelationMode): Quest[] {
+		if (mode === 'parent')
+			return selectedParent ? [selectedParent] : fixedParent ? [fixedParent] : [];
+		if (mode === 'sub') return selectedSubs;
+		if (mode === 'prereq') return selectedPrereqs;
+		return selectedSuccessors;
+	}
+
+	function candidatesFor(mode: RelationMode): Quest[] {
+		// 상세 화면 candidates API와 같은 방향: 한 대상은 한 역할만 갖게 하고,
+		// 하위로 지정할 대상은 기존 부모가 없어야 한다(조용한 reparent 방지).
+		const selected = [
+			...(selectedParent ? [selectedParent] : []),
+			...(fixedParent ? [fixedParent] : []),
+			...selectedSubs,
+			...selectedPrereqs,
+			...selectedSuccessors
+		];
+		const excluded = new Set(selected.map((q) => q.id));
+		return relationQuests.filter(
+			(q) => !excluded.has(q.id) && (mode !== 'sub' || q.parent_quest_id == null)
+		);
+	}
+
+	let relationCandidates = $derived(relationMode ? candidatesFor(relationMode) : []);
+
+	function openRelation(mode: RelationMode) {
+		if (mode === 'parent' && (parentQuestId || selectedParent)) return;
+		relationMode = relationMode === mode ? null : mode;
+	}
+
+	function pickRelation(id: number) {
+		if (!relationMode) return;
+		const quest = relationQuests.find((q) => q.id === id);
+		if (!quest) return;
+		if (relationMode === 'parent') selectedParent = quest;
+		else if (relationMode === 'sub') selectedSubs = [...selectedSubs, quest];
+		else if (relationMode === 'prereq') selectedPrereqs = [...selectedPrereqs, quest];
+		else selectedSuccessors = [...selectedSuccessors, quest];
+		relationMode = null;
+	}
+
+	function removeRelation(mode: RelationMode, id: number) {
+		if (mode === 'parent') selectedParent = null;
+		else if (mode === 'sub') selectedSubs = selectedSubs.filter((q) => q.id !== id);
+		else if (mode === 'prereq') selectedPrereqs = selectedPrereqs.filter((q) => q.id !== id);
+		else selectedSuccessors = selectedSuccessors.filter((q) => q.id !== id);
+	}
 
 	let saving = $state(false);
 	let saveError = $state<string | null>(null);
@@ -324,8 +395,13 @@
 
 	onMount(async () => {
 		try {
-			const [t, s] = await Promise.all([metaApi.getQuestTypes(), metaApi.getQuestStatuses()]);
+			const [t, s, quests] = await Promise.all([
+				metaApi.getQuestTypes(),
+				metaApi.getQuestStatuses(),
+				questsApi.listRecent(true).catch(() => [])
+			]);
 			types = t;
+			relationQuests = quests;
 			if (types.length > 0) typeId = types[0].id;
 			// 신규 퀘스트 상태: sort_order 최소값. 길드마스터가 첫 상태를 어떻게
 			// 이름 짓든 그게 "신규 진입점" 역할.
@@ -369,11 +445,34 @@
 				description: description.trim() || undefined,
 				status_slug: openStatusSlug,
 				urgency,
-				parent_quest_id: parentQuestId
+				parent_quest_id: parentQuestId ?? selectedParent?.id
 			});
 			// DEV-060: 템플릿 기본 tags — 생성 직후 적용 (실패해도 quest 는 유효).
 			if (templateTags.length > 0) {
 				await questsApi.setTags(quest.id, templateTags).catch(() => {});
+			}
+			const relationOps: Array<() => Promise<unknown>> = [
+				...selectedSubs.map(
+					(sub) => () => questsApi.changeParent(sub.id, { parent_quest_id: quest.id })
+				),
+				...selectedPrereqs.map((prereq) => () => questsApi.addPrerequisite(quest.id, prereq.id)),
+				...selectedSuccessors.map((succ) => () => questsApi.addPrerequisite(succ.id, quest.id))
+			];
+			let failedRelations = 0;
+			// 관계 mutation은 tracked 파일과 snapshot을 쓰므로 병렬 호출하지 않는다.
+			for (const applyRelation of relationOps) {
+				try {
+					await applyRelation();
+				} catch {
+					failedRelations += 1;
+				}
+			}
+			if (failedRelations > 0) {
+				showToast(
+					`${t('nqm.relationPartialFailPre', $locale)}${failedRelations}${t('nqm.relationPartialFailPost', $locale)}`,
+					'error',
+					8000
+				);
 			}
 			onclose();
 			oncreated?.(quest);
@@ -385,6 +484,8 @@
 	}
 
 	function onKeydown(e: KeyboardEvent) {
+		// 내부 콤보박스/자동완성이 먼저 Esc를 소비했으면 모달까지 닫지 않는다.
+		if (e.defaultPrevented) return;
 		if (e.key === 'Escape') onclose();
 	}
 
@@ -537,6 +638,53 @@
 						></textarea>
 					</label>
 				</div>
+
+				<details class="relations-field">
+					<summary>{t('nqm.relationsOptional', $locale)}</summary>
+					<p class="relations-hint">{t('nqm.relationsHint', $locale)}</p>
+					{#each [{ mode: 'parent' as RelationMode, label: t('quest.section.parent', $locale) }, { mode: 'sub' as RelationMode, label: t('quest.section.subQuests', $locale) }, { mode: 'prereq' as RelationMode, label: t('quest.section.prerequisites', $locale) }, { mode: 'succ' as RelationMode, label: t('quest.section.successors', $locale) }] as row (row.mode)}
+						<div class="relation-row">
+							<div class="relation-head">
+								<span>{row.label}</span>
+								{#if row.mode !== 'parent' || (!parentQuestId && !selectedParent)}
+									<button type="button" class="relation-add" onclick={() => openRelation(row.mode)}>
+										{relationMode === row.mode
+											? t('common.cancel', $locale)
+											: t('nqm.relationAdd', $locale)}
+									</button>
+								{/if}
+							</div>
+							{#if selectedFor(row.mode).length > 0}
+								<div class="relation-chips">
+									{#each selectedFor(row.mode) as quest (quest.id)}
+										<span class="relation-chip">
+											<strong>{quest.quest_id}</strong>
+											<span>{quest.title}</span>
+											{#if !(row.mode === 'parent' && parentQuestId)}
+												<button
+													type="button"
+													onclick={() => removeRelation(row.mode, quest.id)}
+													aria-label={`${quest.quest_id} ${t('nqm.relationRemove', $locale)}`}
+													>×</button
+												>
+											{/if}
+										</span>
+									{/each}
+								</div>
+							{/if}
+							{#if relationMode === row.mode}
+								<div class="relation-picker">
+									<QuestCombobox
+										quests={relationCandidates}
+										placeholder={t('qd.searchByIdTitle', $locale)}
+										onselect={pickRelation}
+										oncancel={() => (relationMode = null)}
+									/>
+								</div>
+							{/if}
+						</div>
+					{/each}
+				</details>
 
 				{#if saveError}
 					<p class="save-error">{saveError}</p>
@@ -710,6 +858,91 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.3rem;
+	}
+	.relations-field {
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		background: var(--bg-subtle);
+		padding: 0.55rem 0.7rem;
+	}
+	.relations-field summary {
+		cursor: pointer;
+		color: var(--text);
+		font-size: 0.8rem;
+		font-weight: 600;
+	}
+	.relations-hint {
+		margin: 0.45rem 0 0.65rem;
+		color: var(--text-muted);
+		font-size: 0.72rem;
+	}
+	.relation-row {
+		padding: 0.45rem 0;
+		border-top: 1px solid var(--border);
+	}
+	.relation-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem;
+		color: var(--text-muted);
+		font-size: 0.75rem;
+		font-weight: 600;
+	}
+	.relation-add {
+		border: 1px solid var(--border);
+		border-radius: 4px;
+		background: var(--bg-elevated);
+		color: var(--text-muted);
+		padding: 0.12rem 0.45rem;
+		font-size: 0.7rem;
+		cursor: pointer;
+	}
+	.relation-add:hover {
+		border-color: var(--accent);
+		color: var(--text);
+	}
+	.relation-chips {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.35rem;
+		margin-top: 0.4rem;
+	}
+	.relation-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3rem;
+		min-width: 0;
+		max-width: 100%;
+		padding: 0.2rem 0.4rem;
+		border: 1px solid var(--border);
+		border-radius: 5px;
+		background: var(--bg);
+		color: var(--text-muted);
+		font-size: 0.72rem;
+	}
+	.relation-chip strong {
+		color: var(--accent);
+		font-family: 'SFMono-Regular', Consolas, monospace;
+	}
+	.relation-chip > span {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.relation-chip button {
+		flex-shrink: 0;
+		border: 0;
+		background: transparent;
+		color: var(--text-muted);
+		cursor: pointer;
+		padding: 0 0.1rem;
+	}
+	.relation-chip button:hover {
+		color: var(--danger);
+	}
+	.relation-picker {
+		margin-top: 0.45rem;
 	}
 	/* BUG-010: uppercase / letter-spacing 은 라벨 텍스트 span 에만 적용 —
 	   label 전체에 두면 자식 input / textarea / select 까지 대문자로 표시됨. */
