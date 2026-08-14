@@ -1594,7 +1594,7 @@ mod tests {
         crate::ops::set_quest_tags(
             &store,
             id,
-            vec!["backend".into(), "performance".into()],
+            vec!["performance".into(), "backend".into()],
         )
         .await
         .unwrap();
@@ -1612,7 +1612,14 @@ mod tests {
         // File frontmatter.
         let qf = crate::repo::QuestFile::read(store.paths.quest_path(&quest.quest_id))
             .unwrap();
-        assert_eq!(qf.frontmatter.tags, vec!["backend".to_string(), "performance".into()]);
+        assert_eq!(
+            qf.frontmatter.tags,
+            vec!["performance".to_string(), "backend".into()]
+        );
+        assert_eq!(
+            crate::ops::quests::list_quest_tags(&store, &quest.quest_id).unwrap(),
+            vec!["performance".to_string(), "backend".into()]
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }

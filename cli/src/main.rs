@@ -18,7 +18,10 @@ use openguild_core::models::{
     AddPrerequisiteRequest, ChangeParentRequest, ChangeStatusRequest, CreateQuestRequest,
     ListQuery, QuestDetail, QuestRow as Quest, QuestStatus, QuestType, UpdateQuestRequest,
 };
-use openguild_core::services::{meta as meta_svc, quests as quest_svc};
+use openguild_core::services::{
+    comments::{GlobalComment, GlobalCommentsFilter},
+    meta as meta_svc, quests as quest_svc,
+};
 use serde::{Deserialize, Serialize};
 
 // ─────────────────────────── CLI 정의 ───────────────────────────
@@ -1719,28 +1722,6 @@ fn select_thread(
     Some(out)
 }
 
-/// DEV-221: 전역 댓글 검색 결과 한 건 (quest/campaign 통합).
-#[derive(sqlx::FromRow, serde::Serialize, serde::Deserialize)]
-struct GlobalComment {
-    /// "quest" | "campaign"
-    scope: String,
-    /// 소속 슬러그 (DEV-001 / C-001)
-    slug: String,
-    entry_id: i64,
-    ts: String,
-    author: String,
-    body: String,
-    discussion: bool,
-    resolved: bool,
-    /// BUG-110: 답글이면 부모 entry_id. `quest comment list` 는 `↩ #N` 표시하는데
-    /// 전역 comments 검색은 이 필드가 없어 답글인지, 어디에 달렸는지 안 보였음.
-    parent_id: Option<i64>,
-    /// 상단 고정 여부 — 📌 배지.
-    pinned: bool,
-    /// 반응 캐시 원문(마커 attr 그대로, 콤마 구분) — 표시 시 split.
-    reactions: String,
-}
-
 /// BUG-166: 규칙 원격(HTTP) 응답 DTO — server `routes/rules.rs` 의
 /// RulesListResponse / RuleResponse 와 1:1. 필요한 필드만 받는다(serde 는
 /// 나머지를 무시하므로 서버가 필드를 더해도 안 깨진다).
@@ -2038,76 +2019,17 @@ impl Backend {
             return c.get_query("/api/comments", &query);
         }
         let Backend::Local(l) = self else { unreachable!() };
-        // quest / campaign 캐시 UNION. campaign_comments 엔 discussion 컬럼이
-        // 없어 상수 0 — --discussion/--unresolved 필터 시 자연 제외.
-        let mut conds_q = String::new();
-        let mut conds_c = String::new();
-        let mut push_both = |cond_q: &str, cond_c: &str| {
-            conds_q.push_str(" AND ");
-            conds_q.push_str(cond_q);
-            conds_c.push_str(" AND ");
-            conds_c.push_str(cond_c);
-        };
-        // 바인드 순서: (quest 절 인자들) → (campaign 절 인자들) → limit.
-        // 두 절이 같은 필터 세트를 쓰므로 값을 두 번 바인드한다.
-        let mut binds: Vec<String> = Vec::new();
-        if let Some(a) = author {
-            push_both("LOWER(c.author) = LOWER(?)", "LOWER(c.author) = LOWER(?)");
-            binds.push(a.to_string());
-        }
-        if let Some(s) = since {
-            push_both("c.ts >= ?", "c.ts >= ?");
-            binds.push(openguild_core::time::normalize_filter_ts(s));
-        }
-        if let Some(u) = until {
-            push_both("c.ts <= ?", "c.ts <= ?");
-            binds.push(openguild_core::time::normalize_filter_ts(u));
-        }
-        if let Some(g) = grep {
-            push_both(
-                "LOWER(c.body) LIKE '%' || LOWER(?) || '%'",
-                "LOWER(c.body) LIKE '%' || LOWER(?) || '%'",
-            );
-            binds.push(g.to_string());
-        }
-        if discussion {
-            push_both("c.discussion = 1", "0 = 1");
-        }
-        if unresolved {
-            push_both("c.discussion = 1 AND c.resolved = 0", "0 = 1");
-        }
-
-        let sql = format!(
-            "SELECT * FROM (
-               SELECT 'quest' AS scope,
-                      qt.prefix || '-' || printf('%03d', q.number) AS slug,
-                      c.entry_id, c.ts, c.author, c.body,
-                      c.discussion, c.resolved, c.parent_id, c.pinned, c.reactions
-                 FROM quest_comments c
-                 JOIN quests q ON q.id = c.quest_id
-                 JOIN quest_types qt ON qt.id = q.quest_type_id
-                WHERE 1 = 1{conds_q}
-               UNION ALL
-               SELECT 'campaign' AS scope, ca.campaign_slug AS slug,
-                      c.entry_id, c.ts, c.author, c.body,
-                      0 AS discussion, 0 AS resolved, c.parent_id, c.pinned, c.reactions
-                 FROM campaign_comments c
-                 JOIN campaigns ca ON ca.id = c.campaign_id
-                WHERE 1 = 1{conds_c}
-             )
-             ORDER BY ts ASC"
-        );
-        let rows = l.rt.block_on(async {
-            let mut q = sqlx::query_as::<_, GlobalComment>(&sql);
-            for b in &binds {
-                q = q.bind(b); // quest 절
-            }
-            for b in &binds {
-                q = q.bind(b); // campaign 절 (동일 값 재바인드)
-            }
-            q.fetch_all(&l.store.index_pool).await
-        })?;
-        Ok(rows)
+        Self::map_err(l.rt.block_on(openguild_core::services::comments::search_global(
+            &l.store.index_pool,
+            GlobalCommentsFilter {
+                author,
+                since,
+                until,
+                grep,
+                discussion,
+                unresolved,
+            },
+        )))
     }
 
     fn ping(&self) -> Result<String> {
@@ -2679,17 +2601,9 @@ impl Backend {
     fn tags_in_use(&self) -> Result<Vec<String>> {
         match self {
             Backend::Http(c) => c.get("/api/tags/used"),
-            Backend::Local(l) => {
-                let rows: Vec<(String,)> = l.rt.block_on(
-                    sqlx::query_as(
-                        "SELECT DISTINCT tag FROM quest_tags
-                         UNION SELECT DISTINCT tag FROM library_tags
-                         ORDER BY tag",
-                    )
-                    .fetch_all(&l.store.index_pool),
-                )?;
-                Ok(rows.into_iter().map(|(t,)| t).collect())
-            }
+            Backend::Local(l) => Self::map_err(
+                l.rt.block_on(meta_svc::list_tags_in_use(&l.store.index_pool)),
+            ),
         }
     }
 
@@ -3461,13 +3375,9 @@ impl Backend {
             Backend::Http(c) => Ok(c
                 .get::<QuestDetail>(&format!("/api/quests/by/{}", urlenc(slug)))?
                 .tags),
-            Backend::Local(l) => {
-                // frontmatter 의 tags 가 진리원. file 직접 read.
-                let path = l.store.paths.quest_path(slug);
-                let qf = openguild_core::repo::QuestFile::read(&path)
-                    .map_err(|e| anyhow::anyhow!(tf!("quest {slug} 본문 읽기 실패: {e:#}", "failed to read quest {slug} body: {e:#}")))?;
-                Ok(qf.frontmatter.tags.clone())
-            }
+            Backend::Local(l) => Self::map_err(
+                openguild_core::ops::quests::list_quest_tags(&l.store, slug),
+            ),
         }
     }
 
@@ -3574,7 +3484,7 @@ impl Backend {
     fn reindex(&self) -> Result<openguild_core::reindex::ReindexReport> {
         match self {
             Backend::Http(c) => c
-                .post::<ReindexHttpDto, _>("/api/admin/reindex", &serde_json::json!({}))
+                .post::<_, ReindexHttpDto>("/api/admin/reindex", &serde_json::json!({}))
                 .map(Into::into),
             Backend::Local(l) => l
                 .rt

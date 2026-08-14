@@ -189,6 +189,8 @@ pub async fn get_quest_by_slug(
     Path(slug): Path<String>,
 ) -> AppResult<Json<QuestDetail>> {
     let mut detail = read::get_by_slug(&store.index_pool, &slug).await?;
+    // frontmatter가 진리원이며 DB projection에는 순서 컬럼이 없다.
+    detail.tags = openguild_core::ops::quests::list_quest_tags(&store, &slug)?;
     // DEV-152: 첨부 목록(sidecar) — GUI Tauri 커맨드와 동일하게 여기서 채움.
     detail.attachments = openguild_core::ops::attachments::list_quest_attachments(&store, &slug);
     Ok(Json(detail))

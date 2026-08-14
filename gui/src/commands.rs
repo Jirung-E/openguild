@@ -71,6 +71,11 @@ pub async fn list_deleted_quests(store: State<'_, Store>) -> Result<Vec<QuestRow
 #[tauri::command]
 pub async fn get_quest(store: State<'_, Store>, id: i64) -> Result<QuestDetail, String> {
     let mut detail = read::get(&store.index_pool, id).await.map_err(err)?;
+    detail.tags = openguild_core::ops::quests::list_quest_tags(
+        &store,
+        &detail.quest.quest_id,
+    )
+    .map_err(err)?;
     // DEV-156: 첨부 목록(sidecar)은 Store 가 필요 — 여기서 채운다.
     detail.attachments =
         openguild_core::ops::attachments::list_quest_attachments(&store, &detail.quest.quest_id);
@@ -87,6 +92,7 @@ pub async fn get_quest_by_slug(
     // 에러보다 낫다).
     let _ = openguild_core::incremental::refresh_quest_if_stale(&store, &slug).await;
     let mut detail = read::get_by_slug(&store.index_pool, &slug).await.map_err(err)?;
+    detail.tags = openguild_core::ops::quests::list_quest_tags(&store, &slug).map_err(err)?;
     // DEV-156: 첨부 목록(sidecar) 채우기.
     detail.attachments = openguild_core::ops::attachments::list_quest_attachments(&store, &slug);
     Ok(detail)

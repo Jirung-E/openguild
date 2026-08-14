@@ -23,6 +23,14 @@ async fn setup() -> Router {
     let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let dir = std::env::temp_dir().join(format!("og-test-{ns}-{seq}"));
     std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("test.guild"),
+        openguild_core::guild_file::marker_content(
+            "test",
+            &openguild_core::time::now_local_iso8601(),
+        ),
+    )
+    .unwrap();
     openguild_core::repo::seed_guild_dir(&dir).unwrap();
     let store = openguild_core::Store::open(&dir).await.unwrap();
     routes::create_router(store)
@@ -2865,6 +2873,23 @@ async fn test_tags_in_use_endpoint() {
     let (status, tags) = get(app, "/api/tags/used").await;
     assert_eq!(status, StatusCode::OK);
     assert!(tags.as_array().unwrap().iter().any(|tag| tag == "remote_used"));
+}
+
+#[tokio::test]
+async fn test_quest_detail_preserves_frontmatter_tag_order() {
+    let app = seed_quest(setup().await).await;
+    let (_, quest) = get(app.clone(), "/api/quests/by/DEV-001").await;
+    let id = quest["id"].as_i64().unwrap();
+    patch(
+        app.clone(),
+        &format!("/api/quests/{id}/tags"),
+        json!({ "tags": ["z-last", "a-first"] }),
+    )
+    .await;
+
+    let (status, detail) = get(app, "/api/quests/by/DEV-001").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(detail["tags"], json!(["z-last", "a-first"]));
 }
 
 #[tokio::test]

@@ -29,3 +29,15 @@ pub async fn list_quest_tag_defs(pool: &SqlitePool) -> AppResult<Vec<QuestTagDef
     .await?;
     Ok(defs)
 }
+
+/// Quest와 도서관 문서 frontmatter 캐시에 실제로 사용 중인 태그 목록.
+pub async fn list_tags_in_use(pool: &SqlitePool) -> AppResult<Vec<String>> {
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT DISTINCT tag FROM quest_tags
+         UNION SELECT DISTINCT tag FROM library_tags
+         ORDER BY tag",
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(|(tag,)| tag).collect())
+}

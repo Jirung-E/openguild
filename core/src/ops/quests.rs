@@ -251,6 +251,15 @@ pub async fn set_quest_tags(store: &Store, id: i64, tags: Vec<String>) -> AppRes
     Ok(quest)
 }
 
+/// Quest frontmatter의 태그를 저장 순서 그대로 반환한다. `quest_tags`는 검색용
+/// projection이라 순서 컬럼이 없으므로 전용 태그 조회에는 파일 진리원을 쓴다.
+pub fn list_quest_tags(store: &Store, slug: &str) -> AppResult<Vec<String>> {
+    let path = store.paths.quest_path(slug);
+    let quest = crate::repo::QuestFile::read(&path)
+        .map_err(crate::error::AppError::Internal)?;
+    Ok(quest.frontmatter.tags)
+}
+
 /// 상태 변경.
 pub async fn change_status(
     store: &Store,

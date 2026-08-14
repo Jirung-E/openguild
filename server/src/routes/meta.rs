@@ -72,14 +72,9 @@ pub async fn delete_tag_def(
 pub async fn list_tags_in_use(
     State(store): State<Store>,
 ) -> AppResult<Json<Vec<String>>> {
-    let rows: Vec<(String,)> = sqlx::query_as(
-        "SELECT DISTINCT tag FROM quest_tags
-         UNION SELECT DISTINCT tag FROM library_tags
-         ORDER BY tag",
-    )
-    .fetch_all(&store.index_pool)
-    .await?;
-    Ok(Json(rows.into_iter().map(|(tag,)| tag).collect()))
+    Ok(Json(
+        openguild_core::services::meta::list_tags_in_use(&store.index_pool).await?,
+    ))
 }
 
 // ─────────────────────── admin: types/statuses (DEV-193) ───────────────────────

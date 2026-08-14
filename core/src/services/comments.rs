@@ -1,14 +1,112 @@
 //! DEV-094: Quest 댓글 entry 단위 CRUD.
 //!
-//! 파일이 진리원 (`.guild/quests/{slug}.comments.md`) — DB 캐시 없음.
-//! 각 함수는 파일 read → mutate → write 의 순서. 동시 mutation 은 사용자 단일
-//! 데스크탑 가정으로 race 무시 (서버 모드는 axum 가 핸들러 단위 직렬화).
+//! 파일이 진리원 (`.guild/quests/{slug}.comments.md`)이며 DB는 횡단 검색용 캐시다.
+//! 파일 단위 CRUD는 read → mutate → write 순서로 처리하고, `ops::comments`가
+//! 파일 mutation 뒤 DB 캐시를 동기화한다.
 
 use crate::error::{AppError, AppResult};
 use crate::repo::comments as repo;
 use crate::store::Store;
+use sqlx::SqlitePool;
 
 pub use crate::repo::comments::CommentEntry;
+
+/// 길드 전체 댓글 횡단 검색 결과 (quest/campaign 통합).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
+pub struct GlobalComment {
+    pub scope: String,
+    pub slug: String,
+    pub entry_id: i64,
+    pub ts: String,
+    pub author: String,
+    pub body: String,
+    pub discussion: bool,
+    pub resolved: bool,
+    pub parent_id: Option<i64>,
+    pub pinned: bool,
+    pub reactions: String,
+}
+
+#[derive(Debug, Default)]
+pub struct GlobalCommentsFilter<'a> {
+    pub author: Option<&'a str>,
+    pub since: Option<&'a str>,
+    pub until: Option<&'a str>,
+    pub grep: Option<&'a str>,
+    pub discussion: bool,
+    pub unresolved: bool,
+}
+
+/// Quest + campaign 댓글 캐시를 한 번에 검색한다. 출력 정렬은 오래된 순이며,
+/// CLI의 top-only/reply-to/reverse/limit/tree는 이 값 위에서 동일하게 후처리한다.
+pub async fn search_global(
+    pool: &SqlitePool,
+    filter: GlobalCommentsFilter<'_>,
+) -> AppResult<Vec<GlobalComment>> {
+    let mut conds_q = String::new();
+    let mut conds_c = String::new();
+    let mut push_both = |quest: &str, campaign: &str| {
+        conds_q.push_str(" AND ");
+        conds_q.push_str(quest);
+        conds_c.push_str(" AND ");
+        conds_c.push_str(campaign);
+    };
+    let mut binds = Vec::new();
+    if let Some(author) = filter.author {
+        push_both("LOWER(c.author) = LOWER(?)", "LOWER(c.author) = LOWER(?)");
+        binds.push(author.to_string());
+    }
+    if let Some(since) = filter.since {
+        push_both("c.ts >= ?", "c.ts >= ?");
+        binds.push(crate::time::normalize_filter_ts(since));
+    }
+    if let Some(until) = filter.until {
+        push_both("c.ts <= ?", "c.ts <= ?");
+        binds.push(crate::time::normalize_filter_ts(until));
+    }
+    if let Some(grep) = filter.grep {
+        push_both(
+            "LOWER(c.body) LIKE '%' || LOWER(?) || '%'",
+            "LOWER(c.body) LIKE '%' || LOWER(?) || '%'",
+        );
+        binds.push(grep.to_string());
+    }
+    if filter.discussion {
+        push_both("c.discussion = 1", "0 = 1");
+    }
+    if filter.unresolved {
+        push_both("c.discussion = 1 AND c.resolved = 0", "0 = 1");
+    }
+
+    let sql = format!(
+        "SELECT * FROM (
+           SELECT 'quest' AS scope,
+                  qt.prefix || '-' || printf('%03d', q.number) AS slug,
+                  c.entry_id, c.ts, c.author, c.body,
+                  c.discussion, c.resolved, c.parent_id, c.pinned, c.reactions
+             FROM quest_comments c
+             JOIN quests q ON q.id = c.quest_id
+             JOIN quest_types qt ON qt.id = q.quest_type_id
+            WHERE 1 = 1{conds_q}
+           UNION ALL
+           SELECT 'campaign' AS scope, ca.campaign_slug AS slug,
+                  c.entry_id, c.ts, c.author, c.body,
+                  0 AS discussion, 0 AS resolved, c.parent_id, c.pinned, c.reactions
+             FROM campaign_comments c
+             JOIN campaigns ca ON ca.id = c.campaign_id
+            WHERE 1 = 1{conds_c}
+         )
+         ORDER BY ts ASC"
+    );
+    let mut query = sqlx::query_as::<_, GlobalComment>(&sql);
+    for value in &binds {
+        query = query.bind(value);
+    }
+    for value in &binds {
+        query = query.bind(value);
+    }
+    Ok(query.fetch_all(pool).await?)
+}
 
 /// 한 quest 의 모든 entry. 파일 부재 / legacy 단일 텍스트는 빈 vec or 1-entry.
 pub fn list_entries(store: &Store, slug: &str) -> AppResult<Vec<CommentEntry>> {
@@ -98,6 +196,8 @@ pub fn delete_entry(store: &Store, slug: &str, id: u64) -> AppResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::CreateQuestRequest;
+    use crate::ops::{comments as comment_ops, quests as quest_ops};
     use crate::store::Store;
 
     async fn fresh(label: &str) -> (std::path::PathBuf, Store) {
@@ -215,6 +315,49 @@ mod tests {
         let c = add_entry(&store, "DEV-001", "".into(), "3".into(), None).unwrap();
         // alive 중 max(id) = 1 → next = 2 (재사용).
         assert_eq!(c.id, 2);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn global_search_filters_synced_quest_comments() {
+        let (dir, store) = fresh("global-search").await;
+        let quest = quest_ops::create_quest(
+            &store,
+            CreateQuestRequest {
+                quest_type_id: 1,
+                title: "search target".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        comment_ops::add_comment_entry(
+            &store,
+            &quest.quest_id,
+            "alice".into(),
+            "remote parity needle".into(),
+            None,
+        )
+        .await
+        .unwrap();
+
+        let rows = search_global(
+            &store.index_pool,
+            GlobalCommentsFilter {
+                author: Some("ALICE"),
+                grep: Some("needle"),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].scope, "quest");
+        assert_eq!(rows[0].slug, quest.quest_id);
+        assert_eq!(rows[0].body, "remote parity needle");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

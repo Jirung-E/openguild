@@ -12,6 +12,9 @@ use serde::{Deserialize, Serialize};
 use crate::error::AppResult;
 use openguild_core::ops::comments as ops;
 use openguild_core::repo::comments::CommentEntry;
+use openguild_core::services::comments::{
+    search_global, GlobalComment, GlobalCommentsFilter,
+};
 use openguild_core::Store;
 
 // ─── BUG-231: 길드 전체 댓글 검색 ───
@@ -28,90 +31,25 @@ pub struct GlobalCommentsQuery {
     pub unresolved: bool,
 }
 
-#[derive(Debug, Serialize, sqlx::FromRow)]
-pub struct GlobalCommentResponse {
-    pub scope: String,
-    pub slug: String,
-    pub entry_id: i64,
-    pub ts: String,
-    pub author: String,
-    pub body: String,
-    pub discussion: bool,
-    pub resolved: bool,
-    pub parent_id: Option<i64>,
-    pub pinned: bool,
-    pub reactions: String,
-}
-
 /// Quest + campaign 댓글을 한 길드 안에서 횡단 검색한다. 정렬/답글 트리/limit은
 /// CLI가 로컬 모드와 동일하게 후처리할 수 있도록 전체 결과를 오래된 순으로 반환.
 pub async fn search_comments(
     State(store): State<Store>,
     Query(query): Query<GlobalCommentsQuery>,
-) -> AppResult<Json<Vec<GlobalCommentResponse>>> {
-    let mut conds_q = String::new();
-    let mut conds_c = String::new();
-    let mut push_both = |quest: &str, campaign: &str| {
-        conds_q.push_str(" AND ");
-        conds_q.push_str(quest);
-        conds_c.push_str(" AND ");
-        conds_c.push_str(campaign);
-    };
-    let mut binds = Vec::new();
-    if let Some(author) = query.author {
-        push_both("LOWER(c.author) = LOWER(?)", "LOWER(c.author) = LOWER(?)");
-        binds.push(author);
-    }
-    if let Some(since) = query.since {
-        push_both("c.ts >= ?", "c.ts >= ?");
-        binds.push(openguild_core::time::normalize_filter_ts(&since));
-    }
-    if let Some(until) = query.until {
-        push_both("c.ts <= ?", "c.ts <= ?");
-        binds.push(openguild_core::time::normalize_filter_ts(&until));
-    }
-    if let Some(grep) = query.grep {
-        push_both(
-            "LOWER(c.body) LIKE '%' || LOWER(?) || '%'",
-            "LOWER(c.body) LIKE '%' || LOWER(?) || '%'",
-        );
-        binds.push(grep);
-    }
-    if query.discussion {
-        push_both("c.discussion = 1", "0 = 1");
-    }
-    if query.unresolved {
-        push_both("c.discussion = 1 AND c.resolved = 0", "0 = 1");
-    }
-
-    let sql = format!(
-        "SELECT * FROM (
-           SELECT 'quest' AS scope,
-                  qt.prefix || '-' || printf('%03d', q.number) AS slug,
-                  c.entry_id, c.ts, c.author, c.body,
-                  c.discussion, c.resolved, c.parent_id, c.pinned, c.reactions
-             FROM quest_comments c
-             JOIN quests q ON q.id = c.quest_id
-             JOIN quest_types qt ON qt.id = q.quest_type_id
-            WHERE 1 = 1{conds_q}
-           UNION ALL
-           SELECT 'campaign' AS scope, ca.campaign_slug AS slug,
-                  c.entry_id, c.ts, c.author, c.body,
-                  0 AS discussion, 0 AS resolved, c.parent_id, c.pinned, c.reactions
-             FROM campaign_comments c
-             JOIN campaigns ca ON ca.id = c.campaign_id
-            WHERE 1 = 1{conds_c}
-         )
-         ORDER BY ts ASC"
-    );
-    let mut sql_query = sqlx::query_as::<_, GlobalCommentResponse>(&sql);
-    for value in &binds {
-        sql_query = sql_query.bind(value);
-    }
-    for value in &binds {
-        sql_query = sql_query.bind(value);
-    }
-    Ok(Json(sql_query.fetch_all(&store.index_pool).await?))
+) -> AppResult<Json<Vec<GlobalComment>>> {
+    let rows = search_global(
+        &store.index_pool,
+        GlobalCommentsFilter {
+            author: query.author.as_deref(),
+            since: query.since.as_deref(),
+            until: query.until.as_deref(),
+            grep: query.grep.as_deref(),
+            discussion: query.discussion,
+            unresolved: query.unresolved,
+        },
+    )
+    .await?;
+    Ok(Json(rows))
 }
 
 // ─── 메모: 단일 텍스트 ───

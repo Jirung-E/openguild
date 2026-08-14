@@ -185,8 +185,8 @@ pub async fn delete_type(store: &Store, prefix: String) -> AppResult<()> {
     let count = count_quests_by_type(&store.index_pool, row.id).await?;
     if count > 0 {
         return Err(AppError::BadRequest(crate::tf!(
-            "type '{prefix}' 는 {count} 개 quest 가 사용 중 — 먼저 다른 type 으로 이동시키거나 삭제하세요.",
-            "type '{prefix}' is used by {count} quest(s) — move or delete them first."
+            "type '{prefix}' 는 {count} 개 quest(삭제됨 포함)가 참조 중 — 복원 가능한 quest 의 type 정의는 삭제할 수 없습니다.",
+            "type '{prefix}' is referenced by {count} quest(s), including deleted quests — type definitions required by restorable quests cannot be deleted."
         )));
     }
 
@@ -493,11 +493,10 @@ fn validate_status_slug(slug: &str) -> AppResult<()> {
     Ok(())
 }
 
-/// 특정 type 을 사용하는 alive quest 수.
+/// 특정 type 을 참조하는 전체 quest 수. soft-deleted quest도 복원/reindex에 이
+/// 정의가 필요하므로 삭제 안전장치에서 반드시 포함한다.
 pub async fn count_quests_by_type(pool: &SqlitePool, type_id: i64) -> AppResult<i64> {
-    let n: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM quests WHERE quest_type_id = ? AND deleted_at IS NULL",
-    )
+    let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM quests WHERE quest_type_id = ?")
     .bind(type_id)
     .fetch_one(pool)
     .await?;
@@ -839,8 +838,8 @@ pub async fn delete_status(store: &Store, slug: String) -> AppResult<()> {
     let count = count_quests_by_status(&store.index_pool, row.id).await?;
     if count > 0 {
         return Err(AppError::BadRequest(crate::tf!(
-            "status '{slug}' 는 {count} 개 quest 가 사용 중 — 먼저 다른 status 로 이동시키세요.",
-            "status '{slug}' is used by {count} quest(s) — move them first."
+            "status '{slug}' 는 {count} 개 quest(삭제됨 포함)가 참조 중 — 복원 가능한 quest 의 status 정의는 삭제할 수 없습니다.",
+            "status '{slug}' is referenced by {count} quest(s), including deleted quests — status definitions required by restorable quests cannot be deleted."
         )));
     }
 
@@ -855,11 +854,10 @@ pub async fn delete_status(store: &Store, slug: String) -> AppResult<()> {
     Ok(())
 }
 
-/// 특정 status 를 사용하는 alive quest 수.
+/// 특정 status 를 참조하는 전체 quest 수. soft-deleted quest도 복원/reindex에 이
+/// 정의가 필요하므로 삭제 안전장치에서 반드시 포함한다.
 pub async fn count_quests_by_status(pool: &SqlitePool, status_id: i64) -> AppResult<i64> {
-    let n: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM quests WHERE status_id = ? AND deleted_at IS NULL",
-    )
+    let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM quests WHERE status_id = ?")
     .bind(status_id)
     .fetch_one(pool)
     .await?;
@@ -979,6 +977,8 @@ fn slugify(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::CreateQuestRequest;
+    use crate::ops::quests as quest_ops;
 
     fn fresh_tmp(label: &str) -> std::path::PathBuf {
         let ns = std::time::SystemTime::now()
@@ -1118,6 +1118,32 @@ mod tests {
         let row = fetch_type_by_prefix(&store.index_pool, "DEV").await.unwrap();
         let n = count_quests_by_type(&store.index_pool, row.id).await.unwrap();
         assert_eq!(n, 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn deleted_quest_still_blocks_type_and_status_delete() {
+        let (dir, store) = fresh_store("meta-del-soft-deleted").await;
+        let dev = fetch_type_by_prefix(&store.index_pool, "DEV").await.unwrap();
+        let quest = quest_ops::create_quest(
+            &store,
+            CreateQuestRequest {
+                quest_type_id: dev.id,
+                title: "restorable".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        quest_ops::delete_quest(&store, quest.id, &[]).await.unwrap();
+
+        let type_err = delete_type(&store, "DEV".into()).await.unwrap_err();
+        assert!(matches!(type_err, AppError::BadRequest(_)));
+        let status_err = delete_status(&store, "open".into()).await.unwrap_err();
+        assert!(matches!(status_err, AppError::BadRequest(_)));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
