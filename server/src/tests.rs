@@ -955,6 +955,88 @@ fn test_compression_predicate_skips_already_compressed_types() {
     }
 }
 
+// === DEV-358: 목록 조건부 요청 ===
+
+/// 안 바뀌었으면 304 + 빈 본문, 바뀌었으면 새 ETag 와 함께 200.
+/// 이게 깨지면 목록 왕복마다 275KB 재수신·재파싱으로 조용히 돌아간다.
+#[tokio::test]
+async fn test_quest_list_etag_revalidation() {
+    let app = setup_for_search().await;
+
+    let res = app
+        .clone()
+        .oneshot(Request::get("/api/quests").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let etag = res
+        .headers()
+        .get("etag")
+        .and_then(|v| v.to_str().ok())
+        .expect("목록에 ETag 가 없다")
+        .to_string();
+
+    // 같은 ETag → 304, 본문 없음.
+    let res = app
+        .clone()
+        .oneshot(
+            Request::get("/api/quests")
+                .header("if-none-match", &etag)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_MODIFIED);
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    assert!(body.is_empty(), "304 인데 본문이 있다: {} bytes", body.len());
+
+    // 내용이 바뀌면 ETag 도 바뀌어야 한다 — 안 바뀌면 새 퀘스트가 목록에 영영
+    // 안 나타난다(가장 위험한 실패 양상).
+    post(
+        app.clone(),
+        "/api/quests",
+        json!({ "quest_type_id": 1, "title": "새로 생긴 것", "status_slug": "open" }),
+    )
+    .await;
+    let res = app
+        .clone()
+        .oneshot(
+            Request::get("/api/quests")
+                .header("if-none-match", &etag)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK, "변경 후에도 304 를 주고 있다");
+    let new_etag = res.headers().get("etag").unwrap().to_str().unwrap();
+    assert_ne!(new_etag, etag, "내용이 바뀌었는데 ETag 가 같다");
+}
+
+/// 쿼리가 다르면 결과가 다르므로 ETag 도 달라야 한다(캐시 교차 오염 방지).
+#[tokio::test]
+async fn test_quest_list_etag_differs_by_query() {
+    let app = setup_for_search().await;
+    let etag_of = |uri: &'static str| {
+        let app = app.clone();
+        async move {
+            let res = app
+                .oneshot(Request::get(uri).body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            res.headers()
+                .get("etag")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string())
+                .unwrap()
+        }
+    };
+    let full = etag_of("/api/quests").await;
+    let slim = etag_of("/api/quests?slim=true").await;
+    assert_ne!(full, slim, "slim 여부가 달라도 ETag 가 같다");
+}
+
 // === BUG-210: slim 목록 — 응답에서 description 제외 ===
 
 #[tokio::test]

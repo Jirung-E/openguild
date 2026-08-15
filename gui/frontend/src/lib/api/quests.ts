@@ -1,4 +1,5 @@
 import { api } from './client';
+import { getWithEtag } from './transport';
 import type {
 	CandidateRelation,
 	ChangeParentRequest,
@@ -21,7 +22,11 @@ export const questsApi = {
 	 * 531건 기준 응답이 1.13MB(그중 본문 0.58MB)였다. 필터·검색은 서버가
 	 * 하므로 클라이언트가 본문을 들고 있을 이유가 없다.
 	 */
-	list: (slim = false) => api.get<Quest[]>(`/api/quests${slim ? '?slim=true' : ''}`),
+	list: (slim = false) =>
+		// DEV-358: 조건부 GET — 서버 ETag 로 신선도를 확인하고 안 바뀌었으면
+		// 파싱해 둔 배열을 그대로 쓴다. 상세 → 목록 왕복마다 275KB 를 다시 받아
+		// 500여 개 객체로 다시 파싱하던 비용이 사라진다.
+		getWithEtag<Quest[]>(`/api/quests${slim ? '?slim=true' : ''}`),
 
 	/**
 	 * DEV-277: 최근 갱신순 목록 — 검색 팔레트처럼 "고르는" UI 용.

@@ -144,6 +144,55 @@ export function questListQueryToArgs(query: URLSearchParams): Record<string, unk
 	return q;
 }
 
+/**
+ * DEV-358: 조건부 GET — 서버 ETag 로 신선도를 확인하고, 안 바뀌었으면
+ * **이미 파싱해 둔 값을 그대로 재사용**한다.
+ *
+ * 퀘스트 목록은 상세 → 목록 왕복마다 다시 받고 다시 파싱했다(531건 기준 해제
+ * 275KB, 객체 500여 개). 전송량은 gzip 으로 36KB 였지만 **파싱과 객체 생성
+ * 비용은 그대로**였고, 목록을 오가는 사용 패턴에서 이게 비용의 대부분이었다.
+ *
+ * 클라이언트가 무효화를 스스로 관리하지 않는 이유: 원격 모드에서 **다른
+ * 클라이언트가 바꾼 변경**을 알 수 없어 "고쳤는데 목록에 안 보인다" 가 된다.
+ * 여기서는 매번 서버에 묻고(조건부 요청), 서버가 304 를 줄 때만 재사용한다 —
+ * 신선도 판정은 항상 서버 몫이다.
+ *
+ * Tauri(invoke) 경로는 HTTP 가 아니라 이 함수를 타지 않는다.
+ */
+const etagCache = new Map<string, { etag: string; data: unknown }>();
+
+/** 테스트/디버그용 — 캐시 비우기. */
+export function clearEtagCache(): void {
+	etagCache.clear();
+}
+
+export async function getWithEtag<T>(path: string): Promise<T> {
+	const t = resolveTransport();
+	if (!(t instanceof HttpTransport)) {
+		// Tauri invoke 경로 — 조건부 요청 개념이 없다.
+		return t.call<T>({ method: 'GET', path });
+	}
+	const url = `${t.baseUrl}${path}`;
+	const hit = etagCache.get(url);
+	const res = await fetch(url, {
+		method: 'GET',
+		headers: hit ? { 'If-None-Match': hit.etag } : {},
+		// 브라우저 HTTP 캐시가 우리 대신 304 를 삼켜버리면 위 분기가 죽는다.
+		// 우리가 직접 조건부 요청을 관리하므로 브라우저 캐시는 끈다.
+		cache: 'no-store'
+	});
+	if (res.status === 304 && hit) return hit.data as T;
+	if (!res.ok) {
+		const err = await res.json().catch(() => ({ error: res.statusText }));
+		throw new Error((err as { error?: string }).error ?? 'request failed');
+	}
+	const data = (await res.json()) as T;
+	const etag = res.headers.get('etag');
+	if (etag) etagCache.set(url, { etag, data });
+	else etagCache.delete(url);
+	return data;
+}
+
 /** path + method → (invoke 명, args). 매칭 실패 시 null. */
 function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknown> } | null {
 	const { method, path, body } = req;

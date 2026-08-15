@@ -94,7 +94,16 @@ async fn static_cache_headers(
     if path.starts_with("/api/") {
         return res;
     }
-    let value = if path.starts_with("/_app/immutable/") {
+    // 없는 자산은 SPA fallback 이 index.html 로 200 을 준다. 경로만 보고
+    // immutable 을 붙이면 브라우저가 **JS URL 아래에 HTML 을** 1년간 캐시해,
+    // 배포 후 해시가 바뀌어도 영영 깨진 페이지를 본다. 실제 자산(=HTML 이
+    // 아닌 응답)에만 장기 캐시를 건다.
+    let is_html = res
+        .headers()
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.starts_with("text/html"));
+    let value = if path.starts_with("/_app/immutable/") && !is_html {
         "public, max-age=31536000, immutable"
     } else {
         "no-cache"

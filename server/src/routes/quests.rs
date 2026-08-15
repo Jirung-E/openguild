@@ -19,11 +19,67 @@ use openguild_core::ops::quests as ops;
 use openguild_core::services::quests as read;
 use openguild_core::Store;
 
+/// DEV-358: 목록 응답에 ETag + 조건부 요청.
+///
+/// 상세 → 목록 왕복마다 이 응답(퀘스트 531건 기준 **275KB 해제**)을 다시 받고
+/// 클라이언트가 500여 개 객체로 다시 파싱했다. 상세 문서 자체는 13KB 뿐이라,
+/// 목록을 오가는 사용 패턴에서는 이게 비용의 대부분이었다.
+///
+/// 클라이언트가 캐시 무효화를 스스로 관리하는 방식은 택하지 않았다 — **원격
+/// 모드에서 다른 클라이언트가 바꾼 변경을 알 수 없어** "고쳤는데 목록에 안
+/// 보인다" 가 된다. 대신 매 요청 서버가 신선도를 판정하고, 안 바뀌었으면
+/// 304 + 빈 본문으로 끝낸다(전송 0, 클라이언트 파싱 0).
+///
+/// ETag 는 **직렬화된 응답 본문의 해시**다. 쿼리 조합(필터·정렬·slim)마다
+/// 결과가 다르므로 본문에서 뽑는 게 가장 안전하다. 목록 SQL 은 어차피 돌므로
+/// 추가 비용은 해시 한 번뿐이다.
 pub async fn list_quests(
     State(store): State<Store>,
     Query(q): Query<ListQuery>,
-) -> AppResult<Json<Vec<QuestRow>>> {
-    Ok(Json(read::list(&store.index_pool, &q).await?))
+    headers: axum::http::HeaderMap,
+) -> AppResult<axum::response::Response> {
+    use axum::response::IntoResponse;
+    let rows = read::list(&store.index_pool, &q).await?;
+    let body = serde_json::to_vec(&rows)
+        .map_err(|e| openguild_core::AppError::Internal(anyhow::anyhow!(e)))?;
+
+    // FNV-1a 64 — 의존성 없이 충분히 빠르고 충돌은 실사용상 무시 가능.
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in &body {
+        hash ^= *b as u64;
+        hash = hash.wrapping_mul(0x100_0000_01b3);
+    }
+    let etag = format!("\"{hash:x}\"");
+
+    if let Some(inm) = headers.get(axum::http::header::IF_NONE_MATCH)
+        && inm
+            .to_str()
+            .map(|v| v.split(',').any(|t| t.trim() == etag))
+            .unwrap_or(false)
+    {
+        return Ok((
+            axum::http::StatusCode::NOT_MODIFIED,
+            [
+                (axum::http::header::ETAG, etag),
+                // 매번 서버에 물어보되, 안 바뀌었으면 본문을 안 받는다.
+                (axum::http::header::CACHE_CONTROL, "no-cache".to_string()),
+            ],
+        )
+            .into_response());
+    }
+
+    Ok((
+        [
+            (
+                axum::http::header::CONTENT_TYPE,
+                "application/json".to_string(),
+            ),
+            (axum::http::header::ETAG, etag),
+            (axum::http::header::CACHE_CONTROL, "no-cache".to_string()),
+        ],
+        body,
+    )
+        .into_response())
 }
 
 pub async fn create_quest(
