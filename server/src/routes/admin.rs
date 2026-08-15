@@ -207,6 +207,7 @@ pub async fn info(State(store): State<Store>) -> AppResult<Json<InfoResponse>> {
 pub async fn get_guild_file(
     State(store): State<Store>,
     Path(rel): Path<String>,
+    headers: axum::http::HeaderMap,
 ) -> AppResult<axum::response::Response> {
     use axum::response::IntoResponse;
     let rel = rel.replace('\\', "/");
@@ -218,6 +219,33 @@ pub async fn get_guild_file(
         .into());
     }
     let path = store.paths.dot_guild().join(&rel);
+    let meta = std::fs::metadata(&path)
+        .map_err(|_| openguild_core::error::AppError::NotFound(format!("파일 없음: {rel}")))?;
+
+    // DEV-357: 캐시 검증자. 예전엔 cache-control / etag / last-modified 가 전부
+    // 없어, 브라우저가 재사용도 조건부 요청도 못 하고 **볼 때마다 전부 다시
+    // 받았다**(If-Modified-Since 를 붙여도 200 + 전체 본문). 첨부는 화면에
+    // 뜰 때마다 통째로 재다운로드되고 있었다.
+    //
+    // ETag 는 (크기, mtime) 로 만든다 — 내용 해시는 대용량 첨부(BUG-168 의
+    // 1.5GB)에서 매 요청 전체를 읽어야 해 쓸 수 없다. 파일이 바뀌면 둘 중
+    // 하나는 바뀌므로 검증자로 충분하다.
+    let mtime_secs = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let etag = format!("\"{:x}-{:x}\"", meta.len(), mtime_secs);
+
+    // 조건부 요청 — 같으면 본문 없이 304. 대용량 첨부에서 특히 크게 아낀다.
+    if let Some(inm) = headers.get(axum::http::header::IF_NONE_MATCH)
+        && inm.to_str().map(|v| v.split(',').any(|t| t.trim() == etag)).unwrap_or(false)
+    {
+        return Ok((axum::http::StatusCode::NOT_MODIFIED, [(axum::http::header::ETAG, etag)])
+            .into_response());
+    }
+
     let bytes = std::fs::read(&path).map_err(|_| {
         openguild_core::error::AppError::NotFound(format!("파일 없음: {rel}"))
     })?;
@@ -233,5 +261,23 @@ pub async fn get_guild_file(
         Some("pdf") => "application/pdf",
         _ => "application/octet-stream",
     };
-    Ok(([(axum::http::header::CONTENT_TYPE, mime)], bytes).into_response())
+
+    // DEV-357: 첨부는 업로드마다 고유 접미사가 붙어(BUG-219) 같은 URL 이 다른
+    // 내용을 가리키지 않는다 — 사실상 불변이라 장기 캐시가 안전하다.
+    // 반면 `assets/` 는 같은 이름으로 교체될 수 있으므로 매번 검증만 시킨다
+    // (ETag 가 있으니 안 바뀌었으면 304 로 끝난다).
+    let cache_control = if rel.starts_with("attachments/") {
+        "public, max-age=31536000, immutable"
+    } else {
+        "no-cache"
+    };
+    Ok((
+        [
+            (axum::http::header::CONTENT_TYPE, mime.to_string()),
+            (axum::http::header::CACHE_CONTROL, cache_control.to_string()),
+            (axum::http::header::ETAG, etag),
+        ],
+        bytes,
+    )
+        .into_response())
 }

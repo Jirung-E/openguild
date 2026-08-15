@@ -74,6 +74,37 @@ fn detect_request_locale(req: &Request) -> Locale {
     openguild_core::locale::current()
 }
 
+/// DEV-357: 정적 자산 캐시 정책.
+///
+/// SvelteKit 의 `_app/immutable/**` 는 **내용 해시가 파일명에 들어간** 파일이라
+/// 같은 URL 이 다른 내용을 가리키는 일이 없다. 그런데 지금까지 `cache-control`
+/// 이 없어 브라우저가 매번 조건부 요청을 보냈다 — 파일마다 왕복 한 번씩,
+/// 원격(폰)에서 특히 낭비다.
+///
+/// 반대로 `index.html` 은 **절대 오래 캐시하면 안 된다**. 그 안에 새 해시
+/// 파일명들이 들어 있어, 오래된 index 가 캐시되면 업데이트 후에도 옛 번들을
+/// 계속 물고 간다. `no-cache`(= 매번 검증)로 둔다.
+async fn static_cache_headers(
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let path = req.uri().path().to_string();
+    let mut res = next.run(req).await;
+    // API 응답은 건드리지 않는다 — 내용이 바뀌는 데이터다.
+    if path.starts_with("/api/") {
+        return res;
+    }
+    let value = if path.starts_with("/_app/immutable/") {
+        "public, max-age=31536000, immutable"
+    } else {
+        "no-cache"
+    };
+    res.headers_mut().entry(axum::http::header::CACHE_CONTROL).or_insert(
+        axum::http::HeaderValue::from_static(value),
+    );
+    res
+}
+
 async fn locale_middleware(req: Request, next: Next) -> Response {
     let locale = detect_request_locale(&req);
     openguild_core::locale::scoped(locale, next.run(req)).await
@@ -428,6 +459,8 @@ async fn run_host(
             axum::http::HeaderValue::from_static(csp),
         ))
         .layer(middleware::from_fn(locale_middleware))
+        // DEV-357: 정적 자산 캐시 정책 — _app/immutable 은 영구, 그 외는 no-cache.
+        .layer(middleware::from_fn(static_cache_headers))
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive())
         // DEV-332: 압축은 가장 바깥 — 정적 자산(fallback_service)까지 덮는다.

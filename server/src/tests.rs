@@ -733,6 +733,69 @@ async fn test_list_search_title_only_multi_token_and() {
     assert_eq!(arr[0]["title"], "Quest list 검색");
 }
 
+// === DEV-357: 첨부 캐시 헤더 + 조건부 요청 ===
+
+/// 첨부는 업로드마다 고유 파일명이 붙어 사실상 불변이다. 예전엔 cache-control /
+/// etag 가 전부 없어 **볼 때마다 전부 다시 받았다**(If-Modified-Since 를 붙여도
+/// 200 + 전체 본문). 여기가 깨지면 조용히 그 상태로 돌아간다.
+#[tokio::test]
+async fn test_attachment_is_cacheable_and_revalidates() {
+    let app = setup().await;
+    // 첨부 하나 저장 — 스트리밍 라우트 사용(크기 상한 없음).
+    let res = app
+        .clone()
+        .oneshot(
+            Request::post("/api/attachments/stream?ext=bin&name=cache-me.bin")
+                .header("content-type", "application/octet-stream")
+                .body(Body::from(vec![9u8; 2048]))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let bytes = res.into_body().collect().await.unwrap().to_bytes();
+    let rel: String = serde_json::from_slice(&bytes).unwrap();
+
+    // 1차 요청 — 장기 캐시 + ETag 가 있어야 한다.
+    let res = app
+        .clone()
+        .oneshot(
+            Request::get(format!("/api/guild-files/{rel}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let cc = res
+        .headers()
+        .get("cache-control")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default()
+        .to_string();
+    assert!(cc.contains("immutable"), "장기 캐시가 아니다: {cc:?}");
+    let etag = res
+        .headers()
+        .get("etag")
+        .and_then(|v| v.to_str().ok())
+        .expect("ETag 가 없다")
+        .to_string();
+
+    // 2차 요청 — 같은 ETag 면 본문 없이 304.
+    let res = app
+        .oneshot(
+            Request::get(format!("/api/guild-files/{rel}"))
+                .header("if-none-match", &etag)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_MODIFIED, "304 가 아니다");
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    assert!(body.is_empty(), "304 인데 본문이 실려 있다: {} bytes", body.len());
+}
+
 // === DEV-337: 스트리밍 첨부 업로드 ===
 
 #[tokio::test]
