@@ -2831,6 +2831,30 @@ async fn test_global_comments_search_filters_quest_comments() {
     assert_eq!(rows[0]["slug"], "DEV-001");
 }
 
+/// BUG-233: 응답 경로에 역슬래시가 섞이면 안 된다.
+///
+/// Windows 호스팅에서만 역슬래시가 나가 같은 API 가 서버 OS 에 따라 다른 값을
+/// 주고 있었다. CI 테스트 잡이 ubuntu 전용이라 못 잡았으므로, **플랫폼과
+/// 무관하게 성립하는 형태**로 못박는다.
+#[tokio::test]
+async fn test_template_path_uses_forward_slash() {
+    let app = setup().await;
+    let (status, saved) = post(
+        app,
+        "/api/templates",
+        json!({
+            "name": "sep-check",
+            "frontmatter": { "title": "Sep", "type": "BUG" },
+            "body": "x"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let path = saved["path"].as_str().unwrap();
+    assert!(!path.contains('\\'), "역슬래시가 섞였다: {path}");
+    assert_eq!(path, ".guild/templates/sep-check.md");
+}
+
 #[tokio::test]
 async fn test_template_create_list_show() {
     let app = setup().await;
