@@ -5,6 +5,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, waitFor } from '@testing-library/svelte';
 import AttachmentSection from './AttachmentSection.svelte';
 import { pickAndUploadAttachments, type AttachQueueItem } from '$lib/utils/editor-attach';
+import { guildFileUrl } from '$lib/utils/banner';
 
 vi.mock('$lib/utils/editor-attach', () => ({
 	pickAndUploadAttachments: vi.fn()
@@ -34,6 +35,7 @@ const row = (c: HTMLElement) => c.querySelector<HTMLElement>('[role="progressbar
 describe('AttachmentSection 업로드 진행 표시', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		vi.mocked(guildFileUrl).mockResolvedValue('blob:preview');
 	});
 
 	it('퍼센트를 알면 결정형 바로 채운다', async () => {
@@ -210,5 +212,88 @@ describe('AttachmentSection 업로드 진행 표시', () => {
 		const { container, getByText } = render(AttachmentSection, { props: { slug: 'DEV-001' } });
 		getByText('+ 첨부').click();
 		await waitFor(() => expect(row(container)).toBeNull());
+	});
+});
+
+describe('AttachmentSection 미리보기와 다운로드', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.mocked(guildFileUrl).mockResolvedValue('blob:preview');
+	});
+
+	// BUG-233: 여러 URL 요청이 역순으로 끝나도 늦게 끝난 요청이 먼저 표시된
+	// URL을 오래된 객체로 덮어쓰면 안 된다. 진행 중인 같은 경로도 재요청하지 않는다.
+	it('여러 미리보기 URL을 완료 순서와 무관하게 한 번씩만 병합한다', async () => {
+		const releases = new Map<string, (url: string) => void>();
+		vi.mocked(guildFileUrl).mockImplementation(
+			(path) => new Promise<string>((resolve) => releases.set(path, resolve))
+		);
+
+		const { container } = render(AttachmentSection, {
+			props: {
+				slug: 'BUG-233',
+				attachments: [
+					{ path: 'attachments/first.png', name: 'first.png' },
+					{ path: 'attachments/second.png', name: 'second.png' }
+				]
+			}
+		});
+
+		await waitFor(() => expect(releases.size).toBe(2));
+		releases.get('attachments/second.png')?.('blob:second');
+		await waitFor(() => expect(container.querySelector('img[alt="second.png"]')).not.toBeNull());
+		releases.get('attachments/first.png')?.('blob:first');
+
+		await waitFor(() => expect(container.querySelectorAll('.thumb img')).toHaveLength(2));
+		expect(guildFileUrl).toHaveBeenCalledTimes(2);
+		expect(guildFileUrl).toHaveBeenCalledWith('attachments/first.png');
+		expect(guildFileUrl).toHaveBeenCalledWith('attachments/second.png');
+	});
+
+	// 실제 길드에는 path가 `.html`이지만 표시 name에는 확장자가 없는 과거
+	// attachment metadata가 있다. 다운로드할 때 저장 path의 확장자를 복구한다.
+	it('표시 이름에 확장자가 없으면 저장 path 확장자로 다운로드한다', async () => {
+		let downloadedAs = '';
+		const click = vi
+			.spyOn(HTMLAnchorElement.prototype, 'click')
+			.mockImplementation(function (this: HTMLAnchorElement) {
+				downloadedAs = this.download;
+			});
+		const { container } = render(AttachmentSection, {
+			props: {
+				slug: 'BUG-233',
+				attachments: [
+					{
+						path: 'attachments/18c169e035667ea8-6eb7973d.html',
+						name: '타이틀바 디자인 샘플 (v4)'
+					}
+				]
+			}
+		});
+
+		container.querySelector<HTMLButtonElement>('.dl')?.click();
+		await waitFor(() => expect(click).toHaveBeenCalledOnce());
+		expect(downloadedAs).toBe('타이틀바 디자인 샘플 (v4).html');
+		click.mockRestore();
+	});
+
+	it('표시 이름에 이미 확장자가 있으면 이름을 바꾸지 않는다', async () => {
+		let downloadedAs = '';
+		const click = vi
+			.spyOn(HTMLAnchorElement.prototype, 'click')
+			.mockImplementation(function (this: HTMLAnchorElement) {
+				downloadedAs = this.download;
+			});
+		const { container } = render(AttachmentSection, {
+			props: {
+				slug: 'BUG-233',
+				attachments: [{ path: 'attachments/report.pdf', name: 'final-report.pdf' }]
+			}
+		});
+
+		container.querySelector<HTMLButtonElement>('.dl')?.click();
+		await waitFor(() => expect(click).toHaveBeenCalledOnce());
+		expect(downloadedAs).toBe('final-report.pdf');
+		click.mockRestore();
 	});
 });

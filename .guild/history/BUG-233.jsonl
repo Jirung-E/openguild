@@ -1,2 +1,4 @@
 {"ts":"2026-08-15T16:36:15+09:00","op":"change_status","old":"open","new":"in_progress"}
 {"ts":"2026-08-15T16:41:28+09:00","op":"change_status","old":"in_progress","new":"testing"}
+{"ts":"2026-08-15T19:04:47+09:00","op":"change_status","old":"open","new":"in_progress"}
+{"ts":"2026-08-15T19:07:13+09:00","op":"change_status","old":"in_progress","new":"testing"}

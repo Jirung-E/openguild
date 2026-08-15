@@ -49,6 +49,10 @@
 		cancelOne: (id: number) => void;
 	} | null>(null);
 	let urls = $state<Record<string, string>>({});
+	// BUG-233: 미디어가 많을 때 effect 가 한 URL의 해석 완료마다 다시 실행된다.
+	// 아직 끝나지 않은 경로를 다시 요청하면 동일한 미리보기가 여러 번 경쟁하므로
+	// 비반응형 Set 으로 in-flight 요청을 한 건으로 제한한다.
+	const resolvingUrls = new Set<string>();
 
 	const IMG = /\.(png|jpe?g|gif|webp|bmp|svg)$/i;
 	const VID = /\.(mp4|webm)$/i;
@@ -57,15 +61,54 @@
 
 	$effect(() => {
 		for (const a of list) {
-			if ((isImage(a.path) || isVideo(a.path)) && !urls[a.path]) void resolve(a.path);
+			if (
+				(isImage(a.path) || isVideo(a.path)) &&
+				!urls[a.path] &&
+				!resolvingUrls.has(a.path)
+			) {
+				resolvingUrls.add(a.path);
+				void resolve(a.path);
+			}
 		}
 	});
 	async function resolve(path: string) {
 		try {
-			urls = { ...urls, [path]: await guildFileUrl(path) };
+			// await 를 객체 spread 뒤에 두면 요청 시작 시점의 오래된 urls 가 캡처된다.
+			// 먼저 해석을 끝내고 그 시점의 최신 상태에 병합해야 다른 썸네일을 지우지 않는다.
+			const url = await guildFileUrl(path);
+			urls = { ...urls, [path]: url };
 		} catch {
 			/* 해석 실패 — 칩으로만 표시 */
+		} finally {
+			resolvingUrls.delete(path);
 		}
+	}
+
+	/** 저장 path 의 확장자 — 확장자 없는 원본에 붙는 내부 `.bin` 은 제외한다. */
+	function storedExtension(path: string): string | null {
+		const filename = path.split(/[\\/]/).pop() ?? '';
+		const match = filename.match(/\.([a-z0-9]+)$/i);
+		if (!match || match[1].toLowerCase() === 'bin') return null;
+		return match[1];
+	}
+
+	function hasExtension(path: string): boolean {
+		const filename = path.split(/[\\/]/).pop() ?? '';
+		// `.env` 같은 dotfile 은 확장자 없는 원본 이름으로 취급한다.
+		return filename.lastIndexOf('.') > 0;
+	}
+
+	/** 표시 이름에 확장자가 빠졌으면 실제 저장 path 의 확장자를 다운로드명에 복구한다. */
+	function downloadName(att: Attachment): string {
+		const fallback = att.path.split(/[\\/]/).pop() || att.path;
+		const name = att.name.trim() || fallback;
+		const ext = storedExtension(att.path);
+		return ext && !hasExtension(name) ? `${name}.${ext}` : name;
+	}
+
+	/** macOS 저장 패널이 확장자를 숨긴 채 경로를 반환해도 실제 파일에는 보존한다. */
+	function ensureExtension(path: string, ext: string | null): string {
+		return ext && !hasExtension(path) ? `${path}.${ext}` : path;
 	}
 
 	// DEV-152: quest/campaign 별 첨부 목록 endpoint. api.post/delete 가
@@ -153,14 +196,20 @@
 	async function downloadOne(att: Attachment) {
 		error = null;
 		try {
+			const name = downloadName(att);
 			if (isTauri) {
 				const { save } = await import('@tauri-apps/plugin-dialog');
-				const dest = await save({ defaultPath: att.name });
+				const ext = storedExtension(name);
+				const selected = await save({
+					defaultPath: name,
+					filters: ext ? [{ name: ext.toUpperCase(), extensions: [ext] }] : undefined
+				});
+				const dest = selected ? ensureExtension(selected, ext) : null;
 				if (!dest) return;
 				const { invoke } = await import('@tauri-apps/api/core');
 				await invoke('copy_guild_file', { rel: att.path, dest });
 			} else {
-				browserDownload(await guildFileUrl(att.path), att.name);
+				browserDownload(await guildFileUrl(att.path), name);
 			}
 		} catch (e) {
 			error = `${t('attach.downloadFailed', $locale)}: ${e instanceof Error ? e.message : String(e)}`;
@@ -179,7 +228,7 @@
 				const { invoke } = await import('@tauri-apps/api/core');
 				busy = true;
 				for (const a of list) {
-					await invoke('copy_guild_file', { rel: a.path, dest: `${dir}/${a.name}` });
+					await invoke('copy_guild_file', { rel: a.path, dest: `${dir}/${downloadName(a)}` });
 				}
 			} catch (e) {
 				error = `${t('attach.downloadAllFailed', $locale)}: ${e instanceof Error ? e.message : String(e)}`;
@@ -188,7 +237,7 @@
 			}
 		} else {
 			for (const a of list) {
-				browserDownload(await guildFileUrl(a.path), a.name);
+				browserDownload(await guildFileUrl(a.path), downloadName(a));
 				await new Promise((r) => setTimeout(r, 200));
 			}
 		}
