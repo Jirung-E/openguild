@@ -1,6 +1,6 @@
 +++
 created_at = "2026-06-23T01:30:44+09:00"
-updated_at = "2026-08-16T00:39:56+09:00"
+updated_at = "2026-08-16T00:43:28+09:00"
 +++
 # 릴리즈 패키지 절차
 
@@ -9,6 +9,8 @@ updated_at = "2026-08-16T00:39:56+09:00"
 ## 사전 점검 체크리스트
 
 - [ ] develop 의 모든 testing quest 가 done 으로 정리.
+- [ ] 이번 릴리스 캠페인을 닫을 준비 — 연결된 퀘스트 상태 정리 후 사용자 확인
+      (마감은 태그 **전**에, 아래 "캠페인 마감" 절).
 - [ ] `cargo test --workspace` 통과.
 - [ ] `cd gui/frontend && npm test -- --run` 통과.
 - [ ] `cd gui/frontend && npm run check` 0 errors.
@@ -61,12 +63,25 @@ git commit -m "[chore] X.Y.Z 버전"
 
 git checkout master
 git merge develop                # FF 권장 (사용자 정책)
+
+# 태그 push 전에 캠페인을 닫는다 (아래 "캠페인 마감" 절 — 사용자 확인 필수)
+openguild campaign end C-0NN
+git commit -m "[C-0NN][guild] 캠페인 완료"
+
 git tag vX.Y.Z
 git push origin master --tags
-
-# 태그를 민 직후 — 잊기 전에 캠페인부터 닫는다
-openguild campaign end C-0NN
 ```
+
+## 캠페인 마감 — **태그 전에, 사용자 확인 후**
+
+- **시점은 태그 push 전.** 태그를 밀면 끝난 기분이 들어 매번 잊는다. 그러면
+  캠페인이 active 로 남고, 다음 릴리스 때 두 개가 열려 있어 무엇이 이번
+  범위인지 흐려진다. 릴리스 커밋에 캠페인 상태까지 담겨야 태그가 가리키는
+  트리가 "이 릴리스는 끝났다"를 그대로 담는다.
+- **에이전트가 임의로 닫지 않는다.** 캠페인 마감은 "이번 범위를 여기서
+  끊는다"는 판단이라 사용자 몫이다. 에이전트는 대상 캠페인과 연결된 퀘스트
+  상태를 정리해 보여주고 **확인을 받은 뒤에** `campaign end` 를 실행한다.
+  확인 없이 닫았다면 되돌린다(`campaign start`).
 
 ## GitHub Release artifact
 
@@ -121,10 +136,6 @@ openguild campaign end C-0NN
 
 ## 사후 점검
 
-- [ ] **이번 릴리스 캠페인을 done 으로 닫는다** (`campaign end C-0NN`).
-      매번 잊는 항목이다 — 태그를 밀면 끝난 기분이 들어 캠페인이 active 로
-      남고, 다음 릴리스 때 캠페인 두 개가 열려 있어 무엇이 이번 범위인지
-      흐려진다. 태그 push 직후 바로 처리.
 - [ ] release page 에서 installer 다운로드 / 설치 / 실행 확인.
 - [ ] `latest.json` 의 `platforms` 에 **그 릴리스가 지원하는 플랫폼이 전부**
       들어 있는지 (DEV-314 이전엔 한 플랫폼만 남는 사고가 가능한 구조였다).
