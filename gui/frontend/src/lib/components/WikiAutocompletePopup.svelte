@@ -10,7 +10,7 @@
 <script lang="ts">
 	import Icon from './Icon.svelte';
 	import OverlayScrollbar from './OverlayScrollbar.svelte';
-	import { titlePopup } from '$lib/actions/title-popup';
+	import { keepRowAnchored } from '$lib/utils/anchor-scroll';
 	import { locale, t } from '$lib/stores/locale';
 	import type { WikiItem } from '$lib/utils/textarea-wikilink';
 
@@ -21,7 +21,6 @@
 		bottom = null,
 		maxH = 224,
 		selectedIndex,
-		navMode,
 		onSelect,
 		onHoverSelect,
 		popupEl = $bindable<HTMLUListElement | undefined>(undefined)
@@ -35,7 +34,6 @@
 		bottom?: number | null;
 		maxH?: number;
 		selectedIndex: number;
-		navMode: 'keyboard' | 'mouse';
 		onSelect: (item: WikiItem, index: number) => void;
 		onHoverSelect: (index: number) => void;
 		popupEl?: HTMLUListElement;
@@ -55,15 +53,17 @@
 				type="button"
 				class="wiki-opt"
 				class:sel={i === selectedIndex}
-				class:expanded={i === selectedIndex && navMode === 'keyboard'}
+				class:expanded={i === selectedIndex}
 				onmousedown={(ev) => {
 					ev.preventDefault();
 					onSelect(it, i);
 				}}
-				onmouseenter={() => onHoverSelect(i)}
-				use:titlePopup={navMode === 'keyboard'
-					? null
-					: `${it.insert ?? it.id}${it.title ? ` — ${it.title}` : ''}`}
+				onmouseenter={(ev) => {
+					// DEV-359: 호버도 펼침. 펼쳐질 행의 화면 위치를 고정해 두지
+					// 않으면, 위쪽 행이 접히며 목록이 당겨져 커서 밑의 행이 바뀐다.
+					keepRowAnchored(popupEl, ev.currentTarget as HTMLElement);
+					onHoverSelect(i);
+				}}
 			>
 				<!-- BUG-169: 🏷️/🔗 는 컬러 이모지로 렌더돼 OS 마다 크기·기준선이
 				     달랐다 — currentColor SVG 로 교체. -->
@@ -151,9 +151,12 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
-	/* DEV-297 수정: 키보드로 선택된 항목만 말줄임을 풀어 제자리에서 펼친다.
+	/* DEV-297 수정: 선택된 항목만 말줄임을 풀어 제자리에서 펼친다.
 	   팝업으로 띄우면 위/아래 항목을 가렸다. 높이는 내용만큼만 늘어나고,
 	   선택이 옮겨가면 다시 한 줄로 돌아온다.
+
+	   DEV-359: 키보드뿐 아니라 **호버로 고른 항목도** 같은 방식으로 펼친다 —
+	   호버만 툴팁 팝업으로 남겨두니 두 방식이 섞여 오히려 어색했다.
 
 	   admin 후속: 한 줄(`SLUG 제목`)로 펼치면 slug 가 길 때 제목 자리가 거의
 	   안 남는다 — **펼쳤을 때만** slug 와 제목을 위아래로 쌓는다(접힌 항목은

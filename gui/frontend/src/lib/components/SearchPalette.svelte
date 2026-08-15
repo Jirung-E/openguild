@@ -32,7 +32,8 @@
 	// DEV-294: recent 모드에서 최근 본 문서 순서 소스.
 	import { recentDocs } from '$lib/stores/recentDocs';
 	// DEV-297: 전체 제목은 네이티브 title 대신 앱 스타일 커스텀 팝업으로.
-	import { titlePopup, hideTitlePopupNow } from '$lib/actions/title-popup';
+	import { titlePopup } from '$lib/actions/title-popup';
+	import { keepRowAnchored } from '$lib/utils/anchor-scroll';
 
 	// DEV-294: `mode='recent'` — 별도 드롭다운을 만들지 않고 이 팔레트를 그대로
 	// 재사용해 "최근 본 문서"를 보여준다(폭·행 레이아웃·미리보기·스크롤 전부 공유).
@@ -136,12 +137,11 @@
 	// 자동완성(QuestCommentsSection, BUG-114)에서 이미 확립한 대로 키보드
 	// (↑/↓) 이동일 때만 스크롤하고 마우스 호버는 무시한다.
 	let selFromKeyboard = false;
-	// DEV-297 수정: 키보드로 고른 행은 팝업 대신 **제자리에서 펼쳐** 전체 제목을
-	// 보여준다 — 팝업이 위/아래 행을 통째로 가렸다(admin 보고). 호버는 팝업 유지.
-	// 처음 열렸을 때의 선택(0번)도 **사용자가 마우스로 고른 게 아니라** 앱이
-	// 고른 것이므로 키보드와 같게 다룬다 — admin 보고: "맨 처음 선택되어 있는
-	// 항목은 펼쳐지지 않고, 방향키로 다시 고르면 그때 펼쳐진다".
-	let navMode = $state<'keyboard' | 'mouse'>('keyboard');
+	// DEV-297 수정: 선택된 행은 팝업 대신 **제자리에서 펼쳐** 전체 제목을
+	// 보여준다 — 팝업이 위/아래 행을 통째로 가렸다(admin 보고).
+	// DEV-359: 호버로 고른 행도 마찬가지다. 예전엔 키보드만 펼치고 호버는
+	// 툴팁이었는데, 두 방식이 섞여 오히려 어색했다. 훑을 때 목록이 덜컥이지
+	// 않도록 호버 시 keepRowAnchored 로 그 행의 화면 위치를 고정한다.
 	$effect(() => {
 		void selIndex;
 		if (preview || !rowsEl) return;
@@ -285,13 +285,8 @@
 	});
 
 	// 필터가 바뀌어 선택 index 가 범위를 벗어나면 리셋.
-	// 이 리셋도 '앱이 고른 선택'이므로 펼침 대상이다(위 navMode 주석 참조) —
-	// 검색어를 고쳐 목록이 바뀔 때마다 맨 위 항목이 제자리에서 펼쳐진다.
 	$effect(() => {
-		if (selIndex >= filtered.length) {
-			selIndex = 0;
-			navMode = 'keyboard';
-		}
+		if (selIndex >= filtered.length) selIndex = 0;
 	});
 
 	async function openPreview(it: Item) {
@@ -331,18 +326,10 @@
 		if (e.key === 'ArrowDown') {
 			e.preventDefault();
 			selFromKeyboard = true;
-			// DEV-297 수정: 호버로 이미 떠 있던 팝업은 키보드로 넘어가는 순간 치운다 —
-			// 안 그러면 펼침과 팝업이 같이 떠서 여전히 이웃 항목을 가린다.
-			navMode = 'keyboard';
-			hideTitlePopupNow();
 			selIndex = Math.min(selIndex + 1, filtered.length - 1);
 		} else if (e.key === 'ArrowUp') {
 			e.preventDefault();
 			selFromKeyboard = true;
-			// DEV-297 수정: 호버로 이미 떠 있던 팝업은 키보드로 넘어가는 순간 치운다 —
-			// 안 그러면 펼침과 팝업이 같이 떠서 여전히 이웃 항목을 가린다.
-			navMode = 'keyboard';
-			hideTitlePopupNow();
 			selIndex = Math.max(selIndex - 1, 0);
 		} else if (e.key === 'Enter') {
 			e.preventDefault();
@@ -422,19 +409,17 @@
 					<div
 						class="row"
 						class:sel={i === selIndex}
-						class:expanded={i === selIndex && navMode === 'keyboard'}
-						onmouseenter={() => {
-							navMode = 'mouse';
+						class:expanded={i === selIndex}
+						onmouseenter={(ev) => {
+							// DEV-359: 호버도 펼침. 펼쳐질 행의 화면 위치를 고정하지 않으면
+							// 위쪽 행이 접히며 목록이 당겨져 커서 밑의 행이 바뀐다.
+							keepRowAnchored(rowsEl, ev.currentTarget as HTMLElement);
 							selIndex = i;
 						}}
 					>
 						<button
 							class="row-main"
 							onclick={() => openPreview(it)}
-							use:titlePopup={navMode === 'keyboard'
-								? null
-								: displayName(it) +
-									(it.tags.length ? '  ' + it.tags.map((tg) => '#' + tg).join(' ') : '')}
 						>
 							<span class="ptype {it.kind}">{kindLabel(it.kind)}</span>
 							<span class="ptitle">{displayName(it)}</span>

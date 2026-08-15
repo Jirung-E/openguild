@@ -40,8 +40,6 @@
 	import MarkdownEditor from './MarkdownEditor.svelte';
 	// BUG-157: cross-link 자동완성 팝업 스크롤도 커스텀(overlay)으로 통일.
 	import OverlayScrollbar from './OverlayScrollbar.svelte';
-	// DEV-297: 전체 제목은 네이티브 title 대신 앱 스타일 커스텀 팝업으로.
-	import { hideTitlePopupNow } from '$lib/actions/title-popup';
 	// DEV-140/171: 댓글 textarea cross-link 자동완성 — caret 위치 팝업 + 실재 ID 제안.
 	import {
 		wikiMatch,
@@ -102,22 +100,15 @@
 	// 항목 위를 지나칠 때마다 스크롤이 강제로 되돌아가 — 스크롤바를 움직일 수
 	// 없는 것처럼 보였다. 키보드(↑/↓) 이동일 때만 스크롤, 마우스 호버는 무시.
 	let wikiSelFromKeyboard = false;
-	// DEV-297 수정: 키보드로 고른 항목은 **제자리에서 펼쳐** 전체 제목을 보여준다.
+	// DEV-297 수정: 선택된 항목은 **제자리에서 펼쳐** 전체 제목을 보여준다.
 	// 예전엔 위/아래에 팝업을 띄웠는데 그게 이웃 항목을 통째로 가렸다(admin 보고).
-	// 마우스 호버는 팝업 그대로 — 훑는 동작이라 높이가 계속 바뀌면 더 어지럽다.
-	// 팔레트와 같은 이유로 기본이 'keyboard' — 팝업이 열린 순간 이미 0번이
-	// 선택돼 있는데, 그걸 마우스 선택으로 보면 첫 항목만 안 펼쳐진다.
-	let wikiNavMode = $state<'keyboard' | 'mouse'>('keyboard');
+	// DEV-359: 호버로 고른 항목도 같다 — 키보드만 펼치고 호버는 툴팁이라
+	// 두 방식이 섞여 오히려 어색했다. 스크롤 보정은 keepRowAnchored 가 한다.
 	// DEV-171 후속: ↑/↓ 로 선택 이동 시 선택 항목이 팝업 스크롤 밖이면 보이도록 스크롤.
 	$effect(() => {
 		void wikiSel;
 		void wiki;
-		// DEV-297 후속: 자동완성 자체가 닫히면(선택 적용/Esc/바깥 클릭) 키보드로
-		// 띄워둔 수동 팝업이 남아있을 수 있음 — 정리.
-		if (!wiki) {
-			hideTitlePopupNow();
-			return;
-		}
+		if (!wiki) return;
 		if (!wikiSelFromKeyboard) return;
 		wikiSelFromKeyboard = false;
 		// BUG-163: scrollIntoView({block:'nearest'}) 가 WebView 에서 항목 높이가
@@ -133,10 +124,6 @@
 		} else if (itemBottom > pop.scrollTop + pop.clientHeight) {
 			pop.scrollTop = itemBottom - pop.clientHeight;
 		}
-		// DEV-297 수정: 예전엔 여기서 팝업을 띄웠지만(가상 포커스라 focus 이벤트가
-		// 안 뜬다), 그 팝업이 이웃 항목을 가렸다. 이제 선택 항목 자체가 펼쳐지므로
-		// 남은 팝업만 정리한다.
-		hideTitlePopupNow();
 	});
 
 	// DEV-171 후속: Esc/클릭아웃으로 닫은 토큰 — 같은 토큰에선 재오픈 안 함
@@ -177,9 +164,6 @@
 		// 선택된" 상태가 되고, 다음 ↑/↓ 이 엉뚱하게 튀는 것처럼 보였다. 키보드
 		// 이동과 같은 경로로 선택 항목을 보이는 위치까지 스크롤시킨다.
 		wikiSelFromKeyboard = true;
-		// 새로 열리거나 후보가 바뀌면 선택이 0 으로 돌아간다 — 이것도 앱이 고른
-		// 선택이므로 펼침 대상.
-		wikiNavMode = 'keyboard';
 	}
 
 	// caret 기준 팝업 위치 — 화면 밖이면 숨김 + 좌우 clamp.
@@ -253,14 +237,10 @@
 		if (e.key === 'ArrowDown') {
 			e.preventDefault();
 			wikiSelFromKeyboard = true;
-			wikiNavMode = 'keyboard';
-			hideTitlePopupNow(); // 호버 팝업이 남아 가리지 않도록
 			wikiSel = (wikiSel + 1) % n;
 		} else if (e.key === 'ArrowUp') {
 			e.preventDefault();
 			wikiSelFromKeyboard = true;
-			wikiNavMode = 'keyboard';
-			hideTitlePopupNow(); // 호버 팝업이 남아 가리지 않도록
 			wikiSel = (wikiSel - 1 + n) % n;
 		} else if (e.key === 'Enter' || e.key === 'Tab') {
 			// Tab 도 적용. tabInsert(use:action) 의 탭 삽입을 막으려 즉시 전파 중단.
@@ -1528,10 +1508,8 @@
 		bottom={wikiPlace?.bottom ?? null}
 		maxH={wikiPlace?.maxH ?? 224}
 		selectedIndex={wikiSel}
-		navMode={wikiNavMode}
 		onSelect={applyWiki}
 		onHoverSelect={(i) => {
-			wikiNavMode = 'mouse';
 			wikiSel = i;
 		}}
 		bind:popupEl={wikiPopEl}

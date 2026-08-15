@@ -43,7 +43,6 @@
 	import { applyWikiLinkCM, applyWikiPrefixCM } from '$lib/utils/editor-wikilink';
 	import { computeWikiPlace, clampWikiLeft, isWikiCaretVisible } from '$lib/utils/wiki-popup-place';
 	import { questIndex, loadQuestIndex } from '$lib/stores/questIndex';
-	import { hideTitlePopupNow } from '$lib/actions/title-popup';
 	import WikiAutocompletePopup from './WikiAutocompletePopup.svelte';
 
 	let {
@@ -89,7 +88,6 @@
 	let wikiPopEl = $state<HTMLUListElement | undefined>(undefined);
 	// BUG-114 패턴: 키보드 이동일 때만 팝업 스크롤, 마우스 호버는 무시.
 	let wikiSelFromKeyboard = false;
-	let wikiNavMode = $state<'keyboard' | 'mouse'>('keyboard');
 	// Esc/클릭아웃으로 닫은 토큰 — 같은 토큰에선 재오픈 안 함.
 	let wikiDismissed = $state<string | null>(null);
 
@@ -111,7 +109,6 @@
 		void wikiSel;
 		void wiki;
 		if (!wiki) {
-			hideTitlePopupNow();
 			return;
 		}
 		if (!wikiSelFromKeyboard) return;
@@ -126,7 +123,6 @@
 		} else if (itemBottom > pop.scrollTop + pop.clientHeight) {
 			pop.scrollTop = itemBottom - pop.clientHeight;
 		}
-		hideTitlePopupNow();
 	});
 	// 스크롤/리사이즈로 caret 이 움직이면 재배치, 팝업/편집기 밖 클릭이면 닫기.
 	$effect(() => {
@@ -201,7 +197,6 @@
 		wiki = placeWikiCM(u.view, m.from, m.to, m.items);
 		wikiSel = 0;
 		wikiSelFromKeyboard = true;
-		wikiNavMode = 'keyboard';
 	}
 
 	// VS 식 키보드 네비/적용 — basicSetup 의 기본 화살표/Enter/Tab 바인딩보다
@@ -213,8 +208,6 @@
 				run: () => {
 					if (!wiki) return false;
 					wikiSelFromKeyboard = true;
-					wikiNavMode = 'keyboard';
-					hideTitlePopupNow();
 					wikiSel = (wikiSel + 1) % wiki.items.length;
 					return true;
 				}
@@ -224,8 +217,6 @@
 				run: () => {
 					if (!wiki) return false;
 					wikiSelFromKeyboard = true;
-					wikiNavMode = 'keyboard';
-					hideTitlePopupNow();
 					wikiSel = (wikiSel - 1 + wiki.items.length) % wiki.items.length;
 					return true;
 				}
@@ -410,10 +401,8 @@
 		bottom={wikiPlace?.bottom ?? null}
 		maxH={wikiPlace?.maxH ?? 224}
 		selectedIndex={wikiSel}
-		navMode={wikiNavMode}
 		onSelect={(item) => applyWiki(view!, item)}
 		onHoverSelect={(i) => {
-			wikiNavMode = 'mouse';
 			wikiSel = i;
 		}}
 		bind:popupEl={wikiPopEl}

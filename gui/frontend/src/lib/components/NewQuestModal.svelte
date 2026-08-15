@@ -29,7 +29,6 @@
 	} from '$lib/utils/textarea-wikilink';
 	import { computeWikiPlace, clampWikiLeft, isWikiCaretVisible } from '$lib/utils/wiki-popup-place';
 	import { questIndex, loadQuestIndex } from '$lib/stores/questIndex';
-	import { hideTitlePopupNow } from '$lib/actions/title-popup';
 	import WikiAutocompletePopup from './WikiAutocompletePopup.svelte';
 	import QuestCombobox from './QuestCombobox.svelte';
 	import { showToast } from '$lib/stores/toast';
@@ -142,7 +141,6 @@
 	let wikiSel = $state(0);
 	let wikiPopEl = $state<HTMLUListElement | undefined>(undefined);
 	let wikiSelFromKeyboard = false;
-	let wikiNavMode = $state<'keyboard' | 'mouse'>('keyboard');
 	let wikiDismissed = $state<string | null>(null);
 
 	$effect(() => {
@@ -161,7 +159,6 @@
 		void wikiSel;
 		void wiki;
 		if (!wiki) {
-			hideTitlePopupNow();
 			return;
 		}
 		if (!wikiSelFromKeyboard) return;
@@ -176,7 +173,6 @@
 		} else if (itemBottom > pop.scrollTop + pop.clientHeight) {
 			pop.scrollTop = itemBottom - pop.clientHeight;
 		}
-		hideTitlePopupNow();
 	});
 	$effect(() => {
 		if (!wiki) return;
@@ -225,7 +221,6 @@
 		wiki = placeWiki(el, m.from, m.to, m.items);
 		wikiSel = 0;
 		wikiSelFromKeyboard = true;
-		wikiNavMode = 'keyboard';
 	}
 
 	function placeWiki(
@@ -268,14 +263,10 @@
 		if (e.key === 'ArrowDown') {
 			e.preventDefault();
 			wikiSelFromKeyboard = true;
-			wikiNavMode = 'keyboard';
-			hideTitlePopupNow();
 			wikiSel = (wikiSel + 1) % n;
 		} else if (e.key === 'ArrowUp') {
 			e.preventDefault();
 			wikiSelFromKeyboard = true;
-			wikiNavMode = 'keyboard';
-			hideTitlePopupNow();
 			wikiSel = (wikiSel - 1 + n) % n;
 		} else if (e.key === 'Enter' || e.key === 'Tab') {
 			e.preventDefault();
@@ -761,10 +752,8 @@
 		bottom={wikiPlace?.bottom ?? null}
 		maxH={wikiPlace?.maxH ?? 224}
 		selectedIndex={wikiSel}
-		navMode={wikiNavMode}
 		onSelect={applyWiki}
 		onHoverSelect={(i) => {
-			wikiNavMode = 'mouse';
 			wikiSel = i;
 		}}
 		bind:popupEl={wikiPopEl}
