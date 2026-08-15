@@ -4,6 +4,8 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
 
 ## Unreleased
 
+## 0.5.0-beta — 2026-08-15
+
 **macOS 지원과 보드 재작성이 들어간 큰 릴리스.** Apple Silicon 용 `.dmg` 가
 매 릴리스에 붙고, 퀘스트 보드는 노드를 캔버스 대신 DOM 으로 그리도록 다시
 써서 저배율 가독성과 pan/zoom 지연을 근본에서 고쳤다(가로 레인 모드 추가).
