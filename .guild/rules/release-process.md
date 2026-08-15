@@ -1,6 +1,6 @@
 +++
 created_at = "2026-06-23T01:30:44+09:00"
-updated_at = "2026-08-12T10:08:15+09:00"
+updated_at = "2026-08-16T00:39:56+09:00"
 +++
 # 릴리즈 패키지 절차
 
@@ -63,6 +63,9 @@ git checkout master
 git merge develop                # FF 권장 (사용자 정책)
 git tag vX.Y.Z
 git push origin master --tags
+
+# 태그를 민 직후 — 잊기 전에 캠페인부터 닫는다
+openguild campaign end C-0NN
 ```
 
 ## GitHub Release artifact
@@ -118,6 +121,10 @@ git push origin master --tags
 
 ## 사후 점검
 
+- [ ] **이번 릴리스 캠페인을 done 으로 닫는다** (`campaign end C-0NN`).
+      매번 잊는 항목이다 — 태그를 밀면 끝난 기분이 들어 캠페인이 active 로
+      남고, 다음 릴리스 때 캠페인 두 개가 열려 있어 무엇이 이번 범위인지
+      흐려진다. 태그 push 직후 바로 처리.
 - [ ] release page 에서 installer 다운로드 / 설치 / 실행 확인.
 - [ ] `latest.json` 의 `platforms` 에 **그 릴리스가 지원하는 플랫폼이 전부**
       들어 있는지 (DEV-314 이전엔 한 플랫폼만 남는 사고가 가능한 구조였다).
