@@ -728,10 +728,14 @@
 	/* DEV-297 수정: 키보드로 선택된 행만 말줄임을 풀어 제자리에서 펼친다.
 	   행 높이는 내용만큼만 늘고, 선택이 옮겨가면 다시 한 줄. 우측 액션 버튼이
 	   따라 내려가지 않도록 정렬만 위로 붙인다. */
-	.row.expanded {
+	/* DEV-359: `.collapsing` 은 접힘 애니메이션 동안만 붙는다 — 펼친 글자 배치를
+	   유지한 채 높이만 줄어야 접히는 게 보인다(자세한 이유는 animateHeightChange). */
+	.row.expanded,
+	.row:global(.collapsing) {
 		align-items: flex-start;
 	}
-	.row.expanded .ptitle {
+	.row.expanded .ptitle,
+	.row:global(.collapsing) .ptitle {
 		overflow: visible;
 		text-overflow: clip;
 		white-space: normal;

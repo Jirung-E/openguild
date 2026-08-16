@@ -63,7 +63,13 @@ export function animateHeightChange(el: HTMLElement | null | undefined, duration
 		if (!el.isConnected) return;
 		const to = el.getBoundingClientRect().height;
 		if (Math.abs(to - from) < 1) return;
-		// 줄어드는 쪽에서 내용이 잠깐 삐져나오지 않도록 애니메이션 동안만 잘라둔다.
+		// 접히는 쪽은 높이만 줄이면 애니메이션이 **보이지 않는다** — 펼침 클래스가
+		// 떨어지는 순간 글자가 이미 한 줄로 되돌아가, 남은 건 빈 공간이 줄어드는
+		// 것뿐이라 그냥 툭 끊긴 것처럼 읽힌다. 애니메이션 동안 `collapsing` 을
+		// 붙여 **펼친 글자 배치를 유지**하고, 그 내용을 잘라내며 높이를 줄인다.
+		// (컴포넌트 쪽에서 `.collapsing` 을 `.expanded` 와 같게 스타일링한다.)
+		const collapsing = to < from;
+		if (collapsing) el.classList.add('collapsing');
 		const overflow = el.style.overflow;
 		el.style.overflow = 'hidden';
 		const anim = el.animate([{ height: `${from}px` }, { height: `${to}px` }], {
@@ -74,6 +80,7 @@ export function animateHeightChange(el: HTMLElement | null | undefined, duration
 			.catch(() => {})
 			.finally(() => {
 				el.style.overflow = overflow;
+				if (collapsing) el.classList.remove('collapsing');
 			});
 	});
 }

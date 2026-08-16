@@ -175,17 +175,22 @@
 	   admin 후속: 한 줄(`SLUG 제목`)로 펼치면 slug 가 길 때 제목 자리가 거의
 	   안 남는다 — **펼쳤을 때만** slug 와 제목을 위아래로 쌓는다(접힌 항목은
 	   기존처럼 한 줄이라 목록 훑기가 흐트러지지 않는다). */
-	.wiki-opt.expanded {
+	/* DEV-359: `.collapsing` 은 접힘 애니메이션 동안만 — 펼친 배치를 유지한 채
+	   높이만 줄어야 접히는 게 보인다(animateHeightChange 주석 참고). */
+	.wiki-opt.expanded,
+	.wiki-opt:global(.collapsing) {
 		flex-direction: column;
 		align-items: stretch;
 		gap: 0.15rem;
 	}
-	.wiki-opt.expanded .wiki-id {
+	.wiki-opt.expanded .wiki-id,
+	.wiki-opt:global(.collapsing) .wiki-id {
 		flex: none;
 		white-space: normal;
 		overflow-wrap: anywhere;
 	}
-	.wiki-opt.expanded .wiki-meta {
+	.wiki-opt.expanded .wiki-meta,
+	.wiki-opt:global(.collapsing) .wiki-meta {
 		overflow: visible;
 		text-overflow: clip;
 		white-space: normal;
