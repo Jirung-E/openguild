@@ -10,11 +10,7 @@
 <script lang="ts">
 	import Icon from './Icon.svelte';
 	import OverlayScrollbar from './OverlayScrollbar.svelte';
-	import {
-		hoverSelect,
-		animateSelectionChange,
-		isPointerDrivenHover
-	} from '$lib/utils/anchor-scroll';
+	import { isPointerDrivenHover } from '$lib/utils/hover-guard';
 	import { locale, t } from '$lib/stores/locale';
 	import type { WikiItem } from '$lib/utils/textarea-wikilink';
 
@@ -42,26 +38,6 @@
 		onHoverSelect: (index: number) => void;
 		popupEl?: HTMLUListElement;
 	} = $props();
-
-	// DEV-359 후속: 펼침/접힘 전환. `$effect.pre` 는 DOM 갱신 전에 돌아 접힌
-	// 높이를 잴 수 있다 — 키보드·호버 어느 쪽이든 여기서 처리. 펼친 내용은
-	// 흐름을 밀지 않고 아래로 겹쳐 그린다(anchor-scroll.ts 주석 참고).
-	const liAt = (i: number) => popupEl?.children[i] as HTMLElement | undefined;
-	const optAt = (i: number) => liAt(i)?.firstElementChild as HTMLElement | undefined;
-	let animPrevSel = 0;
-	// 호버 경로는 hoverSelect 가 보정과 함께 처리한다. 여기는 키보드 등 나머지.
-	let hoverHandled = false;
-	$effect.pre(() => {
-		const next = selectedIndex;
-		if (next === animPrevSel) return;
-		const prev = animPrevSel;
-		animPrevSel = next;
-		if (hoverHandled) {
-			hoverHandled = false;
-			return;
-		}
-		animateSelectionChange(optAt(prev), optAt(next));
-	});
 </script>
 
 <ul
@@ -83,16 +59,10 @@
 					onSelect(it, i);
 				}}
 				onmouseenter={(ev) => {
-					// DEV-359: 호버도 펼침. 굴리는 중에 항목이 커서 밑을 지나가며
-					// 들어오는 hover(커서는 가만히 있다)는 무시한다.
+					// DEV-359: 굴리는 중에 항목이 커서 밑을 지나가며 들어오는 hover
+					// (커서는 가만히 있다)는 무시한다.
 					if (!isPointerDrivenHover(ev)) return;
-					hoverHandled = true;
-					hoverSelect({
-						scroller: popupEl,
-						prev: optAt(selectedIndex),
-						next: ev.currentTarget as HTMLElement,
-						apply: () => onHoverSelect(i)
-					});
+					onHoverSelect(i);
 				}}
 			>
 				<!-- BUG-169: 🏷️/🔗 는 컬러 이모지로 렌더돼 OS 마다 크기·기준선이
@@ -150,7 +120,7 @@
 	   레이아웃된다 — 화면 밖 항목은 건너뛰게 한다(팔레트와 같은 이유). */
 	.wiki-pop li {
 		content-visibility: auto;
-		contain-intrinsic-size: 30px;
+		contain-intrinsic-size: 46px;
 	}
 	.wiki-opt {
 		display: flex;
@@ -178,44 +148,28 @@
 	.wiki-id.missing {
 		color: var(--danger);
 	}
+	/* DEV-297/359: 선택된 항목은 말줄임을 풀어 전체를 보여준다. 자리는 **항상
+	   2줄** 확보해 두고 선택된 것만 clamp 를 푸는 방식이라 높이가 변하지 않는다 —
+	   목록이 미동도 하지 않으므로 스크롤 보정도, 이웃 항목이 떠는 일도 없다.
+	   (팝업이 위/아래 항목을 가리던 예전 방식으로 돌아가지 않으면서도 그렇다.) */
 	.wiki-meta {
 		flex: 1;
 		min-width: 0;
 		font-size: 0.78rem;
 		color: var(--text-muted);
 		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-	/* DEV-297: 선택된 항목은 말줄임을 풀어 제자리에서 펼친다 — 팝업으로 띄우면
-	   위/아래 항목을 가렸다.
-
-	   DEV-359: 호버로 고른 항목도 같다. `.collapsing` 은 접힘 애니메이션 동안만
-	   붙어 펼친 배치를 유지한다(anchor-scroll.ts 주석 참고).
-
-	   admin 후속: 한 줄(`SLUG 제목`)로 펼치면 slug 가 길 때 제목 자리가 거의
-	   안 남는다 — 펼쳤을 때만 slug 와 제목을 위아래로 쌓는다. */
-	.wiki-opt.expanded,
-	.wiki-opt:global(.collapsing) {
-		flex-direction: column;
-		align-items: stretch;
-		gap: 0.15rem;
-	}
-	.wiki-pop li:has(.wiki-opt.expanded),
-	.wiki-pop li:has(.wiki-opt:global(.collapsing)) {
-		/* content-visibility 의 paint 억제(=클리핑)를 펼친 항목에서만 해제. */
-		content-visibility: visible;
-	}
-	.wiki-opt.expanded .wiki-id,
-	.wiki-opt:global(.collapsing) .wiki-id {
-		flex: none;
-		white-space: normal;
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 1;
+		line-clamp: 1;
+		min-height: calc(2 * 1.4em);
 		overflow-wrap: anywhere;
 	}
-	.wiki-opt.expanded .wiki-meta,
-	.wiki-opt:global(.collapsing) .wiki-meta {
-		overflow: visible;
-		text-overflow: clip;
+	.wiki-opt.expanded .wiki-meta {
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+	}
+	.wiki-opt.expanded .wiki-id {
 		white-space: normal;
 		overflow-wrap: anywhere;
 	}
