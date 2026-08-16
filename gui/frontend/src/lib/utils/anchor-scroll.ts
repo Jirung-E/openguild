@@ -163,7 +163,20 @@ export function animateSelectionChange(
 let lastHoverX = NaN;
 let lastHoverY = NaN;
 
-export function isPointerDrivenHover(ev: MouseEvent): boolean {
+/**
+ * 사용자가 방금 굴렸는지. `scroll` 이벤트는 우리 보정(`scrollTop` 쓰기)에도
+ * 발생해 구분이 안 되므로, **입력에서만 나오는** `wheel`/`touchmove` 를 본다.
+ */
+let lastWheelAt = -Infinity;
+export function markUserScroll() {
+	lastWheelAt = performance.now();
+}
+
+export function isPointerDrivenHover(ev: MouseEvent, scrollQuietMs = 200): boolean {
+	// 굴리는 중에는 행이 커서 밑을 지나갈 뿐이므로 선택을 바꾸지 않는다.
+	// (커서를 함께 움직이더라도 마찬가지 — 굴리는 동안 화면이 계속 바뀌면
+	// 그게 곧 멈칫거림으로 느껴진다.)
+	if (performance.now() - lastWheelAt < scrollQuietMs) return false;
 	if (ev.clientX === lastHoverX && ev.clientY === lastHoverY) return false;
 	lastHoverX = ev.clientX;
 	lastHoverY = ev.clientY;

@@ -36,7 +36,8 @@
 	import {
 		hoverSelect,
 		animateSelectionChange,
-		isPointerDrivenHover
+		isPointerDrivenHover,
+		markUserScroll
 	} from '$lib/utils/anchor-scroll';
 
 	// DEV-294: `mode='recent'` — 별도 드롭다운을 만들지 않고 이 팔레트를 그대로
@@ -415,7 +416,10 @@
 				spellcheck="false"
 			/>
 		</div>
-		<div class="rows" bind:this={rowsEl}>
+		<!-- DEV-359: 굴리는 동안에는 펼침이 따라오지 않게 — wheel/touchmove 는
+		     사용자 입력에서만 발생하므로 우리 스크롤 보정과 구분된다. -->
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="rows" bind:this={rowsEl} onwheel={markUserScroll} ontouchmove={markUserScroll}>
 			{#if loading}
 				<div class="empty">{t('palette.loading', $locale)}</div>
 			{:else if filtered.length === 0}
@@ -677,7 +681,10 @@
 	}
 	.row-main {
 		display: flex;
-		align-items: center;
+		/* DEV-359: `center` 는 제목이 1줄일 때와 2줄일 때 정렬 기준이 달라져
+		   상자 높이가 4px 달라진다 — 펼치고 접힐 때마다 종류 칩과 우측 버튼이
+		   미세하게 튀던 원인. 위 기준으로 붙여 어느 쪽이든 같게 만든다. */
+		align-items: flex-start;
 		gap: 0.6rem;
 		flex: 1;
 		min-width: 0;

@@ -13,7 +13,8 @@
 	import {
 		hoverSelect,
 		animateSelectionChange,
-		isPointerDrivenHover
+		isPointerDrivenHover,
+		markUserScroll
 	} from '$lib/utils/anchor-scroll';
 	import { locale, t } from '$lib/stores/locale';
 	import type { WikiItem } from '$lib/utils/textarea-wikilink';
@@ -67,6 +68,8 @@
 <ul
 	class="wiki-pop"
 	bind:this={popupEl}
+	onwheel={markUserScroll}
+	ontouchmove={markUserScroll}
 	style="left:{left}px; {bottom != null
 		? `bottom:${bottom}px`
 		: `top:${top ?? 0}px`}; max-height:{maxH}px"
