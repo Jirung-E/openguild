@@ -2,10 +2,11 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { hoverSelect, isPointerDrivenHover } from './anchor-scroll';
 
 /**
- * DEV-359: 호버로 선택이 옮겨갈 때 **커서 밑 행이 움직이면 안 된다** — 움직이면
- * 브라우저가 이웃 항목에 hover 를 쏘고 두 항목이 핑퐁한다. 보정이 반드시
- * `flushSync` **직후 같은 태스크**에서 끝나야 하는 이유이기도 하다(다음 프레임에
- * 하면 브라우저가 이미 새 레이아웃으로 hit-test 를 끝낸 뒤다).
+ * DEV-359: 호버 선택은 **스크롤을 건드리지 않는다**(admin 결정). 커서 밑 행을
+ * 붙들려면 보정이 한 방향으로 쌓여 목록이 통째로 밀려 올라가기 때문이다.
+ * 대신 상태 변경과 높이 애니메이션을 `flushSync` 로 **같은 태스크**에서 끝내
+ * 중간 상태가 그려지지 않게 한다. 그로 인해 들어오는 hover 는 좌표 가드가
+ * 걸러낸다.
  */
 vi.mock('svelte', () => ({ flushSync: (fn: () => void) => fn() }));
 
@@ -36,11 +37,11 @@ function fakeRow(
 afterEach(() => vi.restoreAllMocks());
 
 describe('hoverSelect', () => {
-	it('선택을 바꾼 뒤 같은 태스크에서 스크롤을 보정한다 — 커서 밑 행이 제자리', () => {
+	it('스크롤을 건드리지 않는다 — 보정이 쌓이면 목록이 통째로 밀려 올라간다', () => {
 		vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(() => 0);
 		const scroller = { scrollTop: 1000 } as HTMLElement;
 		const phase = { after: false };
-		// 위 행이 접혀 이 행이 22px 위로 밀린 상황.
+		// 위 행이 접혀 이 행이 22px 위로 밀린 상황이어도 스크롤은 그대로 둔다.
 		const next = fakeRow({ top: 300, height: 36 }, { top: 278, height: 58 }, scroller, phase);
 		let applied = false;
 		hoverSelect({
@@ -53,16 +54,7 @@ describe('hoverSelect', () => {
 			}
 		});
 		expect(applied).toBe(true);
-		expect(scroller.scrollTop).toBe(978);
-	});
-
-	it('밀리지 않았으면 스크롤을 건드리지 않는다', () => {
-		vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(() => 0);
-		const scroller = { scrollTop: 500 } as HTMLElement;
-		const phase = { after: false };
-		const next = fakeRow({ top: 120, height: 36 }, { top: 120, height: 36 }, scroller, phase);
-		hoverSelect({ scroller, prev: null, next, apply: () => (phase.after = true) });
-		expect(scroller.scrollTop).toBe(500);
+		expect(scroller.scrollTop).toBe(1000);
 	});
 
 	it('펼치는 행과 접히는 행 양쪽에 높이 애니메이션을 건다', () => {

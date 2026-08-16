@@ -1,26 +1,28 @@
 import { flushSync } from 'svelte';
 
 /**
- * DEV-359: 목록 항목이 **제자리에서 펼쳐질 때** 커서 밑이 흔들리지 않게 하는 장치.
+ * DEV-359: 목록 항목이 **제자리에서 펼쳐질 때** 생기는 흔들림을 다루는 장치.
  *
- * ## 무엇이 흔들리는가
+ * ## 무엇이 문제인가
  *
  * 커서가 A행에서 아래 B행으로 넘어가면 A는 접히고(-22px) B는 펼쳐진다(+22px).
- * A가 위에 있으므로 **B의 상단이 22px 위로 올라온다**. 커서는 화면상 고정점이라,
- * 방금 B의 상단부에 들어왔다면 그 지점은 이제 A의 영역이다 → 브라우저가 A에
- * `mouseenter` 를 쏘고 → A가 펼쳐지고 B가 접히고 → 다시 뒤집히는 핑퐁이 된다.
- * 핑퐁이 없어도 행을 넘을 때마다 커서 위쪽이 22px 씩 튄다.
+ * A가 위에 있으므로 **B의 상단이 22px 위로 올라온다**. 커서는 화면상 고정점이라
+ * 방금 B의 상단부에 들어왔다면 그 지점이 A의 영역이 되고, 브라우저가 A에
+ * `mouseenter` 를 쏴 두 항목이 핑퐁한다.
  *
- * ## 왜 이전 시도가 실패했나
+ * ## 22px 을 어디로 보낼 것인가 (admin 결정)
  *
- * 보정을 `requestAnimationFrame` 에서 했다. 브라우저는 그 프레임에 **이미 새
- * 레이아웃으로 hit-test 를 끝내고 hover 를 쏜 뒤**라 한 프레임 늦었다.
+ * 갈 곳은 셋뿐이다 — (1) 스크롤로 흡수, (2) 흡수하지 않음, (3) 애초에 줄지
+ * 않게 함. **(2)** 를 택했다. (1)은 커서 밑을 고정해 주지만 아래로 훑을 때마다
+ * 보정이 한 방향으로 쌓여 목록이 통째로 밀려 올라간다(행마다 22px). (3)은
+ * 밀도를 깎거나 펼친 행을 여럿 남긴다.
  *
- * ## 지금 방식
+ * 그래서 **스크롤은 건드리지 않는다.** 커서 밑 행은 22px 올라오지만, 그로 인해
+ * 들어오는 hover 는 `isPointerDrivenHover` 가 좌표로 걸러내므로(커서가 안
+ * 움직였으니 좌표가 같다) 핑퐁으로 번지지 않는다.
  *
- * 상태 변경을 `flushSync` 로 즉시 반영하고, **같은 이벤트 핸들러 안에서** 스크롤
- * 보정까지 끝낸다. 브라우저는 중간 상태를 그리지도, hit-test 하지도 않는다.
- * 이어지는 높이 애니메이션 동안에도 매 프레임 같은 기준으로 붙든다.
+ * 상태 변경은 `flushSync` 로 즉시 반영하고 높이 애니메이션도 **같은 태스크**에서
+ * 건다 — 다음 프레임으로 미루면 그 사이 한 번 튄다.
  */
 
 /** 모션 축소 선호 — 전환을 아예 걸지 않는다. */
@@ -32,12 +34,6 @@ function reduceMotion(): boolean {
 
 /** 항목별 진행 중인 높이 애니메이션 — 뒷정리를 이어받은 쪽만 하도록 구분한다. */
 const running = new WeakMap<HTMLElement, Animation>();
-
-/**
- * 진행 중인 보정 루프 세대. 새 호출이 들어오면 이전 루프는 다음 프레임에 스스로
- * 물러난다 — 기준점이 다른 루프가 여럿 돌면 서로 `scrollTop` 을 밀며 싸운다.
- */
-let anchorGeneration = 0;
 
 /** `from → to` 높이 애니메이션. 접히는 쪽은 펼친 글자 배치를 유지한 채 잘라낸다. */
 function animateHeight(el: HTMLElement, from: number, to: number, durationMs: number) {
@@ -69,64 +65,40 @@ function animateHeight(el: HTMLElement, from: number, to: number, durationMs: nu
 		});
 }
 
-/** 애니메이션이 진행되는 동안 `row` 의 화면 위치를 `anchor` 에 붙들어 둔다. */
-function followAnchor(scroller: HTMLElement, row: HTMLElement, anchor: number, durationMs: number) {
-	const mine = ++anchorGeneration;
-	const started = performance.now();
-	const step = () => {
-		if (mine !== anchorGeneration || !row.isConnected) return;
-		const delta = row.getBoundingClientRect().top - anchor;
-		// scrollTop 은 소수점에서 미세하게 어긋날 수 있어 반 픽셀 미만은 무시한다.
-		if (Math.abs(delta) > 0.5) scroller.scrollTop += delta;
-		if (performance.now() - started < durationMs) requestAnimationFrame(step);
-	};
-	requestAnimationFrame(step);
-}
-
 /**
- * 호버로 선택을 옮긴다 — 커서 밑 행이 움직이지 않도록 보정까지 한 번에.
+ * 호버로 선택을 옮긴다 — 상태 변경과 높이 전환을 같은 태스크에서 끝낸다.
+ * 스크롤은 건드리지 않는다(파일 상단 설명 참고).
  *
  * @param apply 선택 상태를 실제로 바꾸는 함수(`selIndex = i` 등)
  */
 export function hoverSelect(opts: {
-	scroller: HTMLElement | null | undefined;
+	/** 목록 컨테이너(현재는 쓰지 않지만, 호출측 의미를 남겨 둔다). */
+	scroller?: HTMLElement | null;
 	/** 지금 펼쳐져 있는 행(접힐 쪽). 없으면 생략. */
 	prev: HTMLElement | null | undefined;
-	/** 커서가 올라간 행(펼쳐질 쪽) — 이 행의 화면 위치를 붙든다. */
+	/** 커서가 올라간 행(펼쳐질 쪽). */
 	next: HTMLElement | null | undefined;
 	apply: () => void;
 	durationMs?: number;
 }) {
-	const { scroller, prev, next, apply } = opts;
+	const { prev, next, apply } = opts;
 	const durationMs = opts.durationMs ?? 90;
-	if (!scroller || !next) {
+	if (!next) {
 		apply();
 		return;
 	}
-	const anchor = next.getBoundingClientRect().top;
 	const prevFrom = prev?.getBoundingClientRect().height;
 	const nextFrom = next.getBoundingClientRect().height;
 
 	// DOM 을 즉시 반영시켜, 브라우저가 중간 상태를 그리기 전에 여기서 다 끝낸다.
 	flushSync(apply);
 
-	// 최종 높이를 재고 **곧바로** 애니메이션을 건다. 순서가 중요하다 — 먼저
-	// 스크롤을 보정하고 나중에 애니메이션을 걸면, 애니메이션이 높이를 시작값으로
-	// 되돌리면서 방금 맞춰둔 위치가 반대로 22px 어긋난다(실측으로 확인:
-	// 보정 직후 커서 밑 행이 바뀌어 있었다).
-	if (!reduceMotion()) {
-		const prevTo = prev?.getBoundingClientRect().height;
-		const nextTo = next.getBoundingClientRect().height;
-		if (prev && prevFrom != null && prevTo != null) animateHeight(prev, prevFrom, prevTo, durationMs);
-		animateHeight(next, nextFrom, nextTo, durationMs);
-	}
-
-	// 애니메이션까지 반영된 **지금 이 프레임의** 위치로 보정한다.
-	const delta = next.getBoundingClientRect().top - anchor;
-	if (Math.abs(delta) > 0.5) scroller.scrollTop += delta;
-
-	// 높이가 자라는 동안에도 같은 기준으로 계속 붙든다.
-	followAnchor(scroller, next, anchor, durationMs + 60);
+	if (reduceMotion()) return;
+	// 최종 높이를 재고 **같은 태스크에서** 애니메이션을 건다.
+	const prevTo = prev?.getBoundingClientRect().height;
+	const nextTo = next.getBoundingClientRect().height;
+	if (prev && prevFrom != null && prevTo != null) animateHeight(prev, prevFrom, prevTo, durationMs);
+	animateHeight(next, nextFrom, nextTo, durationMs);
 }
 
 /**
@@ -164,7 +136,7 @@ let lastHoverX = NaN;
 let lastHoverY = NaN;
 
 /**
- * 사용자가 방금 굴렸는지. `scroll` 이벤트는 우리 보정(`scrollTop` 쓰기)에도
+ * 사용자가 방금 굴렸는지. `scroll` 이벤트는 프로그램이 스크롤을 옮길 때도
  * 발생해 구분이 안 되므로, **입력에서만 나오는** `wheel`/`touchmove` 를 본다.
  */
 let lastWheelAt = -Infinity;
