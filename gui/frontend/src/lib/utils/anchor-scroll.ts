@@ -2,6 +2,27 @@
  * DEV-359: 목록 항목이 제자리에서 펼쳐질 때의 스크롤 보정 + 높이 전환.
  */
 
+/**
+ * DEV-359: **커서가 움직이지 않았는데 들어온 hover** 를 걸러낸다.
+ *
+ * 항목이 펼쳐지면 그 아래 줄들이 밀린다. 스크롤 보정은 다음 프레임에야 도는데,
+ * 브라우저는 그 사이 새 레이아웃으로 hit-test 를 다시 해서 **포인터가 가만히
+ * 있어도** 이웃 항목에 `mouseenter` 를 쏜다. 그러면 그 항목이 펼쳐지고 다시
+ * 레이아웃이 밀리고… 두 항목이 접혔다 펼쳐졌다 하며 떠는 현상이 된다.
+ *
+ * 사람이 움직여 들어온 hover 는 좌표가 반드시 달라진다. 좌표가 **완전히 같으면**
+ * 레이아웃이 만들어낸 hover 이므로 무시한다.
+ */
+let lastHoverX = NaN;
+let lastHoverY = NaN;
+
+export function isPointerDrivenHover(ev: MouseEvent): boolean {
+	if (ev.clientX === lastHoverX && ev.clientY === lastHoverY) return false;
+	lastHoverX = ev.clientX;
+	lastHoverY = ev.clientY;
+	return true;
+}
+
 /** 모션 축소 선호 — 전환을 아예 걸지 않는다. */
 function reduceMotion(): boolean {
 	return typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;

@@ -33,7 +33,11 @@
 	import { recentDocs } from '$lib/stores/recentDocs';
 	// DEV-297: 전체 제목은 네이티브 title 대신 앱 스타일 커스텀 팝업으로.
 	import { titlePopup } from '$lib/actions/title-popup';
-	import { keepRowAnchored, animateHeightChange } from '$lib/utils/anchor-scroll';
+	import {
+		keepRowAnchored,
+		animateHeightChange,
+		isPointerDrivenHover
+	} from '$lib/utils/anchor-scroll';
 
 	// DEV-294: `mode='recent'` — 별도 드롭다운을 만들지 않고 이 팔레트를 그대로
 	// 재사용해 "최근 본 문서"를 보여준다(폭·행 레이아웃·미리보기·스크롤 전부 공유).
@@ -423,7 +427,10 @@
 						class:expanded={i === selIndex}
 						onmouseenter={(ev) => {
 							// DEV-359: 호버도 펼침. 펼쳐질 행의 화면 위치를 고정하지 않으면
-							// 위쪽 행이 접히며 목록이 당겨져 커서 밑의 행이 바뀐다.
+							// 위쪽 행이 접히며 목록이 당겨져 커서 밑의 행이 바뀐다. 그리고
+							// 레이아웃이 만들어낸 hover(커서는 그대로)는 무시한다 — 안 그러면
+							// 두 행이 서로 펼쳐졌다 접혔다 하며 떤다.
+							if (!isPointerDrivenHover(ev)) return;
 							keepRowAnchored(rowsEl, ev.currentTarget as HTMLElement);
 							selIndex = i;
 						}}
@@ -736,7 +743,9 @@
 	   언제나 화면 안이라 영향이 없다. 미지원 엔진에서는 그냥 무시된다. */
 	.row {
 		content-visibility: auto;
-		contain-intrinsic-size: auto 36px;
+		/* `auto` 로 두면 마지막 렌더 크기(펼친 58px)를 기억해 화면 밖 행마다 예상
+		   높이가 달라지고, 그만큼 스크롤이 흔들린다. 접힌 높이로 고정한다. */
+		contain-intrinsic-size: 36px;
 	}
 	/* DEV-359: `.collapsing` 은 접힘 애니메이션 동안만 붙는다 — 펼친 글자 배치를
 	   유지한 채 높이만 줄어야 접히는 게 보인다(자세한 이유는 animateHeightChange). */

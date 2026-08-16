@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { keepRowAnchored } from './anchor-scroll';
+import { keepRowAnchored, isPointerDrivenHover } from './anchor-scroll';
 
 /**
  * DEV-359: 호버로 항목이 펼쳐질 때 목록이 밀리면 커서 밑의 행이 바뀌어 펼침이
@@ -98,5 +98,15 @@ describe('keepRowAnchored', () => {
 		keepRowAnchored(null, fakeRow([0, 0]));
 		keepRowAnchored({ scrollTop: 0 } as HTMLElement, null);
 		expect(raf).not.toHaveBeenCalled();
+	});
+});
+
+describe('isPointerDrivenHover', () => {
+	it('좌표가 같은 hover 는 레이아웃이 만든 것 — 무시한다', () => {
+		const at = (x: number, y: number) => ({ clientX: x, clientY: y }) as MouseEvent;
+		expect(isPointerDrivenHover(at(10, 20))).toBe(true); // 사람이 움직여 들어옴
+		expect(isPointerDrivenHover(at(10, 20))).toBe(false); // 커서 그대로 = 레이아웃 유발
+		expect(isPointerDrivenHover(at(10, 21))).toBe(true); // 1px 이라도 움직이면 진짜
+		expect(isPointerDrivenHover(at(10, 21))).toBe(false);
 	});
 });

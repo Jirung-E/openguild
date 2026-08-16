@@ -10,7 +10,11 @@
 <script lang="ts">
 	import Icon from './Icon.svelte';
 	import OverlayScrollbar from './OverlayScrollbar.svelte';
-	import { keepRowAnchored, animateHeightChange } from '$lib/utils/anchor-scroll';
+	import {
+		keepRowAnchored,
+		animateHeightChange,
+		isPointerDrivenHover
+	} from '$lib/utils/anchor-scroll';
 	import { locale, t } from '$lib/stores/locale';
 	import type { WikiItem } from '$lib/utils/textarea-wikilink';
 
@@ -75,6 +79,8 @@
 				onmouseenter={(ev) => {
 					// DEV-359: 호버도 펼침. 펼쳐질 행의 화면 위치를 고정해 두지
 					// 않으면, 위쪽 행이 접히며 목록이 당겨져 커서 밑의 행이 바뀐다.
+					// 커서가 안 움직였는데 레이아웃 때문에 들어온 hover 는 무시한다.
+					if (!isPointerDrivenHover(ev)) return;
 					keepRowAnchored(popupEl, ev.currentTarget as HTMLElement);
 					onHoverSelect(i);
 				}}
@@ -134,7 +140,7 @@
 	   레이아웃된다 — 화면 밖 항목은 건너뛰게 한다(팔레트와 같은 이유). */
 	.wiki-pop li {
 		content-visibility: auto;
-		contain-intrinsic-size: auto 30px;
+		contain-intrinsic-size: 30px;
 	}
 	.wiki-opt {
 		display: flex;
