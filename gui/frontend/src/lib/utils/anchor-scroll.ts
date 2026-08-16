@@ -21,17 +21,26 @@ function reduceMotion(): boolean {
  *
  * 클래스 변경 **직전에** 호출한다 — 호출 시점의 위치가 기준이 된다.
  */
+/**
+ * 진행 중인 보정 루프 세대. 새 호출이 들어오면 이전 루프는 다음 프레임에 스스로
+ * 물러난다 — 목록을 빠르게 훑으면 호버가 30ms 간격으로 들어와, 세대 구분이
+ * 없으면 **서로 다른 기준점을 가진 루프 여러 개가 동시에** `scrollTop` 을 밀며
+ * 싸운다(반응이 굼떠지고 스크롤이 떨린다).
+ */
+let anchorGeneration = 0;
+
 export function keepRowAnchored(
 	scroller: HTMLElement | null | undefined,
 	row: HTMLElement | null | undefined,
-	durationMs = 300
+	durationMs = 160
 ) {
 	if (!scroller || !row) return;
+	const mine = ++anchorGeneration;
 	const anchor = row.getBoundingClientRect().top;
 	const started = performance.now();
 	let settled = 0;
 	const step = () => {
-		if (!row.isConnected) return;
+		if (mine !== anchorGeneration || !row.isConnected) return;
 		const delta = row.getBoundingClientRect().top - anchor;
 		// scrollTop 은 소수점에서 미세하게 어긋날 수 있어 반 픽셀 미만은 멎은 것으로 본다.
 		if (Math.abs(delta) > 0.5) {
@@ -56,8 +65,19 @@ export function keepRowAnchored(
  *
  * 클래스 변경 **직전에** 호출한다.
  */
-export function animateHeightChange(el: HTMLElement | null | undefined, durationMs = 120) {
+/** 행별 진행 중인 높이 애니메이션 — 뒷정리를 이어받은 쪽만 하도록 구분한다. */
+const running = new WeakMap<HTMLElement, Animation>();
+
+export function animateHeightChange(el: HTMLElement | null | undefined, durationMs = 90) {
 	if (!el || reduceMotion()) return;
+	// 훑는 속도가 빠르면 같은 행에 이전 애니메이션이 남아 있다 — 겹쳐 두면 높이가
+	// 옛 값에 붙들려 다음 측정이 어긋나고, 그만큼 반응이 굼떠 보인다.
+	const prev = running.get(el);
+	if (prev) {
+		running.delete(el);
+		prev.cancel();
+	}
+	el.classList.remove('collapsing');
 	const from = el.getBoundingClientRect().height;
 	requestAnimationFrame(() => {
 		if (!el.isConnected) return;
@@ -76,9 +96,14 @@ export function animateHeightChange(el: HTMLElement | null | undefined, duration
 			duration: durationMs,
 			easing: 'ease-out'
 		});
+		running.set(el, anim);
 		anim.finished
-			.catch(() => {})
+			.catch(() => {}) // cancel() 시 reject — 뒷정리는 이어받은 쪽이 한다.
 			.finally(() => {
+				// 이미 다음 애니메이션이 이 행을 이어받았으면 손대지 않는다 — 안 그러면
+				// 새 애니메이션의 `collapsing`/overflow 를 옛 정리가 걷어가 버린다.
+				if (running.get(el) !== anim) return;
+				running.delete(el);
 				el.style.overflow = overflow;
 				if (collapsing) el.classList.remove('collapsing');
 			});

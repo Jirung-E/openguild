@@ -59,6 +59,24 @@ describe('keepRowAnchored', () => {
 		expect(scroller.scrollTop).toBe(480);
 	});
 
+	it('새 호출이 들어오면 이전 루프는 물러난다 — 기준점이 다른 루프끼리 scrollTop 을 두고 싸우면 안 된다', () => {
+		// rAF 를 수동으로 돌려 두 루프를 교대로 진행시킨다.
+		const queue: FrameRequestCallback[] = [];
+		vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
+			queue.push(cb as FrameRequestCallback);
+			return queue.length;
+		});
+		const scroller = { scrollTop: 200 } as HTMLElement;
+		keepRowAnchored(scroller, fakeRow([100, 90], scroller)); // 옛 루프 (기준 100)
+		keepRowAnchored(scroller, fakeRow([300, 280], scroller)); // 새 루프 (기준 300)
+		// 옛 루프부터 실행 — 세대가 지났으므로 아무것도 하지 않아야 한다.
+		queue.shift()?.(0);
+		expect(scroller.scrollTop).toBe(200);
+		// 새 루프만 보정한다(20px 위로 밀렸으므로 그만큼 빼기).
+		queue.shift()?.(0);
+		expect(scroller.scrollTop).toBe(180);
+	});
+
 	it('위치가 그대로면 건드리지 않는다 — 짧은 제목은 높이가 안 변한다', () => {
 		runFrames();
 		const scroller = { scrollTop: 42 } as HTMLElement;
