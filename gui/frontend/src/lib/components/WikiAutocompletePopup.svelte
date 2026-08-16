@@ -130,6 +130,12 @@
 	.wiki-pop::-webkit-scrollbar {
 		display: none;
 	}
+	/* DEV-359 후속(반응 속도): 후보가 수백 개면 프레임마다 목록 전체가 다시
+	   레이아웃된다 — 화면 밖 항목은 건너뛰게 한다(팔레트와 같은 이유). */
+	.wiki-pop li {
+		content-visibility: auto;
+		contain-intrinsic-size: auto 30px;
+	}
 	.wiki-opt {
 		display: flex;
 		align-items: baseline;
