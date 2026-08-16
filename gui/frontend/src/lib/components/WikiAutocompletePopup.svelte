@@ -11,8 +11,8 @@
 	import Icon from './Icon.svelte';
 	import OverlayScrollbar from './OverlayScrollbar.svelte';
 	import {
-		keepRowAnchored,
-		animateHeightChange,
+		beginOverlayExpand,
+		beginOverlayCollapse,
 		isPointerDrivenHover
 	} from '$lib/utils/anchor-scroll';
 	import { locale, t } from '$lib/stores/locale';
@@ -43,17 +43,17 @@
 		popupEl?: HTMLUListElement;
 	} = $props();
 
-	// DEV-359 후속: 펼침/접힘 높이 전환. `$effect.pre` 는 DOM 갱신 전에 돌아
-	// 바뀌기 전 높이를 잴 수 있다 — 키보드·호버 어느 쪽이든 여기서 처리.
-	function optAt(i: number): HTMLElement | undefined {
-		return popupEl?.children[i]?.firstElementChild as HTMLElement | undefined;
-	}
+	// DEV-359 후속: 펼침/접힘 전환. `$effect.pre` 는 DOM 갱신 전에 돌아 접힌
+	// 높이를 잴 수 있다 — 키보드·호버 어느 쪽이든 여기서 처리. 펼친 내용은
+	// 흐름을 밀지 않고 아래로 겹쳐 그린다(anchor-scroll.ts 주석 참고).
+	const liAt = (i: number) => popupEl?.children[i] as HTMLElement | undefined;
+	const optAt = (i: number) => liAt(i)?.firstElementChild as HTMLElement | undefined;
 	let animPrevSel = 0;
 	$effect.pre(() => {
 		const next = selectedIndex;
 		if (next === animPrevSel) return;
-		animateHeightChange(optAt(animPrevSel));
-		animateHeightChange(optAt(next));
+		beginOverlayCollapse(liAt(animPrevSel), optAt(animPrevSel));
+		beginOverlayExpand(liAt(next), optAt(next));
 		animPrevSel = next;
 	});
 </script>
@@ -77,11 +77,9 @@
 					onSelect(it, i);
 				}}
 				onmouseenter={(ev) => {
-					// DEV-359: 호버도 펼침. 펼쳐질 행의 화면 위치를 고정해 두지
-					// 않으면, 위쪽 행이 접히며 목록이 당겨져 커서 밑의 행이 바뀐다.
-					// 커서가 안 움직였는데 레이아웃 때문에 들어온 hover 는 무시한다.
+					// DEV-359: 호버도 펼침. 굴리는 중에 항목이 커서 밑을 지나가며
+					// 들어오는 hover(커서는 가만히 있다)는 무시한다.
 					if (!isPointerDrivenHover(ev)) return;
-					keepRowAnchored(popupEl, ev.currentTarget as HTMLElement);
 					onHoverSelect(i);
 				}}
 			>
@@ -177,32 +175,36 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
-	/* DEV-297 수정: 선택된 항목만 말줄임을 풀어 제자리에서 펼친다.
-	   팝업으로 띄우면 위/아래 항목을 가렸다. 높이는 내용만큼만 늘어나고,
-	   선택이 옮겨가면 다시 한 줄로 돌아온다.
+	/* DEV-297 수정: 선택된 항목은 말줄임을 풀어 전체 제목을 보여준다. 팝업으로
+	   띄우면 위/아래 항목을 가렸다.
 
-	   DEV-359: 키보드뿐 아니라 **호버로 고른 항목도** 같은 방식으로 펼친다 —
-	   호버만 툴팁 팝업으로 남겨두니 두 방식이 섞여 오히려 어색했다.
+	   DEV-359: 호버로 고른 항목도 같다. 그리고 펼친 내용은 **겹쳐 그린다** —
+	   `li` 의 흐름상 높이는 JS 가 접힌 높이로 붙박아 두고 버튼만 아래로 자란다.
+	   목록이 움직이지 않아 스크롤 보정도, 이웃 항목이 떠는 일도 없다.
 
 	   admin 후속: 한 줄(`SLUG 제목`)로 펼치면 slug 가 길 때 제목 자리가 거의
-	   안 남는다 — **펼쳤을 때만** slug 와 제목을 위아래로 쌓는다(접힌 항목은
-	   기존처럼 한 줄이라 목록 훑기가 흐트러지지 않는다). */
-	/* DEV-359: `.collapsing` 은 접힘 애니메이션 동안만 — 펼친 배치를 유지한 채
-	   높이만 줄어야 접히는 게 보인다(animateHeightChange 주석 참고). */
-	.wiki-opt.expanded,
-	.wiki-opt:global(.collapsing) {
+	   안 남는다 — 펼쳤을 때만 slug 와 제목을 위아래로 쌓는다. */
+	.wiki-pop li:has(.wiki-opt.expanded) {
+		overflow: visible;
+		position: relative;
+		z-index: 3;
+		/* content-visibility 의 paint 억제(=클리핑)를 펼친 항목에서만 해제 —
+		   켜둔 채로는 겹쳐 그린 내용이 항목 밖으로 나오지 못한다. */
+		content-visibility: visible;
+	}
+	.wiki-opt.expanded {
 		flex-direction: column;
 		align-items: stretch;
 		gap: 0.15rem;
+		background: var(--bg-elevated);
+		box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
 	}
-	.wiki-opt.expanded .wiki-id,
-	.wiki-opt:global(.collapsing) .wiki-id {
+	.wiki-opt.expanded .wiki-id {
 		flex: none;
 		white-space: normal;
 		overflow-wrap: anywhere;
 	}
-	.wiki-opt.expanded .wiki-meta,
-	.wiki-opt:global(.collapsing) .wiki-meta {
+	.wiki-opt.expanded .wiki-meta {
 		overflow: visible;
 		text-overflow: clip;
 		white-space: normal;

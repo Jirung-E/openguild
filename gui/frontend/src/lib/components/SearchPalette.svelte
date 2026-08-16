@@ -34,8 +34,8 @@
 	// DEV-297: 전체 제목은 네이티브 title 대신 앱 스타일 커스텀 팝업으로.
 	import { titlePopup } from '$lib/actions/title-popup';
 	import {
-		keepRowAnchored,
-		animateHeightChange,
+		beginOverlayExpand,
+		beginOverlayCollapse,
 		isPointerDrivenHover
 	} from '$lib/utils/anchor-scroll';
 
@@ -144,17 +144,19 @@
 	// DEV-297 수정: 선택된 행은 팝업 대신 **제자리에서 펼쳐** 전체 제목을
 	// 보여준다 — 팝업이 위/아래 행을 통째로 가렸다(admin 보고).
 	// DEV-359: 호버로 고른 행도 마찬가지다. 예전엔 키보드만 펼치고 호버는
-	// 툴팁이었는데, 두 방식이 섞여 오히려 어색했다. 훑을 때 목록이 덜컥이지
-	// 않도록 호버 시 keepRowAnchored 로 그 행의 화면 위치를 고정한다.
-	// DEV-359 후속: 펼침/접힘에 높이 전환. `$effect.pre` 는 DOM 갱신 **전에**
-	// 돌아서 바뀌기 전 높이를 잴 수 있다 — 키보드·호버 어느 쪽으로 선택이
-	// 옮겨가든 한 자리에서 처리된다.
+	// 툴팁이었는데, 두 방식이 섞여 오히려 어색했다. 펼친 내용은 흐름을 밀지 않고
+	// 겹쳐 그려서, 훑는 동안 목록이 전혀 움직이지 않는다.
+	// DEV-359 후속: 펼침/접힘 전환. `$effect.pre` 는 DOM 갱신 **전에** 돌아서
+	// 접힌 높이를 잴 수 있다 — 키보드·호버 어느 쪽으로 선택이 옮겨가든 여기서
+	// 처리된다. 펼친 내용은 흐름을 밀지 않고 아래로 겹쳐 그려진다.
 	let animPrevSel = 0;
+	const rowAt = (k: number) => rowsEl?.children[k] as HTMLElement | undefined;
+	const mainOf = (k: number) => rowAt(k)?.querySelector<HTMLElement>('.row-main') ?? undefined;
 	$effect.pre(() => {
 		const next = selIndex;
 		if (next === animPrevSel) return;
-		animateHeightChange(rowsEl?.children[animPrevSel] as HTMLElement | undefined);
-		animateHeightChange(rowsEl?.children[next] as HTMLElement | undefined);
+		beginOverlayCollapse(rowAt(animPrevSel), mainOf(animPrevSel));
+		beginOverlayExpand(rowAt(next), mainOf(next));
 		animPrevSel = next;
 	});
 	$effect(() => {
@@ -426,12 +428,10 @@
 						class:sel={i === selIndex}
 						class:expanded={i === selIndex}
 						onmouseenter={(ev) => {
-							// DEV-359: 호버도 펼침. 펼쳐질 행의 화면 위치를 고정하지 않으면
-							// 위쪽 행이 접히며 목록이 당겨져 커서 밑의 행이 바뀐다. 그리고
-							// 레이아웃이 만들어낸 hover(커서는 그대로)는 무시한다 — 안 그러면
-							// 두 행이 서로 펼쳐졌다 접혔다 하며 떤다.
+							// DEV-359: 호버도 펼침. 굴리는 중에 행이 커서 밑을 지나가며 들어오는
+							// hover(커서는 가만히 있다)는 무시한다 — 선택이 휠을 따라다니면
+							// 걸리는 느낌이 난다.
 							if (!isPointerDrivenHover(ev)) return;
-							keepRowAnchored(rowsEl, ev.currentTarget as HTMLElement);
 							selIndex = i;
 						}}
 					>
@@ -747,14 +747,24 @@
 		   높이가 달라지고, 그만큼 스크롤이 흔들린다. 접힌 높이로 고정한다. */
 		contain-intrinsic-size: 36px;
 	}
-	/* DEV-359: `.collapsing` 은 접힘 애니메이션 동안만 붙는다 — 펼친 글자 배치를
-	   유지한 채 높이만 줄어야 접히는 게 보인다(자세한 이유는 animateHeightChange). */
-	.row.expanded,
-	.row:global(.collapsing) {
+	/* DEV-359: 펼친 내용은 **겹쳐 그린다** — 행의 흐름상 높이는 JS 가 접힌
+	   높이로 붙박아 두고(자세한 이유는 anchor-scroll.ts), 본문만 아래로 자란다.
+	   목록이 미동도 하지 않으므로 스크롤 보정도, 이웃 항목이 떠는 일도 없다. */
+	.row.expanded {
 		align-items: flex-start;
+		overflow: visible;
+		position: relative;
+		z-index: 3;
+		/* content-visibility 는 paint 억제(=클리핑)를 함께 걸어, 켜둔 채로는 겹쳐
+		   그린 본문이 행 밖으로 나오지 못한다. 펼친 행에서만 끈다. */
+		content-visibility: visible;
 	}
-	.row.expanded .ptitle,
-	.row:global(.collapsing) .ptitle {
+	.row.expanded .row-main {
+		background: var(--bg-elevated);
+		border-radius: 6px;
+		box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+	}
+	.row.expanded .ptitle {
 		overflow: visible;
 		text-overflow: clip;
 		white-space: normal;

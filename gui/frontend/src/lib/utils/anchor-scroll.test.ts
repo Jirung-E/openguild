@@ -1,30 +1,22 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { keepRowAnchored, isPointerDrivenHover } from './anchor-scroll';
+import { beginOverlayExpand, beginOverlayCollapse, isPointerDrivenHover } from './anchor-scroll';
 
 /**
- * DEV-359: 호버로 항목이 펼쳐질 때 목록이 밀리면 커서 밑의 행이 바뀌어 펼침이
- * 연쇄한다. 그 보정을 담당하는 유틸 — 실측(브라우저)로는 확인했고, 여기서는
- * 계산이 뒤집히거나(부호) 조용히 빠지는 회귀를 막는다.
+ * DEV-359: 펼침은 **흐름을 밀지 않아야** 한다 — 아래 줄이 밀리면 스크롤 보정이
+ * 필요해지고, 그 한 프레임 사이에 이웃 항목으로 hover 가 옮겨가며 떨린다.
+ * 여기서는 "바깥 상자 높이를 접힌 값으로 붙박아 둔다"는 핵심 계약을 지킨다.
  */
-/**
- * 프레임마다 레이아웃상 위치가 `tops` 로 바뀌는 행. 화면상 위치는 스크롤을
- * 따라 움직이므로 `scrollTop` 보정분을 반영한다 — 이걸 빼먹으면 보정이 영원히
- * 수렴하지 않아 실제 동작과 다른 것을 재게 된다.
- */
-function fakeRow(tops: number[], scroller: { scrollTop: number } = { scrollTop: 0 }) {
-	const base = scroller.scrollTop;
+function fakeEl(heights: number[]) {
 	let i = 0;
 	return {
 		isConnected: true,
-		getBoundingClientRect: () => {
-			const top = tops[Math.min(i, tops.length - 1)] + (base - scroller.scrollTop);
-			i += 1;
-			return { top };
-		}
-	} as unknown as HTMLElement;
+		style: {} as CSSStyleDeclaration,
+		getBoundingClientRect: () => ({ height: heights[Math.min(i++, heights.length - 1)] }),
+		animate: vi.fn(() => ({ finished: Promise.resolve(), cancel: vi.fn() }))
+	} as unknown as HTMLElement & { animate: ReturnType<typeof vi.fn> };
 }
 
-/** requestAnimationFrame 을 즉시 실행으로 바꾼다 — 프레임 루프가 동기로 돈다. */
+/** requestAnimationFrame 을 즉시 실행으로. */
 function runFrames() {
 	return vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
 		(cb as FrameRequestCallback)(0);
@@ -34,78 +26,59 @@ function runFrames() {
 
 afterEach(() => vi.restoreAllMocks());
 
-describe('keepRowAnchored', () => {
-	it('행이 위로 밀리면 그만큼 scrollTop 을 줄여 제자리에 붙든다', () => {
+describe('beginOverlayExpand', () => {
+	it('바깥 상자 높이를 접힌 값으로 고정한다 — 이게 빠지면 아래 줄이 전부 밀린다', () => {
 		runFrames();
-		const scroller = { scrollTop: 1076 } as HTMLElement;
-		// 위 항목이 접히며 대상 행이 22px 위로 올라간 상황.
-		keepRowAnchored(scroller, fakeRow([255, 233], scroller));
-		expect(scroller.scrollTop).toBe(1054);
+		const outer = fakeEl([36]);
+		const inner = fakeEl([58]);
+		beginOverlayExpand(outer, inner);
+		expect(outer.style.height).toBe('36px');
 	});
 
-	it('행이 아래로 밀리면 scrollTop 을 늘린다', () => {
+	it('안쪽 내용만 접힌 높이 → 펼친 높이로 애니메이션한다', () => {
 		runFrames();
-		const scroller = { scrollTop: 100 } as HTMLElement;
-		keepRowAnchored(scroller, fakeRow([50, 80], scroller));
-		expect(scroller.scrollTop).toBe(130);
+		const outer = fakeEl([36]);
+		const inner = fakeEl([58]);
+		beginOverlayExpand(outer, inner);
+		const [frames] = inner.animate.mock.calls[0];
+		expect(frames).toEqual([{ height: '36px' }, { height: '58px' }]);
 	});
 
-	it('여러 프레임에 걸친 전환도 끝까지 따라간다 — 한 프레임만 보정하면 흘러간다', () => {
+	it('높이가 안 변하면 애니메이션을 걸지 않는다 — 짧은 제목', () => {
 		runFrames();
-		const scroller = { scrollTop: 500 } as HTMLElement;
-		// 120ms 전환이 프레임마다 조금씩 위치를 옮기는 상황(200 → 190 → 184 → 180).
-		keepRowAnchored(scroller, fakeRow([200, 190, 184, 180], scroller));
-		// 누적 이동량 20px 을 전부 되밀어야 한다.
-		expect(scroller.scrollTop).toBe(480);
+		const outer = fakeEl([36]);
+		const inner = fakeEl([36]);
+		beginOverlayExpand(outer, inner);
+		expect(inner.animate).not.toHaveBeenCalled();
 	});
+});
 
-	it('새 호출이 들어오면 이전 루프는 물러난다 — 기준점이 다른 루프끼리 scrollTop 을 두고 싸우면 안 된다', () => {
-		// rAF 를 수동으로 돌려 두 루프를 교대로 진행시킨다.
-		const queue: FrameRequestCallback[] = [];
-		vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
-			queue.push(cb as FrameRequestCallback);
-			return queue.length;
-		});
-		const scroller = { scrollTop: 200 } as HTMLElement;
-		keepRowAnchored(scroller, fakeRow([100, 90], scroller)); // 옛 루프 (기준 100)
-		keepRowAnchored(scroller, fakeRow([300, 280], scroller)); // 새 루프 (기준 300)
-		// 옛 루프부터 실행 — 세대가 지났으므로 아무것도 하지 않아야 한다.
-		queue.shift()?.(0);
-		expect(scroller.scrollTop).toBe(200);
-		// 새 루프만 보정한다(20px 위로 밀렸으므로 그만큼 빼기).
-		queue.shift()?.(0);
-		expect(scroller.scrollTop).toBe(180);
-	});
-
-	it('위치가 그대로면 건드리지 않는다 — 짧은 제목은 높이가 안 변한다', () => {
+describe('beginOverlayCollapse', () => {
+	it('접히고 나면 고정을 풀어 원래 흐름으로 되돌린다', async () => {
 		runFrames();
-		const scroller = { scrollTop: 42 } as HTMLElement;
-		keepRowAnchored(scroller, fakeRow([120, 120], scroller));
-		expect(scroller.scrollTop).toBe(42);
+		const outer = fakeEl([58]);
+		outer.style.height = '36px';
+		const inner = fakeEl([58, 36]);
+		beginOverlayCollapse(outer, inner);
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(outer.style.height).toBe('');
 	});
 
-	it('행이 DOM 에서 빠졌으면 아무것도 하지 않는다', () => {
+	it('줄어드는 동안 내용을 잘라둔다 — 안 그러면 접히는 게 안 보인다', () => {
 		runFrames();
-		const scroller = { scrollTop: 10 } as HTMLElement;
-		const row = fakeRow([50, 80], scroller);
-		Object.defineProperty(row, 'isConnected', { value: false });
-		keepRowAnchored(scroller, row);
-		expect(scroller.scrollTop).toBe(10);
-	});
-
-	it('인자가 없으면 조용히 무시한다', () => {
-		const raf = runFrames();
-		keepRowAnchored(null, fakeRow([0, 0]));
-		keepRowAnchored({ scrollTop: 0 } as HTMLElement, null);
-		expect(raf).not.toHaveBeenCalled();
+		const outer = fakeEl([58]);
+		const inner = fakeEl([58, 36]);
+		beginOverlayCollapse(outer, inner);
+		expect(inner.style.overflow).toBe('hidden');
 	});
 });
 
 describe('isPointerDrivenHover', () => {
-	it('좌표가 같은 hover 는 레이아웃이 만든 것 — 무시한다', () => {
+	it('좌표가 같은 hover 는 휠/레이아웃이 만든 것 — 무시한다', () => {
 		const at = (x: number, y: number) => ({ clientX: x, clientY: y }) as MouseEvent;
 		expect(isPointerDrivenHover(at(10, 20))).toBe(true); // 사람이 움직여 들어옴
-		expect(isPointerDrivenHover(at(10, 20))).toBe(false); // 커서 그대로 = 레이아웃 유발
+		expect(isPointerDrivenHover(at(10, 20))).toBe(false); // 커서 그대로
 		expect(isPointerDrivenHover(at(10, 21))).toBe(true); // 1px 이라도 움직이면 진짜
 		expect(isPointerDrivenHover(at(10, 21))).toBe(false);
 	});
