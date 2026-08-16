@@ -34,8 +34,8 @@
 	// DEV-297: 전체 제목은 네이티브 title 대신 앱 스타일 커스텀 팝업으로.
 	import { titlePopup } from '$lib/actions/title-popup';
 	import {
-		beginOverlayExpand,
-		beginOverlayCollapse,
+		hoverSelect,
+		animateSelectionChange,
 		isPointerDrivenHover
 	} from '$lib/utils/anchor-scroll';
 
@@ -151,13 +151,19 @@
 	// 처리된다. 펼친 내용은 흐름을 밀지 않고 아래로 겹쳐 그려진다.
 	let animPrevSel = 0;
 	const rowAt = (k: number) => rowsEl?.children[k] as HTMLElement | undefined;
-	const mainOf = (k: number) => rowAt(k)?.querySelector<HTMLElement>('.row-main') ?? undefined;
+	// 호버 경로는 hoverSelect 가 보정과 함께 직접 애니메이션을 건다. 여기는 그
+	// 외의 경로(키보드·필터 리셋)만 맡는다.
+	let hoverHandled = false;
 	$effect.pre(() => {
 		const next = selIndex;
 		if (next === animPrevSel) return;
-		beginOverlayCollapse(rowAt(animPrevSel), mainOf(animPrevSel));
-		beginOverlayExpand(rowAt(next), mainOf(next));
+		const prev = animPrevSel;
 		animPrevSel = next;
+		if (hoverHandled) {
+			hoverHandled = false;
+			return;
+		}
+		animateSelectionChange(rowAt(prev), rowAt(next));
 	});
 	$effect(() => {
 		void selIndex;
@@ -432,7 +438,13 @@
 							// hover(커서는 가만히 있다)는 무시한다 — 선택이 휠을 따라다니면
 							// 걸리는 느낌이 난다.
 							if (!isPointerDrivenHover(ev)) return;
-							selIndex = i;
+							hoverHandled = true;
+							hoverSelect({
+								scroller: rowsEl,
+								prev: rowAt(selIndex),
+								next: ev.currentTarget as HTMLElement,
+								apply: () => (selIndex = i)
+							});
 						}}
 					>
 						<button
@@ -747,24 +759,19 @@
 		   높이가 달라지고, 그만큼 스크롤이 흔들린다. 접힌 높이로 고정한다. */
 		contain-intrinsic-size: 36px;
 	}
-	/* DEV-359: 펼친 내용은 **겹쳐 그린다** — 행의 흐름상 높이는 JS 가 접힌
-	   높이로 붙박아 두고(자세한 이유는 anchor-scroll.ts), 본문만 아래로 자란다.
-	   목록이 미동도 하지 않으므로 스크롤 보정도, 이웃 항목이 떠는 일도 없다. */
-	.row.expanded {
+	/* DEV-297: 선택된 행은 말줄임을 풀어 제자리에서 펼친다. 우측 액션 버튼이
+	   따라 내려가지 않도록 정렬만 위로 붙인다.
+	   DEV-359: `.collapsing` 은 접힘 애니메이션 동안만 붙는다 — 펼친 글자 배치를
+	   유지한 채 높이만 줄어야 접히는 게 보인다(anchor-scroll.ts 주석 참고). */
+	.row.expanded,
+	.row:global(.collapsing) {
 		align-items: flex-start;
-		overflow: visible;
-		position: relative;
-		z-index: 3;
-		/* content-visibility 는 paint 억제(=클리핑)를 함께 걸어, 켜둔 채로는 겹쳐
-		   그린 본문이 행 밖으로 나오지 못한다. 펼친 행에서만 끈다. */
+		/* content-visibility 는 paint 억제(=클리핑)를 함께 걸어, 펼치는 동안
+		   내용이 잘린다. 해당 행에서만 끈다. */
 		content-visibility: visible;
 	}
-	.row.expanded .row-main {
-		background: var(--bg-elevated);
-		border-radius: 6px;
-		box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
-	}
-	.row.expanded .ptitle {
+	.row.expanded .ptitle,
+	.row:global(.collapsing) .ptitle {
 		overflow: visible;
 		text-overflow: clip;
 		white-space: normal;

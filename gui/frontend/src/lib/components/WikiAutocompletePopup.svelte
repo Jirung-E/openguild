@@ -11,8 +11,8 @@
 	import Icon from './Icon.svelte';
 	import OverlayScrollbar from './OverlayScrollbar.svelte';
 	import {
-		beginOverlayExpand,
-		beginOverlayCollapse,
+		hoverSelect,
+		animateSelectionChange,
 		isPointerDrivenHover
 	} from '$lib/utils/anchor-scroll';
 	import { locale, t } from '$lib/stores/locale';
@@ -49,12 +49,18 @@
 	const liAt = (i: number) => popupEl?.children[i] as HTMLElement | undefined;
 	const optAt = (i: number) => liAt(i)?.firstElementChild as HTMLElement | undefined;
 	let animPrevSel = 0;
+	// 호버 경로는 hoverSelect 가 보정과 함께 처리한다. 여기는 키보드 등 나머지.
+	let hoverHandled = false;
 	$effect.pre(() => {
 		const next = selectedIndex;
 		if (next === animPrevSel) return;
-		beginOverlayCollapse(liAt(animPrevSel), optAt(animPrevSel));
-		beginOverlayExpand(liAt(next), optAt(next));
+		const prev = animPrevSel;
 		animPrevSel = next;
+		if (hoverHandled) {
+			hoverHandled = false;
+			return;
+		}
+		animateSelectionChange(optAt(prev), optAt(next));
 	});
 </script>
 
@@ -80,7 +86,13 @@
 					// DEV-359: 호버도 펼침. 굴리는 중에 항목이 커서 밑을 지나가며
 					// 들어오는 hover(커서는 가만히 있다)는 무시한다.
 					if (!isPointerDrivenHover(ev)) return;
-					onHoverSelect(i);
+					hoverHandled = true;
+					hoverSelect({
+						scroller: popupEl,
+						prev: optAt(selectedIndex),
+						next: ev.currentTarget as HTMLElement,
+						apply: () => onHoverSelect(i)
+					});
 				}}
 			>
 				<!-- BUG-169: 🏷️/🔗 는 컬러 이모지로 렌더돼 OS 마다 크기·기준선이
@@ -175,36 +187,33 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
-	/* DEV-297 수정: 선택된 항목은 말줄임을 풀어 전체 제목을 보여준다. 팝업으로
-	   띄우면 위/아래 항목을 가렸다.
+	/* DEV-297: 선택된 항목은 말줄임을 풀어 제자리에서 펼친다 — 팝업으로 띄우면
+	   위/아래 항목을 가렸다.
 
-	   DEV-359: 호버로 고른 항목도 같다. 그리고 펼친 내용은 **겹쳐 그린다** —
-	   `li` 의 흐름상 높이는 JS 가 접힌 높이로 붙박아 두고 버튼만 아래로 자란다.
-	   목록이 움직이지 않아 스크롤 보정도, 이웃 항목이 떠는 일도 없다.
+	   DEV-359: 호버로 고른 항목도 같다. `.collapsing` 은 접힘 애니메이션 동안만
+	   붙어 펼친 배치를 유지한다(anchor-scroll.ts 주석 참고).
 
 	   admin 후속: 한 줄(`SLUG 제목`)로 펼치면 slug 가 길 때 제목 자리가 거의
 	   안 남는다 — 펼쳤을 때만 slug 와 제목을 위아래로 쌓는다. */
-	.wiki-pop li:has(.wiki-opt.expanded) {
-		overflow: visible;
-		position: relative;
-		z-index: 3;
-		/* content-visibility 의 paint 억제(=클리핑)를 펼친 항목에서만 해제 —
-		   켜둔 채로는 겹쳐 그린 내용이 항목 밖으로 나오지 못한다. */
-		content-visibility: visible;
-	}
-	.wiki-opt.expanded {
+	.wiki-opt.expanded,
+	.wiki-opt:global(.collapsing) {
 		flex-direction: column;
 		align-items: stretch;
 		gap: 0.15rem;
-		background: var(--bg-elevated);
-		box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
 	}
-	.wiki-opt.expanded .wiki-id {
+	.wiki-pop li:has(.wiki-opt.expanded),
+	.wiki-pop li:has(.wiki-opt:global(.collapsing)) {
+		/* content-visibility 의 paint 억제(=클리핑)를 펼친 항목에서만 해제. */
+		content-visibility: visible;
+	}
+	.wiki-opt.expanded .wiki-id,
+	.wiki-opt:global(.collapsing) .wiki-id {
 		flex: none;
 		white-space: normal;
 		overflow-wrap: anywhere;
 	}
-	.wiki-opt.expanded .wiki-meta {
+	.wiki-opt.expanded .wiki-meta,
+	.wiki-opt:global(.collapsing) .wiki-meta {
 		overflow: visible;
 		text-overflow: clip;
 		white-space: normal;

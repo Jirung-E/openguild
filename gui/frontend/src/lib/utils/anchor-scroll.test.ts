@@ -1,76 +1,85 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { beginOverlayExpand, beginOverlayCollapse, isPointerDrivenHover } from './anchor-scroll';
+import { hoverSelect, isPointerDrivenHover } from './anchor-scroll';
 
 /**
- * DEV-359: 펼침은 **흐름을 밀지 않아야** 한다 — 아래 줄이 밀리면 스크롤 보정이
- * 필요해지고, 그 한 프레임 사이에 이웃 항목으로 hover 가 옮겨가며 떨린다.
- * 여기서는 "바깥 상자 높이를 접힌 값으로 붙박아 둔다"는 핵심 계약을 지킨다.
+ * DEV-359: 호버로 선택이 옮겨갈 때 **커서 밑 행이 움직이면 안 된다** — 움직이면
+ * 브라우저가 이웃 항목에 hover 를 쏘고 두 항목이 핑퐁한다. 보정이 반드시
+ * `flushSync` **직후 같은 태스크**에서 끝나야 하는 이유이기도 하다(다음 프레임에
+ * 하면 브라우저가 이미 새 레이아웃으로 hit-test 를 끝낸 뒤다).
  */
-function fakeEl(heights: number[]) {
-	let i = 0;
+vi.mock('svelte', () => ({ flushSync: (fn: () => void) => fn() }));
+
+/**
+ * 상태 변경 전/후 두 레이아웃을 갖는 가짜 행. `phase.after` 가 켜지면 그때부터
+ * 변경 후 값을 돌려준다 — 실제로도 `flushSync` 를 경계로 값이 바뀐다.
+ * 화면상 top 은 스크롤 보정분을 반영한다(보정이 실제로 먹히는지 보기 위해).
+ */
+function fakeRow(
+	before: { top: number; height: number },
+	after: { top: number; height: number },
+	scroller: { scrollTop: number },
+	phase: { after: boolean }
+) {
+	const base = scroller.scrollTop;
 	return {
 		isConnected: true,
+		classList: { add: vi.fn(), remove: vi.fn() },
 		style: {} as CSSStyleDeclaration,
-		getBoundingClientRect: () => ({ height: heights[Math.min(i++, heights.length - 1)] }),
-		animate: vi.fn(() => ({ finished: Promise.resolve(), cancel: vi.fn() }))
+		animate: vi.fn(() => ({ finished: Promise.resolve(), cancel: vi.fn() })),
+		getBoundingClientRect: () => {
+			const st = phase.after ? after : before;
+			return { top: st.top + (base - scroller.scrollTop), height: st.height };
+		}
 	} as unknown as HTMLElement & { animate: ReturnType<typeof vi.fn> };
-}
-
-/** requestAnimationFrame 을 즉시 실행으로. */
-function runFrames() {
-	return vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
-		(cb as FrameRequestCallback)(0);
-		return 0;
-	});
 }
 
 afterEach(() => vi.restoreAllMocks());
 
-describe('beginOverlayExpand', () => {
-	it('바깥 상자 높이를 접힌 값으로 고정한다 — 이게 빠지면 아래 줄이 전부 밀린다', () => {
-		runFrames();
-		const outer = fakeEl([36]);
-		const inner = fakeEl([58]);
-		beginOverlayExpand(outer, inner);
-		expect(outer.style.height).toBe('36px');
+describe('hoverSelect', () => {
+	it('선택을 바꾼 뒤 같은 태스크에서 스크롤을 보정한다 — 커서 밑 행이 제자리', () => {
+		vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(() => 0);
+		const scroller = { scrollTop: 1000 } as HTMLElement;
+		const phase = { after: false };
+		// 위 행이 접혀 이 행이 22px 위로 밀린 상황.
+		const next = fakeRow({ top: 300, height: 36 }, { top: 278, height: 58 }, scroller, phase);
+		let applied = false;
+		hoverSelect({
+			scroller,
+			prev: null,
+			next,
+			apply: () => {
+				applied = true;
+				phase.after = true;
+			}
+		});
+		expect(applied).toBe(true);
+		expect(scroller.scrollTop).toBe(978);
 	});
 
-	it('안쪽 내용만 접힌 높이 → 펼친 높이로 애니메이션한다', () => {
-		runFrames();
-		const outer = fakeEl([36]);
-		const inner = fakeEl([58]);
-		beginOverlayExpand(outer, inner);
-		const [frames] = inner.animate.mock.calls[0];
-		expect(frames).toEqual([{ height: '36px' }, { height: '58px' }]);
+	it('밀리지 않았으면 스크롤을 건드리지 않는다', () => {
+		vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(() => 0);
+		const scroller = { scrollTop: 500 } as HTMLElement;
+		const phase = { after: false };
+		const next = fakeRow({ top: 120, height: 36 }, { top: 120, height: 36 }, scroller, phase);
+		hoverSelect({ scroller, prev: null, next, apply: () => (phase.after = true) });
+		expect(scroller.scrollTop).toBe(500);
 	});
 
-	it('높이가 안 변하면 애니메이션을 걸지 않는다 — 짧은 제목', () => {
-		runFrames();
-		const outer = fakeEl([36]);
-		const inner = fakeEl([36]);
-		beginOverlayExpand(outer, inner);
-		expect(inner.animate).not.toHaveBeenCalled();
-	});
-});
-
-describe('beginOverlayCollapse', () => {
-	it('접히고 나면 고정을 풀어 원래 흐름으로 되돌린다', async () => {
-		runFrames();
-		const outer = fakeEl([58]);
-		outer.style.height = '36px';
-		const inner = fakeEl([58, 36]);
-		beginOverlayCollapse(outer, inner);
-		await Promise.resolve();
-		await Promise.resolve();
-		expect(outer.style.height).toBe('');
+	it('펼치는 행과 접히는 행 양쪽에 높이 애니메이션을 건다', () => {
+		vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(() => 0);
+		const scroller = { scrollTop: 0 } as HTMLElement;
+		const phase = { after: false };
+		const prev = fakeRow({ top: 100, height: 58 }, { top: 100, height: 36 }, scroller, phase);
+		const next = fakeRow({ top: 200, height: 36 }, { top: 200, height: 58 }, scroller, phase);
+		hoverSelect({ scroller, prev, next, apply: () => (phase.after = true) });
+		expect(prev.animate.mock.calls[0][0]).toEqual([{ height: '58px' }, { height: '36px' }]);
+		expect(next.animate.mock.calls[0][0]).toEqual([{ height: '36px' }, { height: '58px' }]);
 	});
 
-	it('줄어드는 동안 내용을 잘라둔다 — 안 그러면 접히는 게 안 보인다', () => {
-		runFrames();
-		const outer = fakeEl([58]);
-		const inner = fakeEl([58, 36]);
-		beginOverlayCollapse(outer, inner);
-		expect(inner.style.overflow).toBe('hidden');
+	it('스크롤러가 없으면 상태 변경만 하고 조용히 넘어간다', () => {
+		let applied = false;
+		hoverSelect({ scroller: null, prev: null, next: null, apply: () => (applied = true) });
+		expect(applied).toBe(true);
 	});
 });
 
