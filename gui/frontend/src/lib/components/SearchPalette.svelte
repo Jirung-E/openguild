@@ -33,7 +33,7 @@
 	import { recentDocs } from '$lib/stores/recentDocs';
 	// DEV-297: 전체 제목은 네이티브 title 대신 앱 스타일 커스텀 팝업으로.
 	import { titlePopup } from '$lib/actions/title-popup';
-	import { keepRowAnchored } from '$lib/utils/anchor-scroll';
+	import { keepRowAnchored, animateHeightChange } from '$lib/utils/anchor-scroll';
 
 	// DEV-294: `mode='recent'` — 별도 드롭다운을 만들지 않고 이 팔레트를 그대로
 	// 재사용해 "최근 본 문서"를 보여준다(폭·행 레이아웃·미리보기·스크롤 전부 공유).
@@ -142,6 +142,17 @@
 	// DEV-359: 호버로 고른 행도 마찬가지다. 예전엔 키보드만 펼치고 호버는
 	// 툴팁이었는데, 두 방식이 섞여 오히려 어색했다. 훑을 때 목록이 덜컥이지
 	// 않도록 호버 시 keepRowAnchored 로 그 행의 화면 위치를 고정한다.
+	// DEV-359 후속: 펼침/접힘에 높이 전환. `$effect.pre` 는 DOM 갱신 **전에**
+	// 돌아서 바뀌기 전 높이를 잴 수 있다 — 키보드·호버 어느 쪽으로 선택이
+	// 옮겨가든 한 자리에서 처리된다.
+	let animPrevSel = 0;
+	$effect.pre(() => {
+		const next = selIndex;
+		if (next === animPrevSel) return;
+		animateHeightChange(rowsEl?.children[animPrevSel] as HTMLElement | undefined);
+		animateHeightChange(rowsEl?.children[next] as HTMLElement | undefined);
+		animPrevSel = next;
+	});
 	$effect(() => {
 		void selIndex;
 		if (preview || !rowsEl) return;

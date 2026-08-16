@@ -10,7 +10,7 @@
 <script lang="ts">
 	import Icon from './Icon.svelte';
 	import OverlayScrollbar from './OverlayScrollbar.svelte';
-	import { keepRowAnchored } from '$lib/utils/anchor-scroll';
+	import { keepRowAnchored, animateHeightChange } from '$lib/utils/anchor-scroll';
 	import { locale, t } from '$lib/stores/locale';
 	import type { WikiItem } from '$lib/utils/textarea-wikilink';
 
@@ -38,6 +38,20 @@
 		onHoverSelect: (index: number) => void;
 		popupEl?: HTMLUListElement;
 	} = $props();
+
+	// DEV-359 후속: 펼침/접힘 높이 전환. `$effect.pre` 는 DOM 갱신 전에 돌아
+	// 바뀌기 전 높이를 잴 수 있다 — 키보드·호버 어느 쪽이든 여기서 처리.
+	function optAt(i: number): HTMLElement | undefined {
+		return popupEl?.children[i]?.firstElementChild as HTMLElement | undefined;
+	}
+	let animPrevSel = 0;
+	$effect.pre(() => {
+		const next = selectedIndex;
+		if (next === animPrevSel) return;
+		animateHeightChange(optAt(animPrevSel));
+		animateHeightChange(optAt(next));
+		animPrevSel = next;
+	});
 </script>
 
 <ul
