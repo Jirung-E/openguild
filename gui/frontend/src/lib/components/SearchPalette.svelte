@@ -33,7 +33,11 @@
 	import { recentDocs } from '$lib/stores/recentDocs';
 	// DEV-297: 전체 제목은 네이티브 title 대신 앱 스타일 커스텀 팝업으로.
 	import { titlePopup } from '$lib/actions/title-popup';
-	import { isPointerDrivenHover } from '$lib/utils/hover-guard';
+	import {
+		hoverSelect,
+		animateSelectionChange,
+		isPointerDrivenHover
+	} from '$lib/utils/anchor-scroll';
 
 	// DEV-294: `mode='recent'` — 별도 드롭다운을 만들지 않고 이 팔레트를 그대로
 	// 재사용해 "최근 본 문서"를 보여준다(폭·행 레이아웃·미리보기·스크롤 전부 공유).
@@ -139,16 +143,37 @@
 	let selFromKeyboard = false;
 	// DEV-297 수정: 선택된 행은 팝업 대신 **제자리에서 펼쳐** 전체 제목을
 	// 보여준다 — 팝업이 위/아래 행을 통째로 가렸다(admin 보고).
-	// DEV-359: 호버로 고른 행도 같다. 제목 자리를 항상 2줄 확보해 두고 선택된
-	// 행만 말줄임을 푸는 방식이라(스타일 참고) **높이가 아예 변하지 않는다** —
-	// 스크롤 보정도, 펼침 애니메이션도, 그로 인한 흔들림도 없다.
+	// DEV-359: 호버로 고른 행도 마찬가지다. 예전엔 키보드만 펼치고 호버는
+	// 툴팁이었는데, 두 방식이 섞여 오히려 어색했다. 펼친 내용은 흐름을 밀지 않고
+	// 겹쳐 그려서, 훑는 동안 목록이 전혀 움직이지 않는다.
+	// DEV-359 후속: 펼침/접힘 전환. `$effect.pre` 는 DOM 갱신 **전에** 돌아서
+	// 접힌 높이를 잴 수 있다 — 키보드·호버 어느 쪽으로 선택이 옮겨가든 여기서
+	// 처리된다. 펼친 내용은 흐름을 밀지 않고 아래로 겹쳐 그려진다.
+	let animPrevSel = 0;
+	const rowAt = (k: number) => rowsEl?.children[k] as HTMLElement | undefined;
+	// 호버 경로는 hoverSelect 가 보정과 함께 직접 애니메이션을 건다. 여기는 그
+	// 외의 경로(키보드·필터 리셋)만 맡는다.
+	let hoverHandled = false;
+	$effect.pre(() => {
+		const next = selIndex;
+		if (next === animPrevSel) return;
+		const prev = animPrevSel;
+		animPrevSel = next;
+		if (hoverHandled) {
+			hoverHandled = false;
+			return;
+		}
+		animateSelectionChange(rowAt(prev), rowAt(next));
+	});
 	$effect(() => {
 		void selIndex;
 		if (preview || !rowsEl) return;
 		if (!selFromKeyboard) return;
 		selFromKeyboard = false;
 		const el = rowsEl.children[selIndex] as HTMLElement | undefined;
-		el?.scrollIntoView({ block: 'nearest' });
+		// DEV-297 수정: 펼침으로 행 높이가 바뀐 **뒤** 위치를 재계산해야 늘어난
+		// 행이 화면 밖으로 밀리지 않는다.
+		requestAnimationFrame(() => el?.scrollIntoView({ block: 'nearest' }));
 	});
 
 	// DEV-255 버그 수정: 타이틀바(메뉴 버튼 포함)를 눌러도 팔레트가 안 꺼지던
@@ -409,10 +434,17 @@
 						class:sel={i === selIndex}
 						class:expanded={i === selIndex}
 						onmouseenter={(ev) => {
-							// DEV-359: 굴리는 중에 행이 커서 밑을 지나가며 들어오는 hover(커서는
-							// 가만히 있다)는 무시한다 — 선택이 휠을 따라다니면 걸리는 느낌이 난다.
+							// DEV-359: 호버도 펼침. 굴리는 중에 행이 커서 밑을 지나가며 들어오는
+							// hover(커서는 가만히 있다)는 무시한다 — 선택이 휠을 따라다니면
+							// 걸리는 느낌이 난다.
 							if (!isPointerDrivenHover(ev)) return;
-							selIndex = i;
+							hoverHandled = true;
+							hoverSelect({
+								scroller: rowsEl,
+								prev: rowAt(selIndex),
+								next: ev.currentTarget as HTMLElement,
+								apply: () => (selIndex = i)
+							});
 						}}
 					>
 						<button
@@ -645,10 +677,7 @@
 	}
 	.row-main {
 		display: flex;
-		/* DEV-359: `center` 로 두면 제목이 1줄일 때와 2줄일 때 상자 높이가 4px
-		   달라져(정렬 기준선 차이) 선택이 옮겨갈 때마다 종류 칩과 우측 버튼이
-		   미세하게 움직였다. 위 기준으로 붙여 어느 쪽이든 높이가 같게 한다. */
-		align-items: flex-start;
+		align-items: center;
 		gap: 0.6rem;
 		flex: 1;
 		min-width: 0;
@@ -711,17 +740,9 @@
 	.ptitle {
 		flex: 1;
 		color: var(--text);
-		/* DEV-359: 제목 자리를 **항상 2줄** 확보한다. 선택된 행만 clamp 를 1줄에서
-		   2줄로 풀어 전체 제목을 보여주므로, 펼쳐도 행 높이가 변하지 않는다 —
-		   목록이 미동도 하지 않아 스크롤 보정도, 이웃 항목이 떠는 일도, 휠과
-		   싸우는 일도 없다. 대가는 한 화면에 보이는 항목 수(행 36px → 58px). */
-		display: -webkit-box;
-		-webkit-box-orient: vertical;
-		-webkit-line-clamp: 1;
-		line-clamp: 1;
-		min-height: calc(2 * 1.45em);
 		overflow: hidden;
-		overflow-wrap: anywhere;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	/* DEV-297 수정: 키보드로 선택된 행만 말줄임을 풀어 제자리에서 펼친다.
 	   행 높이는 내용만큼만 늘고, 선택이 옮겨가면 다시 한 줄. 우측 액션 버튼이
@@ -733,20 +754,28 @@
 	   접힌 행은 높이가 일정해서 예상 크기를 정확히 줄 수 있고, 펼쳐지는 행은
 	   언제나 화면 안이라 영향이 없다. 미지원 엔진에서는 그냥 무시된다. */
 	.row {
-		/* 화면 밖 행은 레이아웃을 건너뛴다 — 600행 기준 강제 레이아웃 13.3ms → 2.9ms.
-		   모든 행 높이가 같으므로 예상 크기가 정확하다. */
 		content-visibility: auto;
-		/* 실제 행 높이(약 54px)와 예상 크기가 어긋나면 행이 화면에 들어올 때마다
-		   추정이 실측으로 교체되며 스크롤이 튄다. `auto` 는 마지막 렌더 크기를
-		   기억해 스스로 맞춰간다 — 모든 행 높이가 같아졌으므로 이제 안전하다
-		   (예전엔 펼친 행만 커서 `auto` 가 오히려 흔들림의 원인이었다). */
-		contain-intrinsic-size: auto 54px;
+		/* `auto` 로 두면 마지막 렌더 크기(펼친 58px)를 기억해 화면 밖 행마다 예상
+		   높이가 달라지고, 그만큼 스크롤이 흔들린다. 접힌 높이로 고정한다. */
+		contain-intrinsic-size: 36px;
 	}
-	/* DEV-297/359: 선택된 행만 말줄임을 풀어 2줄 전체를 보여준다. 자리는 이미
-	   잡혀 있으므로 높이는 그대로 — 아무것도 움직이지 않는다. */
-	.row.expanded .ptitle {
-		-webkit-line-clamp: 2;
-		line-clamp: 2;
+	/* DEV-297: 선택된 행은 말줄임을 풀어 제자리에서 펼친다. 우측 액션 버튼이
+	   따라 내려가지 않도록 정렬만 위로 붙인다.
+	   DEV-359: `.collapsing` 은 접힘 애니메이션 동안만 붙는다 — 펼친 글자 배치를
+	   유지한 채 높이만 줄어야 접히는 게 보인다(anchor-scroll.ts 주석 참고). */
+	.row.expanded,
+	.row:global(.collapsing) {
+		align-items: flex-start;
+		/* content-visibility 는 paint 억제(=클리핑)를 함께 걸어, 펼치는 동안
+		   내용이 잘린다. 해당 행에서만 끈다. */
+		content-visibility: visible;
+	}
+	.row.expanded .ptitle,
+	.row:global(.collapsing) .ptitle {
+		overflow: visible;
+		text-overflow: clip;
+		white-space: normal;
+		overflow-wrap: anywhere;
 	}
 	.ptags {
 		flex: none;
