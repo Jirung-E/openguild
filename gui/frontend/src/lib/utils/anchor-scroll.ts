@@ -50,9 +50,15 @@ function animateHeight(el: HTMLElement, from: number, to: number, durationMs: nu
 	if (collapsing) el.classList.add('collapsing');
 	const overflow = el.style.overflow;
 	el.style.overflow = 'hidden';
+	// `fill: 'forwards'` 가 없으면 **끝나는 프레임에 한 번 튄다** — 애니메이션이
+	// 끝나는 순간 높이가 '자연 높이'로 돌아가는데, 그때 `collapsing` 이 아직
+	// 붙어 있어 접힌 행이 펼친 높이(58px)로 잠깐 되돌아간다. 실측에서 그 프레임에
+	// 아래 항목들이 22px 밀렸다가 제자리로 오는 것으로 나타났다(admin 보고:
+	// "바운스"). 최종값을 유지시켜 두고, 클래스 제거와 함께 걷어낸다.
 	const anim = el.animate([{ height: `${from}px` }, { height: `${to}px` }], {
 		duration: durationMs,
-		easing: 'ease-out'
+		easing: 'ease-out',
+		fill: 'forwards'
 	});
 	running.set(el, anim);
 	anim.finished
@@ -60,8 +66,11 @@ function animateHeight(el: HTMLElement, from: number, to: number, durationMs: nu
 		.finally(() => {
 			if (running.get(el) !== anim) return;
 			running.delete(el);
-			el.style.overflow = overflow;
+			// 순서 주의: 클래스를 먼저 떼어 자연 높이를 목표값과 같게 만든 **뒤**
+			// 유지 중인 애니메이션을 걷는다. 반대로 하면 그 사이 한 프레임이 튄다.
 			el.classList.remove('collapsing');
+			el.style.overflow = overflow;
+			anim.cancel();
 		});
 }
 
