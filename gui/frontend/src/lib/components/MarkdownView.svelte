@@ -87,6 +87,20 @@
 		}
 		if (hoverTarget) scheduleClose();
 	}
+	// BUG: 팝업이 뜬 채로 팝업의 버튼이 아니라 본문 a.xlink 자체를 클릭해
+	// 이동하면(SvelteKit 기본 anchor 인터셉트), onnavigate 경로를 안 타서
+	// hoverTarget 이 안 지워지고 팝업이 새 페이지까지 남아있었다. 클릭도
+	// 위임으로 잡아 즉시 정리.
+	function onContainerClick(e: MouseEvent) {
+		const a = (e.target as HTMLElement).closest?.('a.xlink') as HTMLAnchorElement | null;
+		if (!a || !container?.contains(a) || !a.dataset.xkind) return;
+		if (openTimer) {
+			clearTimeout(openTimer);
+			openTimer = null;
+		}
+		cancelClose();
+		hoverTarget = null;
+	}
 	$effect(() => () => {
 		// 언마운트 시 타이머 정리.
 		if (openTimer) clearTimeout(openTimer);
@@ -347,11 +361,17 @@
 	}
 </script>
 
-<!-- DEV-256: mouseover/out 델리게이션 — 동적 생성되는 a.xlink 에 개별 리스너를
-     달 수 없어 컨테이너에서 위임. 키보드 접근성은 링크 자체가 anchor 라 기본
-     포커스/이동으로 이미 제공됨(팝업은 마우스 보조 UI). -->
-<!-- svelte-ignore a11y_mouse_events_have_key_events, a11y_no_static_element_interactions -->
-<div class="md" bind:this={container} onmouseover={onContainerOver} onmouseout={onContainerOut}>
+<!-- DEV-256: mouseover/out/click 델리게이션 — 동적 생성되는 a.xlink 에 개별
+     리스너를 달 수 없어 컨테이너에서 위임. 키보드 접근성은 링크 자체가 anchor
+     라 기본 포커스/이동/Enter 로 이미 제공됨(팝업은 마우스 보조 UI). -->
+<!-- svelte-ignore a11y_mouse_events_have_key_events, a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
+<div
+	class="md"
+	bind:this={container}
+	onmouseover={onContainerOver}
+	onmouseout={onContainerOut}
+	onclick={onContainerClick}
+>
 	{@html html}
 </div>
 
