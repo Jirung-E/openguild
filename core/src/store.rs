@@ -196,9 +196,15 @@ impl Store {
     /// 매 호출마다 unique URI (`?cache=shared` + 나노초) 로 multi-conn pool 이
     /// 같은 in-memory DB 를 공유.
     pub async fn open_in_memory<P: AsRef<std::path::Path>>(guild_root: P) -> Result<Self> {
+        // BUG-041 이 원래 "in-memory 라 디스크에 안 남는다" 는 의도로 만든
+        // 함수인데, 여기서 `.guild/`(+backups) 마커 디렉터리를 실제로 디스크에
+        // 만들어버려 그 의도가 깨져 있었다. Welcome/Uninit placeholder 경로에
+        // 이 마커가 생기면 `has_guild_marker` 체크가 무력화돼, 나중에 그 경로가
+        // (DEV-355 히스토리 복원 등으로) 재방문됐을 때 진짜 디스크 길드처럼
+        // 열려 recents 에까지 등록되는 사고로 이어졌다. index/journal 모두
+        // sqlite in-memory 라 이 디렉터리들은 애초에 필요 없다 — 생성 자체를
+        // 하지 않는다.
         let paths = GuildPaths::new(guild_root.as_ref());
-        std::fs::create_dir_all(paths.dot_guild()).ok();
-        std::fs::create_dir_all(paths.backups_dir()).ok();
 
         let ns = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
