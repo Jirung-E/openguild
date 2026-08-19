@@ -322,7 +322,7 @@
 					{t('home.discussionComments', $locale)}
 					<span class="count overdue">({discussionQuests.length})</span>
 				</h2>
-				<QuestNodeConveyor quests={discussionQuests} mode="overdue" />
+				<QuestNodeConveyor quests={discussionQuests} mode="overdue" focus="discussion" />
 			</section>
 		{/if}
 

@@ -28,11 +28,17 @@
 	let {
 		quests,
 		mode = 'imminent',
-		secondsPerCard = 5
+		secondsPerCard = 5,
+		focus
 	}: {
 		quests: Quest[];
 		mode?: 'imminent' | 'overdue';
 		secondsPerCard?: number;
+		// BUG-238: 이동한 문서에서 무엇에 주목시킬지. 'discussion' 이면 상세의
+		// 댓글 섹션이 첫 미해결 토론 댓글로 스크롤한다. 미해결 토론 컨베이어와
+		// 마감 지난 컨베이어가 같은 mode='overdue' 를 쓰므로 mode 로는 구분할
+		// 수 없어 별도 prop 으로 받는다.
+		focus?: 'discussion';
 	} = $props();
 
 	const GAP_PX = 12;
@@ -164,7 +170,8 @@
 	}
 
 	function openQuest(q: Quest) {
-		goto(`/quests/${encodeURIComponent(q.quest_id)}?from=home`);
+		const focusParam = focus ? `&focus=${focus}` : '';
+		goto(`/quests/${encodeURIComponent(q.quest_id)}?from=home${focusParam}`);
 	}
 </script>
 

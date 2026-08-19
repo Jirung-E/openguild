@@ -646,8 +646,17 @@
 	let scrolledToCommentId: number | null = $state(null);
 	$effect(() => {
 		const raw = $page.url.searchParams.get('comment');
-		const target = raw ? Number(raw) : NaN;
-		if (!Number.isFinite(target) || entries.length === 0) return;
+		let target = raw ? Number(raw) : NaN;
+		if (entries.length === 0) return;
+		// BUG-238: 홈의 "토론 댓글" 컨베이어는 퀘스트만 알고 어느 댓글인지는
+		// 모른 채 보낸다(`?focus=discussion`). 홈이 퀘스트마다 댓글을 미리
+		// 받아오게 하는 대신, 이미 로드된 entries 에서 첫 미해결 토론 댓글을
+		// 여기서 고른다 — 추가 요청이 없다.
+		if (!Number.isFinite(target) && $page.url.searchParams.get('focus') === 'discussion') {
+			const first = entries.find((e) => e.discussion && !e.resolved);
+			if (first) target = first.id;
+		}
+		if (!Number.isFinite(target)) return;
 		if (scrolledToCommentId === target) return;
 		// 접혀 있으면 펼쳐야 앵커가 보인다.
 		if (collapsed) collapsed = false;
@@ -655,11 +664,16 @@
 		// 한 번(tick)만 보면 놓친다 — 댓글은 groups 파생 → 중첩 snippet 순으로
 		// 그려져 DOM 반영이 한 프레임 뒤일 수 있고, 접힌 스레드가 펼쳐지는 것도
 		// 기다려야 한다. 실기에서 단발 tick 은 스크롤이 아예 안 걸렸다.
+		// BUG-238: 재시도를 rAF 에서 타이머로 바꿨다. 숨겨진 문서
+		// (`visibilityState: hidden`)에서는 `requestAnimationFrame` 이 아예
+		// 발화하지 않아 재시도 루프가 첫 실패에서 영구히 멈춘다. GUI 는 자식
+		// 창을 지원하므로 배경 창에서 문서를 열면 실제로 스크롤이 조용히 안
+		// 걸린다. 32ms 는 보이는 창에서 체감상 rAF 2프레임과 같다.
 		const deadline = Date.now() + 3000;
 		const tryScroll = () => {
 			const el = document.getElementById(`comment-${target}`);
 			if (!el) {
-				if (Date.now() < deadline) requestAnimationFrame(tryScroll);
+				if (Date.now() < deadline) setTimeout(tryScroll, 32);
 				return;
 			}
 			scrolledToCommentId = target;
