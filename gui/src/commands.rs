@@ -2131,11 +2131,16 @@ pub async fn save_attachment_from_path(
 }
 
 /// DEV-171/BUG-081: `.guild` 상대 경로를 절대 경로로 해석 (traversal 가드 + 존재 확인).
+///
+/// REQ-002: 가드가 `rel.contains("..")` 뿐이었다. `Path::join` 은 인자가
+/// 절대경로면 base 를 버리므로 `/etc/passwd` 가 `..` 없이 `.guild/` 밖을
+/// 가리켰고, 그 값이 `open_guild_file`(OS 기본앱으로 열기) / `copy_guild_file`
+/// 로 그대로 흘렀다. 첨부 사이드카는 git 공유 대상이라 악의적 커밋으로 심을 수
+/// 있어 실제 도달 가능한 경로였다. 이제 server 서빙과 **같은** allowlist 검증기
+/// (`ops::attachments::validate_guild_rel`)를 쓴다.
 fn resolve_guild_rel(store: &Store, rel: &str) -> Result<std::path::PathBuf, String> {
-    if rel.contains("..") {
-        return Err("잘못된 첨부 경로".into());
-    }
-    let path = store.paths.dot_guild().join(rel);
+    let rel = openguild_core::ops::attachments::validate_guild_rel(rel).map_err(err)?;
+    let path = store.paths.dot_guild().join(&rel);
     if !path.exists() {
         return Err(format!("파일 없음: {rel}"));
     }

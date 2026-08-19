@@ -21,6 +21,32 @@ use serde_json::json;
 use crate::error::{AppError, AppResult};
 use crate::store::{journal, Store};
 
+/// REQ-002: `.guild/` 하위에서 열람/복사해도 되는 상대경로인지 검증한다.
+/// `attachments/` · `assets/` 아래만 허용하는 **allowlist**.
+///
+/// denylist(`..` 만 거부)로는 못 막는다 — Rust 의 `Path::join` 은 인자가
+/// **절대경로면 base 를 통째로 버리므로**, `dot_guild().join("/etc/passwd")`
+/// 는 그냥 `/etc/passwd` 다. 접두를 강제하면 절대경로 · Windows 드라이브
+/// 문자 · UNC 가 한 번에 걸러진다.
+///
+/// 첨부 사이드카는 git-tracked = 공유 대상이라, 악의적 커밋이 심어놓은
+/// 절대경로를 **읽는 쪽에서도** 막아야 한다(쓰기 검증만으로는 이미 심어진
+/// 데이터를 못 막는다).
+///
+/// 반환값은 구분자를 `/` 로 정규화한 rel — 호출측은 이 값을 join 에 쓴다.
+pub fn validate_guild_rel(rel: &str) -> AppResult<String> {
+    let norm = rel.replace('\\', "/");
+    let allowed = norm.starts_with("attachments/") || norm.starts_with("assets/");
+    if !allowed || norm.split('/').any(|seg| seg == ".." || seg.is_empty()) {
+        return Err(AppError::BadRequest(crate::tf!(
+            "허용되지 않은 첨부 경로: {} (attachments/ 또는 assets/ 하위만)",
+            "disallowed attachment path: {} (only under attachments/ or assets/)",
+            rel
+        )));
+    }
+    Ok(norm)
+}
+
 /// 확장자를 파일명에 안전하게 쓸 수 있도록 정규화 — ascii 영숫자만, 소문자,
 /// 최대 16자. 결과가 비면 `bin` (확장자 없는 파일 / 이상한 값 대비).
 ///
@@ -403,6 +429,10 @@ async fn add_attachment(
     if path.trim().is_empty() {
         return Err(AppError::BadRequest(crate::tf!("빈 첨부 경로", "empty attachment path")));
     }
+    // REQ-002: 쓰기 시점 검증. 여기서 막아도 이미 사이드카에 심어진 항목은
+    // 못 막으므로 읽는 쪽(GUI open/copy, server 서빙)도 같은 검증을 한다.
+    let path_norm = validate_guild_rel(path)?;
+    let path: &str = &path_norm;
     let _ = journal::append(
         &store.journal_pool,
         "add_attachment",
@@ -535,6 +565,44 @@ async fn attachment_referenced(store: &Store, path: &str) -> bool {
 mod tests {
     use super::*;
     use crate::repo::seed_guild_dir;
+
+    /// REQ-002: allowlist 검증 — 정상 경로는 통과.
+    #[test]
+    fn validate_guild_rel_accepts_allowed_prefixes() {
+        assert_eq!(validate_guild_rel("attachments/a.png").unwrap(), "attachments/a.png");
+        assert_eq!(validate_guild_rel("assets/banner/x.jpg").unwrap(), "assets/banner/x.jpg");
+        // 역슬래시는 `/` 로 정규화되어 통과(Windows 에서 만들어진 항목).
+        assert_eq!(validate_guild_rel("attachments\\sub\\b.zip").unwrap(), "attachments/sub/b.zip");
+    }
+
+    /// REQ-002 의 핵심: 절대경로는 `..` 이 없어도 거부돼야 한다.
+    /// `Path::join` 이 base 를 버리기 때문에 예전 `contains("..")` 가드는 무력했다.
+    #[test]
+    fn validate_guild_rel_rejects_absolute_paths() {
+        for bad in [
+            "/etc/passwd",
+            "/attachments/a.png",
+            "C:/Windows/System32/config",
+            "C:\\Windows\\System32\\config",
+            "\\\\server\\share\\secret.txt",
+        ] {
+            assert!(validate_guild_rel(bad).is_err(), "허용되면 안 됨: {bad}");
+        }
+    }
+
+    /// 접두 밖 / traversal / 빈 세그먼트 거부.
+    #[test]
+    fn validate_guild_rel_rejects_traversal_and_other_prefixes() {
+        for bad in [
+            "quests/DEV-001.md",
+            "attachments/../quests/DEV-001.md",
+            "attachments//a.png",
+            "..",
+            "",
+        ] {
+            assert!(validate_guild_rel(bad).is_err(), "허용되면 안 됨: {bad}");
+        }
+    }
 
     async fn setup(label: &str) -> (std::path::PathBuf, Store) {
         let ns = std::time::SystemTime::now()

@@ -210,14 +210,9 @@ pub async fn get_guild_file(
     headers: axum::http::HeaderMap,
 ) -> AppResult<axum::response::Response> {
     use axum::response::IntoResponse;
-    let rel = rel.replace('\\', "/");
-    let allowed = rel.starts_with("attachments/") || rel.starts_with("assets/");
-    if !allowed || rel.split('/').any(|seg| seg == ".." || seg.is_empty()) {
-        return Err(openguild_core::error::AppError::BadRequest(format!(
-            "허용되지 않은 경로: {rel} (attachments/ 또는 assets/ 하위만)"
-        ))
-        .into());
-    }
+    // REQ-002: 검증 로직을 core 로 옮겼다 — GUI 의 open/copy 경로가 여기와
+    // 다른(약한) 가드를 쓰다가 절대경로 이스케이프가 났다. 한 구현만 남긴다.
+    let rel = openguild_core::ops::attachments::validate_guild_rel(&rel)?;
     let path = store.paths.dot_guild().join(&rel);
     let meta = std::fs::metadata(&path)
         .map_err(|_| openguild_core::error::AppError::NotFound(format!("파일 없음: {rel}")))?;
