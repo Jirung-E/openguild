@@ -154,6 +154,10 @@ openguild quest new --type DEV --urgency 3 --title "..." "--description=..."
 # 한글 본문은 반드시 파일 경유(stdin/인자는 콘솔 인코딩에 깨짐).
 openguild quest comment add {ID} --author {자기 이름} --file /path/utf8.md
 openguild quest comment add {ID} --author {자기 이름} --parent-id N --file ...   # 답글
+# 토론은 **말머리가 아니라 기능**이다 (DEV-361). 본문에 "[토론]" 이라고 적는
+# 것은 아무 효과가 없다 — 완료 차단도, `comments --unresolved` 필터도, GUI
+# 토론 표시도 전부 discussion 플래그를 본다.
+openguild quest comment add {ID} --author {자기 이름} --file ... --discussion   # 토론 댓글
 openguild quest memo set {ID} --file /path/utf8.md
 openguild quest comment react {ID} {댓글번호} 👍 --author {자기 이름}
 # 계획/설계는 본문 확정사항, 논의/보고는 댓글 — 사용자 피드백엔 답글(parent-id)로

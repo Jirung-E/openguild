@@ -35,7 +35,7 @@ openguild quest comment list <slug> [--author <name>] [--since <ts>] [--until <t
                                      [--top-only | --reply-to <id>] [--reverse]
                                      [--limit N] [--tree] [--summary]
 openguild quest comment show <slug> [--id <id> [--depth N] [--with-parents] | --all]
-openguild quest comment add <slug> --author <name> --file <PATH> [--parent-id <id>]
+openguild quest comment add <slug> --author <name> --file <PATH> [--parent-id <id>] [--discussion]
 openguild quest comment edit <slug> <id> --file <PATH>
 openguild quest comment remove <slug> <id>
 openguild quest comment react <slug> <id> <emoji> --author <name>
@@ -45,6 +45,12 @@ openguild quest comment pinned <slug> <id>       # toggle
 
 openguild quest memo set <slug> --file <PATH>
 ```
+
+Discussion is a **flag, not a text prefix.** Writing `[discussion]` at the
+start of the body does nothing — the done-transition block, the
+`comments --unresolved` filter, and the GUI's discussion badge all read the
+flag. Pass `--discussion` on `add` to create one in a single step, or use
+`comment discussion <slug> <id>` to toggle an existing entry.
 
 `quest comment show` without `--id` prints the most recent 20 entries by
 default — pass `--all` to lift that limit. With `--id`, `--depth`/

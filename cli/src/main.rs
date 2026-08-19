@@ -675,6 +675,13 @@ enum CommentCmd {
         #[arg(long, help = tf!("본문 파일. 미지정 시 stdin. 한글 등 비ASCII 는 --file 권장 — PowerShell 파이프(echo | ...)는 인코딩이 안 맞아 깨질 수 있음.",
                               "Body file. Defaults to stdin. --file recommended for non-ASCII (Korean etc.) — PowerShell pipes (`echo | ...`) can mangle encoding."))]
         file: Option<std::path::PathBuf>,
+        // DEV-361: 이 플래그가 없어서 토론 댓글을 만들려면 add 후 discussion 토글로
+        // 2단계를 밟아야 했고, 그래서 작성자가 1단계만 하고 본문 말머리에 "[토론]"
+        // 이라고 적는 오용이 반복됐다. 말머리는 완료 차단도 --unresolved 필터도
+        // 동작하지 않아 사실상 토론을 안 남긴 것과 같다.
+        #[arg(long, help = tf!("토론(discussion) 댓글로 바로 생성 (quest 전용). 미해결 토론이 있으면 그 quest 의 완료 전환이 차단된다.",
+                              "Create directly as a discussion comment (quest only). An unresolved discussion blocks that quest's transition to done."))]
+        discussion: bool,
     },
     #[command(about = tf!("기존 entry 의 body 교체. ts / author 보존.", "Replace an existing entry's body. Keeps ts / author."))]
     Edit {
@@ -4380,16 +4387,31 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                     author,
                     parent_id,
                     file,
+                    discussion,
                 } => {
+                    // DEV-361: 본문을 읽기 전에 scope 를 먼저 막는다 — stdin 을
+                    // 소비한 뒤 실패하면 사용자가 입력을 잃는다.
+                    if discussion && scope != CommentScope::Quest {
+                        anyhow::bail!(tf!(
+                            "--discussion 은 quest 댓글 전용입니다.",
+                            "--discussion is only available for quest comments."
+                        ));
+                    }
                     let body = read_content(file.as_deref())?;
-                    let entry =
+                    let mut entry =
                         c.comments_add_scoped(scope, &slug, author.unwrap_or_default(), body, parent_id)?;
+                    // 새 entry 는 discussion=false 로 생성되므로 토글이 곧 설정이다.
+                    if discussion {
+                        entry = c.comments_toggle_discussion(&slug, entry.id)?;
+                    }
                     if json {
                         json_println!(serde_json::json!({
                                 "ok": true,
                                 "id": entry.id,
                                 "ts": entry.ts,
                                 "parent_id": entry.parent_id,
+                                // DEV-361: --discussion 결과를 호출측이 확인할 수 있게 함께 낸다.
+                                "discussion": entry.discussion,
                             })
                         );
                     } else {
@@ -4397,14 +4419,20 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                             .parent_id
                             .map(|p| format!(" ↩ #{p}"))
                             .unwrap_or_default();
+                        let kind = if entry.discussion {
+                            tf!(" · 토론", " · discussion")
+                        } else {
+                            String::new()
+                        };
                         println!(
                             "{}",
                             tf!(
-                                "✓ 댓글 추가: #{} ({}{})",
-                                "✓ comment added: #{} ({}{})",
+                                "✓ 댓글 추가: #{} ({}{}{})",
+                                "✓ comment added: #{} ({}{}{})",
                                 entry.id,
                                 entry.ts,
-                                reply
+                                reply,
+                                kind
                             )
                         );
                     }
