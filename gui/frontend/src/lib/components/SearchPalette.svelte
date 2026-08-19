@@ -455,8 +455,12 @@
 							class="row-main"
 							onclick={() => openPreview(it)}
 						>
-							<span class="ptype {it.kind}">{kindLabel(it.kind)}</span>
-							<span class="ptitle">{displayName(it)}</span>
+							<!-- DEV-362: 종류 칩 + slug 칩을 한 묶음으로. 접힘=가로, 펼침=세로. -->
+							<span class="pills">
+								<span class="ptype {it.kind}">{kindLabel(it.kind)}</span>
+								<span class="pslug">{it.label}</span>
+							</span>
+							<span class="ptitle">{it.title}</span>
 							{#if it.tags.length}
 								<span class="ptags">{it.tags.map((tg) => '#' + tg).join(' ')}</span>
 							{/if}
@@ -728,6 +732,32 @@
 		padding: 0.1rem 0.35rem;
 	}
 	/* 타입별 색 — QuestBoard / 문서 톤과 맞춤. */
+	/* DEV-362: 종류 칩과 slug 칩 묶음. 접힌 행은 가로로 나란히(한 줄에 눌러
+	   담는다), 펼친 행은 세로로 나란히 — 칩이 쌓이면서 제목이 차지할 가로폭도
+	   넓어진다. 이 때문에 원래 1줄로 들어가던 항목도 펼치면 높이가 커진다
+	   (요청자가 인지한 의도된 부작용). */
+	.pills {
+		display: flex;
+		flex-direction: row;
+		align-items: flex-start;
+		gap: 0.35rem;
+		flex: none;
+	}
+	.row.expanded .pills,
+	.row:global(.collapsing) .pills {
+		flex-direction: column;
+	}
+	/* slug 는 식별자라 줄바꿈/말줄임 없이 통째로 보여야 한다. */
+	.pslug {
+		flex: none;
+		font-size: 0.68rem;
+		font-weight: 600;
+		border-radius: 4px;
+		padding: 0.1rem 0.35rem;
+		white-space: nowrap;
+		color: var(--text-muted);
+		background: color-mix(in srgb, var(--text-muted) 12%, transparent);
+	}
 	.ptype.quest {
 		color: var(--accent);
 		background: color-mix(in srgb, var(--accent) 14%, transparent);
