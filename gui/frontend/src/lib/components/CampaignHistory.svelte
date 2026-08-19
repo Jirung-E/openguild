@@ -15,6 +15,13 @@
 	let entries = $state<CampaignHistoryEntry[]>([]);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
+	// REQ-007: 기본 접힘. 변경 이력은 항상 필요한 정보가 아닌데 상세 페이지
+	// 하단을 길게 차지한다. 접기 상태는 영속화하지 않는다 —
+	// QuestNoteSection 의 collapsed 와 동일한 정책.
+	let collapsed = $state(true);
+	function toggleCollapsed() {
+		collapsed = !collapsed;
+	}
 
 	$effect(() => {
 		const slug = campaignSlug;
@@ -59,12 +66,22 @@
 
 <section class="ch-section">
 	<div class="section-head">
-		<h2 class="section-title">{t('history.title', $locale)}</h2>
+		<button
+			type="button"
+			class="section-toggle"
+			onclick={toggleCollapsed}
+			aria-expanded={!collapsed}
+			title={collapsed ? t('history.expand', $locale) : t('history.collapse', $locale)}
+		>
+			<span class="toggle-icon" class:collapsed>▼</span>
+			<h2 class="section-title">{t('history.title', $locale)}</h2>
+		</button>
 		{#if entries.length > 0}
 			<span class="ch-count">{entries.length}</span>
 		{/if}
 	</div>
 
+	{#if !collapsed}
 	{#if loading}
 		<p class="ch-state">{t('history.loading', $locale)}</p>
 	{:else if error}
@@ -102,6 +119,7 @@
 				</li>
 			{/each}
 		</ul>
+	{/if}
 	{/if}
 </section>
 
@@ -200,5 +218,27 @@
 	}
 	.ch-arrow {
 		color: var(--text-faint);
+	}
+	/* REQ-007: 섹션 접기 토글. QuestNoteSection(DEV-107)의 패턴을 그대로 따른다
+	   — 같은 상세 페이지의 형제 섹션이라 조작감이 달라지면 안 된다. */
+	.section-toggle {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		background: none;
+		border: none;
+		padding: 0;
+		cursor: pointer;
+		color: inherit;
+		font: inherit;
+	}
+	.toggle-icon {
+		font-size: 0.65rem;
+		color: var(--text-muted);
+		transition: transform 0.12s;
+		display: inline-block;
+	}
+	.toggle-icon.collapsed {
+		transform: rotate(-90deg);
 	}
 </style>

@@ -913,6 +913,10 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'history.empty': { ko: '변경 이력 없음.', en: 'No change history.' },
 	'history.loadFailed': { ko: '이력 로드 실패', en: 'Failed to load history' },
 	'history.none': { ko: '(없음)', en: '(none)' },
+	// REQ-007: 변경 이력 섹션 접기 토글. 기본은 접힘 — 항상 필요한 정보가
+	// 아닌데 상세 페이지 하단을 길게 차지한다.
+	'history.expand': { ko: '변경 이력 펼치기', en: 'Expand change history' },
+	'history.collapse': { ko: '변경 이력 접기', en: 'Collapse change history' },
 	// DEV-355: 데스크톱 히스토리 이동 중 해당 길드 자동 복원.
 	'history.switchingGuild': { ko: '길드 전환 중…', en: 'Switching guild…' },
 	'history.switchFailed': {
