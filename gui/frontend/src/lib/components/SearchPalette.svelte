@@ -456,7 +456,7 @@
 							onclick={() => openPreview(it)}
 						>
 							<!-- DEV-362: 종류 칩 + slug 칩을 한 묶음으로. 접힘=가로, 펼침=세로. -->
-							<span class="pills">
+							<span class="pills {it.kind}">
 								<span class="ptype {it.kind}">{kindLabel(it.kind)}</span>
 								<span class="pslug">{it.label}</span>
 							</span>
@@ -747,7 +747,24 @@
 	.row:global(.collapsing) .pills {
 		flex-direction: column;
 	}
-	/* slug 는 식별자라 줄바꿈/말줄임 없이 통째로 보여야 한다. */
+	/* DEV-362 후속: slug 칩도 종류 색을 따른다. 색 자체는 `.pills` 에
+	   `--kind-c` 로 한 번만 정하고 칩들이 그걸 참조한다 — `.ptype` 의 종류별
+	   규칙은 미리보기 헤더에서도 쓰이므로(단독 사용) 건드리지 않는다. */
+	.pills.quest {
+		--kind-c: var(--accent);
+	}
+	.pills.campaign {
+		--kind-c: var(--hl-pre);
+	}
+	.pills.rule {
+		--kind-c: var(--success);
+	}
+	.pills.book {
+		--kind-c: var(--warning);
+	}
+	/* slug 는 식별자라 줄바꿈/말줄임 없이 통째로 보여야 한다.
+	   배경은 종류 칩(14%)보다 옅은 8% — 같은 색 계열이되 종류 칩이 먼저
+	   읽히도록 위계를 남긴다. */
 	.pslug {
 		flex: none;
 		font-size: 0.68rem;
@@ -755,8 +772,8 @@
 		border-radius: 4px;
 		padding: 0.1rem 0.35rem;
 		white-space: nowrap;
-		color: var(--text-muted);
-		background: color-mix(in srgb, var(--text-muted) 12%, transparent);
+		color: var(--kind-c, var(--text-muted));
+		background: color-mix(in srgb, var(--kind-c, var(--text-muted)) 8%, transparent);
 	}
 	.ptype.quest {
 		color: var(--accent);
