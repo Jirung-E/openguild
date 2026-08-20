@@ -356,6 +356,73 @@
 		}
 		return out;
 	});
+
+	// REQ-006: compact 뷰 — 같은 날 같은 문서에 가한 조작을 문서 단위로 묶는다.
+	// 평면 목록은 한 퀘스트를 작업하면 상태변경·댓글·수정이 줄줄이 풀려 나와,
+	// 활동이 많은 날 "실제로 몇 개의 문서를 건드렸는지" 가 안 보인다.
+	//
+	// 뷰 모드는 localStorage 영속 — 매번 다시 고르게 하면 성가시다
+	// (QuestNoteSection 의 heightMode 와 같은 정책).
+	const VIEW_MODE_KEY = 'openguild.worklogViewMode';
+	function loadViewMode(): 'compact' | 'full' {
+		try {
+			return localStorage.getItem(VIEW_MODE_KEY) === 'full' ? 'full' : 'compact';
+		} catch {
+			return 'compact';
+		}
+	}
+	let viewMode = $state<'compact' | 'full'>(loadViewMode());
+	function setViewMode(m: 'compact' | 'full') {
+		viewMode = m;
+		try {
+			localStorage.setItem(VIEW_MODE_KEY, m);
+		} catch {
+			/* ignore */
+		}
+	}
+
+	interface DocGroup {
+		slug: string;
+		href: string;
+		rows: ActivityRow[];
+		/** 그룹 안 조작 종류(중복 제거, 등장 순) — 뱃지로 요약 표시. */
+		kinds: string[];
+		/** 가장 이른 / 늦은 시각 (HH:MM). */
+		fromTs: string;
+		toTs: string;
+	}
+
+	/** 하루치 rows 를 문서(slug) 단위로 묶는다. 문서의 첫 등장 순서를 유지한다. */
+	function groupByDoc(rows: ActivityRow[]): DocGroup[] {
+		const byslug = new Map<string, DocGroup>();
+		for (const a of rows) {
+			let g = byslug.get(a.slug);
+			if (!g) {
+				// 그룹 링크는 그 문서의 **첫** 활동을 가리킨다 — 댓글이면 그 댓글까지.
+				g = { slug: a.slug, href: activityHref(a), rows: [], kinds: [], fromTs: a.ts, toTs: a.ts };
+				byslug.set(a.slug, g);
+			}
+			g.rows.push(a);
+			if (!g.kinds.includes(a.kind)) g.kinds.push(a.kind);
+			if (a.ts < g.fromTs) g.fromTs = a.ts;
+			if (a.ts > g.toTs) g.toTs = a.ts;
+		}
+		return [...byslug.values()];
+	}
+
+	/** compact 뷰에서 펼쳐 놓은 그룹 키(`날짜|slug`). 기본은 전부 접힘. */
+	let expandedDocs = $state(new Set<string>());
+	function docKey(date: string, slug: string) {
+		return `${date}|${slug}`;
+	}
+	function toggleDoc(date: string, slug: string) {
+		const k = docKey(date, slug);
+		// Set 을 직접 mutate 하면 Svelte 5 가 변화를 못 본다 — 새 Set 으로 교체.
+		const next = new Set(expandedDocs);
+		if (next.has(k)) next.delete(k);
+		else next.add(k);
+		expandedDocs = next;
+	}
 </script>
 
 <div class="page">
@@ -366,6 +433,23 @@
 				{#each UNITS as u (u)}
 					<button class:on={unit === u} onclick={() => setUnit(u)}>{unitLabel(u)}</button>
 				{/each}
+			</div>
+			<!-- REQ-006: 표시 방식 — 문서별 묶기(기본) / 전체 시간순. -->
+			<div class="unit viewmode">
+				<button
+					class:on={viewMode === 'compact'}
+					onclick={() => setViewMode('compact')}
+					title={t('worklogPage.view.compactHint', $locale)}
+				>
+					{t('worklogPage.view.compact', $locale)}
+				</button>
+				<button
+					class:on={viewMode === 'full'}
+					onclick={() => setViewMode('full')}
+					title={t('worklogPage.view.fullHint', $locale)}
+				>
+					{t('worklogPage.view.full', $locale)}
+				</button>
 			</div>
 			<div class="nav">
 				{#if unit === 'range'}
@@ -499,16 +583,58 @@
 					     렌더가 죽어서 화면이 안 바뀜). ActivityRow 엔 안정적인 고유 id
 					     가 없어(여러 테이블 UNION) index 로 키를 대체.
 					-->
-					{#each g.rows as a, ri (ri)}
-						<a class="row" href={activityHref(a)}>
-							<span class="ts">{a.ts.slice(11, 16)}</span>
-							<span class="badge {KIND_BADGE_CLS[a.kind] ?? ''}">
-								{kindBadgeLabel(a.kind)}
-							</span>
-							<span class="slug">{a.slug}</span>
-							<span class="summary">{firstLine(a.summary)}</span>
-						</a>
-					{/each}
+					{#if viewMode === 'compact'}
+						{#each groupByDoc(g.rows) as dg (dg.slug)}
+							{@const open = expandedDocs.has(docKey(g.date, dg.slug))}
+							<div class="docgroup" class:open>
+								<div class="docrow">
+									<button
+										class="docexp"
+										onclick={() => toggleDoc(g.date, dg.slug)}
+										aria-expanded={open}
+										title={dg.slug}
+									>
+										<span class="toggle-icon" class:collapsed={!open}>▼</span>
+									</button>
+									<span class="ts">
+										{dg.fromTs.slice(11, 16)}{dg.rows.length > 1
+											? `–${dg.toTs.slice(11, 16)}`
+											: ''}
+									</span>
+									<a class="slug doclink" href={dg.href}>{dg.slug}</a>
+									<span class="kinds">
+										{#each dg.kinds as k (k)}
+											<span class="badge {KIND_BADGE_CLS[k] ?? ''}">{kindBadgeLabel(k)}</span>
+										{/each}
+									</span>
+									<span class="cnt">{dg.rows.length}{t('worklogPage.group.count', $locale)}</span>
+									<span class="summary">{firstLine(dg.rows[0].summary)}</span>
+								</div>
+								{#if open}
+									{#each dg.rows as a, ri (ri)}
+										<a class="row sub" href={activityHref(a)}>
+											<span class="ts">{a.ts.slice(11, 16)}</span>
+											<span class="badge {KIND_BADGE_CLS[a.kind] ?? ''}">
+												{kindBadgeLabel(a.kind)}
+											</span>
+											<span class="summary">{firstLine(a.summary)}</span>
+										</a>
+									{/each}
+								{/if}
+							</div>
+						{/each}
+					{:else}
+						{#each g.rows as a, ri (ri)}
+							<a class="row" href={activityHref(a)}>
+								<span class="ts">{a.ts.slice(11, 16)}</span>
+								<span class="badge {KIND_BADGE_CLS[a.kind] ?? ''}">
+									{kindBadgeLabel(a.kind)}
+								</span>
+								<span class="slug">{a.slug}</span>
+								<span class="summary">{firstLine(a.summary)}</span>
+							</a>
+						{/each}
+					{/if}
 				{/each}
 			</div>
 			<div class="totals">
@@ -687,6 +813,68 @@
 		font-size: 0.72rem;
 		color: var(--text-muted);
 		padding: 0.5rem 0 0.2rem;
+	}
+	/* REQ-006: compact 뷰 — 문서 단위 묶음. */
+	.docgroup {
+		border-bottom: 1px solid var(--border);
+	}
+	.docrow {
+		display: flex;
+		gap: 0.6rem;
+		align-items: baseline;
+		padding: 0.4rem 0;
+		font-size: 0.83rem;
+		min-width: 0;
+	}
+	/* 묶음 헤더의 시각은 `01:22–01:26` 처럼 범위라 단일 시각(.ts 기본 2.8rem)보다
+	   넓어야 한다 — 좁으면 두 줄로 접힌다. */
+	.docrow .ts {
+		width: 5.4rem;
+		white-space: nowrap;
+	}
+	/* 펼침 버튼은 화살표만 — 행 전체를 링크로 두면 펼치기와 이동이 충돌한다.
+	   그래서 링크는 slug 에만 건다(문서로 이동), 나머지는 펼침/접힘. */
+	.docexp {
+		flex: none;
+		background: none;
+		border: none;
+		padding: 0;
+		cursor: pointer;
+		color: var(--text-muted);
+		line-height: 1;
+	}
+	.toggle-icon {
+		font-size: 0.6rem;
+		display: inline-block;
+		transition: transform 0.12s;
+	}
+	.toggle-icon.collapsed {
+		transform: rotate(-90deg);
+	}
+	.doclink {
+		text-decoration: none;
+	}
+	.doclink:hover {
+		text-decoration: underline;
+	}
+	.kinds {
+		display: flex;
+		gap: 0.25rem;
+		flex: none;
+	}
+	.cnt {
+		flex: none;
+		font-size: 0.72rem;
+		color: var(--text-muted);
+	}
+	/* 펼친 개별 조작은 한 단계 들여쓴다 — 묶음에 속한 것이 보이도록. */
+	.row.sub {
+		border-bottom: none;
+		padding-left: 1.5rem;
+		opacity: 0.85;
+	}
+	.row.sub:last-child {
+		padding-bottom: 0.5rem;
 	}
 	.row {
 		display: flex;

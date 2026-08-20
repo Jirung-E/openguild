@@ -1427,6 +1427,12 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'update.error': { ko: '확인 실패', en: 'Check failed' },
 
 	// DEV-205(2차): 작업 기록(worklog) 페이지.
+	// REQ-006: 작업 기록 compact 뷰 — 같은 문서 조작을 문서 단위로 묶는다.
+	'worklogPage.view.compact': { ko: '문서별', en: 'By document' },
+	'worklogPage.view.full': { ko: '전체', en: 'All' },
+	'worklogPage.view.compactHint': { ko: '같은 문서의 조작을 묶어서 봅니다', en: 'Group activities by document' },
+	'worklogPage.view.fullHint': { ko: '모든 조작을 시간순으로 봅니다', en: 'Show every activity in time order' },
+	'worklogPage.group.count': { ko: '건', en: '' },
 	'worklogPage.unit.day': { ko: '일', en: 'Day' },
 	'worklogPage.unit.week': { ko: '주', en: 'Week' },
 	'worklogPage.unit.month': { ko: '월', en: 'Month' },
