@@ -248,3 +248,22 @@ mod double_option {
         Option::<T>::deserialize(d).map(Some)
     }
 }
+
+/// REQ-008: `GET /api/backlinks/{kind}/{id}` — 이 문서를 참조하는 문서 목록.
+///
+/// 색인(`doc_links`)은 reindex 가 만든다. 여기서는 읽기만 한다.
+pub async fn list_backlinks(
+    State(store): State<Store>,
+    Path((kind, id)): Path<(String, String)>,
+) -> AppResult<Json<Vec<openguild_core::ops::backlinks::Backlink>>> {
+    // 알 수 없는 kind 는 조용히 빈 목록이 아니라 400 — 오타를 삼키면 "backlink 가
+    // 없는 문서" 와 구분이 안 된다.
+    if !matches!(kind.as_str(), "quest" | "campaign" | "rule" | "book") {
+        return Err(openguild_core::error::AppError::BadRequest(format!(
+            "알 수 없는 문서 종류: '{kind}' (quest / campaign / rule / book)"
+        ))
+        .into());
+    }
+    let rows = openguild_core::ops::backlinks::list_backlinks(&store.index_pool, &kind, &id).await?;
+    Ok(Json(rows))
+}

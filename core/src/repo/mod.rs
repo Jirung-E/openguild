@@ -9,6 +9,7 @@
 pub mod auto;
 pub mod campaign;
 pub mod comments;
+pub mod crosslink;
 pub mod fs;
 pub mod history;
 pub mod library;

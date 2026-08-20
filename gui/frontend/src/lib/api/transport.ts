@@ -353,6 +353,13 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 		}
 	}
 
+	// REQ-008: `/api/backlinks/{kind}/{id}` — 이 문서를 참조하는 문서.
+	{
+		const m = pathOnly.match(/^\/api\/backlinks\/([^/]+)\/(.+)$/);
+		if (method === 'GET' && m) {
+			return { cmd: 'list_backlinks', args: { kind: decodeURIComponent(m[1]), id: decodeURIComponent(m[2]) } };
+		}
+	}
 	if (method === 'GET' && pathOnly === '/api/quest-types') {
 		return { cmd: 'list_quest_types', args: {} };
 	}

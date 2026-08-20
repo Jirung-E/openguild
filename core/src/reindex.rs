@@ -159,6 +159,10 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
     sqlx::query("DELETE FROM doc_history")
         .execute(&mut *tx)
         .await?;
+    // REQ-008: cross-link 역인덱스도 wipe — 문서 본문에서 재구축(6e).
+    sqlx::query("DELETE FROM doc_links")
+        .execute(&mut *tx)
+        .await?;
     // DEV-243: 도서관 태그 캐시도 wipe — frontmatter 의 tags 배열로부터 재구축.
     sqlx::query("DELETE FROM library_tags")
         .execute(&mut *tx)
@@ -1035,6 +1039,94 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
         .bind(max_camp_num)
         .execute(&mut *tx)
         .await?;
+    }
+
+    // 6e. REQ-008: cross-link 역인덱스(doc_links) — "이 문서를 참조하는 문서".
+    //
+    // **반드시 모든 문서 적재가 끝난 뒤**에 돈다. 링크 대상을 색인 시점에
+    // 해석해서 확정된 것만 담기 때문이다(깨진 링크 제외). 그래야 조회 측이
+    // 우선순위 규칙을 다시 구현하지 않아도 되고, 같은 ID 가 네임스페이스를
+    // 넘나들 때(DEV-219) 생기는 오탐도 여기서 한 번만 정리된다.
+    //
+    // BOOK-001: 파일 → DB 단방향. 여기서 파일로 되쓰는 것은 없다.
+    {
+        use crate::repo::crosslink::{self, DocKind};
+
+        // (1) 본문 수집. 규칙은 index.db 에 캐시가 없어 파일에서 읽는다.
+        let mut docs: Vec<(DocKind, String, String)> = Vec::new();
+
+        let qrows: Vec<(String, Option<String>)> = sqlx::query_as(
+            "SELECT t.prefix || '-' || printf('%03d', q.number), q.description
+             FROM quests q JOIN quest_types t ON t.id = q.quest_type_id",
+        )
+        .fetch_all(&mut *tx)
+        .await?;
+        for (id, body) in qrows {
+            docs.push((DocKind::Quest, id, body.unwrap_or_default()));
+        }
+
+        let crows: Vec<(String, Option<String>)> =
+            sqlx::query_as("SELECT campaign_slug, description FROM campaigns WHERE deleted_at IS NULL")
+                .fetch_all(&mut *tx)
+                .await?;
+        for (id, body) in crows {
+            docs.push((DocKind::Campaign, id, body.unwrap_or_default()));
+        }
+
+        let brows: Vec<(i64, String)> =
+            sqlx::query_as("SELECT number, body FROM library_docs WHERE deleted_at IS NULL")
+                .fetch_all(&mut *tx)
+                .await?;
+        for (n, body) in brows {
+            docs.push((DocKind::Book, crate::repo::library::book_slug(n), body));
+        }
+
+        for r in crate::repo::rules::list_rules(paths).map_err(crate::error::AppError::Internal)? {
+            docs.push((DocKind::Rule, r.slug.clone(), r.content));
+        }
+
+        // (2) 실재 문서 집합 — 링크 대상 해석용. 대소문자 무시(프론트 lookupRef 가
+        //     upper-case 키로 조회하는 것과 같은 취급).
+        use std::collections::HashSet;
+        let mut exist: HashSet<(DocKind, String)> = HashSet::new();
+        for (k, id, _) in &docs {
+            exist.insert((*k, id.to_uppercase()));
+        }
+
+        // (3) 토큰 해석 + 삽입. 접두가 있으면 그 네임스페이스에서만, 없으면
+        //     프론트와 같은 우선순위(quest > campaign > book > rule)로 찾는다.
+        const BARE_ORDER: [DocKind; 4] =
+            [DocKind::Quest, DocKind::Campaign, DocKind::Book, DocKind::Rule];
+        let mut linked = 0usize;
+        for (src_kind, src_id, body) in &docs {
+            if body.is_empty() {
+                continue;
+            }
+            for link in crosslink::extract(body) {
+                let key = link.id.to_uppercase();
+                let dst = match link.kind {
+                    Some(k) => exist.contains(&(k, key.clone())).then_some(k),
+                    None => BARE_ORDER.iter().copied().find(|k| exist.contains(&(*k, key.clone()))),
+                };
+                let Some(dst_kind) = dst else { continue }; // 깨진 링크 — 제외.
+                // 자기 자신 참조는 backlink 로서 의미가 없다.
+                if dst_kind == *src_kind && key == src_id.to_uppercase() {
+                    continue;
+                }
+                sqlx::query(
+                    "INSERT OR IGNORE INTO doc_links (src_kind, src_id, dst_kind, dst_id)
+                     VALUES (?, ?, ?, ?)",
+                )
+                .bind(src_kind.as_str())
+                .bind(src_id)
+                .bind(dst_kind.as_str())
+                .bind(&key)
+                .execute(&mut *tx)
+                .await?;
+                linked += 1;
+            }
+        }
+        tracing::debug!("REQ-008: doc_links {linked} 건 색인");
     }
 
     // BUG-059: drift detection 의 신뢰 가능한 시간 기준 — reindex 종료 시점을

@@ -22,6 +22,7 @@
 	import { locale, t } from '$lib/stores/locale';
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	import SidecarHistory from '$lib/components/SidecarHistory.svelte';
+	import BacklinkSection from '$lib/components/BacklinkSection.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	// DEV-203: 편집기 셋업(테마/들여쓰기/첨부/자동완성/높이 영속)은 공통
 	// MarkdownEditor 컴포넌트로 단일화.
@@ -524,6 +525,8 @@
 						<TagPills tags={selectedTags} {tagDefs} onSetTags={setRuleTags} />
 						<!-- DEV-290: 규칙 변경 이력. -->
 						{#if selectedSlug}
+							<!-- REQ-008: 이 문서를 참조하는 문서. -->
+							<BacklinkSection kind="rule" id={selectedSlug} />
 							<SidecarHistory kind="rule" id={selectedSlug} />
 						{/if}
 					{/if}

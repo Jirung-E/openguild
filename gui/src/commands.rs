@@ -2147,6 +2147,22 @@ fn resolve_guild_rel(store: &Store, rel: &str) -> Result<std::path::PathBuf, Str
     Ok(path)
 }
 
+/// REQ-008: 이 문서를 참조하는 문서 (cross-link backlink). HTTP
+/// `GET /api/backlinks/{kind}/{id}` 와 파리티.
+#[tauri::command]
+pub async fn list_backlinks(
+    store: State<'_, Store>,
+    kind: String,
+    id: String,
+) -> Result<Vec<openguild_core::ops::backlinks::Backlink>, String> {
+    if !matches!(kind.as_str(), "quest" | "campaign" | "rule" | "book") {
+        return Err(format!("알 수 없는 문서 종류: '{kind}'"));
+    }
+    openguild_core::ops::backlinks::list_backlinks(&store.index_pool, &kind, &id)
+        .await
+        .map_err(err)
+}
+
 /// BUG-081: 첨부 파일을 OS 기본 앱으로 열기 (로컬 미리보기/열기).
 #[tauri::command]
 pub fn open_guild_file(

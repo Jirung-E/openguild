@@ -915,6 +915,10 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'history.none': { ko: '(없음)', en: '(none)' },
 	// REQ-007: 변경 이력 섹션 접기 토글. 기본은 접힘 — 항상 필요한 정보가
 	// 아닌데 상세 페이지 하단을 길게 차지한다.
+	// REQ-008: backlink 섹션 — 이 문서를 참조하는 문서.
+	'backlinks.title': { ko: '이 문서를 참조하는 문서', en: 'Referenced by' },
+	'backlinks.empty': { ko: '이 문서를 참조하는 문서가 없습니다.', en: 'No documents reference this one.' },
+	'backlinks.loadFailed': { ko: '참조 목록 로드 실패', en: 'Failed to load references' },
 	'history.expand': { ko: '변경 이력 펼치기', en: 'Expand change history' },
 	'history.collapse': { ko: '변경 이력 접기', en: 'Collapse change history' },
 	// DEV-355: 데스크톱 히스토리 이동 중 해당 길드 자동 복원.

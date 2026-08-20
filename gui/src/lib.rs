@@ -526,6 +526,7 @@ pub fn run() {
             // DEV-323: 진행 중 업로드 취소.
             commands::cancel_attachment_upload,
             // BUG-081: 첨부 열기(미리보기) / 다운로드(복사).
+            commands::list_backlinks,
             commands::open_guild_file,
             commands::copy_guild_file,
             // DEV-265: 커스텀 타이틀바 창 컨트롤 — Windows Snap Layout

@@ -51,6 +51,8 @@ pub fn create_router(store: Store) -> Router {
         // meta
         .route("/api/guild-info", get(meta::get_guild_info))
         .route("/api/quest-types", get(meta::list_quest_types))
+        // REQ-008: 이 문서를 참조하는 문서 (cross-link backlink).
+        .route("/api/backlinks/{kind}/{id}", get(meta::list_backlinks))
         .route("/api/quest-statuses", get(meta::list_quest_statuses))
         // DEV-193: admin types/statuses CRUD — Tauri invoke(admin_* commands)
         // 와 HTTP 파리티. transport.ts 의 routeToInvoke 매핑이 이 경로를 그대로 씀.

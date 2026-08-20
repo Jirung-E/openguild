@@ -44,6 +44,7 @@
 	import QuestCommentsSection from '$lib/components/QuestCommentsSection.svelte';
 	import QuestNoteSection from '$lib/components/QuestNoteSection.svelte';
 	import CampaignHistory from '$lib/components/CampaignHistory.svelte';
+	import BacklinkSection from '$lib/components/BacklinkSection.svelte';
 	// DEV-203: 편집기 셋업(테마/들여쓰기/첨부/자동완성/redo/높이/overlay 스크롤)은
 	// 공통 MarkdownEditor 컴포넌트로 단일화.
 	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
@@ -726,6 +727,8 @@
 		<QuestNoteSection slug={detail.campaign_slug} mode="memo" scope="campaign" />
 
 		<!-- DEV-226: 변경 이력. -->
+		<!-- REQ-008: 이 문서를 참조하는 문서. -->
+		<BacklinkSection kind="campaign" id={detail.campaign_slug} />
 		<CampaignHistory campaignSlug={detail.campaign_slug} />
 	{/if}
 </div>

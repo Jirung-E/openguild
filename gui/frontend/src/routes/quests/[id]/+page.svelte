@@ -49,6 +49,7 @@
 	// BUG-030: 캠페인 연결 콤보박스 (QuestCombobox 와 동일 톤).
 	import CampaignCombobox from '$lib/components/CampaignCombobox.svelte';
 	import QuestHistory from '$lib/components/QuestHistory.svelte';
+	import BacklinkSection from '$lib/components/BacklinkSection.svelte';
 	// DEV-012: 공개 댓글 + 비공개 메모 섹션.
 	import QuestNoteSection from '$lib/components/QuestNoteSection.svelte';
 	// DEV-094: 댓글은 entry 단위 컴포넌트.
@@ -1235,6 +1236,8 @@
 
 		<!-- 변경 이력 (DEV-038) -->
 		{#key `${detail.id}:${historyVersion}`}
+			<!-- REQ-008: 이 문서를 참조하는 문서 — 참조가 없으면 렌더되지 않는다. -->
+			<BacklinkSection kind="quest" id={detail.quest_id} />
 			<QuestHistory questId={detail.id} {statuses} />
 		{/key}
 	{/if}

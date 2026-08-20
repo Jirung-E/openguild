@@ -24,6 +24,7 @@
 	import LibraryFolderTree from '$lib/components/LibraryFolderTree.svelte';
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	import SidecarHistory from '$lib/components/SidecarHistory.svelte';
+	import BacklinkSection from '$lib/components/BacklinkSection.svelte';
 	// DEV-297: 잘린 타일 제목은 커스텀 팝업으로 전체 표시.
 	import { titlePopup } from '$lib/actions/title-popup';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
@@ -1222,6 +1223,8 @@
 					/>
 
 					<!-- DEV-290: BOOK 변경 이력. -->
+					<!-- REQ-008: 이 문서를 참조하는 문서. -->
+					<BacklinkSection kind="book" id={selected.book_id} />
 					<SidecarHistory kind="book" id={selected.book_id} />
 				{/if}
 			</section>

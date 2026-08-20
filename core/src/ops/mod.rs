@@ -13,6 +13,7 @@
 //! crash 시: journal 에 기록된 op 는 다음 시작에서 replay 또는 reindex 시 정합 복구.
 
 pub mod attachments;
+pub mod backlinks;
 pub mod campaign_comments;
 pub mod campaigns;
 pub mod comments;
