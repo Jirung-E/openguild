@@ -546,6 +546,19 @@
 		justify-content: center;
 		padding: 0.5rem 0;
 		margin: 0.5em 0;
+		/* BUG-237: `.md` 는 BUG-039 때문에 `overflow-wrap: anywhere` 를 건다
+		   (긴 링크/inline code 가 컨테이너를 넘지 않게). 그런데 mermaid 는 노드·엣지
+		   라벨을 `<foreignObject>` 안 HTML 로 그리므로 그 규칙을 **그대로 상속**한다.
+
+		   그 결과 라벨이 **단어 중간에서 강제로 줄바꿈**된다 — 실측 사례:
+		   `CSP_UpdateMaintenanceStates` → `CSP_UpdateMaintenanceSt` / `ates`.
+		   mermaid 는 끊기지 않은 너비로 상자 크기를 이미 정해놨으므로, 줄이 늘어난
+		   텍스트가 상자를 넘쳐 잘려 보인다.
+
+		   다이어그램 안에서는 상속을 끊는다. 라벨은 저자가 `<br/>` 로 준 곳에서만
+		   줄바꿈되어야 mermaid 의 측정과 실제 렌더가 일치한다. */
+		overflow-wrap: normal;
+		word-break: normal;
 	}
 	.md :global(.mermaid-rendered svg) {
 		max-width: 100%;
