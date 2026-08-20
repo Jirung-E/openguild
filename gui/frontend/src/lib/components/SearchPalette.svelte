@@ -57,6 +57,11 @@
 		metaKo: string;
 		metaEn: string;
 		load: () => Promise<string>; // 미리보기 본문(markdown) 지연 로더
+		// DEV-362 후속: slug 칩 색. 퀘스트는 **타입 색**(DEV/BUG/REQ 별로 다름)을
+		// 쓴다 — 목록/보드(QuestListItem·QuestBoard)가 이미 quest_id 뱃지에
+		// type_color 를 쓰고 있어 팔레트만 다르면 같은 ID 가 화면마다 다른 색이
+		// 된다. 타입 개념이 없는 캠페인/규칙/도서관은 undefined → 종류 색 사용.
+		color?: string;
 	}
 
 	function kindLabel(k: Kind): string {
@@ -220,6 +225,7 @@
 					href: `/quests/${q.quest_id}`,
 					metaKo: q.status_name_ko || q.status_name_en,
 					metaEn: q.status_name_en || q.status_name_ko,
+					color: q.type_color,
 					load: async () => (await questsApi.get(q.id)).description ?? ''
 				});
 			}
@@ -456,7 +462,7 @@
 							onclick={() => openPreview(it)}
 						>
 							<!-- DEV-362: 종류 칩 + slug 칩을 한 묶음으로. 접힘=가로, 펼침=세로. -->
-							<span class="pills {it.kind}">
+							<span class="pills {it.kind}" style:--kind-c={it.color}>
 								<span class="ptype {it.kind}">{kindLabel(it.kind)}</span>
 								<span class="pslug">{it.label}</span>
 							</span>
