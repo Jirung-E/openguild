@@ -60,6 +60,44 @@ describe('theme store', () => {
 		expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
 	});
 
+	// BUG-239: 전환 동안 균일 페이드 클래스가 붙는다. 이 클래스가 남으면 그 창은
+	// 색 계열 transition 이 계속 덮어씌워진 채가 되므로 반드시 다시 풀려야 한다.
+	it('applyThemeToDocument applies the uniform fade class during the switch', async () => {
+		vi.useFakeTimers();
+		try {
+			const m = await loadFreshStore();
+			m.applyThemeToDocument('dark');
+			// 전환 직후에는 억제 클래스가 붙어 있다.
+			expect(document.documentElement.classList.contains('theme-switching')).toBe(true);
+			// data-theme 은 즉시 반영된다 (페이드는 CSS 가 처리한다).
+			expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+			vi.advanceTimersByTime(400);
+			expect(document.documentElement.classList.contains('theme-switching')).toBe(false);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	// 연속 전환에서 앞선 해제 예약이 뒤 전환의 페이드를 조기에 끊으면 안 된다.
+	it('rapid theme switches keep the fade class until the last one settles', async () => {
+		vi.useFakeTimers();
+		try {
+			const m = await loadFreshStore();
+			m.applyThemeToDocument('dark');
+			vi.advanceTimersByTime(200);
+			m.applyThemeToDocument('light');
+			// 두 번째 전환 100ms 뒤 — 첫 전환의 타이머(260ms)가 살아 있었다면
+			// 여기서 풀려버린다. 두 번째 전환의 페이드가 아직 끝나지 않았으므로
+			// 클래스는 남아 있어야 한다.
+			vi.advanceTimersByTime(100);
+			expect(document.documentElement.classList.contains('theme-switching')).toBe(true);
+			vi.advanceTimersByTime(400);
+			expect(document.documentElement.classList.contains('theme-switching')).toBe(false);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	// BUG-121: effectiveTheme 은 theme 이 명시 dark/light 로 바뀔 때마다 따라간다.
 	it('effectiveTheme tracks explicit theme changes', async () => {
 		const m = await loadFreshStore();

@@ -333,3 +333,40 @@ input[type='checkbox']:disabled {
 .cm-completionIcon-reference::after {
 	mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6.6 9.4 9.4 6.6'/%3E%3Cpath d='M7.1 4.9 8.5 3.5a2.6 2.6 0 0 1 3.7 3.7l-1.4 1.4'/%3E%3Cpath d='M8.9 11.1 7.5 12.5a2.6 2.6 0 0 1-3.7-3.7l1.4-1.4'/%3E%3C/svg%3E");
 }
+
+/* BUG-239: 테마 전환을 **모두 같은 속도로 부드럽게**.
+　
+   컴포넌트마다 hover 피드백용 transition 지속시간이 0.1s~0.4s 로 제각각이라,
+   테마가 바뀌면 각자 제 속도로 색을 바꿔 시간차가 보였다. 전환하는 동안만
+   색 계열 속성에 **균일한** transition 을 !important 로 덮어써서, 모든 요소가
+   같은 곡선·같은 시간에 함께 넘어가게 한다.
+
+   전환 대상은 색 계열로 한정한다 — `all` 로 두면 width/transform 까지 애니메이션
+   되어 레이아웃이 출렁인다. `animation` 은 건드리지 않는다(컨베이어 marquee 등).
+
+   지속시간은 `--theme-fade` 하나로 관리한다. theme.ts 의 해제 타이머가 이 값보다
+   길어야 애니메이션 도중 클래스가 빠져 색이 튀지 않는다. */
+:root {
+	--theme-fade: 200ms;
+}
+:root.theme-switching *,
+:root.theme-switching *::before,
+:root.theme-switching *::after {
+	transition:
+		background-color var(--theme-fade) ease,
+		border-color var(--theme-fade) ease,
+		color var(--theme-fade) ease,
+		fill var(--theme-fade) ease,
+		stroke var(--theme-fade) ease,
+		box-shadow var(--theme-fade) ease,
+		outline-color var(--theme-fade) ease !important;
+}
+/* 모션을 줄이도록 설정한 사용자에겐 페이드 없이 즉시 — 대신 균일하게 즉시라
+   시간차 문제는 그대로 해결된다. */
+@media (prefers-reduced-motion: reduce) {
+	:root.theme-switching *,
+	:root.theme-switching *::before,
+	:root.theme-switching *::after {
+		transition: none !important;
+	}
+}

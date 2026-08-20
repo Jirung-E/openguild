@@ -50,10 +50,47 @@ export function resolveTheme(t: ThemeChoice): EffectiveTheme {
 }
 
 /** `<html data-theme="...">` 갱신 + CSS variable 자동 적용. */
+/**
+ * BUG-239: 테마 전환 페이드 클래스를 떼기 위한 타이머 핸들.
+ * 연속 전환 시 앞선 해제 예약을 취소하고 다시 잡는다.
+ */
+let themeFadeTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * BUG-239: 테마 전환용 균일 transition 클래스가 붙어있는 시간(ms).
+ *
+ * global.css 의 `--theme-fade`(200ms)보다 **길어야** 한다. 페이드 도중 클래스가
+ * 빠지면 각 요소가 원래의 제각각인 transition 으로 되돌아가 색이 튄다.
+ * 여유분 60ms.
+ */
+const THEME_FADE_WINDOW_MS = 260;
+
 export function applyThemeToDocument(t: ThemeChoice) {
 	if (typeof document === 'undefined') return;
 	const eff = resolveTheme(t);
-	document.documentElement.setAttribute('data-theme', eff);
+	const root = document.documentElement;
+
+	// BUG-239: 테마가 바뀌면 CSS 변수(--bg/--text/--border …) 값이 바뀌는데,
+	// 컴포넌트들이 hover 피드백용으로 걸어둔 `transition: background/color/all`
+	// 이 그 변화까지 애니메이션한다. 지속시간이 0.1s~0.4s 로 제각각이라
+	// transition 이 없는 요소는 즉시, 긴 요소는 늦게 바뀌어 **시간차**로 보인다.
+	//
+	// 전환하는 동안만 색 계열에 **균일한** transition 을 덮어씌워, 모든 요소가
+	// 같은 곡선·같은 시간에 함께 넘어가게 한다(global.css 의 `.theme-switching`).
+	// 클래스를 먼저 붙이고 그 다음 속성을 바꿔야, 값이 바뀔 때 이미 균일한
+	// transition 이 걸려 있다.
+	root.classList.add('theme-switching');
+	root.setAttribute('data-theme', eff);
+
+	// 해제는 **타이머**로. `requestAnimationFrame` 은 숨겨진 문서
+	// (`visibilityState: hidden`, 예: 배경 자식 창)에서 발화하지 않아 클래스가
+	// 영구히 남는다 — 그러면 그 창은 hover 전환을 영원히 잃는다(BUG-238 에서
+	// 같은 함정을 확인했다).
+	if (themeFadeTimer !== null) clearTimeout(themeFadeTimer);
+	themeFadeTimer = setTimeout(() => {
+		root.classList.remove('theme-switching');
+		themeFadeTimer = null;
+	}, THEME_FADE_WINDOW_MS);
 }
 
 /** OS 테마 변경 listener 등록 — 호출자가 cleanup 반환. */
