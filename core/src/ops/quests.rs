@@ -155,6 +155,9 @@ pub async fn update_quest(store: &Store, id: i64, body: UpdateQuestRequest) -> A
     let quest = sql::update(&store.index_pool, id, body).await?;
     write_quest_file(store, &quest, description_explicit).await?;
     after_mutation(store).await;
+    // REQ-008: 이 문서가 내보내는 cross-link 재계산 — BUG-189 가 doc_history 를
+    // 즉시 투영한 것과 같은 이유다(reindex 전까지 반영 안 되면 없는 기능과 같다).
+    let _ = crate::ops::backlinks::refresh_for(store, crate::repo::crosslink::DocKind::Quest, &quest.quest_id).await;
     Ok(quest)
 }
 

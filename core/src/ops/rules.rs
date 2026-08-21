@@ -64,6 +64,10 @@ pub async fn set_rule(store: &Store, slug: &str, content: String) -> AppResult<(
     // BUG-189: 사이드카뿐 아니라 doc_history 캐시에도 즉시 투영 — 예전엔 reindex 를
     // 돌기 전까지 작업기록에 안 떴다.
     doc_history::record(store, DocKind::Rule, slug, "update", None, None).await;
+    // REQ-008: 이 문서가 내보내는 cross-link 재계산 — BUG-189 가 doc_history 를
+    // 즉시 투영한 것과 같은 이유다(reindex 전까지 반영이 안 되면 기능이 없는 것과
+    // 같다). 색인은 파생물이라 실패해도 본 작업은 성공으로 둔다.
+    let _ = crate::ops::backlinks::refresh_for(store, crate::repo::crosslink::DocKind::Rule, slug).await;
     Ok(())
 }
 

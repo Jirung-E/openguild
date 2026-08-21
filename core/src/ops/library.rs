@@ -359,6 +359,10 @@ pub async fn update_book(
     .await?;
 
     doc_history::record(store, DocKind::Book, book_id, "update", None, None).await; // BUG-189
+    // REQ-008: 이 문서가 내보내는 cross-link 재계산 — BUG-189 가 doc_history 를
+    // 즉시 투영한 것과 같은 이유다(reindex 전까지 반영이 안 되면 기능이 없는 것과
+    // 같다). 색인은 파생물이라 실패해도 본 작업은 성공으로 둔다.
+    let _ = crate::ops::backlinks::refresh_for(store, crate::repo::crosslink::DocKind::Book, book_id).await;
 
     get_book(store, book_id)
         .await?

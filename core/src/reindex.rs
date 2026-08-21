@@ -1085,8 +1085,41 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
             docs.push((DocKind::Rule, r.slug.clone(), r.content));
         }
 
+        // 댓글 본문의 cross-link 도 **그 문서가 건 참조**로 센다. 댓글은 별도
+        // 문서가 아니라 퀘스트/캠페인에 딸린 것이므로 src 는 소속 문서다.
+        //
+        // 처음엔 본문(description)만 색인했는데, 실제로 참조는 댓글에서 더 자주
+        // 걸린다(설계 논의가 댓글에서 오간다). 시드 스크립트조차 "댓글의
+        // [[BOOK-001]] 참조" 를 도서관 cross-link 검증 대상으로 넣어두고 있다.
+        let qc: Vec<(String, String)> = sqlx::query_as(
+            "SELECT t.prefix || '-' || printf('%03d', q.number), c.body
+               FROM quest_comments c
+               JOIN quests q ON q.id = c.quest_id
+               JOIN quest_types t ON t.id = q.quest_type_id",
+        )
+        .fetch_all(&mut *tx)
+        .await?;
+        for (id, body) in qc {
+            docs.push((DocKind::Quest, id, body));
+        }
+
+        let cc: Vec<(String, String)> = sqlx::query_as(
+            "SELECT c.campaign_slug, cm.body
+               FROM campaign_comments cm
+               JOIN campaigns c ON c.id = cm.campaign_id
+              WHERE c.deleted_at IS NULL",
+        )
+        .fetch_all(&mut *tx)
+        .await?;
+        for (id, body) in cc {
+            docs.push((DocKind::Campaign, id, body));
+        }
+
         // (2) 실재 문서 집합 — 링크 대상 해석용. 대소문자 무시(프론트 lookupRef 가
         //     upper-case 키로 조회하는 것과 같은 취급).
+        //
+        // `docs` 에는 같은 문서가 본문 + 댓글마다 여러 번 들어가 있지만, 집합에
+        // 넣으면 중복은 자연히 하나가 된다.
         use std::collections::HashSet;
         let mut exist: HashSet<(DocKind, String)> = HashSet::new();
         for (k, id, _) in &docs {

@@ -209,6 +209,10 @@ pub async fn add_comment_entry(
     let _ = crate::file_mtime::touch(store, &store.paths.comments_path(slug)).await;
     // DEV-102: file 진리원 갱신 후 DB 캐시 UPSERT.
     upsert_comment_entry_db(store, slug, &entry).await?;
+    // REQ-008: 이 문서가 내보내는 cross-link 재계산 — 댓글에 건 참조도 backlink
+    // 에 바로 반영되도록. 색인은 파생물이라 실패해도 본 작업은 성공으로 둔다
+    // (reindex 로 언제든 복구된다).
+    let _ = crate::ops::backlinks::refresh_for(store, crate::repo::crosslink::DocKind::Quest, slug).await;
     Ok(entry)
 }
 
@@ -231,6 +235,10 @@ pub async fn update_comment_entry(
     let _ = crate::file_mtime::touch(store, &store.paths.comments_path(slug)).await;
     // DEV-102: 같은 entry_id 의 row 를 UPSERT (body 만 변경됨).
     upsert_comment_entry_db(store, slug, &updated).await?;
+    // REQ-008: 이 문서가 내보내는 cross-link 재계산 — 댓글에 건 참조도 backlink
+    // 에 바로 반영되도록. 색인은 파생물이라 실패해도 본 작업은 성공으로 둔다
+    // (reindex 로 언제든 복구된다).
+    let _ = crate::ops::backlinks::refresh_for(store, crate::repo::crosslink::DocKind::Quest, slug).await;
     Ok(updated)
 }
 
@@ -466,7 +474,12 @@ pub async fn delete_comment_entry(store: &Store, slug: &str, id: u64) -> AppResu
     svc::delete_entry(store, slug, id)?;
     let _ = crate::file_mtime::touch(store, &store.paths.comments_path(slug)).await;
     // DEV-102: 같은 entry_id 의 cache row 도 삭제.
-    delete_comment_entry_db(store, slug, id).await
+    delete_comment_entry_db(store, slug, id).await?;
+    // REQ-008: 이 문서가 내보내는 cross-link 재계산 — 댓글에 건 참조도 backlink
+    // 에 바로 반영되도록. 색인은 파생물이라 실패해도 본 작업은 성공으로 둔다
+    // (reindex 로 언제든 복구된다).
+    let _ = crate::ops::backlinks::refresh_for(store, crate::repo::crosslink::DocKind::Quest, slug).await;
+    Ok(())
 }
 
 pub fn get_memo(store: &Store, slug: &str) -> AppResult<Option<String>> {

@@ -143,6 +143,9 @@ pub async fn add_entry(
     let _ = crate::file_mtime::touch(store, &path).await;
     // DEV-134: file 진리원 갱신 후 DB 캐시 UPSERT.
     upsert_entry_db(store, slug, &entry).await?;
+    // REQ-008: 이 문서가 내보내는 cross-link 재계산 (실패해도 본 작업은 성공 —
+    // 색인은 파생물이라 reindex 로 복구된다).
+    let _ = crate::ops::backlinks::refresh_for(store, crate::repo::crosslink::DocKind::Campaign, slug).await;
     Ok(entry)
 }
 
@@ -181,6 +184,9 @@ pub async fn update_entry(
     let _ = crate::file_mtime::touch(store, &path).await;
     // DEV-134: 캐시 UPSERT.
     upsert_entry_db(store, slug, &updated).await?;
+    // REQ-008: 이 문서가 내보내는 cross-link 재계산 (실패해도 본 작업은 성공 —
+    // 색인은 파생물이라 reindex 로 복구된다).
+    let _ = crate::ops::backlinks::refresh_for(store, crate::repo::crosslink::DocKind::Campaign, slug).await;
     Ok(updated)
 }
 
@@ -207,6 +213,9 @@ pub async fn delete_entry(store: &Store, slug: &str, id: u64) -> AppResult<()> {
     let _ = crate::file_mtime::touch(store, &path).await;
     // DEV-134: 캐시 row 삭제.
     delete_entry_db(store, slug, id).await?;
+    // REQ-008: 이 문서가 내보내는 cross-link 재계산 (실패해도 본 작업은 성공 —
+    // 색인은 파생물이라 reindex 로 복구된다).
+    let _ = crate::ops::backlinks::refresh_for(store, crate::repo::crosslink::DocKind::Campaign, slug).await;
     Ok(())
 }
 

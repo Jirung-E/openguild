@@ -101,6 +101,9 @@ pub async fn update_campaign(
     let description_explicit = body.description.is_some();
     let camp = sql::update(&store.index_pool, id, body).await?;
     write_campaign_file(store, &camp, description_explicit).await?;
+    // REQ-008: 이 문서가 내보내는 cross-link 재계산 — BUG-189 가 doc_history 를
+    // 즉시 투영한 것과 같은 이유다(reindex 전까지 반영 안 되면 없는 기능과 같다).
+    let _ = crate::ops::backlinks::refresh_for(store, crate::repo::crosslink::DocKind::Campaign, &camp.campaign_slug).await;
 
     if let (Some(old), Some(new)) = (old_status, new_status)
         && old != new
