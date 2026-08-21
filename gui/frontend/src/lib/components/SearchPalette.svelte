@@ -461,12 +461,20 @@
 							class="row-main"
 							onclick={() => openPreview(it)}
 						>
-							<!-- DEV-362: 종류 칩 + slug 칩을 한 묶음으로. 접힘=가로, 펼침=세로. -->
+							<!-- DEV-362: 종류 칩 + slug 칩을 한 묶음으로. 접힘=가로, 펼침=세로.
+
+							     slug 칩은 **짧은 식별자**(DEV-362 / C-006 / BOOK-001)를 담기
+							     위한 것이다. 규칙은 slug 가 곧 이름이라(`title: ''`) 긴
+							     kebab-case 가 칩에 들어가고 제목 자리는 비어, 다른 항목들과
+							     리듬이 깨졌다. 그런 항목은 칩을 만들지 않고 이름을 제목
+							     자리에 그대로 둔다 — 종류 칩("규칙")이 이미 무엇인지 알려준다. -->
 							<span class="pills {it.kind}" style:--kind-c={it.color}>
 								<span class="ptype {it.kind}">{kindLabel(it.kind)}</span>
-								<span class="pslug">{it.label}</span>
+								{#if it.title}
+									<span class="pslug">{it.label}</span>
+								{/if}
 							</span>
-							<span class="ptitle">{it.title}</span>
+							<span class="ptitle">{it.title || it.label}</span>
 							{#if it.tags.length}
 								<span class="ptags">{it.tags.map((tg) => '#' + tg).join(' ')}</span>
 							{/if}
