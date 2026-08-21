@@ -62,10 +62,16 @@ describe('theme store', () => {
 
 	// BUG-239: 전환 동안 균일 페이드 클래스가 붙는다. 이 클래스가 남으면 그 창은
 	// 색 계열 transition 이 계속 덮어씌워진 채가 되므로 반드시 다시 풀려야 한다.
+	//
+	// BUG-240 이후 **최초 적용에는 페이드가 안 걸리므로**, 여기서는 한 번
+	// 적용해 "기동" 을 지나보낸 뒤 그다음 전환을 검증한다. (최초 적용 자체의
+	// 계약은 모듈이 진짜 새것이어야 해서 theme.first-apply.test.ts 로 분리했다.)
 	it('applyThemeToDocument applies the uniform fade class during the switch', async () => {
 		vi.useFakeTimers();
 		try {
 			const m = await loadFreshStore();
+			m.applyThemeToDocument('light'); // 최초 적용 — 페이드 없음.
+			document.documentElement.classList.remove('theme-switching');
 			m.applyThemeToDocument('dark');
 			// 전환 직후에는 억제 클래스가 붙어 있다.
 			expect(document.documentElement.classList.contains('theme-switching')).toBe(true);
@@ -83,6 +89,7 @@ describe('theme store', () => {
 		vi.useFakeTimers();
 		try {
 			const m = await loadFreshStore();
+			m.applyThemeToDocument('light'); // 최초 적용 — 페이드 없음(BUG-240).
 			m.applyThemeToDocument('dark');
 			vi.advanceTimersByTime(200);
 			m.applyThemeToDocument('light');

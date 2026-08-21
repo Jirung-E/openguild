@@ -57,6 +57,12 @@ export function resolveTheme(t: ThemeChoice): EffectiveTheme {
 let themeFadeTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
+ * BUG-240: 이 문서에 테마를 한 번이라도 적용했는지. 최초 적용(앱 기동/하이드레이션)
+ * 과 사용자 전환을 구분해, 최초에만 페이드를 건너뛴다.
+ */
+let themeApplied = false;
+
+/**
  * BUG-239: 테마 전환용 균일 transition 클래스가 붙어있는 시간(ms).
  *
  * global.css 의 `--theme-fade`(200ms)보다 **길어야** 한다. 페이드 도중 클래스가
@@ -79,7 +85,14 @@ export function applyThemeToDocument(t: ThemeChoice) {
 	// 같은 곡선·같은 시간에 함께 넘어가게 한다(global.css 의 `.theme-switching`).
 	// 클래스를 먼저 붙이고 그 다음 속성을 바꿔야, 값이 바뀔 때 이미 균일한
 	// transition 이 걸려 있다.
-	root.classList.add('theme-switching');
+	// BUG-240: **최초 적용에는 페이드를 걸지 않는다.** 페이드는 사용자가 테마를
+	// *바꿀 때* 를 위한 것이다. 앱이 뜨면서 처음 부르는 호출까지 애니메이션하면,
+	// app.html 이 이미 맞춰놓은 값을 재적용하는 것뿐인데도 전환이 보인다
+	// (뒤로가기로 웰컴 페이지에 돌아올 때 특히 도드라졌다).
+	if (themeApplied) {
+		root.classList.add('theme-switching');
+	}
+	themeApplied = true;
 	root.setAttribute('data-theme', eff);
 
 	// 해제는 **타이머**로. `requestAnimationFrame` 은 숨겨진 문서

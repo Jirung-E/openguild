@@ -10,6 +10,34 @@
 		<link rel="icon" href="/favicon.ico" sizes="any" />
 		<link rel="icon" href="/favicon.png" type="image/png" />
 		<meta name="text-scale" content="scale" />
+		<!-- BUG-240: 첫 페인트 전에 테마를 확정한다.
+
+		     테마는 원래 `+layout.svelte` 의 onMount 에서 적용됐다. 그 전까지
+		     `<html>` 에 data-theme 이 없어 global.css 의 `:root` 기본값(다크)으로
+		     한 번 그려지고, 하이드레이션 후에야 라이트로 바뀌었다 — 라이트 사용자는
+		     매 로드마다 다크가 번쩍였다. BUG-239 로 전환에 페이드가 붙으면서 그
+		     깜빡임이 200ms 애니메이션으로 도드라져 드러났다.
+
+		     여기서 동기적으로 처리해야 의미가 있다(defer/async 금지 — 첫 페인트를
+		     막아야 한다). theme.ts 의 저장 키/해석 규칙과 **같아야** 하며, 한쪽을
+		     바꾸면 다른 쪽도 같이 고쳐야 한다. -->
+		<script>
+			(function () {
+				try {
+					var t = localStorage.getItem('openguild.theme');
+					if (t !== 'dark' && t !== 'light' && t !== 'system') t = 'system';
+					var eff =
+						t === 'system'
+							? window.matchMedia('(prefers-color-scheme: light)').matches
+								? 'light'
+								: 'dark'
+							: t;
+					document.documentElement.setAttribute('data-theme', eff);
+				} catch (e) {
+					/* localStorage 접근 불가 등 — 기본값(다크)으로 둔다. */
+				}
+			})();
+		</script>
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">
