@@ -783,8 +783,11 @@
 		flex: none;
 		font-size: 0.68rem;
 		font-weight: 600;
-		border-radius: 4px;
-		padding: 0.1rem 0.35rem;
+		/* 다른 화면(QuestListItem/QuestBoard/QuestCombobox)의 quest_id 뱃지와 같은
+		   타원형. 좌우 여백도 곡률에 맞춰 조금 넓힌다 — 4px 각진 칩의 여백
+		   그대로면 글자가 곡면에 붙어 보인다. */
+		border-radius: 20px;
+		padding: 0.1rem 0.5rem;
 		white-space: nowrap;
 		color: var(--kind-c, var(--text-muted));
 		background: color-mix(in srgb, var(--kind-c, var(--text-muted)) 8%, transparent);
@@ -833,10 +836,19 @@
 	   유지한 채 높이만 줄어야 접히는 게 보인다(anchor-scroll.ts 주석 참고). */
 	.row.expanded,
 	.row:global(.collapsing) {
-		align-items: flex-start;
+		/* 펼친 행은 칩·제목·우측 버튼을 **위아래 가운데**로 맞춘다. 접힌 행은
+		   여전히 flex-start 다 — DEV-359 가 거기서 `center` 를 뺀 이유(제목이
+		   1줄일 때와 2줄일 때 정렬 기준이 달라져 상자 높이가 4px 튀는 문제)는
+		   접힌 상태에 해당하고, 접힌 높이는 `contain-intrinsic-size: 36px` 의
+		   전제이기도 하다. */
+		align-items: center;
 		/* content-visibility 는 paint 억제(=클리핑)를 함께 걸어, 펼치는 동안
 		   내용이 잘린다. 해당 행에서만 끈다. */
 		content-visibility: visible;
+	}
+	.row.expanded .row-main,
+	.row:global(.collapsing) .row-main {
+		align-items: center;
 	}
 	.row.expanded .ptitle,
 	.row:global(.collapsing) .ptitle {
