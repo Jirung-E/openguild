@@ -30,6 +30,12 @@ export function parallelEdgeBends(edges: BoardEdgeGeometry[], step = 40): Map<st
 	return bends;
 }
 
+/**
+ * BUG-242: 노드가 겹칠 만큼 가까울 때도 남겨 둘 최소 선 길이(px).
+ * 화살표 마커(markerWidth 7)가 그려질 자리는 있어야 방향을 알 수 있다.
+ */
+const MIN_EDGE_VISIBLE = 8;
+
 export function boardEdgePath(
 	sx: number,
 	sy: number,
@@ -46,11 +52,20 @@ export function boardEdgePath(
 	const dist = Math.max(1, rawDistance);
 	const ux = dx / dist;
 	const uy = dy / dist;
-	const inset = Math.min(
+	// 선을 노드 **경계**까지만 물린다 — 중심에서 테두리까지의 거리.
+	const boundary = Math.min(
 		Math.abs(ux) > 0.0001 ? nodeWidth / 2 / Math.abs(ux) : Number.POSITIVE_INFINITY,
-		Math.abs(uy) > 0.0001 ? nodeHeight / 2 / Math.abs(uy) : Number.POSITIVE_INFINITY,
-		dist / 3
+		Math.abs(uy) > 0.0001 ? nodeHeight / 2 / Math.abs(uy) : Number.POSITIVE_INFINITY
 	);
+	// BUG-242: 예전엔 여기에 `dist / 3` 클램프가 함께 걸려 있었다. 노드가 가까우면
+	// 그 값이 `boundary` 보다 작아져 **끝점이 노드 안쪽**에 찍혔고, 화살표 마커는
+	// 경로 끝에 그려지므로 노드에 파묻혔다(폭 284 · 간격 40 이면 경계 142 vs
+	// dist/3 = 108 → 34px 안쪽).
+	//
+	// 그 클램프는 노드가 겹칠 때 양끝 inset 합이 거리를 넘어 **경로가 뒤집히는**
+	// 것을 막으려던 장치로 보인다. 그래서 없애는 대신, 뒤집힘만 정확히 막는다 —
+	// 화살촉이 보일 최소 길이를 남기고 그 안에서만 줄인다.
+	const inset = Math.min(boundary, Math.max(0, (dist - MIN_EDGE_VISIBLE) / 2));
 	const x1 = sx + ux * inset;
 	const y1 = sy + uy * inset;
 	const x2 = tx - ux * inset;
