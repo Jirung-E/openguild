@@ -892,6 +892,13 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'attach.openFailed': { ko: '열기 실패', en: 'Failed to open' },
 	'attach.downloadFailed': { ko: '다운로드 실패', en: 'Download failed' },
 	'attach.downloadAllFailed': { ko: '전체 다운로드 실패', en: 'Download all failed' },
+	// BUG-241: 폴더 쓰기를 지원하지 않는 환경(Safari/iOS 등)의 전체 다운로드 안내.
+	// **차단됐다고 단정하지 않는다** — 우리는 차단 여부를 알 수 없고, 대개는
+	// 허용 후 정상 저장된다. 허용 프롬프트를 놓치지 않도록 알려주는 용도다.
+	'attach.downloadAllMulti': {
+		ko: '첨부 {0}개를 내려받습니다. 브라우저가 여러 파일 다운로드 허용을 물으면 허용해 주세요.',
+		en: 'Downloading {0} attachments. If the browser asks to allow multiple downloads, please allow it.'
+	},
 	// BUG-168: 한도 초과 안내 — axum 원문(413) 노출 대신 크기를 밝힌다.
 	'attach.tooLarge': { ko: '첨부 파일이 너무 큽니다', en: 'Attachment file is too large' },
 	'attach.pickFile': { ko: '첨부할 파일 선택', en: 'Choose files to attach' },

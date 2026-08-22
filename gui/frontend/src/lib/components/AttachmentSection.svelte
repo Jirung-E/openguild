@@ -14,6 +14,7 @@
 	import { api } from '$lib/api/client';
 	// DEV-205: 첨부 섹션 i18n.
 	import { locale, t } from '$lib/stores/locale';
+	import { showToast } from '$lib/stores/toast';
 
 	interface Attachment {
 		path: string;
@@ -236,10 +237,68 @@
 				busy = false;
 			}
 		} else {
-			for (const a of list) {
-				browserDownload(await guildFileUrl(a.path), downloadName(a));
-				await new Promise((r) => setTimeout(r, 200));
+			await downloadAllInBrowser();
+		}
+	}
+
+	// BUG-241: 브라우저 모드 전체 다운로드.
+	//
+	// 예전엔 첨부마다 `<a download>` 를 만들어 200ms 간격으로 클릭했는데, 첫
+	// 파일만 저장되고 나머지는 조용히 사라졌다. 브라우저 정책 탓만은 아니었다 —
+	// 브라우저는 **사용자 제스처와 붙어 있는 다운로드**만 허용하는데, 루프가
+	// 파일마다 `await` 를 걸어(그 중 `guildFileUrl` 은 브라우저 모드에서 기다릴
+	// 것이 없는데도) 2번째부터 제스처에서 떨어져 나가게 만들고 있었다. 즉 우리가
+	// 차단 조건을 자초했다.
+	//
+	// zip 으로 묶어 한 번에 내려받는 방법도 있었지만 채택하지 않았다 — 파일 몇
+	// 개 받자고 사용자에게 압축 해제를 강요하게 된다.
+	async function downloadAllInBrowser() {
+		// URL 은 **클릭 전에** 전부 계산해 둔다. 중간에 await 가 끼면 제스처가
+		// 끊긴다(브라우저 모드에서 guildFileUrl 은 실제로 비동기 작업이 없다).
+		const targets = await Promise.all(
+			list.map(async (a) => ({ url: await guildFileUrl(a.path), name: downloadName(a) }))
+		);
+
+		// 1순위: 폴더를 받아 직접 쓴다 — 데스크톱(Tauri) 경로와 같은 흐름이라
+		// 다운로드 팝업도, 압축 해제도 없다. Chrome/Edge 지원.
+		const picker = (
+			window as unknown as {
+				showDirectoryPicker?: (o?: { mode?: string }) => Promise<FileSystemDirectoryHandle>;
 			}
+		).showDirectoryPicker;
+		if (typeof picker === 'function') {
+			try {
+				const dir = await picker.call(window, { mode: 'readwrite' });
+				busy = true;
+				for (const t0 of targets) {
+					const res = await fetch(t0.url);
+					if (!res.ok) throw new Error(`${res.status} ${t0.name}`);
+					const fh = await dir.getFileHandle(t0.name, { create: true });
+					const w = await fh.createWritable();
+					await res.body!.pipeTo(w); // 스트리밍 — 대용량 첨부를 메모리에 올리지 않는다(BUG-188).
+				}
+				return;
+			} catch (e) {
+				// 사용자가 폴더 선택을 취소한 경우는 오류가 아니다.
+				if ((e as { name?: string })?.name === 'AbortError') return;
+				error = `${t('attach.downloadAllFailed', $locale)}: ${e instanceof Error ? e.message : String(e)}`;
+				return;
+			} finally {
+				busy = false;
+			}
+		}
+
+		// 폴백: 폴더 쓰기를 못 하는 환경(Safari/iOS 등). 제스처가 살아 있는 동안
+		// **await 없이** 연속 클릭한다 — 그러면 브라우저가 "여러 파일 다운로드"
+		// 를 한 번 묻고, 허용하면 전부 받아진다.
+		for (const t0 of targets) {
+			browserDownload(t0.url, t0.name);
+		}
+		// 허용 프롬프트를 놓치면 조용히 1개만 받고 끝난다. 다만 **차단됐다고
+		// 단정하지는 않는다** — 우리는 결과를 알 수 없고 대개는 정상 저장된다.
+		// 그래서 오류(빨간 문구)가 아니라 정보 토스트로 알린다.
+		if (targets.length > 1) {
+			showToast(t('attach.downloadAllMulti', $locale).replace('{0}', String(targets.length)), 'info');
 		}
 	}
 </script>
