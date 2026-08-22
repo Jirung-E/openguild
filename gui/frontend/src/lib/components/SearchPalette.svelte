@@ -760,6 +760,9 @@
 	.row.expanded .pills,
 	.row:global(.collapsing) .pills {
 		flex-direction: column;
+		/* 세로로 쌓이면 교차축이 가로가 된다 — 종류 칩과 slug 칩의 폭이 달라
+		   왼쪽 정렬이면 들쭉날쭉해 보인다. 서로 가운데를 맞춘다. */
+		align-items: center;
 	}
 	/* DEV-362 후속: slug 칩도 종류 색을 따른다. 색 자체는 `.pills` 에
 	   `--kind-c` 로 한 번만 정하고 칩들이 그걸 참조한다 — `.ptype` 의 종류별
@@ -779,18 +782,21 @@
 	/* slug 는 식별자라 줄바꿈/말줄임 없이 통째로 보여야 한다.
 	   배경은 종류 칩(14%)보다 옅은 8% — 같은 색 계열이되 종류 칩이 먼저
 	   읽히도록 위계를 남긴다. */
+	/* slug 칩은 앱 전역의 quest_id 뱃지와 **같은 공식**을 쓴다. QuestListItem /
+	   QuestBoard 가 공유하는 형태 — 타원(20px) + 배경 18% + 테두리 40%.
+	   (QuestCombobox 만 12px/16% 로 조금 작다.) 팔레트 행은 조밀하므로 크기는
+	   그중 작은 QuestBoard 쪽(0.7rem / 0.15rem 0.5rem)에 맞춘다.
+	   테두리가 이 공식의 핵심이다 — 빼면 같은 색이어도 다른 칩처럼 보인다. */
 	.pslug {
 		flex: none;
-		font-size: 0.68rem;
-		font-weight: 600;
-		/* 다른 화면(QuestListItem/QuestBoard/QuestCombobox)의 quest_id 뱃지와 같은
-		   타원형. 좌우 여백도 곡률에 맞춰 조금 넓힌다 — 4px 각진 칩의 여백
-		   그대로면 글자가 곡면에 붙어 보인다. */
+		padding: 0.15rem 0.5rem;
 		border-radius: 20px;
-		padding: 0.1rem 0.5rem;
+		font-size: 0.7rem;
+		font-weight: 500;
 		white-space: nowrap;
 		color: var(--kind-c, var(--text-muted));
-		background: color-mix(in srgb, var(--kind-c, var(--text-muted)) 8%, transparent);
+		background: color-mix(in srgb, var(--kind-c, var(--text-muted)) 18%, transparent);
+		border: 1px solid color-mix(in srgb, var(--kind-c, var(--text-muted)) 40%, transparent);
 	}
 	.ptype.quest {
 		color: var(--accent);
