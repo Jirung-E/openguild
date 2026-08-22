@@ -314,7 +314,7 @@ fn safe_name_part(raw: &str) -> String {
 fn content_disposition(name: &str) -> String {
     let ascii: String = name
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') { c } else { '_' })
+        .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '[' | ']') { c } else { '_' })
         .collect();
     let encoded: String = name
         .as_bytes()
@@ -336,7 +336,7 @@ fn content_disposition(name: &str) -> String {
 fn zip_download_name(store: &Store, doc_id: &str) -> String {
     let guild = safe_name_part(&openguild_core::recents::guess_name(&store.paths.guild_root));
     let doc = safe_name_part(doc_id);
-    format!("{guild}_{doc}_attachments.zip")
+    format!("[{guild}]_{doc}_attachments.zip")
 }
 
 /// `GET /api/quests/by/{slug}/attachments.zip`
