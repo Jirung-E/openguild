@@ -93,6 +93,19 @@ per-type triggers, and skip everything else (don't spam the guild):
 > one. Never create or rename statuses just to satisfy this rule.
 
 1. **Create**: `openguild quest new --type <PREFIX> --title "..." [--description-file <PATH>] [--urgency 1-4] [--parent <slug>]`
+
+   **Wire up relations right away.** A `[[…]]` in the body is a reader's link —
+   it does *not* appear in the board's dependency graph, the tree, or
+   `--has-prereq` filters. If the new quest depends on an existing one, add the
+   prerequisite in the same breath:
+
+   ```bash
+   openguild quest prereq add <new-slug> <prereq-slug>   # B needs A finished first
+   openguild quest new ... --parent <slug>               # B is a piece of A
+   ```
+
+   `quest new` takes `--parent` but has no `--prereq` — prerequisites need that
+   extra command, which is easy to forget.
    - Use `--description-file <UTF8-PATH>` for any non-ASCII body text — piping
      text through stdin/shell quoting can mangle encoding.
 2. **Start work**: `openguild quest start <slug>` (→ In Progress) — *before*
