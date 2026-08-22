@@ -206,7 +206,53 @@ fn attach_parent_console() {
     }
 }
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
+#[cfg_attr(mobile, tauri::mobile_entry_point)]/// BUG-236 후속: placeholder 가 남긴 흔적 정리 (recents 항목 + 마커 디렉터리).
+///
+/// 실패해도 조용히 넘어간다 — 정리는 부가 작업이고, 이것 때문에 앱이 못 뜨면
+/// 훨씬 나쁘다.
+fn cleanup_welcome_placeholder_leftovers() {
+    let ph = welcome_placeholder_path();
+
+    // (1) recents 에 등록된 항목 제거.
+    if let Ok(list) = openguild_core::recents::list() {
+        for r in list {
+            if is_welcome_placeholder(std::path::Path::new(&r.path)) {
+                let _ = openguild_core::recents::remove(&r.path);
+                eprintln!("[openguild-gui] BUG-236: recents 에서 placeholder 항목 제거");
+            }
+        }
+    }
+
+    // (2) 예전 빌드가 만든 `.guild/` 마커 제거 — 이게 남아 있으면
+    //     `has_guild_marker` 가 통과해 다시 등록되는 경로가 살아난다.
+    //     **placeholder 경로 하위만** 지운다(임시 디렉터리의 고정 이름).
+    let marker = ph.join(".guild");
+    if marker.is_dir() {
+        match std::fs::remove_dir_all(&marker) {
+            Ok(()) => eprintln!("[openguild-gui] BUG-236: placeholder 마커 잔재 제거"),
+            Err(e) => eprintln!("[openguild-gui] warn: placeholder 마커 제거 실패 — {e}"),
+        }
+    }
+}
+
+/// BUG-236: Welcome / Uninit 이 in-memory Store 를 열 때 쓰는 **가짜** 길드 경로.
+///
+/// 진짜 길드가 아니므로 recents 등록·길드 열기 대상이 되면 안 된다. 경로 문자열이
+/// 여러 곳에 흩어지면 한쪽만 고치는 사고가 나므로 여기 한 곳에서만 만든다.
+pub fn welcome_placeholder_path() -> std::path::PathBuf {
+    std::env::temp_dir().join("openguild-welcome-placeholder")
+}
+
+/// BUG-236: 그 placeholder 경로인가? 비교는 정규화한 문자열로 한다
+/// (`/private/var/...` ↔ `/var/...` 같은 심볼릭 링크 차이를 흡수).
+pub fn is_welcome_placeholder(p: &std::path::Path) -> bool {
+    let norm = |x: &std::path::Path| {
+        openguild_core::recents::normalize_abs(&std::fs::canonicalize(x).unwrap_or_else(|_| x.to_path_buf()))
+    };
+    norm(p) == norm(&welcome_placeholder_path())
+}
+
+
 pub fn run() {
     // BUG-144: Linux(WebKitGTK) 전반 버벅임 완화 — WebKitGTK 2.4x 의 DMABUF
     // renderer 가 특정 드라이버(특히 NVIDIA/일부 Mesa) 조합에서 GPU 가속이
@@ -295,7 +341,7 @@ pub fn run() {
             // placeholder (디렉토리 만들기 위함이지만 in-memory pool 은 디스크
             // 에 안 씀).
             None => {
-                let tmp = std::env::temp_dir().join("openguild-welcome-placeholder");
+                let tmp = welcome_placeholder_path();
                 Store::open_in_memory(&tmp).await
             }
         }
@@ -305,6 +351,14 @@ pub fn run() {
     // DEV-299: GUI 도 장수 프로세스 — auto-snapshot 을 백그라운드로 돌려
     // 상태 변경/관계 변경이 스냅샷 생성(~2초) 때문에 멈추지 않게 한다.
     store.set_background_snapshots(true);
+
+    // BUG-236 후속: 이미 등록돼 버린 placeholder 항목과, 예전 빌드가 남긴 마커
+    // 잔재를 시동 때 한 번 치운다.
+    //
+    // 1차 수정은 "앞으로 안 생기게" 만 했다. 그런데 그 이전 빌드를 쓰던 환경에는
+    // recents 항목과 `.guild/` 마커가 이미 남아 있고, **아무도 지우지 않는다** —
+    // 사용자 입장에선 고쳤다는데 목록에 계속 보인다. 스스로 치워야 끝난다.
+    cleanup_welcome_placeholder_leftovers();
 
     // Recent guild 자동 등록 (DEV-006). Welcome / Uninit 은 placeholder 라 등록 안 함.
     if let Some(p) = &store_path
@@ -578,6 +632,44 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// BUG-236 후속: placeholder 경로 판별. 경로 문자열이 흩어지면 한쪽만
+    /// 고치는 사고가 나므로, 판별이 실제로 그 경로를 집는지 고정해 둔다.
+    #[test]
+    fn detects_welcome_placeholder_path() {
+        let ph = welcome_placeholder_path();
+        assert!(is_welcome_placeholder(&ph), "placeholder 자신을 못 알아봄");
+        // 심볼릭 링크 차이(/var ↔ /private/var)를 흡수하는지 — mac 에서 실제로
+        // 두 표기가 다 나온다.
+        let alt = std::path::Path::new("/private").join(
+            ph.strip_prefix("/").unwrap_or(&ph),
+        );
+        if alt.exists() || ph.starts_with("/var") {
+            assert!(is_welcome_placeholder(&alt) || is_welcome_placeholder(&ph));
+        }
+    }
+
+    /// 진짜 길드 경로는 placeholder 로 오인하면 안 된다.
+    #[test]
+    fn real_guild_path_is_not_placeholder() {
+        let dir = fresh_tmp("not-placeholder");
+        assert!(!is_welcome_placeholder(&dir));
+    }
+
+    /// 잔재 마커를 실제로 지우는지. (recents 는 사용자 홈을 건드리므로
+    /// 여기서는 마커 정리만 검증한다.)
+    #[test]
+    fn cleanup_removes_leftover_marker_dir() {
+        let ph = welcome_placeholder_path();
+        let marker = ph.join(".guild");
+        std::fs::create_dir_all(&marker).unwrap();
+        std::fs::write(marker.join("index.db"), b"stale").unwrap();
+        assert!(marker.is_dir());
+
+        cleanup_welcome_placeholder_leftovers();
+
+        assert!(!marker.exists(), "예전 빌드가 남긴 마커가 지워져야 한다");
+    }
 
     fn fresh_tmp(label: &str) -> PathBuf {
         let ns = std::time::SystemTime::now()

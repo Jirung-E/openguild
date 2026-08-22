@@ -1014,6 +1014,18 @@ pub fn open_guild_in_current_window(
     if !p.exists() {
         return Err(format!("path 가 존재하지 않습니다: {path}"));
     }
+    // BUG-236 후속: **마커 유무와 무관하게** placeholder 는 절대 열지 않는다.
+    //
+    // 1차 수정은 `open_in_memory` 가 `.guild/` 마커를 만들지 않게 해서, 아래
+    // `has_guild_marker` 검사가 걸러주기를 기대했다. 그런데 수정 **이전** 빌드가
+    // 이미 만들어 둔 마커가 디스크에 남아 있으면 그 검사를 통과해 버린다 —
+    // 실제로 사용자 환경에서 8/21 자 잔재 때문에 계속 재등록됐다.
+    // 경로 자체로 막으면 잔재가 있든 없든 안전하다.
+    if crate::is_welcome_placeholder(p) {
+        return Err(
+            "내부 placeholder 경로는 길드로 열 수 없습니다 (welcome 화면 전용).".to_string(),
+        );
+    }
     // DEV-052 후속 (5회차): `.guild` 마커가 없으면 Store::open 이 빈 길드를
     // 새로 만들어버림 → 사용자 실수로 보일 수 있음. 명시적 에러로 막고,
     // "이 위치 초기화" 흐름 (init_and_open_guild) 을 거치게 유도.
