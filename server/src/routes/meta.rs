@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     Json,
 };
 use serde::{Deserialize, Serialize};
@@ -266,4 +266,48 @@ pub async fn list_backlinks(
     }
     let rows = openguild_core::ops::backlinks::list_backlinks(&store.index_pool, &kind, &id).await?;
     Ok(Json(rows))
+}
+
+/// REQ-009: `GET /api/search?q=…&in=body,comment,attachment[,memo]&limit=N`
+///
+/// **기본 검색(`/api/quests?search=`)과 별개**다. 그쪽은 title/description/slug
+/// 만 보는 빠른 경로로 두고, 이쪽이 댓글·첨부 이름까지 훑는다.
+///
+/// `in` 을 생략하면 **메모를 뺀** 기본 영역만 본다 — 메모는 gitignore 되는 개인
+/// 기록이고 이 서버는 인증이 없다. 명시적으로 요청해야 포함된다.
+#[derive(Debug, Deserialize)]
+pub struct SearchQuery {
+    pub q: String,
+    pub r#in: Option<String>,
+    pub limit: Option<usize>,
+}
+
+pub async fn enhanced_search(
+    State(store): State<Store>,
+    Query(p): Query<SearchQuery>,
+) -> AppResult<Json<Vec<openguild_core::ops::search::SearchHit>>> {
+    use openguild_core::ops::search::SearchField;
+    let fields: Vec<SearchField> = match p.r#in.as_deref() {
+        Some(raw) if !raw.trim().is_empty() => {
+            let mut out = Vec::new();
+            for part in raw.split(',') {
+                match SearchField::parse(part) {
+                    Some(f) if !out.contains(&f) => out.push(f),
+                    Some(_) => {}
+                    // 오타를 조용히 무시하면 "왜 안 나오지" 로 이어진다.
+                    None => {
+                        return Err(openguild_core::error::AppError::BadRequest(format!(
+                            "알 수 없는 검색 영역: '{}' (body / comment / attachment / memo)",
+                            part.trim()
+                        ))
+                        .into());
+                    }
+                }
+            }
+            out
+        }
+        _ => SearchField::defaults(),
+    };
+    let hits = openguild_core::ops::search::search(&store, &p.q, &fields, p.limit).await?;
+    Ok(Json(hits))
 }

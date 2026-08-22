@@ -229,6 +229,21 @@ enum Command {
         #[command(subcommand)]
         sub: IndexCmd,
     },
+    #[command(about = tf!(
+        "강화된 검색 — 본문뿐 아니라 댓글 / 첨부 이름까지 훑는다. 메모는 개인 기록이라 --in memo 로 명시할 때만.",
+        "Enhanced search — scans comments and attachment names, not just bodies. Memos are private: only with --in memo."
+    ))]
+    Search {
+        #[arg(help = tf!("검색어. 공백으로 나뉜 토큰이 **모두** 있어야 매치(AND).", "Query. All whitespace-separated tokens must match (AND)."))]
+        query: Vec<String>,
+        #[arg(long = "in", value_delimiter = ',', help = tf!(
+            "검색 영역 (쉼표 구분): body / comment / attachment / memo. 기본은 memo 를 뺀 나머지 — 메모는 gitignore 되는 개인 기록이라 명시해야 포함된다.",
+            "Fields to search (comma-separated): body / comment / attachment / memo. Defaults to everything except memo — memos are gitignored personal notes and must be requested explicitly."
+        ))]
+        r#in: Option<Vec<String>>,
+        #[arg(long, help = tf!("최대 N 건.", "Max N hits."))]
+        limit: Option<usize>,
+    },
     #[command(about = tf!("길드 전체 댓글 횡단 검색 — quest + campaign, 기본 오래된 순 20개", "Search comments across the guild — quest + campaign, oldest 20 by default"))]
     Comments {
         #[arg(long, help = tf!("작성자 일치 (대소문자 무시 정확 일치).", "Exact author match (case-insensitive)."))]
@@ -2037,6 +2052,29 @@ impl Backend {
                 unresolved,
             },
         )))
+    }
+
+    /// REQ-009: 강화된 검색. HTTP / 로컬 파리티 — 서버 라우트와 core 호출이
+    /// 같은 결과를 낸다.
+    fn search_enhanced(
+        &self,
+        query: &str,
+        fields: &[openguild_core::ops::search::SearchField],
+        limit: Option<usize>,
+    ) -> Result<Vec<openguild_core::ops::search::SearchHit>> {
+        if let Backend::Http(c) = self {
+            let mut q: Vec<(&str, String)> = vec![("q", query.to_string())];
+            let joined = fields.iter().map(|f| f.as_str()).collect::<Vec<_>>().join(",");
+            q.push(("in", joined));
+            if let Some(n) = limit {
+                q.push(("limit", n.to_string()));
+            }
+            return c.get_query("/api/search", &q);
+        }
+        let Backend::Local(l) = self else { unreachable!() };
+        Self::map_err(
+            l.rt.block_on(openguild_core::ops::search::search(&l.store, query, fields, limit)),
+        )
     }
 
     fn ping(&self) -> Result<String> {
@@ -5781,6 +5819,47 @@ fn run() -> Result<()> {
             IndexCmd::Rebuild => run_reindex_cmd(&c, cli.json)?,
             IndexCmd::Vacuum => run_vacuum_cmd(&c, cli.json)?,
         },
+        Command::Search { query, r#in, limit } => {
+            use openguild_core::ops::search::SearchField;
+            let q = query.join(" ");
+            let fields: Vec<SearchField> = match r#in {
+                Some(list) => {
+                    let mut out = Vec::new();
+                    for raw in &list {
+                        match SearchField::parse(raw) {
+                            Some(f) if !out.contains(&f) => out.push(f),
+                            Some(_) => {}
+                            // 오타를 조용히 무시하면 "왜 안 찾히지" 로 이어진다.
+                            None => anyhow::bail!(tf!(
+                                "알 수 없는 검색 영역: '{}' (body / comment / attachment / memo)",
+                                "unknown search field: '{}' (body / comment / attachment / memo)",
+                                raw
+                            )),
+                        }
+                    }
+                    out
+                }
+                None => SearchField::defaults(),
+            };
+            let hits = c.search_enhanced(&q, &fields, limit)?;
+            if cli.json {
+                json_println!(serde_json::to_value(&hits)?);
+            } else if hits.is_empty() {
+                println!("{}", tf!("(결과 없음)", "(no results)"));
+            } else {
+                for h in &hits {
+                    println!("{:<9} {:<22} [{}]", h.kind, h.id, h.matched_in.join(","));
+                    if !h.title.is_empty() && h.title != h.id {
+                        println!("  {}", h.title);
+                    }
+                    if !h.excerpt.is_empty() {
+                        println!("  {}", h.excerpt);
+                    }
+                }
+                println!();
+                println!("{}", tf!("{}건", "{} hit(s)", hits.len()));
+            }
+        }
         Command::Comments {
             author, since, until, grep, discussion, unresolved,
             top_only, reply_to, reverse, tree, limit, summary,

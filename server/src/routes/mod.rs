@@ -51,6 +51,8 @@ pub fn create_router(store: Store) -> Router {
         // meta
         .route("/api/guild-info", get(meta::get_guild_info))
         .route("/api/quest-types", get(meta::list_quest_types))
+        // REQ-009: 강화된 검색 (댓글/첨부 이름/메모까지). 기본 검색과 별개 경로.
+        .route("/api/search", get(meta::enhanced_search))
         // REQ-008: 이 문서를 참조하는 문서 (cross-link backlink).
         .route("/api/backlinks/{kind}/{id}", get(meta::list_backlinks))
         .route("/api/quest-statuses", get(meta::list_quest_statuses))
