@@ -749,9 +749,15 @@
 		font-size: 0.68rem;
 		font-weight: 600;
 		border-radius: 4px;
-		padding: 0.02rem 0.35rem;
-		/* slug 칩에는 테두리가 있어 그대로 두면 이쪽이 2px 낮다. 나란히 놓이는
-		   칩이라 높이가 어긋나 보인다 — 투명 테두리로 상자 높이만 맞춘다. */
+		/* 나란히 놓이는 칩이라 **상자 높이는** slug 칩과 같아야 한다. 모양(각진
+		   4px, sans)은 일부러 다르게 둔다 — 이건 식별자가 아니라 분류 라벨이다. */
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		height: 17px;
+		padding: 0 0.35rem;
+		box-sizing: border-box;
+		line-height: 1;
 		border: 1px solid transparent;
 	}
 	/* 타입별 색 — QuestBoard / 문서 톤과 맞춤. */
@@ -791,23 +797,29 @@
 	/* slug 는 식별자라 줄바꿈/말줄임 없이 통째로 보여야 한다.
 	   배경은 종류 칩(14%)보다 옅은 8% — 같은 색 계열이되 종류 칩이 먼저
 	   읽히도록 위계를 남긴다. */
-	/* slug 칩은 앱 전역의 quest_id 뱃지와 **같은 공식**을 쓴다. QuestListItem /
-	   QuestBoard 가 공유하는 형태 — 타원(20px) + 배경 18% + 테두리 40%.
-	   (QuestCombobox 만 12px/16% 로 조금 작다.) 팔레트 행은 조밀하므로 크기는
-	   그중 작은 QuestBoard 쪽(0.7rem / 0.15rem 0.5rem)에 맞춘다.
-	   테두리가 이 공식의 핵심이다 — 빼면 같은 색이어도 다른 칩처럼 보인다. */
+	/* slug 칩은 **보드 노드의 slug 칩**(`QuestBoard` 의 `.node-pill.mono`)과 같은
+	   공식을 쓴다. 같은 quest_id 를 보여주는 칩이 화면마다 모양·글꼴이 다르면
+	   같은 것으로 안 읽힌다.
+	   그쪽 값 그대로: monospace / 10px / 600 / 높이 17px 고정 / radius 9px /
+	   배경 16% / 테두리 55% / line-height 1.
+	   `height` + `line-height: 1` 이 함께 있어 줄 간격 상속(전역 1.6)에 영향받지
+	   않는다 — 높이가 행마다 흔들리지 않는 이유다. */
 	.pslug {
 		flex: none;
-		/* 세로만 얇게 — 가로 여백과 곡률은 전역 뱃지 공식 그대로 둔다. 팔레트
-		   행은 36px 로 조밀해 세로 두께가 그대로면 행을 꽉 채워 답답하다. */
-		padding: 0.02rem 0.5rem;
-		border-radius: 20px;
-		font-size: 0.68rem;
-		font-weight: 500;
+		display: inline-flex;
+		align-items: center;
+		height: 17px;
+		padding: 0 7px;
+		box-sizing: border-box;
+		border-radius: 9px;
+		font-family: 'SFMono-Regular', Consolas, monospace;
+		font-size: 10px;
+		font-weight: 600;
+		line-height: 1;
 		white-space: nowrap;
 		color: var(--kind-c, var(--text-muted));
-		background: color-mix(in srgb, var(--kind-c, var(--text-muted)) 18%, transparent);
-		border: 1px solid color-mix(in srgb, var(--kind-c, var(--text-muted)) 40%, transparent);
+		background: color-mix(in srgb, var(--kind-c, var(--text-muted)) 16%, transparent);
+		border: 1px solid color-mix(in srgb, var(--kind-c, var(--text-muted)) 55%, transparent);
 	}
 	.ptype.quest {
 		color: var(--accent);
