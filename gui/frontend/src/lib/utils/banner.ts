@@ -52,6 +52,27 @@ export async function campaignBannerUrl(
  * DEV-069: `.guild/` 상대 경로 (`attachments/foo.png` / `assets/...`) → 표시
  * 가능 URL. markdown 본문의 로컬 이미지 / 동영상 참조 해석용.
  */
+/**
+ * BUG-241: 문서의 첨부 전체를 zip 으로 받는 URL.
+ *
+ * 폴더에 직접 쓰는 경로(File System Access)를 쓸 수 없는 환경 — 폰에서
+ * `http://<LAN IP>` 로 접속하면 평문 HTTP 라 보안 컨텍스트가 아니고 모바일
+ * 브라우저는 그 API 를 지원하지도 않는다 — 에서 첨부를 전부 받는 유일한 방법이
+ * 다운로드를 1건으로 만드는 것이다.
+ *
+ * base URL 계산은 이 파일 안에 모아둔다(`httpBase` 는 여기 전용).
+ */
+export function guildAttachmentsZipUrl(
+	scope: 'quest' | 'campaign' | 'library',
+	slug: string
+): string {
+	const id = encodeURIComponent(slug);
+	const base = httpBase();
+	if (scope === 'campaign') return `${base}/api/campaigns/${id}/attachments.zip`;
+	if (scope === 'library') return `${base}/api/library/${id}/attachments.zip`;
+	return `${base}/api/quests/by/${id}/attachments.zip`;
+}
+
 export async function guildFileUrl(relPath: string): Promise<string> {
 	if (isTauriLocal()) {
 		const { convertFileSrc } = await import('@tauri-apps/api/core');

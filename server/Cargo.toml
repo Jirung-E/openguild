@@ -48,6 +48,8 @@ anyhow = "1"
 # 로깅
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+async_zip = { version = "0.0.18", default-features = false, features = ["tokio"] }
+tokio-util = { version = "0.7.19", features = ["compat", "io"] }
 
 [dev-dependencies]
 http-body-util = "0.1"

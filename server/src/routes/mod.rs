@@ -230,6 +230,22 @@ pub fn create_router(store: Store) -> Router {
             "/api/library/{book_id}/attachments",
             post(attachments::add_book_attachment).delete(attachments::remove_book_attachment),
         )
+        // BUG-241: 첨부 일괄 다운로드 — zip 스트리밍. 폰에서 `http://<LAN IP>` 로
+        // 접속하면 보안 컨텍스트가 아니라 폴더 쓰기(File System Access)를 쓸 수
+        // 없고, 모바일 브라우저는 여러 파일 자동 다운로드도 막는다. 다운로드를
+        // 1건으로 만드는 이 경로가 그 환경의 유일한 방법이다.
+        .route(
+            "/api/quests/by/{slug}/attachments.zip",
+            get(attachments::quest_attachments_zip),
+        )
+        .route(
+            "/api/campaigns/{slug}/attachments.zip",
+            get(attachments::campaign_attachments_zip),
+        )
+        .route(
+            "/api/library/{book_id}/attachments.zip",
+            get(attachments::book_attachments_zip),
+        )
         // quests
         .route("/api/quests", get(quests::list_quests).post(quests::create_quest))
         .route(

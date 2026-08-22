@@ -7,14 +7,13 @@
 -->
 <script lang="ts">
 	import Icon from './Icon.svelte';
-	import { guildFileUrl } from '$lib/utils/banner';
+	import { guildFileUrl, guildAttachmentsZipUrl } from '$lib/utils/banner';
 	import { pickAndUploadAttachments, type AttachQueueItem } from '$lib/utils/editor-attach';
 	import { detectEnvironment } from '$lib/api/transport';
 	import { getRemoteServerUrl } from '$lib/stores/remoteServer';
 	import { api } from '$lib/api/client';
 	// DEV-205: 첨부 섹션 i18n.
 	import { locale, t } from '$lib/stores/locale';
-	import { showToast } from '$lib/stores/toast';
 
 	interface Attachment {
 		path: string;
@@ -279,27 +278,27 @@
 				}
 				return;
 			} catch (e) {
-				// 사용자가 폴더 선택을 취소한 경우는 오류가 아니다.
+				// 사용자가 폴더 선택을 취소한 경우는 오류가 아니다 — 조용히 끝낸다.
 				if ((e as { name?: string })?.name === 'AbortError') return;
-				error = `${t('attach.downloadAllFailed', $locale)}: ${e instanceof Error ? e.message : String(e)}`;
-				return;
+				// 그 외 실패(권한 거부·쓰기 실패 등)는 여기서 끝내지 않고 아래 zip
+				// 경로로 넘어간다 — 어떤 경로로도 못 받는 상황을 남기지 않는다.
+				console.warn('[attach] 폴더 쓰기 실패 — zip 으로 대체', e);
 			} finally {
 				busy = false;
 			}
 		}
 
-		// 폴백: 폴더 쓰기를 못 하는 환경(Safari/iOS 등). 제스처가 살아 있는 동안
-		// **await 없이** 연속 클릭한다 — 그러면 브라우저가 "여러 파일 다운로드"
-		// 를 한 번 묻고, 허용하면 전부 받아진다.
-		for (const t0 of targets) {
-			browserDownload(t0.url, t0.name);
-		}
-		// 허용 프롬프트를 놓치면 조용히 1개만 받고 끝난다. 다만 **차단됐다고
-		// 단정하지는 않는다** — 우리는 결과를 알 수 없고 대개는 정상 저장된다.
-		// 그래서 오류(빨간 문구)가 아니라 정보 토스트로 알린다.
-		if (targets.length > 1) {
-			showToast(t('attach.downloadAllMulti', $locale).replace('{0}', String(targets.length)), 'info');
-		}
+		// 폴백: 폴더 쓰기를 못 하는 환경 → **zip 1건**.
+		//
+		// 폰에서 `http://<LAN IP>` 로 접속하면 평문 HTTP 라 보안 컨텍스트가
+		// 아니어서 위 API 가 아예 없고, 모바일 브라우저는 File System Access 를
+		// 지원하지도 않는다. 게다가 여러 파일 자동 다운로드도 막는다 — 실제로
+		// 연속 클릭 방식은 폰에서 1개만 저장되는 것이 확인됐다.
+		//
+		// 그 환경에서 첨부를 다 받게 하려면 **다운로드를 1건으로 만드는 것** 밖에
+		// 없다. 압축 해제라는 비용이 있지만, 받지 못하는 것보다는 낫다.
+		// 서버가 무압축(store)으로 스트리밍하므로 대용량 첨부도 안전하다.
+		browserDownload(guildAttachmentsZipUrl(scope, slug), `${slug}-attachments.zip`);
 	}
 </script>
 

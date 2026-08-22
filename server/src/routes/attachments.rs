@@ -216,3 +216,111 @@ pub async fn remove_book_attachment(
         ops::remove_book_attachment(&store, &book_id, &q.path).await?,
     ))
 }
+
+// ─── BUG-241: 첨부 일괄 다운로드 (zip 스트리밍) ───────────────────────────
+//
+// 브라우저 모드의 '전체 다운로드' 는 첨부마다 `<a download>` 를 클릭했는데,
+// 브라우저는 제스처와 붙어 있는 다운로드만 허용하므로 첫 파일만 저장됐다.
+//
+// 데스크톱/보안 컨텍스트에서는 프론트가 `showDirectoryPicker` 로 폴더에 직접
+// 써서 압축 자체가 필요 없다. 하지만 **폰에서 `http://<LAN IP>` 로 접속하면**
+// 그 API 가 아예 없다 — 평문 HTTP 라 보안 컨텍스트가 아니고, 모바일 브라우저는
+// File System Access 를 지원하지도 않는다. 그 경로에서 여러 파일을 받게 하는
+// 방법은 **다운로드를 1건으로 만드는 것** 뿐이라 zip 으로 묶는다.
+//
+// 두 가지를 지킨다:
+//   1. **스트리밍** — 전체를 메모리에 올리지 않는다. BUG-188 의 1.5GB 첨부가
+//      있고, 폰은 메모리가 더 빠듯하다.
+//   2. **무압축(store)** — 첨부는 이미 png/zip/mp4 같은 압축 포맷이 대부분이라
+//      재압축은 CPU 만 쓰고 크기는 거의 그대로다.
+
+use async_zip::{tokio::write::ZipFileWriter, Compression, ZipEntryBuilder};
+use axum::http::header;
+
+/// 한 문서의 첨부 전체를 zip 으로 스트리밍한다.
+async fn stream_attachments_zip(
+    store: Store,
+    items: Vec<openguild_core::models::QuestAttachment>,
+    download_name: String,
+) -> AppResult<axum::response::Response> {
+    use axum::response::IntoResponse;
+
+    if items.is_empty() {
+        return Err(openguild_core::error::AppError::NotFound("첨부 없음".into()).into());
+    }
+
+    // duplex 로 writer↔reader 를 잇는다. zip 을 쓰는 쪽은 별도 task 에서 돌고,
+    // 응답 본문은 reader 를 그대로 흘려보낸다 — 어느 쪽도 전체를 들고 있지 않다.
+    let (w, r) = tokio::io::duplex(64 * 1024);
+
+    tokio::spawn(async move {
+        let mut zip = ZipFileWriter::with_tokio(w);
+        for a in items {
+            // REQ-002 와 같은 allowlist 검증 — zip 경로로 우회되면 안 된다.
+            let Ok(rel) = openguild_core::ops::attachments::validate_guild_rel(&a.path) else {
+                continue;
+            };
+            let path = store.paths.dot_guild().join(&rel);
+            let Ok(mut f) = tokio::fs::File::open(&path).await else {
+                continue; // 사이드카엔 있으나 파일이 사라진 경우 — 건너뛴다.
+            };
+            let entry = ZipEntryBuilder::new(a.name.clone().into(), Compression::Stored);
+            let Ok(mut ew) = zip.write_entry_stream(entry).await else {
+                break;
+            };
+            // `EntryStreamWriter` 는 futures 쪽 AsyncWrite 라, tokio File 을
+            // compat 으로 감싸 futures 계열 copy 로 흘린다.
+            use tokio_util::compat::TokioAsyncReadCompatExt;
+            let mut src = (&mut f).compat();
+            if futures_util::io::copy(&mut src, &mut ew).await.is_err() {
+                break;
+            }
+            if ew.close().await.is_err() {
+                break;
+            }
+        }
+        // 실패해도 여기서 할 수 있는 건 스트림을 닫는 것뿐이다. 클라이언트는
+        // 잘린 zip 을 받고 압축 해제 시 알게 된다.
+        let _ = zip.close().await;
+    });
+
+    let body = Body::from_stream(tokio_util::io::ReaderStream::new(r));
+    Ok((
+        [
+            (header::CONTENT_TYPE, "application/zip".to_string()),
+            (
+                header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"{download_name}\""),
+            ),
+        ],
+        body,
+    )
+        .into_response())
+}
+
+/// `GET /api/quests/by/{slug}/attachments.zip`
+pub async fn quest_attachments_zip(
+    State(store): State<Store>,
+    Path(slug): Path<String>,
+) -> AppResult<axum::response::Response> {
+    let items = ops::list_quest_attachments(&store, &slug);
+    stream_attachments_zip(store.clone(), items, format!("{slug}-attachments.zip")).await
+}
+
+/// `GET /api/campaigns/{slug}/attachments.zip`
+pub async fn campaign_attachments_zip(
+    State(store): State<Store>,
+    Path(slug): Path<String>,
+) -> AppResult<axum::response::Response> {
+    let items = ops::list_campaign_attachments(&store, &slug);
+    stream_attachments_zip(store.clone(), items, format!("{slug}-attachments.zip")).await
+}
+
+/// `GET /api/library/{book_id}/attachments.zip`
+pub async fn book_attachments_zip(
+    State(store): State<Store>,
+    Path(book_id): Path<String>,
+) -> AppResult<axum::response::Response> {
+    let items = ops::list_book_attachments(&store, &book_id);
+    stream_attachments_zip(store.clone(), items, format!("{book_id}-attachments.zip")).await
+}
