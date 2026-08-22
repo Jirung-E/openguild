@@ -100,12 +100,13 @@ per-type triggers, and skip everything else (don't spam the guild):
    prerequisite in the same breath:
 
    ```bash
-   openguild quest prereq add <new-slug> <prereq-slug>   # B needs A finished first
-   openguild quest new ... --parent <slug>               # B is a piece of A
+   openguild quest new ... --prereq <slug>[,<slug>]   # B needs A finished first
+   openguild quest new ... --parent <slug>            # B is a piece of A
+   openguild quest prereq add <slug> <prereq-slug>    # adding one later
    ```
 
-   `quest new` takes `--parent` but has no `--prereq` — prerequisites need that
-   extra command, which is easy to forget.
+   An unknown slug in `--prereq` fails the whole create, so you never end up with
+   a half-wired quest.
    - Use `--description-file <UTF8-PATH>` for any non-ASCII body text — piping
      text through stdin/shell quoting can mangle encoding.
 2. **Start work**: `openguild quest start <slug>` (→ In Progress) — *before*

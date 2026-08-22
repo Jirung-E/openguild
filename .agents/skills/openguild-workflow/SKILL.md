@@ -101,20 +101,21 @@ openguild --guild <recents 에서 찾은 path> quest list --status testing
 관계를 안 걸어, 보드에서 셋이 떠 있는 것처럼 보였다.)
 
 ```bash
-openguild quest new --type REQ --title "..." --parent {부모}     # 서브퀘스트로 생성
-openguild quest prereq add {새ID} {선행ID}                        # 선행 관계는 생성 후 별도
+openguild quest new --type REQ --title "..." --parent {부모}        # 서브퀘스트로 생성
+openguild quest new --type REQ --title "..." --prereq {선행ID}      # 선행 관계 (쉼표로 다중)
+openguild quest prereq add {ID} {선행ID}                            # 나중에 추가할 때
 ```
 
 **어느 쪽인지 판단**:
 
 | 관계 | 쓰는 것 |
 |------|---------|
-| B 를 하려면 A 가 **먼저 끝나야** 한다 | `prereq add B A` |
+| B 를 하려면 A 가 **먼저 끝나야** 한다 | `new --prereq A` (또는 `prereq add B A`) |
 | B 가 A 의 **일부**다 (쪼갠 것) | `--parent A` |
 | 그냥 **참고**하면 좋다 | 본문 `[[A]]` 만 |
 
-`quest new` 에는 `--parent` 만 있고 `--prereq` 는 없다 — 선행은 생성 후 한 줄
-더 실행해야 한다. **잊기 쉬우니 생성과 한 묶음으로 처리한다.**
+`--prereq` 는 없는 slug 를 주면 **생성 자체가 막힌다** — 관계 없는 퀘스트가
+반쯤 만들어져 남지 않는다(DEV-365).
 
 ## cross-link `[[…]]` — 보이면 따라가라
 

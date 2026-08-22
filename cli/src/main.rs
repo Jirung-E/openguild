@@ -480,6 +480,13 @@ enum QuestCmd {
         urgency: Option<i64>,
         #[arg(long, help = tf!("부모 퀘스트 슬러그 (서브퀘스트로 생성)", "Parent quest slug (creates as a sub-quest)"))]
         parent: Option<String>,
+        // 생성과 선행 지정이 갈라져 있으면(만든 뒤 `prereq add` 를 따로 실행)
+        // 그 단계를 그냥 건너뛰게 된다 — 본문에 링크만 적고 관계는 안 걸리는
+        // 일이 실제로 반복됐다. 한 번에 끝낼 수 있게 한다.
+        #[arg(long, value_delimiter = ',', num_args = 1..,
+              help = tf!("선행 퀘스트 슬러그 (쉼표 구분 다중 가능). 생성 직후 선행 관계로 연결.",
+                         "Prerequisite quest slug(s), comma-separated. Linked right after creation."))]
+        prereq: Vec<String>,
         #[arg(long, help = tf!("템플릿 이름 (.guild/templates/{{name}}.md). 명시 옵션이 템플릿보다 우선.", "Template name (`.guild/templates/{{name}}.md`). Explicit options override the template."))]
         template: Option<String>,
     },
@@ -7922,6 +7929,7 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
             description_file,
             urgency,
             parent,
+            prereq,
             template,
         } => {
             // DEV-222: --description-file 이면 UTF-8 파일에서 본문 읽기.
@@ -7945,6 +7953,12 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
                 Some(p) => Some(c.id_of(&p)?),
                 None => None,
             };
+            // 선행 slug 는 **생성 전에** 전부 해석한다. 만든 뒤에 없는 slug 를
+            // 발견하면 관계 없는 퀘스트만 남아 사용자가 뒤처리를 해야 한다.
+            let prereq_ids: Vec<(String, i64)> = prereq
+                .iter()
+                .map(|p| c.id_of(p).map(|id| (p.clone(), id)))
+                .collect::<Result<_>>()?;
             let body = CreateQuestRequest {
                 quest_type_id: type_id,
                 title,
@@ -7960,6 +7974,22 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
                 && let Err(e) = c.tag_set(&q.quest_id, tpl_tags)
             {
                 eprintln!("[openguild] {}", tf!("warn: 템플릿 tags 적용 실패 — {e:#}", "warn: failed to apply template tags — {e:#}"));
+            }
+            // 선행 관계 연결. 여기서 실패하면 **에러로 알린다** — 조용히 넘어가면
+            // "걸었다고 생각했는데 안 걸린" 상태가 되어 원래 문제로 되돌아간다.
+            for (slug, pid) in &prereq_ids {
+                c.add_prerequisite(q.id, *pid)
+                    .with_context(|| format!("선행 퀘스트 연결 실패: {slug}"))?;
+            }
+            // 생성 응답(QuestRow)에는 prerequisites 필드가 없다 — 방금 건 관계가
+            // 어디에도 안 보이면 사용자는 안 걸렸다고 읽는다. 사람이 보는 출력에만
+            // 한 줄 덧붙인다(JSON 은 스키마를 바꾸지 않는다 — 파싱하는 쪽이 깨진다).
+            if !json && !prereq_ids.is_empty() {
+                let names: Vec<&str> = prereq_ids.iter().map(|(s, _)| s.as_str()).collect();
+                println!(
+                    "{}",
+                    tf!("  선행 + {}", "  prereq + {}", names.join(", "))
+                );
             }
             // multi-line description 도 그대로 보여줘 사용자가 "잘렸다" 오해 방지.
             print_quest_full(&q, json);
@@ -9046,6 +9076,7 @@ mod tests {
                         title,
                         urgency,
                         parent,
+                        prereq,
                         description,
                         description_file,
                         template,
@@ -9085,6 +9116,7 @@ mod tests {
                         title,
                         urgency,
                         parent,
+                        prereq,
                         description,
                         description_file,
                         template,
@@ -9766,6 +9798,36 @@ mod tests {
     }
 
     #[test]
+    /// DEV-365: `quest new --prereq` 파싱 — 쉼표 다중과 반복 지정 모두.
+    /// 생성과 선행 지정이 갈라져 있으면 그 단계를 건너뛰게 되므로(DEV-361 과
+    /// 같은 이유) 한 번에 받는 것이 계약이다.
+    #[test]
+    fn cli_parse_new_prereq_multi() {
+        let cli = Cli::try_parse_from([
+            "openguild", "quest", "new", "--type", "REQ", "--title", "t",
+            "--prereq", "DEV-001,DEV-002",
+        ])
+        .unwrap();
+        match cli.command {
+            Command::Quest { sub: QuestCmd::New { prereq, .. } } => {
+                assert_eq!(prereq, vec!["DEV-001".to_string(), "DEV-002".to_string()]);
+            }
+            _ => panic!("quest new 로 파싱되어야 함"),
+        }
+    }
+
+    /// 지정하지 않으면 빈 벡터 — 기존 동작과 동일해야 한다.
+    #[test]
+    fn cli_parse_new_without_prereq_is_empty() {
+        let cli =
+            Cli::try_parse_from(["openguild", "quest", "new", "--type", "REQ", "--title", "t"])
+                .unwrap();
+        match cli.command {
+            Command::Quest { sub: QuestCmd::New { prereq, .. } } => assert!(prereq.is_empty()),
+            _ => panic!("quest new 로 파싱되어야 함"),
+        }
+    }
+
     fn cli_parse_prereq_subcommand() {
         let cli = Cli::try_parse_from([
             "openguild", "quest", "prereq", "add", "DEV-001", "DEV-002",
