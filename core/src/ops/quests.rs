@@ -139,6 +139,66 @@ async fn sync_type_counter_file(store: &Store, prefix: &str, number: i64) {
     }
 }
 
+/// REQ-010: 목록 조회 — 첨부 **이름** 검색까지 지원한다.
+///
+/// 첨부는 index.db 캐시가 없고 사이드카 JSON 뿐이라(BUG-188 로 blob 폐기) SQL 로
+/// 직접 걸 수 없다. 사이드카는 *첨부가 있는 문서만* 가지므로 훑는 비용이 작다
+/// (실측: 퀘스트 607개에 사이드카 2개, 0.54ms). 여기서 토큰별 매치 slug 를 만들어
+/// 서비스에 넘긴다.
+///
+/// 이 사전 스캔을 **한 곳에만** 두려고 ops 에 뒀다 — CLI/서버/GUI 세 호출부가
+/// 각자 하면 갈라진다.
+pub async fn list_quests(
+    store: &Store,
+    query: &crate::models::ListQuery,
+) -> AppResult<Vec<QuestRow>> {
+    if !query.search_attachments {
+        return crate::services::quests::list(&store.index_pool, query).await;
+    }
+    let tokens: Vec<String> = query
+        .search
+        .as_deref()
+        .unwrap_or("")
+        .split_whitespace()
+        .filter(|t| !t.is_empty())
+        .map(|t| t.to_lowercase())
+        .collect();
+
+    // 사이드카 전수 스캔 — (slug, 첨부 이름들).
+    let mut per_doc: Vec<(String, Vec<String>)> = Vec::new();
+    if let Ok(rd) = std::fs::read_dir(store.paths.quests_dir()) {
+        for e in rd.flatten() {
+            let p = e.path();
+            let Some(name) = p.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            let Some(slug) = name.strip_suffix(".attachments.json") else {
+                continue;
+            };
+            let names: Vec<String> = crate::ops::attachments::list_quest_attachments(store, slug)
+                .into_iter()
+                .map(|a| a.name)
+                .collect();
+            if !names.is_empty() {
+                per_doc.push((slug.to_string(), names));
+            }
+        }
+    }
+
+    let matches: Vec<Vec<String>> = tokens
+        .iter()
+        .map(|tok| {
+            per_doc
+                .iter()
+                .filter(|(_, names)| names.iter().any(|n| n.to_lowercase().contains(tok)))
+                .map(|(slug, _)| slug.clone())
+                .collect()
+        })
+        .collect();
+
+    crate::services::quests::list_with_attachment_matches(&store.index_pool, query, &matches).await
+}
+
 /// Quest 의 title / description / urgency 수정.
 pub async fn update_quest(store: &Store, id: i64, body: UpdateQuestRequest) -> AppResult<QuestRow> {
     let _ = journal::append(

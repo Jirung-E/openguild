@@ -40,6 +40,19 @@ export const questsApi = {
 	listRecent: (slim = false) =>
 		api.get<Quest[]>(`/api/quests?sort=updated${slim ? '&slim=true' : ''}`),
 
+	/**
+	 * REQ-010: 검색 영역을 넓힌 목록 조회 — 댓글 본문 / 첨부 파일 이름까지.
+	 *
+	 * 목록 화면은 평소 전체를 받아 클라이언트에서 거르지만, 댓글·첨부 이름은
+	 * 클라이언트에 없다. 이 옵션이 켜졌을 때만 서버에 판정을 맡긴다.
+	 */
+	searchWide: (search: string, opts: { comments?: boolean; attachments?: boolean }) => {
+		const p = new URLSearchParams({ search, slim: 'true' });
+		if (opts.comments) p.set('search_comments', 'true');
+		if (opts.attachments) p.set('search_attachments', 'true');
+		return api.get<Quest[]>(`/api/quests?${p.toString()}`);
+	},
+
 	get: (id: number) => api.get<QuestDetail>(`/api/quests/${id}`),
 
 	getBySlug: (slug: string) => api.get<QuestDetail>(`/api/quests/by/${slug}`),

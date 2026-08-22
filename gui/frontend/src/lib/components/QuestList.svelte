@@ -114,6 +114,48 @@
 	// DEV-037: 검색 — URL ?search= 와 ?title_only= 양방향 동기화.
 	let search = $state('');
 	let titleOnly = $state(false);
+	// REQ-010: 검색 영역 확장. 댓글·첨부 이름은 클라이언트에 없어 서버에 판정을
+	// 맡긴다 — 켰을 때만 요청이 나간다(끄면 예전과 동일하게 전부 로컬 필터).
+	let searchComments = $state(false);
+	let searchAttachments = $state(false);
+	/** 서버가 계산한 매치 id 집합. null = 서버 판정 미사용(로컬 필터). */
+	let serverMatchIds = $state<Set<number> | null>(null);
+	let wideSearching = $state(false);
+	let wideSeq = 0;
+	let wideTimer: ReturnType<typeof setTimeout> | null = null;
+
+	$effect(() => {
+		const q = search.trim();
+		const wide = searchComments || searchAttachments;
+		const wantComments = searchComments;
+		const wantAttachments = searchAttachments;
+		if (!wide || !q) {
+			serverMatchIds = null;
+			wideSearching = false;
+			return;
+		}
+		// 글자마다 요청을 던지지 않는다.
+		if (wideTimer) clearTimeout(wideTimer);
+		const seq = ++wideSeq;
+		wideSearching = true;
+		wideTimer = setTimeout(() => {
+			questsApi
+				.searchWide(q, { comments: wantComments, attachments: wantAttachments })
+				.then((rows) => {
+					// 늦게 온 응답이 최신 결과를 덮어쓰면 안 된다(REQ-004 와 같은 함정).
+					if (seq !== wideSeq) return;
+					serverMatchIds = new Set(rows.map((r) => r.id));
+				})
+				.catch(() => {
+					if (seq !== wideSeq) return;
+					// 실패 시 로컬 필터로 떨어진다 — 빈 목록을 보여주는 것보다 낫다.
+					serverMatchIds = null;
+				})
+				.finally(() => {
+					if (seq === wideSeq) wideSearching = false;
+				});
+		}, 250);
+	});
 
 	// DEV-065: 뷰 모드 — 'tree' (부모 그룹 + 들여쓰기, 기본) / 'list' (모든 quest
 	// 평면). URL ?mode= 와 localStorage 동시 영속.
@@ -400,6 +442,8 @@
 			filterTags,
 			// DEV-033: 고급 필터.
 			{
+				// REQ-010: 서버 판정이 있으면 그걸로 거른다(있을 때만).
+				serverMatchIds: serverMatchIds ?? undefined,
 				urgencies: filterUrgencies,
 				prereq: filterPrereq,
 				sub: filterSub,
@@ -492,6 +536,8 @@
 		bind:statusIds={filterStatusIds}
 		bind:search
 		bind:titleOnly
+		bind:searchComments
+		bind:searchAttachments
 		bind:urgencies={filterUrgencies}
 		bind:prereqState={filterPrereq}
 		bind:subState={filterSub}

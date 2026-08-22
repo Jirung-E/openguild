@@ -53,6 +53,15 @@ export interface ExtraFilters {
 	updatedBefore?: string;
 	/** 선행 quest 가 1개 이상인 quest id 집합 (dependencies 에서 산출). */
 	prereqQuestIds?: Set<number>;
+	/**
+	 * REQ-010: 검색 영역 확장(댓글/첨부 이름)이 켜졌을 때 **서버가 계산한**
+	 * 매치 quest id 집합. 댓글·첨부 이름은 클라이언트에 없으므로 토큰 매칭을
+	 * 서버가 하고, 여기서는 그 결과로 거르기만 한다.
+	 *
+	 * 이 값이 있으면 아래 `search` 토큰 매칭은 **건너뛴다** — 서버가 이미 같은
+	 * AND 시맨틱으로 판정했으므로 두 번 거르면 댓글에만 있는 매치가 탈락한다.
+	 */
+	serverMatchIds?: Set<number>;
 	/** 자식이 1개 이상인 quest id 집합 (parent_quest_id 역산). */
 	parentIds?: Set<number>;
 }
@@ -74,12 +83,16 @@ export function filterQuests(
 	tagFilter: Set<string> = new Set(),
 	extra: ExtraFilters = {}
 ): Quest[] {
-	const tokens = search
-		.toLowerCase()
-		.split(/\s+/)
-		.filter((t) => t.length > 0);
+	// REQ-010: 서버가 매치를 계산해 준 경우 클라이언트 토큰 매칭은 건너뛴다.
+	const tokens = extra.serverMatchIds
+		? []
+		: search
+				.toLowerCase()
+				.split(/\s+/)
+				.filter((t) => t.length > 0);
 
 	return quests.filter((q) => {
+		if (extra.serverMatchIds && !extra.serverMatchIds.has(q.id)) return false;
 		if (typeIds.size > 0 && !typeIds.has(q.quest_type_id)) return false;
 		if (statusIds.size > 0 && !statusIds.has(q.status_id)) return false;
 		// DEV-033: urgency 다중 선택.

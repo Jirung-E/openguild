@@ -39,7 +39,8 @@ pub async fn list_quests(
     headers: axum::http::HeaderMap,
 ) -> AppResult<axum::response::Response> {
     use axum::response::IntoResponse;
-    let rows = read::list(&store.index_pool, &q).await?;
+    // REQ-010: 첨부 이름 검색은 사이드카 사전 스캔이 필요해 ops 래퍼를 탄다.
+    let rows = openguild_core::ops::quests::list_quests(&store, &q).await?;
     let body = serde_json::to_vec(&rows)
         .map_err(|e| openguild_core::AppError::Internal(anyhow::anyhow!(e)))?;
 

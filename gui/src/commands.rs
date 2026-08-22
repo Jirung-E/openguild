@@ -60,7 +60,8 @@ pub async fn list_quests(
     query: Option<ListQuery>,
 ) -> Result<Vec<QuestRow>, String> {
     let q = query.unwrap_or_default();
-    read::list(&store.index_pool, &q).await.map_err(err)
+    // REQ-010: 첨부 이름 검색 지원 — ops 래퍼가 사이드카 사전 스캔을 한다.
+    openguild_core::ops::quests::list_quests(&store, &q).await.map_err(err)
 }
 
 #[tauri::command]

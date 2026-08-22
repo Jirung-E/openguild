@@ -395,6 +395,16 @@ enum QuestCmd {
         search: Option<String>,
         #[arg(long = "title-only", help = tf!("search 검색을 title 만으로 제한. description 제외.", "Limit `search` to title only, excluding description."))]
         title_only: bool,
+        #[arg(long = "search-comments", help = tf!(
+            "search 대상을 댓글 본문까지 넓힘. 기본 검색을 대체하지 않고 더한다.",
+            "Widen `search` to include comment bodies. Adds to the default search rather than replacing it."
+        ))]
+        search_comments: bool,
+        #[arg(long = "search-attachments", help = tf!(
+            "search 대상을 첨부 **파일 이름**까지 넓힘 (내용은 아님).",
+            "Widen `search` to include attachment **file names** (not contents)."
+        ))]
+        search_attachments: bool,
         #[arg(long, value_delimiter = ',', num_args = 1..,
               help = tf!("정렬 키 — id (기본) / urgency / status / updated / created. 다중 입력 가능 (--sort urgency,id 또는 --sort urgency id). 대소문자 무시.",
                          "Sort key — id (default) / urgency / status / updated / created. Multiple: --sort urgency,id or --sort urgency id. Case-insensitive."))]
@@ -2088,7 +2098,8 @@ impl Backend {
         match self {
             Backend::Http(c) => c.list_quests(q),
             Backend::Local(l) => {
-                Self::map_err(l.rt.block_on(quest_svc::list(&l.store.index_pool, q)))
+                // REQ-010: 첨부 이름 검색은 ops 래퍼(사이드카 사전 스캔) 경유.
+                Self::map_err(l.rt.block_on(openguild_core::ops::quests::list_quests(&l.store, q)))
             }
         }
     }
@@ -7722,6 +7733,8 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
             no_sub,
             search,
             title_only,
+            search_comments,
+            search_attachments,
             sort,
             reverse,
             limit,
@@ -7753,6 +7766,8 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
                 no_sub,
                 search,
                 title_only,
+                search_comments,
+                search_attachments,
                 sort: vec_to_csv(sort),
                 reverse,
                 limit,
@@ -7780,6 +7795,10 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
         QuestCmd::Search { query, title_only, limit, id_only, count } => {
             // DEV-045: list --search 의 발견성을 위한 alias.
             // 동일 백엔드 호출. 사용자 친화적인 단일 인자만 받아 ListQuery 로 변환.
+            //
+            // REQ-010 의 영역 확장 옵션은 여기 두지 않는다 — 이 명령은 "간단히
+            // 찾기" 용 alias 이고, 넓게 훑는 건 최상위 `openguild search`(REQ-009)
+            // 가 이미 담당한다. 목록에서 걸러가며 보고 싶으면 `quest list` 를 쓴다.
             let q = ListQuery {
                 search: Some(query),
                 title_only,
@@ -8681,6 +8700,8 @@ mod tests {
                     no_sub,
                     search,
                     title_only,
+                search_comments,
+                search_attachments,
                     sort,
                     reverse,
                     limit,
@@ -8823,7 +8844,7 @@ mod tests {
                     created_after, created_before, updated_after, updated_before,
                     child_of, no_parent,
                     has_prereq, no_prereq, has_sub, no_sub,
-                    search, title_only,
+                    search, title_only, search_comments, search_attachments,
                     sort, reverse, limit, offset, id_only, count, tree, table,
                 },
             } => {
@@ -8925,6 +8946,8 @@ mod tests {
             no_sub: false,
             search: None,
             title_only: false,
+            search_comments: false,
+            search_attachments: false,
             sort: Some("urgency".into()),
             reverse: true,
             limit: Some(5),

@@ -1087,6 +1087,9 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'filter.searchPlaceholder': { ko: '검색 (제목 / 본문)', en: 'Search (title / body)' },
 	'filter.clearSearch': { ko: '검색어 지우기', en: 'Clear search' },
 	'filter.titleOnly': { ko: '제목만', en: 'Title only' },
+	// REQ-010: 검색 영역을 넓히는 옵션 — titleOnly 와 방향이 반대다(그쪽은 좁힘).
+	'filter.searchComments': { ko: '댓글 포함', en: 'Include comments' },
+	'filter.searchAttachments': { ko: '첨부 이름 포함', en: 'Include attachment names' },
 	'filter.advanced': { ko: '고급', en: 'Advanced' },
 	// BUG-194: 좁은 화면에서 타입/상태 칩 줄을 접는 토글 라벨.
 	'filter.chips': { ko: '필터', en: 'Filters' },

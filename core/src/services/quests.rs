@@ -74,7 +74,25 @@ pub const QUEST_SELECT: &str = r#"
 ///
 /// 다중 값: 콤마 구분 (`"DEV,BUG"`). 빈 문자열은 필터 미지정으로 취급.
 /// 정렬 / 방향은 화이트리스트 매핑 — SQL injection 방어.
+/// 기존 시그니처 유지 — 첨부 이름 검색 없이(REQ-010 이전과 동일).
 pub async fn list(pool: &SqlitePool, query: &ListQuery) -> AppResult<Vec<QuestRow>> {
+    list_with_attachment_matches(pool, query, &[]).await
+}
+
+/// REQ-010: 첨부 **이름** 매치를 함께 받는 목록 조회.
+///
+/// 첨부는 index.db 캐시가 없고 사이드카 JSON 뿐이라 SQL 로 직접 걸 수 없다
+/// (`attachment_blobs` 는 BUG-188 로 폐기). 그래서 호출측(`ops::quests`)이
+/// 사이드카를 먼저 훑어 **토큰별로 매치되는 quest slug 목록**을 만들어 넘기고,
+/// 여기서는 그걸 `IN (...)` 으로 OR 에 얹기만 한다.
+///
+/// `attach_matches[i]` = `search` 의 i 번째 토큰에 매치되는 slug 들.
+/// 비어 있으면(기본) 예전과 완전히 같은 SQL 이 나간다.
+pub async fn list_with_attachment_matches(
+    pool: &SqlitePool,
+    query: &ListQuery,
+    attach_matches: &[Vec<String>],
+) -> AppResult<Vec<QuestRow>> {
     let mut sql = format!("{QUEST_SELECT} WHERE q.deleted_at IS NULL");
 
     // ── 다중 값 필터: 콤마 split, 빈 entry 제거 ──
@@ -170,15 +188,31 @@ pub async fn list(pool: &SqlitePool, query: &ListQuery) -> AppResult<Vec<QuestRo
     // DEV-040: slug (quest_id 형식 "DEV-037") 도 검색 대상. title_only 와 무관 —
     // slug 는 메타 정보이지 본문이 아니므로 항상 매칭. "037" 같은 부분 입력도 매치.
     const SLUG_EXPR: &str = "LOWER(qt.prefix || '-' || printf('%03d', q.number)) LIKE LOWER(?)";
-    for _ in &search_tokens {
-        if query.title_only {
-            // DEV-037: title + slug.
-            sql.push_str(&format!(" AND (LOWER(q.title) LIKE LOWER(?) OR {SLUG_EXPR})"));
-        } else {
-            sql.push_str(&format!(
-                " AND (LOWER(q.title) LIKE LOWER(?) OR LOWER(COALESCE(q.description, '')) LIKE LOWER(?) OR {SLUG_EXPR})"
+    // REQ-010: 검색 대상을 넓히는 옵션. 목록은 페이지네이션/정렬이 걸려 있어
+    // ops::search 처럼 "전부 메모리에 올려 필터" 할 수 없다 — EXISTS 서브쿼리로
+    // SQL 안에서 건다. 토큰마다 OR 로 덧붙으므로 AND 시맨틱은 그대로다.
+    const COMMENT_EXPR: &str = "EXISTS (SELECT 1 FROM quest_comments qc          WHERE qc.quest_id = q.id AND LOWER(qc.body) LIKE LOWER(?))";
+    for (i, _) in search_tokens.iter().enumerate() {
+        let mut alts: Vec<String> = Vec::new();
+        alts.push("LOWER(q.title) LIKE LOWER(?)".to_string());
+        if !query.title_only {
+            alts.push("LOWER(COALESCE(q.description, '')) LIKE LOWER(?)".to_string());
+        }
+        alts.push(SLUG_EXPR.to_string());
+        if query.search_comments {
+            alts.push(COMMENT_EXPR.to_string());
+        }
+        // 첨부 이름 매치는 slug 목록으로 들어온다. 빈 목록이면 절을 아예 만들지
+        // 않는다 — `IN ()` 은 SQLite 에서 문법 오류다.
+        if let Some(slugs) = attach_matches.get(i)
+            && !slugs.is_empty()
+        {
+            let ph = vec!["?"; slugs.len()].join(",");
+            alts.push(format!(
+                "(qt.prefix || '-' || printf('%03d', q.number)) IN ({ph})"
             ));
         }
+        sql.push_str(&format!(" AND ({})", alts.join(" OR ")));
     }
 
     // child_of / no_parent 상호배타
@@ -303,15 +337,21 @@ pub async fn list(pool: &SqlitePool, query: &ListQuery) -> AppResult<Vec<QuestRo
     }
     // search tokens — 각 토큰마다 bind.
     // title_only=true → 2번 (title + slug), false → 3번 (title + description + slug).
-    for token in &search_tokens {
+    // 바인드 순서는 위에서 조립한 `alts` 순서와 **정확히** 같아야 한다.
+    for (i, token) in search_tokens.iter().enumerate() {
         let pat = format!("%{token}%");
-        if query.title_only {
-            q = q.bind(pat.clone()); // title
-            q = q.bind(pat); // slug
-        } else {
-            q = q.bind(pat.clone()); // title
+        q = q.bind(pat.clone()); // title
+        if !query.title_only {
             q = q.bind(pat.clone()); // description
-            q = q.bind(pat); // slug
+        }
+        q = q.bind(pat.clone()); // slug
+        if query.search_comments {
+            q = q.bind(pat.clone()); // comment body
+        }
+        if let Some(slugs) = attach_matches.get(i) {
+            for sgl in slugs {
+                q = q.bind(sgl.clone()); // 첨부 이름이 맞은 quest slug
+            }
         }
     }
     let mut quests = q.fetch_all(pool).await?;

@@ -173,6 +173,16 @@ pub struct ListQuery {
     /// `search` 토큰을 title 만 검사 — description 제외 (DEV-037).
     /// default false (title + description 둘 다).
     pub title_only: bool,
+    /// REQ-010: 검색 대상을 **넓히는** 옵션 — 댓글 본문도 훑는다.
+    ///
+    /// 기본 false = 지금까지의 동작(title + description + slug) 그대로.
+    /// `title_only` 와는 방향이 반대다(그쪽은 좁히고 이쪽은 넓힌다) —
+    /// 둘 다 켜면 title + slug + 댓글이 된다.
+    #[serde(default)]
+    pub search_comments: bool,
+    /// REQ-010: 첨부 **파일 이름**도 검색 대상에 넣는다(내용은 아님 — BUG-188).
+    #[serde(default)]
+    pub search_attachments: bool,
     /// **자식 quest 들** 을 보여줌 — 지정 slug 가 parent 인 직계 자식.
     /// `--no-parent` 와 상호배타.
     pub child_of: Option<String>,

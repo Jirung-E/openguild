@@ -16,6 +16,9 @@
 		statusIds = $bindable(new Set<number>()),
 		search = $bindable(''),
 		titleOnly = $bindable(false),
+		// REQ-010: 검색 영역 확장.
+		searchComments = $bindable(false),
+		searchAttachments = $bindable(false),
 		// DEV-033: 고급 필터.
 		urgencies = $bindable(new Set<number>()),
 		prereqState = $bindable('any'),
@@ -31,6 +34,8 @@
 		statusIds: Set<number>;
 		search?: string;
 		titleOnly?: boolean;
+		searchComments?: boolean;
+		searchAttachments?: boolean;
 		urgencies?: Set<number>;
 		prereqState?: TriState;
 		subState?: TriState;
@@ -164,6 +169,24 @@
 		<label class="search-opt">
 			<input type="checkbox" bind:checked={titleOnly} data-testid="quest-search-title-only" />
 			<span>{t('filter.titleOnly', $locale)}</span>
+		</label>
+		<!-- REQ-010: 검색 영역을 넓히는 옵션. titleOnly 가 좁히는 것과 방향이 반대라
+		     나란히 두되, 켜지 않으면 예전과 완전히 같은 결과가 나온다. -->
+		<label class="search-opt">
+			<input
+				type="checkbox"
+				bind:checked={searchComments}
+				data-testid="quest-search-comments"
+			/>
+			<span>{t('filter.searchComments', $locale)}</span>
+		</label>
+		<label class="search-opt">
+			<input
+				type="checkbox"
+				bind:checked={searchAttachments}
+				data-testid="quest-search-attachments"
+			/>
+			<span>{t('filter.searchAttachments', $locale)}</span>
 		</label>
 	</div>
 
