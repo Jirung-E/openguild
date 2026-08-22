@@ -699,10 +699,13 @@
 	}
 	.row-main {
 		display: flex;
-		/* DEV-359: `center` 는 제목이 1줄일 때와 2줄일 때 정렬 기준이 달라져
-		   상자 높이가 4px 달라진다 — 펼치고 접힐 때마다 종류 칩과 우측 버튼이
-		   미세하게 튀던 원인. 위 기준으로 붙여 어느 쪽이든 같게 만든다. */
-		align-items: flex-start;
+		/* DEV-359 는 여기를 `flex-start` 로 두었다 — 당시엔 접힘/펼침이 이 한
+		   규칙을 공유해서, `center` 면 제목이 1줄→2줄이 될 때 정렬 기준이 바뀌며
+		   칩과 우측 버튼이 튀었다.
+		   지금은 펼친 행이 `.row.expanded .row-main` 에서 따로 `center` 를 받으므로
+		   **두 상태가 모두 center** 다 — 기준이 바뀌지 않아 그 문제가 없고,
+		   접힌 행에서도 요소들이 세로 가운데에 온다. */
+		align-items: center;
 		gap: 0.6rem;
 		flex: 1;
 		min-width: 0;
@@ -740,10 +743,16 @@
 		flex: none;
 		min-width: 3.6rem;
 		text-align: center;
+		/* slug 칩과 **같은 글자 크기**. 나란히 놓이는 두 칩이라 크기가 다르면
+		   한쪽이 잘못된 것처럼 보인다. 모양(각진 4px)은 일부러 다르게 둔다 —
+		   이건 식별자가 아니라 분류 라벨이다. */
 		font-size: 0.68rem;
 		font-weight: 600;
 		border-radius: 4px;
-		padding: 0.1rem 0.35rem;
+		padding: 0.02rem 0.35rem;
+		/* slug 칩에는 테두리가 있어 그대로 두면 이쪽이 2px 낮다. 나란히 놓이는
+		   칩이라 높이가 어긋나 보인다 — 투명 테두리로 상자 높이만 맞춘다. */
+		border: 1px solid transparent;
 	}
 	/* 타입별 색 — QuestBoard / 문서 톤과 맞춤. */
 	/* DEV-362: 종류 칩과 slug 칩 묶음. 접힌 행은 가로로 나란히(한 줄에 눌러
@@ -789,9 +798,11 @@
 	   테두리가 이 공식의 핵심이다 — 빼면 같은 색이어도 다른 칩처럼 보인다. */
 	.pslug {
 		flex: none;
-		padding: 0.15rem 0.5rem;
+		/* 세로만 얇게 — 가로 여백과 곡률은 전역 뱃지 공식 그대로 둔다. 팔레트
+		   행은 36px 로 조밀해 세로 두께가 그대로면 행을 꽉 채워 답답하다. */
+		padding: 0.02rem 0.5rem;
 		border-radius: 20px;
-		font-size: 0.7rem;
+		font-size: 0.68rem;
 		font-weight: 500;
 		white-space: nowrap;
 		color: var(--kind-c, var(--text-muted));
