@@ -377,7 +377,7 @@ mod tests {
         .unwrap();
         let slug = q.quest_id.clone();
         // ops 로 댓글 추가 → 파일 write + file_mtime_cache touch.
-        ops::comments::add_comment_entry(&store, &slug, "a".into(), "x".into(), None)
+        ops::comments::add_comment_entry(&store, &slug, "a".into(), "x".into(), None, false)
             .await
             .unwrap();
 

@@ -371,6 +371,7 @@ mod tests {
             "tester".into(),
             "댓글에만 있는 도깨비".into(),
             None,
+            false,
         )
         .await
         .unwrap();
@@ -412,6 +413,7 @@ mod tests {
             "tester".into(),
             "댓글에 바나나".into(),
             None,
+            false,
         )
         .await
         .unwrap();

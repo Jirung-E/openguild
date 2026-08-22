@@ -1167,6 +1167,7 @@ mod tests {
             "admin".into(),
             "논의 필요".into(),
             None,
+            false,
         )
         .await
         .unwrap();

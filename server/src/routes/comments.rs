@@ -99,6 +99,10 @@ pub struct AddCommentRequest {
     /// DEV-094 후속: 답글이면 부모 entry id. None / 미지정 → top-level.
     #[serde(default)]
     pub parent_id: Option<u64>,
+    /// DEV-366: 토론 댓글로 바로 생성. 미지정 → false 라서 이 필드를 모르는
+    /// 구버전 클라이언트도 동작이 예전과 같다.
+    #[serde(default)]
+    pub discussion: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -120,7 +124,7 @@ pub async fn add_comment(
     Json(body): Json<AddCommentRequest>,
 ) -> AppResult<Json<CommentEntry>> {
     let entry =
-        ops::add_comment_entry(&store, &slug, body.author, body.body, body.parent_id)
+        ops::add_comment_entry(&store, &slug, body.author, body.body, body.parent_id, body.discussion)
             .await?;
     Ok(Json(entry))
 }
@@ -206,6 +210,15 @@ pub async fn camp_add_comment(
     Path(slug): Path<String>,
     Json(body): Json<AddCommentRequest>,
 ) -> AppResult<Json<CommentEntry>> {
+    // DEV-366: 토론은 quest 전용이다. 조용히 무시하면 호출측은 토론을 만들었다고
+    // 믿는데 평댓글이 생긴다 — DEV-361 이 없애려던 바로 그 상태라 명시적으로 막는다.
+    if body.discussion {
+        return Err(crate::error::HttpError(
+            openguild_core::error::AppError::BadRequest(
+                "discussion is only available for quest comments".into(),
+            ),
+        ));
+    }
     let entry = cops::add_entry(&store, &slug, body.author, body.body, body.parent_id).await?;
     Ok(Json(entry))
 }

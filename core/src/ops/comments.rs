@@ -191,6 +191,8 @@ pub async fn add_comment_entry(
     author: String,
     body: String,
     parent_id: Option<u64>,
+    // DEV-366: 토론 댓글로 바로 생성. 예전의 add → toggle 2단계를 없앤다.
+    discussion: bool,
 ) -> AppResult<CommentEntry> {
     let _ = journal::append(
         &store.journal_pool,
@@ -200,12 +202,13 @@ pub async fn add_comment_entry(
             "author": author,
             "len": body.len(),
             "parent_id": parent_id,
+            "discussion": discussion,
         }),
         None::<&serde_json::Value>,
     )
     .await
     .map_err(AppError::Internal)?;
-    let entry = svc::add_entry(store, slug, author, body, parent_id)?;
+    let entry = svc::add_entry(store, slug, author, body, parent_id, discussion)?;
     let _ = crate::file_mtime::touch(store, &store.paths.comments_path(slug)).await;
     // DEV-102: file 진리원 갱신 후 DB 캐시 UPSERT.
     upsert_comment_entry_db(store, slug, &entry).await?;
@@ -538,7 +541,7 @@ mod tests {
     #[tokio::test]
     async fn add_comment_entry_syncs_db_cache() {
         let (dir, store, slug) = fresh("add").await;
-        let e = add_comment_entry(&store, &slug, "alice".into(), "hello".into(), None)
+        let e = add_comment_entry(&store, &slug, "alice".into(), "hello".into(), None, false)
             .await
             .unwrap();
         let row: (String, String, Option<i64>) = sqlx::query_as(
@@ -558,7 +561,7 @@ mod tests {
     #[tokio::test]
     async fn update_comment_entry_syncs_db_cache() {
         let (dir, store, slug) = fresh("upd").await;
-        let e = add_comment_entry(&store, &slug, "alice".into(), "v1".into(), None)
+        let e = add_comment_entry(&store, &slug, "alice".into(), "v1".into(), None, false)
             .await
             .unwrap();
         let _ = update_comment_entry(&store, &slug, e.id, "v2".into()).await.unwrap();
@@ -577,7 +580,7 @@ mod tests {
     #[tokio::test]
     async fn delete_comment_entry_removes_from_db_cache() {
         let (dir, store, slug) = fresh("del").await;
-        let e = add_comment_entry(&store, &slug, "".into(), "x".into(), None)
+        let e = add_comment_entry(&store, &slug, "".into(), "x".into(), None, false)
             .await
             .unwrap();
         delete_comment_entry(&store, &slug, e.id).await.unwrap();
@@ -615,7 +618,7 @@ mod tests {
     #[tokio::test]
     async fn toggle_reaction_roundtrip_and_validation() {
         let (dir, store, slug) = fresh("react").await;
-        add_comment_entry(&store, &slug, "a".into(), "x".into(), None)
+        add_comment_entry(&store, &slug, "a".into(), "x".into(), None, false)
             .await
             .unwrap();
 
@@ -665,10 +668,10 @@ mod tests {
     #[tokio::test]
     async fn reply_comment_persists_parent_id_in_db() {
         let (dir, store, slug) = fresh("reply").await;
-        let top = add_comment_entry(&store, &slug, "a".into(), "1".into(), None)
+        let top = add_comment_entry(&store, &slug, "a".into(), "1".into(), None, false)
             .await
             .unwrap();
-        let r = add_comment_entry(&store, &slug, "b".into(), "2".into(), Some(top.id))
+        let r = add_comment_entry(&store, &slug, "b".into(), "2".into(), Some(top.id), false)
             .await
             .unwrap();
         let parent_id: Option<i64> = sqlx::query_scalar(
@@ -687,7 +690,7 @@ mod tests {
     #[tokio::test]
     async fn toggle_pinned_roundtrip_and_syncs_db_cache() {
         let (dir, store, slug) = fresh("pin").await;
-        let e = add_comment_entry(&store, &slug, "a".into(), "결정사항".into(), None)
+        let e = add_comment_entry(&store, &slug, "a".into(), "결정사항".into(), None, false)
             .await
             .unwrap();
         assert!(!e.pinned);
@@ -712,12 +715,51 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// DEV-366: 생성과 동시에 토론으로 만들어야 한다 — 파일·DB 캐시 양쪽 모두.
+    /// 예전엔 add 후 toggle 을 따로 불러야 해서, 원격에서 두 번째가 실패하면
+    /// 평댓글이 남았다.
+    #[tokio::test]
+    async fn add_comment_entry_can_create_discussion_in_one_write() {
+        let (dir, store, slug) = fresh("add-discussion").await;
+        let e = add_comment_entry(&store, &slug, "a".into(), "토론으로 시작".into(), None, true)
+            .await
+            .unwrap();
+        assert!(e.discussion, "반환 entry 가 토론이어야 한다");
+        assert!(!e.resolved, "새 토론은 미해결이어야 한다");
+
+        // 진리원인 파일에 반영됐나 — 토글 없이 단 한 번의 쓰기로.
+        let entries = list_comment_entries(&store, &slug).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert!(entries[0].discussion);
+
+        // DB 캐시(목록/완료 차단 집계용)에도.
+        let flag: i64 =
+            sqlx::query_scalar("SELECT discussion FROM quest_comments WHERE entry_id = ?")
+                .bind(e.id as i64)
+        .fetch_one(&store.index_pool)
+        .await
+        .unwrap();
+        assert_eq!(flag, 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// discussion=false 는 예전 그대로 — 기본 경로가 바뀌지 않았음을 못 박는다.
+    #[tokio::test]
+    async fn add_comment_entry_defaults_to_plain() {
+        let (dir, store, slug) = fresh("add-plain").await;
+        let e = add_comment_entry(&store, &slug, "a".into(), "그냥 댓글".into(), None, false)
+            .await
+            .unwrap();
+        assert!(!e.discussion);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// DEV-236: resolve/reopen 전환이 quest_history 에 기록되는지(설계 공백
     /// 수정 — 이전엔 journal 감사로그에만 남아 worklog 에 안 잡혔음).
     #[tokio::test]
     async fn toggle_resolved_records_quest_history() {
         let (dir, store, slug) = fresh("history").await;
-        let e = add_comment_entry(&store, &slug, "a".into(), "토론 필요".into(), None)
+        let e = add_comment_entry(&store, &slug, "a".into(), "토론 필요".into(), None, false)
             .await
             .unwrap();
         toggle_comment_discussion(&store, &slug, e.id).await.unwrap();

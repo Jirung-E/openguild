@@ -3230,6 +3230,8 @@ impl Backend {
         }
     }
 
+    /// DEV-366: `discussion` 은 quest 전용 — 생성과 동시에 토론으로 만든다.
+    /// campaign 은 토론 개념이 없어 호출측(`CommentCmd::Add`)에서 미리 막는다.
     fn comments_add_scoped(
         &self,
         scope: CommentScope,
@@ -3237,6 +3239,7 @@ impl Backend {
         author: String,
         body: String,
         parent_id: Option<u64>,
+        discussion: bool,
     ) -> Result<openguild_core::repo::comments::CommentEntry> {
         match self {
             Backend::Http(c) => c.post(
@@ -3245,12 +3248,13 @@ impl Backend {
                     "author": author,
                     "body": body,
                     "parent_id": parent_id,
+                    "discussion": discussion,
                 }),
             ),
             Backend::Local(l) => match scope {
                 CommentScope::Quest => Self::map_err(l.rt.block_on(
                     openguild_core::ops::comments::add_comment_entry(
-                        &l.store, slug, author, body, parent_id,
+                        &l.store, slug, author, body, parent_id, discussion,
                     ),
                 )),
                 CommentScope::Campaign => Self::map_err(l.rt.block_on(
@@ -4454,10 +4458,19 @@ fn run_comment_cmd(c: &Backend, scope: CommentScope, sub: CommentCmd, json: bool
                         ));
                     }
                     let body = read_content(file.as_deref())?;
-                    let mut entry =
-                        c.comments_add_scoped(scope, &slug, author.unwrap_or_default(), body, parent_id)?;
-                    // 새 entry 는 discussion=false 로 생성되므로 토글이 곧 설정이다.
-                    if discussion {
+                    // DEV-366: 생성 요청에 discussion 을 실어 **한 번에** 만든다.
+                    let mut entry = c.comments_add_scoped(
+                        scope,
+                        &slug,
+                        author.unwrap_or_default(),
+                        body,
+                        parent_id,
+                        discussion,
+                    )?;
+                    // 구버전 서버는 `discussion` 필드를 모르고 무시한다 — 그러면
+                    // 평댓글이 돌아온다. 응답을 믿고, 어긋날 때만 토글로 보정한다.
+                    // (예전의 2단계로 되돌아가는 셈이지만 구버전 상대로만 그렇다.)
+                    if discussion && !entry.discussion {
                         entry = c.comments_toggle_discussion(&slug, entry.id)?;
                     }
                     if json {

@@ -371,6 +371,7 @@ mod tests {
             "claude".into(),
             "진행 메모".into(),
             None,
+            false,
         )
         .await
         .unwrap();
@@ -476,6 +477,7 @@ mod tests {
             "claude".into(),
             "결정 필요".into(),
             None,
+            false,
         )
         .await
         .unwrap();

@@ -1026,6 +1026,7 @@ mod tests {
             "alice".into(),
             "hello".into(),
             None,
+            false,
         )
         .await
         .unwrap();

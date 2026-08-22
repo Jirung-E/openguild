@@ -1770,6 +1770,9 @@ pub async fn add_comment(
         author.unwrap_or_default(),
         body,
         parent_id,
+        // DEV-366: GUI 는 생성 후 토론 토글을 따로 부르는 흐름 그대로 — 여기서는
+        // 항상 평댓글로 만든다. (로컬 IPC 라 원격 같은 부분 실패 위험은 없다.)
+        false,
     )
     .await
     .map_err(err)

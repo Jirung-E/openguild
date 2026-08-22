@@ -118,12 +118,18 @@ pub fn list_entries(store: &Store, slug: &str) -> AppResult<Vec<CommentEntry>> {
 ///
 /// `parent_id`: Some 이면 답글 (threaded reply). 그 id 가 현존 entry 셋에 없으면
 /// `BadRequest`. None 이면 top-level.
+///
+/// `discussion`: DEV-366 — 토론 댓글로 **생성 시점에** 지정한다. 예전엔 항상
+/// false 로 만든 뒤 `toggle_comment_discussion` 으로 뒤집어야 했는데, 그러면
+/// 쓰기가 2회로 갈라져 두 번째가 실패하면 평댓글이 남았다(원격은 HTTP 왕복
+/// 2회라 더 잘 드러난다). 한 번의 write_entries 로 끝낸다.
 pub fn add_entry(
     store: &Store,
     slug: &str,
     author: String,
     body: String,
     parent_id: Option<u64>,
+    discussion: bool,
 ) -> AppResult<CommentEntry> {
     let body_trimmed = body.trim().to_string();
     if body_trimmed.is_empty() {
@@ -145,7 +151,7 @@ pub fn add_entry(
         body: body_trimmed,
         parent_id,
         reactions: Vec::new(),
-        discussion: false,
+        discussion,
         resolved: false,
         pinned: false,
         edited_at: None,
@@ -216,8 +222,8 @@ mod tests {
     #[tokio::test]
     async fn add_then_list_returns_entries() {
         let (dir, store) = fresh("add-list").await;
-        let a = add_entry(&store, "DEV-001", "alice".into(), "first".into(), None).unwrap();
-        let b = add_entry(&store, "DEV-001", "".into(), "second".into(), None).unwrap();
+        let a = add_entry(&store, "DEV-001", "alice".into(), "first".into(), None, false).unwrap();
+        let b = add_entry(&store, "DEV-001", "".into(), "second".into(), None, false).unwrap();
         assert_eq!(a.id, 1);
         assert_eq!(b.id, 2);
         let listed = list_entries(&store, "DEV-001").unwrap();
@@ -231,7 +237,7 @@ mod tests {
     #[tokio::test]
     async fn update_replaces_body_preserves_ts_author() {
         let (dir, store) = fresh("update").await;
-        let a = add_entry(&store, "DEV-001", "alice".into(), "first".into(), None).unwrap();
+        let a = add_entry(&store, "DEV-001", "alice".into(), "first".into(), None, false).unwrap();
         let updated =
             update_entry(&store, "DEV-001", a.id, "edited".into()).unwrap();
         assert_eq!(updated.body, "edited");
@@ -243,8 +249,8 @@ mod tests {
     #[tokio::test]
     async fn delete_removes_only_target() {
         let (dir, store) = fresh("delete").await;
-        let _a = add_entry(&store, "DEV-001", "".into(), "first".into(), None).unwrap();
-        let b = add_entry(&store, "DEV-001", "".into(), "second".into(), None).unwrap();
+        let _a = add_entry(&store, "DEV-001", "".into(), "first".into(), None, false).unwrap();
+        let b = add_entry(&store, "DEV-001", "".into(), "second".into(), None, false).unwrap();
         delete_entry(&store, "DEV-001", b.id).unwrap();
         let listed = list_entries(&store, "DEV-001").unwrap();
         assert_eq!(listed.len(), 1);
@@ -263,7 +269,7 @@ mod tests {
     #[tokio::test]
     async fn add_empty_body_rejected() {
         let (dir, store) = fresh("empty").await;
-        let err = add_entry(&store, "DEV-001", "".into(), "   ".into(), None).unwrap_err();
+        let err = add_entry(&store, "DEV-001", "".into(), "   ".into(), None, false).unwrap_err();
         assert!(matches!(err, AppError::BadRequest(_)));
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -271,13 +277,14 @@ mod tests {
     #[tokio::test]
     async fn reply_links_parent_id_and_round_trips() {
         let (dir, store) = fresh("reply").await;
-        let a = add_entry(&store, "DEV-001", "alice".into(), "top".into(), None).unwrap();
+        let a = add_entry(&store, "DEV-001", "alice".into(), "top".into(), None, false).unwrap();
         let r = add_entry(
             &store,
             "DEV-001",
             "bob".into(),
             "answer".into(),
             Some(a.id),
+            false,
         )
         .unwrap();
         assert_eq!(r.parent_id, Some(a.id));
@@ -296,6 +303,7 @@ mod tests {
             "".into(),
             "orphan".into(),
             Some(999),
+            false,
         )
         .unwrap_err();
         assert!(matches!(err, AppError::BadRequest(_)));
@@ -309,10 +317,10 @@ mod tests {
         // 보장 X — file-only 저장이라 grave 추적이 부담. 충돌은 ID PK 가 아닌
         // 단순 entry 키이므로 의미상 문제 없음.
         let (dir, store) = fresh("next-id").await;
-        let _a = add_entry(&store, "DEV-001", "".into(), "1".into(), None).unwrap();
-        let b = add_entry(&store, "DEV-001", "".into(), "2".into(), None).unwrap();
+        let _a = add_entry(&store, "DEV-001", "".into(), "1".into(), None, false).unwrap();
+        let b = add_entry(&store, "DEV-001", "".into(), "2".into(), None, false).unwrap();
         delete_entry(&store, "DEV-001", b.id).unwrap();
-        let c = add_entry(&store, "DEV-001", "".into(), "3".into(), None).unwrap();
+        let c = add_entry(&store, "DEV-001", "".into(), "3".into(), None, false).unwrap();
         // alive 중 max(id) = 1 → next = 2 (재사용).
         assert_eq!(c.id, 2);
         let _ = std::fs::remove_dir_all(&dir);
@@ -340,6 +348,7 @@ mod tests {
             "alice".into(),
             "remote parity needle".into(),
             None,
+            false,
         )
         .await
         .unwrap();
