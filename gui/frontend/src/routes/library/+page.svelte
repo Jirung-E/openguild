@@ -20,6 +20,7 @@
 	import { setUnsaved } from '$lib/stores/unsaved';
 	import { saveShortcut } from '$lib/utils/save-shortcut';
 	import { libraryApi, type Book, type LibraryFolder } from '$lib/api/library';
+	import { searchApi } from '$lib/api/search';
 	import { buildLibraryTree, flattenFolderPaths, searchLibrary } from '$lib/utils/library-tree';
 	import LibraryFolderTree from '$lib/components/LibraryFolderTree.svelte';
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
@@ -216,8 +217,46 @@
 	// "여기서 찾기" 감각). tree 모드는 "현재 폴더" 개념 자체가 없어(트리
 	// 전체를 항상 다 보여줌) 전역 유지. 폴더 이름도 매칭 대상에 포함.
 	let searchQuery = $state('');
+	// REQ-011: 첨부 **이름** 검색. 도서관 문서엔 댓글이 없어 대상은 첨부뿐이고,
+	// 첨부 이름은 목록 응답에 없어 클라이언트가 알 수 없다 — 켰을 때만 서버에
+	// 판정을 맡긴다(REQ-009 의 /api/search 를 그대로 재사용).
+	let searchAttachments = $state(false);
+	let attachMatchIds = $state<Set<string> | null>(null);
+	let attachSeq = 0;
+	let attachTimer: ReturnType<typeof setTimeout> | null = null;
+
+	$effect(() => {
+		const q = searchQuery.trim();
+		const on = searchAttachments;
+		if (!on || !q) {
+			attachMatchIds = null;
+			return;
+		}
+		if (attachTimer) clearTimeout(attachTimer);
+		const seq = ++attachSeq;
+		attachTimer = setTimeout(() => {
+			backlinksSearchAttachments(q)
+				.then((ids) => {
+					// 늦게 온 응답이 최신 결과를 덮으면 안 된다.
+					if (seq !== attachSeq) return;
+					attachMatchIds = ids;
+				})
+				.catch(() => {
+					if (seq !== attachSeq) return;
+					attachMatchIds = null; // 실패 시 기존 동작으로.
+				});
+		}, 250);
+	});
+
+	/** REQ-009 의 강화 검색에서 **도서관 문서**만 추려 book_id 집합을 만든다. */
+	async function backlinksSearchAttachments(q: string): Promise<Set<string>> {
+		const hits = await searchApi.enhanced(q, ['attachment']);
+		return new Set(hits.filter((h) => h.kind === 'book').map((h) => h.id));
+	}
 	const searchScope = $derived(viewMode === 'explorer' ? explorerPath : '');
-	const searchResults = $derived(searchLibrary(tree, sortedBooks, searchQuery, searchScope));
+	const searchResults = $derived(
+		searchLibrary(tree, sortedBooks, searchQuery, searchScope, attachMatchIds ?? undefined)
+	);
 
 	let editMode = $state(false);
 	$effect(() => setUnsaved('library-edit', editMode));
@@ -640,6 +679,15 @@
 				placeholder={t('library.searchPlaceholder', $locale)}
 				bind:value={searchQuery}
 			/>
+			<!-- REQ-011: 첨부 이름까지 검색. 켜지 않으면 예전과 동일. -->
+			<label class="search-opt">
+				<input
+					type="checkbox"
+					bind:checked={searchAttachments}
+					data-testid="library-search-attachments"
+				/>
+				<span>{t('library.searchAttachments', $locale)}</span>
+			</label>
 			<!-- DEV-251: 문서 정렬 — quest list 의 sort-group 과 동일 패턴. -->
 			<div class="sort-group" aria-label={t('library.sortAria', $locale)}>
 				<select class="sort-sel" bind:value={docSortKey} title={t('library.sortTitle', $locale)}>
@@ -909,6 +957,15 @@
 							placeholder={t('library.searchPlaceholder', $locale)}
 							bind:value={searchQuery}
 						/>
+						<!-- REQ-011: 첨부 이름까지 검색. 위쪽 뷰의 검색줄과 같은 옵션. -->
+						<label class="search-opt">
+							<input
+								type="checkbox"
+								bind:checked={searchAttachments}
+								data-testid="library-search-attachments"
+							/>
+							<span>{t('library.searchAttachments', $locale)}</span>
+						</label>
 						<!-- DEV-251: 문서 정렬 — quest list 의 sort-group 과 동일 패턴. -->
 						<div class="sort-group" aria-label={t('library.sortAria', $locale)}>
 							<select
@@ -1845,5 +1902,17 @@
 	}
 	.btn-cancel:hover:not(:disabled) {
 		background: var(--bg-subtle);
+	}
+	/* REQ-011: 검색 영역 확장 체크박스 — quest 목록 필터의 같은 이름 클래스와
+	   같은 모양으로 맞춘다. */
+	.search-opt {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+		flex: none;
+		font-size: 0.75rem;
+		color: var(--text-muted);
+		white-space: nowrap;
+		cursor: pointer;
 	}
 </style>

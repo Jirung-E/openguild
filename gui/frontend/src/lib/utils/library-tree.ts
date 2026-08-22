@@ -81,7 +81,16 @@ export function flattenFolderPaths(tree: LibraryTree): string[] {
  * 빈 쿼리는 `null`(검색 비활성 — 호출측이 평소 폴더 구조 렌더와 구분).
  * 제목 매칭이 본문만 매칭보다 우선 노출, 각 그룹 안은 제목 가나다순.
  */
-export function searchBooks(books: Book[], query: string): Book[] | null {
+/**
+ * REQ-011: `attachIds` 는 **첨부 파일 이름**이 질의에 맞은 book_id 집합.
+ * 첨부 이름은 목록 응답(`list()`)에 없어 클라이언트가 알 수 없으므로 서버가
+ * 판정해 넘긴다. 본문/제목 매치와 **OR** 로 합친다.
+ */
+export function searchBooks(
+	books: Book[],
+	query: string,
+	attachIds?: Set<string>
+): Book[] | null {
 	const q = query.trim().toLowerCase();
 	if (!q) return null;
 	const titleHits: Book[] = [];
@@ -89,8 +98,9 @@ export function searchBooks(books: Book[], query: string): Book[] | null {
 	for (const b of books) {
 		const titleHit = b.title.toLowerCase().includes(q);
 		const bodyHit = !titleHit && b.body.toLowerCase().includes(q);
+		const attachHit = !titleHit && !bodyHit && (attachIds?.has(b.book_id) ?? false);
 		if (titleHit) titleHits.push(b);
-		else if (bodyHit) bodyOnlyHits.push(b);
+		else if (bodyHit || attachHit) bodyOnlyHits.push(b);
 	}
 	titleHits.sort((a, b) => a.title.localeCompare(b.title));
 	bodyOnlyHits.sort((a, b) => a.title.localeCompare(b.title));
@@ -116,7 +126,9 @@ export function searchLibrary(
 	tree: LibraryTree,
 	books: Book[],
 	query: string,
-	scope = ''
+	scope = '',
+	/** REQ-011: 첨부 이름이 맞은 book_id 집합(서버 판정). */
+	attachIds?: Set<string>
 ): LibrarySearchResult | null {
 	const q = query.trim().toLowerCase();
 	if (!q) return null;
@@ -129,7 +141,8 @@ export function searchLibrary(
 
 	const books_ = searchBooks(
 		books.filter((b) => inScope(b.path)),
-		query
+		query,
+		attachIds
 	);
 
 	return { folders, books: books_ ?? [] };

@@ -1524,6 +1524,8 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'library.newFolder': { ko: '+ 폴더', en: '+ Folder' },
 	'library.newDoc': { ko: '+ 신규', en: '+ New' },
 	'library.searchPlaceholder': { ko: '제목/본문 검색', en: 'Search title/body' },
+	// REQ-011: 도서관 검색 영역 확장. 도서관 문서엔 댓글이 없어 첨부 이름만 대상이다.
+	'library.searchAttachments': { ko: '첨부 이름 포함', en: 'Include attachment names' },
 	'library.sortAria': { ko: '문서 정렬', en: 'Sort documents' },
 	'library.sortTitle': { ko: '정렬 기준', en: 'Sort by' },
 	'library.sortDesc': { ko: '내림차순 — 클릭 시 오름차순', en: 'Descending — click for ascending' },
