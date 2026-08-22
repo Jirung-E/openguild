@@ -288,14 +288,55 @@ async fn stream_attachments_zip(
     Ok((
         [
             (header::CONTENT_TYPE, "application/zip".to_string()),
-            (
-                header::CONTENT_DISPOSITION,
-                format!("attachment; filename=\"{download_name}\""),
-            ),
+            (header::CONTENT_DISPOSITION, content_disposition(&download_name)),
         ],
         body,
     )
         .into_response())
+}
+
+/// 파일명 조각을 파일 시스템에 안전하게 만든다 — 경로 구분자와 예약 문자를 `_` 로.
+///
+/// 길드 이름은 사용자가 정하므로 공백·슬래시·따옴표가 들어올 수 있다. 한글 등
+/// 비ASCII 는 **그대로 둔다**(아래 RFC 5987 로 전달되고, 파일명으로도 정상이다).
+fn safe_name_part(raw: &str) -> String {
+    let cleaned: String = raw
+        .chars()
+        .map(|c| if matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') || c.is_control() { '_' } else { c })
+        .collect();
+    let trimmed = cleaned.trim().trim_matches('.').trim();
+    if trimmed.is_empty() { "guild".to_string() } else { trimmed.to_string() }
+}
+
+/// `Content-Disposition` 값. 한글 길드/문서 이름을 위해 **RFC 5987** 형식을 함께
+/// 낸다 — `filename=` 만 쓰면 비ASCII 가 브라우저마다 다르게 깨진다. 구형
+/// 클라이언트를 위해 ASCII 로 접은 이름을 `filename=` 에 남긴다.
+fn content_disposition(name: &str) -> String {
+    let ascii: String = name
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') { c } else { '_' })
+        .collect();
+    let encoded: String = name
+        .as_bytes()
+        .iter()
+        .map(|b| {
+            if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.') {
+                (*b as char).to_string()
+            } else {
+                format!("%{b:02X}")
+            }
+        })
+        .collect();
+    format!("attachment; filename=\"{ascii}\"; filename*=UTF-8''{encoded}")
+}
+
+/// BUG-241 후속: zip 파일명은 **길드 이름을 포함**한다. 여러 길드에서 받은
+/// 첨부 묶음이 다운로드 폴더에 섞이면 `DEV-007-attachments.zip` 만으로는 어느
+/// 길드 것인지 알 수 없다.
+fn zip_download_name(store: &Store, doc_id: &str) -> String {
+    let guild = safe_name_part(&openguild_core::recents::guess_name(&store.paths.guild_root));
+    let doc = safe_name_part(doc_id);
+    format!("{guild}_{doc}_attachments.zip")
 }
 
 /// `GET /api/quests/by/{slug}/attachments.zip`
@@ -304,7 +345,8 @@ pub async fn quest_attachments_zip(
     Path(slug): Path<String>,
 ) -> AppResult<axum::response::Response> {
     let items = ops::list_quest_attachments(&store, &slug);
-    stream_attachments_zip(store.clone(), items, format!("{slug}-attachments.zip")).await
+    let name = zip_download_name(&store, &slug);
+    stream_attachments_zip(store.clone(), items, name).await
 }
 
 /// `GET /api/campaigns/{slug}/attachments.zip`
@@ -313,7 +355,8 @@ pub async fn campaign_attachments_zip(
     Path(slug): Path<String>,
 ) -> AppResult<axum::response::Response> {
     let items = ops::list_campaign_attachments(&store, &slug);
-    stream_attachments_zip(store.clone(), items, format!("{slug}-attachments.zip")).await
+    let name = zip_download_name(&store, &slug);
+    stream_attachments_zip(store.clone(), items, name).await
 }
 
 /// `GET /api/library/{book_id}/attachments.zip`
@@ -322,5 +365,6 @@ pub async fn book_attachments_zip(
     Path(book_id): Path<String>,
 ) -> AppResult<axum::response::Response> {
     let items = ops::list_book_attachments(&store, &book_id);
-    stream_attachments_zip(store.clone(), items, format!("{book_id}-attachments.zip")).await
+    let name = zip_download_name(&store, &book_id);
+    stream_attachments_zip(store.clone(), items, name).await
 }

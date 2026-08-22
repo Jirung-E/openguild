@@ -183,6 +183,18 @@
 		}
 	}
 
+	/**
+	 * BUG-241: 파일명을 서버 `Content-Disposition` 에 맡기는 다운로드.
+	 * `download` 속성을 붙이면 같은 출처에서 그 값이 서버 이름을 덮어쓴다.
+	 */
+	function serverNamedDownload(url: string) {
+		const a = document.createElement('a');
+		a.href = url;
+		document.body.appendChild(a);
+		a.click();
+		a.remove();
+	}
+
 	function browserDownload(url: string, name: string) {
 		const a = document.createElement('a');
 		a.href = url;
@@ -298,7 +310,11 @@
 		// 그 환경에서 첨부를 다 받게 하려면 **다운로드를 1건으로 만드는 것** 밖에
 		// 없다. 압축 해제라는 비용이 있지만, 받지 못하는 것보다는 낫다.
 		// 서버가 무압축(store)으로 스트리밍하므로 대용량 첨부도 안전하다.
-		browserDownload(guildAttachmentsZipUrl(scope, slug), `${slug}-attachments.zip`);
+		// 파일명은 **서버가 정한다**(`Content-Disposition`). 길드 이름을 포함해야
+		// 하는데 프론트에서 다시 조회하면 `await` 가 끼어 제스처가 끊기고, 이름
+		// 규칙이 두 곳으로 갈라진다. `download` 속성을 주면 같은 출처에서는 그쪽이
+		// 이기므로 **일부러 붙이지 않는다**.
+		serverNamedDownload(guildAttachmentsZipUrl(scope, slug));
 	}
 </script>
 
