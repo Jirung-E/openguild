@@ -12,6 +12,13 @@ export interface QuestFilterState {
 	statusIds: Set<number>;
 	search: string;
 	titleOnly: boolean;
+	/**
+	 * REQ-010: 검색 범위 확장 — `search` 의 수식어다. 나머지 필터와 같은 길을
+	 * 타야 뷰 전환·페이지 이동 후에도 남는다(BUG-243: 여기 빠져 있어서 매번
+	 * 풀렸다).
+	 */
+	searchComments: boolean;
+	searchAttachments: boolean;
 	tags: Set<string>;
 	urgencies: Set<number>;
 	prereq: TriState;
@@ -27,6 +34,8 @@ export const EMPTY_FILTER: QuestFilterState = {
 	statusIds: new Set(),
 	search: '',
 	titleOnly: false,
+	searchComments: false,
+	searchAttachments: false,
 	tags: new Set(),
 	urgencies: new Set(),
 	prereq: 'any',
@@ -37,6 +46,12 @@ export const EMPTY_FILTER: QuestFilterState = {
 	updatedBefore: ''
 };
 
+/**
+ * '필터가 걸려 있는가'. `searchComments` / `searchAttachments` 는 일부러
+ * 제외한다 — 검색어가 비면 이 플래그만으로 결과가 달라지지 않아, 포함하면
+ * 보이는 변화 없이 '필터 활성' 표시만 켜진다. 검색어가 있으면 `search` 쪽에서
+ * 이미 true 다.
+ */
 export function isFilterActive(f: QuestFilterState): boolean {
 	return (
 		f.typeIds.size > 0 ||
@@ -64,6 +79,8 @@ export function serializeFilter(f: QuestFilterState): string {
 		statusIds: [...f.statusIds],
 		search: f.search,
 		titleOnly: f.titleOnly,
+		searchComments: f.searchComments,
+		searchAttachments: f.searchAttachments,
 		tags: [...f.tags],
 		urgencies: [...f.urgencies],
 		prereq: f.prereq,
@@ -86,6 +103,9 @@ export function deserializeFilter(raw: string | null): QuestFilterState | null {
 			statusIds: new Set<number>(Array.isArray(o.statusIds) ? o.statusIds : []),
 			search: str(o.search),
 			titleOnly: o.titleOnly === true,
+			// 이 두 필드가 없던 시절 저장된 값도 읽힌다 — 없으면 false.
+			searchComments: o.searchComments === true,
+			searchAttachments: o.searchAttachments === true,
 			tags: new Set<string>(Array.isArray(o.tags) ? o.tags : []),
 			urgencies: new Set<number>(Array.isArray(o.urgencies) ? o.urgencies : []),
 			prereq: tri(o.prereq),

@@ -116,6 +116,8 @@
 	let titleOnly = $state(false);
 	// REQ-010: 검색 영역 확장. 댓글·첨부 이름은 클라이언트에 없어 서버에 판정을
 	// 맡긴다 — 켰을 때만 요청이 나간다(끄면 예전과 동일하게 전부 로컬 필터).
+	// BUG-243: 초기값은 false 지만 onMount 의 applyFilter 가 store/localStorage/
+	// URL 에서 복원한다 — 나머지 필터와 같은 경로.
 	let searchComments = $state(false);
 	let searchAttachments = $state(false);
 	/** 서버가 계산한 매치 id 집합. null = 서버 판정 미사용(로컬 필터). */
@@ -189,6 +191,8 @@
 			statusIds: filterStatusIds,
 			search,
 			titleOnly,
+			searchComments,
+			searchAttachments,
 			tags: filterTags,
 			urgencies: filterUrgencies,
 			prereq: filterPrereq,
@@ -204,6 +208,8 @@
 		filterStatusIds = new Set(f.statusIds);
 		search = f.search;
 		titleOnly = f.titleOnly;
+		searchComments = f.searchComments;
+		searchAttachments = f.searchAttachments;
 		filterTags = new Set(f.tags);
 		filterUrgencies = new Set(f.urgencies);
 		filterPrereq = f.prereq;
@@ -275,6 +281,12 @@
 		if (urlSearch !== null) search = urlSearch;
 		const urlTitleOnly = params.get('title_only');
 		if (urlTitleOnly !== null) titleOnly = urlTitleOnly === 'true';
+		// BUG-243: 검색 범위도 URL 에 실린다 — 검색어만 옮겨가고 범위가 빠지면
+		// 링크를 공유했을 때 다른 결과가 나온다.
+		const urlSearchComments = params.get('search_comments');
+		if (urlSearchComments !== null) searchComments = urlSearchComments === 'true';
+		const urlSearchAttachments = params.get('search_attachments');
+		if (urlSearchAttachments !== null) searchAttachments = urlSearchAttachments === 'true';
 		// DEV-065: URL 의 ?mode= 우선, 없으면 localStorage, 없으면 'tree'.
 		const urlMode = params.get('mode');
 		if (urlMode === 'list' || urlMode === 'tree') {
@@ -370,6 +382,10 @@
 		else url.searchParams.delete('search');
 		if (titleOnly) url.searchParams.set('title_only', 'true');
 		else url.searchParams.delete('title_only');
+		if (searchComments) url.searchParams.set('search_comments', 'true');
+		else url.searchParams.delete('search_comments');
+		if (searchAttachments) url.searchParams.set('search_attachments', 'true');
+		else url.searchParams.delete('search_attachments');
 		// DEV-065: mode 동기화. 'tree' 는 기본이므로 URL 에서 생략.
 		if (viewMode === 'list') url.searchParams.set('mode', 'list');
 		else url.searchParams.delete('mode');

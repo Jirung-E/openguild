@@ -2476,8 +2476,12 @@
 			statusIds: bfStatusIds,
 			search: bfSearch,
 			titleOnly: bfTitleOnly,
-			// tags 는 board UI 에서 편집 안 함 — store 의 기존 값 유지.
+			// tags 와 검색 범위는 board UI 에서 편집 안 함 — store 의 기존 값 유지.
+			// BUG-243: 여기서 false 로 덮으면 보드에 들렀다 오는 것만으로 목록의
+			// '댓글/첨부 이름 포함' 이 풀린다.
 			tags: get(questFilters).tags,
+			searchComments: get(questFilters).searchComments,
+			searchAttachments: get(questFilters).searchAttachments,
 			urgencies: bfUrgencies,
 			prereq: bfPrereq,
 			sub: bfSub,
