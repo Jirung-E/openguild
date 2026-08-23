@@ -8743,8 +8743,8 @@ mod tests {
                     no_sub,
                     search,
                     title_only,
-                search_comments,
-                search_attachments,
+                    search_comments,
+                    search_attachments,
                     sort,
                     reverse,
                     limit,
@@ -8772,6 +8772,9 @@ mod tests {
                 assert!(!has_sub);
                 assert!(!no_sub);
                 assert!(search.is_none());
+                // REQ-010: 강화 검색은 opt-in — 아무것도 안 주면 꺼져 있어야 한다.
+                assert!(!search_comments);
+                assert!(!search_attachments);
                 assert!(sort.is_empty());
                 assert!(!reverse);
                 assert!(limit.is_none());
@@ -8908,6 +8911,8 @@ mod tests {
                 assert!(!no_sub);
                 assert!(search.is_none());
                 assert!(!title_only);
+                assert!(!search_comments);
+                assert!(!search_attachments);
                 assert_eq!(sort, vec!["urgency"]);
                 assert!(reverse);
                 assert_eq!(limit, Some(5));
@@ -9101,6 +9106,8 @@ mod tests {
                 assert_eq!(title.as_deref(), Some("test"));
                 assert!(urgency.is_none()); // 기본값은 핸들러 merge 에서
                 assert!(parent.is_none());
+                // DEV-365: 안 주면 빈 목록 — 선행 없이 생성되는 기본 경로.
+                assert!(prereq.is_empty());
                 assert!(description.is_none());
                 assert!(description_file.is_none());
                 assert!(template.is_none());
@@ -9139,6 +9146,7 @@ mod tests {
                 assert_eq!(title.as_deref(), Some("fix"));
                 assert_eq!(urgency, Some(1));
                 assert_eq!(parent.as_deref(), Some("DEV-007"));
+                assert!(prereq.is_empty());
                 assert_eq!(description.as_deref(), Some("details"));
                 assert!(description_file.is_none());
                 assert_eq!(template.as_deref(), Some("bug-report"));
@@ -9810,7 +9818,6 @@ mod tests {
         }
     }
 
-    #[test]
     /// DEV-365: `quest new --prereq` 파싱 — 쉼표 다중과 반복 지정 모두.
     /// 생성과 선행 지정이 갈라져 있으면 그 단계를 건너뛰게 되므로(DEV-361 과
     /// 같은 이유) 한 번에 받는 것이 계약이다.
@@ -9841,6 +9848,9 @@ mod tests {
         }
     }
 
+    /// DEV-365: 사후 연결 경로(`quest prereq add`)도 계속 살아 있어야 한다 —
+    /// `new --prereq` 는 생성 시점용이고, 나중에 알게 된 관계는 이쪽으로 건다.
+    #[test]
     fn cli_parse_prereq_subcommand() {
         let cli = Cli::try_parse_from([
             "openguild", "quest", "prereq", "add", "DEV-001", "DEV-002",
