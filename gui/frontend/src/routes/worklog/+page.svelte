@@ -18,9 +18,16 @@
 	import {
 		worklogApi,
 		type WorklogReport,
-		type WorklogNote,
-		type ActivityRow
+		type WorklogNote
 	} from '$lib/api/worklog';
+	// REQ-006: compact 묶음 로직은 단위 테스트를 붙이려고 utils 로 분리했다.
+	import {
+		activityHref,
+		groupByDay,
+		groupByDoc,
+		groupTimeLabel,
+		firstLine
+	} from '$lib/utils/worklog-group';
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	// DEV-302: 제목/노트 라벨에 섞여 있던 이모지(🕘/📝)를 아이콘으로 분리.
 	import Icon from '$lib/components/Icon.svelte';
@@ -330,32 +337,8 @@
 				return t('worklogPage.unit.range', $locale);
 		}
 	}
-	function activityHref(a: ActivityRow): string {
-		// DEV-288: 규칙/도서관 활동은 해당 문서 페이지로(딥링크 쿼리는 각 페이지가 처리).
-		if (a.kind === 'rule') return `/rules?slug=${encodeURIComponent(a.slug)}`;
-		if (a.kind === 'book') return `/library?id=${encodeURIComponent(a.slug)}`;
-		const base = /^C-\d+$/.test(a.slug)
-			? `/campaigns/${encodeURIComponent(a.slug)}`
-			: `/quests/${encodeURIComponent(a.slug)}`;
-		// DEV-296: 댓글/토론 활동은 그 댓글까지 — 문서만 열면 긴 목록에서 다시
-		// 찾아야 했다. 댓글 섹션이 `?comment=N` 을 보고 스크롤 + 강조한다.
-		return a.ref_id != null ? `${base}?comment=${a.ref_id}` : base;
-	}
-	function firstLine(s: string): string {
-		return s.split('\n', 1)[0] ?? '';
-	}
 	// 주/월 뷰: 날짜별 그룹핑.
-	const grouped = $derived.by(() => {
-		if (!report) return [] as { date: string; rows: ActivityRow[] }[];
-		const out: { date: string; rows: ActivityRow[] }[] = [];
-		for (const a of report.activities) {
-			const d = a.ts.slice(0, 10);
-			const last = out[out.length - 1];
-			if (last && last.date === d) last.rows.push(a);
-			else out.push({ date: d, rows: [a] });
-		}
-		return out;
-	});
+	const grouped = $derived(report ? groupByDay(report.activities) : []);
 
 	// REQ-006: compact 뷰 — 같은 날 같은 문서에 가한 조작을 문서 단위로 묶는다.
 	// 평면 목록은 한 퀘스트를 작업하면 상태변경·댓글·수정이 줄줄이 풀려 나와,
@@ -379,35 +362,6 @@
 		} catch {
 			/* ignore */
 		}
-	}
-
-	interface DocGroup {
-		slug: string;
-		href: string;
-		rows: ActivityRow[];
-		/** 그룹 안 조작 종류(중복 제거, 등장 순) — 뱃지로 요약 표시. */
-		kinds: string[];
-		/** 가장 이른 / 늦은 시각 (HH:MM). */
-		fromTs: string;
-		toTs: string;
-	}
-
-	/** 하루치 rows 를 문서(slug) 단위로 묶는다. 문서의 첫 등장 순서를 유지한다. */
-	function groupByDoc(rows: ActivityRow[]): DocGroup[] {
-		const byslug = new Map<string, DocGroup>();
-		for (const a of rows) {
-			let g = byslug.get(a.slug);
-			if (!g) {
-				// 그룹 링크는 그 문서의 **첫** 활동을 가리킨다 — 댓글이면 그 댓글까지.
-				g = { slug: a.slug, href: activityHref(a), rows: [], kinds: [], fromTs: a.ts, toTs: a.ts };
-				byslug.set(a.slug, g);
-			}
-			g.rows.push(a);
-			if (!g.kinds.includes(a.kind)) g.kinds.push(a.kind);
-			if (a.ts < g.fromTs) g.fromTs = a.ts;
-			if (a.ts > g.toTs) g.toTs = a.ts;
-		}
-		return [...byslug.values()];
 	}
 
 	/** compact 뷰에서 펼쳐 놓은 그룹 키(`날짜|slug`). 기본은 전부 접힘. */
@@ -596,11 +550,7 @@
 									>
 										<span class="toggle-icon" class:collapsed={!open}>▼</span>
 									</button>
-									<span class="ts">
-										{dg.fromTs.slice(11, 16)}{dg.rows.length > 1
-											? `–${dg.toTs.slice(11, 16)}`
-											: ''}
-									</span>
+									<span class="ts">{groupTimeLabel(dg)}</span>
 									<a class="slug doclink" href={dg.href}>{dg.slug}</a>
 									<span class="kinds">
 										{#each dg.kinds as k (k)}
