@@ -758,7 +758,13 @@
 		align-items: center;
 		justify-content: center;
 		height: 20px;
-		padding: 0 0.35rem;
+		/* BUG-244 후속: 한글·대문자 라틴은 글자 덩어리가 baseline 위에 몰려 있다
+		   (실측: 종류 칩 ascent 11px / descent 2px). 줄 상자를 가운데 두면
+		   baseline 이 상자 정중앙에 놓여 글자가 4.5px 위로 뜬 것처럼 보인다.
+		   위쪽 여백으로 그만큼 내려 **글자 덩어리 기준**으로 가운데를 맞춘다
+		   — 고정 높이(20px, border-box)라 상자 크기는 그대로다. 여백은
+		   글자 크기에 비례(em)해 확대/축소에도 유지된다. */
+		padding: 0.64em 0.35rem 0;
 		box-sizing: border-box;
 		line-height: 1;
 		border: 1px solid transparent;
@@ -813,7 +819,8 @@
 		align-items: center;
 		/* BUG-244: 종류 칩과 같은 상자 높이(20px) + 글자 10 → 11.5px. */
 		height: 20px;
-		padding: 0 7px;
+		/* 글자 덩어리 기준 가운데 맞춤 — 종류 칩과 같은 이유(위 주석). */
+		padding: 0.64em 7px 0;
 		box-sizing: border-box;
 		border-radius: 10px;
 		font-family: 'SFMono-Regular', Consolas, monospace;
