@@ -2,6 +2,9 @@
 	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
 	import Icon from '$lib/components/Icon.svelte';
 	import { onMount } from 'svelte';
+	import { afterNavigate } from '$app/navigation';
+	// BUG-245: 정렬 규칙은 단위 테스트가 있는 유틸로 분리.
+	import { byLastOpenedDesc } from '$lib/utils/recent-sort';
 	import { goto } from '$app/navigation';
 	// BUG-176: 길드 전환 시 식별 캐시 무효화 — 히스토리 표식이 새 길드로 남도록.
 	import { invalidateCurrentGuild } from '$lib/stores/guildIdentity';
@@ -82,7 +85,7 @@
 				...recents.map((r) => ({ kind: 'local' as const, ...r })),
 				...remoteGuildList.map((g) => ({ kind: 'remote' as const, ...g }))
 			] satisfies UnifiedEntry[]
-		).sort((a, b) => (a.last_opened < b.last_opened ? 1 : -1))
+		).sort(byLastOpenedDesc)
 	);
 
 	// DEV-052 후속 (2회차): 길드 미초기화 디렉토리에서 시작했을 때의 prompt.
@@ -97,15 +100,15 @@
 
 	const env = detectEnvironment();
 
-	onMount(async () => {
-		// DEV-207 후속: Welcome 에 도달했다는 건 "아직 길드를 안 골랐다"는
-		// 뜻 — 직전에 어떤 길드를 봤었든(로컬/원격) 설정 페이지의 "지금 열려
-		// 있음" 판단은 여기서 항상 리셋. 길드를 다시 열면(routes/+page.svelte
-		// 의 board onMount) 다시 active 로 마크됨.
-		markGuildContextInactive();
-		// recents 먼저 로드.
+	/**
+	 * BUG-245: 목록 다시 읽기. 길드를 열었다 **뒤로 돌아오면** 그 길드의
+	 * `last_opened` 가 갱신돼 있어야 맨 위로 온다 — 예전엔 `onMount` 에서만
+	 * 읽어서, 컴포넌트가 재사용되는 경로에서는 옛 순서가 그대로 남았다.
+	 */
+	async function refreshGuildLists() {
 		try {
 			recents = await recentsApi.list();
+			err = null;
 		} catch (e) {
 			err = e instanceof Error ? e.message : String(e);
 		} finally {
@@ -123,6 +126,22 @@
 					remoteReachable = { ...remoteReachable, [g.url]: false };
 				});
 		}
+	}
+
+	// 이 페이지로 돌아올 때마다(뒤로가기 포함) 목록을 다시 읽는다. mount 시의
+	// 첫 호출(type === 'enter')은 아래 onMount 가 이미 처리하므로 건너뛴다.
+	afterNavigate((nav) => {
+		if (nav.type === 'enter') return;
+		void refreshGuildLists();
+	});
+
+	onMount(async () => {
+		// DEV-207 후속: Welcome 에 도달했다는 건 "아직 길드를 안 골랐다"는
+		// 뜻 — 직전에 어떤 길드를 봤었든(로컬/원격) 설정 페이지의 "지금 열려
+		// 있음" 판단은 여기서 항상 리셋. 길드를 다시 열면(routes/+page.svelte
+		// 의 board onMount) 다시 active 로 마크됨.
+		markGuildContextInactive();
+		await refreshGuildLists();
 		// launch_mode 가 'uninit' 이면 prompt 활성화.
 		if (env === 'tauri') {
 			try {

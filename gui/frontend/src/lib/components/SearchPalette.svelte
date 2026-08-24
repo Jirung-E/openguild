@@ -746,7 +746,10 @@
 		/* slug 칩과 **같은 글자 크기**. 나란히 놓이는 두 칩이라 크기가 다르면
 		   한쪽이 잘못된 것처럼 보인다. 모양(각진 4px)은 일부러 다르게 둔다 —
 		   이건 식별자가 아니라 분류 라벨이다. */
-		font-size: 0.68rem;
+		/* BUG-244: 제목(0.85rem)에 비해 너무 작아 읽히지 않는다는 보고 —
+		   0.68 → 0.78rem. 상자 높이도 제목 한 줄(line-height 21.76px)에 맞춰
+		   20px 로 키워, 칩 가운데와 제목 글자 가운데가 같은 선에 오게 한다. */
+		font-size: 0.78rem;
 		font-weight: 600;
 		border-radius: 4px;
 		/* 나란히 놓이는 칩이라 **상자 높이는** slug 칩과 같아야 한다. 모양(각진
@@ -754,7 +757,7 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		height: 17px;
+		height: 20px;
 		padding: 0 0.35rem;
 		box-sizing: border-box;
 		line-height: 1;
@@ -808,12 +811,13 @@
 		flex: none;
 		display: inline-flex;
 		align-items: center;
-		height: 17px;
+		/* BUG-244: 종류 칩과 같은 상자 높이(20px) + 글자 10 → 11.5px. */
+		height: 20px;
 		padding: 0 7px;
 		box-sizing: border-box;
-		border-radius: 9px;
+		border-radius: 10px;
 		font-family: 'SFMono-Regular', Consolas, monospace;
-		font-size: 10px;
+		font-size: 11.5px;
 		font-weight: 600;
 		line-height: 1;
 		white-space: nowrap;
@@ -875,9 +879,13 @@
 		   내용이 잘린다. 해당 행에서만 끈다. */
 		content-visibility: visible;
 	}
+	/* BUG-244: 펼친 행에서는 칩이 세로로 쌓이는데(DEV-362) 제목은 상자 전체
+	   기준으로 가운데 정렬돼 있어, 제목 줄이 두 칩 **사이**에 떠 보였다.
+	   위 기준으로 붙여 종류 칩과 제목 첫 줄이 같은 선에 오게 한다(칩 높이 20px,
+	   제목 줄높이 21.76px — 가운데가 거의 일치). */
 	.row.expanded .row-main,
 	.row:global(.collapsing) .row-main {
-		align-items: center;
+		align-items: flex-start;
 	}
 	.row.expanded .ptitle,
 	.row:global(.collapsing) .ptitle {
