@@ -259,7 +259,12 @@
 	async function reopenGuildFromHistory(target: GuildId): Promise<void> {
 		if (target.kind === 'local') {
 			const { invoke } = await import('@tauri-apps/api/core');
-			await invoke('open_guild_in_current_window', { path: target.path });
+			// BUG-245: 히스토리 복원으로 여는 것은 "최근 연 길드"가 아니다 —
+			// 시각을 갱신하면 뒤로가기만으로 옛 길드가 목록 맨 위로 올라온다.
+			await invoke('open_guild_in_current_window', {
+				path: target.path,
+				touchRecents: false
+			});
 			// open 성공 뒤에만 remote override 를 끈다. 실패했을 때 현재 원격
 			// 세션까지 잃어버리지 않기 위함이다.
 			setRemoteServerUrl(null);

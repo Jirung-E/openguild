@@ -999,6 +999,12 @@ pub fn init_and_open_guild(
 ///
 /// frontend 는 응답 받은 직후 `goto('/')` 로 보드 진입.
 ///
+/// BUG-245: `touch_recents = Some(false)` 면 최근 목록의 시각을 갱신하지 않는다.
+/// 뒤로/앞으로 이동으로 **다른 길드의 히스토리 항목**에 도달하면 layout 의
+/// history guard(DEV-355)가 그 길드를 다시 연다. 그때도 갱신하면 사용자가 직접
+/// "연" 적 없는 길드가 최근 목록 맨 위로 올라오고 방금 쓰던 길드가 아래로
+/// 밀린다(admin 보고: "뒤로가기 할 때 이상하게 정렬"). 그 경로만 false 로 부른다.
+///
 /// `unmanage` 는 Tauri 2 에서 deprecated (dangling ref 우려) 지만 본 앱은
 /// 단일 사용자 + swap 이 사용자 명시 액션이라 다른 command 와 동시 실행이
 /// 사실상 없음. 차후 Mutex<Store> 리팩터 시 제거.
@@ -1007,6 +1013,8 @@ pub fn init_and_open_guild(
 pub fn open_guild_in_current_window(
     app: tauri::AppHandle,
     path: String,
+    // BUG-245: 최근 목록의 시각을 갱신할지(기본 true). 히스토리 복원은 false.
+    touch_recents: Option<bool>,
 ) -> Result<(), String> {
     use tauri::Manager;
 
@@ -1050,8 +1058,10 @@ pub fn open_guild_in_current_window(
         eprintln!("[openguild-gui] warn: sync_on_open 실패 — {e:#}");
     }
 
-    // 2. recents 등록 (실패해도 swap 진행).
-    if let Err(e) = openguild_core::recents::add(p) {
+    // 2. recents 등록 (실패해도 swap 진행). BUG-245: 히스토리 복원은 제외.
+    if touch_recents.unwrap_or(true)
+        && let Err(e) = openguild_core::recents::add(p)
+    {
         eprintln!("[openguild-gui] warn: recents 갱신 실패 — {e:#}");
     }
 

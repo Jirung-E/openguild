@@ -617,8 +617,8 @@
 		width: min(560px, 62vw);
 		z-index: 1200;
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 8px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-lg);
 		box-shadow: 0 10px 34px rgba(0, 0, 0, 0.45);
 		overflow: hidden;
 	}
@@ -634,13 +634,13 @@
 		gap: 0.5rem;
 		padding: 0 0.8rem;
 		background: var(--bg-subtle);
-		border-bottom: 1px solid var(--border);
+		border-bottom: var(--bw) solid var(--border);
 	}
 	.scope-chip {
 		flex: none;
 		font-size: 0.68rem;
 		font-weight: 600;
-		border-radius: 4px;
+		border-radius: var(--r-sm);
 		padding: 0.1rem 0.4rem;
 		color: var(--accent);
 		background: color-mix(in srgb, var(--accent) 14%, transparent);
@@ -727,13 +727,22 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 22px;
-		height: 22px;
+		/* BUG-244: px 고정이라 UI 크기 조절(DEV-101 — root font-size 배율)에
+		   반응하지 않았다. 칩·제목만 커지고 버튼만 그대로라 배율을 올릴수록
+		   행이 어긋난다. 22px = 1.375rem. */
+		width: 1.375rem;
+		height: 1.375rem;
 		color: var(--text-faint);
 		background: transparent;
 		border: none;
-		border-radius: 4px;
+		border-radius: var(--r-sm);
 		cursor: pointer;
+	}
+	/* 아이콘 크기는 마크업의 `width`/`height` 속성(13px)이라 배율을 안 탄다 —
+	   CSS 로 덮어 rem 으로 재정의(13px = 0.8125rem). */
+	.row-act svg {
+		width: 0.8125rem;
+		height: 0.8125rem;
 	}
 	.row-act:hover {
 		background: var(--nav-hover-bg);
@@ -751,23 +760,19 @@
 		   20px 로 키워, 칩 가운데와 제목 글자 가운데가 같은 선에 오게 한다. */
 		font-size: 0.78rem;
 		font-weight: 600;
-		border-radius: 4px;
+		border-radius: var(--r-sm);
 		/* 나란히 놓이는 칩이라 **상자 높이는** slug 칩과 같아야 한다. 모양(각진
 		   4px, sans)은 일부러 다르게 둔다 — 이건 식별자가 아니라 분류 라벨이다. */
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		height: 20px;
-		/* BUG-244 후속: 한글·대문자 라틴은 글자 덩어리가 baseline 위에 몰려 있다
-		   (실측: 종류 칩 ascent 11px / descent 2px). 줄 상자를 가운데 두면
-		   baseline 이 상자 정중앙에 놓여 글자가 4.5px 위로 뜬 것처럼 보인다.
-		   위쪽 여백으로 그만큼 내려 **글자 덩어리 기준**으로 가운데를 맞춘다
-		   — 고정 높이(20px, border-box)라 상자 크기는 그대로다. 여백은
-		   글자 크기에 비례(em)해 확대/축소에도 유지된다. */
-		padding: 0.64em 0.35rem 0;
+		/* BUG-244: 접힌 행에서 우측 액션 버튼과 같은 상자 높이(22px = 1.375rem).
+		   UI 크기 조절(DEV-101)을 따라가도록 rem. */
+		height: 1.375rem;
+		padding: 0 0.35rem;
 		box-sizing: border-box;
 		line-height: 1;
-		border: 1px solid transparent;
+		border: var(--bw) solid transparent;
 	}
 	/* 타입별 색 — QuestBoard / 문서 톤과 맞춤. */
 	/* DEV-362: 종류 칩과 slug 칩 묶음. 접힌 행은 가로로 나란히(한 줄에 눌러
@@ -777,7 +782,10 @@
 	.pills {
 		display: flex;
 		flex-direction: row;
-		align-items: flex-start;
+		/* BUG-244: 두 칩은 높이가 다르다(종류 22px = 버튼과 동일 / slug 는 보드
+		   노드 칩 비율 1.7em). `flex-start` 면 짧은 slug 가 위로 붙어 중앙이
+		   어긋난다 — 서로 가운데를 맞춘다. 높이는 각자 유지. */
+		align-items: center;
 		gap: 0.35rem;
 		flex: none;
 	}
@@ -817,20 +825,24 @@
 		flex: none;
 		display: inline-flex;
 		align-items: center;
-		/* BUG-244: 종류 칩과 같은 상자 높이(20px) + 글자 10 → 11.5px. */
-		height: 20px;
-		/* 글자 덩어리 기준 가운데 맞춤 — 종류 칩과 같은 이유(위 주석). */
-		padding: 0.64em 7px 0;
+		/* BUG-244: 보드 노드의 slug 칩(`QuestBoard` 의 `.node-pill.mono`)과 **모양이
+		   같아야** 한다 — 같은 quest_id 를 보여주는 칩이 화면마다 다르면 같은
+		   것으로 안 읽힌다. 그쪽은 font 10px / height 17px / padding 0 7px /
+		   radius 9px(=높이의 절반) 이므로 비율은 각각 글자의 1.7배 / 0.7배 /
+		   완전한 알약이다. px 로 베끼면 UI 배율(DEV-101)에서 어긋나므로 **글자
+		   기준(em)** 으로 옮겨 적는다 — 배율이 바뀌어도 같은 모양이 유지된다. */
+		height: 1.7em;
+		padding: 0 0.7em;
 		box-sizing: border-box;
-		border-radius: 10px;
+		border-radius: var(--r-pill);
 		font-family: 'SFMono-Regular', Consolas, monospace;
-		font-size: 11.5px;
+		font-size: 0.72rem;
 		font-weight: 600;
 		line-height: 1;
 		white-space: nowrap;
 		color: var(--kind-c, var(--text-muted));
 		background: color-mix(in srgb, var(--kind-c, var(--text-muted)) 16%, transparent);
-		border: 1px solid color-mix(in srgb, var(--kind-c, var(--text-muted)) 55%, transparent);
+		border: var(--bw) solid color-mix(in srgb, var(--kind-c, var(--text-muted)) 55%, transparent);
 	}
 	.ptype.quest {
 		color: var(--accent);
@@ -851,6 +863,14 @@
 	.ptitle {
 		flex: 1;
 		color: var(--text);
+		/* BUG-244: 제목만 칩·버튼보다 낮게 앉아 보인다 — 글자가 더 크고 줄 상자도
+		   커서, 상자 중앙을 맞춰도 baseline 이 칩들보다 아래에 놓인다(실측: 종류
+		   칩보다 0.38px, slug 칩보다 1.33px 아래). slug 칩 baseline 에 맞춰 그만큼
+		   올린다. 배치는 안 건드리는 상대 이동이고 em 이라 UI 배율을 따라간다.
+		   (반대로 칩·버튼을 내리는 방식도 시도했으나 admin 판단으로 이쪽 채택 —
+		   행 안에서 칩·버튼이 아래로 치우쳐 보였다.) */
+		position: relative;
+		top: -0.098em;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
@@ -866,9 +886,14 @@
 	   언제나 화면 안이라 영향이 없다. 미지원 엔진에서는 그냥 무시된다. */
 	.row {
 		content-visibility: auto;
-		/* `auto` 로 두면 마지막 렌더 크기(펼친 58px)를 기억해 화면 밖 행마다 예상
-		   높이가 달라지고, 그만큼 스크롤이 흔들린다. 접힌 높이로 고정한다. */
-		contain-intrinsic-size: 36px;
+		/* `auto` 로 두면 마지막 렌더 크기(펼친 높이)를 기억해 화면 밖 행마다 예상
+		   높이가 달라지고, 그만큼 스크롤이 흔들린다. 접힌 높이로 고정한다.
+		   BUG-244: 값이 실제 접힌 높이와 **정확히** 같아야 한다 — 36px 로 두면
+		   실측 36.38px 와 0.38px 어긋나, 행이 화면에 들어오는 순간 추정이 실측으로
+		   교체되며 그만큼 움직인다(규칙처럼 펼쳐도 1줄인 항목에서 "잠깐 늘었다
+		   줄어드는" 것처럼 보이던 정체). 실제 높이 = 칩(1.375rem) + `.row-main`
+		   상하 패딩(0.45rem × 2) = 2.275rem. rem 이라 UI 배율도 따라간다. */
+		contain-intrinsic-size: 2.275rem;
 	}
 	/* DEV-297: 선택된 행은 말줄임을 풀어 제자리에서 펼친다. 우측 액션 버튼이
 	   따라 내려가지 않도록 정렬만 위로 붙인다.
@@ -886,13 +911,14 @@
 		   내용이 잘린다. 해당 행에서만 끈다. */
 		content-visibility: visible;
 	}
-	/* BUG-244: 펼친 행에서는 칩이 세로로 쌓이는데(DEV-362) 제목은 상자 전체
-	   기준으로 가운데 정렬돼 있어, 제목 줄이 두 칩 **사이**에 떠 보였다.
-	   위 기준으로 붙여 종류 칩과 제목 첫 줄이 같은 선에 오게 한다(칩 높이 20px,
-	   제목 줄높이 21.76px — 가운데가 거의 일치). */
+	/* BUG-244 후속: 펼친 행도 **가운데 정렬**로 되돌린다(admin).
+	   - 제목이 여러 줄이면 그 덩어리가 세로 가운데에 온다.
+	   - 접힘/펼침이 같은 정렬을 쓰므로, 규칙처럼 펼쳐도 1줄인 항목은 상자
+	     높이가 전혀 안 바뀐다 — 예전엔 정렬이 바뀌며 0.38px 씩 움직여 잠깐
+	     늘었다 줄어드는 것처럼 보였다. */
 	.row.expanded .row-main,
 	.row:global(.collapsing) .row-main {
-		align-items: flex-start;
+		align-items: center;
 	}
 	.row.expanded .ptitle,
 	.row:global(.collapsing) .ptitle {
@@ -916,7 +942,7 @@
 		align-items: center;
 		gap: 0.6rem;
 		padding: 0.55rem 0.8rem;
-		border-bottom: 1px solid var(--border);
+		border-bottom: var(--bw) solid var(--border);
 	}
 	.dp-title {
 		flex: 1;
@@ -935,7 +961,7 @@
 		border: none;
 		cursor: pointer;
 		padding: 0.2rem 0.35rem;
-		border-radius: 4px;
+		border-radius: var(--r-sm);
 	}
 	.dp-x:hover {
 		background: var(--nav-hover-bg);
@@ -947,7 +973,7 @@
 		padding: 0.4rem 0.8rem;
 		font-size: 0.72rem;
 		color: var(--text-muted);
-		border-bottom: 1px solid var(--border);
+		border-bottom: var(--bw) solid var(--border);
 	}
 	.dp-meta .tag {
 		color: var(--accent);
@@ -968,13 +994,13 @@
 		justify-content: flex-end;
 		gap: 0.5rem;
 		padding: 0.5rem 0.8rem;
-		border-top: 1px solid var(--border);
+		border-top: var(--bw) solid var(--border);
 	}
 	.dp-btn {
 		font-size: 0.78rem;
 		padding: 0.3rem 0.7rem;
-		border-radius: 6px;
-		border: 1px solid var(--border);
+		border-radius: var(--r-md);
+		border: var(--bw) solid var(--border);
 		background: transparent;
 		color: var(--text);
 		cursor: pointer;
@@ -992,7 +1018,7 @@
 		height: 7px;
 		cursor: ns-resize;
 		background: var(--bg-subtle);
-		border-top: 1px solid var(--border);
+		border-top: var(--bw) solid var(--border);
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -1001,7 +1027,7 @@
 		content: '';
 		width: 34px;
 		height: 3px;
-		border-radius: 2px;
+		border-radius: var(--r-xs);
 		background: var(--text-faint);
 	}
 	.dp-resize:hover::before {

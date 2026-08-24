@@ -705,7 +705,8 @@
 		left: 50%;
 		/* BUG-187: vw 근사 대신 JS 로 실측한 pill 절반 폭(--pill-half-w) 사용 —
 		   pill 의 min-width/max-width/내용 길이와 무관하게 항상 가장자리 밖. */
-		transform: translateX(calc(-1 * var(--pill-half-w, 134px) - 100% - 4px));
+		/* 간격 4px = 0.25rem — pill 과 버튼 사이 여백도 배율을 따라간다. */
+		transform: translateX(calc(-1 * var(--pill-half-w, 134px) - 100% - 0.25rem));
 		display: inline-flex;
 		align-items: center;
 		flex: none;
@@ -718,15 +719,22 @@
 		align-items: center;
 		flex: none;
 	}
+	/* BUG-244: 이 줄(길드 pill + 좌우 아이콘 버튼)은 UI 크기 조절(DEV-101 —
+	   root font-size 배율)을 따라야 한다. 높이는 rem 인데 패딩·모서리·아이콘이
+	   px 라 배율을 올리면 글자만 커지고 상자는 그대로였다. 아래 규칙들의 px 는
+	   전부 rem 환산(16px 기준): 12px=0.75rem / 6px=0.375rem / 13px=0.8125rem /
+	   15px=0.9375rem. 보드 노드 칩처럼 자체 확대/축소가 있는 요소는 대상이 아니다. */
 	.nav-pill {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
 		position: relative;
 		height: 1.55rem;
-		min-width: 260px;
+		/* 260px = 16.25rem — 배율을 올리면 이름 글자는 커지는데 pill 최소 폭만
+		   그대로라 여백이 줄어 보였다. */
+		min-width: 16.25rem;
 		max-width: 42vw;
-		padding: 0 12px;
+		padding: 0 0.75rem;
 
 		/* BUG-192: 좁은 화면에서 pill 의 min-width(260px) 가 양옆 공간을 다 먹어,
 		   pill 바깥에 절대 배치되는 ＋(퀘스트 추가)·시계(최근 문서)가 ☰·⚙ 위로
@@ -738,8 +746,8 @@
 		}
 		flex: none;
 		background: var(--bg-subtle);
-		border: 1px solid var(--nav-border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--nav-border);
+		border-radius: var(--r-md);
 		color: var(--text-muted);
 		cursor: pointer;
 	}
@@ -757,7 +765,7 @@
 	}
 	.nav-remote {
 		position: absolute;
-		right: 8px;
+		right: 0.5rem;
 		display: inline-flex;
 		color: var(--text-muted);
 	}
@@ -767,7 +775,7 @@
 		justify-content: center;
 		width: 1.7rem;
 		height: 1.55rem;
-		border-radius: 6px;
+		border-radius: var(--r-md);
 		color: var(--text-muted);
 		background: transparent;
 		border: none;
@@ -775,6 +783,15 @@
 		transition:
 			background 0.15s,
 			color 0.15s;
+	}
+	/* 아이콘 크기는 마크업의 width/height 속성(px)이라 배율을 안 탄다 — CSS 로 덮는다. */
+	.nav-icon-btn svg {
+		width: 0.9375rem;
+		height: 0.9375rem;
+	}
+	.nav-pill svg {
+		width: 0.8125rem;
+		height: 0.8125rem;
 	}
 	.nav-icon-btn:hover,
 	.nav-icon-btn.active {
