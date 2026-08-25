@@ -554,6 +554,7 @@
 						class="row"
 						class:sel={i === selIndex}
 						class:expanded={i === selIndex}
+						class:has-why={!!why}
 						onmouseenter={(ev) => {
 							// DEV-359: 호버도 펼침. 굴리는 중에 행이 커서 밑을 지나가며 들어오는
 							// hover(커서는 가만히 있다)는 무시한다 — 선택이 휠을 따라다니면
@@ -808,15 +809,19 @@
 		}
 	}
 	/* 제목/slug 에 없는데 나온 이유 + 발췌. */
+	/* 매치 이유 + 발췌는 **언제나 제목 아래 줄**에 온다(접힘·펼침 공통).
+	   같은 줄에서 제목과 가로 공간을 다투면 좁은 화면에서 제목이 한 글자 폭까지
+	   눌린다 — 아래 `.row.expanded .ptitle` 의 `overflow-wrap: anywhere` 주석
+	   참고. 폭 제한으로 막으면 화면 폭에 따라 다시 깨지므로 줄을 나눈다. */
 	.pwhy {
 		display: flex;
 		align-items: baseline;
 		gap: 0.3rem;
 		min-width: 0;
-		/* 접힌 행에서는 태그(.ptags)와 같은 방식으로 폭을 제한한다 — 제목이
-		   쓸 자리를 남겨야 한다. */
-		flex: 0 1 auto;
-		max-width: 40%;
+		flex-basis: 100%;
+		max-width: 100%;
+		/* 접힌 높이 추정치(.row.has-why)가 정확하려면 이 줄 높이가 확정돼야 한다. */
+		line-height: 1.25;
 	}
 	.pwhy-f {
 		flex: none;
@@ -908,6 +913,10 @@
 		   **두 상태가 모두 center** 다 — 기준이 바뀌지 않아 그 문제가 없고,
 		   접힌 행에서도 요소들이 세로 가운데에 온다. */
 		gap: 0.6rem;
+		/* 발췌(.pwhy)가 flex-basis:100% 로 다음 줄에 놓이게 — 다른 항목은 폭이
+		   남는 한 첫 줄에 그대로 있다. row-gap 은 두 줄 사이 간격. */
+		flex-wrap: wrap;
+		row-gap: 0.2rem;
 		flex: 1;
 		min-width: 0;
 		padding: 0.45rem 0.8rem;
@@ -1087,6 +1096,15 @@
 		   상하 패딩(0.45rem × 2) = 2.275rem. rem 이라 UI 배율도 따라간다. */
 		contain-intrinsic-size: 2.275rem;
 	}
+	/* REQ-012: 매치 이유·발췌가 붙은 행은 접혀도 **두 줄**이다. 위 추정치를 그대로
+	   두면 그 행이 36.4px 로 고정돼 둘째 줄이 잘리고, 화면에 들어오는 순간
+	   실측으로 교체되며 스크롤이 튄다 — BUG-244 가 0.38px 로도 잡아낸 그 문제다.
+	   값은 같은 방식으로 정확히 계산한다:
+	     첫 줄 2.275rem + row-gap 0.2rem + 발췌 줄(0.68rem × line-height 1.25
+	     = 0.85rem) = 3.325rem. */
+	.row.has-why {
+		contain-intrinsic-size: 3.325rem;
+	}
 	/* DEV-297: 선택된 행은 말줄임을 풀어 제자리에서 펼친다. 우측 액션 버튼이
 	   따라 내려가지 않도록 정렬만 위로 붙인다.
 	   DEV-359: `.collapsing` 은 접힘 애니메이션 동안만 붙는다 — 펼친 글자 배치를
@@ -1119,22 +1137,7 @@
 		white-space: normal;
 		overflow-wrap: anywhere;
 	}
-	/* 펼친 행에서 발췌를 **아래 줄로 내린다.**
-	   위 규칙이 제목에 `overflow: visible` 을 주는 순간 flex 의 `min-width: auto`
-	   가 되살아나고, `overflow-wrap: anywhere` 때문에 그 최소 폭이 **한 글자**가
-	   된다. 그래서 옆에 폭을 차지하는 형제가 생기면 제목이 12px 까지 눌려 글자가
-	   세로로 늘어선다(모바일에서 재현). BUG-237(mermaid 라벨)과 같은 뿌리다.
-	   같은 줄에서 다투게 두고 폭만 조절하는 건 화면 폭에 따라 다시 깨진다 —
-	   줄을 나눠 원인을 없앤다. 펼친 행은 원래 높이가 늘어나는 상태라 자연스럽다. */
-	.row.expanded .row-main,
-	.row:global(.collapsing) .row-main {
-		flex-wrap: wrap;
-	}
-	.row.expanded .pwhy,
-	.row:global(.collapsing) .pwhy {
-		flex-basis: 100%;
-		max-width: 100%;
-	}
+
 	.ptags {
 		flex: none;
 		font-size: 0.7rem;
