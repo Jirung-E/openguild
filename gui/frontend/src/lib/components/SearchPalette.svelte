@@ -813,6 +813,10 @@
 		align-items: baseline;
 		gap: 0.3rem;
 		min-width: 0;
+		/* 접힌 행에서는 태그(.ptags)와 같은 방식으로 폭을 제한한다 — 제목이
+		   쓸 자리를 남겨야 한다. */
+		flex: 0 1 auto;
+		max-width: 40%;
 	}
 	.pwhy-f {
 		flex: none;
@@ -1114,6 +1118,22 @@
 		text-overflow: clip;
 		white-space: normal;
 		overflow-wrap: anywhere;
+	}
+	/* 펼친 행에서 발췌를 **아래 줄로 내린다.**
+	   위 규칙이 제목에 `overflow: visible` 을 주는 순간 flex 의 `min-width: auto`
+	   가 되살아나고, `overflow-wrap: anywhere` 때문에 그 최소 폭이 **한 글자**가
+	   된다. 그래서 옆에 폭을 차지하는 형제가 생기면 제목이 12px 까지 눌려 글자가
+	   세로로 늘어선다(모바일에서 재현). BUG-237(mermaid 라벨)과 같은 뿌리다.
+	   같은 줄에서 다투게 두고 폭만 조절하는 건 화면 폭에 따라 다시 깨진다 —
+	   줄을 나눠 원인을 없앤다. 펼친 행은 원래 높이가 늘어나는 상태라 자연스럽다. */
+	.row.expanded .row-main,
+	.row:global(.collapsing) .row-main {
+		flex-wrap: wrap;
+	}
+	.row.expanded .pwhy,
+	.row:global(.collapsing) .pwhy {
+		flex-basis: 100%;
+		max-width: 100%;
 	}
 	.ptags {
 		flex: none;
