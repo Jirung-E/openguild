@@ -535,12 +535,15 @@
 									viewBox="0 0 16 16"
 									fill="none"
 									stroke="currentColor"
-									stroke-width="1.4"
+									stroke-width="1.3"
 									stroke-linecap="round"
 									stroke-linejoin="round"
 									aria-hidden="true"
 								>
-									<path d="M2.5 8h11" />
+									<!-- BUG-244: 막대가 촉 꼭짓점(x 12.8)보다 0.7 더 뻗어 있어(2.5+11=13.5)
+									     화살표가 아니라 `─` 와 `>` 를 겹쳐 놓은 것처럼 보였다(admin).
+									     막대 끝을 촉 꼭짓점에 맞추고, 굵기도 옆 두 아이콘(1.3)과 통일. -->
+									<path d="M3 8h9.8" />
 									<path d="M9 4.2 12.8 8 9 11.8" />
 								</svg>
 							</button>
@@ -699,13 +702,14 @@
 	}
 	.row-main {
 		display: flex;
-		/* DEV-359 는 여기를 `flex-start` 로 두었다 — 당시엔 접힘/펼침이 이 한
+		/* BUG-244: 접힘·펼침 **모두 상자 중앙 정렬**(admin 결정). 보정값 없음. */
+		align-items: center;
+		/* (참고) DEV-359 는 여기를 `flex-start` 로 두었다 — 당시엔 접힘/펼침이 이 한
 		   규칙을 공유해서, `center` 면 제목이 1줄→2줄이 될 때 정렬 기준이 바뀌며
 		   칩과 우측 버튼이 튀었다.
 		   지금은 펼친 행이 `.row.expanded .row-main` 에서 따로 `center` 를 받으므로
 		   **두 상태가 모두 center** 다 — 기준이 바뀌지 않아 그 문제가 없고,
 		   접힌 행에서도 요소들이 세로 가운데에 온다. */
-		align-items: center;
 		gap: 0.6rem;
 		flex: 1;
 		min-width: 0;
@@ -782,9 +786,8 @@
 	.pills {
 		display: flex;
 		flex-direction: row;
-		/* BUG-244: 두 칩은 높이가 다르다(종류 22px = 버튼과 동일 / slug 는 보드
-		   노드 칩 비율 1.7em). `flex-start` 면 짧은 slug 가 위로 붙어 중앙이
-		   어긋난다 — 서로 가운데를 맞춘다. 높이는 각자 유지. */
+		/* BUG-244: 두 칩은 높이가 다르다(종류 22px / slug 1.7em) — 서로 가운데를
+		   맞춘다. 높이는 각자 유지. */
 		align-items: center;
 		gap: 0.35rem;
 		flex: none;
@@ -863,14 +866,6 @@
 	.ptitle {
 		flex: 1;
 		color: var(--text);
-		/* BUG-244: 제목만 칩·버튼보다 낮게 앉아 보인다 — 글자가 더 크고 줄 상자도
-		   커서, 상자 중앙을 맞춰도 baseline 이 칩들보다 아래에 놓인다(실측: 종류
-		   칩보다 0.38px, slug 칩보다 1.33px 아래). slug 칩 baseline 에 맞춰 그만큼
-		   올린다. 배치는 안 건드리는 상대 이동이고 em 이라 UI 배율을 따라간다.
-		   (반대로 칩·버튼을 내리는 방식도 시도했으나 admin 판단으로 이쪽 채택 —
-		   행 안에서 칩·버튼이 아래로 치우쳐 보였다.) */
-		position: relative;
-		top: -0.098em;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
