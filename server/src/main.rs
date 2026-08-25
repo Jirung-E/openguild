@@ -41,6 +41,7 @@ use clap::{Parser, Subcommand};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use tower_http::{
+    catch_panic::CatchPanicLayer,
     cors::CorsLayer,
     services::{ServeDir, ServeFile},
     set_header::SetResponseHeaderLayer,
@@ -475,7 +476,15 @@ async fn run_host(
         // DEV-332: 압축은 가장 바깥 — 정적 자산(fallback_service)까지 덮는다.
         // axum 의 `layer` 는 그 시점까지 등록된 라우트를 감싸므로, 정적 fallback
         // 이 이미 붙은 뒤인 여기서 걸어야 _app/*.js 도 압축된다.
-        .layer(routes::compression_layer());
+        .layer(routes::compression_layer())
+        // DEV-367: catch-panic 은 **압축보다도 바깥**. 같은 이유로 정적
+        // fallback 까지 덮고, 압축 계층 자체가 패닉해도 잡는다. 이게 없으면
+        // 패닉이 500 이 아니라 연결 끊김으로 나가 클라이언트가 네트워크
+        // 오류로 오인한다(BUG-249 가 '검색 결과 없음' 으로 보인 이유).
+        //
+        // 헤더를 이미 보낸 뒤(스트리밍 zip 등) 패닉하면 상태 코드를 바꿀 수
+        // 없어 연결 끊김은 그대로다 — 그때도 로그에는 남는다.
+        .layer(CatchPanicLayer::custom(error::panic_to_500));
 
     let port: u16 = port_arg
         .or_else(|| std::env::var("PORT").ok().and_then(|p| p.parse().ok()))
