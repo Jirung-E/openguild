@@ -38,6 +38,8 @@
 	// DEV-182: 생성/변경 시각 표시 — quest 상세와 동일 포맷 유틸.
 	import { formatTs, formatRelative } from '$lib/utils/datetime';
 	import { filterRules } from '$lib/utils/rule-filter';
+	// REQ-014: 발췌에서 걸린 부분 표시.
+	import { highlightSegments } from '$lib/utils/highlight';
 
 	let loading = $state(true);
 	let error = $state<string | null>(null);
@@ -410,7 +412,11 @@
 										</span>
 									{/if}
 									{#if m?.excerpt && !m.matchedIn.includes('slug')}
-										<span class="rule-excerpt">{m.excerpt}</span>
+										<span class="rule-excerpt">
+											{#each highlightSegments(m.excerpt, searchQuery) as seg, si (si)}
+												{#if seg.hit}<mark>{seg.text}</mark>{:else}{seg.text}{/if}
+											{/each}
+										</span>
 									{/if}
 								</button>
 							</li>
@@ -756,6 +762,14 @@
 		background: color-mix(in srgb, var(--accent) 14%, transparent);
 		color: var(--accent-secondary);
 		font-size: 0.62rem;
+	}
+	.rule-excerpt mark {
+		/* 팔레트(.pwhy-x mark)와 같은 표기 — 기본 mark 의 노란 배경은 다크
+		   테마에서 튄다. */
+		background: color-mix(in srgb, var(--accent) 26%, transparent);
+		color: var(--text);
+		border-radius: 2px;
+		padding: 0 1px;
 	}
 	.rule-excerpt {
 		/* 발췌는 두 줄까지 — 목록 행이 길어지면 훑기가 나빠진다. */

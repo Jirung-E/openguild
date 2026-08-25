@@ -25,6 +25,8 @@
 	// BUG-248: 팔레트가 떠 있는 동안 배경 페이지 스크롤 잠금. 다른 모달들이
 	// 이미 쓰는 장치(BUG-199) 인데 팔레트만 빠져 있었다.
 	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
+	// REQ-014: 발췌에서 걸린 부분 표시.
+	import { highlightSegments } from '$lib/utils/highlight';
 	import MarkdownView from './MarkdownView.svelte';
 	// BUG-157: 팔레트의 결과 목록/미리보기 본문도 overlay 스크롤바 —
 	// 콤보박스·퀘스트 목록 등 다른 스크롤 영역과 같은 규칙(컨텐츠 폭 0 차지).
@@ -601,7 +603,13 @@
 									{#each why.matched_in as f (f)}
 										<span class="pwhy-f">{t(`search.field.${f}`, $locale)}</span>
 									{/each}
-									{#if why.excerpt}<span class="pwhy-x">{why.excerpt}</span>{/if}
+									{#if why.excerpt}
+										<span class="pwhy-x">
+											{#each highlightSegments(why.excerpt, parsed.term) as seg, si (si)}
+												{#if seg.hit}<mark>{seg.text}</mark>{:else}{seg.text}{/if}
+											{/each}
+										</span>
+									{/if}
 								</span>
 							{/if}
 						</button>
@@ -835,6 +843,14 @@
 		color: var(--accent);
 		font-size: 0.62rem;
 		font-weight: 600;
+	}
+	.pwhy-x mark {
+		/* 브라우저 기본 mark 는 노란 배경 + 검정 글자라 다크 테마에서 튄다.
+		   토큰 색만 쓰고 배경은 옅게. */
+		background: color-mix(in srgb, var(--accent) 26%, transparent);
+		color: var(--text);
+		border-radius: 2px;
+		padding: 0 1px;
 	}
 	.pwhy-x {
 		min-width: 0;
