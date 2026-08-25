@@ -102,12 +102,31 @@ impl DocText {
 
 /// 매치 지점 주변을 잘라 발췌를 만든다. **char 단위로 자른다** — 바이트로
 /// 자르면 한글이 깨진다.
+///
+/// BUG-249: 예전엔 `text.to_lowercase()` 에서 찾은 바이트 위치를 **원문에
+/// 그대로** 썼다(`text[..byte_pos]`). `to_lowercase()` 는 바이트 길이를 바꿀 수
+/// 있어서 — `İ`(U+0130) 는 2바이트인데 소문자 `i̇` 는 3바이트다 — 그런 문자가
+/// 앞에 하나만 있어도 이후 인덱스가 전부 밀리고, 밀린 위치가 한글 중간이면
+/// 그 자리에서 패닉했다(서버는 연결이 끊기고 CLI 는 죽는다).
+///
+/// 그래서 소문자화하면서 **소문자 char 인덱스 → 원문 char 인덱스** 대응표를
+/// 함께 만든다. `char::to_lowercase()` 가 한 글자를 여러 글자로 펼칠 수 있어
+/// 1:1 이 아니므로 매핑이 필요하다.
 fn excerpt_around(text: &str, needle_lower: &str, width: usize) -> String {
-    let lower = text.to_lowercase();
-    let byte_pos = lower.find(needle_lower).unwrap_or(0);
-    // 바이트 위치 → char 위치.
-    let char_pos = text[..byte_pos].chars().count();
     let chars: Vec<char> = text.chars().collect();
+    let mut lower = String::with_capacity(text.len());
+    // lower 의 char 순서대로, 그 글자가 원문 몇 번째 char 에서 나왔는지.
+    let mut origin: Vec<usize> = Vec::with_capacity(chars.len());
+    for (i, ch) in chars.iter().enumerate() {
+        for lc in ch.to_lowercase() {
+            lower.push(lc);
+            origin.push(i);
+        }
+    }
+    let byte_pos = lower.find(needle_lower).unwrap_or(0);
+    // byte_pos 는 lower 안의 char 경계다 — lower 로 세야 안전하다.
+    let lower_char_pos = lower[..byte_pos].chars().count();
+    let char_pos = origin.get(lower_char_pos).copied().unwrap_or(0);
     let start = char_pos.saturating_sub(width / 2);
     let end = (char_pos + width).min(chars.len());
     let mut out = String::new();
@@ -423,6 +442,41 @@ mod tests {
 
         let missing = search(&store, "사과 포도", &SearchField::defaults(), None).await.unwrap();
         assert!(missing.is_empty(), "한 토큰이라도 없으면 매치 아님");
+    }
+
+    /// BUG-249: 소문자화로 **바이트 길이가 바뀌는** 문자가 앞에 있으면, 예전
+    /// 구현은 밀린 인덱스로 원문을 잘라 한글 중간에서 패닉했다.
+    ///
+    /// `İ`(U+0130) 는 2바이트인데 소문자 `i̇` 는 3바이트다. 이 함수는 이미
+    /// 한글 안전성 테스트가 있었지만 이 경우가 빠져 있었다.
+    #[test]
+    fn excerpt_survives_lowercase_length_change() {
+        // 앞에 İ 를 두어 이후 바이트 인덱스가 밀리게 만든다.
+        let text = format!("İ{} 근데 이건 찾아야 한다", "가".repeat(800));
+        // 패닉하지 않아야 한다.
+        let out = excerpt_around(&text, "근데", 40);
+        assert!(out.contains("근데"), "발췌에 매치가 들어 있어야 한다: {out}");
+        // 잘린 조각이 온전한 문자열이어야 한다(깨진 바이트 없음).
+        assert!(out.chars().all(|c| c != '\u{FFFD}'), "깨진 문자가 있다: {out}");
+    }
+
+    /// 패닉만 막는 걸로는 부족하다 — **위치가 밀리는 것**도 잡아야 한다.
+    ///
+    /// 앞의 `İ` 3개가 소문자화되며 3바이트 늘어나, 예전 구현은 매치 지점을
+    /// 한 글자 뒤로 집었다(`…분 표적…`). 경계에 우연히 걸리면 패닉 없이
+    /// **조용히 어긋난 발췌**만 나온다.
+    #[test]
+    fn excerpt_maps_position_through_expanding_chars() {
+        let text = "İİİ 앞부분 표적 뒷부분";
+        // char 기준: 표(8) 을 중심으로 앞 3, 총 6글자 창.
+        assert_eq!(excerpt_around(text, "표적", 6), "…부분 표적 뒷부분");
+    }
+
+    /// 대상이 없으면 앞에서부터 — 예전과 동일(회귀).
+    #[test]
+    fn excerpt_without_match_starts_at_head() {
+        let out = excerpt_around("가나다라마바사", "없는말", 3);
+        assert!(out.starts_with("가나다"), "{out}");
     }
 
     /// 한글 부분일치 — 조사가 붙어도 찾혀야 한다(FTS 대신 LIKE 를 고른 이유).
