@@ -64,6 +64,45 @@ pub async fn list_quests(
     openguild_core::ops::quests::list_quests(&store, &q).await.map_err(err)
 }
 
+/// BUG-247: 강화 검색(REQ-009) 의 데스크톱 경로.
+///
+/// 서버는 `GET /api/search` 로 같은 일을 한다. 그쪽만 있고 여기가 없어서
+/// 데스크톱 앱에서는 도서관 첨부 검색·검색 팔레트의 '넓게' 가 통째로 죽어
+/// 있었다. 영역 파싱과 오타 거부는 서버 핸들러(`meta::enhanced_search`)와
+/// 동일하게 맞춘다 — 두 경로가 다르게 굴면 그게 다음 버그다.
+#[tauri::command]
+pub async fn search_docs(
+    store: State<'_, Store>,
+    q: String,
+    r#in: Option<String>,
+    limit: Option<usize>,
+) -> Result<Vec<openguild_core::ops::search::SearchHit>, String> {
+    use openguild_core::ops::search::SearchField;
+    let fields: Vec<SearchField> = match r#in.as_deref() {
+        Some(raw) if !raw.trim().is_empty() => {
+            let mut out = Vec::new();
+            for part in raw.split(',') {
+                match SearchField::parse(part) {
+                    Some(f) if !out.contains(&f) => out.push(f),
+                    Some(_) => {}
+                    // 오타를 조용히 무시하면 "왜 안 나오지" 로 이어진다.
+                    None => {
+                        return Err(format!(
+                            "알 수 없는 검색 영역: '{}' (body / comment / attachment / memo)",
+                            part.trim()
+                        ));
+                    }
+                }
+            }
+            out
+        }
+        _ => SearchField::defaults(),
+    };
+    openguild_core::ops::search::search(&store, &q, &fields, limit)
+        .await
+        .map_err(err)
+}
+
 #[tauri::command]
 pub async fn list_deleted_quests(store: State<'_, Store>) -> Result<Vec<QuestRow>, String> {
     read::list_deleted(&store.index_pool).await.map_err(err)

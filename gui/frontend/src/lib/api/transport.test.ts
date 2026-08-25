@@ -601,3 +601,65 @@ describe('transport (동적 위임, DEV-113 원격 모드)', () => {
 		expect(call[0]).not.toContain('192.168.1.10');
 	});
 });
+
+// ── BUG-247: 데스크톱 배선 누락 회귀 ──
+//
+// REQ-009 의 강화 검색이 core/server/cli 범위로만 구현돼, Tauri 경로가 통째로
+// 빠져 있었다. 브라우저에서는 멀쩡하고 데스크톱 앱에서만 죽는 부류라 눈에
+// 늦게 띈다.
+describe('routeToInvoke — 강화 검색 (BUG-247)', () => {
+	const route = (path: string) =>
+		__test_only.routeToInvoke({ method: 'GET', path } as Parameters<
+			typeof __test_only.routeToInvoke
+		>[0]);
+
+	it('/api/search 가 search_docs 로 매핑된다', () => {
+		const r = route('/api/search?q=%EC%88%98%EB%8B%AC');
+		expect(r).not.toBeNull();
+		expect(r!.cmd).toBe('search_docs');
+		expect(r!.args.q).toBe('수달');
+	});
+
+	it('in / limit 을 넘긴다', () => {
+		const r = route('/api/search?q=x&in=comment,attachment&limit=20');
+		expect(r!.args.in).toBe('comment,attachment');
+		// limit 은 숫자여야 한다 — 문자열이면 Tauri 쪽 역직렬화가 실패한다.
+		expect(r!.args.limit).toBe(20);
+	});
+
+	it('in / limit 이 없으면 인자에 넣지 않는다 (커맨드의 Option 기본값 유지)', () => {
+		const r = route('/api/search?q=x');
+		expect('in' in r!.args).toBe(false);
+		expect('limit' in r!.args).toBe(false);
+	});
+});
+
+describe('LIST_QUERY_BOOLS 가 ListQuery 의 bool 필드와 일치 (BUG-211 / BUG-247)', () => {
+	/**
+	 * HTTP 경로는 serde_urlencoded 가 `"true"` 를 bool 로 강제 변환하지만 Tauri
+	 * 경로는 JSON 역직렬화라 문자열이 오면 그 자리에서 실패한다. 그래서 이
+	 * 집합은 Rust 쪽 `ListQuery` 의 bool 필드와 **정확히** 같아야 한다.
+	 *
+	 * BUG-211 이 이 문제를 잡고 주석까지 남겼는데도, REQ-010 이 필드를 추가하며
+	 * 집합을 갱신하지 않아 BUG-247 로 재발했다. 주석이 아니라 테스트로 묶는다.
+	 */
+	it('두 목록이 정확히 같다', async () => {
+		const { readFileSync } = await import('node:fs');
+		const { fileURLToPath } = await import('node:url');
+		const { dirname, resolve } = await import('node:path');
+		const here = dirname(fileURLToPath(import.meta.url));
+		// gui/frontend/src/lib/api → 저장소 루트
+		const rust = readFileSync(
+			resolve(here, '../../../../../core/src/models/quest.rs'),
+			'utf8'
+		);
+		const start = rust.indexOf('pub struct ListQuery');
+		expect(start).toBeGreaterThan(-1);
+		const body = rust.slice(start, rust.indexOf('\n}', start));
+		const rustBools = new Set(
+			[...body.matchAll(/pub\s+(\w+)\s*:\s*bool\s*,/g)].map((m) => m[1])
+		);
+		expect(rustBools.size).toBeGreaterThan(0);
+		expect([...__test_only.LIST_QUERY_BOOLS].sort()).toEqual([...rustBools].sort());
+	});
+});

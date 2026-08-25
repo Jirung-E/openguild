@@ -114,6 +114,17 @@ import { invoke } from '@tauri-apps/api/core';
  * 여기 빠진 필드는 문자열로 넘어가 `invalid type: string "true", expected a
  * boolean` 으로 즉사한다 — **ListQuery 에 필드를 추가하면 여기도 갱신할 것.**
  */
+/**
+ * `ListQuery` 의 **bool 필드 전부**. HTTP 경로는 serde_urlencoded 가 `"true"` 를
+ * bool 로 강제 변환하지만 Tauri 경로는 JSON 역직렬화라 문자열이 오면 그 자리에서
+ * 실패한다(`invalid type: string "true", expected a boolean`).
+ *
+ * BUG-211 이 이 문제를 처음 잡았고, BUG-247 에서 **같은 방식으로 재발**했다 —
+ * REQ-010 이 `search_comments` / `search_attachments` 를 추가하며 이 집합을
+ * 갱신하지 않아 데스크톱에서만 퀘스트 목록 넓은 검색이 깨졌다. 주석만으로는
+ * 두 번째 재발을 못 막았으므로, 이 집합이 `ListQuery` 와 어긋나면 깨지는
+ * 테스트를 함께 뒀다(transport.test.ts).
+ */
 const LIST_QUERY_BOOLS = new Set([
 	'title_only',
 	'no_parent',
@@ -122,7 +133,10 @@ const LIST_QUERY_BOOLS = new Set([
 	'has_sub',
 	'no_sub',
 	'reverse',
-	'slim'
+	'slim',
+	// REQ-010: 댓글 / 첨부 이름까지 훑는 넓은 검색.
+	'search_comments',
+	'search_attachments'
 ]);
 const LIST_QUERY_NUMBERS = new Set(['limit', 'offset']);
 
@@ -203,6 +217,20 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 	const query = qIdx >= 0 ? new URLSearchParams(path.slice(qIdx + 1)) : new URLSearchParams();
 	const parts = pathOnly.replace(/^\/+/, '').split('/');
 	// parts[0] === 'api'
+
+	// ───── 검색 ─────
+	// BUG-247: REQ-009 의 범위가 core/server/cli 라 이 배선이 빠져 있었다.
+	// 그래서 데스크톱 앱에서는 도서관 첨부 검색(REQ-011)·검색 팔레트의 '넓게'
+	// (REQ-012)가 "매핑된 invoke 핸들러 없음" 으로 통째로 죽어 있었다.
+	if (method === 'GET' && pathOnly === '/api/search') {
+		const args: Record<string, unknown> = { q: query.get('q') ?? '' };
+		// `in` 은 Rust 예약어라 커맨드 쪽이 `r#in` — invoke 인자 이름은 `in` 이다.
+		const inRaw = query.get('in');
+		if (inRaw) args.in = inRaw;
+		const limit = query.get('limit');
+		if (limit) args.limit = Number(limit);
+		return { cmd: 'search_docs', args };
+	}
 
 	// ───── meta ─────
 	// DEV-016 (multi-file): 다중 길드 규칙.
@@ -803,7 +831,7 @@ export class TauriTransport implements Transport {
 }
 
 /** 테스트용 export — routeToInvoke 매핑이 server route 와 일치하는지 검증. */
-export const __test_only = { routeToInvoke };
+export const __test_only = { routeToInvoke, LIST_QUERY_BOOLS };
 
 // ─────────────────────── default ───────────────────────
 
