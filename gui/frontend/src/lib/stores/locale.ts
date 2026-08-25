@@ -1533,6 +1533,16 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'library.iconView': { ko: '아이콘 보기', en: 'Icon view' },
 	'library.newFolder': { ko: '+ 폴더', en: '+ Folder' },
 	'library.newDoc': { ko: '+ 신규', en: '+ New' },
+	// REQ-012: 검색 팔레트 강화 검색 토글 + 매치 영역 라벨.
+	'palette.wideToggle': { ko: '넓게', en: 'Wide' },
+	'palette.wideToggleTitle': {
+		ko: '넓은 검색 — 댓글 / 첨부 이름까지 (서버 조회, 약간 느림)',
+		en: 'Wide search — includes comments / attachment names (server query, slightly slower)'
+	},
+	'search.field.body': { ko: '본문', en: 'body' },
+	'search.field.comment': { ko: '댓글', en: 'comment' },
+	'search.field.attachment': { ko: '첨부', en: 'attachment' },
+	'search.field.memo': { ko: '메모', en: 'memo' },
 	'library.searchPlaceholder': { ko: '제목/본문 검색', en: 'Search title/body' },
 	// REQ-011: 도서관 검색 영역 확장. 도서관 문서엔 댓글이 없어 첨부 이름만 대상이다.
 	'library.searchAttachments': { ko: '첨부 이름 포함', en: 'Include attachment names' },

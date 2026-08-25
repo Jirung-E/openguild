@@ -13,12 +13,15 @@
   본문 미리보기는 선택 시점에 상세 API 로 지연 로드.
 -->
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { goto, afterNavigate } from '$app/navigation';
 	import { questsApi } from '$lib/api/quests';
 	import { campaignsApi } from '$lib/api/campaigns';
 	import { rulesApi } from '$lib/api/rules';
 	import { libraryApi } from '$lib/api/library';
+	// REQ-012: 강화 검색 — 켰을 때만 서버에 묻는다.
+	import { searchApi, type SearchHit } from '$lib/api/search';
+	import { LatestQuery } from '$lib/utils/enhanced-search';
 	import MarkdownView from './MarkdownView.svelte';
 	// BUG-157: 팔레트의 결과 목록/미리보기 본문도 overlay 스크롤바 —
 	// 콤보박스·퀘스트 목록 등 다른 스크롤 영역과 같은 규칙(컨텐츠 폭 0 차지).
@@ -81,6 +84,73 @@
 	let rowsEl = $state<HTMLDivElement | null>(null);
 	// BUG-157: 미리보기 본문도 overlay 스크롤바 대상.
 	let previewBodyEl = $state<HTMLDivElement | null>(null);
+
+	// ── REQ-012: 강화된 검색 토글 ──
+	//
+	// 팔레트는 열릴 때 모든 문서의 **제목·slug·태그만** 받아 메모리에 들고
+	// 타이핑하면 그 배열을 즉시 필터한다. 그래서 키 입력마다 서버를 안 거친다.
+	// 강화 검색은 댓글 본문까지 봐야 하는데 그 양이 커서(실측 길드: 퀘스트
+	// 607개에 댓글 수천 건) 전부 내릴 수 없다 — 켰을 때만 서버에 묻는다.
+	//
+	// 즉 이 토글은 성능 스위치가 아니라 **상호작용 모델**의 전환이다. 끄면
+	// 지금의 즉각 반응이 그대로다.
+	const WIDE_KEY = 'openguild.paletteWideSearch';
+	function loadWide(): boolean {
+		try {
+			return localStorage.getItem(WIDE_KEY) === 'true';
+		} catch {
+			return false;
+		}
+	}
+	let wide = $state(loadWide());
+	function toggleWide() {
+		wide = !wide;
+		try {
+			localStorage.setItem(WIDE_KEY, String(wide));
+		} catch {
+			/* 무시 */
+		}
+	}
+	/**
+	 * 강화 검색 결과. **어느 검색어의 결과인지 함께 들고 있는다** — 검색어가
+	 * 바뀐 뒤 새 응답이 오기 전까지 옛 결과를 그대로 보여주면, 기다리는 중이
+	 * 아니라 틀린 답을 낸 것처럼 보인다. 검색어가 어긋나면 로컬 매치만 쓰고
+	 * 진행 표시로 조회 중임을 알린다.
+	 *
+	 * `hits`: `kind\u0000id` → 어디서 맞았는지. null = 강화 검색 미사용.
+	 */
+	let wideHits = $state<{ term: string; hits: Map<string, SearchHit> } | null>(null);
+	let wideLoading = $state(false);
+	const hitKey = (kind: string, id: string) => `${kind}\u0000${id}`;
+	// 디바운스 + stale-async 가드는 utils 에 있다(REQ-013 에서 분리, 테스트 8건).
+	// 늦게 온 응답이 최신 결과를 덮으면 '수' 의 결과가 '수달' 을 밀어낸다.
+	const wideQuery = new LatestQuery<string, SearchHit[]>((q) => searchApi.enhanced(q));
+
+	$effect(() => {
+		const term = parsed.term;
+		const on = wide;
+		if (!on || !term) {
+			wideQuery.cancel();
+			wideHits = null;
+			wideLoading = false;
+			return;
+		}
+		wideLoading = true;
+		wideQuery.run(
+			term,
+			(hits) => {
+				wideHits = { term, hits: new Map(hits.map((h) => [hitKey(h.kind, h.id), h])) };
+				wideLoading = false;
+			},
+			() => {
+				// 실패하면 로컬 필터만으로 — 아무것도 안 나오는 것보다 낫다.
+				wideHits = null;
+				wideLoading = false;
+			}
+		);
+	});
+
+	onDestroy(() => wideQuery.cancel());
 
 	// 미리보기 상태.
 	let preview = $state<Item | null>(null);
@@ -306,12 +376,37 @@
 			return pool.filter((i) => i.tags.some((tg) => tg.toLowerCase().includes(tag)));
 		}
 		const q = term.toLowerCase();
-		return pool.filter(
-			(i) =>
-				i.title.toLowerCase().includes(q) ||
-				i.label.toLowerCase().includes(q) ||
-				i.tags.some((tg) => tg.toLowerCase().includes(q))
-		);
+		const local = (i: Item) =>
+			i.title.toLowerCase().includes(q) ||
+			i.label.toLowerCase().includes(q) ||
+			i.tags.some((tg) => tg.toLowerCase().includes(q));
+		// REQ-012: 강화 검색이 켜져 있으면 서버가 찾아낸 문서를 **합친다**(대체가
+		// 아니라). 로컬 매치는 즉시 보이고, 서버 응답이 오면 댓글·첨부에서 맞은
+		// 것이 뒤이어 붙는다 — 켠 순간 목록이 비었다가 채워지지 않는다.
+		// 이 검색어의 결과일 때만 합친다(옛 검색어의 결과는 쓰지 않는다).
+		const hits = wideHits?.term === term ? wideHits.hits : null;
+		if (!hits) return pool.filter(local);
+		return pool.filter((i) => local(i) || hits.has(hitKey(i.kind, i.label)));
+	});
+
+	/**
+	 * 강화 검색에서**만** 나온 행 → 어디서 맞았는지. 제목/slug/태그로도 맞는
+	 * 행은 이유를 따로 보여줄 필요가 없어 넣지 않는다.
+	 */
+	const wideWhyByKey = $derived.by(() => {
+		const m = new Map<string, SearchHit>();
+		if (!wideHits || wideHits.term !== parsed.term) return m;
+		const q = parsed.term.toLowerCase();
+		for (const it of filtered) {
+			const h = wideHits.hits.get(hitKey(it.kind, it.label));
+			if (!h) continue;
+			const localMatch =
+				it.title.toLowerCase().includes(q) ||
+				it.label.toLowerCase().includes(q) ||
+				it.tags.some((tg) => tg.toLowerCase().includes(q));
+			if (!localMatch) m.set(hitKey(it.kind, it.label), h);
+		}
+		return m;
 	});
 
 	// 필터가 바뀌어 선택 index 가 범위를 벗어나면 리셋.
@@ -421,6 +516,21 @@
 				)}
 				spellcheck="false"
 			/>
+			<!-- REQ-012: 강화 검색 토글. 입력란 오른쪽 — 켜면 댓글·첨부 이름까지
+			     서버가 훑는다(그래서 즉각 반응 대신 약간의 지연이 생긴다). -->
+			<button
+				class="wide-toggle"
+				class:on={wide}
+				onclick={toggleWide}
+				aria-pressed={wide}
+				title={t('palette.wideToggleTitle', $locale)}
+				data-testid="palette-wide-toggle"
+			>
+				<span>{t('palette.wideToggle', $locale)}</span>
+				<!-- 켜져 있을 때만 자리를 쓰는 진행 표시 — 켜고 끌 때 버튼 폭이
+				     흔들리지 않도록 자리는 항상 잡아 둔다. -->
+				<span class="wide-spin" class:busy={wideLoading} aria-hidden="true"></span>
+			</button>
 		</div>
 		<!-- DEV-359: 굴리는 동안에는 펼침이 따라오지 않게 — wheel/touchmove 는
 		     사용자 입력에서만 발생하므로 우리 스크롤 보정과 구분된다. -->
@@ -437,6 +547,7 @@
 				</div>
 			{:else}
 				{#each filtered as it, i (it.kind + it.label)}
+					{@const why = wideWhyByKey.get(it.kind + '\u0000' + it.label)}
 					<!-- DEV-255: 행 = 라벨(기본 클릭 = 미리보기) + 열기 방식 아이콘 3개(항상 노출). -->
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<div
@@ -477,6 +588,16 @@
 							<span class="ptitle">{it.title || it.label}</span>
 							{#if it.tags.length}
 								<span class="ptags">{it.tags.map((tg) => '#' + tg).join(' ')}</span>
+							{/if}
+							<!-- REQ-012: 제목/slug 에 없는데 나왔다면 왜 나왔는지 — 댓글에서
+							     맞았는데 제목만 보여주면 알 수가 없다. -->
+							{#if why}
+								<span class="pwhy">
+									{#each why.matched_in as f (f)}
+										<span class="pwhy-f">{t(`search.field.${f}`, $locale)}</span>
+									{/each}
+									{#if why.excerpt}<span class="pwhy-x">{why.excerpt}</span>{/if}
+								</span>
 							{/if}
 						</button>
 						<div class="row-actions">
@@ -639,6 +760,78 @@
 		background: var(--bg-subtle);
 		border-bottom: var(--bw) solid var(--border);
 	}
+	/* REQ-012: 강화 검색 토글. 범위 칩(.scope-chip)과 같은 치수 언어로. */
+	.wide-toggle {
+		flex: none;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3rem;
+		padding: 0.1rem 0.4rem;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-sm);
+		background: transparent;
+		color: var(--text-muted);
+		font-size: 0.68rem;
+		font-weight: 600;
+		cursor: pointer;
+	}
+	.wide-toggle:hover {
+		color: var(--text);
+		border-color: var(--text-muted);
+	}
+	.wide-toggle.on {
+		color: var(--accent);
+		border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+		background: color-mix(in srgb, var(--accent) 14%, transparent);
+	}
+	/* 자리는 항상 잡고, 도는 건 조회 중일 때만 — 버튼 폭이 흔들리지 않게. */
+	.wide-spin {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		border: 1.5px solid transparent;
+	}
+	.wide-spin.busy {
+		border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+		border-top-color: var(--accent);
+		animation: wide-spin 0.7s linear infinite;
+	}
+	@keyframes wide-spin {
+		to {
+			transform: rotate(360deg);
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.wide-spin.busy {
+			animation: none;
+			border-color: var(--accent);
+		}
+	}
+	/* 제목/slug 에 없는데 나온 이유 + 발췌. */
+	.pwhy {
+		display: flex;
+		align-items: baseline;
+		gap: 0.3rem;
+		min-width: 0;
+	}
+	.pwhy-f {
+		flex: none;
+		padding: 0 0.25rem;
+		border-radius: var(--r-sm);
+		background: color-mix(in srgb, var(--accent) 14%, transparent);
+		color: var(--accent);
+		font-size: 0.62rem;
+		font-weight: 600;
+	}
+	.pwhy-x {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		color: var(--text-muted);
+		font-size: 0.68rem;
+	}
+
 	.scope-chip {
 		flex: none;
 		font-size: 0.68rem;
