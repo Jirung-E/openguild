@@ -570,6 +570,14 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		ko: '태그 필터에 맞는 규칙 없음.',
 		en: 'No rules match the tag filter.'
 	},
+	// REQ-013: 규칙 검색.
+	'rules.searchPlaceholder': { ko: 'slug/본문 검색', en: 'Search slug/body' },
+	'rules.emptySearch': {
+		ko: '검색에 맞는 규칙 없음.',
+		en: 'No rules match the search.'
+	},
+	'rules.matchedInBody': { ko: '본문', en: 'body' },
+	'rules.matchedInTag': { ko: '태그', en: 'tag' },
 	'rules.slugPlaceholder': { ko: 'slug (예: release-process)', en: 'slug (e.g. release-process)' },
 	'rules.create': { ko: '생성', en: 'Create' },
 	'rules.writeBtn': { ko: '+ 작성', en: '+ Write' },

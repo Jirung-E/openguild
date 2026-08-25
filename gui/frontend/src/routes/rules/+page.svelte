@@ -37,6 +37,7 @@
 	import { showToast } from '$lib/stores/toast';
 	// DEV-182: 생성/변경 시각 표시 — quest 상세와 동일 포맷 유틸.
 	import { formatTs, formatRelative } from '$lib/utils/datetime';
+	import { filterRules } from '$lib/utils/rule-filter';
 
 	let loading = $state(true);
 	let error = $state<string | null>(null);
@@ -117,6 +118,8 @@
 
 	// DEV-243 후속(admin 지적): 태그는 달 수 있는데 태그로 찾을 방법이 없었음.
 	// quest 의 DEV-068 tag 필터(AND, chip 클릭 토글)와 동일 패턴.
+	// REQ-013: 규칙 검색 — 목록 응답이 본문을 싣고 오므로 서버 왕복 없이 즉시.
+	let searchQuery = $state('');
 	let filterTags = $state(new Set<string>());
 	const allTagOptions = $derived.by(() => {
 		const set = new Set<string>();
@@ -134,15 +137,12 @@
 		else next.add(t);
 		filterTags = next;
 	}
-	const filteredEntries = $derived(
-		filterTags.size === 0
-			? entries
-			: entries.filter((e) => {
-					const eTags = new Set(e.tags ?? []);
-					for (const t of filterTags) if (!eTags.has(t)) return false;
-					return true;
-				})
-	);
+	// REQ-013: 태그 AND 필터 + 검색어(slug/태그/본문)를 한 곳에서. 로직은
+	// 단위 테스트가 붙은 utils 에 있다.
+	const searchResults = $derived(filterRules(entries, searchQuery, filterTags));
+	const filteredEntries = $derived(searchResults.map((r) => r.entry));
+	/** slug → 매치 정보. 본문에서만 맞았을 때 이유를 보여주려고. */
+	const matchInfo = $derived(new Map(searchResults.map((r) => [r.entry.slug, r])));
 
 	onMount(() => {
 		// DEV-173: cross-link 딥링크 — `/rules?slug=xxx` 로 진입 시 해당 규칙 선택.
@@ -372,20 +372,46 @@
 						{/if}
 					</div>
 				{/if}
+				<!-- REQ-013: slug 뿐 아니라 본문까지 — 규칙이 늘어나면 slug 만으로는
+				     원하는 문서를 못 찾는다. 본문은 이미 목록에 실려 와 즉시 필터된다. -->
+				<input
+					class="rule-search"
+					type="search"
+					placeholder={t('rules.searchPlaceholder', $locale)}
+					bind:value={searchQuery}
+					data-testid="rule-search"
+				/>
 				{#if entries.length === 0}
 					<p class="empty-list">{t('rules.emptyList', $locale)}</p>
 				{:else if filteredEntries.length === 0}
-					<p class="empty-list">{t('rules.emptyFiltered', $locale)}</p>
+					<p class="empty-list">
+						{searchQuery.trim()
+							? t('rules.emptySearch', $locale)
+							: t('rules.emptyFiltered', $locale)}
+					</p>
 				{:else}
 					<ul class="rule-list">
 						{#each filteredEntries as e (e.slug)}
+							{@const m = matchInfo.get(e.slug)}
 							<li>
 								<button
 									class="rule-item"
 									class:active={e.slug === selectedSlug}
 									onclick={() => select(e.slug)}
 								>
-									{e.slug}
+									<span class="rule-slug">{e.slug}</span>
+									<!-- slug 에 없는데 나왔다면 왜 나왔는지 보여준다 — 긴 본문에서
+									     검색어를 눈으로 못 찾는 상황을 막는다. -->
+									{#if m && m.matchedIn.length > 0 && !m.matchedIn.includes('slug')}
+										<span class="rule-why">
+											{m.matchedIn.includes('body')
+												? t('rules.matchedInBody', $locale)
+												: t('rules.matchedInTag', $locale)}
+										</span>
+									{/if}
+									{#if m?.excerpt && !m.matchedIn.includes('slug')}
+										<span class="rule-excerpt">{m.excerpt}</span>
+									{/if}
 								</button>
 							</li>
 						{/each}
@@ -705,6 +731,43 @@
 	}
 	.rule-item:hover {
 		background: var(--bg-elevated);
+	}
+	/* REQ-013: 검색 입력 — 도서관(.search-input)과 같은 치수·색. */
+	.rule-search {
+		width: 100%;
+		padding: 0.3rem 0.55rem;
+		background: var(--bg);
+		border: 1px solid var(--border);
+		color: var(--text);
+		border-radius: 4px;
+		font-size: 0.82rem;
+		margin: 0.4rem 0;
+		box-sizing: border-box;
+	}
+	.rule-slug {
+		display: block;
+	}
+	/* slug 가 아닌 곳에서 맞았을 때만 보이는 이유 표시. */
+	.rule-why {
+		display: inline-block;
+		margin-top: 0.15rem;
+		padding: 0 0.3rem;
+		border-radius: 3px;
+		background: color-mix(in srgb, var(--accent) 14%, transparent);
+		color: var(--accent-secondary);
+		font-size: 0.62rem;
+	}
+	.rule-excerpt {
+		/* 발췌는 두 줄까지 — 목록 행이 길어지면 훑기가 나빠진다. */
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+		margin-top: 0.1rem;
+		color: var(--text-muted);
+		font-size: 0.68rem;
+		line-height: 1.35;
 	}
 	.rule-item.active {
 		background: color-mix(in srgb, var(--accent) 12%, transparent);
