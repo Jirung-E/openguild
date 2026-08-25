@@ -527,15 +527,13 @@
 			<button
 				class="wide-toggle"
 				class:on={wide}
+				class:busy={wideLoading}
 				onclick={toggleWide}
 				aria-pressed={wide}
 				title={t('palette.wideToggleTitle', $locale)}
 				data-testid="palette-wide-toggle"
 			>
-				<span>{t('palette.wideToggle', $locale)}</span>
-				<!-- 켜져 있을 때만 자리를 쓰는 진행 표시 — 켜고 끌 때 버튼 폭이
-				     흔들리지 않도록 자리는 항상 잡아 둔다. -->
-				<span class="wide-spin" class:busy={wideLoading} aria-hidden="true"></span>
+				{t('palette.wideToggle', $locale)}
 			</button>
 		</div>
 		<!-- DEV-359: 굴리는 동안에는 펼침이 따라오지 않게 — wheel/touchmove 는
@@ -778,7 +776,7 @@
 		flex: none;
 		display: inline-flex;
 		align-items: center;
-		gap: 0.3rem;
+		justify-content: center;
 		padding: 0.1rem 0.4rem;
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-sm);
@@ -797,25 +795,20 @@
 		border-color: color-mix(in srgb, var(--accent) 55%, transparent);
 		background: color-mix(in srgb, var(--accent) 14%, transparent);
 	}
-	/* 자리는 항상 잡고, 도는 건 조회 중일 때만 — 버튼 폭이 흔들리지 않게. */
-	.wide-spin {
-		width: 8px;
-		height: 8px;
-		border-radius: 50%;
-		border: 1.5px solid transparent;
+	/* 조회 중 표시. 예전엔 옆에 회전 원을 뒀는데, 켜고 끌 때 버튼 폭이 흔들리지
+	   않게 **자리를 항상 잡아** 두다 보니 46px 버튼에 13px 가 늘 빈 칸이었다 —
+	   글자가 왼쪽으로 치우쳐 보였다. 폭을 전혀 건드리지 않는 방식으로 바꾼다:
+	   테두리만 은은하게 깜빡인다. */
+	.wide-toggle.busy {
+		animation: wide-busy 0.9s ease-in-out infinite;
 	}
-	.wide-spin.busy {
-		border-color: color-mix(in srgb, var(--accent) 30%, transparent);
-		border-top-color: var(--accent);
-		animation: wide-spin 0.7s linear infinite;
-	}
-	@keyframes wide-spin {
-		to {
-			transform: rotate(360deg);
+	@keyframes wide-busy {
+		50% {
+			border-color: var(--accent);
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {
-		.wide-spin.busy {
+		.wide-toggle.busy {
 			animation: none;
 			border-color: var(--accent);
 		}
