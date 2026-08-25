@@ -845,10 +845,10 @@
 		font-weight: 600;
 	}
 	.pwhy-x mark {
-		/* 브라우저 기본 mark 는 노란 배경 + 검정 글자라 다크 테마에서 튄다.
-		   토큰 색만 쓰고 배경은 옅게. */
-		background: color-mix(in srgb, var(--accent) 26%, transparent);
-		color: var(--text);
+		/* REQ-014: 검색 일치 표시. 기본 mark 의 노란 배경은 다크 테마에서 튀므로
+		   테마별 토큰을 쓴다(global.css 의 --search-hit-*). */
+		background: var(--search-hit-bg);
+		color: var(--search-hit-text);
 		border-radius: 2px;
 		padding: 0 1px;
 	}

@@ -764,10 +764,10 @@
 		font-size: 0.62rem;
 	}
 	.rule-excerpt mark {
-		/* 팔레트(.pwhy-x mark)와 같은 표기 — 기본 mark 의 노란 배경은 다크
-		   테마에서 튄다. */
-		background: color-mix(in srgb, var(--accent) 26%, transparent);
-		color: var(--text);
+		/* REQ-014: 검색 일치 표시. 기본 mark 의 노란 배경은 다크 테마에서 튀므로
+		   테마별 토큰을 쓴다(global.css 의 --search-hit-*). */
+		background: var(--search-hit-bg);
+		color: var(--search-hit-text);
 		border-radius: 2px;
 		padding: 0 1px;
 	}
