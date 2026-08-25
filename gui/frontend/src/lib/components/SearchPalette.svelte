@@ -22,6 +22,9 @@
 	// REQ-012: 강화 검색 — 켰을 때만 서버에 묻는다.
 	import { searchApi, type SearchHit } from '$lib/api/search';
 	import { LatestQuery } from '$lib/utils/enhanced-search';
+	// BUG-248: 팔레트가 떠 있는 동안 배경 페이지 스크롤 잠금. 다른 모달들이
+	// 이미 쓰는 장치(BUG-199) 인데 팔레트만 빠져 있었다.
+	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
 	import MarkdownView from './MarkdownView.svelte';
 	// BUG-157: 팔레트의 결과 목록/미리보기 본문도 overlay 스크롤바 —
 	// 콤보박스·퀘스트 목록 등 다른 스크롤 영역과 같은 규칙(컨텐츠 폭 0 차지).
@@ -496,6 +499,7 @@
 	tabindex="-1"
 	aria-label={t('palette.closeAria', $locale)}
 	onclick={onclose}
+	use:modalScrollLock
 ></div>
 
 <div class="palette" role="dialog" aria-label={t('palette.dialogAria', $locale)}>
@@ -878,6 +882,10 @@
 	.rows {
 		max-height: 340px;
 		overflow-y: auto;
+		/* BUG-248: 목록 끝까지 굴렸을 때 배경으로 이어지지 않게(scroll chaining).
+		   배경 잠금과 별개로 필요하다 — 잠금은 페이지 스크롤을 막고, 이건 이
+		   스크롤러 밖으로 새는 것을 막는다. */
+		overscroll-behavior: contain;
 		/* BUG-157: native scrollbar 숨김 — OverlayScrollbar 가 대신 그린다
 		   (QuestCombobox 등과 동일 규칙). */
 		scrollbar-width: none;
