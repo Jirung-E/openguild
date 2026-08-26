@@ -969,13 +969,22 @@
 	.tb-controls {
 		display: flex;
 		height: 100%;
+		/* 버튼이 바보다 낮을 수 있으므로(배율 확대 시) 세로 가운데. */
+		align-items: center;
 		flex: none;
 		/* Windows 네이티브 캡션 버튼 관례: 버튼 사이 간격 0, 서로 붙어있음. */
 		gap: 0;
 	}
+	/* BUG-246 후속: 폭·높이 **둘 다 px 고정**(admin 결정).
+	   Windows 네이티브 캡션 버튼은 46×32 가 표준이고, 앱 UI 배율을 따라 커지면
+	   네이티브 창과 나란히 놓였을 때 혼자 큰 게 눈에 띈다. 예전 `height: 100%`
+	   는 타이틀바가 px 상수이던 시절엔 결과가 같았지만, 바가 rem 이 되면서
+	   배율을 따라가 버렸다(실측 200%: 46×64).
+	   바가 더 높아지면 위아래로 빈 공간이 생기므로 세로 가운데로 맞춘다
+	   (`.tb-controls` 의 align-items). */
 	.tb-btn {
 		width: 46px;
-		height: 100%;
+		height: 32px;
 		border: none;
 		background: transparent;
 		color: var(--text-muted);
@@ -989,9 +998,15 @@
 		color: var(--text);
 	}
 	/* Windows: OS 캡션 버튼과 동일한 폰트 글리프. */
+	/* BUG-246 후속: 여기는 **px 로 되돌린다.**
+	   Windows 캡션 버튼의 글리프는 OS 크롬이라 앱 UI 배율을 따르면 안 된다 —
+	   네이티브 창과 나란히 놓였을 때 혼자 커지면 그게 어색하다. 앞선 커밋이
+	   타이틀바 안의 px 를 일괄로 rem 화하면서 이것까지 쓸어 담았고, 이 기기가
+	   macOS(네이티브 traffic light — `.tb-btn` 자체가 없다)라 실측에 안 걸렸다.
+	   같은 이유로 `.tb-btn` 폭 46px 과 `.tb-controls.linux` 일체도 px 다. */
 	.tb-winicon {
 		font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets', sans-serif;
-		font-size: 0.625rem;
+		font-size: 10px;
 		font-weight: 400;
 		font-style: normal;
 		line-height: 1;
