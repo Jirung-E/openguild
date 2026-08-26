@@ -253,7 +253,7 @@ async fn stream_attachments_zip(
     // 응답 본문은 reader 를 그대로 흘려보낸다 — 어느 쪽도 전체를 들고 있지 않다.
     let (w, r) = tokio::io::duplex(64 * 1024);
 
-    tokio::spawn(async move {
+    let writer = tokio::spawn(async move {
         let mut zip = ZipFileWriter::with_tokio(w);
         for a in items {
             // REQ-002 와 같은 allowlist 검증 — zip 경로로 우회되면 안 된다.
@@ -284,7 +284,31 @@ async fn stream_attachments_zip(
         let _ = zip.close().await;
     });
 
-    let body = Body::from_stream(tokio_util::io::ReaderStream::new(r));
+    // DEV-368: 쓰기 태스크가 패닉하면 writer 가 drop 되고 duplex 는 그냥 EOF 로
+    // 끝난다 — 본문이 **정상 종료**로 보여 클라이언트는 HTTP 200 에 잘린 zip 을
+    // 받고 성공했다고 믿는다(실측: 9,601 → 6,180 바이트, curl exit 0,
+    // unzip 은 "cannot find zipfile directory"). 압축을 풀 때서야 알게 되고
+    // 그때는 원인을 되짚을 단서가 없다.
+    //
+    // spawn 된 태스크라 서버의 catch-panic 계층(DEV-367)도 닿지 않는다. 그래서
+    // 본문을 다 흘린 **뒤** join 결과를 확인해, 비정상 종료면 스트림을 에러로
+    // 끝낸다. 그러면 hyper 가 chunked 를 정상 종료자 없이 끊어 클라이언트가
+    // 전송 실패를 감지한다.
+    use futures_util::StreamExt;
+    let tail = futures_util::stream::once(async move {
+        match writer.await {
+            Ok(()) => Ok(axum::body::Bytes::new()),
+            Err(e) if e.is_panic() => {
+                tracing::error!("첨부 zip 쓰기 태스크 패닉 — 응답을 중간에 끊는다");
+                Err(std::io::Error::other("zip writer panicked"))
+            }
+            Err(e) => {
+                tracing::error!("첨부 zip 쓰기 태스크 비정상 종료: {e}");
+                Err(std::io::Error::other("zip writer aborted"))
+            }
+        }
+    });
+    let body = Body::from_stream(tokio_util::io::ReaderStream::new(r).chain(tail));
     Ok((
         [
             (header::CONTENT_TYPE, "application/zip".to_string()),

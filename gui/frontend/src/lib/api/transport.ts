@@ -807,6 +807,64 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 	return null;
 }
 
+/**
+ * DEV-368: invoke 무응답 방어.
+ *
+ * Tauri 커맨드가 **패닉하면 invoke 가 거부되지도, 끝나지도 않는다**(실측:
+ * 5초 타임아웃을 걸어야 비로소 빠져나온다). 앱과 다른 커맨드는 멀쩡한데
+ * 그 promise 만 영영 pending 이라 **호출한 화면이 로딩 상태로 굳는다** —
+ * 강화 검색이라면 `wideLoading` 이 영영 true 라 토글만 깜빡이고 결과도
+ * 에러 배너도 없다.
+ *
+ * 근본 대책은 커맨드 실행부에서 unwind 를 잡는 것인데 커맨드가 100개에
+ * 가까워 범위가 크다. 여기서는 **화면이 굳는 것**을 막는다 — 대기가 한계를
+ * 넘으면 실패로 바꿔 호출부의 기존 에러 처리에 태운다.
+ */
+const INVOKE_TIMEOUT_MS = 60_000;
+
+/**
+ * 시간이 오래 걸리는 게 **정상**인 커맨드 — 타임아웃 제외.
+ * 대용량 첨부 복사·재색인·백업/복원은 파일 크기와 길드 규모에 비례한다.
+ */
+const INVOKE_NO_TIMEOUT = new Set([
+	'save_attachment',
+	'save_attachment_from_path',
+	'add_quest_attachment',
+	'add_book_attachment',
+	'add_campaign_attachment',
+	'copy_guild_file',
+	'admin_reindex',
+	'admin_vacuum',
+	'admin_restore',
+	'admin_create_snapshot',
+	'open_guild',
+	'create_guild'
+]);
+
+function withInvokeTimeout<T>(p: Promise<T>, cmd: string): Promise<T> {
+	if (INVOKE_NO_TIMEOUT.has(cmd)) return p;
+	return new Promise<T>((resolve, reject) => {
+		const timer = setTimeout(() => {
+			reject(
+				new Error(
+					`'${cmd}' 가 ${INVOKE_TIMEOUT_MS / 1000}초 동안 응답하지 않았습니다. ` +
+						`(커맨드가 패닉했을 수 있습니다 — 앱 로그를 확인해 주세요.)`
+				)
+			);
+		}, INVOKE_TIMEOUT_MS);
+		p.then(
+			(v) => {
+				clearTimeout(timer);
+				resolve(v);
+			},
+			(e) => {
+				clearTimeout(timer);
+				reject(e);
+			}
+		);
+	});
+}
+
 export class TauriTransport implements Transport {
 	readonly kind = 'tauri' as const;
 
@@ -820,7 +878,10 @@ export class TauriTransport implements Transport {
 		}
 		try {
 			// invoke 가 unit (`()`) 반환 시 null. T 로 그대로 캐스팅.
-			const result = await invoke<T>(mapped.cmd, mapped.args);
+			const result = await withInvokeTimeout(
+				invoke<T>(mapped.cmd, mapped.args),
+				mapped.cmd
+			);
 			return result as T;
 		} catch (e) {
 			// Tauri 가 throw 한 메시지는 보통 string. Error 로 감싸기.
@@ -831,7 +892,7 @@ export class TauriTransport implements Transport {
 }
 
 /** 테스트용 export — routeToInvoke 매핑이 server route 와 일치하는지 검증. */
-export const __test_only = { routeToInvoke, LIST_QUERY_BOOLS };
+export const __test_only = { routeToInvoke, LIST_QUERY_BOOLS, INVOKE_TIMEOUT_MS, INVOKE_NO_TIMEOUT, withInvokeTimeout };
 
 // ─────────────────────── default ───────────────────────
 

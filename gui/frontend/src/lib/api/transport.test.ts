@@ -663,3 +663,47 @@ describe('LIST_QUERY_BOOLS 가 ListQuery 의 bool 필드와 일치 (BUG-211 / BU
 		expect([...__test_only.LIST_QUERY_BOOLS].sort()).toEqual([...rustBools].sort());
 	});
 });
+
+// ── DEV-368: invoke 무응답 방어 ──
+describe('withInvokeTimeout', () => {
+	beforeEach(() => vi.useFakeTimers());
+	afterEach(() => vi.useRealTimers());
+
+	it('제때 끝나면 그대로 통과시킨다', async () => {
+		const p = __test_only.withInvokeTimeout(Promise.resolve('결과'), 'list_quests');
+		await expect(p).resolves.toBe('결과');
+	});
+
+	it('거부도 그대로 전달한다', async () => {
+		const p = __test_only.withInvokeTimeout(Promise.reject(new Error('원래 에러')), 'list_quests');
+		await expect(p).rejects.toThrow('원래 에러');
+	});
+
+	/**
+	 * 핵심: 패닉한 커맨드는 거부되지도 끝나지도 않는다(실측). 그대로 두면
+	 * 호출한 화면이 로딩 상태로 굳는다.
+	 */
+	it('영영 응답하지 않으면 실패로 바꾼다', async () => {
+		const never = new Promise(() => {});
+		const p = __test_only.withInvokeTimeout(never, 'search_docs');
+		const assertion = expect(p).rejects.toThrow(/search_docs.*응답하지 않았습니다/s);
+		await vi.advanceTimersByTimeAsync(__test_only.INVOKE_TIMEOUT_MS + 10);
+		await assertion;
+	});
+
+	/** 오래 걸리는 게 정상인 커맨드는 기다려 준다 — 잘라내면 그게 버그다. */
+	it('제외 목록의 커맨드는 타임아웃하지 않는다', async () => {
+		let done!: (v: string) => void;
+		const slow = new Promise<string>((r) => (done = r));
+		const p = __test_only.withInvokeTimeout(slow, 'admin_reindex');
+		await vi.advanceTimersByTimeAsync(__test_only.INVOKE_TIMEOUT_MS * 3);
+		done('오래 걸렸지만 성공');
+		await expect(p).resolves.toBe('오래 걸렸지만 성공');
+	});
+
+	it('제외 목록에 대용량 첨부 / 재색인 / 백업이 들어 있다', () => {
+		for (const cmd of ['save_attachment_from_path', 'admin_reindex', 'admin_restore']) {
+			expect(__test_only.INVOKE_NO_TIMEOUT.has(cmd)).toBe(true);
+		}
+	});
+});

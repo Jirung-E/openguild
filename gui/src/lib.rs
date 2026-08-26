@@ -253,7 +253,49 @@ pub fn is_welcome_placeholder(p: &std::path::Path) -> bool {
 }
 
 
+/// DEV-368: 패닉을 **파일에도** 남긴다.
+///
+/// Tauri 커맨드가 패닉하면 invoke 가 거부되지도 끝나지도 않는다 — 화면에는
+/// 아무 신호가 없고, 기본 패닉 훅이 찍는 stderr 는 `.app` 으로 실행하면
+/// 사실상 사라진다. 그러면 "가끔 멈춘다" 는 신고만 남고 원인을 되짚을 단서가
+/// 없다.
+///
+/// 기본 훅을 대체하지 않고 **덧붙인다** — 개발 중 콘솔 출력은 그대로 두고
+/// 파일에 한 줄 더 남기는 쪽이 안전하다.
+fn install_panic_hook() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let loc = info
+            .location()
+            .map(|l| format!("{}:{}", l.file(), l.line()))
+            .unwrap_or_else(|| "(위치 불명)".into());
+        let msg = info
+            .payload()
+            .downcast_ref::<&str>()
+            .map(|s| (*s).to_string())
+            .or_else(|| info.payload().downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "(문자열이 아닌 패닉 페이로드)".into());
+        if let Some(path) = panic_log_path() {
+            let _ = std::fs::create_dir_all(path.parent().unwrap_or(&path));
+            if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+                use std::io::Write;
+                let _ = writeln!(f, "[{}] {loc} — {msg}", openguild_core::time::now_local_iso8601());
+            }
+        }
+        default_hook(info);
+    }));
+}
+
+/// 패닉 로그 위치 — 설정과 같은 곳(`~/.openguild/`)에 둔다.
+/// `OPENGUILD_HOME` 을 존중하므로 테스트가 실 홈을 건드리지 않는다.
+fn panic_log_path() -> Option<std::path::PathBuf> {
+    openguild_core::user_dirs::openguild_home()
+        .ok()
+        .map(|h| h.join("panic.log"))
+}
+
 pub fn run() {
+    install_panic_hook();
     // BUG-144: Linux(WebKitGTK) 전반 버벅임 완화 — WebKitGTK 2.4x 의 DMABUF
     // renderer 가 특정 드라이버(특히 NVIDIA/일부 Mesa) 조합에서 GPU 가속이
     // 깨져 소프트웨어 합성으로 떨어지며 캔버스(보드)·스크롤 전반이 심하게
