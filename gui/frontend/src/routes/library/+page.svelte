@@ -1331,7 +1331,9 @@
 	}
 	.layout {
 		display: grid;
-		grid-template-columns: 260px 1fr;
+		/* BUG-254: 사이드바 폭이 px 고정이라 배율을 올리면 안의 버튼·태그·제목이
+		   경계를 넘었다(admin 보고 + 스크린샷). 내용이 커지면 칸도 같이 커져야 한다. */
+		grid-template-columns: 16.25rem 1fr;
 		gap: 1.25rem;
 		min-height: 70vh;
 	}
@@ -1542,7 +1544,7 @@
 	/* DEV-239: 탐색기 타일 — 개수와 무관하게 고정 크기, 좌상단부터 채움. */
 	.tile-grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, 92px);
+		grid-template-columns: repeat(auto-fill, 5.75rem);
 		justify-content: start;
 		gap: 0.4rem;
 	}

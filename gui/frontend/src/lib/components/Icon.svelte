@@ -20,11 +20,19 @@
 	import { ICON_SHAPES, type IconName } from '$lib/utils/icon-paths';
 
 	let { name, size = 14, title }: { name: IconName; size?: number; title?: string } = $props();
+
+	// BUG-254: `size` 는 호출측이 px 숫자로 준다(예: `size={12}`). 그대로 SVG 의
+	// width/height 속성에 넣으면 **px 단위**라 UI 배율(root font-size)을 따라가지
+	// 않는다 — 버튼은 커지는데 안의 아이콘만 그대로였다.
+	//
+	// 호출부를 전부 고치는 대신 여기서 rem 으로 환산한다. 16 으로 나누므로
+	// 기본 배율에서는 **기존과 정확히 같은 크기**다(size=14 → 0.875rem = 14px).
+	const px = $derived(`${size / 16}rem`);
 </script>
 
 <svg
-	width={size}
-	height={size}
+	width={px}
+	height={px}
 	viewBox="0 0 16 16"
 	fill="none"
 	stroke="currentColor"

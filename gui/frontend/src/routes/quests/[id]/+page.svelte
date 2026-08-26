@@ -1758,7 +1758,7 @@
 		flex-wrap: wrap;
 	}
 	.due-row .field-label {
-		flex: 1 1 200px;
+		flex: 1 1 12.5rem;
 	}
 	.edit-date {
 		padding: 0.4rem 0.6rem;

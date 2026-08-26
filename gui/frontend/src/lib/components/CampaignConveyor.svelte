@@ -277,10 +277,10 @@
 		will-change: transform;
 	}
 	.slot {
-		flex: 0 0 200px;
+		flex: 0 0 12.5rem;
 	}
 	.spacer {
-		flex: 0 0 200px;
+		flex: 0 0 12.5rem;
 	}
 
 	/* BUG-031: 실제 드래그 중에만 슬롯 클릭 막음 (capture 이후). 임계값 미만은

@@ -598,7 +598,9 @@
 	}
 	.layout {
 		display: grid;
-		grid-template-columns: 240px 1fr;
+		/* BUG-254: 사이드바 폭도 배율을 따라간다 — px 고정이면 안의 요소가
+		   경계를 넘는다. */
+		grid-template-columns: 15rem 1fr;
 		gap: 1.25rem;
 		min-height: 70vh;
 	}

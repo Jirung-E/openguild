@@ -618,7 +618,7 @@
 								title={t('palette.preview', $locale)}
 								aria-label={t('palette.preview', $locale)}
 							>
-								<svg
+								<svg class="sp-ico"
 									width="13"
 									height="13"
 									viewBox="0 0 16 16"
@@ -639,7 +639,7 @@
 								title={t('palette.openWindow', $locale)}
 								aria-label={t('palette.openWindow', $locale)}
 							>
-								<svg
+								<svg class="sp-ico"
 									width="13"
 									height="13"
 									viewBox="0 0 16 16"
@@ -661,7 +661,7 @@
 								title={t('palette.goPage', $locale)}
 								aria-label={t('palette.goPage', $locale)}
 							>
-								<svg
+								<svg class="sp-ico"
 									width="13"
 									height="13"
 									viewBox="0 0 16 16"
@@ -736,6 +736,12 @@
 </div>
 
 <style>
+	/* BUG-254: 아이콘 속성 px → CSS rem (Icon.svelte 와 같은 이유). */
+	.sp-ico {
+		width: 0.8125rem;
+		height: 0.8125rem;
+	}
+
 	.backdrop {
 		position: fixed;
 		inset: var(--titlebar-h, 0px) 0 0 0;

@@ -741,7 +741,7 @@
 		padding: 1.5rem;
 	}
 	.side {
-		flex: 0 0 160px;
+		flex: 0 0 10rem;
 	}
 	.side h1 {
 		font-size: 1.1rem;
@@ -1037,7 +1037,7 @@
 	}
 	.ct-tokens {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+		grid-template-columns: repeat(auto-fill, minmax(11.25rem, 1fr));
 		gap: 0.35rem 0.75rem;
 		margin-top: 0.6rem;
 	}

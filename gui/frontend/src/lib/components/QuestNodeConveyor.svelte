@@ -291,7 +291,7 @@
 		will-change: transform;
 	}
 	.slot {
-		flex: 0 0 200px;
+		flex: 0 0 12.5rem;
 		background: transparent;
 		border: none;
 		padding: 0;
@@ -302,7 +302,7 @@
 		align-items: stretch;
 	}
 	.spacer {
-		flex: 0 0 200px;
+		flex: 0 0 12.5rem;
 	}
 	/* BUG-035: 실제 드래그 중 슬롯 클릭 차단. marquee 가 아닐 땐 자연스러운 click. */
 	.conveyor.marquee.dragging .slot {
