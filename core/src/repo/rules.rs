@@ -210,7 +210,26 @@ fn parse_backfilled(
         let mtime = super::fs::mtime_iso8601(path).unwrap_or_else(crate::time::now_local_iso8601);
         rf.frontmatter.created_at.get_or_insert_with(|| mtime.clone());
         rf.frontmatter.updated_at.get_or_insert(mtime);
-        let _ = write_rule_file(paths, slug, &rf); // best-effort self-heal
+        // REQ-003: self-heal 은 **읽기 경로**(list_rules / read_rule_entry)에서
+        // 불린다. 예전엔 방금 넘겨받은 `raw` 스냅샷을 그대로 되썼는데, 그 사이
+        // 사용자가 저장했으면 **저장 내용이 조용히 사라진다**(write_rule 이 Ok 를
+        // 낸 뒤 옛 본문으로 덮임).
+        //
+        // 그래서 쓰기 직전에 파일을 **다시 읽어** 그 최신 본문에 frontmatter 만
+        // 얹는다. 그 사이 내용이 바뀌었으면 우리가 들고 있던 body 는 버린다.
+        // 완전한 원자성은 아니지만(파일 락 없음) "오래된 본문을 되쓰는" 주된
+        // 경로가 사라진다. `parse_backfilled` 는 sync 라 async write_lock 을
+        // 쓸 수 없어 이 방식을 택했다.
+        let heal = std::fs::read_to_string(path)
+            .ok()
+            .map(|fresh| {
+                let mut cur = RuleFile::parse(&fresh);
+                cur.frontmatter.created_at = rf.frontmatter.created_at.clone();
+                cur.frontmatter.updated_at = rf.frontmatter.updated_at.clone();
+                cur
+            })
+            .unwrap_or_else(|| rf.clone());
+        let _ = write_rule_file(paths, slug, &heal); // best-effort self-heal
     }
     Ok(RuleEntry {
         slug: slug.to_string(),

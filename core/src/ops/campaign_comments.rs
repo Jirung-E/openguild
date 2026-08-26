@@ -102,6 +102,9 @@ pub async fn add_entry(
     body: String,
     parent_id: Option<u64>,
 ) -> AppResult<CommentEntry> {
+    // REQ-003: 사이드카 전체 읽기 → 수정 → 통째 덮어쓰기. 동시 2건이면 나중
+    // 쓰기가 먼저 것을 지운다. 프로세스 안에서 직렬화한다(store.rs 주석 참고).
+    let _w = store.write_lock.lock().await;
     let body_trimmed = body.trim().to_string();
     if body_trimmed.is_empty() {
         return Err(AppError::BadRequest("body is empty".into()));
@@ -157,6 +160,9 @@ pub async fn update_entry(
     id: u64,
     body: String,
 ) -> AppResult<CommentEntry> {
+    // REQ-003: 사이드카 전체 읽기 → 수정 → 통째 덮어쓰기. 동시 2건이면 나중
+    // 쓰기가 먼저 것을 지운다. 프로세스 안에서 직렬화한다(store.rs 주석 참고).
+    let _w = store.write_lock.lock().await;
     let body_trimmed = body.trim().to_string();
     if body_trimmed.is_empty() {
         return Err(AppError::BadRequest("body is empty".into()));
@@ -192,6 +198,9 @@ pub async fn update_entry(
 
 /// entry 삭제.
 pub async fn delete_entry(store: &Store, slug: &str, id: u64) -> AppResult<()> {
+    // REQ-003: 사이드카 전체 읽기 → 수정 → 통째 덮어쓰기. 동시 2건이면 나중
+    // 쓰기가 먼저 것을 지운다. 프로세스 안에서 직렬화한다(store.rs 주석 참고).
+    let _w = store.write_lock.lock().await;
     let _ = journal::append(
         &store.journal_pool,
         "delete_campaign_comment",
@@ -227,6 +236,9 @@ pub async fn toggle_reaction(
     emoji: &str,
     author: &str,
 ) -> AppResult<CommentEntry> {
+    // REQ-003: 사이드카 전체 읽기 → 수정 → 통째 덮어쓰기. 동시 2건이면 나중
+    // 쓰기가 먼저 것을 지운다. 프로세스 안에서 직렬화한다(store.rs 주석 참고).
+    let _w = store.write_lock.lock().await;
     let emoji = emoji.trim();
     let bad = |c: char| matches!(c, ',' | '"' | ':' | '|');
     if emoji.is_empty() || emoji.contains(bad) {
@@ -288,6 +300,9 @@ pub async fn toggle_reaction(
 /// DEV-234: 댓글 상단 고정(pin) 토글 — quest 와 동일 시맨틱, discussion 같은
 /// 게이트 없음.
 pub async fn toggle_pinned(store: &Store, slug: &str, id: u64) -> AppResult<CommentEntry> {
+    // REQ-003: 사이드카 전체 읽기 → 수정 → 통째 덮어쓰기. 동시 2건이면 나중
+    // 쓰기가 먼저 것을 지운다. 프로세스 안에서 직렬화한다(store.rs 주석 참고).
+    let _w = store.write_lock.lock().await;
     let _ = journal::append(
         &store.journal_pool,
         "toggle_campaign_comment_pinned",

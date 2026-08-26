@@ -300,6 +300,9 @@ pub async fn add_checklist_line(
     campaign_id: i64,
     text: &str,
 ) -> AppResult<CampaignChecklistItem> {
+    // REQ-003: 사이드카 전체 읽기 → 수정 → 통째 덮어쓰기. 동시 2건이면 나중
+    // 쓰기가 먼저 것을 지운다. 프로세스 안에서 직렬화한다(store.rs 주석 참고).
+    let _w = store.write_lock.lock().await;
     let _ = journal::append(
         &store.journal_pool,
         "campaign_checklist_add",
@@ -345,6 +348,9 @@ pub async fn set_checklist_checked_by_index(
     one_based_idx: usize,
     checked: bool,
 ) -> AppResult<()> {
+    // REQ-003: 사이드카 전체 읽기 → 수정 → 통째 덮어쓰기. 동시 2건이면 나중
+    // 쓰기가 먼저 것을 지운다. 프로세스 안에서 직렬화한다(store.rs 주석 참고).
+    let _w = store.write_lock.lock().await;
     if one_based_idx == 0 {
         return Err(AppError::BadRequest(
             "checklist index is 1-based, got 0".into(),
@@ -385,6 +391,9 @@ pub async fn remove_checklist_by_index(
     campaign_id: i64,
     one_based_idx: usize,
 ) -> AppResult<()> {
+    // REQ-003: 사이드카 전체 읽기 → 수정 → 통째 덮어쓰기. 동시 2건이면 나중
+    // 쓰기가 먼저 것을 지운다. 프로세스 안에서 직렬화한다(store.rs 주석 참고).
+    let _w = store.write_lock.lock().await;
     if one_based_idx == 0 {
         return Err(AppError::BadRequest("checklist index is 1-based, got 0".into()));
     }

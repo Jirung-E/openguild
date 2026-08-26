@@ -60,6 +60,21 @@ pub struct Store {
     /// 예기치 않게 스냅샷을 만들어 실패했다. Store 별로 지정할 수 있게 해
     /// 오염을 없앤다. 서버/GUI 도 필요하면 코드로 정책을 줄 수 있다.
     pub auto_snapshot_ops_override: std::sync::Arc<std::sync::atomic::AtomicI64>,
+    /// REQ-003: **프로세스 안** 파일 read-modify-write 직렬화.
+    ///
+    /// 댓글 토글·체크리스트·첨부·번호 할당 같은 경로는 전부 "파일 전체 읽기 →
+    /// 메모리 수정 → 통째 덮어쓰기" 다. 같은 문서에 동시 요청 2건이 오면
+    /// 나중 쓰기가 먼저 것을 조용히 지운다(lost update).
+    ///
+    /// `lock.rs` 의 `LockGuard` 로는 못 막는다 — 그건 `.guild/.lock` 에 PID 를
+    /// 적는 **프로세스 간** 락이라, 한 프로세스 안의 동시 요청에서는 자기
+    /// 자신의 PID 를 보고 "살아있음" 으로 판정해 거부해 버린다. 서버가 요청
+    /// 두 개를 처리하는 상황이 정확히 그 경우다.
+    ///
+    /// 그래서 여기서는 in-process 뮤텍스를 쓴다. `Arc` 라 `Clone` 된 Store 들이
+    /// 같은 잠금을 공유한다(서버는 Store 를 clone 해 핸들러에 넘긴다).
+    /// 프로세스 **간** 보호는 별개 문제로 남는다.
+    pub write_lock: std::sync::Arc<tokio::sync::Mutex<()>>,
 }
 
 impl Store {
@@ -160,6 +175,7 @@ impl Store {
             journal_pool,
             db_ahead_versions,
             replaying: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            write_lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
             // DEV-299: 기본 동기 — 켜는 쪽(서버/GUI)이 명시적으로 켠다.
             background_snapshots: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             snapshot_in_flight: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -227,6 +243,7 @@ impl Store {
             journal_pool,
             db_ahead_versions,
             replaying: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            write_lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
             // DEV-299: 기본 동기 — 켜는 쪽(서버/GUI)이 명시적으로 켠다.
             background_snapshots: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             snapshot_in_flight: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),

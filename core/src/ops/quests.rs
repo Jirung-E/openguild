@@ -118,6 +118,10 @@ pub async fn create_quest(store: &Store, body: CreateQuestRequest) -> AppResult<
 /// 경고만 — 번호 부여의 실제 정합성은 DB counter + self-heal 이 담당하고,
 /// 파일 counter 는 백업/표시 값이라 생성 자체를 막을 이유가 없음.
 async fn sync_type_counter_file(store: &Store, prefix: &str, number: i64) {
+    // REQ-003: read → compare → write 가 SQLite 카운터 트랜잭션 **바깥**이라
+    // 동시 생성 시 디스크 카운터가 역행할 수 있었다(위 주석이 보장한다는
+    // 단조증가 위반). 프로세스 안에서 직렬화한다.
+    let _w = store.write_lock.lock().await;
     let path = store.paths.type_path(prefix);
     match crate::repo::TypeFile::read(&path) {
         Ok(mut tf) => {

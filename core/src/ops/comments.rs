@@ -194,6 +194,9 @@ pub async fn add_comment_entry(
     // DEV-366: 토론 댓글로 바로 생성. 예전의 add → toggle 2단계를 없앤다.
     discussion: bool,
 ) -> AppResult<CommentEntry> {
+    // REQ-003: 사이드카 전체를 읽고 → 고치고 → 통째로 덮어쓴다. 같은 문서에
+    // 동시 요청 2건이면 나중 쓰기가 먼저 것을 지운다. 프로세스 안에서 직렬화한다.
+    let _w = store.write_lock.lock().await;
     let _ = journal::append(
         &store.journal_pool,
         "add_comment_entry",
@@ -226,6 +229,9 @@ pub async fn update_comment_entry(
     id: u64,
     body: String,
 ) -> AppResult<CommentEntry> {
+    // REQ-003: 사이드카 전체를 읽고 → 고치고 → 통째로 덮어쓴다. 같은 문서에
+    // 동시 요청 2건이면 나중 쓰기가 먼저 것을 지운다. 프로세스 안에서 직렬화한다.
+    let _w = store.write_lock.lock().await;
     let _ = journal::append(
         &store.journal_pool,
         "update_comment_entry",
@@ -254,6 +260,9 @@ pub async fn toggle_comment_reaction(
     emoji: &str,
     author: &str,
 ) -> AppResult<CommentEntry> {
+    // REQ-003: 사이드카 전체를 읽고 → 고치고 → 통째로 덮어쓴다. 같은 문서에
+    // 동시 요청 2건이면 나중 쓰기가 먼저 것을 지운다. 프로세스 안에서 직렬화한다.
+    let _w = store.write_lock.lock().await;
     let emoji = emoji.trim();
     let bad = |c: char| matches!(c, ',' | '"' | ':' | '|');
     if emoji.is_empty() || emoji.contains(bad) {
@@ -325,6 +334,9 @@ pub async fn toggle_comment_discussion(
     slug: &str,
     id: u64,
 ) -> AppResult<CommentEntry> {
+    // REQ-003: 사이드카 전체를 읽고 → 고치고 → 통째로 덮어쓴다. 같은 문서에
+    // 동시 요청 2건이면 나중 쓰기가 먼저 것을 지운다. 프로세스 안에서 직렬화한다.
+    let _w = store.write_lock.lock().await;
     let _ = journal::append(
         &store.journal_pool,
         "toggle_comment_discussion",
@@ -359,6 +371,9 @@ pub async fn toggle_comment_resolved(
     slug: &str,
     id: u64,
 ) -> AppResult<CommentEntry> {
+    // REQ-003: 사이드카 전체를 읽고 → 고치고 → 통째로 덮어쓴다. 같은 문서에
+    // 동시 요청 2건이면 나중 쓰기가 먼저 것을 지운다. 프로세스 안에서 직렬화한다.
+    let _w = store.write_lock.lock().await;
     let _ = journal::append(
         &store.journal_pool,
         "toggle_comment_resolved",
@@ -440,6 +455,9 @@ async fn record_discussion_history(
 /// 없음 — root/답글 무관하게 켤 수 있고, 실제 "몇 개까지" "root 만" 같은
 /// 제약은 GUI 가 담당(pin 버튼을 root 댓글에만 노출).
 pub async fn toggle_comment_pinned(store: &Store, slug: &str, id: u64) -> AppResult<CommentEntry> {
+    // REQ-003: 사이드카 전체를 읽고 → 고치고 → 통째로 덮어쓴다. 같은 문서에
+    // 동시 요청 2건이면 나중 쓰기가 먼저 것을 지운다. 프로세스 안에서 직렬화한다.
+    let _w = store.write_lock.lock().await;
     let _ = journal::append(
         &store.journal_pool,
         "toggle_comment_pinned",
@@ -466,6 +484,9 @@ pub async fn toggle_comment_pinned(store: &Store, slug: &str, id: u64) -> AppRes
 
 /// 댓글 entry 삭제.
 pub async fn delete_comment_entry(store: &Store, slug: &str, id: u64) -> AppResult<()> {
+    // REQ-003: 사이드카 전체를 읽고 → 고치고 → 통째로 덮어쓴다. 같은 문서에
+    // 동시 요청 2건이면 나중 쓰기가 먼저 것을 지운다. 프로세스 안에서 직렬화한다.
+    let _w = store.write_lock.lock().await;
     let _ = journal::append(
         &store.journal_pool,
         "delete_comment_entry",
@@ -751,6 +772,37 @@ mod tests {
             .await
             .unwrap();
         assert!(!e.discussion);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// REQ-003: 같은 문서에 댓글을 **동시에** 추가해도 하나도 사라지지 않는다.
+    ///
+    /// 사이드카는 전체 읽기 → 수정 → 통째 덮어쓰기라, 직렬화가 없으면 나중
+    /// 쓰기가 먼저 것을 지운다(lost update). 프로세스 안 write_lock 이 그걸
+    /// 막는지 본다.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn concurrent_comment_adds_do_not_lose_entries() {
+        let (dir, store, slug) = fresh("concurrent-add").await;
+        const N: usize = 12;
+        let mut tasks = Vec::new();
+        for i in 0..N {
+            let st = store.clone();
+            let sl = slug.clone();
+            tasks.push(tokio::spawn(async move {
+                add_comment_entry(&st, &sl, format!("a{i}"), format!("본문 {i}"), None, false)
+                    .await
+                    .unwrap()
+            }));
+        }
+        for t in tasks {
+            t.await.unwrap();
+        }
+        // 진리원인 파일에 N 개가 전부 남아야 한다.
+        let entries = list_comment_entries(&store, &slug).unwrap();
+        assert_eq!(entries.len(), N, "댓글이 유실됐다: {} / {N}", entries.len());
+        // id 도 겹치면 안 된다 — 겹치면 한쪽이 다른 쪽을 덮은 것이다.
+        let ids: std::collections::HashSet<u64> = entries.iter().map(|e| e.id).collect();
+        assert_eq!(ids.len(), N, "id 가 중복됐다");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

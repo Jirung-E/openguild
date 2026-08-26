@@ -254,6 +254,13 @@ pub async fn create_book(
     .await
     .map_err(AppError::Internal)?;
 
+    // REQ-003: 번호 할당(카운터 읽기 → 파일 최대값 스캔 → +1 → 쓰기)부터
+    // 본체 쓰기까지가 한 덩어리여야 한다. 동시 2건이면 둘 다 같은 N+1 을
+    // 계산하고 두 번째 write 가 첫 문서를 덮어써 **문서가 영구 소실**된다.
+    //
+    // 참고: `max(카운터, 실존최대)+1` 공식 자체는 BOOK-001 의 A2 처방(파일-로컬
+    // heal)을 구현한 것이라 그대로 둔다 — 빠진 건 동시성 보호뿐이었다.
+    let _w = store.write_lock.lock().await;
     let number = repo::allocate_number(&store.paths).map_err(AppError::Internal)?;
     let book_id = book_slug(number);
     let now = crate::time::now_local_iso8601();

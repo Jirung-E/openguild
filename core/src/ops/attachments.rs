@@ -426,6 +426,9 @@ async fn add_attachment(
     path: &str,
     name: &str,
 ) -> AppResult<Vec<QuestAttachment>> {
+    // REQ-003: 사이드카 전체 읽기 → 수정 → 통째 덮어쓰기. 동시 2건이면 나중
+    // 쓰기가 먼저 것을 지운다. 프로세스 안에서 직렬화한다(store.rs 주석 참고).
+    let _w = store.write_lock.lock().await;
     if path.trim().is_empty() {
         return Err(AppError::BadRequest(crate::tf!("빈 첨부 경로", "empty attachment path")));
     }
@@ -485,6 +488,9 @@ async fn remove_attachment(
     slug: &str,
     path: &str,
 ) -> AppResult<Vec<QuestAttachment>> {
+    // REQ-003: 사이드카 전체 읽기 → 수정 → 통째 덮어쓰기. 동시 2건이면 나중
+    // 쓰기가 먼저 것을 지운다. 프로세스 안에서 직렬화한다(store.rs 주석 참고).
+    let _w = store.write_lock.lock().await;
     let _ = journal::append(
         &store.journal_pool,
         "remove_attachment",

@@ -944,13 +944,21 @@ pub async fn change_status(
     })?;
 
     let now = crate::time::now_local_iso8601();
-    let rows = sqlx::query("UPDATE quests SET status_id = ?, updated_at = ? WHERE id = ?")
-        .bind(status_id)
-        .bind(&now)
-        .bind(id)
-        .execute(pool)
-        .await?
-        .rows_affected();
+    // REQ-003: `deleted_at IS NULL` 이 빠져 있었다. soft-deleted 행도 실존하므로
+    // UPDATE 가 1행을 고쳐 `rows == 0` 검사를 통과하고, 그 뒤 `fetch_by_id`
+    // (이쪽은 필터가 있다)가 NotFound 를 냈다 — **삭제된 퀘스트의 status 와
+    // updated_at 이 실제로 바뀐 뒤 호출자에겐 "없음" 이라고 답하는** 상태였다.
+    // 형제 메서드(update / set_due_dates / change_parent)는 전부 먼저
+    // fetch_by_id 를 하므로 이 함수만 예외였다.
+    let rows = sqlx::query(
+        "UPDATE quests SET status_id = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL",
+    )
+    .bind(status_id)
+    .bind(&now)
+    .bind(id)
+    .execute(pool)
+    .await?
+    .rows_affected();
 
     if rows == 0 {
         return Err(AppError::NotFound(format!("quest {id} not found")));
@@ -1422,6 +1430,54 @@ mod tests {
         .await
         .unwrap();
         q.id
+    }
+
+    // ─── REQ-003: soft-deleted 퀘스트의 상태 변경 ───
+
+    /// 삭제된 퀘스트에 대한 `change_status` 는 NotFound 여야 하고,
+    /// **아무것도 바꾸지 않아야 한다.**
+    ///
+    /// 예전엔 UPDATE 에 `deleted_at IS NULL` 이 없어, 행을 실제로 고친 뒤
+    /// `fetch_by_id`(필터 있음)가 NotFound 를 냈다 — 호출자에겐 "없음" 이라고
+    /// 답하면서 데이터는 바뀌어 있는 상태.
+    #[tokio::test]
+    async fn change_status_on_deleted_quest_changes_nothing() {
+        let (dir, store) = fresh_store("cs-deleted").await;
+        let id = make_quest(&store).await;
+        let before = fetch_by_id(&store.index_pool, id).await.unwrap();
+        delete(&store.index_pool, id, &[]).await.unwrap();
+
+        let err = change_status(
+            &store.index_pool,
+            id,
+            ChangeStatusRequest { status_slug: "done".into() },
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, AppError::NotFound(_)), "NotFound 여야 한다: {err:?}");
+
+        // 삭제 목록에서 원래 상태 그대로인지 확인 — 조용히 바뀌면 안 된다.
+        let deleted = list_deleted(&store.index_pool).await.unwrap();
+        let row = deleted.iter().find(|q| q.id == id).expect("삭제 목록에 있어야 한다");
+        assert_eq!(row.status_id, before.status_id, "status 가 바뀌었다");
+        assert_eq!(row.updated_at, before.updated_at, "updated_at 이 바뀌었다");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 살아있는 퀘스트는 예전과 동일하게 동작한다(회귀).
+    #[tokio::test]
+    async fn change_status_on_alive_quest_still_works() {
+        let (dir, store) = fresh_store("cs-alive").await;
+        let id = make_quest(&store).await;
+        let row = change_status(
+            &store.index_pool,
+            id,
+            ChangeStatusRequest { status_slug: "done".into() },
+        )
+        .await
+        .unwrap();
+        assert_eq!(row.status_slug, "done");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     // ─── DEV-076: set_due_dates ───
