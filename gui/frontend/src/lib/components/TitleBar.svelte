@@ -765,7 +765,7 @@
 		position: sticky;
 		top: 0;
 		z-index: 1100; /* Nav(100) 위 */
-		height: var(--titlebar-h, 32px);
+		height: var(--titlebar-h, 2rem);
 		display: flex;
 		align-items: center;
 		background: var(--nav-bg);
@@ -777,12 +777,15 @@
 	   좌측 상단에 그대로 떠 있음 — 그 폭만큼 콘텐츠가 안 겹치게 여백. 정확한
 	   폭은 macOS 버전/스케일에 따라 미세하게 다를 수 있어 근사값. */
 	.titlebar.mac-overlay {
+		/* BUG-246: 여기만 px 로 남는다 — traffic light 는 **네이티브** 위젯이라
+		   앱의 UI 배율을 따라가지 않는다. rem 으로 바꾸면 배율에 따라 여백이
+		   버튼과 어긋난다. */
 		padding-left: 78px;
 	}
 	.tb-appicon {
-		width: 16px;
-		height: 16px;
-		margin: 0 6px 0 10px;
+		width: 1rem;
+		height: 1rem;
+		margin: 0 0.375rem 0 0.625rem;
 		flex: none;
 		-webkit-user-drag: none;
 		user-select: none;
@@ -790,19 +793,19 @@
 	.tb-left {
 		display: flex;
 		align-items: center;
-		gap: 2px;
+		gap: 0.125rem;
 		flex: none;
 	}
 	.tb-icon-btn {
-		width: 30px;
-		height: 26px;
+		width: 1.875rem;
+		height: 1.625rem;
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
 		color: var(--text-muted);
 		background: transparent;
 		border: none;
-		border-radius: 5px;
+		border-radius: var(--r-sm);
 		cursor: pointer;
 	}
 	.tb-icon-btn:hover {
@@ -819,12 +822,12 @@
 	}
 	.tb-menu {
 		position: absolute;
-		top: 30px;
+		top: 1.875rem;
 		left: 0;
-		width: 172px;
+		width: 10.75rem;
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 8px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-lg);
 		box-shadow: 0 10px 34px rgba(0, 0, 0, 0.45);
 		padding: 0.3rem;
 		z-index: 1200;
@@ -835,7 +838,7 @@
 		gap: 0.55rem;
 		width: 100%;
 		padding: 0.4rem 0.6rem;
-		border-radius: 5px;
+		border-radius: var(--r-sm);
 		font-size: 0.82rem;
 		color: var(--text);
 		background: transparent;
@@ -859,7 +862,7 @@
 		color: var(--text-strong);
 	}
 	.tb-menu-sep {
-		height: 1px;
+		height: var(--bw);
 		margin: 0.25rem 0.3rem;
 		background: var(--border);
 	}
@@ -911,15 +914,15 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		height: 22px;
-		min-width: 260px;
+		height: 1.375rem;
+		min-width: 16.25rem;
 		max-width: 42vw;
-		padding: 0 12px;
+		padding: 0 0.75rem;
 		/* 폭 0 앵커 안에서 자기 폭만큼 좌우로 균등하게 삐져나오도록. */
 		flex: none;
 		background: rgba(255, 255, 255, 0.05);
-		border: 1px solid var(--nav-border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--nav-border);
+		border-radius: var(--r-md);
 		color: var(--text-muted);
 		cursor: pointer;
 	}
@@ -937,7 +940,7 @@
 	}
 	.tb-remote {
 		position: absolute;
-		right: 8px;
+		right: 0.5rem;
 		display: inline-flex;
 		color: var(--text-muted);
 	}
@@ -971,7 +974,7 @@
 	/* Windows: OS 캡션 버튼과 동일한 폰트 글리프. */
 	.tb-winicon {
 		font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets', sans-serif;
-		font-size: 10px;
+		font-size: 0.625rem;
 		font-weight: 400;
 		font-style: normal;
 		line-height: 1;

@@ -112,7 +112,16 @@
 	$effect(() => {
 		if (typeof document === 'undefined') return;
 		const root = document.documentElement.style;
-		root.setProperty('--titlebar-h', showTitleBar ? (linuxTitlebar ? '40px' : '32px') : '0px');
+		// BUG-246: rem 이라 UI 크기 조절(DEV-101 — root font-size 배율)을 따라간다.
+		//
+		// Linux 만 px 하한을 둔다. 그쪽 창 컨트롤은 **의도적으로 px 고정**이고
+		// (아래 TitleBar 의 `.tb-controls.linux` 주석 참고 — rem 이면 배율에서
+		// 버튼이 좌측으로 밀린다) 지름이 24px 이라, 바가 그보다 낮아지면 버튼이
+		// 넘친다. 배율 50% 면 2.5rem = 20px 다.
+		// px 상수이던 시절엔 바 높이만 고정이라, 안쪽 요소를 rem 으로 바꾸면
+		// 배율 150% 에서 pill 이 바 밖으로 넘쳤다. 이 값을 쓰는 곳(Nav 의 top,
+		// QuestList / QuestBoard / SearchPalette 의 calc)은 전부 var() 라 함께 따라간다.
+		root.setProperty('--titlebar-h', showTitleBar ? (linuxTitlebar ? 'max(2.5rem, 30px)' : '2rem') : '0px');
 		// Nav 기본 높이 3.25rem(=52px @scale1). 리눅스에서만 8px 줄임.
 		root.setProperty('--nav-h', linuxTitlebar ? 'calc(3.25rem - 8px)' : '3.25rem');
 	});
