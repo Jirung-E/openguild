@@ -749,7 +749,12 @@
 		top: calc(var(--titlebar-h, 32px) + 2px);
 		left: 50%;
 		transform: translateX(-50%);
-		width: min(560px, 62vw);
+		/* BUG-252: rem 이라 UI 배율(root font-size)을 따라간다. 예전엔 560px
+		   고정이라, 배율을 올리면 **안의 글자·칩만 커지고 상자는 그대로**여서
+		   제목이 잘리고 발췌가 한 줄에 거의 안 들어갔다.
+		   35rem = 기본 배율에서 560px — 기존 치수를 그대로 재현한다.
+		   62vw 상한은 그대로 둔다(넓은 화면에서 과하게 벌어지지 않게). */
+		width: min(35rem, 62vw);
 		z-index: 1200;
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
@@ -842,8 +847,8 @@
 		   테마별 토큰을 쓴다(global.css 의 --search-hit-*). */
 		background: var(--search-hit-bg);
 		color: var(--search-hit-text);
-		border-radius: 2px;
-		padding: 0 1px;
+		border-radius: var(--r-xs);
+		padding: 0 0.0625rem;
 	}
 	.pwhy-x {
 		min-width: 0;
@@ -889,7 +894,8 @@
 		color: var(--text-faint);
 	}
 	.rows {
-		max-height: 340px;
+		/* BUG-252: 세로도 같은 이유로 rem. 21.25rem = 기본 배율에서 340px. */
+		max-height: 21.25rem;
 		overflow-y: auto;
 		/* BUG-248: 목록 끝까지 굴렸을 때 배경으로 이어지지 않게(scroll chaining).
 		   배경 잠금과 별개로 필요하다 — 잠금은 페이지 스크롤을 막고, 이건 이
@@ -1243,7 +1249,7 @@
 	}
 	/* 아래 가장자리 = 세로 크기 조절 핸들. */
 	.dp-resize {
-		height: 7px;
+		height: 0.4375rem;
 		cursor: ns-resize;
 		background: var(--bg-subtle);
 		border-top: var(--bw) solid var(--border);
@@ -1253,8 +1259,8 @@
 	}
 	.dp-resize::before {
 		content: '';
-		width: 34px;
-		height: 3px;
+		width: 2.125rem;
+		height: 0.1875rem;
 		border-radius: var(--r-xs);
 		background: var(--text-faint);
 	}
