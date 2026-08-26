@@ -379,7 +379,7 @@
 					title={t('titlebar.newQuest', $locale)}
 					aria-label={t('titlebar.newQuest', $locale)}
 				>
-					<svg
+					<svg class="tb-ico"
 						width="15"
 						height="15"
 						viewBox="0 0 16 16"
@@ -403,7 +403,7 @@
 				<span class="nav-pill-name">{guildName}</span>
 				{#if isRemote}
 					<span class="nav-remote" title={t('nav.remoteConnected', $locale)}>
-						<svg
+						<svg class="tb-ico-sm"
 							width="13"
 							height="13"
 							viewBox="0 0 16 16"
@@ -433,7 +433,7 @@
 						title={t('titlebar.recent', $locale)}
 						aria-label={t('titlebar.recent', $locale)}
 					>
-						<svg
+						<svg class="tb-ico"
 							width="15"
 							height="15"
 							viewBox="0 0 16 16"
@@ -515,6 +515,20 @@
 {/if}
 
 <style>
+	/* BUG-246 후속: 아이콘 크기.
+	   SVG 의 `width` / `height` **속성**은 px 단위라 UI 배율(root font-size)을
+	   따라가지 않는다 — 버튼만 커지고 안의 아이콘은 그대로였다. 속성은 CSS 보다
+	   우선순위가 낮으므로(presentation attribute) 여기서 덮으면 된다. 속성은
+	   그대로 두어 viewBox 비율과 CSS 미적용 시 폴백을 유지한다. */
+	.tb-ico {
+		width: 0.9375rem;
+		height: 0.9375rem;
+	}
+	.tb-ico-sm {
+		width: 0.8125rem;
+		height: 0.8125rem;
+	}
+
 	/* DEV-074: hardcoded color → var() 마이그레이션. */
 	/* DEV-101 fix5: height 52px → 3.25rem — UI scale 반영. 안 그러면 버튼 (rem) 만
 	   확대돼 nav 가 자식보다 작아짐. */

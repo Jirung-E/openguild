@@ -289,7 +289,7 @@
 				title={t('titlebar.welcome', $locale)}
 				aria-label={t('titlebar.welcome', $locale)}
 			>
-				<svg
+				<svg class="tb-ico"
 					width="15"
 					height="15"
 					viewBox="0 0 16 16"
@@ -309,7 +309,7 @@
 				title={t('titlebar.back', $locale)}
 				aria-label={t('titlebar.back', $locale)}
 			>
-				<svg
+				<svg class="tb-ico"
 					width="15"
 					height="15"
 					viewBox="0 0 16 16"
@@ -329,7 +329,7 @@
 				title={t('titlebar.forward', $locale)}
 				aria-label={t('titlebar.forward', $locale)}
 			>
-				<svg
+				<svg class="tb-ico"
 					width="15"
 					height="15"
 					viewBox="0 0 16 16"
@@ -353,7 +353,7 @@
 						aria-label={t('titlebar.menu', $locale)}
 						aria-expanded={menuOpen}
 					>
-						<svg
+						<svg class="tb-ico"
 							width="15"
 							height="15"
 							viewBox="0 0 16 16"
@@ -381,7 +381,7 @@
 					     Nav 의 응답형 목록에서 빠졌으므로 여기 상시 항목으로 둔다
 					     (데스크탑·웹 양쪽에서 같은 자리). -->
 							<button onclick={() => goto('/admin')}>
-								<svg
+								<svg class="tb-ico"
 									width="15"
 									height="15"
 									viewBox="0 0 16 16"
@@ -400,7 +400,7 @@
 								{t('nav.admin', $locale)}
 							</button>
 							<button onclick={() => goto('/campaigns')}>
-								<svg
+								<svg class="tb-ico"
 									width="15"
 									height="15"
 									viewBox="0 0 16 16"
@@ -417,7 +417,7 @@
 								{t('titlebar.menuCampaigns', $locale)}
 							</button>
 							<button onclick={() => goto('/worklog')}>
-								<svg
+								<svg class="tb-ico"
 									width="15"
 									height="15"
 									viewBox="0 0 16 16"
@@ -434,7 +434,7 @@
 								{t('titlebar.menuWorklog', $locale)}
 							</button>
 							<button onclick={() => goto('/tags')}>
-								<svg
+								<svg class="tb-ico"
 									width="15"
 									height="15"
 									viewBox="0 0 16 16"
@@ -473,7 +473,7 @@
 					title={t('titlebar.newQuest', $locale)}
 					aria-label={t('titlebar.newQuest', $locale)}
 				>
-					<svg
+					<svg class="tb-ico"
 						width="15"
 						height="15"
 						viewBox="0 0 16 16"
@@ -497,7 +497,7 @@
 				<span class="tb-search-name">{guildName}</span>
 				{#if isRemote}
 					<span class="tb-remote" title={t('nav.remoteConnected', $locale)}>
-						<svg
+						<svg class="tb-ico-sm"
 							width="13"
 							height="13"
 							viewBox="0 0 16 16"
@@ -529,7 +529,7 @@
 						title={t('titlebar.recent', $locale)}
 						aria-label={t('titlebar.recent', $locale)}
 					>
-						<svg
+						<svg class="tb-ico"
 							width="15"
 							height="15"
 							viewBox="0 0 16 16"
@@ -573,7 +573,7 @@
 				aria-label={pinned ? t('titlebar.unpin', $locale) : t('titlebar.pin', $locale)}
 				aria-pressed={pinned}
 			>
-				<svg
+				<svg class="tb-ico-xs"
 					width="11"
 					height="11"
 					viewBox="0 0 16 16"
@@ -781,6 +781,23 @@
 		   앱의 UI 배율을 따라가지 않는다. rem 으로 바꾸면 배율에 따라 여백이
 		   버튼과 어긋난다. */
 		padding-left: 78px;
+	}
+	/* BUG-246 후속: 아이콘 크기.
+	   SVG 의 `width` / `height` **속성**은 px 단위라 UI 배율(root font-size)을
+	   따라가지 않는다 — 버튼만 커지고 안의 아이콘은 그대로였다. 속성은 CSS 보다
+	   우선순위가 낮으므로(presentation attribute) 여기서 덮으면 된다. 속성은
+	   그대로 두어 viewBox 비율과 CSS 미적용 시 폴백을 유지한다. */
+	.tb-ico {
+		width: 0.9375rem;
+		height: 0.9375rem;
+	}
+	.tb-ico-sm {
+		width: 0.8125rem;
+		height: 0.8125rem;
+	}
+	.tb-ico-xs {
+		width: 0.6875rem;
+		height: 0.6875rem;
 	}
 	.tb-appicon {
 		width: 1rem;
