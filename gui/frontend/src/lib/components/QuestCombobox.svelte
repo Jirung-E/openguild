@@ -151,7 +151,9 @@
 		/* BUG-160: 220px = 5줄뿐이라 후보가 조금만 많아도 대부분이 스크롤 뒤로
 		   숨었다(사용자 지적: 팝업이 너무 작아 보기 불편). 창 높이의 70% 안에서
 		   최대 600px(≈17줄) — vh 를 함께 써야 작은 창에서 화면을 넘지 않는다. */
-		max-height: min(70vh, 600px);
+		/* BUG-253: 600px → 37.5rem (기본 배율에서 같은 값). 70vh 상한은 그대로 —
+		   작은 창에서 화면을 넘지 않게 하는 장치다. */
+		max-height: min(70vh, 37.5rem);
 		overflow-y: auto;
 		/* DEV-074 fix16: native scrollbar 숨김 — OverlayScrollbar 가 대신 그림. */
 		scrollbar-width: none;

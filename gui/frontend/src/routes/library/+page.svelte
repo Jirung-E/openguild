@@ -1555,7 +1555,7 @@
 		border-radius: 6px;
 		border: 1px solid transparent;
 		background: transparent;
-		width: 92px;
+		width: 5.75rem;
 		cursor: pointer;
 		color: var(--text);
 	}

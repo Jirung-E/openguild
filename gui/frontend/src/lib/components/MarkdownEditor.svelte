@@ -415,7 +415,7 @@
 		border: 1px solid var(--border);
 		border-radius: 6px;
 		overflow: hidden;
-		min-height: 200px;
+		min-height: 12.5rem;
 		max-height: 90vh;
 		resize: vertical;
 		/* BUG-220: 배경 미지정 + 라이트 테마는 CodeMirror 자체 배경도 없어서,

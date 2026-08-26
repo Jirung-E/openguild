@@ -744,7 +744,7 @@
 		border: 1px solid var(--border);
 		border-radius: 6px;
 		overflow: hidden;
-		height: 220px;
+		height: 13.75rem;
 		resize: vertical;
 	}
 

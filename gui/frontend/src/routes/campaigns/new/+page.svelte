@@ -103,7 +103,7 @@
 <style>
 	.page {
 		padding: 1.25rem 1.5rem;
-		max-width: 760px;
+		max-width: 47.5rem;
 		margin: 0 auto;
 	}
 	.header {
@@ -162,7 +162,7 @@
 	textarea {
 		font-family: 'JetBrains Mono', ui-monospace, monospace;
 		resize: vertical;
-		min-height: 120px;
+		min-height: 7.5rem;
 	}
 
 	.period-row {

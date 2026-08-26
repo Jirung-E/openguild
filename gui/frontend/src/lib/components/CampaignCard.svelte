@@ -332,7 +332,7 @@
 	}
 	/* BUG-027: active 카드 세로 길이 늘림 (사용자 피드백 — 너무 짧음). */
 	.card.active {
-		min-height: 180px;
+		min-height: 11.25rem;
 		padding: 1.1rem 1.4rem;
 		gap: 0.85rem;
 	}

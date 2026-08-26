@@ -992,7 +992,7 @@
 		color: var(--text);
 		font-size: 0.875rem;
 		outline: none;
-		min-width: 80px;
+		min-width: 5rem;
 	}
 	.sel:focus {
 		border-color: var(--accent);
@@ -1007,8 +1007,9 @@
 		border-radius: 6px;
 		color: var(--text-muted);
 		font-size: 0.875rem;
-		min-width: 80px;
-		min-height: calc(0.875rem + 0.8rem + 2px);
+		min-width: 5rem;
+		/* BUG-253: 테두리 두께는 --bw 토큰(배율 반응). */
+		min-height: calc(0.875rem + 0.8rem + var(--bw) * 2);
 		box-sizing: border-box;
 	}
 

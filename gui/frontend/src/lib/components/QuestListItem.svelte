@@ -120,7 +120,7 @@
 	}
 
 	.toggle {
-		width: 20px;
+		width: 1.25rem;
 		flex-shrink: 0;
 		background: none;
 		border: none;

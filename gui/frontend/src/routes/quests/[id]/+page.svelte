@@ -1746,7 +1746,7 @@
 		color: var(--text);
 		font-size: 0.875rem;
 		outline: none;
-		width: 160px;
+		width: 10rem;
 	}
 	.edit-select:focus {
 		border-color: var(--accent);
@@ -2252,7 +2252,7 @@
 		list-style: none;
 		padding: 0;
 		margin: 0;
-		max-height: 180px;
+		max-height: 11.25rem;
 		overflow-y: auto;
 		scrollbar-width: none;
 	}

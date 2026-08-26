@@ -340,8 +340,8 @@
 		   (앱의 다른 스크롤 영역과 같은 처리). */
 		scrollbar-width: none;
 		resize: vertical;
-		min-height: 120px;
-		max-height: 2000px;
+		min-height: 7.5rem;
+		max-height: 125rem;
 		border: 1px solid var(--border);
 		border-radius: 6px;
 		padding: 0.25rem 0.75rem;

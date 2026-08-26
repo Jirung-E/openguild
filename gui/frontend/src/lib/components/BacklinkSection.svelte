@@ -214,12 +214,12 @@
 		flex: none;
 		display: inline-flex;
 		align-items: center;
-		height: 17px;
+		height: 1.0625rem;
 		padding: 0 7px;
 		box-sizing: border-box;
 		border-radius: 9px;
 		font-family: 'SFMono-Regular', Consolas, monospace;
-		font-size: 10px;
+		font-size: 0.625rem;
 		font-weight: 600;
 		line-height: 1;
 		white-space: nowrap;

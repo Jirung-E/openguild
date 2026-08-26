@@ -284,7 +284,7 @@
 
 	.divider {
 		width: 1px;
-		height: 20px;
+		height: 1.25rem;
 		background: var(--bg-subtle);
 	}
 

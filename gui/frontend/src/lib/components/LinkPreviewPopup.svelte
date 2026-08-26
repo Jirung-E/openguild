@@ -152,7 +152,10 @@
 <style>
 	.lp {
 		position: fixed;
-		width: min(400px, 90vw);
+		/* BUG-253: rem 이라 UI 배율을 따라간다(BUG-252 와 같은 부류 — 상자만
+		   고정이면 안의 글자가 커질 때 본문이 잘린다). 25rem = 기본 배율에서
+		   400px. 90vw 상한은 그대로. */
+		width: min(25rem, 90vw);
 		z-index: 1300; /* 검색 팔레트(1200)보다 위 — 팔레트 미리보기 안에서도 뜸. */
 		background: var(--bg-elevated);
 		border: 1px solid var(--border);
@@ -201,7 +204,7 @@
 		white-space: nowrap;
 	}
 	.lp-body {
-		max-height: 260px;
+		max-height: 16.25rem;
 		overflow-y: auto;
 		padding: 0.4rem 0.6rem;
 	}
