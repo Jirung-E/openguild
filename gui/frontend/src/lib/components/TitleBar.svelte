@@ -969,8 +969,12 @@
 	.tb-controls {
 		display: flex;
 		height: 100%;
-		/* 버튼이 바보다 낮을 수 있으므로(배율 확대 시) 세로 가운데. */
-		align-items: center;
+		/* BUG-246(admin): 배율을 올려 바가 버튼보다 높아지면 버튼을 **위에
+		   붙인다.** 가운데로 두면 창 모서리에서 떨어져 떠 보인다 — 네이티브
+		   Windows 캡션 버튼은 항상 우측 **상단** 모서리에 붙어 있다.
+		   (Linux 는 `.tb-controls.linux` 에서 따로 center 를 쓴다 — GNOME 은
+		   원형 버튼이 바 중앙에 오는 게 네이티브 모양이다.) */
+		align-items: flex-start;
 		flex: none;
 		/* Windows 네이티브 캡션 버튼 관례: 버튼 사이 간격 0, 서로 붙어있음. */
 		gap: 0;
