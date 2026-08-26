@@ -1732,15 +1732,24 @@
 		color: var(--text-muted);
 	}
 
-	/* DEV-251: 검색 + 정렬 한 줄 배치. */
+	/* DEV-251: 검색 + 정렬 배치.
+	   REQ-016: 한 줄이었는데 입력란이 옵션에 눌려 못 쓸 만큼 좁았다
+	   (실측 243px 폭의 줄에서 입력란 51.6px / 체크박스 89px / 정렬 91.2px).
+	   입력란에 한 줄을 통째로 주고 나머지는 아래로 내린다 — 총 2줄. */
 	.search-row {
 		display: flex;
+		flex-wrap: wrap;
 		gap: 0.35rem;
 		align-items: center;
 	}
 	.search-row .search-input {
-		flex: 1;
+		/* flex-basis 100% → 항상 자기 줄을 독차지하고 뒤 요소를 밀어낸다. */
+		flex: 1 1 100%;
 		min-width: 0;
+	}
+	/* 둘째 줄 — 체크박스는 왼쪽, 정렬 컨트롤은 오른쪽 끝. */
+	.search-row .sort-group {
+		margin-left: auto;
 	}
 	/* DEV-251: 정렬 select + 방향 토글 — QuestList 의 sort-group 과 동일 패턴. */
 	.sort-group {
