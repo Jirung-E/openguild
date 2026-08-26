@@ -1548,6 +1548,13 @@
 	}
 
 	.btn-delete {
+		/* BUG-254 후속: 아이콘 + 글자 버튼의 세로 정렬.
+		   `Icon` 은 인라인 SVG 라 기본적으로 글자 **기준선** 위에 얹힌다 —
+		   아이콘만 위로 떠 보였다(실측 200% 에서 2px). flex 로 두 자식의
+		   박스를 중앙에 맞추면 어긋남이 사라진다(실측 0.23px). */
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3em;
 		padding: 0.3rem 0.9rem;
 		border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
 		border-radius: 6px;

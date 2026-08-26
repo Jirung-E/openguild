@@ -11,8 +11,9 @@
    - 사용자가 입력한 본문/제목 안의 이모지.
 
   사용: `<Icon name="folder" />`, 크기는 `size`(px, 기본 14).
-  텍스트와 함께 쓸 때는 부모에 `display:inline-flex; align-items:center; gap`
-  을 주면 기준선이 맞는다.
+  세로 정렬은 이 컴포넌트가 스스로 맞춘다(아래 `vertical-align: middle`) —
+  호출부에서 챙길 필요 없다. 다만 글자와의 **간격**이 필요하면 부모에
+  `display:inline-flex; align-items:center; gap` 을 주는 편이 낫다.
 -->
 <script lang="ts">
 	// DEV-302: 도형은 `utils/icon-paths.ts` 단일 출처. 보드 노드처럼 SVG 를
@@ -48,3 +49,24 @@
 	<!-- eslint-disable-next-line svelte/no-at-html-tags — 도형은 icon-paths.ts 의 고정 상수(사용자 입력 아님) -->
 	{@html ICON_SHAPES[name]}
 </svg>
+
+<style>
+	/*
+	  BUG-254 후속: 아이콘이 글자와 나란히 있을 때 세로 기준선이 어긋나던 문제.
+
+	  인라인 SVG 의 기본 `vertical-align` 은 `baseline` 이라 **도형의 아래
+	  모서리가 글자의 기준선에 얹힌다**. 글자에는 기준선 아래로 descender 가
+	  더 있으므로 아이콘만 위로 떠 보인다 — 아이콘이 클수록 더 벌어진다.
+
+	  이 파일 주석은 원래 "부모에 inline-flex; align-items:center 를 주면
+	  맞는다" 고 안내했는데, 실제로는 호출부 상당수가 그걸 안 지켰다(퀘스트·
+	  캠페인 상세의 삭제/배너 버튼 등). 호출부를 하나씩 고치는 대신 여기서
+	  중앙 정렬을 기본값으로 준다.
+
+	  부모가 이미 flex 인 곳에서는 SVG 가 flex item 이 되어 `vertical-align`
+	  이 무시되므로 **기존 정렬에 영향이 없다** — 순수하게 추가 동작이다.
+	*/
+	svg {
+		vertical-align: middle;
+	}
+</style>

@@ -321,6 +321,13 @@
 		margin-top: 0.25rem;
 	}
 	.play-pause {
+		/* BUG-254: 원형 버튼 안의 아이콘/글자가 중앙에 안 맞던 문제.
+		   인라인 SVG 는 기본적으로 **기준선(baseline)** 위에 얹혀 line box 의
+		   descender 만큼 아래로 내려간다 — 버튼은 정사각인데 안의 도형만
+		   아래쪽으로 치우쳤다. flex 로 두 축 모두 중앙에 놓는다. */
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
 		background: var(--bg-subtle);
 		border: 1px solid var(--border);
 		color: var(--text);

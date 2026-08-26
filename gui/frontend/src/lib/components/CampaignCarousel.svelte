@@ -191,6 +191,13 @@
 		gap: 0.5rem;
 	}
 	.arrow {
+		/* BUG-254: 원형 버튼 안의 아이콘/글자가 중앙에 안 맞던 문제.
+		   인라인 SVG 는 기본적으로 **기준선(baseline)** 위에 얹혀 line box 의
+		   descender 만큼 아래로 내려간다 — 버튼은 정사각인데 안의 도형만
+		   아래쪽으로 치우쳤다. flex 로 두 축 모두 중앙에 놓는다. */
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
 		background: var(--bg-subtle);
 		border: 1px solid var(--border);
 		color: var(--text);
@@ -231,6 +238,13 @@
 
 	/* BUG-027: 정지/재생 토글 — 화살표와 같은 스타일 + 위치는 dots 우측. */
 	.play-pause {
+		/* BUG-254: 원형 버튼 안의 아이콘/글자가 중앙에 안 맞던 문제.
+		   인라인 SVG 는 기본적으로 **기준선(baseline)** 위에 얹혀 line box 의
+		   descender 만큼 아래로 내려간다 — 버튼은 정사각인데 안의 도형만
+		   아래쪽으로 치우쳤다. flex 로 두 축 모두 중앙에 놓는다. */
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
 		background: var(--bg-subtle);
 		border: 1px solid var(--border);
 		color: var(--text);
