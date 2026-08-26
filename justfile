@@ -64,17 +64,25 @@ build-debug: build-frontend
 
 # --- 테스트 (test) ---
 
-# Rust workspace 전체 테스트 (release — debug 산출물이 디스크를 너무 차지).
+# Rust workspace 전체 테스트 — **CI(check.yml)와 같은 debug 빌드**.
 # clippy -D warnings 도 함께 — cargo test 만으론 안 잡혀서 CI 에서만 터지는
 # 사고 방지(check.yml 과 동일 게이트를 push 전에 로컬에서 먼저 통과시킴).
+#
+# BUG-251: 예전엔 `--release` 였다(디스크 절약). 그런데 릴리즈 빌드는
+# `debug_assertions` 가 꺼져 있어 **clap 의 인자 정의 검증이 통째로 사라진다** —
+# `conflicts_with` 에 없는 인자를 적어도 로컬은 조용히 통과하고 CI(debug)에서만
+# 터졌다. 실제로 그렇게 한 번 겪었다. "CI 와 동일한 게이트" 라는 이 레시피의
+# 목적 자체가 무너지므로 debug 로 맞춘다.
 test-rust:
     cargo clippy --workspace --all-targets -- -D warnings
-    cargo test --workspace --release
+    cargo test --workspace
 
-# Frontend 검증 — svelte-check/no-hex/vitest (check.yml 의 gui-frontend job 과 동일).
+# Frontend 검증 — check.yml 의 gui-frontend job 과 **같은 순서·같은 항목**.
+# BUG-251: `check:no-emoji` 가 빠져 있었다(BUG-169 의 재발 방지 검사).
 test-frontend:
     cd gui/frontend && npm run check
     cd gui/frontend && npm run check:no-hex
+    cd gui/frontend && npm run check:no-emoji
     cd gui/frontend && npm test -- --run
 
 # 전체 테스트 (CI 와 동일)

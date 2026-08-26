@@ -425,11 +425,12 @@ enum QuestCmd {
         #[arg(long, help = tf!("tree 모드 — root quest 부터 들여쓰기로 자식 표시. 기본 flat. --id-only / --count / --json 과 함께 쓰면 무시 (구조화 출력 우선).",
                                "Tree mode — indent children under root quests. Flat by default. Ignored with --id-only / --count / --json (structured output wins)."))]
         tree: bool,
-        // REQ-005: 예전 주석은 "json 은 전역 인자라 conflicts_with 대상이 못 됨"
-        // 이라 적고 수동 검증에 맡겼는데, 실제로는 된다(실측: `--table --json`
-        // 이 clap 에서 거부되고 단독 사용은 정상). 다른 list 명령들과 같은
-        // 방식으로 선언해 동작을 통일한다.
-        #[arg(long, conflicts_with_all = ["tree", "id_only", "count", "json"],
+        // BUG-251: `json` 은 전역 인자라 clap 의 conflicts_with 대상이 못 된다
+        // (debug assert 가 subcommand 스코프에서 못 찾음) — 핸들러에서 수동 검증.
+        // 이 주석은 원래 있던 것인데 REQ-005 에서 "실제로는 된다" 며 지웠다가
+        // CI 에서 되돌아왔다. 릴리즈 빌드에는 그 assert 가 없어서 로컬 실측이
+        // 통과했던 것이다.
+        #[arg(long, conflicts_with_all = ["tree", "id_only", "count"],
               help = tf!("정렬된 표(헤더 + 컬럼 정렬)로 출력 — 사람용. --json/--tree 와 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json/--tree."))]
         table: bool,
     },
@@ -522,8 +523,13 @@ enum QuestCmd {
         // REQ-005: 도움말이 "상호배타" 라고 적혀 있는데 `quest list` 만 실제로
         // 막고 나머지는 --table 을 조용히 무시하고 JSON 을 냈다 — 같은 플래그
         // 조합에 서브커맨드마다 다른 (문서화되지 않은) 동작이라 스크립트
-        // 작성자가 당한다. clap 으로 선언해 전부 같은 에러를 낸다.
-        #[arg(long, conflicts_with = "json", help = tf!("정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json."))]
+        // 작성자가 당한다. 핸들러에서 `ensure_table_json_exclusive` 로 통일한다.
+        //
+        // BUG-251: 여기에 `conflicts_with = "json"` 을 쓸 수 없다 — `json` 은
+        // 전역 인자라 서브커맨드 스코프에서 clap 이 못 찾고, **debug 빌드에서만**
+        // 도는 assertion 이 터진다("Argument or group 'json' ... does not exist").
+        // 릴리즈 빌드로 검증하면 조용히 통과해서 CI(debug)에서만 드러난다.
+        #[arg(long, help = tf!("정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json."))]
         table: bool,
     },
     #[command(about = tf!("삭제된 퀘스트 복원", "Restore a deleted quest"))]
@@ -784,8 +790,13 @@ enum TypesCmd {
         // REQ-005: 도움말이 "상호배타" 라고 적혀 있는데 `quest list` 만 실제로
         // 막고 나머지는 --table 을 조용히 무시하고 JSON 을 냈다 — 같은 플래그
         // 조합에 서브커맨드마다 다른 (문서화되지 않은) 동작이라 스크립트
-        // 작성자가 당한다. clap 으로 선언해 전부 같은 에러를 낸다.
-        #[arg(long, conflicts_with = "json", help = tf!("정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json."))]
+        // 작성자가 당한다. 핸들러에서 `ensure_table_json_exclusive` 로 통일한다.
+        //
+        // BUG-251: 여기에 `conflicts_with = "json"` 을 쓸 수 없다 — `json` 은
+        // 전역 인자라 서브커맨드 스코프에서 clap 이 못 찾고, **debug 빌드에서만**
+        // 도는 assertion 이 터진다("Argument or group 'json' ... does not exist").
+        // 릴리즈 빌드로 검증하면 조용히 통과해서 CI(debug)에서만 드러난다.
+        #[arg(long, help = tf!("정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json."))]
         table: bool,
     },
     #[command(about = tf!("새 type 추가", "Add a new type"))]
@@ -827,8 +838,13 @@ enum TagDefCmd {
         // REQ-005: 도움말이 "상호배타" 라고 적혀 있는데 `quest list` 만 실제로
         // 막고 나머지는 --table 을 조용히 무시하고 JSON 을 냈다 — 같은 플래그
         // 조합에 서브커맨드마다 다른 (문서화되지 않은) 동작이라 스크립트
-        // 작성자가 당한다. clap 으로 선언해 전부 같은 에러를 낸다.
-        #[arg(long, conflicts_with = "json", help = tf!("정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json."))]
+        // 작성자가 당한다. 핸들러에서 `ensure_table_json_exclusive` 로 통일한다.
+        //
+        // BUG-251: 여기에 `conflicts_with = "json"` 을 쓸 수 없다 — `json` 은
+        // 전역 인자라 서브커맨드 스코프에서 clap 이 못 찾고, **debug 빌드에서만**
+        // 도는 assertion 이 터진다("Argument or group 'json' ... does not exist").
+        // 릴리즈 빌드로 검증하면 조용히 통과해서 CI(debug)에서만 드러난다.
+        #[arg(long, help = tf!("정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json."))]
         table: bool,
     },
     #[command(about = tf!("새 태그 정의 추가 (이미 있으면 에러 — 수정은 update)", "Add a new tag definition (errors if it already exists — use `update` to modify)"))]
@@ -860,8 +876,13 @@ enum StatusesCmd {
         // REQ-005: 도움말이 "상호배타" 라고 적혀 있는데 `quest list` 만 실제로
         // 막고 나머지는 --table 을 조용히 무시하고 JSON 을 냈다 — 같은 플래그
         // 조합에 서브커맨드마다 다른 (문서화되지 않은) 동작이라 스크립트
-        // 작성자가 당한다. clap 으로 선언해 전부 같은 에러를 낸다.
-        #[arg(long, conflicts_with = "json", help = tf!("정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json."))]
+        // 작성자가 당한다. 핸들러에서 `ensure_table_json_exclusive` 로 통일한다.
+        //
+        // BUG-251: 여기에 `conflicts_with = "json"` 을 쓸 수 없다 — `json` 은
+        // 전역 인자라 서브커맨드 스코프에서 clap 이 못 찾고, **debug 빌드에서만**
+        // 도는 assertion 이 터진다("Argument or group 'json' ... does not exist").
+        // 릴리즈 빌드로 검증하면 조용히 통과해서 CI(debug)에서만 드러난다.
+        #[arg(long, help = tf!("정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json."))]
         table: bool,
     },
     #[command(about = tf!("새 status 추가. slug 는 name_en 에서 자동 생성.", "Add a new status. slug is auto-generated from name_en."))]
@@ -952,8 +973,13 @@ enum RulesCmd {
         // REQ-005: 도움말이 "상호배타" 라고 적혀 있는데 `quest list` 만 실제로
         // 막고 나머지는 --table 을 조용히 무시하고 JSON 을 냈다 — 같은 플래그
         // 조합에 서브커맨드마다 다른 (문서화되지 않은) 동작이라 스크립트
-        // 작성자가 당한다. clap 으로 선언해 전부 같은 에러를 낸다.
-        #[arg(long, conflicts_with = "json", help = tf!("정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json."))]
+        // 작성자가 당한다. 핸들러에서 `ensure_table_json_exclusive` 로 통일한다.
+        //
+        // BUG-251: 여기에 `conflicts_with = "json"` 을 쓸 수 없다 — `json` 은
+        // 전역 인자라 서브커맨드 스코프에서 clap 이 못 찾고, **debug 빌드에서만**
+        // 도는 assertion 이 터진다("Argument or group 'json' ... does not exist").
+        // 릴리즈 빌드로 검증하면 조용히 통과해서 CI(debug)에서만 드러난다.
+        #[arg(long, help = tf!("정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json."))]
         table: bool,
     },
     #[command(about = tf!("한 규칙의 본문 출력 (stdout). slug 없으면 NotFound.", "Print a rule's body (stdout). NotFound if the slug doesn't exist."))]
@@ -1014,8 +1040,13 @@ enum LibraryCmd {
         // REQ-005: 도움말이 "상호배타" 라고 적혀 있는데 `quest list` 만 실제로
         // 막고 나머지는 --table 을 조용히 무시하고 JSON 을 냈다 — 같은 플래그
         // 조합에 서브커맨드마다 다른 (문서화되지 않은) 동작이라 스크립트
-        // 작성자가 당한다. clap 으로 선언해 전부 같은 에러를 낸다.
-        #[arg(long, conflicts_with = "json", help = tf!("정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json."))]
+        // 작성자가 당한다. 핸들러에서 `ensure_table_json_exclusive` 로 통일한다.
+        //
+        // BUG-251: 여기에 `conflicts_with = "json"` 을 쓸 수 없다 — `json` 은
+        // 전역 인자라 서브커맨드 스코프에서 clap 이 못 찾고, **debug 빌드에서만**
+        // 도는 assertion 이 터진다("Argument or group 'json' ... does not exist").
+        // 릴리즈 빌드로 검증하면 조용히 통과해서 CI(debug)에서만 드러난다.
+        #[arg(long, help = tf!("정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json."))]
         table: bool,
     },
     #[command(about = tf!("한 문서의 본문 출력 (stdout).", "Print a document's body (stdout)."))]
@@ -1166,8 +1197,13 @@ enum CampaignCmd {
         // REQ-005: 도움말이 "상호배타" 라고 적혀 있는데 `quest list` 만 실제로
         // 막고 나머지는 --table 을 조용히 무시하고 JSON 을 냈다 — 같은 플래그
         // 조합에 서브커맨드마다 다른 (문서화되지 않은) 동작이라 스크립트
-        // 작성자가 당한다. clap 으로 선언해 전부 같은 에러를 낸다.
-        #[arg(long, conflicts_with = "json", help = tf!("정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json."))]
+        // 작성자가 당한다. 핸들러에서 `ensure_table_json_exclusive` 로 통일한다.
+        //
+        // BUG-251: 여기에 `conflicts_with = "json"` 을 쓸 수 없다 — `json` 은
+        // 전역 인자라 서브커맨드 스코프에서 clap 이 못 찾고, **debug 빌드에서만**
+        // 도는 assertion 이 터진다("Argument or group 'json' ... does not exist").
+        // 릴리즈 빌드로 검증하면 조용히 통과해서 CI(debug)에서만 드러난다.
+        #[arg(long, help = tf!("정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json."))]
         table: bool,
     },
     #[command(about = tf!("캠페인 상세", "Campaign detail"))]
@@ -3848,6 +3884,23 @@ fn match_status_id(input: &str, statuses: &[QuestStatus]) -> Option<i64> {
 }
 
 /// `Vec<String>` (clap 다중 값) → `Some("a,b,c")` 또는 빈 Vec 이면 None.
+/// REQ-005 / BUG-251: `--table` 과 `--json` 은 상호배타 — **모든** 목록 명령이
+/// 같은 에러를 낸다.
+///
+/// clap 의 `conflicts_with` 로 선언할 수 없다. `json` 은 전역 인자라 서브커맨드
+/// 스코프에서 못 찾고, **debug 빌드에서만** 도는 assertion 이 터진다. 릴리즈
+/// 빌드로 검증하면 조용히 통과해서 CI(debug)에서만 드러난다 — 실제로 그렇게
+/// 한 번 겪었다.
+fn ensure_table_json_exclusive(table: bool, json: bool) -> Result<()> {
+    if table && json {
+        return Err(anyhow!(tf!(
+            "--table 은 --json 과 함께 쓸 수 없습니다",
+            "--table cannot be used together with --json"
+        )));
+    }
+    Ok(())
+}
+
 fn vec_to_csv(v: Vec<String>) -> Option<String> {
     if v.is_empty() {
         None
@@ -4945,6 +4998,7 @@ fn handle_campaign(c: &Backend, json: bool, sub: CampaignCmd) -> Result<()> {
                 ));
             }
             let rows = c.campaign_list(status)?;
+                        ensure_table_json_exclusive(table, json)?;
             if json {
                 println!("{}", json_str(&rows));
             } else if table {
@@ -6225,6 +6279,7 @@ fn handle_types(c: &Backend, json: bool, sub: TypesCmd) -> Result<()> {
     match sub {
         TypesCmd::List { table } => {
             let types = c.quest_types()?;
+                        ensure_table_json_exclusive(table, json)?;
             if json {
                 println!("{}", json_str(&types));
             } else if table {
@@ -6621,6 +6676,7 @@ fn handle_guild(json: bool, sub: GuildCmd) -> Result<()> {
 fn handle_tag(c: &Backend, json: bool, sub: TagDefCmd) -> Result<()> {
     match sub {
         TagDefCmd::List { used, table } => {
+            ensure_table_json_exclusive(table, json)?;
             let defs = c.tag_defs()?;
             let used_tags = if used { c.tags_in_use()? } else { Vec::new() };
             if json {
@@ -6754,6 +6810,7 @@ fn handle_statuses(c: &Backend, json: bool, sub: StatusesCmd) -> Result<()> {
     match sub {
         StatusesCmd::List { table } => {
             let statuses = c.quest_statuses()?;
+                        ensure_table_json_exclusive(table, json)?;
             if json {
                 // BUG-018: agent / script 용 — slug 포함된 raw row.
                 println!("{}", json_str(&statuses));
@@ -7076,6 +7133,7 @@ fn handle_rules(c: &Backend, json: bool, sub: RulesCmd) -> Result<()> {
         }
         RulesCmd::List { table } => {
             let entries = c.rules_list()?;
+                        ensure_table_json_exclusive(table, json)?;
             if json {
                 json_println!(serde_json::json!({
                         "entries": entries.iter().map(|e| serde_json::json!({
@@ -7193,6 +7251,7 @@ fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
     match sub {
         LibraryCmd::List { table } => {
             let books = c.library_list()?;
+                        ensure_table_json_exclusive(table, json)?;
             if json {
                 println!("{}", json_str(&books));
             } else if table {
@@ -7820,6 +7879,7 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
                 slim: false,
             };
             let quests = c.list_quests(&q)?;
+            ensure_table_json_exclusive(table, json)?;
             if count {
                 println!("{}", quests.len());
             } else if id_only {
@@ -8240,6 +8300,9 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
         }
         QuestCmd::Deleted { table } => {
             let quests = c.list_deleted_quests()?;
+            // BUG-251: 여기는 `table && !json` 이라 **세 번째** 동작이었다 —
+            // 에러도 무시도 아니고 조용히 json 을 우선했다.
+            ensure_table_json_exclusive(table, json)?;
             if table && !json {
                 print_quest_table(&quests);
             } else {
