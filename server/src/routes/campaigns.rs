@@ -211,11 +211,18 @@ pub async fn get_banner_image(
         .into());
     };
     let path = store.paths.dot_guild().join(&rel);
-    let bytes = std::fs::read(&path).map_err(|e| {
-        openguild_core::error::AppError::Internal(anyhow::anyhow!(
+    // REQ-005: 파일 없음은 **404** 다. 예전엔 종류 불문 Internal → 500 이라,
+    // DB 엔 image_path 가 있는데 디스크 파일이 drift 로 사라진 경우(브랜치
+    // 전환 등 — BOOK-001 맥락에서 흔하다) 클라이언트가 원인을 알 수 없었다.
+    // admin.rs 의 `get_guild_file` 은 처음부터 이렇게 하고 있었다.
+    let bytes = std::fs::read(&path).map_err(|e| match e.kind() {
+        std::io::ErrorKind::NotFound => openguild_core::error::AppError::NotFound(format!(
+            "배너 파일 없음: {rel}"
+        )),
+        _ => openguild_core::error::AppError::Internal(anyhow::anyhow!(
             "배너 파일 읽기 실패 {}: {e}",
             path.display()
-        ))
+        )),
     })?;
     let mime = match path.extension().and_then(|e| e.to_str()) {
         Some("png") => "image/png",

@@ -5,6 +5,7 @@
 
 use axum::{
     extract::{Path, Query, State},
+    http::StatusCode,
     Json,
 };
 use serde::{Deserialize, Serialize};
@@ -122,11 +123,13 @@ pub async fn add_comment(
     State(store): State<Store>,
     Path(slug): Path<String>,
     Json(body): Json<AddCommentRequest>,
-) -> AppResult<Json<CommentEntry>> {
+) -> AppResult<(StatusCode, Json<CommentEntry>)> {
     let entry =
         ops::add_comment_entry(&store, &slug, body.author, body.body, body.parent_id, body.discussion)
             .await?;
-    Ok(Json(entry))
+    // REQ-005: 다른 create 는 전부 201 인데 여기만 암묵적 200 이었다
+    // (quests.rs:85 / campaigns.rs:51,120 / library.rs:94 / rules.rs:111).
+    Ok((StatusCode::CREATED, Json(entry)))
 }
 
 pub async fn update_comment(
@@ -209,7 +212,7 @@ pub async fn camp_add_comment(
     State(store): State<Store>,
     Path(slug): Path<String>,
     Json(body): Json<AddCommentRequest>,
-) -> AppResult<Json<CommentEntry>> {
+) -> AppResult<(StatusCode, Json<CommentEntry>)> {
     // DEV-366: 토론은 quest 전용이다. 조용히 무시하면 호출측은 토론을 만들었다고
     // 믿는데 평댓글이 생긴다 — DEV-361 이 없애려던 바로 그 상태라 명시적으로 막는다.
     if body.discussion {
@@ -220,7 +223,7 @@ pub async fn camp_add_comment(
         ));
     }
     let entry = cops::add_entry(&store, &slug, body.author, body.body, body.parent_id).await?;
-    Ok(Json(entry))
+    Ok((StatusCode::CREATED, Json(entry)))
 }
 
 pub async fn camp_update_comment(

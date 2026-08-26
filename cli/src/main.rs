@@ -425,9 +425,11 @@ enum QuestCmd {
         #[arg(long, help = tf!("tree 모드 — root quest 부터 들여쓰기로 자식 표시. 기본 flat. --id-only / --count / --json 과 함께 쓰면 무시 (구조화 출력 우선).",
                                "Tree mode — indent children under root quests. Flat by default. Ignored with --id-only / --count / --json (structured output wins)."))]
         tree: bool,
-        // `json` 은 전역 인자라 clap 의 conflicts_with 대상이 못 됨(debug assert
-        // 가 subcommand 스코프에서 못 찾음) — 핸들러에서 수동 검증.
-        #[arg(long, conflicts_with_all = ["tree", "id_only", "count"],
+        // REQ-005: 예전 주석은 "json 은 전역 인자라 conflicts_with 대상이 못 됨"
+        // 이라 적고 수동 검증에 맡겼는데, 실제로는 된다(실측: `--table --json`
+        // 이 clap 에서 거부되고 단독 사용은 정상). 다른 list 명령들과 같은
+        // 방식으로 선언해 동작을 통일한다.
+        #[arg(long, conflicts_with_all = ["tree", "id_only", "count", "json"],
               help = tf!("정렬된 표(헤더 + 컬럼 정렬)로 출력 — 사람용. --json/--tree 와 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json/--tree."))]
         table: bool,
     },
@@ -517,7 +519,11 @@ enum QuestCmd {
     },
     #[command(about = tf!("삭제된(soft deleted) 퀘스트 목록", "List soft-deleted quests"))]
     Deleted {
-        #[arg(long, help = tf!("정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json."))]
+        // REQ-005: 도움말이 "상호배타" 라고 적혀 있는데 `quest list` 만 실제로
+        // 막고 나머지는 --table 을 조용히 무시하고 JSON 을 냈다 — 같은 플래그
+        // 조합에 서브커맨드마다 다른 (문서화되지 않은) 동작이라 스크립트
+        // 작성자가 당한다. clap 으로 선언해 전부 같은 에러를 낸다.
+        #[arg(long, conflicts_with = "json", help = tf!("정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json."))]
         table: bool,
     },
     #[command(about = tf!("삭제된 퀘스트 복원", "Restore a deleted quest"))]
@@ -775,7 +781,11 @@ enum PrereqCmd {
 enum TypesCmd {
     #[command(about = tf!("목록", "List"))]
     List {
-        #[arg(long, help = tf!("정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json."))]
+        // REQ-005: 도움말이 "상호배타" 라고 적혀 있는데 `quest list` 만 실제로
+        // 막고 나머지는 --table 을 조용히 무시하고 JSON 을 냈다 — 같은 플래그
+        // 조합에 서브커맨드마다 다른 (문서화되지 않은) 동작이라 스크립트
+        // 작성자가 당한다. clap 으로 선언해 전부 같은 에러를 낸다.
+        #[arg(long, conflicts_with = "json", help = tf!("정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json."))]
         table: bool,
     },
     #[command(about = tf!("새 type 추가", "Add a new type"))]
@@ -814,7 +824,11 @@ enum TagDefCmd {
         #[arg(long, help = tf!("실사용 중인 태그(quest/도서관 frontmatter)도 함께 — 정의 없이 쓰인 ad-hoc 태그를 발견하는 용도.",
                               "Also include actually-used tags (quest/library frontmatter) — for finding ad-hoc tags used without a definition."))]
         used: bool,
-        #[arg(long, help = tf!("정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json."))]
+        // REQ-005: 도움말이 "상호배타" 라고 적혀 있는데 `quest list` 만 실제로
+        // 막고 나머지는 --table 을 조용히 무시하고 JSON 을 냈다 — 같은 플래그
+        // 조합에 서브커맨드마다 다른 (문서화되지 않은) 동작이라 스크립트
+        // 작성자가 당한다. clap 으로 선언해 전부 같은 에러를 낸다.
+        #[arg(long, conflicts_with = "json", help = tf!("정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json."))]
         table: bool,
     },
     #[command(about = tf!("새 태그 정의 추가 (이미 있으면 에러 — 수정은 update)", "Add a new tag definition (errors if it already exists — use `update` to modify)"))]
@@ -843,7 +857,11 @@ enum TagDefCmd {
 enum StatusesCmd {
     #[command(about = tf!("목록", "List"))]
     List {
-        #[arg(long, help = tf!("정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json."))]
+        // REQ-005: 도움말이 "상호배타" 라고 적혀 있는데 `quest list` 만 실제로
+        // 막고 나머지는 --table 을 조용히 무시하고 JSON 을 냈다 — 같은 플래그
+        // 조합에 서브커맨드마다 다른 (문서화되지 않은) 동작이라 스크립트
+        // 작성자가 당한다. clap 으로 선언해 전부 같은 에러를 낸다.
+        #[arg(long, conflicts_with = "json", help = tf!("정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json."))]
         table: bool,
     },
     #[command(about = tf!("새 status 추가. slug 는 name_en 에서 자동 생성.", "Add a new status. slug is auto-generated from name_en."))]
@@ -931,7 +949,11 @@ enum DocsCmd {
 enum RulesCmd {
     #[command(about = tf!("모든 규칙 slug 목록 (legacy .guild/rules.md 가 있으면 자동 마이그레이션).", "List all rule slugs (auto-migrates legacy `.guild/rules.md` if present)."))]
     List {
-        #[arg(long, help = tf!("정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json."))]
+        // REQ-005: 도움말이 "상호배타" 라고 적혀 있는데 `quest list` 만 실제로
+        // 막고 나머지는 --table 을 조용히 무시하고 JSON 을 냈다 — 같은 플래그
+        // 조합에 서브커맨드마다 다른 (문서화되지 않은) 동작이라 스크립트
+        // 작성자가 당한다. clap 으로 선언해 전부 같은 에러를 낸다.
+        #[arg(long, conflicts_with = "json", help = tf!("정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json."))]
         table: bool,
     },
     #[command(about = tf!("한 규칙의 본문 출력 (stdout). slug 없으면 NotFound.", "Print a rule's body (stdout). NotFound if the slug doesn't exist."))]
@@ -989,7 +1011,11 @@ enum RulesCmd {
 enum LibraryCmd {
     #[command(about = tf!("문서 목록 (번호 / 제목 / 갱신 시각).", "Document list (number / title / updated time)."))]
     List {
-        #[arg(long, help = tf!("정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json."))]
+        // REQ-005: 도움말이 "상호배타" 라고 적혀 있는데 `quest list` 만 실제로
+        // 막고 나머지는 --table 을 조용히 무시하고 JSON 을 냈다 — 같은 플래그
+        // 조합에 서브커맨드마다 다른 (문서화되지 않은) 동작이라 스크립트
+        // 작성자가 당한다. clap 으로 선언해 전부 같은 에러를 낸다.
+        #[arg(long, conflicts_with = "json", help = tf!("정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json."))]
         table: bool,
     },
     #[command(about = tf!("한 문서의 본문 출력 (stdout).", "Print a document's body (stdout)."))]
@@ -1137,7 +1163,11 @@ enum CampaignCmd {
     List {
         #[arg(long, help = tf!("필터: active | done", "Filter: active | done"))]
         status: Option<String>,
-        #[arg(long, help = tf!("정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json."))]
+        // REQ-005: 도움말이 "상호배타" 라고 적혀 있는데 `quest list` 만 실제로
+        // 막고 나머지는 --table 을 조용히 무시하고 JSON 을 냈다 — 같은 플래그
+        // 조합에 서브커맨드마다 다른 (문서화되지 않은) 동작이라 스크립트
+        // 작성자가 당한다. clap 으로 선언해 전부 같은 에러를 낸다.
+        #[arg(long, conflicts_with = "json", help = tf!("정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json."))]
         table: bool,
     },
     #[command(about = tf!("캠페인 상세", "Campaign detail"))]
@@ -7764,12 +7794,6 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
             tree,
             table,
         } => {
-            if table && json {
-                return Err(anyhow!(tf!(
-                    "--table 은 --json 과 함께 쓸 수 없습니다",
-                    "--table cannot be used together with --json"
-                )));
-            }
             let q = ListQuery {
                 r#type: vec_to_csv(type_prefix),
                 status: vec_to_csv(status),
@@ -8278,13 +8302,17 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
             change_status_with_noop_notice(c, &slug, &status, json)?;
         }
         QuestCmd::Start { slug } => {
-            change_status_with_noop_notice(c, &slug, "In Progress", json)?;
+            // REQ-005: 정규 slug 를 직접 넘긴다. 예전엔 표시명("In Progress")을
+            // 넘기고 `resolve_status_slug` 의 정규화에 기댔는데, slug 를 rename
+            // 하고 name_en 도 바뀌면 3단계 fallback 까지 실패해 깨진다. 의도가
+            // "이 정규 상태로 옮긴다" 이므로 그대로 표현하는 편이 낫다.
+            change_status_with_noop_notice(c, &slug, "in_progress", json)?;
         }
         QuestCmd::Done { slug } => {
-            change_status_with_noop_notice(c, &slug, "Done", json)?;
+            change_status_with_noop_notice(c, &slug, "done", json)?;
         }
         QuestCmd::Reopen { slug } => {
-            change_status_with_noop_notice(c, &slug, "Open", json)?;
+            change_status_with_noop_notice(c, &slug, "open", json)?;
         }
         QuestCmd::Parent {
             slug,

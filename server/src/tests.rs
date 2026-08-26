@@ -2647,7 +2647,7 @@ async fn test_quest_comment_add_list_update_delete() {
         json!({ "author": "alice", "body": "hello" }),
     )
     .await;
-    assert_eq!(status, StatusCode::OK);
+    assert_eq!(status, StatusCode::CREATED);
     let id = entry["id"].as_u64().unwrap();
 
     let (status, list) = get(app.clone(), "/api/quests/by/DEV-001/comments").await;
@@ -2720,7 +2720,7 @@ async fn test_quest_comment_reply_threading() {
         json!({ "author": "b", "body": "reply", "parent_id": root_id }),
     )
     .await;
-    assert_eq!(status, StatusCode::OK);
+    assert_eq!(status, StatusCode::CREATED);
     assert_eq!(reply["parent_id"], root_id);
 }
 
@@ -2874,7 +2874,7 @@ async fn test_campaign_comment_add_list_update_delete() {
         json!({ "author": "alice", "body": "hi" }),
     )
     .await;
-    assert_eq!(status, StatusCode::OK);
+    assert_eq!(status, StatusCode::CREATED);
     let id = entry["id"].as_u64().unwrap();
 
     let (_, list) = get(app.clone(), "/api/campaigns/C-001/comments").await;
