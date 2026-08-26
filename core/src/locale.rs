@@ -116,9 +116,9 @@ macro_rules! tf {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
-
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
+    // BUG-250: 파일 전용 잠금이던 것을 프로세스 전역 하나로 — 다른 파일의
+    // env 조작과 겹치던 것을 막는다.
+    use crate::test_env::env_lock;
 
     fn fresh_dir(label: &str) -> PathBuf {
         let ns = std::time::SystemTime::now()
@@ -131,9 +131,9 @@ mod tests {
     }
 
     fn with_isolated_home<F: FnOnce()>(f: F) {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = env_lock();
         let dir = fresh_dir("home");
-        // SAFETY: 테스트는 ENV_LOCK 으로 직렬화되어 동시 env 변경 없음.
+        // SAFETY: 테스트는 env_lock() 으로 직렬화되어 동시 env 변경 없음.
         unsafe {
             std::env::set_var("OPENGUILD_HOME", &dir);
             std::env::remove_var("OPENGUILD_LOCALE");
@@ -165,7 +165,7 @@ mod tests {
     fn env_overrides_saved_file() {
         with_isolated_home(|| {
             save(Locale::En).unwrap();
-            // SAFETY: 직렬화됨(ENV_LOCK).
+            // SAFETY: 직렬화됨(env_lock).
             unsafe {
                 std::env::set_var("OPENGUILD_LOCALE", "ko");
             }

@@ -18,6 +18,8 @@ pub mod incremental;
 pub mod guild_file;
 pub mod locale;
 pub mod lock;
+#[cfg(test)]
+mod test_env;
 pub mod maintenance;
 pub mod migrate;
 pub mod models;

@@ -120,11 +120,11 @@ fn copy_dir_if_stale(src: &Path, dst: &Path) -> Result<usize> {
 mod tests {
     use super::*;
 
-    // DEV-264: OPENGUILD_HOME 은 프로세스 전역 env — cargo test 스레드 병렬
-    // 실행 중 이 모듈의 테스트가 2개 이상으로 늘면서 서로의 env 값을 덮어쓰는
-    // 레이스가 생겼다(sync_bundled_skill_marketplace 테스트 추가 후 발견).
-    // 이 mutex 로 OPENGUILD_HOME 을 건드리는 테스트들을 직렬화한다.
-    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    // DEV-264: OPENGUILD_HOME 은 프로세스 전역 env — 병렬 테스트가 서로의 값을
+    // 덮어쓰는 레이스가 있었다.
+    // BUG-250: 그때는 이 파일 전용 mutex 였는데, 다른 파일(recents / locale /
+    // snapshot)도 각자 env 를 건드려 **파일 사이에서** 겹쳤다. 전역 잠금 하나로.
+    use crate::test_env::env_lock;
 
     fn fresh_tmp(label: &str) -> PathBuf {
         let ns = std::time::SystemTime::now()
@@ -138,7 +138,7 @@ mod tests {
 
     #[test]
     fn sync_bundled_docs_copies_md_then_skips_when_fresh() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = env_lock();
         let src = fresh_tmp("docs-src");
         let home = fresh_tmp("docs-home");
         std::fs::write(src.join("USAGE.md"), "# usage").unwrap();
@@ -170,7 +170,7 @@ mod tests {
 
     #[test]
     fn sync_bundled_skill_marketplace_copies_nested_tree_then_skips_when_fresh() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = env_lock();
         let src = fresh_tmp("skills-src");
         let home = fresh_tmp("skills-home");
         std::fs::create_dir_all(src.join(".claude-plugin")).unwrap();

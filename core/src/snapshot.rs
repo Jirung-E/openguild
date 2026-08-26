@@ -900,7 +900,11 @@ mod tests {
 
     #[test]
     fn policy_from_env_uses_default_when_unset() {
-        // SAFETY: 테스트 단일 스레드. env 직접 set/unset.
+        // BUG-250: 예전 주석은 "테스트 단일 스레드" 라고 했지만 `cargo test` 는
+        // 기본이 병렬이다. 잠금 없이 env 를 건드려 다른 파일의 env 테스트와
+        // 겹쳤고, 그게 간헐 실패의 원인이었다.
+        let _guard = crate::test_env::env_lock();
+        // SAFETY: 위 잠금이 env 를 만지는 모든 테스트를 직렬화한다.
         unsafe {
             std::env::remove_var("OPENGUILD_AUTO_BACKUP_OPS");
             std::env::remove_var("OPENGUILD_AUTO_BACKUP_HOURS");

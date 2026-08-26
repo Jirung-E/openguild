@@ -264,17 +264,16 @@ pub(crate) mod tests {
     /// `%LOCALAPPDATA%\openguild\openguild\data\recents.json` 를 건드려
     /// 사용자 머신을 오염시키고 본 테스트 결과도 비결정.
     /// → process 안의 static Mutex 로 직렬화. 단일 스레드 효과.
-    pub(crate) fn env_lock() -> &'static std::sync::Mutex<()> {
-        static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
-        LOCK.get_or_init(|| std::sync::Mutex::new(()))
-    }
+    // BUG-250: 파일별 잠금을 프로세스 전역 하나로 합쳤다 — 파일 안에서만
+    // 직렬화하면 `locale` / `user_dirs` / `snapshot` 의 env 조작과 겹친다.
+    pub(crate) use crate::test_env::env_lock;
 
     pub(crate) fn with_env<F: FnOnce()>(dir: &Path, f: F) {
         // BUG-048: env 변수 critical section. 다른 테스트가 unset 한 순간
         // 본 add() 가 default ProjectDirs 경로 (= 실제 사용자 recents) 를 쓰지
         // 않도록 보호. 한 테스트가 panic 해도 다른 테스트 안 깨지게 PoisonError
         // 도 흡수 (Mutex 의 데이터는 ()  — 의미 없음).
-        let _guard = env_lock().lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = env_lock();
         // SAFETY: 위 lock 이 단일 스레드 실행 보장.
         unsafe {
             std::env::set_var("OPENGUILD_RECENTS_DIR", dir);
