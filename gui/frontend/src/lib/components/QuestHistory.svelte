@@ -15,6 +15,8 @@
 	import { locale, t } from '$lib/stores/locale';
 	// DEV-015: status 표시 이름 — 언어 반응(로컬 statusLabel 헬퍼와 이름 충돌 방지 alias).
 	import { statusLabel as localizedStatusLabel } from '$lib/utils/status-label';
+	// REQ-004: 늦게 온 응답이 최신 화면을 덮지 않도록.
+	import { Generation } from '$lib/utils/latest-only';
 
 	let { questId, statuses = [] }: { questId: number; statuses?: QuestStatus[] } = $props();
 
@@ -34,20 +36,28 @@
 	let statusBySlug = $derived(new Map(statuses.map((s) => [s.slug, s])));
 
 	// questId 가 바뀔 때마다 (다른 quest 페이지로 navigate) 다시 로드.
+	//
+	// REQ-004: 늦게 온 응답이 화면을 덮으면 안 된다 — A 를 열고 응답 전에 B 로
+	// 이동하면 나머지는 B 인데 이력만 A 가 된다. 세대 토큰으로 최신만 반영한다.
+	const gen = new Generation();
 	$effect(() => {
 		const id = questId;
 		if (id <= 0) return;
+		const mine = gen.next();
 		loading = true;
 		error = null;
 		questsApi
 			.listHistory(id)
 			.then((list) => {
+				if (!gen.isCurrent(mine)) return;
 				entries = list;
 			})
 			.catch((e) => {
+				if (!gen.isCurrent(mine)) return;
 				error = e instanceof Error ? e.message : t('history.loadFailed', $locale);
 			})
 			.finally(() => {
+				if (!gen.isCurrent(mine)) return;
 				loading = false;
 			});
 	});

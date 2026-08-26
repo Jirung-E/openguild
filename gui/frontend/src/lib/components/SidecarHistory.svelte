@@ -10,6 +10,8 @@
 	import type { SidecarHistoryEntry } from '$lib/types';
 	import { formatTs, formatRelative } from '$lib/utils/datetime';
 	import { locale, t } from '$lib/stores/locale';
+	// REQ-004: 늦게 온 응답이 최신 화면을 덮지 않도록.
+	import { Generation } from '$lib/utils/latest-only';
 
 	let { kind, id }: { kind: 'rule' | 'book'; id: string } = $props();
 
@@ -24,19 +26,25 @@
 		collapsed = !collapsed;
 	}
 
+	// REQ-004: 늦게 온 응답이 화면을 덮지 않도록 세대 토큰으로 최신만 반영.
+	const gen = new Generation();
 	$effect(() => {
 		const cur = id;
 		if (!cur) return;
+		const mine = gen.next();
 		loading = true;
 		error = null;
 		const p = kind === 'rule' ? rulesApi.history(cur) : libraryApi.history(cur);
 		p.then((list) => {
+			if (!gen.isCurrent(mine)) return;
 			entries = list;
 		})
 			.catch((e) => {
+				if (!gen.isCurrent(mine)) return;
 				error = e instanceof Error ? e.message : t('history.loadFailed', $locale);
 			})
 			.finally(() => {
+				if (!gen.isCurrent(mine)) return;
 				loading = false;
 			});
 	});

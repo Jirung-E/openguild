@@ -9,6 +9,8 @@
 	import { formatTs, formatRelative } from '$lib/utils/datetime';
 	// DEV-205: 변경 이력 섹션 i18n (QuestHistory 와 동일 키 재사용).
 	import { locale, t } from '$lib/stores/locale';
+	// REQ-004: 늦게 온 응답이 최신 화면을 덮지 않도록.
+	import { Generation } from '$lib/utils/latest-only';
 
 	let { campaignSlug }: { campaignSlug: string } = $props();
 
@@ -23,20 +25,26 @@
 		collapsed = !collapsed;
 	}
 
+	// REQ-004: 늦게 온 응답이 화면을 덮지 않도록 세대 토큰으로 최신만 반영.
+	const gen = new Generation();
 	$effect(() => {
 		const slug = campaignSlug;
 		if (!slug) return;
+		const mine = gen.next();
 		loading = true;
 		error = null;
 		campaignsApi
 			.listHistory(slug)
 			.then((list) => {
+				if (!gen.isCurrent(mine)) return;
 				entries = list;
 			})
 			.catch((e) => {
+				if (!gen.isCurrent(mine)) return;
 				error = e instanceof Error ? e.message : t('history.loadFailed', $locale);
 			})
 			.finally(() => {
+				if (!gen.isCurrent(mine)) return;
 				loading = false;
 			});
 	});

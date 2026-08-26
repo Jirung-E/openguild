@@ -67,7 +67,11 @@
 						kind: 'quest',
 						label: q.quest_id,
 						title: q.title,
-						href: `/quests/${q.id}`
+						// REQ-004: `/quests/[id]` 라우트는 param 을 **slug 로** 받아
+						// `getBySlug` 를 호출한다(+page.svelte 의 `$page.params.id`).
+						// 숫자 PK 를 넘기면 조회가 실패해 에러 화면이 뜬다 —
+						// 앱에서 유일하게 어긋나 있던 링크다.
+						href: `/quests/${encodeURIComponent(q.quest_id)}`
 					});
 				}
 			}

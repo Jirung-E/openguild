@@ -21,6 +21,8 @@
 	import { campaignsApi } from '$lib/api/campaigns';
 	import { rulesApi } from '$lib/api/rules';
 	import { libraryApi } from '$lib/api/library';
+	// REQ-004: 늦게 온 응답이 최신 화면을 덮지 않도록.
+	import { Generation } from '$lib/utils/latest-only';
 
 	let {
 		kind,
@@ -72,16 +74,31 @@
 		}
 	}
 
+	// REQ-004: `MarkdownView` 가 이 컴포넌트를 key 없이 렌더하고 hoverTarget 만
+	// 재대입하므로, 인접 링크로 마우스를 옮기면 **같은 인스턴스**가 effect 를
+	// 다시 돈다. 가드가 없으면 A 응답이 B 보다 늦게 도착했을 때 **헤더는 B,
+	// 본문은 A** 가 된다.
+	const gen = new Generation();
 	$effect(() => {
 		// kind/id 가 바뀌면(팝업 재사용) 다시 로드.
 		void kind;
 		void id;
+		const mine = gen.next();
 		loading = true;
 		body = '';
 		load()
-			.then((b) => (body = b.trim() ? b : t('palette.emptyBody', $locale)))
-			.catch(() => (body = t('palette.previewLoadFail', $locale)))
-			.finally(() => (loading = false));
+			.then((b) => {
+				if (!gen.isCurrent(mine)) return;
+				body = b.trim() ? b : t('palette.emptyBody', $locale);
+			})
+			.catch(() => {
+				if (!gen.isCurrent(mine)) return;
+				body = t('palette.previewLoadFail', $locale);
+			})
+			.finally(() => {
+				if (!gen.isCurrent(mine)) return;
+				loading = false;
+			});
 	});
 
 	// 위치: 앵커 아래(기본) — 화면 하부(60% 이하)면 위로. 가로는 clamp.

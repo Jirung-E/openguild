@@ -16,10 +16,19 @@ const SHOW_DELAY_MS = 220;
 const GAP = 6;
 
 let current: HTMLDivElement | null = null;
+/**
+ * REQ-004: 지금 떠 있는 팝업이 **어느 노드의 것인지**.
+ *
+ * `current` 만 보고 `update()` 에서 다시 그리면, 무관한 노드의 label 이 바뀔 때
+ * (목록 새로고침 후 타일 재렌더 등) 떠 있던 툴팁이 **그 노드로 끌려가며**
+ * 내용까지 바뀐다. 소유자를 함께 들고 자기 것일 때만 갱신한다.
+ */
+let currentOwner: HTMLElement | null = null;
 
 function destroyPopup() {
 	current?.remove();
 	current = null;
+	currentOwner = null;
 }
 
 function createPopup(text: string, anchor: HTMLElement) {
@@ -45,6 +54,7 @@ function createPopup(text: string, anchor: HTMLElement) {
 	].join(';');
 	document.body.appendChild(el);
 	current = el;
+	currentOwner = anchor;
 
 	// 앵커 기준 배치 — 아래 공간이 부족하면 위로, 좌우는 뷰포트 안으로 clamp.
 	const r = anchor.getBoundingClientRect();
@@ -101,7 +111,10 @@ export function titlePopup(node: HTMLElement, text: string | null | undefined) {
 	return {
 		update(next: string | null | undefined) {
 			label = next ?? '';
-			if (current) createPopup(label, node); // 떠 있는 동안 내용 변경 반영
+			// REQ-004: **이 노드의** 팝업이 떠 있을 때만 다시 그린다. 예전엔
+			// `if (current)` 만 봐서, 무관한 노드의 label 변경이 남의 툴팁을
+			// 자기 쪽으로 끌어왔다.
+			if (current && currentOwner === node) createPopup(label, node);
 		},
 		destroy() {
 			hide();
