@@ -131,6 +131,30 @@ DEV-001, DEV-002, BUG-045, REQ-007, ...  ─── feature 브랜치 (develop �
   새 색은 `global.css` 의 `:root` + `[data-theme=light]` 양쪽에 토큰으로 추가 후
   사용. (mask 채널 등 비-테마 용도는 `black` 같은 키워드로.)
 
+### UI 배율 (rem) — BUG-246 / 252 / 253 / 254 (재발 방지)
+
+- 설정의 UI 크기 조절(DEV-101)은 `<html>` 의 `font-size` 를 바꾼다. **rem 으로
+  쓴 값만 배율을 따라간다** — px 는 그 자리에 고정돼 상자만 커지고 안의
+  글자·아이콘은 그대로여서 잘리거나 경계를 넘는다.
+- **조사 범위를 좁히지 말 것.** BUG-253 이 `width`/`height`/`min-*`/`max-*`/
+  `font-size` 만 훑어 `grid-template-columns` · `flex-basis` · `flex` 를
+  놓쳤고 BUG-254 로 다시 났다.
+- **SVG 의 `width`/`height` 는 프레젠테이션 속성이라 단위가 px 다.** `size`
+  prop 을 그대로 넣지 말고 컴포넌트에서 `size / 16` rem 으로 환산한다 — 16 으로
+  나누면 기본 배율에서 크기가 그대로라 회귀가 없다. 인라인 SVG 는 속성을
+  폴백으로 두고 CSS 로 덮는다(속성이 CSS 보다 우선순위가 낮다).
+  `size` prop 을 받는 **새 아이콘 컴포넌트**에도 그대로 적용된다 — BUG-254 는
+  `Icon.svelte` 만 고치고 형제인 `PlayPauseIcon.svelte` 를 놓쳐 재보고됐다.
+- **아이콘과 글자를 함께 넣는 버튼/라벨은 부모에 `display: inline-flex;
+  align-items: center; gap`.** 인라인 SVG 는 글자 기준선 위에 얹혀 위로 뜬다.
+  `Icon.svelte` 의 `vertical-align: middle` 은 x-height 기준이라 완전히는 못
+  맞추는 안전망일 뿐이다(실측 200%: 부모 flex 0.23px vs vertical-align 1.63px).
+- **px 가 맞는 예외**는 OS 크롬 — Windows/Linux 타이틀바의 창 버튼(BUG-246).
+  실수와 구분되도록 주석으로 이유를 남긴다.
+- 색과 달리 **자동 검사가 없다**(`check:no-hex` 같은 것이 없음). 재발 방지
+  검사는 DEV-369 에 함께 적어 뒀다.
+- 사용자가 보는 in-app rule 은 `.guild/rules/frontend-ui-scale.md` 참조.
+
 ---
 
 ## 테스트
