@@ -186,7 +186,7 @@
 		font-size: 0.72rem;
 		color: var(--text-faint);
 		padding: 0.05rem 0.4rem;
-		border-radius: 10px;
+		border-radius: var(--r-xl);
 		background: var(--bg-subtle);
 	}
 
@@ -196,8 +196,8 @@
 		margin: 0;
 		padding: 0.6rem 0.8rem;
 		background: var(--bg);
-		border: 1px solid var(--bg-subtle);
-		border-radius: 6px;
+		border: var(--bw) solid var(--bg-subtle);
+		border-radius: var(--r-md);
 	}
 	.qh-state.error {
 		color: var(--danger);
@@ -207,8 +207,8 @@
 		list-style: none;
 		padding: 0;
 		margin: 0;
-		border: 1px solid var(--bg-subtle);
-		border-radius: 6px;
+		border: var(--bw) solid var(--bg-subtle);
+		border-radius: var(--r-md);
 		overflow: hidden;
 	}
 	.qh-item {
@@ -221,7 +221,7 @@
 		color: var(--text);
 	}
 	.qh-item + .qh-item {
-		border-top: 1px solid var(--bg-subtle);
+		border-top: var(--bw) solid var(--bg-subtle);
 	}
 
 	.qh-ts {
@@ -237,8 +237,8 @@
 		letter-spacing: 0.04em;
 		padding: 0.05rem 0.45rem;
 		background: var(--bg-elevated);
-		border: 1px solid var(--bg-subtle);
-		border-radius: 10px;
+		border: var(--bw) solid var(--bg-subtle);
+		border-radius: var(--r-xl);
 	}
 	.qh-op-empty {
 		width: 0;
@@ -251,11 +251,11 @@
 	}
 	.qh-status {
 		padding: 0.05rem 0.5rem;
-		border-radius: 12px;
+		border-radius: var(--r-pill);
 		font-size: 0.75rem;
 		background: color-mix(in srgb, var(--c) 18%, transparent);
 		color: var(--c);
-		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
+		border: var(--bw) solid color-mix(in srgb, var(--c) 40%, transparent);
 	}
 	.qh-arrow {
 		color: var(--text-faint);

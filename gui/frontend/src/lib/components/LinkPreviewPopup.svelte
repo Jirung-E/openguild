@@ -158,8 +158,8 @@
 		width: min(25rem, 90vw);
 		z-index: 1300; /* 검색 팔레트(1200)보다 위 — 팔레트 미리보기 안에서도 뜸. */
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 8px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-lg);
 		box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4);
 		overflow: hidden;
 		display: flex;
@@ -170,13 +170,13 @@
 		align-items: center;
 		gap: 0.5rem;
 		padding: 0.45rem 0.7rem;
-		border-bottom: 1px solid var(--border);
+		border-bottom: var(--bw) solid var(--border);
 	}
 	.lp-kind {
 		flex: none;
 		font-size: 0.66rem;
 		font-weight: 600;
-		border-radius: 4px;
+		border-radius: var(--r-sm);
 		padding: 0.08rem 0.34rem;
 		color: var(--accent);
 		background: color-mix(in srgb, var(--accent) 14%, transparent);
@@ -219,13 +219,13 @@
 		justify-content: flex-end;
 		gap: 0.4rem;
 		padding: 0.4rem 0.6rem;
-		border-top: 1px solid var(--border);
+		border-top: var(--bw) solid var(--border);
 	}
 	.lp-btn {
 		font-size: 0.72rem;
 		padding: 0.24rem 0.55rem;
-		border-radius: 5px;
-		border: 1px solid var(--border);
+		border-radius: var(--r-sm);
+		border: var(--bw) solid var(--border);
 		background: transparent;
 		color: var(--text);
 		cursor: pointer;

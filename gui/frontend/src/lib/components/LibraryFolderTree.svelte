@@ -119,7 +119,7 @@
 		padding-bottom: 0.15rem;
 		color: var(--text-muted);
 		font-size: 0.78rem;
-		border-radius: 4px;
+		border-radius: var(--r-sm);
 	}
 	/* BUG-129: 드롭 대상 강조. */
 	.folder-row.drag-over {
@@ -176,7 +176,7 @@
 		padding-right: 0.5rem;
 		background: transparent;
 		border: none;
-		border-radius: 4px;
+		border-radius: var(--r-sm);
 		color: var(--text);
 		font-size: 0.85rem;
 		cursor: pointer;

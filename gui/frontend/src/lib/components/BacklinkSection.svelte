@@ -144,7 +144,7 @@
 		font-size: 0.72rem;
 		color: var(--text-faint);
 		padding: 0.05rem 0.4rem;
-		border-radius: 10px;
+		border-radius: var(--r-xl);
 		background: var(--bg-subtle);
 	}
 	.bl-list {
@@ -157,7 +157,7 @@
 		gap: 0.6rem;
 		align-items: baseline;
 		padding: 0.35rem 0;
-		border-bottom: 1px solid var(--border);
+		border-bottom: var(--bw) solid var(--border);
 		text-decoration: none;
 		color: var(--text);
 		font-size: 0.83rem;
@@ -170,7 +170,7 @@
 		flex: none;
 		font-size: 0.68rem;
 		font-weight: 600;
-		border-radius: 4px;
+		border-radius: var(--r-sm);
 		padding: 0.1rem 0.35rem;
 		color: var(--text-muted);
 		background: color-mix(in srgb, var(--text-muted) 12%, transparent);
@@ -217,7 +217,7 @@
 		height: 1.0625rem;
 		padding: 0 7px;
 		box-sizing: border-box;
-		border-radius: 9px;
+		border-radius: var(--r-pill);
 		font-family: 'SFMono-Regular', Consolas, monospace;
 		font-size: 0.625rem;
 		font-weight: 600;
@@ -225,7 +225,7 @@
 		white-space: nowrap;
 		color: var(--bl-c, var(--accent));
 		background: color-mix(in srgb, var(--bl-c, var(--accent)) 16%, transparent);
-		border: 1px solid color-mix(in srgb, var(--bl-c, var(--accent)) 55%, transparent);
+		border: var(--bw) solid color-mix(in srgb, var(--bl-c, var(--accent)) 55%, transparent);
 	}
 	.bl-t {
 		color: var(--text);

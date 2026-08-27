@@ -387,8 +387,8 @@
 <style>
 	.md {
 		background: var(--bg);
-		border: 1px solid var(--bg-subtle);
-		border-radius: 6px;
+		border: var(--bw) solid var(--bg-subtle);
+		border-radius: var(--r-md);
 		padding: 0.85rem 1rem;
 		color: var(--text);
 		font-size: 0.9rem;
@@ -424,12 +424,12 @@
 	.md :global(code) {
 		background: var(--bg-elevated);
 		padding: 0.1rem 0.3rem;
-		border-radius: 3px;
+		border-radius: var(--r-xs);
 	}
 	.md :global(pre) {
 		background: var(--bg-elevated);
-		border: 1px solid var(--bg-subtle);
-		border-radius: 6px;
+		border: var(--bw) solid var(--bg-subtle);
+		border-radius: var(--r-md);
 		padding: 0.75rem 1rem;
 		overflow-x: auto;
 	}
@@ -496,8 +496,8 @@
 		font-weight: 600;
 		text-decoration: none;
 		background: color-mix(in srgb, var(--accent) 12%, transparent);
-		border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
-		border-radius: 4px;
+		border: var(--bw) solid color-mix(in srgb, var(--accent) 30%, transparent);
+		border-radius: var(--r-sm);
 		padding: 0 0.3rem;
 		white-space: nowrap;
 	}
@@ -514,7 +514,7 @@
 	}
 	.md :global(hr) {
 		border: none;
-		border-top: 1px solid var(--bg-subtle);
+		border-top: var(--bw) solid var(--bg-subtle);
 		margin: 1em 0;
 	}
 	.md :global(table) {
@@ -524,7 +524,7 @@
 	}
 	.md :global(th),
 	.md :global(td) {
-		border: 1px solid var(--bg-subtle);
+		border: var(--bw) solid var(--bg-subtle);
 		padding: 0.35rem 0.6rem;
 	}
 	.md :global(th) {
@@ -567,8 +567,8 @@
 	.md :global(.mermaid-error) {
 		padding: 0.5rem 0.75rem;
 		background: color-mix(in srgb, var(--danger) 12%, transparent);
-		border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
-		border-radius: 6px;
+		border: var(--bw) solid color-mix(in srgb, var(--danger) 40%, transparent);
+		border-radius: var(--r-md);
 		color: var(--danger);
 		font-size: 0.8rem;
 		font-family: 'SFMono-Regular', Consolas, monospace;

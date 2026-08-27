@@ -605,7 +605,7 @@
 		min-height: 70vh;
 	}
 	.sidebar {
-		border-right: 1px solid var(--bg-subtle);
+		border-right: var(--bw) solid var(--bg-subtle);
 		padding-right: 1rem;
 		display: flex;
 		flex-direction: column;
@@ -624,7 +624,7 @@
 		}
 		.sidebar {
 			border-right: none;
-			border-bottom: 1px solid var(--bg-subtle);
+			border-bottom: var(--bw) solid var(--bg-subtle);
 			padding-right: 0;
 			padding-bottom: 0.75rem;
 			max-height: 40vh;
@@ -649,8 +649,8 @@
 		margin-left: auto;
 		padding: 0.15rem 0.55rem;
 		background: transparent;
-		border: 1px solid var(--border);
-		border-radius: 4px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-sm);
 		color: var(--text-muted);
 		font-size: 0.72rem;
 		cursor: pointer;
@@ -684,8 +684,8 @@
 	.tag-filter-chip {
 		padding: 0.15rem 0.65rem;
 		background: color-mix(in srgb, var(--warning) 8%, transparent);
-		border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
-		border-radius: 20px;
+		border: var(--bw) solid color-mix(in srgb, var(--warning) 30%, transparent);
+		border-radius: var(--r-pill);
 		color: var(--warning);
 		font-size: 0.72rem;
 		font-family: 'JetBrains Mono', ui-monospace, monospace;
@@ -711,13 +711,13 @@
 		font-size: 0.65rem;
 		color: var(--text-muted);
 		background: var(--bg-subtle);
-		border-radius: 10px;
+		border-radius: var(--r-xl);
 	}
 	.tag-clear {
 		padding: 0.15rem 0.55rem;
 		background: transparent;
-		border: 1px solid var(--border);
-		border-radius: 20px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-pill);
 		color: var(--text-muted);
 		font-size: 0.7rem;
 		cursor: pointer;
@@ -732,7 +732,7 @@
 		padding: 0.35rem 0.5rem;
 		background: transparent;
 		border: none;
-		border-radius: 4px;
+		border-radius: var(--r-sm);
 		color: var(--text);
 		font-size: 0.85rem;
 		cursor: pointer;
@@ -745,9 +745,9 @@
 		width: 100%;
 		padding: 0.3rem 0.55rem;
 		background: var(--bg);
-		border: 1px solid var(--border);
+		border: var(--bw) solid var(--border);
 		color: var(--text);
-		border-radius: 4px;
+		border-radius: var(--r-sm);
 		font-size: 0.82rem;
 		margin: 0.4rem 0;
 		box-sizing: border-box;
@@ -760,7 +760,7 @@
 		display: inline-block;
 		margin-top: 0.15rem;
 		padding: 0 0.3rem;
-		border-radius: 3px;
+		border-radius: var(--r-xs);
 		background: color-mix(in srgb, var(--accent) 14%, transparent);
 		color: var(--accent-secondary);
 		font-size: 0.62rem;
@@ -770,7 +770,7 @@
 		   테마별 토큰을 쓴다(global.css 의 --search-hit-*). */
 		background: var(--search-hit-bg);
 		color: var(--search-hit-text);
-		border-radius: 2px;
+		border-radius: var(--r-xs);
 		padding: 0 1px;
 	}
 	.rule-excerpt {
@@ -841,8 +841,8 @@
 	.btn-edit {
 		padding: 0.3rem 0.7rem;
 		background: transparent;
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		color: var(--text);
 		font-size: 0.825rem;
 		cursor: pointer;
@@ -864,16 +864,16 @@
 		gap: 0.4rem;
 		padding: 0.6rem;
 		background: var(--bg);
-		border: 1px dashed var(--border);
-		border-radius: 6px;
+		border: var(--bw) dashed var(--border);
+		border-radius: var(--r-md);
 		margin: 0.5rem 0;
 	}
 	.text-input {
 		padding: 0.35rem 0.55rem;
 		background: var(--bg);
-		border: 1px solid var(--border);
+		border: var(--bw) solid var(--border);
 		color: var(--text);
-		border-radius: 4px;
+		border-radius: var(--r-sm);
 		font-size: 0.85rem;
 	}
 
@@ -929,9 +929,9 @@
 	.btn-save {
 		padding: 0.35rem 0.85rem;
 		background: var(--btn-primary-bg);
-		border: 1px solid var(--btn-primary-border);
+		border: var(--bw) solid var(--btn-primary-border);
 		color: var(--btn-primary-text);
-		border-radius: 6px;
+		border-radius: var(--r-md);
 		cursor: pointer;
 		font-size: 0.825rem;
 	}
@@ -946,9 +946,9 @@
 	.btn-cancel {
 		padding: 0.35rem 0.85rem;
 		background: transparent;
-		border: 1px solid var(--border);
+		border: var(--bw) solid var(--border);
 		color: var(--text);
-		border-radius: 6px;
+		border-radius: var(--r-md);
 		cursor: pointer;
 		font-size: 0.825rem;
 	}

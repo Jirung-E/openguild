@@ -121,8 +121,8 @@
 		/* BUG-199: 위 정렬과 짝 — 짧으면 세로 가운데처럼 보인다. */
 		margin: auto;
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 10px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-xl);
 		width: 100%;
 		max-width: calc(26.25rem * var(--popup-scale, 1)); /* BUG-064 */
 		padding: 1.1rem 1.4rem 1.2rem;
@@ -150,8 +150,8 @@
 	.btn-no {
 		padding: 0.4rem 1rem;
 		background: transparent;
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		color: var(--text-muted);
 		font-size: 0.875rem;
 		cursor: pointer;
@@ -162,8 +162,8 @@
 	.btn-yes {
 		padding: 0.4rem 1.1rem;
 		background: var(--btn-primary-bg);
-		border: 1px solid var(--btn-primary-border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--btn-primary-border);
+		border-radius: var(--r-md);
 		color: var(--btn-primary-text);
 		font-size: 0.875rem;
 		cursor: pointer;

@@ -304,8 +304,8 @@
 
 	.sec-add-btn {
 		padding: 0.15rem 0.6rem;
-		border: 1px solid var(--border);
-		border-radius: 4px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-sm);
 		background: transparent;
 		color: var(--text-muted);
 		font-size: 0.72rem;
@@ -320,8 +320,8 @@
 	/* DEV-189: 표시 높이 모드 토글 버튼. */
 	.sec-mode-btn {
 		padding: 0.15rem 0.6rem;
-		border: 1px solid var(--border);
-		border-radius: 4px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-sm);
 		background: transparent;
 		color: var(--text-muted);
 		font-size: 0.72rem;
@@ -342,8 +342,8 @@
 		resize: vertical;
 		min-height: 7.5rem;
 		max-height: 125rem;
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		padding: 0.25rem 0.75rem;
 	}
 	.memo-body.fixed::-webkit-scrollbar {
@@ -394,9 +394,9 @@
 	.btn-save {
 		padding: 0.35rem 0.85rem;
 		background: var(--btn-primary-bg);
-		border: 1px solid var(--btn-primary-border);
+		border: var(--bw) solid var(--btn-primary-border);
 		color: var(--btn-primary-text);
-		border-radius: 6px;
+		border-radius: var(--r-md);
 		cursor: pointer;
 		font-size: 0.825rem;
 	}
@@ -411,9 +411,9 @@
 	.btn-cancel {
 		padding: 0.35rem 0.85rem;
 		background: transparent;
-		border: 1px solid var(--border);
+		border: var(--bw) solid var(--border);
 		color: var(--text);
-		border-radius: 6px;
+		border-radius: var(--r-md);
 		cursor: pointer;
 		font-size: 0.825rem;
 	}

@@ -250,7 +250,7 @@
 		position: fixed;
 		width: 7px;
 		background: var(--scrollbar-thumb);
-		border-radius: 4px;
+		border-radius: var(--r-sm);
 		z-index: 9999;
 		pointer-events: auto;
 		cursor: pointer;

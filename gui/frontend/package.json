@@ -17,7 +17,8 @@
 		"format": "prettier --write .",
 		"test": "vitest run",
 		"test:watch": "vitest",
-		"check:pill": "node scripts/check-pill-single-source.mjs"
+		"check:pill": "node scripts/check-pill-single-source.mjs",
+		"check:radius": "node scripts/check-raw-radius.mjs"
 	},
 	"devDependencies": {
 		"@eslint/compat": "^2.0.4",

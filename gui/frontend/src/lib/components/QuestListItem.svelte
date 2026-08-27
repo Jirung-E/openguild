@@ -110,7 +110,7 @@
 		padding-top: 0.55rem;
 		padding-bottom: 0.55rem;
 		padding-right: 1.5rem;
-		border-bottom: 1px solid var(--bg-subtle);
+		border-bottom: var(--bw) solid var(--bg-subtle);
 		cursor: pointer;
 		transition: background 0.1s;
 	}
@@ -150,11 +150,11 @@
 		align-items: center;
 		gap: 0.2rem;
 		padding: 0.1rem 0.45rem;
-		border-radius: 20px;
+		border-radius: var(--r-pill);
 		font-size: 0.72rem;
 		color: var(--text-muted);
 		background: var(--bg-subtle);
-		border: 1px solid var(--border);
+		border: var(--bw) solid var(--border);
 	}
 	.cc-icon {
 		font-size: 0.7rem;
@@ -167,19 +167,19 @@
 		align-items: center;
 		gap: 0.2rem;
 		padding: 0.1rem 0.45rem;
-		border-radius: 20px;
+		border-radius: var(--r-pill);
 		font-size: 0.72rem;
 		font-weight: 600;
 	}
 	.discussion-count.unresolved {
 		color: var(--danger);
 		background: color-mix(in srgb, var(--danger) 14%, transparent);
-		border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+		border: var(--bw) solid color-mix(in srgb, var(--danger) 40%, transparent);
 	}
 	.discussion-count.resolved {
 		color: var(--success-strong);
 		background: color-mix(in srgb, var(--success) 14%, transparent);
-		border: 1px solid color-mix(in srgb, var(--success) 40%, transparent);
+		border: var(--bw) solid color-mix(in srgb, var(--success) 40%, transparent);
 	}
 	.dc-icon {
 		font-size: 0.9rem;

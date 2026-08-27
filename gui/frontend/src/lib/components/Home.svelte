@@ -422,8 +422,8 @@
 	.btn-link {
 		padding: 0.35rem 0.85rem;
 		background: transparent;
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		color: var(--text);
 		font-size: 0.825rem;
 		cursor: pointer;
@@ -434,8 +434,8 @@
 	.btn-primary {
 		padding: 0.35rem 0.85rem;
 		background: var(--btn-primary-bg);
-		border: 1px solid var(--btn-primary-border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--btn-primary-border);
+		border-radius: var(--r-md);
 		color: var(--btn-primary-text);
 		font-size: 0.825rem;
 		cursor: pointer;
@@ -465,8 +465,8 @@
 		gap: 0.6rem;
 		padding: 0.5rem 0.75rem;
 		background: var(--bg-elevated);
-		border: 1px solid var(--bg-subtle);
-		border-radius: 6px;
+		border: var(--bw) solid var(--bg-subtle);
+		border-radius: var(--r-md);
 		color: inherit;
 		text-decoration: none;
 		transition:

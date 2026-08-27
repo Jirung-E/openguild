@@ -249,13 +249,13 @@
 		top: 50%;
 		transform: translateY(-50%);
 		height: 4px;
-		border-radius: 2px;
+		border-radius: var(--r-xs);
 		background: var(--bg-subtle);
 	}
 	.fill {
 		height: 100%;
 		background: var(--accent);
-		border-radius: 2px;
+		border-radius: var(--r-xs);
 	}
 	.thumb {
 		position: absolute;

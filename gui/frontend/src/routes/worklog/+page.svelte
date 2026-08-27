@@ -648,8 +648,8 @@
 	}
 	.unit {
 		display: inline-flex;
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		overflow: hidden;
 	}
 	.unit button {
@@ -661,7 +661,7 @@
 		cursor: pointer;
 	}
 	.unit button + button {
-		border-left: 1px solid var(--border);
+		border-left: var(--bw) solid var(--border);
 	}
 	.unit button.on {
 		background: color-mix(in srgb, var(--accent) 15%, transparent);
@@ -673,10 +673,10 @@
 		gap: 0.35rem;
 	}
 	.nav button {
-		border: 1px solid var(--border);
+		border: var(--bw) solid var(--border);
 		background: transparent;
 		color: var(--text);
-		border-radius: 6px;
+		border-radius: var(--r-md);
 		padding: 0.2rem 0.55rem;
 		font-size: 0.78rem;
 		cursor: pointer;
@@ -696,8 +696,8 @@
 	}
 
 	.note {
-		border: 1px solid var(--border);
-		border-radius: 8px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-lg);
 		background: var(--bg-elevated);
 		margin-bottom: 1rem;
 	}
@@ -708,7 +708,7 @@
 		/* DEV-302: 라벨 앞 아이콘 정렬 — span 안에서 함께 흐르게. */
 		gap: 0.5rem;
 		padding: 0.5rem 0.75rem;
-		border-bottom: 1px solid var(--border);
+		border-bottom: var(--bw) solid var(--border);
 		font-size: 0.78rem;
 		color: var(--text-muted);
 	}
@@ -725,7 +725,7 @@
 		color: var(--text-muted);
 	}
 	.note-day {
-		border-bottom: 1px solid var(--border);
+		border-bottom: var(--bw) solid var(--border);
 	}
 	.note-day:last-child {
 		border-bottom: none;
@@ -741,8 +741,8 @@
 		padding: 0.6rem 0.75rem;
 	}
 	.editor-wrap {
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		overflow: hidden;
 		height: 13.75rem;
 		resize: vertical;
@@ -754,8 +754,8 @@
 		margin: 0 0 0.35rem;
 	}
 	.timeline {
-		border: 1px solid var(--border);
-		border-radius: 8px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-lg);
 		background: var(--bg-elevated);
 		padding: 0.25rem 0.75rem;
 	}
@@ -766,7 +766,7 @@
 	}
 	/* REQ-006: compact 뷰 — 문서 단위 묶음. */
 	.docgroup {
-		border-bottom: 1px solid var(--border);
+		border-bottom: var(--bw) solid var(--border);
 	}
 	.docrow {
 		display: flex;
@@ -831,7 +831,7 @@
 		gap: 0.6rem;
 		align-items: baseline;
 		padding: 0.4rem 0;
-		border-bottom: 1px solid var(--border);
+		border-bottom: var(--bw) solid var(--border);
 		text-decoration: none;
 		color: var(--text);
 		font-size: 0.83rem;
@@ -854,7 +854,7 @@
 		flex: none;
 		font-size: 0.68rem;
 		padding: 0.05rem 0.5rem;
-		border-radius: 9px;
+		border-radius: var(--r-pill);
 	}
 	.b-status {
 		background: color-mix(in srgb, var(--success) 15%, transparent);
@@ -931,8 +931,8 @@
 	.btn {
 		padding: 0.25rem 0.65rem;
 		background: transparent;
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		color: var(--text);
 		font-size: 0.78rem;
 		cursor: pointer;

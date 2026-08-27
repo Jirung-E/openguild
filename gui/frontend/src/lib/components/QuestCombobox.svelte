@@ -125,8 +125,8 @@
 	.cb-input {
 		padding: 0.4rem 0.7rem;
 		background: var(--bg);
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		color: var(--text-strong);
 		font-size: 0.875rem;
 		outline: none;
@@ -139,8 +139,8 @@
 		padding: 0.6rem 0.8rem;
 		color: var(--text-faint);
 		font-size: 0.8rem;
-		border: 1px dashed var(--bg-subtle);
-		border-radius: 6px;
+		border: var(--bw) dashed var(--bg-subtle);
+		border-radius: var(--r-md);
 		text-align: center;
 	}
 
@@ -157,15 +157,15 @@
 		overflow-y: auto;
 		/* DEV-074 fix16: native scrollbar 숨김 — OverlayScrollbar 가 대신 그림. */
 		scrollbar-width: none;
-		border: 1px solid var(--bg-subtle);
-		border-radius: 6px;
+		border: var(--bw) solid var(--bg-subtle);
+		border-radius: var(--r-md);
 		background: var(--bg);
 	}
 	.cb-list::-webkit-scrollbar {
 		display: none;
 	}
 	.cb-list li {
-		border-bottom: 1px solid var(--bg-elevated);
+		border-bottom: var(--bw) solid var(--bg-elevated);
 	}
 	.cb-list li:last-child {
 		border-bottom: none;

@@ -175,6 +175,11 @@ jobs:
       - name: check pill single source
         run: npm run check:pill
 
+      # DEV-369: 곡률·테두리를 리터럴 px 로 적으면 실패 (토큰만).
+      # px 는 UI 배율을 안 따라간다 — BUG-244/254 가 같은 함정을 반복해 맞았다.
+      - name: check no raw radius/border literals
+        run: npm run check:radius
+
       - name: vitest
         run: npm test -- --run
 

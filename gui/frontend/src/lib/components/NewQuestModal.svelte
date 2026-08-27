@@ -781,8 +781,8 @@
 		/* BUG-199: 짧으면 세로 가운데처럼 보이도록(위 flex-start 와 짝). */
 		margin: auto;
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 12px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-xl);
 		width: 100%;
 		max-width: calc(
 			35rem * var(--popup-scale, 1)
@@ -807,7 +807,7 @@
 		align-items: center;
 		justify-content: space-between;
 		padding: 1rem 1.25rem 0.75rem;
-		border-bottom: 1px solid var(--bg-subtle);
+		border-bottom: var(--bw) solid var(--bg-subtle);
 	}
 	.modal-title {
 		margin: 0;
@@ -849,8 +849,8 @@
 		gap: 0.3rem;
 	}
 	.relations-field {
-		border: 1px solid var(--border);
-		border-radius: 8px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-lg);
 		background: var(--bg-subtle);
 		padding: 0.55rem 0.7rem;
 	}
@@ -867,7 +867,7 @@
 	}
 	.relation-row {
 		padding: 0.45rem 0;
-		border-top: 1px solid var(--border);
+		border-top: var(--bw) solid var(--border);
 	}
 	.relation-head {
 		display: flex;
@@ -879,8 +879,8 @@
 		font-weight: 600;
 	}
 	.relation-add {
-		border: 1px solid var(--border);
-		border-radius: 4px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-sm);
 		background: var(--bg-elevated);
 		color: var(--text-muted);
 		padding: 0.12rem 0.45rem;
@@ -904,8 +904,8 @@
 		min-width: 0;
 		max-width: 100%;
 		padding: 0.2rem 0.4rem;
-		border: 1px solid var(--border);
-		border-radius: 5px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-sm);
 		background: var(--bg);
 		color: var(--text-muted);
 		font-size: 0.72rem;
@@ -963,8 +963,8 @@
 	}
 	.pill-btn {
 		padding: 0.15rem 0.7rem;
-		border-radius: 20px;
-		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
+		border-radius: var(--r-pill);
+		border: var(--bw) solid color-mix(in srgb, var(--c) 40%, transparent);
 		background: transparent;
 		color: color-mix(in srgb, var(--c) 70%, var(--text-muted));
 		font-size: 0.75rem;
@@ -987,8 +987,8 @@
 	.sel {
 		padding: 0.4rem 0.6rem;
 		background: var(--bg);
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		color: var(--text);
 		font-size: 0.875rem;
 		outline: none;
@@ -1003,8 +1003,8 @@
 		align-items: center;
 		padding: 0.4rem 0.6rem;
 		background: var(--bg);
-		border: 1px solid var(--bg-subtle);
-		border-radius: 6px;
+		border: var(--bw) solid var(--bg-subtle);
+		border-radius: var(--r-md);
 		color: var(--text-muted);
 		font-size: 0.875rem;
 		min-width: 5rem;
@@ -1016,8 +1016,8 @@
 	.inp {
 		padding: 0.5rem 0.75rem;
 		background: var(--bg);
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		color: var(--text-strong);
 		font-size: 0.9rem;
 		outline: none;
@@ -1031,8 +1031,8 @@
 	.ta {
 		padding: 0.5rem 0.75rem;
 		background: var(--bg);
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		color: var(--text);
 		font-size: 0.85rem;
 		outline: none;
@@ -1060,8 +1060,8 @@
 	.btn-create {
 		padding: 0.45rem 1.25rem;
 		background: var(--btn-primary-bg);
-		border: 1px solid var(--btn-primary-border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--btn-primary-border);
+		border-radius: var(--r-md);
 		color: var(--btn-primary-text);
 		font-size: 0.875rem;
 		cursor: pointer;
@@ -1080,8 +1080,8 @@
 	.btn-cancel {
 		padding: 0.45rem 1rem;
 		background: transparent;
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		color: var(--text-muted);
 		font-size: 0.875rem;
 		cursor: pointer;
@@ -1095,8 +1095,8 @@
 		margin-left: auto;
 		padding: 0.45rem 0.9rem;
 		background: transparent;
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		color: var(--text-muted);
 		font-size: 0.875rem;
 		cursor: pointer;
@@ -1118,8 +1118,8 @@
 	.btn-overwrite {
 		padding: 0.45rem 0.9rem;
 		background: transparent;
-		border: 1px solid var(--danger);
-		border-radius: 6px;
+		border: var(--bw) solid var(--danger);
+		border-radius: var(--r-md);
 		color: var(--danger);
 		font-size: 0.875rem;
 		cursor: pointer;

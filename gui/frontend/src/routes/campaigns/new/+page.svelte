@@ -119,9 +119,9 @@
 	}
 	.back {
 		background: transparent;
-		border: 1px solid var(--border);
+		border: var(--bw) solid var(--border);
 		color: var(--text);
-		border-radius: 6px;
+		border-radius: var(--r-md);
 		padding: 0.3rem 0.7rem;
 		font-size: 0.825rem;
 		cursor: pointer;
@@ -147,9 +147,9 @@
 	input,
 	textarea {
 		background: var(--bg);
-		border: 1px solid var(--border);
+		border: var(--bw) solid var(--border);
 		color: var(--text);
-		border-radius: 6px;
+		border-radius: var(--r-md);
 		padding: 0.45rem 0.6rem;
 		font-size: 0.9rem;
 		font-family: inherit;
@@ -173,10 +173,10 @@
 
 	.error {
 		background: color-mix(in srgb, var(--danger) 18%, transparent);
-		border: 1px solid var(--danger);
+		border: var(--bw) solid var(--danger);
 		color: var(--danger);
 		padding: 0.4rem 0.65rem;
-		border-radius: 4px;
+		border-radius: var(--r-sm);
 		font-size: 0.825rem;
 	}
 
@@ -189,13 +189,13 @@
 	.btn-cancel,
 	.btn-primary {
 		padding: 0.4rem 0.95rem;
-		border-radius: 6px;
+		border-radius: var(--r-md);
 		font-size: 0.875rem;
 		cursor: pointer;
 	}
 	.btn-cancel {
 		background: transparent;
-		border: 1px solid var(--border);
+		border: var(--bw) solid var(--border);
 		color: var(--text);
 	}
 	.btn-cancel:hover {
@@ -203,7 +203,7 @@
 	}
 	.btn-primary {
 		background: var(--btn-primary-bg);
-		border: 1px solid var(--btn-primary-border);
+		border: var(--bw) solid var(--btn-primary-border);
 		color: var(--btn-primary-text);
 	}
 	.btn-primary:hover:not(:disabled) {

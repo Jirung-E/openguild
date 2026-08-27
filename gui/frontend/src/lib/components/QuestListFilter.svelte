@@ -259,7 +259,7 @@
 		   위치). 필터가 wrap 돼도 버튼 밑으로 안 들어가게 padding-right 예약. */
 		padding: 0.75rem 130px 0.75rem 1.5rem;
 		background: var(--bg-elevated);
-		border-bottom: 1px solid var(--bg-subtle);
+		border-bottom: var(--bw) solid var(--bg-subtle);
 		flex-wrap: wrap;
 	}
 	/* BUG-194: 좁은 화면에선 세로 공간이 귀하다 — 여백을 줄이고 검색은 한 줄 전체. */
@@ -290,8 +290,8 @@
 
 	button {
 		padding: 0.25rem 0.65rem;
-		border: 1px solid var(--border);
-		border-radius: 20px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-pill);
 		background: transparent;
 		color: var(--text-muted);
 		font-size: 0.8rem;
@@ -336,8 +336,8 @@
 	.search-input {
 		padding: 0.3rem 1.8rem 0.3rem 0.7rem;
 		background: var(--bg);
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		color: var(--text);
 		font-size: 0.8rem;
 		min-width: 12.5rem; /* BUG-064 */
@@ -355,7 +355,7 @@
 		right: 0.3rem;
 		padding: 0 0.4rem;
 		border: none;
-		border-radius: 12px;
+		border-radius: var(--r-pill);
 		background: transparent;
 		color: var(--text-faint);
 		font-size: 1rem;
@@ -399,12 +399,12 @@
 		flex-wrap: wrap;
 		padding: 0.5rem 130px 0.5rem 1.5rem;
 		background: var(--bg-elevated);
-		border-bottom: 1px solid var(--bg-subtle);
+		border-bottom: var(--bw) solid var(--bg-subtle);
 	}
 	.xfilter-panel button {
 		padding: 0.25rem 0.65rem;
-		border: 1px solid var(--border);
-		border-radius: 20px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-pill);
 		background: transparent;
 		color: var(--text-muted);
 		font-size: 0.8rem;

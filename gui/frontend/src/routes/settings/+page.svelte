@@ -759,7 +759,7 @@
 		border: none;
 		background: transparent;
 		color: var(--text-muted);
-		border-radius: 6px;
+		border-radius: var(--r-md);
 		font-size: 0.9rem;
 		cursor: pointer;
 		transition:
@@ -842,8 +842,8 @@
 	.btn-check-upd {
 		padding: 0.2rem 0.6rem;
 		background: transparent;
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		color: var(--text-muted);
 		font-size: 0.75rem;
 		cursor: pointer;
@@ -881,8 +881,8 @@
 		gap: 0.25rem;
 		padding: 0.15rem 0.4rem;
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 	}
 	.ui-scale .num-input:focus-within {
 		border-color: var(--accent);
@@ -922,8 +922,8 @@
 	.ui-scale .btn-reset {
 		padding: 0.2rem 0.6rem;
 		background: transparent;
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		color: var(--text);
 		font-size: 0.8rem;
 		cursor: pointer;
@@ -947,15 +947,15 @@
 		display: inline-flex;
 		gap: 0;
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		padding: 2px;
 	}
 	.th-btn {
 		padding: 4px 12px;
 		background: transparent;
 		border: none;
-		border-radius: 4px;
+		border-radius: var(--r-sm);
 		color: var(--text-muted);
 		font-size: 0.8rem;
 		cursor: pointer;
@@ -995,7 +995,7 @@
 		align-items: center;
 	}
 	.ct-actions .th-btn {
-		border: 1px solid var(--border);
+		border: var(--bw) solid var(--border);
 		background: var(--bg-elevated);
 	}
 	.ct-create {
@@ -1008,8 +1008,8 @@
 	.ct-name {
 		padding: 0.3rem 0.6rem;
 		background: var(--bg);
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		color: var(--text);
 		font-size: 0.85rem;
 	}
@@ -1028,8 +1028,8 @@
 		width: 100%;
 		padding: 0.4rem 0.6rem;
 		background: var(--bg);
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		color: var(--text);
 		font-size: 0.78rem;
 		font-family: 'JetBrains Mono', ui-monospace, monospace;
@@ -1046,7 +1046,7 @@
 		align-items: center;
 		gap: 0.45rem;
 		padding: 0.15rem 0.3rem;
-		border-radius: 6px;
+		border-radius: var(--r-md);
 	}
 	.ct-token.overridden {
 		background: color-mix(in srgb, var(--accent) 8%, transparent);
@@ -1055,8 +1055,8 @@
 		width: 1.6rem;
 		height: 1.6rem;
 		padding: 0;
-		border: 1px solid var(--border);
-		border-radius: 4px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-sm);
 		background: transparent;
 		cursor: pointer;
 		flex: none;

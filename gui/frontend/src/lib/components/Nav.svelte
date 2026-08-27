@@ -539,7 +539,7 @@
 		padding: 0 1.5rem;
 		height: var(--nav-h, 3.25rem);
 		background: var(--nav-bg);
-		border-bottom: 1px solid var(--nav-border);
+		border-bottom: var(--bw) solid var(--nav-border);
 		position: sticky;
 		/* 커스텀 타이틀바(Windows Tauri) 아래에 붙도록 — 없으면 0px. */
 		top: var(--titlebar-h, 0px);
@@ -569,7 +569,7 @@
 
 	nav a {
 		padding: 0.35rem 0.85rem;
-		border-radius: 6px;
+		border-radius: var(--r-md);
 		font-size: 0.875rem;
 		color: var(--text-muted);
 		text-decoration: none;
@@ -605,7 +605,7 @@
 		justify-content: center;
 		width: 1.9rem;
 		height: 1.9rem;
-		border-radius: 6px;
+		border-radius: var(--r-md);
 		font-size: 1rem;
 		line-height: 1;
 		color: var(--text-muted);
@@ -629,14 +629,14 @@
 		flex-direction: column;
 		padding: 0.3rem;
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 8px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-lg);
 		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 		z-index: 300;
 	}
 	.more-menu a {
 		padding: 0.4rem 0.7rem;
-		border-radius: 6px;
+		border-radius: var(--r-md);
 		font-size: 0.85rem;
 		color: var(--text);
 		text-decoration: none;
@@ -678,7 +678,7 @@
 		justify-content: center;
 		width: 2rem;
 		height: 2rem;
-		border-radius: 6px;
+		border-radius: var(--r-md);
 		font-size: 1.1rem;
 		line-height: 1;
 		color: var(--text-muted);
@@ -820,7 +820,7 @@
 		justify-content: center;
 		width: 2rem;
 		height: 2rem;
-		border-radius: 6px;
+		border-radius: var(--r-md);
 		font-size: 1.05rem;
 		line-height: 1;
 		color: var(--text-muted);

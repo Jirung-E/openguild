@@ -670,14 +670,14 @@
 		justify-content: center;
 		width: 2.25rem;
 		height: 2.25rem;
-		border-radius: 8px;
+		border-radius: var(--r-lg);
 		background: transparent;
 		border: none;
 		cursor: pointer;
 		text-decoration: none;
 		color: var(--text-muted);
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
+		border: var(--bw) solid var(--border);
 		font-size: 1.1rem;
 		transition:
 			background 0.1s,
@@ -710,8 +710,8 @@
 		flex: 0 0 auto;
 		padding: 0 0.85rem;
 		background: transparent;
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		color: var(--text-muted);
 		font-size: 1.2rem;
 		line-height: 1;
@@ -743,8 +743,8 @@
 		text-align: left;
 		padding: 0.75rem 1rem;
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		color: inherit;
 		font: inherit;
 		cursor: pointer;
@@ -793,8 +793,8 @@
 		padding: 0.4rem 0.9rem;
 		background: transparent;
 		color: var(--danger);
-		border: 1px solid var(--border);
-		border-radius: 4px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-sm);
 		font-size: 0.85rem;
 		cursor: pointer;
 	}
@@ -807,7 +807,7 @@
 	.err {
 		padding: 1rem;
 		background: var(--bg-elevated);
-		border-radius: 6px;
+		border-radius: var(--r-md);
 		color: var(--text-muted);
 	}
 	.err {
@@ -817,14 +817,14 @@
 	code {
 		background: var(--bg);
 		padding: 0.1rem 0.4rem;
-		border-radius: 3px;
+		border-radius: var(--r-xs);
 		font-family: 'SFMono-Regular', Consolas, monospace;
 		font-size: 0.9em;
 	}
 	.hint {
 		margin-top: 2rem;
 		padding-top: 1rem;
-		border-top: 1px solid var(--border);
+		border-top: var(--bw) solid var(--border);
 		color: var(--text-muted);
 		font-size: 0.85rem;
 	}
@@ -838,8 +838,8 @@
 		margin: 0 0 1.25rem;
 		padding: 0.85rem 1rem;
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 8px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-lg);
 	}
 	.btn-pick {
 		/* DEV-302: 아이콘 + 라벨 기준선 정렬. */
@@ -848,8 +848,8 @@
 		gap: 0.4em;
 		padding: 0.5rem 1rem;
 		background: var(--accent-strong);
-		border: 1px solid var(--accent);
-		border-radius: 6px;
+		border: var(--bw) solid var(--accent);
+		border-radius: var(--r-md);
 		color: var(--btn-primary-text);
 		font-size: 0.9rem;
 		font-weight: 500;
@@ -890,8 +890,8 @@
 		flex: 1 1 auto;
 		min-width: 12.5rem;
 		padding: 0.45rem 0.6rem;
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		background: var(--bg);
 		color: var(--text);
 		font-size: 0.85rem;
@@ -921,8 +921,8 @@
 		margin-bottom: 1.5rem;
 		padding: 1rem 1.25rem;
 		background: var(--bg-subtle);
-		border: 1px solid var(--accent);
-		border-radius: 8px;
+		border: var(--bw) solid var(--accent);
+		border-radius: var(--r-lg);
 	}
 	.uninit h2 {
 		margin: 0 0 0.5rem;
@@ -933,7 +933,7 @@
 		margin: 0 0 0.5rem;
 		padding: 0.4rem 0.6rem;
 		background: var(--bg);
-		border-radius: 4px;
+		border-radius: var(--r-sm);
 		font-family: 'SFMono-Regular', Consolas, monospace;
 		font-size: 0.85rem;
 		color: var(--text);
@@ -960,8 +960,8 @@
 		flex: 1 1 auto;
 		padding: 0.4rem 0.6rem;
 		background: var(--bg);
-		border: 1px solid var(--border);
-		border-radius: 4px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-sm);
 		color: var(--text);
 		font: inherit;
 		font-family: 'SFMono-Regular', Consolas, monospace;
@@ -996,8 +996,8 @@
 		/* BUG-199: 위 정렬과 짝 — 짧으면 세로 가운데처럼 보인다. */
 		margin: auto;
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 10px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-xl);
 		width: 100%;
 		max-width: calc(26.25rem * var(--popup-scale, 1)); /* BUG-064 */
 		padding: 1.2rem 1.4rem;
@@ -1022,7 +1022,7 @@
 		margin: -0.5rem 0 0.85rem;
 		padding: 0.4rem 0.6rem;
 		background: var(--bg);
-		border-radius: 4px;
+		border-radius: var(--r-sm);
 		font-family: 'SFMono-Regular', Consolas, monospace;
 		font-size: 0.8rem;
 		color: var(--text-muted);
@@ -1040,8 +1040,8 @@
 	.btn-yes {
 		padding: 0.4rem 1.1rem;
 		background: rgba(233, 79, 79, 0.15);
-		border: 1px solid var(--danger);
-		border-radius: 6px;
+		border: var(--bw) solid var(--danger);
+		border-radius: var(--r-md);
 		color: var(--danger);
 		font-size: 0.875rem;
 		cursor: pointer;
@@ -1052,8 +1052,8 @@
 	.btn-no {
 		padding: 0.4rem 1rem;
 		background: transparent;
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		color: var(--text-muted);
 		font-size: 0.875rem;
 		cursor: pointer;

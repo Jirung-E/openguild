@@ -466,7 +466,7 @@
 		/* 본문과는 좁게(본문 컨테이너가 아래 여백 담당), 구분선 위/아래는 넉넉히. */
 		margin-top: 0.4rem;
 		padding-bottom: 1.5rem;
-		border-bottom: 1px solid var(--border);
+		border-bottom: var(--bw) solid var(--border);
 		margin-bottom: 1.75rem;
 	}
 	.head {
@@ -520,8 +520,8 @@
 	.upq-cancel {
 		flex: none;
 		background: none;
-		border: 1px solid var(--border);
-		border-radius: 4px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-sm);
 		padding: 0.1rem 0.45rem;
 		font-size: 0.75rem;
 		color: var(--text-muted);
@@ -570,7 +570,7 @@
 		flex: 1;
 		min-width: 4rem;
 		height: 3px;
-		border-radius: 2px;
+		border-radius: var(--r-xs);
 		background: var(--bg-subtle);
 		overflow: hidden;
 	}
@@ -578,7 +578,7 @@
 		display: block;
 		width: 35%;
 		height: 100%;
-		border-radius: 2px;
+		border-radius: var(--r-xs);
 		background: var(--accent);
 		animation: up-slide 1.1s ease-in-out infinite;
 	}
@@ -623,8 +623,8 @@
 	.btn {
 		font-size: 0.8rem;
 		padding: 0.25rem 0.7rem;
-		border-radius: 6px;
-		border: 1px solid var(--border);
+		border-radius: var(--r-md);
+		border: var(--bw) solid var(--border);
 		background: var(--bg-subtle);
 		color: var(--text);
 		cursor: pointer;
@@ -660,8 +660,8 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.25rem;
-		border: 1px solid var(--border);
-		border-radius: 8px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-lg);
 		padding: 0.4rem;
 		background: var(--bg-elevated);
 	}
@@ -672,7 +672,7 @@
 		height: 5rem;
 		border: none;
 		background: var(--bg-subtle);
-		border-radius: 6px;
+		border-radius: var(--r-md);
 		cursor: pointer;
 		overflow: hidden;
 		padding: 0;

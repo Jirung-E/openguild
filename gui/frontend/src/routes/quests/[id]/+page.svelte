@@ -1532,8 +1532,8 @@
 
 	.btn-edit {
 		padding: 0.3rem 0.9rem;
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		background: var(--bg-subtle);
 		color: var(--text-muted);
 		font-size: 0.8rem;
@@ -1556,8 +1556,8 @@
 		align-items: center;
 		gap: 0.3em;
 		padding: 0.3rem 0.9rem;
-		border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
-		border-radius: 6px;
+		border: var(--bw) solid color-mix(in srgb, var(--danger) 35%, transparent);
+		border-radius: var(--r-md);
 		background: transparent;
 		color: var(--danger);
 		font-size: 0.8rem;
@@ -1636,8 +1636,8 @@
 		margin-bottom: 1.25rem;
 		padding: 0.5rem 0.75rem;
 		background: var(--bg-elevated);
-		border: 1px solid var(--bg-subtle);
-		border-radius: 6px;
+		border: var(--bw) solid var(--bg-subtle);
+		border-radius: var(--r-md);
 	}
 	.status-btns {
 		display: flex;
@@ -1646,8 +1646,8 @@
 	}
 	.status-btn {
 		padding: 0.15rem 0.7rem;
-		border-radius: 20px;
-		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
+		border-radius: var(--r-pill);
+		border: var(--bw) solid color-mix(in srgb, var(--c) 40%, transparent);
 		background: transparent;
 		color: color-mix(in srgb, var(--c) 70%, var(--text-muted));
 		font-size: 0.75rem;
@@ -1734,8 +1734,8 @@
 	.edit-title {
 		padding: 0.5rem 0.75rem;
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		color: var(--text-strong);
 		font-size: 1rem;
 		outline: none;
@@ -1748,8 +1748,8 @@
 	.edit-select {
 		padding: 0.4rem 0.6rem;
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		color: var(--text);
 		font-size: 0.875rem;
 		outline: none;
@@ -1770,8 +1770,8 @@
 	.edit-date {
 		padding: 0.4rem 0.6rem;
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		color: var(--text);
 		font-size: 0.875rem;
 		outline: none;
@@ -1817,8 +1817,8 @@
 	.btn-save {
 		padding: 0.4rem 1.2rem;
 		background: var(--btn-primary-bg);
-		border: 1px solid var(--btn-primary-border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--btn-primary-border);
+		border-radius: var(--r-md);
 		color: var(--btn-primary-text);
 		font-size: 0.875rem;
 		cursor: pointer;
@@ -1834,8 +1834,8 @@
 	.btn-cancel {
 		padding: 0.4rem 1rem;
 		background: transparent;
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		color: var(--text-muted);
 		font-size: 0.875rem;
 		cursor: pointer;
@@ -1898,8 +1898,8 @@
 		gap: 0.25rem;
 		padding: 0.15rem 0.6rem;
 		background: rgba(198, 144, 38, 0.12);
-		border: 1px solid rgba(198, 144, 38, 0.4);
-		border-radius: 20px;
+		border: var(--bw) solid rgba(198, 144, 38, 0.4);
+		border-radius: var(--r-pill);
 		font-size: 0.75rem;
 		color: var(--warning);
 		font-family: 'JetBrains Mono', ui-monospace, monospace;
@@ -1926,16 +1926,16 @@
 		flex: 1;
 		padding: 0.3rem 0.6rem;
 		background: var(--bg);
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		color: var(--text);
 		font-size: 0.85rem;
 	}
 	.tag-add-form button {
 		padding: 0.3rem 0.85rem;
 		background: var(--bg-subtle);
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		color: var(--text);
 		font-size: 0.8rem;
 		cursor: pointer;
@@ -1989,8 +1989,8 @@
 		min-width: 20rem;
 		padding: 0.5rem;
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 8px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-lg);
 		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 	}
 	.rel-menu-title {
@@ -2014,8 +2014,8 @@
 		flex: none;
 		padding: 0.2rem 0.5rem;
 		font-size: 0.76rem;
-		border-radius: 5px;
-		border: 1px solid var(--border);
+		border-radius: var(--r-sm);
+		border: var(--bw) solid var(--border);
 		background: transparent;
 		color: var(--text-muted);
 		cursor: pointer;
@@ -2027,8 +2027,8 @@
 
 	.sec-add-btn {
 		padding: 0.15rem 0.6rem;
-		border: 1px solid var(--border);
-		border-radius: 4px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-sm);
 		background: transparent;
 		color: var(--text-muted);
 		font-size: 0.72rem;
@@ -2060,12 +2060,12 @@
 		list-style: none;
 		padding: 0;
 		margin: 0;
-		border: 1px solid var(--bg-subtle);
-		border-radius: 6px;
+		border: var(--bw) solid var(--bg-subtle);
+		border-radius: var(--r-md);
 		overflow: hidden;
 	}
 	.quest-list li + li {
-		border-top: 1px solid var(--bg-subtle);
+		border-top: var(--bw) solid var(--bg-subtle);
 	}
 
 	.prereq-row {
@@ -2116,12 +2116,12 @@
 		align-items: center;
 		gap: 0.2rem;
 		padding: 0.15rem 0.55rem;
-		border-radius: 20px;
+		border-radius: var(--r-pill);
 		font-size: 0.75rem;
 		font-weight: 600;
 		color: var(--danger);
 		background: color-mix(in srgb, var(--danger) 14%, transparent);
-		border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+		border: var(--bw) solid color-mix(in srgb, var(--danger) 40%, transparent);
 		cursor: help;
 	}
 
@@ -2143,8 +2143,8 @@
 	}
 	.modal-sm {
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 10px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-xl);
 		width: 100%;
 		/* BUG-160: 뷰포트보다 크면 창을 따라 줄어들도록 vw 상한 + 높이 상한 —
 		   작은 창에서 팝업이 그대로 커서 화면에 꽉 차던 문제. */
@@ -2206,8 +2206,8 @@
 	}
 	.del-sub {
 		background: var(--bg);
-		border: 1px solid var(--bg-subtle);
-		border-radius: 6px;
+		border: var(--bw) solid var(--bg-subtle);
+		border-radius: var(--r-md);
 		padding: 0.6rem 0.8rem;
 		margin-bottom: 0.85rem;
 	}
@@ -2290,8 +2290,8 @@
 	.btn-del-yes {
 		padding: 0.4rem 1.1rem;
 		background: rgba(233, 79, 79, 0.15);
-		border: 1px solid var(--danger);
-		border-radius: 6px;
+		border: var(--bw) solid var(--danger);
+		border-radius: var(--r-md);
 		color: var(--danger);
 		font-size: 0.875rem;
 		cursor: pointer;
@@ -2306,8 +2306,8 @@
 	.btn-del-no {
 		padding: 0.4rem 1rem;
 		background: transparent;
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		color: var(--text-muted);
 		font-size: 0.875rem;
 		cursor: pointer;
@@ -2333,8 +2333,8 @@
 		gap: 0.4rem;
 		padding: 0.55rem 1rem;
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 999px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-pill);
 		color: var(--text);
 		font-size: 0.85rem;
 		font-weight: 500;

@@ -878,10 +878,10 @@
 		gap: 0.3em;
 		font-size: 0.825rem;
 		padding: 0.3rem 0.7rem;
-		border-radius: 6px;
+		border-radius: var(--r-md);
 		cursor: pointer;
 		background: transparent;
-		border: 1px solid var(--border);
+		border: var(--bw) solid var(--border);
 		color: var(--text);
 		font-family: inherit;
 	}
@@ -1027,9 +1027,9 @@
 
 	.title-input {
 		background: var(--bg);
-		border: 1px solid var(--border);
+		border: var(--bw) solid var(--border);
 		color: var(--text);
-		border-radius: 6px;
+		border-radius: var(--r-md);
 		padding: 0.4rem 0.6rem;
 		font-size: 1.2rem;
 		width: 100%;
@@ -1049,9 +1049,9 @@
 	.btn-save {
 		padding: 0.35rem 0.85rem;
 		background: var(--btn-primary-bg);
-		border: 1px solid var(--btn-primary-border);
+		border: var(--bw) solid var(--btn-primary-border);
 		color: var(--btn-primary-text);
-		border-radius: 6px;
+		border-radius: var(--r-md);
 		cursor: pointer;
 		font-size: 0.825rem;
 	}
@@ -1066,9 +1066,9 @@
 	.btn-cancel {
 		padding: 0.35rem 0.85rem;
 		background: transparent;
-		border: 1px solid var(--border);
+		border: var(--bw) solid var(--border);
 		color: var(--text);
-		border-radius: 6px;
+		border-radius: var(--r-md);
 		cursor: pointer;
 		font-size: 0.825rem;
 	}
@@ -1107,8 +1107,8 @@
 		gap: 0.5rem;
 		padding: 0.45rem 0.7rem;
 		background: var(--bg-elevated);
-		border: 1px solid var(--bg-subtle);
-		border-radius: 6px;
+		border: var(--bw) solid var(--bg-subtle);
+		border-radius: var(--r-md);
 	}
 	.checklist li label {
 		display: flex;
@@ -1137,10 +1137,10 @@
 
 	.rm {
 		background: transparent;
-		border: 1px solid transparent;
+		border: var(--bw) solid transparent;
 		color: var(--text-muted);
 		cursor: pointer;
-		border-radius: 4px;
+		border-radius: var(--r-sm);
 		width: 1.5rem;
 		height: 1.5rem;
 	}
@@ -1157,18 +1157,18 @@
 	.add-row input {
 		flex: 1;
 		background: var(--bg);
-		border: 1px solid var(--border);
+		border: var(--bw) solid var(--border);
 		color: var(--text);
-		border-radius: 6px;
+		border-radius: var(--r-md);
 		padding: 0.35rem 0.6rem;
 		font-size: 0.875rem;
 	}
 	.add-row button {
 		padding: 0.35rem 0.85rem;
 		background: var(--bg-subtle);
-		border: 1px solid var(--border);
+		border: var(--bw) solid var(--border);
 		color: var(--text);
-		border-radius: 6px;
+		border-radius: var(--r-md);
 		cursor: pointer;
 		font-size: 0.825rem;
 	}
@@ -1198,8 +1198,8 @@
 	}
 	.modal-sm {
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 10px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-xl);
 		width: 100%;
 		/* BUG-160: 뷰포트보다 크면 창을 따라 줄어들도록 vw 상한 + 높이 상한. */
 		max-width: min(calc(30rem * var(--popup-scale, 1)), 92vw); /* BUG-064 */
@@ -1239,9 +1239,9 @@
 	.link-add-btn {
 		padding: 0.35rem 0.85rem;
 		background: var(--bg-subtle);
-		border: 1px solid var(--border);
+		border: var(--bw) solid var(--border);
 		color: var(--text);
-		border-radius: 6px;
+		border-radius: var(--r-md);
 		cursor: pointer;
 		font-size: 0.825rem;
 	}
@@ -1253,19 +1253,19 @@
 	.badge {
 		flex-shrink: 0;
 		padding: 0.15rem 0.55rem;
-		border-radius: 20px;
+		border-radius: var(--r-pill);
 		font-size: 0.75rem;
 		font-weight: 500;
 		background: color-mix(in srgb, var(--c) 18%, transparent);
 		color: var(--c);
-		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
+		border: var(--bw) solid color-mix(in srgb, var(--c) 40%, transparent);
 	}
 
 	/* DEV-093: 연결된 퀘스트 진행률 bar — CampaignCard 의 progress-bar 와 같은 패턴. */
 	.quest-progress-bar {
 		height: 6px;
 		background: var(--bg-subtle);
-		border-radius: 3px;
+		border-radius: var(--r-xs);
 		overflow: hidden;
 		margin: 0 0 0.75rem;
 		display: flex;
@@ -1288,8 +1288,8 @@
 		position: fixed;
 		transform: translateY(-100%) translateY(-6px);
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		padding: 0.4rem 0.6rem;
 		font-size: 0.72rem;
 		z-index: 50;
@@ -1336,8 +1336,8 @@
 		gap: 0.4rem;
 		padding: 0.55rem 1rem;
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 999px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-pill);
 		color: var(--text);
 		font-size: 0.85rem;
 		font-weight: 500;

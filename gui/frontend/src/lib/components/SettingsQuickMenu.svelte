@@ -167,8 +167,8 @@
 		max-width: calc(100vw - 2rem);
 		padding: 0.75rem;
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 10px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-xl);
 		box-shadow: 0 10px 30px var(--shadow);
 		display: flex;
 		flex-direction: column;
@@ -192,8 +192,8 @@
 		min-width: 0; /* DEV-138 fix3: flex 자식이 내용 폭으로 안 밀려나게. */
 		padding: 0.3rem 0;
 		background: transparent;
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		color: var(--text-muted);
 		font-size: 0.78rem;
 		cursor: pointer;
@@ -235,7 +235,7 @@
 		margin-top: 0.1rem;
 		padding: 0.4rem 0;
 		text-align: center;
-		border-top: 1px solid var(--bg-subtle);
+		border-top: var(--bw) solid var(--bg-subtle);
 		color: var(--accent);
 		font-size: 0.8rem;
 		text-decoration: none;

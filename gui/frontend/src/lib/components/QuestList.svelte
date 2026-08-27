@@ -681,8 +681,8 @@
 		gap: 4px;
 		padding: 4px 10px;
 		background: var(--btn-primary-bg);
-		border: 1px solid var(--btn-primary-border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--btn-primary-border);
+		border-radius: var(--r-md);
 		color: var(--btn-primary-text);
 		font-size: 0.8rem;
 		font-weight: 600;
@@ -771,8 +771,8 @@
 	.sort-sel {
 		padding: 0.25rem 0.5rem;
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		color: var(--text);
 		font-size: 0.78rem;
 		cursor: pointer;
@@ -781,8 +781,8 @@
 		width: 1.7rem;
 		height: 1.7rem;
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		color: var(--text-muted);
 		font-size: 0.85rem;
 		cursor: pointer;
@@ -795,8 +795,8 @@
 	.tag-filter-chip {
 		padding: 0.15rem 0.65rem;
 		background: color-mix(in srgb, var(--warning) 8%, transparent);
-		border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
-		border-radius: 20px;
+		border: var(--bw) solid color-mix(in srgb, var(--warning) 30%, transparent);
+		border-radius: var(--r-pill);
 		color: var(--warning);
 		font-size: 0.72rem;
 		font-family: 'JetBrains Mono', ui-monospace, monospace;
@@ -822,13 +822,13 @@
 		font-size: 0.65rem;
 		color: var(--text-muted);
 		background: var(--bg-subtle);
-		border-radius: 10px;
+		border-radius: var(--r-xl);
 	}
 	.tag-clear {
 		padding: 0.15rem 0.55rem;
 		background: transparent;
-		border: 1px solid var(--border);
-		border-radius: 20px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-pill);
 		color: var(--text-muted);
 		font-size: 0.7rem;
 		cursor: pointer;
@@ -841,8 +841,8 @@
 		display: inline-flex;
 		gap: 0;
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		padding: 2px;
 	}
 	.vt-btn {
@@ -852,7 +852,7 @@
 		padding: 3px 10px;
 		background: transparent;
 		border: none;
-		border-radius: 4px;
+		border-radius: var(--r-sm);
 		color: var(--text-muted);
 		font-size: 0.8rem;
 		cursor: pointer;

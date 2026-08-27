@@ -235,8 +235,8 @@
 		font-size: 0.8rem;
 		font-family: 'JetBrains Mono', ui-monospace, monospace;
 		background: var(--bg);
-		border: 1px solid var(--border);
-		border-radius: 5px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-sm);
 		color: var(--text);
 	}
 	.df-text.month {
@@ -255,8 +255,8 @@
 		padding: 0;
 		color: var(--text-muted);
 		background: var(--bg-subtle);
-		border: 1px solid var(--border);
-		border-radius: 5px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-sm);
 		cursor: pointer;
 	}
 	.df-btn:hover:not(:disabled) {
@@ -276,8 +276,8 @@
 		z-index: 1300;
 		padding: 0.5rem;
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 8px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-lg);
 		box-shadow: 0 8px 26px rgba(0, 0, 0, 0.45);
 		user-select: none;
 	}
@@ -298,7 +298,7 @@
 		width: 1.5rem;
 		height: 1.4rem;
 		border: none;
-		border-radius: 4px;
+		border-radius: var(--r-sm);
 		background: transparent;
 		color: var(--text-muted);
 		font-size: 0.65rem;
@@ -333,7 +333,7 @@
 	.df-cell {
 		height: 1.6rem;
 		border: none;
-		border-radius: 4px;
+		border-radius: var(--r-sm);
 		background: transparent;
 		color: var(--text);
 		font-size: 0.72rem;
@@ -356,7 +356,7 @@
 	}
 	.df-today {
 		border: none;
-		border-radius: 4px;
+		border-radius: var(--r-sm);
 		background: transparent;
 		color: var(--accent);
 		font-size: 0.7rem;

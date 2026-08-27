@@ -311,7 +311,7 @@
 
 	.slot img {
 		display: block;
-		border-radius: 6px;
+		border-radius: var(--r-md);
 	}
 	/* BUG-035: due-label 제거 — SVG 노드 우하단에 이미 동일 정보 표시. */
 
@@ -329,7 +329,7 @@
 		align-items: center;
 		justify-content: center;
 		background: var(--bg-subtle);
-		border: 1px solid var(--border);
+		border: var(--bw) solid var(--border);
 		color: var(--text);
 		border-radius: 50%;
 		width: 1.8rem;

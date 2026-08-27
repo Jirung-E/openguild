@@ -163,8 +163,8 @@
 		margin-bottom: 1.5rem;
 	}
 	.card {
-		border: 1px solid var(--border);
-		border-radius: 10px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-xl);
 		background: var(--bg-elevated);
 		padding: 0.9rem 1rem;
 	}
@@ -211,8 +211,8 @@
 	.cell {
 		width: 0.6875rem;
 		height: 0.6875rem;
-		border-radius: 2px;
-		border: 1px solid var(--border);
+		border-radius: var(--r-xs);
+		border: var(--bw) solid var(--border);
 		padding: 0;
 		background: var(--bg);
 		cursor: pointer;
@@ -248,7 +248,7 @@
 		width: 100%;
 		padding: 0.55rem 0 0;
 		border: none;
-		border-top: 1px solid var(--border);
+		border-top: var(--bw) solid var(--border);
 		background: transparent;
 		font-size: 0.75rem;
 		color: var(--text-muted);

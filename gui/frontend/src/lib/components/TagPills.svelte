@@ -145,8 +145,8 @@
 		gap: 0.25rem;
 		padding: 0.15rem 0.6rem;
 		background: color-mix(in srgb, var(--warning) 12%, transparent);
-		border: 1px solid color-mix(in srgb, var(--warning) 40%, transparent);
-		border-radius: 20px;
+		border: var(--bw) solid color-mix(in srgb, var(--warning) 40%, transparent);
+		border-radius: var(--r-pill);
 		font-size: 0.75rem;
 		color: var(--warning);
 		font-family: 'JetBrains Mono', ui-monospace, monospace;
@@ -173,16 +173,16 @@
 		flex: 1;
 		padding: 0.3rem 0.6rem;
 		background: var(--bg);
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		color: var(--text);
 		font-size: 0.85rem;
 	}
 	.tag-add-form button {
 		padding: 0.3rem 0.85rem;
 		background: var(--bg-subtle);
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		color: var(--text);
 		font-size: 0.8rem;
 		cursor: pointer;
@@ -196,8 +196,8 @@
 	}
 	.sec-add-btn {
 		padding: 0.15rem 0.6rem;
-		border: 1px solid var(--border);
-		border-radius: 4px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-sm);
 		background: transparent;
 		color: var(--text-muted);
 		font-size: 0.72rem;

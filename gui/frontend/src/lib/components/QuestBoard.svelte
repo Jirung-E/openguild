@@ -3868,7 +3868,7 @@
 		position: absolute;
 		z-index: 100;
 		box-sizing: border-box;
-		border: 1.5px dashed var(--box-color);
+		border: var(--bw) dashed var(--box-color);
 		background: color-mix(in srgb, var(--box-color) 10%, transparent);
 		pointer-events: none;
 	}
@@ -3922,7 +3922,7 @@
 		height: 80px;
 		box-sizing: border-box;
 		border: 2px solid var(--node-border);
-		border-radius: 12px;
+		border-radius: var(--r-xl);
 		background: color-mix(in srgb, var(--bg) 92%, transparent);
 		overflow: hidden;
 		pointer-events: auto;
@@ -4036,7 +4036,7 @@
 	/* 전체 보기에서는 카드 하나를 단순한 색 marker 하나로 축약한다. */
 	.board-wrap.lod-overview .board-node {
 		border: 0;
-		border-radius: 14px;
+		border-radius: var(--r-xl);
 		background: var(--node-border);
 		box-shadow: none;
 		transition: none;
@@ -4090,7 +4090,7 @@
 		top: 0;
 		bottom: 0;
 		background: var(--bg-elevated);
-		border-right: 1px solid var(--bg-subtle);
+		border-right: var(--bw) solid var(--bg-subtle);
 		box-sizing: border-box;
 		pointer-events: none;
 		transition:
@@ -4100,7 +4100,7 @@
 	}
 	.orientation-rows :global(.lane-col) {
 		border-right: 0;
-		border-bottom: 1px solid var(--bg-subtle);
+		border-bottom: var(--bw) solid var(--bg-subtle);
 	}
 	/* DEV-105 fix11: 드래그 중 노드가 놓일 lane 강조. */
 	:global(.lane-col.drag-target) {
@@ -4118,14 +4118,14 @@
 		align-items: center;
 		gap: 0.375rem;
 		padding: 0 0.5rem 0 0.875rem;
-		border-right: 1px solid var(--bg-subtle);
-		border-bottom: 1px solid var(--bg-subtle);
+		border-right: var(--bw) solid var(--bg-subtle);
+		border-bottom: var(--bw) solid var(--bg-subtle);
 		box-sizing: border-box;
 		background: var(--bg-elevated);
 		pointer-events: none;
 	}
 	.orientation-rows :global(.lane-hdr) {
-		border-right: 1px solid var(--bg-subtle);
+		border-right: var(--bw) solid var(--bg-subtle);
 		flex-direction: column;
 		justify-content: center;
 		gap: 0.25rem;
@@ -4214,8 +4214,8 @@
 		flex-shrink: 0;
 		pointer-events: auto;
 		background: none;
-		border: 1px solid transparent;
-		border-radius: 4px;
+		border: var(--bw) solid transparent;
+		border-radius: var(--r-sm);
 		color: var(--text-faint);
 		font-size: 0.85rem;
 		padding: 0 4px;
@@ -4254,8 +4254,8 @@
 		padding: 6px;
 		width: max-content;
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
 		pointer-events: auto;
 	}
@@ -4276,8 +4276,8 @@
 		flex-shrink: 0;
 		pointer-events: auto;
 		background: var(--bg);
-		border: 1px solid var(--border);
-		border-radius: 4px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-sm);
 		color: var(--text-muted);
 		font-size: 0.72rem;
 		padding: 1px 3px;
@@ -4292,8 +4292,8 @@
 		flex-shrink: 0;
 		pointer-events: auto;
 		background: none;
-		border: 1px solid transparent;
-		border-radius: 4px;
+		border: var(--bw) solid transparent;
+		border-radius: var(--r-sm);
 		color: var(--text-faint);
 		font-size: 0.85rem;
 		padding: 1px 5px;
@@ -4316,7 +4316,7 @@
 		pointer-events: auto;
 		background: none;
 		border: none;
-		border-radius: 4px;
+		border-radius: var(--r-sm);
 		color: var(--text-faint);
 		font-size: 0.7rem;
 		padding: 0 4px;
@@ -4340,8 +4340,8 @@
 		flex-shrink: 0;
 		pointer-events: auto;
 		background: var(--bg);
-		border: 1px solid var(--border);
-		border-radius: 4px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-sm);
 		color: var(--text-muted);
 		font-size: 0.72rem;
 		padding: 1px 3px;
@@ -4362,7 +4362,7 @@
 		pointer-events: auto;
 	}
 	:global(.lane-arrange-group .lane-arrange-btn) {
-		border: 1px solid var(--border);
+		border: var(--bw) solid var(--border);
 		border-right: none;
 		border-top-right-radius: 0;
 		border-bottom-right-radius: 0;
@@ -4379,8 +4379,8 @@
 		width: calc(18.75rem * var(--popup-scale, 1)); /* BUG-064 */
 		z-index: 6;
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 10px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-xl);
 		box-shadow:
 			0 8px 32px rgba(0, 0, 0, 0.55),
 			0 0 0 1px rgba(255, 255, 255, 0.04);
@@ -4415,7 +4415,7 @@
 		align-items: flex-start;
 		gap: 6px;
 		padding: 8px 10px 8px 8px;
-		border-bottom: 1px solid var(--bg-subtle);
+		border-bottom: var(--bw) solid var(--bg-subtle);
 	}
 	.drag-hint {
 		flex-shrink: 0;
@@ -4466,8 +4466,8 @@
 		margin: 0 12px 8px;
 		padding: 4px 8px;
 		background: var(--bg);
-		border: 1px solid var(--bg-subtle);
-		border-radius: 5px;
+		border: var(--bw) solid var(--bg-subtle);
+		border-radius: var(--r-sm);
 	}
 	.blabel {
 		font-size: 0.7rem;
@@ -4483,8 +4483,8 @@
 		margin: 0 12px 10px;
 		padding: 6px 10px;
 		background: var(--bg-subtle);
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		color: var(--accent);
 		font-size: 0.78rem;
 		cursor: pointer;
@@ -4532,12 +4532,12 @@
 
 	.hl-btn {
 		padding: 5px 8px;
-		border-radius: 5px;
+		border-radius: var(--r-sm);
 		font-size: 0.75rem;
 		cursor: pointer;
 		text-align: left;
 		transition: all 0.12s;
-		border: 1px solid transparent;
+		border: var(--bw) solid transparent;
 		background: var(--bg);
 	}
 	/* DEV-074 fix20 (sweep): 토큰 + color-mix 로 통일.
@@ -4601,8 +4601,8 @@
 		gap: 0.3em;
 		padding: 4px 6px;
 		background: var(--bg);
-		border: 1px solid var(--border);
-		border-radius: 5px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-sm);
 		color: var(--text-muted);
 		font-size: 0.72rem;
 		cursor: pointer;
@@ -4660,8 +4660,8 @@
 		gap: 0.5rem;
 		padding: 0.3rem 0.7rem;
 		background: color-mix(in srgb, var(--accent) 12%, var(--bg-elevated));
-		border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
-		border-radius: 999px;
+		border: var(--bw) solid color-mix(in srgb, var(--accent) 45%, transparent);
+		border-radius: var(--r-pill);
 		font-size: 0.78rem;
 		color: var(--text);
 	}
@@ -4689,8 +4689,8 @@
 		grid-template-columns: auto auto;
 		gap: 3px 12px;
 		padding: 8px 10px;
-		border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
-		border-radius: 7px;
+		border: var(--bw) solid color-mix(in srgb, var(--accent) 45%, transparent);
+		border-radius: var(--r-md);
 		background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
 		box-shadow: 0 4px 18px rgba(0, 0, 0, 0.28);
 		color: var(--text-muted);
@@ -4730,8 +4730,8 @@
 		max-width: calc(100% - 28px);
 		padding: 4px;
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 9px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-lg);
 		box-shadow: 0 4px 14px color-mix(in srgb, var(--text) 16%, transparent);
 		pointer-events: auto;
 		flex-wrap: wrap;
@@ -4766,8 +4766,8 @@
 		gap: 4px;
 		padding: 4px 10px;
 		background: var(--bg-subtle);
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		color: var(--text-muted);
 		font-size: 0.8rem;
 		cursor: pointer;
@@ -4832,8 +4832,8 @@
 	.tb-select {
 		padding: 3px 6px;
 		background: var(--bg-subtle);
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		color: var(--text-muted);
 		font-size: 0.8rem;
 		cursor: pointer;
@@ -4889,8 +4889,8 @@
 	}
 	.dialog {
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 10px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-xl);
 		padding: 1.25rem 1.5rem 1rem;
 		min-width: calc(17.5rem * var(--popup-scale, 1));
 		max-width: calc(26.25rem * var(--popup-scale, 1)); /* BUG-064 */
@@ -4914,8 +4914,8 @@
 	.dialog-ok {
 		padding: 0.4rem 1.1rem;
 		background: var(--btn-primary-bg);
-		border: 1px solid var(--btn-primary-border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--btn-primary-border);
+		border-radius: var(--r-md);
 		color: var(--btn-primary-text);
 		font-size: 0.875rem;
 		cursor: pointer;
@@ -4930,8 +4930,8 @@
 	.dialog-cancel {
 		padding: 0.4rem 1rem;
 		background: transparent;
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		color: var(--text-muted);
 		font-size: 0.875rem;
 		cursor: pointer;
@@ -4943,8 +4943,8 @@
 	/* DEV-056: 숨김 설정 모달 */
 	.hide-modal {
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 10px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-xl);
 		padding: 1.25rem 1.5rem 1.25rem;
 		/* 모바일: 30~40rem 고정폭이 좁은 화면에서 밖으로 삐져나감 — 뷰포트 폭 안으로 clamp. */
 		width: min(calc(40rem * var(--popup-scale, 1)), calc(100vw - 2rem));
@@ -4962,7 +4962,7 @@
 	}
 	/* DEV-135: 보드 설정 모달 안 필터 섹션. */
 	.bf-section {
-		border-top: 1px solid var(--bg-subtle);
+		border-top: var(--bw) solid var(--bg-subtle);
 		padding-top: 0.75rem;
 		display: flex;
 		flex-direction: column;
@@ -4987,9 +4987,9 @@
 	.bf-clear {
 		margin-left: auto;
 		background: transparent;
-		border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+		border: var(--bw) solid color-mix(in srgb, var(--danger) 35%, transparent);
 		color: var(--danger);
-		border-radius: 6px;
+		border-radius: var(--r-md);
 		padding: 0.15rem 0.5rem;
 		font-size: 0.78rem;
 		cursor: pointer;
@@ -5048,7 +5048,7 @@
 	.hide-table td {
 		text-align: left;
 		padding: 0.5rem 0.6rem;
-		border-bottom: 1px solid var(--bg-subtle);
+		border-bottom: var(--bw) solid var(--bg-subtle);
 	}
 	.hide-table th {
 		color: var(--text-muted);
@@ -5077,8 +5077,8 @@
 		padding: 0.1rem 0.4rem;
 		font-size: 0.75rem;
 		background: var(--bg-subtle);
-		border: 1px solid var(--border);
-		border-radius: 4px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-sm);
 		color: var(--text-muted);
 		cursor: pointer;
 		transition:

@@ -50,7 +50,11 @@
 	--r-xs: 0.125rem; /* 2px */
 	--r-sm: 0.25rem; /* 4px */
 	--r-md: 0.375rem; /* 6px */
-	--r-lg: 0.5rem; /* 8px */
+	--r-lg: 0.5rem; /* 8px — 카드 / 패널 */
+	/* DEV-369: 모달·다이얼로그 계열이 10px 로 24곳 몰려 있어 토큰을 신설한다.
+	   가까운 --r-lg(8px)로 스냅하면 24곳의 모양이 다 바뀌는데, 그건 통일이
+	   아니라 임의 변경이다. 실제로 쓰이던 값을 토큰으로 승격한다. */
+	--r-xl: 0.625rem; /* 10px — 모달 / 다이얼로그 / 큰 카드 */
 	--r-pill: 999px; /* 완전 알약 — 높이에 따라 자동 */
 	--bw: 0.0625rem; /* 1px — 테두리도 배율을 따라간다 */
 	/* DEV-364: 고정폭 글꼴 단일 출처. 앱 안에 스택이 4가지로 갈려 있었다
@@ -271,6 +275,10 @@ textarea {
 
 ::-webkit-scrollbar-thumb {
 	background: var(--scrollbar-thumb);
+	/* DEV-369 예외: 곡률 토큰을 쓰지 않는다. 스크롤바 폭이 위에서 `10px` 로
+	   고정이라(UI 배율과 무관한 네이티브 위젯 치수) thumb 곡률만 rem 으로
+	   바꾸면 배율을 올렸을 때 10px 폭 안에서 모서리가 과하게 말린다.
+	   치수가 px 인 곳은 곡률도 px 이어야 짝이 맞는다. */
 	border-radius: 8px;
 	/* border 가 track 의 일부를 가려서 thumb 가 실제보다 얇게 보이는 트릭 */
 	border: 2px solid transparent;
@@ -299,8 +307,8 @@ input[type='checkbox'] {
 	-webkit-appearance: none;
 	width: 1rem;
 	height: 1rem;
-	border: 1px solid var(--border);
-	border-radius: 3px;
+	border: var(--bw) solid var(--border);
+	border-radius: var(--r-xs);
 	background: var(--bg);
 	cursor: pointer;
 	position: relative;

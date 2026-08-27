@@ -460,8 +460,8 @@
 		/* 다른 admin 섹션(Statuses/Types/TagDefs 컴포넌트)과 동일 토큰.
 		   이전 --nav-bg/--nav-border 는 다크에서 보라빛이라 섹션마다 색이 달랐음. */
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 8px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-lg);
 	}
 	.section-header {
 		display: flex;
@@ -480,8 +480,8 @@
 	button {
 		padding: 0.4rem 0.9rem;
 		background: var(--bg-subtle);
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		color: var(--text);
 		font-size: 0.85rem;
 		cursor: pointer;
@@ -532,7 +532,7 @@
 	td {
 		padding: 0.5rem 0.75rem;
 		text-align: left;
-		border-bottom: 1px solid var(--border);
+		border-bottom: var(--bw) solid var(--border);
 	}
 	th {
 		color: var(--text-muted);
@@ -583,8 +583,8 @@
 	}
 	.journal li {
 		padding: 0.4rem 0.6rem;
-		border: 1px solid var(--border);
-		border-radius: 0.4rem;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		background: var(--bg-subtle);
 	}
 	.jop {
@@ -607,9 +607,9 @@
 	.problem-files {
 		margin-bottom: 1rem;
 		padding: 0.75rem 1rem;
-		border-radius: 0.5rem;
+		border-radius: var(--r-lg);
 		background: color-mix(in srgb, var(--danger) 12%, transparent);
-		border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+		border: var(--bw) solid color-mix(in srgb, var(--danger) 40%, transparent);
 	}
 	.problem-files h3 {
 		margin: 0 0 0.25rem 0;

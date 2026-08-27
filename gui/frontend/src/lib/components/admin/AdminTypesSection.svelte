@@ -347,8 +347,8 @@
 		margin-bottom: 2.5rem;
 		padding: 1.25rem;
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 8px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-lg);
 	}
 	.section-header {
 		display: flex;
@@ -371,8 +371,8 @@
 	button {
 		padding: 0.35rem 0.85rem;
 		background: var(--bg-subtle);
-		border: 1px solid var(--border);
-		border-radius: 4px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-sm);
 		color: var(--text);
 		font-size: 0.85rem;
 		cursor: pointer;
@@ -415,7 +415,7 @@
 	td {
 		text-align: left;
 		padding: 0.5rem 0.6rem;
-		border-bottom: 1px solid var(--border);
+		border-bottom: var(--bw) solid var(--border);
 		vertical-align: middle;
 		/* BUG-143: CJK 는 word-break 없이도 글자 단위로 꺾임 — 명시 nowrap. */
 		white-space: nowrap;
@@ -430,7 +430,7 @@
 		font-size: 0.85em;
 		background: var(--bg);
 		padding: 0.05rem 0.3rem;
-		border-radius: 3px;
+		border-radius: var(--r-xs);
 	}
 	.hex {
 		color: var(--text-muted);
@@ -440,9 +440,9 @@
 		display: inline-block;
 		width: 1rem;
 		height: 1rem;
-		border-radius: 3px;
+		border-radius: var(--r-xs);
 		vertical-align: middle;
-		border: 1px solid var(--border);
+		border: var(--bw) solid var(--border);
 	}
 	.desc {
 		color: var(--text);
@@ -465,8 +465,8 @@
 		width: 100%;
 		padding: 0.3rem 0.5rem;
 		background: var(--bg);
-		border: 1px solid var(--border);
-		border-radius: 4px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-sm);
 		color: var(--text);
 		font: inherit;
 	}
@@ -483,8 +483,8 @@
 		width: 2.2rem;
 		height: 1.6rem;
 		padding: 0;
-		border: 1px solid var(--border);
-		border-radius: 4px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-sm);
 		background: var(--bg);
 		cursor: pointer;
 	}
@@ -518,8 +518,8 @@
 		/* BUG-199: 위 정렬과 짝 — 짧으면 세로 가운데처럼 보인다. */
 		margin: auto;
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 10px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-xl);
 		width: 100%;
 		max-width: calc(28.75rem * var(--popup-scale, 1)); /* BUG-064 */
 		padding: 1.2rem 1.4rem;
@@ -564,8 +564,8 @@
 	.btn-yes {
 		padding: 0.4rem 1.1rem;
 		background: rgba(31, 111, 235, 0.18);
-		border: 1px solid var(--accent);
-		border-radius: 6px;
+		border: var(--bw) solid var(--accent);
+		border-radius: var(--r-md);
 		color: var(--accent);
 		font-size: 0.875rem;
 		cursor: pointer;
@@ -584,8 +584,8 @@
 	.btn-no {
 		padding: 0.4rem 1rem;
 		background: transparent;
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		color: var(--text-muted);
 		font-size: 0.875rem;
 		cursor: pointer;

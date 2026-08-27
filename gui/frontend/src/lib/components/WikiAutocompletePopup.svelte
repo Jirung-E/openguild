@@ -142,8 +142,8 @@
 		/* BUG-157: native scrollbar 숨김 — OverlayScrollbar 가 대신 그린다. */
 		scrollbar-width: none;
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 8px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-lg);
 		box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
 	}
 	.wiki-pop::-webkit-scrollbar {
@@ -162,7 +162,7 @@
 		width: 100%;
 		padding: 0.3rem 0.5rem;
 		border: none;
-		border-radius: 5px;
+		border-radius: var(--r-sm);
 		background: transparent;
 		color: var(--text);
 		cursor: pointer;

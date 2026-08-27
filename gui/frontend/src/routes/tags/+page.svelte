@@ -188,8 +188,8 @@
 		width: 14rem;
 		padding: 0.4rem 0.7rem;
 		font-size: 0.85rem;
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		background: var(--bg-subtle);
 		color: var(--text-strong);
 		outline: none;
@@ -209,8 +209,8 @@
 		gap: 0.35rem;
 	}
 	.tag-item {
-		border: 1px solid var(--border);
-		border-radius: 8px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-lg);
 		overflow: hidden;
 		background: var(--bg-elevated);
 	}
@@ -233,13 +233,13 @@
 		font-weight: 600;
 		color: var(--text-muted);
 		padding: 0.15rem 0.5rem;
-		border-radius: 5px;
+		border-radius: var(--r-sm);
 		background: var(--bg-subtle);
 	}
 	.chip.defined {
 		color: var(--chip);
 		background: color-mix(in srgb, var(--chip) 14%, transparent);
-		border: 1px solid color-mix(in srgb, var(--chip) 35%, transparent);
+		border: var(--bw) solid color-mix(in srgb, var(--chip) 35%, transparent);
 	}
 	.usage {
 		font-size: 0.78rem;
@@ -257,7 +257,7 @@
 	}
 	.docs {
 		list-style: none;
-		border-top: 1px solid var(--border);
+		border-top: var(--bw) solid var(--border);
 		padding: 0.3rem;
 	}
 	.doc-empty {
@@ -270,7 +270,7 @@
 		align-items: center;
 		gap: 0.6rem;
 		padding: 0.4rem 0.6rem;
-		border-radius: 5px;
+		border-radius: var(--r-sm);
 		font-size: 0.83rem;
 		text-decoration: none;
 		color: var(--text);
@@ -284,7 +284,7 @@
 		text-align: center;
 		font-size: 0.68rem;
 		font-weight: 600;
-		border-radius: 4px;
+		border-radius: var(--r-sm);
 		padding: 0.1rem 0.35rem;
 	}
 	.dtype.quest {

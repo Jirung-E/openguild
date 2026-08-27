@@ -1591,8 +1591,8 @@
 	.disc-filter-btn {
 		margin-left: auto;
 		padding: 0.15rem 0.6rem;
-		border: 1px solid var(--border);
-		border-radius: 4px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-sm);
 		background: transparent;
 		color: var(--text-muted);
 		font-size: 0.72rem;
@@ -1629,8 +1629,8 @@
 	.collapse-all-btn {
 		margin-left: auto;
 		padding: 0.15rem 0.6rem;
-		border: 1px solid var(--border);
-		border-radius: 4px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-sm);
 		background: transparent;
 		color: var(--text-muted);
 		font-size: 0.72rem;
@@ -1668,8 +1668,8 @@
 	.entry-card {
 		list-style: none;
 		background: color-mix(in srgb, var(--bg-elevated) 65%, var(--bg));
-		border: 1px solid var(--bg-subtle);
-		border-radius: 8px;
+		border: var(--bw) solid var(--bg-subtle);
+		border-radius: var(--r-lg);
 		padding: 0.6rem 0.75rem;
 	}
 	/* DEV-234: 상단 고정된 댓글 — pin(위치 이동) 만으로는 눈에 안 띄어서
@@ -1683,7 +1683,7 @@
 		);
 	}
 	.entry {
-		border-radius: 6px;
+		border-radius: var(--r-md);
 	}
 
 	/* DEV-296: 작업기록에서 점프해 온 댓글을 잠깐 강조 — 스크롤만으로는
@@ -1711,7 +1711,7 @@
 	/* DEV-234 후속(admin 요청): 답글도 고정 가능 — root 는 entry-card.pinned 로
 	   이미 강조되니, 답글(.entry.reply)만 자체 테두리로 강조. */
 	.entry.reply.pinned {
-		border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+		border: var(--bw) solid color-mix(in srgb, var(--accent) 55%, transparent);
 		background: color-mix(in srgb, var(--accent) 6%, transparent);
 		padding: 0.3rem 0.5rem;
 		margin: -0.3rem -0.5rem 0;
@@ -1735,8 +1735,8 @@
 		padding-left: 0.75rem;
 	}
 	.reply-form {
-		border: 1px dashed var(--border);
-		border-radius: 6px;
+		border: var(--bw) dashed var(--border);
+		border-radius: var(--r-md);
 		padding: 0.5rem 0.7rem;
 		display: flex;
 		flex-direction: column;
@@ -1811,8 +1811,8 @@
 		background: transparent;
 		cursor: pointer;
 		padding: 0.05rem 0.35rem;
-		border-radius: 4px;
-		border: 1px solid var(--border-muted);
+		border-radius: var(--r-sm);
+		border: var(--bw) solid var(--border-muted);
 	}
 	.entry-no:hover {
 		color: var(--accent);
@@ -1890,8 +1890,8 @@
 		background: transparent;
 		cursor: pointer;
 		padding: 0.1rem 0.5rem;
-		border-radius: 4px;
-		border: 1px solid var(--border-muted);
+		border-radius: var(--r-sm);
+		border: var(--bw) solid var(--border-muted);
 	}
 	.reply-write-btn:hover {
 		color: var(--accent);
@@ -1905,8 +1905,8 @@
 		background: transparent;
 		cursor: pointer;
 		padding: 0.15rem 0.35rem;
-		border-radius: 4px;
-		border: 1px solid transparent;
+		border-radius: var(--r-sm);
+		border: var(--bw) solid transparent;
 		opacity: 0.6;
 		/* BUG-125: 반응 pill 은 왼쪽 정렬로 남기고, 고정 버튼만 카드 오른쪽
 		   끝(오른쪽 아래)으로 밀어냄. */
@@ -1933,8 +1933,8 @@
 	.reaction-pill {
 		padding: 0.1rem 0.45rem;
 		background: color-mix(in srgb, var(--accent) 12%, transparent);
-		border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
-		border-radius: 10px;
+		border: var(--bw) solid color-mix(in srgb, var(--accent) 45%, transparent);
+		border-radius: var(--r-xl);
 		font-size: 0.78rem;
 		cursor: pointer;
 	}
@@ -1959,8 +1959,8 @@
 	.reaction-add {
 		padding: 0.1rem 0.4rem;
 		background: transparent;
-		border: 1px solid var(--border-muted);
-		border-radius: 10px;
+		border: var(--bw) solid var(--border-muted);
+		border-radius: var(--r-xl);
 		font-size: 0.72rem;
 		color: var(--text-faint);
 		cursor: pointer;
@@ -1986,8 +1986,8 @@
 		gap: 0.3rem;
 		padding: 0.3rem 0.4rem;
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 8px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-lg);
 		box-shadow: 0 6px 18px var(--shadow);
 		min-width: 9rem;
 	}
@@ -2002,8 +2002,8 @@
 	.picker-item {
 		padding: 0.15rem 0.35rem;
 		background: transparent;
-		border: 1px solid transparent;
-		border-radius: 6px;
+		border: var(--bw) solid transparent;
+		border-radius: var(--r-md);
 		font-size: 0.95rem;
 		cursor: pointer;
 	}
@@ -2039,7 +2039,7 @@
 	.picker-add-row {
 		display: flex;
 		gap: 0.25rem;
-		border-top: 1px solid var(--border);
+		border-top: var(--bw) solid var(--border);
 		padding-top: 0.3rem;
 	}
 	.picker-add-input {
@@ -2047,17 +2047,17 @@
 		min-width: 0;
 		padding: 0.2rem 0.4rem;
 		background: var(--bg);
-		border: 1px solid var(--border);
+		border: var(--bw) solid var(--border);
 		color: var(--text);
-		border-radius: 4px;
+		border-radius: var(--r-sm);
 		font-size: 0.8rem;
 	}
 	.picker-add-btn {
 		padding: 0.2rem 0.5rem;
 		background: transparent;
-		border: 1px solid var(--border);
+		border: var(--bw) solid var(--border);
 		color: var(--text);
-		border-radius: 4px;
+		border-radius: var(--r-sm);
 		font-size: 0.75rem;
 		cursor: pointer;
 	}
@@ -2108,8 +2108,8 @@
 	.disc-badge {
 		margin-left: 0.4rem;
 		padding: 0.05rem 0.4rem;
-		border-radius: 999px;
-		border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+		border-radius: var(--r-pill);
+		border: var(--bw) solid color-mix(in srgb, var(--danger) 40%, transparent);
 		background: color-mix(in srgb, var(--danger) 14%, transparent);
 		color: var(--danger);
 		font-size: 0.7rem;
@@ -2134,7 +2134,7 @@
 	}
 
 	.new-form {
-		border-top: 1px dashed var(--bg-subtle);
+		border-top: var(--bw) dashed var(--bg-subtle);
 		padding-top: 0.75rem;
 		display: flex;
 		flex-direction: column;
@@ -2148,18 +2148,18 @@
 		flex: 0 0 14rem;
 		padding: 0.3rem 0.5rem;
 		background: var(--bg);
-		border: 1px solid var(--border);
+		border: var(--bw) solid var(--border);
 		color: var(--text);
-		border-radius: 4px;
+		border-radius: var(--r-sm);
 		font-size: 0.825rem;
 	}
 	.body-input {
 		width: 100%;
 		padding: 0.45rem 0.6rem;
 		background: var(--bg);
-		border: 1px solid var(--border);
+		border: var(--bw) solid var(--border);
 		color: var(--text);
-		border-radius: 6px;
+		border-radius: var(--r-md);
 		font-size: 0.825rem;
 		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 		resize: vertical;
@@ -2175,8 +2175,8 @@
 		font-size: 0.68rem;
 		font-family: 'SFMono-Regular', Consolas, monospace;
 		padding: 0.1rem 0.4rem;
-		border: 1px solid var(--border);
-		border-radius: 4px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-sm);
 		background: transparent;
 		color: var(--text-muted);
 		cursor: pointer;
@@ -2197,9 +2197,9 @@
 	.btn-save {
 		padding: 0.3rem 0.85rem;
 		background: var(--btn-primary-bg);
-		border: 1px solid var(--btn-primary-border);
+		border: var(--bw) solid var(--btn-primary-border);
 		color: var(--btn-primary-text);
-		border-radius: 6px;
+		border-radius: var(--r-md);
 		cursor: pointer;
 		font-size: 0.825rem;
 	}
@@ -2214,9 +2214,9 @@
 	.btn-cancel {
 		padding: 0.3rem 0.85rem;
 		background: transparent;
-		border: 1px solid var(--border);
+		border: var(--bw) solid var(--border);
 		color: var(--text);
-		border-radius: 6px;
+		border-radius: var(--r-md);
 		cursor: pointer;
 		font-size: 0.825rem;
 	}

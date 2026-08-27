@@ -303,7 +303,7 @@
 		align-items: center;
 		justify-content: center;
 		background: var(--bg-subtle);
-		border: 1px solid var(--border);
+		border: var(--bw) solid var(--border);
 		color: var(--text);
 		border-radius: 50%;
 		width: 1.8rem;

@@ -412,8 +412,8 @@
 <style>
 	.editor-wrap {
 		/* DEV-057: 사용자 drag 로 height 조절 — ResizeObserver 가 영속화. */
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		overflow: hidden;
 		min-height: 12.5rem;
 		max-height: 90vh;

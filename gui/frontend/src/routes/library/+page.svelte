@@ -1346,7 +1346,7 @@
 	   잘려 보였다. 좁은 화면에서는 위/아래로 쌓고, sidebar 는 자체 스크롤
 	   영역으로 높이를 제한해 컨텐츠가 화면 아래로 밀려나지 않게 한다. */
 	.sidebar {
-		border-right: 1px solid var(--bg-subtle);
+		border-right: var(--bw) solid var(--bg-subtle);
 		padding-right: 1rem;
 		display: flex;
 		flex-direction: column;
@@ -1364,7 +1364,7 @@
 		/* 두 열이 한 열로 쌓이면 세로 구분선이 의미를 잃는다. */
 		.sidebar {
 			border-right: none;
-			border-bottom: 1px solid var(--bg-subtle);
+			border-bottom: var(--bw) solid var(--bg-subtle);
 			padding-right: 0;
 			padding-bottom: 0.75rem;
 			max-height: 45vh;
@@ -1383,7 +1383,7 @@
 		letter-spacing: 0.05em;
 		color: var(--text-muted);
 		margin: 0;
-		border-radius: 4px;
+		border-radius: var(--r-sm);
 	}
 	/* BUG-127: 루트로 드래그&드롭 이동 강조. */
 	.sidebar-head h2.drag-over {
@@ -1399,8 +1399,8 @@
 	.view-toggle {
 		margin-left: auto;
 		display: flex;
-		border: 1px solid var(--border);
-		border-radius: 4px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-sm);
 		overflow: hidden;
 	}
 	.view-toggle button {
@@ -1418,8 +1418,8 @@
 	.btn-new {
 		padding: 0.15rem 0.55rem;
 		background: transparent;
-		border: 1px solid var(--border);
-		border-radius: 4px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-sm);
 		color: var(--text-muted);
 		font-size: 0.72rem;
 		cursor: pointer;
@@ -1444,7 +1444,7 @@
 		padding: 0.35rem 0.5rem;
 		background: transparent;
 		border: none;
-		border-radius: 4px;
+		border-radius: var(--r-sm);
 		color: var(--text);
 		font-size: 0.85rem;
 		cursor: pointer;
@@ -1504,8 +1504,8 @@
 	}
 	.btn-up {
 		background: transparent;
-		border: 1px solid var(--border);
-		border-radius: 4px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-sm);
 		color: var(--text-muted);
 		cursor: pointer;
 		font-size: 0.78rem;
@@ -1524,14 +1524,14 @@
 	.btn-up.drag-over,
 	.crumb.drag-over {
 		background: color-mix(in srgb, var(--accent) 16%, transparent);
-		border-radius: 4px;
+		border-radius: var(--r-sm);
 		outline: 1px dashed var(--accent);
 	}
 	.btn-del-folder {
 		margin-left: auto;
 		background: transparent;
-		border: 1px solid var(--border);
-		border-radius: 4px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-sm);
 		color: var(--text-muted);
 		font-size: 0.72rem;
 		padding: 0.1rem 0.5rem;
@@ -1554,8 +1554,8 @@
 		align-items: center;
 		gap: 0.35rem;
 		padding: 0.6rem 0.25rem;
-		border-radius: 6px;
-		border: 1px solid transparent;
+		border-radius: var(--r-md);
+		border: var(--bw) solid transparent;
 		background: transparent;
 		width: 5.75rem;
 		cursor: pointer;
@@ -1681,8 +1681,8 @@
 	.btn-edit {
 		padding: 0.3rem 0.7rem;
 		background: transparent;
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		color: var(--text);
 		font-size: 0.825rem;
 		cursor: pointer;
@@ -1704,16 +1704,16 @@
 		gap: 0.4rem;
 		padding: 0.6rem;
 		background: var(--bg);
-		border: 1px dashed var(--border);
-		border-radius: 6px;
+		border: var(--bw) dashed var(--border);
+		border-radius: var(--r-md);
 		margin: 0.5rem 0;
 	}
 	.text-input {
 		padding: 0.35rem 0.55rem;
 		background: var(--bg);
-		border: 1px solid var(--border);
+		border: var(--bw) solid var(--border);
 		color: var(--text);
-		border-radius: 4px;
+		border-radius: var(--r-sm);
 		font-size: 0.85rem;
 	}
 	/* DEV-238: 검색창 — sidebar/explorer 툴바 양쪽에서 재사용. */
@@ -1721,9 +1721,9 @@
 		width: 100%;
 		padding: 0.3rem 0.55rem;
 		background: var(--bg);
-		border: 1px solid var(--border);
+		border: var(--bw) solid var(--border);
 		color: var(--text);
-		border-radius: 4px;
+		border-radius: var(--r-sm);
 		font-size: 0.82rem;
 		margin: 0.4rem 0;
 	}
@@ -1761,8 +1761,8 @@
 	.sort-sel {
 		padding: 0.25rem 0.5rem;
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		color: var(--text);
 		font-size: 0.78rem;
 		cursor: pointer;
@@ -1771,8 +1771,8 @@
 		width: 1.7rem;
 		height: 1.7rem;
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		color: var(--text-muted);
 		font-size: 0.85rem;
 		cursor: pointer;
@@ -1793,8 +1793,8 @@
 	.tag-filter-chip {
 		padding: 0.15rem 0.65rem;
 		background: color-mix(in srgb, var(--warning) 8%, transparent);
-		border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
-		border-radius: 20px;
+		border: var(--bw) solid color-mix(in srgb, var(--warning) 30%, transparent);
+		border-radius: var(--r-pill);
 		color: var(--warning);
 		font-size: 0.72rem;
 		font-family: 'JetBrains Mono', ui-monospace, monospace;
@@ -1820,13 +1820,13 @@
 		font-size: 0.65rem;
 		color: var(--text-muted);
 		background: var(--bg-subtle);
-		border-radius: 10px;
+		border-radius: var(--r-xl);
 	}
 	.tag-clear {
 		padding: 0.15rem 0.55rem;
 		background: transparent;
-		border: 1px solid var(--border);
-		border-radius: 20px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-pill);
 		color: var(--text-muted);
 		font-size: 0.7rem;
 		cursor: pointer;
@@ -1888,9 +1888,9 @@
 	.btn-save {
 		padding: 0.35rem 0.85rem;
 		background: var(--btn-primary-bg);
-		border: 1px solid var(--btn-primary-border);
+		border: var(--bw) solid var(--btn-primary-border);
 		color: var(--btn-primary-text);
-		border-radius: 6px;
+		border-radius: var(--r-md);
 		cursor: pointer;
 		font-size: 0.825rem;
 	}
@@ -1905,9 +1905,9 @@
 	.btn-cancel {
 		padding: 0.35rem 0.85rem;
 		background: transparent;
-		border: 1px solid var(--border);
+		border: var(--bw) solid var(--border);
 		color: var(--text);
-		border-radius: 6px;
+		border-radius: var(--r-md);
 		cursor: pointer;
 		font-size: 0.825rem;
 	}

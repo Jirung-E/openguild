@@ -153,7 +153,7 @@
 		font-size: 0.72rem;
 		color: var(--text-faint);
 		padding: 0.05rem 0.4rem;
-		border-radius: 10px;
+		border-radius: var(--r-xl);
 		background: var(--bg-subtle);
 	}
 
@@ -163,8 +163,8 @@
 		margin: 0;
 		padding: 0.6rem 0.8rem;
 		background: var(--bg);
-		border: 1px solid var(--bg-subtle);
-		border-radius: 6px;
+		border: var(--bw) solid var(--bg-subtle);
+		border-radius: var(--r-md);
 	}
 	.ch-state.error {
 		color: var(--danger);
@@ -174,8 +174,8 @@
 		list-style: none;
 		padding: 0;
 		margin: 0;
-		border: 1px solid var(--bg-subtle);
-		border-radius: 6px;
+		border: var(--bw) solid var(--bg-subtle);
+		border-radius: var(--r-md);
 		overflow: hidden;
 	}
 	.ch-item {
@@ -188,7 +188,7 @@
 		color: var(--text);
 	}
 	.ch-item + .ch-item {
-		border-top: 1px solid var(--bg-subtle);
+		border-top: var(--bw) solid var(--bg-subtle);
 	}
 
 	.ch-ts {
@@ -204,8 +204,8 @@
 		letter-spacing: 0.04em;
 		padding: 0.05rem 0.45rem;
 		background: var(--bg-elevated);
-		border: 1px solid var(--bg-subtle);
-		border-radius: 10px;
+		border: var(--bw) solid var(--bg-subtle);
+		border-radius: var(--r-xl);
 	}
 	.ch-op-empty {
 		width: 0;
@@ -218,11 +218,11 @@
 	}
 	.ch-status {
 		padding: 0.05rem 0.5rem;
-		border-radius: 12px;
+		border-radius: var(--r-pill);
 		font-size: 0.75rem;
 		background: color-mix(in srgb, var(--c) 18%, transparent);
 		color: var(--c);
-		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
+		border: var(--bw) solid color-mix(in srgb, var(--c) 40%, transparent);
 	}
 	.ch-arrow {
 		color: var(--text-faint);

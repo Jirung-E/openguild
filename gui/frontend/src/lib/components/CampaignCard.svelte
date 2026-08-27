@@ -276,8 +276,8 @@
 	.card {
 		width: 100%;
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 8px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-lg);
 		padding: 0.85rem 1rem;
 		text-align: left;
 		cursor: pointer;
@@ -445,7 +445,7 @@
 		flex: 1;
 		height: 4px;
 		background: var(--bg-subtle);
-		border-radius: 2px;
+		border-radius: var(--r-xs);
 		overflow: hidden;
 		display: flex;
 	}
@@ -469,8 +469,8 @@
 		position: fixed;
 		transform: translateY(-100%) translateY(-6px);
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
 		padding: 0.4rem 0.6rem;
 		font-size: 0.72rem;
 		z-index: 50;

@@ -218,8 +218,8 @@
 	.btn-primary {
 		padding: 0.4rem 0.85rem;
 		background: var(--btn-primary-bg);
-		border: 1px solid var(--btn-primary-border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--btn-primary-border);
+		border-radius: var(--r-md);
 		color: var(--btn-primary-text);
 		font-size: 0.875rem;
 		cursor: pointer;
@@ -243,9 +243,9 @@
 	}
 	.controls select {
 		background: var(--bg-elevated);
-		border: 1px solid var(--border);
+		border: var(--bw) solid var(--border);
 		color: var(--text);
-		border-radius: 4px;
+		border-radius: var(--r-sm);
 		padding: 0.25rem 0.5rem;
 		font-size: 0.825rem;
 	}
@@ -281,8 +281,8 @@
 		align-items: stretch;
 		padding: 0.6rem 0.85rem;
 		background: var(--bg-elevated);
-		border: 1px solid var(--bg-subtle);
-		border-radius: 6px;
+		border: var(--bw) solid var(--bg-subtle);
+		border-radius: var(--r-md);
 		text-decoration: none;
 		color: inherit;
 	}
@@ -308,14 +308,14 @@
 		flex: 1;
 		min-width: 3rem;
 		height: 4px;
-		border-radius: 2px;
+		border-radius: var(--r-xs);
 		background: var(--bg-subtle);
 		overflow: hidden;
 	}
 	.prog-fill {
 		display: block;
 		height: 100%;
-		border-radius: 2px;
+		border-radius: var(--r-xs);
 		background: var(--accent);
 		transition: width 0.2s;
 	}
@@ -377,9 +377,9 @@
 	}
 	.reorder button {
 		background: var(--bg-subtle);
-		border: 1px solid var(--border);
+		border: var(--bw) solid var(--border);
 		color: var(--text);
-		border-radius: 4px;
+		border-radius: var(--r-sm);
 		width: 1.8rem;
 		font-size: 0.75rem;
 		cursor: pointer;

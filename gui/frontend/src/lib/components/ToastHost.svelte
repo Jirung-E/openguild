@@ -290,8 +290,8 @@
 	.card {
 		position: relative;
 		text-align: left;
-		border-radius: 8px;
-		border: 1px solid var(--border);
+		border-radius: var(--r-lg);
+		border: var(--bw) solid var(--border);
 		background: var(--bg-elevated);
 		box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
 		color: var(--text);
@@ -348,7 +348,7 @@
 		font-weight: 700;
 		color: var(--text-muted);
 		background: color-mix(in srgb, var(--text) 10%, transparent);
-		border-radius: 999px;
+		border-radius: var(--r-pill);
 		padding: 0.05rem 0.4rem;
 	}
 	/* DEV-266: "+N개 더" 축약 칩. */
@@ -394,8 +394,8 @@
 	.upd pre {
 		white-space: pre-wrap;
 		background: var(--bg);
-		border: 1px solid var(--bg-subtle);
-		border-radius: 6px;
+		border: var(--bw) solid var(--bg-subtle);
+		border-radius: var(--r-md);
 		padding: 0.5rem 0.75rem;
 		max-height: 8rem;
 		overflow-y: auto;
@@ -409,8 +409,8 @@
 		margin-top: 0.5rem;
 		padding: 0.4rem 0.9rem;
 		background: var(--btn-primary-bg);
-		border: 1px solid var(--btn-primary-border);
-		border-radius: 6px;
+		border: var(--bw) solid var(--btn-primary-border);
+		border-radius: var(--r-md);
 		color: var(--btn-primary-text);
 		font-size: 0.85rem;
 		cursor: pointer;
@@ -444,7 +444,7 @@
 	.schema .detail code {
 		background: color-mix(in srgb, var(--text) 10%, transparent);
 		padding: 0 0.25rem;
-		border-radius: 3px;
+		border-radius: var(--r-xs);
 		font-size: 0.85em;
 		color: var(--text);
 	}
@@ -453,7 +453,7 @@
 		background: var(--warning);
 		color: var(--bg);
 		border: none;
-		border-radius: 4px;
+		border-radius: var(--r-sm);
 		padding: 0.3rem 0.85rem;
 		font-size: 0.78rem;
 		font-weight: 600;
