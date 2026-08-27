@@ -465,7 +465,7 @@
 		{/if}
 		{#if detail}
 			<button
-				class="status-badge status-{detail.status}"
+				class="pill status-badge status-{detail.status}"
 				onclick={toggleStatus}
 				title={t('campaign.statusToggle', $locale)}
 			>
@@ -868,7 +868,6 @@
 	}
 	.back,
 	.btn-delete,
-	.status-badge,
 	.btn-edit {
 		/* BUG-254 후속: 아이콘 + 글자 버튼의 세로 정렬.
 		   `Icon` 은 인라인 SVG 라 기본적으로 글자 **기준선** 위에 얹힌다 —
@@ -904,23 +903,19 @@
 		margin-left: auto;
 	}
 
-	/* BUG-021: pill 스타일 통일 (Quest List 패턴). */
+	/* DEV-364: 모양은 global.css 의 `.pill` 이 정본.
+	   예전엔 버튼(`.back/.btn-edit/.btn-delete`)과 상자를 공유하면서 곡률만
+	   `20px !important` 로 덮어쓰고 있었다 — pill 이 아니라 '버튼처럼 생긴
+	   것을 알약으로 우겨넣은' 상태였다. 공용 규칙에서 뺐다. */
 	.status-badge {
 		text-transform: uppercase;
 		font-weight: 600;
-		border-radius: 20px !important;
 	}
 	.status-badge.status-active {
 		--c: var(--success);
-		background: color-mix(in srgb, var(--c) 18%, transparent);
-		color: var(--c);
-		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
 	}
 	.status-badge.status-done {
 		--c: var(--text-muted);
-		background: color-mix(in srgb, var(--c) 18%, transparent);
-		color: var(--c);
-		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
 	}
 
 	.state {

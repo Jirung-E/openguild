@@ -718,8 +718,8 @@
 	{:else if detail}
 		<!-- 헤더 뱃지 -->
 		<div class="header">
-			<span class="badge type" style:--c={detail.type_color}>{detail.quest_id}</span>
-			<span class="badge urgency" style:--c={urgencyColor(detail.urgency)}>
+			<span class="pill mono" style:--c={detail.type_color}>{detail.quest_id}</span>
+			<span class="pill urgency" style:--c={urgencyColor(detail.urgency)}>
 				{urgencyLabel(detail.urgency, $locale)}
 			</span>
 			{#if urgencyOutOfRange(detail.urgency)}
@@ -731,7 +731,7 @@
 				>
 			{/if}
 			{#key badgePulse}
-				<span class="badge status pulsing" style:--c={detail.status_color}>
+				<span class="pill status pulsing" style:--c={detail.status_color}>
 					{questStatusLabel(detail, $locale)}
 				</span>
 			{/key}
@@ -940,11 +940,11 @@
 					<li>
 						<div class="prereq-row">
 							<a href="/quests/{detail.parent.quest_id}{fromSuffix}" class="prereq-link">
-								<span class="badge type" style:--c={detail.parent.type_color}
+								<span class="pill mono" style:--c={detail.parent.type_color}
 									>{detail.parent.quest_id}</span
 								>
 								<span class="ql-title">{detail.parent.title}</span>
-								<span class="badge status" style:--c={detail.parent.status_color}
+								<span class="pill status" style:--c={detail.parent.status_color}
 									>{questStatusLabel(detail.parent, $locale)}</span
 								>
 							</a>
@@ -986,9 +986,9 @@
 							<li>
 								<div class="prereq-row">
 									<a href="/quests/{sq.quest_id}{fromSuffix}" class="prereq-link">
-										<span class="badge type" style:--c={sq.type_color}>{sq.quest_id}</span>
+										<span class="pill mono" style:--c={sq.type_color}>{sq.quest_id}</span>
 										<span class="ql-title">{sq.title}</span>
-										<span class="badge status" style:--c={sq.status_color}
+										<span class="pill status" style:--c={sq.status_color}
 											>{questStatusLabel(sq, $locale)}</span
 										>
 									</a>
@@ -1025,9 +1025,9 @@
 							<li>
 								<div class="prereq-row">
 									<a href="/quests/{pq.quest_id}{fromSuffix}" class="prereq-link">
-										<span class="badge type" style:--c={pq.type_color}>{pq.quest_id}</span>
+										<span class="pill mono" style:--c={pq.type_color}>{pq.quest_id}</span>
 										<span class="ql-title">{pq.title}</span>
-										<span class="badge status" style:--c={pq.status_color}
+										<span class="pill status" style:--c={pq.status_color}
 											>{questStatusLabel(pq, $locale)}</span
 										>
 									</a>
@@ -1069,9 +1069,9 @@
 							<li>
 								<div class="prereq-row">
 									<a href="/quests/{sq.quest_id}{fromSuffix}" class="prereq-link">
-										<span class="badge type" style:--c={sq.type_color}>{sq.quest_id}</span>
+										<span class="pill mono" style:--c={sq.type_color}>{sq.quest_id}</span>
 										<span class="ql-title">{sq.title}</span>
-										<span class="badge status" style:--c={sq.status_color}
+										<span class="pill status" style:--c={sq.status_color}
 											>{questStatusLabel(sq, $locale)}</span
 										>
 									</a>
@@ -1158,9 +1158,9 @@
 						<li>
 							<div class="prereq-row">
 								<a href={`/campaigns/${encodeURIComponent(c.campaign_slug)}`} class="prereq-link">
-									<span class="badge type campaign-badge">{c.campaign_slug}</span>
+									<span class="pill mono campaign-badge">{c.campaign_slug}</span>
 									<span class="ql-title">{c.title}</span>
-									<span class="badge status status-{c.status}">{c.status}</span>
+									<span class="pill status status-{c.status}">{c.status}</span>
 								</a>
 								{#if !editMode}
 									<button
@@ -1426,7 +1426,7 @@
 										onchange={() => toggleCascade(sq.id)}
 										data-testid="cascade-{sq.id}"
 									/>
-									<span class="badge type" style:--c={sq.type_color}>{sq.quest_id}</span>
+									<span class="pill mono" style:--c={sq.type_color}>{sq.quest_id}</span>
 									<span class="del-sub-title-text">{sq.title}</span>
 								</label>
 							</li>
@@ -1679,7 +1679,7 @@
 	}
 
 	/* 헤더 상태 뱃지 펄스 */
-	.badge.pulsing {
+	.pill.pulsing {
 		animation: pulseBadge 0.8s ease-out;
 	}
 	@keyframes pulseBadge {
@@ -1955,17 +1955,12 @@
 	.campaign-badge {
 		--c: var(--accent);
 	}
-	.badge.status.status-active {
+	/* DEV-364: `.pill` 이 `--c` 를 읽어 배경·글자·테두리를 만든다 — 색만 정한다. */
+	.pill.status-active {
 		--c: var(--success);
-		background: color-mix(in srgb, var(--c) 18%, transparent);
-		color: var(--c);
-		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
 	}
-	.badge.status.status-done {
+	.pill.status-done {
 		--c: var(--text-muted);
-		background: color-mix(in srgb, var(--c) 18%, transparent);
-		color: var(--c);
-		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
 	}
 	/* BUG-030 + BUG-031: campaign-add wrapper 도 제거됨 — 버튼은 .section-head
 	   안으로 이동 (sub-quest / prereq 와 동일 배치). */
@@ -2113,16 +2108,7 @@
 		text-overflow: ellipsis;
 	}
 
-	.badge {
-		flex-shrink: 0;
-		padding: 0.15rem 0.55rem;
-		border-radius: 20px;
-		font-size: 0.75rem;
-		font-weight: 500;
-		background: color-mix(in srgb, var(--c) 18%, transparent);
-		color: var(--c);
-		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
-	}
+	/* DEV-364: 모양은 global.css 의 `.pill` 이 정본. */
 	/* BUG-060 후속: 범위 밖 urgency 경고 배지. */
 	.urgency-warn {
 		flex-shrink: 0;
@@ -2277,9 +2263,12 @@
 		font-size: 0.85rem;
 		color: var(--text);
 	}
-	.del-sub-list .badge {
-		padding: 0.05rem 0.45rem;
-		font-size: 0.7rem;
+	/* DEV-364: 삭제 확인 목록은 조밀하다 — 모양을 다시 적지 않고 `.pill` 이
+	   노출한 크기 손잡이만 조인다. */
+	.del-sub-list .pill {
+		--pill-fs: 0.7rem;
+		--pill-py: 0.05rem;
+		--pill-px: 0.45rem;
 	}
 	.del-sub-title-text {
 		flex: 1;

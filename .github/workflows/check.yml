@@ -170,6 +170,11 @@ jobs:
       - name: check no emoji icons in markup
         run: npm run check:no-emoji
 
+      # DEV-364: pill 모양은 global.css 의 `.pill` 하나가 정본 — 컴포넌트가
+      # 다시 정의하면 실패. 정본이 없어 같은 quest_id 칩이 화면마다 갈렸다.
+      - name: check pill single source
+        run: npm run check:pill
+
       - name: vitest
         run: npm test -- --run
 

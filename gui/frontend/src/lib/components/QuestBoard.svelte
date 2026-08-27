@@ -3292,8 +3292,8 @@
 						>
 							{#if boardLod === 'detail'}
 								<div class="node-topline">
-									<span class="node-pill mono" style:--pill-color={q.type_color}>{q.quest_id}</span>
-									<span class="node-pill" style:--pill-color={urgencyColor(q.urgency)}
+									<span class="pill mono xs" style:--c={q.type_color}>{q.quest_id}</span>
+									<span class="pill xs" style:--c={urgencyColor(q.urgency)}
 										>{urgencyLabel(q.urgency, $locale)}</span
 									>
 									{#if urgencyOutOfRange(q.urgency)}
@@ -3305,9 +3305,9 @@
 									{/if}
 									<span class="node-metrics">
 										{#if unresolved > 0}
-											<span class="discussion-count unresolved">✗ {unresolved}</span>
+											<span class="pill xs discussion-count unresolved">✗ {unresolved}</span>
 										{:else if resolved > 0}
-											<span class="discussion-count resolved">✓ {resolved}</span>
+											<span class="pill xs discussion-count resolved">✓ {resolved}</span>
 										{/if}
 										{#if (q.comment_count ?? 0) > 0}
 											<span class="comment-count"
@@ -3360,11 +3360,11 @@
 			<div class="card-head">
 				<span class="drag-hint" title={t('board.dragToMove', $locale)}>⠿</span>
 				<div class="card-badges">
-					<span class="badge" style:--c={expandedQuest.type_color}>{expandedQuest.quest_id}</span>
-					<span class="badge" style:--c={urgencyColor(expandedQuest.urgency)}
+					<span class="pill mono sm" style:--c={expandedQuest.type_color}>{expandedQuest.quest_id}</span>
+					<span class="pill sm" style:--c={urgencyColor(expandedQuest.urgency)}
 						>{urgencyLabel(expandedQuest.urgency, $locale)}</span
 					>
-					<span class="badge" style:--c={expandedQuest.status_color}
+					<span class="pill sm" style:--c={expandedQuest.status_color}
 						>{questStatusLabel(expandedQuest, $locale)}</span
 					>
 				</div>
@@ -3948,24 +3948,12 @@
 		height: 18px;
 		white-space: nowrap;
 	}
-	.node-pill,
-	.discussion-count {
-		display: inline-flex;
-		align-items: center;
-		height: 17px;
-		padding: 0 7px;
-		box-sizing: border-box;
-		border: 1px solid color-mix(in srgb, var(--pill-color) 55%, transparent);
-		border-radius: 9px;
-		background: color-mix(in srgb, var(--pill-color) 16%, transparent);
-		color: var(--pill-color);
-		font-size: 10px;
-		font-weight: 500;
-		line-height: 1;
-	}
-	.node-pill.mono {
-		font-family: 'SFMono-Regular', Consolas, monospace;
-		font-weight: 600;
+	/* DEV-364: 모양은 global.css 의 `.pill.xs` 가 정본. 노드에서 정하는 것은
+	   글자 크기뿐이다 — 상자 높이(1.7em)와 여백(0.7em)이 여기에 비례한다.
+	   0.625rem = 기존 10px. 노드 상자 크기가 레이아웃 계산과 짝이므로 이 값을
+	   바꾸면 노드 안 배치가 함께 바뀐다. */
+	.node-topline :global(.pill.xs) {
+		--pill-fs: 0.625rem;
 	}
 	.urgency-warning {
 		color: var(--danger);
@@ -3981,11 +3969,11 @@
 		font-size: 10px;
 	}
 	.discussion-count {
-		--pill-color: var(--success);
+		--c: var(--success);
 		font-weight: 600;
 	}
 	.discussion-count.unresolved {
-		--pill-color: var(--danger);
+		--c: var(--danger);
 	}
 	.comment-count,
 	.node-due {
@@ -4446,16 +4434,7 @@
 		flex-wrap: wrap;
 		gap: 4px;
 	}
-	.badge {
-		padding: 0.15rem 0.5rem;
-		border-radius: 20px;
-		font-size: 0.7rem;
-		font-weight: 500;
-		background: color-mix(in srgb, var(--c) 18%, transparent);
-		color: var(--c);
-		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
-		white-space: nowrap;
-	}
+	/* DEV-364: 모양은 global.css 의 `.pill` 이 정본. */
 	.card-close {
 		flex-shrink: 0;
 		background: none;

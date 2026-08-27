@@ -83,6 +83,7 @@ test-frontend:
     cd gui/frontend && npm run check
     cd gui/frontend && npm run check:no-hex
     cd gui/frontend && npm run check:no-emoji
+    cd gui/frontend && npm run check:pill
     cd gui/frontend && npm test -- --run
 
 # 전체 테스트 (CI 와 동일)

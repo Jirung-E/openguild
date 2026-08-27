@@ -155,7 +155,7 @@
 					<a class="main" href={`/campaigns/${encodeURIComponent(c.campaign_slug)}`}>
 						<span class="meta-line">
 							<span class="slug">{c.campaign_slug}</span>
-							<span class="status status-{c.status}">{c.status}</span>
+							<span class="pill status-{c.status}">{c.status}</span>
 							<!-- DEV-079: 종료 기한 지났는데 status != done 이면 period 빨강. -->
 							<span class="period" class:overdue={isDateOverdue(c.ended_at, c.status)}
 								>{fmtPeriod(c)}</span
@@ -350,26 +350,15 @@
 		   자연스럽게 감싸도록. */
 		overflow-wrap: anywhere;
 	}
-	/* BUG-021: Quest List 의 pill 스타일 통일. */
-	.status {
-		flex-shrink: 0;
-		padding: 0.15rem 0.55rem;
-		border-radius: 20px;
-		font-size: 0.75rem;
-		font-weight: 500;
+	/* DEV-364: 모양은 global.css 의 `.pill` 이 정본 — 색과 대소문자만 정한다. */
+	.pill {
 		text-transform: uppercase;
 	}
 	.status-active {
 		--c: var(--success);
-		background: color-mix(in srgb, var(--c) 18%, transparent);
-		color: var(--c);
-		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
 	}
 	.status-done {
 		--c: var(--text-muted);
-		background: color-mix(in srgb, var(--c) 18%, transparent);
-		color: var(--c);
-		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
 	}
 	.period {
 		font-size: 0.75rem;

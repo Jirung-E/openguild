@@ -353,11 +353,11 @@
 					{#each recentQuests as q (q.id)}
 						<li>
 							<a class="quest-row" href={`/quests/${encodeURIComponent(q.quest_id)}?from=home`}>
-								<span class="badge type" style:--c={typeColor(q.type_prefix)}>
+								<span class="pill mono" style:--c={typeColor(q.type_prefix)}>
 									{q.quest_id}
 								</span>
 								<span class="title">{q.title}</span>
-								<span class="badge status" style:--c={statusColor(q.status_slug)}>
+								<span class="pill status" style:--c={statusColor(q.status_slug)}>
 									{statusName(q.status_slug)}
 								</span>
 							</a>
@@ -478,18 +478,8 @@
 		background: var(--bg-subtle);
 	}
 
-	/* BUG-021: Quest List 의 pill 스타일 통일 (color-mix bg + border). */
-	.badge {
-		flex-shrink: 0;
-		padding: 0.15rem 0.55rem;
-		border-radius: 20px;
-		font-size: 0.75rem;
-		font-weight: 500;
-		background: color-mix(in srgb, var(--c) 18%, transparent);
-		color: var(--c);
-		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
-	}
-	.badge.status {
+	/* DEV-364: 모양은 global.css 의 `.pill` 이 정본. 여기엔 이 행에서의 배치만. */
+	.pill.status {
 		margin-left: auto;
 	}
 	.title {

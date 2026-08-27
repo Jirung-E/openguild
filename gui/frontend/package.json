@@ -16,7 +16,8 @@
 		"check:no-emoji": "node scripts/check-no-emoji-icons.mjs",
 		"format": "prettier --write .",
 		"test": "vitest run",
-		"test:watch": "vitest"
+		"test:watch": "vitest",
+		"check:pill": "node scripts/check-pill-single-source.mjs"
 	},
 	"devDependencies": {
 		"@eslint/compat": "^2.0.4",

@@ -103,9 +103,9 @@
 						onclick={() => pick(i)}
 						data-testid="quest-combobox-option"
 					>
-						<span class="badge" style:--c={q.type_color}>{q.quest_id}</span>
+						<span class="pill mono sm" style:--c={q.type_color}>{q.quest_id}</span>
 						<span class="title">{q.title}</span>
-						<span class="status" style:--c={q.status_color}>{questStatusLabel(q, $locale)}</span>
+						<span class="pill sm" style:--c={q.status_color}>{questStatusLabel(q, $locale)}</span>
 					</button>
 				</li>
 			{/each}
@@ -192,30 +192,12 @@
 		outline-offset: -1px;
 	}
 
-	.badge {
-		flex-shrink: 0;
-		padding: 0.1rem 0.45rem;
-		border-radius: 12px;
-		font-size: 0.7rem;
-		font-family: 'SFMono-Regular', Consolas, monospace;
-		background: color-mix(in srgb, var(--c) 16%, transparent);
-		color: var(--c);
-		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
-	}
+	/* DEV-364: 모양은 global.css 의 `.pill` 이 정본. */
 	.title {
 		flex: 1;
 		color: var(--text);
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
-	}
-	.status {
-		flex-shrink: 0;
-		padding: 0.1rem 0.5rem;
-		border-radius: 12px;
-		font-size: 0.7rem;
-		background: color-mix(in srgb, var(--c) 14%, transparent);
-		color: var(--c);
-		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
 	}
 </style>

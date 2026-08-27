@@ -54,7 +54,7 @@
 	{/if}
 
 	<!-- 타입 뱃지 -->
-	<span class="badge type" style:--c={quest.type_color}>{quest.quest_id}</span>
+	<span class="pill mono" style:--c={quest.type_color}>{quest.quest_id}</span>
 
 	<!-- 제목 -->
 	<span class="title">{quest.title}</span>
@@ -92,12 +92,12 @@
 	{/if}
 
 	<!-- 긴급도 -->
-	<span class="badge urgency" style:--c={urgencyColor(quest.urgency)}>
+	<span class="pill" style:--c={urgencyColor(quest.urgency)}>
 		{urgencyLabel(quest.urgency, $locale)}
 	</span>
 
 	<!-- 상태 -->
-	<span class="badge status" style:--c={quest.status_color}>
+	<span class="pill" style:--c={quest.status_color}>
 		{questStatusLabel(quest, $locale)}
 	</span>
 </div>
@@ -143,16 +143,6 @@
 		text-overflow: ellipsis;
 	}
 
-	.badge {
-		flex-shrink: 0;
-		padding: 0.15rem 0.55rem;
-		border-radius: 20px;
-		font-size: 0.75rem;
-		font-weight: 500;
-		background: color-mix(in srgb, var(--c) 18%, transparent);
-		color: var(--c);
-		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
-	}
 	/* DEV-116: 댓글 개수 — 작은 회색 pill. */
 	.comment-count {
 		flex-shrink: 0;

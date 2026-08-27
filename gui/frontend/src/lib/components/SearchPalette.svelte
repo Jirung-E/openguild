@@ -587,7 +587,7 @@
 							<span class="pills {it.kind}" style:--kind-c={it.color}>
 								<span class="ptype {it.kind}">{kindLabel(it.kind)}</span>
 								{#if it.title}
-									<span class="pslug">{it.label}</span>
+									<span class="pill mono xs pslug">{it.label}</span>
 								{/if}
 							</span>
 							<span class="ptitle">{it.title || it.label}</span>
@@ -1059,28 +1059,17 @@
 	   배경 16% / 테두리 55% / line-height 1.
 	   `height` + `line-height: 1` 이 함께 있어 줄 간격 상속(전역 1.6)에 영향받지
 	   않는다 — 높이가 행마다 흔들리지 않는 이유다. */
+	/* DEV-364: 모양은 global.css 의 `.pill.mono.xs` 가 정본 — 보드 노드의 slug
+	   칩과 같은 공식이다(같은 quest_id 를 보여주는 칩이 화면마다 다르면 같은
+	   것으로 안 읽힌다). 여기서 정하는 것은 두 가지뿐이다.
+
+	   - 글자 크기: 나란히 놓이는 `.ptype` 과 **같아야** 한다. 다르면 한쪽이
+	     잘못된 것처럼 보인다.
+	   - 색: 종류/타입 색(`--kind-c`)을 `.pill` 이 읽는 `--c` 로 넘긴다. */
 	.pslug {
+		--pill-fs: 0.72rem;
+		--c: var(--kind-c, var(--text-muted));
 		flex: none;
-		display: inline-flex;
-		align-items: center;
-		/* BUG-244: 보드 노드의 slug 칩(`QuestBoard` 의 `.node-pill.mono`)과 **모양이
-		   같아야** 한다 — 같은 quest_id 를 보여주는 칩이 화면마다 다르면 같은
-		   것으로 안 읽힌다. 그쪽은 font 10px / height 17px / padding 0 7px /
-		   radius 9px(=높이의 절반) 이므로 비율은 각각 글자의 1.7배 / 0.7배 /
-		   완전한 알약이다. px 로 베끼면 UI 배율(DEV-101)에서 어긋나므로 **글자
-		   기준(em)** 으로 옮겨 적는다 — 배율이 바뀌어도 같은 모양이 유지된다. */
-		height: 1.7em;
-		padding: 0 0.7em;
-		box-sizing: border-box;
-		border-radius: var(--r-pill);
-		font-family: 'SFMono-Regular', Consolas, monospace;
-		font-size: 0.72rem;
-		font-weight: 600;
-		line-height: 1;
-		white-space: nowrap;
-		color: var(--kind-c, var(--text-muted));
-		background: color-mix(in srgb, var(--kind-c, var(--text-muted)) 16%, transparent);
-		border: var(--bw) solid color-mix(in srgb, var(--kind-c, var(--text-muted)) 55%, transparent);
 	}
 	.ptype.quest {
 		color: var(--accent);

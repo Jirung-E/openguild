@@ -116,9 +116,9 @@
 						onclick={() => pick(i)}
 						data-testid="campaign-combobox-option"
 					>
-						<span class="badge slug">{c.campaign_slug}</span>
+						<span class="pill mono sm slug">{c.campaign_slug}</span>
 						<span class="title">{c.title}</span>
-						<span class="status" style:--c={statusColor(c.status)}>{c.status}</span>
+						<span class="pill sm" style:--c={statusColor(c.status)}>{c.status}</span>
 					</button>
 				</li>
 			{/each}
@@ -205,16 +205,10 @@
 	}
 
 	/* slug pill — campaign 색 (Quest Detail 페이지의 .campaign-badge 와 동일 톤). */
-	.badge.slug {
-		flex-shrink: 0;
+	/* DEV-364: 모양은 global.css 의 `.pill` 이 정본 — 색만 정한다.
+	   캠페인은 타입 개념이 없어 accent 고정. */
+	.pill.slug {
 		--c: var(--accent);
-		padding: 0.1rem 0.45rem;
-		border-radius: 12px;
-		font-size: 0.7rem;
-		font-family: 'SFMono-Regular', Consolas, monospace;
-		background: color-mix(in srgb, var(--c) 16%, transparent);
-		color: var(--c);
-		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
 	}
 	.title {
 		flex: 1;
@@ -222,14 +216,5 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
-	}
-	.status {
-		flex-shrink: 0;
-		padding: 0.1rem 0.5rem;
-		border-radius: 12px;
-		font-size: 0.7rem;
-		background: color-mix(in srgb, var(--c) 14%, transparent);
-		color: var(--c);
-		border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
 	}
 </style>
