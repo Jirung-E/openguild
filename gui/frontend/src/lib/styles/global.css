@@ -413,7 +413,10 @@ input[type='checkbox']:disabled {
 	   1.7em / 0.7em 이 각각 그 px 비율이다.
 	   글자 크기는 쓰는 쪽이 `--pill-fs` 로 정한다(보드와 팔레트가 다르다). */
 	--pill-px: 0.7em;
-	height: 1.7em;
+	/* 나란히 놓이는 다른 요소와 상자 높이를 맞춰야 하는 곳이 있어(검색 팔레트의
+	   분류 칩) 높이도 손잡이로 노출한다. 기본은 글자의 1.7배. */
+	--pill-h: 1.7em;
+	height: var(--pill-h);
 	line-height: 1;
 	/* 좁은 상자에서는 배경이 옅으면 글자가 묻힌다 — 대비를 올린다. */
 	background: color-mix(in srgb, var(--c) 16%, transparent);
