@@ -2626,6 +2626,145 @@ async fn test_campaign_get_banner_image_404_when_none() {
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
+// ═══════════════════ BUG-255: 배너 쓰기 (원격/브라우저) ═══════════════════
+
+/// 유효한 최소 PNG (1×1). 확장자 검증만 하므로 내용은 아무거나 되지만,
+/// 왕복이 바이트 그대로인지 보려면 실제 파일이어야 의미가 있다.
+const TINY_PNG: &[u8] = &[
+    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,
+    0xDE, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41, 0x54, 0x08, 0xD7, 0x63, 0xF8, 0xCF, 0xC0, 0x00,
+    0x00, 0x03, 0x01, 0x01, 0x00, 0x18, 0xDD, 0x8D, 0xB0, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E,
+    0x44, 0xAE, 0x42, 0x60, 0x82,
+];
+
+async fn put_banner(app: Router, slug: &str, ext: &str, bytes: &[u8]) -> (StatusCode, Vec<u8>) {
+    let res = app
+        .oneshot(
+            Request::post(format!("/api/campaigns/{slug}/banner?ext={ext}"))
+                .body(Body::from(bytes.to_vec()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = res.status();
+    let body = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap()
+        .to_vec();
+    (status, body)
+}
+
+/// 브라우저/원격에서 배너를 올리고 다시 받아온다 — BUG-255 이전에는 이 라우트
+/// 자체가 없어서 배너 설정이 데스크톱 전용이었다.
+#[tokio::test]
+async fn test_campaign_set_banner_from_bytes_roundtrip() {
+    let app = setup().await;
+    post(app.clone(), "/api/campaigns", json!({ "title": "camp" })).await;
+
+    let (status, body) = put_banner(app.clone(), "C-001", "png", TINY_PNG).await;
+    assert_eq!(status, StatusCode::OK);
+    let camp: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(camp["image_path"], "assets/C-001-banner.png");
+
+    // 같은 바이트가 그대로 돌아와야 한다.
+    let res = app
+        .oneshot(
+            Request::get("/api/campaigns/C-001/image")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.headers()["content-type"], "image/png");
+    let got = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    assert_eq!(got.as_ref(), TINY_PNG);
+}
+
+/// 확장자 화이트리스트는 경로 경로(데스크톱)와 **공유**한다 — 한쪽에서만 되는
+/// 확장자가 생기지 않도록 core 의 `check_banner_ext` 하나만 본다.
+#[tokio::test]
+async fn test_campaign_set_banner_rejects_unsupported_ext() {
+    let app = setup().await;
+    post(app.clone(), "/api/campaigns", json!({ "title": "camp" })).await;
+
+    let (status, _) = put_banner(app.clone(), "C-001", "txt", b"nope").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // 거부됐으면 파일도 남지 않아야 한다.
+    let res = app
+        .oneshot(
+            Request::get("/api/campaigns/C-001/image")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+}
+
+/// 확장자가 바뀌면 이름이 달라 덮이지 않는다 — 옛 배너를 직접 지워야 한다.
+/// (`begin_banner_image` 가 하는 일. 안 지우면 assets 에 고아 파일이 쌓인다.)
+#[tokio::test]
+async fn test_campaign_set_banner_replaces_old_extension() {
+    let app = setup().await;
+    post(app.clone(), "/api/campaigns", json!({ "title": "camp" })).await;
+
+    let (s1, _) = put_banner(app.clone(), "C-001", "png", TINY_PNG).await;
+    assert_eq!(s1, StatusCode::OK);
+    let (s2, body) = put_banner(app.clone(), "C-001", "gif", b"GIF89a-fake").await;
+    assert_eq!(s2, StatusCode::OK);
+    let camp: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(camp["image_path"], "assets/C-001-banner.gif");
+
+    // 옛 .png 는 사라졌어야 한다 — 라우트로는 현재 배너만 보이므로 GET 이
+    // gif 를 주는지로 확인하고, 파일 존재는 아래 core 테스트가 본다.
+    let res = app
+        .oneshot(
+            Request::get("/api/campaigns/C-001/image")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.headers()["content-type"], "image/gif");
+}
+
+/// 제거는 파일 선택이 필요 없는데도 설정 버튼과 같은 분기에 묶여 원격/브라우저
+/// 에서 함께 막혀 있었다.
+#[tokio::test]
+async fn test_campaign_clear_banner_over_http() {
+    let app = setup().await;
+    post(app.clone(), "/api/campaigns", json!({ "title": "camp" })).await;
+    put_banner(app.clone(), "C-001", "png", TINY_PNG).await;
+
+    let res = app
+        .clone()
+        .oneshot(
+            Request::delete("/api/campaigns/C-001/banner")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let camp: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert!(camp["image_path"].is_null());
+
+    let status = app
+        .oneshot(
+            Request::get("/api/campaigns/C-001/image")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap()
+        .status();
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
 // ═══════════════════ DEV-196: comments (quest) ═══════════════════
 
 async fn seed_quest(app: Router) -> Router {

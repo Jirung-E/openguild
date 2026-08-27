@@ -16,7 +16,7 @@
 import { EditorView } from '@codemirror/view';
 import type { Extension } from '@codemirror/state';
 import { api } from '$lib/api/client';
-import { detectEnvironment, postWithUploadProgress } from '$lib/api/transport';
+import { detectEnvironment, isLocalTauri, postWithUploadProgress } from '$lib/api/transport';
 import { getRemoteServerUrl } from '$lib/stores/remoteServer';
 import { get } from 'svelte/store';
 import { locale, t } from '$lib/stores/locale';
@@ -33,10 +33,6 @@ import { locale, t } from '$lib/stores/locale';
  */
 export const MAX_ATTACHMENT_BYTES = 64 * 1024 * 1024;
 
-/** 로컬 Tauri(원격 연결 아님) — 경로 기반 업로드가 가능한 환경. */
-function isLocalTauri(): boolean {
-	return detectEnvironment() === 'tauri' && !getRemoteServerUrl();
-}
 
 function tooLargeMessage(file: File): string {
 	const mb = (n: number) => Math.round((n / (1024 * 1024)) * 10) / 10;

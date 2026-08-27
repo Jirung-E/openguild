@@ -257,29 +257,61 @@
 		}
 	}
 
-	// ── DEV-087: 배너 이미지 (Tauri 전용 — 파일 picker + assets/ 복사) ──
-	import { detectEnvironment } from '$lib/api/transport';
-	const isTauri = detectEnvironment() === 'tauri';
+	// ── DEV-087: 배너 이미지 — 파일 선택 + assets/ 복사 ──
+	//
+	// BUG-255: 예전엔 `detectEnvironment() === 'tauri'` 로 버튼을 숨겨 브라우저·
+	// 원격에서는 배너를 아예 못 건드렸다. 게다가 원격 제외(`!getRemoteServerUrl()`)
+	// 가 빠져 있어, 데스크톱이 원격 길드에 접속한 상태에서는 버튼이 보이는데
+	// `invoke` 가 **로컬** Store 를 건드렸다 — 보는 길드와 쓰는 대상이 갈렸다.
+	// 이제 판별은 `isLocalTauri` 하나로 통일하고, 버튼은 항상 보인다.
+	import { isLocalTauri } from '$lib/api/transport';
+	const BANNER_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'];
 	let bannerBusy = $state(false);
+
+	/** 브라우저/원격 — 숨은 file input. `editor-attach.ts` 의 것과 같은 패턴. */
+	function pickImageViaInput(): Promise<File | null> {
+		return new Promise((resolve) => {
+			const input = document.createElement('input');
+			input.type = 'file';
+			input.accept = BANNER_EXTS.map((e) => `.${e}`).join(',');
+			input.style.display = 'none';
+			// 취소를 눌러도 promise 가 남지 않도록 cancel 도 함께 처리.
+			input.oncancel = () => {
+				input.remove();
+				resolve(null);
+			};
+			input.onchange = () => {
+				const f = input.files?.[0] ?? null;
+				input.remove();
+				resolve(f);
+			};
+			document.body.appendChild(input);
+			input.click();
+		});
+	}
 
 	async function pickBanner() {
 		if (!detail) return;
 		bannerBusy = true;
 		try {
-			const { open } = await import('@tauri-apps/plugin-dialog');
-			const picked = await open({
-				multiple: false,
-				directory: false,
-				filters: [
-					{
-						name: t('campaign.imageFilter', $locale),
-						extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp']
-					}
-				]
-			});
-			if (typeof picked === 'string' && picked) {
-				await campaignsApi.setBanner(detail.campaign_slug, picked);
-				await load();
+			if (isLocalTauri()) {
+				// 로컬 데스크톱은 경로 기반 — bytes 를 IPC 로 보내지 않는다.
+				const { open } = await import('@tauri-apps/plugin-dialog');
+				const picked = await open({
+					multiple: false,
+					directory: false,
+					filters: [{ name: t('campaign.imageFilter', $locale), extensions: BANNER_EXTS }]
+				});
+				if (typeof picked === 'string' && picked) {
+					await campaignsApi.setBannerFromPath(detail.campaign_slug, picked);
+					await load();
+				}
+			} else {
+				const file = await pickImageViaInput();
+				if (file) {
+					await campaignsApi.setBannerFromFile(detail.campaign_slug, file);
+					await load();
+				}
 			}
 		} catch (e) {
 			showToast(e instanceof Error ? e.message : t('campaign.bannerSetFailed', $locale), 'error');
@@ -442,21 +474,19 @@
 			<!-- BUG-035: Quest Detail 의 top-bar 패턴 — 우측에 편집/삭제 묶음. -->
 			{#if !editMode}
 				<div class="top-actions">
-					{#if isTauri}
-						<!-- DEV-087: 배너 이미지 — Tauri 전용 (파일 picker). -->
-						<button class="btn-edit" onclick={pickBanner} disabled={bannerBusy}
-							><Icon name="image" /> {t('campaign.banner', $locale)}
+					<!-- DEV-087: 배너 이미지. BUG-255 전까지 Tauri 전용이었다. -->
+					<button class="btn-edit" onclick={pickBanner} disabled={bannerBusy}
+						><Icon name="image" /> {t('campaign.banner', $locale)}
+					</button>
+					{#if detail.image_path}
+						<button
+							class="btn-edit"
+							onclick={removeBanner}
+							disabled={bannerBusy}
+							title={t('campaign.bannerRemove', $locale)}
+						>
+							<Icon name="image" /> ×
 						</button>
-						{#if detail.image_path}
-							<button
-								class="btn-edit"
-								onclick={removeBanner}
-								disabled={bannerBusy}
-								title={t('campaign.bannerRemove', $locale)}
-							>
-								<Icon name="image" /> ×
-							</button>
-						{/if}
 					{/if}
 					<button class="btn-edit" onclick={enterEditMode}>✎ {t('detail.edit', $locale)}</button>
 					<button class="btn-delete" onclick={askDeleteCampaign}

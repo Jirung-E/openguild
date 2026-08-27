@@ -44,6 +44,21 @@ export function detectEnvironment(): 'http' | 'tauri' {
 	return 'http';
 }
 
+/**
+ * BUG-255: **로컬** Tauri — 데스크톱이면서 원격 서버에 연결돼 있지 않은 상태.
+ *
+ * "Tauri 인가" 와 "로컬 파일 경로를 써도 되는가" 는 다른 질문이다. 데스크톱
+ * 앱이 원격 길드에 접속해 있으면 `invoke` 는 여전히 **로컬** Store 를
+ * 건드리므로, 보고 있는 길드와 쓰는 대상이 갈린다.
+ *
+ * `editor-attach.ts` 가 첨부 업로드용으로 같은 판별을 갖고 있었는데
+ * (BUG-168), 캠페인 배너는 `detectEnvironment() === 'tauri'` 만 보고 있어
+ * 원격 모드에서 엉뚱한 길드에 쓰고 있었다. 판별을 여기 하나로 모은다.
+ */
+export function isLocalTauri(): boolean {
+	return detectEnvironment() === 'tauri' && !getRemoteServerUrl();
+}
+
 // ─────────────────────── HTTP transport ───────────────────────
 
 /**

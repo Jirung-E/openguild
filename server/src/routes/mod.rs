@@ -201,6 +201,16 @@ pub fn create_router(store: Store) -> Router {
             "/api/campaigns/{slug}/image",
             get(campaigns::get_banner_image),
         )
+        // BUG-255: 배너 **쓰기** — 예전엔 Tauri 커맨드(로컬 경로)뿐이라
+        // 원격/브라우저에서는 설정도 제거도 못 했다. 첨부 스트리밍과 같은 방식.
+        // DefaultBodyLimit::disable() — 데스크톱 경로(std::fs::copy)가 이미
+        // 무제한이라 모드에 따라 되고 안 되고가 갈리지 않게 한다.
+        .route(
+            "/api/campaigns/{slug}/banner",
+            post(campaigns::set_banner_image)
+                .layer(DefaultBodyLimit::disable())
+                .delete(campaigns::clear_banner_image),
+        )
         // DEV-069: 본문 첨부 / 자산 — attachments/ + assets/ 한정 서빙.
         .route("/api/guild-files/{*rel}", get(admin::get_guild_file))
         // DEV-152: 첨부 업로드(remote 모드) — bytes 저장 + quest/campaign 목록 등록.

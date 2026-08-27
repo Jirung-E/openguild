@@ -138,8 +138,80 @@ pub async fn update_campaign(
     Ok(camp)
 }
 
+/// BUG-255: 배너 확장자 화이트리스트 — 경로 경로(데스크톱)와 bytes 경로(서버)가
+/// **같은 목록**을 봐야 한다. 두 벌로 두면 한쪽에서만 되는 확장자가 생긴다.
+pub const BANNER_EXTS: [&str; 6] = ["png", "jpg", "jpeg", "gif", "webp", "bmp"];
+
+fn check_banner_ext(ext: &str) -> AppResult<String> {
+    let ext = ext.trim_start_matches('.').to_ascii_lowercase();
+    if !BANNER_EXTS.contains(&ext.as_str()) {
+        return Err(AppError::BadRequest(format!(
+            "지원하지 않는 이미지 확장자: .{ext} ({})",
+            BANNER_EXTS.join("/")
+        )));
+    }
+    Ok(ext)
+}
+
+/// BUG-255: 배너 쓰기의 **앞부분** — 확장자 검증, journal, 옛 배너 제거,
+/// 대상 경로 확보. 파일을 실제로 놓는 것은 호출자 몫이다.
+///
+/// 데스크톱은 로컬 경로에서 복사하고(`set_banner_image`), 서버는 요청 body 를
+/// 그 자리에 스트리밍한다. 둘로 갈라지는 건 "파일을 어떻게 놓느냐" 뿐이라
+/// 나머지는 여기와 `commit_banner_image` 가 공유한다.
+///
+/// 반환: `(rel, abs)` — `.guild` 기준 상대 경로와 절대 경로.
+pub async fn begin_banner_image(
+    store: &Store,
+    slug: &str,
+    ext: &str,
+    source_note: &str,
+) -> AppResult<(String, std::path::PathBuf)> {
+    let ext = check_banner_ext(ext)?;
+
+    let _ = journal::append(
+        &store.journal_pool,
+        "set_campaign_banner",
+        &json!({ "slug": slug, "source": source_note }),
+        None::<&serde_json::Value>,
+    )
+    .await
+    .map_err(AppError::Internal)?;
+
+    let camp = sql::fetch_by_slug(&store.index_pool, slug).await?;
+
+    std::fs::create_dir_all(store.paths.assets_dir())
+        .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
+    let rel = format!("assets/{slug}-banner.{ext}");
+    let dest = store.paths.dot_guild().join(&rel);
+    // 확장자가 바뀌면 옛 파일은 이름이 달라 덮이지 않는다 — 직접 지운다.
+    if let Some(old_rel) = &camp.image_path
+        && old_rel != &rel
+    {
+        let _ = std::fs::remove_file(store.paths.dot_guild().join(old_rel));
+    }
+    Ok((rel, dest))
+}
+
+/// BUG-255: 배너 쓰기의 **뒷부분** — 파일이 제자리에 놓인 뒤 DB + frontmatter 갱신.
+pub async fn commit_banner_image(store: &Store, slug: &str, rel: &str) -> AppResult<CampaignRow> {
+    let camp = sql::fetch_by_slug(&store.index_pool, slug).await?;
+    sqlx::query("UPDATE campaigns SET image_path = ? WHERE id = ?")
+        .bind(rel)
+        .bind(camp.id)
+        .execute(&store.index_pool)
+        .await?;
+    let camp = sql::fetch_by_slug(&store.index_pool, slug).await?;
+    write_campaign_file(store, &camp, false).await?;
+    Ok(camp)
+}
+
 /// DEV-087: 배너 이미지 설정 — source 파일을 `.guild/assets/{slug}-banner.{ext}`
 /// 로 복사 + frontmatter / DB 갱신. 기존 배너는 덮어씀 (캠페인당 1장).
+///
+/// **로컬 경로 전용** — 데스크톱(Tauri)에서만 부를 수 있다. 브라우저/원격은
+/// 경로가 없으므로 서버의 bytes 라우트가 `begin_banner_image` +
+/// `commit_banner_image` 를 직접 쓴다(BUG-255).
 pub async fn set_banner_image(
     store: &Store,
     slug: &str,
@@ -156,44 +228,18 @@ pub async fn set_banner_image(
         .and_then(|e| e.to_str())
         .map(|e| e.to_ascii_lowercase())
         .unwrap_or_default();
-    if !matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp") {
-        return Err(AppError::BadRequest(format!(
-            "지원하지 않는 이미지 확장자: .{ext} (png/jpg/jpeg/gif/webp/bmp)"
-        )));
-    }
-    let _ = journal::append(
-        &store.journal_pool,
-        "set_campaign_banner",
-        &json!({ "slug": slug, "source": source_path.display().to_string() }),
-        None::<&serde_json::Value>,
-    )
-    .await
-    .map_err(AppError::Internal)?;
 
-    let camp = sql::fetch_by_slug(&store.index_pool, slug).await?;
+    let (rel, dest) =
+        begin_banner_image(store, slug, &ext, &source_path.display().to_string()).await?;
 
-    // 1. assets/ 로 복사. 다른 확장자의 옛 배너가 있다면 제거.
-    std::fs::create_dir_all(store.paths.assets_dir())
-        .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
-    let rel = format!("assets/{slug}-banner.{ext}");
-    let dest = store.paths.dot_guild().join(&rel);
-    if let Some(old_rel) = &camp.image_path
-        && old_rel != &rel
-    {
-        let _ = std::fs::remove_file(store.paths.dot_guild().join(old_rel));
-    }
-    std::fs::copy(source_path, &dest)
-        .map_err(|e| AppError::Internal(anyhow::anyhow!(crate::tf!("이미지 복사 실패: {e}", "image copy failed: {e}"))))?;
+    std::fs::copy(source_path, &dest).map_err(|e| {
+        AppError::Internal(anyhow::anyhow!(crate::tf!(
+            "이미지 복사 실패: {e}",
+            "image copy failed: {e}"
+        )))
+    })?;
 
-    // 2. DB + 파일.
-    sqlx::query("UPDATE campaigns SET image_path = ? WHERE id = ?")
-        .bind(&rel)
-        .bind(camp.id)
-        .execute(&store.index_pool)
-        .await?;
-    let camp = sql::fetch_by_slug(&store.index_pool, slug).await?;
-    write_campaign_file(store, &camp, false).await?;
-    Ok(camp)
+    commit_banner_image(store, slug, &rel).await
 }
 
 /// DEV-087: 배너 제거 — assets 파일 삭제 + frontmatter / DB NULL.
@@ -637,5 +683,90 @@ mod tests {
         assert!(r.contains("- [ ] A"));
         assert!(r.contains("- [ ] C"));
         assert!(!r.contains("- [x] B"));
+    }
+
+    // ─── BUG-255: 배너 — 경로 경로(데스크톱)가 리팩토링 후에도 그대로인지 ───
+
+    async fn banner_setup(label: &str) -> (std::path::PathBuf, Store) {
+        let ns = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("og-banner-{label}-{ns}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        crate::repo::seed_guild_dir(&dir).unwrap();
+        let store = Store::open(&dir).await.unwrap();
+        create_campaign(
+            &store,
+            crate::models::CreateCampaignRequest {
+                title: "camp".into(),
+                description: None,
+                started_at: None,
+                ended_at: None,
+            },
+        )
+        .await
+        .unwrap();
+        (dir, store)
+    }
+
+    /// 데스크톱 경로(`set_banner_image`)는 BUG-255 에서 `begin_/commit_` 으로
+    /// 쪼개졌다 — 동작이 그대로인지 고정한다. 이게 깨지면 앱에서 배너가 죽는다.
+    #[tokio::test]
+    async fn set_banner_from_path_copies_and_records() {
+        let (dir, store) = banner_setup("path").await;
+        let src = dir.join("src.png");
+        std::fs::write(&src, b"PNGDATA").unwrap();
+
+        let camp = set_banner_image(&store, "C-001", &src).await.unwrap();
+        assert_eq!(camp.image_path.as_deref(), Some("assets/C-001-banner.png"));
+        let dest = store.paths.dot_guild().join("assets/C-001-banner.png");
+        assert_eq!(std::fs::read(&dest).unwrap(), b"PNGDATA");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 확장자가 바뀌면 옛 파일은 이름이 달라 **덮이지 않는다** — 직접 지워야
+    /// assets 에 고아가 안 쌓인다. 경로/바이트 두 경로가 공유하는 부분이다.
+    #[tokio::test]
+    async fn set_banner_removes_old_file_when_extension_changes() {
+        let (dir, store) = banner_setup("ext").await;
+        let png = dir.join("a.png");
+        std::fs::write(&png, b"PNG").unwrap();
+        set_banner_image(&store, "C-001", &png).await.unwrap();
+        let old = store.paths.dot_guild().join("assets/C-001-banner.png");
+        assert!(old.exists());
+
+        let gif = dir.join("b.gif");
+        std::fs::write(&gif, b"GIF").unwrap();
+        let camp = set_banner_image(&store, "C-001", &gif).await.unwrap();
+        assert_eq!(camp.image_path.as_deref(), Some("assets/C-001-banner.gif"));
+        assert!(!old.exists(), "옛 .png 가 남았다");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 확장자 화이트리스트는 한 곳(`check_banner_ext`)만 본다 — 경로 경로도
+    /// 서버 bytes 경로와 **같은 목록**을 쓴다.
+    #[tokio::test]
+    async fn set_banner_rejects_unsupported_extension() {
+        let (dir, store) = banner_setup("bad").await;
+        let txt = dir.join("x.txt");
+        std::fs::write(&txt, b"nope").unwrap();
+
+        let e = set_banner_image(&store, "C-001", &txt).await.unwrap_err();
+        assert!(matches!(e, AppError::BadRequest(_)), "got {e:?}");
+        // 거부됐으면 파일도 안 생겨야 한다.
+        assert!(!store.paths.dot_guild().join("assets/C-001-banner.txt").exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn banner_ext_is_case_and_dot_insensitive() {
+        assert_eq!(check_banner_ext("PNG").unwrap(), "png");
+        assert_eq!(check_banner_ext(".JPEG").unwrap(), "jpeg");
+        assert!(check_banner_ext("txt").is_err());
+        assert!(check_banner_ext("").is_err());
     }
 }

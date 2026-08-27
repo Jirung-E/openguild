@@ -7,6 +7,7 @@
 //! (CLI / GUI 가 slug 기반으로 호출).
 
 use axum::{
+    body::Body,
     extract::{Path, Query, State},
     http::StatusCode,
     Json,
@@ -233,4 +234,70 @@ pub async fn get_banner_image(
         _ => "application/octet-stream",
     };
     Ok(([(axum::http::header::CONTENT_TYPE, mime)], bytes).into_response())
+}
+
+
+/// BUG-255: 배너 **설정** — 원격/브라우저 모드용 bytes 경로.
+///
+/// 데스크톱은 `set_campaign_banner` Tauri 커맨드로 **로컬 경로**를 넘기는데,
+/// 브라우저에는 경로가 없어 그 경로를 못 쓴다. 그래서 배너 설정 버튼 자체가
+/// `{#if isTauri}` 로 가려져 있었다 — 보기만 되고 쓰기는 안 되는 상태.
+///
+/// 첨부(`save_attachment_stream`, BUG-168)와 같은 모양으로 맞춘다: body 가 파일
+/// 원문이라 확장자는 쿼리로 받고, 도중에 끊기면 조각 파일을 남기지 않는다.
+///
+/// 크기 상한은 두지 않는다 — 경로 경로가 이미 무제한(`std::fs::copy`)이라,
+/// 모드에 따라 되고 안 되고가 갈리면 그게 더 나쁘다.
+#[derive(Debug, Deserialize)]
+pub struct BannerQuery {
+    pub ext: String,
+}
+
+pub async fn set_banner_image(
+    State(store): State<Store>,
+    Path(slug): Path<String>,
+    Query(q): Query<BannerQuery>,
+    body: Body,
+) -> AppResult<Json<CampaignRow>> {
+    use futures_util::StreamExt as _;
+    use tokio::io::AsyncWriteExt as _;
+
+    // 확장자 검증 · 옛 배너 제거 · 대상 경로 확보까지는 core 가 데스크톱 경로와
+    // 공유한다 — 검증이 두 벌이 되면 한쪽에서만 되는 확장자가 생긴다.
+    let (rel, abs) = ops::begin_banner_image(&store, &slug, &q.ext, "http-upload").await?;
+
+    let mut file = tokio::fs::File::create(&abs)
+        .await
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("배너 파일 생성 실패: {e}")))?;
+
+    let mut stream = body.into_data_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = match chunk {
+            Ok(c) => c,
+            Err(e) => {
+                let _ = tokio::fs::remove_file(&abs).await;
+                return Err(AppError::Internal(anyhow::anyhow!("배너 업로드 중단됨: {e}")).into());
+            }
+        };
+        if let Err(e) = file.write_all(&chunk).await {
+            let _ = tokio::fs::remove_file(&abs).await;
+            return Err(AppError::Internal(anyhow::anyhow!("배너 write 실패: {e}")).into());
+        }
+    }
+    if let Err(e) = file.flush().await {
+        let _ = tokio::fs::remove_file(&abs).await;
+        return Err(AppError::Internal(anyhow::anyhow!("배너 flush 실패: {e}")).into());
+    }
+    drop(file);
+
+    Ok(Json(ops::commit_banner_image(&store, &slug, &rel).await?))
+}
+
+/// BUG-255: 배너 **제거** — 파일 선택이 필요 없는데도 설정 버튼과 같은
+/// `{#if isTauri}` 안에 묶여 원격/브라우저에서 함께 가려져 있었다.
+pub async fn clear_banner_image(
+    State(store): State<Store>,
+    Path(slug): Path<String>,
+) -> AppResult<Json<CampaignRow>> {
+    Ok(Json(ops::clear_banner_image(&store, &slug).await?))
 }

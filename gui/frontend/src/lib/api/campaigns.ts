@@ -1,4 +1,5 @@
 import { api } from './client';
+import { isLocalTauri, postWithUploadProgress } from './transport';
 import type {
 	Campaign,
 	CampaignChecklistItem,
@@ -67,14 +68,41 @@ export const campaignsApi = {
 	/** Quest 가 속한 캠페인 목록 — Quest Detail 의 Campaigns 섹션. */
 	forQuest: (questId: number) => api.get<Campaign[]>(`/api/quests/${questId}/campaigns`),
 
-	// ─── DEV-087: 배너 이미지 — Tauri 전용 (브라우저 모드는 버튼 숨김) ───
-	/** source 파일을 .guild/assets/ 로 복사 + 갱신된 campaign 반환. */
-	setBanner: async (slug: string, sourcePath: string): Promise<Campaign> => {
+	// ─── DEV-087 / BUG-255: 배너 이미지 ───
+	//
+	// 예전엔 이 둘이 곧장 `invoke` 라 **로컬 파일 경로**가 있어야만 동작했고,
+	// 그래서 브라우저·원격에서는 버튼 자체를 숨겼다(보기만 되고 쓰기는 불가).
+	// 첨부(BUG-168)와 같은 모양으로 환경별 분기를 넣는다 — 로컬 데스크톱은
+	// 경로, 그 외는 bytes 를 서버로 스트리밍.
+
+	/** 로컬 Tauri 전용 — 네이티브 다이얼로그가 준 **경로**로 설정. */
+	setBannerFromPath: async (slug: string, sourcePath: string): Promise<Campaign> => {
 		const { invoke } = await import('@tauri-apps/api/core');
 		return await invoke<Campaign>('set_campaign_banner', { slug, sourcePath });
 	},
+
+	/**
+	 * 브라우저/원격 — 고른 파일을 그대로 POST.
+	 *
+	 * body 가 파일 원문이라 확장자는 쿼리로 보낸다(서버가 저장 파일명을 정한다).
+	 * 진행률이 필요해질 수 있어 `postWithUploadProgress` 를 쓰되 콜백은 비운다 —
+	 * 배너는 보통 작아서 표시할 것이 없다.
+	 */
+	setBannerFromFile: async (slug: string, file: File): Promise<Campaign> => {
+		const ext = (file.name.split('.').pop() ?? '').toLowerCase();
+		return await postWithUploadProgress<Campaign>(
+			`/api/campaigns/${encodeURIComponent(slug)}/banner?ext=${encodeURIComponent(ext)}`,
+			file,
+			() => {}
+		);
+	},
+
 	clearBanner: async (slug: string): Promise<Campaign> => {
-		const { invoke } = await import('@tauri-apps/api/core');
-		return await invoke<Campaign>('clear_campaign_banner', { slug });
+		if (isLocalTauri()) {
+			const { invoke } = await import('@tauri-apps/api/core');
+			return await invoke<Campaign>('clear_campaign_banner', { slug });
+		}
+		// 제거는 파일 선택이 없는데도 설정 버튼과 같이 묶여 가려져 있었다.
+		return await api.delete<Campaign>(`/api/campaigns/${encodeURIComponent(slug)}/banner`);
 	}
 };
