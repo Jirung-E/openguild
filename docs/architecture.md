@@ -404,9 +404,22 @@ openguild/
 | POST   | `/api/campaigns/:slug/checklist` | 항목 추가 (body 끝에 `- [ ]` append) |
 | PATCH  | `/api/campaigns/:slug/checklist/:idx` | 1-based 인덱스 항목 체크/언체크 |
 | DELETE | `/api/campaigns/:slug/checklist/:idx` | 항목 삭제 |
-| POST   | `/api/campaigns/:slug/quests/:quest_id` | quest 링크 |
-| DELETE | `/api/campaigns/:slug/quests/:quest_id` | quest 링크 해제 |
-| GET    | `/api/campaigns/active-summaries` | Home carousel 용 — 진행 중 캠페인 + 진행률 |
+| POST   | `/api/campaigns/:slug/quests` | quest 링크 (body `{quest_slug}`) |
+| DELETE | `/api/campaigns/:slug/quests/:quest_slug` | quest 링크 해제 |
+| GET    | `/api/campaigns/:slug/history` | DEV-226: 캠페인 변경 이력 (quest history 와 대칭) |
+| GET    | `/api/campaigns/summaries` | 목록 화면용 — 전체 캠페인 + 진행률 |
+| GET    | `/api/campaigns/summaries/active` | Home carousel 용 — 진행 중 캠페인 + 진행률 |
+| GET    | `/api/campaigns/summaries/upcoming` | 곧 시작하는 캠페인 (`?days=N`, 기본 7) |
+| GET    | `/api/campaigns/:slug/image` | DEV-087: 배너 이미지 bytes (브라우저 표시용) |
+| POST   | `/api/campaigns/:slug/banner?ext=png` | BUG-255: 배너 설정 — body 가 파일 원문(스트리밍) |
+| DELETE | `/api/campaigns/:slug/banner` | BUG-255: 배너 제거 |
+
+> **BUG-255**: 배너 쓰기는 원래 Tauri 커맨드(로컬 파일 **경로**)뿐이라 원격 /
+> 브라우저에서는 설정도 제거도 못 했다(`GET :slug/image` 로 보기만 됐다).
+> 첨부(BUG-168)와 같이 경로 / bytes 두 경로를 갖추고, 확장자 검증과 옛 배너
+> 제거는 `core::ops::campaigns` 의 `begin_banner_image` / `commit_banner_image`
+> 에서 **공유**한다 — 검증이 두 벌이 되면 한쪽에서만 되는 확장자가 생긴다.
+> 크기 상한은 두지 않는다(경로 경로가 이미 무제한이라 모드별로 갈리면 더 나쁘다).
 
 ### Admin (백업 / drift)
 
