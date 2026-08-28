@@ -311,9 +311,12 @@
 				EditorView.updateListener.of((u) => {
 					if (u.docChanged) value = u.state.doc.toString();
 				}),
+				// DEV-369: CodeMirror 테마는 **JS 객체**라 CSS 파일이 아니다 — 곡률
+				// 일괄 치환에서 통째로 빠져 있었다(admin 이 화면에서 발견).
+				// 값은 CSS 로 나가므로 토큰을 그대로 쓸 수 있다.
 				EditorView.theme({
-					'&': { fontSize: '0.875rem', borderRadius: '6px', height: '100%' },
-					'.cm-editor': { borderRadius: '6px', height: '100%' },
+					'&': { fontSize: '0.875rem', borderRadius: 'var(--r-md)', height: '100%' },
+					'.cm-editor': { borderRadius: 'var(--r-md)', height: '100%' },
 					'.cm-scroller': { overflow: 'auto' }
 				})
 			],

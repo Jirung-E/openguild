@@ -31,6 +31,20 @@ const ALLOW = new Map([
 ]);
 
 const RADIUS = /border-radius\s*:\s*([^;}]+)/g;
+/**
+ * DEV-369 후속: **CSS 파일 밖**에서 만들어지는 곡률.
+ *
+ * 처음 훑을 때 `.svelte` 의 `<style>` 과 `.css` 만 봤는데, 화면에는 CSS 로
+ * 나가지만 소스는 JS 인 곳이 있었다 — CodeMirror 의 `EditorView.theme({...})`
+ * 객체와 툴팁의 `el.style.cssText` 문자열. 둘 다 이 검사를 통과한 채로
+ * 리터럴 px 를 유지하고 있었고 admin 이 화면에서 발견했다.
+ *
+ * 그래서 스크립트 영역도 함께 훑는다. JS 는 camelCase(`borderRadius`)와
+ * kebab(`'border-radius:…'`) 두 형태를 모두 쓴다.
+ */
+const JS_RADIUS = /borderRadius\s*:\s*['"`]([^'"`]+)['"`]/g;
+const JS_RADIUS_KEBAB = /['"`]\s*border-radius\s*:\s*([^'"`;]+)/g;
+const JS_BORDER = /['"`]\s*border\s*:\s*([0-9.]+)px\b/g;
 const BORDER = /\bborder(?:-top|-right|-bottom|-left)?(?:-width)?\s*:\s*([0-9.]+)px\b/g;
 /** 정원·각짐은 토큰 대상이 아니다. */
 const OK_RADIUS = /^(0|50%|100%|var\(|inherit|initial|unset)/;
@@ -43,6 +57,32 @@ function stripComments(css) {
 
 function styleBlocks(src) {
 	return [...src.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map((m) => m[1]);
+}
+
+/** `.svelte` 의 `<style>` 을 **뺀** 나머지(마크업 + script). */
+function nonStyle(src) {
+	return src.replace(/<style[^>]*>[\s\S]*?<\/style>/g, '');
+}
+
+/** CSS 파일 밖(JS/마크업)에서 만들어지는 곡률·테두리. */
+function scanScript(rel, code) {
+	const allow = ALLOW.get(rel) ?? new Set();
+	const clean = stripComments(code);
+	for (const re of [JS_RADIUS, JS_RADIUS_KEBAB]) {
+		re.lastIndex = 0;
+		for (const m of clean.matchAll(re)) {
+			const val = m[1].trim();
+			if (OK_RADIUS.test(val)) continue;
+			if (allow.has(`border-radius:${val.replace(/\s+/g, '')}`)) continue;
+			violations.push(`${rel}  (JS) border-radius: ${val}`);
+		}
+	}
+	JS_BORDER.lastIndex = 0;
+	for (const m of clean.matchAll(JS_BORDER)) {
+		if (Number(m[1]) >= 2) continue;
+		if (allow.has(`border:${m[1]}px`)) continue;
+		violations.push(`${rel}  (JS) border: ${m[1]}px`);
+	}
 }
 
 function scan(rel, css) {
@@ -74,7 +114,11 @@ function walk(dir) {
 		const rel = relative(SRC, p).replace(/\\/g, '/');
 		if (p.endsWith('.css')) scan(rel, readFileSync(p, 'utf8'));
 		else if (p.endsWith('.svelte')) {
-			for (const b of styleBlocks(readFileSync(p, 'utf8'))) scan(rel, b);
+			const src = readFileSync(p, 'utf8');
+			for (const b of styleBlocks(src)) scan(rel, b);
+			scanScript(rel, nonStyle(src));
+		} else if (p.endsWith('.ts') && !p.endsWith('.test.ts')) {
+			scanScript(rel, readFileSync(p, 'utf8'));
 		}
 	}
 }

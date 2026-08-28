@@ -41,10 +41,12 @@ function createPopup(text: string, anchor: HTMLElement) {
 		'z-index:12000',
 		'max-width:min(520px,80vw)',
 		'padding:0.3rem 0.55rem',
-		'border-radius:6px',
+		// DEV-369: cssText 문자열이라 곡률 일괄 치환에서 빠져 있었다 —
+		// CSS 로 나가므로 토큰을 그대로 쓸 수 있다.
+		'border-radius:var(--r-md)',
 		'background:var(--bg-elevated)',
 		'color:var(--text)',
-		'border:1px solid var(--border)',
+		'border:var(--bw) solid var(--border)',
 		'box-shadow:0 6px 20px rgba(0,0,0,0.35)',
 		'font-size:0.78rem',
 		'line-height:1.4',
