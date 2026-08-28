@@ -718,7 +718,7 @@
 	{:else if detail}
 		<!-- 헤더 뱃지 -->
 		<div class="header">
-			<span class="pill mono" style:--c={detail.type_color}>{detail.quest_id}</span>
+			<span class="pill" style:--c={detail.type_color}>{detail.quest_id}</span>
 			<span class="pill urgency" style:--c={urgencyColor(detail.urgency)}>
 				{urgencyLabel(detail.urgency, $locale)}
 			</span>
@@ -940,7 +940,7 @@
 					<li>
 						<div class="prereq-row">
 							<a href="/quests/{detail.parent.quest_id}{fromSuffix}" class="prereq-link">
-								<span class="pill mono" style:--c={detail.parent.type_color}
+								<span class="pill" style:--c={detail.parent.type_color}
 									>{detail.parent.quest_id}</span
 								>
 								<span class="ql-title">{detail.parent.title}</span>
@@ -986,7 +986,7 @@
 							<li>
 								<div class="prereq-row">
 									<a href="/quests/{sq.quest_id}{fromSuffix}" class="prereq-link">
-										<span class="pill mono" style:--c={sq.type_color}>{sq.quest_id}</span>
+										<span class="pill" style:--c={sq.type_color}>{sq.quest_id}</span>
 										<span class="ql-title">{sq.title}</span>
 										<span class="pill status" style:--c={sq.status_color}
 											>{questStatusLabel(sq, $locale)}</span
@@ -1025,7 +1025,7 @@
 							<li>
 								<div class="prereq-row">
 									<a href="/quests/{pq.quest_id}{fromSuffix}" class="prereq-link">
-										<span class="pill mono" style:--c={pq.type_color}>{pq.quest_id}</span>
+										<span class="pill" style:--c={pq.type_color}>{pq.quest_id}</span>
 										<span class="ql-title">{pq.title}</span>
 										<span class="pill status" style:--c={pq.status_color}
 											>{questStatusLabel(pq, $locale)}</span
@@ -1069,7 +1069,7 @@
 							<li>
 								<div class="prereq-row">
 									<a href="/quests/{sq.quest_id}{fromSuffix}" class="prereq-link">
-										<span class="pill mono" style:--c={sq.type_color}>{sq.quest_id}</span>
+										<span class="pill" style:--c={sq.type_color}>{sq.quest_id}</span>
 										<span class="ql-title">{sq.title}</span>
 										<span class="pill status" style:--c={sq.status_color}
 											>{questStatusLabel(sq, $locale)}</span
@@ -1158,7 +1158,7 @@
 						<li>
 							<div class="prereq-row">
 								<a href={`/campaigns/${encodeURIComponent(c.campaign_slug)}`} class="prereq-link">
-									<span class="pill mono campaign-badge">{c.campaign_slug}</span>
+									<span class="pill campaign-badge">{c.campaign_slug}</span>
 									<span class="ql-title">{c.title}</span>
 									<span class="pill status status-{c.status}">{c.status}</span>
 								</a>
@@ -1426,7 +1426,7 @@
 										onchange={() => toggleCascade(sq.id)}
 										data-testid="cascade-{sq.id}"
 									/>
-									<span class="pill mono" style:--c={sq.type_color}>{sq.quest_id}</span>
+									<span class="pill" style:--c={sq.type_color}>{sq.quest_id}</span>
 									<span class="del-sub-title-text">{sq.title}</span>
 								</label>
 							</li>

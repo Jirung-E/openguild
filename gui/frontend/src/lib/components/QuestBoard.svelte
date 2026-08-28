@@ -3360,7 +3360,7 @@
 			<div class="card-head">
 				<span class="drag-hint" title={t('board.dragToMove', $locale)}>⠿</span>
 				<div class="card-badges">
-					<span class="pill mono sm" style:--c={expandedQuest.type_color}>{expandedQuest.quest_id}</span>
+					<span class="pill sm" style:--c={expandedQuest.type_color}>{expandedQuest.quest_id}</span>
 					<span class="pill sm" style:--c={urgencyColor(expandedQuest.urgency)}
 						>{urgencyLabel(expandedQuest.urgency, $locale)}</span
 					>

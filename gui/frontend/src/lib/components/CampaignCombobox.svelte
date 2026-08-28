@@ -205,6 +205,13 @@
 	}
 
 	/* slug pill — campaign 색 (Quest Detail 페이지의 .campaign-badge 와 동일 톤). */
+	/* DEV-364 후속: 이 화면의 slug pill 은 예전에 굵기를 정하지 않아 400 을
+	   상속했다. `.pill.mono` 의 600 은 여기선 과하다 — 목록 행이 조밀해서
+	   식별자만 도드라진다. 글꼴 굵기는 모양 공식이 아니라 화면 사정이라
+	   `.pill` 이 막지 않는다(check:pill 의 허용 속성). */
+	.pill.mono {
+		font-weight: 400;
+	}
 	/* DEV-364: 모양은 global.css 의 `.pill` 이 정본 — 색만 정한다.
 	   캠페인은 타입 개념이 없어 accent 고정. */
 	.pill.slug {

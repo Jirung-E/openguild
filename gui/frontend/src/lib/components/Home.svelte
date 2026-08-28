@@ -353,7 +353,7 @@
 					{#each recentQuests as q (q.id)}
 						<li>
 							<a class="quest-row" href={`/quests/${encodeURIComponent(q.quest_id)}?from=home`}>
-								<span class="pill mono" style:--c={typeColor(q.type_prefix)}>
+								<span class="pill" style:--c={typeColor(q.type_prefix)}>
 									{q.quest_id}
 								</span>
 								<span class="title">{q.title}</span>

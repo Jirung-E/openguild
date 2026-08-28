@@ -54,7 +54,7 @@
 	{/if}
 
 	<!-- 타입 뱃지 -->
-	<span class="pill mono" style:--c={quest.type_color}>{quest.quest_id}</span>
+	<span class="pill" style:--c={quest.type_color}>{quest.quest_id}</span>
 
 	<!-- 제목 -->
 	<span class="title">{quest.title}</span>
