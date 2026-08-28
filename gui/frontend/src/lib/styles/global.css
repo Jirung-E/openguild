@@ -380,7 +380,10 @@ input[type='checkbox']:disabled {
 	font-size: var(--pill-fs);
 	font-weight: 500;
 	padding: var(--pill-py) var(--pill-px);
-	line-height: 1.2;
+	/* `line-height` 를 **일부러 안 정한다.** 예전 `.badge` 들이 전부 미지정이라
+	   본문(1.6)을 상속했고, 여기서 1.2 로 조이면 모든 pill 이 4.8px 낮아진다
+	   (실측: 26.0 → 21.2px). 모양 통일이 상자 크기까지 바꿀 이유는 없다.
+	   조밀해야 하는 곳은 `.xs` 가 `line-height: 1` 로 따로 정한다. */
 	/* 식별자도 상태명도 줄바꿈되면 안 된다 — 상자 높이가 흔들린다. */
 	white-space: nowrap;
 }
