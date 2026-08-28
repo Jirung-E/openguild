@@ -3917,6 +3917,9 @@
 		opacity: 0.07;
 	}
 	.board-node {
+		/* DEV-369 후속: 위 px 섬 설명 참고 — 노드 곡률도 px 이어야 상자와 짝이
+		   맞는다. 토큰 자체를 이 서브트리에서만 덮으므로 리터럴 검사는 통과한다. */
+		--r-xl: 10px;
 		position: absolute;
 		width: 284px;
 		height: 80px;
@@ -3948,12 +3951,23 @@
 		height: 18px;
 		white-space: nowrap;
 	}
-	/* DEV-364: 모양은 global.css 의 `.pill.xs` 가 정본. 노드에서 정하는 것은
-	   글자 크기뿐이다 — 상자 높이(1.7em)와 여백(0.7em)이 여기에 비례한다.
-	   0.625rem = 기존 10px. 노드 상자 크기가 레이아웃 계산과 짝이므로 이 값을
-	   바꾸면 노드 안 배치가 함께 바뀐다. */
+	/* DEV-369 후속: 노드 안은 **px 섬**이다.
+	   `.board-node` 가 `width: 284px / height: 80px` 고정이고 그 값이 JS 상수
+	   (`quest-node-svg.ts` 의 `NODE_W` / `NODE_H`)와 짝이라 Cytoscape 레이아웃·
+	   히트테스트가 같은 숫자를 쓴다. 상자는 안 커지는데 안쪽만 rem/em 으로
+	   커지면 UI 배율에서 내용이 넘친다(admin 지적).
+
+	   그래서 노드 안에서는 모양 공식(`.pill`)은 그대로 쓰되 **치수 토큰만 px 로
+	   덮는다.** 값은 전부 DEV-364 이전과 같다 — 글자 10px / 높이 17px /
+	   좌우 여백 7px / 테두리 1px.
+
+	   `.pill.xs` 가 자기 요소에 `--pill-*` 를 직접 얹으므로, 상속으로는 못
+	   덮고 **더 높은 specificity 로 같은 요소에** 얹어야 한다(0,3,0). */
 	.node-topline :global(.pill.xs) {
-		--pill-fs: 0.625rem;
+		--pill-fs: 10px;
+		--pill-h: 17px;
+		--pill-px: 7px;
+		--bw: 1px;
 	}
 	.urgency-warning {
 		color: var(--danger);
@@ -4035,6 +4049,9 @@
 	}
 	/* 전체 보기에서는 카드 하나를 단순한 색 marker 하나로 축약한다. */
 	.board-wrap.lod-overview .board-node {
+		/* 원래 14px 이다. DEV-369 의 일괄 치환이 --r-xl(10px)로 바꿔 값까지
+		   줄어 있었다 — 되돌린다. */
+		--r-xl: 14px;
 		border: 0;
 		border-radius: var(--r-xl);
 		background: var(--node-border);
