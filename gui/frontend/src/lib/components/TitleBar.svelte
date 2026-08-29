@@ -762,19 +762,8 @@
 
 <style>
 	.titlebar {
-		/* BUG(admin 보고, macOS): sticky 였을 때, 맨 위에서 위로 더 스크롤하면
-		   WebKit 의 rubber-band 가 문서를 아래로 당기면서 타이틀바까지 같이
-		   내려왔다 — 스크롤이 음수 구간이면 sticky 는 고정되지 않고 문서와
-		   함께 움직이기 때문이다. traffic light 자리와 어긋나 특히 눈에 띈다.
-
-		   `fixed` 는 뷰포트에 붙으므로 바운스와 무관하다. 바운스 자체는
-		   그대로 둔다(문서 전체를 막으면 macOS 다운 감각이 사라진다) —
-		   본문만 크롬 아래에서 출렁인다. Nav 도 같은 이유로 fixed 이고,
-		   둘이 한 덩어리로 붙어 있어야 사이가 벌어지지 않는다. */
-		position: fixed;
+		position: sticky;
 		top: 0;
-		left: 0;
-		right: 0;
 		z-index: 1100; /* Nav(100) 위 */
 		height: var(--titlebar-h, 2rem);
 		display: flex;

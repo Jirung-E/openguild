@@ -188,7 +188,30 @@ html {
 	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 	font-size: 16px;
 	color: var(--text);
-	background: var(--bg);
+	/* BUG(admin 보고, macOS): 맨 위에서 위로 더 스크롤하면 WKWebView 가 문서를
+	   고무줄처럼 당긴다(rubber-band). 그때 창 위쪽에 드러나는 띠는 **캔버스**
+	   가 칠하는데, 그게 `--bg`(본문색)라 크롬(`--nav-bg`)과 색이 달라 흰 띠로
+	   보였다.
+
+	   타이틀바를 `position: fixed` 로 바꿔 안 딸려가게 해 봤지만 WKWebView 는
+	   iOS 처럼 **fixed 요소도 바운스에 포함**시킨다 — 실기에서 그대로 재현됐다.
+	   위치로는 못 막는다.
+
+	   그래서 드러나는 띠의 색을 크롬과 맞춘다. 캔버스 배경을 뷰포트 기준
+	   그라디언트로 두고 위쪽 크롬 높이만큼을 `--nav-bg` 로 칠하면, 바운스 때
+	   크롬이 늘어난 것처럼 보이고 흰 띠가 사라진다. 아래쪽은 `--bg` 라 하단
+	   바운스는 지금과 같다.
+
+	   그라디언트는 상자 밖으로 **가장자리 색을 연장**하므로, 뷰포트 위로
+	   드러나는 영역에도 첫 색(`--nav-bg`)이 그대로 칠해진다. 크롬 자체가 그
+	   위를 덮으므로 평소 화면에는 아무 변화가 없다. */
+	background: linear-gradient(
+			to bottom,
+			var(--nav-bg) 0,
+			var(--nav-bg) calc(var(--titlebar-h, 0px) + var(--nav-h, 3.25rem)),
+			var(--bg) calc(var(--titlebar-h, 0px) + var(--nav-h, 3.25rem))
+		)
+		fixed;
 	/* DEV-074 fix13: window native scrollbar 숨김. wheel / touch / 키보드 스크롤
 	   은 정상 작동. OverlayScrollbar 컴포넌트가 우측에 position: fixed thumb 만
 	   그려 진짜 overlay 구현 (컨텐츠 폭 0px 차지). 내부 overflow 컨테이너 (모달
