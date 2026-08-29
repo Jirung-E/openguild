@@ -752,6 +752,17 @@
 		color: var(--text);
 		font-size: 0.85rem;
 		cursor: pointer;
+		/* REQ-015 후속(admin 보고): 긴 slug 가 사이드바 경계를 넘어갔다.
+		   `global.css` 가 버튼을 `white-space: nowrap` 으로 두는데(BUG-143 —
+		   CJK 라벨이 글자 단위로 꺾여 2줄이 되는 것을 막으려고), 여기엔
+		   말줄임 처리가 없어 줄바꿈도 생략도 없이 그대로 삐져나온다.
+		   도서관 쪽(`LibraryFolderTree` 의 `.folder-name` / `.book-title`)은
+		   처음부터 이 처리를 갖고 있었다 — 같은 방식으로 맞춘다.
+		   BUG-254 가 사이드바 **폭**을 rem 으로 바꿔 넘침을 줄였지만, 폭과
+		   무관하게 긴 이름은 여전히 넘쳤다. 이제 폭을 사용자가 줄일 수 있어
+		   더 자주 드러난다. */
+		min-width: 0;
+		overflow: hidden;
 	}
 	.rule-item:hover {
 		background: var(--bg-elevated);
@@ -770,6 +781,9 @@
 	}
 	.rule-slug {
 		display: block;
+		/* 버튼에서 상속한 `white-space: nowrap` + 아래 둘이 있어야 말줄임이 된다. */
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 	/* slug 가 아닌 곳에서 맞았을 때만 보이는 이유 표시. */
 	.rule-why {
