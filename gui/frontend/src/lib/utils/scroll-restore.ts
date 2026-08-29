@@ -14,6 +14,8 @@
  * 루프가 매 프레임 서로 다른 `window.scrollTo` 를 불러 지터가 나고 최종 위치도
  * 엉뚱해졌다. 새 복원이 시작되면 앞선 루프를 끊는다.
  */
+import { scrollPageTo, pageScrollHeight } from './page-scroll';
+
 let activeCancel: (() => void) | null = null;
 
 /** 진행 중인 복원을 중단한다(페이지 이탈 등). 없으면 no-op. */
@@ -57,9 +59,10 @@ export function restoreScroll(y: number, opts?: { maxMs?: number; settleMs?: num
 
 	const tick = () => {
 		if (cancelled) return;
-		window.scrollTo(0, y);
+		// BUG-257: 스크롤 컨테이너는 문서가 아니라 `<main>` 이다.
+		scrollPageTo(y);
 		const now = performance.now();
-		const h = document.documentElement.scrollHeight;
+		const h = pageScrollHeight();
 		if (h !== lastHeight) {
 			lastHeight = h;
 			stableSince = now;

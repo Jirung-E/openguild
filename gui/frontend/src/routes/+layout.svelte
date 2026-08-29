@@ -1,6 +1,13 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { afterNavigate, beforeNavigate, goto, replaceState } from '$app/navigation';
+	import {
+		pageScrollTop,
+		scrollPageTo,
+		pageScrollHeight,
+		pageViewportHeight,
+		onPageScroll
+	} from '$lib/utils/page-scroll';
 	// BUG-176 / DEV-355: 히스토리 항목의 길드 표식 비교 + 길드 복원.
 	import {
 		currentGuildId,
@@ -61,6 +68,9 @@
 	// DEV-355: 다른 길드의 히스토리 항목으로 이동하는 동안, 새 URL 과 아직
 	// 전환되지 않은 Store 가 섞인 화면을 mount 하지 않는다.
 	let historyGuildSwitching = $state(false);
+	// BUG-257: 스크롤 컨테이너. `page-scroll.ts` 가 querySelector 로도 찾지만,
+	// 여기서는 OverlayScrollbar 에 넘겨야 해서 참조를 들고 있는다.
+	let mainEl = $state<HTMLElement | undefined>(undefined);
 
 	// DEV-052 후속: /welcome 라우트에선 Nav (Board/List/Admin/+New Quest) 숨김.
 	// 길드 컨텍스트가 없는 상태에서 의미 없는 액션 노출 방지.
@@ -68,6 +78,30 @@
 	let showNav = $derived(
 		$page.url.pathname !== '/welcome' && !$isChildWindow && !historyGuildSwitching
 	);
+
+	// BUG-257: 스크롤 컨테이너가 문서가 아니게 되면서 **SvelteKit 의 스크롤
+	// 처리가 더 이상 닿지 않는다.** 라우터는 window 를 스크롤하는데 window 는
+	// 이제 항상 0 이다. 그래서 두 가지를 직접 해야 한다.
+	//
+	//  1) 앞으로 가는 이동(링크·goto)은 맨 위에서 시작.
+	//  2) 뒤로/앞으로(popstate)는 그 항목의 위치로 복원.
+	//
+	// 저장은 위 `saveScrollPosition` 과 같은 sessionStorage 키를 쓴다 — 새로고침
+	// 복원과 같은 저장소를 공유하므로 규칙이 한 벌이다.
+	beforeNavigate((nav) => {
+		const from = nav.from?.url;
+		saveScrollPosition(from ? from.pathname + from.search : undefined);
+	});
+	afterNavigate((nav) => {
+		if (nav.type === 'popstate') {
+			restoreScrollPosition();
+			return;
+		}
+		// 해시 앵커로 가는 이동은 각 페이지가 자기 방식으로 처리한다 —
+		// 여기서 맨 위로 올리면 그 이동을 덮어쓴다.
+		if (nav.to?.url.hash) return;
+		scrollPageTo(0);
+	});
 
 	onMount(() => {
 		detectWindowKind();
@@ -358,12 +392,20 @@
 	// reindex 후 reload 는 page 자체 reload — 항상 top 으로. sessionStorage 에
 	// path 별 scrollY 를 저장해서 reload 시 복원.
 	const SCROLL_KEY_PREFIX = 'openguild.scroll.';
-	function saveScrollPosition() {
+	/**
+	 * @param key 저장할 경로+쿼리. 생략하면 현재 주소.
+	 *
+	 * BUG-257: `beforeNavigate` 는 **popstate 에서 이미 주소가 바뀐 뒤** 실행된다.
+	 * 그때 현재 주소로 저장하면 떠나는 페이지의 위치를 **도착 페이지 키에**
+	 * 덮어써서, 뒤로가기 복원이 항상 0 이 된다(실측으로 잡음). 그래서 이동
+	 * 시에는 `nav.from` 의 주소를 명시적으로 넘긴다.
+	 */
+	function saveScrollPosition(key?: string) {
 		if (typeof window === 'undefined') return;
 		try {
 			sessionStorage.setItem(
-				SCROLL_KEY_PREFIX + window.location.pathname + window.location.search,
-				String(window.scrollY)
+				SCROLL_KEY_PREFIX + (key ?? window.location.pathname + window.location.search),
+				String(pageScrollTop())
 			);
 		} catch {
 			/* quota / disabled — ignore */
@@ -385,14 +427,19 @@
 			let tries = 0;
 			const MAX_TRIES = 40; // 40 × ~30ms ≈ 1.2s
 			const attempt = () => {
-				window.scrollTo({ top: y, left: 0 });
+				scrollPageTo(y);
 				tries += 1;
-				const reached = Math.abs(window.scrollY - y) <= 2;
-				const tallEnough = document.documentElement.scrollHeight - window.innerHeight >= y;
+				const reached = Math.abs(pageScrollTop() - y) <= 2;
+				const tallEnough = pageScrollHeight() - pageViewportHeight() >= y;
 				if (reached || tallEnough || tries >= MAX_TRIES) return;
 				setTimeout(attempt, 30);
 			};
-			requestAnimationFrame(() => requestAnimationFrame(attempt));
+			// BUG-257: 시작을 rAF 에만 걸어 두면 **화면이 안 보이는 동안 복원이
+			// 아예 안 된다** — 백그라운드 탭이나 숨겨진 창에서 rAF 가 멈추기
+			// 때문이다(자동 검증 중에 그대로 재현됐다). 아래 재시도 루프가 이미
+			// setTimeout 이므로 시작도 같은 방식으로 맞춘다. 레이아웃을 기다리는
+			// 역할은 루프의 `tallEnough` 조건이 대신한다.
+			setTimeout(attempt, 0);
 		} catch {
 			/* ignore */
 		}
@@ -410,13 +457,15 @@
 		};
 		window.addEventListener('beforeunload', onBeforeUnload);
 		window.addEventListener('pagehide', onBeforeUnload);
-		window.addEventListener('scroll', onScroll, { passive: true });
+		// BUG-257: 컨테이너 스크롤은 window 로 버블하지 않는다 — window 에 붙여
+		// 두면 이 주기 저장이 조용히 죽어 새로고침 복원이 안 된다.
+		const offScroll = onPageScroll(onScroll);
 		// 첫 mount 시 — 마지막 저장값 있으면 복원.
 		restoreScrollPosition();
 		return () => {
 			window.removeEventListener('beforeunload', onBeforeUnload);
 			window.removeEventListener('pagehide', onBeforeUnload);
-			window.removeEventListener('scroll', onScroll);
+			offScroll();
 		};
 	});
 
@@ -582,7 +631,7 @@
 {#if showNav}
 	<Nav />
 {/if}
-<main class:no-nav={!showNav}>
+<main class:no-nav={!showNav} bind:this={mainEl}>
 	{#if historyGuildSwitching}
 		<div class="history-guild-switch" role="status" aria-live="polite">
 			<span class="history-guild-spinner" aria-hidden="true"></span>
@@ -593,7 +642,7 @@
 	{/if}
 </main>
 {#if !coarsePointer}
-	<OverlayScrollbar />
+	<OverlayScrollbar target={mainEl ?? null} />
 {/if}
 <!-- DEV-259: 알림 통합 호스트(토스트/업데이트/스키마) — 우하단 단일 스택.
      업데이트·스키마 watcher 내장. 모든 라우트 공통 단일 mount. -->
@@ -612,15 +661,29 @@
 
 <style>
 	main {
-		min-height: calc(100vh - var(--nav-h, 3.25rem) - var(--titlebar-h, 0px));
+		/* BUG-257: 문서 대신 여기가 스크롤 컨테이너다(자세한 배경은
+		   `utils/page-scroll.ts`). min-height 가 아니라 **정확한 height** 여야
+		   자기 안에서 스크롤이 생긴다 — min-height 면 컨텐츠만큼 늘어나
+		   고정된 문서 밖으로 넘쳐 잘린다.
+		   `overscroll-behavior: contain` 은 여기서 끝까지 스크롤했을 때 그
+		   제스처가 문서로 넘어가지 않게 한다(문서는 어차피 고정이지만, 상위로
+		   새는 것을 명시적으로 막아 둔다). */
+		height: calc(100vh - var(--nav-h, 3.25rem) - var(--titlebar-h, 0px));
+		overflow-y: auto;
+		overflow-x: hidden;
+		overscroll-behavior: contain;
 		background: var(--bg);
 	}
 	main.no-nav {
-		min-height: calc(100vh - var(--titlebar-h, 0px));
+		height: calc(100vh - var(--titlebar-h, 0px));
 	}
 	.history-guild-switch {
 		display: flex;
-		min-height: inherit;
+		/* BUG-257: 예전엔 `min-height: inherit` 로 main 의 min-height 를 물려받아
+		   화면 한가운데에 섰다. main 이 `height` 로 바뀌면서 물려받을 min-height
+		   가 사라져(=auto) 스피너가 위쪽에 붙었다. main 이 이제 확정 높이를
+		   가지므로 `100%` 로 같은 결과를 얻는다. */
+		min-height: 100%;
 		align-items: center;
 		justify-content: center;
 		gap: 0.65rem;

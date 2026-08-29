@@ -11,16 +11,26 @@
  * 스크롤 위치 보존: `overflow:hidden` 만 걸면 브라우저가 스크롤 위치를 유지해
  * 대체로 문제없다. `position:fixed` 로 body 를 고정하는 기법은 위치가 튀는
  * 부작용이 있어 쓰지 않는다.
+ *
+ * BUG-257: 잠글 대상은 **그때의 스크롤 컨테이너**다. body 에 거는 것으로
+ * 충분했던 건 문서가 스크롤하던 시절 얘기고, 지금은 `<main>` 이 스크롤한다 —
+ * body 는 이미 CSS 로 `overflow: hidden` 이라 여기서 또 걸어 봐야 아무 일도
+ * 일어나지 않고, 모달 뒤 페이지가 다시 스크롤됐다(BUG-199 회귀).
  */
+
+import { pageScrollEl } from './page-scroll';
 
 let depth = 0;
 let saved: { overflow: string; overscroll: string } | null = null;
+/** 잠근 대상. 해제할 때 같은 노드로 되돌려야 한다(그 사이 재마운트될 수 있다). */
+let lockedEl: HTMLElement | null = null;
 
 /** 잠그고, 해제 함수를 돌려준다. 같은 모달에서 두 번 호출해도 안전(호출 수만큼 해제 필요). */
 export function lockBodyScroll(): () => void {
 	if (typeof document === 'undefined') return () => {};
 	if (depth === 0) {
-		const s = document.body.style;
+		lockedEl = pageScrollEl() ?? document.body;
+		const s = lockedEl.style;
 		saved = { overflow: s.overflow, overscroll: s.overscrollBehavior };
 		s.overflow = 'hidden';
 		// 모달 내부 끝까지 스크롤한 뒤에도 배경으로 넘어가지 않게(스크롤 체이닝 차단).
@@ -33,9 +43,11 @@ export function lockBodyScroll(): () => void {
 		released = true;
 		depth = Math.max(0, depth - 1);
 		if (depth === 0 && saved) {
-			document.body.style.overflow = saved.overflow;
-			document.body.style.overscrollBehavior = saved.overscroll;
+			const el = lockedEl ?? document.body;
+			el.style.overflow = saved.overflow;
+			el.style.overscrollBehavior = saved.overscroll;
 			saved = null;
+			lockedEl = null;
 		}
 	};
 }

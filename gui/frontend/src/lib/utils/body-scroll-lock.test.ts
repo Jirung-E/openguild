@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { lockBodyScroll } from './body-scroll-lock';
 
 /**
@@ -62,5 +62,45 @@ describe('lockBodyScroll', () => {
 		expect(document.body.style.overflow).toBe('hidden');
 		b();
 		expect(document.body.style.overflow).toBe('');
+	});
+
+	/**
+	 * BUG-257: 스크롤하는 것이 문서가 아니라 `<main>` 이 됐다. body 에 잠금을
+	 * 걸면 body 는 이미 `overflow: hidden` 이라 아무 일도 안 일어나고 모달 뒤
+	 * 페이지가 그대로 스크롤된다(= BUG-199 회귀). 그래서 잠금은 **그때의
+	 * 스크롤 컨테이너**를 잡아야 한다.
+	 */
+	describe('스크롤 컨테이너가 있으면 그쪽을 잠근다', () => {
+		let main: HTMLElement;
+
+		beforeEach(() => {
+			main = document.createElement('main');
+			main.style.overflowY = 'auto';
+			document.body.appendChild(main);
+		});
+
+		afterEach(() => {
+			main.remove();
+		});
+
+		it('body 가 아니라 main 에 건다', () => {
+			const release = lockBodyScroll();
+			expect(main.style.overflow).toBe('hidden');
+			expect(main.style.overscrollBehavior).toBe('contain');
+			expect(document.body.style.overflow).toBe('');
+			release();
+			expect(main.style.overflow).toBe('');
+		});
+
+		it('잠근 뒤 main 이 갈려도 잠갔던 노드로 되돌린다', () => {
+			const release = lockBodyScroll();
+			const replaced = document.createElement('main');
+			document.body.appendChild(replaced);
+			release();
+			// 새 main 을 건드리지 않고, 원래 잠근 쪽만 되돌아간다.
+			expect(main.style.overflow).toBe('');
+			expect(replaced.style.overflow).toBe('');
+			replaced.remove();
+		});
 	});
 });

@@ -27,8 +27,12 @@ beforeEach(() => {
 		return frames.length;
 	});
 	vi.stubGlobal('performance', { now: () => now });
-	window.scrollTo = ((_x: number, y: number): void => {
-		scrolls.push(y);
+	// BUG-257 이후 복원은 `scrollPageTo` 를 거친다 — jsdom 에는 `<main>` 이
+	// 없으니 window 로 물러서는데, 그때 넘어오는 건 **옵션 객체**(`{top}`)다.
+	// 위치 인자만 읽던 스텁은 전부 `undefined` 를 기록해 이 테스트가 무의미해졌다.
+	// 두 형태를 모두 받는다.
+	window.scrollTo = ((a: number | ScrollToOptions, b?: number): void => {
+		scrolls.push(typeof a === 'object' ? (a.top ?? 0) : (b as number));
 	}) as typeof window.scrollTo;
 });
 

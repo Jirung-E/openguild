@@ -1,5 +1,12 @@
 <script lang="ts">
 	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
+	// BUG-257: 스크롤 컨테이너는 문서가 아니라 `<main>` 이다.
+	import {
+		pageScrollTop,
+		scrollPageTo,
+		onPageScroll,
+		pageViewportHeight
+	} from '$lib/utils/page-scroll';
 	import Icon from '$lib/components/Icon.svelte';
 	import { page } from '$app/stores';
 	import { onMount, onDestroy } from 'svelte';
@@ -177,7 +184,10 @@
 			showMemoJump = false;
 		}
 		// 맨 위로 (DEV-127): 스크롤이 한 화면 이상 내려가 있으면 표시.
-		showTopJump = window.scrollY > vh * 0.8;
+		// BUG-257: 여기서 말하는 '한 화면' 은 이제 창이 아니라 **스크롤 컨테이너**
+		// 다 — `pageScrollTop()` 이 컨테이너 기준이므로 기준 높이도 같이 맞춘다
+		// (위 anchor 비교는 viewport 좌표라 `vh` 그대로가 맞다).
+		showTopJump = pageScrollTop() > pageViewportHeight() * 0.8;
 	}
 	function jumpToComments() {
 		commentsAnchorEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -186,7 +196,7 @@
 		memoAnchorEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 	}
 	function jumpToTop() {
-		window.scrollTo({ top: 0, behavior: 'smooth' });
+		scrollPageTo(0, true);
 	}
 
 	// DEV-192: 스크롤 위치 복원. SvelteKit snapshot 으로 떠날 때 scrollY 를 캡쳐하고
@@ -201,7 +211,7 @@
 		restoreScroll(y);
 	}
 	export const snapshot: Snapshot<number> = {
-		capture: () => window.scrollY,
+		capture: () => pageScrollTop(),
 		restore: (y) => {
 			pendingScroll = y;
 			applyPendingScroll();
@@ -259,15 +269,19 @@
 		laneOrder = loadLaneOrder(await resolveGuildKeyPrefix());
 	});
 
-	// DEV-109/123/127: window 스크롤 / resize 추적 → 점프 버튼 cluster 노출.
+	// DEV-109/123/127: 스크롤 / resize 추적 → 점프 버튼 cluster 노출.
+	//
+	// BUG-257: 스크롤은 이제 `<main>` 이 하고, **컨테이너 스크롤은 window 로
+	// 버블하지 않는다** — window 에 붙여 두면 이 추적이 조용히 죽어서 '맨 위로'
+	// 와 댓글/메모 점프 버튼이 영영 안 뜬다(실제로 그 상태였다).
 	onMount(() => {
 		const handler = () => checkJumpVisibility();
-		window.addEventListener('scroll', handler, { passive: true });
+		const offScroll = onPageScroll(handler);
 		window.addEventListener('resize', handler);
 		// 초기 1회.
 		checkJumpVisibility();
 		return () => {
-			window.removeEventListener('scroll', handler);
+			offScroll();
 			window.removeEventListener('resize', handler);
 		};
 	});

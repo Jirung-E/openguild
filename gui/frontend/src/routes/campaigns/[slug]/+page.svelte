@@ -7,6 +7,13 @@
 -->
 <script lang="ts">
 	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
+	// BUG-257: 스크롤 컨테이너는 문서가 아니라 `<main>` 이다.
+	import {
+		pageScrollTop,
+		scrollPageTo,
+		onPageScroll,
+		pageViewportHeight
+	} from '$lib/utils/page-scroll';
 	import Icon from '$lib/components/Icon.svelte';
 	import { onMount, onDestroy } from 'svelte';
 	// DEV-153: 편집 중이면 이탈 가드에 보고.
@@ -143,7 +150,10 @@
 		showCommentsJump = cTop !== null && (cTop > vh * 1.1 || cTop < 0);
 		const mTop = memoAnchorEl?.getBoundingClientRect().top ?? null;
 		showMemoJump = mTop !== null && (mTop > vh * 1.1 || mTop < 0);
-		showTopJump = window.scrollY > vh * 0.8;
+		// BUG-257: '한 화면' 의 기준은 창이 아니라 **스크롤 컨테이너** 다 —
+		// `pageScrollTop()` 이 컨테이너 기준이므로 높이도 같이 맞춘다
+		// (위 anchor 비교는 viewport 좌표라 `vh` 그대로가 맞다).
+		showTopJump = pageScrollTop() > pageViewportHeight() * 0.8;
 	}
 	function jumpToComments() {
 		commentsAnchorEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -152,7 +162,7 @@
 		memoAnchorEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 	}
 	function jumpToTop() {
-		window.scrollTo({ top: 0, behavior: 'smooth' });
+		scrollPageTo(0, true);
 	}
 
 	// DEV-192: 스크롤 위치 복원 (퀘스트 상세와 동일). detail 은 onMount 후 async
@@ -166,7 +176,7 @@
 		restoreScroll(y);
 	}
 	export const snapshot: Snapshot<number> = {
-		capture: () => window.scrollY,
+		capture: () => pageScrollTop(),
 		restore: (y) => {
 			pendingScroll = y;
 			applyPendingScroll();
@@ -176,13 +186,15 @@
 		void detail;
 		if (detail) applyPendingScroll();
 	});
+	// BUG-257: 퀘스트 상세와 같은 이유로 `onPageScroll` — 컨테이너 스크롤은
+	// window 로 버블하지 않는다.
 	onMount(() => {
 		const handler = () => checkJumpVisibility();
-		window.addEventListener('scroll', handler, { passive: true });
+		const offScroll = onPageScroll(handler);
 		window.addEventListener('resize', handler);
 		checkJumpVisibility();
 		return () => {
-			window.removeEventListener('scroll', handler);
+			offScroll();
 			window.removeEventListener('resize', handler);
 		};
 	});
