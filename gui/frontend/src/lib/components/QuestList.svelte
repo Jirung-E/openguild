@@ -838,18 +838,21 @@
 		color: var(--text);
 	}
 	.view-toggle {
+		/* BUG-254 계열(admin 보고): 글자는 rem 인데 여백만 px 이라 배율을
+		   올리면 **주변 컴포넌트와 다른 속도로** 커졌다. 여백도 rem 으로.
+		   16px 기준 환산이라 기본 배율에서 치수는 그대로다. */
 		display: inline-flex;
 		gap: 0;
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
-		padding: 2px;
+		padding: 0.125rem;
 	}
 	.vt-btn {
 		display: flex;
 		align-items: center;
-		gap: 4px;
-		padding: 3px 10px;
+		gap: 0.25rem;
+		padding: 0.1875rem 0.625rem;
 		background: transparent;
 		border: none;
 		border-radius: var(--r-sm);

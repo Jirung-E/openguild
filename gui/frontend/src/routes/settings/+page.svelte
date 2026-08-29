@@ -944,15 +944,18 @@
 
 	/* DEV-074: 테마 토글 — segmented (QuestList 의 view-toggle 과 같은 패턴). */
 	.theme-toggle {
+		/* BUG-254 계열(admin 보고): 글자는 rem 인데 여백만 px 이라 배율을
+		   올리면 **주변 컴포넌트와 다른 속도로** 커졌다. 여백도 rem 으로.
+		   16px 기준 환산이라 기본 배율에서 치수는 그대로다. */
 		display: inline-flex;
 		gap: 0;
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
-		padding: 2px;
+		padding: 0.125rem;
 	}
 	.th-btn {
-		padding: 4px 12px;
+		padding: 0.25rem 0.75rem;
 		background: transparent;
 		border: none;
 		border-radius: var(--r-sm);
