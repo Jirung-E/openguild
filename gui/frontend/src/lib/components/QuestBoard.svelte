@@ -151,6 +151,12 @@
 	let lanesEl: HTMLDivElement;
 	let gridLanesEl: HTMLDivElement;
 	let headersEl: HTMLDivElement;
+	// BUG(admin 보고): 레인 설정 팝오버를 toolbar 위로 올리려고 헤더 레이어
+	// 전체(z:3 → 11)를 올렸더니 **레인 제목까지** toolbar·새 퀘스트 버튼을
+	// 덮었다. 헤더 레이어는 z-index 가 있어 stacking context 라, 안쪽 팝오버만
+	// 따로 올릴 수가 없다. 팝오버를 toolbar 와 같은 층의 별도 레이어로 빼고
+	// 위치는 JS 로 버튼에 맞춘다 — 제목은 원래 자리(toolbar 아래)에 남는다.
+	let lanePopLayerEl: HTMLDivElement;
 	let cy: BoardGraph | null = null;
 	let boardLod = $state<BoardLod>('detail');
 
@@ -2660,8 +2666,51 @@
 
 	// ── 레인 HTML ───────────────────────────────────────────────
 
+	/**
+	 * 레인 설정 팝오버를 ⚙ 버튼에 맞춰 배치.
+	 *
+	 * 팝오버가 헤더 밖(별도 레이어)에 있으므로 CSS 로는 버튼을 기준 삼을 수
+	 * 없다 — 좌표를 직접 계산한다. 기준은 `.board-wrap`(팝오버 레이어의
+	 * offsetParent).
+	 *
+	 * 세로 배치: 버튼 **아래**, 오른쪽 끝을 버튼에 맞춰 **왼쪽으로** 펼친다.
+	 * ⚙ 가 헤더 오른쪽 끝에 있어 오른쪽으로 펼치면 옆 레인을 덮기 때문
+	 * (admin 보고). 그러다 화면 왼쪽으로 나가면 반대로 뒤집는다.
+	 * 가로 배치: 헤더가 세로라 버튼 **오른쪽**에 붙인다.
+	 */
+	function positionLanePop(btn: HTMLElement, pop: HTMLElement) {
+		if (!boardWrapEl) return;
+		const wrap = boardWrapEl.getBoundingClientRect();
+		const b = btn.getBoundingClientRect();
+		const w = pop.offsetWidth;
+		if (boardOrientation === 'rows') {
+			pop.style.top = `${b.top - wrap.top}px`;
+			pop.style.left = `${b.right - wrap.left + 2}px`;
+			return;
+		}
+		pop.style.top = `${b.bottom - wrap.top + 2}px`;
+		// 왼쪽으로 펼쳤을 때 화면 밖으로 나가면 버튼 왼쪽 기준으로 뒤집는다.
+		const leftAligned = b.right - w;
+		pop.style.left = `${(leftAligned < wrap.left + 4 ? b.left : leftAligned) - wrap.left}px`;
+	}
+
+	/** 열려 있는 팝오버들을 다시 배치 — pan / zoom / 레인 크기 변경 후. */
+	function repositionOpenLanePops() {
+		if (!lanePopLayerEl || !headersEl) return;
+		headersEl.querySelectorAll<HTMLElement>('.lane-hdr.settings-open').forEach((hdr) => {
+			const btn = hdr.querySelector<HTMLElement>('.lane-settings-btn');
+			const slug = btn?.dataset.laneSlug;
+			if (!btn || !slug) return;
+			const pop = lanePopLayerEl.querySelector<HTMLElement>(
+				`.lane-settings-pop[data-lane-slug="${CSS.escape(slug)}"]`
+			);
+			if (pop) positionLanePop(btn, pop);
+		});
+	}
+
 	function buildLaneDivs(sorted: QuestStatus[]) {
 		lanesEl.innerHTML = '';
+		if (lanePopLayerEl) lanePopLayerEl.innerHTML = '';
 		gridLanesEl.innerHTML = '';
 		sorted.forEach(() => {
 			const col = document.createElement('div');
@@ -2775,6 +2824,8 @@
 			// 옆 lane 헤더 밑으로 잘려서 안 보임 — 헤더 아래로 뜨는 팝오버로 분리.
 			const pop = document.createElement('div');
 			pop.className = 'lane-settings-pop';
+			// 헤더 밖 레이어에 살기 때문에 어느 레인 것인지 표시가 필요하다.
+			pop.dataset.laneSlug = s.slug;
 			pop.appendChild(sel);
 			pop.appendChild(arrangeWrap);
 
@@ -2783,6 +2834,7 @@
 			const settingsBtn = document.createElement('button');
 			settingsBtn.className = 'lane-settings-btn';
 			settingsBtn.type = 'button';
+			settingsBtn.dataset.laneSlug = s.slug;
 			settingsBtn.textContent = '⚙';
 			const setOpenAttrs = () => {
 				const open = lanesSettingsOpen.has(s.slug);
@@ -2791,20 +2843,14 @@
 					: t('board.laneSettingsExpand', get(locale));
 				settingsBtn.setAttribute('aria-expanded', String(open));
 				hdr.classList.toggle('settings-open', open);
+				// 팝오버가 헤더 밖에 있으므로 표시 여부는 자기 클래스로 정한다.
+				pop.classList.toggle('open', open);
+				if (open) positionLanePop(settingsBtn, pop);
 			};
 			setOpenAttrs();
 			settingsBtn.onclick = () => {
 				toggleLaneSettings(s.slug);
 				setOpenAttrs();
-				if (lanesSettingsOpen.has(s.slug)) {
-					// 기본은 버튼 오른쪽 기준으로 **왼쪽으로** 펼친다(자기 레인 안).
-					// 맨 왼쪽 레인처럼 그러다 화면 밖으로 나가면 반대로 뒤집는다.
-					pop.classList.remove('pop-left');
-					requestAnimationFrame(() => {
-						const r = pop.getBoundingClientRect();
-						if (r.left < 4) pop.classList.add('pop-left');
-					});
-				}
 			};
 
 			// DEV-059 fix2: lane 순서 변경은 '보드 설정' 모달로 이전 — 헤더에 ◀ ▶ 안 둠.
@@ -2815,14 +2861,10 @@
 			// 버튼과 팝오버를 `position: relative` 래퍼로 묶어 **버튼 기준**으로
 			// 위치를 잡고, 버튼 오른쪽에 맞춰 왼쪽으로 펼친다 — 그래야 자기
 			// 레인 안에 머문다(오른쪽으로 펼치면 옆 레인을 덮는다).
-			const settingsWrap = document.createElement('div');
-			settingsWrap.className = 'lane-settings-wrap';
-			settingsWrap.appendChild(settingsBtn);
-			settingsWrap.appendChild(pop);
-
 			hdr.appendChild(label);
-			hdr.appendChild(settingsWrap);
+			hdr.appendChild(settingsBtn);
 			headersEl.appendChild(hdr);
+			lanePopLayerEl?.appendChild(pop);
 		});
 	}
 
@@ -3025,6 +3067,9 @@
 			}
 			headerStart += size + LANE_GAP;
 		});
+		// 헤더가 움직였으면 열려 있는 팝오버도 따라가야 한다 — 별도 레이어에
+		// 있어 CSS 로는 안 따라온다.
+		repositionOpenLanePops();
 		syncExpandedPos();
 	}
 
@@ -3356,6 +3401,9 @@
 		></div>
 	{/if}
 	<div class="lane-hdrs" bind:this={headersEl}></div>
+	<!-- 레인 설정 팝오버 층 — toolbar(z:10) 위. 헤더 레이어와 분리한 이유는
+	     위 `lanePopLayerEl` 주석 참고. -->
+	<div class="lane-pop-layer" bind:this={lanePopLayerEl}></div>
 
 	<!-- 노드 확장 카드 (z:6, 노드 위에 플로팅) -->
 	{#if expandedQuest}
@@ -3890,11 +3938,18 @@
 		pointer-events: none;
 		overflow: hidden;
 	}
-	/* BUG: .toolbar 가 z-index:10 로 헤더 위를 덮어, 헤더 밑에 뜨는 레인 설정
-	   팝오버(.lane-settings-pop)가 그 뒤에 가려짐 — 팝오버가 열려 있는 동안만
-	   레인 헤더 레이어 전체를 toolbar 위로 올린다. */
-	:global(.lane-hdrs:has(.lane-hdr.settings-open)) {
+	/* 레인 설정 팝오버 층 — toolbar(z:10) 위.
+	   예전엔 팝오버를 올리려고 `.lane-hdrs` 전체를 11 로 올렸는데, 그러면
+	   **레인 제목까지** toolbar·새 퀘스트 버튼을 덮었다(admin 보고).
+	   `.lane-hdrs` 는 z-index 가 있어 stacking context 라 안쪽 팝오버만 따로
+	   올릴 수가 없다 — 그래서 팝오버를 이 별도 층으로 뺐다. 헤더는 z:3 그대로
+	   toolbar 아래에 남는다. */
+	.lane-pop-layer {
+		position: absolute;
+		inset: 0;
 		z-index: 11;
+		pointer-events: none;
+		overflow: hidden;
 	}
 
 	.edge-layer,
@@ -4267,26 +4322,11 @@
 	/* BUG: lane 폭이 좁으면(모바일 저배율) cols-sel + arrange-group 이 헤더 한 줄에
 	   안 들어가 옆 헤더에 가려 안 보이던 문제 — 헤더 아래로 뜨는 팝오버로 분리.
 	   settings-open 인 헤더만 다른 헤더 위로 올라오도록 z-index 도 올림. */
-	:global(.lane-hdr.settings-open) {
-		z-index: 5;
-	}
-	/* 팝오버의 위치 기준 — ⚙ 버튼을 감싸는 래퍼. 헤더 기준으로 두면 레인
-	   제목 아래에 떠서 버튼과 멀어진다(admin 보고). */
-	:global(.lane-settings-wrap) {
-		position: relative;
-		flex-shrink: 0;
-		display: flex;
-		align-items: center;
-	}
 	:global(.lane-settings-pop) {
 		display: none;
 		position: absolute;
-		top: 100%;
-		/* ⚙ 는 헤더 오른쪽 끝에 있다(`.lane-label { flex: 1 }`). 여기서
-		   `left: 0` 으로 펼치면 **오른쪽 레인을 덮는다**(admin 보고).
-		   버튼 오른쪽에 맞춰 **왼쪽으로** 펼쳐 자기 레인 안에 머물게 한다. */
-		right: 0;
-		margin-top: 2px;
+		/* 좌표는 `positionLanePop` 이 버튼 기준으로 계산한다 — 팝오버가 헤더
+		   밖에 있어 CSS 로는 버튼을 기준 삼을 수 없다. */
 		flex-direction: column;
 		gap: 4px;
 		align-items: stretch;
@@ -4298,22 +4338,7 @@
 		box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
 		pointer-events: auto;
 	}
-	/* 왼쪽으로 펼치다 화면 밖으로 나가는 경우에만 반대로(맨 왼쪽 레인 +
-	   팝오버가 레인보다 넓을 때). */
-	:global(.lane-settings-pop.pop-left) {
-		right: auto;
-		left: 0;
-	}
-	/* 가로 배치(레인이 행)에서는 헤더가 세로라 오른쪽으로 펼치는 것이 맞다.
-	   위에서 기본이 `right: 0` 이 됐으므로 명시적으로 풀어 준다. */
-	.orientation-rows :global(.lane-settings-pop) {
-		top: 0;
-		right: auto;
-		left: 100%;
-		margin-top: 0;
-		margin-left: 2px;
-	}
-	:global(.lane-hdr.settings-open .lane-settings-pop) {
+	:global(.lane-settings-pop.open) {
 		display: flex;
 	}
 	:global(.lane-cols-sel) {
