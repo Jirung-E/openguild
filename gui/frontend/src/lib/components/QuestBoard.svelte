@@ -2797,11 +2797,12 @@
 				toggleLaneSettings(s.slug);
 				setOpenAttrs();
 				if (lanesSettingsOpen.has(s.slug)) {
-					// 우측 lane 은 팝오버가 화면 밖으로 나갈 수 있어 좌측 정렬로 flip.
-					pop.classList.remove('pop-right');
+					// 기본은 버튼 오른쪽 기준으로 **왼쪽으로** 펼친다(자기 레인 안).
+					// 맨 왼쪽 레인처럼 그러다 화면 밖으로 나가면 반대로 뒤집는다.
+					pop.classList.remove('pop-left');
 					requestAnimationFrame(() => {
 						const r = pop.getBoundingClientRect();
-						if (r.right > window.innerWidth - 4) pop.classList.add('pop-right');
+						if (r.left < 4) pop.classList.add('pop-left');
 					});
 				}
 			};
@@ -2812,8 +2813,8 @@
 			// 왼쪽 끝, 즉 **레인 제목 아래**에 떴다. ⚙ 는 `.lane-label { flex: 1 }`
 			// 때문에 헤더 오른쪽 끝에 있으므로 버튼과 한참 떨어진다.
 			// 버튼과 팝오버를 `position: relative` 래퍼로 묶어 **버튼 기준**으로
-			// 위치를 잡는다. 오른쪽 끝 레인에서 화면 밖으로 나가는 것을 막는
-			// `pop-right` flip 은 그대로 동작한다(이제 버튼 기준으로 뒤집힌다).
+			// 위치를 잡고, 버튼 오른쪽에 맞춰 왼쪽으로 펼친다 — 그래야 자기
+			// 레인 안에 머문다(오른쪽으로 펼치면 옆 레인을 덮는다).
 			const settingsWrap = document.createElement('div');
 			settingsWrap.className = 'lane-settings-wrap';
 			settingsWrap.appendChild(settingsBtn);
@@ -4281,7 +4282,10 @@
 		display: none;
 		position: absolute;
 		top: 100%;
-		left: 0;
+		/* ⚙ 는 헤더 오른쪽 끝에 있다(`.lane-label { flex: 1 }`). 여기서
+		   `left: 0` 으로 펼치면 **오른쪽 레인을 덮는다**(admin 보고).
+		   버튼 오른쪽에 맞춰 **왼쪽으로** 펼쳐 자기 레인 안에 머물게 한다. */
+		right: 0;
 		margin-top: 2px;
 		flex-direction: column;
 		gap: 4px;
@@ -4294,12 +4298,17 @@
 		box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
 		pointer-events: auto;
 	}
-	:global(.lane-settings-pop.pop-right) {
-		left: auto;
-		right: 0;
+	/* 왼쪽으로 펼치다 화면 밖으로 나가는 경우에만 반대로(맨 왼쪽 레인 +
+	   팝오버가 레인보다 넓을 때). */
+	:global(.lane-settings-pop.pop-left) {
+		right: auto;
+		left: 0;
 	}
+	/* 가로 배치(레인이 행)에서는 헤더가 세로라 오른쪽으로 펼치는 것이 맞다.
+	   위에서 기본이 `right: 0` 이 됐으므로 명시적으로 풀어 준다. */
 	.orientation-rows :global(.lane-settings-pop) {
 		top: 0;
+		right: auto;
 		left: 100%;
 		margin-top: 0;
 		margin-left: 2px;
