@@ -674,6 +674,29 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    // BUG(admin 보고): Welcome 화면에서 만들어진 히스토리 항목이 placeholder 를
+    // "현재 길드" 로 표식해, 뒤로가기로 그 항목에 가면 그 경로를 길드로 열려다
+    // 거부되고 "히스토리의 길드를 열지 못했습니다" 토스트가 떴다.
+    // frontend 가 지켜야 했던 주석 계약을 백엔드에서 강제한다(BUG-136 과 동형).
+    #[test]
+    fn guild_path_for_frontend_hides_welcome_placeholder() {
+        let ph = crate::welcome_placeholder_path();
+        assert_eq!(
+            crate::commands::guild_path_for_frontend(&ph),
+            "",
+            "placeholder 는 빈 문자열이어야 한다 — frontend 가 '길드 없음' 으로 읽는다"
+        );
+    }
+
+    #[test]
+    fn guild_path_for_frontend_passes_real_path_through() {
+        let real = std::path::Path::new("/tmp/some-real-guild");
+        assert_eq!(
+            crate::commands::guild_path_for_frontend(real),
+            "/tmp/some-real-guild"
+        );
+    }
+
     use super::*;
 
     /// BUG-236 후속: placeholder 경로 판별. 경로 문자열이 흩어지면 한쪽만

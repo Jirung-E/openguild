@@ -859,12 +859,35 @@ pub fn launch_mode(state: State<'_, crate::LaunchInfo>) -> LaunchInfoDto {
 }
 
 /// BUG-019: 현재 활성 길드 경로 (절대 경로). frontend 의 localStorage
-/// namespace 분리 / 길드별 UI 상태 키 prefix 에 사용. Welcome / Uninit
-/// 모드일 땐 placeholder 경로가 그대로 반환되므로 frontend 는
-/// `launch_mode.mode === "guild"` 일 때만 의미 있게 사용해야 함.
+/// namespace 분리 / 길드별 UI 상태 키 prefix 에 사용.
+///
+/// BUG(admin 보고): Welcome / Uninit 모드에서는 in-memory Store 의 **가짜**
+/// 경로(`welcome_placeholder_path`)가 그대로 나갔다. 원래는 "frontend 가
+/// `launch_mode.mode === "guild"` 일 때만 쓰라" 는 주석 계약이었는데,
+/// `guildIdentity.ts` 의 `currentGuildId()` 가 그걸 안 지켰다 — 그래서 Welcome
+/// 화면에서 만들어진 히스토리 항목이 placeholder 를 "현재 길드" 로 표식하고,
+/// 뒤로가기로 그 항목에 도달하면 그 경로를 길드로 열려다 거부돼(BUG-236 가드)
+/// "히스토리의 길드를 열지 못했습니다" 토스트가 떴다.
+///
+/// [[BUG-136]] 이 `current_guild_name` 에서 똑같은 계약 위반을 겪고 백엔드에서
+/// 강제하는 쪽으로 바꿨다. 여기도 같게 만든다 — 계약을 주석으로 두면 언젠가
+/// 누가 또 어긴다.
+///
+/// 판정은 **launch_mode 가 아니라 경로 자체**로 한다. launch_mode 는 길드를
+/// 한 번 열면 Welcome 으로 돌아와도 "guild" 로 남아 stale 이다
+/// (`routes/+page.svelte` 주석 참고). 반면 `guild_root` 가 placeholder 인 것은
+/// "이 프로세스에서 아직 진짜 길드를 연 적이 없다" 와 정확히 같다.
 #[tauri::command]
 pub fn current_guild_path(store: State<'_, Store>) -> String {
-    store.paths.guild_root.display().to_string()
+    guild_path_for_frontend(&store.paths.guild_root)
+}
+
+/// 위 커맨드의 판정만 떼어낸 것 — `State` 없이 테스트할 수 있게.
+pub fn guild_path_for_frontend(root: &std::path::Path) -> String {
+    if crate::is_welcome_placeholder(root) {
+        return String::new();
+    }
+    root.display().to_string()
 }
 
 /// DEV-141: 현재 길드 이름 — `{name}.guild` 마커의 stem 또는 디렉토리명
