@@ -13,6 +13,8 @@
   (cross-link 대상 — DEV-218).
 -->
 <script lang="ts">
+	import PaneResizer from '$lib/components/PaneResizer.svelte';
+	import { paneWidth } from '$lib/stores/paneWidth';
 	import Icon from '$lib/components/Icon.svelte';
 	import { onMount, onDestroy } from 'svelte';
 	import { page } from '$app/stores';
@@ -45,6 +47,9 @@
 	import { formatTs, formatRelative } from '$lib/utils/datetime';
 	// DEV-205(2차): i18n.
 	import { locale, t } from '$lib/stores/locale';
+
+	// REQ-015: 사이드바 폭 — 구분선 드래그로 조절, rem 이라 배율을 따라간다.
+	const sidebarW = paneWidth('library');
 
 	let loading = $state(true);
 	let error = $state<string | null>(null);
@@ -909,7 +914,7 @@
 			</div>
 		{/if}
 	{:else}
-		<div class="layout" class:single={viewMode === 'explorer'}>
+		<div class="layout" class:single={viewMode === 'explorer'} style:--pane-w={`${$sidebarW}rem`}>
 			{#if viewMode === 'tree'}
 				<!-- 좌측 sidebar -->
 				<aside class="sidebar">
@@ -1117,6 +1122,9 @@
 						</div>
 					{/if}
 				</aside>
+
+				<!-- REQ-015: 구분선 = 드래그 핸들. 사이드바가 있을 때만(트리 보기). -->
+				<PaneResizer pane="library" />
 			{/if}
 
 			<!-- 우측 panel -->
@@ -1332,11 +1340,16 @@
 	.layout {
 		display: grid;
 		/* BUG-254: 사이드바 폭이 px 고정이라 배율을 올리면 안의 버튼·태그·제목이
-		   경계를 넘었다(admin 보고 + 스크린샷). 내용이 커지면 칸도 같이 커져야 한다. */
-		grid-template-columns: 16.25rem 1fr;
-		gap: 1.25rem;
+		   경계를 넘었다(admin 보고 + 스크린샷). 내용이 커지면 칸도 같이 커져야 한다.
+		   REQ-015: 그 폭을 사용자가 드래그로 정한다. `--pane-w` 는 store 가 rem
+		   으로 주므로 배율을 계속 따라간다. 기본값은 예전 16.25rem 그대로.
+		   가운데 열이 예전 `gap: 1.25rem` 자리를 그대로 차지하는 드래그 핸들
+		   이라 기존 간격·배치가 안 바뀐다. */
+		grid-template-columns: var(--pane-w, 16.25rem) 1.25rem 1fr;
+		gap: 0;
 		min-height: 70vh;
 	}
+	/* 아이콘 보기(explorer)는 사이드바가 없어 조절할 것도 없다. */
 	.layout.single {
 		grid-template-columns: 1fr;
 	}
@@ -1360,6 +1373,10 @@
 		.layout,
 		.layout.single {
 			grid-template-columns: 1fr;
+		}
+		/* 한 열로 쌓이면 좌우 구분선이 없어져 조절할 대상이 사라진다. */
+		.layout :global(.pane-resizer) {
+			display: none;
 		}
 		/* 두 열이 한 열로 쌓이면 세로 구분선이 의미를 잃는다. */
 		.sidebar {

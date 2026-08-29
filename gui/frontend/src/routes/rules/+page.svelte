@@ -9,6 +9,8 @@
   `.guild/rules/general.md` 로 마이그레이션됨.
 -->
 <script lang="ts">
+	import PaneResizer from '$lib/components/PaneResizer.svelte';
+	import { paneWidth } from '$lib/stores/paneWidth';
 	import { onMount, onDestroy } from 'svelte';
 	// BUG-104: 선택 규칙을 URL(?slug=) 에 반영 — 규칙간 링크 이동 + 뒤로가기 복원.
 	import { page } from '$app/stores';
@@ -40,6 +42,9 @@
 	import { filterRules } from '$lib/utils/rule-filter';
 	// REQ-014: 발췌에서 걸린 부분 표시.
 	import { highlightSegments } from '$lib/utils/highlight';
+
+	// REQ-015: 사이드바 폭 — 구분선 드래그로 조절, rem 이라 배율을 따라간다.
+	const sidebarW = paneWidth('rules');
 
 	let loading = $state(true);
 	let error = $state<string | null>(null);
@@ -339,7 +344,7 @@
 	{:else if error}
 		<div class="state err">{error}</div>
 	{:else}
-		<div class="layout">
+		<div class="layout" style:--pane-w={`${$sidebarW}rem`}>
 			<!-- 좌측 sidebar -->
 			<aside class="sidebar">
 				<div class="sidebar-head">
@@ -443,6 +448,9 @@
 					</div>
 				{/if}
 			</aside>
+
+			<!-- REQ-015: 구분선 = 드래그 핸들. gap 열 자리를 차지한다. -->
+			<PaneResizer pane="rules" />
 
 			<!-- 우측 panel -->
 			<section class="panel">
@@ -599,9 +607,13 @@
 	.layout {
 		display: grid;
 		/* BUG-254: 사이드바 폭도 배율을 따라간다 — px 고정이면 안의 요소가
-		   경계를 넘는다. */
-		grid-template-columns: 15rem 1fr;
-		gap: 1.25rem;
+		   경계를 넘는다.
+		   REQ-015: 그 폭을 사용자가 드래그로 정한다. `--pane-w` 는 store 가
+		   rem 으로 주므로 배율을 계속 따라간다. 기본값은 예전 15rem 그대로.
+		   가운데 열이 예전 `gap: 1.25rem` 자리를 그대로 차지하는 드래그
+		   핸들이다 — 간격이 안 바뀌므로 기존 배치가 그대로다. */
+		grid-template-columns: var(--pane-w, 15rem) 1.25rem 1fr;
+		gap: 0;
 		min-height: 70vh;
 	}
 	.sidebar {
@@ -621,6 +633,10 @@
 	@media (max-width: 640px) {
 		.layout {
 			grid-template-columns: 1fr;
+		}
+		/* 한 열로 쌓이면 좌우 구분선이 없어져 조절할 대상이 사라진다. */
+		.layout :global(.pane-resizer) {
+			display: none;
 		}
 		.sidebar {
 			border-right: none;

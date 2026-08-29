@@ -1662,7 +1662,13 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		ko: '_미리보기를 불러오지 못했습니다._',
 		en: '_Failed to load preview._'
 	},
-	'palette.resizeHandle': { ko: '아래로 드래그해 크기 조절', en: 'Drag down to resize' }
+	'palette.resizeHandle': { ko: '아래로 드래그해 크기 조절', en: 'Drag down to resize' },
+	// REQ-015: 도서관 / 규칙의 좌우 폭 조절 핸들.
+	'pane.resizeHandle': { ko: '영역 폭 조절', en: 'Resize panel' },
+	'pane.resizeHint': {
+		ko: '드래그해 폭 조절 · 두 번 클릭하면 기본값 · 방향키로도 조절',
+		en: 'Drag to resize · double-click to reset · arrow keys also work'
+	}
 };
 
 /** 현재 locale 기준 번역. 누락 키는 ko 원문 그대로(안전한 fallback). */
