@@ -1444,8 +1444,20 @@ mod tests {
     async fn change_status_on_deleted_quest_changes_nothing() {
         let (dir, store) = fresh_store("cs-deleted").await;
         let id = make_quest(&store).await;
-        let before = fetch_by_id(&store.index_pool, id).await.unwrap();
         delete(&store.index_pool, id, &[]).await.unwrap();
+
+        // 기준선은 **삭제 직후** 값이다. `delete` 자체가
+        // `UPDATE quests SET deleted_at = ?, updated_at = ?` 로 updated_at 을
+        // 갱신하므로, 삭제 **전** 값과 비교하면 생성과 삭제가 같은 초에
+        // 일어났을 때만 우연히 통과한다(타임스탬프가 초 단위라).
+        // 이 테스트가 확인하려는 것은 "delete 가 안 바꿨다" 가 아니라
+        // "change_status 가 안 바꿨다" 이므로 기준선이 여기여야 맞다.
+        let before = list_deleted(&store.index_pool)
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|q| q.id == id)
+            .expect("삭제 직후 목록에 있어야 한다");
 
         let err = change_status(
             &store.index_pool,
