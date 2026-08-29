@@ -569,7 +569,11 @@
 	.up-bar {
 		flex: 1;
 		min-width: 4rem;
-		height: 3px;
+		/* BUG-254 계열(admin 보고): 바 두께가 px 이라 UI 배율을 안 따라갔다.
+		   곡률(`--r-xs`)은 rem 이라 배율에서 함께 커지는데 두께만 그대로여서,
+		   배율을 올리면 바가 과하게 둥근 실선처럼 보였다. 16px 기준 환산이라
+		   기본 배율에서 두께는 그대로다. */
+		height: 0.1875rem;
 		border-radius: var(--r-xs);
 		background: var(--bg-subtle);
 		overflow: hidden;
