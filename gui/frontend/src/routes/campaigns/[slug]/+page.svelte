@@ -1197,6 +1197,16 @@
 		padding: 1rem;
 	}
 	.modal-sm {
+		/* BUG-199 후속(admin 보고: "지나치게 위로 치우쳐져 있음"): 오버레이
+		   `.ov` 가 `align-items: flex-start` 인데 여기에 짝이 되는
+		   `margin: auto` 가 빠져 있어 팝업이 화면 위에 붙었다(실측 900px
+		   화면에서 위 16px / 아래 771px).
+
+		   `.ov` 주석이 요구하는 패턴 그대로다 — flex 컨테이너에서 `margin: auto`
+		   는 남는 공간을 위아래로 나눠 가지므로, **짧으면 가운데**에 오고
+		   **길어서 넘치면** flex-start 가 이겨 위부터 보인다. 그래서 긴 팝업의
+		   제목·닫기 버튼이 잘리지 않는다. */
+		margin: auto;
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-xl);
