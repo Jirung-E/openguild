@@ -612,10 +612,14 @@
 
 <style>
 	main {
+		/* 타이틀바·Nav 가 fixed 라 흐름에서 빠졌다 — 그 높이만큼 내려 시작한다.
+		   (macOS rubber-band 대응. 자세한 이유는 TitleBar/Nav 의 주석 참고.) */
+		margin-top: calc(var(--titlebar-h, 0px) + var(--nav-h, 3.25rem));
 		min-height: calc(100vh - var(--nav-h, 3.25rem) - var(--titlebar-h, 0px));
 		background: var(--bg);
 	}
 	main.no-nav {
+		margin-top: var(--titlebar-h, 0px);
 		min-height: calc(100vh - var(--titlebar-h, 0px));
 	}
 	.history-guild-switch {

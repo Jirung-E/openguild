@@ -194,14 +194,6 @@ html {
 	   그려 진짜 overlay 구현 (컨텐츠 폭 0px 차지). 내부 overflow 컨테이너 (모달
 	   리스트, CodeMirror) 는 기존 `* { scrollbar-width: thin }` 그대로. */
 	scrollbar-width: none;
-	/* BUG(admin 보고, macOS): 맨 위에서 위로 더 스크롤하면 WebKit 이 문서를
-	   고무줄처럼 아래로 당긴다(rubber-band). `.titlebar` 는 `position: sticky;
-	   top: 0` 이라 스크롤이 음수 구간일 때는 고정되지 않고 문서와 **함께
-	   내려온다** — 창 위쪽에 빈 띠가 생기고 타이틀바가 아래로 밀려 보였다.
-	   `overscroll-behavior: none` 으로 문서의 바운스 자체를 끈다. 안쪽
-	   스크롤 컨테이너(모달·목록·CodeMirror)는 영향 없고, 바운스가 없는
-	   Windows / Linux 에서는 아무 일도 일어나지 않는다. */
-	overscroll-behavior: none;
 }
 html::-webkit-scrollbar {
 	display: none;

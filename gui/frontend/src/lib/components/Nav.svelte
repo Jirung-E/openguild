@@ -540,9 +540,15 @@
 		height: var(--nav-h, 3.25rem);
 		background: var(--nav-bg);
 		border-bottom: var(--bw) solid var(--nav-border);
-		position: sticky;
+		/* 타이틀바와 함께 뷰포트에 고정한다(BUG: macOS rubber-band).
+		   sticky 면 맨 위에서 위로 더 스크롤할 때 문서와 같이 내려오고,
+		   타이틀바만 fixed 로 두면 그 사이가 벌어져 띠가 생긴다 — 크롬은
+		   한 덩어리로 붙어 있어야 한다. 본문만 이 아래에서 출렁인다. */
+		position: fixed;
 		/* 커스텀 타이틀바(Windows Tauri) 아래에 붙도록 — 없으면 0px. */
 		top: var(--titlebar-h, 0px);
+		left: 0;
+		right: 0;
 		z-index: 100;
 	}
 
