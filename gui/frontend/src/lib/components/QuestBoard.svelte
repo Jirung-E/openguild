@@ -952,6 +952,43 @@
 		lanesSettingsOpen = next;
 		saveLanesSettingsOpen();
 	}
+	/**
+	 * 열린 레인 설정을 전부 닫는다 (바깥 클릭용, admin 요청).
+	 *
+	 * 열림 표시는 세 곳에 흩어져 있다 — 상태 Set, 헤더의 `settings-open`
+	 * 클래스(⚙ 버튼 강조), 팝오버의 `open` 클래스(표시). 팝오버가 헤더 밖
+	 * 별도 레이어에 살기 때문에 CSS 만으로는 한 번에 못 끄므로 여기서 직접
+	 * 맞춰 준다. 버튼의 `aria-expanded` 도 함께.
+	 */
+	function closeAllLaneSettings() {
+		if (lanesSettingsOpen.size === 0) return;
+		lanesSettingsOpen = new Set();
+		saveLanesSettingsOpen();
+		headersEl?.querySelectorAll<HTMLElement>('.lane-hdr').forEach((hdr) => {
+			hdr.classList.remove('settings-open');
+			const btn = hdr.querySelector<HTMLElement>('.lane-settings-btn');
+			btn?.setAttribute('aria-expanded', 'false');
+			if (btn) btn.title = t('board.laneSettingsExpand', get(locale));
+		});
+		lanePopLayerEl?.querySelectorAll('.lane-settings-pop').forEach((pop) => {
+			pop.classList.remove('open');
+		});
+	}
+
+	/**
+	 * 팝오버·⚙ 바깥을 누르면 닫는다.
+	 *
+	 * `pointerdown` 을 쓴다 — `click` 은 드래그로 보드를 pan 한 뒤에도 뜨는
+	 * 경우가 있어 의도치 않게 닫히거나 안 닫히는 차이가 생긴다. ⚙ 자신은
+	 * 제외해야 한다(자기 토글이 이미 처리 — 여기서 먼저 닫으면 다시 열린다).
+	 */
+	function onDocPointerDown(e: PointerEvent) {
+		if (lanesSettingsOpen.size === 0) return;
+		const el = e.target as HTMLElement | null;
+		if (el?.closest('.lane-settings-pop, .lane-settings-btn')) return;
+		closeAllLaneSettings();
+	}
+
 	function toggleLaneCollapsed(slug: string) {
 		const next = new Set(collapsedLanes);
 		if (next.has(slug)) next.delete(slug);
@@ -2266,6 +2303,9 @@
 		boardWrapEl.addEventListener('touchmove', onBoardTouchMove, { passive: false });
 		boardWrapEl.addEventListener('touchend', onBoardTouchEnd);
 		boardWrapEl.addEventListener('touchcancel', onBoardTouchEnd);
+		// 레인 설정 바깥 클릭으로 닫기. capture 로 받는다 — 안쪽 요소가
+		// stopPropagation 을 해도(예: 보드 캔버스 드래그 시작) 놓치지 않는다.
+		document.addEventListener('pointerdown', onDocPointerDown, true);
 		return () => {
 			unsubTheme();
 			window.removeEventListener('keydown', handleKeydown);
@@ -2279,6 +2319,7 @@
 			boardWrapEl.removeEventListener('touchmove', onBoardTouchMove);
 			boardWrapEl.removeEventListener('touchend', onBoardTouchEnd);
 			boardWrapEl.removeEventListener('touchcancel', onBoardTouchEnd);
+			document.removeEventListener('pointerdown', onDocPointerDown, true);
 		};
 	});
 
