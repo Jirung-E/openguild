@@ -2808,9 +2808,19 @@
 
 			// DEV-059 fix2: lane 순서 변경은 '보드 설정' 모달로 이전 — 헤더에 ◀ ▶ 안 둠.
 			// 헤더 폭이 좁아질 때 라벨이 가려지는 문제 회피.
+			// BUG(admin 보고): 팝오버가 `.lane-hdr` 기준으로 `left: 0` 이라 헤더
+			// 왼쪽 끝, 즉 **레인 제목 아래**에 떴다. ⚙ 는 `.lane-label { flex: 1 }`
+			// 때문에 헤더 오른쪽 끝에 있으므로 버튼과 한참 떨어진다.
+			// 버튼과 팝오버를 `position: relative` 래퍼로 묶어 **버튼 기준**으로
+			// 위치를 잡는다. 오른쪽 끝 레인에서 화면 밖으로 나가는 것을 막는
+			// `pop-right` flip 은 그대로 동작한다(이제 버튼 기준으로 뒤집힌다).
+			const settingsWrap = document.createElement('div');
+			settingsWrap.className = 'lane-settings-wrap';
+			settingsWrap.appendChild(settingsBtn);
+			settingsWrap.appendChild(pop);
+
 			hdr.appendChild(label);
-			hdr.appendChild(settingsBtn);
-			hdr.appendChild(pop);
+			hdr.appendChild(settingsWrap);
 			headersEl.appendChild(hdr);
 		});
 	}
@@ -4258,6 +4268,14 @@
 	   settings-open 인 헤더만 다른 헤더 위로 올라오도록 z-index 도 올림. */
 	:global(.lane-hdr.settings-open) {
 		z-index: 5;
+	}
+	/* 팝오버의 위치 기준 — ⚙ 버튼을 감싸는 래퍼. 헤더 기준으로 두면 레인
+	   제목 아래에 떠서 버튼과 멀어진다(admin 보고). */
+	:global(.lane-settings-wrap) {
+		position: relative;
+		flex-shrink: 0;
+		display: flex;
+		align-items: center;
 	}
 	:global(.lane-settings-pop) {
 		display: none;
