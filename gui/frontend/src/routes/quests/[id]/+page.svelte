@@ -21,7 +21,6 @@
 	// DEV-205 / REQ-001: 상세 화면 라벨을 i18n 사전으로 — 캠페인 상세와 언어 통일.
 	import { locale, t } from '$lib/stores/locale';
 	// DEV-255: 자식윈도우(검색 팔레트 "새 창으로 열기")에선 뒤로가기 버튼 숨김.
-	import { isChildWindow } from '$lib/stores/windowKind';
 	// DEV-015: status 표시 이름 — 언어 반응(ko 면 name_ko 우선, 빈 값이면 en).
 	import { statusLabel, questStatusLabel } from '$lib/utils/status-label';
 	// DEV-205: 언어 반응 날짜 입력(네이티브 date 대체).
@@ -709,12 +708,13 @@
 
 <div class="container">
 	<div class="top-bar">
-		<!-- BUG-015: history.back() 으로 직전 페이지 (List 또는 Board) 복귀.
-		     history 가 비어있으면 (외부 link 직접 진입) Board 로 fallback.
-		     DEV-255: 자식윈도우(단일 문서 보기)는 돌아갈 곳이 없음 — 숨김. -->
-		{#if !$isChildWindow}
-			<button class="back" type="button" onclick={goBack}>← {t('detail.back', $locale)}</button>
-		{/if}
+		<!-- DEV-370: '뒤로' 버튼을 없앴다. 타이틀바에 앞/뒤가 생기기 전에
+		     브라우저 뒤로가기를 대신하려고 둔 것인데 이제 기능이 두 벌이다.
+		     자식창에도 타이틀바 앞/뒤를 노출했으므로(TitleBar 주석) 여기가
+		     사라져도 돌아갈 길은 남는다.
+
+		     `goBack()` 은 지운 것이 아니라 **삭제 후 복귀**에 계속 쓴다 —
+		     그쪽은 `?from=` fallback 이 필요하다(BUG-015 / DEV-011). -->
 		{#if detail && !editMode}
 			<div class="top-actions">
 				<button class="btn-edit" onclick={enterEditMode}>✎ {t('detail.edit', $locale)}</button>
@@ -1519,23 +1519,14 @@
 	.top-bar {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
+		/* DEV-370: 예전엔 왼쪽 '뒤로' 와 오른쪽 편집/삭제를 `space-between` 으로
+		   양끝에 붙였다. 뒤로가 빠져 자식이 하나만 남으면 space-between 은
+		   그것을 **왼쪽에** 놓는다 — 오른쪽 정렬을 명시한다. */
+		justify-content: flex-end;
+		/* 편집 모드처럼 자식이 아예 없을 때도 줄 높이를 지켜 제목이 위로
+		   튀지 않게 한다(편집/삭제 버튼과 같은 높이). */
+		min-height: 1.9rem;
 		margin-bottom: 1.5rem;
-	}
-
-	/* BUG-015: anchor → button 으로 변경. button 기본 스타일 제거. */
-	.back {
-		font-size: 0.875rem;
-		color: var(--text-muted);
-		text-decoration: none;
-		background: none;
-		border: none;
-		padding: 0;
-		cursor: pointer;
-		font-family: inherit;
-	}
-	.back:hover {
-		color: var(--text);
 	}
 
 	.top-actions {

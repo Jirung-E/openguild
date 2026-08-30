@@ -279,10 +279,15 @@
 		<img class="tb-appicon" src="/title-icon.png" alt="" data-tauri-drag-region />
 	{/if}
 
-	<!-- DEV-255: 자식윈도우(단일 문서 보기)는 홈/뒤로·앞으로/☰메뉴 전부 불필요
-	     — 다른 곳으로 이동할 일이 없는 창이라 통째로 숨김. -->
-	{#if !$isChildWindow}
-		<div class="tb-left">
+	<!-- DEV-255 는 자식윈도우(단일 문서 보기)에서 이 줄을 통째로 숨겼다 —
+	     "다른 곳으로 이동할 일이 없는 창" 이라는 전제였다.
+	     DEV-370: 그 전제가 반만 맞았다. 문서 안의 cross-link 를 타고 들어가면
+	     돌아올 길이 필요한데, 상세 페이지의 '뒤로' 버튼을 없애면서 자식창엔
+	     앞/뒤가 하나도 안 남는다. 그래서 **앞/뒤만** 노출한다 — 홈과 ☰메뉴는
+	     여전히 숨긴다(단일 문서 창을 목록이나 다른 길드로 데려가는 것은 그
+	     창의 목적이 아니다). -->
+	<div class="tb-left">
+		{#if !$isChildWindow}
 			<button
 				class="tb-icon-btn"
 				onclick={() => goto('/welcome')}
@@ -303,161 +308,161 @@
 					<path d="M3.6 7 V13.4 H12.4 V7" />
 				</svg>
 			</button>
-			<button
-				class="tb-icon-btn"
-				onclick={() => history.back()}
-				title={t('titlebar.back', $locale)}
-				aria-label={t('titlebar.back', $locale)}
+		{/if}
+		<button
+			class="tb-icon-btn"
+			onclick={() => history.back()}
+			title={t('titlebar.back', $locale)}
+			aria-label={t('titlebar.back', $locale)}
+		>
+			<svg class="tb-ico"
+				width="15"
+				height="15"
+				viewBox="0 0 16 16"
+				fill="none"
+				stroke="currentColor"
+				stroke-width="1.5"
+				stroke-linecap="round"
+				stroke-linejoin="round"
+				aria-hidden="true"
 			>
-				<svg class="tb-ico"
-					width="15"
-					height="15"
-					viewBox="0 0 16 16"
-					fill="none"
-					stroke="currentColor"
-					stroke-width="1.5"
-					stroke-linecap="round"
-					stroke-linejoin="round"
-					aria-hidden="true"
-				>
-					<path d="M10 3 L5.5 8 L10 13" />
-				</svg>
-			</button>
-			<button
-				class="tb-icon-btn"
-				onclick={() => history.forward()}
-				title={t('titlebar.forward', $locale)}
-				aria-label={t('titlebar.forward', $locale)}
+				<path d="M10 3 L5.5 8 L10 13" />
+			</svg>
+		</button>
+		<button
+			class="tb-icon-btn"
+			onclick={() => history.forward()}
+			title={t('titlebar.forward', $locale)}
+			aria-label={t('titlebar.forward', $locale)}
+		>
+			<svg class="tb-ico"
+				width="15"
+				height="15"
+				viewBox="0 0 16 16"
+				fill="none"
+				stroke="currentColor"
+				stroke-width="1.5"
+				stroke-linecap="round"
+				stroke-linejoin="round"
+				aria-hidden="true"
 			>
-				<svg class="tb-ico"
-					width="15"
-					height="15"
-					viewBox="0 0 16 16"
-					fill="none"
-					stroke="currentColor"
-					stroke-width="1.5"
-					stroke-linecap="round"
-					stroke-linejoin="round"
-					aria-hidden="true"
+				<path d="M6 3 L10.5 8 L6 13" />
+			</svg>
+		</button>
+		{#if $guildContextActive && !$isChildWindow}
+			<div class="tb-menu-wrap">
+				<button
+					class="tb-icon-btn"
+					class:active={menuOpen}
+					onclick={() => (menuOpen = !menuOpen)}
+					title={t('titlebar.menu', $locale)}
+					aria-label={t('titlebar.menu', $locale)}
+					aria-expanded={menuOpen}
 				>
-					<path d="M6 3 L10.5 8 L6 13" />
-				</svg>
-			</button>
-			{#if $guildContextActive}
-				<div class="tb-menu-wrap">
-					<button
-						class="tb-icon-btn"
-						class:active={menuOpen}
-						onclick={() => (menuOpen = !menuOpen)}
-						title={t('titlebar.menu', $locale)}
-						aria-label={t('titlebar.menu', $locale)}
-						aria-expanded={menuOpen}
+					<svg class="tb-ico"
+						width="15"
+						height="15"
+						viewBox="0 0 16 16"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1.3"
+						stroke-linecap="round"
+						aria-hidden="true"
 					>
-						<svg class="tb-ico"
-							width="15"
-							height="15"
-							viewBox="0 0 16 16"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="1.3"
-							stroke-linecap="round"
-							aria-hidden="true"
-						>
-							<path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11" />
-						</svg>
-					</button>
-					{#if menuOpen}
-						<div class="tb-menu">
-							<!-- DEV-260: Nav 에서 넘친 페이지 링크 — 상시 항목과 구분선으로 구획. -->
-							{#if $navOverflowItems.length > 0}
-								{#each $navOverflowItems as it (it.href)}
-									<button class:active={it.active} onclick={() => goto(it.href)}>
-										{it.label}
-									</button>
-								{/each}
-								<div class="tb-menu-sep"></div>
-							{/if}
-							<!-- BUG-201(admin 지시): 어드민은 창 폭과 무관하게 항상 이 메뉴 안에.
-					     Nav 의 응답형 목록에서 빠졌으므로 여기 상시 항목으로 둔다
-					     (데스크탑·웹 양쪽에서 같은 자리). -->
-							<button onclick={() => goto('/admin')}>
-								<svg class="tb-ico"
-									width="15"
-									height="15"
-									viewBox="0 0 16 16"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="1.2"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									aria-hidden="true"
-								>
-									<path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11" />
-									<circle cx="5.5" cy="4.5" r="1.4" />
-									<circle cx="10.5" cy="8" r="1.4" />
-									<circle cx="6.5" cy="11.5" r="1.4" />
-								</svg>
-								{t('nav.admin', $locale)}
-							</button>
-							<button onclick={() => goto('/campaigns')}>
-								<svg class="tb-ico"
-									width="15"
-									height="15"
-									viewBox="0 0 16 16"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="1.2"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									aria-hidden="true"
-								>
-									<rect x="2.5" y="2.5" width="11" height="11" rx="1.5" />
-									<path d="M5 6h6M5 8.5h6M5 11h3.5" />
-								</svg>
-								{t('titlebar.menuCampaigns', $locale)}
-							</button>
-							<button onclick={() => goto('/worklog')}>
-								<svg class="tb-ico"
-									width="15"
-									height="15"
-									viewBox="0 0 16 16"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="1.2"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									aria-hidden="true"
-								>
-									<circle cx="8" cy="8" r="5.5" />
-									<path d="M8 4.8V8l2.2 1.6" />
-								</svg>
-								{t('titlebar.menuWorklog', $locale)}
-							</button>
-							<button onclick={() => goto('/tags')}>
-								<svg class="tb-ico"
-									width="15"
-									height="15"
-									viewBox="0 0 16 16"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="1.2"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									aria-hidden="true"
-								>
-									<path
-										d="M8.3 2.5H3.2A.7.7 0 0 0 2.5 3.2v5.1a1 1 0 0 0 .3.7l4.9 4.9a1 1 0 0 0 1.4 0l4.4-4.4a1 1 0 0 0 0-1.4L9 2.8a1 1 0 0 0-.7-.3Z"
-									/>
-									<circle cx="5.4" cy="5.4" r=".9" />
-								</svg>
-								{t('titlebar.menuTags', $locale)}
-							</button>
-						</div>
-					{/if}
-				</div>
-			{/if}
-		</div>
-	{/if}
+						<path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11" />
+					</svg>
+				</button>
+				{#if menuOpen}
+					<div class="tb-menu">
+						<!-- DEV-260: Nav 에서 넘친 페이지 링크 — 상시 항목과 구분선으로 구획. -->
+						{#if $navOverflowItems.length > 0}
+							{#each $navOverflowItems as it (it.href)}
+								<button class:active={it.active} onclick={() => goto(it.href)}>
+									{it.label}
+								</button>
+							{/each}
+							<div class="tb-menu-sep"></div>
+						{/if}
+						<!-- BUG-201(admin 지시): 어드민은 창 폭과 무관하게 항상 이 메뉴 안에.
+				     Nav 의 응답형 목록에서 빠졌으므로 여기 상시 항목으로 둔다
+				     (데스크탑·웹 양쪽에서 같은 자리). -->
+						<button onclick={() => goto('/admin')}>
+							<svg class="tb-ico"
+								width="15"
+								height="15"
+								viewBox="0 0 16 16"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.2"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								aria-hidden="true"
+							>
+								<path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11" />
+								<circle cx="5.5" cy="4.5" r="1.4" />
+								<circle cx="10.5" cy="8" r="1.4" />
+								<circle cx="6.5" cy="11.5" r="1.4" />
+							</svg>
+							{t('nav.admin', $locale)}
+						</button>
+						<button onclick={() => goto('/campaigns')}>
+							<svg class="tb-ico"
+								width="15"
+								height="15"
+								viewBox="0 0 16 16"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.2"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								aria-hidden="true"
+							>
+								<rect x="2.5" y="2.5" width="11" height="11" rx="1.5" />
+								<path d="M5 6h6M5 8.5h6M5 11h3.5" />
+							</svg>
+							{t('titlebar.menuCampaigns', $locale)}
+						</button>
+						<button onclick={() => goto('/worklog')}>
+							<svg class="tb-ico"
+								width="15"
+								height="15"
+								viewBox="0 0 16 16"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.2"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								aria-hidden="true"
+							>
+								<circle cx="8" cy="8" r="5.5" />
+								<path d="M8 4.8V8l2.2 1.6" />
+							</svg>
+							{t('titlebar.menuWorklog', $locale)}
+						</button>
+						<button onclick={() => goto('/tags')}>
+							<svg class="tb-ico"
+								width="15"
+								height="15"
+								viewBox="0 0 16 16"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.2"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								aria-hidden="true"
+							>
+								<path
+									d="M8.3 2.5H3.2A.7.7 0 0 0 2.5 3.2v5.1a1 1 0 0 0 .3.7l4.9 4.9a1 1 0 0 0 1.4 0l4.4-4.4a1 1 0 0 0 0-1.4L9 2.8a1 1 0 0 0-.7-.3Z"
+								/>
+								<circle cx="5.4" cy="5.4" r=".9" />
+							</svg>
+							{t('titlebar.menuTags', $locale)}
+						</button>
+					</div>
+				{/if}
+			</div>
+		{/if}
+	</div>
 
 	<!-- 중앙: 길드 이름 pill = 검색 팔레트 (+ DEV-276 최근 문서 버튼).
 	     길드 컨텍스트 있을 때만, 자식윈도우에선 숨김(단일 문서 보기 창엔

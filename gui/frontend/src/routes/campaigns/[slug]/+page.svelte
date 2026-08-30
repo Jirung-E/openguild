@@ -30,7 +30,6 @@
 	// DEV-259: alert() 잔재 제거 — 앱 공용 toast 로 통일.
 	import { showToast } from '$lib/stores/toast';
 	// DEV-255: 자식윈도우(검색 팔레트 "새 창으로 열기")에선 뒤로가기 버튼 숨김.
-	import { isChildWindow } from '$lib/stores/windowKind';
 	// DEV-015: status 표시 이름 — 언어 반응.
 	import { questStatusLabel } from '$lib/utils/status-label';
 	// DEV-205: 언어 반응 날짜 입력(네이티브 date 대체).
@@ -471,10 +470,8 @@
 
 <div class="page">
 	<div class="top">
-		<!-- DEV-255: 자식윈도우(단일 문서 보기)는 돌아갈 곳이 없음 — 숨김. -->
-		{#if !$isChildWindow}
-			<button class="back" onclick={() => history.back()}>← {t('detail.back', $locale)}</button>
-		{/if}
+		<!-- DEV-370: '뒤로' 버튼 제거 — 타이틀바 앞/뒤와 중복. 자식창에도
+		     타이틀바 앞/뒤가 노출된다. -->
 		{#if detail}
 			<button
 				class="pill status-badge status-{detail.status}"
@@ -878,7 +875,6 @@
 		gap: 0.5rem;
 		margin-bottom: 1rem;
 	}
-	.back,
 	.btn-delete,
 	.btn-edit {
 		/* BUG-254 후속: 아이콘 + 글자 버튼의 세로 정렬.
@@ -897,7 +893,6 @@
 		color: var(--text);
 		font-family: inherit;
 	}
-	.back:hover,
 	.btn-edit:hover {
 		background: var(--bg-subtle);
 	}
@@ -916,7 +911,7 @@
 	}
 
 	/* DEV-364: 모양은 global.css 의 `.pill` 이 정본.
-	   예전엔 버튼(`.back/.btn-edit/.btn-delete`)과 상자를 공유하면서 곡률만
+	   예전엔 버튼(`.btn-edit/.btn-delete`)과 상자를 공유하면서 곡률만
 	   `20px !important` 로 덮어쓰고 있었다 — pill 이 아니라 '버튼처럼 생긴
 	   것을 알약으로 우겨넣은' 상태였다. 공용 규칙에서 뺐다. */
 	.status-badge {
