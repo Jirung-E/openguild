@@ -42,11 +42,20 @@
 	import { locale, t } from '$lib/stores/locale';
 	// DEV-205(3차): 네이티브 date/month input(OS 로케일 고정) → 언어 반응 DateField.
 	import DateField from '$lib/components/DateField.svelte';
+	// BUG-259: 펼침/기간 상태를 세션에 남긴다 — 페이지를 옮겼다 와도 그대로.
+	import {
+		loadWorklogUnit,
+		saveWorklogUnit,
+		loadExpandedDocs,
+		saveExpandedDocs,
+		worklogDocKey
+	} from '$lib/stores/worklogView';
 
 	type Unit = 'day' | 'week' | 'month' | 'range';
 	const UNITS: Unit[] = ['day', 'week', 'month', 'range'];
 
-	let unit = $state<Unit>('day');
+	// BUG-259: 세션 저장은 `stores/worklogView` 가 맡는다.
+	let unit = $state<Unit>(loadWorklogUnit());
 	/** 기준 날짜 (일 뷰 = 그 날, 주/월 뷰 = 그 날이 속한 기간). */
 	let anchor = $state(fmt(new Date()));
 	// 임의 구간(range) 뷰의 시작/끝 — admin 요청.
@@ -152,6 +161,8 @@
 	function setUnit(u: Unit) {
 		if (unit === u) return;
 		unit = u;
+		// BUG-259: 세션 안에서는 유지 — 페이지를 옮겼다 와도 보던 기간 그대로.
+		saveWorklogUnit(u);
 		if (u === 'range') {
 			// 직전 뷰의 기간을 초기값으로 — 빈 구간에서 시작하지 않게.
 			rangeFrom = anchor;
@@ -364,11 +375,15 @@
 		}
 	}
 
-	/** compact 뷰에서 펼쳐 놓은 그룹 키(`날짜|slug`). 기본은 전부 접힘. */
-	let expandedDocs = $state(new Set<string>());
-	function docKey(date: string, slug: string) {
-		return `${date}|${slug}`;
-	}
+	/**
+	 * compact 뷰에서 펼쳐 놓은 그룹 키(`날짜|slug`). 기본은 전부 접힘.
+	 *
+	 * BUG-259: 지역 상태로만 두면 다른 라우트로 가는 순간 컴포넌트가 파괴돼
+	 * 돌아왔을 때 전부 접혀 있었다(admin 보고). 세션 저장은
+	 * `stores/worklogView` 가 맡는다 — 왜 sessionStorage 인지도 거기 적혀 있다.
+	 */
+	let expandedDocs = $state(loadExpandedDocs());
+	const docKey = worklogDocKey;
 	function toggleDoc(date: string, slug: string) {
 		const k = docKey(date, slug);
 		// Set 을 직접 mutate 하면 Svelte 5 가 변화를 못 본다 — 새 Set 으로 교체.
@@ -376,6 +391,7 @@
 		if (next.has(k)) next.delete(k);
 		else next.add(k);
 		expandedDocs = next;
+		saveExpandedDocs(next);
 	}
 </script>
 
