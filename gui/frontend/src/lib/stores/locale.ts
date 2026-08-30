@@ -1039,6 +1039,13 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		ko: '토론 댓글이 있는 스레드만 보기 (비토론 댓글은 흐리게)',
 		en: 'Show only threads with discussion (others dimmed)'
 	},
+	// REQ-017: 댓글 필터 3단계 — 버튼 라벨이 **현재 상태**를 그대로 말한다.
+	// 다음 단계는 title 로만 알린다(라벨까지 미래형이면 지금이 뭔지 헷갈린다).
+	'comment.filterAll': { ko: '전체', en: 'All' },
+	'comment.filterDiscussion': { ko: '토론만', en: 'Discussions' },
+	'comment.filterUnresolved': { ko: '미해결 토론만', en: 'Unresolved only' },
+	'comment.filterNextPre': { ko: '지금: ', en: 'Now: ' },
+	'comment.filterNextMid': { ko: ' · 누르면 ', en: ' · click for ' },
 	'comment.expandAll': { ko: '⊕ 전체 펼치기', en: '⊕ Expand all' },
 	'comment.collapseAll': { ko: '⊖ 전체 접기', en: '⊖ Collapse all' },
 	'comment.expandAllTitle': {

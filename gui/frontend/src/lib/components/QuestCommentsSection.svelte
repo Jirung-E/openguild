@@ -17,6 +17,14 @@
 	import { tick, onDestroy, onMount } from 'svelte';
 	// BUG-258: 딥링크 스크롤은 레이아웃이 잦아든 뒤에 시작해야 한다.
 	import { scrollIntoViewWhenSettled } from '$lib/utils/page-scroll';
+	// REQ-017: 댓글 필터 3단계 — 전체 / 토론만 / 미해결 토론만.
+	import {
+		type CommentFilter,
+		loadCommentFilter,
+		saveCommentFilter,
+		nextCommentFilter,
+		matchesCommentFilter
+	} from '$lib/stores/commentFilter';
 	// DEV-296: `?comment=N` 딥링크 — 작업기록에서 그 댓글로 바로 스크롤.
 	import { page } from '$app/stores';
 	import MarkdownView from './MarkdownView.svelte';
@@ -806,14 +814,63 @@
 	// DEV-213: 토론 댓글만 모아보기 (quest 전용 — discussion 은 quest 한정 기능).
 	// 스레드 문맥 보존: root 카드는 "스레드 안에 토론이 하나라도 있으면" 표시하고,
 	// 스레드 내부의 비토론 entry 는 숨기지 않고 dim 처리(대화 흐름 유지).
-	let discussionOnly = $state(false);
 	let discussionCount = $derived(entries.filter((e) => e.discussion).length);
 	let unresolvedCount = $derived(entries.filter((e) => e.discussion && !e.resolved).length);
-	// 토론을 포함한 스레드의 root id 집합.
-	let discussionRoots = $derived.by(() => {
+
+	// REQ-017: 켜기/끄기 2단계였던 것을 3단계로. 순환은 좁혀 나가는 방향
+	// (전체 → 토론만 → 미해결만), 영속은 localStorage — 자세한 배경은
+	// `stores/commentFilter`.
+	let commentFilter = $state<CommentFilter>(loadCommentFilter());
+	function cycleFilter() {
+		commentFilter = nextCommentFilter(commentFilter);
+		saveCommentFilter(commentFilter);
+	}
+	let filterLabel = $derived(
+		commentFilter === 'all'
+			? t('comment.filterAll', $locale)
+			: commentFilter === 'discussion'
+				? t('comment.filterDiscussion', $locale)
+				: t('comment.filterUnresolved', $locale)
+	);
+	let nextFilterLabel = $derived.by(() => {
+		const n = nextCommentFilter(commentFilter);
+		return n === 'all'
+			? t('comment.filterAll', $locale)
+			: n === 'discussion'
+				? t('comment.filterDiscussion', $locale)
+				: t('comment.filterUnresolved', $locale);
+	});
+	/** 지금 단계가 보여 주는 개수. '전체' 는 세지 않는다 — 거르는 게 없다. */
+	let filterCount = $derived(
+		commentFilter === 'discussion'
+			? discussionCount
+			: commentFilter === 'unresolved'
+				? unresolvedCount
+				: null
+	);
+	/**
+	 * 필터를 실제로 걸 수 있는 화면인가.
+	 *
+	 * REQ-017: 필터는 localStorage 에 남는데 버튼은 **토론이 있는 퀘스트**
+	 * 에서만 뜬다(discussion 은 quest 한정 기능). 그대로 적용하면 토론이 없는
+	 * 퀘스트나 캠페인에서 댓글이 통째로 사라진 채 **되돌릴 버튼조차 없다.**
+	 * 그런 화면에서는 저장된 값과 무관하게 '전체' 로 본다 — 값은 지우지 않아서
+	 * 토론이 있는 퀘스트로 가면 고르던 단계가 그대로 돌아온다.
+	 */
+	let filterAvailable = $derived(scope === 'quest' && discussionCount > 0);
+	let effectiveFilter = $derived<CommentFilter>(filterAvailable ? commentFilter : 'all');
+	// 현재 필터의 대상을 **하나라도** 품은 스레드의 root id 집합.
+	//
+	// 스레드 단위로 보는 이유(DEV-213): 대상 댓글만 뽑아내면 그게 무슨 얘기에
+	// 달린 답인지 알 수 없다. 스레드는 통째로 보이고, 그 안에서 대상이 아닌
+	// 것만 dim 된다.
+	//
+	// REQ-017: 필터가 3단계가 되면서 '대상' 의 정의가 단계마다 다르다 —
+	// 판정은 `matchesCommentFilter` 한 곳에서만 한다.
+	let visibleRoots = $derived.by(() => {
 		const set = new Set<number>();
 		for (const e of entries) {
-			if (!e.discussion) continue;
+			if (!matchesCommentFilter(effectiveFilter, e)) continue;
 			const r = e.parent_id == null ? e.id : groups.rootIdOf.get(e.id);
 			if (r != null) set.add(r);
 		}
@@ -1056,7 +1113,7 @@
 	<div
 		class="entry"
 		class:reply={isReply}
-		class:dimmed={discussionOnly && !e.discussion}
+		class:dimmed={!matchesCommentFilter(effectiveFilter, e)}
 		use:saveShortcut={{
 			disabled: editingId !== e.id || editSaving,
 			onSave: () => void saveEdit(e.id, true)
@@ -1370,19 +1427,22 @@
 		{/if}
 		<!-- DEV-213: 토론만 모아보기 — quest 전용, 토론 댓글이 있을 때만 노출. -->
 		{#if scope === 'quest' && !collapsed && discussionCount > 0}
+			<!-- REQ-017: 라벨이 **지금 상태**를 그대로 말한다. 다음 단계는 title
+			     로만 알린다 — 라벨까지 미래형이면 지금이 뭔지 헷갈린다.
+			     `aria-pressed` 는 눌림/안눌림 2단계용이라 3단계에는 안 맞는다.
+			     스크린리더에는 라벨 자체가 상태를 말해 주므로 뺀다. -->
 			<button
 				class="disc-filter-btn"
-				class:on={discussionOnly}
-				onclick={() => (discussionOnly = !discussionOnly)}
-				aria-pressed={discussionOnly}
-				title={discussionOnly
-					? t('comment.showAll', $locale)
-					: t('comment.showDiscussionOnly', $locale)}
+				class:on={commentFilter !== 'all'}
+				class:unresolved-on={commentFilter === 'unresolved'}
+				onclick={cycleFilter}
+				title="{t('comment.filterNextPre', $locale)}{filterLabel}{t(
+					'comment.filterNextMid',
+					$locale
+				)}{nextFilterLabel}"
 			>
 				<Icon name="comment" size={12} />
-				{t('comment.discussionOnly', $locale)}
-				{discussionCount}{#if unresolvedCount > 0}&nbsp;({t('comment.unresolvedWord', $locale)}
-					{unresolvedCount}){/if}
+				{filterLabel}{#if filterCount !== null}&nbsp;{filterCount}{/if}
 			</button>
 		{/if}
 		<!-- DEV-190: 전체 접기/펼치기 — 모든 댓글 답글+본문 일괄. 섹션 토글과 별개. -->
@@ -1410,7 +1470,7 @@
 			{:else}
 				<ul class="entry-list">
 					{#each orderedRoots as root (root.id)}
-						{#if !discussionOnly || discussionRoots.has(root.id)}
+						{#if effectiveFilter === 'all' || visibleRoots.has(root.id)}
 							{@const childCount = (groups.childrenByRoot.get(root.id) ?? []).length}
 							<!-- BUG-178: 예전엔 `!discussionOnly &&` 가 붙어 '토론만' 모드에서 접힘
 							     상태가 무조건 무시됐다 — 전체접기를 눌러도 답글이 그대로 펼쳐져
@@ -1626,6 +1686,13 @@
 	.disc-filter-btn.on {
 		color: var(--accent);
 		border-color: var(--accent);
+	}
+	/* REQ-017: 마지막 단계(미해결만)는 색으로도 구분한다. 라벨이 이미 상태를
+	   말하지만, 목록을 훑다가 눈으로 돌아왔을 때 "지금 좁혀져 있다"가 한눈에
+	   보이는 편이 낫다. 미해결 표시(.disc-flag.unresolved)와 같은 색 계열. */
+	.disc-filter-btn.unresolved-on {
+		color: var(--danger);
+		border-color: var(--danger);
 	}
 	/* 필터 버튼이 있으면 전체접기 버튼은 그 옆 (auto margin 은 필터 쪽). */
 	.disc-filter-btn + .collapse-all-btn {
