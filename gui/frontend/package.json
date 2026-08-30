@@ -19,7 +19,8 @@
 		"test:watch": "vitest",
 		"check:pill": "node scripts/check-pill-single-source.mjs",
 		"check:radius": "node scripts/check-raw-radius.mjs",
-		"check:spacing": "node scripts/check-raw-spacing.mjs"
+		"check:spacing": "node scripts/check-raw-spacing.mjs",
+		"check:font": "node scripts/check-raw-font.mjs"
 	},
 	"devDependencies": {
 		"@eslint/compat": "^2.0.4",

@@ -218,7 +218,7 @@
 		padding: 0 0.4375rem;
 		box-sizing: border-box;
 		border-radius: var(--r-pill);
-		font-family: 'SFMono-Regular', Consolas, monospace;
+		font-family: var(--font-mono);
 		font-size: 0.625rem;
 		font-weight: 600;
 		line-height: 1;

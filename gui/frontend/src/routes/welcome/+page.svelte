@@ -776,12 +776,12 @@
 	.recent-btn .last {
 		color: var(--text-muted);
 		font-size: 0.85rem;
-		font-family: 'SFMono-Regular', Consolas, monospace;
+		font-family: var(--font-mono);
 	}
 	.recent-btn .path {
 		color: var(--text-muted);
 		font-size: 0.85rem;
-		font-family: 'SFMono-Regular', Consolas, monospace;
+		font-family: var(--font-mono);
 		word-break: break-all;
 	}
 	.recent-btn .opening {
@@ -818,7 +818,7 @@
 		background: var(--bg);
 		padding: 0.1rem 0.4rem;
 		border-radius: var(--r-xs);
-		font-family: 'SFMono-Regular', Consolas, monospace;
+		font-family: var(--font-mono);
 		font-size: 0.9em;
 	}
 	.hint {
@@ -934,7 +934,7 @@
 		padding: 0.4rem 0.6rem;
 		background: var(--bg);
 		border-radius: var(--r-sm);
-		font-family: 'SFMono-Regular', Consolas, monospace;
+		font-family: var(--font-mono);
 		font-size: 0.85rem;
 		color: var(--text);
 		word-break: break-all;
@@ -964,7 +964,7 @@
 		border-radius: var(--r-sm);
 		color: var(--text);
 		font: inherit;
-		font-family: 'SFMono-Regular', Consolas, monospace;
+		font-family: var(--font-mono);
 	}
 	.uninit-name input:focus {
 		outline: none;
@@ -1023,7 +1023,7 @@
 		padding: 0.4rem 0.6rem;
 		background: var(--bg);
 		border-radius: var(--r-sm);
-		font-family: 'SFMono-Regular', Consolas, monospace;
+		font-family: var(--font-mono);
 		font-size: 0.8rem;
 		color: var(--text-muted);
 		word-break: break-all;

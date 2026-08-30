@@ -149,7 +149,7 @@
 		border-radius: var(--r-pill);
 		font-size: 0.75rem;
 		color: var(--warning);
-		font-family: 'JetBrains Mono', ui-monospace, monospace;
+		font-family: var(--font-mono);
 		letter-spacing: 0.02em;
 	}
 	.tag-rm {

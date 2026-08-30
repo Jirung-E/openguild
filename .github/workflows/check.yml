@@ -186,6 +186,11 @@ jobs:
       - name: check no raw spacing/size literals
         run: npm run check:spacing
 
+      # DEV-272: 글꼴 스택을 컴포넌트에 직접 적으면 실패 (토큰만).
+      # 직접 적은 곳은 글꼴 설정을 안 따라간다 — 실제로 46곳이 그랬다.
+      - name: check no raw font stacks
+        run: npm run check:font
+
       - name: vitest
         run: npm test -- --run
 

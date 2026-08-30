@@ -160,7 +160,7 @@
 		border-color: var(--accent);
 	}
 	textarea {
-		font-family: 'JetBrains Mono', ui-monospace, monospace;
+		font-family: var(--font-mono);
 		resize: vertical;
 		min-height: 7.5rem;
 	}

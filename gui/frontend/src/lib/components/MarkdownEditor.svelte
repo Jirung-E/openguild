@@ -317,7 +317,10 @@
 				EditorView.theme({
 					'&': { fontSize: '0.875rem', borderRadius: 'var(--r-md)', height: '100%' },
 					'.cm-editor': { borderRadius: 'var(--r-md)', height: '100%' },
-					'.cm-scroller': { overflow: 'auto' }
+					// DEV-272: CodeMirror 는 자체 baseTheme 에서 `.cm-scroller` 에
+					// `monospace` 를 박아 둔다 — 여기서 덮지 않으면 편집기만
+					// 코드 글꼴 설정을 안 따라간다(정작 가장 필요한 곳이다).
+					'.cm-scroller': { overflow: 'auto', fontFamily: 'var(--font-mono)' }
 				})
 			],
 			parent: container

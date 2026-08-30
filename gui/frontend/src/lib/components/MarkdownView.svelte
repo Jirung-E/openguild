@@ -571,7 +571,7 @@
 		border-radius: var(--r-md);
 		color: var(--danger);
 		font-size: 0.8rem;
-		font-family: 'SFMono-Regular', Consolas, monospace;
+		font-family: var(--font-mono);
 		white-space: pre-wrap;
 	}
 </style>

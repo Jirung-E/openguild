@@ -57,10 +57,19 @@
 	--r-xl: 0.625rem; /* 10px — 모달 / 다이얼로그 / 큰 카드 */
 	--r-pill: 999px; /* 완전 알약 — 높이에 따라 자동 */
 	--bw: 0.0625rem; /* 1px — 테두리도 배율을 따라간다 */
-	/* DEV-364: 고정폭 글꼴 단일 출처. 앱 안에 스택이 4가지로 갈려 있었다
-	   ('SFMono-Regular' 32곳 / 'JetBrains Mono' 12곳 / 'Cascadia Code' 5곳 /
-	   ui-monospace 1곳). 가장 많이 쓰이던 것을 정본으로 삼는다. */
-	--font-mono: 'SFMono-Regular', Consolas, monospace;
+	/* 글꼴 단일 출처. 컴포넌트는 `var(--font-sans)` / `var(--font-mono)` 만 쓰고
+	   스택을 직접 적지 않는다 — `check:font` 가 막는다.
+
+	   DEV-364 가 mono 토큰을 만들었지만 실제로 쓰이는 곳은 한 곳뿐이었고,
+	   나머지는 여전히 컴포넌트가 스택을 직접 적고 있었다. DEV-272 의 전수
+	   조사에서 mono 4종 46곳. 역할 기준도 아니어서 같은 `.slug` 인데 캠페인은
+	   JetBrains, 작업기록은 SFMono 였다 — 작성 시점이 다른 흔적이다.
+
+	   DEV-272: 설정의 폰트 선택은 사용자가 고른 이름을 **이 스택 앞에 덧붙여**
+	   root 에 다시 심는다. 뒤쪽 폴백이 그대로 남아 있어야 설치 안 된 글꼴을
+	   골라도 화면이 깨지지 않는다. */
+	--font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+	--font-mono: 'SFMono-Regular', Consolas, ui-monospace, monospace;
 	/* DEV-074: Nav 전용 token (#1a1a2e 의 보라/네이비 톤 — 일반 bg 와 시각 분리). */
 	--nav-bg: #1a1a2e;
 	--nav-border: #2a2a4a;
@@ -192,7 +201,7 @@ html {
 	   `main` 안에서만 일어난다. 자세한 배경은 `utils/page-scroll.ts`. */
 	height: 100%;
 	overflow: hidden;
-	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+	font-family: var(--font-sans);
 	font-size: 16px;
 	color: var(--text);
 	background: var(--bg);

@@ -69,6 +69,15 @@
 	// DEV-101 fix2: native input[type=range] 의 drag 문제 (값 재바인딩 →
 	// thumb 튐, UI scale 의 자기 자신 변형 → 손 놓침) 회피한 델타 기반 슬라이더.
 	import CustomSlider from '$lib/components/CustomSlider.svelte';
+	// DEV-272: 글꼴 설정.
+	import {
+		uiFont,
+		codeFont,
+		setFont,
+		UI_FONT_PRESETS,
+		CODE_FONT_PRESETS,
+		type FontKind
+	} from '$lib/stores/fontSettings';
 	// DEV-113: 원격 서버 모드 — 연결/해제는 Welcome 화면에서, 여기서는 상태만 읽음.
 	// BUG-099: isRemoteSessionActive 도 — remoteServerUrl 만 보면 이전 세션의
 	// 잔존 값과 "이번 세션에 실제로 연결함"을 구분 못 함(BUG-095 와 동일 이유).
@@ -232,6 +241,43 @@
 	// stale 상태를 못 거른다 — isGuildContextActive() 로 "보드가 마지막으로
 	// bounce 없이 마운트됐는지"까지 함께 확인.
 	const anyGuildOpen = $derived(isGuildContextActive() && (localGuildOpen || isRemoteActive));
+
+	// DEV-272: 두 행이 완전히 같은 모양이라 표로 돌린다.
+	const FONT_ROWS = [
+		{ kind: 'ui' as FontKind, labelKey: 'settings.uiFont', presets: UI_FONT_PRESETS },
+		{ kind: 'code' as FontKind, labelKey: 'settings.codeFont', presets: CODE_FONT_PRESETS }
+	];
+	/** 드롭다운의 '직접 입력' 항목 값. 빈 문자열(시스템 기본)과 겹치면 안 된다. */
+	const CUSTOM = '__custom__';
+	const FONT_SAMPLE = 'Ag 한글 0O1l';
+
+	/**
+	 * '직접 입력' 을 고른 상태. **저장값과 별개로 들고 있어야 한다** — 고른
+	 * 순간에는 아직 이름이 없어서 저장값이 그대로이고, 그것만 보면 드롭다운이
+	 * 곧바로 원래 항목으로 되돌아가 입력칸이 열리지 않는다.
+	 */
+	let fontCustomOpen = $state<Record<FontKind, boolean>>({ ui: false, code: false });
+
+	/**
+	 * 드롭다운에 표시할 값. 저장값이 목록 밖이면(예전에 직접 입력해 둔 이름)
+	 * 열어 둔 적이 없어도 '직접 입력' 으로 보여야 한다.
+	 */
+	function fontSelectValue(kind: FontKind): string {
+		if (fontCustomOpen[kind]) return CUSTOM;
+		const cur = kind === 'ui' ? $uiFont : $codeFont;
+		const presets = kind === 'ui' ? UI_FONT_PRESETS : CODE_FONT_PRESETS;
+		return presets.includes(cur) ? cur : CUSTOM;
+	}
+
+	function onFontSelect(kind: FontKind, value: string) {
+		if (value === CUSTOM) {
+			// 값은 건드리지 않는다 — 여기서 비우면 방금 쓴 이름이 날아간다.
+			fontCustomOpen = { ...fontCustomOpen, [kind]: true };
+			return;
+		}
+		fontCustomOpen = { ...fontCustomOpen, [kind]: false };
+		setFont(kind, value);
+	}
 </script>
 
 <div class="settings">
@@ -443,6 +489,47 @@
 						)}{Math.round(MAX_SCALE * 100)}{t('settings.uiScaleHintTail', $locale)}
 					</p>
 				</dd>
+
+				<!-- DEV-272: 글꼴 — UI / 코드 따로. 큐레이션 목록 + 직접 입력.
+				     시스템 글꼴 열거는 웹/서버 모드에서 못 쓰므로 채택하지 않았다
+				     (자세한 배경은 `stores/fontSettings`). -->
+				{#each FONT_ROWS as row (row.kind)}
+					<dt>{t(row.labelKey, $locale)}</dt>
+					<dd class="ui-scale">
+						<div class="scale-row">
+							<select
+								class="font-select"
+								value={fontSelectValue(row.kind)}
+								onchange={(e) => onFontSelect(row.kind, e.currentTarget.value)}
+								aria-label={t(row.labelKey, $locale)}
+							>
+								{#each row.presets as f (f)}
+									<option value={f}>{f || t('settings.fontSystemDefault', $locale)}</option>
+								{/each}
+								<option value={CUSTOM}>{t('settings.fontCustom', $locale)}</option>
+							</select>
+							{#if fontSelectValue(row.kind) === CUSTOM}
+								<input
+									class="font-custom"
+									type="text"
+									value={row.kind === 'ui' ? $uiFont : $codeFont}
+									placeholder={t('settings.fontCustomPlaceholder', $locale)}
+									oninput={(e) => setFont(row.kind, e.currentTarget.value)}
+									aria-label={t(row.labelKey, $locale)}
+								/>
+							{/if}
+							<!-- 실제로 그 글꼴이 있는지는 목록으로 알 수 없다 — 눈으로
+							     확인하도록 같은 토큰을 쓰는 견본을 옆에 둔다. -->
+							<span
+								class="font-preview"
+								class:mono={row.kind === 'code'}
+								title={t('settings.fontPreview', $locale)}>{FONT_SAMPLE}</span
+							>
+						</div>
+					</dd>
+				{/each}
+				<dt></dt>
+				<dd><p class="scale-hint">{t('settings.fontHint', $locale)}</p></dd>
 
 				<!-- DEV-101 fix2: 컨텐츠 표시 영역 폭 — UI scale 과 별개. -->
 				<dt>{t('settings.contentWidth', $locale)}</dt>
@@ -874,6 +961,39 @@
 		width: 100%;
 		max-width: 24rem;
 	}
+	/* DEV-272: 글꼴 선택 — 드롭다운 + (직접 입력일 때) 이름 칸 + 견본. */
+	.ui-scale .font-select,
+	.ui-scale .font-custom {
+		padding: 0.25rem 0.4rem;
+		background: var(--bg-elevated);
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
+		color: var(--text);
+		font: inherit;
+		font-size: 0.875rem;
+		outline: none;
+	}
+	.ui-scale .font-select:focus-visible,
+	.ui-scale .font-custom:focus-visible {
+		border-color: var(--accent);
+	}
+	.ui-scale .font-custom {
+		flex: 1;
+		min-width: 8rem;
+	}
+	/* 목록에 있다고 그 글꼴이 설치돼 있다는 뜻은 아니다 — 견본을 옆에 둬서
+	   실제로 적용됐는지 눈으로 바로 확인하게 한다. 토큰을 그대로 쓰므로
+	   화면 나머지와 같은 글꼴로 그려진다. */
+	.ui-scale .font-preview {
+		flex: none;
+		color: var(--text-muted);
+		font-size: 0.875rem;
+		white-space: nowrap;
+	}
+	.ui-scale .font-preview.mono {
+		font-family: var(--font-mono);
+	}
+
 	/* DEV-101 fix4: 직접 숫자 입력. */
 	.ui-scale .num-input {
 		display: inline-flex;
@@ -1035,7 +1155,7 @@
 		border-radius: var(--r-md);
 		color: var(--text);
 		font-size: 0.78rem;
-		font-family: 'JetBrains Mono', ui-monospace, monospace;
+		font-family: var(--font-mono);
 		resize: vertical;
 	}
 	.ct-tokens {

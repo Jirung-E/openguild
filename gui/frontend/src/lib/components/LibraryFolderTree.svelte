@@ -191,7 +191,7 @@
 		background: color-mix(in srgb, var(--accent) 12%, transparent);
 	}
 	.book-id {
-		font-family: 'SFMono-Regular', Consolas, monospace;
+		font-family: var(--font-mono);
 		font-size: 0.72rem;
 		color: var(--accent);
 	}

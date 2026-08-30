@@ -704,7 +704,7 @@
 		border-radius: var(--r-pill);
 		color: var(--warning);
 		font-size: 0.72rem;
-		font-family: 'JetBrains Mono', ui-monospace, monospace;
+		font-family: var(--font-mono);
 		cursor: pointer;
 		transition:
 			background 0.1s,

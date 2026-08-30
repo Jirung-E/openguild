@@ -193,6 +193,17 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'settings.unknown': { ko: '알 수 없음', en: 'Unknown' },
 	'settings.displayHeading': { ko: '표시', en: 'Display' },
 	'settings.uiScalePercentAria': { ko: 'UI 크기 (퍼센트)', en: 'UI scale (percent)' },
+	// DEV-272: 글꼴 설정.
+	'settings.uiFont': { ko: 'UI 글꼴', en: 'UI font' },
+	'settings.codeFont': { ko: '코드 글꼴', en: 'Code font' },
+	'settings.fontSystemDefault': { ko: '시스템 기본', en: 'System default' },
+	'settings.fontCustom': { ko: '직접 입력', en: 'Custom…' },
+	'settings.fontCustomPlaceholder': { ko: '글꼴 이름 (예: Pretendard)', en: 'Font name (e.g. Inter)' },
+	'settings.fontPreview': { ko: '미리보기', en: 'Preview' },
+	'settings.fontHint': {
+		ko: '설치되지 않은 글꼴을 골라도 안전합니다 — 기존 글꼴로 대체됩니다. 미리보기로 실제 적용 여부를 확인하세요.',
+		en: 'Picking a font you do not have is safe — it falls back to the current one. Check the preview to see whether it applied.'
+	},
 	'settings.resetTo100': { ko: '100% 로 초기화', en: 'Reset to 100%' },
 	'settings.reset': { ko: '초기화', en: 'Reset' },
 	'settings.contentWidthPxAria': { ko: '컨텐츠 폭 (픽셀)', en: 'Content width (pixels)' },

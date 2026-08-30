@@ -540,7 +540,7 @@
 		font-size: 0.85rem;
 	}
 	td code {
-		font-family: 'Cascadia Code', 'Courier New', monospace;
+		font-family: var(--font-mono);
 		font-size: 0.85rem;
 	}
 	.empty {
@@ -567,7 +567,7 @@
 		padding: 0;
 	}
 	.drift-report li {
-		font-family: 'Cascadia Code', 'Courier New', monospace;
+		font-family: var(--font-mono);
 		font-size: 0.85rem;
 		color: var(--text);
 		list-style: disc;
@@ -588,7 +588,7 @@
 		background: var(--bg-subtle);
 	}
 	.jop {
-		font-family: 'Cascadia Code', 'Courier New', monospace;
+		font-family: var(--font-mono);
 		font-size: 0.82rem;
 		color: var(--text-strong);
 	}
@@ -599,7 +599,7 @@
 	}
 	.jargs {
 		margin-top: 0.25rem;
-		font-family: 'Cascadia Code', 'Courier New', monospace;
+		font-family: var(--font-mono);
 		font-size: 0.78rem;
 		color: var(--text-muted);
 		word-break: break-all;
@@ -627,7 +627,7 @@
 		margin-bottom: 0.15rem;
 	}
 	.problem-files code {
-		font-family: 'Cascadia Code', 'Courier New', monospace;
+		font-family: var(--font-mono);
 	}
 	.problem-files .reason {
 		color: var(--text-muted);

@@ -426,7 +426,7 @@
 		font-size: 0.8rem;
 	}
 	code {
-		font-family: 'SFMono-Regular', Consolas, monospace;
+		font-family: var(--font-mono);
 		font-size: 0.85em;
 		background: var(--bg);
 		padding: 0.05rem 0.3rem;
@@ -477,7 +477,7 @@
 	input[type='text'].prefix-input {
 		width: 7ch;
 		text-transform: uppercase;
-		font-family: 'SFMono-Regular', Consolas, monospace;
+		font-family: var(--font-mono);
 	}
 	input[type='color'] {
 		width: 2.2rem;

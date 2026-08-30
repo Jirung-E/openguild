@@ -343,7 +343,7 @@
 	.slug {
 		font-size: 0.75rem;
 		color: var(--text-muted);
-		font-family: 'JetBrains Mono', ui-monospace, monospace;
+		font-family: var(--font-mono);
 		flex: none;
 	}
 	.title {

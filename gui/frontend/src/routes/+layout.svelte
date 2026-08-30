@@ -44,6 +44,8 @@
 	// BUG-140: 커스텀 타이틀바 플랫폼 판별(Windows/Linux) — 단일 진리원.
 	import { usesCustomTitlebar, isLinux, hasCoarsePointer } from '$lib/utils/platform';
 	import { uiScale, applyUiScaleToDocument } from '$lib/stores/uiScale';
+	// DEV-272: 저장된 글꼴 선택을 시작 시 root 에 반영.
+	import { initFonts } from '$lib/stores/fontSettings';
 	import { hdrLimit, applyHdrLimitToDocument } from '$lib/stores/hdrSettings';
 	import { contentWidth, contentWidthCss } from '$lib/stores/contentWidth';
 	import {
@@ -475,6 +477,13 @@
 		const unsub = uiScale.subscribe(applyUiScaleToDocument);
 		// 첫 mount 시 한 번 더 — onMount 보다 store 가 먼저 init 됐다면 noop.
 		return () => unsub();
+	});
+
+	// DEV-272: 글꼴 — 저장된 선택을 `--font-sans` / `--font-mono` 에 심는다.
+	// 설정 화면에서 바꿀 때는 `setFont` 가 직접 반영하므로 여기는 시작 시 1회면
+	// 된다(uiScale 처럼 구독할 필요가 없다 — 값이 화면 밖에서 바뀌지 않는다).
+	onMount(() => {
+		initFonts();
 	});
 
 	// DEV-335: 첨부 이미지 HDR 표시 제한 — `<html>` 의 `--hdr-limit` 갱신.

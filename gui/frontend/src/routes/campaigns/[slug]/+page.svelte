@@ -972,7 +972,7 @@
 	/* BUG-035: title-row 안 편집 버튼 제거 — top-bar 로 이동. */
 	.slug {
 		font-size: 0.8rem;
-		font-family: 'JetBrains Mono', ui-monospace, monospace;
+		font-family: var(--font-mono);
 		color: var(--text-muted);
 	}
 	.period {

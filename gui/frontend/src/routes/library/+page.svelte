@@ -1476,7 +1476,7 @@
 		background: color-mix(in srgb, var(--accent) 12%, transparent);
 	}
 	.book-id {
-		font-family: 'SFMono-Regular', Consolas, monospace;
+		font-family: var(--font-mono);
 		font-size: 0.72rem;
 		color: var(--accent);
 	}
@@ -1614,7 +1614,7 @@
 		overflow: hidden;
 	}
 	.tile-sub {
-		font-family: 'SFMono-Regular', Consolas, monospace;
+		font-family: var(--font-mono);
 		font-size: 0.62rem;
 		color: var(--text-muted);
 		/* BUG-153: 폴더 타일은 내용이 빈 자리표시자 — 빈 인라인 요소는 높이가
@@ -1652,7 +1652,7 @@
 		line-height: 1.3;
 	}
 	.doc-id {
-		font-family: 'SFMono-Regular', Consolas, monospace;
+		font-family: var(--font-mono);
 		font-size: 0.85rem;
 		color: var(--accent);
 		flex: none;
@@ -1814,7 +1814,7 @@
 		border-radius: var(--r-pill);
 		color: var(--warning);
 		font-size: 0.72rem;
-		font-family: 'JetBrains Mono', ui-monospace, monospace;
+		font-family: var(--font-mono);
 		cursor: pointer;
 		transition:
 			background 0.1s,

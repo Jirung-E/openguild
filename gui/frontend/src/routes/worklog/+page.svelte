@@ -258,7 +258,9 @@
 				indentExtensions($editorSettings),
 				EditorView.theme({
 					'&': { fontSize: '0.875rem', height: '100%' },
-					'.cm-scroller': { overflow: 'auto' }
+					// DEV-272: MarkdownEditor 와 같은 이유 — CodeMirror 기본
+					// 테마의 monospace 를 토큰으로 덮는다.
+					'.cm-scroller': { overflow: 'auto', fontFamily: 'var(--font-mono)' }
 				})
 			],
 			parent: editorContainer
@@ -750,7 +752,7 @@
 		display: block;
 		color: var(--text-muted);
 		font-size: 0.78rem;
-		font-family: 'SFMono-Regular', Consolas, monospace;
+		font-family: var(--font-mono);
 		padding: 0.5rem 0.75rem 0;
 	}
 	.note-edit {
@@ -860,7 +862,7 @@
 		background: color-mix(in srgb, var(--accent) 6%, transparent);
 	}
 	.ts {
-		font-family: 'SFMono-Regular', Consolas, monospace;
+		font-family: var(--font-mono);
 		font-size: 0.75rem;
 		color: var(--text-muted);
 		flex: none;
@@ -895,7 +897,7 @@
 	}
 	.slug {
 		flex: none;
-		font-family: 'SFMono-Regular', Consolas, monospace;
+		font-family: var(--font-mono);
 		font-size: 0.75rem;
 		color: var(--accent);
 	}

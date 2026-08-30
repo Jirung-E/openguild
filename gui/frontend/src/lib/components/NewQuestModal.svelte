@@ -912,7 +912,7 @@
 	}
 	.relation-chip strong {
 		color: var(--accent);
-		font-family: 'SFMono-Regular', Consolas, monospace;
+		font-family: var(--font-mono);
 	}
 	.relation-chip > span {
 		overflow: hidden;
@@ -1039,7 +1039,7 @@
 		width: 100%;
 		box-sizing: border-box;
 		resize: vertical;
-		font-family: 'SFMono-Regular', Consolas, monospace;
+		font-family: var(--font-mono);
 		line-height: 1.5;
 	}
 	.ta:focus {

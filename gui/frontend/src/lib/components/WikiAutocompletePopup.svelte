@@ -174,7 +174,7 @@
 	}
 	.wiki-id {
 		flex: none;
-		font-family: 'SFMono-Regular', Consolas, monospace;
+		font-family: var(--font-mono);
 		font-size: 0.8rem;
 		color: var(--accent);
 	}

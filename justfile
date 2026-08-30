@@ -86,6 +86,7 @@ test-frontend:
     cd gui/frontend && npm run check:pill
     cd gui/frontend && npm run check:radius
     cd gui/frontend && npm run check:spacing
+    cd gui/frontend && npm run check:font
     cd gui/frontend && npm test -- --run
 
 # 전체 테스트 (CI 와 동일)

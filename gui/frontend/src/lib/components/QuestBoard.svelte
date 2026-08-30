@@ -4597,7 +4597,7 @@
 		color: var(--text-faint);
 	}
 	.bname {
-		font-family: 'SFMono-Regular', Consolas, monospace;
+		font-family: var(--font-mono);
 		font-size: 0.78rem;
 		color: var(--accent-secondary);
 	}
@@ -4818,7 +4818,7 @@
 		background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
 		box-shadow: 0 4px 18px rgba(0, 0, 0, 0.28);
 		color: var(--text-muted);
-		font-family: 'SFMono-Regular', Consolas, monospace;
+		font-family: var(--font-mono);
 		font-size: 11px;
 		font-variant-numeric: tabular-nums;
 		line-height: 1.35;

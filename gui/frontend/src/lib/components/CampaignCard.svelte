@@ -373,7 +373,7 @@
 		font-size: 0.7rem;
 		color: var(--text-muted);
 		letter-spacing: 0.04em;
-		font-family: 'JetBrains Mono', ui-monospace, monospace;
+		font-family: var(--font-mono);
 	}
 	.done-mark {
 		font-size: 0.7rem;
@@ -438,7 +438,7 @@
 		font-size: 0.65rem;
 		color: var(--text-faint);
 		min-width: 2.4rem;
-		font-family: 'JetBrains Mono', ui-monospace, monospace;
+		font-family: var(--font-mono);
 		letter-spacing: 0.02em;
 	}
 	.progress-bar {

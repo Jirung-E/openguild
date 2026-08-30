@@ -1893,7 +1893,7 @@
 	}
 	/* DEV-128 → DEV-139: 댓글 번호 — 클릭 시 본문 접기/펼치기 버튼. */
 	.entry-no {
-		font-family: 'SFMono-Regular', Consolas, monospace;
+		font-family: var(--font-mono);
 		font-size: 0.72rem;
 		color: var(--text-faint);
 		background: transparent;
@@ -1907,7 +1907,7 @@
 		border-color: var(--accent);
 	}
 	.reply-to {
-		font-family: 'SFMono-Regular', Consolas, monospace;
+		font-family: var(--font-mono);
 		font-size: 0.7rem;
 		color: var(--text-muted);
 		text-decoration: none;
@@ -2249,7 +2249,7 @@
 		color: var(--text);
 		border-radius: var(--r-md);
 		font-size: 0.825rem;
-		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+		font-family: var(--font-mono);
 		resize: vertical;
 		min-height: 4rem;
 		/* BUG-157: native scrollbar 숨김 — OverlayScrollbar 가 대신 그린다. */
@@ -2261,7 +2261,7 @@
 	/* DEV-289: 댓글 입력창 마크다운 편집기 토글 버튼. */
 	.ce-toggle {
 		font-size: 0.68rem;
-		font-family: 'SFMono-Regular', Consolas, monospace;
+		font-family: var(--font-mono);
 		padding: 0.1rem 0.4rem;
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-sm);

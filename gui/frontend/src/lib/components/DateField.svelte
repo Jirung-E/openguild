@@ -233,7 +233,7 @@
 		width: 6.6rem;
 		padding: 0.2rem 0.4rem;
 		font-size: 0.8rem;
-		font-family: 'JetBrains Mono', ui-monospace, monospace;
+		font-family: var(--font-mono);
 		background: var(--bg);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-sm);
