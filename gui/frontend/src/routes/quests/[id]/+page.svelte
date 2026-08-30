@@ -707,24 +707,6 @@
 </script>
 
 <div class="container">
-	<div class="top-bar">
-		<!-- DEV-370: '뒤로' 버튼을 없앴다. 타이틀바에 앞/뒤가 생기기 전에
-		     브라우저 뒤로가기를 대신하려고 둔 것인데 이제 기능이 두 벌이다.
-		     자식창에도 타이틀바 앞/뒤를 노출했으므로(TitleBar 주석) 여기가
-		     사라져도 돌아갈 길은 남는다.
-
-		     `goBack()` 은 지운 것이 아니라 **삭제 후 복귀**에 계속 쓴다 —
-		     그쪽은 `?from=` fallback 이 필요하다(BUG-015 / DEV-011). -->
-		{#if detail && !editMode}
-			<div class="top-actions">
-				<button class="btn-edit" onclick={enterEditMode}>✎ {t('detail.edit', $locale)}</button>
-				<button class="btn-delete" onclick={openDeleteModal}
-					><Icon name="trash" /> {t('detail.delete', $locale)}</button
-				>
-			</div>
-		{/if}
-	</div>
-
 	{#if loading}
 		<div class="state-msg">Loading...</div>
 	{:else if error}
@@ -749,6 +731,20 @@
 					{questStatusLabel(detail, $locale)}
 				</span>
 			{/key}
+			<!-- DEV-370 후속(admin 요청): 편집/삭제를 slug pill 과 **같은 줄로**
+			     내렸다. '뒤로' 를 없애면서 위쪽 한 줄이 통째로 비었는데, 버튼만
+			     남은 줄을 유지할 이유가 없다.
+
+			     `goBack()` 은 여기 없어도 남아 있다 — **삭제 후 복귀**가 계속
+			     쓰고, 그쪽은 `?from=` fallback 이 필요하다(BUG-015 / DEV-011). -->
+			{#if !editMode}
+				<div class="top-actions">
+					<button class="btn-edit" onclick={enterEditMode}>✎ {t('detail.edit', $locale)}</button>
+					<button class="btn-delete" onclick={openDeleteModal}
+						><Icon name="trash" /> {t('detail.delete', $locale)}</button
+					>
+				</div>
+			{/if}
 		</div>
 
 		<!-- 생성 / 변경 시각 -->
@@ -1516,23 +1512,14 @@
 		padding: 1.5rem;
 	}
 
-	.top-bar {
-		display: flex;
-		align-items: center;
-		/* DEV-370: 예전엔 왼쪽 '뒤로' 와 오른쪽 편집/삭제를 `space-between` 으로
-		   양끝에 붙였다. 뒤로가 빠져 자식이 하나만 남으면 space-between 은
-		   그것을 **왼쪽에** 놓는다 — 오른쪽 정렬을 명시한다. */
-		justify-content: flex-end;
-		/* 편집 모드처럼 자식이 아예 없을 때도 줄 높이를 지켜 제목이 위로
-		   튀지 않게 한다(편집/삭제 버튼과 같은 높이). */
-		min-height: 1.9rem;
-		margin-bottom: 1.5rem;
-	}
-
 	.top-actions {
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
+		/* DEV-370 후속: pill 줄의 오른쪽 끝으로 민다. `.header` 가
+		   `flex-wrap: wrap` 이라 pill 이 많아 줄이 넘어가면 버튼도 따라
+		   내려가는데, 그때도 오른쪽 끝에 붙는다. */
+		margin-left: auto;
 	}
 
 	.btn-edit {
@@ -1587,6 +1574,13 @@
 
 	.header {
 		display: flex;
+		/* DEV-370 후속: 편집/삭제가 같은 줄로 내려왔다. pill 은 글자 높이,
+		   버튼은 패딩이 붙어 더 크므로 세로 중앙을 맞춰야 나란해 보인다. */
+		align-items: center;
+		/* 편집 모드로 들어가면 버튼이 사라져 이 줄이 6px 낮아지고 아래가 통째로
+		   위로 튄다(실측 32 → 26). 예전 `.top-bar` 가 min-height 로 잡아 주던
+		   것을 그대로 옮긴다 — 값은 버튼 높이. */
+		min-height: 2rem;
 		gap: 0.5rem;
 		flex-wrap: wrap;
 		margin-bottom: 0.75rem;
