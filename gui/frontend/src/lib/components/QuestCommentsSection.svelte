@@ -15,6 +15,8 @@
 <script lang="ts">
 	import Icon from './Icon.svelte';
 	import { tick, onDestroy, onMount } from 'svelte';
+	// BUG-258: 딥링크 스크롤은 레이아웃이 잦아든 뒤에 시작해야 한다.
+	import { scrollIntoViewWhenSettled } from '$lib/utils/page-scroll';
 	// DEV-296: `?comment=N` 딥링크 — 작업기록에서 그 댓글로 바로 스크롤.
 	import { page } from '$app/stores';
 	import MarkdownView from './MarkdownView.svelte';
@@ -644,6 +646,9 @@
 	// `entries` 가 채워진 뒤(= 앵커 `#comment-N` 이 렌더된 뒤) 스크롤한다.
 	// 같은 id 에 대해 한 번만 — 댓글 추가/새로고침 때마다 다시 튀지 않도록.
 	let scrolledToCommentId: number | null = $state(null);
+	/** BUG-258: 진행 중인 딥링크 스크롤. 새 대상/언마운트 때 끊는다. */
+	let cancelJumpScroll: (() => void) | null = null;
+	onDestroy(() => cancelJumpScroll?.());
 	$effect(() => {
 		const raw = $page.url.searchParams.get('comment');
 		let target = raw ? Number(raw) : NaN;
@@ -670,18 +675,34 @@
 		// 창을 지원하므로 배경 창에서 문서를 열면 실제로 스크롤이 조용히 안
 		// 걸린다. 32ms 는 보이는 창에서 체감상 rAF 2프레임과 같다.
 		const deadline = Date.now() + 3000;
+		const anchorId = `comment-${target}`;
 		const tryScroll = () => {
-			const el = document.getElementById(`comment-${target}`);
+			const el = document.getElementById(anchorId);
 			if (!el) {
 				if (Date.now() < deadline) setTimeout(tryScroll, 32);
 				return;
 			}
 			scrolledToCommentId = target;
 			const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-			el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'center' });
-			// 어느 댓글로 왔는지 잠깐 강조 — 스크롤만으로는 눈에 안 띈다.
-			el.classList.add('jump-target');
-			setTimeout(() => el.classList.remove('jump-target'), 2200);
+			// BUG-258: 앵커가 생겼다고 바로 스크롤하면 안 된다. 상세 페이지는
+			// 본문 마크다운 → 첨부 → 서브퀘스트 → 댓글 순으로 늦게 레이아웃되고,
+			// 부드러운 스크롤은 시작 시점의 목표 오프셋을 향해 가므로 그 사이
+			// 위쪽이 자라면 엉뚱한 곳에 선다(admin 보고: "페이지 끝까지
+			// 내려가버린다"). 높이가 잦아든 뒤 스크롤하고, 이후에도 변하면
+			// 다시 맞춘다.
+			cancelJumpScroll?.();
+			cancelJumpScroll = scrollIntoViewWhenSettled(
+				() => document.getElementById(anchorId),
+				{
+					smooth: !reduce,
+					onScrolled: (node) => {
+						// 어느 댓글로 왔는지 잠깐 강조 — 스크롤만으로는 눈에 안 띈다.
+						// 기다린 뒤에 켠다: 먼저 켜면 스크롤이 닿기 전에 꺼질 수 있다.
+						node.classList.add('jump-target');
+						setTimeout(() => node.classList.remove('jump-target'), 2200);
+					}
+				}
+			);
 		};
 		void tick().then(tryScroll);
 	});

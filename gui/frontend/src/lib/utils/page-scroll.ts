@@ -71,3 +71,106 @@ export function onPageScroll(handler: () => void): () => void {
 	target.addEventListener('scroll', handler, { passive: true });
 	return () => target.removeEventListener('scroll', handler);
 }
+
+/**
+ * 레이아웃이 잦아든 뒤에 대상으로 스크롤한다. 취소 함수를 돌려준다.
+ *
+ * BUG-258: `?comment=N` 딥링크가 엉뚱한 곳에 서던 문제.
+ *
+ * 부드러운 스크롤(`behavior: 'smooth'`)은 **시작 시점에 계산한 목표 오프셋**을
+ * 향해 애니메이션한다. 그런데 퀘스트 상세는 본문 마크다운 → 첨부 → 서브퀘스트
+ * → 댓글 순으로 늦게 레이아웃되고, 딥링크는 앵커가 **생기자마자** 스크롤을
+ * 시작한다. 애니메이션이 도는 동안 위쪽이 자라면 목표 숫자는 그대로인데 대상은
+ * 아래로 밀려, 엉뚱한 곳에 선다(밀림이 크면 끝까지 간 것처럼 보인다).
+ *
+ * 그래서 두 단계로 나눈다.
+ *
+ *  1. **기다린다** — 컨테이너 `scrollHeight` 가 `settleMs` 동안 안 변하면
+ *     그때 스크롤한다. 계속 자라기만 하면 `maxWaitMs` 에서 포기하고 간다.
+ *  2. **지켜본다** — 이후 `watchMs` 동안 높이가 또 변하면 다시 맞춘다. 이때는
+ *     `'auto'` 다. 애니메이션 중에 또 애니메이션을 걸면 서로 싸운다.
+ *
+ * rAF 가 아니라 타이머를 쓴다 — 숨겨진 문서(배경 자식 창)에서는 rAF 가 아예
+ * 발화하지 않아 루프가 첫 회에서 영구히 멈춘다([[BUG-238]], [[BUG-257]]에서
+ * 각각 한 번씩 밟았다).
+ *
+ * @param getEl 매번 다시 찾는다 — 재렌더로 노드가 갈릴 수 있다.
+ */
+export function scrollIntoViewWhenSettled(
+	getEl: () => HTMLElement | null,
+	opts?: {
+		settleMs?: number;
+		maxWaitMs?: number;
+		watchMs?: number;
+		pollMs?: number;
+		smooth?: boolean;
+		/** 실제로 스크롤을 건 순간 한 번 불린다(강조 표시 등). */
+		onScrolled?: (el: HTMLElement) => void;
+	}
+): () => void {
+	const settleMs = opts?.settleMs ?? 150;
+	const maxWaitMs = opts?.maxWaitMs ?? 1500;
+	const watchMs = opts?.watchMs ?? 1500;
+	const pollMs = opts?.pollMs ?? 32;
+	const smooth = opts?.smooth ?? true;
+
+	let cancelled = false;
+	let timer: ReturnType<typeof setTimeout> | null = null;
+	const startedAt = Date.now();
+	let lastH = pageScrollHeight();
+	let stableSince = startedAt;
+	let scrolledAt: number | null = null;
+
+	const go = (behavior: ScrollBehavior) => {
+		const el = getEl();
+		if (!el) return false;
+		el.scrollIntoView({ behavior, block: 'center' });
+		return true;
+	};
+
+	const tick = () => {
+		if (cancelled) return;
+		timer = null;
+		const now = Date.now();
+		const h = pageScrollHeight();
+		if (h !== lastH) {
+			lastH = h;
+			stableSince = now;
+		}
+
+		if (scrolledAt === null) {
+			const settled = now - stableSince >= settleMs;
+			const gaveUp = now - startedAt >= maxWaitMs;
+			if (!settled && !gaveUp) {
+				timer = setTimeout(tick, pollMs);
+				return;
+			}
+			const el = getEl();
+			if (!el) {
+				// 아직 안 그려졌으면 계속 기다린다 — 호출측이 앵커를 기다리는
+				// 책임을 지지만, 그 사이 사라졌다 다시 생기는 경우도 있다.
+				if (gaveUp) return;
+				timer = setTimeout(tick, pollMs);
+				return;
+			}
+			el.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'center' });
+			opts?.onScrolled?.(el);
+			scrolledAt = now;
+			timer = setTimeout(tick, pollMs);
+			return;
+		}
+
+		// 2단계 — 스크롤한 뒤에도 높이가 변하면 다시 맞춘다.
+		if (now - scrolledAt >= watchMs) return;
+		if (now - stableSince < pollMs) go('auto');
+		timer = setTimeout(tick, pollMs);
+	};
+
+	timer = setTimeout(tick, 0);
+
+	return () => {
+		cancelled = true;
+		if (timer !== null) clearTimeout(timer);
+		timer = null;
+	};
+}
