@@ -29,6 +29,11 @@ export async function openInWindow(href: string, title: string): Promise<void> {
 		return;
 	}
 	const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+	// BUG-260: `item-` 접두사는 **세 곳이 공유하는 계약**이다 — 여기(생성),
+	// `stores/windowKind.ts`(자식창 판정, 타이틀바가 본다), 그리고 Rust 쪽
+	// `gui/src/lib.rs` 의 `is_child_window_label`(메인 창을 닫을 때 함께 닫을
+	// 대상). 하나만 바꾸면 메인을 닫아도 자식이 남는다. Rust 쪽엔 이 형태를
+	// 고정하는 테스트가 있다.
 	const label = `item-${Date.now()}-${windowSeq++}`;
 	// DEV-255 버그 수정: 목적지 경로를 창 URL 로 직접 주면 Tauri asset
 	// protocol 이 그 딥링크 파일을 못 찾아 빈 화면이 뜨는 경우가 있었다.

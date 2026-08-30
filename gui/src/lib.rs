@@ -294,6 +294,28 @@ fn panic_log_path() -> Option<std::path::PathBuf> {
         .map(|h| h.join("panic.log"))
 }
 
+/// BUG-260: 자식 창(문서 단일 보기) 라벨인가.
+///
+/// 라벨은 frontend 의 `lib/utils/open-item.ts` 가 `item-{ts}-{seq}` 로 만든다
+/// ([[DEV-255]]). **접두사가 계약이다** — 여기와 저기가 갈리면 메인을 닫아도
+/// 자식이 남거나(접두사 불일치), 엉뚱한 창이 닫힌다(너무 헐거운 판정).
+/// frontend 의 `stores/windowKind.ts` 도 같은 접두사로 자식 여부를 본다.
+pub fn is_child_window_label(label: &str) -> bool {
+    label.starts_with(CHILD_WINDOW_PREFIX)
+}
+
+/// 이 창이 닫힐 때 자식 창들도 함께 닫아야 하나.
+///
+/// 메인 창일 때만이다. 자식 창을 닫는 것이 다른 창을 끌고 들어가면 안 된다.
+pub fn closes_children(label: &str) -> bool {
+    label == MAIN_WINDOW_LABEL
+}
+
+/// Tauri 가 설정의 첫 창에 붙이는 기본 라벨. `setup` 의 `get_webview_window`
+/// (BUG-142)도 같은 값을 쓴다.
+const MAIN_WINDOW_LABEL: &str = "main";
+const CHILD_WINDOW_PREFIX: &str = "item-";
+
 pub fn run() {
     install_panic_hook();
     // BUG-144: Linux(WebKitGTK) 전반 버벅임 완화 — WebKitGTK 2.4x 의 DMABUF
@@ -642,6 +664,34 @@ pub fn run() {
         // guild_root 기준으로 허용하면 그 아래 `.guild/**` 전체가 매칭 안 돼
         // 첨부/본문 이미지가 전부 깨졌다. `.guild` 를 패턴에 리터럴로 넣어야
         // (와일드카드가 아니라 실제 문자로 존재) 옵션과 무관하게 매칭된다.
+        // BUG-260(admin 보고): 메인 창을 닫아도 자식 창이 남았다.
+        //
+        // 지금까지 창 이벤트 처리가 **아예 없었다.** 자식 창은 자기 생명주기대로
+        // 남고, 창이 하나라도 살아 있으면 프로세스도 계속 산다 — 사용자에겐
+        // "껐는데 안 꺼진" 상태다.
+        //
+        // `Destroyed` 가 아니라 `CloseRequested` 에서 처리한다. 이미 닫힌 뒤면
+        // 늦다 — 그 사이 자식만 남은 순간이 생긴다.
+        .on_window_event(|window, event| {
+            if !matches!(event, tauri::WindowEvent::CloseRequested { .. }) {
+                return;
+            }
+            if !closes_children(window.label()) {
+                return;
+            }
+            use tauri::Manager;
+            // `webview_windows()` 는 복제본을 준다 — 순회 중에 닫아도 안전하다.
+            for (label, child) in window.app_handle().webview_windows() {
+                if !is_child_window_label(&label) {
+                    continue;
+                }
+                if let Err(e) = child.close() {
+                    // 하나가 실패해도 나머지는 계속 닫는다. 메인의 닫힘을
+                    // 막지도 않는다 — 그러면 앱이 안 꺼지는 더 나쁜 상태가 된다.
+                    eprintln!("[openguild-gui] warn: BUG-260 자식 창 닫기 실패 ({label}) — {e:#}");
+                }
+            }
+        })
         .setup(move |app| {
             if let Some(p) = &asset_scope_path {
                 use tauri::Manager;
@@ -674,6 +724,43 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    // BUG-260: 메인 창을 닫으면 자식 창도 닫힌다.
+    //
+    // 창 이벤트 자체는 GUI 없이 못 돌리므로, **판정 두 개**를 고정한다.
+    // 판정이 어긋나면 증상이 곧바로 돌아온다 — 접두사가 갈리면 자식이 남고,
+    // `closes_children` 이 헐거워지면 자식 창을 닫을 때 다른 창까지 끌려간다.
+    #[test]
+    fn child_window_label_matches_frontend_contract() {
+        // frontend 의 `open-item.ts` 가 만드는 실제 형태.
+        assert!(crate::is_child_window_label("item-1788084736240-0"));
+        assert!(crate::is_child_window_label("item-0-0"));
+        // 메인은 자식이 아니다.
+        assert!(!crate::is_child_window_label("main"));
+        // 접두사를 포함만 해서는 안 된다 — 시작해야 한다.
+        assert!(!crate::is_child_window_label("not-item-1"));
+        assert!(!crate::is_child_window_label(""));
+    }
+
+    #[test]
+    fn only_main_window_closes_children() {
+        assert!(crate::closes_children("main"));
+        // 자식 창을 닫는 것이 형제 창을 끌고 들어가면 안 된다.
+        assert!(!crate::closes_children("item-1788084736240-0"));
+        assert!(!crate::closes_children("other"));
+    }
+
+    /// 두 판정은 서로 배타적이어야 한다. 한 라벨이 "메인이면서 자식" 이면
+    /// 자식 창 하나를 닫을 때 나머지가 전부 딸려 닫힌다.
+    #[test]
+    fn main_and_child_predicates_are_disjoint() {
+        for label in ["main", "item-1-0", "item-", "other", ""] {
+            assert!(
+                !(crate::closes_children(label) && crate::is_child_window_label(label)),
+                "라벨 {label:?} 가 메인이자 자식으로 판정됐다"
+            );
+        }
+    }
+
     // BUG(admin 보고): Welcome 화면에서 만들어진 히스토리 항목이 placeholder 를
     // "현재 길드" 로 표식해, 뒤로가기로 그 항목에 가면 그 경로를 길드로 열려다
     // 거부되고 "히스토리의 길드를 열지 못했습니다" 토스트가 떴다.
