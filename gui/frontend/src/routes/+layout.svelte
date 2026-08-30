@@ -673,6 +673,15 @@
 		overflow-x: hidden;
 		overscroll-behavior: contain;
 		background: var(--bg);
+		/* BUG-257 후속(admin 보고): 스크롤을 `main` 이 맡게 되면서 **네이티브
+		   스크롤바가 여기 다시 나타났다.** 숨김(DEV-074 fix13)은 `html` 에만
+		   걸려 있었고, 전역 `::-webkit-scrollbar` 커스텀은 main 에도 적용되니
+		   OverlayScrollbar 와 나란히 두 줄로 보였다. html 과 같은 처리를
+		   그대로 옮긴다. */
+		scrollbar-width: none;
+	}
+	main::-webkit-scrollbar {
+		display: none;
 	}
 	main.no-nav {
 		height: calc(100vh - var(--titlebar-h, 0px));
