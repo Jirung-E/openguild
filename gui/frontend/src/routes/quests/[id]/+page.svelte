@@ -1926,7 +1926,7 @@
 		cursor: pointer;
 		font-size: 1rem;
 		line-height: 1;
-		padding: 0 0 0 2px;
+		padding: 0 0 0 0.125rem;
 	}
 	.tag-rm:hover {
 		color: var(--danger);
@@ -2203,7 +2203,7 @@
 		font-size: 1.2rem;
 		line-height: 1;
 		cursor: pointer;
-		padding: 0 4px;
+		padding: 0 0.25rem;
 	}
 	.x:hover {
 		color: var(--text);

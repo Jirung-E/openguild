@@ -668,18 +668,22 @@
 		position: relative; /* DEV-086: New Quest 절대배치 기준. */
 	}
 
-	/* DEV-086: New Quest — Quest Board 의 .tb-btn.tb-new 와 px 단위까지 동일
-	   (padding 4px 10px / font 0.8rem / radius 6px / 초록). 위치도 동일
-	   (top:10px right:14px) — 보드↔리스트 전환 시 안 흔들림. */
+	/* DEV-086: New Quest — Quest Board 의 .tb-btn.tb-new 와 **치수가 같아야
+	   한다**. 보드↔리스트를 오갈 때 버튼이 안 흔들리는 것이 목적이다.
+
+	   BUG-256: 그래서 둘 다 rem 으로 옮겼다. 예전엔 둘 다 px 였고 보드 쪽이
+	   "노드 px 섬"(DEV-369) 안에 들어 있는 것으로 잘못 분류돼 있었다 — 여기만
+	   rem 으로 바꿨다면 배율을 올렸을 때 목록 버튼만 커져 짝이 깨졌을 것이다.
+	   `QuestListFilter` 의 우측 예약 폭(8.125rem)도 같은 한 벌이다. */
 	.qb-new {
 		position: absolute;
-		top: 10px;
-		right: 14px;
+		top: 0.625rem;
+		right: 0.875rem;
 		z-index: 10;
 		display: flex;
 		align-items: center;
-		gap: 4px;
-		padding: 4px 10px;
+		gap: 0.25rem;
+		padding: 0.25rem 0.625rem;
 		background: var(--btn-primary-bg);
 		border: var(--bw) solid var(--btn-primary-border);
 		border-radius: var(--r-md);

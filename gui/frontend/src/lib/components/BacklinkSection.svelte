@@ -215,7 +215,7 @@
 		display: inline-flex;
 		align-items: center;
 		height: 1.0625rem;
-		padding: 0 7px;
+		padding: 0 0.4375rem;
 		box-sizing: border-box;
 		border-radius: var(--r-pill);
 		font-family: 'SFMono-Regular', Consolas, monospace;

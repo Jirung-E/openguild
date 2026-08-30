@@ -226,7 +226,7 @@
 	.datefield {
 		display: inline-flex;
 		align-items: center;
-		gap: 2px;
+		gap: 0.125rem;
 		position: relative;
 	}
 	.df-text {
@@ -311,18 +311,18 @@
 	.df-grid.days {
 		display: grid;
 		grid-template-columns: repeat(7, 1.7rem);
-		gap: 1px;
+		gap: 0.0625rem;
 	}
 	.df-grid.months {
 		display: grid;
 		grid-template-columns: repeat(4, 3rem);
-		gap: 2px;
+		gap: 0.125rem;
 	}
 	.df-wd {
 		font-size: 0.62rem;
 		color: var(--text-faint);
 		text-align: center;
-		padding-bottom: 2px;
+		padding-bottom: 0.125rem;
 	}
 	.df-wd.sun {
 		color: var(--danger);

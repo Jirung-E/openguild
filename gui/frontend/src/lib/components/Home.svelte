@@ -457,7 +457,7 @@
 		margin: 0.4rem 0 0 0;
 		display: flex;
 		flex-direction: column;
-		gap: 2px;
+		gap: 0.125rem;
 	}
 	.quest-row {
 		display: flex;

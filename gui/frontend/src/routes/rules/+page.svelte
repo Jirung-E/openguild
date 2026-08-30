@@ -801,7 +801,7 @@
 		background: var(--search-hit-bg);
 		color: var(--search-hit-text);
 		border-radius: var(--r-xs);
-		padding: 0 1px;
+		padding: 0 0.0625rem;
 	}
 	.rule-excerpt {
 		/* 발췌는 두 줄까지 — 목록 행이 길어지면 훑기가 나빠진다. */

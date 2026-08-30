@@ -822,7 +822,7 @@
 		font-size: 1.3rem;
 		line-height: 1;
 		cursor: pointer;
-		padding: 0 4px;
+		padding: 0 0.25rem;
 		transition: color 0.1s;
 	}
 	.close-btn:hover {

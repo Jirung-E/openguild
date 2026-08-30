@@ -265,12 +265,12 @@
 		margin: 0;
 		display: flex;
 		flex-direction: column;
-		gap: 4px;
+		gap: 0.25rem;
 	}
 	.row {
 		display: flex;
 		align-items: stretch;
-		gap: 4px;
+		gap: 0.25rem;
 	}
 	.main {
 		flex: 1;
@@ -377,7 +377,7 @@
 	.reorder {
 		display: flex;
 		flex-direction: column;
-		gap: 2px;
+		gap: 0.125rem;
 	}
 	.reorder button {
 		background: var(--bg-subtle);

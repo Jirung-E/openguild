@@ -248,7 +248,7 @@
 		right: 0;
 		top: 50%;
 		transform: translateY(-50%);
-		height: 4px;
+		height: 0.25rem;
 		border-radius: var(--r-xs);
 		background: var(--bg-subtle);
 	}
@@ -260,8 +260,8 @@
 	.thumb {
 		position: absolute;
 		top: 50%;
-		width: 14px;
-		height: 14px;
+		width: 0.875rem;
+		height: 0.875rem;
 		border-radius: 50%;
 		background: var(--accent);
 		border: 2px solid var(--bg);

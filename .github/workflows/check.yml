@@ -180,6 +180,12 @@ jobs:
       - name: check no raw radius/border literals
         run: npm run check:radius
 
+      # BUG-256: 여백·치수를 리터럴 px 로 적으면 실패 (rem 만).
+      # font-size 는 rem 인데 padding/gap 만 px 이면 배율에서 비율이 어긋난다.
+      # px 가 맞는 구간은 소스에 `check-spacing:off/on` 으로 표시한다.
+      - name: check no raw spacing/size literals
+        run: npm run check:spacing
+
       - name: vitest
         run: npm test -- --run
 

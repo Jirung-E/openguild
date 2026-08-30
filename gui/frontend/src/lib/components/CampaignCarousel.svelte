@@ -219,8 +219,8 @@
 	.dot {
 		background: var(--border);
 		border: none;
-		width: 8px;
-		height: 8px;
+		width: 0.5rem;
+		height: 0.5rem;
 		border-radius: 50%;
 		cursor: pointer;
 		transition:

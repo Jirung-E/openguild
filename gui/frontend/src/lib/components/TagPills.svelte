@@ -159,7 +159,7 @@
 		cursor: pointer;
 		font-size: 1rem;
 		line-height: 1;
-		padding: 0 0 0 2px;
+		padding: 0 0 0 0.125rem;
 	}
 	.tag-rm:hover {
 		color: var(--danger);

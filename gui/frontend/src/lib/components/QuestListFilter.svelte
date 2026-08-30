@@ -257,7 +257,7 @@
 		gap: 0.75rem;
 		/* DEV-086: 우측 New Quest 플로팅 버튼 자리 확보 (보드 toolbar 와 동일
 		   위치). 필터가 wrap 돼도 버튼 밑으로 안 들어가게 padding-right 예약. */
-		padding: 0.75rem 130px 0.75rem 1.5rem;
+		padding: 0.75rem 8.125rem 0.75rem 1.5rem;
 		background: var(--bg-elevated);
 		border-bottom: var(--bw) solid var(--bg-subtle);
 		flex-wrap: wrap;
@@ -322,12 +322,18 @@
 		display: inline-flex;
 		align-items: center;
 	}
+	/* 스크린리더 전용 — 화면에는 안 보인다. BUG-256: 이 1px 은 "보이지 않게
+	   만드는" 관용구지 치수가 아니라서 배율을 따라갈 이유가 없다(가드의
+	   ALLOW 에 등록). */
 	.sr-only {
 		position: absolute;
 		width: 1px;
 		height: 1px;
 		padding: 0;
-		margin: -1px;
+		/* BUG-256: 테두리 겹침 보정이라 rem 이 아니라 **테두리 두께 토큰**이
+		   맞다 — 상쇄해야 할 대상이 `--bw` 이기 때문이다. rem 으로 두면
+		   배율에 따라 상쇄량이 테두리와 어긋난다. */
+		margin: calc(-1 * var(--bw));
 		overflow: hidden;
 		clip: rect(0, 0, 0, 0);
 		white-space: nowrap;
@@ -397,7 +403,7 @@
 		align-items: center;
 		gap: 0.75rem;
 		flex-wrap: wrap;
-		padding: 0.5rem 130px 0.5rem 1.5rem;
+		padding: 0.5rem 8.125rem 0.5rem 1.5rem;
 		background: var(--bg-elevated);
 		border-bottom: var(--bw) solid var(--bg-subtle);
 	}

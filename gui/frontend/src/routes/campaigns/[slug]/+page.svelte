@@ -1110,7 +1110,7 @@
 		margin: 0;
 		display: flex;
 		flex-direction: column;
-		gap: 2px;
+		gap: 0.125rem;
 	}
 	.checklist li,
 	.linked li {
@@ -1253,7 +1253,7 @@
 		font-size: 1.2rem;
 		line-height: 1;
 		cursor: pointer;
-		padding: 0 4px;
+		padding: 0 0.25rem;
 	}
 	.x:hover {
 		color: var(--text);

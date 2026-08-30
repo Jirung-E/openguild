@@ -4023,6 +4023,11 @@
 	.board-edge.filter-dim {
 		opacity: 0.07;
 	}
+	/* check-spacing:off — 노드 기하는 JS 상수와 짝이다.
+	   `NODE_W`/`NODE_H`(= BOARD_NODE_WIDTH/HEIGHT)로 배치를 계산하므로 CSS 만
+	   rem 으로 바꾸면 좌표와 상자가 어긋난다. admin: "보드에 표시되는 노드는
+	   크기가 변하면 안된다". 노드 안쪽 여백·글자도 그 80px 안에 맞춘 값이라
+	   함께 px 로 둔다. */
 	.board-node {
 		/* DEV-369 후속: 위 px 섬 설명 참고 — 노드 곡률도 px 이어야 상자와 짝이
 		   맞는다. 토큰 자체를 이 서브트리에서만 덮으므로 리터럴 검사는 통과한다. */
@@ -4134,6 +4139,7 @@
 	.node-due.overdue {
 		color: var(--danger);
 	}
+	/* check-spacing:on */
 	.board-node.active {
 		border-width: 3px;
 		background: var(--node-active-bg);
@@ -4231,6 +4237,9 @@
 		background: color-mix(in srgb, var(--accent) 14%, var(--bg-elevated));
 		box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
 	}
+	/* check-spacing:off — 레인 헤더도 기하다. 높이가 JS 의 `LANE_TOP=52`
+	   (ORIENTATION_METRICS.laneHeaderSize)와 정렬돼 있어 스케일하면 노드와
+	   겹친다. 헤더 안의 버튼·셀렉트는 그 38px 안에 맞춘 값이다. */
 	/* DEV-101 fix8: 헤더 height 는 보드 `LANE_TOP=52` 와 정렬 위해 px 고정
 	   (스케일하면 노드와 겹침). 내부 padding/gap/font 만 rem 으로 — UI 크기에
 	   비례해 컨텐츠가 자연스럽게 자람 (max 2x 까지 38px 안에 fit). */
@@ -4462,6 +4471,7 @@
 		border-color: var(--text-faint);
 		color: var(--text);
 	}
+	/* check-spacing:on */
 
 	/* lane header 의 ⊟ 버튼 + mode select 를 segmented 컨트롤로 묶음 (toolbar 와 동일 패턴) */
 	:global(.lane-arrange-group) {
@@ -4520,6 +4530,9 @@
 		}
 	}
 
+	/* check-spacing:off — 노드 상세 카드는 px 캔버스 위에 노드 좌표를 기준으로
+	   떠 있다. 카드만 배율을 따라 커지면 가리는 노드 수가 달라져 위치 계산과
+	   어긋난다. 노드 섬의 연장으로 본다. */
 	.card-head {
 		display: flex;
 		align-items: flex-start;
@@ -4755,14 +4768,15 @@
 		color: var(--border);
 		line-height: 1.4;
 	}
+	/* check-spacing:on */
 
 	/* ── 툴바 (z:10) ── */
 	/* DEV-073 fix3: New Quest 는 상단 고정, 나머지 도구바는 그 아래로. */
 	/* DEV-135: 필터 활성 chip — 좌상단 (toolbar 와 반대편). */
 	.filter-chip {
 		position: absolute;
-		top: 10px;
-		left: 14px;
+		top: 0.625rem;
+		left: 0.875rem;
 		z-index: 10;
 		pointer-events: auto;
 		display: flex;
@@ -4792,13 +4806,13 @@
 	}
 	.performance-hud {
 		position: absolute;
-		left: 14px;
-		bottom: 14px;
+		left: 0.875rem;
+		bottom: 0.875rem;
 		z-index: 10;
 		display: grid;
 		grid-template-columns: auto auto;
-		gap: 3px 12px;
-		padding: 8px 10px;
+		gap: 0.1875rem 0.75rem;
+		padding: 0.5rem 0.625rem;
 		border: var(--bw) solid color-mix(in srgb, var(--accent) 45%, transparent);
 		border-radius: var(--r-md);
 		background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
@@ -4818,19 +4832,19 @@
 
 	.tb-newquest-wrap {
 		position: absolute;
-		top: 10px;
-		right: 14px;
+		top: 0.625rem;
+		right: 0.875rem;
 		z-index: 10;
 		pointer-events: auto;
 	}
 	.toolbar {
 		position: absolute;
-		top: 10px;
-		right: 14px;
+		top: 0.625rem;
+		right: 0.875rem;
 		z-index: 10;
 		display: flex;
 		align-items: center;
-		gap: 4px;
+		gap: 0.25rem;
 		/* DEV-352: 레인 위에 버튼이 낱개로 떠 보이지 않도록 실제 컨트롤 크기의
 		   불투명 surface로 묶는다. width:max-content를 쓰되 max-width로 좁은
 		   화면에서는 기존처럼 줄바꿈한다. 화면 전체 폭의 클릭 띠를 만들지 않으므로
@@ -4838,7 +4852,7 @@
 		left: auto;
 		width: max-content;
 		max-width: calc(100% - 28px);
-		padding: 4px;
+		padding: 0.25rem;
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-lg);
@@ -4846,7 +4860,7 @@
 		pointer-events: auto;
 		flex-wrap: wrap;
 		justify-content: flex-end;
-		row-gap: 4px;
+		row-gap: 0.25rem;
 	}
 	/* BUG-226: 버튼·셀렉트 등 실제 컨트롤만 클릭을 받는다. */
 	.toolbar > * {
@@ -4854,7 +4868,7 @@
 	}
 	/* New Quest 가 있으면 도구바를 그 아래로 내림 — 새 퀘스트 버튼 높이 (~32px) + 여백. */
 	.toolbar.has-newquest {
-		top: 50px;
+		top: 3.125rem;
 	}
 	/* DEV-073, DEV-352: collapsed 시 토글 버튼만 남기고 바깥 패널은 완전히 숨긴다. */
 	.toolbar.collapsed {
@@ -4867,14 +4881,14 @@
 	}
 	/* DEV-073: 접기 토글 — 항상 표시. */
 	.tb-btn.tb-collapse {
-		padding: 4px 8px;
+		padding: 0.25rem 0.5rem;
 		opacity: 1;
 	}
 	.tb-btn {
 		display: flex;
 		align-items: center;
-		gap: 4px;
-		padding: 4px 10px;
+		gap: 0.25rem;
+		padding: 0.25rem 0.625rem;
 		background: var(--bg-subtle);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
@@ -4915,7 +4929,7 @@
 	.tb-btn .count {
 		font-size: 0.7rem;
 		color: var(--text-faint);
-		min-width: 10px;
+		min-width: 0.625rem;
 		text-align: right;
 	}
 	.tb-btn:hover:not(:disabled) .count {
@@ -4934,13 +4948,14 @@
 		border-color: var(--btn-primary-border-hover);
 	}
 	.tb-sep {
-		width: 1px;
+		/* BUG-256: 세로 헤어라인이라 테두리와 같은 두께여야 한다 — 토큰. */
+		width: var(--bw);
 		background: var(--border);
 		align-self: stretch;
-		margin: 2px 0;
+		margin: 0.125rem 0;
 	}
 	.tb-select {
-		padding: 3px 6px;
+		padding: 0.1875rem 0.375rem;
 		background: var(--bg-subtle);
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-md);
@@ -4968,7 +4983,7 @@
 	.tb-arrange-group .tb-mode {
 		border-top-left-radius: 0;
 		border-bottom-left-radius: 0;
-		padding-left: 4px;
+		padding-left: 0.25rem;
 	}
 
 	.overlay {
