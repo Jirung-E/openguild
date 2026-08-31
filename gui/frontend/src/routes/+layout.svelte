@@ -46,6 +46,9 @@
 	import { uiScale, applyUiScaleToDocument } from '$lib/stores/uiScale';
 	// DEV-272: 저장된 글꼴 선택을 시작 시 root 에 반영.
 	import { initFonts } from '$lib/stores/fontSettings';
+	// REQ-018: 페이지 내 검색 (Ctrl/Cmd+F).
+	import FindBar from '$lib/components/FindBar.svelte';
+	import { isFindablePath } from '$lib/utils/find-in-page';
 	import { hdrLimit, applyHdrLimitToDocument } from '$lib/stores/hdrSettings';
 	import { contentWidth, contentWidthCss } from '$lib/stores/contentWidth';
 	import {
@@ -73,6 +76,10 @@
 	// BUG-257: 스크롤 컨테이너. `page-scroll.ts` 가 querySelector 로도 찾지만,
 	// 여기서는 OverlayScrollbar 에 넘겨야 해서 참조를 들고 있는다.
 	let mainEl = $state<HTMLElement | undefined>(undefined);
+
+	// REQ-018: 찾기 바. 문서형 화면(긴 글을 읽는 곳)에서만 연다.
+	let findOpen = $state(false);
+	let findable = $derived(isFindablePath($page.url.pathname));
 
 	// DEV-052 후속: /welcome 라우트에선 Nav (Board/List/Admin/+New Quest) 숨김.
 	// 길드 컨텍스트가 없는 상태에서 의미 없는 액션 노출 방지.
@@ -486,6 +493,32 @@
 		initFonts();
 	});
 
+	// REQ-018: Ctrl/Cmd+F.
+	//
+	// **찾기가 실제로 열리는 화면에서만 가로챈다.** 어디서나 삼키면 웹 모드의
+	// 네이티브 찾기가 그 화면에서 통째로 사라져 오히려 퇴보다.
+	//
+	// capture 로 등록하는 이유는 Cmd+R 가드(위)와 같다 — CodeMirror 처럼 자기
+	// 키 처리를 하는 것이 먼저 삼키지 않도록.
+	onMount(() => {
+		const onFindKey = (e: KeyboardEvent) => {
+			if (e.key !== 'f' && e.key !== 'F') return;
+			if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+			if (!findable) return;
+			e.preventDefault();
+			// 이미 열려 있으면 입력칸으로 포커스를 되돌린다(브라우저와 같은 습관).
+			findOpen = false;
+			void tick().then(() => (findOpen = true));
+		};
+		window.addEventListener('keydown', onFindKey, true);
+		return () => window.removeEventListener('keydown', onFindKey, true);
+	});
+
+	// 다른 화면으로 가면 닫는다 — 잡아 둔 Range 가 통째로 남의 문서 것이 된다.
+	$effect(() => {
+		if (!findable) findOpen = false;
+	});
+
 	// DEV-335: 첨부 이미지 HDR 표시 제한 — `<html>` 의 `--hdr-limit` 갱신.
 	onMount(() => {
 		const unsub = hdrLimit.subscribe(applyHdrLimitToDocument);
@@ -652,6 +685,9 @@
 </main>
 {#if !coarsePointer}
 	<OverlayScrollbar target={mainEl ?? null} />
+{/if}
+{#if findOpen}
+	<FindBar root={mainEl ?? null} onclose={() => (findOpen = false)} />
 {/if}
 <!-- DEV-259: 알림 통합 호스트(토스트/업데이트/스키마) — 우하단 단일 스택.
      업데이트·스키마 watcher 내장. 모든 라우트 공통 단일 mount. -->

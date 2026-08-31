@@ -194,6 +194,12 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'settings.displayHeading': { ko: '표시', en: 'Display' },
 	'settings.uiScalePercentAria': { ko: 'UI 크기 (퍼센트)', en: 'UI scale (percent)' },
 	// DEV-272: 글꼴 설정.
+	// REQ-018: 페이지 내 검색.
+	'find.placeholder': { ko: '이 페이지에서 찾기', en: 'Find in page' },
+	'find.none': { ko: '없음', en: 'None' },
+	'find.prev': { ko: '이전 (Shift+Enter)', en: 'Previous (Shift+Enter)' },
+	'find.next': { ko: '다음 (Enter)', en: 'Next (Enter)' },
+	'find.close': { ko: '닫기 (Esc)', en: 'Close (Esc)' },
 	'settings.uiFont': { ko: 'UI 글꼴', en: 'UI font' },
 	'settings.codeFont': { ko: '코드 글꼴', en: 'Code font' },
 	'settings.fontSystemDefault': { ko: '시스템 기본', en: 'System default' },
