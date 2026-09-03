@@ -18,6 +18,8 @@
 	import { metaApi } from '$lib/api/meta';
 	// DEV-205 모듈3: Quest List 문자열 i18n.
 	import { locale, t } from '$lib/stores/locale';
+	// REQ-019: 태그 필터 줄 — 접기 포함 공통 컴포넌트.
+	import TagFilterRow from '$lib/components/TagFilterRow.svelte';
 	import type { Quest, QuestStatus, QuestType } from '$lib/types';
 	import {
 		ancestorIdsOf,
@@ -601,30 +603,14 @@
 		</div>
 		<!-- DEV-068: 모든 quest 의 unique tag 들. 클릭으로 필터 토글 (AND). -->
 		{#if allTagOptions.length > 0}
-			<div class="tag-filter-row" aria-label={t('questList.tagFilter', $locale)}>
-				{#each allTagOptions as tag (tag)}
-					<button
-						class="tag-filter-chip"
-						class:active={filterTags.has(tag)}
-						onclick={() => toggleTagFilter(tag)}
-						title={filterTags.has(tag)
-							? `${tag}${t('questList.filterRemoveSuffix', $locale)}`
-							: `${tag}${t('questList.filterAddSuffix', $locale)}`}
-					>
-						{tag}
-						<span class="tag-chip-count">{tagCounts.get(tag) ?? 0}</span>
-					</button>
-				{/each}
-				{#if filterTags.size > 0}
-					<button
-						class="tag-clear"
-						onclick={() => (filterTags = new Set())}
-						title={t('questList.clearTagFilters', $locale)}
-					>
-						{t('questList.clearAllBtn', $locale)}
-					</button>
-				{/if}
-			</div>
+			<TagFilterRow
+				tags={allTagOptions}
+				counts={tagCounts}
+				selected={filterTags}
+				ontoggle={toggleTagFilter}
+				onclear={() => (filterTags = new Set())}
+				storageKey="quests"
+			/>
 		{/if}
 	</div>
 
@@ -738,13 +724,6 @@
 		padding: 0 1.5rem;
 	}
 
-	/* DEV-068: tag filter chip 들 — view-toggle 옆 inline. */
-	.tag-filter-row {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.3rem;
-		align-items: center;
-	}
 	/* BUG-194: 좁은 화면에선 머리말이 목록을 밀어낸다 — 여백을 줄이고 태그 칩은
 	   줄바꿈 대신 그 줄만 가로 스크롤(설정 페이지 탭과 같은 방식). */
 	@media (max-width: 640px) {
@@ -752,18 +731,6 @@
 			gap: 0.5rem;
 			margin: 0.3rem 0 0.5rem;
 			padding: 0 0.75rem;
-		}
-		.tag-filter-row {
-			flex-wrap: nowrap;
-			overflow-x: auto;
-			scrollbar-width: none;
-			max-width: 100%;
-		}
-		.tag-filter-row::-webkit-scrollbar {
-			display: none;
-		}
-		.tag-filter-chip {
-			flex: none;
 		}
 	}
 	/* DEV-033: 정렬 select + 방향 토글. */
@@ -796,51 +763,6 @@
 		border-color: var(--text-faint);
 	}
 
-	.tag-filter-chip {
-		padding: 0.15rem 0.65rem;
-		background: color-mix(in srgb, var(--warning) 8%, transparent);
-		border: var(--bw) solid color-mix(in srgb, var(--warning) 30%, transparent);
-		border-radius: var(--r-pill);
-		color: var(--warning);
-		font-size: 0.72rem;
-		font-family: var(--font-mono);
-		cursor: pointer;
-		transition:
-			background 0.1s,
-			border-color 0.1s;
-	}
-	.tag-filter-chip:hover {
-		background: color-mix(in srgb, var(--warning) 18%, transparent);
-	}
-	.tag-filter-chip.active {
-		background: color-mix(in srgb, var(--warning) 28%, transparent);
-		border-color: color-mix(in srgb, var(--warning) 70%, transparent);
-		color: color-mix(in srgb, var(--warning) 60%, white);
-	}
-	.tag-chip-count {
-		display: inline-block;
-		margin-left: 0.4rem;
-		padding: 0 0.4rem;
-		min-width: 1.1rem;
-		text-align: center;
-		font-size: 0.65rem;
-		color: var(--text-muted);
-		background: var(--bg-subtle);
-		border-radius: var(--r-xl);
-	}
-	.tag-clear {
-		padding: 0.15rem 0.55rem;
-		background: transparent;
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-pill);
-		color: var(--text-muted);
-		font-size: 0.7rem;
-		cursor: pointer;
-	}
-	.tag-clear:hover {
-		background: var(--bg-subtle);
-		color: var(--text);
-	}
 	.view-toggle {
 		/* BUG-254 계열(admin 보고): 글자는 rem 인데 여백만 px 이라 배율을
 		   올리면 **주변 컴포넌트와 다른 속도로** 커졌다. 여백도 rem 으로.

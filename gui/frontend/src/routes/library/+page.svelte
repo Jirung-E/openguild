@@ -47,6 +47,8 @@
 	import { formatTs, formatRelative } from '$lib/utils/datetime';
 	// DEV-205(2차): i18n.
 	import { locale, t } from '$lib/stores/locale';
+	// REQ-019: 태그 필터 줄 — 접기 포함 공통 컴포넌트.
+	import TagFilterRow from '$lib/components/TagFilterRow.svelte';
 
 	// REQ-015: 사이드바 폭 — 구분선 드래그로 조절, rem 이라 배율을 따라간다.
 	const sidebarW = paneWidth('library');
@@ -709,30 +711,14 @@
 			</div>
 		</div>
 		{#if allTagOptions.length > 0}
-			<div class="tag-filter-row" aria-label={t('library.tagFilterAria', $locale)}>
-				{#each allTagOptions as tag (tag)}
-					<button
-						class="tag-filter-chip"
-						class:active={filterTags.has(tag)}
-						onclick={() => toggleTagFilter(tag)}
-						title={filterTags.has(tag)
-							? `${tag}${t('library.tagFilterOffPost', $locale)}`
-							: `${tag}${t('library.tagFilterOnPost', $locale)}`}
-					>
-						{tag}
-						<span class="tag-chip-count">{tagCounts.get(tag) ?? 0}</span>
-					</button>
-				{/each}
-				{#if filterTags.size > 0}
-					<button
-						class="tag-clear"
-						onclick={() => (filterTags = new Set())}
-						title={t('library.clearTagFiltersTitle', $locale)}
-					>
-						{t('library.clearTagFilters', $locale)}
-					</button>
-				{/if}
-			</div>
+			<TagFilterRow
+				tags={allTagOptions}
+				counts={tagCounts}
+				selected={filterTags}
+				ontoggle={toggleTagFilter}
+				onclear={() => (filterTags = new Set())}
+				storageKey="library"
+			/>
 		{/if}
 		<div class="crumbs">
 			<!-- BUG-127(admin 요청): 현재 위치 왼쪽에 상위 폴더 이동 버튼.
@@ -991,30 +977,14 @@
 						</div>
 					</div>
 					{#if allTagOptions.length > 0}
-						<div class="tag-filter-row" aria-label={t('library.tagFilterAria', $locale)}>
-							{#each allTagOptions as tag (tag)}
-								<button
-									class="tag-filter-chip"
-									class:active={filterTags.has(tag)}
-									onclick={() => toggleTagFilter(tag)}
-									title={filterTags.has(tag)
-										? `${tag}${t('library.tagFilterOffPost', $locale)}`
-										: `${tag}${t('library.tagFilterOnPost', $locale)}`}
-								>
-									{tag}
-									<span class="tag-chip-count">{tagCounts.get(tag) ?? 0}</span>
-								</button>
-							{/each}
-							{#if filterTags.size > 0}
-								<button
-									class="tag-clear"
-									onclick={() => (filterTags = new Set())}
-									title={t('library.clearTagFiltersTitle', $locale)}
-								>
-									{t('library.clearTagFilters', $locale)}
-								</button>
-							{/if}
-						</div>
+						<TagFilterRow
+							tags={allTagOptions}
+							counts={tagCounts}
+							selected={filterTags}
+							ontoggle={toggleTagFilter}
+							onclear={() => (filterTags = new Set())}
+							storageKey="library"
+						/>
 					{/if}
 					{#if searchResults}
 						<!-- BUG-127: tree 모드는 "현재 폴더" 개념이 없어 전역 검색 유지,
@@ -1797,60 +1767,6 @@
 	.sort-dir:hover {
 		color: var(--text);
 		border-color: var(--text-faint);
-	}
-
-	/* DEV-243 후속: 태그 필터 chip — quest QuestList.svelte 와 동일 패턴. */
-	.tag-filter-row {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.3rem;
-		align-items: center;
-		margin-bottom: 0.4rem;
-	}
-	.tag-filter-chip {
-		padding: 0.15rem 0.65rem;
-		background: color-mix(in srgb, var(--warning) 8%, transparent);
-		border: var(--bw) solid color-mix(in srgb, var(--warning) 30%, transparent);
-		border-radius: var(--r-pill);
-		color: var(--warning);
-		font-size: 0.72rem;
-		font-family: var(--font-mono);
-		cursor: pointer;
-		transition:
-			background 0.1s,
-			border-color 0.1s;
-	}
-	.tag-filter-chip:hover {
-		background: color-mix(in srgb, var(--warning) 18%, transparent);
-	}
-	.tag-filter-chip.active {
-		background: color-mix(in srgb, var(--warning) 28%, transparent);
-		border-color: color-mix(in srgb, var(--warning) 70%, transparent);
-		color: color-mix(in srgb, var(--warning) 60%, white);
-	}
-	.tag-chip-count {
-		display: inline-block;
-		margin-left: 0.4rem;
-		padding: 0 0.4rem;
-		min-width: 1.1rem;
-		text-align: center;
-		font-size: 0.65rem;
-		color: var(--text-muted);
-		background: var(--bg-subtle);
-		border-radius: var(--r-xl);
-	}
-	.tag-clear {
-		padding: 0.15rem 0.55rem;
-		background: transparent;
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-pill);
-		color: var(--text-muted);
-		font-size: 0.7rem;
-		cursor: pointer;
-	}
-	.tag-clear:hover {
-		background: var(--bg-subtle);
-		color: var(--text);
 	}
 
 	.state {

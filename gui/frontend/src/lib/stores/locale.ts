@@ -1102,6 +1102,12 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		ko: '오름차순 — 클릭 시 내림차순',
 		en: 'Ascending — click for descending'
 	},
+	// REQ-019: 태그 필터 줄(공통 컴포넌트). 화면마다 갈려 있던 키를 한 벌로
+	// 모았다 — 한국어는 원래 같았고 영어만 미세하게 달랐다.
+	'tagFilter.label': { ko: '태그', en: 'Tags' },
+	'tagFilter.expand': { ko: '태그 필터 펼치기', en: 'Expand tag filters' },
+	'tagFilter.collapse': { ko: '태그 필터 접기', en: 'Collapse tag filters' },
+	'tagFilter.clearTitle': { ko: '태그 필터 전체 해제', en: 'Clear all tag filters' },
 	'questList.tagFilter': { ko: '태그 필터', en: 'Tag filter' },
 	'questList.filterRemoveSuffix': { ko: ' 필터 해제', en: ' — remove filter' },
 	'questList.filterAddSuffix': { ko: ' 필터 추가', en: ' — add filter' },

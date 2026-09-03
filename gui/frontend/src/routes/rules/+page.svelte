@@ -22,6 +22,8 @@
 	import { rulesApi, type RuleEntry } from '$lib/api/rules';
 	// DEV-205 모듈5: 규칙 페이지 i18n.
 	import { locale, t } from '$lib/stores/locale';
+	// REQ-019: 태그 필터 줄 — 접기 포함 공통 컴포넌트.
+	import TagFilterRow from '$lib/components/TagFilterRow.svelte';
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	import SidecarHistory from '$lib/components/SidecarHistory.svelte';
 	import BacklinkSection from '$lib/components/BacklinkSection.svelte';
@@ -354,30 +356,14 @@
 					>
 				</div>
 				{#if allTagOptions.length > 0}
-					<div class="tag-filter-row" aria-label={t('rules.tagFilter', $locale)}>
-						{#each allTagOptions as tag (tag)}
-							<button
-								class="tag-filter-chip"
-								class:active={filterTags.has(tag)}
-								onclick={() => toggleTagFilter(tag)}
-								title={filterTags.has(tag)
-									? `${tag}${t('questList.filterRemoveSuffix', $locale)}`
-									: `${tag}${t('questList.filterAddSuffix', $locale)}`}
-							>
-								{tag}
-								<span class="tag-chip-count">{tagCounts.get(tag) ?? 0}</span>
-							</button>
-						{/each}
-						{#if filterTags.size > 0}
-							<button
-								class="tag-clear"
-								onclick={() => (filterTags = new Set())}
-								title={t('rules.clearTagFilters', $locale)}
-							>
-								{t('questList.clearAllBtn', $locale)}
-							</button>
-						{/if}
-					</div>
+					<TagFilterRow
+						tags={allTagOptions}
+						counts={tagCounts}
+						selected={filterTags}
+						ontoggle={toggleTagFilter}
+						onclear={() => (filterTags = new Set())}
+						storageKey="rules"
+					/>
 				{/if}
 				<!-- REQ-013: slug 뿐 아니라 본문까지 — 규칙이 늘어나면 slug 만으로는
 				     원하는 문서를 못 찾는다. 본문은 이미 목록에 실려 와 즉시 필터된다. -->
@@ -689,59 +675,6 @@
 		gap: 0.15rem;
 	}
 
-	/* DEV-243 후속: 태그 필터 chip — quest QuestList.svelte 와 동일 패턴. */
-	.tag-filter-row {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.3rem;
-		align-items: center;
-		margin-bottom: 0.4rem;
-	}
-	.tag-filter-chip {
-		padding: 0.15rem 0.65rem;
-		background: color-mix(in srgb, var(--warning) 8%, transparent);
-		border: var(--bw) solid color-mix(in srgb, var(--warning) 30%, transparent);
-		border-radius: var(--r-pill);
-		color: var(--warning);
-		font-size: 0.72rem;
-		font-family: var(--font-mono);
-		cursor: pointer;
-		transition:
-			background 0.1s,
-			border-color 0.1s;
-	}
-	.tag-filter-chip:hover {
-		background: color-mix(in srgb, var(--warning) 18%, transparent);
-	}
-	.tag-filter-chip.active {
-		background: color-mix(in srgb, var(--warning) 28%, transparent);
-		border-color: color-mix(in srgb, var(--warning) 70%, transparent);
-		color: color-mix(in srgb, var(--warning) 60%, white);
-	}
-	.tag-chip-count {
-		display: inline-block;
-		margin-left: 0.4rem;
-		padding: 0 0.4rem;
-		min-width: 1.1rem;
-		text-align: center;
-		font-size: 0.65rem;
-		color: var(--text-muted);
-		background: var(--bg-subtle);
-		border-radius: var(--r-xl);
-	}
-	.tag-clear {
-		padding: 0.15rem 0.55rem;
-		background: transparent;
-		border: var(--bw) solid var(--border);
-		border-radius: var(--r-pill);
-		color: var(--text-muted);
-		font-size: 0.7rem;
-		cursor: pointer;
-	}
-	.tag-clear:hover {
-		background: var(--bg-subtle);
-		color: var(--text);
-	}
 	.rule-item {
 		width: 100%;
 		text-align: left;
