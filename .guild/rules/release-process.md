@@ -1,6 +1,6 @@
 +++
 created_at = "2026-06-23T01:30:44+09:00"
-updated_at = "2026-08-20T01:29:41+09:00"
+updated_at = "2026-09-04T19:28:30+09:00"
 +++
 # 릴리즈 패키지 절차
 
@@ -31,6 +31,15 @@ updated_at = "2026-08-20T01:29:41+09:00"
 - `gui/Cargo.toml`
 - `gui/tauri.conf.json` (`version` 필드)
 - `gui/frontend/package.json`
+- `skills/openguild-plugin/.claude-plugin/plugin.json` — **`-beta` 를 뗀 값**
+  (앱이 `0.5.2-beta` 면 여기는 `0.5.2`).
+
+**plugin.json 을 빼먹으면 사용자 쪽 스킬이 영영 갱신되지 않는다.** 설치된
+스킬은 파일 내용이 아니라 이 version 으로만 갱신 여부를 판단한다. BUG-261:
+이 목록에 plugin.json 이 없어서 범프가 습관으로만 이뤄졌고, 0.5.1 / 0.5.2 에서
+끊긴 채 5주간 스킬 9건이 사용자에게 안 나갔다. 그동안 에이전트가 이미 고쳐진
+제약을 현재 사양처럼 답했다. `cargo test -p openguild-cli` 의
+`plugin_json_version_tracks_crate_version` 이 이제 이걸 막는다.
 
 후속 quest 후보: 한 곳 (`[workspace.package]`) 에서 관리하도록 통합.
 

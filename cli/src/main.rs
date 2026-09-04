@@ -8591,6 +8591,48 @@ fn main() {
 mod tests {
     use super::*;
 
+    /// BUG-261: 배포 스킬 플러그인의 version 이 크레이트 버전과 같이 올라가는지.
+    ///
+    /// 설치된 스킬은 파일 내용이 아니라 **`plugin.json` 의 version 으로만**
+    /// 갱신 여부를 판단한다. 그래서 스킬을 아무리 고쳐도 이 숫자가 그대로면
+    /// 사용자 쪽에는 영원히 옛 문서가 남는다. 실제로 그랬다 — 8/2 이후 5주간
+    /// 멈춰 있는 동안 스킬이 9번 바뀌었고, 그 사이 codex 가 이미 고쳐진
+    /// 제약(원격 첨부 미지원 — BUG-231 에서 해결)을 현재 사양처럼 답했다.
+    ///
+    /// 릴리즈 규칙의 "버전 동기화" 목록에 plugin.json 이 빠져 있어서, 실제
+    /// 범프는 **습관으로만** 이뤄지고 있었다(0.4.0 / 0.4.1 / 0.5.0 까지는
+    /// 맞았고 0.5.1 / 0.5.2 에서 끊겼다). 습관을 검사로 바꾼다.
+    ///
+    /// `-beta` 는 뗀다 — 위 세 번의 범프가 전부 그 관례였다.
+    #[test]
+    fn plugin_json_version_tracks_crate_version() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../skills/openguild-plugin/.claude-plugin/plugin.json");
+        // 크레이트만 따로 배포된 경우엔 skills/ 가 없다. 이 검사가 의미를
+        // 갖는 건 저장소 안에서다.
+        if !path.exists() {
+            return;
+        }
+        let raw = std::fs::read_to_string(&path).expect("read plugin.json");
+        let json: serde_json::Value = serde_json::from_str(&raw).expect("parse plugin.json");
+        let got = json["version"]
+            .as_str()
+            .expect("plugin.json 에 version 이 없음");
+        let want = env!("CARGO_PKG_VERSION").trim_end_matches("-beta");
+        assert_eq!(
+            got,
+            want,
+            "\nplugin.json 의 version 이 크레이트 버전과 다릅니다 \
+             (plugin.json={got}, crate={}).\n\
+             스킬 문서를 고쳐도 이 숫자가 그대로면 설치본은 갱신되지 않습니다 \
+             — 사용자 쪽 에이전트가 옛 사양을 계속 사실로 답하게 됩니다.\n\
+             {}\n\
+             를 \"{want}\" 로 맞추세요(릴리즈 버전에서 -beta 를 뗀 값).",
+            env!("CARGO_PKG_VERSION"),
+            path.display(),
+        );
+    }
+
     // ── DEV-333: 도서관/규칙 태그 명령 ──
     //
     // 실제 길드 없이 list/set 을 클로저로 갈아끼워 **동작 계약**만 검증한다:
