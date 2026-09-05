@@ -20,7 +20,8 @@
 		"check:pill": "node scripts/check-pill-single-source.mjs",
 		"check:radius": "node scripts/check-raw-radius.mjs",
 		"check:spacing": "node scripts/check-raw-spacing.mjs",
-		"check:font": "node scripts/check-raw-font.mjs"
+		"check:font": "node scripts/check-raw-font.mjs",
+		"check:viewport": "node scripts/check-viewport-units.mjs"
 	},
 	"devDependencies": {
 		"@eslint/compat": "^2.0.4",

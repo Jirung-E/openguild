@@ -15,13 +15,33 @@
 // **여기 한 곳**을 거치게 한다.
 
 /**
+ * BUG-264: 터치 기기에서는 잠금을 걸지 않는다 — **문서가 스크롤한다.**
+ *
+ * 위 잠금이 막으려던 것은 커스텀 타이틀바가 rubber-band 에 딸려 내려오는
+ * 것이다. 모바일 브라우저에는 그런 타이틀바가 없는데 잠가 두니, 브라우저가
+ * **문서 스크롤을 볼 때만** 하는 동작이 전부 죽었다 — 주소창 접힘, 당겨서
+ * 새로고침(admin 보고).
+ *
+ * **`global.css` / `+layout.svelte` 의 `@media (pointer: coarse)` 와 같은
+ * 조건이어야 한다.** 둘이 어긋나면 CSS 는 문서를 스크롤하는데 JS 는 `main` 의
+ * scrollTop 을 읽어, 복원이 항상 0 으로 조용히 빗나간다.
+ */
+function documentScrolls(): boolean {
+	if (typeof window === 'undefined' || !window.matchMedia) return false;
+	return window.matchMedia('(pointer: coarse)').matches;
+}
+
+/**
  * 스크롤 컨테이너. `<main>` 이 아직 없으면(마운트 전, 자식 창 등) `null`.
+ * 터치 기기에서는 `main` 이 스크롤 컨테이너가 아니므로 역시 `null` —
+ * 아래 함수들이 전부 문서 기준으로 물러선다.
  *
  * 캐시하지 않는다 — `main` 은 layout 에 하나뿐이라 조회가 싸고, 캐시하면
  * 자식 창이나 재마운트에서 낡은 노드를 붙들 수 있다.
  */
 export function pageScrollEl(): HTMLElement | null {
 	if (typeof document === 'undefined') return null;
+	if (documentScrolls()) return null;
 	return document.querySelector('main');
 }
 

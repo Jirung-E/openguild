@@ -138,6 +138,7 @@
 		max-width: min(22rem, calc(100vw - 16px));
 		/* 짧은 화면(가로 모드 등)에서 팝업이 화면 높이를 넘지 않게. */
 		max-height: min(14rem, 45vh);
+		max-height: min(14rem, 45dvh);
 		overflow-y: auto;
 		/* BUG-157: native scrollbar 숨김 — OverlayScrollbar 가 대신 그린다. */
 		scrollbar-width: none;

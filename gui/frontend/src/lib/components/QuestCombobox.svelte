@@ -154,6 +154,7 @@
 		/* BUG-253: 600px → 37.5rem (기본 배율에서 같은 값). 70vh 상한은 그대로 —
 		   작은 창에서 화면을 넘지 않게 하는 장치다. */
 		max-height: min(70vh, 37.5rem);
+		max-height: min(70dvh, 37.5rem);
 		overflow-y: auto;
 		/* DEV-074 fix16: native scrollbar 숨김 — OverlayScrollbar 가 대신 그림. */
 		scrollbar-width: none;

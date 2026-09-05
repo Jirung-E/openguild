@@ -714,6 +714,7 @@
 		   제스처가 문서로 넘어가지 않게 한다(문서는 어차피 고정이지만, 상위로
 		   새는 것을 명시적으로 막아 둔다). */
 		height: calc(100vh - var(--nav-h, 3.25rem) - var(--titlebar-h, 0px));
+		height: calc(100dvh - var(--nav-h, 3.25rem) - var(--titlebar-h, 0px));
 		overflow-y: auto;
 		overflow-x: hidden;
 		overscroll-behavior: contain;
@@ -730,6 +731,32 @@
 	}
 	main.no-nav {
 		height: calc(100vh - var(--titlebar-h, 0px));
+		height: calc(100dvh - var(--titlebar-h, 0px));
+	}
+	/* BUG-264: 터치 기기에서는 문서가 스크롤한다(`global.css` 의 같은 질의 참고).
+	   `main` 은 고정 높이와 자체 스크롤을 놓고, 짧은 페이지가 화면을 채우도록
+	   최소 높이만 남긴다.
+
+	   `min-height` 는 `dvh` 다 — 주소창이 접히고 펴지는 만큼 실제로 보이는
+	   높이가 변한다. `vh` 로 두면 주소창이 보이는 동안 그 높이만큼 빈 공간이
+	   생겨 짧은 페이지에 의미 없는 스크롤이 남는다.
+
+	   가로는 `clip` 이다. `hidden` 은 다른 축을 강제로 `auto` 로 만들어 세로
+	   스크롤 컨테이너가 도로 생긴다 — 그러면 이 수정이 통째로 무효가 된다. */
+	@media (pointer: coarse) {
+		main,
+		main.no-nav {
+			height: auto;
+			min-height: calc(100vh - var(--nav-h, 3.25rem) - var(--titlebar-h, 0px));
+			min-height: calc(100dvh - var(--nav-h, 3.25rem) - var(--titlebar-h, 0px));
+			overflow: visible;
+			overflow-x: clip;
+			overscroll-behavior: auto;
+		}
+		main.no-nav {
+			min-height: calc(100vh - var(--titlebar-h, 0px));
+			min-height: calc(100dvh - var(--titlebar-h, 0px));
+		}
 	}
 	.history-guild-switch {
 		display: flex;

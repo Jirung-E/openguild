@@ -1221,6 +1221,7 @@
 		/* BUG-160: 뷰포트보다 크면 창을 따라 줄어들도록 vw 상한 + 높이 상한. */
 		max-width: min(calc(30rem * var(--popup-scale, 1)), 92vw); /* BUG-064 */
 		max-height: 92vh;
+		max-height: 92dvh;
 		overflow-y: auto;
 		padding: 1rem 1.25rem 1rem;
 		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);

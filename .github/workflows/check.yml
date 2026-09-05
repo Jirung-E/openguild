@@ -191,6 +191,11 @@ jobs:
       - name: check no raw font stacks
         run: npm run check:font
 
+      # BUG-264: 높이의 `vh` 는 모바일에서 주소창이 접힌 높이라 실제 화면보다
+      # 크다 — 그만큼 아래가 잘린다. `dvh` 폴백 쌍을 강제한다.
+      - name: check viewport height units
+        run: npm run check:viewport
+
       - name: vitest
         run: npm test -- --run
 

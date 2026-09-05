@@ -222,6 +222,29 @@ body {
 	line-height: 1.6;
 }
 
+/* BUG-264: 터치 기기에서는 **문서가 다시 스크롤한다.**
+ *
+ * BUG-257 의 잠금이 막으려던 것은 macOS(WKWebView)의 rubber-band 가 커스텀
+ * 타이틀바를 끌어내리는 것이다. 모바일 브라우저에는 커스텀 타이틀바가 없어
+ * 잠글 이유가 처음부터 없는데, 잠가 두니 브라우저가 **문서 스크롤을 볼 때만**
+ * 하는 동작이 전부 죽었다 — 주소창 접힘, 당겨서 새로고침(admin 보고). 게다가
+ * `100%`(주소창 보이는 높이)와 `100vh`(접힌 높이)가 어긋나 `main` 이 body 를
+ * 넘치면서 아래쪽이 잘렸다.
+ *
+ * 판정을 폭이 아니라 **포인터 종류**로 하는 것은 `hasCoarsePointer` 와 같은
+ * 이유다 — 데스크탑 창을 좁혔다고 잠금이 풀리면 안 된다. Tauri 데스크톱은
+ * 절대 coarse 가 아니므로 BUG-257 의 수정은 그대로 남는다.
+ *
+ * `page-scroll.ts` 의 `pageScrollEl()` 이 **같은 조건**으로 갈린다. 둘이
+ * 어긋나면 스크롤 복원이 조용히 빗나가므로 한쪽만 고치지 말 것. */
+@media (pointer: coarse) {
+	html,
+	body {
+		height: auto;
+		overflow: visible;
+	}
+}
+
 a {
 	color: inherit;
 }

@@ -3893,7 +3893,10 @@
 	.board-wrap {
 		position: relative;
 		width: 100%;
+		/* BUG-264: `dvh` 는 모바일 주소창 상태를 따라간다(`vh` 는 접힌 높이라
+		   실제 보이는 영역보다 크다). 앞줄은 미지원 브라우저용 폴백. */
 		height: calc(100vh - var(--nav-h, 3.25rem) - var(--titlebar-h, 0px));
+		height: calc(100dvh - var(--nav-h, 3.25rem) - var(--titlebar-h, 0px));
 		background: var(--bg);
 		overflow: hidden;
 		touch-action: none;
@@ -5082,7 +5085,9 @@
 		color: var(--text);
 		box-sizing: border-box;
 		/* DEV-135: 필터 섹션 추가로 길어질 수 있어 모달 자체 스크롤. */
+		/* BUG-264: 위와 같은 이유 — 폴백 후 `dvh`. */
 		max-height: calc(100vh - 4rem);
+		max-height: calc(100dvh - 4rem);
 		overflow-y: auto;
 	}
 	/* DEV-135: 보드 설정 모달 안 필터 섹션. */

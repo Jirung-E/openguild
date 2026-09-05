@@ -423,6 +423,7 @@
 		overflow: hidden;
 		min-height: 12.5rem;
 		max-height: 90vh;
+		max-height: 90dvh;
 		resize: vertical;
 		/* BUG-220: 배경 미지정 + 라이트 테마는 CodeMirror 자체 배경도 없어서,
 		   고정(pin)된 댓글처럼 부모가 틴트 배경(.entry-card.pinned)을 가지면

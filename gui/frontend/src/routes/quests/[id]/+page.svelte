@@ -1565,6 +1565,7 @@
 		align-items: center;
 		justify-content: center;
 		height: 60vh;
+		height: 60dvh;
 		color: var(--text-faint);
 		font-size: 0.9rem;
 	}
@@ -2159,6 +2160,7 @@
 		   작은 창에서 팝업이 그대로 커서 화면에 꽉 차던 문제. */
 		max-width: min(calc(30rem * var(--popup-scale, 1)), 92vw); /* BUG-064 */
 		max-height: 92vh;
+		max-height: 92dvh;
 		overflow-y: auto;
 		padding: 1rem 1.25rem 1rem;
 		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);

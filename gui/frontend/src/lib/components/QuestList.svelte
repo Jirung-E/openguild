@@ -650,7 +650,11 @@
 	.quest-list {
 		display: flex;
 		flex-direction: column;
+		/* BUG-264: `vh` 는 모바일에서 **주소창이 접힌** 높이라 실제로 보이는
+		   영역보다 크다 — 아래쪽이 화면 밖으로 잘린다. `dvh` 는 주소창 상태를
+		   따라간다. 앞줄은 `dvh` 를 모르는 브라우저용 폴백이다. */
 		height: calc(100vh - var(--nav-h, 3.25rem) - var(--titlebar-h, 0px));
+		height: calc(100dvh - var(--nav-h, 3.25rem) - var(--titlebar-h, 0px));
 		position: relative; /* DEV-086: New Quest 절대배치 기준. */
 	}
 

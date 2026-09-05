@@ -1355,6 +1355,7 @@
 			padding-right: 0;
 			padding-bottom: 0.75rem;
 			max-height: 45vh;
+			max-height: 45dvh;
 			overflow-y: auto;
 		}
 	}

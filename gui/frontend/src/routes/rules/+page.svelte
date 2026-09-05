@@ -630,6 +630,7 @@
 			padding-right: 0;
 			padding-bottom: 0.75rem;
 			max-height: 40vh;
+			max-height: 40dvh;
 			overflow-y: auto;
 		}
 	}
