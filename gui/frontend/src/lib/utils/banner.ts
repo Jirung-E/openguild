@@ -73,13 +73,53 @@ export function guildAttachmentsZipUrl(
 	return `${base}/api/quests/by/${id}/attachments.zip`;
 }
 
+/**
+ * BUG-263: URL 경로에 그대로 넣으면 안 되는 글자를 세그먼트마다 인코딩한다.
+ * `/` 는 경로 구분자라 남긴다.
+ *
+ * 저장 파일명은 원본 이름을 살리므로(DEV-324) 공백·`#`·`%`·`&` 가 실제로
+ * 들어온다. 특히 `#` 는 조각 구분자라 인코딩하지 않으면 **거기서 잘린 채**
+ * 전혀 다른 경로를 요청하게 된다.
+ */
+export function encodeRelPath(relPath: string): string {
+	return relPath.split('/').map(encodeURIComponent).join('/');
+}
+
+/**
+ * BUG-263: 마크다운이 낸 src → 파일 시스템 경로.
+ *
+ * `markdownFor` 가 목적지를 `<...>` 로 감싸면 marked 는 파싱은 해 주지만
+ * **src 를 퍼센트 인코딩해서** 낸다. Tauri 의 `convertFileSrc` 는 실제 파일
+ * 경로를 받으므로 풀어 줘야 파일을 찾는다.
+ *
+ * **던지지 않는다.** marked 는 `encodeURI` 계열이라 `%` 를 인코딩하지 않고
+ * 그대로 흘린다 — `100%.png` 이면 `%.p` 가 잘못된 이스케이프가 되어
+ * `decodeURI` 가 `URIError` 를 던진다(실측). 그때는 원문이 곧 파일명이다.
+ */
+export function decodeRelPath(src: string): string {
+	try {
+		return decodeURI(src);
+	} catch {
+		// 잘못된 이스케이프 — 인코딩되지 않은 원문으로 본다.
+		return src;
+	}
+}
+
+/**
+ * `.guild/` 상대 경로 → 실제로 로드 가능한 URL.
+ *
+ * **인자는 디코드된 경로여야 한다** — 파일 시스템 경로이자 인코딩의 원본이다.
+ * 마크다운에서 온 값은 퍼센트 인코딩돼 있으므로 호출 전에 풀어야 한다
+ * (BUG-263 — `MarkdownView.rewriteLocalMedia` 참고).
+ */
 export async function guildFileUrl(relPath: string): Promise<string> {
 	if (isTauriLocal()) {
 		const { convertFileSrc } = await import('@tauri-apps/api/core');
 		const root = await localGuildPath();
+		// convertFileSrc 는 **파일 시스템 경로**를 받는다 — 인코딩하면 안 된다.
 		return convertFileSrc(`${root}/.guild/${relPath}`);
 	}
 	// 브라우저 모드(base='') 또는 Tauri+원격(base=원격 URL) — 서버가
 	// attachments/ + assets/ 만 서빙.
-	return `${httpBase()}/api/guild-files/${relPath}`;
+	return `${httpBase()}/api/guild-files/${encodeRelPath(relPath)}`;
 }

@@ -176,15 +176,29 @@ function uploadFromPath(path: string): Upload {
 	};
 }
 
-/** rel 경로 → 본문 삽입용 마크다운. 이미지는 `![]()`, 동영상은 video, 그 외 링크. */
-function markdownFor(rel: string, ext: string, name: string): string {
-	if (IMAGE_EXTS.has(ext)) return `![${name}](${rel})`;
+/**
+ * rel 경로 → 본문 삽입용 마크다운. 이미지는 `![]()`, 동영상은 video, 그 외 링크.
+ *
+ * BUG-263: **목적지를 `<...>` 로 감싼다.** 저장 파일명은 원본 이름을 살리고
+ * (DEV-324), `sanitize_stem` 은 공백을 일부러 남긴다 — 목록에서 알아보라고.
+ * 그런데 CommonMark 에서 꺾쇠 없는 링크 목적지에는 공백이 올 수 없다. 그래서
+ * `![스크린샷 2026.png](attachments/스크린샷 2026-abc.png)` 은 이미지가 아니라
+ * **마크다운 원문이 글자 그대로** 렌더된다(admin 보고).
+ *
+ * `sanitize_stem` 이 `<` / `>` 를 `_` 로 바꾸므로 우리가 만드는 경로에서는
+ * 꺾쇠가 절대 조기 종료되지 않는다.
+ */
+export function markdownFor(rel: string, ext: string, name: string): string {
+	if (IMAGE_EXTS.has(ext)) return `![${name}](<${rel}>)`;
 	if (VIDEO_EXTS.has(ext)) {
 		// marked 는 raw HTML pass-through — MarkdownView 가 video src 재작성.
+		// HTML 속성이라 공백이 그대로 들어가도 안전하다(따옴표로 감싸여 있다).
 		return `<video controls src="${rel}"></video>`;
 	}
-	// pdf 포함 기타 파일 — 다운로드 링크.
-	return `[${name}](${rel})`;
+	// 기타 파일 — 다운로드 링크. 실제 편집기는 비미디어를 첨부 섹션으로 돌리므로
+	// (`attachmentExtension` 의 mediaOnly / onAttach 분기) 지금은 도달하지 않지만,
+	// fallback 이 열리면 위와 같은 이유로 깨진다. 같은 규칙을 지켜 둔다.
+	return `[${name}](<${rel}>)`;
 }
 
 let uploadSeq = 0;

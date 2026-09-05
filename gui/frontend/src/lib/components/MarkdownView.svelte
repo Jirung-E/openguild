@@ -336,7 +336,7 @@
 	// http://tauri.localhost) — `![](attachments/foo.png)` 같은 `.guild/` 상대
 	// 참조를 asset URL (Tauri convertFileSrc) / 서버 endpoint (브라우저) 로
 	// 재작성. 웹 URL (http/https/data/asset) 은 그대로 통과.
-	import { guildFileUrl } from '$lib/utils/banner';
+	import { guildFileUrl, decodeRelPath } from '$lib/utils/banner';
 	function isExternalSrc(src: string): boolean {
 		return /^(https?:|data:|asset:|blob:|\/api\/)/i.test(src) || src.startsWith('//');
 	}
@@ -348,7 +348,9 @@
 			if (!src || isExternalSrc(src) || el.dataset.ogRewritten) continue;
 			// 절대 OS 경로 (`C:\...` / `/home/...`) 는 보안상 미지원 — `.guild/`
 			// 상대 (attachments/ / assets/) 만. 그 외는 그대로 (깨진 이미지 표시).
-			const rel = src.replace(/^\.\//, '');
+			// BUG-263: 목적지를 `<...>` 로 감싸면(공백 있는 파일명) marked 가 src 를
+			// 퍼센트 인코딩해 낸다. 아래는 파일 경로로 쓰이므로 먼저 푼다.
+			const rel = decodeRelPath(src.replace(/^\.\//, ''));
 			if (!rel.startsWith('attachments/') && !rel.startsWith('assets/')) continue;
 			try {
 				const url = await guildFileUrl(rel);
