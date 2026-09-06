@@ -1,6 +1,6 @@
 +++
 created_at = "2026-06-23T01:30:44+09:00"
-updated_at = "2026-09-04T19:28:30+09:00"
+updated_at = "2026-09-06T19:17:01+09:00"
 +++
 # 릴리즈 패키지 절차
 
@@ -42,6 +42,20 @@ updated_at = "2026-09-04T19:28:30+09:00"
 `plugin_json_version_tracks_crate_version` 이 이제 이걸 막는다.
 
 후속 quest 후보: 한 곳 (`[workspace.package]`) 에서 관리하도록 통합.
+
+### 릴리스 후 확인 — 스킬이 실제로 갱신되는가
+
+설치된 스킬은 앱이 번들한 `skills/` 에서 `~/.openguild/skill-marketplace/`
+로 동기화된다. **새 버전 앱을 설치한 뒤** 한 줄로 확인한다:
+
+```bash
+grep version ~/.openguild/skill-marketplace/openguild-plugin/.claude-plugin/plugin.json
+```
+
+방금 릴리스한 버전이 나와야 한다. 안 나오면 사용자 쪽 에이전트가 옛 스킬을
+계속 쓰게 되고, **아무 오류도 나지 않는다**(BUG-261 / BUG-267 이 그렇게
+5주를 갔다). 두 버그가 각각 "버전을 안 올림" 과 "mtime 으로 판단함" 을
+고쳤지만, 경로 전체가 도는지는 실제 설치본으로만 확인된다.
 
 ## CHANGELOG
 
