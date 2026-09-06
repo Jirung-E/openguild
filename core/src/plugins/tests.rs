@@ -83,7 +83,7 @@ fn definition_alone_does_not_run() {
     assert!(before.active.is_empty(), "동의 전에 활성화됐다");
     assert_eq!(before.needs_consent.len(), 1);
 
-    consent::grant(&g, &before.needs_consent[0].def).unwrap();
+    consent::grant(&g, &before.needs_consent[0]).unwrap();
     let after = load_for(&g, Scope::Cli);
     assert_eq!(after.active.len(), 1);
     assert!(after.needs_consent.is_empty());
@@ -103,7 +103,7 @@ fn changing_the_definition_revokes_consent() {
     let g = fresh_tmp("rehash");
     write_plugin(&g, "ai-notify", ai_notify(&["cli"]));
     let l = load_for(&g, Scope::Cli);
-    consent::grant(&g, &l.needs_consent[0].def).unwrap();
+    consent::grant(&g, &l.needs_consent[0]).unwrap();
     assert_eq!(load_for(&g, Scope::Cli).active.len(), 1);
 
     // 같은 이름, 다른 목적지.
@@ -284,12 +284,136 @@ fn env_expansion_fails_loudly_when_unset() {
     assert!(expand_env("${OG_TEST_PLUGIN_VAR}").is_err());
 }
 
+// ── 스크립트 적재 ([[DEV-376]]) ─────────────────────────
+
+fn with_script(scope: &[&str], rel: &str) -> serde_json::Value {
+    json!({
+        "name": "ai-notify",
+        "on": ["quest.created"],
+        "scope": scope,
+        "action": { "post": { "url": "https://example.test/hook" } },
+        "script": rel
+    })
+}
+
+fn write_script(guild: &Path, plugin: &str, rel: &str, src: &str) {
+    let p = plugins_dir(guild).join(plugin).join(rel);
+    std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+    std::fs::write(p, src).unwrap();
+}
+
+/// 문법 오류는 **적재 때** 걸린다 — 첫 이벤트 때 걸리면 이미 늦다.
+#[test]
+fn a_broken_script_stops_that_plugin_at_load() {
+    let _guard = env_lock();
+    let home = fresh_tmp("script-home");
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let g = fresh_tmp("script");
+    write_plugin(&g, "ai-notify", with_script(&["cli"], "t.rhai"));
+    write_script(&g, "ai-notify", "t.rhai", "fn should_send(e) { ");
+    write_plugin(&g, "plain", {
+        let mut v = ai_notify(&["cli"]);
+        v["name"] = json!("plain");
+        v
+    });
+    consent::trust_guild(&g).unwrap();
+
+    let l = load_for(&g, Scope::Cli);
+    assert_eq!(
+        l.active.len(),
+        1,
+        "깨진 스크립트 때문에 멀쩡한 것이 안 실렸다"
+    );
+    assert_eq!(l.active[0].def.name, "plain");
+    assert_eq!(l.errors.len(), 1);
+    assert!(l.errors[0].1.contains("컴파일"), "{:?}", l.errors);
+
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 스크립트 파일이 아예 없으면 그 플러그인은 안 돈다 — 판단 계층이 빠진 채로
+/// 돌면 안 보낼 것을 보내게 된다.
+#[test]
+fn a_missing_script_stops_that_plugin() {
+    let _guard = env_lock();
+    let home = fresh_tmp("noscript-home");
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let g = fresh_tmp("noscript");
+    write_plugin(&g, "ai-notify", with_script(&["cli"], "gone.rhai"));
+    consent::trust_guild(&g).unwrap();
+
+    let l = load_for(&g, Scope::Cli);
+    assert!(l.active.is_empty());
+    assert_eq!(l.errors.len(), 1);
+
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// `script` 는 플러그인 폴더를 벗어날 수 없다 — 정의만으로 임의 파일을
+/// 컴파일 대상으로 지정할 수 있으면 안 된다.
+#[test]
+fn script_path_cannot_escape_the_plugin_dir() {
+    for bad in ["../../secret.rhai", "/etc/passwd"] {
+        let mut d = def(Action::Post {
+            url: "https://x.test".into(),
+            headers: Default::default(),
+        });
+        d.script = Some(bad.into());
+        let e = validate(&d).unwrap_err().to_string();
+        assert!(e.contains("상대 경로"), "{bad}: {e}");
+    }
+    let mut ok = def(Action::Post {
+        url: "https://x.test".into(),
+        headers: Default::default(),
+    });
+    ok.script = Some("sub/transform.rhai".into());
+    assert!(validate(&ok).is_ok());
+}
+
+/// **스크립트를 갈아끼우면 다시 묻는다.** `plugin.json` 은 그대로인데
+/// 보내는 내용만 바뀌는 길이 있으면 동의가 헐거워진다.
+#[test]
+fn changing_only_the_script_revokes_consent() {
+    let _guard = env_lock();
+    let home = fresh_tmp("rescript-home");
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let g = fresh_tmp("rescript");
+    write_plugin(&g, "ai-notify", with_script(&["cli"], "t.rhai"));
+    write_script(
+        &g,
+        "ai-notify",
+        "t.rhai",
+        "fn payload(e) { #{ id: e.quest.id } }",
+    );
+
+    let l = load_for(&g, Scope::Cli);
+    consent::grant(&g, &l.needs_consent[0]).unwrap();
+    assert_eq!(load_for(&g, Scope::Cli).active.len(), 1);
+
+    // 정의는 그대로. 실어 보내는 내용만 통째로 바뀐다.
+    write_script(&g, "ai-notify", "t.rhai", "fn payload(e) { e }");
+    let after = load_for(&g, Scope::Cli);
+    assert!(
+        after.active.is_empty(),
+        "스크립트가 바뀌었는데 그대로 돌았다"
+    );
+    assert_eq!(after.needs_consent.len(), 1);
+
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
 // ── 적재 → 실행 연결 ────────────────────────────────────
 
 #[derive(Default)]
 struct Rec(std::sync::Mutex<Vec<String>>);
 impl runtime::Delivery for Rec {
-    fn deliver(&self, p: &Plugin, e: &crate::events::Event) {
+    fn deliver(&self, p: &Plugin, e: &crate::events::Event, _b: &serde_json::Value) {
         self.0
             .lock()
             .unwrap()

@@ -31,6 +31,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use super::Plugin;
+use super::script::Decision;
 
 /// 이벤트를 실제로 밖으로 내보내는 쪽. [[DEV-377]] 이 HTTP/프로세스 구현을
 /// 넣는다. 여기서 분리해 두는 이유는 **적재와 전달을 따로 검증**하기
@@ -39,13 +40,16 @@ pub trait Delivery: Send + Sync {
     /// 한 건을 내보낸다. 전용 스레드에서 불리므로 **여기서는 기다려도 된다** —
     /// mutation 경로는 이미 지나갔다. 대신 무한정 붙들면
     /// [`drain`](PluginRuntime::drain) 이 포기하게 되므로 시한은 둬야 한다.
-    fn deliver(&self, plugin: &Plugin, event: &Event);
+    ///
+    /// `body` 는 스크립트([[DEV-376]])가 만든 모양이거나, 스크립트가 없으면
+    /// 이벤트 JSON 그대로다. `event` 는 이름·phase 같은 메타를 볼 때 쓴다.
+    fn deliver(&self, plugin: &Plugin, event: &Event, body: &serde_json::Value);
 }
 
 /// 아무 데도 안 보내는 구현 — 전달이 아직 없을 때(1단계 조립 중)와 테스트용.
 pub struct DropDelivery;
 impl Delivery for DropDelivery {
-    fn deliver(&self, _plugin: &Plugin, _event: &Event) {}
+    fn deliver(&self, _plugin: &Plugin, _event: &Event, _body: &serde_json::Value) {}
 }
 
 /// 아직 안 나간 건수. 0 이 되면 기다리던 쪽을 깨운다.
@@ -153,9 +157,21 @@ impl PluginRuntime {
                     let p = &ps[job.plugin];
                     // 하나가 패닉해도 다음 일감은 계속 간다. 플러그인 정의는
                     // 사용자 입력이고 전달 구현은 외부와 말한다 — 둘 다 믿을 수
-                    // 없다.
+                    // 없다. 스크립트도 사용자 코드라 같은 울타리 안에 둔다.
                     let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        delivery.deliver(p, &job.event);
+                        // 판단·가공이 먼저다 — 보낼지조차 스크립트가 정한다.
+                        let body = match p.compiled.as_deref() {
+                            None => job.event.to_json(),
+                            Some(sc) => match sc.decide(&job.event) {
+                                Ok(Decision::Send(v)) => v,
+                                Ok(Decision::Skip) => return,
+                                Err(e) => {
+                                    note(&log, format!("플러그인 '{}' 스크립트 — {e}", p.def.name));
+                                    return;
+                                }
+                            },
+                        };
+                        delivery.deliver(p, &job.event, &body);
                     }));
                     if r.is_err() {
                         note(
@@ -252,7 +268,17 @@ mod tests {
                 script: None,
             },
             dir: std::path::PathBuf::from("/tmp/none"),
+            compiled: None,
+            script_src: None,
         }
+    }
+
+    fn scripted(name: &str, on: &[&str], src: &str) -> Plugin {
+        let mut p = plugin(name, on);
+        p.compiled = Some(Arc::new(
+            crate::plugins::script::Script::compile_source(src).unwrap(),
+        ));
+        p
     }
 
     fn event(name: &'static str, phase: Phase) -> Event {
@@ -270,14 +296,14 @@ mod tests {
     #[derive(Default)]
     struct Counter(AtomicUsize);
     impl Delivery for Counter {
-        fn deliver(&self, _p: &Plugin, _e: &Event) {
+        fn deliver(&self, _p: &Plugin, _e: &Event, _b: &serde_json::Value) {
             self.0.fetch_add(1, Ordering::SeqCst);
         }
     }
 
     struct Exploding;
     impl Delivery for Exploding {
-        fn deliver(&self, _p: &Plugin, _e: &Event) {
+        fn deliver(&self, _p: &Plugin, _e: &Event, _b: &serde_json::Value) {
             panic!("전달 실패");
         }
     }
@@ -332,7 +358,7 @@ mod tests {
     fn a_panicking_plugin_does_not_stop_the_others() {
         struct Mixed(Arc<AtomicUsize>);
         impl Delivery for Mixed {
-            fn deliver(&self, p: &Plugin, _e: &Event) {
+            fn deliver(&self, p: &Plugin, _e: &Event, _b: &serde_json::Value) {
                 if p.def.name == "bad" {
                     panic!("펑");
                 }
@@ -368,7 +394,7 @@ mod tests {
     fn dispatch_does_not_wait_for_delivery() {
         struct Slow(Arc<AtomicUsize>);
         impl Delivery for Slow {
-            fn deliver(&self, _p: &Plugin, _e: &Event) {
+            fn deliver(&self, _p: &Plugin, _e: &Event, _b: &serde_json::Value) {
                 std::thread::sleep(Duration::from_millis(400));
                 self.0.fetch_add(1, Ordering::SeqCst);
             }
@@ -390,12 +416,112 @@ mod tests {
         assert_eq!(n.load(Ordering::SeqCst), 1);
     }
 
+    // ── 판단·가공 ([[DEV-376]]) ─────────────────────────
+
+    /// 받은 본문을 그대로 적어 두는 전달 구현.
+    #[derive(Default)]
+    struct Body(Mutex<Vec<serde_json::Value>>);
+    impl Delivery for Body {
+        fn deliver(&self, _p: &Plugin, _e: &Event, b: &serde_json::Value) {
+            self.0.lock().unwrap().push(b.clone());
+        }
+    }
+
+    /// **`should_send` 가 false 면 액션이 호출되지 않는다** — 구독은 했지만
+    /// 판단에서 걸러진다.
+    #[test]
+    fn a_script_can_veto_a_subscribed_event() {
+        let b = Arc::new(Body::default());
+        let rt = PluginRuntime::new(
+            vec![scripted("veto", &["*"], "fn should_send(e) { false }")],
+            b.clone(),
+        );
+        rt.dispatch(event(ev::QUEST_CREATED, Phase::Post));
+        assert!(rt.drain(Duration::from_secs(5)));
+        assert!(b.0.lock().unwrap().is_empty(), "거른 이벤트가 나갔다");
+        assert!(rt.problems().is_empty(), "정상 거름을 문제로 적었다");
+    }
+
+    /// **`payload` 가 만든 모양이 그대로 전달된다.**
+    #[test]
+    fn the_body_is_what_the_script_built() {
+        let b = Arc::new(Body::default());
+        let rt = PluginRuntime::new(
+            vec![scripted(
+                "shape",
+                &["*"],
+                r#"fn payload(e) { #{ kind: e.event, mine: 42 } }"#,
+            )],
+            b.clone(),
+        );
+        rt.dispatch(event(ev::QUEST_CREATED, Phase::Post));
+        assert!(rt.drain(Duration::from_secs(5)));
+        let got = b.0.lock().unwrap().clone();
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0]["kind"], "quest.created");
+        assert_eq!(got[0]["mine"], 42);
+    }
+
+    /// 스크립트가 없으면 이벤트 JSON 이 그대로 간다.
+    #[test]
+    fn without_a_script_the_event_json_is_the_body() {
+        let b = Arc::new(Body::default());
+        let rt = PluginRuntime::new(vec![plugin("plain", &["*"])], b.clone());
+        rt.dispatch(event(ev::QUEST_CREATED, Phase::Post));
+        assert!(rt.drain(Duration::from_secs(5)));
+        assert_eq!(b.0.lock().unwrap()[0]["event"], "quest.created");
+    }
+
+    /// **스크립트가 던져도 다른 플러그인은 멀쩡하다.** 그리고 조용히 삼키지
+    /// 않는다.
+    #[test]
+    fn a_throwing_script_does_not_take_the_others_down() {
+        let b = Arc::new(Body::default());
+        let rt = PluginRuntime::new(
+            vec![
+                scripted("bad", &["*"], r#"fn should_send(e) { throw "터짐" }"#),
+                plugin("good", &["*"]),
+            ],
+            b.clone(),
+        );
+        rt.dispatch(event(ev::QUEST_CREATED, Phase::Post));
+        assert!(rt.drain(Duration::from_secs(5)));
+        assert_eq!(
+            b.0.lock().unwrap().len(),
+            1,
+            "앞 스크립트가 죽자 뒤가 안 갔다"
+        );
+        assert_eq!(rt.problems().len(), 1, "스크립트 오류를 조용히 삼켰다");
+        assert!(rt.problems()[0].contains("터짐"), "{:?}", rt.problems());
+    }
+
+    /// 폭주하는 스크립트도 그 이벤트만 잃는다 — 길드도 다른 플러그인도 안 멈춘다.
+    #[test]
+    fn a_runaway_script_only_loses_its_own_event() {
+        let b = Arc::new(Body::default());
+        let rt = PluginRuntime::new(
+            vec![
+                scripted(
+                    "loop",
+                    &["*"],
+                    "fn should_send(e) { let i = 0; loop { i += 1; } }",
+                ),
+                plugin("good", &["*"]),
+            ],
+            b.clone(),
+        );
+        rt.dispatch(event(ev::QUEST_CREATED, Phase::Post));
+        assert!(rt.drain(Duration::from_secs(20)), "상한에 안 걸렸다");
+        assert_eq!(b.0.lock().unwrap().len(), 1);
+        assert_eq!(rt.problems().len(), 1);
+    }
+
     /// 유예가 짧으면 포기한다 — 무한정 붙들려 CLI 가 안 끝나면 안 된다.
     #[test]
     fn drain_gives_up_when_the_budget_runs_out() {
         struct Stuck;
         impl Delivery for Stuck {
-            fn deliver(&self, _p: &Plugin, _e: &Event) {
+            fn deliver(&self, _p: &Plugin, _e: &Event, _b: &serde_json::Value) {
                 std::thread::sleep(Duration::from_secs(3));
             }
         }

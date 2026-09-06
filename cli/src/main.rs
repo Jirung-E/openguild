@@ -7266,7 +7266,10 @@ fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
                                 if b.path.is_empty() { "" } else { "[" },
                                 b.path,
                                 if b.path.is_empty() { "" } else { "] " },
-                            ) + &b.title, None),
+                            // rhai 가 `Add<_> for String` 을 하나 더 들고
+                            // 오면서 `String + &String` 의 추론이 모호해졌다
+                            // ([[DEV-376]]). `&str` 로 못 박는다.
+                            ) + b.title.as_str(), None),
                         ]
                     })
                     .collect();

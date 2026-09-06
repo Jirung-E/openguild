@@ -24,6 +24,7 @@
 
 pub mod consent;
 pub mod runtime;
+pub mod script;
 #[cfg(test)]
 mod tests;
 
@@ -92,6 +93,13 @@ pub struct Plugin {
     pub def: PluginDef,
     /// `.guild/plugins/{name}/` — 스크립트 경로 해석의 기준.
     pub dir: PathBuf,
+    /// DEV-376: 적재 때 컴파일해 둔 판단·가공 스크립트. 문법 오류는 **적재
+    /// 때** 드러나야지 첫 이벤트 때 드러나면 안 된다. 없으면 전부 보내고
+    /// 이벤트 JSON 을 그대로 쓴다.
+    pub compiled: Option<std::sync::Arc<script::Script>>,
+    /// 그 스크립트의 원문 — 동의 지문에 들어간다([`consent`]). 정의만 보면
+    /// 스크립트를 갈아끼우는 것으로 동의를 우회할 수 있다.
+    pub script_src: Option<String>,
 }
 
 impl Plugin {
@@ -170,11 +178,22 @@ pub fn load_for(guild_root: &Path, scope: Scope) -> Loaded {
                     out.out_of_scope.push(def.name);
                     continue;
                 }
+                let (compiled, script_src) = match compile_script(&pdir, &def) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        // 스크립트가 깨졌으면 그 플러그인만 끈다 — 판단
+                        // 계층이 없는 채로 돌면 안 보낼 것을 보내게 된다.
+                        out.errors.push((label, e.to_string()));
+                        continue;
+                    }
+                };
                 let plugin = Plugin {
                     def,
                     dir: pdir.clone(),
+                    compiled,
+                    script_src,
                 };
-                if consent::is_granted(&granted, &plugin.def) {
+                if consent::is_granted(&granted, &plugin) {
                     out.active.push(plugin);
                 } else {
                     out.needs_consent.push(plugin);
@@ -183,6 +202,26 @@ pub fn load_for(guild_root: &Path, scope: Scope) -> Loaded {
         }
     }
     out
+}
+
+/// 정의가 가리키는 스크립트를 읽어 컴파일한다. `script` 가 없으면 둘 다 `None`.
+/// 원문도 함께 돌려준다 — 동의 지문이 그것을 본다.
+type Compiled = (Option<std::sync::Arc<script::Script>>, Option<String>);
+fn compile_script(dir: &Path, def: &PluginDef) -> AppResult<Compiled> {
+    let Some(rel) = def.script.as_deref() else {
+        return Ok((None, None));
+    };
+    let path = dir.join(rel);
+    let src = std::fs::read_to_string(&path).map_err(|e| {
+        AppError::BadRequest(format!(
+            "{}: 스크립트 {} 를 읽지 못했습니다: {e}",
+            def.name,
+            path.display()
+        ))
+    })?;
+    let compiled = script::Script::compile_source(&src)
+        .map_err(|e| AppError::BadRequest(format!("{}: {e}", def.name)))?;
+    Ok((Some(std::sync::Arc::new(compiled)), Some(src)))
 }
 
 /// 파일 하나를 읽고 **검증까지** 한다. 검증에 걸리면 적재하지 않는다.
@@ -229,6 +268,20 @@ pub fn validate(def: &PluginDef) -> AppResult<()> {
             return Err(AppError::BadRequest(format!(
                 "{}: `{pat}` 는 어떤 이벤트와도 맞지 않습니다 — \
                  `openguild plugin events` 로 이름을 확인하세요",
+                def.name
+            )));
+        }
+    }
+    // 스크립트 경로는 플러그인 폴더 안이어야 한다. `../../..` 를 적으면
+    // 정의만으로 임의 파일을 컴파일 대상으로 지정할 수 있게 된다.
+    if let Some(rel) = def.script.as_deref() {
+        let p = Path::new(rel);
+        if p.is_absolute()
+            || p.components()
+                .any(|c| matches!(c, std::path::Component::ParentDir))
+        {
+            return Err(AppError::BadRequest(format!(
+                "{}: `script` 는 플러그인 폴더 안의 상대 경로여야 합니다 (받은 값: {rel})",
                 def.name
             )));
         }

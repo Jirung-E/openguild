@@ -12,6 +12,13 @@
 //! 않는다**([[BUG-267]] 에서 같은 판단을 했다). 정의를 정규화한 JSON 그대로
 //! 저장하면 비교가 정확하고, 덤으로 **사용자가 무엇에 동의했는지 직접 볼 수
 //! 있다**. 플러그인은 길드당 몇 개뿐이라 크기도 문제되지 않는다.
+//!
+//! # 지문에는 스크립트 원문도 들어간다 ([[DEV-376]])
+//!
+//! `plugin.json` 은 그대로 두고 `transform.rhai` 만 고치면 **보내는 내용이
+//! 통째로 바뀐다.** 스크립트에 I/O 는 없지만 이미 동의한 목적지로 무엇을
+//! 실어 보낼지는 정할 수 있다 — 동의의 대상이 정의뿐이면 그 구멍으로
+//! 빠져나간다. 그래서 둘을 함께 본다.
 
 use crate::error::AppResult;
 use serde::{Deserialize, Serialize};
@@ -66,30 +73,38 @@ pub struct Granted {
     pub entries: BTreeMap<String, serde_json::Value>,
 }
 
-/// 정의를 비교용으로 정규화 — 필드 순서에 흔들리지 않게 한다.
-pub fn fingerprint(def: &PluginDef) -> serde_json::Value {
-    serde_json::to_value(def).unwrap_or(serde_json::Value::Null)
+/// 동의 대상을 비교용으로 정규화 — 필드 순서에 흔들리지 않게 한다.
+pub fn fingerprint(def: &PluginDef, script: Option<&str>) -> serde_json::Value {
+    serde_json::json!({
+        "def": serde_json::to_value(def).unwrap_or(serde_json::Value::Null),
+        "script": script,
+    })
 }
 
-/// 이 정의를 돌려도 되나.
+/// 이걸 돌려도 되나.
 ///
-/// **정의가 바뀌면 false 다** — 어제 동의한 것이 오늘 다른 URL 로 보내고
-/// 있을 수 있다. 그게 이 파일이 원문을 들고 있는 이유다.
-pub fn is_granted(granted: &Granted, def: &PluginDef) -> bool {
+/// **정의나 스크립트가 바뀌면 false 다** — 어제 동의한 것이 오늘 다른 URL 로
+/// 보내거나 다른 내용을 실어 보내고 있을 수 있다. 그게 이 파일이 원문을 들고
+/// 있는 이유다.
+pub fn is_granted(granted: &Granted, plugin: &super::Plugin) -> bool {
     if granted.trusted {
         return true;
     }
-    granted.entries.get(&def.name) == Some(&fingerprint(def))
+    granted.entries.get(&plugin.def.name)
+        == Some(&fingerprint(&plugin.def, plugin.script_src.as_deref()))
 }
 
 /// 동의를 남긴다. 호출자(컴포넌트)가 사용자에게 물어본 **뒤에** 부른다 —
 /// 코어는 묻지 않는다(CLI 는 비대화형일 수 있고, GUI 는 대화상자가 있다).
-pub fn grant(guild_root: &Path, def: &PluginDef) -> AppResult<()> {
+pub fn grant(guild_root: &Path, plugin: &super::Plugin) -> AppResult<()> {
     update(|file| {
         file.guilds
             .entry(guild_key(guild_root))
             .or_default()
-            .insert(def.name.clone(), fingerprint(def));
+            .insert(
+                plugin.def.name.clone(),
+                fingerprint(&plugin.def, plugin.script_src.as_deref()),
+            );
     })
 }
 
