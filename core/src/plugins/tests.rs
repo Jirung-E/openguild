@@ -179,6 +179,7 @@ fn scope_must_be_explicit() {
     let mut d = def(Action::Post {
         url: "https://x.test".into(),
         headers: Default::default(),
+        timeout_ms: None,
     });
     d.scope.clear();
     let e = validate(&d).unwrap_err().to_string();
@@ -190,6 +191,7 @@ fn empty_subscription_is_rejected() {
     let mut d = def(Action::Post {
         url: "https://x.test".into(),
         headers: Default::default(),
+        timeout_ms: None,
     });
     d.on.clear();
     assert!(validate(&d).is_err());
@@ -201,6 +203,7 @@ fn unknown_event_name_is_caught_at_load() {
     let mut d = def(Action::Post {
         url: "https://x.test".into(),
         headers: Default::default(),
+        timeout_ms: None,
     });
     d.on = vec!["quest.creted".into()];
     let e = validate(&d).unwrap_err().to_string();
@@ -218,6 +221,7 @@ fn post_with_header(k: &str, v: &str) -> PluginDef {
     def(Action::Post {
         url: "https://x.test".into(),
         headers: h,
+        timeout_ms: None,
     })
 }
 
@@ -250,11 +254,13 @@ fn known_key_prefix_is_rejected_anywhere() {
     let d = def(Action::Post {
         url: "https://api.test/v1?key=sk-abcdef123456".into(),
         headers: Default::default(),
+        timeout_ms: None,
     });
     assert!(validate(&d).is_err());
     let d2 = def(Action::Run {
         command: "curl".into(),
         args: vec!["-H".into(), "Authorization: ghp_xxxxxxxxxxxx".into()],
+        timeout_ms: None,
     });
     assert!(validate(&d2).is_err());
 }
@@ -267,6 +273,7 @@ fn ordinary_values_are_not_flagged() {
     let d = def(Action::Run {
         command: "/usr/local/bin/notify".into(),
         args: vec!["--quiet".into()],
+        timeout_ms: None,
     });
     assert!(validate(&d).is_ok());
 }
@@ -282,6 +289,38 @@ fn env_expansion_fails_loudly_when_unset() {
     unsafe { std::env::remove_var("OG_TEST_PLUGIN_VAR") };
     // 없는 변수를 빈 문자열로 채우면 인증 없이 요청이 나가고 원인을 못 찾는다.
     assert!(expand_env("${OG_TEST_PLUGIN_VAR}").is_err());
+}
+
+/// **`run` 은 임의 실행이다.** 동의 없이는 절대 안 실린다([[DEV-377]]).
+#[test]
+fn a_run_action_never_loads_without_consent() {
+    let _guard = env_lock();
+    let home = fresh_tmp("run-home");
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let g = fresh_tmp("run");
+    write_plugin(
+        &g,
+        "shell",
+        json!({
+            "name": "shell",
+            "on": ["quest.created"],
+            "scope": ["cli"],
+            "action": { "run": { "command": "/usr/local/bin/notify", "args": ["--quiet"] } }
+        }),
+    );
+
+    let before = load_for(&g, Scope::Cli);
+    assert!(before.active.is_empty(), "동의 없이 임의 실행이 실렸다");
+    assert_eq!(before.needs_consent.len(), 1);
+
+    consent::grant(&g, &before.needs_consent[0]).unwrap();
+    let after = load_for(&g, Scope::Cli);
+    assert_eq!(after.active.len(), 1);
+    assert!(matches!(after.active[0].def.action, Action::Run { .. }));
+
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
 }
 
 // ── 스크립트 적재 ([[DEV-376]]) ─────────────────────────
@@ -361,6 +400,7 @@ fn script_path_cannot_escape_the_plugin_dir() {
         let mut d = def(Action::Post {
             url: "https://x.test".into(),
             headers: Default::default(),
+            timeout_ms: None,
         });
         d.script = Some(bad.into());
         let e = validate(&d).unwrap_err().to_string();
@@ -369,6 +409,7 @@ fn script_path_cannot_escape_the_plugin_dir() {
     let mut ok = def(Action::Post {
         url: "https://x.test".into(),
         headers: Default::default(),
+        timeout_ms: None,
     });
     ok.script = Some("sub/transform.rhai".into());
     assert!(validate(&ok).is_ok());
@@ -413,11 +454,17 @@ fn changing_only_the_script_revokes_consent() {
 #[derive(Default)]
 struct Rec(std::sync::Mutex<Vec<String>>);
 impl runtime::Delivery for Rec {
-    fn deliver(&self, p: &Plugin, e: &crate::events::Event, _b: &serde_json::Value) {
+    fn deliver(
+        &self,
+        p: &Plugin,
+        e: &crate::events::Event,
+        _b: &serde_json::Value,
+    ) -> Result<(), String> {
         self.0
             .lock()
             .unwrap()
             .push(format!("{}:{}", p.def.name, e.name));
+        Ok(())
     }
 }
 

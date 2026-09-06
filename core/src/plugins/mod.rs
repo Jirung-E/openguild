@@ -23,6 +23,7 @@
 //! 아무도 답하지 않으면 그 플러그인은 **돌지 않는다**.
 
 pub mod consent;
+pub mod delivery;
 pub mod runtime;
 pub mod script;
 #[cfg(test)]
@@ -54,6 +55,10 @@ pub enum Action {
         url: String,
         #[serde(default)]
         headers: BTreeMap<String, String>,
+        /// 응답을 기다리는 한도(ms). 비동기라 길드는 안 멈추지만 무한정
+        /// 붙들면 전달 스레드가 막힌다. 없으면 [`DEFAULT_TIMEOUT_MS`].
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        timeout_ms: Option<u64>,
     },
     /// 프로세스를 띄우고 이벤트 JSON 을 **stdin** 으로 넘긴다.
     /// 인자로 넘기면 길이 제한과 이스케이프 문제가 생긴다.
@@ -61,7 +66,25 @@ pub enum Action {
         command: String,
         #[serde(default)]
         args: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        timeout_ms: Option<u64>,
     },
+}
+
+/// 전달 시한 기본값. 넉넉하되 무한은 아니다 — AI 응답이 느릴 수 있다.
+pub const DEFAULT_TIMEOUT_MS: u64 = 10_000;
+/// 정의가 아무리 크게 적어도 여기까지. 하나가 스레드를 영원히 잡으면 뒤가 다
+/// 막힌다.
+pub const MAX_TIMEOUT_MS: u64 = 60_000;
+
+impl Action {
+    /// 실제로 쓸 시한.
+    pub fn timeout(&self) -> std::time::Duration {
+        let ms = match self {
+            Action::Post { timeout_ms, .. } | Action::Run { timeout_ms, .. } => *timeout_ms,
+        };
+        std::time::Duration::from_millis(ms.unwrap_or(DEFAULT_TIMEOUT_MS).min(MAX_TIMEOUT_MS))
+    }
 }
 
 impl Action {
@@ -309,12 +332,12 @@ fn check_no_literal_secret(def: &PluginDef) -> AppResult<()> {
         ))
     };
     let strings: Vec<(String, &String)> = match &def.action {
-        Action::Post { url, headers } => {
+        Action::Post { url, headers, .. } => {
             let mut v: Vec<(String, &String)> = vec![("url".into(), url)];
             v.extend(headers.iter().map(|(k, val)| (format!("headers.{k}"), val)));
             v
         }
-        Action::Run { command, args } => {
+        Action::Run { command, args, .. } => {
             let mut v: Vec<(String, &String)> = vec![("command".into(), command)];
             v.extend(
                 args.iter()

@@ -2992,6 +2992,7 @@ dependencies = [
  "chrono",
  "directories",
  "regex",
+ "reqwest 0.12.28",
  "rhai",
  "serde",
  "serde_json",

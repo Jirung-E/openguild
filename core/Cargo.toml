@@ -46,3 +46,13 @@ rhai = { version = "1", default-features = false, features = [
     "sync",
     "no_module",
 ] }
+
+# DEV-377: 플러그인 `post` 전달. **코어가 소유한다** — cli/gui/server 가 각자
+# 구현하면 같은 코드가 셋으로 갈라지고, gui/server 는 어차피 클라이언트를
+# 새로 들여야 한다. cli 와 같은 기능 조합으로 맞춰 TLS 스택이 겹치지 않게 했다.
+# `blocking` 인 이유는 전달이 전용 스레드에서 돌기 때문이다(tokio 밖).
+reqwest = { version = "0.12", default-features = false, features = [
+    "json",
+    "blocking",
+    "rustls-tls",
+] }

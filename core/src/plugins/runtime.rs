@@ -43,13 +43,28 @@ pub trait Delivery: Send + Sync {
     ///
     /// `body` 는 스크립트([[DEV-376]])가 만든 모양이거나, 스크립트가 없으면
     /// 이벤트 JSON 그대로다. `event` 는 이름·phase 같은 메타를 볼 때 쓴다.
-    fn deliver(&self, plugin: &Plugin, event: &Event, body: &serde_json::Value);
+    ///
+    /// 실패는 **돌려준다**. 여기서 삼키면 왜 안 갔는지 알 길이 없어진다 —
+    /// [`PluginRuntime`] 이 받아서 문제 목록에 남긴다.
+    fn deliver(
+        &self,
+        plugin: &Plugin,
+        event: &Event,
+        body: &serde_json::Value,
+    ) -> Result<(), String>;
 }
 
-/// 아무 데도 안 보내는 구현 — 전달이 아직 없을 때(1단계 조립 중)와 테스트용.
+/// 아무 데도 안 보내는 구현 — 테스트와, 전달을 끄고 싶을 때.
 pub struct DropDelivery;
 impl Delivery for DropDelivery {
-    fn deliver(&self, _plugin: &Plugin, _event: &Event, _body: &serde_json::Value) {}
+    fn deliver(
+        &self,
+        _plugin: &Plugin,
+        _event: &Event,
+        _body: &serde_json::Value,
+    ) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 /// 아직 안 나간 건수. 0 이 되면 기다리던 쪽을 깨운다.
@@ -171,7 +186,9 @@ impl PluginRuntime {
                                 }
                             },
                         };
-                        delivery.deliver(p, &job.event, &body);
+                        if let Err(e) = delivery.deliver(p, &job.event, &body) {
+                            note(&log, format!("플러그인 '{}' — {e}", p.def.name));
+                        }
                     }));
                     if r.is_err() {
                         note(
@@ -264,6 +281,7 @@ mod tests {
                 action: Action::Post {
                     url: "https://example.test".into(),
                     headers: Default::default(),
+                    timeout_ms: None,
                 },
                 script: None,
             },
@@ -296,14 +314,15 @@ mod tests {
     #[derive(Default)]
     struct Counter(AtomicUsize);
     impl Delivery for Counter {
-        fn deliver(&self, _p: &Plugin, _e: &Event, _b: &serde_json::Value) {
+        fn deliver(&self, _p: &Plugin, _e: &Event, _b: &serde_json::Value) -> Result<(), String> {
             self.0.fetch_add(1, Ordering::SeqCst);
+            Ok(())
         }
     }
 
     struct Exploding;
     impl Delivery for Exploding {
-        fn deliver(&self, _p: &Plugin, _e: &Event, _b: &serde_json::Value) {
+        fn deliver(&self, _p: &Plugin, _e: &Event, _b: &serde_json::Value) -> Result<(), String> {
             panic!("전달 실패");
         }
     }
@@ -358,11 +377,17 @@ mod tests {
     fn a_panicking_plugin_does_not_stop_the_others() {
         struct Mixed(Arc<AtomicUsize>);
         impl Delivery for Mixed {
-            fn deliver(&self, p: &Plugin, _e: &Event, _b: &serde_json::Value) {
+            fn deliver(
+                &self,
+                p: &Plugin,
+                _e: &Event,
+                _b: &serde_json::Value,
+            ) -> Result<(), String> {
                 if p.def.name == "bad" {
                     panic!("펑");
                 }
                 self.0.fetch_add(1, Ordering::SeqCst);
+                Ok(())
             }
         }
         let n = Arc::new(AtomicUsize::new(0));
@@ -394,9 +419,15 @@ mod tests {
     fn dispatch_does_not_wait_for_delivery() {
         struct Slow(Arc<AtomicUsize>);
         impl Delivery for Slow {
-            fn deliver(&self, _p: &Plugin, _e: &Event, _b: &serde_json::Value) {
+            fn deliver(
+                &self,
+                _p: &Plugin,
+                _e: &Event,
+                _b: &serde_json::Value,
+            ) -> Result<(), String> {
                 std::thread::sleep(Duration::from_millis(400));
                 self.0.fetch_add(1, Ordering::SeqCst);
+                Ok(())
             }
         }
         let n = Arc::new(AtomicUsize::new(0));
@@ -422,8 +453,9 @@ mod tests {
     #[derive(Default)]
     struct Body(Mutex<Vec<serde_json::Value>>);
     impl Delivery for Body {
-        fn deliver(&self, _p: &Plugin, _e: &Event, b: &serde_json::Value) {
+        fn deliver(&self, _p: &Plugin, _e: &Event, b: &serde_json::Value) -> Result<(), String> {
             self.0.lock().unwrap().push(b.clone());
+            Ok(())
         }
     }
 
@@ -516,13 +548,45 @@ mod tests {
         assert_eq!(rt.problems().len(), 1);
     }
 
+    /// **전달 실패를 조용히 삼키지 않는다.** 어디에 보여줄지는 컴포넌트가
+    /// 정하지만, 남기지 않으면 왜 안 갔는지 알 길이 없다.
+    #[test]
+    fn a_delivery_failure_is_recorded() {
+        struct Refusing;
+        impl Delivery for Refusing {
+            fn deliver(
+                &self,
+                _p: &Plugin,
+                _e: &Event,
+                _b: &serde_json::Value,
+            ) -> Result<(), String> {
+                Err("받는 쪽이 죽어 있습니다".into())
+            }
+        }
+        let rt = PluginRuntime::new(vec![plugin("a", &["*"])], Arc::new(Refusing));
+        rt.dispatch(event(ev::QUEST_CREATED, Phase::Post));
+        assert!(rt.drain(Duration::from_secs(5)));
+        assert_eq!(rt.problems().len(), 1, "실패를 삼켰다");
+        assert!(
+            rt.problems()[0].contains("죽어 있습니다"),
+            "{:?}",
+            rt.problems()
+        );
+    }
+
     /// 유예가 짧으면 포기한다 — 무한정 붙들려 CLI 가 안 끝나면 안 된다.
     #[test]
     fn drain_gives_up_when_the_budget_runs_out() {
         struct Stuck;
         impl Delivery for Stuck {
-            fn deliver(&self, _p: &Plugin, _e: &Event, _b: &serde_json::Value) {
+            fn deliver(
+                &self,
+                _p: &Plugin,
+                _e: &Event,
+                _b: &serde_json::Value,
+            ) -> Result<(), String> {
                 std::thread::sleep(Duration::from_secs(3));
+                Ok(())
             }
         }
         let rt = PluginRuntime::new(vec![plugin("stuck", &["*"])], Arc::new(Stuck));
