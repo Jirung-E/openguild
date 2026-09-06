@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
+	import { applyStatusUpdate } from '$lib/utils/quest-detail';
 	// BUG-257: 스크롤 컨테이너는 문서가 아니라 `<main>` 이다.
 	import {
 		pageScrollTop,
@@ -404,7 +405,7 @@
 			// 가진 기본 필드(status_*, updated_at ...)만 새 값으로 바뀌고
 			// 관계·태그·첨부처럼 상태 변경과 무관한 것들은 그대로 남는다.
 			const updated = await questsApi.changeStatus(detail.id, { status_slug: statusSlug });
-			detail = { ...detail, ...updated };
+			detail = applyStatusUpdate(detail, updated);
 			// 피드백: 버튼 체크 + 헤더 뱃지 펄스
 			statusFlashId = statusId;
 			badgePulse += 1;

@@ -196,6 +196,11 @@ jobs:
       - name: check viewport height units
         run: npm run check:viewport
 
+      # DEV-372: 가드가 package.json / justfile / check.yml 세 곳에 모두
+      # 등록됐는지. 한 곳이 빠지면 그 검사는 조용히 안 돌아간다(BUG-251).
+      - name: check guard registration parity
+        run: npm run check:guards
+
       - name: vitest
         run: npm test -- --run
 

@@ -88,7 +88,11 @@ test-frontend:
     cd gui/frontend && npm run check:spacing
     cd gui/frontend && npm run check:font
     cd gui/frontend && npm run check:viewport
+    cd gui/frontend && npm run check:guards
     cd gui/frontend && npm test -- --run
+    # DEV-372: CI 의 마지막 단계. 여기 없으면 `just test` 만 믿었을 때
+    # 프로덕션 빌드가 깨져도 로컬은 통과한다(실제로 그랬다).
+    cd gui/frontend && npm run build
 
 # 전체 테스트 (CI 와 동일)
 test: test-rust test-frontend
