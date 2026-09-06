@@ -1730,6 +1730,20 @@
 		gap: 0.35rem;
 		align-items: center;
 	}
+	/* BUG-266: 탐색기 보기에서 이 줄과 바로 뒤 태그 필터 줄이 딱 붙어 있었다
+	   (admin 보고). `.page` 는 일반 블록이라 자식들이 각자 margin 으로 간격을
+	   만드는데(`.explorer-toolbar` 0.75rem, `.crumbs` 1rem) 이 줄에만 없었다.
+	   사이드바/규칙/퀘스트 목록에서 안 보였던 건 그쪽 부모가 flex `gap` 을
+	   주기 때문이다 — 그래서 `TagFilterRow` 에 `margin-top` 을 다는 대신
+	   여기만 채운다(그쪽은 gap 과 더해져 안 하던 곳까지 벌어진다).
+
+	   **자식 결합자가 중요하다.** `.search-row` 는 이 파일에서 두 번 쓰인다
+	   (탐색기 / 사이드바). 사이드바 쪽은 `.layout > .sidebar` 안이라 여기
+	   걸리지 않는다. 값은 사이드바의 `gap` 과 같게 맞춰 두 보기의 간격이
+	   같아 보이게 한다. */
+	.page > .search-row {
+		margin-bottom: 0.5rem;
+	}
 	.search-row .search-input {
 		/* flex-basis 100% → 항상 자기 줄을 독차지하고 뒤 요소를 밀어낸다. */
 		flex: 1 1 100%;
