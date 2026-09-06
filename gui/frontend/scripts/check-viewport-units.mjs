@@ -11,6 +11,13 @@
 // 앞줄(`vh`)을 쓴다. 뒤집으면 폴백이 이긴다.
 //
 // 검사하지 않는 것: `min-height`. 최소값은 넘쳐도 잘리지 않는다.
+//
+// BUG-265: **큰 뷰포트가 정답인 경우가 있다.** 화면을 꽉 채우는 판(보드·목록)
+// 은 `dvh` 로 딱 맞추면 스크롤할 여유가 0 이 되고, 모바일에서 주소창을 접는
+// 제스처는 곧 문서 스크롤이므로 접을 방법 자체가 사라진다. 그런 자리는 선언
+// **바로 앞**에 `/* check-viewport:large */` 를 붙여 넘긴다. 파일 단위 예외
+// 목록으로 두지 않는 이유는, 왜 큰 뷰포트여야 하는지가 코드 옆에 남아야
+// 다음 사람이 또 기계적으로 `dvh` 로 바꾸지 않기 때문이다.
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -27,8 +34,12 @@ const HAS_DVH = /dvh\b/;
 
 const violations = [];
 
+/** 표식은 선언으로 바꿔 살려 두고(순서를 봐야 한다), 나머지 주석만 지운다. */
+const MARKER_DECL = '-og-viewport-large: 1;';
 function stripComments(css) {
-	return css.replace(/\/\*[\s\S]*?\*\//g, '');
+	return css
+		.replace(/\/\*\s*check-viewport:large\b[\s\S]*?\*\//g, MARKER_DECL)
+		.replace(/\/\*[\s\S]*?\*\//g, '');
 }
 
 function styleBlocks(src) {
@@ -50,6 +61,8 @@ function scan(rel, css) {
 		const d = decls[i];
 		if (!PROPS.includes(d.prop)) continue;
 		if (!RISKY.test(d.value) || HAS_DVH.test(d.value)) continue;
+		// 바로 앞이 표식이면 의도적인 큰 뷰포트다.
+		if (decls[i - 1]?.prop === '-og-viewport-large') continue;
 		const next = decls[i + 1];
 		const ok = next && next.prop === d.prop && HAS_DVH.test(next.value);
 		if (!ok) violations.push(`${rel}  ${d.prop}: ${d.value}`);
@@ -79,6 +92,8 @@ if (violations.length > 0) {
 	console.error('  그만큼 아래쪽이 잘립니다(BUG-264). 같은 속성을 두 번 쓰세요:\n');
 	console.error('    height: calc(100vh - ...);   /* 미지원 브라우저 폴백 — 먼저 */');
 	console.error('    height: calc(100dvh - ...);\n');
+	console.error('  큰 뷰포트가 의도라면(주소창 접기 여유 — BUG-265) 선언 바로 앞에');
+	console.error('  이유를 적은 `/* check-viewport:large */` 주석을 두세요.\n');
 	for (const v of violations) console.error('  ' + v);
 	process.exit(1);
 }

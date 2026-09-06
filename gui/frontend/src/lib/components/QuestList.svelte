@@ -650,11 +650,16 @@
 	.quest-list {
 		display: flex;
 		flex-direction: column;
-		/* BUG-264: `vh` 는 모바일에서 **주소창이 접힌** 높이라 실제로 보이는
-		   영역보다 크다 — 아래쪽이 화면 밖으로 잘린다. `dvh` 는 주소창 상태를
-		   따라간다. 앞줄은 `dvh` 를 모르는 브라우저용 폴백이다. */
+		/* check-viewport:large — BUG-265: 여기는 **일부러 큰 뷰포트**다.
+		   `dvh` 는 지금 보이는 높이라 화면에 딱 맞고, 딱 맞으면 스크롤할 여유가
+		   0 이 된다. 모바일에서 주소창을 접는 제스처는 곧 문서 스크롤이므로,
+		   여유가 없으면 **주소창을 접을 방법 자체가 사라진다**(BUG-264 에서
+		   기계적으로 dvh 로 바꿨다가 실제로 그렇게 됐다 — admin 보고).
+		   `vh` 는 주소창이 접힌 높이라 보이는 동안 그만큼 여유가 생기고, 그
+		   여유를 끌어올리는 것이 정확히 주소창을 접는 동작이다. 접히고 나면
+		   높이가 딱 맞아떨어진다.
+		   모달·팝업은 정반대다 — 보이는 영역 안에 들어가야 하므로 dvh 를 쓴다. */
 		height: calc(100vh - var(--nav-h, 3.25rem) - var(--titlebar-h, 0px));
-		height: calc(100dvh - var(--nav-h, 3.25rem) - var(--titlebar-h, 0px));
 		position: relative; /* DEV-086: New Quest 절대배치 기준. */
 	}
 
