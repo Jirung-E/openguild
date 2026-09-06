@@ -4,7 +4,8 @@
 //! 이 모듈은 sqlx / DB 와 무관. 순수 파일 IO + (de)serialization.
 //! index.db 캐시 갱신은 호출자 (services) 의 몫.
 //!
-//! 설계 근거: `docs/storage-design.md`.
+//! 설계 근거: 길드 규칙 `file-truth-db-cache` + 도서관 BOOK-001
+//! (`openguild rule show file-truth-db-cache` / `openguild library show BOOK-001`).
 
 pub mod auto;
 pub mod campaign;

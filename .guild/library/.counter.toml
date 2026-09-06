@@ -1,4 +1,4 @@
 # WARNING: auto-managed file. Do not edit it by hand.
 # last_number is a monotonic counter that keeps issued BOOK IDs from being reused.
 
-last_number = 2
+last_number = 3

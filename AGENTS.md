@@ -66,7 +66,8 @@ Co-Authored-By: ... (해당 시)
 
 ### Dogfood — openguild 자체로 작업 관리
 
-저장소 설계 (`docs/storage-design.md`) 13/13 완료 (2026-05-17).
+저장소 설계 13/13 완료 (2026-05-17). 근거는 길드 규칙 `file-truth-db-cache`
+와 도서관 BOOK-001.
 앞으로 할 일 / 진행 상태 추적은 **openguild 자체 (CLI / GUI) 로** 관리.
 
 - `.guild/quests/*.md` 가 진리원 (git tracked).
@@ -138,7 +139,7 @@ openguild/
 │   ├── icons/          ← placeholder (PowerShell 생성)
 │   └── frontend/       ← Svelte 5 + SvelteKit static (HTTP / Tauri 양쪽)
 ├── justfile            ← dev/build/test 단축
-└── docs/               ← 기획·설계·사용 문서
+└── docs/               ← 사용자 문서 (USAGE) — 설계·규칙은 길드에
 ```
 
 ## 문서 인덱스
@@ -147,12 +148,17 @@ openguild/
 
 | 문서 | 내용 |
 |---|---|
-| `docs/architecture.md` | 시스템 구조 / API 엔드포인트 / 데이터 모델 / 안전장치 |
-| `docs/architecture-refactor.md` | core 분리 + CLI 로컬 모드 등 구조 변경 이력 / 미래 계획 |
-| `docs/storage-design.md` | 파일 진리원 + SQLite 캐시(`index.db`)/백업(`journal.db` + `snapshots/`) 구조 |
-| `docs/dev-plan.md` | 단계별 개발 계획 + 진행 상태 |
-| `docs/planning.md` | 기획 결정 (용어, MVP 범위, 향후 기능) |
-| `docs/guild-rules.md` | 개발 규칙 (커밋·브랜치·백/프론트 컨벤션) |
+| `docs/USAGE.md` | 사용자 매뉴얼 — 앱에 번들되고 `openguild docs show usage` 로도 열린다 |
+
+**설계·규칙 문서는 저장소가 아니라 길드에 있다**(DEV-371). `docs/` 에는 앱에
+번들되는 사용자 문서만 남긴다 — 규칙이 두 곳에 있으면 어긋나도 아무도 모른다.
+
+| 찾는 것 | 어디서 |
+|---|---|
+| 개발 규칙 (커밋·브랜치·컨벤션·테마·배율·릴리스…) | `openguild rule list` / `rule show <slug>` |
+| 아키텍처, 설계 배경, 조사 기록 | `openguild library list` / `library show BOOK-00N` |
+| API 엔드포인트 | 코드가 정본 — `server/src/routes/mod.rs` |
+| 진행 중인 일 / 계획 | `openguild quest list` · `campaign list` |
 
 ### Agent 가 openguild **를 사용** 할 때 (도구로 작업 관리)
 

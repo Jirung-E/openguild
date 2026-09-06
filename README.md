@@ -2,7 +2,7 @@
 A project issue tracker.
 
 > **Status: Beta 1.0.0 (in progress)** — Active milestone tracked in
-> campaign `C-001`. See [`docs/dev-plan.md`](./docs/dev-plan.md) for roadmap.
+> campaign `C-001`. Roadmap lives in the guild — `openguild campaign list`.
 
 ## Terminology
 | Term | Description |
@@ -118,11 +118,15 @@ Claude Code:
 |---|---|---|
 | [`AGENTS.md`](./AGENTS.md) | AI agent | Index — points to other docs |
 | `skills/openguild-plugin/skills/openguild/` | AI agent | How an agent uses openguild as a task management tool (Claude Code skill — see [Agent skill](#agent-skill-claude-code) above) |
-| [`docs/architecture.md`](./docs/architecture.md) | Developers | System architecture, API endpoints, data model |
-| [`docs/storage-design.md`](./docs/storage-design.md) | Developers | File-as-truth + SQLite cache + AOF/RDB design |
-| [`docs/dev-plan.md`](./docs/dev-plan.md) | Developers | Roadmap, progress |
-| [`docs/planning.md`](./docs/planning.md) | Developers | Design decisions, terminology, MVP scope |
-| [`docs/guild-rules.md`](./docs/guild-rules.md) | Developers | Coding / commit / branch conventions |
+
+Design notes and development rules live **in the guild itself**, not in this
+repo — a rule that exists in two places drifts silently. Browse them with the
+CLI:
+
+```bash
+openguild rule list            # commit/branch, conventions, theme, UI scale, release…
+openguild library list         # architecture, design records, investigations
+```
 
 
 ## Development
@@ -191,7 +195,7 @@ doesn't use that table.
 프로젝트 이슈 트래커.
 
 > **상태: Beta 1.0.0 (진행 중)** — 활성 마일스톤은 캠페인 `C-001` 으로 추적.
-> 로드맵은 [`docs/dev-plan.md`](./docs/dev-plan.md).
+> 로드맵은 길드에 있다 — `openguild campaign list`.
 
 ## 용어 설명
 | 용어 | 설명 |
@@ -306,11 +310,14 @@ openguild campaign checklist check C-001 1
 |---|---|---|
 | [`AGENTS.md`](./AGENTS.md) | AI agent | 인덱스 — 다른 문서로 가는 진입점 |
 | `skills/openguild-plugin/skills/openguild/` | AI agent | agent 가 openguild 를 작업 관리 도구로 사용하는 방법 (Claude Code 스킬 — 위 [에이전트 스킬](#에이전트-스킬-claude-code) 참고) |
-| [`docs/architecture.md`](./docs/architecture.md) | 개발자 | 시스템 구조, API 엔드포인트, 데이터 모델 |
-| [`docs/storage-design.md`](./docs/storage-design.md) | 개발자 | 파일 진리원 + SQLite 캐시 + AOF/RDB 설계 |
-| [`docs/dev-plan.md`](./docs/dev-plan.md) | 개발자 | 단계별 개발 계획 + 진행 상태 |
-| [`docs/planning.md`](./docs/planning.md) | 개발자 | 기획 결정, 용어, MVP 범위 |
-| [`docs/guild-rules.md`](./docs/guild-rules.md) | 개발자 | 커밋·브랜치·코드 컨벤션 |
+
+설계 배경과 개발 규칙은 저장소가 아니라 **길드 안에** 있다 — 같은 규칙이 두
+곳에 있으면 어긋나도 아무도 모른다. CLI 로 본다:
+
+```bash
+openguild rule list            # 커밋·브랜치, 컨벤션, 테마, 배율, 릴리스…
+openguild library list         # 아키텍처, 설계 기록, 조사 기록
+```
 
 
 ## 개발 환경 실행

@@ -1,4 +1,20 @@
-# openguild 소프트웨어 아키텍처
++++
+book_id = "BOOK-003"
+title = "openguild 아키텍처 (구조 / 결정 기록)"
+path = ""
+created_at = "2026-09-06T19:42:06+09:00"
+updated_at = "2026-09-06T19:42:06+09:00"
+deleted = false
++++
+
+# openguild 아키텍처
+
+> [[DEV-371]] 에서 `docs/architecture.md` 를 여기로 옮겼다. 설계 배경은
+> 길드가 들고 있는 편이 낫다 — 저장소의 `docs/` 는 앱에 번들되는 사용자
+> 문서(README / USAGE / CHANGELOG)만 남겼다.
+>
+> **이 문서는 구조와 결정의 기록이다.** 목록·수치처럼 코드에서 곧바로
+> 확인되는 것은 코드를 가리키고, 여기서는 왜 그렇게 되어 있는지를 적는다.
 
 ## 전체 구조
 
@@ -352,90 +368,20 @@ openguild/
 >
 > 자세한 설계 근거: `docs/architecture-refactor.md`, `docs/storage-design.md`.
 
-## API 엔드포인트 (현재 구현)
+## API 엔드포인트
 
-### Quest 도메인
+**여기에 목록을 두지 않는다.** 정본은 `server/src/routes/mod.rs` 다.
 
-| Method | Path | 설명 |
-|---|---|---|
-| GET    | `/health` | 서버 상태 |
-| GET    | `/api/quest-types` | Quest 타입 목록 |
-| GET    | `/api/quest-statuses` | Quest 상태 목록 |
-| GET    | `/api/quests` | Quest 목록 (생성 역순) |
-| POST   | `/api/quests` | Quest 생성 |
-| GET    | `/api/quests/:id` | Quest 상세 (sub_quests, prerequisites, position 포함) |
-| PATCH  | `/api/quests/:id` | Quest 수정 (title / description / urgency) |
-| DELETE | `/api/quests/:id?cascade=ID,ID` | Quest 삭제 (선택적 cascade) |
-| GET    | `/api/quests/by/:slug` | slug 로 상세 조회 (예: `DEV-001`) |
-| PATCH  | `/api/quests/:id/status` | 상태 변경 |
-| PATCH  | `/api/quests/:id/parent` | 부모 변경 (`null` 로 분리) |
-| GET    | `/api/quests/:id/candidates?relation=parent\|sub\|prereq` | 관계 추가 후보 |
-| POST   | `/api/quests/:id/prerequisites` | 선행 퀘스트 추가 |
-| DELETE | `/api/quests/:id/prerequisites/:prereq_id` | 선행 퀘스트 제거 |
-| PUT    | `/api/quests/:id/position` | Quest Board 노드 위치 저장 |
-| GET    | `/api/quest-positions` | 모든 노드 위치 (alive quest 만) |
-| GET    | `/api/quest-dependencies` | 모든 선행 관계 (양 끝 alive 만) |
-| GET    | `/api/deleted-quests` | soft deleted 퀘스트 목록 |
-| PATCH  | `/api/quests/:id/restore` | soft delete 취소 (alive 복원) |
-| GET    | `/api/quests/:id/history` | DEV-013: 상태 / 타입 변경 이력 |
-| PATCH  | `/api/quests/:id/type` | DEV-055: type 변경 (slug 바뀜, 관련 파일 cascade) |
-| PATCH  | `/api/quests/:id/due` | DEV-076: desired_due / required_due 설정·해제 |
-| PATCH  | `/api/quests/:id/tags` | DEV-068: 태그 전체 교체 (body `{tags: string[]}`) |
-| GET    | `/api/quests/:id/campaigns` | DEV-011: 이 quest 가 속한 캠페인 목록 |
+예전에는 이 문서가 표로 들고 있었는데, 옮길 시점에 문서 28개 / 실제 88개로
+**60개가 빠져 있었다**(첨부 스트리밍 업로드, 백링크, admin types·statuses,
+캠페인 배너 등). 손으로 유지하는 목록은 계속 벌어진다.
 
-### CLI 원격 파리티 (BUG-231)
+```bash
+grep -oE '"/api/[a-z0-9_{}/.-]+"' server/src/routes/mod.rs | sort -u
+```
 
-| Method | Path | 설명 |
-|---|---|---|
-| GET | `/api/comments` | Quest/Campaign 댓글 횡단 검색 (`author/since/until/grep/discussion/unresolved`) |
-| GET/POST | `/api/templates` | 템플릿 목록/저장 (`force` query로 덮어쓰기) |
-| GET | `/api/templates/:name` | 템플릿 단건 조회 (`quest new --template` 포함) |
-| GET | `/api/tags/used` | Quest/Library에서 실제 사용 중인 태그 목록 |
-
-### Campaign (DEV-011)
-
-| Method | Path | 설명 |
-|---|---|---|
-| GET    | `/api/campaigns` | 목록 (옵션 `?status=active\|done\|planned`) |
-| POST   | `/api/campaigns` | 새 캠페인 (자동 C-NNN slug) |
-| GET    | `/api/campaigns/:slug` | 상세 (체크리스트 + linked quests 포함) |
-| PATCH  | `/api/campaigns/:slug` | 메타 수정 (title / period / status / description / display_order) |
-| DELETE | `/api/campaigns/:slug` | soft delete |
-| POST   | `/api/campaigns/:slug/checklist` | 항목 추가 (body 끝에 `- [ ]` append) |
-| PATCH  | `/api/campaigns/:slug/checklist/:idx` | 1-based 인덱스 항목 체크/언체크 |
-| DELETE | `/api/campaigns/:slug/checklist/:idx` | 항목 삭제 |
-| POST   | `/api/campaigns/:slug/quests` | quest 링크 (body `{quest_slug}`) |
-| DELETE | `/api/campaigns/:slug/quests/:quest_slug` | quest 링크 해제 |
-| GET    | `/api/campaigns/:slug/history` | DEV-226: 캠페인 변경 이력 (quest history 와 대칭) |
-| GET    | `/api/campaigns/summaries` | 목록 화면용 — 전체 캠페인 + 진행률 |
-| GET    | `/api/campaigns/summaries/active` | Home carousel 용 — 진행 중 캠페인 + 진행률 |
-| GET    | `/api/campaigns/summaries/upcoming` | 곧 시작하는 캠페인 (`?days=N`, 기본 7) |
-| GET    | `/api/campaigns/:slug/image` | DEV-087: 배너 이미지 bytes (브라우저 표시용) |
-| POST   | `/api/campaigns/:slug/banner?ext=png` | BUG-255: 배너 설정 — body 가 파일 원문(스트리밍) |
-| DELETE | `/api/campaigns/:slug/banner` | BUG-255: 배너 제거 |
-
-> **BUG-255**: 배너 쓰기는 원래 Tauri 커맨드(로컬 파일 **경로**)뿐이라 원격 /
-> 브라우저에서는 설정도 제거도 못 했다(`GET :slug/image` 로 보기만 됐다).
-> 첨부(BUG-168)와 같이 경로 / bytes 두 경로를 갖추고, 확장자 검증과 옛 배너
-> 제거는 `core::ops::campaigns` 의 `begin_banner_image` / `commit_banner_image`
-> 에서 **공유**한다 — 검증이 두 벌이 되면 한쪽에서만 되는 확장자가 생긴다.
-> 크기 상한은 두지 않는다(경로 경로가 이미 무제한이라 모드별로 갈리면 더 나쁘다).
-
-### Admin (백업 / drift)
-
-> 인증 없음 (MVP). 멀티유저 단계에서 보호 추가.
-
-| Method | Path | 설명 |
-|---|---|---|
-| POST   | `/api/admin/snapshot` | 즉시 snapshot 생성 |
-| GET    | `/api/admin/snapshots` | 사용 가능 snapshot 목록 |
-| POST   | `/api/admin/restore` | `{to?: TS}` snapshot 복원 (미지정 시 최신) |
-| GET    | `/api/admin/drift` | 파일 vs index.db 일치성 검사 |
-| POST   | `/api/admin/reindex` | 파일 → index.db 재구축 |
-| POST   | `/api/admin/vacuum` | index.db VACUUM |
-| GET    | `/api/admin/journal` | journal 최근 작업 목록 (`count` query) |
-| POST   | `/api/admin/counters` | Type 파일/SQL counter 검사 및 선택적 보정 (`fix`) |
-| GET    | `/api/admin/info` | 길드 메타 + index/snapshot/journal 요약 |
+Tauri invoke 쪽 대응은 `gui/frontend/src/lib/api/transport.ts` 의
+`routeToInvoke` 가 1:1 로 들고 있다.
 
 ## 데이터 모델
 
