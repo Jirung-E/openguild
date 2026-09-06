@@ -82,6 +82,9 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
 - 배포 스킬이 갱신되지 않던 문제 — 플러그인 버전 범프 누락(BUG-261)과
   mtime 기준 동기화(BUG-267)
 - core 테스트 간헐 실패 (BUG-250)
+- Welcome placeholder 판정이 디렉터리 존재 여부에 좌우되던 문제 — 정리된 뒤에는
+  recents 의 잔재 항목을 못 알아봐 영영 남았다. macOS CI 간헐 실패의 원인이기도
+  했다 (BUG-270)
 
 ### Known issues
 
