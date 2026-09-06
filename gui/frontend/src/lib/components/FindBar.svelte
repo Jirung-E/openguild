@@ -40,8 +40,34 @@
 	const ALL = 'og-find';
 	const CUR = 'og-find-current';
 
+	/**
+	 * 등록해 둔 Highlight 객체. 지울 때 **레지스트리에서 빼는 것만으로는
+	 * 부족한** 환경이 있어서 참조를 들고 있는다(BUG-268).
+	 */
+	let painted: { name: string; hl: Highlight }[] = [];
+
+	/**
+	 * BUG-268: 찾기 창을 닫아도 강조가 남았다(admin 보고 — 노란색·파란색 둘 다).
+	 *
+	 * `CSS.highlights.delete(name)` 는 분명히 불리고 있었다. jsdom 대역으로
+	 * 확인해도 닫기·Escape·언마운트 세 경로 모두 delete 가 나간다. 그런데도
+	 * 화면에 남는다면 **레지스트리에서 빠져도 다시 그리지 않는** 것이다
+	 * (WebKit 계열에서 알려진 무효화 문제).
+	 *
+	 * 그래서 지우는 순서를 바꾼다: 먼저 Highlight 자체를 **비우고**(Range 를
+	 * 다 빼면 그 자리는 확실히 다시 그려진다) 그다음 레지스트리에서 뺀다.
+	 * 어느 쪽이 듣든 결과는 같고, 남아 있던 Range 참조도 함께 놓아준다.
+	 */
 	function clearHighlights() {
 		if (!canHighlight) return;
+		for (const { hl } of painted) {
+			try {
+				hl.clear();
+			} catch {
+				/* clear 가 없는 구형 구현 — 아래 delete 로 간다. */
+			}
+		}
+		painted = [];
 		try {
 			CSS.highlights.delete(ALL);
 			CSS.highlights.delete(CUR);
@@ -62,9 +88,18 @@
 				else all.push(r);
 			}
 			// 현재 항목은 따로 칠한다 — 나머지와 색이 달라야 어디 있는지 보인다.
-			CSS.highlights.set(ALL, new Highlight(...all));
-			if (curRange) CSS.highlights.set(CUR, new Highlight(curRange));
-			else CSS.highlights.delete(CUR);
+			// BUG-268: 지울 때 쓰려고 참조를 남긴다.
+			painted = [];
+			const allHl = new Highlight(...all);
+			CSS.highlights.set(ALL, allHl);
+			painted.push({ name: ALL, hl: allHl });
+			if (curRange) {
+				const curHl = new Highlight(curRange);
+				CSS.highlights.set(CUR, curHl);
+				painted.push({ name: CUR, hl: curHl });
+			} else {
+				CSS.highlights.delete(CUR);
+			}
 		} catch {
 			/* Range 가 이미 무효 — 다음 재검색에서 낫는다. */
 		}
