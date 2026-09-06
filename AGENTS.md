@@ -158,7 +158,7 @@ openguild/
 
 CLI 사용법/워크플로 패턴/안전장치는 더 이상 별도 문서가 아니라 **스킬
 패키지**(`skills/openguild-plugin/skills/openguild/SKILL.md` +
-`REFERENCE.md`)로 제공된다 — Claude Code 에서 `/plugin marketplace add
+`reference/*.md`)로 제공된다 — Claude Code 에서 `/plugin marketplace add
 ~/.openguild/skill-marketplace` 로 등록. 이 repo 자체를 개발할 때 쓰는
 `.agents/skills/openguild-workflow/`(위 섹션에서 참조하는 것)와는 별개의
 스킬이니 혼동하지 말 것.
@@ -171,6 +171,7 @@ CLI 사용법/워크플로 패턴/안전장치는 더 이상 별도 문서가 �
 | 정비/진단 | `openguild {info, backup new, restore, reindex, migrate-to-files, check counters, check drift, index vacuum, journal tail}` (또는 HTTP admin `/api/admin/*`) |
 | 프론트엔드 | `cd gui/frontend && npm run dev` (또는 `just dev-frontend`) |
 | CLI | `cargo run --bin openguild -- --help` (또는 `target/release/openguild`) |
-| 테스트 전체 | `cargo test --workspace && (cd gui/frontend && npm test -- --run)` |
+| 테스트 전체 | **`just test`** — CI 와 같은 조합(러스트 + 프론트 + `npm run check` + 스타일 가드). 아래 둘만 돌리면 **가드를 건너뛴다** |
+| 러스트만 / 프론트만 | `cargo test --workspace` / `cd gui/frontend && npm test -- --run` |
 
 위 문서에 있는 내용은 여기 중복하지 않는다.

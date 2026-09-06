@@ -117,11 +117,26 @@
 		}
 	}
 
-	/** 현재 항목이 화면 밖이면 스크롤. 칠하기가 안 되는 환경에서도 이건 된다. */
+	/**
+	 * 현재 항목이 화면 밖이면 스크롤. 칠하기가 안 되는 환경에서도 이건 된다.
+	 *
+	 * `paint()` 와 같은 이유로 **던지지 않는다** — 낡은 Range 의 기하를 묻는
+	 * 것은 실패할 수 있고, 스크롤이 한 번 안 되는 것보다 예외가 새는 쪽이
+	 * 나쁘다(`Range.getBoundingClientRect` 가 없는 환경도 있다 — jsdom).
+	 */
 	function revealCurrent() {
+		try {
+			revealCurrentInner();
+		} catch {
+			/* 기하를 못 구했다 — 이동만 건너뛴다. */
+		}
+	}
+
+	function revealCurrentInner() {
 		if (current < 0) return;
 		const r = matchToRange(segments, matches[current]);
 		if (!r) return;
+		if (typeof r.getBoundingClientRect !== 'function') return;
 		const rect = r.getBoundingClientRect();
 		// 높이 0 이면 아직 레이아웃 전이거나 숨겨진 것 — 건드리지 않는다.
 		if (rect.width === 0 && rect.height === 0) return;

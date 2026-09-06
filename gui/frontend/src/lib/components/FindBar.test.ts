@@ -44,6 +44,12 @@ beforeEach(() => {
 		}
 	};
 	document.body.innerHTML = '<main><p>hello world hello</p></main>';
+	// jsdom 의 Range 에는 없다 — 없으면 이동 경로가 조용히 건너뛰어져
+	// "칠했는지" 만 보게 된다. 대역을 세워 실제 경로를 타게 한다.
+	if (!('getBoundingClientRect' in Range.prototype)) {
+		(Range.prototype as unknown as { getBoundingClientRect: () => DOMRect }).getBoundingClientRect =
+			() => ({ top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 }) as DOMRect;
+	}
 });
 
 afterEach(() => {

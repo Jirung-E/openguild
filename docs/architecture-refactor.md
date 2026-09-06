@@ -149,7 +149,7 @@ openguild/
 
 - ✅ 4 binary 모두 빌드 확인 (core lib + openguild + openguild-server + openguild-gui).
 - ✅ frontend HTTP / Tauri 양쪽 동작 (DEV-002 + DEV-004 검증).
-- ✅ `cargo test --workspace` (205) + `npm test` (63) 통과.
+- ✅ `cargo test --workspace` + `npm test` 통과 (0.5.3-beta 기준 796 / 655).
 - ⚪ 회귀 체크리스트 수동 검증 (각 quest 의 "사용자 검증 필요" 절은 quest 별 통과).
 
 ---
