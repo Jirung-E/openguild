@@ -4,6 +4,7 @@
 //! 호출자 (server routes / cli Backend::Local) 가 사용.
 
 use crate::error::AppResult;
+use crate::events::{Phase, names as ev, payload};
 use crate::models::{
     AddPrerequisiteRequest, ChangeParentRequest, ChangeStatusRequest, ChangeTypeRequest,
     CreateQuestRequest, QuestRow, UpdateQuestRequest,
@@ -110,6 +111,12 @@ pub async fn create_quest(store: &Store, body: CreateQuestRequest) -> AppResult<
     }
 
     after_mutation(store).await;
+    // DEV-374: 성공한 뒤에만 낸다. journal 은 위에서 **의도**를 먼저 적었지만
+    // 이벤트는 일어난 일만 실어야 한다.
+    store.emit_post(
+        ev::QUEST_CREATED,
+        || json!({ "quest": payload::quest(&quest) }),
+    );
     Ok(quest)
 }
 
@@ -222,6 +229,10 @@ pub async fn update_quest(store: &Store, id: i64, body: UpdateQuestRequest) -> A
     // REQ-008: 이 문서가 내보내는 cross-link 재계산 — BUG-189 가 doc_history 를
     // 즉시 투영한 것과 같은 이유다(reindex 전까지 반영 안 되면 없는 기능과 같다).
     let _ = crate::ops::backlinks::refresh_for(store, crate::repo::crosslink::DocKind::Quest, &quest.quest_id).await;
+    store.emit_post(
+        ev::QUEST_UPDATED,
+        || json!({ "quest": payload::quest(&quest) }),
+    );
     Ok(quest)
 }
 
@@ -246,6 +257,12 @@ pub async fn set_due_dates(
     let quest = sql::set_due_dates(&store.index_pool, id, desired_due, required_due).await?;
     write_quest_file(store, &quest, false).await?;
     after_mutation(store).await;
+    store.emit_post(ev::QUEST_DUE_CHANGED, || {
+        json!({
+            "quest": payload::quest(&quest),
+            "due": { "desired": quest.desired_due, "required": quest.required_due },
+        })
+    });
     Ok(quest)
 }
 
@@ -315,6 +332,10 @@ pub async fn set_quest_tags(store: &Store, id: i64, tags: Vec<String>) -> AppRes
     // set_quest_tags 에선 sql:: 함수가 따로 없어 write_quest_file 만으로는
     // tags 갱신 안 됨 (existing 보존). 그래서 위에서 직접 frontmatter 수정.
     after_mutation(store).await;
+    store.emit_post(
+        ev::QUEST_TAGS_CHANGED,
+        || json!({ "quest": payload::quest(&quest) }),
+    );
     Ok(quest)
 }
 
@@ -431,6 +452,12 @@ pub async fn change_status(
 
     write_quest_file(store, &quest, false).await?;
     after_mutation(store).await;
+    store.emit_post(ev::QUEST_STATUS_CHANGED, || {
+        json!({
+            "quest": payload::quest(&quest),
+            "change": payload::change(old_status_slug.clone(), quest.status_slug.clone()),
+        })
+    });
     Ok(quest)
 }
 
@@ -555,6 +582,10 @@ pub async fn change_quest_type(
     }
 
     after_mutation(store).await;
+    store.emit_post(
+        ev::QUEST_TYPE_CHANGED,
+        || json!({ "quest": payload::quest(&quest) }),
+    );
     Ok(quest)
 }
 
@@ -597,6 +628,10 @@ pub async fn change_parent(
         }
     }
     after_mutation(store).await;
+    store.emit_post(
+        ev::QUEST_PARENT_CHANGED,
+        || json!({ "quest": payload::quest(&quest) }),
+    );
     Ok(quest)
 }
 
@@ -607,6 +642,18 @@ pub async fn change_parent(
 /// - 삭제 대상과 prerequisite 관계로 연결된 alive quest 들: Prerequisites / Successors
 ///   표시에서 삭제 대상이 빠지도록 양쪽 파일 갱신.
 pub async fn delete_quest(store: &Store, id: i64, cascade_ids: &[i64]) -> AppResult<()> {
+    // DEV-374: 삭제 뒤에는 무엇이었는지 알 수 없다 — 지우기 **전에** 잡아 둔다.
+    // 구독자가 없으면 이 조회도 하지 않는다.
+    let doomed = if store.events_wanted(ev::QUEST_DELETED, Phase::Post)
+        || store.events_wanted(ev::QUEST_DELETED, Phase::Pre)
+    {
+        sql::fetch_by_id(&store.index_pool, id).await.ok()
+    } else {
+        None
+    };
+    if let Some(q) = &doomed {
+        store.emit_pre(ev::QUEST_DELETED, || json!({ "quest": payload::quest(q) }));
+    }
     let _ = journal::append(
         &store.journal_pool,
         "delete_quest",
@@ -694,6 +741,10 @@ pub async fn delete_quest(store: &Store, id: i64, cascade_ids: &[i64]) -> AppRes
         }
     }
     after_mutation(store).await;
+    store.emit_post(ev::QUEST_DELETED, || match &doomed {
+        Some(q) => json!({ "quest": payload::quest(q) }),
+        None => json!({}),
+    });
     Ok(())
 }
 
@@ -736,6 +787,10 @@ pub async fn restore_quest(store: &Store, id: i64) -> AppResult<QuestRow> {
         }
     }
     after_mutation(store).await;
+    store.emit_post(
+        ev::QUEST_RESTORED,
+        || json!({ "quest": payload::quest(&quest) }),
+    );
     Ok(quest)
 }
 
@@ -761,6 +816,10 @@ pub async fn add_prerequisite(
     let prereq = sql::fetch_by_id(&store.index_pool, prereq_id).await?;
     write_quest_file(store, &prereq, false).await?;
     after_mutation(store).await;
+    store.emit_post(
+        ev::QUEST_PREREQ_ADDED,
+        || json!({ "quest": payload::quest(&quest), "prerequisite": payload::quest(&prereq) }),
+    );
     Ok(())
 }
 
@@ -775,13 +834,25 @@ pub async fn remove_prerequisite(store: &Store, id: i64, prereq_id: i64) -> AppR
     .map_err(crate::error::AppError::Internal)?;
 
     sql::remove_prerequisite(&store.index_pool, id, prereq_id).await?;
-    if let Ok(q) = sql::fetch_by_id(&store.index_pool, id).await {
-        write_quest_file(store, &q, false).await?;
+    let removed_self = sql::fetch_by_id(&store.index_pool, id).await.ok();
+    if let Some(q) = &removed_self {
+        write_quest_file(store, q, false).await?;
     }
-    if let Ok(prereq) = sql::fetch_by_id(&store.index_pool, prereq_id).await {
-        write_quest_file(store, &prereq, false).await?;
+    let removed_prereq = sql::fetch_by_id(&store.index_pool, prereq_id).await.ok();
+    if let Some(prereq) = &removed_prereq {
+        write_quest_file(store, prereq, false).await?;
     }
     after_mutation(store).await;
+    store.emit_post(ev::QUEST_PREREQ_REMOVED, || {
+        let mut m = serde_json::Map::new();
+        if let Some(q) = &removed_self {
+            m.insert("quest".into(), payload::quest(q));
+        }
+        if let Some(p) = &removed_prereq {
+            m.insert("prerequisite".into(), payload::quest(p));
+        }
+        serde_json::Value::Object(m)
+    });
     Ok(())
 }
 

@@ -11,6 +11,7 @@
 //! 파일이 진리원, DB 는 snapshot 백업 + 빠른 쿼리용 캐시. quest 가 index.db 에
 //! 없으면 (drift 상태) DB UPSERT 는 silently skip — 다음 reindex 가 일관시킴.
 
+use crate::events::{names as ev, payload};
 use serde_json::json;
 
 use crate::error::{AppError, AppResult};
@@ -197,6 +198,14 @@ pub async fn add_comment_entry(
     // REQ-003: 사이드카 전체를 읽고 → 고치고 → 통째로 덮어쓴다. 같은 문서에
     // 동시 요청 2건이면 나중 쓰기가 먼저 것을 지운다. 프로세스 안에서 직렬화한다.
     let _w = store.write_lock.lock().await;
+    // DEV-374: 관찰 pre — 저장 **직전**. 아직 id 가 없으므로 요청 내용만 싣는다.
+    // `ok`/`error` 는 붙지 않는다(결과가 없다).
+    store.emit_pre(ev::COMMENT_ADDED, || {
+        json!({
+            "quest": payload::quest_ref(slug),
+            "comment": { "author": author, "body": body, "parent_id": parent_id },
+        })
+    });
     let _ = journal::append(
         &store.journal_pool,
         "add_comment_entry",
@@ -219,6 +228,10 @@ pub async fn add_comment_entry(
     // 에 바로 반영되도록. 색인은 파생물이라 실패해도 본 작업은 성공으로 둔다
     // (reindex 로 언제든 복구된다).
     let _ = crate::ops::backlinks::refresh_for(store, crate::repo::crosslink::DocKind::Quest, slug).await;
+    store.emit_post(
+        ev::COMMENT_ADDED,
+        || json!({ "quest": payload::quest_ref(slug), "comment": payload::comment(&entry) }),
+    );
     Ok(entry)
 }
 
@@ -248,6 +261,10 @@ pub async fn update_comment_entry(
     // 에 바로 반영되도록. 색인은 파생물이라 실패해도 본 작업은 성공으로 둔다
     // (reindex 로 언제든 복구된다).
     let _ = crate::ops::backlinks::refresh_for(store, crate::repo::crosslink::DocKind::Quest, slug).await;
+    store.emit_post(
+        ev::COMMENT_UPDATED,
+        || json!({ "quest": payload::quest_ref(slug), "comment": payload::comment(&updated) }),
+    );
     Ok(updated)
 }
 
@@ -323,6 +340,10 @@ pub async fn toggle_comment_reaction(
     let _ = crate::file_mtime::touch(store, &store.paths.comments_path(slug)).await;
     // reactions 는 file-only (DB 캐시 컬럼 없음 — read 경로가 file 직접이라
     // 무방. 캐시 재구축도 file 에서 다시 파싱). body 등은 그대로라 UPSERT 생략.
+    store.emit_post(
+        ev::COMMENT_REACTION_CHANGED,
+        || json!({ "quest": payload::quest_ref(slug), "comment": payload::comment(&updated) }),
+    );
     Ok(updated)
 }
 
@@ -362,6 +383,17 @@ pub async fn toggle_comment_discussion(
     let _ = crate::file_mtime::touch(store, &store.paths.comments_path(slug)).await;
     // DEV-142 후속: discussion/resolved 를 DB 캐시에도 반영 (목록/홈 집계용).
     upsert_comment_entry_db(store, slug, &updated).await?;
+    // DEV-374: `toggle_*` 은 내부 동사다. 공개 이벤트는 **방향까지** 가른다 —
+    // "토론이 켜짐" 을 구독하는데 꺼짐까지 오면 쓸모가 없다.
+    let name = if updated.discussion {
+        ev::COMMENT_DISCUSSION_ON
+    } else {
+        ev::COMMENT_DISCUSSION_OFF
+    };
+    store.emit_post(
+        name,
+        || json!({ "quest": payload::quest_ref(slug), "comment": payload::comment(&updated) }),
+    );
     Ok(updated)
 }
 
@@ -407,6 +439,16 @@ pub async fn toggle_comment_resolved(
     // 전환만").
     let op = if updated.resolved { "discussion_resolved" } else { "discussion_reopened" };
     record_discussion_history(store, slug, op, id).await?;
+    // DEV-374: 방향까지 가른다 — "해결됨" 을 구독하는데 해제까지 오면 쓸모없다.
+    let name = if updated.resolved {
+        ev::COMMENT_RESOLVED
+    } else {
+        ev::COMMENT_UNRESOLVED
+    };
+    store.emit_post(
+        name,
+        || json!({ "quest": payload::quest_ref(slug), "comment": payload::comment(&updated) }),
+    );
     Ok(updated)
 }
 
@@ -479,6 +521,15 @@ pub async fn toggle_comment_pinned(store: &Store, slug: &str, id: u64) -> AppRes
     // BUG-068: sibling 파일 mtime 캐시 동기화 (drift 오탐 방지).
     let _ = crate::file_mtime::touch(store, &store.paths.comments_path(slug)).await;
     upsert_comment_entry_db(store, slug, &updated).await?;
+    let name = if updated.pinned {
+        ev::COMMENT_PINNED
+    } else {
+        ev::COMMENT_UNPINNED
+    };
+    store.emit_post(
+        name,
+        || json!({ "quest": payload::quest_ref(slug), "comment": payload::comment(&updated) }),
+    );
     Ok(updated)
 }
 
@@ -503,6 +554,10 @@ pub async fn delete_comment_entry(store: &Store, slug: &str, id: u64) -> AppResu
     // 에 바로 반영되도록. 색인은 파생물이라 실패해도 본 작업은 성공으로 둔다
     // (reindex 로 언제든 복구된다).
     let _ = crate::ops::backlinks::refresh_for(store, crate::repo::crosslink::DocKind::Quest, slug).await;
+    store.emit_post(
+        ev::COMMENT_DELETED,
+        || json!({ "quest": payload::quest_ref(slug), "comment": payload::comment_ref(id) }),
+    );
     Ok(())
 }
 

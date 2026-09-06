@@ -60,6 +60,9 @@ pub struct Store {
     /// 예기치 않게 스냅샷을 만들어 실패했다. Store 별로 지정할 수 있게 해
     /// 오염을 없앤다. 서버/GUI 도 필요하면 코드로 정책을 줄 수 있다.
     pub auto_snapshot_ops_override: std::sync::Arc<std::sync::atomic::AtomicI64>,
+    /// DEV-374: 플러그인 이벤트 출구. sink 가 꽂히기 전에는 전부 no-op —
+    /// 구독자가 없으면 페이로드를 **만들지도 않는다**.
+    pub events: crate::events::Events,
     /// REQ-003: **프로세스 안** 파일 read-modify-write 직렬화.
     ///
     /// 댓글 토글·체크리스트·첨부·번호 할당 같은 경로는 전부 "파일 전체 읽기 →
@@ -107,6 +110,84 @@ impl Store {
     /// DEV-022: 현재 replay 중인지.
     pub fn is_replaying(&self) -> bool {
         self.replaying.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// 길드 이름 — 이벤트에 싣는 값. 루트 디렉터리명을 쓴다(마커 파일을 매번
+    /// 읽지 않기 위해). 더 정확한 이름이 필요한 플러그인은 길드를 직접 읽으면 된다.
+    fn guild_label(&self) -> String {
+        self.paths
+            .guild_root
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_string()
+    }
+
+    /// DEV-374: 이벤트를 낼 상황인지. **페이로드를 만들기 전에** 묻는다.
+    ///
+    /// replay 중에는 내지 않는다 — 백업 복원이 과거 이벤트를 통째로 다시
+    /// 흘려보내면 플러그인 입장에서는 "방금 퀘스트 200개가 생겼다" 가 된다.
+    pub fn events_wanted(&self, name: &str, phase: crate::events::Phase) -> bool {
+        !self.is_replaying() && self.events.wants(name, phase)
+    }
+
+    fn emit(
+        &self,
+        name: &'static str,
+        phase: crate::events::Phase,
+        ok: Option<bool>,
+        error: Option<String>,
+        data: impl FnOnce() -> serde_json::Value,
+    ) {
+        if !self.events_wanted(name, phase) {
+            return;
+        }
+        // 클로저는 **여기서 처음** 실행된다 — 구독자가 없으면 비용이 0 이다.
+        let obj = match data() {
+            serde_json::Value::Object(m) => m,
+            other => {
+                let mut m = serde_json::Map::new();
+                m.insert("data".into(), other);
+                m
+            }
+        };
+        self.events.dispatch(crate::events::Event {
+            name,
+            phase,
+            ts: crate::time::now_local_iso8601(),
+            guild: self.guild_label(),
+            ok,
+            error,
+            data: obj,
+        });
+    }
+
+    /// mutation 직전. **관찰만 한다** — 거부는 지원하지 않는다.
+    /// `ok`/`error` 는 싣지 않는다(아직 결과가 없다).
+    pub fn emit_pre(&self, name: &'static str, data: impl FnOnce() -> serde_json::Value) {
+        self.emit(name, crate::events::Phase::Pre, None, None, data);
+    }
+
+    /// mutation 이 성공으로 끝난 뒤.
+    pub fn emit_post(&self, name: &'static str, data: impl FnOnce() -> serde_json::Value) {
+        self.emit(name, crate::events::Phase::Post, Some(true), None, data);
+    }
+
+    /// mutation 이 실패한 뒤. 이벤트 이름은 성공과 **같다** — 구독자가 늘지
+    /// 않고 `ok` 만 갈린다(admin 결정).
+    pub fn emit_post_failed(
+        &self,
+        name: &'static str,
+        error: &crate::error::AppError,
+        data: impl FnOnce() -> serde_json::Value,
+    ) {
+        self.emit(
+            name,
+            crate::events::Phase::Post,
+            Some(false),
+            Some(error.to_string()),
+            data,
+        );
     }
 
     /// 길드 루트 경로로 Store 생성. 필요한 디렉토리 / DB 가 없으면 만들고 마이그레이션.
@@ -175,6 +256,7 @@ impl Store {
             journal_pool,
             db_ahead_versions,
             replaying: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            events: crate::events::Events::default(),
             write_lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
             // DEV-299: 기본 동기 — 켜는 쪽(서버/GUI)이 명시적으로 켠다.
             background_snapshots: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -243,6 +325,7 @@ impl Store {
             journal_pool,
             db_ahead_versions,
             replaying: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            events: crate::events::Events::default(),
             write_lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
             // DEV-299: 기본 동기 — 켜는 쪽(서버/GUI)이 명시적으로 켠다.
             background_snapshots: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
