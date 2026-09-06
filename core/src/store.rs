@@ -190,6 +190,39 @@ impl Store {
         );
     }
 
+    /// DEV-375: 이 컴포넌트에서 돌릴 플러그인을 읽어 이벤트 출구에 꽂는다.
+    ///
+    /// **길드를 열 때 한 번** 부르고 결과를 들고 있는다 — 이벤트마다 디스크를
+    /// 다시 읽지 않기 위해서다. `scope` 는 부르는 쪽이 정한다(CLI/GUI/서버).
+    /// 기본값을 두지 않는 이유는 [`Scope`](crate::plugins::Scope) 주석 참고.
+    ///
+    /// 돌릴 게 하나도 없으면 **sink 를 꽂지 않는다.** 그래야 `ops` 가 이벤트를
+    /// 만들지도 않고, 플러그인을 안 쓰는 사용자가 비용을 치르지 않는다.
+    ///
+    /// 반환값에는 동의가 필요한 것과 깨진 정의가 들어 있다 — 코어는 **묻지
+    /// 않는다.** 묻는 방법은 컴포넌트마다 다르고, 비대화형이면 못 묻는다.
+    /// 아무도 답하지 않으면 그 플러그인은 그냥 안 돈다.
+    pub fn install_plugins(
+        &self,
+        scope: crate::plugins::Scope,
+        delivery: std::sync::Arc<dyn crate::plugins::runtime::Delivery>,
+    ) -> crate::plugins::Loaded {
+        let loaded = crate::plugins::load_for(&self.paths.guild_root, scope);
+        if loaded.active.is_empty() {
+            self.events.clear_sink();
+        } else {
+            let rt = crate::plugins::runtime::PluginRuntime::new(loaded.active.clone(), delivery);
+            self.events.set_sink(std::sync::Arc::new(rt));
+        }
+        loaded
+    }
+
+    /// DEV-375: 종료 직전에 부른다. 전달은 기다리지 않고 떠나므로, 곧 끝나는
+    /// 프로세스(CLI)는 여기서 짧은 유예를 준다. 시간 안에 다 나갔으면 `true`.
+    pub fn drain_events(&self, budget: std::time::Duration) -> bool {
+        self.events.drain(budget)
+    }
+
     /// 길드 루트 경로로 Store 생성. 필요한 디렉토리 / DB 가 없으면 만들고 마이그레이션.
     /// 시드는 별도 — 호출자가 `seed::seed_guild_dir` 명시 호출.
     pub async fn open<P: AsRef<std::path::Path>>(guild_root: P) -> Result<Self> {

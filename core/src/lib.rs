@@ -25,6 +25,7 @@ pub mod maintenance;
 pub mod migrate;
 pub mod models;
 pub mod ops;
+pub mod plugins;
 pub mod recents;
 pub mod reindex;
 pub mod replay;

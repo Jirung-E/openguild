@@ -101,6 +101,13 @@ pub trait EventSink: Send + Sync {
     fn wants(&self, name: &str, phase: Phase) -> bool;
     /// 전달. **여기서 오래 붙들면 안 된다** — 호출자는 mutation 경로다.
     fn dispatch(&self, event: Event);
+    /// 아직 나가지 못한 것들에 짧은 유예를 준다. 곧 끝나는 프로세스(CLI)가
+    /// 종료 직전에 부른다. 시간 안에 다 나갔으면 `true`.
+    ///
+    /// 기본값은 "붙들 게 없다" — 동기 구현은 이걸 그대로 쓰면 된다.
+    fn drain(&self, _budget: std::time::Duration) -> bool {
+        true
+    }
 }
 
 /// `Store` 가 들고 다니는 이벤트 출구. sink 가 없으면 전부 no-op.
@@ -148,6 +155,14 @@ impl Events {
             && let Some(s) = r.as_ref()
         {
             s.dispatch(event);
+        }
+    }
+
+    /// 종료 직전에 부른다. sink 가 없으면 기다릴 것도 없다.
+    pub fn drain(&self, budget: std::time::Duration) -> bool {
+        match self.0.read() {
+            Ok(r) => r.as_ref().is_none_or(|s| s.drain(budget)),
+            Err(_) => true,
         }
     }
 }
