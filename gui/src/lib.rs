@@ -246,10 +246,33 @@ pub fn welcome_placeholder_path() -> std::path::PathBuf {
 /// BUG-236: 그 placeholder 경로인가? 비교는 정규화한 문자열로 한다
 /// (`/private/var/...` ↔ `/var/...` 같은 심볼릭 링크 차이를 흡수).
 pub fn is_welcome_placeholder(p: &std::path::Path) -> bool {
-    let norm = |x: &std::path::Path| {
-        openguild_core::recents::normalize_abs(&std::fs::canonicalize(x).unwrap_or_else(|_| x.to_path_buf()))
+    placeholder_key(p) == placeholder_key(&welcome_placeholder_path())
+}
+
+/// BUG-270: 비교용 정규 표기. **부모를 정규화하고 이름을 붙인다.**
+///
+/// 경로 자신을 `canonicalize` 하면 **없을 때 실패해서 원문이 그대로 남는다.**
+/// placeholder 는 `temp_dir()` 안의 고정 경로라 있다가 없어지는데, 그때마다
+/// 답이 달라졌다:
+///
+/// - recents 에는 정규 표기(`/private/var/...`)로 저장된다.
+/// - 정리 시점에는 그 디렉터리가 이미 없다 → 오른쪽은 `/var/...` 로 남는다.
+/// - 둘이 달라 판정이 false → **잔재 항목이 영영 안 지워진다**([[BUG-236]] 재발).
+///
+/// 테스트에서는 같은 이유로 macOS CI 만 간헐 실패했다 — 병렬로 도는 다른
+/// 테스트가 그 디렉터리를 만들고 지우는 사이에 두 번의 `canonicalize` 가
+/// 서로 다른 답을 냈다. 리눅스는 `/tmp` 가 심볼릭 링크가 아니라 안 드러난다.
+///
+/// 부모(`temp_dir()`)는 항상 존재하므로 여기서는 존재 여부가 결과를 바꾸지
+/// 않는다 — 경합도 함께 사라진다.
+fn placeholder_key(p: &std::path::Path) -> String {
+    let parent = p.parent().unwrap_or(p);
+    let canon = std::fs::canonicalize(parent).unwrap_or_else(|_| parent.to_path_buf());
+    let joined = match p.file_name() {
+        Some(name) => canon.join(name),
+        None => canon,
     };
-    norm(p) == norm(&welcome_placeholder_path())
+    openguild_core::recents::normalize_abs(&joined)
 }
 
 
@@ -800,6 +823,41 @@ mod tests {
         if alt.exists() || ph.starts_with("/var") {
             assert!(is_welcome_placeholder(&alt) || is_welcome_placeholder(&ph));
         }
+    }
+
+    /// BUG-270: 비교 표기는 **디렉터리 존재 여부와 무관해야 한다.**
+    ///
+    /// 예전 구현은 경로 자신을 `canonicalize` 했는데, 없으면 실패해서 원문이
+    /// 그대로 남았다. placeholder 는 `temp_dir()` 안의 고정 경로라 있다가
+    /// 없어지므로 답이 흔들렸다:
+    ///
+    /// - recents 에는 정규 표기(`/private/var/...`)로 저장된다.
+    /// - 정리 시점에는 그 디렉터리가 이미 없다 → 다른 쪽은 `/var/...`.
+    /// - 둘이 달라 판정 실패 → 잔재 항목이 안 지워진다(BUG-236 재발).
+    ///
+    /// macOS CI 가 이 성질 때문에 간헐 실패했다 — 병렬로 도는
+    /// `cleanup_removes_leftover_marker_dir` 가 그 디렉터리를 만들고 지우는
+    /// 사이에 두 번의 `canonicalize` 가 서로 다른 답을 냈다.
+    ///
+    /// **placeholder 경로를 쓰지 않는다.** 그걸 쓰면 이 테스트도 같은 경합에
+    /// 걸려 결과가 흔들린다(실제로 처음엔 그렇게 썼다가, 병렬 테스트가 마침
+    /// 디렉터리를 만들어 둔 순간에 통과해 버렸다). 아무도 건드리지 않는
+    /// 이름으로 **불변식만** 고정한다.
+    #[test]
+    fn placeholder_key_is_independent_of_existence() {
+        let tmp = std::env::temp_dir();
+        let canon_tmp = std::fs::canonicalize(&tmp).expect("temp_dir 은 항상 존재한다");
+        // 존재하지 않는 이름 — 이 테스트 전용.
+        const NAME: &str = "openguild-bug270-absent";
+        let raw = tmp.join(NAME);
+        let canon = canon_tmp.join(NAME);
+        assert!(!raw.exists(), "이 테스트는 없는 경로를 전제로 한다");
+        assert_eq!(
+            placeholder_key(&raw),
+            placeholder_key(&canon),
+            "같은 위치의 두 표기(/var ↔ /private/var)가 다른 키가 됐다 — \
+             경로가 없을 때 canonicalize 가 실패해 원문이 남으면 이렇게 된다"
+        );
     }
 
     /// 진짜 길드 경로는 placeholder 로 오인하면 안 된다.
