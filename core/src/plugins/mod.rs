@@ -170,6 +170,18 @@ pub fn plugins_dir(guild_root: &Path) -> PathBuf {
 /// 폴더가 없으면 빈 결과 — 플러그인을 안 쓰는 길드가 대부분이고, 그 경우
 /// 비용이 0 이어야 한다.
 pub fn load_for(guild_root: &Path, scope: Scope) -> Loaded {
+    load_scoped(guild_root, Some(scope))
+}
+
+/// scope 를 가리지 않고 전부 읽는다 — **동의를 관리하는 쪽**이 쓴다.
+///
+/// GUI 전용 플러그인의 허용을 CLI 에서 할 수 있어야 한다. scope 로 걸러 버리면
+/// 그 플러그인은 목록에도 안 나오고 허용할 방법이 없다.
+pub fn load_all(guild_root: &Path) -> Loaded {
+    load_scoped(guild_root, None)
+}
+
+fn load_scoped(guild_root: &Path, scope: Option<Scope>) -> Loaded {
     let mut out = Loaded::default();
     let dir = plugins_dir(guild_root);
     let Ok(entries) = std::fs::read_dir(&dir) else {
@@ -197,7 +209,9 @@ pub fn load_for(guild_root: &Path, scope: Scope) -> Loaded {
         match read_def(&manifest) {
             Err(e) => out.errors.push((label, e.to_string())),
             Ok(def) => {
-                if !def.scope.contains(&scope) {
+                if let Some(sc) = scope
+                    && !def.scope.contains(&sc)
+                {
                     out.out_of_scope.push(def.name);
                     continue;
                 }

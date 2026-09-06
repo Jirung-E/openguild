@@ -295,6 +295,38 @@ enum Command {
         #[command(subcommand)]
         sub: GuildCmd,
     },
+
+    // DEV-378: 플러그인은 **이 기계에서** 남의 코드를 돌리는 일이라
+    // 동의를 남길 방법이 없으면 영원히 안 돈다. 코어는 묻지 않으므로
+    // (컴포넌트마다 묻는 법이 다르고 CLI 는 비대화형일 수 있다) 여기가 그
+    // 자리다.
+    #[command(about = tf!("플러그인 — 적재 상태 확인과 허용/철회. 정의는 .guild/plugins/ (git 공유), 동의는 이 기계에만 남는다.", "Plugins — inspect what is loaded and allow/revoke. Definitions live in .guild/plugins/ (shared via git); consent stays on this machine."))]
+    Plugin {
+        #[command(subcommand)]
+        sub: PluginCmd,
+    },
+}
+
+/// DEV-378: 플러그인 그룹.
+#[derive(Subcommand, Clone)]
+enum PluginCmd {
+    #[command(about = tf!("적재 상태 — 도는 것 / 동의 대기 / 깨진 정의.", "What is loaded — running / awaiting consent / broken definitions."))]
+    List,
+    #[command(about = tf!("플러그인 하나를 이 기계에서 허용. 인자 없이 부르면 무엇에 동의하는지 보여주기만 한다.", "Allow one plugin on this machine. Without --yes it only shows what you would be consenting to."))]
+    Allow {
+        name: String,
+        #[arg(long, help = tf!("보여준 내용대로 실제로 허용한다.", "Actually grant consent for what was shown."))]
+        yes: bool,
+    },
+    #[command(about = tf!("동의 철회 — 다시 물을 때까지 안 돈다.", "Revoke consent — it stops running until allowed again."))]
+    Revoke { name: String },
+    #[command(about = tf!("이 길드의 플러그인을 전부 허용 (혼자 쓰는 길드용). 이후 추가되는 것도 묻지 않고 돈다.", "Trust every plugin in this guild (for solo guilds). Anything added later also runs without asking."))]
+    Trust {
+        #[arg(long, help = tf!("정말로 이 길드를 통째로 신뢰한다.", "Really trust this whole guild."))]
+        yes: bool,
+    },
+    #[command(about = tf!("구독할 수 있는 이벤트 이름 목록.", "Event names you can subscribe to."))]
+    Events,
 }
 
 /// DEV-319: 길드(어느 길드를 열지) 그룹. Backend/Store 무관 — recents.json 만 읽는다.
@@ -1744,6 +1776,35 @@ struct LocalBackend {
     rt: tokio::runtime::Runtime,
     /// 호스트 길드 경로 (info 출력용)
     guild_path: std::path::PathBuf,
+}
+
+/// DEV-378: CLI 는 곧 끝나는 프로세스라 전달이 도중에 끊긴다. 종료 직전에
+/// 짧은 유예를 준다 — 여기서 재시도 큐까지 만들면 범위가 터진다.
+///
+/// `Drop` 에 두는 이유는 `run()` 의 **모든** 종료 경로(에러 `?` 포함)를
+/// 지나가야 하기 때문이다. 플러그인이 없으면 sink 가 없어 즉시 돌아온다.
+const PLUGIN_DRAIN_MS: u64 = 2_000;
+
+impl Drop for LocalBackend {
+    fn drop(&mut self) {
+        let budget = std::time::Duration::from_millis(
+            std::env::var("OPENGUILD_PLUGIN_DRAIN_MS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(PLUGIN_DRAIN_MS),
+        );
+        if !self.store.drain_events(budget) {
+            // 조용히 버리지 않는다 — 왜 안 갔는지는 알아야 한다.
+            eprintln!(
+                "{}",
+                tf!(
+                    "⚠ 플러그인 전달이 {}ms 안에 안 끝나 중단했습니다 (OPENGUILD_PLUGIN_DRAIN_MS 로 조절)",
+                    "⚠ plugin delivery did not finish within {}ms and was cut short (tune with OPENGUILD_PLUGIN_DRAIN_MS)",
+                    budget.as_millis()
+                )
+            );
+        }
+    }
 }
 
 /// DEV-222: `--description` / `--description-file` 통합 해석 — 파일 지정 시
@@ -5833,6 +5894,225 @@ fn rewrite_legacy_plural_bare_invocation(args: Vec<String>) -> Vec<String> {
     args
 }
 
+// ─────────────────── DEV-378: 플러그인 (CLI) ───────────────────
+
+/// 길드를 연 뒤 이 컴포넌트에서 돌 것들을 꽂는다.
+///
+/// **비대화형에서는 동의를 못 물으므로 안 돈다**(admin 기본값). 스크립트나
+/// CI 에서 조용히 남의 코드가 도는 것보다 안 도는 쪽이 낫다. 대신 왜 안
+/// 돌았는지는 남긴다 — 아무 말 없이 안 도는 것이 제일 나쁘다.
+fn install_plugins_for_cli(c: &Backend, json: bool) {
+    let Backend::Local(l) = c else {
+        // 원격 모드에서 도는 것은 서버 쪽 플러그인이다(scope: server).
+        return;
+    };
+    let loaded = l.store.install_plugins(
+        openguild_core::plugins::Scope::Cli,
+        std::sync::Arc::new(openguild_core::plugins::delivery::Outbound::new()),
+    );
+    if json {
+        return; // 기계 출력 오염 방지
+    }
+    for (name, why) in &loaded.errors {
+        eprintln!(
+            "{}",
+            tf!(
+                "⚠ 플러그인 '{}' 를 못 읽었습니다: {}",
+                "⚠ could not load plugin '{}': {}",
+                name,
+                why
+            )
+        );
+    }
+    if !loaded.needs_consent.is_empty() {
+        eprintln!(
+            "{}",
+            tf!(
+                "⚠ 아직 허용하지 않은 플러그인 {} 개 — 지금은 돌지 않습니다:",
+                "⚠ {} plugin(s) not allowed yet — they are not running:",
+                loaded.needs_consent.len()
+            )
+        );
+        for p in &loaded.needs_consent {
+            eprintln!("  - {} ({})", p.def.name, p.def.action.kind());
+        }
+        eprintln!(
+            "{}",
+            tf!(
+                "  `openguild plugin allow <이름>` 으로 내용을 확인하고 허용하세요.",
+                "  Review and allow with `openguild plugin allow <name>`."
+            )
+        );
+    }
+}
+
+/// 관리 명령은 길드 파일과 이 기계의 동의 파일만 본다 — 실행 scope 와 무관하게
+/// 전부 보여준다. GUI 전용 플러그인의 허용도 여기서 할 수 있어야 한다.
+fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
+    use openguild_core::plugins::{consent, load_all};
+
+    if let PluginCmd::Events = sub {
+        let names = openguild_core::events::names::ALL;
+        if json {
+            json_println!(serde_json::json!({ "events": names }));
+        } else {
+            for n in names {
+                println!("{n}");
+            }
+            println!(
+                "{}",
+                tf!(
+                    "-- {} 종. `quest.*` / `*.created` / `*` 와일드카드, `pre:` 접두사로 관찰 pre 구독.",
+                    "-- {} names. Wildcards `quest.*` / `*.created` / `*`; prefix `pre:` for observational pre.",
+                    names.len()
+                )
+            );
+        }
+        return Ok(());
+    }
+
+    let Backend::Local(l) = c else {
+        return Err(anyhow!(tf!(
+            "플러그인 관리는 로컬 길드에서만 가능합니다 — 동의는 이 기계에 남습니다(--remote 불가).",
+            "Plugin management works only on a local guild — consent is stored on this machine (not with --remote)."
+        )));
+    };
+    let root = &l.guild_path;
+    let loaded = load_all(root);
+
+    match sub {
+        PluginCmd::Events => unreachable!("handled above"),
+        PluginCmd::List => {
+            if json {
+                json_println!(serde_json::json!({
+                    "active": loaded.active.iter().map(|p| serde_json::json!({
+                        "name": p.def.name,
+                        "on": p.def.on,
+                        "scope": p.def.scope,
+                        "action": p.def.action.kind(),
+                        "script": p.def.script,
+                    })).collect::<Vec<_>>(),
+                    "needs_consent": loaded.needs_consent.iter()
+                        .map(|p| p.def.name.clone()).collect::<Vec<_>>(),
+                    "errors": loaded.errors.iter()
+                        .map(|(n, e)| serde_json::json!({ "name": n, "error": e }))
+                        .collect::<Vec<_>>(),
+                }));
+                return Ok(());
+            }
+            if loaded.active.is_empty()
+                && loaded.needs_consent.is_empty()
+                && loaded.errors.is_empty()
+            {
+                println!(
+                    "{}",
+                    tf!(
+                        "(플러그인 없음 — .guild/plugins/{{이름}}/plugin.json 으로 정의합니다)",
+                        "(no plugins — define one at .guild/plugins/{{name}}/plugin.json)"
+                    )
+                );
+                return Ok(());
+            }
+            for p in &loaded.active {
+                let scopes: Vec<String> = p
+                    .def
+                    .scope
+                    .iter()
+                    .map(|s| format!("{s:?}").to_lowercase())
+                    .collect();
+                println!(
+                    "✓ {}  [{}]  {} → {}",
+                    p.def.name,
+                    scopes.join(","),
+                    p.def.on.join(" "),
+                    p.def.action.kind()
+                );
+            }
+            for p in &loaded.needs_consent {
+                println!(
+                    "· {}  {}",
+                    p.def.name,
+                    tf!(
+                        "(동의 대기 — 안 돕니다)",
+                        "(awaiting consent — not running)"
+                    )
+                );
+            }
+            for (name, why) in &loaded.errors {
+                println!("✗ {name}  {why}");
+            }
+        }
+        PluginCmd::Allow { name, yes } => {
+            let all: Vec<_> = loaded
+                .active
+                .iter()
+                .chain(loaded.needs_consent.iter())
+                .collect();
+            let Some(p) = all.into_iter().find(|p| p.def.name == name) else {
+                return Err(anyhow!(tf!(
+                    "그런 플러그인 없음: {} (`openguild plugin list` 로 확인)",
+                    "no such plugin: {} (check with `openguild plugin list`)",
+                    name
+                )));
+            };
+            if !yes {
+                // **보지 않은 것에 동의할 수는 없다.** 정의와 스크립트를 먼저 보인다.
+                println!("{}", serde_json::to_string_pretty(&p.def)?);
+                if let Some(src) = &p.script_src {
+                    println!("\n--- {} ---", p.def.script.as_deref().unwrap_or("script"));
+                    println!("{src}");
+                }
+                println!(
+                    "\n{}",
+                    tf!(
+                        "위 내용을 이 기계에서 돌리는 데 동의하면 `--yes` 를 붙여 다시 실행하세요.",
+                        "If you consent to running the above on this machine, re-run with `--yes`."
+                    )
+                );
+                return Ok(());
+            }
+            Backend::map_err(consent::grant(root, p))?;
+            if json {
+                json_println!(serde_json::json!({ "ok": true, "allowed": name }));
+            } else {
+                println!("{}", tf!("✓ 허용: {}", "✓ allowed: {}", name));
+            }
+        }
+        PluginCmd::Revoke { name } => {
+            Backend::map_err(consent::revoke(root, &name))?;
+            if json {
+                json_println!(serde_json::json!({ "ok": true, "revoked": name }));
+            } else {
+                println!("{}", tf!("✓ 철회: {}", "✓ revoked: {}", name));
+            }
+        }
+        PluginCmd::Trust { yes } => {
+            if !yes {
+                return Err(anyhow!(tf!(
+                    "이 길드에 앞으로 추가되는 플러그인까지 전부, 묻지 않고 돌게 됩니다. 정말이면 --yes 를 붙이세요.",
+                    "Every plugin in this guild — including ones added later — will run without asking. Add --yes if you mean it."
+                )));
+            }
+            Backend::map_err(consent::trust_guild(root))?;
+            if json {
+                json_println!(
+                    serde_json::json!({ "ok": true, "trusted": root.display().to_string() })
+                );
+            } else {
+                println!(
+                    "{}",
+                    tf!(
+                        "✓ 이 길드를 신뢰합니다: {}",
+                        "✓ trusting this guild: {}",
+                        root.display()
+                    )
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
 fn run() -> Result<()> {
     // DEV-254: 저장된 언어(~/.openguild/locale.json, GUI 와 공유) 로드 —
     // tf! 매크로가 참조하는 프로세스 전역 플래그 1회 설정. 반드시 parse
@@ -5891,6 +6171,18 @@ fn run() -> Result<()> {
 
     let c = Backend::new(cli.remote.clone(), cli.guild.clone())?;
 
+    // DEV-378: 플러그인 관리는 길드 파일과 이 기계의 동의 파일만 본다.
+    // 적재보다 **먼저** 처리한다 — 그 명령 자체가 적재 결과를 보여주는데
+    // 위에서 같은 경고를 한 번 더 찍으면 소음이다.
+    if let Command::Plugin { sub } = &cli.command {
+        return handle_plugin(&c, cli.json, sub.clone());
+    }
+
+    // 길드를 열 때 **한 번** 적재하고 결과를 들고 있는다. 돌 게 없으면
+    // sink 가 안 꽂히고, 그러면 `ops` 는 이벤트를 만들지도 않는다([[DEV-374]]).
+    // 안내는 stderr — stdout 은 파이프로 쓰는 사람이 있다.
+    install_plugins_for_cli(&c, cli.json);
+
     // 비정상 파일 감지 시 stderr 경고 (GUI 시동 알림과 동일 취지). json 모드는
     // 기계 출력 오염 방지를 위해, Reindex 는 자체적으로 skipped 를 출력하므로 제외.
     if !cli.json
@@ -5922,6 +6214,7 @@ fn run() -> Result<()> {
         Command::Docs { .. } => unreachable!("handled above"),
         Command::Locale { .. } => unreachable!("handled above"),
         Command::Guild { .. } => unreachable!("handled above"),
+        Command::Plugin { .. } => unreachable!("handled above"),
         Command::Worklog { sub } => handle_worklog(&c, cli.json, sub)?,
         Command::Backup { sub } => handle_backup(&c, cli.json, sub)?,
         Command::Restore { to, at } => handle_restore(&c, cli.json, to, at)?,
@@ -10319,6 +10612,247 @@ mod tests {
         assert!(!json_str(&v).contains('\n'), "--compact 는 한 줄");
         // 다른 테스트에 새지 않게 복원.
         JSON_COMPACT.store(false, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    // ───────── DEV-378: 플러그인 (CLI) ─────────
+
+    /// `OPENGUILD_HOME` 은 프로세스 전역이라 병렬 테스트가 서로를 덮는다.
+    /// env 를 만지는 구간만 잠근다.
+    fn plugin_env_lock() -> std::sync::MutexGuard<'static, ()> {
+        static L: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        L.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// 길드 + 플러그인 정의 하나. 반환은 (길드, 이 기계의 동의 파일 홈).
+    fn guild_with_plugin(label: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+        let dir = fresh_tmp(label);
+        let home = fresh_tmp(&format!("{label}-home"));
+        init_guild_at(&dir, Some(label.into())).unwrap();
+        let pd = dir.join(".guild/plugins/ai-notify");
+        std::fs::create_dir_all(&pd).unwrap();
+        std::fs::write(
+            pd.join("plugin.json"),
+            r#"{
+              "name": "ai-notify",
+              "on": ["quest.created"],
+              "scope": ["gui"],
+              "action": { "post": { "url": "https://example.test/hook" } }
+            }"#,
+        )
+        .unwrap();
+        (dir, home)
+    }
+
+    fn local_backend(dir: &std::path::Path) -> Backend {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let store = rt.block_on(openguild_core::Store::open(dir)).unwrap();
+        Backend::Local(LocalBackend {
+            store,
+            rt,
+            guild_path: dir.to_path_buf(),
+        })
+    }
+
+    /// **보여주기만 하는 단계가 있어야 한다.** 임의 코드를 돌리는 동의를
+    /// 이름만 치고 받아 버리면 무엇에 동의했는지 모른 채 도는 것과 같다.
+    #[test]
+    fn allow_shows_first_and_only_grants_with_yes() {
+        let _g = plugin_env_lock();
+        let (dir, home) = guild_with_plugin("allow");
+        unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+        let c = local_backend(&dir);
+
+        handle_plugin(
+            &c,
+            false,
+            PluginCmd::Allow {
+                name: "ai-notify".into(),
+                yes: false,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            openguild_core::plugins::load_all(&dir).active.len(),
+            0,
+            "--yes 없이 허용돼 버렸다"
+        );
+
+        handle_plugin(
+            &c,
+            false,
+            PluginCmd::Allow {
+                name: "ai-notify".into(),
+                yes: true,
+            },
+        )
+        .unwrap();
+        assert_eq!(openguild_core::plugins::load_all(&dir).active.len(), 1);
+
+        // 철회하면 다시 대기로.
+        handle_plugin(
+            &c,
+            false,
+            PluginCmd::Revoke {
+                name: "ai-notify".into(),
+            },
+        )
+        .unwrap();
+        let after = openguild_core::plugins::load_all(&dir);
+        assert!(after.active.is_empty());
+        assert_eq!(after.needs_consent.len(), 1);
+
+        drop(c);
+        unsafe { std::env::remove_var("OPENGUILD_HOME") };
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// **scope 가 이 컴포넌트가 아니어도 관리는 된다.** 위 플러그인은
+    /// `["gui"]` 다 — 관리에서 scope 로 걸러 버리면 GUI 전용 플러그인은
+    /// CLI 로 허용할 방법이 없어진다(그리고 GUI 동의 UI 는 아직 없다).
+    #[test]
+    fn management_covers_plugins_of_other_scopes() {
+        let _g = plugin_env_lock();
+        let (dir, home) = guild_with_plugin("otherscope");
+        unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+        let c = local_backend(&dir);
+
+        // CLI 실행 관점에서는 scope 밖이다.
+        let cli_only = openguild_core::plugins::load_for(&dir, openguild_core::plugins::Scope::Cli);
+        assert_eq!(cli_only.out_of_scope, vec!["ai-notify"]);
+        assert!(cli_only.needs_consent.is_empty());
+
+        // 그런데도 허용은 된다.
+        handle_plugin(
+            &c,
+            false,
+            PluginCmd::Allow {
+                name: "ai-notify".into(),
+                yes: true,
+            },
+        )
+        .unwrap();
+        let all = openguild_core::plugins::load_all(&dir);
+        assert_eq!(all.active.len(), 1, "scope 밖이라 허용조차 못 했다");
+
+        drop(c);
+        unsafe { std::env::remove_var("OPENGUILD_HOME") };
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// **종료 직전에 유예를 준다.** CLI 는 곧 끝나는 프로세스라 이걸 안 하면
+    /// 전송이 도중에 끊긴다 — 명령은 성공했는데 훅만 조용히 사라진다.
+    #[test]
+    fn dropping_the_backend_drains_pending_deliveries() {
+        use openguild_core::plugins::runtime::{Delivery, PluginRuntime};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let _g = plugin_env_lock();
+        let (dir, home) = guild_with_plugin("drain");
+        unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+        openguild_core::plugins::consent::trust_guild(&dir).unwrap();
+
+        struct Slow(std::sync::Arc<AtomicUsize>);
+        impl Delivery for Slow {
+            fn deliver(
+                &self,
+                _p: &openguild_core::plugins::Plugin,
+                _e: &openguild_core::events::Event,
+                _b: &serde_json::Value,
+            ) -> Result<(), String> {
+                std::thread::sleep(std::time::Duration::from_millis(200));
+                self.0.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            }
+        }
+        let n = std::sync::Arc::new(AtomicUsize::new(0));
+        let c = local_backend(&dir);
+        let Backend::Local(l) = &c else { panic!() };
+        let loaded = openguild_core::plugins::load_all(&dir);
+        assert_eq!(loaded.active.len(), 1);
+        l.store
+            .events
+            .set_sink(std::sync::Arc::new(PluginRuntime::new(
+                loaded.active,
+                std::sync::Arc::new(Slow(n.clone())),
+            )));
+        l.rt.block_on(openguild_core::ops::quests::create_quest(
+            &l.store,
+            openguild_core::models::CreateQuestRequest {
+                quest_type_id: 1,
+                title: "훅".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: Some(3),
+                parent_quest_id: None,
+            },
+        ))
+        .unwrap();
+        // 아직 안 나갔다 — mutation 은 기다리지 않는다.
+        assert_eq!(n.load(Ordering::SeqCst), 0);
+
+        drop(c); // 여기서 유예
+        assert_eq!(n.load(Ordering::SeqCst), 1, "종료하며 전송을 버렸다");
+
+        unsafe { std::env::remove_var("OPENGUILD_HOME") };
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// 길드 통째 신뢰는 되돌리기 어렵다 — 확인 없이 받지 않는다.
+    #[test]
+    fn trust_requires_an_explicit_yes() {
+        let _g = plugin_env_lock();
+        let (dir, home) = guild_with_plugin("trust");
+        unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+        let c = local_backend(&dir);
+
+        assert!(handle_plugin(&c, false, PluginCmd::Trust { yes: false }).is_err());
+        assert_eq!(openguild_core::plugins::load_all(&dir).active.len(), 0);
+        handle_plugin(&c, false, PluginCmd::Trust { yes: true }).unwrap();
+        assert_eq!(openguild_core::plugins::load_all(&dir).active.len(), 1);
+
+        drop(c);
+        unsafe { std::env::remove_var("OPENGUILD_HOME") };
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// 동의는 **이 기계**에 남는다. 원격 모드에는 남길 곳이 없다.
+    #[test]
+    fn management_is_refused_in_remote_mode() {
+        let c = Backend::Http(HttpClient::new("http://example.test".into()));
+        let e = handle_plugin(&c, false, PluginCmd::List)
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("로컬") || e.contains("local"), "{e}");
+        // events 는 길드도 백엔드도 안 본다 — 원격에서도 나와야 한다.
+        assert!(handle_plugin(&c, false, PluginCmd::Events).is_ok());
+    }
+
+    /// **플러그인이 없으면 sink 를 안 꽂는다** — `ops` 가 이벤트를 만들지도
+    /// 않는다([[DEV-374]]). 안 쓰는 사람이 비용을 치르면 안 된다.
+    #[test]
+    fn a_guild_without_plugins_gets_no_sink() {
+        let _g = plugin_env_lock();
+        let dir = fresh_tmp("nosink");
+        let home = fresh_tmp("nosink-home");
+        init_guild_at(&dir, Some("nosink".into())).unwrap();
+        unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+
+        let c = local_backend(&dir);
+        install_plugins_for_cli(&c, true);
+        let Backend::Local(l) = &c else { panic!() };
+        assert!(!l.store.events.has_sink());
+
+        drop(c);
+        unsafe { std::env::remove_var("OPENGUILD_HOME") };
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&home);
     }
 
     // ───────── init_guild_at — tempdir 기반 ─────────
