@@ -87,8 +87,20 @@
 				if (i === current) curRange = r;
 				else all.push(r);
 			}
+			// BUG-268: **새로 칠하기 전에 옛 것을 비운다.**
+			//
+			// 닫을 때만이 아니라 **질의를 바꿀 때도** 옛 강조가 남았다(admin 재확인).
+			// `CSS.highlights.set(name, 새것)` 으로 덮어써도 WebKit 은 옛 Range 가
+			// 있던 자리를 다시 그리지 않는다. 레지스트리 교체가 아니라 Highlight
+			// 자체를 비우는 것이 확실한 무효화다.
+			for (const { hl } of painted) {
+				try {
+					hl.clear();
+				} catch {
+					/* clear 가 없는 구형 구현 — set 으로 덮어쓰는 데 기댄다. */
+				}
+			}
 			// 현재 항목은 따로 칠한다 — 나머지와 색이 달라야 어디 있는지 보인다.
-			// BUG-268: 지울 때 쓰려고 참조를 남긴다.
 			painted = [];
 			const allHl = new Highlight(...all);
 			CSS.highlights.set(ALL, allHl);

@@ -110,6 +110,29 @@ describe('FindBar — 강조 정리', () => {
 		expect(cur.cleared).toBe(true);
 	});
 
+	// BUG-268 재확인: 닫기만이 아니라 **질의를 바꿀 때도** 옛 강조가 남았다.
+	// set() 으로 덮어쓰는 것만으로는 옛 Range 자리가 다시 그려지지 않는 환경이
+	// 있다. 새로 칠하기 **전에** 옛 Highlight 를 비워야 한다.
+	it('질의를 바꾸면 옛 Highlight 를 비우고 다시 칠한다', async () => {
+		await mount();
+		await search('hello');
+		const first = registry.get('og-find') as { cleared: boolean };
+		expect(first).toBeTruthy();
+		await search('world');
+		expect(first.cleared).toBe(true);
+		// 새 강조는 다시 등록돼 있어야 한다 — 비우기만 하고 끝나면 안 된다.
+		expect(registry.map.has('og-find')).toBe(true);
+		expect(registry.get('og-find')).not.toBe(first);
+	});
+
+	it('일치가 없는 질의로 바꿔도 옛 강조가 남지 않는다', async () => {
+		await mount();
+		await search('hello');
+		const first = registry.get('og-find') as { cleared: boolean };
+		await search('zzzz-없는말');
+		expect(first.cleared).toBe(true);
+	});
+
 	it('컴포넌트가 사라져도 지워진다 — 페이지 이동 경로', async () => {
 		const { unmount } = await mount();
 		await search('hello');
