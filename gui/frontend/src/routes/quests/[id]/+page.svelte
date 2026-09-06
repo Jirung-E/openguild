@@ -392,8 +392,19 @@
 		if (!detail || statusId === detail.status_id || changingStatus) return;
 		changingStatus = true;
 		try {
-			await questsApi.changeStatus(detail.id, { status_slug: statusSlug });
-			detail = await questsApi.getBySlug(slug);
+			// BUG-262: **재조회하지 않는다.** PATCH 응답이 곧 갱신된 quest 다
+			// (서버 `change_status` 가 `Json(Quest)` 를 돌려준다). 예전엔 그
+			// 응답을 버리고 `getBySlug` 로 본문·관계·태그·첨부를 통째로 다시
+			// 받았고, 그 왕복이 끝날 때까지 화면은 옛 상태 그대로였다
+			// (admin 보고 "상태 변경이 느리다"). 보드는 처음부터 재조회 없이
+			// 로컬만 갱신한다(`QuestBoard` 의 `applyStatusChange`) — 상세만
+			// 안 맞춰져 있었다.
+			//
+			// 펼쳐서 덮는다: `QuestDetail` 은 `Quest` 를 확장한 것이라, 응답이
+			// 가진 기본 필드(status_*, updated_at ...)만 새 값으로 바뀌고
+			// 관계·태그·첨부처럼 상태 변경과 무관한 것들은 그대로 남는다.
+			const updated = await questsApi.changeStatus(detail.id, { status_slug: statusSlug });
+			detail = { ...detail, ...updated };
 			// 피드백: 버튼 체크 + 헤더 뱃지 펄스
 			statusFlashId = statusId;
 			badgePulse += 1;
@@ -1245,10 +1256,14 @@
 		<QuestNoteSection slug={detail.quest_id} mode="memo" />
 
 		<!-- 변경 이력 (DEV-038) -->
-		{#key `${detail.id}:${historyVersion}`}
+		<!-- BUG-262: 예전엔 key 에 `historyVersion` 이 섞여 있어, 상태를 바꿀
+		     때마다 이 블록이 통째로 재마운트됐다 — 이력과 **무관한**
+		     BacklinkSection 까지 다시 읽고, 펼쳐 둔 이력이 도로 접혔다.
+		     이제 이력만 `reloadToken` 으로 제자리에서 새로 읽는다. -->
+		{#key detail.id}
 			<!-- REQ-008: 이 문서를 참조하는 문서 — 참조가 없으면 렌더되지 않는다. -->
 			<BacklinkSection kind="quest" id={detail.quest_id} />
-			<QuestHistory questId={detail.id} {statuses} />
+			<QuestHistory questId={detail.id} {statuses} reloadToken={historyVersion} />
 		{/key}
 	{/if}
 </div>

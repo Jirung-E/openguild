@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/svelte';
 import QuestHistory from './QuestHistory.svelte';
+import QuestHistoryHarness from './QuestHistoryHarness.svelte';
 import { questsApi } from '$lib/api/quests';
 import type { QuestHistoryEntry, QuestStatus } from '$lib/types';
 
@@ -57,6 +58,64 @@ describe('QuestHistory', () => {
 
 	afterEach(() => {
 		vi.clearAllMocks();
+	});
+
+	// BUG-262: 상태를 바꿔도 이 컴포넌트가 **재마운트되지 않는다.**
+	//
+	// 예전엔 부모가 `{#key ...historyVersion}` 로 통째로 다시 만들었다. 그
+	// 방식은 상태 변경 한 번에 파괴·재생성이 따라붙어 느렸고, 같은 key 안에
+	// 있던 BacklinkSection 까지 상태와 무관하게 다시 읽었으며, **펼쳐 둔
+	// 접힘 상태가 매번 초기화됐다.** 이제 `reloadToken` 이 바뀌면 제자리에서
+	// 다시 읽는다.
+	describe('BUG-262: reloadToken — 제자리 재조회', () => {
+		// **`rerender` 로 검증하면 안 된다.** 그것은 props 를 통째로 무효화해서
+		// 값이 안 바뀌어도 이펙트가 다시 돈다 — `reloadToken` 을 의존성에서
+		// 빼도 통과한다(실측으로 확인했다). 부모가 `$state` 로 토큰을 들고
+		// 바꾸는 래퍼를 거쳐 Svelte 자신의 반응성을 탄다.
+		it('토큰이 바뀌면 다시 읽는다', async () => {
+			mockListHistory.mockResolvedValue([entry(1, 'change_status', 'open', 'in_progress')]);
+			const { component } = render(QuestHistoryHarness, { props: { questId: 42, statuses } });
+			await waitFor(() => expect(mockListHistory).toHaveBeenCalledTimes(1));
+			mockListHistory.mockResolvedValue([
+				entry(1, 'change_status', 'open', 'in_progress'),
+				entry(2, 'change_status', 'in_progress', 'testing')
+			]);
+			(component as unknown as { bumpToken: () => void }).bumpToken();
+			await waitFor(() => expect(mockListHistory).toHaveBeenCalledTimes(2));
+		});
+
+		// **"토큰이 그대로면 다시 읽지 않는다" 는 여기서 검증할 수 없다.**
+		// testing-library 의 `rerender` 는 props 를 통째로 무효화해서, 값이
+		// 하나도 안 바뀌어도(같은 배열 참조를 그대로 넘겨도) 이펙트가 다시
+		// 돈다 — 실측으로 확인했다. 컴포넌트 동작이 아니라 하니스의 성질이라
+		// 단언으로 옮기면 거짓을 고정하게 된다. 불필요한 재조회가 걱정된다면
+		// 실제 페이지에서 네트워크를 보는 편이 맞다.
+
+		it('펼쳐 둔 상태가 재조회 뒤에도 유지된다 — 재마운트였다면 도로 접힌다', async () => {
+			mockListHistory.mockResolvedValue([entry(1, 'change_status', 'open', 'in_progress')]);
+			const { component } = render(QuestHistoryHarness, { props: { questId: 42, statuses } });
+			const toggle = screen.getByRole('button', { name: /변경 이력/ });
+			await fireEvent.click(toggle);
+			await waitFor(() => expect(toggle).toHaveAttribute('aria-expanded', 'true'));
+			mockListHistory.mockResolvedValue([
+				entry(1, 'change_status', 'open', 'in_progress'),
+				entry(2, 'change_status', 'in_progress', 'testing')
+			]);
+			(component as unknown as { bumpToken: () => void }).bumpToken();
+			await waitFor(() => expect(screen.getAllByTestId('qh-item')).toHaveLength(2));
+			expect(toggle).toHaveAttribute('aria-expanded', 'true');
+		});
+
+		it('questId 가 바뀌면 토큰과 무관하게 다시 읽는다 — 기존 동작', async () => {
+			mockListHistory.mockResolvedValue([]);
+			const { rerender } = render(QuestHistory, {
+				props: { questId: 42, statuses, reloadToken: 0 }
+			});
+			await waitFor(() => expect(mockListHistory).toHaveBeenCalledTimes(1));
+			await rerender({ questId: 43, statuses, reloadToken: 0 });
+			await waitFor(() => expect(mockListHistory).toHaveBeenCalledTimes(2));
+			expect(mockListHistory).toHaveBeenLastCalledWith(43);
+		});
 	});
 
 	// REQ-007: 기본 접힘 — 펼치기 전에는 목록도 상태 문구도 렌더되지 않는다.

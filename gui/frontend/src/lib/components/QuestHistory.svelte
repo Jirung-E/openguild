@@ -18,7 +18,23 @@
 	// REQ-004: 늦게 온 응답이 최신 화면을 덮지 않도록.
 	import { Generation } from '$lib/utils/latest-only';
 
-	let { questId, statuses = [] }: { questId: number; statuses?: QuestStatus[] } = $props();
+	let {
+		questId,
+		statuses = [],
+		reloadToken = 0
+	}: {
+		questId: number;
+		statuses?: QuestStatus[];
+		/**
+		 * BUG-262: 이 값이 바뀌면 **제자리에서** 다시 읽는다.
+		 *
+		 * 예전엔 부모가 `{#key}` 로 이 컴포넌트를 통째로 재마운트해 새 이력을
+		 * 보여줬다. 그 방식은 상태 변경 한 번에 파괴·재생성이 따라붙어 느렸고,
+		 * 옆에 있던 `BacklinkSection` 까지 같이 다시 읽었으며(상태와 무관한
+		 * 조회다), 펼쳐 둔 접힘 상태가 매번 초기화됐다.
+		 */
+		reloadToken?: number;
+	} = $props();
 
 	let entries = $state<QuestHistoryEntry[]>([]);
 	let loading = $state(true);
@@ -42,6 +58,8 @@
 	const gen = new Generation();
 	$effect(() => {
 		const id = questId;
+		// BUG-262: 의존성으로만 읽는다 — 값 자체는 쓰지 않는다.
+		void reloadToken;
 		if (id <= 0) return;
 		const mine = gen.next();
 		loading = true;
