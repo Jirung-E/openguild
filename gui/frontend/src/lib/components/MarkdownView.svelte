@@ -388,6 +388,26 @@
 
 <style>
 	.md {
+		/* BUG-269: 선택 색이 상자를 넘어 창 끝까지 번지던 것(admin 보고).
+		   WebKit 전용 증상이다 — 크롬은 정상.
+
+		   WebKit 은 여러 블록에 걸친 선택에서 문단 사이 빈 공간까지 칠하고
+		   (selection gap), 그 폭을 **가장 가까운 selection root** 로 잡는다.
+		   그 판정은 대략 `문서 루트 / out-of-flow / float / overflow 가
+		   visible 이 아님 / flex·grid 아이템 / 테이블 셀` 인데, 이 카드는
+		   배경·테두리·패딩만 있어 어디에도 안 걸렸다. 그래서 조상을 타고
+		   올라가 결국 `main`(창 전체)이 기준이 됐다.
+
+		   `overflow: hidden` 도 같은 효과지만 택하지 않았다 — 그러면 이 카드가
+		   **스크롤 컨테이너**가 되고, `scrollIntoView` 는 가장 가까운 스크롤
+		   조상을 움직이므로 찾기([[REQ-018]])와 댓글 딥링크([[BUG-258]])가
+		   페이지 대신 카드 안을 스크롤하게 된다. `contain: paint` 는 칠하기만
+		   가둔다.
+
+		   자손 중 밖으로 나가야 하는 것은 없다: 넓은 코드블록은 `pre` 가
+		   자체 `overflow-x: auto` 로 스크롤하고, 링크 미리보기 팝업은 이
+		   상자 **바깥**에 렌더된다. */
+		contain: paint;
 		background: var(--bg);
 		border: var(--bw) solid var(--bg-subtle);
 		border-radius: var(--r-md);
