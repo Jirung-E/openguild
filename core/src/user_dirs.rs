@@ -76,12 +76,39 @@ pub fn sync_bundled_skill_marketplace(src_dir: &Path) -> Result<usize> {
         return Ok(0);
     }
     let dst_dir = openguild_home()?.join("skill-marketplace");
-    copy_dir_if_stale(src_dir, &dst_dir)
+    // BUG-267: **버전이 다르면 mtime 은 보지 않는다.**
+    //
+    // mtime 만으로 판단하면, 사본이 어떤 이유로든 더 새 시각을 갖게 된 순간
+    // (저장소 CLI 실행, 백업 복원, 파일 복사, 편집) 그 뒤로 앱이 아무리 새
+    // 스킬을 들고 와도 영영 무시된다. 실기에서 그 상태가 확인됐다 — 앱 번들은
+    // 8/27 빌드(0.5.0)인데 사본은 9/4(0.5.2)라 앱을 실행해도 아무 일도 일어나지
+    // 않았다. 실패가 조용해서 사용자는 옛 스킬을 계속 쓴다([[BUG-261]] 과 같은
+    // 성질의 결함이다).
+    //
+    // 버전이 같을 때는 기존 mtime 규칙을 유지한다 — 저장소에서 같은 버전으로
+    // 내용만 고치며 개발하는 흐름이 있다.
+    let force = plugin_version(src_dir) != plugin_version(&dst_dir);
+    copy_dir(src_dir, &dst_dir, force)
 }
 
-/// `src` 트리를 `dst` 로 재귀 복사 — 파일별로 mtime 비교해 원본이 더 새 것일
-/// 때만 덮어씀(`sync_bundled_docs` 와 동일 정책, 디렉토리에 대해 재귀 적용).
-fn copy_dir_if_stale(src: &Path, dst: &Path) -> Result<usize> {
+/// 마켓플레이스 트리의 `openguild-plugin/.claude-plugin/plugin.json` 버전.
+/// 없거나 깨져 있으면 `None` — 그 경우 양쪽이 같은 `None` 이 아니면 복사한다.
+fn plugin_version(root: &Path) -> Option<String> {
+    let p = root
+        .join("openguild-plugin")
+        .join(".claude-plugin")
+        .join("plugin.json");
+    let raw = std::fs::read_to_string(p).ok()?;
+    let json: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    json.get("version")?.as_str().map(|s| s.to_string())
+}
+
+/// `src` 트리를 `dst` 로 재귀 복사.
+///
+/// `force` 면 mtime 을 무시하고 전부 덮어쓴다(BUG-267). 아니면 파일별로 mtime
+/// 을 비교해 원본이 더 새 것일 때만 덮어쓴다(`sync_bundled_docs` 와 동일 정책,
+/// 디렉토리에 대해 재귀 적용).
+fn copy_dir(src: &Path, dst: &Path, force: bool) -> Result<usize> {
     std::fs::create_dir_all(dst)
         .with_context(|| format!("create dir: {}", dst.display()))?;
     let mut copied = 0usize;
@@ -93,7 +120,7 @@ fn copy_dir_if_stale(src: &Path, dst: &Path) -> Result<usize> {
         let Some(name) = src_path.file_name() else { continue };
         let dst_path = dst.join(name);
         if src_path.is_dir() {
-            copied += copy_dir_if_stale(&src_path, &dst_path)?;
+            copied += copy_dir(&src_path, &dst_path, force)?;
             continue;
         }
         if !src_path.is_file() {
@@ -101,11 +128,12 @@ fn copy_dir_if_stale(src: &Path, dst: &Path) -> Result<usize> {
         }
         let src_mtime = std::fs::metadata(&src_path).and_then(|m| m.modified()).ok();
         let dst_mtime = std::fs::metadata(&dst_path).and_then(|m| m.modified()).ok();
-        let stale = match (src_mtime, dst_mtime) {
-            (_, None) => true,
-            (Some(s), Some(d)) => s > d,
-            (None, Some(_)) => false,
-        };
+        let stale = force
+            || match (src_mtime, dst_mtime) {
+                (_, None) => true,
+                (Some(s), Some(d)) => s > d,
+                (None, Some(_)) => false,
+            };
         if stale {
             std::fs::copy(&src_path, &dst_path).with_context(|| {
                 format!("copy: {} → {}", src_path.display(), dst_path.display())
@@ -194,6 +222,134 @@ mod tests {
         assert_eq!(again, 0, "원본이 더 새 것이 아니면 재복사 안 함");
         unsafe { std::env::remove_var("OPENGUILD_HOME") };
 
+        let _ = std::fs::remove_dir_all(&src);
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// BUG-267: **버전이 다르면 사본이 더 새것이어도 덮어쓴다.**
+    ///
+    /// mtime 만 보던 시절엔, 사본이 어떤 이유로든 최신 시각을 갖게 되는 순간
+    /// 앱이 아무리 새 스킬을 들고 와도 영영 무시됐다. 실기에서 그 상태가
+    /// 확인됐다(앱 번들 8/27·0.5.0 vs 사본 9/4·0.5.2). 실패가 조용해서
+    /// 사용자는 옛 스킬을 계속 쓴다.
+    ///
+    /// "사본이 더 새것" 은 **사본을 나중에 덮어써서** 만든다 — 시각을 직접
+    /// 세팅하는 크레이트를 테스트 때문에 들이지 않기 위해서다.
+    fn write_marketplace(root: &std::path::Path, version: &str, body: &str) {
+        std::fs::create_dir_all(root.join("openguild-plugin/.claude-plugin")).unwrap();
+        std::fs::write(
+            root.join("openguild-plugin/.claude-plugin/plugin.json"),
+            format!("{{\n  \"name\": \"openguild-plugin\",\n  \"version\": \"{version}\"\n}}\n"),
+        )
+        .unwrap();
+        std::fs::create_dir_all(root.join("openguild-plugin/skills/openguild")).unwrap();
+        std::fs::write(
+            root.join("openguild-plugin/skills/openguild/SKILL.md"),
+            body,
+        )
+        .unwrap();
+    }
+
+    fn set_version(root: &std::path::Path, version: &str) {
+        std::fs::write(
+            root.join("openguild-plugin/.claude-plugin/plugin.json"),
+            format!("{{\n  \"name\": \"openguild-plugin\",\n  \"version\": \"{version}\"\n}}\n"),
+        )
+        .unwrap();
+    }
+
+    fn skill_body(root: &std::path::Path) -> String {
+        std::fs::read_to_string(root.join("openguild-plugin/skills/openguild/SKILL.md")).unwrap()
+    }
+
+    #[test]
+    fn sync_skill_marketplace_version_differs_overwrites_even_when_copy_is_newer() {
+        let _guard = env_lock();
+        let src = fresh_tmp("skills-src-ver");
+        let home = fresh_tmp("skills-home-ver");
+        unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+
+        write_marketplace(&src, "0.5.0", "BUNDLED\n");
+        assert!(sync_bundled_skill_marketplace(&src).unwrap() > 0);
+        let dst = home.join("skill-marketplace");
+
+        // 사본을 나중에 덮어써 **사본이 더 새것** 인 상태로 만든다.
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        std::fs::write(
+            dst.join("openguild-plugin/skills/openguild/SKILL.md"),
+            "STALE\n",
+        )
+        .unwrap();
+
+        // 앱이 새 버전을 들고 왔다. 내용 파일의 mtime 은 여전히 사본보다 옛것이라
+        // mtime 만 보면 여기서 아무 일도 일어나지 않는다 — 그게 이 버그였다.
+        set_version(&src, "0.5.3");
+
+        let copied = sync_bundled_skill_marketplace(&src).unwrap();
+        assert!(copied > 0, "버전이 다르면 mtime 과 무관하게 복사해야 한다");
+        assert_eq!(
+            skill_body(&dst),
+            "BUNDLED\n",
+            "번들 내용으로 되돌아와야 한다"
+        );
+
+        unsafe { std::env::remove_var("OPENGUILD_HOME") };
+        let _ = std::fs::remove_dir_all(&src);
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn sync_skill_marketplace_same_version_keeps_mtime_rule() {
+        let _guard = env_lock();
+        let src = fresh_tmp("skills-src-same");
+        let home = fresh_tmp("skills-home-same");
+        unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+
+        write_marketplace(&src, "0.5.3", "BUNDLED\n");
+        assert!(sync_bundled_skill_marketplace(&src).unwrap() > 0);
+        let dst = home.join("skill-marketplace");
+
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        std::fs::write(
+            dst.join("openguild-plugin/skills/openguild/SKILL.md"),
+            "LOCAL\n",
+        )
+        .unwrap();
+
+        // 버전이 같으면 더 새 사본을 건드리지 않는다 — 저장소에서 같은 버전으로
+        // 내용만 고치며 개발하는 흐름을 깨면 안 된다.
+        let copied = sync_bundled_skill_marketplace(&src).unwrap();
+        assert_eq!(copied, 0);
+        assert_eq!(skill_body(&dst), "LOCAL\n");
+
+        unsafe { std::env::remove_var("OPENGUILD_HOME") };
+        let _ = std::fs::remove_dir_all(&src);
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn sync_skill_marketplace_broken_plugin_json_does_not_throw() {
+        let _guard = env_lock();
+        let src = fresh_tmp("skills-src-broken");
+        let home = fresh_tmp("skills-home-broken");
+        unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+
+        std::fs::create_dir_all(src.join("openguild-plugin/.claude-plugin")).unwrap();
+        std::fs::write(
+            src.join("openguild-plugin/.claude-plugin/plugin.json"),
+            "{ not json",
+        )
+        .unwrap();
+        std::fs::create_dir_all(src.join("openguild-plugin/skills/openguild")).unwrap();
+        std::fs::write(
+            src.join("openguild-plugin/skills/openguild/SKILL.md"),
+            "X\n",
+        )
+        .unwrap();
+
+        assert!(sync_bundled_skill_marketplace(&src).is_ok());
+
+        unsafe { std::env::remove_var("OPENGUILD_HOME") };
         let _ = std::fs::remove_dir_all(&src);
         let _ = std::fs::remove_dir_all(&home);
     }
