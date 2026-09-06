@@ -387,6 +387,21 @@ async fn run_host(
     // 백그라운드로 — 임계치에 걸린 요청 하나가 ~2초 멈추던 것을 없앤다.
     store.set_background_snapshots(true);
 
+    // DEV-379: `scope: ["server"]` 플러그인을 꽂는다. **여기 걸린 것은 이
+    // 서버를 쓰는 모두에게 적용된다** — 공유 범위는 파일 위치가 아니라 scope
+    // 가 정한다. 시작할 때 한 번 적재하고 결과를 들고 있는다.
+    //
+    // 서버는 오래 사는 프로세스라 요청 때마다 물을 수 없다. **동의는 HTTP 로
+    // 받지 않는다**(admin 기본값) — 팀이 공유하는 엔드포인트로 동의를 받으면
+    // "누구의 동의인가" 가 흐려지고, `run` 을 열어 주는 원격 구멍이 된다.
+    // 서버를 띄우는 사람이 그 기계에서 `openguild plugin allow` 로 한다.
+    let plugins = store.install_plugins(
+        openguild_core::plugins::Scope::Server,
+        std::sync::Arc::new(openguild_core::plugins::delivery::Outbound::new()),
+    );
+    // 종료 유예용 핸들 — Store 는 Clone 이고 같은 이벤트 출구를 공유한다.
+    let drain_handle = store.clone();
+
     // 라우터. (audit middleware 폐기 — journal.db 의 ops 가 그 역할.
     //          auto-backup task 폐기 — HTTP admin / CLI 로 명시적 실행.)
     let mut app = routes::create_router(store);
@@ -531,6 +546,42 @@ async fn run_host(
     if let Some((_, path)) = &server_config {
         println!("  config : {}", path.display());
     }
+    // DEV-379: 무엇이 도는지 시작할 때 한 줄로. 조용히 남의 코드가 도는 것도,
+    // 조용히 안 도는 것도 안 된다.
+    if !plugins.active.is_empty() {
+        println!(
+            "  plugin : {} active — {}",
+            plugins.active.len(),
+            plugins
+                .active
+                .iter()
+                .map(|p| p.def.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+    for p in &plugins.needs_consent {
+        println!(
+            "{}",
+            openguild_core::tf!(
+                "  ⚠ plugin '{}' 는 동의 전이라 돌지 않습니다 — 이 기계에서 `openguild plugin allow {}`",
+                "  ⚠ plugin '{}' is not allowed yet and will not run — run `openguild plugin allow {}` on this machine",
+                p.def.name,
+                p.def.name
+            )
+        );
+    }
+    for (name, why) in &plugins.errors {
+        println!(
+            "{}",
+            openguild_core::tf!(
+                "  ⚠ plugin '{}' 를 못 읽었습니다: {}",
+                "  ⚠ could not load plugin '{}': {}",
+                name,
+                why
+            )
+        );
+    }
     // DEV-163: 정비는 CLI(`openguild ...`) 또는 HTTP admin(`/api/admin/*`).
     println!("  admin  : HTTP /api/admin/* (snapshot/reindex/drift/vacuum/journal)");
     println!(
@@ -555,8 +606,51 @@ async fn run_host(
     println!("Press Ctrl+C to stop.");
     println!();
 
-    axum::serve(listener, app).await?;
+    // DEV-379: 종료 신호를 받고 **끝내기 전에** 전달 유예를 준다. 예전엔
+    // Ctrl+C 가 프로세스를 즉시 끊어서, 마지막 mutation 의 훅이 나가는 중이면
+    // 그대로 사라졌다. graceful shutdown 은 처리 중인 요청도 함께 마무리한다.
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
+    if !drain_handle.drain_events(PLUGIN_DRAIN) {
+        eprintln!(
+            "{}",
+            openguild_core::tf!(
+                "⚠ 플러그인 전달이 {}초 안에 안 끝나 중단했습니다",
+                "⚠ plugin delivery did not finish within {}s and was cut short",
+                PLUGIN_DRAIN.as_secs()
+            )
+        );
+    }
     Ok(())
+}
+
+/// DEV-379: 종료 직전 전달 유예. CLI(2초)보다 넉넉하다 — 서버는 어차피
+/// 내려가는 중이고, 요청을 기다리는 사람이 없다.
+const PLUGIN_DRAIN: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Ctrl+C 또는 SIGTERM(컨테이너/서비스 매니저의 정상 종료).
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        let _ = tokio::signal::ctrl_c().await;
+    };
+    #[cfg(unix)]
+    let term = async {
+        use tokio::signal::unix::{SignalKind, signal};
+        match signal(SignalKind::terminate()) {
+            Ok(mut s) => {
+                s.recv().await;
+            }
+            // 신호를 못 걸면 Ctrl+C 쪽만 쓴다 — 서버를 못 띄울 이유는 아니다.
+            Err(_) => std::future::pending::<()>().await,
+        }
+    };
+    #[cfg(not(unix))]
+    let term = std::future::pending::<()>();
+    tokio::select! {
+        _ = ctrl_c => {}
+        _ = term => {}
+    }
 }
 
 #[cfg(test)]

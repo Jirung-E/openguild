@@ -36,6 +36,69 @@ async fn setup() -> Router {
     routes::create_router(store)
 }
 
+/// DEV-379: 길드 하나에 `scope` 가 다른 플러그인 둘. 서버가 무엇을 집는지 본다.
+fn seed_two_plugins(dir: &std::path::Path) {
+    for (name, scope) in [("team-hook", "server"), ("my-hook", "cli")] {
+        let d = dir.join(".guild/plugins").join(name);
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(
+            d.join("plugin.json"),
+            format!(
+                r#"{{ "name": "{name}", "on": ["quest.created"], "scope": ["{scope}"],
+                      "action": {{ "post": {{ "url": "https://example.test/hook" }} }} }}"#
+            ),
+        )
+        .unwrap();
+    }
+}
+
+/// **`scope` 가 공유 범위를 정한다** — 파일 위치가 아니다. 서버에 걸린 것은
+/// 그 서버를 쓰는 모두에게 적용되고, 개인 CLI 훅은 서버에서 돌면 안 된다.
+#[tokio::test]
+async fn the_server_only_picks_up_server_scoped_plugins() {
+    let ns = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!("og-srv-plug-{ns}"));
+    let home = std::env::temp_dir().join(format!("og-srv-plug-home-{ns}"));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::create_dir_all(&home).unwrap();
+    openguild_core::repo::seed_guild_dir(&dir).unwrap();
+    seed_two_plugins(&dir);
+
+    let store = openguild_core::Store::open(&dir).await.unwrap();
+
+    // OPENGUILD_HOME 은 프로세스 전역이라 병렬 테스트가 서로를 덮는다. env 를
+    // 만지는 구간만 잠근다 — **await 를 감싸면 안 된다**(std 뮤텍스를 await
+    // 너머로 들고 있는 것은 교착의 씨앗이고 clippy 가 막는다). 동의 기록과
+    // 적재는 전부 동기라 여기서 끝난다.
+    static L: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let loaded = {
+        let _guard = L.lock().unwrap_or_else(|e| e.into_inner());
+        unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+        openguild_core::plugins::consent::trust_guild(&dir).unwrap();
+        let loaded = store.install_plugins(
+            openguild_core::plugins::Scope::Server,
+            std::sync::Arc::new(openguild_core::plugins::runtime::DropDelivery),
+        );
+        unsafe { std::env::remove_var("OPENGUILD_HOME") };
+        loaded
+    };
+
+    assert_eq!(loaded.active.len(), 1, "서버가 집은 것이 하나가 아니다");
+    assert_eq!(loaded.active[0].def.name, "team-hook");
+    assert_eq!(
+        loaded.out_of_scope,
+        vec!["my-hook"],
+        "개인 CLI 훅이 서버에서 돈다"
+    );
+    assert!(store.events.has_sink());
+
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
 async fn get(app: Router, uri: &str) -> (StatusCode, Value) {
     let res = app
         .oneshot(Request::get(uri).body(Body::empty()).unwrap())

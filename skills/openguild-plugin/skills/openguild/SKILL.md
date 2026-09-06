@@ -211,6 +211,7 @@ directory — load only the one you need:
 - [reference/library.md](reference/library.md) — reference notes library, folders, and file attachments (large/binary material)
 - [reference/worklog.md](reference/worklog.md) — activity history and daily notes
 - [reference/meta-and-maintenance.md](reference/meta-and-maintenance.md) — type/status/tag catalogs, reindex, drift checks, journal
+- [reference/plugins.md](reference/plugins.md) — event hooks: plugin.json, scope, consent, rhai scripts, `openguild plugin`
 - [reference/backup-and-safety.md](reference/backup-and-safety.md) — backup/restore, delete safety, never-hand-edit rule, error handling, JSON output
 
 Any command also documents itself via `--help`.

@@ -156,6 +156,60 @@ openguild campaign link C-001 DEV-001
 > UTF-8 파일에 내용을 적어두고 `--file <PATH>` 로 넘기세요 (댓글/메모/
 > 규칙/quest 본문 명령 전부 지원).
 
+### 플러그인 (0.6.0)
+
+퀘스트가 생기거나 댓글이 달렸을 때 **내가 만든 프로그램**을 부를 수 있습니다.
+설정은 길드 안에 두고 git 으로 공유되지만, **돌릴지 말지는 각자의 기계에서**
+정합니다 — 동료가 만든 설정이 `git pull` 만으로 내 컴퓨터에서 실행되면 안
+되니까요.
+
+```
+.guild/plugins/{이름}/plugin.json    ← 설정 (git 공유)
+.guild/plugins/{이름}/*.rhai         ← 보낼지 / 어떤 모양으로 보낼지 (선택)
+~/.openguild/plugin-consent.json     ← 허용 여부 (이 기계에만, git 아님)
+```
+
+```json
+{
+  "name": "ai-notify",
+  "on": ["quest.created", "comment.added"],
+  "scope": ["cli", "gui"],
+  "action": {
+    "post": {
+      "url": "https://내-서비스.example/hook",
+      "headers": { "Authorization": "Bearer ${MY_API_KEY}" }
+    }
+  }
+}
+```
+
+- `scope` 는 **필수**입니다. `cli` / `gui` / `server` 중에서 고릅니다.
+  `server` 를 넣으면 그 서버를 쓰는 **모두**에게 적용됩니다.
+- 동작은 `post`(HTTP 로 보내기)와 `run`(프로그램 실행, 이벤트는 stdin) 둘뿐입니다.
+  슬랙·디스코드 연동 같은 건 그 둘 중 하나로 여러분의 프로그램이 합니다.
+- **API 키를 직접 적으면 거부됩니다.** `plugin.json` 은 git 에 올라가니까요.
+  `${MY_API_KEY}` 처럼 환경변수 참조만 쓸 수 있고, 값은 보낼 때 이 기계의
+  환경에서 읽습니다.
+
+허용은 이렇게 합니다:
+
+```bash
+openguild plugin list                    # 무엇이 돌고 무엇이 대기 중인지
+openguild plugin allow ai-notify         # 무엇에 동의하는지 내용만 보여줌
+openguild plugin allow ai-notify --yes   # 실제로 허용
+openguild plugin trust --yes             # 혼자 쓰는 길드면 통째로 허용
+```
+
+데스크톱 앱에서는 **설정 → 플러그인** 에서 같은 일을 합니다. 서버는 일부러
+HTTP 로 열지 않았습니다 — 서버가 있는 기계에서 위 CLI 로 허용하세요.
+
+훅이 나가는 동안 명령이 멈추지는 않습니다. 느린 훅 하나가 `openguild comment
+add` 를 붙잡지 않도록 따로 보내고, 명령이 끝나기 직전에 잠깐만 기다립니다.
+플러그인 하나가 실패해도 길드 동작과 다른 플러그인은 멀쩡합니다.
+
+자세한 내용(이벤트 이름 목록, rhai 스크립트, 시한 설정)은
+`openguild plugin events` 와 `openguild plugin --help` 를 보세요.
+
 ### 원격 모드
 
 서버 모드로 띄운 다른 곳의 길드를 조작하려면:

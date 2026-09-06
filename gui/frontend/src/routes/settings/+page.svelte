@@ -87,6 +87,8 @@
 	// Welcome 재방문으로 안 풀리는 Rust 상태라 stale 할 수 있다 —
 	// 보드 마운트/Welcome 마운트가 갱신하는 세션 플래그로 보강.
 	import { isGuildContextActive } from '$lib/stores/guildSession';
+	// DEV-379: 플러그인 동의 — 데스크톱 전용(동의는 이 기계에만 남는다).
+	import { pluginApi, pluginsSupported, type PluginStatus } from '$lib/api/plugins';
 
 	// DEV-101 fix3: 즉시 반영 — store 가 source of truth, drag 중에도 매 step 적용.
 	// preview / displayScale wrapper 제거.
@@ -95,8 +97,52 @@
 	// DEV-207 후속: '원격 서버' 전용 탭은 폐기 — '정보' 탭에 길드 위치 한
 	// 줄로 통합(사용자 피드백: "그냥 정보 탭에 원격이면 주소, 로컬이면 경로
 	// 출력해서 보여주고, 웰컴페이지에서 들어간거면 표시 안하면 되는거 아님?").
-	type Tab = 'info' | 'display' | 'editor';
+	type Tab = 'info' | 'display' | 'editor' | 'plugins';
 	let activeTab = $state<Tab>('info');
+
+	// ─── DEV-379: 플러그인 ───
+	//
+	// 묻는 **시점**을 길드 열 때가 아니라 여기로 잡았다. 열자마자 대화상자로
+	// 막으면 플러그인을 안 쓰는 사람까지 방해한다. 대신 안 돌고 있는 것이
+	// 목록에서 바로 보인다.
+	let pluginStatus = $state<PluginStatus | null>(null);
+	let pluginError = $state<string | null>(null);
+	let pluginBusy = $state<string | null>(null);
+	let openScript = $state<string | null>(null);
+	let confirmTrust = $state(false);
+	const pluginsAvailable = pluginsSupported();
+
+	async function refreshPlugins() {
+		if (!pluginsAvailable) return;
+		try {
+			pluginStatus = await pluginApi.status();
+			pluginError = null;
+		} catch (e) {
+			pluginError = e instanceof Error ? e.message : String(e);
+		}
+	}
+
+	async function togglePlugin(name: string, grant: boolean) {
+		pluginBusy = name;
+		try {
+			await (grant ? pluginApi.allow(name) : pluginApi.revoke(name));
+			await refreshPlugins();
+		} catch (e) {
+			showToast(e instanceof Error ? e.message : String(e), 'error');
+		} finally {
+			pluginBusy = null;
+		}
+	}
+
+	async function trustGuild() {
+		confirmTrust = false;
+		try {
+			await pluginApi.trust();
+			await refreshPlugins();
+		} catch (e) {
+			showToast(e instanceof Error ? e.message : String(e), 'error');
+		}
+	}
 
 	// ─── DEV-114: 커스텀 테마 편집기 ───
 	// 편집 대상 = 활성 프리셋. 새 프리셋 생성 → 즉시 활성화 → picker 로 조정.
@@ -304,6 +350,16 @@
 				onclick={() => (activeTab = 'editor')}
 				aria-pressed={activeTab === 'editor'}>{t('settings.tabEditor', $locale)}</button
 			>
+			<!-- DEV-379: 플러그인 동의. -->
+			<button
+				class="tab"
+				class:active={activeTab === 'plugins'}
+				onclick={() => {
+					activeTab = 'plugins';
+					refreshPlugins();
+				}}
+				aria-pressed={activeTab === 'plugins'}>{t('settings.tabPlugins', $locale)}</button
+			>
 		</nav>
 	</aside>
 
@@ -374,6 +430,87 @@
 					</p>
 				</dd>
 			</dl>
+		{:else if activeTab === 'plugins'}
+			<h2>{t('settings.pluginsHeading', $locale)}</h2>
+			{#if !pluginsAvailable}
+				<p class="scale-hint">{t('settings.pluginsDesktopOnly', $locale)}</p>
+			{:else}
+				<p class="scale-hint">{t('settings.pluginsIntro', $locale)}</p>
+				{#if pluginError}
+					<p class="plugin-error">{pluginError}</p>
+				{/if}
+				{#if pluginStatus?.trusted}
+					<p class="plugin-trusted">{t('settings.pluginTrusted', $locale)}</p>
+				{/if}
+				{#if pluginStatus && pluginStatus.plugins.length === 0 && pluginStatus.errors.length === 0}
+					<p class="scale-hint">{t('settings.pluginsNone', $locale)}</p>
+				{/if}
+				<ul class="plugin-list">
+					{#each pluginStatus?.plugins ?? [] as p (p.name)}
+						<li class="plugin" class:pending={!p.granted}>
+							<div class="plugin-head">
+								<strong>{p.name}</strong>
+								<code class="plugin-target">{p.action} → {p.target}</code>
+							</div>
+							<div class="plugin-meta">
+								<span>{p.on.join(' ')}</span>
+								<span>scope: {p.scope.join(', ')}</span>
+							</div>
+							<div class="plugin-state">
+								{#if !p.granted}
+									{t('settings.pluginPending', $locale)}
+								{:else if p.runs_here}
+									{t('settings.pluginRunning', $locale)}
+								{:else}
+									{t('settings.pluginOtherScope', $locale)}
+								{/if}
+							</div>
+							{#if p.script_src}
+								<button
+									class="link-btn"
+									onclick={() => (openScript = openScript === p.name ? null : p.name)}
+									>{openScript === p.name
+										? t('settings.pluginHideScript', $locale)
+										: t('settings.pluginShowScript', $locale)}</button
+								>
+								{#if openScript === p.name}
+									<pre class="plugin-script">{p.script_src}</pre>
+								{/if}
+							{/if}
+							<div class="plugin-actions">
+								{#if p.granted}
+									<button
+										class="ghost"
+										disabled={pluginBusy === p.name}
+										onclick={() => togglePlugin(p.name, false)}
+										>{t('settings.pluginRevoke', $locale)}</button
+									>
+								{:else}
+									<button
+										class="primary"
+										disabled={pluginBusy === p.name}
+										onclick={() => togglePlugin(p.name, true)}
+										>{t('settings.pluginAllow', $locale)}</button
+									>
+								{/if}
+							</div>
+						</li>
+					{/each}
+				</ul>
+				{#if (pluginStatus?.errors ?? []).length > 0}
+					<h3 class="plugin-broken-h">{t('settings.pluginBroken', $locale)}</h3>
+					<ul class="plugin-list">
+						{#each pluginStatus?.errors ?? [] as [name, why] (name)}
+							<li class="plugin broken"><strong>{name}</strong><span>{why}</span></li>
+						{/each}
+					</ul>
+				{/if}
+				{#if !pluginStatus?.trusted}
+					<button class="ghost" onclick={() => (confirmTrust = true)}
+						>{t('settings.pluginTrust', $locale)}</button
+					>
+				{/if}
+			{/if}
 		{:else if activeTab === 'info'}
 			<h2>{t('settings.infoHeading', $locale)}</h2>
 			<dl class="info-grid">
@@ -819,7 +956,104 @@
 	oncancel={() => (confirmDeletePresetName = null)}
 />
 
+<!-- DEV-379: 길드 통째 신뢰는 되돌리기 어렵다 — 확인 없이 받지 않는다. -->
+<ConfirmDialog
+	open={confirmTrust}
+	title={t('settings.pluginTrust', $locale)}
+	message={t('settings.pluginTrustConfirm', $locale)}
+	confirmLabel={t('settings.pluginTrust', $locale)}
+	danger
+	onconfirm={trustGuild}
+	oncancel={() => (confirmTrust = false)}
+/>
+
 <style>
+	/* DEV-379: 플러그인 목록. 동의 전인 것이 눈에 띄어야 한다 — 조용히 안 도는
+	   것이 제일 나쁘다. */
+	.plugin-list {
+		list-style: none;
+		margin: 0.75rem 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+	.plugin {
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-md);
+		padding: 0.6rem 0.75rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.3rem;
+	}
+	.plugin.pending {
+		border-color: var(--warning);
+	}
+	.plugin.broken {
+		border-color: var(--danger);
+		flex-direction: row;
+		gap: 0.75rem;
+		align-items: baseline;
+	}
+	.plugin-head {
+		display: flex;
+		gap: 0.5rem;
+		align-items: baseline;
+		flex-wrap: wrap;
+	}
+	.plugin-target {
+		font-size: 0.8rem;
+		color: var(--text-muted);
+		word-break: break-all;
+	}
+	.plugin-meta {
+		display: flex;
+		gap: 1rem;
+		font-size: 0.78rem;
+		color: var(--text-muted);
+		flex-wrap: wrap;
+	}
+	.plugin-state {
+		font-size: 0.8rem;
+	}
+	.plugin.pending .plugin-state {
+		color: var(--warning);
+	}
+	.plugin-script {
+		margin: 0.25rem 0 0;
+		padding: 0.5rem;
+		background: var(--bg-subtle);
+		border-radius: var(--r-sm);
+		font-size: 0.78rem;
+		overflow-x: auto;
+		white-space: pre;
+	}
+	.plugin-actions {
+		display: flex;
+		gap: 0.4rem;
+	}
+	.plugin-error {
+		color: var(--danger);
+	}
+	.plugin-trusted {
+		font-size: 0.85rem;
+		color: var(--text-muted);
+	}
+	.plugin-broken-h {
+		font-size: 0.9rem;
+		margin: 1rem 0 0;
+	}
+	.link-btn {
+		align-self: flex-start;
+		background: none;
+		border: none;
+		padding: 0;
+		font-size: 0.8rem;
+		color: var(--accent);
+		cursor: pointer;
+		text-decoration: underline;
+	}
+
 	.settings {
 		display: flex;
 		gap: 1.5rem;

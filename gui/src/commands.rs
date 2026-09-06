@@ -40,6 +40,125 @@ fn open_err(e: anyhow::Error) -> String {
     }
 }
 
+// ─────────────────── DEV-379: 플러그인 ───────────────────
+//
+// GUI 는 **물어볼 수 있는 유일한 컴포넌트**다. CLI 는 비대화형일 수 있고
+// 서버는 요청마다 물을 수 없다. 그래서 여기서는 정의와 스크립트 원문을 보여
+// 주고 허용을 받는다 — 사용자가 무엇에 동의하는지 보지 못하면 동의가 아니다.
+//
+// 묻는 **시점**은 길드를 열 때가 아니라 설정 화면이다. 열자마자 대화상자로
+// 막으면 플러그인을 안 쓰는 사람까지 방해한다. 대신 안 돌고 있는 것이 있으면
+// 목록에서 바로 보인다.
+
+/// 프런트로 넘기는 플러그인 한 건. 내부 구조체를 그대로 흘리지 않는다.
+#[derive(Serialize)]
+pub struct PluginView {
+    pub name: String,
+    pub on: Vec<String>,
+    pub scope: Vec<String>,
+    pub action: String,
+    /// `post` 의 목적지 또는 `run` 의 명령 — **무엇에 동의하는지**의 핵심.
+    pub target: String,
+    pub script: Option<String>,
+    /// 스크립트 원문. 이걸 안 보여주면 동의가 형식만 남는다.
+    pub script_src: Option<String>,
+    pub granted: bool,
+    /// 이 컴포넌트(gui)에서 도는가. scope 가 cli 뿐이면 허용해도 여기선 안 돈다.
+    pub runs_here: bool,
+}
+
+#[derive(Serialize)]
+pub struct PluginStatus {
+    pub plugins: Vec<PluginView>,
+    /// 읽거나 검증하다 실패한 것 — `(이름, 이유)`.
+    pub errors: Vec<(String, String)>,
+    /// 길드 통째 신뢰가 켜져 있나.
+    pub trusted: bool,
+    /// 전달 중 쌓인 문제 — 조용히 삼키지 않는다.
+    pub problems: Vec<String>,
+}
+
+fn plugin_view(p: &openguild_core::plugins::Plugin, granted: bool) -> PluginView {
+    use openguild_core::plugins::Action;
+    let (action, target) = match &p.def.action {
+        Action::Post { url, .. } => ("post", url.clone()),
+        Action::Run { command, args, .. } => ("run", format!("{command} {}", args.join(" "))),
+    };
+    PluginView {
+        name: p.def.name.clone(),
+        on: p.def.on.clone(),
+        scope: p
+            .def
+            .scope
+            .iter()
+            .map(|s| format!("{s:?}").to_lowercase())
+            .collect(),
+        action: action.into(),
+        target,
+        script: p.def.script.clone(),
+        script_src: p.script_src.clone(),
+        granted,
+        runs_here: p.def.scope.contains(&openguild_core::plugins::Scope::Gui),
+    }
+}
+
+/// scope 를 가리지 않고 전부 — GUI 전용이 아닌 것도 여기서 허용할 수 있어야
+/// 한다(그 반대는 [[DEV-378]] 의 CLI 가 맡는다).
+#[tauri::command]
+pub async fn plugin_status(store: State<'_, Store>) -> Result<PluginStatus, String> {
+    let root = store.paths.guild_root.clone();
+    let loaded = openguild_core::plugins::load_all(&root);
+    let granted = openguild_core::plugins::consent::load(&root).map_err(err)?;
+    Ok(PluginStatus {
+        plugins: loaded
+            .active
+            .iter()
+            .map(|p| plugin_view(p, true))
+            .chain(loaded.needs_consent.iter().map(|p| plugin_view(p, false)))
+            .collect(),
+        errors: loaded.errors,
+        trusted: granted.trusted,
+        problems: Vec::new(),
+    })
+}
+
+#[tauri::command]
+pub async fn plugin_allow(store: State<'_, Store>, name: String) -> Result<(), String> {
+    let root = store.paths.guild_root.clone();
+    let loaded = openguild_core::plugins::load_all(&root);
+    let target = loaded
+        .active
+        .iter()
+        .chain(loaded.needs_consent.iter())
+        .find(|p| p.def.name == name)
+        .ok_or_else(|| format!("그런 플러그인 없음: {name}"))?;
+    openguild_core::plugins::consent::grant(&root, target).map_err(err)?;
+    reinstall_plugins(&store);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn plugin_revoke(store: State<'_, Store>, name: String) -> Result<(), String> {
+    let root = store.paths.guild_root.clone();
+    openguild_core::plugins::consent::revoke(&root, &name).map_err(err)?;
+    reinstall_plugins(&store);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn plugin_trust(store: State<'_, Store>) -> Result<(), String> {
+    let root = store.paths.guild_root.clone();
+    openguild_core::plugins::consent::trust_guild(&root).map_err(err)?;
+    reinstall_plugins(&store);
+    Ok(())
+}
+
+/// 동의가 바뀌면 **즉시** 반영한다. 적재는 길드를 열 때 한 번이지만, 방금
+/// 허용해 놓고 앱을 다시 켜야 도는 것은 고장으로 보인다.
+fn reinstall_plugins(store: &Store) {
+    crate::install_plugins_for_gui(store);
+}
+
 // ─────────────────────── meta ───────────────────────
 
 #[tauri::command]
@@ -1030,6 +1149,9 @@ pub fn init_and_open_guild(
     if let Err(e) = openguild_core::recents::add(p) {
         eprintln!("[openguild-gui] warn: recents 갱신 실패 — {e:#}");
     }
+    // DEV-379: 길드를 바꿨으면 플러그인도 그 길드 것으로 갈아 끼운다 —
+    // 이전 길드의 플러그인이 새 길드의 이벤트를 받으면 안 된다.
+    crate::install_plugins_for_gui(&store);
     app.unmanage::<openguild_core::Store>();
     app.manage(store);
     // DEV-087 fix2: 새/초기화한 길드 디렉토리를 asset protocol scope 에 추가
@@ -1126,6 +1248,11 @@ pub fn open_guild_in_current_window(
     {
         eprintln!("[openguild-gui] warn: recents 갱신 실패 — {e:#}");
     }
+
+    // DEV-379: 길드를 바꿨으면 플러그인도 그 길드 것으로 갈아 끼운다 —
+    // 이전 길드의 플러그인이 새 길드의 이벤트를 받으면 안 된다. (asset scope
+    // 와 같은 swap 누락 패턴이므로 여기 함께 둔다.)
+    crate::install_plugins_for_gui(&new_store);
 
     // 3-4. 기존 store 해제 + 새 store 등록.
     app.unmanage::<openguild_core::Store>();

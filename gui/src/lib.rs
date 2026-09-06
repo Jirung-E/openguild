@@ -239,6 +239,27 @@ fn cleanup_welcome_placeholder_leftovers() {
 ///
 /// 진짜 길드가 아니므로 recents 등록·길드 열기 대상이 되면 안 된다. 경로 문자열이
 /// 여러 곳에 흩어지면 한쪽만 고치는 사고가 나므로 여기 한 곳에서만 만든다.
+/// DEV-379: 이 길드의 GUI 용 플러그인을 이벤트 출구에 꽂는다.
+///
+/// 길드를 열 때 한 번, 그리고 **동의가 바뀔 때마다** 다시 부른다 — 방금
+/// 허용해 놓고 앱을 다시 켜야 도는 것은 고장으로 보인다. 돌 게 없으면 sink
+/// 를 안 꽂으므로 `ops` 는 이벤트를 만들지도 않는다([[DEV-374]]).
+pub fn install_plugins_for_gui(store: &Store) {
+    let loaded = store.install_plugins(
+        openguild_core::plugins::Scope::Gui,
+        std::sync::Arc::new(openguild_core::plugins::delivery::Outbound::new()),
+    );
+    for (name, why) in &loaded.errors {
+        eprintln!("[openguild-gui] warn: 플러그인 '{name}' 를 못 읽었습니다 — {why}");
+    }
+    if !loaded.needs_consent.is_empty() {
+        eprintln!(
+            "[openguild-gui] 플러그인 {} 개가 동의 전이라 돌지 않습니다 (설정 화면에서 허용)",
+            loaded.needs_consent.len()
+        );
+    }
+}
+
 pub fn welcome_placeholder_path() -> std::path::PathBuf {
     std::env::temp_dir().join("openguild-welcome-placeholder")
 }
@@ -439,6 +460,10 @@ pub fn run() {
     // 상태 변경/관계 변경이 스냅샷 생성(~2초) 때문에 멈추지 않게 한다.
     store.set_background_snapshots(true);
 
+    // DEV-379: `scope: ["gui"]` 플러그인을 꽂는다. 동의 전인 것은 여기서
+    // 걸러지고, 설정 화면에서 허용하면 즉시 다시 꽂힌다.
+    install_plugins_for_gui(&store);
+
     // BUG-236 후속: 이미 등록돼 버린 placeholder 항목과, 예전 빌드가 남긴 마커
     // 잔재를 시동 때 한 번 치운다.
     //
@@ -514,6 +539,11 @@ pub fn run() {
         .manage(store)
         .manage(launch_info)
         .invoke_handler(tauri::generate_handler![
+            // DEV-379: 플러그인 — 이 기계에서 남의 코드를 돌릴지 정한다.
+            commands::plugin_status,
+            commands::plugin_allow,
+            commands::plugin_revoke,
+            commands::plugin_trust,
             commands::launch_mode,
             commands::current_guild_path,
             commands::current_guild_name,
@@ -1082,5 +1112,84 @@ mod tests {
         std::fs::write(dir.join("my.guild"), "name=\"x\"").unwrap();
         assert!(has_guild_marker(&dir));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ───── DEV-379: 플러그인 배선 ─────
+
+    /// `OPENGUILD_HOME` 은 프로세스 전역이다. **테스트마다 따로 잠그면 의미가
+    /// 없다** — 하나가 잠금을 쥔 사이 다른 하나가 지워 버린다(실제로 그랬다).
+    /// 이 모듈에서 env 를 만지는 테스트가 같은 잠금을 쓴다.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+        ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn write_plugin(guild: &std::path::Path, name: &str, scope: &str) {
+        let d = guild.join(".guild/plugins").join(name);
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(
+            d.join("plugin.json"),
+            format!(
+                r#"{{ "name": "{name}", "on": ["quest.created"], "scope": ["{scope}"],
+                      "action": {{ "post": {{ "url": "https://example.test/hook" }} }} }}"#
+            ),
+        )
+        .unwrap();
+    }
+
+    /// **GUI 는 GUI 것만 집는다.** `scope: ["cli"]` 훅이 앱에서도 돌면
+    /// 사용자가 고른 범위가 무의미해진다. 그리고 돌 게 없으면 sink 자체를 안
+    /// 꽂아 `ops` 가 이벤트를 만들지도 않는다([[DEV-374]]).
+    #[test]
+    fn gui_installs_only_gui_scoped_plugins() {
+        let _guard = env_lock();
+
+        let dir = fresh_tmp("gui-plug");
+        let home = fresh_tmp("gui-plug-home");
+        openguild_core::repo::seed_guild_dir(&dir).unwrap();
+        write_plugin(&dir, "cli-only", "cli");
+
+        // gui 는 tokio 를 직접 의존하지 않는다 — tauri 의 런타임을 쓴다.
+        let store = tauri::async_runtime::block_on(Store::open(&dir)).unwrap();
+
+        unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+        openguild_core::plugins::consent::trust_guild(&dir).unwrap();
+        crate::install_plugins_for_gui(&store);
+        assert!(!store.events.has_sink(), "CLI 전용 훅인데 GUI 가 집었다");
+
+        // 같은 길드에 GUI 것이 생기면 그때부터 꽂힌다.
+        write_plugin(&dir, "gui-hook", "gui");
+        crate::install_plugins_for_gui(&store);
+        assert!(store.events.has_sink());
+        unsafe { std::env::remove_var("OPENGUILD_HOME") };
+
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// 동의 전에는 안 돈다 — 정의가 git 으로 왔다는 것만으로 돌면 안 된다.
+    #[test]
+    fn gui_does_not_install_without_consent() {
+        let _guard = env_lock();
+
+        let dir = fresh_tmp("gui-consent");
+        let home = fresh_tmp("gui-consent-home");
+        openguild_core::repo::seed_guild_dir(&dir).unwrap();
+        write_plugin(&dir, "gui-hook", "gui");
+
+        // gui 는 tokio 를 직접 의존하지 않는다 — tauri 의 런타임을 쓴다.
+        let store = tauri::async_runtime::block_on(Store::open(&dir)).unwrap();
+
+        unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+        crate::install_plugins_for_gui(&store);
+        assert!(!store.events.has_sink(), "동의 없이 꽂혔다");
+
+        openguild_core::plugins::consent::trust_guild(&dir).unwrap();
+        crate::install_plugins_for_gui(&store);
+        assert!(store.events.has_sink());
+        unsafe { std::env::remove_var("OPENGUILD_HOME") };
+
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&home);
     }
 }

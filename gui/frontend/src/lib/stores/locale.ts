@@ -162,6 +162,41 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'settings.tabInfo': { ko: '정보', en: 'Info' },
 	'settings.tabDisplay': { ko: '표시', en: 'Display' },
 	'settings.tabEditor': { ko: '편집기', en: 'Editor' },
+	// DEV-379: 플러그인 — 이 기계에서 남의 코드를 돌릴지 정하는 화면.
+	'settings.tabPlugins': { ko: '플러그인', en: 'Plugins' },
+	'settings.pluginsHeading': { ko: '플러그인', en: 'Plugins' },
+	'settings.pluginsIntro': {
+		ko: '플러그인 정의는 .guild/plugins/ 에 있고 git 으로 공유됩니다. 동의는 이 기계에만 남습니다 — 허용하기 전에는 돌지 않습니다.',
+		en: 'Plugin definitions live in .guild/plugins/ and are shared via git. Consent stays on this machine — nothing runs until you allow it.'
+	},
+	'settings.pluginsNone': {
+		ko: '플러그인이 없습니다. .guild/plugins/{이름}/plugin.json 으로 정의합니다.',
+		en: 'No plugins. Define one at .guild/plugins/{name}/plugin.json.'
+	},
+	'settings.pluginsDesktopOnly': {
+		ko: '플러그인 관리는 데스크톱 앱에서만 가능합니다 — 동의는 이 기계에 남습니다.',
+		en: 'Plugin management is desktop-only — consent is stored on this machine.'
+	},
+	'settings.pluginAllow': { ko: '허용', en: 'Allow' },
+	'settings.pluginRevoke': { ko: '철회', en: 'Revoke' },
+	'settings.pluginTrust': { ko: '이 길드를 전부 허용', en: 'Trust this guild' },
+	'settings.pluginTrusted': {
+		ko: '이 길드는 전부 허용돼 있습니다 — 나중에 추가되는 플러그인도 묻지 않고 돕니다.',
+		en: 'This guild is fully trusted — plugins added later also run without asking.'
+	},
+	'settings.pluginTrustConfirm': {
+		ko: '이 길드에 앞으로 추가되는 플러그인까지 전부, 묻지 않고 돌게 됩니다. 계속할까요?',
+		en: 'Every plugin in this guild — including ones added later — will run without asking. Continue?'
+	},
+	'settings.pluginPending': { ko: '동의 대기 — 안 돕니다', en: 'Awaiting consent — not running' },
+	'settings.pluginRunning': { ko: '돌고 있음', en: 'Running' },
+	'settings.pluginOtherScope': {
+		ko: '허용됨 (이 앱의 scope 아님 — 여기서는 안 돕니다)',
+		en: 'Allowed (not in this app\'s scope — it does not run here)'
+	},
+	'settings.pluginShowScript': { ko: '스크립트 보기', en: 'Show script' },
+	'settings.pluginHideScript': { ko: '접기', en: 'Hide' },
+	'settings.pluginBroken': { ko: '읽지 못한 정의', en: 'Definitions that failed to load' },
 	'settings.editorHeading': { ko: '편집기', en: 'Editor' },
 	'settings.tabBehavior': { ko: 'Tab 동작', en: 'Tab behavior' },
 	'settings.tabChar': { ko: '탭 문자', en: 'Tab character' },
