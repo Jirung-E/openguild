@@ -546,6 +546,16 @@ pub async fn delete_comment_entry(store: &Store, slug: &str, id: u64) -> AppResu
     )
     .await
     .map_err(AppError::Internal)?;
+    // DEV-381: 지우기 **전에** 내용을 잡아 둔다. `delete_quest` 가 같은 이유로
+    // 그렇게 한다 — 지운 뒤에는 어디서도 못 읽으므로, 구독자가 "무엇이
+    // 지워졌나" 를 영영 알 수 없다. 구독자가 없으면 읽지도 않는다.
+    let doomed = if store.events_wanted(ev::COMMENT_DELETED, crate::events::Phase::Post) {
+        svc::list_entries(store, slug)
+            .ok()
+            .and_then(|es| es.into_iter().find(|e| e.id == id))
+    } else {
+        None
+    };
     svc::delete_entry(store, slug, id)?;
     let _ = crate::file_mtime::touch(store, &store.paths.comments_path(slug)).await;
     // DEV-102: 같은 entry_id 의 cache row 도 삭제.
@@ -554,10 +564,14 @@ pub async fn delete_comment_entry(store: &Store, slug: &str, id: u64) -> AppResu
     // 에 바로 반영되도록. 색인은 파생물이라 실패해도 본 작업은 성공으로 둔다
     // (reindex 로 언제든 복구된다).
     let _ = crate::ops::backlinks::refresh_for(store, crate::repo::crosslink::DocKind::Quest, slug).await;
-    store.emit_post(
-        ev::COMMENT_DELETED,
-        || json!({ "quest": payload::quest_ref(slug), "comment": payload::comment_ref(id) }),
-    );
+    store.emit_post(ev::COMMENT_DELETED, || {
+        let comment = match &doomed {
+            Some(e) => payload::comment(e),
+            // 못 읽었으면 최소한 id 는 싣는다.
+            None => payload::comment_ref(id),
+        };
+        json!({ "quest": payload::quest_ref(slug), "comment": comment })
+    });
     Ok(())
 }
 

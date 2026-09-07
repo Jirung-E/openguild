@@ -198,6 +198,7 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'settings.pluginShowScript': { ko: '스크립트 보기', en: 'Show script' },
 	'settings.pluginHideScript': { ko: '접기', en: 'Hide' },
 	'settings.pluginBroken': { ko: '읽지 못한 정의', en: 'Definitions that failed to load' },
+	'settings.pluginProblems': { ko: '최근 전달 실패', en: 'Recent delivery failures' },
 	'settings.editorHeading': { ko: '편집기', en: 'Editor' },
 	'settings.tabBehavior': { ko: 'Tab 동작', en: 'Tab behavior' },
 	'settings.tabChar': { ko: '탭 문자', en: 'Tab character' },

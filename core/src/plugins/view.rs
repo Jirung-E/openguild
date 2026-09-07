@@ -17,7 +17,6 @@
 use super::{Action, Plugin, Scope};
 use crate::error::AppResult;
 use serde::{Deserialize, Serialize};
-use std::path::Path;
 
 /// 프런트로 넘기는 플러그인 한 건. 내부 구조체를 그대로 흘리지 않는다.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,6 +49,9 @@ pub struct PluginStatus {
     pub manageable: bool,
     /// 보여줄 안내 — 아직 길드를 안 열었다든지. 비어 있는 것이 정상이다.
     pub notes: Vec<String>,
+    /// 전달 중 쌓인 문제(최근 것부터 잘림). 비어 있는 것이 정상이다.
+    #[serde(default)]
+    pub problems: Vec<String>,
 }
 
 impl PluginStatus {
@@ -61,6 +63,7 @@ impl PluginStatus {
             trusted: false,
             manageable: false,
             notes: vec![note.into()],
+            problems: Vec::new(),
         }
     }
 }
@@ -100,7 +103,8 @@ fn scope_label(s: &Scope) -> String {
 /// 이 길드의 상태를 읽는다. **scope 를 가리지 않는다** — 목록에서 걸러 버리면
 /// 다른 컴포넌트 전용 플러그인은 존재조차 안 보이고 허용할 방법이 사라진다.
 /// `scope` 는 "여기서 도는가"(`runs_here`) 판정에만 쓴다.
-pub fn status(guild_root: &Path, scope: Scope, manageable: bool) -> AppResult<PluginStatus> {
+pub fn status(store: &crate::Store, scope: Scope, manageable: bool) -> AppResult<PluginStatus> {
+    let guild_root = &store.paths.guild_root;
     let loaded = super::load_all(guild_root);
     let granted = super::consent::load(guild_root)?;
     Ok(PluginStatus {
@@ -114,5 +118,8 @@ pub fn status(guild_root: &Path, scope: Scope, manageable: bool) -> AppResult<Pl
         trusted: granted.trusted,
         manageable,
         notes: Vec::new(),
+        // DEV-381: 여기까지 올려야 사용자가 본다. 예전엔 모아만 두고 아무도
+        // 안 읽어서, 훅이 조용히 실패해도 화면에 아무것도 안 떴다.
+        problems: store.plugin_problems(),
     })
 }

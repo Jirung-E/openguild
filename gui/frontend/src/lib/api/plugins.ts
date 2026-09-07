@@ -45,6 +45,8 @@ export interface PluginStatus {
 	manageable: boolean;
 	/** 보여줄 안내(길드를 아직 안 열었다 등). 보통 비어 있다. */
 	notes: string[];
+	/** 전달 중 쌓인 문제. 비어 있는 것이 정상이다. */
+	problems: string[];
 }
 
 /** 허용/철회를 할 수 있는 상태인가 — 로컬 길드를 연 데스크톱에서만. */

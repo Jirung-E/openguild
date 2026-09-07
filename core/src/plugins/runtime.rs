@@ -134,8 +134,15 @@ pub struct PluginRuntime {
     worker: Option<Worker>,
 }
 
+/// DEV-381: 문제 목록의 상한. 서버는 몇 달씩 도는 프로세스라 상한이 없으면
+/// 끝없이 자란다. 오래된 것부터 버린다 — 최근 것이 고치는 데 쓸모 있다.
+const MAX_PROBLEMS: usize = 200;
+
 fn note(problems: &Mutex<Vec<String>>, msg: String) {
     if let Ok(mut p) = problems.lock() {
+        if p.len() >= MAX_PROBLEMS {
+            p.remove(0);
+        }
         p.push(msg);
     }
 }
@@ -263,6 +270,10 @@ impl EventSink for PluginRuntime {
     fn drain(&self, budget: Duration) -> bool {
         PluginRuntime::drain(self, budget)
     }
+
+    fn problems(&self) -> Vec<String> {
+        PluginRuntime::problems(self)
+    }
 }
 
 #[cfg(test)]
@@ -288,6 +299,7 @@ mod tests {
             dir: std::path::PathBuf::from("/tmp/none"),
             compiled: None,
             script_src: None,
+            folder: Default::default(),
         }
     }
 
@@ -572,6 +584,35 @@ mod tests {
             "{:?}",
             rt.problems()
         );
+    }
+
+    /// **문제 목록은 누가 읽어야 의미가 있다.** 조용히 삼키지 않으려고 모은
+    /// 것인데 아무도 안 읽으면 삼킨 것과 같다 — sink 를 통해 올라오는지 본다.
+    /// 그리고 장수 프로세스에서 무한히 자라면 안 된다.
+    #[test]
+    fn problems_reach_the_sink_and_stay_bounded() {
+        use crate::events::EventSink as _;
+        struct Refusing;
+        impl Delivery for Refusing {
+            fn deliver(
+                &self,
+                _p: &Plugin,
+                _e: &Event,
+                _b: &serde_json::Value,
+            ) -> Result<(), String> {
+                Err("받는 쪽이 죽어 있습니다".into())
+            }
+        }
+        let rt = PluginRuntime::new(vec![plugin("a", &["*"])], Arc::new(Refusing));
+        for _ in 0..(MAX_PROBLEMS + 50) {
+            rt.dispatch(event(ev::QUEST_CREATED, Phase::Post));
+        }
+        assert!(rt.drain(Duration::from_secs(10)));
+        // 트레이트 경유로 읽힌다 — Store/Events 가 이 길로 가져간다.
+        let via_sink = EventSink::problems(&rt);
+        assert!(!via_sink.is_empty(), "sink 로 안 올라온다");
+        assert_eq!(via_sink.len(), MAX_PROBLEMS, "상한 없이 자란다");
+        assert!(via_sink[0].contains("죽어 있습니다"));
     }
 
     /// 유예가 짧으면 포기한다 — 무한정 붙들려 CLI 가 안 끝나면 안 된다.

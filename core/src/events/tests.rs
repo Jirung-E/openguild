@@ -87,6 +87,173 @@ fn new_quest(title: &str) -> CreateQuestRequest {
     }
 }
 
+/// DEV-381: **태그를 싣는 이벤트가 태그를 안 실었다.** `QuestRow.tags` 는
+/// `#[sqlx(skip)]` 이라 `list()` 만 채웠고, mutation 은 전부 `fetch_by_id` 로
+/// 돌아오므로 모든 퀘스트 이벤트가 `"tags": []` 였다. 구독자는 "태그가 다
+/// 지워졌다" 로 읽는다.
+#[tokio::test]
+async fn quest_events_carry_the_actual_tags() {
+    let (dir, store, rec) = setup("tags").await;
+    let q = crate::ops::quests::create_quest(&store, new_quest("태그"))
+        .await
+        .unwrap();
+    crate::ops::quests::set_quest_tags(&store, q.id, vec!["api".into(), "core".into()])
+        .await
+        .unwrap();
+
+    let ev = rec
+        .find(super::names::QUEST_TAGS_CHANGED, Phase::Post)
+        .expect("quest.tags_changed 가 안 나왔다");
+    assert_eq!(
+        ev.to_json()["quest"]["tags"],
+        serde_json::json!(["api", "core"]),
+        "태그를 알리는 이벤트가 태그를 안 실었다"
+    );
+
+    // 이후의 다른 이벤트에도 실려야 한다 — 태그로 거르는 플러그인이 있다.
+    crate::ops::quests::change_status(
+        &store,
+        q.id,
+        crate::models::ChangeStatusRequest {
+            status_slug: "in_progress".into(),
+        },
+    )
+    .await
+    .unwrap();
+    let ev2 = rec
+        .find(super::names::QUEST_STATUS_CHANGED, Phase::Post)
+        .unwrap();
+    assert_eq!(
+        ev2.to_json()["quest"]["tags"],
+        serde_json::json!(["api", "core"])
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// DEV-381: **cascade 로 함께 지워진 하위 퀘스트도 지워진 것이다.** 부모 것만
+/// 내보내면 미러링 플러그인이 하위 퀘스트를 영원히 열어 둔다.
+#[tokio::test]
+async fn cascade_deleted_children_emit_their_own_deleted_event() {
+    let (dir, store, rec) = setup("cascade").await;
+    let parent = crate::ops::quests::create_quest(&store, new_quest("부모"))
+        .await
+        .unwrap();
+    let mut child_req = new_quest("자식");
+    child_req.parent_quest_id = Some(parent.id);
+    let child = crate::ops::quests::create_quest(&store, child_req)
+        .await
+        .unwrap();
+
+    crate::ops::quests::delete_quest(&store, parent.id, &[child.id])
+        .await
+        .unwrap();
+
+    let deleted: Vec<String> = rec
+        .got
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|e| e.name == super::names::QUEST_DELETED && e.phase == Phase::Post)
+        .map(|e| {
+            e.to_json()["quest"]["id"]
+                .as_str()
+                .unwrap_or("")
+                .to_string()
+        })
+        .collect();
+    assert!(
+        deleted.contains(&parent.quest_id) && deleted.contains(&child.quest_id),
+        "함께 지워진 자식이 빠졌다: {deleted:?}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// DEV-381: 지운 뒤에는 어디서도 못 읽는다 — **무엇이 지워졌는지** 실어야 한다.
+#[tokio::test]
+async fn comment_deleted_says_what_was_deleted() {
+    let (dir, store, rec) = setup("cdel").await;
+    let q = crate::ops::quests::create_quest(&store, new_quest("댓글 삭제"))
+        .await
+        .unwrap();
+    let c = crate::ops::comments::add_comment_entry(
+        &store,
+        &q.quest_id,
+        "admin".into(),
+        "지워질 내용".into(),
+        None,
+        false,
+    )
+    .await
+    .unwrap();
+    crate::ops::comments::delete_comment_entry(&store, &q.quest_id, c.id)
+        .await
+        .unwrap();
+
+    let ev = rec
+        .find(super::names::COMMENT_DELETED, Phase::Post)
+        .expect("comment.deleted 가 안 나왔다");
+    let j = ev.to_json();
+    assert_eq!(j["comment"]["id"], c.id);
+    assert_eq!(j["comment"]["author"], "admin");
+    assert_eq!(
+        j["comment"]["body"], "지워질 내용",
+        "무엇이 지워졌는지 안 실렸다: {j}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// DEV-381: **실패도 이벤트다.** [[DEV-373]] 이 "이벤트 수를 안 늘리고
+/// `ok`/`error` 만 갈린다" 로 확정했는데, `emit_post_failed` 의 호출 지점이
+/// 0곳이라 구독자는 성공만 봤다 — 결정이 코드에 없었다.
+#[tokio::test]
+async fn a_rejected_mutation_emits_ok_false_with_the_reason() {
+    let (dir, store, rec) = setup("failed").await;
+    let q = crate::ops::quests::create_quest(&store, new_quest("완료 막힘"))
+        .await
+        .unwrap();
+    // 미해결 토론 댓글이 하나 있으면 완료 상태로 못 간다.
+    crate::ops::comments::add_comment_entry(
+        &store,
+        &q.quest_id,
+        "admin".into(),
+        "이거 확인 필요".into(),
+        None,
+        true,
+    )
+    .await
+    .unwrap();
+
+    let err = crate::ops::quests::change_status(
+        &store,
+        q.id,
+        crate::models::ChangeStatusRequest {
+            status_slug: "done".into(),
+        },
+    )
+    .await
+    .unwrap_err();
+    assert!(err.to_string().contains("미해결"), "{err}");
+
+    let ev = rec
+        .find(super::names::QUEST_STATUS_CHANGED, Phase::Post)
+        .expect("실패했는데 이벤트가 안 나왔다");
+    let j = ev.to_json();
+    // 이름은 성공과 **같다** — 구독자가 늘지 않고 ok 만 갈린다.
+    assert_eq!(j["event"], "quest.status_changed");
+    assert_eq!(j["ok"], false, "실패인데 ok 가 true 다");
+    assert!(
+        j["error"].as_str().unwrap_or_default().contains("미해결"),
+        "실패 이유가 안 실렸다: {j}"
+    );
+    assert_eq!(j["quest"]["id"], q.quest_id);
+    assert_eq!(j["change"]["to"], "done");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[tokio::test]
 async fn quest_create_emits_post_with_public_shape() {
     let (dir, store, rec) = setup("create").await;

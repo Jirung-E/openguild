@@ -96,8 +96,9 @@ impl Outbound {
             return Ok(());
         }
         // 본문을 조금만 싣는다 — 오류 페이지 전체를 로그에 붓지 않는다.
-        let mut detail = res.text().unwrap_or_default();
-        detail.truncate(200);
+        // DEV-381: `String::truncate` 는 200바이트째가 문자 경계가 아니면
+        // 패닉한다. 한글 오류 페이지에서 실제로 걸린다 — 글자 단위로 자른다.
+        let detail: String = res.text().unwrap_or_default().chars().take(200).collect();
         Err(format!("{url} 이 {status} 로 답했습니다: {detail}"))
     }
 }
@@ -135,12 +136,28 @@ fn run(
         .spawn()
         .map_err(|e| format!("{command} 를 띄우지 못했습니다: {e}"))?;
 
+    // DEV-381: **stdin 쓰기를 시한 밖에 두면 안 된다.** 자식이 stdin 을 안 읽고
+    // 페이로드가 파이프 버퍼(~64KB)를 넘으면 `write_all` 이 그 자리에서 영원히
+    // 막힌다. 전달 스레드는 하나라 그 순간 모든 플러그인이 멈추고 `drain` 도
+    // 못 구한다. 쓰기를 떼어 내고, 시한이 지나면 자식을 죽여 그 쓰기가 EPIPE
+    // 로 풀리게 한다.
+    //
+    // 자식이 stdin 을 안 읽고 죽어도 EPIPE 는 실패로 안 삼는다 — 그건 자식의
+    // 사정이고 판단은 종료 코드로 한다.
     if let Some(mut si) = child.stdin.take() {
         let payload = serde_json::to_vec(body).unwrap_or_else(|_| b"{}".to_vec());
-        // 자식이 stdin 을 안 읽고 죽으면 EPIPE 가 난다 — 그건 자식의 사정이라
-        // 여기서 실패로 삼지 않고 종료 코드로 판단한다.
-        let _ = si.write_all(&payload);
-        // drop 으로 EOF — 이걸 안 하면 `cat` 류가 영원히 기다린다.
+        let spawned = std::thread::Builder::new()
+            .name("openguild-plugin-stdin".into())
+            .spawn(move || {
+                let _ = si.write_all(&payload);
+                // drop 으로 EOF — 이걸 안 하면 `cat` 류가 영원히 기다린다.
+            });
+        if spawned.is_err() {
+            // 스레드를 못 띄우면 자식은 EOF 를 영영 못 본다 — 여기서 끝낸다.
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(format!("{command}: stdin 전달 스레드를 못 띄웠습니다"));
+        }
     }
 
     let deadline = Instant::now() + timeout;
@@ -240,6 +257,7 @@ mod tests {
             dir,
             compiled: None,
             script_src: None,
+            folder: Default::default(),
         }
     }
 
@@ -565,6 +583,71 @@ mod tests {
         );
         let e = Outbound::new().deliver(&p, &event(), &body()).unwrap_err();
         assert!(e.contains("OG_TEST_RUN_ABSENT"), "{e}");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// **stdin 을 안 읽는 자식이 전달 스레드를 잡아먹으면 안 된다.**
+    ///
+    /// 파이프 버퍼(~64KB)를 넘는 페이로드를 쓰는 동안 자식이 읽지 않으면
+    /// `write_all` 이 그 자리에서 막힌다. 전달 스레드는 하나뿐이라 그러면 모든
+    /// 플러그인이 멈춘다 — 시한 안에 돌아오는지 본다.
+    #[test]
+    fn a_child_that_never_reads_stdin_does_not_wedge_the_thread() {
+        let d = tmp("nostdin");
+        let big = serde_json::json!({ "text": "가".repeat(200_000) });
+        let p = plugin(
+            Action::Run {
+                command: "sh".into(),
+                // stdin 을 아예 안 읽고 그냥 잔다.
+                args: vec!["-c".into(), "sleep 30".into()],
+                timeout_ms: Some(400),
+            },
+            d.clone(),
+        );
+        let t = Instant::now();
+        let e = Outbound::new().deliver(&p, &event(), &big).unwrap_err();
+        assert!(
+            t.elapsed() < Duration::from_secs(5),
+            "stdin 쓰기에 막혀 전달 스레드가 잠겼다 ({:?})",
+            t.elapsed()
+        );
+        assert!(e.contains("중단"), "{e}");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// 응답 본문이 멀티바이트면 자를 때 패닉하지 않는다.
+    #[test]
+    fn a_multibyte_error_body_does_not_panic() {
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/hook", l.local_addr().unwrap());
+        std::thread::spawn(move || {
+            if let Some(mut s) = l.incoming().flatten().next() {
+                let mut buf = [0u8; 4096];
+                s.set_read_timeout(Some(Duration::from_secs(2))).ok();
+                let _ = s.read(&mut buf);
+                // 200바이트째가 문자 중간에 오도록 3바이트 글자로 채운다.
+                let body = "오".repeat(300);
+                let _ = s.write_all(
+                    format!(
+                        "HTTP/1.1 500 Internal Server Error\r\ncontent-length: {}\r\n\r\n{}",
+                        body.len(),
+                        body
+                    )
+                    .as_bytes(),
+                );
+            }
+        });
+        let d = tmp("mb500");
+        let p = plugin(
+            Action::Post {
+                url,
+                headers: Default::default(),
+                timeout_ms: Some(5_000),
+            },
+            d.clone(),
+        );
+        let e = Outbound::new().deliver(&p, &event(), &body()).unwrap_err();
+        assert!(e.contains("500"), "{e}");
         let _ = std::fs::remove_dir_all(&d);
     }
 

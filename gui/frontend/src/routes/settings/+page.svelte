@@ -507,6 +507,16 @@
 						</li>
 					{/each}
 				</ul>
+				<!-- DEV-381: 전달 실패는 대개 설정 문제라 설정 옆에 있는 편이 낫다.
+				     토스트로 띄우면 시끄럽고, 안 보여주면 조용히 실패한다. -->
+				{#if (pluginStatus?.problems ?? []).length > 0}
+					<h3 class="plugin-broken-h">{t('settings.pluginProblems', $locale)}</h3>
+					<ul class="plugin-list">
+						{#each pluginStatus?.problems ?? [] as p, i (i)}
+							<li class="plugin broken"><span>{p}</span></li>
+						{/each}
+					</ul>
+				{/if}
 				{#if (pluginStatus?.errors ?? []).length > 0}
 					<h3 class="plugin-broken-h">{t('settings.pluginBroken', $locale)}</h3>
 					<ul class="plugin-list">

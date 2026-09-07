@@ -124,6 +124,10 @@ pub struct Plugin {
     /// 그 스크립트의 원문 — 동의 지문에 들어간다([`consent`]). 정의만 보면
     /// 스크립트를 갈아끼우는 것으로 동의를 우회할 수 있다.
     pub script_src: Option<String>,
+    /// DEV-381: 폴더 안의 **모든** 파일(정의 제외). `run` 은 이 폴더를 작업
+    /// 디렉터리로 삼고 도므로, 옆에 있는 `hook.py` 도 실행되는 코드다 —
+    /// 지문이 그것까지 봐야 갈아끼우기가 안 통한다.
+    pub folder: BTreeMap<String, String>,
 }
 
 impl Plugin {
@@ -230,6 +234,7 @@ fn load_scoped(guild_root: &Path, scope: Option<Scope>) -> Loaded {
                     dir: pdir.clone(),
                     compiled,
                     script_src,
+                    folder: folder_fingerprint(&pdir),
                 };
                 if consent::is_granted(&granted, &plugin) {
                     out.active.push(plugin);
@@ -240,6 +245,61 @@ fn load_scoped(guild_root: &Path, scope: Option<Scope>) -> Loaded {
         }
     }
     out
+}
+
+/// DEV-381: 플러그인 폴더 안의 **모든** 파일을 동의 지문용으로 읽는다.
+///
+/// 지문이 `plugin.json` + 지정한 `.rhai` 하나만 보던 것이 구멍이었다. `run` 은
+/// 폴더를 작업 디렉터리로 삼고 도는데, 옆에 있는 `hook.py` / `notify.sh` 는
+/// git 으로 따라오는 **실행되는 코드**다. 그걸 갈아끼우면 동의를 다시 묻지
+/// 않았다.
+///
+/// 텍스트는 원문 그대로 담는다 — 사용자가 무엇에 동의하는지 볼 수 있어야
+/// 한다는 [`consent`] 의 판단을 그대로 잇는다. 크거나 UTF-8 이 아닌 파일은
+/// 길이와 체크섬만 담는다(내용을 보여줄 수도, 통째로 저장할 수도 없다).
+const FINGERPRINT_TEXT_LIMIT: usize = 64 * 1024;
+
+pub fn folder_fingerprint(dir: &Path) -> BTreeMap<String, String> {
+    let mut out = BTreeMap::new();
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return out;
+    };
+    let mut paths: Vec<_> = entries.flatten().map(|e| e.path()).collect();
+    paths.sort(); // 파일시스템 순서에 맡기지 않는다.
+    for p in paths {
+        let Some(name) = p.file_name().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        if name == "plugin.json" {
+            continue; // 정의는 따로 담는다.
+        }
+        if p.is_dir() {
+            // 하위 폴더는 이름만 — 재귀까지 가면 지문이 끝없이 커진다.
+            out.insert(format!("{name}/"), "<dir>".into());
+            continue;
+        }
+        let Ok(bytes) = std::fs::read(&p) else {
+            continue;
+        };
+        let text = std::str::from_utf8(&bytes).ok();
+        let value = match text {
+            Some(t) if bytes.len() <= FINGERPRINT_TEXT_LIMIT => t.to_string(),
+            _ => format!("<bin len={} sum={:016x}>", bytes.len(), checksum(&bytes)),
+        };
+        out.insert(name.to_string(), value);
+    }
+    out
+}
+
+/// FNV-1a 64. 암호학적 해시가 아니다 — **바뀐 걸 알아채기 위한 것**이고,
+/// 그 목적에는 충분하며 의존성을 안 늘린다([[BUG-267]] 과 같은 판단).
+fn checksum(bytes: &[u8]) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in bytes {
+        h ^= *b as u64;
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    h
 }
 
 /// 정의가 가리키는 스크립트를 읽어 컴파일한다. `script` 가 없으면 둘 다 `None`.
@@ -257,6 +317,17 @@ fn compile_script(dir: &Path, def: &PluginDef) -> AppResult<Compiled> {
             path.display()
         ))
     })?;
+    // DEV-381: 스크립트도 git 으로 따라간다. `plugin.json` 의 리터럴은 막으면서
+    // `.rhai` 안의 리터럴은 통과시키면 앞뒤가 안 맞는다 — 게다가 본문(payload)
+    // 은 환경변수 확장을 안 거치므로, 스크립트에 박는 것이 토큰을 싣는 유일한
+    // 길이었다.
+    if looks_like_known_key(&src) {
+        return Err(AppError::BadRequest(format!(
+            "{}: 스크립트 {rel} 에 비밀값으로 보이는 리터럴이 있습니다. \
+             `.guild/plugins/` 는 git 에 커밋됩니다 — 값은 환경변수로 넘기세요.",
+            def.name
+        )));
+    }
     let compiled = script::Script::compile_source(&src)
         .map_err(|e| AppError::BadRequest(format!("{}: {e}", def.name)))?;
     Ok((Some(std::sync::Arc::new(compiled)), Some(src)))
@@ -298,16 +369,34 @@ pub fn validate(def: &PluginDef) -> AppResult<()> {
     // 아무 이벤트와도 안 맞는 패턴은 오타일 가능성이 높다. 조용히 안 도는
     // 것보다 적재 때 알려주는 편이 낫다.
     for pat in &def.on {
-        let hits = crate::events::names::ALL.iter().any(|n| {
-            crate::events::names::matches(pat, n, crate::events::Phase::Post)
-                || crate::events::names::matches(pat, n, crate::events::Phase::Pre)
-        });
+        use crate::events::Phase;
+        use crate::events::names as ev;
+        let hits = ev::ALL
+            .iter()
+            .any(|n| ev::matches(pat, n, Phase::Post) || ev::matches(pat, n, Phase::Pre));
         if !hits {
             return Err(AppError::BadRequest(format!(
                 "{}: `{pat}` 는 어떤 이벤트와도 맞지 않습니다 — \
                  `openguild plugin events` 로 이름을 확인하세요",
                 def.name
             )));
+        }
+        // DEV-381: 이름은 맞는데 그 이벤트가 **pre 를 안 내는** 경우를 잡는다.
+        // 예전엔 `pre:quest.created` 가 통과한 뒤 아무 오류 없이 영원히 안
+        // 돌았다 — 오타를 적재 때 잡으면서 없는 phase 를 통과시키면 앞뒤가
+        // 안 맞는다. 와일드카드(`pre:*`)는 하나라도 맞으면 통과시킨다.
+        if pat.starts_with("pre:") {
+            let any_pre = ev::PRE_CAPABLE
+                .iter()
+                .any(|n| ev::matches(pat, n, Phase::Pre));
+            if !any_pre {
+                return Err(AppError::BadRequest(format!(
+                    "{}: `{pat}` — 그 이벤트는 관찰 pre 를 내지 않습니다. \
+                     현재 pre 가 있는 것: {}",
+                    def.name,
+                    ev::PRE_CAPABLE.join(", ")
+                )));
+            }
         }
     }
     // 스크립트 경로는 플러그인 폴더 안이어야 한다. `../../..` 를 적으면
@@ -396,12 +485,21 @@ fn is_env_ref(value: &str) -> bool {
         return true; // 빈 값은 비밀이 아니다.
     }
     // `${...}` 를 걷어낸 나머지에 영숫자 덩어리가 남으면 리터럴이 섞인 것이다.
-    let stripped = strip_env_refs(v);
-    !stripped
-        .chars()
-        .any(|c| c.is_ascii_alphanumeric() && stripped.len() > 8)
-        || stripped.trim().eq_ignore_ascii_case("bearer")
-        || stripped.trim().is_empty()
+    //
+    // DEV-381: 예전엔 길이 검사(`stripped.len() > 8`)가 `any` **안**에 있었다.
+    // 그건 문자마다 같은 값이라, 나머지가 8자 이하이면 `any` 가 통째로 false 가
+    // 되어 `!false = true` — `Authorization: "Pa55word"` 같은 **짧은 비밀번호가
+    // 환경변수 참조로 통과**했다. 길이로 봐주지 않는다.
+    let rest = strip_env_refs(v);
+    let rest = rest.trim();
+    if rest.is_empty() || !rest.chars().any(|c| c.is_ascii_alphanumeric()) {
+        return true;
+    }
+    // 인증 스킴 단어 하나만 남는 것은 정상이다 — `Bearer ${TOKEN}`.
+    matches!(
+        rest.to_ascii_lowercase().as_str(),
+        "bearer" | "basic" | "token"
+    )
 }
 
 fn strip_env_refs(v: &str) -> String {

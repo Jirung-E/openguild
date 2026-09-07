@@ -47,7 +47,7 @@ pub async fn get_guild_info(State(store): State<Store>) -> Json<GuildInfo> {
 /// 답하고, 프런트는 그걸 보고 버튼을 안 그린다.
 pub async fn list_plugins(State(store): State<Store>) -> AppResult<Json<PluginStatus>> {
     Ok(Json(openguild_core::plugins::view::status(
-        &store.paths.guild_root,
+        &store,
         openguild_core::plugins::Scope::Server,
         false,
     )?))

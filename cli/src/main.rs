@@ -1797,7 +1797,13 @@ impl Drop for LocalBackend {
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(PLUGIN_DRAIN_MS),
         );
-        if !self.store.drain_events(budget) {
+        let finished = self.store.drain_events(budget);
+        // DEV-381: 전달 실패를 조용히 삼키지 않는다. **유예 뒤에** 읽어야 그
+        // 사이 실패한 것까지 잡힌다.
+        for p in self.store.plugin_problems() {
+            eprintln!("{}", tf!("⚠ 플러그인 — {}", "⚠ plugin — {}", p));
+        }
+        if !finished {
             // 조용히 버리지 않는다 — 왜 안 갔는지는 알아야 한다.
             eprintln!(
                 "{}",

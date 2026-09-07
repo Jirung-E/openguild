@@ -108,6 +108,11 @@ pub trait EventSink: Send + Sync {
     fn drain(&self, _budget: std::time::Duration) -> bool {
         true
     }
+    /// 전달 중 쌓인 문제. **조용히 삼키지 않기 위한 것**이라 누군가 읽어야
+    /// 의미가 있다 — 컴포넌트가 사용자에게 보여준다([[DEV-381]]).
+    fn problems(&self) -> Vec<String> {
+        Vec::new()
+    }
 }
 
 /// `Store` 가 들고 다니는 이벤트 출구. sink 가 없으면 전부 no-op.
@@ -155,6 +160,14 @@ impl Events {
             && let Some(s) = r.as_ref()
         {
             s.dispatch(event);
+        }
+    }
+
+    /// 전달 중 쌓인 문제 — sink 가 없으면 빈 목록.
+    pub fn problems(&self) -> Vec<String> {
+        match self.0.read() {
+            Ok(r) => r.as_ref().map(|s| s.problems()).unwrap_or_default(),
+            Err(_) => Vec::new(),
         }
     }
 

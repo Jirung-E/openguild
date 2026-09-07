@@ -609,9 +609,32 @@ async fn run_host(
     // DEV-379: 종료 신호를 받고 **끝내기 전에** 전달 유예를 준다. 예전엔
     // Ctrl+C 가 프로세스를 즉시 끊어서, 마지막 mutation 의 훅이 나가는 중이면
     // 그대로 사라졌다. graceful shutdown 은 처리 중인 요청도 함께 마무리한다.
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    //
+    // DEV-381: **시한 없이 기다리면 안 된다.** 브라우저의 keep-alive 연결
+    // 하나가 남아 있으면 axum 은 무한정 기다리고, `tokio::signal::ctrl_c()` 가
+    // SIGINT 의 기본 동작을 이미 가로챈 뒤라 **두 번째 Ctrl+C 도 안 먹는다** —
+    // 서버를 끌 방법이 없어진다(DEV-379 가 만든 회귀). 유예에 상한을 두고,
+    // 그 안에 안 끝나면 그냥 나간다.
+    let serve = axum::serve(listener, app).with_graceful_shutdown(shutdown_signal());
+    tokio::select! {
+        r = serve => r?,
+        _ = force_quit_after_shutdown() => {
+            eprintln!(
+                "{}",
+                openguild_core::tf!(
+                    "⚠ 연결이 {}초 안에 안 닫혀 강제 종료합니다",
+                    "⚠ connections did not close within {}s — forcing shutdown",
+                    GRACE.as_secs()
+                )
+            );
+        }
+    }
+    for p in drain_handle.plugin_problems() {
+        eprintln!(
+            "{}",
+            openguild_core::tf!("⚠ 플러그인 — {}", "⚠ plugin — {}", p)
+        );
+    }
     if !drain_handle.drain_events(PLUGIN_DRAIN) {
         eprintln!(
             "{}",
@@ -629,10 +652,27 @@ async fn run_host(
 /// 내려가는 중이고, 요청을 기다리는 사람이 없다.
 const PLUGIN_DRAIN: std::time::Duration = std::time::Duration::from_secs(5);
 
+/// DEV-381: 종료 신호 뒤 연결이 닫히기를 기다리는 상한.
+const GRACE: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// 종료 신호가 온 **뒤에** 상한을 재기 시작한다. 두 번째 신호가 오면 기다리지
+/// 않고 바로 끝낸다 — 급한 사람에게 탈출구가 있어야 한다.
+async fn force_quit_after_shutdown() {
+    shutdown_signal().await;
+    tokio::select! {
+        _ = tokio::time::sleep(GRACE) => {}
+        _ = shutdown_signal() => {}
+    }
+}
+
 /// Ctrl+C 또는 SIGTERM(컨테이너/서비스 매니저의 정상 종료).
 async fn shutdown_signal() {
     let ctrl_c = async {
-        let _ = tokio::signal::ctrl_c().await;
+        // DEV-381: 등록 실패를 "종료 요청" 으로 삼으면 서버가 즉시 나간다.
+        // SIGTERM 쪽과 같은 규칙으로 — 못 걸면 그 경로는 안 쓴다.
+        if tokio::signal::ctrl_c().await.is_err() {
+            std::future::pending::<()>().await
+        }
     };
     #[cfg(unix)]
     let term = async {

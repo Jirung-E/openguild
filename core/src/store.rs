@@ -217,6 +217,12 @@ impl Store {
         loaded
     }
 
+    /// DEV-381: 전달 중 쌓인 문제. 조용히 삼키지 않으려고 모아 둔 것이므로
+    /// 컴포넌트가 읽어서 보여줘야 의미가 있다.
+    pub fn plugin_problems(&self) -> Vec<String> {
+        self.events.problems()
+    }
+
     /// DEV-375: 종료 직전에 부른다. 전달은 기다리지 않고 떠나므로, 곧 끝나는
     /// 프로세스(CLI)는 여기서 짧은 유예를 준다. 시간 안에 다 나갔으면 `true`.
     pub fn drain_events(&self, budget: std::time::Duration) -> bool {

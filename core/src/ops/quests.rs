@@ -292,7 +292,7 @@ pub async fn set_quest_tags(store: &Store, id: i64, tags: Vec<String>) -> AppRes
     .await
     .map_err(crate::error::AppError::Internal)?;
 
-    let quest = sql::fetch_by_id(&store.index_pool, id).await?;
+    let mut quest = sql::fetch_by_id(&store.index_pool, id).await?;
 
     // 1) DB 캐시 갱신 — 트랜잭션 안에서 wipe + INSERT.
     let mut tx = store
@@ -318,6 +318,9 @@ pub async fn set_quest_tags(store: &Store, id: i64, tags: Vec<String>) -> AppRes
     tx.commit()
         .await
         .map_err(|e| crate::error::AppError::Internal(anyhow::anyhow!("commit tx: {e}")))?;
+    // DEV-381: 행은 태그를 쓰기 **전에** 읽었다 — 방금 쓴 값으로 덮지 않으면
+    // `quest.tags_changed` 가 옛 태그를 싣는다(반환값도 마찬가지).
+    quest.tags = normalized.clone();
 
     // 2) 파일 frontmatter 갱신 — write_quest_file 이 existing tags 보존하므로
     //    여기선 직접 frontmatter 갱신 후 다시 read 해서 강제 sync.
@@ -402,11 +405,25 @@ pub async fn change_status(
                     .map(|i| format!("#{i}"))
                     .collect::<Vec<_>>()
                     .join(", ");
-                return Err(crate::error::AppError::BadRequest(format!(
+                let e = crate::error::AppError::BadRequest(format!(
                     "미해결 토론(discussion) 댓글 {}개({ids})를 먼저 resolve 해야 \
                      완료 상태로 전환할 수 있습니다.",
                     unresolved.len()
-                )));
+                ));
+                // DEV-381: **실패도 이벤트다.** [[DEV-373]] 이 "이벤트 수를 안
+                // 늘리고 `ok`/`error` 만 갈린다" 로 확정했는데, 지금까지
+                // `emit_post_failed` 의 호출 지점이 0곳이라 구독자는 성공만
+                // 봤다. 사용자가 실제로 부딪히는 거부부터 채운다.
+                store.emit_post_failed(ev::QUEST_STATUS_CHANGED, &e, || {
+                    json!({
+                        "quest": payload::quest_ref(&slug),
+                        "change": payload::change(
+                            old_status_slug.clone(),
+                            Some(body.status_slug.clone()),
+                        ),
+                    })
+                });
+                return Err(e);
             }
         }
     }
@@ -745,6 +762,13 @@ pub async fn delete_quest(store: &Store, id: i64, cascade_ids: &[i64]) -> AppRes
         Some(q) => json!({ "quest": payload::quest(q) }),
         None => json!({}),
     });
+    // DEV-381: cascade 로 함께 지워진 하위 퀘스트도 지워진 것이다. 부모 것만
+    // 내보내면 구독자 쪽 상태가 조용히 갈라진다 — 미러링 플러그인은 하위
+    // 퀘스트를 영원히 열어 둔다. 행은 파일 쓰기용으로 이미 읽어 뒀으므로
+    // 추가 비용이 없고, `emit_post` 는 구독자가 없으면 알아서 no-op 이다.
+    for cq in &cascade_quests {
+        store.emit_post(ev::QUEST_DELETED, || json!({ "quest": payload::quest(cq) }));
+    }
     Ok(())
 }
 

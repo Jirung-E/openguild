@@ -34,6 +34,21 @@ pub const COMMENT_DISCUSSION_OFF: &str = "comment.discussion_off";
 pub const COMMENT_REACTION_CHANGED: &str = "comment.reaction_changed";
 
 /// 1단계에 실제로 나가는 이벤트 전부. 와일드카드 매칭 검증과 문서에 쓴다.
+/// DEV-381: **관찰 pre 를 실제로 내는 이벤트.**
+///
+/// `validate` 는 오타 난 이벤트 이름을 적재 때 잡는다. 그런데 있지도 않은
+/// phase 는 통과시켜서, `pre:quest.created` 를 구독하면 **아무 오류 없이 영원히
+/// 안 돌았다** — 이 저장소가 제일 싫어하는 조용한 실패다.
+///
+/// 목록이 짧은 이유는 1단계가 관찰 pre 를 꼭 필요한 곳에만 달았기 때문이다
+/// ([[DEV-373]]). 늘리면 여기에 추가한다.
+pub const PRE_CAPABLE: &[&str] = &[COMMENT_ADDED, QUEST_DELETED];
+
+/// 이 이름이 pre 를 낼 수 있나.
+pub fn emits_pre(name: &str) -> bool {
+    PRE_CAPABLE.contains(&name)
+}
+
 pub const ALL: &[&str] = &[
     QUEST_CREATED,
     QUEST_UPDATED,

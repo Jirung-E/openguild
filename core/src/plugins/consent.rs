@@ -13,12 +13,17 @@
 //! 저장하면 비교가 정확하고, 덤으로 **사용자가 무엇에 동의했는지 직접 볼 수
 //! 있다**. 플러그인은 길드당 몇 개뿐이라 크기도 문제되지 않는다.
 //!
-//! # 지문에는 스크립트 원문도 들어간다 ([[DEV-376]])
+//! # 지문에는 **폴더 전체**가 들어간다 ([[DEV-376]], [[DEV-381]])
 //!
 //! `plugin.json` 은 그대로 두고 `transform.rhai` 만 고치면 **보내는 내용이
 //! 통째로 바뀐다.** 스크립트에 I/O 는 없지만 이미 동의한 목적지로 무엇을
 //! 실어 보낼지는 정할 수 있다 — 동의의 대상이 정의뿐이면 그 구멍으로
-//! 빠져나간다. 그래서 둘을 함께 본다.
+//! 빠져나간다.
+//!
+//! 스크립트 하나만 봐도 부족했다. `run` 은 플러그인 폴더를 작업 디렉터리로
+//! 삼고 돌기 때문에, 옆에 있는 `hook.py` / `notify.sh` 는 **git 으로 따라오는
+//! 실행되는 코드**다. 그걸 갈아끼우면 `plugin.json` 은 그대로여서 다시 묻지
+//! 않았다. 그래서 폴더 안 파일 전부를 본다.
 
 use crate::error::AppResult;
 use serde::{Deserialize, Serialize};
@@ -74,10 +79,12 @@ pub struct Granted {
 }
 
 /// 동의 대상을 비교용으로 정규화 — 필드 순서에 흔들리지 않게 한다.
-pub fn fingerprint(def: &PluginDef, script: Option<&str>) -> serde_json::Value {
+///
+/// `folder` 는 `BTreeMap` 이라 순서가 고정된다.
+pub fn fingerprint(def: &PluginDef, folder: &BTreeMap<String, String>) -> serde_json::Value {
     serde_json::json!({
         "def": serde_json::to_value(def).unwrap_or(serde_json::Value::Null),
-        "script": script,
+        "folder": folder,
     })
 }
 
@@ -90,8 +97,7 @@ pub fn is_granted(granted: &Granted, plugin: &super::Plugin) -> bool {
     if granted.trusted {
         return true;
     }
-    granted.entries.get(&plugin.def.name)
-        == Some(&fingerprint(&plugin.def, plugin.script_src.as_deref()))
+    granted.entries.get(&plugin.def.name) == Some(&fingerprint(&plugin.def, &plugin.folder))
 }
 
 /// 동의를 남긴다. 호출자(컴포넌트)가 사용자에게 물어본 **뒤에** 부른다 —
@@ -103,7 +109,7 @@ pub fn grant(guild_root: &Path, plugin: &super::Plugin) -> AppResult<()> {
             .or_default()
             .insert(
                 plugin.def.name.clone(),
-                fingerprint(&plugin.def, plugin.script_src.as_deref()),
+                fingerprint(&plugin.def, &plugin.folder),
             );
     })
 }

@@ -1297,11 +1297,17 @@ pub async fn update_position(
 /// id 로 alive 한 퀘스트 1건 조회. 없으면 NotFound.
 pub async fn fetch_by_id(pool: &SqlitePool, id: i64) -> AppResult<QuestRow> {
     let sql = format!("{QUEST_SELECT} WHERE q.deleted_at IS NULL AND q.id = ?");
-    sqlx::query_as::<_, QuestRow>(&sql)
+    let mut row = sqlx::query_as::<_, QuestRow>(&sql)
         .bind(id)
         .fetch_optional(pool)
         .await?
-        .ok_or_else(|| AppError::NotFound(format!("quest {id} not found")))
+        .ok_or_else(|| AppError::NotFound(format!("quest {id} not found")))?;
+    // DEV-381: `tags` 는 `#[sqlx(skip)]` 이라 여기서 안 채우면 **비어서 나간다.**
+    // 그동안 `list()` 만 채웠고, mutation 은 전부 이 함수를 거쳐 돌아오므로
+    // 플러그인 이벤트의 `tags` 가 항상 `[]` 였다 — `quest.tags_changed` 조차
+    // 태그를 안 실었다. 인덱스 있는 한 줄 조회라 비용은 무시할 만하다.
+    row.tags = fetch_quest_tags(pool, id).await?;
+    Ok(row)
 }
 
 async fn fetch_relations(

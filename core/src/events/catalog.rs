@@ -149,6 +149,45 @@ pub const CATALOG: &[Entry] = &[
     e("save_attachment", Status::Planned),
     e("add_attachment", Status::Planned),
     e("remove_attachment", Status::Planned),
+    // DEV-381: journal 을 안 남기는 mutation 들. 예전 스캔이 journal 만 봤기
+    // 때문에 **통째로 사각지대**였다 — 검사가 이들을 못 보고 통과했다.
+    // 타입·상태·태그정의 변경은 진짜 길드 변경이므로 언젠가 낸다.
+    e("create_type", Status::Planned),
+    e("update_type", Status::Planned),
+    e("delete_type", Status::Planned),
+    e("rename_type", Status::Planned),
+    e("create_status", Status::Planned),
+    e("update_status", Status::Planned),
+    e("delete_status", Status::Planned),
+    e("rename_status_slug", Status::Planned),
+    e("upsert_tag_def", Status::Planned),
+    e("delete_tag_def", Status::Planned),
+    // 아래는 다른 mutation 의 부산물이거나 정비 작업이다 — 그 자체로는 사용자가
+    // "무슨 일이 일어났다" 고 여길 사건이 아니다.
+    e(
+        "record",
+        Status::Excluded("문서 이력 사이드카 기록 — 이걸 부른 본 mutation 이 이미 이벤트를 낸다."),
+    ),
+    e(
+        "rename",
+        Status::Excluded("문서 이력 사이드카 이름 변경 — 위 record 와 같은 이유."),
+    ),
+    e(
+        "purge",
+        Status::Excluded("문서 이력 사이드카 정리 — 파생물 청소이지 길드 변경이 아니다."),
+    ),
+    e(
+        "refresh_for",
+        Status::Excluded("backlink 색인 재계산 — 파일에서 파생되는 캐시라 진리원이 아니다."),
+    ),
+    e(
+        "check_and_fix_counters",
+        Status::Excluded("카운터 정합성 점검·보정 — 사용자 변경이 아니라 정비 명령이다."),
+    ),
+    e(
+        "search",
+        Status::Excluded("읽기다. `&Store` 를 받아 스캔에 걸릴 뿐 아무것도 안 바꾼다."),
+    ),
 ];
 
 /// 카탈로그에 있는 op 인지.
@@ -187,6 +226,28 @@ mod tests {
                 continue;
             }
             let src = std::fs::read_to_string(&p).expect("ops 파일 읽기");
+
+            // DEV-381: **journal 을 안 남기는 mutation 은 이 검사에 안 잡혔다.**
+            // `ops/meta.rs` 의 타입·상태·태그정의 변경 12개가 통째로 사각지대였다
+            // — 새 mutation 을 놓치지 말자는 검사가 정작 그것들을 못 봤다.
+            // journal 이 하나도 없는 파일은 `store: &Store` 를 받는 공개 함수를
+            // mutation 으로 본다(읽기 헬퍼는 `&SqlitePool` 을 받는다).
+            if !src.contains("journal::append(") {
+                let mut rest = src.as_str();
+                while let Some(i) = rest.find("pub async fn ") {
+                    rest = &rest[i + "pub async fn ".len()..];
+                    let Some(paren) = rest.find('(') else { break };
+                    let name = rest[..paren].trim().to_string();
+                    // 한글 주석이 섞여 있으므로 바이트로 자르면 안 된다.
+                    let head: String = rest[paren..].chars().take(160).collect();
+                    if head.contains("store: &Store") {
+                        found.insert(name);
+                    }
+                    rest = &rest[paren..];
+                }
+                continue;
+            }
+
             // `journal::append(` 뒤 첫 큰따옴표 문자열이 op 이름이다.
             // 인자가 여러 줄에 걸쳐 있어 정규식 한 줄로는 못 잡는다.
             let mut rest = src.as_str();

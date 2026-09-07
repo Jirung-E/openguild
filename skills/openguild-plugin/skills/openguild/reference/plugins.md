@@ -42,7 +42,9 @@ chose.
 | `action` | `post` (HTTP) or `run` (process, event JSON on **stdin**). These two are all the core owns. |
 | `script` | Optional `.rhai` file, relative to the plugin folder. |
 
-`openguild plugin events` lists every event name you can subscribe to.
+`openguild plugin events` lists every event name you can subscribe to. Only a couple of
+events have an observational `pre` phase; subscribing `pre:` to one that has none is a load
+error rather than a subscription that silently never fires.
 
 ### Secrets are rejected as literals
 
@@ -50,7 +52,9 @@ chose.
 forever. Only environment references (`${MY_API_KEY}`) are accepted; a
 literal that looks like a key makes the plugin **fail to load**, not warn.
 The variable is read on this machine at send time, and a missing variable is
-an error rather than an empty header.
+an error rather than an empty header. `${VAR}` is expanded in the POST url and
+headers and in a `run` action's command and args. The `.rhai` source is scanned
+for key literals too — it is committed the same way.
 
 ## Script (optional)
 
@@ -87,8 +91,8 @@ While a guild is trusted, per-plugin `revoke` has no effect (`trusted` short-cir
 the check) — the CLI says so instead of reporting a silent success. Run `untrust` first.
 
 `allow` without `--yes` only prints what you would be consenting to. Consent is
-recorded against the definition **and** the script source, so editing either
-one asks again.
+recorded against the definition **and every file in the plugin folder**, so
+editing the script — or the `hook.py` a `run` action executes — asks again.
 
 Management works on plugins of any `scope` — you can allow a `gui`-only plugin
 from the CLI. Running is still limited to the matching component.
