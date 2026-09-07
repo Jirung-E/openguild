@@ -66,8 +66,6 @@ fn no_guild_open(store: &Store) -> bool {
     crate::is_welcome_placeholder(&store.paths.guild_root)
 }
 
-const NO_GUILD_NOTE: &str =
-    "아직 길드를 열지 않았습니다 — 플러그인은 이 기계에서 연 길드에만 적용됩니다.";
 const NO_GUILD_ERR: &str =
     "열린 길드가 없습니다 — 동의는 이 기계에서 연 길드에만 남길 수 있습니다.";
 
@@ -76,7 +74,7 @@ const NO_GUILD_ERR: &str =
 #[tauri::command]
 pub async fn plugin_status(store: State<'_, Store>) -> Result<PluginStatus, String> {
     if no_guild_open(&store) {
-        return Ok(PluginStatus::empty(NO_GUILD_NOTE));
+        return Ok(PluginStatus::no_guild());
     }
     openguild_core::plugins::view::status(&store, openguild_core::plugins::Scope::Gui, true)
         .map_err(err)

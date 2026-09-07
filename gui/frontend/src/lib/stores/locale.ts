@@ -199,6 +199,20 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'settings.pluginHideScript': { ko: '접기', en: 'Hide' },
 	'settings.pluginBroken': { ko: '읽지 못한 정의', en: 'Definitions that failed to load' },
 	'settings.pluginProblems': { ko: '최근 전달 실패', en: 'Recent delivery failures' },
+	// DEV-383: 예전엔 Rust 가 만든 한국어 문장이 그대로 렌더돼 영어 UI 에 끼었다.
+	'settings.pluginsNoGuild': {
+		ko: '아직 길드를 열지 않았습니다 — 플러그인은 이 기계에서 연 길드에만 적용됩니다.',
+		en: 'No guild is open yet — plugins apply only to a guild opened on this machine.'
+	},
+	'settings.pluginScope': { ko: '적용 범위', en: 'scope' },
+	'settings.pluginRetry': { ko: '다시 시도', en: 'Retry' },
+	'settings.pluginAllowed': { ko: '허용했습니다', en: 'Allowed' },
+	'settings.pluginRevoked': { ko: '철회했습니다', en: 'Revoked' },
+	'settings.pluginRevokeTrustedHint': {
+		ko: '이 길드가 전부 허용돼 있어 개별 철회는 효과가 없습니다. 먼저 전체 허용을 해제하세요.',
+		en: 'This guild is fully trusted, so revoking one plugin has no effect. Stop trusting the guild first.'
+	},
+
 	'settings.editorHeading': { ko: '편집기', en: 'Editor' },
 	'settings.tabBehavior': { ko: 'Tab 동작', en: 'Tab behavior' },
 	'settings.tabChar': { ko: '탭 문자', en: 'Tab character' },

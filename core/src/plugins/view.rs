@@ -47,7 +47,11 @@ pub struct PluginStatus {
     pub trusted: bool,
     /// 이 경로로 허용/철회까지 할 수 있나. HTTP 로 답할 때는 **항상 false**.
     pub manageable: bool,
-    /// 보여줄 안내 — 아직 길드를 안 열었다든지. 비어 있는 것이 정상이다.
+    /// DEV-383: 아직 길드를 안 열었나. **문장이 아니라 상태로 넘긴다** — 예전엔
+    /// Rust 가 만든 한국어 문장을 그대로 렌더해서, 영어 UI 한가운데 한국어가
+    /// 한 줄 끼었다. 문구는 프런트가 자기 언어로 만든다.
+    pub no_guild: bool,
+    /// 보여줄 안내. 지금은 비어 있는 것이 정상이다(위 `no_guild` 로 대체).
     pub notes: Vec<String>,
     /// 전달 중 쌓인 문제(최근 것부터 잘림). 비어 있는 것이 정상이다.
     #[serde(default)]
@@ -55,14 +59,15 @@ pub struct PluginStatus {
 }
 
 impl PluginStatus {
-    /// 보여줄 게 없다고 답한다(길드를 아직 안 열었을 때 등).
-    pub fn empty(note: impl Into<String>) -> Self {
+    /// 아직 길드를 안 열었다. 문구는 프런트가 만든다.
+    pub fn no_guild() -> Self {
         Self {
             plugins: Vec::new(),
             errors: Vec::new(),
             trusted: false,
             manageable: false,
-            notes: vec![note.into()],
+            no_guild: true,
+            notes: Vec::new(),
             problems: Vec::new(),
         }
     }
@@ -117,6 +122,7 @@ pub fn status(store: &crate::Store, scope: Scope, manageable: bool) -> AppResult
         errors: loaded.errors,
         trusted: granted.trusted,
         manageable,
+        no_guild: false,
         notes: Vec::new(),
         // DEV-381: 여기까지 올려야 사용자가 본다. 예전엔 모아만 두고 아무도
         // 안 읽어서, 훅이 조용히 실패해도 화면에 아무것도 안 떴다.

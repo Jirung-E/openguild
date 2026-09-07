@@ -49,6 +49,35 @@ describe('플러그인 조회/관리의 경계', () => {
 		await expect(pluginApi.allow('x')).rejects.toThrow(/local guild/);
 	});
 
+	// DEV-383: 길드를 안 연 상태는 **문장이 아니라 상태로** 온다. 예전엔 Rust 가
+	// 만든 한국어 문장이 그대로 렌더돼 영어 UI 한가운데 끼었다.
+	it('길드를 안 연 상태는 no_guild 플래그로 온다 — 문구는 프런트 몫', async () => {
+		const body = {
+			plugins: [],
+			errors: [],
+			trusted: false,
+			manageable: false,
+			no_guild: true,
+			notes: [],
+			problems: []
+		};
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(
+				async () =>
+					new Response(JSON.stringify(body), {
+						status: 200,
+						headers: { 'content-type': 'application/json' }
+					})
+			)
+		);
+		const got = await pluginApi.status();
+		expect(got.no_guild).toBe(true);
+		// 서버가 사람 말을 실어 보내지 않는다.
+		expect(got.notes).toEqual([]);
+		vi.unstubAllGlobals();
+	});
+
 	// 조회는 transport 를 그대로 탄다 — 그래야 화면이 보고 있는 길드와 목록이
 	// 같은 길드다. 브라우저에서도 막히면 안 된다.
 	it('조회는 브라우저에서도 서버로 나간다', async () => {
@@ -57,7 +86,9 @@ describe('플러그인 조회/관리의 경계', () => {
 			errors: [],
 			trusted: false,
 			manageable: false,
-			notes: []
+			no_guild: false,
+			notes: [],
+			problems: []
 		};
 		const fetchMock = vi.fn(async () =>
 			new Response(JSON.stringify(body), {

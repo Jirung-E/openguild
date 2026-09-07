@@ -351,6 +351,30 @@ fn a_run_action_never_loads_without_consent() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
+/// DEV-383: **이름이 겹치면 안 실린다.** 동의도 화면도 이름으로 구분하는데
+/// 둘이면 어느 쪽인지 알 수 없고, 프런트의 `{#each}` 키도 이름이라 화면이
+/// 통째로 깨졌다. 폴더를 복사하고 이름을 안 고치는 건 흔한 실수다.
+#[test]
+fn a_duplicate_plugin_name_is_rejected_not_silently_merged() {
+    let _guard = env_lock();
+    let home = fresh_tmp("dup-home");
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let g = fresh_tmp("dup");
+    // 폴더는 둘, 이름은 하나.
+    write_plugin(&g, "slack", ai_notify(&["cli"]));
+    write_plugin(&g, "slack-staging", ai_notify(&["cli"]));
+    consent::trust_guild(&g).unwrap();
+
+    let l = load_for(&g, Scope::Cli);
+    assert_eq!(l.active.len(), 1, "겹친 이름이 둘 다 실렸다");
+    assert_eq!(l.errors.len(), 1, "겹친 것을 조용히 버렸다");
+    assert!(l.errors[0].1.contains("겹칩니다"), "{:?}", l.errors);
+
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
 // ── DEV-380: 리뷰 지적 ──────────────────────────────────
 
 /// **`sk-` 는 영어 단어 꼬리에 흔하다.** `contains` 로 보면 `task-runner`,

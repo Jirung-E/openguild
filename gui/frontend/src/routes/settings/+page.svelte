@@ -108,32 +108,51 @@
 	// 목록에서 바로 보인다.
 	let pluginStatus = $state<PluginStatus | null>(null);
 	let pluginError = $state<string | null>(null);
-	let pluginBusy = $state<string | null>(null);
+	// DEV-383: 스칼라 하나로 잠그면 두 번째 클릭이 첫 번째의 잠금을 풀어 버린다.
+	let pluginBusy = $state<string[]>([]);
 	let openScript = $state<string | null>(null);
 	let confirmTrust = $state(false);
 	// 관리 가능 여부는 **서버가 답한 값**으로 정한다. 프런트의 환경 감지만
 	// 믿으면 원격 길드를 보면서 로컬 동의를 고치게 된다(BUG-255 계열).
 	const canManage = $derived(pluginsManageable() && (pluginStatus?.manageable ?? false));
+	// 답을 받기 **전에** 판단하면 안 된다 — 로컬 데스크톱에서도 잠깐
+	// "조회만 가능합니다" 가 스쳐 지나가고, 실패하면 그 상태로 굳는다.
+	const pluginsLoaded = $derived(pluginStatus !== null);
 
 	async function refreshPlugins() {
 		try {
 			pluginStatus = await pluginApi.status();
 			pluginError = null;
 		} catch (e) {
-			pluginStatus = null;
+			// DEV-383: 직전 목록을 지우지 않는다. 지우면 목록이 통째로 사라지고
+			// "다른 기계에서 하세요" 로 바뀌어, 데스크톱 앱 안에서 데스크톱 앱을
+			// 쓰라는 화면이 된다.
 			pluginError = e instanceof Error ? e.message : String(e);
 		}
 	}
 
+	// 탭 버튼 onclick 에만 걸어 두면 다른 경로로 들어왔을 때 빈 화면이 된다.
+	$effect(() => {
+		if (activeTab === 'plugins' && pluginStatus === null && pluginError === null) {
+			refreshPlugins();
+		}
+	});
+
 	async function togglePlugin(name: string, grant: boolean) {
-		pluginBusy = name;
+		pluginBusy = [...pluginBusy, name];
 		try {
 			await (grant ? pluginApi.allow(name) : pluginApi.revoke(name));
 			await refreshPlugins();
+			showToast(
+				grant
+					? t('settings.pluginAllowed', $locale)
+					: t('settings.pluginRevoked', $locale),
+				'success'
+			);
 		} catch (e) {
 			showToast(e instanceof Error ? e.message : String(e), 'error');
 		} finally {
-			pluginBusy = null;
+			pluginBusy = pluginBusy.filter((n) => n !== name);
 		}
 	}
 
@@ -435,22 +454,38 @@
 			</dl>
 		{:else if activeTab === 'plugins'}
 			<h2>{t('settings.pluginsHeading', $locale)}</h2>
-			<p class="scale-hint">{t('settings.pluginsIntro', $locale)}</p>
-			<!-- DEV-380: 조회는 어디서든. 관리 버튼만 로컬 데스크톱에서 나온다. -->
-			{#if !canManage}
-				<p class="scale-hint">{t('settings.pluginsReadOnly', $locale)}</p>
+			<!-- DEV-383: 길드를 안 열었으면 그 사실만 말한다. 예전엔 "플러그인이
+			     없습니다. .guild/plugins/… 에 정의하세요" 와 "조회만 가능합니다"
+			     가 함께 떴는데, 그 상황에서는 **둘 다 틀린 말**이다. -->
+			{#if pluginStatus?.no_guild}
+				<p class="scale-hint">{t('settings.pluginsNoGuild', $locale)}</p>
+			{:else}
+				<p class="scale-hint">{t('settings.pluginsIntro', $locale)}</p>
+				<!-- DEV-380: 조회는 어디서든. 관리 버튼만 로컬 데스크톱에서 나온다.
+				     DEV-383: **답을 받은 뒤에만** 판단한다 — 받기 전에 띄우면
+				     로컬 데스크톱에서도 잠깐 스쳐 지나가고, 실패하면 굳는다. -->
+				{#if pluginsLoaded && !canManage}
+					<p class="scale-hint">{t('settings.pluginsReadOnly', $locale)}</p>
+				{/if}
 			{/if}
-			{#each pluginStatus?.notes ?? [] as note (note)}
-				<p class="scale-hint">{note}</p>
-			{/each}
 			{#if true}
 				{#if pluginError}
-					<p class="plugin-error">{pluginError}</p>
+					<!-- DEV-383: 실패했을 때 다시 시도할 방법이 없으면 탭을 다시
+					     누를 생각을 못 한 사람은 그대로 막힌다. -->
+					<p class="plugin-error" role="alert">
+						{pluginError}
+						<button class="btn-plain" onclick={refreshPlugins}
+							>{t('settings.pluginRetry', $locale)}</button
+						>
+					</p>
 				{/if}
 				{#if pluginStatus?.trusted}
 					<p class="plugin-trusted">{t('settings.pluginTrusted', $locale)}</p>
 				{/if}
-				{#if pluginStatus && pluginStatus.plugins.length === 0 && pluginStatus.errors.length === 0}
+				{#if pluginStatus &&
+					!pluginStatus.no_guild &&
+					pluginStatus.plugins.length === 0 &&
+					pluginStatus.errors.length === 0}
 					<p class="scale-hint">{t('settings.pluginsNone', $locale)}</p>
 				{/if}
 				<ul class="plugin-list">
@@ -462,7 +497,7 @@
 							</div>
 							<div class="plugin-meta">
 								<span>{p.on.join(' ')}</span>
-								<span>scope: {p.scope.join(', ')}</span>
+								<span>{t('settings.pluginScope', $locale)}: {p.scope.join(', ')}</span>
 							</div>
 							<div class="plugin-state">
 								{#if !p.granted}
@@ -474,32 +509,45 @@
 								{/if}
 							</div>
 							{#if p.script_src}
+								<!-- DEV-383: 이 화면의 존재 이유가 "무엇에 동의하는지 보여
+								     주는 것" 인데, 펼침 상태가 스크린리더에 안 전달되면
+								     그 코드는 사실상 안 보이는 것과 같다. -->
 								<button
+									type="button"
 									class="link-btn"
+									aria-expanded={openScript === p.name}
+									aria-controls={`plugin-script-${p.name}`}
 									onclick={() => (openScript = openScript === p.name ? null : p.name)}
 									>{openScript === p.name
 										? t('settings.pluginHideScript', $locale)
-										: t('settings.pluginShowScript', $locale)}</button
+										: t('settings.pluginShowScript', $locale)} — {p.name}</button
 								>
 								{#if openScript === p.name}
-									<pre class="plugin-script">{p.script_src}</pre>
+									<pre id={`plugin-script-${p.name}`} class="plugin-script">{p.script_src}</pre>
 								{/if}
 							{/if}
 							{#if canManage}
 								<div class="plugin-actions">
 									{#if p.granted}
+										<!-- 신뢰 중에는 개별 철회가 효과가 없다. 버튼을 그냥
+										     흐려 놓으면 왜 못 누르는지 알 수 없다. -->
 										<button
+											type="button"
 											class="btn-plain"
-											disabled={pluginBusy === p.name || pluginStatus?.trusted}
+											disabled={pluginBusy.includes(p.name) || pluginStatus?.trusted}
+											title={pluginStatus?.trusted
+												? t('settings.pluginRevokeTrustedHint', $locale)
+												: undefined}
 											onclick={() => togglePlugin(p.name, false)}
-											>{t('settings.pluginRevoke', $locale)}</button
+											>{t('settings.pluginRevoke', $locale)} — {p.name}</button
 										>
 									{:else}
 										<button
+											type="button"
 											class="btn-go"
-											disabled={pluginBusy === p.name}
+											disabled={pluginBusy.includes(p.name)}
 											onclick={() => togglePlugin(p.name, true)}
-											>{t('settings.pluginAllow', $locale)}</button
+											>{t('settings.pluginAllow', $locale)} — {p.name}</button
 										>
 									{/if}
 								</div>
@@ -1004,6 +1052,9 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.5rem;
+		/* DEV-383: 설정의 다른 절은 `.info-grid` 안이라 0.875rem 이다. 여기만
+		   `.info-grid` 밖이라 1rem 으로 튀었다. */
+		font-size: 0.875rem;
 	}
 	.plugin {
 		border: var(--bw) solid var(--border);
@@ -1019,8 +1070,15 @@
 	.plugin.broken {
 		border-color: var(--danger);
 		flex-direction: row;
+		/* DEV-383: 전달 실패 메시지에 URL 이 들어가면 줄이 카드를 넘어가 잘렸다 —
+		   정작 이유가 URL **뒤에** 오는데 그게 안 보였다. */
+		flex-wrap: wrap;
 		gap: 0.75rem;
 		align-items: baseline;
+	}
+	.plugin.broken span {
+		min-width: 0;
+		overflow-wrap: anywhere;
 	}
 	.plugin-head {
 		display: flex;
@@ -1029,6 +1087,8 @@
 		flex-wrap: wrap;
 	}
 	.plugin-target {
+		/* DEV-383: 코드 글꼴 설정을 따른다 — 앱의 모든 mono 표면이 그렇다. */
+		font-family: var(--font-mono);
 		font-size: 0.8rem;
 		color: var(--text-muted);
 		word-break: break-all;
@@ -1051,8 +1111,14 @@
 		padding: 0.5rem;
 		background: var(--bg-subtle);
 		border-radius: var(--r-sm);
+		font-family: var(--font-mono);
 		font-size: 0.78rem;
 		overflow-x: auto;
+		/* DEV-383: 상한이 없으면 긴 스크립트가 허용 버튼을 화면 밖으로 밀어낸다
+		   — 읽고 나서 동의하려면 스크립트 전체를 지나쳐 내려가야 했다.
+		   rem 이라 UI 배율을 따라간다. */
+		max-height: 14rem;
+		overflow-y: auto;
 		white-space: pre;
 	}
 	.plugin-actions {
@@ -1109,6 +1175,12 @@
 	}
 	.plugin-error {
 		color: var(--danger);
+		font-size: 0.8rem;
+		margin: 0.3rem 0 0;
+		display: flex;
+		gap: 0.5rem;
+		align-items: center;
+		flex-wrap: wrap;
 	}
 	.plugin-trusted {
 		font-size: 0.85rem;
@@ -1365,7 +1437,11 @@
 		opacity: 0.4;
 		cursor: not-allowed;
 	}
-	.ui-scale .scale-hint {
+	/* DEV-383: 예전엔 `.ui-scale .scale-hint` 하나뿐이라 그 조상이 없는 탭
+	   (플러그인)에서는 **아무것도 안 먹었다** — 안내문이 본문 크기 그대로에
+	   여백 없이 붙어 나왔다. 정의가 있긴 있어서 `check:classes` 도 못 잡는다.
+	   기본 모양은 조건 없이 준다. */
+	.scale-hint {
 		font-size: 0.75rem;
 		color: var(--text-faint);
 		margin: 0.5rem 0 0;

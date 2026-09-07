@@ -194,6 +194,11 @@ fn load_scoped(guild_root: &Path, scope: Option<Scope>) -> Loaded {
     };
     let granted = consent::load(guild_root).unwrap_or_default();
 
+    // DEV-383: 같은 `name` 이 둘이면 동의도 화면도 그 이름으로 구분하는데 어느
+    // 쪽인지 알 수 없다. 프런트의 `{#each}` 키도 이름이라 화면이 통째로 깨졌다.
+    // 폴더를 복사하고 이름을 안 고치는 건 흔한 실수다 — 적재에서 걸러 준다.
+    let mut seen_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+
     let mut dirs: Vec<_> = entries
         .flatten()
         .map(|e| e.path())
@@ -218,6 +223,17 @@ fn load_scoped(guild_root: &Path, scope: Option<Scope>) -> Loaded {
                     && !def.scope.contains(&sc)
                 {
                     out.out_of_scope.push(def.name);
+                    continue;
+                }
+                if !seen_names.insert(def.name.clone()) {
+                    out.errors.push((
+                        label,
+                        format!(
+                            "`name` 이 겹칩니다: {} — 폴더마다 다른 이름이어야 합니다\
+                             (동의도 화면도 이름으로 구분합니다).",
+                            def.name
+                        ),
+                    ));
                     continue;
                 }
                 let (compiled, script_src) = match compile_script(&pdir, &def) {
