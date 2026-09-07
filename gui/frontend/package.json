@@ -22,6 +22,7 @@
 		"check:spacing": "node scripts/check-raw-spacing.mjs",
 		"check:font": "node scripts/check-raw-font.mjs",
 		"check:viewport": "node scripts/check-viewport-units.mjs",
+		"check:classes": "node scripts/check-undefined-classes.mjs",
 		"check:guards": "node scripts/check-guard-registration.mjs"
 	},
 	"devDependencies": {

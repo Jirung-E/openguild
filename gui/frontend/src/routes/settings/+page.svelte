@@ -489,14 +489,14 @@
 								<div class="plugin-actions">
 									{#if p.granted}
 										<button
-											class="ghost"
+											class="btn-plain"
 											disabled={pluginBusy === p.name || pluginStatus?.trusted}
 											onclick={() => togglePlugin(p.name, false)}
 											>{t('settings.pluginRevoke', $locale)}</button
 										>
 									{:else}
 										<button
-											class="primary"
+											class="btn-go"
 											disabled={pluginBusy === p.name}
 											onclick={() => togglePlugin(p.name, true)}
 											>{t('settings.pluginAllow', $locale)}</button
@@ -528,11 +528,11 @@
 				{#if canManage}
 					{#if pluginStatus?.trusted}
 						<!-- DEV-380: 켠 뒤에 끌 수 없으면 개별 철회가 계속 거짓말을 한다. -->
-						<button class="ghost" onclick={() => setTrusted(false)}
+						<button class="btn-plain" onclick={() => setTrusted(false)}
 							>{t('settings.pluginUntrust', $locale)}</button
 						>
 					{:else}
-						<button class="ghost" onclick={() => (confirmTrust = true)}
+						<button class="btn-plain trust" onclick={() => (confirmTrust = true)}
 							>{t('settings.pluginTrust', $locale)}</button
 						>
 					{/if}
@@ -1058,6 +1058,54 @@
 	.plugin-actions {
 		display: flex;
 		gap: 0.4rem;
+		margin-top: 0.15rem;
+	}
+	/* DEV-382: 앱의 버튼 관용구를 따른다. 처음엔 `ghost` / `primary` 라고 썼는데
+	   이 저장소에 그런 클래스가 **없어서** 브라우저 기본 버튼이 그대로 나왔다 —
+	   회색 덩어리 하나만 다른 UI 와 따로 놀았다. 같은 페이지의 `.btn-check-upd`
+	   와 전역 `--btn-*` 토큰에 맞춘다. */
+	.btn-plain,
+	.btn-go {
+		padding: 0.25rem 0.7rem;
+		border-radius: var(--r-md);
+		font-size: 0.78rem;
+		cursor: pointer;
+		transition:
+			background 0.15s,
+			color 0.15s,
+			border-color 0.15s;
+	}
+	.btn-plain {
+		background: transparent;
+		border: var(--bw) solid var(--border);
+		color: var(--text-muted);
+	}
+	.btn-plain:hover:not(:disabled) {
+		background: var(--bg-subtle);
+		color: var(--text);
+	}
+	/* 길드 통째 허용은 되돌리기 어렵다 — 평범한 버튼처럼 보이면 안 된다. */
+	.btn-plain.trust {
+		border-color: var(--btn-warning-border);
+		color: var(--btn-warning-text);
+	}
+	.btn-plain.trust:hover:not(:disabled) {
+		background: var(--btn-warning-bg-hover);
+		color: var(--btn-warning-text);
+	}
+	.btn-go {
+		background: var(--btn-primary-bg);
+		border: var(--bw) solid var(--btn-primary-border);
+		color: var(--btn-primary-text);
+	}
+	.btn-go:hover:not(:disabled) {
+		background: var(--btn-primary-bg-hover);
+		border-color: var(--btn-primary-border-hover);
+	}
+	.btn-plain:disabled,
+	.btn-go:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
 	}
 	.plugin-error {
 		color: var(--danger);

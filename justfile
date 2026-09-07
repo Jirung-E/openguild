@@ -88,6 +88,7 @@ test-frontend:
     cd gui/frontend && npm run check:spacing
     cd gui/frontend && npm run check:font
     cd gui/frontend && npm run check:viewport
+    cd gui/frontend && npm run check:classes
     cd gui/frontend && npm run check:guards
     cd gui/frontend && npm test -- --run
     # DEV-372: CI 의 마지막 단계. 여기 없으면 `just test` 만 믿었을 때
