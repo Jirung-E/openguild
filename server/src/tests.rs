@@ -99,6 +99,92 @@ async fn the_server_only_picks_up_server_scoped_plugins() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
+/// DEV-380: **조회는 열려 있고 관리는 닫혀 있다.**
+///
+/// 정의는 어차피 길드 파일이라 이 서버에 닿는 사람은 이미 읽을 수 있다. 반대로
+/// 허용/철회를 HTTP 로 열면 "누구의 동의인가" 가 흐려지고 `run` 을 여는 원격
+/// 구멍이 된다 — 그래서 쓰기 경로가 **없어야** 한다.
+#[tokio::test]
+async fn plugins_are_readable_over_http_but_never_writable() {
+    let ns = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!("og-srv-view-{ns}"));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("test.guild"),
+        openguild_core::guild_file::marker_content(
+            "test",
+            &openguild_core::time::now_local_iso8601(),
+        ),
+    )
+    .unwrap();
+    openguild_core::repo::seed_guild_dir(&dir).unwrap();
+    seed_two_plugins(&dir);
+    let store = openguild_core::Store::open(&dir).await.unwrap();
+    let app = routes::create_router(store);
+
+    let (st, body) = get(app.clone(), "/api/plugins").await;
+    assert_eq!(st, StatusCode::OK);
+    let names: Vec<&str> = body["plugins"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["name"].as_str().unwrap())
+        .collect();
+    // scope 를 가리지 않는다 — 걸러 버리면 다른 컴포넌트 전용 플러그인은 존재
+    // 조차 안 보인다.
+    assert!(
+        names.contains(&"team-hook") && names.contains(&"my-hook"),
+        "{names:?}"
+    );
+    // 서버에서 도는 것은 server scope 뿐이다.
+    let team = body["plugins"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["name"] == "team-hook")
+        .unwrap();
+    let mine = body["plugins"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["name"] == "my-hook")
+        .unwrap();
+    assert_eq!(team["runs_here"], true);
+    assert_eq!(mine["runs_here"], false);
+    // **여기서는 허용할 수 없다.**
+    assert_eq!(body["manageable"], false, "HTTP 로 관리 가능하다고 답했다");
+
+    // 쓰기 경로는 아예 없어야 한다. (SPA fallback 이 GET 을 삼키므로 POST 로 본다.)
+    for (method, uri) in [
+        ("POST", "/api/plugins"),
+        ("POST", "/api/plugins/team-hook/allow"),
+        ("POST", "/api/plugins/trust"),
+        ("DELETE", "/api/plugins/team-hook"),
+    ] {
+        let res = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(method)
+                    .uri(uri)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(
+            res.status() == StatusCode::NOT_FOUND || res.status() == StatusCode::METHOD_NOT_ALLOWED,
+            "{method} {uri} 가 {} 로 응답 — 동의를 HTTP 로 받는 경로가 생겼다",
+            res.status()
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 async fn get(app: Router, uri: &str) -> (StatusCode, Value) {
     let res = app
         .oneshot(Request::get(uri).body(Body::empty()).unwrap())

@@ -49,81 +49,48 @@ fn open_err(e: anyhow::Error) -> String {
 // 묻는 **시점**은 길드를 열 때가 아니라 설정 화면이다. 열자마자 대화상자로
 // 막으면 플러그인을 안 쓰는 사람까지 방해한다. 대신 안 돌고 있는 것이 있으면
 // 목록에서 바로 보인다.
+//
+// DEV-380: 모양은 core 가 갖는다([`openguild_core::plugins::view`]) — 서버의
+// `GET /api/plugins` 와 같은 프런트가 받아야 하므로 필드가 갈리면 안 된다.
 
-/// 프런트로 넘기는 플러그인 한 건. 내부 구조체를 그대로 흘리지 않는다.
-#[derive(Serialize)]
-pub struct PluginView {
-    pub name: String,
-    pub on: Vec<String>,
-    pub scope: Vec<String>,
-    pub action: String,
-    /// `post` 의 목적지 또는 `run` 의 명령 — **무엇에 동의하는지**의 핵심.
-    pub target: String,
-    pub script: Option<String>,
-    /// 스크립트 원문. 이걸 안 보여주면 동의가 형식만 남는다.
-    pub script_src: Option<String>,
-    pub granted: bool,
-    /// 이 컴포넌트(gui)에서 도는가. scope 가 cli 뿐이면 허용해도 여기선 안 돈다.
-    pub runs_here: bool,
+use openguild_core::plugins::view::PluginStatus;
+
+/// **길드를 안 연 상태에서는 아무것도 안 한다.**
+///
+/// Welcome / Uninit 은 in-memory placeholder Store 이고 그 `guild_root` 는
+/// `$TMPDIR/openguild-welcome-placeholder` 다. 이걸 안 막으면 "이 길드를 전부
+/// 허용" 이 **임시 디렉터리를 영구히 신뢰 목록에 넣는다.** 리눅스에서 그 부모는
+/// 누구나 쓸 수 있는 `/tmp` 라, 다른 프로세스가 거기 정의를 심으면 묻지 않고
+/// 돈다. `guild_path_for_frontend` 가 같은 이유로 이미 이 경로를 가린다.
+fn no_guild_open(store: &Store) -> bool {
+    crate::is_welcome_placeholder(&store.paths.guild_root)
 }
 
-#[derive(Serialize)]
-pub struct PluginStatus {
-    pub plugins: Vec<PluginView>,
-    /// 읽거나 검증하다 실패한 것 — `(이름, 이유)`.
-    pub errors: Vec<(String, String)>,
-    /// 길드 통째 신뢰가 켜져 있나.
-    pub trusted: bool,
-    /// 전달 중 쌓인 문제 — 조용히 삼키지 않는다.
-    pub problems: Vec<String>,
-}
-
-fn plugin_view(p: &openguild_core::plugins::Plugin, granted: bool) -> PluginView {
-    use openguild_core::plugins::Action;
-    let (action, target) = match &p.def.action {
-        Action::Post { url, .. } => ("post", url.clone()),
-        Action::Run { command, args, .. } => ("run", format!("{command} {}", args.join(" "))),
-    };
-    PluginView {
-        name: p.def.name.clone(),
-        on: p.def.on.clone(),
-        scope: p
-            .def
-            .scope
-            .iter()
-            .map(|s| format!("{s:?}").to_lowercase())
-            .collect(),
-        action: action.into(),
-        target,
-        script: p.def.script.clone(),
-        script_src: p.script_src.clone(),
-        granted,
-        runs_here: p.def.scope.contains(&openguild_core::plugins::Scope::Gui),
-    }
-}
+const NO_GUILD_NOTE: &str =
+    "아직 길드를 열지 않았습니다 — 플러그인은 이 기계에서 연 길드에만 적용됩니다.";
+const NO_GUILD_ERR: &str =
+    "열린 길드가 없습니다 — 동의는 이 기계에서 연 길드에만 남길 수 있습니다.";
 
 /// scope 를 가리지 않고 전부 — GUI 전용이 아닌 것도 여기서 허용할 수 있어야
 /// 한다(그 반대는 [[DEV-378]] 의 CLI 가 맡는다).
 #[tauri::command]
 pub async fn plugin_status(store: State<'_, Store>) -> Result<PluginStatus, String> {
-    let root = store.paths.guild_root.clone();
-    let loaded = openguild_core::plugins::load_all(&root);
-    let granted = openguild_core::plugins::consent::load(&root).map_err(err)?;
-    Ok(PluginStatus {
-        plugins: loaded
-            .active
-            .iter()
-            .map(|p| plugin_view(p, true))
-            .chain(loaded.needs_consent.iter().map(|p| plugin_view(p, false)))
-            .collect(),
-        errors: loaded.errors,
-        trusted: granted.trusted,
-        problems: Vec::new(),
-    })
+    if no_guild_open(&store) {
+        return Ok(PluginStatus::empty(NO_GUILD_NOTE));
+    }
+    openguild_core::plugins::view::status(
+        &store.paths.guild_root,
+        openguild_core::plugins::Scope::Gui,
+        true,
+    )
+    .map_err(err)
 }
 
 #[tauri::command]
 pub async fn plugin_allow(store: State<'_, Store>, name: String) -> Result<(), String> {
+    if no_guild_open(&store) {
+        return Err(NO_GUILD_ERR.into());
+    }
     let root = store.paths.guild_root.clone();
     let loaded = openguild_core::plugins::load_all(&root);
     let target = loaded
@@ -139,6 +106,9 @@ pub async fn plugin_allow(store: State<'_, Store>, name: String) -> Result<(), S
 
 #[tauri::command]
 pub async fn plugin_revoke(store: State<'_, Store>, name: String) -> Result<(), String> {
+    if no_guild_open(&store) {
+        return Err(NO_GUILD_ERR.into());
+    }
     let root = store.paths.guild_root.clone();
     openguild_core::plugins::consent::revoke(&root, &name).map_err(err)?;
     reinstall_plugins(&store);
@@ -146,9 +116,18 @@ pub async fn plugin_revoke(store: State<'_, Store>, name: String) -> Result<(), 
 }
 
 #[tauri::command]
-pub async fn plugin_trust(store: State<'_, Store>) -> Result<(), String> {
+pub async fn plugin_trust(store: State<'_, Store>, on: bool) -> Result<(), String> {
+    if no_guild_open(&store) {
+        return Err(NO_GUILD_ERR.into());
+    }
     let root = store.paths.guild_root.clone();
-    openguild_core::plugins::consent::trust_guild(&root).map_err(err)?;
+    // DEV-380: 끄는 쪽이 없으면 켠 뒤에 개별 철회가 아무 일도 안 한다
+    // (`is_granted` 가 trusted 에서 단락된다).
+    if on {
+        openguild_core::plugins::consent::trust_guild(&root).map_err(err)?;
+    } else {
+        openguild_core::plugins::consent::untrust_guild(&root).map_err(err)?;
+    }
     reinstall_plugins(&store);
     Ok(())
 }

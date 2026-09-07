@@ -79,8 +79,12 @@ openguild plugin allow ai-notify      # shows the definition + script, grants no
 openguild plugin allow ai-notify --yes
 openguild plugin revoke ai-notify
 openguild plugin trust --yes          # solo guild: allow everything, now and later
+openguild plugin untrust              # undo that — per-plugin consent remains
 openguild plugin events
 ```
+
+While a guild is trusted, per-plugin `revoke` has no effect (`trusted` short-circuits
+the check) — the CLI says so instead of reporting a silent success. Run `untrust` first.
 
 `allow` without `--yes` only prints what you would be consenting to. Consent is
 recorded against the definition **and** the script source, so editing either
@@ -105,8 +109,15 @@ desktop app) rather than swallowed.
 | Component | How |
 |---|---|
 | CLI | `openguild plugin allow <name> --yes` |
-| Desktop | Settings → Plugins |
+| Desktop | Settings → Plugins (local guild only) |
 | Server | Deliberately **not** over HTTP. Run the CLI on the server's machine. |
+
+`GET /api/plugins` is **read-only** — it lists what is configured and what is running, and
+answers `manageable: false`. Anyone who can read the guild can already read
+`.guild/plugins/`, so the listing leaks nothing new; consent is what stays local.
+
+The desktop app connected to a *remote* guild is read-only too: `invoke` still reaches the
+local Store, so allowing there would edit consent for a guild you are not looking at.
 
 Non-interactive CLI runs (scripts, CI) never prompt and never run unconsented
 plugins — they print why instead.

@@ -247,6 +247,16 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 		return { cmd: 'search_docs', args };
 	}
 
+	// ───── 플러그인 (조회만) ─────
+	// DEV-380: 읽기는 transport 를 그대로 탄다 — 그래야 브라우저는 서버에게,
+	// 데스크톱은 로컬 Store 에게, 데스크톱+원격은 **원격 서버에게** 묻는다.
+	// 즉 화면이 보고 있는 길드와 목록이 항상 같은 길드다(BUG-255 계열 회피).
+	// 허용/철회는 여기 없다 — `api/plugins.ts` 가 invoke 를 직접 부르고,
+	// 그 경로는 `isLocalTauri()` 로 막혀 있다.
+	if (method === 'GET' && pathOnly === '/api/plugins') {
+		return { cmd: 'plugin_status', args: {} };
+	}
+
 	// ───── meta ─────
 	// DEV-016 (multi-file): 다중 길드 규칙.
 	if (pathOnly === '/api/rules') {

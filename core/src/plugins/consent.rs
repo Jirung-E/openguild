@@ -118,6 +118,16 @@ pub fn trust_guild(guild_root: &Path) -> AppResult<()> {
     })
 }
 
+/// DEV-380: 길드 통째 신뢰 해제. **`trust_guild` 에 되돌리기가 없었다** —
+/// `is_granted` 가 `trusted` 에서 단락되므로, 신뢰를 켠 뒤에는 개별 철회가
+/// 아무 일도 안 하고 그걸 끌 수단도 없었다.
+pub fn untrust_guild(guild_root: &Path) -> AppResult<()> {
+    update(|file| {
+        let key = guild_key(guild_root);
+        file.trusted_guilds.retain(|k| k != &key);
+    })
+}
+
 /// 동의 철회 — 이름을 지운다.
 pub fn revoke(guild_root: &Path, name: &str) -> AppResult<()> {
     update(|file| {

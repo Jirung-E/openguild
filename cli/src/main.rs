@@ -325,6 +325,10 @@ enum PluginCmd {
         #[arg(long, help = tf!("정말로 이 길드를 통째로 신뢰한다.", "Really trust this whole guild."))]
         yes: bool,
     },
+    // DEV-380: 켜는 쪽만 있고 끄는 쪽이 없었다. `is_granted` 가 trusted 에서
+    // 단락되므로 그 상태에서는 개별 철회가 아무 일도 안 한다.
+    #[command(about = tf!("길드 전체 허용을 해제 — 개별 동의만 남는다.", "Stop trusting this guild — only per-plugin consent remains."))]
+    Untrust,
     #[command(about = tf!("구독할 수 있는 이벤트 이름 목록.", "Event names you can subscribe to."))]
     Events,
 }
@@ -6080,10 +6084,41 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
         }
         PluginCmd::Revoke { name } => {
             Backend::map_err(consent::revoke(root, &name))?;
+            // DEV-380: 길드를 통째로 신뢰 중이면 개별 철회는 아무 효과가 없다.
+            // 성공했다고만 말하면 사용자는 껐다고 믿는다.
+            let still_trusted = consent::load(root).map(|g| g.trusted).unwrap_or(false);
             if json {
-                json_println!(serde_json::json!({ "ok": true, "revoked": name }));
+                json_println!(serde_json::json!({
+                    "ok": true, "revoked": name, "still_trusted": still_trusted
+                }));
             } else {
                 println!("{}", tf!("✓ 철회: {}", "✓ revoked: {}", name));
+                if still_trusted {
+                    println!(
+                        "{}",
+                        tf!(
+                            "  ⚠ 이 길드는 통째로 신뢰 중이라 여전히 돕니다 — `openguild plugin untrust` 를 먼저 하세요.",
+                            "  ⚠ this guild is fully trusted, so it still runs — run `openguild plugin untrust` first."
+                        )
+                    );
+                }
+            }
+        }
+        PluginCmd::Untrust => {
+            Backend::map_err(consent::untrust_guild(root))?;
+            if json {
+                json_println!(
+                    serde_json::json!({ "ok": true, "untrusted": root.display().to_string() })
+                );
+            } else {
+                println!(
+                    "{}",
+                    tf!(
+                        "✓ 길드 전체 허용 해제 — 개별 동의만 남습니다: {}",
+                        "✓ no longer trusting this guild; only per-plugin consent remains: {}",
+                        root.display()
+                    )
+                );
             }
         }
         PluginCmd::Trust { yes } => {

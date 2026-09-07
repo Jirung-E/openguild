@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::AppResult;
 use openguild_core::models::{QuestStatus, QuestTagDef, QuestType};
 use openguild_core::ops::meta as meta_ops;
+use openguild_core::plugins::view::PluginStatus;
 use openguild_core::services::meta as svc;
 use openguild_core::Store;
 
@@ -33,6 +34,23 @@ pub struct GuildInfo {
 pub async fn get_guild_info(State(store): State<Store>) -> Json<GuildInfo> {
     let name = openguild_core::recents::guess_name(&store.paths.guild_root);
     Json(GuildInfo { name })
+}
+
+/// `GET /api/plugins` — DEV-380: **읽기 전용** 플러그인 조회.
+///
+/// 정의는 어차피 길드 파일이라 이 서버에 닿는 사람은 이미 읽을 수 있고,
+/// "이 공유 서버에 어떤 훅이 걸려 있나" 는 오히려 보여야 하는 정보다.
+///
+/// **허용/철회는 여기 없다.** 팀이 공유하는 주소로 동의를 받으면 "누구의
+/// 동의인가" 가 흐려지고 `run` 을 열어 주는 원격 구멍이 된다 — 서버 쪽 동의는
+/// 그 기계에서 `openguild plugin allow` 로 한다. 그래서 `manageable: false` 로
+/// 답하고, 프런트는 그걸 보고 버튼을 안 그린다.
+pub async fn list_plugins(State(store): State<Store>) -> AppResult<Json<PluginStatus>> {
+    Ok(Json(openguild_core::plugins::view::status(
+        &store.paths.guild_root,
+        openguild_core::plugins::Scope::Server,
+        false,
+    )?))
 }
 
 /// DEV-068: tag def 목록.

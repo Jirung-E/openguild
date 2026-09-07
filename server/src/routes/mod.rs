@@ -50,6 +50,9 @@ pub fn create_router(store: Store) -> Router {
         .route("/health", get(health))
         // meta
         .route("/api/guild-info", get(meta::get_guild_info))
+        // DEV-380: 플러그인 **조회만**. 허용/철회는 일부러 없다 — 그 기계에서
+        // `openguild plugin allow` 로 한다(meta::list_plugins 주석 참고).
+        .route("/api/plugins", get(meta::list_plugins))
         .route("/api/quest-types", get(meta::list_quest_types))
         // REQ-009: 강화된 검색 (댓글/첨부 이름/메모까지). 기본 검색과 별개 경로.
         .route("/api/search", get(meta::enhanced_search))

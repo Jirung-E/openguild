@@ -323,6 +323,78 @@ fn a_run_action_never_loads_without_consent() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
+// ── DEV-380: 리뷰 지적 ──────────────────────────────────
+
+/// **`sk-` 는 영어 단어 꼬리에 흔하다.** `contains` 로 보면 `task-runner`,
+/// `desk-notify`, `risk-eval` 이 전부 API 키로 걸려 적재를 거부당한다.
+#[test]
+fn ordinary_words_ending_in_sk_are_not_api_keys() {
+    for url in [
+        "https://api.test/task-runner",
+        "https://risk-eval.example/hook",
+        "https://example.test/disk-usage",
+    ] {
+        let d = def(Action::Post {
+            url: url.into(),
+            headers: Default::default(),
+            timeout_ms: None,
+        });
+        assert!(validate(&d).is_ok(), "멀쩡한 URL 이 막혔다: {url}");
+    }
+    let d = def(Action::Run {
+        command: "/usr/local/bin/desk-notify".into(),
+        args: vec!["--quiet".into()],
+        timeout_ms: None,
+    });
+    assert!(validate(&d).is_ok());
+
+    // 진짜 키는 여전히 막힌다 — 토큰 시작이면 잡는다.
+    for bad in [
+        "sk-abcdef123456789",
+        "https://api.test/v1?key=sk-abcdef123456",
+    ] {
+        let d = def(Action::Post {
+            url: bad.into(),
+            headers: Default::default(),
+            timeout_ms: None,
+        });
+        assert!(validate(&d).is_err(), "진짜 키를 놓쳤다: {bad}");
+    }
+}
+
+/// **신뢰는 되돌릴 수 있어야 한다.** `is_granted` 가 `trusted` 에서 단락되므로,
+/// 끄는 수단이 없으면 개별 철회가 영원히 거짓말을 한다.
+#[test]
+fn trust_can_be_withdrawn() {
+    let _guard = env_lock();
+    let home = fresh_tmp("untrust-home");
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let g = fresh_tmp("untrust");
+    write_plugin(&g, "ai-notify", ai_notify(&["cli"]));
+
+    consent::trust_guild(&g).unwrap();
+    assert_eq!(load_for(&g, Scope::Cli).active.len(), 1);
+
+    consent::untrust_guild(&g).unwrap();
+    let after = load_for(&g, Scope::Cli);
+    assert!(after.active.is_empty(), "해제했는데 계속 돈다");
+    assert_eq!(after.needs_consent.len(), 1);
+
+    // 해제해도 개별 동의는 남는다.
+    consent::grant(&g, &after.needs_consent[0]).unwrap();
+    consent::trust_guild(&g).unwrap();
+    consent::untrust_guild(&g).unwrap();
+    assert_eq!(
+        load_for(&g, Scope::Cli).active.len(),
+        1,
+        "신뢰 해제가 개별 동의까지 지웠다"
+    );
+
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
 // ── 스크립트 적재 ([[DEV-376]]) ─────────────────────────
 
 fn with_script(scope: &[&str], rel: &str) -> serde_json::Value {

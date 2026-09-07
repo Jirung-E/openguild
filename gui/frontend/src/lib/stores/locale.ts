@@ -173,10 +173,11 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		ko: '플러그인이 없습니다. .guild/plugins/{이름}/plugin.json 으로 정의합니다.',
 		en: 'No plugins. Define one at .guild/plugins/{name}/plugin.json.'
 	},
-	'settings.pluginsDesktopOnly': {
-		ko: '플러그인 관리는 데스크톱 앱에서만 가능합니다 — 동의는 이 기계에 남습니다.',
-		en: 'Plugin management is desktop-only — consent is stored on this machine.'
+	'settings.pluginsReadOnly': {
+		ko: '조회만 가능합니다. 허용·철회는 그 길드가 있는 기계의 데스크톱 앱이나 `openguild plugin allow` 로 합니다 — 동의는 기계마다 따로 남습니다.',
+		en: 'Read-only here. Allow/revoke from the desktop app on the machine that holds this guild, or with `openguild plugin allow` — consent is per-machine.'
 	},
+	'settings.pluginUntrust': { ko: '길드 전체 허용 해제', en: 'Stop trusting this guild' },
 	'settings.pluginAllow': { ko: '허용', en: 'Allow' },
 	'settings.pluginRevoke': { ko: '철회', en: 'Revoke' },
 	'settings.pluginTrust': { ko: '이 길드를 전부 허용', en: 'Trust this guild' },

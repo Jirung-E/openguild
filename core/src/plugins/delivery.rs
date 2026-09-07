@@ -115,8 +115,18 @@ fn run(
     timeout: Duration,
     body: &Value,
 ) -> Result<(), String> {
-    let mut child = Command::new(command)
-        .args(args)
+    // DEV-380: `${VAR}` 는 여기서도 푼다. 비밀값 검사가 `run` 의 command/args 도
+    // 훑으므로 사용자는 **반드시** 참조로 적어야 하는데, 안 풀면 자식이 리터럴
+    // `${MY_API_KEY}` 를 받는다. 오류 메시지에는 원문(`command`)을 쓴다 — 푼
+    // 값에는 비밀이 들어 있다.
+    let exe = expand_env(command).map_err(|e| format!("{command}: {e}"))?;
+    let argv = args
+        .iter()
+        .map(|a| expand_env(a))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("{command}: {e}"))?;
+    let mut child = Command::new(&exe)
+        .args(&argv)
         .current_dir(&plugin.dir)
         .stdin(Stdio::piped())
         // 자식의 출력이 CLI 표준출력에 섞이면 파이프로 쓰는 사람이 깨진다.
@@ -507,6 +517,54 @@ mod tests {
         std::thread::sleep(Duration::from_millis(500));
         let b = std::fs::metadata(&ticks).map(|m| m.len()).unwrap_or(0);
         assert_eq!(a, b, "포기만 하고 자식은 계속 돌고 있다");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// **`run` 도 `${VAR}` 를 푼다.** 비밀값 검사가 command/args 도 훑으므로
+    /// 사용자는 반드시 참조로 적어야 하는데, 안 풀면 자식이 리터럴을 받는다.
+    #[test]
+    fn run_expands_env_refs_in_command_and_args() {
+        let _guard = crate::test_env::env_lock();
+        unsafe { std::env::set_var("OG_TEST_RUN_TOKEN", "s3cret") };
+        let d = tmp("runenv");
+        let p = plugin(
+            Action::Run {
+                command: "sh".into(),
+                args: vec![
+                    "-c".into(),
+                    "printf %s \"$0\" > got.txt".into(),
+                    "tok=${OG_TEST_RUN_TOKEN}".into(),
+                ],
+                timeout_ms: Some(5_000),
+            },
+            d.clone(),
+        );
+        Outbound::new().deliver(&p, &event(), &body()).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(d.join("got.txt")).unwrap(),
+            "tok=s3cret",
+            "자식이 리터럴 ${{VAR}} 를 받았다"
+        );
+        unsafe { std::env::remove_var("OG_TEST_RUN_TOKEN") };
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// 참조한 변수가 없으면 리터럴로 넘기지 않고 실패로 남긴다.
+    #[test]
+    fn run_with_a_missing_env_var_fails_loudly() {
+        let _guard = crate::test_env::env_lock();
+        unsafe { std::env::remove_var("OG_TEST_RUN_ABSENT") };
+        let d = tmp("runenv-missing");
+        let p = plugin(
+            Action::Run {
+                command: "sh".into(),
+                args: vec!["-c".into(), "true".into(), "${OG_TEST_RUN_ABSENT}".into()],
+                timeout_ms: Some(5_000),
+            },
+            d.clone(),
+        );
+        let e = Outbound::new().deliver(&p, &event(), &body()).unwrap_err();
+        assert!(e.contains("OG_TEST_RUN_ABSENT"), "{e}");
         let _ = std::fs::remove_dir_all(&d);
     }
 

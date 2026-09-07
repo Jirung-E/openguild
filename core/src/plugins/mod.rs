@@ -28,6 +28,7 @@ pub mod runtime;
 pub mod script;
 #[cfg(test)]
 mod tests;
+pub mod view;
 
 use crate::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
@@ -437,7 +438,13 @@ fn looks_like_known_key(value: &str) -> bool {
         "xoxa-",
         "AKIA",
     ];
-    PREFIXES.iter().any(|p| v.contains(p))
+    // DEV-380: `contains` 는 `sk-` 가 영어 단어 꼬리에 흔해서 오탐이 난다 —
+    // `task-runner`, `desk-notify`, `risk-eval` 이 전부 "비밀값" 으로 적재
+    // 거부됐다(실측). 토큰 시작에서만 본다.
+    PREFIXES.iter().any(|p| {
+        v.match_indices(p)
+            .any(|(i, _)| i == 0 || !v.as_bytes()[i - 1].is_ascii_alphanumeric())
+    })
 }
 
 /// `${VAR}` 를 실제 값으로. 없는 변수는 **빈 문자열이 아니라 오류** —

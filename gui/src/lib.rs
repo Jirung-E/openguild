@@ -245,6 +245,15 @@ fn cleanup_welcome_placeholder_leftovers() {
 /// 허용해 놓고 앱을 다시 켜야 도는 것은 고장으로 보인다. 돌 게 없으면 sink
 /// 를 안 꽂으므로 `ops` 는 이벤트를 만들지도 않는다([[DEV-374]]).
 pub fn install_plugins_for_gui(store: &Store) {
+    // DEV-380: Welcome / Uninit 은 in-memory placeholder 이고 그 guild_root 는
+    // `$TMPDIR/openguild-welcome-placeholder` 다. 리눅스에서 그 부모는 누구나
+    // 쓸 수 있는 `/tmp` — 다른 프로세스가 거기 정의를 심고 이 경로가 한 번
+    // 신뢰된 적이 있으면 묻지 않고 돈다. **적재 자체를 막는다**(커맨드 쪽
+    // 가드만으로는 시동 경로가 안 막힌다 — 시험이 그걸 잡았다).
+    if is_welcome_placeholder(&store.paths.guild_root) {
+        store.events.clear_sink();
+        return;
+    }
     let loaded = store.install_plugins(
         openguild_core::plugins::Scope::Gui,
         std::sync::Arc::new(openguild_core::plugins::delivery::Outbound::new()),
@@ -1164,6 +1173,39 @@ mod tests {
         unsafe { std::env::remove_var("OPENGUILD_HOME") };
 
         let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// **길드를 안 열었으면 아무것도 안 한다.**
+    ///
+    /// Welcome / Uninit 은 in-memory placeholder 이고 그 `guild_root` 는
+    /// `$TMPDIR/openguild-welcome-placeholder` 다. 여기에 "전부 허용" 이 걸리면
+    /// 임시 디렉터리가 영구히 신뢰 목록에 들어가고, 리눅스에서 그 부모는 누구나
+    /// 쓸 수 있는 `/tmp` 다.
+    #[test]
+    fn welcome_placeholder_is_never_a_consent_target() {
+        let _guard = env_lock();
+        let home = fresh_tmp("placeholder-home");
+        unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+
+        let placeholder = crate::welcome_placeholder_path();
+        assert!(crate::is_welcome_placeholder(&placeholder));
+
+        // 그 자리에 플러그인을 심어 둔다 — /tmp 는 누구나 쓸 수 있다.
+        std::fs::create_dir_all(&placeholder).unwrap();
+        write_plugin(&placeholder, "planted", "gui");
+        openguild_core::plugins::consent::trust_guild(&placeholder).unwrap();
+
+        // 신뢰가 걸려 있어도 **여는 경로가 placeholder 면 안 실린다.**
+        let store = tauri::async_runtime::block_on(Store::open_in_memory(&placeholder)).unwrap();
+        crate::install_plugins_for_gui(&store);
+        assert!(
+            !store.events.has_sink(),
+            "임시 디렉터리의 플러그인이 실렸다"
+        );
+
+        unsafe { std::env::remove_var("OPENGUILD_HOME") };
+        let _ = std::fs::remove_dir_all(&placeholder);
         let _ = std::fs::remove_dir_all(&home);
     }
 

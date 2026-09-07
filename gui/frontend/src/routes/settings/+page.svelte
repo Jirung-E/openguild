@@ -87,8 +87,9 @@
 	// Welcome 재방문으로 안 풀리는 Rust 상태라 stale 할 수 있다 —
 	// 보드 마운트/Welcome 마운트가 갱신하는 세션 플래그로 보강.
 	import { isGuildContextActive } from '$lib/stores/guildSession';
-	// DEV-379: 플러그인 동의 — 데스크톱 전용(동의는 이 기계에만 남는다).
-	import { pluginApi, pluginsSupported, type PluginStatus } from '$lib/api/plugins';
+	// DEV-379/380: 플러그인. 조회는 어디서든(브라우저 포함), 허용/철회는
+	// 로컬 길드를 연 데스크톱에서만.
+	import { pluginApi, pluginsManageable, type PluginStatus } from '$lib/api/plugins';
 
 	// DEV-101 fix3: 즉시 반영 — store 가 source of truth, drag 중에도 매 step 적용.
 	// preview / displayScale wrapper 제거.
@@ -110,14 +111,16 @@
 	let pluginBusy = $state<string | null>(null);
 	let openScript = $state<string | null>(null);
 	let confirmTrust = $state(false);
-	const pluginsAvailable = pluginsSupported();
+	// 관리 가능 여부는 **서버가 답한 값**으로 정한다. 프런트의 환경 감지만
+	// 믿으면 원격 길드를 보면서 로컬 동의를 고치게 된다(BUG-255 계열).
+	const canManage = $derived(pluginsManageable() && (pluginStatus?.manageable ?? false));
 
 	async function refreshPlugins() {
-		if (!pluginsAvailable) return;
 		try {
 			pluginStatus = await pluginApi.status();
 			pluginError = null;
 		} catch (e) {
+			pluginStatus = null;
 			pluginError = e instanceof Error ? e.message : String(e);
 		}
 	}
@@ -134,10 +137,10 @@
 		}
 	}
 
-	async function trustGuild() {
+	async function setTrusted(on: boolean) {
 		confirmTrust = false;
 		try {
-			await pluginApi.trust();
+			await pluginApi.setTrusted(on);
 			await refreshPlugins();
 		} catch (e) {
 			showToast(e instanceof Error ? e.message : String(e), 'error');
@@ -432,10 +435,15 @@
 			</dl>
 		{:else if activeTab === 'plugins'}
 			<h2>{t('settings.pluginsHeading', $locale)}</h2>
-			{#if !pluginsAvailable}
-				<p class="scale-hint">{t('settings.pluginsDesktopOnly', $locale)}</p>
-			{:else}
-				<p class="scale-hint">{t('settings.pluginsIntro', $locale)}</p>
+			<p class="scale-hint">{t('settings.pluginsIntro', $locale)}</p>
+			<!-- DEV-380: 조회는 어디서든. 관리 버튼만 로컬 데스크톱에서 나온다. -->
+			{#if !canManage}
+				<p class="scale-hint">{t('settings.pluginsReadOnly', $locale)}</p>
+			{/if}
+			{#each pluginStatus?.notes ?? [] as note (note)}
+				<p class="scale-hint">{note}</p>
+			{/each}
+			{#if true}
 				{#if pluginError}
 					<p class="plugin-error">{pluginError}</p>
 				{/if}
@@ -477,23 +485,25 @@
 									<pre class="plugin-script">{p.script_src}</pre>
 								{/if}
 							{/if}
-							<div class="plugin-actions">
-								{#if p.granted}
-									<button
-										class="ghost"
-										disabled={pluginBusy === p.name}
-										onclick={() => togglePlugin(p.name, false)}
-										>{t('settings.pluginRevoke', $locale)}</button
-									>
-								{:else}
-									<button
-										class="primary"
-										disabled={pluginBusy === p.name}
-										onclick={() => togglePlugin(p.name, true)}
-										>{t('settings.pluginAllow', $locale)}</button
-									>
-								{/if}
-							</div>
+							{#if canManage}
+								<div class="plugin-actions">
+									{#if p.granted}
+										<button
+											class="ghost"
+											disabled={pluginBusy === p.name || pluginStatus?.trusted}
+											onclick={() => togglePlugin(p.name, false)}
+											>{t('settings.pluginRevoke', $locale)}</button
+										>
+									{:else}
+										<button
+											class="primary"
+											disabled={pluginBusy === p.name}
+											onclick={() => togglePlugin(p.name, true)}
+											>{t('settings.pluginAllow', $locale)}</button
+										>
+									{/if}
+								</div>
+							{/if}
 						</li>
 					{/each}
 				</ul>
@@ -505,10 +515,17 @@
 						{/each}
 					</ul>
 				{/if}
-				{#if !pluginStatus?.trusted}
-					<button class="ghost" onclick={() => (confirmTrust = true)}
-						>{t('settings.pluginTrust', $locale)}</button
-					>
+				{#if canManage}
+					{#if pluginStatus?.trusted}
+						<!-- DEV-380: 켠 뒤에 끌 수 없으면 개별 철회가 계속 거짓말을 한다. -->
+						<button class="ghost" onclick={() => setTrusted(false)}
+							>{t('settings.pluginUntrust', $locale)}</button
+						>
+					{:else}
+						<button class="ghost" onclick={() => (confirmTrust = true)}
+							>{t('settings.pluginTrust', $locale)}</button
+						>
+					{/if}
 				{/if}
 			{/if}
 		{:else if activeTab === 'info'}
@@ -963,7 +980,7 @@
 	message={t('settings.pluginTrustConfirm', $locale)}
 	confirmLabel={t('settings.pluginTrust', $locale)}
 	danger
-	onconfirm={trustGuild}
+	onconfirm={() => setTrusted(true)}
 	oncancel={() => (confirmTrust = false)}
 />
 
