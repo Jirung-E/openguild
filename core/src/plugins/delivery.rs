@@ -135,6 +135,26 @@ impl Outbound {
     }
 }
 
+/// DEV-385: 프로세스 그룹째 죽인다 — 손자를 남기지 않기 위해서다.
+///
+/// `libc` 를 새로 들이지 않으려고 `kill(1)` 을 쓴다. POSIX 에서 음수 PID 는
+/// "그 프로세스 그룹" 을 뜻한다. 실패는 무시한다 — 이미 끝났을 수도 있고,
+/// 여기서 실패한다고 길드가 멈출 이유는 없다.
+#[cfg(unix)]
+fn kill_group(pid: u32) {
+    let _ = Command::new("kill")
+        .arg("-KILL")
+        .arg(format!("-{pid}"))
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+}
+
+/// Windows 에는 프로세스 그룹이 없다 — job object 가 필요한데 그건 별개
+/// 작업이다. 직계 자식만 죽이는 기존 동작을 그대로 둔다.
+#[cfg(not(unix))]
+fn kill_group(_pid: u32) {}
+
 /// 프로세스를 띄우고 **stdin** 으로 이벤트를 넘긴다.
 ///
 /// 인자로 넘기지 않는 이유는 길이 제한과 이스케이프다. 작업 디렉터리는
@@ -158,7 +178,17 @@ fn run(
         .map(|a| expand_env(a))
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| format!("{command}: {e}"))?;
-    let mut child = Command::new(&exe)
+    let mut cmd = Command::new(&exe);
+    // DEV-385: 자식을 **자기 프로세스 그룹의 리더로** 띄운다. 이게 없으면
+    // `child.kill()` 이 직계 자식 하나만 죽여서, 훅이 띄운 손자(백그라운드로
+    // 던진 `curl &`, 셸이 부른 프로그램)는 시한이 지나도 계속 돈다.
+    // 그룹 리더로 만들어 두면 `-pgid` 로 한 번에 거둘 수 있다.
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
+    let mut child = cmd
         .args(&argv)
         .current_dir(&plugin.dir)
         .stdin(Stdio::piped())
@@ -202,6 +232,7 @@ fn run(
         }
         if Instant::now() >= deadline {
             // 죽이고 **반드시 거둔다** — wait 를 안 하면 좀비가 남는다.
+            kill_group(child.id());
             let _ = child.kill();
             let _ = child.wait();
             return Err(format!(
@@ -755,6 +786,41 @@ mod tests {
         );
         let e = Outbound::new().deliver(&p, &event(), &body()).unwrap_err();
         assert!(e.contains("500"), "{e}");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// DEV-385: **손자도 거둬야 한다.** 훅이 백그라운드로 던진 프로그램은
+    /// `child.kill()` 로는 안 죽는다 — 시한이 지났다고 보고해 놓고 실제로는
+    /// 계속 도는 것이 제일 나쁘다.
+    #[cfg(unix)]
+    #[test]
+    fn a_timeout_kills_grandchildren_too() {
+        let d = tmp("grandchild");
+        // 셸이 손자를 백그라운드로 띄우고 자기는 잔다. 손자는 살아 있는 동안
+        // 계속 파일을 키운다.
+        let p = plugin(
+            Action::Run {
+                command: "sh".into(),
+                args: vec![
+                    "-c".into(),
+                    "(while true; do echo x >> grand.log; sleep 0.05; done) & sleep 30".into(),
+                ],
+                timeout_ms: Some(400),
+            },
+            d.clone(),
+        );
+        let e = Outbound::new().deliver(&p, &event(), &body()).unwrap_err();
+        assert!(e.contains("중단"), "{e}");
+
+        let log = d.join("grand.log");
+        let a = std::fs::metadata(&log).map(|m| m.len()).unwrap_or(0);
+        assert!(
+            a > 0,
+            "손자가 아예 안 돌았다 — 시험이 아무것도 안 보고 있다"
+        );
+        std::thread::sleep(Duration::from_millis(600));
+        let b = std::fs::metadata(&log).map(|m| m.len()).unwrap_or(0);
+        assert_eq!(a, b, "직계만 죽이고 손자는 계속 돌고 있다");
         let _ = std::fs::remove_dir_all(&d);
     }
 

@@ -143,15 +143,36 @@ pub fn revoke(guild_root: &Path, name: &str) -> AppResult<()> {
     })
 }
 
+/// 읽고 → 고치고 → **통째로 덮어쓴다.** 이 파일에는 이 기계의 모든 동의가
+/// 들어 있으므로 쓰다가 죽으면 전부 잃는다. 두 가지를 지킨다.
+///
+/// 1. **못 읽는 파일은 덮어쓰지 않는다.** 예전에는 파싱 실패를 빈 상태로
+///    갈음하고 그대로 덮어써서, 한 번 깨진 파일이 곧 "동의 전부 소멸" 이었다.
+///    이제는 오류로 돌려준다 — 사용자가 파일을 보고 판단할 기회를 준다.
+///    (읽기 전용인 [`load`] 는 여전히 빈 상태로 떨어진다. 그쪽은 "아무것도
+///    안 돈다" 라 안전한 방향이다.)
+/// 2. **임시 파일에 쓰고 rename.** 같은 디렉터리 안의 rename 은 원자적이라,
+///    중간에 죽어도 예전 파일이 그대로 남는다.
 fn update(f: impl FnOnce(&mut ConsentFile)) -> AppResult<()> {
     let p = path()?;
-    let mut file: ConsentFile = std::fs::read_to_string(&p)
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default();
+    let mut file = match std::fs::read_to_string(&p) {
+        Ok(raw) => serde_json::from_str(&raw).map_err(|e| {
+            crate::error::AppError::BadRequest(format!(
+                "{} 를 읽을 수 없습니다: {e}\n                 덮어쓰면 이 기계의 동의가 전부 사라지므로 멈춥니다 —                  파일을 고치거나 지운 뒤 다시 시도하세요.",
+                p.display()
+            ))
+        })?,
+        // 아직 없는 것은 정상이다(처음 동의).
+        Err(_) => ConsentFile::default(),
+    };
     f(&mut file);
     let body = serde_json::to_string_pretty(&file)
         .map_err(|e| crate::error::AppError::Internal(anyhow::anyhow!(e)))?;
-    std::fs::write(&p, body).map_err(|e| crate::error::AppError::Internal(anyhow::anyhow!(e)))?;
+    let tmp = p.with_extension("json.tmp");
+    std::fs::write(&tmp, body).map_err(|e| crate::error::AppError::Internal(anyhow::anyhow!(e)))?;
+    std::fs::rename(&tmp, &p).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        crate::error::AppError::Internal(anyhow::anyhow!(e))
+    })?;
     Ok(())
 }

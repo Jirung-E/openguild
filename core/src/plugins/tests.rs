@@ -381,6 +381,70 @@ fn a_duplicate_plugin_name_is_rejected_not_silently_merged() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
+// ── DEV-385: 동의 파일을 잃지 않는다 ────────────────────
+
+/// **못 읽는 동의 파일을 덮어쓰지 않는다.**
+///
+/// 이 파일에는 이 기계의 **모든** 동의가 들어 있다. 예전에는 파싱 실패를 빈
+/// 상태로 갈음하고 그대로 덮어써서, 한 번 깨진 파일이 곧 "동의 전부 소멸"
+/// 이었다. 사용자는 왜 갑자기 다시 물어보는지 알 수 없다.
+#[test]
+fn a_corrupt_consent_file_is_never_overwritten() {
+    let _guard = env_lock();
+    let home = fresh_tmp("corrupt-home");
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let g = fresh_tmp("corrupt");
+    write_plugin(&g, "ai-notify", ai_notify(&["cli"]));
+
+    // 먼저 정상 동의를 하나 남긴다.
+    let l = load_for(&g, Scope::Cli);
+    consent::grant(&g, &l.needs_consent[0]).unwrap();
+    let path = consent::path().unwrap();
+    let good = std::fs::read_to_string(&path).unwrap();
+    assert!(good.contains("ai-notify"));
+
+    // 파일이 깨진다(디스크 오류, 손편집, 다른 버전…).
+    std::fs::write(&path, "{ 이건 JSON 이 아니다").unwrap();
+    let err = consent::trust_guild(&g).unwrap_err().to_string();
+    assert!(err.contains("동의가 전부 사라지므로"), "{err}");
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        "{ 이건 JSON 이 아니다",
+        "깨진 파일을 덮어써 버렸다"
+    );
+
+    // 읽기는 안전한 쪽으로 떨어진다 — 아무것도 안 돈다.
+    let after = load_for(&g, Scope::Cli);
+    assert!(after.active.is_empty());
+
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 쓰기가 원자적이다 — 임시 파일을 남기지 않는다.
+#[test]
+fn consent_write_leaves_no_temp_file() {
+    let _guard = env_lock();
+    let home = fresh_tmp("atomic-home");
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let g = fresh_tmp("atomic");
+    write_plugin(&g, "ai-notify", ai_notify(&["cli"]));
+    consent::trust_guild(&g).unwrap();
+
+    let leftovers: Vec<_> = std::fs::read_dir(&home)
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .filter(|n| n.contains("tmp"))
+        .collect();
+    assert!(leftovers.is_empty(), "임시 파일이 남았다: {leftovers:?}");
+
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
 // ── DEV-384: 함께 배포하는 예제 ─────────────────────────
 
 /// **예제가 안 도는 건 없느니만 못하다.**

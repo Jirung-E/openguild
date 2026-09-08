@@ -45,8 +45,6 @@ export interface PluginStatus {
 	manageable: boolean;
 	/** 아직 길드를 안 열었나. 문구는 프런트가 자기 언어로 만든다. */
 	no_guild: boolean;
-	/** 보여줄 안내. 지금은 비어 있는 것이 정상이다. */
-	notes: string[];
 	/** 전달 중 쌓인 문제. 비어 있는 것이 정상이다. */
 	problems: string[];
 }

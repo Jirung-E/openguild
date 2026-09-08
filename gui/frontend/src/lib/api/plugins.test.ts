@@ -58,7 +58,6 @@ describe('플러그인 조회/관리의 경계', () => {
 			trusted: false,
 			manageable: false,
 			no_guild: true,
-			notes: [],
 			problems: []
 		};
 		vi.stubGlobal(
@@ -73,8 +72,8 @@ describe('플러그인 조회/관리의 경계', () => {
 		);
 		const got = await pluginApi.status();
 		expect(got.no_guild).toBe(true);
-		// 서버가 사람 말을 실어 보내지 않는다.
-		expect(got.notes).toEqual([]);
+		// 서버가 사람 말을 실어 보내지 않는다 — 자유 문장 필드 자체가 없다.
+		expect('notes' in got).toBe(false);
 		vi.unstubAllGlobals();
 	});
 
@@ -87,7 +86,6 @@ describe('플러그인 조회/관리의 경계', () => {
 			trusted: false,
 			manageable: false,
 			no_guild: false,
-			notes: [],
 			problems: []
 		};
 		const fetchMock = vi.fn(async () =>

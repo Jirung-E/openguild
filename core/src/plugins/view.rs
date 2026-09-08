@@ -51,8 +51,6 @@ pub struct PluginStatus {
     /// Rust 가 만든 한국어 문장을 그대로 렌더해서, 영어 UI 한가운데 한국어가
     /// 한 줄 끼었다. 문구는 프런트가 자기 언어로 만든다.
     pub no_guild: bool,
-    /// 보여줄 안내. 지금은 비어 있는 것이 정상이다(위 `no_guild` 로 대체).
-    pub notes: Vec<String>,
     /// 전달 중 쌓인 문제(최근 것부터 잘림). 비어 있는 것이 정상이다.
     #[serde(default)]
     pub problems: Vec<String>,
@@ -67,7 +65,6 @@ impl PluginStatus {
             trusted: false,
             manageable: false,
             no_guild: true,
-            notes: Vec::new(),
             problems: Vec::new(),
         }
     }
@@ -123,7 +120,6 @@ pub fn status(store: &crate::Store, scope: Scope, manageable: bool) -> AppResult
         trusted: granted.trusted,
         manageable,
         no_guild: false,
-        notes: Vec::new(),
         // DEV-381: 여기까지 올려야 사용자가 본다. 예전엔 모아만 두고 아무도
         // 안 읽어서, 훅이 조용히 실패해도 화면에 아무것도 안 떴다.
         problems: store.plugin_problems(),
