@@ -449,6 +449,288 @@ async fn replay_suppresses_events() {
 
 /// 카탈로그가 `Emitted` 라고 적은 이벤트는 **실제로 나와야 한다.**
 /// 표와 코드가 어긋나면 표가 거짓말이 된다.
+/// DEV-386: **21종이 전부 실제로 나가고, 페이로드에 빈 자리가 없는지.**
+///
+/// 카탈로그가 `Emitted` 라고 적어 두는 것과 실제로 나가는 것은 다른 문제다.
+/// 그리고 나가더라도 `tags` 처럼 **비어서 나가는** 경우가 있었다 — 구독자는
+/// 그걸 "태그가 다 지워졌다" 로 읽는다. 이름만 세는 검사로는 그게 안 잡힌다.
+///
+/// 이벤트 종류를 늘리기 전에(41개가 대기 중) 지금 것이 성한지부터 본다.
+#[tokio::test]
+async fn all_declared_events_fire_with_a_usable_payload() {
+    use serde_json::Value;
+    let (dir, store, rec) = setup("all21").await;
+    // ── 퀘스트 11종 ──
+    let q = crate::ops::quests::create_quest(&store, new_quest("전수 검사"))
+        .await
+        .unwrap();
+    let other = crate::ops::quests::create_quest(&store, new_quest("부모"))
+        .await
+        .unwrap();
+    // 부모는 선행으로 못 건다 — 따로 만든다.
+    let pre = crate::ops::quests::create_quest(&store, new_quest("선행"))
+        .await
+        .unwrap();
+    crate::ops::quests::update_quest(
+        &store,
+        q.id,
+        crate::models::UpdateQuestRequest {
+            title: Some("바뀐 제목".into()),
+            description: None,
+            urgency: None,
+        },
+    )
+    .await
+    .unwrap();
+    crate::ops::quests::set_quest_tags(&store, q.id, vec!["api".into(), "core".into()])
+        .await
+        .unwrap();
+    crate::ops::quests::change_status(
+        &store,
+        q.id,
+        ChangeStatusRequest {
+            status_slug: "in_progress".into(),
+        },
+    )
+    .await
+    .unwrap();
+    crate::ops::quests::change_quest_type(
+        &store,
+        q.id,
+        crate::models::ChangeTypeRequest {
+            new_type_prefix: "BUG".into(),
+        },
+    )
+    .await
+    .unwrap();
+    crate::ops::quests::change_parent(
+        &store,
+        q.id,
+        crate::models::ChangeParentRequest {
+            parent_quest_id: Some(other.id),
+        },
+    )
+    .await
+    .unwrap();
+    // 두 번 건다 — 한 번만 걸면 이전 값이 원래 없어서, "이전 값을 안 싣는"
+    // 결함을 시험이 못 잡는다.
+    crate::ops::quests::set_due_dates(&store, q.id, Some(Some("2026-11-30".into())), None)
+        .await
+        .unwrap();
+    crate::ops::quests::set_due_dates(&store, q.id, Some(Some("2026-12-31".into())), None)
+        .await
+        .unwrap();
+    crate::ops::quests::add_prerequisite(
+        &store,
+        q.id,
+        crate::models::AddPrerequisiteRequest {
+            prerequisite_id: pre.id,
+        },
+    )
+    .await
+    .unwrap();
+    crate::ops::quests::remove_prerequisite(&store, q.id, pre.id)
+        .await
+        .unwrap();
+
+    // ── 댓글 10종 ──
+    let c = crate::ops::comments::add_comment_entry(
+        &store,
+        &q.quest_id,
+        "kim".into(),
+        "확인 바랍니다".into(),
+        None,
+        false,
+    )
+    .await
+    .unwrap();
+    crate::ops::comments::update_comment_entry(&store, &q.quest_id, c.id, "고쳤습니다".into())
+        .await
+        .unwrap();
+    crate::ops::comments::toggle_comment_pinned(&store, &q.quest_id, c.id)
+        .await
+        .unwrap();
+    crate::ops::comments::toggle_comment_pinned(&store, &q.quest_id, c.id)
+        .await
+        .unwrap();
+    crate::ops::comments::toggle_comment_discussion(&store, &q.quest_id, c.id)
+        .await
+        .unwrap();
+    crate::ops::comments::toggle_comment_resolved(&store, &q.quest_id, c.id)
+        .await
+        .unwrap();
+    crate::ops::comments::toggle_comment_resolved(&store, &q.quest_id, c.id)
+        .await
+        .unwrap();
+    crate::ops::comments::toggle_comment_discussion(&store, &q.quest_id, c.id)
+        .await
+        .unwrap();
+    crate::ops::comments::toggle_comment_reaction(&store, &q.quest_id, c.id, "👍", "kim")
+        .await
+        .unwrap();
+    crate::ops::comments::delete_comment_entry(&store, &q.quest_id, c.id)
+        .await
+        .unwrap();
+
+    // ── 마지막: 삭제와 복원 ──
+    crate::ops::quests::delete_quest(&store, q.id, &[])
+        .await
+        .unwrap();
+    crate::ops::quests::restore_quest(&store, q.id)
+        .await
+        .unwrap();
+
+    // ── 1. 선언한 21종이 전부 나왔나 ──
+    let got: std::collections::HashSet<_> = rec.names().into_iter().collect();
+    let missing: Vec<_> = super::names::ALL
+        .iter()
+        .filter(|n| !got.contains(**n))
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "선언은 했는데 안 나오는 이벤트: {missing:?}\n         카탈로그가 `Emitted` 라고 적어 둔 것과 실제가 어긋난다."
+    );
+
+    // ── 2. 페이로드에 빈 자리가 없나 ──
+    //
+    // `tags` 가 항상 `[]` 로 나가던 것이 이 검사가 없어서 늦게 잡혔다.
+    // "있어야 할 자리에 값이 있나" 를 종류별로 본다.
+    let all = rec.got.lock().unwrap().clone();
+    let mut checked = 0;
+    for e in &all {
+        let j = e.to_json();
+        let name = e.name;
+        // 모든 이벤트의 공통 자리.
+        assert!(
+            j["ts"].as_str().is_some_and(|s| !s.is_empty()),
+            "{name}: ts 가 비었다"
+        );
+        assert!(
+            j["guild"].as_str().is_some_and(|s| !s.is_empty()),
+            "{name}: guild 가 비었다"
+        );
+
+        if name.starts_with("quest.") {
+            let qq = &j["quest"];
+            assert!(
+                qq["id"].as_str().is_some_and(|s| !s.is_empty()),
+                "{name}: quest.id 가 비었다 — {j}"
+            );
+            // 삭제/복원처럼 참조만 싣는 것은 제외하고, 전체를 싣는 것은
+            // title 과 status 가 채워져야 한다.
+            if qq.get("title").is_some() {
+                assert!(
+                    qq["title"].as_str().is_some_and(|s| !s.is_empty()),
+                    "{name}: quest.title 이 비었다 — {j}"
+                );
+                assert!(
+                    qq["status"].as_str().is_some_and(|s| !s.is_empty()),
+                    "{name}: quest.status 가 비었다 — {j}"
+                );
+                assert!(
+                    matches!(qq["tags"], Value::Array(_)),
+                    "{name}: quest.tags 가 배열이 아니다 — {j}"
+                );
+            }
+            checked += 1;
+        }
+        if name.starts_with("comment.") {
+            assert!(
+                j["quest"]["id"].as_str().is_some_and(|s| !s.is_empty()),
+                "{name}: 어느 퀘스트의 댓글인지가 없다 — {j}"
+            );
+            let cc = &j["comment"];
+            // pre 에는 id 가 없는 것이 맞다 — 아직 안 만들어졌으니 번호가 없다.
+            if e.phase == Phase::Post {
+                assert!(
+                    cc["id"].as_u64().is_some(),
+                    "{name}: comment.id 가 없다 — {j}"
+                );
+            }
+            // 본문을 싣기로 한 것들은 실제로 실려야 한다 — AI 전송이 주
+            // 용도라 없으면 쓸모가 없다.
+            if cc.get("body").is_some() {
+                assert!(
+                    cc["body"].as_str().is_some_and(|s| !s.is_empty()),
+                    "{name}: comment.body 가 비었다 — {j}"
+                );
+                assert!(
+                    cc["author"].as_str().is_some_and(|s| !s.is_empty()),
+                    "{name}: comment.author 가 비었다 — {j}"
+                );
+            }
+            checked += 1;
+        }
+    }
+    assert!(checked >= 21, "검사한 이벤트가 {checked}건뿐이다");
+
+    // ── 3. 변경 이벤트는 from/to 가 실제로 달라야 한다 ──
+    for name in [
+        super::names::QUEST_STATUS_CHANGED,
+        super::names::QUEST_TYPE_CHANGED,
+    ] {
+        let e = rec.find(name, Phase::Post).unwrap();
+        let j = e.to_json();
+        assert!(
+            j["change"]["from"] != j["change"]["to"],
+            "{name}: from 과 to 가 같다 — {j}"
+        );
+    }
+
+    // ── 3b. "무엇이 바뀌었나" 가 핵심인 이벤트는 그걸 실어야 한다 ──
+    //
+    // DEV-386 이 여기서 셋을 잡았다. 이름이 `*_changed` 인데 **바뀐 내용이
+    // 없으면** 구독자가 할 수 있는 일이 없다.
+    let tc = rec
+        .find(super::names::QUEST_TYPE_CHANGED, Phase::Post)
+        .unwrap()
+        .to_json();
+    assert_eq!(tc["change"]["from"], "DEV", "{tc}");
+    assert_eq!(tc["change"]["to"], "BUG", "{tc}");
+    // 타입이 바뀌면 **공개 식별자 자체가 바뀐다** — 안 알리면 구독자는 새
+    // 퀘스트가 생긴 줄 안다.
+    assert_eq!(tc["renamed"]["from"], "DEV-001", "{tc}");
+    assert_eq!(tc["renamed"]["to"], "BUG-001", "{tc}");
+
+    let pc = rec
+        .find(super::names::QUEST_PARENT_CHANGED, Phase::Post)
+        .unwrap()
+        .to_json();
+    assert!(
+        pc["change"]["from"].is_null(),
+        "부모가 없었는데 있다고 한다 — {pc}"
+    );
+    assert_eq!(pc["change"]["to"], "DEV-002", "새 부모를 안 실었다 — {pc}");
+
+    // 마지막(두 번째) due 이벤트를 본다.
+    let dc = rec
+        .got
+        .lock()
+        .unwrap()
+        .iter()
+        .rfind(|e| e.name == super::names::QUEST_DUE_CHANGED && e.phase == Phase::Post)
+        .expect("quest.due_changed 가 안 나왔다")
+        .to_json();
+    assert_eq!(
+        dc["change"]["from"]["desired"], "2026-11-30",
+        "이전 기한을 안 실었다 — 당겨졌는지 밀렸는지 알 수 없다: {dc}"
+    );
+    assert_eq!(dc["change"]["to"]["desired"], "2026-12-31", "{dc}");
+
+    // ── 4. 태그 이벤트는 태그를 실어야 한다 (DEV-381 회귀 방지) ──
+    let tj = rec
+        .find(super::names::QUEST_TAGS_CHANGED, Phase::Post)
+        .unwrap()
+        .to_json();
+    assert_eq!(
+        tj["quest"]["tags"],
+        serde_json::json!(["api", "core"]),
+        "태그를 알리는 이벤트가 태그를 안 실었다"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[tokio::test]
 async fn emitted_catalog_entries_actually_fire() {
     let (dir, store, rec) = setup("catalog").await;

@@ -254,13 +254,29 @@ pub async fn set_due_dates(
     .await
     .map_err(crate::error::AppError::Internal)?;
 
+    // DEV-386: 이전 값은 바꾸기 **전에만** 읽을 수 있다. 구독자가 없으면
+    // 조회조차 안 한다(`events_wanted` 게이트).
+    let (old_desired, old_required) =
+        if store.events_wanted(ev::QUEST_DUE_CHANGED, crate::events::Phase::Post) {
+            match sql::fetch_by_id(&store.index_pool, id).await {
+                Ok(before) => (before.desired_due, before.required_due),
+                Err(_) => (None, None),
+            }
+        } else {
+            (None, None)
+        };
     let quest = sql::set_due_dates(&store.index_pool, id, desired_due, required_due).await?;
     write_quest_file(store, &quest, false).await?;
     after_mutation(store).await;
     store.emit_post(ev::QUEST_DUE_CHANGED, || {
         json!({
             "quest": payload::quest(&quest),
-            "due": { "desired": quest.desired_due, "required": quest.required_due },
+            // DEV-386: 새 값만 있고 **이전 값이 없었다** — "당겨졌나 밀렸나" 를
+            // 구독자가 알 수 없다. 다른 변경 이벤트와 같은 `change` 모양으로.
+            "change": payload::change(
+                json!({ "desired": old_desired, "required": old_required }),
+                json!({ "desired": quest.desired_due, "required": quest.required_due }),
+            ),
         })
     });
     Ok(quest)
@@ -599,10 +615,19 @@ pub async fn change_quest_type(
     }
 
     after_mutation(store).await;
-    store.emit_post(
-        ev::QUEST_TYPE_CHANGED,
-        || json!({ "quest": payload::quest(&quest) }),
-    );
+    store.emit_post(ev::QUEST_TYPE_CHANGED, || {
+        json!({
+            "quest": payload::quest(&quest),
+            // DEV-386: 이 이벤트는 **무엇에서 무엇으로** 가 전부인데 그게 없었다.
+            "change": payload::change(
+                old_slug.split('-').next().unwrap_or("").to_string(),
+                quest.type_prefix.clone(),
+            ),
+            // 타입이 바뀌면 **공개 식별자 자체가 바뀐다**(DEV-001 → BUG-001).
+            // 이걸 안 알리면 구독자는 새 퀘스트가 생긴 줄 안다.
+            "renamed": payload::change(old_slug.clone(), new_slug.clone()),
+        })
+    });
     Ok(quest)
 }
 
@@ -624,6 +649,18 @@ pub async fn change_parent(
 
     // 옛 부모 id 확보 (SQL 호출 전).
     let old_parent_id = parent_id_of(&store.index_pool, id).await?;
+    // DEV-386: 이벤트에는 내부 id 가 아니라 공개 식별자를 싣는다.
+    let slug_of = async |pid: Option<i64>| -> Option<String> {
+        match pid {
+            Some(p) => sql::fetch_by_id(&store.index_pool, p)
+                .await
+                .ok()
+                .map(|q| q.quest_id),
+            None => None,
+        }
+    };
+    let old_parent_slug = slug_of(old_parent_id).await;
+    let new_parent_slug = slug_of(body.parent_quest_id).await;
     let new_parent_id = body.parent_quest_id;
 
     let quest = sql::change_parent(&store.index_pool, id, body).await?;
@@ -645,10 +682,17 @@ pub async fn change_parent(
         }
     }
     after_mutation(store).await;
-    store.emit_post(
-        ev::QUEST_PARENT_CHANGED,
-        || json!({ "quest": payload::quest(&quest) }),
-    );
+    store.emit_post(ev::QUEST_PARENT_CHANGED, || {
+        json!({
+            "quest": payload::quest(&quest),
+            // DEV-386: "부모가 바뀌었다" 만 알리고 **누구에서 누구로** 가
+            // 없었다. 그러면 구독자가 할 수 있는 일이 없다.
+            "change": payload::change(
+                old_parent_slug.clone().map_or(serde_json::Value::Null, serde_json::Value::String),
+                new_parent_slug.clone().map_or(serde_json::Value::Null, serde_json::Value::String),
+            ),
+        })
+    });
     Ok(quest)
 }
 
