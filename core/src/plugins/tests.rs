@@ -179,6 +179,7 @@ fn scope_must_be_explicit() {
     let mut d = def(Action::Post {
         url: "https://x.test".into(),
         headers: Default::default(),
+        body_env: Default::default(),
         timeout_ms: None,
     });
     d.scope.clear();
@@ -191,6 +192,7 @@ fn empty_subscription_is_rejected() {
     let mut d = def(Action::Post {
         url: "https://x.test".into(),
         headers: Default::default(),
+        body_env: Default::default(),
         timeout_ms: None,
     });
     d.on.clear();
@@ -205,6 +207,7 @@ fn subscribing_to_a_phase_that_never_fires_is_caught_at_load() {
     let mut d = def(Action::Post {
         url: "https://x.test".into(),
         headers: Default::default(),
+        body_env: Default::default(),
         timeout_ms: None,
     });
     // 이름은 맞지만 이 이벤트는 pre 를 안 낸다.
@@ -231,6 +234,7 @@ fn unknown_event_name_is_caught_at_load() {
     let mut d = def(Action::Post {
         url: "https://x.test".into(),
         headers: Default::default(),
+        body_env: Default::default(),
         timeout_ms: None,
     });
     d.on = vec!["quest.creted".into()];
@@ -249,6 +253,7 @@ fn post_with_header(k: &str, v: &str) -> PluginDef {
     def(Action::Post {
         url: "https://x.test".into(),
         headers: h,
+        body_env: Default::default(),
         timeout_ms: None,
     })
 }
@@ -282,6 +287,7 @@ fn known_key_prefix_is_rejected_anywhere() {
     let d = def(Action::Post {
         url: "https://api.test/v1?key=sk-abcdef123456".into(),
         headers: Default::default(),
+        body_env: Default::default(),
         timeout_ms: None,
     });
     assert!(validate(&d).is_err());
@@ -375,6 +381,77 @@ fn a_duplicate_plugin_name_is_rejected_not_silently_merged() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
+// ── DEV-384: 함께 배포하는 예제 ─────────────────────────
+
+/// **예제가 안 도는 건 없느니만 못하다.**
+///
+/// `examples/plugins/` 는 사용자가 복사해 쓰라고 두는 것이다. 정의가 검증을 못
+/// 넘거나 스크립트가 컴파일이 안 되면, 처음 써 보는 사람이 자기가 뭘 잘못했나
+/// 하고 헤맨다. 실제로 적재해 본다.
+#[test]
+fn shipped_examples_all_load() {
+    let _guard = env_lock();
+    let home = fresh_tmp("examples-home");
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/plugins");
+    assert!(src.is_dir(), "예제 폴더가 없다: {}", src.display());
+
+    // 예제를 진짜 길드에 복사해 넣고 그대로 적재한다.
+    let g = fresh_tmp("examples");
+    let dest = plugins_dir(&g);
+    std::fs::create_dir_all(&dest).unwrap();
+    let mut names = Vec::new();
+    for e in std::fs::read_dir(&src).unwrap().flatten() {
+        if !e.path().is_dir() {
+            continue;
+        }
+        let name = e.file_name();
+        let to = dest.join(&name);
+        std::fs::create_dir_all(&to).unwrap();
+        for f in std::fs::read_dir(e.path()).unwrap().flatten() {
+            std::fs::copy(f.path(), to.join(f.file_name())).unwrap();
+        }
+        names.push(name.to_string_lossy().to_string());
+    }
+    assert!(
+        names.len() >= 3,
+        "예제가 {}개뿐이다: {names:?}",
+        names.len()
+    );
+    consent::trust_guild(&g).unwrap();
+
+    let l = load_all(&g);
+    assert!(
+        l.errors.is_empty(),
+        "예제가 적재에 실패했다 — 복사해 쓰는 사람은 자기 탓인 줄 안다: {:?}",
+        l.errors
+    );
+    assert_eq!(l.active.len(), names.len(), "적재된 수가 안 맞는다");
+
+    // 각 예제가 어느 축을 보여주는지 — 하나로 몰리면 예제 구실을 못 한다.
+    let kinds: std::collections::BTreeSet<&str> =
+        l.active.iter().map(|p| p.def.action.kind()).collect();
+    assert!(kinds.contains("post") && kinds.contains("run"), "{kinds:?}");
+    assert!(
+        l.active.iter().any(|p| p.def.script.is_some()),
+        "스크립트를 쓰는 예제가 없다"
+    );
+    assert!(
+        l.active.iter().any(|p| p.def.script.is_none()),
+        "스크립트 없이 도는 예제가 없다 — 그것도 되는 길이다"
+    );
+    assert!(
+        l.active
+            .iter()
+            .any(|p| p.def.on.iter().any(|o| o.starts_with("pre:"))),
+        "관찰 pre 를 쓰는 예제가 없다"
+    );
+
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
 // ── DEV-380: 리뷰 지적 ──────────────────────────────────
 
 /// **`sk-` 는 영어 단어 꼬리에 흔하다.** `contains` 로 보면 `task-runner`,
@@ -389,6 +466,7 @@ fn ordinary_words_ending_in_sk_are_not_api_keys() {
         let d = def(Action::Post {
             url: url.into(),
             headers: Default::default(),
+            body_env: Default::default(),
             timeout_ms: None,
         });
         assert!(validate(&d).is_ok(), "멀쩡한 URL 이 막혔다: {url}");
@@ -408,6 +486,7 @@ fn ordinary_words_ending_in_sk_are_not_api_keys() {
         let d = def(Action::Post {
             url: bad.into(),
             headers: Default::default(),
+            body_env: Default::default(),
             timeout_ms: None,
         });
         assert!(validate(&d).is_err(), "진짜 키를 놓쳤다: {bad}");
@@ -606,6 +685,7 @@ fn script_path_cannot_escape_the_plugin_dir() {
         let mut d = def(Action::Post {
             url: "https://x.test".into(),
             headers: Default::default(),
+            body_env: Default::default(),
             timeout_ms: None,
         });
         d.script = Some(bad.into());
@@ -615,6 +695,7 @@ fn script_path_cannot_escape_the_plugin_dir() {
     let mut ok = def(Action::Post {
         url: "https://x.test".into(),
         headers: Default::default(),
+        body_env: Default::default(),
         timeout_ms: None,
     });
     ok.script = Some("sub/transform.rhai".into());

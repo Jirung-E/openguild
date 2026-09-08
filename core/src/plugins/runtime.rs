@@ -292,6 +292,7 @@ mod tests {
                 action: Action::Post {
                     url: "https://example.test".into(),
                     headers: Default::default(),
+                    body_env: Default::default(),
                     timeout_ms: None,
                 },
                 script: None,

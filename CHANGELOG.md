@@ -45,6 +45,10 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
   오인돼 적재를 거부당하던 문제.
 - `run` 동작에서 `${MY_API_KEY}` 가 안 풀린 채 그대로 프로그램에 넘어가던 문제.
 
+**바로 쓸 수 있는 예제**를 `examples/plugins/` 에 넣었습니다 —
+`telegram-quest-status`(퀘스트에 `notify` 태그를 붙이면 상태 변경 시 텔레그램),
+`desktop-notify`(데스크톱 알림), `deleted-audit`(지워지기 전 기록).
+
 리뷰 잔여분(DEV-381):
 
 - **`run` 훅이 stdin 을 안 읽으면 플러그인 전달이 통째로 멈추던 문제.** 큰

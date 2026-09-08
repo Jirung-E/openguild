@@ -17,6 +17,12 @@ to allow it first. That split is the whole point: `run` actions are arbitrary
 code execution, and `post` actions send guild content to a URL somebody else
 chose.
 
+## Ready-made examples
+
+`examples/plugins/` in the repo holds three working plugins to copy — one `post`
+with a script, one `run` without, and one using the observational `pre` phase.
+Read `examples/plugins/README.md` before writing one from scratch.
+
 ## Definition
 
 ```json
@@ -40,6 +46,7 @@ chose.
 | `on` | Event patterns. `quest.created`, `quest.*`, `*.created`, `*`. Prefix `pre:` to observe *before* the mutation (observation only — a plugin can never veto). |
 | `scope` | **Required, no default.** Where it runs: `cli` / `gui` / `server`. Putting `server` in it applies the plugin to everyone using that server. |
 | `action` | `post` (HTTP) or `run` (process, event JSON on **stdin**). These two are all the core owns. |
+| `action.post.body_env` | `{ "chat_id": "TELEGRAM_CHAT_ID" }` — inject env values into named top-level body keys. Scripts have no I/O, so `payload()` cannot read the environment; APIs that want a private id *in the body* (Telegram's `chat_id`) need this. Only the named keys are touched, so user text is never expanded. |
 | `script` | Optional `.rhai` file, relative to the plugin folder. |
 
 `openguild plugin events` lists every event name you can subscribe to. Only a couple of

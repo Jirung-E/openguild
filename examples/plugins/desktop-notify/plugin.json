@@ -1,0 +1,12 @@
+{
+  "name": "desktop-notify",
+  "on": ["quest.created", "comment.added"],
+  "scope": ["gui"],
+  "action": {
+    "run": {
+      "command": "sh",
+      "args": ["notify.sh"],
+      "timeout_ms": 5000
+    }
+  }
+}

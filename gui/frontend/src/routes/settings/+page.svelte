@@ -9,7 +9,7 @@
     우하단 통합 스택, DEV-259)가 담당. Tauri 전용.
 -->
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { detectEnvironment } from '$lib/api/transport';
 	import { updateState, checkForUpdate } from '$lib/api/updater';
 	// DEV-305: 업데이트 자동 확인 on/off.
@@ -138,6 +138,11 @@
 		}
 	});
 
+	// DEV-384: 동작 뒤 목록이 다시 그려지면 눌렀던 버튼이 사라져 포커스가
+	// `<body>` 로 떨어진다. 그러면 다음 플러그인까지 앱 맨 위에서부터 Tab 해야
+	// 한다. 이름으로 버튼을 기억해 두었다가 되돌린다.
+	const pluginBtns: Record<string, HTMLButtonElement | undefined> = {};
+
 	async function togglePlugin(name: string, grant: boolean) {
 		pluginBusy = [...pluginBusy, name];
 		try {
@@ -149,6 +154,9 @@
 					: t('settings.pluginRevoked', $locale),
 				'success'
 			);
+			// 다시 그려진 뒤에 잡아야 새 버튼이 잡힌다.
+			await tick();
+			pluginBtns[name]?.focus();
 		} catch (e) {
 			showToast(e instanceof Error ? e.message : String(e), 'error');
 		} finally {
@@ -460,7 +468,13 @@
 			{#if pluginStatus?.no_guild}
 				<p class="scale-hint">{t('settings.pluginsNoGuild', $locale)}</p>
 			{:else}
-				<p class="scale-hint">{t('settings.pluginsIntro', $locale)}</p>
+				<!-- DEV-384: 신뢰 중에는 "허용 전에는 안 돕니다" 가 바로 밑의
+				     "전부 허용돼 있습니다" 와 정면으로 어긋난다. 위치만 알린다. -->
+				<p class="scale-hint">
+					{pluginStatus?.trusted
+						? t('settings.pluginsIntroTrusted', $locale)
+						: t('settings.pluginsIntro', $locale)}
+				</p>
 				<!-- DEV-380: 조회는 어디서든. 관리 버튼만 로컬 데스크톱에서 나온다.
 				     DEV-383: **답을 받은 뒤에만** 판단한다 — 받기 전에 띄우면
 				     로컬 데스크톱에서도 잠깐 스쳐 지나가고, 실패하면 굳는다. -->
@@ -469,6 +483,8 @@
 				{/if}
 			{/if}
 			{#if true}
+				<!-- DEV-384: 조회 오류와 전달 실패는 **비동기로** 나타난다. 라이브
+				     리전이 없으면 스크린리더는 그게 생긴 줄도 모른다. -->
 				{#if pluginError}
 					<!-- DEV-383: 실패했을 때 다시 시도할 방법이 없으면 탭을 다시
 					     누를 생각을 못 한 사람은 그대로 막힌다. -->
@@ -488,7 +504,7 @@
 					pluginStatus.errors.length === 0}
 					<p class="scale-hint">{t('settings.pluginsNone', $locale)}</p>
 				{/if}
-				<ul class="plugin-list">
+				<ul class="plugin-list" aria-busy={pluginBusy.length > 0}>
 					{#each pluginStatus?.plugins ?? [] as p (p.name)}
 						<li class="plugin" class:pending={!p.granted}>
 							<div class="plugin-head">
@@ -534,6 +550,7 @@
 										<button
 											type="button"
 											class="btn-plain"
+											bind:this={pluginBtns[p.name]}
 											disabled={pluginBusy.includes(p.name) || pluginStatus?.trusted}
 											title={pluginStatus?.trusted
 												? t('settings.pluginRevokeTrustedHint', $locale)
@@ -545,6 +562,7 @@
 										<button
 											type="button"
 											class="btn-go"
+											bind:this={pluginBtns[p.name]}
 											disabled={pluginBusy.includes(p.name)}
 											onclick={() => togglePlugin(p.name, true)}
 											>{t('settings.pluginAllow', $locale)} — {p.name}</button
@@ -559,7 +577,7 @@
 				     토스트로 띄우면 시끄럽고, 안 보여주면 조용히 실패한다. -->
 				{#if (pluginStatus?.problems ?? []).length > 0}
 					<h3 class="plugin-broken-h">{t('settings.pluginProblems', $locale)}</h3>
-					<ul class="plugin-list">
+					<ul class="plugin-list" role="status" aria-live="polite">
 						{#each pluginStatus?.problems ?? [] as p, i (i)}
 							<li class="plugin broken"><span>{p}</span></li>
 						{/each}

@@ -205,6 +205,11 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		en: 'No guild is open yet — plugins apply only to a guild opened on this machine.'
 	},
 	'settings.pluginScope': { ko: '적용 범위', en: 'scope' },
+	// DEV-384: 신뢰 중에는 "허용 전에는 안 돕니다" 가 바로 밑 배너와 어긋난다.
+	'settings.pluginsIntroTrusted': {
+		ko: '플러그인 정의는 .guild/plugins/ 에 있고 git 으로 공유됩니다. 동의는 이 기계에만 남습니다.',
+		en: 'Plugin definitions live in .guild/plugins/ and are shared via git. Consent stays on this machine.'
+	},
 	'settings.pluginRetry': { ko: '다시 시도', en: 'Retry' },
 	'settings.pluginAllowed': { ko: '허용했습니다', en: 'Allowed' },
 	'settings.pluginRevoked': { ko: '철회했습니다', en: 'Revoked' },

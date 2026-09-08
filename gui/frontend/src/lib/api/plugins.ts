@@ -43,7 +43,9 @@ export interface PluginStatus {
 	trusted: boolean;
 	/** 이 경로로 허용/철회까지 되나. HTTP 로 받은 답이면 항상 false. */
 	manageable: boolean;
-	/** 보여줄 안내(길드를 아직 안 열었다 등). 보통 비어 있다. */
+	/** 아직 길드를 안 열었나. 문구는 프런트가 자기 언어로 만든다. */
+	no_guild: boolean;
+	/** 보여줄 안내. 지금은 비어 있는 것이 정상이다. */
 	notes: string[];
 	/** 전달 중 쌓인 문제. 비어 있는 것이 정상이다. */
 	problems: string[];

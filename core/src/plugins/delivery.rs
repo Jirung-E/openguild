@@ -61,9 +61,12 @@ impl Outbound {
 impl Delivery for Outbound {
     fn deliver(&self, plugin: &Plugin, _event: &Event, body: &Value) -> Result<(), String> {
         match &plugin.def.action {
-            Action::Post { url, headers, .. } => {
-                self.post(url, headers, plugin.def.action.timeout(), body)
-            }
+            Action::Post {
+                url,
+                headers,
+                body_env,
+                ..
+            } => self.post(url, headers, body_env, plugin.def.action.timeout(), body),
             Action::Run { command, args, .. } => {
                 run(plugin, command, args, plugin.def.action.timeout(), body)
             }
@@ -76,6 +79,7 @@ impl Outbound {
         &self,
         url: &str,
         headers: &std::collections::BTreeMap<String, String>,
+        body_env: &std::collections::BTreeMap<String, String>,
         timeout: Duration,
         body: &Value,
     ) -> Result<(), String> {
@@ -87,7 +91,35 @@ impl Outbound {
             let v = expand_env(v).map_err(|e| format!("헤더 {k}: {e}"))?;
             req = req.header(k, v);
         }
-        let res = req.json(body).send().map_err(|e| {
+        // DEV-384: 정의가 지목한 키만 환경에서 채운다. 스크립트에는 I/O 가
+        // 없어서 `payload()` 가 환경변수를 못 읽는데, 텔레그램의 `chat_id`
+        // 처럼 본문에 개인 식별자를 요구하는 API 가 흔하다.
+        let body = if body_env.is_empty() {
+            std::borrow::Cow::Borrowed(body)
+        } else {
+            let mut obj = match body {
+                Value::Object(m) => m.clone(),
+                // 본문이 객체가 아니면 끼워 넣을 자리가 없다.
+                other => {
+                    return Err(format!(
+                        "body_env 를 쓰려면 payload 가 객체여야 합니다 (받은 것: {})",
+                        match other {
+                            Value::Array(_) => "배열",
+                            Value::Null => "없음",
+                            _ => "단일 값",
+                        }
+                    ));
+                }
+            };
+            for (key, var) in body_env {
+                let got = std::env::var(var).map_err(|_| {
+                    format!("body_env.{key}: 환경변수 {var} 가 설정되지 않았습니다")
+                })?;
+                obj.insert(key.clone(), Value::String(got));
+            }
+            std::borrow::Cow::Owned(Value::Object(obj))
+        };
+        let res = req.json(body.as_ref()).send().map_err(|e| {
             // 받는 쪽이 죽어 있어도 길드는 멀쩡해야 한다 — 여기서 끝난다.
             format!("{url} 로 보내지 못했습니다: {e}")
         })?;
@@ -300,6 +332,7 @@ mod tests {
             Action::Post {
                 url: pr.url.clone(),
                 headers: h,
+                body_env: Default::default(),
                 timeout_ms: Some(5_000),
             },
             d.clone(),
@@ -334,6 +367,7 @@ mod tests {
             Action::Post {
                 url: pr.url.clone(),
                 headers: h,
+                body_env: Default::default(),
                 timeout_ms: Some(5_000),
             },
             d.clone(),
@@ -363,6 +397,7 @@ mod tests {
             Action::Post {
                 url: pr.url.clone(),
                 headers: h,
+                body_env: Default::default(),
                 timeout_ms: Some(5_000),
             },
             d.clone(),
@@ -385,6 +420,7 @@ mod tests {
             Action::Post {
                 url,
                 headers: Default::default(),
+                body_env: Default::default(),
                 timeout_ms: Some(2_000),
             },
             d.clone(),
@@ -403,6 +439,7 @@ mod tests {
             Action::Post {
                 url: pr.url.clone(),
                 headers: Default::default(),
+                body_env: Default::default(),
                 timeout_ms: Some(300),
             },
             d.clone(),
@@ -425,6 +462,7 @@ mod tests {
         let a = Action::Post {
             url: "https://x.test".into(),
             headers: Default::default(),
+            body_env: Default::default(),
             timeout_ms: Some(9_999_999),
         };
         assert_eq!(
@@ -434,6 +472,7 @@ mod tests {
         let b = Action::Post {
             url: "https://x.test".into(),
             headers: Default::default(),
+            body_env: Default::default(),
             timeout_ms: None,
         };
         assert_eq!(
@@ -463,6 +502,7 @@ mod tests {
             Action::Post {
                 url,
                 headers: Default::default(),
+                body_env: Default::default(),
                 timeout_ms: Some(5_000),
             },
             d.clone(),
@@ -567,6 +607,72 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
     }
 
+    /// DEV-384: **본문에 개인 식별자를 요구하는 API** (텔레그램의 `chat_id`)를
+    /// 쓰려면 이게 있어야 한다. 스크립트에는 I/O 가 없어서 `payload()` 가
+    /// 환경변수를 못 읽는다 — 그게 샌드박스의 요점이라 바꿀 수 없다.
+    #[test]
+    fn body_env_fills_named_keys_from_the_environment() {
+        let _guard = crate::test_env::env_lock();
+        unsafe { std::env::set_var("OG_TEST_CHAT_ID", "987654321") };
+        let pr = probe(true);
+        let d = tmp("bodyenv");
+        let mut be = BTreeMap::new();
+        be.insert("chat_id".to_string(), "OG_TEST_CHAT_ID".to_string());
+        let p = plugin(
+            Action::Post {
+                url: pr.url.clone(),
+                headers: Default::default(),
+                body_env: be,
+                timeout_ms: Some(5_000),
+            },
+            d.clone(),
+        );
+        Outbound::new()
+            .deliver(&p, &event(), &serde_json::json!({ "text": "왔다" }))
+            .unwrap();
+        let got = pr.got.lock().unwrap()[0].clone();
+        assert!(got.contains(r#""chat_id":"987654321""#), "{got}");
+        // 스크립트가 만든 것도 그대로 남는다.
+        assert!(got.contains(r#""text":"왔다""#), "{got}");
+        unsafe { std::env::remove_var("OG_TEST_CHAT_ID") };
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// 지목한 키만 건드린다 — 사용자가 쓴 댓글에 `${HOME}` 이 들어 있어도
+    /// 확장되지 않아야 한다. 본문 전체를 훑지 않는 이유가 이것이다.
+    #[test]
+    fn body_env_never_expands_user_text() {
+        let _guard = crate::test_env::env_lock();
+        unsafe { std::env::set_var("OG_TEST_CHAT_ID2", "42") };
+        let pr = probe(true);
+        let d = tmp("bodyenv-safe");
+        let mut be = BTreeMap::new();
+        be.insert("chat_id".to_string(), "OG_TEST_CHAT_ID2".to_string());
+        let p = plugin(
+            Action::Post {
+                url: pr.url.clone(),
+                headers: Default::default(),
+                body_env: be,
+                timeout_ms: Some(5_000),
+            },
+            d.clone(),
+        );
+        Outbound::new()
+            .deliver(
+                &p,
+                &event(),
+                &serde_json::json!({ "text": "경로는 ${HOME} 입니다" }),
+            )
+            .unwrap();
+        let got = pr.got.lock().unwrap()[0].clone();
+        assert!(
+            got.contains("${HOME}"),
+            "사용자가 쓴 글자가 환경변수로 확장됐다: {got}"
+        );
+        unsafe { std::env::remove_var("OG_TEST_CHAT_ID2") };
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
     /// 참조한 변수가 없으면 리터럴로 넘기지 않고 실패로 남긴다.
     #[test]
     fn run_with_a_missing_env_var_fails_loudly() {
@@ -642,6 +748,7 @@ mod tests {
             Action::Post {
                 url,
                 headers: Default::default(),
+                body_env: Default::default(),
                 timeout_ms: Some(5_000),
             },
             d.clone(),

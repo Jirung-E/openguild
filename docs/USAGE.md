@@ -213,6 +213,18 @@ openguild plugin untrust                 # 되돌리기 (개별 동의는 남음
 add` 를 붙잡지 않도록 따로 보내고, 명령이 끝나기 직전에 잠깐만 기다립니다.
 플러그인 하나가 실패해도 길드 동작과 다른 플러그인은 멀쩡합니다.
 
+**바로 쓸 수 있는 예제**가 저장소의 `examples/plugins/` 에 있습니다:
+
+- `telegram-quest-status` — 퀘스트에 `notify` 태그를 붙이면 그 퀘스트의 상태가
+  바뀔 때 텔레그램 메시지가 옵니다.
+- `desktop-notify` — 퀘스트·댓글이 생기면 데스크톱 알림 (스크립트 없이 `run` 만).
+- `deleted-audit` — 퀘스트가 지워지기 **전에** 무엇이 지워질지 기록.
+
+```bash
+cp -R examples/plugins/telegram-quest-status /내-길드/.guild/plugins/
+openguild plugin allow telegram-quest-status --yes
+```
+
 자세한 내용(이벤트 이름 목록, rhai 스크립트, 시한 설정)은
 `openguild plugin events` 와 `openguild plugin --help` 를 보세요.
 

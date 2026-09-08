@@ -1,0 +1,13 @@
+{
+  "name": "telegram-quest-status",
+  "on": ["quest.status_changed"],
+  "scope": ["cli", "gui"],
+  "action": {
+    "post": {
+      "url": "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage",
+      "body_env": { "chat_id": "TELEGRAM_CHAT_ID" },
+      "timeout_ms": 8000
+    }
+  },
+  "script": "transform.rhai"
+}

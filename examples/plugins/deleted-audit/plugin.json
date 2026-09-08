@@ -1,0 +1,13 @@
+{
+  "name": "deleted-audit",
+  "on": ["pre:quest.deleted"],
+  "scope": ["cli", "gui", "server"],
+  "action": {
+    "run": {
+      "command": "sh",
+      "args": ["-c", "cat >> deleted.log; echo >> deleted.log"],
+      "timeout_ms": 3000
+    }
+  },
+  "script": "transform.rhai"
+}

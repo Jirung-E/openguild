@@ -56,6 +56,18 @@ pub enum Action {
         url: String,
         #[serde(default)]
         headers: BTreeMap<String, String>,
+        /// DEV-384: 본문에 끼워 넣을 환경변수 — `{ "chat_id": "TELEGRAM_CHAT_ID" }`.
+        ///
+        /// **왜 필요한가.** 스크립트에는 I/O 가 없다(그게 [[DEV-376]] 의 전부다)
+        /// — 그래서 `payload()` 는 환경변수를 읽을 수 없다. 그런데 텔레그램의
+        /// `sendMessage` 처럼 **본문에 개인 식별자를 요구하는** API 가 흔하다.
+        /// url 과 헤더만 확장해서는 그런 API 를 못 쓴다.
+        ///
+        /// 본문 전체를 훑어 `${VAR}` 를 푸는 방법도 있었지만 안 했다 — 사용자가
+        /// 쓴 댓글 본문이 우연히 `${HOME}` 이면 그게 확장돼 나간다. 여기서는
+        /// **정의가 지목한 키에만** 넣으므로 그런 일이 없다.
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        body_env: BTreeMap<String, String>,
         /// 응답을 기다리는 한도(ms). 비동기라 길드는 안 멈추지만 무한정
         /// 붙들면 전달 스레드가 막힌다. 없으면 [`DEFAULT_TIMEOUT_MS`].
         #[serde(default, skip_serializing_if = "Option::is_none")]
