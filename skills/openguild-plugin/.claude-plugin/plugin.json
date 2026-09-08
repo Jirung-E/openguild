@@ -1,5 +1,5 @@
 {
   "name": "openguild-plugin",
-  "description": "Adds an openguild skill — teaches an agent how to manage a project with the openguild CLI/GUI (guilds, quests, campaigns, comments).",
+  "description": "Adds two openguild skills — using the openguild CLI/GUI to manage a project (guilds, quests, campaigns, comments), and writing openguild plugins (event hooks that call your own program).",
   "version": "0.6.0"
 }

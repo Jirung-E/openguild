@@ -8,11 +8,12 @@ openguild plugin allow telegram-quest-status        # 내용을 먼저 보여준
 openguild plugin allow telegram-quest-status --yes  # 그러고 나서 허용
 ```
 
-| | 동작 | 스크립트 | 시점 |
-|---|---|---|---|
-| `telegram-quest-status` | `post` | 있음 (태그로 거름) | post |
-| `desktop-notify` | `run` | 없음 (이벤트 JSON 그대로) | post |
-| `deleted-audit` | `run` | 있음 (모양만 다듬음) | **pre** |
+| | 동작 | 스크립트 | 비밀값 | 시점 |
+|---|---|---|---|---|
+| `telegram-quest-status` | `post` | 있음 (태그로 거름) | url + `body_env` | post |
+| `discussion-to-ai` | `post` | 있음 (조건으로 거름) | 헤더 | post |
+| `desktop-notify` | `run` | 없음 (이벤트 JSON 그대로) | — | post |
+| `deleted-audit` | `run` | 있음 (모양만 다듬음) | — | **pre** |
 
 ---
 
@@ -45,6 +46,31 @@ POST /bot123456:AA.../sendMessage
   지목하고 코어가 채운다.
 - **리터럴로 적으면 적재가 거부된다.** `.guild/plugins/` 는 git 에 커밋되므로
   토큰을 그대로 적으면 이력에 남는다.
+
+## discussion-to-ai
+
+**미해결 토론 댓글만** 밖으로 보낸다. AI 에게 물어보게 하거나 담당자에게 알릴 때.
+
+```bash
+export DISCUSSION_WEBHOOK_TOKEN=whk_...
+```
+
+거르는 것이 이 스크립트의 존재 이유다 — 평범한 댓글까지 보내면 소음이 되고,
+AI 를 부르는 훅이면 돈까지 든다. 실제로 나가는 것(대역 서버로 확인함):
+
+```
+POST /hook   Authorization: Bearer whk_...
+{"author":"kim","quest":"DEV-001","question":"이 방식 맞나요?"}
+```
+
+평범한 댓글에는 **0건**이 나간다. 필터를 만들었으면 "안 보내는 경우" 도 반드시
+확인할 것 — 한 번도 거르지 않는 필터는 필터가 아니다.
+
+`comment.unresolved` 도 구독한다. 한 번 해결한 토론이 다시 열리면 그것도 답이
+필요한 상태다.
+
+비밀값이 **헤더**로 가는 예이기도 하다. 텔레그램 예제는 url 과 `body_env` 를
+쓴다 — 셋 다 되고, 서비스가 요구하는 자리에 맞추면 된다.
 
 ## desktop-notify
 

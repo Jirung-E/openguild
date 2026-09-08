@@ -8928,6 +8928,41 @@ fn main() {
 mod tests {
     use super::*;
 
+    /// DEV-387: 배포하는 스킬이 실제로 있는지.
+    ///
+    /// 스킬은 `skills/*/SKILL.md` 로 **발견**된다 — 폴더 이름을 바꾸거나
+    /// frontmatter 를 빠뜨리면 그 스킬이 조용히 없는 것이 된다. 에이전트는
+    /// "그런 기능 없다" 고 답하고, 아무도 오류를 못 본다.
+    #[test]
+    fn shipped_skills_are_discoverable() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../skills/openguild-plugin/skills");
+        if !root.exists() {
+            return; // 크레이트만 따로 배포된 경우
+        }
+        for name in ["openguild", "openguild-plugins"] {
+            let f = root.join(name).join("SKILL.md");
+            let body = std::fs::read_to_string(&f)
+                .unwrap_or_else(|_| panic!("스킬이 없다: {}", f.display()));
+            assert!(
+                body.starts_with("---\n"),
+                "{name}: frontmatter 가 없으면 스킬로 안 잡힌다"
+            );
+            assert!(
+                body.contains(&format!("\nname: {name}\n")),
+                "{name}: frontmatter 의 name 이 폴더 이름과 달라 로드가 어긋난다"
+            );
+            let desc = body
+                .lines()
+                .find(|l| l.starts_with("description:"))
+                .unwrap_or_else(|| panic!("{name}: description 이 없으면 언제 쓸지 모른다"));
+            assert!(
+                desc.len() > 80,
+                "{name}: description 이 너무 짧다 — 언제 쓰는 스킬인지가 담겨야 한다"
+            );
+        }
+    }
+
     /// BUG-261: 배포 스킬 플러그인의 version 이 크레이트 버전과 같이 올라가는지.
     ///
     /// 설치된 스킬은 파일 내용이 아니라 **`plugin.json` 의 version 으로만**

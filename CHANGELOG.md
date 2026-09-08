@@ -47,7 +47,11 @@ Keep a Changelog 형식. 날짜는 로컬(KST) 기준.
 
 **바로 쓸 수 있는 예제**를 `examples/plugins/` 에 넣었습니다 —
 `telegram-quest-status`(퀘스트에 `notify` 태그를 붙이면 상태 변경 시 텔레그램),
-`desktop-notify`(데스크톱 알림), `deleted-audit`(지워지기 전 기록).
+`discussion-to-ai`(미해결 토론 댓글만 밖으로), `desktop-notify`(데스크톱 알림),
+`deleted-audit`(지워지기 전 기록).
+
+**플러그인 제작 스킬**도 함께 배포합니다 — 에이전트에게 "플러그인 만들어줘" 라고
+하면 절차대로 만들고 대역 서버로 검증까지 한 뒤 건네줍니다.
 
 리뷰 잔여분(DEV-381):
 

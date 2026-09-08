@@ -1,0 +1,13 @@
+{
+  "name": "discussion-to-ai",
+  "on": ["comment.added", "comment.unresolved"],
+  "scope": ["cli", "gui", "server"],
+  "action": {
+    "post": {
+      "url": "https://my-service.example/discussion",
+      "headers": { "Authorization": "Bearer ${DISCUSSION_WEBHOOK_TOKEN}" },
+      "timeout_ms": 8000
+    }
+  },
+  "script": "transform.rhai"
+}

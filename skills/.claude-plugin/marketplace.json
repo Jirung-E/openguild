@@ -9,7 +9,7 @@
     {
       "name": "openguild-plugin",
       "source": "./openguild-plugin",
-      "description": "Teaches an agent how to manage a project with openguild (guilds, quests, campaigns, comments)."
+      "description": "Teaches an agent how to manage a project with openguild (guilds, quests, campaigns, comments) and how to write openguild plugins."
     }
   ]
 }
