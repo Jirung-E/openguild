@@ -173,10 +173,26 @@ fn run(
     // 훑으므로 사용자는 **반드시** 참조로 적어야 하는데, 안 풀면 자식이 리터럴
     // `${MY_API_KEY}` 를 받는다. 오류 메시지에는 원문(`command`)을 쓴다 — 푼
     // 값에는 비밀이 들어 있다.
-    let exe = expand_env(command).map_err(|e| format!("{command}: {e}"))?;
+    // BUG-279: 작업 디렉터리가 데이터 폴더로 바뀌었으므로 코드 폴더를 가리킬
+    // 수단이 필요하다. 자식 환경에 넣는 것만으로는 **여기서** 푸는 `${...}` 를
+    // 못 채우므로 확장 표에도 같이 심는다.
+    let workdir = plugin
+        .data_dir()
+        .map_err(|e| format!("{command}: 데이터 폴더를 준비하지 못했습니다: {e}"))?;
+    let mut vars = std::collections::BTreeMap::new();
+    vars.insert(
+        "OPENGUILD_PLUGIN_DIR".to_string(),
+        plugin.dir.display().to_string(),
+    );
+    vars.insert(
+        "OPENGUILD_PLUGIN_DATA_DIR".to_string(),
+        workdir.display().to_string(),
+    );
+    let exe =
+        crate::plugins::expand_env_with(command, &vars).map_err(|e| format!("{command}: {e}"))?;
     let argv = args
         .iter()
-        .map(|a| expand_env(a))
+        .map(|a| crate::plugins::expand_env_with(a, &vars))
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| format!("{command}: {e}"))?;
     let mut cmd = Command::new(&exe);
@@ -189,9 +205,17 @@ fn run(
         use std::os::unix::process::CommandExt;
         cmd.process_group(0);
     }
+    // 작업 디렉터리는 **데이터 폴더**다. 예전엔 플러그인 폴더였는데, 동의
+    // 지문이 그 폴더 전체를 보므로([[DEV-381]]) 훅이 출력을 옆에 쓰는 순간
+    // 자기 동의를 깼다 — 한 번 돌고 조용히 멈춘다.
     let mut child = cmd
         .args(&argv)
-        .current_dir(&plugin.dir)
+        .current_dir(&workdir)
+        // 옆 파일(`notify.sh`)을 부르려면 코드 폴더를 알아야 한다 — 작업
+        // 디렉터리가 더는 그곳이 아니기 때문이다.
+        .env("OPENGUILD_PLUGIN_DIR", &plugin.dir)
+        // 훅이 자기 출력 자리를 알아야 절대경로로 쓸 수도 있다.
+        .env("OPENGUILD_PLUGIN_DATA_DIR", &workdir)
         .stdin(Stdio::piped())
         // 자식의 출력이 CLI 표준출력에 섞이면 파이프로 쓰는 사람이 깨진다.
         .stdout(Stdio::null())
@@ -310,6 +334,14 @@ mod tests {
     }
 
     fn plugin(action: Action, dir: std::path::PathBuf) -> Plugin {
+        plugin_in(action, dir.clone(), dir)
+    }
+
+    fn plugin_in(
+        action: Action,
+        dir: std::path::PathBuf,
+        guild_root: std::path::PathBuf,
+    ) -> Plugin {
         Plugin {
             def: PluginDef {
                 description: None,
@@ -320,9 +352,60 @@ mod tests {
                 script: None,
             },
             dir,
+            guild_root,
             compiled: None,
             script_src: None,
             folder: Default::default(),
+        }
+    }
+
+    /// BUG-279: `run` 은 이제 **데이터 폴더**에서 돈다. 그래서 시험은 두 가지를
+    /// 지켜야 한다 — 훅이 만든 파일을 그 폴더에서 찾을 것, 그리고 **사용자의
+    /// 진짜 `~/.openguild` 를 절대 건드리지 않을 것.**
+    ///
+    /// `OPENGUILD_HOME` 은 프로세스 전역이라 다른 시험과 겹치면 서로의 홈을
+    /// 지운다. crate 공통 `env_lock` 으로 직렬화한다.
+    struct RunLab {
+        _guard: std::sync::MutexGuard<'static, ()>,
+        home: std::path::PathBuf,
+        guild: std::path::PathBuf,
+        /// 플러그인 폴더 — **코드**가 있는 곳. 훅이 여기 쓰면 안 된다.
+        code: std::path::PathBuf,
+    }
+
+    impl RunLab {
+        fn new(label: &str) -> Self {
+            let guard = crate::test_env::env_lock();
+            let root = tmp(label);
+            let home = root.join("home");
+            let guild = root.join("guild");
+            let code = guild.join(".guild/plugins/p");
+            std::fs::create_dir_all(&home).unwrap();
+            std::fs::create_dir_all(&code).unwrap();
+            unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+            Self {
+                _guard: guard,
+                home,
+                guild,
+                code,
+            }
+        }
+
+        fn plugin(&self, action: Action) -> Plugin {
+            plugin_in(action, self.code.clone(), self.guild.clone())
+        }
+
+        /// 훅이 파일을 쓰는 자리.
+        fn data(&self) -> std::path::PathBuf {
+            crate::plugins::data_dir(&self.guild, "p").unwrap()
+        }
+    }
+
+    impl Drop for RunLab {
+        fn drop(&mut self) {
+            unsafe { std::env::remove_var("OPENGUILD_HOME") };
+            let _ = std::fs::remove_dir_all(&self.home);
+            let _ = std::fs::remove_dir_all(&self.guild);
         }
     }
 
@@ -551,24 +634,26 @@ mod tests {
     /// 이스케이프 문제가 생긴다.
     #[test]
     fn run_feeds_the_event_on_stdin() {
-        let d = tmp("run");
-        let p = plugin(
-            Action::Run {
-                command: "sh".into(),
-                // 작업 디렉터리가 플러그인 폴더이므로 상대 경로로 받는다.
-                args: vec!["-c".into(), "cat > got.json".into()],
-                timeout_ms: Some(5_000),
-            },
-            d.clone(),
-        );
+        let lab = RunLab::new("run");
+        let p = lab.plugin(Action::Run {
+            command: "sh".into(),
+            // 작업 디렉터리가 데이터 폴더이므로 상대 경로는 그쪽에 떨어진다.
+            args: vec!["-c".into(), "cat > got.json".into()],
+            timeout_ms: Some(5_000),
+        });
         Outbound::new().deliver(&p, &event(), &body()).unwrap();
-        let got = std::fs::read_to_string(d.join("got.json")).unwrap();
+        let got = std::fs::read_to_string(lab.data().join("got.json")).unwrap();
         assert_eq!(
             serde_json::from_str::<Value>(&got).unwrap(),
             body(),
             "stdin 으로 들어온 것이 본문과 다르다"
         );
-        let _ = std::fs::remove_dir_all(&d);
+        // BUG-279 의 핵심 — **코드 폴더에는 아무것도 안 생긴다.** 생기면 그
+        // 순간 동의 지문이 바뀌어 플러그인이 스스로 꺼진다.
+        assert!(
+            !lab.code.join("got.json").exists(),
+            "훅의 출력이 플러그인 폴더(코드)에 생겼다 — 자기 동의를 깬다"
+        );
     }
 
     /// **오래 걸려도 길드가 안 멈춘다** — 시한에 죽이고 거둔다(좀비 없음).
@@ -578,22 +663,19 @@ mod tests {
     /// 뒤로 **더 안 커지는지**를 본다.
     #[test]
     fn a_hanging_process_is_killed() {
-        let d = tmp("hang");
-        let p = plugin(
-            Action::Run {
-                command: "sh".into(),
-                args: vec![
-                    "-c".into(),
-                    // BUG-276: **유한 루프**로 둔다. `while true` 였을 때, 죽이기가 리눅스에서
-                    // 깨지자 훅이 CI 러너에 영원히 남아 러너를 죽였다. 시험이
-                    // 무는 것과 별개로, 시험이 남기는 것도 시험의 책임이다.
-                    "i=0; while [ $i -lt 400 ]; do echo x >> ticks; sleep 0.05; i=$((i+1)); done"
-                        .into(),
-                ],
-                timeout_ms: Some(300),
-            },
-            d.clone(),
-        );
+        let lab = RunLab::new("hang");
+        let p = lab.plugin(Action::Run {
+            command: "sh".into(),
+            args: vec![
+                "-c".into(),
+                // BUG-276: **유한 루프**로 둔다. `while true` 였을 때, 죽이기가 리눅스에서
+                // 깨지자 훅이 CI 러너에 영원히 남아 러너를 죽였다. 시험이
+                // 무는 것과 별개로, 시험이 남기는 것도 시험의 책임이다.
+                "i=0; while [ $i -lt 400 ]; do echo x >> ticks; sleep 0.05; i=$((i+1)); done"
+                    .into(),
+            ],
+            timeout_ms: Some(300),
+        });
         let t = Instant::now();
         let e = Outbound::new().deliver(&p, &event(), &body()).unwrap_err();
         assert!(
@@ -603,7 +685,7 @@ mod tests {
         );
         assert!(e.contains("중단"), "{e}");
 
-        let ticks = d.join("ticks");
+        let ticks = lab.data().join("ticks");
         let a = std::fs::metadata(&ticks).map(|m| m.len()).unwrap_or(0);
         assert!(
             a > 0,
@@ -612,36 +694,32 @@ mod tests {
         std::thread::sleep(Duration::from_millis(500));
         let b = std::fs::metadata(&ticks).map(|m| m.len()).unwrap_or(0);
         assert_eq!(a, b, "포기만 하고 자식은 계속 돌고 있다");
-        let _ = std::fs::remove_dir_all(&d);
     }
 
     /// **`run` 도 `${VAR}` 를 푼다.** 비밀값 검사가 command/args 도 훑으므로
     /// 사용자는 반드시 참조로 적어야 하는데, 안 풀면 자식이 리터럴을 받는다.
     #[test]
     fn run_expands_env_refs_in_command_and_args() {
-        let _guard = crate::test_env::env_lock();
+        // RunLab 이 env_lock 을 들고 있다 — 여기서 또 잡으면 자기 자신과
+        // 교착한다.
+        let lab = RunLab::new("runenv");
         unsafe { std::env::set_var("OG_TEST_RUN_TOKEN", "s3cret") };
-        let d = tmp("runenv");
-        let p = plugin(
-            Action::Run {
-                command: "sh".into(),
-                args: vec![
-                    "-c".into(),
-                    "printf %s \"$0\" > got.txt".into(),
-                    "tok=${OG_TEST_RUN_TOKEN}".into(),
-                ],
-                timeout_ms: Some(5_000),
-            },
-            d.clone(),
-        );
+        let p = lab.plugin(Action::Run {
+            command: "sh".into(),
+            args: vec![
+                "-c".into(),
+                "printf %s \"$0\" > got.txt".into(),
+                "tok=${OG_TEST_RUN_TOKEN}".into(),
+            ],
+            timeout_ms: Some(5_000),
+        });
         Outbound::new().deliver(&p, &event(), &body()).unwrap();
         assert_eq!(
-            std::fs::read_to_string(d.join("got.txt")).unwrap(),
+            std::fs::read_to_string(lab.data().join("got.txt")).unwrap(),
             "tok=s3cret",
             "자식이 리터럴 ${{VAR}} 를 받았다"
         );
         unsafe { std::env::remove_var("OG_TEST_RUN_TOKEN") };
-        let _ = std::fs::remove_dir_all(&d);
     }
 
     /// DEV-384: **본문에 개인 식별자를 요구하는 API** (텔레그램의 `chat_id`)를
@@ -801,25 +879,22 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn a_timeout_kills_grandchildren_too() {
-        let d = tmp("grandchild");
+        let lab = RunLab::new("grandchild");
         // 셸이 손자를 백그라운드로 띄우고 자기는 잔다. 손자는 살아 있는 동안
         // 계속 파일을 키운다.
-        let p = plugin(
-            Action::Run {
-                command: "sh".into(),
-                args: vec![
-                    "-c".into(),
-                    // BUG-276: 손자도 유한하게 — 위와 같은 이유다.
-                    "(i=0; while [ $i -lt 400 ]; do echo x >> grand.log; sleep 0.05; i=$((i+1)); done) & sleep 30".into(),
-                ],
-                timeout_ms: Some(400),
-            },
-            d.clone(),
-        );
+        let p = lab.plugin(Action::Run {
+            command: "sh".into(),
+            args: vec![
+                "-c".into(),
+                // BUG-276: 손자도 유한하게 — 위와 같은 이유다.
+                "(i=0; while [ $i -lt 400 ]; do echo x >> grand.log; sleep 0.05; i=$((i+1)); done) & sleep 30".into(),
+            ],
+            timeout_ms: Some(400),
+        });
         let e = Outbound::new().deliver(&p, &event(), &body()).unwrap_err();
         assert!(e.contains("중단"), "{e}");
 
-        let log = d.join("grand.log");
+        let log = lab.data().join("grand.log");
         let a = std::fs::metadata(&log).map(|m| m.len()).unwrap_or(0);
         assert!(
             a > 0,
@@ -828,7 +903,6 @@ mod tests {
         std::thread::sleep(Duration::from_millis(600));
         let b = std::fs::metadata(&log).map(|m| m.len()).unwrap_or(0);
         assert_eq!(a, b, "직계만 죽이고 손자는 계속 돌고 있다");
-        let _ = std::fs::remove_dir_all(&d);
     }
 
     /// 실패한 프로세스는 조용히 넘어가지 않는다.

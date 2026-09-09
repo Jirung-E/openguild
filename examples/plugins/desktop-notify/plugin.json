@@ -6,7 +6,7 @@
   "action": {
     "run": {
       "command": "sh",
-      "args": ["notify.sh"],
+      "args": ["${OPENGUILD_PLUGIN_DIR}/notify.sh"],
       "timeout_ms": 5000
     }
   }

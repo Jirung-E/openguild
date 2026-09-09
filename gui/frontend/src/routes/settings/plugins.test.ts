@@ -42,6 +42,7 @@ function plugin(name: string, description: string | null): PluginView {
 		action: 'post',
 		target: 'https://example.test/hook',
 		script: null,
+		data_dir: null,
 		script_src: null,
 		granted: true,
 		runs_here: true

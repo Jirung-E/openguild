@@ -140,8 +140,11 @@ pub struct PluginDef {
 #[derive(Debug, Clone)]
 pub struct Plugin {
     pub def: PluginDef,
-    /// `.guild/plugins/{name}/` — 스크립트 경로 해석의 기준.
+    /// `.guild/plugins/{name}/` — 스크립트 경로 해석의 기준. **지문의 대상**
+    /// 이므로 훅이 여기에 파일을 쓰면 안 된다([`Plugin::data_dir`]).
     pub dir: PathBuf,
+    /// BUG-279: 어느 길드의 플러그인인가 — 데이터 폴더를 가르는 데 쓴다.
+    pub guild_root: PathBuf,
     /// DEV-376: 적재 때 컴파일해 둔 판단·가공 스크립트. 문법 오류는 **적재
     /// 때** 드러나야지 첫 이벤트 때 드러나면 안 된다. 없으면 전부 보내고
     /// 이벤트 JSON 을 그대로 쓴다.
@@ -167,6 +170,79 @@ impl Plugin {
     pub fn script_path(&self) -> Option<PathBuf> {
         self.def.script.as_ref().map(|s| self.dir.join(s))
     }
+
+    /// BUG-279: 훅이 **파일을 쓰는 자리.** 없으면 만든다.
+    pub fn data_dir(&self) -> AppResult<PathBuf> {
+        data_dir(&self.guild_root, &self.def.name)
+    }
+}
+
+/// BUG-279: `~/.openguild/plugin-data/{길드}/{플러그인}/`.
+///
+/// # 왜 플러그인 폴더가 아닌가
+///
+/// `run` 은 예전에 **플러그인 폴더**를 작업 디렉터리로 삼았다. 옆 파일
+/// (`notify.sh`)을 부르려면 그래야 했다. 그런데 동의 지문은 그 폴더의 **모든
+/// 파일**을 본다([[DEV-381]]) — `hook.py` 갈아끼우기를 막으려던 것이다.
+///
+/// 둘이 겹치면 덫이 된다. 훅이 출력을 옆에 쓰는 순간 폴더 지문이 바뀌어
+/// **자기 동의를 스스로 깬다.** 한 번은 돌고 그 뒤로 조용히 안 돈다.
+/// admin 이 `deleted-audit` 으로 실제로 밟았고, 덤으로 지워진 퀘스트 내용이
+/// `plugin-consent.json` 안에 쌓이고 있었다(지문이 텍스트를 원문으로 담는다).
+///
+/// 그래서 **코드와 데이터를 가른다.** 폴더는 git 으로 따라오는 코드이고 지문의
+/// 대상이다. 훅이 만드는 것은 그 기계의 데이터고, 동의가 사는 곳 옆에 둔다 —
+/// "정의는 git 으로 오고 나머지는 기계에 남는다"([[DEV-375]])를 그대로 잇는다.
+/// 코드 폴더는 `OPENGUILD_PLUGIN_DIR` 로 알려주므로 옆 파일도 여전히 부른다.
+pub fn data_dir(guild_root: &Path, plugin_name: &str) -> AppResult<PathBuf> {
+    let p = data_dir_path(guild_root, plugin_name)?;
+    std::fs::create_dir_all(&p).map_err(|e| {
+        AppError::Internal(anyhow::anyhow!(
+            "플러그인 데이터 폴더를 만들지 못했습니다 {}: {e}",
+            p.display()
+        ))
+    })?;
+    Ok(p)
+}
+
+/// 경로만 — **만들지는 않는다.** 화면이 "여기에 씁니다" 라고 보여줄 때 쓴다.
+/// 조회하는 것만으로 안 쓸 폴더까지 만들면 `post` 플러그인 몫까지 생긴다.
+pub fn data_dir_path(guild_root: &Path, plugin_name: &str) -> AppResult<PathBuf> {
+    Ok(crate::user_dirs::openguild_home()?
+        .join("plugin-data")
+        .join(guild_data_key(guild_root))
+        .join(safe_segment(plugin_name)))
+}
+
+/// 길드 하나를 가리키는 폴더 이름. 읽을 수 있게 마지막 경로 조각을 앞에 두고,
+/// **경로 전체의 해시**를 붙여 이름이 같은 다른 길드와 안 섞이게 한다.
+fn guild_data_key(guild_root: &Path) -> String {
+    let norm = crate::recents::normalize_abs(guild_root);
+    let label = Path::new(&norm)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("guild");
+    format!("{}-{:016x}", safe_segment(label), checksum(norm.as_bytes()))
+}
+
+/// 경로 조각 하나로 안전한 문자열. **`name` 은 사용자가 적는 값**이라
+/// `../../..` 이나 `/` 가 들어올 수 있고, 그대로 이어 붙이면 폴더를 벗어난다.
+fn safe_segment(s: &str) -> String {
+    let out: String = s
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    // 전부 점이면(`.`, `..`) 상위 폴더를 뜻한다.
+    if out.trim_matches('.').is_empty() {
+        return "_".into();
+    }
+    out.chars().take(64).collect()
 }
 
 /// 적재 결과. **오류가 있어도 나머지는 돈다** — 정의 하나가 깨졌다고 길드
@@ -273,6 +349,7 @@ fn load_scoped(guild_root: &Path, scope: Option<Scope>) -> Loaded {
                 let plugin = Plugin {
                     def,
                     dir: pdir.clone(),
+                    guild_root: guild_root.to_path_buf(),
                     compiled,
                     script_src,
                     folder: folder_fingerprint(&pdir),
@@ -413,6 +490,14 @@ pub fn validate(def: &PluginDef) -> AppResult<()> {
         return Err(AppError::BadRequest(
             "plugin.json: name 이 비어 있습니다".into(),
         ));
+    }
+    // BUG-279: `name` 은 동의 파일의 키이자 데이터 폴더 이름이다. 경로 조각이
+    // 될 수 없는 값을 적재 때 막는다 — 정의는 git 으로 남의 기계에 간다.
+    if def.name.contains(['/', '\\']) || def.name.trim_matches('.').is_empty() {
+        return Err(AppError::BadRequest(format!(
+            "plugin.json: `name` 에 경로 구분자나 점만 쓸 수 없습니다 (받은 값: {})",
+            def.name
+        )));
     }
     if def.on.is_empty() {
         return Err(AppError::BadRequest(format!(
@@ -628,6 +713,19 @@ fn looks_like_known_key(value: &str) -> bool {
 /// `${VAR}` 를 실제 값으로. 없는 변수는 **빈 문자열이 아니라 오류** —
 /// 조용히 인증 없이 요청을 보내면 원인을 찾기 어렵다.
 pub fn expand_env(value: &str) -> AppResult<String> {
+    expand_env_with(value, &BTreeMap::new())
+}
+
+/// BUG-279: `extra` 를 프로세스 환경변수보다 **먼저** 본다.
+///
+/// `run` 의 작업 디렉터리가 데이터 폴더로 바뀌면서 코드 폴더를 가리킬 수단이
+/// 필요해졌다. 자식에게 `OPENGUILD_PLUGIN_DIR` 를 넘기지만, 그건 **자식의**
+/// 환경이라 `args` 안의 `${OPENGUILD_PLUGIN_DIR}` 는 못 푼다 — 확장은 부모가
+/// 하기 때문이다. 그대로 두면 "환경변수가 설정되지 않았습니다" 로 죽는다.
+///
+/// 그래서 같은 이름을 확장 쪽에도 심는다. `sh -c` 를 거치지 않는 명령
+/// (`python ${OPENGUILD_PLUGIN_DIR}/hook.py`)도 옆 파일을 부를 수 있다.
+pub fn expand_env_with(value: &str, extra: &BTreeMap<String, String>) -> AppResult<String> {
     let mut out = String::new();
     let chars: Vec<char> = value.chars().collect();
     let mut i = 0;
@@ -638,9 +736,12 @@ pub fn expand_env(value: &str) -> AppResult<String> {
             && let Some(rel) = chars[i..].iter().position(|c| *c == '}')
         {
             let name: String = chars[i + 2..i + rel].iter().collect();
-            let got = std::env::var(&name).map_err(|_| {
-                AppError::BadRequest(format!("환경변수 {name} 가 설정되지 않았습니다"))
-            })?;
+            let got = match extra.get(&name) {
+                Some(v) => v.clone(),
+                None => std::env::var(&name).map_err(|_| {
+                    AppError::BadRequest(format!("환경변수 {name} 가 설정되지 않았습니다"))
+                })?,
+            };
             out.push_str(&got);
             i += rel + 1;
             continue;

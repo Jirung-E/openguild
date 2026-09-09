@@ -522,6 +522,14 @@
 								<span>{p.on.join(' ')}</span>
 								<span>{t('settings.pluginScope', $locale)}: {p.scope.join(', ')}</span>
 							</div>
+							<!-- BUG-279: run 훅은 플러그인 폴더가 아니라 여기에 쓴다.
+							     안 알려주면 훅이 만든 파일을 찾을 방법이 없다. -->
+							{#if p.data_dir}
+								<div class="plugin-meta">
+									<span>{t('settings.pluginDataDir', $locale)}:</span>
+									<code class="plugin-target">{p.data_dir}</code>
+								</div>
+							{/if}
 							<div class="plugin-state">
 								{#if !p.granted}
 									{t('settings.pluginPending', $locale)}

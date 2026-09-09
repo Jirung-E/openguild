@@ -6002,6 +6002,12 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
                         "scope": p.def.scope,
                         "action": p.def.action.kind(),
                         "script": p.def.script,
+                        // 조회 명령이므로 **경로만** 만든다 — 목록을 보는 것만으로
+                        // 폴더가 생기면 안 된다.
+                        "data_dir": matches!(p.def.action, openguild_core::plugins::Action::Run { .. })
+                            .then(|| openguild_core::plugins::data_dir_path(&p.guild_root, &p.def.name)
+                                .ok().map(|d| d.display().to_string()))
+                            .flatten(),
                     })).collect::<Vec<_>>(),
                     // REQ-020: 예전엔 이름만 실었다. 설명이 제일 필요한 쪽이
                     // **아직 동의 안 한** 플러그인이라, 여기만 이름뿐이면

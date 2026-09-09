@@ -1048,3 +1048,176 @@ fn a_secret_in_the_description_is_rejected() {
     let e = validate(&d).unwrap_err().to_string();
     assert!(e.contains("description"), "{e}");
 }
+
+// ── BUG-279: 훅이 자기 동의를 깨지 않는다 ────────────────
+
+fn probe_event() -> crate::events::Event {
+    crate::events::Event {
+        name: "quest.created",
+        phase: crate::events::Phase::Post,
+        ts: "2026-09-07T00:00:00+09:00".into(),
+        guild: "g".into(),
+        ok: Some(true),
+        error: None,
+        data: Default::default(),
+    }
+}
+
+/// **이 결함의 본체.** 폴더에 파일을 쓰는 `run` 훅을 허용하고 두 번 발화시킨다.
+///
+/// 예전에는 첫 번째가 `deleted.log` 를 플러그인 폴더에 만들고, 그 순간 폴더
+/// 지문이 바뀌어 두 번째부터 **동의가 풀렸다.** 아무 오류도 안 나고 조용히
+/// 안 돈다 — admin 이 `deleted-audit` 으로 실제로 밟았다.
+///
+/// 시간이나 파일 존재만 보면 안 된다. "허용된 상태가 유지되는가" 를 직접 본다.
+#[test]
+fn a_hook_that_writes_files_keeps_its_consent() {
+    let _guard = env_lock();
+    let home = fresh_tmp("selfrevoke-home");
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let g = fresh_tmp("selfrevoke");
+    write_plugin(
+        &g,
+        "audit",
+        json!({
+            "name": "audit",
+            "on": ["quest.created"],
+            "scope": ["cli"],
+            "action": { "run": { "command": "sh",
+                                 "args": ["-c", "cat >> out.log"],
+                                 "timeout_ms": 5000 } }
+        }),
+    );
+
+    let before = load_all(&g);
+    let p = before.needs_consent.first().expect("적재됐어야 한다");
+    consent::grant(&g, p).unwrap();
+    assert_eq!(load_all(&g).active.len(), 1, "허용 직후인데 안 켜졌다");
+
+    // 훅을 두 번 태운다.
+    let out = super::delivery::Outbound::new();
+    for _ in 0..2 {
+        let plugin = load_all(&g)
+            .active
+            .into_iter()
+            .next()
+            .expect("동의가 풀렸다 — 훅이 만든 파일이 지문을 바꿨다(BUG-279 의 증상)");
+        crate::plugins::runtime::Delivery::deliver(
+            &out,
+            &plugin,
+            &probe_event(),
+            &json!({ "hello": "world" }),
+        )
+        .unwrap();
+    }
+
+    // 두 번 다 돌았으니 로그에 두 줄이 쌓여 있어야 한다 — "동의는 살아 있는데
+    // 실은 아무 일도 안 했다" 를 가른다.
+    let data = crate::plugins::data_dir(&g, "audit").unwrap();
+    let log = std::fs::read_to_string(data.join("out.log")).unwrap();
+    assert_eq!(
+        log.matches("hello").count(),
+        2,
+        "훅이 두 번 안 돌았다: {log}"
+    );
+
+    // 코드 폴더는 손대지 않았다.
+    let pdir = plugins_dir(&g).join("audit");
+    assert!(
+        !pdir.join("out.log").exists(),
+        "훅의 출력이 코드 폴더에 생겼다 — 지문이 바뀐다"
+    );
+    assert_eq!(
+        folder_fingerprint(&pdir).len(),
+        0,
+        "코드 폴더에 plugin.json 말고 무언가 생겼다"
+    );
+
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 코드 폴더는 `OPENGUILD_PLUGIN_DIR` 로 알려준다 — 작업 디렉터리가 더는
+/// 그곳이 아니므로, 이게 없으면 `desktop-notify` 처럼 옆 파일을 부르는
+/// 플러그인이 통째로 못 돈다.
+#[test]
+fn the_hook_is_told_where_its_code_lives() {
+    let _guard = env_lock();
+    let home = fresh_tmp("plugindir-home");
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let g = fresh_tmp("plugindir");
+    write_plugin(
+        &g,
+        "sibling",
+        json!({
+            "name": "sibling",
+            "on": ["quest.created"],
+            "scope": ["cli"],
+            "action": { "run": { "command": "sh",
+                                 // 옆 파일을 코드 폴더에서 부른다.
+                                 "args": ["-c", "sh \"$OPENGUILD_PLUGIN_DIR/hello.sh\" > said.txt"],
+                                 "timeout_ms": 5000 } }
+        }),
+    );
+    let pdir = plugins_dir(&g).join("sibling");
+    std::fs::write(pdir.join("hello.sh"), "echo 안녕\n").unwrap();
+
+    let p = load_all(&g).needs_consent.into_iter().next().unwrap();
+    consent::grant(&g, &p).unwrap();
+    let p = load_all(&g).active.into_iter().next().unwrap();
+    crate::plugins::runtime::Delivery::deliver(
+        &super::delivery::Outbound::new(),
+        &p,
+        &probe_event(),
+        &json!({}),
+    )
+    .unwrap();
+
+    let data = crate::plugins::data_dir(&g, "sibling").unwrap();
+    assert_eq!(
+        std::fs::read_to_string(data.join("said.txt"))
+            .unwrap()
+            .trim(),
+        "안녕",
+        "옆 파일을 못 불렀다 — OPENGUILD_PLUGIN_DIR 가 코드 폴더를 안 가리킨다"
+    );
+
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// `name` 은 동의 파일의 키이자 데이터 폴더 이름이 된다. 경로 조각이 될 수
+/// 없는 값은 적재에서 막는다 — 정의는 git 으로 남의 기계에 간다.
+#[test]
+fn a_name_that_is_a_path_is_rejected() {
+    for bad in ["../../etc", "a/b", "..", "."] {
+        let mut d = post_def();
+        d.name = bad.into();
+        assert!(
+            validate(&d).is_err(),
+            "경로가 될 수 있는 이름이 통과했다: {bad}"
+        );
+    }
+}
+
+/// 이름이 같은 다른 길드의 데이터가 안 섞인다 — 폴더 이름이 경로 전체를
+/// 반영해야 한다.
+#[test]
+fn two_guilds_with_the_same_folder_name_get_different_data_dirs() {
+    let _guard = env_lock();
+    let home = fresh_tmp("datakey-home");
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let a = fresh_tmp("datakey-a").join("work");
+    let b = fresh_tmp("datakey-b").join("work");
+    std::fs::create_dir_all(&a).unwrap();
+    std::fs::create_dir_all(&b).unwrap();
+    assert_eq!(a.file_name(), b.file_name(), "전제가 틀렸다");
+    assert_ne!(
+        crate::plugins::data_dir(&a, "p").unwrap(),
+        crate::plugins::data_dir(&b, "p").unwrap()
+    );
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    let _ = std::fs::remove_dir_all(&home);
+}

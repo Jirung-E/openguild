@@ -299,6 +299,7 @@ mod tests {
                 script: None,
             },
             dir: std::path::PathBuf::from("/tmp/none"),
+            guild_root: std::env::temp_dir(),
             compiled: None,
             script_src: None,
             folder: Default::default(),

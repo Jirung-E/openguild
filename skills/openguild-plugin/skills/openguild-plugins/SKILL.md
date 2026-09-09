@@ -116,6 +116,18 @@ Say which environment variables they must export, and where to get each one.
 - **Every file in the plugin folder is part of the consent fingerprint.**
   Editing the script — or the `hook.py` a `run` action calls — asks again. Tell
   the user this, or they will think consent is broken.
+- **A `run` hook must never write into its own folder.** Its working directory
+  is a separate per-machine data folder, not the plugin folder, precisely
+  because of the rule above: a hook that wrote a log next to itself changed the
+  fingerprint and **silently revoked its own consent** after one run (BUG-279).
+  Relative paths land in the data folder, which is what you want. To reach a
+  file that ships with the plugin, use `$OPENGUILD_PLUGIN_DIR`:
+
+  ```json
+  "args": ["${OPENGUILD_PLUGIN_DIR}/notify.sh"]
+  ```
+
+  `OPENGUILD_PLUGIN_DATA_DIR` names the data folder if you need it absolute.
 - **The hook never blocks the guild.** Delivery is fire-and-forget on its own
   thread; a CLI command gives it ~2s before exiting. A plugin that must finish
   should be `run` with a short program, not a slow HTTP call from the CLI.

@@ -37,6 +37,13 @@ export interface PluginView {
 	/** post 의 목적지 또는 run 의 명령 — 무엇에 동의하는지의 핵심. */
 	target: string;
 	script: string | null;
+	/**
+	 * BUG-279: `run` 훅이 파일을 쓰는 자리. `post` 면 null 이다.
+	 *
+	 * 훅의 작업 디렉터리는 플러그인 폴더가 **아니다** — 거기 쓰면 동의 지문이
+	 * 바뀌어 스스로 꺼진다. 대신 어디에 쌓이는지 사용자가 알아야 한다.
+	 */
+	data_dir: string | null;
 	/** 스크립트 원문. 이걸 안 보여주면 동의가 형식만 남는다. */
 	script_src: string | null;
 	granted: boolean;

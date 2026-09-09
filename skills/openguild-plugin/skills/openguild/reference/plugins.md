@@ -51,6 +51,12 @@ Read `examples/plugins/README.md` before writing one from scratch.
 | `action.post.body_env` | `{ "chat_id": "TELEGRAM_CHAT_ID" }` — inject env values into named top-level body keys. Scripts have no I/O, so `payload()` cannot read the environment; APIs that want a private id *in the body* (Telegram's `chat_id`) need this. Only the named keys are touched, so user text is never expanded. |
 | `script` | Optional `.rhai` file, relative to the plugin folder. |
 
+A `run` hook's working directory is `~/.openguild/plugin-data/{guild}/{plugin}/`,
+**not** the plugin folder — a hook that writes next to itself changes the consent
+fingerprint and silently revokes its own consent (BUG-279). `OPENGUILD_PLUGIN_DIR`
+points at the plugin folder (usable as `${OPENGUILD_PLUGIN_DIR}` inside `command`
+and `args`); `OPENGUILD_PLUGIN_DATA_DIR` at the data folder.
+
 `openguild plugin events` lists all 54 event names — quests, comments, campaigns,
 the library, rules, attachments, and the guild's own vocabulary (types, statuses, tag
 definitions). Comments and attachments carry `target: {kind, id}` rather than having

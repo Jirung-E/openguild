@@ -205,6 +205,9 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		en: 'No guild is open yet — plugins apply only to a guild opened on this machine.'
 	},
 	'settings.pluginScope': { ko: '적용 범위', en: 'scope' },
+	// BUG-279: run 훅의 작업 디렉터리. 플러그인 폴더가 아니다 — 거기 쓰면
+	// 동의 지문이 바뀌어 스스로 꺼진다.
+	'settings.pluginDataDir': { ko: '파일 쓰는 곳', en: 'writes files to' },
 	// DEV-384: 신뢰 중에는 "허용 전에는 안 돕니다" 가 바로 밑 배너와 어긋난다.
 	'settings.pluginsIntroTrusted': {
 		ko: '플러그인 정의는 .guild/plugins/ 에 있고 git 으로 공유됩니다. 동의는 이 기계에만 남습니다.',

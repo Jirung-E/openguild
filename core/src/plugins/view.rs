@@ -32,6 +32,12 @@ pub struct PluginView {
     /// 정의에 적힌 그대로다(환경변수 참조는 안 푼다 — 값은 보여주지 않는다).
     pub target: String,
     pub script: Option<String>,
+    /// BUG-279: `run` 훅이 파일을 쓰는 자리. `post` 는 작업 디렉터리가 없으므로
+    /// `None` 이다 — 안 쓰는 경로를 보여주면 "여기 뭐가 생기나" 하고 찾게 된다.
+    ///
+    /// 경로만 만든다(폴더는 안 만든다). 목록을 여는 것만으로 안 돌 플러그인의
+    /// 폴더까지 생기면 안 된다.
+    pub data_dir: Option<String>,
     /// 스크립트 원문. 이걸 안 보여주면 동의가 형식만 남는다.
     pub script_src: Option<String>,
     pub granted: bool,
@@ -90,6 +96,12 @@ pub(super) fn view(p: &Plugin, granted: bool, scope: Scope) -> PluginView {
         action: action.into(),
         target,
         script: p.def.script.clone(),
+        data_dir: match &p.def.action {
+            Action::Run { .. } => super::data_dir_path(&p.guild_root, &p.def.name)
+                .ok()
+                .map(|d| d.display().to_string()),
+            Action::Post { .. } => None,
+        },
         script_src: p.script_src.clone(),
         granted,
         runs_here: p.def.scope.contains(&scope),
