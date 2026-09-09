@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
@@ -65,8 +65,7 @@ pub fn load(guild_path: &str) -> Result<GuildFile> {
     let content = std::fs::read_to_string(&guild_file)
         .with_context(|| format!("failed to read: {}", guild_file.display()))?;
 
-    toml::from_str(&content)
-        .with_context(|| format!("failed to parse: {}", guild_file.display()))
+    toml::from_str(&content).with_context(|| format!("failed to parse: {}", guild_file.display()))
 }
 
 /// `start` 에서 시작해 부모 방향으로 거슬러 올라가며 `.guild` 가 있는 첫 디렉토리를 반환.
@@ -157,15 +156,51 @@ mod tests {
     use super::*;
     use std::fs;
 
+    /// BUG-280: 이름에 **카운터**를 붙인다.
+    ///
+    /// 예전엔 나노초만 썼다. 이 헬퍼를 18개 시험이 함께 쓰는데, 병렬로 도는 둘이
+    /// 같은 값을 받으면 **한 디렉터리를 공유한다.** 그러면
+    /// `load_finds_guild_file_regardless_of_name` 의 `anything.guild`(name "X")와
+    /// `load_parses_valid_guild_file` 의 `monitor.guild`(name "모니터")가 나란히
+    /// 놓이고, `load()` 는 `read_dir` 첫 번째를 집으므로 "모니터" 를 기대한 쪽이
+    /// "X" 를 받는다. 한쪽이 끝나며 다른 쪽 디렉터리를 통째로 지우기까지 한다.
+    ///
+    /// 실제로 `just test` 가 그렇게 깨졌고, 바로 다시 돌리면 통과해서 넘어가기
+    /// 쉬운 종류였다. 카운터는 시계 해상도와 무관하게 한 프로세스 안에서 겹치지
+    /// 않는다.
+    /// 이름 짓기만 떼어 둔다 — **시계를 인자로 받아야** 시험이 "같은 시각에
+    /// 두 번 불렸다" 를 재현할 수 있다. 실제 충돌이 그 상황이었다.
+    fn tmp_name(now_nanos: u128) -> String {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static SEQ: AtomicU64 = AtomicU64::new(0);
+        let n = SEQ.fetch_add(1, Ordering::Relaxed);
+        format!("openguild-test-{now_nanos}-{n}")
+    }
+
     fn tmp_dir() -> std::path::PathBuf {
-        let base = std::env::temp_dir();
         let id = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let path = base.join(format!("openguild-test-{id}"));
+        let path = std::env::temp_dir().join(tmp_name(id));
         fs::create_dir_all(&path).unwrap();
         path
+    }
+
+    /// BUG-280: **같은 시각을 받아도 겹치지 않아야 한다.**
+    ///
+    /// 예전엔 이름이 나노초뿐이었다. 이 헬퍼를 18개 시험이 함께 쓰는데 병렬로
+    /// 도는 둘이 같은 값을 받으면 한 디렉터리를 공유하고, `load()` 가
+    /// `read_dir` 첫 번째를 집으므로 `monitor.guild` 를 기대한 쪽이 옆 시험의
+    /// `anything.guild` 를 읽었다("모니터" 대신 "X").
+    ///
+    /// 연속 호출로 시험하면 나노초가 어차피 달라 **아무것도 안 본다.** 시각을
+    /// 인자로 고정해야 그 상황이 재현된다.
+    #[test]
+    fn tmp_names_do_not_collide_within_one_clock_tick() {
+        let a = tmp_name(1_700_000_000_000_000_000);
+        let b = tmp_name(1_700_000_000_000_000_000);
+        assert_ne!(a, b, "같은 시각에 두 번 부르면 같은 이름이 나온다");
     }
 
     #[test]
@@ -305,7 +340,10 @@ mod tests {
             let resolved = resolve_guild_ref("my-project").unwrap();
             // recents 는 canonicalize 된 경로를 저장(macOS 는 /var → /private/var
             // symlink 라 raw guild_dir 과 바이트가 다를 수 있음) — 같은 정규화로 비교.
-            assert_eq!(resolved.to_str().unwrap(), normalize_abs_for_test(&guild_dir));
+            assert_eq!(
+                resolved.to_str().unwrap(),
+                normalize_abs_for_test(&guild_dir)
+            );
         });
         let _ = fs::remove_dir_all(&recents_dir);
         let _ = fs::remove_dir_all(&guild_dir);
