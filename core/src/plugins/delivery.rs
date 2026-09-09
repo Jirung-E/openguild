@@ -312,6 +312,7 @@ mod tests {
     fn plugin(action: Action, dir: std::path::PathBuf) -> Plugin {
         Plugin {
             def: PluginDef {
+                description: None,
                 name: "p".into(),
                 on: vec!["quest.created".into()],
                 scope: vec![Scope::Cli],

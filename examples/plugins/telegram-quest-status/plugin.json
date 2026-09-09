@@ -1,5 +1,6 @@
 {
   "name": "telegram-quest-status",
+  "description": "notify 태그가 붙은 퀘스트의 상태가 바뀌면 텔레그램으로 알립니다. TELEGRAM_BOT_TOKEN 과 TELEGRAM_CHAT_ID 환경변수가 필요합니다.",
   "on": ["quest.status_changed"],
   "scope": ["cli", "gui"],
   "action": {

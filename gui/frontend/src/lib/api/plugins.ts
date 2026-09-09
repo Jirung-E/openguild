@@ -23,6 +23,13 @@ import { isLocalTauri } from './transport';
 
 export interface PluginView {
 	name: string;
+	/**
+	 * REQ-020: 정의(`plugin.json`)가 적어 둔 사람 말 설명. 선택이라 없을 수 있다.
+	 *
+	 * **플러그인 작성자가 쓴 문장이라 번역하지 않는다.** UI 문구와 달리 이건
+	 * 데이터다 — `t()` 를 태울 대상이 아니고, 태울 수도 없다.
+	 */
+	description: string | null;
 	on: string[];
 	scope: string[];
 	/** 'post' | 'run' */

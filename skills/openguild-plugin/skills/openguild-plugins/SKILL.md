@@ -68,11 +68,34 @@ in `body_env`.
 For `run`, `${VAR}` is expanded in `command` and `args` too. A referenced
 variable that is not set is an error, never an empty string.
 
-### 4. Write it, then prove it fires
+### 4. Say what it does — in one sentence
+
+Give every plugin a `description`. It is optional and the plugin runs without
+one, but the settings screen shows it, and that screen is where someone decides
+whether to let your plugin run on their machine:
+
+```json
+{
+  "name": "telegram-quest-status",
+  "description": "Sends a Telegram message when a quest tagged `notify` changes status. Needs TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID.",
+  "on": ["quest.status_changed"],
+  ...
+}
+```
+
+Every other field is machine-readable (an event pattern, a URL, a scope). Without
+a description, a person looking at the list has nothing telling them what the
+plugin is *for*. Say what goes out and where, and name the environment variables
+they must set — those are the two questions they actually have.
+
+Max 500 characters, and it is scanned for secrets like every other field. Longer
+notes belong in a README next to `plugin.json`.
+
+### 5. Write it, then prove it fires
 
 **Do not hand the user an untested plugin.** See "Verifying" below.
 
-### 5. Tell them how to turn it on
+### 6. Tell them how to turn it on
 
 ```bash
 openguild plugin allow <name>        # prints what they would be consenting to
@@ -87,6 +110,9 @@ Say which environment variables they must export, and where to get each one.
 - **`on` names must exist.** A typo fails the load rather than silently never
   firing. `pre:` is only accepted for events that actually emit a pre phase.
 - **Names must be unique** across the guild's plugin folders.
+- **`description` is part of the consent fingerprint**, like everything else in
+  the definition. Editing the wording asks the user again. That is intended —
+  the description is what they read when they decided — but do not churn it.
 - **Every file in the plugin folder is part of the consent fingerprint.**
   Editing the script — or the `hook.py` a `run` action calls — asks again. Tell
   the user this, or they will think consent is broken.

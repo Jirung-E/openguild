@@ -5997,13 +5997,19 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
                 json_println!(serde_json::json!({
                     "active": loaded.active.iter().map(|p| serde_json::json!({
                         "name": p.def.name,
+                        "description": p.def.description,
                         "on": p.def.on,
                         "scope": p.def.scope,
                         "action": p.def.action.kind(),
                         "script": p.def.script,
                     })).collect::<Vec<_>>(),
-                    "needs_consent": loaded.needs_consent.iter()
-                        .map(|p| p.def.name.clone()).collect::<Vec<_>>(),
+                    // REQ-020: 예전엔 이름만 실었다. 설명이 제일 필요한 쪽이
+                    // **아직 동의 안 한** 플러그인이라, 여기만 이름뿐이면
+                    // 정작 판단할 때 설명이 없다.
+                    "needs_consent": loaded.needs_consent.iter().map(|p| serde_json::json!({
+                        "name": p.def.name,
+                        "description": p.def.description,
+                    })).collect::<Vec<_>>(),
                     "errors": loaded.errors.iter()
                         .map(|(n, e)| serde_json::json!({ "name": n, "error": e }))
                         .collect::<Vec<_>>(),
@@ -6037,6 +6043,11 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
                     p.def.on.join(" "),
                     p.def.action.kind()
                 );
+                // REQ-020: 설명은 다음 줄에 들여쓴다. 같은 줄에 붙이면 길이가
+                // 제각각이라 위 세 열이 안 맞는다.
+                if let Some(d) = &p.def.description {
+                    println!("    {d}");
+                }
             }
             for p in &loaded.needs_consent {
                 println!(
@@ -6047,6 +6058,9 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
                         "(awaiting consent — not running)"
                     )
                 );
+                if let Some(d) = &p.def.description {
+                    println!("    {d}");
+                }
             }
             for (name, why) in &loaded.errors {
                 println!("✗ {name}  {why}");

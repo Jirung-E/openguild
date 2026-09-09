@@ -28,6 +28,7 @@ Read `examples/plugins/README.md` before writing one from scratch.
 ```json
 {
   "name": "ai-notify",
+  "description": "Sends new quests and comments to my service.",
   "on": ["quest.created", "comment.added"],
   "scope": ["cli", "gui"],
   "action": {
@@ -43,6 +44,7 @@ Read `examples/plugins/README.md` before writing one from scratch.
 
 | Field | Meaning |
 |---|---|
+| `description` | Optional. One sentence, in the author's own words, shown in the desktop settings screen and `openguild plugin list`. Every other field is machine-readable, so without this a person deciding whether to allow the plugin has nothing saying what it is *for*. Max 500 characters; scanned for secrets like every other field. |
 | `on` | Event patterns. `quest.created`, `quest.*`, `*.created`, `*`. Prefix `pre:` to observe *before* the mutation (observation only — a plugin can never veto). |
 | `scope` | **Required, no default.** Where it runs: `cli` / `gui` / `server`. Putting `server` in it applies the plugin to everyone using that server. |
 | `action` | `post` (HTTP) or `run` (process, event JSON on **stdin**). These two are all the core owns. |

@@ -22,6 +22,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginView {
     pub name: String,
+    /// REQ-020: 정의가 적어 둔 사람 말 설명. 없을 수 있다 — 선택 필드다.
+    pub description: Option<String>,
     pub on: Vec<String>,
     pub scope: Vec<String>,
     /// `post` | `run`
@@ -70,7 +72,7 @@ impl PluginStatus {
     }
 }
 
-fn view(p: &Plugin, granted: bool, scope: Scope) -> PluginView {
+pub(super) fn view(p: &Plugin, granted: bool, scope: Scope) -> PluginView {
     let (action, target) = match &p.def.action {
         Action::Post { url, .. } => ("post", url.clone()),
         Action::Run { command, args, .. } => (
@@ -82,6 +84,7 @@ fn view(p: &Plugin, granted: bool, scope: Scope) -> PluginView {
     };
     PluginView {
         name: p.def.name.clone(),
+        description: p.def.description.clone(),
         on: p.def.on.clone(),
         scope: p.def.scope.iter().map(scope_label).collect(),
         action: action.into(),

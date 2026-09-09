@@ -172,6 +172,7 @@ openguild campaign link C-001 DEV-001
 ```json
 {
   "name": "ai-notify",
+  "description": "새 퀘스트와 댓글을 내 서비스로 보냅니다.",
   "on": ["quest.created", "comment.added"],
   "scope": ["cli", "gui"],
   "action": {
@@ -183,6 +184,10 @@ openguild campaign link C-001 DEV-001
 }
 ```
 
+- `description` 은 선택입니다. 적어 두면 데스크톱 설정 → 플러그인 과
+  `openguild plugin list` 에 그대로 보입니다 — 나머지 필드는 전부 기계가 읽는
+  값이라, 없으면 남이 이 플러그인을 허용할지 정할 때 "무슨 일을 하는가" 를
+  알려주는 것이 하나도 없습니다. 500자까지.
 - `scope` 는 **필수**입니다. `cli` / `gui` / `server` 중에서 고릅니다.
   `server` 를 넣으면 그 서버를 쓰는 **모두**에게 적용됩니다.
 - 동작은 `post`(HTTP 로 보내기)와 `run`(프로그램 실행, 이벤트는 stdin) 둘뿐입니다.

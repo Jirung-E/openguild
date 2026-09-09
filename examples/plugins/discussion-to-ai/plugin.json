@@ -1,5 +1,6 @@
 {
   "name": "discussion-to-ai",
+  "description": "아직 해결되지 않은 토론 댓글만 골라 내 서비스로 보냅니다. 일반 댓글과 이미 해결된 것은 안 보냅니다.",
   "on": ["comment.added", "comment.unresolved"],
   "scope": ["cli", "gui", "server"],
   "action": {

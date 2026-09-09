@@ -77,6 +77,59 @@ describe('플러그인 조회/관리의 경계', () => {
 		vi.unstubAllGlobals();
 	});
 
+	// REQ-020: 설명은 **플러그인 작성자가 쓴 데이터**라 전송 계층이 손대면 안
+	// 된다. 없는 것(null)과 있는 것이 둘 다 그대로 와야 한다 — 화면의
+	// `{#if p.description}` 이 그 둘을 가른다.
+	it('설명이 조회 결과에 그대로 실려 온다', async () => {
+		const body = {
+			plugins: [
+				{
+					name: 'with-desc',
+					description: '퀘스트가 생기면 텔레그램으로 알립니다.',
+					on: ['quest.created'],
+					scope: ['cli'],
+					action: 'post',
+					target: 'https://example.test/hook',
+					script: null,
+					script_src: null,
+					granted: false,
+					runs_here: true
+				},
+				{
+					name: 'no-desc',
+					description: null,
+					on: ['quest.created'],
+					scope: ['cli'],
+					action: 'post',
+					target: 'https://example.test/hook',
+					script: null,
+					script_src: null,
+					granted: true,
+					runs_here: true
+				}
+			],
+			errors: [],
+			trusted: false,
+			manageable: false,
+			no_guild: false,
+			problems: []
+		};
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(
+				async () =>
+					new Response(JSON.stringify(body), {
+						status: 200,
+						headers: { 'content-type': 'application/json' }
+					})
+			)
+		);
+		const got = await pluginApi.status();
+		expect(got.plugins[0].description).toBe('퀘스트가 생기면 텔레그램으로 알립니다.');
+		expect(got.plugins[1].description).toBeNull();
+		vi.unstubAllGlobals();
+	});
+
 	// 조회는 transport 를 그대로 탄다 — 그래야 화면이 보고 있는 길드와 목록이
 	// 같은 길드다. 브라우저에서도 막히면 안 된다.
 	it('조회는 브라우저에서도 서버로 나간다', async () => {

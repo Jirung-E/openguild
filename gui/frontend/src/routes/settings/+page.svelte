@@ -511,6 +511,13 @@
 								<strong>{p.name}</strong>
 								<code class="plugin-target">{p.action} → {p.target}</code>
 							</div>
+							<!-- REQ-020: 나머지 줄은 전부 기계가 읽는 값이라, 처음 보는
+							     플러그인 앞에서 "이게 무슨 일을 하는가" 를 알려주는 것이
+							     하나도 없었다. 정의가 안 적었으면 자리도 안 만든다 —
+							     빈 줄은 없는 것보다 나쁘다. -->
+							{#if p.description}
+								<p class="plugin-desc">{p.description}</p>
+							{/if}
 							<div class="plugin-meta">
 								<span>{p.on.join(' ')}</span>
 								<span>{t('settings.pluginScope', $locale)}: {p.scope.join(', ')}</span>
@@ -1110,6 +1117,18 @@
 		font-size: 0.8rem;
 		color: var(--text-muted);
 		word-break: break-all;
+	}
+	.plugin-desc {
+		/* 사람이 읽는 유일한 줄이다 — 목적지·패턴보다 눈에 먼저 들어와야 하므로
+		   muted 로 죽이지 않는다. */
+		margin: 0;
+		font-size: 0.85rem;
+		color: var(--text);
+		line-height: 1.45;
+		/* 500자까지 허용하는데 그 안에 공백 없는 긴 토큰(주소 등)이 있으면 상자를
+		   넘는다 — `.plugin-target` 이 같은 이유로 break-all 을 쓴다. 이쪽은 산문
+		   이므로 어절을 먼저 지키는 anywhere 를 쓴다. */
+		overflow-wrap: anywhere;
 	}
 	.plugin-meta {
 		display: flex;

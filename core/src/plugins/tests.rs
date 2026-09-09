@@ -167,6 +167,7 @@ fn one_broken_definition_does_not_block_the_rest() {
 fn def(action: Action) -> PluginDef {
     PluginDef {
         name: "p".into(),
+        description: None,
         on: vec!["quest.created".into()],
         scope: vec![Scope::Cli],
         action,
@@ -899,4 +900,151 @@ async fn no_active_plugin_means_no_sink() {
 
     let _ = std::fs::remove_dir_all(&g);
     let _ = std::fs::remove_dir_all(&home);
+}
+
+// ── REQ-020: 설명 ───────────────────────────────────────
+
+fn post_def() -> PluginDef {
+    def(Action::Post {
+        url: "https://x.test".into(),
+        headers: Default::default(),
+        body_env: Default::default(),
+        timeout_ms: None,
+    })
+}
+
+/// 정의부터 `PluginView` 까지 값이 실제로 간다. 중간 어느 한 곳이 빠뜨리면
+/// 화면에는 아무것도 안 뜨는데 어디서 끊겼는지 알 수 없다.
+#[test]
+fn a_description_reaches_the_view() {
+    let _guard = env_lock();
+    let home = fresh_tmp("desc-home");
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let g = fresh_tmp("desc");
+    let mut body = ai_notify(&["cli"]);
+    body["description"] = json!("퀘스트가 생기면 내 서비스로 보냅니다.");
+    write_plugin(&g, "ai-notify", body);
+
+    let loaded = load_all(&g);
+    assert!(loaded.errors.is_empty(), "{:?}", loaded.errors);
+    let p = loaded.needs_consent.first().expect("적재됐어야 한다");
+    assert_eq!(
+        p.def.description.as_deref(),
+        Some("퀘스트가 생기면 내 서비스로 보냅니다.")
+    );
+
+    let v = view::view(p, false, Scope::Cli);
+    assert_eq!(
+        v.description.as_deref(),
+        Some("퀘스트가 생기면 내 서비스로 보냅니다."),
+        "정의에는 있는데 화면으로 가는 모양에서 사라졌다"
+    );
+
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 선택 필드다. 없는 기존 정의가 그대로 적재돼야 한다.
+#[test]
+fn a_definition_without_a_description_still_loads() {
+    let _guard = env_lock();
+    let home = fresh_tmp("nodesc-home");
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let g = fresh_tmp("nodesc");
+    write_plugin(&g, "ai-notify", ai_notify(&["cli"]));
+
+    let loaded = load_all(&g);
+    assert!(loaded.errors.is_empty(), "{:?}", loaded.errors);
+    let p = loaded.needs_consent.first().expect("적재됐어야 한다");
+    assert!(p.def.description.is_none());
+    assert!(view::view(p, false, Scope::Cli).description.is_none());
+
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// **업그레이드로 기존 동의가 전부 날아가면 안 된다.** 지문은 정의를 통째로
+/// 직렬화한 것이라([`consent::fingerprint`]), 필드가 늘면서 `"description":
+/// null` 이 끼면 어제 허용한 플러그인이 오늘 전부 "동의 대기" 가 된다.
+/// `skip_serializing_if` 가 그걸 막는데, 그건 빼기 쉬운 한 줄이다.
+#[test]
+fn an_absent_description_does_not_change_the_fingerprint() {
+    let d = post_def();
+    let json = serde_json::to_value(&d).unwrap();
+    assert!(
+        json.get("description").is_none(),
+        "설명이 없는데 직렬화에 나타났다 — 기존 동의가 전부 무효가 된다: {json}"
+    );
+}
+
+/// 공백뿐인 설명은 없는 것으로 읽는다. 화면에는 똑같이 아무것도 안 보이는데
+/// 지문에서는 다른 값이라, 넣었다 뺐다 하는 것만으로 동의를 다시 묻는다.
+#[test]
+fn a_blank_description_is_read_as_absent() {
+    let g = fresh_tmp("blankdesc");
+    let mut body = ai_notify(&["cli"]);
+    body["description"] = json!("   \n  ");
+    write_plugin(&g, "ai-notify", body);
+
+    let d = read_def(&plugins_dir(&g).join("ai-notify").join("plugin.json")).unwrap();
+    assert!(d.description.is_none(), "{:?}", d.description);
+    assert!(
+        serde_json::to_value(&d)
+            .unwrap()
+            .get("description")
+            .is_none()
+    );
+    let _ = std::fs::remove_dir_all(&g);
+}
+
+/// 앞뒤 공백은 턴다 — 화면과 지문이 같은 문자열을 봐야 한다.
+#[test]
+fn a_description_is_trimmed() {
+    let g = fresh_tmp("trimdesc");
+    let mut body = ai_notify(&["cli"]);
+    body["description"] = json!("  알림을 보냅니다.  ");
+    write_plugin(&g, "ai-notify", body);
+
+    let d = read_def(&plugins_dir(&g).join("ai-notify").join("plugin.json")).unwrap();
+    assert_eq!(d.description.as_deref(), Some("알림을 보냅니다."));
+    let _ = std::fs::remove_dir_all(&g);
+}
+
+/// 상한을 넘기면 적재에서 걸린다. 화면 한 줄 자리이고 지문에도 들어간다.
+#[test]
+fn an_overlong_description_is_rejected() {
+    let mut d = post_def();
+    d.description = Some("가".repeat(MAX_DESCRIPTION_CHARS + 1));
+    let e = validate(&d).unwrap_err().to_string();
+    assert!(e.contains("description"), "{e}");
+
+    // 딱 상한까지는 통과한다 — 경계에서 한 칸 어긋나면 멀쩡한 설명이 막힌다.
+    d.description = Some("가".repeat(MAX_DESCRIPTION_CHARS));
+    assert!(validate(&d).is_ok());
+}
+
+/// **문자 수로 센다.** 바이트로 세면 한글 설명이 영어의 3분의 1 길이에서
+/// 막힌다 — 한글은 UTF-8 에서 글자당 3바이트다.
+#[test]
+fn the_description_limit_counts_characters_not_bytes() {
+    let mut d = post_def();
+    let korean = "가".repeat(MAX_DESCRIPTION_CHARS);
+    assert!(korean.len() > MAX_DESCRIPTION_CHARS, "전제가 틀렸다");
+    d.description = Some(korean);
+    assert!(
+        validate(&d).is_ok(),
+        "한글 설명이 상한 안인데 바이트로 세서 막혔다"
+    );
+}
+
+/// git 에 커밋되는 자유 텍스트다. 다른 필드는 막으면서 여기만 열어 두면
+/// 토큰을 적을 자리를 하나 만들어 주는 셈이다.
+#[test]
+fn a_secret_in_the_description_is_rejected() {
+    let mut d = post_def();
+    d.description = Some("키는 sk-ABCDEFGHIJKLMNOPQRSTUVWXYZ0123 를 쓰세요".into());
+    let e = validate(&d).unwrap_err().to_string();
+    assert!(e.contains("description"), "{e}");
 }

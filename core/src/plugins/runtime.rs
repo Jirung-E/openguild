@@ -286,6 +286,7 @@ mod tests {
     fn plugin(name: &str, on: &[&str]) -> Plugin {
         Plugin {
             def: PluginDef {
+                description: None,
                 name: name.into(),
                 on: on.iter().map(|s| s.to_string()).collect(),
                 scope: vec![Scope::Cli],

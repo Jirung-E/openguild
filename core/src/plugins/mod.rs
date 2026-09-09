@@ -113,6 +113,19 @@ impl Action {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PluginDef {
     pub name: String,
+    /// REQ-020: 이 플러그인이 무슨 일을 하는지 **사람 말로**. 선택이다.
+    ///
+    /// 나머지 필드는 전부 기계가 읽는 값이라, 처음 보는 플러그인 앞에서
+    /// "이게 무슨 일을 하는가" 를 알려주는 것이 하나도 없었다. 이 화면의 존재
+    /// 이유가 *무엇에 동의하는지 보여주는 것*([[DEV-383]])인데 정작 "무엇을" 에
+    /// 해당하는 문장이 없었다. 스크립트 원문을 펼칠 수는 있지만 그건 읽을 수
+    /// 있는 사람에게만 답이다.
+    ///
+    /// **없을 때 직렬화에 나타나지 않는다**(`skip_serializing_if`). 동의 지문이
+    /// 정의를 통째로 담으므로([`consent::fingerprint`]), 나타났다면 이 필드가
+    /// 생긴 것만으로 기존 동의가 전부 무효가 됐을 것이다.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
     /// 구독 패턴 — `quest.created`, `quest.*`, `*.created`, `pre:quest.*`.
     pub on: Vec<String>,
     /// **비어 있으면 적재하지 않는다.** 위 [`Scope`] 주석 참고.
@@ -365,10 +378,30 @@ fn compile_script(dir: &Path, def: &PluginDef) -> AppResult<Compiled> {
 pub fn read_def(manifest: &Path) -> AppResult<PluginDef> {
     let raw = std::fs::read_to_string(manifest)
         .map_err(|e| AppError::BadRequest(format!("plugin.json 읽기 실패: {e}")))?;
-    let def: PluginDef = serde_json::from_str(&raw)
+    let mut def: PluginDef = serde_json::from_str(&raw)
         .map_err(|e| AppError::BadRequest(format!("plugin.json 형식 오류: {e}")))?;
+    normalize(&mut def);
     validate(&def)?;
     Ok(def)
+}
+
+/// REQ-020: 설명 길이 상한. 설정 화면의 한 줄짜리 목록에 그대로 그려지고
+/// 동의 지문에도 들어간다 — 상한이 없으면 목록에 문단이 들어오고 지문 파일이
+/// 정의 하나로 부푼다. 긴 설명은 플러그인 폴더의 README 자리다.
+pub const MAX_DESCRIPTION_CHARS: usize = 500;
+
+/// 읽은 직후의 정규화. **검증 전에** 돈다.
+///
+/// REQ-020: 공백뿐인 설명을 없는 것으로 만든다. 지문에서는 `""` 와 "없음" 이
+/// 다른 값이라, 화면에는 똑같이 아무것도 안 보이는 두 상태가 동의를 다시
+/// 묻게 만든다. 앞뒤 공백도 여기서 턴다 — 화면과 지문이 같은 문자열을 본다.
+fn normalize(def: &mut PluginDef) {
+    if let Some(d) = def.description.take() {
+        let trimmed = d.trim();
+        if !trimmed.is_empty() {
+            def.description = Some(trimmed.to_string());
+        }
+    }
 }
 
 /// 적재 전 검사.
@@ -386,6 +419,19 @@ pub fn validate(def: &PluginDef) -> AppResult<()> {
             "{}: `on` 이 비어 있습니다 — 구독할 이벤트를 하나 이상 적으세요",
             def.name
         )));
+    }
+    // REQ-020: 문자 수로 센다 — 바이트로 세면 한글 설명이 영어의 3분의 1 길이
+    // 에서 막힌다.
+    if let Some(d) = def.description.as_deref() {
+        let n = d.chars().count();
+        if n > MAX_DESCRIPTION_CHARS {
+            return Err(AppError::BadRequest(format!(
+                "{}: `description` 이 너무 깁니다 ({n}자, 최대 {MAX_DESCRIPTION_CHARS}자) — \
+                 설정 화면의 한 줄 설명 자리입니다. 긴 설명은 플러그인 폴더의 \
+                 README 에 두세요.",
+                def.name
+            )));
+        }
     }
     if def.scope.is_empty() {
         return Err(AppError::BadRequest(format!(
@@ -463,7 +509,7 @@ fn check_no_literal_secret(def: &PluginDef) -> AppResult<()> {
             def.name
         ))
     };
-    let strings: Vec<(String, &String)> = match &def.action {
+    let mut strings: Vec<(String, &String)> = match &def.action {
         Action::Post { url, headers, .. } => {
             let mut v: Vec<(String, &String)> = vec![("url".into(), url)];
             v.extend(headers.iter().map(|(k, val)| (format!("headers.{k}"), val)));
@@ -479,6 +525,12 @@ fn check_no_literal_secret(def: &PluginDef) -> AppResult<()> {
             v
         }
     };
+    // REQ-020: 설명도 git 에 커밋되는 자유 텍스트다. 다른 필드는 막으면서
+    // 여기만 열어 두면 토큰을 적을 자리를 하나 만들어 주는 셈이다. 필드 이름이
+    // 비밀을 뜻하지는 않으므로 `looks_like_known_key` 쪽만 걸린다.
+    if let Some(d) = def.description.as_ref() {
+        strings.push(("description".into(), d));
+    }
     for (field, value) in strings {
         if looks_like_known_key(value) {
             return Err(reject(&field));
