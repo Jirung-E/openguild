@@ -137,17 +137,18 @@ impl Outbound {
 
 /// DEV-385: 프로세스 그룹째 죽인다 — 손자를 남기지 않기 위해서다.
 ///
-/// `libc` 를 새로 들이지 않으려고 `kill(1)` 을 쓴다. POSIX 에서 음수 PID 는
-/// "그 프로세스 그룹" 을 뜻한다. 실패는 무시한다 — 이미 끝났을 수도 있고,
-/// 여기서 실패한다고 길드가 멈출 이유는 없다.
+/// BUG-276: 처음엔 `libc` 를 안 들이려고 `kill(1)` 을 셸아웃했다. 그게 틀렸다 —
+/// **BSD(macOS)와 procps(Linux)의 인자 해석이 달라** 리눅스에서만 손자가 안
+/// 죽고 남았고, `while true` 훅이 CI 러너를 폭주시켜 러너가 통신을 잃었다.
+/// macOS 는 통과했으므로 로컬에서는 영영 안 보였다.
+///
+/// 시그널은 셸 도구가 아니라 시스템 호출로 보낸다. 프로세스도 하나 덜 띄운다.
+/// 실패는 무시한다 — 이미 끝났을 수도 있고, 여기서 실패한다고 길드가 멈출
+/// 이유는 없다.
 #[cfg(unix)]
 fn kill_group(pid: u32) {
-    let _ = Command::new("kill")
-        .arg("-KILL")
-        .arg(format!("-{pid}"))
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
+    // 자식을 `process_group(0)` 으로 띄웠으므로 pgid == 자식 pid 다.
+    unsafe { libc::killpg(pid as libc::pid_t, libc::SIGKILL) };
 }
 
 /// Windows 에는 프로세스 그룹이 없다 — job object 가 필요한데 그건 별개
@@ -582,7 +583,11 @@ mod tests {
                 command: "sh".into(),
                 args: vec![
                     "-c".into(),
-                    "while true; do echo x >> ticks; sleep 0.05; done".into(),
+                    // BUG-276: **유한 루프**로 둔다. `while true` 였을 때, 죽이기가 리눅스에서
+                    // 깨지자 훅이 CI 러너에 영원히 남아 러너를 죽였다. 시험이
+                    // 무는 것과 별개로, 시험이 남기는 것도 시험의 책임이다.
+                    "i=0; while [ $i -lt 400 ]; do echo x >> ticks; sleep 0.05; i=$((i+1)); done"
+                        .into(),
                 ],
                 timeout_ms: Some(300),
             },
@@ -803,7 +808,8 @@ mod tests {
                 command: "sh".into(),
                 args: vec![
                     "-c".into(),
-                    "(while true; do echo x >> grand.log; sleep 0.05; done) & sleep 30".into(),
+                    // BUG-276: 손자도 유한하게 — 위와 같은 이유다.
+                    "(i=0; while [ $i -lt 400 ]; do echo x >> grand.log; sleep 0.05; i=$((i+1)); done) & sleep 30".into(),
                 ],
                 timeout_ms: Some(400),
             },

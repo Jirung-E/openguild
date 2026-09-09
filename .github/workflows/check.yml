@@ -30,6 +30,10 @@ jobs:
   cargo:
     name: cargo (core + cli + server + gui)
     runs-on: ubuntu-latest
+    # BUG-276: 상한이 없어 폭주한 훅 프로세스가 러너를 47분간 붙들다가 "러너와
+    # 통신이 끊겼다" 로 끝났다 — 어디서 멈췄는지도 안 남았다. 상한을 두면 빨리
+    # 죽고, 무엇이 오래 걸렸는지가 기록에 남는다. 정상 소요는 5분 안쪽이다.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
 
@@ -100,6 +104,7 @@ jobs:
   macos:
     name: cargo (macos-arm64)
     runs-on: macos-26
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
 
@@ -140,6 +145,7 @@ jobs:
   gui-frontend:
     name: gui/frontend (svelte-kit)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: gui/frontend
@@ -222,6 +228,7 @@ jobs:
   release-notes:
     name: release notes extraction
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
 

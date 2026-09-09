@@ -40,6 +40,7 @@ jobs:
   release-notes:
     name: release notes
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
 
@@ -67,6 +68,7 @@ jobs:
   windows:
     name: build (windows-x64)
     runs-on: windows-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
 
@@ -139,6 +141,7 @@ jobs:
   macos:
     name: build (macos-arm64)
     runs-on: macos-26
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
 
@@ -202,6 +205,7 @@ jobs:
   linux:
     name: build (linux-x64)
     runs-on: ubuntu-22.04
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
 
@@ -279,6 +283,7 @@ jobs:
   publish-release:
     name: assemble & publish release
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     needs: [release-notes, windows, macos, linux]
     steps:
       - uses: actions/checkout@v5

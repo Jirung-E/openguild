@@ -56,3 +56,10 @@ reqwest = { version = "0.12", default-features = false, features = [
     "blocking",
     "rustls-tls",
 ] }
+
+# BUG-276: 플러그인 `run` 의 시한 처리에서 **프로세스 그룹째** 죽이기 위해서만
+# 쓴다. 예전엔 `kill(1)` 을 셸아웃했는데, BSD(macOS)와 procps(Linux)의 인자
+# 해석이 달라 리눅스에서만 손자가 안 죽고 남았다 — CI 러너가 그 폭주에 죽었다.
+# 시그널은 셸 도구가 아니라 시스템 호출로 보내는 것이 맞다.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
