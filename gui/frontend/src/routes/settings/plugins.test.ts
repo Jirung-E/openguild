@@ -96,3 +96,60 @@ describe('REQ-020 설정 화면의 플러그인 설명', () => {
 		expect(await screen.findByText(raw)).toBeTruthy();
 	});
 });
+
+// BUG-277: 버튼의 **보이는 문구**와 **들리는 이름**은 다른 것이다.
+//
+// DEV-383 이 "버튼 이름이 전부 같음" 을 지적했을 때 보이는 텍스트에 플러그인
+// 이름을 붙여서 고쳤다. 그건 접근성을 화면의 비용으로 산 것이었다 — 이름은
+// 같은 항목 세 줄 위에 이미 있다. 두 축을 따로 단언해야 한 축을 고치다 다른
+// 축을 되돌리는 일이 안 생긴다.
+describe('BUG-277 버튼 이름은 aria-label 로만 구분한다', () => {
+	beforeEach(() => {
+		status.mockReset();
+		manageable.mockReturnValue(true);
+	});
+
+	function manageableStatus(plugins: PluginView[]): PluginStatus {
+		return { plugins, errors: [], trusted: false, manageable: true, no_guild: false, problems: [] };
+	}
+
+	it('보이는 문구에는 이름이 없고, 접근 이름에는 있다', async () => {
+		const granted = { ...plugin('telegram-quest-status', null), granted: true };
+		const pending = { ...plugin('desktop-notify', null), granted: false };
+		status.mockResolvedValue(manageableStatus([granted, pending]));
+		await openPluginsTab();
+
+		// 관리 가능한 상태여야 버튼이 그려진다.
+		await screen.findByText('telegram-quest-status');
+		const buttons = Array.from(document.querySelectorAll('.plugin-actions button'));
+		expect(buttons.length).toBe(2);
+
+		for (const b of buttons) {
+			expect(b.textContent?.trim()).not.toContain('telegram-quest-status');
+			expect(b.textContent?.trim()).not.toContain('desktop-notify');
+		}
+
+		// 들리는 이름은 서로 달라야 한다 — 그게 DEV-383 이 고치려던 것이다.
+		const labels = buttons.map((b) => b.getAttribute('aria-label'));
+		expect(labels.every((l) => !!l)).toBe(true);
+		expect(new Set(labels).size).toBe(2);
+		expect(labels.some((l) => l!.includes('telegram-quest-status'))).toBe(true);
+		expect(labels.some((l) => l!.includes('desktop-notify'))).toBe(true);
+	});
+
+	it('스크립트 펼침 버튼도 마찬가지다', async () => {
+		const withScript = {
+			...plugin('has-script', null),
+			script: 'transform.rhai',
+			script_src: 'fn should_send(e) { true }'
+		};
+		status.mockResolvedValue(manageableStatus([withScript]));
+		await openPluginsTab();
+		await screen.findByText('has-script');
+
+		const toggle = document.querySelector('button.link-btn[aria-expanded]');
+		expect(toggle).not.toBeNull();
+		expect(toggle!.textContent?.trim()).not.toContain('has-script');
+		expect(toggle!.getAttribute('aria-label')).toContain('has-script');
+	});
+});

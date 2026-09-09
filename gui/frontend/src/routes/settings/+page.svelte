@@ -534,16 +534,29 @@
 							{#if p.script_src}
 								<!-- DEV-383: 이 화면의 존재 이유가 "무엇에 동의하는지 보여
 								     주는 것" 인데, 펼침 상태가 스크린리더에 안 전달되면
-								     그 코드는 사실상 안 보이는 것과 같다. -->
+								     그 코드는 사실상 안 보이는 것과 같다.
+
+								     BUG-277: 이 아래 버튼 셋의 이름은 **aria-label 로만**
+								     구분한다. 스크린리더로 목록을 훑으면 "허용, 허용, 허용"
+								     으로만 들려 어느 것인지 알 수 없는데(DEV-383), 그걸
+								     고치려고 보이는 텍스트에 이름을 붙였던 것이 잘못이었다
+								     — 이름은 같은 항목 세 줄 위에 이미 있다. 고쳐야 했던
+								     것은 접근 이름뿐이다. 접근 이름이 보이는 문구를 그대로
+								     포함하므로 WCAG 2.5.3(Label in Name)도 지킨다. -->
 								<button
 									type="button"
 									class="link-btn"
 									aria-expanded={openScript === p.name}
 									aria-controls={`plugin-script-${p.name}`}
+									aria-label={`${
+										openScript === p.name
+											? t('settings.pluginHideScript', $locale)
+											: t('settings.pluginShowScript', $locale)
+									} — ${p.name}`}
 									onclick={() => (openScript = openScript === p.name ? null : p.name)}
 									>{openScript === p.name
 										? t('settings.pluginHideScript', $locale)
-										: t('settings.pluginShowScript', $locale)} — {p.name}</button
+										: t('settings.pluginShowScript', $locale)}</button
 								>
 								{#if openScript === p.name}
 									<pre id={`plugin-script-${p.name}`} class="plugin-script">{p.script_src}</pre>
@@ -562,8 +575,9 @@
 											title={pluginStatus?.trusted
 												? t('settings.pluginRevokeTrustedHint', $locale)
 												: undefined}
+											aria-label={`${t('settings.pluginRevoke', $locale)} — ${p.name}`}
 											onclick={() => togglePlugin(p.name, false)}
-											>{t('settings.pluginRevoke', $locale)} — {p.name}</button
+											>{t('settings.pluginRevoke', $locale)}</button
 										>
 									{:else}
 										<button
@@ -571,8 +585,9 @@
 											class="btn-go"
 											bind:this={pluginBtns[p.name]}
 											disabled={pluginBusy.includes(p.name)}
+											aria-label={`${t('settings.pluginAllow', $locale)} — ${p.name}`}
 											onclick={() => togglePlugin(p.name, true)}
-											>{t('settings.pluginAllow', $locale)} — {p.name}</button
+											>{t('settings.pluginAllow', $locale)}</button
 										>
 									{/if}
 								</div>
