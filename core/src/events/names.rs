@@ -33,6 +33,57 @@ pub const COMMENT_DISCUSSION_ON: &str = "comment.discussion_on";
 pub const COMMENT_DISCUSSION_OFF: &str = "comment.discussion_off";
 pub const COMMENT_REACTION_CHANGED: &str = "comment.reaction_changed";
 
+// ── 캠페인 ([[DEV-388]]) ─────────────────────────────────
+pub const CAMPAIGN_CREATED: &str = "campaign.created";
+pub const CAMPAIGN_UPDATED: &str = "campaign.updated";
+pub const CAMPAIGN_DELETED: &str = "campaign.deleted";
+pub const CAMPAIGN_QUEST_LINKED: &str = "campaign.quest_linked";
+pub const CAMPAIGN_QUEST_UNLINKED: &str = "campaign.quest_unlinked";
+pub const CAMPAIGN_CHECKLIST_ADDED: &str = "campaign.checklist_added";
+pub const CAMPAIGN_CHECKLIST_REMOVED: &str = "campaign.checklist_removed";
+pub const CAMPAIGN_CHECKLIST_CHECKED: &str = "campaign.checklist_checked";
+/// 배너를 걸든 지우든 같은 이름 — `banner` 가 null 이면 지운 것이다.
+/// 이벤트 수를 안 늘리는 쪽([[DEV-373]])과 같은 결.
+pub const CAMPAIGN_BANNER_CHANGED: &str = "campaign.banner_changed";
+
+// ── 도서관 ───────────────────────────────────────────────
+pub const BOOK_CREATED: &str = "book.created";
+pub const BOOK_UPDATED: &str = "book.updated";
+pub const BOOK_DELETED: &str = "book.deleted";
+pub const BOOK_TAGS_CHANGED: &str = "book.tags_changed";
+pub const FOLDER_CREATED: &str = "folder.created";
+pub const FOLDER_DELETED: &str = "folder.deleted";
+
+// ── 규칙 ─────────────────────────────────────────────────
+pub const RULE_CREATED: &str = "rule.created";
+pub const RULE_UPDATED: &str = "rule.updated";
+pub const RULE_DELETED: &str = "rule.deleted";
+pub const RULE_RENAMED: &str = "rule.renamed";
+pub const RULE_TAGS_CHANGED: &str = "rule.tags_changed";
+
+// ── 첨부 ─────────────────────────────────────────────────
+pub const ATTACHMENT_ADDED: &str = "attachment.added";
+pub const ATTACHMENT_REMOVED: &str = "attachment.removed";
+
+// ── 길드 설정(타입·상태·태그 정의) ───────────────────────
+//
+// 사용자가 자주 건드리는 것은 아니지만 **길드의 어휘가 바뀌는 일**이다.
+// 상태 하나가 사라지면 그 상태를 쓰던 자동화가 조용히 멈춘다.
+pub const TYPE_CREATED: &str = "type.created";
+pub const TYPE_UPDATED: &str = "type.updated";
+pub const TYPE_DELETED: &str = "type.deleted";
+pub const TYPE_RENAMED: &str = "type.renamed";
+pub const STATUS_CREATED: &str = "status.created";
+pub const STATUS_UPDATED: &str = "status.updated";
+pub const STATUS_DELETED: &str = "status.deleted";
+pub const STATUS_RENAMED: &str = "status.renamed";
+/// upsert 라 만들기와 고치기가 한 이름이다.
+pub const TAG_DEFINED: &str = "tag.defined";
+pub const TAG_DELETED: &str = "tag.deleted";
+
+// ── 작업기록 ─────────────────────────────────────────────
+pub const WORKLOG_NOTE_CHANGED: &str = "worklog.note_changed";
+
 /// 1단계에 실제로 나가는 이벤트 전부. 와일드카드 매칭 검증과 문서에 쓴다.
 /// DEV-381: **관찰 pre 를 실제로 내는 이벤트.**
 ///
@@ -71,6 +122,40 @@ pub const ALL: &[&str] = &[
     COMMENT_DISCUSSION_ON,
     COMMENT_DISCUSSION_OFF,
     COMMENT_REACTION_CHANGED,
+    // DEV-388
+    CAMPAIGN_CREATED,
+    CAMPAIGN_UPDATED,
+    CAMPAIGN_DELETED,
+    CAMPAIGN_QUEST_LINKED,
+    CAMPAIGN_QUEST_UNLINKED,
+    CAMPAIGN_CHECKLIST_ADDED,
+    CAMPAIGN_CHECKLIST_REMOVED,
+    CAMPAIGN_CHECKLIST_CHECKED,
+    CAMPAIGN_BANNER_CHANGED,
+    BOOK_CREATED,
+    BOOK_UPDATED,
+    BOOK_DELETED,
+    BOOK_TAGS_CHANGED,
+    FOLDER_CREATED,
+    FOLDER_DELETED,
+    RULE_CREATED,
+    RULE_UPDATED,
+    RULE_DELETED,
+    RULE_RENAMED,
+    RULE_TAGS_CHANGED,
+    ATTACHMENT_ADDED,
+    ATTACHMENT_REMOVED,
+    TYPE_CREATED,
+    TYPE_UPDATED,
+    TYPE_DELETED,
+    TYPE_RENAMED,
+    STATUS_CREATED,
+    STATUS_UPDATED,
+    STATUS_DELETED,
+    STATUS_RENAMED,
+    TAG_DEFINED,
+    TAG_DELETED,
+    WORKLOG_NOTE_CHANGED,
 ];
 
 /// 구독 패턴이 이벤트 이름과 맞는지.

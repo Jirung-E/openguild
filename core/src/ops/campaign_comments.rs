@@ -8,6 +8,7 @@
 //! snapshot 백업 합류는 후속 quest. entry 포맷 / reactions (DEV-108) 은
 //! quest 와 동일 (`repo::comments` 공용).
 
+use crate::events::{names as ev, payload};
 use serde_json::json;
 
 use crate::error::{AppError, AppResult};
@@ -109,6 +110,15 @@ pub async fn add_entry(
     if body_trimmed.is_empty() {
         return Err(AppError::BadRequest("body is empty".into()));
     }
+    // DEV-388: 관찰 pre — 저장 **직전**. 아직 id 가 없으므로 요청 내용만 싣는다
+    // (`ok`/`error` 는 붙지 않는다 — 결과가 없다). 빈 본문처럼 애초에 저장될 수
+    // 없는 요청까지 흘리지 않도록 검증 뒤에 둔다.
+    store.emit_pre(ev::COMMENT_ADDED, || {
+        json!({
+            "target": payload::target("campaign", slug),
+            "comment": { "author": author, "body": body_trimmed, "parent_id": parent_id },
+        })
+    });
     let _ = journal::append(
         &store.journal_pool,
         "add_campaign_comment",
@@ -149,6 +159,12 @@ pub async fn add_entry(
     // REQ-008: 이 문서가 내보내는 cross-link 재계산 (실패해도 본 작업은 성공 —
     // 색인은 파생물이라 reindex 로 복구된다).
     let _ = crate::ops::backlinks::refresh_for(store, crate::repo::crosslink::DocKind::Campaign, slug).await;
+    // DEV-388: 캠페인 댓글도 `comment.*` 로 낸다(admin 확정 — 이름을 늘리지
+    // 않는다). 대신 어디에 달렸는지는 `target` 이 가른다.
+    store.emit_post(
+        ev::COMMENT_ADDED,
+        || json!({ "target": payload::target("campaign", slug), "comment": payload::comment(&entry) }),
+    );
     Ok(entry)
 }
 
@@ -193,6 +209,10 @@ pub async fn update_entry(
     // REQ-008: 이 문서가 내보내는 cross-link 재계산 (실패해도 본 작업은 성공 —
     // 색인은 파생물이라 reindex 로 복구된다).
     let _ = crate::ops::backlinks::refresh_for(store, crate::repo::crosslink::DocKind::Campaign, slug).await;
+    store.emit_post(
+        ev::COMMENT_UPDATED,
+        || json!({ "target": payload::target("campaign", slug), "comment": payload::comment(&updated) }),
+    );
     Ok(updated)
 }
 
@@ -212,6 +232,13 @@ pub async fn delete_entry(store: &Store, slug: &str, id: u64) -> AppResult<()> {
 
     let path = store.paths.campaign_comments_path(slug);
     let mut entries = repo::read_entries_at(&path).map_err(AppError::Internal)?;
+    // DEV-388: 지우기 **전에** 내용을 잡아 둔다. 지운 뒤에는 어디서도 못 읽으므로
+    // 구독자가 "무엇이 지워졌나" 를 영영 알 수 없다. 구독자가 없으면 복제도 안 한다.
+    let doomed = if store.events_wanted(ev::COMMENT_DELETED, crate::events::Phase::Post) {
+        entries.iter().find(|e| e.id == id).cloned()
+    } else {
+        None
+    };
     let before = entries.len();
     entries.retain(|e| e.id != id);
     if entries.len() == before {
@@ -225,6 +252,14 @@ pub async fn delete_entry(store: &Store, slug: &str, id: u64) -> AppResult<()> {
     // REQ-008: 이 문서가 내보내는 cross-link 재계산 (실패해도 본 작업은 성공 —
     // 색인은 파생물이라 reindex 로 복구된다).
     let _ = crate::ops::backlinks::refresh_for(store, crate::repo::crosslink::DocKind::Campaign, slug).await;
+    store.emit_post(ev::COMMENT_DELETED, || {
+        let comment = match &doomed {
+            Some(e) => payload::comment(e),
+            // 못 읽었으면 최소한 id 는 싣는다.
+            None => payload::comment_ref(id),
+        };
+        json!({ "target": payload::target("campaign", slug), "comment": comment })
+    });
     Ok(())
 }
 
@@ -294,6 +329,10 @@ pub async fn toggle_reaction(
     repo::write_entries_at(&path, &entries).map_err(AppError::Internal)?;
     // BUG-068: sibling 파일 mtime 캐시 동기화 (drift 오탐 방지).
     let _ = crate::file_mtime::touch(store, &path).await;
+    store.emit_post(
+        ev::COMMENT_REACTION_CHANGED,
+        || json!({ "target": payload::target("campaign", slug), "comment": payload::comment(&updated) }),
+    );
     Ok(updated)
 }
 
@@ -324,6 +363,17 @@ pub async fn toggle_pinned(store: &Store, slug: &str, id: u64) -> AppResult<Comm
     // BUG-068: sibling 파일 mtime 캐시 동기화 (drift 오탐 방지).
     let _ = crate::file_mtime::touch(store, &path).await;
     upsert_entry_db(store, slug, &updated).await?;
+    // DEV-388: `toggle_*` 은 내부 동사다. 공개 이벤트는 **방향까지** 가른다 —
+    // "고정됨" 을 구독하는데 해제까지 오면 쓸모가 없다.
+    let name = if updated.pinned {
+        ev::COMMENT_PINNED
+    } else {
+        ev::COMMENT_UNPINNED
+    };
+    store.emit_post(
+        name,
+        || json!({ "target": payload::target("campaign", slug), "comment": payload::comment(&updated) }),
+    );
     Ok(updated)
 }
 
@@ -333,6 +383,10 @@ pub fn get_memo(store: &Store, slug: &str) -> AppResult<Option<String>> {
 }
 
 /// 메모 쓰기 (전체 교체).
+///
+/// DEV-388: 여기서는 이벤트를 내지 않는다 — 메모는 gitignore 되는 **사적 기록**
+/// 이라 플러그인(=외부 프로세스)에 흘릴 것이 아니다. quest 쪽 `set_memo` 도 같은
+/// 이유로 제외했다.
 pub async fn set_memo(store: &Store, slug: &str, content: String) -> AppResult<()> {
     let _ = journal::append(
         &store.journal_pool,

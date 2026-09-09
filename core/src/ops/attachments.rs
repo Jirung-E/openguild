@@ -19,6 +19,7 @@
 use serde_json::json;
 
 use crate::error::{AppError, AppResult};
+use crate::events::{names as ev, payload};
 use crate::store::{journal, Store};
 
 /// REQ-002: `.guild/` 하위에서 열람/복사해도 되는 상대경로인지 검증한다.
@@ -394,7 +395,8 @@ pub async fn add_quest_attachment(
     path: &str,
     name: &str,
 ) -> AppResult<Vec<QuestAttachment>> {
-    add_attachment(store, &store.paths.quest_attachments_meta_path(slug), slug, path, name).await
+    add_attachment(store, &store.paths.quest_attachments_meta_path(slug), "quest", slug, path, name)
+        .await
 }
 
 /// campaign 에 첨부 추가. 갱신된 목록 반환.
@@ -404,7 +406,15 @@ pub async fn add_campaign_attachment(
     path: &str,
     name: &str,
 ) -> AppResult<Vec<QuestAttachment>> {
-    add_attachment(store, &store.paths.campaign_attachments_meta_path(slug), slug, path, name).await
+    add_attachment(
+        store,
+        &store.paths.campaign_attachments_meta_path(slug),
+        "campaign",
+        slug,
+        path,
+        name,
+    )
+    .await
 }
 
 /// DEV-237: 도서관 문서에 첨부 추가 — 이미지/동영상 외 임의 파일 지원.
@@ -415,13 +425,24 @@ pub async fn add_book_attachment(
     path: &str,
     name: &str,
 ) -> AppResult<Vec<QuestAttachment>> {
-    add_attachment(store, &store.paths.book_attachments_meta_path(book_id), book_id, path, name)
-        .await
+    add_attachment(
+        store,
+        &store.paths.book_attachments_meta_path(book_id),
+        "book",
+        book_id,
+        path,
+        name,
+    )
+    .await
 }
 
+/// DEV-388: `kind` 는 이벤트의 `target.kind` 로만 쓴다. 첨부가 어느 문서에 붙은
+/// 것인지는 사이드카 **경로**에만 있어서, 여기까지 안 내려보내면 구독자는
+/// `attachment.added` 를 받고도 무엇에 붙었는지 알 수 없다.
 async fn add_attachment(
     store: &Store,
     meta_path: &std::path::Path,
+    kind: &str,
     slug: &str,
     path: &str,
     name: &str,
@@ -445,12 +466,30 @@ async fn add_attachment(
     .await
     .map_err(AppError::Internal)?;
     let mut list = read_attachment_list(meta_path);
-    if !list.iter().any(|a| a.path == path) {
-        list.push(QuestAttachment {
+    // DEV-388: 이미 붙어 있는 path 면 아무것도 쓰지 않는다. 그런 호출은 변경이
+    // 아니므로 이벤트도 내지 않는다 (`change_status` 의 no-op 과 같은 결).
+    let added = if list.iter().any(|a| a.path == path) {
+        None
+    } else {
+        // DEV-388: 빈 이름은 path 로 대체된다. 이벤트에는 인자가 아니라 **목록에
+        // 실제로 들어간** 이름을 실어야 구독자가 보는 이름과 GUI 가 보여주는
+        // 이름이 갈리지 않는다.
+        let entry = QuestAttachment {
             path: path.to_string(),
             name: if name.trim().is_empty() { path.to_string() } else { name.to_string() },
-        });
+        };
+        list.push(entry.clone());
         write_attachment_list(meta_path, &list)?;
+        Some(entry)
+    };
+    // DEV-388: 사이드카 쓰기가 끝난 뒤에 낸다.
+    if let Some(a) = &added {
+        store.emit_post(ev::ATTACHMENT_ADDED, || {
+            json!({
+                "target": payload::target(kind, slug),
+                "attachment": payload::attachment(&a.name, &a.path),
+            })
+        });
     }
     Ok(list)
 }
@@ -461,7 +500,8 @@ pub async fn remove_quest_attachment(
     slug: &str,
     path: &str,
 ) -> AppResult<Vec<QuestAttachment>> {
-    remove_attachment(store, &store.paths.quest_attachments_meta_path(slug), slug, path).await
+    remove_attachment(store, &store.paths.quest_attachments_meta_path(slug), "quest", slug, path)
+        .await
 }
 
 /// campaign 첨부 제거. 갱신 목록 반환.
@@ -470,7 +510,14 @@ pub async fn remove_campaign_attachment(
     slug: &str,
     path: &str,
 ) -> AppResult<Vec<QuestAttachment>> {
-    remove_attachment(store, &store.paths.campaign_attachments_meta_path(slug), slug, path).await
+    remove_attachment(
+        store,
+        &store.paths.campaign_attachments_meta_path(slug),
+        "campaign",
+        slug,
+        path,
+    )
+    .await
 }
 
 /// DEV-237: 도서관 문서 첨부 제거. 갱신 목록 반환.
@@ -479,12 +526,21 @@ pub async fn remove_book_attachment(
     book_id: &str,
     path: &str,
 ) -> AppResult<Vec<QuestAttachment>> {
-    remove_attachment(store, &store.paths.book_attachments_meta_path(book_id), book_id, path).await
+    remove_attachment(
+        store,
+        &store.paths.book_attachments_meta_path(book_id),
+        "book",
+        book_id,
+        path,
+    )
+    .await
 }
 
+/// DEV-388: `kind` 는 add 쪽과 같은 이유로 받는다 — 이벤트의 `target.kind`.
 async fn remove_attachment(
     store: &Store,
     meta_path: &std::path::Path,
+    kind: &str,
     slug: &str,
     path: &str,
 ) -> AppResult<Vec<QuestAttachment>> {
@@ -500,6 +556,11 @@ async fn remove_attachment(
     .await
     .map_err(AppError::Internal)?;
     let mut list = read_attachment_list(meta_path);
+    // DEV-388: 목록에서 빠지고 나면 표시 이름을 어디서도 못 읽는다 — 빼기
+    // **전에** 잡아 둔다 (`delete_quest` 의 doomed 와 같은 이유). 거긴 조회를
+    // `events_wanted` 로 게이트했지만 여기선 사이드카가 이미 메모리에 있어
+    // 구독자가 없어도 추가 비용이 0 이다.
+    let doomed = list.iter().find(|a| a.path == path).cloned();
     let before = list.len();
     list.retain(|a| a.path != path);
     if list.len() != before {
@@ -507,6 +568,16 @@ async fn remove_attachment(
         // BUG-084: 다른 첨부 sidecar / 본문에서 더는 참조 안 하면 실제 파일 + blob 삭제
         // (blob 까지 지워야 reindex self-heal 이 복원하지 않음). 참조 중이면 유지.
         gc_attachment_file(store, path).await;
+    }
+    // DEV-388: 파일 GC 까지 끝난 뒤에 낸다. 목록에 없던 path 를 지우라는 호출은
+    // 아무것도 바꾸지 않았으므로 내지 않는다.
+    if let Some(a) = &doomed {
+        store.emit_post(ev::ATTACHMENT_REMOVED, || {
+            json!({
+                "target": payload::target(kind, slug),
+                "attachment": payload::attachment(&a.name, &a.path),
+            })
+        });
     }
     Ok(list)
 }

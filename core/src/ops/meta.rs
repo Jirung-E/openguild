@@ -17,10 +17,12 @@
 //! 즉시 표시 가능한 row 로 반환.
 
 use crate::error::{AppError, AppResult};
+use crate::events::{Phase, names as ev, payload};
 use crate::models::{QuestStatus, QuestType};
 use crate::repo::{GuildPaths, StatusFile, TypeFile};
 use crate::store::Store;
 use anyhow::Context;
+use serde_json::json;
 use sqlx::SqlitePool;
 use std::path::PathBuf;
 
@@ -113,12 +115,19 @@ pub async fn create_type(
         .execute(&store.index_pool)
         .await?;
 
-    Ok(QuestType {
+    let created = QuestType {
         id: new_id,
         prefix,
         color,
         description,
-    })
+    };
+    // DEV-388: 길드의 어휘가 하나 늘었다. 파일 + DB + counter 가 전부 쓰인
+    // 뒤에만 낸다 — 중간에 실패하면 구독자에겐 없던 일이어야 한다.
+    store.emit_post(
+        ev::TYPE_CREATED,
+        || json!({ "type": payload::quest_type(&created) }),
+    );
+    Ok(created)
 }
 
 /// type 수정 — color / description / **prefix (rename)** 통합.
@@ -175,6 +184,12 @@ pub async fn update_type(
         .execute(&store.index_pool)
         .await?;
 
+    // DEV-388: prefix 까지 바뀐 호출이면 `rename_type` 이 이미 `type.renamed` 를
+    // 냈다. 여기서 내는 것은 그 뒤에 이어진 color / description 변경이다.
+    store.emit_post(
+        ev::TYPE_UPDATED,
+        || json!({ "type": payload::quest_type(&row) }),
+    );
     Ok(row)
 }
 
@@ -200,6 +215,13 @@ pub async fn delete_type(store: &Store, prefix: String) -> AppResult<()> {
         .bind(row.id)
         .execute(&store.index_pool)
         .await?;
+    // DEV-388: 지운 뒤에는 무엇이었는지 어디서도 못 읽는다. 다만 여기서는
+    // 위의 참조 검사가 이미 row 를 읽어 뒀으므로 `delete_quest` 처럼 구독자를
+    // 보고 미리 조회할 필요가 없다 — 공짜로 손에 있는 것을 그대로 싣는다.
+    store.emit_post(
+        ev::TYPE_DELETED,
+        || json!({ "type": payload::quest_type(&row) }),
+    );
     Ok(())
 }
 
@@ -377,7 +399,17 @@ pub async fn rename_type(
         }
     }
 
-    fetch_type_by_prefix(&store.index_pool, &new_prefix).await
+    let renamed = fetch_type_by_prefix(&store.index_pool, &new_prefix).await?;
+    // DEV-388: prefix 는 퀘스트 slug 의 앞자리다. 새 이름만 받아서는 구독자가
+    // 자기가 들고 있던 `OLD-007` 이 무엇이 됐는지 맞출 수 없다 — 옛 이름을
+    // 같이 싣는다. (위의 대소문자 동일 no-op 은 여기까지 오지 않는다.)
+    store.emit_post(ev::TYPE_RENAMED, || {
+        json!({
+            "type": payload::quest_type(&renamed),
+            "change": payload::change(old_prefix.clone(), new_prefix.clone()),
+        })
+    });
+    Ok(renamed)
 }
 
 /// DEV-061: status slug rename — `.guild/quests/*.md` frontmatter 의
@@ -468,7 +500,17 @@ pub async fn rename_status_slug(
         }
     }
 
-    fetch_status_by_slug(&store.index_pool, &new_slug).await
+    let renamed = fetch_status_by_slug(&store.index_pool, &new_slug).await?;
+    // DEV-388: slug 은 frontmatter / history 가 참조하는 stable identifier 라,
+    // 바뀐 사실만으로는 구독자가 자기 쪽 매핑을 못 고친다. (같은 slug 인
+    // no-op 은 위에서 이미 돌아갔다 — 안 바뀐 것에 이벤트를 내면 안 된다.)
+    store.emit_post(ev::STATUS_RENAMED, || {
+        json!({
+            "status": payload::status(&renamed),
+            "change": payload::change(old_slug.clone(), new_slug.clone()),
+        })
+    });
+    Ok(renamed)
 }
 
 /// status slug validation — `slugify` 가 만드는 형식과 동일하게 강제.
@@ -711,7 +753,7 @@ pub async fn create_status(
     .fetch_one(&store.index_pool)
     .await?;
 
-    Ok(QuestStatus {
+    let created = QuestStatus {
         id: new_id,
         slug,
         name_en,
@@ -720,7 +762,14 @@ pub async fn create_status(
         sort_order,
         // DEV-093: 새 status 의 기본 — 사용자가 추후 토글.
         counts_as_done: false,
-    })
+    };
+    // DEV-388: 워크플로에 칸이 하나 생겼다 — 보드를 미러링하는 플러그인은
+    // 이걸 못 받으면 새 칸을 영영 모른다.
+    store.emit_post(
+        ev::STATUS_CREATED,
+        || json!({ "status": payload::status(&created) }),
+    );
+    Ok(created)
 }
 
 /// status 수정 — name_en / name_ko / color / sort_order / **slug (rename)** 통합.
@@ -829,6 +878,14 @@ pub async fn update_status(
     .execute(&store.index_pool)
     .await?;
 
+    // DEV-388: slug 까지 바뀐 호출이면 `rename_status_slug` 가 이미
+    // `status.renamed` 를 냈다. 여기 것은 그 뒤의 표시명 / 색 / 순서 /
+    // counts_as_done 변경이다 — 특히 counts_as_done 은 자동화가 "완료" 를
+    // 판정하는 값이라 조용히 바뀌면 안 된다.
+    store.emit_post(
+        ev::STATUS_UPDATED,
+        || json!({ "status": payload::status(&row) }),
+    );
     Ok(row)
 }
 
@@ -851,6 +908,12 @@ pub async fn delete_status(store: &Store, slug: String) -> AppResult<()> {
         .bind(row.id)
         .execute(&store.index_pool)
         .await?;
+    // DEV-388: 상태 하나가 사라지면 그 상태를 쓰던 자동화가 조용히 멈춘다 —
+    // 이 이벤트가 있는 이유 자체다. 참조 검사가 읽어 둔 row 를 그대로 싣는다.
+    store.emit_post(
+        ev::STATUS_DELETED,
+        || json!({ "status": payload::status(&row) }),
+    );
     Ok(())
 }
 
@@ -933,11 +996,17 @@ pub async fn upsert_tag_def(
     .execute(&store.index_pool)
     .await?;
 
-    Ok(crate::models::QuestTagDef {
+    let defined = crate::models::QuestTagDef {
         slug,
         color,
         description,
-    })
+    };
+    // DEV-388: upsert 라 신규와 수정이 한 이름으로 나간다(names.rs 주석 참고).
+    store.emit_post(
+        ev::TAG_DEFINED,
+        || json!({ "tag": payload::tag_def(&defined) }),
+    );
+    Ok(defined)
 }
 
 /// tag 정의 삭제 — 파일 + DB. quest 의 frontmatter 의 tag string 자체는 보존
@@ -945,11 +1014,36 @@ pub async fn upsert_tag_def(
 pub async fn delete_tag_def(store: &Store, slug: String) -> AppResult<()> {
     let slug = slug.trim().to_string();
     validate_tag_slug(&slug)?;
+    // DEV-388: 이 함수는 원래 정의를 읽을 일이 없다(slug 하나로 지운다).
+    // 지운 뒤엔 색도 설명도 어디서도 못 읽으므로 `delete_quest` 의 doomed 와
+    // 똑같이, **구독자가 있을 때만** 한 번 읽어 둔다.
+    let doomed = if store.events_wanted(ev::TAG_DELETED, Phase::Post) {
+        sqlx::query_as::<_, crate::models::QuestTagDef>(
+            "SELECT slug, color, description FROM quest_tag_defs WHERE slug = ?",
+        )
+        .bind(&slug)
+        .fetch_optional(&store.index_pool)
+        .await
+        .ok()
+        .flatten()
+    } else {
+        None
+    };
     let _ = std::fs::remove_file(store.paths.tag_path(&slug));
     sqlx::query("DELETE FROM quest_tag_defs WHERE slug = ?")
         .bind(&slug)
         .execute(&store.index_pool)
         .await?;
+    store.emit_post(ev::TAG_DELETED, || {
+        json!({
+            "tag": match &doomed {
+                Some(t) => payload::tag_def(t),
+                // 정의가 없던 slug 를 지웠어도 지운 것은 지운 것 — 최소한
+                // slug 는 싣는다.
+                None => payload::tag_ref(&slug),
+            }
+        })
+    });
     Ok(())
 }
 

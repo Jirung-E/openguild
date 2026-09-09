@@ -195,6 +195,10 @@ async fn comment_deleted_says_what_was_deleted() {
         .find(super::names::COMMENT_DELETED, Phase::Post)
         .expect("comment.deleted 가 안 나왔다");
     let j = ev.to_json();
+    assert_eq!(
+        j["target"],
+        serde_json::json!({ "kind": "quest", "id": q.quest_id })
+    );
     assert_eq!(j["comment"]["id"], c.id);
     assert_eq!(j["comment"]["author"], "admin");
     assert_eq!(
@@ -572,6 +576,201 @@ async fn all_declared_events_fire_with_a_usable_payload() {
         .await
         .unwrap();
 
+    // ── DEV-388: 나머지 리소스 33종 ──
+    //
+    // 선언한 이름은 **전부 실제로 나와야 한다.** 카탈로그가 `Emitted` 라고
+    // 적어 두는 것만으로는 증거가 안 된다.
+    let camp = crate::ops::campaigns::create_campaign(
+        &store,
+        crate::models::CreateCampaignRequest {
+            title: "베타 출시".into(),
+            description: Some("본문".into()),
+            started_at: None,
+            ended_at: None,
+        },
+    )
+    .await
+    .unwrap();
+    crate::ops::campaigns::update_campaign(
+        &store,
+        camp.id,
+        crate::models::UpdateCampaignRequest {
+            title: Some("베타 출시 v2".into()),
+            description: None,
+            status: None,
+            started_at: None,
+            ended_at: None,
+            display_order: None,
+        },
+    )
+    .await
+    .unwrap();
+    crate::ops::campaigns::link_quest_by_slug(&store, camp.id, &other.quest_id)
+        .await
+        .unwrap();
+    crate::ops::campaigns::unlink_quest_by_slug(&store, camp.id, &other.quest_id)
+        .await
+        .unwrap();
+    crate::ops::campaigns::add_checklist_line(&store, camp.id, "배포 스크립트 점검")
+        .await
+        .unwrap();
+    crate::ops::campaigns::set_checklist_checked_by_index(&store, camp.id, 1, true)
+        .await
+        .unwrap();
+    crate::ops::campaigns::remove_checklist_by_index(&store, camp.id, 1)
+        .await
+        .unwrap();
+    // 배너는 실제 파일이 있어야 한다.
+    let img = dir.join("banner.png");
+    std::fs::write(&img, b"\x89PNG\r\n\x1a\n").unwrap();
+    crate::ops::campaigns::set_banner_image(&store, &camp.campaign_slug, &img)
+        .await
+        .unwrap();
+    crate::ops::campaigns::clear_banner_image(&store, &camp.campaign_slug)
+        .await
+        .unwrap();
+
+    // 캠페인 댓글 — **같은 `comment.*` 이름**을 쓰고 target 만 다르다.
+    let cc = crate::ops::campaign_comments::add_entry(
+        &store,
+        &camp.campaign_slug,
+        "lee".into(),
+        "일정 확인 부탁".into(),
+        None,
+    )
+    .await
+    .unwrap();
+    crate::ops::campaign_comments::update_entry(
+        &store,
+        &camp.campaign_slug,
+        cc.id,
+        "일정 확정했습니다".into(),
+    )
+    .await
+    .unwrap();
+    crate::ops::campaign_comments::toggle_pinned(&store, &camp.campaign_slug, cc.id)
+        .await
+        .unwrap();
+    crate::ops::campaign_comments::toggle_reaction(&store, &camp.campaign_slug, cc.id, "🎉", "lee")
+        .await
+        .unwrap();
+    crate::ops::campaign_comments::delete_entry(&store, &camp.campaign_slug, cc.id)
+        .await
+        .unwrap();
+
+    // 도서관
+    let bk = crate::ops::library::create_book(&store, "설계 노트", "본문", "")
+        .await
+        .unwrap();
+    crate::ops::library::update_book(&store, &bk.book_id(), Some("설계 노트 v2"), None, None)
+        .await
+        .unwrap();
+    crate::ops::library::set_book_tags(&store, &bk.book_id(), vec!["design".into()])
+        .await
+        .unwrap();
+    crate::ops::library::delete_book(&store, &bk.book_id())
+        .await
+        .unwrap();
+    crate::ops::library::create_folder(&store, "연구")
+        .await
+        .unwrap();
+    crate::ops::library::delete_folder(&store, "연구")
+        .await
+        .unwrap();
+
+    // 규칙
+    crate::ops::rules::create_rule(&store, "branch-policy", "내용".into())
+        .await
+        .unwrap();
+    crate::ops::rules::set_rule(&store, "branch-policy", "바뀐 내용".into())
+        .await
+        .unwrap();
+    crate::ops::rules::set_rule_tags(&store, "branch-policy", vec!["git".into()])
+        .await
+        .unwrap();
+    crate::ops::rules::rename_rule(&store, "branch-policy", "branching")
+        .await
+        .unwrap();
+    crate::ops::rules::delete_rule(&store, "branching")
+        .await
+        .unwrap();
+
+    // 첨부
+    let att = dir.join("spec.txt");
+    std::fs::write(&att, b"spec").unwrap();
+    crate::ops::attachments::add_quest_attachment(
+        &store,
+        &other.quest_id,
+        "attachments/spec.txt",
+        "spec.txt",
+    )
+    .await
+    .unwrap();
+    crate::ops::attachments::remove_quest_attachment(
+        &store,
+        &other.quest_id,
+        "attachments/spec.txt",
+    )
+    .await
+    .unwrap();
+
+    // 길드 설정 — 타입·상태·태그 정의
+    crate::ops::meta::create_type(&store, "OPS".into(), "#888888".into(), None)
+        .await
+        .unwrap();
+    crate::ops::meta::update_type(&store, "OPS".into(), None, Some("#999999".into()), None)
+        .await
+        .unwrap();
+    crate::ops::meta::rename_type(&store, "OPS".into(), "OPX".into())
+        .await
+        .unwrap();
+    crate::ops::meta::delete_type(&store, "OPX".into())
+        .await
+        .unwrap();
+    let st = crate::ops::meta::create_status(
+        &store,
+        "Blocked".into(),
+        "막힘".into(),
+        "#aa0000".into(),
+        None,
+    )
+    .await
+    .unwrap();
+    crate::ops::meta::update_status(
+        &store,
+        st.slug.clone(),
+        None,
+        None,
+        Some("차단됨".into()),
+        None,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    crate::ops::meta::rename_status_slug(&store, st.slug.clone(), "stuck".into())
+        .await
+        .unwrap();
+    crate::ops::meta::delete_status(&store, "stuck".into())
+        .await
+        .unwrap();
+    crate::ops::meta::upsert_tag_def(&store, "api".into(), "#00aa00".into(), "API".into())
+        .await
+        .unwrap();
+    crate::ops::meta::delete_tag_def(&store, "api".into())
+        .await
+        .unwrap();
+
+    // 작업기록
+    crate::ops::worklog::set_note(&store, "2026-09-09", "오늘 한 일".into())
+        .await
+        .unwrap();
+
+    // 캠페인 삭제는 위의 캠페인 이벤트를 다 낸 뒤에.
+    crate::ops::campaigns::delete_campaign(&store, camp.id)
+        .await
+        .unwrap();
+
     // ── 마지막: 삭제와 복원 ──
     crate::ops::quests::delete_quest(&store, q.id, &[])
         .await
@@ -636,8 +835,8 @@ async fn all_declared_events_fire_with_a_usable_payload() {
         }
         if name.starts_with("comment.") {
             assert!(
-                j["quest"]["id"].as_str().is_some_and(|s| !s.is_empty()),
-                "{name}: 어느 퀘스트의 댓글인지가 없다 — {j}"
+                j["target"]["id"].as_str().is_some_and(|s| !s.is_empty()),
+                "{name}: 어느 문서의 댓글인지가 없다 — {j}"
             );
             let cc = &j["comment"];
             // pre 에는 id 가 없는 것이 맞다 — 아직 안 만들어졌으니 번호가 없다.
@@ -676,6 +875,51 @@ async fn all_declared_events_fire_with_a_usable_payload() {
             "{name}: from 과 to 가 같다 — {j}"
         );
     }
+
+    // ── 2b. DEV-388: 새로 붙인 리소스도 식별자가 실려야 한다 ──
+    //
+    // 이름이 나오는 것만으로는 부족하다. `campaign.created` 가 어느 캠페인인지
+    // 안 실으면 구독자가 할 수 있는 일이 없다.
+    let locator = |prefix: &str, path: &[&str]| {
+        for e in &all {
+            if !e.name.starts_with(prefix) {
+                continue;
+            }
+            let j = e.to_json();
+            let mut v = &j;
+            for k in path {
+                v = &v[*k];
+            }
+            assert!(
+                v.as_str().is_some_and(|s| !s.is_empty()),
+                "{}: {} 가 비었다 — {j}",
+                e.name,
+                path.join(".")
+            );
+        }
+    };
+    locator("campaign.", &["campaign", "id"]);
+    locator("book.", &["book", "id"]);
+    locator("folder.", &["folder", "path"]);
+    locator("rule.", &["rule", "slug"]);
+    locator("type.", &["type", "prefix"]);
+    locator("status.", &["status", "slug"]);
+    locator("tag.", &["tag", "slug"]);
+    locator("worklog.", &["date"]);
+    locator("attachment.", &["target", "id"]);
+    locator("attachment.", &["attachment", "path"]);
+
+    // 캠페인 댓글은 **같은 `comment.*` 이름**을 쓰되 target 으로 갈린다.
+    // 이게 없으면 구독자가 퀘스트 댓글과 구분을 못 한다.
+    let kinds: std::collections::HashSet<String> = all
+        .iter()
+        .filter(|e| e.name.starts_with("comment."))
+        .filter_map(|e| e.to_json()["target"]["kind"].as_str().map(str::to_string))
+        .collect();
+    assert!(
+        kinds.contains("quest") && kinds.contains("campaign"),
+        "댓글 이벤트가 어디 것인지 구분이 안 된다: {kinds:?}"
+    );
 
     // ── 3b. "무엇이 바뀌었나" 가 핵심인 이벤트는 그걸 실어야 한다 ──
     //
@@ -716,6 +960,38 @@ async fn all_declared_events_fire_with_a_usable_payload() {
         "이전 기한을 안 실었다 — 당겨졌는지 밀렸는지 알 수 없다: {dc}"
     );
     assert_eq!(dc["change"]["to"]["desired"], "2026-12-31", "{dc}");
+
+    // DEV-388: 새로 붙인 `*_changed` / `*_renamed` 도 같은 기준을 받는다.
+    for (name, from, to) in [
+        (super::names::RULE_RENAMED, "branch-policy", "branching"),
+        (super::names::TYPE_RENAMED, "OPS", "OPX"),
+    ] {
+        let j = rec.find(name, Phase::Post).unwrap().to_json();
+        assert_eq!(j["change"]["from"], from, "{name}: {j}");
+        assert_eq!(j["change"]["to"], to, "{name}: {j}");
+    }
+    for name in [
+        super::names::BOOK_TAGS_CHANGED,
+        super::names::RULE_TAGS_CHANGED,
+    ] {
+        let j = rec.find(name, Phase::Post).unwrap().to_json();
+        assert!(
+            j["change"]["to"].as_array().is_some_and(|a| !a.is_empty()),
+            "{name}: 바뀐 태그를 안 실었다 — {j}"
+        );
+    }
+    // 체크리스트는 인덱스만으로는 쓸모가 없다 — 어느 줄인지 실려야 한다.
+    for name in [
+        super::names::CAMPAIGN_CHECKLIST_ADDED,
+        super::names::CAMPAIGN_CHECKLIST_CHECKED,
+        super::names::CAMPAIGN_CHECKLIST_REMOVED,
+    ] {
+        let j = rec.find(name, Phase::Post).unwrap().to_json();
+        assert_eq!(
+            j["item"]["text"], "배포 스크립트 점검",
+            "{name}: 어느 항목인지 안 실렸다 — {j}"
+        );
+    }
 
     // ── 4. 태그 이벤트는 태그를 실어야 한다 (DEV-381 회귀 방지) ──
     let tj = rec

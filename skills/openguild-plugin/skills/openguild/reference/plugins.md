@@ -49,7 +49,10 @@ Read `examples/plugins/README.md` before writing one from scratch.
 | `action.post.body_env` | `{ "chat_id": "TELEGRAM_CHAT_ID" }` — inject env values into named top-level body keys. Scripts have no I/O, so `payload()` cannot read the environment; APIs that want a private id *in the body* (Telegram's `chat_id`) need this. Only the named keys are touched, so user text is never expanded. |
 | `script` | Optional `.rhai` file, relative to the plugin folder. |
 
-`openguild plugin events` lists every event name you can subscribe to. Only a couple of
+`openguild plugin events` lists all 54 event names — quests, comments, campaigns,
+the library, rules, attachments, and the guild's own vocabulary (types, statuses, tag
+definitions). Comments and attachments carry `target: {kind, id}` rather than having
+separate names per document kind, so one subscription covers all of them. Only a couple of
 events have an observational `pre` phase; subscribing `pre:` to one that has none is a load
 error rather than a subscription that silently never fires.
 

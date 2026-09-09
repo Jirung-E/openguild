@@ -202,7 +202,7 @@ pub async fn add_comment_entry(
     // `ok`/`error` 는 붙지 않는다(결과가 없다).
     store.emit_pre(ev::COMMENT_ADDED, || {
         json!({
-            "quest": payload::quest_ref(slug),
+            "target": payload::target("quest", slug),
             "comment": { "author": author, "body": body, "parent_id": parent_id },
         })
     });
@@ -230,7 +230,7 @@ pub async fn add_comment_entry(
     let _ = crate::ops::backlinks::refresh_for(store, crate::repo::crosslink::DocKind::Quest, slug).await;
     store.emit_post(
         ev::COMMENT_ADDED,
-        || json!({ "quest": payload::quest_ref(slug), "comment": payload::comment(&entry) }),
+        || json!({ "target": payload::target("quest", slug), "comment": payload::comment(&entry) }),
     );
     Ok(entry)
 }
@@ -263,7 +263,7 @@ pub async fn update_comment_entry(
     let _ = crate::ops::backlinks::refresh_for(store, crate::repo::crosslink::DocKind::Quest, slug).await;
     store.emit_post(
         ev::COMMENT_UPDATED,
-        || json!({ "quest": payload::quest_ref(slug), "comment": payload::comment(&updated) }),
+        || json!({ "target": payload::target("quest", slug), "comment": payload::comment(&updated) }),
     );
     Ok(updated)
 }
@@ -342,7 +342,7 @@ pub async fn toggle_comment_reaction(
     // 무방. 캐시 재구축도 file 에서 다시 파싱). body 등은 그대로라 UPSERT 생략.
     store.emit_post(
         ev::COMMENT_REACTION_CHANGED,
-        || json!({ "quest": payload::quest_ref(slug), "comment": payload::comment(&updated) }),
+        || json!({ "target": payload::target("quest", slug), "comment": payload::comment(&updated) }),
     );
     Ok(updated)
 }
@@ -392,7 +392,7 @@ pub async fn toggle_comment_discussion(
     };
     store.emit_post(
         name,
-        || json!({ "quest": payload::quest_ref(slug), "comment": payload::comment(&updated) }),
+        || json!({ "target": payload::target("quest", slug), "comment": payload::comment(&updated) }),
     );
     Ok(updated)
 }
@@ -447,7 +447,7 @@ pub async fn toggle_comment_resolved(
     };
     store.emit_post(
         name,
-        || json!({ "quest": payload::quest_ref(slug), "comment": payload::comment(&updated) }),
+        || json!({ "target": payload::target("quest", slug), "comment": payload::comment(&updated) }),
     );
     Ok(updated)
 }
@@ -528,7 +528,7 @@ pub async fn toggle_comment_pinned(store: &Store, slug: &str, id: u64) -> AppRes
     };
     store.emit_post(
         name,
-        || json!({ "quest": payload::quest_ref(slug), "comment": payload::comment(&updated) }),
+        || json!({ "target": payload::target("quest", slug), "comment": payload::comment(&updated) }),
     );
     Ok(updated)
 }
@@ -570,7 +570,7 @@ pub async fn delete_comment_entry(store: &Store, slug: &str, id: u64) -> AppResu
             // 못 읽었으면 최소한 id 는 싣는다.
             None => payload::comment_ref(id),
         };
-        json!({ "quest": payload::quest_ref(slug), "comment": comment })
+        json!({ "target": payload::target("quest", slug), "comment": comment })
     });
     Ok(())
 }

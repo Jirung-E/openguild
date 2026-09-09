@@ -9,9 +9,10 @@
 //! (개인, gitignored)와 구분해 note 로 명명 (admin 결정).
 
 use anyhow::{anyhow, Context};
-use serde_json::json;
+use serde_json::{json, Value};
 
 use crate::error::{AppError, AppResult};
+use crate::events::{Phase, names as ev, payload};
 use crate::store::{journal, Store};
 
 /// `YYYY-MM-DD` 형식 검증 — 파일명이 되므로 traversal 방지 겸.
@@ -267,18 +268,54 @@ pub async fn set_note(store: &Store, date: &str, content: String) -> AppResult<(
     .await
     .map_err(AppError::Internal)?;
 
+    // DEV-388: 이전 본문은 덮어쓰기 **전에만** 읽을 수 있다. 노트는 하루에도
+    // 여러 번 덧쓰는 물건이라 구독자의 관심사는 "오늘 뭐가 늘었나" 인데, 그건
+    // 이전 본문 없이는 답이 안 나온다. 구독자가 없으면 파일을 열지도 않는다.
+    let old = if store.events_wanted(ev::WORKLOG_NOTE_CHANGED, Phase::Post) {
+        get_note(store, date).ok().flatten()
+    } else {
+        None
+    };
+
     let p = store.paths.worklog_note_path(date);
     if content.trim().is_empty() {
         if p.exists() {
             std::fs::remove_file(&p)
                 .with_context(|| format!("failed to remove: {}", p.display()))
                 .map_err(AppError::Internal)?;
+            // DEV-388: 지운 것도 노트가 바뀐 것이다. 이름을 하나 더 만드는 대신
+            // `note` 가 null 이면 지운 것으로 읽는다 (`campaign.banner_changed`
+            // 와 같은 결).
+            store.emit_post(ev::WORKLOG_NOTE_CHANGED, || {
+                json!({
+                    "date": date,
+                    "note": null,
+                    "change": payload::change(old, Value::Null),
+                })
+            });
         }
+        // 없던 노트를 지운 것은 아무것도 안 바뀐 것 — 이벤트 없음.
         return Ok(());
     }
     std::fs::create_dir_all(store.paths.worklog_dir())
         .map_err(|e| AppError::Internal(anyhow!(e)))?;
-    crate::repo::fs::write_atomic(&p, &content).map_err(AppError::Internal)
+    crate::repo::fs::write_atomic(&p, &content).map_err(AppError::Internal)?;
+    // DEV-388: 같은 본문을 다시 쓴 것은 변경이 아니다. 편집기가 저장을 한 번 더
+    // 부른 것까지 "바뀌었다" 고 알리면 구독자가 이 이벤트를 못 믿게 된다.
+    if old.as_deref() != Some(content.as_str()) {
+        store.emit_post(ev::WORKLOG_NOTE_CHANGED, || {
+            json!({
+                "date": date,
+                // 본문을 싣는다. 메모(`set_memo`)는 **개인 기록**이라 이벤트에서
+                // 통째로 뺐지만, 노트는 git 에 올라가는 공유 기록이라 그 이유가
+                // 안 걸린다. 규칙(`payload::rule`)처럼 짧고, 하루 일지를 요약해
+                // 어딘가로 보내는 것이 주 용도라 본문이 없으면 쓸 데가 없다.
+                "note": { "content": content },
+                "change": payload::change(old, content.as_str()),
+            })
+        });
+    }
+    Ok(())
 }
 
 /// 기간 내 존재하는 노트 (date, content) 목록 — 주/월 뷰의 일별 노트 나열용.

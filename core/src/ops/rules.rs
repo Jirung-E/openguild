@@ -6,12 +6,25 @@
 use serde_json::json;
 
 use crate::error::{AppError, AppResult};
+use crate::events::{names as ev, payload};
 use crate::repo::history as hist;
 use crate::ops::doc_history::{self, DocKind};
 use crate::repo::rules as repo;
 use crate::store::{journal, Store};
 
 pub use crate::repo::rules::RuleEntry;
+
+/// DEV-388: 이벤트에 실을 규칙 한 건.
+///
+/// **`emit_*` 클로저 안에서만** 부른다 — 규칙은 DB 캐시가 없어 페이로드를
+/// 만들려면 파일을 한 번 더 읽어야 하는데, 구독자가 없으면 그 비용도 치르지
+/// 않는 것이 이 저장소의 규칙이다. 못 읽으면 최소한 slug 는 싣는다.
+fn rule_payload(store: &Store, slug: &str) -> serde_json::Value {
+    match repo::read_rule_entry(&store.paths, slug) {
+        Ok(Some(r)) => payload::rule(&r),
+        _ => payload::rule_ref(slug),
+    }
+}
 
 // ─── multi-file API (DEV-016 후속) ───
 
@@ -67,7 +80,13 @@ pub async fn set_rule(store: &Store, slug: &str, content: String) -> AppResult<(
     // REQ-008: 이 문서가 내보내는 cross-link 재계산 — BUG-189 가 doc_history 를
     // 즉시 투영한 것과 같은 이유다(reindex 전까지 반영이 안 되면 기능이 없는 것과
     // 같다). 색인은 파생물이라 실패해도 본 작업은 성공으로 둔다.
-    let _ = crate::ops::backlinks::refresh_for(store, crate::repo::crosslink::DocKind::Rule, slug).await;
+    let _ = crate::ops::backlinks::refresh_for(store, crate::repo::crosslink::DocKind::Rule, slug)
+        .await;
+    // DEV-388: 파일·사이드카·색인이 다 끝난 뒤에만 낸다.
+    store.emit_post(
+        ev::RULE_UPDATED,
+        || json!({ "rule": rule_payload(store, slug) }),
+    );
     Ok(())
 }
 
@@ -82,6 +101,10 @@ pub async fn create_rule(store: &Store, slug: &str, content: String) -> AppResul
     .map_err(AppError::Internal)?;
     repo::create_rule(&store.paths, slug, &content).map_err(AppError::Internal)?;
     doc_history::record(store, DocKind::Rule, slug, "create", None, None).await; // BUG-189
+    store.emit_post(
+        ev::RULE_CREATED,
+        || json!({ "rule": rule_payload(store, slug) }),
+    ); // DEV-388
     Ok(())
 }
 
@@ -94,10 +117,25 @@ pub async fn delete_rule(store: &Store, slug: &str) -> AppResult<()> {
     )
     .await
     .map_err(AppError::Internal)?;
+    // DEV-388: 지운 뒤에는 본문도 태그도 어디서도 못 읽는다 — `delete_quest` 와
+    // 같은 이유로 지우기 **전에** 잡아 둔다. 구독자가 없으면 읽지도 않는다.
+    let doomed = if store.events_wanted(ev::RULE_DELETED, crate::events::Phase::Post) {
+        repo::read_rule_entry(&store.paths, slug).ok().flatten()
+    } else {
+        None
+    };
     repo::delete_rule(&store.paths, slug).map_err(AppError::Internal)?;
     doc_history::record(store, DocKind::Rule, slug, "delete", None, None).await;
     // 문서가 사라졌으니 캐시 행도 정리 — reindex 가 dangling 사이드카를 skip 하는 것과 같은 결과.
     doc_history::purge(store, slug).await;
+    store.emit_post(ev::RULE_DELETED, || {
+        let rule = match &doomed {
+            Some(r) => payload::rule(r),
+            // 못 잡았으면 최소한 slug 는 싣는다.
+            None => payload::rule_ref(slug),
+        };
+        json!({ "rule": rule })
+    });
     Ok(())
 }
 
@@ -129,6 +167,14 @@ pub async fn rename_rule(
         Some(new_slug.to_string()),
     )
     .await;
+    // DEV-388: 규칙은 slug 가 곧 공개 식별자다. 무엇이 무엇이 됐는지 같이
+    // 싣지 않으면 구독자는 규칙 하나가 사라지고 하나가 생긴 줄 안다.
+    store.emit_post(ev::RULE_RENAMED, || {
+        json!({
+            "rule": rule_payload(store, new_slug),
+            "change": payload::change(old_slug, new_slug),
+        })
+    });
     Ok(())
 }
 
@@ -142,7 +188,27 @@ pub async fn set_rule_tags(store: &Store, slug: &str, tags: Vec<String>) -> AppR
     )
     .await
     .map_err(AppError::Internal)?;
-    repo::set_rule_tags(&store.paths, slug, tags).map_err(AppError::Internal)
+    // DEV-388: 이전 태그는 바꾸기 **전에만** 읽을 수 있다. 태그 교체는 전체
+    // 덮어쓰기라 결과만 봐서는 무엇이 붙고 무엇이 떨어졌는지 알 수 없다.
+    // 구독자가 없으면 이 조회조차 안 한다.
+    let old_tags: Vec<String> =
+        if store.events_wanted(ev::RULE_TAGS_CHANGED, crate::events::Phase::Post) {
+            repo::read_rule_entry(&store.paths, slug)
+                .ok()
+                .flatten()
+                .map(|r| r.tags)
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+    let entry = repo::set_rule_tags(&store.paths, slug, tags).map_err(AppError::Internal)?;
+    store.emit_post(ev::RULE_TAGS_CHANGED, || {
+        json!({
+            "rule": payload::rule(&entry),
+            "change": payload::change(old_tags, entry.tags.clone()),
+        })
+    });
+    Ok(entry)
 }
 
 // ─── (deprecated) 단일 파일 API ───
@@ -152,6 +218,9 @@ pub fn get_rules(store: &Store) -> AppResult<Option<String>> {
     repo::read(&store.paths).map_err(AppError::Internal)
 }
 
+/// DEV-388: **이벤트를 내지 않는다**(카탈로그에서도 Excluded). 단일 파일을
+/// 통째로 덮어쓰는 레거시 경로라 "어느 규칙이 어떻게 바뀌었나" 를 실을 수
+/// 없다 — `set_comments` 와 같은 이유다.
 pub async fn set_rules(store: &Store, content: String) -> AppResult<()> {
     let _ = journal::append(
         &store.journal_pool,

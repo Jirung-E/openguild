@@ -10,13 +10,14 @@
 use serde_json::json;
 
 use crate::error::{AppError, AppResult};
+use crate::events::{Phase, names as ev, payload};
 use crate::models::{
     CampaignChecklistItem, CampaignDetail, CampaignRow, CreateCampaignRequest,
     UpdateCampaignRequest,
 };
-use crate::repo::{extract_checklist_items, CampaignFile, CampaignFrontmatter};
+use crate::repo::{CampaignFile, CampaignFrontmatter, extract_checklist_items};
 use crate::services::campaigns as sql;
-use crate::store::{journal, Store};
+use crate::store::{Store, journal};
 
 // ─────────────────────── 조회 헬퍼 ───────────────────────
 
@@ -62,16 +63,24 @@ pub async fn fetch_detail(store: &Store, slug: &str) -> AppResult<CampaignDetail
 
 // ─────────────────────── 생성 / 수정 / 삭제 ───────────────────────
 
-pub async fn create_campaign(
-    store: &Store,
-    body: CreateCampaignRequest,
-) -> AppResult<CampaignRow> {
-    let _ = journal::append(&store.journal_pool, "create_campaign", &body, None::<&serde_json::Value>)
-        .await
-        .map_err(AppError::Internal)?;
+pub async fn create_campaign(store: &Store, body: CreateCampaignRequest) -> AppResult<CampaignRow> {
+    let _ = journal::append(
+        &store.journal_pool,
+        "create_campaign",
+        &body,
+        None::<&serde_json::Value>,
+    )
+    .await
+    .map_err(AppError::Internal)?;
 
     let camp = sql::create(&store.index_pool, body).await?;
     write_campaign_file(store, &camp, true).await?;
+    // DEV-388: DB 와 파일이 다 쓰인 **뒤에만** 낸다. journal 은 위에서 의도를
+    // 먼저 적지만 이벤트는 일어난 일만 싣는다.
+    store.emit_post(
+        ev::CAMPAIGN_CREATED,
+        || json!({ "campaign": payload::campaign(&camp) }),
+    );
     Ok(camp)
 }
 
@@ -135,6 +144,11 @@ pub async fn update_campaign(
         .map_err(AppError::Internal)?;
     }
 
+    // DEV-388: 상태 이력까지 남긴 뒤가 이 mutation 의 끝이다.
+    store.emit_post(
+        ev::CAMPAIGN_UPDATED,
+        || json!({ "campaign": payload::campaign(&camp) }),
+    );
     Ok(camp)
 }
 
@@ -203,6 +217,13 @@ pub async fn commit_banner_image(store: &Store, slug: &str, rel: &str) -> AppRes
         .await?;
     let camp = sql::fetch_by_slug(&store.index_pool, slug).await?;
     write_campaign_file(store, &camp, false).await?;
+    // DEV-388: 배너가 실제로 바뀌는 지점은 여기 하나다 — 데스크톱의
+    // `set_banner_image` 도 서버의 bytes 라우트도 마지막엔 이걸 부른다.
+    // 여기서만 내야 경로마다 한 번씩만 나간다.
+    store.emit_post(
+        ev::CAMPAIGN_BANNER_CHANGED,
+        || json!({ "campaign": payload::campaign(&camp), "banner": camp.image_path }),
+    );
     Ok(camp)
 }
 
@@ -263,6 +284,12 @@ pub async fn clear_banner_image(store: &Store, slug: &str) -> AppResult<Campaign
         .await?;
     let camp = sql::fetch_by_slug(&store.index_pool, slug).await?;
     write_campaign_file(store, &camp, false).await?;
+    // DEV-388: 걸 때와 같은 이름으로 내고 `banner` 를 null 로 둔다 — 이름을
+    // 하나 더 만들지 않는 쪽(names.rs 주석 참고).
+    store.emit_post(
+        ev::CAMPAIGN_BANNER_CHANGED,
+        || json!({ "campaign": payload::campaign(&camp), "banner": null }),
+    );
     Ok(camp)
 }
 
@@ -288,6 +315,13 @@ pub async fn delete_campaign(store: &Store, id: i64) -> AppResult<()> {
         let _ = cf.write(&path);
         let _ = crate::file_mtime::touch(store, &path).await; // DEV-178
     }
+    // DEV-388: 지운 뒤에는 무엇이었는지 어디서도 못 읽는다. 행은 파일 마킹에
+    // 쓰려고 위에서 이미 읽어 뒀으므로 `delete_quest` 의 `doomed` 게이트 없이도
+    // 구독자 없는 길드가 더 무는 비용이 없다.
+    store.emit_post(
+        ev::CAMPAIGN_DELETED,
+        || json!({ "campaign": payload::campaign(&row) }),
+    );
     Ok(())
 }
 
@@ -311,6 +345,14 @@ pub async fn link_quest_by_slug(
     sql::link_quest(&store.index_pool, campaign_id, qid).await?;
     let camp = sql::fetch_by_id(&store.index_pool, campaign_id).await?;
     write_campaign_file(store, &camp, false).await?; // 본문 외부편집 보존
+    // DEV-388: 캠페인만 실으면 "무엇이 붙었나" 가 빠진다. 퀘스트는 slug 만
+    // 들고 있으므로 ref 로 싣는다(행을 새로 읽어 오지 않는다).
+    store.emit_post(ev::CAMPAIGN_QUEST_LINKED, || {
+        json!({
+            "campaign": payload::campaign(&camp),
+            "quest": payload::quest_ref(quest_slug),
+        })
+    });
     Ok(())
 }
 
@@ -332,6 +374,12 @@ pub async fn unlink_quest_by_slug(
     sql::unlink_quest(&store.index_pool, campaign_id, qid).await?;
     let camp = sql::fetch_by_id(&store.index_pool, campaign_id).await?;
     write_campaign_file(store, &camp, false).await?;
+    store.emit_post(ev::CAMPAIGN_QUEST_UNLINKED, || {
+        json!({
+            "campaign": payload::campaign(&camp),
+            "quest": payload::quest_ref(quest_slug),
+        })
+    });
     Ok(())
 }
 
@@ -376,7 +424,7 @@ pub async fn add_checklist_line(
     sql::replace_checklists_from_file(&store.index_pool, campaign_id, &items).await?;
 
     // 새로 추가된 항목 = list 의 마지막 (order_idx 가 가장 큰 것).
-    sql::list_checklists(&store.index_pool, campaign_id)
+    let item = sql::list_checklists(&store.index_pool, campaign_id)
         .await?
         .into_iter()
         .last()
@@ -384,7 +432,16 @@ pub async fn add_checklist_line(
             AppError::Internal(anyhow::anyhow!(
                 "no checklist after add (sync failed?)"
             ))
+        })?;
+    // DEV-388: 어느 줄이 붙었는지를 싣는다 — 인덱스만 주면 구독자가 파일을
+    // 다시 읽어야 한다. 저장된 뒤의 값(파서가 정규화한 text)을 쓴다.
+    store.emit_post(ev::CAMPAIGN_CHECKLIST_ADDED, || {
+        json!({
+            "campaign": payload::campaign(&camp),
+            "item": { "text": item.text },
         })
+    });
+    Ok(item)
 }
 
 /// 1-based 인덱스로 체크 / 언체크 토글.
@@ -420,6 +477,15 @@ pub async fn set_checklist_checked_by_index(
         )));
     }
     let mut cf = CampaignFile::read(&path).map_err(AppError::Internal)?;
+    // DEV-388: 구독자에게 인덱스만 주면 그 숫자가 무엇이었는지 알 수 없다.
+    // 본문을 훑는 비용은 구독자가 있을 때만 문다.
+    let text = if store.events_wanted(ev::CAMPAIGN_CHECKLIST_CHECKED, Phase::Post) {
+        extract_checklist_items(&cf.body)
+            .get(one_based_idx - 1)
+            .map(|i| i.text.clone())
+    } else {
+        None
+    };
     let new_body = set_checklist_checked_in_body(&cf.body, one_based_idx, checked)?;
     cf.body = new_body;
     cf.frontmatter.updated_at = crate::time::now_local_iso8601();
@@ -428,6 +494,12 @@ pub async fn set_checklist_checked_by_index(
 
     let items = extract_checklist_items(&cf.body);
     sql::replace_checklists_from_file(&store.index_pool, campaign_id, &items).await?;
+    store.emit_post(ev::CAMPAIGN_CHECKLIST_CHECKED, || {
+        json!({
+            "campaign": payload::campaign(&camp),
+            "item": { "text": text, "checked": checked },
+        })
+    });
     Ok(())
 }
 
@@ -458,6 +530,14 @@ pub async fn remove_checklist_by_index(
         return Err(AppError::NotFound(format!("file not found: {}", path.display())));
     }
     let mut cf = CampaignFile::read(&path).map_err(AppError::Internal)?;
+    // DEV-388: 지워진 줄은 **지우기 전 본문에만** 있다. 구독자가 없으면 훑지도 않는다.
+    let text = if store.events_wanted(ev::CAMPAIGN_CHECKLIST_REMOVED, Phase::Post) {
+        extract_checklist_items(&cf.body)
+            .get(one_based_idx - 1)
+            .map(|i| i.text.clone())
+    } else {
+        None
+    };
     let new_body = remove_checklist_in_body(&cf.body, one_based_idx)?;
     cf.body = new_body;
     cf.frontmatter.updated_at = crate::time::now_local_iso8601();
@@ -466,6 +546,12 @@ pub async fn remove_checklist_by_index(
 
     let items = extract_checklist_items(&cf.body);
     sql::replace_checklists_from_file(&store.index_pool, campaign_id, &items).await?;
+    store.emit_post(ev::CAMPAIGN_CHECKLIST_REMOVED, || {
+        json!({
+            "campaign": payload::campaign(&camp),
+            "item": { "text": text },
+        })
+    });
     Ok(())
 }
 

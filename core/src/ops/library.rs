@@ -7,6 +7,7 @@
 use serde_json::json;
 
 use crate::error::{AppError, AppResult};
+use crate::events::{names as ev, payload};
 use crate::repo::history as hist;
 use crate::ops::doc_history::{self, DocKind};
 use crate::repo::library as repo;
@@ -210,9 +211,20 @@ pub async fn set_book_tags(
 
     sync_book_tags_cache(store, existing.id, &normalized).await?;
 
-    get_book(store, book_id)
+    let updated = get_book(store, book_id)
         .await?
-        .ok_or_else(|| AppError::Internal(anyhow::anyhow!("updated book not found: {book_id}")))
+        .ok_or_else(|| AppError::Internal(anyhow::anyhow!("updated book not found: {book_id}")))?;
+    // DEV-388: 이전 태그는 `existing` — 쓰기 **전에** 읽힌 행이다. 무엇이
+    // 붙고 떨어졌는지 없이 `tags_changed` 만 나가면 구독자는 전체를 다시
+    // 훑어야 한다(DEV-386 에서 실제로 걸린 결함). 여기서는 `existing` 을
+    // 이미 `sync_book_tags_cache` 때문에 읽으므로 게이트할 비용이 없다.
+    store.emit_post(ev::BOOK_TAGS_CHANGED, || {
+        json!({
+            "book": payload::book(&updated),
+            "change": payload::change(existing.tags.clone(), updated.tags.clone()),
+        })
+    });
+    Ok(updated)
 }
 
 /// 새 문서 생성 — 카운터에서 번호 할당, 파일 작성, 캐시 INSERT.
@@ -294,9 +306,16 @@ pub async fn create_book(
 
     doc_history::record(store, DocKind::Book, &book_id, "create", None, None).await; // BUG-189
 
-    get_book(store, &book_id)
+    let created = get_book(store, &book_id)
         .await?
-        .ok_or_else(|| AppError::Internal(anyhow::anyhow!("created book not found: {book_id}")))
+        .ok_or_else(|| AppError::Internal(anyhow::anyhow!("created book not found: {book_id}")))?;
+    // DEV-388: 파일·캐시·이력이 모두 끝난 뒤에만 낸다 — journal 은 위에서
+    // **의도**를 먼저 적지만 이벤트는 일어난 일만 싣는다.
+    store.emit_post(
+        ev::BOOK_CREATED,
+        || json!({ "book": payload::book(&created) }),
+    );
+    Ok(created)
 }
 
 /// 문서 수정 — title / body / path 중 제공된 필드만. updated_at 갱신.
@@ -369,11 +388,20 @@ pub async fn update_book(
     // REQ-008: 이 문서가 내보내는 cross-link 재계산 — BUG-189 가 doc_history 를
     // 즉시 투영한 것과 같은 이유다(reindex 전까지 반영이 안 되면 기능이 없는 것과
     // 같다). 색인은 파생물이라 실패해도 본 작업은 성공으로 둔다.
-    let _ = crate::ops::backlinks::refresh_for(store, crate::repo::crosslink::DocKind::Book, book_id).await;
+    let _ =
+        crate::ops::backlinks::refresh_for(store, crate::repo::crosslink::DocKind::Book, book_id)
+            .await;
 
-    get_book(store, book_id)
+    let updated = get_book(store, book_id)
         .await?
-        .ok_or_else(|| AppError::Internal(anyhow::anyhow!("updated book not found: {book_id}")))
+        .ok_or_else(|| AppError::Internal(anyhow::anyhow!("updated book not found: {book_id}")))?;
+    // DEV-388: 위의 "바꿀 것이 하나도 없다" 조기 반환은 여기 못 온다 —
+    // 아무것도 안 바뀐 mutation 을 변경으로 내보내지 않는다.
+    store.emit_post(
+        ev::BOOK_UPDATED,
+        || json!({ "book": payload::book(&updated) }),
+    );
+    Ok(updated)
 }
 
 /// soft delete — frontmatter `deleted = true` + 캐시 deleted_at. 파일은 남긴다
@@ -416,6 +444,13 @@ pub async fn delete_book(store: &Store, book_id: &str) -> AppResult<()> {
         .await?;
     doc_history::record(store, DocKind::Book, book_id, "delete", None, None).await;
     doc_history::purge(store, book_id).await; // BUG-189
+    // DEV-388: 지운 뒤에는 무엇이었는지 못 읽는다. `delete_quest` 는 그래서
+    // 미리 잡아 두지만, 여기 `existing` 은 파일을 다시 쓰느라 어차피 읽은
+    // 행이라 구독자가 없어도 추가 비용이 없다 — 그대로 싣는다.
+    store.emit_post(
+        ev::BOOK_DELETED,
+        || json!({ "book": payload::book(&existing) }),
+    );
     Ok(())
 }
 
@@ -487,15 +522,24 @@ pub async fn create_folder(store: &Store, path: &str) -> AppResult<LibraryFolder
     .bind(&path)
     .fetch_one(&store.index_pool)
     .await?;
+    // DEV-388: 폴더는 경로가 곧 정체성이라 실을 것이 그것뿐이다.
+    store.emit_post(
+        ev::FOLDER_CREATED,
+        || json!({ "folder": payload::folder(&row.path) }),
+    );
     Ok(row)
 }
 
 /// 폴더 삭제 — 하위(자신 포함)에 살아있는 문서나 다른 살아있는 폴더가 하나도
 /// 없어야 함 (안전을 위해 빈 폴더만 삭제 허용 — v1).
 pub async fn delete_folder(store: &Store, path: &str) -> AppResult<()> {
-    let path = repo::normalize_folder_path(path).map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let path =
+        repo::normalize_folder_path(path).map_err(|e| AppError::BadRequest(e.to_string()))?;
     if path.is_empty() {
-        return Err(AppError::BadRequest(crate::tf!("루트는 삭제할 수 없습니다", "the root cannot be deleted")));
+        return Err(AppError::BadRequest(crate::tf!(
+            "루트는 삭제할 수 없습니다",
+            "the root cannot be deleted"
+        )));
     }
     let docs = list_books(store).await?;
     if docs
@@ -546,6 +590,12 @@ pub async fn delete_folder(store: &Store, path: &str) -> AppResult<()> {
         .bind(&path)
         .execute(&store.index_pool)
         .await?;
+    // DEV-388: 빈 폴더만 지울 수 있으므로 함께 사라지는 문서는 없다 —
+    // 경로 하나면 구독자가 알아야 할 것이 전부다.
+    store.emit_post(
+        ev::FOLDER_DELETED,
+        || json!({ "folder": payload::folder(&path) }),
+    );
     Ok(())
 }
 
