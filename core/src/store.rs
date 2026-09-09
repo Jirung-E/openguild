@@ -78,6 +78,17 @@ pub struct Store {
     /// 같은 잠금을 공유한다(서버는 Store 를 clone 해 핸들러에 넘긴다).
     /// 프로세스 **간** 보호는 별개 문제로 남는다.
     pub write_lock: std::sync::Arc<tokio::sync::Mutex<()>>,
+    /// DEV-389: 이벤트에 실을 길드 이름.
+    ///
+    /// 예전엔 `guild_root.file_name()` — **디렉터리명**을 썼다. 마커 파일을 매번
+    /// 읽지 않으려던 것인데, 그 둘은 자주 다르다. `openguild init --name runlab`
+    /// 을 `/tmp/work/g` 에서 하면 화면 어디에도 없는 `"guild": "g"` 가 플러그인에
+    /// 간다(실환경 시험에서 실제로 그랬다).
+    ///
+    /// 그래서 열 때 한 번만 읽어 들고 있는다 — GUI 의 `current_guild_name` 과
+    /// CLI 의 `guild list` 가 쓰는 것과 **같은 규칙**(`recents::guess_name`)이라
+    /// 사용자가 보는 이름과 이벤트가 어긋나지 않는다.
+    pub guild_name: String,
 }
 
 impl Store {
@@ -112,15 +123,9 @@ impl Store {
         self.replaying.load(std::sync::atomic::Ordering::SeqCst)
     }
 
-    /// 길드 이름 — 이벤트에 싣는 값. 루트 디렉터리명을 쓴다(마커 파일을 매번
-    /// 읽지 않기 위해). 더 정확한 이름이 필요한 플러그인은 길드를 직접 읽으면 된다.
+    /// 길드 이름 — 이벤트에 싣는 값. 열 때 한 번 읽어 둔 것을 쓴다([`Store::guild_name`]).
     fn guild_label(&self) -> String {
-        self.paths
-            .guild_root
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("")
-            .to_string()
+        self.guild_name.clone()
     }
 
     /// DEV-374: 이벤트를 낼 상황인지. **페이로드를 만들기 전에** 묻는다.
@@ -233,6 +238,8 @@ impl Store {
     /// 시드는 별도 — 호출자가 `seed::seed_guild_dir` 명시 호출.
     pub async fn open<P: AsRef<std::path::Path>>(guild_root: P) -> Result<Self> {
         let paths = GuildPaths::new(guild_root.as_ref());
+        // DEV-389: paths 가 struct 로 move 되기 전에 한 번만 읽는다.
+        let guild_name = crate::recents::guess_name(&paths.guild_root);
 
         // DEV-064: 길드 schema 버전 호환 검사 — 마커(`{name}.guild`)가 있을 때만
         // (seed 전 빈 디렉토리는 통과). 더 새 버전이면 데이터 손상 방지를 위해
@@ -297,6 +304,7 @@ impl Store {
             replaying: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             events: crate::events::Events::default(),
             write_lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
+            guild_name,
             // DEV-299: 기본 동기 — 켜는 쪽(서버/GUI)이 명시적으로 켠다.
             background_snapshots: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             snapshot_in_flight: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -342,6 +350,8 @@ impl Store {
         // sqlite in-memory 라 이 디렉터리들은 애초에 필요 없다 — 생성 자체를
         // 하지 않는다.
         let paths = GuildPaths::new(guild_root.as_ref());
+        // DEV-389: paths 가 struct 로 move 되기 전에 한 번만 읽는다.
+        let guild_name = crate::recents::guess_name(&paths.guild_root);
 
         let ns = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -366,6 +376,7 @@ impl Store {
             replaying: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             events: crate::events::Events::default(),
             write_lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
+            guild_name,
             // DEV-299: 기본 동기 — 켜는 쪽(서버/GUI)이 명시적으로 켠다.
             background_snapshots: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             snapshot_in_flight: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),

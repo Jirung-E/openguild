@@ -87,6 +87,40 @@ fn new_quest(title: &str) -> CreateQuestRequest {
     }
 }
 
+/// DEV-389: **이벤트의 `guild` 는 사용자가 보는 이름이어야 한다.**
+///
+/// 예전엔 디렉터리명을 실었다. `openguild init --name runlab` 을 `/tmp/work/g`
+/// 에서 하면 화면 어디에도 없는 `"guild": "g"` 가 플러그인으로 갔다 — 실환경
+/// 시험에서 실제로 그랬다. 텔레그램 알림이 "어느 프로젝트인가" 를 이걸로 말한다.
+#[tokio::test]
+async fn events_carry_the_guild_name_not_the_directory_name() {
+    let dir = fresh_tmp("guildname");
+    // 디렉터리명과 길드 이름을 **일부러 다르게** 만든다. 같으면 시험이
+    // 아무것도 안 보는 것과 같다.
+    let inner = dir.join("g");
+    std::fs::create_dir_all(&inner).unwrap();
+    seed_guild_dir(&inner).unwrap();
+    std::fs::write(inner.join("runlab.guild"), "name = \"runlab\"\n").unwrap();
+
+    let store = Store::open(&inner).await.unwrap();
+    let rec = Recorder::all();
+    store.events.set_sink(rec.clone());
+    crate::ops::quests::create_quest(&store, new_quest("이름 확인"))
+        .await
+        .unwrap();
+
+    let j = rec
+        .find(super::names::QUEST_CREATED, Phase::Post)
+        .unwrap()
+        .to_json();
+    assert_eq!(
+        j["guild"], "runlab",
+        "디렉터리명이 실렸다 — 사용자가 보는 이름과 다르다: {j}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// DEV-381: **태그를 싣는 이벤트가 태그를 안 실었다.** `QuestRow.tags` 는
 /// `#[sqlx(skip)]` 이라 `list()` 만 채웠고, mutation 은 전부 `fetch_by_id` 로
 /// 돌아오므로 모든 퀘스트 이벤트가 `"tags": []` 였다. 구독자는 "태그가 다
