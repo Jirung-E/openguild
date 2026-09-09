@@ -195,7 +195,8 @@ impl Resolved {
 pub fn resolve(guild_root: &Path, def: &PluginDef) -> BTreeMap<String, Resolved> {
     let stored = stored(guild_root, &def.name);
     let mut out = BTreeMap::new();
-    for input in &def.inputs {
+    // REQ-021: 선언 안 하고 쓰기만 한 값도 채울 수 있어야 한다.
+    for input in &def.effective_inputs() {
         out.insert(
             input.key.clone(),
             resolve_one(input, stored.get(&input.key)),

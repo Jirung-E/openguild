@@ -1568,3 +1568,77 @@ fn help_text_is_not_rejected_just_because_the_key_says_token() {
     d.inputs[0].help = Some("예: sk-ABCDEFGHIJKLMNOPQRSTUVWXYZ0123".into());
     assert!(validate(&d).is_err(), "help 안의 진짜 키가 통과했다");
 }
+
+/// **선언 안 하고 쓰기만 한 값도 입력란이 생긴다.**
+///
+/// admin 이 배포 예제의 옛 사본에서 봤다("입력창 안보인다"). 그 정의는 url 에서
+/// `${TELEGRAM_BOT_TOKEN}` 을 쓰는데 `inputs` 를 안 적었다 — 안 그리면 값을
+/// 넣을 자리가 화면 어디에도 없어서 **그 플러그인은 영영 못 돈다.**
+/// 이 기능이 생기기 전에 쓴 정의는 전부 이 상태다.
+#[test]
+fn a_referenced_but_undeclared_value_still_gets_an_input() {
+    let mut d = def(Action::Post {
+        url: "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage".into(),
+        headers: [(
+            "Authorization".to_string(),
+            "Bearer ${HOOK_TOKEN}".to_string(),
+        )]
+        .into_iter()
+        .collect(),
+        body_env: [("chat_id".to_string(), "TELEGRAM_CHAT_ID".to_string())]
+            .into_iter()
+            .collect(),
+        timeout_ms: None,
+    });
+    assert!(d.inputs.is_empty(), "전제: 아무것도 선언 안 했다");
+
+    let eff = d.effective_inputs();
+    let keys: Vec<&str> = eff.iter().map(|i| i.key.as_str()).collect();
+    assert!(keys.contains(&"TELEGRAM_BOT_TOKEN"), "{keys:?}");
+    assert!(
+        keys.contains(&"HOOK_TOKEN"),
+        "헤더의 참조를 놓쳤다: {keys:?}"
+    );
+    assert!(
+        keys.contains(&"TELEGRAM_CHAT_ID"),
+        "body_env 는 `${{}}` 문법이 아니라 값이 곧 이름이다: {keys:?}"
+    );
+
+    // 이름이 비밀을 뜻하면 가린다 — 붙여넣은 토큰이 평문으로 보이면 안 된다.
+    let tok = eff.iter().find(|i| i.key == "TELEGRAM_BOT_TOKEN").unwrap();
+    assert!(tok.secret, "TOKEN 이 들어간 이름인데 안 가렸다");
+    let chat = eff.iter().find(|i| i.key == "TELEGRAM_CHAT_ID").unwrap();
+    assert!(!chat.secret, "CHAT_ID 는 비밀이 아니다");
+
+    // 선언이 있으면 그쪽이 이긴다 — 지어낸 것이 라벨을 덮으면 안 된다.
+    d.inputs = vec![Input {
+        key: "TELEGRAM_BOT_TOKEN".into(),
+        label: Some("봇 토큰".into()),
+        input_type: InputType::Text,
+        help: None,
+        secret: true,
+        default: None,
+        options: Vec::new(),
+    }];
+    let eff = d.effective_inputs();
+    assert_eq!(
+        eff.iter().filter(|i| i.key == "TELEGRAM_BOT_TOKEN").count(),
+        1,
+        "선언한 것과 지어낸 것이 둘 다 생겼다"
+    );
+    assert_eq!(eff[0].label(), "봇 토큰");
+}
+
+/// 코어가 채우는 경로는 사용자에게 물을 값이 아니다([[BUG-279]]).
+#[test]
+fn core_provided_paths_are_not_asked_for() {
+    let d = def(Action::Run {
+        command: "sh".into(),
+        args: vec!["${OPENGUILD_PLUGIN_DIR}/hook.sh".into(), "${MY_KEY}".into()],
+        timeout_ms: None,
+    });
+    let eff = d.effective_inputs();
+    let keys: Vec<&str> = eff.iter().map(|i| i.key.as_str()).collect();
+    assert!(!keys.contains(&"OPENGUILD_PLUGIN_DIR"), "{keys:?}");
+    assert!(keys.contains(&"MY_KEY"), "{keys:?}");
+}

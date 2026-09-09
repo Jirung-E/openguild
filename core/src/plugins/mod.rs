@@ -217,6 +217,99 @@ impl Input {
     }
 }
 
+impl PluginDef {
+    /// REQ-021: 정의가 실제로 **참조하는** 값 이름들 — `${NAME}` 과 `body_env`.
+    ///
+    /// `body_env` 는 값이 곧 변수 **이름**이라 `${...}` 문법을 안 쓴다. 따로 본다.
+    pub fn referenced_keys(&self) -> std::collections::BTreeSet<String> {
+        let mut out = std::collections::BTreeSet::new();
+        let mut scan = |s: &str| out.extend(env_refs(s));
+        match &self.action {
+            Action::Post {
+                url,
+                headers,
+                body_env,
+                ..
+            } => {
+                scan(url);
+                for v in headers.values() {
+                    scan(v);
+                }
+                out.extend(body_env.values().cloned());
+            }
+            Action::Run { command, args, .. } => {
+                scan(command);
+                for a in args {
+                    scan(a);
+                }
+            }
+        }
+        // 코어가 채우는 것은 사용자에게 물을 값이 아니다([[BUG-279]]).
+        out.remove("OPENGUILD_PLUGIN_DIR");
+        out.remove("OPENGUILD_PLUGIN_DATA_DIR");
+        out
+    }
+
+    /// 화면에 실제로 그릴 입력 목록 — **선언한 것 + 선언 안 하고 쓰기만 한 것.**
+    ///
+    /// 참조만 하고 `inputs` 에 안 적은 정의가 흔하다(이 기능이 생기기 전에 쓴
+    /// 것은 전부 그렇다). 그것을 안 그리면 **그 플러그인은 영영 못 돈다** —
+    /// 값을 넣을 자리가 화면 어디에도 없기 때문이다. admin 이 배포 예제의 옛
+    /// 사본에서 정확히 이 상태를 봤다("입력창 안보인다").
+    ///
+    /// 선언이 있는 쪽이 언제나 이긴다. 지어낸 것은 이름만 아는 상태라 라벨도
+    /// 설명도 없고, 이름이 비밀을 뜻하면 가린다.
+    pub fn effective_inputs(&self) -> Vec<Input> {
+        let mut out = self.inputs.clone();
+        let declared: std::collections::HashSet<&str> =
+            self.inputs.iter().map(|i| i.key.as_str()).collect();
+        for key in self.referenced_keys() {
+            if declared.contains(key.as_str()) {
+                continue;
+            }
+            let secret = field_name_means_secret(&key);
+            out.push(Input {
+                secret,
+                key,
+                label: None,
+                input_type: InputType::Text,
+                // 작성자에게 "선언을 빠뜨렸다" 를 알리는 자리이기도 하다.
+                help: Some(
+                    "정의가 `inputs` 로 선언하지 않은 값입니다 — 쓰이고 있어서 \
+                     여기에 넣을 수 있게 해 둡니다."
+                        .into(),
+                ),
+                default: None,
+                options: Vec::new(),
+            });
+        }
+        out
+    }
+}
+
+/// 문자열 안의 `${NAME}` 들.
+fn env_refs(value: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let chars: Vec<char> = value.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] == '$'
+            && i + 1 < chars.len()
+            && chars[i + 1] == '{'
+            && let Some(rel) = chars[i..].iter().position(|c| *c == '}')
+        {
+            let name: String = chars[i + 2..i + rel].iter().collect();
+            if !name.is_empty() {
+                out.push(name);
+            }
+            i += rel + 1;
+            continue;
+        }
+        i += 1;
+    }
+    out
+}
+
 /// 적재된 플러그인 하나.
 #[derive(Debug, Clone)]
 pub struct Plugin {

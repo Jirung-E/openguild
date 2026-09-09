@@ -6156,7 +6156,7 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
             if json {
                 json_println!(serde_json::json!({
                     "name": p.def.name,
-                    "inputs": p.def.inputs.iter().map(|i| {
+                    "inputs": p.def.effective_inputs().iter().map(|i| {
                         let r = resolved.get(&i.key);
                         serde_json::json!({
                             "key": i.key,
@@ -6173,7 +6173,8 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
                 }));
                 return Ok(());
             }
-            if p.def.inputs.is_empty() {
+            let effective = p.def.effective_inputs();
+            if effective.is_empty() {
                 println!(
                     "{}",
                     tf!(
@@ -6183,7 +6184,7 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
                 );
                 return Ok(());
             }
-            for i in &p.def.inputs {
+            for i in &effective {
                 let r = resolved.get(&i.key);
                 let shown = match r.map(|r| (r.source, r.as_str())) {
                     Some((openguild_core::plugins::values::Source::Missing, _)) | None => {
@@ -6232,7 +6233,7 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
                 .iter()
                 .chain(loaded.needs_consent.iter())
                 .find(|p| p.def.name == name)
-                .and_then(|p| p.def.inputs.iter().find(|i| i.key == key).cloned());
+                .and_then(|p| p.def.effective_inputs().into_iter().find(|i| i.key == key));
             let value = match declared.as_ref().map(|i| i.input_type) {
                 Some(openguild_core::plugins::InputType::Checkbox) => serde_json::Value::Bool(
                     matches!(raw.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"),

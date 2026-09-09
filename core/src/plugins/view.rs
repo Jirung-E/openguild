@@ -140,12 +140,12 @@ pub(super) fn view(p: &Plugin, granted: bool, scope: Scope) -> PluginView {
 }
 
 fn input_views(p: &Plugin) -> Vec<InputView> {
-    if p.def.inputs.is_empty() {
+    let inputs = p.def.effective_inputs();
+    if inputs.is_empty() {
         return Vec::new();
     }
     let resolved = super::values::resolve(&p.guild_root, &p.def);
-    p.def
-        .inputs
+    inputs
         .iter()
         .map(|i| {
             let r = resolved.get(&i.key);
