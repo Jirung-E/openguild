@@ -116,6 +116,25 @@ pre 를 내는 이벤트는 지금 `quest.deleted` 와 `comment.added` 둘뿐이
 
 자세한 규칙은 `openguild docs show USAGE` 의 플러그인 절을 본다.
 
+## `notify` 태그는 어떻게 되는 건가
+
+`telegram-quest-status` 가 "이 퀘스트만 알림" 을 **평범한 퀘스트 태그**로 고른다.
+새 개념도, 새 CLI 옵션도 아니다 — 이미 있는 태그 기능을 그대로 쓴다.
+
+| | |
+|---|---|
+| GUI | 퀘스트 상세 화면의 태그 줄에서 `+` → `notify` 입력 |
+| CLI | `openguild quest tag add DEV-001 notify` |
+
+스크립트는 이벤트에 실려 오는 `e.quest.tags` 를 볼 뿐이다. 태그를 떼면 알림도
+멈춘다. 설정에서 "notify 태그가 붙은 퀘스트만" 을 끄면 전부 알린다.
+
+`quest.tags` 가 실제로 채워지게 된 것이 [[DEV-381]] 이다 — 그전에는 항상 빈
+배열이라 이 예제가 아예 안 됐다.
+
+**댓글 알림에는 안 걸린다.** `comment.added` 는 어느 문서에 달렸는지를
+`target: {kind, id}` 로만 알리고 그 퀘스트의 태그는 안 싣는다([[DEV-391]]).
+
 ## 사용자에게 받는 값 (REQ-021)
 
 `telegram-quest-status` 가 그 예다. 봇 토큰·채팅 ID 는 사람이 넣어야 하고,

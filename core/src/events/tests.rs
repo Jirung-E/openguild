@@ -1038,7 +1038,77 @@ async fn all_declared_events_fire_with_a_usable_payload() {
         "태그를 알리는 이벤트가 태그를 안 실었다"
     );
 
+    // ── 5. 배포하는 예제가 이 페이로드로 **실제로 돈다** ──
+    shipped_scripts_survive_real_events(&rec);
+
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// **배포하는 예제 스크립트를 진짜 페이로드에 태워 본다.**
+///
+/// `shipped_examples_all_load` 는 예제가 **컴파일되는지**만 본다. 그걸 통과하고도
+/// 두 개가 깨져 있었다 — 둘 다 댓글 이벤트에서 `e.quest.id` 를 읽었는데
+/// `comment.added` 는 `target: {kind, id}` 만 싣는다([[DEV-391]]). rhai 는 없는
+/// 필드를 읽으면 던지고, 훅은 **조용히 아무것도 안 보낸다.** admin 이 화면에서
+/// 이상한 걸 볼 뿐 오류는 어디에도 안 뜬다.
+///
+/// 여기서 잡을 수 있는 이유는 이 시험이 이미 54종을 **진짜 ops 로** 발생시켜
+/// 놓았기 때문이다. 그 페이로드를 그대로 재활용한다 — 모양을 다시 적으면
+/// 그 사본이 낡는다.
+fn shipped_scripts_survive_real_events(rec: &Recorder) {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("examples/plugins");
+    let got = rec.got.lock().unwrap();
+    let mut checked = 0usize;
+
+    for entry in std::fs::read_dir(&dir).unwrap().flatten() {
+        let manifest = entry.path().join("plugin.json");
+        if !manifest.is_file() {
+            continue;
+        }
+        let def = crate::plugins::read_def(&manifest).unwrap();
+        let Some(rel) = def.script.as_deref() else {
+            continue;
+        };
+        let src = std::fs::read_to_string(entry.path().join(rel)).unwrap();
+        let script = crate::plugins::script::Script::compile_source(&src).unwrap();
+
+        // 설정값은 기본값으로 — 사용자가 아무것도 안 넣은 상태가 첫 실행이다.
+        let cfg: std::collections::BTreeMap<String, serde_json::Value> = def
+            .inputs
+            .iter()
+            .filter_map(|i| i.default.clone().map(|d| (i.key.clone(), d)))
+            .collect();
+
+        for ev in got.iter() {
+            if !def
+                .on
+                .iter()
+                .any(|pat| super::names::matches(pat, ev.name, ev.phase))
+            {
+                continue;
+            }
+            checked += 1;
+            if let Err(e) = script.decide(ev, &cfg) {
+                panic!(
+                    "배포 예제 '{}' 가 실제 이벤트 '{}'({:?})에서 죽는다: {e}\n\
+                     페이로드: {}\n\
+                     예제가 안 도는 건 없느니만 못하다 — 복사해 쓰는 사람은 \
+                     자기 탓인 줄 안다.",
+                    def.name,
+                    ev.name,
+                    ev.phase,
+                    ev.to_json()
+                );
+            }
+        }
+    }
+    assert!(
+        checked > 0,
+        "예제 스크립트를 하나도 안 태웠다 — 검사가 아무것도 안 보고 있다"
+    );
 }
 
 #[tokio::test]

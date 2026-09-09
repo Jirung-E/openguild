@@ -1319,7 +1319,9 @@
 	}
 	.plugin-input {
 		display: grid;
-		grid-template-columns: minmax(6rem, 11rem) 1fr auto;
+		/* 첫 칸은 라벨. 최대를 두는 이유는 짧은 라벨들이 제각각 폭을 갖지
+		   않게 하려는 것이고, 넘치는 라벨은 위에서 줄바꿈한다. */
+		grid-template-columns: minmax(6rem, 11rem) minmax(0, 1fr) auto;
 		gap: 0.4rem 0.6rem;
 		align-items: center;
 	}
@@ -1336,6 +1338,11 @@
 	.pi-label {
 		font-size: 0.82rem;
 		color: var(--text-muted);
+		/* 선언에 label 이 없으면 키가 그대로 라벨이 된다
+		   (`DISCUSSION_WEBHOOK_TOKEN`). 공백이 없어서 줄바꿈 기회가 없고,
+		   그리드 칸을 넘어 입력창 아래로 흘러 글자가 가려졌다. */
+		overflow-wrap: anywhere;
+		min-width: 0;
 	}
 	.pi-field {
 		min-width: 0;

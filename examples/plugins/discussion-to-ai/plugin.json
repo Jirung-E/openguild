@@ -1,6 +1,26 @@
 {
   "name": "discussion-to-ai",
-  "description": "아직 해결되지 않은 토론 댓글만 골라 내 서비스로 보냅니다. 일반 댓글과 이미 해결된 것은 안 보냅니다.",
+  "description": "토론 댓글을 내 서비스(AI 등)로 보냅니다. 무엇을 보낼지는 설정에서 고릅니다.",
+  "inputs": [
+    {
+      "key": "DISCUSSION_WEBHOOK_TOKEN",
+      "label": "웹훅 토큰",
+      "secret": true,
+      "help": "받는 쪽 서비스가 발급한 값. Authorization 헤더로 나갑니다."
+    },
+    {
+      "key": "WHAT",
+      "label": "보낼 대상",
+      "type": "select",
+      "default": "unresolved",
+      "help": "AI 를 부르는 훅이면 범위가 곧 비용입니다.",
+      "options": [
+        { "value": "unresolved", "label": "미해결 토론만" },
+        { "value": "discussion", "label": "토론 댓글 전부" },
+        { "value": "all", "label": "모든 댓글" }
+      ]
+    }
+  ],
   "on": ["comment.added", "comment.unresolved"],
   "scope": ["cli", "gui", "server"],
   "action": {
