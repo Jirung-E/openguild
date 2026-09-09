@@ -208,6 +208,27 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	// BUG-279: run 훅의 작업 디렉터리. 플러그인 폴더가 아니다 — 거기 쓰면
 	// 동의 지문이 바뀌어 스스로 꺼진다.
 	'settings.pluginDataDir': { ko: '파일 쓰는 곳', en: 'writes files to' },
+	// REQ-021: 플러그인 설정값.
+	'settings.pluginValueSave': { ko: '저장', en: 'Save' },
+	'settings.pluginValueClear': { ko: '지우기', en: 'Clear' },
+	'settings.pluginValueSaved': { ko: '저장했습니다', en: 'Saved' },
+	'settings.pluginValueSet': { ko: '설정됨 — 바꾸려면 새로 입력', en: 'Set — type to replace' },
+	'settings.pluginValueMissing': {
+		ko: '값이 없어 이 플러그인은 돌지 않습니다.',
+		en: 'Unset — this plugin will not run.'
+	},
+	'settings.pluginValueFromEnv': {
+		ko: '지금은 환경변수 값을 씁니다.',
+		en: 'Currently using the value from your environment.'
+	},
+	'settings.pluginValueFromDefault': {
+		ko: '지금은 기본값을 씁니다.',
+		en: 'Currently using the default.'
+	},
+	'settings.pluginValuesPlaintext': {
+		ko: '값은 이 컴퓨터의 ~/.openguild/plugin-values.json 에 평문으로 저장됩니다. git 에는 올라가지 않습니다.',
+		en: 'Values are stored in plain text at ~/.openguild/plugin-values.json on this machine. They are never committed to git.'
+	},
 	// DEV-384: 신뢰 중에는 "허용 전에는 안 돕니다" 가 바로 밑 배너와 어긋난다.
 	'settings.pluginsIntroTrusted': {
 		ko: '플러그인 정의는 .guild/plugins/ 에 있고 git 으로 공유됩니다. 동의는 이 기계에만 남습니다.',

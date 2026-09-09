@@ -91,18 +91,74 @@ they must set — those are the two questions they actually have.
 Max 500 characters, and it is scanned for secrets like every other field. Longer
 notes belong in a README next to `plugin.json`.
 
-### 5. Write it, then prove it fires
+### 5. Ask the user for what only they can supply
+
+A plugin that needs a token, a chat id, or an on/off choice declares it. The
+desktop settings screen then renders a widget under the description, saves what
+the user picks, and the value is available two ways at run time.
+
+```json
+"inputs": [
+  { "key": "BOT_TOKEN",  "label": "Bot token", "secret": true,
+    "help": "Get one from @BotFather." },
+  { "key": "ON_COMMENT", "label": "Notify on comments",
+    "type": "checkbox", "default": false },
+  { "key": "INTERVAL",   "label": "Digest", "type": "select", "default": "now",
+    "options": [ {"value": "now", "label": "Immediately"},
+                 {"value": "1h",  "label": "Hourly"} ] }
+]
+```
+
+| field | |
+|---|---|
+| `key` | required — the name used by `${KEY}` and `config("KEY")` |
+| `label` | shown in the UI; defaults to `key` |
+| `type` | `text` (default) / `checkbox` / `select` / `number` |
+| `secret` | masks it in the UI and keeps the value out of every API response |
+| `default` | used until the user sets one |
+| `options` | `select` only; `value` is stored, `label` is shown |
+| `help` | one line under the widget — say where to get the value |
+
+**Two ways to read it, and they are not interchangeable:**
+
+- `${KEY}` in `url`, `headers`, `body_env`, `command`, `args` — always a string.
+- `config("KEY")` in the script — **keeps its type**, so a checkbox is a real
+  boolean and `if config("ON_COMMENT")` works.
+
+Resolution order is stored value → the process environment → `default`. That
+middle step is deliberate: a plain environment variable acts as the "same value
+in every guild" layer, and the settings screen overrides it per guild.
+
+Behaviour toggles belong in the script:
+
+```rhai
+fn should_send(e) {
+    if e.event == "comment.added" { return config("ON_COMMENT"); }
+    false
+}
+```
+
+Do not put a real token in `help` or `default` — the loader rejects it, and
+`.guild/plugins/` is committed.
+
+### 6. Write it, then prove it fires
 
 **Do not hand the user an untested plugin.** See "Verifying" below.
 
-### 6. Tell them how to turn it on
+### 7. Tell them how to turn it on
 
 ```bash
 openguild plugin allow <name>        # prints what they would be consenting to
 openguild plugin allow <name> --yes  # then actually allows it
 ```
 
-Say which environment variables they must export, and where to get each one.
+If the plugin declares `inputs`, point them at Settings → Plugins instead of
+telling them to export anything. From a terminal the equivalent is:
+
+```bash
+echo -n <value> | openguild plugin set <name> <KEY>   # stdin: stays out of history
+openguild plugin config <name>                        # what is set, secrets masked
+```
 
 ## The rules that bite
 

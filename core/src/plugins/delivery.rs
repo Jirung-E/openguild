@@ -23,9 +23,10 @@
 //! **시한은 반드시 둔다** — 하나가 영원히 붙들면 뒤에 줄 선 것이 다 막힌다.
 
 use super::runtime::Delivery;
-use super::{Action, Plugin, expand_env};
+use super::{Action, Plugin};
 use crate::events::Event;
 use serde_json::Value;
+use std::collections::BTreeMap;
 use std::io::Write;
 use std::process::{Command, Stdio};
 use std::sync::OnceLock;
@@ -59,17 +60,35 @@ impl Outbound {
 }
 
 impl Delivery for Outbound {
-    fn deliver(&self, plugin: &Plugin, _event: &Event, body: &Value) -> Result<(), String> {
+    fn deliver(
+        &self,
+        plugin: &Plugin,
+        _event: &Event,
+        body: &Value,
+        values: &BTreeMap<String, String>,
+    ) -> Result<(), String> {
         match &plugin.def.action {
             Action::Post {
                 url,
                 headers,
                 body_env,
                 ..
-            } => self.post(url, headers, body_env, plugin.def.action.timeout(), body),
-            Action::Run { command, args, .. } => {
-                run(plugin, command, args, plugin.def.action.timeout(), body)
-            }
+            } => self.post(
+                url,
+                headers,
+                body_env,
+                plugin.def.action.timeout(),
+                body,
+                values,
+            ),
+            Action::Run { command, args, .. } => run(
+                plugin,
+                command,
+                args,
+                plugin.def.action.timeout(),
+                body,
+                values,
+            ),
         }
     }
 }
@@ -82,13 +101,17 @@ impl Outbound {
         body_env: &std::collections::BTreeMap<String, String>,
         timeout: Duration,
         body: &Value,
+        values: &BTreeMap<String, String>,
     ) -> Result<(), String> {
         // URL 과 헤더의 `${VAR}` 는 **보내기 직전에** 푼다. 정의에 리터럴을
-        // 못 적게 해 둔 것([[DEV-375]])과 짝이다 — 값은 이 기계의 환경에만 있다.
-        let url = expand_env(url).map_err(|e| e.to_string())?;
+        // 못 적게 해 둔 것([[DEV-375]])과 짝이다 — 값은 이 기계에만 있다.
+        //
+        // REQ-021: 설정 화면에서 넣은 값을 프로세스 환경변수보다 **먼저** 본다.
+        let url = crate::plugins::expand_env_with(url, values).map_err(|e| e.to_string())?;
         let mut req = self.client().post(&url).timeout(timeout);
         for (k, v) in headers {
-            let v = expand_env(v).map_err(|e| format!("헤더 {k}: {e}"))?;
+            let v =
+                crate::plugins::expand_env_with(v, values).map_err(|e| format!("헤더 {k}: {e}"))?;
             req = req.header(k, v);
         }
         // DEV-384: 정의가 지목한 키만 환경에서 채운다. 스크립트에는 I/O 가
@@ -112,9 +135,17 @@ impl Outbound {
                 }
             };
             for (key, var) in body_env {
-                let got = std::env::var(var).map_err(|_| {
-                    format!("body_env.{key}: 환경변수 {var} 가 설정되지 않았습니다")
-                })?;
+                // REQ-021: 여기도 설정값이 먼저다. `body_env` 는 값이 곧 변수
+                // **이름**이라 `${...}` 문법을 안 쓴다 — 그래서 따로 본다.
+                let got = match values.get(var) {
+                    Some(v) => v.clone(),
+                    None => std::env::var(var).map_err(|_| {
+                        format!(
+                            "body_env.{key}: {var} 값이 없습니다 — 설정 화면에서 넣거나 \
+                             환경변수로 지정하세요"
+                        )
+                    })?,
+                };
                 obj.insert(key.clone(), Value::String(got));
             }
             std::borrow::Cow::Owned(Value::Object(obj))
@@ -168,6 +199,7 @@ fn run(
     args: &[String],
     timeout: Duration,
     body: &Value,
+    values: &BTreeMap<String, String>,
 ) -> Result<(), String> {
     // DEV-380: `${VAR}` 는 여기서도 푼다. 비밀값 검사가 `run` 의 command/args 도
     // 훑으므로 사용자는 **반드시** 참조로 적어야 하는데, 안 풀면 자식이 리터럴
@@ -179,7 +211,10 @@ fn run(
     let workdir = plugin
         .data_dir()
         .map_err(|e| format!("{command}: 데이터 폴더를 준비하지 못했습니다: {e}"))?;
-    let mut vars = std::collections::BTreeMap::new();
+    // REQ-021: 사용자가 넣은 값이 먼저, 그 위에 코어가 주는 경로 둘.
+    // 경로를 나중에 넣는 이유는 설정값이 그 이름을 덮어쓰지 못하게 하려는
+    // 것이다 — `OPENGUILD_PLUGIN_DIR` 를 정의가 갈아끼울 수 있으면 안 된다.
+    let mut vars = values.clone();
     vars.insert(
         "OPENGUILD_PLUGIN_DIR".to_string(),
         plugin.dir.display().to_string(),
@@ -350,6 +385,7 @@ mod tests {
                 scope: vec![Scope::Cli],
                 action,
                 script: None,
+                inputs: Vec::new(),
             },
             dir,
             guild_root,
@@ -453,7 +489,9 @@ mod tests {
             },
             d.clone(),
         );
-        Outbound::new().deliver(&p, &event(), &body()).unwrap();
+        Outbound::new()
+            .deliver(&p, &event(), &body(), &Default::default())
+            .unwrap();
 
         let got = pr.got.lock().unwrap().clone();
         assert_eq!(got.len(), 1, "요청이 안 왔다");
@@ -488,7 +526,9 @@ mod tests {
             },
             d.clone(),
         );
-        Outbound::new().deliver(&p, &event(), &body()).unwrap();
+        Outbound::new()
+            .deliver(&p, &event(), &body(), &Default::default())
+            .unwrap();
         assert!(
             pr.got.lock().unwrap()[0].contains("Bearer s3cret"),
             "환경변수가 안 풀렸다"
@@ -518,7 +558,9 @@ mod tests {
             },
             d.clone(),
         );
-        let e = Outbound::new().deliver(&p, &event(), &body()).unwrap_err();
+        let e = Outbound::new()
+            .deliver(&p, &event(), &body(), &Default::default())
+            .unwrap_err();
         assert!(e.contains("OG_TEST_DELIVERY_ABSENT"), "{e}");
         assert!(pr.got.lock().unwrap().is_empty(), "빈 키로 보내 버렸다");
         let _ = std::fs::remove_dir_all(&d);
@@ -541,7 +583,9 @@ mod tests {
             },
             d.clone(),
         );
-        let e = Outbound::new().deliver(&p, &event(), &body()).unwrap_err();
+        let e = Outbound::new()
+            .deliver(&p, &event(), &body(), &Default::default())
+            .unwrap_err();
         assert!(e.contains("보내지 못했습니다"), "{e}");
         let _ = std::fs::remove_dir_all(&d);
     }
@@ -561,7 +605,9 @@ mod tests {
             d.clone(),
         );
         let t = Instant::now();
-        let e = Outbound::new().deliver(&p, &event(), &body()).unwrap_err();
+        let e = Outbound::new()
+            .deliver(&p, &event(), &body(), &Default::default())
+            .unwrap_err();
         assert!(
             t.elapsed() < Duration::from_secs(5),
             "시한이 안 걸렸다 ({:?})",
@@ -623,7 +669,9 @@ mod tests {
             },
             d.clone(),
         );
-        let e = Outbound::new().deliver(&p, &event(), &body()).unwrap_err();
+        let e = Outbound::new()
+            .deliver(&p, &event(), &body(), &Default::default())
+            .unwrap_err();
         assert!(e.contains("500"), "{e}");
         let _ = std::fs::remove_dir_all(&d);
     }
@@ -641,7 +689,9 @@ mod tests {
             args: vec!["-c".into(), "cat > got.json".into()],
             timeout_ms: Some(5_000),
         });
-        Outbound::new().deliver(&p, &event(), &body()).unwrap();
+        Outbound::new()
+            .deliver(&p, &event(), &body(), &Default::default())
+            .unwrap();
         let got = std::fs::read_to_string(lab.data().join("got.json")).unwrap();
         assert_eq!(
             serde_json::from_str::<Value>(&got).unwrap(),
@@ -677,7 +727,9 @@ mod tests {
             timeout_ms: Some(300),
         });
         let t = Instant::now();
-        let e = Outbound::new().deliver(&p, &event(), &body()).unwrap_err();
+        let e = Outbound::new()
+            .deliver(&p, &event(), &body(), &Default::default())
+            .unwrap_err();
         assert!(
             t.elapsed() < Duration::from_secs(5),
             "시한이 안 걸렸다 ({:?})",
@@ -713,7 +765,9 @@ mod tests {
             ],
             timeout_ms: Some(5_000),
         });
-        Outbound::new().deliver(&p, &event(), &body()).unwrap();
+        Outbound::new()
+            .deliver(&p, &event(), &body(), &Default::default())
+            .unwrap();
         assert_eq!(
             std::fs::read_to_string(lab.data().join("got.txt")).unwrap(),
             "tok=s3cret",
@@ -743,7 +797,12 @@ mod tests {
             d.clone(),
         );
         Outbound::new()
-            .deliver(&p, &event(), &serde_json::json!({ "text": "왔다" }))
+            .deliver(
+                &p,
+                &event(),
+                &serde_json::json!({ "text": "왔다" }),
+                &Default::default(),
+            )
             .unwrap();
         let got = pr.got.lock().unwrap()[0].clone();
         assert!(got.contains(r#""chat_id":"987654321""#), "{got}");
@@ -777,6 +836,7 @@ mod tests {
                 &p,
                 &event(),
                 &serde_json::json!({ "text": "경로는 ${HOME} 입니다" }),
+                &Default::default(),
             )
             .unwrap();
         let got = pr.got.lock().unwrap()[0].clone();
@@ -802,7 +862,9 @@ mod tests {
             },
             d.clone(),
         );
-        let e = Outbound::new().deliver(&p, &event(), &body()).unwrap_err();
+        let e = Outbound::new()
+            .deliver(&p, &event(), &body(), &Default::default())
+            .unwrap_err();
         assert!(e.contains("OG_TEST_RUN_ABSENT"), "{e}");
         let _ = std::fs::remove_dir_all(&d);
     }
@@ -826,7 +888,9 @@ mod tests {
             d.clone(),
         );
         let t = Instant::now();
-        let e = Outbound::new().deliver(&p, &event(), &big).unwrap_err();
+        let e = Outbound::new()
+            .deliver(&p, &event(), &big, &Default::default())
+            .unwrap_err();
         assert!(
             t.elapsed() < Duration::from_secs(5),
             "stdin 쓰기에 막혀 전달 스레드가 잠겼다 ({:?})",
@@ -868,7 +932,9 @@ mod tests {
             },
             d.clone(),
         );
-        let e = Outbound::new().deliver(&p, &event(), &body()).unwrap_err();
+        let e = Outbound::new()
+            .deliver(&p, &event(), &body(), &Default::default())
+            .unwrap_err();
         assert!(e.contains("500"), "{e}");
         let _ = std::fs::remove_dir_all(&d);
     }
@@ -891,7 +957,9 @@ mod tests {
             ],
             timeout_ms: Some(400),
         });
-        let e = Outbound::new().deliver(&p, &event(), &body()).unwrap_err();
+        let e = Outbound::new()
+            .deliver(&p, &event(), &body(), &Default::default())
+            .unwrap_err();
         assert!(e.contains("중단"), "{e}");
 
         let log = lab.data().join("grand.log");
@@ -917,7 +985,9 @@ mod tests {
             },
             d.clone(),
         );
-        let e = Outbound::new().deliver(&p, &event(), &body()).unwrap_err();
+        let e = Outbound::new()
+            .deliver(&p, &event(), &body(), &Default::default())
+            .unwrap_err();
         assert!(e.contains("3"), "{e}");
         let _ = std::fs::remove_dir_all(&d);
     }
@@ -935,7 +1005,9 @@ mod tests {
             },
             d.clone(),
         );
-        let e = Outbound::new().deliver(&p, &event(), &body()).unwrap_err();
+        let e = Outbound::new()
+            .deliver(&p, &event(), &body(), &Default::default())
+            .unwrap_err();
         assert!(e.contains("띄우지 못했습니다"), "{e}");
         let _ = std::fs::remove_dir_all(&d);
     }

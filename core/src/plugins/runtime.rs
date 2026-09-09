@@ -46,11 +46,18 @@ pub trait Delivery: Send + Sync {
     ///
     /// 실패는 **돌려준다**. 여기서 삼키면 왜 안 갔는지 알 길이 없어진다 —
     /// [`PluginRuntime`] 이 받아서 문제 목록에 남긴다.
+    ///
+    /// REQ-021: `values` 는 사용자가 설정 화면에서 넣은 값을 **치환용 문자열로**
+    /// 편 것이다. `${...}` 를 풀 때 프로세스 환경변수보다 먼저 본다. 여기서
+    /// 다시 읽지 않고 받아 쓰는 이유는, 같은 이벤트에 대해 스크립트가 본 값과
+    /// 전달이 쓰는 값이 **어긋나면 안 되기** 때문이다(그 사이에 사용자가 값을
+    /// 고칠 수 있다).
     fn deliver(
         &self,
         plugin: &Plugin,
         event: &Event,
         body: &serde_json::Value,
+        values: &std::collections::BTreeMap<String, String>,
     ) -> Result<(), String>;
 }
 
@@ -62,6 +69,7 @@ impl Delivery for DropDelivery {
         _plugin: &Plugin,
         _event: &Event,
         _body: &serde_json::Value,
+        _values: &std::collections::BTreeMap<String, String>,
     ) -> Result<(), String> {
         Ok(())
     }
@@ -181,10 +189,23 @@ impl PluginRuntime {
                     // 사용자 입력이고 전달 구현은 외부와 말한다 — 둘 다 믿을 수
                     // 없다. 스크립트도 사용자 코드라 같은 울타리 안에 둔다.
                     let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        // REQ-021: 이 이벤트가 볼 설정값을 **한 번만** 읽는다.
+                        // 스크립트와 치환이 같은 값을 봐야 한다 — 두 번 읽으면
+                        // 그 사이에 사용자가 고친 값이 반쪽만 반영된다.
+                        let resolved = super::values::resolve(&p.guild_root, &p.def);
+                        let cfg: std::collections::BTreeMap<String, serde_json::Value> = resolved
+                            .iter()
+                            .filter_map(|(k, r)| r.value.clone().map(|v| (k.clone(), v)))
+                            .collect();
+                        let subst: std::collections::BTreeMap<String, String> = resolved
+                            .iter()
+                            .filter_map(|(k, r)| r.as_str().map(|s| (k.clone(), s)))
+                            .collect();
+
                         // 판단·가공이 먼저다 — 보낼지조차 스크립트가 정한다.
                         let body = match p.compiled.as_deref() {
                             None => job.event.to_json(),
-                            Some(sc) => match sc.decide(&job.event) {
+                            Some(sc) => match sc.decide(&job.event, &cfg) {
                                 Ok(Decision::Send(v)) => v,
                                 Ok(Decision::Skip) => return,
                                 Err(e) => {
@@ -193,7 +214,7 @@ impl PluginRuntime {
                                 }
                             },
                         };
-                        if let Err(e) = delivery.deliver(p, &job.event, &body) {
+                        if let Err(e) = delivery.deliver(p, &job.event, &body, &subst) {
                             note(&log, format!("플러그인 '{}' — {e}", p.def.name));
                         }
                     }));
@@ -297,6 +318,7 @@ mod tests {
                     timeout_ms: None,
                 },
                 script: None,
+                inputs: Vec::new(),
             },
             dir: std::path::PathBuf::from("/tmp/none"),
             guild_root: std::env::temp_dir(),
@@ -329,7 +351,13 @@ mod tests {
     #[derive(Default)]
     struct Counter(AtomicUsize);
     impl Delivery for Counter {
-        fn deliver(&self, _p: &Plugin, _e: &Event, _b: &serde_json::Value) -> Result<(), String> {
+        fn deliver(
+            &self,
+            _p: &Plugin,
+            _e: &Event,
+            _b: &serde_json::Value,
+            _v: &std::collections::BTreeMap<String, String>,
+        ) -> Result<(), String> {
             self.0.fetch_add(1, Ordering::SeqCst);
             Ok(())
         }
@@ -337,7 +365,13 @@ mod tests {
 
     struct Exploding;
     impl Delivery for Exploding {
-        fn deliver(&self, _p: &Plugin, _e: &Event, _b: &serde_json::Value) -> Result<(), String> {
+        fn deliver(
+            &self,
+            _p: &Plugin,
+            _e: &Event,
+            _b: &serde_json::Value,
+            _v: &std::collections::BTreeMap<String, String>,
+        ) -> Result<(), String> {
             panic!("전달 실패");
         }
     }
@@ -397,6 +431,7 @@ mod tests {
                 p: &Plugin,
                 _e: &Event,
                 _b: &serde_json::Value,
+                _v: &std::collections::BTreeMap<String, String>,
             ) -> Result<(), String> {
                 if p.def.name == "bad" {
                     panic!("펑");
@@ -439,6 +474,7 @@ mod tests {
                 _p: &Plugin,
                 _e: &Event,
                 _b: &serde_json::Value,
+                _v: &std::collections::BTreeMap<String, String>,
             ) -> Result<(), String> {
                 std::thread::sleep(Duration::from_millis(400));
                 self.0.fetch_add(1, Ordering::SeqCst);
@@ -468,7 +504,13 @@ mod tests {
     #[derive(Default)]
     struct Body(Mutex<Vec<serde_json::Value>>);
     impl Delivery for Body {
-        fn deliver(&self, _p: &Plugin, _e: &Event, b: &serde_json::Value) -> Result<(), String> {
+        fn deliver(
+            &self,
+            _p: &Plugin,
+            _e: &Event,
+            b: &serde_json::Value,
+            _v: &std::collections::BTreeMap<String, String>,
+        ) -> Result<(), String> {
             self.0.lock().unwrap().push(b.clone());
             Ok(())
         }
@@ -574,6 +616,7 @@ mod tests {
                 _p: &Plugin,
                 _e: &Event,
                 _b: &serde_json::Value,
+                _v: &std::collections::BTreeMap<String, String>,
             ) -> Result<(), String> {
                 Err("받는 쪽이 죽어 있습니다".into())
             }
@@ -602,6 +645,7 @@ mod tests {
                 _p: &Plugin,
                 _e: &Event,
                 _b: &serde_json::Value,
+                _v: &std::collections::BTreeMap<String, String>,
             ) -> Result<(), String> {
                 Err("받는 쪽이 죽어 있습니다".into())
             }
@@ -628,6 +672,7 @@ mod tests {
                 _p: &Plugin,
                 _e: &Event,
                 _b: &serde_json::Value,
+                _v: &std::collections::BTreeMap<String, String>,
             ) -> Result<(), String> {
                 std::thread::sleep(Duration::from_secs(3));
                 Ok(())

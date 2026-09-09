@@ -44,11 +44,36 @@ export interface PluginView {
 	 * 바뀌어 스스로 꺼진다. 대신 어디에 쌓이는지 사용자가 알아야 한다.
 	 */
 	data_dir: string | null;
+	/** REQ-021: 이 플러그인이 사용자에게 받아야 하는 값들 — 선언 + 지금 상태. */
+	inputs: PluginInput[];
 	/** 스크립트 원문. 이걸 안 보여주면 동의가 형식만 남는다. */
 	script_src: string | null;
 	granted: boolean;
 	/** 이 컴포넌트에서 도는가. */
 	runs_here: boolean;
+}
+
+export interface PluginInputOption {
+	value: string;
+	label: string;
+}
+
+export interface PluginInput {
+	key: string;
+	/** 선언에 label 이 없으면 코어가 key 로 채워 보낸다. */
+	label: string;
+	type: 'text' | 'checkbox' | 'select' | 'number';
+	help: string | null;
+	secret: boolean;
+	options: PluginInputOption[];
+	/**
+	 * 지금 값. **`secret` 이면 언제나 null 이다** — 코어가 아예 안 싣는다.
+	 * 값이 있는지는 `has_value` 로 안다.
+	 */
+	value: string | number | boolean | null;
+	has_value: boolean;
+	/** 값이 어디서 왔나 — 덮어쓸지 사용자가 판단하는 근거다. */
+	source: 'stored' | 'env' | 'default' | 'missing';
 }
 
 export interface PluginStatus {
@@ -82,5 +107,14 @@ export const pluginApi = {
 	status: () => api.get<PluginStatus>('/api/plugins'),
 	allow: (name: string) => manage('plugin_allow', { name }),
 	revoke: (name: string) => manage('plugin_revoke', { name }),
-	setTrusted: (on: boolean) => manage('plugin_trust', { on })
+	setTrusted: (on: boolean) => manage('plugin_trust', { on }),
+	/**
+	 * REQ-021: 설정값 저장. `null` 이면 지운다 — 정의의 기본값이나 환경변수로
+	 * 되돌아간다("비우기" 와 "빈 문자열을 저장" 은 다른 일이다).
+	 *
+	 * 허용/철회와 같은 경로를 탄다: 이 값은 이 기계의 것이고, 원격 길드를 보고
+	 * 있을 때 저장하면 보고 있지 않은 길드의 값을 고치게 된다.
+	 */
+	setValue: (name: string, key: string, value: string | number | boolean | null) =>
+		manage('plugin_set_value', { name, key, value })
 };

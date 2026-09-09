@@ -172,6 +172,7 @@ fn def(action: Action) -> PluginDef {
         scope: vec![Scope::Cli],
         action,
         script: None,
+        inputs: Vec::new(),
     }
 }
 
@@ -811,6 +812,7 @@ impl runtime::Delivery for Rec {
         p: &Plugin,
         e: &crate::events::Event,
         _b: &serde_json::Value,
+        _v: &std::collections::BTreeMap<String, String>,
     ) -> Result<(), String> {
         self.0
             .lock()
@@ -1107,6 +1109,7 @@ fn a_hook_that_writes_files_keeps_its_consent() {
             &plugin,
             &probe_event(),
             &json!({ "hello": "world" }),
+            &Default::default(),
         )
         .unwrap();
     }
@@ -1171,6 +1174,7 @@ fn the_hook_is_told_where_its_code_lives() {
         &p,
         &probe_event(),
         &json!({}),
+        &Default::default(),
     )
     .unwrap();
 
@@ -1220,4 +1224,347 @@ fn two_guilds_with_the_same_folder_name_get_different_data_dirs() {
     );
     unsafe { std::env::remove_var("OPENGUILD_HOME") };
     let _ = std::fs::remove_dir_all(&home);
+}
+
+// ── REQ-021: 설정값 — 선언 · 저장 · 스크립트에서 사용 ──────
+
+fn telegram_def() -> serde_json::Value {
+    json!({
+        "name": "tg",
+        "on": ["quest.created", "quest.status_changed", "comment.added"],
+        "scope": ["cli"],
+        "inputs": [
+            { "key": "BOT_TOKEN", "label": "봇 토큰", "secret": true },
+            { "key": "ON_CREATED", "label": "퀘스트 생성 알림",
+              "type": "checkbox", "default": true },
+            { "key": "ON_COMMENT", "label": "댓글 알림",
+              "type": "checkbox", "default": false },
+            { "key": "INTERVAL", "label": "전송 주기", "type": "select",
+              "default": "now",
+              "options": [ { "value": "now", "label": "즉시" },
+                           { "value": "5m",  "label": "5분" } ] }
+        ],
+        "action": { "post": { "url": "https://api.telegram.org/bot${BOT_TOKEN}/send" } }
+    })
+}
+
+/// **세 조각이 실제로 이어지는가** — 정의가 선언하고, 저장한 값이,
+/// 스크립트에 변수로 도착한다. 어느 한 곳만 봐도 이어진 걸 확인 못 한다.
+#[test]
+fn a_saved_value_reaches_the_script_as_a_variable() {
+    let _guard = env_lock();
+    let home = fresh_tmp("cfg-home");
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let g = fresh_tmp("cfg");
+    write_plugin(&g, "tg", telegram_def());
+    let pdir = plugins_dir(&g).join("tg");
+    std::fs::write(
+        pdir.join("t.rhai"),
+        r#"fn should_send(e) {
+             if e.event == "quest.created" { return config("ON_CREATED"); }
+             if e.event == "comment.added" { return config("ON_COMMENT"); }
+             false
+           }"#,
+    )
+    .unwrap();
+    let mut def = telegram_def();
+    def["script"] = json!("t.rhai");
+    write_plugin(&g, "tg", def);
+
+    let p = load_all(&g).needs_consent.into_iter().next().unwrap();
+    let sc = p.compiled.as_deref().expect("스크립트가 컴파일됐어야 한다");
+
+    // 기본값 그대로 — 생성은 보내고 댓글은 안 보낸다.
+    let cfg = |g: &std::path::Path, p: &Plugin| {
+        crate::plugins::values::resolve(g, &p.def)
+            .into_iter()
+            .filter_map(|(k, r)| r.value.map(|v| (k, v)))
+            .collect::<std::collections::BTreeMap<_, _>>()
+    };
+    let created = crate::events::Event {
+        name: "quest.created",
+        ..probe_event()
+    };
+    let commented = crate::events::Event {
+        name: "comment.added",
+        ..probe_event()
+    };
+    assert!(matches!(
+        sc.decide(&created, &cfg(&g, &p)).unwrap(),
+        super::script::Decision::Send(_)
+    ));
+    assert!(matches!(
+        sc.decide(&commented, &cfg(&g, &p)).unwrap(),
+        super::script::Decision::Skip
+    ));
+
+    // 사용자가 화면에서 댓글 알림을 켠다.
+    crate::plugins::values::set(&g, "tg", "ON_COMMENT", Some(json!(true))).unwrap();
+    assert!(
+        matches!(
+            sc.decide(&commented, &cfg(&g, &p)).unwrap(),
+            super::script::Decision::Send(_)
+        ),
+        "체크박스를 켰는데 스크립트가 못 봤다 — 세 조각 중 하나가 끊겼다"
+    );
+
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 체크박스는 **bool 로** 온다. 문자열 `"true"` 면 `if config(k)` 가 안 돈다 —
+/// rhai 는 문자열을 조건으로 못 쓴다.
+#[test]
+fn config_keeps_its_type() {
+    let _guard = env_lock();
+    let home = fresh_tmp("cfgtype-home");
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let g = fresh_tmp("cfgtype");
+    let mut d = telegram_def();
+    d["inputs"][3] = json!({ "key": "LIMIT", "type": "number", "default": 5 });
+    write_plugin(&g, "tg", d);
+
+    let p = load_all(&g).needs_consent.into_iter().next().unwrap();
+    let r = crate::plugins::values::resolve(&g, &p.def);
+    assert_eq!(r["ON_CREATED"].value, Some(json!(true)));
+    assert!(r["LIMIT"].value.as_ref().unwrap().is_number());
+
+    // 치환 쪽은 문자열이다 — url 에 `true` 가 들어가야지 `"true"` 면 안 된다.
+    assert_eq!(r["ON_CREATED"].as_str().as_deref(), Some("true"));
+
+    // **환경변수 경로가 진짜 시험 대상이다.** 환경변수는 문자열뿐이라, 선언한
+    // 형으로 바꿔 주지 않으면 체크박스에 `"false"` 라는 **참인 문자열**이 들어가
+    // `if config(k)` 가 항상 참이 된다. 기본값 경로만 보면 이걸 못 잡는다.
+    unsafe { std::env::set_var("ON_COMMENT", "false") };
+    unsafe { std::env::set_var("LIMIT", "12") };
+    let r = crate::plugins::values::resolve(&g, &p.def);
+    assert_eq!(
+        r["ON_COMMENT"].value,
+        Some(json!(false)),
+        "환경변수의 \"false\" 가 bool 로 안 바뀌었다"
+    );
+    assert!(
+        r["LIMIT"].value.as_ref().unwrap().is_number(),
+        "환경변수의 숫자가 문자열로 남았다"
+    );
+    unsafe { std::env::remove_var("ON_COMMENT") };
+    unsafe { std::env::remove_var("LIMIT") };
+
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 해석 순서 — 저장값 → 환경변수 → 기본값. 환경변수 칸이 "모든 길드 공통"
+/// 자리 노릇을 한다.
+#[test]
+fn stored_beats_env_beats_default() {
+    let _guard = env_lock();
+    let home = fresh_tmp("cfgorder-home");
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let g = fresh_tmp("cfgorder");
+    write_plugin(&g, "tg", telegram_def());
+    let p = load_all(&g).needs_consent.into_iter().next().unwrap();
+
+    // 아무것도 없으면 기본값.
+    let r = crate::plugins::values::resolve(&g, &p.def);
+    assert_eq!(
+        r["INTERVAL"].source,
+        crate::plugins::values::Source::Default
+    );
+    assert_eq!(
+        r["BOT_TOKEN"].source,
+        crate::plugins::values::Source::Missing
+    );
+
+    // 환경변수가 기본값을 이긴다.
+    unsafe { std::env::set_var("INTERVAL", "5m") };
+    let r = crate::plugins::values::resolve(&g, &p.def);
+    assert_eq!(r["INTERVAL"].as_str().as_deref(), Some("5m"));
+    assert_eq!(r["INTERVAL"].source, crate::plugins::values::Source::Env);
+
+    // 저장값이 환경변수를 이긴다.
+    crate::plugins::values::set(&g, "tg", "INTERVAL", Some(json!("now"))).unwrap();
+    let r = crate::plugins::values::resolve(&g, &p.def);
+    assert_eq!(r["INTERVAL"].as_str().as_deref(), Some("now"));
+    assert_eq!(r["INTERVAL"].source, crate::plugins::values::Source::Stored);
+
+    unsafe { std::env::remove_var("INTERVAL") };
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 같은 플러그인이 길드마다 다른 값을 갖는다 — 알릴 방이 프로젝트마다 다르다.
+#[test]
+fn values_are_per_guild() {
+    let _guard = env_lock();
+    let home = fresh_tmp("cfgguild-home");
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let a = fresh_tmp("cfgguild-a");
+    let b = fresh_tmp("cfgguild-b");
+    crate::plugins::values::set(&a, "tg", "CHAT", Some(json!("방A"))).unwrap();
+    crate::plugins::values::set(&b, "tg", "CHAT", Some(json!("방B"))).unwrap();
+    assert_eq!(
+        crate::plugins::values::stored(&a, "tg")["CHAT"],
+        json!("방A")
+    );
+    assert_eq!(
+        crate::plugins::values::stored(&b, "tg")["CHAT"],
+        json!("방B")
+    );
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    let _ = std::fs::remove_dir_all(&a);
+    let _ = std::fs::remove_dir_all(&b);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// **값을 바꿔도 동의가 안 풀린다.** 토큰을 갱신할 때마다 재동의면 못 쓴다.
+/// 반대로 `inputs` 선언이 바뀌면 풀려야 한다 — 요구하는 값이 달라진 것이다.
+#[test]
+fn changing_a_value_does_not_revoke_consent() {
+    let _guard = env_lock();
+    let home = fresh_tmp("cfgconsent-home");
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let g = fresh_tmp("cfgconsent");
+    write_plugin(&g, "tg", telegram_def());
+    let p = load_all(&g).needs_consent.into_iter().next().unwrap();
+    consent::grant(&g, &p).unwrap();
+    assert_eq!(load_all(&g).active.len(), 1);
+
+    crate::plugins::values::set(&g, "tg", "BOT_TOKEN", Some(json!("새-토큰"))).unwrap();
+    assert_eq!(
+        load_all(&g).active.len(),
+        1,
+        "값을 바꿨다고 동의가 풀렸다 — 토큰 갱신마다 재동의가 된다"
+    );
+
+    // 선언이 바뀌면 다시 묻는다.
+    let mut d = telegram_def();
+    d["inputs"].as_array_mut().unwrap().push(json!({
+        "key": "NEW_ONE", "label": "새 값"
+    }));
+    write_plugin(&g, "tg", d);
+    assert_eq!(
+        load_all(&g).active.len(),
+        0,
+        "요구하는 값이 늘었는데 다시 안 물었다"
+    );
+
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 값 파일은 소유자만 읽는다(0600). 평문으로 토큰이 들어 있다.
+#[cfg(unix)]
+#[test]
+fn the_value_file_is_not_world_readable() {
+    use std::os::unix::fs::PermissionsExt;
+    let _guard = env_lock();
+    let home = fresh_tmp("cfgperm-home");
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let g = fresh_tmp("cfgperm");
+    crate::plugins::values::set(&g, "tg", "BOT_TOKEN", Some(json!("비밀"))).unwrap();
+    let mode = std::fs::metadata(crate::plugins::values::path().unwrap())
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o777;
+    assert_eq!(mode, 0o600, "권한이 {mode:o} — 같은 기계의 남이 읽는다");
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 화면에서 드러날 잘못은 적재에서 잡는다.
+#[test]
+fn broken_input_declarations_are_caught_at_load() {
+    let cases: Vec<(&str, serde_json::Value)> = vec![
+        (
+            "선택지 없는 select",
+            json!([{ "key": "A", "type": "select" }]),
+        ),
+        (
+            "options 에 없는 default",
+            json!([{ "key": "A", "type": "select", "default": "z",
+                     "options": [{ "value": "a" }] }]),
+        ),
+        (
+            "select 가 아닌데 options",
+            json!([{ "key": "A", "options": [{ "value": "a" }] }]),
+        ),
+        (
+            "checkbox 인데 default 가 bool 이 아님",
+            json!([{ "key": "A", "type": "checkbox", "default": "yes" }]),
+        ),
+        ("빈 key", json!([{ "key": "  " }])),
+        ("키에 못 쓰는 문자", json!([{ "key": "A B" }])),
+        (
+            "겹치는 key",
+            json!([{ "key": "A" }, { "key": "A", "label": "또" }]),
+        ),
+    ];
+    for (why, inputs) in cases {
+        let mut d = post_def();
+        d.inputs = serde_json::from_value(inputs).unwrap();
+        assert!(validate(&d).is_err(), "통과하면 안 된다: {why}");
+    }
+}
+
+/// `help` 에 예시랍시고 진짜 토큰을 적는 사고가 제일 흔하다.
+#[test]
+fn a_secret_in_an_input_help_is_rejected() {
+    let mut d = post_def();
+    d.inputs = vec![Input {
+        key: "TOKEN".into(),
+        label: None,
+        input_type: InputType::Text,
+        help: Some("예: sk-ABCDEFGHIJKLMNOPQRSTUVWXYZ0123".into()),
+        secret: true,
+        default: None,
+        options: Vec::new(),
+    }];
+    let e = validate(&d).unwrap_err().to_string();
+    assert!(e.contains("help"), "{e}");
+}
+
+/// 선언이 없으면 직렬화에 안 나타난다 — 이 필드가 생긴 것만으로 기존 동의가
+/// 전부 무효가 되면 안 된다([[REQ-020]] 과 같은 이유).
+#[test]
+fn absent_inputs_do_not_change_the_fingerprint() {
+    let d = post_def();
+    let json = serde_json::to_value(&d).unwrap();
+    assert!(json.get("inputs").is_none(), "{json}");
+}
+
+/// **안내문은 이름 때문에 거부되면 안 된다.**
+///
+/// `inputs.TELEGRAM_BOT_TOKEN.help` 는 필드 이름에 `token` 이 들어간다. 비밀값
+/// 검사의 "이름이 비밀을 뜻하면 값도 환경변수 참조여야 한다" 규칙을 산문에도
+/// 걸면, "봇 토큰은 @BotFather 에게 받습니다" 라는 **안내문이 통째로 거부된다.**
+/// 배포하는 텔레그램 예제를 쓰다 실제로 밟았다 — [[DEV-380]] 에서 `task-runner`
+/// 가 `sk-` 를 품어 거부되던 것과 같은 계열의 오탐이다.
+#[test]
+fn help_text_is_not_rejected_just_because_the_key_says_token() {
+    let mut d = post_def();
+    d.inputs = vec![Input {
+        key: "TELEGRAM_BOT_TOKEN".into(),
+        label: Some("봇 토큰".into()),
+        input_type: InputType::Text,
+        help: Some("텔레그램에서 @BotFather 에게 /newbot 하면 받습니다.".into()),
+        secret: true,
+        default: None,
+        options: Vec::new(),
+    }];
+    assert!(
+        validate(&d).is_ok(),
+        "평범한 안내문이 거부됐다: {:?}",
+        validate(&d).unwrap_err().to_string()
+    );
+
+    // 그래도 **진짜 토큰**은 막는다 — 접두사 검사는 그대로다.
+    d.inputs[0].help = Some("예: sk-ABCDEFGHIJKLMNOPQRSTUVWXYZ0123".into());
+    assert!(validate(&d).is_err(), "help 안의 진짜 키가 통과했다");
 }

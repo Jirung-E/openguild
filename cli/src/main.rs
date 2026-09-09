@@ -331,6 +331,14 @@ enum PluginCmd {
     Untrust,
     #[command(about = tf!("구독할 수 있는 이벤트 이름 목록.", "Event names you can subscribe to."))]
     Events,
+    // REQ-021: 값은 **stdin 으로** 받는다. 인자로 받으면 토큰이 셸 히스토리와
+    // 프로세스 목록(`ps`)에 그대로 남는다.
+    #[command(about = tf!("플러그인 설정값 보기 — 비밀값은 가려서 보여준다.", "Show a plugin's configured values — secrets are masked."))]
+    Config { name: String },
+    #[command(about = tf!("설정값 지정. 값은 stdin 으로 받는다 (셸 히스토리에 안 남는다): `echo -n <값> | openguild plugin set <이름> <키>`", "Set a value. The value is read from stdin so it never reaches your shell history: `echo -n <value> | openguild plugin set <name> <key>`"))]
+    Set { name: String, key: String },
+    #[command(about = tf!("설정값 지우기 — 정의의 기본값이나 환경변수로 돌아간다.", "Clear a value — it falls back to the definition's default or the environment."))]
+    Unset { name: String, key: String },
 }
 
 /// DEV-319: 길드(어느 길드를 열지) 그룹. Backend/Store 무관 — recents.json 만 읽는다.
@@ -6130,6 +6138,154 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
                 }
             }
         }
+        // REQ-021 ── 설정값 ────────────────────────────────
+        PluginCmd::Config { name } => {
+            let all: Vec<_> = loaded
+                .active
+                .iter()
+                .chain(loaded.needs_consent.iter())
+                .collect();
+            let Some(p) = all.into_iter().find(|p| p.def.name == name) else {
+                return Err(anyhow!(tf!(
+                    "그런 플러그인 없음: {} (`openguild plugin list` 로 확인)",
+                    "no such plugin: {} (check with `openguild plugin list`)",
+                    name
+                )));
+            };
+            let resolved = openguild_core::plugins::values::resolve(root, &p.def);
+            if json {
+                json_println!(serde_json::json!({
+                    "name": p.def.name,
+                    "inputs": p.def.inputs.iter().map(|i| {
+                        let r = resolved.get(&i.key);
+                        serde_json::json!({
+                            "key": i.key,
+                            "label": i.label(),
+                            "type": i.input_type,
+                            "secret": i.secret,
+                            "source": r.map(|r| r.source),
+                            // 비밀은 값을 안 싣는다 — `--json` 을 파이프로
+                            // 넘기면 로그에 남는다.
+                            "value": (!i.secret).then(|| r.and_then(|r| r.value.clone())).flatten(),
+                            "has_value": r.is_some_and(|r| r.value.is_some()),
+                        })
+                    }).collect::<Vec<_>>(),
+                }));
+                return Ok(());
+            }
+            if p.def.inputs.is_empty() {
+                println!(
+                    "{}",
+                    tf!(
+                        "(이 플러그인은 설정값이 없습니다)",
+                        "(this plugin declares no settings)"
+                    )
+                );
+                return Ok(());
+            }
+            for i in &p.def.inputs {
+                let r = resolved.get(&i.key);
+                let shown = match r.map(|r| (r.source, r.as_str())) {
+                    Some((openguild_core::plugins::values::Source::Missing, _)) | None => {
+                        tf!("(없음 — 이 플러그인은 못 돕니다)", "(unset — this plugin cannot run)")
+                    }
+                    Some((src, v)) => {
+                        let val = if i.secret {
+                            tf!("(설정됨)", "(set)").to_string()
+                        } else {
+                            v.unwrap_or_default()
+                        };
+                        let from = match src {
+                            openguild_core::plugins::values::Source::Stored => {
+                                tf!("저장됨", "stored")
+                            }
+                            openguild_core::plugins::values::Source::Env => {
+                                tf!("환경변수", "environment")
+                            }
+                            _ => tf!("기본값", "default"),
+                        };
+                        format!("{val}  [{from}]")
+                    }
+                };
+                println!("{:<24} {}  {}", i.key, i.label(), shown);
+            }
+        }
+        PluginCmd::Set { name, key } => {
+            // **stdin 으로 받는다.** 인자로 받으면 토큰이 셸 히스토리와 `ps` 에
+            // 그대로 남는다 — 그러라고 만든 명령이 아니다.
+            use std::io::Read as _;
+            let mut raw = String::new();
+            std::io::stdin().read_to_string(&mut raw)?;
+            let raw = raw.trim_end_matches(['\n', '\r']);
+            if raw.is_empty() {
+                return Err(anyhow!(tf!(
+                    "값이 비었습니다 — stdin 으로 넘기세요: `echo -n <값> | openguild plugin set {} {}`",
+                    "empty value — pipe it in: `echo -n <value> | openguild plugin set {} {}`",
+                    name,
+                    key
+                )));
+            }
+            // 선언한 형에 맞춰 저장한다. 체크박스에 문자열 "false" 가 들어가면
+            // 스크립트의 `if config(k)` 가 **항상 참**이 된다.
+            let declared = loaded
+                .active
+                .iter()
+                .chain(loaded.needs_consent.iter())
+                .find(|p| p.def.name == name)
+                .and_then(|p| p.def.inputs.iter().find(|i| i.key == key).cloned());
+            let value = match declared.as_ref().map(|i| i.input_type) {
+                Some(openguild_core::plugins::InputType::Checkbox) => serde_json::Value::Bool(
+                    matches!(raw.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"),
+                ),
+                Some(openguild_core::plugins::InputType::Number) => raw
+                    .parse::<f64>()
+                    .ok()
+                    .and_then(serde_json::Number::from_f64)
+                    .map(serde_json::Value::Number)
+                    .unwrap_or_else(|| serde_json::Value::String(raw.into())),
+                _ => serde_json::Value::String(raw.into()),
+            };
+            if let Some(i) = declared.as_ref()
+                && i.input_type == openguild_core::plugins::InputType::Select
+                && !i.options.iter().any(|o| Some(o.value.as_str()) == value.as_str())
+            {
+                return Err(anyhow!(tf!(
+                    "`{}` 은 선택형입니다 — 가능한 값: {}",
+                    "`{}` is a select — allowed values: {}",
+                    key,
+                    i.options.iter().map(|o| o.value.as_str()).collect::<Vec<_>>().join(", ")
+                )));
+            }
+            Backend::map_err(openguild_core::plugins::values::set(
+                root,
+                &name,
+                &key,
+                Some(value),
+            ))?;
+            if json {
+                json_println!(serde_json::json!({ "ok": true, "plugin": name, "key": key }));
+            } else {
+                println!("{}", tf!("✓ 설정함: {} / {}", "✓ set: {} / {}", name, key));
+            }
+        }
+        PluginCmd::Unset { name, key } => {
+            Backend::map_err(openguild_core::plugins::values::set(
+                root, &name, &key, None,
+            ))?;
+            if json {
+                json_println!(serde_json::json!({ "ok": true, "plugin": name, "key": key }));
+            } else {
+                println!(
+                    "{}",
+                    tf!(
+                        "✓ 지움: {} / {} — 기본값이나 환경변수로 돌아갑니다",
+                        "✓ cleared: {} / {} — falls back to the default or the environment",
+                        name,
+                        key
+                    )
+                );
+            }
+        }
         PluginCmd::Untrust => {
             Backend::map_err(consent::untrust_guild(root))?;
             if json {
@@ -10859,6 +11015,7 @@ mod tests {
                 _p: &openguild_core::plugins::Plugin,
                 _e: &openguild_core::events::Event,
                 _b: &serde_json::Value,
+                _v: &std::collections::BTreeMap<String, String>,
             ) -> Result<(), String> {
                 std::thread::sleep(std::time::Duration::from_millis(200));
                 self.0.fetch_add(1, Ordering::SeqCst);

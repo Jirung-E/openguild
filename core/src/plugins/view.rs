@@ -14,7 +14,7 @@
 //! [`PluginStatus::manageable`] 이 false 면 프런트는 버튼 자체를 안 그리고,
 //! 서버는 애초에 그 경로를 열지 않는다.
 
-use super::{Action, Plugin, Scope};
+use super::{Action, InputType, Plugin, Scope};
 use crate::error::AppResult;
 use serde::{Deserialize, Serialize};
 
@@ -38,11 +38,41 @@ pub struct PluginView {
     /// 경로만 만든다(폴더는 안 만든다). 목록을 여는 것만으로 안 돌 플러그인의
     /// 폴더까지 생기면 안 된다.
     pub data_dir: Option<String>,
+    /// REQ-021: 이 플러그인이 사용자에게 받아야 하는 값들 — 선언 + 지금 상태.
+    pub inputs: Vec<InputView>,
     /// 스크립트 원문. 이걸 안 보여주면 동의가 형식만 남는다.
     pub script_src: Option<String>,
     pub granted: bool,
     /// 이 컴포넌트에서 도는가. scope 가 안 맞으면 허용해도 여기선 안 돈다.
     pub runs_here: bool,
+}
+
+/// REQ-021: 입력 하나를 화면이 그릴 수 있는 모양으로.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InputView {
+    pub key: String,
+    /// `label` 이 없으면 `key` 로 채워 보낸다 — 화면이 다시 판단하지 않게.
+    pub label: String,
+    /// `text` | `checkbox` | `select` | `number`
+    #[serde(rename = "type")]
+    pub input_type: String,
+    pub help: Option<String>,
+    pub secret: bool,
+    pub options: Vec<InputOptionView>,
+    /// 지금 값. **`secret` 이면 언제나 `None` 이다** — 화면에 뿌릴 이유가 없고,
+    /// HTTP 로 조회하는 경로도 같은 모양을 쓴다(브라우저로 토큰이 나가면 안
+    /// 된다). 값이 있는지는 [`has_value`](Self::has_value) 로 알린다.
+    pub value: Option<serde_json::Value>,
+    pub has_value: bool,
+    /// `stored` | `env` | `default` | `missing` — 사용자가 **덮어쓸지** 판단
+    /// 하려면 값이 어디서 왔는지 알아야 한다.
+    pub source: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InputOptionView {
+    pub value: String,
+    pub label: String,
 }
 
 /// 한 길드의 플러그인 상태 전부.
@@ -102,10 +132,61 @@ pub(super) fn view(p: &Plugin, granted: bool, scope: Scope) -> PluginView {
                 .map(|d| d.display().to_string()),
             Action::Post { .. } => None,
         },
+        inputs: input_views(p),
         script_src: p.script_src.clone(),
         granted,
         runs_here: p.def.scope.contains(&scope),
     }
+}
+
+fn input_views(p: &Plugin) -> Vec<InputView> {
+    if p.def.inputs.is_empty() {
+        return Vec::new();
+    }
+    let resolved = super::values::resolve(&p.guild_root, &p.def);
+    p.def
+        .inputs
+        .iter()
+        .map(|i| {
+            let r = resolved.get(&i.key);
+            let has = r.is_some_and(|r| r.value.is_some());
+            InputView {
+                key: i.key.clone(),
+                label: i.label().to_string(),
+                input_type: match i.input_type {
+                    InputType::Text => "text",
+                    InputType::Checkbox => "checkbox",
+                    InputType::Select => "select",
+                    InputType::Number => "number",
+                }
+                .into(),
+                help: i.help.clone(),
+                secret: i.secret,
+                options: i
+                    .options
+                    .iter()
+                    .map(|o| InputOptionView {
+                        value: o.value.clone(),
+                        label: o.label().to_string(),
+                    })
+                    .collect(),
+                // 비밀은 여기서 끊는다. 화면이 실수로 그릴 기회조차 없어야 한다.
+                value: if i.secret {
+                    None
+                } else {
+                    r.and_then(|r| r.value.clone())
+                },
+                has_value: has,
+                source: match r.map(|r| r.source) {
+                    Some(super::values::Source::Stored) => "stored",
+                    Some(super::values::Source::Env) => "env",
+                    Some(super::values::Source::Default) => "default",
+                    _ => "missing",
+                }
+                .into(),
+            }
+        })
+        .collect()
 }
 
 fn scope_label(s: &Scope) -> String {

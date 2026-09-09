@@ -89,7 +89,12 @@
 	import { isGuildContextActive } from '$lib/stores/guildSession';
 	// DEV-379/380: 플러그인. 조회는 어디서든(브라우저 포함), 허용/철회는
 	// 로컬 길드를 연 데스크톱에서만.
-	import { pluginApi, pluginsManageable, type PluginStatus } from '$lib/api/plugins';
+	import {
+		pluginApi,
+		pluginsManageable,
+		type PluginStatus,
+		type PluginInput
+	} from '$lib/api/plugins';
 
 	// DEV-101 fix3: 즉시 반영 — store 가 source of truth, drag 중에도 매 step 적용.
 	// preview / displayScale wrapper 제거.
@@ -142,6 +147,69 @@
 	// `<body>` 로 떨어진다. 그러면 다음 플러그인까지 앱 맨 위에서부터 Tab 해야
 	// 한다. 이름으로 버튼을 기억해 두었다가 되돌린다.
 	const pluginBtns: Record<string, HTMLButtonElement | undefined> = {};
+
+	// ─── REQ-021: 플러그인 설정값 ───
+	//
+	// 편집 중인 값은 화면에만 두고, 저장을 눌러야 파일에 간다. 타이핑마다
+	// 저장하면 토큰을 반쯤 친 상태가 파일에 남고, 그 사이에 이벤트가 나가면
+	// 깨진 값으로 요청이 간다.
+	let inputDrafts = $state<Record<string, string | number | boolean>>({});
+	let inputBusy = $state<string[]>([]);
+
+	function draftKey(plugin: string, key: string) {
+		return `${plugin}\u0000${key}`;
+	}
+
+	/** 편집 중인 값이 있으면 그것, 없으면 서버가 준 현재 값. */
+	function draftOf(plugin: string, i: PluginInput): string | number | boolean {
+		const k = draftKey(plugin, i.key);
+		if (k in inputDrafts) return inputDrafts[k];
+		if (i.secret) return ''; // 비밀은 값이 안 온다 — 새로 칠 때만 쓴다.
+		if (i.value === null || i.value === undefined) return i.type === 'checkbox' ? false : '';
+		return i.value as string | number | boolean;
+	}
+
+	function setDraft(plugin: string, key: string, v: string | number | boolean) {
+		inputDrafts = { ...inputDrafts, [draftKey(plugin, key)]: v };
+	}
+
+	function isDirty(plugin: string, i: PluginInput) {
+		return draftKey(plugin, i.key) in inputDrafts;
+	}
+
+	async function saveInput(plugin: string, i: PluginInput) {
+		const k = draftKey(plugin, i.key);
+		inputBusy = [...inputBusy, k];
+		try {
+			let v = inputDrafts[k];
+			if (i.type === 'number' && typeof v === 'string') v = Number(v);
+			await pluginApi.setValue(plugin, i.key, v as string | number | boolean);
+			const { [k]: _drop, ...rest } = inputDrafts;
+			inputDrafts = rest;
+			await refreshPlugins();
+			showToast(t('settings.pluginValueSaved', $locale), 'success');
+		} catch (e) {
+			showToast(e instanceof Error ? e.message : String(e), 'error');
+		} finally {
+			inputBusy = inputBusy.filter((x) => x !== k);
+		}
+	}
+
+	/** 저장된 값을 지운다 — 기본값이나 환경변수로 되돌아간다. */
+	async function clearInput(plugin: string, i: PluginInput) {
+		const k = draftKey(plugin, i.key);
+		inputBusy = [...inputBusy, k];
+		try {
+			await pluginApi.setValue(plugin, i.key, null);
+			const { [k]: _drop, ...rest } = inputDrafts;
+			inputDrafts = rest;
+			await refreshPlugins();
+		} catch (e) {
+			showToast(e instanceof Error ? e.message : String(e), 'error');
+		} finally {
+			inputBusy = inputBusy.filter((x) => x !== k);
+		}
+	}
 
 	async function togglePlugin(name: string, grant: boolean) {
 		pluginBusy = [...pluginBusy, name];
@@ -528,6 +596,93 @@
 								<div class="plugin-meta">
 									<span>{t('settings.pluginDataDir', $locale)}:</span>
 									<code class="plugin-target">{p.data_dir}</code>
+								</div>
+							{/if}
+							<!-- REQ-021: admin 이 요청한 자리 — "해당 플러그인 설명 아래에
+							     입력란". 위젯 종류는 정의가 선언한다: 토큰은 텍스트,
+							     알림 여부는 체크박스, 주기는 선택상자. -->
+							{#if p.inputs.length > 0}
+								<div class="plugin-inputs">
+									{#each p.inputs as i (i.key)}
+										{@const busy = inputBusy.includes(draftKey(p.name, i.key))}
+										<div class="plugin-input" class:missing={i.source === 'missing'}>
+											{#if i.type === 'checkbox'}
+												<label class="pi-check">
+													<input
+														type="checkbox"
+														checked={draftOf(p.name, i) === true}
+														disabled={busy || !canManage}
+														onchange={(e) =>
+															setDraft(p.name, i.key, e.currentTarget.checked)}
+													/>
+													<span>{i.label}</span>
+												</label>
+											{:else}
+												<label class="pi-label" for={`pi-${p.name}-${i.key}`}>{i.label}</label>
+												{#if i.type === 'select'}
+													<select
+														id={`pi-${p.name}-${i.key}`}
+														class="pi-field"
+														disabled={busy || !canManage}
+														onchange={(e) => setDraft(p.name, i.key, e.currentTarget.value)}
+													>
+														{#each i.options as o (o.value)}
+															<option value={o.value} selected={draftOf(p.name, i) === o.value}
+																>{o.label}</option
+															>
+														{/each}
+													</select>
+												{:else}
+													<input
+														id={`pi-${p.name}-${i.key}`}
+														class="pi-field"
+														type={i.secret ? 'password' : i.type === 'number' ? 'number' : 'text'}
+														autocomplete="off"
+														placeholder={i.secret && i.has_value
+															? t('settings.pluginValueSet', $locale)
+															: ''}
+														value={draftOf(p.name, i)}
+														disabled={busy || !canManage}
+														oninput={(e) => setDraft(p.name, i.key, e.currentTarget.value)}
+													/>
+												{/if}
+											{/if}
+											<div class="pi-actions">
+												{#if isDirty(p.name, i)}
+													<button
+														type="button"
+														class="btn-go"
+														disabled={busy}
+														onclick={() => saveInput(p.name, i)}
+														aria-label={`${t('settings.pluginValueSave', $locale)} — ${i.label}`}
+														>{t('settings.pluginValueSave', $locale)}</button
+													>
+												{:else if i.source === 'stored' && canManage}
+													<button
+														type="button"
+														class="btn-plain"
+														disabled={busy}
+														onclick={() => clearInput(p.name, i)}
+														aria-label={`${t('settings.pluginValueClear', $locale)} — ${i.label}`}
+														>{t('settings.pluginValueClear', $locale)}</button
+													>
+												{/if}
+											</div>
+											<!-- 값이 어디서 왔는지 안 보여주면 "이미 있는데 왜 또 넣지" 가
+											     된다. 없는 값은 이 플러그인이 못 도는 이유다. -->
+											<p class="pi-help">
+												{#if i.source === 'missing'}
+													<strong>{t('settings.pluginValueMissing', $locale)}</strong>
+												{:else if i.source === 'env'}
+													{t('settings.pluginValueFromEnv', $locale)}
+												{:else if i.source === 'default'}
+													{t('settings.pluginValueFromDefault', $locale)}
+												{/if}
+												{#if i.help}<span>{i.help}</span>{/if}
+											</p>
+										</div>
+									{/each}
+									<p class="pi-note">{t('settings.pluginValuesPlaintext', $locale)}</p>
 								</div>
 							{/if}
 							<div class="plugin-state">
@@ -1152,6 +1307,68 @@
 		   넘는다 — `.plugin-target` 이 같은 이유로 break-all 을 쓴다. 이쪽은 산문
 		   이므로 어절을 먼저 지키는 anywhere 를 쓴다. */
 		overflow-wrap: anywhere;
+	}
+	.plugin-inputs {
+		display: flex;
+		flex-direction: column;
+		gap: 0.6rem;
+		margin: 0.15rem 0 0.1rem;
+		padding: 0.6rem 0.7rem;
+		background: var(--bg-subtle);
+		border-radius: var(--r-sm);
+	}
+	.plugin-input {
+		display: grid;
+		grid-template-columns: minmax(6rem, 11rem) 1fr auto;
+		gap: 0.4rem 0.6rem;
+		align-items: center;
+	}
+	/* 체크박스는 라벨이 위젯에 붙어 있어 첫 칸을 안 쓴다. */
+	.plugin-input:has(.pi-check) {
+		grid-template-columns: 1fr auto;
+	}
+	.pi-check {
+		display: flex;
+		align-items: center;
+		gap: 0.45rem;
+		font-size: 0.85rem;
+	}
+	.pi-label {
+		font-size: 0.82rem;
+		color: var(--text-muted);
+	}
+	.pi-field {
+		min-width: 0;
+		font-size: 0.85rem;
+		padding: 0.3rem 0.45rem;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-sm);
+		background: var(--bg);
+		color: var(--text);
+	}
+	.pi-actions {
+		display: flex;
+		gap: 0.3rem;
+		/* 버튼이 없을 때 칸이 무너지지 않게 — 저장 버튼이 나타났다 사라질 때마다
+		   위젯이 좌우로 흔들리면 읽기 어렵다. */
+		min-width: 3.5rem;
+		justify-content: flex-end;
+	}
+	.pi-help {
+		grid-column: 1 / -1;
+		margin: 0;
+		font-size: 0.76rem;
+		color: var(--text-muted);
+		line-height: 1.4;
+		overflow-wrap: anywhere;
+	}
+	.plugin-input.missing .pi-help strong {
+		color: var(--warning);
+	}
+	.pi-note {
+		margin: 0;
+		font-size: 0.74rem;
+		color: var(--text-muted);
 	}
 	.plugin-meta {
 		display: flex;

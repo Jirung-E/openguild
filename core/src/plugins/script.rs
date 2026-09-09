@@ -66,6 +66,11 @@ pub struct Script {
     ast: AST,
     /// 지금 돌고 있는 호출의 마감. `on_progress` 가 읽는다.
     deadline: std::sync::Arc<Mutex<Instant>>,
+    /// REQ-021: 이번 호출이 볼 설정값. `config(key)` 가 읽는다.
+    ///
+    /// 엔진은 컴파일 때 한 번 만들고 호출마다 값이 달라지므로(길드마다 다른
+    /// 값을 쓴다) `deadline` 과 같은 방식으로 셀 하나를 공유한다.
+    config: std::sync::Arc<Mutex<rhai::Map>>,
 }
 
 impl std::fmt::Debug for Script {
@@ -87,7 +92,8 @@ impl Script {
 
     pub fn compile_source(src: &str) -> AppResult<Self> {
         let deadline = std::sync::Arc::new(Mutex::new(Instant::now()));
-        let engine = sandboxed_engine(deadline.clone());
+        let config = std::sync::Arc::new(Mutex::new(rhai::Map::new()));
+        let engine = sandboxed_engine(deadline.clone(), config.clone());
         let ast = engine
             .compile(src)
             .map_err(|e| AppError::BadRequest(format!("스크립트를 컴파일하지 못했습니다: {e}")))?;
@@ -95,6 +101,7 @@ impl Script {
             engine,
             ast,
             deadline,
+            config,
         })
     }
 
@@ -106,7 +113,19 @@ impl Script {
 
     /// 이 이벤트를 어떻게 할지. 스크립트가 던지면 **그 이벤트만** 건너뛴다 —
     /// 길드 동작에도 다른 플러그인에도 영향이 없어야 한다.
-    pub fn decide(&self, event: &Event) -> Result<Decision, String> {
+    pub fn decide(
+        &self,
+        event: &Event,
+        config: &std::collections::BTreeMap<String, serde_json::Value>,
+    ) -> Result<Decision, String> {
+        // REQ-021: 이번 호출이 볼 설정값. **I/O 가 아니다** — 코어가 미리 읽어
+        // 넘겨주는 값이라 샌드박스(파일·네트워크 없음)는 그대로다.
+        if let Ok(mut c) = self.config.lock() {
+            *c = config
+                .iter()
+                .map(|(k, v)| (k.clone().into(), to_dynamic(v)))
+                .collect();
+        }
         let json = event.to_json();
         let arg = to_dynamic(&json);
         self.arm();
@@ -148,8 +167,25 @@ impl Script {
 }
 
 /// 아무것도 등록하지 않은 엔진 + 상한. 등록하지 않은 것이 이 함수의 내용이다.
-fn sandboxed_engine(deadline: std::sync::Arc<Mutex<Instant>>) -> Engine {
+fn sandboxed_engine(
+    deadline: std::sync::Arc<Mutex<Instant>>,
+    config: std::sync::Arc<Mutex<rhai::Map>>,
+) -> Engine {
     let mut e = Engine::new();
+    // REQ-021: 사용자가 설정 화면에서 넣은 값. 이것 하나가 체크박스·선택상자가
+    // **동작을 바꾸게** 하는 경로다 — 값을 못 읽으면 위젯은 url 에 박히는 것
+    // 말고 할 일이 없다.
+    //
+    // 등록하는 것이 값을 **읽는 것뿐**이라는 점이 중요하다. 파일도 네트워크도
+    // 아니고 코어가 미리 읽어 넘긴 맵이라, 등록하지 않은 것이 이 엔진의 내용
+    // 이라는 성질은 그대로다.
+    e.register_fn("config", move |key: &str| -> Dynamic {
+        config
+            .lock()
+            .ok()
+            .and_then(|c| c.get(key).cloned())
+            .unwrap_or(Dynamic::UNIT)
+    });
     e.set_max_operations(MAX_OPERATIONS);
     e.set_max_call_levels(64);
     e.set_max_expr_depths(64, 32);
@@ -263,7 +299,9 @@ mod tests {
     }
 
     fn decide(src: &str) -> Result<Decision, String> {
-        Script::compile_source(src).unwrap().decide(&ev())
+        Script::compile_source(src)
+            .unwrap()
+            .decide(&ev(), &Default::default())
     }
 
     /// 스크립트가 없으면 이벤트 JSON 이 그대로 나간다.
@@ -376,7 +414,7 @@ mod tests {
             // 컴파일에서 막히든 실행에서 막히든 **못 나가면** 된다.
             let blocked = match Script::compile_source(src) {
                 Err(_) => true,
-                Ok(sc) => sc.decide(&ev()).is_err(),
+                Ok(sc) => sc.decide(&ev(), &Default::default()).is_err(),
             };
             assert!(blocked, "밖으로 나가는 길이 열려 있다: {src}");
         }

@@ -109,6 +109,28 @@ pub async fn plugin_revoke(store: State<'_, Store>, name: String) -> Result<(), 
     Ok(())
 }
 
+/// REQ-021: 설정값 저장. `None` 이면 지운다(기본값·환경변수로 되돌아간다).
+///
+/// **동의와 같은 자리에 두는 이유가 같다** — 이 값은 이 기계의 것이고, 원격
+/// 길드를 보고 있을 때 여기서 고치면 **보고 있지 않은 길드**의 값을 바꾸게
+/// 된다. 프런트가 `isLocalTauri()` 로 막지만, 여기서도 길드가 열렸는지 본다.
+#[tauri::command]
+pub async fn plugin_set_value(
+    store: State<'_, Store>,
+    name: String,
+    key: String,
+    value: Option<serde_json::Value>,
+) -> Result<(), String> {
+    if no_guild_open(&store) {
+        return Err(NO_GUILD_ERR.into());
+    }
+    let root = store.paths.guild_root.clone();
+    openguild_core::plugins::values::set(&root, &name, &key, value).map_err(err)?;
+    // 값이 바뀌어도 동의는 그대로다 — 다시 적재할 이유가 없다. 값은 이벤트
+    // 마다 읽으므로 다음 이벤트부터 바로 반영된다.
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn plugin_trust(store: State<'_, Store>, on: bool) -> Result<(), String> {
     if no_guild_open(&store) {

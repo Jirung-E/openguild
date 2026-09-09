@@ -28,6 +28,7 @@ pub mod runtime;
 pub mod script;
 #[cfg(test)]
 mod tests;
+pub mod values;
 pub mod view;
 
 use crate::error::{AppError, AppResult};
@@ -134,6 +135,86 @@ pub struct PluginDef {
     /// 판단·가공 스크립트(폴더 기준 상대 경로). [[DEV-376]] 이 실행한다.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub script: Option<String>,
+    /// REQ-021: 이 플러그인이 사용자에게 받아야 하는 값들.
+    ///
+    /// 이름·설명·선택지는 **플러그인 작성자만 안다.** 코어가 `${GITHUB_TOKEN}`
+    /// 이라는 참조만 보고 "repo 스코프가 필요하고 github.com/settings/tokens
+    /// 에서 만든다" 를 알아낼 방법은 없다. 그래서 정의가 선언한다.
+    ///
+    /// [`description`](Self::description) 과 마찬가지로 **없으면 직렬화에
+    /// 안 나타난다** — 동의 지문이 정의를 통째로 담기 때문이다.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub inputs: Vec<Input>,
+}
+
+/// 위젯 종류. 값이 코어로 들어오는 통로(`${...}`)는 하나지만, **사람이 값을
+/// 넣는 방법**은 값의 성격마다 다르다.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum InputType {
+    #[default]
+    Text,
+    Checkbox,
+    Select,
+    Number,
+}
+
+/// `select` 의 선택지 하나. `value` 가 실제 값이고 `label` 이 보이는 말이다 —
+/// "5분" 을 그대로 값으로 쓰면 문구를 고치는 순간 저장된 값이 고아가 된다.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InputOption {
+    pub value: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+}
+
+impl InputOption {
+    pub fn label(&self) -> &str {
+        self.label.as_deref().unwrap_or(&self.value)
+    }
+}
+
+/// REQ-021: 사용자에게 받을 값 하나.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Input {
+    /// 스크립트의 `config("KEY")` 와 정의의 `${KEY}` 가 쓰는 이름.
+    pub key: String,
+    /// 화면에 뜨는 이름. 없으면 `key` 를 쓴다 — `TELEGRAM_BOT_TOKEN` 보다
+    /// "봇 토큰" 이 낫지만, 안 적었다고 화면이 비면 더 나쁘다.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(
+        default,
+        rename = "type",
+        skip_serializing_if = "is_default_input_type"
+    )]
+    pub input_type: InputType,
+    /// 위젯 아래 한 줄 — 토큰을 어디서 받는지 같은 것.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub help: Option<String>,
+    /// **화면에서 가린다**는 뜻이다. 스크립트는 그래도 읽는다 — 스크립트가
+    /// 만든 payload 는 정의가 적은 그 주소로만 나가고 사용자는 그 주소에
+    /// 동의했으므로, 못 읽게 해도 막는 것이 없으면서 "왜 이 값만 안 읽히지"
+    /// 를 만든다.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub secret: bool,
+    /// 사용자가 아직 안 정했을 때의 값. 체크박스는 `true`/`false`, 숫자는
+    /// 숫자, 나머지는 문자열.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default: Option<serde_json::Value>,
+    /// `select` 전용.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub options: Vec<InputOption>,
+}
+
+fn is_default_input_type(t: &InputType) -> bool {
+    *t == InputType::Text
+}
+
+impl Input {
+    pub fn label(&self) -> &str {
+        self.label.as_deref().unwrap_or(&self.key)
+    }
 }
 
 /// 적재된 플러그인 하나.
@@ -558,6 +639,7 @@ pub fn validate(def: &PluginDef) -> AppResult<()> {
             }
         }
     }
+    validate_inputs(def)?;
     // 스크립트 경로는 플러그인 폴더 안이어야 한다. `../../..` 를 적으면
     // 정의만으로 임의 파일을 컴파일 대상으로 지정할 수 있게 된다.
     if let Some(rel) = def.script.as_deref() {
@@ -573,6 +655,108 @@ pub fn validate(def: &PluginDef) -> AppResult<()> {
         }
     }
     check_no_literal_secret(def)?;
+    Ok(())
+}
+
+/// REQ-021: 입력 개수·길이 상한. 화면에 그대로 그려지고 동의 지문에도 들어간다.
+pub const MAX_INPUTS: usize = 32;
+pub const MAX_INPUT_OPTIONS: usize = 64;
+
+/// REQ-021: `inputs` 검사.
+///
+/// 여기서 막지 못하면 **화면에서 드러난다** — 선택지 없는 선택상자, 저장할 수
+/// 없는 기본값, 어느 칸에 넣어야 할지 모를 중복 키. 전부 적재 때 알 수 있는
+/// 것들이다.
+fn validate_inputs(def: &PluginDef) -> AppResult<()> {
+    if def.inputs.len() > MAX_INPUTS {
+        return Err(AppError::BadRequest(format!(
+            "{}: `inputs` 가 너무 많습니다 ({}개, 최대 {MAX_INPUTS}개)",
+            def.name,
+            def.inputs.len()
+        )));
+    }
+    let mut seen = std::collections::HashSet::new();
+    for i in &def.inputs {
+        if i.key.trim().is_empty() {
+            return Err(AppError::BadRequest(format!(
+                "{}: `inputs` 의 `key` 가 비어 있습니다",
+                def.name
+            )));
+        }
+        // 값 저장소의 키이자 `${...}` 안에 들어가는 이름이다. 아무 문자나
+        // 받으면 `${A}B` 와 `${A}` + `B` 를 가를 수 없다.
+        if !i
+            .key
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        {
+            return Err(AppError::BadRequest(format!(
+                "{}: `inputs` 의 `key` 는 영숫자·`_`·`-` 만 됩니다 (받은 값: {})",
+                def.name, i.key
+            )));
+        }
+        if !seen.insert(&i.key) {
+            return Err(AppError::BadRequest(format!(
+                "{}: `inputs` 의 `key` 가 겹칩니다: {} — 화면도 저장소도 이 \
+                 이름으로 구분합니다",
+                def.name, i.key
+            )));
+        }
+        if let Some(h) = &i.help
+            && h.chars().count() > MAX_DESCRIPTION_CHARS
+        {
+            return Err(AppError::BadRequest(format!(
+                "{}: `{}` 의 `help` 가 너무 깁니다 (최대 {MAX_DESCRIPTION_CHARS}자)",
+                def.name, i.key
+            )));
+        }
+        match i.input_type {
+            InputType::Select => {
+                if i.options.is_empty() {
+                    return Err(AppError::BadRequest(format!(
+                        "{}: `{}` 은 select 인데 `options` 가 비어 있습니다 — \
+                         고를 것이 없는 선택상자가 됩니다",
+                        def.name, i.key
+                    )));
+                }
+                if i.options.len() > MAX_INPUT_OPTIONS {
+                    return Err(AppError::BadRequest(format!(
+                        "{}: `{}` 의 `options` 가 너무 많습니다 (최대 {MAX_INPUT_OPTIONS}개)",
+                        def.name, i.key
+                    )));
+                }
+                // 기본값이 목록에 없으면 화면이 아무것도 안 고른 채로 뜬다.
+                if let Some(d) = i.default.as_ref().and_then(|v| v.as_str())
+                    && !i.options.iter().any(|o| o.value == d)
+                {
+                    return Err(AppError::BadRequest(format!(
+                        "{}: `{}` 의 `default`({d})가 `options` 에 없습니다",
+                        def.name, i.key
+                    )));
+                }
+            }
+            // select 가 아닌데 선택지를 적었으면 type 을 빠뜨린 것이다.
+            _ if !i.options.is_empty() => {
+                return Err(AppError::BadRequest(format!(
+                    "{}: `{}` 에 `options` 가 있는데 type 이 select 가 아닙니다",
+                    def.name, i.key
+                )));
+            }
+            InputType::Checkbox if matches!(&i.default, Some(v) if !v.is_boolean()) => {
+                return Err(AppError::BadRequest(format!(
+                    "{}: `{}` 은 checkbox 인데 `default` 가 true/false 가 아닙니다",
+                    def.name, i.key
+                )));
+            }
+            InputType::Number if matches!(&i.default, Some(v) if !v.is_number()) => {
+                return Err(AppError::BadRequest(format!(
+                    "{}: `{}` 은 number 인데 `default` 가 숫자가 아닙니다",
+                    def.name, i.key
+                )));
+            }
+            _ => {}
+        }
+    }
     Ok(())
 }
 
@@ -594,7 +778,7 @@ fn check_no_literal_secret(def: &PluginDef) -> AppResult<()> {
             def.name
         ))
     };
-    let mut strings: Vec<(String, &String)> = match &def.action {
+    let strings: Vec<(String, &String)> = match &def.action {
         Action::Post { url, headers, .. } => {
             let mut v: Vec<(String, &String)> = vec![("url".into(), url)];
             v.extend(headers.iter().map(|(k, val)| (format!("headers.{k}"), val)));
@@ -613,15 +797,48 @@ fn check_no_literal_secret(def: &PluginDef) -> AppResult<()> {
     // REQ-020: 설명도 git 에 커밋되는 자유 텍스트다. 다른 필드는 막으면서
     // 여기만 열어 두면 토큰을 적을 자리를 하나 만들어 주는 셈이다. 필드 이름이
     // 비밀을 뜻하지는 않으므로 `looks_like_known_key` 쪽만 걸린다.
-    if let Some(d) = def.description.as_ref() {
-        strings.push(("description".into(), d));
-    }
-    for (field, value) in strings {
+    for (field, value) in &strings {
         if looks_like_known_key(value) {
-            return Err(reject(&field));
+            return Err(reject(field));
         }
-        if field_name_means_secret(&field) && !is_env_ref(value) {
-            return Err(reject(&field));
+        if field_name_means_secret(field) && !is_env_ref(value) {
+            return Err(reject(field));
+        }
+    }
+
+    // ── 산문에는 **접두사 검사만** 건다 ──
+    //
+    // REQ-021: 사람에게 보여주는 글이라 "이름이 비밀을 뜻하면 값도 비밀" 규칙을
+    // 걸면 안 된다. `inputs.TELEGRAM_BOT_TOKEN.help` 는 필드 이름에 token 이
+    // 들어가므로, "봇 토큰은 @BotFather 에게 받습니다" 라는 **안내문이** 통째로
+    // 거부된다. 실제로 예제를 쓰다 밟았다 — [[DEV-380]] 에서 `task-runner` 가
+    // `sk-` 를 품어 거부되던 것과 같은 계열의 오탐이다.
+    //
+    // 진짜로 막아야 할 것은 "예시랍시고 진짜 토큰을 적는" 경우이고, 그건
+    // 접두사 검사가 잡는다.
+    let mut prose: Vec<(String, &String)> = Vec::new();
+    if let Some(d) = def.description.as_ref() {
+        prose.push(("description".into(), d));
+    }
+    for i in &def.inputs {
+        if let Some(h) = &i.help {
+            prose.push((format!("inputs.{}.help", i.key), h));
+        }
+        if let Some(l) = &i.label {
+            prose.push((format!("inputs.{}.label", i.key), l));
+        }
+    }
+    for (field, value) in &prose {
+        if looks_like_known_key(value) {
+            return Err(reject(field));
+        }
+    }
+    // 기본값은 "일단 내 토큰을 default 로" 가 그대로 커밋되는 자리다.
+    for i in &def.inputs {
+        if let Some(d) = i.default.as_ref().and_then(|v| v.as_str())
+            && looks_like_known_key(d)
+        {
+            return Err(reject(&format!("inputs.{}.default", i.key)));
         }
     }
     Ok(())

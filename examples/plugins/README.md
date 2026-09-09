@@ -116,6 +116,28 @@ pre 를 내는 이벤트는 지금 `quest.deleted` 와 `comment.added` 둘뿐이
 
 자세한 규칙은 `openguild docs show USAGE` 의 플러그인 절을 본다.
 
+## 사용자에게 받는 값 (REQ-021)
+
+`telegram-quest-status` 가 그 예다. 봇 토큰·채팅 ID 는 사람이 넣어야 하고,
+"무엇을 알릴지" 는 켜고 끌 수 있어야 한다.
+
+```json
+"inputs": [
+  { "key": "TELEGRAM_BOT_TOKEN", "label": "봇 토큰", "secret": true },
+  { "key": "ON_COMMENT", "label": "댓글 알림", "type": "checkbox", "default": false }
+]
+```
+
+설정 → 플러그인 에서 채우고, 스크립트는 `config("ON_COMMENT")` 로 읽는다 —
+체크박스는 **bool 로** 온다. 정의 안에서는 `${TELEGRAM_BOT_TOKEN}` 으로 쓴다.
+
+터미널에서는:
+
+```bash
+echo -n <값> | openguild plugin set telegram-quest-status TELEGRAM_BOT_TOKEN
+openguild plugin config telegram-quest-status
+```
+
 ## 훅이 파일을 쓰는 자리 (BUG-279)
 
 `run` 훅의 작업 디렉터리는 **플러그인 폴더가 아니다.**

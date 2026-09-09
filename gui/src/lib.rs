@@ -553,6 +553,7 @@ pub fn run() {
             commands::plugin_allow,
             commands::plugin_revoke,
             commands::plugin_trust,
+            commands::plugin_set_value,
             commands::launch_mode,
             commands::current_guild_path,
             commands::current_guild_name,
