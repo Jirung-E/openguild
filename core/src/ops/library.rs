@@ -77,14 +77,53 @@ impl LibraryDocRow {
 /// 살아있는 문서 목록 (번호 순). body 포함 — rules 와 같은 판단(문서 수가
 /// 크지 않고 GUI 목록이 미리보기를 쓸 수 있음). 커지면 후속에서 분리.
 pub async fn list_books(store: &Store) -> AppResult<Vec<LibraryDocRow>> {
-    let mut rows = sqlx::query_as::<_, LibraryDocRow>(
-        "SELECT id, number, title, body, path, created_at, updated_at, deleted_at
-           FROM library_docs WHERE deleted_at IS NULL ORDER BY number",
-    )
-    .fetch_all(&store.index_pool)
-    .await?;
+    list_books_in(store, None).await
+}
+
+/// BUG-281: 폴더로 거른 목록. `folder` 가 `None` 이면 전부.
+///
+/// **거르기는 여기서 한다.** 처음엔 CLI 가 전부 받아 `retain` 으로 거르게
+/// 만들었는데, 원격 모드에서는 그게 **길드의 도서관 전체를 HTTP 로 받아서
+/// 대부분 버리는** 짓이다. 문서가 늘수록 그대로 비용이 된다.
+///
+/// 빈 문자열은 "최상위만" 이다(`--folder ""`) — `path` 가 빈 문자열인 행.
+/// 그 밖에는 그 폴더와 **하위 폴더까지** 포함한다. `아키텍처` 를 물었는데
+/// `아키텍처/결정` 이 안 나오면 트리를 손으로 훑어야 한다.
+pub async fn list_books_in(store: &Store, folder: Option<&str>) -> AppResult<Vec<LibraryDocRow>> {
+    const BASE: &str = "SELECT id, number, title, body, path, created_at, updated_at, deleted_at
+           FROM library_docs WHERE deleted_at IS NULL";
+    let mut rows = match folder.map(|f| f.trim_end_matches('/')) {
+        None => {
+            sqlx::query_as::<_, LibraryDocRow>(&format!("{BASE} ORDER BY number"))
+                .fetch_all(&store.index_pool)
+                .await?
+        }
+        Some("") => {
+            sqlx::query_as::<_, LibraryDocRow>(&format!("{BASE} AND path = '' ORDER BY number"))
+                .fetch_all(&store.index_pool)
+                .await?
+        }
+        Some(f) => {
+            // 자기 자신 또는 그 아래. LIKE 의 와일드카드(`%` `_`)가 폴더 이름에
+            // 들어 있으면 엉뚱한 것이 걸리므로 ESCAPE 를 건다.
+            sqlx::query_as::<_, LibraryDocRow>(&format!(
+                "{BASE} AND (path = ?1 OR path LIKE ?2 ESCAPE '\\') ORDER BY number"
+            ))
+            .bind(f)
+            .bind(format!("{}/%", like_escape(f)))
+            .fetch_all(&store.index_pool)
+            .await?
+        }
+    };
     attach_tags(store, &mut rows).await?;
     Ok(rows)
+}
+
+/// LIKE 패턴에서 특별한 뜻을 갖는 문자를 막는다.
+fn like_escape(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
 }
 
 /// book_id(`BOOK-NNN`)로 단건 조회 (soft-deleted 제외).
@@ -778,5 +817,67 @@ mod tests {
         delete_folder(&store, "아키텍처/서브").await.unwrap();
         delete_folder(&store, "아키텍처").await.unwrap();
         assert!(list_folders(&store).await.unwrap().is_empty());
+    }
+
+    /// BUG-281: **거르기는 SQL 이 한다.**
+    ///
+    /// 처음엔 CLI 가 전부 받아 `retain` 으로 걸렀는데, 원격 모드에서 그건 도서관
+    /// 전체를 HTTP 로 받아 대부분 버리는 짓이다(admin 지적). 여기서 걸러야
+    /// 서버가 보내는 양이 실제로 준다.
+    #[tokio::test]
+    async fn listing_filters_by_folder_in_sql() {
+        let dir = fresh_tmp("folder-filter");
+        let store = setup(&dir).await;
+        create_book(&store, "결정", "", "아키텍처/결정").await.unwrap();
+        create_book(&store, "설계", "", "아키텍처").await.unwrap();
+        create_book(&store, "최상위", "", "").await.unwrap();
+        create_book(&store, "운영", "", "운영").await.unwrap();
+
+        let titles = |rows: Vec<LibraryDocRow>| {
+            let mut v: Vec<String> = rows.into_iter().map(|r| r.title).collect();
+            v.sort();
+            v
+        };
+
+        // 하위 폴더까지 — `아키텍처` 를 물었는데 `아키텍처/결정` 이 빠지면
+        // 트리를 손으로 훑어야 한다.
+        assert_eq!(
+            titles(list_books_in(&store, Some("아키텍처")).await.unwrap()),
+            vec!["결정".to_string(), "설계".to_string()]
+        );
+        // 빈 문자열은 "최상위만" — `None`(전부)과 뜻이 다르다.
+        assert_eq!(
+            titles(list_books_in(&store, Some("")).await.unwrap()),
+            vec!["최상위".to_string()]
+        );
+        assert_eq!(list_books_in(&store, None).await.unwrap().len(), 4);
+        // 끝의 `/` 는 있어도 없어도 같다.
+        assert_eq!(list_books_in(&store, Some("아키텍처/")).await.unwrap().len(), 2);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 폴더 이름에 LIKE 와일드카드가 들어 있어도 엉뚱한 것이 안 걸린다.
+    /// `100%` 로 거르면 `100X` 가 따라오면 안 된다 — ESCAPE 를 안 걸면 그렇게 된다.
+    #[tokio::test]
+    async fn folder_filter_does_not_treat_names_as_like_patterns() {
+        let dir = fresh_tmp("folder-like");
+        let store = setup(&dir).await;
+        // **하위 폴더에 둬야 LIKE 가지가 실제로 쓰인다.** 처음엔 `100%` 바로
+        // 아래에만 뒀는데, 그건 `path = ?1` 이 먼저 잡아서 ESCAPE 를 빼도
+        // 시험이 통과했다 — 주장하는 것을 안 보고 있었다.
+        create_book(&store, "퍼센트하위", "", "100%/안").await.unwrap();
+        create_book(&store, "함정하위", "", "100X/안").await.unwrap();
+        create_book(&store, "밑줄하위", "", "a_b/안").await.unwrap();
+        create_book(&store, "밑줄함정하위", "", "axb/안").await.unwrap();
+
+        let one = |rows: Vec<LibraryDocRow>| {
+            assert_eq!(rows.len(), 1, "{:?}", rows.iter().map(|r| &r.title).collect::<Vec<_>>());
+            rows[0].title.clone()
+        };
+        // `%` 를 와일드카드로 두면 `100X/안` 까지 딸려 온다.
+        assert_eq!(one(list_books_in(&store, Some("100%")).await.unwrap()), "퍼센트하위");
+        // `_` 는 한 글자 와일드카드 — `axb/안` 이 딸려 온다.
+        assert_eq!(one(list_books_in(&store, Some("a_b")).await.unwrap()), "밑줄하위");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -66,8 +66,22 @@ pub struct CreateFolderRequest {
     pub path: String,
 }
 
-pub async fn list_books(State(store): State<Store>) -> AppResult<Json<Vec<BookResponse>>> {
-    let rows = ops::list_books(&store).await?;
+/// BUG-281: `?folder=` 로 거른다. 없으면 전부.
+///
+/// 빈 문자열(`?folder=`)은 "최상위만" 이라 `Option` 으로는 못 가른다 —
+/// `None`(파라미터 없음)과 `Some("")`(빈 값)이 다른 뜻이다.
+#[derive(Deserialize)]
+pub struct ListBooksQuery {
+    folder: Option<String>,
+}
+
+pub async fn list_books(
+    State(store): State<Store>,
+    Query(q): Query<ListBooksQuery>,
+) -> AppResult<Json<Vec<BookResponse>>> {
+    // 거르기는 SQL 이 한다 — 전부 보내 놓고 클라이언트가 버리면 문서가 늘수록
+    // 그대로 전송 비용이 된다.
+    let rows = ops::list_books_in(&store, q.folder.as_deref()).await?;
     Ok(Json(rows.into_iter().map(BookResponse::from).collect()))
 }
 

@@ -29,7 +29,8 @@ openguild library list --folder ""              # top-level only
 ```
 
 `--folder` was called `--path` until BUG-281; the old name still works as an
-alias. The folder is a logical grouping recorded in the document's frontmatter —
+alias. `list --folder` filters in SQL (and, over `--remote`, on the server) — it
+does not download the whole library and discard most of it. The folder is a logical grouping recorded in the document's frontmatter —
 files stay flat under `.guild/library/`.
 
 ## Tags

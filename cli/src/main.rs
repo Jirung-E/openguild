@@ -2925,11 +2925,17 @@ impl Backend {
 
     // ── DEV-216: 도서관 — local + remote(HTTP /api/library) 둘 다 지원 ──
 
-    fn library_list(&self) -> Result<Vec<BookDto>> {
+    /// BUG-281: `folder` 는 서버/SQL 이 거른다. 예전엔 전부 받아 CLI 에서
+    /// `retain` 했는데, 원격 모드에서 그건 도서관 전체를 받아서 버리는 짓이다.
+    fn library_list(&self, folder: Option<&str>) -> Result<Vec<BookDto>> {
         match self {
-            Backend::Http(c) => c.get("/api/library"),
+            Backend::Http(c) => match folder {
+                // 빈 문자열도 뜻이 있다("최상위만") — 그대로 실어 보낸다.
+                Some(f) => c.get(&format!("/api/library?folder={}", urlenc(f))),
+                None => c.get("/api/library"),
+            },
             Backend::Local(l) => Self::map_err(
-                l.rt.block_on(openguild_core::ops::library::list_books(&l.store)),
+                l.rt.block_on(openguild_core::ops::library::list_books_in(&l.store, folder)),
             )
             .map(|rows| rows.into_iter().map(BookDto::from).collect()),
         }
@@ -7771,20 +7777,7 @@ fn handle_rules(c: &Backend, json: bool, sub: RulesCmd) -> Result<()> {
 fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
     match sub {
         LibraryCmd::List { table, folder } => {
-            let mut books = c.library_list()?;
-            // BUG-281: 하위 폴더까지 포함한다 — `아키텍처` 를 물었는데
-            // `아키텍처/결정` 이 안 나오면 트리를 손으로 훑어야 한다.
-            // 빈 문자열은 "최상위만" 이다(`--folder ""`).
-            if let Some(f) = folder.as_deref() {
-                let f = f.trim_end_matches('/');
-                books.retain(|b| {
-                    if f.is_empty() {
-                        b.path.is_empty()
-                    } else {
-                        b.path == f || b.path.starts_with(&format!("{f}/"))
-                    }
-                });
-            }
+            let books = c.library_list(folder.as_deref())?;
                         ensure_table_json_exclusive(table, json)?;
             if json {
                 println!("{}", json_str(&books));
