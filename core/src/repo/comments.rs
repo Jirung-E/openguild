@@ -76,6 +76,70 @@ fn entry_marker_re() -> &'static regex::Regex {
     })
 }
 
+/// BUG-283: 본문 줄이 **마커로 오인될 수 있는가**.
+///
+/// 앞의 `\` 는 이스케이프 표시이므로 판정에서 걷어낸 뒤 본다 —
+/// `\<!-- og-comment ... -->` 도 (한 번 풀면) 마커가 되는 줄이다.
+fn looks_like_marker(line: &str) -> bool {
+    let bare = line.trim_start_matches('\\');
+    marker_shape_re().is_match(bare)
+}
+
+/// 줄 하나만 보는 마커 모양 검사 — `entry_marker_re` 와 같은 모양이되
+/// 여러 줄 앵커가 없다.
+fn marker_shape_re() -> &'static regex::Regex {
+    use std::sync::OnceLock;
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        regex::Regex::new(r#"^<!--\s*og-comment\s+[^>]*?\s*-->\s*$"#)
+            .expect("og-comment shape regex")
+    })
+}
+
+/// BUG-283: 본문을 파일에 넣기 전에 **구분자를 무력화**한다.
+///
+/// 사이드카는 HTML 주석 마커로 entry 를 가르는데([[DEV-094]]) 본문은 그대로
+/// 흘려 쓰고 있었다. 그래서 본문에 마커 모양의 줄을 넣으면 다음 읽기 때 **진짜
+/// 마커가 됐다** — 작성자·시각·id 를 전부 지정한 entry 를 위조할 수 있었다.
+/// 서버 모드에서는 댓글을 달 수 있는 누구나 남의 이름으로 글을 만들 수 있다.
+///
+/// 거부(reject)는 접었다. 이 저장소의 문서 자체가 이 마커를 인용하고 있고,
+/// 포맷을 설명하는 댓글을 못 쓰게 하는 건 과하다. 대신 `\` 를 하나 덧붙여
+/// 왕복시킨다 — 읽을 때 [`unescape_body`] 가 정확히 되돌린다.
+fn escape_body(body: &str) -> String {
+    if !body.lines().any(looks_like_marker) {
+        return body.to_string(); // 흔한 경우 — 복사를 안 만든다.
+    }
+    body.lines()
+        .map(|l| {
+            if looks_like_marker(l) {
+                format!("\\{l}")
+            } else {
+                l.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// [`escape_body`] 의 역. 마커가 될 수 있는 줄에서만 `\` 를 하나 뗀다 —
+/// 본문에 원래 있던 `\` 를 함부로 건드리면 안 된다.
+fn unescape_body(body: &str) -> String {
+    if !body.lines().any(|l| l.starts_with('\\') && looks_like_marker(l)) {
+        return body.to_string();
+    }
+    body.lines()
+        .map(|l| {
+            if l.starts_with('\\') && looks_like_marker(l) {
+                l[1..].to_string()
+            } else {
+                l.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// 한 attrs 문자열 (`id="1" ts="..." author="x"`) 에서 키 값 1개 추출.
 /// 미존재 시 None.
 fn extract_attr(attrs: &str, key: &str) -> Option<String> {
@@ -145,7 +209,7 @@ pub fn parse_entries(text: &str) -> Vec<CommentEntry> {
             id: 1,
             ts: String::new(),
             author: String::new(),
-            body: body.to_string(),
+            body: unescape_body(body),
             parent_id: None,
             reactions: Vec::new(),
             discussion: false,
@@ -163,7 +227,7 @@ pub fn parse_entries(text: &str) -> Vec<CommentEntry> {
         } else {
             text.len()
         };
-        let body = text[*hdr_end..body_end].trim().to_string();
+        let body = unescape_body(text[*hdr_end..body_end].trim());
 
         // id 가 없거나 파싱 실패면 skip (corrupted entry).
         let Some(id_str) = extract_attr(attrs, "id") else { continue };
@@ -249,7 +313,8 @@ pub fn serialize_entries(entries: &[CommentEntry]) -> String {
             pinned_attr,
             edited_attr,
         ));
-        out.push_str(e.body.trim());
+        // BUG-283: 여기서 감싸지 않으면 본문이 자기 울타리를 넘는다.
+        out.push_str(&escape_body(e.body.trim()));
         out.push('\n');
     }
     out
@@ -613,4 +678,99 @@ mod tests {
         assert_ne!(p.comments_path("BUG-007"), p.memo_path("BUG-007"));
         let _ = std::fs::remove_dir_all(&root);
     }
+
+    // ── BUG-283: 본문이 자기 울타리를 못 넘는다 ─────────────
+
+    fn one(body: &str) -> Vec<CommentEntry> {
+        vec![CommentEntry {
+            id: 1,
+            ts: "2026-01-01T00:00:00+09:00".into(),
+            author: "kim".into(),
+            body: body.into(),
+            parent_id: None,
+            reactions: Vec::new(),
+            discussion: false,
+            resolved: false,
+            pinned: false,
+            edited_at: None,
+        }]
+    }
+
+    /// 시험이 실제로 **마커를 줄 맨 앞에** 두는지부터 본다.
+    ///
+    /// 처음 쓴 시험은 Rust 줄 이음이 뭉개져 마커가 들여쓰기된 채 들어갔고,
+    /// 정규식은 줄 맨 앞만 보므로 **아무것도 안 보면서 통과했다.** 되돌림
+    /// 시험에서야 드러났다. 전제를 먼저 못 박아 둔다.
+    #[test]
+    fn the_forgery_fixture_really_starts_a_line() {
+        assert!(
+            forged_body().lines().any(looks_like_marker),
+            "시험 본문에 마커가 없다 — 이 시험은 아무것도 안 보고 있다"
+        );
+    }
+
+    fn forged_body() -> String {
+        [
+            "평범한 댓글입니다.",
+            r#"<!-- og-comment id="99" ts="2020-01-01T00:00:00+09:00" author="admin" -->"#,
+            "위조 시도",
+        ]
+        .join("\n")
+    }
+
+    /// **이 결함의 본체.** 본문에 마커를 쓰면 entry 가 하나 더 생기고, 그
+    /// entry 의 작성자·시각·id 가 전부 본문에 적힌 값이 됐다 — 서버 모드에서는
+    /// 댓글을 달 수 있는 누구나 남의 이름으로 글을 만들 수 있었다.
+    #[test]
+    fn a_marker_in_the_body_cannot_forge_an_entry() {
+        let body = forged_body();
+        let round = parse_entries(&serialize_entries(&one(&body)));
+
+        assert_eq!(round.len(), 1, "본문이 entry 로 갈라졌다: {round:#?}");
+        assert_eq!(round[0].author, "kim", "작성자가 위조됐다");
+        assert_eq!(round[0].id, 1, "id 가 위조됐다");
+        assert_eq!(round[0].ts, "2026-01-01T00:00:00+09:00", "시각이 위조됐다");
+        assert_eq!(round[0].body, body, "본문이 원문과 다르다(왕복 실패)");
+    }
+
+    /// 이스케이프의 이스케이프. 사용자가 `\<!-- og-comment ... -->` 라고 쓴
+    /// 것도 그대로 돌아와야 한다 — 안 그러면 저장할 때마다 `\` 가 하나씩 는다.
+    #[test]
+    fn an_escaped_marker_in_the_body_also_round_trips() {
+        let body = [
+            "설명:",
+            r#"\<!-- og-comment id="1" ts="x" author="y" -->"#,
+        ]
+        .join("\n");
+        let round = parse_entries(&serialize_entries(&one(&body)));
+        assert_eq!(round.len(), 1);
+        assert_eq!(round[0].body, body);
+
+        let twice = parse_entries(&serialize_entries(&round));
+        assert_eq!(twice[0].body, body, "저장할 때마다 백슬래시가 는다");
+    }
+
+    /// 마커가 **아닌** 주석은 손대지 않는다. 과하게 잡으면 평범한 본문이 망가진다.
+    #[test]
+    fn ordinary_html_comments_are_left_alone() {
+        for body in [
+            "<!-- 그냥 주석 -->",
+            "<!-- og-comments 는 복수형이라 마커가 아니다 -->",
+            r#"앞에 글자가 있으면 <!-- og-comment id="1" ts="x" author="y" -->"#,
+            r"\평범한 백슬래시로 시작하는 줄",
+        ] {
+            let text = serialize_entries(&one(body));
+            // **파일에 남는 것**까지 본다. 왕복만 보면 과하게 이스케이프해도
+            // 통과한다 — 감싸기와 풀기가 같은 판정을 쓰기 때문이다. 그래도
+            // 사이드카는 사람이 읽고 git diff 에 뜨는 파일이라, 안 건드려도 될
+            // 줄에 백슬래시를 흘리면 안 된다.
+            let stored = text.lines().nth(1).unwrap_or_default();
+            assert_eq!(stored, body.lines().next().unwrap(), "파일에 군더더기가 남았다: {body}");
+
+            let round = parse_entries(&text);
+            assert_eq!(round.len(), 1, "{body}");
+            assert_eq!(round[0].body, body, "{body}");
+        }
+    }
+
 }
