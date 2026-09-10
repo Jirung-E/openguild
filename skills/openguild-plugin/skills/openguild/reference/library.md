@@ -8,16 +8,29 @@ zips, images) that don't belong as markdown body text — that was one of the
 original reasons the library exists.
 
 ```bash
-openguild library list [--table]
+openguild library list [--table] [--folder "아키텍처"]
 openguild library show <book-id>
-openguild library new --title "..." [--file <PATH>] [--path "folder/sub"]
-openguild library update <book-id> [--title ...] [--file <PATH>] [--path "..."]
+openguild library new --title "..." [--file <PATH>] [--folder "folder/sub"]
+openguild library update <book-id> [--title ...] [--file <PATH>] [--folder "..."]
 openguild library delete <book-id> --yes
 
 openguild library folder list
 openguild library folder new <path>
 openguild library folder delete <path> --yes
 ```
+
+**Put a document in a folder when you create it** — you do not need to create
+the folder first, and you do not need a second command to move it:
+
+```bash
+openguild library new --title "이벤트 설계" --folder "아키텍처/결정"
+openguild library list --folder "아키텍처"      # includes subfolders
+openguild library list --folder ""              # top-level only
+```
+
+`--folder` was called `--path` until BUG-281; the old name still works as an
+alias. The folder is a logical grouping recorded in the document's frontmatter —
+files stay flat under `.guild/library/`.
 
 ## Tags
 

@@ -1092,6 +1092,11 @@ enum LibraryCmd {
         // 릴리즈 빌드로 검증하면 조용히 통과해서 CI(debug)에서만 드러난다.
         #[arg(long, help = tf!("정렬된 표(헤더 + 컬럼)로 출력 — 사람용. --json 과 상호배타.", "Aligned table output (header + columns) — for humans. Mutually exclusive with --json."))]
         table: bool,
+        // BUG-281: 문서를 폴더에 넣을 수는 있는데 **그 폴더로 찾을 수가 없었다.**
+        // 넣기만 되고 못 거르면 폴더가 장식이 된다. 목록이 이미 `path` 를
+        // 싣고 오므로 여기서 거른다 — 서비스 계층을 안 건드린다.
+        #[arg(long, help = tf!("이 폴더에 든 것만 — 하위 폴더까지 포함. 빈 문자열(\"\")이면 최상위만.", "Only documents in this folder, including its subfolders. Empty string (\"\") means top-level only."))]
+        folder: Option<String>,
     },
     #[command(about = tf!("한 문서의 본문 출력 (stdout).", "Print a document's body (stdout)."))]
     Show {
@@ -1109,8 +1114,13 @@ enum LibraryCmd {
         title: String,
         #[arg(long, help = tf!("본문 파일 (UTF-8). 한글 등 비ASCII 는 stdin 파이프 대신 파일 권장.", "Body file (UTF-8). File recommended over stdin pipe for non-ASCII (Korean etc.)."))]
         file: Option<std::path::PathBuf>,
-        #[arg(long, help = tf!("소속 폴더 경로 (미지정 = 최상위). 예: `아키텍처/서브`.", "Parent folder path (top-level if omitted). e.g. `architecture/sub`."))]
-        path: Option<String>,
+        // BUG-281: canonical 은 `--folder` 다. 이 명령군의 도메인 이름이 이미
+        // folder 이고(`library folder` 하위 명령, 도움말의 "폴더"), 플래그만
+        // `--path` 라서 사람도 에이전트도 `--folder` 를 먼저 시도하다 "안 되는
+        // 기능" 으로 판단했다. 옛 이름은 alias 로 남겨 스크립트를 안 깬다
+        // (`types`/`statuses` 를 단수형으로 바꿀 때 쓴 방식과 같다).
+        #[arg(long, alias = "path", help = tf!("소속 폴더 (미지정 = 최상위). 예: `아키텍처/서브`. (옛 이름: --path)", "Parent folder (top-level if omitted). e.g. `architecture/sub`. (old name: --path)"))]
+        folder: Option<String>,
     },
     #[command(about = tf!("문서 수정 — 제공된 필드만 (title / 본문 파일 / 폴더 이동).", "Update a document — only the fields provided (title / body file / folder move)."))]
     Update {
@@ -1119,9 +1129,9 @@ enum LibraryCmd {
         title: Option<String>,
         #[arg(long, help = tf!("새 본문 파일 (UTF-8). 미지정 시 본문 유지.", "New body file (UTF-8). Keeps the current body if omitted."))]
         file: Option<std::path::PathBuf>,
-        #[arg(long, help = tf!("새 폴더 경로로 이동. 빈 문자열(\"\")이면 최상위로 이동. 미지정 시 현재 위치 유지.",
-                              "Move to a new folder path. Empty string (\"\") moves to top-level. Keeps current location if omitted."))]
-        path: Option<String>,
+        #[arg(long, alias = "path", help = tf!("새 폴더로 이동. 빈 문자열(\"\")이면 최상위로 이동. 미지정 시 현재 위치 유지. (옛 이름: --path)",
+                              "Move to a new folder. Empty string (\"\") moves to top-level. Keeps current location if omitted. (old name: --path)"))]
+        folder: Option<String>,
     },
     #[command(about = tf!("문서 삭제 (soft delete — 번호는 재사용되지 않음). --yes 없으면 확인.", "Delete a document (soft delete — the number is not reused). Confirms unless --yes."))]
     Delete {
@@ -7760,8 +7770,21 @@ fn handle_rules(c: &Backend, json: bool, sub: RulesCmd) -> Result<()> {
 /// BUG-135: run() 스택 프레임 축소 — arm 지역값을 개별 함수 프레임으로.
 fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
     match sub {
-        LibraryCmd::List { table } => {
-            let books = c.library_list()?;
+        LibraryCmd::List { table, folder } => {
+            let mut books = c.library_list()?;
+            // BUG-281: 하위 폴더까지 포함한다 — `아키텍처` 를 물었는데
+            // `아키텍처/결정` 이 안 나오면 트리를 손으로 훑어야 한다.
+            // 빈 문자열은 "최상위만" 이다(`--folder ""`).
+            if let Some(f) = folder.as_deref() {
+                let f = f.trim_end_matches('/');
+                books.retain(|b| {
+                    if f.is_empty() {
+                        b.path.is_empty()
+                    } else {
+                        b.path == f || b.path.starts_with(&format!("{f}/"))
+                    }
+                });
+            }
                         ensure_table_json_exclusive(table, json)?;
             if json {
                 println!("{}", json_str(&books));
@@ -7818,22 +7841,22 @@ fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
             let history = c.library_history(&id)?;
             print_sidecar_history(&history, json);
         }
-        LibraryCmd::New { title, file, path } => {
+        LibraryCmd::New { title, file, folder } => {
             let body = match file {
                 Some(p) => std::fs::read_to_string(&p).with_context(|| {
                     tf!("파일 읽기 실패: {}", "failed to read file: {}", p.display())
                 })?,
                 None => String::new(),
             };
-            let b = c.library_new(&title, &body, path.as_deref().unwrap_or(""))?;
+            let b = c.library_new(&title, &body, folder.as_deref().unwrap_or(""))?;
             if json {
                 println!("{}", json_str(&b));
             } else {
                 println!("{}", tf!("✓ {} 생성됨 — {}", "✓ {} created — {}", b.book_id, b.title));
             }
         }
-        LibraryCmd::Update { id, title, file, path } => {
-            if title.is_none() && file.is_none() && path.is_none() {
+        LibraryCmd::Update { id, title, file, folder } => {
+            if title.is_none() && file.is_none() && folder.is_none() {
                 bail!(tf!(
                     "변경할 필드가 없습니다 — --title / --file / --path 지정",
                     "no fields to change — specify --title / --file / --path"
@@ -7845,7 +7868,7 @@ fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
                 })?),
                 None => None,
             };
-            let b = c.library_update(&id, title.as_deref(), body.as_deref(), path.as_deref())?;
+            let b = c.library_update(&id, title.as_deref(), body.as_deref(), folder.as_deref())?;
             if json {
                 println!("{}", json_str(&b));
             } else {
@@ -11533,15 +11556,35 @@ mod tests {
             _ => panic!(),
         }
 
-        let cli = Cli::try_parse_from([
-            "openguild", "library", "new", "--title", "제목", "--file", "b.md", "--path", "아키텍처",
-        ])
-        .unwrap();
-        match cli.command {
-            Command::Library { sub: LibraryCmd::New { title, file, path } } => {
-                assert_eq!(title, "제목");
-                assert_eq!(file.unwrap().to_string_lossy(), "b.md");
-                assert_eq!(path.as_deref(), Some("아키텍처"));
+        // BUG-281: 옛 이름 `--path` 는 **계속 통해야 한다.** canonical 을
+        // `--folder` 로 바꾼 이유가 발견 가능성이지, 남의 스크립트를 깨는 게
+        // 아니다. alias 는 조용히 사라지기 쉬워서 둘 다 못 박는다.
+        for flag in ["--folder", "--path"] {
+            let args = ["openguild", "library", "new", "--title", "제목", flag, "아키텍처"];
+            match Cli::try_parse_from(args).unwrap().command {
+                Command::Library { sub: LibraryCmd::New { folder, .. } } => {
+                    assert_eq!(folder.as_deref(), Some("아키텍처"), "{flag}");
+                }
+                _ => panic!("{flag}"),
+            }
+        }
+
+        // 이동도 마찬가지.
+        for flag in ["--folder", "--path"] {
+            let args = ["openguild", "library", "update", "BOOK-002", flag, "운영"];
+            match Cli::try_parse_from(args).unwrap().command {
+                Command::Library { sub: LibraryCmd::Update { folder, .. } } => {
+                    assert_eq!(folder.as_deref(), Some("운영"), "{flag}");
+                }
+                _ => panic!("{flag}"),
+            }
+        }
+
+        // BUG-281: 폴더에 넣을 수 있으면 그 폴더로 찾을 수도 있어야 한다.
+        let args = ["openguild", "library", "list", "--folder", "아키텍처"];
+        match Cli::try_parse_from(args).unwrap().command {
+            Command::Library { sub: LibraryCmd::List { folder, .. } } => {
+                assert_eq!(folder.as_deref(), Some("아키텍처"));
             }
             _ => panic!(),
         }
@@ -11551,11 +11594,11 @@ mod tests {
         ])
         .unwrap();
         match cli.command {
-            Command::Library { sub: LibraryCmd::Update { id, title, file, path } } => {
+            Command::Library { sub: LibraryCmd::Update { id, title, file, folder } } => {
                 assert_eq!(id, "BOOK-002");
                 assert_eq!(title.as_deref(), Some("t2"));
                 assert!(file.is_none());
-                assert!(path.is_none());
+                assert!(folder.is_none());
             }
             _ => panic!(),
         }
