@@ -593,10 +593,16 @@
 							<!-- BUG-279: run 훅은 플러그인 폴더가 아니라 여기에 쓴다.
 							     안 알려주면 훅이 만든 파일을 찾을 방법이 없다. -->
 							{#if p.data_dir}
-								<div class="plugin-meta">
-									<span>{t('settings.pluginDataDir', $locale)}:</span>
-									<code class="plugin-target">{p.data_dir}</code>
-								</div>
+								<p class="plugin-datadir">
+									{t('settings.pluginDataDir', $locale)}:
+									<!-- 라벨과 경로가 한 줄에 이어 붙는데, 영어에서는 둘이 같은
+									     문자 집합이라 "writes files to: /Users/…" 가 한 덩어리로
+									     읽힌다(한국어 라벨일 때는 글자가 달라 저절로 갈렸다).
+									     글꼴만으로는 부족해서 본문 마크다운의 인라인 코드와
+									     **같은 모양**을 준다 — 앱 안에서 "코드/경로" 는 이미
+									     그 모양이므로 새 표기를 만들지 않는다. -->
+									<code class="plugin-path">{p.data_dir}</code>
+								</p>
 							{/if}
 							<!-- REQ-021: admin 이 요청한 자리 — "해당 플러그인 설명 아래에
 							     입력란". 위젯 종류는 정의가 선언한다: 토큰은 텍스트,
@@ -1307,6 +1313,28 @@
 		   넘는다 — `.plugin-target` 이 같은 이유로 break-all 을 쓴다. 이쪽은 산문
 		   이므로 어절을 먼저 지키는 anywhere 를 쓴다. */
 		overflow-wrap: anywhere;
+	}
+	.plugin-path {
+		/* MarkdownView 의 `.md :global(code)` 와 같은 값 — 본문에서 경로·코드를
+		   보던 모양 그대로다. */
+		font-family: var(--font-mono);
+		font-size: 0.78rem;
+		background: var(--bg-elevated);
+		padding: 0.1rem 0.3rem;
+		border-radius: var(--r-xs);
+		color: var(--text);
+		/* 경로에는 공백이 없어 줄바꿈 기회가 없다 — 좁은 화면에서 상자를 넘는다. */
+		overflow-wrap: anywhere;
+	}
+	.plugin-datadir {
+		/* `.plugin-meta` 를 재활용했더니 그쪽 `gap: 1rem` 이 **행 간격에도** 걸려,
+		   긴 경로가 줄바꿈될 때 라벨과 경로 사이에 1rem 짜리 빈 줄이 생겼다
+		   (admin: "엔터가 하나 있는 느낌"). flex 대신 그냥 글로 흘린다 —
+		   경로는 라벨 바로 뒤에 이어 붙고 넘칠 때만 다음 줄로 간다. */
+		margin: 0;
+		font-size: 0.78rem;
+		color: var(--text-muted);
+		line-height: 1.5;
 	}
 	.plugin-inputs {
 		display: flex;
