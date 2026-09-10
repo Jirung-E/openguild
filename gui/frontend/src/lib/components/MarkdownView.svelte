@@ -245,7 +245,20 @@
 		const rawId = resolved.id;
 		const id = rawId.toUpperCase();
 		const kind = resolved.kind ?? guessKindByShape(id);
-		a.href = refHref(id, kind, ref?.slug ?? rawId);
+		// BUG-282: **없는 것은 링크가 아니다.** 예전엔 존재 여부와 무관하게 href 를
+		// 붙였다 — 빨갛게 칠하고 "존재하지 않는 …" 툴팁까지 띄우면서 누르면
+		// 그대로 이동했다(지워진 도서관 문서를 누르면 도서관 페이지로 튕겨
+		// 나갔다). 호버 미리보기는 missing 을 제대로 빼고 있었으니 클릭만 빠진
+		// 셈이었다.
+		//
+		// href 를 안 붙이면 브라우저가 링크로 취급하지 않아 클릭도 포커스 이동도
+		// 없다. 나중에 인덱스가 채워지면([[BUG-173]]) 이 함수가 다시 불려 href 가
+		// 붙는다 — 셀렉터가 `a.xlink` 라 href 유무와 무관하다.
+		if (ref) {
+			a.href = refHref(id, kind, ref.slug ?? rawId);
+		} else {
+			a.removeAttribute('href');
+		}
 		// DEV-173: 규칙 slug 는 소문자가 정체성 — 원문 그대로 표시.
 		a.textContent = kind === 'rule' ? (ref?.slug ?? rawId) : id;
 		a.className = ref ? 'xlink' : 'xlink missing';
@@ -527,6 +540,9 @@
 		background: color-mix(in srgb, var(--accent) 22%, transparent);
 	}
 	.md :global(a.xlink.missing) {
+		/* 누를 수 없으므로 손가락 커서를 주지 않는다 — 커서가 "눌린다" 고
+		   말하면 클릭이 안 먹는 것이 고장으로 보인다. */
+		cursor: default;
 		color: var(--danger);
 		background: color-mix(in srgb, var(--danger) 12%, transparent);
 		border-color: color-mix(in srgb, var(--danger) 35%, transparent);
