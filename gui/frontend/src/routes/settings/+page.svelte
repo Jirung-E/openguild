@@ -564,7 +564,17 @@
 					</p>
 				{/if}
 				{#if pluginStatus?.trusted}
-					<p class="plugin-trusted">{t('settings.pluginTrusted', $locale)}</p>
+					<!-- BUG-285: 상태를 알리는 자리와 그 상태를 끄는 자리가 같아야 한다.
+					     예전엔 해제 버튼이 플러그인 목록 **맨 아래**에 있어, 카드가 많으면
+					     스크롤해야 보였다. 철회가 막힌다는 사실도 여기서 말한다. -->
+					<div class="plugin-trusted">
+						<p>{t('settings.pluginTrustedRevokeBlocked', $locale)}</p>
+						{#if canManage}
+							<button class="btn-plain" onclick={() => setTrusted(false)}
+								>{t('settings.pluginUntrust', $locale)}</button
+							>
+						{/if}
+					</div>
 				{/if}
 				{#if pluginStatus &&
 					!pluginStatus.no_guild &&
@@ -733,17 +743,20 @@
 							{/if}
 							{#if canManage}
 								<div class="plugin-actions">
-									{#if p.granted}
-										<!-- 신뢰 중에는 개별 철회가 효과가 없다. 버튼을 그냥
-										     흐려 놓으면 왜 못 누르는지 알 수 없다. -->
+									{#if p.granted && pluginStatus?.trusted}
+										<!-- BUG-285: 신뢰 중에는 개별 철회가 효과가 없다(is_granted 가 trusted
+										     에서 단락된다). 예전엔 버튼을 disabled 로 두고 이유를 title 툴팁에
+										     실었는데, **disabled 요소는 마우스 이벤트를 안 받아 툴팁이 뜨지
+										     않는다.** 이유 없이 죽은 버튼이 됐고 admin 은 "철회가 안 눌린다" 고
+										     봤다. 누를 수 없는 것을 버튼 모양으로 그리지 않고, 이유를 글로 둔다.
+										     해제는 위쪽 안내문에 있다. -->
+										<span class="plugin-trusted-note">{t('settings.pluginRevokeBlockedByTrust', $locale)}</span>
+									{:else if p.granted}
 										<button
 											type="button"
 											class="btn-plain"
 											bind:this={pluginBtns[p.name]}
-											disabled={pluginBusy.includes(p.name) || pluginStatus?.trusted}
-											title={pluginStatus?.trusted
-												? t('settings.pluginRevokeTrustedHint', $locale)
-												: undefined}
+											disabled={pluginBusy.includes(p.name)}
 											aria-label={`${t('settings.pluginRevoke', $locale)} — ${p.name}`}
 											onclick={() => togglePlugin(p.name, false)}
 											>{t('settings.pluginRevoke', $locale)}</button
@@ -782,17 +795,11 @@
 						{/each}
 					</ul>
 				{/if}
-				{#if canManage}
-					{#if pluginStatus?.trusted}
-						<!-- DEV-380: 켠 뒤에 끌 수 없으면 개별 철회가 계속 거짓말을 한다. -->
-						<button class="btn-plain" onclick={() => setTrusted(false)}
-							>{t('settings.pluginUntrust', $locale)}</button
-						>
-					{:else}
-						<button class="btn-plain trust" onclick={() => (confirmTrust = true)}
-							>{t('settings.pluginTrust', $locale)}</button
-						>
-					{/if}
+				<!-- 해제 버튼은 위쪽 안내문으로 옮겼다(BUG-285). -->
+				{#if canManage && !pluginStatus?.trusted}
+					<button class="btn-plain trust" onclick={() => (confirmTrust = true)}
+						>{t('settings.pluginTrust', $locale)}</button
+					>
 				{/if}
 			{/if}
 		{:else if activeTab === 'info'}
@@ -1495,7 +1502,20 @@
 		flex-wrap: wrap;
 	}
 	.plugin-trusted {
+		/* 안내문과 해제 버튼을 한 줄에 — 좁으면 버튼이 아래로 떨어진다. */
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.4rem 0.75rem;
 		font-size: 0.85rem;
+		color: var(--text-muted);
+	}
+	.plugin-trusted p {
+		margin: 0;
+	}
+	.plugin-trusted-note {
+		/* 버튼 자리에 놓이는 글 — 버튼처럼 보이면 안 되므로 옅게 둔다. */
+		font-size: 0.8rem;
 		color: var(--text-muted);
 	}
 	.plugin-broken-h {

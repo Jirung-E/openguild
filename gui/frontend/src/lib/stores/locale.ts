@@ -181,10 +181,6 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'settings.pluginAllow': { ko: '허용', en: 'Allow' },
 	'settings.pluginRevoke': { ko: '철회', en: 'Revoke' },
 	'settings.pluginTrust': { ko: '이 길드를 전부 허용', en: 'Trust this guild' },
-	'settings.pluginTrusted': {
-		ko: '이 길드는 전부 허용돼 있습니다 — 나중에 추가되는 플러그인도 묻지 않고 돕니다.',
-		en: 'This guild is fully trusted — plugins added later also run without asking.'
-	},
 	'settings.pluginTrustConfirm': {
 		ko: '이 길드에 앞으로 추가되는 플러그인까지 전부, 묻지 않고 돌게 됩니다. 계속할까요?',
 		en: 'Every plugin in this guild — including ones added later — will run without asking. Continue?'
@@ -237,9 +233,15 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'settings.pluginRetry': { ko: '다시 시도', en: 'Retry' },
 	'settings.pluginAllowed': { ko: '허용했습니다', en: 'Allowed' },
 	'settings.pluginRevoked': { ko: '철회했습니다', en: 'Revoked' },
-	'settings.pluginRevokeTrustedHint': {
-		ko: '이 길드가 전부 허용돼 있어 개별 철회는 효과가 없습니다. 먼저 전체 허용을 해제하세요.',
-		en: 'This guild is fully trusted, so revoking one plugin has no effect. Stop trusting the guild first.'
+	// BUG-285: 신뢰 중에는 철회 버튼 대신 이 글을 둔다 — disabled 버튼의 title 은
+	// 브라우저가 띄우지 않아 설명이 안 보였다.
+	'settings.pluginRevokeBlockedByTrust': {
+		ko: '전체 허용 중 — 개별 철회 불가',
+		en: 'Guild trusted — cannot revoke individually'
+	},
+	'settings.pluginTrustedRevokeBlocked': {
+		ko: '이 길드는 전부 허용돼 있어 개별 철회가 되지 않습니다. 끄려면 전체 허용을 먼저 해제하세요.',
+		en: 'This guild is fully trusted, so individual plugins cannot be revoked. Stop trusting the guild first.'
 	},
 
 	'settings.editorHeading': { ko: '편집기', en: 'Editor' },

@@ -155,3 +155,52 @@ describe('BUG-277 버튼 이름은 aria-label 로만 구분한다', () => {
 		expect(toggle!.getAttribute('aria-label')).toContain('has-script');
 	});
 });
+
+// BUG-285: **누를 수 없는 것을 버튼으로 그리지 않는다.**
+//
+// 길드 전체 허용 중에는 개별 철회가 효과가 없어서 철회 버튼을 막아 뒀는데, 그
+// 이유를 disabled 버튼의 title 툴팁에만 실었다. disabled 요소는 마우스 이벤트를
+// 안 받아 브라우저가 툴팁을 띄우지 않고, 터치 화면에는 툴팁 자체가 없다. admin 은
+// "철회 버튼이 안 눌린다" 고 봤다. 해제 버튼은 목록 맨 아래에 있어 안 보였다.
+describe('BUG-285 전체 허용 중에는 철회 대신 이유를 보여준다', () => {
+	beforeEach(() => {
+		status.mockReset();
+		manageable.mockReturnValue(true);
+	});
+
+	function trusted(on: boolean, plugins: PluginView[]): PluginStatus {
+		return { plugins, errors: [], trusted: on, manageable: true, no_guild: false, problems: [] };
+	}
+
+	it('신뢰 중이면 죽은 철회 버튼이 없고, 이유가 글로 보인다', async () => {
+		status.mockResolvedValue(trusted(true, [{ ...plugin('tg', null), granted: true }]));
+		await openPluginsTab();
+		await screen.findByText('tg');
+
+		const actions = document.querySelector('.plugin-actions')!;
+		// 버튼 모양의 거짓 표시가 없어야 한다 — 비활성이든 아니든.
+		expect(actions.querySelector('button')).toBeNull();
+		// 이유는 **보이는 글**이어야 한다(title 속성이 아니라).
+		expect(actions.querySelector('.plugin-trusted-note')?.textContent?.trim()).toBeTruthy();
+	});
+
+	it('해제 버튼이 안내문 안에 있다 — 목록 맨 아래가 아니라', async () => {
+		status.mockResolvedValue(trusted(true, [{ ...plugin('tg', null), granted: true }]));
+		await openPluginsTab();
+		await screen.findByText('tg');
+
+		const notice = document.querySelector('.plugin-trusted')!;
+		expect(notice).not.toBeNull();
+		expect(notice.querySelector('button')).not.toBeNull();
+	});
+
+	it('신뢰가 아니면 철회 버튼이 평소대로 눌린다', async () => {
+		status.mockResolvedValue(trusted(false, [{ ...plugin('tg', null), granted: true }]));
+		await openPluginsTab();
+		await screen.findByText('tg');
+
+		const btn = document.querySelector('.plugin-actions button') as HTMLButtonElement;
+		expect(btn).not.toBeNull();
+		expect(btn.disabled).toBe(false);
+	});
+});
