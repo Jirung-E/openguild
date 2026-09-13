@@ -347,6 +347,25 @@ pub async fn rename_type(
     .await?;
     tx.commit().await?;
 
+    // BUG-286: 이 타입의 퀘스트는 전부 slug 가 바뀐다(`OLD-001` → `NEW-001`). 보드 위치
+    // 파일의 키도 같이 옮긴다 — 안 그러면 다음 reindex 가 옛 slug 로 찾다가 못 찾아
+    // 이 타입 퀘스트의 위치를 **통째로** 버린다. 번호는 그대로이므로 slug 를 같은
+    // 규칙(`printf('%03d')`)으로 다시 만든다. 실패해도 이름 변경은 이미 끝났다.
+    {
+        let numbers: Vec<i64> =
+            sqlx::query_scalar("SELECT number FROM quests WHERE quest_type_id = ?")
+                .bind(old_row.id)
+                .fetch_all(&store.index_pool)
+                .await
+                .unwrap_or_default();
+        let renames: Vec<(String, String)> = numbers
+            .into_iter()
+            .map(|n| (format!("{old_prefix}-{n:03}"), format!("{new_prefix}-{n:03}")))
+            .collect();
+        let _w = store.write_lock.lock().await;
+        let _ = crate::repo::positions::rename_keys(&store.paths, &renames);
+    }
+
     // ── 파일 IO ──
     // 1. types/<old>.toml → <new>.toml (파일 안 prefix 필드도 갱신).
     let old_type_path = store.paths.type_path(&old_prefix);

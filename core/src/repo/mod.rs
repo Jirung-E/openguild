@@ -14,6 +14,7 @@ pub mod crosslink;
 pub mod fs;
 pub mod history;
 pub mod library;
+pub mod positions;
 pub mod quest;
 pub mod rules;
 pub mod seed;

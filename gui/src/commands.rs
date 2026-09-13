@@ -490,7 +490,10 @@ pub async fn update_quest_position(
     body: UpdatePositionRequest,
 ) -> Result<QuestPosition, String> {
     // update_position 은 UI 상태 — SQL 만 (services 의 read 모듈에 위치).
-    read::update_position(&store.index_pool, id, body).await.map_err(err)
+    // BUG-286: 파일(positions.json)이 진리원 — ops 가 파일과 DB 를 함께 쓴다.
+    openguild_core::ops::positions::update_position(&store, id, body)
+        .await
+        .map_err(err)
 }
 
 /// BUG-284: 여러 위치를 한 트랜잭션으로 — 서버의 `PUT /api/quest-positions` 와 같다.
@@ -499,7 +502,7 @@ pub async fn update_quest_positions(
     store: State<'_, Store>,
     items: Vec<openguild_core::models::PositionItem>,
 ) -> Result<serde_json::Value, String> {
-    let written = read::update_positions(&store.index_pool, &items)
+    let written = openguild_core::ops::positions::update_positions(&store, &items)
         .await
         .map_err(err)?;
     Ok(serde_json::json!({ "written": written }))

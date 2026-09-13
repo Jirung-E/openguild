@@ -530,6 +530,18 @@ pub async fn change_quest_type(
         return Ok(quest);
     }
 
+    // BUG-286: 보드 위치 파일의 키도 옮긴다. `positions.json` 은 slug 로 키를 잡으므로,
+    // 안 옮기면 다음 reindex 가 옛 slug 로 찾다가 못 찾아 이 퀘스트의 위치를 버린다.
+    // 실패해도 타입 변경 자체는 이미 끝났다 — 위치를 잃는 것은 UI 상태 손실이지
+    // 데이터 손상이 아니므로, 여기서 전체를 실패시키지 않는다.
+    {
+        let _w = store.write_lock.lock().await;
+        let _ = crate::repo::positions::rename_keys(
+            &store.paths,
+            &[(old_slug.clone(), new_slug.clone())],
+        );
+    }
+
     // history INSERT — type 변경 자체를 audit.
     let ts = crate::time::now_local_iso8601();
     sqlx::query(

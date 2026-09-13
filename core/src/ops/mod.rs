@@ -21,6 +21,7 @@ pub mod counter;
 pub mod doc_history;
 pub mod library;
 pub mod meta;
+pub mod positions;
 pub mod quests;
 pub mod rules;
 pub mod search;

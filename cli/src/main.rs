@@ -2018,6 +2018,9 @@ struct ReindexHttpDto {
     dependencies_loaded: usize,
     #[serde(default)]
     positions_restored: usize,
+    // BUG-286: 옛 서버는 이 필드를 안 보낸다 — default 로 받는다.
+    #[serde(default)]
+    positions_migrated: usize,
     #[serde(default)]
     campaigns_loaded: usize,
     #[serde(default)]
@@ -2058,6 +2061,7 @@ impl From<ReindexHttpDto> for openguild_core::reindex::ReindexReport {
             quests_loaded: r.quests_loaded,
             dependencies_loaded: r.dependencies_loaded,
             positions_restored: r.positions_restored,
+            positions_migrated: r.positions_migrated,
             campaigns_loaded: r.campaigns_loaded,
             comments_loaded: r.comments_loaded,
             memos_loaded: r.memos_loaded,

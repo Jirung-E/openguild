@@ -238,7 +238,8 @@ pub async fn update_position(
     Json(body): Json<UpdatePositionRequest>,
 ) -> AppResult<Json<QuestPosition>> {
     // update_position 은 UI 상태 — 파일 IO 없음. SQL 만 직접.
-    Ok(Json(read::update_position(&store.index_pool, id, body).await?))
+    // BUG-286: 파일(positions.json)이 진리원 — ops 가 파일과 DB 를 함께 쓴다.
+    Ok(Json(openguild_core::ops::positions::update_position(&store, id, body).await?))
 }
 
 pub async fn get_quest_by_slug(
@@ -259,7 +260,7 @@ pub async fn update_positions(
     Json(items): Json<Vec<openguild_core::models::PositionItem>>,
 ) -> AppResult<Json<serde_json::Value>> {
     // UI 상태 — 파일 IO 없음, SQL 만.
-    let written = read::update_positions(&store.index_pool, &items).await?;
+    let written = openguild_core::ops::positions::update_positions(&store, &items).await?;
     Ok(Json(serde_json::json!({ "written": written })))
 }
 

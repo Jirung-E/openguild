@@ -107,6 +107,22 @@ pub const CATALOG: &[Entry] = &[
         "set_rules",
         Status::Excluded("규칙 파일 일괄 쓰기 — 위 set_comments 와 같은 이유."),
     ),
+    // BUG-286: 위치 쓰기가 ops 로 옮겨 오면서 이 검사가 잡았다.
+    e(
+        "update_position",
+        Status::Excluded(
+            "보드 좌표는 사람마다 다른 **개인 UI 상태**다(BOOK-001 의 셋째 저장 클래스, \
+             gitignored). 길드에서 일어난 일이 아니라 한 사람의 화면 배치라, 구독자에게 \
+             알릴 사건이 아니다. 노드를 끌 때마다 이벤트가 쏟아지기도 한다.",
+        ),
+    ),
+    e(
+        "update_positions",
+        Status::Excluded(
+            "위 update_position 의 일괄 판 — 보드 적재 때 자동 배치 노드를 고정한다 \
+             (BUG-284). 사람의 조작도 아니다.",
+        ),
+    ),
     e(
         "set_memo",
         Status::Excluded(

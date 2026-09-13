@@ -28,6 +28,8 @@ pub struct ReindexReport {
     pub dependencies_loaded: usize,
     /// reindex 전후로 살아남은 quest 의 board 위치 복원 수.
     pub positions_restored: usize,
+    /// BUG-286: `positions.json` 이 없어 옛 index.db 에서 옮겨 온 위치 수.
+    pub positions_migrated: usize,
     /// DEV-011: campaign 파일 로드 수.
     pub campaigns_loaded: usize,
     /// DEV-102: sibling `{slug}.comments.md` 의 entry 수 (모든 quest 합산).
@@ -81,18 +83,42 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
     let pool = &store.index_pool;
     let paths = &store.paths;
 
-    // 0. position 백업 — reindex 가 quest 정수 id 를 재배정하므로 slug 기준으로 보관.
-    //    position 은 UI 상태라 파일에 저장 안 함 → reindex 가 wipe 하면 그대로 사라짐.
-    //    quest 자체가 (slug 기준으로) 살아남으면 position 도 보존되어야 함.
-    let position_backup: Vec<(String, f64, f64)> = sqlx::query_as(
-        "SELECT t.prefix || '-' || printf('%03d', q.number) AS slug, p.x, p.y
-           FROM quest_positions p
-           JOIN quests q ON q.id = p.quest_id
-           JOIN quest_types t ON t.id = q.quest_type_id",
-    )
-    .fetch_all(pool)
-    .await
-    .unwrap_or_default();
+    // 0. 위치 — **`positions.json` 이 진리원이다**(BUG-286).
+    //
+    //    예전엔 위치가 index.db 에만 있어서, 여기서 지우기 전에 메모리로 백업했다가
+    //    복원하는 우회로 살렸다. 그건 db 가 **살아 있을 때만** 통한다 — `rm index.db
+    //    && reindex`(BOOK-001 이 불변식의 일부라 하고 브랜치 전환마다 실행하는 명령)
+    //    에서는 백업할 원본이 없어 사용자의 보드 배치가 전부 사라졌다.
+    //
+    //    파일이 있으면 그대로 쓴다. **파일이 아직 없을 때만** 옛 db 의 위치를 가져와
+    //    파일로 옮긴다 — 업그레이드한 사용자의 배치를 그 순간 날리지 않으려는 것이다.
+    //    파일이 깨져 있으면 여기서 멈춘다(빈 상태로 갈음하면 곧 덮어써서 날아간다).
+    let position_backup: Vec<(String, f64, f64)> = match crate::repo::positions::read(paths)
+        .map_err(crate::error::AppError::Internal)?
+    {
+        Some(file) => file.into_iter().map(|(slug, p)| (slug, p.x, p.y)).collect(),
+        None => {
+            let legacy: Vec<(String, f64, f64)> = sqlx::query_as(
+                "SELECT t.prefix || '-' || printf('%03d', q.number) AS slug, p.x, p.y
+                   FROM quest_positions p
+                   JOIN quests q ON q.id = p.quest_id
+                   JOIN quest_types t ON t.id = q.quest_type_id",
+            )
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default();
+            if !legacy.is_empty() {
+                let items: Vec<_> = legacy
+                    .iter()
+                    .map(|(s, x, y)| (s.clone(), crate::repo::positions::Pos { x: *x, y: *y }))
+                    .collect();
+                crate::repo::positions::upsert(paths, &items)
+                    .map_err(crate::error::AppError::Internal)?;
+                report.positions_migrated = legacy.len();
+            }
+            legacy
+        }
+    };
 
     // 1. 기존 내용 비움 (트랜잭션 안에서 — partial 실패 시 rollback).
     let mut tx = pool.begin().await?;
