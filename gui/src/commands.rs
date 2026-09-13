@@ -437,6 +437,18 @@ pub async fn set_quest_tags(
     ops::set_quest_tags(&store, id, tags).await.map_err(err)
 }
 
+/// BUG-287: 태그 붙이기·떼기 — 전체 교체와 달리 읽은 뒤 남이 붙인 태그를 안 지운다.
+#[tauri::command]
+pub async fn edit_quest_tags(
+    store: State<'_, Store>,
+    id: i64,
+    edit: openguild_core::ops::TagEdit,
+) -> Result<QuestRow, String> {
+    openguild_core::ops::quests::edit_quest_tags(&store, id, edit)
+        .await
+        .map_err(err)
+}
+
 /// DEV-055: quest 의 type 변경 — slug 가 바뀜.
 #[tauri::command]
 pub async fn change_quest_type(
@@ -1667,6 +1679,25 @@ pub async fn set_rule_tags(
     })
 }
 
+/// BUG-287: 규칙 태그 붙이기·떼기.
+#[tauri::command]
+pub async fn edit_rule_tags(
+    store: State<'_, Store>,
+    slug: String,
+    edit: openguild_core::ops::TagEdit,
+) -> Result<RuleResponse, String> {
+    let entry = openguild_core::ops::rules::edit_rule_tags(&store, &slug, edit)
+        .await
+        .map_err(err)?;
+    Ok(RuleResponse {
+        slug: entry.slug,
+        content: Some(entry.content),
+        tags: entry.tags,
+        created_at: entry.created_at,
+        updated_at: entry.updated_at,
+    })
+}
+
 // ─────────────────────── DEV-217: 도서관 (Library) ───────────────────────
 // server routes/library.rs 의 BookResponse 와 동일 형태 — transport.ts 가
 // HTTP/invoke 를 투명하게 스위칭할 수 있게 (DEV-193 파리티 원칙).
@@ -1810,6 +1841,21 @@ pub async fn set_book_tags(
     tags: Vec<String>,
 ) -> Result<BookResponse, String> {
     let row = openguild_core::ops::library::set_book_tags(&store, &book_id, tags)
+        .await
+        .map_err(err)?;
+    let mut resp: BookResponse = row.into();
+    resp.attachments = openguild_core::ops::attachments::list_book_attachments(&store, &book_id);
+    Ok(resp)
+}
+
+/// BUG-287: 도서관 문서 태그 붙이기·떼기.
+#[tauri::command]
+pub async fn edit_book_tags(
+    store: State<'_, Store>,
+    book_id: String,
+    edit: openguild_core::ops::TagEdit,
+) -> Result<BookResponse, String> {
+    let row = openguild_core::ops::library::edit_book_tags(&store, &book_id, edit)
         .await
         .map_err(err)?;
     let mut resp: BookResponse = row.into();

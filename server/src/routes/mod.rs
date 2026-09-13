@@ -105,7 +105,7 @@ pub fn create_router(store: Store) -> Router {
                 .delete(rules::delete_rule),
         )
         // DEV-243: 규칙 태그 전체 교체.
-        .route("/api/rules/{slug}/tags", put(rules::set_tags))
+        .route("/api/rules/{slug}/tags", put(rules::set_tags).post(rules::edit_tags))
         // DEV-290: 규칙 변경 이력.
         .route("/api/rules/{slug}/history", get(rules::list_history))
         // DEV-016 legacy 단일 파일 — 기존 호출자 호환.
@@ -125,7 +125,7 @@ pub fn create_router(store: Store) -> Router {
                 .delete(library::delete_book),
         )
         // DEV-243: 도서관 문서 태그 전체 교체.
-        .route("/api/library/{book_id}/tags", patch(library::set_tags))
+        .route("/api/library/{book_id}/tags", patch(library::set_tags).post(library::edit_tags))
         // DEV-290: 도서관 문서 변경 이력.
         .route("/api/library/{book_id}/history", get(library::list_history))
         // DEV-239: 도서관 폴더(계층) — `.guild/library/folders.toml`.
@@ -274,7 +274,7 @@ pub fn create_router(store: Store) -> Router {
         // DEV-076: 희망 / 필수 기한 설정 / 해제.
         .route("/api/quests/{id}/due", patch(quests::set_due_dates))
         // DEV-068: 태그 전체 교체. body: { "tags": [...] }
-        .route("/api/quests/{id}/tags", patch(quests::set_tags))
+        .route("/api/quests/{id}/tags", patch(quests::set_tags).post(quests::edit_tags))
         .route("/api/quests/{id}/restore", patch(quests::restore_quest))
         .route("/api/quests/{id}/candidates", get(quests::list_candidates))
         .route("/api/quests/{id}/prerequisites", post(quests::add_prerequisite))

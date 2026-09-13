@@ -6,6 +6,7 @@
 -->
 <script lang="ts">
 	import type { QuestTagDef } from '$lib/types';
+	import type { TagEdit } from '$lib/api/quests';
 	// DEV-205(2차): i18n.
 	import { locale, t } from '$lib/stores/locale';
 
@@ -13,12 +14,14 @@
 		tags,
 		tagDefs,
 		editable = true,
-		onSetTags
+		onEditTags
 	}: {
 		tags: string[];
 		tagDefs: QuestTagDef[];
 		editable?: boolean;
-		onSetTags: (tags: string[]) => void | Promise<void>;
+		// BUG-287: 결과 목록이 아니라 붙이고 뗄 것을 넘긴다 — 들고 있던 `tags` 로 전체를
+		// 바꾸면 그 사이 남이 붙인 태그가 지워진다.
+		onEditTags: (edit: TagEdit) => void | Promise<void>;
 	} = $props();
 
 	const tagDefMap = $derived(new Map(tagDefs.map((d) => [d.slug, d])));
@@ -48,16 +51,12 @@
 			.map((s) => s.trim())
 			.filter((s) => s.length > 0);
 		if (tokens.length === 0) return;
-		const merged = [...tags];
-		for (const tag of tokens) {
-			if (!merged.includes(tag)) merged.push(tag);
-		}
-		await onSetTags(merged);
+		await onEditTags({ add: tokens });
 		newTagText = '';
 		tagInputOpen = false;
 	}
 	async function removeTag(tag: string) {
-		await onSetTags(tags.filter((x) => x !== tag));
+		await onEditTags({ remove: [tag] });
 	}
 </script>
 

@@ -31,8 +31,8 @@ async fn slug_of(store: &Store, id: i64) -> AppResult<Option<String>> {
     .await?)
 }
 
-/// **파일이 아직 없으면 옛 DB 의 위치로 먼저 채운다.** 호출자는 `write_lock` 을
-/// 잡고 부른다.
+/// **파일이 아직 없으면 옛 DB 의 위치로 먼저 채운다.** 호출자는
+/// `store.mutation_guard()` 를 쥐고 부른다.
 ///
 /// 이게 없으면 이행 구멍이 생긴다. 업그레이드한 사용자가 reindex 없이 앱만 열고 노드
 /// 하나를 옮기면, 없는 파일이 빈 상태로 읽혀 **그 노드 하나만 든 파일**이 만들어진다.
@@ -68,11 +68,10 @@ pub async fn update_position(
     id: i64,
     body: UpdatePositionRequest,
 ) -> AppResult<QuestPosition> {
+    let _g = store.mutation_guard().await?;
     let slug = slug_of(store, id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("quest not found: {id}")))?;
-    // 파일은 read-modify-write 라 같은 프로세스 안의 동시 저장이 서로를 지우지 않게.
-    let _w = store.write_lock.lock().await;
     ensure_file(store).await?;
     file::upsert(
         &store.paths,
@@ -93,6 +92,7 @@ pub async fn update_position(
 /// **파일은 한 번만 쓴다.** 수백 개를 건마다 다시 쓰면 그만큼 디스크를 친다.
 /// 없는 퀘스트는 건너뛴다(보드가 들고 있던 목록과 그사이 지워진 것이 어긋날 수 있다).
 pub async fn update_positions(store: &Store, items: &[PositionItem]) -> AppResult<usize> {
+    let _g = store.mutation_guard().await?;
     if items.is_empty() {
         return Ok(0);
     }
@@ -102,7 +102,6 @@ pub async fn update_positions(store: &Store, items: &[PositionItem]) -> AppResul
             to_file.push((slug, Pos { x: it.x, y: it.y }));
         }
     }
-    let _w = store.write_lock.lock().await;
     ensure_file(store).await?;
     file::upsert(&store.paths, &to_file).map_err(AppError::Internal)?;
     db::update_positions(&store.index_pool, items).await

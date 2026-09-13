@@ -587,13 +587,9 @@
 			.map((s) => s.trim())
 			.filter((s) => s.length > 0);
 		if (tokens.length === 0) return;
-		const existing = detail.tags ?? [];
-		const merged = [...existing];
-		for (const t of tokens) {
-			if (!merged.includes(t)) merged.push(t);
-		}
 		try {
-			await questsApi.setTags(detail.id, merged);
+			// BUG-287: 들고 있던 목록으로 전체를 바꾸면 그 사이 남이 붙인 태그가 지워진다.
+			await questsApi.editTags(detail.id, { add: tokens });
 			detail = await questsApi.getBySlug(slug);
 			newTagText = '';
 			tagInputOpen = false;
@@ -603,9 +599,8 @@
 	}
 	async function removeTag(t: string) {
 		if (!detail) return;
-		const after = (detail.tags ?? []).filter((x) => x !== t);
 		try {
-			await questsApi.setTags(detail.id, after);
+			await questsApi.editTags(detail.id, { remove: [t] });
 			detail = await questsApi.getBySlug(slug);
 		} catch (err) {
 			showToast(err instanceof Error ? err.message : 'failed', 'error');

@@ -276,6 +276,7 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 			const tags = (body as { tags?: string[] } | undefined)?.tags ?? [];
 			return { cmd: 'set_rule_tags', args: { slug, tags } };
 		}
+		if (method === 'POST') return { cmd: 'edit_rule_tags', args: { slug, edit: body ?? {} } };
 	}
 	// DEV-290: /api/rules/{slug}/history — sub-path 라 일반 slug 블록보다 먼저.
 	if (parts[0] === 'api' && parts[1] === 'rules' && parts[2] && parts[3] === 'history') {
@@ -335,6 +336,7 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 			const tags = (body as { tags?: string[] } | undefined)?.tags ?? [];
 			return { cmd: 'set_book_tags', args: { bookId, tags } };
 		}
+		if (method === 'POST') return { cmd: 'edit_book_tags', args: { bookId, edit: body ?? {} } };
 	}
 	// DEV-290: /api/library/{bookId}/history — sub-path 라 일반 bookId 블록보다 먼저.
 	if (parts[0] === 'api' && parts[1] === 'library' && parts[2] && parts[3] === 'history') {
@@ -581,6 +583,10 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 		if (sub === 'tags' && method === 'PATCH') {
 			const tags = (body as { tags?: string[] } | undefined)?.tags ?? [];
 			return { cmd: 'set_quest_tags', args: { id, tags } };
+		}
+		// BUG-287: 붙이기·떼기. body: { add?, remove? }.
+		if (sub === 'tags' && method === 'POST') {
+			return { cmd: 'edit_quest_tags', args: { id, edit: body ?? {} } };
 		}
 		// DEV-055: quest type 변경 (slug 가 바뀜, 다른 quest 파일들도 cascade).
 		if (sub === 'type' && method === 'PATCH') {

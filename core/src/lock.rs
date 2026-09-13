@@ -1,198 +1,114 @@
-//! Single-writer lock — `.guild/.lock` 파일로 동시 mutation 방지.
+//! BUG-287: 길드 변경 잠금 — **프로세스 사이**와 **프로세스 안**을 함께 직렬화한다.
 //!
-//! 동작:
-//! - lock acquire: 파일 작성 (없으면 생성). 이미 있으면 PID 확인 → 살아있으면 거부, 죽었으면 강탈.
-//! - lock release: 파일 삭제 (RAII guard).
+//! `.guild` 쓰기는 대부분 "파일 전체 읽기 → 고치기 → 통째로 쓰기" 다. 데스크톱 앱과
+//! 에이전트의 CLI 가 같은 퀘스트를 동시에 고치면 먼저 쓴 쪽이 조용히 지워졌다
+//! (태그 12개 중 1개, 댓글 13개 중 4개 생존 — 전부 종료 코드 0).
 //!
-//! 한계 — 본 구현은 best-effort:
-//! - PID 검증은 OS 의존. Windows / Unix 처리 별도.
-//! - 네트워크 파일 시스템에선 락 충돌 가능.
-//! - read-only 작업은 lock 안 잡음 (충돌 없음).
+//! 두 층:
 //!
-//! 사용 예:
-//! ```text
-//! let _lock = LockGuard::acquire(&store.paths)?;
-//! // ... mutation 수행 ...
-//! // _lock 이 drop 되면 자동 release
-//! ```
+//! | 층 | 무엇 | 왜 |
+//! |---|---|---|
+//! | 프로세스 안 | `Store::write_lock` (tokio Mutex) | 서버의 동시 요청이 blocking 스레드를 줄 세워 점유하지 않게 먼저 async 로 기다린다 |
+//! | 프로세스 사이 | `.guild/.lock` 에 OS 권고 잠금 (`File::try_lock`) | unix `flock` / Windows `LockFileEx` 를 표준이 감싼다 — 의존성도 플랫폼 분기도 없다 |
+//!
+//! 잠금을 쥔 채 프로세스가 죽어도 OS 가 파일 기술자와 함께 푼다 — 예전 PID 파일
+//! 방식처럼 "살아 있나" 를 추측할 일이 없다.
+//!
+//! **공개 변경 진입점에서만 잡는다.** 둘 다 재진입이 안 되므로, 진입점이 다른 진입점을
+//! 부르면 제자리에서 멈춘다. 공유하는 몸통은 잠금 없는 내부 함수로 뺀다
+//! (`ops::lock_coverage` 시험이 분류를 강제한다).
 
-use anyhow::{anyhow, Context, Result};
-use serde::{Deserialize, Serialize};
+use anyhow::{Context, Result, anyhow};
+use std::fs::{File, OpenOptions, TryLockError};
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LockInfo {
-    pub pid: u32,
-    pub acquired_at: String, // ISO 8601
-    pub command: Option<String>, // 디버그용
+/// 다른 프로세스가 이만큼 놓지 않으면 포기한다. 변경은 사람 속도이고 가장 긴 것이
+/// 동기 자동 스냅샷(~2초)이라, 이 시한에 걸리면 멈춘 프로세스가 있다는 뜻이다.
+const WAIT: Duration = Duration::from_secs(60);
+
+/// 쥐고 있는 동안 이 길드의 다른 변경은 기다린다. drop 하면 푼다.
+///
+/// 필드 선언 순서가 drop 순서다 — 파일 잠금을 먼저 놓고 프로세스 안 잠금을 놓는다.
+#[must_use = "잠금은 쥐고 있는 동안만 유효하다 — `let _g = ...` 로 묶어 둘 것"]
+pub struct MutationGuard {
+    _file: Option<File>,
+    _local: tokio::sync::OwnedMutexGuard<()>,
 }
 
-/// RAII guard — drop 시 lock 파일 삭제.
-#[derive(Debug)]
-pub struct LockGuard {
-    path: PathBuf,
-}
-
-impl LockGuard {
-    /// Lock 획득 시도. 기존 lock 이 있으면:
-    /// - 살아있는 PID 면 거부 (Err).
-    /// - 죽은 PID 면 강탈 (덮어쓰기).
-    pub fn acquire(guild_paths: &crate::repo::GuildPaths) -> Result<Self> {
-        Self::acquire_with_command(guild_paths, None)
+impl std::fmt::Debug for MutationGuard {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MutationGuard")
+            .field("cross_process", &self._file.is_some())
+            .finish()
     }
+}
 
-    pub fn acquire_with_command(
-        guild_paths: &crate::repo::GuildPaths,
-        command: Option<String>,
-    ) -> Result<Self> {
-        let path = guild_paths.lock_file();
-        std::fs::create_dir_all(guild_paths.dot_guild())?;
+pub(crate) async fn acquire(
+    local: std::sync::Arc<tokio::sync::Mutex<()>>,
+    path: PathBuf,
+) -> Result<MutationGuard> {
+    let local = local.lock_owned().await;
+    let file = tokio::task::spawn_blocking(move || lock_file(&path, WAIT))
+        .await
+        .context("잠금 대기 작업이 중단됨")??;
+    Ok(MutationGuard {
+        _file: file,
+        _local: local,
+    })
+}
 
-        if path.exists() {
-            // 기존 lock 검사
-            let content = std::fs::read_to_string(&path).unwrap_or_default();
-            match toml::from_str::<LockInfo>(&content) {
-                Ok(existing) => {
-                    if is_pid_alive(existing.pid) {
-                        return Err(anyhow!(
-                            ".guild/.lock 이 잠겨있음 (PID {}, since {}): {}\n\
-                             다른 mutation 진행 중. 끝나면 다시 시도하세요.\n\
-                             강제로 풀려면 .guild/.lock 파일을 수동 삭제.",
-                            existing.pid,
-                            existing.acquired_at,
-                            existing.command.as_deref().unwrap_or("(unknown)")
-                        ));
-                    }
-                    // 죽은 PID → 강탈
-                    tracing::warn!(
-                        "stale lock detected (PID {} not running). overriding.",
-                        existing.pid
-                    );
-                }
-                Err(_) => {
-                    // 파싱 실패 — 파일은 있지만 손상. 강탈.
-                    tracing::warn!("corrupted lock file. overriding.");
-                }
+/// `None` 이면 이 파일시스템이 권고 잠금을 지원하지 않는다(일부 네트워크 공유) —
+/// 쓰기를 전부 막는 대신 프로세스 안 보호만으로 진행한다.
+fn lock_file(path: &Path, wait: Duration) -> Result<Option<File>> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)
+            .with_context(|| format!("잠금 디렉토리 생성 실패: {}", dir.display()))?;
+    }
+    // 내용은 쓰지 않는다 — 잠금은 파일이 아니라 열린 기술자에 걸린다. 지우지도 않는다:
+    // 지운 뒤 다른 프로세스가 새로 만들면 서로 다른 inode 를 잠가 둘 다 통과한다.
+    let file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(path)
+        .with_context(|| format!("잠금 파일 열기 실패: {}", path.display()))?;
+
+    let deadline = Instant::now() + wait;
+    let mut pause = Duration::from_millis(2);
+    loop {
+        match file.try_lock() {
+            Ok(()) => return Ok(Some(file)),
+            Err(TryLockError::WouldBlock) => {}
+            Err(TryLockError::Error(e)) if e.kind() == std::io::ErrorKind::Unsupported => {
+                tracing::warn!(
+                    "이 파일시스템은 잠금을 지원하지 않음 — 다른 프로세스와의 동시 쓰기를 막지 못한다: {}",
+                    path.display()
+                );
+                return Ok(None);
+            }
+            Err(TryLockError::Error(e)) => {
+                return Err(anyhow!(e)).with_context(|| format!("잠금 실패: {}", path.display()));
             }
         }
-
-        let info = LockInfo {
-            pid: std::process::id(),
-            acquired_at: now_iso(),
-            command,
-        };
-        let content = toml::to_string_pretty(&info).context("lock TOML 직렬화 실패")?;
-        std::fs::write(&path, content)
-            .with_context(|| format!("lock 파일 작성 실패: {}", path.display()))?;
-        Ok(Self { path })
-    }
-}
-
-impl Drop for LockGuard {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.path);
-    }
-}
-
-/// 현재 잠금 정보 (있으면).
-pub fn current_lock(guild_paths: &crate::repo::GuildPaths) -> Option<LockInfo> {
-    let path = guild_paths.lock_file();
-    let content = std::fs::read_to_string(&path).ok()?;
-    toml::from_str(&content).ok()
-}
-
-/// 강제 해제 — 사용자가 stale lock 만났을 때 수동 명령.
-pub fn force_release(guild_paths: &crate::repo::GuildPaths) -> Result<()> {
-    let path = guild_paths.lock_file();
-    if path.exists() {
-        std::fs::remove_file(&path)
-            .with_context(|| format!("lock 파일 삭제 실패: {}", path.display()))?;
-    }
-    Ok(())
-}
-
-#[cfg(target_os = "windows")]
-fn is_pid_alive(_pid: u32) -> bool {
-    // Windows: OpenProcess 확인. 일단 false (safe — 강탈 허용)
-    // 정확한 구현은 winapi crate 필요. 현재 단순 구현으로 둠.
-    // 단점: 락 PID 가 우연히 재사용된 다른 프로세스라도 강탈됨.
-    //       단일 사용자 환경에선 큰 위험 X.
-    false
-}
-
-#[cfg(not(target_os = "windows"))]
-fn is_pid_alive(pid: u32) -> bool {
-    // Unix: kill -0. signal 0 은 실제 시그널 안 보내고 권한만 확인.
-    // 살아있고 권한 있으면 Ok. ESRCH 면 죽음.
-    unsafe { libc_kill_zero(pid as i32) }
-}
-
-#[cfg(not(target_os = "windows"))]
-#[link(name = "c")]
-unsafe extern "C" {
-    fn kill(pid: i32, sig: i32) -> i32;
-}
-
-#[cfg(not(target_os = "windows"))]
-unsafe fn libc_kill_zero(pid: i32) -> bool {
-    unsafe { kill(pid, 0) == 0 }
-}
-
-fn now_iso() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let (y, mo, d, h, mi, s) = epoch_to_ymdhms(secs);
-    format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z")
-}
-
-fn epoch_to_ymdhms(secs: u64) -> (u32, u32, u32, u32, u32, u32) {
-    let s = (secs % 60) as u32;
-    let mi = ((secs / 60) % 60) as u32;
-    let h = ((secs / 3600) % 24) as u32;
-    let mut days = (secs / 86400) as i64;
-    let mut year: i64 = 1970;
-    loop {
-        let dy = if is_leap(year) { 366 } else { 365 };
-        if days >= dy {
-            days -= dy;
-            year += 1;
-        } else {
-            break;
+        if Instant::now() >= deadline {
+            return Err(anyhow!(
+                "다른 openguild 프로세스가 {}초 넘게 길드를 쓰는 중이라 기다리다 포기했습니다 ({}). \
+                 멈춘 앱·CLI 가 없는지 확인하세요.",
+                wait.as_secs(),
+                path.display()
+            ));
         }
+        std::thread::sleep(pause);
+        pause = (pause * 2).min(Duration::from_millis(50));
     }
-    let dim = days_in_months(year);
-    let mut month: usize = 0;
-    while month < 12 && days >= dim[month] as i64 {
-        days -= dim[month] as i64;
-        month += 1;
-    }
-    (year as u32, (month + 1) as u32, (days + 1) as u32, h, mi, s)
-}
-
-fn is_leap(y: i64) -> bool {
-    (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
-}
-fn days_in_months(y: i64) -> [u32; 12] {
-    [
-        31,
-        if is_leap(y) { 29 } else { 28 },
-        31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
-    ]
-}
-
-// `Path` 미사용 방지
-#[allow(dead_code)]
-fn _path_ref() -> Option<&'static Path> {
-    None
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::repo::GuildPaths;
+    use std::sync::Arc;
 
     fn fresh_tmp(label: &str) -> PathBuf {
         let ns = std::time::SystemTime::now()
@@ -205,96 +121,88 @@ mod tests {
     }
 
     #[test]
-    fn acquire_creates_file_with_pid() {
-        let dir = fresh_tmp("acquire");
-        let paths = GuildPaths::new(&dir);
+    fn a_second_handle_waits_even_in_the_same_process() {
+        // 권고 잠금은 기술자 단위다 — 같은 프로세스에서 따로 연 핸들도 막혀야
+        // "다른 프로세스" 를 흉내 낸 이 시험이 의미가 있다.
+        let path = fresh_tmp("second").join(".lock");
+        let held = lock_file(&path, WAIT).unwrap().expect("잠금 지원");
+        let err = lock_file(&path, Duration::from_millis(100)).unwrap_err();
+        assert!(err.to_string().contains("기다리다 포기"), "{err:#}");
+        drop(held);
+        assert!(lock_file(&path, Duration::from_millis(100)).unwrap().is_some());
+    }
 
-        let _guard = LockGuard::acquire(&paths).unwrap();
-        assert!(paths.lock_file().exists());
+    /// 잠금을 쥔 채 **죽은 프로세스**가 다음 쓰기를 영원히 막지 않는다. 진짜 다른
+    /// 프로세스여야 하므로 이 시험 바이너리를 자기 자신으로 다시 띄워 쥐게 한다.
+    #[test]
+    fn a_killed_holder_does_not_block_forever() {
+        if let Ok(path) = std::env::var("OG_LOCK_HOLDER") {
+            let _held = lock_file(Path::new(&path), WAIT).unwrap();
+            std::fs::write(format!("{path}.held"), "").unwrap();
+            std::thread::sleep(Duration::from_secs(600));
+            return;
+        }
+        let path = fresh_tmp("killed").join(".lock");
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "lock::tests::a_killed_holder_does_not_block_forever"])
+            .env("OG_LOCK_HOLDER", &path)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let marker = PathBuf::from(format!("{}.held", path.display()));
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while !marker.exists() {
+            assert!(Instant::now() < deadline, "자식이 잠금을 못 쥐었다");
+            std::thread::sleep(Duration::from_millis(20));
+        }
 
-        let info = current_lock(&paths).unwrap();
-        assert_eq!(info.pid, std::process::id());
-
-        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            lock_file(&path, Duration::from_millis(200)).is_err(),
+            "다른 프로세스가 쥔 잠금을 통과했다"
+        );
+        child.kill().unwrap();
+        child.wait().unwrap();
+        assert!(
+            lock_file(&path, Duration::from_secs(5)).unwrap().is_some(),
+            "죽은 프로세스의 잠금이 안 풀렸다"
+        );
     }
 
     #[test]
-    fn drop_releases_lock() {
-        let dir = fresh_tmp("drop");
-        let paths = GuildPaths::new(&dir);
-
-        {
-            let _guard = LockGuard::acquire(&paths).unwrap();
-            assert!(paths.lock_file().exists());
-        } // drop here
-        assert!(!paths.lock_file().exists(), "lock should be released on drop");
-
-        let _ = std::fs::remove_dir_all(&dir);
+    fn the_file_survives_release() {
+        // 풀 때 지우면 다음 두 프로세스가 서로 다른 inode 를 잠가 둘 다 통과한다.
+        let path = fresh_tmp("keep").join(".lock");
+        drop(lock_file(&path, WAIT).unwrap());
+        assert!(path.exists());
     }
 
     #[test]
-    fn second_acquire_in_same_process_steals() {
-        // 같은 PID — is_pid_alive 가 true 라 거부될 수도 있고, drop 후엔 정상.
-        // 본 구현은 단일 프로세스 단일 acquire 만 보장 — 같은 프로세스에서 두 번 acquire 는
-        // PID 가 alive 라 거부됨 (정확한 동작).
-        let dir = fresh_tmp("conflict");
-        let paths = GuildPaths::new(&dir);
-
-        let _g1 = LockGuard::acquire(&paths).unwrap();
-        // 같은 PID — alive 검사를 통과한다면 ok (현재 Windows 구현은 항상 false 라 강탈됨).
-        // Unix 면 거부. 일단 단순히 두 번 acquire 가 panic 안 함만 검증.
-        let _attempt = LockGuard::acquire(&paths);
-        // 두 케이스 모두 허용 — 본 함수는 "한 번이라도 동작" 만 검증.
-
-        let _ = std::fs::remove_dir_all(&dir);
+    fn a_legacy_pid_lock_file_does_not_block() {
+        // 예전 PID 파일 방식이 남긴 내용이 있어도 잠금과는 무관하다.
+        let path = fresh_tmp("legacy").join(".lock");
+        std::fs::write(&path, "pid = 1\nacquired_at = \"x\"\n").unwrap();
+        assert!(lock_file(&path, Duration::from_millis(100)).unwrap().is_some());
     }
 
-    #[test]
-    fn stale_lock_can_be_stolen() {
-        let dir = fresh_tmp("stale");
-        let paths = GuildPaths::new(&dir);
-        std::fs::create_dir_all(paths.dot_guild()).unwrap();
-
-        // 살아있지 않은 PID 작성. PID 1 은 init — 살아있는 시스템이 많아 stable 검증 어려움.
-        // 큰 임의의 PID (>= 2^31 같은) 는 거의 없음.
-        let info = LockInfo {
-            pid: 99999999,
-            acquired_at: "2026-01-01T00:00:00Z".into(),
-            command: Some("ghost".into()),
-        };
-        std::fs::write(paths.lock_file(), toml::to_string_pretty(&info).unwrap()).unwrap();
-
-        // 강탈 성공해야 (Windows 는 항상 강탈, Unix 는 99999999 PID 죽었다고 가정 안전)
-        let result = LockGuard::acquire(&paths);
-        assert!(result.is_ok(), "stale lock should be stolen: {result:?}");
-
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn force_release_removes_lock() {
-        let dir = fresh_tmp("force");
-        let paths = GuildPaths::new(&dir);
-        std::fs::create_dir_all(paths.dot_guild()).unwrap();
-        std::fs::write(paths.lock_file(), "anything").unwrap();
-        force_release(&paths).unwrap();
-        assert!(!paths.lock_file().exists());
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn force_release_no_op_when_missing() {
-        let dir = fresh_tmp("missing");
-        let paths = GuildPaths::new(&dir);
-        force_release(&paths).unwrap(); // no error
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn current_lock_returns_none_when_no_lock() {
-        let dir = fresh_tmp("none");
-        let paths = GuildPaths::new(&dir);
-        assert!(current_lock(&paths).is_none());
-        let _ = std::fs::remove_dir_all(&dir);
+    #[tokio::test]
+    async fn guards_serialize_tasks() {
+        let dir = fresh_tmp("tasks");
+        let local = Arc::new(tokio::sync::Mutex::new(()));
+        let inside = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let mut jobs = Vec::new();
+        for _ in 0..8 {
+            let (local, inside, path) = (local.clone(), inside.clone(), dir.join(".lock"));
+            jobs.push(tokio::spawn(async move {
+                let _g = acquire(local, path).await.unwrap();
+                let n = inside.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                assert_eq!(n, 0, "잠금 안에 둘이 들어왔다");
+                tokio::time::sleep(Duration::from_millis(5)).await;
+                inside.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+            }));
+        }
+        for j in jobs {
+            j.await.unwrap();
+        }
     }
 }

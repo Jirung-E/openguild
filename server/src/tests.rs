@@ -3349,6 +3349,38 @@ async fn test_quest_detail_preserves_frontmatter_tag_order() {
     assert_eq!(detail["tags"], json!(["z-last", "a-first"]));
 }
 
+/// BUG-287: POST .../tags 는 붙이기·떼기 — 보내는 쪽이 모르는 태그를 지우지 않는다.
+/// 퀘스트·도서관·규칙 세 곳 모두 같은 규칙이어야 한다.
+#[tokio::test]
+async fn test_tag_edit_endpoints_keep_tags_the_sender_never_saw() {
+    let app = seed_quest(setup().await).await;
+    let (_, quest) = get(app.clone(), "/api/quests/by/DEV-001").await;
+    let id = quest["id"].as_i64().unwrap();
+    let uri = format!("/api/quests/{id}/tags");
+    patch(app.clone(), &uri, json!({ "tags": ["a", "old"] })).await;
+    let (status, _) = post(app.clone(), &uri, json!({ "add": ["b"] })).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, after) = post(app.clone(), &uri, json!({ "add": ["c"], "remove": ["old"] })).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(after["tags"], json!(["a", "b", "c"]));
+
+    let (_, book) = post(app.clone(), "/api/library", json!({ "title": "doc", "body": "" })).await;
+    let book_uri = format!("/api/library/{}/tags", book["book_id"].as_str().unwrap());
+    patch(app.clone(), &book_uri, json!({ "tags": ["a"] })).await;
+    post(app.clone(), &book_uri, json!({ "add": ["b"] })).await;
+    let (status, after) = post(app.clone(), &book_uri, json!({ "remove": ["a"] })).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(after["tags"], json!(["b"]));
+
+    post(app.clone(), "/api/rules", json!({ "slug": "r", "content": "" })).await;
+    put(app.clone(), "/api/rules/r/tags", json!({ "tags": ["a"] })).await;
+    let (status, after) = post(app.clone(), "/api/rules/r/tags", json!({ "add": ["b"] })).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(after["tags"], json!(["a", "b"]));
+    let (status, _) = post(app, "/api/rules/missing/tags", json!({ "add": ["b"] })).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
 #[tokio::test]
 async fn test_admin_type_and_status_crud_endpoints() {
     let app = setup().await;

@@ -5,6 +5,7 @@
 
 import { api } from './client';
 import type { QuestAttachment, SidecarHistoryEntry } from '$lib/types';
+import type { TagEdit } from './quests';
 
 export interface Book {
 	book_id: string;
@@ -43,6 +44,9 @@ export const libraryApi = {
 	// DEV-243: 태그 전체 교체.
 	setTags: (bookId: string, tags: string[]) =>
 		api.patch<Book>(`/api/library/${encodeURIComponent(bookId)}/tags`, { tags }),
+	// BUG-287: 붙이기·떼기 — 읽은 뒤 남이 붙인 태그를 안 지운다.
+	editTags: (bookId: string, edit: TagEdit) =>
+		api.post<Book>(`/api/library/${encodeURIComponent(bookId)}/tags`, edit),
 
 	// DEV-237: 첨부 — quests/campaigns 의 attachToSection 과 동일 시맨틱.
 	addAttachment: (bookId: string, path: string, name: string) =>

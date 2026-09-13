@@ -592,6 +592,7 @@ pub fn run() {
             commands::set_quest_due_dates,
             // DEV-068: tag 전체 교체.
             commands::set_quest_tags,
+            commands::edit_quest_tags,
             commands::change_quest_type,
             commands::delete_quest,
             commands::restore_quest,
@@ -658,6 +659,7 @@ pub fn run() {
             commands::delete_rule,
             commands::rename_rule,
             commands::set_rule_tags,
+            commands::edit_rule_tags,
             // DEV-217: 도서관.
             commands::list_books,
             commands::get_book,
@@ -666,6 +668,7 @@ pub fn run() {
             commands::update_book,
             commands::delete_book,
             commands::set_book_tags,
+            commands::edit_book_tags,
             // DEV-239: 도서관 폴더.
             commands::list_library_folders,
             commands::create_library_folder,

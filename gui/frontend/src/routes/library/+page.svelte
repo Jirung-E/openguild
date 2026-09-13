@@ -43,6 +43,7 @@
 	import TagPills from '$lib/components/TagPills.svelte';
 	import { adminApi } from '$lib/api/admin';
 	import type { QuestTagDef } from '$lib/types';
+	import type { TagEdit } from '$lib/api/quests';
 	// DEV-182: 생성/변경 시각 표시 — quest 상세와 동일 포맷 유틸.
 	import { formatTs, formatRelative } from '$lib/utils/datetime';
 	// DEV-205(2차): i18n.
@@ -330,10 +331,10 @@
 	onMount(async () => {
 		tagDefs = await adminApi.listTagDefs().catch(() => [] as QuestTagDef[]);
 	});
-	async function setDocTags(tags: string[]) {
+	async function editDocTags(edit: TagEdit) {
 		if (!selectedId) return;
 		try {
-			const updated = await libraryApi.setTags(selectedId, tags);
+			const updated = await libraryApi.editTags(selectedId, edit);
 			books = books.map((b) => (b.book_id === selectedId ? updated : b));
 		} catch (e) {
 			showToast(e instanceof Error ? e.message : t('library.tagSaveFail', $locale), 'error');
@@ -1248,7 +1249,7 @@
 					{/if}
 
 					<!-- DEV-243: 태그. -->
-					<TagPills tags={selected.tags} {tagDefs} onSetTags={setDocTags} />
+					<TagPills tags={selected.tags} {tagDefs} onEditTags={editDocTags} />
 
 					<!-- DEV-237: 첨부 섹션 — 이미지/동영상 외 임의 파일. -->
 					<AttachmentSection

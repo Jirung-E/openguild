@@ -133,5 +133,17 @@ export const questsApi = {
 	 * DEV-068: tag 전체 교체. 정규화 (trim + dedupe + 빈 제거) 는 backend.
 	 * 빈 배열 = 전체 삭제.
 	 */
-	setTags: (id: number, tags: string[]) => api.patch<Quest>(`/api/quests/${id}/tags`, { tags })
+	setTags: (id: number, tags: string[]) => api.patch<Quest>(`/api/quests/${id}/tags`, { tags }),
+
+	/**
+	 * BUG-287: 태그 붙이기·떼기. 화면이 들고 있던 목록으로 전체를 바꾸면, 그 사이 다른
+	 * 창·에이전트가 붙인 태그가 지워진다 — 사람이 누르는 버튼은 이쪽을 쓴다.
+	 */
+	editTags: (id: number, edit: TagEdit) => api.post<Quest>(`/api/quests/${id}/tags`, edit)
 };
+
+/** BUG-287: 태그 붙이기·떼기 요청. 서버가 **지금** 목록에 적용한다. */
+export interface TagEdit {
+	add?: string[];
+	remove?: string[];
+}

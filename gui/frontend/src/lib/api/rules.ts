@@ -3,6 +3,7 @@
 
 import { api } from './client';
 import type { SidecarHistoryEntry } from '$lib/types';
+import type { TagEdit } from './quests';
 
 export interface RuleEntry {
 	slug: string;
@@ -51,6 +52,9 @@ export const rulesApi = {
 	// DEV-243: 태그 전체 교체.
 	setTags: (slug: string, tags: string[]) =>
 		api.put<RuleResponse>(`/api/rules/${encodeURIComponent(slug)}/tags`, { tags }),
+	// BUG-287: 붙이기·떼기 — 읽은 뒤 남이 붙인 태그를 안 지운다.
+	editTags: (slug: string, edit: TagEdit) =>
+		api.post<RuleResponse>(`/api/rules/${encodeURIComponent(slug)}/tags`, edit),
 
 	// ─── (deprecated) legacy 단일 ───
 	getSingle: () => api.get<RulesResponse>('/api/rules-single'),

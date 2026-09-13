@@ -82,6 +82,7 @@ fn report_snapshot(result: anyhow::Result<Option<crate::snapshot::SnapshotInfo>>
 /// - 새 파일 `.guild/quests/{slug}.md` 생성.
 /// - parent 가 지정되었으면 그 quest 파일의 auto 블록 갱신 (sub-quest 목록에 추가).
 pub async fn create_quest(store: &Store, body: CreateQuestRequest) -> AppResult<QuestRow> {
+    let _g = store.mutation_guard().await?;
     // 1. journal append (의도 기록).
     let _ = journal::append(
         &store.journal_pool,
@@ -127,8 +128,7 @@ pub async fn create_quest(store: &Store, body: CreateQuestRequest) -> AppResult<
 async fn sync_type_counter_file(store: &Store, prefix: &str, number: i64) {
     // REQ-003: read → compare → write 가 SQLite 카운터 트랜잭션 **바깥**이라
     // 동시 생성 시 디스크 카운터가 역행할 수 있었다(위 주석이 보장한다는
-    // 단조증가 위반). 프로세스 안에서 직렬화한다.
-    let _w = store.write_lock.lock().await;
+    // 단조증가 위반). 부르는 진입점이 쥔 잠금이 막는다 — 여기서 또 잡으면 교착.
     let path = store.paths.type_path(prefix);
     match crate::repo::TypeFile::read(&path) {
         Ok(mut tf) => {
@@ -212,6 +212,7 @@ pub async fn list_quests(
 
 /// Quest 의 title / description / urgency 수정.
 pub async fn update_quest(store: &Store, id: i64, body: UpdateQuestRequest) -> AppResult<QuestRow> {
+    let _g = store.mutation_guard().await?;
     let _ = journal::append(
         &store.journal_pool,
         "update_quest",
@@ -245,6 +246,7 @@ pub async fn set_due_dates(
     desired_due: Option<Option<String>>,
     required_due: Option<Option<String>>,
 ) -> AppResult<QuestRow> {
+    let _g = store.mutation_guard().await?;
     let _ = journal::append(
         &store.journal_pool,
         "set_due_dates",
@@ -288,6 +290,20 @@ pub async fn set_due_dates(
 /// (들어온 순서대로, 같은 tag 의 첫 등장만). 새 tags 가 비면 frontmatter
 /// 에서 키 자체 생략.
 pub async fn set_quest_tags(store: &Store, id: i64, tags: Vec<String>) -> AppResult<QuestRow> {
+    let _g = store.mutation_guard().await?;
+    set_quest_tags_locked(store, id, tags).await
+}
+
+/// BUG-287: 태그를 붙이고 뗀다 — 잠금을 쥔 채 **지금** 파일의 목록에 적용한다.
+/// 저널에는 결과 전체가 `set_quest_tags` 로 남는다(복원 재생이 그대로 쓴다).
+pub async fn edit_quest_tags(store: &Store, id: i64, edit: super::TagEdit) -> AppResult<QuestRow> {
+    let _g = store.mutation_guard().await?;
+    let quest = sql::fetch_by_id(&store.index_pool, id).await?;
+    let current = list_quest_tags(store, &quest.quest_id)?;
+    set_quest_tags_locked(store, id, edit.apply(current)).await
+}
+
+async fn set_quest_tags_locked(store: &Store, id: i64, tags: Vec<String>) -> AppResult<QuestRow> {
     use std::collections::HashSet;
 
     // 정규화: trim + 빈 거 제거 + 중복 제거 (순서 보존).
@@ -373,6 +389,7 @@ pub async fn change_status(
     id: i64,
     body: ChangeStatusRequest,
 ) -> AppResult<QuestRow> {
+    let _g = store.mutation_guard().await?;
     // BUG-011: no-op (현재 상태 == 요청 상태) 면 일찍 반환 — journal/history/
     // updated_at 모두 변동 없음.
     // DEV-048: slug 기반 비교로 변경 — body.status_slug 와 현재 status.slug 직접 비교.
@@ -513,6 +530,7 @@ pub async fn change_quest_type(
     id: i64,
     body: ChangeTypeRequest,
 ) -> AppResult<QuestRow> {
+    let _g = store.mutation_guard().await?;
     let _ = journal::append(
         &store.journal_pool,
         "change_quest_type",
@@ -534,13 +552,10 @@ pub async fn change_quest_type(
     // 안 옮기면 다음 reindex 가 옛 slug 로 찾다가 못 찾아 이 퀘스트의 위치를 버린다.
     // 실패해도 타입 변경 자체는 이미 끝났다 — 위치를 잃는 것은 UI 상태 손실이지
     // 데이터 손상이 아니므로, 여기서 전체를 실패시키지 않는다.
-    {
-        let _w = store.write_lock.lock().await;
-        let _ = crate::repo::positions::rename_keys(
-            &store.paths,
-            &[(old_slug.clone(), new_slug.clone())],
-        );
-    }
+    let _ = crate::repo::positions::rename_keys(
+        &store.paths,
+        &[(old_slug.clone(), new_slug.clone())],
+    );
 
     // history INSERT — type 변경 자체를 audit.
     let ts = crate::time::now_local_iso8601();
@@ -650,6 +665,7 @@ pub async fn change_parent(
     id: i64,
     body: ChangeParentRequest,
 ) -> AppResult<QuestRow> {
+    let _g = store.mutation_guard().await?;
     let _ = journal::append(
         &store.journal_pool,
         "change_parent",
@@ -715,6 +731,7 @@ pub async fn change_parent(
 /// - 삭제 대상과 prerequisite 관계로 연결된 alive quest 들: Prerequisites / Successors
 ///   표시에서 삭제 대상이 빠지도록 양쪽 파일 갱신.
 pub async fn delete_quest(store: &Store, id: i64, cascade_ids: &[i64]) -> AppResult<()> {
+    let _g = store.mutation_guard().await?;
     // DEV-374: 삭제 뒤에는 무엇이었는지 알 수 없다 — 지우기 **전에** 잡아 둔다.
     // 구독자가 없으면 이 조회도 하지 않는다.
     let doomed = if store.events_wanted(ev::QUEST_DELETED, Phase::Post)
@@ -830,6 +847,7 @@ pub async fn delete_quest(store: &Store, id: i64, cascade_ids: &[i64]) -> AppRes
 
 /// soft delete 취소.
 pub async fn restore_quest(store: &Store, id: i64) -> AppResult<QuestRow> {
+    let _g = store.mutation_guard().await?;
     let _ = journal::append(
         &store.journal_pool,
         "restore_quest",
@@ -879,6 +897,7 @@ pub async fn add_prerequisite(
     id: i64,
     body: AddPrerequisiteRequest,
 ) -> AppResult<()> {
+    let _g = store.mutation_guard().await?;
     let prereq_id = body.prerequisite_id;
     let _ = journal::append(
         &store.journal_pool,
@@ -904,6 +923,7 @@ pub async fn add_prerequisite(
 }
 
 pub async fn remove_prerequisite(store: &Store, id: i64, prereq_id: i64) -> AppResult<()> {
+    let _g = store.mutation_guard().await?;
     let _ = journal::append(
         &store.journal_pool,
         "remove_prerequisite",
@@ -1198,6 +1218,44 @@ mod tests {
         let count = journal::count(&store.journal_pool).await.unwrap();
         assert_eq!(count, 1);
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-287: 화면이 들고 있던 목록과 상관없이 **지금** 목록에 붙이고 뗀다. 남이 그
+    /// 사이에 붙인 태그가 살아남고, 파일(진리원)과 반환값이 같은 것을 말한다.
+    #[tokio::test]
+    async fn edit_quest_tags_keeps_what_someone_else_added() {
+        let dir = fresh_tmp("edit-tags");
+        let store = setup_store(&dir).await;
+        let q = create_quest(
+            &store,
+            CreateQuestRequest {
+                quest_type_id: 1,
+                title: "t".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: None,
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        let edit = |add: &[&str], remove: &[&str]| crate::ops::TagEdit {
+            add: add.iter().map(|s| s.to_string()).collect(),
+            remove: remove.iter().map(|s| s.to_string()).collect(),
+        };
+
+        set_quest_tags(&store, q.id, vec!["a".into(), "old".into()]).await.unwrap();
+        // 화면은 ["a", "old"] 를 들고 있다. 그 사이 에이전트가 "b" 를 붙인다.
+        edit_quest_tags(&store, q.id, edit(&["b"], &[])).await.unwrap();
+        // 화면이 "c" 를 붙이고 "old" 를 뗀다 — 들고 있던 목록으로 덮으면 "b" 가 사라진다.
+        let after = edit_quest_tags(&store, q.id, edit(&["c"], &["old"])).await.unwrap();
+
+        assert_eq!(after.tags, vec!["a", "b", "c"]);
+        assert_eq!(list_quest_tags(&store, &q.quest_id).unwrap(), vec!["a", "b", "c"]);
+
+        let err = edit_quest_tags(&store, 9999, edit(&["x"], &[])).await.unwrap_err();
+        assert!(matches!(err, crate::error::AppError::NotFound(_)), "{err}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

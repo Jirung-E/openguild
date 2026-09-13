@@ -185,6 +185,22 @@ pub async fn set_tags(
     }))
 }
 
+/// BUG-287: 태그 붙이기·떼기. body: `{ "add": [...], "remove": [...] }`.
+pub async fn edit_tags(
+    State(store): State<Store>,
+    Path(slug): Path<String>,
+    Json(edit): Json<openguild_core::ops::TagEdit>,
+) -> AppResult<Json<RuleResponse>> {
+    let entry = ops::edit_rule_tags(&store, &slug, edit).await?;
+    Ok(Json(RuleResponse {
+        slug: entry.slug,
+        content: Some(entry.content),
+        tags: entry.tags,
+        created_at: entry.created_at,
+        updated_at: entry.updated_at,
+    }))
+}
+
 // ─── (deprecated) 단일 파일 endpoint — backward compat ───
 
 #[derive(Debug, Serialize)]

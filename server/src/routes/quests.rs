@@ -167,6 +167,17 @@ pub async fn set_tags(
     Ok(Json(ops::set_quest_tags(&store, id, tags).await?))
 }
 
+/// BUG-287: 태그 붙이기·떼기. body: `{ "add": [...], "remove": [...] }`.
+/// 전체 목록을 보내는 PATCH 는 읽은 뒤 남이 붙인 태그를 지운다 — 사람이 고르는
+/// 화면과 에이전트는 이쪽을 쓴다.
+pub async fn edit_tags(
+    State(store): State<Store>,
+    Path(id): Path<i64>,
+    Json(edit): Json<openguild_core::ops::TagEdit>,
+) -> AppResult<Json<QuestRow>> {
+    Ok(Json(ops::edit_quest_tags(&store, id, edit).await?))
+}
+
 pub async fn delete_quest(
     State(store): State<Store>,
     Path(id): Path<i64>,

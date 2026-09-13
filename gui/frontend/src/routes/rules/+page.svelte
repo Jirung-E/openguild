@@ -38,6 +38,7 @@
 	import TagPills from '$lib/components/TagPills.svelte';
 	import { adminApi } from '$lib/api/admin';
 	import type { QuestTagDef } from '$lib/types';
+	import type { TagEdit } from '$lib/api/quests';
 	import { showToast } from '$lib/stores/toast';
 	// DEV-182: 생성/변경 시각 표시 — quest 상세와 동일 포맷 유틸.
 	import { formatTs, formatRelative } from '$lib/utils/datetime';
@@ -115,10 +116,10 @@
 	const selectedTags = $derived(entries.find((e) => e.slug === selectedSlug)?.tags ?? []);
 	// DEV-182: 생성/변경 시각.
 	const selectedEntry = $derived(entries.find((e) => e.slug === selectedSlug) ?? null);
-	async function setRuleTags(tags: string[]) {
+	async function editRuleTags(edit: TagEdit) {
 		if (!selectedSlug) return;
 		try {
-			const updated = await rulesApi.setTags(selectedSlug, tags);
+			const updated = await rulesApi.editTags(selectedSlug, edit);
 			entries = entries.map((e) => (e.slug === selectedSlug ? { ...e, tags: updated.tags } : e));
 		} catch (e) {
 			showToast(e instanceof Error ? e.message : t('rules.tagSaveFailed', $locale), 'error');
@@ -548,7 +549,7 @@
 					{/if}
 					{#if !editMode}
 						<!-- DEV-243: 태그. -->
-						<TagPills tags={selectedTags} {tagDefs} onSetTags={setRuleTags} />
+						<TagPills tags={selectedTags} {tagDefs} onEditTags={editRuleTags} />
 						<!-- DEV-290: 규칙 변경 이력. -->
 						{#if selectedSlug}
 							<!-- REQ-008: 이 문서를 참조하는 문서. -->

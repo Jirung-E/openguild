@@ -220,6 +220,29 @@ pub async fn set_book_tags(
     book_id: &str,
     tags: Vec<String>,
 ) -> AppResult<LibraryDocRow> {
+    let _g = store.mutation_guard().await?;
+    set_book_tags_locked(store, book_id, tags).await
+}
+
+/// BUG-287: 태그를 붙이고 뗀다 — 잠금을 쥔 채 **지금** frontmatter 의 목록에 적용한다.
+pub async fn edit_book_tags(
+    store: &Store,
+    book_id: &str,
+    edit: super::TagEdit,
+) -> AppResult<LibraryDocRow> {
+    let _g = store.mutation_guard().await?;
+    let current = BookFile::read(store.paths.book_path(book_id))
+        .map_err(|_| AppError::NotFound(format!("book not found: {book_id}")))?
+        .frontmatter
+        .tags;
+    set_book_tags_locked(store, book_id, edit.apply(current)).await
+}
+
+async fn set_book_tags_locked(
+    store: &Store,
+    book_id: &str,
+    tags: Vec<String>,
+) -> AppResult<LibraryDocRow> {
     use std::collections::HashSet;
 
     let mut seen: HashSet<String> = HashSet::new();
@@ -291,6 +314,7 @@ pub async fn create_book(
     body: &str,
     path: &str,
 ) -> AppResult<LibraryDocRow> {
+    let _g = store.mutation_guard().await?;
     let title = title.trim();
     if title.is_empty() {
         return Err(AppError::BadRequest("title is empty".into()));
@@ -308,10 +332,10 @@ pub async fn create_book(
     // REQ-003: 번호 할당(카운터 읽기 → 파일 최대값 스캔 → +1 → 쓰기)부터
     // 본체 쓰기까지가 한 덩어리여야 한다. 동시 2건이면 둘 다 같은 N+1 을
     // 계산하고 두 번째 write 가 첫 문서를 덮어써 **문서가 영구 소실**된다.
+    // 맨 앞의 잠금이 그 덩어리를 감싼다(BUG-287 — 프로세스 사이까지).
     //
     // 참고: `max(카운터, 실존최대)+1` 공식 자체는 BOOK-001 의 A2 처방(파일-로컬
     // heal)을 구현한 것이라 그대로 둔다 — 빠진 건 동시성 보호뿐이었다.
-    let _w = store.write_lock.lock().await;
     let number = repo::allocate_number(&store.paths).map_err(AppError::Internal)?;
     let book_id = book_slug(number);
     let now = crate::time::now_local_iso8601();
@@ -366,6 +390,7 @@ pub async fn update_book(
     body: Option<&str>,
     path: Option<&str>,
 ) -> AppResult<LibraryDocRow> {
+    let _g = store.mutation_guard().await?;
     let existing = get_book(store, book_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("book not found: {book_id}")))?;
@@ -446,6 +471,7 @@ pub async fn update_book(
 /// soft delete — frontmatter `deleted = true` + 캐시 deleted_at. 파일은 남긴다
 /// (quests 와 동일 — 번호 재사용 금지는 카운터가 보장).
 pub async fn delete_book(store: &Store, book_id: &str) -> AppResult<()> {
+    let _g = store.mutation_guard().await?;
     let existing = get_book(store, book_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("book not found: {book_id}")))?;
@@ -508,6 +534,7 @@ pub async fn list_folders(store: &Store) -> AppResult<Vec<LibraryFolderRow>> {
 
 /// 새 폴더 생성 — 순수 컨테이너(본문 없음). 이미 존재하면 에러.
 pub async fn create_folder(store: &Store, path: &str) -> AppResult<LibraryFolderRow> {
+    let _g = store.mutation_guard().await?;
     let path = repo::normalize_folder_path(path).map_err(|e| AppError::BadRequest(e.to_string()))?;
     if path.is_empty() {
         return Err(AppError::BadRequest(crate::tf!(
@@ -572,6 +599,7 @@ pub async fn create_folder(store: &Store, path: &str) -> AppResult<LibraryFolder
 /// 폴더 삭제 — 하위(자신 포함)에 살아있는 문서나 다른 살아있는 폴더가 하나도
 /// 없어야 함 (안전을 위해 빈 폴더만 삭제 허용 — v1).
 pub async fn delete_folder(store: &Store, path: &str) -> AppResult<()> {
+    let _g = store.mutation_guard().await?;
     let path =
         repo::normalize_folder_path(path).map_err(|e| AppError::BadRequest(e.to_string()))?;
     if path.is_empty() {

@@ -53,6 +53,7 @@ pub async fn check_and_fix_counters(
     store: &Store,
     auto_fix: bool,
 ) -> Result<CombinedReport> {
+    let _g = store.mutation_guard().await?;
     // ── 1. file drift (기존 동작) ──
     let file_report = check_counters(&store.paths, auto_fix)
         .context("counter file 검사 실패")?;

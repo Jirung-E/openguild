@@ -164,6 +164,7 @@ pub fn get_comments(store: &Store, slug: &str) -> AppResult<Option<String>> {
 }
 
 pub async fn set_comments(store: &Store, slug: &str, content: String) -> AppResult<()> {
+    let _g = store.mutation_guard().await?;
     let _ = journal::append(
         &store.journal_pool,
         "set_comments",
@@ -195,9 +196,7 @@ pub async fn add_comment_entry(
     // DEV-366: 토론 댓글로 바로 생성. 예전의 add → toggle 2단계를 없앤다.
     discussion: bool,
 ) -> AppResult<CommentEntry> {
-    // REQ-003: 사이드카 전체를 읽고 → 고치고 → 통째로 덮어쓴다. 같은 문서에
-    // 동시 요청 2건이면 나중 쓰기가 먼저 것을 지운다. 프로세스 안에서 직렬화한다.
-    let _w = store.write_lock.lock().await;
+    let _g = store.mutation_guard().await?;
     // DEV-374: 관찰 pre — 저장 **직전**. 아직 id 가 없으므로 요청 내용만 싣는다.
     // `ok`/`error` 는 붙지 않는다(결과가 없다).
     store.emit_pre(ev::COMMENT_ADDED, || {
@@ -242,9 +241,7 @@ pub async fn update_comment_entry(
     id: u64,
     body: String,
 ) -> AppResult<CommentEntry> {
-    // REQ-003: 사이드카 전체를 읽고 → 고치고 → 통째로 덮어쓴다. 같은 문서에
-    // 동시 요청 2건이면 나중 쓰기가 먼저 것을 지운다. 프로세스 안에서 직렬화한다.
-    let _w = store.write_lock.lock().await;
+    let _g = store.mutation_guard().await?;
     let _ = journal::append(
         &store.journal_pool,
         "update_comment_entry",
@@ -277,9 +274,7 @@ pub async fn toggle_comment_reaction(
     emoji: &str,
     author: &str,
 ) -> AppResult<CommentEntry> {
-    // REQ-003: 사이드카 전체를 읽고 → 고치고 → 통째로 덮어쓴다. 같은 문서에
-    // 동시 요청 2건이면 나중 쓰기가 먼저 것을 지운다. 프로세스 안에서 직렬화한다.
-    let _w = store.write_lock.lock().await;
+    let _g = store.mutation_guard().await?;
     let emoji = emoji.trim();
     let bad = |c: char| matches!(c, ',' | '"' | ':' | '|');
     if emoji.is_empty() || emoji.contains(bad) {
@@ -355,9 +350,7 @@ pub async fn toggle_comment_discussion(
     slug: &str,
     id: u64,
 ) -> AppResult<CommentEntry> {
-    // REQ-003: 사이드카 전체를 읽고 → 고치고 → 통째로 덮어쓴다. 같은 문서에
-    // 동시 요청 2건이면 나중 쓰기가 먼저 것을 지운다. 프로세스 안에서 직렬화한다.
-    let _w = store.write_lock.lock().await;
+    let _g = store.mutation_guard().await?;
     let _ = journal::append(
         &store.journal_pool,
         "toggle_comment_discussion",
@@ -403,9 +396,7 @@ pub async fn toggle_comment_resolved(
     slug: &str,
     id: u64,
 ) -> AppResult<CommentEntry> {
-    // REQ-003: 사이드카 전체를 읽고 → 고치고 → 통째로 덮어쓴다. 같은 문서에
-    // 동시 요청 2건이면 나중 쓰기가 먼저 것을 지운다. 프로세스 안에서 직렬화한다.
-    let _w = store.write_lock.lock().await;
+    let _g = store.mutation_guard().await?;
     let _ = journal::append(
         &store.journal_pool,
         "toggle_comment_resolved",
@@ -497,9 +488,7 @@ async fn record_discussion_history(
 /// 없음 — root/답글 무관하게 켤 수 있고, 실제 "몇 개까지" "root 만" 같은
 /// 제약은 GUI 가 담당(pin 버튼을 root 댓글에만 노출).
 pub async fn toggle_comment_pinned(store: &Store, slug: &str, id: u64) -> AppResult<CommentEntry> {
-    // REQ-003: 사이드카 전체를 읽고 → 고치고 → 통째로 덮어쓴다. 같은 문서에
-    // 동시 요청 2건이면 나중 쓰기가 먼저 것을 지운다. 프로세스 안에서 직렬화한다.
-    let _w = store.write_lock.lock().await;
+    let _g = store.mutation_guard().await?;
     let _ = journal::append(
         &store.journal_pool,
         "toggle_comment_pinned",
@@ -535,9 +524,7 @@ pub async fn toggle_comment_pinned(store: &Store, slug: &str, id: u64) -> AppRes
 
 /// 댓글 entry 삭제.
 pub async fn delete_comment_entry(store: &Store, slug: &str, id: u64) -> AppResult<()> {
-    // REQ-003: 사이드카 전체를 읽고 → 고치고 → 통째로 덮어쓴다. 같은 문서에
-    // 동시 요청 2건이면 나중 쓰기가 먼저 것을 지운다. 프로세스 안에서 직렬화한다.
-    let _w = store.write_lock.lock().await;
+    let _g = store.mutation_guard().await?;
     let _ = journal::append(
         &store.journal_pool,
         "delete_comment_entry",
@@ -580,6 +567,7 @@ pub fn get_memo(store: &Store, slug: &str) -> AppResult<Option<String>> {
 }
 
 pub async fn set_memo(store: &Store, slug: &str, content: String) -> AppResult<()> {
+    let _g = store.mutation_guard().await?;
     let _ = journal::append(
         &store.journal_pool,
         "set_memo",

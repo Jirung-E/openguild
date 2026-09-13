@@ -169,6 +169,18 @@ pub async fn set_tags(
     Ok(Json(resp))
 }
 
+/// BUG-287: 태그 붙이기·떼기. body: `{ "add": [...], "remove": [...] }`.
+pub async fn edit_tags(
+    State(store): State<Store>,
+    Path(book_id): Path<String>,
+    Json(edit): Json<openguild_core::ops::TagEdit>,
+) -> AppResult<Json<BookResponse>> {
+    let row = ops::edit_book_tags(&store, &book_id, edit).await?;
+    let mut resp: BookResponse = row.into();
+    resp.attachments = openguild_core::ops::attachments::list_book_attachments(&store, &book_id);
+    Ok(Json(resp))
+}
+
 // ─── DEV-239: 폴더 ───
 
 #[derive(Debug, serde::Serialize)]

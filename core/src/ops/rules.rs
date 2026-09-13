@@ -64,6 +64,7 @@ pub fn get_rule_entry(store: &Store, slug: &str) -> AppResult<Option<RuleEntry>>
 }
 
 pub async fn set_rule(store: &Store, slug: &str, content: String) -> AppResult<()> {
+    let _g = store.mutation_guard().await?;
     let _ = journal::append(
         &store.journal_pool,
         "set_rule",
@@ -91,6 +92,7 @@ pub async fn set_rule(store: &Store, slug: &str, content: String) -> AppResult<(
 }
 
 pub async fn create_rule(store: &Store, slug: &str, content: String) -> AppResult<()> {
+    let _g = store.mutation_guard().await?;
     let _ = journal::append(
         &store.journal_pool,
         "create_rule",
@@ -109,6 +111,7 @@ pub async fn create_rule(store: &Store, slug: &str, content: String) -> AppResul
 }
 
 pub async fn delete_rule(store: &Store, slug: &str) -> AppResult<()> {
+    let _g = store.mutation_guard().await?;
     let _ = journal::append(
         &store.journal_pool,
         "delete_rule",
@@ -144,6 +147,7 @@ pub async fn rename_rule(
     old_slug: &str,
     new_slug: &str,
 ) -> AppResult<()> {
+    let _g = store.mutation_guard().await?;
     let _ = journal::append(
         &store.journal_pool,
         "rename_rule",
@@ -180,6 +184,21 @@ pub async fn rename_rule(
 
 /// DEV-243: 규칙 태그 전체 교체.
 pub async fn set_rule_tags(store: &Store, slug: &str, tags: Vec<String>) -> AppResult<RuleEntry> {
+    let _g = store.mutation_guard().await?;
+    set_rule_tags_locked(store, slug, tags).await
+}
+
+/// BUG-287: 태그를 붙이고 뗀다 — 잠금을 쥔 채 **지금** 파일의 목록에 적용한다.
+pub async fn edit_rule_tags(store: &Store, slug: &str, edit: super::TagEdit) -> AppResult<RuleEntry> {
+    let _g = store.mutation_guard().await?;
+    let current = repo::read_rule_entry(&store.paths, slug)
+        .map_err(AppError::Internal)?
+        .ok_or_else(|| AppError::NotFound(format!("rule not found: {slug}")))?
+        .tags;
+    set_rule_tags_locked(store, slug, edit.apply(current)).await
+}
+
+async fn set_rule_tags_locked(store: &Store, slug: &str, tags: Vec<String>) -> AppResult<RuleEntry> {
     let _ = journal::append(
         &store.journal_pool,
         "set_rule_tags",
@@ -222,6 +241,7 @@ pub fn get_rules(store: &Store) -> AppResult<Option<String>> {
 /// 통째로 덮어쓰는 레거시 경로라 "어느 규칙이 어떻게 바뀌었나" 를 실을 수
 /// 없다 — `set_comments` 와 같은 이유다.
 pub async fn set_rules(store: &Store, content: String) -> AppResult<()> {
+    let _g = store.mutation_guard().await?;
     let _ = journal::append(
         &store.journal_pool,
         "set_rules",

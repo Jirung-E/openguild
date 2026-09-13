@@ -3613,6 +3613,25 @@ impl Backend {
         }
     }
 
+    /// BUG-287: 붙이기·떼기 — 목록을 읽어 합친 뒤 전체를 보내면, 읽고 쓰는 사이 다른
+    /// 프로세스가 붙인 태그가 지워진다(12개 동시 추가에 1개 생존). 서버/코어가 잠금
+    /// 안에서 **지금** 목록에 적용한다.
+    fn tag_edit(&self, slug: &str, edit: openguild_core::ops::TagEdit) -> Result<Vec<String>> {
+        let id = self.id_of(slug)?;
+        match self {
+            Backend::Http(c) => {
+                let q: Quest = c.post(&format!("/api/quests/{id}/tags"), &edit)?;
+                Ok(q.tags)
+            }
+            Backend::Local(l) => {
+                let q = Self::map_err(l.rt.block_on(
+                    openguild_core::ops::quests::edit_quest_tags(&l.store, id, edit),
+                ))?;
+                Ok(q.tags)
+            }
+        }
+    }
+
     fn tag_set(&self, slug: &str, tags: Vec<String>) -> Result<()> {
         match self {
             Backend::Http(c) => {
@@ -3643,6 +3662,22 @@ impl Backend {
                     l.rt.block_on(openguild_core::ops::library::get_book(&l.store, id)),
                 )?
                 .ok_or_else(|| anyhow!(tf!("문서 없음: {id}", "document not found: {id}")))?;
+                Ok(row.tags)
+            }
+        }
+    }
+
+    /// BUG-287: 붙이기·떼기 — `tag_edit` 과 같은 이유.
+    fn library_tag_edit(&self, id: &str, edit: openguild_core::ops::TagEdit) -> Result<Vec<String>> {
+        match self {
+            Backend::Http(c) => {
+                let dto: BookDto = c.post(&format!("/api/library/{}/tags", urlenc(id)), &edit)?;
+                Ok(dto.tags)
+            }
+            Backend::Local(l) => {
+                let row = Self::map_err(l.rt.block_on(
+                    openguild_core::ops::library::edit_book_tags(&l.store, id, edit),
+                ))?;
                 Ok(row.tags)
             }
         }
@@ -3681,6 +3716,22 @@ impl Backend {
                     .find(|e| e.slug == slug)
                     .map(|e| e.tags)
                     .ok_or_else(|| anyhow!(tf!("규칙 없음: {slug}", "rule not found: {slug}")))
+            }
+        }
+    }
+
+    /// BUG-287: 붙이기·떼기 — `tag_edit` 과 같은 이유.
+    fn rule_tag_edit(&self, slug: &str, edit: openguild_core::ops::TagEdit) -> Result<Vec<String>> {
+        match self {
+            Backend::Http(c) => {
+                let e: RuleEntryDto = c.post(&format!("/api/rules/{}/tags", urlenc(slug)), &edit)?;
+                Ok(e.tags)
+            }
+            Backend::Local(l) => {
+                let e = Self::map_err(l.rt.block_on(
+                    openguild_core::ops::rules::edit_rule_tags(&l.store, slug, edit),
+                ))?;
+                Ok(e.tags)
             }
         }
     }
@@ -7595,6 +7646,7 @@ fn run_doc_tag_cmd(
     json: bool,
     list: impl Fn(&str) -> Result<Vec<String>>,
     set: impl Fn(&str, Vec<String>) -> Result<Vec<String>>,
+    edit_fn: impl Fn(&str, openguild_core::ops::TagEdit) -> Result<Vec<String>>,
 ) -> Result<()> {
     let flat = |v: &[String]| -> Vec<String> {
         v.iter()
@@ -7622,22 +7674,13 @@ fn run_doc_tag_cmd(
             }
         }
         TagCmd::Add { slug, tags } => {
-            let mut existing = list(&slug)?;
-            for t in flat(&tags) {
-                if !existing.contains(&t) {
-                    existing.push(t);
-                }
-            }
-            let after = set(&slug, existing)?;
+            let edit = openguild_core::ops::TagEdit { add: flat(&tags), remove: vec![] };
+            let after = edit_fn(&slug, edit)?;
             report(&slug, &after, &tf!("(없음)", "(none)"));
         }
         TagCmd::Rm { slug, tags } => {
-            let remove: std::collections::HashSet<String> = flat(&tags).into_iter().collect();
-            let after: Vec<String> = list(&slug)?
-                .into_iter()
-                .filter(|t| !remove.contains(t))
-                .collect();
-            let after = set(&slug, after)?;
+            let edit = openguild_core::ops::TagEdit { add: vec![], remove: flat(&tags) };
+            let after = edit_fn(&slug, edit)?;
             report(&slug, &after, &tf!("(없음)", "(none)"));
         }
         TagCmd::Set { slug, tags } => {
@@ -7660,6 +7703,7 @@ fn handle_rules(c: &Backend, json: bool, sub: RulesCmd) -> Result<()> {
                 json,
                 |slug| c.rule_tag_list(slug),
                 |slug, tags| c.rule_tag_set(slug, tags),
+                |slug, edit| c.rule_tag_edit(slug, edit),
             )
         }
         RulesCmd::List { table } => {
@@ -7946,6 +7990,7 @@ fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
             json,
             |id| c.library_tag_list(id),
             |id, tags| c.library_tag_set(id, tags),
+            |id, edit| c.library_tag_edit(id, edit),
         )?,
     }
     Ok(())
@@ -9017,17 +9062,12 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
                 }
             }
             TagCmd::Add { slug, tags: new_tags } => {
-                let mut existing = c.tag_list(&slug)?;
-                for t in new_tags {
-                    // 공백 split — 공백 구분 한 인자도 지원.
-                    for token in t.split_whitespace() {
-                        let s = token.to_string();
-                        if !existing.contains(&s) {
-                            existing.push(s);
-                        }
-                    }
-                }
-                c.tag_set(&slug, existing.clone())?;
+                // 공백 split — 공백 구분 한 인자도 지원.
+                let add = new_tags
+                    .iter()
+                    .flat_map(|t| t.split_whitespace().map(|s| s.to_string()))
+                    .collect();
+                let existing = c.tag_edit(&slug, openguild_core::ops::TagEdit { add, remove: vec![] })?;
                 if json {
                     json_println!(serde_json::json!({ "ok": true, "slug": slug, "tags": existing }));
                 } else {
@@ -9035,16 +9075,11 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
                 }
             }
             TagCmd::Rm { slug, tags: remove } => {
-                let existing = c.tag_list(&slug)?;
-                let to_remove: std::collections::HashSet<String> = remove
+                let remove = remove
                     .iter()
                     .flat_map(|t| t.split_whitespace().map(|s| s.to_string()))
                     .collect();
-                let after: Vec<String> = existing
-                    .into_iter()
-                    .filter(|t| !to_remove.contains(t))
-                    .collect();
-                c.tag_set(&slug, after.clone())?;
+                let after = c.tag_edit(&slug, openguild_core::ops::TagEdit { add: vec![], remove })?;
                 if json {
                     json_println!(serde_json::json!({ "ok": true, "slug": slug, "tags": after }));
                 } else if after.is_empty() {
@@ -9220,14 +9255,23 @@ mod tests {
     fn run_tag(store: &std::rc::Rc<std::cell::RefCell<Vec<String>>>, sub: TagCmd) -> Vec<String> {
         let l = store.clone();
         let s2 = store.clone();
+        let e2 = store.clone();
+        let is_edit = matches!(sub, TagCmd::Add { .. } | TagCmd::Rm { .. });
         run_doc_tag_cmd(
             "test",
             sub,
             true, // json — stdout 만 쓰고 검증은 store 로 한다
             move |_id| Ok(l.borrow().clone()),
             move |_id, tags| {
+                // BUG-287: add/rm 이 조회 → 전체 교체로 돌아가면 동시 쓰기에서 태그를 잃는다.
+                assert!(!is_edit, "add/rm 이 전체 교체 경로를 탔다");
                 *s2.borrow_mut() = tags.clone();
                 Ok(tags)
+            },
+            move |_id, edit| {
+                let after = edit.apply(e2.borrow().clone());
+                *e2.borrow_mut() = after.clone();
+                Ok(after)
             },
         )
         .unwrap();

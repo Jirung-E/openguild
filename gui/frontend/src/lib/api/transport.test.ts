@@ -200,6 +200,21 @@ describe('TauriTransport', () => {
 
 	// BUG-284: 같은 경로의 PUT 은 **일괄 저장**이다. 이 매핑이 빠지면 서버에서는
 	// 되는데 데스크톱에서만 조용히 안 된다 — 이 저장소가 여러 번 겪은 배선 누락이다.
+	// BUG-287: 같은 경로라도 POST 는 붙이기·떼기, PATCH/PUT 은 전체 교체다. 섞이면
+	// 데스크톱에서만 남이 붙인 태그가 다시 지워진다.
+	it('POST .../tags → edit_*_tags (붙이기·떼기)', async () => {
+		mockInvoke.mockResolvedValue({});
+		const edit = { add: ['a'], remove: ['b'] };
+		await new TauriTransport().call({ method: 'POST', path: '/api/quests/7/tags', body: edit });
+		expect(mockInvoke).toHaveBeenCalledWith('edit_quest_tags', { id: 7, edit });
+		await new TauriTransport().call({ method: 'POST', path: '/api/library/BOOK-003/tags', body: edit });
+		expect(mockInvoke).toHaveBeenCalledWith('edit_book_tags', { bookId: 'BOOK-003', edit });
+		await new TauriTransport().call({ method: 'POST', path: '/api/rules/general/tags', body: edit });
+		expect(mockInvoke).toHaveBeenCalledWith('edit_rule_tags', { slug: 'general', edit });
+		await new TauriTransport().call({ method: 'PATCH', path: '/api/quests/7/tags', body: { tags: ['x'] } });
+		expect(mockInvoke).toHaveBeenCalledWith('set_quest_tags', { id: 7, tags: ['x'] });
+	});
+
 	it('PUT /api/quest-positions → update_quest_positions (일괄)', async () => {
 		mockInvoke.mockResolvedValue({ written: 2 });
 		const items = [

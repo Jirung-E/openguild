@@ -63,20 +63,16 @@ pub struct Store {
     /// DEV-374: 플러그인 이벤트 출구. sink 가 꽂히기 전에는 전부 no-op —
     /// 구독자가 없으면 페이로드를 **만들지도 않는다**.
     pub events: crate::events::Events,
-    /// REQ-003: **프로세스 안** 파일 read-modify-write 직렬화.
+    /// REQ-003: **프로세스 안** 파일 read-modify-write 직렬화. 직접 잡지 말고
+    /// [`Store::mutation_guard`] 를 쓴다 — 그것이 이 뮤텍스와 프로세스 사이 파일 잠금을
+    /// 함께 잡는다(BUG-287).
     ///
     /// 댓글 토글·체크리스트·첨부·번호 할당 같은 경로는 전부 "파일 전체 읽기 →
     /// 메모리 수정 → 통째 덮어쓰기" 다. 같은 문서에 동시 요청 2건이 오면
     /// 나중 쓰기가 먼저 것을 조용히 지운다(lost update).
     ///
-    /// `lock.rs` 의 `LockGuard` 로는 못 막는다 — 그건 `.guild/.lock` 에 PID 를
-    /// 적는 **프로세스 간** 락이라, 한 프로세스 안의 동시 요청에서는 자기
-    /// 자신의 PID 를 보고 "살아있음" 으로 판정해 거부해 버린다. 서버가 요청
-    /// 두 개를 처리하는 상황이 정확히 그 경우다.
-    ///
-    /// 그래서 여기서는 in-process 뮤텍스를 쓴다. `Arc` 라 `Clone` 된 Store 들이
-    /// 같은 잠금을 공유한다(서버는 Store 를 clone 해 핸들러에 넘긴다).
-    /// 프로세스 **간** 보호는 별개 문제로 남는다.
+    /// `Arc` 라 `Clone` 된 Store 들이 같은 잠금을 공유한다(서버는 Store 를 clone 해
+    /// 핸들러에 넘긴다).
     pub write_lock: std::sync::Arc<tokio::sync::Mutex<()>>,
     /// DEV-389: 이벤트에 실을 길드 이름.
     ///
@@ -105,6 +101,15 @@ impl Store {
     pub fn set_auto_snapshot_ops(&self, n: i64) {
         self.auto_snapshot_ops_override
             .store(n, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// BUG-287: 이 길드를 고치는 동안 쥔다 — 다른 프로세스(앱·CLI·서버)와 이
+    /// 프로세스의 다른 요청이 그동안 기다린다. 자세한 것은 [`crate::lock`].
+    ///
+    /// **공개 변경 진입점의 맨 앞에서** 잡는다. 검증용 읽기까지 잠금 안에 들어가야
+    /// 남이 막 바꾼 상태를 보고 판단한다. 재진입이 안 되므로 진입점끼리 서로 부르지 않는다.
+    pub async fn mutation_guard(&self) -> Result<crate::lock::MutationGuard> {
+        crate::lock::acquire(self.write_lock.clone(), self.paths.lock_file()).await
     }
 
     /// DEV-299: 백그라운드 스냅샷이 켜져 있는지.
