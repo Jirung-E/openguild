@@ -194,6 +194,7 @@ openguild backup new                             # manual snapshot
 | A `--description`/body value that starts with `-` gets misread as a flag | Use `--description-file <PATH>` (or `--description=...` with an equals sign) |
 | Editing `.guild/**` frontmatter (status/urgency/parent/etc.) by hand | Always use the CLI — the frontmatter is derived state, not a plain file |
 | Reading/grepping `.guild/**` files directly to inspect data (library docs, comments, quests) | Use the CLI for reads too — `library list`/`library show <book-id>`, `quest comment list <slug>`, `comments`, `quest show <slug>`. Raw files bypass sidecars/cache, so you miss reactions, discussion state, and ordering the user actually sees |
+| Passing a title positionally (`library new "제목"`) → `unexpected argument` | Things that get an auto-assigned number (`quest new`, `campaign new`, `library new`) take the title as `--title "..."`. Only commands where the name you type **is** the ID take it positionally: `rule new <slug>`, `template new <name>`, `library folder new <path>`, `type add <PREFIX>`, `status add <name_en>`, `tag add <slug>` |
 | Forgetting `--yes` on delete | `quest delete`/`campaign delete` refuse to run without it (dry-run works without) |
 | Moving straight to `done` for changes only a human can verify | Move to `testing` with a "## Test plan" section instead, and let the human promote it to `done` |
 

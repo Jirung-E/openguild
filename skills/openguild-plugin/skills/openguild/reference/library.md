@@ -19,6 +19,10 @@ openguild library folder new <path>
 openguild library folder delete <path> --yes
 ```
 
+The title is `--title`, not a positional argument: the document's ID is the
+auto-assigned `BOOK-N`, so the title is just a field. (Commands whose name *is*
+the ID — `library folder new <path>`, `rule new <slug>` — take it positionally.)
+
 **Put a document in a folder when you create it** — you do not need to create
 the folder first, and you do not need a second command to move it:
 

@@ -151,6 +151,12 @@ openguild campaign link C-001 DEV-001
 
 전체 명령은 `openguild --help` / `openguild <명령> --help` 참조.
 
+> **제목은 `--title`, 이름은 위치 인자** — 만들 때 번호가 자동으로 붙는 것
+> (`quest new`, `campaign new`, `library new`)은 번호가 식별자이고 제목은 필드
+> 하나일 뿐이라 `--title "..."` 로 받습니다. 입력한 이름이 곧 식별자인 것
+> (`rule new <slug>`, `template new <이름>`, `library folder new <경로>`,
+> `type add <PREFIX>`, `status add <name_en>`, `tag add <slug>`)만 위치 인자입니다.
+
 > **Windows PowerShell 주의**: 위처럼 `echo "한글" | openguild ...` 로
 > 파이프하면 콘솔 인코딩 설정에 따라 한글이 깨질 수 있습니다. 깨지면
 > UTF-8 파일에 내용을 적어두고 `--file <PATH>` 로 넘기세요 (댓글/메모/
