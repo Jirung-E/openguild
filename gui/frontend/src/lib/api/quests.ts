@@ -102,6 +102,16 @@ export const questsApi = {
 
 	listPositions: () => api.get<QuestPosition[]>('/api/quest-positions'),
 
+	/**
+	 * BUG-284: 여러 위치를 **한 요청 · 한 트랜잭션**으로 저장.
+	 *
+	 * 보드가 자동 배치된 노드를 고정할 때 쓴다. 건별 `updatePosition` 으로 수백 개를
+	 * 쏘면 요청이 그만큼 나가고, 중간에 실패하면 일부만 저장돼 그게 기준점이 되어
+	 * 나머지를 미는 바로 그 상태가 된다.
+	 */
+	updatePositions: (items: { quest_id: number; x: number; y: number }[]) =>
+		api.put<{ written: number }>('/api/quest-positions', items),
+
 	listDependencies: () => api.get<QuestDependency[]>('/api/quest-dependencies'),
 
 	listHistory: (id: number) => api.get<QuestHistoryEntry[]>(`/api/quests/${id}/history`),

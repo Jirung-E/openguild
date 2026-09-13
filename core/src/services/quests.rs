@@ -10,7 +10,7 @@ use crate::error::{AppError, AppResult};
 use crate::models::{
     AddPrerequisiteRequest, ChangeParentRequest, ChangeStatusRequest, CreateQuestRequest,
     ListQuery, QuestDependency, QuestDetail, QuestHistoryEntry, QuestPosition, QuestRow,
-    UpdatePositionRequest, UpdateQuestRequest,
+    PositionItem, UpdatePositionRequest, UpdateQuestRequest,
 };
 
 /// type / status 를 JOIN 한 공통 SELECT.
@@ -1292,6 +1292,56 @@ pub async fn update_position(
     })
 }
 
+/// BUG-284: 여러 퀘스트의 위치를 **한 트랜잭션**으로.
+///
+/// # 왜 필요한가
+///
+/// 보드는 위치가 저장 안 된 노드를 적재 때마다 규칙으로 **다시 계산**한다. 그
+/// 계산은 "누가 자동 배치 대상인가" 에 달려 있어서, 노드 하나를 끌어 옮기면(그
+/// 노드가 저장되면) 나머지가 한 칸씩 당겨지거나 아래로 밀렸다. 이건 규칙을 어떻게
+/// 짜도 피할 수 없다 — 순서로 계산되는 자리에서 하나를 빼면 뒤가 움직인다. 막는
+/// 방법은 나머지를 **고정**하는 것뿐이고, 그러려면 한꺼번에 저장해야 한다.
+///
+/// 지금 저장은 건별 `PUT` 뿐이라, 수백 노드를 건별로 쏘면 [[BUG-281]] 에서 지적받은
+/// 것과 같은 낭비가 된다. 그래서 한 요청 · 한 트랜잭션으로 받는다.
+///
+/// 한 트랜잭션인 이유: 중간에 실패해서 **일부만** 저장되면, 저장된 것이 기준점이
+/// 되어 나머지를 미는 바로 그 상태가 된다.
+///
+/// 없는 퀘스트 id 는 건너뛴다 — 보드가 들고 있던 목록과 그 사이 지워진 퀘스트가
+/// 어긋날 수 있고, 그것 때문에 나머지 전부를 실패시킬 이유는 없다.
+pub async fn update_positions(pool: &SqlitePool, items: &[PositionItem]) -> AppResult<usize> {
+    if items.is_empty() {
+        return Ok(0);
+    }
+    let mut tx = pool.begin().await?;
+    let mut written = 0usize;
+    for it in items {
+        let slug: Option<String> = sqlx::query_scalar(
+            "SELECT qt.prefix || '-' || printf('%03d', q.number)
+             FROM quests q JOIN quest_types qt ON q.quest_type_id = qt.id
+             WHERE q.id = ?",
+        )
+        .bind(it.quest_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some(slug) = slug else { continue };
+        sqlx::query(
+            "INSERT INTO quest_positions (quest_id, quest_slug, x, y) VALUES (?, ?, ?, ?)
+             ON CONFLICT(quest_id) DO UPDATE SET x = excluded.x, y = excluded.y, quest_slug = excluded.quest_slug",
+        )
+        .bind(it.quest_id)
+        .bind(&slug)
+        .bind(it.x)
+        .bind(it.y)
+        .execute(&mut *tx)
+        .await?;
+        written += 1;
+    }
+    tx.commit().await?;
+    Ok(written)
+}
+
 // ─────────────────────── 내부 헬퍼 ───────────────────────
 
 /// id 로 alive 한 퀘스트 1건 조회. 없으면 NotFound.
@@ -1436,6 +1486,73 @@ mod tests {
         .await
         .unwrap();
         q.id
+    }
+
+    // ─── BUG-284: 위치 일괄 저장 ───
+
+    /// 여러 위치가 **한 번에** 저장된다. 보드가 자동 배치 노드를 고정할 때 쓴다 —
+    /// 건별로 수백 개를 쏘지 않으려고 만들었다.
+    #[tokio::test]
+    async fn update_positions_writes_all_in_one_call() {
+        let (dir, store) = fresh_store("pos-bulk").await;
+        let a = make_quest(&store).await;
+        let b = make_quest(&store).await;
+
+        let n = update_positions(
+            &store.index_pool,
+            &[
+                PositionItem { quest_id: a, x: 10.0, y: 20.0 },
+                PositionItem { quest_id: b, x: 30.0, y: 40.0 },
+            ],
+        )
+        .await
+        .unwrap();
+        assert_eq!(n, 2);
+
+        let got = list_positions(&store.index_pool).await.unwrap();
+        let find = |id| got.iter().find(|p| p.quest_id == id).map(|p| (p.x, p.y));
+        assert_eq!(find(a), Some((10.0, 20.0)));
+        assert_eq!(find(b), Some((30.0, 40.0)));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 없는 퀘스트는 건너뛴다 — 보드가 들고 있던 목록과 그사이 지워진 퀘스트가
+    /// 어긋날 수 있고, 그것 때문에 나머지 전부를 실패시킬 이유는 없다.
+    #[tokio::test]
+    async fn update_positions_skips_missing_quests() {
+        let (dir, store) = fresh_store("pos-missing").await;
+        let a = make_quest(&store).await;
+        let n = update_positions(
+            &store.index_pool,
+            &[
+                PositionItem { quest_id: 999_999, x: 1.0, y: 1.0 },
+                PositionItem { quest_id: a, x: 5.0, y: 6.0 },
+            ],
+        )
+        .await
+        .unwrap();
+        assert_eq!(n, 1, "없는 것을 건너뛰고 있는 것만 써야 한다");
+        let got = list_positions(&store.index_pool).await.unwrap();
+        assert!(got.iter().any(|p| p.quest_id == a && p.x == 5.0));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 다시 저장하면 덮어쓴다(끌어 옮긴 뒤 다시 고정할 때).
+    #[tokio::test]
+    async fn update_positions_overwrites() {
+        let (dir, store) = fresh_store("pos-over").await;
+        let a = make_quest(&store).await;
+        update_positions(&store.index_pool, &[PositionItem { quest_id: a, x: 1.0, y: 1.0 }])
+            .await
+            .unwrap();
+        update_positions(&store.index_pool, &[PositionItem { quest_id: a, x: 7.0, y: 8.0 }])
+            .await
+            .unwrap();
+        let got = list_positions(&store.index_pool).await.unwrap();
+        let mine: Vec<_> = got.iter().filter(|p| p.quest_id == a).collect();
+        assert_eq!(mine.len(), 1, "같은 퀘스트가 두 줄이 됐다");
+        assert_eq!((mine[0].x, mine[0].y), (7.0, 8.0));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     // ─── REQ-003: soft-deleted 퀘스트의 상태 변경 ───

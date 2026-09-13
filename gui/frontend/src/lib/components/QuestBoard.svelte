@@ -2686,17 +2686,17 @@
 						}
 					});
 				}
-				// BUG-278: **위치를 저장하지 않는다.**
+				// BUG-284: 위치를 **저장한다.**
 				//
-				// 예전엔 여기서 `updatePosition` 으로 저장했다. 그런데 자동 배치는
-				// 저장된 노드를 기준점 삼아 **그 아래부터** 채운다(손으로 옮긴 노드와
-				// 안 겹치게). 같은 레인의 다른 노드들은 저장된 적이 없으므로, 새로고침
-				// 하면 방금 만든 노드가 기준점이 되어 **나머지가 전부 그 아래로 밀렸다**
-				// — 보고된 "추가하면 자동정렬" 이 이 경로로도 났다.
-				//
-				// 자동 규칙으로 놓은 노드는 규칙이 언제나 같은 자리를 다시 계산하므로
-				// 저장할 필요가 없다(가장 큰 id 라 늘 마지막 칸이다). 사용자가 끌어다
-				// 옮기면 그때 저장된다.
+				// BUG-278 에서는 저장하지 않았다. 그때는 같은 레인의 형제 노드들이 저장된
+				// 적이 없어서, 새 노드를 저장하면 그게 기준점이 되어 나머지를 밀었기
+				// 때문이다. 이제 적재 때 자동 배치 노드를 전부 고정하므로 형제는 이미
+				// 저장돼 있다 — 기준점 문제가 없다. 오히려 **안 저장하면 이 노드만 유일한
+				// 자동 대상으로 남아**, 다른 노드를 끌어 옮길 때 이 노드가 움직인다.
+				questsApi
+					.updatePositions([{ quest_id: qid, x: absX, y: absY }])
+					.catch(() => {});
+				storedPositions.set(qid, { x: absX, y: absY });
 				node = cy.getElementById(`q-${qid}`) as BoardNode;
 			}
 
@@ -3218,10 +3218,26 @@
 
 		buildLaneDivs(sorted);
 
-		storedPositions = posMap;
 		// BUG-278: 위치 없는 노드는 **id 오름차순**으로 채운다. 받은 배열은 id DESC 라
 		// 그 순서를 따르면 새 퀘스트가 0번 칸을 가져가고 나머지가 한 칸씩 밀렸다.
 		const autoPos = autoPlace(quests, posMap, laneOf, placementMetrics());
+
+		// BUG-284: 자동으로 놓은 자리를 **바로 고정**한다.
+		//
+		// 저장 안 된 노드는 적재 때마다 규칙으로 다시 계산되는데, 그 계산은 "누가
+		// 자동 대상인가" 에 달려 있다. 노드 하나를 끌면 그게 저장되어 자동 집합에서
+		// 빠지고 → 뒤의 노드가 한 칸씩 당겨지거나(순서) 그 아래로 밀렸다(기준점).
+		// 규칙을 어떻게 짜도 피할 수 없고, 막는 길은 나머지를 고정하는 것뿐이다.
+		//
+		// 한 요청으로 보낸다(건별로 수백 개를 쏘지 않는다). 두 번째 적재부터는 전부
+		// 저장돼 있어 보낼 게 없다. positions 는 gitignore 된 로컬 UI 상태라 커밋에도
+		// 안 올라간다. 실패해도 화면은 멀쩡하다 — 다음 적재에 다시 시도된다.
+		if (autoPos.size > 0) {
+			questsApi
+				.updatePositions([...autoPos].map(([quest_id, p]) => ({ quest_id, x: p.x, y: p.y })))
+				.catch(() => {});
+		}
+		storedPositions = new Map([...posMap, ...autoPos]);
 		const elements: BoardElementDefinition[] = [];
 
 		quests.forEach((q) => {

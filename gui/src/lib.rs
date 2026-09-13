@@ -598,6 +598,7 @@ pub fn run() {
             commands::add_prerequisite,
             commands::remove_prerequisite,
             commands::update_quest_position,
+            commands::update_quest_positions,
             // admin
             commands::admin_create_snapshot,
             commands::admin_list_snapshots,

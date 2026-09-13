@@ -253,6 +253,14 @@ pub struct UpdatePositionRequest {
     pub y: f64,
 }
 
+/// BUG-284: 여러 퀘스트의 위치를 한 번에. `update_positions` 의 한 항목.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PositionItem {
+    pub quest_id: i64,
+    pub x: f64,
+    pub y: f64,
+}
+
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct QuestDependency {
     pub quest_id: i64,

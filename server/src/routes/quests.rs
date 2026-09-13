@@ -253,6 +253,16 @@ pub async fn get_quest_by_slug(
     Ok(Json(detail))
 }
 
+/// BUG-284: 여러 퀘스트의 위치를 한 트랜잭션으로. 쓴 건수를 돌려준다.
+pub async fn update_positions(
+    State(store): State<Store>,
+    Json(items): Json<Vec<openguild_core::models::PositionItem>>,
+) -> AppResult<Json<serde_json::Value>> {
+    // UI 상태 — 파일 IO 없음, SQL 만.
+    let written = read::update_positions(&store.index_pool, &items).await?;
+    Ok(Json(serde_json::json!({ "written": written })))
+}
+
 pub async fn list_positions(
     State(store): State<Store>,
 ) -> AppResult<Json<Vec<QuestPosition>>> {

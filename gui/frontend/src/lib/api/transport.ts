@@ -447,6 +447,10 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 	if (method === 'GET' && pathOnly === '/api/quest-positions') {
 		return { cmd: 'list_quest_positions', args: {} };
 	}
+	// BUG-284: 여러 위치를 한 번에 — 서버의 PUT /api/quest-positions 와 짝.
+	if (method === 'PUT' && pathOnly === '/api/quest-positions') {
+		return { cmd: 'update_quest_positions', args: { items: body } };
+	}
 	if (method === 'GET' && pathOnly === '/api/quest-dependencies') {
 		return { cmd: 'list_quest_dependencies', args: {} };
 	}

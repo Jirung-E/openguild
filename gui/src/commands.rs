@@ -493,6 +493,18 @@ pub async fn update_quest_position(
     read::update_position(&store.index_pool, id, body).await.map_err(err)
 }
 
+/// BUG-284: 여러 위치를 한 트랜잭션으로 — 서버의 `PUT /api/quest-positions` 와 같다.
+#[tauri::command]
+pub async fn update_quest_positions(
+    store: State<'_, Store>,
+    items: Vec<openguild_core::models::PositionItem>,
+) -> Result<serde_json::Value, String> {
+    let written = read::update_positions(&store.index_pool, &items)
+        .await
+        .map_err(err)?;
+    Ok(serde_json::json!({ "written": written }))
+}
+
 // ─────────────────────── admin ───────────────────────
 
 #[tauri::command]

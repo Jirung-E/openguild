@@ -198,6 +198,18 @@ describe('TauriTransport', () => {
 		expect(mockInvoke).toHaveBeenCalledWith('list_quest_positions', {});
 	});
 
+	// BUG-284: 같은 경로의 PUT 은 **일괄 저장**이다. 이 매핑이 빠지면 서버에서는
+	// 되는데 데스크톱에서만 조용히 안 된다 — 이 저장소가 여러 번 겪은 배선 누락이다.
+	it('PUT /api/quest-positions → update_quest_positions (일괄)', async () => {
+		mockInvoke.mockResolvedValue({ written: 2 });
+		const items = [
+			{ quest_id: 1, x: 10, y: 20 },
+			{ quest_id: 2, x: 30, y: 40 }
+		];
+		await new TauriTransport().call({ method: 'PUT', path: '/api/quest-positions', body: items });
+		expect(mockInvoke).toHaveBeenCalledWith('update_quest_positions', { items });
+	});
+
 	it('GET /api/quests/by/DEV-001 → get_quest_by_slug', async () => {
 		mockInvoke.mockResolvedValue({ id: 1 });
 		await new TauriTransport().call({ method: 'GET', path: '/api/quests/by/DEV-001' });

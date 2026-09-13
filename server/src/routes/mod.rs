@@ -287,7 +287,11 @@ pub fn create_router(store: Store) -> Router {
         .route("/api/quests/by/{slug}", get(quests::get_quest_by_slug))
         // DEV-011: quest 가 속한 campaigns 목록 — Quest Detail UI 의 Campaigns 섹션.
         .route("/api/quests/{id}/campaigns", get(campaigns::list_for_quest))
-        .route("/api/quest-positions", get(quests::list_positions))
+        // BUG-284: PUT 은 여러 위치를 한 번에 — 보드가 자동 배치 노드를 고정할 때.
+        .route(
+            "/api/quest-positions",
+            get(quests::list_positions).put(quests::update_positions),
+        )
         .route("/api/quest-dependencies", get(quests::list_dependencies))
         .route("/api/deleted-quests", get(quests::list_deleted_quests))
         // campaigns (DEV-011)
