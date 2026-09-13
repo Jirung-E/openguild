@@ -34,6 +34,8 @@
 		type BoardOrientation,
 		type BoardOrientationMetrics
 	} from '$lib/utils/quest-board-orientation';
+	// BUG-278: 자동 배치 규칙 — 초기 적재와 handleFlash 가 같은 함수를 쓴다.
+	import { autoPlace, type PlacementMetrics } from '$lib/utils/quest-board-placement';
 	import {
 		boardLodForZoom,
 		isPerformanceMonitorShortcut,
@@ -375,6 +377,23 @@
 	// BUG: sorted 가 일반 let — svelte 5 reactive 안 됨 (npm check warning). $state 로.
 	let sorted: QuestStatus[] = $state([]);
 	let laneOf = new Map<number, number>();
+	// BUG-278: 저장된 위치. 초기 적재 때 채우고, 보드를 켜 둔 채 퀘스트가 생기면
+	// handleFlash 가 같은 자동 배치 규칙으로 새 노드 자리를 정하는 데 쓴다.
+	let storedPositions = new Map<number, { x: number; y: number }>();
+
+	/** 레인 안 3개 열의 중심 x — 자동 배치가 1열로 쌓이지 않게 골고루 채운다. */
+	function placementMetrics(): PlacementMetrics {
+		return {
+			laneStride: LANE_STRIDE,
+			colOffsets: [
+				LANE_PAD_X + NODE_W / 2,
+				LANE_PAD_X + NODE_W + NODE_GAP + NODE_W / 2,
+				LANE_PAD_X + 2 * (NODE_W + NODE_GAP) + NODE_W / 2
+			],
+			initialY: canonicalGridBaseY(ORIENTATION_METRICS),
+			rowStep: NODE_H + NODE_GAP
+		};
+	}
 
 	// DEV-048: status_id (number) → status_slug (string). API 는 slug 전용.
 	function slugOf(statusId: number): string {
@@ -2625,21 +2644,17 @@
 
 			let node = cy.getElementById(`q-${qid}`) as BoardNode;
 			if (node.length === 0) {
-				// 보드에 없는 노드 — 적당한 위치에 추가하고 위치 저장
-				const li = laneOf.get(quest.status_id) ?? 0;
-				// 같은 레인의 기존 노드들 아래에 자연스럽게 배치
-				const existing = cy.nodes(`[statusId = ${quest.status_id}]`).toArray();
-				const maxAbsY = existing.reduce(
-					(m, n) =>
-						Math.max(
-							m,
-							((n as BoardNode).data('absY') as number | undefined) ??
-								canonicalGridBaseY(ORIENTATION_METRICS)
-						),
-					canonicalGridBaseY(ORIENTATION_METRICS) - NODE_H - NODE_GAP
+				// 보드에 없는 노드 — 자리를 정해 추가하고 위치 저장.
+				//
+				// BUG-278: 예전엔 x 를 **레인 한가운데**(`LANE_W / 2`)로 잡았다. 초기 적재는
+				// 3열 격자에 놓으므로, 보드를 켜 둔 채 만든 노드만 열이 안 맞는 자리에
+				// 섰다. 이제 초기 적재와 **같은 함수**로 정한다 — 새 퀘스트는 가장 큰 id 라
+				// 레인의 마지막 칸에 붙고, 기존 노드는 한 칸도 안 움직인다.
+				const slot = autoPlace(allQuests, storedPositions, laneOf, placementMetrics()).get(
+					qid
 				);
-				const absX = li * LANE_STRIDE + LANE_W / 2;
-				const absY = maxAbsY + NODE_H + NODE_GAP;
+				const absX = slot?.x ?? (laneOf.get(quest.status_id) ?? 0) * LANE_STRIDE + LANE_W / 2;
+				const absY = slot?.y ?? canonicalGridBaseY(ORIENTATION_METRICS);
 				const visual = canonicalToVisual(absX, absY, quest.status_id);
 
 				cy.add({
@@ -2671,8 +2686,17 @@
 						}
 					});
 				}
-				// DEV-067: DB 는 absolute X.
-				questsApi.updatePosition(qid, { x: absX, y: absY }).catch(() => {});
+				// BUG-278: **위치를 저장하지 않는다.**
+				//
+				// 예전엔 여기서 `updatePosition` 으로 저장했다. 그런데 자동 배치는
+				// 저장된 노드를 기준점 삼아 **그 아래부터** 채운다(손으로 옮긴 노드와
+				// 안 겹치게). 같은 레인의 다른 노드들은 저장된 적이 없으므로, 새로고침
+				// 하면 방금 만든 노드가 기준점이 되어 **나머지가 전부 그 아래로 밀렸다**
+				// — 보고된 "추가하면 자동정렬" 이 이 경로로도 났다.
+				//
+				// 자동 규칙으로 놓은 노드는 규칙이 언제나 같은 자리를 다시 계산하므로
+				// 저장할 필요가 없다(가장 큰 id 라 늘 마지막 칸이다). 사용자가 끌어다
+				// 옮기면 그때 저장된다.
 				node = cy.getElementById(`q-${qid}`) as BoardNode;
 			}
 
@@ -3194,39 +3218,14 @@
 
 		buildLaneDivs(sorted);
 
-		const initialY = canonicalGridBaseY(ORIENTATION_METRICS);
-		const laneNextY = new Map<number, number>(sorted.map((s) => [s.id, initialY]));
-		posMap.forEach(({ y }, questId) => {
-			const quest = quests.find((q) => q.id === questId);
-			if (!quest) return;
-			const cur = laneNextY.get(quest.status_id) ?? initialY;
-			laneNextY.set(quest.status_id, Math.max(cur, y + NODE_H + NODE_GAP));
-		});
-		const autoCount = new Map<number, number>();
+		storedPositions = posMap;
+		// BUG-278: 위치 없는 노드는 **id 오름차순**으로 채운다. 받은 배열은 id DESC 라
+		// 그 순서를 따르면 새 퀘스트가 0번 칸을 가져가고 나머지가 한 칸씩 밀렸다.
+		const autoPos = autoPlace(quests, posMap, laneOf, placementMetrics());
 		const elements: BoardElementDefinition[] = [];
 
-		// lane 안의 3개 열 (col 0/1/2) 중심 x — 자동 배치 시 골고루 채워 1열 stacking 방지.
-		const COL_OFFSETS = [
-			LANE_PAD_X + NODE_W / 2,
-			LANE_PAD_X + NODE_W + NODE_GAP + NODE_W / 2,
-			LANE_PAD_X + 2 * (NODE_W + NODE_GAP) + NODE_W / 2
-		];
-
 		quests.forEach((q) => {
-			const li = laneOf.get(q.status_id) ?? 0;
-			let pos = posMap.get(q.id);
-			if (!pos) {
-				const n = autoCount.get(q.status_id) ?? 0;
-				const startY = laneNextY.get(q.status_id) ?? initialY;
-				const col = n % 3;
-				const row = Math.floor(n / 3);
-				const laneLeft = li * LANE_STRIDE;
-				pos = {
-					x: laneLeft + COL_OFFSETS[col],
-					y: startY + row * (NODE_H + NODE_GAP)
-				};
-				autoCount.set(q.status_id, n + 1);
-			}
+			const pos = posMap.get(q.id) ?? autoPos.get(q.id)!;
 			// DB x/y를 정본으로 data에 보관하고, init 끝에서 orientation 화면 좌표로 변환.
 			elements.push({
 				data: {
