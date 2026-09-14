@@ -312,22 +312,31 @@ enum Command {
 enum PluginCmd {
     #[command(about = tf!("적재 상태 — 도는 것 / 동의 대기 / 깨진 정의.", "What is loaded — running / awaiting consent / broken definitions."))]
     List,
-    #[command(about = tf!("플러그인 하나를 이 기계에서 허용. 인자 없이 부르면 무엇에 동의하는지 보여주기만 한다.", "Allow one plugin on this machine. Without --yes it only shows what you would be consenting to."))]
+    #[command(about = tf!("플러그인을 이 기계에서 허용 (이름 하나, 또는 --all). --yes 없이 부르면 무엇에 동의하는지 보여주기만 한다.", "Allow a plugin on this machine (one name, or --all). Without --yes it only shows what you would be consenting to."))]
     Allow {
-        name: String,
+        #[arg(required_unless_present = "all", conflicts_with = "all")]
+        name: Option<String>,
+        /// BUG-288: 지금 있는 것 전부에 개별 동의를 남긴다 — 모드가 아니라, 뒤에 오는 것은 묻는다.
+        #[arg(long, help = tf!("지금 있는 플러그인 전부 (앞으로 추가되는 것은 묻는다 — 그건 `trust`).", "Every plugin present now (ones added later still ask — that is `trust`)."))]
+        all: bool,
         #[arg(long, help = tf!("보여준 내용대로 실제로 허용한다.", "Actually grant consent for what was shown."))]
         yes: bool,
     },
-    #[command(about = tf!("동의 철회 — 다시 물을 때까지 안 돈다.", "Revoke consent — it stops running until allowed again."))]
-    Revoke { name: String },
-    #[command(about = tf!("이 길드의 플러그인을 전부 허용 (혼자 쓰는 길드용). 이후 추가되는 것도 묻지 않고 돈다.", "Trust every plugin in this guild (for solo guilds). Anything added later also runs without asking."))]
+    #[command(about = tf!("동의 철회 (이름 하나, 또는 --all) — 다시 허용할 때까지 안 돈다. 자동 허용 중에도 먹는다.", "Revoke consent (one name, or --all) — it stops until allowed again, even with auto-allow on."))]
+    Revoke {
+        #[arg(required_unless_present = "all", conflicts_with = "all")]
+        name: Option<String>,
+        #[arg(long, help = tf!("지금 있는 플러그인 전부.", "Every plugin present now."))]
+        all: bool,
+    },
+    // BUG-288: 예전 "통째 신뢰" 는 개별 철회까지 덮었다. 이제는 **자동 허용** — 새로 오거나
+    // 바뀐 것도 묻지 않지만, 직접 철회한 것은 계속 안 돈다.
+    #[command(about = tf!("자동 허용 켜기 (혼자 쓰는 길드용) — 새로 추가되거나 바뀐 플러그인도 묻지 않고 돈다. 직접 철회한 것은 제외.", "Turn on auto-allow (for solo guilds) — new or changed plugins run without asking, except ones you revoked."))]
     Trust {
-        #[arg(long, help = tf!("정말로 이 길드를 통째로 신뢰한다.", "Really trust this whole guild."))]
+        #[arg(long, help = tf!("정말로 자동 허용을 켠다.", "Really turn on auto-allow."))]
         yes: bool,
     },
-    // DEV-380: 켜는 쪽만 있고 끄는 쪽이 없었다. `is_granted` 가 trusted 에서
-    // 단락되므로 그 상태에서는 개별 철회가 아무 일도 안 한다.
-    #[command(about = tf!("길드 전체 허용을 해제 — 개별 동의만 남는다.", "Stop trusting this guild — only per-plugin consent remains."))]
+    #[command(about = tf!("자동 허용 끄기 — 지금 돌던 것은 그대로 돌고, 앞으로 추가·변경되는 것은 묻는다.", "Turn off auto-allow — what runs now keeps running; later additions and changes ask again."))]
     Untrust,
     #[command(about = tf!("구독할 수 있는 이벤트 이름 목록.", "Event names you can subscribe to."))]
     Events,
@@ -6151,7 +6160,41 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
                 println!("✗ {name}  {why}");
             }
         }
-        PluginCmd::Allow { name, yes } => {
+        PluginCmd::Allow { name: None, all: _, yes } => {
+            let every: Vec<_> = loaded
+                .active
+                .iter()
+                .chain(loaded.needs_consent.iter())
+                .collect();
+            if !yes {
+                // **보지 않은 것에 동의할 수는 없다** — 무엇이 어디로 가는지 목록으로 보인다.
+                for p in &every {
+                    println!(
+                        "{}  {:?}  {}",
+                        p.def.name,
+                        p.def.scope,
+                        serde_json::to_string(&p.def.action)?
+                    );
+                }
+                println!(
+                    "\n{}",
+                    tf!(
+                        "위 {} 개를 이 기계에서 돌리는 데 동의하면 `--yes` 를 붙여 다시 실행하세요. 하나씩 보려면 `openguild plugin allow <이름>`.",
+                        "If you consent to running the {} above on this machine, re-run with `--yes`. To inspect one: `openguild plugin allow <name>`.",
+                        every.len()
+                    )
+                );
+                return Ok(());
+            }
+            Backend::map_err(consent::grant_all(root, &every))?;
+            let names: Vec<&str> = every.iter().map(|p| p.def.name.as_str()).collect();
+            if json {
+                json_println!(serde_json::json!({ "ok": true, "allowed": names }));
+            } else {
+                println!("{}", tf!("✓ 전체 허용: {}", "✓ allowed all: {}", names.join(", ")));
+            }
+        }
+        PluginCmd::Allow { name: Some(name), all: _, yes } => {
             let all: Vec<_> = loaded
                 .active
                 .iter()
@@ -6187,26 +6230,27 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
                 println!("{}", tf!("✓ 허용: {}", "✓ allowed: {}", name));
             }
         }
-        PluginCmd::Revoke { name } => {
-            Backend::map_err(consent::revoke(root, &name))?;
-            // DEV-380: 길드를 통째로 신뢰 중이면 개별 철회는 아무 효과가 없다.
-            // 성공했다고만 말하면 사용자는 껐다고 믿는다.
-            let still_trusted = consent::load(root).map(|g| g.trusted).unwrap_or(false);
+        PluginCmd::Revoke { name, all: _ } => {
+            // BUG-288: 자동 허용 중에도 철회가 먹는다(철회가 판정에서 앞선다). 예전의
+            // "통째 신뢰 중이라 여전히 돕니다" 경고는 이제 사실이 아니다.
+            let single = name.is_some();
+            let names: Vec<String> = match name {
+                Some(n) => vec![n],
+                None => loaded
+                    .active
+                    .iter()
+                    .chain(loaded.needs_consent.iter())
+                    .map(|p| p.def.name.clone())
+                    .collect(),
+            };
+            let refs: Vec<&str> = names.iter().map(String::as_str).collect();
+            Backend::map_err(consent::revoke_all(root, &refs))?;
             if json {
-                json_println!(serde_json::json!({
-                    "ok": true, "revoked": name, "still_trusted": still_trusted
-                }));
+                // 이름 하나일 때는 예전 모양(문자열) 그대로 — 파싱하는 스크립트를 안 깬다.
+                let revoked = if single { serde_json::json!(names[0]) } else { serde_json::json!(names) };
+                json_println!(serde_json::json!({ "ok": true, "revoked": revoked }));
             } else {
-                println!("{}", tf!("✓ 철회: {}", "✓ revoked: {}", name));
-                if still_trusted {
-                    println!(
-                        "{}",
-                        tf!(
-                            "  ⚠ 이 길드는 통째로 신뢰 중이라 여전히 돕니다 — `openguild plugin untrust` 를 먼저 하세요.",
-                            "  ⚠ this guild is fully trusted, so it still runs — run `openguild plugin untrust` first."
-                        )
-                    );
-                }
+                println!("{}", tf!("✓ 철회: {}", "✓ revoked: {}", names.join(", ")));
             }
         }
         // REQ-021 ── 설정값 ────────────────────────────────
@@ -6359,17 +6403,17 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
             }
         }
         PluginCmd::Untrust => {
-            Backend::map_err(consent::untrust_guild(root))?;
+            Backend::map_err(consent::disable_auto_allow(root))?;
             if json {
                 json_println!(
-                    serde_json::json!({ "ok": true, "untrusted": root.display().to_string() })
+                    serde_json::json!({ "ok": true, "untrusted": root.display().to_string(), "auto_allow": false })
                 );
             } else {
                 println!(
                     "{}",
                     tf!(
-                        "✓ 길드 전체 허용 해제 — 개별 동의만 남습니다: {}",
-                        "✓ no longer trusting this guild; only per-plugin consent remains: {}",
+                        "✓ 자동 허용 끔 — 지금 돌던 것은 그대로, 앞으로 추가·변경되는 것은 묻습니다: {}",
+                        "✓ auto-allow off — what runs keeps running; later additions and changes will ask: {}",
                         root.display()
                     )
                 );
@@ -6378,21 +6422,21 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
         PluginCmd::Trust { yes } => {
             if !yes {
                 return Err(anyhow!(tf!(
-                    "이 길드에 앞으로 추가되는 플러그인까지 전부, 묻지 않고 돌게 됩니다. 정말이면 --yes 를 붙이세요.",
-                    "Every plugin in this guild — including ones added later — will run without asking. Add --yes if you mean it."
+                    "앞으로 이 길드에 추가되거나 git 으로 바뀌어 오는 플러그인까지 묻지 않고 돌게 됩니다(직접 철회한 것은 제외). 정말이면 --yes 를 붙이세요.",
+                    "Plugins added to this guild later, or changed via git, will run without asking (except ones you revoked). Add --yes if you mean it."
                 )));
             }
-            Backend::map_err(consent::trust_guild(root))?;
+            Backend::map_err(consent::enable_auto_allow(root))?;
             if json {
                 json_println!(
-                    serde_json::json!({ "ok": true, "trusted": root.display().to_string() })
+                    serde_json::json!({ "ok": true, "trusted": root.display().to_string(), "auto_allow": true })
                 );
             } else {
                 println!(
                     "{}",
                     tf!(
-                        "✓ 이 길드를 신뢰합니다: {}",
-                        "✓ trusting this guild: {}",
+                        "✓ 자동 허용 켬: {}",
+                        "✓ auto-allow on: {}",
                         root.display()
                     )
                 );
@@ -10986,7 +11030,8 @@ mod tests {
             &c,
             false,
             PluginCmd::Allow {
-                name: "ai-notify".into(),
+                name: Some("ai-notify".into()),
+                all: false,
                 yes: false,
             },
         )
@@ -11001,7 +11046,8 @@ mod tests {
             &c,
             false,
             PluginCmd::Allow {
-                name: "ai-notify".into(),
+                name: Some("ai-notify".into()),
+                all: false,
                 yes: true,
             },
         )
@@ -11013,7 +11059,8 @@ mod tests {
             &c,
             false,
             PluginCmd::Revoke {
-                name: "ai-notify".into(),
+                name: Some("ai-notify".into()),
+                all: false,
             },
         )
         .unwrap();
@@ -11047,7 +11094,8 @@ mod tests {
             &c,
             false,
             PluginCmd::Allow {
-                name: "ai-notify".into(),
+                name: Some("ai-notify".into()),
+                all: false,
                 yes: true,
             },
         )
@@ -11071,7 +11119,7 @@ mod tests {
         let _g = plugin_env_lock();
         let (dir, home) = guild_with_plugin("drain");
         unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
-        openguild_core::plugins::consent::trust_guild(&dir).unwrap();
+        openguild_core::plugins::consent::enable_auto_allow(&dir).unwrap();
 
         struct Slow(std::sync::Arc<AtomicUsize>);
         impl Delivery for Slow {
@@ -11121,7 +11169,50 @@ mod tests {
         let _ = std::fs::remove_dir_all(&home);
     }
 
-    /// 길드 통째 신뢰는 되돌리기 어렵다 — 확인 없이 받지 않는다.
+    /// BUG-288: `allow --all` 은 보여주기만 하고(--yes 없이), `revoke --all` 뒤에는 개별
+    /// 허용이 먹는다. 둘 다 모드가 아니다.
+    #[test]
+    fn allow_all_and_revoke_all() {
+        let _g = plugin_env_lock();
+        let (dir, home) = guild_with_plugin("bulk");
+        unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+        let c = local_backend(&dir);
+        let active = || openguild_core::plugins::load_all(&dir).active.len();
+
+        handle_plugin(&c, false, PluginCmd::Allow { name: None, all: true, yes: false }).unwrap();
+        assert_eq!(active(), 0, "--yes 없이 전체 허용돼 버렸다");
+        handle_plugin(&c, false, PluginCmd::Allow { name: None, all: true, yes: true }).unwrap();
+        assert_eq!(active(), 1);
+
+        // 자동 허용 중에도 전체 해제가 먹는다.
+        handle_plugin(&c, false, PluginCmd::Trust { yes: true }).unwrap();
+        handle_plugin(&c, false, PluginCmd::Revoke { name: None, all: true }).unwrap();
+        assert_eq!(active(), 0, "자동 허용이 전체 해제를 덮었다");
+        handle_plugin(
+            &c,
+            false,
+            PluginCmd::Allow { name: Some("ai-notify".into()), all: false, yes: true },
+        )
+        .unwrap();
+        assert_eq!(active(), 1);
+
+        drop(c);
+        unsafe { std::env::remove_var("OPENGUILD_HOME") };
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// 이름도 `--all` 도 없으면 무엇을 할지 모른다 — 파싱에서 거절한다.
+    #[test]
+    fn allow_and_revoke_need_a_name_or_all() {
+        assert!(Cli::try_parse_from(["openguild", "plugin", "allow"]).is_err());
+        assert!(Cli::try_parse_from(["openguild", "plugin", "revoke"]).is_err());
+        assert!(Cli::try_parse_from(["openguild", "plugin", "allow", "x", "--all"]).is_err());
+        assert!(Cli::try_parse_from(["openguild", "plugin", "allow", "--all", "--yes"]).is_ok());
+        assert!(Cli::try_parse_from(["openguild", "plugin", "revoke", "x"]).is_ok());
+    }
+
+    /// 자동 허용은 보지 않은 코드를 돌리게 한다 — 확인 없이 받지 않는다.
     #[test]
     fn trust_requires_an_explicit_yes() {
         let _g = plugin_env_lock();

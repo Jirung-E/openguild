@@ -59,7 +59,7 @@ use openguild_core::plugins::view::PluginStatus;
 ///
 /// Welcome / Uninit 은 in-memory placeholder Store 이고 그 `guild_root` 는
 /// `$TMPDIR/openguild-welcome-placeholder` 다. 이걸 안 막으면 "이 길드를 전부
-/// 허용" 이 **임시 디렉터리를 영구히 신뢰 목록에 넣는다.** 리눅스에서 그 부모는
+/// 허용"(지금의 자동 허용) 이 **임시 디렉터리를 영구히 신뢰 목록에 넣는다.** 리눅스에서 그 부모는
 /// 누구나 쓸 수 있는 `/tmp` 라, 다른 프로세스가 거기 정의를 심으면 묻지 않고
 /// 돈다. `guild_path_for_frontend` 가 같은 이유로 이미 이 경로를 가린다.
 fn no_guild_open(store: &Store) -> bool {
@@ -131,18 +131,50 @@ pub async fn plugin_set_value(
     Ok(())
 }
 
+/// BUG-288: 전체 허용 — 지금 있는 플러그인 전부에 개별 동의를 남긴다(모드가 아니다).
 #[tauri::command]
-pub async fn plugin_trust(store: State<'_, Store>, on: bool) -> Result<(), String> {
+pub async fn plugin_allow_all(store: State<'_, Store>) -> Result<(), String> {
     if no_guild_open(&store) {
         return Err(NO_GUILD_ERR.into());
     }
     let root = store.paths.guild_root.clone();
-    // DEV-380: 끄는 쪽이 없으면 켠 뒤에 개별 철회가 아무 일도 안 한다
-    // (`is_granted` 가 trusted 에서 단락된다).
+    let loaded = openguild_core::plugins::load_all(&root);
+    let all: Vec<_> = loaded.active.iter().chain(loaded.needs_consent.iter()).collect();
+    openguild_core::plugins::consent::grant_all(&root, &all).map_err(err)?;
+    reinstall_plugins(&store);
+    Ok(())
+}
+
+/// BUG-288: 전체 해제 — 지금 있는 플러그인 전부를 철회한다.
+#[tauri::command]
+pub async fn plugin_revoke_all(store: State<'_, Store>) -> Result<(), String> {
+    if no_guild_open(&store) {
+        return Err(NO_GUILD_ERR.into());
+    }
+    let root = store.paths.guild_root.clone();
+    let loaded = openguild_core::plugins::load_all(&root);
+    let names: Vec<&str> = loaded
+        .active
+        .iter()
+        .chain(loaded.needs_consent.iter())
+        .map(|p| p.def.name.as_str())
+        .collect();
+    openguild_core::plugins::consent::revoke_all(&root, &names).map_err(err)?;
+    reinstall_plugins(&store);
+    Ok(())
+}
+
+/// BUG-288: 자동 허용 켜기/끄기. 끄면 지금 돌던 것은 그대로 돈다.
+#[tauri::command]
+pub async fn plugin_set_auto_allow(store: State<'_, Store>, on: bool) -> Result<(), String> {
+    if no_guild_open(&store) {
+        return Err(NO_GUILD_ERR.into());
+    }
+    let root = store.paths.guild_root.clone();
     if on {
-        openguild_core::plugins::consent::trust_guild(&root).map_err(err)?;
+        openguild_core::plugins::consent::enable_auto_allow(&root).map_err(err)?;
     } else {
-        openguild_core::plugins::consent::untrust_guild(&root).map_err(err)?;
+        openguild_core::plugins::consent::disable_auto_allow(&root).map_err(err)?;
     }
     reinstall_plugins(&store);
     Ok(())

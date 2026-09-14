@@ -116,7 +116,9 @@
 	// DEV-383: 스칼라 하나로 잠그면 두 번째 클릭이 첫 번째의 잠금을 풀어 버린다.
 	let pluginBusy = $state<string[]>([]);
 	let openScript = $state<string | null>(null);
-	let confirmTrust = $state(false);
+	// BUG-288: 확인이 필요한 일괄 조작 — 둘 다 **보지 않은 코드를 돌리게** 한다.
+	let confirmBulk = $state<'allowAll' | 'autoOn' | null>(null);
+	let bulkBusy = $state(false);
 	// 관리 가능 여부는 **서버가 답한 값**으로 정한다. 프런트의 환경 감지만
 	// 믿으면 원격 길드를 보면서 로컬 동의를 고치게 된다(BUG-255 계열).
 	const canManage = $derived(pluginsManageable() && (pluginStatus?.manageable ?? false));
@@ -232,13 +234,19 @@
 		}
 	}
 
-	async function setTrusted(on: boolean) {
-		confirmTrust = false;
+	/** BUG-288: 전체 허용·전체 해제·자동 허용 — 개별 조작과 따로 논다. */
+	async function bulk(action: 'allowAll' | 'revokeAll' | 'autoOn' | 'autoOff') {
+		confirmBulk = null;
+		bulkBusy = true;
 		try {
-			await pluginApi.setTrusted(on);
+			if (action === 'allowAll') await pluginApi.allowAll();
+			else if (action === 'revokeAll') await pluginApi.revokeAll();
+			else await pluginApi.setAutoAllow(action === 'autoOn');
 			await refreshPlugins();
 		} catch (e) {
 			showToast(e instanceof Error ? e.message : String(e), 'error');
+		} finally {
+			bulkBusy = false;
 		}
 	}
 
@@ -539,8 +547,8 @@
 				<!-- DEV-384: 신뢰 중에는 "허용 전에는 안 돕니다" 가 바로 밑의
 				     "전부 허용돼 있습니다" 와 정면으로 어긋난다. 위치만 알린다. -->
 				<p class="scale-hint">
-					{pluginStatus?.trusted
-						? t('settings.pluginsIntroTrusted', $locale)
+					{pluginStatus?.auto_allow
+						? t('settings.pluginsIntroAuto', $locale)
 						: t('settings.pluginsIntro', $locale)}
 				</p>
 				<!-- DEV-380: 조회는 어디서든. 관리 버튼만 로컬 데스크톱에서 나온다.
@@ -563,17 +571,38 @@
 						>
 					</p>
 				{/if}
-				{#if pluginStatus?.trusted}
-					<!-- BUG-285: 상태를 알리는 자리와 그 상태를 끄는 자리가 같아야 한다.
-					     예전엔 해제 버튼이 플러그인 목록 **맨 아래**에 있어, 카드가 많으면
-					     스크롤해야 보였다. 철회가 막힌다는 사실도 여기서 말한다. -->
-					<div class="plugin-trusted">
-						<p>{t('settings.pluginTrustedRevokeBlocked', $locale)}</p>
-						{#if canManage}
-							<button class="btn-plain" onclick={() => setTrusted(false)}
-								>{t('settings.pluginUntrust', $locale)}</button
-							>
-						{/if}
+				{#if canManage && pluginStatus && !pluginStatus.no_guild}
+					<!-- BUG-288: 일괄 조작 셋을 **한 자리에.** 예전엔 "전부 허용" 은 목록 맨 아래,
+					     해제는 위 안내문에 흩어져 있었고, 둘 다 모드를 켜고 끄는 것이라 켜 둔
+					     동안 개별 철회가 막혔다. 이제 전체 허용·해제는 개별 상태를 한 번에 바꿀
+					     뿐이고, 앞으로 올 것을 묻지 않는 것은 자동 허용이 따로 맡는다. -->
+					<div class="plugin-bulk">
+						<button
+							class="btn-plain"
+							disabled={bulkBusy || pluginStatus.plugins.length === 0}
+							onclick={() => (confirmBulk = 'allowAll')}
+							>{t('settings.pluginAllowAll', $locale)}</button
+						>
+						<button
+							class="btn-plain"
+							disabled={bulkBusy || pluginStatus.plugins.length === 0}
+							onclick={() => bulk('revokeAll')}>{t('settings.pluginRevokeAll', $locale)}</button
+						>
+						<label class="plugin-auto">
+							<input
+								type="checkbox"
+								checked={pluginStatus.auto_allow}
+								disabled={bulkBusy}
+								onclick={(e) => {
+									// 켜는 것은 확인을 거친다 — 체크 표시는 답을 받은 뒤 상태로 그린다.
+									e.preventDefault();
+									if (pluginStatus?.auto_allow) bulk('autoOff');
+									else confirmBulk = 'autoOn';
+								}}
+							/>
+							{t('settings.pluginAutoAllow', $locale)}
+						</label>
+						<span class="plugin-auto-hint">{t('settings.pluginAutoAllowHint', $locale)}</span>
 					</div>
 				{/if}
 				{#if pluginStatus &&
@@ -743,15 +772,8 @@
 							{/if}
 							{#if canManage}
 								<div class="plugin-actions">
-									{#if p.granted && pluginStatus?.trusted}
-										<!-- BUG-285: 신뢰 중에는 개별 철회가 효과가 없다(is_granted 가 trusted
-										     에서 단락된다). 예전엔 버튼을 disabled 로 두고 이유를 title 툴팁에
-										     실었는데, **disabled 요소는 마우스 이벤트를 안 받아 툴팁이 뜨지
-										     않는다.** 이유 없이 죽은 버튼이 됐고 admin 은 "철회가 안 눌린다" 고
-										     봤다. 누를 수 없는 것을 버튼 모양으로 그리지 않고, 이유를 글로 둔다.
-										     해제는 위쪽 안내문에 있다. -->
-										<span class="plugin-trusted-note">{t('settings.pluginRevokeBlockedByTrust', $locale)}</span>
-									{:else if p.granted}
+									<!-- BUG-288: 자동 허용 중에도 개별 철회가 먹는다 — 철회가 판정에서 앞선다. -->
+									{#if p.granted}
 										<button
 											type="button"
 											class="btn-plain"
@@ -794,12 +816,6 @@
 							<li class="plugin broken"><strong>{name}</strong><span>{why}</span></li>
 						{/each}
 					</ul>
-				{/if}
-				<!-- 해제 버튼은 위쪽 안내문으로 옮겼다(BUG-285). -->
-				{#if canManage && !pluginStatus?.trusted}
-					<button class="btn-plain trust" onclick={() => (confirmTrust = true)}
-						>{t('settings.pluginTrust', $locale)}</button
-					>
 				{/if}
 			{/if}
 		{:else if activeTab === 'info'}
@@ -1247,15 +1263,21 @@
 	oncancel={() => (confirmDeletePresetName = null)}
 />
 
-<!-- DEV-379: 길드 통째 신뢰는 되돌리기 어렵다 — 확인 없이 받지 않는다. -->
+<!-- DEV-379 / BUG-288: 둘 다 보지 않은 코드를 이 기계에서 돌리게 한다 — 확인 없이 받지 않는다. -->
 <ConfirmDialog
-	open={confirmTrust}
-	title={t('settings.pluginTrust', $locale)}
-	message={t('settings.pluginTrustConfirm', $locale)}
-	confirmLabel={t('settings.pluginTrust', $locale)}
+	open={confirmBulk !== null}
+	title={confirmBulk === 'autoOn'
+		? t('settings.pluginAutoAllow', $locale)
+		: t('settings.pluginAllowAll', $locale)}
+	message={confirmBulk === 'autoOn'
+		? t('settings.pluginAutoAllowConfirm', $locale)
+		: t('settings.pluginAllowAllConfirm', $locale)}
+	confirmLabel={confirmBulk === 'autoOn'
+		? t('settings.pluginAutoAllowOn', $locale)
+		: t('settings.pluginAllowAll', $locale)}
 	danger
-	onconfirm={() => setTrusted(true)}
-	oncancel={() => (confirmTrust = false)}
+	onconfirm={() => confirmBulk && bulk(confirmBulk)}
+	oncancel={() => (confirmBulk = null)}
 />
 
 <style>
@@ -1469,15 +1491,6 @@
 		background: var(--bg-subtle);
 		color: var(--text);
 	}
-	/* 길드 통째 허용은 되돌리기 어렵다 — 평범한 버튼처럼 보이면 안 된다. */
-	.btn-plain.trust {
-		border-color: var(--btn-warning-border);
-		color: var(--btn-warning-text);
-	}
-	.btn-plain.trust:hover:not(:disabled) {
-		background: var(--btn-warning-bg-hover);
-		color: var(--btn-warning-text);
-	}
 	.btn-go {
 		background: var(--btn-primary-bg);
 		border: var(--bw) solid var(--btn-primary-border);
@@ -1501,20 +1514,22 @@
 		align-items: center;
 		flex-wrap: wrap;
 	}
-	.plugin-trusted {
-		/* 안내문과 해제 버튼을 한 줄에 — 좁으면 버튼이 아래로 떨어진다. */
+	.plugin-bulk {
+		/* BUG-288: 일괄 조작 셋을 한 줄에 — 좁으면 아래로 떨어진다. */
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
 		gap: 0.4rem 0.75rem;
+		margin: 0.5rem 0;
 		font-size: 0.85rem;
-		color: var(--text-muted);
 	}
-	.plugin-trusted p {
-		margin: 0;
+	.plugin-auto {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3rem;
+		cursor: pointer;
 	}
-	.plugin-trusted-note {
-		/* 버튼 자리에 놓이는 글 — 버튼처럼 보이면 안 되므로 옅게 둔다. */
+	.plugin-auto-hint {
 		font-size: 0.8rem;
 		color: var(--text-muted);
 	}

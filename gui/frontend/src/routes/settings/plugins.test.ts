@@ -22,7 +22,9 @@ vi.mock('$lib/api/plugins', () => ({
 		status: () => status(),
 		allow: vi.fn(),
 		revoke: vi.fn(),
-		setTrusted: vi.fn()
+		allowAll: vi.fn(),
+		revokeAll: vi.fn(),
+		setAutoAllow: vi.fn()
 	},
 	pluginsManageable: () => manageable()
 }));
@@ -51,7 +53,7 @@ function plugin(name: string, description: string | null): PluginView {
 }
 
 function statusWith(plugins: PluginView[]): PluginStatus {
-	return { plugins, errors: [], trusted: false, manageable: false, no_guild: false, problems: [] };
+	return { plugins, errors: [], auto_allow: false, manageable: false, no_guild: false, problems: [] };
 }
 
 async function openPluginsTab() {
@@ -112,7 +114,7 @@ describe('BUG-277 버튼 이름은 aria-label 로만 구분한다', () => {
 	});
 
 	function manageableStatus(plugins: PluginView[]): PluginStatus {
-		return { plugins, errors: [], trusted: false, manageable: true, no_guild: false, problems: [] };
+		return { plugins, errors: [], auto_allow: false, manageable: true, no_guild: false, problems: [] };
 	}
 
 	it('보이는 문구에는 이름이 없고, 접근 이름에는 있다', async () => {
@@ -156,51 +158,47 @@ describe('BUG-277 버튼 이름은 aria-label 로만 구분한다', () => {
 	});
 });
 
-// BUG-285: **누를 수 없는 것을 버튼으로 그리지 않는다.**
+// BUG-288: 일괄 조작은 **한 자리에**, 개별 조작은 **언제든.**
 //
-// 길드 전체 허용 중에는 개별 철회가 효과가 없어서 철회 버튼을 막아 뒀는데, 그
-// 이유를 disabled 버튼의 title 툴팁에만 실었다. disabled 요소는 마우스 이벤트를
-// 안 받아 브라우저가 툴팁을 띄우지 않고, 터치 화면에는 툴팁 자체가 없다. admin 은
-// "철회 버튼이 안 눌린다" 고 봤다. 해제 버튼은 목록 맨 아래에 있어 안 보였다.
-describe('BUG-285 전체 허용 중에는 철회 대신 이유를 보여준다', () => {
+// 예전엔 "전부 허용" 이 목록 맨 아래, 해제가 위 안내문에 흩어져 있었고, 둘 다 모드를
+// 켜고 끄는 것이라 켜 둔 동안 개별 철회를 막았다(BUG-285 는 막힌 버튼을 글로 바꿨을
+// 뿐이다). admin: "버튼은 그냥 '전체 해제 / 전체 허용'의 역할만 하고 개별 조작도 그대로
+// 먹히는게 자연스러운 동작 아니냐?"
+describe('BUG-288 전체 허용·전체 해제·자동 허용', () => {
 	beforeEach(() => {
 		status.mockReset();
 		manageable.mockReturnValue(true);
 	});
 
-	function trusted(on: boolean, plugins: PluginView[]): PluginStatus {
-		return { plugins, errors: [], trusted: on, manageable: true, no_guild: false, problems: [] };
+	function withAuto(on: boolean, plugins: PluginView[]): PluginStatus {
+		return { plugins, errors: [], auto_allow: on, manageable: true, no_guild: false, problems: [] };
 	}
 
-	it('신뢰 중이면 죽은 철회 버튼이 없고, 이유가 글로 보인다', async () => {
-		status.mockResolvedValue(trusted(true, [{ ...plugin('tg', null), granted: true }]));
+	it('세 조작이 목록 위 한 줄에 있다', async () => {
+		status.mockResolvedValue(withAuto(false, [{ ...plugin('tg', null), granted: true }]));
 		await openPluginsTab();
 		await screen.findByText('tg');
 
-		const actions = document.querySelector('.plugin-actions')!;
-		// 버튼 모양의 거짓 표시가 없어야 한다 — 비활성이든 아니든.
-		expect(actions.querySelector('button')).toBeNull();
-		// 이유는 **보이는 글**이어야 한다(title 속성이 아니라).
-		expect(actions.querySelector('.plugin-trusted-note')?.textContent?.trim()).toBeTruthy();
+		const bar = document.querySelector('.plugin-bulk')!;
+		expect(bar).not.toBeNull();
+		expect(bar.querySelectorAll('button').length).toBe(2);
+		expect(bar.querySelector('input[type="checkbox"]')).not.toBeNull();
+		// 목록보다 앞에 있다.
+		const list = document.querySelector('.plugin-list')!;
+		expect(bar.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		// 옛 자리의 버튼·글이 남지 않는다.
+		expect(document.querySelector('.plugin-trusted, .plugin-trusted-note, .btn-plain.trust')).toBeNull();
 	});
 
-	it('해제 버튼이 안내문 안에 있다 — 목록 맨 아래가 아니라', async () => {
-		status.mockResolvedValue(trusted(true, [{ ...plugin('tg', null), granted: true }]));
-		await openPluginsTab();
-		await screen.findByText('tg');
-
-		const notice = document.querySelector('.plugin-trusted')!;
-		expect(notice).not.toBeNull();
-		expect(notice.querySelector('button')).not.toBeNull();
-	});
-
-	it('신뢰가 아니면 철회 버튼이 평소대로 눌린다', async () => {
-		status.mockResolvedValue(trusted(false, [{ ...plugin('tg', null), granted: true }]));
+	it('자동 허용 중에도 개별 철회 버튼이 눌린다', async () => {
+		status.mockResolvedValue(withAuto(true, [{ ...plugin('tg', null), granted: true }]));
 		await openPluginsTab();
 		await screen.findByText('tg');
 
 		const btn = document.querySelector('.plugin-actions button') as HTMLButtonElement;
 		expect(btn).not.toBeNull();
 		expect(btn.disabled).toBe(false);
+		const auto = document.querySelector('.plugin-bulk input[type="checkbox"]') as HTMLInputElement;
+		expect(auto.checked).toBe(true);
 	});
 });

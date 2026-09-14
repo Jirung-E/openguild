@@ -81,8 +81,8 @@ pub struct PluginStatus {
     pub plugins: Vec<PluginView>,
     /// 읽거나 검증하다 실패한 것 — `(이름, 이유)`.
     pub errors: Vec<(String, String)>,
-    /// 길드 통째 신뢰가 켜져 있나.
-    pub trusted: bool,
+    /// BUG-288: 자동 허용이 켜져 있나 — 새로 오거나 바뀐 것도 묻지 않고 돈다.
+    pub auto_allow: bool,
     /// 이 경로로 허용/철회까지 할 수 있나. HTTP 로 답할 때는 **항상 false**.
     pub manageable: bool,
     /// DEV-383: 아직 길드를 안 열었나. **문장이 아니라 상태로 넘긴다** — 예전엔
@@ -100,7 +100,7 @@ impl PluginStatus {
         Self {
             plugins: Vec::new(),
             errors: Vec::new(),
-            trusted: false,
+            auto_allow: false,
             manageable: false,
             no_guild: true,
             problems: Vec::new(),
@@ -213,7 +213,7 @@ pub fn status(store: &crate::Store, scope: Scope, manageable: bool) -> AppResult
             .chain(loaded.needs_consent.iter().map(|p| view(p, false, scope)))
             .collect(),
         errors: loaded.errors,
-        trusted: granted.trusted,
+        auto_allow: granted.auto_allow,
         manageable,
         no_guild: false,
         // DEV-381: 여기까지 올려야 사용자가 본다. 예전엔 모아만 두고 아무도

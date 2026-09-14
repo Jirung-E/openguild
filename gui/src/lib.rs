@@ -552,7 +552,9 @@ pub fn run() {
             commands::plugin_status,
             commands::plugin_allow,
             commands::plugin_revoke,
-            commands::plugin_trust,
+            commands::plugin_allow_all,
+            commands::plugin_revoke_all,
+            commands::plugin_set_auto_allow,
             commands::plugin_set_value,
             commands::launch_mode,
             commands::current_guild_path,
@@ -1167,7 +1169,7 @@ mod tests {
         let store = tauri::async_runtime::block_on(Store::open(&dir)).unwrap();
 
         unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
-        openguild_core::plugins::consent::trust_guild(&dir).unwrap();
+        openguild_core::plugins::consent::enable_auto_allow(&dir).unwrap();
         crate::install_plugins_for_gui(&store);
         assert!(!store.events.has_sink(), "CLI 전용 훅인데 GUI 가 집었다");
 
@@ -1199,7 +1201,7 @@ mod tests {
         // 그 자리에 플러그인을 심어 둔다 — /tmp 는 누구나 쓸 수 있다.
         std::fs::create_dir_all(&placeholder).unwrap();
         write_plugin(&placeholder, "planted", "gui");
-        openguild_core::plugins::consent::trust_guild(&placeholder).unwrap();
+        openguild_core::plugins::consent::enable_auto_allow(&placeholder).unwrap();
 
         // 신뢰가 걸려 있어도 **여는 경로가 placeholder 면 안 실린다.**
         let store = tauri::async_runtime::block_on(Store::open_in_memory(&placeholder)).unwrap();
@@ -1231,7 +1233,7 @@ mod tests {
         crate::install_plugins_for_gui(&store);
         assert!(!store.events.has_sink(), "동의 없이 꽂혔다");
 
-        openguild_core::plugins::consent::trust_guild(&dir).unwrap();
+        openguild_core::plugins::consent::enable_auto_allow(&dir).unwrap();
         crate::install_plugins_for_gui(&store);
         assert!(store.events.has_sink());
         unsafe { std::env::remove_var("OPENGUILD_HOME") };

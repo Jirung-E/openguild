@@ -126,14 +126,40 @@ fn changing_the_definition_revokes_consent() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
+/// 옛 파일(신뢰 플래그만 있고 철회 기록이 없음)은 그대로 자동 허용으로 읽히고, 새로 써도
+/// 필드 이름이 안 바뀐다 — 설치된 앱이 같은 파일을 읽는다([[BUG-288]]).
 #[test]
-fn trusting_a_guild_skips_the_question() {
+fn a_legacy_trusted_file_reads_as_auto_allow_and_keeps_its_field_name() {
+    let _guard = env_lock();
+    let home = fresh_tmp("legacy-home");
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let g = fresh_tmp("legacy");
+    write_plugin(&g, "ai-notify", ai_notify(&["cli"]));
+    let key = crate::recents::normalize_abs(&g);
+    std::fs::write(
+        consent::path().unwrap(),
+        serde_json::to_string(&json!({ "guilds": {}, "trusted_guilds": [key] })).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(load_for(&g, Scope::Cli).active.len(), 1);
+
+    consent::revoke(&g, "ai-notify").unwrap();
+    let raw = std::fs::read_to_string(consent::path().unwrap()).unwrap();
+    assert!(raw.contains("\"trusted_guilds\""), "{raw}");
+
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn auto_allow_skips_the_question() {
     let _guard = env_lock();
     let home = fresh_tmp("trust-home");
     unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
     let g = fresh_tmp("trust");
     write_plugin(&g, "ai-notify", ai_notify(&["cli"]));
-    consent::trust_guild(&g).unwrap();
+    consent::enable_auto_allow(&g).unwrap();
     assert_eq!(load_for(&g, Scope::Cli).active.len(), 1);
     unsafe { std::env::remove_var("OPENGUILD_HOME") };
     let _ = std::fs::remove_dir_all(&g);
@@ -150,7 +176,7 @@ fn one_broken_definition_does_not_block_the_rest() {
     std::fs::create_dir_all(plugins_dir(&g).join("broken")).unwrap();
     std::fs::write(plugins_dir(&g).join("broken/plugin.json"), "{ not json").unwrap();
     write_plugin(&g, "ai-notify", ai_notify(&["cli"]));
-    consent::trust_guild(&g).unwrap();
+    consent::enable_auto_allow(&g).unwrap();
 
     let l = load_for(&g, Scope::Cli);
     assert_eq!(l.active.len(), 1, "깨진 이웃 때문에 멀쩡한 것이 안 실렸다");
@@ -371,7 +397,7 @@ fn a_duplicate_plugin_name_is_rejected_not_silently_merged() {
     // 폴더는 둘, 이름은 하나.
     write_plugin(&g, "slack", ai_notify(&["cli"]));
     write_plugin(&g, "slack-staging", ai_notify(&["cli"]));
-    consent::trust_guild(&g).unwrap();
+    consent::enable_auto_allow(&g).unwrap();
 
     let l = load_for(&g, Scope::Cli);
     assert_eq!(l.active.len(), 1, "겹친 이름이 둘 다 실렸다");
@@ -407,7 +433,7 @@ fn a_corrupt_consent_file_is_never_overwritten() {
 
     // 파일이 깨진다(디스크 오류, 손편집, 다른 버전…).
     std::fs::write(&path, "{ 이건 JSON 이 아니다").unwrap();
-    let err = consent::trust_guild(&g).unwrap_err().to_string();
+    let err = consent::enable_auto_allow(&g).unwrap_err().to_string();
     assert!(err.contains("동의가 전부 사라지므로"), "{err}");
     assert_eq!(
         std::fs::read_to_string(&path).unwrap(),
@@ -432,7 +458,7 @@ fn consent_write_leaves_no_temp_file() {
     unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
     let g = fresh_tmp("atomic");
     write_plugin(&g, "ai-notify", ai_notify(&["cli"]));
-    consent::trust_guild(&g).unwrap();
+    consent::enable_auto_allow(&g).unwrap();
 
     let leftovers: Vec<_> = std::fs::read_dir(&home)
         .unwrap()
@@ -484,7 +510,7 @@ fn shipped_examples_all_load() {
         "예제가 {}개뿐이다: {names:?}",
         names.len()
     );
-    consent::trust_guild(&g).unwrap();
+    consent::enable_auto_allow(&g).unwrap();
 
     let l = load_all(&g);
     assert!(
@@ -559,33 +585,121 @@ fn ordinary_words_ending_in_sk_are_not_api_keys() {
     }
 }
 
-/// **신뢰는 되돌릴 수 있어야 한다.** `is_granted` 가 `trusted` 에서 단락되므로,
-/// 끄는 수단이 없으면 개별 철회가 영원히 거짓말을 한다.
+/// 자동 허용 켜기·끄기가 **돌고 있는 것**을 흔들지 않는다([[BUG-288]]).
+///
+/// 끄는 순간 돌던 것이 멈추면 "끄기" 가 "전체 해제" 를 겸한다. 모드는 앞으로 올 것에
+/// 대한 것이다 — 끈 뒤에 **바뀐** 것만 다시 묻는다.
 #[test]
-fn trust_can_be_withdrawn() {
+fn turning_auto_allow_off_keeps_what_runs_and_asks_about_changes() {
     let _guard = env_lock();
     let home = fresh_tmp("untrust-home");
     unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
     let g = fresh_tmp("untrust");
     write_plugin(&g, "ai-notify", ai_notify(&["cli"]));
 
-    consent::trust_guild(&g).unwrap();
+    consent::enable_auto_allow(&g).unwrap();
     assert_eq!(load_for(&g, Scope::Cli).active.len(), 1);
 
-    consent::untrust_guild(&g).unwrap();
-    let after = load_for(&g, Scope::Cli);
-    assert!(after.active.is_empty(), "해제했는데 계속 돈다");
-    assert_eq!(after.needs_consent.len(), 1);
+    consent::disable_auto_allow(&g).unwrap();
+    assert_eq!(load_for(&g, Scope::Cli).active.len(), 1, "끄자마자 돌던 것이 멈췄다");
 
-    // 해제해도 개별 동의는 남는다.
-    consent::grant(&g, &after.needs_consent[0]).unwrap();
-    consent::trust_guild(&g).unwrap();
-    consent::untrust_guild(&g).unwrap();
-    assert_eq!(
-        load_for(&g, Scope::Cli).active.len(),
-        1,
-        "신뢰 해제가 개별 동의까지 지웠다"
+    // 끈 뒤에 정의가 바뀌면 다시 묻는다.
+    write_plugin(
+        &g,
+        "ai-notify",
+        json!({
+            "name": "ai-notify",
+            "on": ["quest.created"],
+            "scope": ["cli"],
+            "action": { "post": { "url": "https://example.test/other" } }
+        }),
     );
+    let after = load_for(&g, Scope::Cli);
+    assert!(after.active.is_empty(), "자동 허용을 껐는데 바뀐 것이 그대로 돈다");
+
+    // 다시 켜면 바뀐 것도 돈다.
+    consent::enable_auto_allow(&g).unwrap();
+    assert_eq!(load_for(&g, Scope::Cli).active.len(), 1);
+
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// **자동 허용 중에도 개별 철회가 먹는다**([[BUG-288]]). 예전엔 신뢰 플래그가 판정 맨
+/// 앞에서 단락돼, 철회해도 계속 돌았다(화면은 버튼을 막는 것으로 얼버무렸다).
+#[test]
+fn revoke_wins_over_auto_allow_and_allow_undoes_it() {
+    let _guard = env_lock();
+    let home = fresh_tmp("deny-home");
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let g = fresh_tmp("deny");
+    write_plugin(&g, "ai-notify", ai_notify(&["cli"]));
+    write_plugin(&g, "other", json!({
+        "name": "other",
+        "on": ["quest.created"],
+        "scope": ["cli"],
+        "action": { "post": { "url": "https://example.test/other" } }
+    }));
+    consent::enable_auto_allow(&g).unwrap();
+    assert_eq!(load_for(&g, Scope::Cli).active.len(), 2);
+
+    consent::revoke(&g, "ai-notify").unwrap();
+    let l = load_for(&g, Scope::Cli);
+    let names = |v: &[Plugin]| v.iter().map(|p| p.def.name.clone()).collect::<Vec<_>>();
+    assert_eq!(names(&l.active), vec!["other"], "자동 허용이 철회를 덮었다");
+    assert_eq!(names(&l.needs_consent), vec!["ai-notify"]);
+
+    // 끄고 켜도 철회는 남는다.
+    consent::disable_auto_allow(&g).unwrap();
+    consent::enable_auto_allow(&g).unwrap();
+    assert_eq!(names(&load_for(&g, Scope::Cli).active), vec!["other"]);
+
+    consent::grant(&g, &load_for(&g, Scope::Cli).needs_consent[0]).unwrap();
+    assert_eq!(load_for(&g, Scope::Cli).active.len(), 2, "다시 허용했는데 안 돈다");
+
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 전체 허용·전체 해제는 **모드가 아니다** — 지금 있는 것들의 개별 상태를 한 번에
+/// 바꿀 뿐이라, 그 뒤 개별 조작이 그대로 먹고 새로 온 것은 묻는다([[BUG-288]]).
+#[test]
+fn allow_all_and_revoke_all_are_bulk_edits_not_modes() {
+    let _guard = env_lock();
+    let home = fresh_tmp("bulk-home");
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let g = fresh_tmp("bulk");
+    write_plugin(&g, "ai-notify", ai_notify(&["cli"]));
+    write_plugin(&g, "other", json!({
+        "name": "other",
+        "on": ["quest.created"],
+        "scope": ["cli"],
+        "action": { "post": { "url": "https://example.test/other" } }
+    }));
+
+    let l = load_for(&g, Scope::Cli);
+    consent::grant_all(&g, &l.needs_consent.iter().collect::<Vec<_>>()).unwrap();
+    assert_eq!(load_for(&g, Scope::Cli).active.len(), 2);
+
+    consent::revoke(&g, "other").unwrap();
+    assert_eq!(load_for(&g, Scope::Cli).active.len(), 1, "전체 허용 뒤 개별 철회가 안 먹는다");
+
+    write_plugin(&g, "newcomer", json!({
+        "name": "newcomer",
+        "on": ["quest.created"],
+        "scope": ["cli"],
+        "action": { "post": { "url": "https://example.test/new" } }
+    }));
+    let l = load_for(&g, Scope::Cli);
+    assert!(l.needs_consent.iter().any(|p| p.def.name == "newcomer"), "전체 허용이 앞으로 올 것까지 허용했다");
+
+    consent::revoke_all(&g, &["ai-notify", "other", "newcomer"]).unwrap();
+    assert!(load_for(&g, Scope::Cli).active.is_empty());
+    let l = load_for(&g, Scope::Cli);
+    consent::grant(&g, l.needs_consent.iter().find(|p| p.def.name == "other").unwrap()).unwrap();
+    assert_eq!(load_for(&g, Scope::Cli).active.len(), 1, "전체 해제 뒤 개별 허용이 안 먹는다");
 
     unsafe { std::env::remove_var("OPENGUILD_HOME") };
     let _ = std::fs::remove_dir_all(&g);
@@ -623,7 +737,7 @@ fn a_secret_in_the_script_blocks_the_plugin() {
         "t.rhai",
         r#"fn payload(e) { #{ token: "xoxb-1234567890abcdef" } }"#,
     );
-    consent::trust_guild(&g).unwrap();
+    consent::enable_auto_allow(&g).unwrap();
 
     let l = load_for(&g, Scope::Cli);
     assert!(l.active.is_empty(), "스크립트 안의 토큰이 통과했다");
@@ -706,7 +820,7 @@ fn a_broken_script_stops_that_plugin_at_load() {
         v["name"] = json!("plain");
         v
     });
-    consent::trust_guild(&g).unwrap();
+    consent::enable_auto_allow(&g).unwrap();
 
     let l = load_for(&g, Scope::Cli);
     assert_eq!(
@@ -732,7 +846,7 @@ fn a_missing_script_stops_that_plugin() {
     unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
     let g = fresh_tmp("noscript");
     write_plugin(&g, "ai-notify", with_script(&["cli"], "gone.rhai"));
-    consent::trust_guild(&g).unwrap();
+    consent::enable_auto_allow(&g).unwrap();
 
     let l = load_for(&g, Scope::Cli);
     assert!(l.active.is_empty());
@@ -839,7 +953,7 @@ async fn loaded_plugin_receives_real_events() {
     let loaded = {
         let _guard = env_lock();
         unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
-        consent::trust_guild(&g).unwrap();
+        consent::enable_auto_allow(&g).unwrap();
         let loaded = store.install_plugins(Scope::Cli, rec.clone());
         unsafe { std::env::remove_var("OPENGUILD_HOME") };
         loaded
@@ -885,7 +999,7 @@ async fn no_active_plugin_means_no_sink() {
     let loaded = {
         let _guard = env_lock();
         unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
-        consent::trust_guild(&g).unwrap();
+        consent::enable_auto_allow(&g).unwrap();
         let loaded = store.install_plugins(Scope::Cli, std::sync::Arc::new(runtime::DropDelivery));
         unsafe { std::env::remove_var("OPENGUILD_HOME") };
         loaded

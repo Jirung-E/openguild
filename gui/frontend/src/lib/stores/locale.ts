@@ -177,13 +177,25 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		ko: '조회만 가능합니다. 허용·철회는 그 길드가 있는 기계의 데스크톱 앱이나 `openguild plugin allow` 로 합니다 — 동의는 기계마다 따로 남습니다.',
 		en: 'Read-only here. Allow/revoke from the desktop app on the machine that holds this guild, or with `openguild plugin allow` — consent is per-machine.'
 	},
-	'settings.pluginUntrust': { ko: '길드 전체 허용 해제', en: 'Stop trusting this guild' },
 	'settings.pluginAllow': { ko: '허용', en: 'Allow' },
 	'settings.pluginRevoke': { ko: '철회', en: 'Revoke' },
-	'settings.pluginTrust': { ko: '이 길드를 전부 허용', en: 'Trust this guild' },
-	'settings.pluginTrustConfirm': {
-		ko: '이 길드에 앞으로 추가되는 플러그인까지 전부, 묻지 않고 돌게 됩니다. 계속할까요?',
-		en: 'Every plugin in this guild — including ones added later — will run without asking. Continue?'
+	// BUG-288: 전체 허용·전체 해제는 지금 있는 것들의 개별 상태를 한 번에 바꾼다.
+	// 앞으로 올 것을 묻지 않는 것은 자동 허용이 따로 맡는다.
+	'settings.pluginAllowAll': { ko: '전체 허용', en: 'Allow all' },
+	'settings.pluginRevokeAll': { ko: '전체 해제', en: 'Revoke all' },
+	'settings.pluginAllowAllConfirm': {
+		ko: '지금 목록에 있는 플러그인을 전부 이 기계에서 돌리게 됩니다. 계속할까요?',
+		en: 'Every plugin currently listed will run on this machine. Continue?'
+	},
+	'settings.pluginAutoAllow': { ko: '자동 허용', en: 'Auto-allow' },
+	'settings.pluginAutoAllowOn': { ko: '자동 허용 켜기', en: 'Turn on auto-allow' },
+	'settings.pluginAutoAllowHint': {
+		ko: '새로 추가되거나 바뀐 플러그인도 묻지 않고 돕니다 (직접 철회한 것은 제외)',
+		en: 'New or changed plugins run without asking (except ones you revoked)'
+	},
+	'settings.pluginAutoAllowConfirm': {
+		ko: '앞으로 이 길드에 추가되거나 git 으로 바뀌어 오는 플러그인까지, 묻지 않고 돌게 됩니다. 직접 철회한 것은 계속 안 돕니다. 계속할까요?',
+		en: 'Plugins added to this guild later, or changed via git, will run without asking. Ones you revoked stay off. Continue?'
 	},
 	'settings.pluginPending': { ko: '동의 대기 — 안 돕니다', en: 'Awaiting consent — not running' },
 	'settings.pluginRunning': { ko: '돌고 있음', en: 'Running' },
@@ -225,24 +237,14 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		ko: '값은 이 컴퓨터의 ~/.openguild/plugin-values.json 에 평문으로 저장됩니다. git 에는 올라가지 않습니다.',
 		en: 'Values are stored in plain text at ~/.openguild/plugin-values.json on this machine. They are never committed to git.'
 	},
-	// DEV-384: 신뢰 중에는 "허용 전에는 안 돕니다" 가 바로 밑 배너와 어긋난다.
-	'settings.pluginsIntroTrusted': {
+	// DEV-384: 자동 허용 중에는 "허용 전에는 안 돕니다" 가 사실이 아니다.
+	'settings.pluginsIntroAuto': {
 		ko: '플러그인 정의는 .guild/plugins/ 에 있고 git 으로 공유됩니다. 동의는 이 기계에만 남습니다.',
 		en: 'Plugin definitions live in .guild/plugins/ and are shared via git. Consent stays on this machine.'
 	},
 	'settings.pluginRetry': { ko: '다시 시도', en: 'Retry' },
 	'settings.pluginAllowed': { ko: '허용했습니다', en: 'Allowed' },
 	'settings.pluginRevoked': { ko: '철회했습니다', en: 'Revoked' },
-	// BUG-285: 신뢰 중에는 철회 버튼 대신 이 글을 둔다 — disabled 버튼의 title 은
-	// 브라우저가 띄우지 않아 설명이 안 보였다.
-	'settings.pluginRevokeBlockedByTrust': {
-		ko: '전체 허용 중 — 개별 철회 불가',
-		en: 'Guild trusted — cannot revoke individually'
-	},
-	'settings.pluginTrustedRevokeBlocked': {
-		ko: '이 길드는 전부 허용돼 있어 개별 철회가 되지 않습니다. 끄려면 전체 허용을 먼저 해제하세요.',
-		en: 'This guild is fully trusted, so individual plugins cannot be revoked. Stop trusting the guild first.'
-	},
 
 	'settings.editorHeading': { ko: '편집기', en: 'Editor' },
 	'settings.tabBehavior': { ko: 'Tab 동작', en: 'Tab behavior' },

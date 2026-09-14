@@ -42,7 +42,9 @@ describe('플러그인 조회/관리의 경계', () => {
 		// 조용히 no-op 이면 "허용 눌렀는데 안 도네" 로 이어진다.
 		await expect(pluginApi.allow('x')).rejects.toThrow(/local guild/);
 		await expect(pluginApi.revoke('x')).rejects.toThrow(/local guild/);
-		await expect(pluginApi.setTrusted(true)).rejects.toThrow(/local guild/);
+		await expect(pluginApi.setAutoAllow(true)).rejects.toThrow(/local guild/);
+		await expect(pluginApi.allowAll()).rejects.toThrow(/local guild/);
+		await expect(pluginApi.revokeAll()).rejects.toThrow(/local guild/);
 
 		w.__TAURI_INTERNALS__ = {};
 		setRemoteServerUrl('http://box:3000');
@@ -55,7 +57,7 @@ describe('플러그인 조회/관리의 경계', () => {
 		const body = {
 			plugins: [],
 			errors: [],
-			trusted: false,
+			auto_allow: false,
 			manageable: false,
 			no_guild: true,
 			problems: []
@@ -113,7 +115,7 @@ describe('플러그인 조회/관리의 경계', () => {
 				}
 			],
 			errors: [],
-			trusted: false,
+			auto_allow: false,
 			manageable: false,
 			no_guild: false,
 			problems: []
@@ -140,7 +142,7 @@ describe('플러그인 조회/관리의 경계', () => {
 		const body = {
 			plugins: [],
 			errors: [],
-			trusted: false,
+			auto_allow: false,
 			manageable: false,
 			no_guild: false,
 			problems: []

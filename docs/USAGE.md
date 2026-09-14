@@ -216,9 +216,16 @@ openguild campaign link C-001 DEV-001
 openguild plugin list                    # 무엇이 돌고 무엇이 대기 중인지
 openguild plugin allow ai-notify         # 무엇에 동의하는지 내용만 보여줌
 openguild plugin allow ai-notify --yes   # 실제로 허용
-openguild plugin trust --yes             # 혼자 쓰는 길드면 통째로 허용
-openguild plugin untrust                 # 되돌리기 (개별 동의는 남음)
+openguild plugin revoke ai-notify        # 철회 — 다시 허용할 때까지 안 돎
+openguild plugin allow --all --yes       # 지금 있는 것 전부 허용
+openguild plugin revoke --all            # 지금 있는 것 전부 철회
+openguild plugin trust --yes             # 자동 허용 켜기 — 새로 오거나 바뀐 것도 묻지 않음
+openguild plugin untrust                 # 자동 허용 끄기 — 돌던 것은 그대로
 ```
+
+전체 허용·전체 해제는 **지금 있는 것들의 상태를 한 번에 바꿀 뿐**이라, 그 뒤에도
+하나씩 허용·철회할 수 있습니다. 앞으로 추가되거나 git 으로 바뀌어 오는 플러그인까지
+묻지 않으려면 **자동 허용**을 켭니다 — 켜 둔 동안에도 직접 철회한 것은 안 돕니다.
 
 데스크톱 앱에서는 **설정 → 플러그인** 에서 같은 일을 합니다.
 

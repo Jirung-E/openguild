@@ -101,13 +101,16 @@ openguild plugin list                 # running / awaiting consent / broken
 openguild plugin allow ai-notify      # shows the definition + script, grants nothing
 openguild plugin allow ai-notify --yes
 openguild plugin revoke ai-notify
-openguild plugin trust --yes          # solo guild: allow everything, now and later
-openguild plugin untrust              # undo that — per-plugin consent remains
+openguild plugin allow --all --yes    # every plugin present now (later ones still ask)
+openguild plugin revoke --all         # every plugin present now
+openguild plugin trust --yes          # auto-allow on: new or changed plugins run without asking
+openguild plugin untrust              # auto-allow off: what runs keeps running, later changes ask
 openguild plugin events
 ```
 
-While a guild is trusted, per-plugin `revoke` has no effect (`trusted` short-circuits
-the check) — the CLI says so instead of reporting a silent success. Run `untrust` first.
+`allow --all` / `revoke --all` are bulk edits, not modes — per-plugin `allow`/`revoke`
+still work afterwards. Auto-allow (`trust`) covers plugins added or changed later, but
+a plugin you revoked stays off even while it is on.
 
 `allow` without `--yes` only prints what you would be consenting to. Consent is
 recorded against the definition **and every file in the plugin folder**, so

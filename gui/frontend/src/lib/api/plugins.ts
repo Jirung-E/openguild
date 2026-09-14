@@ -79,7 +79,8 @@ export interface PluginInput {
 export interface PluginStatus {
 	plugins: PluginView[];
 	errors: [string, string][];
-	trusted: boolean;
+	/** BUG-288: 자동 허용 — 새로 오거나 바뀐 플러그인도 묻지 않고 돈다(직접 철회한 것은 빼고). */
+	auto_allow: boolean;
 	/** 이 경로로 허용/철회까지 되나. HTTP 로 받은 답이면 항상 false. */
 	manageable: boolean;
 	/** 아직 길드를 안 열었나. 문구는 프런트가 자기 언어로 만든다. */
@@ -107,7 +108,11 @@ export const pluginApi = {
 	status: () => api.get<PluginStatus>('/api/plugins'),
 	allow: (name: string) => manage('plugin_allow', { name }),
 	revoke: (name: string) => manage('plugin_revoke', { name }),
-	setTrusted: (on: boolean) => manage('plugin_trust', { on }),
+	/** BUG-288: 전체 허용·전체 해제는 모드가 아니다 — 지금 있는 것들의 개별 상태를 한 번에 바꾼다. */
+	allowAll: () => manage('plugin_allow_all'),
+	revokeAll: () => manage('plugin_revoke_all'),
+	/** BUG-288: 자동 허용 켜기/끄기. 끄면 지금 돌던 것은 그대로 돈다. */
+	setAutoAllow: (on: boolean) => manage('plugin_set_auto_allow', { on }),
 	/**
 	 * REQ-021: 설정값 저장. `null` 이면 지운다 — 정의의 기본값이나 환경변수로
 	 * 되돌아간다("비우기" 와 "빈 문자열을 저장" 은 다른 일이다).

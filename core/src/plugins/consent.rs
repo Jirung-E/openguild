@@ -38,9 +38,19 @@ pub struct ConsentFile {
     /// 길드 경로 → (플러그인 이름 → 동의한 정의 원문).
     #[serde(default)]
     pub guilds: BTreeMap<String, BTreeMap<String, serde_json::Value>>,
-    /// "이 길드는 다 허용" — 혼자 쓰는 길드에서 매번 묻는 건 성가시다.
+    /// 자동 허용 중인 길드 — 새로 오거나 바뀐 플러그인도 묻지 않고 돈다. 혼자 쓰는
+    /// 길드에서 매번 묻는 건 성가시다.
+    ///
+    /// BUG-288: 뜻은 "통째 신뢰" 에서 "자동 허용" 으로 바뀌었지만 **파일 필드 이름은
+    /// 그대로 둔다** — 설치된 앱과 개발 빌드가 같은 파일을 읽는다.
     #[serde(default)]
     pub trusted_guilds: Vec<String>,
+    /// BUG-288: 길드 경로 → 사용자가 **직접 철회한** 플러그인 이름.
+    ///
+    /// 철회를 "동의 지우기" 로만 남기면, 자동 허용이 그 자리에서 다시 살려 버린다
+    /// (예전 "전체 허용 중 개별 철회 불가" 가 정확히 그 모양이었다).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub denied: BTreeMap<String, std::collections::BTreeSet<String>>,
 }
 
 /// 이 기계의 동의 파일 경로.
@@ -66,16 +76,20 @@ pub fn load(guild_root: &Path) -> AppResult<Granted> {
         .unwrap_or_default();
     let key = guild_key(guild_root);
     Ok(Granted {
-        trusted: file.trusted_guilds.contains(&key),
+        auto_allow: file.trusted_guilds.contains(&key),
         entries: file.guilds.get(&key).cloned().unwrap_or_default(),
+        denied: file.denied.get(&key).cloned().unwrap_or_default(),
     })
 }
 
 /// 한 길드에 대한 동의 상태.
 #[derive(Debug, Default, Clone)]
 pub struct Granted {
-    pub trusted: bool,
+    /// 자동 허용 — 동의 기록이 없거나 옛 지문이어도 돈다. 직접 철회한 것은 빼고.
+    pub auto_allow: bool,
     pub entries: BTreeMap<String, serde_json::Value>,
+    /// 직접 철회한 것. 자동 허용보다 **먼저** 본다.
+    pub denied: std::collections::BTreeSet<String>,
 }
 
 /// 동의 대상을 비교용으로 정규화 — 필드 순서에 흔들리지 않게 한다.
@@ -93,29 +107,67 @@ pub fn fingerprint(def: &PluginDef, folder: &BTreeMap<String, String>) -> serde_
 /// **정의나 스크립트가 바뀌면 false 다** — 어제 동의한 것이 오늘 다른 URL 로
 /// 보내거나 다른 내용을 실어 보내고 있을 수 있다. 그게 이 파일이 원문을 들고
 /// 있는 이유다.
+///
+/// 판정 순서(BUG-288): **직접 철회 → 지금 모양에 대한 동의 → 자동 허용.** 예전엔
+/// 자동 허용(당시 "신뢰")이 맨 앞이라 개별 철회가 아무 일도 안 했다.
 pub fn is_granted(granted: &Granted, plugin: &super::Plugin) -> bool {
-    if granted.trusted {
+    if granted.denied.contains(&plugin.def.name) {
+        return false;
+    }
+    if granted.entries.get(&plugin.def.name) == Some(&fingerprint(&plugin.def, &plugin.folder)) {
         return true;
     }
-    granted.entries.get(&plugin.def.name) == Some(&fingerprint(&plugin.def, &plugin.folder))
+    granted.auto_allow
 }
 
 /// 동의를 남긴다. 호출자(컴포넌트)가 사용자에게 물어본 **뒤에** 부른다 —
 /// 코어는 묻지 않는다(CLI 는 비대화형일 수 있고, GUI 는 대화상자가 있다).
 pub fn grant(guild_root: &Path, plugin: &super::Plugin) -> AppResult<()> {
+    grant_all(guild_root, &[plugin])
+}
+
+/// BUG-288: 여럿을 한 번에 허용 — 파일을 한 번만 쓴다. "전체 허용" 버튼이 이것이다.
+/// **모드가 아니다** — 지금 있는 것들에 개별 동의를 남길 뿐이라, 그 뒤 개별 철회가 먹는다.
+pub fn grant_all(guild_root: &Path, plugins: &[&super::Plugin]) -> AppResult<()> {
     update(|file| {
-        file.guilds
-            .entry(guild_key(guild_root))
-            .or_default()
-            .insert(
-                plugin.def.name.clone(),
-                fingerprint(&plugin.def, &plugin.folder),
-            );
+        let key = guild_key(guild_root);
+        let entries = file.guilds.entry(key.clone()).or_default();
+        for p in plugins {
+            entries.insert(p.def.name.clone(), fingerprint(&p.def, &p.folder));
+        }
+        if let Some(d) = file.denied.get_mut(&key) {
+            for p in plugins {
+                d.remove(&p.def.name);
+            }
+            if d.is_empty() {
+                file.denied.remove(&key);
+            }
+        }
     })
 }
 
-/// 이 길드의 플러그인을 전부 허용.
-pub fn trust_guild(guild_root: &Path) -> AppResult<()> {
+/// 동의 철회 — 동의를 지우고 **철회했다는 사실을 남긴다**(자동 허용이 되살리지 않게).
+pub fn revoke(guild_root: &Path, name: &str) -> AppResult<()> {
+    revoke_all(guild_root, &[name])
+}
+
+/// BUG-288: 여럿을 한 번에 철회. "전체 해제" 버튼이 이것이다.
+pub fn revoke_all(guild_root: &Path, names: &[&str]) -> AppResult<()> {
+    update(|file| {
+        let key = guild_key(guild_root);
+        if let Some(m) = file.guilds.get_mut(&key) {
+            for n in names {
+                m.remove(*n);
+            }
+        }
+        let d = file.denied.entry(key).or_default();
+        d.extend(names.iter().map(|n| n.to_string()));
+    })
+}
+
+/// BUG-288: 자동 허용 켜기 — 새로 오거나 바뀐 플러그인도 묻지 않고 돈다.
+/// 직접 철회한 것은 계속 안 돈다.
+pub fn enable_auto_allow(guild_root: &Path) -> AppResult<()> {
     update(|file| {
         let key = guild_key(guild_root);
         if !file.trusted_guilds.contains(&key) {
@@ -124,22 +176,22 @@ pub fn trust_guild(guild_root: &Path) -> AppResult<()> {
     })
 }
 
-/// DEV-380: 길드 통째 신뢰 해제. **`trust_guild` 에 되돌리기가 없었다** —
-/// `is_granted` 가 `trusted` 에서 단락되므로, 신뢰를 켠 뒤에는 개별 철회가
-/// 아무 일도 안 하고 그걸 끌 수단도 없었다.
-pub fn untrust_guild(guild_root: &Path) -> AppResult<()> {
+/// BUG-288: 자동 허용 끄기 — **지금 돌던 것은 그대로 돈다.** 모드는 앞으로 올 것에
+/// 대한 것이라, 끄는 순간 돌던 것이 멈추면 "끄기" 가 "전체 해제" 를 겸하게 된다.
+/// 그래서 자동 허용 덕에 돌던 것들의 지금 모양을 개별 동의로 굳힌 뒤 끈다. 그 뒤에
+/// 바뀌거나 새로 온 것은 다시 묻는다.
+pub fn disable_auto_allow(guild_root: &Path) -> AppResult<()> {
+    let loaded = super::load_all(guild_root);
     update(|file| {
         let key = guild_key(guild_root);
-        file.trusted_guilds.retain(|k| k != &key);
-    })
-}
-
-/// 동의 철회 — 이름을 지운다.
-pub fn revoke(guild_root: &Path, name: &str) -> AppResult<()> {
-    update(|file| {
-        if let Some(m) = file.guilds.get_mut(&guild_key(guild_root)) {
-            m.remove(name);
+        let entries = file.guilds.entry(key.clone()).or_default();
+        for p in &loaded.active {
+            entries.insert(p.def.name.clone(), fingerprint(&p.def, &p.folder));
         }
+        if entries.is_empty() {
+            file.guilds.remove(&key);
+        }
+        file.trusted_guilds.retain(|k| k != &key);
     })
 }
 

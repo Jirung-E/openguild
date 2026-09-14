@@ -77,7 +77,7 @@ async fn the_server_only_picks_up_server_scoped_plugins() {
     let loaded = {
         let _guard = L.lock().unwrap_or_else(|e| e.into_inner());
         unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
-        openguild_core::plugins::consent::trust_guild(&dir).unwrap();
+        openguild_core::plugins::consent::enable_auto_allow(&dir).unwrap();
         let loaded = store.install_plugins(
             openguild_core::plugins::Scope::Server,
             std::sync::Arc::new(openguild_core::plugins::runtime::DropDelivery),
