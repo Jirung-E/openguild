@@ -9,6 +9,10 @@
   태그도 함께 보여준다(0 회).
 
   집계는 클라이언트 사이드 — 검색 팔레트와 동일하게 각 타입의 list API 병합.
+
+  DEV-392: 태그 **정의 편집**(만들기 · 색 · 설명 · 삭제)도 여기서 한다. 예전엔 관리 페이지에
+  따로 있어서, 여기서 본 색을 바꾸려면 관리 페이지로 가야 했다. 같은 대상을 두 화면이
+  나눠 갖지 않게 합쳤다.
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
@@ -16,6 +20,9 @@
 	import { rulesApi } from '$lib/api/rules';
 	import { libraryApi } from '$lib/api/library';
 	import { adminApi } from '$lib/api/admin';
+	import { locale, t } from '$lib/stores/locale';
+	import { showToast } from '$lib/stores/toast';
+	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 
 	type Kind = 'quest' | 'rule' | 'book';
 	interface Doc {
@@ -26,16 +33,34 @@
 	}
 	interface TagRow {
 		tag: string;
+		/** 정의 파일이 있나 — 색이 비어 있어도 정의일 수 있다. */
+		defined: boolean;
 		color: string | null;
+		description: string;
 		docs: Doc[];
 	}
 
-	const KIND_LABEL: Record<Kind, string> = { quest: '퀘스트', rule: '규칙', book: '도서관' };
+	const KIND_KEY: Record<Kind, string> = {
+		quest: 'tags.kindQuest',
+		rule: 'tags.kindRule',
+		book: 'tags.kindBook'
+	};
+	const DEFAULT_COLOR = '#7bb87f';
+	/** 코어 `validate_tag_slug` 와 같은 규칙. 예전 관리 화면은 `-` 를 빼먹어 코어가 받는 이름을 거절했다. */
+	const SLUG_RE = /^[a-z0-9_-]{1,32}$/;
 
 	let rows = $state<TagRow[]>([]);
 	let loading = $state(true);
 	let filter = $state('');
 	let expanded = $state<string | null>(null);
+
+	// 편집 — 한 번에 한 줄. `null` 이면 닫힘, `''` 이면 새 정의.
+	let editing = $state<string | null>(null);
+	let editSlug = $state('');
+	let editColor = $state(DEFAULT_COLOR);
+	let editDescription = $state('');
+	let busy = $state(false);
+	let confirmDelete = $state<TagRow | null>(null);
 
 	onMount(() => void load());
 
@@ -53,17 +78,22 @@
 			const ensure = (tag: string): TagRow => {
 				let r = map.get(tag);
 				if (!r) {
-					r = { tag, color: null, docs: [] };
+					r = { tag, defined: false, color: null, description: '', docs: [] };
 					map.set(tag, r);
 				}
 				return r;
 			};
 
-			for (const d of defs) ensure(d.slug).color = d.color;
+			for (const d of defs) {
+				const r = ensure(d.slug);
+				r.defined = true;
+				r.color = d.color || null;
+				r.description = d.description ?? '';
+			}
 
 			for (const q of quests) {
-				for (const t of q.tags ?? []) {
-					ensure(t).docs.push({
+				for (const tag of q.tags ?? []) {
+					ensure(tag).docs.push({
 						kind: 'quest',
 						label: q.quest_id,
 						title: q.title,
@@ -76,8 +106,8 @@
 				}
 			}
 			for (const r of rules.entries) {
-				for (const t of r.tags ?? []) {
-					ensure(t).docs.push({
+				for (const tag of r.tags ?? []) {
+					ensure(tag).docs.push({
 						kind: 'rule',
 						label: r.slug,
 						title: r.slug,
@@ -86,8 +116,8 @@
 				}
 			}
 			for (const b of books) {
-				for (const t of b.tags ?? []) {
-					ensure(t).docs.push({
+				for (const tag of b.tags ?? []) {
+					ensure(tag).docs.push({
 						kind: 'book',
 						label: b.book_id,
 						title: b.title,
@@ -108,47 +138,169 @@
 	const shown = $derived.by(() => {
 		const q = filter.trim().toLowerCase();
 		if (!q) return rows;
-		return rows.filter((r) => r.tag.toLowerCase().includes(q));
+		return rows.filter(
+			(r) => r.tag.toLowerCase().includes(q) || r.description.toLowerCase().includes(q)
+		);
 	});
 
 	function toggle(tag: string) {
 		expanded = expanded === tag ? null : tag;
 	}
+
+	function startCreate() {
+		editing = '';
+		editSlug = '';
+		editColor = DEFAULT_COLOR;
+		editDescription = '';
+	}
+
+	/** 정의가 있으면 고치고, 쓰이기만 하는 태그면 그 이름으로 정의를 만든다. */
+	function startEdit(r: TagRow) {
+		editing = r.tag;
+		editSlug = r.tag;
+		editColor = r.color || DEFAULT_COLOR;
+		editDescription = r.description;
+	}
+
+	async function save() {
+		const slug = (editing === '' ? editSlug.trim().toLowerCase() : editing) ?? '';
+		if (!SLUG_RE.test(slug)) {
+			showToast(t('tags.slugPattern', $locale), 'error');
+			return;
+		}
+		busy = true;
+		try {
+			await adminApi.upsertTagDef({ slug, color: editColor, description: editDescription.trim() });
+			editing = null;
+			await load();
+			showToast(t('tags.saved', $locale), 'success');
+		} catch (e) {
+			showToast(`${t('tags.saveFailed', $locale)}: ${e instanceof Error ? e.message : e}`, 'error');
+		} finally {
+			busy = false;
+		}
+	}
+
+	async function doDelete() {
+		const target = confirmDelete;
+		confirmDelete = null;
+		if (!target) return;
+		busy = true;
+		try {
+			await adminApi.deleteTagDef(target.tag);
+			await load();
+			showToast(t('tags.deleted', $locale), 'success');
+		} catch (e) {
+			showToast(`${t('tags.deleteFailed', $locale)}: ${e instanceof Error ? e.message : e}`, 'error');
+		} finally {
+			busy = false;
+		}
+	}
 </script>
+
+{#snippet editor()}
+	<div class="editor">
+		{#if editing === ''}
+			<input
+				class="slug"
+				type="text"
+				bind:value={editSlug}
+				placeholder={t('tags.slugPlaceholder', $locale)}
+				aria-label={t('tags.slug', $locale)}
+				maxlength="32"
+				spellcheck="false"
+				disabled={busy}
+			/>
+		{/if}
+		<input
+			type="color"
+			bind:value={editColor}
+			aria-label={t('tags.color', $locale)}
+			disabled={busy}
+		/>
+		<input
+			class="desc-input"
+			type="text"
+			bind:value={editDescription}
+			placeholder={t('tags.descPlaceholder', $locale)}
+			aria-label={t('tags.description', $locale)}
+			maxlength="200"
+			disabled={busy}
+		/>
+		<button class="btn save" onclick={save} disabled={busy}>{t('common.save', $locale)}</button>
+		<button class="btn" onclick={() => (editing = null)} disabled={busy}
+			>{t('common.cancel', $locale)}</button
+		>
+	</div>
+{/snippet}
 
 <div class="wrap">
 	<header>
-		<h1>태그 목록</h1>
-		<span class="count">{rows.length}개 태그</span>
-		<input class="filter" bind:value={filter} placeholder="태그 검색…" spellcheck="false" />
+		<h1>{t('tags.title', $locale)}</h1>
+		<span class="count">{t('tags.count', $locale).replace('{n}', String(rows.length))}</span>
+		<input
+			class="filter"
+			bind:value={filter}
+			placeholder={t('tags.filterPlaceholder', $locale)}
+			spellcheck="false"
+		/>
+		<button class="btn" onclick={startCreate} disabled={busy || editing === ''}
+			>{t('tags.newDef', $locale)}</button
+		>
 	</header>
-
+	<p class="intro">{t('tags.intro', $locale)}</p>
+	{#if editing === ''}
+		<div class="tag-item new">{@render editor()}</div>
+	{/if}
 	{#if loading}
-		<p class="empty">불러오는 중…</p>
+		<p class="empty">{t('tags.loading', $locale)}</p>
 	{:else if shown.length === 0}
-		<p class="empty">태그 없음</p>
+		<p class="empty">{t('tags.empty', $locale)}</p>
 	{:else}
 		<ul class="tags">
 			{#each shown as r (r.tag)}
 				<li class="tag-item">
-					<button class="tag-head" onclick={() => toggle(r.tag)} aria-expanded={expanded === r.tag}>
-						<span
-							class="chip"
-							style={r.color ? `--chip:${r.color}` : ''}
-							class:defined={!!r.color}>#{r.tag}</span
-						>
-						<span class="usage">{r.docs.length}</span>
-						<span class="chev" class:open={expanded === r.tag}>›</span>
-					</button>
+					<div class="tag-row">
+						<button class="tag-head" onclick={() => toggle(r.tag)} aria-expanded={expanded === r.tag}>
+							<span
+								class="chip"
+								style={r.color ? `--chip:${r.color}` : ''}
+								class:defined={!!r.color}>#{r.tag}</span
+							>
+							<span class="usage">{r.docs.length}</span>
+							{#if r.description}
+								<span class="tag-desc">{r.description}</span>
+							{/if}
+							<span class="chev" class:open={expanded === r.tag}>›</span>
+						</button>
+						<div class="row-actions">
+							{#if r.defined}
+								<button class="btn" onclick={() => startEdit(r)} disabled={busy}
+									>{t('tags.edit', $locale)}</button
+								>
+								<button class="btn danger" onclick={() => (confirmDelete = r)} disabled={busy}
+									>{t('tags.delete', $locale)}</button
+								>
+							{:else if SLUG_RE.test(r.tag)}
+								<!-- 색을 주려면 정의가 있어야 한다 — 쓰이기만 하는 태그에서 바로 만든다. -->
+								<button class="btn" onclick={() => startEdit(r)} disabled={busy}
+									>{t('tags.define', $locale)}</button
+								>
+							{/if}
+						</div>
+					</div>
+					{#if editing === r.tag}
+						{@render editor()}
+					{/if}
 					{#if expanded === r.tag}
 						<ul class="docs">
 							{#if r.docs.length === 0}
-								<li class="doc-empty">사용처 없음 (정의만 존재)</li>
+								<li class="doc-empty">{t('tags.noUsage', $locale)}</li>
 							{:else}
 								{#each r.docs as d (d.kind + d.label)}
 									<li>
 										<a class="doc" href={d.href}>
-											<span class="dtype {d.kind}">{KIND_LABEL[d.kind]}</span>
+											<span class="dtype {d.kind}">{t(KIND_KEY[d.kind], $locale)}</span>
 											<span class="dtitle">{d.label} {d.title}</span>
 										</a>
 									</li>
@@ -162,6 +314,16 @@
 	{/if}
 </div>
 
+<ConfirmDialog
+	open={confirmDelete !== null}
+	title={t('tags.deleteTitle', $locale)}
+	message={t('tags.deleteMsg', $locale).replace('{tag}', confirmDelete?.tag ?? '')}
+	confirmLabel={t('tags.delete', $locale)}
+	danger
+	onconfirm={doDelete}
+	oncancel={() => (confirmDelete = null)}
+/>
+
 <style>
 	.wrap {
 		max-width: var(--content-max-width, 1100px);
@@ -170,6 +332,7 @@
 	}
 	header {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		gap: 0.9rem;
 		margin-bottom: 1.2rem;
@@ -214,11 +377,16 @@
 		overflow: hidden;
 		background: var(--bg-elevated);
 	}
+	.tag-row {
+		display: flex;
+		align-items: center;
+	}
 	.tag-head {
 		display: flex;
 		align-items: center;
 		gap: 0.75rem;
-		width: 100%;
+		flex: 1;
+		min-width: 0;
 		padding: 0.6rem 0.9rem;
 		background: transparent;
 		border: none;
@@ -254,6 +422,91 @@
 	}
 	.chev.open {
 		transform: rotate(90deg);
+	}
+	.tag-desc {
+		font-size: 0.8rem;
+		color: var(--text-muted);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		min-width: 0;
+	}
+	.row-actions {
+		display: flex;
+		gap: 0.3rem;
+		padding-right: 0.6rem;
+		flex: none;
+	}
+	.btn {
+		padding: 0.25rem 0.7rem;
+		background: var(--bg-subtle);
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-sm);
+		color: var(--text);
+		font-size: 0.8rem;
+		cursor: pointer;
+		white-space: nowrap;
+	}
+	.btn:hover:not(:disabled) {
+		background: var(--border);
+	}
+	.btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+	.btn.danger {
+		color: var(--danger);
+		border-color: var(--danger);
+	}
+	.btn.save {
+		background: var(--btn-primary-bg);
+		border-color: var(--btn-primary-border);
+		color: var(--btn-primary-text);
+	}
+	.intro {
+		margin: -0.6rem 0 1rem;
+		font-size: 0.8rem;
+		color: var(--text-muted);
+	}
+	.editor {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.5rem 0.9rem 0.7rem;
+		border-top: var(--bw) solid var(--border);
+	}
+	.tag-item.new {
+		margin-bottom: 0.35rem;
+	}
+	.tag-item.new .editor {
+		border-top: none;
+		padding-top: 0.7rem;
+	}
+	.editor input[type='text'] {
+		padding: 0.3rem 0.5rem;
+		background: var(--bg);
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-sm);
+		color: var(--text);
+		font: inherit;
+		font-size: 0.85rem;
+	}
+	.editor .slug {
+		width: 12rem;
+	}
+	.editor .desc-input {
+		flex: 1;
+		min-width: 12rem;
+	}
+	.editor input[type='color'] {
+		width: 2.2rem;
+		height: 1.7rem;
+		padding: 0;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-sm);
+		background: var(--bg);
+		cursor: pointer;
 	}
 	.docs {
 		list-style: none;

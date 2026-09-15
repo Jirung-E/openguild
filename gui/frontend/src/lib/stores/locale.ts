@@ -601,56 +601,42 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'adminStatuses.deleteFailedPre': { ko: '삭제 실패: ', en: 'Failed to delete: ' },
 
 	// DEV-205 모듈5: Admin — 태그 정의 관리.
-	'adminTags.heading': { ko: 'Tag 정의', en: 'Tag definitions' },
-	'adminTags.newTagDef': { ko: '+ 새 tag 정의', en: '+ New tag definition' },
-	'adminTags.pathHintPost': {
-		ko: ' 의 색 / 설명 — quest·도서관·규칙이 공유하는 태그',
-		en: ' color / description — tags shared by quests, library, and rules'
+	// DEV-392: 태그 목록 페이지 — 사용 현황 + 정의 편집(예전엔 관리 페이지에 따로 있었다).
+	'tags.title': { ko: '태그 목록', en: 'Tags' },
+	'tags.count': { ko: '{n}개 태그', en: '{n} tags' },
+	'tags.filterPlaceholder': { ko: '태그 검색…', en: 'Search tags…' },
+	'tags.newDef': { ko: '+ 새 태그 정의', en: '+ New tag definition' },
+	'tags.intro': {
+		ko: '퀘스트·도서관·규칙이 함께 쓰는 태그입니다. 정의(.guild/tags/)가 없어도 태그는 쓸 수 있고, 정의하면 색과 설명이 붙습니다.',
+		en: 'Tags shared by quests, library and rules. Tags work without a definition (.guild/tags/); defining one adds a color and description.'
 	},
-	'adminTags.empty': { ko: '정의된 tag 없음.', en: 'No tag definitions.' },
-	'adminTags.slugTitle': {
-		ko: "소문자 / 숫자 / '_' 만, 최대 32자",
-		en: "Lowercase/digits/'_' only, max 32 chars"
+	'tags.loading': { ko: '불러오는 중…', en: 'Loading…' },
+	'tags.empty': { ko: '태그 없음', en: 'No tags' },
+	'tags.noUsage': { ko: '사용처 없음 (정의만 있음)', en: 'Not used (definition only)' },
+	'tags.kindQuest': { ko: '퀘스트', en: 'Quest' },
+	'tags.kindRule': { ko: '규칙', en: 'Rule' },
+	'tags.kindBook': { ko: '도서관', en: 'Library' },
+	'tags.edit': { ko: '편집', en: 'Edit' },
+	'tags.define': { ko: '정의 만들기', en: 'Define' },
+	'tags.delete': { ko: '정의 삭제', en: 'Delete definition' },
+	'tags.slug': { ko: '태그 이름', en: 'Tag name' },
+	'tags.slugPlaceholder': { ko: '예: frontend, urgent', en: 'e.g. frontend, urgent' },
+	'tags.slugPattern': {
+		ko: '태그 이름은 소문자·숫자·-·_ 만, 32자까지입니다.',
+		en: 'Tag names allow lowercase letters, digits, - and _ only, up to 32 chars.'
 	},
-	'adminTags.newTagDefTitle': { ko: '새 tag 정의', en: 'New tag definition' },
-	'adminTags.slugPlaceholder': { ko: 'frontend / urgent 등', en: 'e.g. frontend / urgent' },
-	'adminTags.descPurposePlaceholder': {
-		ko: '(선택) 이 tag 의 용도',
-		en: '(optional) purpose of this tag'
+	'tags.color': { ko: '색', en: 'Color' },
+	'tags.description': { ko: '설명', en: 'Description' },
+	'tags.descPlaceholder': { ko: '(선택) 이 태그의 용도', en: '(optional) what this tag is for' },
+	'tags.saved': { ko: '저장했습니다', en: 'Saved' },
+	'tags.saveFailed': { ko: '저장 실패', en: 'Failed to save' },
+	'tags.deleted': { ko: '정의를 삭제했습니다', en: 'Definition deleted' },
+	'tags.deleteFailed': { ko: '삭제 실패', en: 'Failed to delete' },
+	'tags.deleteTitle': { ko: '태그 정의 삭제', en: 'Delete tag definition' },
+	'tags.deleteMsg': {
+		ko: "'{tag}' 정의를 삭제할까요? 문서에 붙은 태그는 그대로 남고 색만 기본으로 돌아갑니다.",
+		en: "Delete the '{tag}' definition? Tags on documents stay; only the color falls back to the default."
 	},
-	'adminTags.savedAsFilePre': { ko: '파일 ', en: 'Saved as file ' },
-	'adminTags.savedAsFilePost': { ko: ' 로 저장됩니다.', en: '.' },
-	'adminTags.deleteTagDefTitle': { ko: 'Tag 정의 삭제', en: 'Delete tag definition' },
-	'adminTags.deleteMsg1': { ko: ' 정의를 삭제할까요?', en: ' definition?' },
-	'adminTags.deleteMsg2': {
-		ko: '기존 quest 의 tag 사용은 그대로 (fallback 색).',
-		en: 'Existing quest tag usages are kept (fallback color).'
-	},
-	'adminTags.introTail': {
-		ko: ' registry. 정의가 없는 tag 도 사용 가능(UI 기본 색으로 표시); 여기서는 색/설명만 미리 정의해둔다.',
-		en: ' registry. Tags without a definition can still be used (shown with a default UI color); here you predefine color/description.'
-	},
-	'adminTags.listLoadFailedPre': {
-		ko: 'tag 정의 조회 실패: ',
-		en: 'Failed to load tag definitions: '
-	},
-	'adminTags.updatedPre': { ko: "'", en: "'" },
-	'adminTags.updatedPost': { ko: "' 갱신됨", en: "' updated" },
-	'adminTags.updateFailedPre': { ko: '갱신 실패: ', en: 'Update failed: ' },
-	'adminTags.slugRequired': { ko: 'slug 는 필수.', en: 'slug is required.' },
-	'adminTags.slugPattern': {
-		ko: 'slug 는 소문자/숫자/_ 만 (최대 32자).',
-		en: 'slug must be lowercase/digits/_ only (max 32 chars).'
-	},
-	'adminTags.addedPre': { ko: "'", en: "'" },
-	'adminTags.addedPost': { ko: "' 추가됨", en: "' added" },
-	'adminTags.addFailedPre': { ko: '추가 실패: ', en: 'Failed to add: ' },
-	'adminTags.deletedDefPre': { ko: "'", en: "'" },
-	'adminTags.deletedDefPost': {
-		ko: "' 정의 삭제됨 (기존 사용처의 태그는 보존)",
-		en: "' definition deleted (existing usages preserved)"
-	},
-	'adminTags.deleteFailedPre': { ko: '삭제 실패: ', en: 'Failed to delete: ' },
 
 	// DEV-205 모듈5: Rules 페이지.
 	'rules.tagSaveFailed': { ko: '태그 저장 실패', en: 'Failed to save tags' },

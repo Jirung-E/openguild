@@ -12,7 +12,6 @@
 	import AdminTypesSection from '$lib/components/admin/AdminTypesSection.svelte';
 	import AdminStatusesSection from '$lib/components/admin/AdminStatusesSection.svelte';
 	// DEV-068: `.guild/tags/{slug}.toml` 정의 (색 / 설명).
-	import AdminTagDefsSection from '$lib/components/admin/AdminTagDefsSection.svelte';
 	// DEV-119: window.confirm() 대신 인앱 모달 (Tauri 에서 native confirm silent return).
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 
@@ -240,7 +239,6 @@
 
 	<AdminTypesSection onmessage={onSectionMessage} />
 	<AdminStatusesSection onmessage={onSectionMessage} />
-	<AdminTagDefsSection onmessage={onSectionMessage} />
 
 	<section>
 		<div class="section-header">
@@ -457,7 +455,7 @@
 	section {
 		margin-bottom: 2.5rem;
 		padding: 1.25rem;
-		/* 다른 admin 섹션(Statuses/Types/TagDefs 컴포넌트)과 동일 토큰.
+		/* 다른 admin 섹션(Statuses/Types 컴포넌트)과 동일 토큰.
 		   이전 --nav-bg/--nav-border 는 다크에서 보라빛이라 섹션마다 색이 달랐음. */
 		background: var(--bg-elevated);
 		border: var(--bw) solid var(--border);
