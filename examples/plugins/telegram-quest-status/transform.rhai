@@ -35,16 +35,17 @@ fn tagged(e) {
 }
 
 fn payload(e) {
+    // 백틱 문자열은 `${}` 만 풀고 `\n` 같은 이스케이프는 **안 푼다** — 줄바꿈은 큰따옴표로.
     // `chat_id` 는 코어가 body_env 로 채운다.
     if e.event == "comment.added" {
         return #{
-            text: `💬 ${e.target.id}\n${e.comment.body}`,
+            text: `💬 ${e.target.id}` + "\n" + e.comment.body,
             disable_notification: false
         };
     }
     let head = `[${e.quest.id}] ${e.quest.title}`;
     let tail = if e.event == "quest.status_changed" {
-        `\n${e.change.from} → ${e.change.to}`
+        "\n" + `${e.change.from} → ${e.change.to}`
     } else {
         "\n새 퀘스트"
     };
