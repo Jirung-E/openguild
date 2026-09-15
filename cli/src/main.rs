@@ -902,7 +902,7 @@ enum TagDefCmd {
     },
     #[command(about = tf!("새 태그 정의 추가 (이미 있으면 에러 — 수정은 update)", "Add a new tag definition (errors if it already exists — use `update` to modify)"))]
     Add {
-        #[arg(help = tf!("소문자/숫자/_ 만, 최대 32자.", "Lowercase/digits/_ only, max 32 chars."))]
+        #[arg(help = tf!("태그 이름 그대로(한글 가능). 공백과 / \\ : * ? \" < > | 는 안 되고, 점으로 시작·끝날 수 없음. 최대 64자.", "The tag name as used (any script). No spaces or / \\ : * ? \" < > |, no leading/trailing dot. Max 64 chars."))]
         slug: String,
         #[arg(long, help = tf!("색 (#RGB 또는 #RRGGBB)", "Color (#RGB or #RRGGBB)"))]
         color: Option<String>,

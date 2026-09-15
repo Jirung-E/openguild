@@ -624,10 +624,10 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'tags.define': { ko: '정의 만들기', en: 'Define' },
 	'tags.delete': { ko: '정의 삭제', en: 'Delete definition' },
 	'tags.slug': { ko: '태그 이름', en: 'Tag name' },
-	'tags.slugPlaceholder': { ko: '예: frontend, urgent', en: 'e.g. frontend, urgent' },
+	'tags.slugPlaceholder': { ko: '예: 백엔드, urgent', en: 'e.g. backend, urgent' },
 	'tags.slugPattern': {
-		ko: '태그 이름에는 영문 소문자, 숫자, -, _ 만 쓸 수 있습니다 (32자까지).',
-		en: 'Tag names allow lowercase letters, digits, - and _ only, up to 32 chars.'
+		ko: '태그 이름에는 공백과 / \\ : * ? " < > | 를 쓸 수 없고, 점으로 시작하거나 끝날 수 없습니다 (64자까지).',
+		en: 'Tag names cannot contain spaces or / \\ : * ? " < > |, or start or end with a dot (max 64 chars).'
 	},
 	'tags.color': { ko: '색', en: 'Color' },
 	'tags.description': { ko: '설명', en: 'Description' },

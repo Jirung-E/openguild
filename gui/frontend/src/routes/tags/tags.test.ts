@@ -21,7 +21,7 @@ vi.mock('$lib/api/quests', () => ({
 	questsApi: {
 		list: () =>
 			Promise.resolve([
-				{ quest_id: 'DEV-001', title: 'a', tags: ['frontend', 'used-only', '한글태그'] }
+				{ quest_id: 'DEV-001', title: 'a', tags: ['frontend', 'used-only', '한글태그', 'a/b'] }
 			])
 	}
 }));
@@ -70,9 +70,19 @@ describe('DEV-392 태그 목록에서 정의를 편집한다', () => {
 		expect(upsertTagDef).toHaveBeenCalledWith(expect.objectContaining({ slug: 'used-only' }));
 	});
 
-	it('코어가 못 받는 이름(한글 등)에는 정의 버튼을 안 그린다', async () => {
+	// BUG-290: 예전엔 한글 태그에 버튼이 없었다(코어가 영문 소문자만 받았다).
+	it('한글 태그에도 색·설명을 단다', async () => {
 		await open();
-		expect(rowOf('한글태그').querySelector('.row-actions button')).toBeNull();
+		const btn = rowOf('한글태그').querySelector('.row-actions button') as HTMLButtonElement;
+		expect(btn).not.toBeNull();
+		await fireEvent.click(btn);
+		await fireEvent.click(rowOf('한글태그').querySelector('.editor .btn.save') as HTMLButtonElement);
+		expect(upsertTagDef).toHaveBeenCalledWith(expect.objectContaining({ slug: '한글태그' }));
+	});
+
+	it('파일명으로 못 쓰는 이름(`/`)에는 버튼을 안 그린다', async () => {
+		await open();
+		expect(rowOf('a/b').querySelector('.row-actions button')).toBeNull();
 	});
 
 	it('새 정의는 `-` 가 든 이름도 받는다 — 코어 규칙과 같다', async () => {

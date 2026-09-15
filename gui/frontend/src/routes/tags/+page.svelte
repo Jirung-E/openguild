@@ -46,8 +46,18 @@
 		book: 'tags.kindBook'
 	};
 	const DEFAULT_COLOR = '#7bb87f';
-	/** 코어 `validate_tag_slug` 와 같은 규칙. 예전 관리 화면은 `-` 를 빼먹어 코어가 받는 이름을 거절했다. */
-	const SLUG_RE = /^[a-z0-9_-]{1,32}$/;
+	/**
+	 * BUG-290: 코어 `validate_tag_slug` 와 같은 규칙 — 이름이 파일명이 되므로 파일명으로 위험한
+	 * 것만 막는다. 예전(영문 소문자만)엔 한글 태그 대부분에 색을 달 수 없었다.
+	 */
+	const RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
+	function isDefinableName(name: string): boolean {
+		if (name.length === 0 || [...name].length > 64) return false;
+		// eslint-disable-next-line no-control-regex
+		if (/[\s\u0000-\u001f\u007f/\\:*?"<>|]/.test(name)) return false;
+		if (name.startsWith('.') || name.endsWith('.')) return false;
+		return !RESERVED.test(name);
+	}
 
 	let rows = $state<TagRow[]>([]);
 	let loading = $state(true);
@@ -163,8 +173,8 @@
 	}
 
 	async function save() {
-		const slug = (editing === '' ? editSlug.trim().toLowerCase() : editing) ?? '';
-		if (!SLUG_RE.test(slug)) {
+		const slug = (editing === '' ? editSlug.trim() : editing) ?? '';
+		if (!isDefinableName(slug)) {
 			showToast(t('tags.slugPattern', $locale), 'error');
 			return;
 		}
@@ -286,7 +296,7 @@
 								<button class="btn danger" onclick={() => (confirmDelete = r)} disabled={busy}
 									>{t('tags.delete', $locale)}</button
 								>
-							{:else if SLUG_RE.test(r.tag)}
+							{:else if isDefinableName(r.tag)}
 								<!-- 색을 주려면 정의가 있어야 한다 — 쓰이기만 하는 태그에서 바로 만든다. -->
 								<button class="btn" onclick={() => startEdit(r)} disabled={busy}
 									>{t('tags.define', $locale)}</button

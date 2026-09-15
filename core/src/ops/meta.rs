@@ -983,24 +983,63 @@ async fn fetch_status_by_slug(pool: &SqlitePool, slug: &str) -> AppResult<QuestS
 
 // ─────────────────────── DEV-068: Tag defs ───────────────────────
 
-/// tag slug 검증 — 소문자/숫자/`-`/`_` 만, 1-32자.
+/// BUG-290: 태그 정의(색·설명) 이름 검증.
+///
+/// 정의는 **태그와 같은 이름**이어야 붙는데, 태그는 아무 문자열(공백으로 나눌 뿐)이나
+/// 붙일 수 있다. 예전 규칙(영문 소문자·숫자·`-`·`_`)은 한글 태그를 전부 거절해 대부분의
+/// 태그에 색을 달 방법이 없었다. 이름이 그대로 파일명(`.guild/tags/{이름}.toml`)이 되므로
+/// **파일명으로 위험한 것만** 막는다.
 fn validate_tag_slug(slug: &str) -> AppResult<()> {
-    if slug.is_empty() || slug.len() > 32 {
-        return Err(AppError::BadRequest(crate::tf!(
-            "tag slug 길이 1-32 만 (입력: {slug:?})",
-            "tag slug must be 1-32 chars (got: {slug:?})"
-        )));
+    let bad = |why_ko: &str, why_en: &str| {
+        Err(AppError::BadRequest(crate::tf!(
+            "태그 이름을 쓸 수 없습니다 — {why_ko} (입력: {slug:?})",
+            "invalid tag name — {why_en} (got: {slug:?})"
+        )))
+    };
+    if slug.is_empty() {
+        return bad("비어 있음", "empty");
     }
-    if !slug
-        .chars()
-        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
-    {
-        return Err(AppError::BadRequest(crate::tf!(
-            "tag slug 는 소문자/숫자/`-`/`_` 만 (입력: {slug:?})",
-            "tag slug must be lowercase letters/digits/`-`/`_` only (got: {slug:?})"
-        )));
+    // 파일명 255바이트 안에 한글(3바이트) 64자 + `.toml` 이 들어간다.
+    if slug.chars().count() > 64 {
+        return bad("64자까지", "max 64 characters");
+    }
+    // 태그는 공백으로 나뉘므로 공백 든 태그는 애초에 못 붙인다.
+    if slug.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return bad("공백·제어 문자는 쓸 수 없음", "no whitespace or control characters");
+    }
+    if slug.chars().any(|c| matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')) {
+        return bad(
+            "/ \\ : * ? \" < > | 는 쓸 수 없음",
+            "/ \\ : * ? \" < > | are not allowed",
+        );
+    }
+    // `.`·`..`·숨김 파일, 그리고 Windows 는 끝의 점을 조용히 버린다.
+    if slug.starts_with('.') || slug.ends_with('.') {
+        return bad("점으로 시작하거나 끝날 수 없음", "cannot start or end with a dot");
+    }
+    const RESERVED: &[&str] = &[
+        "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7",
+        "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    ];
+    if RESERVED.iter().any(|r| r.eq_ignore_ascii_case(slug)) {
+        return bad("Windows 예약 이름", "reserved name on Windows");
     }
     Ok(())
+}
+
+/// BUG-290: 대소문자만 다른 정의가 이미 있나. macOS·Windows 기본 파일시스템에서
+/// `API.toml` 과 `api.toml` 은 **같은 파일**이라, 새로 만들면 남의 정의를 덮는다.
+/// 파일(진리원)을 본다 — 캐시가 늦어도 덮어쓰기는 막는다.
+fn case_twin(store: &Store, slug: &str) -> Option<String> {
+    let lower = slug.to_lowercase();
+    std::fs::read_dir(store.paths.tags_dir())
+        .ok()?
+        .flatten()
+        .filter_map(|e| {
+            let p = e.path();
+            (p.extension()? == "toml").then(|| p.file_stem()?.to_str().map(str::to_string))?
+        })
+        .find(|stem| stem != slug && stem.to_lowercase() == lower)
 }
 
 /// tag 정의 생성 또는 갱신 (upsert). color 빈 문자열 = 미정의.
@@ -1013,6 +1052,12 @@ pub async fn upsert_tag_def(
     let _g = store.mutation_guard().await?;
     let slug = slug.trim().to_string();
     validate_tag_slug(&slug)?;
+    if let Some(twin) = case_twin(store, &slug) {
+        return Err(AppError::BadRequest(crate::tf!(
+            "대소문자만 다른 태그 정의 '{twin}' 이 이미 있습니다 — 그 이름을 쓰세요 (입력: {slug:?})",
+            "a tag definition differing only by case already exists: '{twin}' — use that name (got: {slug:?})"
+        )));
+    }
     let color = color.trim().to_string();
     if !color.is_empty() {
         validate_color(&color)?;
@@ -1136,6 +1181,66 @@ mod tests {
         let store = Store::open(&dir).await.unwrap();
         crate::reindex::reindex(&store).await.unwrap();
         (dir, store)
+    }
+
+    // ─── BUG-290: 태그 정의 이름 ───
+
+    /// 붙일 수 있는 태그면 색·설명도 달 수 있어야 한다 — 한글 태그가 대부분인 길드에서
+    /// 예전 규칙(영문 소문자만)은 거의 모든 태그를 거절했다.
+    #[test]
+    fn tag_names_accept_what_can_be_attached() {
+        for ok in ["리팩터링", "백엔드", "api", "needs-review", "v1.2", "C++", "日本語", "a_b"] {
+            assert!(validate_tag_slug(ok).is_ok(), "거절됨: {ok}");
+        }
+        assert!(validate_tag_slug(&"가".repeat(64)).is_ok());
+    }
+
+    /// 이름이 파일명이 된다 — 파일명으로 위험한 것만 막는다.
+    #[test]
+    fn tag_names_reject_what_breaks_a_file_name() {
+        for bad in [
+            "", " api", "api ", "a b", "a\tb", "a/b", "a\\b", "a:b", "a*b", "a?b", "a\"b", "a<b",
+            "a>b", "a|b", "a\u{7}b", ".", "..", ".hidden", "trail.", "CON", "con", "Nul", "com1",
+            "LPT9", "aux",
+        ] {
+            assert!(validate_tag_slug(bad).is_err(), "통과됨: {bad:?}");
+        }
+        assert!(validate_tag_slug(&"가".repeat(65)).is_err(), "65자가 통과됨");
+    }
+
+    #[tokio::test]
+    async fn a_korean_tag_gets_a_definition_that_survives_reindex_and_deletes() {
+        let (dir, store) = fresh_store("tag-korean").await;
+        upsert_tag_def(&store, "리팩터링".into(), "#e94f4f".into(), "구조 정리".into())
+            .await
+            .unwrap();
+        assert!(store.paths.tag_path("리팩터링").exists());
+
+        crate::reindex::reindex(&store).await.unwrap();
+        let defs = crate::services::meta::list_quest_tag_defs(&store.index_pool).await.unwrap();
+        let d = defs.iter().find(|d| d.slug == "리팩터링").expect("reindex 뒤에 사라졌다");
+        assert_eq!((d.color.as_str(), d.description.as_str()), ("#e94f4f", "구조 정리"));
+
+        delete_tag_def(&store, "리팩터링".into()).await.unwrap();
+        assert!(!store.paths.tag_path("리팩터링").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// macOS·Windows 기본 파일시스템에서 `API.toml` 과 `api.toml` 은 **같은 파일**이다 —
+    /// 새로 만들면 남의 정의를 덮는다. 같은 이름 갱신은 된다.
+    #[tokio::test]
+    async fn a_tag_differing_only_by_case_is_refused() {
+        let (dir, store) = fresh_store("tag-case").await;
+        upsert_tag_def(&store, "api".into(), "#111111".into(), "".into()).await.unwrap();
+        let e = upsert_tag_def(&store, "API".into(), "#222222".into(), "".into())
+            .await
+            .unwrap_err();
+        assert!(matches!(e, AppError::BadRequest(_)), "{e}");
+        assert!(e.to_string().contains("api"), "{e}");
+        upsert_tag_def(&store, "api".into(), "#333333".into(), "갱신".into()).await.unwrap();
+        let tf = crate::repo::TagFile::read(store.paths.tag_path("api")).unwrap();
+        assert_eq!(tf.color, "#333333");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     // ─── slugify ───
