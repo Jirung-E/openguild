@@ -21,12 +21,29 @@ pub fn openguild_home() -> Result<PathBuf> {
             .with_context(|| format!("create test openguild home: {}", p.display()))?;
         return Ok(p);
     }
-    let user = directories::UserDirs::new()
-        .context("UserDirs::new failed — HOME / USERPROFILE 환경변수 미설정?")?;
-    let p = user.home_dir().join(".openguild");
+    let p = default_home()?;
     std::fs::create_dir_all(&p)
         .with_context(|| format!("create openguild home: {}", p.display()))?;
     Ok(p)
+}
+
+#[cfg(not(test))]
+fn default_home() -> Result<PathBuf> {
+    let user = directories::UserDirs::new()
+        .context("UserDirs::new failed — HOME / USERPROFILE 환경변수 미설정?")?;
+    Ok(user.home_dir().join(".openguild"))
+}
+
+/// BUG-289: **core 시험은 실제 홈에 절대 닿지 않는다.**
+///
+/// 격리는 시험마다 `OPENGUILD_HOME` 을 세워서 했는데, 빠뜨린 `run` 시험 넷이
+/// `just test` 마다 실제 `~/.openguild/plugin-data/` 에 폴더를 4개씩 남겼다(126개
+/// 누적). 같은 홈에 동의 파일과 비밀값(`plugin-values.json`)이 있다 — 기억에 기대는
+/// 격리는 언젠가 빠진다. 그래서 시험 빌드에서는 env 가 없으면 프로세스 전용 임시
+/// 홈으로 떨어진다.
+#[cfg(test)]
+fn default_home() -> Result<PathBuf> {
+    Ok(std::env::temp_dir().join(format!("og-test-home-{}", std::process::id())))
 }
 
 /// 번들 문서(설치 폴더 `docs/`)를 `~/.openguild/docs/` 로 동기화 — 첫 실행
@@ -188,6 +205,23 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&src);
         let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// BUG-289: `OPENGUILD_HOME` 을 빠뜨린 시험도 실제 홈에 못 닿는다.
+    #[test]
+    fn a_test_without_openguild_home_never_reaches_the_real_home() {
+        let _guard = env_lock();
+        let saved = std::env::var_os("OPENGUILD_HOME");
+        unsafe { std::env::remove_var("OPENGUILD_HOME") };
+
+        let got = openguild_home().unwrap();
+        let real = directories::UserDirs::new().unwrap().home_dir().join(".openguild");
+        assert_ne!(got, real, "시험이 실제 ~/.openguild 를 받았다");
+        assert!(got.starts_with(std::env::temp_dir()), "{}", got.display());
+
+        if let Some(v) = saved {
+            unsafe { std::env::set_var("OPENGUILD_HOME", v) };
+        }
     }
 
     #[test]

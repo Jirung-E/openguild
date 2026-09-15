@@ -851,22 +851,19 @@ mod tests {
     /// 참조한 변수가 없으면 리터럴로 넘기지 않고 실패로 남긴다.
     #[test]
     fn run_with_a_missing_env_var_fails_loudly() {
-        let _guard = crate::test_env::env_lock();
+        // BUG-289: run 은 데이터 폴더를 만든다 — 임시 홈 없이 돌면 실제 홈에 남는다.
+        // RunLab 이 env_lock 도 쥔다.
+        let lab = RunLab::new("runenv-missing");
         unsafe { std::env::remove_var("OG_TEST_RUN_ABSENT") };
-        let d = tmp("runenv-missing");
-        let p = plugin(
-            Action::Run {
-                command: "sh".into(),
-                args: vec!["-c".into(), "true".into(), "${OG_TEST_RUN_ABSENT}".into()],
-                timeout_ms: Some(5_000),
-            },
-            d.clone(),
-        );
+        let p = lab.plugin(Action::Run {
+            command: "sh".into(),
+            args: vec!["-c".into(), "true".into(), "${OG_TEST_RUN_ABSENT}".into()],
+            timeout_ms: Some(5_000),
+        });
         let e = Outbound::new()
             .deliver(&p, &event(), &body(), &Default::default())
             .unwrap_err();
         assert!(e.contains("OG_TEST_RUN_ABSENT"), "{e}");
-        let _ = std::fs::remove_dir_all(&d);
     }
 
     /// **stdin 을 안 읽는 자식이 전달 스레드를 잡아먹으면 안 된다.**
@@ -876,17 +873,14 @@ mod tests {
     /// 플러그인이 멈춘다 — 시한 안에 돌아오는지 본다.
     #[test]
     fn a_child_that_never_reads_stdin_does_not_wedge_the_thread() {
-        let d = tmp("nostdin");
+        let lab = RunLab::new("nostdin");
         let big = serde_json::json!({ "text": "가".repeat(200_000) });
-        let p = plugin(
-            Action::Run {
-                command: "sh".into(),
-                // stdin 을 아예 안 읽고 그냥 잔다.
-                args: vec!["-c".into(), "sleep 30".into()],
-                timeout_ms: Some(400),
-            },
-            d.clone(),
-        );
+        let p = lab.plugin(Action::Run {
+            command: "sh".into(),
+            // stdin 을 아예 안 읽고 그냥 잔다.
+            args: vec!["-c".into(), "sleep 30".into()],
+            timeout_ms: Some(400),
+        });
         let t = Instant::now();
         let e = Outbound::new()
             .deliver(&p, &event(), &big, &Default::default())
@@ -897,7 +891,6 @@ mod tests {
             t.elapsed()
         );
         assert!(e.contains("중단"), "{e}");
-        let _ = std::fs::remove_dir_all(&d);
     }
 
     /// 응답 본문이 멀티바이트면 자를 때 패닉하지 않는다.
@@ -976,39 +969,31 @@ mod tests {
     /// 실패한 프로세스는 조용히 넘어가지 않는다.
     #[test]
     fn a_failing_process_is_reported() {
-        let d = tmp("fail");
-        let p = plugin(
-            Action::Run {
-                command: "sh".into(),
-                args: vec!["-c".into(), "exit 3".into()],
-                timeout_ms: Some(5_000),
-            },
-            d.clone(),
-        );
+        let lab = RunLab::new("fail");
+        let p = lab.plugin(Action::Run {
+            command: "sh".into(),
+            args: vec!["-c".into(), "exit 3".into()],
+            timeout_ms: Some(5_000),
+        });
         let e = Outbound::new()
             .deliver(&p, &event(), &body(), &Default::default())
             .unwrap_err();
         assert!(e.contains("3"), "{e}");
-        let _ = std::fs::remove_dir_all(&d);
     }
 
     /// 없는 명령은 적재가 아니라 전달에서 걸린다 — 정의만으로는 그 기계에
     /// 그 프로그램이 있는지 알 수 없다.
     #[test]
     fn a_missing_command_is_reported() {
-        let d = tmp("nocmd");
-        let p = plugin(
-            Action::Run {
-                command: "og-no-such-program-42".into(),
-                args: vec![],
-                timeout_ms: Some(5_000),
-            },
-            d.clone(),
-        );
+        let lab = RunLab::new("nocmd");
+        let p = lab.plugin(Action::Run {
+            command: "og-no-such-program-42".into(),
+            args: vec![],
+            timeout_ms: Some(5_000),
+        });
         let e = Outbound::new()
             .deliver(&p, &event(), &body(), &Default::default())
             .unwrap_err();
         assert!(e.contains("띄우지 못했습니다"), "{e}");
-        let _ = std::fs::remove_dir_all(&d);
     }
 }
