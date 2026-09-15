@@ -605,24 +605,25 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'adminStatuses.deleteFailedPre': { ko: '삭제 실패: ', en: 'Failed to delete: ' },
 
 	// DEV-205 모듈5: Admin — 태그 정의 관리.
-	// DEV-392: 태그 목록 페이지 — 사용 현황 + 정의 편집(예전엔 관리 페이지에 따로 있었다).
+	// DEV-392: 태그 목록 페이지 — 사용 현황 + 색·설명 편집(예전엔 관리 페이지에 따로 있었다).
+	// 화면에는 "정의" 라는 말을 쓰지 않는다 — 코드 용어(tag def)라 무엇을 하는 버튼인지 안 읽힌다(admin 지적).
 	'tags.title': { ko: '태그 목록', en: 'Tags' },
 	'tags.count': { ko: '{n}개 태그', en: '{n} tags' },
 	'tags.filterPlaceholder': { ko: '태그 검색…', en: 'Search tags…' },
-	'tags.newDef': { ko: '+ 새 태그 정의', en: '+ New tag definition' },
+	'tags.newDef': { ko: '+ 새 태그', en: '+ New tag' },
 	'tags.intro': {
-		ko: '퀘스트·도서관·규칙이 함께 쓰는 태그입니다. 정의(.guild/tags/)가 없어도 태그는 쓸 수 있고, 정의하면 색과 설명이 붙습니다.',
-		en: 'Tags shared by quests, library and rules. Tags work without a definition (.guild/tags/); defining one adds a color and description.'
+		ko: '퀘스트·도서관·규칙이 함께 쓰는 태그입니다. 색과 설명은 선택이고, 달지 않아도 태그는 그대로 쓸 수 있습니다.',
+		en: 'Tags shared by quests, library and rules. Color and description are optional — tags work without them.'
 	},
 	'tags.loading': { ko: '불러오는 중…', en: 'Loading…' },
 	'tags.empty': { ko: '태그 없음', en: 'No tags' },
-	'tags.noUsage': { ko: '사용처 없음 (정의만 있음)', en: 'Not used (definition only)' },
+	'tags.noUsage': { ko: '아직 붙은 곳 없음', en: 'Not used yet' },
 	'tags.kindQuest': { ko: '퀘스트', en: 'Quest' },
 	'tags.kindRule': { ko: '규칙', en: 'Rule' },
 	'tags.kindBook': { ko: '도서관', en: 'Library' },
 	'tags.edit': { ko: '편집', en: 'Edit' },
-	'tags.define': { ko: '정의 만들기', en: 'Define' },
-	'tags.delete': { ko: '정의 삭제', en: 'Delete definition' },
+	'tags.define': { ko: '색 지정', en: 'Set color' },
+	'tags.delete': { ko: '색·설명 지우기', en: 'Clear color & description' },
 	'tags.slug': { ko: '태그 이름', en: 'Tag name' },
 	'tags.slugPlaceholder': { ko: '예: 백엔드, urgent', en: 'e.g. backend, urgent' },
 	'tags.slugPattern': {
@@ -634,12 +635,12 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'tags.descPlaceholder': { ko: '(선택) 이 태그의 용도', en: '(optional) what this tag is for' },
 	'tags.saved': { ko: '저장했습니다', en: 'Saved' },
 	'tags.saveFailed': { ko: '저장 실패', en: 'Failed to save' },
-	'tags.deleted': { ko: '정의를 삭제했습니다', en: 'Definition deleted' },
-	'tags.deleteFailed': { ko: '삭제 실패', en: 'Failed to delete' },
-	'tags.deleteTitle': { ko: '태그 정의 삭제', en: 'Delete tag definition' },
+	'tags.deleted': { ko: '색·설명을 지웠습니다', en: 'Color and description cleared' },
+	'tags.deleteFailed': { ko: '지우기 실패', en: 'Failed to clear' },
+	'tags.deleteTitle': { ko: '색·설명 지우기', en: 'Clear color & description' },
 	'tags.deleteMsg': {
-		ko: "'{tag}' 정의를 삭제할까요? 문서에 붙은 태그는 그대로 남고 색만 기본으로 돌아갑니다.",
-		en: "Delete the '{tag}' definition? Tags on documents stay; only the color falls back to the default."
+		ko: "'{tag}' 의 색과 설명을 지울까요? 문서에 붙은 태그는 그대로 남습니다. 아무 데도 안 붙은 태그라면 목록에서도 사라집니다.",
+		en: "Clear the color and description of '{tag}'? The tag stays on documents. If it isn't used anywhere, it also disappears from this list."
 	},
 
 	// DEV-205 모듈5: Rules 페이지.

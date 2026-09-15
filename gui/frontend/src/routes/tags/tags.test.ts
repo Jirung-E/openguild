@@ -87,7 +87,7 @@ describe('DEV-392 태그 목록에서 정의를 편집한다', () => {
 
 	it('새 정의는 `-` 가 든 이름도 받는다 — 코어 규칙과 같다', async () => {
 		await open();
-		await fireEvent.click(screen.getByText('+ 새 태그 정의'));
+		await fireEvent.click(screen.getByText('+ 새 태그'));
 		const slug = document.querySelector('.tag-item.new .slug') as HTMLInputElement;
 		await fireEvent.input(slug, { target: { value: 'needs-review' } });
 		await fireEvent.click(document.querySelector('.tag-item.new .btn.save') as HTMLButtonElement);
