@@ -262,6 +262,9 @@
 				<li class="tag-item">
 					<div class="tag-row">
 						<button class="tag-head" onclick={() => toggle(r.tag)} aria-expanded={expanded === r.tag}>
+							<!-- 펼침 표시는 **맨 앞**에. 끝에 두면 오른쪽 버튼 수(0·1·2개)에 따라 줄마다
+							     자리가 달라져 목록이 들쭉날쭉해진다(브라우저로 확인한 결함). -->
+							<span class="chev" class:open={expanded === r.tag}>›</span>
 							<span
 								class="chip"
 								style={r.color ? `--chip:${r.color}` : ''}
@@ -271,10 +274,12 @@
 							{#if r.description}
 								<span class="tag-desc">{r.description}</span>
 							{/if}
-							<span class="chev" class:open={expanded === r.tag}>›</span>
 						</button>
 						<div class="row-actions">
-							{#if r.defined}
+							{#if editing === r.tag}
+								<!-- 편집 중에는 아래 줄의 저장·취소가 전부다 — 같은 줄에 버튼이 또 있으면
+								     어느 쪽을 눌러야 하는지 헷갈린다. -->
+							{:else if r.defined}
 								<button class="btn" onclick={() => startEdit(r)} disabled={busy}
 									>{t('tags.edit', $locale)}</button
 								>
@@ -347,8 +352,10 @@
 		color: var(--text-muted);
 	}
 	.filter {
-		margin-left: auto;
-		width: 14rem;
+		/* 남은 폭을 채운다. 예전 `margin-left:auto` + 고정 폭은 좁은 화면에서 줄이 넘어가면
+		   왼쪽에 빈자리를 남겼다(브라우저로 확인). */
+		flex: 1 1 12rem;
+		min-width: 8rem;
 		padding: 0.4rem 0.7rem;
 		font-size: 0.85rem;
 		border: var(--bw) solid var(--border);
@@ -416,7 +423,8 @@
 		text-align: center;
 	}
 	.chev {
-		margin-left: auto;
+		flex: none;
+		width: 0.6rem;
 		color: var(--text-faint);
 		transition: transform 0.15s;
 	}

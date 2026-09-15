@@ -626,7 +626,7 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'tags.slug': { ko: '태그 이름', en: 'Tag name' },
 	'tags.slugPlaceholder': { ko: '예: frontend, urgent', en: 'e.g. frontend, urgent' },
 	'tags.slugPattern': {
-		ko: '태그 이름은 소문자·숫자·-·_ 만, 32자까지입니다.',
+		ko: '태그 이름에는 영문 소문자, 숫자, -, _ 만 쓸 수 있습니다 (32자까지).',
 		en: 'Tag names allow lowercase letters, digits, - and _ only, up to 32 chars.'
 	},
 	'tags.color': { ko: '색', en: 'Color' },
