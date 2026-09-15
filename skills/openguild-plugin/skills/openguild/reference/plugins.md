@@ -44,13 +44,13 @@ Read `examples/plugins/README.md` before writing one from scratch.
 
 | Field | Meaning |
 |---|---|
-| `description` | Optional. One sentence, in the author's own words, shown in the desktop settings screen and `openguild plugin list`. Every other field is machine-readable, so without this a person deciding whether to allow the plugin has nothing saying what it is *for*. Max 500 characters; scanned for secrets like every other field. |
+| `description` | Optional. One sentence, in the author's own words, shown in the desktop Admin → Plugins screen and `openguild plugin list`. Every other field is machine-readable, so without this a person deciding whether to allow the plugin has nothing saying what it is *for*. Max 500 characters; scanned for secrets like every other field. |
 | `on` | Event patterns. `quest.created`, `quest.*`, `*.created`, `*`. Prefix `pre:` to observe *before* the mutation (observation only — a plugin can never veto). |
 | `scope` | **Required, no default.** Where it runs: `cli` / `gui` / `server`. Putting `server` in it applies the plugin to everyone using that server. |
 | `action` | `post` (HTTP) or `run` (process, event JSON on **stdin**). These two are all the core owns. |
 | `action.post.body_env` | `{ "chat_id": "TELEGRAM_CHAT_ID" }` — inject env values into named top-level body keys. Scripts have no I/O, so `payload()` cannot read the environment; APIs that want a private id *in the body* (Telegram's `chat_id`) need this. Only the named keys are touched, so user text is never expanded. |
 | `script` | Optional `.rhai` file, relative to the plugin folder. |
-| `inputs` | Values the user must supply: `{key, label, type, help, secret, default, options}`. `type` is `text`/`checkbox`/`select`/`number`. Rendered as widgets in the desktop settings screen and stored per guild in `~/.openguild/plugin-values.json` (0600, never committed). Read them as `${KEY}` (always a string) or, in the script, `config("KEY")` (keeps its type). Resolution: stored value → process environment → `default`. |
+| `inputs` | Values the user must supply: `{key, label, type, help, secret, default, options}`. `type` is `text`/`checkbox`/`select`/`number`. Rendered as widgets in the desktop Admin → Plugins screen and stored per guild in `~/.openguild/plugin-values.json` (0600, never committed). Read them as `${KEY}` (always a string) or, in the script, `config("KEY")` (keeps its type). Resolution: stored value → process environment → `default`. |
 
 A `run` hook's working directory is `~/.openguild/plugin-data/{guild}/{plugin}/`,
 **not** the plugin folder — a hook that writes next to itself changes the consent
@@ -135,7 +135,7 @@ desktop app) rather than swallowed.
 | Component | How |
 |---|---|
 | CLI | `openguild plugin allow <name> --yes` |
-| Desktop | Settings → Plugins (local guild only) |
+| Desktop | Admin → Plugins (local guild only) |
 | Server | Deliberately **not** over HTTP. Run the CLI on the server's machine. |
 
 `GET /api/plugins` is **read-only** — it lists what is configured and what is running, and

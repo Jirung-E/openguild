@@ -263,7 +263,7 @@ pub fn install_plugins_for_gui(store: &Store) {
     }
     if !loaded.needs_consent.is_empty() {
         eprintln!(
-            "[openguild-gui] 플러그인 {} 개가 동의 전이라 돌지 않습니다 (설정 화면에서 허용)",
+            "[openguild-gui] 플러그인 {} 개가 동의 전이라 돌지 않습니다 (관리 → 플러그인 에서 허용)",
             loaded.needs_consent.len()
         );
     }

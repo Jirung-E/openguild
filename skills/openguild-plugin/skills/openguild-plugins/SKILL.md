@@ -71,7 +71,7 @@ variable that is not set is an error, never an empty string.
 ### 4. Say what it does — in one sentence
 
 Give every plugin a `description`. It is optional and the plugin runs without
-one, but the settings screen shows it, and that screen is where someone decides
+one, but the Admin → Plugins screen shows it, and that screen is where someone decides
 whether to let your plugin run on their machine:
 
 ```json
@@ -94,7 +94,7 @@ notes belong in a README next to `plugin.json`.
 ### 5. Ask the user for what only they can supply
 
 A plugin that needs a token, a chat id, or an on/off choice declares it. The
-desktop settings screen then renders a widget under the description, saves what
+desktop Admin → Plugins screen then renders a widget under the description, saves what
 the user picks, and the value is available two ways at run time.
 
 ```json
@@ -127,7 +127,7 @@ the user picks, and the value is available two ways at run time.
 
 Resolution order is stored value → the process environment → `default`. That
 middle step is deliberate: a plain environment variable acts as the "same value
-in every guild" layer, and the settings screen overrides it per guild.
+in every guild" layer, and the Admin → Plugins screen overrides it per guild.
 
 Behaviour toggles belong in the script:
 
@@ -152,7 +152,7 @@ openguild plugin allow <name>        # prints what they would be consenting to
 openguild plugin allow <name> --yes  # then actually allows it
 ```
 
-If the plugin declares `inputs`, point them at Settings → Plugins instead of
+If the plugin declares `inputs`, point them at Admin → Plugins instead of
 telling them to export anything. From a terminal the equivalent is:
 
 ```bash

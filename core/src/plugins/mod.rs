@@ -686,7 +686,7 @@ pub fn validate(def: &PluginDef) -> AppResult<()> {
         if n > MAX_DESCRIPTION_CHARS {
             return Err(AppError::BadRequest(format!(
                 "{}: `description` 이 너무 깁니다 ({n}자, 최대 {MAX_DESCRIPTION_CHARS}자) — \
-                 설정 화면의 한 줄 설명 자리입니다. 긴 설명은 플러그인 폴더의 \
+                 관리 → 플러그인 의 한 줄 설명 자리입니다. 긴 설명은 플러그인 폴더의 \
                  README 에 두세요.",
                 def.name
             )));

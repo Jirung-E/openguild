@@ -11,9 +11,22 @@
 	// DEV-014: Quest type / status 커스터마이즈 섹션.
 	import AdminTypesSection from '$lib/components/admin/AdminTypesSection.svelte';
 	import AdminStatusesSection from '$lib/components/admin/AdminStatusesSection.svelte';
+	// DEV-393: 플러그인은 설정 페이지에서 옮겨 왔다 — 전부 지금 연 길드의 것이다.
+	import AdminPluginsSection from '$lib/components/admin/AdminPluginsSection.svelte';
 	// DEV-068: `.guild/tags/{slug}.toml` 정의 (색 / 설명).
 	// DEV-119: window.confirm() 대신 인앱 모달 (Tauri 에서 native confirm silent return).
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+
+	// DEV-393: 섹션 여섯이 세로로 이어져 있던 것을 설정 페이지처럼 탭으로 나눈다.
+	// 백업과 진단을 가른 이유 — 복원은 되돌리기 어려운 조작이라 평소에 보는 진단과 떨어뜨린다.
+	type Tab = 'structure' | 'plugins' | 'backup' | 'diagnostics';
+	const TABS: { id: Tab; label: string }[] = [
+		{ id: 'structure', label: 'admin.tabStructure' },
+		{ id: 'plugins', label: 'admin.tabPlugins' },
+		{ id: 'backup', label: 'admin.tabBackup' },
+		{ id: 'diagnostics', label: 'admin.tabDiagnostics' }
+	];
+	let activeTab = $state<Tab>('structure');
 
 	let snapshots = $state<SnapshotInfo[]>([]);
 	let drift = $state<DriftReport | null>(null);
@@ -233,163 +246,184 @@
 
 <!-- DEV-259: 페이지 로컬 toast 마크업 제거 — 전역 ToastHost 가 렌더. -->
 
-<div class="page">
-	<h1>{t('admin.title', $locale)}</h1>
-	<p class="note">{t('admin.noAuthWarn', $locale)}</p>
+<div class="admin">
+	<aside class="side">
+		<h1>{t('admin.title', $locale)}</h1>
+		<nav>
+			{#each TABS as tab (tab.id)}
+				<button
+					class="tab"
+					class:active={activeTab === tab.id}
+					onclick={() => (activeTab = tab.id)}
+					aria-pressed={activeTab === tab.id}>{t(tab.label, $locale)}</button
+				>
+			{/each}
+		</nav>
+	</aside>
 
-	<AdminTypesSection onmessage={onSectionMessage} />
-	<AdminStatusesSection onmessage={onSectionMessage} />
+	<div class="panel">
+		<p class="note">{t('admin.noAuthWarn', $locale)}</p>
 
-	<section>
-		<div class="section-header">
-			<h2>{t('admin.backupsHeading', $locale)}</h2>
-			<div class="actions">
-				<button onclick={onCreateSnapshot} disabled={busy}>{t('admin.newBackup', $locale)}</button>
-				<button onclick={refresh} disabled={busy}>{t('admin.refresh', $locale)}</button>
-			</div>
-		</div>
-
-		<!-- BUG-188: 백업 범위 안내 — 첨부는 백업 대상이 아니다. 목록이 비어
-		     있을 때도 보여야 하므로 {#if} 밖에 둔다(백업을 처음 만들기 전에
-		     알아야 할 정보다). -->
-		<p class="hint scope">{t('admin.backupScopeHint', $locale)}</p>
-
-		{#if snapshots.length === 0}
-			<p class="empty">{t('admin.noBackups', $locale)}</p>
-		{:else}
-			<table>
-				<thead>
-					<tr>
-						<th>{t('admin.colTime', $locale)}</th>
-						<th>{t('admin.colSize', $locale)}</th>
-						<th></th>
-					</tr>
-				</thead>
-				<tbody>
-					{#each snapshots.slice().reverse() as s (s.timestamp)}
-						<tr>
-							<td><code>{formatTimestamp(s.timestamp)}</code></td>
-							<td>{formatSize(s.size_bytes)}</td>
-							<td class="snap-actions">
-								<button class="restore" onclick={() => onRestore(s.timestamp)} disabled={busy}
-									>{t('admin.restore', $locale)}</button
-								>
-								<button
-									class="del-snap"
-									title={t('admin.deleteThisBackup', $locale)}
-									onclick={() => (confirmDeleteSnap = s.timestamp)}
-									disabled={busy}>{t('detail.delete', $locale)}</button
-								>
-							</td>
-						</tr>
-					{/each}
-				</tbody>
-			</table>
-			<p class="hint">{t('admin.autoBackupHint', $locale)}</p>
-		{/if}
-	</section>
-
-	<section>
-		<div class="section-header">
-			<h2>{t('admin.driftHeading', $locale)}</h2>
-			<div class="actions">
-				<button onclick={onCheckDrift} disabled={busy}>{t('admin.check', $locale)}</button>
-				<button onclick={onReindex} disabled={busy}>Reindex</button>
-			</div>
-		</div>
-
-		{#if problemFiles.length > 0}
-			<div class="problem-files" role="alert">
-				<h3>
-					{t('admin.problemFilesPre', $locale)}{problemFiles.length}{t(
-						'admin.problemFilesPost',
-						$locale
-					)}
-				</h3>
-				<p class="hint">
-					{t('admin.problemFilesHint', $locale)}
-				</p>
-				<ul>
-					{#each problemFiles as p (p.path)}
-						<li><code>{p.path}</code><span class="reason"> — {p.reason}</span></li>
-					{/each}
-				</ul>
-			</div>
-		{/if}
-
-		{#if drift === null}
-			<p class="empty">{t('admin.driftEmpty', $locale)}</p>
-		{:else}
-			{@const total =
-				drift.fresh_files.length + drift.missing_in_index.length + drift.stale_in_index.length}
-			{#if total === 0}
-				<p class="ok">{t('admin.driftOk', $locale)}</p>
-			{:else}
-				<div class="drift-report">
-					{#if drift.missing_in_index.length > 0}
-						<div>
-							<h3>{t('admin.missingInIndex', $locale)}{drift.missing_in_index.length})</h3>
-							<ul>
-								{#each drift.missing_in_index as slug}<li><code>{slug}</code></li>{/each}
-							</ul>
-						</div>
-					{/if}
-					{#if drift.stale_in_index.length > 0}
-						<div>
-							<h3>{t('admin.staleInIndex', $locale)}{drift.stale_in_index.length})</h3>
-							<ul>
-								{#each drift.stale_in_index as slug}<li><code>{slug}</code></li>{/each}
-							</ul>
-						</div>
-					{/if}
-					{#if drift.fresh_files.length > 0}
-						<div>
-							<h3>{t('admin.freshFiles', $locale)}{drift.fresh_files.length})</h3>
-							<ul>
-								{#each drift.fresh_files as slug}<li><code>{slug}</code></li>{/each}
-							</ul>
-						</div>
-					{/if}
-					<p class="hint">{t('admin.reindexHint', $locale)}</p>
+		{#if activeTab === 'structure'}
+			<AdminTypesSection onmessage={onSectionMessage} />
+			<AdminStatusesSection onmessage={onSectionMessage} />
+		{:else if activeTab === 'plugins'}
+			<section>
+				<AdminPluginsSection />
+			</section>
+		{:else if activeTab === 'backup'}
+			<section>
+				<div class="section-header">
+					<h2>{t('admin.backupsHeading', $locale)}</h2>
+					<div class="actions">
+						<button onclick={onCreateSnapshot} disabled={busy}>{t('admin.newBackup', $locale)}</button>
+						<button onclick={refresh} disabled={busy}>{t('admin.refresh', $locale)}</button>
+					</div>
 				</div>
-			{/if}
-		{/if}
-	</section>
 
-	<!-- DEV-162: 런타임 정비 — VACUUM + journal(AOF) tail. -->
-	<section>
-		<div class="section-header">
-			<h2>{t('admin.maintHeading', $locale)}</h2>
-			<div class="actions">
-				<button onclick={onVacuum} disabled={busy}>{t('admin.vacuum', $locale)}</button>
-				<button onclick={onJournalTail} disabled={busy}>{t('admin.recentOps', $locale)}</button>
-			</div>
-		</div>
+				<!-- BUG-188: 백업 범위 안내 — 첨부는 백업 대상이 아니다. 목록이 비어
+				     있을 때도 보여야 하므로 {#if} 밖에 둔다(백업을 처음 만들기 전에
+				     알아야 할 정보다). -->
+				<p class="hint scope">{t('admin.backupScopeHint', $locale)}</p>
 
-		{#if journal === null}
-			<p class="empty">
-				{t('admin.maintEmptyHint', $locale)}
-			</p>
-		{:else if journal.total === 0}
-			<p class="ok">{t('admin.journalEmptyMsg', $locale)}</p>
+				{#if snapshots.length === 0}
+					<p class="empty">{t('admin.noBackups', $locale)}</p>
+				{:else}
+					<table>
+						<thead>
+							<tr>
+								<th>{t('admin.colTime', $locale)}</th>
+								<th>{t('admin.colSize', $locale)}</th>
+								<th></th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each snapshots.slice().reverse() as s (s.timestamp)}
+								<tr>
+									<td><code>{formatTimestamp(s.timestamp)}</code></td>
+									<td>{formatSize(s.size_bytes)}</td>
+									<td class="snap-actions">
+										<button class="restore" onclick={() => onRestore(s.timestamp)} disabled={busy}
+											>{t('admin.restore', $locale)}</button
+										>
+										<button
+											class="del-snap"
+											title={t('admin.deleteThisBackup', $locale)}
+											onclick={() => (confirmDeleteSnap = s.timestamp)}
+											disabled={busy}>{t('detail.delete', $locale)}</button
+										>
+									</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+					<p class="hint">{t('admin.autoBackupHint', $locale)}</p>
+				{/if}
+			</section>
 		{:else}
-			<p class="hint">
-				{t('admin.journalTotalPre', $locale)}{journal.total}{t(
-					'admin.journalTotalMid',
-					$locale
-				)}{journal.rows.length}{t('admin.journalTotalPost', $locale)}
-			</p>
-			<ul class="journal">
-				{#each journal.rows as op (op.id)}
-					<li>
-						<code class="jop">#{op.id} {op.op}</code>
-						<span class="jts">{op.ts}</span>
-						<div class="jargs"><code>{op.args}</code></div>
-					</li>
-				{/each}
-			</ul>
+			<section>
+				<div class="section-header">
+					<h2>{t('admin.driftHeading', $locale)}</h2>
+					<div class="actions">
+						<button onclick={onCheckDrift} disabled={busy}>{t('admin.check', $locale)}</button>
+						<button onclick={onReindex} disabled={busy}>Reindex</button>
+					</div>
+				</div>
+
+				{#if problemFiles.length > 0}
+					<div class="problem-files" role="alert">
+						<h3>
+							{t('admin.problemFilesPre', $locale)}{problemFiles.length}{t(
+								'admin.problemFilesPost',
+								$locale
+							)}
+						</h3>
+						<p class="hint">
+							{t('admin.problemFilesHint', $locale)}
+						</p>
+						<ul>
+							{#each problemFiles as p (p.path)}
+								<li><code>{p.path}</code><span class="reason"> — {p.reason}</span></li>
+							{/each}
+						</ul>
+					</div>
+				{/if}
+
+				{#if drift === null}
+					<p class="empty">{t('admin.driftEmpty', $locale)}</p>
+				{:else}
+					{@const total =
+						drift.fresh_files.length + drift.missing_in_index.length + drift.stale_in_index.length}
+					{#if total === 0}
+						<p class="ok">{t('admin.driftOk', $locale)}</p>
+					{:else}
+						<div class="drift-report">
+							{#if drift.missing_in_index.length > 0}
+								<div>
+									<h3>{t('admin.missingInIndex', $locale)}{drift.missing_in_index.length})</h3>
+									<ul>
+										{#each drift.missing_in_index as slug}<li><code>{slug}</code></li>{/each}
+									</ul>
+								</div>
+							{/if}
+							{#if drift.stale_in_index.length > 0}
+								<div>
+									<h3>{t('admin.staleInIndex', $locale)}{drift.stale_in_index.length})</h3>
+									<ul>
+										{#each drift.stale_in_index as slug}<li><code>{slug}</code></li>{/each}
+									</ul>
+								</div>
+							{/if}
+							{#if drift.fresh_files.length > 0}
+								<div>
+									<h3>{t('admin.freshFiles', $locale)}{drift.fresh_files.length})</h3>
+									<ul>
+										{#each drift.fresh_files as slug}<li><code>{slug}</code></li>{/each}
+									</ul>
+								</div>
+							{/if}
+							<p class="hint">{t('admin.reindexHint', $locale)}</p>
+						</div>
+					{/if}
+				{/if}
+			</section>
+
+			<!-- DEV-162: 런타임 정비 — VACUUM + journal(AOF) tail. -->
+			<section>
+				<div class="section-header">
+					<h2>{t('admin.maintHeading', $locale)}</h2>
+					<div class="actions">
+						<button onclick={onVacuum} disabled={busy}>{t('admin.vacuum', $locale)}</button>
+						<button onclick={onJournalTail} disabled={busy}>{t('admin.recentOps', $locale)}</button>
+					</div>
+				</div>
+
+				{#if journal === null}
+					<p class="empty">
+						{t('admin.maintEmptyHint', $locale)}
+					</p>
+				{:else if journal.total === 0}
+					<p class="ok">{t('admin.journalEmptyMsg', $locale)}</p>
+				{:else}
+					<p class="hint">
+						{t('admin.journalTotalPre', $locale)}{journal.total}{t(
+							'admin.journalTotalMid',
+							$locale
+						)}{journal.rows.length}{t('admin.journalTotalPost', $locale)}
+					</p>
+					<ul class="journal">
+						{#each journal.rows as op (op.id)}
+							<li>
+								<code class="jop">#{op.id} {op.op}</code>
+								<span class="jts">{op.ts}</span>
+								<div class="jargs"><code>{op.args}</code></div>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			</section>
 		{/if}
-	</section>
+	</div>
 </div>
 
 <!-- DEV-119: backup 복원 확인 — 인앱 모달. -->
@@ -428,15 +462,80 @@
 />
 
 <style>
-	.page {
+	/* DEV-393: 설정 페이지와 같은 세로 탭 — 두 페이지의 모양을 맞춘다. */
+	.admin {
+		display: flex;
+		gap: 1.5rem;
 		max-width: var(--content-max-width, 900px);
 		margin: 0 auto;
-		padding: 2rem 1.5rem;
+		padding: 1.5rem;
 		color: var(--text);
 	}
-	h1 {
-		margin: 0 0 0.5rem 0;
-		font-size: 1.4rem;
+	.side {
+		flex: 0 0 10rem;
+	}
+	.side h1 {
+		font-size: 1.1rem;
+		color: var(--text);
+		margin: 0 0 1rem;
+	}
+	.side nav {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+	.tab {
+		text-align: left;
+		padding: 0.5rem 0.75rem;
+		border: none;
+		background: transparent;
+		color: var(--text-muted);
+		border-radius: var(--r-md);
+		font-size: 0.9rem;
+		cursor: pointer;
+		transition:
+			background 0.15s,
+			color 0.15s;
+	}
+	.tab:hover {
+		background: var(--bg-elevated);
+		color: var(--text);
+	}
+	.tab.active {
+		background: var(--bg-subtle);
+		color: var(--text);
+		font-weight: 600;
+	}
+	.panel {
+		flex: 1;
+		min-width: 0;
+	}
+	/* 좁은 화면에서는 탭을 위로 올려 가로 한 줄로 — 설정 페이지(DEV-257)와 같다. */
+	@media (max-width: 640px) {
+		.admin {
+			flex-direction: column;
+			gap: 1rem;
+			padding: 1rem;
+		}
+		.side {
+			flex: none;
+		}
+		.side h1 {
+			margin-bottom: 0.5rem;
+		}
+		.side nav {
+			flex-direction: row;
+			overflow-x: auto;
+			padding-bottom: 0.25rem;
+			scrollbar-width: none;
+		}
+		.side nav::-webkit-scrollbar {
+			display: none;
+		}
+		.tab {
+			flex: none;
+			white-space: nowrap;
+		}
 	}
 	h2 {
 		margin: 0;

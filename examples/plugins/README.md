@@ -147,7 +147,7 @@ pre 를 내는 이벤트는 지금 `quest.deleted` 와 `comment.added` 둘뿐이
 ]
 ```
 
-설정 → 플러그인 에서 채우고, 스크립트는 `config("ON_COMMENT")` 로 읽는다 —
+관리 → 플러그인 에서 채우고, 스크립트는 `config("ON_COMMENT")` 로 읽는다 —
 체크박스는 **bool 로** 온다. 정의 안에서는 `${TELEGRAM_BOT_TOKEN}` 으로 쓴다.
 
 터미널에서는:

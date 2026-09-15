@@ -163,88 +163,87 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'settings.tabDisplay': { ko: '표시', en: 'Display' },
 	'settings.tabEditor': { ko: '편집기', en: 'Editor' },
 	// DEV-379: 플러그인 — 이 기계에서 남의 코드를 돌릴지 정하는 화면.
-	'settings.tabPlugins': { ko: '플러그인', en: 'Plugins' },
-	'settings.pluginsHeading': { ko: '플러그인', en: 'Plugins' },
-	'settings.pluginsIntro': {
+	'plugins.heading': { ko: '플러그인', en: 'Plugins' },
+	'plugins.intro': {
 		ko: '플러그인 정의는 .guild/plugins/ 에 있고 git 으로 공유됩니다. 동의는 이 기계에만 남습니다 — 허용하기 전에는 돌지 않습니다.',
 		en: 'Plugin definitions live in .guild/plugins/ and are shared via git. Consent stays on this machine — nothing runs until you allow it.'
 	},
-	'settings.pluginsNone': {
+	'plugins.none': {
 		ko: '플러그인이 없습니다. .guild/plugins/{이름}/plugin.json 으로 정의합니다.',
 		en: 'No plugins. Define one at .guild/plugins/{name}/plugin.json.'
 	},
-	'settings.pluginsReadOnly': {
+	'plugins.readOnly': {
 		ko: '조회만 가능합니다. 허용·철회는 그 길드가 있는 기계의 데스크톱 앱이나 `openguild plugin allow` 로 합니다 — 동의는 기계마다 따로 남습니다.',
 		en: 'Read-only here. Allow/revoke from the desktop app on the machine that holds this guild, or with `openguild plugin allow` — consent is per-machine.'
 	},
-	'settings.pluginAllow': { ko: '허용', en: 'Allow' },
-	'settings.pluginRevoke': { ko: '철회', en: 'Revoke' },
+	'plugins.allow': { ko: '허용', en: 'Allow' },
+	'plugins.revoke': { ko: '철회', en: 'Revoke' },
 	// BUG-288: 전체 허용·전체 해제는 지금 있는 것들의 개별 상태를 한 번에 바꾼다.
 	// 앞으로 올 것을 묻지 않는 것은 자동 허용이 따로 맡는다.
-	'settings.pluginAllowAll': { ko: '전체 허용', en: 'Allow all' },
-	'settings.pluginRevokeAll': { ko: '전체 해제', en: 'Revoke all' },
-	'settings.pluginAllowAllConfirm': {
+	'plugins.allowAll': { ko: '전체 허용', en: 'Allow all' },
+	'plugins.revokeAll': { ko: '전체 해제', en: 'Revoke all' },
+	'plugins.allowAllConfirm': {
 		ko: '지금 목록에 있는 플러그인을 전부 이 기계에서 돌리게 됩니다. 계속할까요?',
 		en: 'Every plugin currently listed will run on this machine. Continue?'
 	},
-	'settings.pluginAutoAllow': { ko: '자동 허용', en: 'Auto-allow' },
-	'settings.pluginAutoAllowOn': { ko: '자동 허용 켜기', en: 'Turn on auto-allow' },
-	'settings.pluginAutoAllowHint': {
+	'plugins.autoAllow': { ko: '자동 허용', en: 'Auto-allow' },
+	'plugins.autoAllowOn': { ko: '자동 허용 켜기', en: 'Turn on auto-allow' },
+	'plugins.autoAllowHint': {
 		ko: '새로 추가되거나 바뀐 플러그인도 묻지 않고 돕니다 (직접 철회한 것은 제외)',
 		en: 'New or changed plugins run without asking (except ones you revoked)'
 	},
-	'settings.pluginAutoAllowConfirm': {
+	'plugins.autoAllowConfirm': {
 		ko: '앞으로 이 길드에 추가되거나 git 으로 바뀌어 오는 플러그인까지, 묻지 않고 돌게 됩니다. 직접 철회한 것은 계속 안 돕니다. 계속할까요?',
 		en: 'Plugins added to this guild later, or changed via git, will run without asking. Ones you revoked stay off. Continue?'
 	},
-	'settings.pluginPending': { ko: '동의 대기 — 안 돕니다', en: 'Awaiting consent — not running' },
-	'settings.pluginRunning': { ko: '돌고 있음', en: 'Running' },
-	'settings.pluginOtherScope': {
+	'plugins.pending': { ko: '동의 대기 — 안 돕니다', en: 'Awaiting consent — not running' },
+	'plugins.running': { ko: '돌고 있음', en: 'Running' },
+	'plugins.otherScope': {
 		ko: '허용됨 (이 앱의 scope 아님 — 여기서는 안 돕니다)',
 		en: 'Allowed (not in this app\'s scope — it does not run here)'
 	},
-	'settings.pluginShowScript': { ko: '스크립트 보기', en: 'Show script' },
-	'settings.pluginHideScript': { ko: '접기', en: 'Hide' },
-	'settings.pluginBroken': { ko: '읽지 못한 정의', en: 'Definitions that failed to load' },
-	'settings.pluginProblems': { ko: '최근 전달 실패', en: 'Recent delivery failures' },
+	'plugins.showScript': { ko: '스크립트 보기', en: 'Show script' },
+	'plugins.hideScript': { ko: '접기', en: 'Hide' },
+	'plugins.broken': { ko: '읽지 못한 정의', en: 'Definitions that failed to load' },
+	'plugins.problems': { ko: '최근 전달 실패', en: 'Recent delivery failures' },
 	// DEV-383: 예전엔 Rust 가 만든 한국어 문장이 그대로 렌더돼 영어 UI 에 끼었다.
-	'settings.pluginsNoGuild': {
+	'plugins.noGuild': {
 		ko: '아직 길드를 열지 않았습니다 — 플러그인은 이 기계에서 연 길드에만 적용됩니다.',
 		en: 'No guild is open yet — plugins apply only to a guild opened on this machine.'
 	},
-	'settings.pluginScope': { ko: '적용 범위', en: 'scope' },
+	'plugins.scope': { ko: '적용 범위', en: 'scope' },
 	// BUG-279: run 훅의 작업 디렉터리. 플러그인 폴더가 아니다 — 거기 쓰면
 	// 동의 지문이 바뀌어 스스로 꺼진다.
-	'settings.pluginDataDir': { ko: '파일 쓰는 곳', en: 'writes files to' },
+	'plugins.dataDir': { ko: '파일 쓰는 곳', en: 'writes files to' },
 	// REQ-021: 플러그인 설정값.
-	'settings.pluginValueSave': { ko: '저장', en: 'Save' },
-	'settings.pluginValueClear': { ko: '지우기', en: 'Clear' },
-	'settings.pluginValueSaved': { ko: '저장했습니다', en: 'Saved' },
-	'settings.pluginValueSet': { ko: '설정됨 — 바꾸려면 새로 입력', en: 'Set — type to replace' },
-	'settings.pluginValueMissing': {
+	'plugins.valueSave': { ko: '저장', en: 'Save' },
+	'plugins.valueClear': { ko: '지우기', en: 'Clear' },
+	'plugins.valueSaved': { ko: '저장했습니다', en: 'Saved' },
+	'plugins.valueSet': { ko: '설정됨 — 바꾸려면 새로 입력', en: 'Set — type to replace' },
+	'plugins.valueMissing': {
 		ko: '값이 없어 이 플러그인은 돌지 않습니다.',
 		en: 'Unset — this plugin will not run.'
 	},
-	'settings.pluginValueFromEnv': {
+	'plugins.valueFromEnv': {
 		ko: '지금은 환경변수 값을 씁니다.',
 		en: 'Currently using the value from your environment.'
 	},
-	'settings.pluginValueFromDefault': {
+	'plugins.valueFromDefault': {
 		ko: '지금은 기본값을 씁니다.',
 		en: 'Currently using the default.'
 	},
-	'settings.pluginValuesPlaintext': {
+	'plugins.valuesPlaintext': {
 		ko: '값은 이 컴퓨터의 ~/.openguild/plugin-values.json 에 평문으로 저장됩니다. git 에는 올라가지 않습니다.',
 		en: 'Values are stored in plain text at ~/.openguild/plugin-values.json on this machine. They are never committed to git.'
 	},
 	// DEV-384: 자동 허용 중에는 "허용 전에는 안 돕니다" 가 사실이 아니다.
-	'settings.pluginsIntroAuto': {
+	'plugins.introAuto': {
 		ko: '플러그인 정의는 .guild/plugins/ 에 있고 git 으로 공유됩니다. 동의는 이 기계에만 남습니다.',
 		en: 'Plugin definitions live in .guild/plugins/ and are shared via git. Consent stays on this machine.'
 	},
-	'settings.pluginRetry': { ko: '다시 시도', en: 'Retry' },
-	'settings.pluginAllowed': { ko: '허용했습니다', en: 'Allowed' },
-	'settings.pluginRevoked': { ko: '철회했습니다', en: 'Revoked' },
+	'plugins.retry': { ko: '다시 시도', en: 'Retry' },
+	'plugins.allowed': { ko: '허용했습니다', en: 'Allowed' },
+	'plugins.revoked': { ko: '철회했습니다', en: 'Revoked' },
 
 	'settings.editorHeading': { ko: '편집기', en: 'Editor' },
 	'settings.tabBehavior': { ko: 'Tab 동작', en: 'Tab behavior' },
@@ -354,6 +353,11 @@ const DICT: Record<string, { ko: string; en: string }> = {
 
 	// DEV-205 모듈5: Admin 페이지.
 	'admin.title': { ko: '관리자 (Admin)', en: 'Admin' },
+	// DEV-393: 관리 페이지 탭 — 설정 페이지와 같은 세로 탭.
+	'admin.tabStructure': { ko: '퀘스트 구성', en: 'Quest setup' },
+	'admin.tabPlugins': { ko: '플러그인', en: 'Plugins' },
+	'admin.tabBackup': { ko: '백업', en: 'Backups' },
+	'admin.tabDiagnostics': { ko: '진단', en: 'Diagnostics' },
 	'admin.noAuthWarn': {
 		ko: '⚠ 인증 없음 — MVP 단계. 멀티유저로 확장 시 보호 필요.',
 		en: '⚠ No authentication — MVP stage. Protection needed for multi-user use.'

@@ -141,7 +141,7 @@ impl Outbound {
                     Some(v) => v.clone(),
                     None => std::env::var(var).map_err(|_| {
                         format!(
-                            "body_env.{key}: {var} 값이 없습니다 — 설정 화면에서 넣거나 \
+                            "body_env.{key}: {var} 값이 없습니다 — 관리 → 플러그인 에서 넣거나 \
                              환경변수로 지정하세요"
                         )
                     })?,

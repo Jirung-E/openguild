@@ -6,11 +6,11 @@
 // 있는데 그 요소에는 안 맞는 selector 였다(DEV-383). 둘 다 "있다" 는 검사는
 // 통과했다.
 //
-// 그래서 여기서는 설정 페이지를 실제로 렌더하고, 설명이 있는 것과 없는 것을
+// 그래서 여기서는 플러그인 화면을 실제로 렌더하고, 설명이 있는 것과 없는 것을
 // 나란히 둔다. 없는 쪽에 빈 자리가 생기면 그것도 결함이다.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/svelte';
+import { render, screen } from '@testing-library/svelte';
 import type { PluginStatus, PluginView } from '$lib/api/plugins';
 
 const status = vi.fn();
@@ -27,12 +27,6 @@ vi.mock('$lib/api/plugins', () => ({
 		setAutoAllow: vi.fn()
 	},
 	pluginsManageable: () => manageable()
-}));
-
-// 업데이트 확인은 Tauri 를 부른다 — 이 시험의 관심사가 아니다.
-vi.mock('$lib/api/updater', () => ({
-	updateState: { subscribe: (f: (v: unknown) => void) => (f({ kind: 'idle' }), () => {}) },
-	checkForUpdate: vi.fn()
 }));
 
 function plugin(name: string, description: string | null): PluginView {
@@ -57,12 +51,9 @@ function statusWith(plugins: PluginView[]): PluginStatus {
 }
 
 async function openPluginsTab() {
-	const { default: Page } = await import('./+page.svelte');
-	render(Page);
-	// 탭 버튼은 `aria-pressed` 를 갖는다 — 문구는 언어에 따라 바뀌므로
-	// 이름으로 찾지 않는다.
-	const tabs = screen.getAllByRole('button').filter((b) => b.hasAttribute('aria-pressed'));
-	await fireEvent.click(tabs[tabs.length - 1]);
+	// DEV-393: 설정 페이지의 탭이던 것을 관리 페이지로 옮기며 컴포넌트로 뗐다 — 컴포넌트를 바로 그린다.
+	const { default: Section } = await import('./AdminPluginsSection.svelte');
+	render(Section);
 }
 
 describe('REQ-020 설정 화면의 플러그인 설명', () => {

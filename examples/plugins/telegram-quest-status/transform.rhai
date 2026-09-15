@@ -1,7 +1,7 @@
-// 무엇을 알릴지는 **설정 화면에서** 켜고 끈다(REQ-021). `config(키)` 가 그 값을
+// 무엇을 알릴지는 **관리 → 플러그인 에서** 켜고 끈다(REQ-021). `config(키)` 가 그 값을
 // 돌려주고, 체크박스는 bool 로 온다 — 문자열이면 `if config(k)` 가 항상 참이다.
 //
-// 설정 → 플러그인 에서, 또는:
+// 관리 → 플러그인 에서, 또는:
 //     echo -n 켤값 | openguild plugin set telegram-quest-status ON_COMMENT
 //
 // (`const` + `global::` 은 쓰지 않는다 — `no_module` 로 모듈 경로를 없앴기
