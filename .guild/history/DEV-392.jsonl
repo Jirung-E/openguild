@@ -4,3 +4,4 @@
 {"ts":"2026-09-16T00:55:20+09:00","op":"change_status","old":"in_progress","new":"testing"}
 {"ts":"2026-09-16T01:09:29+09:00","op":"change_status","old":"testing","new":"in_progress"}
 {"ts":"2026-09-16T01:11:35+09:00","op":"change_status","old":"in_progress","new":"testing"}
+{"ts":"2026-09-16T01:14:04+09:00","op":"change_status","old":"testing","new":"done"}
