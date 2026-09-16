@@ -75,6 +75,17 @@ Co-Authored-By: ... (해당 시)
 - 외부 todo 도구 / GitHub Issues 보조 사용 X.
 - 새 작업 → 새 quest → 같은 quest_id 의 branch → commit 메시지에 그 ID.
 
+**타입 고르기** (admin, 2026-09-16):
+
+| 타입 | 언제 |
+|---|---|
+| `BUG` | 고장 — 있어야 할 대로 안 도는 것 |
+| `DEV` | **하기로 한** 작업 — 새 기능이든 구조 변경이든 |
+| `REQ` | **할지 말지 아직 정하지 않은 것** — "이런 기능 필요할까?" |
+
+`REQ` 는 원래 여러 사람이 쓰는 환경에서 "남이 요청한 것" 자리였다. 지금은 혼자 쓰므로
+**판단이 남은 것**을 담는다. 하기로 정해진 순간 `DEV` 다 — 규모나 새 기능 여부로 가르지 않는다.
+
 > 📌 **[`.agents/skills/openguild-workflow/SKILL.md`](./.agents/skills/openguild-workflow/SKILL.md) 의
 > 워크플로 / 규칙을 따를 것.** 특히 quest 상태 흐름과 testing 단계 처리 방식
 > (자동 테스트 통과 시 done OK, 수동 검증 필요 시 testing 으로 보내고 본문에
