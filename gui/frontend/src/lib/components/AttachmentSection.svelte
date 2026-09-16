@@ -106,6 +106,32 @@
 		return ext && !hasExtension(name) ? `${name}.${ext}` : name;
 	}
 
+	/**
+	 * BUG-291: 목록에서 파일 **종류**를 알 수 있게 — 썸네일 모서리에 붙는 배지.
+	 *
+	 * 표시 이름이 아니라 **저장된 경로**에서 뽑는다. 이름에 확장자가 없는 첨부가 흔하고
+	 * (내려받기는 이미 `downloadName` 으로 보정하고 있었다), 이름은 길면 뒤가 잘려 확장자가
+	 * 제일 먼저 사라진다. 확장자가 없는 원본(`README`)에는 안 그린다 — 빈 배지는 없느니만 못하다.
+	 */
+	function kindBadge(att: Attachment): string | null {
+		return storedExtension(att.path)?.toUpperCase() ?? null;
+	}
+
+	/**
+	 * BUG-291: 이름을 **앞/뒤 두 조각**으로 나눈다. 뒤 조각은 안 줄고 앞 조각만 줄어들어,
+	 * 가운데가 잘리고 확장자가 남는다.
+	 *
+	 * 글자 수로 미리 자르지 않는 이유: 타일 폭이 좁아(≈110px) 미리 자른 문자열도 CSS 가 다시
+	 * 뒤에서 잘랐다 — 확장자가 또 사라졌다(브라우저로 확인). 얼마나 들어가는지는 화면만 안다.
+	 */
+	function nameParts(name: string): { head: string; tail: string } {
+		const chars = [...name];
+		const keep = Math.min(7, Math.max(0, chars.length - 4));
+		return keep === 0
+			? { head: name, tail: '' }
+			: { head: chars.slice(0, -keep).join(''), tail: chars.slice(-keep).join('') };
+	}
+
 	/** macOS 저장 패널이 확장자를 숨긴 채 경로를 반환해도 실제 파일에는 보존한다. */
 	function ensureExtension(path: string, ext: string | null): string {
 		return ext && !hasExtension(path) ? `${path}.${ext}` : path;
@@ -439,6 +465,11 @@
 						{:else}
 							<span class="file-ico"><Icon name="doc" size={26} /></span>
 						{/if}
+						<!-- BUG-291: 종류는 이름 길이와 무관하게 늘 같은 자리에. 미리보기를 덮지 않게
+						     모서리에 작게 둔다. -->
+						{#if kindBadge(a)}
+							<span class="kind">{kindBadge(a)}</span>
+						{/if}
 					</button>
 					<button
 						type="button"
@@ -454,7 +485,11 @@
 						aria-label={t('attach.download', $locale)}
 						onclick={() => downloadOne(a)}>⤓</button
 					>
-					<span class="name" title={a.name}>{a.name}</span>
+					<span class="name" title={a.name}>
+						<span class="name-head">{nameParts(a.name).head}</span><span class="name-tail"
+							>{nameParts(a.name).tail}</span
+						>
+					</span>
 				</li>
 			{/each}
 		</ul>
@@ -670,6 +705,7 @@
 		background: var(--bg-elevated);
 	}
 	.thumb {
+		position: relative;
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -697,12 +733,35 @@
 	.file-ico {
 		font-size: 1.8rem;
 	}
+	/* BUG-291: 앞 조각만 줄어들게 — 가운데가 잘리고 확장자가 남는다. */
 	.name {
+		display: flex;
 		font-size: 0.75rem;
 		color: var(--text);
+		min-width: 0;
+	}
+	.name-head {
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+	.name-tail {
+		flex: none;
+		white-space: nowrap;
+	}
+	/* BUG-291: 파일 종류 배지 — 썸네일 오른쪽 아래. */
+	.kind {
+		position: absolute;
+		right: 0.2rem;
+		bottom: 0.2rem;
+		padding: 0 0.25rem;
+		border-radius: var(--r-xs);
+		background: color-mix(in srgb, var(--bg) 78%, transparent);
+		color: var(--text-muted);
+		font-size: 0.6rem;
+		font-weight: 600;
+		letter-spacing: 0.02em;
+		pointer-events: none;
 	}
 	/* BUG-081 후속: 다운로드 버튼을 × 아래 우상단 오버레이로 — 제목(name) 안 가림. */
 	.dl {

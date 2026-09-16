@@ -297,3 +297,45 @@ describe('AttachmentSection 미리보기와 다운로드', () => {
 		click.mockRestore();
 	});
 });
+
+// BUG-291: 목록에서 **파일 종류**를 알 수 있어야 한다.
+//
+// 표시 이름에 확장자가 없는 첨부가 흔하고(내려받기만 저장 경로로 보정하고 있었다), 이름은
+// 길면 뒤가 잘려 확장자가 제일 먼저 사라졌다. 종류는 이름과 따로, 늘 같은 자리에 둔다.
+describe('BUG-291 첨부 종류 표시', () => {
+	const att = (name: string, path: string) => ({ name, path });
+	const render1 = (attachments: { name: string; path: string }[]) =>
+		render(AttachmentSection, { props: { slug: 'DEV-001', attachments } });
+
+	it('이름에 확장자가 없어도 저장 경로에서 뽑아 배지로 보인다', async () => {
+		const { container } = render1([att('설계 메모', 'attachments/abc123.pdf')]);
+		await waitFor(() => expect(container.querySelector('.kind')).not.toBeNull());
+		expect(container.querySelector('.kind')?.textContent).toBe('PDF');
+	});
+
+	it('확장자가 없는 원본에는 배지를 안 그린다 — 빈 배지는 없느니만 못하다', async () => {
+		const { container } = render1([att('README', 'attachments/abc123')]);
+		await waitFor(() => expect(container.querySelector('.item')).not.toBeNull());
+		expect(container.querySelector('.kind')).toBeNull();
+	});
+
+	it('긴 이름은 가운데를 줄여 확장자가 남는다', async () => {
+		const long = '아주아주길고긴첨부파일제목입니다정말로깁니다.txt';
+		const { container } = render1([att(long, 'attachments/abc123.txt')]);
+		await waitFor(() => expect(container.querySelector('.name')).not.toBeNull());
+		// 뒤 조각은 안 줄어든다 — 앞 조각만 CSS 가 줄인다(폭은 화면만 안다).
+		expect(container.querySelector('.name-tail')?.textContent?.endsWith('.txt')).toBe(true);
+		expect(
+			container.querySelector('.name-head')!.textContent! +
+				container.querySelector('.name-tail')!.textContent!
+		).toBe(long);
+		// 원래 이름은 title 로 남는다.
+		expect(container.querySelector('.name')?.getAttribute('title')).toBe(long);
+	});
+
+	it('짧은 이름은 그대로 둔다', async () => {
+		const { container } = render1([att('메모.txt', 'attachments/abc.txt')]);
+		await waitFor(() => expect(container.querySelector('.name')).not.toBeNull());
+		expect(container.querySelector('.name')?.textContent?.trim()).toBe('메모.txt');
+	});
+});
