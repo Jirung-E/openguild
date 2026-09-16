@@ -42,6 +42,8 @@
 	// DEV-156: 본문 아래 첨부 섹션 (Jira 식).
 	import AttachmentSection from '$lib/components/AttachmentSection.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+	// DEV-396: 캠페인에서 바로 새 퀘스트를 만들어 연결한다 — 퀘스트 상세(DEV-278)와 같은 모달.
+	import NewQuestModal from '$lib/components/NewQuestModal.svelte';
 	// BUG-033: 생성 / 변경 시각 표시용 — Quest Detail 과 동일 헬퍼.
 	import { formatTs, formatRelative, isDateOverdue } from '$lib/utils/datetime';
 	// BUG-023: Quest Detail 의 QuestCombobox 와 같은 UI 로 통일.
@@ -120,6 +122,8 @@
 	let allQuests = $state<Quest[]>([]);
 	// BUG-023: datalist input → QuestCombobox 모달.
 	let comboOpen = $state(false);
+	// DEV-396: 새 퀘스트 생성 모달 — 만든 뒤 이 캠페인에 연결한다.
+	let newQuestOpen = $state(false);
 
 	async function load() {
 		loading = true;
@@ -438,6 +442,29 @@
 			showToast(e instanceof Error ? e.message : 'failed', 'error');
 		}
 	}
+	/**
+	 * DEV-396: 새 퀘스트를 만들어 이 캠페인에 연결한다.
+	 *
+	 * 모달이 만들어 주는 것은 **퀘스트뿐**이라 연결은 그다음이다(DEV-278 의 선행·후속과 같은
+	 * 순서). 연결만 실패하면 퀘스트는 이미 만들어져 있다 — 조용히 넘기면 "만들었는데 목록에
+	 * 없다" 가 되므로, 어디까지 됐는지 말한다.
+	 */
+	async function onQuestCreated(created?: Quest) {
+		newQuestOpen = false;
+		if (!detail || !created) return;
+		try {
+			await campaignsApi.linkQuest(detail.campaign_slug, created.quest_id);
+			detail = await campaignsApi.get(detail.campaign_slug);
+		} catch (e) {
+			showToast(
+				`${created.quest_id} ${t('campaign.linkAfterCreateFailed', $locale)} ${
+					e instanceof Error ? e.message : ''
+				}`.trim(),
+				'error'
+			);
+		}
+	}
+
 	async function unlinkQuest(qSlug: string) {
 		if (!detail) return;
 		const idx = detail.linked_quests.findIndex((q) => q.quest_id === qSlug);
@@ -751,6 +778,12 @@
 				</ul>
 			{/if}
 			<div class="add-row">
+				<!-- DEV-396: 퀘스트 상세의 "새 하위 퀘스트 / 기존 지정" 과 같은 두 갈래. 예전엔
+				     고르는 쪽만 있어서, 캠페인을 짜다 떠오른 일은 퀘스트를 따로 만들고 다시
+				     돌아와 연결해야 했다. -->
+				<button class="link-add-btn" onclick={() => (newQuestOpen = true)}
+					>{t('campaign.newQuest', $locale)}</button
+				>
 				<!-- BUG-023: QuestCombobox 모달 (Quest Detail 과 동일 UI) -->
 				<button class="link-add-btn" onclick={() => (comboOpen = true)}
 					>{t('campaign.linkQuest', $locale)}</button
@@ -839,6 +872,11 @@
 			/>
 		</div>
 	</div>
+{/if}
+
+<!-- DEV-396: 새 퀘스트 생성 — 만들어지면 이 캠페인에 연결한다. -->
+{#if newQuestOpen}
+	<NewQuestModal onclose={() => (newQuestOpen = false)} oncreated={onQuestCreated} />
 {/if}
 
 <!-- DEV-118: 캠페인 / 체크리스트 삭제 확인 모달. -->

@@ -135,6 +135,12 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'campaign.linkedQuests': { ko: '연결된 퀘스트', en: 'Linked quests' },
 	'campaign.noLinkedQuests': { ko: '연결된 퀘스트 없음.', en: 'No linked quests.' },
 	'campaign.unlinkQuest': { ko: '연결 해제', en: 'Unlink' },
+	// DEV-396: 캠페인에서 바로 새 퀘스트를 만들어 연결.
+	'campaign.newQuest': { ko: '+ 새 퀘스트', en: '+ New quest' },
+	'campaign.linkAfterCreateFailed': {
+		ko: '은(는) 만들어졌지만 이 캠페인에 연결하지 못했습니다 —',
+		en: 'was created but could not be linked to this campaign —'
+	},
 	'campaign.linkQuest': { ko: '+ 퀘스트 연결', en: '+ Link quest' },
 	'campaign.linkQuestTitle': { ko: '퀘스트 연결', en: 'Link quest' },
 	'campaign.searchPlaceholder': { ko: 'ID 또는 제목으로 검색', en: 'Search by ID or title' },
