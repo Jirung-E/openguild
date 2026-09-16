@@ -197,6 +197,22 @@ pub const CATALOG: &[Entry] = &[
     e("create_folder", Status::Emitted(&[ev::FOLDER_CREATED])),
     e("delete_folder", Status::Emitted(&[ev::FOLDER_DELETED])),
     e("move_folder", Status::Emitted(&[ev::FOLDER_MOVED])),
+    // DEV-398: 백업 — 길드 파일의 사본을 만들고(7개만 남는다) 되돌린다.
+    e("create_snapshot", Status::Emitted(&[ev::BACKUP_CREATED])),
+    e(
+        "maybe_auto_snapshot",
+        Status::Excluded(
+            "자동 백업도 create_snapshot 을 거친다 — 같은 이벤트가 `automatic: true` 로 나간다",
+        ),
+    ),
+    e(
+        "restore_snapshot",
+        Status::Excluded(
+            "복원은 길드 전체를 과거로 되돌린다 — 어느 문서가 어떻게 바뀌었는지를 이벤트로 \
+             표현할 수 없고(수백 건이 한 번에), 복원 뒤 상태는 reindex 가 다시 읽는다. \
+             필요해지면 `backup.restored` 하나를 따로 낸다",
+        ),
+    ),
     e("create_rule", Status::Emitted(&[ev::RULE_CREATED])),
     e("set_rule", Status::Emitted(&[ev::RULE_UPDATED])),
     e("delete_rule", Status::Emitted(&[ev::RULE_DELETED])),
@@ -284,14 +300,27 @@ mod tests {
     /// 생겼는데** 카탈로그에 안 들어왔다" 이기 때문이다. 런타임 값으로는
     /// 잡을 수 없다.
     fn ops_in_source() -> HashSet<String> {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/ops");
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let mut files: Vec<std::path::PathBuf> = std::fs::read_dir(root.join("src/ops"))
+            .expect("ops 디렉터리")
+            .flatten()
+            .map(|e| e.path())
+            .collect();
+        // DEV-398: 백업은 `ops` 가 아니라 `snapshot.rs` 라 이 검사의 사각지대였다 —
+        // 길드 파일을 통째로 만들고 되돌리는데도 "새 mutation 이 생겼다" 를 아무도 안 물었다.
+        files.push(root.join("src/snapshot.rs"));
         let mut found = HashSet::new();
-        for entry in std::fs::read_dir(&dir).expect("ops 디렉터리").flatten() {
-            let p = entry.path();
+        for p in files {
             if p.extension().and_then(|s| s.to_str()) != Some("rs") {
                 continue;
             }
             let src = std::fs::read_to_string(&p).expect("ops 파일 읽기");
+            // 시험 모듈은 뺀다 — 시험이 쓰는 가짜 op 이름("t" 같은)이 잡히면
+            // "카탈로그에 없는 mutation" 으로 나온다(DEV-398 에서 실제로 밟았다).
+            let src = match src.find("#[cfg(test)]") {
+                Some(i) => src[..i].to_string(),
+                None => src,
+            };
 
             // DEV-381: **journal 을 안 남기는 mutation 은 이 검사에 안 잡혔다.**
             // `ops/meta.rs` 의 타입·상태·태그정의 변경 12개가 통째로 사각지대였다

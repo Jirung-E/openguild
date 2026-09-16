@@ -87,6 +87,16 @@ pub fn target(kind: &str, id: &str) -> Value {
 }
 
 /// 도서관 문서 한 건. 본문은 안 싣는다 — 책은 길고, 필요하면 플러그인이 읽는다.
+/// DEV-398: 만들어진 백업 하나. 경로는 절대 경로 — 길드 밖으로 복사하는 훅이 그대로 쓴다.
+pub fn backup(info: &crate::snapshot::SnapshotInfo, automatic: bool) -> Value {
+    json!({
+        "path": info.path.display().to_string(),
+        "timestamp": info.timestamp,
+        "size_bytes": info.size_bytes,
+        "automatic": automatic,
+    })
+}
+
 pub fn book(b: &crate::ops::library::LibraryDocRow) -> Value {
     json!({
         "id": b.book_id(),

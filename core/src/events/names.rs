@@ -87,6 +87,13 @@ pub const TAG_DELETED: &str = "tag.deleted";
 // ── 작업기록 ─────────────────────────────────────────────
 pub const WORKLOG_NOTE_CHANGED: &str = "worklog.note_changed";
 
+/// DEV-398: 백업(스냅샷)이 만들어졌다. **수동·자동 둘 다** — 같은 함수를 거친다.
+///
+/// 길드 안의 스냅샷은 7개만 남고 오래된 것이 지워진다. 밖으로 복사해 쌓아 두고 싶다면 이
+/// 이벤트에 훅을 건다(예제 `backup-archive`). 경로는 **절대 경로**다 — 받는 쪽이 길드 밖에서
+/// 파일을 다루기 때문이다.
+pub const BACKUP_CREATED: &str = "backup.created";
+
 /// 1단계에 실제로 나가는 이벤트 전부. 와일드카드 매칭 검증과 문서에 쓴다.
 /// DEV-381: **관찰 pre 를 실제로 내는 이벤트.**
 ///
@@ -160,6 +167,7 @@ pub const ALL: &[&str] = &[
     TAG_DEFINED,
     TAG_DELETED,
     WORKLOG_NOTE_CHANGED,
+    BACKUP_CREATED,
 ];
 
 /// 구독 패턴이 이벤트 이름과 맞는지.

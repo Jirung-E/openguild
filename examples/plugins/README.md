@@ -1,6 +1,6 @@
 # 예제 플러그인
 
-복사해서 바로 쓰라고 두는 것들이다. 셋 다 다른 축을 보여준다.
+복사해서 바로 쓰라고 두는 것들이다. 각각 다른 축을 보여준다.
 
 ```bash
 cp -R examples/plugins/telegram-quest-status /내-길드/.guild/plugins/
@@ -14,6 +14,7 @@ openguild plugin allow telegram-quest-status --yes  # 그러고 나서 허용
 | `discussion-to-ai` | `post` | 있음 (조건으로 거름) | 헤더 | post |
 | `desktop-notify` | `run` | 없음 (이벤트 JSON 그대로) | — | post |
 | `deleted-audit` | `run` | 있음 (모양만 다듬음) | — | **pre** |
+| `backup-archive` | `run` | 있음 (경로만 넘김) | — | post |
 
 ---
 
@@ -101,6 +102,37 @@ pre 는 **거부하지 못한다.** 훅이 죽으면 길드가 멈추기 때문�
 
 pre 를 내는 이벤트는 지금 `quest.deleted` 와 `comment.added` 둘뿐이다. 없는
 이벤트에 `pre:` 를 걸면 적재 때 거부된다 — 조용히 안 도는 것보다 낫다.
+
+---
+
+## backup-archive
+
+**백업이 만들어지면 정해 둔 폴더로 한 벌 복사해 둔다.**
+
+길드 안의 백업은 **7개만 남는다** — 새 백업이 생기면 가장 오래된 것이 지워진다
+(`.guild/backups/snapshots/`). 자동 백업은 ops 50개 또는 24시간마다 도니, 바쁜 날에는
+며칠 전 상태가 이미 없다. 이 훅은 새 백업이 생길 때마다 밖으로 한 벌 복사해 둔다 —
+그 폴더에는 개수 제한이 없다.
+
+```bash
+cp -R examples/plugins/backup-archive /내-길드/.guild/plugins/
+openguild plugin allow backup-archive --yes
+printf '%s' /Volumes/backup/openguild | openguild plugin set backup-archive ARCHIVE_DIR
+openguild backup new          # 그 폴더에 사본이 생긴다
+```
+
+- **쌓아 둘 폴더**(`ARCHIVE_DIR`)를 안 정하면 아무것도 안 한다. 길드 밖의 경로를 권한다 —
+  길드 폴더를 통째로 잃어도 사본이 남는다.
+- **직접 만든 백업만**(`ONLY_MANUAL`)을 켜면 자동 백업은 건너뛴다.
+- 같은 이름이 이미 있으면 덮지 않는다. 복사는 `.part` 로 받아 두었다가 옮기므로, 도중에
+  죽어도 반쪽짜리 파일이 남지 않는다.
+
+설정값은 **자식 프로세스의 환경변수로** 온다(`$ARCHIVE_DIR`). `post` 의 url·헤더처럼
+`${...}` 로 쓸 수도 있지만, 토큰 같은 값을 `args` 에 넣으면 `ps` 에 보인다 — `run` 훅은
+환경변수로 읽는 편이 낫다.
+
+스크립트(`transform.rhai`)는 **복사할지 정하고, 경로 한 줄만 내보낸다.** 셸에서 JSON 을
+파싱하면 `jq` 가 있느냐에 따라 도는 예제가 되기 때문이다.
 
 ---
 

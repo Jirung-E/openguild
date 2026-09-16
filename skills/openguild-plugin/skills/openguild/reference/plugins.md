@@ -50,13 +50,15 @@ Read `examples/plugins/README.md` before writing one from scratch.
 | `action` | `post` (HTTP) or `run` (process, event JSON on **stdin**). These two are all the core owns. |
 | `action.post.body_env` | `{ "chat_id": "TELEGRAM_CHAT_ID" }` — inject env values into named top-level body keys. Scripts have no I/O, so `payload()` cannot read the environment; APIs that want a private id *in the body* (Telegram's `chat_id`) need this. Only the named keys are touched, so user text is never expanded. |
 | `script` | Optional `.rhai` file, relative to the plugin folder. |
-| `inputs` | Values the user must supply: `{key, label, type, help, secret, default, options}`. `type` is `text`/`checkbox`/`select`/`number`. Rendered as widgets in the desktop Admin → Plugins screen and stored per guild in `~/.openguild/plugin-values.json` (0600, never committed). Read them as `${KEY}` (always a string) or, in the script, `config("KEY")` (keeps its type). Resolution: stored value → process environment → `default`. |
+| `inputs` | Values the user must supply: `{key, label, type, help, secret, default, options}`. `type` is `text`/`checkbox`/`select`/`number`. Rendered as widgets in the desktop Admin → Plugins screen and stored per guild in `~/.openguild/plugin-values.json` (0600, never committed). Read them as `${KEY}` (always a string), in the script as `config("KEY")` (keeps its type), or — for `run` — as an environment variable of the child. Resolution: stored value → process environment → `default`. |
 
 A `run` hook's working directory is `~/.openguild/plugin-data/{guild}/{plugin}/`,
 **not** the plugin folder — a hook that writes next to itself changes the consent
 fingerprint and silently revokes its own consent (BUG-279). `OPENGUILD_PLUGIN_DIR`
 points at the plugin folder (usable as `${OPENGUILD_PLUGIN_DIR}` inside `command`
-and `args`); `OPENGUILD_PLUGIN_DATA_DIR` at the data folder.
+and `args`); `OPENGUILD_PLUGIN_DATA_DIR` at the data folder. Configured `inputs` also arrive
+as **environment variables** of the child (`$ARCHIVE_DIR`) — a `run` hook has no url or
+header to put them in, and passing a token through `args` would show it in `ps`.
 
 `openguild plugin events` lists all 55 event names — quests, comments, campaigns,
 the library, rules, attachments, and the guild's own vocabulary (types, statuses, tag

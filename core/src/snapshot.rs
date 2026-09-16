@@ -297,6 +297,12 @@ fn clear_guild_source(paths: &GuildPaths) -> Result<()> {
 ///
 /// Retention 7 개 — 8 번째 이상 오래된 것 삭제.
 pub async fn create_snapshot(store: &Store) -> Result<SnapshotInfo> {
+    create_snapshot_tagged(store, false).await
+}
+
+/// DEV-398: 자동 백업인지를 이벤트에 싣기 위한 내부 갈래. 만드는 일 자체는 같다 —
+/// 구독자가 "내가 시킨 것" 과 "저절로 생긴 것" 을 가를 수 있어야 한다.
+async fn create_snapshot_tagged(store: &Store, automatic: bool) -> Result<SnapshotInfo> {
     let paths = &store.paths;
 
     std::fs::create_dir_all(paths.snapshots_dir())
@@ -332,11 +338,18 @@ pub async fn create_snapshot(store: &Store) -> Result<SnapshotInfo> {
     // retention
     prune_old_snapshots(paths, 7)?;
 
-    Ok(SnapshotInfo {
+    let info = SnapshotInfo {
         timestamp: ts,
         path: target,
         size_bytes,
-    })
+    };
+    // DEV-398: 여기서 알린다 — **자동 백업도 이 함수를 거친다**. 오래된 것은 7개 너머로
+    // 밀려 지워지므로, 밖에 쌓아 두려는 훅에게는 "방금 만들어진 이 파일" 이 유일한 기회다.
+    // 지우기(prune) **뒤에** 내보내는 이유: 그 전에 내면 구독자가 복사하는 동안 지워질 수 있다.
+    store.emit_post(crate::events::names::BACKUP_CREATED, || {
+        crate::events::payload::backup(&info, automatic)
+    });
+    Ok(info)
 }
 
 /// 정책에 따른 자동 snapshot.
@@ -374,7 +387,7 @@ pub async fn maybe_auto_snapshot(
         return Ok(None);
     }
 
-    let info = create_snapshot(store).await?;
+    let info = create_snapshot_tagged(store, true).await?;
     Ok(Some(info))
 }
 

@@ -243,6 +243,13 @@ fn run(
     // 작업 디렉터리는 **데이터 폴더**다. 예전엔 플러그인 폴더였는데, 동의
     // 지문이 그 폴더 전체를 보므로([[DEV-381]]) 훅이 출력을 옆에 쓰는 순간
     // 자기 동의를 깼다 — 한 번 돌고 조용히 멈춘다.
+    // DEV-398: **설정값을 자식 환경에 넣는다.** 예전엔 `${...}` 치환에만 썼다 — 그래서
+    // `run` 훅은 사용자가 설정 화면에 넣은 값을 읽을 방법이 사실상 없었다(args 로 넘기면
+    // 토큰이 `ps` 에 보인다). `post` 는 url·헤더·body_env 로 값을 쓰지만 `run` 에는 그런
+    // 자리가 없다. 아래 `.env` 둘을 **뒤에** 두어 코어가 주는 경로는 못 덮게 한다.
+    for (k, v) in values {
+        cmd.env(k, v);
+    }
     let mut child = cmd
         .args(&argv)
         .current_dir(&workdir)
@@ -846,6 +853,47 @@ mod tests {
         );
         unsafe { std::env::remove_var("OG_TEST_CHAT_ID2") };
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// DEV-398: 설정 화면에 넣은 값은 **자식 환경변수로** 온다. `run` 훅에는 `post` 의
+    /// url·헤더·body_env 같은 자리가 없어서, 이게 없으면 값을 읽을 방법이 사실상 없다.
+    #[test]
+    fn run_puts_configured_values_in_the_child_environment() {
+        let lab = RunLab::new("runvalues");
+        let p = lab.plugin(Action::Run {
+            command: "sh".into(),
+            args: vec!["-c".into(), "printf '%s' \"$ARCHIVE_DIR\" > got.txt".into()],
+            timeout_ms: Some(5_000),
+        });
+        let mut values = BTreeMap::new();
+        values.insert("ARCHIVE_DIR".to_string(), "/tmp/보관".to_string());
+        Outbound::new()
+            .deliver(&p, &event(), &body(), &values)
+            .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(lab.data().join("got.txt")).unwrap(),
+            "/tmp/보관"
+        );
+    }
+
+    /// 코어가 주는 경로는 설정값이 못 덮는다 — 훅이 자기 코드 폴더를 잘못 찾으면 안 된다.
+    #[test]
+    fn configured_values_cannot_override_the_core_paths() {
+        let lab = RunLab::new("runvalues-override");
+        let p = lab.plugin(Action::Run {
+            command: "sh".into(),
+            args: vec!["-c".into(), "printf '%s' \"$OPENGUILD_PLUGIN_DIR\" > got.txt".into()],
+            timeout_ms: Some(5_000),
+        });
+        let mut values = BTreeMap::new();
+        values.insert("OPENGUILD_PLUGIN_DIR".to_string(), "/tmp/가짜".to_string());
+        Outbound::new()
+            .deliver(&p, &event(), &body(), &values)
+            .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(lab.data().join("got.txt")).unwrap(),
+            lab.code.display().to_string()
+        );
     }
 
     /// 참조한 변수가 없으면 리터럴로 넘기지 않고 실패로 남긴다.
