@@ -202,6 +202,21 @@ describe('TauriTransport', () => {
 	// 되는데 데스크톱에서만 조용히 안 된다 — 이 저장소가 여러 번 겪은 배선 누락이다.
 	// BUG-287: 같은 경로라도 POST 는 붙이기·떼기, PATCH/PUT 은 전체 교체다. 섞이면
 	// 데스크톱에서만 남이 붙인 태그가 다시 지워진다.
+	// DEV-397: 폴더 옮기기·이름 바꾸기는 같은 PATCH 다 — 배선이 빠지면 데스크톱에서만 조용히
+	// 안 된다(이 저장소가 여러 번 겪은 누락).
+	it('PATCH /api/library/folders → move_library_folder', async () => {
+		mockInvoke.mockResolvedValue([]);
+		await new TauriTransport().call({
+			method: 'PATCH',
+			path: '/api/library/folders',
+			body: { from: '설계', to: '보관/설계' }
+		});
+		expect(mockInvoke).toHaveBeenCalledWith('move_library_folder', {
+			from: '설계',
+			to: '보관/설계'
+		});
+	});
+
 	it('POST .../tags → edit_*_tags (붙이기·떼기)', async () => {
 		mockInvoke.mockResolvedValue({});
 		const edit = { add: ['a'], remove: ['b'] };

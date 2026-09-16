@@ -7,6 +7,9 @@
   (부모가 Set 으로 관리) 로 하위 폴더/문서 표시 여부 제어.
   BUG-129(admin 요청): 문서를 드래그해서 폴더에 드롭하면 그 폴더로 이동
   (기존 "폴더 이동" 버튼과 동일 동작 — HTML5 드래그&드롭 문법).
+
+  DEV-397(admin 보고 "폴더는 드래그가 안된다"): 폴더도 끌 수 있다. 드래그 짐은
+  문서면 `BOOK-NNN`, 폴더면 `folder:<경로>` — 받는 쪽이 둘을 가른다. 이름 바꾸기(✎)도 여기.
 -->
 <script lang="ts">
 	import Icon from './Icon.svelte';
@@ -22,8 +25,10 @@
 		collapsedFolders,
 		onSelectDoc,
 		onDeleteFolder,
+		onRenameFolder,
 		onToggleCollapse,
-		onMoveDoc
+		onMoveDoc,
+		onMoveFolder
 	}: {
 		node: FolderNode;
 		depth: number;
@@ -31,8 +36,10 @@
 		collapsedFolders: Set<string>;
 		onSelectDoc: (id: string) => void;
 		onDeleteFolder: (path: string) => void;
+		onRenameFolder: (path: string) => void;
 		onToggleCollapse: (path: string) => void;
 		onMoveDoc: (bookId: string, targetPath: string) => void;
+		onMoveFolder: (from: string, targetParent: string) => void;
 	} = $props();
 
 	const collapsed = $derived(collapsedFolders.has(node.path));
@@ -43,8 +50,10 @@
 	function onDrop(e: DragEvent) {
 		e.preventDefault();
 		dragOver = false;
-		const id = e.dataTransfer?.getData('text/plain');
-		if (id) onMoveDoc(id, node.path);
+		const payload = e.dataTransfer?.getData('text/plain');
+		if (!payload) return;
+		if (payload.startsWith('folder:')) onMoveFolder(payload.slice('folder:'.length), node.path);
+		else onMoveDoc(payload, node.path);
 	}
 </script>
 
@@ -53,6 +62,8 @@
 	class:drag-over={dragOver}
 	style:padding-left={`${depth * 14}px`}
 	role="presentation"
+	draggable="true"
+	ondragstart={(e) => e.dataTransfer?.setData('text/plain', `folder:${node.path}`)}
 	ondragover={(e) => {
 		e.preventDefault();
 		dragOver = true;
@@ -73,6 +84,13 @@
 	<span class="folder-icon" aria-hidden="true"><Icon name="folder" /></span>
 	<span class="folder-name">{node.name}</span>
 	<button
+		class="folder-ren"
+		title={t('library.folderRenameTitle', $locale)}
+		onclick={() => onRenameFolder(node.path)}
+	>
+		✎
+	</button>
+	<button
 		class="folder-del"
 		title={t('library.folderDeleteTitle', $locale)}
 		onclick={() => onDeleteFolder(node.path)}
@@ -90,8 +108,10 @@
 			{collapsedFolders}
 			{onSelectDoc}
 			{onDeleteFolder}
+			{onRenameFolder}
 			{onToggleCollapse}
 			{onMoveDoc}
+			{onMoveFolder}
 		/>
 	{/each}
 
@@ -154,6 +174,19 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+	.folder-ren {
+		background: transparent;
+		border: none;
+		color: var(--text-muted);
+		cursor: pointer;
+		font-size: 0.7rem;
+		padding: 0 0.2rem;
+		opacity: 0.5;
+	}
+	.folder-ren:hover {
+		opacity: 1;
+		color: var(--text);
 	}
 	.folder-del {
 		background: transparent;

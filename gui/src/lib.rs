@@ -674,6 +674,7 @@ pub fn run() {
             // DEV-239: 도서관 폴더.
             commands::list_library_folders,
             commands::create_library_folder,
+            commands::move_library_folder,
             commands::delete_library_folder,
             // DEV-167: 작업 기록.
             commands::worklog_activities,

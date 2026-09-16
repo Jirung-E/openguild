@@ -53,6 +53,9 @@ pub const BOOK_DELETED: &str = "book.deleted";
 pub const BOOK_TAGS_CHANGED: &str = "book.tags_changed";
 pub const FOLDER_CREATED: &str = "folder.created";
 pub const FOLDER_DELETED: &str = "folder.deleted";
+/// DEV-397: 폴더를 옮기거나 이름을 바꿨다. 그 아래 문서의 경로도 함께 바뀐다 —
+/// `books` 에 바뀐 문서 번호를 싣는다(구독자가 전부 다시 훑지 않게).
+pub const FOLDER_MOVED: &str = "folder.moved";
 
 // ── 규칙 ─────────────────────────────────────────────────
 pub const RULE_CREATED: &str = "rule.created";
@@ -138,6 +141,7 @@ pub const ALL: &[&str] = &[
     BOOK_TAGS_CHANGED,
     FOLDER_CREATED,
     FOLDER_DELETED,
+    FOLDER_MOVED,
     RULE_CREATED,
     RULE_UPDATED,
     RULE_DELETED,

@@ -196,6 +196,7 @@ pub const CATALOG: &[Entry] = &[
     e("set_book_tags", Status::Emitted(&[ev::BOOK_TAGS_CHANGED])),
     e("create_folder", Status::Emitted(&[ev::FOLDER_CREATED])),
     e("delete_folder", Status::Emitted(&[ev::FOLDER_DELETED])),
+    e("move_folder", Status::Emitted(&[ev::FOLDER_MOVED])),
     e("create_rule", Status::Emitted(&[ev::RULE_CREATED])),
     e("set_rule", Status::Emitted(&[ev::RULE_UPDATED])),
     e("delete_rule", Status::Emitted(&[ev::RULE_DELETED])),

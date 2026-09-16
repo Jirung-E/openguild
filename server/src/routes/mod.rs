@@ -133,6 +133,8 @@ pub fn create_router(store: Store) -> Router {
             "/api/library/folders",
             get(library::list_folders)
                 .post(library::create_folder)
+                // DEV-397: 옮기기·이름 바꾸기 — body: { from, to }.
+                .patch(library::move_folder)
                 .delete(library::delete_folder),
         )
         // DEV-167: 작업 기록 — 활동 타임라인 / 히트맵 집계 / 날짜별 노트.

@@ -110,6 +110,7 @@ const TABLE: &[(&str, &str, Kind)] = &[
     ("library", "delete_book", Guarded),
     ("library", "list_folders", Read),
     ("library", "create_folder", Guarded),
+    ("library", "move_folder", Guarded),
     ("library", "delete_folder", Guarded),
     ("meta", "create_type", Guarded),
     ("meta", "update_type", Guarded),

@@ -325,6 +325,11 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 			const b = (body as { path?: string } | undefined) ?? {};
 			return { cmd: 'create_library_folder', args: { path: b.path ?? '' } };
 		}
+		// DEV-397: 옮기기·이름 바꾸기 — body: { from, to }.
+		if (method === 'PATCH') {
+			const b = (body as { from?: string; to?: string } | undefined) ?? {};
+			return { cmd: 'move_library_folder', args: { from: b.from ?? '', to: b.to ?? '' } };
+		}
 		if (method === 'DELETE') {
 			return { cmd: 'delete_library_folder', args: { path: query.get('path') ?? '' } };
 		}

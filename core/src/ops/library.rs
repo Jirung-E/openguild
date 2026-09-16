@@ -596,6 +596,125 @@ pub async fn create_folder(store: &Store, path: &str) -> AppResult<LibraryFolder
     Ok(row)
 }
 
+/// DEV-397: 폴더를 옮기거나 이름을 바꾼다 — `to` 는 **새 전체 경로**다.
+///
+/// 옮기기와 이름 바꾸기는 같은 일이다(부모가 달라지면 옮기기, 마지막 조각이 달라지면 이름
+/// 바꾸기). 폴더는 진짜 디렉터리가 아니라 문서의 `path` 필드라([[DEV-239]] — 문서를 옮겨도
+/// 파일명인 BOOK 번호가 안 바뀌게), 폴더 하나를 옮기면 **하위 폴더 전부와 그 아래 문서 전부**의
+/// 경로를 같이 고쳐야 한다. 그래서 한 잠금 안에서 한꺼번에 한다.
+pub async fn move_folder(store: &Store, from: &str, to: &str) -> AppResult<Vec<LibraryFolderRow>> {
+    let _g = store.mutation_guard().await?;
+    let from = repo::normalize_folder_path(from).map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let to = repo::normalize_folder_path(to).map_err(|e| AppError::BadRequest(e.to_string()))?;
+    if from.is_empty() {
+        return Err(AppError::BadRequest(crate::tf!(
+            "루트는 옮길 수 없습니다",
+            "the root cannot be moved"
+        )));
+    }
+    if to.is_empty() {
+        return Err(AppError::BadRequest(crate::tf!(
+            "옮길 곳이 비었습니다 — 새 경로를 주세요",
+            "the destination is empty — give a new path"
+        )));
+    }
+    if to == from {
+        return list_folders(store).await;
+    }
+    // 자기 자신 아래로는 못 간다 — 그러면 그 아래가 영영 닿지 않는 곳이 된다.
+    if repo::path_is_self_or_descendant(&to, &from) {
+        return Err(AppError::BadRequest(crate::tf!(
+            "폴더를 자기 자신의 하위로 옮길 수 없습니다: {from} → {to}",
+            "cannot move a folder into itself: {from} → {to}"
+        )));
+    }
+
+    let folders = list_folders(store).await?;
+    if !folders.iter().any(|f| f.path == from) {
+        return Err(AppError::NotFound(format!("folder not found: {from}")));
+    }
+    if folders.iter().any(|f| f.path == to) {
+        return Err(AppError::BadRequest(crate::tf!(
+            "이미 존재하는 폴더입니다: {to}",
+            "folder already exists: {to}"
+        )));
+    }
+    // 옮겨 갈 곳의 부모가 없으면 만들지 않고 거절한다 — 조용히 만들면 오타 한 번에
+    // 엉뚱한 폴더가 생긴다.
+    if let Some((parent, _)) = to.rsplit_once('/')
+        && !folders.iter().any(|f| f.path == parent)
+    {
+        return Err(AppError::NotFound(format!("folder not found: {parent}")));
+    }
+
+    let _ = journal::append(
+        &store.journal_pool,
+        "move_folder",
+        &json!({ "from": from, "to": to }),
+        None::<&serde_json::Value>,
+    )
+    .await
+    .map_err(AppError::Internal)?;
+
+    // `from` 과 그 하위 전부 — 경로 앞부분만 갈아 끼운다.
+    let rename = |p: &str| -> String { format!("{to}{}", &p[from.len()..]) };
+    let moved_folders: Vec<String> = folders
+        .iter()
+        .map(|f| f.path.clone())
+        .filter(|p| repo::path_is_self_or_descendant(p, &from))
+        .collect();
+    let books = list_books(store).await?;
+    let moved_books: Vec<&LibraryDocRow> = books
+        .iter()
+        .filter(|b| repo::path_is_self_or_descendant(&b.path, &from))
+        .collect();
+
+    let now = crate::time::now_local_iso8601();
+
+    // 1) 폴더 레지스트리(파일 진리원) + 캐시.
+    let mut reg = repo::read_folders(&store.paths).map_err(AppError::Internal)?;
+    for e in reg.folders.iter_mut() {
+        if !e.deleted && repo::path_is_self_or_descendant(&e.path, &from) {
+            e.path = rename(&e.path);
+            e.updated_at = now.clone();
+        }
+    }
+    repo::write_folders(&store.paths, &reg).map_err(AppError::Internal)?;
+    for old in &moved_folders {
+        sqlx::query("UPDATE library_folders SET path = ?, updated_at = ? WHERE path = ?")
+            .bind(rename(old))
+            .bind(&now)
+            .bind(old)
+            .execute(&store.index_pool)
+            .await?;
+    }
+
+    // 2) 그 아래 문서 — frontmatter(진리원)와 캐시 둘 다.
+    for b in &moved_books {
+        let path = store.paths.book_path(&b.book_id());
+        let mut file = BookFile::read(&path).map_err(AppError::Internal)?;
+        file.frontmatter.path = rename(&file.frontmatter.path);
+        file.frontmatter.updated_at = now.clone();
+        file.write(&path).map_err(AppError::Internal)?;
+        sqlx::query("UPDATE library_docs SET path = ?, updated_at = ? WHERE number = ?")
+            .bind(rename(&b.path))
+            .bind(&now)
+            .bind(b.number)
+            .execute(&store.index_pool)
+            .await?;
+    }
+
+    let book_ids: Vec<String> = moved_books.iter().map(|b| b.book_id()).collect();
+    store.emit_post(ev::FOLDER_MOVED, || {
+        json!({
+            "from": payload::folder(&from),
+            "folder": payload::folder(&to),
+            "books": book_ids,
+        })
+    });
+    list_folders(store).await
+}
+
 /// 폴더 삭제 — 하위(자신 포함)에 살아있는 문서나 다른 살아있는 폴더가 하나도
 /// 없어야 함 (안전을 위해 빈 폴더만 삭제 허용 — v1).
 pub async fn delete_folder(store: &Store, path: &str) -> AppResult<()> {
@@ -684,6 +803,118 @@ mod tests {
     async fn setup(dir: &std::path::Path) -> Store {
         seed_guild_dir(dir).unwrap();
         Store::open(dir).await.unwrap()
+    }
+
+    /// DEV-397: 폴더를 옮기면 **하위 폴더와 그 아래 문서의 경로까지** 함께 간다.
+    ///
+    /// 폴더는 디스크 디렉터리가 아니라 문서의 `path` 필드라(DEV-239), 한 곳만 고치면 그 아래가
+    /// 통째로 길을 잃는다.
+    #[tokio::test]
+    async fn moving_a_folder_takes_its_subfolders_and_documents() {
+        let dir = fresh_tmp("move-folder");
+        let store = setup(&dir).await;
+        create_folder(&store, "설계").await.unwrap();
+        create_folder(&store, "설계/결정").await.unwrap();
+        create_folder(&store, "보관").await.unwrap();
+        let a = create_book(&store, "루트 문서", "", "설계").await.unwrap();
+        let b = create_book(&store, "하위 문서", "", "설계/결정").await.unwrap();
+
+        move_folder(&store, "설계", "보관/설계").await.unwrap();
+
+        let paths: Vec<String> = list_folders(&store)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|f| f.path)
+            .collect();
+        assert!(paths.contains(&"보관/설계".to_string()), "{paths:?}");
+        assert!(paths.contains(&"보관/설계/결정".to_string()), "{paths:?}");
+        assert!(!paths.iter().any(|p| p.starts_with("설계")), "옛 경로가 남았다: {paths:?}");
+
+        let book = |id: &str| -> String {
+            crate::repo::library::BookFile::read(store.paths.book_path(id))
+                .unwrap()
+                .frontmatter
+                .path
+        };
+        // 파일(진리원)과 캐시가 함께 움직여야 한다.
+        assert_eq!(book(&a.book_id()), "보관/설계");
+        assert_eq!(book(&b.book_id()), "보관/설계/결정");
+        let cached: Vec<String> = list_books(&store)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|d| d.path)
+            .collect();
+        assert!(cached.contains(&"보관/설계/결정".to_string()), "{cached:?}");
+
+        // reindex 뒤에도 같다 — 파일에서 복원된다.
+        crate::reindex::reindex(&store).await.unwrap();
+        let after: Vec<String> = list_books(&store)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|d| d.path)
+            .collect();
+        assert!(after.contains(&"보관/설계".to_string()), "{after:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 이름 바꾸기도 같은 연산이다 — 마지막 조각만 다른 경로로 옮기는 것.
+    #[tokio::test]
+    async fn renaming_is_the_same_operation() {
+        let dir = fresh_tmp("rename-folder");
+        let store = setup(&dir).await;
+        create_folder(&store, "설게").await.unwrap(); // 오타
+        let b = create_book(&store, "문서", "", "설게").await.unwrap();
+
+        move_folder(&store, "설게", "설계").await.unwrap();
+
+        assert_eq!(
+            crate::repo::library::BookFile::read(store.paths.book_path(&b.book_id()))
+                .unwrap()
+                .frontmatter
+                .path,
+            "설계"
+        );
+        // BOOK 번호는 그대로다 — 폴더는 파일 위치가 아니다.
+        assert!(store.paths.book_path(&b.book_id()).exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn moving_refuses_what_would_lose_a_folder() {
+        let dir = fresh_tmp("move-folder-bad");
+        let store = setup(&dir).await;
+        create_folder(&store, "설계").await.unwrap();
+        create_folder(&store, "설계/결정").await.unwrap();
+        create_folder(&store, "보관").await.unwrap();
+
+        let bad = |r: AppResult<Vec<LibraryFolderRow>>| match r.unwrap_err() {
+            AppError::BadRequest(m) => m,
+            AppError::NotFound(m) => m,
+            e => panic!("{e}"),
+        };
+        // 자기 자신 아래로 — 그 아래가 영영 닿지 않는 곳이 된다.
+        assert!(bad(move_folder(&store, "설계", "설계/결정/설계").await).contains("설계"));
+        // 이미 있는 이름으로.
+        assert!(bad(move_folder(&store, "설계", "보관").await).contains("보관"));
+        // 없는 부모 밑으로 — 조용히 만들지 않는다(오타 한 번에 엉뚱한 폴더가 생긴다).
+        assert!(bad(move_folder(&store, "설계", "없는곳/설계").await).contains("없는곳"));
+        // 없는 폴더.
+        assert!(bad(move_folder(&store, "그런폴더", "보관/x").await).contains("그런폴더"));
+        // 루트는 못 옮긴다.
+        assert!(!bad(move_folder(&store, "", "보관").await).is_empty());
+
+        // 하나도 안 바뀌었다.
+        let paths: Vec<String> = list_folders(&store)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|f| f.path)
+            .collect();
+        assert_eq!(paths, vec!["보관", "설계", "설계/결정"]);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// BUG-227: 없는 문서의 이력 조회는 **성공이 아니라 NotFound** 여야 한다.

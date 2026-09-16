@@ -66,6 +66,14 @@ pub struct CreateFolderRequest {
     pub path: String,
 }
 
+/// DEV-397: 폴더 옮기기·이름 바꾸기. `to` 는 **새 전체 경로**다 — 부모가 달라지면 옮기기,
+/// 마지막 조각이 달라지면 이름 바꾸기이고, 코어에서는 같은 연산이다.
+#[derive(Debug, Deserialize)]
+pub struct MoveFolderRequest {
+    pub from: String,
+    pub to: String,
+}
+
 /// BUG-281: `?folder=` 로 거른다. 없으면 전부.
 ///
 /// 빈 문자열(`?folder=`)은 "최상위만" 이라 `Option` 으로는 못 가른다 —
@@ -206,6 +214,14 @@ pub async fn create_folder(
 ) -> AppResult<(StatusCode, Json<FolderResponse>)> {
     let row = ops::create_folder(&store, &body.path).await?;
     Ok((StatusCode::CREATED, Json(row.into())))
+}
+
+pub async fn move_folder(
+    State(store): State<Store>,
+    Json(body): Json<MoveFolderRequest>,
+) -> AppResult<Json<Vec<FolderResponse>>> {
+    let rows = ops::move_folder(&store, &body.from, &body.to).await?;
+    Ok(Json(rows.into_iter().map(FolderResponse::from).collect()))
 }
 
 pub async fn delete_folder(

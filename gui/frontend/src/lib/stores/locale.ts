@@ -1744,6 +1744,10 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'library.discardAndMove': { ko: '버리고 이동', en: 'Discard and leave' },
 	'library.folderExpand': { ko: '폴더 펼치기', en: 'Expand folder' },
 	'library.folderCollapse': { ko: '폴더 접기', en: 'Collapse folder' },
+	// DEV-397: 폴더 옮기기·이름 바꾸기.
+	'library.folderRenameTitle': { ko: '폴더 이름 바꾸기', en: 'Rename folder' },
+	'library.folderRenameSubmit': { ko: '이름 바꾸기', en: 'Rename' },
+	'library.moveFolderFail': { ko: '폴더를 옮기지 못했습니다', en: 'Failed to move the folder' },
 	'library.folderDeleteTitle': {
 		ko: '폴더 삭제 (비어 있을 때만)',
 		en: 'Delete folder (only if empty)'

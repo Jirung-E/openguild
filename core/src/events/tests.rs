@@ -708,7 +708,11 @@ async fn all_declared_events_fire_with_a_usable_payload() {
     crate::ops::library::create_folder(&store, "연구")
         .await
         .unwrap();
-    crate::ops::library::delete_folder(&store, "연구")
+    // DEV-397: 옮기기·이름 바꾸기.
+    crate::ops::library::move_folder(&store, "연구", "조사")
+        .await
+        .unwrap();
+    crate::ops::library::delete_folder(&store, "조사")
         .await
         .unwrap();
 

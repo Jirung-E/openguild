@@ -602,8 +602,71 @@
 	function onTileDrop(e: DragEvent, targetPath: string) {
 		e.preventDefault();
 		dragOverFolder = null;
-		const id = e.dataTransfer?.getData('text/plain');
-		if (id) moveDocTo(id, targetPath);
+		const payload = e.dataTransfer?.getData('text/plain');
+		if (!payload) return;
+		// DEV-397: 문서면 `BOOK-NNN`, 폴더면 `folder:<경로>`.
+		if (payload.startsWith('folder:')) moveFolderTo(payload.slice('folder:'.length), targetPath);
+		else moveDocTo(payload, targetPath);
+	}
+
+	/**
+	 * DEV-397: 폴더를 다른 폴더(또는 루트) 아래로.
+	 *
+	 * 코어는 **새 전체 경로**를 받으므로 여기서 대상 부모 + 원래 이름으로 만든다. 자기 자신
+	 * 아래로 떨구는 것과 제자리는 서버가 거절하기 전에 여기서 걸러 낸다 — 흔한 오조작이라
+	 * 오류 토스트를 띄울 일이 아니다.
+	 */
+	async function moveFolderTo(from: string, targetParent: string) {
+		const name = from.includes('/') ? from.slice(from.lastIndexOf('/') + 1) : from;
+		const to = targetParent ? `${targetParent}/${name}` : name;
+		if (to === from) return;
+		if (targetParent === from || targetParent.startsWith(`${from}/`)) return;
+		try {
+			await libraryApi.folders.move(from, to);
+			if (explorerPath === from || explorerPath.startsWith(`${from}/`)) {
+				explorerPath = to + explorerPath.slice(from.length);
+				syncUrl();
+			}
+			await loadList(selectedId, true);
+		} catch (e) {
+			showToast(e instanceof Error ? e.message : t('library.moveFolderFail', $locale), 'error');
+		}
+	}
+
+	// ─── DEV-397: 폴더 이름 바꾸기 — 옮기기와 같은 연산(마지막 조각만 다른 경로). ───
+	let renamingFolder = $state<string | null>(null);
+	let renameFolderName = $state('');
+	let renameFolderError = $state<string | null>(null);
+	function openRenameFolder(path: string) {
+		renamingFolder = path;
+		renameFolderName = path.includes('/') ? path.slice(path.lastIndexOf('/') + 1) : path;
+		renameFolderError = null;
+	}
+	async function submitRenameFolder() {
+		const from = renamingFolder;
+		const name = renameFolderName.trim();
+		if (!from) return;
+		if (!name) {
+			renameFolderError = t('library.folderNameRequired', $locale);
+			return;
+		}
+		const parent = from.includes('/') ? from.slice(0, from.lastIndexOf('/')) : '';
+		const to = parent ? `${parent}/${name}` : name;
+		if (to === from) {
+			renamingFolder = null;
+			return;
+		}
+		try {
+			await libraryApi.folders.move(from, to);
+			if (explorerPath === from || explorerPath.startsWith(`${from}/`)) {
+				explorerPath = to + explorerPath.slice(from.length);
+				syncUrl();
+			}
+			renamingFolder = null;
+			await loadList(selectedId, true);
+		} catch (e) {
+			renameFolderError = e instanceof Error ? e.message : t('library.moveFolderFail', $locale);
+		}
 	}
 
 	// ─── DEV-239: 새 폴더 ───
@@ -657,6 +720,28 @@
 </script>
 
 <div class="page">
+	<!-- DEV-397: 폴더 이름 바꾸기 — 트리·탐색기 어느 쪽에서 눌러도 여기 뜬다(옮기기와 같은
+	     연산: 마지막 조각만 다른 경로). -->
+	{#if renamingFolder}
+		<div class="modal-inline rename-folder">
+			<input
+				class="text-input"
+				type="text"
+				aria-label={t('library.folderRenameTitle', $locale)}
+				bind:value={renameFolderName}
+				onkeydown={(e) => e.key === 'Enter' && submitRenameFolder()}
+			/>
+			{#if renameFolderError}<p class="err">{renameFolderError}</p>{/if}
+			<div class="actions">
+				<button class="btn-save" onclick={submitRenameFolder}
+					>{t('library.folderRenameSubmit', $locale)}</button
+				>
+				<button class="btn-cancel" onclick={() => (renamingFolder = null)}
+					>{t('library.cancel', $locale)}</button
+				>
+			</div>
+		</div>
+	{/if}
 	{#if loading}
 		<div class="state">Loading…</div>
 	{:else if error}
@@ -781,7 +866,7 @@
 			{/if}
 		</div>
 
-		{#if creatingFolder}
+{#if creatingFolder}
 			<div class="modal-inline">
 				<input
 					class="text-input"
@@ -828,6 +913,8 @@
 						<button
 							class="tile"
 							class:drag-over={dragOverFolder === f.path}
+							draggable="true"
+							ondragstart={(e) => e.dataTransfer?.setData('text/plain', `folder:${f.path}`)}
 							onclick={() => gotoFolder(f.path)}
 							ondragover={(e) => {
 								e.preventDefault();
@@ -868,6 +955,8 @@
 					<button
 						class="tile"
 						class:drag-over={dragOverFolder === f.path}
+						draggable="true"
+						ondragstart={(e) => e.dataTransfer?.setData('text/plain', `folder:${f.path}`)}
 						onclick={() => gotoFolder(f.path)}
 						ondragover={(e) => {
 							e.preventDefault();
@@ -1027,8 +1116,10 @@
 									{collapsedFolders}
 									onSelectDoc={select}
 									onDeleteFolder={askDeleteFolder}
+									onRenameFolder={openRenameFolder}
 									onToggleCollapse={toggleFolderCollapsed}
 									onMoveDoc={moveDocTo}
+									onMoveFolder={moveFolderTo}
 								/>
 							{/each}
 							{#each tree.rootDocs as b (b.book_id)}
@@ -1252,16 +1343,20 @@
 					<TagPills tags={selected.tags} {tagDefs} onEditTags={editDocTags} />
 
 					<!-- DEV-237: 첨부 섹션 — 이미지/동영상 외 임의 파일. -->
+					<!-- DEV-397: `selected` 가 null 이 되는 순간(목록을 다시 읽어 선택이 풀릴 때)
+					     자식의 남은 effect 가 이 prop 을 한 번 더 읽는다 — Svelte 5 의 prop 은
+					     getter 라, 그냥 `selected.book_id` 면 그때 터진다(실제로 폴더를 옮긴 뒤
+					     콘솔에 TypeError 가 찍혔다). 값이 없으면 빈 문자열로 넘긴다. -->
 					<AttachmentSection
-						slug={selected.book_id}
+						slug={selected?.book_id ?? ''}
 						scope="library"
 						bind:attachments={selected.attachments}
 					/>
 
 					<!-- DEV-290: BOOK 변경 이력. -->
 					<!-- REQ-008: 이 문서를 참조하는 문서. -->
-					<BacklinkSection kind="book" id={selected.book_id} />
-					<SidecarHistory kind="book" id={selected.book_id} />
+					<BacklinkSection kind="book" id={selected?.book_id ?? ''} />
+					<SidecarHistory kind="book" id={selected?.book_id ?? ''} />
 				{/if}
 			</section>
 		</div>
@@ -1303,6 +1398,10 @@
 />
 
 <style>
+	/* DEV-397: 이름 바꾸기 폼은 목록 위에 뜬다 — 트리·탐색기 어느 쪽에서 열어도 같은 자리. */
+	.rename-folder {
+		margin-bottom: 0.5rem;
+	}
 	.page {
 		padding: 1.25rem 1.5rem 2rem;
 		max-width: var(--content-max-width, 1200px);

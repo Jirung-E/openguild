@@ -62,6 +62,9 @@ export const libraryApi = {
 	folders: {
 		list: () => api.get<LibraryFolder[]>('/api/library/folders'),
 		create: (path: string) => api.post<LibraryFolder>('/api/library/folders', { path }),
+		/** DEV-397: 옮기기·이름 바꾸기 — `to` 는 새 전체 경로. 바뀐 폴더 목록을 돌려준다. */
+		move: (from: string, to: string) =>
+			api.patch<LibraryFolder[]>('/api/library/folders', { from, to }),
 		delete: (path: string) =>
 			api.delete(`/api/library/folders?path=${encodeURIComponent(path)}`)
 	}

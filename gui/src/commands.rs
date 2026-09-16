@@ -1916,6 +1916,19 @@ pub async fn create_library_folder(
         .map_err(err)
 }
 
+/// DEV-397: 폴더 옮기기·이름 바꾸기 — `to` 는 새 전체 경로.
+#[tauri::command]
+pub async fn move_library_folder(
+    store: State<'_, Store>,
+    from: String,
+    to: String,
+) -> Result<Vec<FolderResponse>, String> {
+    openguild_core::ops::library::move_folder(&store, &from, &to)
+        .await
+        .map(|rows| rows.into_iter().map(FolderResponse::from).collect())
+        .map_err(err)
+}
+
 #[tauri::command]
 pub async fn delete_library_folder(store: State<'_, Store>, path: String) -> Result<(), String> {
     openguild_core::ops::library::delete_folder(&store, &path)
