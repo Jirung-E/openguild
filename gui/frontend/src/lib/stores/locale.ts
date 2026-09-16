@@ -921,6 +921,21 @@ const DICT: Record<string, { ko: string; en: string }> = {
 
 	// DEV-205 모듈2: 캠페인 목록 페이지.
 	'campaignList.title': { ko: '캠페인', en: 'Campaigns' },
+	// DEV-395: 새 캠페인 모달 — 페이지 시절 한국어로 박혀 있던 문구를 옮기며 i18n 으로.
+	'ncm.newCampaign': { ko: '새 캠페인', en: 'New campaign' },
+	'ncm.title': { ko: '제목 *', en: 'Title *' },
+	'ncm.titlePlaceholder': { ko: '예: v1.0 출시', en: 'e.g. v1.0 release' },
+	'ncm.titleRequired': { ko: '제목을 입력하세요.', en: 'Enter a title.' },
+	'ncm.start': { ko: '시작일', en: 'Start' },
+	'ncm.end': { ko: '종료일', en: 'End' },
+	'ncm.body': { ko: '본문 (markdown, 선택)', en: 'Body (markdown, optional)' },
+	'ncm.bodyPlaceholder': {
+		ko: '기획 내용 / 메모…',
+		en: 'Plan, notes…'
+	},
+	'ncm.create': { ko: '생성', en: 'Create' },
+	'ncm.creating': { ko: '저장 중…', en: 'Saving…' },
+	'ncm.createFailed': { ko: '캠페인을 만들지 못했습니다', en: 'Failed to create the campaign' },
 	'campaignList.new': { ko: '+ 새 캠페인', en: '+ New campaign' },
 	'campaignList.statusLabel': { ko: '상태', en: 'Status' },
 	'campaignList.statusAll': { ko: '전체', en: 'All' },

@@ -7,6 +7,7 @@
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { campaignsApi } from '$lib/api/campaigns';
 	// DEV-205 모듈2: 캠페인 목록 문자열 i18n.
@@ -15,6 +16,7 @@
 	import { showToast } from '$lib/stores/toast';
 	import type { Campaign, CampaignSummary } from '$lib/types';
 	import { isDateOverdue } from '$lib/utils/datetime';
+	import NewCampaignModal from '$lib/components/NewCampaignModal.svelte';
 
 	// BUG-025: sort 옵션을 localStorage 에 저장 (lib/utils/campaign-sort) →
 	// Home 의 카드 정렬도 같은 값 적용.
@@ -109,12 +111,19 @@
 		if (!a && b) return `~ ${b}`;
 		return `${a} ~ ${b}`;
 	}
+	// DEV-395: 새 캠페인은 모달 — 새 퀘스트와 같은 방식.
+	// `?new=1` 로 들어오면 열어 준다(옛 `/campaigns/new` 링크가 여기로 온다).
+	let showNewCampaign = $state(false);
+	onMount(() => {
+		if ($page.url.searchParams.get('new') === '1') showNewCampaign = true;
+	});
 </script>
 
 <div class="page">
 	<div class="header">
 		<h1>{t('campaignList.title', $locale)}</h1>
-		<button class="btn-primary" onclick={() => goto('/campaigns/new')}
+		<!-- DEV-395: 예전엔 `/campaigns/new` 페이지로 갔다 — 새 퀘스트와 같은 모달로 통일. -->
+		<button class="btn-primary" onclick={() => (showNewCampaign = true)}
 			>{t('campaignList.new', $locale)}</button
 		>
 	</div>
@@ -197,6 +206,13 @@
 		</ul>
 	{/if}
 </div>
+
+{#if showNewCampaign}
+	<NewCampaignModal
+		onclose={() => (showNewCampaign = false)}
+		oncreated={(c) => goto(`/campaigns/${encodeURIComponent(c.campaign_slug)}`)}
+	/>
+{/if}
 
 <style>
 	.page {

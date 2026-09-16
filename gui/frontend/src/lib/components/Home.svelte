@@ -8,6 +8,8 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import { goto } from '$app/navigation';
+	// DEV-395: 새 캠페인은 모달 — 새 퀘스트와 같은 방식.
+	import NewCampaignModal from '$lib/components/NewCampaignModal.svelte';
 	import { campaignsApi } from '$lib/api/campaigns';
 	import { questsApi } from '$lib/api/quests';
 	// DEV-205 모듈2: 홈 문자열 i18n.
@@ -258,6 +260,7 @@
 	function statusColor(slug: string): string {
 		return statuses.find((s) => s.slug === slug)?.color ?? '#666';
 	}
+	let showNewCampaign = $state(false);
 </script>
 
 <div class="home">
@@ -298,7 +301,7 @@
 				<button class="btn-link" type="button" onclick={() => goto('/campaigns')}>
 					{t('home.campaignList', $locale)}
 				</button>
-				<button class="btn-primary" type="button" onclick={() => goto('/campaigns/new')}>
+				<button class="btn-primary" type="button" onclick={() => (showNewCampaign = true)}>
 					{t('home.addCampaign', $locale)}
 				</button>
 			</div>
@@ -368,6 +371,13 @@
 		</section>
 	{/if}
 </div>
+
+{#if showNewCampaign}
+	<NewCampaignModal
+		onclose={() => (showNewCampaign = false)}
+		oncreated={(c) => goto(`/campaigns/${encodeURIComponent(c.campaign_slug)}`)}
+	/>
+{/if}
 
 <style>
 	.home {
