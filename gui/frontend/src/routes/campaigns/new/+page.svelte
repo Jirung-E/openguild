@@ -103,7 +103,9 @@
 <style>
 	.page {
 		padding: 1.25rem 1.5rem;
-		max-width: 47.5rem;
+		/* BUG-292: 여기만 760px 고정이라 설정 → 표시의 **본문 폭**을 안 따랐다.
+		   다른 화면과 같은 토큰을 쓴다. */
+		max-width: var(--content-max-width, 880px);
 		margin: 0 auto;
 	}
 	.header {
