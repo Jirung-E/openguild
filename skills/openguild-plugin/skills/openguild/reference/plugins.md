@@ -58,7 +58,7 @@ fingerprint and silently revokes its own consent (BUG-279). `OPENGUILD_PLUGIN_DI
 points at the plugin folder (usable as `${OPENGUILD_PLUGIN_DIR}` inside `command`
 and `args`); `OPENGUILD_PLUGIN_DATA_DIR` at the data folder.
 
-`openguild plugin events` lists all 54 event names — quests, comments, campaigns,
+`openguild plugin events` lists all 55 event names — quests, comments, campaigns,
 the library, rules, attachments, and the guild's own vocabulary (types, statuses, tag
 definitions). Comments and attachments carry `target: {kind, id}` rather than having
 separate names per document kind, so one subscription covers all of them. Only a couple of
