@@ -209,6 +209,9 @@ openguild tag add 리팩터링 --color "#e94f4f" --description "동작은 그대
 - `scope` 는 **필수**입니다. `cli` / `gui` / `server` 중에서 고릅니다.
   `server` 를 넣으면 그 서버를 쓰는 **모두**에게 적용됩니다.
 - 동작은 `post`(HTTP 로 보내기)와 `run`(프로그램 실행, 이벤트는 stdin) 둘뿐입니다.
+- `run` 은 운영체제마다 다른 명령을 적을 수 있습니다 — `"windows": { "command":
+  "powershell", "args": [...] }` (`macos`, `linux` 도). 셸 스크립트는 Windows 에서 못 돌므로
+  예제 `backup-archive`·`desktop-notify` 는 Windows 용 PowerShell 스크립트를 함께 둡니다.
 - `run` 이 **파일을 쓰는 자리**는 `~/.openguild/plugin-data/{길드}/{플러그인}/`
   입니다. 플러그인 폴더가 아닙니다 — 그 폴더는 동의 지문의 대상이라, 훅이
   거기 무언가를 쓰면 동의가 풀려 스스로 꺼집니다. 플러그인과 함께 배포한

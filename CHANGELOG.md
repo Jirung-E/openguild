@@ -183,6 +183,11 @@ openguild plugin remove hello-log          # 이 길드에서 빼기 — 원본�
 - 첨부 목록에서 파일 종류를 알 수 없던 문제 — 종류 배지를 달고, 긴 이름은
   가운데를 줄여 끝이 보입니다 (BUG-291)
 - 새 캠페인 화면만 본문 폭 설정을 안 따르던 문제 (BUG-292)
+- **Windows 에서 예제 플러그인 `backup-archive`·`desktop-notify` 가 안 돌던 문제** —
+  `run` 명령이 `sh` 하나뿐이었습니다. 이제 `run` 에 운영체제별 명령(`windows` / `macos` /
+  `linux`)을 적을 수 있고, 두 예제는 Windows 에서 PowerShell 스크립트를 띄웁니다. Windows 의
+  데스크톱 앱에서 훅을 띄울 때 콘솔 창이 번쩍이던 것, 길드 밖 플러그인 경로가 `\\?\` 형태로
+  저장되던 것도 함께 고쳤습니다 (BUG-294)
 - (개발) 플러그인 시험이 실제 `~/.openguild/plugin-data` 에 폴더를 남기던
   문제 (BUG-289)
 

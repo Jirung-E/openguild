@@ -229,6 +229,27 @@ openguild plugin config <name>                        # what is set, secrets mas
 - **A `payload` can be a plain string.** For `run`, the program gets it as a JSON
   string on stdin (`"/path/to/file"` — strip the quotes). Handy when the program
   only needs one value and should not parse JSON.
+- **A shell script does not run on Windows** — there is no `sh`. If the user may
+  be on Windows (or you do not know), give the `run` a `windows` variant; `macos`
+  and `linux` exist too, and the variant for the machine replaces
+  `command`/`args` there (`timeout_ms` is shared):
+
+  ```json
+  "run": {
+    "command": "sh", "args": ["${OPENGUILD_PLUGIN_DIR}/hook.sh"],
+    "windows": { "command": "powershell",
+      "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+               "-File", "${OPENGUILD_PLUGIN_DIR}/hook.ps1"] }
+  }
+  ```
+
+  Write the `.ps1` in **ASCII** (Windows PowerShell 5.1 reads a BOM-less script in
+  the system code page) and read stdin as UTF-8 explicitly —
+  `New-Object System.IO.StreamReader([Console]::OpenStandardInput(), (New-Object System.Text.UTF8Encoding($false)))`
+  — or non-ASCII paths and titles arrive garbled. A JSON string payload parses with
+  `@(ConvertFrom-Json ('[' + $raw + ']'))[0]` (5.1 rejects a bare top-level string).
+  `examples/plugins/backup-archive` and `desktop-notify` ship both scripts. Better
+  still, when the job is just "send it somewhere", use `post` — it has no OS.
 - **Shell hooks: `[ -e "$f" ] && exit 0` under `set -e` kills the script** when
   the file does *not* exist — the list is the last command, not a condition. Use
   `if [ -e "$f" ]; then exit 0; fi`.

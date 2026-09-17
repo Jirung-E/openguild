@@ -84,7 +84,61 @@ pub enum Action {
         args: Vec<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         timeout_ms: Option<u64>,
+        /// BUG-294: 운영체제마다 다른 명령 — `"windows": { "command": "powershell", "args": [...] }`.
+        /// 그 OS 에서는 위 `command`/`args` 대신 이것을 띄운다. 없으면 위의 것.
+        #[serde(flatten)]
+        os: RunByOs,
     },
+}
+
+/// BUG-294: `run` 의 운영체제별 명령.
+///
+/// `scope` 는 어느 **컴포넌트**에서 돌지를 고르게 하면서 OS 는 가정하지 않았다. 그런데 셸
+/// 스크립트 하나로는 Windows 에서 못 돈다(`sh` 가 없다) — 배포 예제 `backup-archive` 가 그렇게
+/// 실패했다. 셋 다 비어 있으면 **직렬화에 안 나타난다** — 동의 지문이 정의를 통째로 담으므로,
+/// 나타났다면 이 필드가 생긴 것만으로 기존 동의가 전부 풀렸을 것이다.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RunByOs {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub windows: Option<RunCommand>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub macos: Option<RunCommand>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub linux: Option<RunCommand>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RunCommand {
+    pub command: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+}
+
+impl RunByOs {
+    /// 이 기계의 OS 에 적힌 것.
+    pub fn for_this_os(&self) -> Option<&RunCommand> {
+        if cfg!(windows) {
+            self.windows.as_ref()
+        } else if cfg!(target_os = "macos") {
+            self.macos.as_ref()
+        } else if cfg!(target_os = "linux") {
+            self.linux.as_ref()
+        } else {
+            None
+        }
+    }
+
+    /// 적힌 것 전부 — 검증(키 리터럴·환경변수 참조)은 **이 기계가 아닌 OS 것도** 본다. git 에
+    /// 올라가는 것은 정의 전체다.
+    pub fn all(&self) -> impl Iterator<Item = (&'static str, &RunCommand)> {
+        [
+            ("windows", self.windows.as_ref()),
+            ("macos", self.macos.as_ref()),
+            ("linux", self.linux.as_ref()),
+        ]
+        .into_iter()
+        .filter_map(|(k, v)| v.map(|v| (k, v)))
+    }
 }
 
 /// 전달 시한 기본값. 넉넉하되 무한은 아니다 — AI 응답이 느릴 수 있다.
@@ -104,6 +158,19 @@ impl Action {
 }
 
 impl Action {
+    /// BUG-294: `run` 이 **이 기계에서** 실제로 띄울 명령과 인자. `post` 면 `None`.
+    pub fn run_command(&self) -> Option<(&str, &[String])> {
+        match self {
+            Action::Run {
+                command, args, os, ..
+            } => Some(match os.for_this_os() {
+                Some(c) => (c.command.as_str(), c.args.as_slice()),
+                None => (command.as_str(), args.as_slice()),
+            }),
+            Action::Post { .. } => None,
+        }
+    }
+
     pub fn kind(&self) -> &'static str {
         match self {
             Action::Post { .. } => "post",
@@ -239,10 +306,18 @@ impl PluginDef {
                 }
                 out.extend(body_env.values().cloned());
             }
-            Action::Run { command, args, .. } => {
+            Action::Run {
+                command, args, os, ..
+            } => {
                 scan(command);
                 for a in args {
                     scan(a);
+                }
+                for (_, c) in os.all() {
+                    scan(&c.command);
+                    for a in &c.args {
+                        scan(a);
+                    }
                 }
             }
         }
@@ -898,13 +973,24 @@ fn check_no_literal_secret(def: &PluginDef) -> AppResult<()> {
             v.extend(headers.iter().map(|(k, val)| (format!("headers.{k}"), val)));
             v
         }
-        Action::Run { command, args, .. } => {
+        Action::Run {
+            command, args, os, ..
+        } => {
             let mut v: Vec<(String, &String)> = vec![("command".into(), command)];
             v.extend(
                 args.iter()
                     .enumerate()
                     .map(|(i, a)| (format!("args[{i}]"), a)),
             );
+            for (k, c) in os.all() {
+                v.push((format!("{k}.command"), &c.command));
+                v.extend(
+                    c.args
+                        .iter()
+                        .enumerate()
+                        .map(|(i, a)| (format!("{k}.args[{i}]"), a)),
+                );
+            }
             v
         }
     };

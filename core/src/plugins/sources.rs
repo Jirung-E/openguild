@@ -207,7 +207,7 @@ pub fn list() -> Vec<SourceView> {
 
 /// 소스 등록. 이름을 안 주면 폴더 이름을 쓴다(겹치면 `-2`, `-3`).
 pub fn add_source(guild_root: &Path, dir: &Path, name: Option<&str>) -> AppResult<String> {
-    let dir = std::fs::canonicalize(dir).map_err(|e| {
+    let canon = std::fs::canonicalize(dir).map_err(|e| {
         AppError::BadRequest(crate::tf!(
             "폴더를 찾을 수 없습니다: {} ({e})",
             "no such folder: {} ({e})",
@@ -217,7 +217,7 @@ pub fn add_source(guild_root: &Path, dir: &Path, name: Option<&str>) -> AppResul
     // 길드 안은 이미 훑는다 — 같은 플러그인이 두 경로로 들어오면 이름이 겹쳐 거부된다.
     let guild_plugins = super::plugins_dir(guild_root);
     if let Ok(gp) = std::fs::canonicalize(&guild_plugins)
-        && (dir == gp || dir.starts_with(&gp))
+        && (canon == gp || canon.starts_with(&gp))
     {
         return Err(AppError::BadRequest(crate::tf!(
             "이 길드의 플러그인 폴더는 이미 읽고 있습니다 — 소스로 더할 필요가 없습니다: {}",
@@ -225,6 +225,10 @@ pub fn add_source(guild_root: &Path, dir: &Path, name: Option<&str>) -> AppResul
             dir.display()
         )));
     }
+    // BUG-294: Windows 의 canonicalize 는 `\\?\C:\…` 를 돌려준다. 그대로 적어 두면 그 경로가
+    // `${OPENGUILD_PLUGIN_DIR}` 로 훅에 넘어가는데, Windows PowerShell 5.1 등은 이 형태를 제대로
+    // 못 다룬다. 길드 경로와 같은 규칙([`crate::recents::normalize_abs`])으로 떼어 낸다.
+    let dir = PathBuf::from(crate::recents::strip_verbatim_prefix(&canon.to_string_lossy()));
     let found = plugins_in(&dir).map_err(|e| {
         AppError::BadRequest(crate::tf!(
             "폴더를 읽지 못했습니다: {e}",

@@ -116,12 +116,16 @@ impl PluginStatus {
 pub(super) fn view(p: &Plugin, granted: bool, scope: Scope) -> PluginView {
     let (action, target) = match &p.def.action {
         Action::Post { url, .. } => ("post", url.clone()),
-        Action::Run { command, args, .. } => (
-            "run",
-            format!("{command} {}", args.join(" "))
-                .trim_end()
-                .to_string(),
-        ),
+        // BUG-294: 이 기계에서 실제로 띄울 것을 보여 준다 — 동의하는 대상이 그것이다.
+        Action::Run { .. } => {
+            let (command, args) = p.def.action.run_command().expect("run 동작이다");
+            (
+                "run",
+                format!("{command} {}", args.join(" "))
+                    .trim_end()
+                    .to_string(),
+            )
+        }
     };
     PluginView {
         name: p.def.name.clone(),

@@ -81,14 +81,22 @@ impl Delivery for Outbound {
                 body,
                 values,
             ),
-            Action::Run { command, args, .. } => run(
-                plugin,
-                command,
-                args,
-                plugin.def.action.timeout(),
-                body,
-                values,
-            ),
+            Action::Run { .. } => {
+                // BUG-294: 이 OS 에 적힌 명령이 있으면 그것.
+                let (command, args) = plugin
+                    .def
+                    .action
+                    .run_command()
+                    .expect("run 동작이다");
+                run(
+                    plugin,
+                    command,
+                    args,
+                    plugin.def.action.timeout(),
+                    body,
+                    values,
+                )
+            }
         }
     }
 }
@@ -239,6 +247,14 @@ fn run(
     {
         use std::os::unix::process::CommandExt;
         cmd.process_group(0);
+    }
+    // BUG-294: Windows 에서 콘솔 프로그램(powershell 등)을 띄우면, 콘솔이 없는 데스크톱 앱에서는
+    // **새 콘솔 창이 뜬다** — 이벤트마다 검은 창이 번쩍인다. CREATE_NO_WINDOW 로 막는다.
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
     }
     // 작업 디렉터리는 **데이터 폴더**다. 예전엔 플러그인 폴더였는데, 동의
     // 지문이 그 폴더 전체를 보므로([[DEV-381]]) 훅이 출력을 옆에 쓰는 순간
@@ -696,6 +712,7 @@ mod tests {
             // 작업 디렉터리가 데이터 폴더이므로 상대 경로는 그쪽에 떨어진다.
             args: vec!["-c".into(), "cat > got.json".into()],
             timeout_ms: Some(5_000),
+            os: Default::default(),
         });
         Outbound::new()
             .deliver(&p, &event(), &body(), &Default::default())
@@ -712,6 +729,32 @@ mod tests {
             !lab.code.join("got.json").exists(),
             "훅의 출력이 플러그인 폴더(코드)에 생겼다 — 자기 동의를 깬다"
         );
+    }
+
+    /// BUG-294: 이 OS 에 적힌 명령이 있으면 **그것을** 띄운다. 기본 명령은 실패하게 두어,
+    /// 잘못 골랐으면 전달이 실패한다.
+    #[cfg(unix)]
+    #[test]
+    fn run_uses_the_command_written_for_this_os() {
+        let lab = RunLab::new("run-os");
+        let here = super::super::RunCommand {
+            command: "sh".into(),
+            args: vec!["-c".into(), "cat > os.json".into()],
+        };
+        let p = lab.plugin(Action::Run {
+            command: "sh".into(),
+            args: vec!["-c".into(), "exit 7".into()],
+            timeout_ms: Some(5_000),
+            os: super::super::RunByOs {
+                macos: Some(here.clone()),
+                linux: Some(here),
+                windows: None,
+            },
+        });
+        Outbound::new()
+            .deliver(&p, &event(), &body(), &Default::default())
+            .unwrap();
+        assert!(lab.data().join("os.json").is_file(), "이 OS 의 명령이 안 돌았다");
     }
 
     /// **오래 걸려도 길드가 안 멈춘다** — 시한에 죽이고 거둔다(좀비 없음).
@@ -733,6 +776,7 @@ mod tests {
                     .into(),
             ],
             timeout_ms: Some(300),
+            os: Default::default(),
         });
         let t = Instant::now();
         let e = Outbound::new()
@@ -772,6 +816,7 @@ mod tests {
                 "tok=${OG_TEST_RUN_TOKEN}".into(),
             ],
             timeout_ms: Some(5_000),
+            os: Default::default(),
         });
         Outbound::new()
             .deliver(&p, &event(), &body(), &Default::default())
@@ -865,6 +910,7 @@ mod tests {
             command: "sh".into(),
             args: vec!["-c".into(), "printf '%s' \"$ARCHIVE_DIR\" > got.txt".into()],
             timeout_ms: Some(5_000),
+            os: Default::default(),
         });
         let mut values = BTreeMap::new();
         values.insert("ARCHIVE_DIR".to_string(), "/tmp/보관".to_string());
@@ -885,6 +931,7 @@ mod tests {
             command: "sh".into(),
             args: vec!["-c".into(), "printf '%s' \"$OPENGUILD_PLUGIN_DIR\" > got.txt".into()],
             timeout_ms: Some(5_000),
+            os: Default::default(),
         });
         let mut values = BTreeMap::new();
         values.insert("OPENGUILD_PLUGIN_DIR".to_string(), "/tmp/가짜".to_string());
@@ -908,6 +955,7 @@ mod tests {
             command: "sh".into(),
             args: vec!["-c".into(), "true".into(), "${OG_TEST_RUN_ABSENT}".into()],
             timeout_ms: Some(5_000),
+            os: Default::default(),
         });
         let e = Outbound::new()
             .deliver(&p, &event(), &body(), &Default::default())
@@ -929,6 +977,7 @@ mod tests {
             // stdin 을 아예 안 읽고 그냥 잔다.
             args: vec!["-c".into(), "sleep 30".into()],
             timeout_ms: Some(400),
+            os: Default::default(),
         });
         let t = Instant::now();
         let e = Outbound::new()
@@ -998,6 +1047,7 @@ mod tests {
                 "(i=0; while [ $i -lt 400 ]; do echo x >> grand.log; sleep 0.05; i=$((i+1)); done) & sleep 30".into(),
             ],
             timeout_ms: Some(400),
+            os: Default::default(),
         });
         let e = Outbound::new()
             .deliver(&p, &event(), &body(), &Default::default())
@@ -1023,6 +1073,7 @@ mod tests {
             command: "sh".into(),
             args: vec!["-c".into(), "exit 3".into()],
             timeout_ms: Some(5_000),
+            os: Default::default(),
         });
         let e = Outbound::new()
             .deliver(&p, &event(), &body(), &Default::default())
@@ -1039,6 +1090,7 @@ mod tests {
             command: "og-no-such-program-42".into(),
             args: vec![],
             timeout_ms: Some(5_000),
+            os: Default::default(),
         });
         let e = Outbound::new()
             .deliver(&p, &event(), &body(), &Default::default())

@@ -87,6 +87,9 @@ POST /hook   Authorization: Bearer whk_...
 `${OPENGUILD_PLUGIN_DIR}/notify.sh` 다: 훅의 작업 디렉터리는 이 폴더가
 아니라 **데이터 폴더**라, 코드 폴더는 그 환경변수로 가리킨다(아래 참고).
 
+Windows 에서는 `sh` 대신 `notify.ps1` 을 PowerShell 로 띄운다(정의의 `windows` — 아래
+"운영체제마다 다른 명령"). 알림은 트레이 풍선으로 띄우고, Windows 10/11 에서는 토스트로 보인다.
+
 ## deleted-audit
 
 **퀘스트가 지워지기 전에 무엇이 지워질지 남긴다.** 관찰 `pre` 의 예다.
@@ -134,7 +137,35 @@ openguild backup new          # 그 폴더에 사본이 생긴다
 스크립트(`transform.rhai`)는 **복사할지 정하고, 경로 한 줄만 내보낸다.** 셸에서 JSON 을
 파싱하면 `jq` 가 있느냐에 따라 도는 예제가 되기 때문이다.
 
+Windows 에서는 같은 일을 `archive.ps1` 이 한다 — `ARCHIVE_DIR` 는 `D:\backup\openguild`
+처럼 적는다.
+
 ---
+
+## 운영체제마다 다른 명령 (BUG-294)
+
+`run` 의 `command`/`args` 는 모든 OS 의 기본이다. 셸 스크립트는 Windows 에 `sh` 가 없어
+못 돈다 — 그 OS 에서 띄울 것을 따로 적는다. 적힌 OS 에서는 기본 대신 그것을 띄운다.
+
+```json
+"run": {
+  "command": "sh",
+  "args": ["${OPENGUILD_PLUGIN_DIR}/archive.sh"],
+  "windows": {
+    "command": "powershell",
+    "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+             "-File", "${OPENGUILD_PLUGIN_DIR}/archive.ps1"]
+  }
+}
+```
+
+- 쓸 수 있는 키는 `windows` / `macos` / `linux`. 시한(`timeout_ms`)은 함께 쓴다.
+- 동의 화면에는 **이 기계에서 실제로 띄울 명령**이 보인다. 키 리터럴 검사와 입력란은 다른
+  OS 것까지 본다 — git 에 올라가는 것은 정의 전체다.
+- `.ps1` 은 **ASCII 로** 쓴다. Windows PowerShell 5.1 은 BOM 없는 스크립트를 시스템 코드
+  페이지로 읽어, 한글이 섞이면 파싱이 깨질 수 있다. stdin 은 UTF-8 이므로 스트림을 UTF-8 로
+  직접 읽는다(`archive.ps1` 참고) — 그냥 읽으면 한글 경로가 깨진다.
+- Windows 에서 띄운 훅에는 콘솔 창이 뜨지 않는다.
 
 ## 직접 만들 때
 

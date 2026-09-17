@@ -5,7 +5,7 @@
     {
       "key": "ARCHIVE_DIR",
       "label": "쌓아 둘 폴더",
-      "help": "길드 밖의 경로를 권합니다 — 길드 폴더를 통째로 잃어도 남습니다. 예: /Volumes/backup/openguild",
+      "help": "길드 밖의 경로를 권합니다 — 길드 폴더를 통째로 잃어도 남습니다. 예: /Volumes/backup/openguild, D:\\backup\\openguild",
       "type": "text"
     },
     {
@@ -22,6 +22,10 @@
     "run": {
       "command": "sh",
       "args": ["${OPENGUILD_PLUGIN_DIR}/archive.sh"],
+      "windows": {
+        "command": "powershell",
+        "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${OPENGUILD_PLUGIN_DIR}/archive.ps1"]
+      },
       "timeout_ms": 30000
     }
   },

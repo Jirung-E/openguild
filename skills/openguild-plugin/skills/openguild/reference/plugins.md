@@ -121,6 +121,10 @@ openguild plugin source list / remove <name>
 openguild plugin reload --remote http://127.0.0.1:3000
 ```
 
+A `run` may carry per-OS variants — `"windows": { "command": "powershell", "args": [...] }`
+(also `macos`, `linux`); on that OS it replaces `command`/`args`. Shell scripts need one for
+Windows, which has no `sh`.
+
 `.guild/plugins/` is always loaded (it belongs to the guild and is shared through git).
 Sources and "used in this guild" live only on this machine (`~/.openguild/plugin-sources.json`).
 Plugins load from the source folder **in place** — no copy — so editing the original takes effect

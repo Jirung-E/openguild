@@ -538,6 +538,7 @@ fn known_key_prefix_is_rejected_anywhere() {
         command: "curl".into(),
         args: vec!["-H".into(), "Authorization: ghp_xxxxxxxxxxxx".into()],
         timeout_ms: None,
+        os: Default::default(),
     });
     assert!(validate(&d2).is_err());
 }
@@ -551,6 +552,7 @@ fn ordinary_values_are_not_flagged() {
         command: "/usr/local/bin/notify".into(),
         args: vec!["--quiet".into()],
         timeout_ms: None,
+        os: Default::default(),
     });
     assert!(validate(&d).is_ok());
 }
@@ -782,6 +784,7 @@ fn ordinary_words_ending_in_sk_are_not_api_keys() {
         command: "/usr/local/bin/desk-notify".into(),
         args: vec!["--quiet".into()],
         timeout_ms: None,
+        os: Default::default(),
     });
     assert!(validate(&d).is_ok());
 
@@ -1965,9 +1968,76 @@ fn core_provided_paths_are_not_asked_for() {
         command: "sh".into(),
         args: vec!["${OPENGUILD_PLUGIN_DIR}/hook.sh".into(), "${MY_KEY}".into()],
         timeout_ms: None,
+        os: Default::default(),
     });
     let eff = d.effective_inputs();
     let keys: Vec<&str> = eff.iter().map(|i| i.key.as_str()).collect();
     assert!(!keys.contains(&"OPENGUILD_PLUGIN_DIR"), "{keys:?}");
     assert!(keys.contains(&"MY_KEY"), "{keys:?}");
+}
+
+// ── BUG-294: 운영체제별 run 명령 ──
+
+fn run_with_windows(windows_args: &[&str]) -> PluginDef {
+    serde_json::from_value(json!({
+        "name": "cross", "on": ["quest.created"], "scope": ["cli"],
+        "action": { "run": {
+            "command": "sh", "args": ["${OPENGUILD_PLUGIN_DIR}/hook.sh"],
+            "windows": { "command": "powershell", "args": windows_args }
+        } }
+    }))
+    .unwrap()
+}
+
+/// 이 기계의 OS 에 적힌 것이 있으면 그것을, 없으면 기본 명령을 띄운다.
+#[test]
+fn run_picks_the_command_for_this_os() {
+    let d = run_with_windows(&["-File", "${OPENGUILD_PLUGIN_DIR}/hook.ps1"]);
+    let (cmd, args) = d.action.run_command().unwrap();
+    if cfg!(windows) {
+        assert_eq!(cmd, "powershell");
+        assert_eq!(args[0], "-File");
+    } else {
+        assert_eq!(cmd, "sh", "Windows 용이 다른 OS 에서 골라졌다");
+        assert_eq!(args.len(), 1);
+    }
+    assert!(validate(&d).is_ok());
+    // post 는 띄울 명령이 없다.
+    let p = def(Action::Post {
+        url: "https://x.test".into(),
+        headers: Default::default(),
+        body_env: Default::default(),
+        timeout_ms: None,
+    });
+    assert!(p.action.run_command().is_none());
+}
+
+/// OS 별 명령이 **없으면 직렬화에 안 나타난다** — 동의 지문이 정의를 통째로 담으므로, 나타나면
+/// 이 필드가 생긴 것만으로 기존 동의가 전부 풀린다.
+#[test]
+fn a_run_without_os_commands_serializes_as_before() {
+    let d = def(Action::Run {
+        command: "sh".into(),
+        args: vec!["hook.sh".into()],
+        timeout_ms: None,
+        os: Default::default(),
+    });
+    let v = serde_json::to_value(&d.action).unwrap();
+    assert_eq!(v, json!({ "run": { "command": "sh", "args": ["hook.sh"] } }));
+    // 있으면 그대로 왕복한다.
+    let w = run_with_windows(&["-File", "x.ps1"]);
+    let back: PluginDef = serde_json::from_value(serde_json::to_value(&w).unwrap()).unwrap();
+    assert_eq!(back, w);
+}
+
+/// 다른 OS 것도 검증한다 — git 에 올라가는 것은 정의 전체다. 키 리터럴은 거절하고,
+/// 환경변수 참조는 입력으로 잡는다(이 기계에서 안 쓰는 OS 것이어도).
+#[test]
+fn os_specific_commands_are_validated_everywhere() {
+    let bad = run_with_windows(&["-Token", "ghp_xxxxxxxxxxxxxxxx"]);
+    let e = validate(&bad).unwrap_err().to_string();
+    assert!(e.contains("windows.args[1]"), "{e}");
+    let refs = run_with_windows(&["-File", "${WIN_ONLY_DIR}/hook.ps1"]);
+    let keys: Vec<String> = refs.effective_inputs().into_iter().map(|i| i.key).collect();
+    assert!(keys.contains(&"WIN_ONLY_DIR".to_string()), "{keys:?}");
 }
