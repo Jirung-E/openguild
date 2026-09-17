@@ -9631,6 +9631,48 @@ mod tests {
         );
     }
 
+    /// 릴리스 준비(0.6.0): `gui/tauri.conf.json` 만 0.5.3-beta 로 남아 있었다. 앱 번들 버전과
+    /// 업데이터 비교가 그 값을 쓰므로, 그대로 냈으면 0.6.0 앱이 스스로를 0.5.3 이라고 했다.
+    /// 규칙(release-process)의 "버전 동기화" 목록 전부를 크레이트 버전과 맞춘다.
+    #[test]
+    fn every_version_file_matches_the_crate_version() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        if !root.join("gui/tauri.conf.json").exists() {
+            return; // 크레이트만 따로 배포된 경우
+        }
+        let want = env!("CARGO_PKG_VERSION");
+        let json_version = |rel: &str| -> String {
+            let raw = std::fs::read_to_string(root.join(rel)).unwrap();
+            let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+            v["version"].as_str().unwrap_or_default().to_string()
+        };
+        let toml_version = |rel: &str| -> String {
+            std::fs::read_to_string(root.join(rel))
+                .unwrap()
+                .lines()
+                .find_map(|l| {
+                    l.strip_prefix("version = \"")
+                        .and_then(|r| r.strip_suffix('"'))
+                        .map(str::to_string)
+                })
+                .unwrap_or_default()
+        };
+        let mut wrong = Vec::new();
+        for rel in ["core/Cargo.toml", "cli/Cargo.toml", "server/Cargo.toml", "gui/Cargo.toml"] {
+            let got = toml_version(rel);
+            if got != want {
+                wrong.push(format!("{rel} = {got}"));
+            }
+        }
+        for rel in ["gui/tauri.conf.json", "gui/frontend/package.json"] {
+            let got = json_version(rel);
+            if got != want {
+                wrong.push(format!("{rel} = {got}"));
+            }
+        }
+        assert!(wrong.is_empty(), "크레이트 버전 {want} 과 다른 파일: {wrong:?}");
+    }
+
     // ── DEV-333: 도서관/규칙 태그 명령 ──
     //
     // 실제 길드 없이 list/set 을 클로저로 갈아끼워 **동작 계약**만 검증한다:
