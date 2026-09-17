@@ -221,3 +221,34 @@ fn a_name_that_exists_in_the_guild_is_refused_from_a_source() {
         "{list}"
     );
 }
+
+/// DEV-400: 여럿 든 폴더를 `add` 하면 소스로만 등록한다 — 무엇을 쓸지는 사람이 고른다.
+#[test]
+fn a_folder_with_several_plugins_is_only_registered() {
+    let lab = Lab::new("many");
+    let two = lab.source().join("second");
+    std::fs::create_dir_all(&two).unwrap();
+    std::fs::write(
+        two.join("plugin.json"),
+        r#"{ "name": "second-log", "on": ["quest.created"], "scope": ["cli"],
+             "action": { "run": { "command": "sh", "args": ["-c", "true"] } } }"#,
+    )
+    .unwrap();
+    let src = lab.source().display().to_string();
+    let out = lab.json(&["plugin", "add", &src]);
+    assert_eq!(out["plugins"], serde_json::json!(2), "{out}");
+    assert!(out["added"].is_null(), "통째로 켰다: {out}");
+    assert!(names(&lab.json(&["plugin", "list"]), "needs_consent").is_empty());
+    let avail = lab.json(&["plugin", "available"]);
+    let mut all = names(&avail, "available");
+    all.sort();
+    assert_eq!(all, vec!["hello-log", "second-log"]);
+}
+
+/// DEV-394: 로컬 CLI 는 실행마다 새로 읽는다 — `reload` 는 할 일이 없다고 말하고 성공한다.
+#[test]
+fn reload_in_local_mode_explains_there_is_nothing_to_do() {
+    let lab = Lab::new("reload");
+    let out = lab.ok(&["plugin", "reload"]);
+    assert!(out.contains("--remote"), "{out}");
+}

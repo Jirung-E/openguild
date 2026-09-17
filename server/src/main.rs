@@ -615,7 +615,12 @@ async fn run_host(
     // SIGINT 의 기본 동작을 이미 가로챈 뒤라 **두 번째 Ctrl+C 도 안 먹는다** —
     // 서버를 끌 방법이 없어진다(DEV-379 가 만든 회귀). 유예에 상한을 두고,
     // 그 안에 안 끝나면 그냥 나간다.
-    let serve = axum::serve(listener, app).with_graceful_shutdown(shutdown_signal());
+    // DEV-394: 상대 주소를 핸들러에 넘긴다 — 플러그인 다시 읽기는 같은 기계에서만 받는다.
+    let serve = axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<routes::PeerAddrs>(),
+    )
+    .with_graceful_shutdown(shutdown_signal());
     tokio::select! {
         r = serve => r?,
         _ = force_quit_after_shutdown() => {

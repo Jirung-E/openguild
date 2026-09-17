@@ -180,6 +180,86 @@ pub async fn plugin_set_auto_allow(store: State<'_, Store>, on: bool) -> Result<
     Ok(())
 }
 
+// ─────────── DEV-400: 길드 밖 플러그인(소스) — 데스크톱 화면 ───────────
+//
+// 규칙은 CLI 와 같다([[DEV-399]]): 소스·사용 기록은 이 기계의 `~/.openguild/` 에 남고, 복사하지
+// 않고 그 자리에서 적재한다. **쓰기로 한 것도 동의 전에는 안 돈다** — 추가와 허용은 다른 일이다.
+// 목록이 바뀌면 곧바로 다시 꽂는다(허용과 같은 이유 — 앱을 다시 켜야 반영되면 고장으로 보인다).
+
+use openguild_core::plugins::sources::{self, AddOutcome, SourceStatus};
+
+#[tauri::command]
+pub async fn plugin_sources(store: State<'_, Store>) -> Result<Vec<SourceStatus>, String> {
+    if no_guild_open(&store) {
+        return Ok(Vec::new());
+    }
+    Ok(sources::status(&store.paths.guild_root))
+}
+
+/// 폴더 하나를 더한다 — 플러그인이 하나면 바로 이 길드에서 쓰고, 여럿이면 소스로만 등록한다.
+#[tauri::command]
+pub async fn plugin_add_folder(store: State<'_, Store>, path: String) -> Result<AddOutcome, String> {
+    if no_guild_open(&store) {
+        return Err(NO_GUILD_ERR.into());
+    }
+    let out = sources::add_folder(&store.paths.guild_root, std::path::Path::new(&path))
+        .map_err(err)?;
+    reinstall_plugins(&store);
+    Ok(out)
+}
+
+#[tauri::command]
+pub async fn plugin_use(
+    store: State<'_, Store>,
+    source: String,
+    folder: String,
+) -> Result<(), String> {
+    if no_guild_open(&store) {
+        return Err(NO_GUILD_ERR.into());
+    }
+    sources::use_plugin(&store.paths.guild_root, &source, &folder).map_err(err)?;
+    reinstall_plugins(&store);
+    Ok(())
+}
+
+/// 이 길드에서 안 쓴다 — 파일은 그대로. `(소스, 폴더)` 로 정확히 짚는다.
+#[tauri::command]
+pub async fn plugin_stop_using(
+    store: State<'_, Store>,
+    source: String,
+    folder: String,
+) -> Result<(), String> {
+    if no_guild_open(&store) {
+        return Err(NO_GUILD_ERR.into());
+    }
+    sources::stop_using_entry(&store.paths.guild_root, &source, &folder).map_err(err)?;
+    reinstall_plugins(&store);
+    Ok(())
+}
+
+/// 소스 등록 해제 — 그 소스에서 쓰던 것은 **모든 길드에서** 빠진다(파일은 그대로).
+#[tauri::command]
+pub async fn plugin_source_remove(store: State<'_, Store>, name: String) -> Result<(), String> {
+    if no_guild_open(&store) {
+        return Err(NO_GUILD_ERR.into());
+    }
+    sources::remove_source(&name).map_err(err)?;
+    reinstall_plugins(&store);
+    Ok(())
+}
+
+/// DEV-394: 다시 읽기 — 디스크의 정의로 다시 꽂는다. 바뀐 정의는 동의가 풀려 멈춘다.
+/// 자동 감지는 안 한다(손보는 중인 정의가 저장되는 순간 돌면 안 된다).
+#[tauri::command]
+pub async fn plugin_reload(store: State<'_, Store>) -> Result<PluginStatus, String> {
+    if no_guild_open(&store) {
+        return Ok(PluginStatus::no_guild());
+    }
+    reinstall_plugins(&store);
+    openguild_core::plugins::view::status(&store, openguild_core::plugins::Scope::Gui, true)
+        .map_err(err)
+}
+
 /// 동의가 바뀌면 **즉시** 반영한다. 적재는 길드를 열 때 한 번이지만, 방금
 /// 허용해 놓고 앱을 다시 켜야 도는 것은 고장으로 보인다.
 fn reinstall_plugins(store: &Store) {

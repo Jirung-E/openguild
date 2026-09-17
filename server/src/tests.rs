@@ -73,9 +73,8 @@ async fn the_server_only_picks_up_server_scoped_plugins() {
     // 만지는 구간만 잠근다 — **await 를 감싸면 안 된다**(std 뮤텍스를 await
     // 너머로 들고 있는 것은 교착의 씨앗이고 clippy 가 막는다). 동의 기록과
     // 적재는 전부 동기라 여기서 끝난다.
-    static L: std::sync::Mutex<()> = std::sync::Mutex::new(());
     let loaded = {
-        let _guard = L.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = HOME_LOCK.lock().await;
         unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
         openguild_core::plugins::consent::enable_auto_allow(&dir).unwrap();
         let loaded = store.install_plugins(
@@ -184,6 +183,99 @@ async fn plugins_are_readable_over_http_but_never_writable() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// `[::]` 에 묶였을 때 IPv4 루프백은 IPv6 로 매핑돼 온다 — 그래도 같은 기계다.
+#[test]
+fn a_mapped_ipv4_loopback_is_the_same_machine() {
+    let mapped: std::net::IpAddr = "::ffff:127.0.0.1".parse().unwrap();
+    let p = routes::PeerAddrs {
+        remote: std::net::SocketAddr::new(mapped, 1),
+        local: Some("[::]:3000".parse().unwrap()),
+    };
+    assert!(p.same_machine());
+    let other: std::net::IpAddr = "::ffff:10.0.0.2".parse().unwrap();
+    let q = routes::PeerAddrs { remote: std::net::SocketAddr::new(other, 1), ..p };
+    assert!(!q.same_machine());
+}
+
+/// DEV-394: 다시 읽기는 **같은 기계에서만** 받고, 받으면 실제로 다시 꽂는다 — 철회한 것은
+/// 다시 읽은 뒤 안 돈다(재시작 전까지 옛 것이 돌던 문제).
+#[tokio::test]
+async fn reloading_plugins_is_same_machine_only_and_takes_effect() {
+    use axum::extract::connect_info::MockConnectInfo;
+    let ns = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!("og-srv-reload-{ns}"));
+    let home = std::env::temp_dir().join(format!("og-srv-reload-home-{ns}"));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::create_dir_all(&home).unwrap();
+    openguild_core::repo::seed_guild_dir(&dir).unwrap();
+    seed_two_plugins(&dir);
+    let store = openguild_core::Store::open(&dir).await.unwrap();
+    // 핸들러가 동의를 읽는 동안 OPENGUILD_HOME 이 바뀌면 안 된다 — await 를 넘어 쥐므로 tokio 뮤텍스.
+    let _guard = HOME_LOCK.lock().await;
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    openguild_core::plugins::consent::enable_auto_allow(&dir).unwrap();
+
+    let reload = |app: Router| async move {
+        let res = app
+            .oneshot(Request::post("/api/plugins/reload").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let status = res.status();
+        let bytes = res.into_body().collect().await.unwrap().to_bytes();
+        (status, serde_json::from_slice::<Value>(&bytes).unwrap_or(Value::Null))
+    };
+    // 서버가 Tailscale 주소 100.78.0.9 에 묶였다고 치고, 상대 주소만 바꿔 본다.
+    let at = |ip: [u8; 4]| {
+        routes::create_router(store.clone()).layer(MockConnectInfo(routes::PeerAddrs {
+            remote: std::net::SocketAddr::from((ip, 50000)),
+            local: Some(std::net::SocketAddr::from(([100, 78, 0, 9], 3100))),
+        }))
+    };
+
+    // 상대 주소를 모르면 거절 — 모르는 것을 같은 기계로 치지 않는다.
+    let (st, _) = reload(routes::create_router(store.clone())).await;
+    assert_eq!(st, StatusCode::FORBIDDEN);
+    let (st, body) = reload(at([192, 168, 0, 5])).await;
+    assert_eq!(st, StatusCode::FORBIDDEN, "{body}");
+    // 같은 tailnet 의 다른 기계도 거절.
+    let (st, _) = reload(at([100, 78, 0, 10])).await;
+    assert_eq!(st, StatusCode::FORBIDDEN);
+    assert!(!store.events.has_sink(), "거절했는데 꽂혔다");
+
+    let (st, body) = reload(at([127, 0, 0, 1])).await;
+    assert_eq!(st, StatusCode::OK, "{body}");
+    let team = body["plugins"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["name"] == "team-hook")
+        .unwrap()
+        .clone();
+    assert_eq!((team["granted"].clone(), team["runs_here"].clone()), (json!(true), json!(true)));
+    assert_eq!(body["manageable"], false, "HTTP 로 관리 가능하다고 답했다");
+    assert!(store.events.has_sink(), "다시 읽었는데 안 꽂혔다");
+
+    // 같은 기계의 CLI 가 서버의 Tailscale 주소로 들어온 경우 — 상대 주소 = 이쪽 주소.
+    let (st, _) = reload(at([100, 78, 0, 9])).await;
+    assert_eq!(st, StatusCode::OK, "서버가 묶인 주소로 들어온 같은 기계를 거절했다");
+
+    // 철회 → 다시 읽기 → 더는 안 돈다.
+    openguild_core::plugins::consent::revoke(&dir, "team-hook").unwrap();
+    let (st, _) = reload(at([127, 0, 0, 1])).await;
+    assert_eq!(st, StatusCode::OK);
+    assert!(!store.events.has_sink(), "철회한 것이 다시 읽은 뒤에도 돈다");
+
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// OPENGUILD_HOME 을 만지는 시험끼리 줄 세우기.
+static HOME_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 async fn get(app: Router, uri: &str) -> (StatusCode, Value) {
     let res = app

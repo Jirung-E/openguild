@@ -27,7 +27,10 @@ openguild plugin source add ~/dev/my-plugins   # register the folder (this machi
 openguild plugin add my-hook                   # use it in this guild
 ```
 
-The folder layout inside a source is the same as `.guild/plugins/`.
+The folder layout inside a source is the same as `.guild/plugins/`. In the
+desktop app the same thing is **Admin → Plugins → + Add plugin** (pick the folder;
+a single plugin is used at once, a folder of several is registered and the user
+picks from the source list).
 
 ## Work in this order
 
@@ -176,6 +179,12 @@ openguild plugin allow <name>        # prints what they would be consenting to
 openguild plugin allow <name> --yes  # then actually allows it
 ```
 
+If the desktop app or a server is **already running**, it still holds the plugins it
+loaded at startup — a new or edited definition does nothing there until it is
+reloaded: Admin → Plugins → **Reload** in the app, or on the server's own machine
+`openguild plugin reload --remote http://<server>` (refused from other machines).
+The CLI reads plugins on every run and needs nothing.
+
 If the plugin declares `inputs`, point them at Admin → Plugins instead of
 telling them to export anything. From a terminal the equivalent is:
 
@@ -290,9 +299,12 @@ In this order:
    fires from the CLI.
 3. Did the script's `should_send` return false? Make it `true` temporarily.
 4. Is the event name right? `openguild plugin events`.
-5. Did the CLI exit before delivery finished? Raise
+5. Is a long-running app or server still using the old definition? They load
+   once at startup — reload (Admin → Plugins → Reload, or
+   `openguild plugin reload --remote …` on the server's machine).
+6. Did the CLI exit before delivery finished? Raise
    `OPENGUILD_PLUGIN_DRAIN_MS`, or check stderr for the cut-short warning.
-6. Delivery failures are reported — stderr on the CLI, startup lines on the
+7. Delivery failures are reported — stderr on the CLI, startup lines on the
    server, "recent delivery failures" in the desktop app's Plugins tab.
 
 ## Reference

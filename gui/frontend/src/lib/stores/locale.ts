@@ -171,12 +171,12 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	// DEV-379: 플러그인 — 이 기계에서 남의 코드를 돌릴지 정하는 화면.
 	'plugins.heading': { ko: '플러그인', en: 'Plugins' },
 	'plugins.intro': {
-		ko: '플러그인 정의는 .guild/plugins/ 에 있고 git 으로 공유됩니다. 동의는 이 기계에만 남습니다 — 허용하기 전에는 돌지 않습니다.',
-		en: 'Plugin definitions live in .guild/plugins/ and are shared via git. Consent stays on this machine — nothing runs until you allow it.'
+		ko: '이 길드의 플러그인은 .guild/plugins/ 에 있고 git 으로 공유됩니다. 길드 밖 폴더의 플러그인도 더할 수 있습니다(이 기계에만). 동의는 이 기계에만 남습니다 — 허용하기 전에는 돌지 않습니다.',
+		en: "This guild's plugins live in .guild/plugins/ and are shared via git. You can also add plugins from folders outside the guild (this machine only). Consent stays on this machine — nothing runs until you allow it."
 	},
 	'plugins.none': {
-		ko: '플러그인이 없습니다. .guild/plugins/{이름}/plugin.json 으로 정의합니다.',
-		en: 'No plugins. Define one at .guild/plugins/{name}/plugin.json.'
+		ko: '플러그인이 없습니다. .guild/plugins/{이름}/plugin.json 으로 정의하거나, 데스크톱 앱에서 길드 밖 폴더를 더합니다.',
+		en: 'No plugins. Define one at .guild/plugins/{name}/plugin.json, or add a folder from outside the guild in the desktop app.'
 	},
 	'plugins.readOnly': {
 		ko: '조회만 가능합니다. 허용·철회는 그 길드가 있는 기계의 데스크톱 앱이나 `openguild plugin allow` 로 합니다 — 동의는 기계마다 따로 남습니다.',
@@ -244,12 +244,53 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	},
 	// DEV-384: 자동 허용 중에는 "허용 전에는 안 돕니다" 가 사실이 아니다.
 	'plugins.introAuto': {
-		ko: '플러그인 정의는 .guild/plugins/ 에 있고 git 으로 공유됩니다. 동의는 이 기계에만 남습니다.',
-		en: 'Plugin definitions live in .guild/plugins/ and are shared via git. Consent stays on this machine.'
+		ko: '이 길드의 플러그인은 .guild/plugins/ 에 있고 git 으로 공유됩니다. 길드 밖 폴더의 플러그인도 더할 수 있습니다(이 기계에만). 동의는 이 기계에만 남습니다.',
+		en: "This guild's plugins live in .guild/plugins/ and are shared via git. You can also add plugins from folders outside the guild (this machine only). Consent stays on this machine."
 	},
 	'plugins.retry': { ko: '다시 시도', en: 'Retry' },
 	'plugins.allowed': { ko: '허용했습니다', en: 'Allowed' },
 	'plugins.revoked': { ko: '철회했습니다', en: 'Revoked' },
+	// DEV-400: 길드 밖 플러그인(소스)
+	'plugins.add': { ko: '+ 플러그인 추가', en: '+ Add plugin' },
+	'plugins.addPick': { ko: '플러그인 폴더 고르기', en: 'Choose a plugin folder' },
+	'plugins.addedUsed': {
+		ko: '{name} 을(를) 더했습니다 — 스크립트를 확인하고 허용하면 돕니다',
+		en: 'Added {name} — review the script and allow it to run'
+	},
+	'plugins.addedRegistered': {
+		ko: '소스 {source} 를 등록했습니다(플러그인 {n}개) — 아래 소스 목록에서 쓸 것을 고르세요',
+		en: 'Registered source {source} ({n} plugins) — pick the ones to use in the source list below'
+	},
+	'plugins.fromGuild': { ko: '출처: 이 길드 (.guild/plugins)', en: 'From: this guild (.guild/plugins)' },
+	'plugins.fromSource': { ko: '출처: 소스 {source} —', en: 'From: source {source} —' },
+	'plugins.stopUsing': { ko: '이 길드에서 빼기', en: 'Remove from this guild' },
+	'plugins.stopped': {
+		ko: '이 길드에서 뺐습니다 (파일은 그대로)',
+		en: 'Removed from this guild (files untouched)'
+	},
+	'plugins.use': { ko: '이 길드에서 쓰기', en: 'Use in this guild' },
+	'plugins.inUse': { ko: '쓰는 중', en: 'In use' },
+	'plugins.sources': { ko: '소스 (이 기계)', en: 'Sources (this machine)' },
+	'plugins.sourcesHint': {
+		ko: '플러그인을 가져다 쓰는 길드 밖 폴더입니다. 복사하지 않고 그 자리에서 읽으므로, 원본을 고치면 다시 읽을 때 반영됩니다(바뀐 것은 다시 허용을 받습니다).',
+		en: 'Folders outside the guild that plugins are taken from. They are read in place, not copied — edits to the originals apply on reload (changed plugins need consent again).'
+	},
+	'plugins.sourcesNone': {
+		ko: '등록된 소스가 없습니다 — "+ 플러그인 추가" 로 폴더를 고르세요.',
+		en: 'No sources yet — choose a folder with "+ Add plugin".'
+	},
+	'plugins.removeSource': { ko: '소스 해제', en: 'Remove source' },
+	'plugins.removeSourceConfirm': {
+		ko: '소스 "{source}" 를 해제합니다. 이 소스에서 쓰던 플러그인은 이 기계의 모든 길드에서 빠집니다. 폴더와 파일은 지우지 않습니다.',
+		en: 'Remove source "{source}". Plugins used from it leave every guild on this machine. The folder and its files are not deleted.'
+	},
+	// DEV-394: 다시 읽기
+	'plugins.reload': { ko: '다시 읽기', en: 'Reload' },
+	'plugins.reloadHint': {
+		ko: '정의를 고쳤으면 다시 읽어야 반영됩니다 — 자동으로는 읽지 않습니다.',
+		en: 'After editing a definition, reload to apply it — changes are not picked up automatically.'
+	},
+	'plugins.reloaded': { ko: '플러그인을 다시 읽었습니다', en: 'Plugins reloaded' },
 
 	'settings.editorHeading': { ko: '편집기', en: 'Editor' },
 	'settings.tabBehavior': { ko: 'Tab 동작', en: 'Tab behavior' },

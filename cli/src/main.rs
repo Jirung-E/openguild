@@ -357,6 +357,9 @@ enum PluginCmd {
     },
     #[command(about = tf!("구독할 수 있는 이벤트 이름 목록.", "Event names you can subscribe to."))]
     Events,
+    // DEV-394: 자동 감지는 안 한다 — 손보는 중인 정의가 저장되는 순간 돌기 시작하면 안 된다.
+    #[command(about = tf!("도는 서버가 플러그인을 다시 읽게 한다 (`--remote`, 서버와 같은 기계에서만). 바뀐 정의는 다시 동의를 받는다.", "Make a running server reload its plugins (`--remote`, from the server's own machine only). Changed definitions need consent again."))]
+    Reload,
     // REQ-021: 값은 **stdin 으로** 받는다. 인자로 받으면 토큰이 셸 히스토리와
     // 프로세스 목록(`ps`)에 그대로 남는다.
     #[command(about = tf!("플러그인 설정값 보기 — 비밀값은 가려서 보여준다.", "Show a plugin's configured values — secrets are masked."))]
@@ -6118,6 +6121,58 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
         return Ok(());
     }
 
+    // DEV-394: 도는 서버가 플러그인을 다시 읽는다. CLI 자신은 실행마다 새로 읽으므로 로컬에서는
+    // 할 일이 없다 — 조용히 넘기지 않고 그 사실을 말한다.
+    if let PluginCmd::Reload = sub {
+        let Backend::Http(h) = c else {
+            println!(
+                "{}",
+                tf!(
+                    "CLI 는 실행할 때마다 플러그인을 새로 읽습니다 — 다시 읽을 것이 없습니다. 도는 서버에는 `--remote <주소>` 로, 데스크톱 앱은 관리 → 플러그인 의 [다시 읽기] 로.",
+                    "The CLI reads plugins afresh on every run — nothing to reload. For a running server use `--remote <url>`; in the desktop app, Admin → Plugins → [Reload]."
+                )
+            );
+            return Ok(());
+        };
+        let st: serde_json::Value = h.post("/api/plugins/reload", &serde_json::json!({}))?;
+        if json {
+            json_println!(st);
+            return Ok(());
+        }
+        let list = st["plugins"].as_array().cloned().unwrap_or_default();
+        let pick = |f: &dyn Fn(&serde_json::Value) -> bool| -> Vec<String> {
+            list.iter()
+                .filter(|p| f(p))
+                .filter_map(|p| p["name"].as_str().map(str::to_string))
+                .collect()
+        };
+        let running = pick(&|p| p["granted"] == true && p["runs_here"] == true);
+        let pending = pick(&|p| p["granted"] != true);
+        println!(
+            "{}",
+            tf!(
+                "✓ 서버가 플러그인을 다시 읽었습니다 — 도는 것 {}개: {}",
+                "✓ the server reloaded its plugins — {} running: {}",
+                running.len(),
+                running.join(", ")
+            )
+        );
+        if !pending.is_empty() {
+            println!(
+                "{}",
+                tf!(
+                    "  동의 대기(안 돎): {} — 서버 기계에서 `openguild plugin allow <이름>`",
+                    "  awaiting consent (not running): {} — `openguild plugin allow <name>` on the server's machine",
+                    pending.join(", ")
+                )
+            );
+        }
+        for e in st["errors"].as_array().cloned().unwrap_or_default() {
+            println!("  ✗ {} — {}", e[0].as_str().unwrap_or(""), e[1].as_str().unwrap_or(""));
+        }
+        return Ok(());
+    }
+
     let Backend::Local(l) = c else {
         return Err(anyhow!(tf!(
             "플러그인 관리는 로컬 길드에서만 가능합니다 — 동의는 이 기계에 남습니다(--remote 불가).",
@@ -6128,7 +6183,7 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
     let loaded = load_all(root);
 
     match sub {
-        PluginCmd::Events => unreachable!("handled above"),
+        PluginCmd::Events | PluginCmd::Reload => unreachable!("handled above"),
         PluginCmd::Source { sub } => {
             use openguild_core::plugins::sources;
             match sub {
@@ -6248,27 +6303,28 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
         PluginCmd::Add { target } => {
             use openguild_core::plugins::sources;
             // 폴더 경로를 주면 소스 등록까지 한 번에 — 하나짜리 플러그인을 붙이는 흔한 경우다.
+            // DEV-400: "하나면 쓰고 여럿이면 고르게" 는 데스크톱 화면과 같은 판단이라 코어가 갖는다.
             let (source, folder) = if std::path::Path::new(&target).is_dir() {
                 let dir = std::path::Path::new(&target);
-                let src = Backend::map_err(sources::add_source(root, dir, None))?;
-                let found = sources::list()
-                    .into_iter()
-                    .find(|s| s.name == src)
-                    .map(|s| s.plugins)
-                    .unwrap_or_default();
-                match found.len() {
-                    1 => (src, found[0].folder.clone()),
-                    _ => {
+                match Backend::map_err(sources::add_folder(root, dir))? {
+                    sources::AddOutcome::Used { source, folder, .. } => (source, folder),
+                    sources::AddOutcome::Registered { source, plugins } => {
                         // 여러 개면 무엇을 쓸지 사람이 고른다 — 통째로 켜지 않는다.
-                        println!(
-                            "{}",
-                            tf!(
-                                "✓ 소스 등록: {} (플러그인 {}개) — `openguild plugin add <이름>` 으로 고르세요",
-                                "✓ source added: {} ({} plugins) — pick with `openguild plugin add <name>`",
-                                src,
-                                found.len()
-                            )
-                        );
+                        if json {
+                            json_println!(serde_json::json!({
+                                "ok": true, "source": source, "plugins": plugins, "added": null
+                            }));
+                        } else {
+                            println!(
+                                "{}",
+                                tf!(
+                                    "✓ 소스 등록: {} (플러그인 {}개) — `openguild plugin add <이름>` 으로 고르세요",
+                                    "✓ source added: {} ({} plugins) — pick with `openguild plugin add <name>`",
+                                    source,
+                                    plugins
+                                )
+                            );
+                        }
                         return Ok(());
                     }
                 }
@@ -12099,6 +12155,8 @@ mod tests {
             vec!["openguild", "plugin", "available"],
             vec!["openguild", "plugin", "add", "hello@mine"],
             vec!["openguild", "plugin", "remove", "hello"],
+            vec!["openguild", "plugin", "reload"],
+            vec!["openguild", "plugin", "reload", "--remote", "http://127.0.0.1:3000"],
         ] {
             assert!(Cli::try_parse_from(argv.clone()).is_ok(), "{argv:?}");
         }

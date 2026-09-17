@@ -4,6 +4,10 @@
   DEV-393: 설정 페이지에서 관리 페이지로 옮겼다. 여기 나오는 것은 전부 **지금 연 길드의 것**
   이다 — 목록은 그 길드의 `.guild/plugins/`, 동의와 설정값도 길드별로 따로 남는다. 앱 전체
   설정 화면에 두니 "아직 길드를 열지 않았습니다" 같은 상태를 따로 다뤄야 했다.
+
+  DEV-400: 길드 밖 폴더(소스)의 플러그인도 여기서 더하고 뺀다. **더하는 것과 허용은 다른 일**
+  이라, 더한 직후 그 항목으로 데려가 스크립트를 펼쳐 둔다 — 무엇에 동의하는지 본 자리에서
+  허용한다. DEV-394: [다시 읽기] 는 디스크의 정의로 다시 꽂는다(자동 감지는 없다).
 -->
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
@@ -12,7 +16,9 @@
 		pluginApi,
 		pluginsManageable,
 		type PluginStatus,
-		type PluginInput
+		type PluginInput,
+		type PluginSource,
+		type PluginView
 	} from '$lib/api/plugins';
 	import { locale, t } from '$lib/stores/locale';
 	import { showToast } from '$lib/stores/toast';
@@ -51,7 +57,7 @@
 	}
 
 	// DEV-393: 관리 페이지의 탭이 열릴 때 이 컴포넌트가 붙는다 — 붙을 때 한 번 읽는다.
-	onMount(refreshPlugins);
+	onMount(refreshAll);
 
 	// DEV-384: 동작 뒤 목록이 다시 그려지면 눌렀던 버튼이 사라져 포커스가
 	// `<body>` 로 떨어진다. 그러면 다음 플러그인까지 앱 맨 위에서부터 Tab 해야
@@ -142,6 +148,137 @@
 		}
 	}
 
+	// ─── DEV-400: 길드 밖 플러그인(소스) ───
+	let sources = $state<PluginSource[]>([]);
+	let sourceBusy = $state(false);
+	/** 방금 더한 플러그인 — 눈에 띄게 하고 스크립트를 펼쳐 둔다. */
+	let fresh = $state<string | null>(null);
+	let confirmSource = $state<string | null>(null);
+	let reloading = $state(false);
+
+	async function refreshSources() {
+		// 소스는 이 기계의 기록이다 — 관리할 수 없는 화면(웹·원격 길드)에서는 묻지도 않는다.
+		if (!pluginsManageable()) return;
+		try {
+			sources = await pluginApi.sources();
+		} catch (e) {
+			pluginError = e instanceof Error ? e.message : String(e);
+		}
+	}
+
+	async function refreshAll() {
+		await refreshPlugins();
+		await refreshSources();
+	}
+
+	/** 그 항목으로 데려가 스크립트를 펼친다 — 더한 다음 할 일은 "읽고 허용" 이다. */
+	async function reveal(name: string) {
+		fresh = name;
+		openScript = name;
+		await tick();
+		document.getElementById(`plugin-${name}`)?.scrollIntoView?.({ block: 'center' });
+		pluginBtns[name]?.focus();
+	}
+
+	async function addPluginFolder() {
+		let dir: string | string[] | null;
+		try {
+			const { open } = await import('@tauri-apps/plugin-dialog');
+			dir = await open({ directory: true, title: t('plugins.addPick', $locale) });
+		} catch (e) {
+			showToast(e instanceof Error ? e.message : String(e), 'error');
+			return;
+		}
+		if (!dir || Array.isArray(dir)) return;
+		sourceBusy = true;
+		try {
+			const out = await pluginApi.addFolder(dir);
+			await refreshAll();
+			if (out.kind === 'used') {
+				showToast(t('plugins.addedUsed', $locale).replace('{name}', out.name), 'success');
+				await reveal(out.name);
+			} else {
+				// 여럿이면 고르게 한다 — 통째로 켜지 않는다.
+				showToast(
+					t('plugins.addedRegistered', $locale)
+						.replace('{source}', out.source)
+						.replace('{n}', String(out.plugins)),
+					'success'
+				);
+				await tick();
+				document.getElementById(`plugin-source-${out.source}`)?.scrollIntoView?.({ block: 'center' });
+			}
+		} catch (e) {
+			showToast(e instanceof Error ? e.message : String(e), 'error');
+		} finally {
+			sourceBusy = false;
+		}
+	}
+
+	async function usePlugin(source: string, folder: string, name: string) {
+		sourceBusy = true;
+		try {
+			await pluginApi.use(source, folder);
+			await refreshAll();
+			await reveal(name);
+		} catch (e) {
+			showToast(e instanceof Error ? e.message : String(e), 'error');
+		} finally {
+			sourceBusy = false;
+		}
+	}
+
+	async function stopUsing(source: string, folder: string) {
+		sourceBusy = true;
+		try {
+			await pluginApi.stopUsing(source, folder);
+			await refreshAll();
+			showToast(t('plugins.stopped', $locale), 'success');
+		} catch (e) {
+			showToast(e instanceof Error ? e.message : String(e), 'error');
+		} finally {
+			sourceBusy = false;
+		}
+	}
+
+	/** 목록의 항목이 소스의 어느 폴더인지 — 뺄 때 이름이 아니라 짝으로 짚는다. */
+	function folderOf(p: PluginView): string | null {
+		if (!p.source) return null;
+		return (
+			sources
+				.find((s) => s.name === p.source)
+				?.plugins.find((x) => x.used && x.name === p.name)?.folder ?? null
+		);
+	}
+
+	async function removeSource(name: string) {
+		confirmSource = null;
+		sourceBusy = true;
+		try {
+			await pluginApi.removeSource(name);
+			await refreshAll();
+		} catch (e) {
+			showToast(e instanceof Error ? e.message : String(e), 'error');
+		} finally {
+			sourceBusy = false;
+		}
+	}
+
+	/** DEV-394: 디스크의 정의로 다시 꽂는다. 바뀐 정의는 동의가 풀려 멈춘다. */
+	async function reload() {
+		reloading = true;
+		try {
+			pluginStatus = await pluginApi.reload();
+			pluginError = null;
+			await refreshSources();
+			showToast(t('plugins.reloaded', $locale), 'success');
+		} catch (e) {
+			showToast(e instanceof Error ? e.message : String(e), 'error');
+		} finally {
+			reloading = false;
+		}
+	}
+
 	/** BUG-288: 전체 허용·전체 해제·자동 허용 — 개별 조작과 따로 논다. */
 	async function bulk(action: 'allowAll' | 'revokeAll' | 'autoOn' | 'autoOff') {
 		confirmBulk = null;
@@ -198,6 +335,16 @@
 				     해제는 위 안내문에 흩어져 있었고, 둘 다 모드를 켜고 끄는 것이라 켜 둔
 				     동안 개별 철회가 막혔다. 이제 전체 허용·해제는 개별 상태를 한 번에 바꿀
 				     뿐이고, 앞으로 올 것을 묻지 않는 것은 자동 허용이 따로 맡는다. -->
+				<!-- DEV-400 / DEV-394: 더하기와 다시 읽기. 일괄 동의와는 다른 일이라 줄을 나눈다. -->
+				<div class="plugin-toolbar">
+					<button type="button" class="btn-go" disabled={sourceBusy} onclick={addPluginFolder}
+						>{t('plugins.add', $locale)}</button
+					>
+					<button type="button" class="btn-plain" disabled={reloading} onclick={reload}
+						>{t('plugins.reload', $locale)}</button
+					>
+					<span class="plugin-auto-hint">{t('plugins.reloadHint', $locale)}</span>
+				</div>
 				<div class="plugin-bulk">
 					<button
 						class="btn-plain"
@@ -235,7 +382,7 @@
 			{/if}
 			<ul class="plugin-list" aria-busy={pluginBusy.length > 0}>
 				{#each pluginStatus?.plugins ?? [] as p (p.name)}
-					<li class="plugin" class:pending={!p.granted}>
+					<li class="plugin" class:pending={!p.granted} class:fresh={fresh === p.name} id={`plugin-${p.name}`}>
 						<div class="plugin-head">
 							<strong>{p.name}</strong>
 							<code class="plugin-target">{p.action} → {p.target}</code>
@@ -251,6 +398,16 @@
 							<span>{p.on.join(' ')}</span>
 							<span>{t('plugins.scope', $locale)}: {p.scope.join(', ')}</span>
 						</div>
+						<!-- DEV-400: 길드 것과 소스 것이 한 목록에 섞인다 — 어디서 왔는지 보여야 한다.
+						     소스 것은 길드 밖이라 경로도 함께. -->
+						<p class="plugin-datadir">
+							{#if p.source}
+								{t('plugins.fromSource', $locale).replace('{source}', p.source)}
+								{#if p.dir}<code class="plugin-path">{p.dir}</code>{/if}
+							{:else}
+								{t('plugins.fromGuild', $locale)}
+							{/if}
+						</p>
 						<!-- BUG-279: run 훅은 플러그인 폴더가 아니라 여기에 쓴다.
 						     안 알려주면 훅이 만든 파일을 찾을 방법이 없다. -->
 						{#if p.data_dir}
@@ -416,6 +573,19 @@
 										>{t('plugins.allow', $locale)}</button
 									>
 								{/if}
+								{#if p.source}
+									{@const folder = folderOf(p)}
+									{#if folder !== null}
+										<button
+											type="button"
+											class="btn-plain"
+											disabled={sourceBusy}
+											aria-label={`${t('plugins.stopUsing', $locale)} — ${p.name}`}
+											onclick={() => p.source && stopUsing(p.source, folder)}
+											>{t('plugins.stopUsing', $locale)}</button
+										>
+									{/if}
+								{/if}
 							</div>
 						{/if}
 					</li>
@@ -439,6 +609,68 @@
 					{/each}
 				</ul>
 			{/if}
+			<!-- DEV-400: 소스 — 이 기계에 등록한 폴더들. 여럿 든 소스에서는 여기서 골라 쓴다.
+			     사라진 폴더도 이유와 함께 남긴다(조용히 빠지면 "왜 안 돌지" 가 된다). -->
+			{#if canManage && pluginStatus && !pluginStatus.no_guild}
+				<h3 class="plugin-broken-h">{t('plugins.sources', $locale)}</h3>
+				<p class="scale-hint">{t('plugins.sourcesHint', $locale)}</p>
+				{#if sources.length === 0}
+					<p class="scale-hint">{t('plugins.sourcesNone', $locale)}</p>
+				{:else}
+					<ul class="plugin-list">
+						{#each sources as src (src.name)}
+							<li class="plugin" class:broken-src={src.problem} id={`plugin-source-${src.name}`}>
+								<div class="plugin-head">
+									<strong>{src.name}</strong>
+									<code class="plugin-path">{src.path}</code>
+								</div>
+								{#if src.problem}
+									<p class="plugin-error">{src.problem}</p>
+								{/if}
+								{#if src.plugins.length > 0}
+									<ul class="source-plugins">
+										{#each src.plugins as sp (sp.folder)}
+											<li>
+												<span class="sp-name">{sp.name}</span>
+												{#if sp.used}
+													<span class="sp-used">{t('plugins.inUse', $locale)}</span>
+													<button
+														type="button"
+														class="btn-plain"
+														disabled={sourceBusy}
+														aria-label={`${t('plugins.stopUsing', $locale)} — ${sp.name}`}
+														onclick={() => stopUsing(src.name, sp.folder)}
+														>{t('plugins.stopUsing', $locale)}</button
+													>
+												{:else}
+													<button
+														type="button"
+														class="btn-go"
+														disabled={sourceBusy}
+														aria-label={`${t('plugins.use', $locale)} — ${sp.name}`}
+														onclick={() => usePlugin(src.name, sp.folder, sp.name)}
+														>{t('plugins.use', $locale)}</button
+													>
+												{/if}
+											</li>
+										{/each}
+									</ul>
+								{/if}
+								<div class="plugin-actions">
+									<button
+										type="button"
+										class="btn-plain"
+										disabled={sourceBusy}
+										aria-label={`${t('plugins.removeSource', $locale)} — ${src.name}`}
+										onclick={() => (confirmSource = src.name)}
+										>{t('plugins.removeSource', $locale)}</button
+									>
+								</div>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			{/if}
 		{/if}
 
 <!-- DEV-379 / BUG-288: 둘 다 보지 않은 코드를 이 기계에서 돌리게 한다 — 확인 없이 받지 않는다. -->
@@ -456,6 +688,17 @@
 	danger
 	onconfirm={() => confirmBulk && bulk(confirmBulk)}
 	oncancel={() => (confirmBulk = null)}
+/>
+
+<!-- DEV-400: 소스 해제는 이 길드만의 일이 아니다 — 그 소스를 쓰던 모든 길드에서 빠진다. -->
+<ConfirmDialog
+	open={confirmSource !== null}
+	title={t('plugins.removeSource', $locale)}
+	message={t('plugins.removeSourceConfirm', $locale).replace('{source}', confirmSource ?? '')}
+	confirmLabel={t('plugins.removeSource', $locale)}
+	danger
+	onconfirm={() => confirmSource && removeSource(confirmSource)}
+	oncancel={() => (confirmSource = null)}
 />
 
 <style>
@@ -701,6 +944,43 @@
 		gap: 0.5rem;
 		align-items: center;
 		flex-wrap: wrap;
+	}
+	.plugin.fresh {
+		/* DEV-400: 방금 더한 것 — 여기서 읽고 허용하라는 표시. */
+		box-shadow: 0 0 0 calc(var(--bw) * 2) var(--accent);
+	}
+	.plugin.broken-src {
+		border-color: var(--danger);
+	}
+	.plugin-toolbar {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.4rem 0.75rem;
+		margin: 0.75rem 0 0.25rem;
+		font-size: 0.85rem;
+	}
+	.source-plugins {
+		list-style: none;
+		margin: 0.2rem 0 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.3rem;
+	}
+	.source-plugins li {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+	}
+	.sp-name {
+		font-weight: 600;
+		overflow-wrap: anywhere;
+	}
+	.sp-used {
+		font-size: 0.78rem;
+		color: var(--success);
 	}
 	.plugin-bulk {
 		/* BUG-288: 일괄 조작 셋을 한 줄에 — 좁으면 아래로 떨어진다. */

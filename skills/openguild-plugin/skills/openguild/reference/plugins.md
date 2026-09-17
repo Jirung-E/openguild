@@ -116,12 +116,20 @@ openguild plugin add backup-archive            # use it in this guild (still nee
 openguild plugin add ~/dev/one-plugin          # a single plugin folder: register + use
 openguild plugin remove backup-archive         # stop using it — files are not deleted
 openguild plugin source list / remove <name>
+
+# a running server keeps what it loaded at startup — reload it (from the server's own machine only)
+openguild plugin reload --remote http://127.0.0.1:3000
 ```
 
 `.guild/plugins/` is always loaded (it belongs to the guild and is shared through git).
 Sources and "used in this guild" live only on this machine (`~/.openguild/plugin-sources.json`).
 Plugins load from the source folder **in place** — no copy — so editing the original takes effect
-(and re-asks consent, since the fingerprint changes). A name that exists both in the guild and
+(and re-asks consent, since the fingerprint changes) — immediately for the CLI, which reads plugins
+on every run, and after a **reload** for the desktop app (Admin → Plugins → Reload) or a server
+(`plugin reload --remote`). Nothing reloads automatically, on purpose: a definition being edited
+must not start running the moment it is saved. The server accepts reload only from its own machine
+(loopback, or the very address it is bound to). The desktop Admin → Plugins screen can also add a
+folder (+ Add plugin), show each plugin's origin, stop using a source plugin, and list/remove sources. A name that exists both in the guild and
 in a source is refused at load; a source folder that disappeared is reported, not silently dropped.
 
 `allow --all` / `revoke --all` are bulk edits, not modes — per-plugin `allow`/`revoke`

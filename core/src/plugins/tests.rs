@@ -296,6 +296,76 @@ fn adding_a_source_refuses_the_useless_cases() {
     }
 }
 
+/// DEV-400: 화면의 "폴더 하나 골랐다" — 하나면 바로 쓰고, 여럿이면 등록만 한다.
+/// 같은 폴더를 다시 골라도 소스가 늘지 않고, 짝으로 뺄 때 다른 소스의 같은 이름은 남는다.
+#[test]
+fn adding_a_folder_uses_a_lone_plugin_and_lets_you_pick_from_many() {
+    use super::sources::{self, AddOutcome};
+    let _guard = env_lock();
+    let home = fresh_tmp("addf-home");
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let g = fresh_tmp("addf-guild");
+    let base = fresh_tmp("addf-outside");
+    let def = |name: &str| {
+        serde_json::to_string_pretty(&json!({
+            "name": name, "on": ["quest.created"], "scope": ["cli"],
+            "action": { "post": { "url": "https://example.test/x" } }
+        }))
+        .unwrap()
+    };
+    // 하나짜리 — 폴더 자체가 플러그인.
+    let lone = base.join("lone");
+    std::fs::create_dir_all(&lone).unwrap();
+    std::fs::write(lone.join("plugin.json"), def("echo")).unwrap();
+    // 여럿 — 하나는 위와 같은 이름.
+    let many = base.join("many");
+    for (folder, name) in [("a", "echo"), ("b", "bee")] {
+        std::fs::create_dir_all(many.join(folder)).unwrap();
+        std::fs::write(many.join(folder).join("plugin.json"), def(name)).unwrap();
+    }
+
+    let got = sources::add_folder(&g, &lone).unwrap();
+    let AddOutcome::Used { source: lone_src, name, folder } = got.clone() else {
+        panic!("하나짜리가 바로 쓰이지 않았다: {got:?}");
+    };
+    assert_eq!((name.as_str(), folder.as_str()), ("echo", "."));
+    assert_eq!(names(&load_for(&g, Scope::Cli)), vec!["echo"]);
+    // 같은 폴더를 또 골라도 소스는 하나.
+    assert_eq!(sources::add_folder(&g, &lone).unwrap(), got);
+
+    let got = sources::add_folder(&g, &many).unwrap();
+    let AddOutcome::Registered { source: many_src, plugins } = got else {
+        panic!("여럿인데 통째로 켰다: {got:?}");
+    };
+    assert_eq!(plugins, 2);
+    assert_eq!(names(&load_for(&g, Scope::Cli)), vec!["echo"], "고르기 전에 붙었다");
+
+    let st = sources::status(&g);
+    assert_eq!(st.len(), 2);
+    let m = st.iter().find(|s| s.name == many_src).unwrap();
+    assert!(m.plugins.iter().all(|p| !p.used));
+    let l = st.iter().find(|s| s.name == lone_src).unwrap();
+    assert!(l.plugins[0].used);
+
+    // 여럿 쪽의 bee 를 고른다.
+    sources::use_plugin(&g, &many_src, "b").unwrap();
+    assert_eq!(names(&load_for(&g, Scope::Cli)), vec!["bee", "echo"]);
+    // 짝으로 빼면 그것만 빠진다.
+    sources::stop_using_entry(&g, &many_src, "b").unwrap();
+    assert_eq!(names(&load_for(&g, Scope::Cli)), vec!["echo"]);
+    assert!(sources::stop_using_entry(&g, &many_src, "b").is_err(), "없는 것을 뺐다고 했다");
+
+    // 소스 폴더가 사라져도 목록에는 남고 이유가 붙는다.
+    std::fs::remove_dir_all(&many).unwrap();
+    let gone = sources::status(&g).into_iter().find(|s| s.name == many_src).unwrap();
+    assert!(gone.problem.is_some(), "사라진 소스가 조용하다");
+
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    for d in [&g, &base, &home] {
+        let _ = std::fs::remove_dir_all(d);
+    }
+}
+
 fn consent_free_add_source(guild: &Path, dir: &Path) -> String {
     super::sources::add_source(guild, dir, None).unwrap()
 }

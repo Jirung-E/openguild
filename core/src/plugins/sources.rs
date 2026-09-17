@@ -401,3 +401,118 @@ pub fn used_dirs(guild_root: &Path) -> (Vec<UsedDir>, Vec<UsedProblem>) {
     }
     (dirs, problems)
 }
+
+// ─────────────── DEV-400: 화면이 받는 모양 ───────────────
+//
+// CLI 는 위 함수들을 직접 엮어 쓰지만, 데스크톱 화면은 "폴더 하나 골랐다" 한 번으로 끝나야
+// 한다. 그 판단(하나면 바로 쓰고, 여럿이면 고르게 한다)을 CLI 와 화면이 따로 갖지 않게
+// 여기 둔다.
+
+/// 화면에 보여 줄 소스 하나.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SourceStatus {
+    pub name: String,
+    pub path: String,
+    /// 폴더가 사라졌거나 플러그인이 없으면 그 이유 — 목록에서 빼지 않고 보인다.
+    pub problem: Option<String>,
+    pub plugins: Vec<AvailablePlugin>,
+}
+
+/// 소스가 내놓는 플러그인 하나와, 이 길드에서 쓰고 있는지.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AvailablePlugin {
+    pub name: String,
+    pub folder: String,
+    pub dir: String,
+    pub used: bool,
+}
+
+/// 등록된 소스 전부와 그 플러그인들 — 이 길드에서 쓰는 것에 표시.
+pub fn status(guild_root: &Path) -> Vec<SourceStatus> {
+    let used = used_in(guild_root);
+    list()
+        .into_iter()
+        .map(|s| SourceStatus {
+            plugins: s
+                .plugins
+                .into_iter()
+                .map(|p| AvailablePlugin {
+                    used: used
+                        .iter()
+                        .any(|u| u.source == s.name && u.folder == p.folder),
+                    name: p.name,
+                    folder: p.folder,
+                    dir: p.path.display().to_string(),
+                })
+                .collect(),
+            name: s.name,
+            path: s.path.display().to_string(),
+            problem: s.problem,
+        })
+        .collect()
+}
+
+/// 폴더 하나를 더한 결과.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum AddOutcome {
+    /// 플러그인이 하나라 바로 이 길드에서 쓰기로 했다. `name` 은 정의의 이름.
+    Used {
+        source: String,
+        folder: String,
+        name: String,
+    },
+    /// 여럿이라 소스로만 등록했다 — 무엇을 쓸지는 사람이 고른다(통째로 켜지 않는다).
+    Registered { source: String, plugins: usize },
+}
+
+/// 폴더를 더한다 — 소스로 등록하고, 플러그인이 하나면 이 길드에서 쓴다.
+///
+/// 이미 등록된 폴더면 그 소스를 그대로 쓴다([`add_source`] 가 경로로 중복을 거른다).
+pub fn add_folder(guild_root: &Path, dir: &Path) -> AppResult<AddOutcome> {
+    let source = add_source(guild_root, dir, None)?;
+    let found = list()
+        .into_iter()
+        .find(|s| s.name == source)
+        .map(|s| s.plugins)
+        .unwrap_or_default();
+    match found.as_slice() {
+        [only] => {
+            use_plugin(guild_root, &source, &only.folder)?;
+            Ok(AddOutcome::Used {
+                source,
+                folder: only.folder.clone(),
+                name: only.name.clone(),
+            })
+        }
+        many => Ok(AddOutcome::Registered {
+            source,
+            plugins: many.len(),
+        }),
+    }
+}
+
+/// 이 길드에서 안 쓴다 — `(소스, 폴더)` 를 정확히 짚는다. 화면의 소스 목록은 이 짝을 알고
+/// 있으므로 이름으로 다시 찾지 않는다(이름은 소스마다 겹칠 수 있다).
+pub fn stop_using_entry(guild_root: &Path, source: &str, folder: &str) -> AppResult<()> {
+    let key = guild_key(guild_root);
+    let target = Used {
+        source: source.to_string(),
+        folder: folder.to_string(),
+    };
+    update(move |f| {
+        let list = f.used.entry(key).or_default();
+        let before = list.len();
+        list.retain(|u| u != &target);
+        if list.len() == before {
+            return Err(AppError::NotFound(crate::tf!(
+                "이 길드에서 쓰고 있지 않습니다: {}@{}",
+                "not in use in this guild: {}@{}",
+                target.folder,
+                target.source
+            )));
+        }
+        f.used.retain(|_, v| !v.is_empty());
+        Ok(())
+    })
+}

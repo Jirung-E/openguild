@@ -51,7 +51,39 @@ export interface PluginView {
 	granted: boolean;
 	/** 이 컴포넌트에서 도는가. */
 	runs_here: boolean;
+	/**
+	 * DEV-399/400: 어디서 왔나 — null 이면 이 길드의 `.guild/plugins/`, 문자열이면 그 소스.
+	 * 한 목록에 섞여 나오므로 화면이 출처를 보여 줘야 한다.
+	 */
+	source?: string | null;
+	/** 플러그인 폴더의 실제 경로 — 소스에서 온 것은 길드 밖이다. */
+	dir?: string;
 }
+
+/** DEV-400: 소스가 내놓는 플러그인 하나. */
+export interface AvailablePlugin {
+	/** 정의의 이름 — 사람이 부르는 이름. */
+	name: string;
+	/** 소스 안의 폴더 이름. 소스 자체가 플러그인이면 `.` */
+	folder: string;
+	dir: string;
+	/** 이 길드에서 쓰고 있나. */
+	used: boolean;
+}
+
+/** DEV-400: 이 기계에 등록된 소스(플러그인을 가져다 쓸 폴더) 하나. */
+export interface PluginSource {
+	name: string;
+	path: string;
+	/** 폴더가 사라졌거나 플러그인이 없으면 그 이유. 목록에서 빼지 않는다. */
+	problem: string | null;
+	plugins: AvailablePlugin[];
+}
+
+/** 폴더를 더한 결과 — 하나면 바로 쓰고, 여럿이면 등록만 한다(고르는 것은 사람). */
+export type AddFolderOutcome =
+	| { kind: 'used'; source: string; folder: string; name: string }
+	| { kind: 'registered'; source: string; plugins: number };
 
 export interface PluginInputOption {
 	value: string;
@@ -94,13 +126,13 @@ export function pluginsManageable(): boolean {
 	return isLocalTauri();
 }
 
-async function manage(cmd: string, args?: Record<string, unknown>): Promise<void> {
+async function manage<T = void>(cmd: string, args?: Record<string, unknown>): Promise<T> {
 	if (!pluginsManageable()) {
 		// 조용히 no-op 하면 "허용 눌렀는데 안 도네" 로 이어진다.
 		throw new Error('plugin management requires a local guild on the desktop app');
 	}
 	const { invoke } = await import('@tauri-apps/api/core');
-	await invoke<void>(cmd, args);
+	return await invoke<T>(cmd, args);
 }
 
 export const pluginApi = {
@@ -121,5 +153,23 @@ export const pluginApi = {
 	 * 있을 때 저장하면 보고 있지 않은 길드의 값을 고치게 된다.
 	 */
 	setValue: (name: string, key: string, value: string | number | boolean | null) =>
-		manage('plugin_set_value', { name, key, value })
+		manage('plugin_set_value', { name, key, value }),
+
+	// ─── DEV-400: 길드 밖 플러그인(소스) ───
+	// 소스·사용 기록은 이 기계의 것이라 동의와 같은 경로(로컬 데스크톱)만 탄다 — 원격 길드를
+	// 보면서 더하면 **보고 있지 않은** 로컬 길드에 붙는다.
+	sources: () => manage<PluginSource[]>('plugin_sources'),
+	/** 폴더를 더한다. 하나짜리는 바로 쓰고, 여럿이면 등록만 한다. */
+	addFolder: (path: string) => manage<AddFolderOutcome>('plugin_add_folder', { path }),
+	use: (source: string, folder: string) => manage('plugin_use', { source, folder }),
+	/** 이 길드에서 안 쓴다 — 파일은 그대로. */
+	stopUsing: (source: string, folder: string) =>
+		manage('plugin_stop_using', { source, folder }),
+	/** 소스 등록 해제 — 그 소스에서 쓰던 것은 모든 길드에서 빠진다. */
+	removeSource: (name: string) => manage('plugin_source_remove', { name }),
+	/**
+	 * DEV-394: 디스크의 정의로 다시 꽂는다. 자동 감지는 없다 — 손보는 중인 정의가 저장되는
+	 * 순간 돌면 안 되므로 사람이 누른다. 바뀐 정의는 동의가 풀려 멈춘다.
+	 */
+	reload: () => manage<PluginStatus>('plugin_reload')
 };

@@ -45,6 +45,13 @@ describe('플러그인 조회/관리의 경계', () => {
 		await expect(pluginApi.setAutoAllow(true)).rejects.toThrow(/local guild/);
 		await expect(pluginApi.allowAll()).rejects.toThrow(/local guild/);
 		await expect(pluginApi.revokeAll()).rejects.toThrow(/local guild/);
+		// DEV-400/394: 소스와 다시 읽기도 같은 경계 — 이 기계의 기록을 고친다.
+		await expect(pluginApi.sources()).rejects.toThrow(/local guild/);
+		await expect(pluginApi.addFolder('/tmp/x')).rejects.toThrow(/local guild/);
+		await expect(pluginApi.use('s', 'f')).rejects.toThrow(/local guild/);
+		await expect(pluginApi.stopUsing('s', 'f')).rejects.toThrow(/local guild/);
+		await expect(pluginApi.removeSource('s')).rejects.toThrow(/local guild/);
+		await expect(pluginApi.reload()).rejects.toThrow(/local guild/);
 
 		w.__TAURI_INTERNALS__ = {};
 		setRemoteServerUrl('http://box:3000');

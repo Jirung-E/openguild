@@ -20,6 +20,36 @@ use tower_http::compression::{
 };
 use openguild_core::Store;
 
+/// DEV-394: 요청이 **서버와 같은 기계에서** 왔는지 판단할 두 주소.
+///
+/// 루프백만 보면 부족하다 — 서버를 Tailscale 주소(`--bind 100.x.y.z`)에 띄우면 같은 기계의
+/// CLI 도 그 주소로 들어와 상대 주소가 `100.x.y.z` 다. 연결의 **이쪽 주소와 상대 주소가 같으면**
+/// 자기 자신에게 건 연결이다(다른 기계는 그 인터페이스의 주소를 가질 수 없다).
+#[derive(Clone, Copy, Debug)]
+pub struct PeerAddrs {
+    pub remote: std::net::SocketAddr,
+    pub local: Option<std::net::SocketAddr>,
+}
+
+impl PeerAddrs {
+    pub fn same_machine(&self) -> bool {
+        // `[::]` 에 묶이면 IPv4 가 `::ffff:127.0.0.1` 로 온다 — 정규화해서 본다.
+        let remote = self.remote.ip().to_canonical();
+        remote.is_loopback() || self.local.is_some_and(|l| l.ip().to_canonical() == remote)
+    }
+}
+
+impl axum::extract::connect_info::Connected<axum::serve::IncomingStream<'_, tokio::net::TcpListener>>
+    for PeerAddrs
+{
+    fn connect_info(stream: axum::serve::IncomingStream<'_, tokio::net::TcpListener>) -> Self {
+        PeerAddrs {
+            remote: *stream.remote_addr(),
+            local: stream.io().local_addr().ok(),
+        }
+    }
+}
+
 /// DEV-332: 응답 gzip 압축 레이어.
 ///
 /// 우리 응답은 대부분 한글 JSON / 마크다운이고 압축을 전혀 하지 않고 있었다
@@ -53,6 +83,8 @@ pub fn create_router(store: Store) -> Router {
         // DEV-380: 플러그인 **조회만**. 허용/철회는 일부러 없다 — 그 기계에서
         // `openguild plugin allow` 로 한다(meta::list_plugins 주석 참고).
         .route("/api/plugins", get(meta::list_plugins))
+        // DEV-394: 다시 읽기 — 서버와 같은 기계에서만(핸들러가 상대 주소를 본다).
+        .route("/api/plugins/reload", post(meta::reload_plugins))
         .route("/api/quest-types", get(meta::list_quest_types))
         // REQ-009: 강화된 검색 (댓글/첨부 이름/메모까지). 기본 검색과 별개 경로.
         .route("/api/search", get(meta::enhanced_search))

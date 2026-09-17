@@ -53,6 +53,64 @@ pub async fn list_plugins(State(store): State<Store>) -> AppResult<Json<PluginSt
     )?))
 }
 
+/// `POST /api/plugins/reload` — DEV-394: 도는 서버가 플러그인을 **다시 읽는다.**
+///
+/// 서버는 시작할 때 한 번 적재하고 들고 있어서, `git pull` 로 정의가 바뀌어도 재시작 전까지
+/// 옛 코드가 돌았다. 화면(조회)은 매번 디스크를 읽으므로 "동의 대기" 라고 말하는데 실제로는
+/// 옛 것이 계속 도는 어긋남이다. 다시 읽으면 바뀐 정의는 동의가 풀려 멈춘다.
+///
+/// 자동 감지는 안 한다(admin 결정) — 손보는 중인 정의가 저장되는 순간 돌면 안 된다.
+///
+/// **서버와 같은 기계에서 온 요청만** 받는다([`super::PeerAddrs::same_machine`] — 루프백, 또는
+/// 서버가 묶인 주소 그대로). 플러그인은 그 기계의 동의로 도는 것이라, 관리 조작을 공유 주소에
+/// 열지 않는다([`list_plugins`] 와 같은 이유). 역방향 프록시를 같은 기계에 두면 모든 요청이
+/// 같은 기계로 보이므로, 그런 배치에서는 프록시에서 이 경로를 막아야 한다.
+pub async fn reload_plugins(
+    State(store): State<Store>,
+    request: axum::extract::Request,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    use axum::RequestPartsExt;
+    let (mut parts, _) = request.into_parts();
+    let same_machine = parts
+        .extract::<axum::extract::ConnectInfo<super::PeerAddrs>>()
+        .await
+        .is_ok_and(|c| c.0.same_machine());
+    if !same_machine {
+        // 코어 오류에 "권한" 이 없다 — 여기 하나뿐이라 응답을 직접 만든다(모양은 HttpError 와 같다).
+        return (
+            axum::http::StatusCode::FORBIDDEN,
+            Json(serde_json::json!({ "error": openguild_core::tf!(
+                "플러그인 다시 읽기는 서버와 같은 기계에서만 됩니다",
+                "reloading plugins is only allowed from the server's own machine"
+            ) })),
+        )
+            .into_response();
+    }
+    let loaded = store.install_plugins(
+        openguild_core::plugins::Scope::Server,
+        std::sync::Arc::new(openguild_core::plugins::delivery::Outbound::new()),
+    );
+    eprintln!(
+        "{}",
+        openguild_core::tf!(
+            "[openguild-server] 플러그인 다시 읽음 — 도는 것 {}, 동의 대기 {}, 깨진 정의 {}",
+            "[openguild-server] plugins reloaded — {} running, {} awaiting consent, {} broken",
+            loaded.active.len(),
+            loaded.needs_consent.len(),
+            loaded.errors.len()
+        )
+    );
+    match openguild_core::plugins::view::status(
+        &store,
+        openguild_core::plugins::Scope::Server,
+        false,
+    ) {
+        Ok(st) => Json(st).into_response(),
+        Err(e) => crate::error::HttpError(e).into_response(),
+    }
+}
+
 /// DEV-068: tag def 목록.
 pub async fn list_tag_defs(
     State(store): State<Store>,

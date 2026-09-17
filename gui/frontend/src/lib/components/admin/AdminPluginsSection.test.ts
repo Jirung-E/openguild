@@ -11,9 +11,18 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
-import type { PluginStatus, PluginView } from '$lib/api/plugins';
+import { fireEvent, waitFor } from '@testing-library/svelte';
+import type { PluginSource, PluginStatus, PluginView } from '$lib/api/plugins';
 
 const status = vi.fn();
+// DEV-400 / DEV-394
+const sources = vi.fn(async () => [] as PluginSource[]);
+const addFolder = vi.fn();
+const usePlugin = vi.fn<(s: string, f: string) => Promise<void>>(async () => {});
+const stopUsing = vi.fn<(s: string, f: string) => Promise<void>>(async () => {});
+const reload = vi.fn();
+const pickFolder = vi.fn();
+vi.mock('@tauri-apps/plugin-dialog', () => ({ open: (o: unknown) => pickFolder(o) }));
 // 허용/철회 버튼은 `pluginsManageable() && status.manageable` 일 때만 그려진다
 // — 시험마다 갈아 끼울 수 있어야 한다.
 const manageable = vi.fn(() => false);
@@ -24,7 +33,13 @@ vi.mock('$lib/api/plugins', () => ({
 		revoke: vi.fn(),
 		allowAll: vi.fn(),
 		revokeAll: vi.fn(),
-		setAutoAllow: vi.fn()
+		setAutoAllow: vi.fn(),
+		sources: () => sources(),
+		addFolder: (p: string) => addFolder(p),
+		use: (s: string, f: string) => usePlugin(s, f),
+		stopUsing: (s: string, f: string) => stopUsing(s, f),
+		removeSource: vi.fn(),
+		reload: () => reload()
 	},
 	pluginsManageable: () => manageable()
 }));
@@ -191,5 +206,143 @@ describe('BUG-288 전체 허용·전체 해제·자동 허용', () => {
 		expect(btn.disabled).toBe(false);
 		const auto = document.querySelector('.plugin-bulk input[type="checkbox"]') as HTMLInputElement;
 		expect(auto.checked).toBe(true);
+	});
+});
+
+// DEV-400: 길드 밖 플러그인 — 더하기, 출처, 빼기, 소스 목록. DEV-394: 다시 읽기.
+describe('DEV-400 플러그인 추가·소스', () => {
+	function st(plugins: PluginView[], manage = true): PluginStatus {
+		return { plugins, errors: [], auto_allow: false, manageable: manage, no_guild: false, problems: [] };
+	}
+	const fromSource = (name: string, granted = false): PluginView => ({
+		...plugin(name, null),
+		granted,
+		source: 'mine',
+		dir: `/Users/me/mine/${name}`,
+		script: 'transform.rhai',
+		script_src: `// ${name} script`
+	});
+	const srcList = (used: boolean): PluginSource[] => [
+		{
+			name: 'mine',
+			path: '/Users/me/mine',
+			problem: null,
+			plugins: [
+				{ name: 'echo', folder: 'echo-dir', dir: '/Users/me/mine/echo-dir', used },
+				{ name: 'bee', folder: 'bee-dir', dir: '/Users/me/mine/bee-dir', used: false }
+			]
+		},
+		{ name: 'gone', path: '/Volumes/usb/plugins', problem: '폴더를 읽지 못했습니다', plugins: [] }
+	];
+
+	beforeEach(() => {
+		status.mockReset();
+		sources.mockReset().mockResolvedValue([]);
+		addFolder.mockReset();
+		usePlugin.mockClear();
+		stopUsing.mockClear();
+		reload.mockReset();
+		pickFolder.mockReset();
+		manageable.mockReturnValue(true);
+	});
+
+	it('출처가 보이고, 소스에서 온 것에만 빼기 버튼이 있다 — 짝(소스, 폴더)으로 뺀다', async () => {
+		status.mockResolvedValue(st([plugin('in-guild', null), fromSource('echo', true)]));
+		sources.mockResolvedValue(srcList(true));
+		await openPluginsTab();
+		await screen.findByText('in-guild');
+
+		const item = (n: string) =>
+			Array.from(document.querySelectorAll('li.plugin')).find((li) =>
+				li.querySelector('strong')?.textContent === n
+			)!;
+		expect(item('in-guild').textContent).toContain('출처: 이 길드');
+		expect(item('echo').textContent).toContain('출처: 소스 mine');
+		expect(item('echo').textContent).toContain('/Users/me/mine/echo');
+
+		const stopLabel = (li: Element) =>
+			Array.from(li.querySelectorAll('.plugin-actions button')).find((b) =>
+				b.getAttribute('aria-label')?.startsWith('이 길드에서 빼기')
+			);
+		expect(stopLabel(item('in-guild'))).toBeUndefined();
+		await waitFor(() => expect(stopLabel(item('echo'))).toBeTruthy());
+		await fireEvent.click(stopLabel(item('echo'))!);
+		await waitFor(() => expect(stopUsing).toHaveBeenCalledWith('mine', 'echo-dir'));
+	});
+
+	it('소스 목록 — 쓰는 것/안 쓰는 것, 사라진 폴더의 이유', async () => {
+		status.mockResolvedValue(st([fromSource('echo', true)]));
+		sources.mockResolvedValue(srcList(true));
+		await openPluginsTab();
+		await screen.findByText('/Volumes/usb/plugins');
+
+		expect(screen.getByText('폴더를 읽지 못했습니다')).toBeTruthy();
+		const row = (n: string) =>
+			Array.from(document.querySelectorAll('.source-plugins li')).find((li) =>
+				li.textContent?.includes(n)
+			)!;
+		expect(row('echo').textContent).toContain('쓰는 중');
+		const use = row('bee').querySelector('button')!;
+		expect(use.textContent).toContain('이 길드에서 쓰기');
+		await fireEvent.click(use);
+		await waitFor(() => expect(usePlugin).toHaveBeenCalledWith('mine', 'bee-dir'));
+	});
+
+	it('폴더 하나짜리를 더하면 그 항목으로 데려가 스크립트를 펼쳐 둔다', async () => {
+		status.mockResolvedValueOnce(st([])).mockResolvedValue(st([fromSource('echo')]));
+		pickFolder.mockResolvedValue('/Users/me/mine/echo-dir');
+		addFolder.mockResolvedValue({ kind: 'used', source: 'mine', folder: '.', name: 'echo' });
+		await openPluginsTab();
+		await fireEvent.click(await screen.findByText('+ 플러그인 추가'));
+
+		await waitFor(() => expect(addFolder).toHaveBeenCalledWith('/Users/me/mine/echo-dir'));
+		await waitFor(() => expect(document.querySelector('li.plugin.fresh')).not.toBeNull());
+		// 무엇에 동의하는지 — 스크립트가 이미 펼쳐져 있고, 허용 버튼이 같은 자리에 있다.
+		expect(screen.getByText('// echo script')).toBeTruthy();
+		const fresh = document.querySelector('li.plugin.fresh')!;
+		expect(fresh.querySelector('.btn-go')?.textContent).toContain('허용');
+	});
+
+	it('여럿 든 폴더는 등록만 한다 — 아무것도 펼치거나 켜지 않는다', async () => {
+		status.mockResolvedValue(st([]));
+		pickFolder.mockResolvedValue('/Users/me/mine');
+		addFolder.mockResolvedValue({ kind: 'registered', source: 'mine', plugins: 2 });
+		await openPluginsTab();
+		await fireEvent.click(await screen.findByText('+ 플러그인 추가'));
+		await waitFor(() => expect(addFolder).toHaveBeenCalled());
+		expect(usePlugin).not.toHaveBeenCalled();
+		expect(document.querySelector('li.plugin.fresh')).toBeNull();
+	});
+
+	it('폴더 고르기를 취소하면 아무 일도 없다', async () => {
+		status.mockResolvedValue(st([]));
+		pickFolder.mockResolvedValue(null);
+		await openPluginsTab();
+		await fireEvent.click(await screen.findByText('+ 플러그인 추가'));
+		await waitFor(() => expect(pickFolder).toHaveBeenCalled());
+		expect(addFolder).not.toHaveBeenCalled();
+	});
+
+	it('다시 읽기 — 받은 상태로 목록을 바꾼다', async () => {
+		status.mockResolvedValue(st([{ ...plugin('tg', null), granted: true }]));
+		reload.mockResolvedValue(st([{ ...plugin('tg', null), granted: false }]));
+		await openPluginsTab();
+		await screen.findByText('돌고 있음');
+		await fireEvent.click(screen.getByText('다시 읽기'));
+		await waitFor(() => expect(reload).toHaveBeenCalled());
+		expect(await screen.findByText('동의 대기 — 안 돕니다')).toBeTruthy();
+	});
+
+	it('웹(관리 불가)에서는 추가·다시 읽기·소스 목록이 없고, 소스를 묻지도 않는다', async () => {
+		manageable.mockReturnValue(false);
+		status.mockResolvedValue(st([fromSource('echo', true)], false));
+		await openPluginsTab();
+		await screen.findByText('echo');
+		expect(screen.queryByText('+ 플러그인 추가')).toBeNull();
+		expect(screen.queryByText('다시 읽기')).toBeNull();
+		expect(screen.queryByText('소스 (이 기계)')).toBeNull();
+		expect(sources).not.toHaveBeenCalled();
+		// 출처는 조회라 보인다.
+		expect(document.body.textContent).toContain('출처: 소스 mine');
 	});
 });

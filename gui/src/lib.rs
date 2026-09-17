@@ -555,6 +555,13 @@ pub fn run() {
             commands::plugin_allow_all,
             commands::plugin_revoke_all,
             commands::plugin_set_auto_allow,
+            // DEV-400 / DEV-394: 길드 밖 플러그인 + 다시 읽기.
+            commands::plugin_sources,
+            commands::plugin_add_folder,
+            commands::plugin_use,
+            commands::plugin_stop_using,
+            commands::plugin_source_remove,
+            commands::plugin_reload,
             commands::plugin_set_value,
             commands::launch_mode,
             commands::current_guild_path,
