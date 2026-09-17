@@ -30,13 +30,14 @@ export interface PluginView {
 	 * 데이터다 — `t()` 를 태울 대상이 아니고, 태울 수도 없다.
 	 */
 	description: string | null;
+	/** 모든 줄의 이벤트 패턴(바뀌기 전 단계는 `pre:` 가 붙는다). */
 	on: string[];
 	scope: string[];
-	/** 'post' | 'run' */
-	action: string;
-	/** post 의 목적지 또는 run 의 명령 — 무엇에 동의하는지의 핵심. */
-	target: string;
-	script: string | null;
+	/** DEV-403: 줄 목록 — 언제 → 무엇, 적힌 순서대로. */
+	handlers: PluginHandler[];
+	/** 내보내는 곳 전부 — 무엇에 동의하는지의 핵심. */
+	actions: PluginActionView[];
+	scripts: string[];
 	/**
 	 * BUG-279: `run` 훅이 파일을 쓰는 자리. `post` 면 null 이다.
 	 *
@@ -84,6 +85,30 @@ export interface PluginSource {
 export type AddFolderOutcome =
 	| { kind: 'used'; source: string; folder: string; name: string }
 	| { kind: 'registered'; source: string; plugins: number };
+
+/** DEV-403: 핸들러 한 줄. */
+export interface PluginHandler {
+	/** `id`, 없으면 "N번째 줄". */
+	label: string;
+	stage: 'pre' | 'post';
+	events: string[];
+	/** 부르는 스크립트 함수. */
+	call: string | null;
+	/** 이름 붙인 동작을 가리키면 그 이름. */
+	action: string | null;
+	/** 줄에 바로 적은 동작이면 그 종류와 대상. */
+	action_kind: string | null;
+	action_target: string | null;
+}
+
+/** 이름 붙인 동작 하나. */
+export interface PluginActionView {
+	name: string;
+	/** 'post' | 'run' */
+	kind: string;
+	/** post 의 목적지 또는 run 의 명령(이 기계에서 띄울 것). */
+	target: string;
+}
 
 export interface PluginInputOption {
 	value: string;

@@ -1072,16 +1072,14 @@ fn shipped_scripts_survive_real_events(rec: &Recorder) {
     let mut checked = 0usize;
 
     for entry in std::fs::read_dir(&dir).unwrap().flatten() {
-        let manifest = entry.path().join("plugin.json");
+        let manifest = entry.path().join(crate::plugins::MANIFEST);
         if !manifest.is_file() {
             continue;
         }
         let def = crate::plugins::read_def(&manifest).unwrap();
-        let Some(rel) = def.script.as_deref() else {
+        let (Some(script), _) = crate::plugins::compile_script(&entry.path(), &def).unwrap() else {
             continue;
         };
-        let src = std::fs::read_to_string(entry.path().join(rel)).unwrap();
-        let script = crate::plugins::script::Script::compile_source(&src).unwrap();
 
         // 설정값은 기본값으로 — 사용자가 아무것도 안 넣은 상태가 첫 실행이다.
         let cfg: std::collections::BTreeMap<String, serde_json::Value> = def
@@ -1091,25 +1089,45 @@ fn shipped_scripts_survive_real_events(rec: &Recorder) {
             .collect();
 
         for ev in got.iter() {
-            if !def
-                .on
-                .iter()
-                .any(|pat| super::names::matches(pat, ev.name, ev.phase))
-            {
-                continue;
-            }
-            checked += 1;
-            if let Err(e) = script.decide(ev, &cfg) {
-                panic!(
-                    "배포 예제 '{}' 가 실제 이벤트 '{}'({:?})에서 죽는다: {e}\n\
-                     페이로드: {}\n\
-                     예제가 안 도는 건 없느니만 못하다 — 복사해 쓰는 사람은 \
-                     자기 탓인 줄 안다.",
-                    def.name,
-                    ev.name,
-                    ev.phase,
-                    ev.to_json()
-                );
+            for (i, h) in def.handlers.iter().enumerate() {
+                let Some(func) = &h.call else { continue };
+                if !h.wants(ev.name, ev.phase) {
+                    continue;
+                }
+                checked += 1;
+                let cmds = script.call_handler(func, ev, &cfg).unwrap_or_else(|e| {
+                    panic!(
+                        "배포 예제 '{}' {} 가 실제 이벤트 '{}'({:?})에서 죽는다: {e}\n\
+                         페이로드: {}\n\
+                         예제가 안 도는 건 없느니만 못하다 — 복사해 쓰는 사람은 \
+                         자기 탓인 줄 안다.",
+                        def.name,
+                        h.label(i),
+                        ev.name,
+                        ev.phase,
+                        ev.to_json()
+                    )
+                });
+                // 적은 일이 정의의 동작과 맞는지 — 이름이 틀리면 실행 때 조용히 기록만 남는다.
+                for c in cmds {
+                    let a = def.actions.get(&c.action).unwrap_or_else(|| {
+                        panic!(
+                            "배포 예제 '{}' 가 없는 동작 `{}` 를 부른다",
+                            def.name, c.action
+                        )
+                    });
+                    let fits = matches!(
+                        (c.kind, a),
+                        (
+                            crate::plugins::script::CommandKind::Send,
+                            crate::plugins::Action::Post { .. }
+                        ) | (
+                            crate::plugins::script::CommandKind::Run,
+                            crate::plugins::Action::Run { .. }
+                        )
+                    );
+                    assert!(fits, "배포 예제 '{}' 가 `{}` 를 맞지 않는 명령으로 부른다", def.name, c.action);
+                }
             }
         }
     }

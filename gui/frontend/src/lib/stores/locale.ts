@@ -203,6 +203,11 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		en: 'Plugins added to this guild later, or changed via git, will run without asking. Ones you revoked stay off. Continue?'
 	},
 	'plugins.pending': { ko: '동의 대기 — 안 돕니다', en: 'Awaiting consent — not running' },
+	// DEV-403: 줄 목록
+	'plugins.lines': { ko: '언제 무엇을 하는지', en: 'What runs when' },
+	'plugins.stagePre': { ko: '바뀌기 전', en: 'Before' },
+	'plugins.stagePost': { ko: '바뀐 뒤', en: 'After' },
+	'plugins.dests': { ko: '내보내는 곳', en: 'Where it goes' },
 	'plugins.running': { ko: '돌고 있음', en: 'Running' },
 	'plugins.otherScope': {
 		ko: '허용됨 (이 앱의 scope 아님 — 여기서는 안 돕니다)',

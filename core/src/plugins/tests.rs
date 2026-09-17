@@ -22,11 +22,70 @@ fn fresh_tmp(label: &str) -> PathBuf {
 fn write_plugin(guild: &Path, name: &str, body: serde_json::Value) {
     let dir = plugins_dir(guild).join(name);
     std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(
-        dir.join("plugin.json"),
-        serde_json::to_string_pretty(&body).unwrap(),
-    )
-    .unwrap();
+    std::fs::write(dir.join(MANIFEST), manifest_text(body)).unwrap();
+}
+
+/// 시험을 짧게 쓰려고 **옛 모양**(`on` / `action` / `script`)으로 적은 정의를 새 모양(DEV-403 —
+/// `[[handlers]]` 줄)으로 옮긴다. `pre:` 패턴은 `pre` 줄로, 스크립트가 있으면 줄이 `h` 를
+/// 부르고 동작은 `[actions.out]` 이 된다. 이미 새 모양이면 그대로 둔다.
+fn to_new_shape(mut v: serde_json::Value) -> serde_json::Value {
+    let obj = v.as_object_mut().expect("정의는 객체다");
+    let on = obj.remove("on");
+    let action = obj.remove("action");
+    let script = obj.remove("script");
+    if on.is_none() && action.is_none() && script.is_none() {
+        return v;
+    }
+    let pats: Vec<String> = on
+        .and_then(|o| serde_json::from_value(o).ok())
+        .unwrap_or_default();
+    let pre: Vec<String> = pats
+        .iter()
+        .filter_map(|p| p.strip_prefix("pre:").map(str::to_string))
+        .collect();
+    let post: Vec<String> = pats.iter().filter(|p| !p.starts_with("pre:")).cloned().collect();
+    let mut what = serde_json::Map::new();
+    match (script, action) {
+        (Some(sc), a) => {
+            obj.insert("scripts".into(), json!([sc]));
+            if let Some(a) = a {
+                obj.insert("actions".into(), json!({ "out": a }));
+            }
+            what.insert("call".into(), json!("h"));
+        }
+        (None, Some(a)) => {
+            what.insert("action".into(), a);
+        }
+        (None, None) => {}
+    }
+    let mut handlers = Vec::new();
+    for (stage, list) in [("post", post), ("pre", pre)] {
+        if !list.is_empty() {
+            let mut h = what.clone();
+            h.insert(stage.into(), json!(list));
+            handlers.push(serde_json::Value::Object(h));
+        }
+    }
+    if handlers.is_empty() {
+        handlers.push(serde_json::Value::Object(what));
+    }
+    obj.insert("handlers".into(), json!(handlers));
+    v
+}
+
+/// 옛 모양이든 새 모양이든 `plugin.toml` 원문으로.
+fn manifest_text(body: serde_json::Value) -> String {
+    toml::to_string(&to_new_shape(body)).unwrap()
+}
+
+/// 정의의 첫 줄이 가리키는 동작 — 시험에서 전달을 직접 부를 때.
+fn first_action(p: &Plugin) -> &Action {
+    def_action(&p.def)
+}
+
+fn def_action(d: &PluginDef) -> &Action {
+    let r = d.handlers[0].action.as_ref().expect("첫 줄이 동작 줄이 아니다");
+    d.action_of(r).unwrap()
 }
 
 fn ai_notify(scope: &[&str]) -> serde_json::Value {
@@ -181,16 +240,15 @@ fn a_plugin_from_a_source_loads_next_to_the_guilds_own() {
         "name": "in-guild", "on": ["quest.created"], "scope": ["cli"],
         "action": { "post": { "url": "https://example.test/a" } }
     }));
-    // 길드 밖 폴더 — `plugins_dir` 규칙과 같게 하위 폴더마다 plugin.json.
+    // 길드 밖 폴더 — `plugins_dir` 규칙과 같게 하위 폴더마다 plugin.toml.
     let ext = outside.join("mine");
     std::fs::create_dir_all(&ext).unwrap();
     std::fs::write(
-        ext.join("plugin.json"),
-        serde_json::to_string_pretty(&json!({
+        ext.join(MANIFEST),
+        manifest_text(json!({
             "name": "from-source", "on": ["quest.created"], "scope": ["cli"],
             "action": { "post": { "url": "https://example.test/b" } }
-        }))
-        .unwrap(),
+        })),
     )
     .unwrap();
 
@@ -218,7 +276,7 @@ fn a_plugin_from_a_source_loads_next_to_the_guilds_own() {
     // 안 쓰기로 하면 목록에서 빠지고 **파일은 남는다**.
     super::sources::stop_using(&g, "from-source").unwrap();
     assert_eq!(names(&load_for(&g, Scope::Cli)), vec!["in-guild"]);
-    assert!(ext.join("plugin.json").is_file(), "파일을 지웠다");
+    assert!(ext.join(MANIFEST).is_file(), "파일을 지웠다");
 
     unsafe { std::env::remove_var("OPENGUILD_HOME") };
     for d in [&g, &outside, &home] {
@@ -238,11 +296,7 @@ fn source_plugins_refuse_name_clashes_and_report_missing_paths() {
     write_plugin(&g, "dup", ai_notify(&["cli"]));
     let ext = outside.join("dup");
     std::fs::create_dir_all(&ext).unwrap();
-    std::fs::write(
-        ext.join("plugin.json"),
-        serde_json::to_string_pretty(&ai_notify(&["cli"])).unwrap(),
-    )
-    .unwrap();
+    std::fs::write(ext.join(MANIFEST), manifest_text(ai_notify(&["cli"]))).unwrap();
     let src = consent_free_add_source(&g, &outside);
     super::sources::use_plugin(&g, &src, "dup").unwrap();
 
@@ -283,9 +337,9 @@ fn adding_a_source_refuses_the_useless_cases() {
     // 길드 안 — 이미 훑는다.
     let e = super::sources::add_source(&g, &plugins_dir(&g), None).unwrap_err();
     assert!(e.to_string().contains("이미"), "{e}");
-    // plugin.json 이 하나도 없는 폴더.
+    // plugin.toml 이 하나도 없는 폴더.
     let e = super::sources::add_source(&g, &empty, None).unwrap_err();
-    assert!(e.to_string().contains("plugin.json"), "{e}");
+    assert!(e.to_string().contains(MANIFEST), "{e}");
     // 없는 경로.
     let e = super::sources::add_source(&g, &empty.join("nope"), None).unwrap_err();
     assert!(e.to_string().contains("찾을 수 없"), "{e}");
@@ -307,21 +361,20 @@ fn adding_a_folder_uses_a_lone_plugin_and_lets_you_pick_from_many() {
     let g = fresh_tmp("addf-guild");
     let base = fresh_tmp("addf-outside");
     let def = |name: &str| {
-        serde_json::to_string_pretty(&json!({
+        manifest_text(json!({
             "name": name, "on": ["quest.created"], "scope": ["cli"],
             "action": { "post": { "url": "https://example.test/x" } }
         }))
-        .unwrap()
     };
     // 하나짜리 — 폴더 자체가 플러그인.
     let lone = base.join("lone");
     std::fs::create_dir_all(&lone).unwrap();
-    std::fs::write(lone.join("plugin.json"), def("echo")).unwrap();
+    std::fs::write(lone.join(MANIFEST), def("echo")).unwrap();
     // 여럿 — 하나는 위와 같은 이름.
     let many = base.join("many");
     for (folder, name) in [("a", "echo"), ("b", "bee")] {
         std::fs::create_dir_all(many.join(folder)).unwrap();
-        std::fs::write(many.join(folder).join("plugin.json"), def(name)).unwrap();
+        std::fs::write(many.join(folder).join(MANIFEST), def(name)).unwrap();
     }
 
     let got = sources::add_folder(&g, &lone).unwrap();
@@ -389,7 +442,7 @@ fn one_broken_definition_does_not_block_the_rest() {
     unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
     let g = fresh_tmp("broken");
     std::fs::create_dir_all(plugins_dir(&g).join("broken")).unwrap();
-    std::fs::write(plugins_dir(&g).join("broken/plugin.json"), "{ not json").unwrap();
+    std::fs::write(plugins_dir(&g).join("broken").join(MANIFEST), "name = ").unwrap();
     write_plugin(&g, "ai-notify", ai_notify(&["cli"]));
     consent::enable_auto_allow(&g).unwrap();
 
@@ -409,12 +462,29 @@ fn def(action: Action) -> PluginDef {
     PluginDef {
         name: "p".into(),
         description: None,
-        on: vec!["quest.created".into()],
         scope: vec![Scope::Cli],
-        action,
-        script: None,
+        scripts: Vec::new(),
+        actions: Default::default(),
+        handlers: vec![Handler {
+            id: None,
+            pre: Vec::new(),
+            post: vec!["quest.created".into()],
+            call: None,
+            action: Some(ActionRef::Inline(action)),
+        }],
         inputs: Vec::new(),
     }
+}
+
+/// 첫 줄의 동작은 두고 "언제" 만 옛 표기로 바꾼다 — `pre:` 가 섞이면 줄이 둘이 된다.
+fn set_on(d: &mut PluginDef, pats: &[&str]) {
+    let action = d.handlers[0].action.clone();
+    let mut v = to_new_shape(json!({ "on": pats, "action": "x" }));
+    let mut hs: Vec<Handler> = serde_json::from_value(v["handlers"].take()).unwrap();
+    for h in &mut hs {
+        h.action = action.clone();
+    }
+    d.handlers = hs;
 }
 
 #[test]
@@ -438,7 +508,7 @@ fn empty_subscription_is_rejected() {
         body_env: Default::default(),
         timeout_ms: None,
     });
-    d.on.clear();
+    d.handlers.clear();
     assert!(validate(&d).is_err());
 }
 
@@ -454,20 +524,20 @@ fn subscribing_to_a_phase_that_never_fires_is_caught_at_load() {
         timeout_ms: None,
     });
     // 이름은 맞지만 이 이벤트는 pre 를 안 낸다.
-    d.on = vec!["pre:quest.created".into()];
+    set_on(&mut d, &["pre:quest.created"]);
     let e = validate(&d).unwrap_err().to_string();
     assert!(e.contains("pre"), "{e}");
 
     // 실제로 pre 를 내는 것은 통과한다.
-    d.on = vec!["pre:comment.added".into(), "pre:quest.deleted".into()];
+    set_on(&mut d, &["pre:comment.added", "pre:quest.deleted"]);
     assert!(validate(&d).is_ok());
     // 와일드카드는 하나라도 맞으면 통과한다.
-    d.on = vec!["pre:*".into()];
+    set_on(&mut d, &["pre:*"]);
     assert!(validate(&d).is_ok());
-    d.on = vec!["pre:comment.*".into()];
+    set_on(&mut d, &["pre:comment.*"]);
     assert!(validate(&d).is_ok());
     // 아무것과도 안 맞는 pre 와일드카드는 막는다.
-    d.on = vec!["pre:campaign.*".into()];
+    set_on(&mut d, &["pre:campaign.*"]);
     assert!(validate(&d).is_err());
 }
 
@@ -480,11 +550,11 @@ fn unknown_event_name_is_caught_at_load() {
         body_env: Default::default(),
         timeout_ms: None,
     });
-    d.on = vec!["quest.creted".into()];
+    set_on(&mut d, &["quest.creted"]);
     let e = validate(&d).unwrap_err().to_string();
     assert!(e.contains("quest.creted"), "{e}");
     // 와일드카드는 통과해야 한다.
-    d.on = vec!["quest.*".into(), "pre:*".into()];
+    set_on(&mut d, &["quest.*", "pre:*"]);
     assert!(validate(&d).is_ok());
 }
 
@@ -595,7 +665,7 @@ fn a_run_action_never_loads_without_consent() {
     consent::grant(&g, &before.needs_consent[0]).unwrap();
     let after = load_for(&g, Scope::Cli);
     assert_eq!(after.active.len(), 1);
-    assert!(matches!(after.active[0].def.action, Action::Run { .. }));
+    assert!(matches!(first_action(&after.active[0]), Action::Run { .. }));
 
     unsafe { std::env::remove_var("OPENGUILD_HOME") };
     let _ = std::fs::remove_dir_all(&g);
@@ -738,22 +808,29 @@ fn shipped_examples_all_load() {
     assert_eq!(l.active.len(), names.len(), "적재된 수가 안 맞는다");
 
     // 각 예제가 어느 축을 보여주는지 — 하나로 몰리면 예제 구실을 못 한다.
-    let kinds: std::collections::BTreeSet<&str> =
-        l.active.iter().map(|p| p.def.action.kind()).collect();
+    let kinds: std::collections::BTreeSet<&str> = l
+        .active
+        .iter()
+        .flat_map(|p| p.def.all_actions().into_iter().map(|(_, a)| a.kind()))
+        .collect();
     assert!(kinds.contains("post") && kinds.contains("run"), "{kinds:?}");
     assert!(
-        l.active.iter().any(|p| p.def.script.is_some()),
+        l.active.iter().any(|p| !p.def.scripts.is_empty()),
         "스크립트를 쓰는 예제가 없다"
     );
     assert!(
-        l.active.iter().any(|p| p.def.script.is_none()),
+        l.active.iter().any(|p| p.def.scripts.is_empty()),
         "스크립트 없이 도는 예제가 없다 — 그것도 되는 길이다"
     );
     assert!(
         l.active
             .iter()
-            .any(|p| p.def.on.iter().any(|o| o.starts_with("pre:"))),
-        "관찰 pre 를 쓰는 예제가 없다"
+            .any(|p| p.def.handlers.iter().any(|h| !h.pre.is_empty())),
+        "바뀌기 전(pre) 단계를 쓰는 예제가 없다"
+    );
+    assert!(
+        l.active.iter().any(|p| p.def.handlers.len() > 1),
+        "한 플러그인이 여러 줄을 쓰는 예제가 없다"
     );
 
     unsafe { std::env::remove_var("OPENGUILD_HOME") };
@@ -939,7 +1016,7 @@ fn a_short_literal_in_a_secret_field_is_still_rejected() {
     assert!(validate(&post_with_header("Authorization", "  ")).is_ok());
 }
 
-/// **스크립트도 git 으로 간다.** `plugin.json` 의 리터럴은 막으면서 `.rhai`
+/// **스크립트도 git 으로 간다.** 정의 파일의 리터럴은 막으면서 `.rhai`
 /// 안의 리터럴을 통과시키면 앞뒤가 안 맞는다 — 게다가 본문은 환경변수 확장을
 /// 안 거치므로 스크립트에 박는 것이 토큰을 싣는 유일한 길이었다.
 #[test]
@@ -1086,7 +1163,7 @@ fn script_path_cannot_escape_the_plugin_dir() {
             body_env: Default::default(),
             timeout_ms: None,
         });
-        d.script = Some(bad.into());
+        d.scripts = vec![bad.into()];
         let e = validate(&d).unwrap_err().to_string();
         assert!(e.contains("상대 경로"), "{bad}: {e}");
     }
@@ -1096,11 +1173,11 @@ fn script_path_cannot_escape_the_plugin_dir() {
         body_env: Default::default(),
         timeout_ms: None,
     });
-    ok.script = Some("sub/transform.rhai".into());
+    ok.scripts = vec!["sub/transform.rhai".into()];
     assert!(validate(&ok).is_ok());
 }
 
-/// **스크립트를 갈아끼우면 다시 묻는다.** `plugin.json` 은 그대로인데
+/// **스크립트를 갈아끼우면 다시 묻는다.** 정의 파일은 그대로인데
 /// 보내는 내용만 바뀌는 길이 있으면 동의가 헐거워진다.
 #[test]
 fn changing_only_the_script_revokes_consent() {
@@ -1113,7 +1190,7 @@ fn changing_only_the_script_revokes_consent() {
         &g,
         "ai-notify",
         "t.rhai",
-        "fn payload(e) { #{ id: e.quest.id } }",
+        r#"fn h(e) { send("out", #{ id: e.quest.id }) }"#,
     );
 
     let l = load_for(&g, Scope::Cli);
@@ -1121,7 +1198,7 @@ fn changing_only_the_script_revokes_consent() {
     assert_eq!(load_for(&g, Scope::Cli).active.len(), 1);
 
     // 정의는 그대로. 실어 보내는 내용만 통째로 바뀐다.
-    write_script(&g, "ai-notify", "t.rhai", "fn payload(e) { e }");
+    write_script(&g, "ai-notify", "t.rhai", r#"fn h(e) { send("out", e) }"#);
     let after = load_for(&g, Scope::Cli);
     assert!(
         after.active.is_empty(),
@@ -1142,6 +1219,7 @@ impl runtime::Delivery for Rec {
     fn deliver(
         &self,
         p: &Plugin,
+        _a: &Action,
         e: &crate::events::Event,
         _b: &serde_json::Value,
         _v: &std::collections::BTreeMap<String, String>,
@@ -1322,7 +1400,7 @@ fn a_blank_description_is_read_as_absent() {
     body["description"] = json!("   \n  ");
     write_plugin(&g, "ai-notify", body);
 
-    let d = read_def(&plugins_dir(&g).join("ai-notify").join("plugin.json")).unwrap();
+    let d = read_def(&plugins_dir(&g).join("ai-notify").join(MANIFEST)).unwrap();
     assert!(d.description.is_none(), "{:?}", d.description);
     assert!(
         serde_json::to_value(&d)
@@ -1341,7 +1419,7 @@ fn a_description_is_trimmed() {
     body["description"] = json!("  알림을 보냅니다.  ");
     write_plugin(&g, "ai-notify", body);
 
-    let d = read_def(&plugins_dir(&g).join("ai-notify").join("plugin.json")).unwrap();
+    let d = read_def(&plugins_dir(&g).join("ai-notify").join(MANIFEST)).unwrap();
     assert_eq!(d.description.as_deref(), Some("알림을 보냅니다."));
     let _ = std::fs::remove_dir_all(&g);
 }
@@ -1440,6 +1518,7 @@ fn a_hook_that_writes_files_keeps_its_consent() {
         crate::plugins::runtime::Delivery::deliver(
             &out,
             &plugin,
+            first_action(&plugin),
             &probe_event(),
             &json!({ "hello": "world" }),
             &Default::default(),
@@ -1466,7 +1545,7 @@ fn a_hook_that_writes_files_keeps_its_consent() {
     assert_eq!(
         folder_fingerprint(&pdir).len(),
         0,
-        "코드 폴더에 plugin.json 말고 무언가 생겼다"
+        "코드 폴더에 정의 파일 말고 무언가 생겼다"
     );
 
     unsafe { std::env::remove_var("OPENGUILD_HOME") };
@@ -1505,6 +1584,7 @@ fn the_hook_is_told_where_its_code_lives() {
     crate::plugins::runtime::Delivery::deliver(
         &super::delivery::Outbound::new(),
         &p,
+        first_action(&p),
         &probe_event(),
         &json!({}),
         &Default::default(),
@@ -1593,10 +1673,9 @@ fn a_saved_value_reaches_the_script_as_a_variable() {
     let pdir = plugins_dir(&g).join("tg");
     std::fs::write(
         pdir.join("t.rhai"),
-        r#"fn should_send(e) {
-             if e.event == "quest.created" { return config("ON_CREATED"); }
-             if e.event == "comment.added" { return config("ON_COMMENT"); }
-             false
+        r#"fn h(e) {
+             if e.event == "quest.created" && config("ON_CREATED") { send("out", 1) }
+             if e.event == "comment.added" && config("ON_COMMENT") { send("out", 2) }
            }"#,
     )
     .unwrap();
@@ -1622,22 +1701,14 @@ fn a_saved_value_reaches_the_script_as_a_variable() {
         name: "comment.added",
         ..probe_event()
     };
-    assert!(matches!(
-        sc.decide(&created, &cfg(&g, &p)).unwrap(),
-        super::script::Decision::Send(_)
-    ));
-    assert!(matches!(
-        sc.decide(&commented, &cfg(&g, &p)).unwrap(),
-        super::script::Decision::Skip
-    ));
+    assert_eq!(sc.call_handler("h", &created, &cfg(&g, &p)).unwrap().len(), 1);
+    assert!(sc.call_handler("h", &commented, &cfg(&g, &p)).unwrap().is_empty());
 
     // 사용자가 화면에서 댓글 알림을 켠다.
     crate::plugins::values::set(&g, "tg", "ON_COMMENT", Some(json!(true))).unwrap();
-    assert!(
-        matches!(
-            sc.decide(&commented, &cfg(&g, &p)).unwrap(),
-            super::script::Decision::Send(_)
-        ),
+    assert_eq!(
+        sc.call_handler("h", &commented, &cfg(&g, &p)).unwrap().len(),
+        1,
         "체크박스를 켰는데 스크립트가 못 봤다 — 세 조각 중 하나가 끊겼다"
     );
 
@@ -1980,13 +2051,13 @@ fn core_provided_paths_are_not_asked_for() {
 // ── BUG-294: 운영체제별 run 명령 ──
 
 fn run_with_windows(windows_args: &[&str]) -> PluginDef {
-    serde_json::from_value(json!({
+    serde_json::from_value(to_new_shape(json!({
         "name": "cross", "on": ["quest.created"], "scope": ["cli"],
         "action": { "run": {
             "command": "sh", "args": ["${OPENGUILD_PLUGIN_DIR}/hook.sh"],
             "windows": { "command": "powershell", "args": windows_args }
         } }
-    }))
+    })))
     .unwrap()
 }
 
@@ -1994,7 +2065,7 @@ fn run_with_windows(windows_args: &[&str]) -> PluginDef {
 #[test]
 fn run_picks_the_command_for_this_os() {
     let d = run_with_windows(&["-File", "${OPENGUILD_PLUGIN_DIR}/hook.ps1"]);
-    let (cmd, args) = d.action.run_command().unwrap();
+    let (cmd, args) = def_action(&d).run_command().unwrap();
     if cfg!(windows) {
         assert_eq!(cmd, "powershell");
         assert_eq!(args[0], "-File");
@@ -2010,7 +2081,7 @@ fn run_picks_the_command_for_this_os() {
         body_env: Default::default(),
         timeout_ms: None,
     });
-    assert!(p.action.run_command().is_none());
+    assert!(def_action(&p).run_command().is_none());
 }
 
 /// OS 별 명령이 **없으면 직렬화에 안 나타난다** — 동의 지문이 정의를 통째로 담으므로, 나타나면
@@ -2023,7 +2094,7 @@ fn a_run_without_os_commands_serializes_as_before() {
         timeout_ms: None,
         os: Default::default(),
     });
-    let v = serde_json::to_value(&d.action).unwrap();
+    let v = serde_json::to_value(def_action(&d)).unwrap();
     assert_eq!(v, json!({ "run": { "command": "sh", "args": ["hook.sh"] } }));
     // 있으면 그대로 왕복한다.
     let w = run_with_windows(&["-File", "x.ps1"]);
@@ -2055,12 +2126,11 @@ fn a_source_recorded_with_a_verbatim_prefix_still_works() {
     let src = fresh_tmp("verb-src");
     let dir = std::fs::canonicalize(&src).unwrap();
     std::fs::write(
-        dir.join("plugin.json"),
-        serde_json::to_string(&json!({
+        dir.join(MANIFEST),
+        manifest_text(json!({
             "name": "old-one", "on": ["quest.created"], "scope": ["cli"],
             "action": { "post": { "url": "https://example.test/x" } }
-        }))
-        .unwrap(),
+        })),
     )
     .unwrap();
     let raw = format!(r"\\?\{}", dir.display());
@@ -2089,4 +2159,158 @@ fn a_source_recorded_with_a_verbatim_prefix_still_works() {
     for d in [&g, &src, &home] {
         let _ = std::fs::remove_dir_all(d);
     }
+}
+
+// ── DEV-403: plugin.toml 과 줄 단위 핸들러 ──────────────────
+
+fn parse(src: &str) -> Result<PluginDef, String> {
+    parse_def(src).map_err(|e| e.to_string())
+}
+
+const BASE: &str = r#"
+name  = "t"
+scope = ["cli"]
+scripts = ["main.rhai"]
+
+[actions.out.post]
+    url = "https://x.test"
+"#;
+
+/// 사람이 쓰는 모양 그대로 읽힌다 — 들여쓰기·주석·한 플러그인에 액션 줄과 스크립트 줄.
+#[test]
+fn a_toml_definition_with_mixed_lines_reads_as_written() {
+    let d = parse(&format!(
+        r#"{BASE}
+# 주석도 된다
+[[handlers]]
+    id     = "바로"
+    post   = ["quest.created"]
+    action = "out"
+
+[[handlers]]
+    id   = "스크립트"
+    post = ["comment.added", "quest.*"]
+    call = "on_comment"
+
+[[handlers]]
+    pre  = ["quest.deleted"]
+    [handlers.action.run]
+        command = "sh"
+        args    = ["-c", "cat"]
+"#
+    ))
+    .unwrap();
+    assert_eq!(d.handlers.len(), 3);
+    assert_eq!(d.handlers[0].id.as_deref(), Some("바로"));
+    assert!(matches!(d.handlers[0].action, Some(ActionRef::Named(ref n)) if n == "out"));
+    assert_eq!(d.handlers[1].call.as_deref(), Some("on_comment"));
+    assert!(matches!(d.handlers[2].action, Some(ActionRef::Inline(Action::Run { .. }))));
+    assert_eq!(d.handlers[2].label(2), "3번째 줄");
+    assert_eq!(
+        d.subscriptions(),
+        vec!["quest.created", "comment.added", "quest.*", "pre:quest.deleted"]
+    );
+    use crate::events::Phase;
+    assert!(d.handlers[1].wants("quest.status_changed", Phase::Post));
+    assert!(!d.handlers[1].wants("quest.status_changed", Phase::Pre));
+    assert!(d.handlers[2].wants("quest.deleted", Phase::Pre));
+    assert!(!d.handlers[2].wants("quest.deleted", Phase::Post));
+}
+
+/// 줄마다 "언제" 하나, "무엇" 하나 — 어기면 이유와 함께 거절.
+#[test]
+fn each_line_needs_exactly_one_when_and_one_what() {
+    let cases = [
+        ("[[handlers]]\ncall = \"h\"", "언제"),
+        ("[[handlers]]\npost = [\"quest.created\"]\npre = [\"quest.deleted\"]\ncall = \"h\"", "같이"),
+        ("[[handlers]]\npost = [\"quest.created\"]", "무엇"),
+        ("[[handlers]]\npost = [\"quest.created\"]\ncall = \"h\"\naction = \"out\"", "같이"),
+        ("[[handlers]]\npost = [\"quest.created\"]\naction = \"nope\"", "nope"),
+        ("[[handlers]]\nid = \"a\"\npost = [\"quest.created\"]\naction = \"out\"\n[[handlers]]\nid = \"a\"\npost = [\"quest.created\"]\naction = \"out\"", "겹"),
+        ("[[handlers]]\npost = [\"quest.creted\"]\naction = \"out\"", "quest.creted"),
+        ("[[handlers]]\npre = [\"quest.created\"]\naction = \"out\"", "pre"),
+    ];
+    for (lines, want) in cases {
+        let e = parse(&format!("{BASE}\n{lines}\n")).unwrap_err();
+        assert!(e.contains(want), "{lines}\n→ {e}");
+    }
+    // 줄이 하나도 없으면 안 된다.
+    let e = parse(BASE).unwrap_err();
+    assert!(e.contains("handlers"), "{e}");
+    // 스크립트 없이 함수를 부를 수 없다.
+    let e = parse(
+        "name = \"t\"\nscope = [\"cli\"]\n[[handlers]]\npost = [\"quest.created\"]\ncall = \"h\"\n",
+    )
+    .unwrap_err();
+    assert!(e.contains("scripts"), "{e}");
+}
+
+/// 모르는 칸은 조용히 무시하지 않는다 — `handler` 같은 오타, 옛 `on`/`action`.
+#[test]
+fn unknown_keys_are_refused_not_ignored() {
+    let e = parse(&format!(
+        "{BASE}\n[[handlers]]\npost = [\"quest.created\"]\naction = \"out\"\nwhne = 1\n"
+    ))
+    .unwrap_err();
+    assert!(e.contains("whne"), "{e}");
+    let e = parse(
+        "name = \"t\"\nscope = [\"cli\"]\non = [\"quest.created\"]\n[action.post]\nurl = \"https://x.test\"\n",
+    )
+    .unwrap_err();
+    assert!(e.contains("on") || e.contains("action"), "{e}");
+}
+
+/// 줄이 부르는 함수가 스크립트에 없으면 **적재 때** 걸린다. 옛 plugin.json 만 있는 폴더는
+/// 조용히 사라지지 않고 옮기라고 알린다.
+#[test]
+fn a_missing_function_and_a_leftover_plugin_json_are_reported() {
+    let _guard = env_lock();
+    let home = fresh_tmp("t403-home");
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let g = fresh_tmp("t403");
+    write_plugin(&g, "ai-notify", with_script(&["cli"], "t.rhai"));
+    write_script(&g, "ai-notify", "t.rhai", r#"fn other(e) { send("out", e) }"#);
+    let old = plugins_dir(&g).join("legacy");
+    std::fs::create_dir_all(&old).unwrap();
+    std::fs::write(old.join(OLD_MANIFEST), "{}").unwrap();
+
+    let l = load_all(&g);
+    assert!(l.active.is_empty() && l.needs_consent.is_empty());
+    let msgs: Vec<String> = l.errors.iter().map(|(_, m)| m.clone()).collect();
+    assert_eq!(msgs.len(), 2, "{msgs:?}");
+    assert!(msgs.iter().any(|m| m.contains("`h`")), "{msgs:?}");
+    assert!(msgs.iter().any(|m| m.contains("plugin.toml")), "{msgs:?}");
+
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 비밀값 검사는 이름 붙인 동작과 줄에 적은 동작 **모두**를 본다. 동작 이름에 token 이
+/// 들어 있다고 멀쩡한 url 이 걸리지는 않는다.
+#[test]
+fn secret_checks_cover_named_and_inline_actions() {
+    let e = parse(
+        "name = \"t\"\nscope = [\"cli\"]\n[actions.sync.post]\nurl = \"https://x.test\"\nheaders = { Authorization = \"Pa55word\" }\n[[handlers]]\npost = [\"quest.created\"]\naction = \"sync\"\n",
+    )
+    .unwrap_err();
+    assert!(e.contains("sync.headers.Authorization"), "{e}");
+    let e = parse(
+        "name = \"t\"\nscope = [\"cli\"]\n[[handlers]]\npost = [\"quest.created\"]\n[handlers.action.run]\ncommand = \"curl\"\nargs = [\"ghp_xxxxxxxxxxxxxxxx\"]\n",
+    )
+    .unwrap_err();
+    assert!(e.contains("handlers[0].action.args[0]"), "{e}");
+    assert!(
+        parse(
+            "name = \"t\"\nscope = [\"cli\"]\n[actions.token-sync.post]\nurl = \"https://x.test\"\n[[handlers]]\npost = [\"quest.created\"]\naction = \"token-sync\"\n",
+        )
+        .is_ok()
+    );
+    // 이름 붙인 동작이 쓰는 값도 입력란이 된다.
+    let d = parse(
+        "name = \"t\"\nscope = [\"cli\"]\n[actions.a.post]\nurl = \"https://x.test/${A_KEY}\"\nbody_env = { chat = \"CHAT\" }\n[[handlers]]\npost = [\"quest.created\"]\naction = \"a\"\n",
+    )
+    .unwrap();
+    let keys: Vec<String> = d.effective_inputs().into_iter().map(|i| i.key).collect();
+    assert_eq!(keys, vec!["A_KEY", "CHAT"]);
 }

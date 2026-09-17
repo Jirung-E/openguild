@@ -1,21 +1,21 @@
-//! DEV-376: 플러그인의 **판단·가공 계층**. rhai 스크립트가 "이 이벤트를
-//! 보낼지" 와 "어떤 모양으로 보낼지" 를 정한다.
+//! DEV-376: 플러그인의 **스크립트 계층**. rhai 함수가 "이 이벤트에서 무엇을 할지" 를 정한다.
 //!
 //! # 왜 스크립트가 필요한가
 //!
-//! JSON 만으로는 "미해결 토론 댓글만 AI 에 보낸다" 를 못 적는다. 여기서 조건
+//! 정의 파일만으로는 "미해결 토론 댓글만 AI 에 보낸다" 를 못 적는다. 여기서 조건
 //! 문법을 발명하기 시작하면 결국 DSL 을 만들게 된다.
 //!
-//! # 핵심 제약 — 여기에 I/O 를 주지 않는다
+//! # 핵심 제약 — 스크립트는 직접 밖으로 못 나간다
 //!
 //! ```text
-//! rhai   판단·가공만. 파일도 네트워크도 없다. 순수 함수.
-//! 코어   내보내기(post/run)를 담당.        ← [[DEV-377]]
+//! rhai   판단하고, 할 일을 "적는다". 파일도 네트워크도 없다.
+//! 코어   적힌 일을 함수가 끝난 뒤에 실행한다(post/run).  ← [[DEV-377]]
 //! ```
 //!
-//! 이 분리가 설계의 전부다. 스크립트가 폭주해도 **밖으로 못 나간다.** 그래서
-//! JS 를 접었다 — AI 를 부르려면 스크립트에 네트워크를 줘야 하고, 그러면
-//! 샌드박스가 셸과 위험이 같아지면서 런타임 값만 치른다.
+//! 스크립트가 부르는 `send("이름", 본문)` / `run("이름", 입력)` 은 **그 자리에서 아무것도
+//! 하지 않는다** — 할 일 목록에 적을 뿐이다([[DEV-403]]). 어디로 보내고 무엇을 띄우는지는
+//! 정의 파일의 `[actions]` 에만 있고, 스크립트는 이름만 안다. 그래서 스크립트가 폭주해도 밖으로
+//! 못 나가고, 허용 화면은 정의 파일만 보고 "어디로 나가나" 를 다 보여 줄 수 있다.
 //!
 //! 샌드박스는 두 겹이다. `no_module` 로 `import` 자체를 컴파일에서 없애고(기본
 //! 모듈 해석기는 **디스크를 읽는다**), 엔진에는 우리가 등록한 함수 외에는
@@ -24,12 +24,15 @@
 //! # 계약
 //!
 //! ```rhai
-//! fn should_send(event) { event.name == "comment.added" && event.ok }
-//! fn payload(event)     { #{ text: `[${event.quest.id}] ${event.comment.body}` } }
+//! fn 댓글_알림(e) {
+//!     if e.comment.discussion {
+//!         send("ai", #{ text: `[${e.quest.id}] ${e.comment.body}` });
+//!     }
+//! }
 //! ```
 //!
-//! 둘 다 선택이다. `should_send` 가 없으면 전부 보내고, `payload` 가 없으면
-//! 이벤트 JSON 을 그대로 보낸다.
+//! 함수 이름은 자유이고, 정의 파일의 `call` 이 가리킨다. 인자는 이벤트 하나. 반환값은 쓰지
+//! 않는다(바뀌기 전 단계의 막기·값 바꾸기는 [[DEV-407]]).
 
 use crate::error::{AppError, AppResult};
 use crate::events::Event;
@@ -39,9 +42,6 @@ use std::path::Path;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-const SHOULD_SEND: &str = "should_send";
-const PAYLOAD: &str = "payload";
-
 /// 연산 상한. **안 걸면 스크립트 하나가 CLI 를 멈춘다.** 넉넉하되 무한 루프는
 /// 초 단위 안에 잡히는 값.
 const MAX_OPERATIONS: u64 = 500_000;
@@ -49,17 +49,37 @@ const MAX_OPERATIONS: u64 = 500_000;
 /// 연산 수가 곧 시간이다), 상한을 하나만 두면 그 하나가 틀렸을 때 막을 게
 /// 없다.
 const MAX_WALL_TIME: Duration = Duration::from_secs(2);
+/// 한 번 부를 때 적을 수 있는 일의 수 — 반복문 하나가 보내기를 만 번 쌓지 못하게.
+pub const MAX_COMMANDS: usize = 32;
 
-/// 스크립트가 내린 결정.
+/// 스크립트가 적은 할 일 하나.
 #[derive(Debug, Clone, PartialEq)]
-pub enum Decision {
-    /// `should_send` 가 false — 이 이벤트는 안 보낸다.
-    Skip,
-    /// 이 본문으로 보낸다.
-    Send(Value),
+pub struct Command {
+    pub kind: CommandKind,
+    /// `[actions]` 의 이름.
+    pub action: String,
+    /// `post` 면 본문, `run` 이면 stdin 으로 넘길 값.
+    pub body: Value,
 }
 
-/// 컴파일된 스크립트 하나. 적재 때 한 번 컴파일하고 이벤트마다 재사용한다 —
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommandKind {
+    /// `send(이름, 본문)` — `post` 동작.
+    Send,
+    /// `run(이름, 입력)` — `run` 동작.
+    Run,
+}
+
+impl CommandKind {
+    pub fn verb(self) -> &'static str {
+        match self {
+            CommandKind::Send => "send",
+            CommandKind::Run => "run",
+        }
+    }
+}
+
+/// 컴파일된 스크립트(한 플러그인의 파일 전부). 적재 때 한 번 컴파일하고 이벤트마다 재사용한다 —
 /// 문법 오류는 **적재 때** 드러나야지 첫 이벤트 때 드러나면 안 된다.
 pub struct Script {
     engine: Engine,
@@ -71,6 +91,8 @@ pub struct Script {
     /// 엔진은 컴파일 때 한 번 만들고 호출마다 값이 달라지므로(길드마다 다른
     /// 값을 쓴다) `deadline` 과 같은 방식으로 셀 하나를 공유한다.
     config: std::sync::Arc<Mutex<rhai::Map>>,
+    /// 이번 호출에서 적힌 할 일.
+    commands: std::sync::Arc<Mutex<Vec<Command>>>,
 }
 
 impl std::fmt::Debug for Script {
@@ -91,33 +113,61 @@ impl Script {
     }
 
     pub fn compile_source(src: &str) -> AppResult<Self> {
+        Self::compile_sources(&[("script".to_string(), src.to_string())])
+    }
+
+    /// 여러 파일을 **한 공간으로** 컴파일한다 — 서로 이름만으로 부를 수 있다. 같은 이름·같은
+    /// 인자 수의 함수가 두 파일에 있으면 거절한다(나중 것이 조용히 덮으면 어느 쪽이 도는지
+    /// 모른다).
+    pub fn compile_sources(sources: &[(String, String)]) -> AppResult<Self> {
         let deadline = std::sync::Arc::new(Mutex::new(Instant::now()));
         let config = std::sync::Arc::new(Mutex::new(rhai::Map::new()));
-        let engine = sandboxed_engine(deadline.clone(), config.clone());
-        let ast = engine
-            .compile(src)
-            .map_err(|e| AppError::BadRequest(format!("스크립트를 컴파일하지 못했습니다: {e}")))?;
+        let commands = std::sync::Arc::new(Mutex::new(Vec::new()));
+        let engine = sandboxed_engine(deadline.clone(), config.clone(), commands.clone());
+        let mut merged: Option<AST> = None;
+        let mut seen: std::collections::HashMap<(String, usize), String> = Default::default();
+        for (name, src) in sources {
+            let ast = engine.compile(src).map_err(|e| {
+                AppError::BadRequest(format!("스크립트 {name} 를 컴파일하지 못했습니다: {e}"))
+            })?;
+            for f in ast.iter_functions() {
+                let key = (f.name.to_string(), f.params.len());
+                if let Some(prev) = seen.insert(key, name.clone()) {
+                    return Err(AppError::BadRequest(format!(
+                        "함수 `{}` 가 {prev} 와 {name} 에 둘 다 있습니다 — 이름을 나누세요",
+                        f.name
+                    )));
+                }
+            }
+            merged = Some(match merged {
+                None => ast,
+                Some(m) => m.merge(&ast),
+            });
+        }
         Ok(Self {
             engine,
-            ast,
+            ast: merged.unwrap_or_default(),
             deadline,
             config,
+            commands,
         })
     }
 
-    fn has(&self, name: &str) -> bool {
+    /// 핸들러로 부를 수 있는 함수(인자 하나)가 있나.
+    pub fn has_handler(&self, name: &str) -> bool {
         self.ast
             .iter_functions()
             .any(|f| f.name == name && f.params.len() == 1)
     }
 
-    /// 이 이벤트를 어떻게 할지. 스크립트가 던지면 **그 이벤트만** 건너뛴다 —
-    /// 길드 동작에도 다른 플러그인에도 영향이 없어야 한다.
-    pub fn decide(
+    /// 핸들러 함수를 부르고, 그 함수가 적은 할 일을 돌려준다. 스크립트가 던지면 **그 줄만**
+    /// 실패한다 — 길드 동작에도 다른 플러그인에도 영향이 없어야 한다.
+    pub fn call_handler(
         &self,
+        func: &str,
         event: &Event,
         config: &std::collections::BTreeMap<String, serde_json::Value>,
-    ) -> Result<Decision, String> {
+    ) -> Result<Vec<Command>, String> {
         // REQ-021: 이번 호출이 볼 설정값. **I/O 가 아니다** — 코어가 미리 읽어
         // 넘겨주는 값이라 샌드박스(파일·네트워크 없음)는 그대로다.
         if let Ok(mut c) = self.config.lock() {
@@ -126,30 +176,23 @@ impl Script {
                 .map(|(k, v)| (k.clone().into(), to_dynamic(v)))
                 .collect();
         }
-        let json = event.to_json();
-        let arg = to_dynamic(&json);
-        self.arm();
-
-        if self.has(SHOULD_SEND) {
-            let v = self.call(SHOULD_SEND, arg.clone())?;
-            match v.as_bool() {
-                Ok(false) => return Ok(Decision::Skip),
-                Ok(true) => {}
-                // 모호하게 넘기지 않는다 — "보낼지 말지" 는 bool 이어야 한다.
-                Err(t) => {
-                    return Err(format!(
-                        "{SHOULD_SEND} 가 bool 이 아니라 {t} 를 돌려줬습니다"
-                    ));
-                }
-            }
+        if let Ok(mut c) = self.commands.lock() {
+            c.clear();
         }
-
-        if !self.has(PAYLOAD) {
-            return Ok(Decision::Send(json));
-        }
+        let arg = to_dynamic(&event.to_json());
         self.arm();
-        let v = self.call(PAYLOAD, arg)?;
-        Ok(Decision::Send(from_dynamic(&v)?))
+        let mut scope = Scope::new();
+        let result = self
+            .engine
+            .call_fn::<Dynamic>(&mut scope, &self.ast, func, (arg,))
+            .map_err(|e| format!("{func}: {e}"));
+        // 던졌으면 적어 둔 일도 버린다 — 반쯤 돈 함수의 일을 반만 실행하지 않는다.
+        let cmds = self
+            .commands
+            .lock()
+            .map(|mut c| std::mem::take(&mut *c))
+            .unwrap_or_default();
+        result.map(|_| cmds)
     }
 
     fn arm(&self) {
@@ -157,21 +200,42 @@ impl Script {
             *d = Instant::now() + MAX_WALL_TIME;
         }
     }
-
-    fn call(&self, name: &str, arg: Dynamic) -> Result<Dynamic, String> {
-        let mut scope = Scope::new();
-        self.engine
-            .call_fn::<Dynamic>(&mut scope, &self.ast, name, (arg,))
-            .map_err(|e| format!("{name}: {e}"))
-    }
 }
 
 /// 아무것도 등록하지 않은 엔진 + 상한. 등록하지 않은 것이 이 함수의 내용이다.
 fn sandboxed_engine(
     deadline: std::sync::Arc<Mutex<Instant>>,
     config: std::sync::Arc<Mutex<rhai::Map>>,
+    commands: std::sync::Arc<Mutex<Vec<Command>>>,
 ) -> Engine {
     let mut e = Engine::new();
+    // DEV-403: 할 일을 **적기만** 한다. 실행은 함수가 끝난 뒤 코어가 한다.
+    for kind in [CommandKind::Send, CommandKind::Run] {
+        let cmds = commands.clone();
+        e.register_fn(
+            kind.verb(),
+            move |action: &str, body: Dynamic| -> Result<(), Box<rhai::EvalAltResult>> {
+                let body = from_dynamic(&body).map_err(|m| -> Box<rhai::EvalAltResult> {
+                    format!("{}(\"{action}\"): {m}", kind.verb()).into()
+                })?;
+                let mut list = cmds.lock().map_err(|_| -> Box<rhai::EvalAltResult> {
+                    "할 일 목록을 잠그지 못했습니다".into()
+                })?;
+                if list.len() >= MAX_COMMANDS {
+                    return Err(format!(
+                        "한 번에 적을 수 있는 일은 {MAX_COMMANDS}개까지입니다"
+                    )
+                    .into());
+                }
+                list.push(Command {
+                    kind,
+                    action: action.to_string(),
+                    body,
+                });
+                Ok(())
+            },
+        );
+    }
     // REQ-021: 사용자가 설정 화면에서 넣은 값. 이것 하나가 체크박스·선택상자가
     // **동작을 바꾸게** 하는 경로다 — 값을 못 읽으면 위젯은 url 에 박히는 것
     // 말고 할 일이 없다.
@@ -299,83 +363,97 @@ mod tests {
         }
     }
 
-    fn decide(src: &str) -> Result<Decision, String> {
+    fn call(src: &str) -> Result<Vec<Command>, String> {
         Script::compile_source(src)
             .unwrap()
-            .decide(&ev(), &Default::default())
+            .call_handler("h", &ev(), &Default::default())
     }
 
-    /// 스크립트가 없으면 이벤트 JSON 이 그대로 나간다.
+    /// 아무것도 적지 않으면 할 일이 없다.
     #[test]
-    fn no_functions_means_send_the_event_as_is() {
-        let d = decide("fn unrelated(x) { x }").unwrap();
-        let Decision::Send(v) = d else {
-            panic!("건너뛰었다")
-        };
-        assert_eq!(v["event"], "comment.added");
-        assert_eq!(v["quest"]["id"], "DEV-1");
+    fn a_handler_that_does_nothing_returns_no_commands() {
+        assert!(call("fn h(e) { }").unwrap().is_empty());
+    }
+
+    /// **적은 일이 적은 순서대로, 적은 모양 그대로** 돌아온다 — 실행은 하지 않는다.
+    #[test]
+    fn commands_come_back_in_order_with_their_bodies() {
+        let got = call(
+            r#"
+            fn h(e) {
+                send("ai", #{ text: `[${e.quest.id}] ${e.comment.author}: ${e.comment.body}`,
+                              nested: #{ n: 3, flag: true, list: [1, "둘"] } });
+                run("archive", e.quest.id);
+            }
+        "#,
+        )
+        .unwrap();
+        assert_eq!(got.len(), 2);
+        assert_eq!((got[0].kind, got[0].action.as_str()), (CommandKind::Send, "ai"));
+        assert_eq!(got[0].body["text"], "[DEV-1] kim: 확인 바람");
+        assert_eq!(got[0].body["nested"]["list"][1], "둘");
+        assert_eq!((got[1].kind, got[1].action.as_str()), (CommandKind::Run, "archive"));
+        assert_eq!(got[1].body, json!("DEV-1"));
+    }
+
+    /// 이벤트에 실린 것으로 판단한다 — `ok`/`phase`/토론 여부가 전부 스크립트 몫이다([[DEV-374]]).
+    #[test]
+    fn judgement_uses_what_the_event_carries() {
+        let src = r#"
+            fn h(e) {
+                if e.event == "comment.added" && e.ok && e.comment.discussion { send("ai", e) }
+                if e.phase == "pre" { send("never", e) }
+            }
+        "#;
+        let got = call(src).unwrap();
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].body["comment"]["id"], 7);
     }
 
     /// DEV-401: 스크립트가 "누가 일으켰나" 를 본다 — 사람이 한 것만 고를 수 있다.
     #[test]
     fn a_script_can_tell_who_caused_the_event() {
-        let sc = Script::compile_source(r#"fn should_send(e) { e.origin.by == "user" }"#).unwrap();
-        assert_eq!(
-            sc.decide(&ev(), &Default::default()).unwrap(),
-            Decision::Send(ev().to_json())
-        );
+        let sc = Script::compile_source(
+            r#"fn h(e) { if e.origin.by == "user" { send("x", 1) } }"#,
+        )
+        .unwrap();
+        assert_eq!(sc.call_handler("h", &ev(), &Default::default()).unwrap().len(), 1);
         let mut by_hook = ev();
         by_hook.origin = crate::events::origin::Origin::from_chain(["other"]);
-        assert_eq!(sc.decide(&by_hook, &Default::default()).unwrap(), Decision::Skip);
+        assert!(sc.call_handler("h", &by_hook, &Default::default()).unwrap().is_empty());
     }
 
-    /// **`should_send` 가 false 면 액션이 호출되지 않는다.**
+    /// 호출마다 목록이 새로 시작한다 — 앞 호출의 일이 뒤로 새지 않는다.
     #[test]
-    fn should_send_false_skips() {
-        assert_eq!(
-            decide("fn should_send(e) { false }").unwrap(),
-            Decision::Skip
-        );
+    fn each_call_starts_with_an_empty_list() {
+        let sc = Script::compile_source(r#"fn h(e) { send("x", 1) }"#).unwrap();
+        for _ in 0..3 {
+            assert_eq!(sc.call_handler("h", &ev(), &Default::default()).unwrap().len(), 1);
+        }
     }
 
-    /// 이벤트에 실린 것으로 판단할 수 있어야 한다 — `phase`/`ok` 가 오므로
-    /// "성공한 것만", "미해결 토론만" 이 전부 스크립트 몫이 된다([[DEV-374]]).
+    /// 던지면 **적어 둔 일도 버린다** — 반쯤 돈 함수의 일을 반만 실행하지 않는다.
     #[test]
-    fn judgement_uses_what_the_event_carries() {
-        let src = r#"
-            fn should_send(e) {
-                e.event == "comment.added" && e.ok && e.comment.discussion
-            }
-        "#;
-        assert!(matches!(decide(src).unwrap(), Decision::Send(_)));
-
-        let src_no = r#"fn should_send(e) { e.phase == "pre" }"#;
-        assert_eq!(decide(src_no).unwrap(), Decision::Skip);
+    fn a_throwing_handler_drops_what_it_wrote() {
+        let sc = Script::compile_source(r#"fn h(e) { send("x", 1); throw "안 돼" }"#).unwrap();
+        let e = sc.call_handler("h", &ev(), &Default::default()).unwrap_err();
+        assert!(e.contains("안 돼"), "{e}");
+        let ok = Script::compile_source(r#"fn h(e) { }"#).unwrap();
+        assert!(ok.call_handler("h", &ev(), &Default::default()).unwrap().is_empty());
     }
 
-    /// **`payload` 가 만든 모양이 그대로 전달된다.**
+    /// 반복문 하나가 보내기를 끝없이 쌓지 못한다.
     #[test]
-    fn payload_shape_passes_through() {
-        let src = r#"
-            fn payload(e) {
-                #{ text: `[${e.quest.id}] ${e.comment.author}: ${e.comment.body}`,
-                   nested: #{ n: 3, flag: true, list: [1, "둘"] } }
-            }
-        "#;
-        let Decision::Send(v) = decide(src).unwrap() else {
-            panic!("건너뛰었다")
-        };
-        assert_eq!(v["text"], "[DEV-1] kim: 확인 바람");
-        assert_eq!(v["nested"]["n"], 3);
-        assert_eq!(v["nested"]["flag"], true);
-        assert_eq!(v["nested"]["list"][1], "둘");
+    fn a_handler_cannot_queue_unbounded_work() {
+        let e = call(r#"fn h(e) { for i in 0..1000 { send("x", i) } }"#).unwrap_err();
+        assert!(e.contains(&MAX_COMMANDS.to_string()), "{e}");
     }
 
     /// **무한 루프가 상한에 걸려 멈춘다.** 이게 안 되면 넣으면 안 된다.
     #[test]
     fn a_runaway_loop_is_stopped() {
         let t = Instant::now();
-        let e = decide("fn should_send(e) { let i = 0; loop { i += 1; } }").unwrap_err();
+        let e = call("fn h(e) { let i = 0; loop { i += 1; } }").unwrap_err();
         assert!(
             t.elapsed() < Duration::from_secs(10),
             "상한에 안 걸리고 계속 돌았다"
@@ -386,18 +464,25 @@ mod tests {
         );
     }
 
-    /// 스크립트가 던지면 **그 이벤트만** 실패한다. 패닉이 아니라 오류다.
+    /// 여러 파일은 한 공간이다 — 서로 이름만으로 부른다. 같은 함수가 두 파일에 있으면 거절.
     #[test]
-    fn a_throwing_script_returns_an_error() {
-        let e = decide(r#"fn should_send(e) { throw "안 돼" }"#).unwrap_err();
-        assert!(e.contains("안 돼"), "{e}");
-    }
+    fn several_files_share_one_namespace_and_refuse_duplicates() {
+        let sc = Script::compile_sources(&[
+            ("main.rhai".into(), r#"fn h(e) { send("x", title(e)) }"#.into()),
+            ("fmt.rhai".into(), r#"fn title(e) { "제목: " + e.quest.title }"#.into()),
+        ])
+        .unwrap();
+        let got = sc.call_handler("h", &ev(), &Default::default()).unwrap();
+        assert_eq!(got[0].body, json!("제목: 훅"));
+        assert!(sc.has_handler("h"));
+        assert!(!sc.has_handler("title_missing"));
 
-    /// 보낼지 말지는 bool 이어야 한다 — 모호하게 넘기지 않는다.
-    #[test]
-    fn non_bool_judgement_is_an_error() {
-        let e = decide(r#"fn should_send(e) { "아마도" }"#).unwrap_err();
-        assert!(e.contains("bool"), "{e}");
+        let e = Script::compile_sources(&[
+            ("a.rhai".into(), "fn h(e) { }".into()),
+            ("b.rhai".into(), "fn h(e) { }".into()),
+        ])
+        .unwrap_err();
+        assert!(e.to_string().contains("a.rhai") && e.to_string().contains("b.rhai"), "{e}");
     }
 
     // ── 샌드박스 ────────────────────────────────────────
@@ -409,26 +494,26 @@ mod tests {
     /// `no_module` 이 그 경로 자체를 없앤다.
     #[test]
     fn import_does_not_even_compile() {
-        let e = Script::compile_source(r#"import "std" as s; fn payload(e) { 1 }"#).unwrap_err();
+        let e = Script::compile_source(r#"import "std" as s; fn h(e) { }"#).unwrap_err();
         assert!(e.to_string().contains("컴파일"), "{e}");
     }
 
-    /// 파일·프로세스·네트워크는 **이름조차 없다.** 아무것도 등록하지 않았다.
+    /// 파일·프로세스·네트워크는 **이름조차 없다.** 등록한 것은 설정 읽기와 할 일 적기뿐이다.
     #[test]
     fn there_is_no_way_to_touch_the_outside() {
         for src in [
-            r#"fn payload(e) { open_file("/etc/passwd") }"#,
-            r#"fn payload(e) { read_file("/etc/passwd") }"#,
-            r#"fn payload(e) { File("/etc/passwd") }"#,
-            r#"fn payload(e) { system("ls") }"#,
-            r#"fn payload(e) { exec("sh") }"#,
-            r#"fn payload(e) { http_get("https://example.test") }"#,
-            r#"fn payload(e) { fetch("https://example.test") }"#,
+            r#"fn h(e) { open_file("/etc/passwd") }"#,
+            r#"fn h(e) { read_file("/etc/passwd") }"#,
+            r#"fn h(e) { File("/etc/passwd") }"#,
+            r#"fn h(e) { system("ls") }"#,
+            r#"fn h(e) { exec("sh") }"#,
+            r#"fn h(e) { http_get("https://example.test") }"#,
+            r#"fn h(e) { fetch("https://example.test") }"#,
         ] {
             // 컴파일에서 막히든 실행에서 막히든 **못 나가면** 된다.
             let blocked = match Script::compile_source(src) {
                 Err(_) => true,
-                Ok(sc) => sc.decide(&ev(), &Default::default()).is_err(),
+                Ok(sc) => sc.call_handler("h", &ev(), &Default::default()).is_err(),
             };
             assert!(blocked, "밖으로 나가는 길이 열려 있다: {src}");
         }
@@ -437,12 +522,8 @@ mod tests {
     /// 등록한 게 없다는 것을 반대편에서도 확인한다 — 순수 계산은 된다.
     #[test]
     fn pure_computation_still_works() {
-        let Decision::Send(v) =
-            decide(r#"fn payload(e) { let n = 0; for i in 0..10 { n += i } #{ sum: n } }"#)
-                .unwrap()
-        else {
-            panic!()
-        };
-        assert_eq!(v["sum"], 45);
+        let got = call(r#"fn h(e) { let n = 0; for i in 0..10 { n += i } send("x", #{ sum: n }) }"#)
+            .unwrap();
+        assert_eq!(got[0].body["sum"], 45);
     }
 }

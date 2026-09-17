@@ -385,7 +385,6 @@
 					<li class="plugin" class:pending={!p.granted} class:fresh={fresh === p.name} id={`plugin-${p.name}`}>
 						<div class="plugin-head">
 							<strong>{p.name}</strong>
-							<code class="plugin-target">{p.action} → {p.target}</code>
 						</div>
 						<!-- REQ-020: 나머지 줄은 전부 기계가 읽는 값이라, 처음 보는
 						     플러그인 앞에서 "이게 무슨 일을 하는가" 를 알려주는 것이
@@ -395,9 +394,40 @@
 							<p class="plugin-desc">{p.description}</p>
 						{/if}
 						<div class="plugin-meta">
-							<span>{p.on.join(' ')}</span>
 							<span>{t('plugins.scope', $locale)}: {p.scope.join(', ')}</span>
 						</div>
+						<!-- DEV-403: 한 플러그인이 여러 줄을 갖는다 — 언제 → 무엇을, 적힌 순서대로. -->
+						<ol class="plugin-lines" aria-label={t('plugins.lines', $locale)}>
+							{#each p.handlers as h, i (i)}
+								<li>
+									<span class="line-when"
+										>{h.stage === 'pre'
+											? t('plugins.stagePre', $locale)
+											: t('plugins.stagePost', $locale)}
+										{h.events.join(' ')}</span
+									>
+									<span aria-hidden="true">→</span>
+									<code class="plugin-target"
+										>{h.call
+											? `${h.call}()`
+											: (h.action ?? `${h.action_kind} ${h.action_target}`)}</code
+									>
+									<span class="line-label">{h.label}</span>
+								</li>
+							{/each}
+						</ol>
+						<!-- 어디로 나가고 무엇을 띄우는지 — 스크립트는 이 이름으로만 부른다. -->
+						{#if p.actions.length > 0}
+							<ul class="plugin-dests" aria-label={t('plugins.dests', $locale)}>
+								{#each p.actions as a (a.name)}
+									<li>
+										<code>{a.name}</code>
+										<span class="line-label">{a.kind}</span>
+										<code class="plugin-target">{a.target}</code>
+									</li>
+								{/each}
+							</ul>
+						{/if}
 						<!-- DEV-400: 길드 것과 소스 것이 한 목록에 섞인다 — 어디서 왔는지 보여야 한다.
 						     소스 것은 길드 밖이라 경로도 함께. -->
 						<p class="plugin-datadir">
@@ -864,6 +894,36 @@
 		margin: 0;
 		font-size: 0.74rem;
 		color: var(--text-muted);
+	}
+	/* DEV-403: 줄 목록과 내보내는 곳. 기계가 읽는 값이라 작게, 줄바꿈은 자유롭게. */
+	.plugin-lines,
+	.plugin-dests {
+		margin: 0;
+		padding-left: 1.1rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.15rem;
+		font-size: 0.8rem;
+	}
+	.plugin-dests {
+		list-style: none;
+		padding-left: 0;
+	}
+	.plugin-lines li,
+	.plugin-dests li {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.2rem 0.45rem;
+		align-items: baseline;
+		min-width: 0;
+	}
+	.line-when {
+		color: var(--text);
+		overflow-wrap: anywhere;
+	}
+	.line-label {
+		color: var(--text-muted);
+		font-size: 0.75rem;
 	}
 	.plugin-meta {
 		display: flex;

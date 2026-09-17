@@ -1,12 +1,23 @@
 //! DEV-375: 플러그인 **정의와 적재**.
 //!
 //! 길드의 동작에 사용자가 자기 동작을 붙인다([[DEV-373]]). 세 층 중 첫째 —
-//! *언제 / 어디서 / 무엇으로 내보낼지* 를 JSON 으로 적는다.
+//! *언제 / 어디서 / 무엇을 할지* 를 TOML 로 적는다.
 //!
 //! ```text
-//! .guild/plugins/{name}/plugin.json    ← 정의 (git 으로 공유된다)
-//! .guild/plugins/{name}/*.rhai         ← 판단·가공 ([[DEV-376]])
+//! .guild/plugins/{name}/plugin.toml    ← 정의 (git 으로 공유된다)
+//! .guild/plugins/{name}/*.rhai         ← 스크립트 ([[DEV-376]])
 //! ```
+//!
+//! # 줄 단위 핸들러 (DEV-403, 설계는 BOOK-004)
+//!
+//! 정의는 `[[handlers]]` 줄 목록이다. 줄마다 **언제**(`pre` 또는 `post` 의 이벤트 패턴)와
+//! **무엇을**(`call` 로 스크립트 함수, 또는 `action` 으로 바로 실행할 동작)을 하나씩 적는다.
+//! Bevy 의 시스템 등록과 같은 생각이다 — 함수는 이름을 마음대로 짓고, 언제 불릴지는 등록이
+//! 정한다. 등록이 코드가 아니라 데이터라서 허용 화면이 스크립트를 돌리지 않고도 "언제 무엇이
+//! 도는지" 를 보여 줄 수 있다.
+//!
+//! 한 이벤트에 여러 줄이 걸리면 **적힌 순서대로** 돈다. 목표는 Bevy 식 순서
+//! 지정([[DEV-414]])이고, 그때도 적힌 순서는 기본값으로 남는다.
 //!
 //! # 코어가 소유하는 동작은 둘뿐이다
 //!
@@ -50,7 +61,8 @@ pub enum Scope {
     Server,
 }
 
-/// 코어가 할 줄 아는 두 가지.
+/// 코어가 할 줄 아는 두 가지 — 이름을 붙여(`[actions.이름]`) 스크립트가 부르거나, 핸들러 줄에
+/// 바로 적는다.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Action {
@@ -179,8 +191,12 @@ impl Action {
     }
 }
 
-/// `plugin.json` 의 모양.
+/// `plugin.toml` 의 모양.
+///
+/// 모르는 칸은 거절한다(`deny_unknown_fields`) — `handler` 처럼 한 글자 틀린 칸이 조용히
+/// 무시되면 "왜 안 돌지" 가 된다.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PluginDef {
     pub name: String,
     /// REQ-020: 이 플러그인이 무슨 일을 하는지 **사람 말로**. 선택이다.
@@ -188,32 +204,141 @@ pub struct PluginDef {
     /// 나머지 필드는 전부 기계가 읽는 값이라, 처음 보는 플러그인 앞에서
     /// "이게 무슨 일을 하는가" 를 알려주는 것이 하나도 없었다. 이 화면의 존재
     /// 이유가 *무엇에 동의하는지 보여주는 것*([[DEV-383]])인데 정작 "무엇을" 에
-    /// 해당하는 문장이 없었다. 스크립트 원문을 펼칠 수는 있지만 그건 읽을 수
-    /// 있는 사람에게만 답이다.
-    ///
-    /// **없을 때 직렬화에 나타나지 않는다**(`skip_serializing_if`). 동의 지문이
-    /// 정의를 통째로 담으므로([`consent::fingerprint`]), 나타났다면 이 필드가
-    /// 생긴 것만으로 기존 동의가 전부 무효가 됐을 것이다.
+    /// 해당하는 문장이 없었다.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// 구독 패턴 — `quest.created`, `quest.*`, `*.created`, `pre:quest.*`.
-    pub on: Vec<String>,
     /// **비어 있으면 적재하지 않는다.** 위 [`Scope`] 주석 참고.
     pub scope: Vec<Scope>,
-    pub action: Action,
-    /// 판단·가공 스크립트(폴더 기준 상대 경로). [[DEV-376]] 이 실행한다.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub script: Option<String>,
+    /// 스크립트 파일들(폴더 기준 상대 경로). 적힌 파일의 함수는 한 공간에 모인다 — 이름이
+    /// 겹치면 적재 때 거절한다. `call` 줄이 하나도 없으면 필요 없다.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scripts: Vec<String>,
+    /// 이름 붙인 동작 — 스크립트가 `send("이름", 본문)` / `run("이름", 입력)` 으로 부르고, 핸들러
+    /// 줄이 `action = "이름"` 으로 가리킨다. **어디로 보내고 무엇을 띄우는지는 여기에만 있다**
+    /// — 스크립트는 주소를 모른다. 허용 화면이 이것을 보여 주면 "어디로 나가나" 가 다 보인다.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub actions: BTreeMap<String, Action>,
+    /// 언제 무엇을 할지 — 적힌 순서대로 돈다.
+    pub handlers: Vec<Handler>,
     /// REQ-021: 이 플러그인이 사용자에게 받아야 하는 값들.
     ///
     /// 이름·설명·선택지는 **플러그인 작성자만 안다.** 코어가 `${GITHUB_TOKEN}`
     /// 이라는 참조만 보고 "repo 스코프가 필요하고 github.com/settings/tokens
     /// 에서 만든다" 를 알아낼 방법은 없다. 그래서 정의가 선언한다.
-    ///
-    /// [`description`](Self::description) 과 마찬가지로 **없으면 직렬화에
-    /// 안 나타난다** — 동의 지문이 정의를 통째로 담기 때문이다.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub inputs: Vec<Input>,
+}
+
+/// 핸들러 한 줄 — "언제" 하나와 "무엇" 하나.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Handler {
+    /// 줄 이름. 화면·오류 메시지가 이 줄을 가리킬 때 쓰고, 나중에 순서 지정([[DEV-414]])이
+    /// 이 이름으로 한다. 없으면 몇 번째 줄인지로 부른다.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// 바뀌기 **전**에 볼 이벤트 패턴. `post` 와 둘 중 하나만.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pre: Vec<String>,
+    /// 바뀐 **뒤**에 볼 이벤트 패턴 — `quest.created`, `quest.*`, `*.created`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub post: Vec<String>,
+    /// 부를 스크립트 함수 이름. `action` 과 둘 중 하나만.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub call: Option<String>,
+    /// 바로 실행할 동작 — `[actions]` 의 이름이거나, 이 자리에 적은 동작. 본문은 이벤트 JSON.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action: Option<ActionRef>,
+}
+
+/// 핸들러 줄의 `action` — 이름으로 가리키거나 그 자리에 적는다.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ActionRef {
+    Named(String),
+    Inline(Action),
+}
+
+impl Handler {
+    pub fn phase(&self) -> crate::events::Phase {
+        if self.pre.is_empty() {
+            crate::events::Phase::Post
+        } else {
+            crate::events::Phase::Pre
+        }
+    }
+
+    /// 이 줄이 볼 패턴들(단계와 함께).
+    pub fn patterns(&self) -> &[String] {
+        if self.pre.is_empty() { &self.post } else { &self.pre }
+    }
+
+    /// 이 줄이 그 이벤트에 걸리나.
+    pub fn wants(&self, name: &str, phase: crate::events::Phase) -> bool {
+        use crate::events::Phase;
+        if self.phase() != phase {
+            return false;
+        }
+        self.patterns().iter().any(|p| {
+            // `names::matches` 는 단계를 `pre:` 접두어로 읽는다 — 줄의 단계를 그 모양으로 옮긴다.
+            let pat = match phase {
+                Phase::Pre => format!("pre:{p}"),
+                Phase::Post => p.clone(),
+            };
+            crate::events::names::matches(&pat, name, phase)
+        })
+    }
+
+    /// 사람이 부를 이름 — `id`, 없으면 "N번째 줄".
+    pub fn label(&self, index: usize) -> String {
+        match &self.id {
+            Some(id) => id.clone(),
+            None => format!("{}번째 줄", index + 1),
+        }
+    }
+}
+
+impl PluginDef {
+    /// 줄이 가리키는 동작을 찾는다. 이름이 없으면 `None`(검증이 먼저 막는다).
+    pub fn action_of<'a>(&'a self, r: &'a ActionRef) -> Option<&'a Action> {
+        match r {
+            ActionRef::Named(n) => self.actions.get(n),
+            ActionRef::Inline(a) => Some(a),
+        }
+    }
+
+    /// 정의에 적힌 동작 전부 — 이름 붙인 것(`이름`)과 줄에 바로 적은 것(`줄 이름`).
+    pub fn all_actions(&self) -> Vec<(String, &Action)> {
+        let mut out: Vec<(String, &Action)> =
+            self.actions.iter().map(|(k, a)| (k.clone(), a)).collect();
+        for (i, h) in self.handlers.iter().enumerate() {
+            if let Some(ActionRef::Inline(a)) = &h.action {
+                out.push((format!("handlers[{i}].action"), a));
+            }
+        }
+        out
+    }
+
+    /// `run` 동작이 하나라도 있나 — 데이터 폴더를 보여 줄지 정한다.
+    pub fn has_run(&self) -> bool {
+        self.all_actions()
+            .iter()
+            .any(|(_, a)| matches!(a, Action::Run { .. }))
+    }
+
+    /// 모든 줄의 패턴을 한 목록으로(`pre` 줄은 `pre:` 를 붙여) — 목록 화면과 CLI 가 쓴다.
+    pub fn subscriptions(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        for h in &self.handlers {
+            for p in h.patterns() {
+                let s = if h.pre.is_empty() { p.clone() } else { format!("pre:{p}") };
+                if !out.contains(&s) {
+                    out.push(s);
+                }
+            }
+        }
+        out
+    }
 }
 
 /// 위젯 종류. 값이 코어로 들어오는 통로(`${...}`)는 하나지만, **사람이 값을
@@ -293,34 +418,38 @@ impl PluginDef {
     pub fn referenced_keys(&self) -> std::collections::BTreeSet<String> {
         let mut out = std::collections::BTreeSet::new();
         let mut scan = |s: &str| out.extend(env_refs(s));
-        match &self.action {
-            Action::Post {
-                url,
-                headers,
-                body_env,
-                ..
-            } => {
-                scan(url);
-                for v in headers.values() {
-                    scan(v);
+        let mut body_keys = Vec::new();
+        for (_, action) in self.all_actions() {
+            match action {
+                Action::Post {
+                    url,
+                    headers,
+                    body_env,
+                    ..
+                } => {
+                    scan(url);
+                    for v in headers.values() {
+                        scan(v);
+                    }
+                    body_keys.extend(body_env.values().cloned());
                 }
-                out.extend(body_env.values().cloned());
-            }
-            Action::Run {
-                command, args, os, ..
-            } => {
-                scan(command);
-                for a in args {
-                    scan(a);
-                }
-                for (_, c) in os.all() {
-                    scan(&c.command);
-                    for a in &c.args {
+                Action::Run {
+                    command, args, os, ..
+                } => {
+                    scan(command);
+                    for a in args {
                         scan(a);
+                    }
+                    for (_, c) in os.all() {
+                        scan(&c.command);
+                        for a in &c.args {
+                            scan(a);
+                        }
                     }
                 }
             }
         }
+        out.extend(body_keys);
         // 코어가 채우는 것은 사용자에게 물을 값이 아니다([[BUG-279]]).
         out.remove("OPENGUILD_PLUGIN_DIR");
         out.remove("OPENGUILD_PLUGIN_DATA_DIR");
@@ -396,12 +525,11 @@ pub struct Plugin {
     pub dir: PathBuf,
     /// BUG-279: 어느 길드의 플러그인인가 — 데이터 폴더를 가르는 데 쓴다.
     pub guild_root: PathBuf,
-    /// DEV-376: 적재 때 컴파일해 둔 판단·가공 스크립트. 문법 오류는 **적재
-    /// 때** 드러나야지 첫 이벤트 때 드러나면 안 된다. 없으면 전부 보내고
-    /// 이벤트 JSON 을 그대로 쓴다.
+    /// DEV-376: 적재 때 컴파일해 둔 스크립트(`scripts` 전부를 한 공간으로). 문법 오류와 없는
+    /// 함수는 **적재 때** 드러나야지 첫 이벤트 때 드러나면 안 된다. `call` 줄이 없으면 `None`.
     pub compiled: Option<std::sync::Arc<script::Script>>,
-    /// 그 스크립트의 원문 — 동의 지문에 들어간다([`consent`]). 정의만 보면
-    /// 스크립트를 갈아끼우는 것으로 동의를 우회할 수 있다.
+    /// 스크립트 원문(파일마다 머리줄을 붙여 이어 붙인 것) — 허용 화면이 보여 준다. 동의 지문은
+    /// 폴더 전체([`Plugin::folder`])로 본다.
     pub script_src: Option<String>,
     /// DEV-381: 폴더 안의 **모든** 파일(정의 제외). `run` 은 이 폴더를 작업
     /// 디렉터리로 삼고 도므로, 옆에 있는 `hook.py` 도 실행되는 코드다 —
@@ -413,16 +541,9 @@ pub struct Plugin {
 }
 
 impl Plugin {
-    /// 이 플러그인이 그 이벤트를 원하나.
+    /// 이 플러그인의 줄 중 하나라도 그 이벤트를 원하나.
     pub fn wants(&self, name: &str, phase: crate::events::Phase) -> bool {
-        self.def
-            .on
-            .iter()
-            .any(|p| crate::events::names::matches(p, name, phase))
-    }
-
-    pub fn script_path(&self) -> Option<PathBuf> {
-        self.def.script.as_ref().map(|s| self.dir.join(s))
+        self.def.handlers.iter().any(|h| h.wants(name, phase))
     }
 
     /// BUG-279: 훅이 **파일을 쓰는 자리.** 없으면 만든다.
@@ -575,13 +696,23 @@ fn load_scoped(guild_root: &Path, scope: Option<Scope>) -> Loaded {
     let mut seen_names: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     for (source, pdir) in dirs {
-        let manifest = pdir.join("plugin.json");
+        let manifest = pdir.join(MANIFEST);
         let label = pdir
             .file_name()
             .and_then(|s| s.to_str())
             .unwrap_or("?")
             .to_string();
         if !manifest.is_file() {
+            // DEV-403: 옛 형식만 있는 폴더는 조용히 넘기지 않는다 — "왜 사라졌지" 가 된다.
+            if pdir.join(OLD_MANIFEST).is_file() {
+                out.errors.push((
+                    label,
+                    crate::tf!(
+                        "plugin.json 은 더 이상 읽지 않습니다 — plugin.toml 의 [[handlers]] 형식으로 옮기세요",
+                        "plugin.json is no longer read — move it to plugin.toml with [[handlers]]"
+                    ),
+                ));
+            }
             continue; // 플러그인 폴더가 아니다 — 조용히 넘어간다.
         }
         match read_def(&manifest) {
@@ -637,7 +768,7 @@ fn load_scoped(guild_root: &Path, scope: Option<Scope>) -> Loaded {
 
 /// DEV-381: 플러그인 폴더 안의 **모든** 파일을 동의 지문용으로 읽는다.
 ///
-/// 지문이 `plugin.json` + 지정한 `.rhai` 하나만 보던 것이 구멍이었다. `run` 은
+/// 지문이 정의 파일 + 지정한 `.rhai` 하나만 보던 것이 구멍이었다. `run` 은
 /// 폴더를 작업 디렉터리로 삼고 도는데, 옆에 있는 `hook.py` / `notify.sh` 는
 /// git 으로 따라오는 **실행되는 코드**다. 그걸 갈아끼우면 동의를 다시 묻지
 /// 않았다.
@@ -658,7 +789,7 @@ pub fn folder_fingerprint(dir: &Path) -> BTreeMap<String, String> {
         let Some(name) = p.file_name().and_then(|s| s.to_str()) else {
             continue;
         };
-        if name == "plugin.json" {
+        if name == MANIFEST {
             continue; // 정의는 따로 담는다.
         }
         if p.is_dir() {
@@ -690,43 +821,82 @@ fn checksum(bytes: &[u8]) -> u64 {
     h
 }
 
-/// 정의가 가리키는 스크립트를 읽어 컴파일한다. `script` 가 없으면 둘 다 `None`.
-/// 원문도 함께 돌려준다 — 동의 지문이 그것을 본다.
-type Compiled = (Option<std::sync::Arc<script::Script>>, Option<String>);
-fn compile_script(dir: &Path, def: &PluginDef) -> AppResult<Compiled> {
-    let Some(rel) = def.script.as_deref() else {
+/// 정의 파일 이름.
+pub const MANIFEST: &str = "plugin.toml";
+/// 예전 정의 파일 — 있으면 옮기라고 알린다.
+pub const OLD_MANIFEST: &str = "plugin.json";
+
+/// `scripts` 를 읽어 한 공간으로 컴파일한다. 없으면 둘 다 `None`.
+/// 원문도 함께 돌려준다 — 허용 화면이 보여 준다.
+pub(crate) type Compiled = (Option<std::sync::Arc<script::Script>>, Option<String>);
+pub(crate) fn compile_script(dir: &Path, def: &PluginDef) -> AppResult<Compiled> {
+    if def.scripts.is_empty() {
         return Ok((None, None));
-    };
-    let path = dir.join(rel);
-    let src = std::fs::read_to_string(&path).map_err(|e| {
-        AppError::BadRequest(format!(
-            "{}: 스크립트 {} 를 읽지 못했습니다: {e}",
-            def.name,
-            path.display()
-        ))
-    })?;
-    // DEV-381: 스크립트도 git 으로 따라간다. `plugin.json` 의 리터럴은 막으면서
-    // `.rhai` 안의 리터럴은 통과시키면 앞뒤가 안 맞는다 — 게다가 본문(payload)
-    // 은 환경변수 확장을 안 거치므로, 스크립트에 박는 것이 토큰을 싣는 유일한
-    // 길이었다.
-    if looks_like_known_key(&src) {
-        return Err(AppError::BadRequest(format!(
-            "{}: 스크립트 {rel} 에 비밀값으로 보이는 리터럴이 있습니다. \
-             `.guild/plugins/` 는 git 에 커밋됩니다 — 값은 환경변수로 넘기세요.",
-            def.name
-        )));
     }
-    let compiled = script::Script::compile_source(&src)
+    let mut sources: Vec<(String, String)> = Vec::new();
+    for rel in &def.scripts {
+        let path = dir.join(rel);
+        let src = std::fs::read_to_string(&path).map_err(|e| {
+            AppError::BadRequest(format!(
+                "{}: 스크립트 {} 를 읽지 못했습니다: {e}",
+                def.name,
+                path.display()
+            ))
+        })?;
+        // DEV-381: 스크립트도 git 으로 따라간다. 정의의 리터럴은 막으면서 `.rhai` 안의
+        // 리터럴은 통과시키면 앞뒤가 안 맞는다.
+        if looks_like_known_key(&src) {
+            return Err(AppError::BadRequest(format!(
+                "{}: 스크립트 {rel} 에 비밀값으로 보이는 리터럴이 있습니다. \
+                 `.guild/plugins/` 는 git 에 커밋됩니다 — 값은 환경변수로 넘기세요.",
+                def.name
+            )));
+        }
+        sources.push((rel.clone(), src));
+    }
+    let compiled = script::Script::compile_sources(&sources)
         .map_err(|e| AppError::BadRequest(format!("{}: {e}", def.name)))?;
-    Ok((Some(std::sync::Arc::new(compiled)), Some(src)))
+    // 줄이 부르는 함수가 정말 있나 — 없으면 적재 때 막는다(조용히 안 불리는 것보다 낫다).
+    for (i, h) in def.handlers.iter().enumerate() {
+        if let Some(f) = &h.call
+            && !compiled.has_handler(f)
+        {
+            return Err(AppError::BadRequest(format!(
+                "{}: {} 가 부르는 함수 `{f}` 가 스크립트에 없습니다 — 인자 하나(`fn {f}(e)`)를 받는 \
+                 함수여야 합니다",
+                def.name,
+                h.label(i)
+            )));
+        }
+    }
+    let shown = if sources.len() == 1 {
+        sources[0].1.clone()
+    } else {
+        sources
+            .iter()
+            .map(|(rel, src)| format!("// ── {rel} ──\n{src}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    Ok((Some(std::sync::Arc::new(compiled)), Some(shown)))
 }
 
 /// 파일 하나를 읽고 **검증까지** 한다. 검증에 걸리면 적재하지 않는다.
 pub fn read_def(manifest: &Path) -> AppResult<PluginDef> {
     let raw = std::fs::read_to_string(manifest)
-        .map_err(|e| AppError::BadRequest(format!("plugin.json 읽기 실패: {e}")))?;
-    let mut def: PluginDef = serde_json::from_str(&raw)
-        .map_err(|e| AppError::BadRequest(format!("plugin.json 형식 오류: {e}")))?;
+        .map_err(|e| AppError::BadRequest(format!("{MANIFEST} 읽기 실패: {e}")))?;
+    parse_def(&raw)
+}
+
+/// 정의를 파일과 같은 TOML 로 — 허용 전에 "무엇에 동의하는지" 보여 줄 때.
+pub fn def_to_toml(def: &PluginDef) -> String {
+    toml::to_string_pretty(def).unwrap_or_else(|e| format!("# TOML 로 옮기지 못했습니다: {e}"))
+}
+
+/// 정의 원문을 읽고 검증한다.
+pub fn parse_def(raw: &str) -> AppResult<PluginDef> {
+    let mut def: PluginDef = toml::from_str(raw)
+        .map_err(|e| AppError::BadRequest(format!("{MANIFEST} 형식 오류: {e}")))?;
     normalize(&mut def);
     validate(&def)?;
     Ok(def)
@@ -758,20 +928,14 @@ fn normalize(def: &mut PluginDef) {
 pub fn validate(def: &PluginDef) -> AppResult<()> {
     if def.name.trim().is_empty() {
         return Err(AppError::BadRequest(
-            "plugin.json: name 이 비어 있습니다".into(),
+            "plugin.toml: name 이 비어 있습니다".into(),
         ));
     }
     // BUG-279: `name` 은 동의 파일의 키이자 데이터 폴더 이름이다. 경로 조각이
     // 될 수 없는 값을 적재 때 막는다 — 정의는 git 으로 남의 기계에 간다.
     if def.name.contains(['/', '\\']) || def.name.trim_matches('.').is_empty() {
         return Err(AppError::BadRequest(format!(
-            "plugin.json: `name` 에 경로 구분자나 점만 쓸 수 없습니다 (받은 값: {})",
-            def.name
-        )));
-    }
-    if def.on.is_empty() {
-        return Err(AppError::BadRequest(format!(
-            "{}: `on` 이 비어 있습니다 — 구독할 이벤트를 하나 이상 적으세요",
+            "plugin.toml: `name` 에 경로 구분자나 점만 쓸 수 없습니다 (받은 값: {})",
             def.name
         )));
     }
@@ -795,55 +959,126 @@ pub fn validate(def: &PluginDef) -> AppResult<()> {
             def.name
         )));
     }
-    // 아무 이벤트와도 안 맞는 패턴은 오타일 가능성이 높다. 조용히 안 도는
-    // 것보다 적재 때 알려주는 편이 낫다.
-    for pat in &def.on {
-        use crate::events::Phase;
-        use crate::events::names as ev;
-        let hits = ev::ALL
-            .iter()
-            .any(|n| ev::matches(pat, n, Phase::Post) || ev::matches(pat, n, Phase::Pre));
-        if !hits {
-            return Err(AppError::BadRequest(format!(
-                "{}: `{pat}` 는 어떤 이벤트와도 맞지 않습니다 — \
-                 `openguild plugin events` 로 이름을 확인하세요",
-                def.name
-            )));
-        }
-        // DEV-381: 이름은 맞는데 그 이벤트가 **pre 를 안 내는** 경우를 잡는다.
-        // 예전엔 `pre:quest.created` 가 통과한 뒤 아무 오류 없이 영원히 안
-        // 돌았다 — 오타를 적재 때 잡으면서 없는 phase 를 통과시키면 앞뒤가
-        // 안 맞는다. 와일드카드(`pre:*`)는 하나라도 맞으면 통과시킨다.
-        if pat.starts_with("pre:") {
-            let any_pre = ev::PRE_CAPABLE
-                .iter()
-                .any(|n| ev::matches(pat, n, Phase::Pre));
-            if !any_pre {
-                return Err(AppError::BadRequest(format!(
-                    "{}: `{pat}` — 그 이벤트는 관찰 pre 를 내지 않습니다. \
-                     현재 pre 가 있는 것: {}",
-                    def.name,
-                    ev::PRE_CAPABLE.join(", ")
-                )));
-            }
-        }
-    }
+    validate_handlers(def)?;
     validate_inputs(def)?;
     // 스크립트 경로는 플러그인 폴더 안이어야 한다. `../../..` 를 적으면
     // 정의만으로 임의 파일을 컴파일 대상으로 지정할 수 있게 된다.
-    if let Some(rel) = def.script.as_deref() {
+    // (폴더 밖 코드를 쓰는 길은 스크립트 안의 `import` 다 — [[DEV-408]].)
+    for rel in &def.scripts {
         let p = Path::new(rel);
         if p.is_absolute()
             || p.components()
                 .any(|c| matches!(c, std::path::Component::ParentDir))
         {
             return Err(AppError::BadRequest(format!(
-                "{}: `script` 는 플러그인 폴더 안의 상대 경로여야 합니다 (받은 값: {rel})",
+                "{}: `scripts` 는 플러그인 폴더 안의 상대 경로여야 합니다 (받은 값: {rel})",
                 def.name
             )));
         }
     }
     check_no_literal_secret(def)?;
+    Ok(())
+}
+
+/// DEV-403: 줄마다 "언제" 하나, "무엇" 하나. 가리키는 것이 다 있어야 한다.
+fn validate_handlers(def: &PluginDef) -> AppResult<()> {
+    use crate::events::Phase;
+    use crate::events::names as ev;
+    let bad = |m: String| Err(AppError::BadRequest(format!("{}: {m}", def.name)));
+    if def.handlers.is_empty() {
+        return bad("`[[handlers]]` 가 없습니다 — 언제 무엇을 할지 한 줄 이상 적으세요".into());
+    }
+    for name in def.actions.keys() {
+        if name.is_empty()
+            || !name
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        {
+            return bad(format!(
+                "`actions` 의 이름은 영숫자·`_`·`-` 만 됩니다 (받은 값: {name})"
+            ));
+        }
+    }
+    let mut ids = std::collections::HashSet::new();
+    for (i, h) in def.handlers.iter().enumerate() {
+        let who = h.label(i);
+        if let Some(id) = &h.id {
+            if id.trim().is_empty() {
+                return bad(format!("{}번째 줄의 `id` 가 비어 있습니다", i + 1));
+            }
+            if !ids.insert(id.clone()) {
+                return bad(format!("줄 이름 `{id}` 가 겹칩니다"));
+            }
+        }
+        match (h.pre.is_empty(), h.post.is_empty()) {
+            (true, true) => {
+                return bad(format!(
+                    "{who}: 언제 부를지가 없습니다 — `post`(바뀐 뒤) 나 `pre`(바뀌기 전) 에 이벤트를 적으세요"
+                ));
+            }
+            (false, false) => {
+                return bad(format!(
+                    "{who}: `pre` 와 `post` 를 한 줄에 같이 쓸 수 없습니다 — 줄을 나누세요"
+                ));
+            }
+            _ => {}
+        }
+        match (&h.call, &h.action) {
+            (None, None) => {
+                return bad(format!(
+                    "{who}: 무엇을 할지가 없습니다 — `call`(스크립트 함수) 이나 `action` 을 적으세요"
+                ));
+            }
+            (Some(_), Some(_)) => {
+                return bad(format!(
+                    "{who}: `call` 과 `action` 을 한 줄에 같이 쓸 수 없습니다 — 줄을 나누세요"
+                ));
+            }
+            (Some(f), None) => {
+                if f.trim().is_empty() {
+                    return bad(format!("{who}: `call` 이 비어 있습니다"));
+                }
+                if def.scripts.is_empty() {
+                    return bad(format!(
+                        "{who}: 함수 `{f}` 를 부르는데 `scripts` 가 없습니다"
+                    ));
+                }
+            }
+            (None, Some(ActionRef::Named(n))) => {
+                if !def.actions.contains_key(n) {
+                    return bad(format!(
+                        "{who}: `[actions]` 에 `{n}` 이 없습니다"
+                    ));
+                }
+            }
+            (None, Some(ActionRef::Inline(_))) => {}
+        }
+        // 아무 이벤트와도 안 맞는 패턴은 오타일 가능성이 높다. 조용히 안 도는 것보다
+        // 적재 때 알려주는 편이 낫다.
+        let phase = h.phase();
+        for pat in h.patterns() {
+            let full = match phase {
+                Phase::Pre => format!("pre:{pat}"),
+                Phase::Post => pat.clone(),
+            };
+            let candidates: &[&str] = match phase {
+                Phase::Pre => ev::PRE_CAPABLE,
+                Phase::Post => ev::ALL,
+            };
+            if !candidates.iter().any(|n| ev::matches(&full, n, phase)) {
+                if phase == Phase::Pre && ev::ALL.iter().any(|n| ev::matches(pat, n, Phase::Post)) {
+                    // DEV-381: 이름은 맞는데 그 이벤트가 바뀌기 전 단계를 안 내는 경우.
+                    return bad(format!(
+                        "{who}: `{pat}` 은 바뀌기 전(pre) 단계를 내지 않습니다. 지금 pre 가 있는 것: {}",
+                        ev::PRE_CAPABLE.join(", ")
+                    ));
+                }
+                return bad(format!(
+                    "{who}: `{pat}` 는 어떤 이벤트와도 맞지 않습니다 — `openguild plugin events` 로 이름을 확인하세요"
+                ));
+            }
+        }
+    }
     Ok(())
 }
 
@@ -967,33 +1202,34 @@ fn check_no_literal_secret(def: &PluginDef) -> AppResult<()> {
             def.name
         ))
     };
-    let strings: Vec<(String, &String)> = match &def.action {
-        Action::Post { url, headers, .. } => {
-            let mut v: Vec<(String, &String)> = vec![("url".into(), url)];
-            v.extend(headers.iter().map(|(k, val)| (format!("headers.{k}"), val)));
-            v
-        }
-        Action::Run {
-            command, args, os, ..
-        } => {
-            let mut v: Vec<(String, &String)> = vec![("command".into(), command)];
-            v.extend(
-                args.iter()
-                    .enumerate()
-                    .map(|(i, a)| (format!("args[{i}]"), a)),
-            );
-            for (k, c) in os.all() {
-                v.push((format!("{k}.command"), &c.command));
-                v.extend(
-                    c.args
-                        .iter()
-                        .enumerate()
-                        .map(|(i, a)| (format!("{k}.args[{i}]"), a)),
-                );
+    let mut strings: Vec<(String, &String)> = Vec::new();
+    for (at, action) in def.all_actions() {
+        match action {
+            Action::Post { url, headers, .. } => {
+                strings.push((format!("{at}.url"), url));
+                strings.extend(headers.iter().map(|(k, val)| (format!("{at}.headers.{k}"), val)));
             }
-            v
+            Action::Run {
+                command, args, os, ..
+            } => {
+                strings.push((format!("{at}.command"), command));
+                strings.extend(
+                    args.iter()
+                        .enumerate()
+                        .map(|(i, a)| (format!("{at}.args[{i}]"), a)),
+                );
+                for (k, c) in os.all() {
+                    strings.push((format!("{at}.{k}.command"), &c.command));
+                    strings.extend(
+                        c.args
+                            .iter()
+                            .enumerate()
+                            .map(|(i, a)| (format!("{at}.{k}.args[{i}]"), a)),
+                    );
+                }
+            }
         }
-    };
+    }
     // REQ-020: 설명도 git 에 커밋되는 자유 텍스트다. 다른 필드는 막으면서
     // 여기만 열어 두면 토큰을 적을 자리를 하나 만들어 주는 셈이다. 필드 이름이
     // 비밀을 뜻하지는 않으므로 `looks_like_known_key` 쪽만 걸린다.
@@ -1001,7 +1237,11 @@ fn check_no_literal_secret(def: &PluginDef) -> AppResult<()> {
         if looks_like_known_key(value) {
             return Err(reject(field));
         }
-        if field_name_means_secret(field) && !is_env_ref(value) {
+        // 이름 붙인 동작의 이름(`at`)은 사용자가 짓는 말이라 비밀 판정에서 뺀다 — `token-sync`
+        // 라는 동작의 url 이 "비밀" 로 몰리면 안 된다. 칸 이름(마지막 조각)만 본다.
+        let leaf = field.rsplit('.').next().unwrap_or(field);
+        let key = if field.contains(".headers.") { leaf } else { "" };
+        if field_name_means_secret(key) && !is_env_ref(value) {
             return Err(reject(field));
         }
     }

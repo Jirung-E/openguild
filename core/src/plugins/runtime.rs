@@ -30,8 +30,8 @@ use std::sync::mpsc::{Sender, channel};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
-use super::Plugin;
-use super::script::Decision;
+use super::{Action, Plugin};
+use super::script::CommandKind;
 
 /// 이벤트를 실제로 밖으로 내보내는 쪽. [[DEV-377]] 이 HTTP/프로세스 구현을
 /// 넣는다. 여기서 분리해 두는 이유는 **적재와 전달을 따로 검증**하기
@@ -41,8 +41,9 @@ pub trait Delivery: Send + Sync {
     /// mutation 경로는 이미 지나갔다. 대신 무한정 붙들면
     /// [`drain`](PluginRuntime::drain) 이 포기하게 되므로 시한은 둬야 한다.
     ///
-    /// `body` 는 스크립트([[DEV-376]])가 만든 모양이거나, 스크립트가 없으면
-    /// 이벤트 JSON 그대로다. `event` 는 이름·phase 같은 메타를 볼 때 쓴다.
+    /// `action` 은 정의에 적힌 동작 하나(DEV-403 — 한 플러그인이 여러 동작을 갖는다).
+    /// `body` 는 스크립트([[DEV-376]])가 `send`/`run` 에 넘긴 값이거나, 줄에 동작을 바로
+    /// 적었으면 이벤트 JSON 그대로다. `event` 는 이름·phase·origin 같은 메타를 볼 때 쓴다.
     ///
     /// 실패는 **돌려준다**. 여기서 삼키면 왜 안 갔는지 알 길이 없어진다 —
     /// [`PluginRuntime`] 이 받아서 문제 목록에 남긴다.
@@ -55,6 +56,7 @@ pub trait Delivery: Send + Sync {
     fn deliver(
         &self,
         plugin: &Plugin,
+        action: &Action,
         event: &Event,
         body: &serde_json::Value,
         values: &std::collections::BTreeMap<String, String>,
@@ -67,6 +69,7 @@ impl Delivery for DropDelivery {
     fn deliver(
         &self,
         _plugin: &Plugin,
+        _action: &Action,
         _event: &Event,
         _body: &serde_json::Value,
         _values: &std::collections::BTreeMap<String, String>,
@@ -131,6 +134,80 @@ struct Job {
 struct Worker {
     tx: Sender<Job>,
     pending: Arc<Pending>,
+}
+
+/// DEV-403: 한 플러그인의 줄을 **적힌 순서대로** 본다. 걸린 줄마다 함수를 부르고 그 함수가 적은
+/// 일을 차례로 실행하거나, 줄에 적힌 동작을 실행한다. 한 줄의 실패는 기록하고 다음 줄로 간다.
+fn run_handlers(
+    p: &Plugin,
+    event: &Event,
+    cfg: &std::collections::BTreeMap<String, serde_json::Value>,
+    subst: &std::collections::BTreeMap<String, String>,
+    delivery: &dyn Delivery,
+    log: &Mutex<Vec<String>>,
+) {
+    let name = &p.def.name;
+    for (i, h) in p.def.handlers.iter().enumerate() {
+        if !h.wants(event.name, event.phase) {
+            continue;
+        }
+        let who = h.label(i);
+        if let Some(func) = &h.call {
+            let Some(sc) = p.compiled.as_deref() else {
+                note(log, format!("플러그인 '{name}' {who} — 스크립트가 적재되지 않았습니다"));
+                continue;
+            };
+            let cmds = match sc.call_handler(func, event, cfg) {
+                Ok(c) => c,
+                Err(e) => {
+                    note(log, format!("플러그인 '{name}' {who} 스크립트 — {e}"));
+                    continue;
+                }
+            };
+            for c in cmds {
+                let verb = c.kind.verb();
+                let action = match p.def.actions.get(&c.action) {
+                    None => {
+                        note(
+                            log,
+                            format!(
+                                "플러그인 '{name}' {who} — {verb}(\"{}\"): [actions] 에 그 이름이 없습니다",
+                                c.action
+                            ),
+                        );
+                        continue;
+                    }
+                    Some(a) => a,
+                };
+                let fits = matches!(
+                    (c.kind, action),
+                    (CommandKind::Send, Action::Post { .. }) | (CommandKind::Run, Action::Run { .. })
+                );
+                if !fits {
+                    note(
+                        log,
+                        format!(
+                            "플러그인 '{name}' {who} — {verb}(\"{}\"): 그 동작은 {} 입니다 \
+                             (send 는 post 동작, run 은 run 동작에 씁니다)",
+                            c.action,
+                            action.kind()
+                        ),
+                    );
+                    continue;
+                }
+                if let Err(e) = delivery.deliver(p, action, event, &c.body, subst) {
+                    note(log, format!("플러그인 '{name}' {who} — {e}"));
+                }
+            }
+        } else if let Some(r) = &h.action {
+            let Some(action) = p.def.action_of(r) else {
+                continue; // 검증이 막는다 — 여기 올 일은 없다.
+            };
+            if let Err(e) = delivery.deliver(p, action, event, &event.to_json(), subst) {
+                note(log, format!("플러그인 '{name}' {who} — {e}"));
+            }
+        }
+    }
 }
 
 /// 적재된 플러그인 + 전달 방법.
@@ -202,21 +279,7 @@ impl PluginRuntime {
                             .filter_map(|(k, r)| r.as_str().map(|s| (k.clone(), s)))
                             .collect();
 
-                        // 판단·가공이 먼저다 — 보낼지조차 스크립트가 정한다.
-                        let body = match p.compiled.as_deref() {
-                            None => job.event.to_json(),
-                            Some(sc) => match sc.decide(&job.event, &cfg) {
-                                Ok(Decision::Send(v)) => v,
-                                Ok(Decision::Skip) => return,
-                                Err(e) => {
-                                    note(&log, format!("플러그인 '{}' 스크립트 — {e}", p.def.name));
-                                    return;
-                                }
-                            },
-                        };
-                        if let Err(e) = delivery.deliver(p, &job.event, &body, &subst) {
-                            note(&log, format!("플러그인 '{}' — {e}", p.def.name));
-                        }
+                        run_handlers(p, &job.event, &cfg, &subst, delivery.as_ref(), &log);
                     }));
                     if r.is_err() {
                         note(
@@ -305,23 +368,50 @@ impl EventSink for PluginRuntime {
 mod tests {
     use super::*;
     use crate::events::names as ev;
-    use crate::plugins::{Action, PluginDef, Scope};
+    use crate::plugins::{Action, ActionRef, Handler, PluginDef, Scope};
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    fn out() -> Action {
+        Action::Post {
+            url: "https://example.test".into(),
+            headers: Default::default(),
+            body_env: Default::default(),
+            timeout_ms: None,
+        }
+    }
+
+    /// `on` 은 옛 표기(`pre:` 접두어)로 받아 줄 하나로 옮긴다 — 시험을 짧게 쓰려고.
+    fn handler(on: &[&str], call: Option<&str>) -> Handler {
+        let pre: Vec<String> = on
+            .iter()
+            .filter_map(|s| s.strip_prefix("pre:").map(str::to_string))
+            .collect();
+        let post: Vec<String> = on
+            .iter()
+            .filter(|s| !s.starts_with("pre:"))
+            .map(|s| s.to_string())
+            .collect();
+        Handler {
+            id: None,
+            pre,
+            post,
+            call: call.map(str::to_string),
+            action: match call {
+                Some(_) => None,
+                None => Some(ActionRef::Inline(out())),
+            },
+        }
+    }
 
     fn plugin(name: &str, on: &[&str]) -> Plugin {
         Plugin {
             def: PluginDef {
                 description: None,
                 name: name.into(),
-                on: on.iter().map(|s| s.to_string()).collect(),
                 scope: vec![Scope::Cli],
-                action: Action::Post {
-                    url: "https://example.test".into(),
-                    headers: Default::default(),
-                    body_env: Default::default(),
-                    timeout_ms: None,
-                },
-                script: None,
+                scripts: Vec::new(),
+                actions: Default::default(),
+                handlers: vec![handler(on, None)],
                 inputs: Vec::new(),
             },
             dir: std::path::PathBuf::from("/tmp/none"),
@@ -333,8 +423,12 @@ mod tests {
         }
     }
 
+    /// 스크립트 플러그인 — 줄 하나가 `h` 를 부르고, 스크립트는 `send("out", …)` 로 보낸다.
     fn scripted(name: &str, on: &[&str], src: &str) -> Plugin {
         let mut p = plugin(name, on);
+        p.def.scripts = vec!["main.rhai".into()];
+        p.def.actions.insert("out".into(), out());
+        p.def.handlers = vec![handler(on, Some("h"))];
         p.compiled = Some(Arc::new(
             crate::plugins::script::Script::compile_source(src).unwrap(),
         ));
@@ -360,6 +454,7 @@ mod tests {
         fn deliver(
             &self,
             _p: &Plugin,
+            _a: &Action,
             _e: &Event,
             _b: &serde_json::Value,
             _v: &std::collections::BTreeMap<String, String>,
@@ -374,6 +469,7 @@ mod tests {
         fn deliver(
             &self,
             _p: &Plugin,
+            _a: &Action,
             _e: &Event,
             _b: &serde_json::Value,
             _v: &std::collections::BTreeMap<String, String>,
@@ -410,6 +506,7 @@ mod tests {
             fn deliver(
                 &self,
                 p: &Plugin,
+                _a: &Action,
                 _e: &Event,
                 _b: &serde_json::Value,
                 _v: &std::collections::BTreeMap<String, String>,
@@ -473,6 +570,7 @@ mod tests {
             fn deliver(
                 &self,
                 p: &Plugin,
+                _a: &Action,
                 _e: &Event,
                 _b: &serde_json::Value,
                 _v: &std::collections::BTreeMap<String, String>,
@@ -516,6 +614,7 @@ mod tests {
             fn deliver(
                 &self,
                 _p: &Plugin,
+                _a: &Action,
                 _e: &Event,
                 _b: &serde_json::Value,
                 _v: &std::collections::BTreeMap<String, String>,
@@ -551,6 +650,7 @@ mod tests {
         fn deliver(
             &self,
             _p: &Plugin,
+            _a: &Action,
             _e: &Event,
             b: &serde_json::Value,
             _v: &std::collections::BTreeMap<String, String>,
@@ -560,13 +660,12 @@ mod tests {
         }
     }
 
-    /// **`should_send` 가 false 면 액션이 호출되지 않는다** — 구독은 했지만
-    /// 판단에서 걸러진다.
+    /// **함수가 아무것도 적지 않으면 아무것도 안 나간다** — 줄에 걸렸어도 판단에서 걸러진다.
     #[test]
     fn a_script_can_veto_a_subscribed_event() {
         let b = Arc::new(Body::default());
         let rt = PluginRuntime::new(
-            vec![scripted("veto", &["*"], "fn should_send(e) { false }")],
+            vec![scripted("veto", &["*"], "fn h(e) { if false { send(\"out\", e) } }")],
             b.clone(),
         );
         rt.dispatch(event(ev::QUEST_CREATED, Phase::Post));
@@ -575,7 +674,7 @@ mod tests {
         assert!(rt.problems().is_empty(), "정상 거름을 문제로 적었다");
     }
 
-    /// **`payload` 가 만든 모양이 그대로 전달된다.**
+    /// **스크립트가 `send` 에 넘긴 모양이 그대로 전달된다.**
     #[test]
     fn the_body_is_what_the_script_built() {
         let b = Arc::new(Body::default());
@@ -583,7 +682,7 @@ mod tests {
             vec![scripted(
                 "shape",
                 &["*"],
-                r#"fn payload(e) { #{ kind: e.event, mine: 42 } }"#,
+                r#"fn h(e) { send("out", #{ kind: e.event, mine: 42 }) }"#,
             )],
             b.clone(),
         );
@@ -595,7 +694,7 @@ mod tests {
         assert_eq!(got[0]["mine"], 42);
     }
 
-    /// 스크립트가 없으면 이벤트 JSON 이 그대로 간다.
+    /// 줄에 동작을 바로 적으면 이벤트 JSON 이 그대로 간다.
     #[test]
     fn without_a_script_the_event_json_is_the_body() {
         let b = Arc::new(Body::default());
@@ -612,7 +711,7 @@ mod tests {
         let b = Arc::new(Body::default());
         let rt = PluginRuntime::new(
             vec![
-                scripted("bad", &["*"], r#"fn should_send(e) { throw "터짐" }"#),
+                scripted("bad", &["*"], r#"fn h(e) { throw "터짐" }"#),
                 plugin("good", &["*"]),
             ],
             b.clone(),
@@ -637,7 +736,7 @@ mod tests {
                 scripted(
                     "loop",
                     &["*"],
-                    "fn should_send(e) { let i = 0; loop { i += 1; } }",
+                    "fn h(e) { let i = 0; loop { i += 1; } }",
                 ),
                 plugin("good", &["*"]),
             ],
@@ -658,6 +757,7 @@ mod tests {
             fn deliver(
                 &self,
                 _p: &Plugin,
+                _a: &Action,
                 _e: &Event,
                 _b: &serde_json::Value,
                 _v: &std::collections::BTreeMap<String, String>,
@@ -687,6 +787,7 @@ mod tests {
             fn deliver(
                 &self,
                 _p: &Plugin,
+                _a: &Action,
                 _e: &Event,
                 _b: &serde_json::Value,
                 _v: &std::collections::BTreeMap<String, String>,
@@ -714,6 +815,7 @@ mod tests {
             fn deliver(
                 &self,
                 _p: &Plugin,
+                _a: &Action,
                 _e: &Event,
                 _b: &serde_json::Value,
                 _v: &std::collections::BTreeMap<String, String>,
@@ -730,5 +832,89 @@ mod tests {
             "안 끝났는데 끝났다고 했다"
         );
         assert!(t.elapsed() < Duration::from_secs(1), "유예를 넘겨 기다렸다");
+    }
+
+    /// DEV-403: **한 플러그인이 이벤트마다 다른 일을 한다** — 줄은 적힌 순서대로, 걸린 것만.
+    #[test]
+    fn one_plugin_does_different_things_per_event_in_written_order() {
+        #[derive(Default)]
+        struct Where(Mutex<Vec<String>>);
+        impl Delivery for Where {
+            fn deliver(
+                &self,
+                _p: &Plugin,
+                a: &Action,
+                _e: &Event,
+                b: &serde_json::Value,
+                _v: &std::collections::BTreeMap<String, String>,
+            ) -> Result<(), String> {
+                let Action::Post { url, .. } = a else { panic!() };
+                self.0.lock().unwrap().push(format!("{url} {}", b["n"]));
+                Ok(())
+            }
+        }
+        let post = |u: &str| Action::Post {
+            url: u.into(),
+            headers: Default::default(),
+            body_env: Default::default(),
+            timeout_ms: None,
+        };
+        let mut p = plugin("multi", &["quest.created"]);
+        p.def.scripts = vec!["main.rhai".into()];
+        p.def.actions.insert("slack".into(), post("https://slack.test"));
+        p.def.actions.insert("tg".into(), post("https://tg.test"));
+        p.def.handlers = vec![
+            handler(&["quest.created"], Some("first")),
+            Handler {
+                action: Some(ActionRef::Named("tg".into())),
+                ..handler(&["comment.added"], None)
+            },
+            handler(&["quest.*"], Some("second")),
+        ];
+        p.compiled = Some(Arc::new(
+            crate::plugins::script::Script::compile_source(
+                r#"
+                fn first(e)  { send("slack", #{ n: 1 }); send("tg", #{ n: 2 }) }
+                fn second(e) { send("slack", #{ n: 3 }) }
+            "#,
+            )
+            .unwrap(),
+        ));
+        let got = Arc::new(Where::default());
+        let rt = PluginRuntime::new(vec![p], got.clone());
+        rt.dispatch(event(ev::QUEST_CREATED, Phase::Post));
+        rt.dispatch(event(ev::COMMENT_ADDED, Phase::Post));
+        assert!(rt.drain(Duration::from_secs(5)));
+        assert_eq!(
+            got.0.lock().unwrap().clone(),
+            vec![
+                "https://slack.test 1",
+                "https://tg.test 2",
+                "https://slack.test 3",
+                "https://tg.test null",
+            ]
+        );
+        assert!(rt.problems().is_empty(), "{:?}", rt.problems());
+    }
+
+    /// 스크립트가 없는 이름을 부르거나, 보내기 동작을 `run` 으로 부르면 그 일만 기록하고 건너뛴다.
+    #[test]
+    fn a_command_for_a_missing_or_mismatched_action_is_recorded() {
+        let b = Arc::new(Body::default());
+        let rt = PluginRuntime::new(
+            vec![scripted(
+                "typo",
+                &["*"],
+                r#"fn h(e) { send("nope", 1); run("out", 2); send("out", 3) }"#,
+            )],
+            b.clone(),
+        );
+        rt.dispatch(event(ev::QUEST_CREATED, Phase::Post));
+        assert!(rt.drain(Duration::from_secs(5)));
+        assert_eq!(b.0.lock().unwrap().clone(), vec![serde_json::json!(3)]);
+        let probs = rt.problems();
+        assert_eq!(probs.len(), 2, "{probs:?}");
+        assert!(probs[0].contains("nope"), "{probs:?}");
+        assert!(probs[1].contains("post"), "{probs:?}");
     }
 }

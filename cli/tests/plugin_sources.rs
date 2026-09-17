@@ -27,11 +27,18 @@ impl Lab {
         }
         // 폴더 이름(hello-folder) ≠ 정의 이름(hello-log).
         std::fs::write(
-            base.join("mine/hello-folder/plugin.json"),
-            r#"{ "name": "hello-log", "description": "퀘스트가 생기면 한 줄 적는다.",
-                 "on": ["quest.created"], "scope": ["cli"],
-                 "action": { "run": { "command": "sh",
-                   "args": ["-c", "cat >> hello.log; echo >> hello.log"] } } }"#,
+            base.join("mine/hello-folder/plugin.toml"),
+            r#"
+name        = "hello-log"
+description = "퀘스트가 생기면 한 줄 적는다."
+scope       = ["cli"]
+
+[[handlers]]
+    post = ["quest.created"]
+    [handlers.action.run]
+        command = "sh"
+        args    = ["-c", "cat >> hello.log; echo >> hello.log"]
+"#,
         )
         .unwrap();
         let lab = Lab { base };
@@ -90,6 +97,13 @@ impl Drop for Lab {
     }
 }
 
+/// 아무것도 안 하는 `run` 줄 하나짜리 정의.
+fn mini(name: &str) -> String {
+    format!(
+        "name = \"{name}\"\nscope = [\"cli\"]\n\n[[handlers]]\npost = [\"quest.created\"]\n[handlers.action.run]\ncommand = \"sh\"\nargs = [\"-c\", \"true\"]\n"
+    )
+}
+
 fn find_file(dir: &Path, name: &str) -> Option<PathBuf> {
     for e in std::fs::read_dir(dir).ok()?.flatten() {
         let p = e.path();
@@ -146,7 +160,7 @@ fn a_plugin_from_a_source_runs_in_place_and_leaves_cleanly() {
     lab.ok(&["plugin", "remove", "hello-log"]);
     let after = lab.json(&["plugin", "list"]);
     assert!(names(&after, "active").is_empty());
-    assert!(lab.source().join("hello-folder/plugin.json").is_file(), "원본을 지웠다");
+    assert!(lab.source().join("hello-folder/plugin.toml").is_file(), "원본을 지웠다");
 }
 
 #[test]
@@ -165,9 +179,8 @@ fn removing_one_single_folder_source_keeps_the_other() {
     let other = lab.base.join("other");
     std::fs::create_dir_all(&other).unwrap();
     std::fs::write(
-        other.join("plugin.json"),
-        r#"{ "name": "other-log", "on": ["quest.created"], "scope": ["cli"],
-             "action": { "run": { "command": "sh", "args": ["-c", "true"] } } }"#,
+        other.join("plugin.toml"),
+        mini("other-log"),
     )
     .unwrap();
     let one = lab.source().join("hello-folder").display().to_string();
@@ -205,7 +218,7 @@ fn a_name_that_exists_in_the_guild_is_refused_from_a_source() {
     let lab = Lab::new("clash");
     let dir = lab.guild().join(".guild/plugins/hello-log");
     std::fs::create_dir_all(&dir).unwrap();
-    std::fs::copy(lab.source().join("hello-folder/plugin.json"), dir.join("plugin.json")).unwrap();
+    std::fs::copy(lab.source().join("hello-folder/plugin.toml"), dir.join("plugin.toml")).unwrap();
     let src = lab.source().display().to_string();
     lab.ok(&["plugin", "source", "add", &src]);
     lab.ok(&["plugin", "add", "hello-log@mine"]);
@@ -229,9 +242,8 @@ fn a_folder_with_several_plugins_is_only_registered() {
     let two = lab.source().join("second");
     std::fs::create_dir_all(&two).unwrap();
     std::fs::write(
-        two.join("plugin.json"),
-        r#"{ "name": "second-log", "on": ["quest.created"], "scope": ["cli"],
-             "action": { "run": { "command": "sh", "args": ["-c", "true"] } } }"#,
+        two.join("plugin.toml"),
+        mini("second-log"),
     )
     .unwrap();
     let src = lab.source().display().to_string();

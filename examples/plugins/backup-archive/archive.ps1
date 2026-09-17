@@ -3,7 +3,7 @@
 # This file is ASCII on purpose: Windows PowerShell 5.1 reads a script without a
 # BOM in the system code page, so non-ASCII text here could break the parse.
 #
-# stdin: the payload from transform.rhai - the snapshot path as a JSON string.
+# stdin: what main.rhai passed to run("archive", ...) - the snapshot path as a JSON string.
 # The working directory is the plugin data folder, not this folder (BUG-279).
 # Settings (ARCHIVE_DIR, ...) arrive as environment variables.
 $ErrorActionPreference = 'Stop'

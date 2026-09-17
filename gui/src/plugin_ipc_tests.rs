@@ -59,10 +59,9 @@ fn tmp(label: &str) -> std::path::PathBuf {
 fn write_plugin(dir: &std::path::Path, name: &str) {
     std::fs::create_dir_all(dir).unwrap();
     std::fs::write(
-        dir.join("plugin.json"),
+        dir.join("plugin.toml"),
         format!(
-            r#"{{ "name": "{name}", "on": ["quest.created"], "scope": ["gui"],
-                  "action": {{ "post": {{ "url": "https://example.test/hook" }} }} }}"#
+            "name = \"{name}\"\nscope = [\"gui\"]\n\n[[handlers]]\npost = [\"quest.created\"]\n[handlers.action.post]\nurl = \"https://example.test/hook\"\n"
         ),
     )
     .unwrap();
@@ -132,7 +131,7 @@ fn plugin_source_commands_work_over_ipc() {
     assert!(err.as_str().is_some_and(|m| !m.is_empty()), "{err}");
 
     // 다시 읽기 — 디스크에서 지운 정의는 다시 읽은 뒤 빠진다.
-    std::fs::remove_file(src.join("one/plugin.json")).unwrap();
+    std::fs::remove_file(src.join("one/plugin.toml")).unwrap();
     assert!(events.events.has_sink(), "다시 읽기 전인데 벌써 빠졌다(자동 감지 없음)");
     let st = call(&w, "plugin_reload", json!({})).unwrap();
     assert!(names(&st).is_empty(), "{st}");

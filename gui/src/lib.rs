@@ -1217,10 +1217,9 @@ mod tests {
         let d = guild.join(".guild/plugins").join(name);
         std::fs::create_dir_all(&d).unwrap();
         std::fs::write(
-            d.join("plugin.json"),
+            d.join("plugin.toml"),
             format!(
-                r#"{{ "name": "{name}", "on": ["quest.created"], "scope": ["{scope}"],
-                      "action": {{ "post": {{ "url": "https://example.test/hook" }} }} }}"#
+                "name = \"{name}\"\nscope = [\"{scope}\"]\n\n[[handlers]]\npost = [\"quest.created\"]\n[handlers.action.post]\nurl = \"https://example.test/hook\"\n"
             ),
         )
         .unwrap();

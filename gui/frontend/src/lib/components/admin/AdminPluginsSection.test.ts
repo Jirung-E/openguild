@@ -50,9 +50,19 @@ function plugin(name: string, description: string | null): PluginView {
 		description,
 		on: ['quest.created'],
 		scope: ['gui'],
-		action: 'post',
-		target: 'https://example.test/hook',
-		script: null,
+		handlers: [
+			{
+				label: '1번째 줄',
+				stage: 'post',
+				events: ['quest.created'],
+				call: null,
+				action: null,
+				action_kind: 'post',
+				action_target: 'https://example.test/hook'
+			}
+		],
+		actions: [],
+		scripts: [],
 		data_dir: null,
 		inputs: [],
 		script_src: null,
@@ -107,6 +117,64 @@ describe('REQ-020 설정 화면의 플러그인 설명', () => {
 	});
 });
 
+// DEV-403: 줄 목록과 내보내는 곳이 **화면에 실제로** 나온다 — 허용할 때 무엇에 동의하는지다.
+describe('DEV-403 줄 목록', () => {
+	beforeEach(() => {
+		status.mockReset();
+		manageable.mockReturnValue(false);
+	});
+
+	it('줄마다 언제 → 무엇이, 이름 붙인 동작은 대상과 함께 보인다', async () => {
+		const p: PluginView = {
+			...plugin('tg', null),
+			handlers: [
+				{
+					label: '상태 알림',
+					stage: 'post',
+					events: ['quest.status_changed'],
+					call: 'on_status',
+					action: null,
+					action_kind: null,
+					action_target: null
+				},
+				{
+					label: '삭제 기록',
+					stage: 'pre',
+					events: ['quest.deleted'],
+					call: null,
+					action: 'log',
+					action_kind: null,
+					action_target: null
+				}
+			],
+			actions: [{ name: 'telegram', kind: 'post', target: 'https://api.telegram.org/x' }]
+		};
+		status.mockResolvedValue(statusWith([p]));
+		await openPluginsTab();
+		await screen.findByText('tg');
+		const lines = Array.from(document.querySelectorAll('.plugin-lines li')).map((li) =>
+			li.textContent?.replace(/\s+/g, ' ').trim()
+		);
+		expect(lines).toEqual([
+			'바뀐 뒤 quest.status_changed → on_status() 상태 알림',
+			'바뀌기 전 quest.deleted → log 삭제 기록'
+		]);
+		expect(document.querySelector('.plugin-dests')?.textContent).toContain(
+			'https://api.telegram.org/x'
+		);
+	});
+
+	it('줄에 바로 적은 동작은 종류와 대상이 보인다', async () => {
+		status.mockResolvedValue(statusWith([plugin('plain', null)]));
+		await openPluginsTab();
+		await screen.findByText('plain');
+		expect(document.querySelector('.plugin-lines li')?.textContent).toContain(
+			'post https://example.test/hook'
+		);
+		expect(document.querySelector('.plugin-dests')).toBeNull();
+	});
+});
+
 // BUG-277: 버튼의 **보이는 문구**와 **들리는 이름**은 다른 것이다.
 //
 // DEV-383 이 "버튼 이름이 전부 같음" 을 지적했을 때 보이는 텍스트에 플러그인
@@ -150,7 +218,7 @@ describe('BUG-277 버튼 이름은 aria-label 로만 구분한다', () => {
 	it('스크립트 펼침 버튼도 마찬가지다', async () => {
 		const withScript = {
 			...plugin('has-script', null),
-			script: 'transform.rhai',
+			scripts: ['main.rhai'],
 			script_src: 'fn should_send(e) { true }'
 		};
 		status.mockResolvedValue(manageableStatus([withScript]));
@@ -219,7 +287,7 @@ describe('DEV-400 플러그인 추가·소스', () => {
 		granted,
 		source: 'mine',
 		dir: `/Users/me/mine/${name}`,
-		script: 'transform.rhai',
+		scripts: ['main.rhai'],
 		script_src: `// ${name} script`
 	});
 	const srcList = (used: boolean): PluginSource[] => [

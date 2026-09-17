@@ -1,0 +1,35 @@
+# 토론 댓글을 내 서비스(AI 등)로 보낸다 — 선택상자(select) 설정의 예.
+
+name        = "discussion-to-ai"
+description = "토론 댓글을 내 서비스(AI 등)로 보냅니다. 무엇을 보낼지는 설정에서 고릅니다."
+scope       = ["cli", "gui", "server"]
+scripts     = ["main.rhai"]
+
+[actions.ai.post]
+    url        = "https://my-service.example/discussion"
+    headers    = { Authorization = "Bearer ${DISCUSSION_WEBHOOK_TOKEN}" }
+    timeout_ms = 8000
+
+# 한 번 해결한 토론이 다시 열리는 것(comment.unresolved)도 "답이 필요한 상태" 다.
+[[handlers]]
+    id   = "토론 전달"
+    post = ["comment.added", "comment.unresolved"]
+    call = "forward"
+
+[[inputs]]
+    key    = "DISCUSSION_WEBHOOK_TOKEN"
+    label  = "웹훅 토큰"
+    secret = true
+    help   = "받는 쪽 서비스가 발급한 값. Authorization 헤더로 나갑니다."
+
+[[inputs]]
+    key     = "WHAT"
+    label   = "보낼 대상"
+    type    = "select"
+    default = "unresolved"
+    help    = "AI 를 부르는 훅이면 범위가 곧 비용입니다."
+    options = [
+        { value = "unresolved", label = "미해결 토론만" },
+        { value = "discussion", label = "토론 댓글 전부" },
+        { value = "all",        label = "모든 댓글" },
+    ]

@@ -63,26 +63,23 @@ impl Delivery for Outbound {
     fn deliver(
         &self,
         plugin: &Plugin,
+        action: &Action,
         event: &Event,
         body: &Value,
         values: &BTreeMap<String, String>,
     ) -> Result<(), String> {
         // DEV-401: 이 플러그인이 일으키는 변경에 붙일 "누가 일으켰나" — 받은 목록 + 자기 이름.
         let next = event.origin.then(&plugin.def.name);
-        match &plugin.def.action {
-            Action::Post { .. } => self.post(plugin, body, values, &next),
+        match action {
+            Action::Post { .. } => self.post(action, body, values, &next),
             Action::Run { .. } => {
                 // BUG-294: 이 OS 에 적힌 명령이 있으면 그것.
-                let (command, args) = plugin
-                    .def
-                    .action
-                    .run_command()
-                    .expect("run 동작이다");
+                let (command, args) = action.run_command().expect("run 동작이다");
                 run(
                     plugin,
                     command,
                     args,
-                    plugin.def.action.timeout(),
+                    action.timeout(),
                     body,
                     values,
                     &next,
@@ -95,7 +92,7 @@ impl Delivery for Outbound {
 impl Outbound {
     fn post(
         &self,
-        plugin: &Plugin,
+        action: &Action,
         body: &Value,
         values: &BTreeMap<String, String>,
         origin: &crate::events::origin::Origin,
@@ -105,11 +102,11 @@ impl Outbound {
             headers,
             body_env,
             ..
-        } = &plugin.def.action
+        } = action
         else {
             return Err("post 동작이 아닙니다".into());
         };
-        let timeout = plugin.def.action.timeout();
+        let timeout = action.timeout();
         // URL 과 헤더의 `${VAR}` 는 **보내기 직전에** 푼다. 정의에 리터럴을
         // 못 적게 해 둔 것([[DEV-375]])과 짝이다 — 값은 이 기계에만 있다.
         //
@@ -394,6 +391,30 @@ mod tests {
         Probe { url, got }
     }
 
+    /// 시험용 — 플러그인의 첫 줄에 적힌 동작으로 내보낸다.
+    trait DeliverFirst {
+        fn deliver_first(
+            &self,
+            p: &Plugin,
+            e: &Event,
+            b: &Value,
+            v: &BTreeMap<String, String>,
+        ) -> Result<(), String>;
+    }
+    impl DeliverFirst for Outbound {
+        fn deliver_first(
+            &self,
+            p: &Plugin,
+            e: &Event,
+            b: &Value,
+            v: &BTreeMap<String, String>,
+        ) -> Result<(), String> {
+            let r = p.def.handlers[0].action.as_ref().unwrap();
+            let a = p.def.action_of(r).unwrap();
+            self.deliver(p, a, e, b, v)
+        }
+    }
+
     fn plugin(action: Action, dir: std::path::PathBuf) -> Plugin {
         plugin_in(action, dir.clone(), dir)
     }
@@ -407,10 +428,16 @@ mod tests {
             def: PluginDef {
                 description: None,
                 name: "p".into(),
-                on: vec!["quest.created".into()],
                 scope: vec![Scope::Cli],
-                action,
-                script: None,
+                scripts: Vec::new(),
+                actions: Default::default(),
+                handlers: vec![crate::plugins::Handler {
+                    id: None,
+                    pre: Vec::new(),
+                    post: vec!["quest.created".into()],
+                    call: None,
+                    action: Some(crate::plugins::ActionRef::Inline(action)),
+                }],
                 inputs: Vec::new(),
             },
             dir,
@@ -518,7 +545,7 @@ mod tests {
             d.clone(),
         );
         Outbound::new()
-            .deliver(&p, &event(), &body(), &Default::default())
+            .deliver_first(&p, &event(), &body(), &Default::default())
             .unwrap();
 
         let got = pr.got.lock().unwrap().clone();
@@ -565,7 +592,7 @@ mod tests {
             d.clone(),
         );
         Outbound::new()
-            .deliver(&p, &event(), &body(), &Default::default())
+            .deliver_first(&p, &event(), &body(), &Default::default())
             .unwrap();
         assert!(
             pr.got.lock().unwrap()[0].contains("Bearer s3cret"),
@@ -597,7 +624,7 @@ mod tests {
             d.clone(),
         );
         let e = Outbound::new()
-            .deliver(&p, &event(), &body(), &Default::default())
+            .deliver_first(&p, &event(), &body(), &Default::default())
             .unwrap_err();
         assert!(e.contains("OG_TEST_DELIVERY_ABSENT"), "{e}");
         assert!(pr.got.lock().unwrap().is_empty(), "빈 키로 보내 버렸다");
@@ -622,7 +649,7 @@ mod tests {
             d.clone(),
         );
         let e = Outbound::new()
-            .deliver(&p, &event(), &body(), &Default::default())
+            .deliver_first(&p, &event(), &body(), &Default::default())
             .unwrap_err();
         assert!(e.contains("보내지 못했습니다"), "{e}");
         let _ = std::fs::remove_dir_all(&d);
@@ -644,7 +671,7 @@ mod tests {
         );
         let t = Instant::now();
         let e = Outbound::new()
-            .deliver(&p, &event(), &body(), &Default::default())
+            .deliver_first(&p, &event(), &body(), &Default::default())
             .unwrap_err();
         assert!(
             t.elapsed() < Duration::from_secs(5),
@@ -708,7 +735,7 @@ mod tests {
             d.clone(),
         );
         let e = Outbound::new()
-            .deliver(&p, &event(), &body(), &Default::default())
+            .deliver_first(&p, &event(), &body(), &Default::default())
             .unwrap_err();
         assert!(e.contains("500"), "{e}");
         let _ = std::fs::remove_dir_all(&d);
@@ -729,7 +756,7 @@ mod tests {
             os: Default::default(),
         });
         Outbound::new()
-            .deliver(&p, &event(), &body(), &Default::default())
+            .deliver_first(&p, &event(), &body(), &Default::default())
             .unwrap();
         let got = std::fs::read_to_string(lab.data().join("got.json")).unwrap();
         assert_eq!(
@@ -766,7 +793,7 @@ mod tests {
             },
         });
         Outbound::new()
-            .deliver(&p, &event(), &body(), &Default::default())
+            .deliver_first(&p, &event(), &body(), &Default::default())
             .unwrap();
         assert!(lab.data().join("os.json").is_file(), "이 OS 의 명령이 안 돌았다");
     }
@@ -787,7 +814,7 @@ mod tests {
         e.origin = crate::events::origin::Origin::from_chain(["먼저"]);
         let mut values = BTreeMap::new();
         values.insert(crate::events::origin::ENV.to_string(), "[\"위조\"]".to_string());
-        Outbound::new().deliver(&p, &e, &body(), &values).unwrap();
+        Outbound::new().deliver_first(&p, &e, &body(), &values).unwrap();
         let got = std::fs::read_to_string(lab.data().join("chain.txt")).unwrap();
         let chain = crate::events::origin::Origin::parse(&got);
         assert_eq!(chain.chain(), ["먼저".to_string(), p.def.name.clone()], "{got}");
@@ -816,7 +843,7 @@ mod tests {
         });
         let t = Instant::now();
         let e = Outbound::new()
-            .deliver(&p, &event(), &body(), &Default::default())
+            .deliver_first(&p, &event(), &body(), &Default::default())
             .unwrap_err();
         assert!(
             t.elapsed() < Duration::from_secs(5),
@@ -855,7 +882,7 @@ mod tests {
             os: Default::default(),
         });
         Outbound::new()
-            .deliver(&p, &event(), &body(), &Default::default())
+            .deliver_first(&p, &event(), &body(), &Default::default())
             .unwrap();
         assert_eq!(
             std::fs::read_to_string(lab.data().join("got.txt")).unwrap(),
@@ -886,8 +913,7 @@ mod tests {
             d.clone(),
         );
         Outbound::new()
-            .deliver(
-                &p,
+            .deliver_first(&p,
                 &event(),
                 &serde_json::json!({ "text": "왔다" }),
                 &Default::default(),
@@ -921,8 +947,7 @@ mod tests {
             d.clone(),
         );
         Outbound::new()
-            .deliver(
-                &p,
+            .deliver_first(&p,
                 &event(),
                 &serde_json::json!({ "text": "경로는 ${HOME} 입니다" }),
                 &Default::default(),
@@ -951,7 +976,7 @@ mod tests {
         let mut values = BTreeMap::new();
         values.insert("ARCHIVE_DIR".to_string(), "/tmp/보관".to_string());
         Outbound::new()
-            .deliver(&p, &event(), &body(), &values)
+            .deliver_first(&p, &event(), &body(), &values)
             .unwrap();
         assert_eq!(
             std::fs::read_to_string(lab.data().join("got.txt")).unwrap(),
@@ -972,7 +997,7 @@ mod tests {
         let mut values = BTreeMap::new();
         values.insert("OPENGUILD_PLUGIN_DIR".to_string(), "/tmp/가짜".to_string());
         Outbound::new()
-            .deliver(&p, &event(), &body(), &values)
+            .deliver_first(&p, &event(), &body(), &values)
             .unwrap();
         assert_eq!(
             std::fs::read_to_string(lab.data().join("got.txt")).unwrap(),
@@ -994,7 +1019,7 @@ mod tests {
             os: Default::default(),
         });
         let e = Outbound::new()
-            .deliver(&p, &event(), &body(), &Default::default())
+            .deliver_first(&p, &event(), &body(), &Default::default())
             .unwrap_err();
         assert!(e.contains("OG_TEST_RUN_ABSENT"), "{e}");
     }
@@ -1017,7 +1042,7 @@ mod tests {
         });
         let t = Instant::now();
         let e = Outbound::new()
-            .deliver(&p, &event(), &big, &Default::default())
+            .deliver_first(&p, &event(), &big, &Default::default())
             .unwrap_err();
         assert!(
             t.elapsed() < Duration::from_secs(5),
@@ -1060,7 +1085,7 @@ mod tests {
             d.clone(),
         );
         let e = Outbound::new()
-            .deliver(&p, &event(), &body(), &Default::default())
+            .deliver_first(&p, &event(), &body(), &Default::default())
             .unwrap_err();
         assert!(e.contains("500"), "{e}");
         let _ = std::fs::remove_dir_all(&d);
@@ -1086,7 +1111,7 @@ mod tests {
             os: Default::default(),
         });
         let e = Outbound::new()
-            .deliver(&p, &event(), &body(), &Default::default())
+            .deliver_first(&p, &event(), &body(), &Default::default())
             .unwrap_err();
         assert!(e.contains("중단"), "{e}");
 
@@ -1112,7 +1137,7 @@ mod tests {
             os: Default::default(),
         });
         let e = Outbound::new()
-            .deliver(&p, &event(), &body(), &Default::default())
+            .deliver_first(&p, &event(), &body(), &Default::default())
             .unwrap_err();
         assert!(e.contains("3"), "{e}");
     }
@@ -1129,7 +1154,7 @@ mod tests {
             os: Default::default(),
         });
         let e = Outbound::new()
-            .deliver(&p, &event(), &body(), &Default::default())
+            .deliver_first(&p, &event(), &body(), &Default::default())
             .unwrap_err();
         assert!(e.contains("띄우지 못했습니다"), "{e}");
     }

@@ -132,9 +132,9 @@ fn declared_name(dir: &Path) -> String {
             .unwrap_or("plugin")
             .to_string()
     };
-    std::fs::read_to_string(dir.join("plugin.json"))
+    std::fs::read_to_string(dir.join(super::MANIFEST))
         .ok()
-        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .and_then(|s| toml::from_str::<toml::Value>(&s).ok())
         .and_then(|v| v.get("name")?.as_str().map(str::to_string))
         .filter(|n| !n.trim().is_empty())
         .unwrap_or_else(fallback)
@@ -151,10 +151,10 @@ fn entry_at(dir: &Path, folder: String) -> SourcePlugin {
 /// 소스 자체가 플러그인 폴더일 때의 `folder` 값.
 const SELF_FOLDER: &str = ".";
 
-/// 폴더 안에서 플러그인 폴더들을 찾는다 — `plugin.json` 이 있는 하위 폴더.
+/// 폴더 안에서 플러그인 폴더들을 찾는다 — `plugin.toml` 이 있는 하위 폴더.
 /// 폴더 자체가 플러그인이면 그것 하나.
 pub fn plugins_in(dir: &Path) -> std::io::Result<Vec<SourcePlugin>> {
-    if dir.join("plugin.json").is_file() {
+    if dir.join(super::MANIFEST).is_file() {
         // DEV-399: 예전엔 폴더 이름을 적어 두어, 쓸 때 `소스/폴더이름` 으로 **한 번 더** 이어
         // 붙이는 바람에 "소스에 없다" 로 실패했다(실제 바이너리 시험이 잡았다).
         return Ok(vec![entry_at(dir, SELF_FOLDER.to_string())]);
@@ -162,7 +162,7 @@ pub fn plugins_in(dir: &Path) -> std::io::Result<Vec<SourcePlugin>> {
     let mut found: Vec<SourcePlugin> = std::fs::read_dir(dir)?
         .flatten()
         .map(|e| e.path())
-        .filter(|p| p.join("plugin.json").is_file())
+        .filter(|p| p.join(super::MANIFEST).is_file())
         .filter_map(|p| {
             let folder = p.file_name()?.to_str()?.to_string();
             Some(entry_at(&p, folder))
@@ -196,8 +196,8 @@ pub fn list() -> Vec<SourceView> {
             let (problem, plugins) = match plugins_in(&path) {
                 Ok(v) if v.is_empty() => (
                     Some(crate::tf!(
-                        "플러그인을 찾지 못했습니다(plugin.json 이 있는 폴더가 없음)",
-                        "no plugins found (no folder with plugin.json)"
+                        "플러그인을 찾지 못했습니다(plugin.toml 이 있는 폴더가 없음)",
+                        "no plugins found (no folder with plugin.toml)"
                     )),
                     v,
                 ),
@@ -252,8 +252,8 @@ pub fn add_source(guild_root: &Path, dir: &Path, name: Option<&str>) -> AppResul
     })?;
     if found.is_empty() {
         return Err(AppError::BadRequest(crate::tf!(
-            "플러그인이 없습니다 — plugin.json 이 있는 폴더가 하나도 없습니다: {}",
-            "no plugins there — not a single folder with plugin.json: {}",
+            "플러그인이 없습니다 — plugin.toml 이 있는 폴더가 하나도 없습니다: {}",
+            "no plugins there — not a single folder with plugin.toml: {}",
             dir.display()
         )));
     }
@@ -327,7 +327,7 @@ pub fn use_plugin(guild_root: &Path, source: &str, folder: &str) -> AppResult<()
             )));
         };
         let dir = PathBuf::from(dir).join(&folder);
-        if !dir.join("plugin.json").is_file() {
+        if !dir.join(super::MANIFEST).is_file() {
             return Err(AppError::NotFound(crate::tf!(
                 "그 소스에 없는 플러그인입니다: {folder}",
                 "not in that source: {folder}"
@@ -402,7 +402,7 @@ pub fn used_dirs(guild_root: &Path) -> (Vec<UsedDir>, Vec<UsedProblem>) {
             )),
             Some(dir) => {
                 let p = PathBuf::from(dir).join(&u.folder);
-                if p.join("plugin.json").is_file() {
+                if p.join(super::MANIFEST).is_file() {
                     dirs.push((u.source.clone(), p));
                 } else {
                     problems.push((

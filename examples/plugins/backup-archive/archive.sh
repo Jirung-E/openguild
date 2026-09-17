@@ -1,7 +1,7 @@
 #!/bin/sh
 # 백업 파일 한 개를 `ARCHIVE_DIR` 로 복사한다.
 #
-# stdin 으로는 `transform.rhai` 의 `payload` 가 온다 — 여기서는 스냅샷 **경로**
+# stdin 으로는 `main.rhai` 가 `run("archive", …)` 에 넘긴 값이 온다 — 스냅샷 **경로**
 # 한 줄(JSON 문자열이라 따옴표가 붙는다). 셸에서 JSON 을 파싱하지 않으려고
 # 스크립트 쪽에서 모양을 줄여 놓았다.
 #

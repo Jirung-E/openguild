@@ -6100,7 +6100,7 @@ fn install_plugins_for_cli(c: &Backend, json: bool) {
             )
         );
         for p in &loaded.needs_consent {
-            eprintln!("  - {} ({})", p.def.name, p.def.action.kind());
+            eprintln!("  - {} ({})", p.def.name, action_kinds(&p.def));
         }
         eprintln!(
             "{}",
@@ -6114,6 +6114,14 @@ fn install_plugins_for_cli(c: &Backend, json: bool) {
 
 /// 관리 명령은 길드 파일과 이 기계의 동의 파일만 본다 — 실행 scope 와 무관하게
 /// 전부 보여준다. GUI 전용 플러그인의 허용도 여기서 할 수 있어야 한다.
+/// DEV-403: 플러그인이 쓰는 동작 종류 — `post`, `run`, `post,run`.
+fn action_kinds(def: &openguild_core::plugins::PluginDef) -> String {
+    let mut kinds: Vec<&str> = def.all_actions().iter().map(|(_, a)| a.kind()).collect();
+    kinds.sort();
+    kinds.dedup();
+    kinds.join(",")
+}
+
 fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
     use openguild_core::plugins::{consent, load_all};
 
@@ -6427,16 +6435,22 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
                     "active": loaded.active.iter().map(|p| serde_json::json!({
                         "name": p.def.name,
                         "description": p.def.description,
-                        "on": p.def.on,
+                        "on": p.def.subscriptions(),
                         "scope": p.def.scope,
-                        "action": p.def.action.kind(),
-                        "script": p.def.script,
+                        // DEV-403: 한 플러그인이 여러 동작과 여러 줄을 갖는다.
+                        "actions": p.def.all_actions().iter()
+                            .map(|(n, a)| serde_json::json!({ "name": n, "kind": a.kind() }))
+                            .collect::<Vec<_>>(),
+                        "handlers": p.def.handlers.iter().enumerate()
+                            .map(|(i, h)| h.label(i))
+                            .collect::<Vec<_>>(),
+                        "scripts": p.def.scripts,
                         // DEV-399: 길드 것과 소스 것이 한 목록에 섞인다 — 출처를 싣는다.
                         "source": p.source,
                         "dir": p.dir.display().to_string(),
                         // 조회 명령이므로 **경로만** 만든다 — 목록을 보는 것만으로
                         // 폴더가 생기면 안 된다.
-                        "data_dir": matches!(p.def.action, openguild_core::plugins::Action::Run { .. })
+                        "data_dir": p.def.has_run()
                             .then(|| openguild_core::plugins::data_dir_path(&p.guild_root, &p.def.name)
                                 .ok().map(|d| d.display().to_string()))
                             .flatten(),
@@ -6461,8 +6475,8 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
                 println!(
                     "{}",
                     tf!(
-                        "(플러그인 없음 — .guild/plugins/{{이름}}/plugin.json 으로 정의합니다)",
-                        "(no plugins — define one at .guild/plugins/{{name}}/plugin.json)"
+                        "(플러그인 없음 — .guild/plugins/{{이름}}/plugin.toml 로 정의합니다)",
+                        "(no plugins — define one at .guild/plugins/{{name}}/plugin.toml)"
                     )
                 );
                 return Ok(());
@@ -6478,8 +6492,8 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
                     "✓ {}  [{}]  {} → {}{}",
                     p.def.name,
                     scopes.join(","),
-                    p.def.on.join(" "),
-                    p.def.action.kind(),
+                    p.def.subscriptions().join(" "),
+                    action_kinds(&p.def),
                     // DEV-399: 길드 밖에서 온 것은 어디서 왔는지 보여야 한다.
                     p.source
                         .as_deref()
@@ -6518,11 +6532,13 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
             if !yes {
                 // **보지 않은 것에 동의할 수는 없다** — 무엇이 어디로 가는지 목록으로 보인다.
                 for p in &every {
+                    let actions: std::collections::BTreeMap<String, &openguild_core::plugins::Action> =
+                        p.def.all_actions().into_iter().collect();
                     println!(
                         "{}  {:?}  {}",
                         p.def.name,
                         p.def.scope,
-                        serde_json::to_string(&p.def.action)?
+                        serde_json::to_string(&actions)?
                     );
                 }
                 println!(
@@ -6558,9 +6574,10 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
             };
             if !yes {
                 // **보지 않은 것에 동의할 수는 없다.** 정의와 스크립트를 먼저 보인다.
-                println!("{}", serde_json::to_string_pretty(&p.def)?);
+                // DEV-403: 정의 파일과 같은 TOML 로 보인다 — 작성자가 쓴 모양 그대로.
+                println!("{}", openguild_core::plugins::def_to_toml(&p.def));
                 if let Some(src) = &p.script_src {
-                    println!("\n--- {} ---", p.def.script.as_deref().unwrap_or("script"));
+                    println!("\n--- {} ---", p.def.scripts.join(", "));
                     println!("{src}");
                 }
                 println!(
@@ -11405,13 +11422,16 @@ mod tests {
         let pd = dir.join(".guild/plugins/ai-notify");
         std::fs::create_dir_all(&pd).unwrap();
         std::fs::write(
-            pd.join("plugin.json"),
-            r#"{
-              "name": "ai-notify",
-              "on": ["quest.created"],
-              "scope": ["gui"],
-              "action": { "post": { "url": "https://example.test/hook" } }
-            }"#,
+            pd.join("plugin.toml"),
+            r#"
+name  = "ai-notify"
+scope = ["gui"]
+
+[[handlers]]
+    post = ["quest.created"]
+    [handlers.action.post]
+        url = "https://example.test/hook"
+"#,
         )
         .unwrap();
         (dir, home)
@@ -11539,6 +11559,7 @@ mod tests {
             fn deliver(
                 &self,
                 _p: &openguild_core::plugins::Plugin,
+                _a: &openguild_core::plugins::Action,
                 _e: &openguild_core::events::Event,
                 _b: &serde_json::Value,
                 _v: &std::collections::BTreeMap<String, String>,

@@ -14,7 +14,7 @@
 //! [`PluginStatus::manageable`] 이 false 면 프런트는 버튼 자체를 안 그리고,
 //! 서버는 애초에 그 경로를 열지 않는다.
 
-use super::{Action, InputType, Plugin, Scope};
+use super::{Action, ActionRef, InputType, Plugin, Scope};
 use crate::error::AppResult;
 use serde::{Deserialize, Serialize};
 
@@ -24,14 +24,15 @@ pub struct PluginView {
     pub name: String,
     /// REQ-020: 정의가 적어 둔 사람 말 설명. 없을 수 있다 — 선택 필드다.
     pub description: Option<String>,
+    /// 모든 줄의 이벤트 패턴(바뀌기 전 단계는 `pre:` 를 붙인다).
     pub on: Vec<String>,
     pub scope: Vec<String>,
-    /// `post` | `run`
-    pub action: String,
-    /// `post` 의 목적지 또는 `run` 의 명령 — **무엇에 동의하는지**의 핵심.
+    /// DEV-403: 줄 목록 — 언제 → 무엇. 적힌 순서 그대로.
+    pub handlers: Vec<HandlerView>,
+    /// 이 플러그인이 내보낼 수 있는 곳 전부 — **무엇에 동의하는지**의 핵심.
     /// 정의에 적힌 그대로다(환경변수 참조는 안 푼다 — 값은 보여주지 않는다).
-    pub target: String,
-    pub script: Option<String>,
+    pub actions: Vec<ActionView>,
+    pub scripts: Vec<String>,
     /// BUG-279: `run` 훅이 파일을 쓰는 자리. `post` 는 작업 디렉터리가 없으므로
     /// `None` 이다 — 안 쓰는 경로를 보여주면 "여기 뭐가 생기나" 하고 찾게 된다.
     ///
@@ -50,6 +51,43 @@ pub struct PluginView {
     pub source: Option<String>,
     /// 그 폴더의 실제 경로 — 소스에서 온 것은 길드 밖이라 어디인지 알아야 한다.
     pub dir: String,
+}
+
+/// 핸들러 한 줄.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HandlerView {
+    /// `id`, 없으면 "N번째 줄".
+    pub label: String,
+    /// `pre` | `post`
+    pub stage: String,
+    pub events: Vec<String>,
+    /// 부르는 스크립트 함수.
+    pub call: Option<String>,
+    /// 바로 실행하는 동작 — 이름 붙인 것이면 그 이름, 줄에 적은 것이면 `None` 이고 대신
+    /// `action_kind`/`action_target` 이 찬다.
+    pub action: Option<String>,
+    pub action_kind: Option<String>,
+    pub action_target: Option<String>,
+}
+
+/// 동작 하나.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActionView {
+    pub name: String,
+    /// `post` | `run`
+    pub kind: String,
+    /// `post` 의 목적지 또는 `run` 의 명령(이 기계에서 실제로 띄울 것).
+    pub target: String,
+}
+
+fn action_target(a: &Action) -> String {
+    match a {
+        Action::Post { url, .. } => url.clone(),
+        Action::Run { .. } => {
+            let (command, args) = a.run_command().expect("run 동작이다");
+            format!("{command} {}", args.join(" ")).trim_end().to_string()
+        }
+    }
 }
 
 /// REQ-021: 입력 하나를 화면이 그릴 수 있는 모양으로.
@@ -114,32 +152,54 @@ impl PluginStatus {
 }
 
 pub(super) fn view(p: &Plugin, granted: bool, scope: Scope) -> PluginView {
-    let (action, target) = match &p.def.action {
-        Action::Post { url, .. } => ("post", url.clone()),
-        // BUG-294: 이 기계에서 실제로 띄울 것을 보여 준다 — 동의하는 대상이 그것이다.
-        Action::Run { .. } => {
-            let (command, args) = p.def.action.run_command().expect("run 동작이다");
-            (
-                "run",
-                format!("{command} {}", args.join(" "))
-                    .trim_end()
-                    .to_string(),
-            )
-        }
-    };
+    let handlers = p
+        .def
+        .handlers
+        .iter()
+        .enumerate()
+        .map(|(i, h)| {
+            let (action, action_kind, action_target) = match &h.action {
+                Some(ActionRef::Named(n)) => (Some(n.clone()), None, None),
+                Some(ActionRef::Inline(a)) => {
+                    (None, Some(a.kind().to_string()), Some(action_target(a)))
+                }
+                None => (None, None, None),
+            };
+            HandlerView {
+                label: h.label(i),
+                stage: if h.pre.is_empty() { "post" } else { "pre" }.into(),
+                events: h.patterns().to_vec(),
+                call: h.call.clone(),
+                action,
+                action_kind,
+                action_target,
+            }
+        })
+        .collect();
+    let actions = p
+        .def
+        .actions
+        .iter()
+        .map(|(name, a)| ActionView {
+            name: name.clone(),
+            kind: a.kind().into(),
+            target: action_target(a),
+        })
+        .collect();
     PluginView {
         name: p.def.name.clone(),
         description: p.def.description.clone(),
-        on: p.def.on.clone(),
+        on: p.def.subscriptions(),
         scope: p.def.scope.iter().map(scope_label).collect(),
-        action: action.into(),
-        target,
-        script: p.def.script.clone(),
-        data_dir: match &p.def.action {
-            Action::Run { .. } => super::data_dir_path(&p.guild_root, &p.def.name)
+        handlers,
+        actions,
+        scripts: p.def.scripts.clone(),
+        data_dir: if p.def.has_run() {
+            super::data_dir_path(&p.guild_root, &p.def.name)
                 .ok()
-                .map(|d| d.display().to_string()),
-            Action::Post { .. } => None,
+                .map(|d| d.display().to_string())
+        } else {
+            None
         },
         inputs: input_views(p),
         source: p.source.clone(),
