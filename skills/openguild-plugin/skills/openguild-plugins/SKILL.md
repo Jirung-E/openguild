@@ -18,6 +18,17 @@ Consent is **not** committed — it lives in `~/.openguild/plugin-consent.json` 
 each machine. A plugin arriving by `git pull` does not run until someone here
 allows it.
 
+**A plugin can also live outside the guild** — in a *source*, a folder holding
+several plugins (like a marketplace). The guild then uses it in place, without a
+copy:
+
+```bash
+openguild plugin source add ~/dev/my-plugins   # register the folder (this machine)
+openguild plugin add my-hook                   # use it in this guild
+```
+
+The folder layout inside a source is the same as `.guild/plugins/`.
+
 ## Work in this order
 
 Skipping to the JSON is the usual way to get this wrong. Each step below rules
@@ -26,6 +37,13 @@ out a class of plugin that cannot work.
 ### 1. What should happen, and where?
 
 Ask, or infer from what they said:
+
+- **Where the plugin lives.**
+  - `.guild/plugins/` — it belongs to this guild and teammates get it by `git pull`.
+  - A **source** folder — it is the user's own (a personal notifier, a backup
+    copier) or they want it in several guilds. Nothing is committed; each guild
+    that wants it runs `openguild plugin add <name>`. Editing the source changes
+    every guild that uses it at once.
 
 - **Which event.** Run `openguild plugin events` for the list. If nothing fits,
   say so — inventing a name silently produces a plugin that never fires.
@@ -66,7 +84,9 @@ around. If a value must be in the body and comes from the environment, it goes
 in `body_env`.
 
 For `run`, `${VAR}` is expanded in `command` and `args` too. A referenced
-variable that is not set is an error, never an empty string.
+variable that is not set is an error, never an empty string. Prefer reading
+values from the **environment** inside the program (below) over passing them
+in `args` — anything in `args` is visible in `ps`.
 
 ### 4. Say what it does — in one sentence
 
@@ -119,11 +139,15 @@ the user picks, and the value is available two ways at run time.
 | `options` | `select` only; `value` is stored, `label` is shown |
 | `help` | one line under the widget — say where to get the value |
 
-**Two ways to read it, and they are not interchangeable:**
+**Three ways to read it, and they are not interchangeable:**
 
 - `${KEY}` in `url`, `headers`, `body_env`, `command`, `args` — always a string.
 - `config("KEY")` in the script — **keeps its type**, so a checkbox is a real
   boolean and `if config("ON_COMMENT")` works.
+- For `run`, an **environment variable of the child** (`$KEY` in the shell
+  script) — the natural place for a `run` hook, which has no url or header.
+  `OPENGUILD_PLUGIN_DIR` / `OPENGUILD_PLUGIN_DATA_DIR` cannot be overridden by a
+  value with the same name.
 
 Resolution order is stored value → the process environment → `default`. That
 middle step is deliberate: a plain environment variable acts as the "same value
@@ -165,7 +189,9 @@ openguild plugin config <name>                        # what is set, secrets mas
 - **`scope` is required.** Omitting it fails the load.
 - **`on` names must exist.** A typo fails the load rather than silently never
   firing. `pre:` is only accepted for events that actually emit a pre phase.
-- **Names must be unique** across the guild's plugin folders.
+- **Names must be unique** across the guild's plugin folder **and** every source
+  the guild uses. A clash is refused at load — consent is stored by name, so two
+  plugins sharing one would share one consent.
 - **`description` is part of the consent fingerprint**, like everything else in
   the definition. Editing the wording asks the user again. That is intended —
   the description is what they read when they decided — but do not churn it.
@@ -188,6 +214,15 @@ openguild plugin config <name>                        # what is set, secrets mas
   thread; a CLI command gives it ~2s before exiting. A plugin that must finish
   should be `run` with a short program, not a slow HTTP call from the CLI.
 - **One plugin's failure never affects another**, or the guild.
+- **rhai backtick strings do not process escapes.** `` `a\nb` `` sends a literal
+  backslash-n (a Telegram message arrived with `\n` in it). Use `"\n"` in a
+  double-quoted string and join: `` `${e.quest.id}` + "\n" + e.quest.title ``.
+- **A `payload` can be a plain string.** For `run`, the program gets it as a JSON
+  string on stdin (`"/path/to/file"` — strip the quotes). Handy when the program
+  only needs one value and should not parse JSON.
+- **Shell hooks: `[ -e "$f" ] && exit 0` under `set -e` kills the script** when
+  the file does *not* exist — the list is the last command, not a condition. Use
+  `if [ -e "$f" ]; then exit 0; fi`.
 
 ## Filtering to specific quests
 
@@ -226,8 +261,8 @@ PY
 export OPENGUILD_HOME=/tmp/pluginlab/home   # consent goes here, not their real file
 mkdir -p /tmp/pluginlab && cd /tmp/pluginlab && openguild init --name lab
 
-# 3. the plugin, with the url pointed at the receiver
-cp -R <plugin folder> .guild/plugins/
+# 3. the plugin, with the url pointed at the receiver — use it in place, no copy
+openguild plugin add <plugin folder>
 openguild plugin trust --yes
 
 # 4. trigger it — and check the negative case too
@@ -262,9 +297,14 @@ In this order:
 
 ## Reference
 
-- Working examples to copy: `examples/plugins/` in the openguild repo —
-  `telegram-quest-status` (post + script + tag filter), `desktop-notify`
-  (run, no script), `deleted-audit` (run + observational `pre`).
+- Working examples in `examples/plugins/` of the openguild repo — the folder
+  itself works as a source (`openguild plugin source add <repo>/examples/plugins`):
+  - `telegram-quest-status` — post + script + tag filter + `inputs`
+  - `discussion-to-ai` — post + header secret + `select` input
+  - `desktop-notify` — run, no script
+  - `deleted-audit` — run + observational `pre`
+  - `backup-archive` — run on `backup.created`, `payload` returns a plain
+    string, `inputs` read as environment variables
 - Full field reference: the `openguild` skill's `reference/plugins.md`.
 - `openguild plugin events` for event names, `openguild plugin --help` for
   commands.

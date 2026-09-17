@@ -20,6 +20,18 @@ the latest snapshot, replays the journal through the inclusive UTC timestamp
 destructive `--at` replay, the current state is automatically saved as a new
 snapshot when the journal is non-empty.
 
+**Only the 7 newest snapshots are kept** (`.guild/backups/snapshots/`); making an
+8th deletes the oldest. To keep more, use the `backup-archive` example plugin —
+it hooks `backup.created` (manual and automatic backups both fire it) and copies
+each new snapshot to a folder of the user's choice, with no limit:
+
+```bash
+openguild plugin source add <openguild repo>/examples/plugins
+openguild plugin add backup-archive
+printf '%s' /path/to/archive | openguild plugin set backup-archive ARCHIVE_DIR
+openguild plugin allow backup-archive --yes
+```
+
 ## Safety guards
 
 | Guard | Behavior |
