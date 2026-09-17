@@ -231,6 +231,23 @@ openguild plugin untrust                 # 자동 허용 끄기 — 돌던 것�
 삭제 감사, 그리고 **백업 쌓아 두기**(`backup-archive` — 길드 안의 백업은 7개만 남지만 정해 둔
 폴더에는 제한 없이 모입니다).
 
+**길드 밖 폴더의 플러그인도 쓸 수 있습니다.** 플러그인 여럿을 담은 폴더를 **소스**로 등록하고,
+그중 이 길드에서 쓸 것을 고릅니다. 복사하지 않고 그 자리에서 읽으므로 원본을 고치면 바로
+반영되고(동의는 다시 묻습니다), 여러 길드가 같은 플러그인을 나눠 씁니다.
+
+```bash
+openguild plugin source add ~/dev/my-plugins   # 소스 등록 (이 기계)
+openguild plugin available                     # 소스들이 내놓는 것
+openguild plugin add backup-archive            # 이 길드에서 쓴다 (돌리려면 allow 가 따로 필요)
+openguild plugin add ~/dev/one-plugin          # 폴더 하나면 등록 + 사용까지 한 번에
+openguild plugin remove backup-archive         # 안 쓴다 — 파일은 안 지움
+openguild plugin source list / remove <이름>
+```
+
+`.guild/plugins/` 는 그대로 늘 읽힙니다 — 길드에 딸린 것이고 git 으로 공유됩니다. 소스와
+"이 길드에서 쓴다"는 기록은 이 기계(`~/.openguild/`)에만 남습니다. 길드 것과 소스 것의 이름이
+겹치면 적재에서 거부하고, 소스 폴더가 사라지면 이유와 함께 목록에 남습니다.
+
 데스크톱 앱에서는 **관리 → 플러그인** 에서 같은 일을 합니다.
 
 **목록은 웹에서도 보입니다** — 브라우저로 서버에 접속해 관리 → 플러그인 을 열면

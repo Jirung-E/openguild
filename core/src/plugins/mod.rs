@@ -26,6 +26,8 @@ pub mod consent;
 pub mod delivery;
 pub mod runtime;
 pub mod script;
+// DEV-399: 길드 밖 폴더에서도 가져다 쓴다 — 소스 등록 + 이 길드에서 쓰기.
+pub mod sources;
 #[cfg(test)]
 mod tests;
 pub mod values;
@@ -330,6 +332,9 @@ pub struct Plugin {
     /// 디렉터리로 삼고 도므로, 옆에 있는 `hook.py` 도 실행되는 코드다 —
     /// 지문이 그것까지 봐야 갈아끼우기가 안 통한다.
     pub folder: BTreeMap<String, String>,
+    /// DEV-399: 어디서 온 것인가 — `None` 이면 이 길드의 `.guild/plugins/`, `Some` 이면
+    /// 그 이름의 소스. 화면·CLI 가 출처를 보여 준다(같은 목록에 섞여 나오기 때문에).
+    pub source: Option<String>,
 }
 
 impl Plugin {
@@ -463,25 +468,38 @@ pub fn load_all(guild_root: &Path) -> Loaded {
 
 fn load_scoped(guild_root: &Path, scope: Option<Scope>) -> Loaded {
     let mut out = Loaded::default();
-    let dir = plugins_dir(guild_root);
-    let Ok(entries) = std::fs::read_dir(&dir) else {
-        return out;
-    };
     let granted = consent::load(guild_root).unwrap_or_default();
+
+    // DEV-399: 훑을 폴더 **한 목록** — 길드 폴더가 언제나 첫 항목이고, 그 뒤에 이 길드에서
+    // 쓰기로 한 소스 플러그인들이 온다. 갈래를 둘로 나누지 않는 이유: 정의를 git 으로 나누는
+    // 것이 이 설계의 축이라, 길드 폴더는 **등록 없이** 늘 읽혀야 한다.
+    let mut dirs: Vec<(Option<String>, PathBuf)> = match std::fs::read_dir(plugins_dir(guild_root)) {
+        Ok(entries) => {
+            let mut v: Vec<PathBuf> = entries
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| p.is_dir())
+                .collect();
+            v.sort(); // 적재 순서를 파일시스템 순서에 맡기지 않는다(재현 가능하게).
+            v.into_iter().map(|p| (None, p)).collect()
+        }
+        Err(_) => Vec::new(),
+    };
+    let (used, problems) = sources::used_dirs(guild_root);
+    for (name, reason) in problems {
+        out.errors.push((name, reason));
+    }
+    dirs.extend(used.into_iter().map(|(src, p)| (Some(src), p)));
+    if dirs.is_empty() && out.errors.is_empty() {
+        return out;
+    }
 
     // DEV-383: 같은 `name` 이 둘이면 동의도 화면도 그 이름으로 구분하는데 어느
     // 쪽인지 알 수 없다. 프런트의 `{#each}` 키도 이름이라 화면이 통째로 깨졌다.
     // 폴더를 복사하고 이름을 안 고치는 건 흔한 실수다 — 적재에서 걸러 준다.
     let mut seen_names: std::collections::HashSet<String> = std::collections::HashSet::new();
 
-    let mut dirs: Vec<_> = entries
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| p.is_dir())
-        .collect();
-    dirs.sort(); // 적재 순서를 파일시스템 순서에 맡기지 않는다(재현 가능하게).
-
-    for pdir in dirs {
+    for (source, pdir) in dirs {
         let manifest = pdir.join("plugin.json");
         let label = pdir
             .file_name()
@@ -501,12 +519,14 @@ fn load_scoped(guild_root: &Path, scope: Option<Scope>) -> Loaded {
                     continue;
                 }
                 if !seen_names.insert(def.name.clone()) {
+                    // DEV-399: 소스를 쓰면 길드 것과 이름이 겹치기 쉬워, 어느 경로인지까지 말한다.
                     out.errors.push((
                         label,
                         format!(
-                            "`name` 이 겹칩니다: {} — 폴더마다 다른 이름이어야 합니다\
+                            "`name` 이 겹칩니다: {} ({}) — 이름은 하나여야 합니다\
                              (동의도 화면도 이름으로 구분합니다).",
-                            def.name
+                            def.name,
+                            pdir.display()
                         ),
                     ));
                     continue;
@@ -527,6 +547,7 @@ fn load_scoped(guild_root: &Path, scope: Option<Scope>) -> Loaded {
                     compiled,
                     script_src,
                     folder: folder_fingerprint(&pdir),
+                    source: source.clone(),
                 };
                 if consent::is_granted(&granted, &plugin) {
                     out.active.push(plugin);

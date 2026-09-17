@@ -338,6 +338,23 @@ enum PluginCmd {
     },
     #[command(about = tf!("자동 허용 끄기 — 지금 돌던 것은 그대로 돌고, 앞으로 추가·변경되는 것은 묻는다.", "Turn off auto-allow — what runs now keeps running; later additions and changes ask again."))]
     Untrust,
+    // DEV-399: 길드 밖 폴더도 가져다 쓴다 — 복사하지 않고 그 자리에서 적재한다.
+    #[command(about = tf!("플러그인을 가져다 쓸 폴더(소스) — 등록 / 목록 / 해제.", "Folders to take plugins from (sources) — add / list / remove."))]
+    Source {
+        #[command(subcommand)]
+        sub: PluginSourceCmd,
+    },
+    #[command(about = tf!("등록한 소스들이 내놓는 플러그인 목록 — 이 길드에서 쓰는 것에 표시.", "Plugins offered by the registered sources — marks the ones this guild uses."))]
+    Available,
+    #[command(about = tf!("소스의 플러그인을 이 길드에서 쓴다. 폴더 경로를 주면 소스 등록까지 한 번에. (돌리려면 `allow` 가 따로 필요하다)", "Use a plugin from a source in this guild. Given a folder path, registers the source too. (Running it still needs `allow`.)"))]
+    Add {
+        #[arg(help = tf!("`이름` / `이름@소스` / 폴더 경로.", "`name`, `name@source`, or a folder path."))]
+        target: String,
+    },
+    #[command(about = tf!("이 길드에서 안 쓴다 — 목록에서 빠진다. 파일은 안 지운다.", "Stop using it in this guild — it leaves the list. Files are not deleted."))]
+    Remove {
+        name: String,
+    },
     #[command(about = tf!("구독할 수 있는 이벤트 이름 목록.", "Event names you can subscribe to."))]
     Events,
     // REQ-021: 값은 **stdin 으로** 받는다. 인자로 받으면 토큰이 셸 히스토리와
@@ -919,6 +936,21 @@ enum TagDefCmd {
     },
     #[command(about = tf!("태그 정의 삭제 (quest 등의 태그 사용 자체는 보존 — 기본 색으로 표시)", "Delete a tag definition (existing tag usages are preserved — shown in default color)"))]
     Delete { slug: String },
+}
+
+/// DEV-399: 플러그인을 가져다 쓸 폴더(소스).
+#[derive(Subcommand, Clone)]
+enum PluginSourceCmd {
+    #[command(about = tf!("소스 등록 — 그 폴더의 플러그인을 가져다 쓸 수 있게 된다(자동으로 돌지는 않는다).", "Register a source — its plugins become available (they do not run by themselves)."))]
+    Add {
+        path: String,
+        #[arg(long, help = tf!("소스 이름(기본: 폴더 이름).", "Name for the source (default: folder name)."))]
+        name: Option<String>,
+    },
+    #[command(about = tf!("등록된 소스 목록 — 경로와 그 안의 플러그인 수.", "Registered sources — path and how many plugins are inside."))]
+    List,
+    #[command(about = tf!("소스 등록 해제 — 그 소스에서 쓰던 것도 함께 빠진다. 파일은 안 지운다.", "Unregister a source — anything used from it leaves too. Files are not deleted."))]
+    Remove { name: String },
 }
 
 /// DEV-062: status 관리. DEV-227: sub 필수 — `status list` 명시.
@@ -6080,6 +6112,226 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
 
     match sub {
         PluginCmd::Events => unreachable!("handled above"),
+        PluginCmd::Source { sub } => {
+            use openguild_core::plugins::sources;
+            match sub {
+                PluginSourceCmd::Add { path, name } => {
+                    let chosen = Backend::map_err(sources::add_source(
+                        root,
+                        std::path::Path::new(&path),
+                        name.as_deref(),
+                    ))?;
+                    let found = sources::list()
+                        .into_iter()
+                        .find(|s| s.name == chosen)
+                        .map(|s| s.plugins.len())
+                        .unwrap_or(0);
+                    if json {
+                        json_println!(serde_json::json!({ "ok": true, "source": chosen, "plugins": found }));
+                    } else {
+                        println!(
+                            "{}",
+                            tf!(
+                                "✓ 소스 등록: {} (플러그인 {}개) — `openguild plugin available` 로 보고 `plugin add <이름>` 으로 씁니다",
+                                "✓ source added: {} ({} plugins) — see `openguild plugin available`, then `plugin add <name>`",
+                                chosen,
+                                found
+                            )
+                        );
+                    }
+                }
+                PluginSourceCmd::List => {
+                    let list = sources::list();
+                    if json {
+                        json_println!(serde_json::json!({
+                            "sources": list.iter().map(|s| serde_json::json!({
+                                "name": s.name,
+                                "path": s.path.display().to_string(),
+                                "plugins": s.plugins.iter().map(|p| &p.name).collect::<Vec<_>>(),
+                                "problem": s.problem,
+                            })).collect::<Vec<_>>()
+                        }));
+                        return Ok(());
+                    }
+                    if list.is_empty() {
+                        println!(
+                            "{}",
+                            tf!(
+                                "(등록된 소스 없음 — `openguild plugin source add <폴더>`)",
+                                "(no sources — `openguild plugin source add <folder>`)"
+                            )
+                        );
+                        return Ok(());
+                    }
+                    for s in list {
+                        match &s.problem {
+                            Some(why) => println!("✗ {}  {}  {why}", s.name, s.path.display()),
+                            None => println!(
+                                "  {}  {}  ({})",
+                                s.name,
+                                s.path.display(),
+                                s.plugins.len()
+                            ),
+                        }
+                    }
+                }
+                PluginSourceCmd::Remove { name } => {
+                    Backend::map_err(sources::remove_source(&name))?;
+                    if json {
+                        json_println!(serde_json::json!({ "ok": true, "removed": name }));
+                    } else {
+                        println!(
+                            "{}",
+                            tf!(
+                                "✓ 소스 해제: {} — 그 소스에서 쓰던 것도 빠졌습니다(파일은 그대로)",
+                                "✓ source removed: {} — anything used from it left too (files untouched)",
+                                name
+                            )
+                        );
+                    }
+                }
+            }
+        }
+        PluginCmd::Available => {
+            use openguild_core::plugins::sources;
+            let used = sources::used_in(root);
+            let list = sources::list();
+            if json {
+                json_println!(serde_json::json!({
+                    "available": list.iter().flat_map(|s| s.plugins.iter().map(|p| {
+                        serde_json::json!({
+                            "name": p.name,
+                            "folder": p.folder,
+                            "source": s.name,
+                            "dir": p.path.display().to_string(),
+                            "used": used.iter().any(|u| u.source == s.name && u.folder == p.folder),
+                        })
+                    })).collect::<Vec<_>>()
+                }));
+                return Ok(());
+            }
+            let mut any = false;
+            for s in &list {
+                for p in &s.plugins {
+                    any = true;
+                    let in_use = used.iter().any(|u| u.source == s.name && u.folder == p.folder);
+                    println!("{} {}@{}", if in_use { "✓" } else { "·" }, p.name, s.name);
+                }
+            }
+            if !any {
+                println!(
+                    "{}",
+                    tf!(
+                        "(소스에 플러그인이 없습니다 — `openguild plugin source add <폴더>`)",
+                        "(no plugins in any source — `openguild plugin source add <folder>`)"
+                    )
+                );
+            }
+        }
+        PluginCmd::Add { target } => {
+            use openguild_core::plugins::sources;
+            // 폴더 경로를 주면 소스 등록까지 한 번에 — 하나짜리 플러그인을 붙이는 흔한 경우다.
+            let (source, folder) = if std::path::Path::new(&target).is_dir() {
+                let dir = std::path::Path::new(&target);
+                let src = Backend::map_err(sources::add_source(root, dir, None))?;
+                let found = sources::list()
+                    .into_iter()
+                    .find(|s| s.name == src)
+                    .map(|s| s.plugins)
+                    .unwrap_or_default();
+                match found.len() {
+                    1 => (src, found[0].folder.clone()),
+                    _ => {
+                        // 여러 개면 무엇을 쓸지 사람이 고른다 — 통째로 켜지 않는다.
+                        println!(
+                            "{}",
+                            tf!(
+                                "✓ 소스 등록: {} (플러그인 {}개) — `openguild plugin add <이름>` 으로 고르세요",
+                                "✓ source added: {} ({} plugins) — pick with `openguild plugin add <name>`",
+                                src,
+                                found.len()
+                            )
+                        );
+                        return Ok(());
+                    }
+                }
+            } else if let Some((name, src)) = target.split_once('@') {
+                // `이름@소스` — 그 소스 안에서 이름으로 찾는다(폴더 이름과 다를 수 있다).
+                let folder = sources::find_by_name(name)
+                    .into_iter()
+                    .find(|(s, _)| s == src)
+                    .map(|(_, f)| f)
+                    .ok_or_else(|| {
+                        anyhow!(tf!(
+                            "소스 {}에 없는 플러그인입니다: {}",
+                            "not in source {}: {}",
+                            src,
+                            name
+                        ))
+                    })?;
+                (src.to_string(), folder)
+            } else {
+                // 이름만 주면 소스들에서 찾는다. 여럿이면 `@소스` 로 고르게 한다.
+                let hits = sources::find_by_name(&target);
+                match hits.len() {
+                    0 => {
+                        return Err(anyhow!(tf!(
+                            "소스에 없는 플러그인입니다: {} (`openguild plugin available` 로 확인)",
+                            "not in any source: {} (see `openguild plugin available`)",
+                            target
+                        )))
+                    }
+                    1 => hits[0].clone(),
+                    _ => {
+                        return Err(anyhow!(tf!(
+                            "여러 소스에 같은 이름이 있습니다: {} — `{}@소스` 로 지정하세요",
+                            "several sources offer that name: {} — say `{}@source`",
+                            target,
+                            target
+                        )))
+                    }
+                }
+            };
+            Backend::map_err(sources::use_plugin(root, &source, &folder))?;
+            // 사람이 부르는 이름은 폴더가 아니라 정의의 `name` 이다 — 안내도 그 이름으로.
+            let name = sources::list()
+                .into_iter()
+                .find(|s| s.name == source)
+                .and_then(|s| s.plugins.into_iter().find(|p| p.folder == folder))
+                .map(|p| p.name)
+                .unwrap_or_else(|| folder.clone());
+            if json {
+                json_println!(serde_json::json!({
+                    "ok": true, "added": name, "folder": folder, "source": source
+                }));
+            } else {
+                println!(
+                    "{}",
+                    tf!(
+                        "✓ 이 길드에서 씁니다: {}@{} — 돌리려면 `openguild plugin allow {}` 가 필요합니다",
+                        "✓ in use in this guild: {}@{} — run `openguild plugin allow {}` to actually run it",
+                        name,
+                        source,
+                        name
+                    )
+                );
+            }
+        }
+        PluginCmd::Remove { name } => {
+            Backend::map_err(openguild_core::plugins::sources::stop_using(root, &name))?;
+            if json {
+                json_println!(serde_json::json!({ "ok": true, "removed": name }));
+            } else {
+                println!(
+                    "{}",
+                    tf!(
+                        "✓ 이 길드에서 안 씁니다: {} (파일은 그대로)",
+                        "✓ no longer used in this guild: {} (files untouched)",
+                        name
+                    )
+                );
+            }
+        }
         PluginCmd::List => {
             if json {
                 json_println!(serde_json::json!({
@@ -6090,6 +6342,9 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
                         "scope": p.def.scope,
                         "action": p.def.action.kind(),
                         "script": p.def.script,
+                        // DEV-399: 길드 것과 소스 것이 한 목록에 섞인다 — 출처를 싣는다.
+                        "source": p.source,
+                        "dir": p.dir.display().to_string(),
                         // 조회 명령이므로 **경로만** 만든다 — 목록을 보는 것만으로
                         // 폴더가 생기면 안 된다.
                         "data_dir": matches!(p.def.action, openguild_core::plugins::Action::Run { .. })
@@ -6131,11 +6386,16 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
                     .map(|s| format!("{s:?}").to_lowercase())
                     .collect();
                 println!(
-                    "✓ {}  [{}]  {} → {}",
+                    "✓ {}  [{}]  {} → {}{}",
                     p.def.name,
                     scopes.join(","),
                     p.def.on.join(" "),
-                    p.def.action.kind()
+                    p.def.action.kind(),
+                    // DEV-399: 길드 밖에서 온 것은 어디서 왔는지 보여야 한다.
+                    p.source
+                        .as_deref()
+                        .map(|s| format!("  ({s})"))
+                        .unwrap_or_default()
                 );
                 // REQ-020: 설명은 다음 줄에 들여쓴다. 같은 줄에 붙이면 길이가
                 // 제각각이라 위 세 열이 안 맞는다.

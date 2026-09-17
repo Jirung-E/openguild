@@ -166,6 +166,151 @@ fn auto_allow_skips_the_question() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
+// ── DEV-399: 길드 밖 소스 ────────────────────────────────
+
+/// 소스로 등록하고 이 길드에서 쓰기로 하면 **길드 폴더 것과 한 목록에** 나온다.
+/// 복사는 하지 않는다 — 원본 폴더에서 그대로 적재한다.
+#[test]
+fn a_plugin_from_a_source_loads_next_to_the_guilds_own() {
+    let _guard = env_lock();
+    let home = fresh_tmp("src-home");
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let g = fresh_tmp("src-guild");
+    let outside = fresh_tmp("src-outside");
+    write_plugin(&g, "in-guild", json!({
+        "name": "in-guild", "on": ["quest.created"], "scope": ["cli"],
+        "action": { "post": { "url": "https://example.test/a" } }
+    }));
+    // 길드 밖 폴더 — `plugins_dir` 규칙과 같게 하위 폴더마다 plugin.json.
+    let ext = outside.join("mine");
+    std::fs::create_dir_all(&ext).unwrap();
+    std::fs::write(
+        ext.join("plugin.json"),
+        serde_json::to_string_pretty(&json!({
+            "name": "from-source", "on": ["quest.created"], "scope": ["cli"],
+            "action": { "post": { "url": "https://example.test/b" } }
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    // 등록만 해서는 안 붙는다 — 쓸 것을 고르는 단계가 따로 있다.
+    let src = consent_free_add_source(&g, &outside);
+    let before = load_for(&g, Scope::Cli);
+    assert_eq!(names(&before), vec!["in-guild"], "등록만으로 붙었다");
+
+    super::sources::use_plugin(&g, &src, "mine").unwrap();
+    let after = load_for(&g, Scope::Cli);
+    assert_eq!(names(&after), vec!["from-source", "in-guild"]);
+    // 출처가 보인다 — 한 목록에 섞이므로.
+    let from = after
+        .needs_consent
+        .iter()
+        .find(|p| p.def.name == "from-source")
+        .unwrap();
+    assert_eq!(from.source.as_deref(), Some(src.as_str()));
+    assert_eq!(
+        std::fs::canonicalize(&from.dir).unwrap(),
+        std::fs::canonicalize(&ext).unwrap(),
+        "복사본이 아니라 원본 폴더에서 적재해야 한다"
+    );
+
+    // 안 쓰기로 하면 목록에서 빠지고 **파일은 남는다**.
+    super::sources::stop_using(&g, "from-source").unwrap();
+    assert_eq!(names(&load_for(&g, Scope::Cli)), vec!["in-guild"]);
+    assert!(ext.join("plugin.json").is_file(), "파일을 지웠다");
+
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    for d in [&g, &outside, &home] {
+        let _ = std::fs::remove_dir_all(d);
+    }
+}
+
+/// 이름이 겹치면 **적재에서 거부**한다 — 동의가 이름으로 저장되므로 섞이면 안 된다.
+/// 경로가 사라졌으면 조용히 빠지지 않고 이유와 함께 남는다.
+#[test]
+fn source_plugins_refuse_name_clashes_and_report_missing_paths() {
+    let _guard = env_lock();
+    let home = fresh_tmp("src2-home");
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let g = fresh_tmp("src2-guild");
+    let outside = fresh_tmp("src2-outside");
+    write_plugin(&g, "dup", ai_notify(&["cli"]));
+    let ext = outside.join("dup");
+    std::fs::create_dir_all(&ext).unwrap();
+    std::fs::write(
+        ext.join("plugin.json"),
+        serde_json::to_string_pretty(&ai_notify(&["cli"])).unwrap(),
+    )
+    .unwrap();
+    let src = consent_free_add_source(&g, &outside);
+    super::sources::use_plugin(&g, &src, "dup").unwrap();
+
+    let l = load_for(&g, Scope::Cli);
+    assert_eq!(names(&l).len(), 1, "겹친 이름이 둘 다 실렸다");
+    assert!(
+        l.errors.iter().any(|(_, e)| e.contains("겹칩니다") && e.contains("dup")),
+        "{:?}",
+        l.errors
+    );
+
+    // 소스 폴더가 사라지면 — 이유와 함께 목록에 남는다.
+    std::fs::remove_dir_all(&outside).unwrap();
+    let gone = load_for(&g, Scope::Cli);
+    assert!(
+        gone.errors
+            .iter()
+            .any(|(n, e)| n == "dup" && (e.contains("경로에 없습니다") || e.contains("소스"))),
+        "사라진 소스가 조용히 빠졌다: {:?}",
+        gone.errors
+    );
+
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 소스 등록이 거절해야 하는 것들.
+#[test]
+fn adding_a_source_refuses_the_useless_cases() {
+    let _guard = env_lock();
+    let home = fresh_tmp("src3-home");
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let g = fresh_tmp("src3-guild");
+    write_plugin(&g, "x", ai_notify(&["cli"]));
+    let empty = fresh_tmp("src3-empty");
+
+    // 길드 안 — 이미 훑는다.
+    let e = super::sources::add_source(&g, &plugins_dir(&g), None).unwrap_err();
+    assert!(e.to_string().contains("이미"), "{e}");
+    // plugin.json 이 하나도 없는 폴더.
+    let e = super::sources::add_source(&g, &empty, None).unwrap_err();
+    assert!(e.to_string().contains("plugin.json"), "{e}");
+    // 없는 경로.
+    let e = super::sources::add_source(&g, &empty.join("nope"), None).unwrap_err();
+    assert!(e.to_string().contains("찾을 수 없"), "{e}");
+
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    for d in [&g, &empty, &home] {
+        let _ = std::fs::remove_dir_all(d);
+    }
+}
+
+fn consent_free_add_source(guild: &Path, dir: &Path) -> String {
+    super::sources::add_source(guild, dir, None).unwrap()
+}
+
+fn names(l: &Loaded) -> Vec<String> {
+    let mut v: Vec<String> = l
+        .active
+        .iter()
+        .chain(l.needs_consent.iter())
+        .map(|p| p.def.name.clone())
+        .collect();
+    v.sort();
+    v
+}
+
 /// 깨진 정의 하나가 나머지를 막지 않는다.
 #[test]
 fn one_broken_definition_does_not_block_the_rest() {

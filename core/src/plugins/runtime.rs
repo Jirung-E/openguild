@@ -325,6 +325,7 @@ mod tests {
             compiled: None,
             script_src: None,
             folder: Default::default(),
+            source: None,
         }
     }
 

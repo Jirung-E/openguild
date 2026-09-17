@@ -45,6 +45,11 @@ pub struct PluginView {
     pub granted: bool,
     /// 이 컴포넌트에서 도는가. scope 가 안 맞으면 허용해도 여기선 안 돈다.
     pub runs_here: bool,
+    /// DEV-399: 어디서 온 것인가 — `None` 이면 이 길드의 `.guild/plugins/`,
+    /// `Some(이름)` 이면 그 소스. 한 목록에 섞여 나오므로 출처가 보여야 한다.
+    pub source: Option<String>,
+    /// 그 폴더의 실제 경로 — 소스에서 온 것은 길드 밖이라 어디인지 알아야 한다.
+    pub dir: String,
 }
 
 /// REQ-021: 입력 하나를 화면이 그릴 수 있는 모양으로.
@@ -133,6 +138,8 @@ pub(super) fn view(p: &Plugin, granted: bool, scope: Scope) -> PluginView {
             Action::Post { .. } => None,
         },
         inputs: input_views(p),
+        source: p.source.clone(),
+        dir: p.dir.display().to_string(),
         script_src: p.script_src.clone(),
         granted,
         runs_here: p.def.scope.contains(&scope),

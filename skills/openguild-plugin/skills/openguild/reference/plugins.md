@@ -108,7 +108,21 @@ openguild plugin revoke --all         # every plugin present now
 openguild plugin trust --yes          # auto-allow on: new or changed plugins run without asking
 openguild plugin untrust              # auto-allow off: what runs keeps running, later changes ask
 openguild plugin events
+
+# plugins outside the guild — a "source" is a folder holding plugins (like a marketplace)
+openguild plugin source add ~/dev/my-plugins   # register (this machine)
+openguild plugin available                     # what the sources offer
+openguild plugin add backup-archive            # use it in this guild (still needs allow)
+openguild plugin add ~/dev/one-plugin          # a single plugin folder: register + use
+openguild plugin remove backup-archive         # stop using it — files are not deleted
+openguild plugin source list / remove <name>
 ```
+
+`.guild/plugins/` is always loaded (it belongs to the guild and is shared through git).
+Sources and "used in this guild" live only on this machine (`~/.openguild/plugin-sources.json`).
+Plugins load from the source folder **in place** — no copy — so editing the original takes effect
+(and re-asks consent, since the fingerprint changes). A name that exists both in the guild and
+in a source is refused at load; a source folder that disappeared is reported, not silently dropped.
 
 `allow --all` / `revoke --all` are bulk edits, not modes — per-plugin `allow`/`revoke`
 still work afterwards. Auto-allow (`trust`) covers plugins added or changed later, but
