@@ -1394,6 +1394,7 @@ fn probe_event() -> crate::events::Event {
         ok: Some(true),
         error: None,
         data: Default::default(),
+        origin: Default::default(),
     }
 }
 

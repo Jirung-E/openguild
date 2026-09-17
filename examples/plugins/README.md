@@ -142,6 +142,20 @@ Windows 에서는 같은 일을 `archive.ps1` 이 한다 — `ARCHIVE_DIR` 는 `
 
 ---
 
+## 훅이 길드를 바꿔도 자기 자신은 다시 안 불린다 (DEV-401)
+
+`run` 훅이 `openguild quest tag add …` 처럼 길드를 바꾸면 그 변경도 이벤트가 된다. 그 이벤트는
+**그 변경을 일으킨 플러그인에게는 다시 가지 않는다** — "태그가 바뀌면 태그를 단다" 가 끝없이 돌지
+않는다. 다른 플러그인은 받는다.
+
+- 이벤트의 `origin` 에 누가 일으켰는지가 있다: `{"by": "user", "chain": []}` 또는
+  `{"by": "plugin", "chain": ["tagger"]}`. 스크립트에서 `e.origin.by == "user"` 로 사람이 한 것만
+  고를 수도 있다.
+- 훅 자식은 `OPENGUILD_PLUGIN_CHAIN` 을 받고, 그 안에서 부른 `openguild` 가 이어 받는다. **환경을
+  비우고(`env -i`) 부르면 이 보호가 사라진다.**
+- `--remote` 로 서버를 바꾸면 `X-OpenGuild-Plugin-Chain` 헤더로 넘어간다. `post` 훅도 이 헤더를
+  붙여 보내니, 받은 쪽이 openguild 서버를 다시 부르는 중계라면 헤더를 그대로 전달한다.
+
 ## 운영체제마다 다른 명령 (BUG-294)
 
 `run` 의 `command`/`args` 는 모든 OS 의 기본이다. 셸 스크립트는 Windows 에 `sh` 가 없어

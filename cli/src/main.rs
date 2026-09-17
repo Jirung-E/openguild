@@ -1384,6 +1384,22 @@ enum CampaignChecklistCmd {
 
 // ─────────────────────────── HTTP 클라이언트 ───────────────────────────
 
+/// DEV-401: 플러그인 훅이 부른 CLI 면 원격 서버에도 "누가 일으켰나" 를 알린다 — 그 요청이 낸
+/// 변경이 같은 플러그인에게 돌아가지 않게. 사람이 친 명령이면 헤더를 붙이지 않는다.
+fn chain_aware_client(origin: openguild_core::events::origin::Origin) -> reqwest::blocking::Client {
+    use openguild_core::events::origin::HEADER;
+    let mut headers = reqwest::header::HeaderMap::new();
+    if !origin.is_user()
+        && let Ok(v) = reqwest::header::HeaderValue::from_str(&origin.to_header())
+    {
+        headers.insert(HEADER, v);
+    }
+    reqwest::blocking::Client::builder()
+        .default_headers(headers)
+        .build()
+        .unwrap_or_else(|_| reqwest::blocking::Client::new())
+}
+
 struct HttpClient {
     base: String,
     http: reqwest::blocking::Client,
@@ -1393,7 +1409,7 @@ impl HttpClient {
     fn new(base: String) -> Self {
         Self {
             base,
-            http: reqwest::blocking::Client::new(),
+            http: chain_aware_client(openguild_core::events::origin::current()),
         }
     }
 
@@ -9527,6 +9543,11 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
 }
 
 fn main() {
+    // DEV-401: 플러그인 훅이 부른 CLI 면 그 목록을 이 프로세스의 모든 변경에 싣는다 — 같은 훅이
+    // 다시 불리지 않게. 사람이 친 명령에는 이 환경변수가 없다.
+    openguild_core::events::origin::set_process_default(
+        openguild_core::events::origin::Origin::from_env(),
+    );
     // BUG-135: debug(opt-level=0) 빌드에서 clap derive 가 생성한 Command 빌더
     // 함수 한 개의 스택 프레임이 Windows 메인 스레드 기본 스택(1MB)을 초과해
     // 어떤 명령이든(--help 포함) 진입 즉시 stack overflow. opt-level=0 은

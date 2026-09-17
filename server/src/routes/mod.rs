@@ -372,6 +372,24 @@ pub fn create_router(store: Store) -> Router {
         .route("/api/admin/counters", post(admin::check_counters))
         .route("/api/admin/info", get(admin::info))
         .with_state(store)
+        // DEV-401: 플러그인 훅이 보낸 요청이면 그 요청이 일으킨 변경에 "누가 일으켰나" 를 싣는다.
+        .layer(axum::middleware::from_fn(plugin_origin))
+}
+
+/// DEV-401: 요청 헤더의 플러그인 목록을 이 요청이 도는 동안의 "누가 일으켰나" 로 둔다.
+/// 헤더가 없으면(브라우저·사람이 친 CLI) 사람이 일으킨 것이다.
+async fn plugin_origin(
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    use openguild_core::events::origin::{self, Origin};
+    let chain = req
+        .headers()
+        .get(origin::HEADER)
+        .and_then(|v| v.to_str().ok())
+        .map(Origin::parse)
+        .unwrap_or_default();
+    origin::scope(chain, next.run(req)).await
 }
 
 async fn health() -> &'static str {

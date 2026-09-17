@@ -274,6 +274,67 @@ async fn reloading_plugins_is_same_machine_only_and_takes_effect() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
+/// DEV-401: 플러그인 훅이 보낸 요청(헤더)이 낸 변경에는 그 목록이 실리고, 헤더 없는 요청은
+/// 사람이 한 것이다 — 서버가 요청마다 따로 기억한다(한 요청의 목록이 다음 요청에 새지 않는다).
+#[tokio::test]
+async fn a_request_from_a_plugin_is_marked_as_such() {
+    use openguild_core::events::{Event, EventSink, Phase, origin::Origin};
+    #[derive(Default)]
+    struct Rec(std::sync::Mutex<Vec<Event>>);
+    impl EventSink for Rec {
+        fn wants(&self, _: &str, _: Phase) -> bool {
+            true
+        }
+        fn dispatch(&self, e: Event) {
+            self.0.lock().unwrap().push(e);
+        }
+    }
+    let ns = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!("og-srv-origin-{ns}"));
+    std::fs::create_dir_all(&dir).unwrap();
+    openguild_core::repo::seed_guild_dir(&dir).unwrap();
+    let store = openguild_core::Store::open(&dir).await.unwrap();
+    let rec = std::sync::Arc::new(Rec::default());
+    store.events.set_sink(rec.clone());
+    let app = routes::create_router(store);
+
+    let chain = Origin::from_chain(["백업 훅"]);
+    let res = app
+        .clone()
+        .oneshot(
+            Request::post("/api/quests")
+                .header("content-type", "application/json")
+                .header(openguild_core::events::origin::HEADER, chain.to_header())
+                .body(Body::from(
+                    json!({ "quest_type_id": 1, "title": "훅이", "status_slug": "open" }).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(res.status().is_success(), "{}", res.status());
+    let (st, _) = post(
+        app,
+        "/api/quests",
+        json!({ "quest_type_id": 1, "title": "사람이", "status_slug": "open" }),
+    )
+    .await;
+    assert!(st.is_success());
+
+    let got = rec.0.lock().unwrap().clone();
+    let created: Vec<&Event> = got
+        .iter()
+        .filter(|e| e.name == "quest.created" && e.phase == Phase::Post)
+        .collect();
+    assert_eq!(created.len(), 2);
+    assert_eq!(created[0].origin, chain, "헤더의 목록이 안 실렸다");
+    assert!(created[1].origin.is_user(), "앞 요청의 목록이 다음 요청에 샜다");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// OPENGUILD_HOME 을 만지는 시험끼리 줄 세우기.
 static HOME_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 

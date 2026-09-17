@@ -223,6 +223,14 @@ openguild plugin config <name>                        # what is set, secrets mas
   thread; a CLI command gives it ~2s before exiting. A plugin that must finish
   should be `run` with a short program, not a slow HTTP call from the CLI.
 - **One plugin's failure never affects another**, or the guild.
+- **A hook that changes the guild does not trigger itself.** If a `run` hook calls
+  `openguild …`, the change it makes is not sent back to the same plugin (other
+  plugins still get it), so "on tag change, add a tag" does not loop. This works
+  because the child inherits `OPENGUILD_PLUGIN_CHAIN` — **do not clear the
+  environment** (`env -i`, `env -u OPENGUILD_PLUGIN_CHAIN`) before calling
+  `openguild`, and if a `post` target relays into an openguild server, forward the
+  `X-OpenGuild-Plugin-Chain` header it received. `e.origin.by` / `e.origin.chain`
+  tell a script who caused the event (`"user"` or `"plugin"`).
 - **rhai backtick strings do not process escapes.** `` `a\nb` `` sends a literal
   backslash-n (a Telegram message arrived with `\n` in it). Use `"\n"` in a
   double-quoted string and join: `` `${e.quest.id}` + "\n" + e.quest.title ``.

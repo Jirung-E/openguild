@@ -63,24 +63,14 @@ impl Delivery for Outbound {
     fn deliver(
         &self,
         plugin: &Plugin,
-        _event: &Event,
+        event: &Event,
         body: &Value,
         values: &BTreeMap<String, String>,
     ) -> Result<(), String> {
+        // DEV-401: 이 플러그인이 일으키는 변경에 붙일 "누가 일으켰나" — 받은 목록 + 자기 이름.
+        let next = event.origin.then(&plugin.def.name);
         match &plugin.def.action {
-            Action::Post {
-                url,
-                headers,
-                body_env,
-                ..
-            } => self.post(
-                url,
-                headers,
-                body_env,
-                plugin.def.action.timeout(),
-                body,
-                values,
-            ),
+            Action::Post { .. } => self.post(plugin, body, values, &next),
             Action::Run { .. } => {
                 // BUG-294: 이 OS 에 적힌 명령이 있으면 그것.
                 let (command, args) = plugin
@@ -95,6 +85,7 @@ impl Delivery for Outbound {
                     plugin.def.action.timeout(),
                     body,
                     values,
+                    &next,
                 )
             }
         }
@@ -104,13 +95,21 @@ impl Delivery for Outbound {
 impl Outbound {
     fn post(
         &self,
-        url: &str,
-        headers: &std::collections::BTreeMap<String, String>,
-        body_env: &std::collections::BTreeMap<String, String>,
-        timeout: Duration,
+        plugin: &Plugin,
         body: &Value,
         values: &BTreeMap<String, String>,
+        origin: &crate::events::origin::Origin,
     ) -> Result<(), String> {
+        let Action::Post {
+            url,
+            headers,
+            body_env,
+            ..
+        } = &plugin.def.action
+        else {
+            return Err("post 동작이 아닙니다".into());
+        };
+        let timeout = plugin.def.action.timeout();
         // URL 과 헤더의 `${VAR}` 는 **보내기 직전에** 푼다. 정의에 리터럴을
         // 못 적게 해 둔 것([[DEV-375]])과 짝이다 — 값은 이 기계에만 있다.
         //
@@ -122,6 +121,9 @@ impl Outbound {
                 crate::plugins::expand_env_with(v, values).map_err(|e| format!("헤더 {k}: {e}"))?;
             req = req.header(k, v);
         }
+        // DEV-401: 받는 쪽이 openguild 서버(또는 그 API 를 부르는 중계)면 이 요청이 일으킨 변경이
+        // 이 플러그인에게 돌아오지 않게 한다. 다른 서비스에는 무시되는 헤더다.
+        req = req.header(crate::events::origin::HEADER, origin.to_header());
         // DEV-384: 정의가 지목한 키만 환경에서 채운다. 스크립트에는 I/O 가
         // 없어서 `payload()` 가 환경변수를 못 읽는데, 텔레그램의 `chat_id`
         // 처럼 본문에 개인 식별자를 요구하는 API 가 흔하다.
@@ -208,6 +210,7 @@ fn run(
     timeout: Duration,
     body: &Value,
     values: &BTreeMap<String, String>,
+    origin: &crate::events::origin::Origin,
 ) -> Result<(), String> {
     // DEV-380: `${VAR}` 는 여기서도 푼다. 비밀값 검사가 `run` 의 command/args 도
     // 훑으므로 사용자는 **반드시** 참조로 적어야 하는데, 안 풀면 자식이 리터럴
@@ -272,6 +275,8 @@ fn run(
         .env("OPENGUILD_PLUGIN_DIR", &plugin_dir)
         // 훅이 자기 출력 자리를 알아야 절대경로로 쓸 수도 있다.
         .env("OPENGUILD_PLUGIN_DATA_DIR", &data_dir)
+        // DEV-401: 훅이 부른 `openguild` 가 이 목록을 이어 받는다 — 같은 훅이 다시 불리지 않게.
+        .env(crate::events::origin::ENV, origin.to_env())
         .stdin(Stdio::piped())
         // 자식의 출력이 CLI 표준출력에 섞이면 파이프로 쓰는 사람이 깨진다.
         .stdout(Stdio::null())
@@ -476,6 +481,7 @@ mod tests {
             ok: Some(true),
             error: None,
             data: Default::default(),
+            origin: Default::default(),
         }
     }
 
@@ -519,6 +525,16 @@ mod tests {
         assert_eq!(got.len(), 1, "요청이 안 왔다");
         assert!(got[0].starts_with("POST /hook "), "{}", got[0]);
         assert!(got[0].contains("x-source: openguild") || got[0].contains("X-Source: openguild"));
+        // DEV-401: 받는 쪽이 openguild 서버라면 이 헤더로 "누가 일으켰나" 를 안다.
+        let chain = got[0]
+            .lines()
+            .find_map(|l| l.to_lowercase().starts_with("x-openguild-plugin-chain:").then(|| l[25..].trim().to_string()))
+            .expect("체인 헤더가 없다");
+        assert_eq!(
+            crate::events::origin::Origin::parse(&chain).chain(),
+            std::slice::from_ref(&p.def.name),
+            "{chain}"
+        );
         assert!(
             got[0].contains(r#"{"text":"왔다"}"#),
             "본문이 안 왔다: {}",
@@ -753,6 +769,28 @@ mod tests {
             .deliver(&p, &event(), &body(), &Default::default())
             .unwrap();
         assert!(lab.data().join("os.json").is_file(), "이 OS 의 명령이 안 돌았다");
+    }
+
+    /// DEV-401: 훅 자식은 "받은 목록 + 자기 이름" 을 환경변수로 받는다 — 그 자식이 부른
+    /// `openguild` 가 이어 받는다. 부모 환경이나 설정값의 같은 이름은 덮는다.
+    #[cfg(unix)]
+    #[test]
+    fn run_hands_the_chain_to_the_child() {
+        let lab = RunLab::new("run-chain");
+        let p = lab.plugin(Action::Run {
+            command: "sh".into(),
+            args: vec!["-c".into(), "printf '%s' \"$OPENGUILD_PLUGIN_CHAIN\" > chain.txt".into()],
+            timeout_ms: Some(5_000),
+            os: Default::default(),
+        });
+        let mut e = event();
+        e.origin = crate::events::origin::Origin::from_chain(["먼저"]);
+        let mut values = BTreeMap::new();
+        values.insert(crate::events::origin::ENV.to_string(), "[\"위조\"]".to_string());
+        Outbound::new().deliver(&p, &e, &body(), &values).unwrap();
+        let got = std::fs::read_to_string(lab.data().join("chain.txt")).unwrap();
+        let chain = crate::events::origin::Origin::parse(&got);
+        assert_eq!(chain.chain(), ["먼저".to_string(), p.def.name.clone()], "{got}");
     }
 
     /// **오래 걸려도 길드가 안 멈춘다** — 시한에 죽이고 거둔다(좀비 없음).

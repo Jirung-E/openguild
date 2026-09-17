@@ -121,6 +121,13 @@ openguild plugin source list / remove <name>
 openguild plugin reload --remote http://127.0.0.1:3000
 ```
 
+**A plugin never receives a change it caused.** Every event carries
+`origin: {"by": "user" | "plugin", "chain": [...]}` — the plugins that led to it. The runtime skips
+any plugin already in the chain, so a hook that runs `openguild quest tag add` on
+`quest.tags_changed` fires once, not forever; other plugins still get the event. A `run` child gets
+the chain (plus itself) in `OPENGUILD_PLUGIN_CHAIN`, which the `openguild` CLI picks up; `--remote`
+forwards it as the `X-OpenGuild-Plugin-Chain` header, and a `post` hook sends that header too.
+
 A `run` may carry per-OS variants — `"windows": { "command": "powershell", "args": [...] }`
 (also `macos`, `linux`); on that OS it replaces `command`/`args`. Shell scripts need one for
 Windows, which has no `sh`.

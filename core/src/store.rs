@@ -169,6 +169,8 @@ impl Store {
             ok,
             error,
             data: obj,
+            // DEV-401: 누가 일으켰는지는 한 곳에서 읽는다(요청·프로세스·사람).
+            origin: crate::events::origin::current(),
         });
     }
 

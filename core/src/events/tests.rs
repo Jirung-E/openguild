@@ -1193,3 +1193,29 @@ fn events_without_sink_are_cheap_and_silent() {
     assert!(!e.has_sink());
     assert!(!e.wants(super::names::QUEST_CREATED, Phase::Post));
 }
+
+/// DEV-401: 변경은 그 자리의 "누가 일으켰나" 를 싣는다 — 범위 밖은 사람, 범위 안은 그 목록.
+/// 이벤트 JSON 에도 `origin` 이 실린다(스크립트가 본다).
+#[tokio::test]
+async fn a_change_carries_who_caused_it() {
+    use super::origin::{Origin, scope};
+    let (dir, store, rec) = setup("origin").await;
+
+    crate::ops::quests::create_quest(&store, new_quest("사람이")).await.unwrap();
+    let by_person = rec.find(super::names::QUEST_CREATED, Phase::Post).unwrap();
+    assert!(by_person.origin.is_user());
+    assert_eq!(by_person.to_json()["origin"]["by"], "user");
+
+    rec.got.lock().unwrap().clear();
+    scope(Origin::from_chain(["hook-a"]), async {
+        crate::ops::quests::create_quest(&store, new_quest("훅이")).await.unwrap();
+    })
+    .await;
+    let by_hook = rec.find(super::names::QUEST_CREATED, Phase::Post).unwrap();
+    assert_eq!(by_hook.origin.chain(), ["hook-a"]);
+    let j = by_hook.to_json();
+    assert_eq!(j["origin"]["by"], "plugin");
+    assert_eq!(j["origin"]["chain"][0], "hook-a");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -268,6 +268,10 @@ impl EventSink for PluginRuntime {
             if !p.wants(event.name, event.phase) {
                 continue;
             }
+            // DEV-401: 이 플러그인이 일으킨(또는 거쳐 온) 변경이면 다시 보내지 않는다 — 무한 반복 막기.
+            if event.origin.has(&p.def.name) {
+                continue;
+            }
             w.pending.enqueued();
             if w.tx
                 .send(Job {
@@ -346,6 +350,7 @@ mod tests {
             ok: Some(true),
             error: None,
             data: Default::default(),
+            origin: Default::default(),
         }
     }
 
@@ -394,6 +399,44 @@ mod tests {
             1,
             "구독하지 않은 플러그인까지 불렸다"
         );
+    }
+
+    /// DEV-401: 이미 거쳐 온 플러그인에는 보내지 않는다 — 나머지는 받는다.
+    #[test]
+    fn a_plugin_never_hears_a_change_it_already_caused() {
+        #[derive(Default)]
+        struct Who(Mutex<Vec<String>>);
+        impl Delivery for Who {
+            fn deliver(
+                &self,
+                p: &Plugin,
+                _e: &Event,
+                _b: &serde_json::Value,
+                _v: &std::collections::BTreeMap<String, String>,
+            ) -> Result<(), String> {
+                self.0.lock().unwrap().push(p.def.name.clone());
+                Ok(())
+            }
+        }
+        let got = Arc::new(Who::default());
+        let rt = PluginRuntime::new(
+            vec![
+                plugin("a", &["quest.created"]),
+                plugin("b", &["quest.created"]),
+                plugin("c", &["quest.created"]),
+            ],
+            got.clone(),
+        );
+        let mut e = event(ev::QUEST_CREATED, Phase::Post);
+        // a 가 일으키고 b 를 거쳐 온 변경 — c 만 받는다.
+        e.origin = crate::events::origin::Origin::from_chain(["a", "b"]);
+        rt.dispatch(e);
+        // 사람이 일으킨 변경 — 모두 받는다.
+        rt.dispatch(event(ev::QUEST_CREATED, Phase::Post));
+        assert!(rt.drain(Duration::from_secs(5)));
+        let mut names = got.0.lock().unwrap().clone();
+        names.sort();
+        assert_eq!(names, vec!["a", "b", "c", "c"]);
     }
 
     #[test]

@@ -28,6 +28,7 @@
 
 pub mod catalog;
 pub mod names;
+pub mod origin;
 pub mod payload;
 #[cfg(test)]
 mod tests;
@@ -71,6 +72,8 @@ pub struct Event {
     pub error: Option<String>,
     /// 리소스별 본문 — `{"quest": {...}, "comment": {...}}`.
     pub data: Map<String, Value>,
+    /// DEV-401: 누가 일으켰나 — 거쳐 온 플러그인들. 이 목록에 있는 플러그인에는 안 보낸다.
+    pub origin: origin::Origin,
 }
 
 impl Event {
@@ -88,6 +91,7 @@ impl Event {
         if let Some(e) = &self.error {
             m.insert("error".into(), json!(e));
         }
+        m.insert("origin".into(), self.origin.to_json());
         for (k, v) in &self.data {
             m.insert(k.clone(), v.clone());
         }

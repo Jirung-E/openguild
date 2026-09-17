@@ -51,11 +51,13 @@ async fn after_mutation(store: &Store) {
             return;
         }
         let bg = store.clone();
-        tokio::spawn(async move {
+        // DEV-401: 떼어 낸 작업은 요청의 "누가 일으켰나" 를 잃는다 — 그대로 들고 간다.
+        let origin = crate::events::origin::current();
+        tokio::spawn(crate::events::origin::scope(origin, async move {
             let result = snapshot::maybe_auto_snapshot(&bg, policy).await;
             bg.snapshot_in_flight.store(false, Ordering::SeqCst);
             report_snapshot(result);
-        });
+        }));
         return;
     }
 

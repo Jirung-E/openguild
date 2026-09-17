@@ -295,6 +295,7 @@ mod tests {
             ok: Some(true),
             error: None,
             data,
+            origin: Default::default(),
         }
     }
 
@@ -313,6 +314,19 @@ mod tests {
         };
         assert_eq!(v["event"], "comment.added");
         assert_eq!(v["quest"]["id"], "DEV-1");
+    }
+
+    /// DEV-401: 스크립트가 "누가 일으켰나" 를 본다 — 사람이 한 것만 고를 수 있다.
+    #[test]
+    fn a_script_can_tell_who_caused_the_event() {
+        let sc = Script::compile_source(r#"fn should_send(e) { e.origin.by == "user" }"#).unwrap();
+        assert_eq!(
+            sc.decide(&ev(), &Default::default()).unwrap(),
+            Decision::Send(ev().to_json())
+        );
+        let mut by_hook = ev();
+        by_hook.origin = crate::events::origin::Origin::from_chain(["other"]);
+        assert_eq!(sc.decide(&by_hook, &Default::default()).unwrap(), Decision::Skip);
     }
 
     /// **`should_send` 가 false 면 액션이 호출되지 않는다.**
