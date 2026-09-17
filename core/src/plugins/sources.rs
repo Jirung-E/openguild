@@ -56,7 +56,8 @@ pub struct SourcePlugin {
     /// 정의가 적은 **이름** — 동의도 목록도 이것으로 구분하므로 사람이 부를 이름도 이것이다.
     /// 정의를 못 읽으면 폴더 이름으로 대신한다(적재가 이유를 따로 보여 준다).
     pub name: String,
-    /// 소스 폴더 안의 폴더 이름 — 경로를 다시 만들 때 쓴다.
+    /// 소스 폴더 안의 폴더 이름 — 경로를 다시 만들 때 쓴다. 소스 **자체가** 플러그인
+    /// 폴더면 `"."` 이다(소스 경로에 그대로 이어 붙여도 같은 폴더가 된다).
     pub folder: String,
     pub path: PathBuf,
 }
@@ -124,25 +125,33 @@ fn declared_name(dir: &Path) -> String {
         .unwrap_or_else(fallback)
 }
 
-fn entry_at(dir: &Path) -> Option<SourcePlugin> {
-    Some(SourcePlugin {
+fn entry_at(dir: &Path, folder: String) -> SourcePlugin {
+    SourcePlugin {
         name: declared_name(dir),
-        folder: dir.file_name()?.to_str()?.to_string(),
+        folder,
         path: dir.to_path_buf(),
-    })
+    }
 }
+
+/// 소스 자체가 플러그인 폴더일 때의 `folder` 값.
+const SELF_FOLDER: &str = ".";
 
 /// 폴더 안에서 플러그인 폴더들을 찾는다 — `plugin.json` 이 있는 하위 폴더.
 /// 폴더 자체가 플러그인이면 그것 하나.
 pub fn plugins_in(dir: &Path) -> std::io::Result<Vec<SourcePlugin>> {
     if dir.join("plugin.json").is_file() {
-        return Ok(entry_at(dir).into_iter().collect());
+        // DEV-399: 예전엔 폴더 이름을 적어 두어, 쓸 때 `소스/폴더이름` 으로 **한 번 더** 이어
+        // 붙이는 바람에 "소스에 없다" 로 실패했다(실제 바이너리 시험이 잡았다).
+        return Ok(vec![entry_at(dir, SELF_FOLDER.to_string())]);
     }
     let mut found: Vec<SourcePlugin> = std::fs::read_dir(dir)?
         .flatten()
         .map(|e| e.path())
         .filter(|p| p.join("plugin.json").is_file())
-        .filter_map(|p| entry_at(&p))
+        .filter_map(|p| {
+            let folder = p.file_name()?.to_str()?.to_string();
+            Some(entry_at(&p, folder))
+        })
         .collect();
     found.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(found)
@@ -320,11 +329,9 @@ pub fn use_plugin(guild_root: &Path, source: &str, folder: &str) -> AppResult<()
 /// 이 길드에서 안 쓴다 — **파일은 안 지운다.** 플러그인 이름이나 폴더 이름 어느 쪽이든 받는다.
 pub fn stop_using(guild_root: &Path, name: &str) -> AppResult<()> {
     let key = guild_key(guild_root);
-    // 사람이 부르는 이름은 정의의 `name` 이고, 기록은 폴더 이름이다 — 양쪽으로 찾는다.
-    let folders: Vec<String> = find_by_name(name)
-        .into_iter()
-        .map(|(_, folder)| folder)
-        .collect();
+    // 사람이 부르는 이름은 정의의 `name` 이고, 기록은 `(소스, 폴더)` 다. **짝으로** 비교한다
+    // — 폴더만 보면 폴더 하나짜리 소스들(`"."`)이 한꺼번에 빠진다.
+    let pairs: Vec<(String, String)> = find_by_name(name);
     let folder = name.to_string();
     update(move |f| {
         let Some(list) = f.used.get_mut(&key) else {
@@ -334,7 +341,9 @@ pub fn stop_using(guild_root: &Path, name: &str) -> AppResult<()> {
             )));
         };
         let before = list.len();
-        list.retain(|u| u.folder != folder && !folders.contains(&u.folder));
+        list.retain(|u| {
+            u.folder != folder && !pairs.iter().any(|(s, f)| s == &u.source && f == &u.folder)
+        });
         if list.len() == before {
             return Err(AppError::NotFound(crate::tf!(
                 "이 길드에서 쓰고 있지 않습니다: {folder}",
