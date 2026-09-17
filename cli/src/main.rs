@@ -1216,6 +1216,9 @@ enum LibraryFolderCmd {
         #[arg(long)]
         yes: bool,
     },
+    // DEV-397: 옮기기와 이름 바꾸기는 같은 연산이다 — 새 **전체 경로**를 준다.
+    #[command(about = tf!("폴더 옮기기·이름 바꾸기 — 하위 폴더와 그 안 문서까지 함께. `to` 는 새 전체 경로(예: 보관/설계).", "Move or rename a folder — sub-folders and their documents come along. `to` is the new full path (e.g. archive/design)."))]
+    Move { from: String, to: String },
 }
 
 // ─────────────────────────── Worklog 서브명령 ───────────────────────────
@@ -3074,6 +3077,20 @@ impl Backend {
                 l.rt.block_on(openguild_core::ops::library::create_folder(&l.store, path)),
             )
             .map(FolderDto::from),
+        }
+    }
+
+    /// DEV-397: 폴더 옮기기·이름 바꾸기. 바뀐 뒤의 폴더 목록을 돌려준다.
+    fn library_folder_move(&self, from: &str, to: &str) -> Result<Vec<FolderDto>> {
+        match self {
+            Backend::Http(c) => c.patch(
+                "/api/library/folders",
+                &serde_json::json!({ "from": from, "to": to }),
+            ),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::library::move_folder(&l.store, from, to),
+            ))
+            .map(|rows| rows.into_iter().map(FolderDto::from).collect()),
         }
     }
 
@@ -8285,6 +8302,23 @@ fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
                     println!("{}", tf!("✓ 폴더 '{path}' 삭제됨", "✓ folder '{path}' deleted"));
                 }
             }
+            LibraryFolderCmd::Move { from, to } => {
+                let folders = c.library_folder_move(&from, &to)?;
+                if json {
+                    json_println!(serde_json::json!({
+                        "ok": true, "from": from, "to": to,
+                        "folders": folders.iter().map(|f| &f.path).collect::<Vec<_>>(),
+                    }));
+                } else {
+                    println!(
+                        "{}",
+                        tf!(
+                            "✓ 폴더 옮김: '{from}' → '{to}' (하위 폴더와 문서도 함께)",
+                            "✓ folder moved: '{from}' → '{to}' (sub-folders and documents too)"
+                        )
+                    );
+                }
+            }
         },
         LibraryCmd::Attach { sub } => run_book_attach_cmd(c, sub, json)?,
         // DEV-333: 도서관 태그 — 코어/서버/GUI 에 있던 기능의 CLI 배선.
@@ -12037,6 +12071,39 @@ mod tests {
             }
             _ => panic!(),
         }
+    }
+
+    /// DEV-397: `library folder move <from> <to>` — 둘 다 위치 인자(새 전체 경로).
+    #[test]
+    fn cli_library_folder_move_parses() {
+        let cli = Cli::try_parse_from(["openguild", "library", "folder", "move", "설계", "보관/설계"])
+            .unwrap();
+        match cli.command {
+            Command::Library {
+                sub: LibraryCmd::Folder { sub: LibraryFolderCmd::Move { from, to } },
+            } => {
+                assert_eq!((from.as_str(), to.as_str()), ("설계", "보관/설계"));
+            }
+            _ => panic!(),
+        }
+        assert!(Cli::try_parse_from(["openguild", "library", "folder", "move", "설계"]).is_err());
+    }
+
+    /// DEV-399: 플러그인 소스 명령의 모양.
+    #[test]
+    fn cli_plugin_source_commands_parse() {
+        for argv in [
+            vec!["openguild", "plugin", "source", "add", "/tmp/x", "--name", "mine"],
+            vec!["openguild", "plugin", "source", "list"],
+            vec!["openguild", "plugin", "source", "remove", "mine"],
+            vec!["openguild", "plugin", "available"],
+            vec!["openguild", "plugin", "add", "hello@mine"],
+            vec!["openguild", "plugin", "remove", "hello"],
+        ] {
+            assert!(Cli::try_parse_from(argv.clone()).is_ok(), "{argv:?}");
+        }
+        assert!(Cli::try_parse_from(["openguild", "plugin", "source"]).is_err(), "sub 필수");
+        assert!(Cli::try_parse_from(["openguild", "plugin", "add"]).is_err(), "대상 필수");
     }
 
     /// DEV-319: `guild` 는 하위 명령 필수(다른 명사 그룹과 동일 컨벤션).

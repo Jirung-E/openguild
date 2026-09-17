@@ -3381,6 +3381,75 @@ async fn test_tag_edit_endpoints_keep_tags_the_sender_never_saw() {
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
+/// DEV-397: 폴더 옮기기 — PATCH /api/library/folders {from,to}. 하위 폴더와 그 안 문서가
+/// 함께 가고, 자기 하위로는 못 간다.
+#[tokio::test]
+async fn test_library_folder_move_endpoint() {
+    let app = setup().await;
+    for p in ["설계", "설계/결정", "보관"] {
+        post(app.clone(), "/api/library/folders", json!({ "path": p })).await;
+    }
+    let (_, book) = post(
+        app.clone(),
+        "/api/library",
+        json!({ "title": "하위 문서", "body": "", "path": "설계/결정" }),
+    )
+    .await;
+    let (status, folders) = patch(
+        app.clone(),
+        "/api/library/folders",
+        json!({ "from": "설계", "to": "보관/설계" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{folders}");
+    let paths: Vec<&str> = folders
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| f["path"].as_str().unwrap())
+        .collect();
+    assert_eq!(paths, vec!["보관", "보관/설계", "보관/설계/결정"]);
+    let (_, got) = get(
+        app.clone(),
+        &format!("/api/library/{}", book["book_id"].as_str().unwrap()),
+    )
+    .await;
+    assert_eq!(got["path"], json!("보관/설계/결정"));
+
+    let (status, _) = patch(
+        app,
+        "/api/library/folders",
+        json!({ "from": "보관", "to": "보관/설계/보관" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "자기 하위로 옮겨졌다");
+}
+
+/// BUG-290: 한글 이름의 태그에도 색·설명을 단다. 지울 때는 URL 에 인코딩돼 온다.
+#[tokio::test]
+async fn test_korean_tag_definition_roundtrip() {
+    let app = setup().await;
+    let (status, created) = post(
+        app.clone(),
+        "/api/tag-defs",
+        json!({ "slug": "리팩터링", "color": "#e94f4f", "description": "구조 정리" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{created}");
+    let (_, list) = get(app.clone(), "/api/tag-defs").await;
+    assert!(list.as_array().unwrap().iter().any(|d| d["slug"] == "리팩터링"));
+
+    // 대소문자만 다른 정의는 거절 — macOS·Windows 에서 같은 파일이다.
+    post(app.clone(), "/api/tag-defs", json!({ "slug": "api", "color": "#111111" })).await;
+    let (status, _) = post(app.clone(), "/api/tag-defs", json!({ "slug": "API", "color": "#222222" })).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    let status = delete(app.clone(), "/api/tag-defs/%EB%A6%AC%ED%8C%A9%ED%84%B0%EB%A7%81").await;
+    assert!(status.is_success(), "{status}");
+    let (_, list) = get(app, "/api/tag-defs").await;
+    assert!(!list.as_array().unwrap().iter().any(|d| d["slug"] == "리팩터링"));
+}
+
 #[tokio::test]
 async fn test_admin_type_and_status_crud_endpoints() {
     let app = setup().await;
