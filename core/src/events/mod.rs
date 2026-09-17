@@ -55,6 +55,24 @@ impl Phase {
     }
 }
 
+/// DEV-404: 이 이벤트가 **무엇에 대한 일인지**.
+///
+/// 댓글·첨부처럼 여러 문서에 달리는 것은 달린 문서(`target`), 나머지는 이름의 앞부분이
+/// 가리키는 것이다. 플러그인이 "이 일과 연결된 것" 을 받을 때([[DEV-405]]) 이 하나의 규칙으로
+/// 찾는다 — 이벤트 55개마다 받을 수 있는 것을 따로 외우지 않게.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Subject {
+    /// [`SUBJECT_KINDS`] 중 하나.
+    pub kind: &'static str,
+    /// 사람이 쓰는 식별자 — `DEV-007`, `C-001`, `BOOK-003`, 규칙 slug, 폴더 경로, 날짜 …
+    pub id: String,
+}
+
+/// 대상의 종류. 앞의 넷이 **문서**이고, 연결된 데이터를 받을 수 있는 것도 이 넷이다.
+pub const SUBJECT_KINDS: &[&str] = &[
+    "quest", "campaign", "book", "rule", "folder", "type", "status", "tag", "worklog", "backup",
+];
+
 /// 플러그인에게 전달되는 한 건.
 #[derive(Debug, Clone)]
 pub struct Event {
@@ -77,6 +95,55 @@ pub struct Event {
 }
 
 impl Event {
+    /// DEV-404: 대상. 모든 공개 이벤트에 있어야 한다 — `events::tests` 가 실제로 낸 이벤트 전부로
+    /// 확인한다.
+    pub fn subject(&self) -> Option<Subject> {
+        let text = |v: &Value, key: &str| {
+            v.get(key)
+                .and_then(|x| x.as_str())
+                .filter(|x| !x.is_empty())
+                .map(str::to_string)
+        };
+        // 댓글·첨부 — 어디에 달렸나.
+        if let Some(t) = self.data.get("target") {
+            let kind = match t.get("kind").and_then(|k| k.as_str())? {
+                "quest" => "quest",
+                "campaign" => "campaign",
+                "book" => "book",
+                "rule" => "rule",
+                _ => return None,
+            };
+            return text(t, "id").map(|id| Subject { kind, id });
+        }
+        let (resource, _) = self.name.split_once('.')?;
+        let (kind, field, key) = match resource {
+            "quest" => ("quest", "quest", "id"),
+            "campaign" => ("campaign", "campaign", "id"),
+            "book" => ("book", "book", "id"),
+            "rule" => ("rule", "rule", "slug"),
+            "folder" => ("folder", "folder", "path"),
+            "type" => ("type", "type", "prefix"),
+            "status" => ("status", "status", "slug"),
+            "tag" => ("tag", "tag", "slug"),
+            // 노트와 백업은 본문이 곧 대상이라 싸개가 없다.
+            "worklog" => {
+                return self.data.get("date").and_then(|d| d.as_str()).map(|d| Subject {
+                    kind: "worklog",
+                    id: d.to_string(),
+                });
+            }
+            "backup" => {
+                return self.data.get("timestamp").and_then(|d| d.as_str()).map(|d| Subject {
+                    kind: "backup",
+                    id: d.to_string(),
+                });
+            }
+            _ => return None,
+        };
+        let id = text(self.data.get(field)?, key)?;
+        Some(Subject { kind, id })
+    }
+
     /// 플러그인이 받는 JSON. **이 모양이 계약이다** — 내부 구조체를 그대로
     /// 흘리지 않는다(필드를 바꾸면 플러그인이 깨진다).
     pub fn to_json(&self) -> Value {
@@ -92,6 +159,9 @@ impl Event {
             m.insert("error".into(), json!(e));
         }
         m.insert("origin".into(), self.origin.to_json());
+        if let Some(sub) = self.subject() {
+            m.insert("subject".into(), json!({ "kind": sub.kind, "id": sub.id }));
+        }
         for (k, v) in &self.data {
             m.insert(k.clone(), v.clone());
         }

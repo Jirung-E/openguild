@@ -288,6 +288,8 @@ async fn a_rejected_mutation_emits_ok_false_with_the_reason() {
     );
     assert_eq!(j["quest"]["id"], q.quest_id);
     assert_eq!(j["change"]["to"], "done");
+    // DEV-404: 실패해도 무엇에 대한 일이었는지는 실린다.
+    assert_eq!(j["subject"], serde_json::json!({ "kind": "quest", "id": q.quest_id }));
 
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -1046,7 +1048,40 @@ async fn all_declared_events_fire_with_a_usable_payload() {
         "태그를 알리는 이벤트가 태그를 안 실었다"
     );
 
-    // ── 5. 배포하는 예제가 이 페이로드로 **실제로 돈다** ──
+    // ── 5. 모든 이벤트에 대상(subject)이 있다 (DEV-404) ──
+    //
+    // 실제로 낸 이벤트 **전부**를 본다 — 이름 하나라도 대상이 빠지면 그 이벤트에서는 "연결된
+    // 것 받기"(`with`)가 안 된다. 대상이 이벤트 본문의 문서와 같은지도 본다.
+    {
+        let got = rec.got.lock().unwrap();
+        let mut kinds_seen = std::collections::BTreeSet::new();
+        for ev in got.iter() {
+            let sub = ev.subject().unwrap_or_else(|| {
+                panic!("'{}'({:?}) 에 대상이 없다: {}", ev.name, ev.phase, ev.to_json())
+            });
+            assert!(super::SUBJECT_KINDS.contains(&sub.kind), "{sub:?}");
+            let j = ev.to_json();
+            assert_eq!(j["subject"]["kind"], sub.kind);
+            assert_eq!(j["subject"]["id"], sub.id.as_str());
+            kinds_seen.insert(sub.kind);
+        }
+        // 이 시험이 내는 이벤트가 대상 종류를 빠짐없이 밟는지 — 안 밟은 종류는 확인이 안 된 것이다.
+        let missing: Vec<_> = super::SUBJECT_KINDS
+            .iter()
+            .filter(|k| !kinds_seen.contains(*k))
+            .collect();
+        assert!(missing.is_empty(), "대상 종류를 안 밟았다: {missing:?}");
+        // 댓글은 달린 문서, 캠페인 댓글은 캠페인.
+        let c = got
+            .iter()
+            .find(|e| e.name == super::names::COMMENT_ADDED)
+            .unwrap()
+            .subject()
+            .unwrap();
+        assert_eq!(c.kind, "quest");
+    }
+
+    // ── 6. 배포하는 예제가 이 페이로드로 **실제로 돈다** ──
     shipped_scripts_survive_real_events(&rec);
 
     let _ = std::fs::remove_dir_all(&dir);
