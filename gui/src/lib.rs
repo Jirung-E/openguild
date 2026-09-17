@@ -800,6 +800,9 @@ pub fn run() {
 }
 
 #[cfg(test)]
+mod plugin_ipc_tests;
+
+#[cfg(test)]
 mod tests {
     // BUG-260: 메인 창을 닫으면 자식 창도 닫힌다.
     //
@@ -1138,13 +1141,75 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// DEV-400: 프런트가 부르는 명령이 **전부 등록돼 있다.** 등록을 빠뜨리면 컴파일도 시험도
+    /// 통과하고, 앱에서 그 버튼을 누를 때에야 "command not found" 가 난다(프런트 시험은
+    /// `invoke` 를 흉내 내므로 못 잡는다).
+    #[test]
+    fn every_command_the_frontend_invokes_is_registered() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let lib = std::fs::read_to_string(root.join("src/lib.rs")).unwrap();
+        let start = lib.find("generate_handler![").expect("generate_handler") + "generate_handler![".len();
+        let end = start + lib[start..].find(']').unwrap();
+        let registered: std::collections::BTreeSet<String> = lib[start..end]
+            .lines()
+            .map(|l| l.split("//").next().unwrap_or("").trim().trim_end_matches(','))
+            .filter_map(|l| l.strip_prefix("commands::").or(Some(l)))
+            .filter(|l| !l.is_empty())
+            .map(str::to_string)
+            .collect();
+
+        // `invoke('x'` / `invoke<T>('x'` / `manage('x'` / `manage<T>('x'` / transport 표의 `cmd: 'x'`.
+        fn names_in(src: &str, out: &mut std::collections::BTreeSet<String>) {
+            for key in ["invoke", "manage", "cmd:"] {
+                let mut rest = src;
+                while let Some(i) = rest.find(key) {
+                    rest = &rest[i + key.len()..];
+                    let mut t = rest.trim_start();
+                    if key != "cmd:" {
+                        if let Some(after) = t.strip_prefix('<') {
+                            let Some(close) = after.find(">(") else { continue };
+                            t = &after[close + 1..];
+                        }
+                        let Some(after) = t.strip_prefix('(') else { continue };
+                        t = after.trim_start();
+                    }
+                    let Some(after) = t.strip_prefix(['\'', '`']) else { continue };
+                    let name: String = after
+                        .chars()
+                        .take_while(|c| c.is_ascii_lowercase() || *c == '_')
+                        .collect();
+                    if !name.is_empty() && after[name.len()..].starts_with(['\'', '`']) {
+                        out.insert(name);
+                    }
+                }
+            }
+        }
+        fn walk(dir: &std::path::Path, out: &mut std::collections::BTreeSet<String>) {
+            for e in std::fs::read_dir(dir).unwrap().flatten() {
+                let p = e.path();
+                let name = p.file_name().unwrap().to_string_lossy().to_string();
+                if p.is_dir() {
+                    walk(&p, out);
+                } else if (name.ends_with(".ts") || name.ends_with(".svelte")) && !name.contains(".test.") {
+                    names_in(&std::fs::read_to_string(&p).unwrap(), out);
+                }
+            }
+        }
+        let mut used = std::collections::BTreeSet::new();
+        walk(&root.join("frontend/src"), &mut used);
+
+        assert!(used.contains("plugin_add_folder"), "프런트 호출을 못 찾았다 — 검사가 헐거워졌다: {used:?}");
+        let missing: Vec<_> = used.difference(&registered).collect();
+        assert!(missing.is_empty(), "프런트가 부르는데 등록 안 된 명령: {missing:?}");
+    }
+
     // ───── DEV-379: 플러그인 배선 ─────
 
     /// `OPENGUILD_HOME` 은 프로세스 전역이다. **테스트마다 따로 잠그면 의미가
     /// 없다** — 하나가 잠금을 쥔 사이 다른 하나가 지워 버린다(실제로 그랬다).
     /// 이 모듈에서 env 를 만지는 테스트가 같은 잠금을 쓴다.
     static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+    pub(crate) fn env_lock() -> std::sync::MutexGuard<'static, ()> {
         ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
     }
 

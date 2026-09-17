@@ -39,6 +39,10 @@ openguild-core = { path = "../core" }
 # DEV-052 후속: init_and_open_guild 의 .guild marker 파일 created_at 작성용.
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
+# DEV-400: 데스크톱 명령을 **실제 IPC 로** 부르는 시험 — 창 없이 mock 런타임으로 돈다.
+[dev-dependencies]
+tauri = { version = "2", features = ["protocol-asset", "test"] }
+
 # BUG-041 후속: Windows release 는 `windows_subsystem = "windows"` 로 빌드되어
 # `--version` / `--help` 같은 console 출력이 부모 콘솔에서 안 보임 (cmd 가
 # detach). `AttachConsole(ATTACH_PARENT_PROCESS)` + `SetStdHandle(CONOUT$)` 로
