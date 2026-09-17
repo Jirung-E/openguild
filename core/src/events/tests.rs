@@ -1082,7 +1082,7 @@ async fn all_declared_events_fire_with_a_usable_payload() {
     }
 
     // ── 6. 배포하는 예제가 이 페이로드로 **실제로 돈다** ──
-    shipped_scripts_survive_real_events(&rec);
+    shipped_scripts_survive_real_events(&rec, &dir);
 
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -1098,7 +1098,7 @@ async fn all_declared_events_fire_with_a_usable_payload() {
 /// 여기서 잡을 수 있는 이유는 이 시험이 이미 54종을 **진짜 ops 로** 발생시켜
 /// 놓았기 때문이다. 그 페이로드를 그대로 재활용한다 — 모양을 다시 적으면
 /// 그 사본이 낡는다.
-fn shipped_scripts_survive_real_events(rec: &Recorder) {
+fn shipped_scripts_survive_real_events(rec: &Recorder, guild: &std::path::Path) {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()
@@ -1130,7 +1130,16 @@ fn shipped_scripts_survive_real_events(rec: &Recorder) {
                     continue;
                 }
                 checked += 1;
-                let cmds = script.call_handler(func, ev, &cfg).unwrap_or_else(|e| {
+                // DEV-405: 정의가 적은 연결 데이터를 함께 넘긴다 — 이 시험의 길드에서 읽는다.
+                let extra: Vec<serde_json::Value> = h
+                    .with
+                    .iter()
+                    .map(|w| match ev.subject() {
+                        None => serde_json::Value::Null,
+                        Some(sub) => crate::plugins::related::load(guild, &sub, w),
+                    })
+                    .collect();
+                let cmds = script.call_handler_with(func, ev, &extra, &cfg).unwrap_or_else(|e| {
                     panic!(
                         "배포 예제 '{}' {} 가 실제 이벤트 '{}'({:?})에서 죽는다: {e}\n\
                          페이로드: {}\n\

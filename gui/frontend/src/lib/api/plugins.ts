@@ -94,6 +94,8 @@ export interface PluginHandler {
 	events: string[];
 	/** 부르는 스크립트 함수. */
 	call: string | null;
+	/** DEV-405: 함수가 받는 연결 데이터(읽는 것). */
+	with: string[];
 	/** 이름 붙인 동작을 가리키면 그 이름. */
 	action: string | null;
 	/** 줄에 바로 적은 동작이면 그 종류와 대상. */

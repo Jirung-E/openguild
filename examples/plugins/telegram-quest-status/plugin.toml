@@ -27,6 +27,8 @@ scripts     = ["main.rhai"]
 [[handlers]]
     id   = "댓글 알림"
     post = ["comment.added"]
+    # 댓글 이벤트에는 퀘스트 태그가 없다 — 달린 문서를 함께 받아 태그로 거른다(DEV-405).
+    with = ["subject"]
     call = "on_comment"
 
 [[inputs]]
@@ -45,7 +47,7 @@ scripts     = ["main.rhai"]
     label   = "notify 태그가 붙은 퀘스트만"
     type    = "checkbox"
     default = true
-    help    = "알림 받을 퀘스트를 평범한 태그로 고릅니다 — 퀘스트 화면의 태그 줄에서 notify 를 추가하거나 `openguild quest tag add DEV-001 notify`. 끄면 모든 퀘스트를 알립니다. 댓글 알림에는 적용되지 않습니다 — 댓글 이벤트에는 퀘스트 태그가 실리지 않습니다."
+    help    = "알림 받을 퀘스트를 평범한 태그로 고릅니다 — 퀘스트 화면의 태그 줄에서 notify 를 추가하거나 `openguild quest tag add DEV-001 notify`. 끄면 모든 퀘스트를 알립니다. 댓글에도 적용됩니다(댓글이 달린 문서를 보고 거릅니다)."
 
 [[inputs]]
     key     = "ON_CREATED"

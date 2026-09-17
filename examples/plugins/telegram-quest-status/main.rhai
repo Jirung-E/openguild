@@ -20,12 +20,12 @@ fn on_status(e) {
     send("telegram", message(`[${e.quest.id}] ${e.quest.title}` + "\n" + `${e.change.from} → ${e.change.to}`));
 }
 
-fn on_comment(e) {
-    // **댓글에는 태그 필터를 못 건다.** `comment.added` 는 어느 문서에 달렸는지를
-    // `target: {kind, id}` 로만 알리고, 그 퀘스트의 태그는 안 싣는다. 여기서 켜고 끄는
-    // 것은 "댓글 알림 전체" 다.
+// 두 번째 인자는 정의의 `with = ["subject"]` — **댓글이 달린 문서**다(퀘스트 또는 캠페인).
+fn on_comment(e, doc) {
     if !e.ok || !config("ON_COMMENT") { return; }
-    send("telegram", message(`💬 ${e.target.id}` + "\n" + e.comment.body));
+    // 퀘스트 댓글은 그 퀘스트의 태그로 거른다. 캠페인 댓글에는 태그가 없어 그대로 알린다.
+    if e.subject.kind == "quest" && config("ONLY_TAGGED") && !doc.tags.contains("notify") { return; }
+    send("telegram", message(`💬 ${e.subject.id}` + "\n" + e.comment.body));
 }
 
 // "이 퀘스트만 알림" 을 태그로 고른다 — 새 개념을 안 만들려고 그렇게 했다.

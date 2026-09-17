@@ -6127,11 +6127,32 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
 
     if let PluginCmd::Events = sub {
         let names = openguild_core::events::names::ALL;
+        // DEV-405: 이벤트마다 대상 종류와 `with` 로 받을 수 있는 것 — 외우지 않고 여기서 본다.
+        let with_of = |n: &str| {
+            openguild_core::plugins::related::available_for(
+                &[n.to_string()],
+                openguild_core::events::Phase::Post,
+            )
+        };
         if json {
-            json_println!(serde_json::json!({ "events": names }));
+            json_println!(serde_json::json!({
+                "events": names,
+                "details": names.iter().map(|n| serde_json::json!({
+                    "name": n,
+                    "subject": openguild_core::events::subject_kinds_of(n),
+                    "pre": openguild_core::events::names::emits_pre(n),
+                    "with": with_of(n),
+                })).collect::<Vec<_>>(),
+            }));
         } else {
             for n in names {
-                println!("{n}");
+                let pre = if openguild_core::events::names::emits_pre(n) { "  (pre)" } else { "" };
+                let with = with_of(n);
+                if with.is_empty() {
+                    println!("{n}{pre}");
+                } else {
+                    println!("{n}{pre}  with: {}", with.join(", "));
+                }
             }
             println!(
                 "{}",

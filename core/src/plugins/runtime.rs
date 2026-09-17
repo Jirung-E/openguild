@@ -147,6 +147,9 @@ fn run_handlers(
     log: &Mutex<Vec<String>>,
 ) {
     let name = &p.def.name;
+    // DEV-405: 연결 데이터는 이 이벤트에 대해 한 번만 읽는다 — 여러 줄이 같은 것을 받아도.
+    let subject = event.subject();
+    let mut related_cache: std::collections::HashMap<String, serde_json::Value> = Default::default();
     for (i, h) in p.def.handlers.iter().enumerate() {
         if !h.wants(event.name, event.phase) {
             continue;
@@ -157,7 +160,18 @@ fn run_handlers(
                 note(log, format!("플러그인 '{name}' {who} — 스크립트가 적재되지 않았습니다"));
                 continue;
             };
-            let cmds = match sc.call_handler(func, event, cfg) {
+            let extra: Vec<serde_json::Value> = h
+                .with
+                .iter()
+                .map(|w| match &subject {
+                    None => serde_json::Value::Null,
+                    Some(sub) => related_cache
+                        .entry(w.clone())
+                        .or_insert_with(|| super::related::load(&p.guild_root, sub, w))
+                        .clone(),
+                })
+                .collect();
+            let cmds = match sc.call_handler_with(func, event, &extra, cfg) {
                 Ok(c) => c,
                 Err(e) => {
                     note(log, format!("플러그인 '{name}' {who} 스크립트 — {e}"));
@@ -393,6 +407,7 @@ mod tests {
             .collect();
         Handler {
             id: None,
+            with: Vec::new(),
             pre,
             post,
             call: call.map(str::to_string),

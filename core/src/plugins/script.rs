@@ -155,9 +155,14 @@ impl Script {
 
     /// 핸들러로 부를 수 있는 함수(인자 하나)가 있나.
     pub fn has_handler(&self, name: &str) -> bool {
+        self.has_function(name, 1)
+    }
+
+    /// 그 이름·인자 수의 함수가 있나.
+    pub fn has_function(&self, name: &str, arity: usize) -> bool {
         self.ast
             .iter_functions()
-            .any(|f| f.name == name && f.params.len() == 1)
+            .any(|f| f.name == name && f.params.len() == arity)
     }
 
     /// 핸들러 함수를 부르고, 그 함수가 적은 할 일을 돌려준다. 스크립트가 던지면 **그 줄만**
@@ -166,6 +171,17 @@ impl Script {
         &self,
         func: &str,
         event: &Event,
+        config: &std::collections::BTreeMap<String, serde_json::Value>,
+    ) -> Result<Vec<Command>, String> {
+        self.call_handler_with(func, event, &[], config)
+    }
+
+    /// DEV-405: 이벤트 뒤에 연결 데이터(`with`)를 차례로 넘긴다.
+    pub fn call_handler_with(
+        &self,
+        func: &str,
+        event: &Event,
+        extra: &[Value],
         config: &std::collections::BTreeMap<String, serde_json::Value>,
     ) -> Result<Vec<Command>, String> {
         // REQ-021: 이번 호출이 볼 설정값. **I/O 가 아니다** — 코어가 미리 읽어
@@ -179,12 +195,14 @@ impl Script {
         if let Ok(mut c) = self.commands.lock() {
             c.clear();
         }
-        let arg = to_dynamic(&event.to_json());
+        let args: Vec<Dynamic> = std::iter::once(to_dynamic(&event.to_json()))
+            .chain(extra.iter().map(to_dynamic))
+            .collect();
         self.arm();
         let mut scope = Scope::new();
         let result = self
             .engine
-            .call_fn::<Dynamic>(&mut scope, &self.ast, func, (arg,))
+            .call_fn::<Dynamic>(&mut scope, &self.ast, func, args)
             .map_err(|e| format!("{func}: {e}"));
         // 던졌으면 적어 둔 일도 버린다 — 반쯤 돈 함수의 일을 반만 실행하지 않는다.
         let cmds = self

@@ -63,6 +63,8 @@ pub struct HandlerView {
     pub events: Vec<String>,
     /// 부르는 스크립트 함수.
     pub call: Option<String>,
+    /// DEV-405: 함수가 받는 연결 데이터 — 허용 화면이 "퀘스트를 읽음" 을 보여 준다.
+    pub with: Vec<String>,
     /// 바로 실행하는 동작 — 이름 붙인 것이면 그 이름, 줄에 적은 것이면 `None` 이고 대신
     /// `action_kind`/`action_target` 이 찬다.
     pub action: Option<String>,
@@ -170,6 +172,7 @@ pub(super) fn view(p: &Plugin, granted: bool, scope: Scope) -> PluginView {
                 stage: if h.pre.is_empty() { "post" } else { "pre" }.into(),
                 events: h.patterns().to_vec(),
                 call: h.call.clone(),
+                with: h.with.clone(),
                 action,
                 action_kind,
                 action_target,

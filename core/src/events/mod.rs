@@ -73,6 +73,26 @@ pub const SUBJECT_KINDS: &[&str] = &[
     "quest", "campaign", "book", "rule", "folder", "type", "status", "tag", "worklog", "backup",
 ];
 
+/// DEV-405: 이 이름의 이벤트가 가질 수 있는 대상 종류 — 적재 때 `with` 를 검사하는 데 쓴다.
+/// 댓글은 퀘스트·캠페인에, 첨부는 퀘스트·캠페인·도서관 문서에 달린다.
+pub fn subject_kinds_of(name: &str) -> &'static [&'static str] {
+    match name.split_once('.').map(|(r, _)| r) {
+        Some("comment") => &["quest", "campaign"],
+        Some("attachment") => &["quest", "campaign", "book"],
+        Some("quest") => &["quest"],
+        Some("campaign") => &["campaign"],
+        Some("book") => &["book"],
+        Some("rule") => &["rule"],
+        Some("folder") => &["folder"],
+        Some("type") => &["type"],
+        Some("status") => &["status"],
+        Some("tag") => &["tag"],
+        Some("worklog") => &["worklog"],
+        Some("backup") => &["backup"],
+        _ => &[],
+    }
+}
+
 /// 플러그인에게 전달되는 한 건.
 #[derive(Debug, Clone)]
 pub struct Event {

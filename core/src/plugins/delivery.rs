@@ -433,6 +433,7 @@ mod tests {
                 actions: Default::default(),
                 handlers: vec![crate::plugins::Handler {
                     id: None,
+                    with: Vec::new(),
                     pre: Vec::new(),
                     post: vec!["quest.created".into()],
                     call: None,

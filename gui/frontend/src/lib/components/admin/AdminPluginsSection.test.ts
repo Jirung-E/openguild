@@ -56,6 +56,7 @@ function plugin(name: string, description: string | null): PluginView {
 				stage: 'post',
 				events: ['quest.created'],
 				call: null,
+				with: [],
 				action: null,
 				action_kind: 'post',
 				action_target: 'https://example.test/hook'
@@ -133,6 +134,7 @@ describe('DEV-403 줄 목록', () => {
 					stage: 'post',
 					events: ['quest.status_changed'],
 					call: 'on_status',
+					with: ['subject'],
 					action: null,
 					action_kind: null,
 					action_target: null
@@ -142,6 +144,7 @@ describe('DEV-403 줄 목록', () => {
 					stage: 'pre',
 					events: ['quest.deleted'],
 					call: null,
+					with: [],
 					action: 'log',
 					action_kind: null,
 					action_target: null
@@ -156,7 +159,7 @@ describe('DEV-403 줄 목록', () => {
 			li.textContent?.replace(/\s+/g, ' ').trim()
 		);
 		expect(lines).toEqual([
-			'바뀐 뒤 quest.status_changed → on_status() 상태 알림',
+			'바뀐 뒤 quest.status_changed → on_status() 읽음: subject 상태 알림',
 			'바뀌기 전 quest.deleted → log 삭제 기록'
 		]);
 		expect(document.querySelector('.plugin-dests')?.textContent).toContain(

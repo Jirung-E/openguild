@@ -467,6 +467,7 @@ fn def(action: Action) -> PluginDef {
         actions: Default::default(),
         handlers: vec![Handler {
             id: None,
+            with: Vec::new(),
             pre: Vec::new(),
             post: vec!["quest.created".into()],
             call: None,
@@ -2313,4 +2314,197 @@ fn secret_checks_cover_named_and_inline_actions() {
     .unwrap();
     let keys: Vec<String> = d.effective_inputs().into_iter().map(|i| i.key).collect();
     assert_eq!(keys, vec!["A_KEY", "CHAT"]);
+}
+
+// ── DEV-405: with — 연결된 데이터 ──────────────────────────
+
+fn with_line(post: &str, with: &str, call: &str) -> String {
+    format!("{BASE}\n[[handlers]]\npost = [{post}]\nwith = [{with}]\ncall = \"{call}\"\n")
+}
+
+/// 받을 수 있는 것은 이벤트 대상의 종류가 정한다 — 틀리면 쓸 수 있는 것을 알려 준다.
+#[test]
+fn with_is_checked_against_what_the_events_can_give() {
+    // 댓글은 퀘스트·캠페인에 달린다 — 둘의 것을 모두 받을 수 있다.
+    assert!(parse(&with_line("\"comment.added\"", "\"subject\", \"parent\", \"quests\"", "h")).is_ok());
+    let e = parse(&with_line("\"campaign.created\"", "\"parent\"", "h")).unwrap_err();
+    assert!(e.contains("parent") && e.contains("subject, quests"), "{e}");
+    let e = parse(&with_line("\"backup.created\"", "\"subject\"", "h")).unwrap_err();
+    assert!(e.contains("없습니다"), "{e}");
+    let e = parse(&with_line("\"quest.created\"", "\"subject\", \"subject\"", "h")).unwrap_err();
+    assert!(e.contains("두 번"), "{e}");
+    // 동작 줄은 아직 받을 곳이 없다.
+    let e = parse(&format!(
+        "{BASE}\n[[handlers]]\npost = [\"quest.created\"]\nwith = [\"subject\"]\naction = \"out\"\n"
+    ))
+    .unwrap_err();
+    assert!(e.contains("call"), "{e}");
+    assert_eq!(
+        related::available_for(&["quest.*".into()], crate::events::Phase::Post),
+        vec!["subject", "parent", "children", "prereqs", "campaigns"]
+    );
+}
+
+/// 함수는 이벤트 + `with` 개수만큼 인자를 받아야 한다 — 모자라면 적재 때 모양을 알려 준다.
+#[test]
+fn a_handler_with_with_needs_matching_parameters() {
+    let _guard = env_lock();
+    let home = fresh_tmp("witharity-home");
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let g = fresh_tmp("witharity");
+    let dir = plugins_dir(&g).join("w");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join(MANIFEST),
+        with_line("\"comment.added\"", "\"subject\", \"parent\"", "on_comment"),
+    )
+    .unwrap();
+    std::fs::write(dir.join("main.rhai"), "fn on_comment(e) { }").unwrap();
+    let l = load_all(&g);
+    assert_eq!(l.errors.len(), 1, "{:?}", l.errors);
+    assert!(l.errors[0].1.contains("fn on_comment(e, subject, parent)"), "{:?}", l.errors);
+
+    std::fs::write(dir.join("main.rhai"), "fn on_comment(e, s, p) { }").unwrap();
+    assert!(load_all(&g).errors.is_empty());
+
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 파일에서 읽은 관계가 맞다 — 부모·하위·선행·캠페인, 캠페인의 퀘스트, 없는 것은 null.
+#[tokio::test]
+async fn related_data_is_read_from_the_guild_files() {
+    use crate::events::Subject;
+    let g = fresh_tmp("related");
+    crate::repo::seed_guild_dir(&g).unwrap();
+    let store = crate::Store::open(&g).await.unwrap();
+    let mk = |title: &str, parent: Option<i64>| crate::models::CreateQuestRequest {
+        quest_type_id: 1,
+        title: title.into(),
+        description: None,
+        status_slug: "open".into(),
+        urgency: Some(3),
+        parent_quest_id: parent,
+    };
+    let top = crate::ops::quests::create_quest(&store, mk("부모", None)).await.unwrap();
+    let kid = crate::ops::quests::create_quest(&store, mk("자식", Some(top.id))).await.unwrap();
+    let pre = crate::ops::quests::create_quest(&store, mk("선행", None)).await.unwrap();
+    crate::ops::quests::add_prerequisite(
+        &store,
+        kid.id,
+        crate::models::AddPrerequisiteRequest { prerequisite_id: pre.id },
+    )
+    .await
+    .unwrap();
+    crate::ops::quests::set_quest_tags(&store, kid.id, vec!["notify".into()]).await.unwrap();
+    let camp = crate::ops::campaigns::create_campaign(
+        &store,
+        crate::models::CreateCampaignRequest {
+            title: "베타".into(),
+            description: None,
+            started_at: None,
+            ended_at: None,
+        },
+    )
+    .await
+    .unwrap();
+    crate::ops::campaigns::link_quest_by_slug(&store, camp.id, &kid.quest_id).await.unwrap();
+
+    let q = |id: &str| Subject { kind: "quest", id: id.into() };
+    let load = |s: &Subject, w: &str| related::load(&g, s, w);
+
+    let sub = load(&q(&kid.quest_id), "subject");
+    assert_eq!(sub["title"], "자식");
+    assert_eq!(sub["tags"], json!(["notify"]));
+    assert_eq!(sub["type"], "DEV");
+    assert_eq!(load(&q(&kid.quest_id), "parent")["id"], top.quest_id);
+    assert!(load(&q(&top.quest_id), "parent").is_null());
+    assert_eq!(load(&q(&top.quest_id), "children")[0]["id"], kid.quest_id);
+    assert_eq!(load(&q(&kid.quest_id), "prereqs")[0]["id"], pre.quest_id);
+    assert_eq!(load(&q(&kid.quest_id), "campaigns")[0]["id"], camp.campaign_slug);
+    assert_eq!(load(&q(&top.quest_id), "campaigns"), json!([]));
+    let c = Subject { kind: "campaign", id: camp.campaign_slug.clone() };
+    assert_eq!(load(&c, "subject")["title"], "베타");
+    assert_eq!(load(&c, "quests")[0]["id"], kid.quest_id);
+    // 대상에 없는 것, 없는 대상.
+    assert!(load(&c, "parent").is_null());
+    assert!(load(&q("DEV-999"), "subject").is_null());
+
+    let _ = std::fs::remove_dir_all(&g);
+}
+
+/// **이 기능이 풀려는 것** — "notify 태그가 붙은 퀘스트의 댓글만" 알리기. 댓글 이벤트에는 퀘스트
+/// 태그가 없어서 지금까지는 못 했다.
+#[tokio::test]
+async fn a_comment_handler_can_see_its_quests_tags() {
+    #[derive(Default)]
+    struct Sent(std::sync::Mutex<Vec<serde_json::Value>>);
+    impl runtime::Delivery for Sent {
+        fn deliver(
+            &self,
+            _p: &Plugin,
+            _a: &Action,
+            _e: &crate::events::Event,
+            b: &serde_json::Value,
+            _v: &std::collections::BTreeMap<String, String>,
+        ) -> Result<(), String> {
+            self.0.lock().unwrap().push(b.clone());
+            Ok(())
+        }
+    }
+    let home = fresh_tmp("withtag-home");
+    let g = fresh_tmp("withtag");
+    crate::repo::seed_guild_dir(&g).unwrap();
+    let dir = plugins_dir(&g).join("tagged");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join(MANIFEST),
+        with_line("\"comment.added\"", "\"subject\"", "on_comment"),
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("main.rhai"),
+        r#"fn on_comment(e, quest) {
+             if quest.tags.contains("notify") { send("out", #{ q: quest.id, body: e.comment.body }) }
+           }"#,
+    )
+    .unwrap();
+    let store = crate::Store::open(&g).await.unwrap();
+    let sent = std::sync::Arc::new(Sent::default());
+    let loaded = {
+        let _guard = env_lock();
+        unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+        consent::enable_auto_allow(&g).unwrap();
+        let l = store.install_plugins(Scope::Cli, sent.clone());
+        unsafe { std::env::remove_var("OPENGUILD_HOME") };
+        l
+    };
+    assert_eq!(loaded.active.len(), 1, "{:?}", loaded.errors);
+
+    let mk = |title: &str| crate::models::CreateQuestRequest {
+        quest_type_id: 1,
+        title: title.into(),
+        description: None,
+        status_slug: "open".into(),
+        urgency: Some(3),
+        parent_quest_id: None,
+    };
+    let loud = crate::ops::quests::create_quest(&store, mk("알림 받을 것")).await.unwrap();
+    let quiet = crate::ops::quests::create_quest(&store, mk("조용한 것")).await.unwrap();
+    crate::ops::quests::set_quest_tags(&store, loud.id, vec!["notify".into()]).await.unwrap();
+    for q in [&loud, &quiet] {
+        crate::ops::comments::add_comment_entry(&store, &q.quest_id, "kim".into(), "봐 주세요".into(), None, false)
+            .await
+            .unwrap();
+    }
+    assert!(store.drain_events(std::time::Duration::from_secs(5)));
+    assert_eq!(
+        sent.0.lock().unwrap().clone(),
+        vec![json!({ "q": loud.quest_id, "body": "봐 주세요" })]
+    );
+    assert!(store.plugin_problems().is_empty(), "{:?}", store.plugin_problems());
+
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
 }

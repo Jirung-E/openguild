@@ -35,6 +35,8 @@
 
 pub mod consent;
 pub mod delivery;
+// DEV-405: 줄의 `with` — 대상과 연결된 데이터를 파일에서 읽는다.
+pub mod related;
 pub mod runtime;
 pub mod script;
 // DEV-399: 길드 밖 폴더에서도 가져다 쓴다 — 소스 등록 + 이 길드에서 쓰기.
@@ -246,6 +248,11 @@ pub struct Handler {
     /// 부를 스크립트 함수 이름. `action` 과 둘 중 하나만.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub call: Option<String>,
+    /// DEV-405: 함수가 이벤트 뒤에 받을 연결 데이터 — `["subject", "parent"]` 면
+    /// `fn 이름(e, subject, parent)`. 받을 수 있는 것은 이벤트 대상의 종류가 정한다
+    /// ([`related::RELATIONS`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub with: Vec<String>,
     /// 바로 실행할 동작 — `[actions]` 의 이름이거나, 이 자리에 적은 동작. 본문은 이벤트 JSON.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub action: Option<ActionRef>,
@@ -857,16 +864,22 @@ pub(crate) fn compile_script(dir: &Path, def: &PluginDef) -> AppResult<Compiled>
     let compiled = script::Script::compile_sources(&sources)
         .map_err(|e| AppError::BadRequest(format!("{}: {e}", def.name)))?;
     // 줄이 부르는 함수가 정말 있나 — 없으면 적재 때 막는다(조용히 안 불리는 것보다 낫다).
+    // 인자 수는 이벤트 하나 + `with` 의 수다.
     for (i, h) in def.handlers.iter().enumerate() {
-        if let Some(f) = &h.call
-            && !compiled.has_handler(f)
-        {
-            return Err(AppError::BadRequest(format!(
-                "{}: {} 가 부르는 함수 `{f}` 가 스크립트에 없습니다 — 인자 하나(`fn {f}(e)`)를 받는 \
-                 함수여야 합니다",
-                def.name,
-                h.label(i)
-            )));
+        if let Some(f) = &h.call {
+            let arity = 1 + h.with.len();
+            if !compiled.has_function(f, arity) {
+                let params: Vec<&str> = std::iter::once("e")
+                    .chain(h.with.iter().map(String::as_str))
+                    .collect();
+                return Err(AppError::BadRequest(format!(
+                    "{}: {} 가 부르는 함수 `{f}` 가 스크립트에 없습니다 — `fn {f}({})` 처럼 인자 {arity}개를 \
+                     받는 함수여야 합니다",
+                    def.name,
+                    h.label(i),
+                    params.join(", ")
+                )));
+            }
         }
     }
     let shown = if sources.len() == 1 {
@@ -1052,6 +1065,33 @@ fn validate_handlers(def: &PluginDef) -> AppResult<()> {
                 }
             }
             (None, Some(ActionRef::Inline(_))) => {}
+        }
+        // DEV-405: 받을 데이터는 걸리는 이벤트의 대상이 정한다. 틀리면 쓸 수 있는 것을 알려 준다.
+        if !h.with.is_empty() {
+            if h.call.is_none() {
+                return bad(format!(
+                    "{who}: `with` 는 스크립트 함수(`call`)가 받습니다 — 동작 줄에서는 아직 쓸 수 없습니다"
+                ));
+            }
+            let can = related::available_for(h.patterns(), h.phase());
+            let mut seen = std::collections::HashSet::new();
+            for w in &h.with {
+                if !seen.insert(w) {
+                    return bad(format!("{who}: `with` 에 `{w}` 가 두 번 있습니다"));
+                }
+                if !can.contains(&w.as_str()) {
+                    return bad(if can.is_empty() {
+                        format!(
+                            "{who}: `with` 의 `{w}` — 이 줄의 이벤트에는 받을 수 있는 연결 데이터가 없습니다"
+                        )
+                    } else {
+                        format!(
+                            "{who}: `with` 의 `{w}` 는 이 줄의 이벤트에서 받을 수 없습니다. 받을 수 있는 것: {}",
+                            can.join(", ")
+                        )
+                    });
+                }
+            }
         }
         // 아무 이벤트와도 안 맞는 패턴은 오타일 가능성이 높다. 조용히 안 도는 것보다
         // 적재 때 알려주는 편이 낫다.
