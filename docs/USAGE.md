@@ -147,6 +147,14 @@ echo "내용" | openguild rule new branch-policy
 # 캠페인
 openguild campaign new --title "베타 1.0"
 openguild campaign link C-001 DEV-001
+
+# 도서관 폴더 — 옮기면 하위 폴더·문서 경로가 함께 바뀜 (옮겨 갈 부모 폴더는 미리 있어야 함)
+openguild library folder new 아키텍처/결정
+openguild library folder new 보관
+openguild library folder move 아키텍처/결정 보관/결정
+
+# 태그 색·설명 (한글 이름 가능)
+openguild tag add 리팩터링 --color "#e94f4f" --description "동작은 그대로"
 ```
 
 전체 명령은 `openguild --help` / `openguild <명령> --help` 참조.
@@ -296,18 +304,24 @@ openguild quest list
 | **Quest List** | 트리 / 평면 quest 목록 + 필터. |
 | **Quest Board** | Cytoscape 노드 그래프 (선행 / 서브 관계 시각화). |
 | **Quest Detail** | 본문 편집 / 댓글 / 메모 / 상태 변경 / 권장 브랜치명 / 캠페인 링크. |
-| **Campaigns** | 캠페인 목록 + 체크리스트 + 링크된 quest. |
+| **Campaigns** | 캠페인 목록 + 체크리스트 + 링크된 quest. 새 캠페인은 모달, 퀘스트 연결에서 바로 새 퀘스트를 만들어 붙일 수 있습니다. |
 | **Rules** | 길드 규칙 다중 파일 편집. |
-| **Settings** | 정보 / 업데이트 확인 / 백업 / drift / reindex / 타입·상태 관리. |
+| **Library** | 문서 + 폴더 트리. 폴더를 끌어 다른 폴더로 옮기거나 이름을 바꾸면 하위 문서 경로가 함께 바뀝니다. |
+| **Tags** | 쓰이는 태그 목록. 여기서 태그마다 색·설명을 정합니다(한글 이름도 됨). |
+| **관리 (Admin)** | 길드 관리 — 탭 넷: 퀘스트 구성(타입·상태) / 플러그인 / 백업 / 진단(drift·reindex). |
+| **Settings** | 이 기계의 개인 설정만 — 정보·업데이트 확인 / 표시 / 편집기. |
 
 ---
 
 ## 6. 백업 / 복구
 
 - **자동 snapshot**: 변경 50 회 또는 24 시간 마다 자동 (`.guild/backups/snapshots/`).
-- **수동 snapshot**: Settings → Admin → "즉시 백업".
-- **복구**: Settings → Admin → snapshot 선택 → 복원. 기존 `index.db` 는
-  `.pre-restore.db` 로 안전 보관.
+- **수동 snapshot**: 관리 → 백업 → "+ 새 백업", 또는 `openguild backup new`.
+- **복구**: 관리 → 백업 → snapshot 선택 → 복원 (`openguild restore`). 기존
+  `index.db` 는 `.pre-restore.db` 로 안전 보관.
+- **보관 개수**: 길드 안에는 최근 **7개**만 남고 오래된 것은 지워집니다. 더
+  오래 두려면 예제 플러그인 `backup-archive` 를 켜서 길드 밖 폴더에 쌓으세요
+  (백업이 생길 때마다 `backup.created` 이벤트로 복사 — 지우지 않습니다).
 
 설치된 사본 위치 기본값:
 `C:\Program Files\openguild\` (Windows) — 단 사용자 설정으로 변경 가능.

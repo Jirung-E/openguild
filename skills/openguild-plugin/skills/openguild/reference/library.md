@@ -16,6 +16,7 @@ openguild library delete <book-id> --yes
 
 openguild library folder list
 openguild library folder new <path>
+openguild library folder move <from> <to>
 openguild library folder delete <path> --yes
 ```
 
@@ -36,6 +37,20 @@ openguild library list --folder ""              # top-level only
 alias. `list --folder` filters in SQL (and, over `--remote`, on the server) — it
 does not download the whole library and discard most of it. The folder is a logical grouping recorded in the document's frontmatter —
 files stay flat under `.guild/library/`.
+
+**Moving or renaming a folder** is one command — every subfolder and every
+document under it follows, in a single locked change:
+
+```bash
+openguild library folder move 아키텍처/결정 보관/결정   # move — `보관` must already exist
+openguild library folder move 보관 아카이브            # rename
+```
+
+It refuses: moving a folder into itself, a destination that already exists,
+and a destination whose parent folder does not exist (create it first with
+`library folder new` — a typo should not silently make a new folder). Do not
+emulate it with `library update --folder` per document — subfolders and the
+old folder entry would stay behind.
 
 ## Tags
 

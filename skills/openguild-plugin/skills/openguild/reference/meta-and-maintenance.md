@@ -21,6 +21,13 @@ openguild library tag add <book-id> <tag...>
 openguild rule tag add <rule-slug> <tag...>
 ```
 
+The definition name is the tag itself, exactly as attached — Korean and
+other non-ASCII names work (`openguild tag add 리팩터링 --color "#e94f4f"`).
+Refused: whitespace, `/ \ : * ? " < > |`, a leading or trailing dot, Windows
+reserved names (`CON`, `NUL`, `COM1`…), more than 64 characters, and a name
+that differs from an existing definition only by case (the files would
+collide on macOS/Windows).
+
 `tag update` requires at least one of `--color` or `--description`. Deleting a
 definition does not remove that tag from documents; it only removes its
 catalog color/description.

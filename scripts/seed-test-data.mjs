@@ -35,8 +35,11 @@
 //   6. DEV-016 (multi-file): sample 길드 규칙 생성 — Rules 페이지 검증.
 //   7. DEV-288/290: 규칙/BOOK 변경 이력 — create/update/rename 을 일으켜
 //      상세의 '변경 이력' 섹션 + rule/library history (CLI·서버·GUI) 검증.
-//   8. DEV-306: 백업 스냅샷 1개 — 설정 > 백업 목록/복원 UI 검증 (스냅샷은
+//   8. DEV-306: 백업 스냅샷 1개 — 관리 > 백업 목록/복원 UI 검증 (스냅샷은
 //      폴더가 아니라 파일 1개: `.guild/backups/snapshots/{ts}.db`).
+//   9. 최근 기능 — 태그 색(한글 이름 포함, BUG-290/DEV-392), 도서관 폴더 계층
+//      (옮기기·드래그, DEV-397), 확장자 없는 긴 이름의 첨부(BUG-291), 예제 플러그인
+//      (관리 > 플러그인, DEV-393/398 — 동의 전이라 아무것도 안 돈다).
 //
 // 바이너리 선택 (첫 위치 인자 = 바이너리 폴더):
 //   - 인자 없음                → PATH 의 'openguild' 사용 (기본).
@@ -132,11 +135,11 @@ function sleepMs(ms) {
 }
 
 // ── 1) init ─────────────────────────────────────────────────
-console.log('\n=== [1/11] init ===');
+console.log('\n=== [1/12] init ===');
 invokeOg('init', '--name', name);
 
 // ── 2) Quest 생성 (다양한 타입 / 상태) ────────────────────────
-console.log('\n=== [2/11] Quests ===');
+console.log('\n=== [2/12] Quests ===');
 
 // 최근 추가된 퀘스트 목록 (Home 하단) 검증용. 10개 이상 만들어 slice(0, 10) 잘림 확인.
 const questPlan = [
@@ -175,7 +178,7 @@ invokeOg(
 sleepMs(50);
 
 // 일부는 상태 변경해서 다양성 확보.
-console.log('\n=== [3/11] Quest 상태 전환 ===');
+console.log('\n=== [3/12] Quest 상태 전환 ===');
 // 가장 최신 슬러그를 모르므로 list 로 가져옴.
 const quests = invokeOgJson('quest', 'list', '--json');
 // 처음 2개는 in_progress, 다음 1개는 on_hold.
@@ -186,7 +189,7 @@ if (quests.length >= 3) {
 }
 
 // ── 4) DEV-076: 희망 / 필수 기한 (Home 임박 / Overdue 검증) ────
-console.log('\n=== [4/11] Quest 기한 설정 (DEV-076) ===');
+console.log('\n=== [4/12] Quest 기한 설정 (DEV-076) ===');
 // Home 의 "마감 임박" 뱃지 / Overdue 표시 / 정렬 검증.
 // - 과거 일자 (Overdue) 1개
 // - 1~3일 내 (Critical 임박) 2개
@@ -210,7 +213,7 @@ if (quests.length >= 6) {
 }
 
 // ── 5) Campaign 생성 (Home carousel / conveyor 모두 검증) ────
-console.log('\n=== [5/11] Campaigns ===');
+console.log('\n=== [5/12] Campaigns ===');
 
 // 진행 중 캠페인 (carousel): 5개 — 자동 회전 + dots / 화살표 검증.
 const activeCampaigns = [
@@ -261,7 +264,7 @@ for (const c of upcomingCampaigns) newCampaignWithChecklist(c.title, c.start, c.
 newCampaignWithChecklist(futureCampaign.title, futureCampaign.start, futureCampaign.end, 0.0, 3);
 
 // ── 6) 캠페인 ↔ 퀘스트 연결 (Quest Detail 의 Campaigns 섹션 검증) ──
-console.log('\n=== [6/11] Campaign ↔ Quest 연결 ===');
+console.log('\n=== [6/12] Campaign ↔ Quest 연결 ===');
 const campList = invokeOgJson('campaign', 'list', '--status', 'active', '--json');
 const questList = invokeOgJson('quest', 'list', '--json');
 
@@ -297,7 +300,7 @@ invokeOgStdin(
 );
 
 // ── 7) DEV-099 / DEV-102: 댓글 + 메모 (CLI + DB cache sync) ──
-console.log('\n=== [7/11] 댓글 / 메모 (DEV-094/099/102) ===');
+console.log('\n=== [7/12] 댓글 / 메모 (DEV-094/099/102) ===');
 
 // DEV-094 entry 단위 댓글 + 답글, DEV-099 CLI, DEV-102 DB 캐시 + snapshot 백업.
 // Quest Detail 의 댓글 섹션 / 답글 / 메모 영역 + drift::auto_resync 도 검증.
@@ -390,7 +393,7 @@ if (secondQuest && secondQuest !== questForComments) {
 }
 
 // ── 8) DEV-016 (multi-file): sample 길드 규칙 (Rules 페이지 검증) ──
-console.log('\n=== [8/11] 길드 규칙 (DEV-016 multi-file) ===');
+console.log('\n=== [8/12] 길드 규칙 (DEV-016 multi-file) ===');
 
 // 짧은 sample 들 — 다중 파일 sidebar / 선택 / 편집 / 신규 / 이름변경 / 삭제
 // 의 좌측 목록 정렬 / 선택 동작 검증. 본문은 의미 있는 minimal markdown 으로.
@@ -423,7 +426,7 @@ invokeOgStdin('# 팀 컨벤션 초안 (수정)', 'rule', 'set', 'history-demo');
 invokeOg('rule', 'rename', 'history-demo', 'team-conventions');
 
 // ── 9) DEV-215~218, DEV-239: 도서관 (Library 페이지 + 폴더 + cross-link 검증) ──
-console.log('\n=== [9/11] 도서관 (DEV-215~218, DEV-239) ===');
+console.log('\n=== [9/12] 도서관 (DEV-215~218, DEV-239) ===');
 
 // BOOK-001: cross-link 대상 — quest 본문/댓글에서 [[BOOK-001]] 로 참조 검증.
 // BOOK-002: 목록 정렬/선택 + 빈 본문 문서의 '+ 작성' 흐름 검증.
@@ -457,7 +460,7 @@ console.log('[og] library update (BOOK-001 변경 이력 데모, DEV-288/290)');
 invokeOg('library', 'update', 'BOOK-001', '--title', '설계 결정 기록 (개정)');
 
 // ── 10) DEV-167: 작업 기록 (HOME 히트맵 카드 + /worklog 상세 검증) ──
-console.log('\n=== [10/11] 작업 기록 (DEV-167) ===');
+console.log('\n=== [10/12] 작업 기록 (DEV-167) ===');
 
 // 활동(생성/상태변경/댓글)은 이 스크립트 실행 자체가 오늘 날짜로 잔뜩 만들어
 // 놓음 — 히트맵의 오늘 칸 + 타임라인이 저절로 채워짐. 노트만 추가로:
@@ -473,7 +476,7 @@ invokeOg('worklog', 'note', 'set', past, '--file', tmpNote);
 fs.rmSync(tmpNote, { force: true });
 
 // ── 11) DEV-306: 백업 스냅샷 1개 ──────────────────────────────
-console.log('\n=== [11/11] 백업 스냅샷 (DEV-306) ===');
+console.log('\n=== [11/12] 백업 스냅샷 (DEV-306) ===');
 
 // 설정 > 백업 화면이 빈 목록이면 복원/삭제 UI 를 볼 수 없다. 스냅샷 1개를 미리
 // 만들어 둔다. DEV-306 이후 스냅샷은 폴더가 아니라 파일 1개(`snapshots/{ts}.db`)
@@ -482,6 +485,55 @@ invokeOg('backup', 'new');
 const backupList = invokeOgJson('backup', 'list', '--json');
 if (backupList.length < 1) {
 	throw new Error('backup new 후에도 목록이 비어 있음');
+}
+
+// ── 12) 최근 기능 — 태그 색 / 폴더 계층 / 긴 첨부 이름 / 예제 플러그인 ──
+console.log('\n=== [12/12] 태그 색 · 도서관 폴더 계층 · 첨부 이름 · 예제 플러그인 ===');
+
+// BUG-290 / DEV-392: 태그 목록 페이지의 [색 지정] / [편집] — 영문과 **한글** 이름 둘 다.
+// 한글 이름에는 예전에 색을 달 수 없었다.
+invokeOg('tag', 'add', 'backend', '--color', '#3a7bd5', '--description', '서버 쪽 작업');
+invokeOg('tag', 'add', '리팩터링', '--color', '#e94f4f', '--description', '동작은 그대로, 구조만');
+if (questList.length >= 2) {
+	invokeOg('quest', 'tag', 'add', questList[1].quest_id, '리팩터링', '보안');
+}
+
+// DEV-397: 폴더 옮기기·이름 바꾸기·드래그 — 하위 폴더와 그 안 문서가 있어야 함께
+// 움직이는 걸 볼 수 있다. `보관` 은 옮겨 넣을 자리.
+invokeOg('library', 'folder', 'new', '아키텍처/결정');
+invokeOg('library', 'folder', 'new', '보관');
+invokeOg('library', 'new', '--title', '저장소 결정 기록', '--folder', '아키텍처/결정');
+
+// BUG-291: 첨부 타일의 종류 배지 + 가운데 줄임 — 표시 이름에 확장자가 없고 긴 것.
+if (questForComments) {
+	const pdfTmp = path.join(os.tmpdir(), `og-seed-${process.pid}.pdf`);
+	fs.writeFileSync(pdfTmp, '%PDF-1.4\n% seed placeholder\n', 'utf8');
+	invokeOg(
+		'quest', 'attach', 'add', questForComments, pdfTmp,
+		'--name', '아주 길고 긴 회의록 첨부 파일 이름 확장자 없음'
+	);
+	fs.rmSync(pdfTmp, { force: true });
+}
+
+// DEV-393 / DEV-398: 관리 > 플러그인 탭이 비지 않게 저장소의 예제를 길드에 복사한다.
+// **동의 전이라 아무것도 안 돈다** — 허용은 사람이 한다. `backup-archive` 는 폴더를
+// 정하기 전에는 허용해도 안 돈다.
+const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+const examples = path.join(repoRoot, 'examples', 'plugins');
+let copiedPlugins = 0;
+if (fs.existsSync(examples)) {
+	const dest = path.join(process.cwd(), '.guild', 'plugins');
+	fs.mkdirSync(dest, { recursive: true });
+	for (const entry of fs.readdirSync(examples, { withFileTypes: true })) {
+		if (!entry.isDirectory()) continue;
+		fs.cpSync(path.join(examples, entry.name), path.join(dest, entry.name), { recursive: true });
+		copiedPlugins++;
+	}
+	console.log(`[seed] 예제 플러그인 ${copiedPlugins}개 복사 (동의 전 — 안 돔)`);
+}
+const pluginList = invokeOgJson('--json', 'plugin', 'list');
+if ((pluginList.needs_consent?.length ?? 0) < copiedPlugins) {
+	throw new Error(`예제 플러그인이 다 안 실렸다: ${JSON.stringify(pluginList.errors)}`);
 }
 
 // ── 완료 요약 ────────────────────────────────────────────────
@@ -499,7 +551,7 @@ console.log('Memo    : 2 quest 에 메모.');
 console.log(
 	'토론    : 미해결 1 (홈 토론 섹션/완료 게이트) + 해결 1 (DEV-142/148/185) + 미해결 토론에 답글 1 (BUG-178).'
 );
-console.log(`Backup  : 스냅샷 1개 (${backupList.length}) — 설정 > 백업 목록/복원 (DEV-306, 파일 1개 형식).`);
+console.log(`Backup  : 스냅샷 ${backupList.length}개 (직접 1 + 시드 중 자동 백업) — 관리 > 백업 목록/복원 (DEV-306, 파일 1개 형식).`);
 console.log('Attach  : 첫 quest 에 3개 — .md / 이미지 .png(미리보기) / .json (DEV-156/170).');
 console.log('관계    : 하위 2 + 선행 2 — 보드 엣지 / 트리 / 의존성 그래프 / candidates 검증.');
 console.log('Tags    : 2 quest 에 태그 — 칩 / 필터 검증.');
@@ -515,6 +567,10 @@ console.log(
 	"History : 규칙/BOOK 변경 이력 데모 (DEV-288/290) — team-conventions(create→update→rename) / branch-policy(update) / BOOK-001(update). 상세의 '변경 이력' 섹션 + rule/library history CLI 검증."
 );
 console.log('Worklog : 노트 2 (오늘/이틀 전) — 활동은 이 스크립트 실행 자체가 오늘 날짜로 생성.');
+console.log('Tag 색  : backend / 리팩터링(한글) — 태그 목록의 색 지정·편집 (BUG-290, DEV-392).');
+console.log('폴더    : 아키텍처/결정(문서 1) + 보관 — 도서관 폴더 옮기기·드래그 (DEV-397).');
+console.log('첨부    : 확장자 없는 긴 이름의 .pdf — 종류 배지·가운데 줄임 (BUG-291).');
+console.log(`Plugins : 예제 ${copiedPlugins}개 — 관리 > 플러그인 (동의 전이라 안 돎, DEV-393/398).`);
 console.log('');
 console.log('GUI 열어서 Home / Rules 페이지 확인:');
 console.log(`  cd "${process.cwd()}"`);
