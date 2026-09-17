@@ -630,10 +630,20 @@ pub async fn move_folder(store: &Store, from: &str, to: &str) -> AppResult<Vec<L
     }
 
     let folders = list_folders(store).await?;
-    if !folders.iter().any(|f| f.path == from) {
+    let books = list_books(store).await?;
+    // BUG-293: 있음/없음은 **트리에 보이는 폴더**로 판단한다 — 등록된 폴더만이 아니라 그
+    // 조상(`설계/초안` 만 만들면 `설계` 는 등록이 없다)과 문서 경로(+조상)까지. 등록된
+    // 것만 보면 화면에 있는 폴더로 끌어 넣거나 그 이름을 바꿀 때 "없다" 고 한다.
+    let visible = visible_folders(
+        folders
+            .iter()
+            .map(|f| f.path.as_str())
+            .chain(books.iter().map(|b| b.path.as_str())),
+    );
+    if !visible.contains(&from) {
         return Err(AppError::NotFound(format!("folder not found: {from}")));
     }
-    if folders.iter().any(|f| f.path == to) {
+    if visible.contains(&to) {
         return Err(AppError::BadRequest(crate::tf!(
             "이미 존재하는 폴더입니다: {to}",
             "folder already exists: {to}"
@@ -642,7 +652,7 @@ pub async fn move_folder(store: &Store, from: &str, to: &str) -> AppResult<Vec<L
     // 옮겨 갈 곳의 부모가 없으면 만들지 않고 거절한다 — 조용히 만들면 오타 한 번에
     // 엉뚱한 폴더가 생긴다.
     if let Some((parent, _)) = to.rsplit_once('/')
-        && !folders.iter().any(|f| f.path == parent)
+        && !visible.contains(parent)
     {
         return Err(AppError::NotFound(format!("folder not found: {parent}")));
     }
@@ -663,7 +673,6 @@ pub async fn move_folder(store: &Store, from: &str, to: &str) -> AppResult<Vec<L
         .map(|f| f.path.clone())
         .filter(|p| repo::path_is_self_or_descendant(p, &from))
         .collect();
-    let books = list_books(store).await?;
     let moved_books: Vec<&LibraryDocRow> = books
         .iter()
         .filter(|b| repo::path_is_self_or_descendant(&b.path, &from))
@@ -713,6 +722,22 @@ pub async fn move_folder(store: &Store, from: &str, to: &str) -> AppResult<Vec<L
         })
     });
     list_folders(store).await
+}
+
+/// 트리(`gui/frontend/src/lib/utils/library-tree.ts`)가 폴더로 그리는 경로 전부 — 주어진
+/// 경로와 그 조상. 빈 경로(최상위)는 폴더가 아니다.
+fn visible_folders<'a>(paths: impl Iterator<Item = &'a str>) -> std::collections::BTreeSet<String> {
+    let mut out = std::collections::BTreeSet::new();
+    for p in paths.filter(|p| !p.is_empty()) {
+        let mut cur = p;
+        while out.insert(cur.to_string()) {
+            match cur.rsplit_once('/') {
+                Some((parent, _)) => cur = parent,
+                None => break,
+            }
+        }
+    }
+    out
 }
 
 /// 폴더 삭제 — 하위(자신 포함)에 살아있는 문서나 다른 살아있는 폴더가 하나도
@@ -879,6 +904,45 @@ mod tests {
         );
         // BOOK 번호는 그대로다 — 폴더는 파일 위치가 아니다.
         assert!(store.paths.book_path(&b.book_id()).exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-293: 트리에 보이지만 등록은 안 된 폴더 — 만든 폴더의 조상, 문서만 있는 경로.
+    /// 그리로 옮기고, 그것을 옮길 수 있어야 한다. 겹치는 이름은 여전히 거절한다.
+    #[tokio::test]
+    async fn folders_seen_only_in_the_tree_can_be_moved_and_moved_into() {
+        let dir = fresh_tmp("move-folder-implicit");
+        let store = setup(&dir).await;
+        create_folder(&store, "설계/초안").await.unwrap(); // `설계` 는 등록 없음
+        create_folder(&store, "기타").await.unwrap();
+        let memo = create_book(&store, "회의록", "", "회의/2026").await.unwrap(); // 폴더 등록 없음
+
+        // 등록 안 된 조상 밑으로.
+        move_folder(&store, "기타", "설계/기타").await.unwrap();
+        // 문서 경로로만 있는 폴더의 이름 바꾸기 — 조상까지 포함해서.
+        move_folder(&store, "회의", "회의록").await.unwrap();
+        // 등록 안 된 조상 자체를 옮기기 — 등록된 하위가 따라간다.
+        move_folder(&store, "설계", "회의록/설계").await.unwrap();
+
+        let book_path = crate::repo::library::BookFile::read(store.paths.book_path(&memo.book_id()))
+            .unwrap()
+            .frontmatter
+            .path;
+        assert_eq!(book_path, "회의록/2026");
+        let mut paths: Vec<String> = list_folders(&store)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|f| f.path)
+            .collect();
+        paths.sort();
+        assert_eq!(paths, vec!["회의록/설계/기타", "회의록/설계/초안"]);
+
+        // 보이는 폴더와 겹치는 이름은 거절 — 문서 경로로만 있는 것과도.
+        let e = move_folder(&store, "회의록/설계/기타", "회의록/2026").await.unwrap_err();
+        assert!(matches!(e, AppError::BadRequest(_)), "{e}");
+        let e = move_folder(&store, "회의록/설계/기타", "회의록/설계").await.unwrap_err();
+        assert!(matches!(e, AppError::BadRequest(_)), "{e}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
