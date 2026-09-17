@@ -2041,3 +2041,51 @@ fn os_specific_commands_are_validated_everywhere() {
     let keys: Vec<String> = refs.effective_inputs().into_iter().map(|i| i.key).collect();
     assert!(keys.contains(&"WIN_ONLY_DIR".to_string()), "{keys:?}");
 }
+
+/// BUG-294: 옛 빌드가 Windows 에서 `\\?\` 를 붙여 적어 둔 소스도 읽힌다 — 훅에는 뗀 경로로
+/// 넘어가고, 같은 폴더를 다시 더해도 소스가 늘지 않으며, 다음에 쓸 때 파일도 고쳐진다.
+#[test]
+fn a_source_recorded_with_a_verbatim_prefix_still_works() {
+    use super::sources;
+    let _guard = env_lock();
+    let home = fresh_tmp("verb-home");
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let g = fresh_tmp("verb-guild");
+    let src = fresh_tmp("verb-src");
+    let dir = std::fs::canonicalize(&src).unwrap();
+    std::fs::write(
+        dir.join("plugin.json"),
+        serde_json::to_string(&json!({
+            "name": "old-one", "on": ["quest.created"], "scope": ["cli"],
+            "action": { "post": { "url": "https://example.test/x" } }
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let raw = format!(r"\\?\{}", dir.display());
+    let key = crate::recents::normalize_abs(&g);
+    std::fs::write(
+        sources::path().unwrap(),
+        serde_json::to_string(&json!({
+            "sources": { "old": raw },
+            "used": { key: [{ "source": "old", "folder": "." }] }
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let l = load_for(&g, Scope::Cli);
+    assert_eq!(names(&l), vec!["old-one"], "옛 기록의 소스가 안 실렸다: {:?}", l.errors);
+    assert!(!l.needs_consent[0].dir.to_string_lossy().starts_with(r"\\?\"));
+    // 같은 폴더를 다시 더하면 옛 소스를 알아본다.
+    assert_eq!(sources::add_source(&g, &src, None).unwrap(), "old");
+    // 다음 쓰기(이미 쓰는 것을 또 쓰기 — 멱등)에서 파일도 고쳐진다.
+    sources::use_plugin(&g, "old", ".").unwrap();
+    let written = std::fs::read_to_string(sources::path().unwrap()).unwrap();
+    assert!(!written.contains(r"\\?\"), "{written}");
+
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    for d in [&g, &src, &home] {
+        let _ = std::fs::remove_dir_all(d);
+    }
+}

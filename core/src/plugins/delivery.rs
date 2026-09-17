@@ -222,15 +222,13 @@ fn run(
     // REQ-021: 사용자가 넣은 값이 먼저, 그 위에 코어가 주는 경로 둘.
     // 경로를 나중에 넣는 이유는 설정값이 그 이름을 덮어쓰지 못하게 하려는
     // 것이다 — `OPENGUILD_PLUGIN_DIR` 를 정의가 갈아끼울 수 있으면 안 된다.
+    // BUG-294: 훅에 넘기는 경로에는 Windows 의 `\\?\` 를 붙이지 않는다 — 어디서 들어왔든
+    // (옛 기록, canonicalize) Windows PowerShell 5.1 이 그 경로를 `-File` 로 못 연다.
+    let plugin_dir = crate::recents::strip_verbatim_prefix(&plugin.dir.to_string_lossy());
+    let data_dir = crate::recents::strip_verbatim_prefix(&workdir.to_string_lossy());
     let mut vars = values.clone();
-    vars.insert(
-        "OPENGUILD_PLUGIN_DIR".to_string(),
-        plugin.dir.display().to_string(),
-    );
-    vars.insert(
-        "OPENGUILD_PLUGIN_DATA_DIR".to_string(),
-        workdir.display().to_string(),
-    );
+    vars.insert("OPENGUILD_PLUGIN_DIR".to_string(), plugin_dir.clone());
+    vars.insert("OPENGUILD_PLUGIN_DATA_DIR".to_string(), data_dir.clone());
     let exe =
         crate::plugins::expand_env_with(command, &vars).map_err(|e| format!("{command}: {e}"))?;
     let argv = args
@@ -271,9 +269,9 @@ fn run(
         .current_dir(&workdir)
         // 옆 파일(`notify.sh`)을 부르려면 코드 폴더를 알아야 한다 — 작업
         // 디렉터리가 더는 그곳이 아니기 때문이다.
-        .env("OPENGUILD_PLUGIN_DIR", &plugin.dir)
+        .env("OPENGUILD_PLUGIN_DIR", &plugin_dir)
         // 훅이 자기 출력 자리를 알아야 절대경로로 쓸 수도 있다.
-        .env("OPENGUILD_PLUGIN_DATA_DIR", &workdir)
+        .env("OPENGUILD_PLUGIN_DATA_DIR", &data_dir)
         .stdin(Stdio::piped())
         // 자식의 출력이 CLI 표준출력에 섞이면 파이프로 쓰는 사람이 깨진다.
         .stdout(Stdio::null())

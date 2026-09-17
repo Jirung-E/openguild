@@ -77,10 +77,23 @@ pub fn load() -> SourcesFile {
     let Ok(p) = path() else {
         return SourcesFile::default();
     };
-    std::fs::read_to_string(&p)
+    let mut file: SourcesFile = std::fs::read_to_string(&p)
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
+        .unwrap_or_default();
+    file.normalize();
+    file
+}
+
+impl SourcesFile {
+    /// BUG-294: 예전 빌드가 Windows 에서 `\\?\C:\…` 를 그대로 적어 두었다. 새로 등록할 때만
+    /// 떼면 **이미 등록된 소스는 계속 그 형태로** 훅에 넘어간다 — Windows PowerShell 5.1 은 `-File`
+    /// 의 `?` 를 와일드카드로 읽어 파일을 못 찾고 0xFFFD0000 으로 끝났다. 읽을 때마다 뗀다.
+    fn normalize(&mut self) {
+        for p in self.sources.values_mut() {
+            *p = crate::recents::strip_verbatim_prefix(p);
+        }
+    }
 }
 
 /// 읽고 → 고치고 → **통째로 덮어쓴다.** 동의 파일과 같은 규칙으로 다룬다
@@ -97,6 +110,8 @@ fn update(f: impl FnOnce(&mut SourcesFile) -> AppResult<()>) -> AppResult<()> {
         })?,
         Err(_) => SourcesFile::default(),
     };
+    // 옛 형태로 적힌 것은 고쳐 쓴다 — 비교(같은 경로면 같은 소스)도 뗀 형태끼리 해야 맞는다.
+    file.normalize();
     f(&mut file)?;
     let body = serde_json::to_string_pretty(&file)
         .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
