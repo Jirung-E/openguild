@@ -835,6 +835,68 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// DEV-398: 백업이 만들어지면 `backup.created` 가 나온다 — 수동은 `automatic: false`,
+    /// 자동은 `true`. 경로는 **실제로 있는 파일**을 가리켜야 한다(길드 밖으로 복사하는 훅이
+    /// 그 경로를 그대로 쓴다). 오래된 것을 지운 **뒤에** 나오므로, 7개를 넘겨도 방금 것은 있다.
+    #[tokio::test]
+    async fn creating_a_backup_announces_it_with_a_real_path() {
+        use crate::events::{Event, EventSink, Phase};
+        use std::sync::{Arc, Mutex};
+        struct Rec(Mutex<Vec<Event>>);
+        impl EventSink for Rec {
+            fn wants(&self, name: &str, _: Phase) -> bool {
+                name == crate::events::names::BACKUP_CREATED
+            }
+            fn dispatch(&self, e: Event) {
+                self.0.lock().unwrap().push(e);
+            }
+        }
+        let dir = fresh_tmp("backup-event");
+        seed_guild_dir(&dir).unwrap();
+        let store = Store::open(&dir).await.unwrap();
+        let rec = Arc::new(Rec(Mutex::new(Vec::new())));
+        store.events.set_sink(rec.clone());
+
+        // 7개 한도를 넘기는 8번째까지 — 방금 것이 지워진 채로 알리면 안 된다.
+        for _ in 0..8 {
+            create_snapshot(&store).await.unwrap();
+        }
+        {
+            let got = rec.0.lock().unwrap();
+            assert_eq!(got.len(), 8);
+            for e in got.iter() {
+                assert_eq!(e.data["automatic"], serde_json::json!(false));
+                let p = PathBuf::from(e.data["path"].as_str().unwrap());
+                assert!(p.is_absolute(), "{}", p.display());
+            }
+            let last = PathBuf::from(got[7].data["path"].as_str().unwrap());
+            assert!(last.exists(), "방금 만든 백업이 이미 없다: {}", last.display());
+        }
+
+        // 자동 백업 — 임계치를 1 로 낮추고 변경 하나를 남긴다.
+        journal::append(
+            &store.journal_pool,
+            "t",
+            &serde_json::json!({}),
+            None::<&serde_json::Value>,
+        )
+        .await
+        .unwrap();
+        let auto = maybe_auto_snapshot(
+            &store,
+            AutoSnapshotPolicy {
+                max_ops_since_last: 1,
+                max_age_hours: 24,
+            },
+        )
+        .await
+        .unwrap();
+        assert!(auto.is_some(), "자동 백업이 안 만들어졌다");
+        let got = rec.0.lock().unwrap();
+        assert_eq!(got.last().unwrap().data["automatic"], serde_json::json!(true));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[tokio::test]
     async fn maybe_auto_snapshot_noop_when_no_ops() {
         let dir = fresh_tmp("auto-noop");

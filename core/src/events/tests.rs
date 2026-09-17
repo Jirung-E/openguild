@@ -800,6 +800,8 @@ async fn all_declared_events_fire_with_a_usable_payload() {
         .unwrap();
 
     // 작업기록
+    // DEV-398: 백업 — 이 기록이 예제 `backup-archive` 스크립트의 실제 입력이 된다.
+    crate::snapshot::create_snapshot(&store).await.unwrap();
     crate::ops::worklog::set_note(&store, "2026-09-09", "오늘 한 일".into())
         .await
         .unwrap();
@@ -944,6 +946,8 @@ async fn all_declared_events_fire_with_a_usable_payload() {
     locator("status.", &["status", "slug"]);
     locator("tag.", &["tag", "slug"]);
     locator("worklog.", &["date"]);
+    // DEV-398: 백업은 길드 밖으로 복사하는 훅이 쓴다 — 경로가 있어야 한다.
+    locator("backup.", &["path"]);
     locator("attachment.", &["target", "id"]);
     locator("attachment.", &["attachment", "path"]);
 
