@@ -14,6 +14,8 @@
 -->
 <script lang="ts">
 	import PaneResizer from '$lib/components/PaneResizer.svelte';
+	import { isChildWindow } from '$lib/stores/windowKind';
+	import { showsTree, showsBackToList, isSingleColumn } from '$lib/utils/library-view';
 	import { paneWidth } from '$lib/stores/paneWidth';
 	import Icon from '$lib/components/Icon.svelte';
 	import { onMount, onDestroy } from 'svelte';
@@ -990,8 +992,14 @@
 			</div>
 		{/if}
 	{:else}
-		<div class="layout" class:single={viewMode === 'explorer'} style:--pane-w={`${$sidebarW}rem`}>
-			{#if viewMode === 'tree'}
+		<!-- BUG-296: 자식창은 그 문서 하나만 보라고 띄운 창이다 — 목록 쪽(트리·'목록으로')을
+		     그리지 않는다. TitleBar 가 뒤로·검색을 숨기는 것과 같은 판정. -->
+		<div
+			class="layout"
+			class:single={isSingleColumn(viewMode, $isChildWindow)}
+			style:--pane-w={`${$sidebarW}rem`}
+		>
+			{#if showsTree(viewMode, $isChildWindow)}
 				<!-- 좌측 sidebar -->
 				<aside class="sidebar">
 					<div class="sidebar-head">
@@ -1201,7 +1209,10 @@
 					</div>
 				{:else}
 					<div class="top-bar">
-						{#if viewMode === 'explorer'}
+						<!-- BUG-296: 자식창(새 창으로 열기)은 그 문서 하나만 보라고 띄운 창이라
+						     돌아갈 목록이 없다 — 눌러도 말이 안 되는 자리다. TitleBar 가
+						     뒤로·검색을 숨기는 것과 같은 판정을 쓴다. -->
+						{#if showsBackToList(viewMode, $isChildWindow)}
 							<button class="btn-edit" onclick={explorerBack}
 								>{t('library.backToList', $locale)}</button
 							>
