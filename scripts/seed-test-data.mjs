@@ -535,6 +535,19 @@ const pluginList = invokeOgJson('--json', 'plugin', 'list');
 if ((pluginList.needs_consent?.length ?? 0) < copiedPlugins) {
 	throw new Error(`예제 플러그인이 다 안 실렸다: ${JSON.stringify(pluginList.errors)}`);
 }
+// DEV-411/412: 예제가 깨진 채로 씨앗에 들어가면 화면에서야 알게 된다 — 여기서 검사하고
+// 시험까지 돌린다(아무것도 밖으로 안 나간다).
+if (copiedPlugins > 0) {
+	const checked = invokeOgJson('--json', 'plugin', 'check');
+	if (!checked.ok) {
+		throw new Error(`예제 플러그인 검사 실패: ${JSON.stringify(checked.plugins)}`);
+	}
+	const tested = invokeOgJson('--json', 'plugin', 'test');
+	if (!tested.ok) {
+		throw new Error(`예제 플러그인 시험 실패: ${JSON.stringify(tested.plugins)}`);
+	}
+	console.log('[seed] 예제 플러그인 검사·시험 통과');
+}
 
 // ── 완료 요약 ────────────────────────────────────────────────
 console.log('\n=== 완료 ===');

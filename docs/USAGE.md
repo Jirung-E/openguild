@@ -178,25 +178,76 @@ openguild tag add 리팩터링 --color "#e94f4f" --description "동작은 그대
 되니까요.
 
 ```
-.guild/plugins/{이름}/plugin.json    ← 설정 (git 공유)
-.guild/plugins/{이름}/*.rhai         ← 보낼지 / 어떤 모양으로 보낼지 (선택)
+.guild/plugins/{이름}/plugin.toml    ← 정의 (git 공유)
+.guild/plugins/{이름}/*.rhai         ← 판단·가공 스크립트 (선택)
+.guild/plugins/{이름}/*.test.rhai    ← 그 스크립트의 시험 (선택)
 ~/.openguild/plugin-consent.json     ← 허용 여부 (이 기계에만, git 아님)
 ```
 
-```json
-{
-  "name": "ai-notify",
-  "description": "새 퀘스트와 댓글을 내 서비스로 보냅니다.",
-  "on": ["quest.created", "comment.added"],
-  "scope": ["cli", "gui"],
-  "action": {
-    "post": {
-      "url": "https://내-서비스.example/hook",
-      "headers": { "Authorization": "Bearer ${MY_API_KEY}" }
-    }
-  }
+정의는 **언제 무엇을 할지**를 줄로 적습니다. 한 플러그인이 여러 줄을 가질 수 있습니다.
+
+```toml
+#:schema ../plugin.schema.json
+
+name        = "ai-notify"
+description = "새 퀘스트와 토론 댓글을 내 서비스로 보냅니다."
+scope       = ["cli", "gui"]
+scripts     = ["main.rhai"]
+
+# 어디로 나가는지는 **여기에만** 있습니다. 스크립트는 이름만 압니다.
+[actions.out.post]
+    url     = "https://내-서비스.example/hook"
+    headers = { Authorization = "Bearer ${MY_API_KEY}" }
+
+# 줄 1 — 조건만으로 바로 보냅니다(스크립트 없이).
+[[handlers]]
+    post   = ["quest.created"]
+    action = "out"
+    [handlers.when]
+        "quest.urgency" = [1, 2]
+
+# 줄 2 — 스크립트 함수가 판단하고, 필요하면 `send("out", 본문)` 을 적습니다.
+[[handlers]]
+    post = ["comment.added"]
+    with = ["subject"]          # fn on_comment(e, subject)
+    call = "on_comment"
+```
+
+줄 하나에 적는 것:
+
+| 칸 | 뜻 |
+| --- | --- |
+| `post` / `pre` | 언제 볼지. `pre` 는 **바뀌기 전** — 막거나 값을 바꿀 수 있고, 언제나 기다립니다. |
+| `call` / `action` | 무엇을 할지. 스크립트 함수를 부르거나, 동작을 바로 실행합니다. |
+| `when` | 이 줄이 불릴 조건(전부 만족). `"change.to" = ["done", "closed"]` |
+| `with` | 함수가 이벤트 뒤에 받을 연결 데이터 — `subject`, `parent`, `children`, `prereqs`, `campaigns`, `quests`. |
+| `wait` | 이 줄이 끝날 때까지 기다립니다(기본은 안 기다림). |
+| `id` | 줄 이름 — 화면과 오류 메시지가 이 줄을 가리킬 때 씁니다. |
+| `timeout_ms`, `on_timeout`, `on_error` | 시한과, 넘거나 던졌을 때 할 일(`continue` / `block`). |
+
+스크립트는 **밖으로 못 나갑니다.** 파일도 네트워크도 없고, 할 일을 *적기만* 합니다 — 적힌
+것은 함수가 끝난 뒤 코어가 실행합니다.
+
+```rhai
+fn on_comment(e, subject) {
+    if !e.comment.discussion { return; }
+    send("out", #{ text: `[${subject.id}] ${e.comment.body}` });   // 동작 이름만 압니다
+    notify(`${e.subject.id} 에 토론 댓글`);                         // 권한이 있어야 합니다
 }
 ```
+
+스크립트가 쓸 수 있는 것:
+
+- `send(이름, 본문)` / `run(이름, 입력)` — `[actions]` 의 동작을 부릅니다.
+- `notify(글)` / `backup()` — 길드에 시키는 일. **`permissions = ["notify", "backup"]`** 으로
+  밝혀야 합니다(허용 화면에 그대로 보입니다).
+- `config("키")` — 사용자가 설정 화면에 넣은 값.
+- `guild_name()`, `status_name("in_progress")`, `type_name("DEV")`, `link("quest", "DEV-001")`,
+  `now()`, `ago(시각)`, `truncate(글, 수)`, `plain_text(마크다운)`.
+- `import "경로" as 이름` — 여러 플러그인이 공통 함수를 나눠 씁니다(폴더 밖도 됩니다).
+
+`pre` 줄의 함수는 **돌려주는 값**으로 말합니다 — 글자면 막을 이유, 표면 바꿀 칸, `false` 면 그냥
+막습니다.
 
 - `description` 은 선택입니다. 적어 두면 데스크톱 관리 → 플러그인 과
   `openguild plugin list` 에 그대로 보입니다 — 나머지 필드는 전부 기계가 읽는
@@ -209,17 +260,39 @@ openguild tag add 리팩터링 --color "#e94f4f" --description "동작은 그대
 - `scope` 는 **필수**입니다. `cli` / `gui` / `server` 중에서 고릅니다.
   `server` 를 넣으면 그 서버를 쓰는 **모두**에게 적용됩니다.
 - 동작은 `post`(HTTP 로 보내기)와 `run`(프로그램 실행, 이벤트는 stdin) 둘뿐입니다.
-- `run` 은 운영체제마다 다른 명령을 적을 수 있습니다 — `"windows": { "command":
-  "powershell", "args": [...] }` (`macos`, `linux` 도). 셸 스크립트는 Windows 에서 못 돌므로
+- `run` 은 운영체제마다 다른 명령을 적을 수 있습니다 — `windows = { command =
+  "powershell", args = [...] }` (`macos`, `linux` 도). 셸 스크립트는 Windows 에서 못 돌므로
   예제 `backup-archive`·`desktop-notify` 는 Windows 용 PowerShell 스크립트를 함께 둡니다.
 - `run` 이 **파일을 쓰는 자리**는 `~/.openguild/plugin-data/{길드}/{플러그인}/`
   입니다. 플러그인 폴더가 아닙니다 — 그 폴더는 동의 지문의 대상이라, 훅이
   거기 무언가를 쓰면 동의가 풀려 스스로 꺼집니다. 플러그인과 함께 배포한
   파일을 부르려면 `${OPENGUILD_PLUGIN_DIR}` 를 씁니다.
   슬랙·디스코드 연동 같은 건 그 둘 중 하나로 여러분의 프로그램이 합니다.
-- **API 키를 직접 적으면 거부됩니다.** `plugin.json` 은 git 에 올라가니까요.
+- **API 키를 직접 적으면 거부됩니다.** `plugin.toml` 은 git 에 올라가니까요.
   `${MY_API_KEY}` 처럼 환경변수 참조만 쓸 수 있고, 값은 보낼 때 이 기계의
   환경에서 읽습니다.
+
+만들면서 확인하는 것:
+
+```bash
+openguild plugin events                        # 볼 수 있는 이벤트와 `with` 목록
+openguild plugin check .guild/plugins/내것      # 돌리기 전 검사 (오류가 있으면 종료 코드 1)
+openguild plugin test .guild/plugins/내것       # *.test.rhai 의 test_ 함수들
+openguild plugin schema --out plugin.schema.json  # 편집기 자동 완성용
+```
+
+시험은 나가는 것 없이, 실제와 같은 실행 규칙으로 돕니다.
+
+```rhai
+// main.test.rhai
+fn test_done_goes_out() {
+    set_config("ON_STATUS", true);                       // 이 시험에만 먹습니다
+    let r = fire("quest.status_changed",
+                 #{ ok: true, quest: #{ id: "DEV-001" }, change: #{ to: "done" } });
+    assert_eq(r.commands.len(), 1);
+    assert_eq(r.commands[0].action, "out");
+}
+```
 
 허용은 이렇게 합니다:
 
@@ -233,6 +306,10 @@ openguild plugin revoke --all            # 지금 있는 것 전부 철회
 openguild plugin trust --yes             # 자동 허용 켜기 — 새로 오거나 바뀐 것도 묻지 않음
 openguild plugin untrust                 # 자동 허용 끄기 — 돌던 것은 그대로
 ```
+
+`allow <이름>` 은 그 플러그인이 **무엇을 하는지**를 줄마다 풀어 보여 줍니다 — 언제 무엇을
+하는지, 막을 수 있는지, 길드에 무엇을 시키는지, 어디로 나가는지, 어떤 환경변수를 쓰는지
+(값은 안 보여 줍니다), 그리고 정의 원문과 스크립트 전체.
 
 전체 허용·전체 해제는 **지금 있는 것들의 상태를 한 번에 바꿀 뿐**이라, 그 뒤에도
 하나씩 허용·철회할 수 있습니다. 앞으로 추가되거나 git 으로 바뀌어 오는 플러그인까지

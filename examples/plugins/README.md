@@ -8,13 +8,16 @@ openguild plugin allow telegram-quest-status        # 내용을 먼저 보여준
 openguild plugin allow telegram-quest-status --yes  # 그러고 나서 허용
 ```
 
-| | 동작 | 스크립트 | 비밀값 | 시점 |
-|---|---|---|---|---|
-| `telegram-quest-status` | `post` | 있음 (태그로 거름) | url + `body_env` | post |
-| `discussion-to-ai` | `post` | 있음 (조건으로 거름) | 헤더 | post |
-| `desktop-notify` | `run` | 없음 (이벤트 JSON 그대로) | — | post |
-| `deleted-audit` | `run` | 있음 (모양만 다듬음) | — | **pre** |
-| `backup-archive` | `run` | 있음 (경로만 넘김) | — | post |
+| | 줄 | 동작 | 스크립트 | 비밀값 | 시점 |
+|---|---|---|---|---|---|
+| `telegram-quest-status` | 셋 (`with` 로 문서를 읽음) | `post` | 있음 (태그로 거름) | url + `body_env` | post |
+| `discussion-to-ai` | 하나 | `post` | 있음 (조건으로 거름) | 헤더 | post |
+| `desktop-notify` | 하나 (스크립트 없이) | `run` | 없음 (이벤트 JSON 그대로) | — | post |
+| `deleted-audit` | 둘 (하나는 **막는다**) | `run` | 있음 | — | **pre** |
+| `backup-archive` | 하나 | `run` | 있음 (경로만 넘김) | — | post |
+
+`telegram-quest-status` 와 `deleted-audit` 에는 **시험 파일**(`main.test.rhai`)이 함께 있다.
+`openguild plugin test examples/plugins/<이름>` 으로 돌려 본다 — 아무것도 밖으로 안 나간다.
 
 ---
 
@@ -43,7 +46,7 @@ POST /bot123456:AA.../sendMessage
 
 - **토큰은 URL 에, chat_id 는 `body_env` 에.** 스크립트에는 I/O 가 없어서
   `payload()` 가 환경변수를 못 읽는다 — 그게 rhai 샌드박스의 요점이다. 그래서
-  본문에 넣을 값은 정의가 `"body_env": { "chat_id": "TELEGRAM_CHAT_ID" }` 로
+  본문에 넣을 값은 정의가 `body_env = { chat_id = "TELEGRAM_CHAT_ID" }` 로
   지목하고 코어가 채운다.
 - **리터럴로 적으면 적재가 거부된다.** `.guild/plugins/` 는 git 에 커밋되므로
   토큰을 그대로 적으면 이력에 남는다.
@@ -76,8 +79,9 @@ POST /hook   Authorization: Bearer whk_...
 ## desktop-notify
 
 **퀘스트나 댓글이 생기면 데스크톱 알림.** 스크립트 없이 `run` 만 쓰는 예다 —
-`payload` 가 없으면 이벤트 JSON 이 그대로 stdin 으로 들어오고, 거르는 일은
-셸에서 해도 된다. rhai 가 유일한 방법은 아니다.
+줄에 `action` 을 적으면 이벤트 JSON 이
+그대로 stdin 으로 들어오고, 거르는 일은 셸에서 해도 된다. rhai 가 유일한 방법은 아니다
+(조건만 걸 거라면 줄의 `when` 으로도 된다).
 
 `scope` 가 `["gui"]` 라 CLI 에서는 안 돈다. 데스크톱에서 일할 때만 뜨는 게
 맞기 때문이다 — CLI 로 스무 개를 일괄 처리하는데 알림이 스무 번 뜨면 곤란하다.
@@ -92,19 +96,32 @@ Windows 에서는 `sh` 대신 `notify.ps1` 을 PowerShell 로 띄운다(정의�
 
 ## deleted-audit
 
-**퀘스트가 지워지기 전에 무엇이 지워질지 남긴다.** 관찰 `pre` 의 예다.
+**퀘스트가 지워지기 전에 무엇이 지워질지 남기고, `keep` 태그가 붙은 것은 막는다.**
+바뀌기 전(`pre`) 단계와 **줄 둘**의 예다.
 
 ```
 {"guild":"myguild","id":"DEV-002","status":"open","title":"지워질 퀘스트",
  "ts":"2026-09-08T12:46:40+09:00"}
 ```
 
-pre 는 **거부하지 못한다.** 훅이 죽으면 길드가 멈추기 때문에 관찰만 하기로 했다.
-그래서 이건 막는 장치가 아니라 찾는 단서다 — 복구는 `openguild quest restore`
-로 하고, 이 로그는 무엇을 복구할지 찾는 데 쓴다.
+pre 줄은 **막을 수 있다.** 함수가 글자를 돌려주면 그것이 막는 이유가 되고(그대로 사용자에게
+보인다), 표를 돌려주면 그 칸이 바뀐 채로 진행한다. 아무것도 안 돌려주면 그냥 지나간다.
 
-pre 를 내는 이벤트는 지금 `quest.deleted` 와 `comment.added` 둘뿐이다. 없는
-이벤트에 `pre:` 를 걸면 적재 때 거부된다 — 조용히 안 도는 것보다 낫다.
+```bash
+openguild quest tag add DEV-002 keep
+openguild quest delete DEV-002 --yes
+# error: DEV-002 에 keep 태그가 있습니다 — 태그를 떼고 다시 지우세요
+```
+
+줄이 둘인 것이 요점이다. **먼저 남기고, 그다음에 막을지 본다** — 막힌 뒤의 줄은 안 돌기
+때문에 순서가 반대면 막힌 시도는 기록에 안 남는다. `keep` 태그를 보는 것은 함수가 아니라
+줄의 조건(`when`)이라, 함수는 "막는다" 하나만 한다.
+
+지워진 것을 되살리는 것은 여전히 `openguild quest restore` 다(soft delete). 이 로그는
+무엇을 복구할지 찾는 데 쓴다.
+
+pre 를 내는 이벤트는 몇 개뿐이다 — `openguild plugin events` 로 확인한다. 없는 이벤트에
+`pre` 를 걸면 적재 때 거부된다 — 조용히 안 도는 것보다 낫다.
 
 ---
 
@@ -134,7 +151,7 @@ openguild backup new          # 그 폴더에 사본이 생긴다
 `${...}` 로 쓸 수도 있지만, 토큰 같은 값을 `args` 에 넣으면 `ps` 에 보인다 — `run` 훅은
 환경변수로 읽는 편이 낫다.
 
-스크립트(`transform.rhai`)는 **복사할지 정하고, 경로 한 줄만 내보낸다.** 셸에서 JSON 을
+스크립트는 **복사할지 정하고, 경로 한 줄만 내보낸다.** 셸에서 JSON 을
 파싱하면 `jq` 가 있느냐에 따라 도는 예제가 되기 때문이다.
 
 Windows 에서는 같은 일을 `archive.ps1` 이 한다 — `ARCHIVE_DIR` 는 `D:\backup\openguild`
@@ -161,16 +178,15 @@ Windows 에서는 같은 일을 `archive.ps1` 이 한다 — `ARCHIVE_DIR` 는 `
 `run` 의 `command`/`args` 는 모든 OS 의 기본이다. 셸 스크립트는 Windows 에 `sh` 가 없어
 못 돈다 — 그 OS 에서 띄울 것을 따로 적는다. 적힌 OS 에서는 기본 대신 그것을 띄운다.
 
-```json
-"run": {
-  "command": "sh",
-  "args": ["${OPENGUILD_PLUGIN_DIR}/archive.sh"],
-  "windows": {
-    "command": "powershell",
-    "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-             "-File", "${OPENGUILD_PLUGIN_DIR}/archive.ps1"]
-  }
-}
+```toml
+[actions.archive.run]
+    command = "sh"
+    args    = ["${OPENGUILD_PLUGIN_DIR}/archive.sh"]
+
+    [actions.archive.run.windows]
+        command = "powershell"
+        args    = ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+                   "-File", "${OPENGUILD_PLUGIN_DIR}/archive.ps1"]
 ```
 
 - 쓸 수 있는 키는 `windows` / `macos` / `linux`. 시한(`timeout_ms`)은 함께 쓴다.
@@ -186,10 +202,30 @@ Windows 에서는 같은 일을 `archive.ps1` 이 한다 — `ARCHIVE_DIR` 는 `
 `openguild plugin events` 로 구독할 수 있는 이름을 본다. 이벤트가 어떻게 생겼는지
 보려면 아무거나 하나 걸어 두고 파일로 받아 보는 게 제일 빠르다:
 
-```json
-{ "name": "peek", "on": ["*"], "scope": ["cli"],
-  "action": { "run": { "command": "sh", "args": ["-c", "cat >> peek.log; echo >> peek.log"] } } }
+```toml
+name   = "peek"
+scope  = ["cli"]
+
+[actions.peek.run]
+    command = "sh"
+    args    = ["-c", "cat >> peek.log; echo >> peek.log"]
+
+[[handlers]]
+    post   = ["*"]
+    action = "peek"
 ```
+
+만들면서 쓰는 것:
+
+```bash
+openguild plugin events                  # 이벤트 이름 · 대상 종류 · 쓸 수 있는 `with`
+openguild plugin check <폴더>             # 적재가 하는 검사 + 흔한 실수 (오류면 종료 코드 1)
+openguild plugin test <폴더>              # *.test.rhai 의 test_ 함수들
+openguild plugin schema --out plugin.schema.json   # 편집기 자동 완성
+```
+
+예제 첫 줄의 `#:schema ../plugin.schema.json` 이 그 스키마를 가리킨다 — VS Code 의
+Even Better TOML 같은 확장이 집어 들어 칸 이름과 이벤트 이름을 채워 준다.
 
 자세한 규칙은 `openguild docs show USAGE` 의 플러그인 절을 본다.
 
@@ -209,19 +245,27 @@ Windows 에서는 같은 일을 `archive.ps1` 이 한다 — `ARCHIVE_DIR` 는 `
 `quest.tags` 가 실제로 채워지게 된 것이 [[DEV-381]] 이다 — 그전에는 항상 빈
 배열이라 이 예제가 아예 안 됐다.
 
-**댓글 알림에는 안 걸린다.** `comment.added` 는 어느 문서에 달렸는지를
-`target: {kind, id}` 로만 알리고 그 퀘스트의 태그는 안 싣는다([[DEV-391]]).
+**댓글 알림에도 걸린다 — 줄이 문서를 읽기 때문이다.** `comment.added` 이벤트 자체는 어느
+문서에 달렸는지(`subject: {kind, id}`)만 알리고 태그는 안 싣는다([[DEV-391]]). 그래서 그 줄에
+`with = ["subject"]` 를 적어 두면 코어가 그 문서를 읽어 함수의 둘째 인자로 넘긴다 —
+`fn on_comment(e, doc)` 안에서 `doc.tags` 를 본다([[DEV-405]]).
 
 ## 사용자에게 받는 값 (REQ-021)
 
 `telegram-quest-status` 가 그 예다. 봇 토큰·채팅 ID 는 사람이 넣어야 하고,
 "무엇을 알릴지" 는 켜고 끌 수 있어야 한다.
 
-```json
-"inputs": [
-  { "key": "TELEGRAM_BOT_TOKEN", "label": "봇 토큰", "secret": true },
-  { "key": "ON_COMMENT", "label": "댓글 알림", "type": "checkbox", "default": false }
-]
+```toml
+[[inputs]]
+    key    = "TELEGRAM_BOT_TOKEN"
+    label  = "봇 토큰"
+    secret = true
+
+[[inputs]]
+    key     = "ON_COMMENT"
+    label   = "댓글 알림"
+    type    = "checkbox"
+    default = false
 ```
 
 관리 → 플러그인 에서 채우고, 스크립트는 `config("ON_COMMENT")` 로 읽는다 —
