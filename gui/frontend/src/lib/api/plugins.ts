@@ -40,6 +40,8 @@ export interface PluginView {
 	scripts: string[];
 	/** DEV-406: 스크립트가 길드에 시킬 수 있는 일(알림·백업). */
 	permissions: string[];
+	/** DEV-408: 스크립트가 불러오는 파일 — 폴더 밖 것도. 바뀌어도 다시 묻지 않는다. */
+	imports: string[];
 	/**
 	 * BUG-279: `run` 훅이 파일을 쓰는 자리. `post` 면 null 이다.
 	 *

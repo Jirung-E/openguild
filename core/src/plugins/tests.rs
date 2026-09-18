@@ -3102,3 +3102,139 @@ fn wait_and_block_policies_belong_to_their_stage() {
         .is_ok()
     );
 }
+
+// ── DEV-408: 폴더 밖 스크립트 불러오기 ─────────────────────
+
+/// 두 플러그인이 **같은 공통 파일**을 불러 쓴다. 폴더 밖이어도 되고, 목록은 화면에 보인다.
+#[test]
+fn two_plugins_can_share_a_file_from_outside_their_folders() {
+    let _guard = env_lock();
+    let home = fresh_tmp("imp-home");
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let g = fresh_tmp("imp");
+    let shared = plugins_dir(&g).join("_공통");
+    std::fs::create_dir_all(&shared).unwrap();
+    std::fs::write(shared.join("fmt.rhai"), r#"fn head(q) { "[" + q.id + "] " + q.title }"#).unwrap();
+
+    for name in ["one", "two"] {
+        let dir = plugins_dir(&g).join(name);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join(MANIFEST),
+            format!(
+                "name = \"{name}\"\nscope = [\"cli\"]\nscripts = [\"main.rhai\"]\n\n[actions.out.post]\nurl = \"https://x.test\"\n\n[[handlers]]\npost = [\"quest.created\"]\ncall = \"h\"\n"
+            ),
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("main.rhai"),
+            r#"import "../_공통/fmt.rhai" as fmt; fn h(e) { send("out", fmt::head(e.quest)) }"#,
+        )
+        .unwrap();
+    }
+    consent::enable_auto_allow(&g).unwrap();
+
+    let l = load_all(&g);
+    assert!(l.errors.is_empty(), "{:?}", l.errors);
+    assert_eq!(l.active.len(), 2);
+    for p in &l.active {
+        assert_eq!(p.imports, vec!["../_공통/fmt.rhai"], "불러오는 파일이 안 보인다");
+        assert_eq!(
+            view::view(p, true, Scope::Cli).imports,
+            vec!["../_공통/fmt.rhai"]
+        );
+    }
+    // 실제로 그 함수를 쓴다.
+    let sc = l.active[0].compiled.as_deref().unwrap();
+    let mut data = serde_json::Map::new();
+    data.insert("quest".into(), json!({ "id": "DEV-1", "title": "훅" }));
+    let ev = crate::events::Event { data, ..probe_event() };
+    let got = sc.call_handler("h", &ev, &Default::default()).unwrap();
+    assert_eq!(got[0].body, json!("[DEV-1] 훅"));
+
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 없는 파일 · 변수 경로 · `.rhai` 가 아닌 것은 적재 때 걸린다.
+#[test]
+fn bad_imports_are_caught_at_load() {
+    let _guard = env_lock();
+    let home = fresh_tmp("imp2-home");
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let g = fresh_tmp("imp2");
+    let dir = plugins_dir(&g).join("p");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join(MANIFEST),
+        "name = \"p\"\nscope = [\"cli\"]\nscripts = [\"main.rhai\"]\n\n[actions.out.post]\nurl = \"https://x.test\"\n\n[[handlers]]\npost = [\"quest.created\"]\ncall = \"h\"\n",
+    )
+    .unwrap();
+    let cases = [
+        (r#"import "없다.rhai" as x; fn h(e) { }"#, "없습니다"),
+        (r#"let p = "x.rhai"; import p as x; fn h(e) { }"#, "글자 그대로"),
+        (r#"import "../secrets.env" as x; fn h(e) { }"#, ".rhai"),
+    ];
+    for (src, want) in cases {
+        std::fs::write(dir.join("main.rhai"), src).unwrap();
+        let l = load_all(&g);
+        assert_eq!(l.errors.len(), 1, "{src} → {:?}", l.errors);
+        assert!(l.errors[0].1.contains(want), "{src} → {:?}", l.errors);
+    }
+    // 불러온 파일 안의 비밀값도 막는다.
+    std::fs::write(plugins_dir(&g).join("p/lib.rhai"), r#"fn k() { "xoxb-1234567890abcdef" }"#).unwrap();
+    std::fs::write(dir.join("main.rhai"), r#"import "lib.rhai" as l; fn h(e) { }"#).unwrap();
+    let l = load_all(&g);
+    assert!(l.errors[0].1.contains("비밀값"), "{:?}", l.errors);
+
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 폴더 밖 파일이 바뀌어도 **다시 묻지 않는다**(admin 결정) — 폴더 안 파일은 예전처럼 묻는다.
+#[test]
+fn changing_an_imported_file_outside_the_folder_does_not_ask_again() {
+    let _guard = env_lock();
+    let home = fresh_tmp("imp3-home");
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let g = fresh_tmp("imp3");
+    let outside = fresh_tmp("imp3-lib");
+    std::fs::write(outside.join("fmt.rhai"), r#"fn head(q) { "A" }"#).unwrap();
+    let dir = plugins_dir(&g).join("p");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join(MANIFEST),
+        "name = \"p\"\nscope = [\"cli\"]\nscripts = [\"main.rhai\"]\n\n[actions.out.post]\nurl = \"https://x.test\"\n\n[[handlers]]\npost = [\"quest.created\"]\ncall = \"h\"\n",
+    )
+    .unwrap();
+    let import = format!("import \"{}/fmt.rhai\" as fmt;", outside.display());
+    std::fs::write(dir.join("main.rhai"), format!("{import} fn h(e) {{ send(\"out\", fmt::head(e)) }}")).unwrap();
+
+    let l = load_all(&g);
+    consent::grant(&g, &l.needs_consent[0]).unwrap();
+    assert_eq!(load_all(&g).active.len(), 1);
+
+    // 폴더 **밖** 파일을 고친다 — 그대로 돈다.
+    std::fs::write(outside.join("fmt.rhai"), r#"fn head(q) { "B" }"#).unwrap();
+    let after = load_all(&g);
+    assert_eq!(after.active.len(), 1, "폴더 밖 파일이 바뀌었다고 동의가 풀렸다");
+    // 바뀐 내용이 실제로 반영된다.
+    let got = after.active[0]
+        .compiled
+        .as_deref()
+        .unwrap()
+        .call_handler("h", &probe_event(), &Default::default())
+        .unwrap();
+    assert_eq!(got[0].body, json!("B"));
+
+    // 폴더 **안** 파일은 예전처럼 다시 묻는다.
+    std::fs::write(dir.join("main.rhai"), format!("{import} fn h(e) {{ send(\"out\", \"직접\") }}")).unwrap();
+    assert!(load_all(&g).active.is_empty(), "폴더 안이 바뀌었는데 안 물었다");
+
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    for d in [&g, &outside, &home] {
+        let _ = std::fs::remove_dir_all(d);
+    }
+}

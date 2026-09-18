@@ -644,6 +644,7 @@ mod tests {
             guild_root: std::env::temp_dir(),
             compiled: None,
             script_src: None,
+            imports: Vec::new(),
             folder: Default::default(),
             source: None,
         }

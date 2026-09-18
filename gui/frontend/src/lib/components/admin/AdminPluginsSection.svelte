@@ -427,6 +427,12 @@
 								</li>
 							{/each}
 						</ol>
+						{#if p.imports.length > 0}
+							<p class="plugin-datadir">
+								{t('plugins.imports', $locale)}: <code class="plugin-path">{p.imports.join(', ')}</code>
+								<span class="line-label">{t('plugins.importsNote', $locale)}</span>
+							</p>
+						{/if}
 						{#if p.permissions.length > 0}
 							<p class="plugin-datadir">
 								{t('plugins.permissions', $locale)}: {p.permissions.join(', ')}

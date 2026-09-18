@@ -1131,7 +1131,7 @@ fn shipped_scripts_survive_real_events(rec: &Recorder, guild: &std::path::Path) 
             continue;
         }
         let def = crate::plugins::read_def(&manifest).unwrap();
-        let (Some(script), _) = crate::plugins::compile_script(&entry.path(), &def).unwrap() else {
+        let (Some(script), _, _) = crate::plugins::compile_script(&entry.path(), &def).unwrap() else {
             continue;
         };
 

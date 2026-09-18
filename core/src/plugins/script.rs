@@ -17,9 +17,9 @@
 //! 정의 파일의 `[actions]` 에만 있고, 스크립트는 이름만 안다. 그래서 스크립트가 폭주해도 밖으로
 //! 못 나가고, 허용 화면은 정의 파일만 보고 "어디로 나가나" 를 다 보여 줄 수 있다.
 //!
-//! 샌드박스는 두 겹이다. `no_module` 로 `import` 자체를 컴파일에서 없애고(기본
-//! 모듈 해석기는 **디스크를 읽는다**), 엔진에는 우리가 등록한 함수 외에는
-//! 아무것도 없다 — 파일도 프로세스도 소켓도 이름이 없다.
+//! 샌드박스는 두 겹이다. 엔진에는 우리가 등록한 함수 외에는 아무것도 없고 — 파일도 프로세스도
+//! 소켓도 이름이 없다 — `import` 는 **메모리 안에서만** 풀린다([[DEV-408]]). 코어가 적재 때
+//! 파일을 읽어 넘기므로, 엔진 자신은 디스크를 모른다(기본 해석기는 디스크를 읽는다).
 //!
 //! # 계약
 //!
@@ -132,10 +132,54 @@ impl Script {
     /// 인자 수의 함수가 두 파일에 있으면 거절한다(나중 것이 조용히 덮으면 어느 쪽이 도는지
     /// 모른다).
     pub fn compile_sources(sources: &[(String, String)]) -> AppResult<Self> {
+        Self::compile_with_imports(sources, &[])
+    }
+
+    /// DEV-408: 불러올 파일(`import "경로" as 이름`)을 **메모리 모듈**로 함께 넣는다.
+    /// `imports` 는 스크립트에 적힌 경로 그대로와 그 원문 — 순서는 상관없다(서로 불러도 된다).
+    pub fn compile_with_imports(
+        sources: &[(String, String)],
+        imports: &[(String, String)],
+    ) -> AppResult<Self> {
         let deadline = std::sync::Arc::new(Mutex::new(Instant::now()));
         let config = std::sync::Arc::new(Mutex::new(rhai::Map::new()));
         let commands = std::sync::Arc::new(Mutex::new(Vec::new()));
-        let engine = sandboxed_engine(deadline.clone(), config.clone(), commands.clone());
+        let mut engine = sandboxed_engine(deadline.clone(), config.clone(), commands.clone());
+        // 불러올 것을 먼저 모듈로 만든다. 서로 부르는 경우가 있으므로 될 때까지 되풀이한다.
+        let mut resolver = rhai::module_resolvers::StaticModuleResolver::new();
+        let mut left: Vec<&(String, String)> = imports.iter().collect();
+        while !left.is_empty() {
+            engine.set_module_resolver(resolver.clone());
+            let before = left.len();
+            let mut failed: Vec<&(String, String)> = Vec::new();
+            let mut last_err = String::new();
+            for item in left {
+                let (path, src) = item;
+                let built = engine
+                    .compile(src)
+                    .map_err(|e| e.to_string())
+                    .and_then(|ast| {
+                        rhai::Module::eval_ast_as_new(rhai::Scope::new(), &ast, &engine)
+                            .map_err(|e| e.to_string())
+                    });
+                match built {
+                    Ok(m) => {
+                        resolver.insert(path.clone(), m);
+                    }
+                    Err(e) => {
+                        last_err = format!("{path}: {e}");
+                        failed.push(item);
+                    }
+                }
+            }
+            if failed.len() == before {
+                return Err(AppError::BadRequest(format!(
+                    "불러올 스크립트를 준비하지 못했습니다 — {last_err}"
+                )));
+            }
+            left = failed;
+        }
+        engine.set_module_resolver(resolver);
         let mut merged: Option<AST> = None;
         let mut seen: std::collections::HashMap<(String, usize), String> = Default::default();
         for (name, src) in sources {
@@ -539,12 +583,49 @@ mod tests {
     // 이 설계의 전부가 "밖으로 못 나간다" 이므로, 못 나간다는 것을 시험이
     // 붙들고 있어야 한다.
 
-    /// `import` 는 **컴파일부터** 안 된다. 기본 모듈 해석기는 디스크를 읽는다 —
-    /// `no_module` 이 그 경로 자체를 없앤다.
+    /// DEV-408: `import` 는 **코어가 넘긴 것만** 풀린다. 엔진은 디스크를 모른다 — 넘기지 않은
+    /// 이름은 실행할 때 실패한다(컴파일은 통과한다).
     #[test]
-    fn import_does_not_even_compile() {
-        let e = Script::compile_source(r#"import "std" as s; fn h(e) { }"#).unwrap_err();
-        assert!(e.to_string().contains("컴파일"), "{e}");
+    fn import_only_resolves_what_the_core_handed_over() {
+        let sc = Script::compile_source(r#"import "std" as s; fn h(e) { }"#).unwrap();
+        let e = sc.call_handler("h", &ev(), &Default::default()).unwrap_err();
+        assert!(e.contains("std"), "{e}");
+
+        // 넘긴 것은 풀리고, 그 함수를 쓸 수 있다.
+        let sc = Script::compile_with_imports(
+            &[(
+                "main.rhai".into(),
+                r#"import "../공통/fmt.rhai" as fmt; fn h(e) { send("x", fmt::hello(e.quest.id)) }"#
+                    .into(),
+            )],
+            &[(
+                "../공통/fmt.rhai".into(),
+                r#"fn hello(id) { "안녕 " + id }"#.into(),
+            )],
+        )
+        .unwrap();
+        let got = sc.call_handler("h", &ev(), &Default::default()).unwrap();
+        assert_eq!(got[0].body, json!("안녕 DEV-1"));
+    }
+
+    /// 불러온 파일이 또 불러와도 된다 — 순서와 상관없이 준비된다.
+    #[test]
+    fn imports_can_import_each_other() {
+        let sc = Script::compile_with_imports(
+            &[(
+                "main.rhai".into(),
+                r#"import "a.rhai" as a; fn h(e) { send("x", a::top()) }"#.into(),
+            )],
+            &[
+                ("a.rhai".into(), r#"import "b.rhai" as b; fn top() { b::deep() + "!" }"#.into()),
+                ("b.rhai".into(), r#"fn deep() { "바닥" }"#.into()),
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            sc.call_handler("h", &ev(), &Default::default()).unwrap()[0].body,
+            json!("바닥!")
+        );
     }
 
     /// 파일·프로세스·네트워크는 **이름조차 없다.** 등록한 것은 설정 읽기와 할 일 적기뿐이다.

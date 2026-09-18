@@ -592,6 +592,9 @@ pub struct Plugin {
     /// 디렉터리로 삼고 도므로, 옆에 있는 `hook.py` 도 실행되는 코드다 —
     /// 지문이 그것까지 봐야 갈아끼우기가 안 통한다.
     pub folder: BTreeMap<String, String>,
+    /// DEV-408: 스크립트가 불러오는 파일들(적힌 경로 그대로). 허용 화면이 보여 준다 — 폴더 밖
+    /// 파일은 지문의 대상이 아니라 **바뀌어도 다시 안 묻기** 때문이다.
+    pub imports: Vec<String>,
     /// DEV-399: 어디서 온 것인가 — `None` 이면 이 길드의 `.guild/plugins/`, `Some` 이면
     /// 그 이름의 소스. 화면·CLI 가 출처를 보여 준다(같은 목록에 섞여 나오기 때문에).
     pub source: Option<String>,
@@ -794,7 +797,7 @@ fn load_scoped(guild_root: &Path, scope: Option<Scope>) -> Loaded {
                     ));
                     continue;
                 }
-                let (compiled, script_src) = match compile_script(&pdir, &def) {
+                let (compiled, script_src, imports) = match compile_script(&pdir, &def) {
                     Ok(c) => c,
                     Err(e) => {
                         // 스크립트가 깨졌으면 그 플러그인만 끈다 — 판단
@@ -805,6 +808,7 @@ fn load_scoped(guild_root: &Path, scope: Option<Scope>) -> Loaded {
                 };
                 let plugin = Plugin {
                     def,
+                    imports,
                     dir: pdir.clone(),
                     guild_root: guild_root.to_path_buf(),
                     compiled,
@@ -885,10 +889,14 @@ pub const OLD_MANIFEST: &str = "plugin.json";
 
 /// `scripts` 를 읽어 한 공간으로 컴파일한다. 없으면 둘 다 `None`.
 /// 원문도 함께 돌려준다 — 허용 화면이 보여 준다.
-pub(crate) type Compiled = (Option<std::sync::Arc<script::Script>>, Option<String>);
+pub(crate) type Compiled = (
+    Option<std::sync::Arc<script::Script>>,
+    Option<String>,
+    Vec<String>,
+);
 pub(crate) fn compile_script(dir: &Path, def: &PluginDef) -> AppResult<Compiled> {
     if def.scripts.is_empty() {
-        return Ok((None, None));
+        return Ok((None, None, Vec::new()));
     }
     let mut sources: Vec<(String, String)> = Vec::new();
     for rel in &def.scripts {
@@ -911,7 +919,12 @@ pub(crate) fn compile_script(dir: &Path, def: &PluginDef) -> AppResult<Compiled>
         }
         sources.push((rel.clone(), src));
     }
-    let compiled = script::Script::compile_sources(&sources)
+    // DEV-408: 불러오는 파일을 코어가 읽는다 — 폴더 밖도 된다. 경로는 **글자 그대로** 적어야
+    // 한다(변수면 적재 때 무엇을 읽을지 알 수 없고, 허용 화면에도 못 보여 준다).
+    let imports = collect_imports(dir, &sources).map_err(|e| {
+        AppError::BadRequest(format!("{}: {e}", def.name))
+    })?;
+    let compiled = script::Script::compile_with_imports(&sources, &imports)
         .map_err(|e| AppError::BadRequest(format!("{}: {e}", def.name)))?;
     // 줄이 부르는 함수가 정말 있나 — 없으면 적재 때 막는다(조용히 안 불리는 것보다 낫다).
     // 인자 수는 이벤트 하나 + `with` 의 수다.
@@ -941,7 +954,94 @@ pub(crate) fn compile_script(dir: &Path, def: &PluginDef) -> AppResult<Compiled>
             .collect::<Vec<_>>()
             .join("\n")
     };
-    Ok((Some(std::sync::Arc::new(compiled)), Some(shown)))
+    Ok((
+        Some(std::sync::Arc::new(compiled)),
+        Some(shown),
+        imports.iter().map(|(p, _)| p.clone()).collect(),
+    ))
+}
+
+/// DEV-408: 스크립트가 불러오는 파일 목록 — 적힌 경로 그대로와 그 원문. 불러온 파일이 또
+/// 불러오는 것까지 따라간다(깊이 상한 8, 같은 파일은 한 번).
+pub fn collect_imports(dir: &Path, sources: &[(String, String)]) -> Result<Vec<(String, String)>, String> {
+    let mut out: Vec<(String, String)> = Vec::new();
+    let mut queue: Vec<(String, String)> = sources.to_vec();
+    let mut depth = 0;
+    while !queue.is_empty() {
+        depth += 1;
+        if depth > 8 {
+            return Err("불러오는 스크립트가 너무 깊습니다(8단계까지)".into());
+        }
+        let mut next = Vec::new();
+        for (from, src) in &queue {
+            for path in import_paths(src, from)? {
+                if out.iter().any(|(p, _)| *p == path) {
+                    continue;
+                }
+                let full = resolve_import(dir, &path)?;
+                let text = std::fs::read_to_string(&full)
+                    .map_err(|e| format!("불러올 스크립트를 읽지 못했습니다 {}: {e}", full.display()))?;
+                // 비밀값은 여기도 막는다 — 불러온 파일도 결국 도는 코드다.
+                if looks_like_known_key(&text) {
+                    return Err(format!(
+                        "불러온 스크립트 {path} 에 비밀값으로 보이는 리터럴이 있습니다"
+                    ));
+                }
+                out.push((path.clone(), text.clone()));
+                next.push((path, text));
+            }
+        }
+        queue = next;
+    }
+    Ok(out)
+}
+
+/// 원문에서 `import "경로"` 의 경로들. 글자가 아닌 것은 거절한다.
+///
+/// 주석 안의 `import` 까지 세는 것은 넉넉한 쪽의 실수다 — 있지도 않은 파일을 찾다 적재가
+/// 멈추면 이유가 분명하다. 반대(못 보고 지나치기)는 조용히 안 도는 쪽이라 더 나쁘다.
+fn import_paths(src: &str, from: &str) -> Result<Vec<String>, String> {
+    let mut out = Vec::new();
+    let bytes = src.as_bytes();
+    let mut i = 0;
+    while let Some(rel) = src[i..].find("import") {
+        let at = i + rel;
+        i = at + "import".len();
+        // 낱말이어야 한다 — `reimport` 나 `important` 는 아니다.
+        let before_ok = at == 0 || !bytes[at - 1].is_ascii_alphanumeric() && bytes[at - 1] != b'_';
+        let after = src[i..].trim_start();
+        if !before_ok || after.len() == src[i..].len() {
+            continue; // 뒤에 공백이 없으면 낱말이 아니다.
+        }
+        match after.strip_prefix('"').and_then(|r| r.split_once('"')) {
+            Some((path, _)) if !path.trim().is_empty() => out.push(path.to_string()),
+            _ => {
+                let shown: String = after.chars().take(40).collect();
+                return Err(format!(
+                    "{from}: `import` 의 경로는 글자 그대로 적어야 합니다 (받은 것: {shown})"
+                ));
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// 불러올 경로를 실제 파일로. 플러그인 폴더 기준 상대 경로이거나 절대 경로다 — **폴더 밖도
+/// 된다**(admin 결정). 대신 허용 화면이 목록을 보여 주고, 처음 한 번만 허락받는다.
+fn resolve_import(dir: &Path, path: &str) -> Result<PathBuf, String> {
+    let p = Path::new(path);
+    let full = if p.is_absolute() {
+        p.to_path_buf()
+    } else {
+        dir.join(p)
+    };
+    if full.extension().and_then(|e| e.to_str()) != Some("rhai") {
+        return Err(format!("불러올 수 있는 것은 `.rhai` 파일뿐입니다: {path}"));
+    }
+    if !full.is_file() {
+        return Err(format!("불러올 스크립트가 없습니다: {}", full.display()));
+    }
+    Ok(full)
 }
 
 /// 파일 하나를 읽고 **검증까지** 한다. 검증에 걸리면 적재하지 않는다.

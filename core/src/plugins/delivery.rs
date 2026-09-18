@@ -451,6 +451,7 @@ mod tests {
             guild_root,
             compiled: None,
             script_src: None,
+            imports: Vec::new(),
             folder: Default::default(),
             source: None,
         }
