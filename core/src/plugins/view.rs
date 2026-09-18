@@ -67,6 +67,8 @@ pub struct HandlerView {
     pub call: Option<String>,
     /// DEV-405: 함수가 받는 연결 데이터 — 허용 화면이 "퀘스트를 읽음" 을 보여 준다.
     pub with: Vec<String>,
+    /// DEV-407: 이 줄을 기다리나(명령이 끝나기 전에 끝난다).
+    pub wait: bool,
     /// REQ-025: 이 줄이 불릴 조건 — `["change.to = done, closed"]` 처럼 사람이 읽을 한 줄씩.
     pub when: Vec<String>,
     /// 바로 실행하는 동작 — 이름 붙인 것이면 그 이름, 줄에 적은 것이면 `None` 이고 대신
@@ -177,6 +179,7 @@ pub(super) fn view(p: &Plugin, granted: bool, scope: Scope) -> PluginView {
                 events: h.patterns().to_vec(),
                 call: h.call.clone(),
                 with: h.with.clone(),
+                wait: h.wait,
                 when: h
                     .when
                     .iter()

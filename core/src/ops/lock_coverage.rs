@@ -265,6 +265,39 @@ fn every_ops_function_is_classified() {
     assert!(stale.is_empty(), "TABLE 에 있는데 공개 함수가 아니다: {stale:#?}");
 }
 
+/// DEV-407: 잠금 전에 허용되는 것 — 플러그인에게 묻는 호출과 그 물음이 필요한지 확인하는 줄.
+fn strip_pre_ask(src: &str) -> String {
+    let mut out = String::new();
+    let mut rest = src;
+    while let Some(i) = rest
+        .find("store.ask_pre(")
+        .or_else(|| rest.find("store.events_wanted("))
+        // 묻기를 감싼 헬퍼(`ask_…`)도 같은 이유로 잠금 전에 둔다.
+        .or_else(|| rest.find("ask_"))
+    {
+        out.push_str(&rest[..i]);
+        // 그 호출의 괄호가 닫힐 때까지 건너뛴다.
+        let mut depth = 0usize;
+        let mut end = i;
+        for (j, c) in rest[i..].char_indices() {
+            match c {
+                '(' => depth += 1,
+                ')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = i + j + 1;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        rest = &rest[end..];
+    }
+    out.push_str(rest);
+    out
+}
+
 #[test]
 fn guards_match_the_classification() {
     let mut wrong = Vec::new();
@@ -281,7 +314,12 @@ fn guards_match_the_classification() {
                     continue;
                 };
                 // 검증용 읽기까지 잠금 안에 있어야 남이 막 바꾼 상태를 보고 판단한다.
-                if body[..at].contains("store.") || body[..at].contains("store,") {
+                //
+                // DEV-407: 플러그인에게 **묻는 것**(`ask_pre`)은 예외다 — 답이 밖으로 나갔다
+                // 올 수도 있는 시간이라, 그동안 잠금을 쥐고 있으면 다른 작업이 전부 선다.
+                // 그래서 잠금 전에 묻는다. 검증용 읽기가 아니므로 이 규칙의 대상이 아니다.
+                let before = strip_pre_ask(&body[..at]);
+                if before.contains("store.") || before.contains("store,") {
                     wrong.push(format!("{module}::{name}: 잠금 전에 store 를 만진다"));
                 }
             }

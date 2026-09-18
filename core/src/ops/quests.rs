@@ -83,7 +83,27 @@ fn report_snapshot(result: anyhow::Result<Option<crate::snapshot::SnapshotInfo>>
 /// 새 quest 생성. 영향:
 /// - 새 파일 `.guild/quests/{slug}.md` 생성.
 /// - parent 가 지정되었으면 그 quest 파일의 auto 블록 갱신 (sub-quest 목록에 추가).
-pub async fn create_quest(store: &Store, body: CreateQuestRequest) -> AppResult<QuestRow> {
+pub async fn create_quest(store: &Store, mut body: CreateQuestRequest) -> AppResult<QuestRow> {
+    // DEV-407: 바뀌기 **전에** 묻는다 — 막을지, 들어갈 값을 고칠지. 잠금 **전에** 묻는 이유:
+    // 플러그인이 답하는 동안 다른 작업을 세우지 않기 위해서다(밖으로 나갈 수도 있는 시간이다).
+    let pre = store.ask_pre(ev::QUEST_CREATED, || {
+        json!({
+            "quest": {
+                "title": body.title,
+                "status": body.status_slug,
+                "urgency": body.urgency.unwrap_or(3),
+            }
+        })
+    });
+    if let Some(reason) = pre.blocked {
+        return Err(crate::error::AppError::BadRequest(reason));
+    }
+    if let Some(t) = pre.text("title") {
+        body.title = t;
+    }
+    if let Some(u) = pre.int("urgency") {
+        body.urgency = Some(u);
+    }
     let _g = store.mutation_guard().await?;
     // 1. journal append (의도 기록).
     let _ = journal::append(
@@ -386,11 +406,34 @@ pub fn list_quest_tags(store: &Store, slug: &str) -> AppResult<Vec<String>> {
 }
 
 /// 상태 변경.
+/// DEV-407: 상태를 바꾸기 전에 플러그인에게 묻는다 — 막을 이유가 있으면 그 문장.
+///
+/// **잠금 밖에서** 부른다(답이 밖으로 나갔다 올 수도 있는 시간이다). 묻는 데 쓸 현재 상태를
+/// 읽는 것도 여기 안에 둔다 — 잠금 안에서 하는 검증용 읽기와 구분된다.
+async fn ask_status_pre(store: &Store, id: i64, to: &str) -> Option<String> {
+    if !store.events_wanted(ev::QUEST_STATUS_CHANGED, Phase::Pre) {
+        return None;
+    }
+    let q = sql::fetch_by_id(&store.index_pool, id).await.ok()?;
+    store
+        .ask_pre(ev::QUEST_STATUS_CHANGED, || {
+            json!({
+                "quest": payload::quest(&q),
+                "change": payload::change(q.status_slug.clone(), to.to_string()),
+            })
+        })
+        .blocked
+}
+
 pub async fn change_status(
     store: &Store,
     id: i64,
     body: ChangeStatusRequest,
 ) -> AppResult<QuestRow> {
+    // DEV-407: 바뀌기 전에 묻는다 — "리뷰 태그가 없으면 완료 못 함" 같은 규칙이 여기 붙는다.
+    if let Some(reason) = ask_status_pre(store, id, &body.status_slug).await {
+        return Err(crate::error::AppError::BadRequest(reason));
+    }
     let _g = store.mutation_guard().await?;
     // BUG-011: no-op (현재 상태 == 요청 상태) 면 일찍 반환 — journal/history/
     // updated_at 모두 변동 없음.
@@ -744,7 +787,11 @@ pub async fn delete_quest(store: &Store, id: i64, cascade_ids: &[i64]) -> AppRes
         None
     };
     if let Some(q) = &doomed {
-        store.emit_pre(ev::QUEST_DELETED, || json!({ "quest": payload::quest(q) }));
+        // DEV-407: 여기서 막을 수 있다 — 지워지기 전이 마지막 기회다.
+        let pre = store.ask_pre(ev::QUEST_DELETED, || json!({ "quest": payload::quest(q) }));
+        if let Some(reason) = pre.blocked {
+            return Err(crate::error::AppError::BadRequest(reason));
+        }
     }
     let _ = journal::append(
         &store.journal_pool,

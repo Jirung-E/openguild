@@ -103,7 +103,12 @@ pub const BACKUP_CREATED: &str = "backup.created";
 ///
 /// 목록이 짧은 이유는 1단계가 관찰 pre 를 꼭 필요한 곳에만 달았기 때문이다
 /// ([[DEV-373]]). 늘리면 여기에 추가한다.
-pub const PRE_CAPABLE: &[&str] = &[COMMENT_ADDED, QUEST_DELETED];
+pub const PRE_CAPABLE: &[&str] = &[
+    COMMENT_ADDED,
+    QUEST_CREATED,
+    QUEST_DELETED,
+    QUEST_STATUS_CHANGED,
+];
 
 /// 이 이름이 pre 를 낼 수 있나.
 pub fn emits_pre(name: &str) -> bool {

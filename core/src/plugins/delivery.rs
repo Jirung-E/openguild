@@ -434,6 +434,10 @@ mod tests {
                 actions: Default::default(),
                 handlers: vec![crate::plugins::Handler {
                     id: None,
+                    wait: false,
+                    timeout_ms: None,
+                    on_timeout: None,
+                    on_error: None,
                     when: Default::default(),
                     with: Vec::new(),
                     pre: Vec::new(),

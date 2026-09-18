@@ -100,6 +100,8 @@ export interface PluginHandler {
 	with: string[];
 	/** REQ-025: 이 줄이 불릴 조건 — 사람이 읽을 한 줄씩. */
 	when: string[];
+	/** DEV-407: 이 줄을 기다리나. `pre` 줄은 언제나 기다린다. */
+	wait: boolean;
 	/** 이름 붙인 동작을 가리키면 그 이름. */
 	action: string | null;
 	/** 줄에 바로 적은 동작이면 그 종류와 대상. */

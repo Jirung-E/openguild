@@ -210,6 +210,7 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'plugins.dests': { ko: '내보내는 곳', en: 'Where it goes' },
 	'plugins.reads': { ko: '읽음', en: 'reads' },
 	'plugins.permissions': { ko: '길드에 시키는 일', en: 'Can ask the guild to' },
+	'plugins.waits': { ko: '기다림', en: 'waits' },
 	'plugins.running': { ko: '돌고 있음', en: 'Running' },
 	'plugins.otherScope': {
 		ko: '허용됨 (이 앱의 scope 아님 — 여기서는 안 돕니다)',

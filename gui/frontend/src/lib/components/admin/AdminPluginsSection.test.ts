@@ -58,6 +58,7 @@ function plugin(name: string, description: string | null): PluginView {
 				call: null,
 				with: [],
 				when: [],
+				wait: false,
 				action: null,
 				action_kind: 'post',
 				action_target: 'https://example.test/hook'
@@ -138,6 +139,7 @@ describe('DEV-403 줄 목록', () => {
 					call: 'on_status',
 					with: ['subject'],
 					when: ['change.to = done'],
+					wait: false,
 					action: null,
 					action_kind: null,
 					action_target: null
@@ -149,6 +151,7 @@ describe('DEV-403 줄 목록', () => {
 					call: null,
 					with: [],
 					when: [],
+					wait: false,
 					action: 'log',
 					action_kind: null,
 					action_target: null
@@ -164,7 +167,7 @@ describe('DEV-403 줄 목록', () => {
 		);
 		expect(lines).toEqual([
 			'바뀐 뒤 quest.status_changed → on_status() (change.to = done) 읽음: subject 상태 알림',
-			'바뀌기 전 quest.deleted → log 삭제 기록'
+			'바뀌기 전 quest.deleted → log 기다림 삭제 기록'
 		]);
 		expect(document.querySelector('.plugin-dests')?.textContent).toContain(
 			'https://api.telegram.org/x'

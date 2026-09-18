@@ -468,6 +468,10 @@ fn def(action: Action) -> PluginDef {
         actions: Default::default(),
         handlers: vec![Handler {
             id: None,
+            wait: false,
+            timeout_ms: None,
+            on_timeout: None,
+            on_error: None,
             when: Default::default(),
             with: Vec::new(),
             pre: Vec::new(),
@@ -527,7 +531,7 @@ fn subscribing_to_a_phase_that_never_fires_is_caught_at_load() {
         timeout_ms: None,
     });
     // 이름은 맞지만 이 이벤트는 pre 를 안 낸다.
-    set_on(&mut d, &["pre:quest.created"]);
+    set_on(&mut d, &["pre:campaign.created"]);
     let e = validate(&d).unwrap_err().to_string();
     assert!(e.contains("pre"), "{e}");
 
@@ -2231,7 +2235,7 @@ fn each_line_needs_exactly_one_when_and_one_what() {
         ("[[handlers]]\npost = [\"quest.created\"]\naction = \"nope\"", "nope"),
         ("[[handlers]]\nid = \"a\"\npost = [\"quest.created\"]\naction = \"out\"\n[[handlers]]\nid = \"a\"\npost = [\"quest.created\"]\naction = \"out\"", "겹"),
         ("[[handlers]]\npost = [\"quest.creted\"]\naction = \"out\"", "quest.creted"),
-        ("[[handlers]]\npre = [\"quest.created\"]\naction = \"out\"", "pre"),
+        ("[[handlers]]\npre = [\"campaign.created\"]\naction = \"out\"", "pre"),
     ];
     for (lines, want) in cases {
         let e = parse(&format!("{BASE}\n{lines}\n")).unwrap_err();
@@ -2865,4 +2869,236 @@ fn unknown_permission_names_are_rejected() {
     )
     .unwrap_err();
     assert!(e.contains("delete_everything") && e.contains("notify, backup"), "{e}");
+}
+
+// ── DEV-407: 바뀌기 전 단계 — 막기 · 값 바꾸기 · 기다리기 ──
+
+/// 시험용 길드 하나 + 플러그인 하나(정의와 스크립트를 그대로 적는다).
+async fn guild_with(label: &str, manifest: &str, script: &str) -> (PathBuf, PathBuf, crate::Store) {
+    let home = fresh_tmp(&format!("{label}-home"));
+    let g = fresh_tmp(label);
+    crate::repo::seed_guild_dir(&g).unwrap();
+    let dir = plugins_dir(&g).join("gate");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join(MANIFEST), manifest).unwrap();
+    if !script.is_empty() {
+        std::fs::write(dir.join("main.rhai"), script).unwrap();
+    }
+    let store = crate::Store::open(&g).await.unwrap();
+    {
+        let _guard = env_lock();
+        unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+        consent::enable_auto_allow(&g).unwrap();
+        let l = store.install_plugins(Scope::Cli, std::sync::Arc::new(runtime::DropDelivery));
+        unsafe { std::env::remove_var("OPENGUILD_HOME") };
+        assert!(l.errors.is_empty(), "{:?}", l.errors);
+        assert_eq!(l.active.len(), 1);
+    }
+    (g, home, store)
+}
+
+fn quest_req(title: &str) -> crate::models::CreateQuestRequest {
+    crate::models::CreateQuestRequest {
+        quest_type_id: 1,
+        title: title.into(),
+        description: None,
+        status_slug: "open".into(),
+        urgency: Some(3),
+        parent_quest_id: None,
+    }
+}
+
+/// **막기** — 조건이 안 맞으면 상태 변경이 그 이유와 함께 실패한다. 이유는 사용자에게 간다.
+#[tokio::test]
+async fn a_pre_handler_can_block_a_status_change_with_a_reason() {
+    let (g, home, store) = guild_with(
+        "gate-block",
+        r#"
+name    = "gate"
+scope   = ["cli"]
+scripts = ["main.rhai"]
+
+[[handlers]]
+    id   = "리뷰 확인"
+    pre  = ["quest.status_changed"]
+    with = ["subject"]
+    call = "check"
+    [handlers.when]
+        "change.to" = "done"
+"#,
+        r#"fn check(e, q) {
+             if !q.tags.contains("reviewed") { return "리뷰 태그가 필요합니다"; }
+           }"#,
+    )
+    .await;
+
+    let q = crate::ops::quests::create_quest(&store, quest_req("검토 필요")).await.unwrap();
+    let to_done = || crate::models::ChangeStatusRequest { status_slug: "done".into() };
+    let err = crate::ops::quests::change_status(&store, q.id, to_done())
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("리뷰 태그가 필요합니다"), "{err}");
+    // 정말로 안 바뀌었다.
+    let still = crate::services::quests::fetch_by_id(&store.index_pool, q.id).await.unwrap();
+    assert_eq!(still.status_slug, "open");
+
+    // 조건을 채우면 통과한다.
+    crate::ops::quests::set_quest_tags(&store, q.id, vec!["reviewed".into()]).await.unwrap();
+    crate::ops::quests::change_status(&store, q.id, to_done()).await.unwrap();
+    let done = crate::services::quests::fetch_by_id(&store.index_pool, q.id).await.unwrap();
+    assert_eq!(done.status_slug, "done");
+
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// **값 바꾸기** — 저장되기 전에 제목과 급함을 고친다. 댓글 본문도 같은 방식.
+#[tokio::test]
+async fn a_pre_handler_can_change_what_gets_saved() {
+    let (g, home, store) = guild_with(
+        "gate-edit",
+        r#"
+name    = "gate"
+scope   = ["cli"]
+scripts = ["main.rhai"]
+
+[[handlers]]
+    pre  = ["quest.created"]
+    call = "tidy"
+
+[[handlers]]
+    pre  = ["comment.added"]
+    call = "sign"
+"#,
+        r#"
+        fn tidy(e) {
+            if e.quest.title.contains("긴급") { return #{ title: "[긴급] " + e.quest.title, urgency: 1 }; }
+        }
+        fn sign(e) { #{ body: e.comment.body + "\n— 자동 서명" } }
+        "#,
+    )
+    .await;
+
+    let plain = crate::ops::quests::create_quest(&store, quest_req("보통 일")).await.unwrap();
+    assert_eq!(plain.title, "보통 일", "안 바꿔야 하는 것을 바꿨다");
+    assert_eq!(plain.urgency, 3);
+
+    let hot = crate::ops::quests::create_quest(&store, quest_req("긴급 점검")).await.unwrap();
+    assert_eq!(hot.title, "[긴급] 긴급 점검");
+    assert_eq!(hot.urgency, 1);
+    // 파일에도 그대로 들어갔다 — 캐시만 바뀐 것이 아니다.
+    let file = crate::repo::quest::QuestFile::read(store.paths.quest_path(&hot.quest_id)).unwrap();
+    assert_eq!(file.frontmatter.title, "[긴급] 긴급 점검");
+
+    let c = crate::ops::comments::add_comment_entry(
+        &store,
+        &hot.quest_id,
+        "kim".into(),
+        "확인 바랍니다".into(),
+        None,
+        false,
+    )
+    .await
+    .unwrap();
+    assert_eq!(c.body, "확인 바랍니다\n— 자동 서명");
+
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// **기다리기** — `wait` 를 적은 줄은 명령이 끝나기 전에 끝난다. 안 적으면 안 기다린다.
+#[tokio::test]
+async fn a_post_line_can_make_the_command_wait_for_it() {
+    let (g, home, store) = guild_with(
+        "gate-wait",
+        r#"
+name        = "gate"
+scope       = ["cli"]
+scripts     = ["main.rhai"]
+permissions = ["notify"]
+
+[[handlers]]
+    id   = "기다리는 줄"
+    post = ["quest.created"]
+    call = "slow"
+    wait = true
+"#,
+        r#"fn slow(e) { notify("끝났다: " + e.quest.id) }"#,
+    )
+    .await;
+
+    // `drain` 을 부르기 **전에** 이미 끝나 있어야 한다.
+    crate::ops::quests::create_quest(&store, quest_req("기다릴 것")).await.unwrap();
+    let problems = store.plugin_problems();
+    assert!(problems.is_empty(), "{problems:?}");
+    // 기다리는 줄이 이미 돌았으므로 남은 일이 없다 — 유예 0 으로도 끝난다.
+    assert!(
+        store.drain_events(std::time::Duration::from_millis(0)),
+        "기다린다고 적었는데 명령이 끝난 뒤에도 남아 있다"
+    );
+
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 스크립트가 던졌을 때 막을지는 정의가 정한다 — 기본은 그냥 진행.
+#[tokio::test]
+async fn a_throwing_pre_handler_only_blocks_when_told_to() {
+    let manifest = |policy: &str| {
+        format!(
+            r#"
+name    = "gate"
+scope   = ["cli"]
+scripts = ["main.rhai"]
+
+[[handlers]]
+    pre  = ["quest.created"]
+    call = "boom"
+    {policy}
+"#
+        )
+    };
+    // 기본 — 던져도 만들어진다.
+    let (g1, h1, store1) = guild_with("gate-err", &manifest(""), r#"fn boom(e) { throw "터짐" }"#).await;
+    assert!(crate::ops::quests::create_quest(&store1, quest_req("그래도 생김")).await.is_ok());
+    assert_eq!(store1.plugin_problems().len(), 1);
+
+    // `on_error = "block"` — 막는다.
+    let (g2, h2, store2) = guild_with(
+        "gate-err2",
+        &manifest("on_error = \"block\""),
+        r#"fn boom(e) { throw "터짐" }"#,
+    )
+    .await;
+    let err = crate::ops::quests::create_quest(&store2, quest_req("막힘"))
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("터짐"), "{err}");
+
+    for d in [&g1, &h1, &g2, &h2] {
+        let _ = std::fs::remove_dir_all(d);
+    }
+}
+
+/// 단계에 안 맞는 칸은 적재 때 거절한다.
+#[test]
+fn wait_and_block_policies_belong_to_their_stage() {
+    let e = parse(&format!(
+        "{BASE}\n[[handlers]]\npre = [\"quest.created\"]\ncall = \"h\"\nwait = true\n"
+    ))
+    .unwrap_err();
+    assert!(e.contains("wait"), "{e}");
+    let e = parse(&format!(
+        "{BASE}\n[[handlers]]\npost = [\"quest.created\"]\ncall = \"h\"\non_error = \"block\"\n"
+    ))
+    .unwrap_err();
+    assert!(e.contains("pre"), "{e}");
+    assert!(
+        parse(&format!(
+            "{BASE}\n[[handlers]]\npre = [\"quest.created\"]\ncall = \"h\"\non_timeout = \"block\"\ntimeout_ms = 1000\n"
+        ))
+        .is_ok()
+    );
 }

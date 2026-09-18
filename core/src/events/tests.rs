@@ -851,7 +851,9 @@ async fn all_declared_events_fire_with_a_usable_payload() {
             "{name}: guild 가 비었다"
         );
 
-        if name.starts_with("quest.") {
+        // DEV-407: 만들기 **전** 단계에는 아직 문서가 없다 — 요청한 값만 실린다.
+        let unborn = name == super::names::QUEST_CREATED && e.phase == Phase::Pre;
+        if name.starts_with("quest.") && !unborn {
             let qq = &j["quest"];
             assert!(
                 qq["id"].as_str().is_some_and(|s| !s.is_empty()),
@@ -1056,6 +1058,10 @@ async fn all_declared_events_fire_with_a_usable_payload() {
         let got = rec.got.lock().unwrap();
         let mut kinds_seen = std::collections::BTreeSet::new();
         for ev in got.iter() {
+            // 만들기 전 단계에는 아직 그 문서가 없다 — 대상도 없다(DEV-407).
+            if ev.name == super::names::QUEST_CREATED && ev.phase == Phase::Pre {
+                continue;
+            }
             let sub = ev.subject().unwrap_or_else(|| {
                 panic!("'{}'({:?}) 에 대상이 없다: {}", ev.name, ev.phase, ev.to_json())
             });
@@ -1152,7 +1158,7 @@ fn shipped_scripts_survive_real_events(rec: &Recorder, guild: &std::path::Path) 
                         Some(sub) => crate::plugins::related::load(guild, &sub, w),
                     })
                     .collect();
-                let cmds = script.call_handler_with(func, ev, &extra, &cfg).unwrap_or_else(|e| {
+                let (_value, cmds) = script.call_handler_with(func, ev, &extra, &cfg).unwrap_or_else(|e| {
                     panic!(
                         "배포 예제 '{}' {} 가 실제 이벤트 '{}'({:?})에서 죽는다: {e}\n\
                          페이로드: {}\n\

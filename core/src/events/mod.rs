@@ -217,12 +217,47 @@ impl Event {
     }
 }
 
+/// DEV-407: 바뀌기 **전** 단계의 답.
+///
+/// 플러그인이 변경을 막거나 들어갈 값을 고칠 수 있다. 막으면 mutation 은 그 이유와 함께 실패한다
+/// — 사용자가 화면에서 그 문장을 본다.
+#[derive(Debug, Clone, Default)]
+pub struct PreOutcome {
+    /// 막은 이유. `None` 이면 통과.
+    pub blocked: Option<String>,
+    /// 바꿀 칸 — 그 이벤트의 주된 문서(`quest`/`comment`)의 필드 이름.
+    pub changes: Map<String, Value>,
+}
+
+impl PreOutcome {
+    pub fn is_blocked(&self) -> bool {
+        self.blocked.is_some()
+    }
+
+    /// 바뀐 글자 하나 — 없거나 글자가 아니면 `None`.
+    pub fn text(&self, field: &str) -> Option<String> {
+        self.changes.get(field)?.as_str().map(str::to_string)
+    }
+
+    /// 바뀐 정수 하나.
+    pub fn int(&self, field: &str) -> Option<i64> {
+        self.changes.get(field)?.as_i64()
+    }
+}
+
 /// 이벤트를 실제로 받아 처리하는 쪽. 플러그인 적재기가 구현한다([[DEV-375]]).
 pub trait EventSink: Send + Sync {
     /// 이 이벤트를 구독하는 곳이 있나. **페이로드를 만들기 전에** 물어본다.
     fn wants(&self, name: &str, phase: Phase) -> bool;
     /// 전달. **여기서 오래 붙들면 안 된다** — 호출자는 mutation 경로다.
+    /// (DEV-407: `wait` 를 적은 줄만 예외로 여기서 끝까지 돈다.)
     fn dispatch(&self, event: Event);
+
+    /// DEV-407: 바뀌기 **전**에 묻는다 — 막을지, 값을 고칠지. 여기서는 **기다린다**(그게 요점이다).
+    /// 기본은 "아무도 안 막는다".
+    fn ask(&self, _event: Event) -> PreOutcome {
+        PreOutcome::default()
+    }
     /// 아직 나가지 못한 것들에 짧은 유예를 준다. 곧 끝나는 프로세스(CLI)가
     /// 종료 직전에 부른다. 시간 안에 다 나갔으면 `true`.
     ///
@@ -274,6 +309,14 @@ impl Events {
             Ok(r) => r.as_ref().is_some_and(|s| s.wants(name, phase)),
             // 잠금이 오염됐으면 이벤트를 포기한다 — 길드 동작을 막지 않는다.
             Err(_) => false,
+        }
+    }
+
+    /// DEV-407: 바뀌기 전 단계의 답을 받는다. sink 가 없으면 통과.
+    pub fn ask(&self, event: Event) -> PreOutcome {
+        match self.0.read() {
+            Ok(r) => r.as_ref().map(|s| s.ask(event)).unwrap_or_default(),
+            Err(_) => PreOutcome::default(),
         }
     }
 

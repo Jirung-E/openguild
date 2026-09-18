@@ -150,6 +150,39 @@ struct Worker {
     pending: Arc<Pending>,
 }
 
+/// REQ-021: 이 이벤트가 볼 설정값을 **한 번만** 읽는다. 스크립트와 치환이 같은 값을 봐야 한다 —
+/// 두 번 읽으면 그 사이에 사용자가 고친 값이 반쪽만 반영된다.
+type Values = (
+    std::collections::BTreeMap<String, serde_json::Value>,
+    std::collections::BTreeMap<String, String>,
+);
+
+fn values_for(p: &Plugin) -> Values {
+    let resolved = super::values::resolve(&p.guild_root, &p.def);
+    let cfg = resolved
+        .iter()
+        .filter_map(|(k, r)| r.value.clone().map(|v| (k.clone(), v)))
+        .collect();
+    let subst = resolved
+        .iter()
+        .filter_map(|(k, r)| r.as_str().map(|s| (k.clone(), s)))
+        .collect();
+    (cfg, subst)
+}
+
+/// DEV-407: 바뀌기 전 단계에서 한 플러그인의 답 — 막을 이유와 바꿀 칸.
+fn ask_handlers(
+    p: &Plugin,
+    event: &Event,
+    cfg: &std::collections::BTreeMap<String, serde_json::Value>,
+    subst: &std::collections::BTreeMap<String, String>,
+    delivery: &dyn Delivery,
+    log: &Mutex<Vec<String>>,
+    out: &mut crate::events::PreOutcome,
+) {
+    run_lines(p, event, cfg, subst, delivery, log, Some(out), |h| h.phase() == Phase::Pre);
+}
+
 /// DEV-403: 한 플러그인의 줄을 **적힌 순서대로** 본다. 걸린 줄마다 함수를 부르고 그 함수가 적은
 /// 일을 차례로 실행하거나, 줄에 적힌 동작을 실행한다. 한 줄의 실패는 기록하고 다음 줄로 간다.
 fn run_handlers(
@@ -160,6 +193,24 @@ fn run_handlers(
     delivery: &dyn Delivery,
     log: &Mutex<Vec<String>>,
 ) {
+    // 전용 스레드에서 도는 몫 — 기다리는 줄(`wait`)은 이미 dispatch 에서 끝났다.
+    run_lines(p, event, cfg, subst, delivery, log, None, |h| {
+        h.phase() == Phase::Post && !h.wait
+    });
+}
+
+/// 줄을 고르는 조건만 다르고 나머지는 같다 — 바뀌기 전(답을 모은다), 기다리는 줄, 나머지.
+#[allow(clippy::too_many_arguments)]
+fn run_lines(
+    p: &Plugin,
+    event: &Event,
+    cfg: &std::collections::BTreeMap<String, serde_json::Value>,
+    subst: &std::collections::BTreeMap<String, String>,
+    delivery: &dyn Delivery,
+    log: &Mutex<Vec<String>>,
+    mut answer: Option<&mut crate::events::PreOutcome>,
+    pick: impl Fn(&super::Handler) -> bool,
+) {
     let name = &p.def.name;
     // DEV-405: 연결 데이터는 이 이벤트에 대해 한 번만 읽는다 — 여러 줄이 같은 것을 받아도.
     let subject = event.subject();
@@ -167,8 +218,12 @@ fn run_handlers(
     // 이벤트 JSON 은 조건이 있는 줄이 하나라도 있을 때만 만든다.
     let mut event_json: Option<serde_json::Value> = None;
     for (i, h) in p.def.handlers.iter().enumerate() {
-        if !h.wants(event.name, event.phase) {
+        if !h.wants(event.name, event.phase) || !pick(h) {
             continue;
+        }
+        // 이미 막혔으면 뒤 줄은 묻지 않는다 — 첫 거절에서 멈춘다.
+        if answer.as_ref().is_some_and(|a| a.is_blocked()) {
+            return;
         }
         let who = h.label(i);
         // REQ-025: 조건이 먼저다 — 통과해야 함수가 불리고 동작이 돈다.
@@ -208,13 +263,37 @@ fn run_handlers(
                 .iter()
                 .map(|w| extra_map.get(w).cloned().unwrap_or(serde_json::Value::Null))
                 .collect();
-            let cmds = match sc.call_handler_with(func, event, &extra, cfg) {
-                Ok(c) => c,
+            let started = std::time::Instant::now();
+            let (value, cmds) = match sc.call_handler_with(func, event, &extra, cfg) {
+                Ok(v) => v,
                 Err(e) => {
                     note(log, format!("플러그인 '{name}' {who} 스크립트 — {e}"));
+                    // DEV-407: 던졌을 때 막을지는 정의가 정한다(기본은 그냥 진행).
+                    if let Some(a) = answer.as_deref_mut()
+                        && h.blocks_on(false)
+                    {
+                        a.blocked = Some(format!("{name}: {who} 가 실패했습니다 — {e}"));
+                    }
                     continue;
                 }
             };
+            // DEV-407: 바뀌기 전 단계의 답 — 글자면 막을 이유, 표면 바꿀 칸.
+            if let Some(a) = answer.as_deref_mut() {
+                match &value {
+                    serde_json::Value::String(reason) if !reason.trim().is_empty() => {
+                        a.blocked = Some(reason.clone());
+                    }
+                    serde_json::Value::Bool(false) => {
+                        a.blocked = Some(format!("{name}: {who} 가 막았습니다"));
+                    }
+                    serde_json::Value::Object(m) => {
+                        for (k, v) in m {
+                            a.changes.insert(k.clone(), v.clone());
+                        }
+                    }
+                    _ => {}
+                }
+            }
             for c in cmds {
                 let verb = c.kind.verb();
                 // DEV-406: 길드에 시키는 일은 정의가 밝힌 권한 안에서만.
@@ -267,6 +346,24 @@ fn run_handlers(
                     note(log, format!("플러그인 '{name}' {who} — {e}"));
                 }
             }
+            // DEV-407: 시간이 넘었으면 정의가 정한 대로. 스크립트에는 자체 상한이 있고 동작에도
+            // 시한이 있으므로, 여기서는 **다 끝난 뒤** 넘었는지 본다.
+            let spent = started.elapsed();
+            if spent > h.timeout() {
+                note(
+                    log,
+                    format!(
+                        "플러그인 '{name}' {who} — {}ms 걸렸습니다(시한 {}ms)",
+                        spent.as_millis(),
+                        h.timeout().as_millis()
+                    ),
+                );
+                if let Some(a) = answer.as_deref_mut()
+                    && h.blocks_on(true)
+                {
+                    a.blocked = Some(format!("{name}: {who} 가 시한을 넘겼습니다"));
+                }
+            }
         } else if let Some(r) = &h.action {
             let Some(action) = p.def.action_of(r) else {
                 continue; // 검증이 막는다 — 여기 올 일은 없다.
@@ -281,6 +378,8 @@ fn run_handlers(
 /// 적재된 플러그인 + 전달 방법.
 pub struct PluginRuntime {
     plugins: Arc<Vec<Plugin>>,
+    /// DEV-407: 바뀌기 전 단계와 기다리는 줄은 **부른 자리에서** 돈다 — 전용 스레드가 아니라.
+    delivery: Option<Arc<dyn Delivery>>,
     /// 전달 중 발생한 문제 — 조용히 삼키지 않는다. 어디에 보여줄지는
     /// 컴포넌트가 정한다(GUI 토스트는 CLI 에 없다).
     problems: Arc<Mutex<Vec<String>>>,
@@ -307,10 +406,11 @@ impl PluginRuntime {
         let worker = if plugins.is_empty() {
             None
         } else {
-            Some(Self::spawn(&plugins, delivery, &problems))
+            Some(Self::spawn(&plugins, delivery.clone(), &problems))
         };
         Self {
             plugins,
+            delivery: Some(delivery),
             problems,
             worker,
         }
@@ -334,19 +434,7 @@ impl PluginRuntime {
                     // 사용자 입력이고 전달 구현은 외부와 말한다 — 둘 다 믿을 수
                     // 없다. 스크립트도 사용자 코드라 같은 울타리 안에 둔다.
                     let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        // REQ-021: 이 이벤트가 볼 설정값을 **한 번만** 읽는다.
-                        // 스크립트와 치환이 같은 값을 봐야 한다 — 두 번 읽으면
-                        // 그 사이에 사용자가 고친 값이 반쪽만 반영된다.
-                        let resolved = super::values::resolve(&p.guild_root, &p.def);
-                        let cfg: std::collections::BTreeMap<String, serde_json::Value> = resolved
-                            .iter()
-                            .filter_map(|(k, r)| r.value.clone().map(|v| (k.clone(), v)))
-                            .collect();
-                        let subst: std::collections::BTreeMap<String, String> = resolved
-                            .iter()
-                            .filter_map(|(k, r)| r.as_str().map(|s| (k.clone(), s)))
-                            .collect();
-
+                        let (cfg, subst) = values_for(p);
                         run_handlers(p, &job.event, &cfg, &subst, delivery.as_ref(), &log);
                     }));
                     if r.is_err() {
@@ -391,12 +479,75 @@ impl EventSink for PluginRuntime {
         self.plugins.iter().any(|p| p.wants(name, phase))
     }
 
+    /// DEV-407: 바뀌기 전 단계 — **여기서 기다린다.** 첫 거절에서 멈춘다.
+    fn ask(&self, event: Event) -> crate::events::PreOutcome {
+        let mut out = crate::events::PreOutcome::default();
+        let Some(delivery) = self.delivery.as_ref() else {
+            return out;
+        };
+        for p in self.plugins.iter() {
+            if !p.wants(event.name, event.phase) || event.origin.has(&p.def.name) {
+                continue;
+            }
+            let (cfg, subst) = values_for(p);
+            let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let mut mine = crate::events::PreOutcome::default();
+                ask_handlers(p, &event, &cfg, &subst, delivery.as_ref(), &self.problems, &mut mine);
+                mine
+            }));
+            match r {
+                Ok(mine) => {
+                    out.changes.extend(mine.changes);
+                    if let Some(reason) = mine.blocked {
+                        out.blocked = Some(reason);
+                        return out; // 하나라도 막으면 거기서 끝난다.
+                    }
+                }
+                Err(_) => note(
+                    &self.problems,
+                    format!("플러그인 '{}' 가 바뀌기 전 단계에서 패닉했습니다", p.def.name),
+                ),
+            }
+        }
+        out
+    }
+
     fn dispatch(&self, event: Event) {
+        // DEV-407: 바뀌기 전 단계는 `ask` 가 답까지 받아 처리한다 — 여기서는 아무것도 안 한다.
+        if event.phase == Phase::Pre {
+            return;
+        }
+        // DEV-407: 기다리라고 적은 줄은 **여기서** 끝까지 돈다 — 명령이 그 결과를 보고 끝난다.
+        if let Some(delivery) = self.delivery.as_ref() {
+            for p in self.plugins.iter() {
+                if !p.wants(event.name, event.phase) || event.origin.has(&p.def.name) {
+                    continue;
+                }
+                if !p.def.handlers.iter().any(|h| h.wait && h.wants(event.name, event.phase)) {
+                    continue;
+                }
+                let (cfg, subst) = values_for(p);
+                let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    run_lines(p, &event, &cfg, &subst, delivery.as_ref(), &self.problems, None, |h| {
+                        h.phase() == Phase::Post && h.wait
+                    });
+                }));
+            }
+        }
         let Some(w) = self.worker.as_ref() else {
             return;
         };
         for (i, p) in self.plugins.iter().enumerate() {
             if !p.wants(event.name, event.phase) {
+                continue;
+            }
+            // 기다리는 줄만 있는 플러그인은 이미 끝났다.
+            if !p
+                .def
+                .handlers
+                .iter()
+                .any(|h| !h.wait && h.wants(event.name, event.phase))
+            {
                 continue;
             }
             // DEV-401: 이 플러그인이 일으킨(또는 거쳐 온) 변경이면 다시 보내지 않는다 — 무한 반복 막기.
@@ -461,6 +612,10 @@ mod tests {
             .collect();
         Handler {
             id: None,
+            wait: false,
+            timeout_ms: None,
+            on_timeout: None,
+            on_error: None,
             when: Default::default(),
             with: Vec::new(),
             pre,

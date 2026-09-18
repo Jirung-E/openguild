@@ -180,6 +180,41 @@ impl Store {
         self.emit(name, crate::events::Phase::Pre, None, None, data);
     }
 
+    /// DEV-407: 바뀌기 **전에** 플러그인에게 묻는다 — 막을지, 값을 고칠지.
+    ///
+    /// 구독자가 없으면 페이로드를 만들지도 않고 그대로 통과한다. 막히면 호출자가 그 이유로
+    /// 실패시킨다 — 사용자는 화면에서 그 문장을 본다.
+    pub fn ask_pre(
+        &self,
+        name: &'static str,
+        data: impl FnOnce() -> serde_json::Value,
+    ) -> crate::events::PreOutcome {
+        if !self.events_wanted(name, crate::events::Phase::Pre) {
+            return Default::default();
+        }
+        let obj = match data() {
+            serde_json::Value::Object(m) => m,
+            other => {
+                let mut m = serde_json::Map::new();
+                m.insert("data".into(), other);
+                m
+            }
+        };
+        let event = crate::events::Event {
+            name,
+            phase: crate::events::Phase::Pre,
+            ts: crate::time::now_local_iso8601(),
+            guild: self.guild_label(),
+            ok: None,
+            error: None,
+            data: obj,
+            origin: crate::events::origin::current(),
+        };
+        // 보기만 하는 구독자(기록·시험)도 이 단계를 본다 — 답을 받는 것과 별개다.
+        self.events.dispatch(event.clone());
+        self.events.ask(event)
+    }
+
     /// mutation 이 성공으로 끝난 뒤.
     pub fn emit_post(&self, name: &'static str, data: impl FnOnce() -> serde_json::Value) {
         self.emit(name, crate::events::Phase::Post, Some(true), None, data);

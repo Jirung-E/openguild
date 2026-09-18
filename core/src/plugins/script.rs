@@ -185,17 +185,19 @@ impl Script {
         event: &Event,
         config: &std::collections::BTreeMap<String, serde_json::Value>,
     ) -> Result<Vec<Command>, String> {
-        self.call_handler_with(func, event, &[], config)
+        self.call_handler_with(func, event, &[], config).map(|(_, c)| c)
     }
 
     /// DEV-405: 이벤트 뒤에 연결 데이터(`with`)를 차례로 넘긴다.
+    /// 돌려주는 것은 **함수의 반환값과 적어 둔 할 일**이다. 반환값은 바뀌기 전 단계에서 쓴다
+    /// (막을 이유 또는 바꿀 칸 — [[DEV-407]]).
     pub fn call_handler_with(
         &self,
         func: &str,
         event: &Event,
         extra: &[Value],
         config: &std::collections::BTreeMap<String, serde_json::Value>,
-    ) -> Result<Vec<Command>, String> {
+    ) -> Result<(Value, Vec<Command>), String> {
         // REQ-021: 이번 호출이 볼 설정값. **I/O 가 아니다** — 코어가 미리 읽어
         // 넘겨주는 값이라 샌드박스(파일·네트워크 없음)는 그대로다.
         if let Ok(mut c) = self.config.lock() {
@@ -222,7 +224,7 @@ impl Script {
             .lock()
             .map(|mut c| std::mem::take(&mut *c))
             .unwrap_or_default();
-        result.map(|_| cmds)
+        result.and_then(|v| from_dynamic(&v).map(|v| (v, cmds)))
     }
 
     fn arm(&self) {

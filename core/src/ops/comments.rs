@@ -191,20 +191,26 @@ pub async fn add_comment_entry(
     store: &Store,
     slug: &str,
     author: String,
-    body: String,
+    mut body: String,
     parent_id: Option<u64>,
     // DEV-366: 토론 댓글로 바로 생성. 예전의 add → toggle 2단계를 없앤다.
     discussion: bool,
 ) -> AppResult<CommentEntry> {
-    let _g = store.mutation_guard().await?;
-    // DEV-374: 관찰 pre — 저장 **직전**. 아직 id 가 없으므로 요청 내용만 싣는다.
-    // `ok`/`error` 는 붙지 않는다(결과가 없다).
-    store.emit_pre(ev::COMMENT_ADDED, || {
+    // DEV-407: 저장 **직전**에 묻는다 — 막거나 본문을 고칠 수 있다. 아직 id 가 없으므로 요청
+    // 내용만 싣는다(`ok`/`error` 도 없다 — 결과가 없다).
+    let pre = store.ask_pre(ev::COMMENT_ADDED, || {
         json!({
             "target": payload::target("quest", slug),
             "comment": { "author": author, "body": body, "parent_id": parent_id },
         })
     });
+    if let Some(reason) = pre.blocked {
+        return Err(crate::error::AppError::BadRequest(reason));
+    }
+    if let Some(t) = pre.text("body") {
+        body = t;
+    }
+    let _g = store.mutation_guard().await?;
     let _ = journal::append(
         &store.journal_pool,
         "add_comment_entry",

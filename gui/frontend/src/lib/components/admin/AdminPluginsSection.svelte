@@ -420,6 +420,9 @@
 											>{t('plugins.reads', $locale)}: {h.with.join(', ')}</span
 										>
 									{/if}
+									{#if h.wait || h.stage === 'pre'}
+										<span class="line-label">{t('plugins.waits', $locale)}</span>
+									{/if}
 									<span class="line-label">{h.label}</span>
 								</li>
 							{/each}

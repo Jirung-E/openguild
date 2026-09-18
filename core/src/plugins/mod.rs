@@ -256,6 +256,19 @@ pub struct Handler {
     /// 부를 스크립트 함수 이름. `action` 과 둘 중 하나만.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub call: Option<String>,
+    /// DEV-407: 바뀐 뒤(`post`) 줄을 **끝까지 기다린다.** 기본은 안 기다린다 — 느린 훅 하나가
+    /// 명령을 세우면 안 되기 때문이다. 백업 사본이 다 복사된 뒤에 끝나야 하는 경우에 쓴다.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub wait: bool,
+    /// DEV-407: 이 줄에 줄 시간(ms). 넘으면 아래 `on_timeout` 대로 한다. 안 적으면 기본값.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeout_ms: Option<u64>,
+    /// DEV-407: 시간이 넘었을 때 — `continue`(그냥 진행, 기본) 또는 `block`(막는다, `pre` 줄만).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub on_timeout: Option<Policy>,
+    /// DEV-407: 스크립트가 던졌을 때 — 같은 두 가지.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub on_error: Option<Policy>,
     /// REQ-025: 이 줄이 불릴 조건 — 전부 만족해야 한다. 액션 줄에서는 조건을 거는 유일한
     /// 수단이고, 스크립트 줄에서는 함수 앞의 거름망이다.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -270,6 +283,16 @@ pub struct Handler {
     pub action: Option<ActionRef>,
 }
 
+/// DEV-407: 시간이 넘거나 스크립트가 던졌을 때 무엇을 할지.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Policy {
+    /// 그냥 진행한다 — 기본. 플러그인이 망가져도 길드는 계속 쓸 수 있어야 한다.
+    Continue,
+    /// 막는다. `pre` 줄에서만 쓸 수 있다.
+    Block,
+}
+
 /// 핸들러 줄의 `action` — 이름으로 가리키거나 그 자리에 적는다.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -279,6 +302,21 @@ pub enum ActionRef {
 }
 
 impl Handler {
+    /// DEV-407: 이 줄에 줄 시간.
+    pub fn timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_millis(
+            self.timeout_ms
+                .unwrap_or(DEFAULT_TIMEOUT_MS)
+                .min(MAX_TIMEOUT_MS),
+        )
+    }
+
+    /// 시간이 넘거나 던졌을 때 막는가.
+    pub fn blocks_on(&self, timed_out: bool) -> bool {
+        let p = if timed_out { self.on_timeout } else { self.on_error };
+        p == Some(Policy::Block)
+    }
+
     pub fn phase(&self) -> crate::events::Phase {
         if self.pre.is_empty() {
             crate::events::Phase::Post
@@ -1047,6 +1085,7 @@ fn validate_handlers(def: &PluginDef) -> AppResult<()> {
                 return bad(format!("줄 이름 `{id}` 가 겹칩니다"));
             }
         }
+        let phase = h.phase();
         match (h.pre.is_empty(), h.post.is_empty()) {
             (true, true) => {
                 return bad(format!(
@@ -1090,6 +1129,19 @@ fn validate_handlers(def: &PluginDef) -> AppResult<()> {
             }
             (None, Some(ActionRef::Inline(_))) => {}
         }
+        // DEV-407: 기다리기와 막기 정책은 단계가 정한다.
+        if h.wait && phase == Phase::Pre {
+            return bad(format!(
+                "{who}: `pre` 줄은 원래 기다립니다 — `wait` 는 `post` 줄에 씁니다"
+            ));
+        }
+        for (what, p) in [("on_timeout", h.on_timeout), ("on_error", h.on_error)] {
+            if p == Some(Policy::Block) && phase != Phase::Pre {
+                return bad(format!(
+                    "{who}: `{what} = \"block\"` 은 `pre` 줄에서만 됩니다 — 바뀐 뒤에는 막을 것이 없습니다"
+                ));
+            }
+        }
         // REQ-025: 조건의 경로와 값 모양.
         when::validate(&h.when, &h.with, h.patterns(), h.phase(), &who)?;
         // DEV-405: 받을 데이터는 걸리는 이벤트의 대상이 정한다. 틀리면 쓸 수 있는 것을 알려 준다.
@@ -1116,7 +1168,6 @@ fn validate_handlers(def: &PluginDef) -> AppResult<()> {
         }
         // 아무 이벤트와도 안 맞는 패턴은 오타일 가능성이 높다. 조용히 안 도는 것보다
         // 적재 때 알려주는 편이 낫다.
-        let phase = h.phase();
         for pat in h.patterns() {
             let full = match phase {
                 Phase::Pre => format!("pre:{pat}"),
