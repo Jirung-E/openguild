@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
+	import DocLink from '$lib/components/DocLink.svelte';
 	import { applyStatusUpdate } from '$lib/utils/quest-detail';
 	// BUG-257: 스크롤 컨테이너는 문서가 아니라 `<main>` 이다.
 	import {
@@ -956,7 +957,14 @@
 				<ul class="quest-list">
 					<li>
 						<div class="prereq-row">
-							<a href="/quests/{detail.parent.quest_id}{fromSuffix}" class="prereq-link">
+							<!-- DEV-417: 본문의 크로스링크와 같은 선택지(미리보기·새 창·이동). -->
+							<DocLink
+								kind="quest"
+								id={detail.parent.quest_id}
+								title={detail.parent.title}
+								href="/quests/{detail.parent.quest_id}{fromSuffix}"
+								class="prereq-link"
+							>
 								<span class="pill" style:--c={detail.parent.type_color}
 									>{detail.parent.quest_id}</span
 								>
@@ -964,7 +972,7 @@
 								<span class="pill status" style:--c={detail.parent.status_color}
 									>{questStatusLabel(detail.parent, $locale)}</span
 								>
-							</a>
+							</DocLink>
 							{#if !editMode}
 								<button
 									class="prereq-rm"
@@ -1002,13 +1010,19 @@
 						{#each detail.sub_quests as sq (sq.id)}
 							<li>
 								<div class="prereq-row">
-									<a href="/quests/{sq.quest_id}{fromSuffix}" class="prereq-link">
+									<DocLink
+										kind="quest"
+										id={sq.quest_id}
+										title={sq.title}
+										href="/quests/{sq.quest_id}{fromSuffix}"
+										class="prereq-link"
+									>
 										<span class="pill" style:--c={sq.type_color}>{sq.quest_id}</span>
 										<span class="ql-title">{sq.title}</span>
 										<span class="pill status" style:--c={sq.status_color}
 											>{questStatusLabel(sq, $locale)}</span
 										>
-									</a>
+									</DocLink>
 									{#if !editMode}
 										<button
 											class="prereq-rm"
@@ -1041,13 +1055,19 @@
 						{#each detail.prerequisites as pq (pq.id)}
 							<li>
 								<div class="prereq-row">
-									<a href="/quests/{pq.quest_id}{fromSuffix}" class="prereq-link">
+									<DocLink
+										kind="quest"
+										id={pq.quest_id}
+										title={pq.title}
+										href="/quests/{pq.quest_id}{fromSuffix}"
+										class="prereq-link"
+									>
 										<span class="pill" style:--c={pq.type_color}>{pq.quest_id}</span>
 										<span class="ql-title">{pq.title}</span>
 										<span class="pill status" style:--c={pq.status_color}
 											>{questStatusLabel(pq, $locale)}</span
 										>
-									</a>
+									</DocLink>
 									{#if !editMode}
 										<button
 											class="prereq-rm"
@@ -1085,13 +1105,19 @@
 						{#each detail.successors ?? [] as sq (sq.id)}
 							<li>
 								<div class="prereq-row">
-									<a href="/quests/{sq.quest_id}{fromSuffix}" class="prereq-link">
+									<DocLink
+										kind="quest"
+										id={sq.quest_id}
+										title={sq.title}
+										href="/quests/{sq.quest_id}{fromSuffix}"
+										class="prereq-link"
+									>
 										<span class="pill" style:--c={sq.type_color}>{sq.quest_id}</span>
 										<span class="ql-title">{sq.title}</span>
 										<span class="pill status" style:--c={sq.status_color}
 											>{questStatusLabel(sq, $locale)}</span
 										>
-									</a>
+									</DocLink>
 									{#if !editMode}
 										<button
 											class="prereq-rm"
@@ -1174,11 +1200,17 @@
 					{#each linkedCampaigns as c (c.id)}
 						<li>
 							<div class="prereq-row">
-								<a href={`/campaigns/${encodeURIComponent(c.campaign_slug)}`} class="prereq-link">
+								<DocLink
+									kind="campaign"
+									id={c.campaign_slug}
+									title={c.title}
+									href={`/campaigns/${encodeURIComponent(c.campaign_slug)}`}
+									class="prereq-link"
+								>
 									<span class="pill campaign-badge">{c.campaign_slug}</span>
 									<span class="ql-title">{c.title}</span>
 									<span class="pill status status-{c.status}">{c.status}</span>
-								</a>
+								</DocLink>
 								{#if !editMode}
 									<button
 										class="prereq-rm"
@@ -2084,7 +2116,9 @@
 		align-items: center;
 		padding: 0;
 	}
-	.prereq-link {
+	/* DEV-417: 링크가 컴포넌트(DocLink) 안에 있어 scoped 선택자가 안 닿는다 —
+	   이 페이지의 `.prereq-row` 안으로 범위를 좁힌 `:global` 로 건다. */
+	.prereq-row :global(.prereq-link) {
 		display: flex;
 		align-items: center;
 		gap: 0.6rem;
@@ -2093,7 +2127,7 @@
 		text-decoration: none;
 		transition: background 0.1s;
 	}
-	.prereq-link:hover {
+	.prereq-row :global(.prereq-link:hover) {
 		background: var(--bg-elevated);
 	}
 	.prereq-rm {
@@ -2388,7 +2422,7 @@
 	   (미디어 쿼리는 기본 규칙보다 **뒤**에 둔다 — 특이성이 같으면 순서가
 	    이긴다. BUG-200 에서 이걸 놓쳐 수정이 통째로 무효였다.) */
 	@media (max-width: 640px) {
-		.prereq-link {
+		.prereq-row :global(.prereq-link) {
 			flex-wrap: wrap;
 			row-gap: 0.15rem;
 		}

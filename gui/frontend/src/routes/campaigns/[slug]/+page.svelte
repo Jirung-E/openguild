@@ -7,6 +7,7 @@
 -->
 <script lang="ts">
 	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
+	import DocLink from '$lib/components/DocLink.svelte';
 	// BUG-257: 스크롤 컨테이너는 문서가 아니라 `<main>` 이다.
 	import {
 		pageScrollTop,
@@ -759,7 +760,11 @@
 				<ul class="linked">
 					{#each detail.linked_quests as q (q.id)}
 						<li>
-							<a
+							<!-- DEV-417: 본문의 크로스링크와 같은 선택지(미리보기·새 창·이동). -->
+							<DocLink
+								kind="quest"
+								id={q.quest_id}
+								title={q.title}
 								href={`/quests/${encodeURIComponent(q.quest_id)}?from=campaign:${detail.campaign_slug}`}
 							>
 								<span class="badge type" style:--c={q.type_color}>{q.quest_id}</span>
@@ -767,7 +772,7 @@
 								<span class="badge status" style:--c={q.status_color}
 									>{questStatusLabel(q, $locale)}</span
 								>
-							</a>
+							</DocLink>
 							<button
 								class="rm"
 								title={t('campaign.unlinkQuest', $locale)}
@@ -1167,7 +1172,8 @@
 		color: var(--text-muted);
 	}
 
-	.linked li a {
+	/* DEV-417: 링크가 DocLink 안이라 scoped 선택자가 안 닿는다. */
+	.linked li :global(a) {
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
@@ -1429,7 +1435,7 @@
 	   (미디어 쿼리는 기본 규칙보다 **뒤**에 둔다 — 특이성이 같으면 순서가
 	    이긴다. BUG-200 에서 이걸 놓쳐 수정이 통째로 무효였다.) */
 	@media (max-width: 640px) {
-		.linked li a {
+		.linked li :global(a) {
 			flex-wrap: wrap;
 			row-gap: 0.15rem;
 		}
