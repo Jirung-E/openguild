@@ -113,12 +113,19 @@
 			: { left, top: null as number | null, bottom: vh - anchorRect.top + 6 };
 	});
 
+	// BUG-297: **주소를 먼저 붙든 다음** 팝업을 닫는다. 호출부는 `{...hoverTarget}` 으로
+	// 스프레드해 넘기므로, `onnavigate()` 가 `hoverTarget = null` 로 만드는 순간 이 컴포넌트의
+	// `href` 도 `undefined` 가 된다(Svelte 5 의 props 는 호출부 상태를 그때그때 읽는다).
+	// 그래서 예전에는 `/quests/undefined` 로 가서 404 가 났다.
 	function goPage() {
+		const target = href;
 		onnavigate();
-		openInPage(href);
+		openInPage(target);
 	}
 	function goWindow() {
-		void openInWindow(href, displayName);
+		const target = href;
+		const name = displayName;
+		void openInWindow(target, name);
 	}
 </script>
 
