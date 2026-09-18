@@ -2363,9 +2363,17 @@ impl Backend {
     fn quest_by_slug(&self, slug: &str) -> Result<QuestDetail> {
         match self {
             Backend::Http(c) => c.quest_by_slug(slug),
-            Backend::Local(l) => Self::map_err(
-                l.rt.block_on(quest_svc::get_by_slug(&l.store.index_pool, slug)),
-            ),
+            Backend::Local(l) => {
+                let mut d = Self::map_err(
+                    l.rt.block_on(quest_svc::get_by_slug(&l.store.index_pool, slug)),
+                )?;
+                // BUG-295: 첨부는 sidecar 파일이 진리원이라 캐시 조회가 안 채운다(DEV-156).
+                // GUI·서버는 채우는데 CLI 만 안 채워서 **첨부가 있어도 없다고 답했다** —
+                // 에이전트가 붙여 둔 스펙·목업을 못 보고 일하게 된다.
+                d.attachments =
+                    openguild_core::ops::attachments::list_quest_attachments(&l.store, slug);
+                Ok(d)
+            }
         }
     }
 
@@ -2679,9 +2687,15 @@ impl Backend {
     ) -> Result<openguild_core::models::CampaignDetail> {
         match self {
             Backend::Http(c) => c.campaign_show(slug),
-            Backend::Local(l) => Self::map_err(
-                l.rt.block_on(openguild_core::ops::campaigns::fetch_detail(&l.store, slug)),
-            ),
+            Backend::Local(l) => {
+                let mut d = Self::map_err(
+                    l.rt.block_on(openguild_core::ops::campaigns::fetch_detail(&l.store, slug)),
+                )?;
+                // BUG-295: 퀘스트와 같은 이유.
+                d.attachments =
+                    openguild_core::ops::attachments::list_campaign_attachments(&l.store, slug);
+                Ok(d)
+            }
         }
     }
 
@@ -3033,8 +3047,13 @@ impl Backend {
                 let row = Self::map_err(
                     l.rt.block_on(openguild_core::ops::library::get_book(&l.store, id)),
                 )?;
-                row.map(BookDto::from)
-                    .ok_or_else(|| anyhow!(tf!("도서관 문서 '{id}' 없음", "library doc '{id}' not found")))
+                let mut dto = row.map(BookDto::from).ok_or_else(|| {
+                    anyhow!(tf!("도서관 문서 '{id}' 없음", "library doc '{id}' not found"))
+                })?;
+                // BUG-295: 퀘스트와 같은 이유.
+                dto.attachments =
+                    openguild_core::ops::attachments::list_book_attachments(&l.store, id);
+                Ok(dto)
             }
         }
     }
@@ -5177,6 +5196,7 @@ fn handle_campaign(c: &Backend, json: bool, sub: CampaignCmd) -> Result<()> {
                 println!("    {}. {} {}", i + 1, mark, item.text);
             }
         }
+        print_attachments(&d.attachments, "  ");
     }
 
     match sub {
@@ -5619,6 +5639,20 @@ fn print_quest_summary(d: &QuestDetail, json: bool) {
     if !rel.is_empty() {
         println!("  relations: {}", rel.join("  ·  "));
     }
+    // BUG-295: 첨부가 있으면 **요약에서도** 말한다. 여기서 안 보이면 붙여 둔 스펙·목업이
+    // 없는 것처럼 일하게 된다(`--full` 을 늘 붙이지는 않는다).
+    print_attachments(&d.attachments, "  ");
+}
+
+/// BUG-295: 첨부 목록 한 덩이. 없으면 아무것도 안 찍는다(빈 섹션을 만들지 않는다).
+fn print_attachments(list: &[openguild_core::models::quest::QuestAttachment], indent: &str) {
+    if list.is_empty() {
+        return;
+    }
+    println!("{indent}attachments ({}):", list.len());
+    for a in list {
+        println!("{indent}  - {}  ({})", a.name, a.path);
+    }
 }
 
 fn print_quest_detail(d: &QuestDetail, json: bool) {
@@ -5734,6 +5768,7 @@ fn print_quest_detail(d: &QuestDetail, json: bool) {
             )
         );
     }
+    print_attachments(&d.attachments, "  ");
 }
 
 /// DEV-043: `quest show --field <name>` — 단일 필드 raw 값 출력 (pipe 친화).
@@ -8485,6 +8520,7 @@ fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
                 let loc = if b.path.is_empty() { &top_level } else { &b.path };
                 println!("{}", tf!("  경로: {loc}", "  path: {loc}"));
                 println!("  created: {}  updated: {}", b.created_at, b.updated_at);
+                print_attachments(&b.attachments, "  ");
                 if !b.body.is_empty() {
                     println!();
                     println!("{}", b.body);
@@ -11651,6 +11687,50 @@ scope = ["gui"]
             rt,
             guild_path: dir.to_path_buf(),
         })
+    }
+
+    /// BUG-295: 첨부는 sidecar 파일이 진리원이라 캐시 조회가 안 채운다. 그걸 CLI 가 안
+    /// 채워서 **첨부가 있어도 없다고 답했다** — 에이전트는 붙여 둔 스펙·목업을 못 본 채
+    /// 일하게 된다. 조용히 틀린 답이라 더 나쁘다.
+    #[test]
+    fn show_reports_the_attachments_that_are_on_disk() {
+        let dir = fresh_tmp("attach-show");
+        init_guild_at(&dir, Some("attach-show".into())).unwrap();
+        let c = local_backend(&dir);
+
+        let Backend::Local(l) = &c else { unreachable!() };
+        let q = l
+            .rt
+            .block_on(openguild_core::ops::quests::create_quest(
+                &l.store,
+                openguild_core::models::CreateQuestRequest {
+                    quest_type_id: 1,
+                    title: "첨부 있는 퀘스트".into(),
+                    description: None,
+                    status_slug: "open".into(),
+                    urgency: Some(3),
+                    parent_quest_id: None,
+                },
+            ))
+            .unwrap();
+        // 첨부 실체는 길드 안(`attachments/`)에 있어야 한다 — 밖의 경로는 거절된다.
+        let inside = dir.join(".guild/attachments");
+        std::fs::create_dir_all(&inside).unwrap();
+        std::fs::write(inside.join("spec.md"), "본문").unwrap();
+        l.rt
+            .block_on(openguild_core::ops::attachments::add_quest_attachment(
+                &l.store,
+                &q.quest_id,
+                "attachments/spec.md",
+                "스펙.md",
+            ))
+            .unwrap();
+
+        let d = c.quest_by_slug(&q.quest_id).unwrap();
+        assert_eq!(d.attachments.len(), 1, "첨부를 안 채웠다");
+        assert_eq!(d.attachments[0].name, "스펙.md");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// **보여주기만 하는 단계가 있어야 한다.** 임의 코드를 돌리는 동의를

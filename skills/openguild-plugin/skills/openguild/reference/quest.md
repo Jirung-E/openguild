@@ -47,6 +47,19 @@ fully covered by automated tests you already ran, go straight to `done`. If it
 needs a human to look at it (UI/UX, anything not automatable), move to
 `testing` instead and let the human promote it.
 
+### Attachments — read what is already there
+
+`openguild quest show <slug>` lists attachments when the quest has any, and
+`openguild quest attach list <slug>` shows them on their own. They are files the
+author added because the description does not carry them — specs, mockups, logs,
+data samples. Read the relevant ones before starting the work; the path in the
+listing is relative to `.guild/`.
+
+```bash
+openguild quest attach list DEV-001
+cat .guild/attachments/spec-19401d58.pdf   # path comes from the listing
+```
+
 ### Moving to testing — attach a test plan first
 
 ```bash

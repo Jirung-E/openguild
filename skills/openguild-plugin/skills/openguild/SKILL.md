@@ -122,6 +122,26 @@ per-type triggers, and skip everything else (don't spam the guild):
    case/spacing-insensitive). The old `quest status <slug> <STATUS>` form is
    deprecated; use `move`.
 
+## Attachments — open them before you start
+
+`show` lists a document's attachments when it has any:
+
+```
+  attachments (2):
+    - spec.pdf  (attachments/spec-19401d58.pdf)
+    - mockup.png  (attachments/mockup-2177.png)
+```
+
+**That line means the author gave you material the body does not repeat** — a
+spec, a mockup, a log, a data sample. Read the relevant ones before you start,
+the same way you follow a `[[…]]`. Files live at `.guild/<path from the list>`,
+so read them directly (`Read` / `cat`); `openguild quest attach list <slug>`,
+`campaign attach list`, and `library attach list` show the same list on its own.
+
+Skip only what is clearly irrelevant to the task — and say which ones you
+skipped rather than ignoring them silently. A binary you cannot read (a .sketch,
+a .zip) is worth telling the user about instead of guessing at its contents.
+
 ## Cross-links `[[…]]` — follow them, don't skip them
 
 Guild documents reference each other with double-bracket tokens. When you read
