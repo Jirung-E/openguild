@@ -14,6 +14,7 @@
 -->
 <script lang="ts">
 	import Icon from './Icon.svelte';
+	import ComposeDock from './ComposeDock.svelte';
 	import { tick, onDestroy, onMount } from 'svelte';
 	// BUG-258: 딥링크 스크롤은 레이아웃이 잦아든 뒤에 시작해야 한다.
 	import { scrollIntoViewWhenSettled } from '$lib/utils/page-scroll';
@@ -699,18 +700,15 @@
 			// 내려가버린다"). 높이가 잦아든 뒤 스크롤하고, 이후에도 변하면
 			// 다시 맞춘다.
 			cancelJumpScroll?.();
-			cancelJumpScroll = scrollIntoViewWhenSettled(
-				() => document.getElementById(anchorId),
-				{
-					smooth: !reduce,
-					onScrolled: (node) => {
-						// 어느 댓글로 왔는지 잠깐 강조 — 스크롤만으로는 눈에 안 띈다.
-						// 기다린 뒤에 켠다: 먼저 켜면 스크롤이 닿기 전에 꺼질 수 있다.
-						node.classList.add('jump-target');
-						setTimeout(() => node.classList.remove('jump-target'), 2200);
-					}
+			cancelJumpScroll = scrollIntoViewWhenSettled(() => document.getElementById(anchorId), {
+				smooth: !reduce,
+				onScrolled: (node) => {
+					// 어느 댓글로 왔는지 잠깐 강조 — 스크롤만으로는 눈에 안 띈다.
+					// 기다린 뒤에 켠다: 먼저 켜면 스크롤이 닿기 전에 꺼질 수 있다.
+					node.classList.add('jump-target');
+					setTimeout(() => node.classList.remove('jump-target'), 2200);
 				}
-			);
+			});
 		};
 		void tick().then(tryScroll);
 	});
@@ -1046,65 +1044,71 @@
 {#snippet replyFormView(rootId: number)}
 	<!-- BUG-116: root/level-1/level-2 어디에 답글 쓰든 같은 폼 마크업 —
 	     호출 위치(스레드 하단 vs 특정 level-1 그룹 옆)만 다름. -->
-	<div class="reply-form">
-		<div class="reply-author">
-			<input
-				class="author-input"
-				type="text"
-				placeholder={t('comment.authorOpt', $locale)}
-				bind:value={replyAuthor}
-				disabled={replySaving}
-			/>
-			<button
-				type="button"
-				class="ce-toggle"
-				class:active={replyRich}
-				onclick={() => (replyRich = !replyRich)}
-				title={t('comment.toggleEditor', $locale)}
-				aria-pressed={replyRich}>M↓</button
-			>
+	<!-- DEV-416: 답글도 같다 — 스레드 아래쪽에서 쓰다 보면 화면 밖으로 밀린다. -->
+	<ComposeDock
+		hasContent={replyBody.trim().length > 0}
+		label={`↩ #${replyTarget?.id ?? rootId} ${replyTarget?.author ?? ''}`}
+	>
+		<div class="reply-form">
+			<div class="reply-author">
+				<input
+					class="author-input"
+					type="text"
+					placeholder={t('comment.authorOpt', $locale)}
+					bind:value={replyAuthor}
+					disabled={replySaving}
+				/>
+				<button
+					type="button"
+					class="ce-toggle"
+					class:active={replyRich}
+					onclick={() => (replyRich = !replyRich)}
+					title={t('comment.toggleEditor', $locale)}
+					aria-pressed={replyRich}>M↓</button
+				>
+			</div>
+			{#if replyRich}
+				<MarkdownEditor
+					bind:value={replyBody}
+					onError={(m) => (replyError = m)}
+					mediaOnly
+					defaultHeight={160}
+				/>
+			{:else}
+				<textarea
+					use:tabInsert
+					use:textareaAttach={{
+						onError: (m) => (replyError = `${t('campaign.attachFailed', $locale)}: ${m}`),
+						mediaOnly: true
+					}}
+					class="body-input"
+					bind:this={replyBodyEl}
+					bind:value={replyBody}
+					oninput={onWikiInput}
+					onkeyup={onWikiInput}
+					onclick={onWikiInput}
+					onkeydowncapture={onWikiKeydown}
+					rows="3"
+					placeholder={`↩ #${replyTarget?.id ?? rootId} ${replyTarget?.author || ''}${t('comment.replyToSuffix', $locale)}`}
+					disabled={replySaving}
+				></textarea>
+				<OverlayScrollbar target={replyBodyEl ?? null} />
+			{/if}
+			{#if replyError}<p class="state err">{replyError}</p>{/if}
+			<div class="actions">
+				<button
+					class="btn-save"
+					onclick={() => submitReply(replyingTo ?? rootId)}
+					disabled={replySaving || !replyBody.trim()}
+				>
+					{replySaving ? t('common.saving', $locale) : t('comment.addReply', $locale)}
+				</button>
+				<button class="btn-cancel" onclick={cancelReply} disabled={replySaving}>
+					{t('common.cancel', $locale)}
+				</button>
+			</div>
 		</div>
-		{#if replyRich}
-			<MarkdownEditor
-				bind:value={replyBody}
-				onError={(m) => (replyError = m)}
-				mediaOnly
-				defaultHeight={160}
-			/>
-		{:else}
-			<textarea
-				use:tabInsert
-				use:textareaAttach={{
-					onError: (m) => (replyError = `${t('campaign.attachFailed', $locale)}: ${m}`),
-					mediaOnly: true
-				}}
-				class="body-input"
-				bind:this={replyBodyEl}
-				bind:value={replyBody}
-				oninput={onWikiInput}
-				onkeyup={onWikiInput}
-				onclick={onWikiInput}
-				onkeydowncapture={onWikiKeydown}
-				rows="3"
-				placeholder={`↩ #${replyTarget?.id ?? rootId} ${replyTarget?.author || ''}${t('comment.replyToSuffix', $locale)}`}
-				disabled={replySaving}
-			></textarea>
-			<OverlayScrollbar target={replyBodyEl ?? null} />
-		{/if}
-		{#if replyError}<p class="state err">{replyError}</p>{/if}
-		<div class="actions">
-			<button
-				class="btn-save"
-				onclick={() => submitReply(replyingTo ?? rootId)}
-				disabled={replySaving || !replyBody.trim()}
-			>
-				{replySaving ? t('common.saving', $locale) : t('comment.addReply', $locale)}
-			</button>
-			<button class="btn-cancel" onclick={cancelReply} disabled={replySaving}>
-				{t('common.cancel', $locale)}
-			</button>
-		</div>
-	</div>
+	</ComposeDock>
 {/snippet}
 
 {#snippet entryView(e: CommentEntry, isReply: boolean)}
@@ -1525,59 +1529,61 @@
 				</ul>
 			{/if}
 
-			<!-- 새 top-level 댓글 -->
-			<div class="new-form">
-				<div class="new-row">
-					<input
-						class="author-input"
-						type="text"
-						placeholder={t('comment.authorOpt', $locale)}
-						bind:value={newAuthor}
-						disabled={saving}
-					/>
-					<button
-						type="button"
-						class="ce-toggle"
-						class:active={newRich}
-						onclick={() => (newRich = !newRich)}
-						title={t('comment.toggleEditor', $locale)}
-						aria-pressed={newRich}>M↓</button
-					>
+			<!-- 새 top-level 댓글 — DEV-416: 화면 밖으로 밀리면 아래에 붙는다. -->
+			<ComposeDock hasContent={newBody.trim().length > 0}>
+				<div class="new-form">
+					<div class="new-row">
+						<input
+							class="author-input"
+							type="text"
+							placeholder={t('comment.authorOpt', $locale)}
+							bind:value={newAuthor}
+							disabled={saving}
+						/>
+						<button
+							type="button"
+							class="ce-toggle"
+							class:active={newRich}
+							onclick={() => (newRich = !newRich)}
+							title={t('comment.toggleEditor', $locale)}
+							aria-pressed={newRich}>M↓</button
+						>
+					</div>
+					{#if newRich}
+						<MarkdownEditor
+							bind:value={newBody}
+							onError={(m) => (saveError = m)}
+							mediaOnly
+							defaultHeight={160}
+						/>
+					{:else}
+						<textarea
+							use:tabInsert
+							use:textareaAttach={{
+								onError: (m) => (saveError = `${t('campaign.attachFailed', $locale)}: ${m}`),
+								mediaOnly: true
+							}}
+							class="body-input"
+							bind:this={newBodyEl}
+							bind:value={newBody}
+							oninput={onWikiInput}
+							onkeyup={onWikiInput}
+							onclick={onWikiInput}
+							onkeydowncapture={onWikiKeydown}
+							rows="3"
+							placeholder={t('comment.writePlaceholder', $locale)}
+							disabled={saving}
+						></textarea>
+						<OverlayScrollbar target={newBodyEl ?? null} />
+					{/if}
+					{#if saveError}<p class="state err">{saveError}</p>{/if}
+					<div class="actions">
+						<button class="btn-save" onclick={add} disabled={saving || !newBody.trim()}>
+							{saving ? t('comment.adding', $locale) : t('comment.addComment', $locale)}
+						</button>
+					</div>
 				</div>
-				{#if newRich}
-					<MarkdownEditor
-						bind:value={newBody}
-						onError={(m) => (saveError = m)}
-						mediaOnly
-						defaultHeight={160}
-					/>
-				{:else}
-					<textarea
-						use:tabInsert
-						use:textareaAttach={{
-							onError: (m) => (saveError = `${t('campaign.attachFailed', $locale)}: ${m}`),
-							mediaOnly: true
-						}}
-						class="body-input"
-						bind:this={newBodyEl}
-						bind:value={newBody}
-						oninput={onWikiInput}
-						onkeyup={onWikiInput}
-						onclick={onWikiInput}
-						onkeydowncapture={onWikiKeydown}
-						rows="3"
-						placeholder={t('comment.writePlaceholder', $locale)}
-						disabled={saving}
-					></textarea>
-					<OverlayScrollbar target={newBodyEl ?? null} />
-				{/if}
-				{#if saveError}<p class="state err">{saveError}</p>{/if}
-				<div class="actions">
-					<button class="btn-save" onclick={add} disabled={saving || !newBody.trim()}>
-						{saving ? t('comment.adding', $locale) : t('comment.addComment', $locale)}
-					</button>
-				</div>
-			</div>
+			</ComposeDock>
 		{/if}
 	{/if}
 </section>

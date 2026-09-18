@@ -13,6 +13,7 @@
 -->
 <script lang="ts">
 	import { onDestroy } from 'svelte';
+	import ComposeDock from './ComposeDock.svelte';
 	// DEV-153: 메모 편집 중이면 이탈 가드에 보고.
 	import { setUnsaved } from '$lib/stores/unsaved';
 	import { saveShortcut } from '$lib/utils/save-shortcut';
@@ -212,25 +213,29 @@
 			<div class="note-edit" use:saveShortcut={{ disabled: saving, onSave: () => void save(true) }}>
 				<!-- BUG: editor 섹션은 <label> 금지 — 안의 '📎 첨부' 버튼(labelable)이
 			     라벨 클릭마다 활성화돼 파일창이 뜬다(admin #13). div 로. -->
-				<div class="field-label">
-					<!-- DEV-188: '첨부' 버튼 제거(메모는 개인용). 이미지·동영상은
+				<!-- DEV-416: 본문을 보면서 메모를 쓰다 보면 편집기가 화면 밖으로 밀린다 —
+				     그때는 화면 아래에 붙여 둔다(글자를 쳐도 스크롤이 안 튀도록). -->
+				<ComposeDock hasContent={editText.trim().length > 0} label={label.heading}>
+					<div class="field-label">
+						<!-- DEV-188: '첨부' 버튼 제거(메모는 개인용). 이미지·동영상은
 					     드래그&드랍 / Ctrl+V 로 첨부 가능(attachmentExtension). -->
-					<span>{label.help} {t('note.helpAttach', $locale)}</span>
-					<MarkdownEditor
-						bind:value={editText}
-						mediaOnly
-						defaultHeight={360}
-						onError={(msg) => (saveError = `${t('campaign.attachFailed', $locale)}: ${msg}`)}
-					/>
-				</div>
-				<div class="actions">
-					<button class="btn-save" onclick={() => save()} disabled={saving}>
-						{saving ? t('common.saving', $locale) : t('common.save', $locale)}
-					</button>
-					<button class="btn-cancel" onclick={cancelEdit} disabled={saving}
-						>{t('common.cancel', $locale)}</button
-					>
-				</div>
+						<span>{label.help} {t('note.helpAttach', $locale)}</span>
+						<MarkdownEditor
+							bind:value={editText}
+							mediaOnly
+							defaultHeight={360}
+							onError={(msg) => (saveError = `${t('campaign.attachFailed', $locale)}: ${msg}`)}
+						/>
+					</div>
+					<div class="actions">
+						<button class="btn-save" onclick={() => save()} disabled={saving}>
+							{saving ? t('common.saving', $locale) : t('common.save', $locale)}
+						</button>
+						<button class="btn-cancel" onclick={cancelEdit} disabled={saving}
+							>{t('common.cancel', $locale)}</button
+						>
+					</div>
+				</ComposeDock>
 				{#if saveError}<p class="state err">{saveError}</p>{/if}
 			</div>
 		{:else if content && content.trim()}
