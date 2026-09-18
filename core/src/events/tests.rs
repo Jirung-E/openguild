@@ -1071,6 +1071,19 @@ async fn all_declared_events_fire_with_a_usable_payload() {
             .filter(|k| !kinds_seen.contains(*k))
             .collect();
         assert!(missing.is_empty(), "대상 종류를 안 밟았다: {missing:?}");
+        // REQ-025: 이벤트가 싣는 칸의 표(`payload_roots_of`)가 실제와 맞는지 — 조건(`when`)의
+        // 경로를 적재 때 검사하는 근거라, 표가 낡으면 멀쩡한 조건이 거절된다.
+        for ev in got.iter() {
+            let allowed = super::payload_roots_of(ev.name);
+            for k in ev.data.keys() {
+                assert!(
+                    allowed.contains(&k.as_str()),
+                    "'{}' 가 표에 없는 칸 `{k}` 를 싣는다 — payload_roots_of 를 고치세요",
+                    ev.name
+                );
+            }
+        }
+
         // 댓글은 달린 문서, 캠페인 댓글은 캠페인.
         let c = got
             .iter()

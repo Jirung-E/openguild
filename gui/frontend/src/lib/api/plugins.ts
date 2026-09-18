@@ -96,6 +96,8 @@ export interface PluginHandler {
 	call: string | null;
 	/** DEV-405: 함수가 받는 연결 데이터(읽는 것). */
 	with: string[];
+	/** REQ-025: 이 줄이 불릴 조건 — 사람이 읽을 한 줄씩. */
+	when: string[];
 	/** 이름 붙인 동작을 가리키면 그 이름. */
 	action: string | null;
 	/** 줄에 바로 적은 동작이면 그 종류와 대상. */

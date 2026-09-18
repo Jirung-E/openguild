@@ -150,11 +150,40 @@ fn run_handlers(
     // DEV-405: 연결 데이터는 이 이벤트에 대해 한 번만 읽는다 — 여러 줄이 같은 것을 받아도.
     let subject = event.subject();
     let mut related_cache: std::collections::HashMap<String, serde_json::Value> = Default::default();
+    // 이벤트 JSON 은 조건이 있는 줄이 하나라도 있을 때만 만든다.
+    let mut event_json: Option<serde_json::Value> = None;
     for (i, h) in p.def.handlers.iter().enumerate() {
         if !h.wants(event.name, event.phase) {
             continue;
         }
         let who = h.label(i);
+        // REQ-025: 조건이 먼저다 — 통과해야 함수가 불리고 동작이 돈다.
+        let needs: Vec<String> = h
+            .with
+            .iter()
+            .cloned()
+            .chain(h.when.keys().filter_map(|k| {
+                let head = k.split('.').next().unwrap_or(k).to_string();
+                h.with.contains(&head).then_some(head)
+            }))
+            .collect();
+        let mut extra_map: std::collections::BTreeMap<String, serde_json::Value> = Default::default();
+        for w in needs {
+            let v = match &subject {
+                None => serde_json::Value::Null,
+                Some(sub) => related_cache
+                    .entry(w.clone())
+                    .or_insert_with(|| super::related::load(&p.guild_root, sub, &w))
+                    .clone(),
+            };
+            extra_map.insert(w, v);
+        }
+        if !h.when.is_empty() {
+            let json = event_json.get_or_insert_with(|| event.to_json());
+            if !super::when::matches(&h.when, json, &extra_map) {
+                continue;
+            }
+        }
         if let Some(func) = &h.call {
             let Some(sc) = p.compiled.as_deref() else {
                 note(log, format!("플러그인 '{name}' {who} — 스크립트가 적재되지 않았습니다"));
@@ -163,13 +192,7 @@ fn run_handlers(
             let extra: Vec<serde_json::Value> = h
                 .with
                 .iter()
-                .map(|w| match &subject {
-                    None => serde_json::Value::Null,
-                    Some(sub) => related_cache
-                        .entry(w.clone())
-                        .or_insert_with(|| super::related::load(&p.guild_root, sub, w))
-                        .clone(),
-                })
+                .map(|w| extra_map.get(w).cloned().unwrap_or(serde_json::Value::Null))
                 .collect();
             let cmds = match sc.call_handler_with(func, event, &extra, cfg) {
                 Ok(c) => c,
@@ -407,6 +430,7 @@ mod tests {
             .collect();
         Handler {
             id: None,
+            when: Default::default(),
             with: Vec::new(),
             pre,
             post,

@@ -467,6 +467,7 @@ fn def(action: Action) -> PluginDef {
         actions: Default::default(),
         handlers: vec![Handler {
             id: None,
+            when: Default::default(),
             with: Vec::new(),
             pre: Vec::new(),
             post: vec!["quest.created".into()],
@@ -2333,12 +2334,13 @@ fn with_is_checked_against_what_the_events_can_give() {
     assert!(e.contains("없습니다"), "{e}");
     let e = parse(&with_line("\"quest.created\"", "\"subject\", \"subject\"", "h")).unwrap_err();
     assert!(e.contains("두 번"), "{e}");
-    // 동작 줄은 아직 받을 곳이 없다.
-    let e = parse(&format!(
-        "{BASE}\n[[handlers]]\npost = [\"quest.created\"]\nwith = [\"subject\"]\naction = \"out\"\n"
-    ))
-    .unwrap_err();
-    assert!(e.contains("call"), "{e}");
+    // 동작 줄도 받을 수 있다 — 조건(`when`)이 그 데이터를 본다(REQ-025).
+    assert!(
+        parse(&format!(
+            "{BASE}\n[[handlers]]\npost = [\"quest.created\"]\nwith = [\"subject\"]\naction = \"out\"\n[handlers.when]\n\"subject.tags\" = \"notify\"\n"
+        ))
+        .is_ok()
+    );
     assert_eq!(
         related::available_for(&["quest.*".into()], crate::events::Phase::Post),
         vec!["subject", "parent", "children", "prereqs", "campaigns"]
@@ -2504,6 +2506,157 @@ async fn a_comment_handler_can_see_its_quests_tags() {
         vec![json!({ "q": loud.quest_id, "body": "봐 주세요" })]
     );
     assert!(store.plugin_problems().is_empty(), "{:?}", store.plugin_problems());
+
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+// ── REQ-025: 조건 when ─────────────────────────────────────
+
+fn when_line(post: &str, cond: &str) -> String {
+    format!("{BASE}\n[[handlers]]\npost = [{post}]\naction = \"out\"\n[handlers.when]\n{cond}\n")
+}
+
+/// 값 하나 / 목록 중 하나 / (필드가 목록이면) 포함. 없는 경로는 안 맞는다.
+#[test]
+fn when_matches_values_lists_and_membership() {
+    let ev = json!({
+        "event": "quest.status_changed",
+        "ok": true,
+        "quest": { "id": "DEV-1", "tags": ["notify", "api"], "urgency": 2 },
+        "change": { "from": "open", "to": "done" }
+    });
+    let extra = std::collections::BTreeMap::from([(
+        "subject".to_string(),
+        json!({ "tags": ["notify"], "status": "done" }),
+    )]);
+    let cond = |toml_src: &str| -> super::when::When {
+        toml::from_str(toml_src).unwrap()
+    };
+    let m = |src: &str| super::when::matches(&cond(src), &ev, &extra);
+
+    assert!(m("ok = true"));
+    assert!(!m("ok = false"));
+    assert!(m("\"change.to\" = \"done\""));
+    assert!(m("\"change.to\" = [\"done\", \"closed\"]"));
+    assert!(!m("\"change.to\" = [\"open\", \"closed\"]"));
+    assert!(m("\"quest.tags\" = \"notify\""), "목록 필드는 포함이면 맞다");
+    assert!(m("\"quest.tags\" = [\"none\", \"api\"]"));
+    assert!(!m("\"quest.tags\" = \"secret\""));
+    assert!(m("\"quest.urgency\" = 2"));
+    assert!(!m("\"quest.urgency\" = 3"));
+    // 여럿이면 전부 만족해야 한다.
+    assert!(m("ok = true\n\"change.to\" = \"done\""));
+    assert!(!m("ok = true\n\"change.to\" = \"open\""));
+    // 없는 경로.
+    assert!(!m("\"comment.body\" = \"x\""));
+    assert!(!m("\"quest.nope\" = \"x\""));
+    // `with` 이름이 이벤트보다 먼저다.
+    assert!(m("\"subject.status\" = \"done\""));
+}
+
+/// 오타 난 경로와 이상한 값은 적재 때 걸린다 — 조용히 "안 맞음" 이 되면 왜 안 도는지 모른다.
+#[test]
+fn when_paths_and_values_are_checked_at_load() {
+    assert!(parse(&when_line("\"quest.status_changed\"", "\"change.to\" = \"done\"")).is_ok());
+    assert!(parse(&when_line("\"quest.created\"", "ok = true\n\"quest.tags\" = \"notify\"")).is_ok());
+    let e = parse(&when_line("\"quest.created\"", "\"comment.body\" = \"x\"")).unwrap_err();
+    assert!(e.contains("comment") && e.contains("quest"), "{e}");
+    let e = parse(&when_line("\"quest.created\"", "\"quset.tags\" = \"notify\"")).unwrap_err();
+    assert!(e.contains("quset"), "{e}");
+    let e = parse(&when_line("\"quest.created\"", "[when.nested]\nx = 1")).unwrap_err();
+    assert!(e.contains("글자") || e.contains("nested"), "{e}");
+    // `with` 로 읽는 이름은 쓸 수 있다.
+    assert!(
+        parse(&format!(
+            "{BASE}\n[[handlers]]\npost = [\"comment.added\"]\nwith = [\"subject\"]\ncall = \"h\"\n[handlers.when]\n\"subject.tags\" = \"notify\"\n"
+        ))
+        .is_ok()
+    );
+}
+
+/// **액션 줄의 조건** — 스크립트 없이 "완료로 바뀐 것만" 보낸다. 조건은 `with` 로 읽은 데이터도 본다.
+#[tokio::test]
+async fn an_action_only_plugin_fires_only_when_the_condition_holds() {
+    #[derive(Default)]
+    struct Sent(std::sync::Mutex<Vec<String>>);
+    impl runtime::Delivery for Sent {
+        fn deliver(
+            &self,
+            _p: &Plugin,
+            _a: &Action,
+            e: &crate::events::Event,
+            b: &serde_json::Value,
+            _v: &std::collections::BTreeMap<String, String>,
+        ) -> Result<(), String> {
+            self.0
+                .lock()
+                .unwrap()
+                .push(format!("{} {}", e.name, b["quest"]["id"].as_str().unwrap_or("?")));
+            Ok(())
+        }
+    }
+    let home = fresh_tmp("when-home");
+    let g = fresh_tmp("when");
+    crate::repo::seed_guild_dir(&g).unwrap();
+    let dir = plugins_dir(&g).join("done-only");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join(MANIFEST),
+        r#"
+name  = "done-only"
+scope = ["cli"]
+
+[actions.out.post]
+    url = "https://x.test"
+
+[[handlers]]
+    id     = "완료만"
+    post   = ["quest.status_changed"]
+    with   = ["subject"]
+    action = "out"
+    [handlers.when]
+        ok               = true
+        "change.to"      = ["done", "closed"]
+        "subject.tags"   = "notify"
+"#,
+    )
+    .unwrap();
+    let store = crate::Store::open(&g).await.unwrap();
+    let sent = std::sync::Arc::new(Sent::default());
+    let loaded = {
+        let _guard = env_lock();
+        unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+        consent::enable_auto_allow(&g).unwrap();
+        let l = store.install_plugins(Scope::Cli, sent.clone());
+        unsafe { std::env::remove_var("OPENGUILD_HOME") };
+        l
+    };
+    assert_eq!(loaded.active.len(), 1, "{:?}", loaded.errors);
+
+    let mk = |title: &str| crate::models::CreateQuestRequest {
+        quest_type_id: 1,
+        title: title.into(),
+        description: None,
+        status_slug: "open".into(),
+        urgency: Some(3),
+        parent_quest_id: None,
+    };
+    let tagged = crate::ops::quests::create_quest(&store, mk("알림")).await.unwrap();
+    let plain = crate::ops::quests::create_quest(&store, mk("조용")).await.unwrap();
+    crate::ops::quests::set_quest_tags(&store, tagged.id, vec!["notify".into()]).await.unwrap();
+    let to = |s: &str| crate::models::ChangeStatusRequest { status_slug: s.into() };
+    // 태그 붙은 것: 진행 중(조건 밖) → 완료(조건 안).
+    crate::ops::quests::change_status(&store, tagged.id, to("in_progress")).await.unwrap();
+    crate::ops::quests::change_status(&store, tagged.id, to("done")).await.unwrap();
+    // 태그 없는 것은 완료해도 안 나간다.
+    crate::ops::quests::change_status(&store, plain.id, to("done")).await.unwrap();
+
+    assert!(store.drain_events(std::time::Duration::from_secs(5)));
+    assert_eq!(
+        sent.0.lock().unwrap().clone(),
+        vec![format!("quest.status_changed {}", tagged.quest_id)]
+    );
 
     let _ = std::fs::remove_dir_all(&g);
     let _ = std::fs::remove_dir_all(&home);

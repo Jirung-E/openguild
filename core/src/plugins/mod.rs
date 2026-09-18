@@ -45,6 +45,8 @@ pub mod sources;
 mod tests;
 pub mod values;
 pub mod view;
+// REQ-025: 줄의 조건 — 이 줄이 이 이벤트에서 불릴지 거른다.
+pub mod when;
 
 use crate::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
@@ -248,6 +250,10 @@ pub struct Handler {
     /// 부를 스크립트 함수 이름. `action` 과 둘 중 하나만.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub call: Option<String>,
+    /// REQ-025: 이 줄이 불릴 조건 — 전부 만족해야 한다. 액션 줄에서는 조건을 거는 유일한
+    /// 수단이고, 스크립트 줄에서는 함수 앞의 거름망이다.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub when: when::When,
     /// DEV-405: 함수가 이벤트 뒤에 받을 연결 데이터 — `["subject", "parent"]` 면
     /// `fn 이름(e, subject, parent)`. 받을 수 있는 것은 이벤트 대상의 종류가 정한다
     /// ([`related::RELATIONS`]).
@@ -1066,13 +1072,10 @@ fn validate_handlers(def: &PluginDef) -> AppResult<()> {
             }
             (None, Some(ActionRef::Inline(_))) => {}
         }
+        // REQ-025: 조건의 경로와 값 모양.
+        when::validate(&h.when, &h.with, h.patterns(), h.phase(), &who)?;
         // DEV-405: 받을 데이터는 걸리는 이벤트의 대상이 정한다. 틀리면 쓸 수 있는 것을 알려 준다.
         if !h.with.is_empty() {
-            if h.call.is_none() {
-                return bad(format!(
-                    "{who}: `with` 는 스크립트 함수(`call`)가 받습니다 — 동작 줄에서는 아직 쓸 수 없습니다"
-                ));
-            }
             let can = related::available_for(h.patterns(), h.phase());
             let mut seen = std::collections::HashSet::new();
             for w in &h.with {

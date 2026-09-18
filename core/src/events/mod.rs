@@ -93,6 +93,34 @@ pub fn subject_kinds_of(name: &str) -> &'static [&'static str] {
     }
 }
 
+/// REQ-025: 이벤트 JSON 에 **늘 있는** 칸.
+pub const COMMON_FIELDS: &[&str] = &[
+    "event", "phase", "ts", "guild", "ok", "error", "origin", "subject",
+];
+
+/// REQ-025: 그 이름의 이벤트가 실을 수 있는 칸(위 공통 칸 제외). 조건(`when`)의 경로를 적재 때
+/// 검사하는 데 쓴다 — 오타 난 경로가 조용히 "안 맞음" 이 되면 왜 안 도는지 알 수 없다.
+///
+/// 종류별 합집합이라 조금 넉넉하다(`quest.created` 에 `change` 를 적어도 통과한다). 표가 실제와
+/// 어긋나면 `events::tests` 가 잡는다 — 실제로 낸 이벤트의 칸이 전부 여기 있어야 한다.
+pub fn payload_roots_of(name: &str) -> &'static [&'static str] {
+    match name.split_once('.').map(|(r, _)| r) {
+        Some("quest") => &["quest", "change", "renamed", "prerequisite", "cascade_ids"],
+        Some("comment") => &["comment", "target"],
+        Some("campaign") => &["campaign", "quest", "item", "banner"],
+        Some("book") => &["book", "change"],
+        Some("folder") => &["folder", "from", "books"],
+        Some("rule") => &["rule", "change"],
+        Some("attachment") => &["attachment", "target"],
+        Some("type") => &["type", "change"],
+        Some("status") => &["status", "change"],
+        Some("tag") => &["tag"],
+        Some("worklog") => &["date", "note", "change"],
+        Some("backup") => &["path", "timestamp", "size_bytes", "automatic"],
+        _ => &[],
+    }
+}
+
 /// 플러그인에게 전달되는 한 건.
 #[derive(Debug, Clone)]
 pub struct Event {

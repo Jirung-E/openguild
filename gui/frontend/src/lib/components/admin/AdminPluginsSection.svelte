@@ -412,6 +412,9 @@
 											? `${h.call}()`
 											: (h.action ?? `${h.action_kind} ${h.action_target}`)}</code
 									>
+									{#if h.when.length > 0}
+										<span class="line-when">({h.when.join(', ')})</span>
+									{/if}
 									{#if h.with.length > 0}
 										<span class="line-label"
 											>{t('plugins.reads', $locale)}: {h.with.join(', ')}</span

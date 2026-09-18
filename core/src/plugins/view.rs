@@ -65,6 +65,8 @@ pub struct HandlerView {
     pub call: Option<String>,
     /// DEV-405: 함수가 받는 연결 데이터 — 허용 화면이 "퀘스트를 읽음" 을 보여 준다.
     pub with: Vec<String>,
+    /// REQ-025: 이 줄이 불릴 조건 — `["change.to = done, closed"]` 처럼 사람이 읽을 한 줄씩.
+    pub when: Vec<String>,
     /// 바로 실행하는 동작 — 이름 붙인 것이면 그 이름, 줄에 적은 것이면 `None` 이고 대신
     /// `action_kind`/`action_target` 이 찬다.
     pub action: Option<String>,
@@ -173,6 +175,21 @@ pub(super) fn view(p: &Plugin, granted: bool, scope: Scope) -> PluginView {
                 events: h.patterns().to_vec(),
                 call: h.call.clone(),
                 with: h.with.clone(),
+                when: h
+                    .when
+                    .iter()
+                    .map(|(k, v)| {
+                        let shown = match v {
+                            serde_json::Value::Array(a) => a
+                                .iter()
+                                .map(|x| x.to_string().trim_matches('"').to_string())
+                                .collect::<Vec<_>>()
+                                .join(", "),
+                            other => other.to_string().trim_matches('"').to_string(),
+                        };
+                        format!("{k} = {shown}")
+                    })
+                    .collect(),
                 action,
                 action_kind,
                 action_target,
