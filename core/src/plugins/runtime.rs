@@ -180,7 +180,9 @@ fn ask_handlers(
     log: &Mutex<Vec<String>>,
     out: &mut crate::events::PreOutcome,
 ) {
-    run_lines(p, event, cfg, subst, delivery, log, Some(out), |h| h.phase() == Phase::Pre);
+    run_lines(p, event, cfg, subst, delivery, log, Some(out), None, |h| {
+        h.phase() == Phase::Pre
+    });
 }
 
 /// DEV-403: 한 플러그인의 줄을 **적힌 순서대로** 본다. 걸린 줄마다 함수를 부르고 그 함수가 적은
@@ -194,14 +196,24 @@ fn run_handlers(
     log: &Mutex<Vec<String>>,
 ) {
     // 전용 스레드에서 도는 몫 — 기다리는 줄(`wait`)은 이미 dispatch 에서 끝났다.
-    run_lines(p, event, cfg, subst, delivery, log, None, |h| {
+    run_lines(p, event, cfg, subst, delivery, log, None, None, |h| {
         h.phase() == Phase::Post && !h.wait
     });
 }
 
+/// DEV-412: `plugin test` 가 끼어드는 자리. 실행 규칙(줄 고르기·조건·순서)을 시험용으로 다시
+/// 쓰면 **시험과 실제가 갈라진다** — 그래서 같은 함수를 쓰고, 여기서만 두 가지를 바꾼다.
+#[derive(Default)]
+pub(super) struct Probe<'a> {
+    /// 걸린 줄의 이름 — 시험이 "이 줄이 불렸나" 를 본다.
+    pub lines: Vec<String>,
+    /// 연결 데이터(`with`)를 파일에서 읽는 대신 이걸 쓴다. 시험은 길드 없이 돈다.
+    pub given: Option<&'a std::collections::BTreeMap<String, serde_json::Value>>,
+}
+
 /// 줄을 고르는 조건만 다르고 나머지는 같다 — 바뀌기 전(답을 모은다), 기다리는 줄, 나머지.
 #[allow(clippy::too_many_arguments)]
-fn run_lines(
+pub(super) fn run_lines(
     p: &Plugin,
     event: &Event,
     cfg: &std::collections::BTreeMap<String, serde_json::Value>,
@@ -209,6 +221,7 @@ fn run_lines(
     delivery: &dyn Delivery,
     log: &Mutex<Vec<String>>,
     mut answer: Option<&mut crate::events::PreOutcome>,
+    mut probe: Option<&mut Probe<'_>>,
     pick: impl Fn(&super::Handler) -> bool,
 ) {
     let name = &p.def.name;
@@ -238,12 +251,16 @@ fn run_lines(
             .collect();
         let mut extra_map: std::collections::BTreeMap<String, serde_json::Value> = Default::default();
         for w in needs {
-            let v = match &subject {
-                None => serde_json::Value::Null,
-                Some(sub) => related_cache
-                    .entry(w.clone())
-                    .or_insert_with(|| super::related::load(&p.guild_root, sub, &w))
-                    .clone(),
+            let v = match probe.as_ref().and_then(|t| t.given) {
+                // DEV-412: 시험이 직접 넘긴 값 — 없는 이름은 `null`(실제와 같다).
+                Some(g) => g.get(&w).cloned().unwrap_or(serde_json::Value::Null),
+                None => match &subject {
+                    None => serde_json::Value::Null,
+                    Some(sub) => related_cache
+                        .entry(w.clone())
+                        .or_insert_with(|| super::related::load(&p.guild_root, sub, &w))
+                        .clone(),
+                },
             };
             extra_map.insert(w, v);
         }
@@ -252,6 +269,9 @@ fn run_lines(
             if !super::when::matches(&h.when, json, &extra_map) {
                 continue;
             }
+        }
+        if let Some(t) = probe.as_deref_mut() {
+            t.lines.push(who.clone());
         }
         if let Some(func) = &h.call {
             let Some(sc) = p.compiled.as_deref() else {
@@ -528,7 +548,7 @@ impl EventSink for PluginRuntime {
                 }
                 let (cfg, subst) = values_for(p);
                 let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    run_lines(p, &event, &cfg, &subst, delivery.as_ref(), &self.problems, None, |h| {
+                    run_lines(p, &event, &cfg, &subst, delivery.as_ref(), &self.problems, None, None, |h| {
                         h.phase() == Phase::Post && h.wait
                     });
                 }));

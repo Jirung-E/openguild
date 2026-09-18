@@ -137,11 +137,28 @@ impl Script {
         Self::compile_with_imports(sources, &[])
     }
 
+    /// DEV-412: 시험 스크립트용 — 위와 같지만 `fire`/`assert` 가 더 있다. 시험 파일에만 준다.
+    /// 플러그인 스크립트 자신은 이 함수들을 못 본다(시험이 대상의 능력을 늘리면 안 된다).
+    pub fn compile_test(
+        sources: &[(String, String)],
+        hooks: std::sync::Arc<dyn Hooks>,
+    ) -> AppResult<Self> {
+        Self::compile_inner(sources, &[], Some(hooks))
+    }
+
     /// DEV-408: 불러올 파일(`import "경로" as 이름`)을 **메모리 모듈**로 함께 넣는다.
     /// `imports` 는 스크립트에 적힌 경로 그대로와 그 원문 — 순서는 상관없다(서로 불러도 된다).
     pub fn compile_with_imports(
         sources: &[(String, String)],
         imports: &[(String, String)],
+    ) -> AppResult<Self> {
+        Self::compile_inner(sources, imports, None)
+    }
+
+    fn compile_inner(
+        sources: &[(String, String)],
+        imports: &[(String, String)],
+        hooks: Option<std::sync::Arc<dyn Hooks>>,
     ) -> AppResult<Self> {
         let deadline = std::sync::Arc::new(Mutex::new(Instant::now()));
         let config = std::sync::Arc::new(Mutex::new(rhai::Map::new()));
@@ -153,6 +170,9 @@ impl Script {
             commands.clone(),
             guild.clone(),
         );
+        if let Some(h) = hooks {
+            register_test(&mut engine, h);
+        }
         // 불러올 것을 먼저 모듈로 만든다. 서로 부르는 경우가 있으므로 될 때까지 되풀이한다.
         let mut resolver = rhai::module_resolvers::StaticModuleResolver::new();
         let mut left: Vec<&(String, String)> = imports.iter().collect();
@@ -224,6 +244,16 @@ impl Script {
         if let Ok(mut g) = self.guild.lock() {
             g.set_root(root);
         }
+    }
+
+    /// DEV-412: 인자 없는 함수 하나를 부른다 — 시험 하나. 던지면 그 시험이 실패다.
+    pub fn call_test(&self, func: &str) -> Result<(), String> {
+        self.arm();
+        let mut scope = Scope::new();
+        self.engine
+            .call_fn::<Dynamic>(&mut scope, &self.ast, func, ())
+            .map(|_| ())
+            .map_err(|e| e.to_string())
     }
 
     /// 핸들러로 부를 수 있는 함수(인자 하나)가 있나.
@@ -395,6 +425,98 @@ fn sandboxed_engine(
         }
     });
     e
+}
+
+/// DEV-412: 시험 스크립트가 부르는 것 — 이벤트를 흘려 보고, 결과를 확인한다.
+pub trait Hooks: Send + Sync {
+    /// 이벤트 하나를 이 플러그인에 흘린다. 돌려주는 것은 불린 줄·나온 명령·막힘·바뀐 값.
+    /// 명령은 **실행하지 않고 적기만** 한다.
+    fn fire(&self, event: &str, payload: Value, with: Value) -> Result<Value, String>;
+
+    /// 설정값을 이 시험 동안만 바꾼다. 설정이 동작을 바꾸는 플러그인은(REQ-021) 이게 없으면
+    /// 기본값 하나만 시험할 수 있다.
+    fn set_config(&self, key: &str, value: Value);
+}
+
+/// 시험 파일에만 있는 함수들. `fire` 는 위 훅으로 가고, `assert*` 는 **던진다** — 던지면 그
+/// 시험이 실패로 잡힌다.
+fn register_test(e: &mut Engine, hooks: std::sync::Arc<dyn Hooks>) {
+    let h = hooks.clone();
+    e.register_fn(
+        "fire",
+        move |name: &str, payload: Dynamic| -> Result<Dynamic, Box<rhai::EvalAltResult>> {
+            fire(&*h, name, payload, Dynamic::UNIT)
+        },
+    );
+    let h = hooks.clone();
+    e.register_fn(
+        "fire",
+        move |name: &str, payload: Dynamic, with: Dynamic| -> Result<Dynamic, Box<rhai::EvalAltResult>> {
+            fire(&*h, name, payload, with)
+        },
+    );
+    let h = hooks.clone();
+    e.register_fn(
+        "set_config",
+        move |key: &str, value: Dynamic| -> Result<(), Box<rhai::EvalAltResult>> {
+            let v = from_dynamic(&value).map_err(|e| -> Box<rhai::EvalAltResult> {
+                format!("set_config(\"{key}\"): {e}").into()
+            })?;
+            h.set_config(key, v);
+            Ok(())
+        },
+    );
+    e.register_fn("assert", |ok: bool| -> Result<(), Box<rhai::EvalAltResult>> {
+        if ok { Ok(()) } else { Err("assert 실패".into()) }
+    });
+    e.register_fn(
+        "assert",
+        |ok: bool, msg: &str| -> Result<(), Box<rhai::EvalAltResult>> {
+            if ok { Ok(()) } else { Err(format!("assert 실패 — {msg}").into()) }
+        },
+    );
+    e.register_fn(
+        "assert_eq",
+        |a: Dynamic, b: Dynamic| -> Result<(), Box<rhai::EvalAltResult>> {
+            let (x, y) = (from_dynamic(&a), from_dynamic(&b));
+            if x == y {
+                Ok(())
+            } else {
+                // 무엇이 달랐는지 눈에 보여야 한다 — "실패" 만 나오면 다시 찍어 보게 된다.
+                Err(format!(
+                    "assert_eq 실패 — 왼쪽 {} · 오른쪽 {}",
+                    show(&x),
+                    show(&y)
+                )
+                .into())
+            }
+        },
+    );
+}
+
+fn show(v: &Result<Value, String>) -> String {
+    match v {
+        Ok(v) => v.to_string(),
+        Err(e) => format!("(옮길 수 없음: {e})"),
+    }
+}
+
+fn fire(
+    hooks: &dyn Hooks,
+    name: &str,
+    payload: Dynamic,
+    with: Dynamic,
+) -> Result<Dynamic, Box<rhai::EvalAltResult>> {
+    let payload = from_dynamic(&payload).map_err(|e| -> Box<rhai::EvalAltResult> {
+        format!("fire(\"{name}\"): 이벤트 값을 옮기지 못했습니다 — {e}").into()
+    })?;
+    let with = from_dynamic(&with).map_err(|e| -> Box<rhai::EvalAltResult> {
+        format!("fire(\"{name}\"): with 값을 옮기지 못했습니다 — {e}").into()
+    })?;
+    let out = hooks
+        .fire(name, payload, with)
+        .map_err(|e| -> Box<rhai::EvalAltResult> { e.into() })?;
+    Ok(to_dynamic(&out))
 }
 
 /// DEV-409: 길드 정보와 글 다듬기. **읽기만** 하는 함수들이라 샌드박스의 성질(밖으로 못 나감)은

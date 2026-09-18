@@ -51,6 +51,8 @@ pub mod sources;
 pub mod schema;
 // DEV-410: 허용 화면에 찍을 사람 말 요약.
 pub mod summary;
+// DEV-412: 플러그인의 시험 스크립트를 돌린다 — `openguild plugin test`.
+pub mod testing;
 #[cfg(test)]
 mod tests;
 pub mod values;
@@ -901,11 +903,16 @@ pub const OLD_MANIFEST: &str = "plugin.json";
 
 /// `scripts` 를 읽어 한 공간으로 컴파일한다. 없으면 둘 다 `None`.
 /// 원문도 함께 돌려준다 — 허용 화면이 보여 준다.
-pub(crate) type Compiled = (
+pub type Compiled = (
     Option<std::sync::Arc<script::Script>>,
     Option<String>,
     Vec<String>,
 );
+/// DEV-412: 길드를 거치지 않고 폴더 하나를 적재할 때(`plugin test <폴더>`) — 컴파일만.
+pub fn compile_script_at(dir: &Path, def: &PluginDef) -> AppResult<Compiled> {
+    compile_script(dir, def)
+}
+
 pub(crate) fn compile_script(dir: &Path, def: &PluginDef) -> AppResult<Compiled> {
     if def.scripts.is_empty() {
         return Ok((None, None, Vec::new()));

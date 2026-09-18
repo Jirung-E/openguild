@@ -364,6 +364,12 @@ enum PluginCmd {
         #[arg(help = tf!("플러그인 폴더. 생략하면 이 길드가 읽는 것 전부.", "Plugin folder. Omit to check everything this guild loads."))]
         path: Option<String>,
     },
+    // DEV-412: 시험은 **적힌 대로 도는지**를 본다 — 나가는 것 없이, 같은 실행 규칙으로.
+    #[command(about = tf!("플러그인의 시험 스크립트를 돌린다 (폴더 하나, 또는 생략하면 이 길드 전부) — `*.test.rhai` 의 `test_` 함수들.", "Run a plugin's test scripts (one folder, or every plugin in this guild) — `test_` functions in `*.test.rhai`."))]
+    Test {
+        #[arg(help = tf!("플러그인 폴더. 생략하면 이 길드가 읽는 것 전부.", "Plugin folder. Omit to test everything this guild loads."))]
+        path: Option<String>,
+    },
     #[command(about = tf!("편집기용 스키마 파일을 내놓는다 — plugin.toml 자동 완성과 오류 표시.", "Print the editor schema for plugin.toml — autocomplete and inline errors."))]
     Schema {
         #[arg(long, help = tf!("이 파일에 쓴다 (생략하면 화면에).", "Write to this file (default: stdout)."))]
@@ -6167,6 +6173,87 @@ fn print_check(reports: &[openguild_core::plugins::check::Report], json: bool) -
     Ok(())
 }
 
+/// DEV-412: 폴더 하나를 적재해 시험을 돌린다 — 길드 없이(동의도 안 본다).
+fn run_plugin_tests(
+    dir: &std::path::Path,
+    guild: Option<&std::path::Path>,
+) -> std::result::Result<Vec<openguild_core::plugins::testing::TestResult>, String> {
+    let def = openguild_core::plugins::read_def(&dir.join(openguild_core::plugins::MANIFEST))
+        .map_err(|e| e.to_string())?;
+    let (compiled, script_src, imports) =
+        openguild_core::plugins::compile_script_at(dir, &def).map_err(|e| e.to_string())?;
+    if let Some(s) = &compiled {
+        s.set_guild(guild.unwrap_or(dir));
+    }
+    let p = openguild_core::plugins::Plugin {
+        def,
+        imports,
+        dir: dir.to_path_buf(),
+        guild_root: guild.unwrap_or(dir).to_path_buf(),
+        compiled,
+        script_src,
+        folder: Default::default(),
+        source: None,
+    };
+    openguild_core::plugins::testing::run_tests(&p)
+}
+
+/// 시험 결과를 찍는다. 실패가 하나라도 있으면 **0 이 아닌 값으로 끝난다**.
+fn print_tests(
+    all: &[(
+        std::path::PathBuf,
+        std::result::Result<Vec<openguild_core::plugins::testing::TestResult>, String>,
+    )],
+    json: bool,
+) -> Result<()> {
+    let bad = |r: &std::result::Result<Vec<openguild_core::plugins::testing::TestResult>, String>| match r {
+        Err(_) => true,
+        Ok(t) => t.iter().any(|t| t.failure.is_some()),
+    };
+    if json {
+        json_println!(serde_json::json!({
+            "ok": !all.iter().any(|(_, r)| bad(r)),
+            "plugins": all.iter().map(|(dir, r)| match r {
+                Ok(tests) => serde_json::json!({ "dir": dir.display().to_string(), "tests": tests }),
+                Err(e) => serde_json::json!({ "dir": dir.display().to_string(), "error": e }),
+            }).collect::<Vec<_>>(),
+        }));
+    } else {
+        let mut ran = 0;
+        for (dir, r) in all {
+            match r {
+                Err(e) => println!("✗ {}  {e}", dir.display()),
+                Ok(tests) => {
+                    if tests.is_empty() {
+                        continue;
+                    }
+                    println!("{}", dir.display());
+                    for t in tests {
+                        ran += 1;
+                        match &t.failure {
+                            None => println!("  ✓ {}", t.name),
+                            Some(why) => println!("  ✗ {}  {why}", t.name),
+                        }
+                    }
+                }
+            }
+        }
+        if ran == 0 && !all.iter().any(|(_, r)| r.is_err()) {
+            println!(
+                "{}",
+                tf!(
+                    "(시험이 없습니다 — 플러그인 폴더에 `이름.test.rhai` 를 만들고 `fn test_...()` 를 적으세요)",
+                    "(no tests — add `name.test.rhai` to the plugin folder with `fn test_...()` functions)"
+                )
+            );
+        }
+    }
+    if all.iter().any(|(_, r)| bad(r)) {
+        std::process::exit(1);
+    }
+    Ok(())
+}
+
 fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
     use openguild_core::plugins::{MANIFEST, Scope, consent, load_all};
 
@@ -6287,6 +6374,10 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
         let r = openguild_core::plugins::check::check_dir(std::path::Path::new(path), None);
         return print_check(&[r], json);
     }
+    if let PluginCmd::Test { path: Some(path) } = &sub {
+        let dir = std::path::Path::new(path);
+        return print_tests(&[(dir.to_path_buf(), run_plugin_tests(dir, None))], json);
+    }
 
     let Backend::Local(l) = c else {
         return Err(anyhow!(tf!(
@@ -6304,6 +6395,21 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
         PluginCmd::Check { path: _ } => {
             // 폴더를 안 줬을 때 — 이 길드가 읽는 것 전부.
             return print_check(&openguild_core::plugins::check::check_guild(root), json);
+        }
+        PluginCmd::Test { path: _ } => {
+            // 동의 여부와 상관없이 시험한다 — 시험은 아무것도 내보내지 않는다.
+            let every: Vec<_> = loaded
+                .active
+                .iter()
+                .chain(loaded.needs_consent.iter())
+                .map(|p| {
+                    (
+                        p.dir.clone(),
+                        openguild_core::plugins::testing::run_tests(p).map_err(|e| e.to_string()),
+                    )
+                })
+                .collect();
+            return print_tests(&every, json);
         }
         PluginCmd::Source { sub } => {
             use openguild_core::plugins::sources;

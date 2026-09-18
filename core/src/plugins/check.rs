@@ -227,6 +227,8 @@ fn warn_stray_scripts(dir: &Path, def: &PluginDef, r: &mut Report) {
         .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("rhai"))
         .filter_map(|p| p.file_name().and_then(|s| s.to_str()).map(str::to_string))
         .filter(|f| !def.scripts.iter().any(|s| s == f))
+        // DEV-412: 시험 파일은 `scripts` 에 **안 적는 것이 맞다** — 적으면 진짜로 도는 코드가 된다.
+        .filter(|f| !f.ends_with(super::testing::TEST_SUFFIX))
         .collect();
     stray.sort();
     for f in stray {
