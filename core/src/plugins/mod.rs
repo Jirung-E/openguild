@@ -37,6 +37,8 @@ pub mod consent;
 pub mod delivery;
 // DEV-406: 스크립트가 시킨 길드 일(알림·백업)을 실제로 한다.
 pub mod guild;
+// DEV-409: 스크립트가 쓰는 길드 정보 — 상태·타입의 화면 이름, 길드 이름, 링크.
+pub mod info;
 // DEV-405: 줄의 `with` — 대상과 연결된 데이터를 파일에서 읽는다.
 pub mod related;
 pub mod runtime;
@@ -806,6 +808,10 @@ fn load_scoped(guild_root: &Path, scope: Option<Scope>) -> Loaded {
                         continue;
                     }
                 };
+                // DEV-409: 이름·링크를 읽어 줄 길드. 소스에서 온 플러그인도 **쓰는 쪽 길드**를 본다.
+                if let Some(s) = &compiled {
+                    s.set_guild(guild_root);
+                }
                 let plugin = Plugin {
                     def,
                     imports,

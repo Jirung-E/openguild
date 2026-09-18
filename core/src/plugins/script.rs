@@ -105,6 +105,8 @@ pub struct Script {
     config: std::sync::Arc<Mutex<rhai::Map>>,
     /// 이번 호출에서 적힌 할 일.
     commands: std::sync::Arc<Mutex<Vec<Command>>>,
+    /// DEV-409: 이름을 읽어 줄 길드. 적재 때 정한다([`Script::set_guild`]).
+    guild: std::sync::Arc<Mutex<super::info::GuildInfo>>,
 }
 
 impl std::fmt::Debug for Script {
@@ -144,7 +146,13 @@ impl Script {
         let deadline = std::sync::Arc::new(Mutex::new(Instant::now()));
         let config = std::sync::Arc::new(Mutex::new(rhai::Map::new()));
         let commands = std::sync::Arc::new(Mutex::new(Vec::new()));
-        let mut engine = sandboxed_engine(deadline.clone(), config.clone(), commands.clone());
+        let guild = std::sync::Arc::new(Mutex::new(super::info::GuildInfo::default()));
+        let mut engine = sandboxed_engine(
+            deadline.clone(),
+            config.clone(),
+            commands.clone(),
+            guild.clone(),
+        );
         // 불러올 것을 먼저 모듈로 만든다. 서로 부르는 경우가 있으므로 될 때까지 되풀이한다.
         let mut resolver = rhai::module_resolvers::StaticModuleResolver::new();
         let mut left: Vec<&(String, String)> = imports.iter().collect();
@@ -206,7 +214,16 @@ impl Script {
             deadline,
             config,
             commands,
+            guild,
         })
+    }
+
+    /// DEV-409: 이름·링크를 어느 길드에서 읽을지. 적재 때 한 번 정한다 — 이걸 안 부르면
+    /// `status_name()` 은 슬러그를 그대로 돌려준다(빈칸이 되지는 않는다).
+    pub fn set_guild(&self, root: &Path) {
+        if let Ok(mut g) = self.guild.lock() {
+            g.set_root(root);
+        }
     }
 
     /// 핸들러로 부를 수 있는 함수(인자 하나)가 있나.
@@ -300,8 +317,10 @@ fn sandboxed_engine(
     deadline: std::sync::Arc<Mutex<Instant>>,
     config: std::sync::Arc<Mutex<rhai::Map>>,
     commands: std::sync::Arc<Mutex<Vec<Command>>>,
+    guild: std::sync::Arc<Mutex<super::info::GuildInfo>>,
 ) -> Engine {
     let mut e = Engine::new();
+    register_info(&mut e, guild);
     // DEV-406: 길드에 시키는 일 — 이름만 받거나(알림) 인자가 없다(백업).
     {
         let cmds = commands.clone();
@@ -364,6 +383,48 @@ fn sandboxed_engine(
         }
     });
     e
+}
+
+/// DEV-409: 길드 정보와 글 다듬기. **읽기만** 하는 함수들이라 샌드박스의 성질(밖으로 못 나감)은
+/// 그대로다 — 슬러그를 사람 말로 바꾸려고 스크립트가 파일을 읽게 하는 것보다 이 편이 안전하다.
+fn register_info(e: &mut Engine, guild: std::sync::Arc<Mutex<super::info::GuildInfo>>) {
+    use super::info;
+    macro_rules! with_guild {
+        ($g:expr, $body:expr) => {
+            match $g.lock() {
+                Ok(mut g) => $body(&mut *g),
+                // 잠금이 깨져도 이벤트 전달을 세우지 않는다.
+                Err(_) => String::new(),
+            }
+        };
+    }
+    let g = guild.clone();
+    e.register_fn("guild_name", move || -> String {
+        with_guild!(g, |i: &mut info::GuildInfo| i.guild_name())
+    });
+    let g = guild.clone();
+    e.register_fn("status_name", move |slug: &str| -> String {
+        with_guild!(g, |i: &mut info::GuildInfo| i.status_name(slug, None))
+    });
+    let g = guild.clone();
+    e.register_fn("status_name", move |slug: &str, lang: &str| -> String {
+        with_guild!(g, |i: &mut info::GuildInfo| i.status_name(slug, Some(lang)))
+    });
+    let g = guild.clone();
+    e.register_fn("type_name", move |prefix: &str| -> String {
+        with_guild!(g, |i: &mut info::GuildInfo| i.type_name(prefix))
+    });
+    let g = guild.clone();
+    e.register_fn("link", move |kind: &str, id: &str| -> String {
+        with_guild!(g, |i: &mut info::GuildInfo| i.link(kind, id))
+    });
+    // 시간과 글 다듬기 — 길드를 안 봐도 되는 것들.
+    e.register_fn("now", crate::time::now_local_iso8601);
+    e.register_fn("ago", |ts: &str| -> String {
+        crate::time::format_relative(ts).unwrap_or_else(|| ts.to_string())
+    });
+    e.register_fn("truncate", |s: &str, n: i64| info::truncate(s, n));
+    e.register_fn("plain_text", |s: &str| info::plain_text(s));
 }
 
 // ── JSON ↔ rhai ─────────────────────────────────────────
@@ -647,6 +708,59 @@ mod tests {
             };
             assert!(blocked, "밖으로 나가는 길이 열려 있다: {src}");
         }
+    }
+
+    /// DEV-409: 길드를 정해 주면 스크립트가 **사람이 보는 이름**을 쓴다.
+    #[test]
+    fn a_script_can_read_display_names_from_the_guild() {
+        let dir = std::env::temp_dir().join(format!("og-script-info-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join(".guild/statuses")).unwrap();
+        std::fs::create_dir_all(dir.join(".guild/types")).unwrap();
+        std::fs::write(
+            dir.join(".guild/statuses/3-done.toml"),
+            "sort_order = 3\nname_en = \"Done\"\nname_ko = \"완료\"\ncolor = \"#fff\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join(".guild/types/DEV.toml"),
+            "prefix = \"DEV\"\ncolor = \"#fff\"\ndescription = \"일반 개발 작업\"\n",
+        )
+        .unwrap();
+        let src = r#"
+            fn h(e) {
+                send("x", #{ status: status_name("done", "ko"), en: status_name("done", "en"),
+                             kind: type_name("DEV"), guild: guild_name(),
+                             url: link("quest", e.quest.id), short: truncate(e.comment.body, 3) });
+            }
+        "#;
+        let sc = Script::compile_source(src).unwrap();
+        // 길드를 안 정했으면 슬러그 그대로 — 그래도 실패하지는 않는다.
+        let before = sc.call_handler("h", &ev(), &Default::default()).unwrap();
+        assert_eq!(before[0].body["status"], "done");
+        sc.set_guild(&dir);
+        let got = sc.call_handler("h", &ev(), &Default::default()).unwrap();
+        assert_eq!(got[0].body["status"], "완료");
+        assert_eq!(got[0].body["en"], "Done");
+        assert_eq!(got[0].body["kind"], "일반 개발 작업");
+        assert_eq!(got[0].body["guild"], dir.file_name().unwrap().to_str().unwrap());
+        assert_eq!(got[0].body["url"], "/quests/DEV-1");
+        assert_eq!(got[0].body["short"], "확인…");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 편의 함수도 샌드박스 안이다 — 길드를 안 정한 채로도 **던지지 않는다**.
+    #[test]
+    fn convenience_functions_never_break_delivery() {
+        let got = call(
+            r##"fn h(e) { send("x", #{ a: guild_name(), b: status_name("open"),
+                                      c: plain_text("# 제목\n본문"), d: ago(e.ts) }) }"##,
+        )
+        .unwrap();
+        assert_eq!(got[0].body["a"], "");
+        assert_eq!(got[0].body["b"], "open");
+        assert_eq!(got[0].body["c"], "제목\n본문");
+        assert!(got[0].body["d"].is_string());
     }
 
     /// 등록한 게 없다는 것을 반대편에서도 확인한다 — 순수 계산은 된다.

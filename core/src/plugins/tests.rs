@@ -3238,3 +3238,52 @@ fn changing_an_imported_file_outside_the_folder_does_not_ask_again() {
         let _ = std::fs::remove_dir_all(d);
     }
 }
+
+// ── DEV-409: 스크립트 편의 함수 ─────────────────────────
+
+/// 적재하면 그 플러그인은 **이 길드**의 이름을 본다 — 상태 슬러그가 사람 말로 나온다.
+#[test]
+fn a_loaded_plugin_sees_this_guilds_display_names() {
+    let _guard = env_lock();
+    let home = fresh_tmp("info-home");
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    let g = fresh_tmp("info");
+    std::fs::create_dir_all(g.join(".guild/statuses")).unwrap();
+    std::fs::write(
+        g.join(".guild/statuses/3-done.toml"),
+        "sort_order = 3\nname_en = \"Done\"\nname_ko = \"완료\"\ncolor = \"#fff\"\n",
+    )
+    .unwrap();
+    let dir = plugins_dir(&g).join("naming");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join(MANIFEST),
+        "name = \"naming\"\nscope = [\"cli\"]\nscripts = [\"main.rhai\"]\n\n\
+         [actions.out.post]\nurl = \"https://x.test\"\n\n\
+         [[handlers]]\npost = [\"quest.created\"]\ncall = \"h\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("main.rhai"),
+        r#"fn h(e) { send("out", #{ s: status_name("done", "ko"), g: guild_name(),
+                                    u: link("quest", e.quest.id) }) }"#,
+    )
+    .unwrap();
+    consent::enable_auto_allow(&g).unwrap();
+
+    let l = load_all(&g);
+    assert!(l.errors.is_empty(), "{:?}", l.errors);
+    let sc = l.active[0].compiled.as_deref().unwrap();
+    let mut data = serde_json::Map::new();
+    data.insert("quest".into(), json!({ "id": "DEV-1", "title": "훅" }));
+    let ev = crate::events::Event { data, ..probe_event() };
+    let got = sc.call_handler("h", &ev, &Default::default()).unwrap();
+    // 적재가 길드를 안 알려 주면 여기서 "done" 이 나온다.
+    assert_eq!(got[0].body["s"], "완료");
+    assert_eq!(got[0].body["g"], g.file_name().unwrap().to_str().unwrap());
+    assert_eq!(got[0].body["u"], "/quests/DEV-1");
+
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
