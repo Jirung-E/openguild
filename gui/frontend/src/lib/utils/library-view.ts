@@ -23,3 +23,22 @@ export function showsBackToList(mode: LibraryViewMode, isChildWindow: boolean): 
 export function isSingleColumn(mode: LibraryViewMode, isChildWindow: boolean): boolean {
 	return !showsTree(mode, isChildWindow);
 }
+
+/** BUG-298: 목록을 다시 받을 때인가.
+ *
+ * 목록은 진입 때 한 번만 받았다. 그래서 CLI·에이전트가 밖에서 만든 문서는 **폴더를 나갔다
+ * 들어와도** 안 보였다(폴더 이동은 이미 받아 둔 목록을 걸러 보는 것뿐이다). 앱과 CLI 를 같이
+ * 쓰는 것이 이 도구의 기본 사용법이라, 옛 목록을 계속 보여 주면 "안 만들어졌나" 하고 다시
+ * 만들게 된다.
+ *
+ * 그렇다고 폴더를 옮길 때마다 통째로 받으면 큰 길드에서 낭비다 — 방금 받았으면 건너뛴다.
+ */
+export function shouldRefresh(
+	now: number,
+	lastLoadedAt: number,
+	loading: boolean,
+	staleMs = 1500
+): boolean {
+	if (loading) return false;
+	return now - lastLoadedAt >= staleMs;
+}

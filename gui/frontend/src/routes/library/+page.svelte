@@ -15,7 +15,12 @@
 <script lang="ts">
 	import PaneResizer from '$lib/components/PaneResizer.svelte';
 	import { isChildWindow } from '$lib/stores/windowKind';
-	import { showsTree, showsBackToList, isSingleColumn } from '$lib/utils/library-view';
+	import {
+		showsTree,
+		showsBackToList,
+		isSingleColumn,
+		shouldRefresh
+	} from '$lib/utils/library-view';
 	import { paneWidth } from '$lib/stores/paneWidth';
 	import Icon from '$lib/components/Icon.svelte';
 	import { onMount, onDestroy } from 'svelte';
@@ -295,6 +300,19 @@
 	let createFolderPath = $state('');
 	let createFolderError = $state<string | null>(null);
 
+	// BUG-298: 목록은 진입 때 한 번만 받았다. 그래서 CLI·에이전트가 밖에서 만든 문서는
+	// **폴더를 나갔다 들어와도** 안 보였다(폴더 이동은 이미 받아 둔 목록을 걸러 보는 것뿐이다).
+	// 앱과 CLI 를 같이 쓰는 것이 이 도구의 기본 사용법이라, 옛 목록을 계속 보여 주면
+	// "안 만들어졌나" 하고 다시 만들게 된다.
+	let lastLoadedAt = 0;
+
+	/** 마지막으로 받은 지 오래됐으면 다시 받는다. 폴더를 옮길 때마다 통째로 받지 않도록
+	 *  짧은 시간은 건너뛴다(연속 클릭 한 번에 여러 번 받지 않게). */
+	function refreshIfStale(ms = 1500) {
+		if (!shouldRefresh(Date.now(), lastLoadedAt, loading, ms)) return;
+		void loadList(selectedId);
+	}
+
 	async function loadList(preferId?: string | null, mutated = false) {
 		loading = true;
 		error = null;
@@ -314,6 +332,7 @@
 			// 응답만 1.1MB, 라우트 이동 1회당 힙 +2.5MB). 실제로 목록이 바뀐
 			// 호출에서만 force 한다.
 			loadQuestIndex(mutated);
+			lastLoadedAt = Date.now();
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'failed to load';
 		} finally {
@@ -326,6 +345,11 @@
 		const sp = new URLSearchParams(window.location.search);
 		explorerPath = sp.get('path') ?? '';
 		loadList(sp.get('id'));
+		// BUG-298: 터미널에서 문서를 만들고 앱으로 돌아오는 것이 흔한 흐름이다 — 돌아오면
+		// 목록을 다시 받는다. 편집 중인 본문은 건드리지 않는다(loadList 는 목록만 바꾼다).
+		const onFocus = () => refreshIfStale();
+		window.addEventListener('focus', onFocus);
+		return () => window.removeEventListener('focus', onFocus);
 	});
 
 	// DEV-243: 태그 정의(색/설명) — quest 상세와 동일한 registry.
@@ -383,6 +407,8 @@
 	function gotoFolder(path: string) {
 		explorerPath = path;
 		syncUrl();
+		// BUG-298: 폴더를 나갔다 들어오면 새 문서가 보여야 한다.
+		refreshIfStale();
 	}
 
 	// BUG-127(admin 요청): 아이콘 뷰에서 상위 폴더로 바로 이동하는 버튼.
