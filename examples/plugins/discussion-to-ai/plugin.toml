@@ -1,3 +1,4 @@
+#:schema ../plugin.schema.json
 # 토론 댓글을 내 서비스(AI 등)로 보낸다 — 선택상자(select) 설정의 예.
 
 name        = "discussion-to-ai"

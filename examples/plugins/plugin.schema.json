@@ -1,0 +1,365 @@
+{
+  "$defs": {
+    "action": {
+      "additionalProperties": false,
+      "properties": {
+        "post": {
+          "additionalProperties": false,
+          "properties": {
+            "body_env": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "description": "본문에 끼워 넣을 환경변수 — `{ chat_id = \"TELEGRAM_CHAT_ID\" }`. 값이 아니라 **이름**을 적는다.",
+              "type": "object"
+            },
+            "headers": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "timeout_ms": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "url": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "url"
+          ],
+          "type": "object"
+        },
+        "run": {
+          "properties": {
+            "args": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "command": {
+              "type": "string"
+            },
+            "linux": {
+              "$ref": "#/$defs/osRun"
+            },
+            "macos": {
+              "$ref": "#/$defs/osRun"
+            },
+            "timeout_ms": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "windows": {
+              "$ref": "#/$defs/osRun"
+            }
+          },
+          "required": [
+            "command"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "handler": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/action"
+            }
+          ],
+          "description": "바로 실행할 동작 — `[actions]` 의 이름이거나 이 자리에 적은 동작."
+        },
+        "call": {
+          "description": "부를 스크립트 함수. `action` 과 둘 중 하나만.",
+          "type": "string"
+        },
+        "id": {
+          "description": "줄 이름. 화면과 오류 메시지가 이 줄을 가리킬 때 쓴다.",
+          "type": "string"
+        },
+        "on_error": {
+          "description": "스크립트가 던졌을 때. `block` 은 `pre` 줄만.",
+          "enum": [
+            "continue",
+            "block"
+          ]
+        },
+        "on_timeout": {
+          "description": "시간이 넘었을 때. `block` 은 `pre` 줄만.",
+          "enum": [
+            "continue",
+            "block"
+          ]
+        },
+        "post": {
+          "description": "바뀐 **뒤**에 볼 이벤트. `pre` 와 둘 중 하나만.",
+          "items": {
+            "$ref": "#/$defs/postEvent"
+          },
+          "type": "array"
+        },
+        "pre": {
+          "description": "바뀌기 **전**에 볼 이벤트. 막거나 값을 바꿀 수 있고, 언제나 기다린다. `post` 와 둘 중 하나만.",
+          "items": {
+            "$ref": "#/$defs/preEvent"
+          },
+          "type": "array"
+        },
+        "timeout_ms": {
+          "description": "이 줄에 줄 시간(ms).",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "wait": {
+          "description": "이 줄이 끝날 때까지 기다린다(기본: 안 기다림).",
+          "type": "boolean"
+        },
+        "when": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean"
+                ]
+              },
+              {
+                "items": {
+                  "type": [
+                    "string",
+                    "number",
+                    "boolean"
+                  ]
+                },
+                "type": "array"
+              }
+            ]
+          },
+          "description": "이 줄이 불릴 조건 — 전부 만족해야 한다. 경로는 `change.to` 처럼 점으로 잇는다.",
+          "type": "object"
+        },
+        "with": {
+          "description": "함수가 이벤트 뒤에 받을 연결 데이터. 받을 수 있는 것은 이벤트 대상의 종류가 정한다.",
+          "items": {
+            "$ref": "#/$defs/with"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "input": {
+      "properties": {
+        "default": {},
+        "help": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "options": {
+          "type": "array"
+        },
+        "secret": {
+          "type": "boolean"
+        },
+        "type": {
+          "enum": [
+            "text",
+            "checkbox",
+            "select",
+            "number"
+          ]
+        }
+      },
+      "required": [
+        "key"
+      ],
+      "type": "object"
+    },
+    "osRun": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "command": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "command"
+      ],
+      "type": "object"
+    },
+    "postEvent": {
+      "examples": [
+        "quest.created",
+        "quest.updated",
+        "quest.deleted",
+        "quest.restored",
+        "quest.status_changed",
+        "quest.type_changed",
+        "quest.parent_changed",
+        "quest.tags_changed",
+        "quest.due_changed",
+        "quest.prereq_added",
+        "quest.prereq_removed",
+        "comment.added",
+        "comment.updated",
+        "comment.deleted",
+        "comment.resolved",
+        "comment.unresolved",
+        "comment.pinned",
+        "comment.unpinned",
+        "comment.discussion_on",
+        "comment.discussion_off",
+        "comment.reaction_changed",
+        "campaign.created",
+        "campaign.updated",
+        "campaign.deleted",
+        "campaign.quest_linked",
+        "campaign.quest_unlinked",
+        "campaign.checklist_added",
+        "campaign.checklist_removed",
+        "campaign.checklist_checked",
+        "campaign.banner_changed",
+        "book.created",
+        "book.updated",
+        "book.deleted",
+        "book.tags_changed",
+        "folder.created",
+        "folder.deleted",
+        "folder.moved",
+        "rule.created",
+        "rule.updated",
+        "rule.deleted",
+        "rule.renamed",
+        "rule.tags_changed",
+        "attachment.added",
+        "attachment.removed",
+        "type.created",
+        "type.updated",
+        "type.deleted",
+        "type.renamed",
+        "status.created",
+        "status.updated",
+        "status.deleted",
+        "status.renamed",
+        "tag.defined",
+        "tag.deleted",
+        "worklog.note_changed",
+        "backup.created"
+      ],
+      "type": "string"
+    },
+    "preEvent": {
+      "examples": [
+        "comment.added",
+        "quest.created",
+        "quest.deleted",
+        "quest.status_changed"
+      ],
+      "type": "string"
+    },
+    "with": {
+      "enum": [
+        "subject",
+        "parent",
+        "children",
+        "prereqs",
+        "campaigns",
+        "quests"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "actions": {
+      "additionalProperties": {
+        "$ref": "#/$defs/action"
+      },
+      "description": "이름 붙인 동작. 스크립트는 이름만 알고, 주소는 여기에만 있다.",
+      "type": "object"
+    },
+    "description": {
+      "description": "무슨 일을 하는지 사람 말로. 허용 화면 맨 위에 나온다.",
+      "type": "string"
+    },
+    "handlers": {
+      "description": "언제 무엇을 할지 — 적힌 순서대로 돈다.",
+      "items": {
+        "$ref": "#/$defs/handler"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "inputs": {
+      "description": "사용자에게 받아야 하는 값들(설정 화면이 그린다).",
+      "items": {
+        "$ref": "#/$defs/input"
+      },
+      "type": "array"
+    },
+    "name": {
+      "description": "플러그인 이름. 길드 안에서 하나뿐이어야 한다 — 동의도 화면도 이 이름으로 구분한다.",
+      "type": "string"
+    },
+    "permissions": {
+      "description": "스크립트가 길드에 시킬 수 있는 일. 밝히지 않은 것을 부르면 그 줄만 실패한다.",
+      "items": {
+        "enum": [
+          "notify",
+          "backup"
+        ]
+      },
+      "type": "array"
+    },
+    "scope": {
+      "description": "어느 컴포넌트에서 도는가. 비어 있으면 적재하지 않는다.",
+      "items": {
+        "enum": [
+          "cli",
+          "gui",
+          "server"
+        ]
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "scripts": {
+      "description": "스크립트 파일들(폴더 기준 상대 경로). 적힌 파일의 함수는 한 공간에 모인다.",
+      "items": {
+        "pattern": "\\.rhai$",
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "name",
+    "scope",
+    "handlers"
+  ],
+  "title": "openguild plugin.toml",
+  "type": "object"
+}

@@ -357,6 +357,18 @@ enum PluginCmd {
     },
     #[command(about = tf!("구독할 수 있는 이벤트 이름 목록.", "Event names you can subscribe to."))]
     Events,
+    // DEV-411: 적재는 깨진 플러그인을 조용히 끄고 넘어간다 — 만드는 쪽에서는 왜 안 도는지
+    // 목록의 한 줄로만 본다. 이건 반대로, 한 폴더를 붙잡고 다 말한다.
+    #[command(about = tf!("정의를 검사한다 (폴더 하나, 또는 생략하면 이 길드 전부) — 돌리기 전에 오류·실수를 짚는다.", "Check a definition (one folder, or every plugin in this guild) — catches errors and likely mistakes before it runs."))]
+    Check {
+        #[arg(help = tf!("플러그인 폴더. 생략하면 이 길드가 읽는 것 전부.", "Plugin folder. Omit to check everything this guild loads."))]
+        path: Option<String>,
+    },
+    #[command(about = tf!("편집기용 스키마 파일을 내놓는다 — plugin.toml 자동 완성과 오류 표시.", "Print the editor schema for plugin.toml — autocomplete and inline errors."))]
+    Schema {
+        #[arg(long, help = tf!("이 파일에 쓴다 (생략하면 화면에).", "Write to this file (default: stdout)."))]
+        out: Option<String>,
+    },
     // DEV-394: 자동 감지는 안 한다 — 손보는 중인 정의가 저장되는 순간 돌기 시작하면 안 된다.
     #[command(about = tf!("도는 서버가 플러그인을 다시 읽게 한다 (`--remote`, 서버와 같은 기계에서만). 바뀐 정의는 다시 동의를 받는다.", "Make a running server reload its plugins (`--remote`, from the server's own machine only). Changed definitions need consent again."))]
     Reload,
@@ -6122,6 +6134,39 @@ fn action_kinds(def: &openguild_core::plugins::PluginDef) -> String {
     kinds.join(",")
 }
 
+/// DEV-411: 검사 결과를 찍고, 오류가 하나라도 있으면 **0 이 아닌 값으로 끝난다** — 스크립트와
+/// 에이전트가 성공/실패로 읽을 수 있어야 한다.
+fn print_check(reports: &[openguild_core::plugins::check::Report], json: bool) -> Result<()> {
+    if json {
+        json_println!(serde_json::json!({
+            "ok": reports.iter().all(|r| r.ok()),
+            "plugins": reports,
+        }));
+    } else if reports.is_empty() {
+        println!(
+            "{}",
+            tf!("(검사할 플러그인이 없습니다)", "(no plugins to check)")
+        );
+    } else {
+        for r in reports {
+            println!("{} {}  {}", if r.ok() { "✓" } else { "✗" }, r.name, r.dir);
+            for line in &r.lines {
+                println!("    {line}");
+            }
+            for w in &r.warnings {
+                println!("    ! {w}");
+            }
+            for e in &r.errors {
+                println!("    ✗ {e}");
+            }
+        }
+    }
+    if reports.iter().any(|r| !r.ok()) {
+        std::process::exit(1);
+    }
+    Ok(())
+}
+
 fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
     use openguild_core::plugins::{MANIFEST, Scope, consent, load_all};
 
@@ -6218,6 +6263,31 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
         return Ok(());
     }
 
+    // DEV-411: 편집기 스키마는 길드가 없어도 낸다 — 플러그인을 쓰는 자리가 꼭 길드 안은 아니다.
+    if let PluginCmd::Schema { out } = &sub {
+        let text = openguild_core::plugins::schema::schema_text();
+        match out {
+            Some(path) => {
+                std::fs::write(path, format!("{text}\n"))?;
+                println!(
+                    "{}",
+                    tf!(
+                        "✓ 스키마를 적었습니다: {} — plugin.toml 첫 줄에 `#:schema <이 파일까지의 상대 경로>` 를 적으면 편집기가 집어 듭니다.",
+                        "✓ wrote the schema: {} — put `#:schema <relative path to it>` on the first line of plugin.toml and your editor will pick it up.",
+                        path
+                    )
+                );
+            }
+            None => println!("{text}"),
+        }
+        return Ok(());
+    }
+    // 폴더를 지목했으면 길드도 필요 없다 — 에이전트가 만든 폴더를 그 자리에서 본다.
+    if let PluginCmd::Check { path: Some(path) } = &sub {
+        let r = openguild_core::plugins::check::check_dir(std::path::Path::new(path), None);
+        return print_check(&[r], json);
+    }
+
     let Backend::Local(l) = c else {
         return Err(anyhow!(tf!(
             "플러그인 관리는 로컬 길드에서만 가능합니다 — 동의는 이 기계에 남습니다(--remote 불가).",
@@ -6228,7 +6298,13 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
     let loaded = load_all(root);
 
     match sub {
-        PluginCmd::Events | PluginCmd::Reload => unreachable!("handled above"),
+        PluginCmd::Events | PluginCmd::Reload | PluginCmd::Schema { .. } => {
+            unreachable!("handled above")
+        }
+        PluginCmd::Check { path: _ } => {
+            // 폴더를 안 줬을 때 — 이 길드가 읽는 것 전부.
+            return print_check(&openguild_core::plugins::check::check_guild(root), json);
+        }
         PluginCmd::Source { sub } => {
             use openguild_core::plugins::sources;
             match sub {

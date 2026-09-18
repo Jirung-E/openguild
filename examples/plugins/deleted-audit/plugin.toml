@@ -1,3 +1,4 @@
+#:schema ../plugin.schema.json
 # 퀘스트가 지워지기 **직전에** 무엇이 지워질지 남긴다 — 바뀌기 전(pre) 단계의 예.
 
 name        = "deleted-audit"

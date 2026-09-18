@@ -231,6 +231,18 @@ impl Script {
         self.has_function(name, 1)
     }
 
+    /// DEV-411: 이 스크립트가 가진 함수들(이름, 인자 수) — `plugin check` 가 "아무 줄도 안
+    /// 부르는 함수" 를 짚을 때 쓴다.
+    pub fn function_names(&self) -> Vec<(String, usize)> {
+        let mut out: Vec<(String, usize)> = self
+            .ast
+            .iter_functions()
+            .map(|f| (f.name.to_string(), f.params.len()))
+            .collect();
+        out.sort();
+        out
+    }
+
     /// 그 이름·인자 수의 함수가 있나.
     pub fn has_function(&self, name: &str, arity: usize) -> bool {
         self.ast

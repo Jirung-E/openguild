@@ -1,3 +1,4 @@
+#:schema ../plugin.schema.json
 # 백업이 만들어지면 정해 둔 폴더로 한 벌 복사한다.
 
 name        = "backup-archive"

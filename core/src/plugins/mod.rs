@@ -33,6 +33,8 @@
 //! 알려만 준다. 묻는 방법은 컴포넌트마다 다르고(CLI 는 비대화형일 수 있다),
 //! 아무도 답하지 않으면 그 플러그인은 **돌지 않는다**.
 
+// DEV-411: 돌리기 전에 정의를 검사한다 — `openguild plugin check`.
+pub mod check;
 pub mod consent;
 pub mod delivery;
 // DEV-406: 스크립트가 시킨 길드 일(알림·백업)을 실제로 한다.
@@ -45,6 +47,8 @@ pub mod runtime;
 pub mod script;
 // DEV-399: 길드 밖 폴더에서도 가져다 쓴다 — 소스 등록 + 이 길드에서 쓰기.
 pub mod sources;
+// DEV-411: 편집기용 스키마 파일.
+pub mod schema;
 // DEV-410: 허용 화면에 찍을 사람 말 요약.
 pub mod summary;
 #[cfg(test)]
