@@ -42,6 +42,8 @@ export interface PluginView {
 	permissions: string[];
 	/** DEV-408: 스크립트가 불러오는 파일 — 폴더 밖 것도. 바뀌어도 다시 묻지 않는다. */
 	imports: string[];
+	/** DEV-410: 정의가 지목한 환경변수 **이름**. 값은 절대 오지 않는다. */
+	env: string[];
 	/**
 	 * BUG-279: `run` 훅이 파일을 쓰는 자리. `post` 면 null 이다.
 	 *

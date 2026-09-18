@@ -38,6 +38,9 @@ pub struct PluginView {
     pub imports: Vec<String>,
     /// DEV-406: 스크립트가 길드에 시킬 수 있는 일 — 허용 화면이 보여 준다.
     pub permissions: Vec<String>,
+    /// DEV-410: 정의가 지목한 환경변수 **이름**(헤더의 `${VAR}` 와 `body_env`). 어떤 비밀값을
+    /// 쓰는지는 허용 전에 알아야 하고, **값은 절대 싣지 않는다** — 이 뷰는 HTTP 로도 나간다.
+    pub env: Vec<String>,
     /// BUG-279: `run` 훅이 파일을 쓰는 자리. `post` 는 작업 디렉터리가 없으므로
     /// `None` 이다 — 안 쓰는 경로를 보여주면 "여기 뭐가 생기나" 하고 찾게 된다.
     ///
@@ -89,6 +92,46 @@ pub struct ActionView {
     pub kind: String,
     /// `post` 의 목적지 또는 `run` 의 명령(이 기계에서 실제로 띄울 것).
     pub target: String,
+}
+
+/// DEV-410: 정의가 지목한 환경변수 이름들. 값은 읽지 않는다 — 이름만으로 충분하고, 읽으면
+/// 실수로 내보낼 길이 생긴다.
+fn env_names(p: &Plugin) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut add = |s: String| {
+        if !out.contains(&s) {
+            out.push(s);
+        }
+    };
+    for (_, a) in p.def.all_actions() {
+        if let Action::Post { headers, body_env, .. } = a {
+            for v in headers.values() {
+                for name in env_refs(v) {
+                    add(name);
+                }
+            }
+            for v in body_env.values() {
+                add(v.clone());
+            }
+        }
+    }
+    out
+}
+
+/// `"Bearer ${TOKEN}"` → `["TOKEN"]`.
+fn env_refs(s: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut rest = s;
+    while let Some(i) = rest.find("${") {
+        rest = &rest[i + 2..];
+        let Some(end) = rest.find('}') else { break };
+        let name = rest[..end].trim();
+        if !name.is_empty() {
+            out.push(name.to_string());
+        }
+        rest = &rest[end + 1..];
+    }
+    out
 }
 
 fn action_target(a: &Action) -> String {
@@ -224,6 +267,7 @@ pub(super) fn view(p: &Plugin, granted: bool, scope: Scope) -> PluginView {
         scripts: p.def.scripts.clone(),
         imports: p.imports.clone(),
         permissions: p.def.permissions.clone(),
+        env: env_names(p),
         data_dir: if p.def.has_run() {
             super::data_dir_path(&p.guild_root, &p.def.name)
                 .ok()

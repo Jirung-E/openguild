@@ -68,6 +68,7 @@ function plugin(name: string, description: string | null): PluginView {
 		scripts: [],
 		permissions: [],
 		imports: [],
+		env: [],
 		data_dir: null,
 		inputs: [],
 		script_src: null,
@@ -168,7 +169,7 @@ describe('DEV-403 줄 목록', () => {
 		);
 		expect(lines).toEqual([
 			'바뀐 뒤 quest.status_changed → on_status() (change.to = done) 읽음: subject 상태 알림',
-			'바뀌기 전 quest.deleted → log 기다림 삭제 기록'
+			'바뀌기 전 quest.deleted → log 기다림 막거나 값을 바꿀 수 있음 삭제 기록'
 		]);
 		expect(document.querySelector('.plugin-dests')?.textContent).toContain(
 			'https://api.telegram.org/x'
@@ -423,5 +424,47 @@ describe('DEV-400 플러그인 추가·소스', () => {
 		expect(sources).not.toHaveBeenCalled();
 		// 출처는 조회라 보인다.
 		expect(document.body.textContent).toContain('출처: 소스 mine');
+	});
+});
+
+// DEV-410: 허용 화면은 **가장 센 것**을 빼먹으면 안 된다 — 막을 수 있는 줄과 쓰는 비밀값.
+describe('DEV-410 허용 화면 — 막을 수 있는 줄 · 환경변수 이름', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		manageable.mockReturnValue(true);
+		sources.mockResolvedValue([]);
+	});
+
+	it('바뀌기 전 줄은 막을 수 있다고 말한다', async () => {
+		const p = plugin('guard', null);
+		p.handlers = [
+			{
+				label: '1번째 줄',
+				stage: 'pre',
+				events: ['quest.deleted'],
+				call: 'check',
+				with: ['subject'],
+				when: ['subject.tags = keep'],
+				wait: false,
+				action: null,
+				action_kind: null,
+				action_target: null
+			}
+		];
+		status.mockResolvedValue(statusWith([p]));
+		await openPluginsTab();
+		await screen.findByText('guard');
+		expect(document.body.textContent).toContain('막거나 값을 바꿀 수 있음');
+		expect(document.body.textContent).toContain('subject.tags = keep');
+	});
+
+	it('환경변수는 이름만 보이고, 값은 애초에 오지 않는다', async () => {
+		const p = plugin('tg', null);
+		p.env = ['TELEGRAM_TOKEN', 'TELEGRAM_CHAT_ID'];
+		status.mockResolvedValue(statusWith([p]));
+		await openPluginsTab();
+		await screen.findByText('tg');
+		expect(document.body.textContent).toContain('TELEGRAM_TOKEN');
+		expect(document.body.textContent).toContain('값은 이 화면에 오지 않습니다');
 	});
 });

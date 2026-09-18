@@ -45,6 +45,8 @@ pub mod runtime;
 pub mod script;
 // DEV-399: 길드 밖 폴더에서도 가져다 쓴다 — 소스 등록 + 이 길드에서 쓰기.
 pub mod sources;
+// DEV-410: 허용 화면에 찍을 사람 말 요약.
+pub mod summary;
 #[cfg(test)]
 mod tests;
 pub mod values;

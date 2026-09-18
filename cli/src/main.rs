@@ -6123,7 +6123,7 @@ fn action_kinds(def: &openguild_core::plugins::PluginDef) -> String {
 }
 
 fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
-    use openguild_core::plugins::{consent, load_all};
+    use openguild_core::plugins::{MANIFEST, Scope, consent, load_all};
 
     if let PluginCmd::Events = sub {
         let names = openguild_core::events::names::ALL;
@@ -6502,19 +6502,23 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
                 );
                 return Ok(());
             }
+            // DEV-410: 예전엔 `이벤트 → post,run` 한 줄이었다. 이제는 줄마다 조건·함수가
+            // 달라서 그 한 줄이 "quest.status_changed → " 처럼 오른쪽이 비기도 했다.
+            // 머리줄은 **가장 센 것**을, 그 아래는 줄 하나씩을 적는다.
+            let describe = |p: &openguild_core::plugins::Plugin| {
+                if let Some(d) = &p.def.description {
+                    println!("    {d}");
+                }
+                for (i, line) in
+                    openguild_core::plugins::summary::handler_lines(p, Scope::Cli).iter().enumerate()
+                {
+                    println!("    {}. {line}", i + 1);
+                }
+            };
             for p in &loaded.active {
-                let scopes: Vec<String> = p
-                    .def
-                    .scope
-                    .iter()
-                    .map(|s| format!("{s:?}").to_lowercase())
-                    .collect();
                 println!(
-                    "✓ {}  [{}]  {} → {}{}",
-                    p.def.name,
-                    scopes.join(","),
-                    p.def.subscriptions().join(" "),
-                    action_kinds(&p.def),
+                    "✓ {}{}",
+                    openguild_core::plugins::summary::one_liner(p, Scope::Cli),
                     // DEV-399: 길드 밖에서 온 것은 어디서 왔는지 보여야 한다.
                     p.source
                         .as_deref()
@@ -6523,22 +6527,18 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
                 );
                 // REQ-020: 설명은 다음 줄에 들여쓴다. 같은 줄에 붙이면 길이가
                 // 제각각이라 위 세 열이 안 맞는다.
-                if let Some(d) = &p.def.description {
-                    println!("    {d}");
-                }
+                describe(p);
             }
             for p in &loaded.needs_consent {
                 println!(
                     "· {}  {}",
-                    p.def.name,
+                    openguild_core::plugins::summary::one_liner(p, Scope::Cli),
                     tf!(
                         "(동의 대기 — 안 돕니다)",
                         "(awaiting consent — not running)"
                     )
                 );
-                if let Some(d) = &p.def.description {
-                    println!("    {d}");
-                }
+                describe(p);
             }
             for (name, why) in &loaded.errors {
                 println!("✗ {name}  {why}");
@@ -6551,16 +6551,11 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
                 .chain(loaded.needs_consent.iter())
                 .collect();
             if !yes {
-                // **보지 않은 것에 동의할 수는 없다** — 무엇이 어디로 가는지 목록으로 보인다.
+                // **보지 않은 것에 동의할 수는 없다.** DEV-410: 예전엔 동작 JSON 을 그대로 찍었다.
+                // 여럿을 한 번에 볼 때 필요한 것은 "가장 센 것" 이다 — 막을 수 있나, 길드에
+                // 무엇을 시키나, 어디로 나가나.
                 for p in &every {
-                    let actions: std::collections::BTreeMap<String, &openguild_core::plugins::Action> =
-                        p.def.all_actions().into_iter().collect();
-                    println!(
-                        "{}  {:?}  {}",
-                        p.def.name,
-                        p.def.scope,
-                        serde_json::to_string(&actions)?
-                    );
+                    println!("{}", openguild_core::plugins::summary::one_liner(p, Scope::Cli));
                 }
                 println!(
                     "\n{}",
@@ -6594,8 +6589,13 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
                 )));
             };
             if !yes {
-                // **보지 않은 것에 동의할 수는 없다.** 정의와 스크립트를 먼저 보인다.
-                // DEV-403: 정의 파일과 같은 TOML 로 보인다 — 작성자가 쓴 모양 그대로.
+                // **보지 않은 것에 동의할 수는 없다.** DEV-410: 먼저 사람 말 요약을 보이고,
+                // 그 아래에 정의 원문과 스크립트를 그대로 둔다 — 요약은 읽기 위한 것이고
+                // 원문은 확인하기 위한 것이라, 둘 중 하나만 있으면 한쪽이 아쉽다.
+                for line in openguild_core::plugins::summary::consent_lines(p, Scope::Cli) {
+                    println!("{line}");
+                }
+                println!("\n--- {MANIFEST} ---");
                 println!("{}", openguild_core::plugins::def_to_toml(&p.def));
                 if let Some(src) = &p.script_src {
                     println!("\n--- {} ---", p.def.scripts.join(", "));

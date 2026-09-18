@@ -423,6 +423,11 @@
 									{#if h.wait || h.stage === 'pre'}
 										<span class="line-label">{t('plugins.waits', $locale)}</span>
 									{/if}
+									<!-- DEV-410: 바뀌기 전 줄은 그 일을 **막을 수 있다**. 기다린다는
+									     말만으로는 그게 안 드러난다. -->
+									{#if h.stage === 'pre'}
+										<span class="line-label">{t('plugins.canBlock', $locale)}</span>
+									{/if}
 									<span class="line-label">{h.label}</span>
 								</li>
 							{/each}
@@ -436,6 +441,13 @@
 						{#if p.permissions.length > 0}
 							<p class="plugin-datadir">
 								{t('plugins.permissions', $locale)}: {p.permissions.join(', ')}
+							</p>
+						{/if}
+						<!-- DEV-410: 어떤 비밀값을 쓰는지 — 이름만. 값은 서버도 앱도 안 싣는다. -->
+						{#if p.env.length > 0}
+							<p class="plugin-datadir">
+								{t('plugins.env', $locale)}: <code class="plugin-path">{p.env.join(', ')}</code>
+								<span class="line-label">{t('plugins.envNote', $locale)}</span>
 							</p>
 						{/if}
 						<!-- 어디로 나가고 무엇을 띄우는지 — 스크립트는 이 이름으로만 부른다. -->
