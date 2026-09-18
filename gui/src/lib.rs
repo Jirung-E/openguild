@@ -244,6 +244,27 @@ fn cleanup_welcome_placeholder_leftovers() {
 /// 길드를 열 때 한 번, 그리고 **동의가 바뀔 때마다** 다시 부른다 — 방금
 /// 허용해 놓고 앱을 다시 켜야 도는 것은 고장으로 보인다. 돌 게 없으면 sink
 /// 를 안 꽂으므로 `ops` 는 이벤트를 만들지도 않는다([[DEV-374]]).
+/// DEV-406: 스크립트의 `notify()` 를 앱 화면으로 보낸다. 앱 핸들은 시동 뒤에 생기므로 한 번만
+/// 담아 두고, 아직 없으면(시동 중) 표준 오류로 떨어진다.
+static APP: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
+
+pub struct AppNotifier;
+
+impl openguild_core::plugins::guild::Notifier for AppNotifier {
+    fn notify(&self, plugin: &str, text: &str) -> Result<(), String> {
+        use tauri::Emitter;
+        match APP.get() {
+            Some(app) => app
+                .emit(
+                    "plugin-notify",
+                    serde_json::json!({ "plugin": plugin, "text": text }),
+                )
+                .map_err(|e| format!("알림을 화면에 못 보냈습니다: {e}")),
+            None => openguild_core::plugins::guild::Stderr.notify(plugin, text),
+        }
+    }
+}
+
 pub fn install_plugins_for_gui(store: &Store) {
     // DEV-380: Welcome / Uninit 은 in-memory placeholder 이고 그 guild_root 는
     // `$TMPDIR/openguild-welcome-placeholder` 다. 리눅스에서 그 부모는 누구나
@@ -254,9 +275,10 @@ pub fn install_plugins_for_gui(store: &Store) {
         store.events.clear_sink();
         return;
     }
-    let loaded = store.install_plugins(
+    let loaded = store.install_plugins_with(
         openguild_core::plugins::Scope::Gui,
         std::sync::Arc::new(openguild_core::plugins::delivery::Outbound::new()),
+        std::sync::Arc::new(AppNotifier),
     );
     for (name, why) in &loaded.errors {
         eprintln!("[openguild-gui] warn: 플러그인 '{name}' 를 못 읽었습니다 — {why}");
@@ -770,6 +792,8 @@ pub fn run() {
             }
         })
         .setup(move |app| {
+            // DEV-406: 플러그인 알림을 띄울 창을 이때 잡아 둔다.
+            let _ = APP.set(app.handle().clone());
             if let Some(p) = &asset_scope_path {
                 use tauri::Manager;
                 let scope = app.asset_protocol_scope();

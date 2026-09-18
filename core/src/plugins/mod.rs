@@ -35,6 +35,8 @@
 
 pub mod consent;
 pub mod delivery;
+// DEV-406: 스크립트가 시킨 길드 일(알림·백업)을 실제로 한다.
+pub mod guild;
 // DEV-405: 줄의 `with` — 대상과 연결된 데이터를 파일에서 읽는다.
 pub mod related;
 pub mod runtime;
@@ -222,6 +224,10 @@ pub struct PluginDef {
     /// — 스크립트는 주소를 모른다. 허용 화면이 이것을 보여 주면 "어디로 나가나" 가 다 보인다.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub actions: BTreeMap<String, Action>,
+    /// DEV-406: 스크립트가 **길드에 시킬 수 있는 일**. 밝히지 않은 것을 부르면 그 일만 거절하고
+    /// 기록한다. `send`/`run` 은 어디로 나가는지가 `[actions]` 에 다 보이므로 여기 안 적는다.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub permissions: Vec<String>,
     /// 언제 무엇을 할지 — 적힌 순서대로 돈다.
     pub handlers: Vec<Handler>,
     /// REQ-021: 이 플러그인이 사용자에게 받아야 하는 값들.
@@ -999,6 +1005,9 @@ pub fn validate(def: &PluginDef) -> AppResult<()> {
     Ok(())
 }
 
+/// DEV-406: 정의가 밝힐 수 있는 권한 — 스크립트가 길드에 시키는 일.
+pub const PERMISSIONS: &[&str] = &["notify", "backup"];
+
 /// DEV-403: 줄마다 "언제" 하나, "무엇" 하나. 가리키는 것이 다 있어야 한다.
 fn validate_handlers(def: &PluginDef) -> AppResult<()> {
     use crate::events::Phase;
@@ -1015,6 +1024,15 @@ fn validate_handlers(def: &PluginDef) -> AppResult<()> {
         {
             return bad(format!(
                 "`actions` 의 이름은 영숫자·`_`·`-` 만 됩니다 (받은 값: {name})"
+            ));
+        }
+    }
+    // DEV-406: 권한 이름은 아는 것만.
+    for p in &def.permissions {
+        if !PERMISSIONS.contains(&p.as_str()) {
+            return bad(format!(
+                "`permissions` 의 `{p}` 는 없는 권한입니다. 쓸 수 있는 것: {}",
+                PERMISSIONS.join(", ")
             ));
         }
     }

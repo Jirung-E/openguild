@@ -38,6 +38,7 @@
 	// SchemaAheadBanner 껍데기 컴포넌트 제거).
 	import ToastHost from '$lib/components/ToastHost.svelte';
 	import { showToast } from '$lib/stores/toast';
+	import { isLocalTauri } from '$lib/api/transport';
 	// DEV-074 fix13: window 스크롤 overlay — 컨텐츠 폭 차지 X.
 	import OverlayScrollbar from '$lib/components/OverlayScrollbar.svelte';
 	import { detectEnvironment } from '$lib/api/transport';
@@ -114,6 +115,24 @@
 
 	onMount(() => {
 		detectWindowKind();
+	});
+
+	// DEV-406: 플러그인이 `notify("…")` 로 보낸 알림. 이 기계에서 도는 앱만 받는다 —
+	// 브라우저로 서버를 볼 때는 그 서버 로그에 남는다.
+	onMount(() => {
+		if (!isLocalTauri()) return;
+		let stop: (() => void) | undefined;
+		void (async () => {
+			try {
+				const { listen } = await import('@tauri-apps/api/event');
+				stop = await listen<{ plugin: string; text: string }>('plugin-notify', (e) => {
+					showToast(`${e.payload.plugin}: ${e.payload.text}`, 'info');
+				});
+			} catch {
+				// 앱이 아니면 이벤트 통로가 없다 — 알림도 없다.
+			}
+		})();
+		return () => stop?.();
 	});
 
 	// DEV-255: 검색 팔레트 "새 창으로 열기"가 만든 자식윈도우는 항상 `/`

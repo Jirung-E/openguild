@@ -33,6 +33,8 @@ pub struct PluginView {
     /// 정의에 적힌 그대로다(환경변수 참조는 안 푼다 — 값은 보여주지 않는다).
     pub actions: Vec<ActionView>,
     pub scripts: Vec<String>,
+    /// DEV-406: 스크립트가 길드에 시킬 수 있는 일 — 허용 화면이 보여 준다.
+    pub permissions: Vec<String>,
     /// BUG-279: `run` 훅이 파일을 쓰는 자리. `post` 는 작업 디렉터리가 없으므로
     /// `None` 이다 — 안 쓰는 경로를 보여주면 "여기 뭐가 생기나" 하고 찾게 된다.
     ///
@@ -214,6 +216,7 @@ pub(super) fn view(p: &Plugin, granted: bool, scope: Scope) -> PluginView {
         handlers,
         actions,
         scripts: p.def.scripts.clone(),
+        permissions: p.def.permissions.clone(),
         data_dir: if p.def.has_run() {
             super::data_dir_path(&p.guild_root, &p.def.name)
                 .ok()

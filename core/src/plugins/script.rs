@@ -68,6 +68,10 @@ pub enum CommandKind {
     Send,
     /// `run(이름, 입력)` — `run` 동작.
     Run,
+    /// DEV-406: `notify(글)` — 이 기계에 알린다(앱은 알림, CLI 는 stderr, 서버는 로그).
+    Notify,
+    /// DEV-406: `backup()` — 길드 백업을 만든다.
+    Backup,
 }
 
 impl CommandKind {
@@ -75,7 +79,15 @@ impl CommandKind {
         match self {
             CommandKind::Send => "send",
             CommandKind::Run => "run",
+            CommandKind::Notify => "notify",
+            CommandKind::Backup => "backup",
         }
+    }
+
+    /// DEV-406: 길드에 일을 시키는 명령인가 — 정의가 권한으로 밝혀야 하는 것들.
+    /// `send`/`run` 은 어디로 나가는지가 `[actions]` 에 다 보이므로 따로 안 밝힌다.
+    pub fn needs_permission(self) -> bool {
+        matches!(self, CommandKind::Notify | CommandKind::Backup)
     }
 }
 
@@ -220,6 +232,23 @@ impl Script {
     }
 }
 
+/// 할 일 하나를 목록에 적는다 — 상한을 넘으면 그 자리에서 오류.
+fn push(
+    cmds: &Mutex<Vec<Command>>,
+    kind: CommandKind,
+    action: String,
+    body: Value,
+) -> Result<(), Box<rhai::EvalAltResult>> {
+    let mut list = cmds
+        .lock()
+        .map_err(|_| -> Box<rhai::EvalAltResult> { "할 일 목록을 잠그지 못했습니다".into() })?;
+    if list.len() >= MAX_COMMANDS {
+        return Err(format!("한 번에 적을 수 있는 일은 {MAX_COMMANDS}개까지입니다").into());
+    }
+    list.push(Command { kind, action, body });
+    Ok(())
+}
+
 /// 아무것도 등록하지 않은 엔진 + 상한. 등록하지 않은 것이 이 함수의 내용이다.
 fn sandboxed_engine(
     deadline: std::sync::Arc<Mutex<Instant>>,
@@ -227,6 +256,20 @@ fn sandboxed_engine(
     commands: std::sync::Arc<Mutex<Vec<Command>>>,
 ) -> Engine {
     let mut e = Engine::new();
+    // DEV-406: 길드에 시키는 일 — 이름만 받거나(알림) 인자가 없다(백업).
+    {
+        let cmds = commands.clone();
+        e.register_fn(
+            "notify",
+            move |text: &str| -> Result<(), Box<rhai::EvalAltResult>> {
+                push(&cmds, CommandKind::Notify, String::new(), Value::String(text.to_string()))
+            },
+        );
+        let cmds = commands.clone();
+        e.register_fn("backup", move || -> Result<(), Box<rhai::EvalAltResult>> {
+            push(&cmds, CommandKind::Backup, String::new(), Value::Null)
+        });
+    }
     // DEV-403: 할 일을 **적기만** 한다. 실행은 함수가 끝난 뒤 코어가 한다.
     for kind in [CommandKind::Send, CommandKind::Run] {
         let cmds = commands.clone();
@@ -236,21 +279,7 @@ fn sandboxed_engine(
                 let body = from_dynamic(&body).map_err(|m| -> Box<rhai::EvalAltResult> {
                     format!("{}(\"{action}\"): {m}", kind.verb()).into()
                 })?;
-                let mut list = cmds.lock().map_err(|_| -> Box<rhai::EvalAltResult> {
-                    "할 일 목록을 잠그지 못했습니다".into()
-                })?;
-                if list.len() >= MAX_COMMANDS {
-                    return Err(format!(
-                        "한 번에 적을 수 있는 일은 {MAX_COMMANDS}개까지입니다"
-                    )
-                    .into());
-                }
-                list.push(Command {
-                    kind,
-                    action: action.to_string(),
-                    body,
-                });
-                Ok(())
+                push(&cmds, kind, action.to_string(), body)
             },
         );
     }

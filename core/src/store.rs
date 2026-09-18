@@ -219,6 +219,24 @@ impl Store {
         scope: crate::plugins::Scope,
         delivery: std::sync::Arc<dyn crate::plugins::runtime::Delivery>,
     ) -> crate::plugins::Loaded {
+        self.install_plugins_with(scope, delivery, std::sync::Arc::new(crate::plugins::guild::Stderr))
+    }
+
+    /// DEV-406: 알림을 어디에 띄울지 컴포넌트가 정한다 — 앱은 알림창, CLI·서버는 기본(stderr).
+    pub fn install_plugins_with(
+        &self,
+        scope: crate::plugins::Scope,
+        delivery: std::sync::Arc<dyn crate::plugins::runtime::Delivery>,
+        notifier: std::sync::Arc<dyn crate::plugins::guild::Notifier>,
+    ) -> crate::plugins::Loaded {
+        // DEV-406: 스크립트가 시키는 길드 일(백업·알림)은 코어가 실행한다 — 전달 구현은 그대로
+        // 두고 감싼다.
+        let delivery: std::sync::Arc<dyn crate::plugins::runtime::Delivery> =
+            std::sync::Arc::new(crate::plugins::guild::WithGuild::new(
+                delivery,
+                self.clone(),
+                notifier,
+            ));
         let loaded = crate::plugins::load_for(&self.paths.guild_root, scope);
         if loaded.active.is_empty() {
             self.events.clear_sink();

@@ -424,6 +424,11 @@
 								</li>
 							{/each}
 						</ol>
+						{#if p.permissions.length > 0}
+							<p class="plugin-datadir">
+								{t('plugins.permissions', $locale)}: {p.permissions.join(', ')}
+							</p>
+						{/if}
 						<!-- 어디로 나가고 무엇을 띄우는지 — 스크립트는 이 이름으로만 부른다. -->
 						{#if p.actions.length > 0}
 							<ul class="plugin-dests" aria-label={t('plugins.dests', $locale)}>

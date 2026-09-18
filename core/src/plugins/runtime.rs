@@ -61,6 +61,20 @@ pub trait Delivery: Send + Sync {
         body: &serde_json::Value,
         values: &std::collections::BTreeMap<String, String>,
     ) -> Result<(), String>;
+
+    /// DEV-406: 스크립트가 시킨 **길드 일**(알림·백업). 함수가 끝난 뒤, 길드 잠금 밖에서 불린다.
+    ///
+    /// 기본은 "이 컴포넌트는 못 한다" 다 — 시험용 구현이 전부 이걸 쓴다. 코어가 `Store` 를 들고
+    /// 감싸 준다([`crate::Store::install_plugins`]).
+    fn guild_command(
+        &self,
+        _plugin: &Plugin,
+        _kind: CommandKind,
+        _body: &serde_json::Value,
+        _event: &Event,
+    ) -> Result<(), String> {
+        Err("이 컴포넌트는 길드 명령을 실행하지 않습니다".into())
+    }
 }
 
 /// 아무 데도 안 보내는 구현 — 테스트와, 전달을 끄고 싶을 때.
@@ -203,6 +217,23 @@ fn run_handlers(
             };
             for c in cmds {
                 let verb = c.kind.verb();
+                // DEV-406: 길드에 시키는 일은 정의가 밝힌 권한 안에서만.
+                if c.kind.needs_permission() {
+                    if !p.def.permissions.iter().any(|x| x == verb) {
+                        note(
+                            log,
+                            format!(
+                                "플러그인 '{name}' {who} — `{verb}()` 는 권한에 없습니다. \
+                                 정의에 `permissions = [\"{verb}\"]` 를 적으면 다시 묻고 돕니다"
+                            ),
+                        );
+                        continue;
+                    }
+                    if let Err(e) = delivery.guild_command(p, c.kind, &c.body, event) {
+                        note(log, format!("플러그인 '{name}' {who} — {verb}(): {e}"));
+                    }
+                    continue;
+                }
                 let action = match p.def.actions.get(&c.action) {
                     None => {
                         note(
@@ -448,6 +479,7 @@ mod tests {
                 description: None,
                 name: name.into(),
                 scope: vec![Scope::Cli],
+                permissions: Vec::new(),
                 scripts: Vec::new(),
                 actions: Default::default(),
                 handlers: vec![handler(on, None)],

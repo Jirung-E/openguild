@@ -65,6 +65,7 @@ function plugin(name: string, description: string | null): PluginView {
 		],
 		actions: [],
 		scripts: [],
+		permissions: [],
 		data_dir: null,
 		inputs: [],
 		script_src: null,

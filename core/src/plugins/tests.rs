@@ -463,6 +463,7 @@ fn def(action: Action) -> PluginDef {
         name: "p".into(),
         description: None,
         scope: vec![Scope::Cli],
+        permissions: Vec::new(),
         scripts: Vec::new(),
         actions: Default::default(),
         handlers: vec![Handler {
@@ -2660,4 +2661,208 @@ scope = ["cli"]
 
     let _ = std::fs::remove_dir_all(&g);
     let _ = std::fs::remove_dir_all(&home);
+}
+
+// ── DEV-406: 스크립트가 길드에 시키는 일 ────────────────────
+
+/// 알림과 백업이 **함수가 끝난 뒤** 실행된다. 권한에 없는 것은 그 일만 거절하고 기록한다.
+/// 백업이 낸 이벤트는 자기에게 돌아오지 않는다([[DEV-401]]).
+#[tokio::test]
+async fn a_script_can_notify_and_back_up_within_its_permissions() {
+    #[derive(Default)]
+    struct Said(std::sync::Mutex<Vec<String>>);
+    impl super::guild::Notifier for Said {
+        fn notify(&self, plugin: &str, text: &str) -> Result<(), String> {
+            self.0.lock().unwrap().push(format!("{plugin}: {text}"));
+            Ok(())
+        }
+    }
+    let home = fresh_tmp("cmds-home");
+    let g = fresh_tmp("cmds");
+    crate::repo::seed_guild_dir(&g).unwrap();
+    let dir = plugins_dir(&g).join("hand");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join(MANIFEST),
+        r#"
+name        = "hand"
+scope       = ["cli"]
+scripts     = ["main.rhai"]
+permissions = ["notify"]
+
+[[handlers]]
+    id   = "생성"
+    post = ["quest.created"]
+    call = "on_created"
+
+[[handlers]]
+    id   = "백업 뒤"
+    post = ["backup.created"]
+    call = "on_backup"
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("main.rhai"),
+        r#"
+        fn on_created(e) {
+            notify("새 퀘스트: " + e.quest.title);
+            backup();                    // 권한에 없다 — 이 일만 거절된다
+            notify("두 번째 줄");
+        }
+        fn on_backup(e) { notify("백업 알림: " + e.path) }
+        "#,
+    )
+    .unwrap();
+    let store = crate::Store::open(&g).await.unwrap();
+    let said = std::sync::Arc::new(Said::default());
+    {
+        let _guard = env_lock();
+        unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+        consent::enable_auto_allow(&g).unwrap();
+        let l = store.install_plugins_with(
+            Scope::Cli,
+            std::sync::Arc::new(runtime::DropDelivery),
+            said.clone(),
+        );
+        assert_eq!(l.active.len(), 1, "{:?}", l.errors);
+        unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    }
+    crate::ops::quests::create_quest(
+        &store,
+        crate::models::CreateQuestRequest {
+            quest_type_id: 1,
+            title: "훅".into(),
+            description: None,
+            status_slug: "open".into(),
+            urgency: Some(3),
+            parent_quest_id: None,
+        },
+    )
+    .await
+    .unwrap();
+    assert!(store.drain_events(std::time::Duration::from_secs(10)));
+
+    assert_eq!(
+        said.0.lock().unwrap().clone(),
+        vec!["hand: 새 퀘스트: 훅", "hand: 두 번째 줄"],
+        "권한 없는 백업 때문에 뒤 줄까지 멈췄다"
+    );
+    let problems = store.plugin_problems();
+    assert_eq!(problems.len(), 1, "{problems:?}");
+    assert!(problems[0].contains("권한") && problems[0].contains("backup"), "{problems:?}");
+    assert!(
+        std::fs::read_dir(g.join(".guild/backups/snapshots"))
+            .map(|d| d.count())
+            .unwrap_or(0)
+            == 0,
+        "권한 없는 백업이 실제로 만들어졌다"
+    );
+
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 권한을 밝히면 백업이 실제로 만들어지고, 그 백업이 낸 이벤트는 **자기에게 돌아오지 않는다**.
+#[tokio::test]
+async fn a_permitted_backup_runs_and_does_not_call_itself() {
+    #[derive(Default)]
+    struct Said(std::sync::Mutex<Vec<String>>);
+    impl super::guild::Notifier for Said {
+        fn notify(&self, plugin: &str, text: &str) -> Result<(), String> {
+            self.0.lock().unwrap().push(format!("{plugin}: {text}"));
+            Ok(())
+        }
+    }
+    let home = fresh_tmp("bk-home");
+    let g = fresh_tmp("bk");
+    crate::repo::seed_guild_dir(&g).unwrap();
+    let dir = plugins_dir(&g).join("keeper");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join(MANIFEST),
+        r#"
+name        = "keeper"
+scope       = ["cli"]
+scripts     = ["main.rhai"]
+permissions = ["backup", "notify"]
+
+[[handlers]]
+    id   = "완료되면 백업"
+    post = ["quest.status_changed"]
+    call = "on_status"
+    [handlers.when]
+        "change.to" = "done"
+
+[[handlers]]
+    id   = "백업 알림"
+    post = ["backup.created"]
+    call = "on_backup"
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("main.rhai"),
+        r#"
+        fn on_status(e) { backup() }
+        fn on_backup(e) { notify("백업됨") }
+        "#,
+    )
+    .unwrap();
+    let store = crate::Store::open(&g).await.unwrap();
+    let said = std::sync::Arc::new(Said::default());
+    {
+        let _guard = env_lock();
+        unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+        consent::enable_auto_allow(&g).unwrap();
+        let l = store.install_plugins_with(
+            Scope::Cli,
+            std::sync::Arc::new(runtime::DropDelivery),
+            said.clone(),
+        );
+        assert_eq!(l.active.len(), 1, "{:?}", l.errors);
+        unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    }
+    let q = crate::ops::quests::create_quest(
+        &store,
+        crate::models::CreateQuestRequest {
+            quest_type_id: 1,
+            title: "완료할 것".into(),
+            description: None,
+            status_slug: "open".into(),
+            urgency: Some(3),
+            parent_quest_id: None,
+        },
+    )
+    .await
+    .unwrap();
+    crate::ops::quests::change_status(
+        &store,
+        q.id,
+        crate::models::ChangeStatusRequest { status_slug: "done".into() },
+    )
+    .await
+    .unwrap();
+    assert!(store.drain_events(std::time::Duration::from_secs(20)));
+
+    let snaps = std::fs::read_dir(g.join(".guild/backups/snapshots"))
+        .map(|d| d.count())
+        .unwrap_or(0);
+    assert_eq!(snaps, 1, "백업이 안 만들어졌거나 여러 번 만들어졌다");
+    // 자기가 만든 백업의 이벤트는 자기에게 안 온다 — 왔다면 알림이 남았을 것이다.
+    assert!(said.0.lock().unwrap().is_empty(), "{:?}", said.0.lock().unwrap());
+    assert!(store.plugin_problems().is_empty(), "{:?}", store.plugin_problems());
+
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 없는 권한 이름은 적재 때 거절한다.
+#[test]
+fn unknown_permission_names_are_rejected() {
+    let e = parse(
+        "name = \"t\"\nscope = [\"cli\"]\npermissions = [\"notify\", \"delete_everything\"]\n[[handlers]]\npost = [\"quest.created\"]\n[handlers.action.post]\nurl = \"https://x.test\"\n",
+    )
+    .unwrap_err();
+    assert!(e.contains("delete_everything") && e.contains("notify, backup"), "{e}");
 }
