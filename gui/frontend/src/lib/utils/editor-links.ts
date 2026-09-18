@@ -28,6 +28,7 @@ import {
 	type Kind
 } from '$lib/stores/questIndex';
 import { get } from 'svelte/store';
+import { wikiRank, RANK_TITLE_PART } from './wiki-rank';
 
 /** DEV-173: `[[` 바로 안(아직 안 닫힘)의 부분 slug — 규칙 포함 전체 인덱스 제안.
  *  규칙 slug 는 한글 등 비ASCII 가능 — 대괄호 제외 모든 문자 허용.
@@ -90,14 +91,19 @@ function wikiContextCompletion(context: CompletionContext): CompletionResult | n
 			});
 		}
 	}
+	// DEV-418: 번호뿐 아니라 **제목으로도** 찾는다(중간 글자도). 무엇으로 맞았는지는 순서로
+	// 드러난다 — 번호로 맞은 것이 위에 온다. 규칙은 댓글 편집기와 한 곳에서 공유한다.
+	const ranks = new Map<string, number>();
 	for (const [id, ref] of index) {
 		if (kindFilter && ref.kind !== kindFilter) continue;
+		const rank = wikiRank(id, ref, query);
+		if (rank === null) continue;
 		// DEV-239: 도서관 문서는 "폴더/제목" 경로로 타이핑해도 찾을 수 있어야
 		// 함 — 매칭만 경로 기준, 실제 삽입은 여전히 `[[library:BOOK-NNN]]`.
 		const pathLabel = ref.kind === 'book' && ref.path ? `${ref.path}/${ref.title}` : null;
-		const idMatch = id.startsWith(upper);
+		const idMatch = id.toUpperCase().startsWith(upper);
 		const pathMatch = pathLabel != null && pathLabel.toUpperCase().startsWith(upper);
-		if (!idMatch && !pathMatch) continue;
+		ranks.set(id, rank);
 		// DEV-219(admin 결정): 자동완성은 항상 `kind:` 접두를 붙여 삽입 — 나중에
 		// 같은 ID 가 다른 종류로 생겨도 이미 건 링크가 안전하도록 미리 예방.
 		// 삽입은 규칙=원본 slug / quest·campaign·book=대문자 정규형.
@@ -123,7 +129,11 @@ function wikiContextCompletion(context: CompletionContext): CompletionResult | n
 	options.sort((a, b) => {
 		const ak = a.type === 'namespace' ? 0 : 1;
 		const bk = b.type === 'namespace' ? 0 : 1;
-		return ak !== bk ? ak - bk : a.label.localeCompare(b.label);
+		if (ak !== bk) return ak - bk;
+		// DEV-418: 정확도 먼저(번호로 맞은 것이 위), 같으면 이름순.
+		const ar = ranks.get(a.label) ?? RANK_TITLE_PART;
+		const br = ranks.get(b.label) ?? RANK_TITLE_PART;
+		return ar !== br ? ar - br : a.label.localeCompare(b.label);
 	});
 	// DEV-239: label 이 id 또는 폴더 경로 둘 중 하나라 CodeMirror 기본 fuzzy
 	// 필터(label 기준)가 경로 매칭 후보를 지워버림 — 필터링은 위에서 이미

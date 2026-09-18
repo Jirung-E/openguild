@@ -131,3 +131,25 @@ describe('wikiMatch', () => {
 		expect(m!.items.every((i) => i.kind === 'quest')).toBe(true);
 	});
 });
+
+// DEV-418: 댓글 편집기에서도 제목으로 찾을 수 있어야 한다 — 두 편집기가 같은 규칙을 쓴다.
+describe('DEV-418 댓글 편집기도 제목으로 찾는다', () => {
+	it('한글 제목 중간 글자로 후보가 나온다', () => {
+		const index = new Map<string, IndexedRef>([
+			['DEV-006', { kind: 'quest', title: 'WebSocket 재연결 로직' } as IndexedRef],
+			['DEV-007', { kind: 'quest', title: '다른 일' } as IndexedRef]
+		]);
+		const m = wikiMatch('앞 [[재연결', 10, index);
+		expect(m).not.toBeNull();
+		expect(m!.items.map((i) => i.id)).toEqual(['DEV-006']);
+	});
+
+	it('번호로 맞은 것이 제목으로 맞은 것보다 위다', () => {
+		const index = new Map<string, IndexedRef>([
+			['DEV-001', { kind: 'quest', title: '아무 일' } as IndexedRef],
+			['BUG-003', { kind: 'quest', title: 'DEV-001 을 고친다' } as IndexedRef]
+		]);
+		const m = wikiMatch('[[DEV-001', 9, index);
+		expect(m!.items.map((i) => i.id)).toEqual(['DEV-001', 'BUG-003']);
+	});
+});

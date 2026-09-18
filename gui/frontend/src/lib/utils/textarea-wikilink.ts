@@ -13,6 +13,7 @@ import {
 	type IndexedRef,
 	type Kind
 } from '$lib/stores/questIndex';
+import { wikiRank, byRankThenId } from './wiki-rank';
 
 /** DEV-173: `[[` 바로 안(아직 안 닫힘)의 부분 slug — 규칙 포함 전체 인덱스 제안.
  *  규칙 slug 는 한글 등 비ASCII 가능 — 대괄호 제외 모든 문자 허용.
@@ -67,7 +68,6 @@ export function wikiMatch(
 		const typedPrefix = ci > 0 ? partial.slice(0, ci).toLowerCase() : null;
 		const kindFilter = typedPrefix ? KIND_ALIASES[typedPrefix] : undefined;
 		const query = kindFilter ? partial.slice(ci + 1) : partial;
-		const upper = query.toUpperCase();
 		const items: WikiItem[] = [];
 		// DEV-219 후속(admin 보고): `[[q` 처럼 콜론 없이 타이핑 중이면 실제 ID
 		// 뿐 아니라 "네임스페이스 자체"(`quest:` 등)도 후보로 보여준다.
@@ -89,31 +89,30 @@ export function wikiMatch(
 				});
 			}
 		}
+		// DEV-418: 번호뿐 아니라 **제목으로도** 찾는다(중간 글자도). 무엇으로 맞았는지는
+		// 순서로 드러난다 — 번호로 맞은 것이 위에 온다.
+		const ranked: Array<{ rank: number; id: string; item: WikiItem }> = [];
 		for (const [id, ref] of index) {
 			if (kindFilter && ref.kind !== kindFilter) continue;
-			// DEV-239: 도서관 문서는 관리번호(BOOK-NNN) 대신 "폴더/제목" 경로로
-			// 타이핑해도 찾을 수 있어야 함 — 매칭만 경로 기준, 실제 삽입은
-			// 여전히 `[[library:BOOK-NNN]]` (경로 자체는 링크 문법에 없음, admin 결정).
-			const pathLabel =
-				ref.kind === 'book' && ref.path ? `${ref.path}/${ref.title}` : null;
-			const idMatch = id.startsWith(upper);
-			const pathMatch = pathLabel != null && pathLabel.toUpperCase().startsWith(upper);
-			if (!idMatch && !pathMatch) continue;
-			items.push({
+			const rank = wikiRank(id, ref, query);
+			if (rank === null) continue;
+			ranked.push({
+				rank,
 				id,
-				title: ref.title,
-				kind: ref.kind,
-				exists: true,
-				// DEV-219(admin 결정): 자동완성은 항상 `kind:` 접두를 붙여 삽입.
-				insert: `${KIND_NAMESPACE[ref.kind]}:${ref.kind === 'rule' ? (ref.slug ?? id.toLowerCase()) : id}`
+				item: {
+					id,
+					title: ref.title,
+					kind: ref.kind,
+					exists: true,
+					// DEV-219(admin 결정): 자동완성은 항상 `kind:` 접두를 붙여 삽입.
+					insert: `${KIND_NAMESPACE[ref.kind]}:${ref.kind === 'rule' ? (ref.slug ?? id.toLowerCase()) : id}`
+				}
 			});
 		}
+		ranked.sort(byRankThenId);
+		items.push(...ranked.map((r) => r.item));
+		// 네임스페이스 후보(`quest:` 등)는 위에서 먼저 넣으므로 그대로 맨 위에 남는다.
 		if (items.length === 0) return null;
-		items.sort((a, b) => {
-			const an = a.nsPrefix ? 0 : 1;
-			const bn = b.nsPrefix ? 0 : 1;
-			return an !== bn ? an - bn : a.id.localeCompare(b.id);
-		});
 		return { from: caret - partial.length - 2, to: caret, items, wikiContext: true };
 	}
 
