@@ -131,6 +131,7 @@ fn on_comment(e, subject) {
 | `notify(text)` / `backup()` | Ask the guild itself. Must be declared in `permissions`. |
 | `config("KEY")` | A value the user configured. |
 | `guild_name()`, `status_name(slug[, "ko"\|"en"])`, `type_name(prefix)`, `link(kind, id)` | Guild facts read by the core — events carry slugs, people read names. Unknown slugs come back unchanged. `link` uses `OPENGUILD_WEB_BASE` when set, otherwise an in-app path. |
+| `status_info(slug)`, `type_info(prefix)` | The same as maps: `#{ slug, ko, en, color, done, order }` and `#{ prefix, description, color }`. Take this when the language of the place you are sending to is not this machine's setting, or to ask `done` ("does this status count as finished?") instead of hard-coding slugs. Type files hold one description, so types have no language choice. |
 | `now()`, `ago(ts)`, `truncate(s, n)`, `plain_text(md)` | Time and text helpers. `truncate` counts characters, not bytes. |
 | `import "path" as name` | Share helper files between plugins — outside the folder is allowed. The path must be a literal; consent is asked once and not re-asked when those files change (the consent screen says so). |
 

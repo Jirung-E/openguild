@@ -548,6 +548,21 @@ fn register_info(e: &mut Engine, guild: std::sync::Arc<Mutex<super::info::GuildI
     e.register_fn("type_name", move |prefix: &str| -> String {
         with_guild!(g, |i: &mut info::GuildInfo| i.type_name(prefix))
     });
+    // 언어를 하나 고르는 대신 표로 받는다 — 두 언어와 색·완료 여부까지.
+    let g = guild.clone();
+    e.register_fn("status_info", move |slug: &str| -> Dynamic {
+        match g.lock() {
+            Ok(mut i) => to_dynamic(&i.status_info(slug)),
+            Err(_) => Dynamic::UNIT,
+        }
+    });
+    let g = guild.clone();
+    e.register_fn("type_info", move |prefix: &str| -> Dynamic {
+        match g.lock() {
+            Ok(mut i) => to_dynamic(&i.type_info(prefix)),
+            Err(_) => Dynamic::UNIT,
+        }
+    });
     let g = guild.clone();
     e.register_fn("link", move |kind: &str, id: &str| -> String {
         with_guild!(g, |i: &mut info::GuildInfo| i.link(kind, id))
@@ -842,6 +857,37 @@ mod tests {
             };
             assert!(blocked, "밖으로 나가는 길이 열려 있다: {src}");
         }
+    }
+
+    /// DEV-409: 언어를 골라 쓰거나, 표로 다 받거나.
+    #[test]
+    fn a_script_can_pick_a_language_or_take_the_whole_map() {
+        let dir = std::env::temp_dir().join(format!("og-script-lang-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join(".guild/statuses")).unwrap();
+        std::fs::write(
+            dir.join(".guild/statuses/3-done.toml"),
+            "sort_order = 3\nname_en = \"Done\"\nname_ko = \"완료\"\ncolor = \"#0a0\"\ncounts_as_done = true\n",
+        )
+        .unwrap();
+        let sc = Script::compile_source(
+            r#"fn h(e) {
+                   let s = status_info("done");
+                   send("x", #{ ko: status_name("done", "ko"), en: status_name("done", "en"),
+                                map_ko: s.ko, map_en: s.en, done: s.done, color: s.color });
+               }"#,
+        )
+        .unwrap();
+        sc.set_guild(&dir);
+        let got = sc.call_handler("h", &ev(), &Default::default()).unwrap();
+        assert_eq!(got[0].body["ko"], "완료");
+        assert_eq!(got[0].body["en"], "Done");
+        assert_eq!(got[0].body["map_ko"], "완료");
+        assert_eq!(got[0].body["map_en"], "Done");
+        // 슬러그를 외워 박지 않고 "완료인가" 를 물을 수 있다.
+        assert_eq!(got[0].body["done"], true);
+        assert_eq!(got[0].body["color"], "#0a0");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// DEV-409: 길드를 정해 주면 스크립트가 **사람이 보는 이름**을 쓴다.

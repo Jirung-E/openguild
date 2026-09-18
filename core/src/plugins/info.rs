@@ -42,10 +42,22 @@ pub struct GuildInfo {
 #[derive(Debug, Clone, Default)]
 struct Cache {
     name: String,
-    /// 상태 슬러그 → (한국어, 영어).
-    statuses: BTreeMap<String, (String, String)>,
-    /// 타입 접두어 → 설명.
-    types: BTreeMap<String, String>,
+    /// 상태 슬러그 → 그 상태가 아는 것 전부.
+    statuses: BTreeMap<String, Status>,
+    /// 타입 접두어 → (설명, 색).
+    types: BTreeMap<String, (String, String)>,
+}
+
+/// 상태 하나가 파일에 적어 둔 것. **두 언어를 다 들고 있는다** — 어느 쪽을 쓸지는 부르는
+/// 쪽이 정한다(스크립트가 보내는 곳의 언어는 이 기계의 언어 설정과 다를 수 있다).
+#[derive(Debug, Clone, Default)]
+struct Status {
+    ko: String,
+    en: String,
+    color: String,
+    /// 이 상태가 "완료" 로 세어지나 — 슬러그를 외워 박지 않고 물어볼 수 있게.
+    done: bool,
+    order: i64,
 }
 
 impl GuildInfo {
@@ -71,20 +83,55 @@ impl GuildInfo {
             None => crate::locale::current() == crate::locale::Locale::En,
         };
         match self.fresh().statuses.get(slug) {
-            Some((ko, name_en)) => {
-                let picked = if en { name_en } else { ko };
+            Some(s) => {
+                let picked = if en { &s.en } else { &s.ko };
                 if picked.is_empty() { slug.to_string() } else { picked.clone() }
             }
             None => slug.to_string(),
         }
     }
 
+    /// 상태가 아는 것 전부 — 두 언어와 색·완료 여부·정렬 순서. 언어를 하나 고르는 대신
+    /// **다 받아서 쓰고 싶을 때**, 그리고 "이게 완료인가" 를 슬러그를 외우지 않고 물을 때.
+    /// 모르는 슬러그는 이름 자리에 슬러그가 들어간 표를 돌려준다(빈 표가 아니다).
+    pub fn status_info(&mut self, slug: &str) -> serde_json::Value {
+        match self.fresh().statuses.get(slug) {
+            Some(s) => serde_json::json!({
+                "slug": slug,
+                "ko": if s.ko.is_empty() { slug } else { &s.ko },
+                "en": if s.en.is_empty() { slug } else { &s.en },
+                "color": s.color,
+                "done": s.done,
+                "order": s.order,
+            }),
+            None => serde_json::json!({
+                "slug": slug, "ko": slug, "en": slug,
+                "color": "", "done": false, "order": 0,
+            }),
+        }
+    }
+
     /// 타입의 설명(`DEV` → "일반 개발 작업"). 설명이 없으면 접두어 그대로.
+    ///
+    /// 타입 파일에는 언어가 하나뿐이라(설명 한 줄) 여기에는 언어 선택이 없다.
     pub fn type_name(&mut self, prefix: &str) -> String {
         match self.fresh().types.get(prefix) {
-            Some(d) if !d.is_empty() => d.clone(),
+            Some((d, _)) if !d.is_empty() => d.clone(),
             _ => prefix.to_string(),
         }
+    }
+
+    /// 타입이 아는 것 전부 — 접두어·설명·색.
+    pub fn type_info(&mut self, prefix: &str) -> serde_json::Value {
+        let (desc, color) = match self.fresh().types.get(prefix) {
+            Some((d, c)) => (d.clone(), c.clone()),
+            None => (String::new(), String::new()),
+        };
+        serde_json::json!({
+            "prefix": prefix,
+            "description": if desc.is_empty() { prefix.to_string() } else { desc },
+            "color": color,
+        })
     }
 
     /// 문서로 가는 주소. `OPENGUILD_WEB_BASE` 가 있으면 그 앞부분을 붙이고, 없으면 앱 안의
@@ -141,7 +188,16 @@ fn read(root: Option<&Path>) -> Cache {
                 continue;
             };
             if let Ok(s) = crate::repo::status_def::StatusFile::read(&path) {
-                c.statuses.insert(slug.to_string(), (s.name_ko, s.name_en));
+                c.statuses.insert(
+                    slug.to_string(),
+                    Status {
+                        ko: s.name_ko,
+                        en: s.name_en,
+                        color: s.color,
+                        done: s.counts_as_done,
+                        order: s.sort_order,
+                    },
+                );
             }
         }
     }
@@ -152,7 +208,8 @@ fn read(root: Option<&Path>) -> Cache {
                 continue;
             }
             if let Ok(t) = crate::repo::type_def::TypeFile::read(&path) {
-                c.types.insert(t.prefix, t.description.unwrap_or_default());
+                c.types
+                    .insert(t.prefix, (t.description.unwrap_or_default(), t.color));
             }
         }
     }
@@ -270,6 +327,29 @@ mod tests {
         assert_eq!(info.status_name("in_progress", Some("en")), "In Progress");
         assert_eq!(info.type_name("DEV"), "일반 개발 작업");
         assert_eq!(info.guild_name(), dir.file_name().unwrap().to_str().unwrap());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 언어를 고르는 대신 **다 받을 수도** 있어야 한다 — 보내는 곳의 언어가 이 기계의 언어
+    /// 설정과 다를 수 있다.
+    #[test]
+    fn status_info_carries_both_languages_and_more() {
+        let dir = guild("info");
+        let mut info = GuildInfo::default();
+        info.set_root(&dir);
+        let v = info.status_info("in_progress");
+        assert_eq!(v["ko"], "진행 중");
+        assert_eq!(v["en"], "In Progress");
+        assert_eq!(v["done"], false);
+        assert_eq!(v["order"], 2);
+        assert_eq!(v["slug"], "in_progress");
+        // 모르는 슬러그도 빈 표가 아니라 슬러그가 들어간 표다.
+        let u = info.status_info("no_such");
+        assert_eq!(u["ko"], "no_such");
+        assert_eq!(u["en"], "no_such");
+        let t = info.type_info("DEV");
+        assert_eq!(t["description"], "일반 개발 작업");
+        assert_eq!(t["prefix"], "DEV");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

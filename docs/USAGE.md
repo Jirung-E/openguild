@@ -244,6 +244,10 @@ fn on_comment(e, subject) {
 - `config("키")` — 사용자가 설정 화면에 넣은 값.
 - `guild_name()`, `status_name("in_progress")`, `type_name("DEV")`, `link("quest", "DEV-001")`,
   `now()`, `ago(시각)`, `truncate(글, 수)`, `plain_text(마크다운)`.
+  - 언어는 골라 쓸 수 있습니다 — `status_name("done", "en")`. 안 주면 이 기계의 언어 설정을
+    따릅니다. 두 언어를 다 받으려면 `status_info("done")` → `#{ slug, ko, en, color, done,
+    order }`. `done` 은 "완료로 세어지는 상태인가" 라, 슬러그를 외워 박지 않아도 됩니다.
+    타입은 파일에 설명 한 줄뿐이라 언어 선택이 없습니다(`type_info("DEV")` 는 색까지 줍니다).
 - `import "경로" as 이름` — 여러 플러그인이 공통 함수를 나눠 씁니다(폴더 밖도 됩니다).
 
 `pre` 줄의 함수는 **돌려주는 값**으로 말합니다 — 글자면 막을 이유, 표면 바꿀 칸, `false` 면 그냥
