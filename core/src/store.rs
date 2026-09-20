@@ -398,8 +398,8 @@ impl Store {
     /// - **tests**: 빠른 격리.
     ///
     /// `paths` 는 인자대로 — 파일 IO 테스트 / 디렉토리 흉내가 필요한 경우 위해.
-    /// 매 호출마다 unique URI (`?cache=shared` + 나노초) 로 multi-conn pool 이
-    /// 같은 in-memory DB 를 공유.
+    /// 매 호출마다 unique URI (`?cache=shared` + 호출 번호) 로 multi-conn pool 이
+    /// **자기 것끼리만** 같은 in-memory DB 를 공유한다.
     pub async fn open_in_memory<P: AsRef<std::path::Path>>(guild_root: P) -> Result<Self> {
         // BUG-041 이 원래 "in-memory 라 디스크에 안 남는다" 는 의도로 만든
         // 함수인데, 여기서 `.guild/`(+backups) 마커 디렉터리를 실제로 디스크에
@@ -413,14 +413,20 @@ impl Store {
         // DEV-389: paths 가 struct 로 move 되기 전에 한 번만 읽는다.
         let guild_name = crate::recents::guess_name(&paths.guild_root);
 
-        let ns = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        let index_url =
-            format!("sqlite:file:og-mem-index-{ns}?mode=memory&cache=shared");
-        let journal_url =
-            format!("sqlite:file:og-mem-journal-{ns}?mode=memory&cache=shared");
+        // BUG-307: 이름을 시계로 짓지 않는다. `cache=shared` 는 **이름이 같으면 같은 DB**
+        // 라서, 두 Store 가 같은 시각을 읽으면 서로의 데이터를 그대로 보게 된다. 그리고
+        // 여기 시계는 생각보다 거칠다 — macOS 에서 재어 보니 나노초라면서 같은 값이
+        // 줄줄이 나온다. 테스트를 여러 갈래로 돌리면 실제로 겹쳤다.
+        //
+        // 그래서 시계 대신 **한 번 쓰고 버리는 번호**로 짓는다. 겹칠 수가 없다.
+        // 프로세스 id 를 앞에 붙이는 건 한 대에서 여러 프로세스가 동시에 도는 경우
+        // (`cargo test` 는 크레이트마다 다른 프로세스다) 때문이고, 이름 공간 자체는
+        // 프로세스 안에서만 통하지만 로그에서 누구 것인지 알아보기에도 좋다.
+        static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let tag = format!("{}-{n}", std::process::id());
+        let index_url = format!("sqlite:file:og-mem-index-{tag}?mode=memory&cache=shared");
+        let journal_url = format!("sqlite:file:og-mem-journal-{tag}?mode=memory&cache=shared");
 
         let index_pool = db::create_pool(&index_url).await?;
         let db_ahead_versions = db::run_migrations(&index_pool).await?;
@@ -672,6 +678,49 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// BUG-307: **한꺼번에** 열어도 서로 남이어야 한다.
+    ///
+    /// 예전에는 DB 이름을 시계로 지어서, 같은 순간에 열린 둘이 같은 DB 를 가리켰다.
+    /// 그러면 한쪽이 만든 표를 다른 쪽이 보게 되고 — 실제로 테스트가 가끔 깨졌다.
+    /// 하나씩 열어 보는 위 시험은 이걸 못 잡는다. 그래서 동시에 연다.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn stores_opened_at_the_same_moment_are_still_isolated() {
+        let dir = fresh_tmp("mem-race");
+        let mut set = tokio::task::JoinSet::new();
+        for _ in 0..16 {
+            let dir = dir.clone();
+            set.spawn(async move { Store::open_in_memory(&dir).await.unwrap() });
+        }
+        let mut stores = Vec::new();
+        while let Some(s) = set.join_next().await {
+            stores.push(s.unwrap());
+        }
+
+        // 각자 자기 번호를 적어 둔다. 섞였다면 남의 번호가 보이거나, 애초에
+        // 같은 이름의 표를 두 번 만들다 실패한다.
+        for (i, s) in stores.iter().enumerate() {
+            sqlx::query("CREATE TABLE og_race_test (who INTEGER PRIMARY KEY)")
+                .execute(&s.index_pool)
+                .await
+                .unwrap_or_else(|e| panic!("{i} 번이 자기 표를 못 만들었다 — 남의 DB 다: {e}"));
+            sqlx::query("INSERT INTO og_race_test (who) VALUES (?)")
+                .bind(i as i64)
+                .execute(&s.index_pool)
+                .await
+                .unwrap();
+        }
+
+        for (i, s) in stores.iter().enumerate() {
+            let rows: Vec<i64> = sqlx::query_scalar("SELECT who FROM og_race_test")
+                .fetch_all(&s.index_pool)
+                .await
+                .unwrap();
+            assert_eq!(rows, vec![i as i64], "{i} 번 DB 에 남의 것이 섞였다");
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[tokio::test]
     async fn journal_append_increments_count() {
         let dir = fresh_tmp("journal");
@@ -741,3 +790,4 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
+
