@@ -316,11 +316,15 @@
 	 *  짧은 시간은 건너뛴다(연속 클릭 한 번에 여러 번 받지 않게). */
 	function refreshIfStale(ms = 1500) {
 		if (!shouldRefresh(Date.now(), lastLoadedAt, loading, ms)) return;
-		void loadList(selectedId);
+		// 조용히 — 읽고 있던 화면을 건드리지 않는다(BUG-303).
+		void loadList(selectedId, false, true);
 	}
 
-	async function loadList(preferId?: string | null, mutated = false) {
-		loading = true;
+	async function loadList(preferId?: string | null, mutated = false, quiet = false) {
+		// BUG-303: 조용한 새로고침(창 복귀·폴더 이동)은 **화면을 갈아 끼우면 안 된다.**
+		// `loading` 을 켜면 템플릿이 "Loading…" 한 줄로 바뀌어 상세가 통째로 사라지고,
+		// 돌아올 때 스크롤이 맨 위로 간다 — 다른 앱 갔다 온 것뿐인데 읽던 자리를 잃는다.
+		if (!quiet) loading = true;
 		error = null;
 		try {
 			const [b, f] = await Promise.all([libraryApi.list(), libraryApi.folders.list()]);
@@ -349,7 +353,7 @@
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'failed to load';
 		} finally {
-			loading = false;
+			if (!quiet) loading = false;
 		}
 	}
 
@@ -1168,7 +1172,17 @@
 		{:else if explorerFolders.length === 0 && explorerDocs.length === 0}
 			<p class="empty-list">{t('library.emptyFolder', $locale)}</p>
 		{:else}
-			<div class="tile-grid">
+			<!-- DEV-419 후속(admin): **빈 곳을 누르면 선택이 풀려야** 한다. 타일이 아닌 자리를
+			     누른 경우만 — 타일 클릭은 자기 핸들러가 이미 처리한다. 격자가 짧아도 아래
+			     여백까지 이 영역이 받도록 최소 높이를 준다. -->
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<!-- svelte-ignore a11y_click_events_have_key_events -->
+			<div
+				class="tile-grid"
+				onclick={(e) => {
+					if (e.target === e.currentTarget) picked = msel.clear();
+				}}
+			>
 				{#each explorerFolders as f (f.path)}
 					<!-- DEV-397 후속(admin): 아이콘 뷰에는 이름 바꾸기가 아예 없었다 — 트리에만
 					     있었다. 타일 안에 버튼을 넣을 수는 없으므로(버튼 안의 버튼) 감싸고 얹는다. -->
@@ -1929,6 +1943,11 @@
 		grid-template-columns: repeat(auto-fill, 5.75rem);
 		justify-content: start;
 		gap: 0.4rem;
+		/* DEV-419 후속: 타일 아래 빈 자리도 이 영역이다 — 거기를 눌러 선택을 푼다.
+		   격자가 한 줄뿐이어도 누를 곳이 있어야 한다. */
+		align-content: start;
+		min-height: 60vh; /* 미지원 브라우저 폴백 — 먼저 */
+		min-height: 60dvh;
 	}
 	.tile {
 		display: flex;
