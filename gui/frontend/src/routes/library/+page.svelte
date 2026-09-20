@@ -662,7 +662,6 @@
 	// 파일을 **이 기계에** 쓰므로 데스크톱 로컬 길드에서만 — 원격 길드의 문서는 이 디스크에 없다.
 	const isTauri = isLocalTauri();
 	let takeOutBusy = $state(false);
-	let takeOutMsg = $state<string | null>(null);
 
 	function takeOutPick(): { folder?: string; id?: string } {
 		if (selectedId) return { id: selectedId };
@@ -671,14 +670,14 @@
 
 	async function exportOut() {
 		if (takeOutBusy) return;
-		takeOutMsg = null;
 		try {
 			const { open } = await import('@tauri-apps/plugin-dialog');
 			const dir = await open({ directory: true, title: t('library.exportPick', $locale) });
 			if (!dir || typeof dir !== 'string') return;
 			takeOutBusy = true;
 			const out = await libraryApi.exportTo(dir, takeOutPick());
-			takeOutMsg = t('library.exportDone', $locale).replace('{n}', String(out.length));
+			// BUG-305: 결과를 줄로 끼워 넣으면 그만큼 아래가 밀린다 — 토스트로 알린다.
+			showToast(t('library.exportDone', $locale).replace('{n}', String(out.length)), 'success');
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
 		} finally {
@@ -688,11 +687,10 @@
 
 	async function copyOut() {
 		if (takeOutBusy) return;
-		takeOutMsg = null;
 		try {
 			takeOutBusy = true;
 			const n = await libraryApi.copyToClipboard(takeOutPick());
-			takeOutMsg = t('library.copyDone', $locale).replace('{n}', String(n));
+			showToast(t('library.copyDone', $locale).replace('{n}', String(n)), 'success');
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
 		} finally {
@@ -1043,9 +1041,6 @@
 				</button>
 			{/if}
 		</div>
-		{#if takeOutMsg}
-			<p class="take-out-msg">{takeOutMsg}</p>
-		{/if}
 		<!-- DEV-419: 고른 것이 있을 때만 뜨는 줄. 무엇을 몇 개 골랐는지 먼저 말하고, 할 수
 		     있는 일을 그 옆에 둔다. -->
 		{#if movingPicked}
@@ -1501,9 +1496,6 @@
 						{/if}
 					</div>
 
-					{#if takeOutMsg}
-						<p class="take-out-msg">{takeOutMsg}</p>
-					{/if}
 					{#if selected.path}
 						<!-- emoji-ok: DEV-326 admin 결정 — 도서관 타일은 이전(이모지) 모양 유지 -->
 						<p class="doc-path">📁 {selected.path}</p>
@@ -1850,12 +1842,24 @@
 		font-weight: 600;
 		margin: 0;
 	}
-	/* DEV-419: 고른 것이 있을 때만 뜨는 줄. */
+	/* DEV-419 → BUG-305: 고른 것이 있을 때 뜨는 줄.
+	   **흐름에 끼워 넣지 않는다.** 예전에는 격자 위에 한 줄이 생기면서 아래가 41px 밀렸고,
+	   방금 누른 타일이 커서 밑에서 빠져나가 다음 클릭이 엉뚱한 것을 골랐다(admin).
+	   화면 아래에 띄우면 무엇도 안 움직인다 — 붙는 입력창(ComposeDock)과 같은 방식. */
 	.picked-bar {
+		position: fixed;
+		left: 50%;
+		bottom: 0.75rem;
+		transform: translateX(-50%);
+		z-index: 1100; /* 검색 팔레트(1200)보다 아래. */
 		display: flex;
 		align-items: center;
 		gap: 0.4rem;
-		margin: 0.25rem 0 0.5rem;
+		padding: 0.4rem 0.6rem;
+		background: var(--bg-elevated);
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-lg);
+		box-shadow: 0 8px 28px var(--shadow);
 	}
 	.picked-count {
 		font-size: 0.85rem;
@@ -1868,12 +1872,6 @@
 		border-color: var(--accent);
 	}
 
-	/* REQ-028: 결과 한 줄 — 어디로 갔는지/몇 개인지. */
-	.take-out-msg {
-		margin: 0.25rem 0 0.5rem;
-		font-size: 0.85rem;
-		color: var(--text-muted);
-	}
 	.crumb.take-out {
 		margin-left: auto;
 	}
