@@ -3186,10 +3186,14 @@ impl Backend {
         }
     }
 
-    fn library_folder_delete(&self, path: &str) -> Result<()> {
+    /// BUG-300: 돌려주는 값은 **실제로 지웠나**. 이미 없던 폴더는 오류가 아니다(원한 상태가
+    /// 이미 참이다) — 다만 "지웠다" 고 말하면 거짓말이라 구분해서 알린다. 원격은 서버가
+    /// 204 로만 답하므로 알 수 없어 `true` 로 둔다.
+    fn library_folder_delete(&self, path: &str) -> Result<bool> {
         match self {
             Backend::Http(c) => {
-                c.delete_no_body_query("/api/library/folders", &[("path", path)])
+                c.delete_no_body_query("/api/library/folders", &[("path", path)])?;
+                Ok(true)
             }
             Backend::Local(l) => Self::map_err(
                 l.rt.block_on(openguild_core::ops::library::delete_folder(&l.store, path)),
@@ -8726,11 +8730,17 @@ fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
                         return Ok(());
                     }
                 }
-                c.library_folder_delete(&path)?;
+                let removed = c.library_folder_delete(&path)?;
                 if json {
-                    json_println!(serde_json::json!({ "ok": true, "path": path }));
-                } else {
+                    json_println!(serde_json::json!({ "ok": true, "path": path, "removed": removed }));
+                } else if removed {
                     println!("{}", tf!("✓ 폴더 '{path}' 삭제됨", "✓ folder '{path}' deleted"));
+                } else {
+                    // BUG-300: 오류는 아니지만 아무 일도 안 일어났다 — 그대로 말한다.
+                    println!(
+                        "{}",
+                        tf!("· 폴더 '{path}' 은 이미 없습니다", "· folder '{path}' was already gone")
+                    );
                 }
             }
             LibraryFolderCmd::Move { from, to } => {

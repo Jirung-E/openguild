@@ -762,7 +762,8 @@ fn visible_folders<'a>(paths: impl Iterator<Item = &'a str>) -> std::collections
 
 /// 폴더 삭제 — 하위(자신 포함)에 살아있는 문서나 다른 살아있는 폴더가 하나도
 /// 없어야 함 (안전을 위해 빈 폴더만 삭제 허용 — v1).
-pub async fn delete_folder(store: &Store, path: &str) -> AppResult<()> {
+/// 돌려주는 값: **실제로 지웠나.** `false` 면 이미 없던 폴더다(오류가 아니다 — 아래 참고).
+pub async fn delete_folder(store: &Store, path: &str) -> AppResult<bool> {
     let _g = store.mutation_guard().await?;
     let path =
         repo::normalize_folder_path(path).map_err(|e| AppError::BadRequest(e.to_string()))?;
@@ -792,8 +793,18 @@ pub async fn delete_folder(store: &Store, path: &str) -> AppResult<()> {
             "cannot delete — the folder has subfolders. Empty it first."
         )));
     }
-    if !folders.iter().any(|f| f.path == path) {
-        return Err(AppError::NotFound(format!("folder not found: {path}")));
+    // BUG-299: **없는 폴더를 지우라는 것은 오류가 아니다.**
+    //
+    // 예전에는 "folder not found" 를 냈다. 그런데 지우기에서 그 말은 아무 쓸모가 없다 —
+    // 사용자가 원한 상태(그 폴더가 없음)가 **이미 참**이기 때문이다. 실제로는 화면에 남아
+    // 있던 폴더(다른 창에서 지웠거나, 목록을 아직 안 다시 받았거나, 레지스트리 없이 문서
+    // 경로로만 있던 폴더)를 누를 때마다 이 오류가 떴다(admin: "자꾸 난다").
+    //
+    // 그래서 지우기는 **두 번 해도 되는 일**로 만든다. 문서가 남아 있는지 보는 검사는
+    // 그대로다 — 그건 진짜 막아야 하는 것이다. CLI 는 아무것도 안 지웠으면 그렇다고 말한다.
+    let in_registry = folders.iter().any(|f| f.path == path);
+    if !in_registry {
+        return Ok(false);
     }
 
     let _ = journal::append(
@@ -827,7 +838,7 @@ pub async fn delete_folder(store: &Store, path: &str) -> AppResult<()> {
         ev::FOLDER_DELETED,
         || json!({ "folder": payload::folder(&path) }),
     );
-    Ok(())
+    Ok(true)
 }
 
 #[cfg(test)]
@@ -848,6 +859,34 @@ mod tests {
     async fn setup(dir: &std::path::Path) -> Store {
         seed_guild_dir(dir).unwrap();
         Store::open(dir).await.unwrap()
+    }
+
+    /// BUG-299: **트리에 보이는 폴더는 지울 수 있어야 한다.**
+    ///
+    /// 폴더는 레지스트리(`folders.toml`)에 있을 수도 있고, 문서의 `path` 로만 존재할 수도
+    /// 있다(레지스트리가 생기기 전의 길드). 예전에는 뒤쪽을 지우려 하면 "folder not found" 가
+    /// 났다 — 화면에 보이는 것을 못 지우니 사용자는 이유를 알 수 없다. BUG-293 이 옮기기에
+    /// 대해 고친 것과 같은 문제다.
+    #[tokio::test]
+    async fn deleting_a_folder_that_only_documents_know_about() {
+        let dir = fresh_tmp("del-derived");
+        let store = setup(&dir).await;
+        // 레지스트리를 거치지 않고 만들어진 폴더 — 문서가 그 경로를 적고 있을 뿐이다.
+        let b = create_book(&store, "문서", "", "등록안된/하위").await.unwrap().book_id();
+        assert!(list_folders(&store).await.unwrap().iter().all(|f| f.path != "등록안된/하위"));
+
+        // 문서가 있는 동안에는 지워지지 않는다 — 그 규칙은 그대로다.
+        let err = delete_folder(&store, "등록안된/하위").await.unwrap_err();
+        assert!(format!("{err}").contains("문서"), "{err}");
+
+        // 문서를 옮기면 그냥 끝난다 — 지울 기록이 없을 뿐, 오류가 아니다.
+        update_book(&store, &b, None, None, Some("")).await.unwrap();
+        assert!(!delete_folder(&store, "등록안된/하위").await.unwrap(), "지울 기록이 없으면 false");
+
+        // 아예 없던 폴더도 마찬가지 — 사용자가 원한 상태가 이미 참이다.
+        assert!(!delete_folder(&store, "아예없는폴더").await.unwrap(), "없던 폴더도 오류가 아니다");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// REQ-027 후속: 도서관 목록도 태그로 거른다 — 여러 개면 모두 가진 것만(AND).
@@ -1168,7 +1207,9 @@ mod tests {
         // 빈 폴더는 삭제 가능.
         delete_folder(&store, "아키텍처").await.unwrap();
         assert!(list_folders(&store).await.unwrap().is_empty());
-        assert!(delete_folder(&store, "아키텍처").await.is_err(), "재삭제는 NotFound");
+        // BUG-299: 두 번 지워도 오류가 아니다 — 원한 상태가 이미 참이다. 다만 "지웠다" 고
+        // 하지는 않는다(false).
+        assert!(!delete_folder(&store, "아키텍처").await.unwrap(), "두 번째 삭제는 한 일이 없다");
 
         // 문서가 있으면 삭제 거부.
         create_folder(&store, "운영").await.unwrap();

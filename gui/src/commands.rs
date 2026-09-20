@@ -2011,8 +2011,10 @@ pub async fn move_library_folder(
 
 #[tauri::command]
 pub async fn delete_library_folder(store: State<'_, Store>, path: String) -> Result<(), String> {
+    // BUG-300: 이미 없던 폴더도 성공이다 — 화면에서 사라지는 결과는 같다.
     openguild_core::ops::library::delete_folder(&store, &path)
         .await
+        .map(|_| ())
         .map_err(err)
 }
 
