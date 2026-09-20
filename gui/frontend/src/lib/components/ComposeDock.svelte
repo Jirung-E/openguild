@@ -50,6 +50,15 @@
 	} = $props();
 
 	let slot: HTMLDivElement | undefined = $state(undefined);
+	/**
+	 * 붙기 **직전** 상자의 높이. 붙으면 상자가 흐름에서 빠지므로 그만큼 자리를 비워 둬야
+	 * 아래 내용이 안 올라온다.
+	 *
+	 * BUG: 예전에는 고정값(8rem)이었다. 실제 높이와 다르면 붙는 순간 레이아웃이 움직이고,
+	 * 그 움직임이 "이 자리가 보이나" 를 뒤집어 **붙었다 떨어졌다를 반복**했다(admin: 특정
+	 * 높이에서 떨림). 실제 높이를 그대로 잡아 두면 붙어도 레이아웃이 그대로라 안 흔들린다.
+	 */
+	let reservedH = $state(0);
 	let box: HTMLDivElement | undefined = $state(undefined);
 	let fullyVisible = $state(true);
 	let focused = $state(false);
@@ -58,7 +67,34 @@
 	/** 좁게 보기 — 입력칸만 남기고 높이를 줄인다. */
 	let compact = $state(false);
 
-	const docked = $derived(!fullyVisible && !dismissed && (focused || hasContent));
+	/**
+	 * 붙는 판단에는 **되먹임 고리**가 있다 — 붙으면 상자가 흐름에서 빠지고, 그러면 이 자리가
+	 * 다시 보여서 떨어지고, 떨어지면 또 가려진다. admin 이 본 "특정 높이에서 떨림" 이 그것이다.
+	 *
+	 * 고리를 끊는 것은 위의 **정확한 높이 예약**이다(레이아웃이 안 변하면 판단도 안 뒤집힌다).
+	 * 여기 머무름 시간은 그 위의 안전망이다 — 그래도 남는 흔들림이 있으면 눈에 안 띄게
+	 * 눌러 준다. 사람이 스크롤해서 바꾸는 속도(수백 ms)보다는 짧다.
+	 */
+	const SETTLE_MS = 250;
+	let lastFlip = 0;
+	let sticky = $state(false);
+	const want = $derived(!fullyVisible && !dismissed && (focused || hasContent));
+	$effect(() => {
+		const w = want;
+		if (w === sticky) return;
+		const wait = Math.max(0, SETTLE_MS - (Date.now() - lastFlip));
+		if (wait === 0) {
+			lastFlip = Date.now();
+			sticky = w;
+			return;
+		}
+		const t = setTimeout(() => {
+			lastFlip = Date.now();
+			sticky = want; // 기다리는 사이 또 바뀌었을 수 있다 — 그때의 값을 쓴다.
+		}, wait);
+		return () => clearTimeout(t);
+	});
+	const docked = $derived(sticky);
 
 	// 붙은 상자는 본문 칸과 같은 폭·같은 가로 위치를 쓴다 — 창 전체로 늘리면 글 읽는 폭과
 	// 어긋나 보인다.
@@ -72,7 +108,11 @@
 	/** 자리가 바뀌기 **직전**의 위치 — 아래 FLIP 이 여기서부터 이어 붙인다. */
 	let prevTop: number | null = null;
 	function rememberTop() {
-		if (box) prevTop = box.getBoundingClientRect().top;
+		if (!box) return;
+		const r = box.getBoundingClientRect();
+		prevTop = r.top;
+		// 붙어 있는 동안에는 재지 않는다 — 그때 높이는 띄운 상자의 높이다.
+		if (!docked) reservedH = r.height;
 	}
 
 	$effect(() => {
@@ -132,7 +172,12 @@
 		rememberTop();
 		focused = true;
 	}
-	function onFocusOut() {
+	function onFocusOut(e: FocusEvent) {
+		// admin: [좁게 보기] 를 누르면 팝업이 그냥 사라졌다. 버튼을 누르는 순간 입력칸이
+		// 포커스를 잃고, 쓴 글이 없으면 붙어 있을 이유가 사라지기 때문이다.
+		// **상자 안으로 가는 포커스는 잃은 것이 아니다.**
+		const to = e.relatedTarget;
+		if (to instanceof Node && box?.contains(to)) return;
 		rememberTop();
 		focused = false;
 	}
@@ -145,7 +190,7 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
 	class="dock-slot"
-	class:reserved={docked}
+	style:min-height={docked ? `${reservedH}px` : undefined}
 	bind:this={slot}
 	onfocusin={onFocusIn}
 	onfocusout={onFocusOut}
@@ -162,10 +207,12 @@
 			<div class="dock-head">
 				<span class="dock-label">{label || t('compose.docked', $locale)}</span>
 				<!-- admin: 오른쪽 위에 동그란 버튼 셋 — 보내기 · 컴팩트 · 닫기. -->
-				<span class="dock-btns">
+				<!-- 누를 때 입력칸의 포커스를 뺏지 않는다 — 캐럿과 조합 중인 글자를 지킨다. -->
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<span class="dock-btns" onmousedown={(e) => e.preventDefault()}>
 					{#if onsubmit}
 						<button
-							class="dock-btn"
+							class="dock-btn send"
 							type="button"
 							onclick={onsubmit}
 							disabled={submitDisabled}
@@ -200,9 +247,6 @@
 	.dock-slot {
 		/* 붙어 있는 동안 원래 자리가 접히면 그 위의 글이 밀린다 — 높이를 잡아 둔다. */
 		min-height: 0;
-	}
-	.dock-slot.reserved {
-		min-height: 8rem;
 	}
 	.dock-box {
 		transition: transform 0.18s ease-out;
@@ -272,6 +316,16 @@
 		font-size: 0.85rem;
 		line-height: 1;
 		cursor: pointer;
+	}
+	/* admin: 보내기는 원본 [댓글 추가] 와 **같은 초록**이어야 한다 — 같은 일을 하는 버튼이다. */
+	.dock-btn.send {
+		background: var(--btn-primary-bg);
+		border-color: var(--btn-primary-border);
+		color: var(--btn-primary-text);
+	}
+	.dock-btn.send:hover:not(:disabled) {
+		background: var(--btn-primary-bg-hover);
+		color: var(--btn-primary-text);
 	}
 	.dock-btn:hover:not(:disabled) {
 		background: var(--nav-hover-bg);

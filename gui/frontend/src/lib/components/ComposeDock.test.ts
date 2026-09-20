@@ -5,6 +5,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render } from '@testing-library/svelte';
 import { tick } from 'svelte';
+
+/** DEV-416: 붙고 떨어지는 판단에는 머무름(SETTLE_MS)이 있다 — 되먹임으로 떨리지 않게.
+ *  **두 번째 전환부터**는 그만큼 늦게 온다. 시험도 기다린다. */
+async function settled() {
+	await new Promise((r) => setTimeout(r, 320));
+	await tick();
+}
 import ComposeDockHarness from './ComposeDockHarness.svelte';
 
 // jsdom 에는 IntersectionObserver 가 없다 — 시험이 직접 "얼마나 보이나" 를 흘려 넣는다.
@@ -67,7 +74,7 @@ describe('DEV-416 입력창이 화면 밖으로 밀리면 아래에 붙는다', 
 		await tick();
 		expect(isDocked()).toBe(true);
 		getByRole('textbox').dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
-		await tick();
+		await settled();
 		expect(isDocked()).toBe(false);
 	});
 
@@ -77,13 +84,13 @@ describe('DEV-416 입력창이 화면 밖으로 밀리면 아래에 붙는다', 
 		notify!(0);
 		await tick();
 		(getByLabelText(/원래 자리로/) as HTMLButtonElement).click();
-		await tick();
+		await settled();
 		expect(isDocked()).toBe(false);
 
 		// 글은 남아 있고, 스크롤을 더 해도 다시 붙지 않는다.
 		expect((getByRole('textbox') as HTMLTextAreaElement).value).toBe('쓰던 글');
 		notify!(0);
-		await tick();
+		await settled();
 		expect(isDocked()).toBe(false);
 	});
 
@@ -93,11 +100,11 @@ describe('DEV-416 입력창이 화면 밖으로 밀리면 아래에 붙는다', 
 		notify!(0);
 		await tick();
 		(getByLabelText(/원래 자리로/) as HTMLButtonElement).click();
-		await tick();
+		await settled();
 		notify!(1); // 스크롤을 올려 제자리가 보였다
-		await tick();
+		await settled();
 		notify!(0); // 다시 밀려나면
-		await tick();
+		await settled();
 		expect(isDocked()).toBe(true);
 	});
 });
@@ -162,6 +169,27 @@ describe('DEV-416 붙었을 때의 모양', () => {
 		back.click();
 		await tick();
 		expect(box().classList.contains('compact')).toBe(false);
+	});
+
+	// admin: [좁게 보기] 를 누르면 팝업이 그냥 사라졌다. 버튼을 누르는 순간 입력칸이 포커스를
+	// 잃는데, 쓴 글이 없으면 붙어 있을 이유가 사라지기 때문이었다.
+	it('머리줄 버튼을 눌러도 팝업이 안 사라진다 — 상자 안으로 가는 포커스는 잃은 것이 아니다', async () => {
+		const r = await dock({ withSubmit: true });
+		const compact = document.querySelector('[aria-label="좁게 보기"]') as HTMLButtonElement;
+		// 실제 순서대로: 입력칸이 포커스를 잃고 → 버튼으로 간다.
+		r.getByRole('textbox').dispatchEvent(
+			new FocusEvent('focusout', { bubbles: true, relatedTarget: compact })
+		);
+		compact.click();
+		await settled();
+		expect(isDocked(), '버튼을 눌렀다고 사라지면 안 된다').toBe(true);
+		expect(box().classList.contains('compact')).toBe(true);
+	});
+
+	it('보내기는 원본 버튼과 같은 색(초록) 이다', async () => {
+		await dock({ withSubmit: true });
+		const send = document.querySelector('.dock-btn.send');
+		expect(send, '보내기 버튼에 send 표시가 있어야 색이 붙는다').toBeTruthy();
 	});
 
 	it('머리줄의 보내기가 실제로 보낸다', async () => {
