@@ -215,7 +215,13 @@
 			     라벨 클릭마다 활성화돼 파일창이 뜬다(admin #13). div 로. -->
 				<!-- DEV-416: 본문을 보면서 메모를 쓰다 보면 편집기가 화면 밖으로 밀린다 —
 				     그때는 화면 아래에 붙여 둔다(글자를 쳐도 스크롤이 안 튀도록). -->
-				<ComposeDock hasContent={editText.trim().length > 0} label={label.heading}>
+				<ComposeDock
+					hasContent={editText.trim().length > 0}
+					label={label.heading}
+					onsubmit={() => save()}
+					submitTitle={t('common.save', $locale)}
+					submitDisabled={saving}
+				>
 					<div class="field-label">
 						<!-- DEV-188: '첨부' 버튼 제거(메모는 개인용). 이미지·동영상은
 					     드래그&드랍 / Ctrl+V 로 첨부 가능(attachmentExtension). -->

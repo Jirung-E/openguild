@@ -1150,6 +1150,9 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	// DEV-416: 입력창이 화면 아래에 붙었을 때.
 	'compose.docked': { ko: '작성 중', en: 'Writing' },
 	'compose.undock': { ko: '원래 자리로 (글은 남습니다)', en: 'Back in place (your text is kept)' },
+	'compose.compact': { ko: '좁게 보기', en: 'Compact' },
+	'compose.expand': { ko: '넓게 보기', en: 'Expand' },
+	'compose.send': { ko: '보내기', en: 'Send' },
 	'comment.toggleEditor': {
 		ko: '입력 방식 전환 (일반 ↔ 마크다운 편집기)',
 		en: 'Toggle input (plain ↔ markdown editor)'

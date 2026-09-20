@@ -10,17 +10,21 @@
 
   ## 언제 붙나
 
-      붙는다 = 이 자리가 화면 밖 && (포커스가 있거나 쓰던 글이 있다) && 닫기를 안 눌렀다
+      붙는다 = 이 자리가 **조금이라도** 가려짐 && (포커스가 있거나 쓴 글이 있다) && 닫기를 안 눌렀다
 
-  포커스를 잃어도 **쓰던 글이 있으면 그대로 둔다**(admin 결정) — 글을 쓰다 다른 곳을 보는 일이
-  흔하다. 대신 오른쪽 위 ×로 언제든 원래 자리로 돌린다(글은 남는다). 스크롤을 올려 원래 자리가
-  화면에 들어오면 저절로 돌아온다.
+  처음에는 "완전히 화면 밖" 일 때만 붙였는데, 반쯤 걸친 상태가 제일 불편하다(admin) — 입력칸은
+  보이는데 커서 줄이 안 보여서 결국 스크롤이 튄다. 그래서 **한 귀퉁이라도 잘리면** 붙인다.
 
-  ## 움직임
+  포커스를 잃어도 **쓰던 글이 있으면 그대로 둔다**(admin) — 글을 쓰다 다른 곳을 보는 일이 흔하다.
+  대신 오른쪽 위 ×로 언제든 원래 자리로 돌린다(글은 남는다).
 
-  붙거나 떨어질 때 원래 자리와 붙는 자리 사이를 FLIP(옛 위치 → 새 위치 차이를 transform 으로
-  되돌린 뒤 한 프레임 뒤에 푼다)으로 잇는다. `position` 은 전환이 안 되기 때문에, 그냥 바꾸면
-  상자가 툭 튄다.
+  ## 붙었을 때의 모양
+
+  오른쪽 위에 동그란 버튼 셋 — **보내기 · 컴팩트 · 닫기**(admin). 보내기를 위로 올리면 상자
+  아래쪽의 빈 자리가 사라진다. 예전에는 버튼 하나 때문에 그 줄이 통째로 남아 화면을 먹었다.
+
+  **팝업 자체에는 스크롤이 없다.** 길어지는 것은 입력칸이고, 스크롤도 그 안에서만 생겨야 한다 —
+  바깥이 스크롤되면 버튼이 밀려 올라가 안 보인다.
 -->
 <script lang="ts">
 	import type { Snippet } from 'svelte';
@@ -31,17 +35,30 @@
 		hasContent = false,
 		/** 붙었을 때 상자 위에 붙일 이름(누구에게 쓰는 중인지 등). */
 		label = '',
+		/** 붙었을 때 머리줄의 동그란 보내기 버튼. 없으면 안 그린다. */
+		onsubmit,
+		submitTitle = '',
+		submitDisabled = false,
 		children
-	}: { hasContent?: boolean; label?: string; children: Snippet } = $props();
+	}: {
+		hasContent?: boolean;
+		label?: string;
+		onsubmit?: () => void;
+		submitTitle?: string;
+		submitDisabled?: boolean;
+		children: Snippet;
+	} = $props();
 
 	let slot: HTMLDivElement | undefined = $state(undefined);
 	let box: HTMLDivElement | undefined = $state(undefined);
-	let inView = $state(true);
+	let fullyVisible = $state(true);
 	let focused = $state(false);
 	/** ×를 눌렀다 — 원래 자리가 다시 보일 때까지 안 붙는다. */
 	let dismissed = $state(false);
+	/** 좁게 보기 — 입력칸만 남기고 높이를 줄인다. */
+	let compact = $state(false);
 
-	const docked = $derived(!inView && !dismissed && (focused || hasContent));
+	const docked = $derived(!fullyVisible && !dismissed && (focused || hasContent));
 
 	// 붙은 상자는 본문 칸과 같은 폭·같은 가로 위치를 쓴다 — 창 전체로 늘리면 글 읽는 폭과
 	// 어긋나 보인다.
@@ -50,6 +67,12 @@
 		if (!slot) return;
 		const r = slot.getBoundingClientRect();
 		rect = { left: r.left, width: r.width };
+	}
+
+	/** 자리가 바뀌기 **직전**의 위치 — 아래 FLIP 이 여기서부터 이어 붙인다. */
+	let prevTop: number | null = null;
+	function rememberTop() {
+		if (box) prevTop = box.getBoundingClientRect().top;
 	}
 
 	$effect(() => {
@@ -61,14 +84,14 @@
 		const io = new IntersectionObserver(
 			(entries) => {
 				const e = entries[0];
-				// 자리가 바뀌기 **직전**의 위치 — 아래 FLIP 이 여기서부터 이어 붙인다.
 				rememberTop();
-				inView = e.isIntersecting;
-				// 원래 자리가 다시 보이면 ×로 닫아 둔 상태를 푼다 — 다음에 또 밀려나면 붙는다.
-				if (e.isIntersecting) dismissed = false;
+				// **한 귀퉁이라도 잘리면** 붙는다(admin) — 반쯤 걸친 상태가 제일 불편하다.
+				fullyVisible = e.intersectionRatio >= 0.99;
+				// 원래 자리가 다시 온전히 보이면 ×로 닫아 둔 상태를 푼다.
+				if (fullyVisible) dismissed = false;
 			},
-			// 살짝 걸쳐 있는 것은 "보인다" 로 친다 — 경계에서 붙었다 떨어졌다 하지 않게.
-			{ threshold: 0, rootMargin: '-48px 0px -48px 0px' }
+			// 1 하나만 두면 "완전히 보임 → 아님" 을 놓칠 수 있다(경계에서 콜백이 안 온다).
+			{ threshold: [0, 0.99, 1] }
 		);
 		io.observe(slot);
 		const onResize = () => measure();
@@ -80,7 +103,7 @@
 	});
 
 	// FLIP — 자리가 바뀌는 순간의 옛 위치를 들고 있다가, 새 위치에서 그만큼 되돌린 뒤 푼다.
-	let prevTop: number | null = null;
+	// `position` 은 전환이 안 되기 때문에, 그냥 바꾸면 상자가 툭 튄다.
 	let wasDocked = false;
 	$effect(() => {
 		const now = docked;
@@ -104,11 +127,6 @@
 			});
 		});
 	});
-
-	/** 자리가 바뀌기 **직전의** 위치 — 포커스/스크롤 이벤트마다 최신으로 들고 있는다. */
-	function rememberTop() {
-		if (box) prevTop = box.getBoundingClientRect().top;
-	}
 
 	function onFocusIn() {
 		rememberTop();
@@ -135,6 +153,7 @@
 	<div
 		class="dock-box"
 		class:docked
+		class:compact={docked && compact}
 		bind:this={box}
 		style:left={docked ? `${rect.left}px` : undefined}
 		style:width={docked ? `${rect.width}px` : undefined}
@@ -142,12 +161,35 @@
 		{#if docked}
 			<div class="dock-head">
 				<span class="dock-label">{label || t('compose.docked', $locale)}</span>
-				<button
-					class="dock-close"
-					onclick={close}
-					title={t('compose.undock', $locale)}
-					aria-label={t('compose.undock', $locale)}>×</button
-				>
+				<!-- admin: 오른쪽 위에 동그란 버튼 셋 — 보내기 · 컴팩트 · 닫기. -->
+				<span class="dock-btns">
+					{#if onsubmit}
+						<button
+							class="dock-btn"
+							type="button"
+							onclick={onsubmit}
+							disabled={submitDisabled}
+							title={submitTitle || t('compose.send', $locale)}
+							aria-label={submitTitle || t('compose.send', $locale)}>↵</button
+						>
+					{/if}
+					<button
+						class="dock-btn"
+						type="button"
+						onclick={() => (compact = !compact)}
+						aria-pressed={compact}
+						title={compact ? t('compose.expand', $locale) : t('compose.compact', $locale)}
+						aria-label={compact ? t('compose.expand', $locale) : t('compose.compact', $locale)}
+						>{compact ? '⌃' : '⌄'}</button
+					>
+					<button
+						class="dock-btn"
+						type="button"
+						onclick={close}
+						title={t('compose.undock', $locale)}
+						aria-label={t('compose.undock', $locale)}>×</button
+					>
+				</span>
 			</div>
 		{/if}
 		{@render children()}
@@ -173,11 +215,23 @@
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-lg);
 		box-shadow: 0 8px 28px var(--shadow);
-		padding: 0.6rem 0.75rem;
-		/* 긴 편집기(메모)가 화면을 통째로 덮지 않게. 안쪽 편집기는 자기 스크롤을 쓴다. */
-		max-height: 60vh; /* 미지원 브라우저 폴백 — 먼저 */
-		max-height: 60dvh;
+		padding: 0.5rem 0.6rem 0.6rem;
+	}
+	/* admin: 보내기 버튼이 머리줄로 올라갔으니 아래 버튼 줄은 자리만 먹는다 — 접는다. */
+	.dock-box.docked :global(.actions) {
+		display: none;
+	}
+	/* **팝업은 안 스크롤된다.** 길어지는 것은 입력칸이고, 스크롤도 그 안에서만 생긴다 —
+	   바깥이 스크롤되면 머리줄의 버튼이 밀려 올라가 안 보인다. */
+	.dock-box.docked :global(textarea),
+	.dock-box.docked :global(.cm-scroller) {
+		max-height: 40vh; /* 미지원 브라우저 폴백 — 먼저 */
+		max-height: 40dvh;
 		overflow: auto;
+	}
+	.dock-box.compact :global(textarea),
+	.dock-box.compact :global(.cm-scroller) {
+		max-height: 6rem;
 	}
 	.dock-head {
 		display: flex;
@@ -189,19 +243,36 @@
 	.dock-label {
 		font-size: 0.8rem;
 		color: var(--text-muted);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
-	.dock-close {
-		border: none;
-		background: none;
+	.dock-btns {
+		flex: none;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+	}
+	.dock-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 1.5rem;
+		height: 1.5rem;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-pill);
+		background: var(--bg);
 		color: var(--text-muted);
-		font-size: 1.1rem;
+		font-size: 0.85rem;
 		line-height: 1;
-		padding: 0.15rem 0.4rem;
-		border-radius: var(--r-sm);
 		cursor: pointer;
 	}
-	.dock-close:hover {
-		background: var(--bg-elevated);
+	.dock-btn:hover:not(:disabled) {
+		background: var(--nav-hover-bg);
 		color: var(--text);
+	}
+	.dock-btn:disabled {
+		opacity: 0.45;
+		cursor: default;
 	}
 </style>

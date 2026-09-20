@@ -1048,6 +1048,9 @@
 	<ComposeDock
 		hasContent={replyBody.trim().length > 0}
 		label={`↩ #${replyTarget?.id ?? rootId} ${replyTarget?.author ?? ''}`}
+		onsubmit={() => submitReply(replyingTo ?? rootId)}
+		submitTitle={t('comment.addReply', $locale)}
+		submitDisabled={replySaving || !replyBody.trim()}
 	>
 		<div class="reply-form">
 			<div class="reply-author">
@@ -1530,7 +1533,12 @@
 			{/if}
 
 			<!-- 새 top-level 댓글 — DEV-416: 화면 밖으로 밀리면 아래에 붙는다. -->
-			<ComposeDock hasContent={newBody.trim().length > 0}>
+			<ComposeDock
+				hasContent={newBody.trim().length > 0}
+				onsubmit={add}
+				submitTitle={t('comment.addComment', $locale)}
+				submitDisabled={saving || !newBody.trim()}
+			>
 				<div class="new-form">
 					<div class="new-row">
 						<input
