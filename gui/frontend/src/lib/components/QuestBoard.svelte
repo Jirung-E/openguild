@@ -64,6 +64,7 @@
 	} from '$lib/types';
 	// DEV-135: 보드에서도 필터 설정 — '보드 설정' 모달에 List 와 동일한 필터 UI.
 	import QuestListFilter from './QuestListFilter.svelte';
+	import TagFilterRow from './TagFilterRow.svelte';
 
 	// DEV-084: New Quest 버튼이 toolbar 로 이동 — 클릭 시 부모 (+page) 의 모달 오픈.
 	let { onNewQuest }: { onNewQuest?: () => void } = $props();
@@ -2502,6 +2503,16 @@
 	// List 와 동일한 QuestListFilter 를 모달에 띄우고, 편집 시 공유 store +
 	// localStorage(List 와 동일 키) 에 반영 → dim 즉시 갱신 + List 와 일관.
 	let boardTypes = $state<QuestType[]>([]);
+	// REQ-027: 보드가 들고 있는 퀘스트의 태그 — 목록의 태그 줄과 같은 재료(이름·건수).
+	let boardTagOptions = $state<string[]>([]);
+	let boardTagCounts = $state(new Map<string, number>());
+	function refreshBoardTags() {
+		const counts = new Map<string, number>();
+		for (const q of allQuests) for (const t of q.tags ?? []) counts.set(t, (counts.get(t) ?? 0) + 1);
+		boardTagCounts = counts;
+		boardTagOptions = [...counts.keys()].sort((a, b) => a.localeCompare(b));
+	}
+
 	let boardFilterReady = $state(false);
 	let bfTypeIds = $state(new Set<number>());
 	let bfStatusIds = $state(new Set<number>());
@@ -2514,6 +2525,9 @@
 	let bfCreatedBefore = $state('');
 	let bfUpdatedAfter = $state('');
 	let bfUpdatedBefore = $state('');
+	// REQ-027: 보드에서도 태그로 거른다. 목록에는 처음부터 있었는데 보드에만 없어서,
+	// 보드를 쓰는 동안에는 태그를 못 바꾸고 목록으로 갔다 와야 했다.
+	let bfTags = $state(new Set<string>());
 
 	function saveFilterToStorage(f: QuestFilterState) {
 		try {
@@ -2529,6 +2543,7 @@
 		bfSearch = f.search;
 		bfTitleOnly = f.titleOnly;
 		bfUrgencies = new Set(f.urgencies);
+		bfTags = new Set(f.tags);
 		bfPrereq = f.prereq;
 		bfSub = f.sub;
 		bfCreatedAfter = f.createdAfter;
@@ -2542,10 +2557,11 @@
 			statusIds: bfStatusIds,
 			search: bfSearch,
 			titleOnly: bfTitleOnly,
-			// tags 와 검색 범위는 board UI 에서 편집 안 함 — store 의 기존 값 유지.
+			// REQ-027: 태그는 이제 보드에서도 편집한다.
+			tags: bfTags,
+			// 검색 범위는 board UI 에서 편집 안 함 — store 의 기존 값 유지.
 			// BUG-243: 여기서 false 로 덮으면 보드에 들렀다 오는 것만으로 목록의
 			// '댓글/첨부 이름 포함' 이 풀린다.
-			tags: get(questFilters).tags,
 			searchComments: get(questFilters).searchComments,
 			searchAttachments: get(questFilters).searchAttachments,
 			urgencies: bfUrgencies,
@@ -2567,6 +2583,7 @@
 	// '보드 설정' 모달 열림/닫힘에 맞춰 편집 상태 init / 비활성화.
 	$effect(() => {
 		if (showHideModal && !boardFilterReady) {
+			refreshBoardTags();
 			initBoardFilterFromStore();
 			boardFilterReady = true;
 		} else if (!showHideModal && boardFilterReady) {
@@ -3882,6 +3899,22 @@
 				<p class="hide-help">
 					{t('board.filterHelp', $locale)}
 				</p>
+				<!-- REQ-027: 목록과 같은 태그 줄 — 보드에서도 태그로 거른다. -->
+				{#if boardTagOptions.length > 0}
+					<TagFilterRow
+						tags={boardTagOptions}
+						counts={boardTagCounts}
+						selected={bfTags}
+						ontoggle={(tag) => {
+							const next = new Set(bfTags);
+							if (next.has(tag)) next.delete(tag);
+							else next.add(tag);
+							bfTags = next;
+						}}
+						onclear={() => (bfTags = new Set())}
+						storageKey="board"
+					/>
+				{/if}
 				<div class="bf-filter">
 					<QuestListFilter
 						types={boardTypes}
