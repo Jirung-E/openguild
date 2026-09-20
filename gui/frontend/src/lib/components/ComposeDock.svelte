@@ -10,18 +10,28 @@
 
   ## 언제 붙나
 
-      붙는다 = 이 자리가 **조금이라도** 가려짐 && (포커스가 있거나 쓴 글이 있다) && 닫기를 안 눌렀다
+      붙는다 = **입력칸**이 조금이라도 가려짐 && (포커스가 있거나 쓴 글이 있다) && 닫기를 안 눌렀다
 
   처음에는 "완전히 화면 밖" 일 때만 붙였는데, 반쯤 걸친 상태가 제일 불편하다(admin) — 입력칸은
   보이는데 커서 줄이 안 보여서 결국 스크롤이 튄다. 그래서 **한 귀퉁이라도 잘리면** 붙인다.
+
+  재는 것은 **입력칸 하나**다(admin). 예전에는 이 상자 전체를 쟀는데, 그러면 작성자 칸이나
+  아래 [댓글 추가] 버튼이 화면을 벗어나기만 해도 팝업이 떴다 — 정작 글 쓰는 칸은 멀쩡히
+  보이는데도.
 
   포커스를 잃어도 **쓰던 글이 있으면 그대로 둔다**(admin) — 글을 쓰다 다른 곳을 보는 일이 흔하다.
   대신 오른쪽 위 ×로 언제든 원래 자리로 돌린다(글은 남는다).
 
   ## 붙었을 때의 모양
 
-  오른쪽 위에 동그란 버튼 셋 — **보내기 · 컴팩트 · 닫기**(admin). 보내기를 위로 올리면 상자
-  아래쪽의 빈 자리가 사라진다. 예전에는 버튼 하나 때문에 그 줄이 통째로 남아 화면을 먹었다.
+  **기본이 좁게 보기다**(admin). 좁게 보기는 **배경이 없다** — 입력칸과 동그란 버튼 셋만
+  뜬다. 카드 배경·테두리·'작성 중' 글자는 그 모양을 해친다. 넓게 펴면 작성자 칸까지 보이는
+  카드가 된다.
+
+  버튼 셋은 **보내기 · 좁게/넓게 · 닫기**(admin). 보내기를 위로 올리면 상자 아래쪽의 빈 자리가
+  사라진다. 예전에는 버튼 하나 때문에 그 줄이 통째로 남아 화면을 먹었다.
+
+  좁게/넓게는 **다시 켜도 그대로다**(admin) — 한 번 정해 두면 계속 그 모양으로 뜬다.
 
   **팝업 자체에는 스크롤이 없다.** 길어지는 것은 입력칸이고, 스크롤도 그 안에서만 생겨야 한다 —
   바깥이 스크롤되면 버튼이 밀려 올라가 안 보인다.
@@ -64,8 +74,30 @@
 	let focused = $state(false);
 	/** ×를 눌렀다 — 원래 자리가 다시 보일 때까지 안 붙는다. */
 	let dismissed = $state(false);
-	/** 좁게 보기 — 입력칸만 남기고 높이를 줄인다. */
-	let compact = $state(false);
+	/**
+	 * 좁게 보기 — 입력칸과 버튼만 남긴다.
+	 *
+	 * **기본이 켜짐**이고, 끄고 켠 것은 다시 켜도 남는다(admin). 앱 전체에 하나뿐인 취향이라
+	 * 길드별로 나누지 않는다.
+	 */
+	const COMPACT_KEY = 'openguild.composeCompact';
+	function loadCompact(): boolean {
+		try {
+			// 적어 둔 적이 없으면 켜짐 — 꺼 둔 사람만 'false' 가 적혀 있다.
+			return localStorage.getItem(COMPACT_KEY) !== 'false';
+		} catch {
+			return true;
+		}
+	}
+	let compact = $state(loadCompact());
+	function toggleCompact() {
+		compact = !compact;
+		try {
+			localStorage.setItem(COMPACT_KEY, String(compact));
+		} catch {
+			/* 무시 — 못 적어도 이번 판에서는 동작한다. */
+		}
+	}
 
 	/**
 	 * 붙는 판단에는 **되먹임 고리**가 있다 — 붙으면 상자가 흐름에서 빠지고, 그러면 이 자리가
@@ -115,6 +147,19 @@
 		if (!docked) reservedH = r.height;
 	}
 
+	/**
+	 * 재는 대상 — **글 쓰는 칸 하나**다(admin).
+	 *
+	 * 예전에는 이 상자 전체를 쟀다. 그러면 작성자 칸이나 아래 [댓글 추가] 버튼이 화면을
+	 * 벗어나기만 해도 팝업이 떴다 — 정작 입력칸은 멀쩡히 보이는데도.
+	 *
+	 * 편집기 토글(M↓)을 누르면 `textarea` 와 CodeMirror 가 서로 갈린다. 그래서 요소를
+	 * 붙잡아 두지 않고 그때그때 찾는다.
+	 */
+	function inputEl(): Element | null {
+		return slot?.querySelector('textarea, .cm-editor') ?? null;
+	}
+
 	$effect(() => {
 		if (!slot) return;
 		measure();
@@ -123,7 +168,7 @@
 		if (typeof IntersectionObserver === 'undefined') return;
 		const io = new IntersectionObserver(
 			(entries) => {
-				const e = entries[0];
+				const e = entries[entries.length - 1];
 				rememberTop();
 				// **한 귀퉁이라도 잘리면** 붙는다(admin) — 반쯤 걸친 상태가 제일 불편하다.
 				fullyVisible = e.intersectionRatio >= 0.99;
@@ -133,11 +178,26 @@
 			// 1 하나만 두면 "완전히 보임 → 아님" 을 놓칠 수 있다(경계에서 콜백이 안 온다).
 			{ threshold: [0, 0.99, 1] }
 		);
-		io.observe(slot);
+		// 입력칸이 갈리면 보던 것을 놓고 새것을 본다.
+		let watched: Element | null = null;
+		const retarget = () => {
+			const el = inputEl();
+			if (el === watched) return;
+			if (watched) io.unobserve(watched);
+			watched = el;
+			if (watched) io.observe(watched);
+			// 입력칸이 아예 없으면 붙을 이유도 없다.
+			else fullyVisible = true;
+		};
+		retarget();
+		const mo =
+			typeof MutationObserver === 'undefined' ? null : new MutationObserver(() => retarget());
+		mo?.observe(slot, { childList: true, subtree: true });
 		const onResize = () => measure();
 		window.addEventListener('resize', onResize);
 		return () => {
 			io.disconnect();
+			mo?.disconnect();
 			window.removeEventListener('resize', onResize);
 		};
 	});
@@ -205,8 +265,11 @@
 	>
 		{#if docked}
 			<div class="dock-head">
-				<span class="dock-label">{label || t('compose.docked', $locale)}</span>
-				<!-- admin: 오른쪽 위에 동그란 버튼 셋 — 보내기 · 컴팩트 · 닫기. -->
+				<!-- 좁게 보기에서는 이름표가 없다(admin) — 입력칸과 버튼만 남긴다. -->
+				{#if !compact}
+					<span class="dock-label">{label || t('compose.docked', $locale)}</span>
+				{/if}
+				<!-- admin: 오른쪽 위에 동그란 버튼 셋 — 보내기 · 좁게/넓게 · 닫기. -->
 				<!-- 누를 때 입력칸의 포커스를 뺏지 않는다 — 캐럿과 조합 중인 글자를 지킨다. -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<span class="dock-btns" onmousedown={(e) => e.preventDefault()}>
@@ -217,25 +280,71 @@
 							onclick={onsubmit}
 							disabled={submitDisabled}
 							title={submitTitle || t('compose.send', $locale)}
-							aria-label={submitTitle || t('compose.send', $locale)}>↵</button
+							aria-label={submitTitle || t('compose.send', $locale)}
 						>
+							<!-- BUG-312: 글자(↵ × ⌃)로 그리면 글꼴마다 기준선이 달라 동그라미 안에서
+							     제각각 치우친다(admin). 그림으로 그리면 가운데가 가운데다. -->
+							<svg
+								viewBox="0 0 16 16"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.6"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								aria-hidden="true"
+							>
+								<path d="M8 12.5V4" />
+								<path d="M4.4 7.6 8 4l3.6 3.6" />
+							</svg>
+						</button>
 					{/if}
 					<button
 						class="dock-btn"
 						type="button"
-						onclick={() => (compact = !compact)}
+						onclick={toggleCompact}
 						aria-pressed={compact}
 						title={compact ? t('compose.expand', $locale) : t('compose.compact', $locale)}
 						aria-label={compact ? t('compose.expand', $locale) : t('compose.compact', $locale)}
-						>{compact ? '⌃' : '⌄'}</button
 					>
+						<!-- 좁게 보기면 '펴기'(∨ 두 겹이 벌어지는 모양), 넓게면 '접기'(∧). -->
+						<svg
+							viewBox="0 0 16 16"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.6"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							aria-hidden="true"
+						>
+							{#if compact}
+								<path d="M4.5 6.2 8 2.7l3.5 3.5" />
+								<path d="M4.5 9.8 8 13.3l3.5-3.5" />
+							{:else}
+								<path d="M4.5 3.2 8 6.7l3.5-3.5" />
+								<path d="M4.5 12.8 8 9.3l3.5 3.5" />
+							{/if}
+						</svg>
+					</button>
 					<button
 						class="dock-btn"
 						type="button"
 						onclick={close}
 						title={t('compose.undock', $locale)}
-						aria-label={t('compose.undock', $locale)}>×</button
+						aria-label={t('compose.undock', $locale)}
 					>
+						<svg
+							viewBox="0 0 16 16"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.6"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							aria-hidden="true"
+						>
+							<path d="M4.6 4.6 11.4 11.4" />
+							<path d="M11.4 4.6 4.6 11.4" />
+						</svg>
+					</button>
 				</span>
 			</div>
 		{/if}
@@ -283,12 +392,26 @@
 	.dock-box.compact :global(.cm-scroller) {
 		max-height: 4.5rem;
 	}
+	/* BUG-312: 좁게 보기에는 **배경이 없다**(admin). 입력칸과 동그란 버튼만 떠야 하는데,
+	   카드의 배경·테두리·그림자·여백이 그 둘을 한 번 더 감쌌다. 입력칸은 제 테두리를 가지고
+	   있으므로 카드를 걷어도 제 모양이 남는다. */
+	.dock-box.docked.compact {
+		background: none;
+		border-color: transparent;
+		box-shadow: none;
+		padding: 0;
+	}
 	.dock-head {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
 		gap: 0.5rem;
 		margin-bottom: 0.35rem;
+	}
+	/* 이름표가 없으니 버튼이 왼쪽으로 붙는다 — 오른쪽 위로 돌려놓는다. */
+	.dock-box.compact .dock-head {
+		justify-content: flex-end;
+		margin-bottom: 0.25rem;
 	}
 	.dock-label {
 		font-size: 0.8rem;
@@ -307,15 +430,23 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
+		/* BUG-312: 글자 크기에 딸린 여백이 남지 않게 — 안에 든 것은 그림뿐이다. */
+		padding: 0;
 		width: 1.5rem;
 		height: 1.5rem;
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-pill);
 		background: var(--bg);
 		color: var(--text-muted);
-		font-size: 0.85rem;
 		line-height: 1;
 		cursor: pointer;
+	}
+	/* `display: block` 이 아니면 svg 가 글자처럼 놓여 기준선만큼 아래로 내려간다 —
+	   동그라미 안에서 살짝 치우쳐 보이던 것이 이것이다(admin). */
+	.dock-btn svg {
+		display: block;
+		width: 0.875rem;
+		height: 0.875rem;
 	}
 	/* admin: 보내기는 원본 [댓글 추가] 와 **같은 초록**이어야 한다 — 같은 일을 하는 버튼이다. */
 	.dock-btn.send {

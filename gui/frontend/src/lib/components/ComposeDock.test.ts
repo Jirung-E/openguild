@@ -17,13 +17,21 @@ import ComposeDockHarness from './ComposeDockHarness.svelte';
 // jsdom 에는 IntersectionObserver 가 없다 — 시험이 직접 "얼마나 보이나" 를 흘려 넣는다.
 // 비율인 것이 중요하다: **한 귀퉁이라도 잘리면** 붙어야 한다(admin).
 let notify: ((ratio: number) => void) | null = null;
+/** BUG-312: **무엇을** 보고 있는지도 시험한다 — 재는 기준은 입력칸 하나여야 한다. */
+let watching: Element[] = [];
 class FakeIO {
 	constructor(private cb: (e: Array<{ intersectionRatio: number }>) => void) {
 		notify = (ratio: number) => this.cb([{ intersectionRatio: ratio }]);
 	}
-	observe() {}
+	observe(el: Element) {
+		watching.push(el);
+	}
+	unobserve(el: Element) {
+		watching = watching.filter((x) => x !== el);
+	}
 	disconnect() {
 		notify = null;
+		watching = [];
 	}
 }
 vi.stubGlobal('IntersectionObserver', FakeIO);
@@ -38,6 +46,8 @@ function isDocked() {
 describe('DEV-416 입력창이 화면 밖으로 밀리면 아래에 붙는다', () => {
 	beforeEach(() => {
 		document.body.innerHTML = '';
+		// 좁게/넓게는 다시 켜도 남는다 — 시험끼리 새지 않게 지운다.
+		localStorage.clear();
 	});
 
 	it('보이는 동안에는 제자리다 — 포커스가 있어도', async () => {
@@ -114,6 +124,8 @@ describe('DEV-416 입력창이 화면 밖으로 밀리면 아래에 붙는다', 
 describe('DEV-416 조금이라도 가려지면 붙는다', () => {
 	beforeEach(() => {
 		document.body.innerHTML = '';
+		// 좁게/넓게는 다시 켜도 남는다 — 시험끼리 새지 않게 지운다.
+		localStorage.clear();
 	});
 
 	it('절반쯤 걸쳐도 붙는다', async () => {
@@ -131,6 +143,15 @@ describe('DEV-416 조금이라도 가려지면 붙는다', () => {
 		await tick();
 		expect(isDocked()).toBe(false);
 	});
+
+	// BUG-312(admin): "팝업 기준은 '댓글입력박스'만임. 지금은 '작성자', '댓글추가버튼' 등이
+	// 밖으로 나가도 팝업이 되어버린다." — 재는 대상 자체를 좁힌다.
+	it('재는 것은 입력칸 하나다 — 상자 전체가 아니다', async () => {
+		const { getByRole } = render(ComposeDockHarness, { hasContent: false });
+		await tick();
+		expect(watching.length, '한 곳만 본다').toBe(1);
+		expect(watching[0]).toBe(getByRole('textbox'));
+	});
 });
 
 // admin 반려 반영 — 아래쪽 빈 자리(버튼 한 줄)가 화면을 먹었다. 보내기를 머리줄로 올리고,
@@ -138,6 +159,8 @@ describe('DEV-416 조금이라도 가려지면 붙는다', () => {
 describe('DEV-416 붙었을 때의 모양', () => {
 	beforeEach(() => {
 		document.body.innerHTML = '';
+		// 좁게/넓게는 다시 켜도 남는다 — 시험끼리 새지 않게 지운다.
+		localStorage.clear();
 	});
 
 	async function dock(props: Record<string, unknown> = {}) {
@@ -148,34 +171,70 @@ describe('DEV-416 붙었을 때의 모양', () => {
 		return r;
 	}
 
-	it('오른쪽 위에 동그란 버튼 셋 — 보내기 · 컴팩트 · 닫기', async () => {
+	it('오른쪽 위에 동그란 버튼 셋 — 보내기 · 좁게/넓게 · 닫기', async () => {
 		await dock({ withSubmit: true });
 		const labels = Array.from(document.querySelectorAll('.dock-btn')).map(
 			(b) => b.getAttribute('aria-label') ?? ''
 		);
-		expect(labels).toEqual(['보내기', '좁게 보기', '원래 자리로 (글은 남습니다)']);
+		// 좁게가 기본이므로 가운데 버튼은 '넓게 보기' 다.
+		expect(labels).toEqual(['보내기', '넓게 보기', '원래 자리로 (글은 남습니다)']);
 	});
 
-	it('컴팩트를 켜면 좁게 — 다시 누르면 넓게', async () => {
+	// BUG-312(admin): "기본적으로 컴팩트 모드로 떠야한다."
+	it('처음부터 좁게 뜬다', async () => {
 		await dock({ withSubmit: true });
-		const btn = Array.from(document.querySelectorAll('.dock-btn')).find(
-			(b) => b.getAttribute('aria-label') === '좁게 보기'
-		) as HTMLButtonElement;
-		btn.click();
-		await tick();
 		expect(box().classList.contains('compact')).toBe(true);
-		const back = document.querySelector('[aria-label="넓게 보기"]') as HTMLButtonElement;
-		expect(back).toBeTruthy();
-		back.click();
+	});
+
+	// BUG-312(admin): "배경 없이 오직 댓글입력박스와 동그라미 버튼들만" — '작성 중' 글자는
+	// 그 모양을 해친다.
+	it('좁게일 때는 이름표가 없다 — 넓히면 나온다', async () => {
+		await dock({ withSubmit: true });
+		expect(document.querySelector('.dock-label')).toBeNull();
+		(document.querySelector('[aria-label="넓게 보기"]') as HTMLButtonElement).click();
+		await tick();
+		expect(document.querySelector('.dock-label')).toBeTruthy();
+	});
+
+	it('넓혔다 다시 좁게', async () => {
+		await dock({ withSubmit: true });
+		const wide = document.querySelector('[aria-label="넓게 보기"]') as HTMLButtonElement;
+		wide.click();
 		await tick();
 		expect(box().classList.contains('compact')).toBe(false);
+		const narrow = document.querySelector('[aria-label="좁게 보기"]') as HTMLButtonElement;
+		expect(narrow).toBeTruthy();
+		narrow.click();
+		await tick();
+		expect(box().classList.contains('compact')).toBe(true);
+	});
+
+	// BUG-312(admin): "'컴팩트모드 토글 상태'는 앱을 다시시작해도 유지되어야함."
+	it('넓게로 바꿔 두면 다시 켜도 넓다', async () => {
+		await dock({ withSubmit: true });
+		(document.querySelector('[aria-label="넓게 보기"]') as HTMLButtonElement).click();
+		await tick();
+
+		// 앱을 다시 켠 셈 — 화면을 지우고 처음부터 그린다.
+		document.body.innerHTML = '';
+		await dock({ withSubmit: true });
+		expect(box().classList.contains('compact')).toBe(false);
+	});
+
+	// 동그라미 안의 그림이 기준선만큼 치우쳐 보이던 것(admin) — 글자가 아니라 그림으로 그린다.
+	it('버튼 안은 글자가 아니라 그림이다', async () => {
+		await dock({ withSubmit: true });
+		for (const b of Array.from(document.querySelectorAll('.dock-btn'))) {
+			expect(b.querySelector('svg'), `${b.getAttribute('aria-label')} 에 그림이 없다`).toBeTruthy();
+			expect(b.textContent?.trim(), `${b.getAttribute('aria-label')} 에 글자가 남아 있다`).toBe('');
+		}
 	});
 
 	// admin: [좁게 보기] 를 누르면 팝업이 그냥 사라졌다. 버튼을 누르는 순간 입력칸이 포커스를
 	// 잃는데, 쓴 글이 없으면 붙어 있을 이유가 사라지기 때문이었다.
 	it('머리줄 버튼을 눌러도 팝업이 안 사라진다 — 상자 안으로 가는 포커스는 잃은 것이 아니다', async () => {
 		const r = await dock({ withSubmit: true });
-		const compact = document.querySelector('[aria-label="좁게 보기"]') as HTMLButtonElement;
+		const compact = document.querySelector('[aria-label="넓게 보기"]') as HTMLButtonElement;
 		// 실제 순서대로: 입력칸이 포커스를 잃고 → 버튼으로 간다.
 		r.getByRole('textbox').dispatchEvent(
 			new FocusEvent('focusout', { bubbles: true, relatedTarget: compact })
@@ -183,7 +242,7 @@ describe('DEV-416 붙었을 때의 모양', () => {
 		compact.click();
 		await settled();
 		expect(isDocked(), '버튼을 눌렀다고 사라지면 안 된다').toBe(true);
-		expect(box().classList.contains('compact')).toBe(true);
+		expect(box().classList.contains('compact')).toBe(false);
 	});
 
 	it('보내기는 원본 버튼과 같은 색(초록) 이다', async () => {
