@@ -5602,17 +5602,31 @@ fn print_quest_summary(d: &QuestDetail, json: bool) {
         println!("{}", json_str(d));
         return;
     }
+    for line in quest_summary_lines(d) {
+        println!("{line}");
+    }
+}
+
+/// BUG-295 후속: 요약 화면의 줄들. 찍는 것과 만드는 것을 나눠 둬야 **무엇이 나오는지**를
+/// 시험할 수 있다(첨부가 목록으로 새어 나오던 것이 이 퀘스트의 되돌아온 이유다).
+fn quest_summary_lines(d: &QuestDetail) -> Vec<String> {
     let q = &d.quest;
-    println!("{}  {}", colorize(&q.quest_id, &q.type_color), q.title);
-    println!(
-        "  status   : {} ({})",
-        colorize(&q.status_name_en, &q.status_color),
-        q.status_name_ko
-    );
-    println!(
-        "  urgency  : {}",
-        colorize(&q.urgency.to_string(), urgency_color(q.urgency))
-    );
+    let mut out = vec![format!("{}  {}", colorize(&q.quest_id, &q.type_color), q.title)];
+    // BUG-295 후속(admin): 첨부가 붙으면서 라벨 폭이 제일 긴 `attachments` 에 맞춰야
+    // 콜론이 한 줄로 선다. 라벨은 한 곳에서 만든다.
+    let row = |label: &str, value: String| format!("  {label:<11} : {value}");
+    out.push(row(
+        "status",
+        format!(
+            "{} ({})",
+            colorize(&q.status_name_en, &q.status_color),
+            q.status_name_ko
+        ),
+    ));
+    out.push(row(
+        "urgency",
+        colorize(&q.urgency.to_string(), urgency_color(q.urgency)),
+    ));
     // 관계 요약 — 있는 것만. 부모는 slug, 나머지는 개수.
     //
     // 라벨 색은 `--full`(print_quest_detail)의 섹션 라벨과 **같은 팔레트**를 쓴다
@@ -5648,22 +5662,39 @@ fn print_quest_summary(d: &QuestDetail, json: bool) {
         ));
     }
     if !rel.is_empty() {
-        println!("  relations: {}", rel.join("  ·  "));
+        out.push(row("relations", rel.join("  ·  ")));
     }
     // BUG-295: 첨부가 있으면 **요약에서도** 말한다. 여기서 안 보이면 붙여 둔 스펙·목업이
     // 없는 것처럼 일하게 된다(`--full` 을 늘 붙이지는 않는다).
-    print_attachments(&d.attachments, "  ");
+    //
+    // 후속(admin): 요약에서는 **개수만**. 이름·경로까지 늘어놓으면 세 줄짜리 요약이
+    // 첨부 목록에 묻힌다 — 목록이 필요하면 `--full` 이나 `quest attach list` 가 있다.
+    if !d.attachments.is_empty() {
+        out.push(row("attachments", d.attachments.len().to_string()));
+    }
+    out
 }
 
 /// BUG-295: 첨부 목록 한 덩이. 없으면 아무것도 안 찍는다(빈 섹션을 만들지 않는다).
+/// **전체 보기(`--full`)와 도서관·캠페인 상세에만** 쓴다 — 요약은 개수만 낸다.
 fn print_attachments(list: &[openguild_core::models::quest::QuestAttachment], indent: &str) {
+    for line in attachment_lines(list, indent) {
+        println!("{line}");
+    }
+}
+
+fn attachment_lines(
+    list: &[openguild_core::models::quest::QuestAttachment],
+    indent: &str,
+) -> Vec<String> {
     if list.is_empty() {
-        return;
+        return Vec::new();
     }
-    println!("{indent}attachments ({}):", list.len());
+    let mut out = vec![format!("{indent}attachments ({}):", list.len())];
     for a in list {
-        println!("{indent}  - {}  ({})", a.name, a.path);
+        out.push(format!("{indent}  - {}  ({})", a.name, a.path));
     }
+    out
 }
 
 fn print_quest_detail(d: &QuestDetail, json: bool) {
@@ -11778,6 +11809,39 @@ scope = ["gui"]
         assert_eq!(d.attachments[0].name, "스펙.md");
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-295 후속(admin): **요약에서는 개수만.** 이름·경로까지 늘어놓으면 세 줄짜리
+    /// 요약이 첨부 목록에 묻힌다. 목록은 `--full` 과 `quest attach list` 가 맡는다.
+    #[test]
+    fn the_summary_says_how_many_attachments_not_which() {
+        let att = |n: usize| -> QuestDetail {
+            let mut d = qd("첨부 시험");
+            d.attachments = (0..n)
+                .map(|i| openguild_core::models::quest::QuestAttachment {
+                    path: format!("attachments/x{i}.md"),
+                    name: format!("x{i}.md"),
+                })
+                .collect();
+            d
+        };
+        let summary = quest_summary_lines(&att(3)).join("\n");
+        assert!(summary.contains("attachments : 3"), "{summary}");
+        assert!(!summary.contains("x0.md"), "요약에 목록이 들어갔다:\n{summary}");
+        // 라벨은 한 줄로 선다 — 콜론 자리가 같아야 눈이 안 흔들린다.
+        for label in ["status", "urgency", "attachments"] {
+            assert!(
+                summary.lines().any(|l| l.starts_with(&format!("  {label:<11} : "))),
+                "`{label}` 줄의 콜론이 안 맞는다:\n{summary}"
+            );
+        }
+        // 전체 보기는 그대로 목록을 낸다.
+        let full = attachment_lines(&att(3).attachments, "  ").join("\n");
+        assert!(full.contains("x0.md"), "{full}");
+
+        // 첨부가 없으면 그 줄 자체가 없다.
+        let none = quest_summary_lines(&att(0)).join("\n");
+        assert!(!none.contains("attachments"), "{none}");
     }
 
     /// **보여주기만 하는 단계가 있어야 한다.** 임의 코드를 돌리는 동의를
