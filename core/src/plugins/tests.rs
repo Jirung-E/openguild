@@ -840,6 +840,26 @@ fn shipped_examples_all_load() {
         "한 플러그인이 여러 줄을 쓰는 예제가 없다"
     );
 
+    // BUG-308: 예제가 **맥에서만** 도는 일이 없게. `sh` 는 윈도우에 없다 —
+    // BUG-294 에서 스크립트를 쓰는 예제 둘에는 윈도우 갈래를 붙였는데, 한 줄짜리
+    // `sh -c` 로 적힌 것 하나가 눈에 안 띄어 빠졌다. 사람 눈 말고 여기서 본다.
+    for p in &l.active {
+        for (name, a) in p.def.all_actions() {
+            let crate::plugins::Action::Run { command, os, .. } = a else {
+                continue;
+            };
+            if !matches!(command.as_str(), "sh" | "bash" | "zsh" | "osascript") {
+                continue;
+            }
+            assert!(
+                os.windows.is_some(),
+                "{}: 동작 '{name}' 이 {command} 를 띄우는데 윈도우 갈래가 없다 — \
+                 윈도우에서는 그냥 안 돈다",
+                p.def.name
+            );
+        }
+    }
+
     unsafe { std::env::remove_var("OPENGUILD_HOME") };
     let _ = std::fs::remove_dir_all(&g);
     let _ = std::fs::remove_dir_all(&home);

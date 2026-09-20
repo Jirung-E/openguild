@@ -13,6 +13,17 @@ scripts     = ["main.rhai"]
     args       = ["-c", "cat >> deleted.log; echo >> deleted.log"]
     timeout_ms = 3000
 
+    # Windows 에는 sh 가 없다 — 그 OS 에서는 이것을 띄운다(BUG-308).
+    # 하는 일은 같다: 들어온 것을 deleted.log 뒤에 붙이고 빈 줄 하나.
+    [actions.log.run.windows]
+        command = "powershell"
+        args    = [
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "$t = [Console]::In.ReadToEnd(); Add-Content -LiteralPath deleted.log -Value $t -Encoding utf8; Add-Content -LiteralPath deleted.log -Value '' -Encoding utf8",
+        ]
+
 # 줄은 적힌 순서대로 돈다 — 먼저 남기고, 그다음에 막을지 본다. 막힌 뒤의 줄은 안 돈다.
 [[handlers]]
     id   = "삭제 기록"
