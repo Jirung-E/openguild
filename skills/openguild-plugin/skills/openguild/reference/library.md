@@ -18,7 +18,20 @@ openguild library folder list
 openguild library folder new <path>
 openguild library folder move <from> <to>
 openguild library folder delete <path> --yes
+
+# REQ-028: export into a real folder tree (title becomes the filename)
+openguild library export <dest-dir> [--folder "아키텍처" | --id BOOK-003]
 ```
+
+`export` exists because **library folders are not real directories** — every
+document lives flat in `.guild/library/BOOK-N.md` and its folder is just a field
+on it. Taking documents out therefore has to *build* that tree: `아키텍처/라우터
+설계.md`, with each document's attachments beside it in `<title>.attachments/`.
+Files are written with their frontmatter intact, nothing is overwritten (a
+colliding name gets ` (2)`), and the guild itself is not touched. The desktop app
+has the same thing on the document and the current folder — **Export** (pick a
+folder) and **Copy** (stages the tree, then puts it on the OS clipboard so you can
+paste it in Finder/Explorer).
 
 The title is `--title`, not a positional argument: the document's ID is the
 auto-assigned `BOOK-N`, so the title is just a field. (Commands whose name *is*

@@ -29,6 +29,7 @@
 	import { setUnsaved } from '$lib/stores/unsaved';
 	import { saveShortcut } from '$lib/utils/save-shortcut';
 	import { libraryApi, type Book, type LibraryFolder } from '$lib/api/library';
+	import { isLocalTauri } from '$lib/api/transport';
 	import { searchApi } from '$lib/api/search';
 	import { buildLibraryTree, flattenFolderPaths, searchLibrary } from '$lib/utils/library-tree';
 	import LibraryFolderTree from '$lib/components/LibraryFolderTree.svelte';
@@ -563,6 +564,52 @@
 		}
 	}
 
+	// ─── REQ-028: 파일 시스템으로 가져가기 ───
+	//
+	// 도서관의 폴더는 진짜 디렉터리가 아니라 문서가 적어 둔 값이라, 밖으로 가져가려면 그 구조를
+	// **그때 만들어야** 한다. 두 갈래를 준다 — 폴더를 골라 펼치는 "내보내기" 와, 임시 폴더에
+	// 펼친 뒤 클립보드에 올려 탐색기에서 붙여넣는 "복사".
+	// 파일을 **이 기계에** 쓰므로 데스크톱 로컬 길드에서만 — 원격 길드의 문서는 이 디스크에 없다.
+	const isTauri = isLocalTauri();
+	let takeOutBusy = $state(false);
+	let takeOutMsg = $state<string | null>(null);
+
+	function takeOutPick(): { folder?: string; id?: string } {
+		if (selectedId) return { id: selectedId };
+		return { folder: explorerPath };
+	}
+
+	async function exportOut() {
+		if (takeOutBusy) return;
+		takeOutMsg = null;
+		try {
+			const { open } = await import('@tauri-apps/plugin-dialog');
+			const dir = await open({ directory: true, title: t('library.exportPick', $locale) });
+			if (!dir || typeof dir !== 'string') return;
+			takeOutBusy = true;
+			const out = await libraryApi.exportTo(dir, takeOutPick());
+			takeOutMsg = t('library.exportDone', $locale).replace('{n}', String(out.length));
+		} catch (e) {
+			error = e instanceof Error ? e.message : String(e);
+		} finally {
+			takeOutBusy = false;
+		}
+	}
+
+	async function copyOut() {
+		if (takeOutBusy) return;
+		takeOutMsg = null;
+		try {
+			takeOutBusy = true;
+			const n = await libraryApi.copyToClipboard(takeOutPick());
+			takeOutMsg = t('library.copyDone', $locale).replace('{n}', String(n));
+		} catch (e) {
+			error = e instanceof Error ? e.message : String(e);
+		} finally {
+			takeOutBusy = false;
+		}
+	}
+
 	// ─── 제목 변경 ───
 	function openRetitle() {
 		if (!selected) return;
@@ -892,7 +939,19 @@
 					{t('library.deleteCurrentFolder', $locale)}
 				</button>
 			{/if}
+			<!-- REQ-028: 지금 보고 있는 폴더를 통째로 — 폴더 구조 그대로 밖으로. -->
+			{#if isTauri}
+				<button class="crumb take-out" onclick={copyOut} disabled={takeOutBusy}>
+					{t('library.copyOut', $locale)}
+				</button>
+				<button class="crumb take-out" onclick={exportOut} disabled={takeOutBusy}>
+					{t('library.exportOut', $locale)}
+				</button>
+			{/if}
 		</div>
+		{#if takeOutMsg}
+			<p class="take-out-msg">{takeOutMsg}</p>
+		{/if}
 
 {#if creatingFolder}
 			<div class="modal-inline">
@@ -1267,6 +1326,15 @@
 								<button class="btn-edit" onclick={openMove}
 									>{t('library.moveFolder', $locale)}</button
 								>
+								<!-- REQ-028: 파일 시스템으로 — 데스크톱에서만(이 기계에 파일을 쓴다). -->
+								{#if isTauri}
+									<button class="btn-edit" onclick={copyOut} disabled={takeOutBusy}
+										>{t('library.copyOut', $locale)}</button
+									>
+									<button class="btn-edit" onclick={exportOut} disabled={takeOutBusy}
+										>{t('library.exportOut', $locale)}</button
+									>
+								{/if}
 								<button class="btn-edit danger" onclick={askDeleteSelected}
 									>{t('library.delete', $locale)}</button
 								>
@@ -1274,6 +1342,9 @@
 						{/if}
 					</div>
 
+					{#if takeOutMsg}
+						<p class="take-out-msg">{takeOutMsg}</p>
+					{/if}
 					{#if selected.path}
 						<!-- emoji-ok: DEV-326 admin 결정 — 도서관 타일은 이전(이모지) 모양 유지 -->
 						<p class="doc-path">📁 {selected.path}</p>
@@ -1608,6 +1679,18 @@
 		font-size: 1.1rem;
 		font-weight: 600;
 		margin: 0;
+	}
+	/* REQ-028: 결과 한 줄 — 어디로 갔는지/몇 개인지. */
+	.take-out-msg {
+		margin: 0.25rem 0 0.5rem;
+		font-size: 0.85rem;
+		color: var(--text-muted);
+	}
+	.crumb.take-out {
+		margin-left: auto;
+	}
+	.crumb.take-out + .crumb.take-out {
+		margin-left: 0;
 	}
 	.crumbs {
 		display: flex;

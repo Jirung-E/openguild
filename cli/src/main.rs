@@ -1160,6 +1160,17 @@ enum LibraryCmd {
         #[arg(long, help = tf!("이 폴더에 든 것만 — 하위 폴더까지 포함. 빈 문자열(\"\")이면 최상위만.", "Only documents in this folder, including its subfolders. Empty string (\"\") means top-level only."))]
         folder: Option<String>,
     },
+    // REQ-028: 도서관의 폴더는 진짜 디렉터리가 아니라 문서가 적어 둔 값이다 — 밖으로 가져가려면
+    // 그 구조를 그때 만들어야 한다.
+    #[command(about = tf!("문서를 폴더 구조 그대로 밖으로 펼친다 (제목이 파일 이름, 첨부는 문서 옆 폴더).", "Export documents into a real folder tree (title becomes the filename; attachments go in a folder beside each doc)."))]
+    Export {
+        #[arg(help = tf!("펼칠 곳 (이미 있는 폴더).", "Destination — an existing folder."))]
+        dest: String,
+        #[arg(long, help = tf!("이 폴더와 그 아래만. 생략하면 도서관 전체.", "Only this folder and below. Omit for the whole library."))]
+        folder: Option<String>,
+        #[arg(long, conflicts_with = "folder", help = tf!("문서 하나만 (BOOK-NNN).", "A single document (BOOK-NNN)."))]
+        id: Option<String>,
+    },
     #[command(about = tf!("한 문서의 본문 출력 (stdout).", "Print a document's body (stdout)."))]
     Show {
         #[arg(help = tf!("문서 ID (BOOK-N 형식).", "Document ID (BOOK-N format)."))]
@@ -8525,6 +8536,42 @@ fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
                     println!();
                     println!("{}", b.body);
                 }
+            }
+        }
+        LibraryCmd::Export { dest, folder, id } => {
+            let Backend::Local(l) = c else {
+                return Err(anyhow!(tf!(
+                    "내보내기는 로컬 길드에서만 됩니다 — 파일을 이 기계에 씁니다.",
+                    "Export works only on a local guild — it writes files on this machine."
+                )));
+            };
+            let pick = match (&id, &folder) {
+                (Some(i), _) => openguild_core::ops::library_export::Pick::Doc(i.clone()),
+                (None, Some(f)) => openguild_core::ops::library_export::Pick::Folder(f.clone()),
+                (None, None) => openguild_core::ops::library_export::Pick::Folder(String::new()),
+            };
+            let out = Backend::map_err(l.rt.block_on(openguild_core::ops::library_export::export(
+                &l.store,
+                &pick,
+                std::path::Path::new(&dest),
+            )))?;
+            if json {
+                json_println!(serde_json::json!({ "ok": true, "exported": out }));
+            } else if out.is_empty() {
+                println!("{}", tf!("(내보낼 문서가 없습니다)", "(no documents to export)"));
+            } else {
+                for e in &out {
+                    let att = if e.attachments > 0 {
+                        tf!("  (첨부 {}개)", "  ({} attachments)", e.attachments)
+                    } else {
+                        String::new()
+                    };
+                    println!("{}  {}{att}", e.book_id, e.rel);
+                }
+                println!(
+                    "{}",
+                    tf!("-- {} 개 문서", "-- {} documents", out.len())
+                );
             }
         }
         LibraryCmd::History { id } => {

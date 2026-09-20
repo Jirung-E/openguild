@@ -153,6 +153,12 @@ openguild library folder new 아키텍처/결정
 openguild library folder new 보관
 openguild library folder move 아키텍처/결정 보관/결정
 
+# 도서관을 파일 시스템으로 — 폴더 구조 그대로 펼칩니다(제목이 파일 이름).
+# 도서관의 폴더는 진짜 디렉터리가 아니라 문서가 적어 둔 값이라, 밖으로 가져갈 때 만들어집니다.
+openguild library export ~/내보낸도서관
+openguild library export ~/내보낸도서관 --folder 아키텍처
+openguild library export ~/내보낸도서관 --id <문서-번호>
+
 # 태그 색·설명 (한글 이름 가능)
 openguild tag add 리팩터링 --color "#e94f4f" --description "동작은 그대로"
 ```

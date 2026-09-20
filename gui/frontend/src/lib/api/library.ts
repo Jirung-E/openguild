@@ -29,6 +29,15 @@ export interface LibraryFolder {
 	updated_at: string;
 }
 
+/** REQ-028: 내보낸 파일 하나. */
+export interface LibraryExported {
+	book_id: string;
+	/** 내보낸 곳 기준 상대 경로 — `아키텍처/라우터 설계.md`. */
+	rel: string;
+	path: string;
+	attachments: number;
+}
+
 export const libraryApi = {
 	list: () => api.get<Book[]>('/api/library'),
 	get: (bookId: string) => api.get<Book>(`/api/library/${encodeURIComponent(bookId)}`),
@@ -58,6 +67,27 @@ export const libraryApi = {
 		api.delete<QuestAttachment[]>(
 			`/api/library/${encodeURIComponent(bookId)}/attachments?path=${encodeURIComponent(path)}`
 		),
+
+	/**
+	 * REQ-028: 문서를 파일 시스템으로 펼친다 — 폴더 구조 그대로. **데스크톱 전용**이다
+	 * (이 기계에 파일을 쓴다). `id` 하나 또는 `folder` 하나, 둘 다 없으면 도서관 전체.
+	 */
+	exportTo: async (dest: string, pick: { folder?: string; id?: string } = {}) => {
+		const { invoke } = await import('@tauri-apps/api/core');
+		return invoke<LibraryExported[]>('library_export', {
+			dest,
+			folder: pick.folder ?? null,
+			id: pick.id ?? null
+		});
+	},
+	/** REQ-028: 같은 것을 임시 폴더에 펼친 뒤 **클립보드에 파일로** 올린다(탐색기에 붙여넣기). */
+	copyToClipboard: async (pick: { folder?: string; id?: string } = {}) => {
+		const { invoke } = await import('@tauri-apps/api/core');
+		return invoke<number>('library_copy_to_clipboard', {
+			folder: pick.folder ?? null,
+			id: pick.id ?? null
+		});
+	},
 
 	folders: {
 		list: () => api.get<LibraryFolder[]>('/api/library/folders'),

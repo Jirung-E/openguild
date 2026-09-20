@@ -2645,3 +2645,168 @@ pub fn get_native_titlebar_style(
 ) -> Result<crate::titlebar_linux::NativeTitlebarStyle, String> {
     crate::titlebar_linux::get_native_titlebar_style_blocking(&app)
 }
+
+// ── REQ-028: 도서관 문서를 파일 시스템으로 ───────────────────
+
+/// 고른 것을 `dest` 아래에 폴더 구조 그대로 펼친다.
+///
+/// 도서관의 폴더는 진짜 디렉터리가 아니라 문서가 적어 둔 값이라, 밖으로 가져가려면 그 구조를
+/// **그때 만들어야** 한다([[REQ-028]]).
+#[tauri::command]
+pub async fn library_export(
+    store: State<'_, Store>,
+    dest: String,
+    folder: Option<String>,
+    id: Option<String>,
+) -> Result<Vec<openguild_core::ops::library_export::Exported>, String> {
+    use openguild_core::ops::library_export::{Pick, export};
+    let pick = match (id, folder) {
+        (Some(i), _) => Pick::Doc(i),
+        (None, Some(f)) => Pick::Folder(f),
+        (None, None) => Pick::Folder(String::new()),
+    };
+    export(&store, &pick, std::path::Path::new(&dest))
+        .await
+        .map_err(err)
+}
+
+/// 고른 것을 **클립보드에 파일로** 올린다 — 탐색기에서 바로 붙여넣게.
+///
+/// 클립보드에 올릴 수 있는 것은 **파일**이지 도서관 문서가 아니다. 그래서 먼저 임시 폴더에
+/// 구조를 펼친 뒤 그 경로를 올린다. 임시 폴더는 앱의 데이터 폴더 아래에 남는다 — 붙여넣기는
+/// 사용자가 나중에 할 수도 있어서, 복사 직후 지우면 빈 것이 붙는다.
+#[tauri::command]
+pub async fn library_copy_to_clipboard(
+    store: State<'_, Store>,
+    folder: Option<String>,
+    id: Option<String>,
+) -> Result<usize, String> {
+    use openguild_core::ops::library_export::{Pick, export};
+    let stage = openguild_core::user_dirs::openguild_home()
+        .map_err(|e| format!("{e}"))?
+        .join("clipboard")
+        .join(format!(
+            "library-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis())
+                .unwrap_or(0)
+        ));
+    let pick = match (id, folder) {
+        (Some(i), _) => Pick::Doc(i),
+        (None, Some(f)) if !f.is_empty() => Pick::Folder(f),
+        _ => Pick::Folder(String::new()),
+    };
+    // 클립보드에 올리는 것은 **하나**여야 한다. 여럿을 한 번에 올리는 길이 OS 마다 제각각이고
+    // (macOS 는 목록을 파일로 안 붙여 준다), 하나면 폴더째 붙는다 — 그 아래가 통째로 따라간다.
+    // 그래서 도서관 전체는 길드 이름의 폴더로 한 번 감싼다.
+    let wrap = match &pick {
+        Pick::Folder(f) if f.is_empty() => {
+            Some(openguild_core::recents::guess_name(&store.paths.guild_root))
+        }
+        _ => None,
+    };
+    let into = match &wrap {
+        Some(name) => stage.join(name),
+        None => stage.clone(),
+    };
+    std::fs::create_dir_all(&into).map_err(|e| format!("임시 폴더를 만들지 못했습니다: {e}"))?;
+    let out = export(&store, &pick, &into).await.map_err(err)?;
+    if out.is_empty() {
+        return Err("내보낼 문서가 없습니다".into());
+    }
+    let top = match &wrap {
+        Some(_) => into,
+        None => {
+            let first = out[0].rel.split('/').next().unwrap_or(&out[0].rel);
+            into.join(first)
+        }
+    };
+    copy_files_to_clipboard(&[top])?;
+    Ok(out.len())
+}
+
+/// 운영체제 클립보드에 파일(또는 폴더)을 올린다.
+///
+/// 웹 클립보드 API 로는 **파일을 못 올린다**(글자·그림뿐이다). 그래서 OS 도구를 부른다 —
+/// 새 의존성을 들이는 대신, 각 OS 에 이미 있는 것을 쓴다.
+fn copy_files_to_clipboard(paths: &[std::path::PathBuf]) -> Result<(), String> {
+    if paths.is_empty() {
+        return Err("복사할 것이 없습니다".into());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        // AppleScript 의 `POSIX file` 목록 — Finder 가 붙여넣을 수 있는 모양.
+        let items: Vec<String> = paths
+            .iter()
+            .map(|p| format!("POSIX file \"{}\"", p.display().to_string().replace('"', "\\\"")))
+            .collect();
+        let script = format!("set the clipboard to {{{}}}", items.join(", "));
+        run_tool("osascript", &["-e", &script])
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let list: Vec<String> = paths
+            .iter()
+            .map(|p| format!("'{}'", p.display().to_string().replace('\'', "''")))
+            .collect();
+        let script = format!("Set-Clipboard -LiteralPath {}", list.join(","));
+        run_tool(
+            "powershell",
+            &["-NoProfile", "-NonInteractive", "-Command", &script],
+        )
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        // 파일 매니저들이 읽는 모양 — 첫 줄이 `copy`, 그 아래가 file:// 주소.
+        let mut body = String::from("copy\n");
+        for p in paths {
+            body.push_str(&format!("file://{}\n", p.display()));
+        }
+        for (cmd, args) in [
+            ("wl-copy", vec!["--type", "x-special/gnome-copied-files"]),
+            (
+                "xclip",
+                vec!["-selection", "clipboard", "-t", "x-special/gnome-copied-files"],
+            ),
+        ] {
+            if pipe_tool(cmd, &args, &body).is_ok() {
+                return Ok(());
+            }
+        }
+        Err("이 환경에서는 파일 복사를 지원하지 않습니다 — `내보내기` 를 쓰세요 (wl-copy 또는 xclip 필요)".into())
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn run_tool(cmd: &str, args: &[&str]) -> Result<(), String> {
+    let out = std::process::Command::new(cmd)
+        .args(args)
+        .output()
+        .map_err(|e| format!("{cmd} 를 띄우지 못했습니다: {e}"))?;
+    if out.status.success() {
+        return Ok(());
+    }
+    Err(format!(
+        "{cmd} 실패: {}",
+        String::from_utf8_lossy(&out.stderr).trim()
+    ))
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn pipe_tool(cmd: &str, args: &[&str], body: &str) -> Result<(), String> {
+    use std::io::Write;
+    let mut child = std::process::Command::new(cmd)
+        .args(args)
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("{cmd}: {e}"))?;
+    child
+        .stdin
+        .as_mut()
+        .ok_or("stdin 없음")?
+        .write_all(body.as_bytes())
+        .map_err(|e| format!("{cmd}: {e}"))?;
+    let st = child.wait().map_err(|e| format!("{cmd}: {e}"))?;
+    if st.success() { Ok(()) } else { Err(format!("{cmd} 실패")) }
+}

@@ -1774,6 +1774,15 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		en: 'Select a document from the list.'
 	},
 	'library.backToList': { ko: '← 목록', en: '← List' },
+	// REQ-028: 도서관을 파일 시스템으로 — 폴더 구조 그대로.
+	'library.copyOut': { ko: '복사', en: 'Copy' },
+	'library.exportOut': { ko: '내보내기', en: 'Export' },
+	'library.exportPick': { ko: '내보낼 폴더 고르기', en: 'Choose a folder to export into' },
+	'library.exportDone': { ko: '문서 {n}개를 내보냈습니다.', en: 'Exported {n} document(s).' },
+	'library.copyDone': {
+		ko: '문서 {n}개를 복사했습니다 — 탐색기에서 붙여넣으세요.',
+		en: 'Copied {n} document(s) — paste them in your file explorer.'
+	},
 	'library.editDoc': { ko: '✎ 편집', en: '✎ Edit' },
 	'library.writeDoc': { ko: '+ 작성', en: '+ Write' },
 	'library.retitle': { ko: '제목 변경', en: 'Rename' },

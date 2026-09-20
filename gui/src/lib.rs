@@ -747,6 +747,9 @@ pub fn run() {
             commands::list_backlinks,
             commands::open_guild_file,
             commands::copy_guild_file,
+            // REQ-028: 도서관을 파일 시스템으로 — 폴더 구조 그대로.
+            commands::library_export,
+            commands::library_copy_to_clipboard,
             // DEV-265: 커스텀 타이틀바 창 컨트롤 — Windows Snap Layout
             // 히트테스트 / Linux 네이티브 아이콘 테마 조회.
             commands::set_maximize_hit_rect,

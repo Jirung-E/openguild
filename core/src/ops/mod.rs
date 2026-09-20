@@ -20,6 +20,8 @@ pub mod comments;
 pub mod counter;
 pub mod doc_history;
 pub mod library;
+// REQ-028: 도서관 문서를 파일 시스템으로 펼친다(폴더 구조 그대로).
+pub mod library_export;
 #[cfg(test)]
 mod lock_coverage;
 pub mod meta;

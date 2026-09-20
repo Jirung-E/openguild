@@ -107,6 +107,13 @@ pub const CATALOG: &[Entry] = &[
         "set_rules",
         Status::Excluded("규칙 파일 일괄 쓰기 — 위 set_comments 와 같은 이유."),
     ),
+    // REQ-028: 이름이 mutation 처럼 보이지만 **길드를 안 바꾼다** — 길드 밖에 사본을 쓴다.
+    e(
+        "export",
+        Status::Excluded(
+            "도서관 문서를 길드 **밖으로** 펼쳐 쓴다(REQ-028).              길드 안의 무엇도 바뀌지 않으므로 낼 이벤트가 없다 —              읽기만 하는 명령과 같다.",
+        ),
+    ),
     // BUG-286: 위치 쓰기가 ops 로 옮겨 오면서 이 검사가 잡았다.
     e(
         "update_position",
