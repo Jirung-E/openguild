@@ -2,3 +2,5 @@
 {"ts":"2026-09-17T01:24:23+09:00","op":"change_status","old":"in_progress","new":"testing"}
 {"ts":"2026-09-17T09:24:51+09:00","op":"change_status","old":"testing","new":"in_progress"}
 {"ts":"2026-09-17T09:27:10+09:00","op":"change_status","old":"in_progress","new":"testing"}
+{"ts":"2026-09-20T14:47:23+09:00","op":"change_status","old":"testing","new":"in_progress"}
+{"ts":"2026-09-20T14:50:27+09:00","op":"change_status","old":"in_progress","new":"testing"}

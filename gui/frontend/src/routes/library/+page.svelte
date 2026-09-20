@@ -935,6 +935,10 @@
 				</button>
 			{/each}
 			{#if explorerPath}
+				<!-- DEV-397 후속: 지금 들어와 있는 폴더도 여기서 이름을 바꾼다. -->
+				<button class="btn-del-folder" onclick={() => openRenameFolder(explorerPath)}>
+					{t('library.folderRenameSubmit', $locale)}
+				</button>
 				<button class="btn-del-folder" onclick={() => askDeleteFolder(explorerPath)}>
 					{t('library.deleteCurrentFolder', $locale)}
 				</button>
@@ -1039,6 +1043,9 @@
 		{:else}
 			<div class="tile-grid">
 				{#each explorerFolders as f (f.path)}
+					<!-- DEV-397 후속(admin): 아이콘 뷰에는 이름 바꾸기가 아예 없었다 — 트리에만
+					     있었다. 타일 안에 버튼을 넣을 수는 없으므로(버튼 안의 버튼) 감싸고 얹는다. -->
+					<span class="tile-wrap">
 					<button
 						class="tile"
 						class:drag-over={dragOverFolder === f.path}
@@ -1060,6 +1067,13 @@
 						<span class="tile-icon" aria-hidden="true">📁</span>
 						<span class="tile-label" use:titlePopup={f.name}>{f.name}</span>
 					</button>
+						<button
+							class="tile-act"
+							title={t('library.folderRenameSubmit', $locale)}
+							aria-label={`${f.name} — ${t('library.folderRenameSubmit', $locale)}`}
+							onclick={() => openRenameFolder(f.path)}>✎</button
+						>
+					</span>
 				{/each}
 				{#each explorerDocs as b (b.book_id)}
 					<button
@@ -1771,6 +1785,36 @@
 	}
 	.tile:hover {
 		background: var(--bg-elevated);
+	}
+	/* DEV-397 후속: 타일 위에 얹는 작은 동작 버튼. 평소엔 숨고 마우스를 올리면 보인다 —
+	   타일이 촘촘해서 늘 보이면 이름이 가려진다. 키보드로 올 때도 보여야 한다. */
+	.tile-wrap {
+		position: relative;
+		display: inline-flex;
+	}
+	.tile-act {
+		position: absolute;
+		top: 0.15rem;
+		right: 0.15rem;
+		width: 1.25rem;
+		height: 1.25rem;
+		display: none;
+		align-items: center;
+		justify-content: center;
+		border: var(--bw) solid var(--border);
+		border-radius: var(--r-sm);
+		background: var(--bg-elevated);
+		color: var(--text-muted);
+		font-size: 0.7rem;
+		line-height: 1;
+		cursor: pointer;
+	}
+	.tile-wrap:hover .tile-act,
+	.tile-act:focus-visible {
+		display: inline-flex;
+	}
+	.tile-act:hover {
+		color: var(--text);
 	}
 	/* BUG-127: 드래그 중인 문서가 이 폴더 타일 위에 있을 때 강조. */
 	.tile.drag-over {
