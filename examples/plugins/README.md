@@ -227,6 +227,12 @@ openguild plugin schema --out plugin.schema.json   # 편집기 자동 완성
 예제 첫 줄의 `#:schema ../plugin.schema.json` 이 그 스키마를 가리킨다 — VS Code 의
 Even Better TOML 같은 확장이 집어 들어 칸 이름과 이벤트 이름을 채워 준다.
 
+> 다른 건 다 TOML 인데 이것만 왜 JSON 인가 — **편집기가 그 형식만 읽기 때문**이다.
+> 스키마를 적는 표준은 JSON Schema 하나뿐이고, TOML 로 된 표준은 없다. `#:schema` 를
+> 알아듣는 Taplo(Even Better TOML 의 속)도 JSON Schema 만 받는다. 이 파일은 사람이
+> 손으로 쓰는 설정이 아니라 `openguild plugin schema` 가 찍어 주는 기계용 파일이라,
+> 사람이 읽고 쓰는 곳은 그대로 TOML 이다.
+
 자세한 규칙은 `openguild docs show USAGE` 의 플러그인 절을 본다.
 
 ## `notify` 태그는 어떻게 되는 건가
