@@ -78,9 +78,7 @@
 	// 있을 필요는 없다(검색용 캐시일 뿐 — 상세 표시는 이 재조회가 진리원).
 	// 선택이 바뀔 때마다 libraryApi.get() 으로 title/body/path/attachments
 	// 전부를 서버에서 다시 받아 덮어쓴다.
-	$effect(() => {
-		const id = selectedId;
-		if (!id) return;
+	function hydrate(id: string) {
 		libraryApi
 			.get(id)
 			.then((full) => {
@@ -91,6 +89,12 @@
 			.catch(() => {
 				/* 보조 기능 — 실패해도 list() 스냅샷은 표시됨 */
 			});
+	}
+
+	$effect(() => {
+		const id = selectedId;
+		if (!id) return;
+		hydrate(id);
 	});
 
 	// BUG-123(admin 보고): tree 모드 폴더 접기 — 이전엔 아예 구현이 안 돼 있어
@@ -334,6 +338,13 @@
 			// 호출에서만 force 한다.
 			loadQuestIndex(mutated);
 			lastLoadedAt = Date.now();
+			// BUG-300(admin 보고): 목록 행에는 **첨부가 없다**(검색용 캐시라 본문·첨부를 안
+			// 싣는다). 위에서 `books` 를 통째로 갈아 끼우면 열어 둔 문서의 첨부가 사라진다 —
+			// 선택이 안 바뀌었으니 상세 재조회 effect 도 다시 안 돈다. 다시 채워 준다.
+			//
+			// BUG-298 이 "창으로 돌아오면 목록을 다시 받는다" 를 넣으면서 드러났다: 다른 앱에
+			// 갔다 오기만 해도 첨부 목록이 비었다.
+			if (selectedId) hydrate(selectedId);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'failed to load';
 		} finally {
