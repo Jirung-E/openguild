@@ -60,6 +60,8 @@
 	} = $props();
 
 	let slot: HTMLDivElement | undefined = $state(undefined);
+	/** BUG-315: 입력칸이 돌아갈 자리를 가리키는 표식 — 붙어 있는 동안에도 여기 남는다. */
+	let probe: HTMLDivElement | undefined = $state(undefined);
 	/**
 	 * 붙기 **직전** 상자의 높이. 붙으면 상자가 흐름에서 빠지므로 그만큼 자리를 비워 둬야
 	 * 아래 내용이 안 올라온다.
@@ -131,10 +133,29 @@
 	// 붙은 상자는 본문 칸과 같은 폭·같은 가로 위치를 쓴다 — 창 전체로 늘리면 글 읽는 폭과
 	// 어긋나 보인다.
 	let rect = $state({ left: 0, width: 0 });
+	/**
+	 * BUG-315: 입력칸이 **제자리에 있을 때** 어디였나 — 슬롯 위에서 잰 값.
+	 *
+	 * 관찰 대상을 입력칸 자체로 두면 안 된다. 붙는 순간 상자가 화면 아래로 옮겨 가고, 그
+	 * 안에 든 입력칸도 같이 옮겨 가 **보이게** 된다. 그러면 "이제 보이니 떨어져라" 가 되고,
+	 * 떨어지면 다시 안 보이고 — 끝없이 떴다 내려간다(admin). BUG-312 에서 대상을 입력칸으로
+	 * 좁히며 이 고리를 만들었다.
+	 *
+	 * 그래서 **제자리에 남는 표식**을 슬롯 안에 두고 그것을 본다. 슬롯은 붙어 있는 동안에도
+	 * 흐름에 남아 자리를 지키므로(예약 높이), 표식은 "입력칸이 돌아갈 자리" 를 그대로 가리킨다.
+	 * 재는 뜻은 입력칸 그대로이고, 움직이지 않으니 고리도 없다.
+	 */
+	let probeBox = $state({ top: 0, height: 0 });
 	function measure() {
 		if (!slot) return;
 		const r = slot.getBoundingClientRect();
 		rect = { left: r.left, width: r.width };
+		// 붙어 있는 동안에는 재지 않는다 — 그때 입력칸은 제자리에 없다.
+		if (docked) return;
+		const el = inputEl();
+		if (!el) return;
+		const ir = el.getBoundingClientRect();
+		probeBox = { top: ir.top - r.top, height: ir.height };
 	}
 
 	/** 자리가 바뀌기 **직전**의 위치 — 아래 FLIP 이 여기서부터 이어 붙인다. */
@@ -178,26 +199,39 @@
 			// 1 하나만 두면 "완전히 보임 → 아님" 을 놓칠 수 있다(경계에서 콜백이 안 온다).
 			{ threshold: [0, 0.99, 1] }
 		);
-		// 입력칸이 갈리면 보던 것을 놓고 새것을 본다.
+		// BUG-315: 보는 것은 **표식**이다 — 입력칸 자체가 아니다(위 `probeBox` 참고).
+		// 표식이 아직 안 그려졌으면(시험용 DOM 등) 입력칸이라도 본다.
 		let watched: Element | null = null;
 		const retarget = () => {
-			const el = inputEl();
+			const el = probe ?? inputEl();
 			if (el === watched) return;
 			if (watched) io.unobserve(watched);
 			watched = el;
 			if (watched) io.observe(watched);
-			// 입력칸이 아예 없으면 붙을 이유도 없다.
+			// 볼 것이 아예 없으면 붙을 이유도 없다.
 			else fullyVisible = true;
 		};
 		retarget();
+		// 편집기 토글(M↓)로 입력칸이 갈리면 크기가 달라진다 — 표식을 다시 맞춘다.
 		const mo =
-			typeof MutationObserver === 'undefined' ? null : new MutationObserver(() => retarget());
+			typeof MutationObserver === 'undefined'
+				? null
+				: new MutationObserver(() => {
+						retarget();
+						measure();
+					});
 		mo?.observe(slot, { childList: true, subtree: true });
 		const onResize = () => measure();
 		window.addEventListener('resize', onResize);
+		// 글을 치면 입력칸이 자란다 — DOM 이 안 바뀌므로 위 관찰기로는 못 본다. 표식이
+		// 실제 크기를 따라가게 슬롯 크기를 지켜본다.
+		const ro =
+			typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => measure());
+		ro?.observe(slot);
 		return () => {
 			io.disconnect();
 			mo?.disconnect();
+			ro?.disconnect();
 			window.removeEventListener('resize', onResize);
 		};
 	});
@@ -255,6 +289,15 @@
 	onfocusin={onFocusIn}
 	onfocusout={onFocusOut}
 >
+	<!-- BUG-315: 붙어 있는 동안에도 **제자리에 남는** 표식. 보이지도 눌리지도 않는다 —
+	     "입력칸이 돌아갈 자리가 보이나" 를 재는 데만 쓴다. -->
+	<div
+		class="dock-probe"
+		aria-hidden="true"
+		bind:this={probe}
+		style:top={`${probeBox.top}px`}
+		style:height={`${probeBox.height}px`}
+	></div>
 	<div
 		class="dock-box"
 		class:docked
@@ -356,6 +399,15 @@
 	.dock-slot {
 		/* 붙어 있는 동안 원래 자리가 접히면 그 위의 글이 밀린다 — 높이를 잡아 둔다. */
 		min-height: 0;
+		/* 표식이 이 안에서 자리를 잡는다. */
+		position: relative;
+	}
+	.dock-probe {
+		position: absolute;
+		left: 0;
+		right: 0;
+		pointer-events: none;
+		visibility: hidden;
 	}
 	.dock-box {
 		transition: transform 0.18s ease-out;
