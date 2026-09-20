@@ -52,6 +52,12 @@ pub(crate) fn arg_to_guild_path(arg: &Path) -> Option<PathBuf> {
 /// 주소 문자열만 받는 이유는 **시험하기 위해서**다(이벤트를 만들지 않고 규칙만 확인한다).
 /// 경로 해석은 argv 와 **같은 함수**(`arg_to_guild_path`)를 쓴다 — 두 길이 갈라지면 한쪽에서만
 /// 되는 일이 생긴다.
+///
+/// **다른 OS 에서는 안 쓰인다** — 그래서 `dead_code` 가 뜨고, CI 의 `-D warnings` 가 그것을
+/// 오류로 만든다(리눅스 잡에서만 났다. 맥에서 `just test` 만 돌리면 안 보인다).
+/// `#[cfg(macos)]` 로 통째로 잘라 내는 대신 **어디서나 컴파일되게** 두고 경고만 끈다 —
+/// 규칙을 고정한 시험이 모든 OS 에서 돌아야 리눅스에서 무심코 깨뜨리는 일이 없다.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(crate) fn opened_urls_to_guild<S: AsRef<str>>(urls: &[S]) -> Option<PathBuf> {
     urls.iter().find_map(|u| {
         let p = file_url_to_path(u.as_ref())?;
@@ -60,6 +66,7 @@ pub(crate) fn opened_urls_to_guild<S: AsRef<str>>(urls: &[S]) -> Option<PathBuf>
 }
 
 /// `file:///a/b%20c.guild` → `/a/b c.guild`. 다른 스킴은 없음(우리가 여는 것은 파일뿐).
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn file_url_to_path(url: &str) -> Option<PathBuf> {
     let rest = url.strip_prefix("file://")?;
     // `file://localhost/...` 형태도 있다 — 호스트가 비었거나 localhost 면 그 뒤가 경로다.
@@ -71,6 +78,7 @@ fn file_url_to_path(url: &str) -> Option<PathBuf> {
 }
 
 /// `%20` 같은 것만 푼다 — 의존성을 들이지 않으려고 직접 한다(짧고, 하는 일이 다 보인다).
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn percent_decode(s: &str) -> String {
     let b = s.as_bytes();
     let mut out: Vec<u8> = Vec::with_capacity(b.len());
