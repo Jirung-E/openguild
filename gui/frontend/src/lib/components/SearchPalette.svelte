@@ -14,6 +14,7 @@
 -->
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
+	import DocRowActions from './DocRowActions.svelte';
 	import { goto, afterNavigate } from '$app/navigation';
 	import { questsApi } from '$lib/api/quests';
 	import { campaignsApi } from '$lib/api/campaigns';
@@ -611,74 +612,14 @@
 								</span>
 							{/if}
 						</button>
+						<!-- DEV-417: 아이콘·설명·순서를 DocRowActions 한 곳에 뒀다 — 관계 목록·연관
+						     문서도 같은 것을 쓴다(한쪽만 고쳐져 갈라지지 않게). -->
 						<div class="row-actions">
-							<button
-								class="row-act"
-								onclick={() => openPreview(it)}
-								title={t('palette.preview', $locale)}
-								aria-label={t('palette.preview', $locale)}
-							>
-								<svg class="sp-ico"
-									width="13"
-									height="13"
-									viewBox="0 0 16 16"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="1.3"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									aria-hidden="true"
-								>
-									<path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8Z" />
-									<circle cx="8" cy="8" r="1.7" />
-								</svg>
-							</button>
-							<button
-								class="row-act"
-								onclick={() => windowItem(it)}
-								title={t('palette.openWindow', $locale)}
-								aria-label={t('palette.openWindow', $locale)}
-							>
-								<svg class="sp-ico"
-									width="13"
-									height="13"
-									viewBox="0 0 16 16"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="1.3"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									aria-hidden="true"
-								>
-									<path d="M6 3H3.3a.8.8 0 0 0-.8.8v8.4a.8.8 0 0 0 .8.8h8.4a.8.8 0 0 0 .8-.8V10" />
-									<path d="M9 2.5h4.5V7" />
-									<path d="M13.5 2.5 7.2 8.8" />
-								</svg>
-							</button>
-							<button
-								class="row-act"
-								onclick={() => goItem(it)}
-								title={t('palette.goPage', $locale)}
-								aria-label={t('palette.goPage', $locale)}
-							>
-								<svg class="sp-ico"
-									width="13"
-									height="13"
-									viewBox="0 0 16 16"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="1.3"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									aria-hidden="true"
-								>
-									<!-- BUG-244: 막대가 촉 꼭짓점(x 12.8)보다 0.7 더 뻗어 있어(2.5+11=13.5)
-									     화살표가 아니라 `─` 와 `>` 를 겹쳐 놓은 것처럼 보였다(admin).
-									     막대 끝을 촉 꼭짓점에 맞추고, 굵기도 옆 두 아이콘(1.3)과 통일. -->
-									<path d="M3 8h9.8" />
-									<path d="M9 4.2 12.8 8 9 11.8" />
-								</svg>
-							</button>
+							<DocRowActions
+								onpreview={() => openPreview(it)}
+								onwindow={() => windowItem(it)}
+								onpage={() => goItem(it)}
+							/>
 						</div>
 					</div>
 				{/each}
@@ -736,12 +677,6 @@
 </div>
 
 <style>
-	/* BUG-254: 아이콘 속성 px → CSS rem (Icon.svelte 와 같은 이유). */
-	.sp-ico {
-		width: 0.8125rem;
-		height: 0.8125rem;
-	}
-
 	.backdrop {
 		position: fixed;
 		inset: var(--titlebar-h, 0px) 0 0 0;
@@ -967,31 +902,7 @@
 		gap: 0.1rem;
 		padding: 0 0.5rem 0 0;
 	}
-	.row-act {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		/* BUG-244: px 고정이라 UI 크기 조절(DEV-101 — root font-size 배율)에
-		   반응하지 않았다. 칩·제목만 커지고 버튼만 그대로라 배율을 올릴수록
-		   행이 어긋난다. 22px = 1.375rem. */
-		width: 1.375rem;
-		height: 1.375rem;
-		color: var(--text-faint);
-		background: transparent;
-		border: none;
-		border-radius: var(--r-sm);
-		cursor: pointer;
-	}
-	/* 아이콘 크기는 마크업의 `width`/`height` 속성(13px)이라 배율을 안 탄다 —
-	   CSS 로 덮어 rem 으로 재정의(13px = 0.8125rem). */
-	.row-act svg {
-		width: 0.8125rem;
-		height: 0.8125rem;
-	}
-	.row-act:hover {
-		background: var(--nav-hover-bg);
-		color: var(--text);
-	}
+	/* DEV-417: 버튼 자체의 모양은 DocRowActions 안에 있다 — 여기서는 자리만 잡는다. */
 	.ptype {
 		flex: none;
 		min-width: 3.6rem;

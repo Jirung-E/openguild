@@ -1,17 +1,21 @@
 <!--
-  DEV-417: 문서를 가리키는 링크 하나 — 본문의 크로스링크와 **같은 선택지**를 준다.
+  DEV-417: 문서를 가리키는 목록 한 줄 — 검색 팔레트와 **같은 선택지**를 준다.
 
-  퀘스트 상세의 관계 목록(부모·하위·선행·후속·연결된 캠페인)과 캠페인 상세의 퀘스트 목록은
-  같은 문서를 가리키는데도 누르면 무조건 이동뿐이었다. 본문에 쓴 `[[DEV-001]]` 에는 호버하면
-  미리보기·새 창·이동을 고를 수 있는데, 바로 위 목록에서는 안 되는 것이 말이 안 된다.
+  퀘스트 상세의 관계 목록(부모·하위·선행·후속·연결된 캠페인), 캠페인의 퀘스트 목록, 그리고
+  연관 문서(백링크)는 전부 "같은 문서를 가리키는 목록" 이다. 팔레트에서는 미리보기·새 창·이동을
+  고를 수 있는데 이 목록들에서는 누르면 무조건 이동뿐이었다.
 
-  팝업 자체는 [[DEV-256]] 의 `LinkPreviewPopup` 을 그대로 쓴다 — 미리보기 본문·버튼이 한 벌이라
-  두 곳이 다르게 보일 일이 없다. 타이밍도 `utils/hover-popup.ts` 를 공유한다.
+  모양도 팔레트를 따른다(admin) — 줄 오른쪽에 아이콘 버튼 셋([[DocRowActions]]). **버튼이 아닌
+  자리를 누르면 예전처럼 페이지 이동**이다.
+
+  미리보기 팝업은 [[DEV-256]] 의 `LinkPreviewPopup` 을 그대로 쓴다 — 본문·버튼이 한 벌이라 두
+  화면이 다르게 보일 일이 없다.
 -->
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import type { Kind } from '$lib/stores/questIndex';
-	import { HoverTimers } from '$lib/utils/hover-popup';
+	import { openInWindow, openInPage } from '$lib/utils/open-item';
+	import DocRowActions from './DocRowActions.svelte';
 
 	let {
 		kind,
@@ -36,43 +40,40 @@
 	let open = $state(false);
 	let anchorRect = $state({ left: 0, right: 0, top: 0, bottom: 0 });
 	let anchor: HTMLAnchorElement | undefined = $state(undefined);
-	const timers = new HoverTimers();
 
-	function onEnter() {
-		timers.cancelClose();
-		timers.scheduleOpen(async () => {
-			if (!PopupComp) PopupComp = (await import('./LinkPreviewPopup.svelte')).default;
-			if (!anchor) return;
-			const r = anchor.getBoundingClientRect();
-			anchorRect = { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
-			open = true;
-		});
-	}
-	function onLeave() {
-		timers.cancelOpen();
-		if (open) timers.scheduleClose(() => (open = false));
-	}
-	// 링크 자체를 눌러 이동하면 팝업이 새 페이지까지 남는다 — 그 자리에서 정리한다.
-	function onClick() {
-		timers.clear();
-		open = false;
-	}
+	const displayName = $derived(title ? `${id} ${title}` : id);
 
-	$effect(() => () => timers.clear());
+	async function preview() {
+		if (!PopupComp) PopupComp = (await import('./LinkPreviewPopup.svelte')).default;
+		if (!anchor) return;
+		const r = anchor.getBoundingClientRect();
+		anchorRect = { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+		open = true;
+	}
 </script>
 
-<a
-	bind:this={anchor}
-	{href}
-	class={className}
-	onmouseenter={onEnter}
-	onmouseleave={onLeave}
-	onclick={onClick}
->
-	{@render children()}
-</a>
+<span class="doc-row">
+	<a bind:this={anchor} {href} class={className} onclick={() => (open = false)}>
+		{@render children()}
+	</a>
+	<DocRowActions
+		onpreview={preview}
+		onwindow={() => void openInWindow(href, displayName)}
+		onpage={() => {
+			open = false;
+			openInPage(href);
+		}}
+	/>
+</span>
 
 {#if PopupComp && open}
+	<!-- 팝업 밖을 누르면 닫는다 — 목록 줄에는 호버 타이머가 없다(버튼으로 연다). -->
+	<div
+		class="doc-row-scrim"
+		role="presentation"
+		onclick={() => (open = false)}
+		onkeydown={(e) => e.key === 'Escape' && (open = false)}
+	></div>
 	<PopupComp
 		{kind}
 		{id}
@@ -80,11 +81,28 @@
 		{title}
 		{href}
 		{anchorRect}
-		onenter={() => timers.cancelClose()}
-		onleave={() => timers.scheduleClose(() => (open = false))}
-		onnavigate={() => {
-			timers.clear();
-			open = false;
-		}}
+		onenter={() => {}}
+		onleave={() => {}}
+		onnavigate={() => (open = false)}
 	/>
 {/if}
+
+<style>
+	.doc-row {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+		flex: 1;
+		min-width: 0;
+	}
+	/* 줄 내용은 남는 폭을 다 쓰고, 버튼은 오른쪽 끝에 붙는다. */
+	.doc-row > :global(a) {
+		flex: 1;
+		min-width: 0;
+	}
+	.doc-row-scrim {
+		position: fixed;
+		inset: 0;
+		z-index: 1299; /* 팝업(1300) 바로 아래. */
+	}
+</style>

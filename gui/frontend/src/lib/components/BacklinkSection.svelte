@@ -12,6 +12,7 @@
 	import { locale, t } from '$lib/stores/locale';
 	import { KIND_LABEL, refHref } from '$lib/stores/questIndex';
 	import { reindexBump } from '$lib/stores/reindex';
+	import DocLink from './DocLink.svelte';
 
 	let { kind, id }: { kind: BacklinkKind; id: string } = $props();
 
@@ -85,13 +86,21 @@
 		<ul class="bl-list">
 			{#each entries as e (e.kind + ':' + e.id)}
 				<li class="bl-item {e.kind}">
-					<a href={refHref(e.id, e.kind, e.id)}>
+					<!-- DEV-417(admin): 같은 '목록' 이니 검색 팔레트와 같은 선택지를 준다 —
+					     미리보기 · 새 창 · 이동. 버튼 아닌 자리를 누르면 예전처럼 이동. -->
+					<DocLink
+						kind={e.kind}
+						id={e.id}
+						title={e.title ?? ''}
+						slug={e.id}
+						href={refHref(e.id, e.kind, e.id)}
+					>
 						<span class="bl-kind {e.kind}">{KIND_LABEL[e.kind]}</span>
 						<span class="bl-id">{e.id}</span>
 						{#if e.title && e.title !== e.id}
 							<span class="bl-t">{e.title}</span>
 						{/if}
-					</a>
+					</DocLink>
 				</li>
 			{/each}
 		</ul>
@@ -152,18 +161,24 @@
 		margin: 0;
 		padding: 0;
 	}
-	.bl-item a {
+	/* DEV-417: 링크가 DocLink 안으로 들어가 scoped 선택자가 안 닿는다 — `.bl-item` 안으로
+	   범위를 좁힌 `:global` 로 건다. 줄 밑선은 이제 항목(버튼 포함)이 긋는다. */
+	.bl-item {
+		display: flex;
+		align-items: center;
+		border-bottom: var(--bw) solid var(--border);
+	}
+	.bl-item :global(a) {
 		display: flex;
 		gap: 0.6rem;
 		align-items: baseline;
 		padding: 0.35rem 0;
-		border-bottom: var(--bw) solid var(--border);
 		text-decoration: none;
 		color: var(--text);
 		font-size: 0.83rem;
 		min-width: 0;
 	}
-	.bl-item a:hover .bl-t {
+	.bl-item :global(a:hover .bl-t) {
 		text-decoration: underline;
 	}
 	.bl-kind {

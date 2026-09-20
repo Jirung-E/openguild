@@ -21,7 +21,20 @@ vi.mock('$lib/utils/open-item', () => ({
 }));
 
 describe('DEV-417 관계 목록의 링크', () => {
-	it('호버하면 미리보기와 두 버튼이 뜨고, 누르면 그 주소로 간다', async () => {
+	it('검색 팔레트와 같은 버튼 셋 — 미리보기 · 새 창 · 이동', async () => {
+		const { container } = render(DocLinkHarness, {
+			kind: 'quest',
+			id: 'DEV-001',
+			title: '첫 일',
+			href: '/quests/DEV-001'
+		});
+		const labels = Array.from(container.querySelectorAll('button')).map(
+			(b) => b.getAttribute('aria-label') ?? ''
+		);
+		expect(labels).toEqual(['미리보기', '새 창으로 열기', '페이지로 이동']);
+	});
+
+	it('버튼이 아닌 자리는 예전처럼 링크 — 주소가 그대로 있다', async () => {
 		const { container } = render(DocLinkHarness, {
 			kind: 'quest',
 			id: 'DEV-001',
@@ -30,37 +43,43 @@ describe('DEV-417 관계 목록의 링크', () => {
 		});
 		const a = container.querySelector('a') as HTMLAnchorElement;
 		expect(a.getAttribute('href')).toBe('/quests/DEV-001');
-
-		a.dispatchEvent(new MouseEvent('mouseenter'));
-		await new Promise((r) => setTimeout(r, 1500));
-		await tick();
-		await tick();
-		const buttons = Array.from(document.querySelectorAll('button')).map((b) => b.textContent ?? '');
-		expect(buttons.some((t) => t.includes('새 창'))).toBe(true);
-		const go = Array.from(document.querySelectorAll('button')).find((b) =>
-			b.textContent?.includes('페이지로 이동')
-		) as HTMLButtonElement;
-		expect(go).toBeTruthy();
-
-		gone.length = 0;
-		go.click();
-		await tick();
-		expect(gone).toEqual(['/quests/DEV-001']);
 	});
 
-	it('지나가기만 하면 안 뜬다 — 머물러야 뜬다', async () => {
+	it('[페이지로 이동] 은 그 주소로 간다', async () => {
+		gone.length = 0;
 		const { container } = render(DocLinkHarness, {
 			kind: 'quest',
 			id: 'DEV-002',
 			title: '두 번째',
 			href: '/quests/DEV-002'
 		});
+		const go = Array.from(container.querySelectorAll('button')).find(
+			(b) => b.getAttribute('aria-label') === '페이지로 이동'
+		) as HTMLButtonElement;
+		go.click();
+		await tick();
+		expect(gone).toEqual(['/quests/DEV-002']);
+	});
+
+	it('[미리보기] 를 눌러야 팝업이 뜬다 — 호버만으로는 안 뜬다', async () => {
+		const { container } = render(DocLinkHarness, {
+			kind: 'quest',
+			id: 'DEV-003',
+			title: '셋째',
+			href: '/quests/DEV-003'
+		});
 		const a = container.querySelector('a') as HTMLAnchorElement;
 		a.dispatchEvent(new MouseEvent('mouseenter'));
-		await new Promise((r) => setTimeout(r, 100));
-		a.dispatchEvent(new MouseEvent('mouseleave'));
 		await new Promise((r) => setTimeout(r, 400));
-		await tick();
 		expect(document.querySelector('.lp')).toBeNull();
+
+		const eye = Array.from(container.querySelectorAll('button')).find(
+			(b) => b.getAttribute('aria-label') === '미리보기'
+		) as HTMLButtonElement;
+		eye.click();
+		await new Promise((r) => setTimeout(r, 1500));
+		await tick();
+		await tick();
+		expect(document.querySelector('.lp'), '미리보기 팝업이 안 떴다').not.toBeNull();
 	});
 });
