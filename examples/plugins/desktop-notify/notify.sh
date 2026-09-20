@@ -15,8 +15,13 @@ json=$(cat)
 
 # jq 가 있으면 쓰고, 없으면 첫 200자만 보여준다 — 예제가 의존성 때문에
 # 안 도는 것보다 낫다.
+#
+# BUG-309: 제목은 늘 "openguild" 로 시작한다. 맥·리눅스는 보낸 이를 바꿀 수 없다 —
+# 알림은 서명된 앱 묶음에 묶여 있어서, 여기서 띄우면 스크립트 실행기가 보낸 것으로
+# 잡힌다. 적어도 글에서는 어디서 온 알림인지 바로 보이게 한다. (윈도우는 앱
+# 이름표를 쓸 수 있어 notify.ps1 이 진짜 openguild 이름으로 띄운다.)
 if command -v jq >/dev/null 2>&1; then
-  title=$(printf '%s' "$json" | jq -r '.event')
+  title="openguild - $(printf '%s' "$json" | jq -r '.event')"
   body=$(printf '%s' "$json" | jq -r '(.quest.id // "?") + " " + (.quest.title // .comment.body // "")')
 else
   title="openguild"
