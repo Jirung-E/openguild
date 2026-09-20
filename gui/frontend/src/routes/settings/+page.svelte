@@ -10,6 +10,10 @@
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { page } from '$app/stores';
+	import { goto } from '$app/navigation';
+	// BUG-310: 지금 어느 탭인지는 주소가 안다 — 돌아와도 그대로, 뒤로 가기로 되짚을 수 있게.
+	import { readTab, tabUrl, needsNavigation } from '$lib/utils/url-tab';
 	import { detectEnvironment } from '$lib/api/transport';
 	import { updateState, checkForUpdate } from '$lib/api/updater';
 	// DEV-305: 업데이트 자동 확인 on/off.
@@ -97,7 +101,15 @@
 	// 출력해서 보여주고, 웰컴페이지에서 들어간거면 표시 안하면 되는거 아님?").
 	// DEV-393: 플러그인은 관리 페이지로 옮겼다 — 설정은 앱 전체, 관리는 지금 연 길드.
 	type Tab = 'info' | 'display' | 'editor';
-	let activeTab = $state<Tab>('info');
+	const TAB_IDS: Tab[] = ['info', 'display', 'editor'];
+	const FIRST_TAB: Tab = 'info';
+	// BUG-310: 관리자 페이지와 같다 — 탭을 주소에 적어 두면 돌아와도 그대로고 앞뒤로 오간다.
+	const activeTab = $derived(readTab($page.url, TAB_IDS, FIRST_TAB));
+
+	function pickTab(tab: Tab) {
+		if (!needsNavigation($page.url, tab, TAB_IDS, FIRST_TAB)) return;
+		goto(tabUrl($page.url, tab, FIRST_TAB), { keepFocus: true, noScroll: true });
+	}
 
 	// ─── DEV-114: 커스텀 테마 편집기 ───
 	// 편집 대상 = 활성 프리셋. 새 프리셋 생성 → 즉시 활성화 → picker 로 조정.
@@ -289,20 +301,20 @@
 			<button
 				class="tab"
 				class:active={activeTab === 'info'}
-				onclick={() => (activeTab = 'info')}
+				onclick={() => pickTab('info')}
 				aria-pressed={activeTab === 'info'}>{t('settings.tabInfo', $locale)}</button
 			>
 			<button
 				class="tab"
 				class:active={activeTab === 'display'}
-				onclick={() => (activeTab = 'display')}
+				onclick={() => pickTab('display')}
 				aria-pressed={activeTab === 'display'}>{t('settings.tabDisplay', $locale)}</button
 			>
 			<!-- DEV-130: 편집기 들여쓰기 설정. -->
 			<button
 				class="tab"
 				class:active={activeTab === 'editor'}
-				onclick={() => (activeTab = 'editor')}
+				onclick={() => pickTab('editor')}
 				aria-pressed={activeTab === 'editor'}>{t('settings.tabEditor', $locale)}</button
 			>
 		</nav>

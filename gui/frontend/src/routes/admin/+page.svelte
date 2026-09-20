@@ -1,5 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { page } from '$app/stores';
+	import { goto } from '$app/navigation';
+	// BUG-310: 지금 어느 탭인지는 주소가 안다 — 돌아와도 그대로, 뒤로 가기로 되짚을 수 있게.
+	import { readTab, tabUrl, needsNavigation } from '$lib/utils/url-tab';
 	import { adminApi } from '$lib/api/admin';
 	import type { SkippedFile, JournalTail } from '$lib/api/admin';
 	import type { DriftReport, SnapshotInfo } from '$lib/types';
@@ -26,7 +30,17 @@
 		{ id: 'backup', label: 'admin.tabBackup' },
 		{ id: 'diagnostics', label: 'admin.tabDiagnostics' }
 	];
-	let activeTab = $state<Tab>('structure');
+	const FIRST_TAB: Tab = 'structure';
+	const TAB_IDS = TABS.map((t) => t.id);
+	// BUG-310: 화면 안의 변수로 두면 페이지를 떠날 때 사라진다 — 돌아오면 늘 첫 탭이었고,
+	// 탭을 옮겨도 앞뒤 기록에 안 남았다. 주소에서 읽으면 둘 다 풀린다.
+	const activeTab = $derived(readTab($page.url, TAB_IDS, FIRST_TAB));
+
+	function pickTab(tab: Tab) {
+		if (!needsNavigation($page.url, tab, TAB_IDS, FIRST_TAB)) return;
+		// 기록을 쌓는다(기본 pushState) — 탭 이동도 뒤로/앞으로의 대상이어야 한다(admin).
+		goto(tabUrl($page.url, tab, FIRST_TAB), { keepFocus: true, noScroll: true });
+	}
 
 	let snapshots = $state<SnapshotInfo[]>([]);
 	let drift = $state<DriftReport | null>(null);
@@ -254,7 +268,7 @@
 				<button
 					class="tab"
 					class:active={activeTab === tab.id}
-					onclick={() => (activeTab = tab.id)}
+					onclick={() => pickTab(tab.id)}
 					aria-pressed={activeTab === tab.id}>{t(tab.label, $locale)}</button
 				>
 			{/each}
