@@ -44,6 +44,52 @@ pub(crate) fn arg_to_guild_path(arg: &Path) -> Option<PathBuf> {
     None
 }
 
+/// BUG-301: macOS 가 알려 준 `file://` 주소들에서 **열 길드**를 고른다.
+///
+/// 맥에서 Finder 더블클릭은 argv 로 안 온다 — Apple Event 로 오고, Tauri 는 그것을
+/// `RunEvent::Opened { urls }` 로 준다. 그래서 argv 만 보던 앱은 welcome 으로 떨어졌다.
+///
+/// 주소 문자열만 받는 이유는 **시험하기 위해서**다(이벤트를 만들지 않고 규칙만 확인한다).
+/// 경로 해석은 argv 와 **같은 함수**(`arg_to_guild_path`)를 쓴다 — 두 길이 갈라지면 한쪽에서만
+/// 되는 일이 생긴다.
+pub(crate) fn opened_urls_to_guild<S: AsRef<str>>(urls: &[S]) -> Option<PathBuf> {
+    urls.iter().find_map(|u| {
+        let p = file_url_to_path(u.as_ref())?;
+        arg_to_guild_path(&p)
+    })
+}
+
+/// `file:///a/b%20c.guild` → `/a/b c.guild`. 다른 스킴은 없음(우리가 여는 것은 파일뿐).
+fn file_url_to_path(url: &str) -> Option<PathBuf> {
+    let rest = url.strip_prefix("file://")?;
+    // `file://localhost/...` 형태도 있다 — 호스트가 비었거나 localhost 면 그 뒤가 경로다.
+    let rest = rest.strip_prefix("localhost").unwrap_or(rest);
+    if !rest.starts_with('/') {
+        return None;
+    }
+    Some(PathBuf::from(percent_decode(rest)))
+}
+
+/// `%20` 같은 것만 푼다 — 의존성을 들이지 않으려고 직접 한다(짧고, 하는 일이 다 보인다).
+fn percent_decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%'
+            && i + 2 < b.len()
+            && let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16)
+        {
+            out.push(v);
+            i += 3;
+            continue;
+        }
+        out.push(b[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 /// DEV-052 후속: 디렉토리에 길드 마커 (`.guild` 파일 또는 `.guild/` 디렉토리)
 /// 가 있는지. 없으면 "이 위치 초기화?" 흐름 (`LaunchMode::Uninit`) 으로 진입.
 pub(crate) fn has_guild_marker(dir: &Path) -> bool {
@@ -822,8 +868,30 @@ pub fn run() {
             }
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        // BUG-301: 맥에서 `.guild` 더블클릭은 **argv 로 안 온다** — Finder 가 Apple Event 로
+        // 알리고, Tauri 는 그것을 `RunEvent::Opened` 로 준다. 그 처리가 없어서 늘 welcome 이
+        // 떴다. 앱이 이미 떠 있을 때도 여기로 오므로, 창을 새로 띄우지 않고 그 길드로 바꾼다.
+        .run(|app_handle, event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = &event {
+                let strs: Vec<String> = urls.iter().map(|u| u.to_string()).collect();
+                match opened_urls_to_guild(&strs) {
+                    Some(path) => {
+                        if let Err(e) = commands::open_guild_in_current_window(
+                            app_handle.clone(),
+                            path.display().to_string(),
+                            None,
+                        ) {
+                            eprintln!("[openguild-gui] .guild 열기 실패 — {e}");
+                        }
+                    }
+                    None => eprintln!("[openguild-gui] 열 수 없는 항목: {strs:?}"),
+                }
+            }
+            let _ = (app_handle, event);
+        });
 }
 
 #[cfg(test)]
@@ -836,6 +904,47 @@ mod tests {
     // 창 이벤트 자체는 GUI 없이 못 돌리므로, **판정 두 개**를 고정한다.
     // 판정이 어긋나면 증상이 곧바로 돌아온다 — 접두사가 갈리면 자식이 남고,
     // `closes_children` 이 헐거워지면 자식 창을 닫을 때 다른 창까지 끌려간다.
+    /// BUG-301: 맥에서 `.guild` 더블클릭은 argv 가 아니라 Apple Event 로 온다. 이벤트 자체는
+    /// GUI 없이 못 만들지만, **주소를 길드로 바꾸는 규칙**은 여기서 고정할 수 있다.
+    #[test]
+    fn opened_urls_resolve_to_the_same_guild_as_argv() {
+        let ns = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("og-opened-{ns}"));
+        let inner = dir.join("내 길드");
+        std::fs::create_dir_all(&inner).unwrap();
+        let marker = inner.join("내 길드.guild");
+        std::fs::write(&marker, "name = \"내 길드\"\n").unwrap();
+
+        let url = format!(
+            "file://{}",
+            marker
+                .display()
+                .to_string()
+                .replace(' ', "%20")
+        );
+        // 파일을 가리키면 그 부모 폴더가 길드다 — argv 경로와 같은 답.
+        assert_eq!(
+            crate::opened_urls_to_guild(std::slice::from_ref(&url)),
+            crate::arg_to_guild_path(&marker),
+            "Apple Event 와 argv 가 다른 답을 낸다"
+        );
+        assert_eq!(crate::opened_urls_to_guild(&[url]), Some(inner.clone()));
+
+        // 폴더를 그대로 던져도 된다(Finder 에서 폴더를 앱에 떨어뜨리는 경우).
+        let dir_url = format!("file://{}", inner.display().to_string().replace(' ', "%20"));
+        assert_eq!(crate::opened_urls_to_guild(&[dir_url]), Some(inner));
+
+        // 열 수 없는 것은 조용히 `None` — welcome 으로 두는 편이 낫다.
+        assert_eq!(crate::opened_urls_to_guild(&["file:///없는/경로.guild"]), None);
+        assert_eq!(crate::opened_urls_to_guild(&["https://example.test/x.guild"]), None);
+        assert_eq!(crate::opened_urls_to_guild::<&str>(&[]), None);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn child_window_label_matches_frontend_contract() {
         // frontend 의 `open-item.ts` 가 만드는 실제 형태.
