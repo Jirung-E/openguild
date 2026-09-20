@@ -1749,6 +1749,9 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'library.clearTagFilters': { ko: '× 전체 해제', en: '× Clear all' },
 	'library.upToParent': { ko: '상위 폴더로', en: 'Up to parent folder' },
 	'library.deleteCurrentFolder': { ko: '현재 폴더 삭제', en: 'Delete current folder' },
+	// BUG-313(admin): 옆의 '현재 폴더 삭제' 와 짝이 맞아야 한다 — 둘 다 **지금 들어와 있는**
+	// 폴더를 가리킨다. 그냥 '이름 바꾸기' 면 무엇의 이름인지 알 수 없다.
+	'library.renameCurrentFolder': { ko: '현재 폴더 이름 바꾸기', en: 'Rename current folder' },
 	'library.newFolderPlaceholder': { ko: '새 폴더 이름', en: 'New folder name' },
 	'library.newFolderPathPlaceholder': {
 		ko: '새 폴더 경로 (예: 아키텍처/서브)',

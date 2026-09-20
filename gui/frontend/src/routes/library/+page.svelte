@@ -832,6 +832,52 @@
 		}
 	}
 
+	// ─── BUG-313: 고른 것 하나의 이름 바꾸기 ───
+	//
+	// admin: "'이름바꾸기' 버튼은 선택된 폴더/문서 메뉴에서도 표시되어야하는거 아닌지?"
+	// 맞다 — 지금 들어와 있는 폴더는 경로줄에서 바꿀 수 있는데, **고른 것**은 바꿀 길이
+	// 없었다. 폴더면 폴더 이름(경로의 마지막 조각), 문서면 제목이다. 둘이 다른 연산이라
+	// 고른 것이 무엇인지 보고 갈라 준다. 여럿 고르면 안 보인다 — 한 번에 하나만 뜻이 맞다.
+	const pickedOne = $derived(picked.ids.size === 1 ? [...picked.ids][0] : null);
+
+	let renamingDoc = $state<string | null>(null);
+	let renameDocTitle = $state('');
+	let renameDocError = $state<string | null>(null);
+
+	function renamePicked() {
+		const id = pickedOne;
+		if (!id) return;
+		if (id.startsWith('folder:')) {
+			openRenameFolder(id.slice('folder:'.length));
+			return;
+		}
+		renamingDoc = id;
+		renameDocTitle = books.find((b) => b.book_id === id)?.title ?? '';
+		renameDocError = null;
+	}
+
+	async function submitRenameDoc() {
+		const id = renamingDoc;
+		if (!id) return;
+		const title = renameDocTitle.trim();
+		if (!title) {
+			renameDocError = t('library.titleRequired', $locale);
+			return;
+		}
+		if (title === books.find((b) => b.book_id === id)?.title) {
+			renamingDoc = null;
+			return;
+		}
+		try {
+			const updated = await libraryApi.update(id, { title });
+			books = books.map((b) => (b.book_id === id ? updated : b));
+			renamingDoc = null;
+			loadQuestIndex(true);
+		} catch (e) {
+			renameDocError = e instanceof Error ? e.message : t('library.retitleFail', $locale);
+		}
+	}
+
 	// ─── DEV-239: 새 폴더 ───
 	function openCreateFolder() {
 		creatingFolder = true;
@@ -900,6 +946,27 @@
 					>{t('library.folderRenameSubmit', $locale)}</button
 				>
 				<button class="btn-cancel" onclick={() => (renamingFolder = null)}
+					>{t('library.cancel', $locale)}</button
+				>
+			</div>
+		</div>
+	{/if}
+	<!-- BUG-313: 고른 문서의 제목 바꾸기 — 폴더 쪽과 같은 자리, 같은 모양. -->
+	{#if renamingDoc}
+		<div class="modal-inline rename-folder">
+			<input
+				class="text-input"
+				type="text"
+				aria-label={t('library.retitle', $locale)}
+				bind:value={renameDocTitle}
+				onkeydown={(e) => e.key === 'Enter' && submitRenameDoc()}
+			/>
+			{#if renameDocError}<p class="err">{renameDocError}</p>{/if}
+			<div class="actions">
+				<button class="btn-save" onclick={submitRenameDoc}
+					>{t('library.folderRenameSubmit', $locale)}</button
+				>
+				<button class="btn-cancel" onclick={() => (renamingDoc = null)}
 					>{t('library.cancel', $locale)}</button
 				>
 			</div>
@@ -1022,24 +1089,29 @@
 					{_seg}
 				</button>
 			{/each}
-			{#if explorerPath}
-				<!-- DEV-397 후속: 지금 들어와 있는 폴더도 여기서 이름을 바꾼다. -->
-				<button class="btn-del-folder" onclick={() => openRenameFolder(explorerPath)}>
-					{t('library.folderRenameSubmit', $locale)}
-				</button>
-				<button class="btn-del-folder" onclick={() => askDeleteFolder(explorerPath)}>
-					{t('library.deleteCurrentFolder', $locale)}
-				</button>
-			{/if}
-			<!-- REQ-028: 지금 보고 있는 폴더를 통째로 — 폴더 구조 그대로 밖으로. -->
-			{#if isTauri}
-				<button class="crumb take-out" onclick={copyOut} disabled={takeOutBusy}>
-					{t('library.copyOut', $locale)}
-				</button>
-				<button class="crumb take-out" onclick={exportOut} disabled={takeOutBusy}>
-					{t('library.exportOut', $locale)}
-				</button>
-			{/if}
+			<!-- BUG-313: 오른쪽 일감은 **한 덩이로 묶는다**(admin: 띄엄띄엄 떨어져 보였다).
+			     예전에는 버튼마다 `margin-left: auto` 가 붙어 있어서 남는 폭이 버튼 사이사이로
+			     나뉘어 들어갔다 — 그래서 하나씩 흩어졌다. 미는 것은 이 덩이 하나뿐이다. -->
+			<span class="crumb-actions">
+				{#if explorerPath}
+					<!-- DEV-397 후속: 지금 들어와 있는 폴더도 여기서 이름을 바꾼다. -->
+					<button class="crumb-btn" onclick={() => openRenameFolder(explorerPath)}>
+						{t('library.renameCurrentFolder', $locale)}
+					</button>
+					<button class="crumb-btn danger" onclick={() => askDeleteFolder(explorerPath)}>
+						{t('library.deleteCurrentFolder', $locale)}
+					</button>
+				{/if}
+				<!-- REQ-028: 지금 보고 있는 폴더를 통째로 — 폴더 구조 그대로 밖으로. -->
+				{#if isTauri}
+					<button class="crumb-btn" onclick={copyOut} disabled={takeOutBusy}>
+						{t('library.copyOut', $locale)}
+					</button>
+					<button class="crumb-btn" onclick={exportOut} disabled={takeOutBusy}>
+						{t('library.exportOut', $locale)}
+					</button>
+				{/if}
+			</span>
 		</div>
 		<!-- DEV-419: 고른 것이 있을 때만 뜨는 줄. 무엇을 몇 개 골랐는지 먼저 말하고, 할 수
 		     있는 일을 그 옆에 둔다. -->
@@ -1071,6 +1143,12 @@
 				<span class="picked-count">
 					{t('library.pickedCount', $locale).replace('{n}', String(picked.ids.size))}
 				</span>
+				{#if pickedOne}
+					<!-- BUG-313: 하나만 골랐을 때 — 폴더면 폴더 이름, 문서면 제목. -->
+					<button class="btn-edit" onclick={renamePicked}
+						>{t('library.folderRenameSubmit', $locale)}</button
+					>
+				{/if}
 				<button class="btn-edit" onclick={() => (movingPicked = true)}
 					>{t('library.moveFolder', $locale)}</button
 				>
@@ -1872,11 +1950,13 @@
 		border-color: var(--accent);
 	}
 
-	.crumb.take-out {
+	/* BUG-313: 오른쪽 일감 한 덩이 — 미는 것은 여기 하나다. */
+	.crumb-actions {
 		margin-left: auto;
-	}
-	.crumb.take-out + .crumb.take-out {
-		margin-left: 0;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3rem;
+		flex: none;
 	}
 	.crumbs {
 		display: flex;
@@ -1921,18 +2001,31 @@
 		border-radius: var(--r-sm);
 		outline: 1px dashed var(--accent);
 	}
-	.btn-del-folder {
-		margin-left: auto;
+	/* BUG-313: 넷 다 같은 버튼이다(admin: 복사·내보내기만 글자 링크처럼 보였다). 예전에는
+	   그 둘이 경로 조각과 같은 `.crumb` 을 써서 테두리도 여백도 없었다. */
+	.crumb-btn {
 		background: transparent;
 		border: var(--bw) solid var(--border);
 		border-radius: var(--r-sm);
 		color: var(--text-muted);
 		font-size: 0.72rem;
+		line-height: 1.4;
 		padding: 0.1rem 0.5rem;
 		cursor: pointer;
+		white-space: nowrap;
 	}
-	.btn-del-folder:hover {
+	.crumb-btn:hover:not(:disabled) {
+		color: var(--text);
+		border-color: var(--text-faint);
+	}
+	/* 지우기만 빨갛게 — 이름 바꾸기까지 빨개지면 되돌릴 수 없는 일처럼 보인다. */
+	.crumb-btn.danger:hover:not(:disabled) {
 		color: var(--danger);
+		border-color: var(--danger);
+	}
+	.crumb-btn:disabled {
+		opacity: 0.45;
+		cursor: default;
 	}
 
 	/* DEV-239: 탐색기 타일 — 개수와 무관하게 고정 크기, 좌상단부터 채움. */
