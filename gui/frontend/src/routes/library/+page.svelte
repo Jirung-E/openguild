@@ -30,6 +30,7 @@
 	import { saveShortcut } from '$lib/utils/save-shortcut';
 	import { libraryApi, type Book, type LibraryFolder } from '$lib/api/library';
 	import { isLocalTauri } from '$lib/api/transport';
+	import * as msel from '$lib/utils/multi-select';
 	import { searchApi } from '$lib/api/search';
 	import { buildLibraryTree, flattenFolderPaths, searchLibrary } from '$lib/utils/library-tree';
 	import LibraryFolderTree from '$lib/components/LibraryFolderTree.svelte';
@@ -575,6 +576,80 @@
 		}
 	}
 
+	// ─── DEV-419: 아이콘 뷰에서 여러 개 고르기 ───
+	//
+	// 탐색기처럼 **누르면 고르고, 두 번 누르면 연다**(admin). 트리 뷰는 그대로 둔다 — 그쪽은
+	// 옮겨 다니는 길잡이라 한 번 눌러 여는 편이 맞다.
+	//
+	// 고르는 규칙 자체는 `utils/multi-select.ts` 에 있다(시험은 거기에 붙는다).
+	let picked = $state<msel.Picked>(msel.EMPTY);
+	/** 화면에 보이는 순서 — 범위 선택이 이 순서를 따른다. 폴더가 먼저, 그다음 문서. */
+	const pickOrder = $derived([
+		...explorerFolders.map((f) => `folder:${f.path}`),
+		...explorerDocs.map((b) => b.book_id)
+	]);
+	const pickedDocs = $derived([...picked.ids].filter((k) => !k.startsWith('folder:')));
+	const pickedFolders = $derived(
+		[...picked.ids].filter((k) => k.startsWith('folder:')).map((k) => k.slice('folder:'.length))
+	);
+
+	// 목록이 바뀌면(옮겼거나 지웠거나) 사라진 것을 떨군다 — 없는 것을 고른 채로 "3개 옮기기"
+	// 라고 말하지 않게.
+	$effect(() => {
+		const order = pickOrder;
+		if (picked.ids.size === 0) return;
+		const next = msel.prune(picked, order);
+		if (next.ids.size !== picked.ids.size) picked = next;
+	});
+
+	function tileClick(e: MouseEvent, key: string) {
+		picked = msel.click(
+			picked,
+			key,
+			{ toggle: e.metaKey || e.ctrlKey, range: e.shiftKey },
+			pickOrder
+		);
+	}
+	/** 두 번 누름 = 연다. 폴더면 들어가고, 문서면 상세로. */
+	function tileOpen(key: string) {
+		picked = msel.clear();
+		if (key.startsWith('folder:')) gotoFolder(key.slice('folder:'.length));
+		else select(key);
+	}
+
+	/** 고른 것 전부를 한 폴더로. 폴더도 같이 고를 수 있다(자기 안으로는 못 넣는다). */
+	async function movePickedTo(target: string) {
+		for (const id of pickedDocs) await moveDocTo(id, target);
+		for (const f of pickedFolders) await moveFolderTo(f, target);
+		picked = msel.clear();
+		await loadList(selectedId, true);
+	}
+
+	let movingPicked = $state(false);
+	let movePickedPath = $state('');
+	let confirmDeletePicked = $state(false);
+	async function deletePicked() {
+		confirmDeletePicked = false;
+		for (const id of pickedDocs) {
+			try {
+				await libraryApi.delete(id);
+				if (selectedId === id) selectedId = null;
+			} catch (e) {
+				showToast(e instanceof Error ? e.message : String(e), 'error');
+			}
+		}
+		// 폴더는 비어 있을 때만 지워진다 — 안 비었으면 코어가 막고, 그 말을 그대로 보여 준다.
+		for (const f of pickedFolders) {
+			try {
+				await libraryApi.folders.delete(f);
+			} catch (e) {
+				showToast(e instanceof Error ? e.message : String(e), 'error');
+			}
+		}
+		picked = msel.clear();
+		await loadList(null, true);
+	}
+
 	// ─── REQ-028: 파일 시스템으로 가져가기 ───
 	//
 	// 도서관의 폴더는 진짜 디렉터리가 아니라 문서가 적어 둔 값이라, 밖으로 가져가려면 그 구조를
@@ -967,6 +1042,47 @@
 		{#if takeOutMsg}
 			<p class="take-out-msg">{takeOutMsg}</p>
 		{/if}
+		<!-- DEV-419: 고른 것이 있을 때만 뜨는 줄. 무엇을 몇 개 골랐는지 먼저 말하고, 할 수
+		     있는 일을 그 옆에 둔다. -->
+		{#if movingPicked}
+			<!-- DEV-419: 고른 것 전부를 한 폴더로. 문서 상세의 '폴더 이동' 과 같은 고르개. -->
+			<div class="modal-inline">
+				<select class="text-input" bind:value={movePickedPath}>
+					<option value="">{t('library.topLevel', $locale)}</option>
+					{#each flattenFolderPaths(tree) as p (p)}
+						<option value={p}>{p}</option>
+					{/each}
+				</select>
+				<div class="actions">
+					<button
+						class="btn-save"
+						onclick={async () => {
+							movingPicked = false;
+							await movePickedTo(movePickedPath);
+						}}>{t('library.move', $locale)}</button
+					>
+					<button class="btn-cancel" onclick={() => (movingPicked = false)}
+						>{t('library.cancel', $locale)}</button
+					>
+				</div>
+			</div>
+		{/if}
+		{#if picked.ids.size > 0}
+			<div class="picked-bar">
+				<span class="picked-count">
+					{t('library.pickedCount', $locale).replace('{n}', String(picked.ids.size))}
+				</span>
+				<button class="btn-edit" onclick={() => (movingPicked = true)}
+					>{t('library.moveFolder', $locale)}</button
+				>
+				<button class="btn-edit danger" onclick={() => (confirmDeletePicked = true)}
+					>{t('library.delete', $locale)}</button
+				>
+				<button class="btn-edit" onclick={() => (picked = msel.clear())}
+					>{t('library.pickedClear', $locale)}</button
+				>
+			</div>
+		{/if}
 
 {#if creatingFolder}
 			<div class="modal-inline">
@@ -1060,9 +1176,11 @@
 					<button
 						class="tile"
 						class:drag-over={dragOverFolder === f.path}
+						class:picked={picked.ids.has(`folder:${f.path}`)}
 						draggable="true"
 						ondragstart={(e) => e.dataTransfer?.setData('text/plain', `folder:${f.path}`)}
-						onclick={() => gotoFolder(f.path)}
+						onclick={(e) => tileClick(e, `folder:${f.path}`)}
+						ondblclick={() => tileOpen(`folder:${f.path}`)}
 						ondragover={(e) => {
 							e.preventDefault();
 							dragOverFolder = f.path;
@@ -1089,9 +1207,11 @@
 				{#each explorerDocs as b (b.book_id)}
 					<button
 						class="tile"
+						class:picked={picked.ids.has(b.book_id)}
 						draggable="true"
 						ondragstart={(e) => e.dataTransfer?.setData('text/plain', b.book_id)}
-						onclick={() => select(b.book_id)}
+						onclick={(e) => tileClick(e, b.book_id)}
+						ondblclick={() => tileOpen(b.book_id)}
 					>
 						<span class="tile-sub">{b.book_id}</span>
 						<!-- emoji-ok: DEV-326 admin 결정 — 도서관 타일은 이전(이모지) 모양 유지 -->
@@ -1517,6 +1637,17 @@
 	oncancel={() => (confirmDeleteFolderPath = null)}
 />
 
+<!-- DEV-419: 고른 것 한꺼번에 지우기. 몇 개인지 먼저 말한다 — 되돌릴 수 없는 일이다. -->
+<ConfirmDialog
+	open={confirmDeletePicked}
+	title={t('library.deletePickedTitle', $locale)}
+	message={t('library.deletePickedMsg', $locale).replace('{n}', String(picked.ids.size))}
+	confirmLabel={t('library.delete', $locale)}
+	danger
+	onconfirm={deletePicked}
+	oncancel={() => (confirmDeletePicked = false)}
+/>
+
 <ConfirmDialog
 	open={confirmDiscardId !== null || pendingBackToGrid}
 	title={t('library.editingMoveTitle', $locale)}
@@ -1705,6 +1836,24 @@
 		font-weight: 600;
 		margin: 0;
 	}
+	/* DEV-419: 고른 것이 있을 때만 뜨는 줄. */
+	.picked-bar {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		margin: 0.25rem 0 0.5rem;
+	}
+	.picked-count {
+		font-size: 0.85rem;
+		color: var(--text-muted);
+		margin-right: 0.25rem;
+	}
+	/* 고른 타일 — 드래그 강조(drag-over)와 구분되게 테두리로. */
+	.tile.picked {
+		background: color-mix(in srgb, var(--accent) 12%, transparent);
+		border-color: var(--accent);
+	}
+
 	/* REQ-028: 결과 한 줄 — 어디로 갔는지/몇 개인지. */
 	.take-out-msg {
 		margin: 0.25rem 0 0.5rem;

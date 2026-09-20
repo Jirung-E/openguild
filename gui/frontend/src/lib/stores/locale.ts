@@ -1777,6 +1777,14 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		en: 'Select a document from the list.'
 	},
 	'library.backToList': { ko: '← 목록', en: '← List' },
+	// DEV-419: 아이콘 뷰에서 여러 개 고르기.
+	'library.pickedCount': { ko: '{n}개 선택됨', en: '{n} selected' },
+	'library.pickedClear': { ko: '선택 해제', en: 'Clear' },
+	'library.deletePickedTitle': { ko: '고른 항목 삭제', en: 'Delete selected' },
+	'library.deletePickedMsg': {
+		ko: '고른 {n}개를 지웁니다. 폴더는 비어 있을 때만 지워집니다.',
+		en: 'Delete the {n} selected items. Folders are only deleted when empty.'
+	},
 	// REQ-028: 도서관을 파일 시스템으로 — 폴더 구조 그대로.
 	'library.copyOut': { ko: '복사', en: 'Copy' },
 	'library.exportOut': { ko: '내보내기', en: 'Export' },
