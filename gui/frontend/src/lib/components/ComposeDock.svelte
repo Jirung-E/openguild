@@ -229,9 +229,15 @@
 		max-height: 40dvh;
 		overflow: auto;
 	}
+	/* 좁게 보기 = **입력칸만**(admin: "댓글 입력창만 뜨는 것"). 작성자 칸과 편집기 토글은
+	   접는다 — 붙어 있는 동안 화면을 먹는 것이 그 줄이다. 입력칸 높이도 더 줄인다. */
+	.dock-box.compact :global(.new-row),
+	.dock-box.compact :global(.reply-author) {
+		display: none;
+	}
 	.dock-box.compact :global(textarea),
 	.dock-box.compact :global(.cm-scroller) {
-		max-height: 6rem;
+		max-height: 4.5rem;
 	}
 	.dock-head {
 		display: flex;
