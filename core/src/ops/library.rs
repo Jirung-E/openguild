@@ -595,7 +595,22 @@ pub async fn create_folder(store: &Store, path: &str) -> AppResult<LibraryFolder
     });
     repo::write_folders(&store.paths, &f).map_err(AppError::Internal)?;
 
-    sqlx::query("INSERT INTO library_folders (path, created_at, updated_at) VALUES (?, ?, ?)")
+    // BUG-306: 지운 폴더와 **같은 이름**으로 다시 만들면 DB 오류가 났다
+    // (`UNIQUE constraint failed: library_folders.path`).
+    //
+    // 지우기는 행을 남기고 `deleted_at` 만 찍는데(soft delete), 위의 존재 검사는
+    // `deleted_at IS NULL` 로 걸러 "없다" 고 답한다. 그런데 유니크 제약은 `path` **하나**에
+    // 걸려 있어 그냥 INSERT 하면 남아 있는 그 행과 부딪힌다. 파일 쪽(`folders.toml`)은 옛
+    // 항목을 지우고 새로 넣으므로 멀쩡했다 — 캐시만 깨졌다.
+    //
+    // 같은 경로가 이미 있으면 **되살린다**. 폴더는 경로가 곧 정체성이라 되살리는 것이 맞다.
+    sqlx::query(
+        "INSERT INTO library_folders (path, created_at, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(path) DO UPDATE SET
+             created_at = excluded.created_at,
+             updated_at = excluded.updated_at,
+             deleted_at = NULL",
+    )
         .bind(&path)
         .bind(&now)
         .bind(&now)
@@ -859,6 +874,38 @@ mod tests {
     async fn setup(dir: &std::path::Path) -> Store {
         seed_guild_dir(dir).unwrap();
         Store::open(dir).await.unwrap()
+    }
+
+    /// BUG-306: 지운 폴더와 **같은 이름**으로 다시 만들 수 있어야 한다.
+    ///
+    /// 지우기는 행을 남기고 `deleted_at` 만 찍는데 유니크 제약은 `path` 하나에 걸려 있다.
+    /// 그래서 존재 검사(`deleted_at IS NULL`)는 "없다" 고 하고 INSERT 는 부딪혔다 —
+    /// 사용자에게는 DB 오류 문자열이 그대로 나왔다.
+    #[tokio::test]
+    async fn a_deleted_folder_name_can_be_used_again() {
+        let dir = fresh_tmp("folder-reuse");
+        let store = setup(&dir).await;
+
+        create_folder(&store, "재활용").await.unwrap();
+        delete_folder(&store, "재활용").await.unwrap();
+        // 예전에는 여기서 `UNIQUE constraint failed: library_folders.path`.
+        let again = create_folder(&store, "재활용").await.unwrap();
+        assert_eq!(again.path, "재활용");
+
+        // 목록에 한 번만 나온다 — 되살린 것이지 새로 넣은 것이 아니다.
+        let listed: Vec<String> = list_folders(&store)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|f| f.path)
+            .filter(|p| p == "재활용")
+            .collect();
+        assert_eq!(listed, vec!["재활용".to_string()]);
+
+        // 살아 있는 폴더를 또 만들려 하면 여전히 거절한다(그건 진짜 중복이다).
+        assert!(create_folder(&store, "재활용").await.is_err());
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// BUG-299: **트리에 보이는 폴더는 지울 수 있어야 한다.**
