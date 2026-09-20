@@ -92,6 +92,7 @@ pub fn check_dir(dir: &Path, guild_root: Option<&Path>) -> Report {
     let src = script_text(dir, &def);
     warn_unused_functions(&def, compiled.as_deref(), &src, &mut r);
     warn_permissions(&def, &src, &mut r);
+    warn_action_calls(&def, &src, &mut r);
     warn_stray_scripts(dir, &def, &mut r);
 
     if r.ok() {
@@ -199,6 +200,68 @@ fn warn_permissions(def: &PluginDef, src: &str, r: &mut Report) {
             ));
         }
     }
+}
+
+/// BUG-311: **`send` 와 `run` 을 바꿔 부른 것.** 둘은 이름만 비슷하지 서로의 동작에 못 쓴다 —
+/// `send` 는 밖으로 보내는(post) 동작, `run` 은 이 컴퓨터에서 띄우는(run) 동작이다. 잘못
+/// 부르면 적재도 되고 검사도 통과하는데 **돌 때 아무 일도 안 일어난다**. 조용히 넘어가므로
+/// 만든 사람은 "왜 안 오지" 에서 멈춘다. 실제로 함께 배포하는 예제가 이걸로 한 번 막혔다.
+///
+/// 같은 자리에서 **없는 동작 이름**도 잡는다 — 오타 하나에 같은 증상이 난다.
+///
+/// 원문을 훑는 어림짐작이라 글자 그대로 적힌 이름만 본다(`send(어떤_변수)` 는 그냥 넘어간다).
+fn warn_action_calls(def: &PluginDef, src: &str, r: &mut Report) {
+    if src.is_empty() {
+        return;
+    }
+    let actions = def.all_actions();
+    for (caller, wants) in [("send", "post"), ("run", "run")] {
+        for name in literal_action_args(src, caller) {
+            match actions.iter().find(|(n, _)| *n == name) {
+                None => r.warnings.push(crate::tf!(
+                    "스크립트가 `{}(\"{}\")` 를 부르는데 그런 동작이 없습니다 — 돌 때 조용히 아무 일도 안 일어납니다",
+                    "the script calls `{}(\"{}\")` but there is no such action — at run time this does nothing, silently",
+                    caller,
+                    name
+                )),
+                Some((_, a)) if a.kind() != wants => r.warnings.push(crate::tf!(
+                    "동작 `{}` 은 {} 인데 스크립트가 `{}()` 로 부릅니다 — `{}()` 로 불러야 합니다",
+                    "action `{}` is a {} action but the script calls it with `{}()` — use `{}()` instead",
+                    name,
+                    a.kind(),
+                    caller,
+                    a.kind()
+                )),
+                Some(_) => {}
+            }
+        }
+    }
+}
+
+/// `이름("무엇"` 에서 그 "무엇" 들. 따옴표로 바로 적은 것만 — 변수로 넘긴 것은 못 본다.
+fn literal_action_args(src: &str, caller: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let bytes = src.as_bytes();
+    let pat = format!("{caller}(");
+    for (i, _) in src.match_indices(&pat) {
+        // `copy_backup(` 이 `backup(` 으로 읽히면 안 된다 — 앞 글자가 이름의 일부면 넘긴다.
+        if i > 0 {
+            let c = bytes[i - 1] as char;
+            if c.is_alphanumeric() || c == '_' {
+                continue;
+            }
+        }
+        let rest = &src[i + pat.len()..];
+        let rest = rest.trim_start();
+        let Some(body) = rest.strip_prefix('"') else {
+            continue;
+        };
+        let Some(end) = body.find('"') else { continue };
+        out.push(body[..end].to_string());
+    }
+    out.sort();
+    out.dedup();
+    out
 }
 
 /// 원문에서 `이름(` 을 세되, **앞뒤가 이름의 일부면 세지 않는다** — `copy_backup(` 이
@@ -322,6 +385,42 @@ mod tests {
         assert!(w.contains("notify"), "선언 안 한 권한을 안 짚었다:\n{w}");
         assert!(w.contains("backup"), "안 쓰는 권한을 안 짚었다:\n{w}");
         assert!(w.contains("옆.rhai"), "빠진 파일을 안 짚었다:\n{w}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-311: **`send` 와 `run` 을 바꿔 부르면 조용히 아무 일도 안 난다.** 실제로 함께
+    /// 배포하는 예제가 이걸로 막혔다 — 적재도 검사도 통과하는데 훅만 안 돌았다.
+    #[test]
+    fn calling_an_action_the_wrong_way_is_a_warning() {
+        let m = "name = \"p\"\nscope = [\"cli\"]\nscripts = [\"main.rhai\"]\n\n[actions.mine.run]\ncommand = \"sh\"\n\n[[handlers]]\npost = [\"quest.created\"]\ncall = \"h\"\n";
+        let dir = folder("swapped", m, &[("main.rhai", "fn h(e) { send(\"mine\", e) }")]);
+        let r = check_dir(&dir, None);
+        assert!(r.ok(), "{:?}", r.errors);
+        let w = r.warnings.join("\n");
+        assert!(w.contains("mine"), "바꿔 부른 것을 안 짚었다:\n{w}");
+        assert!(w.contains("run"), "무엇으로 불러야 하는지 안 말했다:\n{w}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 오타 하나에 같은 증상이 난다 — 없는 동작 이름도 같은 자리에서 잡는다.
+    #[test]
+    fn calling_an_action_that_does_not_exist_is_a_warning() {
+        let m = "name = \"p\"\nscope = [\"cli\"]\nscripts = [\"main.rhai\"]\n\n[actions.mine.run]\ncommand = \"sh\"\n\n[[handlers]]\npost = [\"quest.created\"]\ncall = \"h\"\n";
+        let dir = folder("typo", m, &[("main.rhai", "fn h(e) { run(\"mien\", e) }")]);
+        let r = check_dir(&dir, None);
+        let w = r.warnings.join("\n");
+        assert!(w.contains("mien"), "오타를 안 짚었다:\n{w}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 제대로 부른 것에는 아무 말도 안 한다 — 헛경고가 나면 경고를 안 읽게 된다.
+    #[test]
+    fn calling_an_action_the_right_way_is_quiet() {
+        let m = "name = \"p\"\nscope = [\"cli\"]\nscripts = [\"main.rhai\"]\n\n[actions.mine.run]\ncommand = \"sh\"\n\n[[handlers]]\npost = [\"quest.created\"]\ncall = \"h\"\n";
+        let dir = folder("right", m, &[("main.rhai", "fn h(e) { run(\"mine\", e) }")]);
+        let r = check_dir(&dir, None);
+        assert!(r.ok(), "{:?}", r.errors);
+        assert!(r.warnings.is_empty(), "헛경고가 났다: {:?}", r.warnings);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

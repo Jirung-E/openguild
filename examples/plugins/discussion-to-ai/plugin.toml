@@ -1,27 +1,30 @@
 #:schema ../plugin.schema.json
-# 토론 댓글을 내 서비스(AI 등)로 보낸다 — 선택상자(select) 설정의 예.
+# 토론 댓글을 **이 컴퓨터에서 돌고 있는 것**에 건네준다 — 밖으로 나가는 것이 없다.
+#
+# BUG-311: 예전에는 웹훅으로 밖에 보냈다. 뜻은 그게 아니라 옆에서 돌고 있는 AI 세션에
+# 말을 걸어 주는 것이다(admin). 그래서 `post` 를 걷고 `run` 으로 바꿨다 — 토큰도 필요 없다.
 
 name        = "discussion-to-ai"
-description = "토론 댓글을 내 서비스(AI 등)로 보냅니다. 무엇을 보낼지는 설정에서 고릅니다."
+description = "토론 댓글을 이 컴퓨터에서 돌고 있는 AI 세션에 건네줍니다. 받은 편지함 파일 · 프로그램 · tmux 창 중에서 고릅니다. 밖으로 나가는 것은 없습니다."
 scope       = ["cli", "gui", "server"]
 scripts     = ["main.rhai"]
 
-[actions.ai.post]
-    url        = "https://my-service.example/discussion"
-    headers    = { Authorization = "Bearer ${DISCUSSION_WEBHOOK_TOKEN}" }
+# 훅의 작업 폴더는 이 플러그인의 데이터 폴더다 — 받은 편지함도 기본으로 거기 쌓인다.
+[actions.ai.run]
+    command    = "sh"
+    args       = ["${OPENGUILD_PLUGIN_DIR}/deliver.sh"]
     timeout_ms = 8000
+
+    # Windows 에는 sh 가 없다.
+    [actions.ai.run.windows]
+        command = "powershell"
+        args    = ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${OPENGUILD_PLUGIN_DIR}/deliver.ps1"]
 
 # 한 번 해결한 토론이 다시 열리는 것(comment.unresolved)도 "답이 필요한 상태" 다.
 [[handlers]]
     id   = "토론 전달"
     post = ["comment.added", "comment.unresolved"]
     call = "forward"
-
-[[inputs]]
-    key    = "DISCUSSION_WEBHOOK_TOKEN"
-    label  = "웹훅 토큰"
-    secret = true
-    help   = "받는 쪽 서비스가 발급한 값. Authorization 헤더로 나갑니다."
 
 [[inputs]]
     key     = "WHAT"
@@ -34,3 +37,30 @@ scripts     = ["main.rhai"]
         { value = "discussion", label = "토론 댓글 전부" },
         { value = "all",        label = "모든 댓글" },
     ]
+
+[[inputs]]
+    key     = "HOW"
+    label   = "건네주는 길"
+    type    = "select"
+    default = "inbox"
+    help    = "셋 다 이 컴퓨터 안입니다. 밖으로 나가지 않습니다."
+    options = [
+        { value = "inbox",   label = "받은 편지함 파일에 쌓기" },
+        { value = "command", label = "프로그램에 넘기기" },
+        { value = "tmux",    label = "tmux 창에 넣기" },
+    ]
+
+[[inputs]]
+    key   = "INBOX_PATH"
+    label = "받은 편지함 파일"
+    help  = "'받은 편지함' 일 때만 씁니다. 비우면 이 플러그인의 데이터 폴더에 inbox.md 로 쌓입니다. 세션이 이 파일을 지켜보게 하면 됩니다."
+
+[[inputs]]
+    key   = "AI_COMMAND"
+    label = "넘길 프로그램"
+    help  = "'프로그램' 일 때만 씁니다. 셸 한 줄로 적습니다 — 본문이 그 입(stdin)으로 들어갑니다. 예: claude -p"
+
+[[inputs]]
+    key   = "TMUX_TARGET"
+    label = "tmux 창"
+    help  = "'tmux' 일 때만 씁니다. tmux 의 대상 이름 — 예: ai:0.0 또는 세션 이름."

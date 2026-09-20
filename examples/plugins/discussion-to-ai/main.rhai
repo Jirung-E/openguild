@@ -2,12 +2,16 @@
 //
 // 평범한 댓글까지 다 보내면 소음이 되고, AI 를 부르는 훅이면 돈까지 든다.
 // 그래서 기본값은 제일 좁은 "미해결 토론만" 이다.
+//
+// BUG-311: 건네주는 곳은 **이 컴퓨터**다. 어디로 어떻게 건넬지는 `deliver.sh` 가 설정을
+// 보고 정한다 — 여기서는 무엇을 건넬지만 고른다.
 
 fn forward(e) {
     if !e.ok || !wanted(e) { return; }
     // 어느 문서에 달린 댓글인지는 `target` 이 알린다 — `quest` 는 실리지
     // 않는다(캠페인 댓글과 이름을 나누지 않으려는 설계, DEV-388/DEV-391).
-    send("ai", #{
+    // `run` 동작이라 `run(...)` 으로 부른다 — `send` 는 밖으로 보내는(post) 동작 전용이다.
+    run("ai", #{
         target: `${e.target.kind}:${e.target.id}`,
         author: e.comment.author,
         question: e.comment.body

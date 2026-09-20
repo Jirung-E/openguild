@@ -891,7 +891,7 @@
 		font-size: 0.82rem;
 		color: var(--text-muted);
 		/* 선언에 label 이 없으면 키가 그대로 라벨이 된다
-		   (`DISCUSSION_WEBHOOK_TOKEN`). 공백이 없어서 줄바꿈 기회가 없고,
+		   (`SOME_WEBHOOK_TOKEN` 같은 것). 공백이 없어서 줄바꿈 기회가 없고,
 		   그리드 칸을 넘어 입력창 아래로 흘러 글자가 가려졌다. */
 		overflow-wrap: anywhere;
 		min-width: 0;

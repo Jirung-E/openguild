@@ -341,7 +341,8 @@ In this order:
 - Working examples in `examples/plugins/` of the openguild repo — the folder
   itself works as a source (`openguild plugin source add <repo>/examples/plugins`):
   - `telegram-quest-status` — post + script + tag filter + `inputs`
-  - `discussion-to-ai` — post + header secret + `select` input
+  - `discussion-to-ai` — run, hands the comment to something on this machine
+    (inbox file / command / tmux pane); `select` inputs pick which
   - `desktop-notify` — run, no script
   - `deleted-audit` — run + observational `pre`
   - `backup-archive` — run on `backup.created`, `payload` returns a plain
