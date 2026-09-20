@@ -72,20 +72,31 @@ export const libraryApi = {
 	 * REQ-028: 문서를 파일 시스템으로 펼친다 — 폴더 구조 그대로. **데스크톱 전용**이다
 	 * (이 기계에 파일을 쓴다). `id` 하나 또는 `folder` 하나, 둘 다 없으면 도서관 전체.
 	 */
-	exportTo: async (dest: string, pick: { folder?: string; id?: string } = {}) => {
+	exportTo: async (
+		dest: string,
+		pick: { folder?: string; id?: string; picks?: string[] } = {}
+	) => {
 		const { invoke } = await import('@tauri-apps/api/core');
 		return invoke<LibraryExported[]>('library_export', {
 			dest,
 			folder: pick.folder ?? null,
-			id: pick.id ?? null
+			id: pick.id ?? null,
+			// BUG-314: 고른 것 여럿 — 복사와 같은 열쇠.
+			picks: pick.picks?.length ? pick.picks : null
 		});
 	},
-	/** REQ-028: 같은 것을 임시 폴더에 펼친 뒤 **클립보드에 파일로** 올린다(탐색기에 붙여넣기). */
-	copyToClipboard: async (pick: { folder?: string; id?: string } = {}) => {
+	/**
+	 * REQ-028: 같은 것을 임시 폴더에 펼친 뒤 **클립보드에 파일로** 올린다(탐색기에 붙여넣기).
+	 *
+	 * BUG-314: `picks` 를 주면 고른 것 여럿을 한 번에 올린다 — 화면이 쓰는 열쇠 그대로
+	 * (폴더는 `folder:<경로>`, 문서는 문서 번호). 주면 `folder`/`id` 는 안 본다.
+	 */
+	copyToClipboard: async (pick: { folder?: string; id?: string; picks?: string[] } = {}) => {
 		const { invoke } = await import('@tauri-apps/api/core');
 		return invoke<number>('library_copy_to_clipboard', {
 			folder: pick.folder ?? null,
-			id: pick.id ?? null
+			id: pick.id ?? null,
+			picks: pick.picks?.length ? pick.picks : null
 		});
 	},
 

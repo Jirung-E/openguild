@@ -42,3 +42,31 @@ export function shouldRefresh(
 	if (loading) return false;
 	return now - lastLoadedAt >= staleMs;
 }
+
+/** 밖으로 낼 것 — 복사·내보내기가 무엇을 집을지. */
+export interface TakeOut {
+	/** 고른 것들. 화면이 쓰는 열쇠 그대로 — 폴더는 `folder:<경로>`, 문서는 문서 번호. */
+	picks?: string[];
+	id?: string;
+	folder?: string;
+}
+
+/**
+ * BUG-314: **고른 것이 먼저다**(admin).
+ *
+ * 예전에는 고른 것을 아예 안 봤다 — 타일 셋을 골라 놓고 [복사] 를 눌러도 지금 폴더가 통째로
+ * 복사됐다. 탐색기에서 셋을 골라 `⌘C` 를 눌렀는데 폴더가 붙는 셈이다.
+ *
+ * 순서는 **고른 것 → 열어 둔 문서 → 지금 폴더**다. 마지막 것이 기본인 이유는, 아무것도 안
+ * 고르고 [복사] 를 눌렀을 때 "지금 보고 있는 것" 이 그 폴더이기 때문이다.
+ */
+export function takeOutTarget(
+	pickedIds: Iterable<string>,
+	selectedId: string | null,
+	explorerPath: string
+): TakeOut {
+	const picks = [...pickedIds];
+	if (picks.length > 0) return { picks };
+	if (selectedId) return { id: selectedId };
+	return { folder: explorerPath };
+}

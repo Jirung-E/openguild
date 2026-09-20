@@ -19,7 +19,8 @@
 		showsTree,
 		showsBackToList,
 		isSingleColumn,
-		shouldRefresh
+		shouldRefresh,
+		takeOutTarget
 	} from '$lib/utils/library-view';
 	import { paneWidth } from '$lib/stores/paneWidth';
 	import Icon from '$lib/components/Icon.svelte';
@@ -366,8 +367,33 @@
 		// 목록을 다시 받는다. 편집 중인 본문은 건드리지 않는다(loadList 는 목록만 바꾼다).
 		const onFocus = () => refreshIfStale();
 		window.addEventListener('focus', onFocus);
-		return () => window.removeEventListener('focus', onFocus);
+		// BUG-314(admin): "Ctrl+C ... 작동 안하는중" — 받는 곳이 아예 없었다. 탐색기에서
+		// 하듯 고른 것을 그대로 복사한다. **글을 치는 중에는 안 가로챈다** — 이름 바꾸기
+		// 입력칸에서 ⌘C 를 누르면 평소대로 글자가 복사되어야 한다.
+		window.addEventListener('keydown', onCopyKey);
+		return () => {
+			window.removeEventListener('focus', onFocus);
+			window.removeEventListener('keydown', onCopyKey);
+		};
 	});
+
+	function typingSomewhere(): boolean {
+		const el = document.activeElement as HTMLElement | null;
+		if (!el) return false;
+		if (el.isContentEditable) return true;
+		const tag = el.tagName;
+		return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+	}
+
+	function onCopyKey(e: KeyboardEvent) {
+		if (e.key !== 'c' && e.key !== 'C') return;
+		if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
+		if (!isTauri || typingSomewhere()) return;
+		// 글자를 고른 채 누른 것이면 그 글자를 복사하는 게 맞다.
+		if ((window.getSelection()?.toString() ?? '').length > 0) return;
+		e.preventDefault();
+		void copyOut();
+	}
 
 	// DEV-243: 태그 정의(색/설명) — quest 상세와 동일한 registry.
 	let tagDefs = $state<QuestTagDef[]>([]);
@@ -663,9 +689,9 @@
 	const isTauri = isLocalTauri();
 	let takeOutBusy = $state(false);
 
-	function takeOutPick(): { folder?: string; id?: string } {
-		if (selectedId) return { id: selectedId };
-		return { folder: explorerPath };
+	/** 무엇을 밖으로 낼 것인가 — 규칙은 [[library-view]] 에 있다(BUG-314). */
+	function takeOutPick() {
+		return takeOutTarget(picked.ids, selectedId, explorerPath);
 	}
 
 	async function exportOut() {
@@ -1155,6 +1181,15 @@
 				<button class="btn-edit danger" onclick={() => (confirmDeletePicked = true)}
 					>{t('library.delete', $locale)}</button
 				>
+				{#if isTauri}
+					<!-- BUG-314: 고른 것을 밖으로 — 경로줄까지 올라가지 않아도 된다. ⌘C 와 같은 일이다. -->
+					<button class="btn-edit" onclick={copyOut} disabled={takeOutBusy}
+						>{t('library.copyOut', $locale)}</button
+					>
+					<button class="btn-edit" onclick={exportOut} disabled={takeOutBusy}
+						>{t('library.exportOut', $locale)}</button
+					>
+				{/if}
 				<button class="btn-edit" onclick={() => (picked = msel.clear())}
 					>{t('library.pickedClear', $locale)}</button
 				>

@@ -2660,16 +2660,28 @@ pub async fn library_export(
     dest: String,
     folder: Option<String>,
     id: Option<String>,
+    // BUG-314: 고른 것들 — 복사와 같은 열쇠(`folder:<경로>` 또는 문서 번호).
+    picks: Option<Vec<String>>,
 ) -> Result<Vec<openguild_core::ops::library_export::Exported>, String> {
     use openguild_core::ops::library_export::{Pick, export};
+    let dest = std::path::Path::new(&dest);
+    if let Some(keys) = picks.as_ref().filter(|k| !k.is_empty()) {
+        let mut out = Vec::new();
+        for key in keys {
+            let pick = match key.strip_prefix("folder:") {
+                Some(f) => Pick::Folder(f.to_string()),
+                None => Pick::Doc(key.clone()),
+            };
+            out.extend(export(&store, &pick, dest).await.map_err(err)?);
+        }
+        return Ok(out);
+    }
     let pick = match (id, folder) {
         (Some(i), _) => Pick::Doc(i),
         (None, Some(f)) => Pick::Folder(f),
         (None, None) => Pick::Folder(String::new()),
     };
-    export(&store, &pick, std::path::Path::new(&dest))
-        .await
-        .map_err(err)
+    export(&store, &pick, dest).await.map_err(err)
 }
 
 /// 고른 것을 **클립보드에 파일로** 올린다 — 탐색기에서 바로 붙여넣게.
@@ -2682,18 +2694,51 @@ pub async fn library_copy_to_clipboard(
     store: State<'_, Store>,
     folder: Option<String>,
     id: Option<String>,
+    // BUG-314: 고른 것들. 화면이 쓰는 그대로의 열쇠 — 폴더는 `folder:<경로>`, 문서는
+    // 문서 번호. 이것이 오면 위의 `folder`/`id` 는 안 본다.
+    picks: Option<Vec<String>>,
 ) -> Result<usize, String> {
     use openguild_core::ops::library_export::{Pick, export};
+    // BUG-307 과 같은 이유로 시계에만 기대지 않는다 — 한 번 쓰고 버리는 번호를 뒤에 붙인다.
+    // 두 번 잇달아 복사했을 때 같은 폴더에 섞이면 엉뚱한 것이 붙는다.
+    static STAGE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let seq = STAGE_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let stage = openguild_core::user_dirs::openguild_home()
         .map_err(|e| format!("{e}"))?
         .join("clipboard")
         .join(format!(
-            "library-{}",
+            "library-{}-{seq}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_millis())
                 .unwrap_or(0)
         ));
+    // BUG-314: 고른 것이 여럿이면 하나씩 같은 임시 폴더에 펼친 뒤, 그 폴더의 맨 윗것들을
+    // 통째로 올린다. 클립보드에 여럿 올리는 길은 아래 `copy_files_to_clipboard` 에 이미 있다.
+    if let Some(keys) = picks.as_ref().filter(|k| !k.is_empty()) {
+        std::fs::create_dir_all(&stage).map_err(|e| format!("임시 폴더를 만들지 못했습니다: {e}"))?;
+        let mut n = 0usize;
+        for key in keys {
+            let pick = match key.strip_prefix("folder:") {
+                Some(f) => Pick::Folder(f.to_string()),
+                None => Pick::Doc(key.clone()),
+            };
+            n += export(&store, &pick, &stage).await.map_err(err)?.len();
+        }
+        if n == 0 {
+            return Err("내보낼 문서가 없습니다".into());
+        }
+        // 무엇이 맨 위에 생겼는지는 펼친 결과가 아니라 **폴더를 보고** 정한다 — 문서 하나와
+        // 폴더 하나가 같은 이름으로 겹쳐도 한 번만 올라간다.
+        let mut tops: Vec<std::path::PathBuf> = std::fs::read_dir(&stage)
+            .map_err(|e| format!("임시 폴더를 읽지 못했습니다: {e}"))?
+            .flatten()
+            .map(|e| e.path())
+            .collect();
+        tops.sort();
+        copy_files_to_clipboard(&tops)?;
+        return Ok(n);
+    }
     let pick = match (id, folder) {
         (Some(i), _) => Pick::Doc(i),
         (None, Some(f)) if !f.is_empty() => Pick::Folder(f),
