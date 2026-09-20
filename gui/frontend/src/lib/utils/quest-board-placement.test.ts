@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { autoPlace, type PlacementMetrics, type PlacementQuest } from './quest-board-placement';
+import { autoPlace, type PlacementMetrics, type PlacementQuest, depthOf } from './quest-board-placement';
 
 const M: PlacementMetrics = {
 	laneStride: 1000,
@@ -121,5 +121,95 @@ describe('BUG-278 보드 자동 배치', () => {
 		const got = autoPlace([q(1), q(2)], stored, LANES, M);
 		expect(got.has(1)).toBe(false);
 		expect(got.get(2)).toEqual({ x: 100, y: 300 + 110 });
+	});
+});
+
+// DEV-420: 흐름이 보이려면 **선행 → 후속 화살표가 아래를 향해야** 한다(admin).
+// 레인(x)은 상태가 정하므로 바꾸지 않는다 — 바꾸는 것은 줄(y)이다.
+describe('DEV-420 화살표는 아래로', () => {
+	const M = {
+		laneStride: 1000,
+		colOffsets: [100, 300, 500] as const,
+		initialY: 0,
+		rowStep: 100
+	};
+	const q = (id: number, status_id = 1) => ({ id, status_id });
+	const lanes = new Map([
+		[1, 0],
+		[2, 1],
+		[3, 2]
+	]);
+
+	it('후속은 선행보다 아래에 놓인다 — 같은 레인이든 다른 레인이든', () => {
+		const quests = [q(1, 1), q(2, 2), q(3, 1)];
+		const edges = [
+			{ quest_id: 2, prerequisite_id: 1 }, // 1 → 2 (레인이 다르다)
+			{ quest_id: 3, prerequisite_id: 2 } // 2 → 3
+		];
+		const out = autoPlace(quests, new Map(), lanes, M, edges);
+		expect(out.get(1)!.y).toBeLessThan(out.get(2)!.y);
+		expect(out.get(2)!.y).toBeLessThan(out.get(3)!.y);
+	});
+
+	it('관계가 없으면 예전처럼 한 띠에 나란히', () => {
+		const quests = [q(1), q(2), q(3), q(4)];
+		const out = autoPlace(quests, new Map(), lanes, M, []);
+		expect(out.get(1)!.y).toBe(0);
+		expect(out.get(2)!.y).toBe(0);
+		expect(out.get(3)!.y).toBe(0);
+		// 한 줄에 셋까지 — 넷째는 다음 줄.
+		expect(out.get(4)!.y).toBe(M.rowStep);
+	});
+
+	it('한 띠가 여러 줄이어도 다음 띠는 그 아래에서 시작한다', () => {
+		// 깊이 0 에 넷(두 줄) → 깊이 1 은 두 줄 아래.
+		const quests = [q(1), q(2), q(3), q(4), q(5)];
+		const edges = [{ quest_id: 5, prerequisite_id: 1 }];
+		const out = autoPlace(quests, new Map(), lanes, M, edges);
+		expect(out.get(4)!.y).toBe(M.rowStep);
+		expect(out.get(5)!.y).toBe(2 * M.rowStep);
+	});
+
+	it('손으로 옮겨 둔 노드보다 아래에서 시작한다', () => {
+		const quests = [q(1), q(2)];
+		const stored = new Map([[1, { x: 0, y: 500 }]]);
+		const out = autoPlace(quests, stored, lanes, M, []);
+		expect(out.has(1)).toBe(false);
+		expect(out.get(2)!.y).toBe(600);
+	});
+
+	// 고리가 있으면 **전부를 아래로 향하게 하는 것은 불가능하다**(수학적으로). 여기서 지키는
+	// 것은 두 가지다 — 아무도 자리를 잃지 않고, 고리 밖의 흐름은 그대로 아래로 간다.
+	it('고리가 있어도 자리를 잃지 않고, 고리 밖 흐름은 아래로', () => {
+		const quests = [q(1), q(2), q(3)];
+		const edges = [
+			{ quest_id: 2, prerequisite_id: 1 },
+			{ quest_id: 3, prerequisite_id: 2 },
+			{ quest_id: 2, prerequisite_id: 3 } // 고리
+		];
+		const out = autoPlace(quests, new Map(), lanes, M, edges);
+		expect(out.size).toBe(3);
+		expect(out.get(1)!.y).toBeLessThan(out.get(2)!.y);
+		// 겹쳐 놓지는 않는다 — 같은 레인이면 다른 칸/줄.
+		const spots = new Set([...out.values()].map((p) => `${p.x},${p.y}`));
+		expect(spots.size).toBe(3);
+	});
+
+	it('보드에 없는 퀘스트를 가리키는 관계는 무시한다', () => {
+		const out = autoPlace([q(1)], new Map(), lanes, M, [
+			{ quest_id: 1, prerequisite_id: 999 }
+		]);
+		expect(out.get(1)!.y).toBe(0);
+	});
+
+	it('깊이는 가장 깊은 선행을 따른다', () => {
+		const d = depthOf([q(1), q(2), q(3)], [
+			{ quest_id: 3, prerequisite_id: 1 },
+			{ quest_id: 2, prerequisite_id: 1 },
+			{ quest_id: 3, prerequisite_id: 2 }
+		]);
+		expect(d.get(1)).toBe(0);
+		expect(d.get(2)).toBe(1);
+		expect(d.get(3)).toBe(2);
 	});
 });

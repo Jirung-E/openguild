@@ -2667,9 +2667,14 @@
 				// 3열 격자에 놓으므로, 보드를 켜 둔 채 만든 노드만 열이 안 맞는 자리에
 				// 섰다. 이제 초기 적재와 **같은 함수**로 정한다 — 새 퀘스트는 가장 큰 id 라
 				// 레인의 마지막 칸에 붙고, 기존 노드는 한 칸도 안 움직인다.
-				const slot = autoPlace(allQuests, storedPositions, laneOf, placementMetrics()).get(
-					qid
-				);
+				// DEV-420: 선행 관계까지 넘긴다 — 새 노드도 자기 선행 아래에 선다.
+				const slot = autoPlace(
+					allQuests,
+					storedPositions,
+					laneOf,
+					placementMetrics(),
+					allDependencies
+				).get(qid);
 				const absX = slot?.x ?? (laneOf.get(quest.status_id) ?? 0) * LANE_STRIDE + LANE_W / 2;
 				const absY = slot?.y ?? canonicalGridBaseY(ORIENTATION_METRICS);
 				const visual = canonicalToVisual(absX, absY, quest.status_id);
@@ -3237,7 +3242,8 @@
 
 		// BUG-278: 위치 없는 노드는 **id 오름차순**으로 채운다. 받은 배열은 id DESC 라
 		// 그 순서를 따르면 새 퀘스트가 0번 칸을 가져가고 나머지가 한 칸씩 밀렸다.
-		const autoPos = autoPlace(quests, posMap, laneOf, placementMetrics());
+		// DEV-420: 선행 관계를 함께 넘겨 **화살표가 위로 안 가게** 줄을 잡는다.
+		const autoPos = autoPlace(quests, posMap, laneOf, placementMetrics(), dependencies);
 
 		// BUG-284: 자동으로 놓은 자리를 **바로 고정**한다.
 		//
