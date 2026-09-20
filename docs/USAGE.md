@@ -161,6 +161,11 @@ openguild library export ~/내보낸도서관 --id <문서-번호>
 
 # 태그 색·설명 (한글 이름 가능)
 openguild tag add 리팩터링 --color "#e94f4f" --description "동작은 그대로"
+
+# 태그로 거르기 — 여러 개면 모두 가진 것만(화면의 태그 줄과 같은 규칙)
+openguild quest list --tag backend
+openguild quest list --tag backend,api
+openguild library list --tag 설계
 ```
 
 전체 명령은 `openguild --help` / `openguild <명령> --help` 참조.

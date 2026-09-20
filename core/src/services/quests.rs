@@ -144,6 +144,15 @@ pub async fn list_with_attachment_matches(
         sql.push_str(" AND datetime(q.updated_at) <= datetime(?)");
     }
 
+    // REQ-027 후속: 태그 — **모두 가진 것만**(AND). 화면의 태그 줄과 같은 규칙이어야
+    // CLI 와 앱이 같은 목록을 낸다.
+    let tags = split_csv(&query.tag);
+    for _ in &tags {
+        sql.push_str(
+            " AND EXISTS (SELECT 1 FROM quest_tags t WHERE t.quest_id = q.id AND t.tag = ?)",
+        );
+    }
+
     // 관계 필터 — 상호배타 검증.
     if query.has_prereq && query.no_prereq {
         return Err(AppError::BadRequest(
@@ -331,6 +340,10 @@ pub async fn list_with_attachment_matches(
     }
     if let Some(v) = trimmed_opt(&query.updated_before) {
         q = q.bind(crate::time::normalize_filter_ts(v));
+    }
+    // REQ-027: 태그 조건은 SQL 에서 날짜 **뒤에** 붙였다 — 순서가 어긋나면 엉뚱한 값이 바인딩된다.
+    for t in &tags {
+        q = q.bind(t);
     }
     if let Some(pid) = parent_id {
         q = q.bind(pid);
@@ -1486,6 +1499,57 @@ mod tests {
         .await
         .unwrap();
         q.id
+    }
+
+    /// REQ-027 후속(admin "cli는?"): 목록에 **태그 필터**. 여러 개면 모두 가진 것만(AND) —
+    /// 화면의 태그 줄과 같은 규칙이라야 CLI 와 앱이 같은 목록을 낸다.
+    ///
+    /// 바인딩 순서도 여기서 지킨다: SQL 에서 태그 조건은 날짜 뒤에 붙는다. 순서가 어긋나면
+    /// 날짜 자리에 태그가 들어가 **조용히 엉뚱한 결과**가 나온다.
+    #[tokio::test]
+    async fn list_filters_by_tag_and_requires_all_of_them() {
+        let (dir, store) = fresh_store("tag-filter").await;
+        let a = make_quest(&store).await;
+        let b = make_quest(&store).await;
+        crate::ops::quests::set_quest_tags(&store, a, vec!["api".into(), "backend".into()])
+            .await
+            .unwrap();
+        crate::ops::quests::set_quest_tags(&store, b, vec!["backend".into()])
+            .await
+            .unwrap();
+
+        let ids = |q: &ListQuery| {
+            let pool = store.index_pool.clone();
+            let q = q.clone();
+            async move {
+                let mut v: Vec<i64> = list(&pool, &q).await.unwrap().into_iter().map(|r| r.id).collect();
+                v.sort();
+                v
+            }
+        };
+
+        let one = ListQuery { tag: Some("backend".into()), ..Default::default() };
+        let mut both_ids = vec![a, b];
+        both_ids.sort();
+        assert_eq!(ids(&one).await, both_ids);
+
+        // 둘 다 가진 것만.
+        let both = ListQuery { tag: Some("api,backend".into()), ..Default::default() };
+        assert_eq!(ids(&both).await, vec![a]);
+
+        // 없는 태그는 빈 목록.
+        let none = ListQuery { tag: Some("없는태그".into()), ..Default::default() };
+        assert!(ids(&none).await.is_empty());
+
+        // 날짜와 함께 써도 어긋나지 않는다(바인딩 순서).
+        let with_date = ListQuery {
+            tag: Some("backend".into()),
+            created_after: Some("2000-01-01".into()),
+            ..Default::default()
+        };
+        assert_eq!(ids(&with_date).await.len(), 2);
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     // ─── BUG-284: 위치 일괄 저장 ───

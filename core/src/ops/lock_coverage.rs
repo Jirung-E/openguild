@@ -101,6 +101,8 @@ const TABLE: &[(&str, &str, Kind)] = &[
     ("doc_history", "purge", Helper),
     ("library", "list_books", Read),
     ("library", "list_books_in", Read),
+    // REQ-027: 태그까지 거른다 — 위와 같이 읽기만 한다.
+    ("library", "list_books_filtered", Read),
     ("library", "get_book", Read),
     ("library", "set_book_tags", Guarded),
     ("library", "edit_book_tags", Guarded),

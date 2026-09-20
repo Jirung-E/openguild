@@ -119,6 +119,26 @@ pub async fn list_books_in(store: &Store, folder: Option<&str>) -> AppResult<Vec
     Ok(rows)
 }
 
+/// REQ-027 후속(admin "cli는?"): 폴더에 더해 **태그로도** 거른다.
+///
+/// 여러 개면 **모두 가진 것만**(AND) — 화면의 태그 줄과 같은 규칙이라야 CLI 와 앱이 같은
+/// 목록을 낸다. 태그는 이미 위에서 붙여 오므로(`attach_tags`) 여기서 거르면 되고, 도서관은
+/// 크지 않아 SQL 을 더 복잡하게 만들 이유가 없다.
+pub async fn list_books_filtered(
+    store: &Store,
+    folder: Option<&str>,
+    tags: &[String],
+) -> AppResult<Vec<LibraryDocRow>> {
+    let rows = list_books_in(store, folder).await?;
+    if tags.is_empty() {
+        return Ok(rows);
+    }
+    Ok(rows
+        .into_iter()
+        .filter(|r| tags.iter().all(|t| r.tags.iter().any(|x| x == t)))
+        .collect())
+}
+
 /// LIKE 패턴에서 특별한 뜻을 갖는 문자를 막는다.
 fn like_escape(s: &str) -> String {
     s.replace('\\', "\\\\")
@@ -828,6 +848,37 @@ mod tests {
     async fn setup(dir: &std::path::Path) -> Store {
         seed_guild_dir(dir).unwrap();
         Store::open(dir).await.unwrap()
+    }
+
+    /// REQ-027 후속: 도서관 목록도 태그로 거른다 — 여러 개면 모두 가진 것만(AND).
+    #[tokio::test]
+    async fn library_list_filters_by_tag() {
+        let dir = fresh_tmp("tag-filter");
+        let store = setup(&dir).await;
+        let a = create_book(&store, "설계 문서", "", "").await.unwrap().book_id();
+        let b = create_book(&store, "그냥 문서", "", "").await.unwrap().book_id();
+        set_book_tags(&store, &a, vec!["설계".into(), "결정".into()]).await.unwrap();
+        set_book_tags(&store, &b, vec!["설계".into()]).await.unwrap();
+
+        let ids = |rows: Vec<LibraryDocRow>| {
+            let mut v: Vec<String> = rows.into_iter().map(|r| r.book_id()).collect();
+            v.sort();
+            v
+        };
+        let one = list_books_filtered(&store, None, &["설계".into()]).await.unwrap();
+        let mut both = vec![a.clone(), b.clone()];
+        both.sort();
+        assert_eq!(ids(one), both);
+
+        let two = list_books_filtered(&store, None, &["설계".into(), "결정".into()])
+            .await
+            .unwrap();
+        assert_eq!(ids(two), vec![a]);
+
+        let none = list_books_filtered(&store, None, &["없는태그".into()]).await.unwrap();
+        assert!(none.is_empty());
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// DEV-397: 폴더를 옮기면 **하위 폴더와 그 아래 문서의 경로까지** 함께 간다.

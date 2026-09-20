@@ -47,6 +47,12 @@ fully covered by automated tests you already ran, go straight to `done`. If it
 needs a human to look at it (UI/UX, anything not automatable), move to
 `testing` instead and let the human promote it.
 
+### Filtering by tag
+
+`openguild quest list --tag backend` — with several (`--tag a,b`), only quests that have
+**all** of them. Same rule as the tag row in the app, so the CLI and the screen agree.
+`openguild library list --tag <tag>` does the same for library docs.
+
 ### Attachments — read what is already there
 
 `openguild quest show <slug>` lists attachments when the quest has any, and

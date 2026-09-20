@@ -183,6 +183,9 @@ pub struct ListQuery {
     /// REQ-010: 첨부 **파일 이름**도 검색 대상에 넣는다(내용은 아님 — BUG-188).
     #[serde(default)]
     pub search_attachments: bool,
+    /// REQ-027 후속(admin "cli는?"): 태그 필터 — `"notify"` 또는 다중 `"notify,급함"`.
+    /// **여러 개면 모두 가진 것만**(AND) — 화면의 태그 줄과 같은 규칙이라야 같은 결과가 나온다.
+    pub tag: Option<String>,
     /// **자식 quest 들** 을 보여줌 — 지정 slug 가 parent 인 직계 자식.
     /// `--no-parent` 와 상호배타.
     pub child_of: Option<String>,

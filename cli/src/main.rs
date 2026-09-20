@@ -496,6 +496,11 @@ enum QuestCmd {
             "Widen `search` to include attachment **file names** (not contents)."
         ))]
         search_attachments: bool,
+        // REQ-027 후속(admin "cli는?"): 화면에만 있던 태그 필터를 CLI 에도.
+        #[arg(long, value_delimiter = ',', num_args = 1..,
+              help = tf!("태그 필터 — 여러 개면 **모두 가진 것만**(AND). 다중 입력: --tag a,b 또는 --tag a --tag b.",
+                         "Tag filter — with several, only quests having **all** of them (AND). Multiple: --tag a,b or --tag a --tag b."))]
+        tag: Vec<String>,
         #[arg(long, value_delimiter = ',', num_args = 1..,
               help = tf!("정렬 키 — id (기본) / urgency / status / updated / created. 다중 입력 가능 (--sort urgency,id 또는 --sort urgency id). 대소문자 무시.",
                          "Sort key — id (default) / urgency / status / updated / created. Multiple: --sort urgency,id or --sort urgency id. Case-insensitive."))]
@@ -1159,6 +1164,11 @@ enum LibraryCmd {
         // 싣고 오므로 여기서 거른다 — 서비스 계층을 안 건드린다.
         #[arg(long, help = tf!("이 폴더에 든 것만 — 하위 폴더까지 포함. 빈 문자열(\"\")이면 최상위만.", "Only documents in this folder, including its subfolders. Empty string (\"\") means top-level only."))]
         folder: Option<String>,
+        // REQ-027 후속(admin "cli는?"): 화면에만 있던 태그 필터를 CLI 에도.
+        #[arg(long, value_delimiter = ',', num_args = 1..,
+              help = tf!("태그 필터 — 여러 개면 **모두 가진 것만**(AND).",
+                         "Tag filter — with several, only documents having **all** of them (AND)."))]
+        tag: Vec<String>,
     },
     // REQ-028: 도서관의 폴더는 진짜 디렉터리가 아니라 문서가 적어 둔 값이다 — 밖으로 가져가려면
     // 그 구조를 그때 만들어야 한다.
@@ -2067,6 +2077,16 @@ struct BookDto {
     deleted_at: Option<String>,
     #[serde(default)]
     attachments: Vec<openguild_core::models::quest::QuestAttachment>,
+}
+
+/// REQ-027 후속: 태그 **모두 가진 것만**(AND) — 로컬·원격이 같은 규칙을 쓰도록 한 곳에 둔다.
+fn filter_by_tags(rows: Vec<BookDto>, tags: &[String]) -> Vec<BookDto> {
+    if tags.is_empty() {
+        return rows;
+    }
+    rows.into_iter()
+        .filter(|b| tags.iter().all(|t| b.tags.iter().any(|x| x == t)))
+        .collect()
 }
 
 impl From<openguild_core::ops::library::LibraryDocRow> for BookDto {
@@ -3037,16 +3057,21 @@ impl Backend {
 
     /// BUG-281: `folder` 는 서버/SQL 이 거른다. 예전엔 전부 받아 CLI 에서
     /// `retain` 했는데, 원격 모드에서 그건 도서관 전체를 받아서 버리는 짓이다.
-    fn library_list(&self, folder: Option<&str>) -> Result<Vec<BookDto>> {
+    fn library_list(&self, folder: Option<&str>, tags: &[String]) -> Result<Vec<BookDto>> {
         match self {
-            Backend::Http(c) => match folder {
-                // 빈 문자열도 뜻이 있다("최상위만") — 그대로 실어 보낸다.
-                Some(f) => c.get(&format!("/api/library?folder={}", urlenc(f))),
-                None => c.get("/api/library"),
-            },
-            Backend::Local(l) => Self::map_err(
-                l.rt.block_on(openguild_core::ops::library::list_books_in(&l.store, folder)),
-            )
+            // REQ-027 후속: 원격은 폴더까지만 서버가 거르고, 태그는 받아서 여기서 거른다 —
+            // 서버 API 를 늘리지 않고도 CLI 동작이 로컬과 같아진다.
+            Backend::Http(c) => {
+                let rows: Vec<BookDto> = match folder {
+                    // 빈 문자열도 뜻이 있다("최상위만") — 그대로 실어 보낸다.
+                    Some(f) => c.get(&format!("/api/library?folder={}", urlenc(f)))?,
+                    None => c.get("/api/library")?,
+                };
+                Ok(filter_by_tags(rows, tags))
+            }
+            Backend::Local(l) => Self::map_err(l.rt.block_on(
+                openguild_core::ops::library::list_books_filtered(&l.store, folder, tags),
+            ))
             .map(|rows| rows.into_iter().map(BookDto::from).collect()),
         }
     }
@@ -8514,8 +8539,8 @@ fn handle_rules(c: &Backend, json: bool, sub: RulesCmd) -> Result<()> {
 /// BUG-135: run() 스택 프레임 축소 — arm 지역값을 개별 함수 프레임으로.
 fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
     match sub {
-        LibraryCmd::List { table, folder } => {
-            let books = c.library_list(folder.as_deref())?;
+        LibraryCmd::List { table, folder, tag } => {
+            let books = c.library_list(folder.as_deref(), &tag)?;
                         ensure_table_json_exclusive(table, json)?;
             if json {
                 println!("{}", json_str(&books));
@@ -9167,6 +9192,7 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
             title_only,
             search_comments,
             search_attachments,
+            tag,
             sort,
             reverse,
             limit,
@@ -9194,6 +9220,7 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
                 title_only,
                 search_comments,
                 search_attachments,
+                tag: vec_to_csv(tag),
                 sort: vec_to_csv(sort),
                 reverse,
                 limit,
@@ -10268,6 +10295,7 @@ mod tests {
                     type_prefix,
                     status,
                     urgency,
+                    tag: _,
                     created_after,
                     created_before,
                     updated_after,
@@ -10423,7 +10451,7 @@ mod tests {
         match cli.command {
             Command::Quest {
                 sub: QuestCmd::List {
-                    type_prefix, status, urgency,
+                    type_prefix, status, urgency, tag: _,
                     created_after, created_before, updated_after, updated_before,
                     child_of, no_parent,
                     has_prereq, no_prereq, has_sub, no_sub,
@@ -10519,6 +10547,7 @@ mod tests {
             r#type: Some("BUG".into()),
             status: Some("in_progress".into()),
             urgency: Some("2".into()),
+            tag: None,
             created_after: None,
             created_before: None,
             updated_after: None,
