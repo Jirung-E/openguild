@@ -186,6 +186,9 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		en: 'New to this? Start from the examples — copy one and edit.'
 	},
 	'plugins.examplesLink': { ko: '예제 보기', en: 'Browse the examples' },
+	// BUG-325: 소스는 기계에 등록된다 — 이 길드에서 안 쓰는 것은 접어 둔다.
+	'plugins.sourceCount': { ko: '플러그인 {n}개', en: '{n} plugins' },
+	'plugins.sourceNoneUsed': { ko: '이 길드에서 쓰는 것 없음', en: 'none used in this guild' },
 	'plugins.readOnly': {
 		ko: '조회만 가능합니다. 허용·철회는 그 길드가 있는 기계의 데스크톱 앱이나 `openguild plugin allow` 로 합니다 — 동의는 기계마다 따로 남습니다.',
 		en: 'Read-only here. Allow/revoke from the desktop app on the machine that holds this guild, or with `openguild plugin allow` — consent is per-machine.'

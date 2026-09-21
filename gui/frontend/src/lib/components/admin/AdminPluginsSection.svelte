@@ -150,6 +150,21 @@
 
 	// ─── DEV-400: 길드 밖 플러그인(소스) ───
 	let sources = $state<PluginSource[]>([]);
+	/**
+	 * BUG-325: **이 길드에서 아무것도 안 쓰는 소스는 접어 둔다**(admin).
+	 *
+	 * 소스는 길드가 아니라 **기계**에 등록된다. 그래서 한 번 등록하면 그 기계의 모든
+	 * 길드가 그 목록을 본다 — 이 길드에서 아무것도 안 쓰는데 다섯 줄이 펼쳐져 있으면
+	 * "추가한 적 없는 것이 왜 보이지" 가 된다. 쓰는 것이 있으면 펼치고, 없으면 한 줄.
+	 * 눌러서 펼치는 것은 언제든 된다 — 숨기는 것이 아니라 접는 것이다.
+	 */
+	let openSources = $state<Record<string, boolean>>({});
+	function sourceOpen(src: PluginSource): boolean {
+		return openSources[src.name] ?? (src.plugins.some((p) => p.used) || !!src.problem);
+	}
+	function toggleSource(src: PluginSource) {
+		openSources = { ...openSources, [src.name]: !sourceOpen(src) };
+	}
 	let sourceBusy = $state(false);
 	/** 방금 더한 플러그인 — 눈에 띄게 하고 스크립트를 펼쳐 둔다. */
 	let fresh = $state<string | null>(null);
@@ -697,14 +712,31 @@
 					<ul class="plugin-list">
 						{#each sources as src (src.name)}
 							<li class="plugin" class:broken-src={src.problem} id={`plugin-source-${src.name}`}>
-								<div class="plugin-head">
+								<button
+									type="button"
+									class="src-head"
+									aria-expanded={sourceOpen(src)}
+									onclick={() => toggleSource(src)}
+								>
+									<span class="src-caret" aria-hidden="true">{sourceOpen(src) ? '▾' : '▸'}</span>
 									<strong>{src.name}</strong>
+									<span class="src-count">
+										{t('plugins.sourceCount', $locale).replace(
+											'{n}',
+											String(src.plugins.length)
+										)}
+										{#if !src.plugins.some((p) => p.used)}
+											· {t('plugins.sourceNoneUsed', $locale)}
+										{/if}
+									</span>
+								</button>
+								{#if sourceOpen(src)}
 									<code class="plugin-path">{src.path}</code>
-								</div>
+								{/if}
 								{#if src.problem}
 									<p class="plugin-error">{src.problem}</p>
 								{/if}
-								{#if src.plugins.length > 0}
+								{#if sourceOpen(src) && src.plugins.length > 0}
 									<ul class="source-plugins">
 										{#each src.plugins as sp (sp.folder)}
 											<li>
@@ -733,6 +765,7 @@
 										{/each}
 									</ul>
 								{/if}
+								{#if sourceOpen(src)}
 								<div class="plugin-actions">
 									<button
 										type="button"
@@ -743,6 +776,7 @@
 										>{t('plugins.removeSource', $locale)}</button
 									>
 								</div>
+								{/if}
 							</li>
 						{/each}
 					</ul>
@@ -899,6 +933,28 @@
 		align-items: center;
 		gap: 0.45rem;
 		font-size: 0.85rem;
+	}
+	/* BUG-325: 소스 머리줄 — 눌러서 접고 편다. */
+	.src-head {
+		display: flex;
+		align-items: baseline;
+		gap: 0.4rem;
+		width: 100%;
+		padding: 0;
+		border: none;
+		background: transparent;
+		color: inherit;
+		font: inherit;
+		text-align: left;
+		cursor: pointer;
+	}
+	.src-caret {
+		color: var(--text-faint);
+		font-size: 0.8rem;
+	}
+	.src-count {
+		font-size: 0.8rem;
+		color: var(--text-muted);
 	}
 	.examples-link {
 		color: var(--accent);
