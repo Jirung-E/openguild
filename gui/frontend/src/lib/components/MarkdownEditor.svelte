@@ -15,7 +15,7 @@
     (editor-links.ts) 를 그대로 씀 — 여긴 범위 밖(퀘스트 설명: 본문/규칙/메모 3곳).
   - attachmentExtension (paste/drag&drop — mediaOnly 또는 첨부 섹션 콜백)
   - Mod-Shift-z redo (Windows 표준)
-  - 높이 localStorage 영속 (모든 편집기 공유 key) + resize 핸들
+  - 높이 localStorage 영속 (모든 편집기 공유 key) + 크기 손잡이([[SizeGrip]])
   - OverlayScrollbar (native 스크롤바 숨김)
 
   호출측 책임(컴포넌트 밖): 저장/취소 버튼, setUnsaved 이탈 가드, 저장 시
@@ -428,7 +428,8 @@
 		min-height: 12.5rem;
 		max-height: 90vh;
 		max-height: 90dvh;
-		resize: vertical;
+		/* BUG-320: 브라우저가 구석에 그려 주던 손잡이는 뺐다 — 바로 아래 [[SizeGrip]] 이
+		   같은 일을 하고, 그건 휴대폰에서도 된다. 둘을 같이 두면 손잡이가 두 개다(admin). */
 		/* BUG-220: 배경 미지정 + 라이트 테마는 CodeMirror 자체 배경도 없어서,
 		   고정(pin)된 댓글처럼 부모가 틴트 배경(.entry-card.pinned)을 가지면
 		   그게 편집기 영역까지 그대로 비쳐 보였다. 일반 textarea 모드

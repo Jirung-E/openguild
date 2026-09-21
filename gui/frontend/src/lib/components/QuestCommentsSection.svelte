@@ -2269,7 +2269,11 @@
 		border-radius: var(--r-md);
 		font-size: 0.825rem;
 		font-family: var(--font-mono);
-		resize: vertical;
+		/* BUG-320: 브라우저가 구석에 그려 주던 손잡이는 끈다 — 바로 아래 [[SizeGrip]] 이
+		   같은 일을 하고, 그건 휴대폰에서도 된다. 둘을 같이 두면 손잡이가 두 개다(admin).
+		   **지우는 것으로는 부족하다** — textarea 의 기본값은 `both` 라, 선언을 빼면 오히려
+		   가로로도 늘어난다. 끈다고 적어야 꺼진다. */
+		resize: none;
 		min-height: 4rem;
 		/* BUG-157: native scrollbar 숨김 — OverlayScrollbar 가 대신 그린다. */
 		scrollbar-width: none;
