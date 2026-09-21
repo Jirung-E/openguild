@@ -1999,6 +1999,12 @@
 		gap: 0.35rem;
 		margin-bottom: 1rem;
 		font-size: 0.82rem;
+		/* BUG-321: 좁은 화면에서 오른쪽 버튼들이 화면 밖으로 잘려 나갔다(admin). 가로
+		   스크롤도 없어서 아예 누를 수 없었다. 자리가 모자라면 **다음 줄로 내린다** —
+		   버튼 덩이는 `flex: none` 이라 통째로 내려가고, `margin-left: auto` 덕에 그
+		   줄에서도 오른쪽에 붙는다. */
+		flex-wrap: wrap;
+		row-gap: 0.35rem;
 	}
 	.crumb {
 		background: transparent;
@@ -2007,6 +2013,11 @@
 		cursor: pointer;
 		font-size: 0.82rem;
 		padding: 0;
+		/* 이름이 길면 경로 조각이 줄어든다 — 그래야 버튼이 먼저 밀려나지 않는다. */
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.crumb-sep {
 		color: var(--text-muted);

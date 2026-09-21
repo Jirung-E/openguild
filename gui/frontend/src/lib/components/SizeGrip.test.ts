@@ -47,6 +47,8 @@ function drag(dy: number) {
 describe('BUG-318 크기 손잡이', () => {
 	beforeEach(() => {
 		document.body.innerHTML = '';
+		// 한계값의 단위는 rem 이다 — 기준을 못 박아 두고 잰다(jsdom 기본도 16px).
+		document.documentElement.style.fontSize = '16px';
 	});
 
 	it('끌면 그만큼 커진다', async () => {
@@ -68,7 +70,7 @@ describe('BUG-318 크기 손잡이', () => {
 	// 손이 미끄러져도 쓸 수 없게 줄어들면 안 된다.
 	it('최소보다 작아지지 않는다', async () => {
 		const el = targetEl(100);
-		render(SizeGrip, { props: { target: el, min: 64 } });
+		render(SizeGrip, { props: { target: el, min: 4 } }); // 4rem = 64px
 		await tick();
 		drag(-500);
 		expect(el.style.height).toBe('64px');
@@ -76,7 +78,7 @@ describe('BUG-318 크기 손잡이', () => {
 
 	it('최대보다 커지지 않는다', async () => {
 		const el = targetEl(100);
-		render(SizeGrip, { props: { target: el, max: 300 } });
+		render(SizeGrip, { props: { target: el, max: 18.75 } }); // 18.75rem = 300px
 		await tick();
 		drag(9999);
 		expect(el.style.height).toBe('300px');
@@ -85,7 +87,7 @@ describe('BUG-318 크기 손잡이', () => {
 	// 손가락도 마우스도 못 쓰는 사람이 있다.
 	it('화살표로도 바꾼다', async () => {
 		const el = targetEl(200);
-		render(SizeGrip, { props: { target: el, step: 24 } });
+		render(SizeGrip, { props: { target: el, step: 1.5 } }); // 1.5rem = 24px
 		await tick();
 		grip().dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
 		expect(el.style.height).toBe('224px');
@@ -102,6 +104,27 @@ describe('BUG-318 크기 손잡이', () => {
 		drag(150);
 		expect(el.style.height).toBe('350px');
 		expect(el.style.getPropertyValue('--compose-cap')).toBe('350px');
+	});
+
+	// BUG-321(admin): "사이즈 조절 핸들은 ui 크기에 따라 달라져야한다." 이 앱은 UI 크기를
+	// 루트 글꼴로 조절한다 — 한계값을 px 로 못 박으면 크게 쓰는 사람에게 최소 높이가
+	// 상대적으로 쪼그라들고 화살표 한 칸도 너무 잘다.
+	it('UI 크기를 키우면 최소 높이도 같이 커진다', async () => {
+		document.documentElement.style.fontSize = '32px'; // 200%
+		const el = targetEl(500);
+		render(SizeGrip, { props: { target: el, min: 4 } });
+		await tick();
+		drag(-9999);
+		expect(el.style.height).toBe('128px'); // 4rem × 32px
+	});
+
+	it('UI 크기를 키우면 화살표 한 칸도 같이 커진다', async () => {
+		document.documentElement.style.fontSize = '32px';
+		const el = targetEl(200);
+		render(SizeGrip, { props: { target: el, step: 1.5 } });
+		await tick();
+		grip().dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+		expect(el.style.height).toBe('248px'); // 200 + 1.5rem × 32px
 	});
 
 	// 아직 안 그려진 편집기에 붙을 수 있다 — 그때 터져서는 안 된다.

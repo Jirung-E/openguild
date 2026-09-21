@@ -23,6 +23,7 @@
 	// BUG-214: 고정 모드의 내부 스크롤도 앱 공통 overlay 스크롤바로 — 이 영역만
 	// OS 기본 스크롤바가 나와 튀었다(admin 보고).
 	import OverlayScrollbar from './OverlayScrollbar.svelte';
+	import SizeGrip from './SizeGrip.svelte';
 	import { commentsApi as questCommentsApi, campaignCommentsApi } from '$lib/api/comments';
 	// DEV-203: 편집기 셋업(테마/들여쓰기/첨부/자동완성/redo/높이/overlay 스크롤)은
 	// 공통 MarkdownEditor 컴포넌트로 단일화.
@@ -259,6 +260,9 @@
 				<MarkdownView source={content} />
 			</div>
 			{#if heightMode === 'fixed'}
+				<!-- BUG-321: 휴대폰에서도 되는 크기 손잡이 — 바꾼 높이는 위 ResizeObserver 가
+				     그대로 받아 영속화한다. -->
+				<SizeGrip target={memoBodyEl} min={7.5} max={125} />
 				<OverlayScrollbar target={memoBodyEl ?? null} />
 			{/if}
 		{:else}
@@ -353,7 +357,6 @@
 		/* BUG-214: native 스크롤바 숨김 — OverlayScrollbar 가 대신 그린다
 		   (앱의 다른 스크롤 영역과 같은 처리). */
 		scrollbar-width: none;
-		resize: vertical;
 		min-height: 7.5rem;
 		max-height: 125rem;
 		border: var(--bw) solid var(--border);

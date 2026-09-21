@@ -14,24 +14,41 @@
 <script lang="ts">
 	import { locale, t } from '$lib/stores/locale';
 
+	/**
+	 * 한계값의 단위는 **rem 이다**(BUG-321, admin: "사이즈 조절 핸들은 ui 크기에 따라
+	 * 달라져야한다"). 이 앱은 UI 크기를 루트 글꼴로 조절한다([[uiScale]]) — px 로 못 박으면
+	 * 크게 쓰는 사람에게는 최소 높이가 상대적으로 쪼그라들고, 화살표 한 칸도 너무 잘다.
+	 * 모양(CSS)은 이미 rem 이라 따라간다.
+	 *
+	 * 화면 높이 한계만 예외다 — 화면은 UI 크기와 무관하게 그만큼이다.
+	 */
 	let {
 		/** 높이를 바꿀 대상. 없으면 아무 일도 안 한다(아직 안 그려진 경우). */
 		target,
-		/** 이보다 작아지지 않는다. */
-		min = 64,
-		/** 이보다 커지지 않는다. 0 이면 화면 높이의 90%. */
+		/** 이보다 작아지지 않는다(rem). */
+		min = 4,
+		/** 이보다 커지지 않는다(rem). 0 이면 화면 높이의 90%. */
 		max = 0,
-		/** 화살표 한 번에 움직이는 크기. */
-		step = 24
+		/** 화살표 한 번에 움직이는 크기(rem). */
+		step = 1.5
 	}: { target?: HTMLElement; min?: number; max?: number; step?: number } = $props();
+
+	/** 지금 1rem 이 몇 px 인가 — UI 크기를 바꾸면 이 값이 바뀐다. */
+	function rem(): number {
+		const px = parseFloat(getComputedStyle(document.documentElement).fontSize);
+		return Number.isFinite(px) && px > 0 ? px : 16;
+	}
 
 	let dragging = $state(false);
 	let startY = 0;
 	let startH = 0;
 
 	function limit(h: number): number {
-		const top = max || Math.round(window.innerHeight * 0.9);
-		return Math.min(top, Math.max(min, h));
+		const r = rem();
+		// 화면보다 커질 수는 없다 — 이쪽은 UI 크기와 무관하다.
+		const screen = Math.round(window.innerHeight * 0.9);
+		const top = Math.min(max ? max * r : screen, screen);
+		return Math.min(top, Math.max(min * r, h));
 	}
 
 	function apply(h: number) {
@@ -72,7 +89,7 @@
 		const d = e.key === 'ArrowDown' ? step : e.key === 'ArrowUp' ? -step : 0;
 		if (!d) return;
 		e.preventDefault();
-		apply(target.getBoundingClientRect().height + d);
+		apply(target.getBoundingClientRect().height + d * rem());
 	}
 </script>
 
@@ -97,14 +114,27 @@
 		align-items: center;
 		justify-content: center;
 		width: 100%;
-		/* 손가락으로 집을 만한 높이 — 눈에 보이는 선은 그보다 얇다. */
-		height: 1.125rem;
+		/* BUG-321: **자리는 적게, 집히기는 넉넉하게**(admin: 너무 많은 높이를 차지한다).
+		   자리는 0.75rem 만 먹고, 실제로 집히는 영역은 아래 `::after` 가 위아래로 더 넓힌다.
+		   위 상자와의 간격도 조금 당겨 붙인다 — 손잡이는 그 상자에 딸린 것처럼 보여야 한다. */
+		position: relative;
+		height: 0.75rem;
+		margin-top: -0.25rem;
 		padding: 0;
 		border: none;
 		background: transparent;
 		cursor: ns-resize;
 		/* 이게 없으면 끌 때 브라우저가 스크롤로 가져간다. */
 		touch-action: none;
+	}
+	/* 눈에는 안 보이지만 손가락은 여기까지 집을 수 있다. 버튼 안이라 눌림도 버튼으로 간다. */
+	.size-grip::after {
+		content: '';
+		position: absolute;
+		left: 0;
+		right: 0;
+		top: -0.3125rem;
+		bottom: -0.3125rem;
 	}
 	.grip-bar {
 		width: 2.5rem;

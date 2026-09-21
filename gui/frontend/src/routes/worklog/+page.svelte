@@ -29,6 +29,7 @@
 		firstLine
 	} from '$lib/utils/worklog-group';
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
+	import SizeGrip from '$lib/components/SizeGrip.svelte';
 	// DEV-302: 제목/노트 라벨에 섞여 있던 이모지(🕘/📝)를 아이콘으로 분리.
 	import Icon from '$lib/components/Icon.svelte';
 	import { EditorView, basicSetup } from 'codemirror';
@@ -491,6 +492,8 @@
 						use:saveShortcut={{ disabled: saving, onSave: () => void saveNote(true) }}
 					>
 						<div class="editor-wrap" bind:this={editorContainer}></div>
+						<!-- BUG-321: 휴대폰에서도 되는 크기 손잡이 — 구석의 브라우저 손잡이는 끈다. -->
+						<SizeGrip target={editorContainer} min={10} />
 						<div class="actions">
 							<button class="btn primary" onclick={() => saveNote()} disabled={saving}>
 								{saving ? t('worklogPage.saving', $locale) : t('worklogPage.save', $locale)}
@@ -763,7 +766,6 @@
 		border-radius: var(--r-md);
 		overflow: hidden;
 		height: 13.75rem;
-		resize: vertical;
 	}
 
 	.count {

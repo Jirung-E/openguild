@@ -395,7 +395,7 @@
 <div class="editor-wrap" bind:this={container}></div>
 <!-- BUG-318: 휴대폰에서는 브라우저가 주는 크기 손잡이를 못 쓴다 — 직접 둔다.
      높이를 바꾸면 위의 ResizeObserver 가 그대로 받아 영속화한다. -->
-<SizeGrip target={container} min={160} />
+<SizeGrip target={container} min={10} />
 <!-- DEV-074 fix15: CodeMirror native scrollbar 대신 overlay. -->
 {#if cmScroller}
 	<OverlayScrollbar target={cmScroller} />
