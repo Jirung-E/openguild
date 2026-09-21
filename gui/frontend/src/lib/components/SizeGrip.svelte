@@ -118,8 +118,9 @@
 		   자리는 0.75rem 만 먹고, 실제로 집히는 영역은 아래 `::after` 가 위아래로 더 넓힌다.
 		   위 상자와의 간격도 조금 당겨 붙인다 — 손잡이는 그 상자에 딸린 것처럼 보여야 한다. */
 		position: relative;
-		height: 0.75rem;
-		margin-top: -0.25rem;
+		/* admin: 위 간격까지 합쳐 10px 이 되게. 100% 배율에서 간격 2.0 + 높이 8 = 10.0 이다. */
+		height: 0.5rem;
+		margin-top: -0.275rem;
 		padding: 0;
 		border: none;
 		background: transparent;
@@ -133,8 +134,8 @@
 		position: absolute;
 		left: 0;
 		right: 0;
-		top: -0.3125rem;
-		bottom: -0.3125rem;
+		top: -0.4375rem;
+		bottom: -0.4375rem;
 	}
 	.grip-bar {
 		width: 2.5rem;
