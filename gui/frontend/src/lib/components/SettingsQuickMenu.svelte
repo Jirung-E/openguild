@@ -6,6 +6,7 @@
   버튼은 본 메뉴로 흡수.
 -->
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { theme, setTheme, type ThemeChoice } from '$lib/stores/theme';
 	// DEV-114: 커스텀 프리셋 — 기본 3개 옆에 노출 + 기본 테마 클릭 시 커스텀 해제.
 	import {
@@ -35,6 +36,31 @@
 
 	let { onclose }: { onclose: () => void } = $props();
 
+	/**
+	 * BUG-322: **타이틀바를 눌러도 안 닫히던 것**(admin).
+	 *
+	 * 두 가지가 겹쳤다. 타이틀바는 이 메뉴의 투명 오버레이보다 **위에** 있어서(z-index
+	 * 1100 대 150) 오버레이가 그 클릭을 못 받는다. 그리고 Tauri 가 넣어 주는 드래그
+	 * 스크립트가 타이틀바 위 `mousedown` 에서 `stopImmediatePropagation()` 을 부르고 창
+	 * 끌기를 시작해, 클릭 자체가 안 생기기도 한다.
+	 *
+	 * 그래서 오버레이에 기대지 않고 **capture 단계**에서 직접 받는다 — capture 는
+	 * window → document → 대상 순서라 그 스크립트보다 먼저 돌고 막힘의 영향도 안 받는다.
+	 * 타이틀바의 ☰ 메뉴([[BUG-155]])와 접힌 메뉴([[BUG-185]])가 이미 쓰는 방식이다.
+	 */
+	onMount(() => {
+		const onDown = (e: MouseEvent) => {
+			const t = e.target;
+			if (!(t instanceof Element)) return onclose();
+			// ⚙ 버튼과 이 메뉴는 같은 자리에 싸여 있다 — 그 안이면 놔둔다(다시 누르는 것은
+			// 그 버튼이 알아서 접는다). 투명 오버레이도 그 안이지만 그건 '바깥' 이다.
+			if (t.closest('.settings-wrap') && !t.closest('.qm-ov')) return;
+			onclose();
+		};
+		window.addEventListener('mousedown', onDown, { capture: true });
+		return () => window.removeEventListener('mousedown', onDown, { capture: true });
+	});
+
 	// $derived — $locale 변경 시 라벨이 즉시 다시 계산되어야 (plain const 는 초기값에 고정됨).
 	let THEME_OPTIONS = $derived<{ value: ThemeChoice; label: string }[]>([
 		{ value: 'system', label: t('settings.theme.system', $locale) },
@@ -62,7 +88,7 @@
 
 <svelte:window {onkeydown} />
 
-<!-- 바깥 클릭 닫기 — 투명 오버레이. -->
+<!-- 바깥 클릭 닫기 — 투명 오버레이. 타이틀바처럼 이 위에 오는 것은 아래 capture 가 받는다. -->
 <div class="qm-ov" role="presentation" onclick={onclose}></div>
 
 <div class="qm" role="menu" aria-label={t('nav.settingsQuickMenu', $locale)}>

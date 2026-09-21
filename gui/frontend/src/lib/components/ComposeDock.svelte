@@ -591,7 +591,9 @@
 	/* 이름표가 없으니 버튼이 왼쪽으로 붙는다 — 오른쪽 위로 돌려놓는다. */
 	.dock-box.compact .dock-head {
 		justify-content: flex-end;
-		margin-bottom: 0.25rem;
+		/* BUG-322: 4px 은 너무 붙어 보였다(admin, 특히 맥). 배경이 없는 모양이라 버튼과
+		   입력칸 사이에 아무것도 없어서 더 좁아 보인다 — 한 칸 더 띄운다. */
+		margin-bottom: 0.5rem;
 	}
 	.dock-label {
 		font-size: 0.8rem;
