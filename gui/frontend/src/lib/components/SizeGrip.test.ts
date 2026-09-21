@@ -127,6 +127,35 @@ describe('BUG-318 크기 손잡이', () => {
 		expect(el.style.height).toBe('248px'); // 200 + 1.5rem × 32px
 	});
 
+	// BUG-321(admin): 위아래 간격이 같아야 한다. 붙는 자리마다 줄 간격이 달라서 CSS 에
+	// 못 박으면 어디선가 겹친다 — 실제로 작업 기록에서 4.4px 을 파고들었다.
+	it('늘어선 자리에서는 줄 간격만큼 당겨 양쪽을 맞춘다', async () => {
+		const box = document.createElement('div');
+		box.style.display = 'flex';
+		box.style.flexDirection = 'column';
+		box.style.rowGap = '6.4px';
+		document.body.appendChild(box);
+		const el = targetEl(200);
+		box.appendChild(el);
+		// 붙을 자리에 **바로 그려야** 한다 — 그리고 나서 옮기면 이미 잰 뒤다.
+		render(SizeGrip, { props: { target: el }, target: box });
+		await tick();
+		// 2px 만 남기고 줄 간격(6.4)을 당긴다.
+		expect(grip().style.marginTop).toBe(`${2 - 6.4}px`);
+	});
+
+	// 평범한 블록에서는 여백이 서로 합쳐진다 — 빼면 그대로 파고든다.
+	it('평범한 블록에서는 당기지 않는다', async () => {
+		const box = document.createElement('div');
+		document.body.appendChild(box);
+		const el = targetEl(200);
+		box.appendChild(el);
+		render(SizeGrip, { props: { target: el }, target: box });
+		await tick();
+		expect(grip().style.marginTop).toBe('2px');
+		expect(grip().style.marginBottom).toBe('2px');
+	});
+
 	// 아직 안 그려진 편집기에 붙을 수 있다 — 그때 터져서는 안 된다.
 	it('대상이 없어도 안 터진다', async () => {
 		render(SizeGrip, { props: {} });

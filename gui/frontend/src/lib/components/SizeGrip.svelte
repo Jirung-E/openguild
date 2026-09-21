@@ -39,6 +39,52 @@
 		return Number.isFinite(px) && px > 0 ? px : 16;
 	}
 
+	let root: HTMLButtonElement | undefined = $state(undefined);
+
+	/** 위아래로 남길 틈(rem). 2px 어치다. */
+	const SNUG = 0.125;
+
+	/**
+	 * **위아래 간격을 같게 맞춘다**(admin).
+	 *
+	 * 손잡이가 붙는 자리는 곳마다 다르다 — 줄 간격이 0.4rem 인 곳, 0.35rem 인 곳, 아예
+	 * 없는 곳(작업 기록)이 있고, 바로 아래 오는 [보내기] 줄은 제 위쪽 여백을 한 번 더
+	 * 얹는다. 그래서 여백을 CSS 에 못 박으면 어디선가는 겹치고 어디선가는 벌어진다.
+	 * 실제로 그랬다 — 한 곳을 2px 로 맞추니 작업 기록에서는 4.4px 을 파고들었다.
+	 *
+	 * 그래서 **붙고 나서 제자리를 보고** 정한다. 늘어선 방식(flex/grid)에서는 줄 간격과
+	 * 아래 것의 위쪽 여백을 빼면 정확히 맞는다. 평범한 블록에서는 여백이 서로 합쳐지므로
+	 * (margin collapsing) 빼지 않고 원하는 만큼만 둔다 — 겹치는 일이 없다.
+	 */
+	function snug() {
+		const el = root;
+		const parent = el?.parentElement;
+		if (!el || !parent) return;
+		const want = SNUG * rem();
+		const ps = getComputedStyle(parent);
+		const lanes = ps.display.includes('flex') || ps.display.includes('grid');
+		if (!lanes) {
+			el.style.marginTop = `${want}px`;
+			el.style.marginBottom = `${want}px`;
+			return;
+		}
+		const gap = parseFloat(ps.rowGap) || 0;
+		const next = el.nextElementSibling;
+		const nextMt =
+			next instanceof HTMLElement ? parseFloat(getComputedStyle(next).marginTop) || 0 : 0;
+		el.style.marginTop = `${want - gap}px`;
+		el.style.marginBottom = `${want - gap - nextMt}px`;
+	}
+
+	$effect(() => {
+		if (!root) return;
+		snug();
+		// UI 크기를 바꾸면 이 버튼의 높이(rem)가 바뀐다 — 그걸 신호로 다시 맞춘다.
+		const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => snug());
+		ro?.observe(root);
+		return () => ro?.disconnect();
+	});
+
 	let dragging = $state(false);
 	let startY = 0;
 	let startH = 0;
@@ -94,6 +140,7 @@
 </script>
 
 <button
+	bind:this={root}
 	class="size-grip"
 	class:dragging
 	type="button"
@@ -118,9 +165,10 @@
 		   자리는 0.75rem 만 먹고, 실제로 집히는 영역은 아래 `::after` 가 위아래로 더 넓힌다.
 		   위 상자와의 간격도 조금 당겨 붙인다 — 손잡이는 그 상자에 딸린 것처럼 보여야 한다. */
 		position: relative;
-		/* admin: 위 간격까지 합쳐 10px 이 되게. 100% 배율에서 간격 2.0 + 높이 8 = 10.0 이다. */
+		/* admin: 위아래 간격을 같게, 높이 8 — 100% 배율에서 2 + 8 + 2 = 12px 이다.
+		   위아래 여백은 **붙는 자리를 보고 script 가 정한다**(아래 `snug`) — 부르는 곳마다
+		   줄 간격이 달라서 여기에 못 박으면 어디선가는 겹치고 어디선가는 벌어진다. */
 		height: 0.5rem;
-		margin-top: -0.275rem;
 		padding: 0;
 		border: none;
 		background: transparent;
