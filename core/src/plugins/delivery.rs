@@ -226,6 +226,7 @@ fn run(
     // (옛 기록, canonicalize) Windows PowerShell 5.1 이 그 경로를 `-File` 로 못 연다.
     let plugin_dir = crate::recents::strip_verbatim_prefix(&plugin.dir.to_string_lossy());
     let data_dir = crate::recents::strip_verbatim_prefix(&workdir.to_string_lossy());
+    let guild_dir = crate::recents::strip_verbatim_prefix(&plugin.guild_root.to_string_lossy());
     let mut vars = values.clone();
     vars.insert("OPENGUILD_PLUGIN_DIR".to_string(), plugin_dir.clone());
     vars.insert("OPENGUILD_PLUGIN_DATA_DIR".to_string(), data_dir.clone());
@@ -272,6 +273,11 @@ fn run(
         .env("OPENGUILD_PLUGIN_DIR", &plugin_dir)
         // 훅이 자기 출력 자리를 알아야 절대경로로 쓸 수도 있다.
         .env("OPENGUILD_PLUGIN_DATA_DIR", &data_dir)
+        // BUG-330: **길드가 어디인지**. 이게 없으면 훅이 `openguild` 를 다시 못 부른다 —
+        // 작업 디렉터리는 BUG-279 때문에 일부러 길드 밖이고, 데이터 폴더 이름은 해시라
+        // 거슬러 올라갈 수도 없다. 문서는 "훅이 openguild 를 부르면" 을 전제로 되돌이
+        // 막기(DEV-401)까지 설명하는데, 정작 부를 방법이 없었다.
+        .env("OPENGUILD_GUILD_DIR", &guild_dir)
         // DEV-401: 훅이 부른 `openguild` 가 이 목록을 이어 받는다 — 같은 훅이 다시 불리지 않게.
         .env(crate::events::origin::ENV, origin.to_env())
         .stdin(Stdio::piped())

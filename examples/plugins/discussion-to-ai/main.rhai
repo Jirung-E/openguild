@@ -11,8 +11,13 @@ fn forward(e) {
     // 어느 문서에 달린 댓글인지는 `target` 이 알린다 — `quest` 는 실리지
     // 않는다(캠페인 댓글과 이름을 나누지 않으려는 설계, DEV-388/DEV-391).
     // `run` 동작이라 `run(...)` 으로 부른다 — `send` 는 밖으로 보내는(post) 동작 전용이다.
+    // BUG-331: **답글을 달 수 있게** 대상과 댓글 번호를 따로 실어 준다. 예전에는 사람이
+    // 읽을 한 줄(`quest:DEV-1`)뿐이라, 받은 쪽이 어디에 답해야 할지 알 수 없었다.
     run("ai", #{
         target: `${e.target.kind}:${e.target.id}`,
+        target_kind: e.target.kind,
+        target_id: e.target.id,
+        comment_id: e.comment.id,
         author: e.comment.author,
         question: e.comment.body
     });

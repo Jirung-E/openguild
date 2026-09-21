@@ -19,6 +19,11 @@ if command -v jq >/dev/null 2>&1; then
   question=$(printf '%s' "$json" | jq -r '.question // ""')
   msg="[openguild] $target · $author
 $question"
+  # BUG-331: 답글을 달려면 **어디에** 달지 알아야 한다. 명령에 환경변수로 준다.
+  OG_TARGET_KIND=$(printf '%s' "$json" | jq -r '.target_kind // ""')
+  OG_TARGET_ID=$(printf '%s' "$json" | jq -r '.target_id // ""')
+  OG_COMMENT_ID=$(printf '%s' "$json" | jq -r '.comment_id // ""')
+  export OG_TARGET_KIND OG_TARGET_ID OG_COMMENT_ID
 else
   msg="[openguild] $json"
 fi

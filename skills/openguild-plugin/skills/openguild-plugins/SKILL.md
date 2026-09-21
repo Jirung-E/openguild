@@ -271,6 +271,11 @@ the editor, built from the events this build actually knows.
   a timeout means with `on_timeout` (`continue`, the default, or `block`); the
   same choice exists for a script that throws, as `on_error`.
 - **One plugin's failure never affects another**, or the guild.
+- **To call `openguild` back, use `$OPENGUILD_GUILD_DIR`.** The working directory
+  is deliberately outside the guild (above), so `openguild` cannot find one on its
+  own — `openguild --guild "$OPENGUILD_GUILD_DIR" quest comment add …`. This is
+  what makes a hook that *answers* (an AI replying to a discussion comment)
+  possible at all.
 - **A hook that changes the guild does not trigger itself.** If a `run` hook
   calls `openguild …`, the change it makes is not sent back to the same plugin
   (other plugins still get it), so "on tag change, add a tag" does not loop.

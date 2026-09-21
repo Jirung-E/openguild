@@ -266,9 +266,12 @@ pub fn add_source(guild_root: &Path, dir: &Path, name: Option<&str>) -> AppResul
         ))
     })?;
     if found.is_empty() {
+        // BUG-325: **여기가 소스가 될 수 없는 이유**를 말한다(admin). 부모를 뒤져서 알아서
+        // 찾아 주지는 않는다 — 어디를 소스로 삼을지는 사람이 정한다. 남의 폴더를 훑어
+        // 올라가면 홈 폴더째 소스가 되는 일도 생긴다.
         return Err(AppError::BadRequest(crate::tf!(
-            "플러그인이 없습니다 — plugin.toml 이 있는 폴더가 하나도 없습니다: {}",
-            "no plugins there — not a single folder with plugin.toml: {}",
+            "여기는 소스가 될 수 없습니다: {}\n  소스는 플러그인 폴더들이 **들어 있는** 폴더입니다 — 그 안에 plugin.toml 을 가진 폴더가 하나는 있어야 합니다.\n  플러그인 하나만 쓰려면 그 플러그인 폴더를 직접 주세요.",
+            "this cannot be a source: {}\n  A source is a folder that *contains* plugin folders — at least one of them must hold a plugin.toml.\n  To use a single plugin, point at that plugin's own folder.",
             dir.display()
         )));
     }

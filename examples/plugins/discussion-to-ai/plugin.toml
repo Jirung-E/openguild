@@ -10,10 +10,13 @@ scope       = ["cli", "gui", "server"]
 scripts     = ["main.rhai"]
 
 # 훅의 작업 폴더는 이 플러그인의 데이터 폴더다 — 받은 편지함도 기본으로 거기 쌓인다.
+# BUG-331: AI 를 부르는 길에 8초는 뜻이 없다 — `claude -p` 는 아주 짧은 물음에도 5초쯤
+# 걸린다. 잘리면 아무 흔적 없이 사라진다. 넉넉히 준다. `run` 은 이 기계에서 도는 것이라
+# 길게 줘도 밖에 매달리지 않고, `wait` 을 안 켜므로 사람을 기다리게 하지도 않는다.
 [actions.ai.run]
     command    = "sh"
     args       = ["${OPENGUILD_PLUGIN_DIR}/deliver.sh"]
-    timeout_ms = 8000
+    timeout_ms = 60000
 
     # Windows 에는 sh 가 없다.
     [actions.ai.run.windows]
@@ -21,10 +24,16 @@ scripts     = ["main.rhai"]
         args    = ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${OPENGUILD_PLUGIN_DIR}/deliver.ps1"]
 
 # 한 번 해결한 토론이 다시 열리는 것(comment.unresolved)도 "답이 필요한 상태" 다.
+#
+# BUG-331: 시한은 **두 군데**다 — 동작(위 `[actions.ai.run]`)과 이 줄. 줄에 안 적으면
+# 기본 10초라, 동작만 늘려 놓으면 "14970ms 걸렸습니다(시한 10000ms)" 가 남는다. 둘 다
+# 넉넉히 준다. 코어가 60초까지만 받아 주므로 그 위로는 더 못 늘린다 — 아주 긴 대화를
+# 물리려면 명령 쪽에서 먼저 받아 두고 뒤에서 처리하는 편이 낫다.
 [[handlers]]
-    id   = "토론 전달"
-    post = ["comment.added", "comment.unresolved"]
-    call = "forward"
+    id         = "토론 전달"
+    post       = ["comment.added", "comment.unresolved"]
+    call       = "forward"
+    timeout_ms = 60000
 
 [[inputs]]
     key     = "WHAT"

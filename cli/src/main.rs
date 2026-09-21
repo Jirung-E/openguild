@@ -6662,6 +6662,19 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
             use openguild_core::plugins::sources;
             // 폴더 경로를 주면 소스 등록까지 한 번에 — 하나짜리 플러그인을 붙이는 흔한 경우다.
             // DEV-400: "하나면 쓰고 여럿이면 고르게" 는 데스크톱 화면과 같은 판단이라 코어가 갖는다.
+            // BUG-325: **경로처럼 생겼는데 없는 폴더**는 "소스에 없는 플러그인" 이 아니다.
+            // 아래 이름 갈래로 떨어지면 엉뚱한 안내(`plugin available` 로 확인하세요)를 받는다.
+            let looks_like_path = target.contains(std::path::MAIN_SEPARATOR)
+                || target.contains('/')
+                || target.starts_with('.')
+                || target.starts_with('~');
+            if looks_like_path && !std::path::Path::new(&target).is_dir() {
+                return Err(anyhow::anyhow!(tf!(
+                    "그런 폴더가 없습니다: {}",
+                    "no such folder: {}",
+                    target
+                )));
+            }
             let (source, folder) = if std::path::Path::new(&target).is_dir() {
                 let dir = std::path::Path::new(&target);
                 match Backend::map_err(sources::add_folder(root, dir))? {
@@ -7021,8 +7034,12 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
             for i in &effective {
                 let r = resolved.get(&i.key);
                 let shown = match r.map(|r| (r.source, r.as_str())) {
+                    // BUG-330: 안 채웠다고 **못 도는 것이 아니다.** 대부분은 비워 두면
+                    // 기본대로 도는 선택 값이다(예: 비우면 데이터 폴더에 쌓는다). 예전에는
+                    // 전부 "이 플러그인은 못 돕니다" 라고 적어 겁만 줬다. 안 채웠다는
+                    // 사실만 말하고, 정말 있어야 하는 값인지는 정의가 안다.
                     Some((openguild_core::plugins::values::Source::Missing, _)) | None => {
-                        tf!("(없음 — 이 플러그인은 못 돕니다)", "(unset — this plugin cannot run)")
+                        tf!("(안 채움)", "(unset)")
                     }
                     Some((src, v)) => {
                         let val = if i.secret {

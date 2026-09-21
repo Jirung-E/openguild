@@ -91,7 +91,10 @@ A `run` hook's working directory is `~/.openguild/plugin-data/{guild}/{plugin}/`
 **not** the plugin folder — a hook that writes next to itself changes the consent
 fingerprint and silently revokes its own consent (BUG-279). `OPENGUILD_PLUGIN_DIR`
 points at the plugin folder (usable as `${OPENGUILD_PLUGIN_DIR}` inside `command`
-and `args`); `OPENGUILD_PLUGIN_DATA_DIR` at the data folder. Configured `inputs` also arrive
+and `args`); `OPENGUILD_PLUGIN_DATA_DIR` at the data folder; `OPENGUILD_GUILD_DIR`
+at the guild — a hook that calls `openguild` back needs it, because the working
+directory is deliberately outside the guild
+(`openguild --guild "$OPENGUILD_GUILD_DIR" …`). Configured `inputs` also arrive
 as **environment variables** of the child (`$ARCHIVE_DIR`) — a `run` hook has no url or
 header to put them in, and passing a token through `args` would show it in `ps`.
 
