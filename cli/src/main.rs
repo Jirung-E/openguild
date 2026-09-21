@@ -9981,6 +9981,37 @@ mod tests {
         }
     }
 
+    /// BUG-324: 스킬이 **지금 형식**을 가르치는지.
+    ///
+    /// 정의 파일은 [[DEV-403]] 에서 `plugin.json` → `plugin.toml` 로 바뀌었고, 옛 이름은
+    /// 이제 적재가 **거부**한다. 그런데 제작 스킬은 갱신에서 빠져 1년 가까이 옛 형식을
+    /// 가르치고 있었다 — 그대로 따라 만들면 안 돌아가는데, 문서가 틀렸다는 신호는
+    /// 어디에도 없었다. reference 쪽은 새로 썼는데 스킬만 남은 것이다.
+    ///
+    /// 낱말 몇 개를 보는 얕은 검사지만, 이번에 놓친 것이 정확히 그 층이다 — 형식이
+    /// 바뀌었는데 스킬이 옛 이름을 그대로 들고 있는 것.
+    #[test]
+    fn the_plugin_skill_teaches_the_current_format() {
+        let f = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../skills/openguild-plugin/skills/openguild-plugins/SKILL.md");
+        if !f.exists() {
+            return; // 크레이트만 따로 배포된 경우
+        }
+        let body = std::fs::read_to_string(&f).unwrap();
+        assert!(
+            !body.contains("plugin.json"),
+            "스킬이 `plugin.json` 을 가르친다 — 지금은 적재가 거부하는 이름이다"
+        );
+        for must in ["plugin.toml", "[[handlers]]"] {
+            assert!(body.contains(must), "스킬에 `{must}` 이야기가 없다");
+        }
+        // `pre` 는 막을 수 있다 — 예전 스킬은 "never blocks the guild" 라고 적어 두었다.
+        assert!(
+            !body.contains("never blocks the guild"),
+            "스킬이 `pre` 의 막기를 부정한다 — deleted-audit 예제가 바로 그 반례다"
+        );
+    }
+
     /// BUG-261: 배포 스킬 플러그인의 version 이 크레이트 버전과 같이 올라가는지.
     ///
     /// 설치된 스킬은 파일 내용이 아니라 **`plugin.json` 의 version 으로만**
