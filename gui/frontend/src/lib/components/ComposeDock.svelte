@@ -535,11 +535,17 @@
 		display: none;
 	}
 	/* **팝업은 안 스크롤된다.** 길어지는 것은 입력칸이고, 스크롤도 그 안에서만 생긴다 —
-	   바깥이 스크롤되면 머리줄의 버튼이 밀려 올라가 안 보인다. */
+	   바깥이 스크롤되면 머리줄의 버튼이 밀려 올라가 안 보인다.
+
+	   BUG-319: 이 상한은 **기본값**이지 사용자가 못 넘는 벽이 아니다(admin: 팝업에서 크기
+	   조절이 잘 안 된다). 예전에는 `max-height` 가 손잡이로 정한 높이를 그냥 덮어써서,
+	   끌어도 72px 에 붙박여 있었다. 손잡이가 `--compose-cap` 을 직접 정해 주면 그 값이 쓰인다.
+	   변수는 물려받으므로 편집기 안쪽(`.cm-scroller`)까지 같이 따라간다. */
 	.dock-box.docked :global(textarea),
 	.dock-box.docked :global(.cm-scroller) {
-		max-height: 40vh; /* 미지원 브라우저 폴백 — 먼저 */
-		max-height: 40dvh;
+		/* 끝 한계는 둔다 — 입력칸이 화면을 통째로 먹으면 제 버튼이 밀려 안 보인다. */
+		max-height: min(var(--compose-cap, 40vh), 78vh); /* 미지원 브라우저 폴백 — 먼저 */
+		max-height: min(var(--compose-cap, 40dvh), 78dvh);
 		overflow: auto;
 	}
 	/* 좁게 보기 = **입력칸만**(admin: "댓글 입력창만 뜨는 것"). 작성자 칸과 편집기 토글은
@@ -555,7 +561,8 @@
 	}
 	.dock-box.compact :global(textarea),
 	.dock-box.compact :global(.cm-scroller) {
-		max-height: 4.5rem;
+		max-height: min(var(--compose-cap, 4.5rem), 78vh);
+		max-height: min(var(--compose-cap, 4.5rem), 78dvh);
 	}
 	/* BUG-312: 좁게 보기에는 **배경이 없다**(admin). 입력칸과 동그란 버튼만 떠야 하는데,
 	   카드의 배경·테두리·그림자·여백이 그 둘을 한 번 더 감쌌다. 입력칸은 제 테두리를 가지고

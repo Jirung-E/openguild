@@ -93,6 +93,17 @@ describe('BUG-318 크기 손잡이', () => {
 		expect(el.style.height).toBe('200px');
 	});
 
+	// BUG-319: 붙은 입력창은 입력칸에 높이 상한을 걸어 둔다. 그걸 같이 안 풀면 손잡이로
+	// 정한 높이가 그냥 덮어써져 "끌어도 안 움직인다" 가 된다(admin).
+	it('상한도 같이 풀어 준다', async () => {
+		const el = targetEl(200);
+		render(SizeGrip, { props: { target: el } });
+		await tick();
+		drag(150);
+		expect(el.style.height).toBe('350px');
+		expect(el.style.getPropertyValue('--compose-cap')).toBe('350px');
+	});
+
 	// 아직 안 그려진 편집기에 붙을 수 있다 — 그때 터져서는 안 된다.
 	it('대상이 없어도 안 터진다', async () => {
 		render(SizeGrip, { props: {} });

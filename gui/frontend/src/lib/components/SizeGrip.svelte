@@ -36,7 +36,13 @@
 
 	function apply(h: number) {
 		if (!target) return;
-		target.style.height = `${limit(h)}px`;
+		const px = limit(h);
+		target.style.height = `${px}px`;
+		// BUG-319: 붙은 입력창(ComposeDock)은 입력칸에 높이 상한을 걸어 둔다. 그걸 안 풀면
+		// 손잡이로 정한 높이가 그냥 덮어써져 끌어도 안 움직인다. 상한을 **여기서 정해 준다** —
+		// 변수는 물려받으므로 편집기 안쪽까지 같이 따라간다. 상한을 안 거는 곳에서는
+		// 아무 일도 안 일어난다.
+		target.style.setProperty('--compose-cap', `${px}px`);
 	}
 
 	function down(e: PointerEvent) {
