@@ -68,8 +68,23 @@ pub fn path() -> AppResult<PathBuf> {
     Ok(home.join("plugin-sources.json"))
 }
 
+/// 어느 길드인지의 열쇠 — **정규화한 절대 경로**.
+///
+/// BUG-327: 같은 길드인데 CLI 와 앱이 **다른 길드로 보는** 일이 있다(admin: CLI 로
+/// add·allow 했는데 앱에 안 보인다). 열쇠가 경로 글자라서, 글자가 조금만 달라도 남의
+/// 길드가 된다. 맥·리눅스는 `canonicalize` 가 대체로 맞춰 주지만 **윈도우는 글자가 갈리는
+/// 길이 많다** — 드라이브 문자 대소문자(`C:` 대 `c:`), 폴더 이름 대소문자, 구분자.
+/// 윈도우 파일 이름은 원래 대소문자를 안 가리므로, 열쇠도 안 가리게 한다.
+///
+/// 맥은 파일 시스템이 대소문자를 안 가리게 설정된 경우가 흔하지만 가리게 쓰는 사람도 있어
+/// 손대지 않는다 — 거기서는 `canonicalize` 가 실제 이름으로 맞춰 준다.
 fn guild_key(guild_root: &Path) -> String {
-    crate::recents::normalize_abs(guild_root)
+    let s = crate::recents::normalize_abs(guild_root);
+    if cfg!(windows) {
+        s.replace('/', "\\").to_lowercase()
+    } else {
+        s
+    }
 }
 
 /// 읽기 — 없거나 깨져 있으면 **빈 상태**. 아무것도 안 붙는 쪽이 안전하다.
@@ -308,11 +323,21 @@ pub fn remove_source(name: &str) -> AppResult<()> {
 
 /// 이 길드에서 쓰는 것들.
 pub fn used_in(guild_root: &Path) -> Vec<Used> {
-    load()
-        .used
-        .get(&guild_key(guild_root))
-        .cloned()
-        .unwrap_or_default()
+    let f = load();
+    let key = guild_key(guild_root);
+    if let Some(v) = f.used.get(&key) {
+        return v.clone();
+    }
+    // BUG-327: 열쇠 규칙이 바뀌기 전에 적힌 것 — 윈도우에서 대소문자가 다르게 남아 있을
+    // 수 있다. 찾아서 쓰되 파일은 안 고친다(다음 `use_plugin` 이 새 열쇠로 적는다).
+    if cfg!(windows) {
+        for (k, v) in &f.used {
+            if guild_key(Path::new(k)) == key {
+                return v.clone();
+            }
+        }
+    }
+    Vec::new()
 }
 
 /// 이 길드에서 쓴다 — `folder` 는 소스 폴더 안의 폴더 이름. 이미 쓰고 있으면 그대로(멱등).
@@ -534,4 +559,35 @@ pub fn stop_using_entry(guild_root: &Path, source: &str, folder: &str) -> AppRes
         f.used.retain(|_, v| !v.is_empty());
         Ok(())
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// BUG-327: **같은 길드는 같은 열쇠여야 한다.**
+    ///
+    /// 어느 길드에서 쓰는지를 경로 글자로 기억하는데, 윈도우는 그 글자가 갈리는 길이
+    /// 많다 — 드라이브 문자 대소문자, 폴더 이름 대소문자, 구분자. 갈리면 CLI 로 들인
+    /// 것이 앱에서는 없는 것이 된다(admin 보고). 윈도우 파일 이름은 원래 대소문자를
+    /// 안 가리므로 열쇠도 안 가린다.
+    ///
+    /// 맥·리눅스에서는 이 시험이 "손대지 않았다" 를 지킨다 — 거기서는 대소문자가
+    /// 뜻을 가질 수 있어 함부로 뭉개면 안 된다.
+    #[test]
+    fn the_same_guild_gets_the_same_key() {
+        // 없는 경로를 쓴다 — `canonicalize` 가 실패해 원본이 그대로 남으므로 규칙만 본다.
+        let a = guild_key(Path::new(r"C:\Users\Me\Guild"));
+        let b = guild_key(Path::new(r"c:\users\me\guild"));
+        if cfg!(windows) {
+            assert_eq!(a, b, "윈도우에서 대소문자가 다르면 남의 길드가 된다");
+            assert_eq!(
+                guild_key(Path::new("C:/Users/Me/Guild")),
+                a,
+                "구분자가 달라도 같은 길드다"
+            );
+        } else {
+            assert_ne!(a, b, "맥·리눅스에서는 대소문자가 뜻을 가질 수 있다");
+        }
+    }
 }

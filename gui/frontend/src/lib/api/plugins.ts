@@ -156,6 +156,8 @@ export interface PluginStatus {
 	no_guild: boolean;
 	/** 전달 중 쌓인 문제. 비어 있는 것이 정상이다. */
 	problems: string[];
+	/** REQ-032: 이 버전의 예제 폴더 주소 — 설치본에는 예제가 안 들어간다. */
+	examples_url?: string;
 }
 
 /** 허용/철회를 할 수 있는 상태인가 — 로컬 길드를 연 데스크톱에서만. */

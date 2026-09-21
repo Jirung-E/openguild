@@ -38,29 +38,35 @@ scripts     = ["main.rhai"]
         { value = "all",        label = "모든 댓글" },
     ]
 
+# BUG-329: 이름만 보고도 무엇을 하는지 알아야 한다. '받은 편지함' 은 내가 지은 말이라
+# 무슨 뜻인지 알 수가 없었다(admin).
 [[inputs]]
     key     = "HOW"
-    label   = "건네주는 길"
+    label   = "어떻게 건넬까"
     type    = "select"
     default = "inbox"
     help    = "셋 다 이 컴퓨터 안입니다. 밖으로 나가지 않습니다."
     options = [
-        { value = "inbox",   label = "받은 편지함 파일에 쌓기" },
-        { value = "command", label = "프로그램에 넘기기" },
+        { value = "inbox",   label = "파일에 쌓기" },
+        { value = "command", label = "명령 실행" },
         { value = "tmux",    label = "tmux 창에 넣기" },
     ]
 
 [[inputs]]
     key   = "INBOX_PATH"
-    label = "받은 편지함 파일"
-    help  = "'받은 편지함' 일 때만 씁니다. 비우면 이 플러그인의 데이터 폴더에 inbox.md 로 쌓입니다. 세션이 이 파일을 지켜보게 하면 됩니다."
+    label = "쌓을 파일"
+    help  = "'파일에 쌓기' 일 때. 비우면 이 플러그인의 데이터 폴더에 inbox.md 로 쌓입니다 — 그 폴더 경로는 허용 화면의 '작업 폴더' 에 있습니다. 세션이 이 파일을 지켜보게 하면 됩니다."
 
 [[inputs]]
     key   = "AI_COMMAND"
-    label = "넘길 프로그램"
-    help  = "'프로그램' 일 때만 씁니다. 셸 한 줄로 적습니다 — 본문이 그 입(stdin)으로 들어갑니다. 예: claude -p"
+    label = "실행할 명령"
+    help  = "'명령 실행' 일 때. 셸 한 줄로 적습니다 — 댓글 본문이 그 명령의 입(stdin)으로 들어갑니다. 예: claude -p"
 
 [[inputs]]
     key   = "TMUX_TARGET"
     label = "tmux 창"
-    help  = "'tmux' 일 때만 씁니다. tmux 의 대상 이름 — 예: ai:0.0 또는 세션 이름."
+    help  = "'tmux 창에 넣기' 일 때. tmux 의 대상 이름 — 예: ai:0.0 또는 세션 이름."
+
+# BUG-329: **갔는지 알 수 있어야 한다.** 어느 길로 보내든 한 줄을 남긴다(작업 폴더의
+# delivered.log). 명령이나 tmux 로 보내면 결과가 눈에 안 보이는데, 이 파일만 보면 언제
+# 무엇이 어디로 갔는지 알 수 있다.

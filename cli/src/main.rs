@@ -300,11 +300,36 @@ enum Command {
     // 동의를 남길 방법이 없으면 영원히 안 돈다. 코어는 묻지 않으므로
     // (컴포넌트마다 묻는 법이 다르고 CLI 는 비대화형일 수 있다) 여기가 그
     // 자리다.
-    #[command(about = tf!("플러그인 — 적재 상태 확인과 허용/철회. 정의는 .guild/plugins/ (git 공유), 동의는 이 기계에만 남는다.", "Plugins — inspect what is loaded and allow/revoke. Definitions live in .guild/plugins/ (shared via git); consent stays on this machine."))]
+    // REQ-032: 설치본에는 예제가 안 들어간다 — 예제는 복사해 고치라고 두는 것이라
+    // 설치 폴더에 있으면 고칠 수 없는 자리에 놓이고, 고치면 갱신 때 덮인다. 그래서
+    // **어디 있는지를 말해 주는 것**이 설치본이 할 수 있는 전부다. 처음 쓰는 사람이
+    // 보는 자리 둘에 같은 주소를 둔다 — 여기(도움말)와 앱의 플러그인 화면.
+    #[command(about = tf!("플러그인 — 적재 상태 확인과 허용/철회. 정의는 .guild/plugins/ (git 공유), 동의는 이 기계에만 남는다.", "Plugins — inspect what is loaded and allow/revoke. Definitions live in .guild/plugins/ (shared via git); consent stays on this machine."),
+        after_help = examples_hint())]
     Plugin {
         #[command(subcommand)]
         sub: PluginCmd,
     },
+}
+
+/// REQ-032: 예제가 어디 있는지.
+///
+/// 설치본에는 예제가 없다(복사해 고치라고 두는 것이라 설치 폴더에 있으면 안 된다). 대신
+/// **이 버전의** 예제를 가리킨다 — 형식이 판마다 달라질 수 있어서 `master` 를 가리키면
+/// 지금 깔린 것과 다른 문법을 보게 된다.
+pub fn examples_url() -> String {
+    format!(
+        "https://github.com/Jirung-E/openguild/tree/v{}/examples/plugins",
+        env!("CARGO_PKG_VERSION")
+    )
+}
+
+fn examples_hint() -> String {
+    tf!(
+        "처음이라면 예제부터 — 복사해서 고쳐 쓰세요 (설치본에는 안 들어갑니다):\n  {}",
+        "New to this? Start from the examples — copy one and edit (they are not shipped with the install):\n  {}",
+        examples_url()
+    )
 }
 
 /// DEV-378: 플러그인 그룹.

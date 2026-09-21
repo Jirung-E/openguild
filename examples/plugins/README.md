@@ -85,6 +85,38 @@ AI 를 부르는 훅이면 돈까지 든다. 평범한 댓글에는 **0건**이 
 
 비밀값이 헤더로 가는 예를 찾는다면 텔레그램 예제를 본다 — url 과 `body_env` 를 쓴다.
 
+### 처음부터 끝까지 한 번 (BUG-329)
+
+무엇을 고를 수 있는지만 적어 두면 **어디서 확인해야 하는지**를 모른다. 실제로 해 본다.
+
+```bash
+openguild plugin add <저장소>/examples/plugins/discussion-to-ai
+openguild plugin allow discussion-to-ai          # '작업 폴더' 경로를 적어 둔다
+openguild plugin allow discussion-to-ai --yes
+
+# 토론 댓글을 하나 단다
+openguild quest comment add DEV-001 --discussion --file <어떤 파일>
+```
+
+작업 폴더에 둘이 생긴다.
+
+```
+inbox.md        쌓인 댓글
+delivered.log   언제 무엇이 어디로 갔는지 한 줄씩
+```
+
+`delivered.log` 가 **갔는지 확인하는 자리**다. '명령 실행' 이나 'tmux 창에 넣기' 로 바꾸면
+그쪽은 결과가 눈에 안 보이므로, 이 파일만 본다.
+
+```
+2026-09-22 01:54:33  파일  /…/discussion-to-ai/inbox.md
+2026-09-22 01:55:02  명령  claude -p
+2026-09-22 01:55:40  명령 실패  claude -p
+```
+
+명령으로 바꿔 시험할 때는 `cat >> got.txt` 처럼 결과가 남는 것을 먼저 써 본다 — 진짜
+프로그램을 걸기 전에 **본문이 제대로 들어가는지**부터 본다.
+
 ## desktop-notify
 
 **퀘스트나 댓글이 생기면 데스크톱 알림.** 스크립트 없이 `run` 만 쓰는 예다 —

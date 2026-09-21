@@ -23,6 +23,12 @@ else
   msg="[openguild] $json"
 fi
 
+# BUG-329: 어디로 보냈는지 한 줄 남긴다 — 명령이나 tmux 로 보내면 결과가 눈에 안 보인다.
+# 작업 폴더에 쌓이므로 허용 화면의 '작업 폴더' 에서 찾을 수 있다.
+receipt() {
+  printf '%s  %s  %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" "$2" >> delivered.log
+}
+
 case "${HOW:-inbox}" in
   command)
     # 설정에 적은 명령을 띄우고 본문을 그 입에 넣어 준다.
@@ -30,7 +36,12 @@ case "${HOW:-inbox}" in
       echo "discussion-to-ai: '넘길 프로그램' 이 비어 있습니다." >&2
       exit 1
     fi
-    printf '%s\n' "$msg" | sh -c "$AI_COMMAND"
+    if printf '%s\n' "$msg" | sh -c "$AI_COMMAND"; then
+      receipt "명령" "$AI_COMMAND"
+    else
+      receipt "명령 실패" "$AI_COMMAND"
+      exit 1
+    fi
     ;;
 
   tmux)
@@ -43,6 +54,7 @@ case "${HOW:-inbox}" in
     printf '%s' "$msg" | tmux load-buffer -
     tmux paste-buffer -d -t "$TMUX_TARGET"
     tmux send-keys -t "$TMUX_TARGET" Enter
+    receipt "tmux" "$TMUX_TARGET"
     ;;
 
   *)
@@ -53,5 +65,6 @@ case "${HOW:-inbox}" in
       printf '## %s\n\n' "$(date '+%Y-%m-%d %H:%M:%S')"
       printf '%s\n\n' "$msg"
     } >> "$out"
+    receipt "파일" "$out"
     ;;
 esac

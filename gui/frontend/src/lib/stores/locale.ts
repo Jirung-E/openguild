@@ -174,10 +174,18 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		ko: '이 길드의 플러그인은 .guild/plugins/ 에 있고 git 으로 공유됩니다. 길드 밖 폴더의 플러그인도 더할 수 있습니다(이 기계에만). 동의는 이 기계에만 남습니다 — 허용하기 전에는 돌지 않습니다.',
 		en: "This guild's plugins live in .guild/plugins/ and are shared via git. You can also add plugins from folders outside the guild (this machine only). Consent stays on this machine — nothing runs until you allow it."
 	},
+	// BUG-324 후속: 정의 파일은 `plugin.toml` 이다. `plugin.json` 은 적재가 거부한다 —
+	// 화면 문구에도 옛 이름이 남아 있었다.
 	'plugins.none': {
-		ko: '플러그인이 없습니다. .guild/plugins/{이름}/plugin.json 으로 정의하거나, 데스크톱 앱에서 길드 밖 폴더를 더합니다.',
-		en: 'No plugins. Define one at .guild/plugins/{name}/plugin.json, or add a folder from outside the guild in the desktop app.'
+		ko: '플러그인이 없습니다. .guild/plugins/{이름}/plugin.toml 로 정의하거나, 데스크톱 앱에서 길드 밖 폴더를 더합니다.',
+		en: 'No plugins. Define one at .guild/plugins/{name}/plugin.toml, or add a folder from outside the guild in the desktop app.'
 	},
+	// REQ-032: 설치본에는 예제가 없다 — 처음 켜는 사람이 보는 자리에 어디 있는지를 둔다.
+	'plugins.examplesHint': {
+		ko: '처음이라면 예제부터 — 복사해서 고쳐 쓰세요.',
+		en: 'New to this? Start from the examples — copy one and edit.'
+	},
+	'plugins.examplesLink': { ko: '예제 보기', en: 'Browse the examples' },
 	'plugins.readOnly': {
 		ko: '조회만 가능합니다. 허용·철회는 그 길드가 있는 기계의 데스크톱 앱이나 `openguild plugin allow` 로 합니다 — 동의는 기계마다 따로 남습니다.',
 		en: 'Read-only here. Allow/revoke from the desktop app on the machine that holds this guild, or with `openguild plugin allow` — consent is per-machine.'

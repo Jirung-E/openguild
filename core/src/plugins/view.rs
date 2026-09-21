@@ -189,6 +189,22 @@ pub struct PluginStatus {
     /// 전달 중 쌓인 문제(최근 것부터 잘림). 비어 있는 것이 정상이다.
     #[serde(default)]
     pub problems: Vec<String>,
+    /// REQ-032: 예제가 어디 있나. 설치본에는 예제가 안 들어간다 — 복사해 고치라고 두는
+    /// 것이라 설치 폴더에 있으면 고칠 수 없는 자리에 놓이고, 고치면 갱신 때 덮인다.
+    /// 그래서 **어디 있는지를 말해 주는 것**이 설치본이 할 수 있는 전부다.
+    ///
+    /// **이 버전의** 예제를 가리킨다 — 형식이 판마다 달라질 수 있어 늘 최신을 가리키면
+    /// 지금 깔린 것과 다른 문법을 보게 된다.
+    #[serde(default)]
+    pub examples_url: String,
+}
+
+/// 이 버전의 예제 폴더 주소.
+pub fn examples_url() -> String {
+    format!(
+        "https://github.com/Jirung-E/openguild/tree/v{}/examples/plugins",
+        env!("CARGO_PKG_VERSION")
+    )
 }
 
 impl PluginStatus {
@@ -201,6 +217,7 @@ impl PluginStatus {
             manageable: false,
             no_guild: true,
             problems: Vec::new(),
+            examples_url: examples_url(),
         }
     }
 }
@@ -364,5 +381,6 @@ pub fn status(store: &crate::Store, scope: Scope, manageable: bool) -> AppResult
         // DEV-381: 여기까지 올려야 사용자가 본다. 예전엔 모아만 두고 아무도
         // 안 읽어서, 훅이 조용히 실패해도 화면에 아무것도 안 떴다.
         problems: store.plugin_problems(),
+        examples_url: examples_url(),
     })
 }

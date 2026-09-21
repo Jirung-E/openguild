@@ -379,6 +379,17 @@
 				pluginStatus.plugins.length === 0 &&
 				pluginStatus.errors.length === 0}
 				<p class="scale-hint">{t('plugins.none', $locale)}</p>
+				<!-- REQ-032: 설치본에는 예제가 안 들어간다(복사해 고치라고 두는 것이라
+				     설치 폴더에 있으면 안 된다). 처음 켜는 사람이 보는 자리가 여기다. -->
+				{#if pluginStatus.examples_url}
+					<p class="scale-hint">
+						{t('plugins.examplesHint', $locale)}
+						<a class="examples-link" href={pluginStatus.examples_url} target="_blank" rel="noreferrer noopener"
+							>{t('plugins.examplesLink', $locale)}</a
+						>
+						<code class="examples-url">{pluginStatus.examples_url}</code>
+					</p>
+				{/if}
 			{/if}
 			<ul class="plugin-list" aria-busy={pluginBusy.length > 0}>
 				{#each pluginStatus?.plugins ?? [] as p (p.name)}
@@ -888,6 +899,17 @@
 		align-items: center;
 		gap: 0.45rem;
 		font-size: 0.85rem;
+	}
+	.examples-link {
+		color: var(--accent);
+	}
+	/* 오프라인이거나 링크를 못 여는 자리도 있다 — 주소를 글자로도 같이 둔다. */
+	.examples-url {
+		display: block;
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		color: var(--text-faint);
+		overflow-wrap: anywhere;
 	}
 	.pi-label {
 		font-size: 0.82rem;
