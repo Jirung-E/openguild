@@ -104,7 +104,25 @@ describe('DEV-416 입력창이 화면 밖으로 밀리면 아래에 붙는다', 
 		expect(isDocked()).toBe(false);
 	});
 
-	it('원래 자리가 다시 보이면 닫아 둔 것이 풀린다', async () => {
+	// BUG-316(admin): "포커스가 안 풀려서 다시 뜬다." 닫는다는 것은 지금은 그만 쓴다는
+	// 뜻이다 — 포커스를 쥔 채로 두면 다시 붙을 조건이 그대로 살아 있다.
+	it('닫으면 포커스도 놓는다', async () => {
+		const { getByRole, getByLabelText } = render(ComposeDockHarness, { hasContent: true });
+		const ta = getByRole('textbox') as HTMLTextAreaElement;
+		ta.focus();
+		ta.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+		notify!(0);
+		await tick();
+		expect(isDocked()).toBe(true);
+		(getByLabelText(/원래 자리로/) as HTMLButtonElement).click();
+		await settled();
+		expect(document.activeElement).not.toBe(ta);
+		expect(isDocked()).toBe(false);
+	});
+
+	// 예전에는 제자리가 다시 보이기만 하면 풀렸다. 그러면 스크롤을 오르내리는 것만으로
+	// 닫은 것이 되살아난다 — 닫기가 닫기가 아니게 된다.
+	it('스크롤만으로는 닫아 둔 것이 안 풀린다', async () => {
 		const { getByRole, getByLabelText } = render(ComposeDockHarness, { hasContent: true });
 		getByRole('textbox').dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
 		notify!(0);
@@ -113,7 +131,21 @@ describe('DEV-416 입력창이 화면 밖으로 밀리면 아래에 붙는다', 
 		await settled();
 		notify!(1); // 스크롤을 올려 제자리가 보였다
 		await settled();
-		notify!(0); // 다시 밀려나면
+		notify!(0); // 다시 밀려나도
+		await settled();
+		expect(isDocked(), '닫아 둔 것이 스크롤로 되살아났다').toBe(false);
+	});
+
+	// 대신 **다시 쓰러 오면** 풀린다 — 그때는 붙는 것이 맞다.
+	it('다시 쓰러 오면 풀린다', async () => {
+		const { getByRole, getByLabelText } = render(ComposeDockHarness, { hasContent: true });
+		getByRole('textbox').dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+		notify!(0);
+		await tick();
+		(getByLabelText(/원래 자리로/) as HTMLButtonElement).click();
+		await settled();
+		expect(isDocked()).toBe(false);
+		getByRole('textbox').dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
 		await settled();
 		expect(isDocked()).toBe(true);
 	});
@@ -192,13 +224,47 @@ describe('DEV-416 붙었을 때의 모양', () => {
 		return r;
 	}
 
-	it('오른쪽 위에 동그란 버튼 셋 — 보내기 · 좁게/넓게 · 닫기', async () => {
+	// BUG-316(admin): "팝업에 총 4개의 버튼. 순서대로 입력, 현재위치로, 컴팩트모드 토글, 닫기"
+	it('오른쪽 위에 동그란 버튼 넷 — 보내기 · 현재 위치로 · 좁게/넓게 · 닫기', async () => {
 		await dock({ withSubmit: true });
 		const labels = Array.from(document.querySelectorAll('.dock-btn')).map(
 			(b) => b.getAttribute('aria-label') ?? ''
 		);
-		// 좁게가 기본이므로 가운데 버튼은 '넓게 보기' 다.
-		expect(labels).toEqual(['보내기', '넓게 보기', '원래 자리로 (글은 남습니다)']);
+		// 좁게가 기본이므로 셋째 버튼은 '넓게 보기' 다.
+		expect(labels).toEqual([
+			'보내기',
+			'현재 위치로',
+			'넓게 보기',
+			'원래 자리로 (글은 남습니다)'
+		]);
+	});
+
+	// 닫기와 다르다 — 글은 팝업에 둔 채 **보는 자리**만 옮긴다.
+	it('현재 위치로는 화면만 옮긴다 — 팝업을 접지 않는다', async () => {
+		await dock({ withSubmit: true });
+		const calls: unknown[] = [];
+		const probe = document.querySelector('.dock-probe') as HTMLElement;
+		probe.scrollIntoView = (o?: unknown) => calls.push(o);
+		(document.querySelector('[aria-label="현재 위치로"]') as HTMLButtonElement).click();
+		await tick();
+		expect(calls.length, '그 자리로 안 옮겼다').toBe(1);
+		// 접는 것은 자리가 보이고 나서 스스로 한다 — 버튼이 직접 접지 않는다.
+		expect(box().classList.contains('docked')).toBe(true);
+	});
+
+	// BUG-316(admin): 팝업이 우하단 섹션 이동 버튼을 덮었다. 서로를 직접 아는 대신
+	// 높이만 알린다 — 비켜설지는 받는 쪽이 정한다.
+	it('붙으면 제 높이를 알린다 — 떨어지면 지운다', async () => {
+		const { getByRole, getByLabelText } = render(ComposeDockHarness, { hasContent: true });
+		getByRole('textbox').dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+		notify!(0);
+		await tick();
+		expect(
+			document.documentElement.style.getPropertyValue('--compose-dock-h')
+		).not.toBe('');
+		(getByLabelText(/원래 자리로/) as HTMLButtonElement).click();
+		await settled();
+		expect(document.documentElement.style.getPropertyValue('--compose-dock-h')).toBe('');
 	});
 
 	// BUG-312(admin): "기본적으로 컴팩트 모드로 떠야한다."

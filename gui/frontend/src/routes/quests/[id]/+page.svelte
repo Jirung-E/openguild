@@ -2376,7 +2376,9 @@
 	.jump-cluster {
 		position: fixed;
 		right: 1.5rem;
-		bottom: 1.5rem;
+		/* BUG-316: 댓글 팝업이 뜨면 그 아래 깔려 안 보였다(admin). 팝업이 제 높이를
+		   `--compose-dock-h` 로 알려 주므로 그만큼 비켜선다 — 안 떠 있으면 0 이다. */
+		bottom: calc(1.5rem + var(--compose-dock-h, 0px));
 		z-index: 80;
 		display: flex;
 		flex-direction: column;

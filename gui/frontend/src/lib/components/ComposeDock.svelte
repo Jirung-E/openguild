@@ -74,7 +74,7 @@
 	let box: HTMLDivElement | undefined = $state(undefined);
 	let fullyVisible = $state(true);
 	let focused = $state(false);
-	/** ×를 눌렀다 — 원래 자리가 다시 보일 때까지 안 붙는다. */
+	/** ×를 눌렀다 — **다시 쓰러 올 때까지** 안 붙는다(BUG-316). */
 	let dismissed = $state(false);
 	/**
 	 * 좁게 보기 — 입력칸과 버튼만 남긴다.
@@ -193,8 +193,6 @@
 				rememberTop();
 				// **한 귀퉁이라도 잘리면** 붙는다(admin) — 반쯤 걸친 상태가 제일 불편하다.
 				fullyVisible = e.intersectionRatio >= 0.99;
-				// 원래 자리가 다시 온전히 보이면 ×로 닫아 둔 상태를 푼다.
-				if (fullyVisible) dismissed = false;
 			},
 			// 1 하나만 두면 "완전히 보임 → 아님" 을 놓칠 수 있다(경계에서 콜백이 안 온다).
 			{ threshold: [0, 0.99, 1] }
@@ -262,9 +260,40 @@
 		});
 	});
 
+	/**
+	 * BUG-316(admin): 팝업이 뜨면 우하단의 **섹션 이동 버튼**(맨 위로 · 댓글로 · 메모로)이
+	 * 가려진다. 팝업이 본문 칸 폭을 다 쓰고 그 위에 뜨기 때문이다.
+	 *
+	 * 어느 쪽을 위로 올릴지는 답이 하나다 — 글을 쓰는 중이니 **팝업이 위**다. 대신 가려진
+	 * 쪽을 팝업 높이만큼 밀어 올린다. 서로를 직접 아는 대신 **높이만 알린다** — 이 값을 보고
+	 * 비켜설지는 받는 쪽이 정한다(지금은 퀘스트·캠페인 상세의 점프 버튼이 쓴다).
+	 */
+	const DOCK_H_VAR = '--compose-dock-h';
+	$effect(() => {
+		if (typeof document === 'undefined') return;
+		const root = document.documentElement;
+		if (!docked || !box) {
+			root.style.removeProperty(DOCK_H_VAR);
+			return;
+		}
+		const el = box;
+		const publish = () => root.style.setProperty(DOCK_H_VAR, `${el.offsetHeight}px`);
+		publish();
+		// 좁게/넓게를 바꾸거나 글이 늘면 높이가 바뀐다.
+		const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(publish);
+		ro?.observe(el);
+		return () => {
+			ro?.disconnect();
+			root.style.removeProperty(DOCK_H_VAR);
+		};
+	});
+
 	function onFocusIn() {
 		rememberTop();
 		focused = true;
+		// BUG-316: 다시 쓰러 왔으면 닫아 둔 것을 푼다. 이것이 **유일한** 푸는 길이다 —
+		// 아래 `close` 설명 참고.
+		dismissed = false;
 	}
 	function onFocusOut(e: FocusEvent) {
 		// admin: [좁게 보기] 를 누르면 팝업이 그냥 사라졌다. 버튼을 누르는 순간 입력칸이
@@ -275,9 +304,33 @@
 		rememberTop();
 		focused = false;
 	}
+	/**
+	 * ×를 눌렀다 — 원래 자리로 돌린다(글은 남는다).
+	 *
+	 * BUG-316(admin): "포커스가 안 풀려서 다시 뜬다." 맞다. 머리줄 버튼은 입력칸의 포커스를
+	 * 일부러 안 뺏는데(캐럿과 조합 중인 글자를 지키려고), 닫기만은 예외다 — 포커스가 남아
+	 * 있으면 다시 붙을 조건이 그대로 살아 있다. 닫는다는 것은 "지금은 그만 쓴다" 는 뜻이니
+	 * 포커스도 같이 놓는다.
+	 *
+	 * 닫아 둔 상태는 **다시 쓰러 올 때까지** 간다. 예전에는 원래 자리가 다시 보이면 풀었는데,
+	 * 그러면 스크롤을 오르내리는 것만으로 닫은 것이 되살아난다 — 닫기가 닫기가 아니게 된다.
+	 */
+	/**
+	 * BUG-316(admin): **화면을 원래 자리로 옮긴다** — 닫기와 다르다.
+	 *
+	 * 닫기는 팝업을 접어 글을 제자리로 돌려놓는 것이고(화면은 그대로), 이건 글은 팝업에 둔 채
+	 * **보는 자리**를 옮기는 것이다. 자리가 보이게 되면 팝업은 스스로 내려간다.
+	 */
+	function locate() {
+		(probe ?? slot)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+	}
+
 	function close() {
 		rememberTop();
 		dismissed = true;
+		const on = document.activeElement;
+		if (on instanceof HTMLElement && box?.contains(on)) on.blur();
+		focused = false;
 	}
 </script>
 
@@ -341,6 +394,30 @@
 							</svg>
 						</button>
 					{/if}
+					<button
+						class="dock-btn"
+						type="button"
+						onclick={locate}
+						title={t('compose.locate', $locale)}
+						aria-label={t('compose.locate', $locale)}
+					>
+						<!-- 과녁 — "그 자리를 보여 달라". -->
+						<svg
+							viewBox="0 0 16 16"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.6"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							aria-hidden="true"
+						>
+							<circle cx="8" cy="8" r="3.4" />
+							<path d="M8 1.6v2.2" />
+							<path d="M8 12.2v2.2" />
+							<path d="M1.6 8h2.2" />
+							<path d="M12.2 8h2.2" />
+						</svg>
+					</button>
 					<button
 						class="dock-btn"
 						type="button"
@@ -451,6 +528,14 @@
 		background: none;
 		border-color: transparent;
 		box-shadow: none;
+		padding: 0;
+	}
+	/* BUG-316: **부르는 쪽의 틀도 걷는다.** 댓글 폼은 자기 점선 테두리를 가지고 있는데,
+	   그 위의 작성자 줄을 접으면 그 점선만 입력칸과 버튼 사이에 덩그러니 남는다(admin).
+	   머리줄(버튼)은 우리 것이라 건드리지 않는다. */
+	.dock-box.docked.compact > :global(:not(.dock-head)) {
+		border: none;
+		background: none;
 		padding: 0;
 	}
 	.dock-head {
