@@ -51,6 +51,7 @@
 	import MarkdownEditor from './MarkdownEditor.svelte';
 	// BUG-157: cross-link 자동완성 팝업 스크롤도 커스텀(overlay)으로 통일.
 	import OverlayScrollbar from './OverlayScrollbar.svelte';
+	import SizeGrip from './SizeGrip.svelte';
 	// DEV-140/171: 댓글 textarea cross-link 자동완성 — caret 위치 팝업 + 실재 ID 제안.
 	import {
 		wikiMatch,
@@ -1096,6 +1097,8 @@
 					disabled={replySaving}
 				></textarea>
 				<OverlayScrollbar target={replyBodyEl ?? null} />
+				<!-- BUG-318: 휴대폰에서는 브라우저가 주는 크기 손잡이를 못 쓴다 — 직접 둔다. -->
+				<SizeGrip target={replyBodyEl} />
 			{/if}
 			{#if replyError}<p class="state err">{replyError}</p>{/if}
 			<div class="actions">
@@ -1230,6 +1233,7 @@
 					placeholder={t('comment.bodyMarkdown', $locale)}
 				></textarea>
 				<OverlayScrollbar target={editBodyEl ?? null} />
+				<SizeGrip target={editBodyEl} />
 			{/if}
 			{#if editError}<p class="state err">{editError}</p>{/if}
 			<div class="actions">
@@ -1583,6 +1587,7 @@
 							disabled={saving}
 						></textarea>
 						<OverlayScrollbar target={newBodyEl ?? null} />
+						<SizeGrip target={newBodyEl} />
 					{/if}
 					{#if saveError}<p class="state err">{saveError}</p>{/if}
 					<div class="actions">

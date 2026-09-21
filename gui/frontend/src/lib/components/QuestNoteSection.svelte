@@ -225,7 +225,10 @@
 					<div class="field-label">
 						<!-- DEV-188: '첨부' 버튼 제거(메모는 개인용). 이미지·동영상은
 					     드래그&드랍 / Ctrl+V 로 첨부 가능(attachmentExtension). -->
-						<span>{label.help} {t('note.helpAttach', $locale)}</span>
+						<!-- BUG-318: 좁게 보기에서는 안 보인다(admin). 팝업에는 입력칸과 버튼만
+						     남아야 하는데 설명글까지 따라 올라왔다. 이름표는 [[ComposeDock]] 과의
+						     약속이다 — 붙어서 좁게 보일 때 접힌다. -->
+						<span class="compose-aside">{label.help} {t('note.helpAttach', $locale)}</span>
 						<MarkdownEditor
 							bind:value={editText}
 							mediaOnly
@@ -391,7 +394,9 @@
 		flex-direction: column;
 		gap: 0.35rem;
 	}
-	.field-label > span {
+	/* BUG-318: 이름은 [[ComposeDock]] 과의 약속이다 — 붙어서 좁게 보일 때 접힌다.
+	   모양은 여기서 정한다. */
+	.field-label > .compose-aside {
 		font-size: 0.75rem;
 		color: var(--text-muted);
 	}

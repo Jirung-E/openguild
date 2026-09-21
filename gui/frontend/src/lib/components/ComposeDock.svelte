@@ -543,9 +543,14 @@
 		overflow: auto;
 	}
 	/* 좁게 보기 = **입력칸만**(admin: "댓글 입력창만 뜨는 것"). 작성자 칸과 편집기 토글은
-	   접는다 — 붙어 있는 동안 화면을 먹는 것이 그 줄이다. 입력칸 높이도 더 줄인다. */
+	   접는다 — 붙어 있는 동안 화면을 먹는 것이 그 줄이다. 입력칸 높이도 더 줄인다.
+
+	   BUG-318: `compose-aside` 는 **부르는 쪽과의 약속**이다 — 좁게 보일 때 접어도 되는 것에
+	   이 이름을 붙인다(메모의 설명글처럼). 위 둘은 이 약속이 생기기 전부터 쓰던 이름이라
+	   그대로 둔다. */
 	.dock-box.compact :global(.new-row),
-	.dock-box.compact :global(.reply-author) {
+	.dock-box.compact :global(.reply-author),
+	.dock-box.compact :global(.compose-aside) {
 		display: none;
 	}
 	.dock-box.compact :global(textarea),

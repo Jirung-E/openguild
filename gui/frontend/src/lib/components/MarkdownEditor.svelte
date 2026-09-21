@@ -38,6 +38,7 @@
 	// DEV-336: markdownEditorExtensions 가 touch + autoFormat 설정을 함께 반영.
 	import { isCoarsePointer, markdownEditorExtensions } from '$lib/utils/editor-setup';
 	import OverlayScrollbar from './OverlayScrollbar.svelte';
+	import SizeGrip from './SizeGrip.svelte';
 	// DEV-172: cross-link 자동완성 — 댓글(DEV-171)과 공유하는 caret 팝업.
 	import { wikiMatch, type WikiItem } from '$lib/utils/textarea-wikilink';
 	import { applyWikiLinkCM, applyWikiPrefixCM } from '$lib/utils/editor-wikilink';
@@ -392,6 +393,9 @@
 
 <!-- CodeMirror 가 div 안에 편집 영역을 동적으로 생성. -->
 <div class="editor-wrap" bind:this={container}></div>
+<!-- BUG-318: 휴대폰에서는 브라우저가 주는 크기 손잡이를 못 쓴다 — 직접 둔다.
+     높이를 바꾸면 위의 ResizeObserver 가 그대로 받아 영속화한다. -->
+<SizeGrip target={container} min={160} />
 <!-- DEV-074 fix15: CodeMirror native scrollbar 대신 overlay. -->
 {#if cmScroller}
 	<OverlayScrollbar target={cmScroller} />
