@@ -508,16 +508,18 @@
 										{:else}
 											<label class="pi-label" for={`pi-${p.name}-${i.key}`}>{i.label}</label>
 											{#if i.type === 'select'}
+												<!-- BUG-328: 고른 값은 **`select` 에** 준다. `option` 의 `selected` 는
+												     처음 그릴 때의 속성이라, 저장 뒤 다시 그려도 이미 그려진 상자의
+												     선택은 안 바뀐다 — 그래서 두 번 저장해야 맞아 보였다(admin). -->
 												<select
 													id={`pi-${p.name}-${i.key}`}
 													class="pi-field"
 													disabled={busy || !canManage}
+													value={draftOf(p.name, i)}
 													onchange={(e) => setDraft(p.name, i.key, e.currentTarget.value)}
 												>
 													{#each i.options as o (o.value)}
-														<option value={o.value} selected={draftOf(p.name, i) === o.value}
-															>{o.label}</option
-														>
+														<option value={o.value}>{o.label}</option>
 													{/each}
 												</select>
 											{:else}

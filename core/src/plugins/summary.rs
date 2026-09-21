@@ -154,8 +154,40 @@ fn permission_name(p: &str) -> String {
 }
 
 /// 여럿을 한 번에 허용할 때의 한 줄 요약 — 이름과 "가장 센 것" 만.
-pub fn one_liner(p: &Plugin, scope: Scope) -> String {
+/// BUG-326: 목록 한 줄을 **조각으로** 돌려준다 — 부르는 쪽이 폭을 맞춰 세로로 읽히게.
+///
+/// 한 줄로 이어 붙이면(아래 `one_liner`) 이름 길이가 제각각이라 눈이 세로로 못 내려간다.
+/// 여럿을 늘어놓는 자리에서는 이쪽을 쓴다. 하나만 보여 줄 때는 `one_liner` 가 맞다.
+pub struct ListRow {
+    pub name: String,
+    /// `cli gui server` — 대괄호 없이, 빈칸으로 나눠서.
+    pub scope: String,
+    /// 막을 수 있음 · 알림 · post api.example.com …
+    pub marks: String,
+}
+
+pub fn list_row(p: &Plugin, scope: Scope) -> ListRow {
     let v = view::view(p, false, scope);
+    ListRow {
+        name: p.def.name.clone(),
+        scope: v.scope.join(" "),
+        marks: marks_of(&v).join(" · "),
+    }
+}
+
+/// **긴 것은 줄인다.** `run` 은 명령 이름만, `post` 는 호스트만 — 목록에서 알아야 하는 것은
+/// "어디로 나가나" 이지 인자 전체가 아니다. 전체는 `allow` 미리보기와 `--json` 에 있다.
+fn short_target(kind: &str, target: &str) -> String {
+    let short = if kind == "post" {
+        let after = target.split_once("://").map(|(_, rest)| rest).unwrap_or(target);
+        after.split('/').next().unwrap_or(after).to_string()
+    } else {
+        target.split_whitespace().next().unwrap_or(target).to_string()
+    };
+    format!("{kind} {short}")
+}
+
+fn marks_of(v: &view::PluginView) -> Vec<String> {
     let mut marks: Vec<String> = Vec::new();
     if v.handlers.iter().any(|h| h.stage == "pre") {
         marks.push(crate::tf!("막을 수 있음", "can block"));
@@ -163,18 +195,24 @@ pub fn one_liner(p: &Plugin, scope: Scope) -> String {
     for perm in &v.permissions {
         marks.push(permission_name(perm));
     }
-    let dests: Vec<String> = v.actions.iter().map(|a| format!("{} {}", a.kind, a.target)).collect();
+    let dests: Vec<String> =
+        v.actions.iter().map(|a| short_target(&a.kind, &a.target)).collect();
     if !dests.is_empty() {
         marks.push(dests.join(", "));
     }
     if marks.is_empty() {
         marks.push(crate::tf!("밖으로 안 나감", "nothing leaves this machine"));
     }
+    marks
+}
+
+pub fn one_liner(p: &Plugin, scope: Scope) -> String {
+    let v = view::view(p, false, scope);
     format!(
         "{}  [{}]  {}",
         p.def.name,
         v.scope.join(","),
-        marks.join(" · ")
+        marks_of(&v).join(" · ")
     )
 }
 

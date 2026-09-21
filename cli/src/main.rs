@@ -6803,29 +6803,48 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
                     println!("    {}. {line}", i + 1);
                 }
             };
-            for p in &loaded.active {
+            // BUG-326: **자리를 맞춘다.** 이름 길이가 제각각이라 한 줄로 이어 붙이면
+            // 눈이 세로로 못 내려간다(admin: `--json` 이 더 보기 좋다). 상태는 맨 앞
+            // 기호 하나로 — 괄호로 뒤에 붙이면 줄마다 끝나는 자리가 달라진다.
+            //
+            //   ✓ 돈다   · 동의 대기   ✗ 정의 오류
+            let rows: Vec<(char, &_)> = loaded
+                .active
+                .iter()
+                .map(|p| ('✓', p))
+                .chain(loaded.needs_consent.iter().map(|p| ('·', p)))
+                .collect();
+            let cells: Vec<_> = rows
+                .iter()
+                .map(|(_, p)| openguild_core::plugins::summary::list_row(p, Scope::Cli))
+                .collect();
+            let width = |f: fn(&openguild_core::plugins::summary::ListRow) -> &String| {
+                cells.iter().map(|r| f(r).chars().count()).max().unwrap_or(0)
+            };
+            let (w_name, w_scope) = (width(|r| &r.name), width(|r| &r.scope));
+            let pad = |s: &str, w: usize| {
+                format!("{s}{}", " ".repeat(w.saturating_sub(s.chars().count())))
+            };
+            // 기호만 있고 설명이 없으면 `·` 가 무슨 뜻인지 모른다 — 있을 때만 한 줄.
+            if !loaded.needs_consent.is_empty() {
                 println!(
-                    "✓ {}{}",
-                    openguild_core::plugins::summary::one_liner(p, Scope::Cli),
-                    // DEV-399: 길드 밖에서 온 것은 어디서 왔는지 보여야 한다.
-                    p.source
-                        .as_deref()
-                        .map(|s| format!("  ({s})"))
-                        .unwrap_or_default()
-                );
-                // REQ-020: 설명은 다음 줄에 들여쓴다. 같은 줄에 붙이면 길이가
-                // 제각각이라 위 세 열이 안 맞는다.
-                describe(p);
-            }
-            for p in &loaded.needs_consent {
-                println!(
-                    "· {}  {}",
-                    openguild_core::plugins::summary::one_liner(p, Scope::Cli),
+                    "{}",
                     tf!(
-                        "(동의 대기 — 안 돕니다)",
-                        "(awaiting consent — not running)"
+                        "✓ 돎   · 동의 대기(안 돎) — `openguild plugin allow <이름>`",
+                        "✓ running   · awaiting consent (not running) — `openguild plugin allow <name>`"
                     )
                 );
+            }
+            for ((mark, p), r) in rows.iter().zip(&cells) {
+                println!(
+                    "{mark} {}  {}  {}{}",
+                    pad(&r.name, w_name),
+                    pad(&r.scope, w_scope),
+                    r.marks,
+                    // DEV-399: 길드 밖에서 온 것은 어디서 왔는지 보여야 한다.
+                    p.source.as_deref().map(|s| format!("  ({s})")).unwrap_or_default()
+                );
+                // REQ-020: 설명은 다음 줄에 들여쓴다.
                 describe(p);
             }
             for (name, why) in &loaded.errors {
