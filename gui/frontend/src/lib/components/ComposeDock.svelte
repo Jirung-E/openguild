@@ -38,7 +38,9 @@
 -->
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import { setContext } from 'svelte';
 	import { locale, t } from '$lib/stores/locale';
+	import { COMPOSE_DOCK, type ComposeDockContext } from '$lib/utils/compose-dock-context';
 
 	let {
 		/** 쓰던 글이 있나 — 포커스를 잃어도 붙여 둘지 정한다. */
@@ -132,6 +134,9 @@
 		return () => clearTimeout(t);
 	});
 	const docked = $derived(sticky);
+
+	// BUG-323: 안쪽의 크기 손잡이가 이걸 보고 위로 갈지 아래로 갈지 정한다.
+	setContext<ComposeDockContext>(COMPOSE_DOCK, { docked: () => docked });
 
 	// 붙은 상자는 본문 칸과 같은 폭·같은 가로 위치를 쓴다 — 창 전체로 늘리면 글 읽는 폭과
 	// 어긋나 보인다.
@@ -580,6 +585,11 @@
 		border: none;
 		background: none;
 		padding: 0;
+	}
+	/* BUG-323: 팝업일 때 손잡이는 **위쪽**이다 — 상자가 화면 바닥에 붙어 있어서 아래
+	   손잡이로는 손과 반대로 자란다(admin). 위로 올리면 손 가는 대로 커진다. */
+	.dock-box.docked :global(.size-grip) {
+		order: -1;
 	}
 	.dock-head {
 		display: flex;

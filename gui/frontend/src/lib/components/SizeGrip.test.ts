@@ -6,6 +6,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { render } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import SizeGrip from './SizeGrip.svelte';
+import { COMPOSE_DOCK } from '$lib/utils/compose-dock-context';
 
 // `target` 은 testing-library 의 예약 이름(그릴 자리)이라 `props:` 로 감싸 넘긴다 —
 // 안 그러면 컴포넌트가 아니라 렌더러가 가져간다.
@@ -154,6 +155,43 @@ describe('BUG-318 크기 손잡이', () => {
 		await tick();
 		expect(grip().style.marginTop).toBe('2px');
 		expect(grip().style.marginBottom).toBe('2px');
+	});
+
+	// BUG-323(admin): "아래쪽에 붙이니까 확장시키는게 불편함." 팝업은 화면 바닥에 붙어
+	// 있어서, 아래 손잡이를 내려 끌어도 상자는 위로 자란다 — 손과 반대다. 팝업 안에서는
+	// 손잡이가 위로 가고 **올릴수록 커진다**.
+	it('팝업 안에서는 올릴수록 커진다', async () => {
+		const el = targetEl(200);
+		render(SizeGrip, {
+			props: { target: el },
+			context: new Map([[COMPOSE_DOCK, { docked: () => true }]])
+		});
+		await tick();
+		drag(-100);
+		expect(el.style.height).toBe('300px');
+	});
+
+	it('팝업 안에서는 ↑ 가 키우는 쪽이다', async () => {
+		const el = targetEl(200);
+		render(SizeGrip, {
+			props: { target: el, step: 1.5 },
+			context: new Map([[COMPOSE_DOCK, { docked: () => true }]])
+		});
+		await tick();
+		grip().dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+		expect(el.style.height).toBe('224px');
+	});
+
+	// 팝업 밖에서는 그대로 아래다 — 제자리 입력칸·작업 기록·메모 상자.
+	it('팝업 밖에서는 내릴수록 커진다', async () => {
+		const el = targetEl(200);
+		render(SizeGrip, {
+			props: { target: el },
+			context: new Map([[COMPOSE_DOCK, { docked: () => false }]])
+		});
+		await tick();
+		drag(100);
+		expect(el.style.height).toBe('300px');
 	});
 
 	// 아직 안 그려진 편집기에 붙을 수 있다 — 그때 터져서는 안 된다.

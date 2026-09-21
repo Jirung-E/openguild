@@ -12,7 +12,9 @@
   키보드로도 바꿀 수 있어야 한다(위/아래 화살표). 그래서 버튼이다.
 -->
 <script lang="ts">
+	import { getContext } from 'svelte';
 	import { locale, t } from '$lib/stores/locale';
+	import { COMPOSE_DOCK, type ComposeDockContext } from '$lib/utils/compose-dock-context';
 
 	/**
 	 * 한계값의 단위는 **rem 이다**(BUG-321, admin: "사이즈 조절 핸들은 ui 크기에 따라
@@ -40,6 +42,17 @@
 	}
 
 	let root: HTMLButtonElement | undefined = $state(undefined);
+
+	/**
+	 * BUG-323: **팝업일 때는 위쪽에 붙는다**(admin: "아래쪽에 붙이니까 확장시키는게 불편함").
+	 *
+	 * 팝업은 화면 바닥에 붙어 있다. 그러니 아래 손잡이를 내려 끌어도 상자는 **위로** 자란다 —
+	 * 손이 가는 방향과 자라는 방향이 반대다. 위쪽에 두고 위로 끌면 손 가는 대로 커진다.
+	 *
+	 * 팝업 밖(제자리·작업 기록·메모 상자)에서는 그대로 아래다.
+	 */
+	const dock = getContext<ComposeDockContext | undefined>(COMPOSE_DOCK);
+	const atTop = $derived(dock?.docked() ?? false);
 
 	/** 위아래로 남길 틈(rem). 2px 어치다. */
 	const SNUG = 0.125;
@@ -69,6 +82,12 @@
 			return;
 		}
 		const gap = parseFloat(ps.rowGap) || 0;
+		if (atTop) {
+			// 위로 올라가면(`order`) 아래에 오는 것은 입력칸이다 — 제 여백을 따로 안 얹는다.
+			el.style.marginTop = `${want - gap}px`;
+			el.style.marginBottom = `${want - gap}px`;
+			return;
+		}
 		const next = el.nextElementSibling;
 		const nextMt =
 			next instanceof HTMLElement ? parseFloat(getComputedStyle(next).marginTop) || 0 : 0;
@@ -78,6 +97,7 @@
 
 	$effect(() => {
 		if (!root) return;
+		void atTop; // 위아래가 바뀌면 여백도 다시 맞춘다.
 		snug();
 		// UI 크기를 바꾸면 이 버튼의 높이(rem)가 바뀐다 — 그걸 신호로 다시 맞춘다.
 		const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => snug());
@@ -121,7 +141,9 @@
 
 	function move(e: PointerEvent) {
 		if (!dragging) return;
-		apply(startH + (e.clientY - startY));
+		const dy = e.clientY - startY;
+		// 위쪽 손잡이는 올릴수록 커진다.
+		apply(startH + (atTop ? -dy : dy));
 	}
 
 	function up(e: PointerEvent) {
@@ -135,7 +157,8 @@
 		const d = e.key === 'ArrowDown' ? step : e.key === 'ArrowUp' ? -step : 0;
 		if (!d) return;
 		e.preventDefault();
-		apply(target.getBoundingClientRect().height + d * rem());
+		// 손잡이가 위에 있으면 ↑ 가 키우는 쪽이다 — 손잡이가 가는 방향과 같다.
+		apply(target.getBoundingClientRect().height + (atTop ? -d : d) * rem());
 	}
 </script>
 
