@@ -83,8 +83,9 @@
 		}
 		const gap = parseFloat(ps.rowGap) || 0;
 		if (atTop) {
-			// 위로 올라가면(`order`) 아래에 오는 것은 입력칸이다 — 제 여백을 따로 안 얹는다.
-			el.style.marginTop = `${want - gap}px`;
+			// 위로 올라가면(`order`) **맨 앞**이 된다 — 위에는 줄 간격이 없다. 그런데도 빼면
+			// 그만큼 위로 파고들어 머리줄(버튼)에 닿는다. 아래쪽에만 줄 간격이 있다.
+			el.style.marginTop = `${want}px`;
 			el.style.marginBottom = `${want - gap}px`;
 			return;
 		}

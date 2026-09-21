@@ -601,9 +601,15 @@
 	/* 이름표가 없으니 버튼이 왼쪽으로 붙는다 — 오른쪽 위로 돌려놓는다. */
 	.dock-box.compact .dock-head {
 		justify-content: flex-end;
-		/* BUG-322: 4px 은 너무 붙어 보였다(admin, 특히 맥). 배경이 없는 모양이라 버튼과
-		   입력칸 사이에 아무것도 없어서 더 좁아 보인다 — 한 칸 더 띄운다. */
+	}
+	/* BUG-323: 머리줄이 따로 띄우던 몫은 이제 **손잡이가 한다** — 팝업일 때 손잡이가 버튼과
+	   입력칸 사이로 올라오기 때문이다. 둘 다 띄우면 멀어진다(admin). 지금은 버튼 2 ·
+	   손잡이 8 · 입력칸 2 로 12px 다. 손잡이가 없는 자리를 대비해 값은 남겨 둔다. */
+	.dock-box.docked .dock-head {
 		margin-bottom: 0.5rem;
+	}
+	.dock-box.docked:has(:global(.size-grip)) .dock-head {
+		margin-bottom: 0;
 	}
 	.dock-label {
 		font-size: 0.8rem;
