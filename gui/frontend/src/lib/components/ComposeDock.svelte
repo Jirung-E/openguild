@@ -119,11 +119,14 @@
 		const wait = Math.max(0, SETTLE_MS - (Date.now() - lastFlip));
 		if (wait === 0) {
 			lastFlip = Date.now();
+			// BUG-317: 붙는 순간 표식이 굳는다 — 굳기 직전에 한 번 더 잰다.
+			if (w) measure();
 			sticky = w;
 			return;
 		}
 		const t = setTimeout(() => {
 			lastFlip = Date.now();
+			if (want) measure();
 			sticky = want; // 기다리는 사이 또 바뀌었을 수 있다 — 그때의 값을 쓴다.
 		}, wait);
 		return () => clearTimeout(t);
@@ -146,6 +149,24 @@
 	 * 재는 뜻은 입력칸 그대로이고, 움직이지 않으니 고리도 없다.
 	 */
 	let probeBox = $state({ top: 0, height: 0 });
+	/**
+	 * 슬롯 안에서 이 요소가 몇 px 아래에 있나.
+	 *
+	 * BUG-317: 예전에는 화면 좌표(`getBoundingClientRect`)의 차로 쟀다. 그 값은 **그 순간의
+	 * 화면 상태**를 탄다 — 자리 옮김 애니메이션의 `transform` 이 걸려 있거나 레이아웃이 아직
+	 * 앉지 않은 찰나에 재면 엉뚱한 값이 굳는다(실제로 답글 창을 열면 134px 어긋났다).
+	 * `offsetTop` 은 배치가 정해 놓은 값이라 그런 찰나를 안 탄다.
+	 */
+	function offsetWithin(el: HTMLElement, root: HTMLElement): number | null {
+		let top = 0;
+		let node: HTMLElement | null = el;
+		while (node && node !== root) {
+			top += node.offsetTop;
+			node = node.offsetParent as HTMLElement | null;
+		}
+		return node === root ? top : null;
+	}
+
 	function measure() {
 		if (!slot) return;
 		const r = slot.getBoundingClientRect();
@@ -153,9 +174,10 @@
 		// 붙어 있는 동안에는 재지 않는다 — 그때 입력칸은 제자리에 없다.
 		if (docked) return;
 		const el = inputEl();
-		if (!el) return;
-		const ir = el.getBoundingClientRect();
-		probeBox = { top: ir.top - r.top, height: ir.height };
+		if (!(el instanceof HTMLElement)) return;
+		const top = offsetWithin(el, slot);
+		if (top == null) return;
+		probeBox = { top, height: el.offsetHeight };
 	}
 
 	/** 자리가 바뀌기 **직전**의 위치 — 아래 FLIP 이 여기서부터 이어 붙인다. */
@@ -183,6 +205,8 @@
 
 	$effect(() => {
 		if (!slot) return;
+		// `docked` 를 여기서 읽는다 — 붙고 떨어질 때마다 보는 대상을 갈아타야 한다(BUG-317).
+		void docked;
 		measure();
 		// 이 기능은 **없어도 되는 편의**다 — 관찰기가 없는 환경(옛 WebView, 시험용 DOM)에서는
 		// 그냥 제자리에 둔다. 여기서 던지면 댓글 화면 전체가 안 그려진다.
@@ -197,11 +221,18 @@
 			// 1 하나만 두면 "완전히 보임 → 아님" 을 놓칠 수 있다(경계에서 콜백이 안 온다).
 			{ threshold: [0, 0.99, 1] }
 		);
-		// BUG-315: 보는 것은 **표식**이다 — 입력칸 자체가 아니다(위 `probeBox` 참고).
-		// 표식이 아직 안 그려졌으면(시험용 DOM 등) 입력칸이라도 본다.
+		// **떨어져 있을 땐 입력칸을, 붙어 있을 땐 표식을 본다**(BUG-317).
+		//
+		// 떨어져 있을 때 입력칸은 제자리에 있으니 그것이 곧 정답이다 — 표식이 어긋나 있어도
+		// 상관없다. 붙는 순간부터는 입력칸이 화면 아래로 따라가 버리므로(BUG-315 의 되먹임
+		// 고리) 그때만 제자리에 남은 표식으로 갈아탄다. 표식은 붙기 직전에 잰 값이라 "돌아갈
+		// 자리" 를 정확히 가리킨다.
+		//
+		// 예전에는 늘 표식만 봤다. 그러면 표식이 한 번 어긋나 굳었을 때, 입력칸이 화면 밖인데도
+		// 팝업이 안 뜬다(admin). 떨어져 있을 때 실물을 보면 그 부류가 통째로 사라진다.
 		let watched: Element | null = null;
 		const retarget = () => {
-			const el = probe ?? inputEl();
+			const el: Element | null = docked ? (probe ?? inputEl()) : (inputEl() ?? probe ?? null);
 			if (el === watched) return;
 			if (watched) io.unobserve(watched);
 			watched = el;

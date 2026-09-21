@@ -182,27 +182,28 @@ describe('DEV-416 조금이라도 가려지면 붙는다', () => {
 	// BUG-315: 그런데 **입력칸 자체를 보면 안 된다.** 붙으면 상자가 화면 아래로 옮겨 가고
 	// 입력칸도 같이 옮겨 가 보이게 되니, "보이니 떨어져라 → 떨어지니 안 보인다" 가 끝없이
 	// 돈다(admin: 떴다 내려갔다 반복). 그래서 **제자리에 남는 표식**을 본다.
-	it('재는 것은 제자리에 남는 표식이다 — 상자 안의 것이 아니다', async () => {
-		render(ComposeDockHarness, { hasContent: false });
+	// BUG-317: **떨어져 있을 땐 입력칸 실물을 본다.** 그때 입력칸은 제자리에 있으니 그것이
+	// 곧 정답이고, 표식이 어긋나 굳어도 팝업이 안 뜨는 일이 없다(admin).
+	it('떨어져 있을 땐 입력칸을 본다', async () => {
+		const { getByRole } = render(ComposeDockHarness, { hasContent: false });
 		await tick();
 		expect(watching.length, '한 곳만 본다').toBe(1);
-		const seen = watching[0] as HTMLElement;
-		expect(seen.classList.contains('dock-probe'), `본 것: ${seen.className}`).toBe(true);
-		// 이것이 핵심이다 — 보는 것이 상자 **밖**이라야 붙어도 안 움직인다.
-		expect(document.querySelector('.dock-box')?.contains(seen)).toBe(false);
+		expect(watching[0]).toBe(getByRole('textbox'));
 	});
 
-	// 붙은 뒤에도 보는 것이 그대로 제자리에 있어야 한다 — 옮겨 갔으면 고리가 생긴다.
-	it('붙은 뒤에도 표식은 제자리다', async () => {
+	// BUG-315: 붙는 순간부터는 입력칸이 화면 아래로 따라가므로 그것을 계속 보면
+	// "보이니 떨어져라 → 떨어지니 안 보인다" 가 끝없이 돈다. 그때만 제자리에 남는 표식으로
+	// 갈아탄다.
+	it('붙으면 제자리에 남는 표식으로 갈아탄다', async () => {
 		const { getByRole } = render(ComposeDockHarness, { hasContent: true });
-		const seen = watching[0] as HTMLElement;
-		const before = seen.getBoundingClientRect().top;
 		getByRole('textbox').dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
 		notify!(0);
 		await tick();
 		expect(box().classList.contains('docked')).toBe(true);
-		expect(watching[0], '보던 것이 바뀌면 안 된다').toBe(seen);
-		expect(seen.getBoundingClientRect().top).toBe(before);
+		expect(watching.length).toBe(1);
+		const seen = watching[0] as HTMLElement;
+		expect(seen.classList.contains('dock-probe'), `본 것: ${seen.className}`).toBe(true);
+		// 이것이 핵심이다 — 보는 것이 상자 **밖**이라야 붙어도 안 움직인다.
 		expect(document.querySelector('.dock-box')?.contains(seen)).toBe(false);
 	});
 });
