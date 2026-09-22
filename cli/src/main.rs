@@ -1950,11 +1950,16 @@ impl Drop for LocalBackend {
         }
         if !finished {
             // 조용히 버리지 않는다 — 왜 안 갔는지는 알아야 한다.
+            //
+            // BUG-334: **"중단했습니다" 는 사실이 아니었다.** 여기서 하는 일은 기다리기를
+            // 그만두는 것뿐이고, 띄운 훅은 계속 돈다 — 재 보니 2초에 잘렸다고 찍힌 뒤에도
+            // 8초짜리 훅이 멀쩡히 끝나고 결과를 남겼다. 그런데 문구가 죽었다는 뜻으로
+            // 읽혀서, 사용자가 실패로 보고 결과를 안 기다렸다(admin).
             eprintln!(
                 "{}",
                 tf!(
-                    "⚠ 플러그인 전달이 {}ms 안에 안 끝나 중단했습니다 (OPENGUILD_PLUGIN_DRAIN_MS 로 조절)",
-                    "⚠ plugin delivery did not finish within {}ms and was cut short (tune with OPENGUILD_PLUGIN_DRAIN_MS)",
+                    "⚠ 플러그인 전달을 {}ms 까지만 기다렸습니다 — 훅은 계속 돌고 있을 수 있습니다(곧 끝납니다). 끝까지 기다리려면 OPENGUILD_PLUGIN_DRAIN_MS 를 올리세요.",
+                    "⚠ waited {}ms for plugin delivery and stopped waiting — the hook may still be running and finish shortly. To wait for it, raise OPENGUILD_PLUGIN_DRAIN_MS.",
                     budget.as_millis()
                 )
             );
