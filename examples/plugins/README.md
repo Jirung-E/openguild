@@ -148,6 +148,32 @@ claude -p "$(cat) — 한국어로 두 문장 이내로 답하라." |
 10초로는 잘린다 — 이 예제는 동작과 줄 **양쪽에** 60초를 준다(코어가 받아 주는 최대다).
 잘리면 `delivered.log` 에도 안 남으므로 조용히 사라진 것처럼 보인다.
 
+#### 윈도우에서는 (BUG-332)
+
+위 한 줄은 **bash** 다. 윈도우에서는 명령이 `cmd.exe /c` 로 도니 그대로 붙여 넣으면 안
+된다. 한 줄로 우겨넣지 말고 **배치 파일 하나**를 만들어 그걸 가리키는 편이 쉽다.
+
+`reply.cmd` (플러그인 폴더가 아니라 아무 곳에나 — 플러그인 폴더에 두면 동의 지문이 바뀐다):
+
+```bat
+@echo off
+setlocal
+set "Q=%TEMP%\og-q.txt"
+more > "%Q%"
+claude -p < "%Q%" | openguild --guild "%OPENGUILD_GUILD_DIR%" quest comment add ^
+  "%OG_TARGET_ID%" --author ai --parent-id "%OG_COMMENT_ID%"
+```
+
+설정의 '실행할 명령' 에는 그 파일 경로만 적는다.
+
+```
+C:\Users\나\reply.cmd
+```
+
+**왜 배치 파일인가** — `cmd.exe` 에는 `$(cat)` 이 없고, 한 줄 안에서 파이프와 따옴표를
+겹치면 이스케이프가 금방 꼬인다. 파일로 빼면 그 문제가 사라지고, 손으로 한 번 돌려 보며
+고칠 수도 있다.
+
 ## desktop-notify
 
 **퀘스트나 댓글이 생기면 데스크톱 알림.** 스크립트 없이 `run` 만 쓰는 예다 —
