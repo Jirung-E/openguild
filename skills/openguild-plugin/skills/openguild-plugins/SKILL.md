@@ -284,6 +284,22 @@ the editor, built from the events this build actually knows.
   calling `openguild`, and if a `post` target relays into an openguild server,
   forward the `X-OpenGuild-Plugin-Chain` header it received. `e.origin.by` /
   `e.origin.chain` tell a script who caused the event (`"user"` or `"plugin"`).
+  Being an environment variable, it follows grandchildren across a pipe, so
+  `claude -p | openguild quest comment add …` is safe; detaching the work
+  (`nohup … &`) so the guild is changed later by some other path is not.
+- **Events are raised by the process that performs the write.** Nothing watches
+  files for them. A hook's CLI child that posts a comment raises `comment.added`
+  *inside that child*, where the chain above applies; a desktop app holding the
+  same guild open raises nothing for it. When a user reports "it works in the
+  CLI but not in the app", this is usually not where the difference is — check
+  the hook's own receipt first.
+- **Handing work to a program is not the same as finishing it.** A `run` hook
+  that pipes a comment into `claude -p` and stops there succeeds, exits 0, and
+  produces nothing a user can see — the answer goes to a stdout no one reads.
+  If the point is a visible result, the same command line has to write it back
+  (`… | openguild --guild "$OPENGUILD_GUILD_DIR" quest comment add …`). Say so
+  in the input's `help`: a user reading "e.g. `claude -p`" will type exactly
+  that and then report the plugin as broken (BUG-335).
 - **`send` is for `post` actions and `run` is for `run` actions.** Calling the
   wrong one, or naming an action that does not exist, does nothing at run time —
   the line just goes quiet. `openguild plugin check` catches both.

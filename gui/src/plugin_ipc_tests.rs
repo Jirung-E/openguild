@@ -297,6 +297,12 @@ fn a_comment_turned_into_a_discussion_in_the_app_reaches_the_hook() {
         replies.len(),
         handle.plugin_problems()
     );
+    // DEV-401: 훅이 단 댓글은 같은 훅에 **다시 안 온다**. '모든 댓글' 설정에서는 AI 의 답글도
+    // `comment.added` 를 내므로, 되돌이 막기가 없으면 여기서 끝없이 돈다. 답이 온 뒤로도
+    // 한참 두고 본다 — 이 시험의 AI 는 즉시 답하므로 돌기 시작했다면 수십 바퀴는 돌았을 시간이다.
+    std::thread::sleep(std::time::Duration::from_secs(5));
+    let replies = openguild_core::services::comments::list_entries(&handle, &q.quest_id).unwrap();
+
     // BUG-335: '모든 댓글' 이면 앱의 두 단계(달기 → 토론으로 바꾸기)에 **한 번만** 간다.
     assert_eq!(
         replies.iter().filter(|r| r.author == "ai").count(),

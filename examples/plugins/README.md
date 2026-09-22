@@ -120,7 +120,20 @@ delivered.log   언제 무엇이 어디로 갔는지 한 줄씩
 ### AI 가 실제로 답글을 달게 (BUG-331)
 
 이름이 `discussion-to-ai` 지만 기본으로 하는 일은 **건네주기까지**다. 답을 길드에 적는
-것은 받는 쪽 몫이다. '명령 실행' 에 아래 한 줄을 넣으면 한 바퀴가 돈다.
+것은 받는 쪽 몫이다.
+
+> **`claude -p` 만 적으면 아무 일도 안 일어난다**(BUG-335). AI 는 답을 화면으로 말하고
+> 끝나는데 그 화면이 없다 — 답이 그냥 사라진다. 게다가 명령은 **성공**했으므로 오류도 안
+> 나고, 영수증에도 실패가 아니라 이렇게 찍힌다.
+>
+> ```
+> 2026-09-23 02:30:13  명령  claude -p
+> ```
+>
+> 실제로 이걸로 한참 헤맸다(admin). 답을 **다시 `openguild` 로 넘기는 것까지** 한 줄이
+> 해야 한다. 아래가 그 한 줄이다.
+
+'명령 실행' 에 아래 한 줄을 넣으면 한 바퀴가 돈다.
 
 ```bash
 claude -p "$(cat) — 한국어로 두 문장 이내로 답하라." |
@@ -134,6 +147,30 @@ claude -p "$(cat) — 한국어로 두 문장 이내로 답하라." |
 | `$OPENGUILD_GUILD_DIR` | 훅의 작업 폴더는 **길드 밖**이라([[BUG-279]]) 이게 없으면 `openguild` 가 길드를 못 찾는다 |
 | `$OG_TARGET_ID` · `$OG_COMMENT_ID` | 어디에, 무엇의 답글로 달지 |
 | 되돌이 막기 | AI 가 단 댓글은 같은 플러그인에 **다시 안 온다**([[DEV-401]]) — 안 그러면 무한이다 |
+
+**되돌이 막기가 어떻게 되는지** 알아 둘 값어치가 있다. '모든 댓글' 로 놓으면 AI 의 답글도
+`comment.added` 를 내므로, 막는 것이 없으면 정말로 끝없이 돈다. 막는 것은 환경변수 하나다.
+
+훅의 자식은 `OPENGUILD_PLUGIN_CHAIN` 을 받는다 — 거쳐 온 플러그인 이름이 담긴 JSON 배열이다.
+
+```
+["discussion-to-ai"]
+```
+
+환경변수라 파이프 건너 손자(`claude -p | openguild …` 의 `openguild`)까지 따라간다. 그
+`openguild` 는 시작할 때 이 값을 읽어 두고, 자기가 만드는 이벤트에 실어 보낸다. 받는 쪽은
+목록에 자기 이름이 있으면 건너뛴다. 다른 플러그인은 정상으로 받는다.
+
+여기서 헷갈리기 쉬운 것 하나 — **이벤트는 쓰기를 한 그 프로세스가 만든다.** 답글을 쓴 것은
+훅의 자식인 CLI 이므로 `comment.added` 도 그 CLI 안에서 만들어지고 거기 꽂힌 플러그인이
+받는다. 앱은 남의 프로세스가 쓴 댓글에 대해 이벤트를 내지 않는다.
+
+그래서 **체인이 안 따라가면 막을 것도 없다.** 이런 것은 피한다.
+
+- `env -i` · `env -u OPENGUILD_PLUGIN_CHAIN` 으로 환경을 비우고 부르기
+- `nohup … &` 로 떼어 던져 놓고 한참 뒤 다른 경로로 댓글 달기
+- 답글을 다른 기계에서 달기 — 그때는 HTTP 헤더 `X-OpenGuild-Plugin-Chain` 이 같은 일을 하므로
+  중계가 있으면 그 헤더를 그대로 넘겨야 한다
 
 실제로 돌려 본 결과다.
 
@@ -191,262 +228,20 @@ printf '%s\n\n한국어로 두 문장 이내로만 답하라.' "$q" \
 
 모델 이름만 바꾸면 다른 것도 같다.
 
-#### 윈도우에서는 (BUG-332)
+#### 윈도우에서는 (BUG-332 · BUG-335)
 
-위 한 줄은 **bash** 다. 윈도우에서는 명령이 `cmd.exe /c` 로 도니 그대로 붙여 넣으면 안
-된다. 한 줄로 우겨넣지 말고 **배치 파일 하나**를 만들어 그걸 가리키는 편이 쉽다.
+'명령 실행' 은 **파워셸**로 돈다(`deliver.ps1` 이 그렇게 띄운다). 한때 `cmd.exe /c` 였는데
+그럴 이유가 없었다 — BUG-332 를 고친 것은 stderr·인코딩·빠진 `OG_*` 변수였지 셸이 아니었고,
+파워셸 스크립트 한복판에서 사용자에게만 `%VAR%` 를 쓰게 하는 꼴이었다.
 
-`reply.cmd` (플러그인 폴더가 아니라 아무 곳에나 — 플러그인 폴더에 두면 동의 지문이 바뀐다):
+그러니 위 한 줄에서 **`"$VAR"` 를 `$env:VAR` 로만 바꾸면** 된다.
 
-```bat
-@echo off
-setlocal
-set "Q=%TEMP%\og-q.txt"
-more > "%Q%"
-claude -p < "%Q%" | openguild --guild "%OPENGUILD_GUILD_DIR%" quest comment add ^
-  "%OG_TARGET_ID%" --author ai --parent-id "%OG_COMMENT_ID%"
+```powershell
+claude -p | openguild --guild $env:OPENGUILD_GUILD_DIR quest comment add `
+  $env:OG_TARGET_ID --author ai --parent-id $env:OG_COMMENT_ID
 ```
 
-설정의 '실행할 명령' 에는 그 파일 경로만 적는다.
+배치 파일로 뺄 필요도, `%TEMP%` 에 본문을 받아 둘 필요도 없다.
 
-```
-C:\Users\나\reply.cmd
-```
-
-**왜 배치 파일인가** — `cmd.exe` 에는 `$(cat)` 이 없고, 한 줄 안에서 파이프와 따옴표를
-겹치면 이스케이프가 금방 꼬인다. 파일로 빼면 그 문제가 사라지고, 손으로 한 번 돌려 보며
-고칠 수도 있다.
-
-## desktop-notify
-
-**퀘스트나 댓글이 생기면 데스크톱 알림.** 스크립트 없이 `run` 만 쓰는 예다 —
-줄에 `action` 을 적으면 이벤트 JSON 이
-그대로 stdin 으로 들어오고, 거르는 일은 셸에서 해도 된다. rhai 가 유일한 방법은 아니다
-(조건만 걸 거라면 줄의 `when` 으로도 된다).
-
-`scope` 가 `["gui"]` 라 CLI 에서는 안 돈다. 데스크톱에서 일할 때만 뜨는 게
-맞기 때문이다 — CLI 로 스무 개를 일괄 처리하는데 알림이 스무 번 뜨면 곤란하다.
-
-`notify.sh` 도 **동의 지문에 들어간다.** 고치면 다시 물어본다 — 정의가 지목해
-실행하는 코드이기 때문이다. 그래서 인자가
-`${OPENGUILD_PLUGIN_DIR}/notify.sh` 다: 훅의 작업 디렉터리는 이 폴더가
-아니라 **데이터 폴더**라, 코드 폴더는 그 환경변수로 가리킨다(아래 참고).
-
-Windows 에서는 `sh` 대신 `notify.ps1` 을 PowerShell 로 띄운다(정의의 `windows` — 아래
-"운영체제마다 다른 명령"). 알림은 트레이 풍선으로 띄우고, Windows 10/11 에서는 토스트로 보인다.
-
-## deleted-audit
-
-**퀘스트가 지워지기 전에 무엇이 지워질지 남기고, `keep` 태그가 붙은 것은 막는다.**
-바뀌기 전(`pre`) 단계와 **줄 둘**의 예다.
-
-```
-{"guild":"myguild","id":"DEV-002","status":"open","title":"지워질 퀘스트",
- "ts":"2026-09-08T12:46:40+09:00"}
-```
-
-pre 줄은 **막을 수 있다.** 함수가 글자를 돌려주면 그것이 막는 이유가 되고(그대로 사용자에게
-보인다), 표를 돌려주면 그 칸이 바뀐 채로 진행한다. 아무것도 안 돌려주면 그냥 지나간다.
-
-```bash
-openguild quest tag add DEV-002 keep
-openguild quest delete DEV-002 --yes
-# error: DEV-002 에 keep 태그가 있습니다 — 태그를 떼고 다시 지우세요
-```
-
-줄이 둘인 것이 요점이다. **먼저 남기고, 그다음에 막을지 본다** — 막힌 뒤의 줄은 안 돌기
-때문에 순서가 반대면 막힌 시도는 기록에 안 남는다. `keep` 태그를 보는 것은 함수가 아니라
-줄의 조건(`when`)이라, 함수는 "막는다" 하나만 한다.
-
-지워진 것을 되살리는 것은 여전히 `openguild quest restore` 다(soft delete). 이 로그는
-무엇을 복구할지 찾는 데 쓴다.
-
-pre 를 내는 이벤트는 몇 개뿐이다 — `openguild plugin events` 로 확인한다. 없는 이벤트에
-`pre` 를 걸면 적재 때 거부된다 — 조용히 안 도는 것보다 낫다.
-
----
-
-## backup-archive
-
-**백업이 만들어지면 정해 둔 폴더로 한 벌 복사해 둔다.**
-
-길드 안의 백업은 **7개만 남는다** — 새 백업이 생기면 가장 오래된 것이 지워진다
-(`.guild/backups/snapshots/`). 자동 백업은 ops 50개 또는 24시간마다 도니, 바쁜 날에는
-며칠 전 상태가 이미 없다. 이 훅은 새 백업이 생길 때마다 밖으로 한 벌 복사해 둔다 —
-그 폴더에는 개수 제한이 없다.
-
-```bash
-cp -R examples/plugins/backup-archive /내-길드/.guild/plugins/
-openguild plugin allow backup-archive --yes
-printf '%s' /Volumes/backup/openguild | openguild plugin set backup-archive ARCHIVE_DIR
-openguild backup new          # 그 폴더에 사본이 생긴다
-```
-
-- **쌓아 둘 폴더**(`ARCHIVE_DIR`)를 안 정하면 아무것도 안 한다. 길드 밖의 경로를 권한다 —
-  길드 폴더를 통째로 잃어도 사본이 남는다.
-- **직접 만든 백업만**(`ONLY_MANUAL`)을 켜면 자동 백업은 건너뛴다.
-- 같은 이름이 이미 있으면 덮지 않는다. 복사는 `.part` 로 받아 두었다가 옮기므로, 도중에
-  죽어도 반쪽짜리 파일이 남지 않는다.
-
-설정값은 **자식 프로세스의 환경변수로** 온다(`$ARCHIVE_DIR`). `post` 의 url·헤더처럼
-`${...}` 로 쓸 수도 있지만, 토큰 같은 값을 `args` 에 넣으면 `ps` 에 보인다 — `run` 훅은
-환경변수로 읽는 편이 낫다.
-
-스크립트는 **복사할지 정하고, 경로 한 줄만 내보낸다.** 셸에서 JSON 을
-파싱하면 `jq` 가 있느냐에 따라 도는 예제가 되기 때문이다.
-
-Windows 에서는 같은 일을 `archive.ps1` 이 한다 — `ARCHIVE_DIR` 는 `D:\backup\openguild`
-처럼 적는다.
-
----
-
-## 훅이 길드를 바꿔도 자기 자신은 다시 안 불린다 (DEV-401)
-
-`run` 훅이 `openguild quest tag add …` 처럼 길드를 바꾸면 그 변경도 이벤트가 된다. 그 이벤트는
-**그 변경을 일으킨 플러그인에게는 다시 가지 않는다** — "태그가 바뀌면 태그를 단다" 가 끝없이 돌지
-않는다. 다른 플러그인은 받는다.
-
-- 이벤트의 `origin` 에 누가 일으켰는지가 있다: `{"by": "user", "chain": []}` 또는
-  `{"by": "plugin", "chain": ["tagger"]}`. 스크립트에서 `e.origin.by == "user"` 로 사람이 한 것만
-  고를 수도 있다.
-- 훅 자식은 `OPENGUILD_PLUGIN_CHAIN` 을 받고, 그 안에서 부른 `openguild` 가 이어 받는다. **환경을
-  비우고(`env -i`) 부르면 이 보호가 사라진다.**
-- `--remote` 로 서버를 바꾸면 `X-OpenGuild-Plugin-Chain` 헤더로 넘어간다. `post` 훅도 이 헤더를
-  붙여 보내니, 받은 쪽이 openguild 서버를 다시 부르는 중계라면 헤더를 그대로 전달한다.
-
-## 운영체제마다 다른 명령 (BUG-294)
-
-`run` 의 `command`/`args` 는 모든 OS 의 기본이다. 셸 스크립트는 Windows 에 `sh` 가 없어
-못 돈다 — 그 OS 에서 띄울 것을 따로 적는다. 적힌 OS 에서는 기본 대신 그것을 띄운다.
-
-```toml
-[actions.archive.run]
-    command = "sh"
-    args    = ["${OPENGUILD_PLUGIN_DIR}/archive.sh"]
-
-    [actions.archive.run.windows]
-        command = "powershell"
-        args    = ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-                   "-File", "${OPENGUILD_PLUGIN_DIR}/archive.ps1"]
-```
-
-- 쓸 수 있는 키는 `windows` / `macos` / `linux`. 시한(`timeout_ms`)은 함께 쓴다.
-- 동의 화면에는 **이 기계에서 실제로 띄울 명령**이 보인다. 키 리터럴 검사와 입력란은 다른
-  OS 것까지 본다 — git 에 올라가는 것은 정의 전체다.
-- `.ps1` 은 **ASCII 로** 쓴다. Windows PowerShell 5.1 은 BOM 없는 스크립트를 시스템 코드
-  페이지로 읽어, 한글이 섞이면 파싱이 깨질 수 있다. stdin 은 UTF-8 이므로 스트림을 UTF-8 로
-  직접 읽는다(`archive.ps1` 참고) — 그냥 읽으면 한글 경로가 깨진다.
-- Windows 에서 띄운 훅에는 콘솔 창이 뜨지 않는다.
-
-## 직접 만들 때
-
-`openguild plugin events` 로 구독할 수 있는 이름을 본다. 이벤트가 어떻게 생겼는지
-보려면 아무거나 하나 걸어 두고 파일로 받아 보는 게 제일 빠르다:
-
-```toml
-name   = "peek"
-scope  = ["cli"]
-
-[actions.peek.run]
-    command = "sh"
-    args    = ["-c", "cat >> peek.log; echo >> peek.log"]
-
-[[handlers]]
-    post   = ["*"]
-    action = "peek"
-```
-
-만들면서 쓰는 것:
-
-```bash
-openguild plugin events                  # 이벤트 이름 · 대상 종류 · 쓸 수 있는 `with`
-openguild plugin check <폴더>             # 적재가 하는 검사 + 흔한 실수 (오류면 종료 코드 1)
-openguild plugin test <폴더>              # *.test.rhai 의 test_ 함수들
-openguild plugin schema --out plugin.schema.json   # 편집기 자동 완성
-```
-
-예제 첫 줄의 `#:schema ../plugin.schema.json` 이 그 스키마를 가리킨다 — VS Code 의
-Even Better TOML 같은 확장이 집어 들어 칸 이름과 이벤트 이름을 채워 준다.
-
-> 다른 건 다 TOML 인데 이것만 왜 JSON 인가 — **편집기가 그 형식만 읽기 때문**이다.
-> 스키마를 적는 표준은 JSON Schema 하나뿐이고, TOML 로 된 표준은 없다. `#:schema` 를
-> 알아듣는 Taplo(Even Better TOML 의 속)도 JSON Schema 만 받는다. 이 파일은 사람이
-> 손으로 쓰는 설정이 아니라 `openguild plugin schema` 가 찍어 주는 기계용 파일이라,
-> 사람이 읽고 쓰는 곳은 그대로 TOML 이다.
-
-자세한 규칙은 `openguild docs show USAGE` 의 플러그인 절을 본다.
-
-## `notify` 태그는 어떻게 되는 건가
-
-`telegram-quest-status` 가 "이 퀘스트만 알림" 을 **평범한 퀘스트 태그**로 고른다.
-새 개념도, 새 CLI 옵션도 아니다 — 이미 있는 태그 기능을 그대로 쓴다.
-
-| | |
-|---|---|
-| GUI | 퀘스트 상세 화면의 태그 줄에서 `+` → `notify` 입력 |
-| CLI | `openguild quest tag add DEV-001 notify` |
-
-스크립트는 이벤트에 실려 오는 `e.quest.tags` 를 볼 뿐이다. 태그를 떼면 알림도
-멈춘다. 설정에서 "notify 태그가 붙은 퀘스트만" 을 끄면 전부 알린다.
-
-`quest.tags` 가 실제로 채워지게 된 것이 [[DEV-381]] 이다 — 그전에는 항상 빈
-배열이라 이 예제가 아예 안 됐다.
-
-**댓글 알림에도 걸린다 — 줄이 문서를 읽기 때문이다.** `comment.added` 이벤트 자체는 어느
-문서에 달렸는지(`subject: {kind, id}`)만 알리고 태그는 안 싣는다([[DEV-391]]). 그래서 그 줄에
-`with = ["subject"]` 를 적어 두면 코어가 그 문서를 읽어 함수의 둘째 인자로 넘긴다 —
-`fn on_comment(e, doc)` 안에서 `doc.tags` 를 본다([[DEV-405]]).
-
-## 사용자에게 받는 값 (REQ-021)
-
-`telegram-quest-status` 가 그 예다. 봇 토큰·채팅 ID 는 사람이 넣어야 하고,
-"무엇을 알릴지" 는 켜고 끌 수 있어야 한다.
-
-```toml
-[[inputs]]
-    key    = "TELEGRAM_BOT_TOKEN"
-    label  = "봇 토큰"
-    secret = true
-
-[[inputs]]
-    key     = "ON_COMMENT"
-    label   = "댓글 알림"
-    type    = "checkbox"
-    default = false
-```
-
-관리 → 플러그인 에서 채우고, 스크립트는 `config("ON_COMMENT")` 로 읽는다 —
-체크박스는 **bool 로** 온다. 정의 안에서는 `${TELEGRAM_BOT_TOKEN}` 으로 쓴다.
-
-터미널에서는:
-
-```bash
-echo -n <값> | openguild plugin set telegram-quest-status TELEGRAM_BOT_TOKEN
-openguild plugin config telegram-quest-status
-```
-
-## 훅이 파일을 쓰는 자리 (BUG-279)
-
-`run` 훅의 작업 디렉터리는 **플러그인 폴더가 아니다.**
-
-```
-~/.openguild/plugin-data/{길드}/{플러그인}/     ← 여기서 돈다. 쓰는 곳.
-.guild/plugins/{플러그인}/                      ← 코드. 지문의 대상. 쓰면 안 된다.
-```
-
-전에는 플러그인 폴더에서 돌았는데, 동의 지문이 **그 폴더의 모든 파일**을
-보기 때문에 훅이 로그 하나만 남겨도 지문이 바뀌어 **스스로 동의를 깼다.**
-한 번 돌고 그 뒤로 조용히 안 도는, 알아채기 어려운 종류였다.
-
-두 경로는 환경변수로 온다:
-
-| | |
-|---|---|
-| `OPENGUILD_PLUGIN_DIR` | 코드 폴더 — 옆 파일을 부를 때 |
-| `OPENGUILD_PLUGIN_DATA_DIR` | 데이터 폴더 — 작업 디렉터리와 같다 |
-
-정의의 `command` · `args` 안에서도 `${OPENGUILD_PLUGIN_DIR}` 로 쓸 수 있다.
-`sh -c` 를 안 거치는 명령(`python ${OPENGUILD_PLUGIN_DIR}/hook.py`)도 되라고
-그렇게 했다.
-
-`post` 는 작업 디렉터리가 없으므로 해당 없다.
+**아직 윈도우에서 안 돌려 봤다.** 이 기계에 파워셸이 없어 코드로만 맞춰 뒀다 — 점검표의
+`discussion-to-ai` 항목에서 처음 실제로 돈다.

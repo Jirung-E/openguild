@@ -48,7 +48,13 @@ switch ($how) {
             # BUG-333: **가리지 않고 모은다.** 전에는 stderr 의 ErrorRecord 만 골라 담았는데,
             # 로그인 안내 같은 정작 중요한 말은 stdout 으로 나온다 — 그래서 사용자에게는
             # `exit code: 1` 만 보였다(admin). 무엇이 나왔든 실패했을 때 보여 줄 수 있어야 한다.
-            $out = $msg | & cmd.exe /c $env:AI_COMMAND 2>&1
+            # BUG-335: the command runs in POWERSHELL, not cmd.exe. cmd was never the fix for
+            # BUG-332 - stderr, encoding and the missing OG_* vars were - and it forced people to
+            # write %VAR% in a PowerShell script, against every example around it. A child
+            # powershell takes the message on stdin the same way cmd did, and `exit $LASTEXITCODE`
+            # carries the inner command's code back out (-Command alone reports 0/1).
+            $inner = $env:AI_COMMAND + "`nexit `$LASTEXITCODE"
+            $out = $msg | & powershell -NoProfile -NonInteractive -Command $inner 2>&1
             $code = $LASTEXITCODE
         } finally {
             $ErrorActionPreference = $prevPref

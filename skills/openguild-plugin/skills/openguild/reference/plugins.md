@@ -203,6 +203,16 @@ any plugin already in the chain, so a hook that runs `openguild quest tag add` o
 the chain (plus itself) in `OPENGUILD_PLUGIN_CHAIN`, which the `openguild` CLI picks up; `--remote`
 forwards it as the `X-OpenGuild-Plugin-Chain` header, and a `post` hook sends that header too.
 
+Because it is an environment variable it follows grandchildren across a pipe — the `openguild` in
+`claude -p | openguild quest comment add …` inherits it. **Break the chain and nothing stops the
+loop**: `env -i`, `env -u OPENGUILD_PLUGIN_CHAIN`, or detaching the work (`nohup … &`) so the
+guild is changed later through some other path, all read as a human change.
+
+**Events are made by the process that performs the write**, not by watching files. When a hook's
+CLI child posts a comment, `comment.added` is raised inside that child and only the plugins loaded
+there see it — a desktop app holding the same guild open raises nothing for it (the comment shows
+up on its next read).
+
 A `run` may carry per-OS variants — `windows = { command = "powershell", args = [...] }`
 (also `macos`, `linux`); on that OS it replaces `command`/`args`. Shell scripts need one for
 Windows, which has no `sh`. Keep the `.ps1` ASCII-only and read stdin as UTF-8 explicitly:

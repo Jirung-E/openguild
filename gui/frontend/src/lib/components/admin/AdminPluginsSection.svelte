@@ -594,7 +594,7 @@
 											{:else if i.source === 'default'}
 												{t('plugins.valueFromDefault', $locale)}
 											{/if}
-											{#if i.help}<span>{i.help}</span>{/if}
+											{#if i.help}<span class="pi-help-text">{i.help}</span>{/if}
 										</p>
 									</div>
 								{/each}
@@ -1000,6 +1000,13 @@
 		color: var(--text-muted);
 		line-height: 1.4;
 		overflow-wrap: anywhere;
+	}
+	/* BUG-335: `help` 에 처방(명령 한 줄)을 그대로 싣는 것이 낫다는 결론이 났다 — README 를
+	   가리키기만 하면 안 읽는다. 그러려면 줄바꿈이 살아야 한다. 바깥 <p> 는 그대로 둔다:
+	   거기에는 템플릿이 만드는 공백·줄바꿈이 섞여 있어서 pre-line 을 걸면 빈 줄이 생긴다. */
+	.pi-help-text {
+		display: block;
+		white-space: pre-line;
 	}
 	.plugin-input.missing .pi-help strong {
 		color: var(--warning);

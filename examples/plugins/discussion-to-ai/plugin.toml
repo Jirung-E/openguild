@@ -74,7 +74,19 @@ scripts     = ["main.rhai"]
 [[inputs]]
     key   = "AI_COMMAND"
     label = "실행할 명령"
-    help  = "'명령 실행' 일 때. 댓글 본문이 그 명령의 입(stdin)으로 들어갑니다. 주의: `claude -p` 만 적으면 AI 가 답을 화면 없는 곳에 말하고 끝납니다 — 답글까지 달려면 그 답을 다시 `openguild quest comment add` 로 넘기는 것까지 이 한 줄이 해야 합니다. 되돌려 다는 한 줄은 examples/plugins/README.md 의 'AI 가 실제로 답글을 달게' 에 있습니다. 윈도우는 cmd.exe 로 도니 `%OPENGUILD_GUILD_DIR%` 처럼 적고, 긴 줄은 .cmd 파일로 빼서 그 경로만 적으세요."
+    # BUG-335: 여기에 처방을 **그대로** 적는다. README 를 가리키기만 하면 안 읽고 `claude -p`
+    # 만 적는다 — 그러면 오류 없이 아무 일도 안 일어난다(실제로 그랬다, admin).
+    help  = """
+본문은 stdin 으로 들어갑니다. `claude -p` 만 적으면 답글이 안 달립니다 — 답을 다시 openguild 로 넘기는 것까지 한 줄에 넣으세요.
+
+■ claude
+claude -p "$(cat) — 두 문장 이내로." | openguild --guild "$OPENGUILD_GUILD_DIR" quest comment add "$OG_TARGET_ID" --author ai --parent-id "$OG_COMMENT_ID"
+
+■ ollama (밖으로 안 나감)
+cat | ollama run gemma4:e4b --think=false --nowordwrap 2>/dev/null | openguild --guild "$OPENGUILD_GUILD_DIR" quest comment add "$OG_TARGET_ID" --author ai --parent-id "$OG_COMMENT_ID"
+
+■ 윈도우는 파워셸 — 위 줄의 "$VAR" 를 $env:VAR 로 바꾸세요.
+"""
 
 [[inputs]]
     key   = "TMUX_TARGET"
