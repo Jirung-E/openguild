@@ -41,11 +41,17 @@ case "${HOW:-inbox}" in
       echo "discussion-to-ai: '넘길 프로그램' 이 비어 있습니다." >&2
       exit 1
     fi
-    if printf '%s\n' "$msg" | sh -c "$AI_COMMAND"; then
+    # BUG-333: 실패했을 때 **명령이 뭐라고 했는지**를 남긴다. 그게 없으면 사용자에게는
+    # 끝난 코드 하나만 보인다 — 로그인하라는 안내도 거기 묻힌다.
+    # `set -e` 아래에서는 **대입문이 실패하면 거기서 죽는다** — 아래 영수증 줄에 닿지도
+    # 못한다(실제로 그랬다). `|| code=$?` 로 이어 붙여야 실패해도 계속 간다.
+    code=0
+    out=$(printf '%s\n' "$msg" | sh -c "$AI_COMMAND" 2>&1) || code=$?
+    if [ "$code" -eq 0 ]; then
       receipt "명령" "$AI_COMMAND"
     else
-      receipt "명령 실패" "$AI_COMMAND"
-      exit 1
+      receipt "명령 실패" "$AI_COMMAND -> $code $(printf '%s' "$out" | tail -3 | tr '\n' ' ')"
+      exit "$code"
     fi
     ;;
 

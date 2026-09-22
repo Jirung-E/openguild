@@ -45,8 +45,10 @@ switch ($how) {
         $ErrorActionPreference = 'Continue'
         $OutputEncoding = New-Object System.Text.UTF8Encoding($false)
         try {
-            $err = $msg | & cmd.exe /c $env:AI_COMMAND 2>&1 |
-                Where-Object { $_ -is [System.Management.Automation.ErrorRecord] }
+            # BUG-333: **가리지 않고 모은다.** 전에는 stderr 의 ErrorRecord 만 골라 담았는데,
+            # 로그인 안내 같은 정작 중요한 말은 stdout 으로 나온다 — 그래서 사용자에게는
+            # `exit code: 1` 만 보였다(admin). 무엇이 나왔든 실패했을 때 보여 줄 수 있어야 한다.
+            $out = $msg | & cmd.exe /c $env:AI_COMMAND 2>&1
             $code = $LASTEXITCODE
         } finally {
             $ErrorActionPreference = $prevPref
@@ -54,7 +56,12 @@ switch ($how) {
         }
         if ($code -ne 0) {
             # Say WHY, not just that it failed - the command's own words are the answer.
-            $why = if ($err) { ($err | ForEach-Object { $_.ToString() }) -join ' / ' } else { '' }
+            # Keep the tail: the useful line is usually the last one, and a whole build
+            # log in delivered.log helps nobody.
+            $why = if ($out) {
+                (@($out | ForEach-Object { $_.ToString().Trim() } |
+                    Where-Object { $_ }) | Select-Object -Last 3) -join ' / '
+            } else { '' }
             Receipt '명령 실패' "$env:AI_COMMAND -> $code $why"
             throw "명령이 $code 로 끝났습니다: $env:AI_COMMAND $why"
         }
