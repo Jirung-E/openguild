@@ -148,6 +148,33 @@ claude -p "$(cat) — 한국어로 두 문장 이내로 답하라." |
 10초로는 잘린다 — 이 예제는 동작과 줄 **양쪽에** 60초를 준다(코어가 받아 주는 최대다).
 잘리면 `delivered.log` 에도 안 남으므로 조용히 사라진 것처럼 보인다.
 
+#### 밖으로 안 나가게 — ollama (DEV-423)
+
+이 플러그인의 취지가 "밖으로 안 나간다" 이므로, 로컬 모델이 더 어울린다. 공짜이고 빠르다
+— 재 보니 `claude -p` 가 15초쯤인 물음에 **1초**였다.
+
+```sh
+#!/bin/sh
+# ol-reply.sh — 플러그인 폴더 **밖**에 둔다(안에 두면 동의 지문이 바뀐다).
+q=$(cat)
+printf '%s\n\n한국어로 두 문장 이내로만 답하라.' "$q" \
+  | ollama run gemma4:e4b --think=false --nowordwrap 2>/dev/null \
+  | openguild --guild "$OPENGUILD_GUILD_DIR" quest comment add "$OG_TARGET_ID" \
+      --author gemma --parent-id "$OG_COMMENT_ID"
+```
+
+'실행할 명령' 에는 `sh /어디/ol-reply.sh` 만 적는다.
+
+**깃발 셋이 다 필요하다.** 하나라도 빼면 첫 시도가 반드시 깨진다.
+
+| | 왜 |
+|---|---|
+| `--think=false` | 사고 모델은 답 앞에 추론을 통째로 붙인다. 그게 댓글로 달린다 |
+| `--nowordwrap` | 줄바꿈을 다시 그리느라 `ESC[K`(줄 지우기)가 **본문에 섞인다** |
+| `2>/dev/null` | 스피너가 stderr 로 나온다 |
+
+모델 이름만 바꾸면 다른 것도 같다.
+
 #### 윈도우에서는 (BUG-332)
 
 위 한 줄은 **bash** 다. 윈도우에서는 명령이 `cmd.exe /c` 로 도니 그대로 붙여 넣으면 안
