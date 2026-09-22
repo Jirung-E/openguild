@@ -25,7 +25,11 @@ fn forward(e) {
 
 fn wanted(e) {
     let what = config("WHAT");
-    if what == "all" { return true; }
+    // BUG-335: '모든 댓글' 이면 **달릴 때 한 번**이면 된다. 앱은 댓글을 달고 나서 토론으로
+    // 바꾸므로(BUG-333) 같은 댓글에 `comment.added` 와 `comment.discussion_on` 이 잇따라
+    // 온다 — 거르지 않으면 AI 를 두 번 부르고 똑같은 답글이 두 개 달린다.
+    // 좁은 설정들은 이 문제가 없다: 그때 `comment.added` 는 아직 토론이 아니라 걸러진다.
+    if what == "all" { return e.event != "comment.discussion_on"; }
     if what == "discussion" { return e.comment.discussion; }
     // 기본 — 미해결 토론만.
     e.comment.discussion && !e.comment.resolved

@@ -21,6 +21,9 @@ fn app_with(store: Store) -> (tauri::App<tauri::test::MockRuntime>, WebviewWindo
             crate::commands::plugin_stop_using,
             crate::commands::plugin_source_remove,
             crate::commands::plugin_reload,
+            crate::commands::plugin_set_value,
+            crate::commands::add_comment,
+            crate::commands::toggle_comment_discussion,
         ])
         .build(mock_context(noop_assets()))
         .expect("mock app");
@@ -163,4 +166,146 @@ fn without_an_open_guild_nothing_is_recorded() {
     assert!(call(&w, "plugin_source_remove", json!({ "name": "x" })).is_err());
     assert_eq!(call(&w, "plugin_reload", json!({})).unwrap()["no_guild"], true);
     let _ = std::fs::remove_dir_all(&src);
+}
+
+/// BUG-335 진단: **앱에서 댓글을 달고 토론으로 바꾸면 훅이 실제로 도는가.**
+///
+/// CLI 로는 되는데 앱에서는 안 된다는 보고를 받았다. 두 길은 같은 `ops` 를 부르지만
+/// 그 위(적재 scope, 알림 구현, 드레인 없음)가 다르다. 예제 플러그인을 **그대로**
+/// 꽂고 IPC 로만 조작해서, 앱 쪽 배선에 구멍이 있는지 본다.
+#[test]
+fn a_comment_turned_into_a_discussion_in_the_app_reaches_the_hook() {
+    if cfg!(windows) {
+        return; // deliver.sh 는 sh 가 필요하다 — 여기서 보는 것은 배선이다.
+    }
+    let home = tmp("dta-home");
+    let guild = tmp("dta-guild");
+    let src = tmp("dta-src");
+    let _guard = crate::tests::env_lock();
+    unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+    openguild_core::repo::seed_guild_dir(&guild).unwrap();
+    // 훅이 부르는 `openguild --guild` 가 길드로 인정하려면 마커가 있어야 한다.
+    std::fs::write(
+        guild.join("t.guild"),
+        openguild_core::guild_file::marker_content("t", "2026-01-01"),
+    )
+    .unwrap();
+
+    // 예제를 그대로 복사한다 — 고쳐서 시험하면 사용자가 쓰는 것과 달라진다.
+    let ex = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("examples/plugins/discussion-to-ai");
+    let dst = src.join("discussion-to-ai");
+    std::fs::create_dir_all(&dst).unwrap();
+    for f in ["plugin.toml", "main.rhai", "deliver.sh", "deliver.ps1"] {
+        std::fs::copy(ex.join(f), dst.join(f)).unwrap();
+    }
+
+    let store = tauri::async_runtime::block_on(Store::open(&guild)).unwrap();
+    let handle = store.clone();
+    let (_app, w) = app_with(store);
+
+    let path = dst.display().to_string();
+    let out = call(&w, "plugin_add_folder", json!({ "path": path })).unwrap();
+    assert_eq!(out["kind"], "used", "{out}");
+    call(&w, "plugin_allow", json!({ "name": "discussion-to-ai" })).unwrap();
+    assert!(handle.events.has_sink(), "허용했는데 안 꽂혔다");
+
+    // 앱의 설정 화면이 하는 것과 같은 호출 — '모든 댓글' · '명령 실행'.
+    let saw = guild.join("saw.txt");
+    let og = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("target/debug/openguild");
+    assert!(og.exists(), "cargo build -p openguild-cli 먼저: {}", og.display());
+    for (k, v) in [
+        ("WHAT", json!("all")),
+        ("HOW", json!("command")),
+        // README 의 처방 그대로 — AI 자리만 `sed` 로 바꾼다(모델을 부를 수는 없다).
+        // 핵심은 **훅이 앱이 살아 있는 채로 길드에 답글을 쓸 수 있는가** 다.
+        (
+            "AI_COMMAND",
+            json!(format!(
+                "tee -a {saw} | sed 's/^/답: /' | {og} --guild \"$OPENGUILD_GUILD_DIR\" \
+                 quest comment add \"$OG_TARGET_ID\" --author ai --parent-id \"$OG_COMMENT_ID\"",
+                saw = saw.display(),
+                og = og.display(),
+            )),
+        ),
+    ] {
+        call(&w, "plugin_set_value", json!({ "name": "discussion-to-ai", "key": k, "value": v })).unwrap();
+    }
+
+    // 댓글을 달 자리.
+    let q = tauri::async_runtime::block_on(openguild_core::ops::quests::create_quest(
+        &handle,
+        openguild_core::models::CreateQuestRequest {
+            quest_type_id: 1,
+            title: "훅 시험".into(),
+            description: None,
+            status_slug: "open".into(),
+            urgency: None,
+            parent_quest_id: None,
+        },
+    ))
+    .unwrap();
+
+    // 앱의 흐름: 먼저 평댓글, 그 다음 토론 토글(BUG-333).
+    let c = call(&w, "add_comment", json!({ "slug": q.quest_id, "author": "admin", "body": "이거 왜 안 돼?" })).unwrap();
+    let id = c["id"].as_u64().unwrap();
+    call(&w, "toggle_comment_discussion", json!({ "slug": q.quest_id, "id": id })).unwrap();
+
+    // 전달은 다른 스레드다 — 앱은 드레인을 안 하므로 여기서 기다려 준다.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while std::time::Instant::now() < deadline && !saw.exists() {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    // 영수증(delivered.log)을 찾아 그대로 보여 준다 — 실패 이유가 거기 있다.
+    fn dump(dir: &std::path::Path) {
+        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                dump(&p);
+            } else if p.file_name().is_some_and(|n| n == "delivered.log") {
+                eprintln!("=== {} ===\n{}", p.display(), std::fs::read_to_string(&p).unwrap_or_default());
+            }
+        }
+    }
+    dump(&home);
+    let problems = handle.plugin_problems();
+    let got = std::fs::read_to_string(&saw).unwrap_or_default();
+    eprintln!("=== 훅이 받은 것 ===\n{got}\n=== 문제 ===\n{problems:#?}");
+    assert!(got.contains("이거 왜 안 돼?"), "훅에 안 갔다. 문제: {problems:#?}");
+    assert_eq!(got.matches("[openguild]").count(), 1, "두 번 갔다:\n{got}");
+
+    // BUG-335 의 본론: 앱이 살아 있는 채로 훅의 자식이 길드에 **쓸 수 있는가**.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    let mut replies = Vec::new();
+    while std::time::Instant::now() < deadline {
+        replies = openguild_core::services::comments::list_entries(&handle, &q.quest_id).unwrap();
+        if replies.len() > 1 {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    eprintln!("=== 댓글 {} 개 ===\n{replies:#?}", replies.len());
+    assert!(
+        replies.iter().any(|r| r.author == "ai" && r.parent_id == Some(id)),
+        "답글이 안 달렸다({} 개). 문제: {:#?}",
+        replies.len(),
+        handle.plugin_problems()
+    );
+    // BUG-335: '모든 댓글' 이면 앱의 두 단계(달기 → 토론으로 바꾸기)에 **한 번만** 간다.
+    assert_eq!(
+        replies.iter().filter(|r| r.author == "ai").count(),
+        1,
+        "같은 댓글에 답이 여러 번 달렸다:\n{replies:#?}"
+    );
+
+    unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    for d in [&home, &guild, &src] {
+        let _ = std::fs::remove_dir_all(d);
+    }
 }

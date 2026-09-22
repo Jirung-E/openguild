@@ -74,7 +74,7 @@ scripts     = ["main.rhai"]
 [[inputs]]
     key   = "AI_COMMAND"
     label = "실행할 명령"
-    help  = "'명령 실행' 일 때. 셸 한 줄로 적습니다 — 댓글 본문이 그 명령의 입(stdin)으로 들어갑니다. 예: claude -p"
+    help  = "'명령 실행' 일 때. 댓글 본문이 그 명령의 입(stdin)으로 들어갑니다. 주의: `claude -p` 만 적으면 AI 가 답을 화면 없는 곳에 말하고 끝납니다 — 답글까지 달려면 그 답을 다시 `openguild quest comment add` 로 넘기는 것까지 이 한 줄이 해야 합니다. 되돌려 다는 한 줄은 examples/plugins/README.md 의 'AI 가 실제로 답글을 달게' 에 있습니다. 윈도우는 cmd.exe 로 도니 `%OPENGUILD_GUILD_DIR%` 처럼 적고, 긴 줄은 .cmd 파일로 빼서 그 경로만 적으세요."
 
 [[inputs]]
     key   = "TMUX_TARGET"
