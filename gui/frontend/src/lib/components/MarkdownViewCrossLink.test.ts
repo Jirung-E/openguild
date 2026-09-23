@@ -115,3 +115,40 @@ describe('BUG-297 미리보기에서 페이지로 이동', () => {
 		expect(gone).toEqual(['/library?id=BOOK-001']);
 	});
 });
+
+// BUG-338: **미리보기 안에서 또 미리보기가 뜨지 않는다.**
+//
+// 미리보기 팝업과 검색 팔레트의 미리보기 칸은 본문을 `linkPreview={false}` 로 그린다.
+// 그 안의 크로스링크에 마우스를 올려도 팝업이 겹쳐 뜨면 안 되고, 링크는 그대로 눌려야 한다.
+describe('BUG-338 미리보기 안의 크로스링크', () => {
+	beforeEach(() => {
+		seed([['BOOK-001', BOOK]]);
+		document.body.innerHTML = '';
+	});
+
+	async function hoverAndCount(linkPreview: boolean) {
+		const { container } = render(MarkdownView, { source: '본문 [[BOOK-001]] 끝', linkPreview });
+		await tick();
+		await tick();
+		const a = container.querySelector('a.xlink') as HTMLAnchorElement;
+		a.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+		await new Promise((r) => setTimeout(r, 400));
+		await tick();
+		await tick();
+		return {
+			popups: document.querySelectorAll('.lp').length,
+			href: a.getAttribute('href')
+		};
+	}
+
+	it('끄면 호버해도 팝업이 안 뜬다 — 링크는 그대로', async () => {
+		const r = await hoverAndCount(false);
+		expect(r.popups).toBe(0);
+		expect(r.href).toBe('/library?id=BOOK-001');
+	});
+
+	it('기본값(본문)은 여전히 뜬다', async () => {
+		const r = await hoverAndCount(true);
+		expect(r.popups).toBe(1);
+	});
+});

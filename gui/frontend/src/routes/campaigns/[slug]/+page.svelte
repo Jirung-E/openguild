@@ -1172,8 +1172,10 @@
 		color: var(--text-muted);
 	}
 
-	/* DEV-417: 링크가 DocLink 안이라 scoped 선택자가 안 닿는다. */
-	.linked li :global(a) {
+	/* DEV-417: 링크가 DocLink 안이라 scoped 선택자가 안 닿는다.
+	   BUG-338: 줄의 링크에만 — `li :global(a)` 는 [미리보기] 팝업 본문의 링크까지 잡았다
+	   (팝업이 DOM 으로는 이 줄 안에 끼워진다). */
+	.linked li :global(.doc-row > a) {
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
@@ -1437,7 +1439,7 @@
 	   (미디어 쿼리는 기본 규칙보다 **뒤**에 둔다 — 특이성이 같으면 순서가
 	    이긴다. BUG-200 에서 이걸 놓쳐 수정이 통째로 무효였다.) */
 	@media (max-width: 640px) {
-		.linked li :global(a) {
+		.linked li :global(.doc-row > a) {
 			flex-wrap: wrap;
 			row-gap: 0.15rem;
 		}

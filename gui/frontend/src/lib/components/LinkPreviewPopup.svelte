@@ -147,7 +147,8 @@
 		{#if loading}
 			<div class="lp-loading">{t('palette.loading', $locale)}</div>
 		{:else}
-			<MarkdownView source={body} />
+			<!-- BUG-338: 미리보기 안에서 또 미리보기를 띄우지 않는다. -->
+			<MarkdownView source={body} linkPreview={false} />
 		{/if}
 	</div>
 	<div class="lp-foot">

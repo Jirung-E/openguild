@@ -649,7 +649,8 @@
 			{#if previewLoading}
 				<div class="empty">{t('palette.loading', $locale)}</div>
 			{:else}
-				<MarkdownView source={previewBody} />
+				<!-- BUG-338: 미리보기 칸 안에서 또 미리보기를 띄우지 않는다. -->
+				<MarkdownView source={previewBody} linkPreview={false} />
 			{/if}
 		</div>
 		{#if previewBodyEl}

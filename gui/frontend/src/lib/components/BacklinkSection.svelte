@@ -168,7 +168,10 @@
 		align-items: center;
 		border-bottom: var(--bw) solid var(--border);
 	}
-	.bl-item :global(a) {
+	/* BUG-338: `:global(a)` 는 `.bl-item` 안의 **모든** 링크에 걸렸다. [미리보기] 버튼이 여는 팝업은
+	   화면에서는 떠 있어도(`position: fixed`) DOM 으로는 이 줄 안에 끼워지므로, 팝업 본문의 링크까지
+	   이 모양(한 줄 차지 · 글자색)을 받았다. 줄의 링크 — DocLink 의 `.doc-row` 바로 아래 — 에만 건다. */
+	.bl-item :global(.doc-row > a) {
 		display: flex;
 		gap: 0.6rem;
 		align-items: baseline;
@@ -178,7 +181,7 @@
 		font-size: 0.83rem;
 		min-width: 0;
 	}
-	.bl-item :global(a:hover .bl-t) {
+	.bl-item :global(.doc-row > a:hover .bl-t) {
 		text-decoration: underline;
 	}
 	.bl-kind {

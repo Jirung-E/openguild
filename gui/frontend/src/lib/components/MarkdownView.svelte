@@ -29,7 +29,10 @@
 		type Kind
 	} from '$lib/stores/questIndex';
 
-	let { source }: { source: string } = $props();
+	// BUG-338: `linkPreview` — 크로스링크에 마우스를 올리면 미리보기 팝업을 띄울지. **미리보기
+	// 안의 본문**(미리보기 팝업 · 검색 팔레트의 미리보기 칸)은 끈다: 미리보기 안에서 또 미리보기가
+	// 겹쳐 뜨면 무엇을 보고 있었는지 잃는다(admin). 링크 자체는 그대로 눌린다.
+	let { source, linkPreview = true }: { source: string; linkPreview?: boolean } = $props();
 
 	// DEV-256: 크로스링크 호버 미리보기 — 실재하는 링크(a.xlink, missing 제외)에
 	// 마우스를 잠시(280ms) 올리면 검색 팔레트식 미리보기 팝업을 앵커 근처에
@@ -60,6 +63,7 @@
 		closeTimer = setTimeout(() => (hoverTarget = null), 300);
 	}
 	function onContainerOver(e: MouseEvent) {
+		if (!linkPreview) return;
 		const a = (e.target as HTMLElement).closest?.('a.xlink') as HTMLAnchorElement | null;
 		if (!a || !container?.contains(a) || !a.dataset.xkind) return;
 		cancelClose();
