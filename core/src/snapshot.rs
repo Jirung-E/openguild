@@ -1,18 +1,20 @@
-//! Snapshot + Restore — Redis RDB 패턴 (BUG-076: 파일 기반).
+//! Snapshot + Restore — Redis RDB 패턴.
 //!
 //! **RDB = `.guild/` 소스 파일(진실)의 사본**, index.db(캐시)가 아니다.
-//! `.guild/backups/snapshots/{timestamp}/` 디렉토리에 루트 마커 + 소스 하위
-//! 디렉토리(quests/campaigns/rules/tags/types/statuses/attachments)를 복사한다.
-//! index.db/journal.db/backups 는 제외(캐시·자기참조). 동시에 journal(ops, AOF)
-//! truncate — 이 snapshot 이후 mutation 만 쌓이도록.
+//! 스냅샷 하나는 **SQLite 파일 하나**(`.guild/backups/snapshots/{timestamp}.db`, DEV-306)이고,
+//! 안에 루트 마커 + [`SOURCE_SUBDIRS`] 아래 파일들의 경로와 내용을 담는다. 예전(BUG-076)에는
+//! 같은 것을 폴더째 복사했다 — 그 형식도 복원은 된다.
+//!
+//! 담지 않는 것: index.db / journal.db / backups(캐시·자기참조), 그리고 **첨부**(BUG-188 —
+//! 크기 상한이 없는 유일한 자료라 일부러 뺐다). 스냅샷을 뜨면 journal(ops, AOF)을 비운다 —
+//! 이 스냅샷 이후의 변경만 쌓이도록.
 //!
 //! Restore 시:
 //! 1. 현재 소스 + index.db 를 `.pre-restore/` 로 백업 (되돌리기 가능).
-//! 2. 현재 소스 제거 후 snapshot 의 파일을 `.guild/` 로 복원.
-//! 3. reindex 로 index.db(캐시) 재구축. → rules/댓글/메모/첨부 등 전부 복원.
+//! 2. **그 스냅샷이 담은 폴더만** 지우고 스냅샷의 파일을 `.guild/` 로 되붙인다(BUG-337).
+//! 3. reindex 로 index.db(캐시) 재구축.
 //!
-//! journal replay(시점 복원, DEV-022 = AOF)는 이 위에 별도로 얹는다 — 현재는
-//! snapshot 시점으로 복원.
+//! journal replay(시점 복원, DEV-022)는 이 위에 얹는다 — `replay.rs`.
 
 use anyhow::{Context, Result};
 use std::path::PathBuf;
@@ -86,7 +88,23 @@ const SOURCE_SUBDIRS: &[&str] = &[
     "library",
     // DEV-167: 작업 기록 노트.
     "worklog",
+    // BUG-337: 빠져 있었다 — 복원해도 돌아오지 않았다. 더할 때는 아래
+    // `LEGACY_DB_SUBDIRS` 를 건드리지 말 것: 그건 옛 스냅샷이 **실제로 담았던** 목록이다.
+    "templates",
+    "plugins",
 ];
+
+/// BUG-337: `subdirs` 메타가 없는 DB 스냅샷이 담았던 목록. DEV-306 부터 이 변경 전까지
+/// `SOURCE_SUBDIRS` 가 줄곧 이 아홉이었다.
+///
+/// 복원은 스냅샷이 **담은** 폴더만 지운다. 옛 스냅샷에 지금 목록을 그대로 적용하면 그 스냅샷에
+/// 없는 폴더(templates · plugins)가 지워지고 돌아오지 않는다.
+const LEGACY_DB_SUBDIRS: &[&str] = &[
+    "quests", "campaigns", "rules", "tags", "types", "statuses", "history", "library", "worklog",
+];
+
+/// 스냅샷 `meta` 표에 "무엇을 담았나" 를 적는 키.
+const META_SUBDIRS: &str = "subdirs";
 
 /// dir 트리를 통째로 복사 (대상에 병합 생성). 파일/하위디렉토리 재귀.
 fn copy_tree(src: &std::path::Path, dst: &std::path::Path) -> Result<()> {
@@ -182,6 +200,7 @@ async fn snapshot_db_write(
         ("created_at", chrono::Utc::now().to_rfc3339()),
         ("file_count", count.to_string()),
         ("bytes", total.to_string()),
+        (META_SUBDIRS, SOURCE_SUBDIRS.join(",")),
     ] {
         sqlx::query("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)")
             .bind(k)
@@ -192,6 +211,24 @@ async fn snapshot_db_write(
     tx.commit().await?;
     pool.close().await;
     Ok((count, total))
+}
+
+/// BUG-337: 이 스냅샷이 **담은** 하위 폴더. 복원은 이것만 지운다.
+///
+/// `subdirs` 메타가 있으면 그것, 없으면(이 변경 전에 뜬 것) [`LEGACY_DB_SUBDIRS`].
+async fn snapshot_db_subdirs(db_path: &std::path::Path) -> Result<Vec<String>> {
+    let pool = crate::db::create_pool_from_path(db_path, true)
+        .await
+        .with_context(|| format!("snapshot db 열기 실패: {}", db_path.display()))?;
+    let row: Option<(String,)> = sqlx::query_as("SELECT value FROM meta WHERE key = ?")
+        .bind(META_SUBDIRS)
+        .fetch_optional(&pool)
+        .await?;
+    pool.close().await;
+    Ok(match row {
+        Some((v,)) => v.split(',').filter(|x| !x.is_empty()).map(str::to_string).collect(),
+        None => LEGACY_DB_SUBDIRS.iter().map(|x| x.to_string()).collect(),
+    })
 }
 
 /// 스냅샷 DB → `(길드 루트 기준 상대경로, 내용)` 목록.
@@ -270,10 +307,11 @@ fn copy_guild_source(paths: &GuildPaths, dst: &std::path::Path) -> Result<()> {
     Ok(())
 }
 
-/// 현재 길드의 소스(SOURCE_SUBDIRS + 루트 마커) 제거 — restore 직전 클린업.
+/// 현재 길드의 소스 제거 — restore 직전 클린업. **`subdirs` 만** 지운다(BUG-337): 스냅샷이
+/// 담지 않은 폴더를 지우면 되붙일 것이 없어 그대로 사라진다. 루트 마커는 늘 담으므로 늘 지운다.
 /// index.db/journal.db/backups 는 절대 건드리지 않는다.
-fn clear_guild_source(paths: &GuildPaths) -> Result<()> {
-    for sub in SOURCE_SUBDIRS {
+fn clear_guild_source(paths: &GuildPaths, subdirs: &[String]) -> Result<()> {
+    for sub in subdirs {
         let d = paths.dot_guild().join(sub);
         if d.exists() {
             std::fs::remove_dir_all(&d)
@@ -292,7 +330,7 @@ fn clear_guild_source(paths: &GuildPaths) -> Result<()> {
 }
 
 /// BUG-076: snapshot = `.guild/` 소스 파일(진실)의 사본. `index.db`(캐시)가 아님.
-/// `.guild/backups/snapshots/{ts}/` 디렉토리에 루트 마커 + 소스 하위디렉토리 복사
+/// DEV-306: `.guild/backups/snapshots/{ts}.db` 파일 하나에 루트 마커 + 소스 파일을 담고
 /// + journal truncate. restore 는 이 파일들을 되돌린 뒤 reindex 로 index.db 재구축.
 ///
 /// Retention 7 개 — 8 번째 이상 오래된 것 삭제.
@@ -556,8 +594,21 @@ pub async fn restore_snapshot(store: &Store, snapshot: &SnapshotInfo) -> Result<
         let _ = std::fs::copy(paths.index_db(), pre.join("index.db"));
     }
 
-    // 2. 현재 소스 제거 (index.db/journal.db/backups 는 보존).
-    clear_guild_source(paths)?;
+    // 2. 현재 소스 제거 (index.db/journal.db/backups 는 보존). BUG-337: 이 스냅샷이 **담은**
+    //    폴더만. 지운 뒤에 알아내면 늦으므로 먼저 본다.
+    let covered: Vec<String> = if snapshot.path.is_dir() {
+        let snap_dot = snapshot.path.join(".guild");
+        SOURCE_SUBDIRS
+            .iter()
+            .filter(|sub| snap_dot.join(sub).is_dir())
+            .map(|sub| sub.to_string())
+            .collect()
+    } else {
+        snapshot_db_subdirs(&snapshot.path)
+            .await
+            .context("snapshot 이 담은 폴더를 못 읽었다")?
+    };
+    clear_guild_source(paths, &covered)?;
 
     // 3. snapshot 의 파일들을 길드 루트로 되돌린다.
     let dot_dst = paths.dot_guild();
@@ -713,6 +764,72 @@ mod tests {
     }
 
     /// BUG-076: 소스 파일을 지운 뒤 restore 가 파일을 복구 + index.db 재구축.
+    /// BUG-337: 템플릿과 플러그인 정의도 스냅샷에 들어가고 복원 때 돌아온다.
+    #[tokio::test]
+    async fn templates_and_plugins_come_back_from_a_snapshot() {
+        let dir = fresh_tmp("tpl-plugins");
+        let store = setup(&dir).await;
+        let dot = store.paths.dot_guild();
+        std::fs::create_dir_all(dot.join("templates")).unwrap();
+        std::fs::write(dot.join("templates/버그.md"), "## 재현\n").unwrap();
+        std::fs::create_dir_all(dot.join("plugins/알림")).unwrap();
+        std::fs::write(dot.join("plugins/알림/plugin.toml"), "name = \"알림\"\n").unwrap();
+
+        let info = create_snapshot(&store).await.unwrap();
+        std::fs::remove_dir_all(dot.join("templates")).unwrap();
+        std::fs::remove_dir_all(dot.join("plugins")).unwrap();
+        restore_snapshot(&store, &info).await.unwrap();
+
+        assert_eq!(std::fs::read_to_string(dot.join("templates/버그.md")).unwrap(), "## 재현\n");
+        assert_eq!(
+            std::fs::read_to_string(dot.join("plugins/알림/plugin.toml")).unwrap(),
+            "name = \"알림\"\n"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-337: 복원은 스냅샷이 **담은** 폴더만 지운다. 이 변경 전에 뜬 스냅샷(무엇을 담았는지
+    /// 안 적힌 것)으로 복원해도 지금의 템플릿·플러그인이 사라지면 안 된다 — 그 스냅샷에는 되붙일
+    /// 것이 없다.
+    #[tokio::test]
+    async fn an_old_snapshot_does_not_wipe_what_it_never_held() {
+        let dir = fresh_tmp("old-snap");
+        let store = setup(&dir).await;
+        let dot = store.paths.dot_guild();
+
+        let info = create_snapshot(&store).await.unwrap();
+        // 옛 스냅샷으로 만든다: `subdirs` 를 지우고, 옛 목록에 없던 폴더의 파일도 뺀다.
+        {
+            let pool = crate::db::create_pool_from_path(&info.path, false).await.unwrap();
+            sqlx::query("DELETE FROM meta WHERE key = ?")
+                .bind(META_SUBDIRS)
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query("DELETE FROM files WHERE rel_path LIKE '.guild/templates/%' OR rel_path LIKE '.guild/plugins/%'")
+                .execute(&pool)
+                .await
+                .unwrap();
+            pool.close().await;
+        }
+
+        // 스냅샷 뒤에 생긴 것.
+        std::fs::create_dir_all(dot.join("templates")).unwrap();
+        std::fs::write(dot.join("templates/나중.md"), "x").unwrap();
+        std::fs::create_dir_all(dot.join("plugins/나중")).unwrap();
+        std::fs::write(dot.join("plugins/나중/plugin.toml"), "y").unwrap();
+        // 옛 스냅샷이 담던 폴더는 지금처럼 되돌아가야 한다 — 되돌리기 자체는 그대로.
+        let types_dir = dot.join("types");
+        std::fs::remove_dir_all(&types_dir).unwrap();
+
+        restore_snapshot(&store, &info).await.unwrap();
+
+        assert!(dot.join("templates/나중.md").exists(), "옛 스냅샷이 템플릿을 지웠다");
+        assert!(dot.join("plugins/나중/plugin.toml").exists(), "옛 스냅샷이 플러그인을 지웠다");
+        assert!(std::fs::read_dir(&types_dir).unwrap().count() > 0, "담던 폴더는 되돌아와야 한다");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[tokio::test]
     async fn restore_recovers_deleted_source_files() {
         let dir = fresh_tmp("restore");

@@ -3,7 +3,7 @@ book_id = "BOOK-006"
 title = "저장소 — 파일 · 캐시 · journal · 스냅샷 · 잠금"
 path = "아키텍처/상세"
 created_at = "2026-09-23T11:49:54+09:00"
-updated_at = "2026-09-23T11:50:12+09:00"
+updated_at = "2026-09-23T12:01:22+09:00"
 deleted = false
 +++
 
@@ -70,12 +70,16 @@ deleted = false
 
 | | |
 |---|---|
-| 담는 것 | 루트 마커 + `quests` · `campaigns` · `rules` · `tags` · `types` · `statuses` · `history` · `library` · `worklog` — 정본은 `snapshot.rs` 의 `SOURCE_SUBDIRS` |
+| 담는 것 | 루트 마커 + `quests` · `campaigns` · `rules` · `tags` · `types` · `statuses` · `history` · `library` · `worklog` · `templates` · `plugins` — 정본은 `snapshot.rs` 의 `SOURCE_SUBDIRS`. 무엇을 담았는지 스냅샷의 `meta.subdirs` 에 적는다 |
 | **안 담는 것** | `attachments` — **일부러 뺐다**(BUG-188). 크기 상한이 없는 유일한 자료라 스냅샷이 수 GB 가 되고 SQLite blob 상한에 걸린다. 보관은 git 이나 사용자 몫이고, 백업 화면이 그렇게 밝힌다 |
-| 목록에 없는 것 | `templates` · `plugins` — `SOURCE_SUBDIRS` 에 없어서 스냅샷에 안 들어가고 복원 때도 안 돌아온다. 의도라고 적힌 곳은 없다(2026-09-23 확인) |
 | 자동 | 변경 50번 또는 24시간 — `OPENGUILD_AUTO_BACKUP_OPS` / `_HOURS`. 앱·서버는 뒤에서 뜨고 CLI 는 그 자리에서 뜬다(DEV-299) |
 | 보관 | 7개 |
-| 복원 | 지금 것을 `.pre-restore/` 로 옮겨 두고 → 스냅샷 내용을 `.guild/` 로 → `reindex` |
+| 복원 | 지금 것을 `.pre-restore/` 로 옮겨 두고 → **그 스냅샷이 담은 폴더만** 지우고 내용을 되붙인다 → `reindex` |
+
+**복원은 스냅샷이 담은 폴더만 지운다**(BUG-337). 목록에 폴더를 더하면 그 전에 뜬 스냅샷에는 그
+폴더가 없다 — 그걸로 복원하면서 목록 전체를 지우면 지금 것이 사라지고 되붙일 것이 없다.
+`meta.subdirs` 가 없는 옛 DB 스냅샷은 그때의 아홉 폴더(`LEGACY_DB_SUBDIRS`)만 담은 것으로 본다.
+**목록에 폴더를 더할 때 `LEGACY_DB_SUBDIRS` 는 건드리지 않는다.**
 
 ## 잠금 — `.guild/.lock`
 
