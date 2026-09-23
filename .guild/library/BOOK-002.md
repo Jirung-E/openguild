@@ -1,9 +1,9 @@
 +++
 book_id = "BOOK-002"
 title = "Quest Board 2손가락 트랙패드 제스처 지연 — 조사 전체 기록"
-path = ""
+path = "조사 기록"
 created_at = "2026-08-01T22:37:23+09:00"
-updated_at = "2026-08-08T20:44:03+09:00"
+updated_at = "2026-09-23T11:50:13+09:00"
 deleted = false
 +++
 

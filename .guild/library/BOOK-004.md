@@ -1,9 +1,9 @@
 +++
 book_id = "BOOK-004"
 title = "플러그인 구조 개편 설계 — TOML 정의 · 줄 단위 핸들러 · 스크립트 명령"
-path = ""
+path = "설계 기록"
 created_at = "2026-09-18T02:28:28+09:00"
-updated_at = "2026-09-18T02:28:28+09:00"
+updated_at = "2026-09-23T11:50:13+09:00"
 deleted = false
 +++
 

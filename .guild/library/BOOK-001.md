@@ -1,9 +1,9 @@
 +++
 book_id = "BOOK-001"
 title = "index.db 는 파일의 일방향·폐기가능 투영이다 (아키텍처 불변식)"
-path = ""
+path = "아키텍처"
 created_at = "2026-07-22T22:30:00+09:00"
-updated_at = "2026-08-08T23:30:51+09:00"
+updated_at = "2026-09-23T11:50:12+09:00"
 deleted = false
 +++
 
