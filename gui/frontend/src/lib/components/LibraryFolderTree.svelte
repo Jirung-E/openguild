@@ -10,6 +10,10 @@
 
   DEV-397(admin 보고 "폴더는 드래그가 안된다"): 폴더도 끌 수 있다. 드래그 짐은
   문서면 `BOOK-NNN`, 폴더면 `folder:<경로>` — 받는 쪽이 둘을 가른다. 이름 바꾸기(✎)도 여기.
+
+  DEV-429(admin): 트리에서도 폴더 · 여러 개를 고른다 — Finder 목록 보기처럼 **이름을 누르면 고르고,
+  화살표를 누르면 펼친다.** ⌘/Ctrl 로 여러 개, Shift 로 범위. 고르는 규칙은 페이지가 쥔다
+  (`utils/multi-select.ts` — 아이콘 보기와 같은 규칙). 여기는 누른 것과 수식키를 넘기기만 한다.
 -->
 <script lang="ts">
 	import Icon from './Icon.svelte';
@@ -22,8 +26,10 @@
 		node,
 		depth,
 		selectedId,
+		pickedIds,
 		collapsedFolders,
-		onSelectDoc,
+		onClickDoc,
+		onClickFolder,
 		onDeleteFolder,
 		onRenameFolder,
 		onToggleCollapse,
@@ -33,8 +39,11 @@
 		node: FolderNode;
 		depth: number;
 		selectedId: string | null;
+		/** 고른 것들 — 폴더는 `folder:<경로>`, 문서는 번호. */
+		pickedIds: Set<string>;
 		collapsedFolders: Set<string>;
-		onSelectDoc: (id: string) => void;
+		onClickDoc: (e: MouseEvent, id: string) => void;
+		onClickFolder: (e: MouseEvent, path: string) => void;
 		onDeleteFolder: (path: string) => void;
 		onRenameFolder: (path: string) => void;
 		onToggleCollapse: (path: string) => void;
@@ -60,6 +69,7 @@
 <div
 	class="folder-row"
 	class:drag-over={dragOver}
+	class:picked={pickedIds.has(`folder:${node.path}`)}
 	style:padding-left={`${depth * 14}px`}
 	role="presentation"
 	draggable="true"
@@ -82,7 +92,11 @@
 		{collapsed ? '▶' : '▼'}
 	</button>
 	<span class="folder-icon" aria-hidden="true"><Icon name="folder" /></span>
-	<span class="folder-name">{node.name}</span>
+	<button
+		class="folder-name"
+		aria-pressed={pickedIds.has(`folder:${node.path}`)}
+		onclick={(e) => onClickFolder(e, node.path)}>{node.name}</button
+	>
 	<button
 		class="folder-ren"
 		title={t('library.folderRenameTitle', $locale)}
@@ -105,8 +119,10 @@
 			node={child}
 			depth={depth + 1}
 			{selectedId}
+			{pickedIds}
 			{collapsedFolders}
-			{onSelectDoc}
+			{onClickDoc}
+			{onClickFolder}
 			{onDeleteFolder}
 			{onRenameFolder}
 			{onToggleCollapse}
@@ -119,10 +135,11 @@
 		<button
 			class="book-item"
 			class:active={b.book_id === selectedId}
+			class:picked={pickedIds.has(b.book_id)}
 			style:padding-left={`${(depth + 1) * 14 + 8}px`}
 			draggable="true"
 			ondragstart={(e) => e.dataTransfer?.setData('text/plain', b.book_id)}
-			onclick={() => onSelectDoc(b.book_id)}
+			onclick={(e) => onClickDoc(e, b.book_id)}
 		>
 			<span class="book-id">{b.book_id}</span>
 			<span class="book-title">{b.title}</span>
@@ -174,6 +191,27 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+		/* DEV-429: 누르면 고른다 — 글자처럼 보이되 누를 수 있다. */
+		background: transparent;
+		border: none;
+		padding: 0;
+		font: inherit;
+		color: inherit;
+		text-align: left;
+		cursor: pointer;
+	}
+	.folder-name:hover {
+		color: var(--text);
+	}
+	/* DEV-429: 고른 것 — 아이콘 보기의 타일과 같은 표시(옅은 바탕 + 테두리). 열린 문서(.active)와
+	   겹쳐도 갈리게 테두리를 쓴다. */
+	.folder-row.picked,
+	.book-item.picked {
+		background: color-mix(in srgb, var(--accent) 12%, transparent);
+		box-shadow: inset 0 0 0 var(--bw) var(--accent);
+	}
+	.folder-row.picked {
+		color: var(--text);
 	}
 	.folder-ren {
 		background: transparent;

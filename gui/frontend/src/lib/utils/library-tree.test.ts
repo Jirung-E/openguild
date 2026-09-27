@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildLibraryTree, flattenFolderPaths, searchBooks, searchLibrary } from './library-tree';
+import { buildLibraryTree, flattenFolderPaths, searchBooks, searchLibrary, visibleTreeOrder } from './library-tree';
 import type { Book, LibraryFolder } from '$lib/api/library';
 
 function book(id: string, title: string, path: string, body = ''): Book {
@@ -137,5 +137,39 @@ describe('searchLibrary', () => {
 	it('scope 폴더 자신의 이름은 폴더 검색 결과에서 제외', () => {
 		const r = searchLibrary(tree, books, '아키텍처', '아키텍처');
 		expect(r?.folders).toEqual([]);
+	});
+});
+
+// DEV-429: 트리에서 Shift 로 범위를 고를 때 따르는 순서 — 트리가 그리는 순서와 같아야 한다.
+describe('visibleTreeOrder', () => {
+	const tree = buildLibraryTree(
+		[folder('아키텍처'), folder('아키텍처/결정'), folder('운영')],
+		[
+			book('BOOK-001', '맨 위', ''),
+			book('BOOK-002', '라우터', '아키텍처'),
+			book('BOOK-003', '결정 기록', '아키텍처/결정'),
+			book('BOOK-004', '배포', '운영')
+		]
+	);
+
+	it('폴더 → 하위 폴더 → 그 폴더의 문서, 맨 끝에 맨 위 문서', () => {
+		expect(visibleTreeOrder(tree, new Set())).toEqual([
+			'folder:아키텍처',
+			'folder:아키텍처/결정',
+			'BOOK-003',
+			'BOOK-002',
+			'folder:운영',
+			'BOOK-004',
+			'BOOK-001'
+		]);
+	});
+
+	it('접힌 폴더의 안쪽은 넣지 않는다 — 안 보이는 것이 범위에 딸려 오면 안 된다', () => {
+		expect(visibleTreeOrder(tree, new Set(['아키텍처']))).toEqual([
+			'folder:아키텍처',
+			'folder:운영',
+			'BOOK-004',
+			'BOOK-001'
+		]);
 	});
 });

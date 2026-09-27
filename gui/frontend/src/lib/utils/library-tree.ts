@@ -70,6 +70,26 @@ export function buildLibraryTree(
 }
 
 /** 폴더 select용 평탄화 목록 (path 순 — depth 표시는 호출측이 들여쓰기로). */
+/**
+ * DEV-429: 트리 보기에서 **화면에 보이는 순서** — 고르기 열쇠(`folder:<경로>` / 문서 번호)로.
+ *
+ * Shift 범위 선택이 이 순서를 따른다. 트리가 그리는 순서와 같아야 한다: 폴더 줄, 그 아래 하위 폴더들
+ * (같은 규칙으로 안쪽까지), 그 폴더의 문서들 — 맨 끝에 맨 위 문서들. 접힌 폴더의 안쪽은 안 보이므로
+ * 넣지 않는다(보이지 않는 것이 범위에 딸려 들어가면 안 된다).
+ */
+export function visibleTreeOrder(tree: LibraryTree, collapsed: Set<string>): string[] {
+	const out: string[] = [];
+	const walk = (n: FolderNode) => {
+		out.push(`folder:${n.path}`);
+		if (collapsed.has(n.path)) return;
+		for (const c of n.children) walk(c);
+		for (const d of n.docs) out.push(d.book_id);
+	};
+	for (const r of tree.roots) walk(r);
+	for (const d of tree.rootDocs) out.push(d.book_id);
+	return out;
+}
+
 export function flattenFolderPaths(tree: LibraryTree): string[] {
 	return [...tree.nodeMap.keys()].sort((a, b) => a.localeCompare(b));
 }

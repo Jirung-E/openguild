@@ -33,7 +33,12 @@
 	import { isLocalTauri } from '$lib/api/transport';
 	import * as msel from '$lib/utils/multi-select';
 	import { searchApi } from '$lib/api/search';
-	import { buildLibraryTree, flattenFolderPaths, searchLibrary } from '$lib/utils/library-tree';
+	import {
+		buildLibraryTree,
+		flattenFolderPaths,
+		searchLibrary,
+		visibleTreeOrder
+	} from '$lib/utils/library-tree';
 	import LibraryFolderTree from '$lib/components/LibraryFolderTree.svelte';
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	import SidecarHistory from '$lib/components/SidecarHistory.svelte';
@@ -213,6 +218,8 @@
 	let viewMode = $state<ViewMode>(loadViewMode());
 	function setViewMode(m: ViewMode) {
 		viewMode = m;
+		// DEV-429: 고른 것은 그 보기의 것이다 — 다른 보기에서는 안 보이는 것을 고른 채로 남기지 않는다.
+		picked = msel.clear();
 		try {
 			localStorage.setItem(VIEW_MODE_KEY, m);
 		} catch {
@@ -608,16 +615,48 @@
 
 	// ─── DEV-419: 아이콘 뷰에서 여러 개 고르기 ───
 	//
-	// 탐색기처럼 **누르면 고르고, 두 번 누르면 연다**(admin). 트리 뷰는 그대로 둔다 — 그쪽은
-	// 옮겨 다니는 길잡이라 한 번 눌러 여는 편이 맞다.
+	// 탐색기처럼 **누르면 고르고, 두 번 누르면 연다**(admin).
+	//
+	// DEV-429(admin): 트리 뷰에서도 고른다 — Finder 목록 보기처럼 폴더 **이름**을 누르면 고르고
+	// 화살표로 펼친다. 문서는 그냥 누르면 예전처럼 **연다**(트리는 옮겨 다니는 길잡이다). ⌘/Ctrl ·
+	// Shift 를 누른 채 누를 때만 고르기가 된다.
 	//
 	// 고르는 규칙 자체는 `utils/multi-select.ts` 에 있다(시험은 거기에 붙는다).
 	let picked = $state<msel.Picked>(msel.EMPTY);
-	/** 화면에 보이는 순서 — 범위 선택이 이 순서를 따른다. 폴더가 먼저, 그다음 문서. */
-	const pickOrder = $derived([
-		...explorerFolders.map((f) => `folder:${f.path}`),
-		...explorerDocs.map((b) => b.book_id)
-	]);
+	/** 화면에 보이는 순서 — 범위 선택이 이 순서를 따른다. 아이콘 보기는 폴더가 먼저, 그다음
+	 *  문서. 트리 보기는 트리가 그리는 순서(접힌 폴더의 안쪽은 빼고). */
+	const pickOrder = $derived(
+		isMode('tree')
+			? visibleTreeOrder(tree, collapsedFolders)
+			: [...explorerFolders.map((f) => `folder:${f.path}`), ...explorerDocs.map((b) => b.book_id)]
+	);
+
+	/** DEV-429: 트리의 문서 줄. 그냥 누르면 열고(예전 그대로), 수식키가 있으면 고른다. */
+	function treeDocClick(e: MouseEvent, id: string) {
+		const mods = { toggle: e.metaKey || e.ctrlKey, range: e.shiftKey };
+		if (!mods.toggle && !mods.range) {
+			select(id);
+			// 연 문서가 Shift 범위의 기준점이 된다 — Finder 에서 누른 것이 기준점인 것과 같다.
+			picked = { ids: new Set(), anchor: id };
+			return;
+		}
+		// 아무것도 안 고른 채 수식키로 누르면, 지금 열려 있는 문서부터 고른 것으로 친다 — Finder 에서
+		// 하나를 누른 뒤 ⌘ 로 더하면 처음 것도 남는 것과 같다.
+		const base =
+			picked.ids.size === 0 && selectedId
+				? { ids: new Set([selectedId]), anchor: picked.anchor ?? selectedId }
+				: picked;
+		picked = msel.click(base, id, mods, pickOrder);
+	}
+	/** DEV-429: 트리의 폴더 이름. 누르면 그 폴더를 고른다. */
+	function treeFolderClick(e: MouseEvent, path: string) {
+		picked = msel.click(
+			picked,
+			`folder:${path}`,
+			{ toggle: e.metaKey || e.ctrlKey, range: e.shiftKey },
+			pickOrder
+		);
+	}
 	const pickedDocs = $derived([...picked.ids].filter((k) => !k.startsWith('folder:')));
 	const pickedFolders = $derived(
 		[...picked.ids].filter((k) => k.startsWith('folder:')).map((k) => k.slice('folder:'.length))
@@ -1139,62 +1178,8 @@
 				{/if}
 			</span>
 		</div>
-		<!-- DEV-419: 고른 것이 있을 때만 뜨는 줄. 무엇을 몇 개 골랐는지 먼저 말하고, 할 수
-		     있는 일을 그 옆에 둔다. -->
-		{#if movingPicked}
-			<!-- DEV-419: 고른 것 전부를 한 폴더로. 문서 상세의 '폴더 이동' 과 같은 고르개. -->
-			<div class="modal-inline">
-				<select class="text-input" bind:value={movePickedPath}>
-					<option value="">{t('library.topLevel', $locale)}</option>
-					{#each flattenFolderPaths(tree) as p (p)}
-						<option value={p}>{p}</option>
-					{/each}
-				</select>
-				<div class="actions">
-					<button
-						class="btn-save"
-						onclick={async () => {
-							movingPicked = false;
-							await movePickedTo(movePickedPath);
-						}}>{t('library.move', $locale)}</button
-					>
-					<button class="btn-cancel" onclick={() => (movingPicked = false)}
-						>{t('library.cancel', $locale)}</button
-					>
-				</div>
-			</div>
-		{/if}
-		{#if picked.ids.size > 0}
-			<div class="picked-bar">
-				<span class="picked-count">
-					{t('library.pickedCount', $locale).replace('{n}', String(picked.ids.size))}
-				</span>
-				{#if pickedOne}
-					<!-- BUG-313: 하나만 골랐을 때 — 폴더면 폴더 이름, 문서면 제목. -->
-					<button class="btn-edit" onclick={renamePicked}
-						>{t('library.folderRenameSubmit', $locale)}</button
-					>
-				{/if}
-				<button class="btn-edit" onclick={() => (movingPicked = true)}
-					>{t('library.moveFolder', $locale)}</button
-				>
-				<button class="btn-edit danger" onclick={() => (confirmDeletePicked = true)}
-					>{t('library.delete', $locale)}</button
-				>
-				{#if isTauri}
-					<!-- BUG-314: 고른 것을 밖으로 — 경로줄까지 올라가지 않아도 된다. ⌘C 와 같은 일이다. -->
-					<button class="btn-edit" onclick={copyOut} disabled={takeOutBusy}
-						>{t('library.copyOut', $locale)}</button
-					>
-					<button class="btn-edit" onclick={exportOut} disabled={takeOutBusy}
-						>{t('library.exportOut', $locale)}</button
-					>
-				{/if}
-				<button class="btn-edit" onclick={() => (picked = msel.clear())}
-					>{t('library.pickedClear', $locale)}</button
-				>
-			</div>
-		{/if}
+		<!-- DEV-419: 고른 것이 있을 때만 뜨는 줄. DEV-429: 트리 보기도 같은 것을 쓴다. -->
+		{@render pickedTools()}
 
 {#if creatingFolder}
 			<div class="modal-inline">
@@ -1436,6 +1421,8 @@
 							storageKey="library"
 						/>
 					{/if}
+					<!-- DEV-429: 트리에서 고른 것도 같은 줄로 다룬다. -->
+					{@render pickedTools()}
 					{#if searchResults}
 						<!-- BUG-127: tree 모드는 "현재 폴더" 개념이 없어 전역 검색 유지,
 						     폴더 이름도 매칭 — 클릭하면 그 폴더를 펼쳐서 보여줌. -->
@@ -1473,8 +1460,10 @@
 									{node}
 									depth={0}
 									{selectedId}
+									pickedIds={picked.ids}
 									{collapsedFolders}
-									onSelectDoc={select}
+									onClickDoc={treeDocClick}
+									onClickFolder={treeFolderClick}
 									onDeleteFolder={askDeleteFolder}
 									onRenameFolder={openRenameFolder}
 									onToggleCollapse={toggleFolderCollapsed}
@@ -1486,9 +1475,10 @@
 								<button
 									class="book-item"
 									class:active={b.book_id === selectedId}
+									class:picked={picked.ids.has(b.book_id)}
 									draggable="true"
 									ondragstart={(e) => e.dataTransfer?.setData('text/plain', b.book_id)}
-									onclick={() => select(b.book_id)}
+									onclick={(e) => treeDocClick(e, b.book_id)}
 								>
 									<span class="book-id">{b.book_id}</span>
 									<span class="book-title">{b.title}</span>
@@ -1780,6 +1770,66 @@
 	}}
 />
 
+
+<!-- DEV-419/429: 고른 것을 다루는 줄 — 아이콘 보기와 트리 보기가 같이 쓴다. -->
+{#snippet pickedTools()}
+	<!-- 무엇을 몇 개 골랐는지 먼저 말하고, 할 수 있는 일을 그 옆에 둔다. -->
+		{#if movingPicked}
+			<!-- DEV-419: 고른 것 전부를 한 폴더로. 문서 상세의 '폴더 이동' 과 같은 고르개. -->
+			<div class="modal-inline">
+				<select class="text-input" bind:value={movePickedPath}>
+					<option value="">{t('library.topLevel', $locale)}</option>
+					{#each flattenFolderPaths(tree) as p (p)}
+						<option value={p}>{p}</option>
+					{/each}
+				</select>
+				<div class="actions">
+					<button
+						class="btn-save"
+						onclick={async () => {
+							movingPicked = false;
+							await movePickedTo(movePickedPath);
+						}}>{t('library.move', $locale)}</button
+					>
+					<button class="btn-cancel" onclick={() => (movingPicked = false)}
+						>{t('library.cancel', $locale)}</button
+					>
+				</div>
+			</div>
+		{/if}
+		{#if picked.ids.size > 0}
+			<div class="picked-bar">
+				<span class="picked-count">
+					{t('library.pickedCount', $locale).replace('{n}', String(picked.ids.size))}
+				</span>
+				{#if pickedOne}
+					<!-- BUG-313: 하나만 골랐을 때 — 폴더면 폴더 이름, 문서면 제목. -->
+					<button class="btn-edit" onclick={renamePicked}
+						>{t('library.folderRenameSubmit', $locale)}</button
+					>
+				{/if}
+				<button class="btn-edit" onclick={() => (movingPicked = true)}
+					>{t('library.moveFolder', $locale)}</button
+				>
+				<button class="btn-edit danger" onclick={() => (confirmDeletePicked = true)}
+					>{t('library.delete', $locale)}</button
+				>
+				{#if isTauri}
+					<!-- BUG-314: 고른 것을 밖으로 — 경로줄까지 올라가지 않아도 된다. ⌘C 와 같은 일이다. -->
+					<button class="btn-edit" onclick={copyOut} disabled={takeOutBusy}
+						>{t('library.copyOut', $locale)}</button
+					>
+					<button class="btn-edit" onclick={exportOut} disabled={takeOutBusy}
+						>{t('library.exportOut', $locale)}</button
+					>
+				{/if}
+				<button class="btn-edit" onclick={() => (picked = msel.clear())}
+					>{t('library.pickedClear', $locale)}</button
+				>
+			</div>
+		{/if}
+{/snippet}
+
 <style>
 	/* DEV-397: 이름 바꾸기 폼은 목록 위에 뜬다 — 트리·탐색기 어느 쪽에서 열어도 같은 자리. */
 	.rename-folder {
@@ -1928,6 +1978,11 @@
 	}
 	.book-item.active {
 		background: color-mix(in srgb, var(--accent) 12%, transparent);
+	}
+	/* DEV-429: 트리에서 고른 것 — LibraryFolderTree 와 같은 표시. */
+	.book-item.picked {
+		background: color-mix(in srgb, var(--accent) 12%, transparent);
+		box-shadow: inset 0 0 0 var(--bw) var(--accent);
 	}
 	.book-id {
 		font-family: var(--font-mono);
