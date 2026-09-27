@@ -105,3 +105,46 @@ describe('BUG-325 소스 접기', () => {
 		expect(openOf(0)).toBe('true');
 	});
 });
+
+// REQ-032: 예제 안내는 플러그인이 이미 있어도 보인다 — 새 것을 만들 때 찾는 자리다(admin).
+describe('REQ-032 예제 안내', () => {
+	it('플러그인이 있어도 예제 링크가 보인다', async () => {
+		document.body.innerHTML = '';
+		sources.mockResolvedValue([]);
+		status.mockResolvedValue({
+			plugins: [
+				{
+					name: '알림',
+					description: null,
+					on: [],
+					scope: ['gui'],
+					handlers: [],
+					actions: [],
+					scripts: [],
+					permissions: [],
+					imports: [],
+					env: [],
+					data_dir: null,
+					inputs: [],
+					script_src: null,
+					granted: true,
+					runs_here: true,
+					source: null
+				}
+			],
+			errors: [],
+			auto_allow: false,
+			manageable: true,
+			no_guild: false,
+			problems: [],
+			examples_url: 'https://example.test/examples'
+		});
+		render(AdminPluginsSection, { props: {} });
+		await tick();
+		await tick();
+		await new Promise((r) => setTimeout(r, 20));
+		const a = document.querySelector('a.examples-link') as HTMLAnchorElement | null;
+		expect(a, '플러그인이 있으면 예제 링크가 사라진다').not.toBeNull();
+		expect(a!.getAttribute('href')).toBe('https://example.test/examples');
+	});
+});

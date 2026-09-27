@@ -182,8 +182,8 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	},
 	// REQ-032: 설치본에는 예제가 없다 — 처음 켜는 사람이 보는 자리에 어디 있는지를 둔다.
 	'plugins.examplesHint': {
-		ko: '처음이라면 예제부터 — 복사해서 고쳐 쓰세요.',
-		en: 'New to this? Start from the examples — copy one and edit.'
+		ko: '예제는 저장소에 있습니다 — 복사해서 고쳐 쓰세요.',
+		en: 'Examples live in the repository — copy one and edit.'
 	},
 	'plugins.examplesLink': { ko: '예제 보기', en: 'Browse the examples' },
 	// BUG-325: 소스는 기계에 등록된다 — 이 길드에서 안 쓰는 것은 접어 둔다.

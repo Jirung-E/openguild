@@ -394,17 +394,18 @@
 				pluginStatus.plugins.length === 0 &&
 				pluginStatus.errors.length === 0}
 				<p class="scale-hint">{t('plugins.none', $locale)}</p>
-				<!-- REQ-032: 설치본에는 예제가 안 들어간다(복사해 고치라고 두는 것이라
-				     설치 폴더에 있으면 안 된다). 처음 켜는 사람이 보는 자리가 여기다. -->
-				{#if pluginStatus.examples_url}
-					<p class="scale-hint">
-						{t('plugins.examplesHint', $locale)}
-						<a class="examples-link" href={pluginStatus.examples_url} target="_blank" rel="noreferrer noopener"
-							>{t('plugins.examplesLink', $locale)}</a
-						>
-						<code class="examples-url">{pluginStatus.examples_url}</code>
-					</p>
-				{/if}
+			{/if}
+			<!-- REQ-032: 설치본에는 예제가 안 들어간다(복사해 고치라고 두는 것이라
+			     설치 폴더에 있으면 안 된다). 예전엔 플러그인이 하나도 없을 때만 보였는데,
+			     이미 쓰고 있어도 새 것을 만들 때 예제를 찾는다 — 늘 보인다(admin). -->
+			{#if pluginStatus && !pluginStatus.no_guild && pluginStatus.examples_url}
+				<p class="scale-hint">
+					{t('plugins.examplesHint', $locale)}
+					<a class="examples-link" href={pluginStatus.examples_url} target="_blank" rel="noreferrer noopener"
+						>{t('plugins.examplesLink', $locale)}</a
+					>
+					<code class="examples-url">{pluginStatus.examples_url}</code>
+				</p>
 			{/if}
 			<ul class="plugin-list" aria-busy={pluginBusy.length > 0}>
 				{#each pluginStatus?.plugins ?? [] as p (p.name)}
