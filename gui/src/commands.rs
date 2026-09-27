@@ -2744,8 +2744,8 @@ pub async fn library_copy_to_clipboard(
         (None, Some(f)) if !f.is_empty() => Pick::Folder(f),
         _ => Pick::Folder(String::new()),
     };
-    // 클립보드에 올리는 것은 **하나**여야 한다. 여럿을 한 번에 올리는 길이 OS 마다 제각각이고
-    // (macOS 는 목록을 파일로 안 붙여 준다), 하나면 폴더째 붙는다 — 그 아래가 통째로 따라간다.
+    // 고른 것이 없을 때는 **하나**만 올린다 — 하나면 폴더째 붙고 그 아래가 통째로 따라간다.
+    // (여럿을 올리는 길은 위 `picks` 쪽이 쓴다. REQ-028 이후로는 macOS 도 여럿이 파일로 붙는다.)
     // 그래서 도서관 전체는 길드 이름의 폴더로 한 번 감싼다.
     let wrap = match &pick {
         Pick::Folder(f) if f.is_empty() => {
@@ -2783,13 +2783,33 @@ fn copy_files_to_clipboard(paths: &[std::path::PathBuf]) -> Result<(), String> {
     }
     #[cfg(target_os = "macos")]
     {
-        // AppleScript 의 `POSIX file` 목록 — Finder 가 붙여넣을 수 있는 모양.
-        let items: Vec<String> = paths
+        // REQ-028: 앱이 직접 NSPasteboard 에 **파일마다 항목 하나**로 쓴다 — Finder 의 ⌘C 가 만드는 것과 같다.
+        //
+        // 거쳐 온 길(전부 실측):
+        // - AppleScript `set the clipboard to {POSIX file …}` — `{…}` 는 목록이라 클립보드에 AppleScript
+        //   list 가 올라가고 Finder 가 붙여넣지 못했다. 파일이 하나여도 그랬다(admin: "아무것도 복사되지
+        //   않은 것처럼").
+        // - osascript 로 JavaScript 를 띄워 NSPasteboard 에 쓰기 — 여러 개를 올리면 **가끔 하나만** 남았다
+        //   (파일마다 항목 / 경로 목록 한 항목, 둘 다 수십 번 중 몇 번). 쓰는 프로그램이 곧바로 끝나는
+        //   것이 걸린다. 앱은 살아 있으므로 여기서 쓰면 그 문제가 없다.
+        use objc2::runtime::ProtocolObject;
+        use objc2_app_kit::{NSPasteboard, NSPasteboardWriting};
+        use objc2_foundation::{NSArray, NSString, NSURL};
+        let urls: Vec<objc2::rc::Retained<ProtocolObject<dyn NSPasteboardWriting>>> = paths
             .iter()
-            .map(|p| format!("POSIX file \"{}\"", p.display().to_string().replace('"', "\\\"")))
+            .map(|p| {
+                let url = NSURL::fileURLWithPath(&NSString::from_str(&p.to_string_lossy()));
+                ProtocolObject::from_retained(url)
+            })
             .collect();
-        let script = format!("set the clipboard to {{{}}}", items.join(", "));
-        run_tool("osascript", &["-e", &script])
+        let list = NSArray::from_retained_slice(&urls);
+        let pb = NSPasteboard::generalPasteboard();
+        pb.clearContents();
+        if pb.writeObjects(&list) {
+            Ok(())
+        } else {
+            Err("클립보드에 파일을 올리지 못했습니다".into())
+        }
     }
     #[cfg(target_os = "windows")]
     {
@@ -2825,7 +2845,7 @@ fn copy_files_to_clipboard(paths: &[std::path::PathBuf]) -> Result<(), String> {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[cfg(target_os = "windows")]
 fn run_tool(cmd: &str, args: &[&str]) -> Result<(), String> {
     let out = std::process::Command::new(cmd)
         .args(args)
@@ -2856,4 +2876,45 @@ fn pipe_tool(cmd: &str, args: &[&str], body: &str) -> Result<(), String> {
         .map_err(|e| format!("{cmd}: {e}"))?;
     let st = child.wait().map_err(|e| format!("{cmd}: {e}"))?;
     if st.success() { Ok(()) } else { Err(format!("{cmd} 실패")) }
+}
+
+/// REQ-028: 맥에서 클립보드에 **파일로** 올라가는가 — Finder 가 붙여넣을 수 있는 모양인가.
+///
+/// 실제 클립보드를 덮어쓰므로 평소 시험에서는 뺀다. 고칠 때 한 번 돌린다:
+/// `cargo test -p openguild-gui --lib clipboard_holds_files -- --ignored`
+#[cfg(all(test, target_os = "macos"))]
+mod clipboard_tests {
+    #[test]
+    #[ignore = "실제 클립보드를 덮어쓴다"]
+    fn clipboard_holds_files_finder_can_paste() {
+        let d = std::env::temp_dir().join(format!("og-clip-{}", std::process::id()));
+        std::fs::create_dir_all(d.join("폴더 \"따옴표\"")).unwrap();
+        std::fs::write(d.join("문서.md"), "x").unwrap();
+        let picks = vec![d.join("문서.md"), d.join("폴더 \"따옴표\"")];
+        super::copy_files_to_clipboard(&picks).unwrap();
+
+        // Finder 가 붙여넣을 때 하는 것처럼 파일 주소들을 읽는다 — 둘 다 나와야 한다.
+        let out = std::process::Command::new("osascript")
+            .args([
+                "-l",
+                "JavaScript",
+                "-e",
+                "ObjC.import('AppKit'); \
+                 const r = $.NSPasteboard.generalPasteboard.readObjectsForClassesOptions($([$.NSURL]), $()); \
+                 const o = []; for (let i = 0; i < r.count; i++) o.push(ObjC.unwrap(r.objectAtIndex(i).path)); \
+                 o.join('\\n')",
+            ])
+            .output()
+            .unwrap();
+        let got = String::from_utf8_lossy(&out.stdout);
+        let got: Vec<&str> = got.trim().lines().collect();
+        assert_eq!(got.len(), 2, "파일 주소가 둘이어야 한다: {got:?}");
+        // 이름 글자로 비교하지 않는다 — 맥은 한글 이름을 자모를 푼 형태(NFD)로 돌려준다. 같은 파일인지 본다.
+        use std::os::unix::fs::MetadataExt;
+        let ino = |p: &std::path::Path| std::fs::metadata(p).map(|m| (m.dev(), m.ino())).unwrap();
+        for (g, want) in got.iter().zip(&picks) {
+            assert_eq!(ino(std::path::Path::new(g)), ino(want), "{g} 는 {} 가 아니다", want.display());
+        }
+        let _ = std::fs::remove_dir_all(&d);
+    }
 }
