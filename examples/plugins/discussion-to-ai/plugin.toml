@@ -69,7 +69,7 @@ scripts     = ["main.rhai"]
 [[inputs]]
     key   = "INBOX_PATH"
     label = "쌓을 파일"
-    help  = "'파일에 쌓기' 일 때. 비우면 이 플러그인의 데이터 폴더에 inbox.md 로 쌓입니다 — 그 폴더 경로는 허용 화면의 '작업 폴더' 에 있습니다. 세션이 이 파일을 지켜보게 하면 됩니다."
+    help  = "'파일에 쌓기' 일 때. 비우면 이 플러그인의 데이터 폴더에 inbox.md 로 쌓입니다 — 그 폴더 경로는 앱의 관리 → 플러그인(또는 `openguild plugin allow`)에 '작업 폴더' 로 나옵니다. 세션이 이 파일을 지켜보게 하면 됩니다."
 
 [[inputs]]
     key   = "AI_COMMAND"

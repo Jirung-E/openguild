@@ -248,7 +248,9 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'plugins.scope': { ko: '적용 범위', en: 'scope' },
 	// BUG-279: run 훅의 작업 디렉터리. 플러그인 폴더가 아니다 — 거기 쓰면
 	// 동의 지문이 바뀌어 스스로 꺼진다.
-	'plugins.dataDir': { ko: '파일 쓰는 곳', en: 'writes files to' },
+	// BUG-329: CLI 허용 화면 · 플러그인 설명 · README 가 전부 "작업 폴더" 라고 부른다. 앱만 다른 이름이라
+	// 설명대로 찾으면 앱에 없었다(admin: "작업 폴더가 어디 나와 있다는 건지 모르겠다").
+	'plugins.dataDir': { ko: '작업 폴더', en: 'working folder' },
 	// REQ-021: 플러그인 설정값.
 	'plugins.valueSave': { ko: '저장', en: 'Save' },
 	'plugins.valueClear': { ko: '지우기', en: 'Clear' },
