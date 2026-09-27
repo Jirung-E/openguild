@@ -2762,14 +2762,21 @@ pub async fn library_copy_to_clipboard(
     if out.is_empty() {
         return Err("내보낼 문서가 없습니다".into());
     }
-    let top = match &wrap {
-        Some(_) => into,
+    // REQ-028: 올릴 것은 **펼쳐진 맨 윗것 전부**다. 예전엔 첫 문서 경로의 첫 조각 하나만 올려서, 첨부가
+    // 있는 문서는 옆의 `<제목>.attachments/` 가 빠졌다.
+    let tops: Vec<std::path::PathBuf> = match &wrap {
+        Some(_) => vec![into],
         None => {
-            let first = out[0].rel.split('/').next().unwrap_or(&out[0].rel);
-            into.join(first)
+            let mut v: Vec<std::path::PathBuf> = std::fs::read_dir(&into)
+                .map_err(|e| format!("임시 폴더를 읽지 못했습니다: {e}"))?
+                .flatten()
+                .map(|e| e.path())
+                .collect();
+            v.sort();
+            v
         }
     };
-    copy_files_to_clipboard(&[top])?;
+    copy_files_to_clipboard(&tops)?;
     Ok(out.len())
 }
 

@@ -75,8 +75,11 @@ pub async fn export(store: &Store, pick: &Pick, dest: &Path) -> AppResult<Vec<Ex
         let book_id = d.book_id();
         // 폴더 하나만 고르면 그 폴더를 뿌리로 삼는다 — 고른 폴더 이름까지 통째로 나오는 게
         // 탐색기에서 자연스럽다(`아키텍처/결정` 을 고르면 `결정/…`).
+        // REQ-028: 문서 하나를 고르면 **문서만** 나온다. 예전엔 그 문서의 폴더 경로까지 만들어서, 폴더
+        // 안 문서 하나를 복사해도 폴더째 붙었다(admin). 폴더 구조는 폴더를 골랐을 때의 일이다.
         let rel_dir = match pick {
             Pick::Folder(f) if !f.is_empty() => trim_prefix(&d.path, f),
+            Pick::Doc(_) => String::new(),
             _ => d.path.clone(),
         };
         let dir = dest.join(safe_rel(&rel_dir));
@@ -288,6 +291,20 @@ mod tests {
         assert!(rels.contains(&"같은 제목.md"), "{rels:?}");
         assert!(rels.contains(&"같은 제목 (2).md"), "{rels:?}");
         assert!(rels.contains(&"a_b_c.md"), "{rels:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// REQ-028: 폴더 안 문서 하나를 고르면 **문서만** 나온다 — 폴더째 나오면 안 된다(admin).
+    #[tokio::test]
+    async fn picking_one_document_gives_just_that_document() {
+        let (store, dir) = guild("one").await;
+        let id = new_doc(&store, "안쪽 문서", "아키텍처/결정", "x").await;
+        let dest = dir.join("out");
+        std::fs::create_dir_all(&dest).unwrap();
+        let out = export(&store, &Pick::Doc(id), &dest).await.unwrap();
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].rel, "안쪽 문서.md", "폴더 경로가 따라왔다");
+        assert!(!dest.join("아키텍처").exists(), "폴더가 만들어졌다");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
