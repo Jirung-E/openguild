@@ -314,14 +314,11 @@ enum Command {
 
 /// REQ-032: 예제가 어디 있는지.
 ///
-/// 설치본에는 예제가 없다(복사해 고치라고 두는 것이라 설치 폴더에 있으면 안 된다). 대신
-/// **이 버전의** 예제를 가리킨다 — 형식이 판마다 달라질 수 있어서 `master` 를 가리키면
-/// 지금 깔린 것과 다른 문법을 보게 된다.
+/// 설치본에는 예제가 없다(복사해 고치라고 두는 것이라 설치 폴더에 있으면 안 된다). 주소를 정하는
+/// 규칙(릴리스 빌드는 그 태그, 그 밖은 develop)은 앱과 같아야 하므로 코어 것을 쓴다 — 예전엔 여기
+/// 따로 있어서 둘을 같이 고쳐야 했다.
 pub fn examples_url() -> String {
-    format!(
-        "https://github.com/Jirung-E/openguild/tree/v{}/examples/plugins",
-        env!("CARGO_PKG_VERSION")
-    )
+    openguild_core::plugins::view::examples_url()
 }
 
 fn examples_hint() -> String {
