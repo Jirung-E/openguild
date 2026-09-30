@@ -663,6 +663,7 @@ mod tests {
             error: None,
             data,
             origin: Default::default(),
+            version: None,
         }
     }
 

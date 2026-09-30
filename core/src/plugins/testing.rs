@@ -183,6 +183,7 @@ pub fn fire_with(
         error: None,
         data,
         origin: Default::default(),
+        version: None,
     };
 
     let recorder = Recorder::default();

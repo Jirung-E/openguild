@@ -755,6 +755,12 @@ pub async fn change_quest_type(
         }
     }
     let quest = sql::fetch_by_id(&store.index_pool, quest.id).await?;
+    // DEV-433: 새 이름으로 **옮긴 뒤** 쓴다 — 같은 문서라 번호가 이어지고, 쓰기가 옛 파일의 태그를 읽어
+    // 보존한다(새 경로에 새로 쓰면 둘 다 잃었다).
+    if old_path != new_path && old_path.exists() && !new_path.exists() {
+        std::fs::rename(&old_path, &new_path)
+            .map_err(|e| crate::error::AppError::Internal(anyhow::anyhow!("퀘스트 파일 이름 바꾸기 실패: {e}")))?;
+    }
     write_quest_file(store, &quest, true).await?; // new_path (description 이미 sync 됨)
     if old_path != new_path {
         let _ = std::fs::remove_file(&old_path);
@@ -2332,6 +2338,40 @@ mod tests {
             "동기 모드는 mutation 반환 전에 스냅샷이 끝나 있어야 한다"
         );
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-433: 타입을 바꿔 이름이 바뀌어도(DEV-001 → BUG-001) 같은 문서다 — 번호가 이어지고 태그가
+    /// 따라간다(예전엔 새 경로에 새로 써서 둘 다 잃었다). 댓글 · 메모 · 첨부 파일은 아직 안 따라간다(BUG-343).
+    #[tokio::test]
+    async fn changing_the_type_keeps_the_number_and_tags() {
+        let dir = fresh_tmp("type-keeps");
+        let store = setup_store(&dir).await;
+        let q = create_quest(
+            &store,
+            CreateQuestRequest {
+                quest_type_id: 1,
+                title: "t".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: None,
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        set_quest_tags(&store, q.id, vec!["keep".into()]).await.unwrap();
+        let place = crate::repo::version::Place::Frontmatter;
+        let before = crate::repo::version::read(&dir.join(".guild/quests/DEV-001.md"), place);
+        assert!(before >= 2, "만들기 + 태그 = 두 번은 고쳤다: {before}");
+
+        let moved = change_quest_type(&store, q.id, ChangeTypeRequest { new_type_prefix: "BUG".into() })
+            .await
+            .unwrap();
+        assert_eq!(moved.quest_id, "BUG-001");
+        let after = crate::repo::version::read(&dir.join(".guild/quests/BUG-001.md"), place);
+        assert!(after > before, "이름이 바뀌며 번호가 처음부터 다시 셌다: {before} → {after}");
+        assert_eq!(list_quest_tags(&store, "BUG-001").unwrap(), vec!["keep"], "태그가 사라졌다");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

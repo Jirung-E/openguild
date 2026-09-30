@@ -140,6 +140,11 @@ pub struct Event {
     pub data: Map<String, Value>,
     /// DEV-401: 누가 일으켰나 — 거쳐 온 플러그인들. 이 목록에 있는 플러그인에는 안 보낸다.
     pub origin: origin::Origin,
+    /// DEV-433: 이 변경이 쓴 파일의 번호 — 그 문서를 openguild 가 몇 번 고쳤나. **순서를 알리는 데만** 쓴다:
+    /// 프로세스가 다르면 알림이 늦게 도착할 수 있으니, 받는 쪽이 "더 큰 번호를 이미 봤으면 버린다" 를 한다.
+    /// 본문 파일과 댓글 파일은 **따로** 센다 — `comment.*` 는 댓글 파일의 번호다. 없으면(바뀌기 전 단계,
+    /// 첨부 · 메모 · 일지 · 백업 · 정의들) 싣지 않는다. 자세한 것은 `repo::version`.
+    pub version: Option<u64>,
 }
 
 impl Event {
@@ -207,6 +212,9 @@ impl Event {
             m.insert("error".into(), json!(e));
         }
         m.insert("origin".into(), self.origin.to_json());
+        if let Some(v) = self.version {
+            m.insert("version".into(), json!(v));
+        }
         if let Some(sub) = self.subject() {
             m.insert("subject".into(), json!({ "kind": sub.kind, "id": sub.id }));
         }

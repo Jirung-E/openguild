@@ -3,7 +3,7 @@ book_id = "BOOK-006"
 title = "저장소 — 파일 · 캐시 · journal · 스냅샷 · 잠금"
 path = "아키텍처/상세"
 created_at = "2026-09-23T11:49:54+09:00"
-updated_at = "2026-10-01T02:28:51+09:00"
+updated_at = "2026-10-01T02:51:33+09:00"
 deleted = false
 +++
 
@@ -36,6 +36,13 @@ deleted = false
 **번호는 되쓰지 않는다.** 타입의 카운터(`types/{prefix}.toml` 의 `[counter]`)와 도서관의
 `.counter.toml` 은 단조 증가다. 지운 번호도 다시 안 준다 — 삭제는 frontmatter 의
 `deleted = true`(soft delete)이고 파일은 제자리에 남는다. 그래야 git diff 가 깨끗하고 링크가 안 깨진다.
+
+**문서 번호**(DEV-433). 퀘스트 · 캠페인 · 도서관 문서 · 규칙 파일은 frontmatter 에 `version = N`, 퀘스트 ·
+캠페인 댓글 파일은 첫 줄 `<!-- og-comments version="N" -->` — openguild 가 그 파일을 몇 번 고쳤나. 본문과
+댓글은 **따로** 센다(댓글을 달 때 본문 파일을 다시 쓰지 않으려고). 쓸 때 내용이 그대로면 쓰지 않고 번호도
+그대로다. 이벤트에 실려 늦게 온 알림을 거르는 데 쓴다 — "바뀌었나" 판단에는 안 쓴다(밖에서 고치면 안 맞는다).
+번호는 글자 수준에서만 다룬다(`repo/version.rs`) — 파일 모델은 번호를 몰라서 옛 openguild 도 새 파일을 읽는다.
+타입을 바꿔 이름이 바뀌면(DEV-1 → BUG-1) 파일을 옮긴 뒤 써서 번호가 이어진다.
 
 ## 캐시 — `index.db`
 

@@ -180,7 +180,8 @@ impl BookFile {
     }
 
     pub fn write<P: AsRef<std::path::Path>>(&self, path: P) -> Result<()> {
-        write_atomic(path.as_ref(), &self.serialize()?)
+        // DEV-433: 번호를 이어 가며 — 내용이 그대로면 쓰지 않는다.
+        super::version::write(path.as_ref(), &self.serialize()?, super::version::Place::Frontmatter).map(|_| ())
     }
 
     /// frontmatter 의 number (book_id 에서 파싱).

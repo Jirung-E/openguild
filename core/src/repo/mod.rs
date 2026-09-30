@@ -21,6 +21,7 @@ pub mod seed;
 pub mod status_def;
 pub mod tag_def;
 pub mod template;
+pub mod version;
 pub mod type_def;
 
 pub use auto::{QuestRef, QuestRelations};

@@ -523,6 +523,7 @@ mod tests {
             error: None,
             data: Default::default(),
             origin: Default::default(),
+            version: None,
         }
     }
 

@@ -20,7 +20,6 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use super::fs::write_atomic;
 use super::GuildPaths;
 
 /// DEV-243: 규칙 frontmatter — 태그. DEV-182: 생성/수정 시각도 추가.
@@ -318,7 +317,8 @@ fn write_rule_file(paths: &GuildPaths, slug: &str, rf: &RuleFile) -> Result<()> 
     let dir = paths.rules_dir();
     std::fs::create_dir_all(&dir)
         .with_context(|| format!("failed to create rules dir: {}", dir.display()))?;
-    write_atomic(paths.rule_path(slug), &rf.serialize())
+    // DEV-433: 번호를 이어 가며 — 내용이 그대로면 쓰지 않는다.
+    super::version::write(&paths.rule_path(slug), &rf.serialize(), super::version::Place::Frontmatter).map(|_| ())
 }
 
 /// 신규 규칙 — 같은 slug 가 이미 있으면 Err. (`write_rule` 은 멱등 덮어쓰기.)

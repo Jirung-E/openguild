@@ -189,6 +189,10 @@ pub fn join_reaction(emoji: &str, authors: &[String]) -> String {
 /// - 본문이 있으면 **legacy 단일 entry** 로 인식 (id=1, ts="" / author=""
 ///   body=전체 trim). 첫 mutation 시 정식 마커로 재serialize.
 pub fn parse_entries(text: &str) -> Vec<CommentEntry> {
+    // DEV-433: 첫 줄의 번호는 댓글이 아니다 — 걷어 내고 읽는다(안 걷으면 댓글이 다 지워진 파일이 "옛 단일
+    // 댓글" 로 읽힌다).
+    let stripped = super::version::strip(text, super::version::Place::CommentsHeader);
+    let text = stripped.as_str();
     let re = entry_marker_re();
     let mut markers: Vec<(usize, usize, String)> = Vec::new();
     for m in re.captures_iter(text) {
@@ -333,7 +337,7 @@ pub fn write_entries(
     entries: &[CommentEntry],
 ) -> Result<()> {
     let text = serialize_entries(entries);
-    write_atomic(paths.comments_path(slug), &text)
+    write_numbered(&paths.comments_path(slug), &text)
 }
 
 // ─── DEV-100: path 기반 generic IO — quest / campaign 공용 ───
@@ -350,7 +354,12 @@ pub fn read_entries_at(path: &std::path::Path) -> Result<Vec<CommentEntry>> {
 
 /// 임의 경로에 entry 목록 쓰기 (atomic).
 pub fn write_entries_at(path: &std::path::Path, entries: &[CommentEntry]) -> Result<()> {
-    write_atomic(path, &serialize_entries(entries))
+    write_numbered(path, &serialize_entries(entries))
+}
+
+/// DEV-433: 댓글 파일은 첫 줄에 번호 — 본문 파일과 따로 센다.
+fn write_numbered(path: &std::path::Path, text: &str) -> Result<()> {
+    super::version::write(path, text, super::version::Place::CommentsHeader).map(|_| ())
 }
 
 /// 임의 경로의 단일 텍스트 (메모) 읽기. 부재 시 None.
@@ -376,12 +385,13 @@ pub fn read_comments(paths: &GuildPaths, slug: &str) -> Result<Option<String>> {
     }
     let s = std::fs::read_to_string(&p)
         .with_context(|| format!("failed to read comments: {}", p.display()))?;
-    Ok(Some(s))
+    // DEV-433: 번호 줄은 파일의 것이다 — 통째로 읽고 쓰는 쪽에는 안 보인다(쓸 때 다시 붙는다).
+    Ok(Some(super::version::strip(&s, super::version::Place::CommentsHeader)))
 }
 
 /// 공개 댓글 파일 쓰기 (atomic).
 pub fn write_comments(paths: &GuildPaths, slug: &str, content: &str) -> Result<()> {
-    write_atomic(paths.comments_path(slug), content)
+    write_numbered(&paths.comments_path(slug), content)
 }
 
 /// 비공개 메모 파일 읽기. 부재 시 `Ok(None)`.

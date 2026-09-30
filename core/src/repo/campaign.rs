@@ -30,7 +30,6 @@
 use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 
-use super::fs::write_atomic;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CampaignFrontmatter {
@@ -115,7 +114,8 @@ impl CampaignFile {
     }
 
     pub fn write<P: AsRef<std::path::Path>>(&self, path: P) -> Result<()> {
-        write_atomic(path.as_ref(), &self.serialize()?)
+        // DEV-433: 번호를 이어 가며 — 내용이 그대로면 쓰지 않는다.
+        super::version::write(path.as_ref(), &self.serialize()?, super::version::Place::Frontmatter).map(|_| ())
     }
 
     /// 본문에서 GFM task list 항목들을 출현 순서대로 추출.

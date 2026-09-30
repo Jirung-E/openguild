@@ -183,7 +183,7 @@ impl Store {
                 m
             }
         };
-        self.events.dispatch(crate::events::Event {
+        let mut event = crate::events::Event {
             name,
             phase,
             ts: crate::time::now_local_iso8601(),
@@ -193,7 +193,39 @@ impl Store {
             data: obj,
             // DEV-401: 누가 일으켰는지는 한 곳에서 읽는다(요청·프로세스·사람).
             origin: crate::events::origin::current(),
-        });
+            version: None,
+        };
+        // DEV-433: 바뀐 뒤에는 그 파일의 번호를 싣는다 — 변경이 잠금을 쥔 채 내므로 방금 쓴 번호다.
+        if phase == crate::events::Phase::Post && ok == Some(true) {
+            event.version = self.version_of(&event);
+        }
+        self.events.dispatch(event);
+    }
+
+    /// DEV-433: 이벤트가 말하는 파일의 번호. 본문과 댓글은 따로 센다. 번호가 없는 것(첨부 · 메모 · 일지 · 백업 ·
+    /// 정의들)이나 파일이 없으면(지운 규칙) `None`.
+    fn version_of(&self, e: &crate::events::Event) -> Option<u64> {
+        use crate::repo::version::{self, Place};
+        let sub = e.subject()?;
+        let (path, place) = if e.name.starts_with("comment.") {
+            match sub.kind {
+                "quest" => (self.paths.comments_path(&sub.id), Place::CommentsHeader),
+                "campaign" => (self.paths.campaign_comments_path(&sub.id), Place::CommentsHeader),
+                _ => return None,
+            }
+        } else if e.name.starts_with("attachment.") {
+            return None;
+        } else {
+            let path = match sub.kind {
+                "quest" => self.paths.quest_path(&sub.id),
+                "campaign" => self.paths.campaign_path(&sub.id),
+                "book" => self.paths.book_path(&sub.id),
+                "rule" => self.paths.rule_path(&sub.id),
+                _ => return None,
+            };
+            (path, Place::Frontmatter)
+        };
+        path.exists().then(|| version::read(&path, place))
     }
 
     /// mutation 직전. **관찰만 한다** — 거부는 지원하지 않는다.
@@ -231,6 +263,7 @@ impl Store {
             error: None,
             data: obj,
             origin: crate::events::origin::current(),
+            version: None,
         };
         // 보기만 하는 구독자(기록·시험)도 이 단계를 본다 — 답을 받는 것과 별개다.
         self.events.dispatch(event.clone());

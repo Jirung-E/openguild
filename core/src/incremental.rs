@@ -1780,7 +1780,9 @@ mod tests {
         // mtime 만 전진. 내용(title/description/...)은 DB 와 여전히 동일 —
         // 어긋난 건 오직 DB 의 updated_at 뿐.
         std::thread::sleep(std::time::Duration::from_millis(20));
-        qf.write(paths.quest_path("DEV-001")).unwrap();
+        // DEV-433: `qf.write` 는 내용이 그대로면 쓰지 않는다 — git 처럼 같은 바이트를 직접 다시 쓴다.
+        let same = std::fs::read_to_string(paths.quest_path("DEV-001")).unwrap();
+        std::fs::write(paths.quest_path("DEV-001"), same).unwrap();
         let before_sync = std::fs::read_to_string(paths.quest_path("DEV-001")).unwrap();
 
         let report = sync_changed_quest_files(&store).await.unwrap();

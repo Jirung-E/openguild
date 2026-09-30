@@ -1500,6 +1500,7 @@ fn probe_event() -> crate::events::Event {
         error: None,
         data: Default::default(),
         origin: Default::default(),
+        version: None,
     }
 }
 

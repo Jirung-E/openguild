@@ -1300,3 +1300,60 @@ async fn a_change_carries_who_caused_it() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// DEV-433: 바뀐 뒤 이벤트는 그 파일의 번호를 싣는다 — 본문과 댓글은 따로 센다. 바뀌기 전 이벤트와 번호가
+/// 없는 것(첨부)에는 없다.
+#[tokio::test]
+async fn post_events_carry_the_file_number_counted_separately() {
+    let (dir, store, rec) = setup("version").await;
+    let q = crate::ops::create_quest(
+        &store,
+        CreateQuestRequest {
+            quest_type_id: 1,
+            title: "번호".into(),
+            description: None,
+            status_slug: "open".into(),
+            urgency: Some(3),
+            parent_quest_id: None,
+        },
+    )
+    .await
+    .unwrap();
+    crate::ops::update_quest(
+        &store,
+        q.id,
+        crate::models::UpdateQuestRequest { title: Some("번호 둘".into()), description: None, urgency: None },
+    )
+    .await
+    .unwrap();
+    for body in ["하나", "둘"] {
+        crate::ops::comments::add_comment_entry(&store, &q.quest_id, "a".into(), body.into(), None, false)
+            .await
+            .unwrap();
+    }
+    crate::ops::attachments::add_quest_attachment(&store, &q.quest_id, "attachments/x.txt", "x")
+        .await
+        .unwrap();
+
+    let got = rec.got.lock().unwrap().clone();
+    let post = |name: &str| -> Vec<Option<u64>> {
+        got.iter().filter(|e| e.name == name && e.phase == Phase::Post).map(|e| e.version).collect()
+    };
+    assert_eq!(post("quest.created"), vec![Some(1)]);
+    assert_eq!(post("quest.updated"), vec![Some(2)]);
+    // 댓글 파일은 제 번호 — 퀘스트 번호(2)와 상관없이 1, 2.
+    assert_eq!(post("comment.added"), vec![Some(1), Some(2)]);
+    assert_eq!(post("attachment.added"), vec![None]);
+    assert!(
+        got.iter().filter(|e| e.phase == Phase::Pre).all(|e| e.version.is_none()),
+        "바뀌기 전 이벤트에 번호가 실렸다"
+    );
+    // 플러그인이 받는 모양에도 있다.
+    let created = got.iter().find(|e| e.name == "quest.created" && e.phase == Phase::Post).unwrap();
+    assert_eq!(created.to_json()["version"], serde_json::json!(1));
+    // 댓글이 본문 파일 번호를 올리지 않았다.
+    let place = crate::repo::version::Place::Frontmatter;
+    assert_eq!(crate::repo::version::read(&store.paths.quest_path(&q.quest_id), place), 2);
+
+    let _ = std::fs::remove_dir_all(&dir);
+}

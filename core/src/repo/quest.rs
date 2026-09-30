@@ -22,7 +22,6 @@
 use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 
-use super::fs::write_atomic;
 
 /// Auto 블록 시작 마커. 도구가 매번 재생성하는 영역의 시작.
 pub const AUTO_BEGIN: &str = "<!-- openguild:auto-begin — 아래는 자동 생성. 직접 수정하지 마세요. -->";
@@ -129,7 +128,8 @@ impl QuestFile {
 
     /// 파일에 atomic 쓰기.
     pub fn write<P: AsRef<std::path::Path>>(&self, path: P) -> Result<()> {
-        write_atomic(path.as_ref(), &self.serialize()?)
+        // DEV-433: 번호를 이어 가며 — 내용이 그대로면 쓰지 않는다.
+        super::version::write(path.as_ref(), &self.serialize()?, super::version::Place::Frontmatter).map(|_| ())
     }
 
     /// `quest_id` 의 type prefix 추출 ("DEV-001" → "DEV").
