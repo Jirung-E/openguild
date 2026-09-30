@@ -11,6 +11,7 @@
 use anyhow::{anyhow, Context};
 use serde_json::{json, Value};
 
+use crate::lock::DocKey;
 use crate::error::{AppError, AppResult};
 use crate::events::{Phase, names as ev, payload};
 use crate::store::{journal, Store};
@@ -258,7 +259,7 @@ pub fn get_note(store: &Store, date: &str) -> AppResult<Option<String>> {
 
 /// 노트 저장 — 빈(공백뿐인) 본문이면 파일 삭제 (clear 와 동일).
 pub async fn set_note(store: &Store, date: &str, content: String) -> AppResult<()> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_docs(&[DocKey::new("worklog", date)]).await?;
     validate_date(date)?;
     let _ = journal::append(
         &store.journal_pool,

@@ -708,7 +708,7 @@ async fn insert_new_campaign(store: &Store, path: &std::path::Path) -> AppResult
     if cf.frontmatter.deleted {
         return Ok(None);
     }
-    let mut tx = store.index_pool.begin().await?;
+    let mut tx = crate::db::begin_write(&store.index_pool).await?;
     let id: i64 = sqlx::query_scalar(
         "INSERT INTO campaigns
            (campaign_slug, title, description, status,
@@ -778,7 +778,7 @@ async fn refresh_campaign(store: &Store, slug: &str) -> AppResult<bool> {
     // DEV-283: campaign도 frontmatter updated_at을 그대로 투영하고 파일은 쓰지 않는다.
     let updated_at = crate::time::normalize_legacy_ts(&cf.frontmatter.updated_at);
 
-    let mut tx = store.index_pool.begin().await?;
+    let mut tx = crate::db::begin_write(&store.index_pool).await?;
     // 행 UPDATE — reindex 의 per-campaign INSERT 와 동일 필드.
     sqlx::query(
         "UPDATE campaigns SET
@@ -946,7 +946,7 @@ async fn insert_new_library_doc(store: &Store, path: &std::path::Path) -> AppRes
         .deleted
         .then(|| bf.frontmatter.updated_at.clone());
 
-    let mut tx = store.index_pool.begin().await?;
+    let mut tx = crate::db::begin_write(&store.index_pool).await?;
     let id: i64 = sqlx::query_scalar(
         "INSERT INTO library_docs (number, title, body, path, created_at, updated_at, deleted_at)
          VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -1245,7 +1245,7 @@ async fn replace_sibling_rows(
     let pool = &store.index_pool;
     let raw = std::fs::read_to_string(path)
         .map_err(|e| crate::error::AppError::Internal(anyhow::anyhow!(e)))?;
-    let mut tx = pool.begin().await?;
+    let mut tx = crate::db::begin_write(pool).await?;
     match kind {
         SiblingKind::QuestComments => {
             sqlx::query("DELETE FROM quest_comments WHERE quest_id = ?")

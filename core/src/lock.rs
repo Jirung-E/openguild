@@ -28,8 +28,8 @@
 //! 문서 목록은 [`Store::lock_docs`](crate::Store::lock_docs) 한 번에 받고, 순서(이름 순)는 여기서 정한다. 이미
 //! 잠금을 쥔 작업이 또 잠그면 오류다 — "하나 잡고 나중에 하나 더" 가 엇갈림의 유일한 길이다.
 //!
-//! 지금(DEV-431)은 틀만 있다 — `Store::mutation_guard` 는 여전히 길드 **독점**이라 동작은 예전과 같다. 변경
-//! 함수를 문서 잠금으로 옮기는 것은 DEV-432.
+//! 변경 함수마다 무엇을 잠그는지는 `ops::lock_coverage` 의 표에 적고 시험이 강제한다(DEV-432). 번호만 받는
+//! 변경은 `ops::lock_resolved` 로 — 고칠 문서를 알아내 잠근 뒤 다시 알아내 같은지 본다.
 
 use anyhow::{Context, Result, anyhow, bail};
 use std::collections::{HashMap, HashSet};

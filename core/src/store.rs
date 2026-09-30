@@ -64,7 +64,7 @@ pub struct Store {
     /// 구독자가 없으면 페이로드를 **만들지도 않는다**.
     pub events: crate::events::Events,
     /// REQ-003: **프로세스 안** 파일 read-modify-write 직렬화. 직접 잡지 말고
-    /// [`Store::mutation_guard`] 를 쓴다 — 그것이 이 뮤텍스와 프로세스 사이 파일 잠금을
+    /// [`Store::lock_guild`] / [`Store::lock_docs`] 를 쓴다 — 그것이 프로세스 사이 파일 잠금을
     /// 함께 잡는다(BUG-287).
     ///
     /// 댓글 토글·체크리스트·첨부·번호 할당 같은 경로는 전부 "파일 전체 읽기 →
@@ -106,17 +106,11 @@ impl Store {
             .store(n, std::sync::atomic::Ordering::SeqCst);
     }
 
-    /// BUG-287: 이 길드를 고치는 동안 쥔다 — 다른 프로세스(앱·CLI·서버)와 이
-    /// 프로세스의 다른 요청이 그동안 기다린다. 자세한 것은 [`crate::lock`].
-    ///
-    /// **공개 변경 진입점의 맨 앞에서** 잡는다. 검증용 읽기까지 잠금 안에 들어가야
-    /// 남이 막 바꾼 상태를 보고 판단한다. 재진입이 안 되므로 진입점끼리 서로 부르지 않는다.
-    pub async fn mutation_guard(&self) -> Result<crate::lock::MutationGuard> {
-        // DEV-431: 아직은 길드 **독점** — 동작이 예전과 같다. 변경 함수를 문서 잠금으로 옮기는 것은 DEV-432.
-        self.lock_guild().await
-    }
-
     /// DEV-431: 길드 **독점** — 길드 전체가 필요한 일(백업, 타입·상태 이름 바꾸기). 모두를 막는다.
+    ///
+    /// 변경 진입점의 **맨 앞에서** 잡는다(BUG-287) — 검증용 읽기까지 잠금 안에 들어가야 남이 막 바꾼
+    /// 상태를 보고 판단한다. 재진입이 안 되므로 진입점끼리 서로 부르지 않는다. 문서 몇 개만 고치는
+    /// 변경은 [`Store::lock_docs`] 로(DEV-432).
     pub async fn lock_guild(&self) -> Result<crate::lock::MutationGuard> {
         self.lock(crate::lock::GuildMode::Exclusive, &[]).await
     }

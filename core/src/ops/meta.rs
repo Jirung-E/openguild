@@ -71,7 +71,7 @@ pub async fn create_type(
     color: String,
     description: Option<String>,
 ) -> AppResult<QuestType> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_guild().await?;
     let prefix = prefix.trim().to_string();
     validate_prefix(&prefix)?;
     validate_color(&color)?;
@@ -144,7 +144,7 @@ pub async fn update_type(
     color: Option<String>,
     description: Option<Option<String>>, // outer None = 변경 없음, inner None = clear.
 ) -> AppResult<QuestType> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_guild().await?;
     let prefix = prefix.trim().to_string();
     if let Some(c) = &color {
         validate_color(c)?;
@@ -197,7 +197,7 @@ pub async fn update_type(
 
 /// type 삭제. 사용 중 quest 있으면 `BadRequest`.
 pub async fn delete_type(store: &Store, prefix: String) -> AppResult<()> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_guild().await?;
     let prefix = prefix.trim().to_string();
     let row = fetch_type_by_prefix(&store.index_pool, &prefix).await?;
     let count = count_quests_by_type(&store.index_pool, row.id).await?;
@@ -245,7 +245,7 @@ pub async fn rename_type(
     old_prefix: String,
     new_prefix: String,
 ) -> AppResult<QuestType> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_guild().await?;
     rename_type_locked(store, old_prefix, new_prefix).await
 }
 
@@ -327,7 +327,7 @@ async fn rename_type_locked(
     };
 
     // ── DB UPDATE (transaction) ──
-    let mut tx = store.index_pool.begin().await?;
+    let mut tx = crate::db::begin_write(&store.index_pool).await?;
     sqlx::query("UPDATE quest_types SET prefix = ? WHERE id = ?")
         .bind(&new_prefix)
         .bind(old_row.id)
@@ -453,7 +453,7 @@ pub async fn rename_status_slug(
     old_slug: String,
     new_slug: String,
 ) -> AppResult<QuestStatus> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_guild().await?;
     rename_status_slug_locked(store, old_slug, new_slug).await
 }
 
@@ -496,7 +496,7 @@ async fn rename_status_slug_locked(
     .await?;
 
     // ── DB UPDATE (transaction) ──
-    let mut tx = store.index_pool.begin().await?;
+    let mut tx = crate::db::begin_write(&store.index_pool).await?;
     sqlx::query("UPDATE quest_statuses SET slug = ? WHERE id = ?")
         .bind(&new_slug)
         .bind(old_row.id)
@@ -722,7 +722,7 @@ pub async fn create_status(
     color: String,
     sort_order: Option<i64>,
 ) -> AppResult<QuestStatus> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_guild().await?;
     // DEV-014 후속: name_ko 는 선택 — 빈 문자열 허용. (frontend 가 표시 시
     // 빈 ko 면 name_en 으로 fallback.)
     let name_en = name_en.trim().to_string();
@@ -830,7 +830,7 @@ pub async fn update_status(
     // DEV-093: 캠페인 진행도 계산용 "완료" 카운트 여부.
     counts_as_done: Option<bool>,
 ) -> AppResult<QuestStatus> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_guild().await?;
     if let Some(c) = &color {
         validate_color(c)?;
     }
@@ -934,7 +934,7 @@ pub async fn update_status(
 
 /// status 삭제. 사용 중 quest 있으면 `BadRequest`.
 pub async fn delete_status(store: &Store, slug: String) -> AppResult<()> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_guild().await?;
     let row = fetch_status_by_slug(&store.index_pool, &slug).await?;
     let count = count_quests_by_status(&store.index_pool, row.id).await?;
     if count > 0 {
@@ -1049,7 +1049,7 @@ pub async fn upsert_tag_def(
     color: String,
     description: String,
 ) -> AppResult<crate::models::QuestTagDef> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_guild().await?;
     let slug = slug.trim().to_string();
     validate_tag_slug(&slug)?;
     if let Some(twin) = case_twin(store, &slug) {
@@ -1102,7 +1102,7 @@ pub async fn upsert_tag_def(
 /// tag 정의 삭제 — 파일 + DB. quest 의 frontmatter 의 tag string 자체는 보존
 /// (def 없어도 사용 가능). 사용자가 의도적으로 quest tag 도 제거하려면 별도.
 pub async fn delete_tag_def(store: &Store, slug: String) -> AppResult<()> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_guild().await?;
     let slug = slug.trim().to_string();
     validate_tag_slug(&slug)?;
     // DEV-388: 이 함수는 원래 정의를 읽을 일이 없다(slug 하나로 지운다).

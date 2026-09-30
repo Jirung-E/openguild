@@ -3530,3 +3530,47 @@ async fn a_line_sees_the_subject_as_it_was_when_the_change_happened() {
     let _ = std::fs::remove_dir_all(&g);
     let _ = std::fs::remove_dir_all(&home);
 }
+
+/// DEV-432: **남의 변경이 끝나도 내 기다리는 줄은 돌지 않는다.** 문서 잠금이면 두 변경이 동시에 잠금을
+/// 쥔다 — 먼저 끝난 쪽이 줄을 통째로 돌리면, 아직 잠금을 쥔 변경의 줄이 그 잠금 안에서 돈다(BUG-339).
+#[tokio::test]
+async fn another_change_finishing_does_not_run_my_waiting_lines() {
+    let manifest = format!(
+        "name = \"gate\"\nscope = [\"cli\"]\nscripts = [\"main.rhai\"]\n{OUT}\n[[handlers]]\n    post = [\"quest.created\"]\n    call = \"h\"\n    wait = true\n"
+    );
+    let (g, home, store, probe) =
+        guild_probed("wait-per-task", &manifest, r#"fn h(e) { send("out", e.quest.id) }"#).await;
+
+    let (queued_tx, queued_rx) = tokio::sync::oneshot::channel();
+    let (release_tx, release_rx) = tokio::sync::oneshot::channel::<()>();
+    let mine = store.clone();
+    let holder = tokio::spawn(async move {
+        let g = mine.lock_docs(&[crate::lock::DocKey::quest("DEV-001")]).await.unwrap();
+        mine.emit_post(crate::events::names::QUEST_CREATED, || {
+            serde_json::json!({ "quest": { "id": "DEV-001" } })
+        });
+        queued_tx.send(()).unwrap();
+        release_rx.await.unwrap();
+        drop(g);
+    });
+    queued_rx.await.unwrap();
+
+    // 다른 문서를 고친 변경이 끝난다 — 내 줄을 건드리면 안 된다.
+    let other = store.clone();
+    tokio::spawn(async move {
+        let g = other.lock_docs(&[crate::lock::DocKey::quest("DEV-002")]).await.unwrap();
+        drop(g);
+    })
+    .await
+    .unwrap();
+    assert!(probe.seen().is_empty(), "남의 변경이 끝나며 내 줄을 돌렸다: {:?}", probe.seen());
+
+    // 내가 풀면 돈다.
+    release_tx.send(()).unwrap();
+    holder.await.unwrap();
+    let seen = probe.seen();
+    assert_eq!(seen.len(), 1, "{seen:?}");
+
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}

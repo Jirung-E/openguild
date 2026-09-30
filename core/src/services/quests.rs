@@ -628,7 +628,7 @@ pub async fn create(pool: &SqlitePool, body: CreateQuestRequest) -> AppResult<Qu
         }
     }
 
-    let mut tx = pool.begin().await?;
+    let mut tx = crate::db::begin_write(pool).await?;
 
     // DEV-048: API 가 status_slug 전용 → 내부에서 id 로 resolve.
     let status_id: i64 = sqlx::query_scalar(
@@ -861,7 +861,7 @@ pub async fn change_type(
         AppError::BadRequest(format!("unknown type prefix: '{new_type_prefix}'"))
     })?;
 
-    let mut tx = pool.begin().await?;
+    let mut tx = crate::db::begin_write(pool).await?;
 
     // counter self-heal (BUG-counter-self-heal 와 동일 패턴) — 외부 편집으로
     // counter 가 실제 max 보다 뒤떨어졌어도 안전.
@@ -993,7 +993,7 @@ pub async fn delete(
         ));
     }
 
-    let mut tx = pool.begin().await?;
+    let mut tx = crate::db::begin_write(pool).await?;
 
     // cascade 로 명시된 ID 들이 실제 alive 직계 자식인지 검증
     for cid in cascade_ids {
@@ -1327,7 +1327,7 @@ pub async fn update_positions(pool: &SqlitePool, items: &[PositionItem]) -> AppR
     if items.is_empty() {
         return Ok(0);
     }
-    let mut tx = pool.begin().await?;
+    let mut tx = crate::db::begin_write(pool).await?;
     let mut written = 0usize;
     for it in items {
         let slug: Option<String> = sqlx::query_scalar(

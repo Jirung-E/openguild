@@ -9,8 +9,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Copy, Debug)]
 enum Kind {
-    /// 몸통 맨 앞에서 `store.mutation_guard()` 를 잡는다.
-    Guarded,
+    /// 몸통 맨 앞에서 길드 **독점**(`store.lock_guild()`)을 잡는다 — 길드 전체를 고치는 것.
+    Guild,
+    /// 몸통 맨 앞에서 **문서 잠금**(`store.lock_docs(..)` 또는 `lock_resolved(..)`)을 잡는다(DEV-432).
+    Docs,
     /// 이 모듈의 비공개 함수가 대신 잡는다 — 공개 함수는 경로만 골라 넘긴다.
     Via(&'static str),
     /// 잠금을 잡는 진입점들을 **차례로** 부른다. 사이에 오래 걸리는 복사가 있어
@@ -62,40 +64,40 @@ const TABLE: &[(&str, &str, Kind)] = &[
     ("backlinks", "list_backlinks", Read),
     ("backlinks", "refresh_for", Helper),
     ("campaign_comments", "list_entries", Read),
-    ("campaign_comments", "add_entry", Guarded),
-    ("campaign_comments", "update_entry", Guarded),
-    ("campaign_comments", "delete_entry", Guarded),
-    ("campaign_comments", "toggle_reaction", Guarded),
-    ("campaign_comments", "toggle_pinned", Guarded),
+    ("campaign_comments", "add_entry", Docs),
+    ("campaign_comments", "update_entry", Docs),
+    ("campaign_comments", "delete_entry", Docs),
+    ("campaign_comments", "toggle_reaction", Docs),
+    ("campaign_comments", "toggle_pinned", Docs),
     ("campaign_comments", "get_memo", Read),
-    ("campaign_comments", "set_memo", Guarded),
+    ("campaign_comments", "set_memo", Docs),
     ("campaigns", "fetch_detail", Read),
-    ("campaigns", "create_campaign", Guarded),
-    ("campaigns", "update_campaign", Guarded),
-    ("campaigns", "begin_banner_image", Guarded),
-    ("campaigns", "commit_banner_image", Guarded),
+    ("campaigns", "create_campaign", Docs),
+    ("campaigns", "update_campaign", Docs),
+    ("campaigns", "begin_banner_image", Docs),
+    ("campaigns", "commit_banner_image", Docs),
     ("campaigns", "set_banner_image", Composes),
-    ("campaigns", "clear_banner_image", Guarded),
-    ("campaigns", "delete_campaign", Guarded),
-    ("campaigns", "link_quest_by_slug", Guarded),
-    ("campaigns", "unlink_quest_by_slug", Guarded),
-    ("campaigns", "add_checklist_line", Guarded),
-    ("campaigns", "set_checklist_checked_by_index", Guarded),
-    ("campaigns", "remove_checklist_by_index", Guarded),
+    ("campaigns", "clear_banner_image", Docs),
+    ("campaigns", "delete_campaign", Docs),
+    ("campaigns", "link_quest_by_slug", Docs),
+    ("campaigns", "unlink_quest_by_slug", Docs),
+    ("campaigns", "add_checklist_line", Docs),
+    ("campaigns", "set_checklist_checked_by_index", Docs),
+    ("campaigns", "remove_checklist_by_index", Docs),
     ("campaigns", "write_campaign_file", Helper),
-    ("counter", "check_and_fix_counters", Guarded),
+    ("counter", "check_and_fix_counters", Guild),
     ("comments", "get_comments", Read),
-    ("comments", "set_comments", Guarded),
+    ("comments", "set_comments", Docs),
     ("comments", "list_comment_entries", Read),
-    ("comments", "add_comment_entry", Guarded),
-    ("comments", "update_comment_entry", Guarded),
-    ("comments", "toggle_comment_reaction", Guarded),
-    ("comments", "toggle_comment_discussion", Guarded),
-    ("comments", "toggle_comment_resolved", Guarded),
-    ("comments", "toggle_comment_pinned", Guarded),
-    ("comments", "delete_comment_entry", Guarded),
+    ("comments", "add_comment_entry", Docs),
+    ("comments", "update_comment_entry", Docs),
+    ("comments", "toggle_comment_reaction", Docs),
+    ("comments", "toggle_comment_discussion", Docs),
+    ("comments", "toggle_comment_resolved", Docs),
+    ("comments", "toggle_comment_pinned", Docs),
+    ("comments", "delete_comment_entry", Docs),
     ("comments", "get_memo", Read),
-    ("comments", "set_memo", Guarded),
+    ("comments", "set_memo", Docs),
     ("doc_history", "record", Helper),
     ("doc_history", "rename", Helper),
     ("doc_history", "purge", Helper),
@@ -104,67 +106,77 @@ const TABLE: &[(&str, &str, Kind)] = &[
     // REQ-027: 태그까지 거른다 — 위와 같이 읽기만 한다.
     ("library", "list_books_filtered", Read),
     ("library", "get_book", Read),
-    ("library", "set_book_tags", Guarded),
-    ("library", "edit_book_tags", Guarded),
+    ("library", "set_book_tags", Docs),
+    ("library", "edit_book_tags", Docs),
     ("library", "history", Read),
-    ("library", "create_book", Guarded),
-    ("library", "update_book", Guarded),
-    ("library", "delete_book", Guarded),
+    ("library", "create_book", Docs),
+    ("library", "update_book", Docs),
+    ("library", "delete_book", Docs),
     ("library", "list_folders", Read),
-    ("library", "create_folder", Guarded),
-    ("library", "move_folder", Guarded),
-    ("library", "delete_folder", Guarded),
-    ("meta", "create_type", Guarded),
-    ("meta", "update_type", Guarded),
-    ("meta", "delete_type", Guarded),
-    ("meta", "rename_type", Guarded),
-    ("meta", "rename_status_slug", Guarded),
+    ("library", "create_folder", Docs),
+    ("library", "move_folder", Guild),
+    ("library", "delete_folder", Guild),
+    ("meta", "create_type", Guild),
+    ("meta", "update_type", Guild),
+    ("meta", "delete_type", Guild),
+    ("meta", "rename_type", Guild),
+    ("meta", "rename_status_slug", Guild),
     ("meta", "count_quests_by_type", Read),
-    ("meta", "create_status", Guarded),
-    ("meta", "update_status", Guarded),
-    ("meta", "delete_status", Guarded),
+    ("meta", "create_status", Guild),
+    ("meta", "update_status", Guild),
+    ("meta", "delete_status", Guild),
     ("meta", "count_quests_by_status", Read),
-    ("meta", "upsert_tag_def", Guarded),
-    ("meta", "delete_tag_def", Guarded),
-    ("positions", "update_position", Guarded),
-    ("positions", "update_positions", Guarded),
-    ("quests", "create_quest", Guarded),
+    ("meta", "upsert_tag_def", Guild),
+    ("meta", "delete_tag_def", Guild),
+    ("positions", "update_position", Docs),
+    ("positions", "update_positions", Docs),
+    ("quests", "create_quest", Docs),
     ("quests", "list_quests", Read),
-    ("quests", "update_quest", Guarded),
-    ("quests", "set_due_dates", Guarded),
-    ("quests", "set_quest_tags", Guarded),
-    ("quests", "edit_quest_tags", Guarded),
+    ("quests", "update_quest", Docs),
+    ("quests", "set_due_dates", Docs),
+    ("quests", "set_quest_tags", Docs),
+    ("quests", "edit_quest_tags", Docs),
     ("quests", "list_quest_tags", Read),
-    ("quests", "change_status", Guarded),
-    ("quests", "change_quest_type", Guarded),
-    ("quests", "change_parent", Guarded),
-    ("quests", "delete_quest", Guarded),
-    ("quests", "restore_quest", Guarded),
-    ("quests", "add_prerequisite", Guarded),
-    ("quests", "remove_prerequisite", Guarded),
+    ("quests", "change_status", Docs),
+    ("quests", "change_quest_type", Guild),
+    ("quests", "change_parent", Docs),
+    ("quests", "delete_quest", Docs),
+    ("quests", "restore_quest", Docs),
+    ("quests", "add_prerequisite", Docs),
+    ("quests", "remove_prerequisite", Docs),
     ("quests", "write_quest_file", Helper),
     ("rules", "list_rules", Read),
     ("rules", "get_rule", Read),
     ("rules", "history", Read),
     ("rules", "get_rule_entry", Read),
-    ("rules", "set_rule", Guarded),
-    ("rules", "create_rule", Guarded),
-    ("rules", "delete_rule", Guarded),
-    ("rules", "rename_rule", Guarded),
-    ("rules", "set_rule_tags", Guarded),
-    ("rules", "edit_rule_tags", Guarded),
+    ("rules", "set_rule", Docs),
+    ("rules", "create_rule", Docs),
+    ("rules", "delete_rule", Docs),
+    ("rules", "rename_rule", Guild),
+    ("rules", "set_rule_tags", Docs),
+    ("rules", "edit_rule_tags", Docs),
     ("rules", "get_rules", Read),
-    ("rules", "set_rules", Guarded),
+    ("rules", "set_rules", Docs),
     ("search", "search", Read),
     ("worklog", "validate_date", Read),
     ("worklog", "activities", Read),
     ("worklog", "daily_summary", Read),
     ("worklog", "get_note", Read),
-    ("worklog", "set_note", Guarded),
+    ("worklog", "set_note", Docs),
     ("worklog", "list_notes", Read),
 ];
 
-const GUARD: &str = "store.mutation_guard().await";
+const GUILD: &str = "store.lock_guild().await";
+const DOCS: [&str; 2] = ["store.lock_docs(", "lock_resolved("];
+
+/// 잠금을 잡는 첫 자리 — 없으면 `None`.
+fn lock_at(body: &str) -> Option<usize> {
+    std::iter::once(GUILD).chain(DOCS).filter_map(|p| body.find(p)).min()
+}
+
+fn takes_lock(body: &str) -> bool {
+    lock_at(body).is_some()
+}
 
 struct Fn {
     public: bool,
@@ -308,13 +320,22 @@ fn guards_match_the_classification() {
         let fns = functions(src);
         let Some(f) = fns.get(*name) else { continue };
         let body = inner(&f.body);
-        let holds = body.contains(GUARD);
+        let holds = takes_lock(body);
         match kind {
-            Guarded => {
-                let Some(at) = body.find(GUARD) else {
+            Guild | Docs => {
+                let Some(at) = lock_at(body) else {
                     wrong.push(format!("{module}::{name}: 잠금이 없다"));
                     continue;
                 };
+                // DEV-432: 분류와 실제 잠금이 맞는지 — 길드 독점이라 적었는데 문서만 잠그면 길드 전체를
+                // 고치는 동안 남이 끼어든다. 반대면 쓸데없이 모두를 세운다.
+                let guild = body.contains(GUILD);
+                let docs = DOCS.iter().any(|p| body.contains(p));
+                match kind {
+                    Guild if docs || !guild => wrong.push(format!("{module}::{name}: 길드 독점이라 적었는데 문서를 잠근다")),
+                    Docs if guild || !docs => wrong.push(format!("{module}::{name}: 문서 잠금이라 적었는데 길드를 잠근다")),
+                    _ => {}
+                }
                 // 검증용 읽기까지 잠금 안에 있어야 남이 막 바꾼 상태를 보고 판단한다.
                 //
                 // DEV-407: 플러그인에게 **묻는 것**(`ask_pre`)은 예외다 — 답이 밖으로 나갔다
@@ -330,7 +351,7 @@ fn guards_match_the_classification() {
                     wrong.push(format!("{module}::{name}: Via 인데 직접 잡는다"));
                 }
                 match fns.get(*private) {
-                    Some(p) if inner(&p.body).contains(GUARD) => {}
+                    Some(p) if takes_lock(inner(&p.body)) => {}
                     _ => wrong.push(format!("{module}::{name}: {private} 가 잠금을 안 잡는다")),
                 }
                 if !calls(&f.body, module, module, private) {
@@ -350,18 +371,18 @@ fn guards_match_the_classification() {
 #[test]
 fn locked_entry_points_do_not_nest() {
     // 잠금은 재진입이 안 된다 — 쥔 채 다른 진입점을 부르면 영원히 기다린다.
-    let takes_lock: Vec<(&str, &str)> = TABLE
+    let locking: Vec<(&str, &str)> = TABLE
         .iter()
-        .filter(|(_, _, k)| matches!(k, Guarded | Via(_) | Composes))
+        .filter(|(_, _, k)| matches!(k, Guild | Docs | Via(_) | Composes))
         .map(|(m, f, _)| (*m, *f))
         .collect();
     let mut nested = Vec::new();
     for (module, src) in SOURCES {
         for (name, f) in functions(src) {
-            if !inner(&f.body).contains(GUARD) {
+            if !takes_lock(inner(&f.body)) {
                 continue;
             }
-            for (tm, tf) in &takes_lock {
+            for (tm, tf) in &locking {
                 if (*tm, *tf) != (*module, name.as_str()) && calls(&f.body, module, tm, tf) {
                     nested.push(format!("{module}::{name} → {tm}::{tf}"));
                 }

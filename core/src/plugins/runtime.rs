@@ -433,7 +433,11 @@ pub struct PluginRuntime {
     problems: Arc<Mutex<Vec<String>>>,
     worker: Option<Worker>,
     /// BUG-339: 끝날 때까지 기다리라고 적은 줄 — 변경 안에서 모아 두고 길드 잠금이 풀린 뒤 돌린다.
-    waiting: Mutex<Vec<Job>>,
+    ///
+    /// DEV-432: **모은 작업(tokio task)별로** 둔다. 문서 잠금이면 여러 변경이 동시에 잠금을 쥔다 —
+    /// 한 줄에 모으면 먼저 끝난 변경이 아직 잠금을 쥔 남의 줄까지 돌려서, 그 줄이 남의 문서를 고치려다
+    /// 기다리게 된다(BUG-339 가 없앤 것이 돌아온다). 작업 밖(CLI 의 `block_on`)은 `None` 한 칸이다.
+    waiting: Mutex<Vec<(Option<tokio::task::Id>, Job)>>,
 }
 
 /// DEV-381: 문제 목록의 상한. 서버는 몇 달씩 도는 프로세스라 상한이 없으면
@@ -582,7 +586,7 @@ impl EventSink for PluginRuntime {
                 }
                 let with = snapshot_with(p, &event, |h| h.wait);
                 if let Ok(mut q) = self.waiting.lock() {
-                    q.push(Job { plugin: i, event: event.clone(), with });
+                    q.push((tokio::task::try_id(), Job { plugin: i, event: event.clone(), with }));
                 }
             }
         }
@@ -632,8 +636,14 @@ impl EventSink for PluginRuntime {
     /// BUG-339: 길드 잠금이 풀린 뒤 — 모아 둔 "기다리는" 줄을 돌린다. 부른 쪽(명령)은 여기가 끝나야
     /// 끝난다. 이 줄이 길드를 고쳐도 잠금이 풀려 있으므로 막히지 않는다.
     fn after_unlock(&self) {
-        let jobs = match self.waiting.lock() {
-            Ok(mut q) => std::mem::take(&mut *q),
+        // DEV-432: 이 작업이 모은 것만 — 남의 것은 그 변경이 잠금을 풀 때 돈다.
+        let me = tokio::task::try_id();
+        let jobs: Vec<Job> = match self.waiting.lock() {
+            Ok(mut q) => {
+                let (mine, rest) = std::mem::take(&mut *q).into_iter().partition(|(t, _)| *t == me);
+                *q = rest;
+                mine.into_iter().map(|(_, j)| j).collect()
+            }
             Err(_) => return,
         };
         let Some(delivery) = self.delivery.as_ref() else {

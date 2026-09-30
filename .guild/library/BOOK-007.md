@@ -3,7 +3,7 @@ book_id = "BOOK-007"
 title = "플러그인 · 이벤트"
 path = "아키텍처/상세"
 created_at = "2026-09-23T11:49:54+09:00"
-updated_at = "2026-09-30T23:08:00+09:00"
+updated_at = "2026-10-01T02:29:09+09:00"
 deleted = false
 +++
 
@@ -87,7 +87,7 @@ graph LR
 ops 변경 함수
  ├─ ask_pre ──────────────► pre 줄들: 그 자리에서, 적힌 순서대로        [잠금 전]
  │                            이유를 돌려주면 막고, 칸을 돌려주면 값을 바꾼다
- ├─ mutation_guard ─ 잠금
+ ├─ lock_docs / lock_guild ─ 잠금
  ├─ journal · 캐시 · 파일
  ├─ emit_post ────────────► post + wait 줄들: 줄 세워 둠 (with 는 지금 읽어 둠)
  │                        └► 나머지 post 줄: 전용 스레드 큐에 넣고 바로 돌아온다 (with 는 지금 읽어 둠)

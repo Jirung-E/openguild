@@ -13,6 +13,7 @@
 //! 옛 위치를 보이지만 다음 적재·reindex 에서 파일대로 돌아온다. 반대(DB 먼저)면
 //! 화면은 새 위치인데 **다음 reindex 에서 사라진다** — 고치려던 바로 그 증상이다.
 
+use crate::lock::DocKey;
 use crate::error::{AppError, AppResult};
 use crate::models::{PositionItem, QuestPosition, UpdatePositionRequest};
 use crate::repo::positions::{self as file, Pos};
@@ -32,7 +33,7 @@ async fn slug_of(store: &Store, id: i64) -> AppResult<Option<String>> {
 }
 
 /// **파일이 아직 없으면 옛 DB 의 위치로 먼저 채운다.** 호출자는
-/// `store.mutation_guard()` 를 쥐고 부른다.
+/// 보드 위치 잠금(`DocKey::single("positions")`)을 쥐고 부른다.
 ///
 /// 이게 없으면 이행 구멍이 생긴다. 업그레이드한 사용자가 reindex 없이 앱만 열고 노드
 /// 하나를 옮기면, 없는 파일이 빈 상태로 읽혀 **그 노드 하나만 든 파일**이 만들어진다.
@@ -68,7 +69,7 @@ pub async fn update_position(
     id: i64,
     body: UpdatePositionRequest,
 ) -> AppResult<QuestPosition> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_docs(&[DocKey::single("positions")]).await?;
     let slug = slug_of(store, id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("quest not found: {id}")))?;
@@ -92,7 +93,7 @@ pub async fn update_position(
 /// **파일은 한 번만 쓴다.** 수백 개를 건마다 다시 쓰면 그만큼 디스크를 친다.
 /// 없는 퀘스트는 건너뛴다(보드가 들고 있던 목록과 그사이 지워진 것이 어긋날 수 있다).
 pub async fn update_positions(store: &Store, items: &[PositionItem]) -> AppResult<usize> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_docs(&[DocKey::single("positions")]).await?;
     if items.is_empty() {
         return Ok(0);
     }

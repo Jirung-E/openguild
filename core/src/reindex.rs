@@ -121,7 +121,7 @@ pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
     };
 
     // 1. 기존 내용 비움 (트랜잭션 안에서 — partial 실패 시 rollback).
-    let mut tx = pool.begin().await?;
+    let mut tx = crate::db::begin_write(pool).await?;
 
     // BUG-042: FK 위반 (787) 회피. reindex 의 quest INSERT 는 파일 정렬 순이라
     // parent_quest_id 가 자기보다 뒤에 들어갈 quest 를 가리키면 즉시 FK 검증에서

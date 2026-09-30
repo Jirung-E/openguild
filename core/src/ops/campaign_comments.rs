@@ -8,6 +8,7 @@
 //! snapshot 백업 합류는 후속 quest. entry 포맷 / reactions (DEV-108) 은
 //! quest 와 동일 (`repo::comments` 공용).
 
+use crate::lock::DocKey;
 use crate::events::{names as ev, payload};
 use serde_json::json;
 
@@ -125,7 +126,7 @@ pub async fn add_entry(
     if let Some(t) = pre.text("body") {
         body_trimmed = t;
     }
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_docs(&[DocKey::campaign(slug)]).await?;
     let _ = journal::append(
         &store.journal_pool,
         "add_campaign_comment",
@@ -183,7 +184,7 @@ pub async fn update_entry(
     id: u64,
     body: String,
 ) -> AppResult<CommentEntry> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_docs(&[DocKey::campaign(slug)]).await?;
     let body_trimmed = body.trim().to_string();
     if body_trimmed.is_empty() {
         return Err(AppError::BadRequest("body is empty".into()));
@@ -223,7 +224,7 @@ pub async fn update_entry(
 
 /// entry 삭제.
 pub async fn delete_entry(store: &Store, slug: &str, id: u64) -> AppResult<()> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_docs(&[DocKey::campaign(slug)]).await?;
     let _ = journal::append(
         &store.journal_pool,
         "delete_campaign_comment",
@@ -274,7 +275,7 @@ pub async fn toggle_reaction(
     emoji: &str,
     author: &str,
 ) -> AppResult<CommentEntry> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_docs(&[DocKey::campaign(slug)]).await?;
     let emoji = emoji.trim();
     let bad = |c: char| matches!(c, ',' | '"' | ':' | '|');
     if emoji.is_empty() || emoji.contains(bad) {
@@ -340,7 +341,7 @@ pub async fn toggle_reaction(
 /// DEV-234: 댓글 상단 고정(pin) 토글 — quest 와 동일 시맨틱, discussion 같은
 /// 게이트 없음.
 pub async fn toggle_pinned(store: &Store, slug: &str, id: u64) -> AppResult<CommentEntry> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_docs(&[DocKey::campaign(slug)]).await?;
     let _ = journal::append(
         &store.journal_pool,
         "toggle_campaign_comment_pinned",
@@ -387,7 +388,7 @@ pub fn get_memo(store: &Store, slug: &str) -> AppResult<Option<String>> {
 /// 이라 플러그인(=외부 프로세스)에 흘릴 것이 아니다. quest 쪽 `set_memo` 도 같은
 /// 이유로 제외했다.
 pub async fn set_memo(store: &Store, slug: &str, content: String) -> AppResult<()> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_docs(&[DocKey::campaign(slug)]).await?;
     let _ = journal::append(
         &store.journal_pool,
         "set_campaign_memo",

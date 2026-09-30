@@ -49,6 +49,15 @@ pub async fn create_pool_from_path(
     Ok(pool)
 }
 
+/// DEV-432: 쓰는 트랜잭션은 **처음부터 쓰기 잠금을 잡는다**(`BEGIN IMMEDIATE`).
+///
+/// 문서 잠금이면 다른 문서를 고치는 변경끼리 캐시 DB 에 동시에 쓴다. 보통 `BEGIN`(DEFERRED)은 읽기로
+/// 시작했다가 쓸 때 잠금을 올리는데, 그사이 남이 먼저 썼으면 SQLite 가 기다리지 않고 바로 "바쁨" 으로
+/// 실패시킨다(busy_timeout 이 안 통하는 경우). 처음부터 잡으면 앞 사람이 끝날 때까지 기다린다.
+pub async fn begin_write(pool: &sqlx::SqlitePool) -> sqlx::Result<sqlx::Transaction<'static, sqlx::Sqlite>> {
+    pool.begin_with("BEGIN IMMEDIATE").await
+}
+
 /// URL 기반 pool — in-memory(`sqlite::memory:` / `sqlite:file:..?mode=memory`)
 /// 전용. 파일 DB 는 `create_pool_from_path` 를 쓸 것 (UNC 경로가 URL 로 깨짐).
 pub async fn create_pool(database_url: &str) -> Result<SqlitePool> {
@@ -143,5 +152,45 @@ mod tests {
         let pool = create_pool("sqlite::memory:").await.unwrap();
         let ahead = run_migrations(&pool).await.unwrap();
         assert!(ahead.is_empty(), "clean DB should have no ahead: {ahead:?}");
+    }
+
+    /// DEV-432: 두 변경이 읽고 나서 쓰는 트랜잭션을 겹쳐 돌려도 둘 다 된다. 보통 `BEGIN` 이면 늦게
+    /// 쓰는 쪽이 기다리지도 않고 "바쁨" 으로 실패한다 — 그것도 함께 보여 둔다(왜 바꿨는지).
+    #[tokio::test]
+    async fn overlapping_write_transactions_wait_instead_of_failing() {
+        let dir = std::env::temp_dir().join(format!(
+            "og-db-immediate-{}",
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let pool = create_pool_from_path(&dir.join("t.db"), false).await.unwrap();
+        sqlx::query("PRAGMA journal_mode = WAL").execute(&pool).await.unwrap();
+        sqlx::query("CREATE TABLE t (n INTEGER)").execute(&pool).await.unwrap();
+
+        // 보통 BEGIN: 둘 다 읽은 뒤 하나가 쓰고 끝내면, 다른 하나의 쓰기는 바로 실패한다.
+        let mut a = pool.begin().await.unwrap();
+        let mut b = pool.begin().await.unwrap();
+        let _: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM t").fetch_one(&mut *a).await.unwrap();
+        let _: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM t").fetch_one(&mut *b).await.unwrap();
+        sqlx::query("INSERT INTO t VALUES (1)").execute(&mut *a).await.unwrap();
+        a.commit().await.unwrap();
+        assert!(sqlx::query("INSERT INTO t VALUES (2)").execute(&mut *b).await.is_err());
+        drop(b);
+
+        // begin_write: 겹쳐도 차례로 둘 다 된다.
+        let run = |pool: sqlx::SqlitePool, n: i64| async move {
+            let mut tx = begin_write(&pool).await.unwrap();
+            let _: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM t").fetch_one(&mut *tx).await.unwrap();
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            sqlx::query("INSERT INTO t VALUES (?)").bind(n).execute(&mut *tx).await.unwrap();
+            tx.commit().await.unwrap();
+        };
+        let (x, y) = tokio::join!(tokio::spawn(run(pool.clone(), 10)), tokio::spawn(run(pool.clone(), 11)));
+        x.unwrap();
+        y.unwrap();
+        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM t").fetch_one(&pool).await.unwrap();
+        assert_eq!(n, 3);
+        pool.close().await;
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

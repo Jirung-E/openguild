@@ -12,6 +12,7 @@ use crate::models::{
 use crate::repo::{QuestFile, QuestFrontmatter, QuestRef, QuestRelations, auto};
 use crate::services::quests as sql;
 use crate::snapshot;
+use crate::lock::DocKey;
 use crate::store::{Store, journal};
 use serde_json::json;
 use sqlx::SqlitePool;
@@ -85,6 +86,101 @@ fn report_snapshot(result: anyhow::Result<Option<crate::snapshot::SnapshotInfo>>
     }
 }
 
+/// DEV-432: 퀘스트 행 id → 문서 열쇠. 지워진 것도 준다(되살리기). 없는 id 는 건너뛴다 — 없으면 변경이
+/// 잠근 뒤 "없음" 으로 끝난다.
+async fn quest_keys(store: &Store, ids: &[i64]) -> AppResult<Vec<DocKey>> {
+    let mut out = Vec::new();
+    for id in ids {
+        let slug: Option<String> = sqlx::query_scalar(
+            "SELECT qt.prefix || '-' || printf('%03d', q.number)
+               FROM quests q JOIN quest_types qt ON q.quest_type_id = qt.id
+              WHERE q.id = ?",
+        )
+        .bind(id)
+        .fetch_optional(&store.index_pool)
+        .await?;
+        out.extend(slug.map(|s| DocKey::quest(&s)));
+    }
+    Ok(out)
+}
+
+/// DEV-432: 퀘스트 하나의 열쇠 — 대부분의 변경이 이것만 잠근다.
+async fn quest_key(store: &Store, id: i64) -> AppResult<Vec<DocKey>> {
+    quest_keys(store, &[id]).await
+}
+
+/// DEV-432: 부모 · 선행 관계를 **바꾸는** 변경끼리는 줄 세운다. 각자 제 문서만 잠그면 서로 다른 두 변경이
+/// 따로따로는 괜찮은데 합치면 고리(A 의 부모가 B, B 의 부모가 A 의 자손)가 되는 것을 못 막는다.
+fn tree_key() -> DocKey {
+    DocKey::single("quest-tree")
+}
+
+/// DEV-432: 퀘스트 만들기 — 타입별 번호(counter)와 부모. 새 문서 자신은 번호를 받기 전에는 이름이 없고,
+/// 번호를 쥔 동안 남이 같은 이름을 만들 수 없다.
+async fn create_keys(store: &Store, type_id: i64, parent: Option<i64>) -> AppResult<Vec<DocKey>> {
+    let prefix: Option<String> = sqlx::query_scalar("SELECT prefix FROM quest_types WHERE id = ?")
+        .bind(type_id)
+        .fetch_optional(&store.index_pool)
+        .await?;
+    let mut out: Vec<DocKey> = prefix.map(|p| DocKey::new("counter", p)).into_iter().collect();
+    out.extend(quest_keys(store, parent.as_slice()).await?);
+    Ok(out)
+}
+
+/// DEV-432: 이 퀘스트와 부모 · 선행 · 후행으로 이어진 퀘스트(지워지지 않은 것).
+async fn neighbour_ids(store: &Store, id: i64) -> AppResult<Vec<i64>> {
+    let mut ids: Vec<i64> = sqlx::query_scalar(
+        "SELECT DISTINCT q.id FROM quests q
+         JOIN quest_dependencies d
+           ON q.id = d.quest_id OR q.id = d.prerequisite_id
+         WHERE (d.quest_id = ? OR d.prerequisite_id = ?)
+           AND q.id != ? AND q.deleted_at IS NULL",
+    )
+    .bind(id)
+    .bind(id)
+    .bind(id)
+    .fetch_all(&store.index_pool)
+    .await?;
+    ids.extend(parent_id_of(&store.index_pool, id).await?);
+    Ok(ids)
+}
+
+/// DEV-432: 지우기 — 지울 것 전부, 그 부모 · 이웃, 떨어져 나갈 자식.
+async fn delete_keys(store: &Store, id: i64, cascade_ids: &[i64]) -> AppResult<Vec<DocKey>> {
+    let mut ids: Vec<i64> = std::iter::once(id).chain(cascade_ids.iter().copied()).collect();
+    for d in std::iter::once(id).chain(cascade_ids.iter().copied()) {
+        ids.extend(neighbour_ids(store, d).await?);
+    }
+    let children: Vec<i64> =
+        sqlx::query_scalar("SELECT id FROM quests WHERE parent_quest_id = ? AND deleted_at IS NULL")
+            .bind(id)
+            .fetch_all(&store.index_pool)
+            .await?;
+    ids.extend(children);
+    let mut keys = quest_keys(store, &ids).await?;
+    keys.push(tree_key());
+    Ok(keys)
+}
+
+/// DEV-432: 되살리기 — 자신, 부모, 이웃. 부모 밑으로 돌아가므로 나무를 바꾸는 변경이다.
+async fn restore_keys(store: &Store, id: i64) -> AppResult<Vec<DocKey>> {
+    let mut ids = vec![id];
+    ids.extend(neighbour_ids(store, id).await?);
+    let mut keys = quest_keys(store, &ids).await?;
+    keys.push(tree_key());
+    Ok(keys)
+}
+
+/// DEV-432: 부모 바꾸기 — 자신, 옛 부모, 새 부모.
+async fn parent_keys(store: &Store, id: i64, new_parent: Option<i64>) -> AppResult<Vec<DocKey>> {
+    let mut ids = vec![id];
+    ids.extend(parent_id_of(&store.index_pool, id).await?);
+    ids.extend(new_parent);
+    let mut keys = quest_keys(store, &ids).await?;
+    keys.push(tree_key());
+    Ok(keys)
+}
+
 /// 새 quest 생성. 영향:
 /// - 새 파일 `.guild/quests/{slug}.md` 생성.
 /// - parent 가 지정되었으면 그 quest 파일의 auto 블록 갱신 (sub-quest 목록에 추가).
@@ -109,7 +205,8 @@ pub async fn create_quest(store: &Store, mut body: CreateQuestRequest) -> AppRes
     if let Some(u) = pre.int("urgency") {
         body.urgency = Some(u);
     }
-    let _g = store.mutation_guard().await?;
+    let (type_id, parent) = (body.quest_type_id, body.parent_quest_id);
+    let _g = super::lock_resolved(store, || create_keys(store, type_id, parent)).await?;
     // 1. journal append (의도 기록).
     let _ = journal::append(
         &store.journal_pool,
@@ -239,7 +336,7 @@ pub async fn list_quests(
 
 /// Quest 의 title / description / urgency 수정.
 pub async fn update_quest(store: &Store, id: i64, body: UpdateQuestRequest) -> AppResult<QuestRow> {
-    let _g = store.mutation_guard().await?;
+    let _g = super::lock_resolved(store, || quest_key(store, id)).await?;
     let _ = journal::append(
         &store.journal_pool,
         "update_quest",
@@ -273,7 +370,7 @@ pub async fn set_due_dates(
     desired_due: Option<Option<String>>,
     required_due: Option<Option<String>>,
 ) -> AppResult<QuestRow> {
-    let _g = store.mutation_guard().await?;
+    let _g = super::lock_resolved(store, || quest_key(store, id)).await?;
     let _ = journal::append(
         &store.journal_pool,
         "set_due_dates",
@@ -317,7 +414,7 @@ pub async fn set_due_dates(
 /// (들어온 순서대로, 같은 tag 의 첫 등장만). 새 tags 가 비면 frontmatter
 /// 에서 키 자체 생략.
 pub async fn set_quest_tags(store: &Store, id: i64, tags: Vec<String>) -> AppResult<QuestRow> {
-    let _g = store.mutation_guard().await?;
+    let _g = super::lock_resolved(store, || quest_key(store, id)).await?;
     let quest = set_quest_tags_locked(store, id, tags).await?;
     after_mutation(store, _g).await;
     Ok(quest)
@@ -326,7 +423,7 @@ pub async fn set_quest_tags(store: &Store, id: i64, tags: Vec<String>) -> AppRes
 /// BUG-287: 태그를 붙이고 뗀다 — 잠금을 쥔 채 **지금** 파일의 목록에 적용한다.
 /// 저널에는 결과 전체가 `set_quest_tags` 로 남는다(복원 재생이 그대로 쓴다).
 pub async fn edit_quest_tags(store: &Store, id: i64, edit: super::TagEdit) -> AppResult<QuestRow> {
-    let _g = store.mutation_guard().await?;
+    let _g = super::lock_resolved(store, || quest_key(store, id)).await?;
     let quest = sql::fetch_by_id(&store.index_pool, id).await?;
     let current = list_quest_tags(store, &quest.quest_id)?;
     let quest = set_quest_tags_locked(store, id, edit.apply(current)).await?;
@@ -358,9 +455,7 @@ async fn set_quest_tags_locked(store: &Store, id: i64, tags: Vec<String>) -> App
     let mut quest = sql::fetch_by_id(&store.index_pool, id).await?;
 
     // 1) DB 캐시 갱신 — 트랜잭션 안에서 wipe + INSERT.
-    let mut tx = store
-        .index_pool
-        .begin()
+    let mut tx = crate::db::begin_write(&store.index_pool)
         .await
         .map_err(|e| crate::error::AppError::Internal(anyhow::anyhow!("begin tx: {e}")))?;
     sqlx::query("DELETE FROM quest_tags WHERE quest_id = ?")
@@ -442,7 +537,7 @@ pub async fn change_status(
     if let Some(reason) = ask_status_pre(store, id, &body.status_slug).await {
         return Err(crate::error::AppError::BadRequest(reason));
     }
-    let _g = store.mutation_guard().await?;
+    let _g = super::lock_resolved(store, || quest_key(store, id)).await?;
     // BUG-011: no-op (현재 상태 == 요청 상태) 면 일찍 반환 — journal/history/
     // updated_at 모두 변동 없음.
     // DEV-048: slug 기반 비교로 변경 — body.status_slug 와 현재 status.slug 직접 비교.
@@ -583,7 +678,8 @@ pub async fn change_quest_type(
     id: i64,
     body: ChangeTypeRequest,
 ) -> AppResult<QuestRow> {
-    let _g = store.mutation_guard().await?;
+    // DEV-432: 이름(번호)이 바뀌고 보드 위치 · 번호 파일까지 고친다 — 길드 독점.
+    let _g = store.lock_guild().await?;
     let _ = journal::append(
         &store.journal_pool,
         "change_quest_type",
@@ -718,7 +814,8 @@ pub async fn change_parent(
     id: i64,
     body: ChangeParentRequest,
 ) -> AppResult<QuestRow> {
-    let _g = store.mutation_guard().await?;
+    let new_parent = body.parent_quest_id;
+    let _g = super::lock_resolved(store, || parent_keys(store, id, new_parent)).await?;
     let _ = journal::append(
         &store.journal_pool,
         "change_parent",
@@ -802,7 +899,7 @@ pub async fn delete_quest(store: &Store, id: i64, cascade_ids: &[i64]) -> AppRes
     if let Some(reason) = ask_delete_pre(store, id).await {
         return Err(crate::error::AppError::BadRequest(reason));
     }
-    let _g = store.mutation_guard().await?;
+    let _g = super::lock_resolved(store, || delete_keys(store, id, cascade_ids)).await?;
     // DEV-374: 삭제 뒤에는 무엇이었는지 알 수 없다 — 지우기 **전에** 잡아 둔다(잠금 안 — 막 바뀐 것까지).
     // 구독자가 없으면 이 조회도 하지 않는다.
     let doomed = if store.events_wanted(ev::QUEST_DELETED, Phase::Post) {
@@ -913,7 +1010,7 @@ pub async fn delete_quest(store: &Store, id: i64, cascade_ids: &[i64]) -> AppRes
 
 /// soft delete 취소.
 pub async fn restore_quest(store: &Store, id: i64) -> AppResult<QuestRow> {
-    let _g = store.mutation_guard().await?;
+    let _g = super::lock_resolved(store, || restore_keys(store, id)).await?;
     let _ = journal::append(
         &store.journal_pool,
         "restore_quest",
@@ -963,7 +1060,14 @@ pub async fn add_prerequisite(
     id: i64,
     body: AddPrerequisiteRequest,
 ) -> AppResult<()> {
-    let _g = store.mutation_guard().await?;
+    // DEV-432: 선행 고리도 나무와 같은 까닭으로 줄 세운다.
+    let prereq = body.prerequisite_id;
+    let _g = super::lock_resolved(store, || async move {
+        let mut keys = quest_keys(store, &[id, prereq]).await?;
+        keys.push(tree_key());
+        Ok(keys)
+    })
+    .await?;
     let prereq_id = body.prerequisite_id;
     let _ = journal::append(
         &store.journal_pool,
@@ -989,7 +1093,7 @@ pub async fn add_prerequisite(
 }
 
 pub async fn remove_prerequisite(store: &Store, id: i64, prereq_id: i64) -> AppResult<()> {
-    let _g = store.mutation_guard().await?;
+    let _g = super::lock_resolved(store, || async move { quest_keys(store, &[id, prereq_id]).await }).await?;
     let _ = journal::append(
         &store.journal_pool,
         "remove_prerequisite",

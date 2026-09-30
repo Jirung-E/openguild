@@ -11,6 +11,7 @@
 //! 파일이 진리원, DB 는 snapshot 백업 + 빠른 쿼리용 캐시. quest 가 index.db 에
 //! 없으면 (drift 상태) DB UPSERT 는 silently skip — 다음 reindex 가 일관시킴.
 
+use crate::lock::DocKey;
 use crate::events::{names as ev, payload};
 use serde_json::json;
 
@@ -119,9 +120,7 @@ async fn replace_comments_db(store: &Store, slug: &str) -> AppResult<()> {
         return Ok(());
     };
     let entries = svc::list_entries(store, slug)?;
-    let mut tx = store
-        .index_pool
-        .begin()
+    let mut tx = crate::db::begin_write(&store.index_pool)
         .await
         .map_err(|e| AppError::Internal(anyhow::anyhow!("begin tx: {e}")))?;
     sqlx::query("DELETE FROM quest_comments WHERE quest_id = ?")
@@ -164,7 +163,7 @@ pub fn get_comments(store: &Store, slug: &str) -> AppResult<Option<String>> {
 }
 
 pub async fn set_comments(store: &Store, slug: &str, content: String) -> AppResult<()> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_docs(&[DocKey::quest(slug)]).await?;
     let _ = journal::append(
         &store.journal_pool,
         "set_comments",
@@ -210,7 +209,7 @@ pub async fn add_comment_entry(
     if let Some(t) = pre.text("body") {
         body = t;
     }
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_docs(&[DocKey::quest(slug)]).await?;
     let _ = journal::append(
         &store.journal_pool,
         "add_comment_entry",
@@ -247,7 +246,7 @@ pub async fn update_comment_entry(
     id: u64,
     body: String,
 ) -> AppResult<CommentEntry> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_docs(&[DocKey::quest(slug)]).await?;
     let _ = journal::append(
         &store.journal_pool,
         "update_comment_entry",
@@ -280,7 +279,7 @@ pub async fn toggle_comment_reaction(
     emoji: &str,
     author: &str,
 ) -> AppResult<CommentEntry> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_docs(&[DocKey::quest(slug)]).await?;
     let emoji = emoji.trim();
     let bad = |c: char| matches!(c, ',' | '"' | ':' | '|');
     if emoji.is_empty() || emoji.contains(bad) {
@@ -356,7 +355,7 @@ pub async fn toggle_comment_discussion(
     slug: &str,
     id: u64,
 ) -> AppResult<CommentEntry> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_docs(&[DocKey::quest(slug)]).await?;
     let _ = journal::append(
         &store.journal_pool,
         "toggle_comment_discussion",
@@ -402,7 +401,7 @@ pub async fn toggle_comment_resolved(
     slug: &str,
     id: u64,
 ) -> AppResult<CommentEntry> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_docs(&[DocKey::quest(slug)]).await?;
     let _ = journal::append(
         &store.journal_pool,
         "toggle_comment_resolved",
@@ -494,7 +493,7 @@ async fn record_discussion_history(
 /// 없음 — root/답글 무관하게 켤 수 있고, 실제 "몇 개까지" "root 만" 같은
 /// 제약은 GUI 가 담당(pin 버튼을 root 댓글에만 노출).
 pub async fn toggle_comment_pinned(store: &Store, slug: &str, id: u64) -> AppResult<CommentEntry> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_docs(&[DocKey::quest(slug)]).await?;
     let _ = journal::append(
         &store.journal_pool,
         "toggle_comment_pinned",
@@ -530,7 +529,7 @@ pub async fn toggle_comment_pinned(store: &Store, slug: &str, id: u64) -> AppRes
 
 /// 댓글 entry 삭제.
 pub async fn delete_comment_entry(store: &Store, slug: &str, id: u64) -> AppResult<()> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_docs(&[DocKey::quest(slug)]).await?;
     let _ = journal::append(
         &store.journal_pool,
         "delete_comment_entry",
@@ -573,7 +572,7 @@ pub fn get_memo(store: &Store, slug: &str) -> AppResult<Option<String>> {
 }
 
 pub async fn set_memo(store: &Store, slug: &str, content: String) -> AppResult<()> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_docs(&[DocKey::quest(slug)]).await?;
     let _ = journal::append(
         &store.journal_pool,
         "set_memo",

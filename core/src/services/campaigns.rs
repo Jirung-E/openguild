@@ -89,7 +89,7 @@ pub async fn create(pool: &SqlitePool, body: CreateCampaignRequest) -> AppResult
 
     let now = crate::time::now_local_iso8601();
 
-    let mut tx = pool.begin().await?;
+    let mut tx = crate::db::begin_write(pool).await?;
 
     // Counter self-heal: 외부에서 파일을 미리 만들었을 가능성 대비.
     sqlx::query(
@@ -148,7 +148,7 @@ pub async fn update(
     }
 
     let now = crate::time::now_local_iso8601();
-    let mut tx = pool.begin().await?;
+    let mut tx = crate::db::begin_write(pool).await?;
 
     if let Some(t) = body.title {
         let t = t.trim();
@@ -282,7 +282,7 @@ pub async fn update_checklist(
     id: i64,
     body: UpdateChecklistRequest,
 ) -> AppResult<CampaignChecklistItem> {
-    let mut tx = pool.begin().await?;
+    let mut tx = crate::db::begin_write(pool).await?;
     if let Some(t) = body.text {
         let t = t.trim();
         if t.is_empty() {
@@ -337,7 +337,7 @@ pub async fn replace_checklists_from_file(
     if same {
         return Ok(());
     }
-    let mut tx = pool.begin().await?;
+    let mut tx = crate::db::begin_write(pool).await?;
     sqlx::query("DELETE FROM campaign_checklists WHERE campaign_id = ?")
         .bind(campaign_id)
         .execute(&mut *tx)

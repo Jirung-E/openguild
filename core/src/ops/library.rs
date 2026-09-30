@@ -6,6 +6,7 @@
 
 use serde_json::json;
 
+use crate::lock::DocKey;
 use crate::error::{AppError, AppResult};
 use crate::events::{names as ev, payload};
 use crate::repo::history as hist;
@@ -209,9 +210,7 @@ pub async fn get_book(store: &Store, book_id: &str) -> AppResult<Option<LibraryD
 
 /// `library_tags` 를 주어진 목록으로 통째 교체 (wipe + INSERT, quest_tags 와 동일 패턴).
 async fn sync_book_tags_cache(store: &Store, book_id: i64, tags: &[String]) -> AppResult<()> {
-    let mut tx = store
-        .index_pool
-        .begin()
+    let mut tx = crate::db::begin_write(&store.index_pool)
         .await
         .map_err(|e| AppError::Internal(anyhow::anyhow!("begin tx: {e}")))?;
     sqlx::query("DELETE FROM library_tags WHERE book_id = ?")
@@ -240,7 +239,7 @@ pub async fn set_book_tags(
     book_id: &str,
     tags: Vec<String>,
 ) -> AppResult<LibraryDocRow> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_docs(&[DocKey::book(book_id)]).await?;
     set_book_tags_locked(store, book_id, tags).await
 }
 
@@ -250,7 +249,7 @@ pub async fn edit_book_tags(
     book_id: &str,
     edit: super::TagEdit,
 ) -> AppResult<LibraryDocRow> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_docs(&[DocKey::book(book_id)]).await?;
     let current = BookFile::read(store.paths.book_path(book_id))
         .map_err(|_| AppError::NotFound(format!("book not found: {book_id}")))?
         .frontmatter
@@ -334,7 +333,7 @@ pub async fn create_book(
     body: &str,
     path: &str,
 ) -> AppResult<LibraryDocRow> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_docs(&[DocKey::new("counter", "book")]).await?;
     let title = title.trim();
     if title.is_empty() {
         return Err(AppError::BadRequest("title is empty".into()));
@@ -410,7 +409,7 @@ pub async fn update_book(
     body: Option<&str>,
     path: Option<&str>,
 ) -> AppResult<LibraryDocRow> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_docs(&[DocKey::book(book_id)]).await?;
     let existing = get_book(store, book_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("book not found: {book_id}")))?;
@@ -491,7 +490,7 @@ pub async fn update_book(
 /// soft delete — frontmatter `deleted = true` + 캐시 deleted_at. 파일은 남긴다
 /// (quests 와 동일 — 번호 재사용 금지는 카운터가 보장).
 pub async fn delete_book(store: &Store, book_id: &str) -> AppResult<()> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_docs(&[DocKey::book(book_id)]).await?;
     let existing = get_book(store, book_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("book not found: {book_id}")))?;
@@ -554,7 +553,7 @@ pub async fn list_folders(store: &Store) -> AppResult<Vec<LibraryFolderRow>> {
 
 /// 새 폴더 생성 — 순수 컨테이너(본문 없음). 이미 존재하면 에러.
 pub async fn create_folder(store: &Store, path: &str) -> AppResult<LibraryFolderRow> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_docs(&[DocKey::single("library-folders")]).await?;
     let path = repo::normalize_folder_path(path).map_err(|e| AppError::BadRequest(e.to_string()))?;
     if path.is_empty() {
         return Err(AppError::BadRequest(crate::tf!(
@@ -638,7 +637,7 @@ pub async fn create_folder(store: &Store, path: &str) -> AppResult<LibraryFolder
 /// 파일명인 BOOK 번호가 안 바뀌게), 폴더 하나를 옮기면 **하위 폴더 전부와 그 아래 문서 전부**의
 /// 경로를 같이 고쳐야 한다. 그래서 한 잠금 안에서 한꺼번에 한다.
 pub async fn move_folder(store: &Store, from: &str, to: &str) -> AppResult<Vec<LibraryFolderRow>> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_guild().await?;
     let from = repo::normalize_folder_path(from).map_err(|e| AppError::BadRequest(e.to_string()))?;
     let to = repo::normalize_folder_path(to).map_err(|e| AppError::BadRequest(e.to_string()))?;
     if from.is_empty() {
@@ -779,7 +778,7 @@ fn visible_folders<'a>(paths: impl Iterator<Item = &'a str>) -> std::collections
 /// 없어야 함 (안전을 위해 빈 폴더만 삭제 허용 — v1).
 /// 돌려주는 값: **실제로 지웠나.** `false` 면 이미 없던 폴더다(오류가 아니다 — 아래 참고).
 pub async fn delete_folder(store: &Store, path: &str) -> AppResult<bool> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_guild().await?;
     let path =
         repo::normalize_folder_path(path).map_err(|e| AppError::BadRequest(e.to_string()))?;
     if path.is_empty() {

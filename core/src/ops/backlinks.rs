@@ -171,7 +171,7 @@ pub async fn refresh_for(store: &Store, kind: DocKind, id: &str) -> AppResult<()
     const BARE_ORDER: [DocKind; 4] =
         [DocKind::Quest, DocKind::Campaign, DocKind::Book, DocKind::Rule];
 
-    let mut tx = store.index_pool.begin().await?;
+    let mut tx = crate::db::begin_write(&store.index_pool).await?;
     sqlx::query("DELETE FROM doc_links WHERE src_kind = ? AND src_id = ?")
         .bind(kind.as_str())
         .bind(id)

@@ -18,6 +18,7 @@
 
 use serde_json::json;
 
+use crate::lock::DocKey;
 use crate::error::{AppError, AppResult};
 use crate::events::{names as ev, payload};
 use crate::store::{journal, Store};
@@ -447,7 +448,7 @@ async fn add_attachment(
     path: &str,
     name: &str,
 ) -> AppResult<Vec<QuestAttachment>> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_docs(&[owner_key(kind, slug)]).await?;
     if path.trim().is_empty() {
         return Err(AppError::BadRequest(crate::tf!("빈 첨부 경로", "empty attachment path")));
     }
@@ -542,7 +543,7 @@ async fn remove_attachment(
     slug: &str,
     path: &str,
 ) -> AppResult<Vec<QuestAttachment>> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_docs(&[owner_key(kind, slug)]).await?;
     let _ = journal::append(
         &store.journal_pool,
         "remove_attachment",
@@ -632,6 +633,15 @@ async fn attachment_referenced(store: &Store, path: &str) -> bool {
         }
     }
     false
+}
+
+/// DEV-432: 첨부 목록은 그 문서의 일부다 — 문서 열쇠로 잠근다.
+fn owner_key(kind: &str, slug: &str) -> DocKey {
+    match kind {
+        "campaign" => DocKey::campaign(slug),
+        "book" => DocKey::book(slug),
+        _ => DocKey::quest(slug),
+    }
 }
 
 #[cfg(test)]

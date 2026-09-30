@@ -9,6 +9,7 @@
 
 use serde_json::json;
 
+use crate::lock::DocKey;
 use crate::error::{AppError, AppResult};
 use crate::events::{Phase, names as ev, payload};
 use crate::models::{
@@ -64,7 +65,7 @@ pub async fn fetch_detail(store: &Store, slug: &str) -> AppResult<CampaignDetail
 // ─────────────────────── 생성 / 수정 / 삭제 ───────────────────────
 
 pub async fn create_campaign(store: &Store, body: CreateCampaignRequest) -> AppResult<CampaignRow> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_docs(&[DocKey::new("counter", "campaign")]).await?;
     let _ = journal::append(
         &store.journal_pool,
         "create_campaign",
@@ -90,7 +91,7 @@ pub async fn update_campaign(
     id: i64,
     body: UpdateCampaignRequest,
 ) -> AppResult<CampaignRow> {
-    let _g = store.mutation_guard().await?;
+    let _g = super::lock_resolved(store, || campaign_key(store, id)).await?;
     let _ = journal::append(
         &store.journal_pool,
         "update_campaign",
@@ -183,7 +184,7 @@ pub async fn begin_banner_image(
     ext: &str,
     source_note: &str,
 ) -> AppResult<(String, std::path::PathBuf)> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_docs(&[DocKey::campaign(slug)]).await?;
     let ext = check_banner_ext(ext)?;
 
     let _ = journal::append(
@@ -212,7 +213,7 @@ pub async fn begin_banner_image(
 
 /// BUG-255: 배너 쓰기의 **뒷부분** — 파일이 제자리에 놓인 뒤 DB + frontmatter 갱신.
 pub async fn commit_banner_image(store: &Store, slug: &str, rel: &str) -> AppResult<CampaignRow> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_docs(&[DocKey::campaign(slug)]).await?;
     let camp = sql::fetch_by_slug(&store.index_pool, slug).await?;
     sqlx::query("UPDATE campaigns SET image_path = ? WHERE id = ?")
         .bind(rel)
@@ -269,7 +270,7 @@ pub async fn set_banner_image(
 
 /// DEV-087: 배너 제거 — assets 파일 삭제 + frontmatter / DB NULL.
 pub async fn clear_banner_image(store: &Store, slug: &str) -> AppResult<CampaignRow> {
-    let _g = store.mutation_guard().await?;
+    let _g = store.lock_docs(&[DocKey::campaign(slug)]).await?;
     let _ = journal::append(
         &store.journal_pool,
         "clear_campaign_banner",
@@ -299,7 +300,7 @@ pub async fn clear_banner_image(store: &Store, slug: &str) -> AppResult<Campaign
 }
 
 pub async fn delete_campaign(store: &Store, id: i64) -> AppResult<()> {
-    let _g = store.mutation_guard().await?;
+    let _g = super::lock_resolved(store, || campaign_key(store, id)).await?;
     let _ = journal::append(
         &store.journal_pool,
         "delete_campaign",
@@ -338,7 +339,7 @@ pub async fn link_quest_by_slug(
     campaign_id: i64,
     quest_slug: &str,
 ) -> AppResult<()> {
-    let _g = store.mutation_guard().await?;
+    let _g = super::lock_resolved(store, || campaign_key(store, campaign_id)).await?;
     let qid = sql::resolve_quest_id(&store.index_pool, quest_slug).await?;
     let _ = journal::append(
         &store.journal_pool,
@@ -368,7 +369,7 @@ pub async fn unlink_quest_by_slug(
     campaign_id: i64,
     quest_slug: &str,
 ) -> AppResult<()> {
-    let _g = store.mutation_guard().await?;
+    let _g = super::lock_resolved(store, || campaign_key(store, campaign_id)).await?;
     let qid = sql::resolve_quest_id(&store.index_pool, quest_slug).await?;
     let _ = journal::append(
         &store.journal_pool,
@@ -402,7 +403,7 @@ pub async fn add_checklist_line(
     campaign_id: i64,
     text: &str,
 ) -> AppResult<CampaignChecklistItem> {
-    let _g = store.mutation_guard().await?;
+    let _g = super::lock_resolved(store, || campaign_key(store, campaign_id)).await?;
     let _ = journal::append(
         &store.journal_pool,
         "campaign_checklist_add",
@@ -457,7 +458,7 @@ pub async fn set_checklist_checked_by_index(
     one_based_idx: usize,
     checked: bool,
 ) -> AppResult<()> {
-    let _g = store.mutation_guard().await?;
+    let _g = super::lock_resolved(store, || campaign_key(store, campaign_id)).await?;
     if one_based_idx == 0 {
         return Err(AppError::BadRequest(
             "checklist index is 1-based, got 0".into(),
@@ -513,7 +514,7 @@ pub async fn remove_checklist_by_index(
     campaign_id: i64,
     one_based_idx: usize,
 ) -> AppResult<()> {
-    let _g = store.mutation_guard().await?;
+    let _g = super::lock_resolved(store, || campaign_key(store, campaign_id)).await?;
     if one_based_idx == 0 {
         return Err(AppError::BadRequest("checklist index is 1-based, got 0".into()));
     }
@@ -729,6 +730,15 @@ fn set_checked_marker(line: &str, checked: bool) -> String {
     let bullet_ch = &rest[..2]; // "- " / "* " / "+ "
     let marker = if checked { "[x]" } else { "[ ]" };
     format!("{lead}{bullet_ch}{marker}{after}")
+}
+
+/// DEV-432: 캠페인 행 id → 문서 열쇠. 없으면 빈 목록 — 변경이 잠근 뒤 "없음" 으로 끝난다.
+async fn campaign_key(store: &Store, id: i64) -> AppResult<Vec<DocKey>> {
+    let slug: Option<String> = sqlx::query_scalar("SELECT campaign_slug FROM campaigns WHERE id = ?")
+        .bind(id)
+        .fetch_optional(&store.index_pool)
+        .await?;
+    Ok(slug.map(|s| DocKey::campaign(&s)).into_iter().collect())
 }
 
 #[cfg(test)]
