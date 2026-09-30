@@ -3,7 +3,7 @@ book_id = "BOOK-006"
 title = "저장소 — 파일 · 캐시 · journal · 스냅샷 · 잠금"
 path = "아키텍처/상세"
 created_at = "2026-09-23T11:49:54+09:00"
-updated_at = "2026-09-23T12:01:22+09:00"
+updated_at = "2026-10-01T01:53:21+09:00"
 deleted = false
 +++
 
@@ -57,7 +57,8 @@ deleted = false
 ## journal — `backups/journal.db`
 
 변경의 **의도**를 먼저 적는 AOF 다(`ops` 흐름의 3단계). 스냅샷을 뜰 때마다 비운다 — 그 뒤의
-변경만 쌓인다. `restore --at` 이 스냅샷 위에 journal 을 다시 돌려 시점 복원을 한다(`replay.rs`).
+변경만 쌓인다. 비우는 것은 **스냅샷이 길드를 읽은 시점의 마지막 op 까지**다(BUG-340) — 스냅샷 파일을
+쓰는 동안 들어온 변경은 남는다. `restore --at` 이 스냅샷 위에 journal 을 다시 돌려 시점 복원을 한다(`replay.rs`).
 
 이벤트와 겸하지 않는다. journal 은 실패할 시도도 적고, 결과(새로 붙은 번호 등)가 없고, 복원 중에
 재생되기 때문이다 — 이유는 `core/src/events/mod.rs` 맨 위.
@@ -72,9 +73,10 @@ deleted = false
 |---|---|
 | 담는 것 | 루트 마커 + `quests` · `campaigns` · `rules` · `tags` · `types` · `statuses` · `history` · `library` · `worklog` · `templates` · `plugins` — 정본은 `snapshot.rs` 의 `SOURCE_SUBDIRS`. 무엇을 담았는지 스냅샷의 `meta.subdirs` 에 적는다 |
 | **안 담는 것** | `attachments` — **일부러 뺐다**(BUG-188). 크기 상한이 없는 유일한 자료라 스냅샷이 수 GB 가 되고 SQLite blob 상한에 걸린다. 보관은 git 이나 사용자 몫이고, 백업 화면이 그렇게 밝힌다 |
-| 자동 | 변경 50번 또는 24시간 — `OPENGUILD_AUTO_BACKUP_OPS` / `_HOURS`. 앱·서버는 뒤에서 뜨고 CLI 는 그 자리에서 뜬다(DEV-299) |
+| 자동 | 변경 50번 또는 24시간 — `OPENGUILD_AUTO_BACKUP_OPS` / `_HOURS`. 앱·서버는 뒤에서 뜨고 CLI 는 그 자리에서 뜬다(DEV-299). 변경 함수가 **잠금을 푼 뒤** 부른다 — 쥔 채 부르면 제 잠금을 기다린다 |
+| 잠금 | **두 단계**(BUG-340) — 길드 **독점**으로 파일 내용을 메모리로 읽고 journal 위치를 적은 뒤 푼다(이 길드 기준 0.02초). 스냅샷 파일 쓰기는 잠금 밖이라 그동안에도 길드를 고칠 수 있다. 이름은 빈 파일을 `create_new` 로 먼저 만들어 잡는다 |
 | 보관 | 7개 |
-| 복원 | 지금 것을 `.pre-restore/` 로 옮겨 두고 → **그 스냅샷이 담은 폴더만** 지우고 내용을 되붙인다 → `reindex` |
+| 복원 | 지금 것을 `.pre-restore/` 로 옮겨 두고 → **그 스냅샷이 담은 폴더만** 지우고 내용을 되붙인다 → `reindex`. 처음부터 끝까지 길드 **독점** |
 
 **복원은 스냅샷이 담은 폴더만 지운다**(BUG-337). 목록에 폴더를 더하면 그 전에 뜬 스냅샷에는 그
 폴더가 없다 — 그걸로 복원하면서 목록 전체를 지우면 지금 것이 사라지고 되붙일 것이 없다.

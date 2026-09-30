@@ -18,7 +18,12 @@ use sqlx::SqlitePool;
 
 /// 매 mutation 끝에 호출 — 자동 백업 정책 검토 + 필요시 snapshot.
 /// snapshot 실패해도 mutation 결과엔 영향 X (stderr 경고만).
-async fn after_mutation(store: &Store) {
+///
+/// BUG-340: 변경이 쥔 잠금을 **받아서 먼저 푼다.** 백업은 길드 잠금을 스스로 잡으므로, 쥔 채 부르면
+/// 제 잠금을 기다린다. 그래서 변경 함수의 **맨 끝**(이벤트를 다 낸 뒤)에서 부른다 — 풀리는 순간
+/// 모아 둔 "기다리는" 플러그인 줄이 돌기 때문에, 이벤트가 그보다 늦으면 다음 잠금까지 밀린다.
+async fn after_mutation(store: &Store, guard: crate::lock::MutationGuard) {
+    drop(guard);
     // DEV-022: journal replay 중에는 auto-snapshot 억제. replay 도중 snapshot 이
     // journal 을 truncate 하면 아직 적용 안 한 ops 가 사라져 replay 가 깨진다.
     if store.is_replaying() {
@@ -133,13 +138,13 @@ pub async fn create_quest(store: &Store, mut body: CreateQuestRequest) -> AppRes
         write_quest_file(store, &parent, false).await?;
     }
 
-    after_mutation(store).await;
     // DEV-374: 성공한 뒤에만 낸다. journal 은 위에서 **의도**를 먼저 적었지만
     // 이벤트는 일어난 일만 실어야 한다.
     store.emit_post(
         ev::QUEST_CREATED,
         || json!({ "quest": payload::quest(&quest) }),
     );
+    after_mutation(store, _g).await;
     Ok(quest)
 }
 
@@ -248,7 +253,6 @@ pub async fn update_quest(store: &Store, id: i64, body: UpdateQuestRequest) -> A
     let description_explicit = body.description.is_some();
     let quest = sql::update(&store.index_pool, id, body).await?;
     write_quest_file(store, &quest, description_explicit).await?;
-    after_mutation(store).await;
     // REQ-008: 이 문서가 내보내는 cross-link 재계산 — BUG-189 가 doc_history 를
     // 즉시 투영한 것과 같은 이유다(reindex 전까지 반영 안 되면 없는 기능과 같다).
     let _ = crate::ops::backlinks::refresh_for(store, crate::repo::crosslink::DocKind::Quest, &quest.quest_id).await;
@@ -256,6 +260,7 @@ pub async fn update_quest(store: &Store, id: i64, body: UpdateQuestRequest) -> A
         ev::QUEST_UPDATED,
         || json!({ "quest": payload::quest(&quest) }),
     );
+    after_mutation(store, _g).await;
     Ok(quest)
 }
 
@@ -291,7 +296,6 @@ pub async fn set_due_dates(
         };
     let quest = sql::set_due_dates(&store.index_pool, id, desired_due, required_due).await?;
     write_quest_file(store, &quest, false).await?;
-    after_mutation(store).await;
     store.emit_post(ev::QUEST_DUE_CHANGED, || {
         json!({
             "quest": payload::quest(&quest),
@@ -303,6 +307,7 @@ pub async fn set_due_dates(
             ),
         })
     });
+    after_mutation(store, _g).await;
     Ok(quest)
 }
 
@@ -313,7 +318,9 @@ pub async fn set_due_dates(
 /// 에서 키 자체 생략.
 pub async fn set_quest_tags(store: &Store, id: i64, tags: Vec<String>) -> AppResult<QuestRow> {
     let _g = store.mutation_guard().await?;
-    set_quest_tags_locked(store, id, tags).await
+    let quest = set_quest_tags_locked(store, id, tags).await?;
+    after_mutation(store, _g).await;
+    Ok(quest)
 }
 
 /// BUG-287: 태그를 붙이고 뗀다 — 잠금을 쥔 채 **지금** 파일의 목록에 적용한다.
@@ -322,7 +329,9 @@ pub async fn edit_quest_tags(store: &Store, id: i64, edit: super::TagEdit) -> Ap
     let _g = store.mutation_guard().await?;
     let quest = sql::fetch_by_id(&store.index_pool, id).await?;
     let current = list_quest_tags(store, &quest.quest_id)?;
-    set_quest_tags_locked(store, id, edit.apply(current)).await
+    let quest = set_quest_tags_locked(store, id, edit.apply(current)).await?;
+    after_mutation(store, _g).await;
+    Ok(quest)
 }
 
 async fn set_quest_tags_locked(store: &Store, id: i64, tags: Vec<String>) -> AppResult<QuestRow> {
@@ -388,7 +397,6 @@ async fn set_quest_tags_locked(store: &Store, id: i64, tags: Vec<String>) -> App
 
     // set_quest_tags 에선 sql:: 함수가 따로 없어 write_quest_file 만으로는
     // tags 갱신 안 됨 (existing 보존). 그래서 위에서 직접 frontmatter 수정.
-    after_mutation(store).await;
     store.emit_post(
         ev::QUEST_TAGS_CHANGED,
         || json!({ "quest": payload::quest(&quest) }),
@@ -546,13 +554,13 @@ pub async fn change_status(
     .map_err(crate::error::AppError::Internal)?;
 
     write_quest_file(store, &quest, false).await?;
-    after_mutation(store).await;
     store.emit_post(ev::QUEST_STATUS_CHANGED, || {
         json!({
             "quest": payload::quest(&quest),
             "change": payload::change(old_status_slug.clone(), quest.status_slug.clone()),
         })
     });
+    after_mutation(store, _g).await;
     Ok(quest)
 }
 
@@ -686,7 +694,6 @@ pub async fn change_quest_type(
         }
     }
 
-    after_mutation(store).await;
     store.emit_post(ev::QUEST_TYPE_CHANGED, || {
         json!({
             "quest": payload::quest(&quest),
@@ -700,6 +707,7 @@ pub async fn change_quest_type(
             "renamed": payload::change(old_slug.clone(), new_slug.clone()),
         })
     });
+    after_mutation(store, _g).await;
     Ok(quest)
 }
 
@@ -754,7 +762,6 @@ pub async fn change_parent(
             write_quest_file(store, &q, false).await?;
         }
     }
-    after_mutation(store).await;
     store.emit_post(ev::QUEST_PARENT_CHANGED, || {
         json!({
             "quest": payload::quest(&quest),
@@ -766,6 +773,7 @@ pub async fn change_parent(
             ),
         })
     });
+    after_mutation(store, _g).await;
     Ok(quest)
 }
 
@@ -888,7 +896,6 @@ pub async fn delete_quest(store: &Store, id: i64, cascade_ids: &[i64]) -> AppRes
             write_quest_file(store, &q, false).await?;
         }
     }
-    after_mutation(store).await;
     store.emit_post(ev::QUEST_DELETED, || match &doomed {
         Some(q) => json!({ "quest": payload::quest(q) }),
         None => json!({}),
@@ -900,6 +907,7 @@ pub async fn delete_quest(store: &Store, id: i64, cascade_ids: &[i64]) -> AppRes
     for cq in &cascade_quests {
         store.emit_post(ev::QUEST_DELETED, || json!({ "quest": payload::quest(cq) }));
     }
+    after_mutation(store, _g).await;
     Ok(())
 }
 
@@ -942,11 +950,11 @@ pub async fn restore_quest(store: &Store, id: i64) -> AppResult<QuestRow> {
             write_quest_file(store, &q, false).await?;
         }
     }
-    after_mutation(store).await;
     store.emit_post(
         ev::QUEST_RESTORED,
         || json!({ "quest": payload::quest(&quest) }),
     );
+    after_mutation(store, _g).await;
     Ok(quest)
 }
 
@@ -972,11 +980,11 @@ pub async fn add_prerequisite(
     write_quest_file(store, &quest, false).await?;
     let prereq = sql::fetch_by_id(&store.index_pool, prereq_id).await?;
     write_quest_file(store, &prereq, false).await?;
-    after_mutation(store).await;
     store.emit_post(
         ev::QUEST_PREREQ_ADDED,
         || json!({ "quest": payload::quest(&quest), "prerequisite": payload::quest(&prereq) }),
     );
+    after_mutation(store, _g).await;
     Ok(())
 }
 
@@ -1000,7 +1008,6 @@ pub async fn remove_prerequisite(store: &Store, id: i64, prereq_id: i64) -> AppR
     if let Some(prereq) = &removed_prereq {
         write_quest_file(store, prereq, false).await?;
     }
-    after_mutation(store).await;
     store.emit_post(ev::QUEST_PREREQ_REMOVED, || {
         let mut m = serde_json::Map::new();
         if let Some(q) = &removed_self {
@@ -1011,6 +1018,7 @@ pub async fn remove_prerequisite(store: &Store, id: i64, prereq_id: i64) -> AppR
         }
         serde_json::Value::Object(m)
     });
+    after_mutation(store, _g).await;
     Ok(())
 }
 

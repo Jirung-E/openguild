@@ -169,11 +169,10 @@ fn tree_size(dir: &std::path::Path) -> u64 {
 ///   files(rel_path PK, content BLOB)  — rel_path 는 길드 루트 기준 상대 경로
 ///   meta(key PK, value)               — ts / created_at / file_count / bytes
 async fn snapshot_db_write(
-    paths: &GuildPaths,
+    files: &[(String, Vec<u8>)],
     db_path: &std::path::Path,
     ts: &str,
 ) -> Result<(u64, u64)> {
-    let files = collect_guild_source_files(paths)?;
     let pool = crate::db::create_pool_from_path(db_path, false)
         .await
         .with_context(|| format!("snapshot db 생성 실패: {}", db_path.display()))?;
@@ -186,7 +185,7 @@ async fn snapshot_db_write(
 
     let mut total: u64 = 0;
     let mut tx = pool.begin().await?;
-    for (rel, bytes) in &files {
+    for (rel, bytes) in files {
         total += bytes.len() as u64;
         sqlx::query("INSERT OR REPLACE INTO files (rel_path, content) VALUES (?, ?)")
             .bind(rel)
@@ -340,7 +339,34 @@ pub async fn create_snapshot(store: &Store) -> Result<SnapshotInfo> {
 
 /// DEV-398: 자동 백업인지를 이벤트에 싣기 위한 내부 갈래. 만드는 일 자체는 같다 —
 /// 구독자가 "내가 시킨 것" 과 "저절로 생긴 것" 을 가를 수 있어야 한다.
+///
+/// BUG-340: **두 단계.** 길드 독점 잠금 안에서는 파일 내용을 메모리로 읽기만 하고(이 길드 기준 0.02초),
+/// 백업 파일을 쓰는 긴 일은 잠금 밖에서 한다 — 그동안에도 길드를 고칠 수 있다.
 async fn create_snapshot_tagged(store: &Store, automatic: bool) -> Result<SnapshotInfo> {
+    let read = read_guild_for_backup(store).await?;
+    finish_backup(store, read, automatic).await
+}
+
+/// BUG-340: 백업 1단계에서 잠금 안에서 읽어 둔 것.
+struct BackupRead {
+    files: Vec<(String, Vec<u8>)>,
+    /// 읽은 순간의 journal 마지막 id — 이것까지는 `files` 에 이미 들어 있다.
+    journal_upto: i64,
+}
+
+/// BUG-340 1단계: 길드 **독점**으로 쓰다 만 변경이 없는 모습을 읽는다. 변경은 journal 에 의도를 적고
+/// 파일을 쓰는 일을 한 잠금 안에서 하므로, 여기서 본 journal 마지막 id 까지는 파일에 다 반영돼 있다.
+async fn read_guild_for_backup(store: &Store) -> Result<BackupRead> {
+    let _g = store.lock_guild().await?;
+    let files = collect_guild_source_files(&store.paths)?;
+    let journal_upto = journal::max_id(&store.journal_pool)
+        .await
+        .context("journal 위치 조회 실패")?;
+    Ok(BackupRead { files, journal_upto })
+}
+
+/// BUG-340 2단계: 잠금 밖 — 백업 파일 쓰기, journal 정리, 오래된 것 지우기, 알리기.
+async fn finish_backup(store: &Store, read: BackupRead, automatic: bool) -> Result<SnapshotInfo> {
     let paths = &store.paths;
 
     std::fs::create_dir_all(paths.snapshots_dir())
@@ -352,24 +378,39 @@ async fn create_snapshot_tagged(store: &Store, automatic: bool) -> Result<Snapsh
     // 병합만 하므로, 충돌 시 이전 snapshot 이 이후 상태로 오염된다
     // (replay_to 가 과거 snapshot 을 복원해도 그 사이 생성된 quest 가 남는
     // 버그로 발현). 디렉토리가 이미 있으면 `-01`, `-02` ... 접미사로 유니크화.
+    // BUG-340: 이름 고르기는 잠금 밖이다 — 두 백업이 동시에 같은 이름을 고르지 않도록 빈 파일을
+    // `create_new` 로 **먼저 만들어** 자리를 잡는다(이미 있으면 실패 → 다음 이름). 다른 프로세스와도 안전하다.
     let base_ts = now_compact();
     let mut ts = base_ts.clone();
-    let mut target = paths.snapshots_dir().join(format!("{ts}.db"));
     let mut n = 1u32;
-    // 레거시 디렉토리 스냅샷과도 이름이 겹치지 않게 둘 다 확인.
-    while target.exists() || paths.snapshots_dir().join(&ts).exists() {
+    let target = loop {
+        let candidate = paths.snapshots_dir().join(format!("{ts}.db"));
+        // 레거시 디렉토리 스냅샷과도 이름이 겹치지 않게 둘 다 확인.
+        if !paths.snapshots_dir().join(&ts).exists() {
+            match std::fs::OpenOptions::new().write(true).create_new(true).open(&candidate) {
+                Ok(_) => break candidate,
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(e) => {
+                    return Err(e).with_context(|| format!("백업 파일을 만들지 못했다: {}", candidate.display()));
+                }
+            }
+        }
         ts = format!("{base_ts}-{n:02}");
-        target = paths.snapshots_dir().join(format!("{ts}.db"));
         n += 1;
-    }
+    };
 
-    // DEV-306: 파일 트리 복사 → SQLite 파일 1개.
-    let (_count, size_bytes) = snapshot_db_write(paths, &target, &ts)
-        .await
-        .context("snapshot db 기록 실패")?;
+    // DEV-306: 파일 트리 복사 → SQLite 파일 1개. 실패하면 잡아 둔 빈 파일을 치운다.
+    let (_count, size_bytes) = match snapshot_db_write(&read.files, &target, &ts).await {
+        Ok(v) => v,
+        Err(e) => {
+            let _ = std::fs::remove_file(&target);
+            return Err(e.context("snapshot db 기록 실패"));
+        }
+    };
 
-    // journal truncate (AOF 리셋 — 이 snapshot 이후 ops 만 쌓이도록).
-    journal::truncate(&store.journal_pool)
+    // journal 정리 (AOF 리셋 — 이 snapshot 이후 ops 만 쌓이도록). BUG-340: 백업 파일을 **다 쓴 뒤**,
+    // 그리고 **읽은 시점까지만** 지운다 — 쓰는 동안 들어온 변경은 남는다. 쓰기가 실패하면 안 지운다.
+    journal::truncate_through(&store.journal_pool, read.journal_upto)
         .await
         .context("journal truncate 실패")?;
 
@@ -384,9 +425,13 @@ async fn create_snapshot_tagged(store: &Store, automatic: bool) -> Result<Snapsh
     // DEV-398: 여기서 알린다 — **자동 백업도 이 함수를 거친다**. 오래된 것은 7개 너머로
     // 밀려 지워지므로, 밖에 쌓아 두려는 훅에게는 "방금 만들어진 이 파일" 이 유일한 기회다.
     // 지우기(prune) **뒤에** 내보내는 이유: 그 전에 내면 구독자가 복사하는 동안 지워질 수 있다.
+    // BUG-340: 잠금 밖이라 **공유 잠금을 잠깐** 쥐고 낸다 — "끝날 때까지 기다리는" 플러그인 줄은
+    // 잠금이 풀릴 때 돈다(BUG-339). 안 쥐고 내면 그 줄이 다음 변경이 끝날 때까지 밀린다.
+    let announce = store.lock_docs(&[]).await?;
     store.emit_post(crate::events::names::BACKUP_CREATED, || {
         crate::events::payload::backup(&info, automatic)
     });
+    drop(announce);
     Ok(info)
 }
 
@@ -584,6 +629,8 @@ pub fn delete_snapshot(paths: &GuildPaths, timestamp: &str) -> Result<()> {
 /// journal replay(시점 복원, DEV-022)는 이 위에 별도로 얹는다 — 현재는 snapshot
 /// 시점으로 복원.
 pub async fn restore_snapshot(store: &Store, snapshot: &SnapshotInfo) -> Result<()> {
+    // BUG-340: 처음부터 끝까지(다시 색인까지) 길드 **독점** — 지우고 다시 쓰는 사이에 남이 끼면 뒤섞인다.
+    let _g = store.lock_guild().await?;
     let paths = &store.paths;
 
     // 1. pre-restore 백업 (소스 파일 + index.db) — 되돌리기 가능.
@@ -1420,6 +1467,85 @@ mod tests {
         let abs = store2.paths.dot_guild().join(&rel);
         assert_eq!(std::fs::read(&abs).unwrap(), b"SPEC-BYTES", "첨부 bytes 자체도 복원돼야");
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-340: 누가 길드를 고치는 동안(잠금을 쥔 동안) 백업은 기다린다 — 쓰다 만 모습을 찍지 않는다.
+    #[tokio::test]
+    async fn a_backup_waits_while_the_guild_is_being_changed() {
+        let dir = fresh_tmp("bk-waits");
+        let store = setup(&dir).await;
+        let doc = dir.join(".guild/quests/HALF.md");
+        std::fs::write(&doc, "쓰는 중").unwrap();
+        let held = store.lock_guild().await.unwrap();
+        let bg = store.clone();
+        let h = tokio::spawn(async move { create_snapshot(&bg).await });
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert!(!h.is_finished(), "잠금을 쥔 동안 백업이 끝나 버렸다");
+        // 변경이 잠금 안에서 마저 쓴다 — 백업은 이 뒤의 모습을 찍어야 한다.
+        std::fs::write(&doc, "다 씀").unwrap();
+        drop(held);
+        let snap = tokio::time::timeout(Duration::from_secs(10), h).await.unwrap().unwrap().unwrap();
+        let files = snapshot_db_read(&snap.path).await.unwrap();
+        let (_, body) = files.iter().find(|(p, _)| p == ".guild/quests/HALF.md").unwrap();
+        assert_eq!(String::from_utf8_lossy(body), "다 씀", "쓰다 만 모습을 찍었다");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-340: 복원도 같다 — 소스 폴더를 지우고 다시 쓰는 동안 남이 끼어들면 뒤섞인다.
+    #[tokio::test]
+    async fn a_restore_waits_while_the_guild_is_being_changed() {
+        let dir = fresh_tmp("rs-waits");
+        let store = setup(&dir).await;
+        let snap = create_snapshot(&store).await.unwrap();
+        let held = store.lock_guild().await.unwrap();
+        let bg = store.clone();
+        let h = tokio::spawn(async move { restore_snapshot(&bg, &snap).await });
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert!(!h.is_finished(), "잠금을 쥔 동안 복원이 끝나 버렸다");
+        drop(held);
+        tokio::time::timeout(Duration::from_secs(10), h).await.unwrap().unwrap().unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-340: 백업이 길드를 읽은 **뒤에** 들어온 변경은 journal 에 남는다 — 백업 파일을 쓰는 동안
+    /// 들어온 변경을 journal 비우기가 함께 지우면 그 변경은 어디에도 없게 된다.
+    #[tokio::test]
+    async fn a_change_after_the_backup_read_stays_in_the_journal() {
+        let dir = fresh_tmp("bk-journal");
+        let store = setup(&dir).await;
+        let op = |i: i64| serde_json::json!({ "i": i });
+        journal::append(&store.journal_pool, "t", &op(1), None::<&serde_json::Value>).await.unwrap();
+        journal::append(&store.journal_pool, "t", &op(2), None::<&serde_json::Value>).await.unwrap();
+        let read = read_guild_for_backup(&store).await.unwrap();
+        journal::append(&store.journal_pool, "t", &op(3), None::<&serde_json::Value>).await.unwrap();
+        finish_backup(&store, read, false).await.unwrap();
+        let left = journal::list_all(&store.journal_pool).await.unwrap();
+        assert_eq!(left.len(), 1, "읽은 뒤의 변경 하나만 남아야 한다: {left:?}");
+        assert!(left[0].args.contains("3"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-340: 변경 끝의 자동 백업이 **잠금을 쥔 채** 백업을 부르면 스스로를 기다린다 — 잠금이 풀린 뒤
+    /// 돌아야 한다. CLI 처럼 뒤에서 돌리지 않는(동기) 경우.
+    #[tokio::test]
+    async fn an_auto_backup_after_a_change_does_not_wait_for_itself() {
+        let dir = fresh_tmp("auto-no-self-wait");
+        let store = setup(&dir).await;
+        store.set_auto_snapshot_ops(1);
+        let req = crate::models::CreateQuestRequest {
+            quest_type_id: 1,
+            title: "자동 백업".into(),
+            description: None,
+            status_slug: "open".into(),
+            urgency: Some(3),
+            parent_quest_id: None,
+        };
+        tokio::time::timeout(Duration::from_secs(10), crate::ops::create_quest(&store, req))
+            .await
+            .expect("자동 백업이 제 잠금을 기다리며 멈췄다")
+            .unwrap();
+        assert_eq!(list_snapshots(&store.paths).unwrap().len(), 1, "자동 백업이 떠야 한다");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

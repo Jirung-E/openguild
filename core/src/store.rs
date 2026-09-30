@@ -547,6 +547,21 @@ pub mod journal {
         Ok(rows)
     }
 
+    /// 지금 가장 큰 op id (없으면 0). BUG-340: 백업이 길드를 읽은 시점의 표시.
+    pub async fn max_id(pool: &SqlitePool) -> Result<i64> {
+        let n: i64 = sqlx::query_scalar("SELECT COALESCE(MAX(id), 0) FROM ops")
+            .fetch_one(pool)
+            .await?;
+        Ok(n)
+    }
+
+    /// BUG-340: `id` 까지만 지운다 — 백업이 읽은 뒤에 들어온 op 는 남긴다. id 는 되돌리지 않는다
+    /// (남은 op 가 있을 수 있고, AUTOINCREMENT 라 새 op 는 늘 더 큰 id 를 받는다).
+    pub async fn truncate_through(pool: &SqlitePool, id: i64) -> Result<()> {
+        sqlx::query("DELETE FROM ops WHERE id <= ?").bind(id).execute(pool).await?;
+        Ok(())
+    }
+
     /// truncate (snapshot 만들고 난 뒤).
     pub async fn truncate(pool: &SqlitePool) -> Result<()> {
         sqlx::query("DELETE FROM ops").execute(pool).await?;
