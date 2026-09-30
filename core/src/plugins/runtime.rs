@@ -142,6 +142,31 @@ impl Pending {
 struct Job {
     plugin: usize,
     event: Event,
+    /// BUG-339: 연결 데이터(`with`)를 **변경 순간**(길드 잠금 안)에 읽어 둔 것. 줄이 도는 때는 잠금이
+    /// 풀린 뒤라, 그때 파일을 읽으면 그사이 다른 변경이 고친 모습을 본다.
+    with: WithSnap,
+}
+
+/// 줄 이름(`with` 에 적은 것) → 그 데이터.
+type WithSnap = std::collections::BTreeMap<String, serde_json::Value>;
+
+/// BUG-339: 이 이벤트에서 `pick` 에 걸리는 줄들이 받을 연결 데이터를 **지금** 읽는다.
+/// 줄마다 따로 읽지 않는다 — 같은 이름은 한 번(DEV-405 와 같다).
+fn snapshot_with(p: &Plugin, event: &Event, pick: impl Fn(&super::Handler) -> bool) -> WithSnap {
+    let mut out = WithSnap::new();
+    let Some(sub) = event.subject() else {
+        return out; // 대상이 없는 이벤트 — 줄은 전부 `null` 을 받는다(예전과 같다).
+    };
+    for h in &p.def.handlers {
+        if !h.wants(event.name, event.phase) || !pick(h) {
+            continue;
+        }
+        for w in &h.with {
+            out.entry(w.clone())
+                .or_insert_with(|| super::related::load(&p.guild_root, &sub, w));
+        }
+    }
+    out
 }
 
 /// 플러그인이 하나라도 있을 때만 만든다 — 안 쓰는 길드가 스레드를 갖지 않게.
@@ -194,9 +219,12 @@ fn run_handlers(
     subst: &std::collections::BTreeMap<String, String>,
     delivery: &dyn Delivery,
     log: &Mutex<Vec<String>>,
+    with: &WithSnap,
 ) {
-    // 전용 스레드에서 도는 몫 — 기다리는 줄(`wait`)은 이미 dispatch 에서 끝났다.
-    run_lines(p, event, cfg, subst, delivery, log, None, None, |h| {
+    // 전용 스레드에서 도는 몫 — 기다리는 줄(`wait`)은 잠금이 풀린 뒤 따로 돈다(BUG-339).
+    // 연결 데이터는 변경 순간에 읽어 둔 것을 쓴다 — `plugin test` 가 값을 넘기는 자리와 같은 길.
+    let mut given = Probe { lines: Vec::new(), given: Some(with) };
+    run_lines(p, event, cfg, subst, delivery, log, None, Some(&mut given), |h| {
         h.phase() == Phase::Post && !h.wait
     });
 }
@@ -404,6 +432,8 @@ pub struct PluginRuntime {
     /// 컴포넌트가 정한다(GUI 토스트는 CLI 에 없다).
     problems: Arc<Mutex<Vec<String>>>,
     worker: Option<Worker>,
+    /// BUG-339: 끝날 때까지 기다리라고 적은 줄 — 변경 안에서 모아 두고 길드 잠금이 풀린 뒤 돌린다.
+    waiting: Mutex<Vec<Job>>,
 }
 
 /// DEV-381: 문제 목록의 상한. 서버는 몇 달씩 도는 프로세스라 상한이 없으면
@@ -433,6 +463,7 @@ impl PluginRuntime {
             delivery: Some(delivery),
             problems,
             worker,
+            waiting: Mutex::new(Vec::new()),
         }
     }
 
@@ -455,7 +486,7 @@ impl PluginRuntime {
                     // 없다. 스크립트도 사용자 코드라 같은 울타리 안에 둔다.
                     let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                         let (cfg, subst) = values_for(p);
-                        run_handlers(p, &job.event, &cfg, &subst, delivery.as_ref(), &log);
+                        run_handlers(p, &job.event, &cfg, &subst, delivery.as_ref(), &log, &job.with);
                     }));
                     if r.is_err() {
                         note(
@@ -537,21 +568,22 @@ impl EventSink for PluginRuntime {
         if event.phase == Phase::Pre {
             return;
         }
-        // DEV-407: 기다리라고 적은 줄은 **여기서** 끝까지 돈다 — 명령이 그 결과를 보고 끝난다.
-        if let Some(delivery) = self.delivery.as_ref() {
-            for p in self.plugins.iter() {
+        // BUG-339: 기다리라고 적은 줄은 **여기서 돌리지 않는다.** 여기는 변경이 길드 잠금을 쥔 자리라,
+        // 그 줄이 `openguild` 로 같은 길드를 고치려 하면 자기 자신을 기다리다 시한에 잘렸다(실측 8초).
+        // 모아 두면 잠금이 풀린 뒤 `after_unlock` 이 돌린다 — 명령은 여전히 그게 끝나야 끝난다.
+        if self.delivery.is_some() {
+            for (i, p) in self.plugins.iter().enumerate() {
                 if !p.wants(event.name, event.phase) || event.origin.has(&p.def.name) {
                     continue;
                 }
-                if !p.def.handlers.iter().any(|h| h.wait && h.wants(event.name, event.phase)) {
+                let waits = |h: &super::Handler| h.wait && h.wants(event.name, event.phase);
+                if !p.def.handlers.iter().any(waits) {
                     continue;
                 }
-                let (cfg, subst) = values_for(p);
-                let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    run_lines(p, &event, &cfg, &subst, delivery.as_ref(), &self.problems, None, None, |h| {
-                        h.phase() == Phase::Post && h.wait
-                    });
-                }));
+                let with = snapshot_with(p, &event, |h| h.wait);
+                if let Ok(mut q) = self.waiting.lock() {
+                    q.push(Job { plugin: i, event: event.clone(), with });
+                }
             }
         }
         let Some(w) = self.worker.as_ref() else {
@@ -574,11 +606,14 @@ impl EventSink for PluginRuntime {
             if event.origin.has(&p.def.name) {
                 continue;
             }
+            // BUG-339: 연결 데이터는 **지금**(잠금 안에서) 읽어 싣는다.
+            let with = snapshot_with(p, &event, |h| !h.wait);
             w.pending.enqueued();
             if w.tx
                 .send(Job {
                     plugin: i,
                     event: event.clone(),
+                    with,
                 })
                 .is_err()
             {
@@ -589,6 +624,34 @@ impl EventSink for PluginRuntime {
                         "플러그인 '{}' — 전달 스레드가 없어 이 이벤트를 버립니다",
                         p.def.name
                     ),
+                );
+            }
+        }
+    }
+
+    /// BUG-339: 길드 잠금이 풀린 뒤 — 모아 둔 "기다리는" 줄을 돌린다. 부른 쪽(명령)은 여기가 끝나야
+    /// 끝난다. 이 줄이 길드를 고쳐도 잠금이 풀려 있으므로 막히지 않는다.
+    fn after_unlock(&self) {
+        let jobs = match self.waiting.lock() {
+            Ok(mut q) => std::mem::take(&mut *q),
+            Err(_) => return,
+        };
+        let Some(delivery) = self.delivery.as_ref() else {
+            return;
+        };
+        for job in jobs {
+            let p = &self.plugins[job.plugin];
+            let (cfg, subst) = values_for(p);
+            let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let mut given = Probe { lines: Vec::new(), given: Some(&job.with) };
+                run_lines(p, &job.event, &cfg, &subst, delivery.as_ref(), &self.problems, None, Some(&mut given), |h| {
+                    h.phase() == Phase::Post && h.wait
+                });
+            }));
+            if r.is_err() {
+                note(
+                    &self.problems,
+                    format!("플러그인 '{}' 기다리는 줄에서 패닉 — 이 이벤트는 건너뜁니다", p.def.name),
                 );
             }
         }

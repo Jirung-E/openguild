@@ -109,7 +109,11 @@ impl Store {
     /// **공개 변경 진입점의 맨 앞에서** 잡는다. 검증용 읽기까지 잠금 안에 들어가야
     /// 남이 막 바꾼 상태를 보고 판단한다. 재진입이 안 되므로 진입점끼리 서로 부르지 않는다.
     pub async fn mutation_guard(&self) -> Result<crate::lock::MutationGuard> {
-        crate::lock::acquire(self.write_lock.clone(), self.paths.lock_file()).await
+        let mut g = crate::lock::acquire(self.write_lock.clone(), self.paths.lock_file()).await?;
+        // BUG-339: 이 변경이 모아 둔 "끝날 때까지 기다리는" 플러그인 줄은 잠금이 풀린 뒤에 돈다.
+        let events = self.events.clone();
+        g.after_unlock(move || events.after_unlock());
+        Ok(g)
     }
 
     /// DEV-299: 백그라운드 스냅샷이 켜져 있는지.

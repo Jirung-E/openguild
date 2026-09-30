@@ -2895,6 +2895,15 @@ fn unknown_permission_names_are_rejected() {
 
 /// 시험용 길드 하나 + 플러그인 하나(정의와 스크립트를 그대로 적는다).
 async fn guild_with(label: &str, manifest: &str, script: &str) -> (PathBuf, PathBuf, crate::Store) {
+    guild_with_delivery(label, manifest, script, std::sync::Arc::new(runtime::DropDelivery)).await
+}
+
+async fn guild_with_delivery(
+    label: &str,
+    manifest: &str,
+    script: &str,
+    delivery: std::sync::Arc<dyn runtime::Delivery>,
+) -> (PathBuf, PathBuf, crate::Store) {
     let home = fresh_tmp(&format!("{label}-home"));
     let g = fresh_tmp(label);
     crate::repo::seed_guild_dir(&g).unwrap();
@@ -2909,7 +2918,7 @@ async fn guild_with(label: &str, manifest: &str, script: &str) -> (PathBuf, Path
         let _guard = env_lock();
         unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
         consent::enable_auto_allow(&g).unwrap();
-        let l = store.install_plugins(Scope::Cli, std::sync::Arc::new(runtime::DropDelivery));
+        let l = store.install_plugins(Scope::Cli, delivery);
         unsafe { std::env::remove_var("OPENGUILD_HOME") };
         assert!(l.errors.is_empty(), "{:?}", l.errors);
         assert_eq!(l.active.len(), 1);
@@ -3304,6 +3313,220 @@ fn a_loaded_plugin_sees_this_guilds_display_names() {
     assert_eq!(got[0].body["u"], "/quests/DEV-1");
 
     unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+// ── BUG-339: 훅은 길드 잠금 안에서 돌지 않는다 ─────────────────────
+
+/// 부른 순간 길드 잠금이 풀려 있었는지 — 잠금 파일을 **직접** 잡아 본다. 다른 프로세스(훅이 부른
+/// `openguild`)가 보는 것과 같다. 받은 본문도 적어 둔다.
+struct LockProbe {
+    lock: PathBuf,
+    seen: std::sync::Mutex<Vec<(String, bool, serde_json::Value)>>,
+}
+impl LockProbe {
+    fn new(guild: &Path) -> std::sync::Arc<Self> {
+        std::sync::Arc::new(Self {
+            lock: guild.join(".guild/.lock"),
+            seen: Default::default(),
+        })
+    }
+    fn free(&self) -> bool {
+        std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(&self.lock)
+            .map(|f| f.try_lock().is_ok())
+            .unwrap_or(false)
+    }
+    fn seen(&self) -> Vec<(String, bool, serde_json::Value)> {
+        self.seen.lock().unwrap().clone()
+    }
+}
+impl runtime::Delivery for LockProbe {
+    fn deliver(
+        &self,
+        _p: &Plugin,
+        _a: &Action,
+        e: &crate::events::Event,
+        b: &serde_json::Value,
+        _v: &std::collections::BTreeMap<String, String>,
+    ) -> Result<(), String> {
+        let free = self.free();
+        self.seen.lock().unwrap().push((e.name.to_string(), free, b.clone()));
+        Ok(())
+    }
+}
+
+/// 이 길드를 들여다보는 전달을 꽂는다 — 길드 경로가 먼저 있어야 해서 `guild_with` 를 두 번에 나눈다.
+async fn guild_probed(label: &str, manifest: &str, script: &str) -> (PathBuf, PathBuf, crate::Store, std::sync::Arc<LockProbe>) {
+    let (g, home, store) = guild_with(label, manifest, script).await;
+    let probe = LockProbe::new(&g);
+    {
+        let _guard = env_lock();
+        unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+        let l = store.install_plugins(Scope::Cli, probe.clone());
+        unsafe { std::env::remove_var("OPENGUILD_HOME") };
+        assert_eq!(l.active.len(), 1, "{:?}", l.errors);
+    }
+    (g, home, store, probe)
+}
+
+const OUT: &str = "[actions.out.post]\n    url = \"https://example.test/hook\"\n";
+
+/// **기다리는 줄은 잠금이 풀린 뒤에 돈다** — 예전엔 잠금을 쥔 채 돌아서, 그 훅이 `openguild` 로 같은
+/// 길드를 고치려 하면 자기 자신을 기다리다 시한에 잘렸다(실측 8초). 그래도 "명령은 그게 끝나야 끝난다"
+/// 는 그대로여야 한다.
+#[tokio::test]
+async fn a_waiting_line_runs_after_the_guild_lock_is_released() {
+    let manifest = format!(
+        "name = \"gate\"\nscope = [\"cli\"]\nscripts = [\"main.rhai\"]\n{OUT}\n[[handlers]]\n    post = [\"quest.created\"]\n    call = \"h\"\n    wait = true\n"
+    );
+    let (g, home, store, probe) =
+        guild_probed("wait-unlocked", &manifest, r#"fn h(e) { send("out", e.quest.id) }"#).await;
+
+    crate::ops::quests::create_quest(&store, quest_req("기다릴 것")).await.unwrap();
+    // 명령이 돌아왔을 때 이미 끝나 있다 — 기다리라고 적었으니까.
+    let seen = probe.seen();
+    assert_eq!(seen.len(), 1, "기다리는 줄이 명령보다 늦게 돌았다: {seen:?}");
+    assert!(seen[0].1, "기다리는 줄이 길드 잠금을 쥔 채 돌았다");
+    assert!(store.plugin_problems().is_empty(), "{:?}", store.plugin_problems());
+
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// **삭제의 `pre` 도 잠금 전에 묻는다** — 예전엔 삭제만 잠금을 쥔 채 물었다. 여전히 막을 수 있어야 한다.
+#[tokio::test]
+async fn a_delete_pre_is_asked_before_the_lock_and_can_still_block() {
+    let manifest = format!(
+        "name = \"gate\"\nscope = [\"cli\"]\nscripts = [\"main.rhai\"]\n{OUT}\n[[handlers]]\n    pre  = [\"quest.deleted\"]\n    call = \"gate\"\n"
+    );
+    let (g, home, store, probe) = guild_probed(
+        "delete-pre-unlocked",
+        &manifest,
+        r#"fn gate(e) { send("out", e.quest.id); "지키는 퀘스트입니다" }"#,
+    )
+    .await;
+
+    let q = crate::ops::quests::create_quest(&store, quest_req("지킬 것")).await.unwrap();
+    let err = crate::ops::quests::delete_quest(&store, q.id, &[]).await.unwrap_err().to_string();
+    assert!(err.contains("지키는 퀘스트입니다"), "{err}");
+    let seen = probe.seen();
+    assert_eq!(seen.len(), 1, "{seen:?}");
+    assert!(seen[0].1, "삭제 pre 가 길드 잠금을 쥔 채 물었다");
+    // 정말 안 지워졌다.
+    assert!(crate::services::quests::fetch_by_id(&store.index_pool, q.id).await.is_ok());
+
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// **캠페인 댓글도 `pre` 로 막힌다** — 예전엔 보기만 해서(`emit_pre`) 퀘스트 댓글만 막혔다.
+#[tokio::test]
+async fn a_campaign_comment_can_be_blocked_like_a_quest_comment() {
+    let (g, home, store) = guild_with(
+        "campaign-comment-pre",
+        "name = \"gate\"\nscope = [\"cli\"]\nscripts = [\"main.rhai\"]\n\n[[handlers]]\n    pre  = [\"comment.added\"]\n    call = \"gate\"\n",
+        r#"fn gate(e) { if e.comment.body.contains("금지") { return "금지어가 있습니다"; } }"#,
+    )
+    .await;
+
+    let c = crate::ops::campaigns::create_campaign(
+        &store,
+        crate::models::CreateCampaignRequest {
+            title: "캠페인".into(),
+            description: None,
+            started_at: None,
+            ended_at: None,
+        },
+    )
+    .await
+    .unwrap();
+    let slug = c.campaign_slug.clone();
+    let err = crate::ops::campaign_comments::add_entry(&store, &slug, "admin".into(), "금지 단어".into(), None)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("금지어가 있습니다"), "{err}");
+    // 막히지 않을 것은 그대로 달린다.
+    crate::ops::campaign_comments::add_entry(&store, &slug, "admin".into(), "괜찮은 글".into(), None)
+        .await
+        .unwrap();
+    let all = crate::ops::campaign_comments::list_entries(&store, &slug).unwrap();
+    assert_eq!(all.len(), 1, "{all:?}");
+
+    let _ = std::fs::remove_dir_all(&g);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 첫 일감에서 멈춰 서는 전달 — 뒤의 일감이 **늦게** 돌게 만든다.
+struct HeldProbe {
+    hold: std::sync::Mutex<Option<std::sync::mpsc::Receiver<()>>>,
+    seen: std::sync::Mutex<Vec<(String, serde_json::Value)>>,
+}
+impl runtime::Delivery for HeldProbe {
+    fn deliver(
+        &self,
+        _p: &Plugin,
+        _a: &Action,
+        e: &crate::events::Event,
+        b: &serde_json::Value,
+        _v: &std::collections::BTreeMap<String, String>,
+    ) -> Result<(), String> {
+        if e.name == crate::events::names::QUEST_CREATED {
+            if let Some(rx) = self.hold.lock().unwrap().take() {
+                let _ = rx.recv_timeout(std::time::Duration::from_secs(10));
+            }
+            return Ok(());
+        }
+        self.seen.lock().unwrap().push((e.name.to_string(), b.clone()));
+        Ok(())
+    }
+}
+
+/// **`with` 는 변경 순간의 모습이다.** 줄은 잠금이 풀린 뒤(다른 스레드)에 돌므로, 그때 파일을 읽으면
+/// 그사이 다른 변경이 고친 모습을 본다. 댓글을 단 순간의 제목이 가야 한다.
+#[tokio::test]
+async fn a_line_sees_the_subject_as_it_was_when_the_change_happened() {
+    let manifest = format!(
+        "name = \"gate\"\nscope = [\"cli\"]\nscripts = [\"main.rhai\"]\n{OUT}[actions.hold.post]\n    url = \"https://example.test/hold\"\n\n[[handlers]]\n    post   = [\"quest.created\"]\n    action = \"hold\"\n\n[[handlers]]\n    post = [\"comment.added\"]\n    with = [\"subject\"]\n    call = \"h\"\n"
+    );
+    let (g, home, store) = guild_with("with-snapshot", &manifest, r#"fn h(e, q) { send("out", q.title) }"#).await;
+    let (tx, rx) = std::sync::mpsc::channel();
+    let probe = std::sync::Arc::new(HeldProbe { hold: std::sync::Mutex::new(Some(rx)), seen: Default::default() });
+    {
+        let _guard = env_lock();
+        unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
+        store.install_plugins(Scope::Cli, probe.clone());
+        unsafe { std::env::remove_var("OPENGUILD_HOME") };
+    }
+
+    // 1) 만들기 — 이 일감이 전달 스레드를 붙잡는다.
+    let q = crate::ops::quests::create_quest(&store, quest_req("원래 제목")).await.unwrap();
+    // 2) 댓글 — 일감은 줄에 선다. 연결 데이터(제목)는 지금 읽혀야 한다.
+    crate::ops::comments::add_comment_entry(&store, &q.quest_id, "admin".into(), "질문".into(), None, false)
+        .await
+        .unwrap();
+    // 3) 그사이 제목이 바뀐다.
+    crate::ops::quests::update_quest(
+        &store,
+        q.id,
+        crate::models::UpdateQuestRequest { title: Some("바뀐 제목".into()), description: None, urgency: None },
+    )
+    .await
+    .unwrap();
+    // 4) 이제야 댓글 줄이 돈다.
+    tx.send(()).unwrap();
+    assert!(store.drain_events(std::time::Duration::from_secs(10)));
+
+    let seen = probe.seen.lock().unwrap().clone();
+    let got: Vec<&serde_json::Value> = seen.iter().filter(|(n, _)| n == "comment.added").map(|(_, b)| b).collect();
+    assert_eq!(got, vec![&serde_json::json!("원래 제목")], "{seen:?}");
+
     let _ = std::fs::remove_dir_all(&g);
     let _ = std::fs::remove_dir_all(&home);
 }

@@ -769,6 +769,21 @@ pub async fn change_parent(
     Ok(quest)
 }
 
+/// DEV-407: 지우기 전에 묻는다 — 여기서 막을 수 있다(지워지기 전이 마지막 기회다).
+///
+/// BUG-339: **잠금 전에** 묻는다(생성 · 상태 변경 · 댓글과 같은 자리). 예전엔 잠금을 쥔 채 물어서, 그 훅이
+/// `openguild` 로 같은 길드를 고치려 하면 자기 자신을 기다리다 시한에 잘렸다. 묻는 사이 누가 그 퀘스트를
+/// 고치면 훅이 본 내용이 조금 낡을 수 있지만, 잠금 안에서 바깥을 기다리는 것보다 낫다.
+async fn ask_delete_pre(store: &Store, id: i64) -> Option<String> {
+    if !store.events_wanted(ev::QUEST_DELETED, Phase::Pre) {
+        return None;
+    }
+    let q = sql::fetch_by_id(&store.index_pool, id).await.ok()?;
+    store
+        .ask_pre(ev::QUEST_DELETED, || json!({ "quest": payload::quest(&q) }))
+        .blocked
+}
+
 /// soft delete + cascade. 영향:
 /// - 본인: soft-deleted (frontmatter deleted: true)
 /// - cascade 자식: 같이 soft-deleted
@@ -776,23 +791,17 @@ pub async fn change_parent(
 /// - 삭제 대상과 prerequisite 관계로 연결된 alive quest 들: Prerequisites / Successors
 ///   표시에서 삭제 대상이 빠지도록 양쪽 파일 갱신.
 pub async fn delete_quest(store: &Store, id: i64, cascade_ids: &[i64]) -> AppResult<()> {
+    if let Some(reason) = ask_delete_pre(store, id).await {
+        return Err(crate::error::AppError::BadRequest(reason));
+    }
     let _g = store.mutation_guard().await?;
-    // DEV-374: 삭제 뒤에는 무엇이었는지 알 수 없다 — 지우기 **전에** 잡아 둔다.
+    // DEV-374: 삭제 뒤에는 무엇이었는지 알 수 없다 — 지우기 **전에** 잡아 둔다(잠금 안 — 막 바뀐 것까지).
     // 구독자가 없으면 이 조회도 하지 않는다.
-    let doomed = if store.events_wanted(ev::QUEST_DELETED, Phase::Post)
-        || store.events_wanted(ev::QUEST_DELETED, Phase::Pre)
-    {
+    let doomed = if store.events_wanted(ev::QUEST_DELETED, Phase::Post) {
         sql::fetch_by_id(&store.index_pool, id).await.ok()
     } else {
         None
     };
-    if let Some(q) = &doomed {
-        // DEV-407: 여기서 막을 수 있다 — 지워지기 전이 마지막 기회다.
-        let pre = store.ask_pre(ev::QUEST_DELETED, || json!({ "quest": payload::quest(q) }));
-        if let Some(reason) = pre.blocked {
-            return Err(crate::error::AppError::BadRequest(reason));
-        }
-    }
     let _ = journal::append(
         &store.journal_pool,
         "delete_quest",

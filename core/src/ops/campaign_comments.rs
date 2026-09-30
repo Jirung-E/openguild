@@ -103,20 +103,29 @@ pub async fn add_entry(
     body: String,
     parent_id: Option<u64>,
 ) -> AppResult<CommentEntry> {
-    let _g = store.mutation_guard().await?;
-    let body_trimmed = body.trim().to_string();
+    let mut body_trimmed = body.trim().to_string();
     if body_trimmed.is_empty() {
         return Err(AppError::BadRequest("body is empty".into()));
     }
-    // DEV-388: 관찰 pre — 저장 **직전**. 아직 id 가 없으므로 요청 내용만 싣는다
-    // (`ok`/`error` 는 붙지 않는다 — 결과가 없다). 빈 본문처럼 애초에 저장될 수
-    // 없는 요청까지 흘리지 않도록 검증 뒤에 둔다.
-    store.emit_pre(ev::COMMENT_ADDED, || {
+    // DEV-388: 저장 **직전**. 아직 id 가 없으므로 요청 내용만 싣는다(`ok`/`error` 는 붙지 않는다 —
+    // 결과가 없다). 빈 본문처럼 애초에 저장될 수 없는 요청까지 흘리지 않도록 검증 뒤에 둔다.
+    //
+    // BUG-339: 예전엔 **보기만** 했다(`emit_pre`) — 플러그인 실행기는 그걸 받으면 아무것도 안 하므로,
+    // `pre = ["comment.added"]` 로 댓글을 막는 플러그인이 퀘스트 댓글은 막고 캠페인 댓글은 못 막았다.
+    // 퀘스트 댓글과 같이 **묻는다** — 막을 수 있고 본문을 고칠 수 있다. 자리도 같다: 잠금 전.
+    let pre = store.ask_pre(ev::COMMENT_ADDED, || {
         json!({
             "target": payload::target("campaign", slug),
             "comment": { "author": author, "body": body_trimmed, "parent_id": parent_id },
         })
     });
+    if let Some(reason) = pre.blocked {
+        return Err(AppError::BadRequest(reason));
+    }
+    if let Some(t) = pre.text("body") {
+        body_trimmed = t;
+    }
+    let _g = store.mutation_guard().await?;
     let _ = journal::append(
         &store.journal_pool,
         "add_campaign_comment",

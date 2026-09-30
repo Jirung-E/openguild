@@ -78,7 +78,7 @@ permissions = ["notify"]          # only for notify()/backup()
 | `call` / `action` | Exactly one. `call` names a script function; `action` is an `[actions]` name or an action written inline. |
 | `when` | Conditions, all of which must hold: `"change.to" = ["done", "closed"]`. A listed value matches any of them; a field that is itself a list matches if it contains the value. Paths that cannot exist for this line's events are rejected at load. |
 | `with` | Related data the function receives after the event: `subject`, `parent`, `children`, `prereqs`, `campaigns`, `quests`. What is available is decided by the **subject kind** of the event (`openguild plugin events` prints it per event), read straight from `.guild/` files. |
-| `wait` | Wait for this line to finish before the command returns. Off by default — one slow hook must not stall the guild. `pre` lines always wait. |
+| `wait` | Wait for this line to finish before the command returns. Off by default — one slow hook must not stall the guild. `pre` lines always wait. The line runs **after** the guild's lock is released, so it may call `openguild` on the same guild. |
 | `id` | Line name, used by screens and error messages. |
 | `timeout_ms` / `on_timeout` / `on_error` | Time budget, and what to do when it is exceeded or the script throws: `continue` (default) or `block` (`pre` lines only). |
 

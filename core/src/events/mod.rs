@@ -249,9 +249,13 @@ impl PreOutcome {
 pub trait EventSink: Send + Sync {
     /// 이 이벤트를 구독하는 곳이 있나. **페이로드를 만들기 전에** 물어본다.
     fn wants(&self, name: &str, phase: Phase) -> bool;
-    /// 전달. **여기서 오래 붙들면 안 된다** — 호출자는 mutation 경로다.
-    /// (DEV-407: `wait` 를 적은 줄만 예외로 여기서 끝까지 돈다.)
+    /// 전달. **여기서 오래 붙들면 안 된다** — 호출자는 mutation 경로이고 길드 잠금을 쥐고 있다.
+    /// (BUG-339: `wait` 를 적은 줄도 여기서 돌리지 않는다 — 모아 두었다가 [`after_unlock`](Self::after_unlock).)
     fn dispatch(&self, event: Event);
+
+    /// BUG-339: 길드 잠금이 풀린 뒤에 불린다. `dispatch` 가 모아 둔 "끝날 때까지 기다리는" 일을 여기서
+    /// 한다 — `dispatch` 는 잠금 안에서 불리므로 거기서 기다리면 그 일이 길드를 다시 잠글 수 없다.
+    fn after_unlock(&self) {}
 
     /// DEV-407: 바뀌기 **전**에 묻는다 — 막을지, 값을 고칠지. 여기서는 **기다린다**(그게 요점이다).
     /// 기본은 "아무도 안 막는다".
@@ -317,6 +321,18 @@ impl Events {
         match self.0.read() {
             Ok(r) => r.as_ref().map(|s| s.ask(event)).unwrap_or_default(),
             Err(_) => PreOutcome::default(),
+        }
+    }
+
+    /// BUG-339: 길드 잠금이 풀린 뒤 — 기다리는 줄을 돌린다. sink 를 꺼내 들고 읽기 잠금은 놓은 뒤에
+    /// 부른다(길게 걸릴 수 있어서, 그동안 플러그인을 다시 꽂는 쪽을 막지 않게).
+    pub fn after_unlock(&self) {
+        let sink = match self.0.read() {
+            Ok(r) => r.as_ref().cloned(),
+            Err(_) => None,
+        };
+        if let Some(s) = sink {
+            s.after_unlock();
         }
     }
 

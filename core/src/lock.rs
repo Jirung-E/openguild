@@ -29,17 +29,38 @@ const WAIT: Duration = Duration::from_secs(60);
 
 /// 쥐고 있는 동안 이 길드의 다른 변경은 기다린다. drop 하면 푼다.
 ///
-/// 필드 선언 순서가 drop 순서다 — 파일 잠금을 먼저 놓고 프로세스 안 잠금을 놓는다.
+/// 푸는 순서 — 파일 잠금, 프로세스 안 잠금, 그다음에 [`after`](Self::after_unlock).
 #[must_use = "잠금은 쥐고 있는 동안만 유효하다 — `let _g = ...` 로 묶어 둘 것"]
 pub struct MutationGuard {
-    _file: Option<File>,
-    _local: tokio::sync::OwnedMutexGuard<()>,
+    file: Option<File>,
+    local: Option<tokio::sync::OwnedMutexGuard<()>>,
+    /// BUG-339: 잠금이 **풀린 뒤에** 할 일. 끝날 때까지 기다리라고 적은 플러그인 줄이 여기서 돈다 —
+    /// 잠금을 쥔 채 돌리면 그 훅이 같은 길드를 고치려 할 때 자기 자신을 기다리다 시한에 잘렸다.
+    after: Option<Box<dyn FnOnce() + Send>>,
+}
+
+impl MutationGuard {
+    /// 잠금이 풀린 뒤에 할 일을 건다. 하나만 — 두 번 걸면 앞의 것을 대신한다.
+    pub fn after_unlock(&mut self, f: impl FnOnce() + Send + 'static) {
+        self.after = Some(Box::new(f));
+    }
+}
+
+impl Drop for MutationGuard {
+    fn drop(&mut self) {
+        // 잠금부터 놓는다 — 그래야 뒤에 도는 일이 이 길드를 다시 잠글 수 있다.
+        self.file.take();
+        self.local.take();
+        if let Some(f) = self.after.take() {
+            f();
+        }
+    }
 }
 
 impl std::fmt::Debug for MutationGuard {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MutationGuard")
-            .field("cross_process", &self._file.is_some())
+            .field("cross_process", &self.file.is_some())
             .finish()
     }
 }
@@ -53,8 +74,9 @@ pub(crate) async fn acquire(
         .await
         .context("잠금 대기 작업이 중단됨")??;
     Ok(MutationGuard {
-        _file: file,
-        _local: local,
+        file,
+        local: Some(local),
+        after: None,
     })
 }
 
