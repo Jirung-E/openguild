@@ -73,7 +73,10 @@ pub struct Store {
     ///
     /// `Arc` 라 `Clone` 된 Store 들이 같은 잠금을 공유한다(서버는 Store 를 clone 해
     /// 핸들러에 넘긴다).
-    pub write_lock: std::sync::Arc<tokio::sync::Mutex<()>>,
+    ///
+    /// DEV-431: 길드 RW + 문서 잠금의 **프로세스 안** 쪽. 직접 잡지 않는다 — [`Store::lock_guild`] /
+    /// [`Store::lock_docs`] 가 파일 잠금과 함께 잡는다.
+    pub(crate) locks: crate::lock::Locks,
     /// DEV-389: 이벤트에 실을 길드 이름.
     ///
     /// 예전엔 `guild_root.file_name()` — **디렉터리명**을 썼다. 마커 파일을 매번
@@ -109,7 +112,28 @@ impl Store {
     /// **공개 변경 진입점의 맨 앞에서** 잡는다. 검증용 읽기까지 잠금 안에 들어가야
     /// 남이 막 바꾼 상태를 보고 판단한다. 재진입이 안 되므로 진입점끼리 서로 부르지 않는다.
     pub async fn mutation_guard(&self) -> Result<crate::lock::MutationGuard> {
-        let mut g = crate::lock::acquire(self.write_lock.clone(), self.paths.lock_file()).await?;
+        // DEV-431: 아직은 길드 **독점** — 동작이 예전과 같다. 변경 함수를 문서 잠금으로 옮기는 것은 DEV-432.
+        self.lock_guild().await
+    }
+
+    /// DEV-431: 길드 **독점** — 길드 전체가 필요한 일(백업, 타입·상태 이름 바꾸기). 모두를 막는다.
+    pub async fn lock_guild(&self) -> Result<crate::lock::MutationGuard> {
+        self.lock(crate::lock::GuildMode::Exclusive, &[]).await
+    }
+
+    /// DEV-431: 길드 **공유** + 이 문서들 **독점**. 서로 다른 문서를 고치는 변경끼리는 막지 않는다.
+    ///
+    /// 고칠 문서를 **한 번에** 넘긴다 — 순서는 여기서 정한다(이름 순). 쥔 채 또 잠그면 오류다.
+    pub async fn lock_docs(&self, docs: &[crate::lock::DocKey]) -> Result<crate::lock::MutationGuard> {
+        self.lock(crate::lock::GuildMode::Shared, docs).await
+    }
+
+    async fn lock(
+        &self,
+        mode: crate::lock::GuildMode,
+        docs: &[crate::lock::DocKey],
+    ) -> Result<crate::lock::MutationGuard> {
+        let mut g = crate::lock::acquire(&self.locks, &self.paths.dot_guild(), mode, docs).await?;
         // BUG-339: 이 변경이 모아 둔 "끝날 때까지 기다리는" 플러그인 줄은 잠금이 풀린 뒤에 돈다.
         let events = self.events.clone();
         g.after_unlock(move || events.after_unlock());
@@ -367,7 +391,7 @@ impl Store {
             db_ahead_versions,
             replaying: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             events: crate::events::Events::default(),
-            write_lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
+            locks: crate::lock::Locks::default(),
             guild_name,
             // DEV-299: 기본 동기 — 켜는 쪽(서버/GUI)이 명시적으로 켠다.
             background_snapshots: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -445,7 +469,7 @@ impl Store {
             db_ahead_versions,
             replaying: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             events: crate::events::Events::default(),
-            write_lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
+            locks: crate::lock::Locks::default(),
             guild_name,
             // DEV-299: 기본 동기 — 켜는 쪽(서버/GUI)이 명시적으로 켠다.
             background_snapshots: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),

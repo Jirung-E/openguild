@@ -261,6 +261,7 @@ impl GuildPaths {
          positions.json\n\
          backups/\n\
          .lock\n\
+         .locks/\n\
          # Private notes - personal, never shared\n\
          quests/*.memo.md\n\
          campaigns/*.memo.md\n"

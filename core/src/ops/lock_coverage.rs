@@ -378,11 +378,12 @@ fn nobody_takes_the_bare_in_process_lock() {
         .iter()
         .filter(|(_, src)| {
             let code = src.find("#[cfg(test)]").map_or(*src, |i| &src[..i]);
-            code.contains("write_lock.lock")
+            // DEV-431: 프로세스 안 잠금은 `store.locks` 다 — 파일 잠금 없이 그것만 잡으면 안 된다.
+            code.contains("store.locks") || code.contains(".locks.guild") || code.contains("write_lock.lock")
         })
         .map(|(m, _)| *m)
         .collect();
-    assert!(offenders.is_empty(), "store.write_lock 을 직접 잡는다: {offenders:?}");
+    assert!(offenders.is_empty(), "store.locks 를 직접 잡는다 — lock_guild / lock_docs 를 쓸 것: {offenders:?}");
 }
 
 #[test]
