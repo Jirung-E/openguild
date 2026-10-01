@@ -512,6 +512,14 @@ pub fn ts_to_local_display(ts: &str) -> String {
 }
 
 /// DEV-306: 스냅샷 경로 → timestamp. `{ts}.db`(신규) 와 `{ts}/`(레거시) 모두.
+/// BUG-341: 백업을 시간 순으로 세우는 열쇠 — 앞 15자(`YYYYMMDD-HHMMSS`)와 같은 초 번호(`-01` → 1, 없으면 0).
+/// 문자열로 세우면 `-100` 이 `-99` 앞에 선다.
+fn order_key(ts: &str) -> (String, u32) {
+    let (base, rest) = ts.split_at(ts.len().min(15));
+    let n = rest.strip_prefix('-').and_then(|x| x.parse().ok()).unwrap_or(0);
+    (base.to_string(), n)
+}
+
 fn snapshot_timestamp_of(path: &std::path::Path) -> Option<String> {
     if path.is_dir() {
         return path.file_name().and_then(|s| s.to_str()).map(str::to_string);
@@ -537,7 +545,8 @@ pub fn list_snapshots(paths: &GuildPaths) -> Result<Vec<SnapshotInfo>> {
             p.is_dir() || p.extension().and_then(|x| x.to_str()) == Some("db")
         })
         .collect();
-    entries.sort_by_key(|e| e.file_name());
+    // BUG-341: 파일 이름이 아니라 시각 + 같은 초 번호로 — `….db` 와 `…-01.db` 는 이름순이면 뒤바뀐다.
+    entries.sort_by_key(|e| order_key(&snapshot_timestamp_of(&e.path()).unwrap_or_default()));
 
     let mut out = Vec::new();
     for e in entries {
@@ -583,8 +592,8 @@ pub fn latest_snapshot_timestamp(paths: &GuildPaths) -> Result<Option<String>> {
         let Some(name) = snapshot_timestamp_of(&e.path()) else {
             continue;
         };
-        // 이름이 "YYYYMMDD-HHMMSS[-NN]" 정렬 단조(UTC 정규형, BUG-086) — 문자열 max = 최신.
-        if latest.as_deref().is_none_or(|cur| name.as_str() > cur) {
+        // 이름이 "YYYYMMDD-HHMMSS[-NN]"(UTC 정규형, BUG-086). BUG-341: 목록과 같은 열쇠로 비교한다.
+        if latest.as_deref().is_none_or(|cur| order_key(&name) > order_key(cur)) {
             latest = Some(name);
         }
     }
@@ -718,7 +727,7 @@ fn prune_old_snapshots(paths: &GuildPaths, keep: usize) -> Result<()> {
         .filter_map(|e| e.ok())
         .filter(|e| snapshot_timestamp_of(&e.path()).is_some())
         .collect();
-    entries.sort_by_key(|e| snapshot_timestamp_of(&e.path()).unwrap_or_default());
+    entries.sort_by_key(|e| order_key(&snapshot_timestamp_of(&e.path()).unwrap_or_default()));
     while entries.len() > keep {
         let old = entries.remove(0);
         let p = old.path();
@@ -1546,6 +1555,31 @@ mod tests {
             .expect("자동 백업이 제 잠금을 기다리며 멈췄다")
             .unwrap();
         assert_eq!(list_snapshots(&store.paths).unwrap().len(), 1, "자동 백업이 떠야 한다");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-341: 같은 초에 여럿이면 이름 끝에 `-01`, `-02` … 가 붙는다. 파일 이름(`….db`)으로 줄 세우면 `-`
+    /// 가 `.` 보다 앞이라 `…-01.db` 가 `….db` 앞에 서서, "가장 최근" 이 더 오래된 것을 가리켰다.
+    #[tokio::test]
+    async fn backups_made_in_the_same_second_are_listed_in_order() {
+        let dir = fresh_tmp("same-second");
+        let store = setup(&dir).await;
+        let snaps = store.paths.snapshots_dir();
+        std::fs::create_dir_all(&snaps).unwrap();
+        let want = [
+            "20260101-115959",
+            "20260101-120000",
+            "20260101-120000-01",
+            "20260101-120000-02",
+            "20260101-120000-10",
+            "20260101-120001",
+        ];
+        for ts in want.iter().rev() {
+            std::fs::write(snaps.join(format!("{ts}.db")), b"").unwrap();
+        }
+        let got: Vec<String> = list_snapshots(&store.paths).unwrap().into_iter().map(|s| s.timestamp).collect();
+        assert_eq!(got, want);
+        assert_eq!(latest_snapshot(&store.paths).unwrap().unwrap().timestamp, "20260101-120001");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
