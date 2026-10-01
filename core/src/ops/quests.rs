@@ -86,6 +86,36 @@ fn report_snapshot(result: anyhow::Result<Option<crate::snapshot::SnapshotInfo>>
     }
 }
 
+/// BUG-343: 타입을 바꿔 이름이 바뀔 때 퀘스트 옆 파일(댓글 · 메모 · 첨부 목록)을 새 이름으로 옮긴다. 번호(DEV-433)는
+/// 파일째 옮기므로 이어진다.
+///
+/// 새 이름에 이미 파일이 있으면 **덮지 않는다** — 옛 파일은 그대로 두고 이유를 남긴다. 번호는 다시 안 주므로
+/// 보통은 일어나지 않는다(손으로 만든 파일 정도). 이름은 이미 DB 에서 바뀌었으므로 여기서 전체를 실패시키지 않는다.
+fn move_sidecars(store: &Store, old_slug: &str, new_slug: &str) -> AppResult<()> {
+    let p = &store.paths;
+    for (from, to) in [
+        (p.comments_path(old_slug), p.comments_path(new_slug)),
+        (p.memo_path(old_slug), p.memo_path(new_slug)),
+        (p.quest_attachments_meta_path(old_slug), p.quest_attachments_meta_path(new_slug)),
+    ] {
+        if !from.exists() {
+            continue;
+        }
+        if to.exists() {
+            eprintln!(
+                "[change_type] {} 이 이미 있어 {} 를 옮기지 않았습니다 — 손으로 합쳐 주세요",
+                to.display(),
+                from.display()
+            );
+            continue;
+        }
+        std::fs::rename(&from, &to).map_err(|e| {
+            crate::error::AppError::Internal(anyhow::anyhow!("{} → {} 옮기기 실패: {e}", from.display(), to.display()))
+        })?;
+    }
+    Ok(())
+}
+
 /// DEV-432: 퀘스트 행 id → 문서 열쇠. 지워진 것도 준다(되살리기). 없는 id 는 건너뛴다 — 없으면 변경이
 /// 잠근 뒤 "없음" 으로 끝난다.
 async fn quest_keys(store: &Store, ids: &[i64]) -> AppResult<Vec<DocKey>> {
@@ -723,6 +753,8 @@ pub async fn change_quest_type(
     // DEV-180: 사이드카도 rename cascade 후 append (파일이 진리원).
     crate::repo::history::rename(&store.paths, &old_slug, &new_slug)
         .map_err(crate::error::AppError::Internal)?;
+    // BUG-343: 댓글 · 메모 · 첨부 목록도 같은 문서다 — 안 옮기면 옛 이름에 남아 아무 퀘스트에도 안 붙는다.
+    move_sidecars(store, &old_slug, &new_slug)?;
     crate::repo::history::append(
         &store.paths,
         &new_slug,
@@ -2342,7 +2374,7 @@ mod tests {
     }
 
     /// DEV-433: 타입을 바꿔 이름이 바뀌어도(DEV-001 → BUG-001) 같은 문서다 — 번호가 이어지고 태그가
-    /// 따라간다(예전엔 새 경로에 새로 써서 둘 다 잃었다). 댓글 · 메모 · 첨부 파일은 아직 안 따라간다(BUG-343).
+    /// 따라간다(예전엔 새 경로에 새로 써서 둘 다 잃었다).
     #[tokio::test]
     async fn changing_the_type_keeps_the_number_and_tags() {
         let dir = fresh_tmp("type-keeps");
@@ -2372,6 +2404,55 @@ mod tests {
         let after = crate::repo::version::read(&dir.join(".guild/quests/BUG-001.md"), place);
         assert!(after > before, "이름이 바뀌며 번호가 처음부터 다시 셌다: {before} → {after}");
         assert_eq!(list_quest_tags(&store, "BUG-001").unwrap(), vec!["keep"], "태그가 사라졌다");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-343: 타입을 바꾸면 댓글 · 메모 · 첨부 목록도 새 이름을 따라간다. 댓글 번호(DEV-433)도 이어진다.
+    #[tokio::test]
+    async fn changing_the_type_carries_comments_memo_and_attachments() {
+        let dir = fresh_tmp("type-sidecars");
+        let store = setup_store(&dir).await;
+        let q = create_quest(
+            &store,
+            CreateQuestRequest {
+                quest_type_id: 1,
+                title: "t".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: None,
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        crate::ops::comments::add_comment_entry(&store, "DEV-001", "a".into(), "남을 댓글".into(), None, false)
+            .await
+            .unwrap();
+        crate::ops::comments::set_memo(&store, "DEV-001", "남을 메모".into()).await.unwrap();
+        crate::ops::attachments::add_quest_attachment(&store, "DEV-001", "attachments/x.txt", "x")
+            .await
+            .unwrap();
+
+        change_quest_type(&store, q.id, ChangeTypeRequest { new_type_prefix: "BUG".into() })
+            .await
+            .unwrap();
+
+        let comments = crate::ops::comments::list_comment_entries(&store, "BUG-001").unwrap();
+        assert_eq!(comments.len(), 1, "댓글이 새 이름을 따라오지 않았다");
+        assert_eq!(
+            crate::ops::comments::get_memo(&store, "BUG-001").unwrap().as_deref(),
+            Some("남을 메모")
+        );
+        assert_eq!(crate::ops::attachments::list_quest_attachments(&store, "BUG-001").len(), 1);
+        for left in ["DEV-001.comments.md", "DEV-001.memo.md", "DEV-001.attachments.json"] {
+            assert!(!dir.join(".guild/quests").join(left).exists(), "{left} 이 옛 이름에 남았다");
+        }
+        // 다음 댓글은 번호가 이어진다.
+        crate::ops::comments::add_comment_entry(&store, "BUG-001", "a".into(), "둘째".into(), None, false)
+            .await
+            .unwrap();
+        let place = crate::repo::version::Place::CommentsHeader;
+        assert_eq!(crate::repo::version::read(&store.paths.comments_path("BUG-001"), place), 2);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
