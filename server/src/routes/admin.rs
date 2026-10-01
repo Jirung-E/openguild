@@ -95,6 +95,11 @@ pub async fn restore(
     })))
 }
 
+/// DEV-434: `GET /api/admin/sidecars` — 주인 없는 댓글 · 메모 · 첨부 파일.
+pub async fn orphan_sidecars(State(store): State<Store>) -> Json<Vec<String>> {
+    Json(drift::orphan_sidecars(&store.paths))
+}
+
 /// `GET /api/admin/drift` — drift 검사.
 pub async fn check_drift(
     State(store): State<Store>,

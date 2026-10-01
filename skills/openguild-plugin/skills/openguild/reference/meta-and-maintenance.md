@@ -38,6 +38,7 @@ catalog color/description.
 openguild reindex                 # rebuild the SQL cache from .guild/**
 openguild check drift             # compare files vs. cache, report mismatches
 openguild check counters          # verify ID counters are consistent
+openguild check sidecars          # comment/memo/attachment files whose document is missing (report only)
 openguild index rebuild
 openguild index vacuum
 openguild journal tail            # tail the append-only journal

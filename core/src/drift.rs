@@ -183,6 +183,32 @@ pub(crate) async fn auto_resync_locked(store: &Store) -> Result<Option<crate::re
     Ok(Some(report))
 }
 
+/// DEV-434: 주인 없는 옆 파일 — `quests/` · `campaigns/` · `library/` 의 `{이름}.comments.md` · `.memo.md` ·
+/// `.attachments.json` 중 `{이름}.md` 가 없는 것. 길드 루트 기준 경로(`/` 구분)로, 이름 순.
+///
+/// 붙이지는 않는다 — 옛 이름이 다른 문서에 다시 쓰였을 수 있어 사람이 정한다. BUG-343 전에는 퀘스트 타입을
+/// 바꾸면 이런 파일이 남았다.
+pub fn orphan_sidecars(paths: &crate::repo::GuildPaths) -> Vec<String> {
+    const SUFFIXES: [&str; 3] = [".comments.md", ".memo.md", ".attachments.json"];
+    let mut out = Vec::new();
+    for (dir, rel) in [
+        (paths.quests_dir(), "quests"),
+        (paths.campaigns_dir(), "campaigns"),
+        (paths.library_dir(), "library"),
+    ] {
+        let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+        for e in rd.filter_map(|e| e.ok()) {
+            let name = e.file_name().to_string_lossy().to_string();
+            let Some(owner) = SUFFIXES.iter().find_map(|s| name.strip_suffix(s)) else { continue };
+            if !dir.join(format!("{owner}.md")).is_file() {
+                out.push(format!(".guild/{rel}/{name}"));
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -697,6 +723,30 @@ mod tests {
         .unwrap();
         assert_eq!(title, "drift target");
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-434: 주인(`{이름}.md`)이 없는 옆 파일만 알려 준다.
+    #[test]
+    fn orphan_sidecars_lists_only_files_without_their_document() {
+        let dir = fresh_tmp("orphans");
+        seed_guild_dir(&dir).unwrap();
+        let paths = crate::repo::GuildPaths::new(&dir);
+        let q = dir.join(".guild/quests");
+        std::fs::write(q.join("DEV-001.md"), "x").unwrap();
+        std::fs::write(q.join("DEV-001.comments.md"), "x").unwrap();
+        std::fs::write(q.join("DEV-009.comments.md"), "x").unwrap();
+        std::fs::write(q.join("DEV-009.memo.md"), "x").unwrap();
+        std::fs::create_dir_all(dir.join(".guild/campaigns")).unwrap();
+        std::fs::write(dir.join(".guild/campaigns/C-002.attachments.json"), "[]").unwrap();
+        assert_eq!(
+            orphan_sidecars(&paths),
+            vec![
+                ".guild/campaigns/C-002.attachments.json",
+                ".guild/quests/DEV-009.comments.md",
+                ".guild/quests/DEV-009.memo.md",
+            ]
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

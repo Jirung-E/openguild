@@ -185,7 +185,7 @@ CLI 사용법/워크플로 패턴/안전장치는 더 이상 별도 문서가 �
 | 영역 | 실행 |
 |---|---|
 | 서버 host | `cargo run --bin openguild-server -- host` |
-| 정비/진단 | `openguild {info, backup new, restore, reindex, migrate-to-files, check counters, check drift, index vacuum, journal tail}` (또는 HTTP admin `/api/admin/*`) |
+| 정비/진단 | `openguild {info, backup new, restore, reindex, migrate-to-files, check counters, check drift, check sidecars, index vacuum, journal tail}` (또는 HTTP admin `/api/admin/*`) |
 | 프론트엔드 | `cd gui/frontend && npm run dev` (또는 `just dev-frontend`) |
 | CLI | `cargo run --bin openguild -- --help` (또는 `target/release/openguild`) |
 | 테스트 전체 | **`just test`** — CI 와 같은 조합(러스트 + 프론트 + `npm run check` + 스타일 가드). 아래 둘만 돌리면 **가드를 건너뛴다** |

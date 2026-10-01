@@ -430,6 +430,8 @@ enum CheckCmd {
         #[arg(long, help = tf!("발견된 불일치를 파일 + SQL 에 직접 보정 (기본: 보고만).", "Fix found mismatches directly in files + SQL (default: report only)."))]
         fix: bool,
     },
+    #[command(about = tf!("주인 없는 댓글 · 메모 · 첨부 파일 찾기 — 문서(`이름.md`)가 없는 것. 보고만 한다.", "Find comment/memo/attachment files whose document (`name.md`) is missing. Report only."))]
+    Sidecars,
 }
 
 /// DEV-177: index.db 캐시 그룹.
@@ -3992,6 +3994,14 @@ impl Backend {
         }
     }
 
+    /// DEV-434: 주인 없는 옆 파일.
+    fn orphan_sidecars(&self) -> Result<Vec<String>> {
+        match self {
+            Backend::Http(c) => c.get("/api/admin/sidecars"),
+            Backend::Local(l) => Ok(openguild_core::drift::orphan_sidecars(&l.store.paths)),
+        }
+    }
+
     /// DEV-164: counter 정합 검사 / 보정.
     fn check_counters(&self, fix: bool) -> Result<openguild_core::ops::counter::CombinedReport> {
         match self {
@@ -6014,6 +6024,39 @@ fn run_check_drift_cmd(c: &Backend, resync: bool, json: bool) -> Result<()> {
     Ok(())
 }
 
+/// DEV-434: 주인 없는 댓글 · 메모 · 첨부 파일. 붙이지는 않는다 — 옛 이름이 다른 문서에 다시 쓰였을 수 있다.
+fn run_check_sidecars_cmd(c: &Backend, json: bool) -> Result<()> {
+    let found = c.orphan_sidecars()?;
+    if json {
+        json_println!(serde_json::json!({ "ok": true, "orphans": found }));
+        return Ok(());
+    }
+    if found.is_empty() {
+        println!("{}", tf!("✓ 주인 없는 파일 없음", "✓ no orphaned files"));
+        return Ok(());
+    }
+    println!(
+        "{}",
+        tf!(
+            "주인 없는 파일 {}개 — 문서(`이름.md`)가 없어 화면에 안 보입니다:",
+            "{} orphaned file(s) — their document (`name.md`) is missing, so they are not shown:",
+            found.len()
+        )
+    );
+    for f in &found {
+        println!("  {f}");
+    }
+    println!();
+    println!(
+        "{}",
+        tf!(
+            "자동으로 붙이지 않습니다. 퀘스트 타입을 바꾼 적이 있다면 새 이름의 문서를 찾아\n(`openguild quest history <새 이름>` 에 옛 이름이 나옵니다) 파일 이름을 새 이름으로 바꾸세요.",
+            "Not attached automatically. If a quest's type was changed, find its new name\n(`openguild quest history <new name>` shows the old one) and rename the file to match."
+        )
+    );
+    Ok(())
+}
+
 fn run_check_counters_cmd(c: &Backend, fix: bool, json: bool) -> Result<()> {
     let report = c.check_counters(fix)?;
     if json {
@@ -7293,6 +7336,7 @@ fn run() -> Result<()> {
         Command::Check { sub } => match sub {
             CheckCmd::Drift { resync } => run_check_drift_cmd(&c, resync, cli.json)?,
             CheckCmd::Counters { fix } => run_check_counters_cmd(&c, fix, cli.json)?,
+            CheckCmd::Sidecars => run_check_sidecars_cmd(&c, cli.json)?,
         },
         Command::Index { sub } => match sub {
             IndexCmd::Rebuild => run_reindex_cmd(&c, cli.json)?,
