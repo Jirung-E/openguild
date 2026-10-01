@@ -1338,6 +1338,8 @@ async fn replace_sibling_rows(
 pub async fn sync_on_open(
     store: &Store,
 ) -> AppResult<(IncrementalReport, Option<crate::reindex::ReindexReport>)> {
+    // BUG-342: 파일을 읽어 캐시에 옮기는 동안 다른 변경이 끼면 옮긴 것이 낡는다 — 길드 독점.
+    let _g = store.lock_guild().await?;
     let mut inc = sync_changed_quest_files(store).await?;
     // DEV-310: 캠페인 본문 → sibling 순서. 캠페인 행이 먼저 최신이어야 그 캠페인의
     // 댓글도 같은 열기에서 반영된다(순서가 반대면 소유자가 없어 full 로 넘어간다).
@@ -1346,7 +1348,7 @@ pub async fn sync_on_open(
     sync_changed_library_files(store, &mut inc).await?;
     let inc = inc;
     let reindex_report = if inc.needs_full_reindex {
-        crate::drift::auto_resync(store)
+        crate::drift::auto_resync_locked(store)
             .await
             .map_err(|e| crate::error::AppError::Internal(anyhow::anyhow!(e)))?
     } else {

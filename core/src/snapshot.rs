@@ -712,7 +712,7 @@ pub async fn restore_snapshot(store: &Store, snapshot: &SnapshotInfo) -> Result<
 
     // 4. index.db 재구축 (파일 → DB). live pool 사용 — fs::copy 로 덮어쓰지
     //    않으므로 연결 불일치(깜빡임) 없음.
-    crate::reindex::reindex(store)
+    crate::reindex::reindex_locked(store)
         .await
         .map_err(|e| anyhow::anyhow!("restore 후 reindex 실패: {e}"))?;
 

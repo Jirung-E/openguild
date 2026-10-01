@@ -78,7 +78,17 @@ impl ReindexReport {
 }
 
 /// 메인 진입점.
+///
+/// BUG-342: 길드 **독점**으로 돈다 — 캐시를 비우고 파일에서 다시 채우는 사이에 다른 변경이 캐시에 쓰면, 읽기가
+/// 이미 지나간 파일에 쓴 것이 캐시에서 빠진다. 잠금을 이미 쥔 쪽(복원, 여는 순간의 따라잡기)은
+/// [`reindex_locked`] 를 부른다.
 pub async fn reindex(store: &Store) -> AppResult<ReindexReport> {
+    let _g = store.lock_guild().await?;
+    reindex_locked(store).await
+}
+
+/// 잠금 없는 몸통 — **길드 독점을 쥔 쪽만** 부른다.
+pub(crate) async fn reindex_locked(store: &Store) -> AppResult<ReindexReport> {
     let mut report = ReindexReport::default();
     let pool = &store.index_pool;
     let paths = &store.paths;
@@ -2496,6 +2506,37 @@ mod tests {
             .unwrap();
         assert_eq!(n_deps, 0);
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-342: 누가 길드를 고치는 동안 다시 색인하기는 기다린다 — 캐시를 비우고 채우는 사이에 쓴 것이
+    /// 빠지지 않게. 복원(잠금 안에서 다시 색인)은 스스로를 기다리지 않는다.
+    #[tokio::test]
+    async fn reindex_waits_for_a_change_and_restore_does_not_wait_for_itself() {
+        use std::time::Duration;
+        let ns = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("og-reindex-lock-{ns}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        crate::repo::seed_guild_dir(&dir).unwrap();
+        let store = Store::open(&dir).await.unwrap();
+
+        let held = store.lock_docs(&[crate::lock::DocKey::quest("DEV-001")]).await.unwrap();
+        let bg = store.clone();
+        let h = tokio::spawn(async move { crate::reindex::reindex(&bg).await });
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert!(!h.is_finished(), "문서를 고치는 동안 다시 색인하기가 끝났다");
+        drop(held);
+        tokio::time::timeout(Duration::from_secs(10), h).await.unwrap().unwrap().unwrap();
+
+        let snap = crate::snapshot::create_snapshot(&store).await.unwrap();
+        tokio::time::timeout(Duration::from_secs(10), crate::snapshot::restore_snapshot(&store, &snap))
+            .await
+            .expect("복원이 제 잠금을 기다리며 멈췄다")
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(10), crate::incremental::sync_on_open(&store))
+            .await
+            .expect("여는 순간의 따라잡기가 멈췄다")
+            .unwrap();
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

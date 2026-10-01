@@ -159,7 +159,15 @@ pub async fn detect_drift(store: &Store) -> Result<DriftReport> {
 
 /// drift 발견 시 자동 reindex.
 /// drift 없으면 no-op.
+///
+/// BUG-342: 길드 독점을 쥐고 본다(검사와 다시 채우기 사이에 남이 끼지 않게). 쥔 쪽은 [`auto_resync_locked`].
 pub async fn auto_resync(store: &Store) -> Result<Option<crate::reindex::ReindexReport>> {
+    let _g = store.lock_guild().await?;
+    auto_resync_locked(store).await
+}
+
+/// 잠금 없는 몸통 — **길드 독점을 쥔 쪽만** 부른다.
+pub(crate) async fn auto_resync_locked(store: &Store) -> Result<Option<crate::reindex::ReindexReport>> {
     let drift = detect_drift(store).await?;
     if drift.is_clean() {
         return Ok(None);
@@ -171,7 +179,7 @@ pub async fn auto_resync(store: &Store) -> Result<Option<crate::reindex::Reindex
         drift.stale_in_index.len(),
         drift.fresh_siblings.len()
     );
-    let report = crate::reindex::reindex(store).await?;
+    let report = crate::reindex::reindex_locked(store).await?;
     Ok(Some(report))
 }
 
