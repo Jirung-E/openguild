@@ -243,45 +243,43 @@ async fn snapshot_db_read(db_path: &std::path::Path) -> Result<Vec<(String, Vec<
     Ok(rows)
 }
 
-/// 스냅샷에 담을 파일 전체 — 루트 마커 `*.guild` + `.guild/<SOURCE_SUBDIRS>/**`.
-/// 반환 경로는 **길드 루트 기준 상대 경로**(복원이 그대로 되붙일 수 있게),
-/// 구분자는 `/` 로 정규화(플랫폼 간 이동 가능).
-fn collect_guild_source_files(paths: &GuildPaths) -> Result<Vec<(String, Vec<u8>)>> {
-    let mut out: Vec<(String, Vec<u8>)> = Vec::new();
+/// 스냅샷에 담을 파일 전체 — 루트 마커 `*.guild` + `.guild/<SOURCE_SUBDIRS>/**`. `f` 는 (길드 루트 기준 상대 경로,
+/// 실제 경로)를 받는다. 상대 경로 구분자는 `/` 로 정규화(플랫폼 간 이동 가능 — 복원이 그대로 되붙인다).
+fn walk_guild_source(
+    paths: &GuildPaths,
+    f: &mut dyn FnMut(String, &std::path::Path) -> Result<()>,
+) -> Result<()> {
     // 루트 마커.
     if let Ok(rd) = std::fs::read_dir(&paths.guild_root) {
         for e in rd.filter_map(|e| e.ok()) {
             let p = e.path();
             if p.is_file() && p.extension().and_then(|x| x.to_str()) == Some("guild") {
-                let name = e.file_name().to_string_lossy().to_string();
-                out.push((name, std::fs::read(&p)?));
+                f(e.file_name().to_string_lossy().to_string(), &p)?;
             }
         }
     }
     // `.guild/<subdir>/**`.
     for sub in SOURCE_SUBDIRS {
-        let base = paths.dot_guild().join(sub);
-        collect_dir_files(&base, &format!(".guild/{sub}"), &mut out)?;
+        walk_dir(&paths.dot_guild().join(sub), &format!(".guild/{sub}"), f)?;
     }
-    Ok(out)
+    Ok(())
 }
 
-fn collect_dir_files(
+fn walk_dir(
     dir: &std::path::Path,
     rel_prefix: &str,
-    out: &mut Vec<(String, Vec<u8>)>,
+    f: &mut dyn FnMut(String, &std::path::Path) -> Result<()>,
 ) -> Result<()> {
     let Ok(rd) = std::fs::read_dir(dir) else {
         return Ok(()); // 없는 하위디렉토리는 조용히 skip (기존 copy_tree 와 동일).
     };
     for e in rd.filter_map(|e| e.ok()) {
         let p = e.path();
-        let name = e.file_name().to_string_lossy().to_string();
-        let rel = format!("{rel_prefix}/{name}");
+        let rel = format!("{rel_prefix}/{}", e.file_name().to_string_lossy());
         if p.is_dir() {
-            collect_dir_files(&p, &rel, out)?;
+            walk_dir(&p, &rel, f)?;
         } else if p.is_file() {
-            out.push((rel, std::fs::read(&p)?));
+            f(rel, &p)?;
         }
     }
     Ok(())
@@ -354,11 +352,60 @@ struct BackupRead {
     journal_upto: i64,
 }
 
-/// BUG-340 1단계: 길드 **독점**으로 쓰다 만 변경이 없는 모습을 읽는다. 변경은 journal 에 의도를 적고
-/// 파일을 쓰는 일을 한 잠금 안에서 하므로, 여기서 본 journal 마지막 id 까지는 파일에 다 반영돼 있다.
+/// BUG-340 1단계: 쓰다 만 변경이 없는 모습을 읽는다. 변경은 journal 에 의도를 적고 파일을 쓰는 일을 한 잠금
+/// 안에서 하므로, 길드 독점 안에서 본 journal 마지막 id 까지는 파일에 다 반영돼 있다.
+///
+/// BUG-344: 내용 읽기는 **잠그지 않고** 먼저 한다 — 윈도우에서는 처음 읽기가 백신 검사로 수 초 걸려, 그동안 길드를
+/// 쥐고 있으면 저장이 전부 멈췄다. 잠근 뒤에는 목록과 크기 · 시각만 다시 보고 바뀐 것만 다시 읽는다.
 async fn read_guild_for_backup(store: &Store) -> Result<BackupRead> {
+    // 파일 읽기라 작업 스레드를 붙잡지 않게 따로 돌린다.
+    let paths = store.paths.clone();
+    let pre = tokio::task::spawn_blocking(move || prefetch_guild_source(&paths))
+        .await
+        .unwrap_or_default();
+    read_guild_for_backup_from(store, pre).await
+}
+
+/// BUG-344: "바뀌었나" 표 — 크기와 수정 시각. 시각을 못 읽는 파일시스템이면 늘 다시 읽는다.
+type Stamp = (u64, Option<std::time::SystemTime>);
+
+fn stamp_of(p: &std::path::Path) -> Option<Stamp> {
+    let m = std::fs::metadata(p).ok()?;
+    Some((m.len(), m.modified().ok()))
+}
+
+/// BUG-344: 잠그지 않고 읽어 둔 내용 — 길드 루트 기준 경로 → (읽기 전 표, 내용). 읽는 사이 바뀌거나 사라진 파일은
+/// 표가 안 맞거나 빠져서 잠근 뒤 다시 읽힌다.
+fn prefetch_guild_source(paths: &GuildPaths) -> std::collections::HashMap<String, (Stamp, Vec<u8>)> {
+    let mut out = std::collections::HashMap::new();
+    let _ = walk_guild_source(paths, &mut |rel, p| {
+        if let Some(st) = stamp_of(p)
+            && let Ok(bytes) = std::fs::read(p)
+        {
+            out.insert(rel, (st, bytes));
+        }
+        Ok(())
+    });
+    out
+}
+
+/// BUG-344: 잠근 뒤 — 목록과 표만 다시 보고, 미리 읽은 것과 표가 같으면 그대로 쓰고 아니면 지금 읽는다. 결과는 잠근
+/// 순간의 모습이다. 이 길드 기준 잠금을 쥐는 시간은 파일 정보 보기뿐이다.
+async fn read_guild_for_backup_from(
+    store: &Store,
+    mut pre: std::collections::HashMap<String, (Stamp, Vec<u8>)>,
+) -> Result<BackupRead> {
     let _g = store.lock_guild().await?;
-    let files = collect_guild_source_files(&store.paths)?;
+    let mut files = Vec::new();
+    walk_guild_source(&store.paths, &mut |rel, p| {
+        let now = stamp_of(p);
+        let bytes = match pre.remove(&rel) {
+            Some((st, bytes)) if Some(st) == now && st.1.is_some() => bytes,
+            _ => std::fs::read(p).with_context(|| format!("백업 읽기 실패: {}", p.display()))?,
+        };
+        files.push((rel, bytes));
+        Ok(())
+    })?;
     let journal_upto = journal::max_id(&store.journal_pool)
         .await
         .context("journal 위치 조회 실패")?;
@@ -1580,6 +1627,37 @@ mod tests {
         let got: Vec<String> = list_snapshots(&store.paths).unwrap().into_iter().map(|s| s.timestamp).collect();
         assert_eq!(got, want);
         assert_eq!(latest_snapshot(&store.paths).unwrap().unwrap().timestamp, "20260101-120001");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-344: 내용은 잠그지 않고 읽고, 잠근 뒤 목록 · 크기 · 시각만 다시 본다. 그사이 고친 것 · 새것 · 지운 것이
+    /// 잠근 순간의 모습대로 들어가야 한다.
+    #[tokio::test]
+    async fn a_change_between_the_read_and_the_check_is_picked_up() {
+        let dir = fresh_tmp("prefetch");
+        let store = setup(&dir).await;
+        let q = dir.join(".guild/quests");
+        std::fs::write(q.join("KEEP.md"), "그대로").unwrap();
+        std::fs::write(q.join("EDIT.md"), "옛 내용").unwrap();
+        std::fs::write(q.join("GONE.md"), "지울 것").unwrap();
+
+        let pre = prefetch_guild_source(&store.paths);
+        std::thread::sleep(Duration::from_millis(20));
+        std::fs::write(q.join("EDIT.md"), "새 내용 — 길이도 다르다").unwrap();
+        std::fs::write(q.join("NEW.md"), "새 파일").unwrap();
+        std::fs::remove_file(q.join("GONE.md")).unwrap();
+
+        let read = read_guild_for_backup_from(&store, pre).await.unwrap();
+        let get = |name: &str| {
+            read.files
+                .iter()
+                .find(|(p, _)| p == &format!(".guild/quests/{name}"))
+                .map(|(_, b)| String::from_utf8_lossy(b).to_string())
+        };
+        assert_eq!(get("KEEP.md").as_deref(), Some("그대로"));
+        assert_eq!(get("EDIT.md").as_deref(), Some("새 내용 — 길이도 다르다"));
+        assert_eq!(get("NEW.md").as_deref(), Some("새 파일"));
+        assert_eq!(get("GONE.md"), None, "지운 파일이 백업에 남았다");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
