@@ -25,3 +25,19 @@ pub(crate) fn env_lock() -> std::sync::MutexGuard<'static, ()> {
         .lock()
         .unwrap_or_else(|e| e.into_inner())
 }
+
+/// BUG-347: `sh` 로 훅을 돌리는 시험은 `sh` 가 없는 기계(Git Bash 없는 윈도우)에서 건너뛴다 — 실패로 남으면
+/// 진짜 실패가 묻힌다. CI 의 윈도우 러너에는 Git Bash 가 있어 거기서는 돈다.
+pub(crate) fn have_sh() -> bool {
+    static HAVE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *HAVE.get_or_init(|| {
+        let ok = std::process::Command::new("sh")
+            .args(["-c", "exit 0"])
+            .status()
+            .is_ok_and(|s| s.success());
+        if !ok {
+            eprintln!("sh 가 없어 sh 로 훅을 돌리는 시험을 건너뜁니다");
+        }
+        ok
+    })
+}

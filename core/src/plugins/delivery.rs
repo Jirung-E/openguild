@@ -762,6 +762,9 @@ mod tests {
     /// 이스케이프 문제가 생긴다.
     #[test]
     fn run_feeds_the_event_on_stdin() {
+        if !crate::test_env::have_sh() {
+            return;
+        }
         let lab = RunLab::new("run");
         let p = lab.plugin(Action::Run {
             command: "sh".into(),
@@ -792,6 +795,9 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn run_uses_the_command_written_for_this_os() {
+        if !crate::test_env::have_sh() {
+            return;
+        }
         let lab = RunLab::new("run-os");
         let here = super::super::RunCommand {
             command: "sh".into(),
@@ -818,6 +824,9 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn run_hands_the_chain_to_the_child() {
+        if !crate::test_env::have_sh() {
+            return;
+        }
         let lab = RunLab::new("run-chain");
         let p = lab.plugin(Action::Run {
             command: "sh".into(),
@@ -842,6 +851,9 @@ mod tests {
     /// 뒤로 **더 안 커지는지**를 본다.
     #[test]
     fn a_hanging_process_is_killed() {
+        if !crate::test_env::have_sh() {
+            return;
+        }
         let lab = RunLab::new("hang");
         let p = lab.plugin(Action::Run {
             command: "sh".into(),
@@ -882,6 +894,9 @@ mod tests {
     /// 사용자는 반드시 참조로 적어야 하는데, 안 풀면 자식이 리터럴을 받는다.
     #[test]
     fn run_expands_env_refs_in_command_and_args() {
+        if !crate::test_env::have_sh() {
+            return;
+        }
         // RunLab 이 env_lock 을 들고 있다 — 여기서 또 잡으면 자기 자신과
         // 교착한다.
         let lab = RunLab::new("runenv");
@@ -981,6 +996,9 @@ mod tests {
     /// url·헤더·body_env 같은 자리가 없어서, 이게 없으면 값을 읽을 방법이 사실상 없다.
     #[test]
     fn run_puts_configured_values_in_the_child_environment() {
+        if !crate::test_env::have_sh() {
+            return;
+        }
         let lab = RunLab::new("runvalues");
         let p = lab.plugin(Action::Run {
             command: "sh".into(),
@@ -1002,6 +1020,9 @@ mod tests {
     /// 코어가 주는 경로는 설정값이 못 덮는다 — 훅이 자기 코드 폴더를 잘못 찾으면 안 된다.
     #[test]
     fn configured_values_cannot_override_the_core_paths() {
+        if !crate::test_env::have_sh() {
+            return;
+        }
         let lab = RunLab::new("runvalues-override");
         let p = lab.plugin(Action::Run {
             command: "sh".into(),
@@ -1023,6 +1044,9 @@ mod tests {
     /// 참조한 변수가 없으면 리터럴로 넘기지 않고 실패로 남긴다.
     #[test]
     fn run_with_a_missing_env_var_fails_loudly() {
+        if !crate::test_env::have_sh() {
+            return;
+        }
         // BUG-289: run 은 데이터 폴더를 만든다 — 임시 홈 없이 돌면 실제 홈에 남는다.
         // RunLab 이 env_lock 도 쥔다.
         let lab = RunLab::new("runenv-missing");
@@ -1046,6 +1070,9 @@ mod tests {
     /// 플러그인이 멈춘다 — 시한 안에 돌아오는지 본다.
     #[test]
     fn a_child_that_never_reads_stdin_does_not_wedge_the_thread() {
+        if !crate::test_env::have_sh() {
+            return;
+        }
         let lab = RunLab::new("nostdin");
         let big = serde_json::json!({ "text": "가".repeat(200_000) });
         let p = lab.plugin(Action::Run {
@@ -1112,6 +1139,9 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn a_timeout_kills_grandchildren_too() {
+        if !crate::test_env::have_sh() {
+            return;
+        }
         let lab = RunLab::new("grandchild");
         // 셸이 손자를 백그라운드로 띄우고 자기는 잔다. 손자는 살아 있는 동안
         // 계속 파일을 키운다.
@@ -1144,6 +1174,9 @@ mod tests {
     /// 실패한 프로세스는 조용히 넘어가지 않는다.
     #[test]
     fn a_failing_process_is_reported() {
+        if !crate::test_env::have_sh() {
+            return;
+        }
         let lab = RunLab::new("fail");
         let p = lab.plugin(Action::Run {
             command: "sh".into(),

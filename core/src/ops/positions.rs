@@ -176,6 +176,18 @@ mod tests {
             update_position(&store, q.id, UpdatePositionRequest { x: 777.0, y: 888.0 })
                 .await
                 .unwrap();
+            // 윈도우는 열린 파일을 못 지운다 — 풀을 닫고 나서 지운다(블록을 벗어나는 것만으로는 바로 안 닫힌다).
+            store.index_pool.close().await;
+            store.journal_pool.close().await;
+            // 윈도우는 열린 파일을 못 지운다 — 풀을 닫고 나서 지운다(블록을 벗어나는 것만으로는 바로 안 닫힌다).
+            store.index_pool.close().await;
+            store.journal_pool.close().await;
+            // 윈도우는 열린 파일을 못 지운다 — 풀을 닫고 나서 지운다(블록을 벗어나는 것만으로는 바로 안 닫힌다).
+            store.index_pool.close().await;
+            store.journal_pool.close().await;
+            // 윈도우는 열린 파일을 못 지운다 — 풀을 닫고 나서 지운다(블록을 벗어나는 것만으로는 바로 안 닫힌다).
+            store.index_pool.close().await;
+            store.journal_pool.close().await;
         }
 
         // 폐기가능 캐시를 지운다 — 브랜치 전환 뒤 하는 그대로.

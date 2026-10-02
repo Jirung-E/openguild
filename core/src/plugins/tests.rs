@@ -1524,6 +1524,9 @@ fn probe_event() -> crate::events::Event {
 /// 시간이나 파일 존재만 보면 안 된다. "허용된 상태가 유지되는가" 를 직접 본다.
 #[test]
 fn a_hook_that_writes_files_keeps_its_consent() {
+    if !crate::test_env::have_sh() {
+        return;
+    }
     let _guard = env_lock();
     let home = fresh_tmp("selfrevoke-home");
     unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
@@ -1597,6 +1600,9 @@ fn a_hook_that_writes_files_keeps_its_consent() {
 /// 플러그인이 통째로 못 돈다.
 #[test]
 fn the_hook_is_told_where_its_code_lives() {
+    if !crate::test_env::have_sh() {
+        return;
+    }
     let _guard = env_lock();
     let home = fresh_tmp("plugindir-home");
     unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
@@ -2075,6 +2081,9 @@ fn a_referenced_but_undeclared_value_still_gets_an_input() {
 /// 코어가 채우는 경로는 사용자에게 물을 값이 아니다([[BUG-279]]).
 #[test]
 fn core_provided_paths_are_not_asked_for() {
+    if !crate::test_env::have_sh() {
+        return;
+    }
     let d = def(Action::Run {
         command: "sh".into(),
         args: vec!["${OPENGUILD_PLUGIN_DIR}/hook.sh".into(), "${MY_KEY}".into()],
@@ -2127,6 +2136,9 @@ fn run_picks_the_command_for_this_os() {
 /// 이 필드가 생긴 것만으로 기존 동의가 전부 풀린다.
 #[test]
 fn a_run_without_os_commands_serializes_as_before() {
+    if !crate::test_env::have_sh() {
+        return;
+    }
     let d = def(Action::Run {
         command: "sh".into(),
         args: vec!["hook.sh".into()],
@@ -2163,7 +2175,11 @@ fn a_source_recorded_with_a_verbatim_prefix_still_works() {
     unsafe { std::env::set_var("OPENGUILD_HOME", &home) };
     let g = fresh_tmp("verb-guild");
     let src = fresh_tmp("verb-src");
-    let dir = std::fs::canonicalize(&src).unwrap();
+    // BUG-347: 윈도우의 `canonicalize` 는 이미 `\\?\` 를 붙여 준다 — 떼고 나서 한 번만 붙인다(안 떼면
+    // `\\?\\\?\C:\…` 이 되어 시험이 옛 기록이 아니라 깨진 기록을 시험한다).
+    let dir = std::path::PathBuf::from(crate::recents::strip_verbatim_prefix(
+        &std::fs::canonicalize(&src).unwrap().to_string_lossy(),
+    ));
     std::fs::write(
         dir.join(MANIFEST),
         manifest_text(json!({
@@ -3250,7 +3266,9 @@ fn changing_an_imported_file_outside_the_folder_does_not_ask_again() {
         "name = \"p\"\nscope = [\"cli\"]\nscripts = [\"main.rhai\"]\n\n[actions.out.post]\nurl = \"https://x.test\"\n\n[[handlers]]\npost = [\"quest.created\"]\ncall = \"h\"\n",
     )
     .unwrap();
-    let import = format!("import \"{}/fmt.rhai\" as fmt;", outside.display());
+    // BUG-347: rhai 글자 안에서 `\` 는 이스케이프다 — 윈도우 경로(`C:\Users\…`)를 그대로 넣으면 `\U` 가
+    // 깨진 이스케이프가 되어 컴파일이 안 된다. `/` 는 윈도우에서도 경로 구분자다.
+    let import = format!("import \"{}/fmt.rhai\" as fmt;", outside.display().to_string().replace('\\', "/"));
     std::fs::write(dir.join("main.rhai"), format!("{import} fn h(e) {{ send(\"out\", fmt::head(e)) }}")).unwrap();
 
     let l = load_all(&g);
