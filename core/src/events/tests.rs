@@ -518,6 +518,7 @@ async fn all_declared_events_fire_with_a_usable_payload() {
             title: Some("바뀐 제목".into()),
             description: None,
             urgency: None,
+            ..Default::default()
         },
     )
     .await
@@ -1213,6 +1214,7 @@ async fn emitted_catalog_entries_actually_fire() {
             title: Some("바뀐 제목".into()),
             description: None,
             urgency: None,
+            ..Default::default()
         },
     )
     .await
@@ -1322,7 +1324,7 @@ async fn post_events_carry_the_file_number_counted_separately() {
     crate::ops::update_quest(
         &store,
         q.id,
-        crate::models::UpdateQuestRequest { title: Some("번호 둘".into()), description: None, urgency: None },
+        crate::models::UpdateQuestRequest { title: Some("번호 둘".into()), description: None, urgency: None, ..Default::default() },
     )
     .await
     .unwrap();

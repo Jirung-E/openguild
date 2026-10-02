@@ -40,6 +40,9 @@
 	// DEV-203: 편집기 셋업(테마/들여쓰기/첨부/자동완성/redo/높이/overlay 스크롤)은
 	// 공통 MarkdownEditor 컴포넌트로 단일화.
 	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
+	// DEV-435: 같은 본문 동시 편집 — 같은 줄 충돌이면 고르는 화면.
+	import EditConflictDialog from '$lib/components/EditConflictDialog.svelte';
+	import { EditConflictError, type EditConflict } from '$lib/api/editConflict';
 	// alert() 대신 통일된 toast (UI 일관성 — DEV-142 완료 차단 경고 등).
 	import { showToast } from '$lib/stores/toast';
 	import {
@@ -114,6 +117,9 @@
 	let editTitle = $state('');
 	let editUrgency = $state(3);
 	let editDescription = $state('');
+	// DEV-435: 편집을 시작할 때 본 본문 — 저장할 때 함께 보내 그사이 남이 고친 것과 합친다.
+	let editBase = $state('');
+	let editConflict = $state<EditConflict | null>(null);
 	// DEV-076: 기한 — YYYY-MM-DD 또는 빈 문자열 (= 미설정 / 해제).
 	let editDesiredDue = $state('');
 	let editRequiredDue = $state('');
@@ -343,6 +349,7 @@
 		editTitle = detail.title;
 		editUrgency = detail.urgency;
 		editDescription = detail.description ?? '';
+		editBase = detail.description ?? '';
 		// DEV-076: null / undefined → 빈 문자열 (input value).
 		editDesiredDue = detail.desired_due ?? '';
 		editRequiredDue = detail.required_due ?? '';
@@ -363,7 +370,11 @@
 			await questsApi.update(detail.id, {
 				title: editTitle.trim() || detail.title,
 				description: desc || undefined,
-				urgency: editUrgency
+				urgency: editUrgency,
+				// DEV-435: 그사이 남이 고친 본문을 조용히 덮지 않는다 — 겹치지 않으면 서버가 합치고, 같은 줄이면
+				// 충돌로 돌려준다. 편집하던 번호도 실어 타입이 바뀌었거나 지워졌으면 막는다.
+				base_description: editBase,
+				expected_id: detail.quest_id
 			});
 			// DEV-076: 기한 — 빈 문자열 → null (해제), 값 → 설정.
 			// 변경 사항이 있을 때만 PATCH 호출 (no-op 절약).
@@ -378,8 +389,15 @@
 				await questsApi.setDueDates(detail.id, body);
 			}
 			detail = await questsApi.getBySlug(slug);
+			// 저장된 본문(합쳐졌을 수 있다)이 다음 저장의 출발점이다.
+			editBase = detail.description ?? '';
+			if (keepEditing) editDescription = detail.description ?? '';
 			if (!keepEditing) exitEditMode();
 		} catch (e) {
+			if (e instanceof EditConflictError) {
+				editConflict = e.conflict;
+				return;
+			}
 			saveError = e instanceof Error ? e.message : 'save failed';
 		} finally {
 			saving = false;
@@ -886,6 +904,20 @@
 				     이미지·동영상·파일은 드래그&드랍 / Ctrl+V 로 첨부(attachmentExtension). -->
 				<div class="field-label">
 					<span>{t('qd.descLabel', $locale)}</span>
+					<EditConflictDialog
+						conflict={editConflict}
+						mine={editDescription}
+						onresolve={(text, base) => {
+							editDescription = text;
+							editBase = base;
+							editConflict = null;
+						}}
+						onclose={() => (editConflict = null)}
+						onopen={(newId) => {
+							editConflict = null;
+							void goto(`/quests/${newId}`);
+						}}
+					/>
 					<MarkdownEditor
 						bind:value={editDescription}
 						onError={(msg) => (saveError = `${t('qd.attachUploadFailed', $locale)}: ${msg}`)}

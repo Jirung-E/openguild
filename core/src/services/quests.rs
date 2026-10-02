@@ -494,6 +494,7 @@ pub async fn get(pool: &SqlitePool, id: i64) -> AppResult<QuestDetail> {
         // 채로 두고, Store 를 가진 호출 계층(GUI 커맨드 등)에서 채운다.
         attachments: Vec::new(),
         position,
+        version: 0,
     })
 }
 
@@ -551,6 +552,7 @@ pub async fn get_by_slug(pool: &SqlitePool, slug: &str) -> AppResult<QuestDetail
         // 채로 두고, Store 를 가진 호출 계층(GUI 커맨드 등)에서 채운다.
         attachments: Vec::new(),
         position,
+        version: 0,
     })
 }
 

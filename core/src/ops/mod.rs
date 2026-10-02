@@ -64,6 +64,83 @@ where
     Ok(store.lock_guild().await?)
 }
 
+/// DEV-435: 편집을 시작할 때 본 것 — 본문 저장이 그사이 남이 한 변경을 조용히 덮지 않게.
+///
+/// - `text`: 시작할 때 본 본문. 있으면 지금 본문과 3방향 병합한다(앱).
+/// - `version`: 시작할 때 본 파일 번호(DEV-433). 다르면 거부한다(CLI · 에이전트). 댓글은 파일 하나에 여럿이 들어
+///   있어 남의 댓글만 달려도 번호가 오르므로 댓글에는 쓰지 않는다.
+///
+/// 둘 다 없으면 예전처럼 덮는다.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct EditBase {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<u64>,
+}
+
+/// DEV-435: 본문 저장을 그사이 바뀐 지금 본문과 맞춘다(위키백과 방식). **잠금 안에서** 부른다 — `current` 가 그
+/// 순간의 최신이어야 한다.
+///
+/// - `base`(편집을 시작할 때 본 본문)가 없으면 예전처럼 `mine` 을 그대로 쓴다.
+/// - 시작할 때와 지금이 같거나, 내 것이 이미 지금과 같으면 그대로.
+/// - 다르면 3방향 병합 — 겹치는 줄이 없으면 합친 글, 같은 줄을 다르게 고쳤으면 [`EditConflict`](crate::error::EditConflict).
+///
+/// 비교는 끝의 빈칸 · 줄바꿈을 빼고 한다(파일은 본문 끝을 다듬어 적는다).
+pub(crate) fn resolve_edit(
+    current: &str,
+    base: Option<&str>,
+    mine: String,
+    what: &str,
+) -> crate::error::AppResult<String> {
+    let Some(base) = base else { return Ok(mine) };
+    let (c, b, m) = (current.trim_end(), base.trim_end(), mine.trim_end());
+    if b == c || m == c {
+        return Ok(mine);
+    }
+    match crate::merge::merge3(b, c, m) {
+        crate::merge::Merge::Clean(merged) => Ok(merged),
+        crate::merge::Merge::Conflict(segments) => {
+            Err(crate::error::AppError::EditConflict(Box::new(crate::error::EditConflict {
+                reason: "text",
+                message: crate::tf!(
+                    "편집하는 사이 다른 곳에서 {what} 의 같은 줄을 고쳤습니다 — 어느 쪽을 남길지 골라 주세요",
+                    "While you were editing, the same lines of {what} were changed elsewhere — choose which to keep"
+                ),
+                current: Some(current.to_string()),
+                segments,
+                new_id: None,
+            })))
+        }
+    }
+}
+
+/// DEV-435: 번호(DEV-433 `version`)로만 아는 쪽(CLI · 에이전트) — 시작할 때 본 번호와 지금 번호가 다르면 거부한다.
+/// 합치지 않는다: 시작할 때의 본문이 없고, 에이전트는 다시 읽고 다시 적용하는 편이 낫다.
+pub(crate) fn check_base_version(
+    path: &std::path::Path,
+    place: crate::repo::version::Place,
+    base: Option<u64>,
+    current: impl FnOnce() -> String,
+    what: &str,
+) -> crate::error::AppResult<()> {
+    let Some(base) = base else { return Ok(()) };
+    let now = crate::repo::version::read(path, place);
+    if now == base {
+        return Ok(());
+    }
+    Err(crate::error::AppError::EditConflict(Box::new(crate::error::EditConflict {
+        reason: "stale",
+        message: crate::tf!(
+            "{what} 이 편집을 시작한 뒤 바뀌었습니다(번호 {base} → {now}) — 다시 읽고 고쳐 주세요",
+            "{what} changed after you started editing (version {base} → {now}) — read it again and reapply"
+        ),
+        current: Some(current()),
+        segments: Vec::new(),
+        new_id: None,
+    })))
+}
+
 /// 잠근 뒤 목록이 바뀌어 다시 잡는 횟수 — 넘으면 길드 독점.
 const RESOLVE_TRIES: usize = 4;
 
@@ -272,6 +349,85 @@ mod doc_lock_tests {
             drop(held);
             h.await.unwrap().unwrap();
         }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+/// DEV-435: 도서관 · 규칙 · 댓글도 퀘스트 본문과 같이 — 다른 줄은 합치고, 같은 줄은 거부한다.
+#[cfg(test)]
+mod edit_merge_tests {
+    use super::EditBase;
+    use crate::error::AppError;
+    use crate::store::Store;
+
+    const START: &str = "하나\n둘\n셋\n넷\n다섯";
+
+    async fn guild(label: &str) -> (std::path::PathBuf, Store) {
+        let ns = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("og-editmerge-{label}-{ns}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        crate::repo::seed_guild_dir(&dir).unwrap();
+        let store = Store::open(&dir).await.unwrap();
+        (dir, store)
+    }
+
+    fn base() -> EditBase {
+        EditBase { text: Some(START.into()), version: None }
+    }
+
+    fn is_text_conflict(r: Result<impl std::fmt::Debug, AppError>) -> bool {
+        matches!(r, Err(AppError::EditConflict(c)) if c.reason == "text")
+    }
+
+    #[tokio::test]
+    async fn library_rule_and_comments_merge_or_refuse_like_quests() {
+        let (dir, store) = guild("all").await;
+
+        // 도서관
+        let b = super::library::create_book(&store, "책", START, "").await.unwrap();
+        let id = format!("BOOK-{:03}", b.number);
+        super::library::update_book_with(&store, &id, None, Some(&START.replace("하나", "하나 A")), None, base())
+            .await
+            .unwrap();
+        let row = super::library::update_book_with(&store, &id, None, Some(&START.replace("다섯", "다섯 B")), None, base())
+            .await
+            .unwrap();
+        assert!(row.body.contains("하나 A") && row.body.contains("다섯 B"), "{}", row.body);
+        assert!(is_text_conflict(
+            super::library::update_book_with(&store, &id, None, Some(&START.replace("하나", "하나 C")), None, base()).await
+        ));
+
+        // 규칙
+        super::rules::create_rule(&store, "r", START.into()).await.unwrap();
+        super::rules::set_rule_with(&store, "r", START.replace("둘", "둘 A"), base()).await.unwrap();
+        super::rules::set_rule_with(&store, "r", START.replace("넷", "넷 B"), base()).await.unwrap();
+        let rule = super::rules::get_rule(&store, "r").unwrap().unwrap();
+        assert!(rule.contains("둘 A") && rule.contains("넷 B"), "{rule}");
+        assert!(is_text_conflict(super::rules::set_rule_with(&store, "r", START.replace("둘", "둘 C"), base()).await));
+
+        // 퀘스트 댓글
+        let q = super::create_quest(
+            &store,
+            crate::models::CreateQuestRequest {
+                quest_type_id: 1,
+                title: "q".into(),
+                description: None,
+                status_slug: "open".into(),
+                urgency: None,
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        let c = super::comments::add_comment_entry(&store, &q.quest_id, "a".into(), START.into(), None, false)
+            .await
+            .unwrap();
+        let edit = |text: String| super::comments::update_comment_entry_with(&store, &q.quest_id, c.id, text, Some(START.into()));
+        edit(START.replace("셋", "셋 A")).await.unwrap();
+        let merged = edit(START.replace("하나", "하나 B")).await.unwrap();
+        assert!(merged.body.contains("셋 A") && merged.body.contains("하나 B"), "{}", merged.body);
+        assert!(is_text_conflict(edit(START.replace("셋", "셋 C")).await));
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

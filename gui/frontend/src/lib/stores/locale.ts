@@ -1900,6 +1900,43 @@ const DICT: Record<string, { ko: string; en: string }> = {
 	'pane.resizeHint': {
 		ko: '드래그해 폭 조절 · 두 번 클릭하면 기본값 · 방향키로도 조절',
 		en: 'Drag to resize · double-click to reset · arrow keys also work'
+	},
+	// DEV-435: 같은 본문 동시 편집 — 충돌 화면.
+	'editConflict.title.text': {
+		ko: '다른 곳에서 같은 줄을 고쳤습니다',
+		en: 'The same lines were changed elsewhere'
+	},
+	'editConflict.title.stale': {
+		ko: '편집하는 사이 바뀌었습니다',
+		en: 'It changed while you were editing'
+	},
+	'editConflict.title.renamed': {
+		ko: '편집하는 사이 번호가 바뀌었습니다',
+		en: 'Its ID changed while you were editing'
+	},
+	'editConflict.title.deleted': {
+		ko: '편집하는 사이 삭제되었습니다',
+		en: 'It was deleted while you were editing'
+	},
+	'editConflict.hint': {
+		ko: '겹치지 않은 곳은 이미 합쳤습니다. 부딪힌 곳마다 남길 쪽을 고르면 합친 글이 편집기에 들어갑니다 — 확인하고 저장하세요.',
+		en: 'Non-overlapping changes are already merged. Pick what to keep for each clash; the merged text goes into the editor — review it and save.'
+	},
+	'editConflict.current': { ko: '지금 저장된 것', en: 'Saved now' },
+	'editConflict.mine': { ko: '내가 쓴 것', en: 'Mine' },
+	'editConflict.empty': { ko: '(지움)', en: '(removed)' },
+	'editConflict.pick': { ko: '남길 쪽', en: 'Keep' },
+	'editConflict.useCurrent': { ko: '지금 것', en: 'Saved' },
+	'editConflict.useMine': { ko: '내 것', en: 'Mine' },
+	'editConflict.useBoth': { ko: '둘 다', en: 'Both' },
+	'editConflict.keepEditing': {
+		ko: '닫기 (내 글은 편집기에 그대로)',
+		en: 'Close (your text stays in the editor)'
+	},
+	'editConflict.apply': { ko: '합친 글을 편집기에 넣기', en: 'Put the merged text in the editor' },
+	'editConflict.openNew': {
+		ko: '{id} 로 열기 (내 글은 클립보드에 복사)',
+		en: 'Open {id} (your text is copied to the clipboard)'
 	}
 };
 

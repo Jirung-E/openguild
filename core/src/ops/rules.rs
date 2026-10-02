@@ -65,7 +65,21 @@ pub fn get_rule_entry(store: &Store, slug: &str) -> AppResult<Option<RuleEntry>>
 }
 
 pub async fn set_rule(store: &Store, slug: &str, content: String) -> AppResult<()> {
+    set_rule_with(store, slug, content, super::EditBase::default()).await
+}
+
+/// DEV-435: [`set_rule`] + 편집을 시작할 때 본 것 — 그사이 바뀐 본문과 합치거나, 같은 줄이면 거부한다.
+pub async fn set_rule_with(store: &Store, slug: &str, content: String, base: super::EditBase) -> AppResult<()> {
     let _g = store.lock_docs(&[DocKey::rule(slug)]).await?;
+    let current = || repo::read_rule(&store.paths, slug).ok().flatten().unwrap_or_default();
+    super::check_base_version(
+        &store.paths.rule_path(slug),
+        crate::repo::version::Place::Frontmatter,
+        base.version,
+        current,
+        slug,
+    )?;
+    let content = super::resolve_edit(&current(), base.text.as_deref(), content, slug)?;
     let _ = journal::append(
         &store.journal_pool,
         "set_rule",

@@ -50,8 +50,9 @@ function makeCommentsApi(base: (slug: string) => string) {
 				body,
 				parent_id: parentId
 			}),
-		updateComment: (slug: string, id: number, body: string) =>
-			api.patch<CommentEntry>(`${base(slug)}/comments/${id}`, { body }),
+		// DEV-435: baseBody = 편집을 시작할 때 본 글 — 그사이 남이 고친 것과 합치거나 같은 줄이면 EditConflictError.
+		updateComment: (slug: string, id: number, body: string, baseBody?: string) =>
+			api.patch<CommentEntry>(`${base(slug)}/comments/${id}`, { body, base_body: baseBody }),
 		deleteComment: (slug: string, id: number) => api.delete(`${base(slug)}/comments/${id}`),
 		// DEV-108: 이모지 반응 토글 — 갱신된 entry 반환.
 		toggleReaction: (slug: string, id: number, emoji: string, author: string) =>

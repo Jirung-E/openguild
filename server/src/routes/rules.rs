@@ -40,6 +40,12 @@ pub struct RuleResponse {
 #[derive(Debug, Deserialize)]
 pub struct RuleContentRequest {
     pub content: String,
+    /// DEV-435: 편집을 시작할 때 본 본문 — 그사이 바뀐 본문과 합치거나 같은 줄이면 409.
+    #[serde(default)]
+    pub base_content: Option<String>,
+    /// DEV-435: 편집을 시작할 때 본 파일 번호 — 다르면 409.
+    #[serde(default)]
+    pub base_version: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -95,7 +101,13 @@ pub async fn set_rule(
     Path(slug): Path<String>,
     Json(body): Json<RuleContentRequest>,
 ) -> AppResult<Json<RuleResponse>> {
-    ops::set_rule(&store, &slug, body.content.clone()).await?;
+    ops::set_rule_with(
+        &store,
+        &slug,
+        body.content.clone(),
+        openguild_core::ops::EditBase { text: body.base_content.clone(), version: body.base_version },
+    )
+    .await?;
     // BUG-134 패턴: 본문 저장은 tags 를 안 건드리지만(보존), 응답엔 실제
     // 현재 tags/시각을 정직하게 실어야 함 — 재조회.
     let entry = ops::get_rule_entry(&store, &slug)?;

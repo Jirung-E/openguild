@@ -180,7 +180,8 @@ openguild quest list [--status open,in_progress] [--type DEV,BUG] [--urgency 1-2
 openguild quest show <slug>                      # summary: id/title/status/urgency + relations
 openguild quest show <slug> --full               # everything (body, relations, tags, due)
 openguild quest show <slug> --field title status parent   # only these (1 field = bare value)
-openguild quest update <slug> [--title ...] [--description-file <PATH>] [--urgency N]
+openguild quest update <slug> [--title ...] [--description-file <PATH>] [--urgency N] [--base-version N]
+                                                 # --base-version: from `show --field version`; refuses (non-zero) if changed since
 openguild quest delete <slug> --yes             # soft delete, restorable
 openguild quest restore <slug>
 

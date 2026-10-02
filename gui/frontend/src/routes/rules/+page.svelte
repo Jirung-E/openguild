@@ -31,6 +31,9 @@
 	// DEV-203: 편집기 셋업(테마/들여쓰기/첨부/자동완성/높이 영속)은 공통
 	// MarkdownEditor 컴포넌트로 단일화.
 	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
+	// DEV-435: 같은 본문 동시 편집 — 같은 줄 충돌이면 고르는 화면.
+	import EditConflictDialog from '$lib/components/EditConflictDialog.svelte';
+	import { EditConflictError, type EditConflict } from '$lib/api/editConflict';
 	// DEV-173 후속: 규칙 생성/삭제/이름변경/저장(제목 변경) 시 cross-link 인덱스
 	// 재적재 — 안 하면 방금 만든 규칙이 [[링크]] 에서 미존재(빨강)로 남음.
 	import { loadQuestIndex } from '$lib/stores/questIndex';
@@ -60,6 +63,9 @@
 	$effect(() => setUnsaved('rules-edit', editMode));
 	onDestroy(() => setUnsaved('rules-edit', false));
 	let editText = $state('');
+	// DEV-435: 편집을 시작할 때 본 본문.
+	let editBase = $state('');
+	let editConflict = $state<EditConflict | null>(null);
 	let saving = $state(false);
 	let saveError = $state<string | null>(null);
 
@@ -238,6 +244,7 @@
 	function enterEdit() {
 		if (!selectedSlug) return;
 		editText = selectedContent ?? '';
+		editBase = selectedContent ?? '';
 		editMode = true;
 		saveError = null;
 	}
@@ -253,14 +260,22 @@
 		saveError = null;
 		try {
 			const text = editText;
-			const res = await rulesApi.set(selectedSlug, text);
+			const res = await rulesApi.set(selectedSlug, text, editBase);
 			selectedContent = res.content;
+			// 저장된 본문(합쳐졌을 수 있다)이 다음 저장의 출발점이다.
+			const saved = res.content ?? text;
+			editBase = saved;
+			if (keepEditing) editText = saved;
 			// 메모리 목록도 갱신 — 페이지 reload 안 해도 sidebar 정합.
-			entries = entries.map((e) => (e.slug === selectedSlug ? { ...e, content: text } : e));
+			entries = entries.map((e) => (e.slug === selectedSlug ? { ...e, content: saved } : e));
 			// DEV-173 후속: 제목(첫 # 헤딩)이 바뀌었을 수 있음 — 인덱스 재적재.
 			loadQuestIndex(true);
 			if (!keepEditing) cancelEdit();
 		} catch (e) {
+			if (e instanceof EditConflictError) {
+				editConflict = e.conflict;
+				return;
+			}
 			saveError = e instanceof Error ? e.message : 'save failed';
 		} finally {
 			saving = false;
@@ -522,6 +537,16 @@
 						>
 							<div class="field-label">
 								<span>{t('rules.bodyLabel', $locale)}</span>
+								<EditConflictDialog
+									conflict={editConflict}
+									mine={editText}
+									onresolve={(text, base) => {
+										editText = text;
+										editBase = base;
+										editConflict = null;
+									}}
+									onclose={() => (editConflict = null)}
+								/>
 								<MarkdownEditor
 									bind:value={editText}
 									mediaOnly

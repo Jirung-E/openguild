@@ -22,6 +22,7 @@ pub mod lock;
 #[cfg(test)]
 mod test_env;
 pub mod maintenance;
+pub mod merge;
 pub mod migrate;
 pub mod models;
 pub mod ops;

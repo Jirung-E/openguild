@@ -3516,7 +3516,7 @@ async fn a_line_sees_the_subject_as_it_was_when_the_change_happened() {
     crate::ops::quests::update_quest(
         &store,
         q.id,
-        crate::models::UpdateQuestRequest { title: Some("바뀐 제목".into()), description: None, urgency: None },
+        crate::models::UpdateQuestRequest { title: Some("바뀐 제목".into()), description: None, urgency: None, ..Default::default() },
     )
     .await
     .unwrap();

@@ -109,6 +109,9 @@ pub struct AddCommentRequest {
 #[derive(Debug, Deserialize)]
 pub struct UpdateCommentRequest {
     pub body: String,
+    /// DEV-435: 편집을 시작할 때 본 댓글 글 — 그사이 남이 고친 것과 합치거나 같은 줄이면 409.
+    #[serde(default)]
+    pub base_body: Option<String>,
 }
 
 pub async fn list_comments(
@@ -137,7 +140,7 @@ pub async fn update_comment(
     Path((slug, id)): Path<(String, u64)>,
     Json(body): Json<UpdateCommentRequest>,
 ) -> AppResult<Json<CommentEntry>> {
-    let entry = ops::update_comment_entry(&store, &slug, id, body.body).await?;
+    let entry = ops::update_comment_entry_with(&store, &slug, id, body.body, body.base_body).await?;
     Ok(Json(entry))
 }
 
@@ -231,7 +234,7 @@ pub async fn camp_update_comment(
     Path((slug, id)): Path<(String, u64)>,
     Json(body): Json<UpdateCommentRequest>,
 ) -> AppResult<Json<CommentEntry>> {
-    let entry = cops::update_entry(&store, &slug, id, body.body).await?;
+    let entry = cops::update_entry_with(&store, &slug, id, body.body, body.base_body).await?;
     Ok(Json(entry))
 }
 

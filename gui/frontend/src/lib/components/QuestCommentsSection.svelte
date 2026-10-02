@@ -43,6 +43,9 @@
 	} from '$lib/api/comments';
 	// DEV-118: native confirm() 대신 인앱 모달.
 	import ConfirmDialog from './ConfirmDialog.svelte';
+	// DEV-435: 같은 본문 동시 편집 — 같은 줄 충돌이면 고르는 화면.
+	import EditConflictDialog from './EditConflictDialog.svelte';
+	import { EditConflictError, type EditConflict } from '$lib/api/editConflict';
 	// DEV-130: Tab = tab 문자 삽입 (focus 이동 X).
 	import { tabInsert } from '$lib/actions/tab-insert';
 	// DEV-151: 댓글 textarea 첨부 — paste/drag&drop/버튼.
@@ -616,6 +619,9 @@
 	// 개별 편집 — 한 번에 하나만.
 	let editingId = $state<number | null>(null);
 	let editBody = $state('');
+	// DEV-435: 편집을 시작할 때 본 글 — 저장할 때 함께 보내 그사이 남이 고친 것과 합친다.
+	let editBase = $state('');
+	let editConflict = $state<EditConflict | null>(null);
 	let editSaving = $state(false);
 	let editError = $state<string | null>(null);
 
@@ -944,6 +950,7 @@
 	function enterEdit(e: CommentEntry) {
 		editingId = e.id;
 		editBody = e.body;
+		editBase = e.body;
 		editError = null;
 	}
 	function cancelEdit() {
@@ -961,10 +968,17 @@
 		editSaving = true;
 		editError = null;
 		try {
-			const updated = await commentsApi.updateComment(slug, id, editBody);
+			const updated = await commentsApi.updateComment(slug, id, editBody, editBase);
 			entries = entries.map((e) => (e.id === id ? updated : e));
+			// 저장된 글(합쳐졌을 수 있다)이 다음 저장의 출발점이다.
+			editBase = updated.body;
+			if (keepEditing) editBody = updated.body;
 			if (!keepEditing) cancelEdit();
 		} catch (e) {
+			if (e instanceof EditConflictError) {
+				editConflict = e.conflict;
+				return;
+			}
 			editError = e instanceof Error ? e.message : 'save failed';
 		} finally {
 			editSaving = false;
@@ -1602,6 +1616,16 @@
 </section>
 
 <!-- DEV-118: 댓글 삭제 확인 모달. -->
+<EditConflictDialog
+	conflict={editConflict}
+	mine={editBody}
+	onresolve={(text, base) => {
+		editBody = text;
+		editBase = base;
+		editConflict = null;
+	}}
+	onclose={() => (editConflict = null)}
+/>
 <ConfirmDialog
 	open={confirmDeleteId !== null}
 	title={t('comment.deleteTitle', $locale)}

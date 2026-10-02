@@ -30,6 +30,18 @@ fn err<E: std::fmt::Display>(e: E) -> String {
 /// (IncompatibleGuild) 는 sentinel 접두어로 — welcome 이 전용 안내 + 업데이트
 /// 버튼을 띄운다. 그 외는 기존 메시지.
 pub const INCOMPATIBLE_GUILD_TAG: &str = "INCOMPATIBLE_GUILD::";
+
+/// DEV-435: 편집 충돌은 화면이 무엇이 부딪혔는지 알아야 한다(지금 본문 · 충돌 구간 · 새 번호) — 꼬리표 + JSON 으로
+/// 넘긴다. 프런트의 transport 가 서버의 409 본문과 같은 모양으로 풀어 준다.
+pub const EDIT_CONFLICT_TAG: &str = "EDIT_CONFLICT::";
+fn edit_err(e: openguild_core::AppError) -> String {
+    match e {
+        openguild_core::AppError::EditConflict(c) => {
+            format!("{EDIT_CONFLICT_TAG}{}", serde_json::to_string(&*c).unwrap_or_default())
+        }
+        other => other.to_string(),
+    }
+}
 fn open_err(e: anyhow::Error) -> String {
     if let Some(openguild_core::AppError::IncompatibleGuild(msg)) =
         e.downcast_ref::<openguild_core::AppError>()
@@ -345,6 +357,7 @@ pub async fn get_quest(store: State<'_, Store>, id: i64) -> Result<QuestDetail, 
     // DEV-156: 첨부 목록(sidecar)은 Store 가 필요 — 여기서 채운다.
     detail.attachments =
         openguild_core::ops::attachments::list_quest_attachments(&store, &detail.quest.quest_id);
+    detail.version = openguild_core::ops::quests::file_version(&store, &detail.quest.quest_id);
     Ok(detail)
 }
 
@@ -361,6 +374,8 @@ pub async fn get_quest_by_slug(
     detail.tags = openguild_core::ops::quests::list_quest_tags(&store, &slug).map_err(err)?;
     // DEV-156: 첨부 목록(sidecar) 채우기.
     detail.attachments = openguild_core::ops::attachments::list_quest_attachments(&store, &slug);
+    // DEV-435: 편집을 시작할 때의 번호.
+    detail.version = openguild_core::ops::quests::file_version(&store, &slug);
     Ok(detail)
 }
 
@@ -488,7 +503,7 @@ pub async fn update_quest(
     id: i64,
     body: UpdateQuestRequest,
 ) -> Result<QuestRow, String> {
-    ops::update_quest(&store, id, body).await.map_err(err)
+    ops::update_quest(&store, id, body).await.map_err(edit_err)
 }
 
 #[tauri::command]
@@ -1702,10 +1717,13 @@ pub async fn set_rule(
     store: State<'_, Store>,
     slug: String,
     content: String,
+    base_content: Option<String>,
 ) -> Result<RuleResponse, String> {
-    openguild_core::ops::rules::set_rule(&store, &slug, content.clone())
+    // DEV-435: 편집을 시작할 때 본 본문 — 그사이 바뀐 것과 합치거나 같은 줄이면 충돌.
+    let base = openguild_core::ops::EditBase { text: base_content, version: None };
+    openguild_core::ops::rules::set_rule_with(&store, &slug, content.clone(), base)
         .await
-        .map_err(err)?;
+        .map_err(edit_err)?;
     // BUG-134 패턴: 본문 저장은 tags 를 보존하지만, 응답엔 실제 현재 tags/시각을 재조회.
     let entry = openguild_core::ops::rules::get_rule_entry(&store, &slug).map_err(err)?;
     Ok(RuleResponse {
@@ -1919,16 +1937,19 @@ pub async fn update_book(
     title: Option<String>,
     body: Option<String>,
     path: Option<String>,
+    base_body: Option<String>,
 ) -> Result<BookResponse, String> {
-    let row = openguild_core::ops::library::update_book(
+    // DEV-435: 편집을 시작할 때 본 본문 — 그사이 바뀐 것과 합치거나 같은 줄이면 충돌.
+    let row = openguild_core::ops::library::update_book_with(
         &store,
         &book_id,
         title.as_deref(),
         body.as_deref(),
         path.as_deref(),
+        openguild_core::ops::EditBase { text: base_body, version: None },
     )
     .await
-    .map_err(err)?;
+    .map_err(edit_err)?;
     // BUG-124(admin 보고): server/routes/library.rs 의 update_book 과 동일한
     // 원인 — attachments 를 빈 배열로 둬서(get_book 만 채우는 게 원칙이었는데
     // update 도 그렇게 취급) 저장할 때마다 클라이언트가 book 객체 전체를
@@ -2166,10 +2187,11 @@ pub async fn update_comment(
     slug: String,
     id: u64,
     body: String,
+    base_body: Option<String>,
 ) -> Result<CommentEntry, String> {
-    openguild_core::ops::comments::update_comment_entry(&store, &slug, id, body)
+    openguild_core::ops::comments::update_comment_entry_with(&store, &slug, id, body, base_body)
         .await
-        .map_err(err)
+        .map_err(edit_err)
 }
 
 #[tauri::command]
@@ -2271,10 +2293,11 @@ pub async fn update_campaign_comment(
     slug: String,
     id: u64,
     body: String,
+    base_body: Option<String>,
 ) -> Result<CommentEntry, String> {
-    openguild_core::ops::campaign_comments::update_entry(&store, &slug, id, body)
+    openguild_core::ops::campaign_comments::update_entry_with(&store, &slug, id, body, base_body)
         .await
-        .map_err(err)
+        .map_err(edit_err)
 }
 
 #[tauri::command]

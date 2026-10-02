@@ -66,6 +66,22 @@ openguild quest attach list DEV-001
 cat .guild/attachments/spec-19401d58.pdf   # path comes from the listing
 ```
 
+### Editing a body someone else may be editing — `--base-version`
+
+A person may be editing the same quest in the app while you work. Read the version first and send it back
+with your update — if the file changed in between, **nothing is saved**, the command exits non-zero and
+prints the current content. Re-read, reapply your change, and try again. Without `--base-version` the update
+overwrites whatever is there (old behavior).
+
+```bash
+V=$(openguild quest show DEV-002 --field version)
+openguild quest show DEV-002 --field description > body.md   # edit body.md
+openguild quest update DEV-002 --description-file body.md --base-version "$V"
+```
+
+`library update <BOOK-ID> --base-version N` and `rule set <slug> --base-version N` work the same way
+(`library show` prints `version:`).
+
 ### Moving to testing — attach a test plan first
 
 ```bash

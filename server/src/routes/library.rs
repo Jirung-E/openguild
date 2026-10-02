@@ -54,6 +54,12 @@ pub struct UpdateBookRequest {
     /// DEV-239: `Some("")` = 최상위로 이동, `None`/미지정 = 변경 없음.
     #[serde(default)]
     pub path: Option<String>,
+    /// DEV-435: 편집을 시작할 때 본 본문 — 그사이 바뀐 본문과 합치거나 같은 줄이면 409.
+    #[serde(default)]
+    pub base_body: Option<String>,
+    /// DEV-435: 편집을 시작할 때 본 파일 번호 — 다르면 409.
+    #[serde(default)]
+    pub base_version: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -126,12 +132,13 @@ pub async fn update_book(
     Path(book_id): Path<String>,
     Json(body): Json<UpdateBookRequest>,
 ) -> AppResult<Json<BookResponse>> {
-    let row = ops::update_book(
+    let row = ops::update_book_with(
         &store,
         &book_id,
         body.title.as_deref(),
         body.body.as_deref(),
         body.path.as_deref(),
+        openguild_core::ops::EditBase { text: body.base_body.clone(), version: body.base_version },
     )
     .await?;
     // BUG-124(admin 보고): 이전엔 list_books 처럼 attachments 를 빈 배열로

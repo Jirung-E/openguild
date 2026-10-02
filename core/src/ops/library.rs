@@ -409,10 +409,34 @@ pub async fn update_book(
     body: Option<&str>,
     path: Option<&str>,
 ) -> AppResult<LibraryDocRow> {
+    update_book_with(store, book_id, title, body, path, super::EditBase::default()).await
+}
+
+/// DEV-435: [`update_book`] + 편집을 시작할 때 본 것 — 그사이 바뀐 본문과 합치거나, 같은 줄이면 거부한다.
+pub async fn update_book_with(
+    store: &Store,
+    book_id: &str,
+    title: Option<&str>,
+    body: Option<&str>,
+    path: Option<&str>,
+    base: super::EditBase,
+) -> AppResult<LibraryDocRow> {
     let _g = store.lock_docs(&[DocKey::book(book_id)]).await?;
     let existing = get_book(store, book_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("book not found: {book_id}")))?;
+    super::check_base_version(
+        &store.paths.book_path(book_id),
+        crate::repo::version::Place::Frontmatter,
+        base.version,
+        || existing.body.clone(),
+        book_id,
+    )?;
+    let merged = match body {
+        Some(b) => Some(super::resolve_edit(&existing.body, base.text.as_deref(), b.to_string(), book_id)?),
+        None => None,
+    };
+    let body = merged.as_deref();
     if title.is_none() && body.is_none() && path.is_none() {
         return Ok(existing);
     }

@@ -79,6 +79,10 @@ pub struct QuestDetail {
     #[serde(default)]
     pub attachments: Vec<QuestAttachment>,
     pub position: Option<QuestPosition>,
+    /// DEV-435: 본문 파일의 번호(DEV-433) — 편집을 시작할 때 이것을 들고 있다가 저장 때 `base_version` 으로 보내면
+    /// 그사이 남이 고친 것을 덮지 않는다. 캐시에는 없다 — 파일에서 채운다(0 = 못 채움 · 옛 파일).
+    #[serde(default)]
+    pub version: u64,
 }
 
 /// DEV-156: quest 첨부 한 건. `.guild/attachments/{nanos}-{rand}.{ext}` 저장
@@ -115,11 +119,21 @@ pub struct CreateQuestRequest {
     pub parent_quest_id: Option<i64>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct UpdateQuestRequest {
     pub title: Option<String>,
     pub description: Option<String>,
     pub urgency: Option<i64>,
+    /// DEV-435: 편집을 시작할 때 본 본문 — 있으면 그사이 바뀐 본문과 합친다(같은 줄 충돌이면 거부). 앱이 보낸다.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_description: Option<String>,
+    /// DEV-435: 편집을 시작할 때 본 파일 번호(DEV-433) — 다르면 거부. CLI · 에이전트가 보낸다.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_version: Option<u64>,
+    /// DEV-435: 편집하던 퀘스트 번호(slug) — 그사이 타입이 바뀌었거나 지워졌으면 거부한다. 행 id 만으로는 이름이
+    /// 바뀐 퀘스트에 조용히 저장된다.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_id: Option<String>,
 }
 
 /// 부모 변경 전용 요청. `parent_quest_id: null`로 분리(detach) 가능.

@@ -211,6 +211,71 @@ async fn parent_keys(store: &Store, id: i64, new_parent: Option<i64>) -> AppResu
     Ok(keys)
 }
 
+/// DEV-435: 본문 파일의 번호(DEV-433) — 상세를 돌려줄 때 채운다. 편집하는 쪽이 들고 있다가 `base_version` 으로 보낸다.
+pub fn file_version(store: &Store, slug: &str) -> u64 {
+    crate::repo::version::read(&store.paths.quest_path(slug), crate::repo::version::Place::Frontmatter)
+}
+
+/// DEV-435: 퀘스트 저장을 지금 상태와 맞춘다 — 이름이 바뀌었거나 지워졌으면 거부, 번호가 다르면 거부, 본문은
+/// 그사이 바뀐 것과 합친다. 확인용 칸은 비워서 돌려준다(journal 에 안 남게).
+async fn guard_quest_edit(store: &Store, id: i64, body: &mut UpdateQuestRequest) -> AppResult<()> {
+    use crate::error::{AppError, EditConflict};
+    let expected = body.expected_id.take();
+    let base = body.base_description.take();
+    let base_version = body.base_version.take();
+    if expected.is_none() && base.is_none() && base_version.is_none() {
+        return Ok(());
+    }
+    let row: Option<(String, Option<String>)> = sqlx::query_as(
+        "SELECT qt.prefix || '-' || printf('%03d', q.number), q.deleted_at
+           FROM quests q JOIN quest_types qt ON q.quest_type_id = qt.id
+          WHERE q.id = ?",
+    )
+    .bind(id)
+    .fetch_optional(&store.index_pool)
+    .await?;
+    let Some((slug, deleted_at)) = row else {
+        return Err(AppError::NotFound(format!("quest {id} not found")));
+    };
+    let refuse = |reason: &'static str, message: String, new_id: Option<String>| {
+        Err(AppError::EditConflict(Box::new(EditConflict {
+            reason,
+            message,
+            current: None,
+            segments: Vec::new(),
+            new_id,
+        })))
+    };
+    if let Some(exp) = &expected {
+        if deleted_at.is_some() {
+            return refuse(
+                "deleted",
+                crate::tf!("{exp} 은 편집하는 사이 삭제되었습니다", "{exp} was deleted while you were editing"),
+                None,
+            );
+        }
+        if *exp != slug {
+            return refuse(
+                "renamed",
+                crate::tf!(
+                    "{exp} 은 편집하는 사이 {slug} 로 바뀌었습니다",
+                    "{exp} became {slug} while you were editing"
+                ),
+                Some(slug.clone()),
+            );
+        }
+    }
+    let path = store.paths.quest_path(&slug);
+    let current = || QuestFile::read(&path).map(|q| q.description).unwrap_or_default();
+    super::check_base_version(&path, crate::repo::version::Place::Frontmatter, base_version, current, &slug)?;
+    if base.is_some()
+        && let Some(mine) = body.description.take()
+    {
+        body.description = Some(super::resolve_edit(&current(), base.as_deref(), mine, &slug)?);
+    }
+    Ok(())
+}
+
 /// 새 quest 생성. 영향:
 /// - 새 파일 `.guild/quests/{slug}.md` 생성.
 /// - parent 가 지정되었으면 그 quest 파일의 auto 블록 갱신 (sub-quest 목록에 추가).
@@ -365,8 +430,10 @@ pub async fn list_quests(
 }
 
 /// Quest 의 title / description / urgency 수정.
-pub async fn update_quest(store: &Store, id: i64, body: UpdateQuestRequest) -> AppResult<QuestRow> {
+pub async fn update_quest(store: &Store, id: i64, mut body: UpdateQuestRequest) -> AppResult<QuestRow> {
     let _g = super::lock_resolved(store, || quest_key(store, id)).await?;
+    // DEV-435: 잠금 안에서 — 그사이 남이 고친 본문 · 바뀐 이름과 맞춘다. journal 에는 맞춘 결과만 남는다.
+    guard_quest_edit(store, id, &mut body).await?;
     let _ = journal::append(
         &store.journal_pool,
         "update_quest",
@@ -1660,6 +1727,7 @@ mod tests {
                 title: Some("new title".into()),
                 description: None,
                 urgency: Some(1),
+                ..Default::default()
             },
         )
         .await
@@ -1701,6 +1769,7 @@ mod tests {
                 title: None,
                 description: Some("new body".into()),
                 urgency: None,
+                ..Default::default()
             },
         )
         .await
@@ -1724,6 +1793,7 @@ mod tests {
                 title: None,
                 description: Some("newer body".into()),
                 urgency: None,
+                ..Default::default()
             },
         )
         .await
@@ -1741,6 +1811,7 @@ mod tests {
                 title: Some("renamed".into()),
                 description: None,
                 urgency: None,
+                ..Default::default()
             },
         )
         .await
@@ -2453,6 +2524,135 @@ mod tests {
             .unwrap();
         let place = crate::repo::version::Place::CommentsHeader;
         assert_eq!(crate::repo::version::read(&store.paths.comments_path("BUG-001"), place), 2);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ── DEV-435: 같은 본문 동시 편집 ─────────────────────────────
+
+    async fn quest_with_body(store: &Store, body: &str) -> QuestRow {
+        create_quest(
+            store,
+            CreateQuestRequest {
+                quest_type_id: 1,
+                title: "동시 편집".into(),
+                description: Some(body.into()),
+                status_slug: "open".into(),
+                urgency: None,
+                parent_quest_id: None,
+            },
+        )
+        .await
+        .unwrap()
+    }
+
+    fn edit(base: &str, mine: &str) -> UpdateQuestRequest {
+        UpdateQuestRequest {
+            description: Some(mine.into()),
+            base_description: Some(base.into()),
+            expected_id: Some("DEV-001".into()),
+            ..Default::default()
+        }
+    }
+
+    const START: &str = "첫 줄\n둘째 줄\n셋째 줄\n넷째 줄\n다섯째 줄";
+
+    /// 겹치지 않는 두 편집은 둘 다 남는다 — 먼저 저장한 쪽이 조용히 사라지지 않는다.
+    #[tokio::test]
+    async fn edits_to_different_lines_are_both_kept() {
+        let dir = fresh_tmp("merge-clean");
+        let store = setup_store(&dir).await;
+        let q = quest_with_body(&store, START).await;
+        // A 가 먼저 첫 줄을 고쳐 저장한다.
+        update_quest(&store, q.id, edit(START, &START.replace("첫 줄", "첫 줄 (A)"))).await.unwrap();
+        // B 는 A 전의 본문으로 시작해 마지막 줄을 고친다.
+        let saved = update_quest(&store, q.id, edit(START, &START.replace("다섯째 줄", "다섯째 줄 (B)")))
+            .await
+            .unwrap();
+        let d = saved.description.unwrap();
+        assert!(d.contains("첫 줄 (A)") && d.contains("다섯째 줄 (B)"), "{d}");
+        let on_disk = std::fs::read_to_string(dir.join(".guild/quests/DEV-001.md")).unwrap();
+        assert!(on_disk.contains("첫 줄 (A)") && on_disk.contains("다섯째 줄 (B)"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 같은 줄을 둘 다 고치면 거부 — 먼저 쓴 글이 남고, 파일에 충돌 표시가 없고, 무엇이 부딪혔는지 돌려준다.
+    #[tokio::test]
+    async fn the_same_line_conflicts_and_nothing_is_overwritten() {
+        let dir = fresh_tmp("merge-conflict");
+        let store = setup_store(&dir).await;
+        let q = quest_with_body(&store, START).await;
+        update_quest(&store, q.id, edit(START, &START.replace("셋째 줄", "셋째 줄 — A"))).await.unwrap();
+        let err = update_quest(&store, q.id, edit(START, &START.replace("셋째 줄", "셋째 줄 — B")))
+            .await
+            .unwrap_err();
+        let crate::error::AppError::EditConflict(c) = err else { panic!("편집 충돌이어야 한다: {err}") };
+        assert_eq!(c.reason, "text");
+        assert!(c.current.as_deref().unwrap().contains("셋째 줄 — A"));
+        assert!(c.segments.iter().any(|s| matches!(
+            s,
+            crate::merge::Segment::Conflict { current, mine, .. } if current.contains("— A") && mine.contains("— B")
+        )));
+        let on_disk = std::fs::read_to_string(dir.join(".guild/quests/DEV-001.md")).unwrap();
+        assert!(on_disk.contains("셋째 줄 — A") && !on_disk.contains("— B"), "먼저 쓴 글이 덮였다");
+        assert!(!on_disk.contains("<<<<<<<"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 편집하던 퀘스트의 타입이 바뀌었거나 지워졌으면 저장을 막는다 — 행 id 로는 조용히 저장됐다.
+    #[tokio::test]
+    async fn saving_a_renamed_or_deleted_quest_is_refused() {
+        let dir = fresh_tmp("merge-renamed");
+        let store = setup_store(&dir).await;
+        let q = quest_with_body(&store, START).await;
+        change_quest_type(&store, q.id, ChangeTypeRequest { new_type_prefix: "BUG".into() }).await.unwrap();
+        let err = update_quest(&store, q.id, edit(START, "내 글")).await.unwrap_err();
+        let crate::error::AppError::EditConflict(c) = err else { panic!("{err}") };
+        assert_eq!((c.reason, c.new_id.as_deref()), ("renamed", Some("BUG-001")));
+
+        let q2 = quest_with_body(&store, START).await;
+        delete_quest(&store, q2.id, &[]).await.unwrap();
+        let mut e = edit(START, "내 글");
+        e.expected_id = Some(q2.quest_id.clone());
+        let err = update_quest(&store, q2.id, e).await.unwrap_err();
+        let crate::error::AppError::EditConflict(c) = err else { panic!("{err}") };
+        assert_eq!(c.reason, "deleted");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 번호로만 아는 쪽(CLI) — 시작한 뒤 바뀌었으면 합치지 않고 거부, 같으면 저장.
+    #[tokio::test]
+    async fn a_stale_version_is_refused_and_a_fresh_one_saves() {
+        let dir = fresh_tmp("merge-version");
+        let store = setup_store(&dir).await;
+        let q = quest_with_body(&store, START).await;
+        let path = dir.join(".guild/quests/DEV-001.md");
+        let seen = crate::repo::version::read(&path, crate::repo::version::Place::Frontmatter);
+        update_quest(&store, q.id, UpdateQuestRequest { title: Some("남이 고침".into()), ..Default::default() })
+            .await
+            .unwrap();
+        let stale = UpdateQuestRequest { description: Some("내 글".into()), base_version: Some(seen), ..Default::default() };
+        let err = update_quest(&store, q.id, stale).await.unwrap_err();
+        let crate::error::AppError::EditConflict(c) = err else { panic!("{err}") };
+        assert_eq!(c.reason, "stale");
+        assert_eq!(c.current.as_deref(), Some(START));
+
+        let now = crate::repo::version::read(&path, crate::repo::version::Place::Frontmatter);
+        let fresh = UpdateQuestRequest { description: Some("내 글".into()), base_version: Some(now), ..Default::default() };
+        assert_eq!(update_quest(&store, q.id, fresh).await.unwrap().description.as_deref(), Some("내 글"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 확인용 칸 없이 보내면 예전처럼 덮는다(단일값은 나중 값이 남는다).
+    #[tokio::test]
+    async fn without_a_base_the_last_save_wins_as_before() {
+        let dir = fresh_tmp("merge-none");
+        let store = setup_store(&dir).await;
+        let q = quest_with_body(&store, START).await;
+        update_quest(&store, q.id, UpdateQuestRequest { description: Some("A".into()), ..Default::default() }).await.unwrap();
+        let saved = update_quest(&store, q.id, UpdateQuestRequest { description: Some("B".into()), ..Default::default() })
+            .await
+            .unwrap();
+        assert_eq!(saved.description.as_deref(), Some("B"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

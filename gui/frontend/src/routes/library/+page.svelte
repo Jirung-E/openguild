@@ -50,6 +50,9 @@
 	// DEV-203: 편집기 셋업(테마/들여쓰기/첨부/자동완성/redo/높이/overlay 스크롤)은
 	// 공통 MarkdownEditor 컴포넌트로 단일화.
 	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
+	// DEV-435: 같은 본문 동시 편집 — 같은 줄 충돌이면 고르는 화면.
+	import EditConflictDialog from '$lib/components/EditConflictDialog.svelte';
+	import { EditConflictError, type EditConflict } from '$lib/api/editConflict';
 	import { loadQuestIndex } from '$lib/stores/questIndex';
 	// BUG-123(admin 재지적): 네이티브 alert() 대신 앱 공용 toast — 다른 페이지들과
 	// 동일한 alert() 대체 컨벤션(+layout.svelte 주석 참고).
@@ -291,6 +294,9 @@
 	$effect(() => setUnsaved('library-edit', editMode));
 	onDestroy(() => setUnsaved('library-edit', false));
 	let editText = $state('');
+	// DEV-435: 편집을 시작할 때 본 본문 — 저장할 때 함께 보내 그사이 남이 고친 것과 합친다.
+	let editBase = $state('');
+	let editConflict = $state<EditConflict | null>(null);
 	let saving = $state(false);
 	let saveError = $state<string | null>(null);
 
@@ -530,6 +536,7 @@
 		// DEV-203: MarkdownEditor 는 마운트 시점의 editText 를 초기 doc 으로
 		// 쓰므로, 최신 본문 확보 후에 editMode 진입(BUG-134 의 fresh-body 보장).
 		editText = body;
+		editBase = body;
 		editMode = true;
 	}
 
@@ -558,11 +565,18 @@
 		saveError = null;
 		try {
 			const text = editText;
-			const updated = await libraryApi.update(selectedId, { body: text });
+			const updated = await libraryApi.update(selectedId, { body: text, base_body: editBase });
 			books = books.map((b) => (b.book_id === selectedId ? updated : b));
+			// 저장된 본문(합쳐졌을 수 있다)이 다음 저장의 출발점이다.
+			editBase = updated.body;
+			if (keepEditing) editText = updated.body;
 			loadQuestIndex(true);
 			if (!keepEditing) cancelEdit();
 		} catch (e) {
+			if (e instanceof EditConflictError) {
+				editConflict = e.conflict;
+				return;
+			}
 			saveError = e instanceof Error ? e.message : 'save failed';
 		} finally {
 			saving = false;
@@ -1676,6 +1690,16 @@
 							<div class="field-label">
 								<span>{t('library.bodyHint', $locale)}</span>
 								<!-- DEV-237: 비미디어 파일은 attachToSection 이 첨부 섹션에 등록. -->
+								<EditConflictDialog
+									conflict={editConflict}
+									mine={editText}
+									onresolve={(text, base) => {
+										editText = text;
+										editBase = base;
+										editConflict = null;
+									}}
+									onclose={() => (editConflict = null)}
+								/>
 								<MarkdownEditor
 									bind:value={editText}
 									onError={(msg) => (saveError = `${t('library.attachUploadFail', $locale)}${msg}`)}

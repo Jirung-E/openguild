@@ -482,7 +482,7 @@ describe('TauriTransport', () => {
 			})
 		).toEqual({
 			cmd: 'update_book',
-			args: { bookId: 'BOOK-001', title: '새 제목', body: null, path: null }
+			args: { bookId: 'BOOK-001', title: '새 제목', body: null, path: null, baseBody: null }
 		});
 		expect(
 			__test_only.routeToInvoke({ method: 'DELETE', path: '/api/library/BOOK-001' })

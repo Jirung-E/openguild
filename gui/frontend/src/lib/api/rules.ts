@@ -41,8 +41,12 @@ export const rulesApi = {
 	// DEV-290: 규칙 변경 이력(최신→과거).
 	history: (slug: string) =>
 		api.get<SidecarHistoryEntry[]>(`/api/rules/${encodeURIComponent(slug)}/history`),
-	set: (slug: string, content: string) =>
-		api.put<RuleResponse>(`/api/rules/${encodeURIComponent(slug)}`, { content }),
+	// DEV-435: baseContent = 편집을 시작할 때 본 본문 — 그사이 바뀐 것과 합치거나 같은 줄이면 EditConflictError.
+	set: (slug: string, content: string, baseContent?: string) =>
+		api.put<RuleResponse>(`/api/rules/${encodeURIComponent(slug)}`, {
+			content,
+			base_content: baseContent
+		}),
 	create: (slug: string, content = '') => api.post<RuleResponse>('/api/rules', { slug, content }),
 	delete: (slug: string) => api.delete(`/api/rules/${encodeURIComponent(slug)}`),
 	rename: (slug: string, newSlug: string) =>

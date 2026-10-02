@@ -184,7 +184,30 @@ pub async fn update_entry(
     id: u64,
     body: String,
 ) -> AppResult<CommentEntry> {
+    update_entry_with(store, slug, id, body, None).await
+}
+
+/// DEV-435: [`update_entry`] + 편집을 시작할 때 본 댓글 글 — 그사이 남이 고친 것과 합치거나, 같은 줄이면 거부한다.
+pub async fn update_entry_with(
+    store: &Store,
+    slug: &str,
+    id: u64,
+    body: String,
+    base: Option<String>,
+) -> AppResult<CommentEntry> {
     let _g = store.lock_docs(&[DocKey::campaign(slug)]).await?;
+    let body = match base {
+        Some(b) => {
+            let current = repo::read_entries_at(&store.paths.campaign_comments_path(slug))
+                .map_err(AppError::Internal)?
+                .into_iter()
+                .find(|e| e.id == id)
+                .map(|e| e.body)
+                .unwrap_or_default();
+            super::resolve_edit(&current, Some(&b), body, &format!("{slug} #{id}"))?
+        }
+        None => body,
+    };
     let body_trimmed = body.trim().to_string();
     if body_trimmed.is_empty() {
         return Err(AppError::BadRequest("body is empty".into()));

@@ -24,6 +24,11 @@ impl<E: Into<AppError>> From<E> for HttpError {
 impl IntoResponse for HttpError {
     fn into_response(self) -> Response {
         let (status, message) = match self.0 {
+            // DEV-435: 편집 충돌 — 409 와 함께 무엇이 부딪혔는지(지금 본문 · 충돌 구간 · 새 번호)를 싣는다.
+            // 받는 쪽이 그걸로 고르거나 다시 시작한다.
+            AppError::EditConflict(c) => {
+                return (StatusCode::CONFLICT, Json(json!({ "error": c.message, "conflict": c }))).into_response();
+            }
             AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
             // DEV-064: 길드가 서버보다 새 schema — 서버 업데이트 필요.

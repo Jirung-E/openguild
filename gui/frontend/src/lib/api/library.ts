@@ -46,7 +46,11 @@ export const libraryApi = {
 		api.get<SidecarHistoryEntry[]>(`/api/library/${encodeURIComponent(bookId)}/history`),
 	create: (title: string, body = '', path = '') =>
 		api.post<Book>('/api/library', { title, body, path }),
-	update: (bookId: string, fields: { title?: string; body?: string; path?: string }) =>
+	// DEV-435: base_body = 편집을 시작할 때 본 본문 — 그사이 바뀐 것과 합치거나 같은 줄이면 EditConflictError.
+	update: (
+		bookId: string,
+		fields: { title?: string; body?: string; path?: string; base_body?: string }
+	) =>
 		api.patch<Book>(`/api/library/${encodeURIComponent(bookId)}`, fields),
 	delete: (bookId: string) => api.delete(`/api/library/${encodeURIComponent(bookId)}`),
 

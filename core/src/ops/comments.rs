@@ -246,7 +246,30 @@ pub async fn update_comment_entry(
     id: u64,
     body: String,
 ) -> AppResult<CommentEntry> {
+    update_comment_entry_with(store, slug, id, body, None).await
+}
+
+/// DEV-435: [`update_comment_entry`] + 편집을 시작할 때 본 댓글 글 — 그사이 남이 고친 것과 합치거나, 같은 줄이면
+/// 거부한다.
+pub async fn update_comment_entry_with(
+    store: &Store,
+    slug: &str,
+    id: u64,
+    body: String,
+    base: Option<String>,
+) -> AppResult<CommentEntry> {
     let _g = store.lock_docs(&[DocKey::quest(slug)]).await?;
+    let body = match base {
+        Some(b) => {
+            let current = svc::list_entries(store, slug)?
+                .into_iter()
+                .find(|e| e.id == id)
+                .map(|e| e.body)
+                .unwrap_or_default();
+            super::resolve_edit(&current, Some(&b), body, &format!("{slug} #{id}"))?
+        }
+        None => body,
+    };
     let _ = journal::append(
         &store.journal_pool,
         "update_comment_entry",

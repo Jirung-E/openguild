@@ -94,7 +94,11 @@ export class HttpTransport implements Transport {
 
 		if (!res.ok) {
 			const err = await res.json().catch(() => ({ error: res.statusText }));
-			throw new Error((err as { error?: string }).error ?? 'request failed');
+			// DEV-435: 편집 충돌은 무엇이 부딪혔는지를 들고 간다.
+			throw (
+				editConflictFromHttp(res.status, err) ??
+				new Error((err as { error?: string }).error ?? 'request failed')
+			);
 		}
 
 		// 빈 본문 처리 — 204 또는 content-length 0.
@@ -121,6 +125,7 @@ export class HttpTransport implements Transport {
  * - frontend 상위 (api 모듈) 는 환경 무지하게 try/catch.
  */
 import { invoke } from '@tauri-apps/api/core';
+import { editConflictFromHttp, editConflictFromInvoke } from './editConflict';
 
 /**
  * BUG-211: `ListQuery`(core/src/models/quest.rs) 의 bool / 정수 필드.
@@ -213,7 +218,10 @@ export async function getWithEtag<T>(path: string): Promise<T> {
 	if (res.status === 304 && hit) return hit.data as T;
 	if (!res.ok) {
 		const err = await res.json().catch(() => ({ error: res.statusText }));
-		throw new Error((err as { error?: string }).error ?? 'request failed');
+		throw (
+			editConflictFromHttp(res.status, err) ??
+			new Error((err as { error?: string }).error ?? 'request failed')
+		);
 	}
 	const data = (await res.json()) as T;
 	const etag = res.headers.get('etag');
@@ -287,8 +295,12 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 		const slug = decodeURIComponent(parts[2]);
 		if (method === 'GET') return { cmd: 'get_rule', args: { slug } };
 		if (method === 'PUT') {
-			const content = (body as { content?: string } | undefined)?.content ?? '';
-			return { cmd: 'set_rule', args: { slug, content } };
+			const b = (body as { content?: string; base_content?: string | null } | undefined) ?? {};
+			// DEV-435: 편집을 시작할 때 본 본문 — 그사이 바뀐 것과 합치거나 같은 줄이면 충돌.
+			return {
+				cmd: 'set_rule',
+				args: { slug, content: b.content ?? '', baseContent: b.base_content ?? null }
+			};
 		}
 		if (method === 'PATCH') {
 			const newSlug = (body as { new_slug?: string } | undefined)?.new_slug ?? '';
@@ -373,11 +385,23 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 		if (method === 'PATCH') {
 			const b =
 				(body as
-					| { title?: string | null; body?: string | null; path?: string | null }
+					| {
+							title?: string | null;
+							body?: string | null;
+							path?: string | null;
+							base_body?: string | null;
+					  }
 					| undefined) ?? {};
 			return {
 				cmd: 'update_book',
-				args: { bookId, title: b.title ?? null, body: b.body ?? null, path: b.path ?? null }
+				args: {
+					bookId,
+					title: b.title ?? null,
+					body: b.body ?? null,
+					path: b.path ?? null,
+					// DEV-435
+					baseBody: b.base_body ?? null
+				}
 			};
 		}
 		if (method === 'DELETE') {
@@ -519,8 +543,12 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 			if (parts[5] && /^\d+$/.test(parts[5]) && !parts[6]) {
 				const id = Number(parts[5]);
 				if (method === 'PATCH') {
-					const bodyText = (body as { body?: string } | undefined)?.body ?? '';
-					return { cmd: 'update_comment', args: { slug, id, body: bodyText } };
+					const b = (body as { body?: string; base_body?: string | null } | undefined) ?? {};
+					// DEV-435: 편집을 시작할 때 본 글.
+					return {
+						cmd: 'update_comment',
+						args: { slug, id, body: b.body ?? '', baseBody: b.base_body ?? null }
+					};
 				}
 				if (method === 'DELETE') {
 					return { cmd: 'delete_comment', args: { slug, id } };
@@ -793,8 +821,12 @@ function routeToInvoke(req: ApiCall): { cmd: string; args: Record<string, unknow
 			if (parts[4] && /^\d+$/.test(parts[4]) && !parts[5]) {
 				const id = Number(parts[4]);
 				if (method === 'PATCH') {
-					const bodyText = (body as { body?: string } | undefined)?.body ?? '';
-					return { cmd: 'update_campaign_comment', args: { slug, id, body: bodyText } };
+					const b = (body as { body?: string; base_body?: string | null } | undefined) ?? {};
+					// DEV-435: 편집을 시작할 때 본 글.
+					return {
+						cmd: 'update_campaign_comment',
+						args: { slug, id, body: b.body ?? '', baseBody: b.base_body ?? null }
+					};
 				}
 				if (method === 'DELETE') return { cmd: 'delete_campaign_comment', args: { slug, id } };
 			}
@@ -926,7 +958,8 @@ export class TauriTransport implements Transport {
 		} catch (e) {
 			// Tauri 가 throw 한 메시지는 보통 string. Error 로 감싸기.
 			const msg = typeof e === 'string' ? e : ((e as { message?: string }).message ?? String(e));
-			throw new Error(msg);
+			// DEV-435: 편집 충돌 — 서버의 409 와 같은 모양으로 푼다.
+			throw editConflictFromInvoke(msg) ?? new Error(msg);
 		}
 	}
 }

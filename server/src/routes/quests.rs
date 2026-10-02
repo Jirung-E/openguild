@@ -262,6 +262,8 @@ pub async fn get_quest_by_slug(
     detail.tags = openguild_core::ops::quests::list_quest_tags(&store, &slug)?;
     // DEV-152: 첨부 목록(sidecar) — GUI Tauri 커맨드와 동일하게 여기서 채움.
     detail.attachments = openguild_core::ops::attachments::list_quest_attachments(&store, &slug);
+    // DEV-435: 편집을 시작할 때의 번호 — 저장 때 그대로 돌려보내면 그사이 바뀐 것을 덮지 않는다.
+    detail.version = openguild_core::ops::quests::file_version(&store, &slug);
     Ok(Json(detail))
 }
 

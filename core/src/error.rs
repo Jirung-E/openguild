@@ -8,6 +8,21 @@ use thiserror::Error;
 
 pub type AppResult<T> = Result<T, AppError>;
 
+/// DEV-435: 편집 충돌의 내용 — 밖으로 나가는 모양(앱 · 서버 · CLI 가 같은 것을 본다).
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct EditConflict {
+    /// `text`(같은 줄을 다르게 고침) · `stale`(시작한 뒤 바뀜 — 번호로만 알 때) · `renamed`(번호가 바뀜) · `deleted`.
+    pub reason: &'static str,
+    /// 사람에게 보일 한 줄.
+    pub message: String,
+    /// 지금 저장된 본문 — 다시 시작할 출발점. `renamed` · `deleted` 에는 없다.
+    pub current: Option<String>,
+    /// `text` 일 때 구간들 — 이으면 전체 글(충돌 구간은 고른 쪽으로).
+    pub segments: Vec<crate::merge::Segment>,
+    /// `renamed` 일 때 새 번호.
+    pub new_id: Option<String>,
+}
+
 #[derive(Debug, Error)]
 pub enum AppError {
     #[error("{0}")]
@@ -24,6 +39,11 @@ pub enum AppError {
     /// **의도된 중단**이라 호출부가 에러 배너 대신 조용히 정리하도록 구분한다.
     #[error("{0}")]
     Cancelled(String),
+
+    /// DEV-435: 저장이 그사이 남이 한 변경과 부딪혔다 — 조용히 덮지 않고 멈춘다. 받은 쪽은 `current` 에서 다시
+    /// 시작하거나(에이전트), 충돌 구간을 보고 고른다(앱). 서버는 409 와 이 본문을 그대로 돌려준다.
+    #[error("{}", .0.message)]
+    EditConflict(Box<EditConflict>),
 
     #[error("internal error: {0:#}")]
     Internal(#[from] anyhow::Error),

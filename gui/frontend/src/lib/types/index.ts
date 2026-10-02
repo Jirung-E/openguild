@@ -93,6 +93,8 @@ export interface QuestDetail extends Quest {
 	/** DEV-156: 본문과 별개 첨부 목록 (Jira 식 섹션). sidecar 진리원. */
 	attachments?: QuestAttachment[];
 	position: QuestPosition | null;
+	/** DEV-435: 본문 파일 번호(DEV-433). */
+	version?: number;
 }
 
 /** DEV-156: quest/campaign 첨부 한 건 (본문과 별개). */
@@ -126,6 +128,12 @@ export interface UpdateQuestRequest {
 	description?: string;
 	urgency?: number;
 	parent_quest_id?: number;
+	/** DEV-435: 편집을 시작할 때 본 본문 — 그사이 바뀐 것과 합치거나 같은 줄이면 EditConflictError. */
+	base_description?: string;
+	/** DEV-435: 편집을 시작할 때 본 파일 번호 — 다르면 거부(주로 CLI). */
+	base_version?: number;
+	/** DEV-435: 편집하던 퀘스트 번호 — 그사이 타입이 바뀌었거나 지워졌으면 거부. */
+	expected_id?: string;
 }
 
 export interface ChangeStatusRequest {

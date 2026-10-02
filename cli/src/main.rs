@@ -576,8 +576,8 @@ enum QuestCmd {
         // 하나만 주면 값만 그대로 출력(기존 동작 — 파이프 친화), 여러 개면
         // `field: value` 형태로 준다.
         #[arg(long, value_name = "FIELD", num_args = 1..,
-              help = tf!("지정한 필드만 출력 (script / pipe 친화, 여러 개 가능). 사용 가능: id / title / status / status_ko / status_slug / urgency / description / type / parent / sub_quests / prerequisites / successors / created_at / updated_at. 하나면 값만, 여러 개면 `필드: 값`.",
-                         "Print only the given fields (script/pipe friendly, repeatable). Available: id / title / status / status_ko / status_slug / urgency / description / type / parent / sub_quests / prerequisites / successors / created_at / updated_at. One field prints the bare value; several print `field: value`."))]
+              help = tf!("지정한 필드만 출력 (script / pipe 친화, 여러 개 가능). 사용 가능: id / title / status / status_ko / status_slug / urgency / description / type / parent / sub_quests / prerequisites / successors / created_at / updated_at / version. 하나면 값만, 여러 개면 `필드: 값`.",
+                         "Print only the given fields (script/pipe friendly, repeatable). Available: id / title / status / status_ko / status_slug / urgency / description / type / parent / sub_quests / prerequisites / successors / created_at / updated_at / version. One field prints the bare value; several print `field: value`."))]
         field: Vec<String>,
         // DEV-347: 기본 출력은 요약. 예전의 전부 쏟아내던 형식은 여기로.
         #[arg(long, help = tf!("본문·관계·태그·기한까지 전체 출력 (예전 기본 형식).",
@@ -625,6 +625,9 @@ enum QuestCmd {
         description_file: Option<std::path::PathBuf>,
         #[arg(long)]
         urgency: Option<i64>,
+        #[arg(long = "base-version", help = tf!("편집을 시작할 때 본 번호(show 의 version) — 그사이 바뀌었으면 저장하지 않고 0 아닌 종료 코드로 지금 내용을 보여 준다.",
+              "The version you started from (`show` prints it) — if it changed since, nothing is saved and the current content is shown with a non-zero exit code."))]
+        base_version: Option<u64>,
         #[arg(long, help = tf!("실제 수정 대신 변경 미리보기만 출력", "Preview the change instead of applying it"))]
         dry_run: bool,
     },
@@ -1128,6 +1131,9 @@ enum RulesCmd {
         #[arg(long, help = tf!("본문이 들어있는 파일. 미지정 시 stdin. 한글 등 비ASCII 는 --file 권장 — PowerShell 파이프(echo | ...)는 인코딩이 안 맞아 깨질 수 있음. rule show 로 확인했을 때 깨져 보이면 이 경우임.",
                               "File containing the body. Defaults to stdin. --file recommended for non-ASCII (Korean etc.) — PowerShell pipes (`echo | ...`) can mangle encoding. If `rule show` looks garbled, this is why."))]
         file: Option<std::path::PathBuf>,
+        #[arg(long = "base-version", help = tf!("편집을 시작할 때 본 번호(show 의 version) — 그사이 바뀌었으면 저장하지 않고 0 아닌 종료 코드로 지금 내용을 보여 준다.",
+              "The version you started from (`show` prints it) — if it changed since, nothing is saved and the current content is shown with a non-zero exit code."))]
+        base_version: Option<u64>,
     },
     // DEV-227/BUG-111/DEV-232: quest/campaign/template/backup 이 전부
     // `new` 를 쓰는데 rules 만 `create` 가 canonical 이라 --help 에 create
@@ -1239,6 +1245,9 @@ enum LibraryCmd {
         #[arg(long, alias = "path", help = tf!("새 폴더로 이동. 빈 문자열(\"\")이면 최상위로 이동. 미지정 시 현재 위치 유지. (옛 이름: --path)",
                               "Move to a new folder. Empty string (\"\") moves to top-level. Keeps current location if omitted. (old name: --path)"))]
         folder: Option<String>,
+        #[arg(long = "base-version", help = tf!("편집을 시작할 때 본 번호(show 의 version) — 그사이 바뀌었으면 저장하지 않고 0 아닌 종료 코드로 지금 내용을 보여 준다.",
+              "The version you started from (`show` prints it) — if it changed since, nothing is saved and the current content is shown with a non-zero exit code."))]
+        base_version: Option<u64>,
     },
     #[command(about = tf!("문서 삭제 (soft delete — 번호는 재사용되지 않음). --yes 없으면 확인.", "Delete a document (soft delete — the number is not reused). Confirms unless --yes."))]
     Delete {
@@ -2106,6 +2115,9 @@ struct BookDto {
     deleted_at: Option<String>,
     #[serde(default)]
     attachments: Vec<openguild_core::models::quest::QuestAttachment>,
+    /// DEV-435: 파일 번호(DEV-433) — `library update --base-version` 으로 돌려보낸다.
+    #[serde(default)]
+    version: u64,
 }
 
 /// REQ-027 후속: 태그 **모두 가진 것만**(AND) — 로컬·원격이 같은 규칙을 쓰도록 한 곳에 둔다.
@@ -2131,6 +2143,7 @@ impl From<openguild_core::ops::library::LibraryDocRow> for BookDto {
             updated_at: r.updated_at,
             deleted_at: r.deleted_at,
             attachments: Vec::new(),
+            version: 0,
         }
     }
 }
@@ -2283,7 +2296,18 @@ impl Backend {
 
     /// AppError → anyhow::Error 변환.
     fn map_err<T>(r: openguild_core::AppResult<T>) -> Result<T> {
-        r.map_err(|e| anyhow!("{e}"))
+        r.map_err(|e| match e {
+            // DEV-435: 저장하지 않았다 — 무엇과 부딪혔는지(지금 내용)를 함께 보여 다시 시작할 수 있게.
+            openguild_core::AppError::EditConflict(c) => match &c.current {
+                Some(cur) => anyhow!(
+                    "{}\n\n{}\n{cur}",
+                    c.message,
+                    tf!("--- 지금 내용 ---", "--- current content ---")
+                ),
+                None => anyhow!("{}", c.message),
+            },
+            other => anyhow!("{other}"),
+        })
     }
 
     /// Local 모드에서 비정상 quest 파일 (파싱 실패 / 정의되지 않은 status) 을
@@ -2432,6 +2456,7 @@ impl Backend {
                 // 에이전트가 붙여 둔 스펙·목업을 못 보고 일하게 된다.
                 d.attachments =
                     openguild_core::ops::attachments::list_quest_attachments(&l.store, slug);
+                d.version = openguild_core::ops::quests::file_version(&l.store, slug);
                 Ok(d)
             }
         }
@@ -3017,16 +3042,21 @@ impl Backend {
         }
     }
 
-    fn rules_set(&self, slug: &str, content: String) -> Result<()> {
+    fn rules_set(&self, slug: &str, content: String, base_version: Option<u64>) -> Result<()> {
         match self {
             Backend::Http(c) => {
-                let _: RuleDto =
-                    c.put(&format!("/api/rules/{}", urlenc(slug)), &serde_json::json!({ "content": content }))?;
+                let _: RuleDto = c.put(
+                    &format!("/api/rules/{}", urlenc(slug)),
+                    &serde_json::json!({ "content": content, "base_version": base_version }),
+                )?;
                 Ok(())
             }
-            Backend::Local(l) => Self::map_err(l.rt.block_on(
-                openguild_core::ops::rules::set_rule(&l.store, slug, content),
-            )),
+            Backend::Local(l) => Self::map_err(l.rt.block_on(openguild_core::ops::rules::set_rule_with(
+                &l.store,
+                slug,
+                content,
+                openguild_core::ops::EditBase { text: None, version: base_version },
+            ))),
         }
     }
 
@@ -3118,6 +3148,10 @@ impl Backend {
                 // BUG-295: 퀘스트와 같은 이유.
                 dto.attachments =
                     openguild_core::ops::attachments::list_book_attachments(&l.store, id);
+                dto.version = openguild_core::repo::version::read(
+                    &l.store.paths.book_path(id),
+                    openguild_core::repo::version::Place::Frontmatter,
+                );
                 Ok(dto)
             }
         }
@@ -3155,15 +3189,21 @@ impl Backend {
         title: Option<&str>,
         body: Option<&str>,
         path: Option<&str>,
+        base_version: Option<u64>,
     ) -> Result<BookDto> {
         match self {
             Backend::Http(c) => c.patch(
                 &format!("/api/library/{id}"),
-                &serde_json::json!({ "title": title, "body": body, "path": path }),
+                &serde_json::json!({ "title": title, "body": body, "path": path, "base_version": base_version }),
             ),
-            Backend::Local(l) => Self::map_err(l.rt.block_on(
-                openguild_core::ops::library::update_book(&l.store, id, title, body, path),
-            ))
+            Backend::Local(l) => Self::map_err(l.rt.block_on(openguild_core::ops::library::update_book_with(
+                &l.store,
+                id,
+                title,
+                body,
+                path,
+                openguild_core::ops::EditBase { text: None, version: base_version },
+            )))
             .map(BookDto::from),
         }
     }
@@ -5693,6 +5733,10 @@ fn quest_summary_lines(d: &QuestDetail) -> Vec<String> {
         "urgency",
         colorize(&q.urgency.to_string(), urgency_color(q.urgency)),
     ));
+    // DEV-435: 고칠 때 `--base-version` 으로 돌려보낸다.
+    if d.version > 0 {
+        out.push(row("version", d.version.to_string()));
+    }
     // 관계 요약 — 있는 것만. 부모는 slug, 나머지는 개수.
     //
     // 라벨 색은 `--full`(print_quest_detail)의 섹션 라벨과 **같은 팔레트**를 쓴다
@@ -5785,6 +5829,10 @@ fn print_quest_detail(d: &QuestDetail, json: bool) {
     // DEV-043: 기본 출력에 생성일 / 변경일 표시. (시각은 색 X — 정보)
     println!("  created  : {}", q.created_at);
     println!("  updated  : {}", q.updated_at);
+    // DEV-435: 고칠 때 `--base-version` 으로 돌려보내면 그사이 바뀐 것을 덮지 않는다.
+    if d.version > 0 {
+        println!("  version  : {}", d.version);
+    }
     // DEV-047: parent 표기 slug + 색 (이전엔 raw id 만 노출).
     // 섹션 라벨 색은 gui QuestBoard 의 다중-선택 하이라이트 팔레트와 일치
     // (parent=#7ee787 초록 / sub=#3dc9b0 청록 / pre=#a371f7 보라).
@@ -5925,10 +5973,12 @@ fn quest_field_value(d: &QuestDetail, field: &str) -> Result<String> {
             .map(|r| r.quest_id.as_str())
             .collect::<Vec<_>>()
             .join("\n"),
+        // DEV-435: `quest update --base-version` 에 넣을 번호.
+        "version" => d.version.to_string(),
         other => {
             return Err(anyhow!(
                 "unknown field '{other}'. available: id title status status_slug \
-                 urgency description type parent created_at updated_at"
+                 urgency description type parent created_at updated_at version"
             ));
         }
     };
@@ -8591,9 +8641,9 @@ fn handle_rules(c: &Backend, json: bool, sub: RulesCmd) -> Result<()> {
             let history = c.rule_history(&slug)?;
             print_sidecar_history(&history, json);
         }
-        RulesCmd::Set { slug, file } => {
+        RulesCmd::Set { slug, file, base_version } => {
             let content = read_content(file.as_deref())?;
-            c.rules_set(&slug, content)?;
+            c.rules_set(&slug, content, base_version)?;
             if json {
                 json_println!(serde_json::json!({ "ok": true, "slug": slug }));
             } else {
@@ -8698,6 +8748,9 @@ fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
                 let loc = if b.path.is_empty() { &top_level } else { &b.path };
                 println!("{}", tf!("  경로: {loc}", "  path: {loc}"));
                 println!("  created: {}  updated: {}", b.created_at, b.updated_at);
+                if b.version > 0 {
+                    println!("  version: {}", b.version);
+                }
                 print_attachments(&b.attachments, "  ");
                 if !b.body.is_empty() {
                     println!();
@@ -8759,7 +8812,7 @@ fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
                 println!("{}", tf!("✓ {} 생성됨 — {}", "✓ {} created — {}", b.book_id, b.title));
             }
         }
-        LibraryCmd::Update { id, title, file, folder } => {
+        LibraryCmd::Update { id, title, file, folder, base_version } => {
             if title.is_none() && file.is_none() && folder.is_none() {
                 bail!(tf!(
                     "변경할 필드가 없습니다 — --title / --file / --path 지정",
@@ -8772,7 +8825,7 @@ fn handle_library(c: &Backend, json: bool, sub: LibraryCmd) -> Result<()> {
                 })?),
                 None => None,
             };
-            let b = c.library_update(&id, title.as_deref(), body.as_deref(), folder.as_deref())?;
+            let b = c.library_update(&id, title.as_deref(), body.as_deref(), folder.as_deref(), base_version)?;
             if json {
                 println!("{}", json_str(&b));
             } else {
@@ -9564,6 +9617,7 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
             description,
             description_file,
             urgency,
+            base_version,
             dry_run,
         } => {
             // DEV-222: --description-file 이면 UTF-8 파일에서 본문 읽기.
@@ -9629,6 +9683,11 @@ fn handle_quest(c: &Backend, json: bool, sub: QuestCmd) -> Result<()> {
                 title,
                 description,
                 urgency,
+                // DEV-435: 번호를 줬으면 그사이 바뀐 것을 덮지 않는다. 편집하던 번호(slug)도 실어 타입이 바뀐 퀘스트에
+                // 조용히 저장되지 않게.
+                base_version,
+                expected_id: base_version.map(|_| slug.clone()),
+                ..Default::default()
             };
             let q = c.update_quest(id, body)?;
             // description 변경 가능성 있음 → multi-line 전체 표시.
@@ -10292,6 +10351,7 @@ mod tests {
             tags: vec![],
             attachments: vec![],
             position: None,
+            version: 0,
         }
     }
 
@@ -11685,6 +11745,7 @@ mod tests {
             tags: vec![],
             attachments: vec![],
             position: None,
+            version: 0,
         }
     }
 
@@ -12731,7 +12792,7 @@ scope = ["gui"]
         ])
         .unwrap();
         match cli.command {
-            Command::Library { sub: LibraryCmd::Update { id, title, file, folder } } => {
+            Command::Library { sub: LibraryCmd::Update { id, title, file, folder, .. } } => {
                 assert_eq!(id, "BOOK-002");
                 assert_eq!(title.as_deref(), Some("t2"));
                 assert!(file.is_none());
