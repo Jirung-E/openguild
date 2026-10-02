@@ -108,7 +108,27 @@ impl SourcesFile {
         for p in self.sources.values_mut() {
             *p = crate::recents::strip_verbatim_prefix(p);
         }
+        // BUG-347: BUG-327 전에 적힌 길드 열쇠(윈도우에서 대소문자 · 구분자가 다른 것)를 지금 규칙으로 옮긴다.
+        // 예전에는 한 곳(`used_in`)만 옛 열쇠를 찾아 줬고, **실제로 싣는 곳(`used_dirs`)은 못 찾아** 그 길드의
+        // 소스 플러그인이 아무 말 없이 안 실렸다. 읽을 때 옮겨 두면 찾는 곳 · 쓰는 곳이 모두 한 열쇠만 본다.
+        if cfg!(windows) {
+            self.used = rekey(std::mem::take(&mut self.used), |k| guild_key(Path::new(k)));
+        }
     }
+}
+
+/// BUG-347: 길드 열쇠를 `key` 규칙으로 다시 붙인다. 옛 열쇠 둘이 같은 길드면 목록을 합친다(순서 유지, 겹치면 하나).
+fn rekey(used: BTreeMap<String, Vec<Used>>, key: impl Fn(&str) -> String) -> BTreeMap<String, Vec<Used>> {
+    let mut out: BTreeMap<String, Vec<Used>> = BTreeMap::new();
+    for (k, list) in used {
+        let dst = out.entry(key(&k)).or_default();
+        for u in list {
+            if !dst.contains(&u) {
+                dst.push(u);
+            }
+        }
+    }
+    out
 }
 
 /// 읽고 → 고치고 → **통째로 덮어쓴다.** 동의 파일과 같은 규칙으로 다룬다
@@ -328,19 +348,8 @@ pub fn remove_source(name: &str) -> AppResult<()> {
 pub fn used_in(guild_root: &Path) -> Vec<Used> {
     let f = load();
     let key = guild_key(guild_root);
-    if let Some(v) = f.used.get(&key) {
-        return v.clone();
-    }
-    // BUG-327: 열쇠 규칙이 바뀌기 전에 적힌 것 — 윈도우에서 대소문자가 다르게 남아 있을
-    // 수 있다. 찾아서 쓰되 파일은 안 고친다(다음 `use_plugin` 이 새 열쇠로 적는다).
-    if cfg!(windows) {
-        for (k, v) in &f.used {
-            if guild_key(Path::new(k)) == key {
-                return v.clone();
-            }
-        }
-    }
-    Vec::new()
+    // BUG-327 전의 옛 열쇠는 읽을 때(`normalize`) 이미 지금 규칙으로 옮겨져 있다.
+    f.used.get(&key).cloned().unwrap_or_default()
 }
 
 /// 이 길드에서 쓴다 — `folder` 는 소스 폴더 안의 폴더 이름. 이미 쓰고 있으면 그대로(멱등).
@@ -577,6 +586,21 @@ mod tests {
     ///
     /// 맥·리눅스에서는 이 시험이 "손대지 않았다" 를 지킨다 — 거기서는 대소문자가
     /// 뜻을 가질 수 있어 함부로 뭉개면 안 된다.
+    /// BUG-347: 옛 열쇠(윈도우의 대소문자가 다른 경로)는 지금 규칙으로 옮겨지고, 같은 길드를 가리키는 둘은 합쳐진다.
+    /// 규칙은 윈도우에서만 바뀌므로 여기서는 대소문자를 무시하는 규칙을 꽂아 맥에서도 본다.
+    #[test]
+    fn old_keys_are_moved_to_the_current_rule_and_merged() {
+        let u = |s: &str| Used { source: s.into(), folder: ".".into() };
+        let mut used = BTreeMap::new();
+        used.insert(r"C:\Users\Me\Guild".to_string(), vec![u("a"), u("b")]);
+        used.insert(r"c:\users\me\guild".to_string(), vec![u("b"), u("c")]);
+        used.insert(r"D:\Other".to_string(), vec![u("d")]);
+        let got = rekey(used, |k| k.to_lowercase());
+        assert_eq!(got.len(), 2);
+        assert_eq!(got[r"c:\users\me\guild"], vec![u("a"), u("b"), u("c")]);
+        assert_eq!(got[r"d:\other"], vec![u("d")]);
+    }
+
     #[test]
     fn the_same_guild_gets_the_same_key() {
         // 없는 경로를 쓴다 — `canonicalize` 가 실패해 원본이 그대로 남으므로 규칙만 본다.

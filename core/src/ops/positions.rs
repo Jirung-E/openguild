@@ -179,15 +179,6 @@ mod tests {
             // 윈도우는 열린 파일을 못 지운다 — 풀을 닫고 나서 지운다(블록을 벗어나는 것만으로는 바로 안 닫힌다).
             store.index_pool.close().await;
             store.journal_pool.close().await;
-            // 윈도우는 열린 파일을 못 지운다 — 풀을 닫고 나서 지운다(블록을 벗어나는 것만으로는 바로 안 닫힌다).
-            store.index_pool.close().await;
-            store.journal_pool.close().await;
-            // 윈도우는 열린 파일을 못 지운다 — 풀을 닫고 나서 지운다(블록을 벗어나는 것만으로는 바로 안 닫힌다).
-            store.index_pool.close().await;
-            store.journal_pool.close().await;
-            // 윈도우는 열린 파일을 못 지운다 — 풀을 닫고 나서 지운다(블록을 벗어나는 것만으로는 바로 안 닫힌다).
-            store.index_pool.close().await;
-            store.journal_pool.close().await;
         }
 
         // 폐기가능 캐시를 지운다 — 브랜치 전환 뒤 하는 그대로.
@@ -236,6 +227,9 @@ mod tests {
             moved.quest_id, q.quest_id,
             "전제: slug 가 실제로 바뀌어야 한다"
         );
+        // 윈도우는 열린 파일을 못 지운다 — 버리는 것만으로는 풀이 바로 안 닫힌다(BUG-347).
+        store.index_pool.close().await;
+        store.journal_pool.close().await;
         drop(store);
 
         std::fs::remove_file(dir.join(".guild/index.db")).unwrap();
@@ -279,6 +273,9 @@ mod tests {
         crate::ops::meta::rename_type(&store, old_prefix.clone(), "ZZZ".into())
             .await
             .unwrap();
+        // 윈도우는 열린 파일을 못 지운다 — 버리는 것만으로는 풀이 바로 안 닫힌다(BUG-347).
+        store.index_pool.close().await;
+        store.journal_pool.close().await;
         drop(store);
 
         std::fs::remove_file(dir.join(".guild/index.db")).unwrap();
@@ -318,6 +315,9 @@ mod tests {
         update_position(&store, b.id, UpdatePositionRequest { x: 33.0, y: 44.0 })
             .await
             .unwrap();
+        // 윈도우는 열린 파일을 못 지운다 — 버리는 것만으로는 풀이 바로 안 닫힌다(BUG-347).
+        store.index_pool.close().await;
+        store.journal_pool.close().await;
         drop(store);
 
         std::fs::remove_file(dir.join(".guild/index.db")).unwrap();

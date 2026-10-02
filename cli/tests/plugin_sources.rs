@@ -38,6 +38,11 @@ scope       = ["cli"]
     [handlers.action.run]
         command = "sh"
         args    = ["-c", "cat >> hello.log; echo >> hello.log"]
+    # BUG-347: 윈도우에는 sh 가 없다(Git Bash 가 없으면) — 예제들처럼 그 OS 에서는 PowerShell 로 같은 일을 한다.
+    [handlers.action.run.windows]
+        command = "powershell"
+        args    = ["-NoProfile", "-NonInteractive", "-Command",
+                   "$t = [Console]::In.ReadToEnd(); Add-Content -LiteralPath hello.log -Value $t -Encoding utf8"]
 "#,
         )
         .unwrap();
@@ -100,7 +105,7 @@ impl Drop for Lab {
 /// 아무것도 안 하는 `run` 줄 하나짜리 정의.
 fn mini(name: &str) -> String {
     format!(
-        "name = \"{name}\"\nscope = [\"cli\"]\n\n[[handlers]]\npost = [\"quest.created\"]\n[handlers.action.run]\ncommand = \"sh\"\nargs = [\"-c\", \"true\"]\n"
+        "name = \"{name}\"\nscope = [\"cli\"]\n\n[[handlers]]\npost = [\"quest.created\"]\n[handlers.action.run]\ncommand = \"sh\"\nargs = [\"-c\", \"true\"]\n[handlers.action.run.windows]\ncommand = \"powershell\"\nargs = [\"-NoProfile\", \"-Command\", \"exit 0\"]\n"
     )
 }
 
