@@ -1183,7 +1183,18 @@ fn a_missing_script_stops_that_plugin() {
 /// 컴파일 대상으로 지정할 수 있으면 안 된다.
 #[test]
 fn script_path_cannot_escape_the_plugin_dir() {
-    for bad in ["../../secret.rhai", "/etc/passwd"] {
+    // BUG-346: 윈도우 모양도 **어느 OS 에서나** 막는다 — 길드는 git 으로 OS 를 오간다. 윈도우에서 `/etc/passwd`
+    // 는 드라이브가 없어 "절대 경로" 가 아니라서 통과했고, 폴더에 붙이면 `C:\etc\passwd` 가 됐다.
+    for bad in [
+        "../../secret.rhai",
+        "/etc/passwd",
+        "\\etc\\passwd.rhai",
+        "..\\..\\secret.rhai",
+        "sub\\..\\..\\secret.rhai",
+        "C:\\Windows\\x.rhai",
+        "C:x.rhai",
+        "\\\\server\\share\\x.rhai",
+    ] {
         let mut d = def(Action::Post {
             url: "https://x.test".into(),
             headers: Default::default(),

@@ -1147,11 +1147,7 @@ pub fn validate(def: &PluginDef) -> AppResult<()> {
     // 정의만으로 임의 파일을 컴파일 대상으로 지정할 수 있게 된다.
     // (폴더 밖 코드를 쓰는 길은 스크립트 안의 `import` 다 — [[DEV-408]].)
     for rel in &def.scripts {
-        let p = Path::new(rel);
-        if p.is_absolute()
-            || p.components()
-                .any(|c| matches!(c, std::path::Component::ParentDir))
-        {
+        if !is_inside_rel(rel) {
             return Err(AppError::BadRequest(format!(
                 "{}: `scripts` 는 플러그인 폴더 안의 상대 경로여야 합니다 (받은 값: {rel})",
                 def.name
@@ -1160,6 +1156,18 @@ pub fn validate(def: &PluginDef) -> AppResult<()> {
     }
     check_no_literal_secret(def)?;
     Ok(())
+}
+
+/// BUG-346: `rel` 이 플러그인 폴더 **안**의 상대 경로인가 — **어느 OS 의 모양이든** 같은 답을 낸다. 길드는 git 으로
+/// 맥 · 윈도우를 오가므로 지금 OS 의 규칙만 보면 다른 OS 에서 샌다(윈도우에서 `/etc/passwd` 는 드라이브가 없어 절대
+/// 경로가 아니라 통과했고, 폴더에 붙이면 `C:\etc\passwd` 가 됐다).
+///
+/// 막는 것: 빈 값, `/` · `\` 로 시작(루트 · UNC), `:`(드라이브 `C:` · 대체 스트림), `/` 나 `\` 로 나눈 조각 중 `..`.
+fn is_inside_rel(rel: &str) -> bool {
+    !rel.is_empty()
+        && !rel.starts_with(['/', '\\'])
+        && !rel.contains(':')
+        && !rel.split(['/', '\\']).any(|seg| seg == "..")
 }
 
 /// DEV-406: 정의가 밝힐 수 있는 권한 — 스크립트가 길드에 시키는 일.
