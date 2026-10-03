@@ -1,4 +1,24 @@
 import { api } from './client';
+import { isLocalTauri } from './transport';
+
+/** DEV-436: 길드 밖 백업 파일 하나의 모습 — 복원하기 전에 보여 준다. */
+export interface BackupFileInfo {
+	path: string;
+	/** `YYYYMMDD-HHMMSS`(UTC) — 백업이 만들어진 시각. */
+	timestamp: string;
+	file_count: number;
+	size_bytes: number;
+	/** 백업 안의 길드 마커 이름(`이름.guild`). */
+	guilds: string[];
+	/** 지금 길드와 같은 길드의 백업인가(마커가 없어 가를 수 없으면 true). */
+	same_guild: boolean;
+}
+
+/** DEV-436: 로컬 데스크톱 전용 명령 — 서버는 고를 파일이 서버 쪽에 있어 열지 않았다. */
+async function invokeLocal<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
+	const { invoke } = await import('@tauri-apps/api/core');
+	return await invoke<T>(cmd, args);
+}
 import type {
 	DriftReport,
 	QuestStatus,
@@ -60,6 +80,15 @@ export const adminApi = {
 
 	/** DEV-175: 특정 snapshot 삭제. */
 	deleteSnapshot: (ts: string) => api.delete(`/api/admin/snapshots/${encodeURIComponent(ts)}`),
+
+	/** DEV-436: 길드 밖 백업 파일로 복원할 수 있는가 — 로컬 데스크톱에서만(원격 길드에 붙어 있으면 아니다). */
+	canRestoreFromFile: () => isLocalTauri(),
+	/** DEV-436: 길드 밖 백업 파일을 읽어 본다(고치지 않음). */
+	inspectBackupFile: (path: string) =>
+		invokeLocal<BackupFileInfo>('admin_inspect_backup_file', { path }),
+	/** DEV-436: 길드 밖 백업 파일로 복원. 다른 길드의 것이면 allowOtherGuild 가 있어야 한다. */
+	restoreBackupFile: (path: string, allowOtherGuild: boolean) =>
+		invokeLocal<BackupFileInfo>('admin_restore_backup_file', { path, allowOtherGuild }),
 
 	/** snapshot 으로 index.db 복원. to 미지정 시 최신 사용. */
 	restore: (to?: string) => api.post<RestoreResponse>('/api/admin/restore', to ? { to } : {}),

@@ -213,6 +213,10 @@ pub const CATALOG: &[Entry] = &[
         ),
     ),
     e(
+        "restore_backup_file",
+        Status::Excluded("DEV-436: 길드 밖 백업 파일로 복원 — restore_snapshot 을 거친다(아래와 같은 이유)"),
+    ),
+    e(
         "restore_snapshot",
         Status::Excluded(
             "복원은 길드 전체를 과거로 되돌린다 — 어느 문서가 어떻게 바뀌었는지를 이벤트로 \

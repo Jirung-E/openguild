@@ -693,6 +693,9 @@ pub fn run() {
             commands::update_quest_positions,
             // admin
             commands::admin_create_snapshot,
+            // DEV-436: 길드 밖 백업 파일로 복원.
+            commands::admin_inspect_backup_file,
+            commands::admin_restore_backup_file,
             commands::admin_list_snapshots,
             commands::admin_delete_snapshot,
             commands::admin_restore,

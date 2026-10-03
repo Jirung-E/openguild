@@ -766,6 +766,95 @@ pub async fn restore_snapshot(store: &Store, snapshot: &SnapshotInfo) -> Result<
     Ok(())
 }
 
+/// DEV-436: 길드 밖에 둔 백업 파일 하나의 모습 — 복원하기 전에 사람에게 보여 준다.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BackupFileInfo {
+    pub path: PathBuf,
+    /// 백업이 만들어진 시각(`YYYYMMDD-HHMMSS`, UTC).
+    pub timestamp: String,
+    pub file_count: u64,
+    pub size_bytes: u64,
+    /// 백업 안의 길드 마커 이름(`이름.guild`) — 어느 길드의 것인지.
+    pub guilds: Vec<String>,
+    /// 지금 길드의 마커와 이름이 겹치는가. 아니면 다른 길드의 백업일 수 있다. 어느 쪽이든 마커가 없으면 `true`(가를 수 없다).
+    pub same_guild: bool,
+}
+
+/// DEV-436: 길드 밖 백업 파일(backup-archive 가 쌓아 둔 `{시각}.db` 등)을 읽어 본다 — 고치지 않는다.
+/// openguild 백업이 아니면(표 `files` · `meta` 가 없으면) 오류.
+pub async fn inspect_backup_file(paths: &GuildPaths, file: &std::path::Path) -> Result<BackupFileInfo> {
+    let not_backup = || {
+        anyhow::anyhow!(crate::tf!(
+            "openguild 백업 파일이 아닙니다: {}",
+            "not an openguild backup file: {}",
+            file.display()
+        ))
+    };
+    if !file.is_file() {
+        return Err(anyhow::anyhow!(crate::tf!(
+            "파일이 없습니다: {}",
+            "no such file: {}",
+            file.display()
+        )));
+    }
+    let pool = crate::db::create_pool_from_path(file, true).await.map_err(|_| not_backup())?;
+    let meta: Result<Vec<(String, String)>, _> =
+        sqlx::query_as("SELECT key, value FROM meta").fetch_all(&pool).await;
+    let names: Result<Vec<String>, _> =
+        sqlx::query_scalar("SELECT rel_path FROM files WHERE rel_path NOT LIKE '%/%' AND rel_path LIKE '%.guild'")
+            .fetch_all(&pool)
+            .await;
+    pool.close().await;
+    let (Ok(meta), Ok(guilds)) = (meta, names) else {
+        return Err(not_backup());
+    };
+    let get = |k: &str| meta.iter().find(|(key, _)| key == k).map(|(_, v)| v.clone());
+    let timestamp = get("ts").ok_or_else(not_backup)?;
+    let file_count = get("file_count").and_then(|v| v.parse().ok()).unwrap_or(0);
+    let mine: Vec<String> = std::fs::read_dir(&paths.guild_root)
+        .map(|rd| {
+            rd.filter_map(|e| e.ok())
+                .map(|e| e.file_name().to_string_lossy().to_string())
+                .filter(|n| n.ends_with(".guild"))
+                .collect()
+        })
+        .unwrap_or_default();
+    // 어느 한쪽에 마커가 없으면(아주 옛 길드) 가를 수 없다 — 막지 않는다.
+    let same_guild = guilds.is_empty() || mine.is_empty() || guilds.iter().any(|g| mine.contains(g));
+    Ok(BackupFileInfo {
+        path: file.to_path_buf(),
+        timestamp,
+        file_count,
+        size_bytes: std::fs::metadata(file).map(|m| m.len()).unwrap_or(0),
+        guilds,
+        same_guild,
+    })
+}
+
+/// DEV-436: 길드 밖 백업 파일로 복원한다 — 길드 안 백업과 같은 길([`restore_snapshot`]: `.pre-restore/` 에 지금 것을 두고,
+/// 길드 독점으로 되붙이고 다시 색인). 다른 길드의 백업이면 `allow_other_guild` 없이는 거부한다.
+pub async fn restore_backup_file(
+    store: &Store,
+    file: &std::path::Path,
+    allow_other_guild: bool,
+) -> Result<BackupFileInfo> {
+    let info = inspect_backup_file(&store.paths, file).await?;
+    if !info.same_guild && !allow_other_guild {
+        return Err(anyhow::anyhow!(crate::tf!(
+            "다른 길드의 백업으로 보입니다(백업 안: {}) — 그래도 복원하려면 허락이 필요합니다",
+            "this looks like another guild's backup (inside: {}) — restoring needs explicit permission",
+            info.guilds.join(", ")
+        )));
+    }
+    let snap = SnapshotInfo {
+        timestamp: info.timestamp.clone(),
+        path: info.path.clone(),
+        size_bytes: info.size_bytes,
+    };
+    restore_snapshot(store, &snap).await?;
+    Ok(info)
+}
+
 /// snapshot 디렉토리 시간 정렬 후 N 개 이상 오래된 것 삭제.
 fn prune_old_snapshots(paths: &GuildPaths, keep: usize) -> Result<()> {
     // DEV-306: `{ts}.db` 와 레거시 `{ts}/` 가 섞여 있을 수 있다 — 둘 다 세고
@@ -1659,5 +1748,56 @@ mod tests {
         assert_eq!(get("NEW.md").as_deref(), Some("새 파일"));
         assert_eq!(get("GONE.md"), None, "지운 파일이 백업에 남았다");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DEV-436: 길드 밖으로 복사해 둔 백업(backup-archive 처럼)으로 복원한다 — 길드 안 원본이 지워져도.
+    #[tokio::test]
+    async fn a_backup_copied_outside_the_guild_restores() {
+        let dir = fresh_tmp("ext-restore");
+        let store = setup(&dir).await;
+        std::fs::write(dir.join("mine.guild"), "name = \"mine\"\n").unwrap();
+        let q = dir.join(".guild/quests/KEEP.md");
+        std::fs::write(&q, "백업 때 모습").unwrap();
+        let snap = create_snapshot(&store).await.unwrap();
+        let outside = fresh_tmp("ext-archive").join(snap.path.file_name().unwrap());
+        std::fs::copy(&snap.path, &outside).unwrap();
+        delete_snapshot(&store.paths, &snap.timestamp).unwrap();
+        std::fs::write(&q, "그 뒤에 바뀐 모습").unwrap();
+
+        let info = inspect_backup_file(&store.paths, &outside).await.unwrap();
+        assert!(info.same_guild, "같은 길드의 백업인데 아니라고 했다: {:?}", info.guilds);
+        assert_eq!(info.timestamp, snap.timestamp);
+        assert!(info.file_count > 0);
+
+        restore_backup_file(&store, &outside, false).await.unwrap();
+        assert_eq!(std::fs::read_to_string(&q).unwrap(), "백업 때 모습");
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(outside.parent().unwrap());
+    }
+
+    /// DEV-436: 백업이 아닌 파일은 거부, 다른 길드의 백업은 허락 없이는 거부 · 허락하면 된다.
+    #[tokio::test]
+    async fn a_foreign_or_bogus_file_is_refused() {
+        let a = fresh_tmp("ext-a");
+        let b = fresh_tmp("ext-b");
+        let store_a = setup(&a).await;
+        let store_b = setup(&b).await;
+        // 이름이 다른 두 길드.
+        std::fs::write(a.join("mine.guild"), "name = \"mine\"\n").unwrap();
+        std::fs::write(b.join("other.guild"), "name = \"other\"\n").unwrap();
+        let snap_b = create_snapshot(&store_b).await.unwrap();
+
+        let bogus = a.join("not-a-backup.db");
+        std::fs::write(&bogus, "그냥 글자").unwrap();
+        assert!(inspect_backup_file(&store_a.paths, &bogus).await.is_err());
+
+        let info = inspect_backup_file(&store_a.paths, &snap_b.path).await.unwrap();
+        assert!(!info.same_guild);
+        assert_eq!(info.guilds, vec!["other.guild".to_string()]);
+        assert!(restore_backup_file(&store_a, &snap_b.path, false).await.is_err(), "다른 길드 백업을 묻지 않고 복원했다");
+        restore_backup_file(&store_a, &snap_b.path, true).await.unwrap();
+
+        let _ = std::fs::remove_dir_all(&a);
+        let _ = std::fs::remove_dir_all(&b);
     }
 }

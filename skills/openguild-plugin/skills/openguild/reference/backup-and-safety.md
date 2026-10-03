@@ -11,6 +11,8 @@ openguild restore                              # latest snapshot only; journal p
 openguild restore --to <YYYYMMDD-HHMMSS>      # exact snapshot; journal preserved
 openguild restore --at <ISO8601-UTC>           # latest snapshot + journal replay through time
 openguild restore --at latest                  # latest snapshot + complete journal replay
+openguild restore --file <path/to/TS.db>       # a backup file kept outside the guild (e.g. backup-archive's copies); local mode only
+openguild restore --file <path> --force        # ...even if it looks like another guild's backup
 ```
 
 Use `backup list` to obtain snapshot timestamps. `--to` selects one exact

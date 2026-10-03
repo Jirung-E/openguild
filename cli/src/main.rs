@@ -216,6 +216,13 @@ enum Command {
               help = tf!("시점 복원 — 최신 snapshot 복원 후 journal(AOF) 을 이 시각(ISO8601 UTC, 예 2026-06-27T00:15:00Z, 포함)까지 재적용. latest 키워드 = journal 전체 재적용(최신 상태로 복구). 내용 op(댓글/메모 본문)·type 변경·첨부가 낀 구간은 안전을 위해 거부됨.",
                          "Point-in-time restore — restores the latest snapshot, then replays journal (AOF) up to this time (ISO8601 UTC, e.g. 2026-06-27T00:15:00Z, inclusive). `latest` = replay the entire journal (restore to current state). Rejected for safety if the range includes content ops (comment/memo bodies), type changes, or attachments."))]
         at: Option<String>,
+        #[arg(long, conflicts_with_all = ["to", "at"],
+              help = tf!("길드 밖에 둔 백업 파일로 복원 — backup-archive 가 쌓아 둔 `시각.db` 등. 로컬 모드만.",
+                         "Restore from a backup file kept outside the guild — e.g. a `timestamp.db` collected by backup-archive. Local mode only."))]
+        file: Option<std::path::PathBuf>,
+        #[arg(long, requires = "file",
+              help = tf!("다른 길드의 백업으로 보여도 복원한다(--file 과 함께).", "Restore even if the file looks like another guild's backup (with --file)."))]
+        force: bool,
     },
     #[command(about = tf!("파일 → index.db 캐시 재구축 (외부 편집 / git pull / restore 후 정합). `index rebuild` 와 동일", "Rebuild index.db cache from files (after external edits / git pull / restore). Same as `index rebuild`"))]
     Reindex,
@@ -7383,7 +7390,10 @@ fn run() -> Result<()> {
         Command::Plugin { .. } => unreachable!("handled above"),
         Command::Worklog { sub } => handle_worklog(&c, cli.json, sub)?,
         Command::Backup { sub } => handle_backup(&c, cli.json, sub)?,
-        Command::Restore { to, at } => handle_restore(&c, cli.json, to, at)?,
+        Command::Restore { to, at, file, force } => match file {
+            Some(f) => handle_restore_file(&c, cli.json, &f, force)?,
+            None => handle_restore(&c, cli.json, to, at)?,
+        },
         Command::Reindex => run_reindex_cmd(&c, cli.json)?,
         Command::Check { sub } => match sub {
             CheckCmd::Drift { resync } => run_check_drift_cmd(&c, resync, cli.json)?,
@@ -9125,6 +9135,53 @@ fn handle_backup(c: &Backend, json: bool, sub: BackupCmd) -> Result<()> {
 }
 
 /// BUG-135: run() 스택 프레임 축소 — arm 지역값을 개별 함수 프레임으로.
+/// DEV-436: 길드 밖 백업 파일로 복원. 무엇을 되돌리는지(시각 · 파일 수 · 어느 길드)를 먼저 보이고, 다른 길드의 것이면
+/// `--force` 가 있어야 한다. 원격 모드는 거부 — 서버의 파일을 고를 수 없다.
+fn handle_restore_file(c: &Backend, json: bool, file: &std::path::Path, force: bool) -> Result<()> {
+    let Backend::Local(l) = c else {
+        bail!(tf!(
+            "파일로 복원은 로컬 모드에서만 됩니다 — 서버의 파일을 고를 수 없습니다",
+            "restore from a file works in local mode only — the server's files cannot be picked"
+        ));
+    };
+    let file = std::fs::canonicalize(file).unwrap_or_else(|_| file.to_path_buf());
+    let info = l
+        .rt
+        .block_on(openguild_core::snapshot::inspect_backup_file(&l.store.paths, &file))?;
+    if !info.same_guild && !force {
+        bail!(tf!(
+            "다른 길드의 백업으로 보입니다(백업 안: {}) — 그래도 복원하려면 --force",
+            "this looks like another guild's backup (inside: {}) — add --force to restore anyway",
+            info.guilds.join(", ")
+        ));
+    }
+    let info = l
+        .rt
+        .block_on(openguild_core::snapshot::restore_backup_file(&l.store, &file, force))?;
+    if json {
+        json_println!(serde_json::json!({ "ok": true, "restored_from": info }));
+    } else {
+        println!(
+            "{}",
+            tf!(
+                "✓ {} 로 복원했습니다 — {} 에 만든 백업, 파일 {}개",
+                "✓ restored from {} — backup made at {}, {} file(s)",
+                info.path.display(),
+                openguild_core::snapshot::ts_to_local_display(&info.timestamp),
+                info.file_count
+            )
+        );
+        println!(
+            "{}",
+            tf!(
+                "복원 전 상태는 .guild/backups/.pre-restore/ 에 있습니다.",
+                "the state before the restore is in .guild/backups/.pre-restore/."
+            )
+        );
+    }
+    Ok(())
+}
+
 fn handle_restore(c: &Backend, json: bool, to: Option<String>, at: Option<String>) -> Result<()> {
     if let Some(ts) = at {
         // DEV-022: 시점 복원 (journal replay).

@@ -37,13 +37,24 @@ const nav = vi.hoisted(() => {
 vi.mock('$app/stores', () => ({ page: nav.page }));
 vi.mock('$app/navigation', () => ({ goto: nav.goto }));
 
+// DEV-436: 파일에서 복원 — 로컬 데스크톱일 때만 버튼이 보인다. 시험마다 바꿔 본다.
+const backupFile = vi.hoisted(() => ({
+	local: false,
+	inspect: vi.fn(),
+	restore: vi.fn(),
+	pick: vi.fn()
+}));
 vi.mock('$lib/api/admin', () => ({
 	adminApi: {
 		listSnapshots: () => Promise.resolve([]),
 		listTypes: () => Promise.resolve([]),
-		listStatuses: () => Promise.resolve([])
+		listStatuses: () => Promise.resolve([]),
+		canRestoreFromFile: () => backupFile.local,
+		inspectBackupFile: (p: string) => backupFile.inspect(p),
+		restoreBackupFile: (p: string, allow: boolean) => backupFile.restore(p, allow)
 	}
 }));
+vi.mock('@tauri-apps/plugin-dialog', () => ({ open: (o: unknown) => backupFile.pick(o) }));
 const status = vi.fn();
 vi.mock('$lib/api/plugins', () => ({
 	pluginApi: { status: () => status() },
@@ -137,5 +148,64 @@ describe('DEV-393 관리 페이지 탭', () => {
 		);
 		expect(labels).not.toContain('플러그인');
 		expect(status).not.toHaveBeenCalled();
+	});
+});
+
+describe('DEV-436 파일에서 복원', () => {
+	beforeEach(() => {
+		nav.reset('/admin?tab=backup');
+		backupFile.local = false;
+		backupFile.inspect.mockReset();
+		backupFile.restore.mockReset().mockResolvedValue({});
+		backupFile.pick.mockReset();
+		status.mockResolvedValue({
+			plugins: [],
+			errors: [],
+			auto_allow: false,
+			manageable: false,
+			no_guild: false,
+			problems: []
+		});
+	});
+
+	it('로컬 데스크톱이 아니면 버튼이 없다 — 서버의 파일은 고를 수 없다', async () => {
+		const { default: Page } = await import('./+page.svelte');
+		render(Page);
+		await screen.findByText('+ 새 백업');
+		expect(screen.queryByText('파일에서 복원…')).toBeNull();
+	});
+
+	it('고른 파일이 무엇인지 보이고, 다른 길드의 것이면 경고하고 허락을 실어 복원한다', async () => {
+		backupFile.local = true;
+		backupFile.pick.mockResolvedValue('/archive/20260101-000000.db');
+		backupFile.inspect.mockResolvedValue({
+			path: '/archive/20260101-000000.db',
+			timestamp: '20260101-000000',
+			file_count: 12,
+			size_bytes: 1000,
+			guilds: ['other.guild'],
+			same_guild: false
+		});
+		const { default: Page } = await import('./+page.svelte');
+		render(Page);
+		await fireEvent.click(await screen.findByText('파일에서 복원…'));
+		const dialog = await screen.findByRole('alertdialog');
+		expect(dialog.textContent).toContain('/archive/20260101-000000.db');
+		expect(dialog.textContent).toContain('파일 12개');
+		expect(dialog.textContent).toContain('other.guild');
+		await fireEvent.click(screen.getByText('그래도 복원'));
+		expect(backupFile.restore).toHaveBeenCalledWith('/archive/20260101-000000.db', true);
+	});
+
+	it('백업 파일이 아니면 복원하지 않는다', async () => {
+		backupFile.local = true;
+		backupFile.pick.mockResolvedValue('/tmp/junk.db');
+		backupFile.inspect.mockRejectedValue(new Error('openguild 백업 파일이 아닙니다'));
+		const { default: Page } = await import('./+page.svelte');
+		render(Page);
+		await fireEvent.click(await screen.findByText('파일에서 복원…'));
+		await new Promise((r) => setTimeout(r, 0));
+		expect(screen.queryByRole('alertdialog')).toBeNull();
+		expect(backupFile.restore).not.toHaveBeenCalled();
 	});
 });

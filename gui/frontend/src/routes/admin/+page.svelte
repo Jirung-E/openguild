@@ -5,7 +5,7 @@
 	// BUG-310: 지금 어느 탭인지는 주소가 안다 — 돌아와도 그대로, 뒤로 가기로 되짚을 수 있게.
 	import { readTab, tabUrl, needsNavigation } from '$lib/utils/url-tab';
 	import { adminApi } from '$lib/api/admin';
-	import type { SkippedFile, JournalTail } from '$lib/api/admin';
+	import type { SkippedFile, JournalTail, BackupFileInfo } from '$lib/api/admin';
 	import type { DriftReport, SnapshotInfo } from '$lib/types';
 	import { detectEnvironment } from '$lib/api/transport';
 	// DEV-205 모듈5: Admin 페이지 i18n.
@@ -52,6 +52,8 @@
 	// DEV-119: 복원 확인 — 인앱 모달. null = 닫힘, 객체 = 열림 ({ts} 는 undefined 면 최신).
 	// reindex 는 사용자 지시로 sweep 제외 (idempotent, 파일 truth 불변).
 	let confirmRestore = $state<{ ts: string | undefined } | null>(null);
+	// DEV-436: 길드 밖 백업 파일로 복원 — 고른 파일을 읽어 본 결과(확인 창에 보인다).
+	let confirmRestoreFile = $state<BackupFileInfo | null>(null);
 	// DEV-162: 런타임 정비 — journal tail 뷰 (null = 아직 미조회).
 	let journal = $state<JournalTail | null>(null);
 
@@ -149,6 +151,45 @@
 			// reindex 안내(데이터 소실 위험) 제거. 파일/DB 변경 반영 위해 새로고침.
 			showSuccess(
 				`${t('admin.restoreDonePre', $locale)}${formatTimestamp(res.restored_to)}${t('admin.restoreDonePost', $locale)}`
+			);
+			setTimeout(() => window.location.reload(), 800);
+		} catch (e) {
+			showError(`${t('admin.restoreFailedPre', $locale)}${e}`);
+		} finally {
+			busy = false;
+		}
+	}
+
+	// DEV-436: backup-archive 등으로 길드 밖에 쌓아 둔 백업 파일을 골라 복원한다.
+	async function onPickBackupFile() {
+		let picked: string | string[] | null;
+		try {
+			const { open } = await import('@tauri-apps/plugin-dialog');
+			picked = await open({
+				title: t('admin.restoreFromFilePick', $locale),
+				filters: [{ name: t('admin.restoreFromFileFilter', $locale), extensions: ['db'] }]
+			});
+		} catch (e) {
+			showError(`${t('admin.restoreFailedPre', $locale)}${e}`);
+			return;
+		}
+		if (!picked || Array.isArray(picked)) return;
+		busy = true;
+		try {
+			confirmRestoreFile = await adminApi.inspectBackupFile(picked);
+		} catch (e) {
+			showError(`${t('admin.restoreFailedPre', $locale)}${e}`);
+		} finally {
+			busy = false;
+		}
+	}
+
+	async function doRestoreFile(info: BackupFileInfo) {
+		busy = true;
+		try {
+			await adminApi.restoreBackupFile(info.path, !info.same_guild);
+			showSuccess(
+				`${t('admin.restoreDonePre', $locale)}${formatTimestamp(info.timestamp)}${t('admin.restoreDonePost', $locale)}`
 			);
 			setTimeout(() => window.location.reload(), 800);
 		} catch (e) {
@@ -291,6 +332,12 @@
 					<h2>{t('admin.backupsHeading', $locale)}</h2>
 					<div class="actions">
 						<button onclick={onCreateSnapshot} disabled={busy}>{t('admin.newBackup', $locale)}</button>
+						{#if adminApi.canRestoreFromFile()}
+							<!-- DEV-436: 길드 밖에 둔 백업 파일(backup-archive 가 쌓아 둔 것 등)로 복원. -->
+							<button onclick={onPickBackupFile} disabled={busy}
+								>{t('admin.restoreFromFile', $locale)}</button
+							>
+						{/if}
 						<button onclick={refresh} disabled={busy}>{t('admin.refresh', $locale)}</button>
 					</div>
 				</div>
@@ -456,6 +503,37 @@
 		if (r) doRestore(r.ts);
 	}}
 	oncancel={() => (confirmRestore = null)}
+/>
+
+<!-- DEV-436: 길드 밖 백업 파일로 복원 확인 — 무엇을 되돌리는지, 다른 길드의 것이면 그 경고까지. -->
+<ConfirmDialog
+	open={confirmRestoreFile !== null}
+	title={t('admin.restoreFromFileTitle', $locale)}
+	message={confirmRestoreFile
+		? t('admin.restoreFromFileConfirm', $locale)
+				.replace('{file}', confirmRestoreFile.path)
+				.replace('{time}', formatTimestamp(confirmRestoreFile.timestamp))
+				.replace('{count}', String(confirmRestoreFile.file_count)) +
+			(confirmRestoreFile.same_guild
+				? ''
+				: '\n\n' +
+					t('admin.restoreFromFileOtherGuild', $locale).replace(
+						'{guilds}',
+						confirmRestoreFile.guilds.join(', ')
+					)) +
+			'\n\n' +
+			t('admin.restoreConfirmPost', $locale)
+		: ''}
+	confirmLabel={confirmRestoreFile && !confirmRestoreFile.same_guild
+		? t('admin.restoreFromFileAnyway', $locale)
+		: t('admin.restore', $locale)}
+	danger
+	onconfirm={() => {
+		const info = confirmRestoreFile;
+		confirmRestoreFile = null;
+		if (info) doRestoreFile(info);
+	}}
+	oncancel={() => (confirmRestoreFile = null)}
 />
 
 <!-- DEV-175: 백업 삭제 확인 — 인앱 모달. -->

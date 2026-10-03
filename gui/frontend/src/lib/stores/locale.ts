@@ -498,6 +498,20 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		en: ' — files restored + reindexed. Reloading.'
 	},
 	'admin.restoreFailedPre': { ko: '복원 실패: ', en: 'Restore failed: ' },
+	// DEV-436: 길드 밖 백업 파일로 복원.
+	'admin.restoreFromFile': { ko: '파일에서 복원…', en: 'Restore from file…' },
+	'admin.restoreFromFilePick': { ko: '복원할 백업 파일 고르기', en: 'Choose a backup file to restore' },
+	'admin.restoreFromFileFilter': { ko: 'openguild 백업', en: 'openguild backup' },
+	'admin.restoreFromFileTitle': { ko: '파일에서 복원', en: 'Restore from file' },
+	'admin.restoreFromFileConfirm': {
+		ko: '{file}\n{time} 에 만든 백업(파일 {count}개)으로 되돌립니다.',
+		en: '{file}\nRestore the backup made at {time} ({count} files).'
+	},
+	'admin.restoreFromFileOtherGuild': {
+		ko: '이 백업은 다른 길드의 것으로 보입니다(백업 안: {guilds}). 지금 길드의 내용이 그 길드의 것으로 바뀝니다.',
+		en: 'This looks like another guild\'s backup (inside: {guilds}). This guild\'s content will be replaced with it.'
+	},
+	'admin.restoreFromFileAnyway': { ko: '그래도 복원', en: 'Restore anyway' },
 	'admin.backupDeletedPre': { ko: '백업 삭제: ', en: 'Backup deleted: ' },
 	'admin.backupDeleteFailedPre': { ko: '백업 삭제 실패: ', en: 'Failed to delete backup: ' },
 	'admin.driftOkMsg': {

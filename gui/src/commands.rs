@@ -663,6 +663,29 @@ pub async fn admin_list_snapshots(
     snapshot::list_snapshots(&store.paths).map_err(err)
 }
 
+/// DEV-436: 길드 밖 백업 파일(backup-archive 가 쌓아 둔 것 등)을 읽어 본다 — 복원 전에 무엇인지 보여 주려고.
+#[tauri::command]
+pub async fn admin_inspect_backup_file(
+    store: State<'_, Store>,
+    path: String,
+) -> Result<snapshot::BackupFileInfo, String> {
+    snapshot::inspect_backup_file(&store.paths, std::path::Path::new(&path))
+        .await
+        .map_err(err)
+}
+
+/// DEV-436: 길드 밖 백업 파일로 복원. 다른 길드의 것이면 `allow_other_guild` 가 있어야 한다.
+#[tauri::command]
+pub async fn admin_restore_backup_file(
+    store: State<'_, Store>,
+    path: String,
+    allow_other_guild: bool,
+) -> Result<snapshot::BackupFileInfo, String> {
+    snapshot::restore_backup_file(&store, std::path::Path::new(&path), allow_other_guild)
+        .await
+        .map_err(err)
+}
+
 /// DEV-175: 특정 백업(스냅샷) 삭제.
 #[tauri::command]
 pub fn admin_delete_snapshot(store: State<'_, Store>, ts: String) -> Result<(), String> {
