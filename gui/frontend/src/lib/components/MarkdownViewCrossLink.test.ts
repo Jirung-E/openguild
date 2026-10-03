@@ -100,14 +100,16 @@ describe('BUG-297 미리보기에서 페이지로 이동', () => {
 		expect(a.getAttribute('href')).toBe('/library?id=BOOK-001');
 
 		// 호버 → 미리보기 팝업(열림까지 280ms 지연).
+		// BUG-349: 고정 400ms 를 기다리면 기계가 바쁠 때(윈도우 전체 실행) 타이머가 밀려 놓쳤다 — 뜰 때까지 기다린다.
 		a.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
-		await new Promise((r) => setTimeout(r, 400));
-		await tick();
-		await tick();
-		const go = Array.from(document.querySelectorAll('button')).find((b) =>
-			b.textContent?.includes('페이지로 이동')
-		) as HTMLButtonElement | undefined;
-		expect(go, '미리보기 팝업이 안 떴다').toBeTruthy();
+		const findGo = () =>
+			Array.from(document.querySelectorAll('button')).find((b) =>
+				b.textContent?.includes('페이지로 이동')
+			) as HTMLButtonElement | undefined;
+		await vi.waitFor(() => expect(findGo(), '미리보기 팝업이 안 떴다').toBeTruthy(), {
+			timeout: 3000
+		});
+		const go = findGo();
 
 		go!.click();
 		await tick();
@@ -132,9 +134,17 @@ describe('BUG-338 미리보기 안의 크로스링크', () => {
 		await tick();
 		const a = container.querySelector('a.xlink') as HTMLAnchorElement;
 		a.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
-		await new Promise((r) => setTimeout(r, 400));
-		await tick();
-		await tick();
+		if (linkPreview) {
+			// BUG-349: 뜨는 쪽은 뜰 때까지 기다린다(고정 대기는 바쁜 기계에서 놓친다).
+			await vi.waitFor(() => expect(document.querySelectorAll('.lp').length).toBeGreaterThan(0), {
+				timeout: 3000
+			});
+		} else {
+			// 안 뜨는 쪽은 뜰 시간(280ms)을 넉넉히 넘겨 본다.
+			await new Promise((r) => setTimeout(r, 400));
+			await tick();
+			await tick();
+		}
 		return {
 			popups: document.querySelectorAll('.lp').length,
 			href: a.getAttribute('href')
