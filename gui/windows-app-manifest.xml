@@ -1,0 +1,17 @@
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <!-- BUG-349: tauri-build 의 기본 매니페스트와 같다 — 대화상자(TaskDialogIndirect)가 쓰는 Common Controls v6.
+       tauri 는 이것을 실행 파일에만 넣어 시험 실행 파일이 윈도우에서 뜨지 못했다(0xc0000139). build.rs 가
+       링커로 모든 대상에 넣는다. -->
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity
+        type="win32"
+        name="Microsoft.Windows.Common-Controls"
+        version="6.0.0.0"
+        processorArchitecture="*"
+        publicKeyToken="6595b64144ccf1df"
+        language="*"
+      />
+    </dependentAssembly>
+  </dependency>
+</assembly>

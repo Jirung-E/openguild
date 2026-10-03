@@ -1925,7 +1925,9 @@ struct CliInfo {
 /// - Local: tokio runtime 으로 `core::services::*` 직접 호출
 enum Backend {
     Http(HttpClient),
-    Local(LocalBackend),
+    // BUG-349: 상자에 넣는다 — 윈도우에서 `LocalBackend` 가 커서(256B 대 48B) clippy `large_enum_variant` 가
+    // 걸리고, 그러면 `just test` 가 시험 전에 멈췄다. 백엔드는 프로세스에 한 번 만들어 비용이 없다.
+    Local(Box<LocalBackend>),
 }
 
 struct LocalBackend {
@@ -2287,11 +2289,11 @@ impl Backend {
         // recents 의 의미는 'GUI 로 사용자가 직접 연 길드' — CLI 활동은 X.
         // GUI 의 `recents::add` 호출 (gui/src/lib.rs) 만 유지.
 
-        Ok(Backend::Local(LocalBackend {
+        Ok(Backend::Local(Box::new(LocalBackend {
             store,
             rt,
             guild_path,
-        }))
+        })))
     }
 
     /// AppError → anyhow::Error 변환.
@@ -11027,11 +11029,11 @@ mod tests {
             .await
             .unwrap();
         });
-        let backend = Backend::Local(LocalBackend {
+        let backend = Backend::Local(Box::new(LocalBackend {
             store,
             rt,
             guild_path: dir.clone(),
-        });
+        }));
 
         // 전체 — quest+campaign UNION. DEV-262: 기본 오래된순(대화 흐름) —
         // `quest comment list` 의 기본 정렬과 통일.
@@ -11998,11 +12000,11 @@ scope = ["gui"]
             .build()
             .unwrap();
         let store = rt.block_on(openguild_core::Store::open(dir)).unwrap();
-        Backend::Local(LocalBackend {
+        Backend::Local(Box::new(LocalBackend {
             store,
             rt,
             guild_path: dir.to_path_buf(),
-        })
+        }))
     }
 
     /// BUG-295: 첨부는 sidecar 파일이 진리원이라 캐시 조회가 안 채운다. 그걸 CLI 가 안

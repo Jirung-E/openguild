@@ -66,6 +66,7 @@ pub(crate) fn opened_urls_to_guild<S: AsRef<str>>(urls: &[S]) -> Option<PathBuf>
 }
 
 /// `file:///a/b%20c.guild` → `/a/b c.guild`. 다른 스킴은 없음(우리가 여는 것은 파일뿐).
+/// 윈도우 모양 `file:///C:/a/b.guild` 는 `C:/a/b.guild` — 드라이브 앞의 `/` 를 뗀다(BUG-349).
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn file_url_to_path(url: &str) -> Option<PathBuf> {
     let rest = url.strip_prefix("file://")?;
@@ -74,7 +75,12 @@ fn file_url_to_path(url: &str) -> Option<PathBuf> {
     if !rest.starts_with('/') {
         return None;
     }
-    Some(PathBuf::from(percent_decode(rest)))
+    let decoded = percent_decode(rest);
+    let b = decoded.as_bytes();
+    if b.len() >= 3 && b[1].is_ascii_alphabetic() && b[2] == b':' {
+        return Some(PathBuf::from(&decoded[1..]));
+    }
+    Some(PathBuf::from(decoded))
 }
 
 /// `%20` 같은 것만 푼다 — 의존성을 들이지 않으려고 직접 한다(짧고, 하는 일이 다 보인다).
@@ -915,6 +921,17 @@ mod tests {
     /// BUG-301: 맥에서 `.guild` 더블클릭은 argv 가 아니라 Apple Event 로 온다. 이벤트 자체는
     /// GUI 없이 못 만들지만, **주소를 길드로 바꾸는 규칙**은 여기서 고정할 수 있다.
     #[test]
+    fn a_windows_file_url_becomes_a_drive_path() {
+        // BUG-349: `file:///C:/…` 의 드라이브 앞 `/` 를 뗀다 — 남기면 윈도우에서 `\C:\…` 라는 없는 경로가 된다.
+        assert_eq!(
+            crate::file_url_to_path("file:///C:/Users/me/%EB%82%B4%20%EA%B8%B8%EB%93%9C.guild"),
+            Some(std::path::PathBuf::from("C:/Users/me/내 길드.guild"))
+        );
+        assert_eq!(crate::file_url_to_path("file:///a/b%20c.guild"), Some(std::path::PathBuf::from("/a/b c.guild")));
+        assert_eq!(crate::file_url_to_path("file://C:\\x.guild"), None);
+    }
+
+    #[test]
     fn opened_urls_resolve_to_the_same_guild_as_argv() {
         let ns = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -926,13 +943,12 @@ mod tests {
         let marker = inner.join("내 길드.guild");
         std::fs::write(&marker, "name = \"내 길드\"\n").unwrap();
 
-        let url = format!(
-            "file://{}",
-            marker
-                .display()
-                .to_string()
-                .replace(' ', "%20")
-        );
+        // BUG-349: 주소는 OS 에 맞는 모양으로 — 윈도우는 `file:///C:/…`(예전엔 `file://C:\…` 를 만들어 윈도우에서 깨졌다).
+        let file_url = |p: &std::path::Path| {
+            let s = p.display().to_string().replace('\\', "/").replace(' ', "%20");
+            if s.starts_with('/') { format!("file://{s}") } else { format!("file:///{s}") }
+        };
+        let url = file_url(&marker);
         // 파일을 가리키면 그 부모 폴더가 길드다 — argv 경로와 같은 답.
         assert_eq!(
             crate::opened_urls_to_guild(std::slice::from_ref(&url)),
@@ -942,7 +958,7 @@ mod tests {
         assert_eq!(crate::opened_urls_to_guild(&[url]), Some(inner.clone()));
 
         // 폴더를 그대로 던져도 된다(Finder 에서 폴더를 앱에 떨어뜨리는 경우).
-        let dir_url = format!("file://{}", inner.display().to_string().replace(' ', "%20"));
+        let dir_url = file_url(&inner);
         assert_eq!(crate::opened_urls_to_guild(&[dir_url]), Some(inner));
 
         // 열 수 없는 것은 조용히 `None` — welcome 으로 두는 편이 낫다.

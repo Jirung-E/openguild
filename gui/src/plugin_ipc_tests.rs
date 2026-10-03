@@ -33,6 +33,13 @@ fn app_with(store: Store) -> (tauri::App<tauri::test::MockRuntime>, WebviewWindo
     (app, w)
 }
 
+/// BUG-349: 앱 화면의 출처 — 윈도우(WebView2)는 사용자 정의 스킴을 `http://<스킴>.localhost` 로 쓴다. 맥 · 리눅스의
+/// `tauri://localhost` 를 윈도우에서 보내면 로컬 출처로 안 잡혀 ACL 이 앱 명령을 막는다(윈도우에서 이 시험이 처음 돌았을 때).
+#[cfg(windows)]
+const APP_ORIGIN: &str = "http://tauri.localhost";
+#[cfg(not(windows))]
+const APP_ORIGIN: &str = "tauri://localhost";
+
 fn call(w: &WebviewWindow<tauri::test::MockRuntime>, cmd: &str, body: Value) -> Result<Value, Value> {
     get_ipc_response(
         w,
@@ -40,7 +47,7 @@ fn call(w: &WebviewWindow<tauri::test::MockRuntime>, cmd: &str, body: Value) -> 
             cmd: cmd.into(),
             callback: CallbackFn(0),
             error: CallbackFn(1),
-            url: "tauri://localhost".parse().unwrap(),
+            url: APP_ORIGIN.parse().unwrap(),
             body: InvokeBody::Json(body),
             headers: Default::default(),
             invoke_key: INVOKE_KEY.to_string(),

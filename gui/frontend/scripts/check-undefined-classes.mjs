@@ -16,7 +16,7 @@
 // **허용되는 예외** (ALLOW 에 등록): 부모가 `:global()` 로 칠하는 클래스,
 // 의미만 싣고 칠하지는 않는 표식 등 — 이유를 함께 적을 것.
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SRC = fileURLToPath(new URL('../src', import.meta.url));
@@ -56,7 +56,8 @@ const globalClasses = selectors(readFileSync(join(SRC, CANON), 'utf8'));
 const hits = [];
 
 for (const file of walk(SRC)) {
-	const rel = relative(SRC, file);
+	// BUG-349: 윈도우에서 `relative` 는 `\\` 로 잇는다 — ALLOW 의 키(`/`)와 맞추지 않으면 예외가 전부 빗나간다.
+	const rel = relative(SRC, file).split(sep).join('/');
 	const src = readFileSync(file, 'utf8');
 	const style = src.match(/<style[^>]*>([\s\S]*?)<\/style>/);
 	const local = style ? selectors(style[1]) : new Set();
