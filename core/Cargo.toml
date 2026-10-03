@@ -66,3 +66,16 @@ reqwest = { version = "0.12", default-features = false, features = [
 # 시그널은 셸 도구가 아니라 시스템 호출로 보내는 것이 맞다.
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+# BUG-348: 윈도우에는 프로세스 그룹이 없다 — 플러그인 `run` 의 시한 처리에서
+# 자식과 **손자를 한 번에** 거두려면 job object 가 필요하다. 윈도우에서 `sh` 는
+# `Git\bin\sh.exe`(46KB 런처)로 풀리는 일이 흔하고 그 런처는 진짜 셸을 자식으로
+# 띄우므로, 직계 자식만 죽이던 예전 동작으로는 시한이 지나도 계속 돌았다.
+# 묶고 거두고 깨우는 데 쓰는 호출만 받는다.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+] }

@@ -189,10 +189,101 @@ fn kill_group(pid: u32) {
     unsafe { libc::killpg(pid as libc::pid_t, libc::SIGKILL) };
 }
 
-/// Windows 에는 프로세스 그룹이 없다 — job object 가 필요한데 그건 별개
-/// 작업이다. 직계 자식만 죽이는 기존 동작을 그대로 둔다.
+/// Windows 에는 프로세스 그룹이 없다 — 손자는 [`Job`] 으로 거둔다.
 #[cfg(not(unix))]
 fn kill_group(_pid: u32) {}
+
+/// BUG-348: 윈도우에서 자식과 손자를 **한 번에** 거두는 묶음(job object).
+///
+/// `child.kill()` 은 직계 자식 하나만 죽인다. 그런데 윈도우에서 `sh` 는
+/// `Git\bin\sh.exe`(46KB 런처)로 풀리는 일이 흔하고, 그 런처는 진짜 셸을
+/// **자식으로** 띄운다 — 시한이 지나 런처를 죽여도 셸은 계속 돈다. CI 의 윈도우
+/// 러너가 정확히 이 경로였다. 로컬에서는 PATH 에 `Git\usr\bin` 이 앞서 셸 본체가
+/// 직계 자식이 되어 통과했으므로, 환경에 따라 보이고 안 보였다.
+///
+/// 유닉스의 프로세스 그룹과 같은 자리에서만 쓴다 — 시한이 지날 때 한 번
+/// [`Job::terminate`]. 그래서 `KILL_ON_JOB_CLOSE` 는 걸지 않는다: 손잡이를 닫는
+/// 것만으로 죽으면, 훅이 일부러 남긴 백그라운드 프로그램이 **정상 종료** 경로에서도
+/// 죽어 유닉스와 동작이 갈린다.
+#[cfg(windows)]
+struct Job(windows_sys::Win32::Foundation::HANDLE);
+
+#[cfg(windows)]
+impl Job {
+    /// 묶음을 만들어 자식을 넣는다.
+    ///
+    /// **자식은 멈춘 채로 띄워 두고 불러야 한다**(`CREATE_SUSPENDED`). 띄운 뒤에
+    /// 넣으면 그 사이에 자식이 손자를 띄울 수 있고, 그 손자는 묶음 밖이라 그대로
+    /// 남는다 — 고치려던 바로 그 증상이다.
+    ///
+    /// 실패하면 `None`. 그때는 예전처럼 직계 자식만 죽는다 — 묶기 실패가 이벤트
+    /// 전달 자체를 막을 이유는 없다.
+    fn holding(child: &std::process::Child) -> Option<Self> {
+        use std::os::windows::io::AsRawHandle;
+        use windows_sys::Win32::Foundation::CloseHandle;
+        use windows_sys::Win32::System::JobObjects::{AssignProcessToJobObject, CreateJobObjectW};
+
+        let job = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
+        if job.is_null() {
+            return None;
+        }
+        let joined = unsafe { AssignProcessToJobObject(job, child.as_raw_handle() as _) } != 0;
+        if !joined {
+            unsafe { CloseHandle(job) };
+            return None;
+        }
+        Some(Self(job))
+    }
+
+    /// 묶음에 든 것을 전부 죽인다 — 자식, 손자, 그 아래까지.
+    fn terminate(&self) {
+        unsafe { windows_sys::Win32::System::JobObjects::TerminateJobObject(self.0, 1) };
+    }
+}
+
+#[cfg(windows)]
+impl Drop for Job {
+    fn drop(&mut self) {
+        unsafe { windows_sys::Win32::Foundation::CloseHandle(self.0) };
+    }
+}
+
+/// BUG-348: 멈춰 띄운 자식을 깨운다.
+///
+/// `Command` 는 주 스레드 손잡이를 주지 않으므로(프로세스 손잡이만 준다) 그
+/// 프로세스의 스레드를 훑어 깨운다 — 갓 띄운 프로세스라 하나뿐이다.
+///
+/// 깨우지 못하면 자식은 영원히 멈춘 채다. 부른 쪽이 그때는 죽이고 끝낸다.
+#[cfg(windows)]
+fn resume(pid: u32) -> bool {
+    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, TH32CS_SNAPTHREAD, THREADENTRY32, Thread32First, Thread32Next,
+    };
+    use windows_sys::Win32::System::Threading::{OpenThread, ResumeThread, THREAD_SUSPEND_RESUME};
+
+    let snap = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0) };
+    if snap == INVALID_HANDLE_VALUE {
+        return false;
+    }
+    let mut woke = false;
+    let mut e: THREADENTRY32 = unsafe { std::mem::zeroed() };
+    e.dwSize = std::mem::size_of::<THREADENTRY32>() as u32;
+    let mut more = unsafe { Thread32First(snap, &mut e) } != 0;
+    while more {
+        if e.th32OwnerProcessID == pid {
+            let th = unsafe { OpenThread(THREAD_SUSPEND_RESUME, 0, e.th32ThreadID) };
+            if !th.is_null() {
+                // -1 은 실패다. 이미 돌고 있었다면 0 이 돌아온다.
+                woke |= unsafe { ResumeThread(th) } != u32::MAX;
+                unsafe { CloseHandle(th) };
+            }
+        }
+        more = unsafe { Thread32Next(snap, &mut e) } != 0;
+    }
+    unsafe { CloseHandle(snap) };
+    woke
+}
 
 /// 프로세스를 띄우고 **stdin** 으로 이벤트를 넘긴다.
 ///
@@ -249,11 +340,14 @@ fn run(
     }
     // BUG-294: Windows 에서 콘솔 프로그램(powershell 등)을 띄우면, 콘솔이 없는 데스크톱 앱에서는
     // **새 콘솔 창이 뜬다** — 이벤트마다 검은 창이 번쩍인다. CREATE_NO_WINDOW 로 막는다.
+    // BUG-348: 자식을 **멈춘 채로** 띄운다 — 깨우기 전에 [`Job`] 에 넣어야 손자까지
+    // 묶인다. 띄운 뒤에 넣으면 그 사이에 태어난 손자가 묶음 밖에 남는다.
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        cmd.creation_flags(CREATE_NO_WINDOW);
+        const CREATE_SUSPENDED: u32 = 0x0000_0004;
+        cmd.creation_flags(CREATE_NO_WINDOW | CREATE_SUSPENDED);
     }
     // 작업 디렉터리는 **데이터 폴더**다. 예전엔 플러그인 폴더였는데, 동의
     // 지문이 그 폴더 전체를 보므로([[DEV-381]]) 훅이 출력을 옆에 쓰는 순간
@@ -286,6 +380,20 @@ fn run(
         .stderr(Stdio::null())
         .spawn()
         .map_err(|e| format!("{command} 를 띄우지 못했습니다: {e}"))?;
+
+    // BUG-348: 멈춰 띄운 자식을 묶음에 넣고 **그 다음에** 깨운다 — 순서가 핵심이다.
+    #[cfg(windows)]
+    let job = Job::holding(&child);
+    #[cfg(windows)]
+    if !resume(child.id()) {
+        // 못 깨우면 자식은 영원히 멈춘 채다 — 시한을 기다릴 일이 아니다.
+        if let Some(job) = &job {
+            job.terminate();
+        }
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(format!("{command}: 멈춰 띄운 자식을 깨우지 못했습니다"));
+    }
 
     // DEV-381: **stdin 쓰기를 시한 밖에 두면 안 된다.** 자식이 stdin 을 안 읽고
     // 페이로드가 파이프 버퍼(~64KB)를 넘으면 `write_all` 이 그 자리에서 영원히
@@ -322,6 +430,11 @@ fn run(
         if Instant::now() >= deadline {
             // 죽이고 **반드시 거둔다** — wait 를 안 하면 좀비가 남는다.
             kill_group(child.id());
+            // BUG-348: 윈도우는 묶음째 — 손자도 여기서 같이 죽는다.
+            #[cfg(windows)]
+            if let Some(job) = &job {
+                job.terminate();
+            }
             let _ = child.kill();
             let _ = child.wait();
             return Err(format!(
@@ -1136,23 +1249,55 @@ mod tests {
     /// DEV-385: **손자도 거둬야 한다.** 훅이 백그라운드로 던진 프로그램은
     /// `child.kill()` 로는 안 죽는다 — 시한이 지났다고 보고해 놓고 실제로는
     /// 계속 도는 것이 제일 나쁘다.
-    #[cfg(unix)]
+    ///
+    /// BUG-348: 예전엔 `#[cfg(unix)]` 였다 — 그래서 윈도우에는 이 보장이 아예 없었고,
+    /// 실제로 없었다(묶음이 없어 손자가 그대로 남았다). OS 별로 다른 것은 **손자를
+    /// 만드는 방법**뿐이므로 거기만 갈라 두고 보장은 양쪽에서 함께 고정한다.
     #[test]
     fn a_timeout_kills_grandchildren_too() {
+        #[cfg(unix)]
         if !crate::test_env::have_sh() {
             return;
         }
         let lab = RunLab::new("grandchild");
-        // 셸이 손자를 백그라운드로 띄우고 자기는 잔다. 손자는 살아 있는 동안
-        // 계속 파일을 키운다.
-        let p = lab.plugin(Action::Run {
-            command: "sh".into(),
-            args: vec![
-                "-c".into(),
-                // BUG-276: 손자도 유한하게 — 위와 같은 이유다.
-                "(i=0; while [ $i -lt 400 ]; do echo x >> grand.log; sleep 0.05; i=$((i+1)); done) & sleep 30".into(),
+
+        // 손자를 백그라운드로 띄우고 자기는 잔다. 손자는 살아 있는 동안 계속
+        // 파일을 키운다. 숫자는 **유한하게** — BUG-276 에서 `while true` 훅이 CI
+        // 러너에 남아 러너를 죽인 적이 있다.
+        #[cfg(unix)]
+        let (command, args, timeout_ms, settle_ms) = (
+            "sh",
+            vec![
+                "-c".to_string(),
+                "(i=0; while [ $i -lt 400 ]; do echo x >> grand.log; sleep 0.05; i=$((i+1)); done) & sleep 30"
+                    .to_string(),
             ],
-            timeout_ms: Some(400),
+            400u64,
+            600u64,
+        );
+        // BUG-348: 윈도우는 `sh` 에 기대지 않는다 — Git Bash 가 없는 기계에서 건너뛰면
+        // 거기서는 이 보장이 다시 사라진다. PowerShell 은 시동이 느리고(둘을 띄운다)
+        // 그 비용을 시한과 재는 창에 넉넉히 얹는다.
+        #[cfg(windows)]
+        let (command, args, timeout_ms, settle_ms) = (
+            "powershell",
+            vec![
+                "-NoProfile".to_string(),
+                "-Command".to_string(),
+                "Start-Process -NoNewWindow powershell -ArgumentList \
+                 '-NoProfile','-Command',\
+                 'for($i=0;$i -lt 200;$i++){ Add-Content -Path grand.log -Value x; \
+                 Start-Sleep -Milliseconds 50 }'; Start-Sleep -Seconds 30"
+                    .to_string(),
+            ],
+            6_000u64,
+            1_500u64,
+        );
+
+        let p = lab.plugin(Action::Run {
+            command: command.into(),
+            args,
+            timeout_ms: Some(timeout_ms),
             os: Default::default(),
         });
         let e = Outbound::new()
@@ -1166,7 +1311,7 @@ mod tests {
             a > 0,
             "손자가 아예 안 돌았다 — 시험이 아무것도 안 보고 있다"
         );
-        std::thread::sleep(Duration::from_millis(600));
+        std::thread::sleep(Duration::from_millis(settle_ms));
         let b = std::fs::metadata(&log).map(|m| m.len()).unwrap_or(0);
         assert_eq!(a, b, "직계만 죽이고 손자는 계속 돌고 있다");
     }
