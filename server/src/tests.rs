@@ -4293,3 +4293,40 @@ async fn test_guild_files_not_found_for_missing_file() {
     let (status, _) = get(app, "/api/guild-files/attachments/nope.png").await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
+
+/// BUG-271: 없는 API 주소는 404 + JSON — 정적 자산 fallback(index.html 200)으로 새지 않는다. 화면 주소(딥링크)는 그대로
+/// index.html, 있는 API 도 그대로. 실제 서버처럼 `ServeDir` fallback 을 붙여 본다.
+#[tokio::test]
+async fn an_unknown_api_path_is_a_json_404_not_the_page() {
+    use tower_http::services::{ServeDir, ServeFile};
+    let ns = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+    let dist = std::env::temp_dir().join(format!("og-dist-{ns}"));
+    std::fs::create_dir_all(&dist).unwrap();
+    std::fs::write(dist.join("index.html"), "<!doctype html><p>app</p>").unwrap();
+    let app = setup()
+        .await
+        .fallback_service(ServeDir::new(&dist).fallback(ServeFile::new(dist.join("index.html"))));
+
+    let (st, body) = get(app.clone(), "/api/nope/deeper").await;
+    assert_eq!(st, StatusCode::NOT_FOUND, "{body}");
+    assert!(body["error"].as_str().unwrap().contains("/api/nope/deeper"), "{body}");
+    let (st, _) = get(app.clone(), "/api").await;
+    assert_eq!(st, StatusCode::NOT_FOUND);
+
+    // 딥링크는 여전히 화면.
+    let res = app
+        .clone()
+        .oneshot(Request::get("/quests/DEV-001").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let html = res.into_body().collect().await.unwrap().to_bytes();
+    assert!(String::from_utf8_lossy(&html).contains("<p>app</p>"));
+
+    // 있는 API 는 그대로(정확한 경로가 앞선다) — 와일드카드가 있는 것(guild-files)도.
+    let (st, _) = get(app.clone(), "/api/quests").await;
+    assert_eq!(st, StatusCode::OK);
+    let (st, _) = get(app, "/health").await;
+    assert_eq!(st, StatusCode::OK);
+    let _ = std::fs::remove_dir_all(&dist);
+}

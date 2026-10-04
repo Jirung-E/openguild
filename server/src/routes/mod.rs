@@ -11,7 +11,7 @@ pub mod worklog;
 
 use axum::{
     extract::DefaultBodyLimit,
-    routing::{delete, get, patch, post, put},
+    routing::{any, delete, get, patch, post, put},
     Router,
 };
 use tower_http::compression::{
@@ -73,6 +73,16 @@ pub fn compression_predicate() -> impl Predicate {
         .and(NotForContentType::const_new("application/zip"))
         .and(NotForContentType::const_new("video/"))
         .and(NotForContentType::const_new("audio/"))
+}
+
+/// BUG-271: 없는 `/api/*` — 404 와 무엇이 없는지.
+async fn api_not_found(uri: axum::http::Uri) -> (axum::http::StatusCode, axum::Json<serde_json::Value>) {
+    (
+        axum::http::StatusCode::NOT_FOUND,
+        axum::Json(serde_json::json!({
+            "error": openguild_core::tf!("그런 API 가 없습니다: {}", "no such API: {}", uri.path())
+        })),
+    )
 }
 
 pub fn create_router(store: Store) -> Router {
@@ -372,6 +382,11 @@ pub fn create_router(store: Store) -> Router {
         .route("/api/admin/journal", get(admin::journal_tail))
         .route("/api/admin/counters", post(admin::check_counters))
         .route("/api/admin/info", get(admin::info))
+        // BUG-271: 없는 API 경로는 404 + JSON — 아래로 흘려보내면 정적 자산 fallback 이 index.html 을 200 으로 줘서,
+        // 클라이언트는 "성공했는데 JSON 이 깨졌다" 로 본다(오타 · 낮은 서버 버전을 못 알아챈다). 있는 경로는 이보다
+        // 먼저 맞는다(정확한 경로가 와일드카드보다 앞선다).
+        .route("/api", any(api_not_found))
+        .route("/api/{*rest}", any(api_not_found))
         .with_state(store)
         // DEV-401: 플러그인 훅이 보낸 요청이면 그 요청이 일으킨 변경에 "누가 일으켰나" 를 싣는다.
         .layer(axum::middleware::from_fn(plugin_origin))
