@@ -6,3 +6,11 @@ members = [
     "gui",
 ]
 resolver = "2"
+
+# BUG-345: 배포 실행 파일을 줄인다 — 윈도우에서 서명 없는 실행 파일은 백신이 실행 때마다 통째로 검사해서(약 29ms/MB)
+# 크기가 곧 명령 하나의 시작 시간이다. CLI 23.9 → 13.9MB(맥 측정). 빌드는 느려진다(CLI 40 → 114초) — 배포 때만 치르는 값.
+# `panic = "abort"` 는 쓰지 않는다 — CLI 가 실행 스레드의 패닉을 받아 되던지고(BUG-135), 서버 · 앱도 패닉을 잡는 곳이 있다.
+[profile.release]
+strip = true
+lto = "fat"
+codegen-units = 1
