@@ -184,27 +184,114 @@ mod tests {
         assert_eq!(Locale::parse("fr"), None);
     }
 
+    fn rust_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+        for e in std::fs::read_dir(dir).unwrap().flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                rust_files(&p, out);
+            } else if p.extension().is_some_and(|x| x == "rs") {
+                out.push(p);
+            }
+        }
+    }
+
+    fn hangul(s: &str) -> bool {
+        s.chars().any(|c| ('\u{AC00}'..='\u{D7A3}').contains(&c))
+    }
+
+    /// 시험 코드(`#[cfg(test)]` 가 붙은 항목)를 줄 수는 남긴 채 지운다.
+    /// BUG-350: 예전엔 첫 `#[cfg(test)]` 뒤를 통째로 버려서, 파일 위쪽에 `#[cfg(test)] mod tests;` 가 있는
+    /// `plugins/mod.rs` 는 아예 안 봤다 — 그 파일의 한국어 오류 50곳을 놓쳤다.
+    fn without_tests(src: &str) -> String {
+        const MARK: &str = "#[cfg(test)]";
+        let mut out = String::with_capacity(src.len());
+        let mut rest = src;
+        while let Some(at) = rest.find(MARK) {
+            out.push_str(&rest[..at]);
+            let after = &rest[at..];
+            let semi = after.find(';');
+            let open = after.find('{');
+            let end = match (semi, open) {
+                (Some(s), o) if o.is_none_or(|o| s < o) => s + 1,
+                (_, Some(o)) => {
+                    let mut depth = 0usize;
+                    let mut end = after.len();
+                    for (i, c) in after[o..].char_indices() {
+                        match c {
+                            '{' => depth += 1,
+                            '}' => {
+                                depth -= 1;
+                                if depth == 0 {
+                                    end = o + i + 1;
+                                    break;
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    end
+                }
+                _ => after.len(),
+            };
+            out.extend(std::iter::repeat_n('\n', after[..end].matches('\n').count()));
+            rest = &after[end..];
+        }
+        out.push_str(rest);
+        out
+    }
+
+    /// 문자열 리터럴(내용, 시작 위치) — 주석 · 문자 리터럴 · 수명 표시는 건너뛴다.
+    fn string_literals(code: &str) -> Vec<(usize, &str)> {
+        let b = code.as_bytes();
+        let mut out = Vec::new();
+        let mut i = 0;
+        while i < b.len() {
+            if code[i..].starts_with("//") {
+                i = code[i..].find('\n').map_or(b.len(), |n| i + n);
+            } else if code[i..].starts_with("/*") {
+                i = code[i..].find("*/").map_or(b.len(), |n| i + n + 2);
+            } else if b[i] == b'\'' {
+                // 'x' 나 '\'' 는 넘기고, 수명('a)은 한 글자만.
+                let tail = &code[i + 1..];
+                let mut cs = tail.char_indices();
+                i += match (cs.next(), cs.next()) {
+                    (Some((_, '\\')), _) => tail[1..].find('\'').map_or(1, |n| n + 3),
+                    (Some(_), Some((n, '\''))) => n + 2,
+                    _ => 1,
+                };
+            } else if b[i] == b'r' && (i == 0 || !(b[i - 1].is_ascii_alphanumeric() || b[i - 1] == b'_')) && {
+                let h = code[i + 1..].bytes().take_while(|c| *c == b'#').count();
+                code[i + 1 + h..].starts_with('"')
+            } {
+                let h = code[i + 1..].bytes().take_while(|c| *c == b'#').count();
+                let start = i + 2 + h;
+                let close = format!("\"{}", "#".repeat(h));
+                let end = code[start..].find(&close).map_or(b.len(), |n| start + n);
+                out.push((i, &code[start..end]));
+                i = end + close.len();
+            } else if b[i] == b'"' {
+                let mut j = i + 1;
+                while j < b.len() && b[j] != b'"' {
+                    j += if b[j] == b'\\' { 2 } else { 1 };
+                }
+                out.push((i, &code[i + 1..j.min(b.len())]));
+                i = j + 1;
+            } else {
+                i += 1;
+            }
+        }
+        out
+    }
+
     /// BUG-274: 사람에게 가는 오류(`AppError::BadRequest` · `NotFound` · `Cancelled`)에 한국어를 **그대로** 적으면 영어
     /// 화면에 한국어가 낀다 — `tf!` 로 두 말을 함께 적어야 한다. core 소스를 훑어 막는다(시험 코드는 뺀다).
     #[test]
     fn user_facing_errors_are_bilingual() {
-        fn walk(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
-            for e in std::fs::read_dir(dir).unwrap().flatten() {
-                let p = e.path();
-                if p.is_dir() {
-                    walk(&p, out);
-                } else if p.extension().is_some_and(|x| x == "rs") {
-                    out.push(p);
-                }
-            }
-        }
         let mut files = Vec::new();
-        walk(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"), &mut files);
-        let hangul = |s: &str| s.chars().any(|c| ('\u{AC00}'..='\u{D7A3}').contains(&c));
+        rust_files(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"), &mut files);
         let mut bad = Vec::new();
         for f in files {
-            let src = std::fs::read_to_string(&f).unwrap();
-            let code = src.split("#[cfg(test)]").next().unwrap_or("");
+            let code = without_tests(&std::fs::read_to_string(&f).unwrap());
             for kind in ["AppError::BadRequest(", "AppError::NotFound(", "AppError::Cancelled("] {
                 for (i, _) in code.match_indices(kind) {
                     let rest = code[i + kind.len()..].trim_start();
@@ -220,5 +307,49 @@ mod tests {
             }
         }
         assert!(bad.is_empty(), "한국어만 적힌 오류 — tf!(한국어, 영어) 로 감쌀 것:\n{}", bad.join("\n"));
+    }
+
+    /// BUG-350: 영어 화면에서는 플러그인 정의 오류도 영어로 나온다(고치기 전엔 한국어만).
+    #[test]
+    fn plugin_definition_errors_follow_the_locale() {
+        let raw = "name = \"demo\"\nscope = [\"cli\"]\nhandlers = []\n";
+        let msg = |l: Locale| {
+            REQUEST_LOCALE.sync_scope(l, || crate::plugins::parse_def(raw).unwrap_err().to_string())
+        };
+        let en = msg(Locale::En);
+        assert!(en.contains("no `[[handlers]]`"), "{en}");
+        assert!(!hangul(&en), "{en}");
+        let ko = msg(Locale::Ko);
+        assert!(ko.contains("`[[handlers]]` 가 없습니다"), "{ko}");
+    }
+
+    /// BUG-350: 플러그인 쪽 문장은 `AppError` 말고도 문제 칸 · 전달 실패 · 정의 검사 · 시험 도구 출력으로 사람에게 간다.
+    /// 그래서 `plugins/` 는 **모든** 한국어 리터럴이 `tf!` 의 첫 인자여야 한다.
+    /// 빼는 것: 시험 코드, `expect(...)`(코드가 틀렸을 때만 나는 패닉), `schema.rs`(편집기용 JSON 스키마 설명 — 문서다).
+    #[test]
+    fn plugin_messages_are_bilingual() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src").join("plugins");
+        let mut files = Vec::new();
+        rust_files(&root, &mut files);
+        let mut bad = Vec::new();
+        for f in files {
+            let name = f.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if name == "tests.rs" || name == "schema.rs" {
+                continue;
+            }
+            let code = without_tests(&std::fs::read_to_string(&f).unwrap());
+            for (at, lit) in string_literals(&code) {
+                if !hangul(lit) {
+                    continue;
+                }
+                let before = code[..at].trim_end();
+                if before.ends_with("tf!(") || before.ends_with("expect(") {
+                    continue;
+                }
+                let line = code[..at].matches('\n').count() + 1;
+                bad.push(format!("{}:{line}: {}", f.display(), lit.chars().take(40).collect::<String>()));
+            }
+        }
+        assert!(bad.is_empty(), "한국어만 적힌 플러그인 문장 — tf!(한국어, 영어) 로 감쌀 것:\n{}", bad.join("\n"));
     }
 }

@@ -352,9 +352,9 @@ fn push(
 ) -> Result<(), Box<rhai::EvalAltResult>> {
     let mut list = cmds
         .lock()
-        .map_err(|_| -> Box<rhai::EvalAltResult> { "할 일 목록을 잠그지 못했습니다".into() })?;
+        .map_err(|_| -> Box<rhai::EvalAltResult> { crate::tf!("할 일 목록을 잠그지 못했습니다", "could not lock the command list").into() })?;
     if list.len() >= MAX_COMMANDS {
-        return Err(format!("한 번에 적을 수 있는 일은 {MAX_COMMANDS}개까지입니다").into());
+        return Err(crate::tf!("한 번에 적을 수 있는 일은 {MAX_COMMANDS}개까지입니다", "at most {MAX_COMMANDS} commands can be queued at once").into());
     }
     list.push(Command { kind, action, body });
     Ok(())
@@ -473,12 +473,12 @@ fn register_test(e: &mut Engine, hooks: std::sync::Arc<dyn Hooks>) {
         },
     );
     e.register_fn("assert", |ok: bool| -> Result<(), Box<rhai::EvalAltResult>> {
-        if ok { Ok(()) } else { Err("assert 실패".into()) }
+        if ok { Ok(()) } else { Err(crate::tf!("assert 실패", "assert failed").into()) }
     });
     e.register_fn(
         "assert",
         |ok: bool, msg: &str| -> Result<(), Box<rhai::EvalAltResult>> {
-            if ok { Ok(()) } else { Err(format!("assert 실패 — {msg}").into()) }
+            if ok { Ok(()) } else { Err(crate::tf!("assert 실패 — {msg}", "assert failed — {msg}").into()) }
         },
     );
     e.register_fn(
@@ -489,8 +489,8 @@ fn register_test(e: &mut Engine, hooks: std::sync::Arc<dyn Hooks>) {
                 Ok(())
             } else {
                 // 무엇이 달랐는지 눈에 보여야 한다 — "실패" 만 나오면 다시 찍어 보게 된다.
-                Err(format!(
-                    "assert_eq 실패 — 왼쪽 {} · 오른쪽 {}",
+                Err(crate::tf!(
+                    "assert_eq 실패 — 왼쪽 {} · 오른쪽 {}", "assert_eq failed — left {} · right {}",
                     show(&x),
                     show(&y)
                 )
@@ -503,7 +503,7 @@ fn register_test(e: &mut Engine, hooks: std::sync::Arc<dyn Hooks>) {
 fn show(v: &Result<Value, String>) -> String {
     match v {
         Ok(v) => v.to_string(),
-        Err(e) => format!("(옮길 수 없음: {e})"),
+        Err(e) => crate::tf!("(옮길 수 없음: {e})", "(cannot convert: {e})"),
     }
 }
 
@@ -514,10 +514,10 @@ fn fire(
     with: Dynamic,
 ) -> Result<Dynamic, Box<rhai::EvalAltResult>> {
     let payload = from_dynamic(&payload).map_err(|e| -> Box<rhai::EvalAltResult> {
-        format!("fire(\"{name}\"): 이벤트 값을 옮기지 못했습니다 — {e}").into()
+        crate::tf!("fire(\"{name}\"): 이벤트 값을 옮기지 못했습니다 — {e}", "fire(\"{name}\"): could not convert the event value — {e}").into()
     })?;
     let with = from_dynamic(&with).map_err(|e| -> Box<rhai::EvalAltResult> {
-        format!("fire(\"{name}\"): with 값을 옮기지 못했습니다 — {e}").into()
+        crate::tf!("fire(\"{name}\"): with 값을 옮기지 못했습니다 — {e}", "fire(\"{name}\"): could not convert the with value — {e}").into()
     })?;
     let out = hooks
         .fire(name, payload, with)
@@ -634,14 +634,14 @@ fn from_dynamic(d: &Dynamic) -> Result<Value, String> {
         let m = d
             .clone()
             .try_cast::<rhai::Map>()
-            .ok_or_else(|| "map 변환 실패".to_string())?;
+            .ok_or_else(|| crate::tf!("map 변환 실패", "map conversion failed"))?;
         let mut out = serde_json::Map::new();
         for (k, v) in m {
             out.insert(k.to_string(), from_dynamic(&v)?);
         }
         return Ok(Value::Object(out));
     }
-    Err(format!("보낼 수 없는 값입니다: {}", d.type_name()))
+    Err(crate::tf!("보낼 수 없는 값입니다: {}", "this value cannot be sent: {}", d.type_name()))
 }
 
 #[cfg(test)]

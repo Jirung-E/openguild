@@ -124,7 +124,7 @@ impl Output {
             return String::new();
         }
         let body: String = lines.iter().map(|l| format!("\n  {l}")).collect();
-        format!(" — 마지막 출력({label}):{body}")
+        crate::tf!(" — 마지막 출력({label}):{body}", " — last output ({label}):{body}")
     }
 }
 
@@ -197,7 +197,7 @@ impl Outbound {
             ..
         } = action
         else {
-            return Err("post 동작이 아닙니다".into());
+            return Err(crate::tf!("post 동작이 아닙니다", "not a post action"));
         };
         let timeout = action.timeout();
         // URL 과 헤더의 `${VAR}` 는 **보내기 직전에** 푼다. 정의에 리터럴을
@@ -208,7 +208,7 @@ impl Outbound {
         let mut req = self.client().post(&url).timeout(timeout);
         for (k, v) in headers {
             let v =
-                crate::plugins::expand_env_with(v, values).map_err(|e| format!("헤더 {k}: {e}"))?;
+                crate::plugins::expand_env_with(v, values).map_err(|e| crate::tf!("헤더 {k}: {e}", "header {k}: {e}"))?;
             req = req.header(k, v);
         }
         // DEV-401: 받는 쪽이 openguild 서버(또는 그 API 를 부르는 중계)면 이 요청이 일으킨 변경이
@@ -224,13 +224,14 @@ impl Outbound {
                 Value::Object(m) => m.clone(),
                 // 본문이 객체가 아니면 끼워 넣을 자리가 없다.
                 other => {
-                    return Err(format!(
-                        "body_env 를 쓰려면 payload 가 객체여야 합니다 (받은 것: {})",
-                        match other {
-                            Value::Array(_) => "배열",
-                            Value::Null => "없음",
-                            _ => "단일 값",
-                        }
+                    let got = match other {
+                        Value::Array(_) => crate::tf!("배열", "an array"),
+                        Value::Null => crate::tf!("없음", "nothing"),
+                        _ => crate::tf!("단일 값", "a single value"),
+                    };
+                    return Err(crate::tf!(
+                        "body_env 를 쓰려면 payload 가 객체여야 합니다 (받은 것: {got})",
+                        "body_env needs the payload to be an object (got {got})"
                     ));
                 }
             };
@@ -240,9 +241,11 @@ impl Outbound {
                 let got = match values.get(var) {
                     Some(v) => v.clone(),
                     None => std::env::var(var).map_err(|_| {
-                        format!(
+                        crate::tf!(
                             "body_env.{key}: {var} 값이 없습니다 — 관리 → 플러그인 에서 넣거나 \
-                             환경변수로 지정하세요"
+                             환경변수로 지정하세요",
+                            "body_env.{key}: {var} has no value — set it in Admin → Plugins or \
+                             as an environment variable"
                         )
                     })?,
                 };
@@ -252,7 +255,7 @@ impl Outbound {
         };
         let res = req.json(body.as_ref()).send().map_err(|e| {
             // 받는 쪽이 죽어 있어도 길드는 멀쩡해야 한다 — 여기서 끝난다.
-            format!("{url} 로 보내지 못했습니다: {e}")
+            crate::tf!("{url} 로 보내지 못했습니다: {e}", "could not send to {url}: {e}")
         })?;
         let status = res.status();
         if status.is_success() {
@@ -262,7 +265,7 @@ impl Outbound {
         // DEV-381: `String::truncate` 는 200바이트째가 문자 경계가 아니면
         // 패닉한다. 한글 오류 페이지에서 실제로 걸린다 — 글자 단위로 자른다.
         let detail: String = res.text().unwrap_or_default().chars().take(200).collect();
-        Err(format!("{url} 이 {status} 로 답했습니다: {detail}"))
+        Err(crate::tf!("{url} 이 {status} 로 답했습니다: {detail}", "{url} answered {status}: {detail}"))
     }
 }
 
@@ -402,7 +405,7 @@ fn run(
     // 못 채우므로 확장 표에도 같이 심는다.
     let workdir = plugin
         .data_dir()
-        .map_err(|e| format!("{command}: 데이터 폴더를 준비하지 못했습니다: {e}"))?;
+        .map_err(|e| crate::tf!("{command}: 데이터 폴더를 준비하지 못했습니다: {e}", "{command}: could not prepare the data folder: {e}"))?;
     // REQ-021: 사용자가 넣은 값이 먼저, 그 위에 코어가 주는 경로 둘.
     // 경로를 나중에 넣는 이유는 설정값이 그 이름을 덮어쓰지 못하게 하려는
     // 것이다 — `OPENGUILD_PLUGIN_DIR` 를 정의가 갈아끼울 수 있으면 안 된다.
@@ -474,7 +477,7 @@ fn run(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| format!("{command} 를 띄우지 못했습니다: {e}"))?;
+        .map_err(|e| crate::tf!("{command} 를 띄우지 못했습니다: {e}", "could not start {command}: {e}"))?;
 
     // BUG-336: 출력을 지금부터 읽는다 — 안 읽으면 출력이 많은 훅은 통로가 가득 차 멈춘다.
     let output = Output::capture(&mut child);
@@ -490,7 +493,7 @@ fn run(
         }
         let _ = child.kill();
         let _ = child.wait();
-        return Err(format!("{command}: 멈춰 띄운 자식을 깨우지 못했습니다"));
+        return Err(crate::tf!("{command}: 멈춰 띄운 자식을 깨우지 못했습니다", "{command}: could not resume the suspended child"));
     }
 
     // DEV-381: **stdin 쓰기를 시한 밖에 두면 안 된다.** 자식이 stdin 을 안 읽고
@@ -513,7 +516,7 @@ fn run(
             // 스레드를 못 띄우면 자식은 EOF 를 영영 못 본다 — 여기서 끝낸다.
             let _ = child.kill();
             let _ = child.wait();
-            return Err(format!("{command}: stdin 전달 스레드를 못 띄웠습니다"));
+            return Err(crate::tf!("{command}: stdin 전달 스레드를 못 띄웠습니다", "{command}: could not start the stdin thread"));
         }
     }
 
@@ -521,9 +524,9 @@ fn run(
     loop {
         match child.try_wait() {
             Ok(Some(st)) if st.success() => return Ok(()),
-            Ok(Some(st)) => return Err(format!("{command} 가 {st} 로 끝났습니다{}", output.suffix())),
+            Ok(Some(st)) => return Err(crate::tf!("{command} 가 {st} 로 끝났습니다{}", "{command} ended with {st}{}", output.suffix())),
             Ok(None) => {}
-            Err(e) => return Err(format!("{command} 상태를 못 읽었습니다: {e}")),
+            Err(e) => return Err(crate::tf!("{command} 상태를 못 읽었습니다: {e}", "could not read the state of {command}: {e}")),
         }
         if Instant::now() >= deadline {
             // 죽이고 **반드시 거둔다** — wait 를 안 하면 좀비가 남는다.
@@ -536,8 +539,9 @@ fn run(
             let _ = child.kill();
             let _ = child.wait();
             // BUG-336: 무엇을 하다 멈췄는지 — 그때까지 나온 것을 함께.
-            return Err(format!(
+            return Err(crate::tf!(
                 "{command} 가 {}ms 안에 안 끝나 중단했습니다{}",
+                "{command} did not finish within {}ms and was stopped{}",
                 timeout.as_millis(),
                 output.suffix()
             ));

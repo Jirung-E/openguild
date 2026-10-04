@@ -73,7 +73,7 @@ pub trait Delivery: Send + Sync {
         _body: &serde_json::Value,
         _event: &Event,
     ) -> Result<(), String> {
-        Err("이 컴포넌트는 길드 명령을 실행하지 않습니다".into())
+        Err(crate::tf!("이 컴포넌트는 길드 명령을 실행하지 않습니다", "this component does not run guild commands"))
     }
 }
 
@@ -303,7 +303,7 @@ pub(super) fn run_lines(
         }
         if let Some(func) = &h.call {
             let Some(sc) = p.compiled.as_deref() else {
-                note(log, format!("플러그인 '{name}' {who} — 스크립트가 적재되지 않았습니다"));
+                note(log, crate::tf!("플러그인 '{name}' {who} — 스크립트가 적재되지 않았습니다", "plugin '{name}' {who} — the script is not loaded"));
                 continue;
             };
             let extra: Vec<serde_json::Value> = h
@@ -315,12 +315,12 @@ pub(super) fn run_lines(
             let (value, cmds) = match sc.call_handler_with(func, event, &extra, cfg) {
                 Ok(v) => v,
                 Err(e) => {
-                    note(log, format!("플러그인 '{name}' {who} 스크립트 — {e}"));
+                    note(log, crate::tf!("플러그인 '{name}' {who} 스크립트 — {e}", "plugin '{name}' {who} script — {e}"));
                     // DEV-407: 던졌을 때 막을지는 정의가 정한다(기본은 그냥 진행).
                     if let Some(a) = answer.as_deref_mut()
                         && h.blocks_on(false)
                     {
-                        a.blocked = Some(format!("{name}: {who} 가 실패했습니다 — {e}"));
+                        a.blocked = Some(crate::tf!("{name}: {who} 가 실패했습니다 — {e}", "{name}: {who} failed — {e}"));
                     }
                     continue;
                 }
@@ -332,7 +332,7 @@ pub(super) fn run_lines(
                         a.blocked = Some(reason.clone());
                     }
                     serde_json::Value::Bool(false) => {
-                        a.blocked = Some(format!("{name}: {who} 가 막았습니다"));
+                        a.blocked = Some(crate::tf!("{name}: {who} 가 막았습니다", "{name}: {who} blocked it"));
                     }
                     serde_json::Value::Object(m) => {
                         for (k, v) in m {
@@ -349,15 +349,17 @@ pub(super) fn run_lines(
                     if !p.def.permissions.iter().any(|x| x == verb) {
                         note(
                             log,
-                            format!(
+                            crate::tf!(
                                 "플러그인 '{name}' {who} — `{verb}()` 는 권한에 없습니다. \
-                                 정의에 `permissions = [\"{verb}\"]` 를 적으면 다시 묻고 돕니다"
+                                 정의에 `permissions = [\"{verb}\"]` 를 적으면 다시 묻고 돕니다",
+                                "plugin '{name}' {who} — `{verb}()` is not in its permissions. \
+                                 Add `permissions = [\"{verb}\"]` to the definition; it will ask again and then run"
                             ),
                         );
                         continue;
                     }
                     if let Err(e) = delivery.guild_command(p, c.kind, &c.body, event) {
-                        note(log, format!("플러그인 '{name}' {who} — {verb}(): {e}"));
+                        note(log, crate::tf!("플러그인 '{name}' {who} — {verb}(): {e}", "plugin '{name}' {who} — {verb}(): {e}"));
                     }
                     continue;
                 }
@@ -365,8 +367,9 @@ pub(super) fn run_lines(
                     None => {
                         note(
                             log,
-                            format!(
+                            crate::tf!(
                                 "플러그인 '{name}' {who} — {verb}(\"{}\"): [actions] 에 그 이름이 없습니다",
+                                "plugin '{name}' {who} — {verb}(\"{}\"): no such name in [actions]",
                                 c.action
                             ),
                         );
@@ -381,9 +384,11 @@ pub(super) fn run_lines(
                 if !fits {
                     note(
                         log,
-                        format!(
+                        crate::tf!(
                             "플러그인 '{name}' {who} — {verb}(\"{}\"): 그 동작은 {} 입니다 \
                              (send 는 post 동작, run 은 run 동작에 씁니다)",
+                            "plugin '{name}' {who} — {verb}(\"{}\"): that action is a {} action \
+                             (send is for post actions, run is for run actions)",
                             c.action,
                             action.kind()
                         ),
@@ -391,7 +396,7 @@ pub(super) fn run_lines(
                     continue;
                 }
                 if let Err(e) = delivery.deliver(p, action, event, &c.body, subst) {
-                    note(log, format!("플러그인 '{name}' {who} — {e}"));
+                    note(log, crate::tf!("플러그인 '{name}' {who} — {e}", "plugin '{name}' {who} — {e}"));
                 }
             }
             // DEV-407: 시간이 넘었으면 정의가 정한 대로. 스크립트에는 자체 상한이 있고 동작에도
@@ -400,8 +405,9 @@ pub(super) fn run_lines(
             if spent > h.timeout() {
                 note(
                     log,
-                    format!(
+                    crate::tf!(
                         "플러그인 '{name}' {who} — {}ms 걸렸습니다(시한 {}ms)",
+                        "plugin '{name}' {who} — took {}ms (limit {}ms)",
                         spent.as_millis(),
                         h.timeout().as_millis()
                     ),
@@ -409,7 +415,7 @@ pub(super) fn run_lines(
                 if let Some(a) = answer.as_deref_mut()
                     && h.blocks_on(true)
                 {
-                    a.blocked = Some(format!("{name}: {who} 가 시한을 넘겼습니다"));
+                    a.blocked = Some(crate::tf!("{name}: {who} 가 시한을 넘겼습니다", "{name}: {who} ran past its time limit"));
                 }
             }
         } else if let Some(r) = &h.action {
@@ -417,7 +423,7 @@ pub(super) fn run_lines(
                 continue; // 검증이 막는다 — 여기 올 일은 없다.
             };
             if let Err(e) = delivery.deliver(p, action, event, &event.to_json(), subst) {
-                note(log, format!("플러그인 '{name}' {who} — {e}"));
+                note(log, crate::tf!("플러그인 '{name}' {who} — {e}", "plugin '{name}' {who} — {e}"));
             }
         }
     }
@@ -495,8 +501,9 @@ impl PluginRuntime {
                     if r.is_err() {
                         note(
                             &log,
-                            format!(
+                            crate::tf!(
                                 "플러그인 '{}' 전달 중 패닉 — 이 이벤트는 건너뜁니다",
+                                "plugin '{}' panicked while delivering — this event is skipped",
                                 p.def.name
                             ),
                         );
@@ -507,7 +514,7 @@ impl PluginRuntime {
         if let Err(e) = &spawned {
             note(
                 problems,
-                format!("플러그인 전달 스레드를 못 띄웠습니다: {e}"),
+                crate::tf!("플러그인 전달 스레드를 못 띄웠습니다: {e}", "could not start the plugin delivery thread: {e}"),
             );
         }
         Worker { tx, pending }
@@ -560,7 +567,7 @@ impl EventSink for PluginRuntime {
                 }
                 Err(_) => note(
                     &self.problems,
-                    format!("플러그인 '{}' 가 바뀌기 전 단계에서 패닉했습니다", p.def.name),
+                    crate::tf!("플러그인 '{}' 가 바뀌기 전 단계에서 패닉했습니다", "plugin '{}' panicked in the before-change stage", p.def.name),
                 ),
             }
         }
@@ -624,8 +631,9 @@ impl EventSink for PluginRuntime {
                 w.pending.finished();
                 note(
                     &self.problems,
-                    format!(
+                    crate::tf!(
                         "플러그인 '{}' — 전달 스레드가 없어 이 이벤트를 버립니다",
+                        "plugin '{}' — no delivery thread, this event is dropped",
                         p.def.name
                     ),
                 );
@@ -661,7 +669,7 @@ impl EventSink for PluginRuntime {
             if r.is_err() {
                 note(
                     &self.problems,
-                    format!("플러그인 '{}' 기다리는 줄에서 패닉 — 이 이벤트는 건너뜁니다", p.def.name),
+                    crate::tf!("플러그인 '{}' 기다리는 줄에서 패닉 — 이 이벤트는 건너뜁니다", "plugin '{}' panicked in a waiting line — this event is skipped", p.def.name),
                 );
             }
         }

@@ -160,15 +160,15 @@ pub fn fire_with(
         Phase::Post => crate::events::names::ALL,
     };
     let Some(event_name) = known.iter().find(|n| **n == bare) else {
-        return Err(format!(
-            "`{name}` 은 {} 단계의 이벤트가 아닙니다 — `openguild plugin events` 로 확인하세요",
-            if phase == Phase::Pre { "바뀌기 전" } else { "바뀐 뒤" }
+        return Err(crate::tf!(
+            "`{name}` 은 {} 단계의 이벤트가 아닙니다 — `openguild plugin events` 로 확인하세요", "`{name}` is not a {} event — check with `openguild plugin events`",
+            if phase == Phase::Pre { crate::tf!("바뀌기 전", "before-change") } else { crate::tf!("바뀐 뒤", "after-change") }
         ));
     };
     let data = match payload {
         Value::Object(m) => m,
         Value::Null => serde_json::Map::new(),
-        other => return Err(format!("이벤트 값은 표여야 합니다 (받은 것: {other})")),
+        other => return Err(crate::tf!("이벤트 값은 표여야 합니다 (받은 것: {other})", "the event value must be a table (got: {other})")),
     };
     let given: BTreeMap<String, Value> = match with {
         Value::Object(m) => m.into_iter().collect(),
@@ -237,14 +237,14 @@ pub fn run_tests(p: &Plugin) -> Result<Vec<TestResult>, String> {
     let mut sources: Vec<(String, String)> = Vec::new();
     for f in &files {
         let src = std::fs::read_to_string(p.dir.join(f))
-            .map_err(|e| format!("{f} 를 읽지 못했습니다: {e}"))?;
+            .map_err(|e| crate::tf!("{f} 를 읽지 못했습니다: {e}", "could not read {f}: {e}"))?;
         sources.push((f.clone(), src));
     }
     // 시험 파일은 플러그인 스크립트와 **한 공간**이다 — 도우미 함수를 그대로 부를 수 있어야
     // 시험을 쓸 수 있다.
     for s in &p.def.scripts {
         let src = std::fs::read_to_string(p.dir.join(s))
-            .map_err(|e| format!("{s} 를 읽지 못했습니다: {e}"))?;
+            .map_err(|e| crate::tf!("{s} 를 읽지 못했습니다: {e}", "could not read {s}: {e}"))?;
         sources.push((s.clone(), src));
     }
     let hooks = std::sync::Arc::new(Fire {

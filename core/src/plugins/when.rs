@@ -88,11 +88,11 @@ pub fn validate(
     let roots = allowed_roots(patterns, phase);
     for (path, want) in cond {
         if path.trim().is_empty() {
-            return bad("`when` 의 경로가 비어 있습니다".into());
+            return bad(crate::tf!("`when` 의 경로가 비어 있습니다", "a `when` path is empty"));
         }
         if !scalar_or_list(want) {
-            return bad(format!(
-                "`when` 의 `{path}` 값은 글자·숫자·참거짓이거나 그 목록이어야 합니다"
+            return bad(crate::tf!(
+                "`when` 의 `{path}` 값은 글자·숫자·참거짓이거나 그 목록이어야 합니다", "`when` value for `{path}` must be text, a number, true/false, or a list of those"
             ));
         }
         let head = path.split('.').next().unwrap_or(path);
@@ -105,8 +105,8 @@ pub fn validate(
         let mut can: Vec<&str> = with.iter().map(String::as_str).collect();
         can.extend(roots.iter().copied());
         can.extend(crate::events::COMMON_FIELDS.iter().copied());
-        return bad(format!(
-            "`when` 의 `{path}` — 이 줄의 이벤트에는 `{head}` 가 없습니다. 쓸 수 있는 것: {}",
+        return bad(crate::tf!(
+            "`when` 의 `{path}` — 이 줄의 이벤트에는 `{head}` 가 없습니다. 쓸 수 있는 것: {}", "`when` has `{path}` — this line's events have no `{head}`. Available: {}",
             can.join(", ")
         ));
     }

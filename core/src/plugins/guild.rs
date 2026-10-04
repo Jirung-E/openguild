@@ -66,7 +66,7 @@ impl WithGuild {
             .worker_threads(1)
             .enable_all()
             .build()
-            .map_err(|e| format!("길드 명령을 돌릴 런타임을 못 만들었습니다: {e}"))?;
+            .map_err(|e| crate::tf!("길드 명령을 돌릴 런타임을 못 만들었습니다: {e}", "could not create the runtime for guild commands: {e}"))?;
         Ok(self.rt.get_or_init(|| rt))
     }
 }
@@ -107,11 +107,11 @@ impl Delivery for WithGuild {
                     crate::snapshot::create_snapshot(&store).await
                 }))
                 .map(|_| ())
-                .map_err(|e| format!("백업을 만들지 못했습니다: {e}"))
+                .map_err(|e| crate::tf!("백업을 만들지 못했습니다: {e}", "could not create a backup: {e}"))
             }
             // send/run 은 여기 오지 않는다 — 런타임이 `deliver` 로 보낸다.
             CommandKind::Send | CommandKind::Run => {
-                Err(format!("{}: 길드 명령이 아닙니다", kind.verb()))
+                Err(crate::tf!("{}: 길드 명령이 아닙니다", "{}: not a guild command", kind.verb()))
             }
         }
     }
