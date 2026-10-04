@@ -303,13 +303,16 @@ pub async fn toggle_reaction(
     let bad = |c: char| matches!(c, ',' | '"' | ':' | '|');
     if emoji.is_empty() || emoji.contains(bad) {
         return Err(AppError::BadRequest(
-            "emoji 는 비어있지 않아야 하고 , \" : | 를 포함할 수 없음".into(),
+            crate::tf!(
+                "emoji 는 비어있지 않아야 하고 , \" : | 를 포함할 수 없음",
+                "emoji must not be empty or contain , \" : |"
+            ),
         ));
     }
     let author = author.trim();
     if author.contains(bad) {
         return Err(AppError::BadRequest(
-            "author 는 , \" : | 를 포함할 수 없음".into(),
+            crate::tf!("author 는 , \" : | 를 포함할 수 없음", "author must not contain , \" : |"),
         ));
     }
     let author = if author.is_empty() { "(익명)" } else { author };

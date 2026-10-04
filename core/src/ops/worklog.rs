@@ -24,8 +24,9 @@ pub fn validate_date(date: &str) -> AppResult<()> {
             _ => b.is_ascii_digit(),
         });
     if !ok {
-        return Err(AppError::BadRequest(format!(
-            "잘못된 날짜 형식 (YYYY-MM-DD): {date:?}"
+        return Err(AppError::BadRequest(crate::tf!(
+            "잘못된 날짜 형식 (YYYY-MM-DD): {date:?}",
+            "invalid date format (YYYY-MM-DD): {date:?}"
         )));
     }
     Ok(())

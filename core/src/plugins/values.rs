@@ -113,10 +113,15 @@ fn update(f: impl FnOnce(&mut ValuesFile)) -> AppResult<()> {
     let p = path()?;
     let mut file = match std::fs::read_to_string(&p) {
         Ok(raw) => serde_json::from_str(&raw).map_err(|e| {
-            AppError::BadRequest(format!(
-                "{} 를 읽을 수 없습니다: {e}\n\
+            AppError::BadRequest(crate::tf!(
+                "{} 를 읽을 수 없습니다: {e}
+\
                  덮어쓰면 이 기계에 저장한 플러그인 값이 전부 사라지므로 \
                  멈춥니다 — 파일을 고치거나 지운 뒤 다시 시도하세요.",
+                "cannot read {}: {e}
+\
+                 Overwriting it would drop every plugin value saved on this machine, \
+                 so this stops — fix or delete the file and try again.",
                 p.display()
             ))
         })?,

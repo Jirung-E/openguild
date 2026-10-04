@@ -307,7 +307,10 @@ pub async fn toggle_comment_reaction(
     let bad = |c: char| matches!(c, ',' | '"' | ':' | '|');
     if emoji.is_empty() || emoji.contains(bad) {
         return Err(AppError::BadRequest(
-            "emoji 는 비어있지 않아야 하고 , \" : | 를 포함할 수 없음".into(),
+            crate::tf!(
+                "emoji 는 비어있지 않아야 하고 , \" : | 를 포함할 수 없음",
+                "emoji must not be empty or contain , \" : |"
+            ),
         ));
     }
     // DEV-108: 누가 반응했는지 기록 — 빈 author 는 '(익명)' 으로 대체해 항상 1명
@@ -315,7 +318,7 @@ pub async fn toggle_comment_reaction(
     let author = author.trim();
     if author.contains(bad) {
         return Err(AppError::BadRequest(
-            "author 는 , \" : | 를 포함할 수 없음".into(),
+            crate::tf!("author 는 , \" : | 를 포함할 수 없음", "author must not contain , \" : |"),
         ));
     }
     let author = if author.is_empty() { "(익명)" } else { author };
@@ -440,9 +443,10 @@ pub async fn toggle_comment_resolved(
         .find(|e| e.id == id)
         .ok_or_else(|| AppError::NotFound(format!("comment {id} not found for {slug}")))?;
     if !entry.discussion {
-        return Err(AppError::BadRequest(
-            "discussion 댓글이 아니면 resolve 할 수 없음".into(),
-        ));
+        return Err(AppError::BadRequest(crate::tf!(
+            "discussion 댓글이 아니면 resolve 할 수 없음",
+            "only discussion comments can be resolved"
+        )));
     }
     entry.resolved = !entry.resolved;
     let updated = entry.clone();

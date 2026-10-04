@@ -183,4 +183,42 @@ mod tests {
         assert_eq!(Locale::parse("En"), Some(Locale::En));
         assert_eq!(Locale::parse("fr"), None);
     }
+
+    /// BUG-274: 사람에게 가는 오류(`AppError::BadRequest` · `NotFound` · `Cancelled`)에 한국어를 **그대로** 적으면 영어
+    /// 화면에 한국어가 낀다 — `tf!` 로 두 말을 함께 적어야 한다. core 소스를 훑어 막는다(시험 코드는 뺀다).
+    #[test]
+    fn user_facing_errors_are_bilingual() {
+        fn walk(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+            for e in std::fs::read_dir(dir).unwrap().flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    walk(&p, out);
+                } else if p.extension().is_some_and(|x| x == "rs") {
+                    out.push(p);
+                }
+            }
+        }
+        let mut files = Vec::new();
+        walk(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"), &mut files);
+        let hangul = |s: &str| s.chars().any(|c| ('\u{AC00}'..='\u{D7A3}').contains(&c));
+        let mut bad = Vec::new();
+        for f in files {
+            let src = std::fs::read_to_string(&f).unwrap();
+            let code = src.split("#[cfg(test)]").next().unwrap_or("");
+            for kind in ["AppError::BadRequest(", "AppError::NotFound(", "AppError::Cancelled("] {
+                for (i, _) in code.match_indices(kind) {
+                    let rest = code[i + kind.len()..].trim_start();
+                    let rest = rest.strip_prefix("format!(").map(str::trim_start).unwrap_or(rest);
+                    if let Some(lit) = rest.strip_prefix('"') {
+                        let lit = lit.split('"').next().unwrap_or("");
+                        if hangul(lit) {
+                            let line = code[..i].matches('\n').count() + 1;
+                            bad.push(format!("{}:{line}: {}", f.display(), lit.chars().take(40).collect::<String>()));
+                        }
+                    }
+                }
+            }
+        }
+        assert!(bad.is_empty(), "한국어만 적힌 오류 — tf!(한국어, 영어) 로 감쌀 것:\n{}", bad.join("\n"));
+    }
 }

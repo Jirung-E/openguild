@@ -750,15 +750,17 @@ pub async fn set_due_dates(
         let Some(s) = o else { return Ok(()); };
         // YYYY-MM-DD: 10자, 4-2-2 숫자/대시.
         if s.len() != 10 || s.as_bytes()[4] != b'-' || s.as_bytes()[7] != b'-' {
-            return Err(AppError::BadRequest(format!(
-                "{field}: 'YYYY-MM-DD' 형식이어야 합니다 (got: {s:?})"
+            return Err(AppError::BadRequest(crate::tf!(
+                "{field}: 'YYYY-MM-DD' 형식이어야 합니다 (got: {s:?})",
+                "{field}: must be 'YYYY-MM-DD' (got: {s:?})"
             )));
         }
         for (i, b) in s.as_bytes().iter().enumerate() {
             if i == 4 || i == 7 { continue; }
             if !b.is_ascii_digit() {
-                return Err(AppError::BadRequest(format!(
-                    "{field}: 'YYYY-MM-DD' 형식이어야 합니다 (got: {s:?})"
+                return Err(AppError::BadRequest(crate::tf!(
+                    "{field}: 'YYYY-MM-DD' 형식이어야 합니다 (got: {s:?})",
+                    "{field}: must be 'YYYY-MM-DD' (got: {s:?})"
                 )));
             }
         }

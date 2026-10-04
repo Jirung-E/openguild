@@ -162,8 +162,9 @@ pub const BANNER_EXTS: [&str; 6] = ["png", "jpg", "jpeg", "gif", "webp", "bmp"];
 fn check_banner_ext(ext: &str) -> AppResult<String> {
     let ext = ext.trim_start_matches('.').to_ascii_lowercase();
     if !BANNER_EXTS.contains(&ext.as_str()) {
-        return Err(AppError::BadRequest(format!(
+        return Err(AppError::BadRequest(crate::tf!(
             "지원하지 않는 이미지 확장자: .{ext} ({})",
+            "unsupported image extension: .{ext} ({})",
             BANNER_EXTS.join("/")
         )));
     }
@@ -244,8 +245,9 @@ pub async fn set_banner_image(
     source_path: &std::path::Path,
 ) -> AppResult<CampaignRow> {
     if !source_path.exists() {
-        return Err(AppError::BadRequest(format!(
+        return Err(AppError::BadRequest(crate::tf!(
             "이미지 파일 없음: {}",
+            "image file not found: {}",
             source_path.display()
         )));
     }

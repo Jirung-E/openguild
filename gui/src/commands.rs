@@ -663,6 +663,17 @@ pub async fn admin_list_snapshots(
     snapshot::list_snapshots(&store.paths).map_err(err)
 }
 
+/// BUG-274: 앱의 언어를 Rust 쪽에도 — `~/.openguild/locale.json`(CLI · 서버와 같은 파일). 예전엔 화면만 바뀌어 Rust 가
+/// 만든 문장(오류 · 플러그인 문제)은 계속 한국어였다. Rust 는 이 파일을 매번 읽으므로 바로 먹는다.
+#[tauri::command]
+pub fn set_locale(locale: String) -> Result<(), String> {
+    let l = openguild_core::locale::Locale::parse(&locale).ok_or_else(|| format!("unknown locale: {locale}"))?;
+    if openguild_core::locale::load_saved().ok() == Some(l) {
+        return Ok(());
+    }
+    openguild_core::locale::save(l).map_err(err)
+}
+
 /// DEV-436: 길드 밖 백업 파일(backup-archive 가 쌓아 둔 것 등)을 읽어 본다 — 복원 전에 무엇인지 보여 주려고.
 #[tauri::command]
 pub async fn admin_inspect_backup_file(

@@ -118,8 +118,9 @@ impl std::fmt::Debug for Script {
 impl Script {
     pub fn compile(path: &Path) -> AppResult<Self> {
         let src = std::fs::read_to_string(path).map_err(|e| {
-            AppError::BadRequest(format!(
+            AppError::BadRequest(crate::tf!(
                 "스크립트 {} 를 읽지 못했습니다: {e}",
+                "could not read script {}: {e}",
                 path.display()
             ))
         })?;
@@ -201,8 +202,9 @@ impl Script {
                 }
             }
             if failed.len() == before {
-                return Err(AppError::BadRequest(format!(
-                    "불러올 스크립트를 준비하지 못했습니다 — {last_err}"
+                return Err(AppError::BadRequest(crate::tf!(
+                    "불러올 스크립트를 준비하지 못했습니다 — {last_err}",
+                    "could not prepare the imported scripts — {last_err}"
                 )));
             }
             left = failed;
@@ -212,13 +214,17 @@ impl Script {
         let mut seen: std::collections::HashMap<(String, usize), String> = Default::default();
         for (name, src) in sources {
             let ast = engine.compile(src).map_err(|e| {
-                AppError::BadRequest(format!("스크립트 {name} 를 컴파일하지 못했습니다: {e}"))
+                AppError::BadRequest(crate::tf!(
+                    "스크립트 {name} 를 컴파일하지 못했습니다: {e}",
+                    "could not compile script {name}: {e}"
+                ))
             })?;
             for f in ast.iter_functions() {
                 let key = (f.name.to_string(), f.params.len());
                 if let Some(prev) = seen.insert(key, name.clone()) {
-                    return Err(AppError::BadRequest(format!(
+                    return Err(AppError::BadRequest(crate::tf!(
                         "함수 `{}` 가 {prev} 와 {name} 에 둘 다 있습니다 — 이름을 나누세요",
+                        "function `{}` is in both {prev} and {name} — rename one",
                         f.name
                     )));
                 }

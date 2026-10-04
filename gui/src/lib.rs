@@ -693,6 +693,8 @@ pub fn run() {
             commands::update_quest_positions,
             // admin
             commands::admin_create_snapshot,
+            // BUG-274: 앱의 언어를 Rust 쪽에도.
+            commands::set_locale,
             // DEV-436: 길드 밖 백업 파일로 복원.
             commands::admin_inspect_backup_file,
             commands::admin_restore_backup_file,

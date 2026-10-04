@@ -137,9 +137,13 @@ fn update(f: impl FnOnce(&mut SourcesFile) -> AppResult<()>) -> AppResult<()> {
     let p = path()?;
     let mut file: SourcesFile = match std::fs::read_to_string(&p) {
         Ok(raw) => serde_json::from_str(&raw).map_err(|e| {
-            AppError::BadRequest(format!(
-                "{} 를 읽을 수 없습니다: {e}\n 덮어쓰면 등록해 둔 소스가 사라지므로 멈춥니다 \
+            AppError::BadRequest(crate::tf!(
+                "{} 를 읽을 수 없습니다: {e}
+ 덮어쓰면 등록해 둔 소스가 사라지므로 멈춥니다 \
                  — 파일을 고치거나 지운 뒤 다시 시도하세요.",
+                "cannot read {}: {e}
+ Overwriting it would drop the registered sources, so this stops \
+                 — fix or delete the file and try again.",
                 p.display()
             ))
         })?,

@@ -25,6 +25,7 @@ function loadInitial(): Locale {
 export const locale = writable<Locale>(loadInitial());
 
 locale.subscribe((l) => {
+	syncToRust(l);
 	if (typeof localStorage === 'undefined') return;
 	try {
 		localStorage.setItem(KEY, l);
@@ -32,6 +33,20 @@ locale.subscribe((l) => {
 		/* 무시 */
 	}
 });
+
+/**
+ * BUG-274: 데스크톱 앱이면 Rust 쪽 언어(`~/.openguild/locale.json`, CLI · 서버와 같은 파일)도 맞춘다 — 안 하면 Rust 가
+ * 만든 문장(오류 · 플러그인 문제)이 영어 화면에 한국어로 낀다. 처음 구독될 때(앱 시동)도 한 번 돈다 — 저장된 값과
+ * 어긋나 있었을 수 있다. 웹(서버)은 서버 자신의 설정을 따르므로 하지 않는다. 실패해도 화면 언어는 그대로 바뀐다.
+ */
+function syncToRust(l: Locale) {
+	if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return;
+	void import('@tauri-apps/api/core')
+		.then(({ invoke }) => invoke('set_locale', { locale: l }))
+		.catch(() => {
+			/* 화면 언어는 이미 바뀌었다 — Rust 쪽은 다음 변경 때 다시 맞춘다. */
+		});
+}
 
 export function setLocale(l: Locale) {
 	locale.set(l);

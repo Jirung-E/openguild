@@ -683,9 +683,10 @@ pub async fn change_status(
                     .map(|i| format!("#{i}"))
                     .collect::<Vec<_>>()
                     .join(", ");
-                let e = crate::error::AppError::BadRequest(format!(
+                let e = crate::error::AppError::BadRequest(crate::tf!(
                     "미해결 토론(discussion) 댓글 {}개({ids})를 먼저 resolve 해야 \
                      완료 상태로 전환할 수 있습니다.",
+                    "resolve the {} open discussion comment(s) ({ids}) before moving to a done status.",
                     unresolved.len()
                 ));
                 // DEV-381: **실패도 이벤트다.** [[DEV-373]] 이 "이벤트 수를 안
