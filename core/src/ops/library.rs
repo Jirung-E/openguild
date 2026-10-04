@@ -333,12 +333,17 @@ pub async fn create_book(
     body: &str,
     path: &str,
 ) -> AppResult<LibraryDocRow> {
-    let _g = store.lock_docs(&[DocKey::new("counter", "book")]).await?;
+    let path = repo::normalize_folder_path(path).map_err(|e| AppError::BadRequest(e.to_string()))?;
+    // BUG-302: 폴더 안에 만들면 그 폴더(와 위 폴더들)를 목록에 적는다 — 목록도 함께 잠근다.
+    let mut keys = vec![DocKey::new("counter", "book")];
+    if !path.is_empty() {
+        keys.push(DocKey::single("library-folders"));
+    }
+    let _g = store.lock_docs(&keys).await?;
     let title = title.trim();
     if title.is_empty() {
         return Err(AppError::BadRequest("title is empty".into()));
     }
-    let path = repo::normalize_folder_path(path).map_err(|e| AppError::BadRequest(e.to_string()))?;
     let _ = journal::append(
         &store.journal_pool,
         "create_book",
@@ -387,6 +392,7 @@ pub async fn create_book(
     .await?;
 
     doc_history::record(store, DocKind::Book, &book_id, "create", None, None).await; // BUG-189
+    register_folders(store, &path).await?;
 
     let created = get_book(store, &book_id)
         .await?
@@ -421,7 +427,16 @@ pub async fn update_book_with(
     path: Option<&str>,
     base: super::EditBase,
 ) -> AppResult<LibraryDocRow> {
-    let _g = store.lock_docs(&[DocKey::book(book_id)]).await?;
+    // BUG-302: 다른 폴더로 옮기면 그 폴더(와 위 폴더들)를 목록에 적는다 — 목록도 함께 잠근다.
+    let moving_into = match path {
+        Some(p) => repo::normalize_folder_path(p).map_err(|e| AppError::BadRequest(e.to_string()))?,
+        None => String::new(),
+    };
+    let mut keys = vec![DocKey::book(book_id)];
+    if !moving_into.is_empty() {
+        keys.push(DocKey::single("library-folders"));
+    }
+    let _g = store.lock_docs(&keys).await?;
     let existing = get_book(store, book_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("book not found: {book_id}")))?;
@@ -508,6 +523,7 @@ pub async fn update_book_with(
         ev::BOOK_UPDATED,
         || json!({ "book": payload::book(&updated) }),
     );
+    register_folders(store, &moving_into).await?;
     Ok(updated)
 }
 
@@ -565,14 +581,113 @@ pub async fn delete_book(store: &Store, book_id: &str) -> AppResult<()> {
 // ─── 폴더 (.guild/library/folders.toml) ───
 
 /// 살아있는 폴더 목록 (path 순).
+/// 폴더 목록 — 목록(`folders.toml`)에 적힌 것 + **문서의 경로에만 있는 것**(BUG-302).
+///
+/// 이제 폴더를 만들 때마다 목록에 적지만(문서를 폴더에 넣거나 옮길 때도), 그 전에 만든 길드에는 문서의 경로로만 있는 폴더가
+/// 남아 있다. 트리는 둘을 합쳐 그리므로 목록도 합친다 — 화면과 CLI · API 가 같은 폴더를 본다. 목록에 없는 것은 `id` 가 0 이고
+/// 시각은 그 안 문서 중 가장 이른 · 늦은 것이다. 위 폴더도 함께(`a/b` 에 문서가 있으면 `a` 도 있다).
 pub async fn list_folders(store: &Store) -> AppResult<Vec<LibraryFolderRow>> {
-    let rows = sqlx::query_as::<_, LibraryFolderRow>(
+    let mut rows = sqlx::query_as::<_, LibraryFolderRow>(
         "SELECT id, path, created_at, updated_at
            FROM library_folders WHERE deleted_at IS NULL ORDER BY path",
     )
     .fetch_all(&store.index_pool)
     .await?;
+    let docs: Vec<(String, String, String)> = sqlx::query_as(
+        "SELECT path, MIN(created_at), MAX(updated_at) FROM library_docs
+          WHERE deleted_at IS NULL AND path != '' GROUP BY path",
+    )
+    .fetch_all(&store.index_pool)
+    .await?;
+    // 예전 길드에선 등록된 하위 폴더의 위 폴더도 목록에 없을 수 있다 — 트리처럼 그것도 낸다.
+    let parents: Vec<(String, String, String)> = rows
+        .iter()
+        .filter_map(|r| {
+            r.path
+                .rsplit_once('/')
+                .map(|(parent, _)| (parent.to_string(), r.created_at.clone(), r.updated_at.clone()))
+        })
+        .collect();
+    let mut known: std::collections::HashSet<String> = rows.iter().map(|r| r.path.clone()).collect();
+    for (path, created, updated) in docs.into_iter().chain(parents) {
+        let mut acc = String::new();
+        for seg in path.split('/') {
+            if !acc.is_empty() {
+                acc.push('/');
+            }
+            acc.push_str(seg);
+            if known.insert(acc.clone()) {
+                rows.push(LibraryFolderRow {
+                    id: 0,
+                    path: acc.clone(),
+                    created_at: created.clone(),
+                    updated_at: updated.clone(),
+                });
+            }
+        }
+    }
+    rows.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(rows)
+}
+
+/// BUG-302: `path` 와 그 위 폴더들 중 목록(`folders.toml` · 캐시)에 없는 것을 적는다 — 폴더를 만들 때마다 적는다(admin 결정).
+/// 예전엔 빈 폴더만 적고 문서가 든 폴더는 문서의 경로로만 있어, 트리에는 보이는데 `folder list` · API 에는 없었다.
+/// **목록 잠금(`library-folders`)을 쥔 쪽만** 부른다. 새로 적은 폴더마다 `folder.created` 를 낸다.
+async fn register_folders(store: &Store, path: &str) -> AppResult<()> {
+    if path.is_empty() {
+        return Ok(());
+    }
+    let mut chain = Vec::new();
+    let mut acc = String::new();
+    for seg in path.split('/') {
+        if !acc.is_empty() {
+            acc.push('/');
+        }
+        acc.push_str(seg);
+        chain.push(acc.clone());
+    }
+    let mut missing = Vec::new();
+    for p in chain {
+        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM library_folders WHERE path = ? AND deleted_at IS NULL")
+            .bind(&p)
+            .fetch_one(&store.index_pool)
+            .await?;
+        if n == 0 {
+            missing.push(p);
+        }
+    }
+    if missing.is_empty() {
+        return Ok(());
+    }
+    let now = crate::time::now_local_iso8601();
+    let mut f = repo::read_folders(&store.paths).map_err(AppError::Internal)?;
+    for p in &missing {
+        f.folders.retain(|e| &e.path != p);
+        f.folders.push(FolderEntry {
+            path: p.clone(),
+            created_at: now.clone(),
+            updated_at: now.clone(),
+            deleted: false,
+        });
+    }
+    repo::write_folders(&store.paths, &f).map_err(AppError::Internal)?;
+    for p in &missing {
+        // BUG-306 과 같은 이유로 지운 같은 이름은 되살린다.
+        sqlx::query(
+            "INSERT INTO library_folders (path, created_at, updated_at) VALUES (?, ?, ?)
+             ON CONFLICT(path) DO UPDATE SET
+                 created_at = excluded.created_at,
+                 updated_at = excluded.updated_at,
+                 deleted_at = NULL",
+        )
+        .bind(p)
+        .bind(&now)
+        .bind(&now)
+        .execute(&store.index_pool)
+        .await?;
+        store.emit_post(ev::FOLDER_CREATED, || json!({ "folder": payload::folder(p) }));
+    }
+    Ok(())
 }
 
 /// 새 폴더 생성 — 순수 컨테이너(본문 없음). 이미 존재하면 에러.
@@ -598,6 +713,10 @@ pub async fn create_folder(store: &Store, path: &str) -> AppResult<LibraryFolder
         )));
     }
 
+    // BUG-302: 위 폴더들도 목록에 — `a/b` 를 만들면 `a` 도 있는 폴더다.
+    if let Some((parent, _)) = path.rsplit_once('/') {
+        register_folders(store, parent).await?;
+    }
     let _ = journal::append(
         &store.journal_pool,
         "create_folder",
@@ -899,6 +1018,99 @@ mod tests {
         Store::open(dir).await.unwrap()
     }
 
+    /// 폴더 목록을 비운다 — BUG-302 전에 문서만 폴더 경로를 적던 길드를 흉내 낸다.
+    async fn forget_folders(store: &Store) {
+        repo::write_folders(&store.paths, &repo::FoldersFile::default()).unwrap();
+        sqlx::query("DELETE FROM library_folders").execute(&store.index_pool).await.unwrap();
+    }
+
+    /// 목록에 `paths` 만 적는다(조상 없이) — `forget_folders` 다음에 쓴다.
+    async fn register_only(store: &Store, paths: &[&str]) {
+        let now = crate::time::now_local_iso8601();
+        let f = repo::FoldersFile {
+            folders: paths
+                .iter()
+                .map(|p| FolderEntry {
+                    path: p.to_string(),
+                    created_at: now.clone(),
+                    updated_at: now.clone(),
+                    deleted: false,
+                })
+                .collect(),
+        };
+        repo::write_folders(&store.paths, &f).unwrap();
+        for p in paths {
+            sqlx::query("INSERT INTO library_folders (path, created_at, updated_at) VALUES (?, ?, ?)")
+                .bind(p)
+                .bind(&now)
+                .bind(&now)
+                .execute(&store.index_pool)
+                .await
+                .unwrap();
+        }
+    }
+
+    /// 목록(`folders.toml` 과 캐시)에 적힌 폴더만 — 문서에서 끌어온 것은 빼고.
+    async fn registered(store: &Store) -> Vec<String> {
+        let mut file: Vec<String> = repo::read_folders(&store.paths)
+            .unwrap()
+            .folders
+            .into_iter()
+            .filter(|e| !e.deleted)
+            .map(|e| e.path)
+            .collect();
+        file.sort();
+        let db: Vec<String> =
+            sqlx::query_scalar("SELECT path FROM library_folders WHERE deleted_at IS NULL ORDER BY path")
+                .fetch_all(&store.index_pool)
+                .await
+                .unwrap();
+        assert_eq!(file, db, "folders.toml 과 캐시가 어긋났다");
+        db
+    }
+
+    /// BUG-302: 폴더는 만들 때마다 목록에 적힌다 — 문서를 새 폴더에 만들 때, 문서를 새 폴더로 옮길 때,
+    /// 하위 폴더를 만들 때(위 폴더도). 예전엔 빈 폴더만 적혀서 트리에 보이는 폴더가 `folder list` 에 없었다.
+    #[tokio::test]
+    async fn every_new_folder_is_registered() {
+        let dir = fresh_tmp("register");
+        let store = setup(&dir).await;
+
+        let b = create_book(&store, "문서", "", "설계/결정").await.unwrap().book_id();
+        assert_eq!(registered(&store).await, vec!["설계", "설계/결정"]);
+
+        update_book(&store, &b, None, None, Some("운영/장애")).await.unwrap();
+        assert_eq!(registered(&store).await, vec!["설계", "설계/결정", "운영", "운영/장애"]);
+
+        create_folder(&store, "기록/2026").await.unwrap();
+        assert_eq!(
+            registered(&store).await,
+            vec!["기록", "기록/2026", "설계", "설계/결정", "운영", "운영/장애"]
+        );
+
+        // 이미 있는 폴더에 또 만들어도 겹쳐 적지 않는다.
+        create_book(&store, "또", "", "설계/결정").await.unwrap();
+        assert_eq!(registered(&store).await.len(), 6);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-302: 예전 길드(문서 경로에만 있는 폴더)도 목록에 나온다 — 위 폴더까지, 한 번씩만.
+    #[tokio::test]
+    async fn folder_list_includes_folders_only_documents_know() {
+        let dir = fresh_tmp("list-derived");
+        let store = setup(&dir).await;
+        create_book(&store, "가", "", "옛/하위").await.unwrap();
+        create_book(&store, "나", "", "옛/하위").await.unwrap();
+        forget_folders(&store).await;
+        create_folder(&store, "옛").await.unwrap();
+
+        let listed: Vec<String> = list_folders(&store).await.unwrap().into_iter().map(|f| f.path).collect();
+        assert_eq!(listed, vec!["옛", "옛/하위"]);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// BUG-306: 지운 폴더와 **같은 이름**으로 다시 만들 수 있어야 한다.
     ///
     /// 지우기는 행을 남기고 `deleted_at` 만 찍는데 유니크 제약은 `path` 하나에 걸려 있다.
@@ -941,9 +1153,9 @@ mod tests {
     async fn deleting_a_folder_that_only_documents_know_about() {
         let dir = fresh_tmp("del-derived");
         let store = setup(&dir).await;
-        // 레지스트리를 거치지 않고 만들어진 폴더 — 문서가 그 경로를 적고 있을 뿐이다.
+        // 레지스트리를 거치지 않고 만들어진 폴더 — 문서가 그 경로를 적고 있을 뿐이다(BUG-302 전의 길드).
         let b = create_book(&store, "문서", "", "등록안된/하위").await.unwrap().book_id();
-        assert!(list_folders(&store).await.unwrap().iter().all(|f| f.path != "등록안된/하위"));
+        forget_folders(&store).await;
 
         // 문서가 있는 동안에는 지워지지 않는다 — 그 규칙은 그대로다.
         let err = delete_folder(&store, "등록안된/하위").await.unwrap_err();
@@ -1073,9 +1285,12 @@ mod tests {
     async fn folders_seen_only_in_the_tree_can_be_moved_and_moved_into() {
         let dir = fresh_tmp("move-folder-implicit");
         let store = setup(&dir).await;
-        create_folder(&store, "설계/초안").await.unwrap(); // `설계` 는 등록 없음
+        // BUG-302 부터는 만들 때 조상까지 적으므로, 그 전 길드를 흉내 내 목록을 직접 꾸민다.
+        create_folder(&store, "설계/초안").await.unwrap();
         create_folder(&store, "기타").await.unwrap();
-        let memo = create_book(&store, "회의록", "", "회의/2026").await.unwrap(); // 폴더 등록 없음
+        let memo = create_book(&store, "회의록", "", "회의/2026").await.unwrap();
+        forget_folders(&store).await;
+        register_only(&store, &["설계/초안", "기타"]).await; // `설계` · `회의/2026` 은 등록 없음
 
         // 등록 안 된 조상 밑으로.
         move_folder(&store, "기타", "설계/기타").await.unwrap();
@@ -1096,7 +1311,9 @@ mod tests {
             .map(|f| f.path)
             .collect();
         paths.sort();
-        assert_eq!(paths, vec!["회의록/설계/기타", "회의록/설계/초안"]);
+        // BUG-302: 목록은 문서 경로의 폴더도 합쳐 낸다 — 트리와 같다.
+        assert_eq!(paths, vec!["회의록", "회의록/2026", "회의록/설계", "회의록/설계/기타", "회의록/설계/초안"]);
+        assert_eq!(registered(&store).await, vec!["회의록/설계/기타", "회의록/설계/초안"]);
 
         // 보이는 폴더와 겹치는 이름은 거절 — 문서 경로로만 있는 것과도.
         let e = move_folder(&store, "회의록/설계/기타", "회의록/2026").await.unwrap_err();
