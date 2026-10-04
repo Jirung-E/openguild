@@ -35,6 +35,99 @@ use std::time::{Duration, Instant};
 /// 죽은 자식을 거두러 오는 간격.
 const REAP_TICK: Duration = Duration::from_millis(20);
 
+/// BUG-336: 훅의 출력 중 **끝부분만** 남긴다 — 실패 이유는 대개 마지막 몇 줄에 있고, 빌드 로그 통째로는 아무에게도
+/// 도움이 안 된다. 받는 쪽(문제 목록 · 오류 메시지)에 붙일 때 다시 줄 수로 자른다.
+const TAIL_BYTES: usize = 4096;
+/// 실패 메시지에 붙이는 줄 수.
+const TAIL_LINES: usize = 8;
+/// 자식이 끝난 뒤 출력을 마저 읽을 유예 — 훅이 남긴 백그라운드 프로그램이 출력 통로를 붙잡고 있으면 끝이 안 오므로
+/// 오래 기다리지 않는다.
+const TAIL_GRACE: Duration = Duration::from_millis(200);
+
+/// BUG-336: 출력 통로 하나를 끝까지 읽으며 **마지막 [`TAIL_BYTES`] 만** 쥔다. 계속 읽어야 자식이 출력 통로가 가득 차
+/// 멈추지 않는다. 다 읽으면(통로가 닫히면) `done` 을 켠다.
+#[derive(Default)]
+struct Tail {
+    buf: std::sync::Mutex<std::collections::VecDeque<u8>>,
+    done: std::sync::atomic::AtomicBool,
+}
+
+impl Tail {
+    fn drain(self: std::sync::Arc<Self>, mut r: impl std::io::Read + Send + 'static) {
+        let _ = std::thread::Builder::new()
+            .name("openguild-plugin-output".into())
+            .spawn(move || {
+                let mut chunk = [0u8; 1024];
+                while let Ok(n) = r.read(&mut chunk) {
+                    if n == 0 {
+                        break;
+                    }
+                    if let Ok(mut b) = self.buf.lock() {
+                        b.extend(&chunk[..n]);
+                        let over = b.len().saturating_sub(TAIL_BYTES);
+                        b.drain(..over);
+                    }
+                }
+                self.done.store(true, std::sync::atomic::Ordering::SeqCst);
+            });
+    }
+
+    /// 마지막 몇 줄 — 빈 줄은 빼고, 앞뒤 공백은 다듬는다.
+    fn lines(&self) -> Vec<String> {
+        let bytes: Vec<u8> = self.buf.lock().map(|b| b.iter().copied().collect()).unwrap_or_default();
+        let text = String::from_utf8_lossy(&bytes);
+        let all: Vec<String> = text
+            .lines()
+            .map(|l| l.trim().to_string())
+            .filter(|l| !l.is_empty())
+            .collect();
+        all[all.len().saturating_sub(TAIL_LINES)..].to_vec()
+    }
+}
+
+/// BUG-336: 자식의 출력 둘(stdout · stderr)을 모은다. 실패 메시지에는 **stderr 를 먼저**, 없으면 stdout 을 붙인다.
+struct Output {
+    out: std::sync::Arc<Tail>,
+    err: std::sync::Arc<Tail>,
+}
+
+impl Output {
+    fn capture(child: &mut std::process::Child) -> Self {
+        let out = std::sync::Arc::new(Tail::default());
+        let err = std::sync::Arc::new(Tail::default());
+        if let Some(r) = child.stdout.take() {
+            out.clone().drain(r);
+        }
+        if let Some(r) = child.stderr.take() {
+            err.clone().drain(r);
+        }
+        Self { out, err }
+    }
+
+    /// 자식이 끝난 뒤 — 출력 통로가 닫힐 때까지 잠깐만 기다린다.
+    fn settle(&self) {
+        let until = Instant::now() + TAIL_GRACE;
+        let done = |t: &Tail| t.done.load(std::sync::atomic::Ordering::SeqCst);
+        while !(done(&self.out) && done(&self.err)) && Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    /// 실패 메시지 뒤에 붙일 것 — 아무 말도 없었으면 빈 문자열.
+    fn suffix(&self) -> String {
+        self.settle();
+        let (label, lines) = match self.err.lines() {
+            l if !l.is_empty() => ("stderr", l),
+            _ => ("stdout", self.out.lines()),
+        };
+        if lines.is_empty() {
+            return String::new();
+        }
+        let body: String = lines.iter().map(|l| format!("\n  {l}")).collect();
+        format!(" — 마지막 출력({label}):{body}")
+    }
+}
+
 /// 진짜로 내보내는 구현.
 #[derive(Default)]
 pub struct Outbound {
@@ -375,11 +468,16 @@ fn run(
         // DEV-401: 훅이 부른 `openguild` 가 이 목록을 이어 받는다 — 같은 훅이 다시 불리지 않게.
         .env(crate::events::origin::ENV, origin.to_env())
         .stdin(Stdio::piped())
-        // 자식의 출력이 CLI 표준출력에 섞이면 파이프로 쓰는 사람이 깨진다.
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        // 자식의 출력이 CLI 표준출력에 섞이면 파이프로 쓰는 사람이 깨진다 — 그래서 흘리지 않고 **받아 둔다**.
+        // BUG-336: 예전엔 버려서 실패 이유가 "exit status: 1" 뿐이었다(claude 로그인 안내 · `no .guild file` 같은 진짜
+        // 이유가 안 보여 같은 곳에서 두 번 막혔다). 끝부분만 실패 메시지에 붙인다.
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("{command} 를 띄우지 못했습니다: {e}"))?;
+
+    // BUG-336: 출력을 지금부터 읽는다 — 안 읽으면 출력이 많은 훅은 통로가 가득 차 멈춘다.
+    let output = Output::capture(&mut child);
 
     // BUG-348: 멈춰 띄운 자식을 묶음에 넣고 **그 다음에** 깨운다 — 순서가 핵심이다.
     #[cfg(windows)]
@@ -423,7 +521,7 @@ fn run(
     loop {
         match child.try_wait() {
             Ok(Some(st)) if st.success() => return Ok(()),
-            Ok(Some(st)) => return Err(format!("{command} 가 {st} 로 끝났습니다")),
+            Ok(Some(st)) => return Err(format!("{command} 가 {st} 로 끝났습니다{}", output.suffix())),
             Ok(None) => {}
             Err(e) => return Err(format!("{command} 상태를 못 읽었습니다: {e}")),
         }
@@ -437,9 +535,11 @@ fn run(
             }
             let _ = child.kill();
             let _ = child.wait();
+            // BUG-336: 무엇을 하다 멈췄는지 — 그때까지 나온 것을 함께.
             return Err(format!(
-                "{command} 가 {}ms 안에 안 끝나 중단했습니다",
-                timeout.as_millis()
+                "{command} 가 {}ms 안에 안 끝나 중단했습니다{}",
+                timeout.as_millis(),
+                output.suffix()
             ));
         }
         std::thread::sleep(REAP_TICK);
@@ -955,6 +1055,89 @@ mod tests {
         let got = std::fs::read_to_string(lab.data().join("chain.txt")).unwrap();
         let chain = crate::events::origin::Origin::parse(&got);
         assert_eq!(chain.chain(), ["먼저".to_string(), p.def.name.clone()], "{got}");
+    }
+
+    /// BUG-336: **실패하면 훅이 한 말이 보인다** — stderr 를 먼저, 끝부분만.
+    #[test]
+    fn a_failing_hook_says_why() {
+        if !crate::test_env::have_sh() {
+            return;
+        }
+        let lab = RunLab::new("why");
+        let p = lab.plugin(Action::Run {
+            command: "sh".into(),
+            args: vec![
+                "-c".into(),
+                "echo 표준출력; i=0; while [ $i -lt 30 ]; do echo 줄$i >&2; i=$((i+1)); done; echo 로그인이 필요합니다 >&2; exit 3"
+                    .into(),
+            ],
+            timeout_ms: Some(5_000),
+            os: Default::default(),
+        });
+        let e = Outbound::new()
+            .deliver_first(&p, &event(), &body(), &Default::default())
+            .unwrap_err();
+        assert!(e.contains("로그인이 필요합니다"), "진짜 이유가 안 보인다: {e}");
+        assert!(e.contains("stderr"), "{e}");
+        assert!(!e.contains("줄0"), "앞부분까지 통째로 붙였다: {e}");
+        assert!(!e.contains("표준출력"), "stderr 가 있으면 그것만: {e}");
+    }
+
+    /// BUG-336: stderr 가 비면 stdout 을 붙인다 — 예제처럼 이유를 stdout 에 찍는 훅도 있다.
+    #[test]
+    fn a_hook_that_only_prints_to_stdout_is_still_heard() {
+        if !crate::test_env::have_sh() {
+            return;
+        }
+        let lab = RunLab::new("why-out");
+        let p = lab.plugin(Action::Run {
+            command: "sh".into(),
+            args: vec!["-c".into(), "echo no .guild file at here; exit 1".into()],
+            timeout_ms: Some(5_000),
+            os: Default::default(),
+        });
+        let e = Outbound::new()
+            .deliver_first(&p, &event(), &body(), &Default::default())
+            .unwrap_err();
+        assert!(e.contains("no .guild file at here") && e.contains("stdout"), "{e}");
+    }
+
+    /// BUG-336: 출력을 받아 두면서도 **많이 찍는 훅이 멈추지 않는다**(통로가 가득 차면 자식이 쓰다 멈춘다) — 성공은
+    /// 성공 그대로, 붙는 말 없음.
+    #[test]
+    fn a_chatty_hook_neither_blocks_nor_fails() {
+        if !crate::test_env::have_sh() {
+            return;
+        }
+        let lab = RunLab::new("chatty");
+        let p = lab.plugin(Action::Run {
+            command: "sh".into(),
+            args: vec!["-c".into(), "i=0; while [ $i -lt 20000 ]; do echo 한 줄 $i; i=$((i+1)); done".into()],
+            timeout_ms: Some(20_000),
+            os: Default::default(),
+        });
+        Outbound::new()
+            .deliver_first(&p, &event(), &body(), &Default::default())
+            .unwrap();
+    }
+
+    /// BUG-336: 시한으로 죽일 때도 그때까지 한 말을 붙인다 — 무엇을 하다 멈췄는지.
+    #[test]
+    fn a_timed_out_hook_says_where_it_stopped() {
+        if !crate::test_env::have_sh() {
+            return;
+        }
+        let lab = RunLab::new("why-timeout");
+        let p = lab.plugin(Action::Run {
+            command: "sh".into(),
+            args: vec!["-c".into(), "echo 서버에 붙는 중 >&2; sleep 5".into()],
+            timeout_ms: Some(500),
+            os: Default::default(),
+        });
+        let e = Outbound::new()
+            .deliver_first(&p, &event(), &body(), &Default::default())
+            .unwrap_err();
+        assert!(e.contains("중단") && e.contains("서버에 붙는 중"), "{e}");
     }
 
     /// **오래 걸려도 길드가 안 멈춘다** — 시한에 죽이고 거둔다(좀비 없음).
