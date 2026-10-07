@@ -5,7 +5,10 @@
    - Tauri WebView 의 native confirm 은 환경에 따라 dialog 안 뜨고 silent
      return — 사용자가 "삭제했더니 확인 없이 진행" 으로 인식.
    - 일관된 시각 (theme / 토큰 / 다크모드).
-   - 키보드 접근성 (Esc 닫기, Enter 확인).
+   - 키보드 접근성 (Esc 닫기, Enter 는 포커스된 버튼).
+   - BUG-272: 열리면 포커스가 대화상자 안으로 가고 Tab 이 밖으로 새지 않는다. 키는 대화상자에서만 받는다 —
+     예전엔 window 에서 받아, 뒤 페이지에 포커스가 있어도 스친 Enter 가 '확인'을 눌렀다.
+     위험한 동작(`danger`)은 '취소'에서 시작한다 — Enter 를 한 번 더 눌러도 지우지 않는다.
 
   사용:
   ```svelte
@@ -30,6 +33,7 @@
 -->
 <script lang="ts">
 	import { modalScrollLock } from '$lib/actions/modal-scroll-lock';
+	import { modalFocus } from '$lib/actions/modal-focus';
 	// DEV-205 모듈1: 기본 라벨 i18n. 호출부가 라벨을 넘기면 그대로 쓰고,
 	// 미지정(undefined)일 때만 locale 사전 기본값으로 대체.
 	import { locale, t } from '$lib/stores/locale';
@@ -56,6 +60,8 @@
 		oncancel
 	}: Props = $props();
 
+	// 같은 화면에 대화상자가 여럿 있어도 제목 · 문구 연결이 겹치지 않게.
+	const uid = $props.id();
 	const displayTitle = $derived(title ?? t('common.confirm', $locale));
 	const displayConfirm = $derived(confirmLabel ?? t('common.confirm', $locale));
 	const displayCancel = $derived(cancelLabel ?? t('common.cancel', $locale));
@@ -67,19 +73,16 @@
 		onconfirm?.();
 	}
 
+	// BUG-272: Esc 만 직접 받는다. Enter 는 포커스된 버튼이 스스로 누른다(브라우저 기본 동작).
+	// 대화상자 밖으로 안 올려 보낸다 — 아래 깔린 모달이 같은 Esc 로 함께 닫히지 않게.
 	function onkeydown(e: KeyboardEvent) {
-		if (!open) return;
 		if (e.key === 'Escape') {
 			e.preventDefault();
+			e.stopPropagation();
 			close();
-		} else if (e.key === 'Enter') {
-			e.preventDefault();
-			confirm();
 		}
 	}
 </script>
-
-<svelte:window {onkeydown} />
 
 {#if open}
 	<div
@@ -90,12 +93,25 @@
 			if (e.target === e.currentTarget) close();
 		}}
 	>
-		<div class="modal" role="alertdialog" aria-modal="true" tabindex="-1">
-			<h3 class="modal-title">{displayTitle}</h3>
-			<p class="modal-msg">{message}</p>
+		<div
+			class="modal"
+			role="alertdialog"
+			aria-modal="true"
+			aria-labelledby="{uid}-title"
+			aria-describedby="{uid}-msg"
+			tabindex="-1"
+			use:modalFocus
+			{onkeydown}
+		>
+			<h3 class="modal-title" id="{uid}-title">{displayTitle}</h3>
+			<p class="modal-msg" id="{uid}-msg">{message}</p>
 			<div class="modal-actions">
-				<button class="btn-no" onclick={close}>{displayCancel}</button>
-				<button class="btn-yes" class:danger onclick={confirm}>{displayConfirm}</button>
+				<button class="btn-no" data-autofocus={danger ? '' : undefined} onclick={close}>
+					{displayCancel}
+				</button>
+				<button class="btn-yes" class:danger data-autofocus={danger ? undefined : ''} onclick={confirm}>
+					{displayConfirm}
+				</button>
 			</div>
 		</div>
 	</div>
