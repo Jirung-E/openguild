@@ -1640,11 +1640,37 @@
 			if (await showConfirm(msg)) confirmedLanes.add(laneIdx);
 		}
 
+		// BUG-351: 확인하면 화면부터 바꾸고 저장은 뒤에서 한다. 윈도우에서는 자동 백업이 길드를 잠깐 잡고 있으면
+		// 저장이 그만큼 기다리는데([[BUG-344]]), 그동안 노드가 옛 상태로 남아 "확인했는데 한참 뒤에 바뀐다".
+		// 저장이 실패하면 되돌린다.
+		const before = batch.map((item) => ({
+			x: item.node.data<number>('absX'),
+			y: item.node.data<number>('absY')
+		}));
+		const applied = batch.map((item, i) => {
+			const { node, questId, fromPos, fromStatus, toLaneIdx } = item;
+			const newStatus = sorted[toLaneIdx];
+			const laneChanged = newStatus.id !== fromStatus;
+			if (laneChanged && !confirmedLanes.has(toLaneIdx)) {
+				node.animate({ position: fromPos, duration: 150 });
+				return false;
+			}
+			const { canonical } = targets[i];
+			// 레인 재계산(applyStatusChange)이 absX/absY 로 자리를 다시 잡으므로 새 값을 먼저 넣는다.
+			node.data('absX', canonical.x);
+			node.data('absY', canonical.y);
+			if (laneChanged) {
+				node.data('statusId', newStatus.id);
+				applyStatusChange(questId, newStatus.id);
+			}
+			return true;
+		});
+
 		// 상태 변경은 한꺼번에 보낸다 — 하나씩 기다리면 옮긴 개수만큼 늦어진다.
 		const statusResults = await Promise.all(
-			batch.map((item) => {
+			batch.map((item, i) => {
 				const newStatus = sorted[item.toLaneIdx];
-				if (newStatus.id === item.fromStatus || !confirmedLanes.has(item.toLaneIdx)) {
+				if (!applied[i] || newStatus.id === item.fromStatus) {
 					return Promise.resolve<unknown>(null);
 				}
 				return questsApi.changeStatus(item.questId, { status_slug: newStatus.slug }).then(
@@ -1657,16 +1683,18 @@
 		const historyItems: BatchMove['items'] = [];
 		const posUpdates: Promise<unknown>[] = [];
 		batch.forEach((item, i) => {
+			if (!applied[i]) return;
 			const { node, questId, fromPos, fromStatus, toLaneIdx } = item;
 			const newStatus = sorted[toLaneIdx];
 			const laneChanged = newStatus.id !== fromStatus;
-			if (laneChanged && !confirmedLanes.has(toLaneIdx)) {
-				node.animate({ position: fromPos, duration: 150 });
-				return;
-			}
 			const error = statusResults[i];
 			if (error) {
-				node.animate({ position: fromPos, duration: 150 });
+				// 되돌리기 — 옛 absX/absY 와 상태로 레인 재계산하면 원래 자리로 간다.
+				node.data('absX', before[i].x);
+				node.data('absY', before[i].y);
+				node.data('statusId', fromStatus);
+				applyStatusChange(questId, fromStatus);
+				node.position(fromPos);
 				showToast(
 					error instanceof Error && error.message
 						? error.message
@@ -1676,13 +1704,6 @@
 				return;
 			}
 			const { canonical, point } = targets[i];
-			// 레인 재계산(applyStatusChange)이 absX/absY 로 자리를 다시 잡으므로 새 값을 먼저 넣는다.
-			node.data('absX', canonical.x);
-			node.data('absY', canonical.y);
-			if (laneChanged) {
-				node.data('statusId', newStatus.id);
-				applyStatusChange(questId, newStatus.id);
-			}
 			const moved = fromPos.x !== point.x || fromPos.y !== point.y || laneChanged;
 			if (!moved) return;
 			historyItems.push({
