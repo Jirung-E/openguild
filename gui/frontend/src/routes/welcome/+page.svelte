@@ -684,7 +684,9 @@
 			color 0.1s,
 			border-color 0.1s;
 	}
-	.settings-link:hover {
+	/* BUG-275: 빠른 메뉴가 열려 있으면 눌린 모양 — 표시는 있었는데 스타일이 없었다. */
+	.settings-link:hover,
+	.settings-link.active {
 		color: var(--text);
 		background: var(--bg-subtle);
 		border-color: var(--text-faint);

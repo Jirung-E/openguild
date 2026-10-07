@@ -644,4 +644,12 @@
 	.btn-no:hover:not(:disabled) {
 		background: var(--bg-subtle);
 	}
+	/* BUG-275: '완료로 침' 칸 — 표시는 있었는데 스타일이 없었다. */
+	.done-mark {
+		font-weight: 700;
+		color: var(--success);
+	}
+	.dim {
+		color: var(--text-faint);
+	}
 </style>

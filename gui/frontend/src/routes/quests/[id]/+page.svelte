@@ -741,7 +741,7 @@
 		<!-- 헤더 뱃지 -->
 		<div class="header">
 			<span class="pill" style:--c={detail.type_color}>{detail.quest_id}</span>
-			<span class="pill urgency" style:--c={urgencyColor(detail.urgency)}>
+			<span class="pill" style:--c={urgencyColor(detail.urgency)}>
 				{urgencyLabel(detail.urgency, $locale)}
 			</span>
 			{#if urgencyOutOfRange(detail.urgency)}
@@ -753,7 +753,7 @@
 				>
 			{/if}
 			{#key badgePulse}
-				<span class="pill status pulsing" style:--c={detail.status_color}>
+				<span class="pill pulsing" style:--c={detail.status_color}>
 					{questStatusLabel(detail, $locale)}
 				</span>
 			{/key}
@@ -1001,7 +1001,7 @@
 									>{detail.parent.quest_id}</span
 								>
 								<span class="ql-title">{detail.parent.title}</span>
-								<span class="pill status" style:--c={detail.parent.status_color}
+								<span class="pill" style:--c={detail.parent.status_color}
 									>{questStatusLabel(detail.parent, $locale)}</span
 								>
 							</DocLink>
@@ -1051,7 +1051,7 @@
 									>
 										<span class="pill" style:--c={sq.type_color}>{sq.quest_id}</span>
 										<span class="ql-title">{sq.title}</span>
-										<span class="pill status" style:--c={sq.status_color}
+										<span class="pill" style:--c={sq.status_color}
 											>{questStatusLabel(sq, $locale)}</span
 										>
 									</DocLink>
@@ -1096,7 +1096,7 @@
 									>
 										<span class="pill" style:--c={pq.type_color}>{pq.quest_id}</span>
 										<span class="ql-title">{pq.title}</span>
-										<span class="pill status" style:--c={pq.status_color}
+										<span class="pill" style:--c={pq.status_color}
 											>{questStatusLabel(pq, $locale)}</span
 										>
 									</DocLink>
@@ -1146,7 +1146,7 @@
 									>
 										<span class="pill" style:--c={sq.type_color}>{sq.quest_id}</span>
 										<span class="ql-title">{sq.title}</span>
-										<span class="pill status" style:--c={sq.status_color}
+										<span class="pill" style:--c={sq.status_color}
 											>{questStatusLabel(sq, $locale)}</span
 										>
 									</DocLink>
@@ -1241,7 +1241,7 @@
 								>
 									<span class="pill campaign-badge">{c.campaign_slug}</span>
 									<span class="ql-title">{c.title}</span>
-									<span class="pill status status-{c.status}">{c.status}</span>
+									<span class="pill status-{c.status}">{c.status}</span>
 								</DocLink>
 								{#if !editMode}
 									<button

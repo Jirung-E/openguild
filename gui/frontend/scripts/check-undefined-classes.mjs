@@ -23,23 +23,10 @@ const SRC = fileURLToPath(new URL('../src', import.meta.url));
 const CANON = 'lib/styles/global.css';
 
 /**
- * DEV-382 도입 시점에 이미 있던 것들. **줄이되 늘리지 말 것** —
- * 하나씩 확인해 지우거나(죽은 클래스) 스타일을 붙이면 된다.
+ * 이유가 있는 예외만 — `파일 → 클래스` 로 적고, 각각 이유 주석을 단다.
+ * DEV-382 도입 때 넣어 둔 16건은 BUG-275 에서 정리했다(지우거나 스타일을 붙임). 다시 늘리지 말 것.
  */
-const ALLOW = new Map([
-	['lib/components/QuestBoard.svelte', new Set(['resolved'])],
-	['lib/components/QuestListFilter.svelte', new Set(['chips-toggle'])],
-	['lib/components/TagFilterRow.svelte', new Set(['open'])],
-	['lib/components/admin/AdminStatusesSection.svelte', new Set(['dim', 'done-mark'])],
-	[
-		'routes/campaigns/[slug]/+page.svelte',
-		new Set(['meta', 'meta-item', 'status', 'type'])
-	],
-	['routes/quests/[id]/+page.svelte', new Set(['status', 'urgency'])],
-	['routes/settings/+page.svelte', new Set(['hint', 'theme-row'])],
-	['routes/welcome/+page.svelte', new Set(['active'])],
-	['routes/worklog/+page.svelte', new Set(['open', 'viewmode'])]
-]);
+const ALLOW = new Map();
 
 function walk(dir, out = []) {
 	for (const name of readdirSync(dir)) {

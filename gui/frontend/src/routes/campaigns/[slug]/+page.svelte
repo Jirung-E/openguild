@@ -542,7 +542,6 @@
 		<!-- BUG-033: 메타 + 본문 통합 편집 (Quest Detail 패턴). 단일 편집 버튼,
 		     단일 저장 / 취소. -->
 		<section
-			class="meta"
 			use:saveShortcut={{
 				disabled: !editMode || saving || !titleEdit.trim(),
 				onSave: () => void saveEdit(true)
@@ -767,11 +766,9 @@
 								title={q.title}
 								href={`/quests/${encodeURIComponent(q.quest_id)}?from=campaign:${detail.campaign_slug}`}
 							>
-								<span class="badge type" style:--c={q.type_color}>{q.quest_id}</span>
+								<span class="badge" style:--c={q.type_color}>{q.quest_id}</span>
 								<span class="qtitle">{q.title}</span>
-								<span class="badge status" style:--c={q.status_color}
-									>{questStatusLabel(q, $locale)}</span
-								>
+								<span class="badge" style:--c={q.status_color}>{questStatusLabel(q, $locale)}</span>
 							</DocLink>
 							<button
 								class="rm"
@@ -1037,6 +1034,11 @@
 		margin-top: 0.4rem;
 		font-size: 0.75rem;
 		color: var(--text-faint);
+	}
+	/* BUG-275: 퀘스트 화면의 `.meta-item` 과 같게 — 이름과 값을 한 덩어리로. */
+	.meta-times .meta-item {
+		display: inline-flex;
+		align-items: baseline;
 	}
 	.meta-times .meta-label {
 		color: var(--text-muted);

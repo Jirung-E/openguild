@@ -103,7 +103,7 @@
 	<!-- BUG-194: 좁은 화면 — 칩 줄을 접고 토글로. -->
 	{#if narrow}
 		<button
-			class="xfilter-toggle chips-toggle"
+			class="xfilter-toggle"
 			class:active={activeChipCount > 0}
 			onclick={() => (chipsOpen = !chipsOpen)}
 			aria-expanded={chipsOpen}

@@ -408,7 +408,7 @@
 				{/each}
 			</div>
 			<!-- REQ-006: 표시 방식 — 문서별 묶기(기본) / 전체 시간순. -->
-			<div class="unit viewmode">
+			<div class="unit">
 				<button
 					class:on={viewMode === 'compact'}
 					onclick={() => setViewMode('compact')}
@@ -561,7 +561,7 @@
 					{#if viewMode === 'compact'}
 						{#each groupByDoc(g.rows) as dg (dg.slug)}
 							{@const open = expandedDocs.has(docKey(g.date, dg.slug))}
-							<div class="docgroup" class:open>
+							<div class="docgroup">
 								<div class="docrow">
 									<button
 										class="docexp"

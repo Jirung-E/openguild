@@ -4158,8 +4158,11 @@
 		font-size: 10px;
 	}
 	.discussion-count {
-		--c: var(--success);
 		font-weight: 600;
+	}
+	/* BUG-275: 해결 쪽 색도 이름에 붙인다 — 예전엔 기본값으로 초록이라 `.resolved` 가 빈 이름이었다. */
+	.discussion-count.resolved {
+		--c: var(--success);
 	}
 	.discussion-count.unresolved {
 		--c: var(--danger);

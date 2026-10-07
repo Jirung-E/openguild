@@ -59,7 +59,6 @@
 <div class="tag-filter-row" aria-label={t('tagFilter.label', $locale)}>
 	<button
 		class="tag-toggle"
-		class:open
 		onclick={toggleOpen}
 		aria-expanded={open}
 		title={open ? t('tagFilter.collapse', $locale) : t('tagFilter.expand', $locale)}

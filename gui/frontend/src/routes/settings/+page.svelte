@@ -326,7 +326,7 @@
 			<h2>{t('settings.editorHeading', $locale)}</h2>
 			<dl class="info-grid">
 				<dt>{t('settings.tabBehavior', $locale)}</dt>
-				<dd class="theme-row">
+				<dd>
 					<div class="theme-toggle" role="group" aria-label={t('settings.tabBehavior', $locale)}>
 						<button
 							class="th-btn"
@@ -348,7 +348,7 @@
 					</p>
 				</dd>
 				<dt>{t('settings.indentSize', $locale)}</dt>
-				<dd class="theme-row">
+				<dd>
 					<div class="theme-toggle" role="group" aria-label={t('settings.indentSize', $locale)}>
 						{#each [2, 4] as n (n)}
 							<button
@@ -367,7 +367,7 @@
 				<!-- DEV-336: 목록 이어쓰기 / Enter 자동 들여쓰기 / 타이핑 중 재들여쓰기를
 				     하나로 묶어 켜고 끔. -->
 				<dt>{t('settings.autoFormat', $locale)}</dt>
-				<dd class="theme-row">
+				<dd>
 					<div class="theme-toggle" role="group" aria-label={t('settings.autoFormat', $locale)}>
 						<button
 							class="th-btn"
@@ -412,7 +412,7 @@
 				     위의 '지금 확인'(수동)은 이 설정과 무관하게 계속 동작한다. -->
 				{#if isTauri}
 					<dt>{t('settings.autoUpdateCheck', $locale)}</dt>
-					<dd class="theme-row">
+					<dd>
 						<div
 							class="theme-toggle"
 							role="group"
@@ -601,7 +601,7 @@
 				<!-- DEV-335: 첨부 이미지 HDR 표시 제한 — 미지원 브라우저에서는 항목 자체 숨김. -->
 				{#if hdrSupported}
 					<dt>{t('settings.hdrLimit', $locale)}</dt>
-					<dd class="theme-row">
+					<dd>
 						<div class="theme-toggle" role="group" aria-label={t('settings.hdrLimit', $locale)}>
 							<button
 								class="th-btn"
@@ -632,7 +632,7 @@
 
 				<!-- DEV-074: 테마 (Dark / Light / System). DEV-114: 커스텀 프리셋도 옆에 노출. -->
 				<dt>{t('settings.theme', $locale)}</dt>
-				<dd class="theme-row">
+				<dd>
 					<div class="theme-toggle" role="group" aria-label={t('settings.theme', $locale)}>
 						{#each ['dark', 'light', 'system'] as opt (opt)}
 							<button
@@ -665,7 +665,7 @@
 
 				<!-- DEV-114: 커스텀 테마 편집기. -->
 				<dt>{t('settings.customTheme', $locale)}</dt>
-				<dd class="theme-row">
+				<dd>
 					<div class="ct-actions">
 						{#if !creatingPreset}
 							<button class="th-btn" onclick={() => (creatingPreset = true)}
@@ -798,7 +798,7 @@
 
 				<!-- DEV-015: 언어 토글 — DEV-205 로 앱 전역 적용됨. -->
 				<dt>{t('settings.language', $locale)}</dt>
-				<dd class="theme-row">
+				<dd>
 					<div class="theme-toggle" role="group" aria-label={t('settings.language', $locale)}>
 						<!-- 언어 이름 자체는 번역 대상이 아님 — 항상 고정 표기. -->
 						{#each [{ value: 'ko', label: '한국어' }, { value: 'en', label: 'English' }] as opt (opt.value)}
@@ -1074,6 +1074,12 @@
 	   (플러그인)에서는 **아무것도 안 먹었다** — 안내문이 본문 크기 그대로에
 	   여백 없이 붙어 나왔다. 정의가 있긴 있어서 `check:classes` 도 못 잡는다.
 	   기본 모양은 조건 없이 준다. */
+	/* BUG-275: 토글 옆 안내 — 다른 안내 문구(`.scale-hint`)와 같은 크기 · 색. */
+	.hint {
+		margin-left: 0.5rem;
+		font-size: 0.75rem;
+		color: var(--text-faint);
+	}
 	.scale-hint {
 		font-size: 0.75rem;
 		color: var(--text-faint);
