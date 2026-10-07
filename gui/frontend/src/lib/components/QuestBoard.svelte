@@ -1584,9 +1584,31 @@
 		cancelBoxSelection();
 	}
 
+	/** 놓인 자리 → 그 레인 안의 최종 자리(스냅 + 레인 폭 안으로). 저장용 canonical 과 화면 좌표. */
+	function dropTarget(toPos: BoardPoint, statusId: number) {
+		const snapped = gridSnap ? snapToGrid(toPos.x, toPos.y) : toPos;
+		const canonical = visualToCanonical(snapped.x, snapped.y, statusId);
+		const laneAbsLeft = absoluteLaneLeftOfStatus(statusId);
+		canonical.x = Math.max(
+			laneAbsLeft + LANE_PAD_X + NODE_W / 2,
+			Math.min(laneAbsLeft + LANE_W - LANE_PAD_X - NODE_W / 2, canonical.x)
+		);
+		return { canonical, point: canonicalToVisual(canonical.x, canonical.y, statusId) };
+	}
+
 	async function processPendingDrags() {
 		const batch = pendingDragBatch.splice(0);
 		if (batch.length === 0) return;
+
+		// BUG-351: 놓자마자 제자리(격자)에 맞춘다. 예전엔 확인 창 → 상태 변경 응답을 노드마다
+		// 차례로 기다린 **뒤에야** 맞춰서, 그동안 노드가 놓인 자리에 어정쩡하게 떠 있었다.
+		const targets = batch.map((item) => {
+			const target = dropTarget(item.toPos, sorted[item.toLaneIdx].id);
+			const { x, y } = item.toPos;
+			if (target.point.x !== x || target.point.y !== y) item.node.position(target.point);
+			return target;
+		});
+
 		const laneChanges = new Map<number, PendingDragItem[]>();
 		for (const item of batch) {
 			if (sorted[item.toLaneIdx].id !== item.fromStatus) {
@@ -1597,7 +1619,6 @@
 		}
 
 		const confirmedLanes = new Set<number>();
-		const rejectedLanes = new Set<number>();
 		for (const [laneIdx, items] of laneChanges) {
 			const newStatus = sorted[laneIdx];
 			const names = items.map((item) => item.node.data<string>('questSlug')).join(', ');
@@ -1606,59 +1627,60 @@
 					? `${names} → "${statusLabel(newStatus, $locale)}"${t('board.confirmChangeSuffix', $locale)}`
 					: `${items.length}${t('board.confirmChangeCountMid', $locale)}"${statusLabel(newStatus, $locale)}"${t('board.confirmChangeSuffix', $locale)}\n(${names})`;
 			if (await showConfirm(msg)) confirmedLanes.add(laneIdx);
-			else rejectedLanes.add(laneIdx);
 		}
+
+		// 상태 변경은 한꺼번에 보낸다 — 하나씩 기다리면 옮긴 개수만큼 늦어진다.
+		const statusResults = await Promise.all(
+			batch.map((item) => {
+				const newStatus = sorted[item.toLaneIdx];
+				if (newStatus.id === item.fromStatus || !confirmedLanes.has(item.toLaneIdx)) {
+					return Promise.resolve<unknown>(null);
+				}
+				return questsApi.changeStatus(item.questId, { status_slug: newStatus.slug }).then(
+					() => null,
+					(error: unknown) => error ?? new Error()
+				);
+			})
+		);
 
 		const historyItems: BatchMove['items'] = [];
 		const posUpdates: Promise<unknown>[] = [];
-		for (const item of batch) {
-			const { node, questId, fromPos, fromStatus, toPos, toLaneIdx } = item;
+		batch.forEach((item, i) => {
+			const { node, questId, fromPos, fromStatus, toLaneIdx } = item;
 			const newStatus = sorted[toLaneIdx];
 			const laneChanged = newStatus.id !== fromStatus;
-			if (laneChanged && rejectedLanes.has(toLaneIdx)) {
+			if (laneChanged && !confirmedLanes.has(toLaneIdx)) {
 				node.animate({ position: fromPos, duration: 150 });
-				continue;
+				return;
 			}
-			if (laneChanged && confirmedLanes.has(toLaneIdx)) {
-				try {
-					await questsApi.changeStatus(questId, { status_slug: newStatus.slug });
-					node.data('statusId', newStatus.id);
-					applyStatusChange(questId, newStatus.id);
-				} catch (error) {
-					node.animate({ position: fromPos, duration: 150 });
-					showToast(
-						error instanceof Error ? error.message : t('common.statusChangeFailed', get(locale)),
-						'error'
-					);
-					continue;
-				}
+			const error = statusResults[i];
+			if (error) {
+				node.animate({ position: fromPos, duration: 150 });
+				showToast(
+					error instanceof Error && error.message
+						? error.message
+						: t('common.statusChangeFailed', get(locale)),
+					'error'
+				);
+				return;
 			}
-
-			const snapped = gridSnap ? snapToGrid(toPos.x, toPos.y) : toPos;
-			const finalStatusId =
-				laneChanged && confirmedLanes.has(toLaneIdx) ? newStatus.id : fromStatus;
-			const canonical = visualToCanonical(snapped.x, snapped.y, finalStatusId);
-			const laneAbsLeft = absoluteLaneLeftOfStatus(finalStatusId);
-			canonical.x = Math.max(
-				laneAbsLeft + LANE_PAD_X + NODE_W / 2,
-				Math.min(laneAbsLeft + LANE_W - LANE_PAD_X - NODE_W / 2, canonical.x)
-			);
-			const finalPoint = canonicalToVisual(canonical.x, canonical.y, finalStatusId);
-			if (laneChanged || finalPoint.x !== toPos.x || finalPoint.y !== toPos.y) {
-				node.position(finalPoint);
-			}
-			const moved =
-				fromPos.x !== finalPoint.x || fromPos.y !== finalPoint.y || fromStatus !== finalStatusId;
-			if (!moved) continue;
+			const { canonical, point } = targets[i];
+			// 레인 재계산(applyStatusChange)이 absX/absY 로 자리를 다시 잡으므로 새 값을 먼저 넣는다.
 			node.data('absX', canonical.x);
 			node.data('absY', canonical.y);
+			if (laneChanged) {
+				node.data('statusId', newStatus.id);
+				applyStatusChange(questId, newStatus.id);
+			}
+			const moved = fromPos.x !== point.x || fromPos.y !== point.y || laneChanged;
+			if (!moved) return;
 			historyItems.push({
 				questId,
 				from: { x: fromPos.x, y: fromPos.y, statusId: fromStatus },
-				to: { x: finalPoint.x, y: finalPoint.y, statusId: finalStatusId }
+				to: { x: point.x, y: point.y, statusId: newStatus.id }
 			});
 			posUpdates.push(questsApi.updatePosition(questId, canonical).catch(() => {}));
-		}
+		});
 
 		if (historyItems.length > 0) {
 			const record: HistoryRecord =
@@ -2508,7 +2530,8 @@
 	let boardTagCounts = $state(new Map<string, number>());
 	function refreshBoardTags() {
 		const counts = new Map<string, number>();
-		for (const q of allQuests) for (const t of q.tags ?? []) counts.set(t, (counts.get(t) ?? 0) + 1);
+		for (const q of allQuests)
+			for (const t of q.tags ?? []) counts.set(t, (counts.get(t) ?? 0) + 1);
 		boardTagCounts = counts;
 		boardTagOptions = [...counts.keys()].sort((a, b) => a.localeCompare(b));
 	}
@@ -2715,9 +2738,7 @@
 				// 때문이다. 이제 적재 때 자동 배치 노드를 전부 고정하므로 형제는 이미
 				// 저장돼 있다 — 기준점 문제가 없다. 오히려 **안 저장하면 이 노드만 유일한
 				// 자동 대상으로 남아**, 다른 노드를 끌어 옮길 때 이 노드가 움직인다.
-				questsApi
-					.updatePositions([{ quest_id: qid, x: absX, y: absY }])
-					.catch(() => {});
+				questsApi.updatePositions([{ quest_id: qid, x: absX, y: absY }]).catch(() => {});
 				storedPositions.set(qid, { x: absX, y: absY });
 				node = cy.getElementById(`q-${qid}`) as BoardNode;
 			}
