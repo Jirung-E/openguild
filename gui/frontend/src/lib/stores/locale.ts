@@ -1414,6 +1414,10 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		en: 'Lane order / hide / hide group·solo nodes'
 	},
 	'board.settings': { ko: '보드 설정', en: 'Board settings' },
+	'board.laneTint': {
+		ko: '레인 배경에 상태 색 입히기',
+		en: 'Tint lane backgrounds with status color'
+	},
 	'board.hideHelp': {
 		ko: '레인 순서 변경 + 숨김 + 그룹·단독 노드 가리기. ◀ / ▶ 로 좌우 이동, 표시 해제 시 그 레인 전체 숨김.',
 		en: 'Reorder lanes + hide + hide group/solo nodes. ◀ / ▶ to move, unchecking Show hides the whole lane.'

@@ -878,6 +878,17 @@
 		}
 	}
 
+	// REQ-037: 레인 배경에 그 상태의 색을 연하게. 보드 설정에서 켜고 끔, 길드별 기억.
+	let laneTint = $state(false);
+	function toggleLaneTint() {
+		laneTint = !laneTint;
+		try {
+			localStorage.setItem(gk('laneTint'), String(laneTint));
+		} catch {
+			/* 무시 */
+		}
+	}
+
 	function toggleBoardOrientation() {
 		if (!cy) return;
 		if (viewportSaveTimer) {
@@ -2406,6 +2417,7 @@
 			lanesSettingsOpen = loadLanesSettingsOpen();
 			try {
 				gridSnap = localStorage.getItem(gk('gridSnap')) === 'true';
+				laneTint = localStorage.getItem(gk('laneTint')) === 'true';
 				// DEV-073: 같이 복원.
 				toolbarCollapsed = localStorage.getItem(gk('toolbarCollapsed')) === 'true';
 			} catch {
@@ -2820,9 +2832,11 @@
 		lanesEl.innerHTML = '';
 		if (lanePopLayerEl) lanePopLayerEl.innerHTML = '';
 		gridLanesEl.innerHTML = '';
-		sorted.forEach(() => {
+		sorted.forEach((s) => {
 			const col = document.createElement('div');
 			col.className = 'lane-col';
+			// REQ-037: 색 입히기는 CSS(`.lane-tint`)가 이 값을 쓴다 — 켜고 끌 때 다시 만들 필요가 없다.
+			col.style.setProperty('--lane-color', s.color);
 			lanesEl.appendChild(col);
 			const gridCol = document.createElement('div');
 			gridCol.className = 'lane-grid-col';
@@ -3373,7 +3387,7 @@
 	bind:this={boardWrapEl}
 >
 	<!-- lane 단색 배경은 orientation 반대축의 viewport를 항상 채운다. -->
-	<div class="lanes-bg" bind:this={lanesEl}></div>
+	<div class="lanes-bg" class:lane-tint={laneTint} bind:this={lanesEl}></div>
 	<!-- DEV-317/BUG-225: snap + SVG edge + DOM node가 이 transform 하나를 공유한다. -->
 	<div class="board-world-viewport" bind:this={worldViewportEl}>
 		<!-- 점 중심은 world 좌표, 굵기는 gesture 종료 시 screen px에 맞춘다. -->
@@ -3907,6 +3921,11 @@
 				</table>
 			</div>
 
+			<label class="lane-tint-toggle">
+				<input type="checkbox" checked={laneTint} onchange={toggleLaneTint} />
+				{t('board.laneTint', $locale)}
+			</label>
+
 			<!-- DEV-135: 보드 필터 — List 와 동일한 필터 UI. 변경 시 공유 store +
 			     localStorage 에 반영되어 dim 이 즉시 갱신되고 List 와도 일관. -->
 			<div class="bf-section">
@@ -4319,8 +4338,12 @@
 		border-right: 0;
 		border-bottom: var(--bw) solid var(--bg-subtle);
 	}
-	/* DEV-105 fix11: 드래그 중 노드가 놓일 lane 강조. */
-	:global(.lane-col.drag-target) {
+	/* REQ-037: 레인 배경에 자기 상태 색을 연하게. */
+	.lanes-bg.lane-tint :global(.lane-col) {
+		background: color-mix(in srgb, var(--lane-color) 9%, var(--bg-elevated));
+	}
+	/* DEV-105 fix11: 드래그 중 노드가 놓일 lane 강조. 색 입힌 레인보다 우선. */
+	.lanes-bg :global(.lane-col.drag-target) {
 		background: color-mix(in srgb, var(--accent) 14%, var(--bg-elevated));
 		box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
 	}
@@ -5175,6 +5198,13 @@
 		overflow-y: auto;
 	}
 	/* DEV-135: 보드 설정 모달 안 필터 섹션. */
+	.lane-tint-toggle {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		font-size: 0.85rem;
+		cursor: pointer;
+	}
 	.bf-section {
 		border-top: var(--bw) solid var(--bg-subtle);
 		padding-top: 0.75rem;
