@@ -179,6 +179,18 @@ export function classifyDocRoute(href: string): { kind: RecentKind; label: strin
 	return null;
 }
 
+/**
+ * 라우트 href(쿼리 포함)가 문서면 최근 목록에 올린다 — 문서가 아니면 아무것도 안 한다.
+ *
+ * BUG-181: `?from=` 같은 추적 쿼리가 섞인 원본 URL 대신 정규 href 로 저장 —
+ * SearchPalette 전역 인덱스의 href 와 문자열이 일치해야 recent 모드에서 매칭된다.
+ */
+export function recordRecentDocHref(href: string): void {
+	const hit = classifyDocRoute(href);
+	if (!hit) return;
+	pushRecentDoc({ href: canonicalDocHref(hit.kind, hit.label), kind: hit.kind, label: hit.label });
+}
+
 /** 현재 목록 스냅샷 — 테스트/디버그용. */
 export function snapshotRecentDocs(): RecentDoc[] {
 	return get(recentDocs);

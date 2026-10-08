@@ -11,6 +11,7 @@ export type OpenMode = 'preview' | 'window' | 'page';
 
 import { goto } from '$app/navigation';
 import { detectEnvironment } from '$lib/api/transport';
+import { recordRecentDocHref } from '$lib/stores/recentDocs';
 // BUG-140: 커스텀 타이틀바 플랫폼 판별 — +layout 의 showTitleBar 와 동일 소스.
 // DEV-265: macOS 는 usesCustomTitlebar() 도 true(Overlay 적용 대상)이지만
 // decorations:false 로 끄면 안 됨 — 네이티브 traffic light 자체가 사라짐.
@@ -24,6 +25,9 @@ let windowSeq = 0;
  * Tauri 미지원 환경(브라우저/HTTP 모드)에서는 새 탭으로 대체.
  */
 export async function openInWindow(href: string, title: string): Promise<void> {
+	// BUG-352: 새 창은 최근 목록을 쌓지 않으므로(창마다 따로라 쌓아도 이 창엔 안 보인다)
+	// 여는 이 창이 기록한다 — 안 하면 새 창으로 연 문서는 어디에도 안 남는다.
+	recordRecentDocHref(href);
 	if (detectEnvironment() !== 'tauri') {
 		window.open(href, '_blank');
 		return;
