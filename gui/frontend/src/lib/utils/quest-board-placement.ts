@@ -170,3 +170,65 @@ export function depthOf(
 	}
 	return depth;
 }
+
+/** 노드 하나 — 교차 세기용. `x`/`y` 는 좌상단. */
+export type CrossingNode = { id: number; x: number; y: number; w: number; h: number };
+
+/**
+ * DEV-421: **노드를 가로지르는 선**의 수 — 고친 효과를 숫자로 말하기 위한 자.
+ *
+ * 선은 중심에서 중심으로 곧게 긋는다고 본다(지금 `boardEdgePath` 가 그렇다). 양끝 노드는 센다고
+ * 치지 않는다. 선분과 사각형이 만나는지는 slab 방식으로 본다 — 매개변수 구간을 축마다 깎아
+ * 남으면 교차다.
+ */
+export function countNodeCrossings(
+	nodes: readonly CrossingNode[],
+	edges: readonly { source: number; target: number }[]
+): { edges: number; crossing: number; worst: number } {
+	const byId = new Map(nodes.map((n) => [n.id, n]));
+	const center = (n: CrossingNode) => ({ x: n.x + n.w / 2, y: n.y + n.h / 2 });
+	let crossing = 0;
+	let worst = 0;
+	let counted = 0;
+	for (const e of edges) {
+		const a = byId.get(e.source);
+		const b = byId.get(e.target);
+		if (!a || !b || a === b) continue;
+		counted++;
+		const p = center(a);
+		const q = center(b);
+		let hits = 0;
+		for (const n of nodes) {
+			if (n.id === e.source || n.id === e.target) continue;
+			if (segmentHitsRect(p, q, n)) hits++;
+		}
+		if (hits > 0) crossing++;
+		worst = Math.max(worst, hits);
+	}
+	return { edges: counted, crossing, worst };
+}
+
+function segmentHitsRect(
+	p: { x: number; y: number },
+	q: { x: number; y: number },
+	r: CrossingNode
+): boolean {
+	let t0 = 0;
+	let t1 = 1;
+	for (const [from, to, lo, hi] of [
+		[p.x, q.x, r.x, r.x + r.w],
+		[p.y, q.y, r.y, r.y + r.h]
+	] as const) {
+		const d = to - from;
+		if (Math.abs(d) < 1e-9) {
+			if (from < lo || from > hi) return false;
+			continue;
+		}
+		const ta = (lo - from) / d;
+		const tb = (hi - from) / d;
+		t0 = Math.max(t0, Math.min(ta, tb));
+		t1 = Math.min(t1, Math.max(ta, tb));
+		if (t0 > t1) return false;
+	}
+	return true;
+}

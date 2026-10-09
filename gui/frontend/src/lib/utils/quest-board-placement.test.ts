@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { autoPlace, type PlacementMetrics, type PlacementQuest, depthOf } from './quest-board-placement';
+import {
+	autoPlace,
+	type PlacementMetrics,
+	type PlacementQuest,
+	depthOf,
+	countNodeCrossings
+} from './quest-board-placement';
 
 const M: PlacementMetrics = {
 	laneStride: 1000,
@@ -211,5 +217,42 @@ describe('DEV-420 화살표는 아래로', () => {
 		expect(d.get(1)).toBe(0);
 		expect(d.get(2)).toBe(1);
 		expect(d.get(3)).toBe(2);
+	});
+});
+
+// ── DEV-421: 그룹 안 자리 · 교차 세기 ──────────────────────────────
+
+describe('countNodeCrossings', () => {
+	const box = (id: number, x: number, y: number) => ({ id, x, y, w: 100, h: 40 });
+
+	it('사이에 낀 노드를 뚫으면 센다', () => {
+		const nodes = [box(1, 0, 0), box(2, 0, 100), box(3, 0, 200)];
+		// 1 → 3 은 세로로 곧게 가므로 2 를 뚫는다.
+		const r = countNodeCrossings(nodes, [{ source: 1, target: 3 }]);
+		expect(r).toEqual({ edges: 1, crossing: 1, worst: 1 });
+	});
+
+	it('이웃끼리 이으면 아무것도 안 뚫는다', () => {
+		const nodes = [box(1, 0, 0), box(2, 0, 100), box(3, 0, 200)];
+		const r = countNodeCrossings(nodes, [
+			{ source: 1, target: 2 },
+			{ source: 2, target: 3 }
+		]);
+		expect(r).toEqual({ edges: 2, crossing: 0, worst: 0 });
+	});
+
+	it('양끝 노드는 뚫은 것으로 치지 않는다', () => {
+		const nodes = [box(1, 0, 0), box(2, 0, 100)];
+		expect(countNodeCrossings(nodes, [{ source: 1, target: 2 }]).crossing).toBe(0);
+	});
+
+	it('옆으로 비켜 있으면 안 뚫는다', () => {
+		const nodes = [box(1, 0, 0), box(2, 500, 100), box(3, 0, 200)];
+		expect(countNodeCrossings(nodes, [{ source: 1, target: 3 }]).crossing).toBe(0);
+	});
+
+	it('한 선이 여럿을 뚫으면 worst 에 가장 큰 수가 남는다', () => {
+		const nodes = [box(1, 0, 0), box(2, 0, 100), box(3, 0, 200), box(4, 0, 300)];
+		expect(countNodeCrossings(nodes, [{ source: 1, target: 4 }]).worst).toBe(2);
 	});
 });
