@@ -35,7 +35,11 @@
 		type BoardOrientationMetrics
 	} from '$lib/utils/quest-board-orientation';
 	// BUG-278: 자동 배치 규칙 — 초기 적재와 handleFlash 가 같은 함수를 쓴다.
-	import { autoPlace, type PlacementMetrics } from '$lib/utils/quest-board-placement';
+	import {
+		autoPlace,
+		clusterSlots,
+		type PlacementMetrics
+	} from '$lib/utils/quest-board-placement';
 	import {
 		boardLodForZoom,
 		isPerformanceMonitorShortcut,
@@ -1990,23 +1994,40 @@
 				for (const li of byLane.keys()) {
 					startRow = Math.max(startRow, laneNextRow.get(li) ?? globalRow);
 				}
-				// 각 lane 안 cluster height.
+				// 각 lane 안 cluster height — 열을 적게 쓰면 더 길어지므로 slots 로 다시 잰다(아래).
 				let clusterHeight = 1;
-				for (const [li, ids] of byLane) {
-					const lcols = laneCols[li] ?? 2;
-					clusterHeight = Math.max(clusterHeight, Math.ceil(ids.length / lcols));
-				}
-				// 배치 + 참여 lane 들의 next-row 갱신 (+1 row gap 으로 시각 분리).
-				for (const [li, ids] of byLane) {
-					ids.sort((a, b) => slugOf(a).localeCompare(slugOf(b)));
-					const lcols = laneCols[li] ?? 2;
-					ids.forEach((qid, i) => {
-						const col = i % lcols;
-						const r = startRow + Math.floor(i / lcols);
-						place(qid, col, r);
-					});
-					laneNextRow.set(li, startRow + clusterHeight + 1);
-				}
+				// DEV-421: 레인마다 **몇 열을 어디에** 쓸지 고른다. 예전엔 `i % lcols` 로 언제나
+				// 레인 왼쪽부터 열을 전부 썼다(admin: "지금 사각형은 최소 사각형이 아니다").
+				// 실측: 교차 163 → 122(−25%), 선길이 −11%, 넓이는 거의 그대로. 줄 순서는 안 건드린다.
+				const inCluster = new Set(cluster);
+				const clusterEdges = [
+					...allDependencies
+						.filter((d) => inCluster.has(d.quest_id) && inCluster.has(d.prerequisite_id))
+						.map((d) => ({ quest_id: d.quest_id, prerequisite_id: d.prerequisite_id })),
+					...allQuests
+						.filter(
+							(q) =>
+								q.parent_quest_id != null && inCluster.has(q.id) && inCluster.has(q.parent_quest_id)
+						)
+						.map((q) => ({ quest_id: q.id, prerequisite_id: q.parent_quest_id as number }))
+				];
+				const slots = clusterSlots(
+					cluster.map((qid) => ({ id: qid, status_id: statusOf(qid) })),
+					clusterEdges,
+					laneOf,
+					laneCols[[...byLane.keys()][0]] ?? 2,
+					slugOf,
+					{
+						cellW,
+						cellH,
+						laneStride: LANE_STRIDE,
+						nodeW: NODE_W,
+						nodeH: NODE_H
+					}
+				);
+				clusterHeight = Math.max(1, ...[...slots.values()].map((s2) => s2.row + 1));
+				for (const [qid, slot] of slots) place(qid, slot.col, startRow + slot.row);
+				for (const li of byLane.keys()) laneNextRow.set(li, startRow + clusterHeight + 1);
 				void ci; // ci 는 더 이상 순차 globalRow 증가에 사용 안 함.
 			});
 

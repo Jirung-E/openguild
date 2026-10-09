@@ -232,3 +232,150 @@ function segmentHitsRect(
 	}
 	return true;
 }
+
+/** 그룹 안에서 노드 하나가 앉을 자리 — 레인, 그 레인 안의 열, 그룹 위에서부터의 줄. */
+export type ClusterSlot = { lane: number; col: number; row: number };
+
+export type ClusterMember = { id: number; status_id: number };
+
+export type ClusterGeometry = {
+	/** 한 칸의 가로 폭(노드 + 간격). */
+	cellW: number;
+	/** 한 칸의 세로 높이. */
+	cellH: number;
+	/** 레인 하나의 x 폭. */
+	laneStride: number;
+	nodeW: number;
+	nodeH: number;
+};
+
+/**
+ * DEV-421: 그룹 안 자리 — **레인마다 몇 열을 어디에 쓸지** 고른다.
+ *
+ * # 무엇이 문제였나
+ *
+ * admin: *"지금 사각형은 '최소 사각형' 이 아니다. 각 노드가 자신이 속한 레인의 **왼쪽부터** 채운다.
+ * 최적의 배치는 다른 레인에 걸쳐 있더라도 조밀하게 모이는 것이다."*
+ *
+ * 예전 정렬은 `col = i % lcols` — 언제나 레인 왼쪽부터, 언제나 레인의 열을 전부 썼다. 레인 안에서
+ * 열을 고를 자유를 안 쓴 것이다. 그래서 레인 둘에 걸친 그룹이 경계를 사이에 두고 마주 보지 못하고
+ * 양쪽 끝으로 벌어졌고, 그 사이를 선이 길게 가로질렀다.
+ *
+ * # 어떻게
+ *
+ * 레인마다 (쓰는 열 수 `c`, 시작 열 `s`) 를 모두 시도해 **그룹 사각형 넓이 + 교차 벌점**이 가장
+ * 작은 조합을 고른다. 줄 순서는 건드리지 않는다 — 깊이로 줄을 다시 잡아 보는 것은 네 번 해 봤고
+ * 전부 더 나빴다(퀘스트 댓글의 실측표).
+ *
+ * 실측(실제 길드, 관계 있는 그룹 48개 · 선 309):
+ *
+ * | | 교차 | 사각형 넓이 합 | 선길이 합 |
+ * |---|---|---|---|
+ * | 예전(레인 왼쪽부터) | 163 | 27.3M | 274,566 |
+ * | 넓이만 최소로 | 170 | 23.5M | 255,462 |
+ * | 교차만 최소로 | 116 | 47.9M | 267,473 |
+ * | **넓이 + 교차 벌점** | **122** | 28.1M | **245,327** |
+ *
+ * 마지막 것을 쓴다 — 교차 −25%, 선길이 −11%, 넓이는 거의 그대로(+3%). 폭이 좁아진 그룹 28개,
+ * 넓어진 그룹 0개.
+ *
+ * 벌점은 교차 하나당 `CROSSING_PENALTY` 픽셀². 넓이만 보면 조밀해져 교차가 늘고, 교차만 보면
+ * 사각형이 75% 부풀어 다른 그룹을 밀어낸다. 그 사이를 잡은 값이다.
+ */
+const CROSSING_PENALTY = 400_000;
+
+/** 레인 수가 많으면 조합이 폭발한다 — 그 위로는 레인별로 따로(탐욕) 고른다. */
+const MAX_COMBOS = 2048;
+
+export function clusterSlots(
+	members: readonly ClusterMember[],
+	edges: readonly PlacementEdge[],
+	laneOf: ReadonlyMap<number, number>,
+	/** 레인이 내주는 열 수. */
+	cols: number,
+	/** 같은 레인 안의 순서 — 보통 슬러그. 결과가 실행마다 같게 한다. */
+	tieBreak: (id: number) => string,
+	geom: ClusterGeometry
+): Map<number, ClusterSlot> {
+	const C = Math.max(1, cols);
+	const byLane = new Map<number, number[]>();
+	for (const m of members) {
+		const lane = laneOf.get(m.status_id) ?? 0;
+		(byLane.get(lane) ?? byLane.set(lane, []).get(lane)!).push(m.id);
+	}
+	for (const ids of byLane.values()) ids.sort((a, b) => tieBreak(a).localeCompare(tieBreak(b)));
+	const laneList = [...byLane.keys()].sort((a, b) => a - b);
+
+	// 레인마다 고를 수 있는 (열 수, 시작 열).
+	const options = laneList.map((lane) => {
+		const out: { lane: number; c: number; s: number }[] = [];
+		for (let c = 1; c <= C; c++) for (let s = 0; s + c <= C; s++) out.push({ lane, c, s });
+		return out;
+	});
+
+	const build = (choice: readonly { lane: number; c: number; s: number }[]) => {
+		const slots = new Map<number, ClusterSlot>();
+		for (const { lane, c, s } of choice) {
+			byLane.get(lane)!.forEach((id, i) => {
+				slots.set(id, { lane, col: s + (i % c), row: Math.floor(i / c) });
+			});
+		}
+		return slots;
+	};
+
+	const combos = options.reduce((n, o) => n * o.length, 1);
+	if (combos > MAX_COMBOS) {
+		// 레인별로 자기 넓이만 보고 고른다 — 조합 탐색이 너무 크다.
+		const greedy = laneList.map((lane) => {
+			const n = byLane.get(lane)!.length;
+			let best = { lane, c: C, s: 0, area: Number.POSITIVE_INFINITY };
+			for (let c = 1; c <= C; c++)
+				for (let s = 0; s + c <= C; s++) {
+					const area = c * geom.cellW * Math.ceil(n / c) * geom.cellH;
+					if (area < best.area) best = { lane, c, s, area };
+				}
+			return best;
+		});
+		return build(greedy);
+	}
+
+	let best: { slots: Map<number, ClusterSlot>; cost: number } | null = null;
+	const walk = (i: number, acc: { lane: number; c: number; s: number }[]) => {
+		if (i === options.length) {
+			const slots = build(acc);
+			const cost = clusterCost(slots, edges, geom);
+			if (!best || cost < best.cost) best = { slots, cost };
+			return;
+		}
+		for (const o of options[i]) walk(i + 1, [...acc, o]);
+	};
+	walk(0, []);
+	return best!.slots;
+}
+
+/** 사각형 넓이 + 교차 벌점. 작을수록 좋다. */
+function clusterCost(
+	slots: ReadonlyMap<number, ClusterSlot>,
+	edges: readonly PlacementEdge[],
+	geom: ClusterGeometry
+): number {
+	const nodes: CrossingNode[] = [];
+	for (const [id, s] of slots) {
+		nodes.push({
+			id,
+			x: s.lane * geom.laneStride + s.col * geom.cellW,
+			y: s.row * geom.cellH,
+			w: geom.nodeW,
+			h: geom.nodeH
+		});
+	}
+	const x1 = Math.min(...nodes.map((n) => n.x));
+	const x2 = Math.max(...nodes.map((n) => n.x + n.w));
+	const y1 = Math.min(...nodes.map((n) => n.y));
+	const y2 = Math.max(...nodes.map((n) => n.y + n.h));
+	const { crossing } = countNodeCrossings(
+		nodes,
+		edges.map((e) => ({ source: e.prerequisite_id, target: e.quest_id }))
+	);
+	return (x2 - x1) * (y2 - y1) + crossing * CROSSING_PENALTY;
+}

@@ -4,7 +4,8 @@ import {
 	type PlacementMetrics,
 	type PlacementQuest,
 	depthOf,
-	countNodeCrossings
+	countNodeCrossings,
+	clusterSlots
 } from './quest-board-placement';
 
 const M: PlacementMetrics = {
@@ -254,5 +255,87 @@ describe('countNodeCrossings', () => {
 	it('한 선이 여럿을 뚫으면 worst 에 가장 큰 수가 남는다', () => {
 		const nodes = [box(1, 0, 0), box(2, 0, 100), box(3, 0, 200), box(4, 0, 300)];
 		expect(countNodeCrossings(nodes, [{ source: 1, target: 4 }]).worst).toBe(2);
+	});
+});
+
+describe('clusterSlots — 레인 안 열 고르기 (DEV-421)', () => {
+	const geom = { cellW: 324, cellH: 120, laneStride: 1012, nodeW: 284, nodeH: 80 };
+	const slug = (id: number) => `Q-${String(id).padStart(3, '0')}`;
+	const box = (slots: Map<number, { lane: number; col: number; row: number }>) => {
+		const xs = [...slots.values()].map((s) => s.lane * geom.laneStride + s.col * geom.cellW);
+		const ys = [...slots.values()].map((s) => s.row * geom.cellH);
+		return {
+			w: Math.max(...xs) + geom.nodeW - Math.min(...xs),
+			h: Math.max(...ys) + geom.nodeH - Math.min(...ys)
+		};
+	};
+
+	it('이웃 레인에 걸친 그룹은 경계를 사이에 두고 마주 본다', () => {
+		// 레인 0 에 둘, 레인 1 에 둘. 서로 이어져 있다.
+		const members = [
+			{ id: 1, status_id: 10 },
+			{ id: 2, status_id: 10 },
+			{ id: 3, status_id: 20 },
+			{ id: 4, status_id: 20 }
+		];
+		const edges = [
+			{ quest_id: 2, prerequisite_id: 1 },
+			{ quest_id: 4, prerequisite_id: 3 },
+			{ quest_id: 3, prerequisite_id: 2 }
+		];
+		const lanes = new Map([
+			[10, 0],
+			[20, 1]
+		]);
+		const slots = clusterSlots(members, edges, lanes, 3, slug, geom);
+		// 왼쪽 레인은 오른쪽 열 쪽에, 오른쪽 레인은 왼쪽 열 쪽에 — 경계에 붙는다.
+		const left = Math.max(slots.get(1)!.col, slots.get(2)!.col);
+		const right = Math.min(slots.get(3)!.col, slots.get(4)!.col);
+		expect(left).toBeGreaterThan(0);
+		expect(right).toBeLessThan(2);
+		// 예전 방식(둘 다 0열부터, 3열 전부 사용)보다 좁다.
+		expect(box(slots).w).toBeLessThan(geom.laneStride + 3 * geom.cellW);
+	});
+
+	it('한 레인 안 그룹은 열을 다 쓰지 않고 좁게 모인다', () => {
+		const members = [1, 2, 3, 4].map((id) => ({ id, status_id: 10 }));
+		const edges = [
+			{ quest_id: 2, prerequisite_id: 1 },
+			{ quest_id: 3, prerequisite_id: 2 },
+			{ quest_id: 4, prerequisite_id: 3 }
+		];
+		const slots = clusterSlots(members, edges, new Map([[10, 0]]), 3, slug, geom);
+		const used = new Set([...slots.values()].map((s) => s.col));
+		expect(used.size).toBeLessThan(3); // 3열을 다 펴지 않는다
+	});
+
+	it('모든 멤버가 자리를 하나씩 받고 겹치지 않는다', () => {
+		const members = [1, 2, 3, 4, 5, 6, 7].map((id) => ({
+			id,
+			status_id: id % 2 === 0 ? 10 : 20
+		}));
+		const lanes = new Map([
+			[10, 0],
+			[20, 1]
+		]);
+		const slots = clusterSlots(members, [], lanes, 3, slug, geom);
+		expect(slots.size).toBe(7);
+		const seen = new Set([...slots.values()].map((s) => `${s.lane}:${s.col}:${s.row}`));
+		expect(seen.size).toBe(7);
+	});
+
+	it('레인이 많아 조합이 터지면 탐욕으로라도 전부 배치한다', () => {
+		const members = Array.from({ length: 24 }, (_, i) => ({ id: i + 1, status_id: 10 + i }));
+		const lanes = new Map(members.map((m, i) => [m.status_id, i]));
+		const slots = clusterSlots(members, [], lanes, 3, slug, geom);
+		expect(slots.size).toBe(24);
+	});
+
+	it('결과가 실행마다 같다', () => {
+		const members = [3, 1, 2].map((id) => ({ id, status_id: 10 }));
+		const lanes = new Map([[10, 0]]);
+		const a = clusterSlots(members, [], lanes, 3, slug, geom);
+		const b = clusterSlots([...members].reverse(), [], lanes, 3, slug, geom);
+		for (const id of [1, 2, 3]) expect(a.get(id)).toEqual(b.get(id));
 	});
 });
