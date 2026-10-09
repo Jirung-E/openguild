@@ -5571,6 +5571,25 @@ type TableCell = (String, Option<String>);
 /// 가변폭(더블폭) 문자가 올 수 있는 텍스트는 마지막 컬럼에** — 마지막 컬럼은
 /// 패딩하지 않으므로 폭 계산 문제가 없다. 그 외 컬럼은 ASCII 전제.
 /// `right_align[i]` = 해당 컬럼 우측 정렬(숫자용).
+/// 터미널에서 차지하는 **칸 수** 기준으로 오른쪽에 공백을 채운다.
+///
+/// BUG-326: 열을 맞출 때 `chars().count()`(글자 수)를 쓰면 한글·한자·일본어에서 어긋난다 —
+/// 그 글자들은 문자 1개지만 터미널에서 **두 칸**을 먹기 때문이다. `긴명령`(3자)은 9칸,
+/// `시험플러그인`(6자)은 12칸이라, 글자 수로 맞추면 3칸 밀린다. 영문만 쓰면 글자 수 = 칸 수라
+/// 안 보인다. 러스트의 폭 지정자(`{s:<w$}`)도 글자 수로 채우므로 같이 못 쓴다.
+///
+/// 이미 폭을 넘는 문자열은 자르지 않고 그대로 둔다 — 잘라 봐야 읽을 수 없다.
+fn pad_to_width(s: &str, w: usize) -> String {
+    use unicode_width::UnicodeWidthStr;
+    format!("{s}{}", " ".repeat(w.saturating_sub(s.width())))
+}
+
+/// 여러 칸 중 가장 넓은 것의 칸 수.
+fn max_width<'a>(cells: impl Iterator<Item = &'a str>) -> usize {
+    use unicode_width::UnicodeWidthStr;
+    cells.map(|c| c.width()).max().unwrap_or(0)
+}
+
 fn render_table(headers: &[&str], right_align: &[bool], rows: &[Vec<TableCell>], noun: &str) {
     if rows.is_empty() {
         println!("(no {noun})");
@@ -6960,13 +6979,13 @@ fn handle_plugin(c: &Backend, json: bool, sub: PluginCmd) -> Result<()> {
                 .iter()
                 .map(|(_, p)| openguild_core::plugins::summary::list_row(p, Scope::Cli))
                 .collect();
+            // BUG-326: 폭은 글자 수가 아니라 터미널 칸 수로 센다 — `pad_to_width` 주석 참고.
+            // 같은 문제가 `render_table` 에도 있다 — [[BUG-353]].
             let width = |f: fn(&openguild_core::plugins::summary::ListRow) -> &String| {
-                cells.iter().map(|r| f(r).chars().count()).max().unwrap_or(0)
+                max_width(cells.iter().map(|r| f(r).as_str()))
             };
             let (w_name, w_scope) = (width(|r| &r.name), width(|r| &r.scope));
-            let pad = |s: &str, w: usize| {
-                format!("{s}{}", " ".repeat(w.saturating_sub(s.chars().count())))
-            };
+            let pad = pad_to_width;
             // 기호만 있고 설명이 없으면 `·` 가 무슨 뜻인지 모른다 — 있을 때만 한 줄.
             if !loaded.needs_consent.is_empty() {
                 println!(
@@ -10169,6 +10188,34 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
+
+    // BUG-326: 열 맞춤은 글자 수가 아니라 터미널 칸 수 기준이어야 한다.
+    #[test]
+    fn padding_counts_terminal_columns_not_characters() {
+        use unicode_width::UnicodeWidthStr;
+        // 한글은 글자 1개가 두 칸. 글자 수로 맞추던 때는 이 둘이 9칸 / 12칸으로 갈렸다.
+        let w = super::max_width(["긴명령", "시험플러그인", "되부르기"].into_iter());
+        assert_eq!(w, 12, "가장 넓은 것은 시험플러그인 6자 = 12칸");
+        for name in ["긴명령", "시험플러그인", "되부르기"] {
+            assert_eq!(super::pad_to_width(name, w).width(), w, "{name} 이 {w}칸으로 안 맞음");
+        }
+    }
+
+    #[test]
+    fn padding_still_works_for_ascii_and_mixed() {
+        use unicode_width::UnicodeWidthStr;
+        let names = ["a-short", "a-much-longer-plugin-name", "섞인-mixed-이름"];
+        let w = super::max_width(names.into_iter());
+        for name in names {
+            assert_eq!(super::pad_to_width(name, w).width(), w, "{name}");
+        }
+    }
+
+    #[test]
+    fn padding_leaves_overlong_text_alone() {
+        // 폭을 넘으면 자르지 않는다 — 잘라 봐야 읽을 수 없다.
+        assert_eq!(super::pad_to_width("시험플러그인", 3), "시험플러그인");
+    }
     use super::*;
 
     /// DEV-387: 배포하는 스킬이 실제로 있는지.
