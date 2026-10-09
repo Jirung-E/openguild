@@ -1611,14 +1611,10 @@
 		const batch = pendingDragBatch.splice(0);
 		if (batch.length === 0) return;
 
-		// BUG-351: 놓자마자 제자리(격자)에 맞춘다. 예전엔 확인 창 → 상태 변경 응답을 노드마다
-		// 차례로 기다린 **뒤에야** 맞춰서, 그동안 노드가 놓인 자리에 어정쩡하게 떠 있었다.
-		const targets = batch.map((item) => {
-			const target = dropTarget(item.toPos, sorted[item.toLaneIdx].id);
-			const { x, y } = item.toPos;
-			if (target.point.x !== x || target.point.y !== y) item.node.position(target.point);
-			return target;
-		});
+		// 최종 자리를 미리 계산만 해 둔다 — **옮기지는 않는다.**
+		// BUG-351 1차 수정은 여기서 바로 격자에 맞췄는데, 아직 상태가 안 바뀐 노드가 새 레인의
+		// 격자에 가 붙어 "확인도 안 했는데 옮겨진 것처럼" 보였다(admin). 자리 이동은 확인 뒤에.
+		const targets = batch.map((item) => dropTarget(item.toPos, sorted[item.toLaneIdx].id));
 
 		const laneChanges = new Map<number, PendingDragItem[]>();
 		for (const item of batch) {
@@ -1655,7 +1651,7 @@
 				node.animate({ position: fromPos, duration: 150 });
 				return false;
 			}
-			const { canonical } = targets[i];
+			const { canonical, point } = targets[i];
 			// 레인 재계산(applyStatusChange)이 absX/absY 로 자리를 다시 잡으므로 새 값을 먼저 넣는다.
 			node.data('absX', canonical.x);
 			node.data('absY', canonical.y);
@@ -1663,6 +1659,8 @@
 				node.data('statusId', newStatus.id);
 				applyStatusChange(questId, newStatus.id);
 			}
+			// 격자 스냅은 여기서 — 레인을 옮긴 것이면 확인을 누른 뒤다.
+			if (point.x !== item.toPos.x || point.y !== item.toPos.y) node.position(point);
 			return true;
 		});
 
