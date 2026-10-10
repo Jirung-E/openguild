@@ -22,7 +22,7 @@
 		type BoardElementDefinition,
 		type BoardPoint
 	} from '$lib/utils/quest-board-model';
-	import { boardEdgePath, parallelEdgeBends } from '$lib/utils/quest-board-render';
+	import { boardEdgePath, parallelEdgeBends, groupRects } from '$lib/utils/quest-board-render';
 	import { isBoardPanSurfaceTarget } from '$lib/utils/quest-board-input';
 	import {
 		boardPointToCanonical,
@@ -893,6 +893,20 @@
 			/* 무시 */
 		}
 	}
+
+	// DEV-437: 관계로 묶인 그룹마다 노드 전부를 감싸는 사각형을 연한 회색으로. 보드 설정에서 켜고 끔.
+	let showGroupRects = $state(false);
+	function toggleGroupRects() {
+		showGroupRects = !showGroupRects;
+		try {
+			localStorage.setItem(gk('groupRects'), String(showGroupRects));
+		} catch {
+			/* 무시 */
+		}
+	}
+	const groupBoxes = $derived(
+		showGroupRects ? groupRects(domNodes, groupOf, NODE_W, NODE_H, 14) : []
+	);
 
 	// REQ-037: 레인 배경에 그 상태의 색을 연하게. 보드 설정에서 켜고 끔, 길드별 기억.
 	let laneTint = $state(false);
@@ -2472,6 +2486,7 @@
 				gridSnap = localStorage.getItem(gk('gridSnap')) === 'true';
 				laneTint = localStorage.getItem(gk('laneTint')) === 'true';
 				arrangeStrictDown = localStorage.getItem(gk('arrangeStrictDown')) === 'true';
+				showGroupRects = localStorage.getItem(gk('groupRects')) === 'true';
 				// DEV-073: 같이 복원.
 				toolbarCollapsed = localStorage.getItem(gk('toolbarCollapsed')) === 'true';
 			} catch {
@@ -3447,6 +3462,19 @@
 		<!-- 점 중심은 world 좌표, 굵기는 gesture 종료 시 screen px에 맞춘다. -->
 		<div class="lane-grid-layer" bind:this={gridLanesEl}></div>
 		<div class="board-world" bind:this={worldEl}>
+			{#if groupBoxes.length > 0}
+				<div class="group-rect-layer">
+					{#each groupBoxes as g (g.key)}
+						<div
+							class="group-rect"
+							style:left="{g.x}px"
+							style:top="{g.y}px"
+							style:width="{g.w}px"
+							style:height="{g.h}px"
+						></div>
+					{/each}
+				</div>
+			{/if}
 			<svg class="edge-layer" width="100%" height="100%">
 				<defs>
 					<marker
@@ -3987,6 +4015,10 @@
 				/>
 				{t('board.arrangeStrictDown', $locale)}
 			</label>
+			<label class="lane-tint-toggle">
+				<input type="checkbox" checked={showGroupRects} onchange={toggleGroupRects} />
+				{t('board.groupRects', $locale)}
+			</label>
 
 			<!-- DEV-135: 보드 필터 — List 와 동일한 필터 UI. 변경 시 공유 store +
 			     localStorage 에 반영되어 dim 이 즉시 갱신되고 List 와도 일관. -->
@@ -4167,6 +4199,19 @@
 	.edge-layer {
 		z-index: 1;
 		overflow: visible;
+	}
+	/* DEV-437: 그룹 사각형 — 노드 · 선 뒤. 반투명이라 겹치면 더 진해져 규칙 위반이 바로 보인다. */
+	.group-rect-layer {
+		position: absolute;
+		inset: 0;
+		z-index: 0;
+		pointer-events: none;
+	}
+	.group-rect {
+		position: absolute;
+		border-radius: var(--r-lg);
+		background: color-mix(in srgb, var(--text) 6%, transparent);
+		border: var(--bw) solid color-mix(in srgb, var(--text) 12%, transparent);
 	}
 	.node-layer {
 		z-index: 2;

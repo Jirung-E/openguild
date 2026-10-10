@@ -75,3 +75,58 @@ export function boardEdgePath(
 	const cy = (y1 + y2) / 2 + ux * bend;
 	return `M ${x1} ${y1} Q ${cx} ${cy} ${x2} ${y2}`;
 }
+
+/** DEV-437: 그룹 사각형 하나 — 월드 좌표(좌상단 + 크기). */
+export interface GroupRect {
+	/** 그룹 안 가장 작은 퀘스트 id — 렌더 key. */
+	key: number;
+	x: number;
+	y: number;
+	w: number;
+	h: number;
+}
+
+/**
+ * DEV-437: 관계로 묶인 그룹(연결 성분)마다 **그 노드 전부를 감싸는 최소 사각형**.
+ *
+ * 정렬의 설계 규칙이 "각 그룹은 최소 크기 사각형 안에, 사각형끼리 안 겹친다" 인데 그 사각형이
+ * 안 보여서 지켜지는지 눈으로 알 수 없었다. 그걸 그린다.
+ *
+ * - 노드 좌표는 **중심**이다(보드 노드가 그렇다). 사각형은 노드 상자 바깥으로 `pad` 만큼 넓힌다.
+ * - 숨긴 노드는 뺀다. 보이는 멤버가 둘 미만인 그룹은 그리지 않는다 — 관계 없는 단독 노드가
+ *   수백 개라 다 그리면 화면이 사각형으로 뒤덮인다.
+ */
+export function groupRects(
+	nodes: readonly { id: number; x: number; y: number; hidden?: boolean }[],
+	groupOf: ReadonlyMap<number, ReadonlySet<number>>,
+	nodeW: number,
+	nodeH: number,
+	pad: number
+): GroupRect[] {
+	const byKey = new Map<number, { x1: number; y1: number; x2: number; y2: number; n: number }>();
+	for (const node of nodes) {
+		if (node.hidden) continue;
+		const group = groupOf.get(node.id);
+		if (!group || group.size < 2) continue;
+		let key = node.id;
+		for (const m of group) if (m < key) key = m;
+		const x1 = node.x - nodeW / 2;
+		const y1 = node.y - nodeH / 2;
+		const box = byKey.get(key);
+		if (box) {
+			box.x1 = Math.min(box.x1, x1);
+			box.y1 = Math.min(box.y1, y1);
+			box.x2 = Math.max(box.x2, x1 + nodeW);
+			box.y2 = Math.max(box.y2, y1 + nodeH);
+			box.n++;
+		} else {
+			byKey.set(key, { x1, y1, x2: x1 + nodeW, y2: y1 + nodeH, n: 1 });
+		}
+	}
+	const out: GroupRect[] = [];
+	for (const [key, b] of byKey) {
+		if (b.n < 2) continue;
+		out.push({ key, x: b.x1 - pad, y: b.y1 - pad, w: b.x2 - b.x1 + pad * 2, h: b.y2 - b.y1 + pad * 2 });
+	}
+	return out.sort((a, b) => a.key - b.key);
+}

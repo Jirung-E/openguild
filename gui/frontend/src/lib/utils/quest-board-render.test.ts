@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { boardEdgePath, parallelEdgeBends } from './quest-board-render';
+import { boardEdgePath, groupRects, parallelEdgeBends } from './quest-board-render';
 
 describe('quest board edge rendering', () => {
 	it('단일 연결은 기존 보드처럼 직선으로 그린다', () => {
@@ -74,5 +74,56 @@ describe('boardEdgePath — 가까운 노드 (BUG-242)', () => {
 		expect(m).not.toBeNull();
 		expect(Number(m![1])).toBeCloseTo(H / 2, 5);
 		expect(Number(m![2])).toBeCloseTo(dist - H / 2, 5);
+	});
+});
+
+describe('groupRects (DEV-437)', () => {
+	const W = 100, H = 40;
+	const g = (ids: number[]) => {
+		const s = new Set(ids);
+		return ids.map((i) => [i, s] as const);
+	};
+
+	it('그룹 노드 전부를 감싸고 pad 만큼 넓힌다 (노드 좌표는 중심)', () => {
+		const groupOf = new Map(g([1, 2]));
+		const r = groupRects(
+			[
+				{ id: 1, x: 50, y: 20 },
+				{ id: 2, x: 250, y: 120 }
+			],
+			groupOf,
+			W,
+			H,
+			10
+		);
+		expect(r).toEqual([{ key: 1, x: -10, y: -10, w: 320, h: 160 }]);
+	});
+
+	it('단독 노드 · 보이는 멤버가 하나뿐인 그룹은 안 그린다', () => {
+		const groupOf = new Map([...g([1]), ...g([2, 3])]);
+		const r = groupRects(
+			[
+				{ id: 1, x: 0, y: 0 },
+				{ id: 2, x: 0, y: 0 },
+				{ id: 3, x: 0, y: 0, hidden: true }
+			],
+			groupOf,
+			W,
+			H,
+			10
+		);
+		expect(r).toEqual([]);
+	});
+
+	it('그룹마다 하나씩, key 는 가장 작은 id', () => {
+		const groupOf = new Map([...g([5, 3]), ...g([9, 7])]);
+		const r = groupRects(
+			[3, 5, 7, 9].map((id) => ({ id, x: id * 10, y: 0 })),
+			groupOf,
+			W,
+			H,
+			0
+		);
+		expect(r.map((x) => x.key)).toEqual([3, 7]);
 	});
 });

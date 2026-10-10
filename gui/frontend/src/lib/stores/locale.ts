@@ -1418,6 +1418,10 @@ const DICT: Record<string, { ko: string; en: string }> = {
 		ko: '레인 배경에 상태 색 입히기',
 		en: 'Tint lane backgrounds with status color'
 	},
+	'board.groupRects': {
+		ko: '관계로 묶인 그룹을 회색 사각형으로 표시',
+		en: 'Show related groups as gray rectangles'
+	},
 	'board.arrangeStrictDown': {
 		ko: '정렬할 때 자식·후행을 무조건 아래로',
 		en: 'When arranging, always put children and successors below'
